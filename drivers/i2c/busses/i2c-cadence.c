@@ -306,9 +306,6 @@ static void cdns_i2c_mrecv(struct cdns_i2c *id)
 	isr_status = cdns_i2c_readreg(CDNS_I2C_ISR_OFFSET);
 	cdns_i2c_writereg(isr_status, CDNS_I2C_ISR_OFFSET);
 
-	/* Set the slave address in address register */
-	cdns_i2c_writereg(id->p_msg->addr & CDNS_I2C_ADDR_MASK,
-						CDNS_I2C_ADDR_OFFSET);
 	/*
 	 * The no. of bytes to receive is checked against the limit of
 	 * max transfer size. Set transfer size register with no of bytes
@@ -325,6 +322,9 @@ static void cdns_i2c_mrecv(struct cdns_i2c *id)
 		((id->p_msg->flags & I2C_M_RECV_LEN) != I2C_M_RECV_LEN) &&
 		(id->recv_count <= CDNS_I2C_FIFO_DEPTH))
 			cdns_i2c_clear_bus_hold(id);
+	/* Set the slave address in address register - triggers operation */
+	cdns_i2c_writereg(id->p_msg->addr & CDNS_I2C_ADDR_MASK,
+						CDNS_I2C_ADDR_OFFSET);
 	cdns_i2c_writereg(CDNS_I2C_ENABLED_INTR, CDNS_I2C_IER_OFFSET);
 }
 
@@ -378,16 +378,16 @@ static void cdns_i2c_msend(struct cdns_i2c *id)
 		id->send_count--;
 	}
 
-	/* Set the slave address in address register. */
-	cdns_i2c_writereg(id->p_msg->addr & CDNS_I2C_ADDR_MASK,
-						CDNS_I2C_ADDR_OFFSET);
-
 	/*
 	 * Clear the bus hold flag if there is no more data
 	 * and if it is the last message.
 	 */
 	if (!id->bus_hold_flag && !id->send_count)
 		cdns_i2c_clear_bus_hold(id);
+	/* Set the slave address in address register - triggers operation. */
+	cdns_i2c_writereg(id->p_msg->addr & CDNS_I2C_ADDR_MASK,
+						CDNS_I2C_ADDR_OFFSET);
+
 	cdns_i2c_writereg(CDNS_I2C_ENABLED_INTR, CDNS_I2C_IER_OFFSET);
 }
 
