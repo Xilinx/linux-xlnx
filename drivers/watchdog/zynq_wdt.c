@@ -117,6 +117,7 @@ static int zynq_wdt_stop(struct watchdog_device *wdd)
 	zynq_wdt_writereg((ZYNQ_WDT_ZMR_ZKEY_VAL & (~ZYNQ_WDT_ZMR_WDEN_MASK)),
 			 ZYNQ_WDT_ZMR_OFFSET);
 	spin_unlock(&wdt->io_lock);
+
 	return 0;
 }
 
@@ -134,6 +135,7 @@ static int zynq_wdt_reload(struct watchdog_device *wdd)
 	spin_lock(&wdt->io_lock);
 	zynq_wdt_writereg(0x00001999, ZYNQ_WDT_RESTART_OFFSET);
 	spin_unlock(&wdt->io_lock);
+
 	return 0;
 }
 
@@ -194,6 +196,7 @@ static int zynq_wdt_start(struct watchdog_device *wdd)
 	zynq_wdt_writereg(data, ZYNQ_WDT_ZMR_OFFSET);
 	spin_unlock(&wdt->io_lock);
 	zynq_wdt_writereg(0x00001999, ZYNQ_WDT_RESTART_OFFSET);
+
 	return 0;
 }
 
@@ -211,6 +214,7 @@ static int zynq_wdt_settimeout(struct watchdog_device *wdd,
 			       unsigned int new_time)
 {
 	wdd->timeout = new_time;
+
 	return zynq_wdt_start(wdd);
 }
 
@@ -227,7 +231,9 @@ static int zynq_wdt_settimeout(struct watchdog_device *wdd,
 static irqreturn_t zynq_wdt_irq_handler(int irq, void *dev_id)
 {
 	struct platform_device *pdev = dev_id;
+
 	dev_info(&pdev->dev, "Watchdog timed out.\n");
+
 	return IRQ_HANDLED;
 }
 
@@ -267,6 +273,7 @@ static int zynq_wdt_notify_sys(struct notifier_block *this, unsigned long code,
 	if (code == SYS_DOWN || code == SYS_HALT)
 		/* Stop the watchdog */
 		zynq_wdt_stop(&zynq_wdt_device);
+
 	return NOTIFY_DONE;
 }
 
@@ -389,6 +396,7 @@ err_clk_disable:
 	clk_disable_unprepare(wdt->clk);
 err_notifier:
 	unregister_reboot_notifier(&zynq_wdt_notifier);
+
 	return ret;
 }
 
@@ -416,6 +424,7 @@ static int __exit zynq_wdt_remove(struct platform_device *pdev)
 		dev_err(&pdev->dev, "Cannot stop watchdog, still ticking\n");
 		return -ENOTSUPP;
 	}
+
 	return res;
 }
 
@@ -444,6 +453,7 @@ static int zynq_wdt_suspend(struct device *dev)
 	/* Stop the device */
 	zynq_wdt_stop(&zynq_wdt_device);
 	clk_disable(wdt->clk);
+
 	return 0;
 }
 
@@ -464,6 +474,7 @@ static int zynq_wdt_resume(struct device *dev)
 	}
 	/* Start the device */
 	zynq_wdt_start(&zynq_wdt_device);
+
 	return 0;
 }
 #endif
@@ -501,8 +512,10 @@ static struct platform_driver zynq_wdt_driver = {
 static int __init zynq_wdt_init(void)
 {
 	int res = platform_driver_register(&zynq_wdt_driver);
+
 	if (!res && nowayout)
 		try_module_get(THIS_MODULE);
+
 	return res;
 }
 
