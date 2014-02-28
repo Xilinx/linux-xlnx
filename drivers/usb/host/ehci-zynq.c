@@ -91,25 +91,6 @@ static int ehci_zynq_otg_stop_host(struct usb_phy *otg)
 }
 #endif
 
-static int zynq_ehci_clk_notifier_cb(struct notifier_block *nb,
-		unsigned long event, void *data)
-{
-
-	switch (event) {
-	case PRE_RATE_CHANGE:
-		/* if a rate change is announced we need to check whether we can
-		 * maintain the current frequency by changing the clock
-		 * dividers.
-		 */
-		/* fall through */
-	case POST_RATE_CHANGE:
-		return NOTIFY_OK;
-	case ABORT_RATE_CHANGE:
-	default:
-		return NOTIFY_DONE;
-	}
-}
-
 /* configure so an HC device and id are always provided */
 /* always called with process context; sleeping is OK */
 
@@ -173,17 +154,12 @@ static int usb_hcd_zynq_probe(const struct hc_driver *driver,
 		goto err2;
 	}
 
-	pdata->clk_rate_change_nb.notifier_call = zynq_ehci_clk_notifier_cb;
-	pdata->clk_rate_change_nb.next = NULL;
-	if (clk_notifier_register(pdata->clk, &pdata->clk_rate_change_nb))
-		dev_warn(&pdev->dev, "Unable to register clock notifier.\n");
-
 	/*
 	 * do platform specific init: check the clock, grab/config pins, etc.
 	 */
 	if (pdata->init && pdata->init(pdev)) {
 		retval = -ENODEV;
-		goto err_out_clk_unreg_notif;
+		goto err_out_clk_disable;
 	}
 
 #ifdef CONFIG_USB_ZYNQ_PHY
@@ -196,7 +172,7 @@ static int usb_hcd_zynq_probe(const struct hc_driver *driver,
 		retval = otg_set_host(hcd->phy->otg,
 				&ehci_to_hcd(ehci)->self);
 		if (retval)
-			goto err_out_clk_unreg_notif;
+			goto err_out_clk_disable;
 		xotg = xceiv_to_xotg(hcd->phy);
 		ehci->start_hnp = ehci_zynq_start_hnp;
 		xotg->start_host = ehci_zynq_otg_start_host;
@@ -206,7 +182,7 @@ static int usb_hcd_zynq_probe(const struct hc_driver *driver,
 	} else {
 		retval = usb_add_hcd(hcd, irq, IRQF_SHARED);
 		if (retval)
-			goto err_out_clk_unreg_notif;
+			goto err_out_clk_disable;
 
 		/*
 		 * Enable vbus on ULPI - zedboard requirement
@@ -219,12 +195,11 @@ static int usb_hcd_zynq_probe(const struct hc_driver *driver,
 	/* Don't need to set host mode here. It will be done by tdi_reset() */
 	retval = usb_add_hcd(hcd, irq, IRQF_SHARED);
 	if (retval)
-		goto err_out_clk_unreg_notif;
+		goto err_out_clk_disable;
 #endif
 	return retval;
 
-err_out_clk_unreg_notif:
-	clk_notifier_unregister(pdata->clk, &pdata->clk_rate_change_nb);
+err_out_clk_disable:
 	clk_disable_unprepare(pdata->clk);
 err2:
 	usb_put_hcd(hcd);
@@ -262,7 +237,6 @@ static void usb_hcd_zynq_remove(struct usb_hcd *hcd,
 	if (pdata->exit)
 		pdata->exit(pdev);
 	usb_put_hcd(hcd);
-	clk_notifier_unregister(pdata->clk, &pdata->clk_rate_change_nb);
 	clk_disable_unprepare(pdata->clk);
 }
 
