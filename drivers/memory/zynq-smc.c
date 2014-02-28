@@ -58,12 +58,10 @@
  * struct zynq_smc_data - Private smc driver structure
  * @devclk:		Pointer to the peripheral clock
  * @aperclk:		Pointer to the APER clock
- * @clk_rate_change_nb:	Notifier block for clock frequency change callback
  */
 struct zynq_smc_data {
 	struct clk		*devclk;
 	struct clk		*aperclk;
-	struct notifier_block	clk_rate_change_nb;
 };
 
 /* SMC virtual register base */
@@ -289,24 +287,6 @@ int zynq_smc_set_ecc_pg_size(unsigned int pg_sz)
 }
 EXPORT_SYMBOL_GPL(zynq_smc_set_ecc_pg_size);
 
-static int zynq_smc_clk_notifier_cb(struct notifier_block *nb,
-				  unsigned long event, void *data)
-{
-	switch (event) {
-	case PRE_RATE_CHANGE:
-		/*
-		 * if a rate change is announced we need to check whether we can
-		 * run under the changed conditions
-		 */
-		/* fall through */
-	case POST_RATE_CHANGE:
-		return NOTIFY_OK;
-	case ABORT_RATE_CHANGE:
-	default:
-		return NOTIFY_DONE;
-	}
-}
-
 #ifdef CONFIG_PM_SLEEP
 static int zynq_smc_suspend(struct device *dev)
 {
@@ -504,11 +484,6 @@ static int zynq_smc_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, zynq_smc);
 
-	zynq_smc->clk_rate_change_nb.notifier_call = zynq_smc_clk_notifier_cb;
-	if (clk_notifier_register(zynq_smc->devclk,
-				  &zynq_smc->clk_rate_change_nb))
-		dev_warn(&pdev->dev, "Unable to register clock notifier.\n");
-
 	/* clear interrupts */
 	spin_lock_irqsave(&zynq_smc_lock, flags);
 
@@ -561,8 +536,6 @@ static int zynq_smc_remove(struct platform_device *pdev)
 {
 	struct zynq_smc_data *zynq_smc = platform_get_drvdata(pdev);
 
-	clk_notifier_unregister(zynq_smc->devclk,
-				&zynq_smc->clk_rate_change_nb);
 	clk_disable_unprepare(zynq_smc->devclk);
 	clk_disable_unprepare(zynq_smc->aperclk);
 
