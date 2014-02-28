@@ -702,8 +702,11 @@ static int cdns_i2c_clk_notifier_cb(struct notifier_block *nb, unsigned long
 		int ret;
 
 		ret = cdns_i2c_calc_divs(&fscl, input_clk, &div_a, &div_b);
-		if (ret)
+		if (ret) {
+			dev_warn(id->adap.dev.parent,
+					"clock rate change rejected\n");
 			return NOTIFY_STOP;
+		}
 
 		/* scale up */
 		if (ndata->new_rate > ndata->old_rate)
