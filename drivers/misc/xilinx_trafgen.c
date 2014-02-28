@@ -471,6 +471,8 @@ static void xtg_prepare_param_word(struct xtg_dev_info *tg,
  * @dev: Device structure
  * @buf: Value to write
  * @opcode: Ioctl opcode
+ *
+ * Return: value read from the sysfs opcode.
  */
 static ssize_t xtg_sysfs_ioctl(struct device *dev, const char *buf,
 				enum xtg_sysfs_ioctl_opcode opcode)
@@ -1202,7 +1204,7 @@ static const struct attribute_group xtg_attributes = {
  * @irq: IRQ number
  * @data: Pointer to the xtg_dev_info structure
  *
- * Returns IRQ_HANDLED always
+ * Return: IRQ_HANDLED always
  */
 static irqreturn_t xtg_cmp_intr_handler(int irq, void *data)
 {
@@ -1220,7 +1222,7 @@ static irqreturn_t xtg_cmp_intr_handler(int irq, void *data)
  * @irq: IRQ number
  * @data: Pointer to the xtg_dev_info structure
  *
- * Returns IRQ_HANDLED always
+ * Return: IRQ_HANDLED always
  */
 static irqreturn_t xtg_err_intr_handler(int irq, void *data)
 {
@@ -1243,7 +1245,10 @@ static irqreturn_t xtg_err_intr_handler(int irq, void *data)
  * xtg_probe - Driver probe function
  * @pdev: Pointer to the platform_device structure
  *
- * Returns '0' on success and failure value on error
+ * This is the driver probe routine. It does all the memory
+ * allocation and creates sysfs entires for the device.
+ *
+ * Return: 0 on success and failure value on error
  */
 static int xtg_probe(struct platform_device *pdev)
 {
@@ -1337,7 +1342,9 @@ static int xtg_probe(struct platform_device *pdev)
  * xtg_remove - Driver remove function
  * @pdev: Pointer to the platform_device structure
  *
- * Always returns '0'
+ * This function frees all the resources allocated to the device.
+ *
+ * Return: 0 always
  */
 static int xtg_remove(struct platform_device *pdev)
 {
