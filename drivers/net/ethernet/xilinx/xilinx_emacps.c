@@ -502,7 +502,6 @@ struct net_local {
 	void __iomem *baseaddr;
 	struct clk *devclk;
 	struct clk *aperclk;
-	struct notifier_block clk_rate_change_nb;
 
 	struct device_node *phy_node;
 	struct device_node *gmii2rgmii_phy_node;
@@ -743,36 +742,6 @@ static void xemacps_adjust_link(struct net_device *ndev)
 				"FULL" : "HALF");
 		else
 			dev_info(&lp->pdev->dev, "link down\n");
-	}
-}
-
-static int xemacps_clk_notifier_cb(struct notifier_block *nb, unsigned long
-		event, void *data)
-{
-/*
-	struct clk_notifier_data *ndata = data;
-	struct net_local *nl = to_net_local(nb);
-*/
-
-	switch (event) {
-	case PRE_RATE_CHANGE:
-		/* if a rate change is announced we need to check whether we can
-		 * maintain the current frequency by changing the clock
-		 * dividers.
-		 * I don't see how this can be done using the current fmwk!?
-		 * For now we always allow the rate change. Otherwise we would
-		 * even prevent ourself to change the rate.
-		 */
-		return NOTIFY_OK;
-	case POST_RATE_CHANGE:
-		/* not sure this will work. actually i'm sure it does not. this
-		 * callback is not allowed to call back into COMMON_CLK, what
-		 * adjust_link() does...*/
-		/*xemacps_adjust_link(nl->ndev); would likely lock up kernel */
-		return NOTIFY_OK;
-	case ABORT_RATE_CHANGE:
-	default:
-		return NOTIFY_DONE;
 	}
 }
 
@@ -2783,12 +2752,6 @@ static int xemacps_probe(struct platform_device *pdev)
 		goto err_out_clk_dis_aper;
 	}
 
-	lp->clk_rate_change_nb.notifier_call = xemacps_clk_notifier_cb;
-	lp->clk_rate_change_nb.next = NULL;
-	if (clk_notifier_register(lp->devclk, &lp->clk_rate_change_nb))
-		dev_warn(&pdev->dev,
-			"Unable to register clock notifier.\n");
-
 	lp->phy_node = of_parse_phandle(lp->pdev->dev.of_node,
 						"phy-handle", 0);
 	lp->gmii2rgmii_phy_node = of_parse_phandle(lp->pdev->dev.of_node,
@@ -2796,7 +2759,7 @@ static int xemacps_probe(struct platform_device *pdev)
 	rc = of_get_phy_mode(lp->pdev->dev.of_node);
 	if (rc < 0) {
 		dev_err(&lp->pdev->dev, "error in getting phy i/f\n");
-		goto err_out_unregister_clk_notifier;
+		goto err_out_clk_dis_all;
 	}
 
 	lp->phy_interface = rc;
@@ -2812,7 +2775,7 @@ static int xemacps_probe(struct platform_device *pdev)
 	rc = xemacps_mii_init(lp);
 	if (rc) {
 		dev_err(&lp->pdev->dev, "error in xemacps_mii_init\n");
-		goto err_out_unregister_clk_notifier;
+		goto err_out_clk_dis_all;
 	}
 
 	xemacps_update_hwaddr(lp);
@@ -2835,13 +2798,12 @@ static int xemacps_probe(struct platform_device *pdev)
 	if (rc) {
 		dev_err(&lp->pdev->dev, "Unable to request IRQ %p, error %d\n",
 				r_irq, rc);
-		goto err_out_unregister_clk_notifier;
+		goto err_out_clk_dis_all;
 	}
 
 	return 0;
 
-err_out_unregister_clk_notifier:
-	clk_notifier_unregister(lp->devclk, &lp->clk_rate_change_nb);
+err_out_clk_dis_all:
 	clk_disable_unprepare(lp->devclk);
 err_out_clk_dis_aper:
 	clk_disable_unprepare(lp->aperclk);
@@ -2872,7 +2834,6 @@ static int xemacps_remove(struct platform_device *pdev)
 		mdiobus_free(lp->mii_bus);
 		unregister_netdev(ndev);
 
-		clk_notifier_unregister(lp->devclk, &lp->clk_rate_change_nb);
 		if (!pm_runtime_suspended(&pdev->dev)) {
 			clk_disable_unprepare(lp->devclk);
 			clk_disable_unprepare(lp->aperclk);
