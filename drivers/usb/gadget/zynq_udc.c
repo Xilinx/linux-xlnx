@@ -363,25 +363,6 @@ struct zynq_udc {
 #define get_pipe_by_windex(windex)	((windex & USB_ENDPOINT_NUMBER_MASK) \
 					* 2 + ((windex & USB_DIR_IN) ? 1 : 0))
 
-static int zynq_udc_clk_notifier_cb(struct notifier_block *nb,
-		unsigned long event, void *data)
-{
-
-	switch (event) {
-	case PRE_RATE_CHANGE:
-		/* if a rate change is announced we need to check whether we can
-		 * maintain the current frequency by changing the clock
-		 * dividers.
-		 */
-		/* fall through */
-	case POST_RATE_CHANGE:
-		return NOTIFY_OK;
-	case ABORT_RATE_CHANGE:
-	default:
-		return NOTIFY_DONE;
-	}
-}
-
 static int zynq_udc_clk_init(struct platform_device *pdev)
 {
 	struct zynq_usb2_platform_data *pdata = pdev->dev.platform_data;
@@ -392,11 +373,6 @@ static int zynq_udc_clk_init(struct platform_device *pdev)
 		dev_err(&pdev->dev, "Unable to enable APER clock.\n");
 		goto err_out_clk_put;
 	}
-
-	pdata->clk_rate_change_nb.notifier_call = zynq_udc_clk_notifier_cb;
-	pdata->clk_rate_change_nb.next = NULL;
-	if (clk_notifier_register(pdata->clk, &pdata->clk_rate_change_nb))
-		dev_warn(&pdev->dev, "Unable to register clock notifier.\n");
 
 	return 0;
 
