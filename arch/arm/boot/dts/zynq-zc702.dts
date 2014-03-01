@@ -236,15 +236,15 @@
 					#size-cells = <0>;
 					reg = <7>;
 					hwmon@52 {
-						compatible = "pmbus,ucd9248";
+						compatible = "ti,ucd9248";
 						reg = <52>;
 					};
 					hwmon@53 {
-						compatible = "pmbus,ucd9248";
+						compatible = "ti,ucd9248";
 						reg = <53>;
 					};
 					hwmon@54 {
-						compatible = "pmbus,ucd9248";
+						compatible = "ti,ucd9248";
 						reg = <54>;
 					};
 				};
