@@ -343,6 +343,13 @@ config EDAC_CPC925
 	  a companion chip to the PowerPC 970 family of
 	  processors.
 
+config EDAC_PL310_L2
+	tristate "Pl310 L2 Cache Controller"
+	depends on ARM
+	help
+	  Support for parity error detection on L2 cache controller
+	  data and tag ram memory
+
 config EDAC_HIGHBANK_MC
 	tristate "Highbank Memory Controller"
 	depends on ARCH_HIGHBANK
