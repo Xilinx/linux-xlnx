@@ -305,14 +305,26 @@ void xilinx_osd_disable_rue(struct xilinx_osd *osd)
 			  xilinx_drm_readl(osd->base, OSD_CTL) & ~OSD_CTL_RUE);
 }
 
+static const struct of_device_id xilinx_osd_of_match[] = {
+	{ .compatible = "xlnx,v-osd-5.01.a" },
+	{ /* end of table */ },
+};
+
 struct xilinx_osd *xilinx_osd_probe(struct device *dev,
 				    struct device_node *node)
 {
 	struct xilinx_osd *osd;
 	struct xilinx_osd_layer *layer;
+	const struct of_device_id *match;
 	struct resource res;
 	int i;
 	int ret;
+
+	match = of_match_node(xilinx_osd_of_match, node);
+	if (!match) {
+		dev_err(dev, "failed to match the device node\n");
+		return ERR_PTR(-ENODEV);
+	}
 
 	osd = devm_kzalloc(dev, sizeof(*osd), GFP_KERNEL);
 	if (!osd)
