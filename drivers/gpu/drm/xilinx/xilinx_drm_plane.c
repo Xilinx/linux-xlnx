@@ -225,7 +225,7 @@ void xilinx_drm_plane_commit(struct drm_plane *base_plane)
 
 /* mode set a plane */
 int xilinx_drm_plane_mode_set(struct drm_plane *base_plane,
-			      struct drm_crtc *crtc, struct drm_framebuffer *fb,
+			      struct drm_framebuffer *fb,
 			      int crtc_x, int crtc_y,
 			      unsigned int crtc_w, unsigned int crtc_h,
 			      uint32_t src_x, uint32_t src_y,
@@ -303,7 +303,7 @@ static int xilinx_drm_plane_update(struct drm_plane *base_plane,
 {
 	int ret;
 
-	ret = xilinx_drm_plane_mode_set(base_plane, crtc, fb,
+	ret = xilinx_drm_plane_mode_set(base_plane, fb,
 					crtc_x, crtc_y, crtc_w, crtc_h,
 					src_x >> 16, src_y >> 16,
 					src_w >> 16, src_h >> 16);

@@ -164,7 +164,7 @@ static int xilinx_drm_crtc_mode_set(struct drm_crtc *base_crtc,
 					 adjusted_mode->vdisplay);
 
 	/* configure a plane: vdma and osd layer */
-	ret = xilinx_drm_plane_mode_set(crtc->priv_plane, base_crtc,
+	ret = xilinx_drm_plane_mode_set(crtc->priv_plane,
 					base_crtc->fb, 0, 0,
 					adjusted_mode->hdisplay,
 					adjusted_mode->vdisplay,
@@ -187,7 +187,7 @@ static int _xilinx_drm_crtc_mode_set_base(struct drm_crtc *base_crtc,
 	int ret;
 
 	/* configure a plane */
-	ret = xilinx_drm_plane_mode_set(crtc->priv_plane, base_crtc,
+	ret = xilinx_drm_plane_mode_set(crtc->priv_plane,
 					fb, 0, 0,
 					base_crtc->hwmode.hdisplay,
 					base_crtc->hwmode.vdisplay,

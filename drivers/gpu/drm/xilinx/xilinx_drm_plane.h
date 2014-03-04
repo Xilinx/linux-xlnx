@@ -25,7 +25,7 @@ struct drm_plane;
 void xilinx_drm_plane_dpms(struct drm_plane *base_plane, int dpms);
 void xilinx_drm_plane_commit(struct drm_plane *base_plane);
 int xilinx_drm_plane_mode_set(struct drm_plane *base_plane,
-			      struct drm_crtc *crtc, struct drm_framebuffer *fb,
+			      struct drm_framebuffer *fb,
 			      int crtc_x, int crtc_y,
 			      unsigned int crtc_w, unsigned int crtc_h,
 			      uint32_t src_x, uint32_t src_y,
