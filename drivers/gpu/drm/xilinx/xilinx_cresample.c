@@ -101,12 +101,24 @@ xilinx_cresample_get_output_format_name(struct xilinx_cresample *cresample)
 	return cresample->output_format_name;
 }
 
+static const struct of_device_id xilinx_cresample_of_match[] = {
+	{ .compatible = "xlnx,v-cresample-3.01.a" },
+	{ /* end of table */ },
+};
+
 struct xilinx_cresample *xilinx_cresample_probe(struct device *dev,
 						struct device_node *node)
 {
 	struct xilinx_cresample *cresample;
+	const struct of_device_id *match;
 	struct resource res;
 	int ret;
+
+	match = of_match_node(xilinx_cresample_of_match, node);
+	if (!match) {
+		dev_err(dev, "failed to match the device node\n");
+		return ERR_PTR(-ENODEV);
+	}
 
 	cresample = devm_kzalloc(dev, sizeof(*cresample), GFP_KERNEL);
 	if (!cresample)
