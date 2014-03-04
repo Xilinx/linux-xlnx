@@ -18,6 +18,9 @@
 #ifndef _XILINX_OSD_H_
 #define _XILINX_OSD_H_
 
+/* TODO: use the fixed max alpha value for 8 bit component width for now. */
+#define OSD_MAX_ALPHA	0x100
+
 struct xilinx_osd;
 struct xilinx_osd_layer;
 
