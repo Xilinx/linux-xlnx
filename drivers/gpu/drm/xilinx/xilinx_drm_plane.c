@@ -50,6 +50,9 @@ struct xilinx_drm_plane_vdma {
  * @base: base drm plane object
  * @id: plane id
  * @dpms: current dpms level
+ * @zpos: user requested z-position value
+ * @prio: actual layer priority
+ * @alpha: alpha value
  * @priv: flag for private plane
  * @x: x position
  * @y: y position
@@ -66,6 +69,9 @@ struct xilinx_drm_plane {
 	struct drm_plane base;
 	int id;
 	int dpms;
+	unsigned int zpos;
+	unsigned int prio;
+	unsigned int alpha;
 	bool priv;
 	uint32_t x;
 	uint32_t y;
@@ -90,6 +96,9 @@ struct xilinx_drm_plane {
  * @num_planes: number of available planes
  * @format: video format
  * @max_width: maximum width
+ * @zpos_prop: z-position(priority) property
+ * @alpha_prop: alpha value property
+ * @default_alpha: default alpha value
  * @planes: xilinx drm planes
  */
 struct xilinx_drm_plane_manager {
@@ -99,6 +108,9 @@ struct xilinx_drm_plane_manager {
 	int num_planes;
 	uint32_t format;
 	int max_width;
+	struct drm_property *zpos_prop;
+	struct drm_property *alpha_prop;
+	unsigned int default_alpha;
 	struct xilinx_drm_plane *planes[MAX_PLANES];
 };
 
@@ -133,11 +145,10 @@ void xilinx_drm_plane_dpms(struct drm_plane *base_plane, int dpms)
 		if (manager->osd) {
 			xilinx_osd_disable_rue(manager->osd);
 
-			/* set zorder(= id for now) */
 			xilinx_osd_layer_set_priority(plane->osd_layer,
-						      plane->id);
-			/* FIXME: use global alpha for now */
-			xilinx_osd_layer_set_alpha(plane->osd_layer, 1, 0xff);
+						      plane->prio);
+			xilinx_osd_layer_set_alpha(plane->osd_layer, 1,
+						   plane->alpha);
 			xilinx_osd_layer_enable(plane->osd_layer);
 			if (plane->priv) {
 				/* set background color as black */
@@ -336,13 +347,109 @@ static void xilinx_drm_plane_destroy(struct drm_plane *base_plane)
 	}
 }
 
+/**
+ * xilinx_drm_plane_update_prio - Configure plane priorities based on zpos
+ * @manager: the plane manager
+ *
+ * Z-position values are user requested position of planes. The priority is
+ * the actual position of planes in hardware. Some hardware doesn't allow
+ * any duplicate priority, so this function needs to be called when a duplicate
+ * priority is found. Then planes are sorted by zpos value, and the priorities
+ * are reconfigured. A plane with lower plane ID gets assigned to the lower
+ * priority when planes have the same zpos value.
+ */
+static void
+xilinx_drm_plane_update_prio(struct xilinx_drm_plane_manager *manager)
+{
+	struct xilinx_drm_plane *planes[MAX_PLANES];
+	struct xilinx_drm_plane *plane;
+	unsigned int i, j;
+
+	/* sort planes by zpos */
+	for (i = 0; i < manager->num_planes; i++) {
+		plane = manager->planes[i];
+
+		for (j = i; j > 0; --j) {
+			if (planes[j - 1]->zpos <= plane->zpos)
+				break;
+			planes[j] = planes[j - 1];
+		}
+
+		planes[j] = plane;
+	}
+
+	xilinx_osd_disable_rue(manager->osd);
+
+	/* remove duplicates by reassigning priority */
+	for (i = 0; i < manager->num_planes; i++) {
+		planes[i]->prio = i;
+		xilinx_osd_layer_set_priority(planes[i]->osd_layer,
+					      planes[i]->prio);
+	}
+
+	xilinx_osd_enable_rue(manager->osd);
+}
+
+void xilinx_drm_plane_set_zpos(struct drm_plane *base_plane, unsigned int zpos)
+{
+	struct xilinx_drm_plane *plane = to_xilinx_plane(base_plane);
+	struct xilinx_drm_plane_manager *manager = plane->manager;
+	bool update = false;
+	int i;
+
+	if (plane->zpos == zpos)
+		return;
+
+	for (i = 0; i < manager->num_planes; i++) {
+		if (manager->planes[i] != plane &&
+		    manager->planes[i]->prio == zpos) {
+			update = true;
+			break;
+		}
+	}
+
+	plane->zpos = zpos;
+
+	if (update) {
+		xilinx_drm_plane_update_prio(manager);
+	} else {
+		plane->prio = zpos;
+		xilinx_osd_layer_set_priority(plane->osd_layer, plane->prio);
+	}
+}
+
+void xilinx_drm_plane_set_alpha(struct drm_plane *base_plane,
+				unsigned int alpha)
+{
+	struct xilinx_drm_plane *plane = to_xilinx_plane(base_plane);
+
+	if (plane->alpha == alpha)
+		return;
+
+	plane->alpha = alpha;
+
+	/* FIXME: use global alpha for now */
+	xilinx_osd_layer_set_alpha(plane->osd_layer, 1, plane->alpha);
+}
+
 /* set property of a plane */
 static int xilinx_drm_plane_set_property(struct drm_plane *base_plane,
 					 struct drm_property *property,
 					 uint64_t val)
 {
-	/* TODO: set zorder, etc */
-	return -EINVAL;
+	struct xilinx_drm_plane *plane = to_xilinx_plane(base_plane);
+	struct xilinx_drm_plane_manager *manager = plane->manager;
+
+	if (property == manager->zpos_prop)
+		xilinx_drm_plane_set_zpos(base_plane, val);
+	else if (property == manager->alpha_prop)
+		xilinx_drm_plane_set_alpha(base_plane, val);
+	else
+		return -EINVAL;
+
+	drm_object_property_set_value(&base_plane->base, property, val);
+
+	return 0;
 }
 
 static struct drm_plane_funcs xilinx_drm_plane_funcs = {
@@ -374,11 +481,80 @@ bool xilinx_drm_plane_check_format(struct xilinx_drm_plane_manager *manager,
 	return false;
 }
 
+/**
+ * xilinx_drm_plane_restore - Restore the plane states
+ * @manager: the plane manager
+ *
+ * Restore the plane states to the default ones. Any state that needs to be
+ * restored should be here. This improves consistency as applications see
+ * the same default values, and removes mismatch between software and hardware
+ * values as software values are updated as hardware values are reset.
+ */
+void xilinx_drm_plane_restore(struct xilinx_drm_plane_manager *manager)
+{
+	struct xilinx_drm_plane *plane;
+	unsigned int i;
+
+	/*
+	 * Reinitialize property default values as they get reset by DPMS OFF
+	 * operation. User will read the correct default values later, and
+	 * planes will be initialized with default values.
+	 */
+	for (i = 0; i < manager->num_planes; i++) {
+		plane = manager->planes[i];
+
+		plane->prio = plane->zpos = plane->id;
+		if (manager->zpos_prop)
+			drm_object_property_set_value(&plane->base.base,
+						      manager->zpos_prop,
+						      plane->prio);
+
+		plane->alpha = manager->default_alpha;
+		if (manager->alpha_prop)
+			drm_object_property_set_value(&plane->base.base,
+						      manager->alpha_prop,
+						      plane->alpha);
+	}
+}
+
 /* get the plane format */
 uint32_t xilinx_drm_plane_get_format(struct drm_plane *base_plane)
 {
 	struct xilinx_drm_plane *plane = to_xilinx_plane(base_plane);
 	return plane->format;
+}
+
+/* create plane properties */
+static void
+xilinx_drm_plane_create_property(struct xilinx_drm_plane_manager *manager)
+{
+	if (!manager->osd)
+		return;
+
+	manager->zpos_prop = drm_property_create_range(manager->drm, 0,
+						       "zpos", 0,
+						       manager->num_planes - 1);
+
+	manager->alpha_prop = drm_property_create_range(manager->drm, 0,
+							"alpha", 0,
+							manager->default_alpha);
+}
+
+/* attach plane properties */
+static void xilinx_drm_plane_attach_property(struct drm_plane *base_plane)
+{
+	struct xilinx_drm_plane *plane = to_xilinx_plane(base_plane);
+	struct xilinx_drm_plane_manager *manager = plane->manager;
+
+	if (manager->zpos_prop)
+		drm_object_attach_property(&base_plane->base,
+					   manager->zpos_prop,
+					   plane->id);
+
+	if (manager->alpha_prop)
+		drm_object_attach_property(&base_plane->base,
+					   manager->alpha_prop,
+					   manager->default_alpha);
 }
 
 /* create a plane */
@@ -421,6 +597,9 @@ xilinx_drm_plane_create(struct xilinx_drm_plane_manager *manager,
 
 	plane->priv = priv;
 	plane->id = i;
+	plane->prio = i;
+	plane->zpos = i;
+	plane->alpha = manager->default_alpha;
 	plane->dpms = DRM_MODE_DPMS_OFF;
 	plane->format = -1;
 	DRM_DEBUG_KMS("plane->id: %d\n", plane->id);
@@ -577,22 +756,27 @@ void xilinx_drm_plane_destroy_planes(struct xilinx_drm_plane_manager *manager)
 int xilinx_drm_plane_create_planes(struct xilinx_drm_plane_manager *manager,
 				   unsigned int possible_crtcs)
 {
+	struct xilinx_drm_plane *plane;
 	int i;
 	int err_ret;
+
+	xilinx_drm_plane_create_property(manager);
 
 	/* find if there any available plane, and create if available */
 	for (i = 0; i < manager->num_planes; i++) {
 		if (manager->planes[i])
 			continue;
-		manager->planes[i] = xilinx_drm_plane_create(manager,
-							     possible_crtcs,
-							     false);
-		if (IS_ERR(manager->planes[i])) {
+
+		plane = xilinx_drm_plane_create(manager, possible_crtcs, false);
+		if (IS_ERR(plane)) {
 			DRM_ERROR("failed to allocate a plane\n");
-			err_ret = PTR_ERR(manager->planes[i]);
-			manager->planes[i] = NULL;
+			err_ret = PTR_ERR(plane);
 			goto err_out;
 		}
+
+		xilinx_drm_plane_attach_property(&plane->base);
+
+		manager->planes[i] = plane;
 	}
 
 	return 0;
@@ -664,6 +848,8 @@ xilinx_drm_plane_probe_manager(struct drm_device *drm)
 		DRM_ERROR("failed to init a plane manager\n");
 		return ERR_PTR(ret);
 	}
+
+	manager->default_alpha = OSD_MAX_ALPHA;
 
 	return manager;
 }

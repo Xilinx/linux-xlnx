@@ -308,6 +308,8 @@ static void xilinx_drm_lastclose(struct drm_device *drm)
 {
 	struct xilinx_drm_private *private = drm->dev_private;
 
+	xilinx_drm_crtc_restore(private->crtc);
+
 	drm_fbdev_cma_restore_mode(private->fbdev);
 }
 

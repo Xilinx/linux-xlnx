@@ -350,6 +350,20 @@ void xilinx_drm_crtc_disable_vblank(struct drm_crtc *base_crtc)
 	xilinx_vtc_disable_vblank_intr(crtc->vtc);
 }
 
+/**
+ * xilinx_drm_crtc_restore - Restore the crtc states
+ * @base_crtc: base crtc object
+ *
+ * Restore the crtc states to the default ones. The request is propagated
+ * to the plane driver.
+ */
+void xilinx_drm_crtc_restore(struct drm_crtc *base_crtc)
+{
+	struct xilinx_drm_crtc *crtc = to_xilinx_crtc(base_crtc);
+
+	xilinx_drm_plane_restore(crtc->plane_manager);
+}
+
 /* check max width */
 unsigned int xilinx_drm_crtc_get_max_width(struct drm_crtc *base_crtc)
 {

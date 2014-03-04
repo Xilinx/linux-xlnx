@@ -26,6 +26,8 @@ void xilinx_drm_crtc_disable_vblank(struct drm_crtc *base_crtc);
 void xilinx_drm_crtc_cancel_page_flip(struct drm_crtc *base_crtc,
 				      struct drm_file *file);
 
+void xilinx_drm_crtc_restore(struct drm_crtc *base_crtc);
+
 unsigned int xilinx_drm_crtc_get_max_width(struct drm_crtc *base_crtc);
 bool xilinx_drm_crtc_check_format(struct drm_crtc *base_crtc, uint32_t fourcc);
 uint32_t xilinx_drm_crtc_get_format(struct drm_crtc *base_crtc);
