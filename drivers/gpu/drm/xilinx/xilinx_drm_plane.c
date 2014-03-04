@@ -467,6 +467,22 @@ int xilinx_drm_plane_get_max_width(struct drm_plane *base_plane)
 	return plane->manager->max_width;
 }
 
+/* get the max alpha value */
+unsigned int xilinx_drm_plane_get_max_alpha(struct drm_plane *base_plane)
+{
+	struct xilinx_drm_plane *plane = to_xilinx_plane(base_plane);
+
+	return plane->manager->default_alpha;
+}
+
+/* get the default z-position value which is the plane id */
+unsigned int xilinx_drm_plane_get_default_zpos(struct drm_plane *base_plane)
+{
+	struct xilinx_drm_plane *plane = to_xilinx_plane(base_plane);
+
+	return plane->id;
+}
+
 /* check if format is supported */
 bool xilinx_drm_plane_check_format(struct xilinx_drm_plane_manager *manager,
 				   uint32_t format)
@@ -479,6 +495,12 @@ bool xilinx_drm_plane_check_format(struct xilinx_drm_plane_manager *manager,
 			return true;
 
 	return false;
+}
+
+/* get the number of planes */
+int xilinx_drm_plane_get_num_planes(struct xilinx_drm_plane_manager *manager)
+{
+	return manager->num_planes;
 }
 
 /**
