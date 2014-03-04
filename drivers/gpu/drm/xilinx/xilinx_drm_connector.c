@@ -19,7 +19,6 @@
 #include <drm/drm_crtc.h>
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_encoder_slave.h>
-#include <drm/i2c/adv7511.h>
 
 #include <linux/device.h>
 
