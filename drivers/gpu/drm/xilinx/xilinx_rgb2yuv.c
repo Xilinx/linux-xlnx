@@ -79,13 +79,25 @@ void xilinx_rgb2yuv_reset(struct xilinx_rgb2yuv *rgb2yuv)
 	xilinx_drm_writel(rgb2yuv->base, RGB_CONTROL, reg | RGB_CTL_RUE);
 }
 
+static const struct of_device_id xilinx_rgb2yuv_of_match[] = {
+	{ .compatible = "xlnx,v-rgb2ycrcb-6.01.a" },
+	{ /* end of table */ },
+};
+
 /* probe rgb2yuv */
 struct xilinx_rgb2yuv *xilinx_rgb2yuv_probe(struct device *dev,
 					    struct device_node *node)
 {
 	struct xilinx_rgb2yuv *rgb2yuv;
+	const struct of_device_id *match;
 	struct resource res;
 	int ret;
+
+	match = of_match_node(xilinx_rgb2yuv_of_match, node);
+	if (!match) {
+		dev_err(dev, "failed to match the device node\n");
+		return ERR_PTR(-ENODEV);
+	}
 
 	rgb2yuv = devm_kzalloc(dev, sizeof(*rgb2yuv), GFP_KERNEL);
 	if (!rgb2yuv)
