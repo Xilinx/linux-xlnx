@@ -50,9 +50,30 @@
  * of the SPI controller
  */
 #define ZYNQ_SPI_CR_MANSTRT_MASK	0x00010000 /* Manual TX Start */
-#define ZYNQ_SPI_CR_CPHA_MASK	0x00000004 /* Clock Phase Control */
-#define ZYNQ_SPI_CR_CPOL_MASK	0x00000002 /* Clock Polarity Control */
-#define ZYNQ_SPI_CR_SSCTRL_MASK	0x00003C00 /* Slave Select Mask */
+#define ZYNQ_SPI_CR_CPHA_MASK		0x00000004 /* Clock Phase Control */
+#define ZYNQ_SPI_CR_CPOL_MASK		0x00000002 /* Clock Polarity Control */
+#define ZYNQ_SPI_CR_SSCTRL_MASK		0x00003C00 /* Slave Select Mask */
+#define ZYNQ_SPI_CR_BAUD_DIV_MASK	0x00000038 /* Baud Rate Divisor Mask */
+#define ZYNQ_SPI_CR_MSTREN_MASK		0x00000001 /* Master Enable Mask */
+#define ZYNQ_SPI_CR_MANSTRTEN_MASK	0x00008000 /* Manual TX Enable Mask */
+#define ZYNQ_SPI_CR_SSFORCE_MASK	0x00004000 /* Manual SS Enable Mask */
+#define ZYNQ_SPI_CR_DEFAULT_MASK	(ZYNQ_SPI_CR_MSTREN_MASK | \
+					ZYNQ_SPI_CR_SSCTRL_MASK | \
+					ZYNQ_SPI_CR_MANSTRTEN_MASK | \
+					ZYNQ_SPI_CR_SSFORCE_MASK)
+
+/*
+ * SPI Configuration Register - Baud rate and slave select
+ *
+ * These are the values used in the calculation of baud rate divisor and
+ * setting the slave select.
+ */
+
+#define ZYNQ_SPI_BAUD_DIV_MAX		7 /* Baud rate divisor maximum */
+#define ZYNQ_SPI_BAUD_DIV_MIN		1 /* Baud rate divisor minimum */
+#define ZYNQ_SPI_BAUD_DIV_SHIFT		3 /* Baud rate divisor shift in CR */
+#define ZYNQ_SPI_SS_SHIFT		10 /* Slave Select field shift in CR */
+#define ZYNQ_SPI_SS0			0x1 /* Slave Select zero */
 
 /*
  * SPI Interrupt Registers bit Masks
@@ -63,8 +84,10 @@
 #define ZYNQ_SPI_IXR_TXOW_MASK	0x00000004 /* SPI TX FIFO Overwater */
 #define ZYNQ_SPI_IXR_MODF_MASK	0x00000002 /* SPI Mode Fault */
 #define ZYNQ_SPI_IXR_RXNEMTY_MASK 0x00000010 /* SPI RX FIFO Not Empty */
-#define ZYNQ_SPI_IXR_ALL_MASK	(ZYNQ_SPI_IXR_TXOW_MASK | \
-				 ZYNQ_SPI_IXR_MODF_MASK)
+#define ZYNQ_SPI_IXR_DEFAULT_MASK	(ZYNQ_SPI_IXR_TXOW_MASK | \
+					ZYNQ_SPI_IXR_MODF_MASK)
+#define ZYNQ_SPI_IXR_TXFULL_MASK	0x00000008 /* SPI TX Full */
+#define ZYNQ_SPI_IXR_ALL_MASK	0x0000007F /* SPI all interrupts */
 
 /*
  * SPI Enable Register bit Masks
@@ -74,15 +97,16 @@
 #define ZYNQ_SPI_ER_ENABLE_MASK	0x00000001 /* SPI Enable Bit Mask */
 #define ZYNQ_SPI_ER_DISABLE_MASK	0x0 /* SPI Disable Bit Mask */
 
+/* SPI timeout value */
+#define ZYNQ_SPI_TIMEOUT	(5 * HZ)
+
 /*
  * Definitions for the status of queue
  */
 #define ZYNQ_SPI_QUEUE_STOPPED	0
 #define ZYNQ_SPI_QUEUE_RUNNING	1
 
-/*
- * Macros for the SPI controller read/write
- */
+/* Macros for the SPI controller read/write */
 #define zynq_spi_read(addr)	__raw_readl(addr)
 #define zynq_spi_write(addr, val)	__raw_writel((val), (addr))
 
@@ -139,16 +163,18 @@ static void zynq_spi_init_hw(void __iomem *regs_base)
 {
 	zynq_spi_write(regs_base + ZYNQ_SPI_ER_OFFSET,
 		       ZYNQ_SPI_ER_DISABLE_MASK);
-	zynq_spi_write(regs_base + ZYNQ_SPI_IDR_OFFSET, 0x7F);
+	zynq_spi_write(regs_base + ZYNQ_SPI_IDR_OFFSET, ZYNQ_SPI_IXR_ALL_MASK);
 
 	/* Clear the RX FIFO */
 	while (zynq_spi_read(regs_base + ZYNQ_SPI_ISR_OFFSET) &
 			ZYNQ_SPI_IXR_RXNEMTY_MASK)
 		zynq_spi_read(regs_base + ZYNQ_SPI_RXD_OFFSET);
 
-	zynq_spi_write(regs_base + ZYNQ_SPI_ISR_OFFSET, 0x7F);
-	zynq_spi_write(regs_base + ZYNQ_SPI_CR_OFFSET, 0x0000FC01);
-	zynq_spi_write(regs_base + ZYNQ_SPI_ER_OFFSET, ZYNQ_SPI_ER_ENABLE_MASK);
+	zynq_spi_write(regs_base + ZYNQ_SPI_ISR_OFFSET, ZYNQ_SPI_IXR_ALL_MASK);
+	zynq_spi_write(regs_base + ZYNQ_SPI_CR_OFFSET,
+			ZYNQ_SPI_CR_DEFAULT_MASK);
+	zynq_spi_write(regs_base + ZYNQ_SPI_ER_OFFSET,
+			ZYNQ_SPI_ER_ENABLE_MASK);
 }
 
 /**
@@ -169,8 +195,8 @@ static void zynq_spi_chipselect(struct spi_device *spi, int is_on)
 	if (is_on) {
 		/* Select the slave */
 		ctrl_reg &= ~ZYNQ_SPI_CR_SSCTRL_MASK;
-		ctrl_reg |= (((~(0x0001 << spi->chip_select)) << 10) &
-				ZYNQ_SPI_CR_SSCTRL_MASK);
+		ctrl_reg |= ((~(ZYNQ_SPI_SS0 << spi->chip_select)) <<
+				ZYNQ_SPI_SS_SHIFT) & ZYNQ_SPI_CR_SSCTRL_MASK;
 	} else {
 		/* Deselect the slave */
 		ctrl_reg |= ZYNQ_SPI_CR_SSCTRL_MASK;
@@ -226,13 +252,14 @@ static void zynq_spi_config_clock(struct spi_device *spi,
 
 	/* Set the clock frequency */
 	if (xspi->speed_hz != req_hz) {
-		baud_rate_val = 1;	/* first valid value is 1 */
-		while ((baud_rate_val < 7) && (frequency /
+		/* first valid value is 1 */
+		baud_rate_val = ZYNQ_SPI_BAUD_DIV_MIN;
+		while ((baud_rate_val < ZYNQ_SPI_BAUD_DIV_MAX) && (frequency /
 					(2 << baud_rate_val)) > req_hz)
 			baud_rate_val++;
 
-		ctrl_reg &= 0xFFFFFFC7;
-		ctrl_reg |= (baud_rate_val << 3);
+		ctrl_reg &= ~ZYNQ_SPI_CR_BAUD_DIV_MASK;
+		ctrl_reg |= (baud_rate_val << ZYNQ_SPI_BAUD_DIV_SHIFT);
 
 		xspi->speed_hz = (frequency / (2 << baud_rate_val));
 	}
@@ -247,8 +274,8 @@ static void zynq_spi_config_clock(struct spi_device *spi,
 /**
  * zynq_spi_setup_transfer - Configure SPI controller for specified transfer
  * @spi:	Pointer to the spi_device structure
- * @transfer:	Pointer to the spi_transfer structure which provides information
- *		about next transfer setup parameters
+ * @transfer:	Pointer to the spi_transfer structure which provides
+ *		information about next transfer setup parameters
  *
  * Sets the operational mode of SPI controller for the next SPI transfer and
  * sets the requested clock frequency.
@@ -306,7 +333,7 @@ static int zynq_spi_setup(struct spi_device *spi)
 static void zynq_spi_fill_tx_fifo(struct zynq_spi *xspi)
 {
 	while ((zynq_spi_read(xspi->regs + ZYNQ_SPI_ISR_OFFSET) &
-		0x00000008) == 0
+		ZYNQ_SPI_IXR_TXFULL_MASK) == 0
 		&& (xspi->remaining_bytes > 0)) {
 		if (xspi->txbuf)
 			zynq_spi_write(xspi->regs + ZYNQ_SPI_TXD_OFFSET,
@@ -345,7 +372,7 @@ static irqreturn_t zynq_spi_irq(int irq, void *dev_id)
 		 * identify the error as the remaining bytes to be
 		 * transferred is non-zero */
 		zynq_spi_write(xspi->regs + ZYNQ_SPI_IDR_OFFSET,
-				ZYNQ_SPI_IXR_ALL_MASK);
+				ZYNQ_SPI_IXR_DEFAULT_MASK);
 		complete(&xspi->done);
 	} else if (intr_status & ZYNQ_SPI_IXR_TXOW_MASK) {
 		u32 ctrl_reg;
@@ -385,7 +412,7 @@ static irqreturn_t zynq_spi_irq(int irq, void *dev_id)
 		} else {
 			/* Transfer is completed */
 			zynq_spi_write(xspi->regs + ZYNQ_SPI_IDR_OFFSET,
-					ZYNQ_SPI_IXR_ALL_MASK);
+					ZYNQ_SPI_IXR_DEFAULT_MASK);
 			complete(&xspi->done);
 		}
 	}
@@ -405,7 +432,7 @@ static void zynq_spi_reset_controller(struct spi_device *spi)
 	struct zynq_spi *xspi = spi_master_get_devdata(spi->master);
 
 	zynq_spi_write(xspi->regs + ZYNQ_SPI_IDR_OFFSET,
-			ZYNQ_SPI_IXR_ALL_MASK);
+			ZYNQ_SPI_IXR_DEFAULT_MASK);
 	zynq_spi_chipselect(spi, 0);
 	zynq_spi_write(xspi->regs + ZYNQ_SPI_ER_OFFSET,
 			ZYNQ_SPI_ER_DISABLE_MASK);
@@ -414,8 +441,8 @@ static void zynq_spi_reset_controller(struct spi_device *spi)
 /**
  * zynq_spi_start_transfer - Initiates the SPI transfer
  * @spi:	Pointer to the spi_device structure
- * @transfer:	Pointer to the spi_transfer structure which provide information
- *		about next transfer parameters
+ * @transfer:	Pointer to the spi_transfer structure which provides
+ *		information about next transfer parameters
  *
  * This function fills the TX FIFO, starts the SPI transfer, and waits for the
  * transfer to be completed.
@@ -437,7 +464,8 @@ static int zynq_spi_start_transfer(struct spi_device *spi,
 
 	zynq_spi_fill_tx_fifo(xspi);
 
-	zynq_spi_write(xspi->regs + ZYNQ_SPI_IER_OFFSET, ZYNQ_SPI_IXR_ALL_MASK);
+	zynq_spi_write(xspi->regs + ZYNQ_SPI_IER_OFFSET,
+		ZYNQ_SPI_IXR_DEFAULT_MASK);
 
 	spin_lock_irqsave(&xspi->ctrl_reg_lock, flags);
 
@@ -448,7 +476,8 @@ static int zynq_spi_start_transfer(struct spi_device *spi,
 
 	spin_unlock_irqrestore(&xspi->ctrl_reg_lock, flags);
 
-	ret = wait_for_completion_interruptible_timeout(&xspi->done, 5 * HZ);
+	ret = wait_for_completion_interruptible_timeout(&xspi->done,
+			ZYNQ_SPI_TIMEOUT);
 	if (ret < 1) {
 		zynq_spi_reset_controller(spi);
 		if (!ret)
@@ -785,8 +814,8 @@ static int zynq_spi_probe(struct platform_device *pdev)
 		goto remove_queue;
 	}
 
-	dev_info(&pdev->dev, "at 0x%08X mapped to 0x%08X, irq=%d\n", res->start,
-			(u32 __force)xspi->regs, xspi->irq);
+	dev_info(&pdev->dev, "at 0x%08X mapped to 0x%08X, irq=%d\n",
+			res->start, (u32 __force)xspi->regs, xspi->irq);
 
 	return ret;
 
