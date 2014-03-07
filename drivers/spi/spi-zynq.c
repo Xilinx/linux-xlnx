@@ -20,7 +20,6 @@
 #include <linux/of_address.h>
 #include <linux/platform_device.h>
 #include <linux/spi/spi.h>
-#include <linux/spinlock.h>
 
 /*
  * Name of this driver
@@ -110,7 +109,6 @@
  * @aperclk:		Pointer to the APER clock
  * @irq:		IRQ number
  * @speed_hz:		Current SPI bus clock speed in Hz
- * @ctrl_reg_lock:	Lock used for accessing configuration register
  * @txbuf:		Pointer	to the TX buffer
  * @rxbuf:		Pointer to the RX buffer
  * @remaining_bytes:	Number of bytes left to transfer
@@ -123,7 +121,6 @@ struct zynq_spi {
 	struct clk *aperclk;
 	int irq;
 	u32 speed_hz;
-	spinlock_t ctrl_reg_lock;
 	const u8 *txbuf;
 	u8 *rxbuf;
 	int remaining_bytes;
@@ -169,9 +166,6 @@ static void zynq_spi_chipselect(struct spi_device *spi, int is_on)
 {
 	struct zynq_spi *xspi = spi_master_get_devdata(spi->master);
 	u32 ctrl_reg;
-	unsigned long flags;
-
-	spin_lock_irqsave(&xspi->ctrl_reg_lock, flags);
 
 	ctrl_reg = zynq_spi_read(xspi->regs + ZYNQ_SPI_CR_OFFSET);
 
@@ -186,8 +180,6 @@ static void zynq_spi_chipselect(struct spi_device *spi, int is_on)
 	}
 
 	zynq_spi_write(xspi->regs + ZYNQ_SPI_CR_OFFSET, ctrl_reg);
-
-	spin_unlock_irqrestore(&xspi->ctrl_reg_lock, flags);
 }
 
 /**
@@ -211,7 +203,7 @@ static void zynq_spi_config_clock(struct spi_device *spi,
 	u32 ctrl_reg;
 	u32 req_hz;
 	u32 baud_rate_val;
-	unsigned long flags, frequency;
+	unsigned long frequency;
 
 	req_hz = (transfer) ? transfer->speed_hz : spi->max_speed_hz;
 
@@ -219,8 +211,6 @@ static void zynq_spi_config_clock(struct spi_device *spi,
 		req_hz = spi->max_speed_hz;
 
 	frequency = clk_get_rate(xspi->devclk);
-
-	spin_lock_irqsave(&xspi->ctrl_reg_lock, flags);
 
 	zynq_spi_write(xspi->regs + ZYNQ_SPI_ER_OFFSET,
 		       ZYNQ_SPI_ER_DISABLE_MASK);
@@ -250,8 +240,6 @@ static void zynq_spi_config_clock(struct spi_device *spi,
 	zynq_spi_write(xspi->regs + ZYNQ_SPI_CR_OFFSET, ctrl_reg);
 	zynq_spi_write(xspi->regs + ZYNQ_SPI_ER_OFFSET,
 		       ZYNQ_SPI_ER_ENABLE_MASK);
-
-	spin_unlock_irqrestore(&xspi->ctrl_reg_lock, flags);
 }
 
 /**
@@ -383,15 +371,11 @@ static irqreturn_t zynq_spi_irq(int irq, void *dev_id)
 			/* There is more data to send */
 			zynq_spi_fill_tx_fifo(xspi);
 
-			spin_lock(&xspi->ctrl_reg_lock);
-
 			ctrl_reg = zynq_spi_read(xspi->regs +
 						 ZYNQ_SPI_CR_OFFSET);
 			ctrl_reg |= ZYNQ_SPI_CR_MANSTRT_MASK;
 			zynq_spi_write(xspi->regs + ZYNQ_SPI_CR_OFFSET,
 				       ctrl_reg);
-
-			spin_unlock(&xspi->ctrl_reg_lock);
 		} else {
 			/* Transfer is completed */
 			zynq_spi_write(xspi->regs + ZYNQ_SPI_IDR_OFFSET,
@@ -437,7 +421,6 @@ static int zynq_spi_start_transfer(struct spi_device *spi,
 {
 	struct zynq_spi *xspi = spi_master_get_devdata(spi->master);
 	u32 ctrl_reg;
-	unsigned long flags;
 	int ret;
 
 	xspi->txbuf = transfer->tx_buf;
@@ -450,14 +433,10 @@ static int zynq_spi_start_transfer(struct spi_device *spi,
 	zynq_spi_write(xspi->regs + ZYNQ_SPI_IER_OFFSET,
 		ZYNQ_SPI_IXR_DEFAULT_MASK);
 
-	spin_lock_irqsave(&xspi->ctrl_reg_lock, flags);
-
 	/* Start the transfer by enabling manual start bit */
 	ctrl_reg = zynq_spi_read(xspi->regs + ZYNQ_SPI_CR_OFFSET);
 	ctrl_reg |= ZYNQ_SPI_CR_MANSTRT_MASK;
 	zynq_spi_write(xspi->regs + ZYNQ_SPI_CR_OFFSET, ctrl_reg);
-
-	spin_unlock_irqrestore(&xspi->ctrl_reg_lock, flags);
 
 	ret = wait_for_completion_interruptible_timeout(&xspi->done,
 			ZYNQ_SPI_TIMEOUT);
@@ -671,8 +650,6 @@ static int zynq_spi_probe(struct platform_device *pdev)
 	master->mode_bits = SPI_CPOL | SPI_CPHA;
 
 	xspi->speed_hz = clk_get_rate(xspi->devclk) / 2;
-
-	spin_lock_init(&xspi->ctrl_reg_lock);
 
 	ret = spi_register_master(master);
 	if (ret) {
