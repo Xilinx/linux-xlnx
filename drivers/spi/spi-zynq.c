@@ -21,7 +21,6 @@
 #include <linux/platform_device.h>
 #include <linux/spi/spi.h>
 #include <linux/spinlock.h>
-#include <linux/workqueue.h>
 
 /*
  * Name of this driver
@@ -100,28 +99,17 @@
 /* SPI timeout value */
 #define ZYNQ_SPI_TIMEOUT	(5 * HZ)
 
-/*
- * Definitions for the status of queue
- */
-#define ZYNQ_SPI_QUEUE_STOPPED	0
-#define ZYNQ_SPI_QUEUE_RUNNING	1
-
 /* Macros for the SPI controller read/write */
 #define zynq_spi_read(addr)	__raw_readl(addr)
 #define zynq_spi_write(addr, val)	__raw_writel((val), (addr))
 
 /**
  * struct zynq_spi - This definition defines spi driver instance
- * @workqueue:		Queue of all the transfers
- * @work:		Information about current transfer
- * @queue:		Head of the queue
- * @queue_state:	Queue status
  * @regs:		Virtual address of the SPI controller registers
  * @devclk:		Pointer to the peripheral clock
  * @aperclk:		Pointer to the APER clock
  * @irq:		IRQ number
  * @speed_hz:		Current SPI bus clock speed in Hz
- * @trans_queue_lock:	Lock used for accessing transfer queue
  * @ctrl_reg_lock:	Lock used for accessing configuration register
  * @txbuf:		Pointer	to the TX buffer
  * @rxbuf:		Pointer to the RX buffer
@@ -130,16 +118,11 @@
  * @done:		Transfer complete status
  */
 struct zynq_spi {
-	struct workqueue_struct *workqueue;
-	struct work_struct work;
-	struct list_head queue;
-	int queue_state;
 	void __iomem *regs;
 	struct clk *devclk;
 	struct clk *aperclk;
 	int irq;
 	u32 speed_hz;
-	spinlock_t trans_queue_lock;
 	spinlock_t ctrl_reg_lock;
 	const u8 *txbuf;
 	u8 *rxbuf;
@@ -490,208 +473,111 @@ static int zynq_spi_start_transfer(struct spi_device *spi,
 }
 
 /**
- * zynq_spi_work_queue - Perform transfers
- * @work:	Pointer to the work_struct structure
+ * zynq_prepare_transfer_hardware - Prepares hardware for transfer.
+ * @master:	Pointer to the spi_master structure which provides
+ *		information about the controller.
  *
- * Get the transfer request from queue to perform transfers
+ * This function enables SPI master controller.
+ *
+ * Return:	0 always
  */
-static void zynq_spi_work_queue(struct work_struct *work)
+int zynq_prepare_transfer_hardware(struct spi_master *master)
 {
-	struct zynq_spi *xspi = container_of(work, struct zynq_spi, work);
-	unsigned long flags;
+	struct zynq_spi *xspi = spi_master_get_devdata(master);
 
-	spin_lock_irqsave(&xspi->trans_queue_lock, flags);
-	xspi->dev_busy = 1;
+	zynq_spi_write(xspi->regs + ZYNQ_SPI_ER_OFFSET,
+			ZYNQ_SPI_ER_ENABLE_MASK);
 
-	if (list_empty(&xspi->queue) ||
-		xspi->queue_state == ZYNQ_SPI_QUEUE_STOPPED) {
-		xspi->dev_busy = 0;
-		spin_unlock_irqrestore(&xspi->trans_queue_lock, flags);
-		return;
-	}
+	return 0;
+}
 
-	while (!list_empty(&xspi->queue)) {
-		struct spi_message *msg;
-		struct spi_device *spi;
-		struct spi_transfer *transfer = NULL;
-		unsigned cs_change = 1;
-		int status = 0;
+/**
+ * zynq_transfer_one_message -
+ * @master:	Pointer to the spi_master structure which provides
+ *		information about the controller.
+ * @msg:	Pointer to the spi_message which contains the
+ *		data to be transferred.
+ *
+ * This function calls the necessary functions to setup operational mode,
+ * clock, control chip select and completes the transfer.
+ *
+ * Return:	0 on success and error value on error.
+ */
+int zynq_transfer_one_message(struct spi_master *master,
+				    struct spi_message *msg)
+{
+	struct spi_device *spi;
+	unsigned cs_change = 1;
+	int status = 0;
+	struct spi_transfer *transfer;
 
-		msg = container_of(xspi->queue.next, struct spi_message, queue);
-		list_del_init(&msg->queue);
-		spin_unlock_irqrestore(&xspi->trans_queue_lock, flags);
-		spi = msg->spi;
+	spi = msg->spi;
 
-		list_for_each_entry(transfer, &msg->transfers, transfer_list) {
-			if ((transfer->bits_per_word || transfer->speed_hz) &&
-								cs_change) {
-				status = zynq_spi_setup_transfer(spi, transfer);
-				if (status < 0)
-					break;
-			}
-
-			if (cs_change)
-				zynq_spi_chipselect(spi, 1);
-
-			cs_change = transfer->cs_change;
-
-			if (!transfer->tx_buf && !transfer->rx_buf &&
-				transfer->len) {
-				status = -EINVAL;
+	list_for_each_entry(transfer, &msg->transfers, transfer_list) {
+		if ((transfer->bits_per_word || transfer->speed_hz) &&
+							cs_change) {
+			status = zynq_spi_setup_transfer(spi, transfer);
+			if (status < 0)
 				break;
-			}
-
-			if (transfer->len)
-				status = zynq_spi_start_transfer(spi, transfer);
-
-			if (status != transfer->len) {
-				if (status > 0)
-					status = -EMSGSIZE;
-				break;
-			}
-			msg->actual_length += status;
-			status = 0;
-
-			if (transfer->delay_usecs)
-				udelay(transfer->delay_usecs);
-
-			if (!cs_change)
-				continue;
-			if (transfer->transfer_list.next == &msg->transfers)
-				break;
-
-			zynq_spi_chipselect(spi, 0);
 		}
 
-		msg->status = status;
-		msg->complete(msg->context);
+		if (cs_change)
+			zynq_spi_chipselect(spi, 1);
 
-		if (!(status == 0 && cs_change))
-			zynq_spi_chipselect(spi, 0);
+		cs_change = transfer->cs_change;
 
-		spin_lock_irqsave(&xspi->trans_queue_lock, flags);
+		if (!transfer->tx_buf && !transfer->rx_buf &&
+			transfer->len) {
+			status = -EINVAL;
+			break;
+		}
+
+		if (transfer->len)
+			status = zynq_spi_start_transfer(spi, transfer);
+
+		if (status != transfer->len) {
+			if (status > 0)
+				status = -EMSGSIZE;
+			break;
+		}
+		msg->actual_length += status;
+		status = 0;
+
+		if (transfer->delay_usecs)
+			udelay(transfer->delay_usecs);
+
+		if (!cs_change)
+			continue;
+		if (transfer->transfer_list.next == &msg->transfers)
+			break;
+
+		zynq_spi_chipselect(spi, 0);
 	}
-	xspi->dev_busy = 0;
-	spin_unlock_irqrestore(&xspi->trans_queue_lock, flags);
+
+	if (!(status == 0 && cs_change))
+		zynq_spi_chipselect(spi, 0);
+
+	msg->status = status;
+	spi_finalize_current_message(master);
+
+	return status;
 }
 
 /**
- * zynq_spi_transfer - Add a new transfer request at the tail of work queue
- * @spi:	Pointer to the spi_device structure
- * @message:	Pointer to the spi_transfer structure which provide information
- *		about next transfer parameters
+ * zynq_unprepare_transfer_hardware - Relaxes hardware after transfer
+ * @master:	Pointer to the spi_master structure which provides
+ *		information about the controller.
  *
- * Return:	0 on success and error value on error
+ * This function disables the SPI master controller.
+ *
+ * Return:	0 always
  */
-static int zynq_spi_transfer(struct spi_device *spi,
-			     struct spi_message *message)
+int zynq_unprepare_transfer_hardware(struct spi_master *master)
 {
-	struct zynq_spi *xspi = spi_master_get_devdata(spi->master);
-	struct spi_transfer *transfer;
-	unsigned long flags;
+	struct zynq_spi *xspi = spi_master_get_devdata(master);
 
-	if (xspi->queue_state == ZYNQ_SPI_QUEUE_STOPPED)
-		return -ESHUTDOWN;
-
-	message->actual_length = 0;
-	message->status = -EINPROGRESS;
-
-	/* Check each transfer's parameters */
-	list_for_each_entry(transfer, &message->transfers, transfer_list) {
-		u8 bits_per_word =
-			transfer->bits_per_word ? : spi->bits_per_word;
-
-		bits_per_word = bits_per_word ? : 8;
-		if (!transfer->tx_buf && !transfer->rx_buf && transfer->len)
-			return -EINVAL;
-		if (bits_per_word != 8)
-			return -EINVAL;
-	}
-
-	spin_lock_irqsave(&xspi->trans_queue_lock, flags);
-	list_add_tail(&message->queue, &xspi->queue);
-	if (!xspi->dev_busy)
-		queue_work(xspi->workqueue, &xspi->work);
-	spin_unlock_irqrestore(&xspi->trans_queue_lock, flags);
-
-	return 0;
-}
-
-/**
- * zynq_spi_start_queue - Starts the queue of the SPI driver
- * @xspi:	Pointer to the zynq_spi structure
- *
- * Return:	0 on success and error value on error
- */
-static inline int zynq_spi_start_queue(struct zynq_spi *xspi)
-{
-	unsigned long flags;
-
-	spin_lock_irqsave(&xspi->trans_queue_lock, flags);
-
-	if (xspi->queue_state == ZYNQ_SPI_QUEUE_RUNNING || xspi->dev_busy) {
-		spin_unlock_irqrestore(&xspi->trans_queue_lock, flags);
-		return -EBUSY;
-	}
-
-	xspi->queue_state = ZYNQ_SPI_QUEUE_RUNNING;
-	spin_unlock_irqrestore(&xspi->trans_queue_lock, flags);
-
-	return 0;
-}
-
-/**
- * zynq_spi_stop_queue - Stops the queue of the SPI driver
- * @xspi:	Pointer to the zynq_spi structure
- *
- * This function waits till queue is empty and then stops the queue.
- * Maximum time out is set to 5 seconds.
- *
- * Return:	0 on success and error value on error
- */
-static inline int zynq_spi_stop_queue(struct zynq_spi *xspi)
-{
-	unsigned long flags;
-	unsigned limit = 500;
-	int ret = 0;
-
-	if (xspi->queue_state != ZYNQ_SPI_QUEUE_RUNNING)
-		return ret;
-
-	spin_lock_irqsave(&xspi->trans_queue_lock, flags);
-
-	while ((!list_empty(&xspi->queue) || xspi->dev_busy) && limit--) {
-		spin_unlock_irqrestore(&xspi->trans_queue_lock, flags);
-		msleep(10);
-		spin_lock_irqsave(&xspi->trans_queue_lock, flags);
-	}
-
-	if (!list_empty(&xspi->queue) || xspi->dev_busy)
-		ret = -EBUSY;
-
-	if (ret == 0)
-		xspi->queue_state = ZYNQ_SPI_QUEUE_STOPPED;
-
-	spin_unlock_irqrestore(&xspi->trans_queue_lock, flags);
-
-	return ret;
-}
-
-/**
- * zynq_spi_destroy_queue - Destroys the queue of the SPI driver
- * @xspi:	Pointer to the zynq_spi structure
- *
- * Return:	0 on success and error value on error
- */
-static inline int zynq_spi_destroy_queue(struct zynq_spi *xspi)
-{
-	int ret;
-
-	ret = zynq_spi_stop_queue(xspi);
-	if (ret != 0)
-		return ret;
-
-	destroy_workqueue(xspi->workqueue);
+	zynq_spi_write(xspi->regs + ZYNQ_SPI_ER_OFFSET,
+			ZYNQ_SPI_ER_DISABLE_MASK);
 
 	return 0;
 }
@@ -779,39 +665,19 @@ static int zynq_spi_probe(struct platform_device *pdev)
 		goto clk_dis_all;
 	}
 	master->setup = zynq_spi_setup;
-	master->transfer = zynq_spi_transfer;
+	master->prepare_transfer_hardware = zynq_prepare_transfer_hardware;
+	master->transfer_one_message = zynq_transfer_one_message;
+	master->unprepare_transfer_hardware = zynq_unprepare_transfer_hardware;
 	master->mode_bits = SPI_CPOL | SPI_CPHA;
 
 	xspi->speed_hz = clk_get_rate(xspi->devclk) / 2;
 
-	xspi->dev_busy = 0;
-
-	INIT_LIST_HEAD(&xspi->queue);
-	spin_lock_init(&xspi->trans_queue_lock);
 	spin_lock_init(&xspi->ctrl_reg_lock);
-
-	xspi->queue_state = ZYNQ_SPI_QUEUE_STOPPED;
-	xspi->dev_busy = 0;
-
-	INIT_WORK(&xspi->work, zynq_spi_work_queue);
-	xspi->workqueue =
-		create_singlethread_workqueue(dev_name(&pdev->dev));
-	if (!xspi->workqueue) {
-		ret = -ENOMEM;
-		dev_err(&pdev->dev, "problem initializing queue\n");
-		goto clk_dis_all;
-	}
-
-	ret = zynq_spi_start_queue(xspi);
-	if (ret != 0) {
-		dev_err(&pdev->dev, "problem starting queue\n");
-		goto remove_queue;
-	}
 
 	ret = spi_register_master(master);
 	if (ret) {
 		dev_err(&pdev->dev, "spi_register_master failed\n");
-		goto remove_queue;
+		goto clk_dis_all;
 	}
 
 	dev_info(&pdev->dev, "at 0x%08X mapped to 0x%08X, irq=%d\n",
@@ -819,8 +685,6 @@ static int zynq_spi_probe(struct platform_device *pdev)
 
 	return ret;
 
-remove_queue:
-	(void)zynq_spi_destroy_queue(xspi);
 clk_dis_all:
 	clk_disable_unprepare(xspi->devclk);
 clk_dis_aper:
@@ -844,11 +708,6 @@ static int zynq_spi_remove(struct platform_device *pdev)
 {
 	struct spi_master *master = platform_get_drvdata(pdev);
 	struct zynq_spi *xspi = spi_master_get_devdata(master);
-	int ret = 0;
-
-	ret = zynq_spi_destroy_queue(xspi);
-	if (ret != 0)
-		return ret;
 
 	zynq_spi_write(xspi->regs + ZYNQ_SPI_ER_OFFSET,
 		       ZYNQ_SPI_ER_DISABLE_MASK);
@@ -861,7 +720,6 @@ static int zynq_spi_remove(struct platform_device *pdev)
 
 	dev_dbg(&pdev->dev, "remove succeeded\n");
 	return 0;
-
 }
 
 #ifdef CONFIG_PM_SLEEP
@@ -869,7 +727,7 @@ static int zynq_spi_remove(struct platform_device *pdev)
  * zynq_spi_suspend - Suspend method for the SPI driver
  * @dev:	Address of the platform_device structure
  *
- * This function stops the SPI driver queue and disables the SPI controller
+ * This function disables the SPI controller
  *
  * Return:	0 on success and error value on error
  */
@@ -879,11 +737,6 @@ static int zynq_spi_suspend(struct device *dev)
 			struct platform_device, dev);
 	struct spi_master *master = platform_get_drvdata(pdev);
 	struct zynq_spi *xspi = spi_master_get_devdata(master);
-	int ret = 0;
-
-	ret = zynq_spi_stop_queue(xspi);
-	if (ret != 0)
-		return ret;
 
 	zynq_spi_write(xspi->regs + ZYNQ_SPI_ER_OFFSET,
 		       ZYNQ_SPI_ER_DISABLE_MASK);
@@ -899,7 +752,7 @@ static int zynq_spi_suspend(struct device *dev)
  * zynq_spi_resume - Resume method for the SPI driver
  * @dev:	Address of the platform_device structure
  *
- * This function starts the SPI driver queue and initializes the SPI controller
+ * This function initializes the SPI controller
  *
  * Return:	0 on success and error value on error
  */
@@ -925,12 +778,6 @@ static int zynq_spi_resume(struct device *dev)
 	}
 
 	zynq_spi_init_hw(xspi->regs);
-
-	ret = zynq_spi_start_queue(xspi);
-	if (ret != 0) {
-		dev_err(&pdev->dev, "problem starting queue (%d)\n", ret);
-		return ret;
-	}
 
 	dev_dbg(&pdev->dev, "resume succeeded\n");
 	return 0;
