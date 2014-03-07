@@ -236,7 +236,7 @@ static int zynq_spi_setup_transfer(struct spi_device *spi,
 	/* Set the clock frequency */
 	if (xspi->speed_hz != req_hz) {
 		baud_rate_val = 1;	/* first valid value is 1 */
-		while ((baud_rate_val < 8) && (frequency /
+		while ((baud_rate_val < 7) && (frequency /
 					(2 << baud_rate_val)) > req_hz)
 			baud_rate_val++;
 
