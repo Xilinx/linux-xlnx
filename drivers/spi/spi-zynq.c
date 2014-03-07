@@ -57,7 +57,6 @@
 #define ZYNQ_SPI_CR_SSFORCE_MASK	0x00004000 /* Manual SS Enable Mask */
 #define ZYNQ_SPI_CR_DEFAULT_MASK	(ZYNQ_SPI_CR_MSTREN_MASK | \
 					ZYNQ_SPI_CR_SSCTRL_MASK | \
-					ZYNQ_SPI_CR_MANSTRTEN_MASK | \
 					ZYNQ_SPI_CR_SSFORCE_MASK)
 
 /*
@@ -98,6 +97,9 @@
 /* SPI timeout value */
 #define ZYNQ_SPI_TIMEOUT	(5 * HZ)
 
+/* SPI FIFO depth in bytes */
+#define ZYNQ_SPI_FIFO_DEPTH	128
+
 /* Macros for the SPI controller read/write */
 #define zynq_spi_read(addr)	__raw_readl(addr)
 #define zynq_spi_write(addr, val)	__raw_writel((val), (addr))
@@ -118,6 +120,7 @@ enum driver_state_val {
  * @txbuf:		Pointer	to the TX buffer
  * @rxbuf:		Pointer to the RX buffer
  * @remaining_bytes:	Number of bytes left to transfer
+ * @requested_bytes:	Number of bytes requested
  * @dev_busy:		Device busy flag
  * @done:		Transfer complete status
  * @driver_state:	Describes driver state - ready/suspended
@@ -131,6 +134,7 @@ struct zynq_spi {
 	const u8 *txbuf;
 	u8 *rxbuf;
 	int remaining_bytes;
+	int requested_bytes;
 	u8 dev_busy;
 	struct completion done;
 	enum driver_state_val driver_state;
@@ -311,9 +315,10 @@ static int zynq_spi_setup(struct spi_device *spi)
  */
 static void zynq_spi_fill_tx_fifo(struct zynq_spi *xspi)
 {
-	while ((zynq_spi_read(xspi->regs + ZYNQ_SPI_ISR_OFFSET) &
-		ZYNQ_SPI_IXR_TXFULL_MASK) == 0
-		&& (xspi->remaining_bytes > 0)) {
+	unsigned long trans_cnt = 0;
+
+	while ((trans_cnt < ZYNQ_SPI_FIFO_DEPTH) &&
+		(xspi->remaining_bytes > 0)) {
 		if (xspi->txbuf)
 			zynq_spi_write(xspi->regs + ZYNQ_SPI_TXD_OFFSET,
 					*xspi->txbuf++);
@@ -321,6 +326,7 @@ static void zynq_spi_fill_tx_fifo(struct zynq_spi *xspi)
 			zynq_spi_write(xspi->regs + ZYNQ_SPI_TXD_OFFSET, 0);
 
 		xspi->remaining_bytes--;
+		trans_cnt++;
 	}
 }
 
@@ -354,11 +360,12 @@ static irqreturn_t zynq_spi_irq(int irq, void *dev_id)
 				ZYNQ_SPI_IXR_DEFAULT_MASK);
 		complete(&xspi->done);
 	} else if (intr_status & ZYNQ_SPI_IXR_TXOW_MASK) {
-		u32 ctrl_reg;
+		unsigned long trans_cnt;
+
+		trans_cnt = (xspi->requested_bytes) - (xspi->remaining_bytes);
 
 		/* Read out the data from the RX FIFO */
-		while (zynq_spi_read(xspi->regs + ZYNQ_SPI_ISR_OFFSET) &
-				ZYNQ_SPI_IXR_RXNEMTY_MASK) {
+		while (trans_cnt) {
 			u8 data;
 
 			data = zynq_spi_read(xspi->regs + ZYNQ_SPI_RXD_OFFSET);
@@ -373,17 +380,14 @@ static irqreturn_t zynq_spi_irq(int irq, void *dev_id)
 			 * incorrect status read.
 			 */
 			dmb();
+
+			xspi->requested_bytes--;
+			trans_cnt--;
 		}
 
 		if (xspi->remaining_bytes) {
 			/* There is more data to send */
 			zynq_spi_fill_tx_fifo(xspi);
-
-			ctrl_reg = zynq_spi_read(xspi->regs +
-						 ZYNQ_SPI_CR_OFFSET);
-			ctrl_reg |= ZYNQ_SPI_CR_MANSTRT_MASK;
-			zynq_spi_write(xspi->regs + ZYNQ_SPI_CR_OFFSET,
-				       ctrl_reg);
 		} else {
 			/* Transfer is completed */
 			zynq_spi_write(xspi->regs + ZYNQ_SPI_IDR_OFFSET,
@@ -428,23 +432,18 @@ static int zynq_spi_start_transfer(struct spi_device *spi,
 			struct spi_transfer *transfer)
 {
 	struct zynq_spi *xspi = spi_master_get_devdata(spi->master);
-	u32 ctrl_reg;
 	int ret;
 
 	xspi->txbuf = transfer->tx_buf;
 	xspi->rxbuf = transfer->rx_buf;
 	xspi->remaining_bytes = transfer->len;
+	xspi->requested_bytes = transfer->len;
 	reinit_completion(&xspi->done);
 
 	zynq_spi_fill_tx_fifo(xspi);
 
 	zynq_spi_write(xspi->regs + ZYNQ_SPI_IER_OFFSET,
 		ZYNQ_SPI_IXR_DEFAULT_MASK);
-
-	/* Start the transfer by enabling manual start bit */
-	ctrl_reg = zynq_spi_read(xspi->regs + ZYNQ_SPI_CR_OFFSET);
-	ctrl_reg |= ZYNQ_SPI_CR_MANSTRT_MASK;
-	zynq_spi_write(xspi->regs + ZYNQ_SPI_CR_OFFSET, ctrl_reg);
 
 	ret = wait_for_completion_interruptible_timeout(&xspi->done,
 			ZYNQ_SPI_TIMEOUT);
