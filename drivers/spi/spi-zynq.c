@@ -372,15 +372,6 @@ static irqreturn_t zynq_spi_irq(int irq, void *dev_id)
 			if (xspi->rxbuf)
 				*xspi->rxbuf++ = data;
 
-			/* Data memory barrier is placed here to ensure that
-			 * data read operation is completed before the status
-			 * read is initiated. Without dmb, there are chances
-			 * that data and status reads will appear at the SPI
-			 * peripheral back-to-back which results in an
-			 * incorrect status read.
-			 */
-			dmb();
-
 			xspi->requested_bytes--;
 			trans_cnt--;
 		}
