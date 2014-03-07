@@ -218,6 +218,9 @@ static int zynq_spi_setup_transfer(struct spi_device *spi,
 		return -EINVAL;
 	}
 
+	if (transfer && !transfer->speed_hz)
+		req_hz = spi->max_speed_hz;
+
 	frequency = clk_get_rate(xspi->devclk);
 
 	spin_lock_irqsave(&xspi->ctrl_reg_lock, flags);
