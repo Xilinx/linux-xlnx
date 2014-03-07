@@ -101,8 +101,8 @@
 #define ZYNQ_SPI_FIFO_DEPTH	128
 
 /* Macros for the SPI controller read/write */
-#define zynq_spi_read(addr)	__raw_readl(addr)
-#define zynq_spi_write(addr, val)	__raw_writel((val), (addr))
+#define zynq_spi_read(addr)	readl_relaxed(addr)
+#define zynq_spi_write(addr, val)	writel_relaxed((val), (addr))
 
 /* Driver state - suspend/ready */
 enum driver_state_val {
