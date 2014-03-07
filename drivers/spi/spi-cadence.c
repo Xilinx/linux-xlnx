@@ -1,5 +1,5 @@
 /*
- * Xilinx Zynq SPI controller driver (master mode only)
+ * Cadence SPI controller driver (master mode only)
  *
  * Copyright (C) 2008 - 2014 Xilinx, Inc.
  *
@@ -24,22 +24,22 @@
 /*
  * Name of this driver
  */
-#define ZYNQ_SPI_NAME		"zynq-spi"
+#define CDNS_SPI_NAME		"cdns-spi"
 
 /*
  * Register offset definitions
  */
-#define ZYNQ_SPI_CR_OFFSET	0x00 /* Configuration  Register, RW */
-#define ZYNQ_SPI_ISR_OFFSET	0x04 /* Interrupt Status Register, RO */
-#define ZYNQ_SPI_IER_OFFSET	0x08 /* Interrupt Enable Register, WO */
-#define ZYNQ_SPI_IDR_OFFSET	0x0c /* Interrupt Disable Register, WO */
-#define ZYNQ_SPI_IMR_OFFSET	0x10 /* Interrupt Enabled Mask Register, RO */
-#define ZYNQ_SPI_ER_OFFSET	0x14 /* Enable/Disable Register, RW */
-#define ZYNQ_SPI_DR_OFFSET	0x18 /* Delay Register, RW */
-#define ZYNQ_SPI_TXD_OFFSET	0x1C /* Data Transmit Register, WO */
-#define ZYNQ_SPI_RXD_OFFSET	0x20 /* Data Receive Register, RO */
-#define ZYNQ_SPI_SICR_OFFSET	0x24 /* Slave Idle Count Register, RW */
-#define ZYNQ_SPI_THLD_OFFSET	0x28 /* Transmit FIFO Watermark Register,RW */
+#define CDNS_SPI_CR_OFFSET	0x00 /* Configuration  Register, RW */
+#define CDNS_SPI_ISR_OFFSET	0x04 /* Interrupt Status Register, RO */
+#define CDNS_SPI_IER_OFFSET	0x08 /* Interrupt Enable Register, WO */
+#define CDNS_SPI_IDR_OFFSET	0x0c /* Interrupt Disable Register, WO */
+#define CDNS_SPI_IMR_OFFSET	0x10 /* Interrupt Enabled Mask Register, RO */
+#define CDNS_SPI_ER_OFFSET	0x14 /* Enable/Disable Register, RW */
+#define CDNS_SPI_DR_OFFSET	0x18 /* Delay Register, RW */
+#define CDNS_SPI_TXD_OFFSET	0x1C /* Data Transmit Register, WO */
+#define CDNS_SPI_RXD_OFFSET	0x20 /* Data Receive Register, RO */
+#define CDNS_SPI_SICR_OFFSET	0x24 /* Slave Idle Count Register, RW */
+#define CDNS_SPI_THLD_OFFSET	0x28 /* Transmit FIFO Watermark Register,RW */
 
 /*
  * SPI Configuration Register bit Masks
@@ -47,17 +47,17 @@
  * This register contains various control bits that affect the operation
  * of the SPI controller
  */
-#define ZYNQ_SPI_CR_MANSTRT_MASK	0x00010000 /* Manual TX Start */
-#define ZYNQ_SPI_CR_CPHA_MASK		0x00000004 /* Clock Phase Control */
-#define ZYNQ_SPI_CR_CPOL_MASK		0x00000002 /* Clock Polarity Control */
-#define ZYNQ_SPI_CR_SSCTRL_MASK		0x00003C00 /* Slave Select Mask */
-#define ZYNQ_SPI_CR_BAUD_DIV_MASK	0x00000038 /* Baud Rate Divisor Mask */
-#define ZYNQ_SPI_CR_MSTREN_MASK		0x00000001 /* Master Enable Mask */
-#define ZYNQ_SPI_CR_MANSTRTEN_MASK	0x00008000 /* Manual TX Enable Mask */
-#define ZYNQ_SPI_CR_SSFORCE_MASK	0x00004000 /* Manual SS Enable Mask */
-#define ZYNQ_SPI_CR_DEFAULT_MASK	(ZYNQ_SPI_CR_MSTREN_MASK | \
-					ZYNQ_SPI_CR_SSCTRL_MASK | \
-					ZYNQ_SPI_CR_SSFORCE_MASK)
+#define CDNS_SPI_CR_MANSTRT_MASK	0x00010000 /* Manual TX Start */
+#define CDNS_SPI_CR_CPHA_MASK		0x00000004 /* Clock Phase Control */
+#define CDNS_SPI_CR_CPOL_MASK		0x00000002 /* Clock Polarity Control */
+#define CDNS_SPI_CR_SSCTRL_MASK		0x00003C00 /* Slave Select Mask */
+#define CDNS_SPI_CR_BAUD_DIV_MASK	0x00000038 /* Baud Rate Divisor Mask */
+#define CDNS_SPI_CR_MSTREN_MASK		0x00000001 /* Master Enable Mask */
+#define CDNS_SPI_CR_MANSTRTEN_MASK	0x00008000 /* Manual TX Enable Mask */
+#define CDNS_SPI_CR_SSFORCE_MASK	0x00004000 /* Manual SS Enable Mask */
+#define CDNS_SPI_CR_DEFAULT_MASK	(CDNS_SPI_CR_MSTREN_MASK | \
+					CDNS_SPI_CR_SSCTRL_MASK | \
+					CDNS_SPI_CR_SSFORCE_MASK)
 
 /*
  * SPI Configuration Register - Baud rate and slave select
@@ -66,11 +66,11 @@
  * setting the slave select.
  */
 
-#define ZYNQ_SPI_BAUD_DIV_MAX		7 /* Baud rate divisor maximum */
-#define ZYNQ_SPI_BAUD_DIV_MIN		1 /* Baud rate divisor minimum */
-#define ZYNQ_SPI_BAUD_DIV_SHIFT		3 /* Baud rate divisor shift in CR */
-#define ZYNQ_SPI_SS_SHIFT		10 /* Slave Select field shift in CR */
-#define ZYNQ_SPI_SS0			0x1 /* Slave Select zero */
+#define CDNS_SPI_BAUD_DIV_MAX		7 /* Baud rate divisor maximum */
+#define CDNS_SPI_BAUD_DIV_MIN		1 /* Baud rate divisor minimum */
+#define CDNS_SPI_BAUD_DIV_SHIFT		3 /* Baud rate divisor shift in CR */
+#define CDNS_SPI_SS_SHIFT		10 /* Slave Select field shift in CR */
+#define CDNS_SPI_SS0			0x1 /* Slave Select zero */
 
 /*
  * SPI Interrupt Registers bit Masks
@@ -78,43 +78,43 @@
  * All the four interrupt registers (Status/Mask/Enable/Disable) have the same
  * bit definitions.
  */
-#define ZYNQ_SPI_IXR_TXOW_MASK	0x00000004 /* SPI TX FIFO Overwater */
-#define ZYNQ_SPI_IXR_MODF_MASK	0x00000002 /* SPI Mode Fault */
-#define ZYNQ_SPI_IXR_RXNEMTY_MASK 0x00000010 /* SPI RX FIFO Not Empty */
-#define ZYNQ_SPI_IXR_DEFAULT_MASK	(ZYNQ_SPI_IXR_TXOW_MASK | \
-					ZYNQ_SPI_IXR_MODF_MASK)
-#define ZYNQ_SPI_IXR_TXFULL_MASK	0x00000008 /* SPI TX Full */
-#define ZYNQ_SPI_IXR_ALL_MASK	0x0000007F /* SPI all interrupts */
+#define CDNS_SPI_IXR_TXOW_MASK	0x00000004 /* SPI TX FIFO Overwater */
+#define CDNS_SPI_IXR_MODF_MASK	0x00000002 /* SPI Mode Fault */
+#define CDNS_SPI_IXR_RXNEMTY_MASK 0x00000010 /* SPI RX FIFO Not Empty */
+#define CDNS_SPI_IXR_DEFAULT_MASK	(CDNS_SPI_IXR_TXOW_MASK | \
+					CDNS_SPI_IXR_MODF_MASK)
+#define CDNS_SPI_IXR_TXFULL_MASK	0x00000008 /* SPI TX Full */
+#define CDNS_SPI_IXR_ALL_MASK	0x0000007F /* SPI all interrupts */
 
 /*
  * SPI Enable Register bit Masks
  *
  * This register is used to enable or disable the SPI controller
  */
-#define ZYNQ_SPI_ER_ENABLE_MASK	0x00000001 /* SPI Enable Bit Mask */
-#define ZYNQ_SPI_ER_DISABLE_MASK	0x0 /* SPI Disable Bit Mask */
+#define CDNS_SPI_ER_ENABLE_MASK	0x00000001 /* SPI Enable Bit Mask */
+#define CDNS_SPI_ER_DISABLE_MASK	0x0 /* SPI Disable Bit Mask */
 
 /* SPI timeout value */
-#define ZYNQ_SPI_TIMEOUT	(5 * HZ)
+#define CDNS_SPI_TIMEOUT	(5 * HZ)
 
 /* SPI FIFO depth in bytes */
-#define ZYNQ_SPI_FIFO_DEPTH	128
+#define CDNS_SPI_FIFO_DEPTH	128
 
 /* Macros for the SPI controller read/write */
-#define zynq_spi_read(addr)	readl_relaxed(addr)
-#define zynq_spi_write(addr, val)	writel_relaxed((val), (addr))
+#define cdns_spi_read(addr)	readl_relaxed(addr)
+#define cdns_spi_write(addr, val)	writel_relaxed((val), (addr))
 
 /* Driver state - suspend/ready */
 enum driver_state_val {
-	ZYNQ_SPI_DRIVER_STATE_READY = 0,
-	ZYNQ_SPI_DRIVER_STATE_SUSPEND
+	CDNS_SPI_DRIVER_STATE_READY = 0,
+	CDNS_SPI_DRIVER_STATE_SUSPEND
 };
 
 /**
- * struct zynq_spi - This definition defines spi driver instance
+ * struct cdns_spi - This definition defines spi driver instance
  * @regs:		Virtual address of the SPI controller registers
- * @devclk:		Pointer to the peripheral clock
- * @aperclk:		Pointer to the APER clock
+ * @ref_clk:		Pointer to the peripheral clock
+ * @pclk:		Pointer to the APB clock
  * @irq:		IRQ number
  * @speed_hz:		Current SPI bus clock speed in Hz
  * @txbuf:		Pointer	to the TX buffer
@@ -125,10 +125,10 @@ enum driver_state_val {
  * @done:		Transfer complete status
  * @driver_state:	Describes driver state - ready/suspended
  */
-struct zynq_spi {
+struct cdns_spi {
 	void __iomem *regs;
-	struct clk *devclk;
-	struct clk *aperclk;
+	struct clk *ref_clk;
+	struct clk *pclk;
 	int irq;
 	u32 speed_hz;
 	const u8 *txbuf;
@@ -141,7 +141,7 @@ struct zynq_spi {
 };
 
 /**
- * zynq_spi_init_hw - Initialize the hardware and configure the SPI controller
+ * cdns_spi_init_hw - Initialize the hardware and configure the SPI controller
  * @regs_base:		Base address of SPI controller
  *
  * On reset the SPI controller is configured to be in master mode, baud rate
@@ -151,51 +151,51 @@ struct zynq_spi {
  * interrupts, enable manual slave select and manual start, deselect all the
  * chip select lines, and enable the SPI controller.
  */
-static void zynq_spi_init_hw(void __iomem *regs_base)
+static void cdns_spi_init_hw(void __iomem *regs_base)
 {
-	zynq_spi_write(regs_base + ZYNQ_SPI_ER_OFFSET,
-		       ZYNQ_SPI_ER_DISABLE_MASK);
-	zynq_spi_write(regs_base + ZYNQ_SPI_IDR_OFFSET, ZYNQ_SPI_IXR_ALL_MASK);
+	cdns_spi_write(regs_base + CDNS_SPI_ER_OFFSET,
+		       CDNS_SPI_ER_DISABLE_MASK);
+	cdns_spi_write(regs_base + CDNS_SPI_IDR_OFFSET, CDNS_SPI_IXR_ALL_MASK);
 
 	/* Clear the RX FIFO */
-	while (zynq_spi_read(regs_base + ZYNQ_SPI_ISR_OFFSET) &
-			ZYNQ_SPI_IXR_RXNEMTY_MASK)
-		zynq_spi_read(regs_base + ZYNQ_SPI_RXD_OFFSET);
+	while (cdns_spi_read(regs_base + CDNS_SPI_ISR_OFFSET) &
+			CDNS_SPI_IXR_RXNEMTY_MASK)
+		cdns_spi_read(regs_base + CDNS_SPI_RXD_OFFSET);
 
-	zynq_spi_write(regs_base + ZYNQ_SPI_ISR_OFFSET, ZYNQ_SPI_IXR_ALL_MASK);
-	zynq_spi_write(regs_base + ZYNQ_SPI_CR_OFFSET,
-			ZYNQ_SPI_CR_DEFAULT_MASK);
-	zynq_spi_write(regs_base + ZYNQ_SPI_ER_OFFSET,
-			ZYNQ_SPI_ER_ENABLE_MASK);
+	cdns_spi_write(regs_base + CDNS_SPI_ISR_OFFSET, CDNS_SPI_IXR_ALL_MASK);
+	cdns_spi_write(regs_base + CDNS_SPI_CR_OFFSET,
+			CDNS_SPI_CR_DEFAULT_MASK);
+	cdns_spi_write(regs_base + CDNS_SPI_ER_OFFSET,
+			CDNS_SPI_ER_ENABLE_MASK);
 }
 
 /**
- * zynq_spi_chipselect - Select or deselect the chip select line
+ * cdns_spi_chipselect - Select or deselect the chip select line
  * @spi:	Pointer to the spi_device structure
  * @is_on:	Select(1) or deselect (0) the chip select line
  */
-static void zynq_spi_chipselect(struct spi_device *spi, int is_on)
+static void cdns_spi_chipselect(struct spi_device *spi, int is_on)
 {
-	struct zynq_spi *xspi = spi_master_get_devdata(spi->master);
+	struct cdns_spi *xspi = spi_master_get_devdata(spi->master);
 	u32 ctrl_reg;
 
-	ctrl_reg = zynq_spi_read(xspi->regs + ZYNQ_SPI_CR_OFFSET);
+	ctrl_reg = cdns_spi_read(xspi->regs + CDNS_SPI_CR_OFFSET);
 
 	if (is_on) {
 		/* Select the slave */
-		ctrl_reg &= ~ZYNQ_SPI_CR_SSCTRL_MASK;
-		ctrl_reg |= ((~(ZYNQ_SPI_SS0 << spi->chip_select)) <<
-				ZYNQ_SPI_SS_SHIFT) & ZYNQ_SPI_CR_SSCTRL_MASK;
+		ctrl_reg &= ~CDNS_SPI_CR_SSCTRL_MASK;
+		ctrl_reg |= ((~(CDNS_SPI_SS0 << spi->chip_select)) <<
+				CDNS_SPI_SS_SHIFT) & CDNS_SPI_CR_SSCTRL_MASK;
 	} else {
 		/* Deselect the slave */
-		ctrl_reg |= ZYNQ_SPI_CR_SSCTRL_MASK;
+		ctrl_reg |= CDNS_SPI_CR_SSCTRL_MASK;
 	}
 
-	zynq_spi_write(xspi->regs + ZYNQ_SPI_CR_OFFSET, ctrl_reg);
+	cdns_spi_write(xspi->regs + CDNS_SPI_CR_OFFSET, ctrl_reg);
 }
 
 /**
- * zynq_spi_config_clock - Sets clock polarity, phase and frequency
+ * cdns_spi_config_clock - Sets clock polarity, phase and frequency
  * @spi:	Pointer to the spi_device structure
  * @transfer:	Pointer to the spi_transfer structure which provides
  *		information about next transfer setup parameters
@@ -208,10 +208,10 @@ static void zynq_spi_chipselect(struct spi_device *spi, int is_on)
  * controller the driver will set the highest or lowest frequency supported by
  * controller.
  */
-static void zynq_spi_config_clock(struct spi_device *spi,
+static void cdns_spi_config_clock(struct spi_device *spi,
 		struct spi_transfer *transfer)
 {
-	struct zynq_spi *xspi = spi_master_get_devdata(spi->master);
+	struct cdns_spi *xspi = spi_master_get_devdata(spi->master);
 	u32 ctrl_reg;
 	u32 req_hz;
 	u32 baud_rate_val;
@@ -222,40 +222,40 @@ static void zynq_spi_config_clock(struct spi_device *spi,
 	if (transfer && !transfer->speed_hz)
 		req_hz = spi->max_speed_hz;
 
-	frequency = clk_get_rate(xspi->devclk);
+	frequency = clk_get_rate(xspi->ref_clk);
 
-	zynq_spi_write(xspi->regs + ZYNQ_SPI_ER_OFFSET,
-		       ZYNQ_SPI_ER_DISABLE_MASK);
-	ctrl_reg = zynq_spi_read(xspi->regs + ZYNQ_SPI_CR_OFFSET);
+	cdns_spi_write(xspi->regs + CDNS_SPI_ER_OFFSET,
+		       CDNS_SPI_ER_DISABLE_MASK);
+	ctrl_reg = cdns_spi_read(xspi->regs + CDNS_SPI_CR_OFFSET);
 
 	/* Set the SPI clock phase and clock polarity */
-	ctrl_reg &= (~ZYNQ_SPI_CR_CPHA_MASK) & (~ZYNQ_SPI_CR_CPOL_MASK);
+	ctrl_reg &= (~CDNS_SPI_CR_CPHA_MASK) & (~CDNS_SPI_CR_CPOL_MASK);
 	if (spi->mode & SPI_CPHA)
-		ctrl_reg |= ZYNQ_SPI_CR_CPHA_MASK;
+		ctrl_reg |= CDNS_SPI_CR_CPHA_MASK;
 	if (spi->mode & SPI_CPOL)
-		ctrl_reg |= ZYNQ_SPI_CR_CPOL_MASK;
+		ctrl_reg |= CDNS_SPI_CR_CPOL_MASK;
 
 	/* Set the clock frequency */
 	if (xspi->speed_hz != req_hz) {
 		/* first valid value is 1 */
-		baud_rate_val = ZYNQ_SPI_BAUD_DIV_MIN;
-		while ((baud_rate_val < ZYNQ_SPI_BAUD_DIV_MAX) && (frequency /
+		baud_rate_val = CDNS_SPI_BAUD_DIV_MIN;
+		while ((baud_rate_val < CDNS_SPI_BAUD_DIV_MAX) && (frequency /
 					(2 << baud_rate_val)) > req_hz)
 			baud_rate_val++;
 
-		ctrl_reg &= ~ZYNQ_SPI_CR_BAUD_DIV_MASK;
-		ctrl_reg |= (baud_rate_val << ZYNQ_SPI_BAUD_DIV_SHIFT);
+		ctrl_reg &= ~CDNS_SPI_CR_BAUD_DIV_MASK;
+		ctrl_reg |= (baud_rate_val << CDNS_SPI_BAUD_DIV_SHIFT);
 
 		xspi->speed_hz = (frequency / (2 << baud_rate_val));
 	}
 
-	zynq_spi_write(xspi->regs + ZYNQ_SPI_CR_OFFSET, ctrl_reg);
-	zynq_spi_write(xspi->regs + ZYNQ_SPI_ER_OFFSET,
-		       ZYNQ_SPI_ER_ENABLE_MASK);
+	cdns_spi_write(xspi->regs + CDNS_SPI_CR_OFFSET, ctrl_reg);
+	cdns_spi_write(xspi->regs + CDNS_SPI_ER_OFFSET,
+		       CDNS_SPI_ER_ENABLE_MASK);
 }
 
 /**
- * zynq_spi_setup_transfer - Configure SPI controller for specified transfer
+ * cdns_spi_setup_transfer - Configure SPI controller for specified transfer
  * @spi:	Pointer to the spi_device structure
  * @transfer:	Pointer to the spi_transfer structure which provides
  *		information about next transfer setup parameters
@@ -265,10 +265,10 @@ static void zynq_spi_config_clock(struct spi_device *spi,
  *
  * Return:	0 on success and error value on error
  */
-static int zynq_spi_setup_transfer(struct spi_device *spi,
+static int cdns_spi_setup_transfer(struct spi_device *spi,
 		struct spi_transfer *transfer)
 {
-	struct zynq_spi *xspi = spi_master_get_devdata(spi->master);
+	struct cdns_spi *xspi = spi_master_get_devdata(spi->master);
 	u8 bits_per_word;
 
 	bits_per_word = (transfer) ?
@@ -280,7 +280,7 @@ static int zynq_spi_setup_transfer(struct spi_device *spi,
 		return -EINVAL;
 	}
 
-	zynq_spi_config_clock(spi, transfer);
+	cdns_spi_config_clock(spi, transfer);
 
 	dev_dbg(&spi->dev, "%s, mode %d, %u bits/w, %u clock speed\n",
 		__func__, spi->mode, spi->bits_per_word,
@@ -290,7 +290,7 @@ static int zynq_spi_setup_transfer(struct spi_device *spi,
 }
 
 /**
- * zynq_spi_setup - Configure the SPI controller
+ * cdns_spi_setup - Configure the SPI controller
  * @spi:	Pointer to the spi_device structure
  *
  * Sets the operational mode of SPI controller for the next SPI transfer, sets
@@ -298,7 +298,7 @@ static int zynq_spi_setup_transfer(struct spi_device *spi,
  *
  * Return:	0 on success and error value on error
  */
-static int zynq_spi_setup(struct spi_device *spi)
+static int cdns_spi_setup(struct spi_device *spi)
 {
 	if (!spi->max_speed_hz)
 		return -EINVAL;
@@ -306,24 +306,24 @@ static int zynq_spi_setup(struct spi_device *spi)
 	if (!spi->bits_per_word)
 		spi->bits_per_word = 8;
 
-	return zynq_spi_setup_transfer(spi, NULL);
+	return cdns_spi_setup_transfer(spi, NULL);
 }
 
 /**
- * zynq_spi_fill_tx_fifo - Fills the TX FIFO with as many bytes as possible
- * @xspi:	Pointer to the zynq_spi structure
+ * cdns_spi_fill_tx_fifo - Fills the TX FIFO with as many bytes as possible
+ * @xspi:	Pointer to the cdns_spi structure
  */
-static void zynq_spi_fill_tx_fifo(struct zynq_spi *xspi)
+static void cdns_spi_fill_tx_fifo(struct cdns_spi *xspi)
 {
 	unsigned long trans_cnt = 0;
 
-	while ((trans_cnt < ZYNQ_SPI_FIFO_DEPTH) &&
+	while ((trans_cnt < CDNS_SPI_FIFO_DEPTH) &&
 		(xspi->remaining_bytes > 0)) {
 		if (xspi->txbuf)
-			zynq_spi_write(xspi->regs + ZYNQ_SPI_TXD_OFFSET,
+			cdns_spi_write(xspi->regs + CDNS_SPI_TXD_OFFSET,
 					*xspi->txbuf++);
 		else
-			zynq_spi_write(xspi->regs + ZYNQ_SPI_TXD_OFFSET, 0);
+			cdns_spi_write(xspi->regs + CDNS_SPI_TXD_OFFSET, 0);
 
 		xspi->remaining_bytes--;
 		trans_cnt++;
@@ -331,7 +331,7 @@ static void zynq_spi_fill_tx_fifo(struct zynq_spi *xspi)
 }
 
 /**
- * zynq_spi_irq - Interrupt service routine of the SPI controller
+ * cdns_spi_irq - Interrupt service routine of the SPI controller
  * @irq:	IRQ number
  * @dev_id:	Pointer to the xspi structure
  *
@@ -344,22 +344,22 @@ static void zynq_spi_fill_tx_fifo(struct zynq_spi *xspi)
  *
  * Return:	IRQ_HANDLED always
  */
-static irqreturn_t zynq_spi_irq(int irq, void *dev_id)
+static irqreturn_t cdns_spi_irq(int irq, void *dev_id)
 {
-	struct zynq_spi *xspi = dev_id;
+	struct cdns_spi *xspi = dev_id;
 	u32 intr_status;
 
-	intr_status = zynq_spi_read(xspi->regs + ZYNQ_SPI_ISR_OFFSET);
-	zynq_spi_write(xspi->regs + ZYNQ_SPI_ISR_OFFSET, intr_status);
+	intr_status = cdns_spi_read(xspi->regs + CDNS_SPI_ISR_OFFSET);
+	cdns_spi_write(xspi->regs + CDNS_SPI_ISR_OFFSET, intr_status);
 
-	if (intr_status & ZYNQ_SPI_IXR_MODF_MASK) {
+	if (intr_status & CDNS_SPI_IXR_MODF_MASK) {
 		/* Indicate that transfer is completed, the SPI subsystem will
 		 * identify the error as the remaining bytes to be
 		 * transferred is non-zero */
-		zynq_spi_write(xspi->regs + ZYNQ_SPI_IDR_OFFSET,
-				ZYNQ_SPI_IXR_DEFAULT_MASK);
+		cdns_spi_write(xspi->regs + CDNS_SPI_IDR_OFFSET,
+				CDNS_SPI_IXR_DEFAULT_MASK);
 		complete(&xspi->done);
-	} else if (intr_status & ZYNQ_SPI_IXR_TXOW_MASK) {
+	} else if (intr_status & CDNS_SPI_IXR_TXOW_MASK) {
 		unsigned long trans_cnt;
 
 		trans_cnt = (xspi->requested_bytes) - (xspi->remaining_bytes);
@@ -368,7 +368,7 @@ static irqreturn_t zynq_spi_irq(int irq, void *dev_id)
 		while (trans_cnt) {
 			u8 data;
 
-			data = zynq_spi_read(xspi->regs + ZYNQ_SPI_RXD_OFFSET);
+			data = cdns_spi_read(xspi->regs + CDNS_SPI_RXD_OFFSET);
 			if (xspi->rxbuf)
 				*xspi->rxbuf++ = data;
 
@@ -378,11 +378,11 @@ static irqreturn_t zynq_spi_irq(int irq, void *dev_id)
 
 		if (xspi->remaining_bytes) {
 			/* There is more data to send */
-			zynq_spi_fill_tx_fifo(xspi);
+			cdns_spi_fill_tx_fifo(xspi);
 		} else {
 			/* Transfer is completed */
-			zynq_spi_write(xspi->regs + ZYNQ_SPI_IDR_OFFSET,
-					ZYNQ_SPI_IXR_DEFAULT_MASK);
+			cdns_spi_write(xspi->regs + CDNS_SPI_IDR_OFFSET,
+					CDNS_SPI_IXR_DEFAULT_MASK);
 			complete(&xspi->done);
 		}
 	}
@@ -391,25 +391,25 @@ static irqreturn_t zynq_spi_irq(int irq, void *dev_id)
 }
 
 /**
- * zynq_spi_reset_controller - Resets SPI controller
+ * cdns_spi_reset_controller - Resets SPI controller
  * @spi:	Pointer to the spi_device structure
  *
  * This function disables the interrupts, de-asserts the chip select and
  * disables the SPI controller.
  */
-static void zynq_spi_reset_controller(struct spi_device *spi)
+static void cdns_spi_reset_controller(struct spi_device *spi)
 {
-	struct zynq_spi *xspi = spi_master_get_devdata(spi->master);
+	struct cdns_spi *xspi = spi_master_get_devdata(spi->master);
 
-	zynq_spi_write(xspi->regs + ZYNQ_SPI_IDR_OFFSET,
-			ZYNQ_SPI_IXR_DEFAULT_MASK);
-	zynq_spi_chipselect(spi, 0);
-	zynq_spi_write(xspi->regs + ZYNQ_SPI_ER_OFFSET,
-			ZYNQ_SPI_ER_DISABLE_MASK);
+	cdns_spi_write(xspi->regs + CDNS_SPI_IDR_OFFSET,
+			CDNS_SPI_IXR_DEFAULT_MASK);
+	cdns_spi_chipselect(spi, 0);
+	cdns_spi_write(xspi->regs + CDNS_SPI_ER_OFFSET,
+			CDNS_SPI_ER_DISABLE_MASK);
 }
 
 /**
- * zynq_spi_start_transfer - Initiates the SPI transfer
+ * cdns_spi_start_transfer - Initiates the SPI transfer
  * @spi:	Pointer to the spi_device structure
  * @transfer:	Pointer to the spi_transfer structure which provides
  *		information about next transfer parameters
@@ -419,10 +419,10 @@ static void zynq_spi_reset_controller(struct spi_device *spi)
  *
  * Return:	Number of bytes transferred in the last transfer
  */
-static int zynq_spi_start_transfer(struct spi_device *spi,
+static int cdns_spi_start_transfer(struct spi_device *spi,
 			struct spi_transfer *transfer)
 {
-	struct zynq_spi *xspi = spi_master_get_devdata(spi->master);
+	struct cdns_spi *xspi = spi_master_get_devdata(spi->master);
 	int ret;
 
 	xspi->txbuf = transfer->tx_buf;
@@ -431,15 +431,15 @@ static int zynq_spi_start_transfer(struct spi_device *spi,
 	xspi->requested_bytes = transfer->len;
 	reinit_completion(&xspi->done);
 
-	zynq_spi_fill_tx_fifo(xspi);
+	cdns_spi_fill_tx_fifo(xspi);
 
-	zynq_spi_write(xspi->regs + ZYNQ_SPI_IER_OFFSET,
-		ZYNQ_SPI_IXR_DEFAULT_MASK);
+	cdns_spi_write(xspi->regs + CDNS_SPI_IER_OFFSET,
+		CDNS_SPI_IXR_DEFAULT_MASK);
 
 	ret = wait_for_completion_interruptible_timeout(&xspi->done,
-			ZYNQ_SPI_TIMEOUT);
+			CDNS_SPI_TIMEOUT);
 	if (ret < 1) {
-		zynq_spi_reset_controller(spi);
+		cdns_spi_reset_controller(spi);
 		if (!ret)
 			return -ETIMEDOUT;
 
@@ -450,7 +450,7 @@ static int zynq_spi_start_transfer(struct spi_device *spi,
 }
 
 /**
- * zynq_prepare_transfer_hardware - Prepares hardware for transfer.
+ * cdns_prepare_transfer_hardware - Prepares hardware for transfer.
  * @master:	Pointer to the spi_master structure which provides
  *		information about the controller.
  *
@@ -458,14 +458,14 @@ static int zynq_spi_start_transfer(struct spi_device *spi,
  *
  * Return:	0 on success and error value on error
  */
-static int zynq_prepare_transfer_hardware(struct spi_master *master)
+static int cdns_prepare_transfer_hardware(struct spi_master *master)
 {
-	struct zynq_spi *xspi = spi_master_get_devdata(master);
+	struct cdns_spi *xspi = spi_master_get_devdata(master);
 	int status = 0;
 
-	if ((xspi->driver_state) == ZYNQ_SPI_DRIVER_STATE_READY)
-		zynq_spi_write(xspi->regs + ZYNQ_SPI_ER_OFFSET,
-				ZYNQ_SPI_ER_ENABLE_MASK);
+	if ((xspi->driver_state) == CDNS_SPI_DRIVER_STATE_READY)
+		cdns_spi_write(xspi->regs + CDNS_SPI_ER_OFFSET,
+				CDNS_SPI_ER_ENABLE_MASK);
 	else
 		status = -EINVAL;
 
@@ -473,7 +473,7 @@ static int zynq_prepare_transfer_hardware(struct spi_master *master)
 }
 
 /**
- * zynq_transfer_one_message -
+ * cdns_transfer_one_message -
  * @master:	Pointer to the spi_master structure which provides
  *		information about the controller.
  * @msg:	Pointer to the spi_message which contains the
@@ -484,7 +484,7 @@ static int zynq_prepare_transfer_hardware(struct spi_master *master)
  *
  * Return:	0 on success and error value on error.
  */
-static int zynq_transfer_one_message(struct spi_master *master,
+static int cdns_transfer_one_message(struct spi_master *master,
 				     struct spi_message *msg)
 {
 	struct spi_device *spi;
@@ -497,13 +497,13 @@ static int zynq_transfer_one_message(struct spi_master *master,
 	list_for_each_entry(transfer, &msg->transfers, transfer_list) {
 		if ((transfer->bits_per_word || transfer->speed_hz) &&
 							cs_change) {
-			status = zynq_spi_setup_transfer(spi, transfer);
+			status = cdns_spi_setup_transfer(spi, transfer);
 			if (status < 0)
 				break;
 		}
 
 		if (cs_change)
-			zynq_spi_chipselect(spi, 1);
+			cdns_spi_chipselect(spi, 1);
 
 		cs_change = transfer->cs_change;
 
@@ -514,7 +514,7 @@ static int zynq_transfer_one_message(struct spi_master *master,
 		}
 
 		if (transfer->len)
-			status = zynq_spi_start_transfer(spi, transfer);
+			status = cdns_spi_start_transfer(spi, transfer);
 
 		if (status != transfer->len) {
 			if (status > 0)
@@ -532,11 +532,11 @@ static int zynq_transfer_one_message(struct spi_master *master,
 		if (transfer->transfer_list.next == &msg->transfers)
 			break;
 
-		zynq_spi_chipselect(spi, 0);
+		cdns_spi_chipselect(spi, 0);
 	}
 
 	if (!(status == 0 && cs_change))
-		zynq_spi_chipselect(spi, 0);
+		cdns_spi_chipselect(spi, 0);
 
 	msg->status = status;
 	spi_finalize_current_message(master);
@@ -545,7 +545,7 @@ static int zynq_transfer_one_message(struct spi_master *master,
 }
 
 /**
- * zynq_unprepare_transfer_hardware - Relaxes hardware after transfer
+ * cdns_unprepare_transfer_hardware - Relaxes hardware after transfer
  * @master:	Pointer to the spi_master structure which provides
  *		information about the controller.
  *
@@ -553,29 +553,29 @@ static int zynq_transfer_one_message(struct spi_master *master,
  *
  * Return:	0 always
  */
-static int zynq_unprepare_transfer_hardware(struct spi_master *master)
+static int cdns_unprepare_transfer_hardware(struct spi_master *master)
 {
-	struct zynq_spi *xspi = spi_master_get_devdata(master);
+	struct cdns_spi *xspi = spi_master_get_devdata(master);
 
-	zynq_spi_write(xspi->regs + ZYNQ_SPI_ER_OFFSET,
-			ZYNQ_SPI_ER_DISABLE_MASK);
+	cdns_spi_write(xspi->regs + CDNS_SPI_ER_OFFSET,
+			CDNS_SPI_ER_DISABLE_MASK);
 
 	return 0;
 }
 
 /**
- * zynq_spi_probe - Probe method for the SPI driver
+ * cdns_spi_probe - Probe method for the SPI driver
  * @pdev:	Pointer to the platform_device structure
  *
  * This function initializes the driver data structures and the hardware.
  *
  * Return:	0 on success and error value on error
  */
-static int zynq_spi_probe(struct platform_device *pdev)
+static int cdns_spi_probe(struct platform_device *pdev)
 {
 	int ret = 0;
 	struct spi_master *master;
-	struct zynq_spi *xspi;
+	struct cdns_spi *xspi;
 	struct resource *res;
 
 	master = spi_alloc_master(&pdev->dev, sizeof(*xspi));
@@ -600,7 +600,7 @@ static int zynq_spi_probe(struct platform_device *pdev)
 		goto remove_master;
 	}
 
-	ret = devm_request_irq(&pdev->dev, xspi->irq, zynq_spi_irq,
+	ret = devm_request_irq(&pdev->dev, xspi->irq, cdns_spi_irq,
 			       0, pdev->name, xspi);
 	if (ret != 0) {
 		ret = -ENXIO;
@@ -608,34 +608,34 @@ static int zynq_spi_probe(struct platform_device *pdev)
 		goto remove_master;
 	}
 
-	xspi->aperclk = devm_clk_get(&pdev->dev, "aper_clk");
-	if (IS_ERR(xspi->aperclk)) {
-		dev_err(&pdev->dev, "aper_clk clock not found.\n");
-		ret = PTR_ERR(xspi->aperclk);
+	xspi->pclk = devm_clk_get(&pdev->dev, "pclk");
+	if (IS_ERR(xspi->pclk)) {
+		dev_err(&pdev->dev, "pclk clock not found.\n");
+		ret = PTR_ERR(xspi->pclk);
 		goto remove_master;
 	}
 
-	xspi->devclk = devm_clk_get(&pdev->dev, "ref_clk");
-	if (IS_ERR(xspi->devclk)) {
+	xspi->ref_clk = devm_clk_get(&pdev->dev, "ref_clk");
+	if (IS_ERR(xspi->ref_clk)) {
 		dev_err(&pdev->dev, "ref_clk clock not found.\n");
-		ret = PTR_ERR(xspi->devclk);
+		ret = PTR_ERR(xspi->ref_clk);
 		goto remove_master;
 	}
 
-	ret = clk_prepare_enable(xspi->aperclk);
+	ret = clk_prepare_enable(xspi->pclk);
 	if (ret) {
-		dev_err(&pdev->dev, "Unable to enable APER clock.\n");
+		dev_err(&pdev->dev, "Unable to enable APB clock.\n");
 		goto remove_master;
 	}
 
-	ret = clk_prepare_enable(xspi->devclk);
+	ret = clk_prepare_enable(xspi->ref_clk);
 	if (ret) {
 		dev_err(&pdev->dev, "Unable to enable device clock.\n");
-		goto clk_dis_aper;
+		goto clk_dis_apb;
 	}
 
 	/* SPI controller initializations */
-	zynq_spi_init_hw(xspi->regs);
+	cdns_spi_init_hw(xspi->regs);
 
 	init_completion(&xspi->done);
 
@@ -645,15 +645,15 @@ static int zynq_spi_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "couldn't determine num-chip-select\n");
 		goto clk_dis_all;
 	}
-	master->setup = zynq_spi_setup;
-	master->prepare_transfer_hardware = zynq_prepare_transfer_hardware;
-	master->transfer_one_message = zynq_transfer_one_message;
-	master->unprepare_transfer_hardware = zynq_unprepare_transfer_hardware;
+	master->setup = cdns_spi_setup;
+	master->prepare_transfer_hardware = cdns_prepare_transfer_hardware;
+	master->transfer_one_message = cdns_transfer_one_message;
+	master->unprepare_transfer_hardware = cdns_unprepare_transfer_hardware;
 	master->mode_bits = SPI_CPOL | SPI_CPHA;
 
-	xspi->speed_hz = clk_get_rate(xspi->devclk) / 2;
+	xspi->speed_hz = clk_get_rate(xspi->ref_clk) / 2;
 
-	xspi->driver_state = ZYNQ_SPI_DRIVER_STATE_READY;
+	xspi->driver_state = CDNS_SPI_DRIVER_STATE_READY;
 
 	ret = spi_register_master(master);
 	if (ret) {
@@ -667,16 +667,16 @@ static int zynq_spi_probe(struct platform_device *pdev)
 	return ret;
 
 clk_dis_all:
-	clk_disable_unprepare(xspi->devclk);
-clk_dis_aper:
-	clk_disable_unprepare(xspi->aperclk);
+	clk_disable_unprepare(xspi->ref_clk);
+clk_dis_apb:
+	clk_disable_unprepare(xspi->pclk);
 remove_master:
 	spi_master_put(master);
 	return ret;
 }
 
 /**
- * zynq_spi_remove - Remove method for the SPI driver
+ * cdns_spi_remove - Remove method for the SPI driver
  * @pdev:	Pointer to the platform_device structure
  *
  * This function is called if a device is physically removed from the system or
@@ -685,16 +685,16 @@ remove_master:
  *
  * Return:	0 on success and error value on error
  */
-static int zynq_spi_remove(struct platform_device *pdev)
+static int cdns_spi_remove(struct platform_device *pdev)
 {
 	struct spi_master *master = platform_get_drvdata(pdev);
-	struct zynq_spi *xspi = spi_master_get_devdata(master);
+	struct cdns_spi *xspi = spi_master_get_devdata(master);
 
-	zynq_spi_write(xspi->regs + ZYNQ_SPI_ER_OFFSET,
-		       ZYNQ_SPI_ER_DISABLE_MASK);
+	cdns_spi_write(xspi->regs + CDNS_SPI_ER_OFFSET,
+		       CDNS_SPI_ER_DISABLE_MASK);
 
-	clk_disable_unprepare(xspi->devclk);
-	clk_disable_unprepare(xspi->aperclk);
+	clk_disable_unprepare(xspi->ref_clk);
+	clk_disable_unprepare(xspi->pclk);
 
 	spi_unregister_master(master);
 	spi_master_put(master);
@@ -705,7 +705,7 @@ static int zynq_spi_remove(struct platform_device *pdev)
 
 #ifdef CONFIG_PM_SLEEP
 /**
- * zynq_spi_suspend - Suspend method for the SPI driver
+ * cdns_spi_suspend - Suspend method for the SPI driver
  * @dev:	Address of the platform_device structure
  *
  * This function disables the SPI controller and
@@ -713,99 +713,98 @@ static int zynq_spi_remove(struct platform_device *pdev)
  *
  * Return:	0 on success and error value on error
  */
-static int zynq_spi_suspend(struct device *dev)
+static int cdns_spi_suspend(struct device *dev)
 {
 	struct platform_device *pdev = container_of(dev,
 			struct platform_device, dev);
 	struct spi_master *master = platform_get_drvdata(pdev);
-	struct zynq_spi *xspi = spi_master_get_devdata(master);
+	struct cdns_spi *xspi = spi_master_get_devdata(master);
 	u32 ctrl_reg;
 
-	zynq_spi_write(xspi->regs + ZYNQ_SPI_IDR_OFFSET,
-			ZYNQ_SPI_IXR_DEFAULT_MASK);
+	cdns_spi_write(xspi->regs + CDNS_SPI_IDR_OFFSET,
+			CDNS_SPI_IXR_DEFAULT_MASK);
 	complete(&xspi->done);
 
-	ctrl_reg = zynq_spi_read(xspi->regs + ZYNQ_SPI_CR_OFFSET);
-	ctrl_reg |= ZYNQ_SPI_CR_SSCTRL_MASK;
-	zynq_spi_write(xspi->regs + ZYNQ_SPI_CR_OFFSET, ctrl_reg);
+	ctrl_reg = cdns_spi_read(xspi->regs + CDNS_SPI_CR_OFFSET);
+	ctrl_reg |= CDNS_SPI_CR_SSCTRL_MASK;
+	cdns_spi_write(xspi->regs + CDNS_SPI_CR_OFFSET, ctrl_reg);
 
-	zynq_spi_write(xspi->regs + ZYNQ_SPI_ER_OFFSET,
-		       ZYNQ_SPI_ER_DISABLE_MASK);
+	cdns_spi_write(xspi->regs + CDNS_SPI_ER_OFFSET,
+		       CDNS_SPI_ER_DISABLE_MASK);
 
-	xspi->driver_state = ZYNQ_SPI_DRIVER_STATE_SUSPEND;
+	xspi->driver_state = CDNS_SPI_DRIVER_STATE_SUSPEND;
 
-	clk_disable(xspi->devclk);
-	clk_disable(xspi->aperclk);
+	clk_disable(xspi->ref_clk);
+	clk_disable(xspi->pclk);
 
 	dev_dbg(&pdev->dev, "suspend succeeded\n");
 	return 0;
 }
 
 /**
- * zynq_spi_resume - Resume method for the SPI driver
+ * cdns_spi_resume - Resume method for the SPI driver
  * @dev:	Address of the platform_device structure
  *
  * This function changes the driver state to "ready"
  *
  * Return:	0 on success and error value on error
  */
-static int zynq_spi_resume(struct device *dev)
+static int cdns_spi_resume(struct device *dev)
 {
 	struct platform_device *pdev = container_of(dev,
 			struct platform_device, dev);
 	struct spi_master *master = platform_get_drvdata(pdev);
-	struct zynq_spi *xspi = spi_master_get_devdata(master);
+	struct cdns_spi *xspi = spi_master_get_devdata(master);
 	int ret = 0;
 
-	ret = clk_enable(xspi->aperclk);
+	ret = clk_enable(xspi->pclk);
 	if (ret) {
-		dev_err(dev, "Cannot enable APER clock.\n");
+		dev_err(dev, "Cannot enable APB clock.\n");
 		return ret;
 	}
 
-	ret = clk_enable(xspi->devclk);
+	ret = clk_enable(xspi->ref_clk);
 	if (ret) {
 		dev_err(dev, "Cannot enable device clock.\n");
-		clk_disable(xspi->aperclk);
+		clk_disable(xspi->pclk);
 		return ret;
 	}
 
-	xspi->driver_state = ZYNQ_SPI_DRIVER_STATE_READY;
+	xspi->driver_state = CDNS_SPI_DRIVER_STATE_READY;
 
 	dev_dbg(&pdev->dev, "resume succeeded\n");
 	return 0;
 }
 #endif /* ! CONFIG_PM_SLEEP */
 
-static SIMPLE_DEV_PM_OPS(zynq_spi_dev_pm_ops, zynq_spi_suspend,
-			 zynq_spi_resume);
+static SIMPLE_DEV_PM_OPS(cdns_spi_dev_pm_ops, cdns_spi_suspend,
+			 cdns_spi_resume);
 
 /* Work with hotplug and coldplug */
-MODULE_ALIAS("platform:" ZYNQ_SPI_NAME);
+MODULE_ALIAS("platform:" CDNS_SPI_NAME);
 
-static struct of_device_id zynq_spi_of_match[] = {
-	{ .compatible = "xlnx,zynq-spi-1.00.a", },
+static struct of_device_id cdns_spi_of_match[] = {
+	{ .compatible = "cdns,spi-r1p6"},
 	{ /* end of table */}
 };
-MODULE_DEVICE_TABLE(of, zynq_spi_of_match);
+MODULE_DEVICE_TABLE(of, cdns_spi_of_match);
 
 /*
- * zynq_spi_driver - This structure defines the SPI subsystem platform driver
+ * cdns_spi_driver - This structure defines the SPI subsystem platform driver
  */
-static struct platform_driver zynq_spi_driver = {
-	.probe	= zynq_spi_probe,
-	.remove	= zynq_spi_remove,
+static struct platform_driver cdns_spi_driver = {
+	.probe	= cdns_spi_probe,
+	.remove	= cdns_spi_remove,
 	.driver = {
-		.name = ZYNQ_SPI_NAME,
+		.name = CDNS_SPI_NAME,
 		.owner = THIS_MODULE,
-		.of_match_table = zynq_spi_of_match,
-		.pm = &zynq_spi_dev_pm_ops,
+		.of_match_table = cdns_spi_of_match,
+		.pm = &cdns_spi_dev_pm_ops,
 	},
 };
 
-module_platform_driver(zynq_spi_driver);
+module_platform_driver(cdns_spi_driver);
 
 MODULE_AUTHOR("Xilinx, Inc.");
-MODULE_DESCRIPTION("Xilinx Zynq SPI driver");
+MODULE_DESCRIPTION("Cadence SPI driver");
 MODULE_LICENSE("GPL");
-
