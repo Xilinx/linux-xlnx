@@ -72,6 +72,7 @@
  * This register is used to enable or disable the SPI controller
  */
 #define ZYNQ_SPI_ER_ENABLE_MASK	0x00000001 /* SPI Enable Bit Mask */
+#define ZYNQ_SPI_ER_DISABLE_MASK	0x0 /* SPI Disable Bit Mask */
 
 /*
  * Definitions for the status of queue
@@ -137,7 +138,7 @@ struct zynq_spi {
 static void zynq_spi_init_hw(void __iomem *regs_base)
 {
 	zynq_spi_write(regs_base + ZYNQ_SPI_ER_OFFSET,
-		       ~ZYNQ_SPI_ER_ENABLE_MASK);
+		       ZYNQ_SPI_ER_DISABLE_MASK);
 	zynq_spi_write(regs_base + ZYNQ_SPI_IDR_OFFSET, 0x7F);
 
 	/* Clear the RX FIFO */
@@ -226,7 +227,7 @@ static int zynq_spi_setup_transfer(struct spi_device *spi,
 	spin_lock_irqsave(&xspi->ctrl_reg_lock, flags);
 
 	zynq_spi_write(xspi->regs + ZYNQ_SPI_ER_OFFSET,
-		       ~ZYNQ_SPI_ER_ENABLE_MASK);
+		       ZYNQ_SPI_ER_DISABLE_MASK);
 	ctrl_reg = zynq_spi_read(xspi->regs + ZYNQ_SPI_CR_OFFSET);
 
 	/* Set the SPI clock phase and clock polarity */
@@ -390,7 +391,8 @@ static void zynq_spi_reset_controller(struct spi_device *spi)
 	zynq_spi_write(xspi->regs + ZYNQ_SPI_IDR_OFFSET,
 			ZYNQ_SPI_IXR_ALL_MASK);
 	zynq_spi_chipselect(spi, 0);
-	zynq_spi_write(xspi->regs + ZYNQ_SPI_ER_OFFSET, 0);
+	zynq_spi_write(xspi->regs + ZYNQ_SPI_ER_OFFSET,
+			ZYNQ_SPI_ER_DISABLE_MASK);
 }
 
 /**
@@ -804,7 +806,7 @@ static int zynq_spi_remove(struct platform_device *pdev)
 		return ret;
 
 	zynq_spi_write(xspi->regs + ZYNQ_SPI_ER_OFFSET,
-		       ~ZYNQ_SPI_ER_ENABLE_MASK);
+		       ZYNQ_SPI_ER_DISABLE_MASK);
 
 	clk_disable_unprepare(xspi->devclk);
 	clk_disable_unprepare(xspi->aperclk);
@@ -839,7 +841,7 @@ static int zynq_spi_suspend(struct device *dev)
 		return ret;
 
 	zynq_spi_write(xspi->regs + ZYNQ_SPI_ER_OFFSET,
-		       ~ZYNQ_SPI_ER_ENABLE_MASK);
+		       ZYNQ_SPI_ER_DISABLE_MASK);
 
 	clk_disable(xspi->devclk);
 	clk_disable(xspi->aperclk);
