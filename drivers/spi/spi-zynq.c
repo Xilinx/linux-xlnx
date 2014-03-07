@@ -377,6 +377,23 @@ static irqreturn_t zynq_spi_irq(int irq, void *dev_id)
 }
 
 /**
+ * zynq_spi_reset_controller - Resets SPI controller
+ * @spi:	Pointer to the spi_device structure
+ *
+ * This function disables the interrupts, de-asserts the chip select and
+ * disables the SPI controller.
+ */
+static void zynq_spi_reset_controller(struct spi_device *spi)
+{
+	struct zynq_spi *xspi = spi_master_get_devdata(spi->master);
+
+	zynq_spi_write(xspi->regs + ZYNQ_SPI_IDR_OFFSET,
+			ZYNQ_SPI_IXR_ALL_MASK);
+	zynq_spi_chipselect(spi, 0);
+	zynq_spi_write(xspi->regs + ZYNQ_SPI_ER_OFFSET, 0);
+}
+
+/**
  * zynq_spi_start_transfer - Initiates the SPI transfer
  * @spi:	Pointer to the spi_device structure
  * @transfer:	Pointer to the spi_transfer structure which provide information
@@ -413,9 +430,14 @@ static int zynq_spi_start_transfer(struct spi_device *spi,
 
 	spin_unlock_irqrestore(&xspi->ctrl_reg_lock, flags);
 
-	ret = wait_for_completion_timeout(&xspi->done, 5 * HZ);
-	if (ret == 0)
-		return -EIO;
+	ret = wait_for_completion_interruptible_timeout(&xspi->done, 5 * HZ);
+	if (ret < 1) {
+		zynq_spi_reset_controller(spi);
+		if (!ret)
+			return -ETIMEDOUT;
+
+		return ret;
+	}
 
 	return (transfer->len) - (xspi->remaining_bytes);
 }
