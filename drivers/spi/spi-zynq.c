@@ -323,12 +323,13 @@ static irqreturn_t zynq_spi_irq(int irq, void *dev_id)
 
 	intr_status = zynq_spi_read(xspi->regs + ZYNQ_SPI_ISR_OFFSET);
 	zynq_spi_write(xspi->regs + ZYNQ_SPI_ISR_OFFSET, intr_status);
-	zynq_spi_write(xspi->regs + ZYNQ_SPI_IDR_OFFSET, ZYNQ_SPI_IXR_ALL_MASK);
 
 	if (intr_status & ZYNQ_SPI_IXR_MODF_MASK) {
 		/* Indicate that transfer is completed, the SPI subsystem will
 		 * identify the error as the remaining bytes to be
 		 * transferred is non-zero */
+		zynq_spi_write(xspi->regs + ZYNQ_SPI_IDR_OFFSET,
+				ZYNQ_SPI_IXR_ALL_MASK);
 		complete(&xspi->done);
 	} else if (intr_status & ZYNQ_SPI_IXR_TXOW_MASK) {
 		u32 ctrl_reg;
@@ -356,9 +357,6 @@ static irqreturn_t zynq_spi_irq(int irq, void *dev_id)
 			/* There is more data to send */
 			zynq_spi_fill_tx_fifo(xspi);
 
-			zynq_spi_write(xspi->regs + ZYNQ_SPI_IER_OFFSET,
-					ZYNQ_SPI_IXR_ALL_MASK);
-
 			spin_lock(&xspi->ctrl_reg_lock);
 
 			ctrl_reg = zynq_spi_read(xspi->regs +
@@ -370,6 +368,8 @@ static irqreturn_t zynq_spi_irq(int irq, void *dev_id)
 			spin_unlock(&xspi->ctrl_reg_lock);
 		} else {
 			/* Transfer is completed */
+			zynq_spi_write(xspi->regs + ZYNQ_SPI_IDR_OFFSET,
+					ZYNQ_SPI_IXR_ALL_MASK);
 			complete(&xspi->done);
 		}
 	}
