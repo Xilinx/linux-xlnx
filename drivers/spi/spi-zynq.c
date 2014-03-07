@@ -102,6 +102,12 @@
 #define zynq_spi_read(addr)	__raw_readl(addr)
 #define zynq_spi_write(addr, val)	__raw_writel((val), (addr))
 
+/* Driver state - suspend/ready */
+enum driver_state_val {
+	ZYNQ_SPI_DRIVER_STATE_READY = 0,
+	ZYNQ_SPI_DRIVER_STATE_SUSPEND
+};
+
 /**
  * struct zynq_spi - This definition defines spi driver instance
  * @regs:		Virtual address of the SPI controller registers
@@ -114,6 +120,7 @@
  * @remaining_bytes:	Number of bytes left to transfer
  * @dev_busy:		Device busy flag
  * @done:		Transfer complete status
+ * @driver_state:	Describes driver state - ready/suspended
  */
 struct zynq_spi {
 	void __iomem *regs;
@@ -126,6 +133,7 @@ struct zynq_spi {
 	int remaining_bytes;
 	u8 dev_busy;
 	struct completion done;
+	enum driver_state_val driver_state;
 };
 
 /**
@@ -458,16 +466,20 @@ static int zynq_spi_start_transfer(struct spi_device *spi,
  *
  * This function enables SPI master controller.
  *
- * Return:	0 always
+ * Return:	0 on success and error value on error
  */
 int zynq_prepare_transfer_hardware(struct spi_master *master)
 {
 	struct zynq_spi *xspi = spi_master_get_devdata(master);
+	int status = 0;
 
-	zynq_spi_write(xspi->regs + ZYNQ_SPI_ER_OFFSET,
-			ZYNQ_SPI_ER_ENABLE_MASK);
+	if ((xspi->driver_state) == ZYNQ_SPI_DRIVER_STATE_READY)
+		zynq_spi_write(xspi->regs + ZYNQ_SPI_ER_OFFSET,
+				ZYNQ_SPI_ER_ENABLE_MASK);
+	else
+		status = -EINVAL;
 
-	return 0;
+	return status;
 }
 
 /**
@@ -651,6 +663,8 @@ static int zynq_spi_probe(struct platform_device *pdev)
 
 	xspi->speed_hz = clk_get_rate(xspi->devclk) / 2;
 
+	xspi->driver_state = ZYNQ_SPI_DRIVER_STATE_READY;
+
 	ret = spi_register_master(master);
 	if (ret) {
 		dev_err(&pdev->dev, "spi_register_master failed\n");
@@ -704,7 +718,8 @@ static int zynq_spi_remove(struct platform_device *pdev)
  * zynq_spi_suspend - Suspend method for the SPI driver
  * @dev:	Address of the platform_device structure
  *
- * This function disables the SPI controller
+ * This function disables the SPI controller and
+ * changes the driver state to "suspend"
  *
  * Return:	0 on success and error value on error
  */
@@ -714,9 +729,20 @@ static int zynq_spi_suspend(struct device *dev)
 			struct platform_device, dev);
 	struct spi_master *master = platform_get_drvdata(pdev);
 	struct zynq_spi *xspi = spi_master_get_devdata(master);
+	u32 ctrl_reg;
+
+	zynq_spi_write(xspi->regs + ZYNQ_SPI_IDR_OFFSET,
+			ZYNQ_SPI_IXR_DEFAULT_MASK);
+	complete(&xspi->done);
+
+	ctrl_reg = zynq_spi_read(xspi->regs + ZYNQ_SPI_CR_OFFSET);
+	ctrl_reg |= ZYNQ_SPI_CR_SSCTRL_MASK;
+	zynq_spi_write(xspi->regs + ZYNQ_SPI_CR_OFFSET, ctrl_reg);
 
 	zynq_spi_write(xspi->regs + ZYNQ_SPI_ER_OFFSET,
 		       ZYNQ_SPI_ER_DISABLE_MASK);
+
+	xspi->driver_state = ZYNQ_SPI_DRIVER_STATE_SUSPEND;
 
 	clk_disable(xspi->devclk);
 	clk_disable(xspi->aperclk);
@@ -729,7 +755,7 @@ static int zynq_spi_suspend(struct device *dev)
  * zynq_spi_resume - Resume method for the SPI driver
  * @dev:	Address of the platform_device structure
  *
- * This function initializes the SPI controller
+ * This function changes the driver state to "ready"
  *
  * Return:	0 on success and error value on error
  */
@@ -754,7 +780,7 @@ static int zynq_spi_resume(struct device *dev)
 		return ret;
 	}
 
-	zynq_spi_init_hw(xspi->regs);
+	xspi->driver_state = ZYNQ_SPI_DRIVER_STATE_READY;
 
 	dev_dbg(&pdev->dev, "resume succeeded\n");
 	return 0;
