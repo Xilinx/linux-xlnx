@@ -182,16 +182,12 @@ static void zynq_spi_chipselect(struct spi_device *spi, int is_on)
 }
 
 /**
- * zynq_spi_setup_transfer - Configure SPI controller for specified transfer
+ * zynq_spi_config_clock - Sets clock polarity, phase and frequency
  * @spi:	Pointer to the spi_device structure
- * @transfer:	Pointer to the spi_transfer structure which provides information
- *		about next transfer setup parameters
+ * @transfer:	Pointer to the spi_transfer structure which provides
+ *		information about next transfer setup parameters
  *
- * Sets the operational mode of SPI controller for the next SPI transfer and
- * sets the requested clock frequency.
- *
- * Return:	0 on success and error value on error
- *
+ * Sets the requested clock polarity, phase and frequency.
  * Note: If the requested frequency is not an exact match with what can be
  * obtained using the prescalar value the driver sets the clock frequency which
  * is lower than the requested frequency (maximum lower) for the transfer. If
@@ -199,25 +195,16 @@ static void zynq_spi_chipselect(struct spi_device *spi, int is_on)
  * controller the driver will set the highest or lowest frequency supported by
  * controller.
  */
-static int zynq_spi_setup_transfer(struct spi_device *spi,
+static void zynq_spi_config_clock(struct spi_device *spi,
 		struct spi_transfer *transfer)
 {
 	struct zynq_spi *xspi = spi_master_get_devdata(spi->master);
-	u8 bits_per_word;
 	u32 ctrl_reg;
 	u32 req_hz;
 	u32 baud_rate_val;
 	unsigned long flags, frequency;
 
-	bits_per_word = (transfer) ?
-			transfer->bits_per_word : spi->bits_per_word;
 	req_hz = (transfer) ? transfer->speed_hz : spi->max_speed_hz;
-
-	if (bits_per_word != 8) {
-		dev_err(&spi->dev, "%s, unsupported bits per word %x\n",
-			__func__, spi->bits_per_word);
-		return -EINVAL;
-	}
 
 	if (transfer && !transfer->speed_hz)
 		req_hz = spi->max_speed_hz;
@@ -255,6 +242,35 @@ static int zynq_spi_setup_transfer(struct spi_device *spi,
 		       ZYNQ_SPI_ER_ENABLE_MASK);
 
 	spin_unlock_irqrestore(&xspi->ctrl_reg_lock, flags);
+}
+
+/**
+ * zynq_spi_setup_transfer - Configure SPI controller for specified transfer
+ * @spi:	Pointer to the spi_device structure
+ * @transfer:	Pointer to the spi_transfer structure which provides information
+ *		about next transfer setup parameters
+ *
+ * Sets the operational mode of SPI controller for the next SPI transfer and
+ * sets the requested clock frequency.
+ *
+ * Return:	0 on success and error value on error
+ */
+static int zynq_spi_setup_transfer(struct spi_device *spi,
+		struct spi_transfer *transfer)
+{
+	struct zynq_spi *xspi = spi_master_get_devdata(spi->master);
+	u8 bits_per_word;
+
+	bits_per_word = (transfer) ?
+			transfer->bits_per_word : spi->bits_per_word;
+
+	if (bits_per_word != 8) {
+		dev_err(&spi->dev, "%s, unsupported bits per word %x\n",
+			__func__, spi->bits_per_word);
+		return -EINVAL;
+	}
+
+	zynq_spi_config_clock(spi, transfer);
 
 	dev_dbg(&spi->dev, "%s, mode %d, %u bits/w, %u clock speed\n",
 		__func__, spi->mode, spi->bits_per_word,
