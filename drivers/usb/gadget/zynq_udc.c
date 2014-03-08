@@ -2141,7 +2141,7 @@ static void dtd_complete_irq(struct zynq_udc *udc)
 			if (status == REQ_UNCOMPLETE)
 				break;
 			/* Clear the endpoint complete events */
-			zynq_writel(bit_pos, &dr_regs->endptcomplete);
+			zynq_writel(bit_mask, &dr_regs->endptcomplete);
 			/* write back status to req */
 			curr_req->req.status = status;
 
