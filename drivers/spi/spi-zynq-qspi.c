@@ -517,8 +517,11 @@ static int zynq_qspi_setup(struct spi_device *qspi)
 	if (!qspi->max_speed_hz)
 		return -EINVAL;
 
-	if (!qspi->bits_per_word)
-		qspi->bits_per_word = 32;
+	if (qspi->bits_per_word && qspi->bits_per_word != 8) {
+		dev_err(&qspi->dev, "%s, unsupported bits per word %u\n",
+			__func__, qspi->bits_per_word);
+		return -EINVAL;
+	}
 
 	return zynq_qspi_setup_transfer(qspi, NULL);
 }
@@ -775,7 +778,7 @@ static void zynq_qspi_work_queue(struct work_struct *work)
 #endif
 
 		list_for_each_entry(transfer, &msg->transfers, transfer_list) {
-			if (transfer->bits_per_word || transfer->speed_hz) {
+			if (transfer->speed_hz) {
 				status = zynq_qspi_setup_transfer(qspi,
 								  transfer);
 				if (status < 0)
@@ -862,11 +865,9 @@ static int zynq_qspi_transfer(struct spi_device *qspi,
 	list_for_each_entry(transfer, &message->transfers, transfer_list) {
 		if (!transfer->tx_buf && !transfer->rx_buf && transfer->len)
 			return -EINVAL;
-		/* QSPI controller supports only 32 bit transfers whereas higher
-		 * layer drivers request 8 bit transfers. Re-visit at a later
-		 * time */
-		/* if (bits_per_word != 32)
-			return -EINVAL; */
+		/* We only support 8-bit transfers */
+		if (transfer->bits_per_word && transfer->bits_per_word != 8)
+			return -EINVAL;
 	}
 
 	spin_lock_irqsave(&xqspi->trans_queue_lock, flags);
