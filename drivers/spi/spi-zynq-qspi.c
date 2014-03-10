@@ -258,8 +258,7 @@ static struct zynq_qspi_inst_format flash_inst[] = {
 
 /**
  * zynq_qspi_init_hw - Initialize the hardware
- * @regs_base:	Base address of QSPI controller
- * @is_dual:	Indicates whether dual memories are used
+ * @xqspi:	Pointer to the zynq_qspi structure
  *
  * The default settings of the QSPI controller's configurable parameters on
  * reset are
@@ -277,24 +276,24 @@ static struct zynq_qspi_inst_format flash_inst[] = {
  *	- Set the little endian mode of TX FIFO and
  *	- Enable the QSPI controller
  */
-static void zynq_qspi_init_hw(void __iomem *regs_base, int is_dual)
+static void zynq_qspi_init_hw(struct zynq_qspi *xqspi)
 {
 	u32 config_reg;
 
-	zynq_qspi_write(regs_base + ZYNQ_QSPI_ENABLE_OFFSET,
+	zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_ENABLE_OFFSET,
 		~ZYNQ_QSPI_ENABLE_ENABLE_MASK);
-	zynq_qspi_write(regs_base + ZYNQ_QSPI_IDIS_OFFSET, 0x7F);
+	zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_IDIS_OFFSET, 0x7F);
 
 	/* Disable linear mode as the boot loader may have used it */
-	zynq_qspi_write(regs_base + ZYNQ_QSPI_LINEAR_CFG_OFFSET, 0);
+	zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_LINEAR_CFG_OFFSET, 0);
 
 	/* Clear the RX FIFO */
-	while (zynq_qspi_read(regs_base + ZYNQ_QSPI_STATUS_OFFSET) &
+	while (zynq_qspi_read(xqspi->regs + ZYNQ_QSPI_STATUS_OFFSET) &
 			ZYNQ_QSPI_IXR_RXNEMTY_MASK)
-		zynq_qspi_read(regs_base + ZYNQ_QSPI_RXD_OFFSET);
+		zynq_qspi_read(xqspi->regs + ZYNQ_QSPI_RXD_OFFSET);
 
-	zynq_qspi_write(regs_base + ZYNQ_QSPI_STATUS_OFFSET , 0x7F);
-	config_reg = zynq_qspi_read(regs_base + ZYNQ_QSPI_CONFIG_OFFSET);
+	zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_STATUS_OFFSET , 0x7F);
+	config_reg = zynq_qspi_read(xqspi->regs + ZYNQ_QSPI_CONFIG_OFFSET);
 	config_reg &= ~(ZYNQ_QSPI_CONFIG_MSTREN_MASK |
 			ZYNQ_QSPI_CONFIG_CPOL_MASK |
 			ZYNQ_QSPI_CONFIG_CPHA_MASK |
@@ -305,25 +304,25 @@ static void zynq_qspi_init_hw(void __iomem *regs_base, int is_dual)
 	config_reg |= (ZYNQ_QSPI_CONFIG_MSTREN_MASK |
 			ZYNQ_QSPI_CONFIG_SSFORCE_MASK |
 			ZYNQ_QSPI_CONFIG_IFMODE_MASK);
-	zynq_qspi_write(regs_base + ZYNQ_QSPI_CONFIG_OFFSET, config_reg);
+	zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_CONFIG_OFFSET, config_reg);
 
-	zynq_qspi_write(regs_base + ZYNQ_QSPI_RX_THRESH_OFFSET,
+	zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_RX_THRESH_OFFSET,
 				ZYNQ_QSPI_RX_THRESHOLD);
-	if (is_dual == 1)
+	if (xqspi->is_dual)
 		/* Enable two memories on seperate buses */
-		zynq_qspi_write(regs_base + ZYNQ_QSPI_LINEAR_CFG_OFFSET,
+		zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_LINEAR_CFG_OFFSET,
 			(ZYNQ_QSPI_LCFG_TWO_MEM_MASK |
 			 ZYNQ_QSPI_LCFG_SEP_BUS_MASK |
 			 (1 << ZYNQ_QSPI_LCFG_DUMMY_SHIFT) |
 			 ZYNQ_QSPI_FAST_READ_QOUT_CODE));
 #ifdef CONFIG_SPI_ZYNQ_QSPI_DUAL_STACKED
 	/* Enable two memories on shared bus */
-	zynq_qspi_write(regs_base + ZYNQ_QSPI_LINEAR_CFG_OFFSET,
+	zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_LINEAR_CFG_OFFSET,
 		 (ZYNQ_QSPI_LCFG_TWO_MEM_MASK |
 		 (1 << ZYNQ_QSPI_LCFG_DUMMY_SHIFT) |
 		 ZYNQ_QSPI_FAST_READ_QOUT_CODE));
 #endif
-	zynq_qspi_write(regs_base + ZYNQ_QSPI_ENABLE_OFFSET,
+	zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_ENABLE_OFFSET,
 			ZYNQ_QSPI_ENABLE_ENABLE_MASK);
 }
 
@@ -1019,7 +1018,7 @@ static int zynq_qspi_resume(struct device *dev)
 		return ret;
 	}
 
-	zynq_qspi_init_hw(xqspi->regs, xqspi->is_dual);
+	zynq_qspi_init_hw(xqspi);
 
 	ret = zynq_qspi_start_queue(xqspi);
 	if (ret != 0) {
@@ -1110,7 +1109,7 @@ static int zynq_qspi_probe(struct platform_device *pdev)
 	}
 
 	/* QSPI controller initializations */
-	zynq_qspi_init_hw(xqspi->regs, xqspi->is_dual);
+	zynq_qspi_init_hw(xqspi);
 
 	init_completion(&xqspi->done);
 
