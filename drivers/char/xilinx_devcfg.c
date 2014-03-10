@@ -55,6 +55,7 @@ static DEFINE_MUTEX(xdevcfg_mutex);
 						    *  Reset FPGA */
 #define XDCFG_CTRL_PCAP_PR_MASK		0x08000000 /* Enable PCAP for PR */
 #define XDCFG_CTRL_PCAP_MODE_MASK	0x04000000 /* Enable PCAP */
+#define XDCFG_CTRL_PCAP_RATE_EN_MASK  0x02000000 /* Enable PCAP Quad Rate */
 #define XDCFG_CTRL_PCFG_AES_EN_MASK	0x00000E00 /* AES Enable Mask */
 #define XDCFG_CTRL_SEU_EN_MASK		0x00000100 /* SEU Enable Mask */
 #define XDCFG_CTRL_SPNIDEN_MASK		0x00000040 /* Secure Non Invasive
@@ -1152,11 +1153,13 @@ static ssize_t xdevcfg_set_aes(struct device *dev,
 	if (mask_bit)
 		xdevcfg_writereg(drvdata->base_address + XDCFG_CTRL_OFFSET,
 				(ctrl_reg_status |
-				 XDCFG_CTRL_PCFG_AES_EN_MASK));
+				 XDCFG_CTRL_PCFG_AES_EN_MASK |
+				 XDCFG_CTRL_PCAP_RATE_EN_MASK));
 	else
 		xdevcfg_writereg(drvdata->base_address + XDCFG_CTRL_OFFSET,
 				(ctrl_reg_status &
-				 (~XDCFG_CTRL_PCFG_AES_EN_MASK)));
+				 ~(XDCFG_CTRL_PCFG_AES_EN_MASK |
+				 XDCFG_CTRL_PCAP_RATE_EN_MASK)));
 
 	spin_unlock_irqrestore(&drvdata->lock, flags);
 
