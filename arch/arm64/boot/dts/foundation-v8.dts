@@ -56,33 +56,25 @@
 		clock-frequency = <100000000>;
 	};
 
-	smb {
-		compatible = "arm,vexpress,v2m-p1", "simple-bus";
-		/*arm,v2m-memory-map = "rs1";*/
-		#address-cells = <2>;
-		#size-cells = <1>;
-		ranges;
+    v2m_clk24mhz: clk24mhz {
+        compatible = "fixed-clock";
+        #clock-cells = <0>;
+        clock-frequency = <24000000>;
+        clock-output-names = "v2m:clk24mhz";
+    };
 
-		v2m_clk24mhz: clk24mhz {
-			compatible = "fixed-clock";
-			#clock-cells = <0>;
-			clock-frequency = <24000000>;
-			clock-output-names = "v2m:clk24mhz";
-		};
+    iofpga@3,00000000 {
+        compatible = "arm,amba-bus", "simple-bus";
+        #address-cells = <2>;
+        #size-cells = <1>;
+        ranges;
 
-		iofpga@3,00000000 {
-			compatible = "arm,amba-bus", "simple-bus";
-			#address-cells = <2>;
-			#size-cells = <1>;
-			ranges;
-
-			v2m_serial0: uart@090000 {
-				compatible = "arm,pl011", "arm,primecell";
-				reg = <0 0x1c090000 0x1000>;
-				interrupts = <0 5 4>;
-				clocks = <&v2m_clk24mhz>, <&v2m_clk24mhz>;
-				clock-names = "uartclk", "apb_pclk";
-			};
-		};
-	};
+        v2m_serial0: uart@090000 {
+            compatible = "arm,pl011", "arm,primecell";
+            reg = <0 0x1c090000 0x1000>;
+            interrupts = <0 5 4>;
+            clocks = <&v2m_clk24mhz>, <&v2m_clk24mhz>;
+            clock-names = "uartclk", "apb_pclk";
+        };
+    };
 };
