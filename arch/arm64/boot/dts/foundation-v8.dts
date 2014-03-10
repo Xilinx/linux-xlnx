@@ -11,7 +11,7 @@
 / {
 	interrupt-parent = <&gic>;
 	#address-cells = <1>;
-	#size-cells = <2>;
+	#size-cells = <1>;
 
 	chosen { };
 
@@ -34,7 +34,7 @@
 
 	memory@80000000 {
 		device_type = "memory";
-		reg = <0x80000000 0 0x80000000>;
+		reg = <0x80000000 0x80000000>;
 	};
 
 	gic: interrupt-controller@2c001000 {
@@ -42,10 +42,10 @@
 		#interrupt-cells = <3>;
 		#address-cells = <0>;
 		interrupt-controller;
-		reg = <0x2c001000 0 0x1000>,
-		      <0x2c002000 0 0x1000>,
-		      <0x2c004000 0 0x2000>,
-		      <0x2c006000 0 0x2000>;
+		reg = <0x2c001000 0x1000>,
+		      <0x2c002000 0x1000>,
+		      <0x2c004000 0x2000>,
+		      <0x2c006000 0x2000>;
 		interrupts = <1 9 0xf04>;
 	};
 
