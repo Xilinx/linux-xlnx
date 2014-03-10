@@ -458,7 +458,7 @@ static int zynq_spi_start_transfer(struct spi_device *spi,
  *
  * Return:	0 on success and error value on error
  */
-int zynq_prepare_transfer_hardware(struct spi_master *master)
+static int zynq_prepare_transfer_hardware(struct spi_master *master)
 {
 	struct zynq_spi *xspi = spi_master_get_devdata(master);
 	int status = 0;
@@ -484,8 +484,8 @@ int zynq_prepare_transfer_hardware(struct spi_master *master)
  *
  * Return:	0 on success and error value on error.
  */
-int zynq_transfer_one_message(struct spi_master *master,
-				    struct spi_message *msg)
+static int zynq_transfer_one_message(struct spi_master *master,
+				     struct spi_message *msg)
 {
 	struct spi_device *spi;
 	unsigned cs_change = 1;
@@ -553,7 +553,7 @@ int zynq_transfer_one_message(struct spi_master *master,
  *
  * Return:	0 always
  */
-int zynq_unprepare_transfer_hardware(struct spi_master *master)
+static int zynq_unprepare_transfer_hardware(struct spi_master *master)
 {
 	struct zynq_spi *xspi = spi_master_get_devdata(master);
 
