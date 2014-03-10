@@ -463,7 +463,7 @@ static int zynq_qspi_setup_transfer(struct spi_device *qspi,
 
 	/* Set the clock frequency */
 	if (xqspi->speed_hz != req_hz) {
-		while ((baud_rate_val < 8)  &&
+		while ((baud_rate_val < 7)  &&
 			(clk_get_rate(xqspi->devclk) / (2 << baud_rate_val)) >
 			req_hz)
 				baud_rate_val++;
