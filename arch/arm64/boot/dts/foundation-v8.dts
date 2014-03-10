@@ -125,20 +125,6 @@
 			clock-output-names = "v2m:clk24mhz";
 		};
 
-		v2m_refclk1mhz: refclk1mhz {
-			compatible = "fixed-clock";
-			#clock-cells = <0>;
-			clock-frequency = <1000000>;
-			clock-output-names = "v2m:refclk1mhz";
-		};
-
-		v2m_refclk32khz: refclk32khz {
-			compatible = "fixed-clock";
-			#clock-cells = <0>;
-			clock-frequency = <32768>;
-			clock-output-names = "v2m:refclk32khz";
-		};
-
 		iofpga@3,00000000 {
 			compatible = "arm,amba-bus", "simple-bus";
 			#address-cells = <1>;
