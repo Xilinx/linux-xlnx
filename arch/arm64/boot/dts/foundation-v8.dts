@@ -58,17 +58,10 @@
 
 	smb {
 		compatible = "arm,vexpress,v2m-p1", "simple-bus";
-		arm,v2m-memory-map = "rs1";
-		#address-cells = <2>; /* SMB chipselect number and offset */
+		/*arm,v2m-memory-map = "rs1";*/
+		#address-cells = <2>;
 		#size-cells = <1>;
-
-		ranges = <0 0 0x08000000 0x04000000>,
-			 <1 0 0x14000000 0x04000000>,
-			 <2 0 0x18000000 0x04000000>,
-			 <3 0 0x1c000000 0x04000000>,
-			 <4 0 0x0c000000 0x04000000>,
-			 <5 0 0x10000000 0x04000000>;
-
+		ranges;
 		#interrupt-cells = <1>;
 		interrupt-map-mask = <0 0 63>;
 		interrupt-map = <0 0  0 &gic 0  0 4>,
@@ -124,13 +117,13 @@
 
 		iofpga@3,00000000 {
 			compatible = "arm,amba-bus", "simple-bus";
-			#address-cells = <1>;
+			#address-cells = <2>;
 			#size-cells = <1>;
-			ranges = <0 3 0 0x200000>;
+			ranges;
 
 			v2m_serial0: uart@090000 {
 				compatible = "arm,pl011", "arm,primecell";
-				reg = <0x090000 0x1000>;
+				reg = <0 0x1c090000 0x1000>;
 				interrupts = <5>;
 				clocks = <&v2m_clk24mhz>, <&v2m_clk24mhz>;
 				clock-names = "uartclk", "apb_pclk";
