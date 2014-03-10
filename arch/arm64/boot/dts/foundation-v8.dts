@@ -160,12 +160,6 @@
 				clocks = <&v2m_clk24mhz>, <&v2m_clk24mhz>;
 				clock-names = "uartclk", "apb_pclk";
 			};
-
-			virtio_block@0130000 {
-				compatible = "virtio,mmio";
-				reg = <0x130000 0x200>;
-				interrupts = <42>;
-			};
 		};
 	};
 };
