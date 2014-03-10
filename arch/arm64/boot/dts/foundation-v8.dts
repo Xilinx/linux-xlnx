@@ -126,12 +126,6 @@
 				<0 0 41 &gic 0 41 4>,
 				<0 0 42 &gic 0 42 4>;
 
-		ethernet@2,02000000 {
-			compatible = "smsc,lan91c111";
-			reg = <2 0x02000000 0x10000>;
-			interrupts = <15>;
-		};
-
 		v2m_clk24mhz: clk24mhz {
 			compatible = "fixed-clock";
 			#clock-cells = <0>;
