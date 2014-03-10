@@ -280,8 +280,7 @@ static void zynq_qspi_init_hw(struct zynq_qspi *xqspi)
 {
 	u32 config_reg;
 
-	zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_ENABLE_OFFSET,
-		~ZYNQ_QSPI_ENABLE_ENABLE_MASK);
+	zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_ENABLE_OFFSET, 0);
 	zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_IDIS_OFFSET, 0x7F);
 
 	/* Disable linear mode as the boot loader may have used it */
@@ -979,8 +978,7 @@ static int zynq_qspi_suspend(struct device *_dev)
 	if (ret != 0)
 		return ret;
 
-	zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_ENABLE_OFFSET,
-			~ZYNQ_QSPI_ENABLE_ENABLE_MASK);
+	zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_ENABLE_OFFSET, 0);
 
 	clk_disable(xqspi->devclk);
 	clk_disable(xqspi->aperclk);
@@ -1192,8 +1190,7 @@ static int zynq_qspi_remove(struct platform_device *pdev)
 	if (ret != 0)
 		return ret;
 
-	zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_ENABLE_OFFSET,
-			~ZYNQ_QSPI_ENABLE_ENABLE_MASK);
+	zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_ENABLE_OFFSET, 0);
 
 	clk_disable_unprepare(xqspi->devclk);
 	clk_disable_unprepare(xqspi->aperclk);
