@@ -44,6 +44,8 @@
 		interrupt-controller;
 		reg = <0 0x2c001000 0x1000>,
 		      <0 0x2c002000 0x1000>;
+		num-irq = <160>;
+		revision = <2>;
 	};
 
 	timer {
