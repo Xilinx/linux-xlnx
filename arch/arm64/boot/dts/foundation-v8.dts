@@ -153,11 +153,6 @@
 			#size-cells = <1>;
 			ranges = <0 3 0 0x200000>;
 
-			v2m_sysreg: sysreg@010000 {
-				compatible = "arm,vexpress-sysreg";
-				reg = <0x010000 0x1000>;
-			};
-
 			v2m_serial0: uart@090000 {
 				compatible = "arm,pl011", "arm,primecell";
 				reg = <0x090000 0x1000>;
