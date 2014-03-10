@@ -33,27 +33,6 @@
 			enable-method = "spin-table";
 			cpu-release-addr = <0x0 0x8000fff8>;
 		};
-		cpu@1 {
-			device_type = "cpu";
-			compatible = "arm,armv8";
-			reg = <0x0 0x1>;
-			enable-method = "spin-table";
-			cpu-release-addr = <0x0 0x8000fff8>;
-		};
-		cpu@2 {
-			device_type = "cpu";
-			compatible = "arm,armv8";
-			reg = <0x0 0x2>;
-			enable-method = "spin-table";
-			cpu-release-addr = <0x0 0x8000fff8>;
-		};
-		cpu@3 {
-			device_type = "cpu";
-			compatible = "arm,armv8";
-			reg = <0x0 0x3>;
-			enable-method = "spin-table";
-			cpu-release-addr = <0x0 0x8000fff8>;
-		};
 	};
 
 	memory@80000000 {
