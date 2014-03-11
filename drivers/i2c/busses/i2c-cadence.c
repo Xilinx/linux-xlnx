@@ -452,16 +452,12 @@ static int cdns_i2c_process_msg(struct cdns_i2c *id, struct i2c_msg *msg,
 			cdns_i2c_msend(id);
 
 		/* Wait for the signal of completion */
-		ret = wait_for_completion_interruptible_timeout(
-							&id->xfer_done, HZ);
-		if (ret < 1) {
+		ret = wait_for_completion_timeout(&id->xfer_done, HZ);
+		if (!ret) {
 			cdns_i2c_master_reset(adap);
-			if (!ret) {
-				dev_err(id->adap.dev.parent,
+			dev_err(id->adap.dev.parent,
 					"timeout waiting on completion\n");
-				return -ETIMEDOUT;
-			}
-			return ret;
+			return -ETIMEDOUT;
 		}
 		cdns_i2c_writereg(CDNS_I2C_IXR_ALL_INTR_MASK,
 				  CDNS_I2C_IDR_OFFSET);
