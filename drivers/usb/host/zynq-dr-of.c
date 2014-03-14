@@ -253,8 +253,7 @@ static int zynq_dr_of_remove(struct platform_device *ofdev)
 	return 0;
 }
 
-#ifdef CONFIG_PM_SLEEP
-static int zynq_dr_of_suspend(struct device *dev)
+static int __maybe_unused zynq_dr_of_suspend(struct device *dev)
 {
 	struct zynq_host_data *hdata = dev_get_drvdata(dev);
 
@@ -263,7 +262,7 @@ static int zynq_dr_of_suspend(struct device *dev)
 	return 0;
 }
 
-static int zynq_dr_of_resume(struct device *dev)
+static int __maybe_unused zynq_dr_of_resume(struct device *dev)
 {
 	struct zynq_host_data *hdata = dev_get_drvdata(dev);
 	int ret;
@@ -276,7 +275,6 @@ static int zynq_dr_of_resume(struct device *dev)
 
 	return 0;
 }
-#endif /* CONFIG_PM_SLEEP */
 
 static SIMPLE_DEV_PM_OPS(zynq_pm_ops, zynq_dr_of_suspend,
 		zynq_dr_of_resume);
