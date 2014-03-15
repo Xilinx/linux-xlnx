@@ -71,6 +71,7 @@
 #define XQSPIPS_CONFIG_CPHA_MASK	0x00000004 /* Clock Phase Control */
 #define XQSPIPS_CONFIG_CPOL_MASK	0x00000002 /* Clock Polarity Control */
 #define XQSPIPS_CONFIG_SSCTRL_MASK	0x00003C00 /* Slave Select Mask */
+#define XQSPIPS_CONFIG_FWIDTH_MASK	0x000000C0 /* FIFO width */
 #define XQSPIPS_CONFIG_MSTREN_MASK	0x00000001 /* Master Mode */
 
 /*
@@ -290,6 +291,7 @@ static void xqspips_init_hw(void __iomem *regs_base, int is_dual)
 			XQSPIPS_CONFIG_MANSRT_MASK);
 	config_reg |= (XQSPIPS_CONFIG_MSTREN_MASK |
 			XQSPIPS_CONFIG_SSFORCE_MASK |
+			XQSPIPS_CONFIG_FWIDTH_MASK |
 			XQSPIPS_CONFIG_IFMODE_MASK);
 	xqspips_write(regs_base + XQSPIPS_CONFIG_OFFSET, config_reg);
 
