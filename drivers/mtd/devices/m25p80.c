@@ -52,6 +52,7 @@
 #define	OPCODE_RDID		0x9f	/* Read JEDEC ID */
 #define OPCODE_RDFSR		0x70	/* Read Flag Status Register */
 #define OPCODE_WREAR		0xc5	/* Write Extended Address Register */
+#define OPCODE_RDEAR		0xc8	/* Read Extended Address Register */
 
 /* 4-byte address opcodes - used on Spansion and some Macronix flashes. */
 #define	OPCODE_NORM_READ_4B	0x13	/* Read data bytes (low frequency) */
@@ -80,6 +81,9 @@
 #define	SR_BP1			8	/* Block protect 1 */
 #define	SR_BP2			0x10	/* Block protect 2 */
 #define	SR_SRWD			0x80	/* SR write protect */
+
+/* Extended/Bank Address Register bits */
+#define EAR_SEGMENT_MASK	0x7	/* 128 Mb segment mask */
 
 /* Flag Status Register bits. */
 #define FSR_RDY			0x80	/* Ready/Busy program erase
@@ -240,6 +244,28 @@ static inline int set_4byte(struct m25p *flash, u32 jedec_id, int enable)
 		}
 		return ret;
 	}
+}
+
+/**
+ * read_ear - Get the extended/bank address register value
+ * @flash:	Pointer to the flash control structure
+ *
+ * This routine reads the Extended/bank address register value
+ *
+ * Return:	Negative if error occured.
+ */
+static int read_ear(struct m25p *flash)
+{
+	u8 code;
+
+	if (JEDEC_MFR(flash->jedec_id) == CFI_MFR_AMD)
+		code = OPCODE_BRRD;
+	else if (JEDEC_MFR(flash->jedec_id) == CFI_MFR_ST)
+		code = OPCODE_RDEAR;
+	else
+		return -EINVAL;
+
+	return read_spi_reg(flash, code, "EAR");
 }
 
 /*
@@ -1177,6 +1203,7 @@ static int m25p_probe(struct spi_device *spi)
 	unsigned			i;
 	struct mtd_part_parser_data	ppdata;
 	struct device_node *np = spi->dev.of_node;
+	int status;
 
 	/* Platform data helps sort out which chip type we have, as
 	 * well as how this board partitions it.  If we don't have
@@ -1384,6 +1411,11 @@ static int m25p_probe(struct spi_device *spi)
 		if (!strcmp(comp_str, "xlnx,zynq-qspi-1.00.a")) {
 			flash->addr_width = 3;
 			set_4byte(flash, info->jedec_id, 0);
+			status = read_ear(flash);
+			if (status < 0)
+				dev_warn(&spi->dev, "failed to read ear reg\n");
+			else
+				flash->curbank = status & EAR_SEGMENT_MASK;
 		} else {
 #endif
 			flash->addr_width = 4;
