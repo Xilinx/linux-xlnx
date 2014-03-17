@@ -64,6 +64,7 @@
 #define ZYNQ_QSPI_CONFIG_CPHA_MASK	0x00000004 /* Clock Phase Control */
 #define ZYNQ_QSPI_CONFIG_CPOL_MASK	0x00000002 /* Clock Polarity Control */
 #define ZYNQ_QSPI_CONFIG_SSCTRL_MASK	0x00003C00 /* Slave Select Mask */
+#define ZYNQ_QSPI_CONFIG_FWIDTH_MASK	0x000000C0 /* FIFO width */
 #define ZYNQ_QSPI_CONFIG_MSTREN_MASK	0x00000001 /* Master Mode */
 
 /*
@@ -302,6 +303,7 @@ static void zynq_qspi_init_hw(struct zynq_qspi *xqspi)
 			ZYNQ_QSPI_CONFIG_MANSRT_MASK);
 	config_reg |= (ZYNQ_QSPI_CONFIG_MSTREN_MASK |
 			ZYNQ_QSPI_CONFIG_SSFORCE_MASK |
+			ZYNQ_QSPI_CONFIG_FWIDTH_MASK |
 			ZYNQ_QSPI_CONFIG_IFMODE_MASK);
 	zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_CONFIG_OFFSET, config_reg);
 
