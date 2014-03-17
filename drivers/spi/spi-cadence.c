@@ -468,7 +468,7 @@ static int cdns_prepare_transfer_hardware(struct spi_master *master)
 }
 
 /**
- * cdns_transfer_one_message -
+ * cdns_transfer_one_message - Sets up and transfer a message.
  * @master:	Pointer to the spi_master structure which provides
  *		information about the controller.
  * @msg:	Pointer to the spi_message which contains the
