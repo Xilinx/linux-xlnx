@@ -21,14 +21,10 @@
 #include <linux/platform_device.h>
 #include <linux/spi/spi.h>
 
-/*
- * Name of this driver
- */
+/* Name of this driver */
 #define CDNS_SPI_NAME		"cdns-spi"
 
-/*
- * Register offset definitions
- */
+/* Register offset definitions */
 #define CDNS_SPI_CR_OFFSET	0x00 /* Configuration  Register, RW */
 #define CDNS_SPI_ISR_OFFSET	0x04 /* Interrupt Status Register, RO */
 #define CDNS_SPI_IER_OFFSET	0x08 /* Interrupt Enable Register, WO */
@@ -355,7 +351,8 @@ static irqreturn_t cdns_spi_irq(int irq, void *dev_id)
 	if (intr_status & CDNS_SPI_IXR_MODF_MASK) {
 		/* Indicate that transfer is completed, the SPI subsystem will
 		 * identify the error as the remaining bytes to be
-		 * transferred is non-zero */
+		 * transferred is non-zero
+		 */
 		cdns_spi_write(xspi->regs + CDNS_SPI_IDR_OFFSET,
 				CDNS_SPI_IXR_DEFAULT_MASK);
 		complete(&xspi->done);
@@ -789,9 +786,7 @@ static struct of_device_id cdns_spi_of_match[] = {
 };
 MODULE_DEVICE_TABLE(of, cdns_spi_of_match);
 
-/*
- * cdns_spi_driver - This structure defines the SPI subsystem platform driver
- */
+/* cdns_spi_driver - This structure defines the SPI subsystem platform driver */
 static struct platform_driver cdns_spi_driver = {
 	.probe	= cdns_spi_probe,
 	.remove	= cdns_spi_remove,
