@@ -238,9 +238,9 @@ static void cdns_spi_config_clock(struct spi_device *spi,
 			baud_rate_val++;
 
 		ctrl_reg &= ~CDNS_SPI_CR_BAUD_DIV_MASK;
-		ctrl_reg |= (baud_rate_val << CDNS_SPI_BAUD_DIV_SHIFT);
+		ctrl_reg |= baud_rate_val << CDNS_SPI_BAUD_DIV_SHIFT;
 
-		xspi->speed_hz = (frequency / (2 << baud_rate_val));
+		xspi->speed_hz = frequency / (2 << baud_rate_val);
 	}
 
 	cdns_spi_write(xspi->regs + CDNS_SPI_CR_OFFSET, ctrl_reg);
@@ -265,7 +265,7 @@ static int cdns_spi_setup_transfer(struct spi_device *spi,
 	struct cdns_spi *xspi = spi_master_get_devdata(spi->master);
 	u8 bits_per_word;
 
-	bits_per_word = (transfer) ?
+	bits_per_word = transfer ?
 			transfer->bits_per_word : spi->bits_per_word;
 
 	if (bits_per_word != 8) {
@@ -357,7 +357,7 @@ static irqreturn_t cdns_spi_irq(int irq, void *dev_id)
 	} else if (intr_status & CDNS_SPI_IXR_TXOW_MASK) {
 		unsigned long trans_cnt;
 
-		trans_cnt = (xspi->requested_bytes) - (xspi->remaining_bytes);
+		trans_cnt = xspi->requested_bytes - xspi->remaining_bytes;
 
 		/* Read out the data from the RX FIFO */
 		while (trans_cnt) {
@@ -441,7 +441,7 @@ static int cdns_spi_start_transfer(struct spi_device *spi,
 		return ret;
 	}
 
-	return (transfer->len) - (xspi->remaining_bytes);
+	return transfer->len - xspi->remaining_bytes;
 }
 
 /**
@@ -458,7 +458,7 @@ static int cdns_prepare_transfer_hardware(struct spi_master *master)
 	struct cdns_spi *xspi = spi_master_get_devdata(master);
 	int status = 0;
 
-	if ((xspi->driver_state) == CDNS_SPI_DRIVER_STATE_READY)
+	if (xspi->driver_state == CDNS_SPI_DRIVER_STATE_READY)
 		cdns_spi_write(xspi->regs + CDNS_SPI_ER_OFFSET,
 				CDNS_SPI_ER_ENABLE_MASK);
 	else
