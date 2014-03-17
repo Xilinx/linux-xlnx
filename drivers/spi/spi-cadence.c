@@ -155,14 +155,14 @@ static void cdns_spi_init_hw(void __iomem *regs_base)
 
 	/* Clear the RX FIFO */
 	while (cdns_spi_read(regs_base + CDNS_SPI_ISR_OFFSET) &
-			CDNS_SPI_IXR_RXNEMTY_MASK)
+	       CDNS_SPI_IXR_RXNEMTY_MASK)
 		cdns_spi_read(regs_base + CDNS_SPI_RXD_OFFSET);
 
 	cdns_spi_write(regs_base + CDNS_SPI_ISR_OFFSET, CDNS_SPI_IXR_ALL_MASK);
 	cdns_spi_write(regs_base + CDNS_SPI_CR_OFFSET,
-			CDNS_SPI_CR_DEFAULT_MASK);
+		       CDNS_SPI_CR_DEFAULT_MASK);
 	cdns_spi_write(regs_base + CDNS_SPI_ER_OFFSET,
-			CDNS_SPI_ER_ENABLE_MASK);
+		       CDNS_SPI_ER_ENABLE_MASK);
 }
 
 /**
@@ -181,7 +181,7 @@ static void cdns_spi_chipselect(struct spi_device *spi, int is_on)
 		/* Select the slave */
 		ctrl_reg &= ~CDNS_SPI_CR_SSCTRL_MASK;
 		ctrl_reg |= ((~(CDNS_SPI_SS0 << spi->chip_select)) <<
-				CDNS_SPI_SS_SHIFT) & CDNS_SPI_CR_SSCTRL_MASK;
+			     CDNS_SPI_SS_SHIFT) & CDNS_SPI_CR_SSCTRL_MASK;
 	} else {
 		/* Deselect the slave */
 		ctrl_reg |= CDNS_SPI_CR_SSCTRL_MASK;
@@ -312,10 +312,10 @@ static void cdns_spi_fill_tx_fifo(struct cdns_spi *xspi)
 	unsigned long trans_cnt = 0;
 
 	while ((trans_cnt < CDNS_SPI_FIFO_DEPTH) &&
-		(xspi->remaining_bytes > 0)) {
+	       (xspi->remaining_bytes > 0)) {
 		if (xspi->txbuf)
 			cdns_spi_write(xspi->regs + CDNS_SPI_TXD_OFFSET,
-					*xspi->txbuf++);
+				       *xspi->txbuf++);
 		else
 			cdns_spi_write(xspi->regs + CDNS_SPI_TXD_OFFSET, 0);
 
@@ -352,7 +352,7 @@ static irqreturn_t cdns_spi_irq(int irq, void *dev_id)
 		 * transferred is non-zero
 		 */
 		cdns_spi_write(xspi->regs + CDNS_SPI_IDR_OFFSET,
-				CDNS_SPI_IXR_DEFAULT_MASK);
+			       CDNS_SPI_IXR_DEFAULT_MASK);
 		complete(&xspi->done);
 	} else if (intr_status & CDNS_SPI_IXR_TXOW_MASK) {
 		unsigned long trans_cnt;
@@ -377,7 +377,7 @@ static irqreturn_t cdns_spi_irq(int irq, void *dev_id)
 		} else {
 			/* Transfer is completed */
 			cdns_spi_write(xspi->regs + CDNS_SPI_IDR_OFFSET,
-					CDNS_SPI_IXR_DEFAULT_MASK);
+				       CDNS_SPI_IXR_DEFAULT_MASK);
 			complete(&xspi->done);
 		}
 	}
@@ -397,10 +397,10 @@ static void cdns_spi_reset_controller(struct spi_device *spi)
 	struct cdns_spi *xspi = spi_master_get_devdata(spi->master);
 
 	cdns_spi_write(xspi->regs + CDNS_SPI_IDR_OFFSET,
-			CDNS_SPI_IXR_DEFAULT_MASK);
+		       CDNS_SPI_IXR_DEFAULT_MASK);
 	cdns_spi_chipselect(spi, 0);
 	cdns_spi_write(xspi->regs + CDNS_SPI_ER_OFFSET,
-			CDNS_SPI_ER_DISABLE_MASK);
+		       CDNS_SPI_ER_DISABLE_MASK);
 }
 
 /**
@@ -429,10 +429,10 @@ static int cdns_spi_start_transfer(struct spi_device *spi,
 	cdns_spi_fill_tx_fifo(xspi);
 
 	cdns_spi_write(xspi->regs + CDNS_SPI_IER_OFFSET,
-		CDNS_SPI_IXR_DEFAULT_MASK);
+		       CDNS_SPI_IXR_DEFAULT_MASK);
 
 	ret = wait_for_completion_interruptible_timeout(&xspi->done,
-			CDNS_SPI_TIMEOUT);
+							CDNS_SPI_TIMEOUT);
 	if (ret < 1) {
 		cdns_spi_reset_controller(spi);
 		if (!ret)
@@ -461,7 +461,7 @@ static int cdns_prepare_transfer_hardware(struct spi_master *master)
 		return -EINVAL;
 
 	cdns_spi_write(xspi->regs + CDNS_SPI_ER_OFFSET,
-				CDNS_SPI_ER_ENABLE_MASK);
+		       CDNS_SPI_ER_ENABLE_MASK);
 
 	return 0;
 }
@@ -490,7 +490,7 @@ static int cdns_transfer_one_message(struct spi_master *master,
 
 	list_for_each_entry(transfer, &msg->transfers, transfer_list) {
 		if ((transfer->bits_per_word || transfer->speed_hz) &&
-							cs_change) {
+		    cs_change) {
 			status = cdns_spi_setup_transfer(spi, transfer);
 			if (status < 0)
 				break;
@@ -555,7 +555,7 @@ static int cdns_unprepare_transfer_hardware(struct spi_master *master)
 	struct cdns_spi *xspi = spi_master_get_devdata(master);
 
 	cdns_spi_write(xspi->regs + CDNS_SPI_ER_OFFSET,
-			CDNS_SPI_ER_DISABLE_MASK);
+		       CDNS_SPI_ER_DISABLE_MASK);
 
 	return 0;
 }
@@ -662,7 +662,7 @@ static int cdns_spi_probe(struct platform_device *pdev)
 	}
 
 	dev_info(&pdev->dev, "at 0x%08X mapped to 0x%08X, irq=%d\n",
-			res->start, (u32 __force)xspi->regs, irq);
+		 res->start, (u32 __force)xspi->regs, irq);
 
 	return ret;
 
@@ -721,7 +721,7 @@ static int __maybe_unused cdns_spi_suspend(struct device *dev)
 	u32 ctrl_reg;
 
 	cdns_spi_write(xspi->regs + CDNS_SPI_IDR_OFFSET,
-			CDNS_SPI_IXR_DEFAULT_MASK);
+		       CDNS_SPI_IXR_DEFAULT_MASK);
 	complete(&xspi->done);
 
 	ctrl_reg = cdns_spi_read(xspi->regs + CDNS_SPI_CR_OFFSET);
