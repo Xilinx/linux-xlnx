@@ -454,15 +454,14 @@ static int cdns_spi_start_transfer(struct spi_device *spi,
 static int cdns_prepare_transfer_hardware(struct spi_master *master)
 {
 	struct cdns_spi *xspi = spi_master_get_devdata(master);
-	int status = 0;
 
-	if (xspi->driver_state == CDNS_SPI_DRIVER_STATE_READY)
-		cdns_spi_write(xspi->regs + CDNS_SPI_ER_OFFSET,
+	if (xspi->driver_state != CDNS_SPI_DRIVER_STATE_READY)
+		return -EINVAL;
+
+	cdns_spi_write(xspi->regs + CDNS_SPI_ER_OFFSET,
 				CDNS_SPI_ER_ENABLE_MASK);
-	else
-		status = -EINVAL;
 
-	return status;
+	return 0;
 }
 
 /**
