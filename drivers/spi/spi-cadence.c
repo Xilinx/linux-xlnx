@@ -51,9 +51,11 @@
 #define CDNS_SPI_CR_MSTREN_MASK		0x00000001 /* Master Enable Mask */
 #define CDNS_SPI_CR_MANSTRTEN_MASK	0x00008000 /* Manual TX Enable Mask */
 #define CDNS_SPI_CR_SSFORCE_MASK	0x00004000 /* Manual SS Enable Mask */
+#define CDNS_SPI_CR_BAUD_DIV_4_MASK	0x00000008 /* Default Baud Div Mask */
 #define CDNS_SPI_CR_DEFAULT_MASK	(CDNS_SPI_CR_MSTREN_MASK | \
 					CDNS_SPI_CR_SSCTRL_MASK | \
-					CDNS_SPI_CR_SSFORCE_MASK)
+					CDNS_SPI_CR_SSFORCE_MASK | \
+					CDNS_SPI_CR_BAUD_DIV_4_MASK)
 
 /*
  * SPI Configuration Register - Baud rate and slave select
@@ -139,7 +141,7 @@ struct cdns_spi {
  * @regs_base:		Base address of SPI controller
  *
  * On reset the SPI controller is configured to be in master mode, baud rate
- * divisor is set to 2, threshold value for TX FIFO not full interrupt is set
+ * divisor is set to 4, threshold value for TX FIFO not full interrupt is set
  * to 1 and size of the word to be transferred as 8 bit.
  * This function initializes the SPI controller to disable and clear all the
  * interrupts, enable manual slave select and manual start, deselect all the
@@ -648,7 +650,8 @@ static int cdns_spi_probe(struct platform_device *pdev)
 	master->unprepare_transfer_hardware = cdns_unprepare_transfer_hardware;
 	master->mode_bits = SPI_CPOL | SPI_CPHA;
 
-	xspi->speed_hz = clk_get_rate(xspi->ref_clk) / 2;
+	/* Set to default valid value */
+	xspi->speed_hz = clk_get_rate(xspi->ref_clk) / 4;
 
 	xspi->driver_state = CDNS_SPI_DRIVER_STATE_READY;
 
