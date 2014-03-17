@@ -111,7 +111,6 @@ enum driver_state_val {
  * @regs:		Virtual address of the SPI controller registers
  * @ref_clk:		Pointer to the peripheral clock
  * @pclk:		Pointer to the APB clock
- * @irq:		IRQ number
  * @speed_hz:		Current SPI bus clock speed in Hz
  * @txbuf:		Pointer	to the TX buffer
  * @rxbuf:		Pointer to the RX buffer
@@ -125,7 +124,6 @@ struct cdns_spi {
 	void __iomem *regs;
 	struct clk *ref_clk;
 	struct clk *pclk;
-	int irq;
 	u32 speed_hz;
 	const u8 *txbuf;
 	u8 *rxbuf;
@@ -569,7 +567,7 @@ static int cdns_unprepare_transfer_hardware(struct spi_master *master)
  */
 static int cdns_spi_probe(struct platform_device *pdev)
 {
-	int ret = 0;
+	int ret = 0, irq;
 	struct spi_master *master;
 	struct cdns_spi *xspi;
 	struct resource *res;
@@ -589,14 +587,14 @@ static int cdns_spi_probe(struct platform_device *pdev)
 		goto remove_master;
 	}
 
-	xspi->irq = platform_get_irq(pdev, 0);
-	if (xspi->irq < 0) {
+	irq = platform_get_irq(pdev, 0);
+	if (irq < 0) {
 		ret = -ENXIO;
 		dev_err(&pdev->dev, "irq number is negative\n");
 		goto remove_master;
 	}
 
-	ret = devm_request_irq(&pdev->dev, xspi->irq, cdns_spi_irq,
+	ret = devm_request_irq(&pdev->dev, irq, cdns_spi_irq,
 			       0, pdev->name, xspi);
 	if (ret != 0) {
 		ret = -ENXIO;
@@ -658,7 +656,7 @@ static int cdns_spi_probe(struct platform_device *pdev)
 	}
 
 	dev_info(&pdev->dev, "at 0x%08X mapped to 0x%08X, irq=%d\n",
-			res->start, (u32 __force)xspi->regs, xspi->irq);
+			res->start, (u32 __force)xspi->regs, irq);
 
 	return ret;
 
