@@ -778,8 +778,8 @@ static SIMPLE_DEV_PM_OPS(cdns_spi_dev_pm_ops, cdns_spi_suspend,
 MODULE_ALIAS("platform:" CDNS_SPI_NAME);
 
 static struct of_device_id cdns_spi_of_match[] = {
-	{ .compatible = "cdns,spi-r1p6"},
-	{ /* end of table */}
+	{ .compatible = "cdns,spi-r1p6" },
+	{ /* end of table */ }
 };
 MODULE_DEVICE_TABLE(of, cdns_spi_of_match);
 
