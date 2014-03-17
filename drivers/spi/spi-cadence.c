@@ -211,9 +211,9 @@ static void cdns_spi_config_clock(struct spi_device *spi,
 	u32 ctrl_reg, req_hz, baud_rate_val;
 	unsigned long frequency;
 
-	req_hz = (transfer) ? transfer->speed_hz : spi->max_speed_hz;
-
-	if (transfer && !transfer->speed_hz)
+	if (transfer && transfer->speed_hz)
+		req_hz = transfer->speed_hz;
+	else
 		req_hz = spi->max_speed_hz;
 
 	frequency = clk_get_rate(xspi->ref_clk);
@@ -223,7 +223,7 @@ static void cdns_spi_config_clock(struct spi_device *spi,
 	ctrl_reg = cdns_spi_read(xspi->regs + CDNS_SPI_CR_OFFSET);
 
 	/* Set the SPI clock phase and clock polarity */
-	ctrl_reg &= (~CDNS_SPI_CR_CPHA_MASK) & (~CDNS_SPI_CR_CPOL_MASK);
+	ctrl_reg &= ~(CDNS_SPI_CR_CPHA_MASK | CDNS_SPI_CR_CPOL_MASK);
 	if (spi->mode & SPI_CPHA)
 		ctrl_reg |= CDNS_SPI_CR_CPHA_MASK;
 	if (spi->mode & SPI_CPOL)
@@ -233,8 +233,8 @@ static void cdns_spi_config_clock(struct spi_device *spi,
 	if (xspi->speed_hz != req_hz) {
 		/* first valid value is 1 */
 		baud_rate_val = CDNS_SPI_BAUD_DIV_MIN;
-		while ((baud_rate_val < CDNS_SPI_BAUD_DIV_MAX) && (frequency /
-					(2 << baud_rate_val)) > req_hz)
+		while ((baud_rate_val < CDNS_SPI_BAUD_DIV_MAX) &&
+		       (frequency / (2 << baud_rate_val)) > req_hz)
 			baud_rate_val++;
 
 		ctrl_reg &= ~CDNS_SPI_CR_BAUD_DIV_MASK;
