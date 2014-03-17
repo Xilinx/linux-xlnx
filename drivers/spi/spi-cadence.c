@@ -699,7 +699,6 @@ static int cdns_spi_remove(struct platform_device *pdev)
 	return 0;
 }
 
-#ifdef CONFIG_PM_SLEEP
 /**
  * cdns_spi_suspend - Suspend method for the SPI driver
  * @dev:	Address of the platform_device structure
@@ -709,7 +708,7 @@ static int cdns_spi_remove(struct platform_device *pdev)
  *
  * Return:	0 on success and error value on error
  */
-static int cdns_spi_suspend(struct device *dev)
+static int __maybe_unused cdns_spi_suspend(struct device *dev)
 {
 	struct platform_device *pdev = container_of(dev,
 			struct platform_device, dev);
@@ -745,7 +744,7 @@ static int cdns_spi_suspend(struct device *dev)
  *
  * Return:	0 on success and error value on error
  */
-static int cdns_spi_resume(struct device *dev)
+static int __maybe_unused cdns_spi_resume(struct device *dev)
 {
 	struct platform_device *pdev = container_of(dev,
 			struct platform_device, dev);
@@ -771,7 +770,6 @@ static int cdns_spi_resume(struct device *dev)
 	dev_dbg(&pdev->dev, "resume succeeded\n");
 	return 0;
 }
-#endif /* ! CONFIG_PM_SLEEP */
 
 static SIMPLE_DEV_PM_OPS(cdns_spi_dev_pm_ops, cdns_spi_suspend,
 			 cdns_spi_resume);
