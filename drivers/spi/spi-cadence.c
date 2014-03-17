@@ -531,7 +531,7 @@ static int cdns_transfer_one_message(struct spi_master *master,
 		cdns_spi_chipselect(spi, 0);
 	}
 
-	if (!(status == 0 && cs_change))
+	if (status || !cs_change)
 		cdns_spi_chipselect(spi, 0);
 
 	msg->status = status;
