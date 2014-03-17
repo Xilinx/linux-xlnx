@@ -568,6 +568,7 @@ static int cdns_unprepare_transfer_hardware(struct spi_master *master)
 static int cdns_spi_probe(struct platform_device *pdev)
 {
 	int ret = 0, irq;
+	u32 num_cs;
 	struct spi_master *master;
 	struct cdns_spi *xspi;
 	struct resource *res;
@@ -634,7 +635,8 @@ static int cdns_spi_probe(struct platform_device *pdev)
 	init_completion(&xspi->done);
 
 	ret = of_property_read_u32(pdev->dev.of_node, "num-chip-select",
-				   (u32 *)&master->num_chipselect);
+				   &num_cs);
+	master->num_chipselect = num_cs;
 	if (ret < 0) {
 		dev_err(&pdev->dev, "couldn't determine num-chip-select\n");
 		goto clk_dis_all;
