@@ -481,7 +481,7 @@ static int cdns_transfer_one_message(struct spi_master *master,
 {
 	struct spi_device *spi;
 	unsigned cs_change = 1;
-	int status = 0;
+	int status = 0, length = 0;
 	struct spi_transfer *transfer;
 
 	spi = msg->spi;
@@ -506,14 +506,16 @@ static int cdns_transfer_one_message(struct spi_master *master,
 		}
 
 		if (transfer->len)
-			status = cdns_spi_start_transfer(spi, transfer);
+			length = cdns_spi_start_transfer(spi, transfer);
 
-		if (status != transfer->len) {
-			if (status > 0)
+		if (length != transfer->len) {
+			if (length > 0)
 				status = -EMSGSIZE;
+			else
+				status = length;
 			break;
 		}
-		msg->actual_length += status;
+		msg->actual_length += length;
 		status = 0;
 
 		if (transfer->delay_usecs)
