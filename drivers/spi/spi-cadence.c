@@ -208,9 +208,7 @@ static void cdns_spi_config_clock(struct spi_device *spi,
 		struct spi_transfer *transfer)
 {
 	struct cdns_spi *xspi = spi_master_get_devdata(spi->master);
-	u32 ctrl_reg;
-	u32 req_hz;
-	u32 baud_rate_val;
+	u32 ctrl_reg, req_hz, baud_rate_val;
 	unsigned long frequency;
 
 	req_hz = (transfer) ? transfer->speed_hz : spi->max_speed_hz;
