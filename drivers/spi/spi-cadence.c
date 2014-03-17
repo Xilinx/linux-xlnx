@@ -524,6 +524,7 @@ static int cdns_transfer_one_message(struct spi_master *master,
 
 		if (!cs_change)
 			continue;
+
 		if (transfer->transfer_list.next == &msg->transfers)
 			break;
 
