@@ -272,6 +272,27 @@ xvip_dma_querycap(struct file *file, void *fh, struct v4l2_capability *cap)
 	return 0;
 }
 
+/* FIXME: without this callback function, some applications are not configured
+ * with correct formats, and it results in frames in wrong format. Whether this
+ * callback needs to be required is not clearly defined, so it should be
+ * clarified through the mailing list.
+ */
+static int
+xvip_dma_enum_format(struct file *file, void *fh, struct v4l2_fmtdesc *f)
+{
+	struct v4l2_fh *vfh = file->private_data;
+	struct xvip_dma *dma = to_xvip_dma(vfh->vdev);
+
+	if (f->index > 0)
+		return -EINVAL;
+
+	mutex_lock(&dma->lock);
+	f->pixelformat = dma->format.pixelformat;
+	mutex_unlock(&dma->lock);
+
+	return 0;
+}
+
 static int
 xvip_dma_get_format(struct file *file, void *fh, struct v4l2_format *format)
 {
@@ -536,6 +557,7 @@ done:
 
 static const struct v4l2_ioctl_ops xvip_dma_ioctl_ops = {
 	.vidioc_querycap		= xvip_dma_querycap,
+	.vidioc_enum_fmt_vid_cap	= xvip_dma_enum_format,
 	.vidioc_g_fmt_vid_cap		= xvip_dma_get_format,
 	.vidioc_g_fmt_vid_out		= xvip_dma_get_format,
 	.vidioc_s_fmt_vid_cap		= xvip_dma_set_format,
