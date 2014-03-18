@@ -155,4 +155,12 @@ static inline void xvip_stop(struct xvip_device *xvip)
 	xvip_clr(xvip, XVIP_CTRL_CONTROL, XVIP_CTRL_CONTROL_SW_ENABLE);
 }
 
+static inline void xvip_set_frame_size(struct xvip_device *xvip,
+				       const struct v4l2_mbus_framefmt *format)
+{
+	xvip_write(xvip, XVIP_ACTIVE_SIZE,
+		   (format->height << XVIP_ACTIVE_VSIZE_SHIFT) |
+		   (format->width << XVIP_ACTIVE_HSIZE_SHIFT));
+}
+
 #endif /* __XILINX_VIP_H__ */
