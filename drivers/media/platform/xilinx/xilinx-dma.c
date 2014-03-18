@@ -323,7 +323,7 @@ __xvip_dma_try_format(struct xvip_dma *dma, struct v4l2_pix_format *pix,
 	 * requested format isn't supported.
 	 */
 	info = xvip_get_format_by_fourcc(pix->pixelformat);
-	if (info == NULL)
+	if (IS_ERR(info))
 		info = xvip_get_format_by_fourcc(XVIP_DMA_DEF_FORMAT);
 
 	pix->pixelformat = info->fourcc;

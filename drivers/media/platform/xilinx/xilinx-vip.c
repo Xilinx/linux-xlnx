@@ -59,7 +59,8 @@ EXPORT_SYMBOL_GPL(xvip_get_format_by_code);
  * @fourcc: the format 4CC
  *
  * Return: a pointer to the format information structure corresponding to the
- * given V4L2 format @fourcc, or %NULL if no corresponding format can be found.
+ * given V4L2 format @fourcc, or ERR_PTR if no corresponding format can be
+ * found.
  */
 const struct xvip_video_format *xvip_get_format_by_fourcc(u32 fourcc)
 {
@@ -72,7 +73,7 @@ const struct xvip_video_format *xvip_get_format_by_fourcc(u32 fourcc)
 			return format;
 	}
 
-	return NULL;
+	return ERR_PTR(-EINVAL);
 }
 EXPORT_SYMBOL_GPL(xvip_get_format_by_fourcc);
 
