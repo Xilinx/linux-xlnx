@@ -640,12 +640,12 @@ static int xvip_dma_mmap(struct file *file, struct vm_area_struct *vma)
 }
 
 static struct v4l2_file_operations xvip_dma_fops = {
-	.owner = THIS_MODULE,
-	.unlocked_ioctl = video_ioctl2,
-	.open = xvip_dma_open,
-	.release = xvip_dma_release,
-	.poll = xvip_dma_poll,
-	.mmap = xvip_dma_mmap,
+	.owner		= THIS_MODULE,
+	.unlocked_ioctl	= video_ioctl2,
+	.open		= xvip_dma_open,
+	.release	= xvip_dma_release,
+	.poll		= xvip_dma_poll,
+	.mmap		= xvip_dma_mmap,
 };
 
 /* -----------------------------------------------------------------------------
