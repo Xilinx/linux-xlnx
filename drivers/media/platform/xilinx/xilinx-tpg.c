@@ -96,7 +96,8 @@
 /**
  * struct xtpg_device - Xilinx Test Pattern Generator device structure
  * @xvip: Xilinx Video IP device
- * @pad: media pad
+ * @pads: media pads
+ * @npads: number of pads (1 or 2)
  * @format: active V4L2 media bus format at the source pad
  * @default_format: default V4L2 media bus format
  * @vip_format: format information corresponding to the active format
@@ -105,7 +106,8 @@
 struct xtpg_device {
 	struct xvip_device xvip;
 
-	struct media_pad pad;
+	struct media_pad pads[2];
+	unsigned int npads;
 
 	struct v4l2_mbus_framefmt format;
 	struct v4l2_mbus_framefmt default_format;
@@ -177,9 +179,23 @@ static int xtpg_set_format(struct v4l2_subdev *subdev,
 
 	__format = __xtpg_get_pad_format(xtpg, fh, fmt->pad, fmt->which);
 
+	/* In two pads mode the source pad format is always identical to the
+	 * sink pad format.
+	 */
+	if (xtpg->npads == 2 && fmt->pad == 1) {
+		fmt->format = *__format;
+		return 0;
+	}
+
 	xvip_set_format_size(__format, fmt);
 
 	fmt->format = *__format;
+
+	/* Propagate the format to the source pad. */
+	if (xtpg->npads == 2) {
+		__format = __xtpg_get_pad_format(xtpg, fh, 1, fmt->which);
+		*__format = fmt->format;
+	}
 
 	return 0;
 }
@@ -188,11 +204,43 @@ static int xtpg_set_format(struct v4l2_subdev *subdev,
  * V4L2 Subdevice Operations
  */
 
+static int xtpg_enum_frame_size(struct v4l2_subdev *subdev,
+				struct v4l2_subdev_fh *fh,
+				struct v4l2_subdev_frame_size_enum *fse)
+{
+	struct v4l2_mbus_framefmt *format;
+
+	format = v4l2_subdev_get_try_format(fh, fse->pad);
+
+	if (fse->index || fse->code != format->code)
+		return -EINVAL;
+
+	/* Min / max values for pad 0 is always fixed in both one and two pads
+	 * modes. In two pads mode, the source pad(= 1) size is identical to
+	 * the sink pad size */
+	if (fse->pad == 0) {
+		fse->min_width = XVIP_MIN_WIDTH;
+		fse->max_width = XVIP_MAX_WIDTH;
+		fse->min_height = XVIP_MIN_HEIGHT;
+		fse->max_height = XVIP_MAX_HEIGHT;
+	} else {
+		fse->min_width = format->width;
+		fse->max_width = format->width;
+		fse->min_height = format->height;
+		fse->max_height = format->height;
+	}
+
+	return 0;
+}
+
 static int xtpg_open(struct v4l2_subdev *subdev, struct v4l2_subdev_fh *fh)
 {
 	struct xtpg_device *xtpg = to_tpg(subdev);
 
 	*v4l2_subdev_get_try_format(fh, 0) = xtpg->default_format;
+
+	if (xtpg->npads == 2)
+		*v4l2_subdev_get_try_format(fh, 1) = xtpg->default_format;
 
 	return 0;
 }
@@ -301,7 +349,7 @@ static struct v4l2_subdev_video_ops xtpg_video_ops = {
 
 static struct v4l2_subdev_pad_ops xtpg_pad_ops = {
 	.enum_mbus_code		= xvip_enum_mbus_code,
-	.enum_frame_size	= xvip_enum_frame_size,
+	.enum_frame_size	= xtpg_enum_frame_size,
 	.get_fmt		= xtpg_get_format,
 	.set_fmt		= xtpg_set_format,
 };
@@ -543,10 +591,30 @@ static int __maybe_unused xtpg_pm_resume(struct device *dev)
 static int xtpg_parse_of(struct xtpg_device *xtpg)
 {
 	struct device_node *node = xtpg->xvip.dev->of_node;
+	struct device_node *ports;
+	struct device_node *port;
+	unsigned int nports = 0;
+
+	/* Count the number of ports. */
+	ports = of_get_child_by_name(node, "ports");
+	if (ports == NULL)
+		ports = node;
+
+	for_each_child_of_node(ports, port) {
+		if (port->name && (of_node_cmp(port->name, "port") == 0))
+			nports++;
+	}
+
+	if (nports != 1 && nports != 2) {
+		dev_err(xtpg->xvip.dev, "invalid number of ports %u\n", nports);
+		return -EINVAL;
+	}
+
+	xtpg->npads = nports;
 
 	xtpg->vip_format = xvip_of_get_format(node);
 	if (IS_ERR(xtpg->vip_format)) {
-		dev_err(xtpg->xvip.dev, "invalid format in DT");
+		dev_err(xtpg->xvip.dev, "invalid format in DT\n");
 		return PTR_ERR(xtpg->vip_format);
 	}
 
@@ -579,6 +647,16 @@ static int xtpg_probe(struct platform_device *pdev)
 	/* Reset and initialize the core */
 	xvip_reset(&xtpg->xvip);
 
+	/* Initialize V4L2 subdevice and media entity. Pad numbers depend on the
+	 * number of pads.
+	 */
+	if (xtpg->npads == 2) {
+		xtpg->pads[0].flags = MEDIA_PAD_FL_SINK;
+		xtpg->pads[1].flags = MEDIA_PAD_FL_SOURCE;
+	} else {
+		xtpg->pads[0].flags = MEDIA_PAD_FL_SOURCE;
+	}
+
 	/* Initialize the default format */
 	xtpg->default_format.code = xtpg->vip_format->code;
 	xtpg->default_format.field = V4L2_FIELD_NONE;
@@ -595,10 +673,9 @@ static int xtpg_probe(struct platform_device *pdev)
 	strlcpy(subdev->name, dev_name(&pdev->dev), sizeof(subdev->name));
 	v4l2_set_subdevdata(subdev, xtpg);
 	subdev->flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
-
-	xtpg->pad.flags = MEDIA_PAD_FL_SOURCE;
 	subdev->entity.ops = &xtpg_media_ops;
-	ret = media_entity_init(&subdev->entity, 1, &xtpg->pad, 0);
+
+	ret = media_entity_init(&subdev->entity, xtpg->npads, xtpg->pads, 0);
 	if (ret < 0)
 		return ret;
 
@@ -607,7 +684,9 @@ static int xtpg_probe(struct platform_device *pdev)
 	v4l2_ctrl_new_std_menu_items(&xtpg->ctrl_handler, &xtpg_ctrl_ops,
 				     V4L2_CID_TEST_PATTERN,
 				     ARRAY_SIZE(xtpg_pattern_strings) - 1,
-				     1, 1, xtpg_pattern_strings);
+				     xtpg->npads == 2 ? 0 : 1,
+				     xtpg->npads == 2 ? 0 : 1,
+				     xtpg_pattern_strings);
 
 	for (i = 0; i < ARRAY_SIZE(xtpg_ctrls); i++)
 		v4l2_ctrl_new_custom(&xtpg->ctrl_handler, &xtpg_ctrls[i], NULL);
