@@ -17,6 +17,7 @@
 #include <linux/mutex.h>
 #include <media/media-device.h>
 #include <media/v4l2-async.h>
+#include <media/v4l2-ctrls.h>
 #include <media/v4l2-device.h>
 
 #include "xilinx-dma.h"
@@ -34,6 +35,7 @@
  * @num_dmas: number of DMA engines in the pipeline
  * @lock: protects the pipeline @stream_count
  * @stream_count: number of DMA engines currently streaming
+ * @ctrl_handler: control handler
  */
 struct xvip_pipeline {
 	struct v4l2_device v4l2_dev;
@@ -50,6 +52,8 @@ struct xvip_pipeline {
 
 	struct mutex lock;
 	unsigned int stream_count;
+
+	struct v4l2_ctrl_handler ctrl_handler;
 };
 
 int xvip_pipeline_set_stream(struct xvip_pipeline *xvipp, bool on);

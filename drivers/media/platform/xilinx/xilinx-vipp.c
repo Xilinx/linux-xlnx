@@ -516,6 +516,7 @@ done:
 
 static void xvipp_v4l2_cleanup(struct xvip_pipeline *xvipp)
 {
+	v4l2_ctrl_handler_free(&xvipp->ctrl_handler);
 	v4l2_device_unregister(&xvipp->v4l2_dev);
 	media_device_unregister(&xvipp->media_dev);
 }
@@ -544,6 +545,9 @@ static int xvipp_v4l2_init(struct xvip_pipeline *xvipp)
 		media_device_unregister(&xvipp->media_dev);
 		return ret;
 	}
+
+	v4l2_ctrl_handler_init(&xvipp->ctrl_handler, 0);
+	xvipp->v4l2_dev.ctrl_handler = &xvipp->ctrl_handler;
 
 	return 0;
 }
