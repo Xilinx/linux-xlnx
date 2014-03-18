@@ -7,6 +7,12 @@ config VIDEO_XILINX
 
 if VIDEO_XILINX
 
+config VIDEO_XILINX_CFA
+	tristate "Xilinx Video Color Filter Array"
+	depends on VIDEO_XILINX
+	---help---
+	   Driver for the Xilinx Color Filter Array
+
 config VIDEO_XILINX_REMAPPER
 	tristate "Xilinx Video Remapper"
 	depends on VIDEO_XILINX
