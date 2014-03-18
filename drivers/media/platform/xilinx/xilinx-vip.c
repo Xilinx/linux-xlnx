@@ -24,6 +24,11 @@ static const struct xvip_video_format xvip_video_formats[] = {
 	{ "rbg", 8, 3, V4L2_MBUS_FMT_RBG888_1X24, 0 },
 	{ "xrgb", 8, 4, V4L2_MBUS_FMT_RGB888_1X32_PADHI, V4L2_PIX_FMT_BGR32 },
 	{ "yuv422", 8, 2, V4L2_MBUS_FMT_UYVY8_1X16, V4L2_PIX_FMT_YUYV },
+	{ "yuv444", 8, 3, V4L2_MBUS_FMT_VUY8_1X24, V4L2_PIX_FMT_YUV444 },
+	{ "rggb", 8, 1, V4L2_MBUS_FMT_SRGGB8_1X8, V4L2_PIX_FMT_SGRBG8 },
+	{ "grbg", 8, 1, V4L2_MBUS_FMT_SGRBG8_1X8, V4L2_PIX_FMT_SGRBG8 },
+	{ "gbrg", 8, 1, V4L2_MBUS_FMT_SGBRG8_1X8, V4L2_PIX_FMT_SGBRG8 },
+	{ "bggr", 8, 1, V4L2_MBUS_FMT_SBGGR8_1X8, V4L2_PIX_FMT_SBGGR8 },
 };
 
 /**
