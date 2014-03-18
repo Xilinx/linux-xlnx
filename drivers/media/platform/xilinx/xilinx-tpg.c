@@ -22,11 +22,6 @@
 
 #include "xilinx-vip.h"
 
-#define XTPG_MIN_WIDTH				32
-#define XTPG_MAX_WIDTH				7680
-#define XTPG_MIN_HEIGHT				32
-#define XTPG_MAX_HEIGHT				7680
-
 #define XTPG_CTRL_STATUS_SLAVE_ERROR		(1 << 16)
 #define XTPG_CTRL_IRQ_SLAVE_ERROR		(1 << 16)
 
@@ -192,10 +187,8 @@ static int xtpg_set_format(struct v4l2_subdev *subdev,
 	struct v4l2_mbus_framefmt *__format;
 
 	__format = __xtpg_get_pad_format(xtpg, fh, fmt->pad, fmt->which);
-	__format->width = clamp_t(unsigned int, fmt->format.width,
-				  XTPG_MIN_WIDTH, XTPG_MAX_WIDTH);
-	__format->height = clamp_t(unsigned int, fmt->format.height,
-				   XTPG_MIN_HEIGHT, XTPG_MAX_HEIGHT);
+
+	xvip_set_format_size(__format, fmt);
 
 	fmt->format = *__format;
 
