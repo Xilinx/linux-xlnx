@@ -118,6 +118,8 @@ void xvip_set_format_size(struct v4l2_mbus_framefmt *format,
 			  const struct v4l2_subdev_format *fmt);
 int xvip_enum_mbus_code(struct v4l2_subdev *subdev, struct v4l2_subdev_fh *fh,
 			struct v4l2_subdev_mbus_code_enum *code);
+int xvip_enum_frame_size(struct v4l2_subdev *subdev, struct v4l2_subdev_fh *fh,
+			 struct v4l2_subdev_frame_size_enum *fse);
 
 static inline u32 xvip_read(struct xvip_device *xvip, u32 addr)
 {
