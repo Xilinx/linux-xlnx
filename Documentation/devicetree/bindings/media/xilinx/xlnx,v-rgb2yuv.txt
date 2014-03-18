@@ -1,0 +1,54 @@
+Xilinx RGB to YUV (RGB2YUV)
+---------------------------
+
+Required properties:
+
+- compatible: Must be "xlnx,v-rgb2yuv-7.1".
+
+- reg: Physical base address and length of the registers set for the device.
+
+- clocks: Reference to the video core clock.
+
+- ports: Video ports, using the DT bindings defined in ../video-interfaces.txt.
+  The rgb2yuv has an input port (0) and an output port (1).
+
+Required port properties:
+
+- xlnx,video-format: Must be RBG for the input port (0) and YUV_444 for the
+  output port (1).
+
+- xlnx,video-width: Video width as defined in video.txt
+
+Example:
+
+	rgb2yuv_0: rgb2yuv@40100000 {
+		compatible = "xlnx,v-rgb2yuv-7.1";
+		reg = <0x40100000 0x10000>;
+		clocks = <&clkc 15>;
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			port@0 {
+				reg = <0>;
+
+				xlnx,video-format = <XVIP_VF_RBG>;
+				xlnx,video-width = <8>;
+
+				rgb2yuv0_in: endpoint {
+					remote-endpoint = <&gamma0_out>;
+				};
+			};
+			port@1 {
+				reg = <1>;
+
+				xlnx,video-format = <XVIP_VF_YUV_444>;
+				xlnx,video-width = <8>;
+
+				rgb2yuv0_out: endpoint {
+					remote-endpoint = <&cresample0_in>;
+				};
+			};
+		};
+	};
