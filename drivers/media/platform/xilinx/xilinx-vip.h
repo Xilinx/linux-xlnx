@@ -131,4 +131,17 @@ static inline void xvip_write(struct xvip_device *xvip, u32 addr, u32 value)
 	iowrite32(value, xvip->iomem + addr);
 }
 
+static inline void xvip_clr(struct xvip_device *xvip, u32 addr, u32 clr)
+{
+	xvip_write(xvip, addr, xvip_read(xvip, addr) & ~clr);
+}
+
+static inline void xvip_set(struct xvip_device *xvip, u32 addr, u32 set)
+{
+	xvip_write(xvip, addr, xvip_read(xvip, addr) | set);
+}
+
+void xvip_clr_or_set(struct xvip_device *xvip, u32 addr, u32 mask, bool set);
+void xvip_clr_and_set(struct xvip_device *xvip, u32 addr, u32 clr, u32 set);
+
 #endif /* __XILINX_VIP_H__ */

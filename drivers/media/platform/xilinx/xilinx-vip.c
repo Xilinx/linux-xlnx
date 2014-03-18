@@ -132,6 +132,54 @@ void xvip_set_format_size(struct v4l2_mbus_framefmt *format,
 }
 EXPORT_SYMBOL_GPL(xvip_set_format_size);
 
+/**
+ * xvip_clr_or_set - Clear or set the register with a bitmask
+ * @xvip: Xilinx Video IP device
+ * @addr: address of register
+ * @mask: bitmask to be set or cleared
+ * @set: boolean flag indicating whether to set or clear
+ *
+ * Clear or set the register at address @addr with a bitmask @mask depending on
+ * the boolean flag @set. When the flag @set is true, the bitmask is set in
+ * the register, otherwise the bitmask is cleared from the register
+ * when the flag @set is false.
+ *
+ * Fox eample, this function can be used to set a control with a boolean value
+ * requested by users. If the caller knows whether to set or clear in the first
+ * place, the caller should call xvip_clr() or xvip_set() directly instead of
+ * using this function.
+ */
+void xvip_clr_or_set(struct xvip_device *xvip, u32 addr, u32 mask, bool set)
+{
+	u32 reg;
+
+	reg = xvip_read(xvip, addr);
+	reg = set ? reg | mask : reg & ~mask;
+	xvip_write(xvip, addr, reg);
+}
+EXPORT_SYMBOL_GPL(xvip_clr_or_set);
+
+/**
+ * xvip_clr_and_set - Clear and set the register with a bitmask
+ * @xvip: Xilinx Video IP device
+ * @addr: address of register
+ * @clr: bitmask to be cleared
+ * @set: bitmask to be set
+ *
+ * Clear a bit(s) of mask @clr in the register at address @addr, then set
+ * a bit(s) of mask @set in the register after.
+ */
+void xvip_clr_and_set(struct xvip_device *xvip, u32 addr, u32 clr, u32 set)
+{
+	u32 reg;
+
+	reg = xvip_read(xvip, addr);
+	reg &= ~clr;
+	reg |= set;
+	xvip_write(xvip, addr, reg);
+}
+EXPORT_SYMBOL_GPL(xvip_clr_and_set);
+
 /* -----------------------------------------------------------------------------
  * Subdev operation helpers
  */
