@@ -100,8 +100,8 @@
 
 /**
  * struct xtpg_device - Xilinx Test Pattern Generator device structure
- * @pad: media pad
  * @xvip: Xilinx Video IP device
+ * @pad: media pad
  * @format: active V4L2 media bus format at the source pad
  * @default_format: default V4L2 media bus format
  * @vip_format: format information corresponding to the active format
@@ -109,6 +109,7 @@
  */
 struct xtpg_device {
 	struct xvip_device xvip;
+
 	struct media_pad pad;
 
 	struct v4l2_mbus_framefmt format;
