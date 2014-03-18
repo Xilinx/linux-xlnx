@@ -23,10 +23,8 @@
 #include "xilinx-vip.h"
 
 #define XTPG_MIN_WIDTH				32
-#define XTPG_DEF_WIDTH				1920
 #define XTPG_MAX_WIDTH				7680
 #define XTPG_MIN_HEIGHT				32
-#define XTPG_DEF_HEIGHT				1080
 #define XTPG_MAX_HEIGHT				7680
 
 #define XTPG_CTRL_STATUS_SLAVE_ERROR		(1 << 16)
@@ -105,6 +103,7 @@
  * @pad: media pad
  * @xvip: Xilinx Video IP device
  * @format: active V4L2 media bus format at the source pad
+ * @default_format: default V4L2 media bus format
  * @vip_format: format information corresponding to the active format
  * @ctrl_handler: control handler
  */
@@ -113,6 +112,7 @@ struct xtpg_device {
 	struct media_pad pad;
 
 	struct v4l2_mbus_framefmt format;
+	struct v4l2_mbus_framefmt default_format;
 	const struct xvip_video_format *vip_format;
 
 	struct v4l2_ctrl_handler ctrl_handler;
@@ -242,15 +242,8 @@ static int xtpg_set_format(struct v4l2_subdev *subdev,
 static int xtpg_open(struct v4l2_subdev *subdev, struct v4l2_subdev_fh *fh)
 {
 	struct xtpg_device *xtpg = to_tpg(subdev);
-	struct v4l2_mbus_framefmt *format;
 
-	format = v4l2_subdev_get_try_format(fh, 0);
-
-	format->code = xtpg->vip_format->code;
-	format->width = XTPG_DEF_WIDTH;
-	format->height = XTPG_DEF_HEIGHT;
-	format->field = V4L2_FIELD_NONE;
-	format->colorspace = V4L2_COLORSPACE_SRGB;
+	*v4l2_subdev_get_try_format(fh, 0) = xtpg->default_format;
 
 	return 0;
 }
@@ -607,12 +600,6 @@ static int xtpg_probe(struct platform_device *pdev)
 	if (ret < 0)
 		return ret;
 
-	xtpg->format.code = xtpg->vip_format->code;
-	xtpg->format.width = XTPG_DEF_WIDTH;
-	xtpg->format.height = XTPG_DEF_HEIGHT;
-	xtpg->format.field = V4L2_FIELD_NONE;
-	xtpg->format.colorspace = V4L2_COLORSPACE_SRGB;
-
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	xtpg->xvip.iomem = devm_ioremap_resource(&pdev->dev, res);
 	if (xtpg->xvip.iomem == NULL)
@@ -620,6 +607,14 @@ static int xtpg_probe(struct platform_device *pdev)
 
 	/* Reset and initialize the core */
 	xvip_reset(&xtpg->xvip);
+
+	/* Initialize the default format */
+	xtpg->default_format.code = xtpg->vip_format->code;
+	xtpg->default_format.field = V4L2_FIELD_NONE;
+	xtpg->default_format.colorspace = V4L2_COLORSPACE_SRGB;
+	xvip_get_frame_size(&xtpg->xvip, &xtpg->default_format);
+
+	xtpg->format = xtpg->default_format;
 
 	/* Initialize V4L2 subdevice and media entity */
 	subdev = &xtpg->xvip.subdev;
