@@ -536,7 +536,7 @@ static int xtpg_probe(struct platform_device *pdev)
 	struct v4l2_subdev *subdev;
 	struct xtpg_device *xtpg;
 	struct resource *res;
-	u32 version, i;
+	u32 i;
 	int ret;
 
 	xtpg = devm_kzalloc(&pdev->dev, sizeof(*xtpg), GFP_KERNEL);
@@ -605,15 +605,7 @@ static int xtpg_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, xtpg);
 
-	version = xvip_read(&xtpg->xvip, XVIP_CTRL_VERSION);
-
-	dev_info(&pdev->dev, "device found, version %u.%02x%x\n",
-		 ((version & XVIP_CTRL_VERSION_MAJOR_MASK) >>
-		  XVIP_CTRL_VERSION_MAJOR_SHIFT),
-		 ((version & XVIP_CTRL_VERSION_MINOR_MASK) >>
-		  XVIP_CTRL_VERSION_MINOR_SHIFT),
-		 ((version & XVIP_CTRL_VERSION_REVISION_MASK) >>
-		  XVIP_CTRL_VERSION_REVISION_SHIFT));
+	xvip_print_version(&xtpg->xvip);
 
 	ret = v4l2_async_register_subdev(subdev);
 	if (ret < 0) {
