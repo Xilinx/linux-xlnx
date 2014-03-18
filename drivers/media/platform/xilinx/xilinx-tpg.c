@@ -126,17 +126,13 @@ static inline struct xtpg_device *to_tpg(struct v4l2_subdev *subdev)
 static int xtpg_s_stream(struct v4l2_subdev *subdev, int enable)
 {
 	struct xtpg_device *xtpg = to_tpg(subdev);
-	const u32 width = xtpg->format.width;
-	const u32 height = xtpg->format.height;
 
 	if (!enable) {
 		xvip_stop(&xtpg->xvip);
 		return 0;
 	}
 
-	xvip_write(&xtpg->xvip, XVIP_ACTIVE_SIZE,
-		   (height << XVIP_ACTIVE_VSIZE_SHIFT) |
-		   (width << XVIP_ACTIVE_HSIZE_SHIFT));
+	xvip_set_frame_size(&xtpg->xvip, &xtpg->format);
 
 	xvip_start(&xtpg->xvip);
 
