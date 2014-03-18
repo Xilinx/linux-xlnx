@@ -644,8 +644,6 @@ xvip_dma_set_format(struct file *file, void *fh, struct v4l2_format *format)
 	config.hsize = dma->format.width * info->bpp;
 	config.stride = dma->format.bytesperline;
 	config.ext_fsync = 2;
-	config.frm_cnt_en = 1;
-	config.coalesc = 1;
 
 	dmaengine_device_control(dma->dma, DMA_SLAVE_CONFIG,
 				 (unsigned long)&config);
