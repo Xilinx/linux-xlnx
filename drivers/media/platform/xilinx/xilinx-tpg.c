@@ -190,9 +190,8 @@ static int xtpg_enum_frame_size(struct v4l2_subdev *subdev,
 }
 
 static struct v4l2_mbus_framefmt *
-__xtpg_get_pad_format(struct xtpg_device *xtpg,
-			    struct v4l2_subdev_fh *fh,
-			    unsigned int pad, u32 which)
+__xtpg_get_pad_format(struct xtpg_device *xtpg, struct v4l2_subdev_fh *fh,
+		      unsigned int pad, u32 which)
 {
 	switch (which) {
 	case V4L2_SUBDEV_FORMAT_TRY:
@@ -210,8 +209,7 @@ static int xtpg_get_format(struct v4l2_subdev *subdev,
 {
 	struct xtpg_device *xtpg = to_tpg(subdev);
 
-	fmt->format =
-		*__xtpg_get_pad_format(xtpg, fh, fmt->pad, fmt->which);
+	fmt->format = *__xtpg_get_pad_format(xtpg, fh, fmt->pad, fmt->which);
 
 	return 0;
 }
@@ -223,8 +221,7 @@ static int xtpg_set_format(struct v4l2_subdev *subdev,
 	struct xtpg_device *xtpg = to_tpg(subdev);
 	struct v4l2_mbus_framefmt *__format;
 
-	__format = __xtpg_get_pad_format(xtpg, fh, format->pad,
-					       format->which);
+	__format = __xtpg_get_pad_format(xtpg, fh, format->pad, format->which);
 	__format->width = clamp_t(unsigned int, format->format.width,
 				  XTPG_MIN_WIDTH, XTPG_MAX_WIDTH);
 	__format->height = clamp_t(unsigned int, format->format.height,
