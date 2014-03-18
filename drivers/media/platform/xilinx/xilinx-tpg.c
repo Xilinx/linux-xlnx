@@ -130,13 +130,7 @@ static int xtpg_s_stream(struct v4l2_subdev *subdev, int enable)
 	const u32 height = xtpg->format.height;
 
 	if (!enable) {
-		/* Stopping the TPG without resetting it confuses the VDMA and
-		 * results in VDMA errors the next time the stream is started.
-		 * Reset the TPG when stopping the stream for now.
-		 */
-		xvip_write(&xtpg->xvip, XVIP_CTRL_CONTROL,
-			   XVIP_CTRL_CONTROL_SW_RESET);
-		xvip_write(&xtpg->xvip, XVIP_CTRL_CONTROL, 0);
+		xvip_stop(&xtpg->xvip);
 		return 0;
 	}
 
