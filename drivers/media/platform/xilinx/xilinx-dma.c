@@ -349,6 +349,10 @@ __xvip_dma_try_format(struct xvip_dma *dma, struct v4l2_pix_format *pix,
 	 */
 	min_bpl = pix->width * info->bpp;
 	max_bpl = rounddown(XVIP_DMA_MAX_WIDTH, dma->align);
+	/* HACK: mplayer (svn r32540) doesn't initialize the byteperline field,
+	 * so hardcode it to the minimum value.
+	 */
+	pix->bytesperline = min_bpl;
 	bpl = rounddown(pix->bytesperline, dma->align);
 
 	pix->bytesperline = clamp(bpl, min_bpl, max_bpl);
