@@ -25,6 +25,12 @@ config VIDEO_XILINX_REMAPPER
 	---help---
 	   Driver for the Xilinx Video Remapper
 
+config VIDEO_XILINX_RGB2YUV
+	tristate "Xilinx Video RGB to YUV Convertor"
+	depends on VIDEO_XILINX
+	---help---
+	   Driver for the Xilinx Video RGB to YUV Convertor
+
 config VIDEO_XILINX_TPG
 	tristate "Xilinx Video Test Pattern Generator"
 	depends on VIDEO_XILINX
