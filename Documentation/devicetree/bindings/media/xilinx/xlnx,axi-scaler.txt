@@ -1,0 +1,72 @@
+Xilinx Scaler (SCALER)
+------------------------------------
+
+Required properties:
+
+- compatible: Must be "xlnx,axi-scaler-8.1".
+
+- reg: Physical base address and length of the registers set for the device.
+
+- xlnx,num-hori-taps, xlnx,num-vert-taps: The number of horizontal and vertical
+  taps for scaling filter(range: 2 - 12).
+
+- xlnx,max-num-phases: The maximum number of phases for scaling filter
+  (range: 2 - 64).
+
+- ports: Video ports, using the DT bindings defined in ../video-interfaces.txt.
+  The scaler has an input port (0) and an output port (1).
+
+Optional properties:
+
+- xlnx,separate-yc-coef: When set, this boolean property specifies that
+  the hardware uses separate coefficients for the luma and chroma filters.
+  Otherwise a single set of coefficients is shared for both.
+
+- xlnx,separate-hv-coef: When set, this boolean property specifies that
+  the hardware uses separate coefficients for the horizontal and vertical
+  filters. Otherwise a single set of coefficients is shared for both.
+
+Required port properties:
+
+- xlnx,axi-video-format: Must be one of "rbg", "yuv444", "yuv422", and "yuv420"
+  both input port (0) and output port (1). Both formats must be identical.
+
+- xlnx,axi-video-width: Video width as defined in video.txt
+
+Example:
+
+	axi_scaler_0: axi_scaler {
+		compatible = "xlnx,axi-scaler-8.1";
+		reg = <0x43c30000 0x10000>;
+
+		xlnx,num-hori-taps = <12>;
+		xlnx,num-vert-taps = <12>;
+		xlnx,max-num-phases = <4>;
+		xlnx,separate-hv-coef;
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			port@0 {
+				reg = <0>;
+
+				xlnx,axi-video-format = "yuv422";
+				xlnx,axi-video-width = <8>;
+
+				scaler0_in: endpoint {
+					remote-endpoint = <&cresample0_out>;
+				};
+			};
+			port@1 {
+				reg = <1>;
+
+				xlnx,axi-video-format = "yuv422";
+				xlnx,axi-video-width = <8>;
+
+				scaler0_out: endpoint {
+					remote-endpoint = <&vcap0_in>;
+				};
+			};
+		};
+	};
