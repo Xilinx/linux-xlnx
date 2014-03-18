@@ -150,4 +150,9 @@ static inline void xvip_start(struct xvip_device *xvip)
 		 XVIP_CTRL_CONTROL_SW_ENABLE | XVIP_CTRL_CONTROL_REG_UPDATE);
 }
 
+static inline void xvip_stop(struct xvip_device *xvip)
+{
+	xvip_clr(xvip, XVIP_CTRL_CONTROL, XVIP_CTRL_CONTROL_SW_ENABLE);
+}
+
 #endif /* __XILINX_VIP_H__ */
