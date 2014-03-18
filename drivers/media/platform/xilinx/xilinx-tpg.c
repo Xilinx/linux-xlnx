@@ -51,6 +51,11 @@
 #define XTPG_STUCK_PIXEL_THRESH			0x011c
 #define XTPG_NOISE_GAIN				0x0120
 #define XTPG_BAYER_PHASE			0x0124
+#define XTPG_BAYER_PHASE_RGGB			0
+#define XTPG_BAYER_PHASE_GRBG			1
+#define XTPG_BAYER_PHASE_GBRG			2
+#define XTPG_BAYER_PHASE_BGGR			3
+#define XTPG_BAYER_PHASE_OFF			4
 
 /*
  * Private Controls for Xilinx TPG Video IP
@@ -101,6 +106,7 @@
  * @format: active V4L2 media bus format at the source pad
  * @default_format: default V4L2 media bus format
  * @vip_format: format information corresponding to the active format
+ * @bayer: boolean flag if TPG is set to any bayer format
  * @ctrl_handler: control handler
  */
 struct xtpg_device {
@@ -112,6 +118,7 @@ struct xtpg_device {
 	struct v4l2_mbus_framefmt format;
 	struct v4l2_mbus_framefmt default_format;
 	const struct xvip_video_format *vip_format;
+	bool bayer;
 
 	struct v4l2_ctrl_handler ctrl_handler;
 };
@@ -170,12 +177,29 @@ static int xtpg_get_format(struct v4l2_subdev *subdev,
 	return 0;
 }
 
+static u32 xtpg_get_bayer_phase(unsigned int code)
+{
+	switch (code) {
+	case V4L2_MBUS_FMT_SRGGB8_1X8:
+		return XTPG_BAYER_PHASE_RGGB;
+	case V4L2_MBUS_FMT_SGRBG8_1X8:
+		return XTPG_BAYER_PHASE_GRBG;
+	case V4L2_MBUS_FMT_SGBRG8_1X8:
+		return XTPG_BAYER_PHASE_GBRG;
+	case V4L2_MBUS_FMT_SBGGR8_1X8:
+		return XTPG_BAYER_PHASE_BGGR;
+	default:
+		return XTPG_BAYER_PHASE_OFF;
+	}
+}
+
 static int xtpg_set_format(struct v4l2_subdev *subdev,
 			   struct v4l2_subdev_fh *fh,
 			   struct v4l2_subdev_format *fmt)
 {
 	struct xtpg_device *xtpg = to_tpg(subdev);
 	struct v4l2_mbus_framefmt *__format;
+	u32 bayer_phase;
 
 	__format = __xtpg_get_pad_format(xtpg, fh, fmt->pad, fmt->which);
 
@@ -185,6 +209,13 @@ static int xtpg_set_format(struct v4l2_subdev *subdev,
 	if (xtpg->npads == 2 && fmt->pad == 1) {
 		fmt->format = *__format;
 		return 0;
+	}
+
+	/* Bayer phase is configurable at runtime */
+	if (xtpg->bayer) {
+		bayer_phase = xtpg_get_bayer_phase(fmt->format.code);
+		if (bayer_phase != XTPG_BAYER_PHASE_OFF)
+			__format->code = fmt->format.code;
 	}
 
 	xvip_set_format_size(__format, fmt);
@@ -250,6 +281,31 @@ static int xtpg_close(struct v4l2_subdev *subdev, struct v4l2_subdev_fh *fh)
 	return 0;
 }
 
+static void xtpg_set_test_pattern(struct xtpg_device *xtpg,
+				  unsigned int pattern)
+{
+	u32 bayer_phase;
+
+	xvip_disable_reg_update(&xtpg->xvip);
+
+	/* TODO: For TPG v5.0, the bayer phase needs to be off for
+	 * the pass through mode, otherwise the external input would be
+	 * subsampled. This is a bit strange, and will be fixed when
+	 * the TPG IP core is updated.
+	 */
+	if (pattern)
+		bayer_phase = xtpg_get_bayer_phase(xtpg->format.code);
+	else
+		bayer_phase = XTPG_BAYER_PHASE_OFF;
+
+	xvip_write(&xtpg->xvip, XTPG_BAYER_PHASE, bayer_phase);
+
+	xvip_clr_and_set(&xtpg->xvip, XTPG_PATTERN_CONTROL, XTPG_PATTERN_MASK,
+			 pattern);
+
+	xvip_enable_reg_update(&xtpg->xvip);
+}
+
 static int xtpg_s_ctrl(struct v4l2_ctrl *ctrl)
 {
 	struct xtpg_device *xtpg = container_of(ctrl->handler,
@@ -257,8 +313,7 @@ static int xtpg_s_ctrl(struct v4l2_ctrl *ctrl)
 						ctrl_handler);
 	switch (ctrl->id) {
 	case V4L2_CID_TEST_PATTERN:
-		xvip_clr_and_set(&xtpg->xvip, XTPG_PATTERN_CONTROL,
-				 XTPG_PATTERN_MASK, ctrl->val);
+		xtpg_set_test_pattern(xtpg, ctrl->val);
 		return 0;
 	case V4L2_CID_XILINX_TPG_CROSS_HAIRS:
 		xvip_clr_or_set(&xtpg->xvip, XTPG_PATTERN_CONTROL,
@@ -626,7 +681,7 @@ static int xtpg_probe(struct platform_device *pdev)
 	struct v4l2_subdev *subdev;
 	struct xtpg_device *xtpg;
 	struct resource *res;
-	u32 i;
+	u32 i, bayer_phase;
 	int ret;
 
 	xtpg = devm_kzalloc(&pdev->dev, sizeof(*xtpg), GFP_KERNEL);
@@ -662,6 +717,10 @@ static int xtpg_probe(struct platform_device *pdev)
 	xtpg->default_format.field = V4L2_FIELD_NONE;
 	xtpg->default_format.colorspace = V4L2_COLORSPACE_SRGB;
 	xvip_get_frame_size(&xtpg->xvip, &xtpg->default_format);
+
+	bayer_phase = xtpg_get_bayer_phase(xtpg->vip_format->code);
+	if (bayer_phase != XTPG_BAYER_PHASE_OFF)
+		xtpg->bayer = true;
 
 	xtpg->format = xtpg->default_format;
 
