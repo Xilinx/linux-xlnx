@@ -163,4 +163,14 @@ static inline void xvip_set_frame_size(struct xvip_device *xvip,
 		   (format->width << XVIP_ACTIVE_HSIZE_SHIFT));
 }
 
+static inline void xvip_enable_reg_update(struct xvip_device *xvip)
+{
+	xvip_set(xvip, XVIP_CTRL_CONTROL, XVIP_CTRL_CONTROL_REG_UPDATE);
+}
+
+static inline void xvip_disable_reg_update(struct xvip_device *xvip)
+{
+	xvip_clr(xvip, XVIP_CTRL_CONTROL, XVIP_CTRL_CONTROL_REG_UPDATE);
+}
+
 #endif /* __XILINX_VIP_H__ */
