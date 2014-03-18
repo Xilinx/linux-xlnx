@@ -159,20 +159,6 @@ static int xtpg_s_stream(struct v4l2_subdev *subdev, int enable)
  * V4L2 Subdevice Pad Operations
  */
 
-static int xtpg_enum_mbus_code(struct v4l2_subdev *subdev,
-			       struct v4l2_subdev_fh *fh,
-			       struct v4l2_subdev_mbus_code_enum *code)
-{
-	struct xtpg_device *xtpg = to_tpg(subdev);
-
-	if (code->index)
-		return -EINVAL;
-
-	code->code = xtpg->vip_format->code;
-
-	return 0;
-}
-
 static int xtpg_enum_frame_size(struct v4l2_subdev *subdev,
 				struct v4l2_subdev_fh *fh,
 				struct v4l2_subdev_frame_size_enum *fse)
@@ -349,7 +335,7 @@ static struct v4l2_subdev_video_ops xtpg_video_ops = {
 };
 
 static struct v4l2_subdev_pad_ops xtpg_pad_ops = {
-	.enum_mbus_code		= xtpg_enum_mbus_code,
+	.enum_mbus_code		= xvip_enum_mbus_code,
 	.enum_frame_size	= xtpg_enum_frame_size,
 	.get_fmt		= xtpg_get_format,
 	.set_fmt		= xtpg_set_format,
