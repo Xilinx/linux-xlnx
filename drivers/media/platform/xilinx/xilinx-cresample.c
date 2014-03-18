@@ -19,28 +19,17 @@
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
-#include <linux/v4l2-controls.h>
 
 #include <media/v4l2-async.h>
 #include <media/v4l2-ctrls.h>
 #include <media/v4l2-subdev.h>
 
+#include "xilinx-controls.h"
 #include "xilinx-vip.h"
 
 #define XCRESAMPLE_ENCODING			0x100
 #define XCRESAMPLE_ENCODING_FIELD		(1 << 7)
 #define XCRESAMPLE_ENCODING_CHROMA		(1 << 8)
-
-/*
- * Private Controls for Xilinx CRESAMPLE Video IP
- */
-
-#define V4L2_CID_XILINX_CRESAMPLE		(V4L2_CID_USER_BASE + 0xb000)
-
-/* The field parity for interlaced video */
-#define V4L2_CID_XILINX_CRESAMPLE_FIELD_PARITY	(V4L2_CID_XILINX_CRESAMPLE + 1)
-/* Specify if the first line of video contains the Chroma infomation */
-#define V4L2_CID_XILINX_CRESAMPLE_CHROMA_PARITY	(V4L2_CID_XILINX_CRESAMPLE + 2)
 
 /**
  * struct xcresample_device - Xilinx CRESAMPLE device structure

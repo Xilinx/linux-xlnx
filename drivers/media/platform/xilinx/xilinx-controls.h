@@ -68,4 +68,15 @@
 /* Noise level */
 #define V4L2_CID_XILINX_TPG_NOISE_GAIN		(V4L2_CID_XILINX_TPG + 17)
 
+/*
+ * Xilinx CRESAMPLE Video IP
+ */
+
+#define V4L2_CID_XILINX_CRESAMPLE		(V4L2_CID_USER_BASE + 0xc020)
+
+/* The field parity for interlaced video */
+#define V4L2_CID_XILINX_CRESAMPLE_FIELD_PARITY	(V4L2_CID_XILINX_CRESAMPLE + 1)
+/* Specify if the first line of video contains the Chroma infomation */
+#define V4L2_CID_XILINX_CRESAMPLE_CHROMA_PARITY	(V4L2_CID_XILINX_CRESAMPLE + 2)
+
 #endif /* __XILINX_CONTROLS_H__ */
