@@ -246,9 +246,9 @@ static int xtpg_parse_of(struct xtpg_device *xtpg)
 	struct device_node *node = xtpg->xvip.dev->of_node;
 
 	xtpg->vip_format = xvip_of_get_format(node);
-	if (xtpg->vip_format == NULL) {
+	if (IS_ERR(xtpg->vip_format)) {
 		dev_err(xtpg->xvip.dev, "invalid format in DT");
-		return -EINVAL;
+		return PTR_ERR(xtpg->vip_format);
 	}
 
 	return 0;

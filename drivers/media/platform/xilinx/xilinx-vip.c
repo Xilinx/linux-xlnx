@@ -85,7 +85,7 @@ EXPORT_SYMBOL_GPL(xvip_get_format_by_fourcc);
  * information.
  *
  * Return: a pointer to the format information structure corresponding to the
- * format name and width, or %NULL if no corresponding format can be found.
+ * format name and width, or ERR_PTR if no corresponding format can be found.
  */
 const struct xvip_video_format *xvip_of_get_format(struct device_node *node)
 {
@@ -96,11 +96,11 @@ const struct xvip_video_format *xvip_of_get_format(struct device_node *node)
 
 	ret = of_property_read_string(node, "xlnx,axi-video-format", &name);
 	if (ret < 0)
-		return NULL;
+		return ERR_PTR(ret);
 
 	ret = of_property_read_u32(node, "xlnx,axi-video-width", &width);
 	if (ret < 0)
-		return NULL;
+		return ERR_PTR(ret);
 
 	for (i = 0; i < ARRAY_SIZE(xvip_video_formats); ++i) {
 		const struct xvip_video_format *format = &xvip_video_formats[i];
@@ -109,7 +109,7 @@ const struct xvip_video_format *xvip_of_get_format(struct device_node *node)
 			return format;
 	}
 
-	return NULL;
+	return ERR_PTR(-EINVAL);
 }
 EXPORT_SYMBOL_GPL(xvip_of_get_format);
 
