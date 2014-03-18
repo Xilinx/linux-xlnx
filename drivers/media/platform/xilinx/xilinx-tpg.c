@@ -103,7 +103,7 @@
  * @xvip: Xilinx Video IP device
  * @pads: media pads
  * @npads: number of pads (1 or 2)
- * @format: active V4L2 media bus format at the source pad
+ * @formats: active V4L2 media bus format for each pad
  * @default_format: default V4L2 media bus format
  * @vip_format: format information corresponding to the active format
  * @bayer: boolean flag if TPG is set to any bayer format
@@ -115,7 +115,7 @@ struct xtpg_device {
 	struct media_pad pads[2];
 	unsigned int npads;
 
-	struct v4l2_mbus_framefmt format;
+	struct v4l2_mbus_framefmt formats[2];
 	struct v4l2_mbus_framefmt default_format;
 	const struct xvip_video_format *vip_format;
 	bool bayer;
@@ -141,7 +141,7 @@ static int xtpg_s_stream(struct v4l2_subdev *subdev, int enable)
 		return 0;
 	}
 
-	xvip_set_frame_size(&xtpg->xvip, &xtpg->format);
+	xvip_set_frame_size(&xtpg->xvip, &xtpg->formats[0]);
 
 	xvip_start(&xtpg->xvip);
 
@@ -160,7 +160,7 @@ __xtpg_get_pad_format(struct xtpg_device *xtpg, struct v4l2_subdev_fh *fh,
 	case V4L2_SUBDEV_FORMAT_TRY:
 		return v4l2_subdev_get_try_format(fh, pad);
 	case V4L2_SUBDEV_FORMAT_ACTIVE:
-		return &xtpg->format;
+		return &xtpg->formats[pad];
 	default:
 		return NULL;
 	}
@@ -294,7 +294,8 @@ static void xtpg_set_test_pattern(struct xtpg_device *xtpg,
 	 * the TPG IP core is updated.
 	 */
 	if (pattern)
-		bayer_phase = xtpg_get_bayer_phase(xtpg->format.code);
+		bayer_phase =
+			xtpg_get_bayer_phase(xtpg->formats[0].code);
 	else
 		bayer_phase = XTPG_BAYER_PHASE_OFF;
 
@@ -722,7 +723,9 @@ static int xtpg_probe(struct platform_device *pdev)
 	if (bayer_phase != XTPG_BAYER_PHASE_OFF)
 		xtpg->bayer = true;
 
-	xtpg->format = xtpg->default_format;
+	xtpg->formats[0] = xtpg->default_format;
+	if (xtpg->npads == 2)
+		xtpg->formats[1] = xtpg->default_format;
 
 	/* Initialize V4L2 subdevice and media entity */
 	subdev = &xtpg->xvip.subdev;
