@@ -520,7 +520,7 @@ static struct platform_driver xremap_driver = {
 	.driver = {
 		.owner = THIS_MODULE,
 		.name = "xilinx-axi-remapper",
-		.of_match_table = of_match_ptr(xremap_of_id_table),
+		.of_match_table = xremap_of_id_table,
 	},
 	.probe = xremap_probe,
 	.remove = xremap_remove,
