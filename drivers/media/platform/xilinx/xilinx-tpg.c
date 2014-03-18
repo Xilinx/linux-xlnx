@@ -159,8 +159,8 @@ static int xtpg_s_stream(struct v4l2_subdev *subdev, int enable)
  */
 
 static int xtpg_enum_mbus_code(struct v4l2_subdev *subdev,
-				     struct v4l2_subdev_fh *fh,
-				     struct v4l2_subdev_mbus_code_enum *code)
+			       struct v4l2_subdev_fh *fh,
+			       struct v4l2_subdev_mbus_code_enum *code)
 {
 	struct xtpg_device *xtpg = to_tpg(subdev);
 
@@ -173,8 +173,8 @@ static int xtpg_enum_mbus_code(struct v4l2_subdev *subdev,
 }
 
 static int xtpg_enum_frame_size(struct v4l2_subdev *subdev,
-				      struct v4l2_subdev_fh *fh,
-				      struct v4l2_subdev_frame_size_enum *fse)
+				struct v4l2_subdev_fh *fh,
+				struct v4l2_subdev_frame_size_enum *fse)
 {
 	struct xtpg_device *xtpg = to_tpg(subdev);
 
@@ -204,8 +204,8 @@ __xtpg_get_pad_format(struct xtpg_device *xtpg, struct v4l2_subdev_fh *fh,
 }
 
 static int xtpg_get_format(struct v4l2_subdev *subdev,
-				 struct v4l2_subdev_fh *fh,
-				 struct v4l2_subdev_format *fmt)
+			   struct v4l2_subdev_fh *fh,
+			   struct v4l2_subdev_format *fmt)
 {
 	struct xtpg_device *xtpg = to_tpg(subdev);
 
@@ -215,8 +215,8 @@ static int xtpg_get_format(struct v4l2_subdev *subdev,
 }
 
 static int xtpg_set_format(struct v4l2_subdev *subdev,
-				 struct v4l2_subdev_fh *fh,
-				 struct v4l2_subdev_format *fmt)
+			   struct v4l2_subdev_fh *fh,
+			   struct v4l2_subdev_format *fmt)
 {
 	struct xtpg_device *xtpg = to_tpg(subdev);
 	struct v4l2_mbus_framefmt *__format;
@@ -348,10 +348,10 @@ static struct v4l2_subdev_video_ops xtpg_video_ops = {
 };
 
 static struct v4l2_subdev_pad_ops xtpg_pad_ops = {
-	.enum_mbus_code = xtpg_enum_mbus_code,
-	.enum_frame_size = xtpg_enum_frame_size,
-	.get_fmt = xtpg_get_format,
-	.set_fmt = xtpg_set_format,
+	.enum_mbus_code		= xtpg_enum_mbus_code,
+	.enum_frame_size	= xtpg_enum_frame_size,
+	.get_fmt		= xtpg_get_format,
+	.set_fmt		= xtpg_set_format,
 };
 
 static struct v4l2_subdev_ops xtpg_ops = {
@@ -361,8 +361,8 @@ static struct v4l2_subdev_ops xtpg_ops = {
 };
 
 static const struct v4l2_subdev_internal_ops xtpg_internal_ops = {
-	.open = xtpg_open,
-	.close = xtpg_close,
+	.open	= xtpg_open,
+	.close	= xtpg_close,
 };
 
 /*
@@ -696,13 +696,13 @@ static const struct of_device_id xtpg_of_id_table[] = {
 MODULE_DEVICE_TABLE(of, xtpg_of_id_table);
 
 static struct platform_driver xtpg_driver = {
-	.driver = {
-		.owner = THIS_MODULE,
-		.name = "xilinx-axi-tpg",
-		.of_match_table = of_match_ptr(xtpg_of_id_table),
+	.driver			= {
+		.owner		= THIS_MODULE,
+		.name		= "xilinx-axi-tpg",
+		.of_match_table	= of_match_ptr(xtpg_of_id_table),
 	},
-	.probe = xtpg_probe,
-	.remove = xtpg_remove,
+	.probe			= xtpg_probe,
+	.remove			= xtpg_remove,
 };
 
 module_platform_driver(xtpg_driver);
