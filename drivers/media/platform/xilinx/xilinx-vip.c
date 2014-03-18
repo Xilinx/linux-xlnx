@@ -36,8 +36,8 @@ static const struct xvip_video_format xvip_video_formats[] = {
  * @code: the format media bus code
  *
  * Return: a pointer to the format information structure corresponding to the
- * given V4L2 media bus format @code, or %NULL if no corresponding format can be
- * found.
+ * given V4L2 media bus format @code, or ERR_PTR if no corresponding format can
+ * be found.
  */
 const struct xvip_video_format *xvip_get_format_by_code(unsigned int code)
 {
@@ -50,7 +50,7 @@ const struct xvip_video_format *xvip_get_format_by_code(unsigned int code)
 			return format;
 	}
 
-	return NULL;
+	return ERR_PTR(-EINVAL);
 }
 EXPORT_SYMBOL_GPL(xvip_get_format_by_code);
 
