@@ -605,7 +605,7 @@ static struct platform_driver xvipp_driver = {
 	.driver = {
 		.owner = THIS_MODULE,
 		.name = "xilinx-axi-video",
-		.of_match_table = of_match_ptr(xvipp_of_id_table),
+		.of_match_table = xvipp_of_id_table,
 	},
 	.probe = xvipp_probe,
 	.remove = xvipp_remove,
