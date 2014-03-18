@@ -88,11 +88,13 @@
  * @subdev: V4L2 subdevice
  * @dev: (OF) device
  * @iomem: device I/O register space remapped to kernel virtual memory
+ * @saved_ctrl: saved control register for resume / suspend
  */
 struct xvip_device {
 	struct v4l2_subdev subdev;
 	struct device *dev;
 	void __iomem *iomem;
+	u32 saved_ctrl;
 };
 
 /**
@@ -158,6 +160,19 @@ static inline void xvip_start(struct xvip_device *xvip)
 static inline void xvip_stop(struct xvip_device *xvip)
 {
 	xvip_clr(xvip, XVIP_CTRL_CONTROL, XVIP_CTRL_CONTROL_SW_ENABLE);
+}
+
+static inline void xvip_resume(struct xvip_device *xvip)
+{
+	xvip_write(xvip, XVIP_CTRL_CONTROL,
+		   xvip->saved_ctrl | XVIP_CTRL_CONTROL_SW_ENABLE);
+}
+
+static inline void xvip_suspend(struct xvip_device *xvip)
+{
+	xvip->saved_ctrl = xvip_read(xvip, XVIP_CTRL_CONTROL);
+	xvip_write(xvip, XVIP_CTRL_CONTROL,
+		   xvip->saved_ctrl & ~XVIP_CTRL_CONTROL_SW_ENABLE);
 }
 
 static inline void xvip_set_frame_size(struct xvip_device *xvip,
