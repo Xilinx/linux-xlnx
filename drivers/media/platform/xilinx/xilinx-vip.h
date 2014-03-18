@@ -16,6 +16,15 @@
 #include <linux/io.h>
 #include <media/v4l2-subdev.h>
 
+/*
+ * Minimum and maximum width and height common to most video IP cores. IP
+ * cores with different requirements must define their own values.
+ */
+#define XVIP_MIN_WIDTH			32
+#define XVIP_MAX_WIDTH			7680
+#define XVIP_MIN_HEIGHT			32
+#define XVIP_MAX_HEIGHT			7680
+
 /* Xilinx Video IP Control Registers */
 #define XVIP_CTRL_CONTROL			0x0000
 #define XVIP_CTRL_CONTROL_SW_ENABLE		(1 << 0)
