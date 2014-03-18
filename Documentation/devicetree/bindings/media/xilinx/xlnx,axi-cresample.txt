@@ -1,0 +1,51 @@
+Xilinx Chroma Resampler (CRESAMPLE)
+-----------------------------------
+
+Required properties:
+
+- compatible: Must be "xlnx,axi-cresample-4.0".
+
+- reg: Physical base address and length of the registers set for the device.
+
+- ports: Video ports, using the DT bindings defined in ../video-interfaces.txt.
+  The cresample as han input port (0) and an output port (1).
+
+Required port properties:
+
+- xlnx,axi-video-format: Must be one of "yuv444", "yuv422", and "yuv420" for
+  the input port (0), and one of "yuv422" and "yuv420" for the output port (1).
+
+- xlnx,axi-video-width: Video width as defined in video.txt
+
+Example:
+
+	axi_cresample_0: axi_cresample {
+		compatible = "xlnx,axi-cresample-4.0";
+		reg = <0x40120000 0x10000>;
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			port@0 {
+				reg = <0>;
+
+				xlnx,axi-input-video-format = "yuv444";
+				xlnx,axi-video-width = <8>;
+
+				cresample0_in: endpoint {
+					remote-endpoint = <&rgb2yuv0_out>;
+				};
+			};
+			port@1 {
+				reg = <1>;
+
+				xlnx,axi-output-video-format = "yuv422";
+				xlnx,axi-video-width = <8>;
+
+				cresample0_out: endpoint {
+					remote-endpoint = <&scaler0_in>;
+				};
+			};
+		};
+	};

@@ -13,6 +13,12 @@ config VIDEO_XILINX_CFA
 	---help---
 	   Driver for the Xilinx Color Filter Array
 
+config VIDEO_XILINX_CRESAMPLE
+	tristate "Xilinx Video Chroma Resampler"
+	depends on VIDEO_XILINX
+	---help---
+	   Driver for the Xilinx Chroma Resampler
+
 config VIDEO_XILINX_REMAPPER
 	tristate "Xilinx Video Remapper"
 	depends on VIDEO_XILINX
