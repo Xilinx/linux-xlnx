@@ -25,6 +25,13 @@
 #define XVIP_MIN_HEIGHT			32
 #define XVIP_MAX_HEIGHT			7680
 
+/*
+ * Pad IDs. IP cores with with multiple inputs or outputs should define
+ * their own values.
+ */
+#define XVIP_PAD_SINK			0
+#define XVIP_PAD_SOURCE			1
+
 /* Xilinx Video IP Control Registers */
 #define XVIP_CTRL_CONTROL			0x0000
 #define XVIP_CTRL_CONTROL_SW_ENABLE		(1 << 0)
