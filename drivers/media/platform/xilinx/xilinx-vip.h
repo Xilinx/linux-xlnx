@@ -173,4 +173,19 @@ static inline void xvip_disable_reg_update(struct xvip_device *xvip)
 	xvip_clr(xvip, XVIP_CTRL_CONTROL, XVIP_CTRL_CONTROL_REG_UPDATE);
 }
 
+static inline void xvip_print_version(struct xvip_device *xvip)
+{
+	u32 version;
+
+	version = xvip_read(xvip, XVIP_CTRL_VERSION);
+
+	dev_info(xvip->dev, "device found, version %u.%02x%x\n",
+		 ((version & XVIP_CTRL_VERSION_MAJOR_MASK) >>
+		  XVIP_CTRL_VERSION_MAJOR_SHIFT),
+		 ((version & XVIP_CTRL_VERSION_MINOR_MASK) >>
+		  XVIP_CTRL_VERSION_MINOR_SHIFT),
+		 ((version & XVIP_CTRL_VERSION_REVISION_MASK) >>
+		  XVIP_CTRL_VERSION_REVISION_SHIFT));
+}
+
 #endif /* __XILINX_VIP_H__ */
