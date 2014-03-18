@@ -335,7 +335,7 @@ static int xtpg_remove(struct platform_device *pdev)
 }
 
 static const struct of_device_id xtpg_of_id_table[] = {
-	{ .compatible = "xlnx,axi-tpg" },
+	{ .compatible = "xlnx,axi-tpg-5.0" },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, xtpg_of_id_table);

@@ -3,7 +3,7 @@ Xilinx Video Test Pattern Generator (TPG)
 
 Required properties:
 
-- compatible: Must be "xlnx,axi-tpg".
+- compatible: Must be "xlnx,axi-tpg-5.0".
 
 - reg: Physical base address and length of the registers set for the device.
 
@@ -16,7 +16,7 @@ Required properties:
 Example:
 
 	axi_tpg_0: axi_tpg@40050000 {
-		compatible = "xlnx,axi-tpg";
+		compatible = "xlnx,axi-tpg-5.0";
 		reg = <0x40050000 0x10000>;
 
 		xlnx,axi-video-format = "yuv422";
