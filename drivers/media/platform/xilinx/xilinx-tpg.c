@@ -283,6 +283,9 @@ static int xtpg_probe(struct platform_device *pdev)
 	if (xtpg->xvip.iomem == NULL)
 		return -ENODEV;
 
+	/* Reset and initialize the core */
+	xvip_reset(&xtpg->xvip);
+
 	/* Initialize V4L2 subdevice and media entity */
 	subdev = &xtpg->xvip.subdev;
 	v4l2_subdev_init(subdev, &xtpg_ops);
