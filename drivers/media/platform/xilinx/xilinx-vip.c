@@ -112,3 +112,22 @@ const struct xvip_video_format *xvip_of_get_format(struct device_node *node)
 	return NULL;
 }
 EXPORT_SYMBOL_GPL(xvip_of_get_format);
+
+/**
+ * xvip_set_format_size - Set the media bus frame format size
+ * @format: V4L2 frame format on media bus
+ * @fmt: media bus format
+ *
+ * Set the media bus frame format size. The width / height from the subdevice
+ * format are set to the given media bus format. The new format size is stored
+ * in @format. The width and height are clamped using default min / max values.
+ */
+void xvip_set_format_size(struct v4l2_mbus_framefmt *format,
+			  const struct v4l2_subdev_format *fmt)
+{
+	format->width = clamp_t(unsigned int, fmt->format.width,
+				XVIP_MIN_WIDTH, XVIP_MAX_WIDTH);
+	format->height = clamp_t(unsigned int, fmt->format.height,
+			 XVIP_MIN_HEIGHT, XVIP_MAX_HEIGHT);
+}
+EXPORT_SYMBOL_GPL(xvip_set_format_size);
