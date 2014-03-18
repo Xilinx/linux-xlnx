@@ -664,11 +664,11 @@ static const struct of_device_id xtpg_of_id_table[] = {
 MODULE_DEVICE_TABLE(of, xtpg_of_id_table);
 
 static struct platform_driver xtpg_driver = {
-	.driver			= {
+	.driver = {
 		.owner		= THIS_MODULE,
 		.name		= "xilinx-axi-tpg",
 		.pm		= &xtpg_pm_ops,
-		.of_match_table	= of_match_ptr(xtpg_of_id_table),
+		.of_match_table	= xtpg_of_id_table,
 	},
 	.probe			= xtpg_probe,
 	.remove			= xtpg_remove,
