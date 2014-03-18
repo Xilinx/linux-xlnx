@@ -216,18 +216,18 @@ static int xtpg_get_format(struct v4l2_subdev *subdev,
 
 static int xtpg_set_format(struct v4l2_subdev *subdev,
 				 struct v4l2_subdev_fh *fh,
-				 struct v4l2_subdev_format *format)
+				 struct v4l2_subdev_format *fmt)
 {
 	struct xtpg_device *xtpg = to_tpg(subdev);
 	struct v4l2_mbus_framefmt *__format;
 
-	__format = __xtpg_get_pad_format(xtpg, fh, format->pad, format->which);
-	__format->width = clamp_t(unsigned int, format->format.width,
+	__format = __xtpg_get_pad_format(xtpg, fh, fmt->pad, fmt->which);
+	__format->width = clamp_t(unsigned int, fmt->format.width,
 				  XTPG_MIN_WIDTH, XTPG_MAX_WIDTH);
-	__format->height = clamp_t(unsigned int, format->format.height,
+	__format->height = clamp_t(unsigned int, fmt->format.height,
 				   XTPG_MIN_HEIGHT, XTPG_MAX_HEIGHT);
 
-	format->format = *__format;
+	fmt->format = *__format;
 
 	return 0;
 }
