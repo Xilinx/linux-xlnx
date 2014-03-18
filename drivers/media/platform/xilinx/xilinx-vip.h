@@ -144,6 +144,11 @@ static inline void xvip_set(struct xvip_device *xvip, u32 addr, u32 set)
 void xvip_clr_or_set(struct xvip_device *xvip, u32 addr, u32 mask, bool set);
 void xvip_clr_and_set(struct xvip_device *xvip, u32 addr, u32 clr, u32 set);
 
+static inline void xvip_reset(struct xvip_device *xvip)
+{
+	xvip_write(xvip, XVIP_CTRL_CONTROL, XVIP_CTRL_CONTROL_SW_RESET);
+}
+
 static inline void xvip_start(struct xvip_device *xvip)
 {
 	xvip_set(xvip, XVIP_CTRL_CONTROL,
