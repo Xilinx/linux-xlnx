@@ -1240,6 +1240,10 @@ static int xemacps_rx(struct net_local *lp, int budget)
 					new_skb->data,
 					XEMACPS_RX_BUF_SIZE,
 					DMA_FROM_DEVICE);
+		if (dma_mapping_error(lp->ndev->dev.parent, new_skb_baddr)) {
+			dev_kfree_skb(new_skb);
+			break;
+		}
 
 		/* the packet length */
 		len = cur_p->ctrl & XEMACPS_RXBUF_LEN_MASK;
@@ -1618,6 +1622,8 @@ static int xemacps_descriptor_init(struct net_local *lp)
 							new_skb->data,
 							XEMACPS_RX_BUF_SIZE,
 							DMA_FROM_DEVICE);
+		if (dma_mapping_error(lp->ndev->dev.parent, new_skb_baddr))
+			goto err_out;
 
 		/* set wrap bit for last BD */
 		regval = (new_skb_baddr & XEMACPS_RXBUF_ADD_MASK);
@@ -2066,6 +2072,28 @@ static int xemacps_clear_csum(struct sk_buff *skb, struct net_device *ndev)
 }
 
 /**
+ * unwind_tx_frag_mapping - unwind the tx fragment mapping
+ * @lp: driver control structure
+ * @fragcnt: fragment count
+ */
+static void unwind_tx_frag_mapping(struct net_local *lp, int fragcnt)
+{
+	struct xemacps_bd *cur_p;
+
+	for (; fragcnt > 0; fragcnt--) {
+		cur_p = &lp->tx_bd[lp->tx_bd_freecnt];
+		dma_unmap_single(&lp->pdev->dev, cur_p->addr,
+				 (cur_p->ctrl & XEMACPS_TXBUF_LEN_MASK),
+				 DMA_TO_DEVICE);
+		cur_p->ctrl |= XEMACPS_TXBUF_USED_MASK;
+		if (lp->tx_bd_freecnt)
+			lp->tx_bd_freecnt--;
+		else
+			lp->tx_bd_freecnt = XEMACPS_SEND_BD_CNT - 1;
+	}
+}
+
+/**
  * xemacps_start_xmit - transmit a packet (called by kernel)
  * @skb: socket buffer
  * @ndev: network interface device structure
@@ -2113,6 +2141,12 @@ static int xemacps_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 			skb_get(skb);
 		}
 
+		if (dma_mapping_error(&lp->pdev->dev, mapping)) {
+			if (i)
+				unwind_tx_frag_mapping(lp, i);
+			goto dma_err;
+		}
+
 		lp->tx_skb[lp->tx_bd_tail].skb = skb;
 		lp->tx_skb[lp->tx_bd_tail].mapping = mapping;
 		lp->tx_skb[lp->tx_bd_tail].len = len;
@@ -2155,6 +2189,10 @@ static int xemacps_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 
 	ndev->trans_start = jiffies;
 	return 0;
+
+dma_err:
+	kfree_skb(skb);
+	return NETDEV_TX_OK;
 }
 
 /*
