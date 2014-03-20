@@ -1203,7 +1203,6 @@ static int m25p_probe(struct spi_device *spi)
 	unsigned			i;
 	struct mtd_part_parser_data	ppdata;
 	struct device_node *np = spi->dev.of_node;
-	int status;
 
 	/* Platform data helps sort out which chip type we have, as
 	 * well as how this board partitions it.  If we don't have
@@ -1409,6 +1408,7 @@ static int m25p_probe(struct spi_device *spi)
 		np = of_get_next_parent(spi->dev.of_node);
 		of_property_read_string(np, "compatible", &comp_str);
 		if (!strcmp(comp_str, "xlnx,zynq-qspi-1.00.a")) {
+			int status;
 			flash->addr_width = 3;
 			set_4byte(flash, info->jedec_id, 0);
 			status = read_ear(flash);
