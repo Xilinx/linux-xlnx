@@ -78,6 +78,7 @@ obj-$(CONFIG_DRM_MSM) += msm/
 obj-$(CONFIG_DRM_TEGRA) += tegra/
 obj-$(CONFIG_DRM_STI) += sti/
 obj-$(CONFIG_DRM_XILINX)	+= xilinx/
+obj-$(CONFIG_DRM_XYLON)	+= xylon/
 obj-$(CONFIG_DRM_IMX) += imx/
 obj-$(CONFIG_DRM_MEDIATEK) += mediatek/
 obj-y			+= i2c/

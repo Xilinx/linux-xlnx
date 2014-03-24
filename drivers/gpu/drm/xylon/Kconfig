@@ -1,0 +1,8 @@
+config DRM_XYLON
+	tristate "Xylon DRM"
+	depends on DRM
+	select DRM_KMS_HELPER
+	select DRM_KMS_CMA_HELPER
+	select DRM_GEM_CMA_HELPER
+	help
+	  DRM display driver for xylon logiCVC IP core.
