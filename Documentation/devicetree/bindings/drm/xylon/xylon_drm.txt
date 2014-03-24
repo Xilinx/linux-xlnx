@@ -1,0 +1,21 @@
+Binding for Xylon DRM driver
+
+Xylon DRM driver supports the Xylon configurable video controller
+logiCVC FPGA IP core device.
+
+Required properties:
+ - compatible: value should be "xylon,drm-1.00.a".
+ - clocks: the phandle for the pixel clock generator
+ - device: the phandle for logiCVC video controller device
+ - encoder: the phandle for the video encoder
+ - primary-plane: logiCVC layer ID used for DRM driver primary plane
+
+Example:
+
+	xylon_drm {
+		compatible = "xylon,drm-1.00.a";
+		clocks = <&si570>;
+		device = <&logicvc_0>;
+		encoder = <&adv7511>;
+		primary-plane = <0>;
+	};

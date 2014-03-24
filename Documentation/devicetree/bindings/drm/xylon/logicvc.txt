@@ -1,0 +1,105 @@
+Binding for Xylon configurable video controller logiCVC IP core
+
+Required properties:
+ - compatible: "xylon,logicvc-4.00.a", "xylon,logicvc-4.01.a"
+ - reg: MMIO base address and size of the logiCVC IP core address space
+ - interrupts-parent: the phandle for interrupt controller
+ - interrupts: the interrupt number
+ - pixel-stride: layer width in pixels
+      Common for all available logiCVC standard layers.
+
+ - layer_N: layer has its own configuration described with below properties,
+      where N is layer ID in range 0 - 4
+   - bits-per-pixel: layer bits per pixel configuration (16, 32)
+         Layer is configured to be used with specified pixel width in bits.
+         Pixels written to layer video memory must match in size to configured
+         bits per pixel value.
+   - type: layer type (rgb, yuv)
+         Layer is configured to be used with specified color space.
+         Pixels written to layer video memory must match specified color format.
+   - transparency: layer transparency (layer, pixel)
+         logiCVC layer can be configured to have transparency control on
+         layer or pixel level.
+         "Layer" mode enables controlling of layer transparency by changing
+         alpha value in single logiCVC register.
+         "Pixel" mode enables controlling of pixel transparency by changing
+         dedicated alpha bits of specific pixel in video memory.
+
+Optional properties:
+ - background-layer-bits-per-pixel: background layer bits per pixel (16, 32)
+      If omitted, last available layer is logiCVC standard layer, which has its
+      own video memory of specific size, color format and specified
+      bits per pixel.
+      If 16 or 32, last available layer is logiCVC background layer,
+      with only specified bits per pixel value.
+ - background-layer-type: background layer type (rgb, yuv)
+      Must be used only when "background-layer-bits-per-pixel" exist.
+      If set to "rgb", in case of 32 bits per pixel, background color register
+      must be written with XRGB8888 value. In case of 16 bits per pixel,
+      background color register must be written with RGB565 value.
+      If set to "yuv", background color register must be written with XYUV8888
+      value.
+ - hsync-active-low: horizontal synchronization pulse polarity
+      If omitted, generated horizontal synchronization pulse polarity is logic
+      high "H".
+ - vsync-active-low: vertical synchronization pulse polarity
+      If omitted, generated vertical synchronization pulse polarity is logic
+      high "H".
+ - pixel-data-invert: output pixel data polarity
+      If omitted, logiCVC outputs pixel data at default interface polarity.
+ - pixel-data-output-trigger-high: output pixel data trigger polarity
+      If omitted, logiCVC outputs pixel data on falling edge of pixel clock.
+ - readable-regs: all logiCVC registers are available for reading
+      If omitted, only Interrupt Status, Power Control and IP Version registers
+      are available for reading.
+ - size-position: logiCVC functionality for controlling on screen layer size
+      and position is available
+      If omitted, functionality is not available.
+ - address: layer video memory address for layer_N where N is layer ID in
+      range 0 - 4
+      logiCVC can be configured to have layer video memory address hardcoded
+      as layer register reset value. This video memory is not part of the system
+      memory nor visible from the system. Still it is accessible by CPU and hw
+      devices.
+      If omitted, layer video memory address is set dynamically by
+      device driver.
+
+Example:
+
+	logicvc_0: logicvc@40000000 {
+		compatible = "xylon,logicvc-4.00.a";
+		reg = <0x40000000 0x6000>;
+		interrupt-parent = <&gic_0>;
+		interrupts = <0 59 4>;
+		background-layer-bits-per-pixel = <32>;
+		background-layer-type = "rgb";
+		hsync-active-low;
+		vsync-active-low;
+		readable-regs;
+		size-position;
+		pixel-stride = <2048>;
+		layer_0 {
+			address = <0x30000000>;
+			bits-per-pixel = <16>;
+			type = "rgb";
+			transparency = "layer";
+		};
+		layer_1 {
+			address = <0x30500000>;
+			bits-per-pixel = <32>;
+			type = "rgb";
+			transparency = "layer";
+		};
+		layer_2 {
+			address = <0x30E00000>;
+			bits-per-pixel = <32>;
+			type = "rgb";
+			transparency = "pixel";
+		};
+		layer_3 {
+			address = <0x31700000>;
+			bits-per-pixel = <16>;
+			type = "yuv";
+			transparency = "layer";
+		};
+	};
