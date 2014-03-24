@@ -452,10 +452,8 @@ static int zynq_qspi_setup_transfer(struct spi_device *qspi,
 
 	req_hz = (transfer) ? transfer->speed_hz : qspi->max_speed_hz;
 
-	if (transfer && (transfer->speed_hz == 0))
-		req_hz = qspi->max_speed_hz;
-
 	/* Set the clock frequency */
+	/* If req_hz == 0, default to lowest speed */
 	if (xqspi->speed_hz != req_hz) {
 		while ((baud_rate_val < 7)  &&
 			(clk_get_rate(xqspi->devclk) / (2 << baud_rate_val)) >
@@ -504,9 +502,6 @@ static int zynq_qspi_setup_transfer(struct spi_device *qspi,
  */
 static int zynq_qspi_setup(struct spi_device *qspi)
 {
-	if (!qspi->max_speed_hz)
-		return -EINVAL;
-
 	if (qspi->bits_per_word && qspi->bits_per_word != 8) {
 		dev_err(&qspi->dev, "%s, unsupported bits per word %u\n",
 			__func__, qspi->bits_per_word);
