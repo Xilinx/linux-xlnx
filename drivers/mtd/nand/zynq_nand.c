@@ -80,18 +80,18 @@ struct zynq_nand_command_format {
  * struct zynq_nand_info - Defines the NAND flash driver instance
  * @chip:		NAND chip information structure
  * @mtd:		MTD information structure
- * @parts:		Pointer	to the mtd_partition structure
+ * @parts:		Pointer to the mtd_partition structure
  * @nand_base:		Virtual address of the NAND flash device
  * @end_cmd_pending:	End command is pending
  * @end_cmd:		End command
  */
 struct zynq_nand_info {
-	struct nand_chip	chip;
-	struct mtd_info		mtd;
-	struct mtd_partition	*parts;
-	void __iomem		*nand_base;
-	unsigned long		end_cmd_pending;
-	unsigned long		end_cmd;
+	struct nand_chip chip;
+	struct mtd_info mtd;
+	struct mtd_partition *parts;
+	void __iomem *nand_base;
+	unsigned long end_cmd_pending;
+	unsigned long end_cmd;
 };
 
 /*
@@ -267,8 +267,7 @@ static int zynq_nand_correct_data(struct mtd_info *mtd, unsigned char *buf,
 {
 	unsigned char bit_addr;
 	unsigned int byte_addr;
-	unsigned short ecc_odd, ecc_even;
-	unsigned short read_ecc_lower, read_ecc_upper;
+	unsigned short ecc_odd, ecc_even, read_ecc_lower, read_ecc_upper;
 	unsigned short calc_ecc_lower, calc_ecc_upper;
 
 	read_ecc_lower = (read_ecc[0] | (read_ecc[1] << 8)) & 0xfff;
@@ -310,8 +309,7 @@ static int zynq_nand_correct_data(struct mtd_info *mtd, unsigned char *buf,
 static int zynq_nand_read_oob(struct mtd_info *mtd, struct nand_chip *chip,
 			    int page)
 {
-	unsigned long data_width = 4;
-	unsigned long data_phase_addr = 0;
+	unsigned long data_width = 4, data_phase_addr;
 	uint8_t *p;
 
 	chip->cmdfunc(mtd, NAND_CMD_READOOB, 0, page);
@@ -341,8 +339,7 @@ static int zynq_nand_write_oob(struct mtd_info *mtd, struct nand_chip *chip,
 {
 	int status = 0;
 	const uint8_t *buf = chip->oob_poi;
-	unsigned long data_width = 4;
-	unsigned long data_phase_addr = 0;
+	unsigned long data_width = 4, data_phase_addr;
 
 	chip->cmdfunc(mtd, NAND_CMD_SEQIN, mtd->writesize, page);
 
@@ -375,8 +372,7 @@ static int zynq_nand_write_oob(struct mtd_info *mtd, struct nand_chip *chip,
 static int zynq_nand_read_page_raw(struct mtd_info *mtd, struct nand_chip *chip,
 				 uint8_t *buf, int oob_required, int page)
 {
-	unsigned long data_width = 4;
-	unsigned long data_phase_addr = 0;
+	unsigned long data_width = 4, data_phase_addr;
 	uint8_t *p;
 
 	chip->read_buf(mtd, buf, mtd->writesize);
@@ -406,8 +402,7 @@ static int zynq_nand_write_page_raw(struct mtd_info *mtd,
 				    struct nand_chip *chip,
 				    const uint8_t *buf, int oob_required)
 {
-	unsigned long data_width = 4;
-	unsigned long data_phase_addr = 0;
+	unsigned long data_width = 4, data_phase_addr;
 	uint8_t *p;
 
 	chip->write_buf(mtd, buf, mtd->writesize);
@@ -446,8 +441,7 @@ static int zynq_nand_write_page_hwecc(struct mtd_info *mtd,
 	uint8_t *ecc_calc = chip->buffers->ecccalc;
 	const uint8_t *p = buf;
 	uint32_t *eccpos = chip->ecc.layout->eccpos;
-	unsigned long data_phase_addr = 0;
-	unsigned long data_width = 4;
+	unsigned long data_phase_addr, data_width = 4;
 	uint8_t *oob_ptr;
 
 	for ( ; (eccsteps - 1); eccsteps--) {
@@ -545,8 +539,7 @@ static int zynq_nand_read_page_hwecc(struct mtd_info *mtd,
 	uint8_t *ecc_calc = chip->buffers->ecccalc;
 	uint8_t *ecc_code = chip->buffers->ecccode;
 	uint32_t *eccpos = chip->ecc.layout->eccpos;
-	unsigned long data_phase_addr = 0;
-	unsigned long data_width = 4;
+	unsigned long data_phase_addr, data_width = 4;
 	uint8_t *oob_ptr;
 
 	for ( ; (eccsteps - 1); eccsteps--) {
@@ -673,12 +666,8 @@ static void zynq_nand_cmd_function(struct mtd_info *mtd, unsigned int command,
 	struct zynq_nand_info *xnand =
 		container_of(mtd, struct zynq_nand_info, mtd);
 	void __iomem *cmd_addr;
-	unsigned long cmd_data = 0;
-	unsigned long cmd_phase_addr = 0;
-	unsigned long data_phase_addr = 0;
-	unsigned long end_cmd = 0;
-	unsigned long end_cmd_valid = 0;
-	unsigned long i;
+	unsigned long cmd_data = 0, end_cmd_valid = 0;
+	unsigned long cmd_phase_addr, data_phase_addr, end_cmd, i;
 	unsigned long timeout = jiffies + ZYNQ_NAND_DEV_BUSY_TIMEOUT;
 
 	if (xnand->end_cmd_pending) {
@@ -867,8 +856,7 @@ static int zynq_nand_device_ready(struct mtd_info *mtd)
 static int zynq_nand_detect_ondie_ecc(struct mtd_info *mtd)
 {
 	struct nand_chip *nand_chip = mtd->priv;
-	u8 maf_id, dev_id, i;
-	u8 get_feature;
+	u8 maf_id, dev_id, i, get_feature;
 	u8 set_feature[4] = { 0x08, 0x00, 0x00, 0x00 };
 
 	/* Check if On-Die ECC flash */
