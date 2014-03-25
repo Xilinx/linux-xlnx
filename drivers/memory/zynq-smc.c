@@ -283,8 +283,7 @@ int zynq_smc_set_ecc_pg_size(unsigned int pg_sz)
 }
 EXPORT_SYMBOL_GPL(zynq_smc_set_ecc_pg_size);
 
-#ifdef CONFIG_PM_SLEEP
-static int zynq_smc_suspend(struct device *dev)
+static int __maybe_unused zynq_smc_suspend(struct device *dev)
 {
 	struct zynq_smc_data *zynq_smc = dev_get_drvdata(dev);
 
@@ -294,7 +293,7 @@ static int zynq_smc_suspend(struct device *dev)
 	return 0;
 }
 
-static int zynq_smc_resume(struct device *dev)
+static int __maybe_unused zynq_smc_resume(struct device *dev)
 {
 	int ret;
 	struct zynq_smc_data *zynq_smc = dev_get_drvdata(dev);
@@ -313,7 +312,6 @@ static int zynq_smc_resume(struct device *dev)
 	}
 	return ret;
 }
-#endif
 
 static SIMPLE_DEV_PM_OPS(zynq_smc_dev_pm_ops, zynq_smc_suspend,
 			 zynq_smc_resume);
