@@ -91,8 +91,8 @@
  * @aperclk:		Pointer to the APER clock
  */
 struct pl353_smc_data {
-	struct clk		*devclk;
-	struct clk		*aperclk;
+	struct clk		*memclk;
+	struct clk		*aclk;
 };
 
 /* SMC virtual register base */
@@ -291,8 +291,8 @@ static int __maybe_unused pl353_smc_suspend(struct device *dev)
 {
 	struct pl353_smc_data *pl353_smc = dev_get_drvdata(dev);
 
-	clk_disable(pl353_smc->devclk);
-	clk_disable(pl353_smc->aperclk);
+	clk_disable(pl353_smc->memclk);
+	clk_disable(pl353_smc->aclk);
 
 	return 0;
 }
@@ -302,16 +302,16 @@ static int __maybe_unused pl353_smc_resume(struct device *dev)
 	int ret;
 	struct pl353_smc_data *pl353_smc = dev_get_drvdata(dev);
 
-	ret = clk_enable(pl353_smc->aperclk);
+	ret = clk_enable(pl353_smc->aclk);
 	if (ret) {
-		dev_err(dev, "Cannot enable APER clock.\n");
+		dev_err(dev, "Cannot enable axi domain clock.\n");
 		return ret;
 	}
 
-	ret = clk_enable(pl353_smc->devclk);
+	ret = clk_enable(pl353_smc->memclk);
 	if (ret) {
-		dev_err(dev, "Cannot enable device clock.\n");
-		clk_disable(pl353_smc->aperclk);
+		dev_err(dev, "Cannot enable memory clock.\n");
+		clk_disable(pl353_smc->aclk);
 		return ret;
 	}
 	return ret;
@@ -451,27 +451,27 @@ static int pl353_smc_probe(struct platform_device *pdev)
 	if (IS_ERR(pl353_smc_base))
 		return PTR_ERR(pl353_smc_base);
 
-	pl353_smc->aperclk = devm_clk_get(&pdev->dev, "aper_clk");
-	if (IS_ERR(pl353_smc->aperclk)) {
-		dev_err(&pdev->dev, "aper_clk clock not found.\n");
-		return PTR_ERR(pl353_smc->aperclk);
+	pl353_smc->aclk = devm_clk_get(&pdev->dev, "aclk");
+	if (IS_ERR(pl353_smc->aclk)) {
+		dev_err(&pdev->dev, "aclk clock not found.\n");
+		return PTR_ERR(pl353_smc->aclk);
 	}
 
-	pl353_smc->devclk = devm_clk_get(&pdev->dev, "ref_clk");
-	if (IS_ERR(pl353_smc->devclk)) {
-		dev_err(&pdev->dev, "ref_clk clock not found.\n");
-		return PTR_ERR(pl353_smc->devclk);
+	pl353_smc->memclk = devm_clk_get(&pdev->dev, "memclk");
+	if (IS_ERR(pl353_smc->memclk)) {
+		dev_err(&pdev->dev, "memclk clock not found.\n");
+		return PTR_ERR(pl353_smc->memclk);
 	}
 
-	err = clk_prepare_enable(pl353_smc->aperclk);
+	err = clk_prepare_enable(pl353_smc->aclk);
 	if (err) {
-		dev_err(&pdev->dev, "Unable to enable APER clock.\n");
+		dev_err(&pdev->dev, "Unable to enable AXI clock.\n");
 		return err;
 	}
 
-	err = clk_prepare_enable(pl353_smc->devclk);
+	err = clk_prepare_enable(pl353_smc->memclk);
 	if (err) {
-		dev_err(&pdev->dev, "Unable to enable device clock.\n");
+		dev_err(&pdev->dev, "Unable to enable memory clock.\n");
 		goto out_clk_dis_aper;
 	}
 
@@ -515,9 +515,9 @@ static int pl353_smc_probe(struct platform_device *pdev)
 	return 0;
 
 out_clk_disable:
-	clk_disable_unprepare(pl353_smc->devclk);
+	clk_disable_unprepare(pl353_smc->memclk);
 out_clk_dis_aper:
-	clk_disable_unprepare(pl353_smc->aperclk);
+	clk_disable_unprepare(pl353_smc->aclk);
 
 	return err;
 }
@@ -526,8 +526,8 @@ static int pl353_smc_remove(struct platform_device *pdev)
 {
 	struct pl353_smc_data *pl353_smc = platform_get_drvdata(pdev);
 
-	clk_disable_unprepare(pl353_smc->devclk);
-	clk_disable_unprepare(pl353_smc->aperclk);
+	clk_disable_unprepare(pl353_smc->memclk);
+	clk_disable_unprepare(pl353_smc->aclk);
 
 	return 0;
 }
