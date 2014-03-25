@@ -84,6 +84,8 @@ int zynq_smc_set_buswidth(unsigned int bw)
 	if (bw == 16)
 		reg |= 1;
 	writel(reg, zynq_smc_base + ZYNQ_SMC_SET_OPMODE_OFFS);
+	writel(ZYNQ_SMC_DC_UPT_NAND_REGS, zynq_smc_base +
+	       ZYNQ_SMC_DIRECT_CMD_OFFS);
 
 	return 0;
 }
@@ -115,6 +117,8 @@ static void zynq_smc_set_cycles(u32 t0, u32 t1, u32 t2, u32 t3, u32
 	t0 |= t1 | t2 | t3 | t4 | t5 | t6;
 
 	writel(t0, zynq_smc_base + ZYNQ_SMC_SET_CYCLES_OFFS);
+	writel(ZYNQ_SMC_DC_UPT_NAND_REGS, zynq_smc_base +
+	       ZYNQ_SMC_DIRECT_CMD_OFFS);
 }
 
 /**
