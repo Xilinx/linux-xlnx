@@ -72,7 +72,7 @@ static void __iomem *zynq_smc_base;
  * @bw:	Memory buswidth (8 | 16)
  * Return: 0 on success or negative errno.
  */
-static int zynq_smc_set_buswidth(unsigned int bw)
+int zynq_smc_set_buswidth(unsigned int bw)
 {
 	u32 reg;
 
@@ -87,6 +87,7 @@ static int zynq_smc_set_buswidth(unsigned int bw)
 
 	return 0;
 }
+EXPORT_SYMBOL_GPL(zynq_smc_set_buswidth);
 
 /**
  * zynq_smc_set_cycles - Set memory timing parameters

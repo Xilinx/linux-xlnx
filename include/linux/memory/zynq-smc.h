@@ -28,5 +28,6 @@ int zynq_smc_get_nand_int_status_raw(void);
 void zynq_smc_clr_nand_int(void);
 int zynq_smc_set_ecc_mode(enum zynq_smc_ecc_mode mode);
 int zynq_smc_set_ecc_pg_size(unsigned int pg_sz);
+int zynq_smc_set_buswidth(unsigned int bw);
 
 #endif
