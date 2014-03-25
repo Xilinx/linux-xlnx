@@ -39,7 +39,7 @@
 
 /* Flash memory controller operating parameters */
 
-#define ZYNQ_NAND_ECC_CONFIG	((1 << 4)  |	/* ECC read at end of page */ \
+#define ZYNQ_NAND_ECC_CONFIG	(BIT(4)  |	/* ECC read at end of page */ \
 				 (0 << 5))	/* No Jumping */
 
 /* AXI Address definitions */
@@ -50,10 +50,10 @@
 #define CLEAR_CS_SHIFT		21
 #define ECC_LAST_SHIFT		10
 #define COMMAND_PHASE		(0 << 19)
-#define DATA_PHASE		(1 << 19)
+#define DATA_PHASE		BIT(19)
 
-#define ZYNQ_NAND_ECC_LAST	(1 << ECC_LAST_SHIFT)	/* Set ECC_Last */
-#define ZYNQ_NAND_CLEAR_CS	(1 << CLEAR_CS_SHIFT)	/* Clear chip select */
+#define ZYNQ_NAND_ECC_LAST	BIT(ECC_LAST_SHIFT)	/* Set ECC_Last */
+#define ZYNQ_NAND_CLEAR_CS	BIT(CLEAR_CS_SHIFT)	/* Clear chip select */
 
 #define ONDIE_ECC_FEATURE_ADDR	0x90
 #define ZYNQ_NAND_ECC_BUSY_TIMEOUT	(1 * HZ)
