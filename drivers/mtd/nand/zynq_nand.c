@@ -63,7 +63,7 @@
 /* Inline function for the NAND controller register write */
 static inline void zynq_nand_write32(void __iomem *addr, u32 val)
 {
-	__raw_writel((val), (addr));
+	writel_relaxed((val), (addr));
 }
 
 /**
