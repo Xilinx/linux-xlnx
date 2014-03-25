@@ -917,6 +917,80 @@ static int zynq_nand_detect_ondie_ecc(struct mtd_info *mtd)
 }
 
 /**
+ * zynq_nand_ecc_init - Initialize the ecc information as per the ecc mode
+ * @mtd:	Pointer to the mtd_info structure
+ *
+ * This function initializes the ecc block and functional pointers as per the
+ * ecc mode
+ */
+static void zynq_nand_ecc_init(struct mtd_info *mtd)
+{
+	struct nand_chip *nand_chip = mtd->priv;
+
+	nand_chip->ecc.mode = NAND_ECC_HW;
+	nand_chip->ecc.read_oob = zynq_nand_read_oob;
+	nand_chip->ecc.read_page_raw = zynq_nand_read_page_raw;
+	nand_chip->ecc.strength = 1;
+	nand_chip->ecc.write_oob = zynq_nand_write_oob;
+	nand_chip->ecc.write_page_raw = zynq_nand_write_page_raw;
+
+	if (zynq_nand_detect_ondie_ecc(mtd)) {
+		/* bypass the controller ECC block */
+		zynq_smc_set_ecc_mode(ZYNQ_SMC_ECCMODE_BYPASS);
+
+		/*
+		 * The software ECC routines won't work with the
+		 * SMC controller
+		 */
+		nand_chip->ecc.bytes = 0;
+		nand_chip->ecc.layout = &ondie_nand_oob_64;
+		nand_chip->ecc.read_page = zynq_nand_read_page_raw;
+		nand_chip->ecc.write_page = zynq_nand_write_page_raw;
+		nand_chip->ecc.size = mtd->writesize;
+		/*
+		 * On-Die ECC spare bytes offset 8 is used for ECC codes
+		 * Use the BBT pattern descriptors
+		 */
+		nand_chip->bbt_td = &bbt_main_descr;
+		nand_chip->bbt_md = &bbt_mirror_descr;
+	} else {
+		/* Hardware ECC generates 3 bytes ECC code for each 512 bytes */
+		nand_chip->ecc.bytes = 3;
+		nand_chip->ecc.calculate = zynq_nand_calculate_hwecc;
+		nand_chip->ecc.correct = zynq_nand_correct_data;
+		nand_chip->ecc.hwctl = NULL;
+		nand_chip->ecc.read_page = zynq_nand_read_page_hwecc;
+		nand_chip->ecc.size = ZYNQ_NAND_ECC_SIZE;
+		nand_chip->ecc.write_page = zynq_nand_write_page_hwecc;
+
+		zynq_smc_set_ecc_pg_size(mtd->writesize);
+		switch (mtd->writesize) {
+		case 512:
+		case 1024:
+		case 2048:
+			zynq_smc_set_ecc_mode(ZYNQ_SMC_ECCMODE_APB);
+			break;
+		default:
+			/*
+			 * The software ECC routines won't work with the
+			 * SMC controller
+			 */
+			nand_chip->ecc.calculate = nand_calculate_ecc;
+			nand_chip->ecc.correct = nand_correct_data;
+			nand_chip->ecc.read_page = zynq_nand_read_page_swecc;
+			nand_chip->ecc.write_page = zynq_nand_write_page_swecc;
+			nand_chip->ecc.size = 256;
+			break;
+		}
+
+		if (mtd->oobsize == 16)
+			nand_chip->ecc.layout = &nand_oob_16;
+		else if (mtd->oobsize == 64)
+			nand_chip->ecc.layout = &nand_oob_64;
+	}
+}
+
+/**
  * zynq_nand_probe - Probe method for the NAND driver
  * @pdev:	Pointer to the platform_device structure
  *
@@ -997,67 +1071,7 @@ static int zynq_nand_probe(struct platform_device *pdev)
 		return -ENXIO;
 	}
 
-	nand_chip->ecc.mode = NAND_ECC_HW;
-	nand_chip->ecc.read_oob = zynq_nand_read_oob;
-	nand_chip->ecc.read_page_raw = zynq_nand_read_page_raw;
-	nand_chip->ecc.strength = 1;
-	nand_chip->ecc.write_oob = zynq_nand_write_oob;
-	nand_chip->ecc.write_page_raw = zynq_nand_write_page_raw;
-	if (zynq_nand_detect_ondie_ecc(mtd)) {
-		/* bypass the controller ECC block */
-		zynq_smc_set_ecc_mode(ZYNQ_SMC_ECCMODE_BYPASS);
-
-		/*
-		 * The software ECC routines won't work with the
-		 * SMC controller
-		 */
-		nand_chip->ecc.bytes = 0;
-		nand_chip->ecc.layout = &ondie_nand_oob_64;
-		nand_chip->ecc.read_page = zynq_nand_read_page_raw;
-		nand_chip->ecc.write_page = zynq_nand_write_page_raw;
-		nand_chip->ecc.size = mtd->writesize;
-		/*
-		 * On-Die ECC spare bytes offset 8 is used for ECC codes
-		 * Use the BBT pattern descriptors
-		 */
-		nand_chip->bbt_td = &bbt_main_descr;
-		nand_chip->bbt_md = &bbt_mirror_descr;
-	} else {
-		/* Hardware ECC generates 3 bytes ECC code for each 512 bytes */
-		nand_chip->ecc.bytes = 3;
-		nand_chip->ecc.calculate = zynq_nand_calculate_hwecc;
-		nand_chip->ecc.correct = zynq_nand_correct_data;
-		nand_chip->ecc.hwctl = NULL;
-		nand_chip->ecc.read_page = zynq_nand_read_page_hwecc;
-		nand_chip->ecc.size = ZYNQ_NAND_ECC_SIZE;
-		nand_chip->ecc.write_page = zynq_nand_write_page_hwecc;
-
-		zynq_smc_set_ecc_pg_size(mtd->writesize);
-		switch (mtd->writesize) {
-		case 512:
-		case 1024:
-		case 2048:
-			zynq_smc_set_ecc_mode(ZYNQ_SMC_ECCMODE_APB);
-			break;
-		default:
-			/*
-			 * The software ECC routines won't work with the
-			 * SMC controller
-			 */
-			nand_chip->ecc.calculate = nand_calculate_ecc;
-			nand_chip->ecc.correct = nand_correct_data;
-			nand_chip->ecc.read_page = zynq_nand_read_page_swecc;
-			/* nand_chip->ecc.read_subpage = nand_read_subpage; */
-			nand_chip->ecc.write_page = zynq_nand_write_page_swecc;
-			nand_chip->ecc.size = 256;
-			break;
-		}
-
-		if (mtd->oobsize == 16)
-			nand_chip->ecc.layout = &nand_oob_16;
-		else if (mtd->oobsize == 64)
-			nand_chip->ecc.layout = &nand_oob_64;
-	}
+	zynq_nand_ecc_init(mtd);
 
 	/* second phase scan */
 	if (nand_scan_tail(mtd)) {
