@@ -857,6 +857,66 @@ static int zynq_nand_device_ready(struct mtd_info *mtd)
 }
 
 /**
+ * zynq_nand_detect_ondie_ecc - Get the flash ondie ecc state
+ * @mtd:	Pointer to the mtd_info structure
+ *
+ * This function enables the ondie ecc for the Micron ondie ecc capable devices
+ *
+ * Return:	1 on detect, 0 if fail to detect
+ */
+static int zynq_nand_detect_ondie_ecc(struct mtd_info *mtd)
+{
+	struct nand_chip *nand_chip = mtd->priv;
+	u8 maf_id, dev_id, i;
+	u8 get_feature;
+	u8 set_feature[4] = { 0x08, 0x00, 0x00, 0x00 };
+
+	/* Check if On-Die ECC flash */
+	nand_chip->cmdfunc(mtd, NAND_CMD_RESET, -1, -1);
+	nand_chip->cmdfunc(mtd, NAND_CMD_READID, 0x00, -1);
+
+	/* Read manufacturer and device IDs */
+	maf_id = nand_chip->read_byte(mtd);
+	dev_id = nand_chip->read_byte(mtd);
+
+	if ((maf_id == NAND_MFR_MICRON) &&
+	    ((dev_id == 0xf1) || (dev_id == 0xa1) ||
+	     (dev_id == 0xb1) || (dev_id == 0xaa) ||
+	     (dev_id == 0xba) || (dev_id == 0xda) ||
+	     (dev_id == 0xca) || (dev_id == 0xac) ||
+	     (dev_id == 0xbc) || (dev_id == 0xdc) ||
+	     (dev_id == 0xcc) || (dev_id == 0xa3) ||
+	     (dev_id == 0xb3) ||
+	     (dev_id == 0xd3) || (dev_id == 0xc3))) {
+
+		nand_chip->cmdfunc(mtd, NAND_CMD_GET_FEATURES,
+				   ONDIE_ECC_FEATURE_ADDR, -1);
+		get_feature = nand_chip->read_byte(mtd);
+
+		if (get_feature & 0x08) {
+			return 1;
+		} else {
+			nand_chip->cmdfunc(mtd, NAND_CMD_SET_FEATURES,
+					   ONDIE_ECC_FEATURE_ADDR, -1);
+			for (i = 0; i < 4; i++)
+				writeb(set_feature[i], nand_chip->IO_ADDR_W);
+
+			ndelay(1000);
+
+			nand_chip->cmdfunc(mtd, NAND_CMD_GET_FEATURES,
+					   ONDIE_ECC_FEATURE_ADDR, -1);
+			get_feature = nand_chip->read_byte(mtd);
+
+			if (get_feature & 0x08)
+				return 1;
+
+		}
+	}
+
+	return 0;
+}
+
+/**
  * zynq_nand_probe - Probe method for the NAND driver
  * @pdev:	Pointer to the platform_device structure
  *
@@ -870,10 +930,6 @@ static int zynq_nand_probe(struct platform_device *pdev)
 	struct mtd_info *mtd;
 	struct nand_chip *nand_chip;
 	struct resource *res;
-	u8 maf_id, dev_id, i;
-	u8 get_feature;
-	u8 set_feature[4] = { 0x08, 0x00, 0x00, 0x00 };
-	int ondie_ecc_enabled = 0;
 	struct mtd_part_parser_data ppdata;
 	const unsigned int *prop;
 	u32 options = 0;
@@ -941,54 +997,13 @@ static int zynq_nand_probe(struct platform_device *pdev)
 		return -ENXIO;
 	}
 
-	/* Check if On-Die ECC flash */
-	nand_chip->cmdfunc(mtd, NAND_CMD_RESET, -1, -1);
-	nand_chip->cmdfunc(mtd, NAND_CMD_READID, 0x00, -1);
-
-	/* Read manufacturer and device IDs */
-	maf_id = nand_chip->read_byte(mtd);
-	dev_id = nand_chip->read_byte(mtd);
-
-	if ((maf_id == 0x2c) &&
-	    ((dev_id == 0xf1) || (dev_id == 0xa1) ||
-	     (dev_id == 0xb1) ||
-	     (dev_id == 0xaa) || (dev_id == 0xba) ||
-	     (dev_id == 0xda) || (dev_id == 0xca) ||
-	     (dev_id == 0xac) || (dev_id == 0xbc) ||
-	     (dev_id == 0xdc) || (dev_id == 0xcc) ||
-	     (dev_id == 0xa3) || (dev_id == 0xb3) ||
-	     (dev_id == 0xd3) || (dev_id == 0xc3))) {
-
-		nand_chip->cmdfunc(mtd, NAND_CMD_GET_FEATURES,
-				   ONDIE_ECC_FEATURE_ADDR, -1);
-		get_feature = nand_chip->read_byte(mtd);
-
-		if (get_feature & 0x08) {
-			ondie_ecc_enabled = 1;
-		} else {
-			nand_chip->cmdfunc(mtd, NAND_CMD_SET_FEATURES,
-					   ONDIE_ECC_FEATURE_ADDR, -1);
-			for (i = 0; i < 4; i++)
-				writeb(set_feature[i], nand_chip->IO_ADDR_W);
-
-			ndelay(1000);
-
-			nand_chip->cmdfunc(mtd, NAND_CMD_GET_FEATURES,
-					   ONDIE_ECC_FEATURE_ADDR, -1);
-			get_feature = nand_chip->read_byte(mtd);
-
-			if (get_feature & 0x08)
-				ondie_ecc_enabled = 1;
-		}
-	}
-
 	nand_chip->ecc.mode = NAND_ECC_HW;
 	nand_chip->ecc.read_oob = zynq_nand_read_oob;
 	nand_chip->ecc.read_page_raw = zynq_nand_read_page_raw;
 	nand_chip->ecc.strength = 1;
 	nand_chip->ecc.write_oob = zynq_nand_write_oob;
 	nand_chip->ecc.write_page_raw = zynq_nand_write_page_raw;
-	if (ondie_ecc_enabled) {
+	if (zynq_nand_detect_ondie_ecc(mtd)) {
 		/* bypass the controller ECC block */
 		zynq_smc_set_ecc_mode(ZYNQ_SMC_ECCMODE_BYPASS);
 
