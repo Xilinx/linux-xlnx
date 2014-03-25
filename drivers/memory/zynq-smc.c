@@ -66,14 +66,11 @@ struct zynq_smc_data {
 
 /* SMC virtual register base */
 static void __iomem *zynq_smc_base;
-static DEFINE_SPINLOCK(zynq_smc_lock);
 
 /**
  * zynq_smc_set_buswidth - Set memory buswidth
  * @bw:	Memory buswidth (8 | 16)
  * Return: 0 on success or negative errno.
- *
- * Must be called with zynq_smc_lock held.
  */
 static int zynq_smc_set_buswidth(unsigned int bw)
 {
@@ -102,8 +99,6 @@ static int zynq_smc_set_buswidth(unsigned int bw)
  * @t6:	t_rr		busy to RE timing
  *
  * Sets NAND chip specific timing parameters.
- *
- * Must be called with zynq_smc_lock held.
  */
 static void zynq_smc_set_cycles(u32 t0, u32 t1, u32 t2, u32 t3, u32
 			      t4, u32 t5, u32 t6)
@@ -124,8 +119,6 @@ static void zynq_smc_set_cycles(u32 t0, u32 t1, u32 t2, u32 t3, u32
 /**
  * zynq_smc_ecc_is_busy_noirq - Read ecc busy flag
  * Return: the ecc_status bit from the ecc_status register. 1 = busy, 0 = idle
- *
- * Must be called with zynq_smc_lock held.
  */
 static int zynq_smc_ecc_is_busy_noirq(void)
 {
@@ -139,14 +132,9 @@ static int zynq_smc_ecc_is_busy_noirq(void)
  */
 int zynq_smc_ecc_is_busy(void)
 {
-	unsigned long flags;
 	int ret;
 
-	spin_lock_irqsave(&zynq_smc_lock, flags);
-
 	ret = zynq_smc_ecc_is_busy_noirq();
-
-	spin_unlock_irqrestore(&zynq_smc_lock, flags);
 
 	return ret;
 }
@@ -163,16 +151,10 @@ EXPORT_SYMBOL_GPL(zynq_smc_ecc_is_busy);
 u32 zynq_smc_get_ecc_val(int ecc_reg)
 {
 	u32 addr, reg;
-	unsigned long flags;
 
 	ecc_reg &= 3;
 	addr = ZYNQ_SMC_ECC_VALUE0_OFFS + (ecc_reg << 2);
-
-	spin_lock_irqsave(&zynq_smc_lock, flags);
-
 	reg = readl(zynq_smc_base + addr);
-
-	spin_unlock_irqrestore(&zynq_smc_lock, flags);
 
 	return reg;
 }
@@ -185,14 +167,8 @@ EXPORT_SYMBOL_GPL(zynq_smc_get_ecc_val);
 int zynq_smc_get_nand_int_status_raw(void)
 {
 	u32 reg;
-	unsigned long flags;
-
-	spin_lock_irqsave(&zynq_smc_lock, flags);
 
 	reg = readl(zynq_smc_base + ZYNQ_SMC_MEMC_STATUS_OFFS);
-
-	spin_unlock_irqrestore(&zynq_smc_lock, flags);
-
 	reg >>= 6;
 	reg &= 1;
 
@@ -205,13 +181,7 @@ EXPORT_SYMBOL_GPL(zynq_smc_get_nand_int_status_raw);
  */
 void zynq_smc_clr_nand_int(void)
 {
-	unsigned long flags;
-
-	spin_lock_irqsave(&zynq_smc_lock, flags);
-
 	writel(ZYNQ_SMC_CFG_CLR_INT_1, zynq_smc_base + ZYNQ_SMC_CFG_CLR_OFFS);
-
-	spin_unlock_irqrestore(&zynq_smc_lock, flags);
 }
 EXPORT_SYMBOL_GPL(zynq_smc_clr_nand_int);
 
@@ -223,21 +193,18 @@ EXPORT_SYMBOL_GPL(zynq_smc_clr_nand_int);
 int zynq_smc_set_ecc_mode(enum zynq_smc_ecc_mode mode)
 {
 	u32 reg;
-	unsigned long flags;
 	int ret = 0;
 
 	switch (mode) {
 	case ZYNQ_SMC_ECCMODE_BYPASS:
 	case ZYNQ_SMC_ECCMODE_APB:
 	case ZYNQ_SMC_ECCMODE_MEM:
-		spin_lock_irqsave(&zynq_smc_lock, flags);
 
 		reg = readl(zynq_smc_base + ZYNQ_SMC_ECC_MEMCFG_OFFS);
 		reg &= ~0xc;
 		reg |= mode << 2;
 		writel(reg, zynq_smc_base + ZYNQ_SMC_ECC_MEMCFG_OFFS);
 
-		spin_unlock_irqrestore(&zynq_smc_lock, flags);
 		break;
 	default:
 		ret = -EINVAL;
@@ -255,7 +222,6 @@ EXPORT_SYMBOL_GPL(zynq_smc_set_ecc_mode);
 int zynq_smc_set_ecc_pg_size(unsigned int pg_sz)
 {
 	u32 reg, sz;
-	unsigned long flags;
 
 	switch (pg_sz) {
 	case 0:
@@ -274,14 +240,10 @@ int zynq_smc_set_ecc_pg_size(unsigned int pg_sz)
 		return -EINVAL;
 	}
 
-	spin_lock_irqsave(&zynq_smc_lock, flags);
-
 	reg = readl(zynq_smc_base + ZYNQ_SMC_ECC_MEMCFG_OFFS);
 	reg &= ~3;
 	reg |= sz;
 	writel(reg, zynq_smc_base + ZYNQ_SMC_ECC_MEMCFG_OFFS);
-
-	spin_unlock_irqrestore(&zynq_smc_lock, flags);
 
 	return 0;
 }
@@ -333,7 +295,6 @@ static void zynq_smc_init_nand_interface(struct platform_device *pdev,
 	u32 t_rc, t_wc, t_rea, t_wp, t_clr, t_ar, t_rr;
 	unsigned int bw;
 	int err;
-	unsigned long flags;
 
 	err = of_property_read_u32(nand_node, "xlnx,nand-width", &bw);
 	if (err) {
@@ -401,8 +362,6 @@ default_nand_timing:
 		t_wp = t_clr = t_ar = 2;
 	}
 
-	spin_lock_irqsave(&zynq_smc_lock, flags);
-
 	if (zynq_smc_set_buswidth(bw)) {
 		dev_warn(&pdev->dev, "xlnx,nand-width not valid, using 8");
 		zynq_smc_set_buswidth(8);
@@ -424,8 +383,6 @@ default_nand_timing:
 	/* Set the command1 and command2 register */
 	writel(ZYNQ_NAND_ECC_CMD1, zynq_smc_base + ZYNQ_SMC_ECC_MEMCMD1_OFFS);
 	writel(ZYNQ_NAND_ECC_CMD2, zynq_smc_base + ZYNQ_SMC_ECC_MEMCMD2_OFFS);
-
-	spin_unlock_irqrestore(&zynq_smc_lock, flags);
 }
 
 static const struct of_device_id matches_nor[] = {
@@ -443,7 +400,6 @@ static int zynq_smc_probe(struct platform_device *pdev)
 	struct zynq_smc_data *zynq_smc;
 	struct device_node *child;
 	struct resource *res;
-	unsigned long flags;
 	int err;
 	struct device_node *of_node = pdev->dev.of_node;
 	const struct of_device_id *matches = NULL;
@@ -485,11 +441,7 @@ static int zynq_smc_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, zynq_smc);
 
 	/* clear interrupts */
-	spin_lock_irqsave(&zynq_smc_lock, flags);
-
 	writel(0x52, zynq_smc_base + ZYNQ_SMC_CFG_CLR_OFFS);
-
-	spin_unlock_irqrestore(&zynq_smc_lock, flags);
 
 	/* Find compatible children. Only a single child is supported */
 	for_each_available_child_of_node(of_node, child) {
