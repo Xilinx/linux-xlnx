@@ -58,6 +58,7 @@
 #define ONDIE_ECC_FEATURE_ADDR	0x90
 #define ZYNQ_NAND_ECC_BUSY_TIMEOUT	(1 * HZ)
 #define ZYNQ_NAND_DEV_BUSY_TIMEOUT	(1 * HZ)
+#define ZYNQ_NAND_LAST_TRANSFER_LENGTH	4
 
 /* Macros for the NAND controller register read/write */
 #define zynq_nand_write32(addr, val)	__raw_writel((val), (addr))
@@ -309,19 +310,19 @@ static int zynq_nand_correct_data(struct mtd_info *mtd, unsigned char *buf,
 static int zynq_nand_read_oob(struct mtd_info *mtd, struct nand_chip *chip,
 			    int page)
 {
-	unsigned long data_width = 4, data_phase_addr;
+	unsigned long data_phase_addr;
 	uint8_t *p;
 
 	chip->cmdfunc(mtd, NAND_CMD_READOOB, 0, page);
 
 	p = chip->oob_poi;
-	chip->read_buf(mtd, p, (mtd->oobsize - data_width));
-	p += (mtd->oobsize - data_width);
+	chip->read_buf(mtd, p, (mtd->oobsize - ZYNQ_NAND_LAST_TRANSFER_LENGTH));
+	p += (mtd->oobsize - ZYNQ_NAND_LAST_TRANSFER_LENGTH);
 
 	data_phase_addr = (unsigned long __force)chip->IO_ADDR_R;
 	data_phase_addr |= ZYNQ_NAND_CLEAR_CS;
 	chip->IO_ADDR_R = (void __iomem * __force)data_phase_addr;
-	chip->read_buf(mtd, p, data_width);
+	chip->read_buf(mtd, p, ZYNQ_NAND_LAST_TRANSFER_LENGTH);
 
 	return 0;
 }
@@ -339,18 +340,19 @@ static int zynq_nand_write_oob(struct mtd_info *mtd, struct nand_chip *chip,
 {
 	int status = 0;
 	const uint8_t *buf = chip->oob_poi;
-	unsigned long data_width = 4, data_phase_addr;
+	unsigned long data_phase_addr;
 
 	chip->cmdfunc(mtd, NAND_CMD_SEQIN, mtd->writesize, page);
 
-	chip->write_buf(mtd, buf, (mtd->oobsize - data_width));
-	buf += (mtd->oobsize - data_width);
+	chip->write_buf(mtd, buf, (mtd->oobsize -
+				   ZYNQ_NAND_LAST_TRANSFER_LENGTH));
+	buf += (mtd->oobsize - ZYNQ_NAND_LAST_TRANSFER_LENGTH);
 
 	data_phase_addr = (unsigned long __force)chip->IO_ADDR_W;
 	data_phase_addr |= ZYNQ_NAND_CLEAR_CS;
 	data_phase_addr |= (1 << END_CMD_VALID_SHIFT);
 	chip->IO_ADDR_W = (void __iomem * __force)data_phase_addr;
-	chip->write_buf(mtd, buf, data_width);
+	chip->write_buf(mtd, buf, ZYNQ_NAND_LAST_TRANSFER_LENGTH);
 
 	/* Send command to program the OOB data */
 	chip->cmdfunc(mtd, NAND_CMD_PAGEPROG, -1, -1);
@@ -372,20 +374,20 @@ static int zynq_nand_write_oob(struct mtd_info *mtd, struct nand_chip *chip,
 static int zynq_nand_read_page_raw(struct mtd_info *mtd, struct nand_chip *chip,
 				 uint8_t *buf, int oob_required, int page)
 {
-	unsigned long data_width = 4, data_phase_addr;
+	unsigned long data_phase_addr;
 	uint8_t *p;
 
 	chip->read_buf(mtd, buf, mtd->writesize);
 
 	p = chip->oob_poi;
-	chip->read_buf(mtd, p, (mtd->oobsize - data_width));
-	p += (mtd->oobsize - data_width);
+	chip->read_buf(mtd, p, (mtd->oobsize - ZYNQ_NAND_LAST_TRANSFER_LENGTH));
+	p += (mtd->oobsize - ZYNQ_NAND_LAST_TRANSFER_LENGTH);
 
 	data_phase_addr = (unsigned long __force)chip->IO_ADDR_R;
 	data_phase_addr |= ZYNQ_NAND_CLEAR_CS;
 	chip->IO_ADDR_R = (void __iomem * __force)data_phase_addr;
 
-	chip->read_buf(mtd, p, data_width);
+	chip->read_buf(mtd, p, ZYNQ_NAND_LAST_TRANSFER_LENGTH);
 	return 0;
 }
 
@@ -402,21 +404,22 @@ static int zynq_nand_write_page_raw(struct mtd_info *mtd,
 				    struct nand_chip *chip,
 				    const uint8_t *buf, int oob_required)
 {
-	unsigned long data_width = 4, data_phase_addr;
+	unsigned long data_phase_addr;
 	uint8_t *p;
 
 	chip->write_buf(mtd, buf, mtd->writesize);
 
 	p = chip->oob_poi;
-	chip->write_buf(mtd, p, (mtd->oobsize - data_width));
-	p += (mtd->oobsize - data_width);
+	chip->write_buf(mtd, p, (mtd->oobsize -
+				 ZYNQ_NAND_LAST_TRANSFER_LENGTH));
+	p += (mtd->oobsize - ZYNQ_NAND_LAST_TRANSFER_LENGTH);
 
 	data_phase_addr = (unsigned long __force)chip->IO_ADDR_W;
 	data_phase_addr |= ZYNQ_NAND_CLEAR_CS;
 	data_phase_addr |= (1 << END_CMD_VALID_SHIFT);
 	chip->IO_ADDR_W = (void __iomem * __force)data_phase_addr;
 
-	chip->write_buf(mtd, p, data_width);
+	chip->write_buf(mtd, p, ZYNQ_NAND_LAST_TRANSFER_LENGTH);
 
 	return 0;
 }
@@ -441,21 +444,21 @@ static int zynq_nand_write_page_hwecc(struct mtd_info *mtd,
 	uint8_t *ecc_calc = chip->buffers->ecccalc;
 	const uint8_t *p = buf;
 	uint32_t *eccpos = chip->ecc.layout->eccpos;
-	unsigned long data_phase_addr, data_width = 4;
+	unsigned long data_phase_addr;
 	uint8_t *oob_ptr;
 
 	for ( ; (eccsteps - 1); eccsteps--) {
 		chip->write_buf(mtd, p, eccsize);
 		p += eccsize;
 	}
-	chip->write_buf(mtd, p, (eccsize - data_width));
-	p += (eccsize - data_width);
+	chip->write_buf(mtd, p, (eccsize - ZYNQ_NAND_LAST_TRANSFER_LENGTH));
+	p += (eccsize - ZYNQ_NAND_LAST_TRANSFER_LENGTH);
 
 	/* Set ECC Last bit to 1 */
 	data_phase_addr = (unsigned long __force)chip->IO_ADDR_W;
 	data_phase_addr |= ZYNQ_NAND_ECC_LAST;
 	chip->IO_ADDR_W = (void __iomem * __force)data_phase_addr;
-	chip->write_buf(mtd, p, data_width);
+	chip->write_buf(mtd, p, ZYNQ_NAND_LAST_TRANSFER_LENGTH);
 
 	/* Wait for ECC to be calculated and read the error values */
 	p = buf;
@@ -471,14 +474,15 @@ static int zynq_nand_write_page_hwecc(struct mtd_info *mtd,
 
 	/* Write the spare area with ECC bytes */
 	oob_ptr = chip->oob_poi;
-	chip->write_buf(mtd, oob_ptr, (mtd->oobsize - data_width));
+	chip->write_buf(mtd, oob_ptr, (mtd->oobsize -
+					ZYNQ_NAND_LAST_TRANSFER_LENGTH));
 
 	data_phase_addr = (unsigned long __force)chip->IO_ADDR_W;
 	data_phase_addr |= ZYNQ_NAND_CLEAR_CS;
 	data_phase_addr |= (1 << END_CMD_VALID_SHIFT);
 	chip->IO_ADDR_W = (void __iomem * __force)data_phase_addr;
-	oob_ptr += (mtd->oobsize - data_width);
-	chip->write_buf(mtd, oob_ptr, data_width);
+	oob_ptr += (mtd->oobsize - ZYNQ_NAND_LAST_TRANSFER_LENGTH);
+	chip->write_buf(mtd, oob_ptr, ZYNQ_NAND_LAST_TRANSFER_LENGTH);
 
 	return 0;
 }
@@ -539,21 +543,21 @@ static int zynq_nand_read_page_hwecc(struct mtd_info *mtd,
 	uint8_t *ecc_calc = chip->buffers->ecccalc;
 	uint8_t *ecc_code = chip->buffers->ecccode;
 	uint32_t *eccpos = chip->ecc.layout->eccpos;
-	unsigned long data_phase_addr, data_width = 4;
+	unsigned long data_phase_addr;
 	uint8_t *oob_ptr;
 
 	for ( ; (eccsteps - 1); eccsteps--) {
 		chip->read_buf(mtd, p, eccsize);
 		p += eccsize;
 	}
-	chip->read_buf(mtd, p, (eccsize - data_width));
-	p += (eccsize - data_width);
+	chip->read_buf(mtd, p, (eccsize - ZYNQ_NAND_LAST_TRANSFER_LENGTH));
+	p += (eccsize - ZYNQ_NAND_LAST_TRANSFER_LENGTH);
 
 	/* Set ECC Last bit to 1 */
 	data_phase_addr = (unsigned long __force)chip->IO_ADDR_R;
 	data_phase_addr |= ZYNQ_NAND_ECC_LAST;
 	chip->IO_ADDR_R = (void __iomem * __force)data_phase_addr;
-	chip->read_buf(mtd, p, data_width);
+	chip->read_buf(mtd, p, ZYNQ_NAND_LAST_TRANSFER_LENGTH);
 
 	/* Read the calculated ECC value */
 	p = buf;
@@ -566,15 +570,16 @@ static int zynq_nand_read_page_hwecc(struct mtd_info *mtd,
 
 	/* Read the stored ECC value */
 	oob_ptr = chip->oob_poi;
-	chip->read_buf(mtd, oob_ptr, (mtd->oobsize - data_width));
+	chip->read_buf(mtd, oob_ptr, (mtd->oobsize -
+				      ZYNQ_NAND_LAST_TRANSFER_LENGTH));
 
 	/* de-assert chip select */
 	data_phase_addr = (unsigned long __force)chip->IO_ADDR_R;
 	data_phase_addr |= ZYNQ_NAND_CLEAR_CS;
 	chip->IO_ADDR_R = (void __iomem * __force)data_phase_addr;
 
-	oob_ptr += (mtd->oobsize - data_width);
-	chip->read_buf(mtd, oob_ptr, data_width);
+	oob_ptr += (mtd->oobsize - ZYNQ_NAND_LAST_TRANSFER_LENGTH);
+	chip->read_buf(mtd, oob_ptr, ZYNQ_NAND_LAST_TRANSFER_LENGTH);
 
 	for (i = 0; i < chip->ecc.total; i++)
 		ecc_code[i] = ~(chip->oob_poi[eccpos[i]]);
