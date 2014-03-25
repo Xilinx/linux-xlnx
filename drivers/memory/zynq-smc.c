@@ -325,16 +325,8 @@ static void zynq_smc_init_nand_interface(struct platform_device *pdev,
 				       struct device_node *nand_node)
 {
 	u32 t_rc, t_wc, t_rea, t_wp, t_clr, t_ar, t_rr;
-	unsigned int bw;
 	int err;
 
-	err = of_property_read_u32(nand_node, "xlnx,nand-width", &bw);
-	if (err) {
-		dev_warn(&pdev->dev,
-			 "xlnx,nand-width not in device tree, using 8");
-		bw = ZYNQ_SMC_MEM_WIDTH_8;
-	}
-	bw = bw/16;
 	/* nand-cycle-<X> property is refer to the NAND flash timing
 	 * mapping between dts and the NAND flash AC timing
 	 *  X  : AC timing name
@@ -395,10 +387,7 @@ default_nand_timing:
 		t_wp = t_clr = t_ar = 2;
 	}
 
-	if (zynq_smc_set_buswidth(bw)) {
-		dev_warn(&pdev->dev, "xlnx,nand-width not valid, using 8");
-		zynq_smc_set_buswidth(ZYNQ_SMC_MEM_WIDTH_8);
-	}
+	zynq_smc_set_buswidth(ZYNQ_SMC_MEM_WIDTH_8);
 
 	/*
 	 * Default assume 50MHz clock (20ns cycle time) and 3V operation

@@ -236,7 +236,6 @@
 			xlnx,sram-chip-sel1 = <0x0>;
 			ps7_nand_0: ps7-nand@e1000000 {
 				compatible = "xlnx,ps7-nand-1.00.a", "xlnx,zynq-nand-1.00.a";
-				nand-bus-width = <8>;
 				reg = <0xe1000000 0x1000000>;
 				xlnx,nand-cycle-t0 = <0x4>;
 				xlnx,nand-cycle-t1 = <0x4>;
@@ -245,7 +244,6 @@
 				xlnx,nand-cycle-t4 = <0x2>;
 				xlnx,nand-cycle-t5 = <0x2>;
 				xlnx,nand-cycle-t6 = <0x4>;
-				xlnx,nand-width = <0x8>;
 				#address-cells = <1>;
 				#size-cells = <1>;
 
