@@ -110,13 +110,15 @@ static const struct zynq_nand_command_format zynq_nand_commands[] = {
 	{NAND_CMD_SET_FEATURES, NAND_CMD_NONE, 1, NAND_CMD_NONE},
 	{NAND_CMD_NONE, NAND_CMD_NONE, 0, 0},
 	/* Add all the flash commands supported by the flash device and Linux */
-	/* The cache program command is not supported by driver because driver
+	/*
+	 * The cache program command is not supported by driver because driver
 	 * cant differentiate between page program and cached page program from
 	 * start command, these commands can be differentiated through end
 	 * command, which doesn't fit in to the driver design. The cache program
 	 * command is not supported by NAND subsystem also, look at 1612 line
 	 * number (in nand_write_page function) of nand_base.c file.
-	 * {NAND_CMD_SEQIN, NAND_CMD_CACHEDPROG, 5, ZYNQ_NAND_YES}, */
+	 * {NAND_CMD_SEQIN, NAND_CMD_CACHEDPROG, 5, ZYNQ_NAND_YES},
+	 */
 };
 
 /* Define default oob placement schemes for large and small page devices */
@@ -678,8 +680,10 @@ static void zynq_nand_cmd_function(struct mtd_info *mtd, unsigned int command,
 	unsigned long i;
 
 	if (xnand->end_cmd_pending) {
-		/* Check for end command if this command request is same as the
-		 * pending command then return */
+		/*
+		 * Check for end command if this command request is same as the
+		 * pending command then return
+		 */
 		if (xnand->end_cmd == command) {
 			xnand->end_cmd = 0;
 			xnand->end_cmd_pending = 0;
@@ -758,8 +762,10 @@ static void zynq_nand_cmd_function(struct mtd_info *mtd, unsigned int command,
 		/* Erase */
 		cmd_data = page_addr;
 	} else if (column != -1) {
-		/* Change read/write column, read id etc */
-		/* Adjust columns for 16 bit bus width */
+		/*
+		 * Change read/write column, read id etc
+		 * Adjust columns for 16 bit bus width
+		 */
 		if ((chip->options & NAND_BUSWIDTH_16) &&
 			((command == NAND_CMD_READ0) ||
 			(command == NAND_CMD_SEQIN) ||
@@ -976,15 +982,19 @@ static int zynq_nand_probe(struct platform_device *pdev)
 		/* bypass the controller ECC block */
 		zynq_smc_set_ecc_mode(ZYNQ_SMC_ECCMODE_BYPASS);
 
-		/* The software ECC routines won't work with the
-				SMC controller */
+		/*
+		 * The software ECC routines won't work with the
+		 * SMC controller
+		 */
 		nand_chip->ecc.bytes = 0;
 		nand_chip->ecc.layout = &ondie_nand_oob_64;
 		nand_chip->ecc.read_page = zynq_nand_read_page_raw;
 		nand_chip->ecc.write_page = zynq_nand_write_page_raw;
 		nand_chip->ecc.size = mtd->writesize;
-		/* On-Die ECC spare bytes offset 8 is used for ECC codes */
-		/* Use the BBT pattern descriptors */
+		/*
+		 * On-Die ECC spare bytes offset 8 is used for ECC codes
+		 * Use the BBT pattern descriptors
+		 */
 		nand_chip->bbt_td = &bbt_main_descr;
 		nand_chip->bbt_md = &bbt_mirror_descr;
 	} else {
@@ -1005,8 +1015,10 @@ static int zynq_nand_probe(struct platform_device *pdev)
 			zynq_smc_set_ecc_mode(ZYNQ_SMC_ECCMODE_APB);
 			break;
 		default:
-			/* The software ECC routines won't work with the
-				SMC controller */
+			/*
+			 * The software ECC routines won't work with the
+			 * SMC controller
+			 */
 			nand_chip->ecc.calculate = nand_calculate_ecc;
 			nand_chip->ecc.correct = nand_correct_data;
 			nand_chip->ecc.read_page = zynq_nand_read_page_swecc;
