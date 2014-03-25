@@ -876,8 +876,8 @@ static int zynq_nand_detect_ondie_ecc(struct mtd_info *mtd)
 	nand_chip->cmdfunc(mtd, NAND_CMD_READID, 0x00, -1);
 
 	/* Read manufacturer and device IDs */
-	maf_id = nand_chip->read_byte(mtd);
-	dev_id = nand_chip->read_byte(mtd);
+	maf_id = readb(nand_chip->IO_ADDR_R);
+	dev_id = readb(nand_chip->IO_ADDR_R);
 
 	if ((maf_id == NAND_MFR_MICRON) &&
 	    ((dev_id == 0xf1) || (dev_id == 0xa1) ||
@@ -891,7 +891,7 @@ static int zynq_nand_detect_ondie_ecc(struct mtd_info *mtd)
 
 		nand_chip->cmdfunc(mtd, NAND_CMD_GET_FEATURES,
 				   ONDIE_ECC_FEATURE_ADDR, -1);
-		get_feature = nand_chip->read_byte(mtd);
+		get_feature = readb(nand_chip->IO_ADDR_R);
 
 		if (get_feature & 0x08) {
 			return 1;
@@ -905,7 +905,7 @@ static int zynq_nand_detect_ondie_ecc(struct mtd_info *mtd)
 
 			nand_chip->cmdfunc(mtd, NAND_CMD_GET_FEATURES,
 					   ONDIE_ECC_FEATURE_ADDR, -1);
-			get_feature = nand_chip->read_byte(mtd);
+			get_feature = readb(nand_chip->IO_ADDR_R);
 
 			if (get_feature & 0x08)
 				return 1;
@@ -919,11 +919,12 @@ static int zynq_nand_detect_ondie_ecc(struct mtd_info *mtd)
 /**
  * zynq_nand_ecc_init - Initialize the ecc information as per the ecc mode
  * @mtd:	Pointer to the mtd_info structure
+ * @ondie_ecc_state:	ondie ecc status
  *
  * This function initializes the ecc block and functional pointers as per the
  * ecc mode
  */
-static void zynq_nand_ecc_init(struct mtd_info *mtd)
+static void zynq_nand_ecc_init(struct mtd_info *mtd, int ondie_ecc_state)
 {
 	struct nand_chip *nand_chip = mtd->priv;
 
@@ -934,7 +935,7 @@ static void zynq_nand_ecc_init(struct mtd_info *mtd)
 	nand_chip->ecc.write_oob = zynq_nand_write_oob;
 	nand_chip->ecc.write_page_raw = zynq_nand_write_page_raw;
 
-	if (zynq_nand_detect_ondie_ecc(mtd)) {
+	if (ondie_ecc_state) {
 		/* bypass the controller ECC block */
 		zynq_smc_set_ecc_mode(ZYNQ_SMC_ECCMODE_BYPASS);
 
@@ -1005,8 +1006,7 @@ static int zynq_nand_probe(struct platform_device *pdev)
 	struct nand_chip *nand_chip;
 	struct resource *res;
 	struct mtd_part_parser_data ppdata;
-	const unsigned int *prop;
-	u32 options = 0;
+	int ondie_ecc_state;
 
 	xnand = devm_kzalloc(&pdev->dev, sizeof(*xnand), GFP_KERNEL);
 	if (!xnand)
@@ -1017,22 +1017,6 @@ static int zynq_nand_probe(struct platform_device *pdev)
 	xnand->nand_base = devm_ioremap_resource(&pdev->dev, res);
 	if (IS_ERR(xnand->nand_base))
 		return PTR_ERR(xnand->nand_base);
-
-	/* Get x8 or x16 mode from device tree */
-	prop = of_get_property(pdev->dev.of_node, "xlnx,nand-width", NULL);
-	if (prop) {
-		if (be32_to_cpup(prop) == 16) {
-			options |= NAND_BUSWIDTH_16;
-		} else if (be32_to_cpup(prop) == 8) {
-			options &= ~NAND_BUSWIDTH_16;
-		} else {
-			dev_info(&pdev->dev, "xlnx,nand-width not valid, using 8");
-			options &= ~NAND_BUSWIDTH_16;
-		}
-	} else {
-		dev_info(&pdev->dev, "xlnx,nand-width not in device tree, using 8");
-		options &= ~NAND_BUSWIDTH_16;
-	}
 
 	/* Link the private data with the MTD structure */
 	mtd = &xnand->mtd;
@@ -1060,10 +1044,12 @@ static int zynq_nand_probe(struct platform_device *pdev)
 	nand_chip->write_buf = zynq_nand_write_buf;
 
 	/* Set the device option and flash width */
-	nand_chip->options = options;
+	nand_chip->options = NAND_BUSWIDTH_AUTO;
 	nand_chip->bbt_options = NAND_BBT_USE_FLASH;
 
 	platform_set_drvdata(pdev, xnand);
+
+	ondie_ecc_state = zynq_nand_detect_ondie_ecc(mtd);
 
 	/* first scan to find the device and get the page size */
 	if (nand_scan_ident(mtd, 1, NULL)) {
@@ -1071,7 +1057,9 @@ static int zynq_nand_probe(struct platform_device *pdev)
 		return -ENXIO;
 	}
 
-	zynq_nand_ecc_init(mtd);
+	zynq_nand_ecc_init(mtd, ondie_ecc_state);
+	if (nand_chip->options & NAND_BUSWIDTH_16)
+		zynq_smc_set_buswidth(ZYNQ_SMC_MEM_WIDTH_16);
 
 	/* second phase scan */
 	if (nand_scan_tail(mtd)) {
