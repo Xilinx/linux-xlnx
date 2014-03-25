@@ -87,6 +87,7 @@
 				 (5 << 8)     |	/* Read col change cmd */ \
 				 (0xE0 << 16) |	/* Read col change end cmd */ \
 				 (1 << 24)) /* Read col change end cmd valid */
+#define ZYNQ_NAND_ECC_BUSY_TIMEOUT	(1 * HZ)
 /**
  * struct zynq_smc_data - Private smc driver structure
  * @devclk:		Pointer to the peripheral clock
@@ -326,6 +327,7 @@ static void zynq_smc_init_nand_interface(struct platform_device *pdev,
 {
 	u32 t_rc, t_wc, t_rea, t_wp, t_clr, t_ar, t_rr;
 	int err;
+	unsigned long timeout = jiffies + ZYNQ_NAND_ECC_BUSY_TIMEOUT;
 
 	/* nand-cycle-<X> property is refer to the NAND flash timing
 	 * mapping between dts and the NAND flash AC timing
@@ -400,9 +402,16 @@ default_nand_timing:
 		zynq_smc_base + ZYNQ_SMC_CFG_CLR_OFFS);
 	writel(ZYNQ_SMC_DC_UPT_NAND_REGS, zynq_smc_base +
 	       ZYNQ_SMC_DIRECT_CMD_OFFS);
-	/* Wait till the ECC operation is complete */
-	while (zynq_smc_ecc_is_busy_noirq())
-		cpu_relax();
+	/* Wait till the ECC operation is complete or timeout */
+	do {
+		if (zynq_smc_ecc_is_busy_noirq())
+			cpu_relax();
+		else
+			break;
+	} while (!time_after_eq(jiffies, timeout));
+
+	if (time_after_eq(jiffies, timeout))
+		dev_err(&pdev->dev, "nand ecc busy status timed out");
 	/* Set the command1 and command2 register */
 	writel(ZYNQ_NAND_ECC_CMD1, zynq_smc_base + ZYNQ_SMC_ECC_MEMCMD1_OFFS);
 	writel(ZYNQ_NAND_ECC_CMD2, zynq_smc_base + ZYNQ_SMC_ECC_MEMCMD2_OFFS);
