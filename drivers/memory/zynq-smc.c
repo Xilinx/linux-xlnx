@@ -74,16 +74,11 @@ static void __iomem *zynq_smc_base;
  */
 int zynq_smc_set_buswidth(unsigned int bw)
 {
-	u32 reg;
 
-	if (bw != 8 && bw != 16)
+	if (bw != ZYNQ_SMC_MEM_WIDTH_8  && bw != ZYNQ_SMC_MEM_WIDTH_16)
 		return -EINVAL;
 
-	reg = readl(zynq_smc_base + ZYNQ_SMC_SET_OPMODE_OFFS);
-	reg &= ~3;
-	if (bw == 16)
-		reg |= 1;
-	writel(reg, zynq_smc_base + ZYNQ_SMC_SET_OPMODE_OFFS);
+	writel(bw, zynq_smc_base + ZYNQ_SMC_SET_OPMODE_OFFS);
 	writel(ZYNQ_SMC_DC_UPT_NAND_REGS, zynq_smc_base +
 	       ZYNQ_SMC_DIRECT_CMD_OFFS);
 
@@ -305,8 +300,9 @@ static void zynq_smc_init_nand_interface(struct platform_device *pdev,
 	if (err) {
 		dev_warn(&pdev->dev,
 			 "xlnx,nand-width not in device tree, using 8");
-		bw = 8;
+		bw = ZYNQ_SMC_MEM_WIDTH_8;
 	}
+	bw = bw/16;
 	/* nand-cycle-<X> property is refer to the NAND flash timing
 	 * mapping between dts and the NAND flash AC timing
 	 *  X  : AC timing name
@@ -369,7 +365,7 @@ default_nand_timing:
 
 	if (zynq_smc_set_buswidth(bw)) {
 		dev_warn(&pdev->dev, "xlnx,nand-width not valid, using 8");
-		zynq_smc_set_buswidth(8);
+		zynq_smc_set_buswidth(ZYNQ_SMC_MEM_WIDTH_8);
 	}
 
 	/*

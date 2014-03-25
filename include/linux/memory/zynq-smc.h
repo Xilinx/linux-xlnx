@@ -22,6 +22,11 @@ enum zynq_smc_ecc_mode {
 	ZYNQ_SMC_ECCMODE_MEM = 2
 };
 
+enum zynq_smc_mem_width {
+	ZYNQ_SMC_MEM_WIDTH_8 = 0,
+	ZYNQ_SMC_MEM_WIDTH_16 = 1
+};
+
 u32 zynq_smc_get_ecc_val(int ecc_reg);
 int zynq_smc_ecc_is_busy(void);
 int zynq_smc_get_nand_int_status_raw(void);
