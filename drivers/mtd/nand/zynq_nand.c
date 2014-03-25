@@ -57,6 +57,7 @@
 
 #define ONDIE_ECC_FEATURE_ADDR	0x90
 #define ZYNQ_NAND_ECC_BUSY_TIMEOUT	(1 * HZ)
+#define ZYNQ_NAND_DEV_BUSY_TIMEOUT	(1 * HZ)
 
 /* Macros for the NAND controller register read/write */
 #define zynq_nand_write32(addr, val)	__raw_writel((val), (addr))
@@ -678,6 +679,7 @@ static void zynq_nand_cmd_function(struct mtd_info *mtd, unsigned int command,
 	unsigned long end_cmd = 0;
 	unsigned long end_cmd_valid = 0;
 	unsigned long i;
+	unsigned long timeout = jiffies + ZYNQ_NAND_DEV_BUSY_TIMEOUT;
 
 	if (xnand->end_cmd_pending) {
 		/*
@@ -789,8 +791,16 @@ static void zynq_nand_cmd_function(struct mtd_info *mtd, unsigned int command,
 	    (command == NAND_CMD_PARAM) ||
 	    (command == NAND_CMD_GET_FEATURES)) {
 
-		while (!chip->dev_ready(mtd))
-			;
+		/* Wait till the device is ready or timeout */
+		do {
+			if (chip->dev_ready(mtd))
+				break;
+			else
+				cpu_relax();
+		} while (!time_after_eq(jiffies, timeout));
+
+		if (time_after_eq(jiffies, timeout))
+			pr_err("%s timed out\n", __func__);
 		return;
 	}
 }
