@@ -242,7 +242,7 @@
 				arm,nand-cycle-t4 = <0x2>;
 				arm,nand-cycle-t5 = <0x2>;
 				arm,nand-cycle-t6 = <0x4>;
-				compatible = "xlnx,ps7-nand-1.00.a", "xlnx,zynq-nand-1.00.a";
+				compatible = "arm,pl353-nand-r2p1";
 				reg = <0xe1000000 0x1000000>;
 				#address-cells = <1>;
 				#size-cells = <1>;

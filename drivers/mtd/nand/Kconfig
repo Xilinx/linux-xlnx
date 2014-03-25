@@ -489,12 +489,12 @@ config MTD_NAND_NUC900
 	  This enables the driver for the NAND Flash on evaluation board based
 	  on w90p910 / NUC9xx.
 
-config MTD_NAND_ZYNQ
-	tristate "Xilinx Zynq NAND flash driver"
-	depends on MTD_NAND && ARCH_ZYNQ
-	select ZYNQ_SMC
+config MTD_NAND_PL353
+	tristate "ARM Pl353 NAND flash driver"
+	depends on MTD_NAND && ARM
+	select PL353_SMC
 	help
-	  This enables access to the NAND flash device on Xilinx Zynq.
+	  This enables access to the NAND flash device on PL353 SMC controller.
 
 config MTD_NAND_JZ4740
 	tristate "Support for JZ4740 SoC NAND controller"
