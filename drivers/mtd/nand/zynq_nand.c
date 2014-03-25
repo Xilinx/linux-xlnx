@@ -60,8 +60,11 @@
 #define ZYNQ_NAND_DEV_BUSY_TIMEOUT	(1 * HZ)
 #define ZYNQ_NAND_LAST_TRANSFER_LENGTH	4
 
-/* Macros for the NAND controller register read/write */
-#define zynq_nand_write32(addr, val)	__raw_writel((val), (addr))
+/* Inline function for the NAND controller register write */
+static inline void zynq_nand_write32(void __iomem *addr, u32 val)
+{
+	__raw_writel((val), (addr));
+}
 
 /**
  * struct zynq_nand_command_format - Defines NAND flash command format
