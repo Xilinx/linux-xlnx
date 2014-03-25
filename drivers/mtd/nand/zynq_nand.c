@@ -227,6 +227,8 @@ zynq_nand_calculate_hwecc(struct mtd_info *mtd, const u8 *data, u8 *ecc_code)
  *
  * This function checks whether a value is onehot or not.
  * onehot is if and only if onebit is set.
+ *
+ * Return:	1 if it is onehot else 0
  */
 static int onehot(unsigned short value)
 {
@@ -289,6 +291,8 @@ static int zynq_nand_correct_data(struct mtd_info *mtd, unsigned char *buf,
  * @mtd:	Pointer to the mtd info structure
  * @chip:	Pointer to the NAND chip info structure
  * @page:	Page number to read
+ *
+ * Return:	Always return zero
  */
 static int zynq_nand_read_oob(struct mtd_info *mtd, struct nand_chip *chip,
 			    int page)
@@ -316,6 +320,8 @@ static int zynq_nand_read_oob(struct mtd_info *mtd, struct nand_chip *chip,
  * @mtd:	Pointer to the mtd info structure
  * @chip:	Pointer to the NAND chip info structure
  * @page:	Page number to write
+ *
+ * Return:	Zero on success and EIO on failure
  */
 static int zynq_nand_write_oob(struct mtd_info *mtd, struct nand_chip *chip,
 			     int page)
@@ -350,6 +356,8 @@ static int zynq_nand_write_oob(struct mtd_info *mtd, struct nand_chip *chip,
  * @buf:		Pointer to the data buffer
  * @oob_required:	Caller requires OOB data read to chip->oob_poi
  * @page:		Page number to read
+ *
+ * Return:	Always return zero
  */
 static int zynq_nand_read_page_raw(struct mtd_info *mtd, struct nand_chip *chip,
 				 uint8_t *buf, int oob_required, int page)
@@ -378,6 +386,8 @@ static int zynq_nand_read_page_raw(struct mtd_info *mtd, struct nand_chip *chip,
  * @chip:		Pointer to the NAND chip info structure
  * @buf:		Pointer to the data buffer
  * @oob_required:	Caller requires OOB data read to chip->oob_poi
+ *
+ * Return:	Always return zero
  */
 static int zynq_nand_write_page_raw(struct mtd_info *mtd,
 				    struct nand_chip *chip,
@@ -411,6 +421,8 @@ static int zynq_nand_write_page_raw(struct mtd_info *mtd,
  * @oob_required:	Caller requires OOB data read to chip->oob_poi
  *
  * This functions writes data and hardware generated ECC values in to the page.
+ *
+ * Return:	Always return zero
  */
 static int zynq_nand_write_page_hwecc(struct mtd_info *mtd,
 				    struct nand_chip *chip, const uint8_t *buf,
@@ -470,6 +482,8 @@ static int zynq_nand_write_page_hwecc(struct mtd_info *mtd,
  * @chip:		Pointer to the NAND chip info structure
  * @buf:		Pointer to the data buffer
  * @oob_required:	Caller requires OOB data read to chip->oob_poi
+ *
+ * Return:	Always return zero
  */
 static int zynq_nand_write_page_swecc(struct mtd_info *mtd,
 				    struct nand_chip *chip, const uint8_t *buf,
@@ -580,6 +594,8 @@ static int zynq_nand_read_page_hwecc(struct mtd_info *mtd,
  * @buf:		Pointer to the buffer to store read data
  * @oob_required:	Caller requires OOB data read to chip->oob_poi
  * @page:		Page number to read
+ *
+ * Return:	Always return zero
  */
 static int zynq_nand_read_page_swecc(struct mtd_info *mtd,
 				     struct nand_chip *chip,
