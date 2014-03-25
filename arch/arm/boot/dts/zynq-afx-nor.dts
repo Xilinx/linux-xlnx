@@ -184,18 +184,18 @@
 		ps7_smcc_0: ps7-smcc@e000e000 {
 			#address-cells = <1>;
 			#size-cells = <1>;
+			arm,addr25 = <0x1>;
+			arm,nor-chip-sel0 = <0x1>;
+			arm,nor-chip-sel1 = <0x0>;
+			arm,sram-chip-sel0 = <0x0>;
+			arm,sram-chip-sel1 = <0x0>;
 			clock-names = "ref_clk", "aper_clk";
 			clocks = <&clkc 11>, <&clkc 44>;
-			compatible = "xlnx,ps7-smcc-1.00.a", "xlnx,ps7-smc", "xlnx,zynq-smc-1.00.a";
+			compatible = "arm,pl353-smc-r2p1";
 			interrupt-parent = <&ps7_scugic_0>;
 			interrupts = <0 18 4>;
 			ranges ;
 			reg = <0xe000e000 0x1000>;
-			xlnx,addr25 = <0x1>;
-			xlnx,nor-chip-sel0 = <0x1>;
-			xlnx,nor-chip-sel1 = <0x0>;
-			xlnx,sram-chip-sel0 = <0x0>;
-			xlnx,sram-chip-sel1 = <0x0>;
 			ps7_nor_0: ps7-nor@e2000000 {
 				bank-width = <1>;
 				compatible = "xlnx,ps7-nor-1.00.a", "cfi-flash";

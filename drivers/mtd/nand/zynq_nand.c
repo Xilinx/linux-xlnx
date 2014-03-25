@@ -17,7 +17,7 @@
 #include <linux/io.h>
 #include <linux/ioport.h>
 #include <linux/irq.h>
-#include <linux/memory/zynq-smc.h>
+#include <linux/memory/pl353-smc.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/mtd/mtd.h>
@@ -207,7 +207,7 @@ static int zynq_nand_calculate_hwecc(struct mtd_info *mtd,
 
 	/* Wait till the ECC operation is complete or timeout */
 	do {
-		if (zynq_smc_ecc_is_busy())
+		if (pl353_smc_ecc_is_busy())
 			cpu_relax();
 		else
 			break;
@@ -220,7 +220,7 @@ static int zynq_nand_calculate_hwecc(struct mtd_info *mtd,
 
 	for (ecc_reg = 0; ecc_reg < 4; ecc_reg++) {
 		/* Read ECC value for each block */
-		ecc_value = zynq_smc_get_ecc_val(ecc_reg);
+		ecc_value = pl353_smc_get_ecc_val(ecc_reg);
 		ecc_status = (ecc_value >> 24) & 0xFF;
 		/* ECC value valid */
 		if (ecc_status & 0x40) {
@@ -707,7 +707,7 @@ static void zynq_nand_cmd_function(struct mtd_info *mtd, unsigned int command,
 		return;
 
 	/* Clear interrupt */
-	zynq_smc_clr_nand_int();
+	pl353_smc_clr_nand_int();
 
 	/* Get the command phase address */
 	if (curr_cmd->end_cmd_valid == ZYNQ_NAND_CMD_PHASE)
@@ -846,8 +846,8 @@ static void zynq_nand_write_buf(struct mtd_info *mtd, const uint8_t *buf,
  */
 static int zynq_nand_device_ready(struct mtd_info *mtd)
 {
-	if (zynq_smc_get_nand_int_status_raw()) {
-		zynq_smc_clr_nand_int();
+	if (pl353_smc_get_nand_int_status_raw()) {
+		pl353_smc_clr_nand_int();
 		return 1;
 	}
 	return 0;
@@ -933,7 +933,7 @@ static void zynq_nand_ecc_init(struct mtd_info *mtd, int ondie_ecc_state)
 
 	if (ondie_ecc_state) {
 		/* bypass the controller ECC block */
-		zynq_smc_set_ecc_mode(ZYNQ_SMC_ECCMODE_BYPASS);
+		pl353_smc_set_ecc_mode(PL353_SMC_ECCMODE_BYPASS);
 
 		/*
 		 * The software ECC routines won't work with the
@@ -960,12 +960,12 @@ static void zynq_nand_ecc_init(struct mtd_info *mtd, int ondie_ecc_state)
 		nand_chip->ecc.size = ZYNQ_NAND_ECC_SIZE;
 		nand_chip->ecc.write_page = zynq_nand_write_page_hwecc;
 
-		zynq_smc_set_ecc_pg_size(mtd->writesize);
+		pl353_smc_set_ecc_pg_size(mtd->writesize);
 		switch (mtd->writesize) {
 		case 512:
 		case 1024:
 		case 2048:
-			zynq_smc_set_ecc_mode(ZYNQ_SMC_ECCMODE_APB);
+			pl353_smc_set_ecc_mode(PL353_SMC_ECCMODE_APB);
 			break;
 		default:
 			/*
@@ -1055,7 +1055,7 @@ static int zynq_nand_probe(struct platform_device *pdev)
 
 	zynq_nand_ecc_init(mtd, ondie_ecc_state);
 	if (nand_chip->options & NAND_BUSWIDTH_16)
-		zynq_smc_set_buswidth(ZYNQ_SMC_MEM_WIDTH_16);
+		pl353_smc_set_buswidth(PL353_SMC_MEM_WIDTH_16);
 
 	/* second phase scan */
 	if (nand_scan_tail(mtd)) {

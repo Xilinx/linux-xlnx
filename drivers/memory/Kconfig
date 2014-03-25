@@ -50,11 +50,10 @@ config TEGRA30_MC
 	  analysis, especially for IOMMU/SMMU(System Memory Management
 	  Unit) module.
 
-config ZYNQ_SMC
-	bool "Zynq Static Memory Controller(SMC) driver"
+config PL353_SMC
+	bool "ARM PL353 Static Memory Controller(SMC) driver"
 	default y
-	depends on ARCH_ZYNQ
+	depends on ARM
 	help
-	  This driver is for the Static Memory Controller(SMC) module available
-	  in Zynq SoCs.
+	  This driver is for the ARM PL353 Static Memory Controller(SMC) module.
 endif
