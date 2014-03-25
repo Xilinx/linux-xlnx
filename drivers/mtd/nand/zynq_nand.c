@@ -56,6 +56,7 @@
 #define ZYNQ_NAND_CLEAR_CS	(1 << CLEAR_CS_SHIFT)	/* Clear chip select */
 
 #define ONDIE_ECC_FEATURE_ADDR	0x90
+#define ZYNQ_NAND_ECC_BUSY_TIMEOUT	(1 * HZ)
 
 /* Macros for the NAND controller register read/write */
 #define zynq_nand_write32(addr, val)	__raw_writel((val), (addr))
@@ -190,16 +191,25 @@ static struct nand_bbt_descr bbt_mirror_descr = {
  *
  * Return:	0 on success or error value on failure
  */
-static int
-zynq_nand_calculate_hwecc(struct mtd_info *mtd, const u8 *data, u8 *ecc_code)
+static int zynq_nand_calculate_hwecc(struct mtd_info *mtd,
+				const u8 *data, u8 *ecc_code)
 {
-	u32 ecc_value = 0;
+	u32 ecc_value, ecc_status;
 	u8 ecc_reg, ecc_byte;
-	u32 ecc_status;
+	unsigned long timeout = jiffies + ZYNQ_NAND_ECC_BUSY_TIMEOUT;
 
-	/* Wait till the ECC operation is complete */
-	while (zynq_smc_ecc_is_busy())
-		cpu_relax();
+	/* Wait till the ECC operation is complete or timeout */
+	do {
+		if (zynq_smc_ecc_is_busy())
+			cpu_relax();
+		else
+			break;
+	} while (!time_after_eq(jiffies, timeout));
+
+	if (time_after_eq(jiffies, timeout)) {
+		pr_err("%s timed out\n", __func__);
+		return -ETIMEDOUT;
+	}
 
 	for (ecc_reg = 0; ecc_reg < 4; ecc_reg++) {
 		/* Read ECC value for each block */
@@ -214,8 +224,8 @@ zynq_nand_calculate_hwecc(struct mtd_info *mtd, const u8 *data, u8 *ecc_code)
 				ecc_code++;
 			}
 		} else {
-			/* TODO */
-			/* dev_dbg(&pdev->dev, "pl350: ecc status failed\n"); */
+			pr_warn("%s status failed\n", __func__);
+			return -1;
 		}
 	}
 	return 0;
