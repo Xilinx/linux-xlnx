@@ -40,8 +40,41 @@
 #define ZYNQ_SMC_ECC_MEMCMD2_OFFS	0x40C	/* ECC mem cmd2 reg */
 #define ZYNQ_SMC_ECC_VALUE0_OFFS	0x418	/* ECC value 0 reg */
 
-#define ZYNQ_SMC_CFG_CLR_INT_1	0x10
+/* Controller status register specifc constants */
+#define ZYNQ_SMC_MEMC_STATUS_RAW_INT_1_SHIFT	6
+
+/* Clear configuration register specific constants */
+#define ZYNQ_SMC_CFG_CLR_INT_CLR_1	0x10
+#define ZYNQ_SMC_CFG_CLR_ECC_INT_DIS_1	0x40
+#define ZYNQ_SMC_CFG_CLR_INT_DIS_1	0x2
+#define ZYNQ_SMC_CFG_CLR_DEFAULT_MASK	(ZYNQ_SMC_CFG_CLR_INT_CLR_1 | \
+					 ZYNQ_SMC_CFG_CLR_ECC_INT_DIS_1 | \
+					 ZYNQ_SMC_CFG_CLR_INT_DIS_1)
+
+/* Set cycles register specific constants */
+#define ZYNQ_SMC_SET_CYCLES_T0_MASK	0xF
+#define ZYNQ_SMC_SET_CYCLES_T0_SHIFT	0
+#define ZYNQ_SMC_SET_CYCLES_T1_MASK	0xF
+#define ZYNQ_SMC_SET_CYCLES_T1_SHIFT	4
+#define ZYNQ_SMC_SET_CYCLES_T2_MASK	0x7
+#define ZYNQ_SMC_SET_CYCLES_T2_SHIFT	8
+#define ZYNQ_SMC_SET_CYCLES_T3_MASK	0x7
+#define ZYNQ_SMC_SET_CYCLES_T3_SHIFT	11
+#define ZYNQ_SMC_SET_CYCLES_T4_MASK	0x7
+#define ZYNQ_SMC_SET_CYCLES_T4_SHIFT	14
+#define ZYNQ_SMC_SET_CYCLES_T5_MASK	0x7
+#define ZYNQ_SMC_SET_CYCLES_T5_SHIFT	17
+#define ZYNQ_SMC_SET_CYCLES_T6_MASK	0xF
+#define ZYNQ_SMC_SET_CYCLES_T6_SHIFT	20
+
+/* ECC status register specific constants */
 #define ZYNQ_SMC_ECC_STATUS_BUSY	(1 << 6)
+
+/* ECC memory config register specific constants */
+#define ZYNQ_SMC_ECC_MEMCFG_MODE_MASK	0xC
+#define ZYNQ_SMC_ECC_MEMCFG_MODE_SHIFT	2
+#define ZYNQ_SMC_ECC_MEMCFG_PGSIZE_MASK	0xC
+
 #define ZYNQ_SMC_DC_UPT_NAND_REGS	((4 << 23) |	/* CS: NAND chip */ \
 				 (2 << 21))	/* UpdateRegs operation */
 
@@ -101,13 +134,13 @@ EXPORT_SYMBOL_GPL(zynq_smc_set_buswidth);
 static void zynq_smc_set_cycles(u32 t0, u32 t1, u32 t2, u32 t3, u32
 			      t4, u32 t5, u32 t6)
 {
-	t0 &= 0xf;
-	t1 = (t1 & 0xf) << 4;
-	t2 = (t2 & 7) << 8;
-	t3 = (t3 & 7) << 11;
-	t4 = (t4 & 7) << 14;
-	t5 = (t5 & 7) << 17;
-	t6 = (t6 & 0xf) << 20;
+	t0 &= ZYNQ_SMC_SET_CYCLES_T0_MASK;
+	t1 = (t1 & ZYNQ_SMC_SET_CYCLES_T1_MASK) << ZYNQ_SMC_SET_CYCLES_T1_SHIFT;
+	t2 = (t2 & ZYNQ_SMC_SET_CYCLES_T2_MASK) << ZYNQ_SMC_SET_CYCLES_T2_SHIFT;
+	t3 = (t3 & ZYNQ_SMC_SET_CYCLES_T3_MASK) << ZYNQ_SMC_SET_CYCLES_T3_SHIFT;
+	t4 = (t4 & ZYNQ_SMC_SET_CYCLES_T4_MASK) << ZYNQ_SMC_SET_CYCLES_T4_SHIFT;
+	t5 = (t5 & ZYNQ_SMC_SET_CYCLES_T5_MASK) << ZYNQ_SMC_SET_CYCLES_T5_SHIFT;
+	t6 = (t6 & ZYNQ_SMC_SET_CYCLES_T6_MASK) << ZYNQ_SMC_SET_CYCLES_T6_SHIFT;
 
 	t0 |= t1 | t2 | t3 | t4 | t5 | t6;
 
@@ -169,7 +202,7 @@ int zynq_smc_get_nand_int_status_raw(void)
 	u32 reg;
 
 	reg = readl(zynq_smc_base + ZYNQ_SMC_MEMC_STATUS_OFFS);
-	reg >>= 6;
+	reg >>= ZYNQ_SMC_MEMC_STATUS_RAW_INT_1_SHIFT;
 	reg &= 1;
 
 	return reg;
@@ -181,7 +214,8 @@ EXPORT_SYMBOL_GPL(zynq_smc_get_nand_int_status_raw);
  */
 void zynq_smc_clr_nand_int(void)
 {
-	writel(ZYNQ_SMC_CFG_CLR_INT_1, zynq_smc_base + ZYNQ_SMC_CFG_CLR_OFFS);
+	writel(ZYNQ_SMC_CFG_CLR_INT_CLR_1,
+		zynq_smc_base + ZYNQ_SMC_CFG_CLR_OFFS);
 }
 EXPORT_SYMBOL_GPL(zynq_smc_clr_nand_int);
 
@@ -201,8 +235,8 @@ int zynq_smc_set_ecc_mode(enum zynq_smc_ecc_mode mode)
 	case ZYNQ_SMC_ECCMODE_MEM:
 
 		reg = readl(zynq_smc_base + ZYNQ_SMC_ECC_MEMCFG_OFFS);
-		reg &= ~0xc;
-		reg |= mode << 2;
+		reg &= ~ZYNQ_SMC_ECC_MEMCFG_MODE_MASK;
+		reg |= mode << ZYNQ_SMC_ECC_MEMCFG_MODE_SHIFT;
 		writel(reg, zynq_smc_base + ZYNQ_SMC_ECC_MEMCFG_OFFS);
 
 		break;
@@ -241,7 +275,7 @@ int zynq_smc_set_ecc_pg_size(unsigned int pg_sz)
 	}
 
 	reg = readl(zynq_smc_base + ZYNQ_SMC_ECC_MEMCFG_OFFS);
-	reg &= ~3;
+	reg &= ~ZYNQ_SMC_ECC_MEMCFG_PGSIZE_MASK;
 	reg |= sz;
 	writel(reg, zynq_smc_base + ZYNQ_SMC_ECC_MEMCFG_OFFS);
 
@@ -375,7 +409,8 @@ default_nand_timing:
 	 * is for 2Gb Numonyx flash.
 	 */
 	zynq_smc_set_cycles(t_rc, t_wc, t_rea, t_wp, t_clr, t_ar, t_rr);
-	writel(ZYNQ_SMC_CFG_CLR_INT_1, zynq_smc_base + ZYNQ_SMC_CFG_CLR_OFFS);
+	writel(ZYNQ_SMC_CFG_CLR_INT_CLR_1,
+		zynq_smc_base + ZYNQ_SMC_CFG_CLR_OFFS);
 	writel(ZYNQ_SMC_DC_UPT_NAND_REGS, zynq_smc_base +
 	       ZYNQ_SMC_DIRECT_CMD_OFFS);
 	/* Wait till the ECC operation is complete */
@@ -442,7 +477,8 @@ static int zynq_smc_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, zynq_smc);
 
 	/* clear interrupts */
-	writel(0x52, zynq_smc_base + ZYNQ_SMC_CFG_CLR_OFFS);
+	writel(ZYNQ_SMC_CFG_CLR_DEFAULT_MASK,
+		zynq_smc_base + ZYNQ_SMC_CFG_CLR_OFFS);
 
 	/* Find compatible children. Only a single child is supported */
 	for_each_available_child_of_node(of_node, child) {
