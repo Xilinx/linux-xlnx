@@ -18,6 +18,7 @@
 #include <linux/module.h>
 #include <linux/of_irq.h>
 #include <linux/of_address.h>
+#include <linux/of_device.h>
 #include <linux/platform_device.h>
 #include <linux/spi/spi.h>
 
@@ -36,6 +37,10 @@
 #define CDNS_SPI_RXD_OFFSET	0x20 /* Data Receive Register, RO */
 #define CDNS_SPI_SICR_OFFSET	0x24 /* Slave Idle Count Register, RW */
 #define CDNS_SPI_THLD_OFFSET	0x28 /* Transmit FIFO Watermark Register,RW */
+
+#define CDNS_SPI_GQSPI_FIFO_CTRL_OFFSET		0x4c
+#define CDNS_SPI_GQSPI_GEN_FIFO_OFFSET		0x40
+#define CDNS_SPI_GQSPI_SELECT_OFFSET		0x70
 
 /*
  * SPI Configuration Register bit Masks
@@ -80,9 +85,10 @@
 #define CDNS_SPI_IXR_MODF_MASK	0x00000002 /* SPI Mode Fault */
 #define CDNS_SPI_IXR_RXNEMTY_MASK 0x00000010 /* SPI RX FIFO Not Empty */
 #define CDNS_SPI_IXR_DEFAULT_MASK	(CDNS_SPI_IXR_TXOW_MASK | \
+					CDNS_SPI_IXR_RXNEMTY_MASK | \
 					CDNS_SPI_IXR_MODF_MASK)
 #define CDNS_SPI_IXR_TXFULL_MASK	0x00000008 /* SPI TX Full */
-#define CDNS_SPI_IXR_ALL_MASK	0x0000007F /* SPI all interrupts */
+#define CDNS_SPI_IXR_ALL_MASK	0x00001FFF /* SPI all interrupts */
 
 /*
  * SPI Enable Register bit Masks
@@ -134,6 +140,7 @@ struct cdns_spi {
 	u8 dev_busy;
 	struct completion done;
 	enum driver_state_val driver_state;
+	int is_gqspi; /* HACK: We can do better than this */
 };
 
 /**
@@ -147,8 +154,10 @@ struct cdns_spi {
  * interrupts, enable manual slave select and manual start, deselect all the
  * chip select lines, and enable the SPI controller.
  */
-static void cdns_spi_init_hw(void __iomem *regs_base)
+static void cdns_spi_init_hw(struct cdns_spi *xspi)
 {
+	void __iomem *regs_base = xspi->regs;
+
 	cdns_spi_write(regs_base + CDNS_SPI_ER_OFFSET,
 		       CDNS_SPI_ER_DISABLE_MASK);
 	cdns_spi_write(regs_base + CDNS_SPI_IDR_OFFSET, CDNS_SPI_IXR_ALL_MASK);
@@ -157,6 +166,15 @@ static void cdns_spi_init_hw(void __iomem *regs_base)
 	while (cdns_spi_read(regs_base + CDNS_SPI_ISR_OFFSET) &
 	       CDNS_SPI_IXR_RXNEMTY_MASK)
 		cdns_spi_read(regs_base + CDNS_SPI_RXD_OFFSET);
+	if (xspi->is_gqspi) {
+		xspi->regs += 0x100;
+		regs_base += 0x100;
+		cdns_spi_write(regs_base + CDNS_SPI_IDR_OFFSET,
+			       CDNS_SPI_IXR_ALL_MASK);
+		cdns_spi_write(regs_base + CDNS_SPI_GQSPI_FIFO_CTRL_OFFSET, 7);
+		/* Go forth and use GQSPI ... */
+		cdns_spi_write(regs_base + CDNS_SPI_GQSPI_SELECT_OFFSET, 1);
+	}
 
 	cdns_spi_write(regs_base + CDNS_SPI_ISR_OFFSET, CDNS_SPI_IXR_ALL_MASK);
 	cdns_spi_write(regs_base + CDNS_SPI_CR_OFFSET,
@@ -175,6 +193,14 @@ static void cdns_spi_chipselect(struct spi_device *spi, int is_on)
 	struct cdns_spi *xspi = spi_master_get_devdata(spi->master);
 	u32 ctrl_reg;
 
+	if (xspi->is_gqspi) {
+		cdns_spi_write(xspi->regs + CDNS_SPI_GQSPI_GEN_FIFO_OFFSET,
+			       is_on << (spi->chip_select + 12) |
+			       1 << 10 |
+			       1 << 8 |
+			       1);
+		return;
+	}
 	ctrl_reg = cdns_spi_read(xspi->regs + CDNS_SPI_CR_OFFSET);
 
 	if (is_on) {
@@ -313,13 +339,18 @@ static void cdns_spi_fill_tx_fifo(struct cdns_spi *xspi)
 
 	while ((trans_cnt < CDNS_SPI_FIFO_DEPTH) &&
 	       (xspi->remaining_bytes > 0)) {
-		if (xspi->txbuf)
+		if (xspi->txbuf) {
 			cdns_spi_write(xspi->regs + CDNS_SPI_TXD_OFFSET,
-				       *xspi->txbuf++);
-		else
+				       cpu_to_le32(*(u32 *)xspi->txbuf));
+			xspi->txbuf += xspi->is_gqspi ? 4 : 1;
+		} else {
+			BUG_ON(xspi->is_gqspi);
 			cdns_spi_write(xspi->regs + CDNS_SPI_TXD_OFFSET, 0);
+		}
 
-		xspi->remaining_bytes--;
+		xspi->remaining_bytes -= xspi->is_gqspi ? 4 : 1;
+		if (xspi->remaining_bytes < 0)
+			xspi->remaining_bytes = 0;
 		trans_cnt++;
 	}
 }
@@ -354,32 +385,35 @@ static irqreturn_t cdns_spi_irq(int irq, void *dev_id)
 		cdns_spi_write(xspi->regs + CDNS_SPI_IDR_OFFSET,
 			       CDNS_SPI_IXR_DEFAULT_MASK);
 		complete(&xspi->done);
-	} else if (intr_status & CDNS_SPI_IXR_TXOW_MASK) {
-		unsigned long trans_cnt;
+		return IRQ_HANDLED;
+	}
 
-		trans_cnt = xspi->requested_bytes - xspi->remaining_bytes;
+	while (intr_status & CDNS_SPI_IXR_RXNEMTY_MASK) {
+		u32 data;
+		int i;
 
-		/* Read out the data from the RX FIFO */
-		while (trans_cnt) {
-			u8 data;
-
-			data = cdns_spi_read(xspi->regs + CDNS_SPI_RXD_OFFSET);
+		data = cdns_spi_read(xspi->regs + CDNS_SPI_RXD_OFFSET);
+		for (i = 0; i < (xspi->is_gqspi ? 4 : 1) && xspi->requested_bytes;
+		     i++) {
 			if (xspi->rxbuf)
-				*xspi->rxbuf++ = data;
-
+				*xspi->rxbuf++ = (u8)data;
+			else
+				BUG_ON(xspi->is_gqspi);
 			xspi->requested_bytes--;
-			trans_cnt--;
+			data >>= 8;
 		}
+		intr_status = cdns_spi_read(xspi->regs + CDNS_SPI_ISR_OFFSET);
+	}
 
-		if (xspi->remaining_bytes) {
-			/* There is more data to send */
-			cdns_spi_fill_tx_fifo(xspi);
-		} else {
-			/* Transfer is completed */
-			cdns_spi_write(xspi->regs + CDNS_SPI_IDR_OFFSET,
-				       CDNS_SPI_IXR_DEFAULT_MASK);
-			complete(&xspi->done);
-		}
+	if (intr_status & CDNS_SPI_IXR_TXOW_MASK) {
+		cdns_spi_fill_tx_fifo(xspi);
+	}
+
+	if (!xspi->requested_bytes && !xspi->remaining_bytes) {
+		/* Transfer is completed */
+		cdns_spi_write(xspi->regs + CDNS_SPI_IDR_OFFSET,
+				   CDNS_SPI_IXR_DEFAULT_MASK);
+		complete(&xspi->done);
 	}
 
 	return IRQ_HANDLED;
@@ -403,6 +437,31 @@ static void cdns_spi_reset_controller(struct spi_device *spi)
 		       CDNS_SPI_ER_DISABLE_MASK);
 }
 
+static void cdns_spi_do_gfifo(struct cdns_spi *xspi, int transfer_len,
+			      int cs)
+{
+	u32 gfifo_command =
+		(xspi->txbuf ? 1 << 16 : 0) |
+		(xspi->rxbuf ? 1 << 17 : 0) |
+		1 << 14 |
+		1 << (cs + 12) |
+		1 << 10 |
+		1 << 8;
+	if (!xspi->txbuf && !xspi->rxbuf)
+		transfer_len *= 8;
+	while (transfer_len > 255) {
+		int exp = ffs(transfer_len & ~0xffu) - 1;
+                transfer_len &= ~(1 << exp);
+                cdns_spi_write(xspi->regs + CDNS_SPI_GQSPI_GEN_FIFO_OFFSET,
+			        gfifo_command |
+			        1 << 9 |
+			        exp);
+	}
+	cdns_spi_write(xspi->regs + CDNS_SPI_GQSPI_GEN_FIFO_OFFSET,
+		       gfifo_command |
+		       transfer_len);
+}
+
 /**
  * cdns_spi_start_transfer - Initiates the SPI transfer
  * @spi:	Pointer to the spi_device structure
@@ -418,20 +477,29 @@ static int cdns_spi_start_transfer(struct spi_device *spi,
 			struct spi_transfer *transfer)
 {
 	struct cdns_spi *xspi = spi_master_get_devdata(spi->master);
-	int ret;
+	int ret = 1;
 
 	xspi->txbuf = transfer->tx_buf;
 	xspi->rxbuf = transfer->rx_buf;
-	xspi->remaining_bytes = transfer->len;
-	xspi->requested_bytes = transfer->len;
+	if (!xspi->is_gqspi || xspi->txbuf)
+		xspi->remaining_bytes = transfer->len;
+	if (!xspi->is_gqspi || xspi->rxbuf)
+		xspi->requested_bytes = transfer->len;
 	reinit_completion(&xspi->done);
 
 	cdns_spi_fill_tx_fifo(xspi);
+	if (xspi->is_gqspi)
+	   cdns_spi_do_gfifo(xspi, transfer->len, spi->chip_select);
 
-	cdns_spi_write(xspi->regs + CDNS_SPI_IER_OFFSET,
-		       CDNS_SPI_IXR_DEFAULT_MASK);
+	if (xspi->txbuf)
+		cdns_spi_write(xspi->regs + CDNS_SPI_IER_OFFSET,
+			       CDNS_SPI_IXR_TXOW_MASK);
+	if (xspi->rxbuf)
+		cdns_spi_write(xspi->regs + CDNS_SPI_IER_OFFSET,
+			       CDNS_SPI_IXR_RXNEMTY_MASK);
 
-	ret = wait_for_completion_interruptible_timeout(&xspi->done,
+	if (xspi->txbuf || xspi->rxbuf)
+		ret = wait_for_completion_interruptible_timeout(&xspi->done,
 							CDNS_SPI_TIMEOUT);
 	if (ret < 1) {
 		cdns_spi_reset_controller(spi);
@@ -440,8 +508,8 @@ static int cdns_spi_start_transfer(struct spi_device *spi,
 
 		return ret;
 	}
-
-	return transfer->len - xspi->remaining_bytes;
+	/* HACK: Not cool */
+	return transfer->len;
 }
 
 /**
@@ -560,6 +628,12 @@ static int cdns_unprepare_transfer_hardware(struct spi_master *master)
 	return 0;
 }
 
+static struct of_device_id cdns_spi_of_match[] = {
+	{ .compatible = "cdns,spi-r1p6" },
+	{ .compatible = "xlnx,usmp-gqspi" },
+	{ /* end of table */ }
+};
+
 /**
  * cdns_spi_probe - Probe method for the SPI driver
  * @pdev:	Pointer to the platform_device structure
@@ -580,6 +654,12 @@ static int cdns_spi_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	xspi = spi_master_get_devdata(master);
+	if (pdev->dev.of_node) {
+		const struct of_device_id *match;
+		match = of_match_device(cdns_spi_of_match, &pdev->dev);
+		xspi->is_gqspi = of_device_is_compatible(pdev->dev.of_node,
+							 "xlnx,usmp-gqspi");
+	}
 	master->dev.of_node = pdev->dev.of_node;
 	platform_set_drvdata(pdev, master);
 
@@ -632,7 +712,7 @@ static int cdns_spi_probe(struct platform_device *pdev)
 	}
 
 	/* SPI controller initializations */
-	cdns_spi_init_hw(xspi->regs);
+	cdns_spi_init_hw(xspi);
 
 	init_completion(&xspi->done);
 
@@ -780,10 +860,6 @@ static SIMPLE_DEV_PM_OPS(cdns_spi_dev_pm_ops, cdns_spi_suspend,
 /* Work with hotplug and coldplug */
 MODULE_ALIAS("platform:" CDNS_SPI_NAME);
 
-static struct of_device_id cdns_spi_of_match[] = {
-	{ .compatible = "cdns,spi-r1p6" },
-	{ /* end of table */ }
-};
 MODULE_DEVICE_TABLE(of, cdns_spi_of_match);
 
 /* cdns_spi_driver - This structure defines the SPI subsystem platform driver */
