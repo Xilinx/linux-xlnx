@@ -13,18 +13,45 @@ Required properties:
 - port: Video port, using the DT bindings defined in ../video-interfaces.txt.
   The TPG has a single output port numbered 0.
 
+Optional properties:
+
+- xlnx,vtc: A phandle referencing the Video Timing Controller that generates
+  video timings for the TPG test patterns. This property is mandatory when the
+  TPG is synthesized with two ports and forbidden when synthesized with one
+  port.
+
+
 Example:
 
 	axi_tpg_0: axi_tpg@40050000 {
 		compatible = "xlnx,axi-tpg-5.0";
 		reg = <0x40050000 0x10000>;
 
-		xlnx,axi-video-format = "yuv422";
-		xlnx,axi-video-width = <8>;
+		xlnx,vtc = <&vtc_3>;
 
-		port {
-			tpg0_out: endpoint {
-				remote-endpoint = <&remap0_in>;
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			port@0 {
+				reg = <0>;
+
+				xlnx,axi-video-format = "yuv422";
+				xlnx,axi-video-width = <8>;
+
+				tpg_in: endpoint {
+					remote-endpoint = <&adv7611_out>;
+				};
 			};
+			port@1 {
+				reg = <1>;
+
+				xlnx,axi-video-format = "yuv422";
+				xlnx,axi-video-width = <8>;
+
+				tpg1_out: endpoint {
+					remote-endpoint = <&switch_in0>;
+				};
+			}:
 		};
 	};
