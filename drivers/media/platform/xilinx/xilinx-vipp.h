@@ -1,5 +1,5 @@
 /*
- * Xilinx Video IP Pipeline
+ * Xilinx Video IP Composite Device
  *
  * Copyright (C) 2013 Ideas on Board SPRL
  *
@@ -23,7 +23,7 @@
 #include "xilinx-dma.h"
 
 /**
- * struct xvip_pipeline - Xilinx Video IP device structure
+ * struct xvip_composite_device - Xilinx Video IP device structure
  * @v4l2_dev: V4L2 device
  * @media_dev: media device
  * @pipe: media pipeline
@@ -37,7 +37,7 @@
  * @stream_count: number of DMA engines currently streaming
  * @ctrl_handler: control handler
  */
-struct xvip_pipeline {
+struct xvip_composite_device {
 	struct v4l2_device v4l2_dev;
 	struct media_device media_dev;
 	struct media_pipeline pipe;
@@ -56,6 +56,6 @@ struct xvip_pipeline {
 	struct v4l2_ctrl_handler ctrl_handler;
 };
 
-int xvip_pipeline_set_stream(struct xvip_pipeline *xvipp, bool on);
+int xvip_pipeline_set_stream(struct xvip_composite_device *xdev, bool on);
 
 #endif /* __XILINX_VIPP_H__ */

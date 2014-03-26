@@ -194,7 +194,7 @@ static int xvip_dma_start_streaming(struct vb2_queue *vq, unsigned int count)
 
 	/* Mark the pipeline as streaming. */
 	ret = media_entity_pipeline_start(&dma->video.entity,
-					  &dma->xvipp->pipe);
+					  &dma->xdev->pipe);
 	if (ret < 0)
 		return ret;
 
@@ -213,7 +213,7 @@ static int xvip_dma_start_streaming(struct vb2_queue *vq, unsigned int count)
 	dma_async_issue_pending(dma->dma);
 
 	/* Start the pipeline. */
-	xvip_pipeline_set_stream(dma->xvipp, true);
+	xvip_pipeline_set_stream(dma->xdev, true);
 
 	return 0;
 }
@@ -224,7 +224,7 @@ static int xvip_dma_stop_streaming(struct vb2_queue *vq)
 	struct xilinx_vdma_config config;
 
 	/* Stop the pipeline. */
-	xvip_pipeline_set_stream(dma->xvipp, false);
+	xvip_pipeline_set_stream(dma->xdev, false);
 
 	/* Stop and reset the DMA engine. */
 	dmaengine_device_control(dma->dma, DMA_TERMINATE_ALL, 0);
@@ -656,13 +656,13 @@ static struct v4l2_file_operations xvip_dma_fops = {
  * Xilinx Video DMA Core
  */
 
-int xvip_dma_init(struct xvip_pipeline *xvipp, struct xvip_dma *dma,
+int xvip_dma_init(struct xvip_composite_device *xdev, struct xvip_dma *dma,
 		  enum v4l2_buf_type type)
 {
 	char name[10];
 	int ret;
 
-	dma->xvipp = xvipp;
+	dma->xdev = xdev;
 	mutex_init(&dma->lock);
 
 	dma->fmtinfo = xvip_get_format_by_fourcc(XVIP_DMA_DEF_FORMAT);
@@ -683,10 +683,10 @@ int xvip_dma_init(struct xvip_pipeline *xvipp, struct xvip_dma *dma,
 		return ret;
 
 	/* ... and the video node... */
-	dma->video.v4l2_dev = &xvipp->v4l2_dev;
+	dma->video.v4l2_dev = &xdev->v4l2_dev;
 	dma->video.fops = &xvip_dma_fops;
 	snprintf(dma->video.name, sizeof(dma->video.name), "%s %s",
-		 xvipp->dev->of_node->full_name,
+		 xdev->dev->of_node->full_name,
 		 type == V4L2_BUF_TYPE_VIDEO_CAPTURE ? "output" : "input");
 	dma->video.vfl_type = VFL_TYPE_GRABBER;
 	dma->video.vfl_dir = type == V4L2_BUF_TYPE_VIDEO_CAPTURE
@@ -697,7 +697,7 @@ int xvip_dma_init(struct xvip_pipeline *xvipp, struct xvip_dma *dma,
 	video_set_drvdata(&dma->video, dma);
 
 	/* ... and the buffers queue... */
-	dma->alloc_ctx = vb2_dma_contig_init_ctx(dma->xvipp->dev);
+	dma->alloc_ctx = vb2_dma_contig_init_ctx(dma->xdev->dev);
 	if (IS_ERR(dma->alloc_ctx))
 		goto error;
 
@@ -710,16 +710,16 @@ int xvip_dma_init(struct xvip_pipeline *xvipp, struct xvip_dma *dma,
 	dma->queue.timestamp_type = V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC;
 	ret = vb2_queue_init(&dma->queue);
 	if (ret < 0) {
-		dev_err(dma->xvipp->dev, "failed to initialize VB2 queue\n");
+		dev_err(dma->xdev->dev, "failed to initialize VB2 queue\n");
 		goto error;
 	}
 
 	/* ... and the DMA channel. */
 	sprintf(name, "vdma-%s",
 		type == V4L2_BUF_TYPE_VIDEO_CAPTURE ? "s2mm" : "mm2s");
-	dma->dma = dma_request_slave_channel(dma->xvipp->dev, name);
+	dma->dma = dma_request_slave_channel(dma->xdev->dev, name);
 	if (dma->dma == NULL) {
-		dev_err(dma->xvipp->dev, "no VDMA channel found\n");
+		dev_err(dma->xdev->dev, "no VDMA channel found\n");
 		ret = -ENODEV;
 		goto error;
 	}
@@ -728,7 +728,7 @@ int xvip_dma_init(struct xvip_pipeline *xvipp, struct xvip_dma *dma,
 
 	ret = video_register_device(&dma->video, VFL_TYPE_GRABBER, -1);
 	if (ret < 0) {
-		dev_err(dma->xvipp->dev, "failed to register video device\n");
+		dev_err(dma->xdev->dev, "failed to register video device\n");
 		goto error;
 	}
 
