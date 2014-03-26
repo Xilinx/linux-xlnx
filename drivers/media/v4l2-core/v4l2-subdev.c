@@ -582,6 +582,33 @@ static long subdev_do_ioctl(struct file *file, unsigned int cmd, void *arg)
 	case VIDIOC_SUBDEV_S_DV_TIMINGS:
 		return v4l2_subdev_call(sd, video, s_dv_timings, arg);
 
+	case VIDIOC_SUBDEV_G_ROUTING:
+		return v4l2_subdev_call(sd, pad, get_routing, arg);
+
+	case VIDIOC_SUBDEV_S_ROUTING: {
+		struct v4l2_subdev_routing *route = arg;
+		unsigned int i;
+
+		if (route->num_routes > sd->entity.num_pads)
+			return -EINVAL;
+
+		for (i = 0; i < route->num_routes; ++i) {
+			unsigned int sink = route->routes[i].sink;
+			unsigned int source = route->routes[i].source;
+			struct media_pad *pads = sd->entity.pads;
+
+			if (sink >= sd->entity.num_pads ||
+			    source >= sd->entity.num_pads)
+				return -EINVAL;
+
+			if (!(pads[sink].flags & MEDIA_PAD_FL_SINK) ||
+			    !(pads[source].flags & MEDIA_PAD_FL_SOURCE))
+				return -EINVAL;
+		}
+
+		return v4l2_subdev_call(sd, pad, set_routing, route);
+	}
+
 	case VIDIOC_SUBDEV_G_STD:
 		return v4l2_subdev_call(sd, video, g_std, arg);
 
@@ -604,6 +631,7 @@ static long subdev_do_ioctl(struct file *file, unsigned int cmd, void *arg)
 	case VIDIOC_SUBDEV_QUERYSTD:
 		return v4l2_subdev_call(sd, video, querystd, arg);
 #endif
+
 	default:
 		return v4l2_subdev_call(sd, core, ioctl, cmd, arg);
 	}
