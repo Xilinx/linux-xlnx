@@ -28,14 +28,14 @@
 #define XVIPP_DMA_MM2S				1
 
 /**
- * struct xvip_pipeline_entity - Entity in a video pipeline
+ * struct xvip_graph_entity - Entity in the video graph
  * @list: list entry in a pipeline entities list
  * @node: the entity's DT node
  * @entity: media entity, from the corresponding V4L2 subdev or video device
  * @asd: subdev asynchronous registration information
  * @subdev: V4L2 subdev (valid for all entities by DMA channels)
  */
-struct xvip_pipeline_entity {
+struct xvip_graph_entity {
 	struct list_head list;
 	struct device_node *node;
 	struct media_entity *entity;
@@ -140,11 +140,11 @@ done:
  * Pipeline Management
  */
 
-static struct xvip_pipeline_entity *
+static struct xvip_graph_entity *
 xvipp_pipeline_find_entity(struct xvip_pipeline *xvipp,
 			   const struct device_node *node)
 {
-	struct xvip_pipeline_entity *entity;
+	struct xvip_graph_entity *entity;
 
 	list_for_each_entry(entity, &xvipp->entities, list) {
 		if (entity->node == node)
@@ -155,14 +155,14 @@ xvipp_pipeline_find_entity(struct xvip_pipeline *xvipp,
 }
 
 static int xvipp_pipeline_build_one(struct xvip_pipeline *xvipp,
-				    struct xvip_pipeline_entity *entity)
+				    struct xvip_graph_entity *entity)
 {
 	u32 link_flags = MEDIA_LNK_FL_ENABLED;
 	struct media_entity *local = entity->entity;
 	struct media_entity *remote;
 	struct media_pad *local_pad;
 	struct media_pad *remote_pad;
-	struct xvip_pipeline_entity *ent;
+	struct xvip_graph_entity *ent;
 	struct v4l2_of_link link;
 	struct device_node *ep = NULL;
 	struct device_node *next;
@@ -257,7 +257,7 @@ static int xvipp_pipeline_notify_complete(struct v4l2_async_notifier *notifier)
 {
 	struct xvip_pipeline *xvipp =
 		container_of(notifier, struct xvip_pipeline, notifier);
-	struct xvip_pipeline_entity *entity;
+	struct xvip_graph_entity *entity;
 	int ret;
 
 	dev_dbg(xvipp->dev, "notify complete, all subdevs registered\n");
@@ -282,7 +282,7 @@ static int xvipp_pipeline_notify_bound(struct v4l2_async_notifier *notifier,
 {
 	struct xvip_pipeline *xvipp =
 		container_of(notifier, struct xvip_pipeline, notifier);
-	struct xvip_pipeline_entity *entity;
+	struct xvip_graph_entity *entity;
 
 	/* Locate the entity corresponding to the bound subdev and store the
 	 * subdev pointer.
@@ -310,7 +310,7 @@ static int xvipp_pipeline_notify_bound(struct v4l2_async_notifier *notifier,
 static int xvipp_pipeline_parse_one(struct xvip_pipeline *xvipp,
 				    struct device_node *node)
 {
-	struct xvip_pipeline_entity *entity;
+	struct xvip_graph_entity *entity;
 	struct device_node *remote;
 	struct device_node *ep = NULL;
 	struct device_node *next;
@@ -360,7 +360,7 @@ static int xvipp_pipeline_parse_one(struct xvip_pipeline *xvipp,
 
 static int xvipp_pipeline_parse(struct xvip_pipeline *xvipp)
 {
-	struct xvip_pipeline_entity *entity;
+	struct xvip_graph_entity *entity;
 	int ret;
 
 	/* Walk the links to parse the full pipeline. */
@@ -377,7 +377,7 @@ static int
 xvipp_pipeline_dma_init_one(struct xvip_pipeline *xvipp, struct xvip_dma *dma,
 			    struct device_node *node, enum v4l2_buf_type type)
 {
-	struct xvip_pipeline_entity *entity;
+	struct xvip_graph_entity *entity;
 	int ret;
 
 	ret = xvip_dma_init(xvipp, dma, type);
@@ -433,8 +433,8 @@ static int xvipp_pipeline_dma_init(struct xvip_pipeline *xvipp)
 
 static void xvipp_pipeline_cleanup(struct xvip_pipeline *xvipp)
 {
-	struct xvip_pipeline_entity *entity;
-	struct xvip_pipeline_entity *prev;
+	struct xvip_graph_entity *entity;
+	struct xvip_graph_entity *prev;
 
 	v4l2_async_notifier_unregister(&xvipp->notifier);
 
@@ -449,7 +449,7 @@ static void xvipp_pipeline_cleanup(struct xvip_pipeline *xvipp)
 
 static int xvipp_pipeline_init(struct xvip_pipeline *xvipp)
 {
-	struct xvip_pipeline_entity *entity;
+	struct xvip_graph_entity *entity;
 	struct v4l2_async_subdev **subdevs = NULL;
 	unsigned int num_subdevs;
 	unsigned int i;

@@ -29,7 +29,7 @@
  * @pipe: media pipeline
  * @dev: (OF) device
  * @notifier: V4L2 asynchronous subdevs notifier
- * @entities: entities in the pipeline as a list of xvip_pipeline_entity
+ * @entities: entities in the graph as a list of xvip_graph_entity
  * @num_subdevs: number of subdevs in the pipeline
  * @dma: DMA channels at the pipeline output and input
  * @num_dmas: number of DMA engines in the pipeline
