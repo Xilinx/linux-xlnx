@@ -22,6 +22,9 @@
 
 #include "xilinx-dma.h"
 
+#define XVIPP_DMA_S2MM				0
+#define XVIPP_DMA_MM2S				1
+
 /**
  * struct xvip_composite_device - Xilinx Video IP device structure
  * @v4l2_dev: V4L2 device
@@ -55,7 +58,5 @@ struct xvip_composite_device {
 
 	struct v4l2_ctrl_handler ctrl_handler;
 };
-
-int xvip_pipeline_set_stream(struct xvip_composite_device *xdev, bool on);
 
 #endif /* __XILINX_VIPP_H__ */
