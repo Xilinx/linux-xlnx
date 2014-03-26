@@ -20,8 +20,6 @@
 #include <media/v4l2-ctrls.h>
 #include <media/v4l2-device.h>
 
-#include "xilinx-dma.h"
-
 /**
  * struct xvip_composite_device - Xilinx Video IP device structure
  * @v4l2_dev: V4L2 device
@@ -30,7 +28,7 @@
  * @notifier: V4L2 asynchronous subdevs notifier
  * @entities: entities in the graph as a list of xvip_graph_entity
  * @num_subdevs: number of subdevs in the pipeline
- * @dma: DMA channels at the pipeline output and input
+ * @dmas: list of DMA channels at the pipeline output and input
  * @ctrl_handler: control handler
  */
 struct xvip_composite_device {
@@ -42,7 +40,7 @@ struct xvip_composite_device {
 	struct list_head entities;
 	unsigned int num_subdevs;
 
-	struct xvip_dma dma[2];
+	struct list_head dmas;
 
 	struct v4l2_ctrl_handler ctrl_handler;
 };

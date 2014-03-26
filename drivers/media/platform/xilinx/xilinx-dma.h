@@ -51,10 +51,12 @@ static inline struct xvip_pipeline *to_xvip_pipeline(struct media_entity *e)
 
 /**
  * struct xvip_dma - Video DMA channel
+ * @list: list entry in a composite device dmas list
  * @video: V4L2 video device associated with the DMA channel
  * @pad: media pad for the video device entity
  * @xdev: composite device the DMA channel belongs to
  * @pipe: pipeline belonging to the DMA channel
+ * @port: composite device DT node port number for the DMA channel
  * @lock: protects the @format, @fmtinfo and @queue fields
  * @format: active V4L2 pixel format
  * @fmtinfo: format information corresponding to the active @format
@@ -65,11 +67,13 @@ static inline struct xvip_pipeline *to_xvip_pipeline(struct media_entity *e)
  * @align: transfer alignment required by the DMA channel (in bytes)
  */
 struct xvip_dma {
+	struct list_head list;
 	struct video_device video;
 	struct media_pad pad;
 
 	struct xvip_composite_device *xdev;
 	struct xvip_pipeline pipe;
+	unsigned int port;
 
 	struct mutex lock;
 	struct v4l2_pix_format format;
@@ -86,7 +90,7 @@ struct xvip_dma {
 #define to_xvip_dma(vdev)	container_of(vdev, struct xvip_dma, video)
 
 int xvip_dma_init(struct xvip_composite_device *xdev, struct xvip_dma *dma,
-		  enum v4l2_buf_type type);
+		  enum v4l2_buf_type type, unsigned int port);
 void xvip_dma_cleanup(struct xvip_dma *dma);
 
 #endif /* __XILINX_VIP_DMA_H__ */

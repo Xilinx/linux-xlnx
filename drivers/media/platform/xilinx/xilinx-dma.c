@@ -899,12 +899,13 @@ static struct v4l2_file_operations xvip_dma_fops = {
  */
 
 int xvip_dma_init(struct xvip_composite_device *xdev, struct xvip_dma *dma,
-		  enum v4l2_buf_type type)
+		  enum v4l2_buf_type type, unsigned int port)
 {
-	char name[10];
+	char name[14];
 	int ret;
 
 	dma->xdev = xdev;
+	dma->port = port;
 	mutex_init(&dma->lock);
 	mutex_init(&dma->pipe.lock);
 
@@ -928,9 +929,10 @@ int xvip_dma_init(struct xvip_composite_device *xdev, struct xvip_dma *dma,
 	/* ... and the video node... */
 	dma->video.v4l2_dev = &xdev->v4l2_dev;
 	dma->video.fops = &xvip_dma_fops;
-	snprintf(dma->video.name, sizeof(dma->video.name), "%s %s",
-		 xdev->dev->of_node->full_name,
-		 type == V4L2_BUF_TYPE_VIDEO_CAPTURE ? "output" : "input");
+	snprintf(dma->video.name, sizeof(dma->video.name), "%s %s %u",
+		 xdev->dev->of_node->name,
+		 type == V4L2_BUF_TYPE_VIDEO_CAPTURE ? "output" : "input",
+		 port);
 	dma->video.vfl_type = VFL_TYPE_GRABBER;
 	dma->video.vfl_dir = type == V4L2_BUF_TYPE_VIDEO_CAPTURE
 			   ? VFL_DIR_RX : VFL_DIR_TX;
@@ -958,8 +960,7 @@ int xvip_dma_init(struct xvip_composite_device *xdev, struct xvip_dma *dma,
 	}
 
 	/* ... and the DMA channel. */
-	sprintf(name, "vdma-%s",
-		type == V4L2_BUF_TYPE_VIDEO_CAPTURE ? "s2mm" : "mm2s");
+	sprintf(name, "port%u", port);
 	dma->dma = dma_request_slave_channel(dma->xdev->dev, name);
 	if (dma->dma == NULL) {
 		dev_err(dma->xdev->dev, "no VDMA channel found\n");
