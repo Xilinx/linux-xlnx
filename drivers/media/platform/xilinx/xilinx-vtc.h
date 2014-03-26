@@ -1,0 +1,37 @@
+/*
+ * Xilinx Video Timing Controller
+ *
+ * Copyright (C) 2014 Ideas on Board SPRL
+ *
+ * Contacts: Laurent Pinchart <laurent.pinchart@ideasonboard.com>
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License version 2 as
+ * published by the Free Software Foundation.
+ */
+
+#ifndef __XILINX_VTC_H__
+#define __XILINX_VTC_H__
+
+struct device_node;
+struct xvtc_device;
+
+struct xvtc_config {
+	unsigned int hblank_start;
+	unsigned int hsync_start;
+	unsigned int hsync_end;
+	unsigned int hsize;
+	unsigned int vblank_start;
+	unsigned int vsync_start;
+	unsigned int vsync_end;
+	unsigned int vsize;
+};
+
+struct xvtc_device *xvtc_of_get(struct device_node *np);
+void xvtc_put(struct xvtc_device *xvtc);
+
+int xvtc_generator_start(struct xvtc_device *xvtc,
+			 const struct xvtc_config *config);
+int xvtc_generator_stop(struct xvtc_device *xvtc);
+
+#endif /* __XILINX_VTC_H__ */
