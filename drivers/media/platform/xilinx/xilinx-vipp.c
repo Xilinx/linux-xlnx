@@ -48,6 +48,35 @@ struct xvip_graph_entity {
  * Pipeline Stream Management
  */
 
+/* Get the sink pad internally connected to a source pad in the given entity. */
+static struct media_pad *xvip_get_entity_sink(struct media_entity *entity,
+					      struct media_pad *source)
+{
+	unsigned int i;
+
+	/* The source pad can be NULL when the entity has no source pad. Return
+	 * the first pad in that case, guaranteed to be a sink pad.
+	 */
+	if (source == NULL)
+		return &entity->pads[0];
+
+	/* Iterates through the pads to find a connected sink pad. */
+	for (i = 0; i < entity->num_pads; ++i) {
+		struct media_pad *sink = &entity->pads[i];
+
+		if (!(sink->flags & MEDIA_PAD_FL_SINK))
+			continue;
+
+		if (sink == source)
+			continue;
+
+		if (media_entity_has_route(entity, sink->index, source->index))
+			return sink;
+	}
+
+	return NULL;
+}
+
 /**
  * xvip_pipeline_start_stop - Start ot stop streaming on a pipeline
  * @xdev: Xilinx video composite device
@@ -68,8 +97,13 @@ static int xvip_pipeline_start_stop(struct xvip_composite_device *xdev,
 	int ret;
 
 	entity = &xdev->dma[XVIPP_DMA_S2MM].video.entity;
+	pad = NULL;
+
 	while (1) {
-		pad = &entity->pads[0];
+		pad = xvip_get_entity_sink(entity, pad);
+		if (IS_ERR(pad))
+			return PTR_ERR(pad);
+
 		if (!(pad->flags & MEDIA_PAD_FL_SINK))
 			break;
 
