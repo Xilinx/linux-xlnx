@@ -51,6 +51,12 @@ config VIDEO_XILINX_SCALER
 	help
 	  Driver for the Xilinx Video Scaler
 
+config VIDEO_XILINX_SWITCH
+	tristate "Xilinx Video Switch"
+	depends on VIDEO_XILINX
+	help
+	  Driver for the Xilinx Video Switch
+
 config VIDEO_XILINX_TPG
 	tristate "Xilinx Video Test Pattern Generator"
 	depends on VIDEO_XILINX
