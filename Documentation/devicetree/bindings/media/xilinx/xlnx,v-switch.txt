@@ -1,0 +1,55 @@
+Xilinx Video Switch
+-------------------
+
+Required properties:
+
+  - compatible: Must be "xlnx,v-switch-1.0".
+
+  - reg: Physical base address and length of the registers set for the device.
+
+  - clocks: Reference to the video core clock.
+
+  - #xlnx,inputs: Number of input ports
+  - #xlnx,outputs: Number of outputs ports
+
+  - ports: Video ports, using the DT bindings defined in ../video-interfaces.txt.
+
+Example:
+
+	switch: switch@43c10000 {
+		compatible = "xlnx,v-switch-1.0";
+		reg = <0x43c10000 0x10000>;
+		clocks = <&clkc 15>;
+
+		#xlnx,inputs = <2>;
+		#xlnx,outputs = <2>;
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			port@0 {
+				reg = <0>;
+				switch_in0: endpoint {
+					remote-endpoint = <&tpg_out>;
+				};
+			};
+			port@1 {
+				reg = <1>;
+				switch_in1: endpoint {
+					remote-endpoint = <&cresample0_out>;
+				};
+			};
+			port@2 {
+				reg = <2>;
+				switch_out0: endpoint {
+					remote-endpoint = <&scaler0_in>;
+				};
+			};
+			port@3 {
+				reg = <3>;
+				switch_out1: endpoint {
+					remote-endpoint = <&vcap0_in1>;
+				};
+			};
+		};
+	};
