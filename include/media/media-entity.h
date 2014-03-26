@@ -851,6 +851,9 @@ void media_entity_graph_walk_cleanup(struct media_entity_graph *graph);
  */
 void media_entity_put(struct media_entity *entity);
 
+bool media_entity_has_route(struct media_entity *entity, unsigned int sink,
+			    unsigned int source);
+
 /**
  * media_entity_graph_walk_start - Start walking the media graph at a
  *	given entity
