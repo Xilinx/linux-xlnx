@@ -157,7 +157,7 @@ xvipp_pipeline_find_entity(struct xvip_pipeline *xvipp,
 static int xvipp_pipeline_build_one(struct xvip_pipeline *xvipp,
 				    struct xvip_pipeline_entity *entity)
 {
-	u32 link_flags = MEDIA_LNK_FL_IMMUTABLE | MEDIA_LNK_FL_ENABLED;
+	u32 link_flags = MEDIA_LNK_FL_ENABLED;
 	struct media_entity *local = entity->entity;
 	struct media_entity *remote;
 	struct media_pad *local_pad;
