@@ -66,7 +66,7 @@ static int xvip_dma_verify_format(struct xvip_dma *dma)
 
 	subdev = xvip_dma_remote_subdev(&dma->pad, &fmt.pad);
 	if (subdev == NULL)
-		return -EINVAL;
+		return -EPIPE;
 
 	fmt.which = V4L2_SUBDEV_FORMAT_ACTIVE;
 	ret = v4l2_subdev_call(subdev, pad, get_fmt, NULL, &fmt);
