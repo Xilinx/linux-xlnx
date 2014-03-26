@@ -558,7 +558,7 @@ static int xvip_composite_v4l2_init(struct xvip_composite_device *xdev)
  * Platform Device Driver
  */
 
-static int xvipp_probe(struct platform_device *pdev)
+static int xvip_composite_probe(struct platform_device *pdev)
 {
 	struct xvip_composite_device *xdev;
 	int ret;
@@ -590,7 +590,7 @@ error:
 	return ret;
 }
 
-static int xvipp_remove(struct platform_device *pdev)
+static int xvip_composite_remove(struct platform_device *pdev)
 {
 	struct xvip_composite_device *xdev = platform_get_drvdata(pdev);
 
@@ -601,23 +601,23 @@ static int xvipp_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static const struct of_device_id xvipp_of_id_table[] = {
+static const struct of_device_id xvip_composite_of_id_table[] = {
 	{ .compatible = "xlnx,axi-video" },
 	{ }
 };
-MODULE_DEVICE_TABLE(of, xvipp_of_id_table);
+MODULE_DEVICE_TABLE(of, xvip_composite_of_id_table);
 
-static struct platform_driver xvipp_driver = {
+static struct platform_driver xvip_composite_driver = {
 	.driver = {
 		.owner = THIS_MODULE,
 		.name = "xilinx-axi-video",
-		.of_match_table = xvipp_of_id_table,
+		.of_match_table = xvip_composite_of_id_table,
 	},
-	.probe = xvipp_probe,
-	.remove = xvipp_remove,
+	.probe = xvip_composite_probe,
+	.remove = xvip_composite_remove,
 };
 
-module_platform_driver(xvipp_driver);
+module_platform_driver(xvip_composite_driver);
 
 MODULE_AUTHOR("Laurent Pinchart <laurent.pinchart@ideasonboard.com>");
 MODULE_DESCRIPTION("Xilinx Video IP Composite Driver");
