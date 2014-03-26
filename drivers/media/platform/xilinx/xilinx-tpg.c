@@ -11,6 +11,7 @@
  */
 
 #include <linux/device.h>
+#include <linux/gpio/consumer.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
@@ -69,6 +70,7 @@
  * @bayer: boolean flag if TPG is set to any bayer format
  * @ctrl_handler: control handler
  * @vtc: video timing controller
+ * @vtmux_gpio: video timing mux GPIO
  */
 struct xtpg_device {
 	struct xvip_device xvip;
@@ -84,6 +86,7 @@ struct xtpg_device {
 	struct v4l2_ctrl_handler ctrl_handler;
 
 	struct xvtc_device *vtc;
+	struct gpio_desc *vtmux_gpio;
 };
 
 static inline struct xtpg_device *to_tpg(struct v4l2_subdev *subdev)
@@ -285,6 +288,9 @@ static void xtpg_set_test_pattern(struct xtpg_device *xtpg,
 
 	xvip_clr_and_set(&xtpg->xvip, XTPG_PATTERN_CONTROL, XTPG_PATTERN_MASK,
 			 pattern);
+
+	if (!IS_ERR(xtpg->vtmux_gpio))
+		gpiod_set_value_cansleep(xtpg->vtmux_gpio, pattern ? 1 : 0);
 
 	xvip_enable_reg_update(&xtpg->xvip);
 }
@@ -693,6 +699,12 @@ static int xtpg_probe(struct platform_device *pdev)
 	xtpg->xvip.iomem = devm_ioremap_resource(&pdev->dev, res);
 	if (IS_ERR(xtpg->xvip.iomem))
 		return PTR_ERR(xtpg->xvip.iomem);
+
+	xtpg->vtmux_gpio = devm_gpiod_get_index(&pdev->dev, "timing", 0);
+	if (PTR_ERR(xtpg->vtmux_gpio) == -EPROBE_DEFER)
+		return -EPROBE_DEFER;
+	if (!IS_ERR(xtpg->vtmux_gpio))
+		gpiod_direction_output(xtpg->vtmux_gpio, 0);
 
 	xtpg->vtc = xvtc_of_get(pdev->dev.of_node);
 	if (IS_ERR(xtpg->vtc))

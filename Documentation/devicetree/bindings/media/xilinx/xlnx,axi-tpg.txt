@@ -16,10 +16,14 @@ Required properties:
 Optional properties:
 
 - xlnx,vtc: A phandle referencing the Video Timing Controller that generates
-  video timings for the TPG test patterns. This property is mandatory when the
-  TPG is synthesized with two ports and forbidden when synthesized with one
-  port.
+  video timings for the TPG test patterns.
 
+- timing-gpios: Specifier for a GPIO that controls the timing mux at the TPG
+  input. The GPIO active level corresponds to the selection of VTC-generated
+  video timings.
+
+The xlnx,vtc and timing-gpios properties are mandatory when the TPG is
+synthesized with two ports and forbidden when synthesized with one port.
 
 Example:
 
@@ -28,6 +32,7 @@ Example:
 		reg = <0x40050000 0x10000>;
 
 		xlnx,vtc = <&vtc_3>;
+		timing-gpios = <&ps7_gpio_0 55 GPIO_ACTIVE_LOW>;
 
 		ports {
 			#address-cells = <1>;
