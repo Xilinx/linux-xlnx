@@ -516,14 +516,14 @@ done:
  * Media Controller and V4L2
  */
 
-static void xvipp_v4l2_cleanup(struct xvip_composite_device *xdev)
+static void xvip_composite_v4l2_cleanup(struct xvip_composite_device *xdev)
 {
 	v4l2_ctrl_handler_free(&xdev->ctrl_handler);
 	v4l2_device_unregister(&xdev->v4l2_dev);
 	media_device_unregister(&xdev->media_dev);
 }
 
-static int xvipp_v4l2_init(struct xvip_composite_device *xdev)
+static int xvip_composite_v4l2_init(struct xvip_composite_device *xdev)
 {
 	int ret;
 
@@ -571,7 +571,7 @@ static int xvipp_probe(struct platform_device *pdev)
 	INIT_LIST_HEAD(&xdev->entities);
 	mutex_init(&xdev->lock);
 
-	ret = xvipp_v4l2_init(xdev);
+	ret = xvip_composite_v4l2_init(xdev);
 	if (ret < 0)
 		return ret;
 
@@ -586,7 +586,7 @@ static int xvipp_probe(struct platform_device *pdev)
 	return 0;
 
 error:
-	xvipp_v4l2_cleanup(xdev);
+	xvip_composite_v4l2_cleanup(xdev);
 	return ret;
 }
 
@@ -595,7 +595,7 @@ static int xvipp_remove(struct platform_device *pdev)
 	struct xvip_composite_device *xdev = platform_get_drvdata(pdev);
 
 	xvip_graph_cleanup(xdev);
-	xvipp_v4l2_cleanup(xdev);
+	xvip_composite_v4l2_cleanup(xdev);
 	mutex_destroy(&xdev->lock);
 
 	return 0;
