@@ -24,6 +24,9 @@
 #include "xilinx-dma.h"
 #include "xilinx-vipp.h"
 
+#define XVIPP_DMA_S2MM				0
+#define XVIPP_DMA_MM2S				1
+
 /**
  * struct xvip_graph_entity - Entity in the video graph
  * @list: list entry in a graph entities list
@@ -301,7 +304,6 @@ xvip_graph_dma_init_one(struct xvip_composite_device *xdev,
 	entity->entity = &dma->video.entity;
 
 	list_add_tail(&entity->list, &xdev->entities);
-	xdev->num_dmas++;
 
 	return 0;
 }
@@ -473,7 +475,6 @@ static int xvip_composite_probe(struct platform_device *pdev)
 
 	xdev->dev = &pdev->dev;
 	INIT_LIST_HEAD(&xdev->entities);
-	mutex_init(&xdev->lock);
 
 	ret = xvip_composite_v4l2_init(xdev);
 	if (ret < 0)
@@ -500,7 +501,6 @@ static int xvip_composite_remove(struct platform_device *pdev)
 
 	xvip_graph_cleanup(xdev);
 	xvip_composite_v4l2_cleanup(xdev);
-	mutex_destroy(&xdev->lock);
 
 	return 0;
 }

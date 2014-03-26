@@ -116,7 +116,7 @@ static struct media_pad *xvip_get_entity_sink(struct media_entity *entity,
 
 /**
  * xvip_pipeline_start_stop - Start ot stop streaming on a pipeline
- * @xdev: Xilinx video composite device
+ * @pipe: The pipeline
  * @start: Start (when true) or stop (when false) the pipeline
  *
  * Walk the entities chain starting at the pipeline output video node and start
@@ -125,15 +125,15 @@ static struct media_pad *xvip_get_entity_sink(struct media_entity *entity,
  * Return: 0 if successful, or the return value of the failed video::s_stream
  * operation otherwise.
  */
-static int xvip_pipeline_start_stop(struct xvip_composite_device *xdev,
-				    bool start)
+static int xvip_pipeline_start_stop(struct xvip_pipeline *pipe, bool start)
 {
+	struct xvip_dma *dma = pipe->output;
 	struct media_entity *entity;
 	struct media_pad *pad;
 	struct v4l2_subdev *subdev;
 	int ret;
 
-	entity = &xdev->dma[XVIPP_DMA_S2MM].video.entity;
+	entity = &dma->video.entity;
 	pad = NULL;
 
 	while (1) {
@@ -162,7 +162,7 @@ static int xvip_pipeline_start_stop(struct xvip_composite_device *xdev,
 
 /**
  * xvip_pipeline_set_stream - Enable/disable streaming on a pipeline
- * @xdev: Xilinx video composite device
+ * @pipe: The pipeline
  * @on: Turn the stream on when true or off when false
  *
  * The pipeline is shared between all DMA engines connect at its input and
@@ -185,26 +185,124 @@ static int xvip_pipeline_start_stop(struct xvip_composite_device *xdev,
  * operation otherwise. Stopping the pipeline never fails. The pipeline state is
  * not updated when the operation fails.
  */
-static int xvip_pipeline_set_stream(struct xvip_composite_device *xdev, bool on)
+static int xvip_pipeline_set_stream(struct xvip_pipeline *pipe, bool on)
 {
 	int ret = 0;
 
-	mutex_lock(&xdev->lock);
+	mutex_lock(&pipe->lock);
 
 	if (on) {
-		if (xdev->stream_count == xdev->num_dmas - 1) {
-			ret = xvip_pipeline_start_stop(xdev, true);
+		if (pipe->stream_count == pipe->num_dmas - 1) {
+			ret = xvip_pipeline_start_stop(pipe, true);
 			if (ret < 0)
 				goto done;
 		}
-		xdev->stream_count++;
+		pipe->stream_count++;
 	} else {
-		if (--xdev->stream_count == 0)
-			xvip_pipeline_start_stop(xdev, false);
+		if (--pipe->stream_count == 0)
+			xvip_pipeline_start_stop(pipe, false);
 	}
 
 done:
-	mutex_unlock(&xdev->lock);
+	mutex_unlock(&pipe->lock);
+	return ret;
+}
+
+static int xvip_pipeline_validate(struct xvip_pipeline *pipe,
+				  struct xvip_dma *start)
+{
+	struct media_entity_graph graph;
+	struct media_entity *entity = &start->video.entity;
+	struct media_device *mdev = entity->parent;
+	unsigned int num_inputs = 0;
+	unsigned int num_outputs = 0;
+
+	mutex_lock(&mdev->graph_mutex);
+
+	/* Walk the graph to locate the video nodes. */
+	media_entity_graph_walk_start(&graph, entity);
+
+	while ((entity = media_entity_graph_walk_next(&graph))) {
+		struct xvip_dma *dma;
+
+		if (entity->type != MEDIA_ENT_T_DEVNODE_V4L)
+			continue;
+
+		dma = to_xvip_dma(media_entity_to_video_device(entity));
+
+		if (dma->pad.flags & MEDIA_PAD_FL_SINK) {
+			pipe->output = dma;
+			num_outputs++;
+		} else {
+			num_inputs++;
+		}
+	}
+
+	mutex_unlock(&mdev->graph_mutex);
+
+	/* We need exactly one output and zero or one input. */
+	if (num_outputs != 1 || num_inputs > 1)
+		return -EPIPE;
+
+	pipe->num_dmas = num_inputs + num_outputs;
+
+	return 0;
+}
+
+static void __xvip_pipeline_cleanup(struct xvip_pipeline *pipe)
+{
+	pipe->num_dmas = 0;
+	pipe->output = NULL;
+}
+
+/**
+ * xvip_pipeline_cleanup - Cleanup the pipeline after streaming
+ * @pipe: the pipeline
+ *
+ * Decrease the pipeline use count and clean it up if we were the last user.
+ */
+static void xvip_pipeline_cleanup(struct xvip_pipeline *pipe)
+{
+	mutex_lock(&pipe->lock);
+
+	/* If we're the last user clean up the pipeline. */
+	if (--pipe->use_count == 0)
+		__xvip_pipeline_cleanup(pipe);
+
+	mutex_unlock(&pipe->lock);
+}
+
+/**
+ * xvip_pipeline_prepare - Prepare the pipeline for streaming
+ * @pipe: the pipeline
+ * @dma: DMA engine at one end of the pipeline
+ *
+ * Validate the pipeline if no user exists yet, otherwise just increase the use
+ * count.
+ *
+ * Return: 0 if successful or -EPIPE if the pipeline is not valid.
+ */
+static int xvip_pipeline_prepare(struct xvip_pipeline *pipe,
+				 struct xvip_dma *dma)
+{
+	int ret;
+
+	mutex_lock(&pipe->lock);
+
+	/* If we're the first user validate and initialize the pipeline. */
+	if (pipe->use_count == 0) {
+		ret = xvip_pipeline_validate(pipe, dma);
+		if (ret < 0) {
+			__xvip_pipeline_cleanup(pipe);
+			goto done;
+		}
+	}
+
+	pipe->use_count++;
+	ret = 0;
+
+done:
+	mutex_unlock(&pipe->lock);
 	return ret;
 }
 
@@ -315,13 +413,22 @@ static void xvip_dma_wait_finish(struct vb2_queue *vq)
 static int xvip_dma_start_streaming(struct vb2_queue *vq, unsigned int count)
 {
 	struct xvip_dma *dma = vb2_get_drv_priv(vq);
+	struct xvip_pipeline *pipe;
 	int ret;
 
 	dma->sequence = 0;
 
-	/* Mark the pipeline as streaming. */
-	ret = media_entity_pipeline_start(&dma->video.entity,
-					  &dma->xdev->pipe);
+	/*
+	 * Start streaming on the pipeline. No link touching an entity in the
+	 * pipeline can be activated or deactivated once streaming is started.
+	 *
+	 * Use the pipeline object embedded in the first DMA object that starts
+	 * streaming.
+	 */
+	pipe = dma->video.entity.pipe
+	     ? to_xvip_pipeline(&dma->video.entity) : &dma->pipe;
+
+	ret = media_entity_pipeline_start(&dma->video.entity, &pipe->pipe);
 	if (ret < 0)
 		return ret;
 
@@ -329,10 +436,12 @@ static int xvip_dma_start_streaming(struct vb2_queue *vq, unsigned int count)
 	 * connected subdev.
 	 */
 	ret = xvip_dma_verify_format(dma);
-	if (ret < 0) {
-		media_entity_pipeline_stop(&dma->video.entity);
-		return ret;
-	}
+	if (ret < 0)
+		goto error;
+
+	ret = xvip_pipeline_prepare(pipe, dma);
+	if (ret < 0)
+		goto error;
 
 	/* Start the DMA engine. This must be done before starting the blocks
 	 * in the pipeline to avoid DMA synchronization issues.
@@ -340,18 +449,23 @@ static int xvip_dma_start_streaming(struct vb2_queue *vq, unsigned int count)
 	dma_async_issue_pending(dma->dma);
 
 	/* Start the pipeline. */
-	xvip_pipeline_set_stream(dma->xdev, true);
+	xvip_pipeline_set_stream(pipe, true);
 
 	return 0;
+
+error:
+	media_entity_pipeline_stop(&dma->video.entity);
+	return ret;
 }
 
 static int xvip_dma_stop_streaming(struct vb2_queue *vq)
 {
 	struct xvip_dma *dma = vb2_get_drv_priv(vq);
+	struct xvip_pipeline *pipe = to_xvip_pipeline(&dma->video.entity);
 	struct xilinx_vdma_config config;
 
 	/* Stop the pipeline. */
-	xvip_pipeline_set_stream(dma->xdev, false);
+	xvip_pipeline_set_stream(pipe, false);
 
 	/* Stop and reset the DMA engine. */
 	dmaengine_device_control(dma->dma, DMA_TERMINATE_ALL, 0);
@@ -361,7 +475,8 @@ static int xvip_dma_stop_streaming(struct vb2_queue *vq)
 	dmaengine_device_control(dma->dma, DMA_SLAVE_CONFIG,
 				 (unsigned long)&config);
 
-	/* Mark the pipeline as being stopped. */
+	/* Cleanup the pipeline and mark it as being stopped. */
+	xvip_pipeline_cleanup(pipe);
 	media_entity_pipeline_stop(&dma->video.entity);
 
 	return 0;
@@ -791,6 +906,7 @@ int xvip_dma_init(struct xvip_composite_device *xdev, struct xvip_dma *dma,
 
 	dma->xdev = xdev;
 	mutex_init(&dma->lock);
+	mutex_init(&dma->pipe.lock);
 
 	dma->fmtinfo = xvip_get_format_by_fourcc(XVIP_DMA_DEF_FORMAT);
 	dma->format.pixelformat = dma->fmtinfo->fourcc;
@@ -879,4 +995,5 @@ void xvip_dma_cleanup(struct xvip_dma *dma)
 	media_entity_cleanup(&dma->video.entity);
 
 	mutex_destroy(&dma->lock);
+	mutex_destroy(&dma->pipe.lock);
 }
