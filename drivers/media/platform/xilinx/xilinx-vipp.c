@@ -29,7 +29,7 @@
 
 /**
  * struct xvip_graph_entity - Entity in the video graph
- * @list: list entry in a pipeline entities list
+ * @list: list entry in a graph entities list
  * @node: the entity's DT node
  * @entity: media entity, from the corresponding V4L2 subdev or video device
  * @asd: subdev asynchronous registration information
@@ -138,12 +138,12 @@ done:
 }
 
 /* -----------------------------------------------------------------------------
- * Pipeline Management
+ * Graph Management
  */
 
 static struct xvip_graph_entity *
-xvipp_pipeline_find_entity(struct xvip_composite_device *xdev,
-			   const struct device_node *node)
+xvip_graph_find_entity(struct xvip_composite_device *xdev,
+		       const struct device_node *node)
 {
 	struct xvip_graph_entity *entity;
 
@@ -155,8 +155,8 @@ xvipp_pipeline_find_entity(struct xvip_composite_device *xdev,
 	return NULL;
 }
 
-static int xvipp_pipeline_build_one(struct xvip_composite_device *xdev,
-				    struct xvip_graph_entity *entity)
+static int xvip_graph_build_one(struct xvip_composite_device *xdev,
+				struct xvip_graph_entity *entity)
 {
 	u32 link_flags = MEDIA_LNK_FL_ENABLED;
 	struct media_entity *local = entity->entity;
@@ -210,7 +210,7 @@ static int xvipp_pipeline_build_one(struct xvip_composite_device *xdev,
 		}
 
 		/* Find the remote entity. */
-		ent = xvipp_pipeline_find_entity(xdev, link.remote_node);
+		ent = xvip_graph_find_entity(xdev, link.remote_node);
 		if (ent == NULL) {
 			dev_err(xdev->dev, "no entity found for %s\n",
 				link.remote_node->full_name);
@@ -254,7 +254,7 @@ static int xvipp_pipeline_build_one(struct xvip_composite_device *xdev,
 	return ret;
 }
 
-static int xvipp_pipeline_notify_complete(struct v4l2_async_notifier *notifier)
+static int xvip_graph_notify_complete(struct v4l2_async_notifier *notifier)
 {
 	struct xvip_composite_device *xdev =
 		container_of(notifier, struct xvip_composite_device, notifier);
@@ -265,7 +265,7 @@ static int xvipp_pipeline_notify_complete(struct v4l2_async_notifier *notifier)
 
 	/* Create links for every entity. */
 	list_for_each_entry(entity, &xdev->entities, list) {
-		ret = xvipp_pipeline_build_one(xdev, entity);
+		ret = xvip_graph_build_one(xdev, entity);
 		if (ret < 0)
 			return ret;
 	}
@@ -277,9 +277,9 @@ static int xvipp_pipeline_notify_complete(struct v4l2_async_notifier *notifier)
 	return ret;
 }
 
-static int xvipp_pipeline_notify_bound(struct v4l2_async_notifier *notifier,
-				       struct v4l2_subdev *subdev,
-				       struct v4l2_async_subdev *asd)
+static int xvip_graph_notify_bound(struct v4l2_async_notifier *notifier,
+				   struct v4l2_subdev *subdev,
+				   struct v4l2_async_subdev *asd)
 {
 	struct xvip_composite_device *xdev =
 		container_of(notifier, struct xvip_composite_device, notifier);
@@ -308,8 +308,8 @@ static int xvipp_pipeline_notify_bound(struct v4l2_async_notifier *notifier,
 	return -EINVAL;
 }
 
-static int xvipp_pipeline_parse_one(struct xvip_composite_device *xdev,
-				    struct device_node *node)
+static int xvip_graph_parse_one(struct xvip_composite_device *xdev,
+				struct device_node *node)
 {
 	struct xvip_graph_entity *entity;
 	struct device_node *remote;
@@ -336,7 +336,7 @@ static int xvipp_pipeline_parse_one(struct xvip_composite_device *xdev,
 		}
 
 		/* Skip entities that we have already processed. */
-		if (xvipp_pipeline_find_entity(xdev, remote)) {
+		if (xvip_graph_find_entity(xdev, remote)) {
 			of_node_put(remote);
 			continue;
 		}
@@ -359,14 +359,14 @@ static int xvipp_pipeline_parse_one(struct xvip_composite_device *xdev,
 	return ret;
 }
 
-static int xvipp_pipeline_parse(struct xvip_composite_device *xdev)
+static int xvip_graph_parse(struct xvip_composite_device *xdev)
 {
 	struct xvip_graph_entity *entity;
 	int ret;
 
-	/* Walk the links to parse the full pipeline. */
+	/* Walk the links to parse the full graph. */
 	list_for_each_entry(entity, &xdev->entities, list) {
-		ret = xvipp_pipeline_parse_one(xdev, entity->node);
+		ret = xvip_graph_parse_one(xdev, entity->node);
 		if (ret < 0)
 			break;
 	}
@@ -375,9 +375,9 @@ static int xvipp_pipeline_parse(struct xvip_composite_device *xdev)
 }
 
 static int
-xvipp_pipeline_dma_init_one(struct xvip_composite_device *xdev,
-			    struct xvip_dma *dma, struct device_node *node,
-			    enum v4l2_buf_type type)
+xvip_graph_dma_init_one(struct xvip_composite_device *xdev,
+			struct xvip_dma *dma, struct device_node *node,
+			enum v4l2_buf_type type)
 {
 	struct xvip_graph_entity *entity;
 	int ret;
@@ -402,7 +402,7 @@ xvipp_pipeline_dma_init_one(struct xvip_composite_device *xdev,
 	return 0;
 }
 
-static int xvipp_pipeline_dma_init(struct xvip_composite_device *xdev)
+static int xvip_graph_dma_init(struct xvip_composite_device *xdev)
 {
 	struct device_node *vdma;
 	int ret;
@@ -414,8 +414,8 @@ static int xvipp_pipeline_dma_init(struct xvip_composite_device *xdev)
 		return -EINVAL;
 	}
 
-	ret = xvipp_pipeline_dma_init_one(xdev, &xdev->dma[XVIPP_DMA_S2MM],
-					  vdma, V4L2_BUF_TYPE_VIDEO_CAPTURE);
+	ret = xvip_graph_dma_init_one(xdev, &xdev->dma[XVIPP_DMA_S2MM],
+				      vdma, V4L2_BUF_TYPE_VIDEO_CAPTURE);
 	of_node_put(vdma);
 
 	if (ret < 0)
@@ -426,14 +426,14 @@ static int xvipp_pipeline_dma_init(struct xvip_composite_device *xdev)
 	if (vdma == NULL)
 		return 0;
 
-	ret = xvipp_pipeline_dma_init_one(xdev, &xdev->dma[XVIPP_DMA_MM2S],
-					  vdma, V4L2_BUF_TYPE_VIDEO_OUTPUT);
+	ret = xvip_graph_dma_init_one(xdev, &xdev->dma[XVIPP_DMA_MM2S],
+				      vdma, V4L2_BUF_TYPE_VIDEO_OUTPUT);
 	of_node_put(vdma);
 
 	return ret;
 }
 
-static void xvipp_pipeline_cleanup(struct xvip_composite_device *xdev)
+static void xvip_graph_cleanup(struct xvip_composite_device *xdev)
 {
 	struct xvip_graph_entity *entity;
 	struct xvip_graph_entity *prev;
@@ -449,7 +449,7 @@ static void xvipp_pipeline_cleanup(struct xvip_composite_device *xdev)
 	xvip_dma_cleanup(&xdev->dma[XVIPP_DMA_MM2S]);
 }
 
-static int xvipp_pipeline_init(struct xvip_composite_device *xdev)
+static int xvip_graph_init(struct xvip_composite_device *xdev)
 {
 	struct xvip_graph_entity *entity;
 	struct v4l2_async_subdev **subdevs = NULL;
@@ -458,21 +458,21 @@ static int xvipp_pipeline_init(struct xvip_composite_device *xdev)
 	int ret;
 
 	/* Init the DMA channels. */
-	ret = xvipp_pipeline_dma_init(xdev);
+	ret = xvip_graph_dma_init(xdev);
 	if (ret < 0) {
 		dev_err(xdev->dev, "DMA initialization failed\n");
 		goto done;
 	}
 
-	/* Parse the pipeline to extract a list of subdevice DT nodes. */
-	ret = xvipp_pipeline_parse(xdev);
+	/* Parse the graph to extract a list of subdevice DT nodes. */
+	ret = xvip_graph_parse(xdev);
 	if (ret < 0) {
-		dev_err(xdev->dev, "pipeline parsing failed\n");
+		dev_err(xdev->dev, "graph parsing failed\n");
 		goto done;
 	}
 
 	if (!xdev->num_subdevs) {
-		dev_err(xdev->dev, "no subdev found in pipeline\n");
+		dev_err(xdev->dev, "no subdev found in graph\n");
 		goto done;
 	}
 
@@ -494,8 +494,8 @@ static int xvipp_pipeline_init(struct xvip_composite_device *xdev)
 
 	xdev->notifier.subdevs = subdevs;
 	xdev->notifier.num_subdevs = num_subdevs;
-	xdev->notifier.bound = xvipp_pipeline_notify_bound;
-	xdev->notifier.complete = xvipp_pipeline_notify_complete;
+	xdev->notifier.bound = xvip_graph_notify_bound;
+	xdev->notifier.complete = xvip_graph_notify_complete;
 
 	ret = v4l2_async_notifier_register(&xdev->v4l2_dev, &xdev->notifier);
 	if (ret < 0) {
@@ -507,7 +507,7 @@ static int xvipp_pipeline_init(struct xvip_composite_device *xdev)
 
 done:
 	if (ret < 0)
-		xvipp_pipeline_cleanup(xdev);
+		xvip_graph_cleanup(xdev);
 
 	return ret;
 }
@@ -575,7 +575,7 @@ static int xvipp_probe(struct platform_device *pdev)
 	if (ret < 0)
 		return ret;
 
-	ret = xvipp_pipeline_init(xdev);
+	ret = xvip_graph_init(xdev);
 	if (ret < 0)
 		goto error;
 
@@ -594,7 +594,7 @@ static int xvipp_remove(struct platform_device *pdev)
 {
 	struct xvip_composite_device *xdev = platform_get_drvdata(pdev);
 
-	xvipp_pipeline_cleanup(xdev);
+	xvip_graph_cleanup(xdev);
 	xvipp_v4l2_cleanup(xdev);
 	mutex_destroy(&xdev->lock);
 
