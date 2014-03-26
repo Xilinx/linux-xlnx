@@ -134,6 +134,7 @@ struct media_entity_graph {
 	struct {
 		struct media_entity *entity;
 		int link;
+		int pad;
 	} stack[MEDIA_ENTITY_ENUM_MAX_DEPTH];
 
 	DECLARE_BITMAP(entities, MEDIA_ENTITY_ENUM_MAX_ID);
