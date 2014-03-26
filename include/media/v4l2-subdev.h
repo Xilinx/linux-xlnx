@@ -728,6 +728,10 @@ struct v4l2_subdev_pad_ops {
 			       struct v4l2_mbus_config *config);
 	int (*set_mbus_config)(struct v4l2_subdev *sd, unsigned int pad,
 			       struct v4l2_mbus_config *config);
+	int (*get_routing)(struct v4l2_subdev *sd,
+			   struct v4l2_subdev_routing *route);
+	int (*set_routing)(struct v4l2_subdev *sd,
+			   struct v4l2_subdev_routing *route);
 };
 
 /**

@@ -15,6 +15,7 @@
 #include <linux/kernel.h>
 #include <linux/version.h>
 
+#include <linux/v4l2-subdev.h>
 #include <linux/videodev2.h>
 
 #include <media/v4l2-common.h>
@@ -3079,6 +3080,23 @@ static int check_array_args(unsigned int cmd, void *parg, size_t *array_size,
 			*kernel_ptr = (void **)&ctrls->controls;
 			*array_size = sizeof(struct v4l2_ext_control)
 				    * ctrls->count;
+			ret = 1;
+		}
+		break;
+	}
+
+	case VIDIOC_SUBDEV_G_ROUTING:
+	case VIDIOC_SUBDEV_S_ROUTING: {
+		struct v4l2_subdev_routing *route = parg;
+
+		if (route->num_routes > 0) {
+			if (route->num_routes > 256)
+				return -EINVAL;
+
+			*user_ptr = (void __user *)route->routes;
+			*kernel_ptr = (void *)&route->routes;
+			*array_size = sizeof(struct v4l2_plane)
+				    * route->num_routes;
 			ret = 1;
 		}
 		break;
