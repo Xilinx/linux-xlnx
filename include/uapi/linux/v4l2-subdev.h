@@ -188,6 +188,26 @@ struct v4l2_subdev_capability {
 /* The v4l2 sub-device video device node is registered in read-only mode. */
 #define V4L2_SUBDEV_CAP_RO_SUBDEV		0x00000001
 
+/**
+ * struct v4l2_subdev_route - A signal route inside a subdev
+ * @sink: the sink pad
+ * @source: the source pad
+ */
+struct v4l2_subdev_route {
+	__u32 sink;
+	__u32 source;
+};
+
+/**
+ * struct v4l2_subdev_routing - Routing information
+ * @num_routes: the total number of routes in the routes array
+ * @routes: the routes array
+ */
+struct v4l2_subdev_routing {
+	__u32 num_routes;
+	struct v4l2_subdev_route *routes;
+};
+
 /* Backwards compatibility define --- to be removed */
 #define v4l2_subdev_edid v4l2_edid
 
@@ -215,5 +235,7 @@ struct v4l2_subdev_capability {
 #define VIDIOC_SUBDEV_ENUM_DV_TIMINGS		_IOWR('V', 98, struct v4l2_enum_dv_timings)
 #define VIDIOC_SUBDEV_QUERY_DV_TIMINGS		_IOR('V', 99, struct v4l2_dv_timings)
 #define VIDIOC_SUBDEV_DV_TIMINGS_CAP		_IOWR('V', 100, struct v4l2_dv_timings_cap)
+#define VIDIOC_SUBDEV_G_ROUTING			_IOWR('V', 38, struct v4l2_subdev_routing)
+#define VIDIOC_SUBDEV_S_ROUTING			_IOWR('V', 39, struct v4l2_subdev_routing)
 
 #endif
