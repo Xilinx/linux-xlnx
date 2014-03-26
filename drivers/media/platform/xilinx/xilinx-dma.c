@@ -877,4 +877,6 @@ void xvip_dma_cleanup(struct xvip_dma *dma)
 
 	vb2_dma_contig_cleanup_ctx(dma->alloc_ctx);
 	media_entity_cleanup(&dma->video.entity);
+
+	mutex_destroy(&dma->lock);
 }
