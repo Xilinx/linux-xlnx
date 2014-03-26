@@ -269,6 +269,9 @@ struct media_pad {
  *			media_entity_has_pad_interdep().
  *			Optional: If the operation isn't implemented all pads
  *			will be considered as interdependent.
+ * @has_route:		Return whether a route exists inside the entity between
+ *			two given pads. Optional. If the operation isn't
+ *			implemented all pads will be considered as connected.
  *
  * .. note::
  *
@@ -284,6 +287,8 @@ struct media_entity_operations {
 	int (*link_validate)(struct media_link *link);
 	bool (*has_pad_interdep)(struct media_entity *entity, unsigned int pad0,
 				 unsigned int pad1);
+	bool (*has_route)(struct media_entity *entity, unsigned int pad0,
+			  unsigned int pad1);
 };
 
 /**
