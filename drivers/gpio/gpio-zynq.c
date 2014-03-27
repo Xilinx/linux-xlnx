@@ -176,8 +176,7 @@ static void zynq_gpio_set_value(struct gpio_chip *chip, unsigned int pin,
 			       int state)
 {
 	unsigned long flags;
-	unsigned int reg_offset;
-	unsigned int bank_num, bank_pin_num;
+	unsigned int reg_offset, bank_num, bank_pin_num;
 	struct zynq_gpio *gpio = container_of(chip, struct zynq_gpio, chip);
 
 	zynq_gpio_get_bank_pin(pin, &bank_num, &bank_pin_num);
@@ -584,12 +583,11 @@ static const struct dev_pm_ops zynq_gpio_dev_pm_ops = {
  */
 static int zynq_gpio_probe(struct platform_device *pdev)
 {
-	int ret;
+	int ret, pin_num, bank_num, gpio_irq;
 	unsigned int irq_num;
 	struct zynq_gpio *gpio;
 	struct gpio_chip *chip;
 	struct resource *res;
-	int pin_num, bank_num, gpio_irq;
 
 	gpio = devm_kzalloc(&pdev->dev, sizeof(*gpio), GFP_KERNEL);
 	if (!gpio)
