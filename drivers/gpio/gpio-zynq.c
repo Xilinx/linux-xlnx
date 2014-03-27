@@ -134,11 +134,11 @@ static inline void zynq_gpio_get_bank_pin(unsigned int pin_num,
 		if (pin_num <= zynq_gpio_pin_table[*bank_num])
 			break;
 
-	if (*bank_num == 0)
+	if (!(*bank_num))
 		*bank_pin_num = pin_num;
 	else
-		*bank_pin_num = pin_num % (zynq_gpio_pin_table[*bank_num - 1] +
-				1);
+		*bank_pin_num = pin_num %
+				(zynq_gpio_pin_table[*bank_num - 1] + 1);
 }
 
 /**
@@ -289,8 +289,7 @@ static void zynq_gpio_irq_ack(struct irq_data *irq_data)
 
 	device_pin_num = irq_data->hwirq;
 	zynq_gpio_get_bank_pin(device_pin_num, &bank_num, &bank_pin_num);
-	zynq_gpio_writereg(gpio->base_addr +
-			   ZYNQ_GPIO_INTSTS_OFFSET(bank_num),
+	zynq_gpio_writereg(gpio->base_addr + ZYNQ_GPIO_INTSTS_OFFSET(bank_num),
 			   1 << bank_pin_num);
 }
 
@@ -454,7 +453,7 @@ static void zynq_gpio_irqhandler(unsigned int irq, struct irq_desc *desc)
 		int_sts &= ~int_enb;
 
 		for (; int_sts != 0; int_sts >>= 1, gpio_irq++) {
-			if ((int_sts & 1) == 0)
+			if (!(int_sts & 1))
 				continue;
 			gpio_irq_desc = irq_to_desc(gpio_irq);
 			BUG_ON(!gpio_irq_desc);
