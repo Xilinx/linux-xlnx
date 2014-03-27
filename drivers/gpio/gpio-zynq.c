@@ -10,21 +10,16 @@
  */
 
 #include <linux/clk.h>
-#include <linux/err.h>
-#include <linux/export.h>
 #include <linux/gpio.h>
 #include <linux/init.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/irq.h>
+#include <linux/irqchip/chained_irq.h>
+#include <linux/irqdomain.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
-#include <linux/pm_wakeup.h>
-#include <linux/slab.h>
-#include <asm/mach/irq.h>
-#include <linux/irqdomain.h>
-#include <linux/irqchip/chained_irq.h>
 
 #define DRIVER_NAME "zynq-gpio"
 #define ZYNQ_GPIO_NR_GPIOS	118
