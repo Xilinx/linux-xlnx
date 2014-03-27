@@ -33,36 +33,30 @@ static struct irq_domain *irq_domain;
 
 /* Register offsets for the GPIO device */
 
-#define ZYNQ_GPIO_DATA_LSW_OFFSET(BANK)	(0x000 + (8 * BANK)) /* LSW Mask &
-								Data -WO */
-#define ZYNQ_GPIO_DATA_MSW_OFFSET(BANK)	(0x004 + (8 * BANK)) /* MSW Mask &
-								Data -WO */
-#define ZYNQ_GPIO_DATA_OFFSET(BANK)	(0x040 + (4 * BANK)) /* Data Register
-								-RW */
-#define ZYNQ_GPIO_DIRM_OFFSET(BANK)	(0x204 + (0x40 * BANK)) /* Direction
-								mode reg-RW */
-#define ZYNQ_GPIO_OUTEN_OFFSET(BANK)	(0x208 + (0x40 * BANK)) /* Output
-								enable reg-RW
-								 */
-#define ZYNQ_GPIO_INTMASK_OFFSET(BANK)	(0x20C + (0x40 * BANK)) /* Interrupt
-								mask reg-RO */
-#define ZYNQ_GPIO_INTEN_OFFSET(BANK)	(0x210 + (0x40 * BANK)) /* Interrupt
-								enable reg-WO
-								 */
-#define ZYNQ_GPIO_INTDIS_OFFSET(BANK)	(0x214 + (0x40 * BANK)) /* Interrupt
-								disable reg-WO
-								 */
-#define ZYNQ_GPIO_INTSTS_OFFSET(BANK)	(0x218 + (0x40 * BANK)) /* Interrupt
-								status reg-RO
-								 */
-#define ZYNQ_GPIO_INTTYPE_OFFSET(BANK)	(0x21C + (0x40 * BANK)) /* Interrupt
-								type reg-RW
-								 */
-#define ZYNQ_GPIO_INTPOL_OFFSET(BANK)	(0x220 + (0x40 * BANK)) /* Interrupt
-								polarity reg
-								-RW */
-#define ZYNQ_GPIO_INTANY_OFFSET(BANK)	(0x224 + (0x40 * BANK)) /* Interrupt on
-								any, reg-RW */
+/* LSW Mask & Data -WO */
+#define ZYNQ_GPIO_DATA_LSW_OFFSET(BANK)	(0x000 + (8 * BANK))
+/* MSW Mask & Data -WO */
+#define ZYNQ_GPIO_DATA_MSW_OFFSET(BANK)	(0x004 + (8 * BANK))
+/* Data Register-RW */
+#define ZYNQ_GPIO_DATA_OFFSET(BANK)	(0x040 + (4 * BANK))
+/* Direction mode reg-RW */
+#define ZYNQ_GPIO_DIRM_OFFSET(BANK)	(0x204 + (0x40 * BANK))
+/* Output enable reg-RW */
+#define ZYNQ_GPIO_OUTEN_OFFSET(BANK)	(0x208 + (0x40 * BANK))
+/* Interrupt mask reg-RO */
+#define ZYNQ_GPIO_INTMASK_OFFSET(BANK)	(0x20C + (0x40 * BANK))
+/* Interrupt enable reg-WO */
+#define ZYNQ_GPIO_INTEN_OFFSET(BANK)	(0x210 + (0x40 * BANK))
+/* Interrupt disable reg-WO */
+#define ZYNQ_GPIO_INTDIS_OFFSET(BANK)	(0x214 + (0x40 * BANK))
+/* Interrupt status reg-RO */
+#define ZYNQ_GPIO_INTSTS_OFFSET(BANK)	(0x218 + (0x40 * BANK))
+/* Interrupt type reg-RW */
+#define ZYNQ_GPIO_INTTYPE_OFFSET(BANK)	(0x21C + (0x40 * BANK))
+/* Interrupt polarity reg-RW */
+#define ZYNQ_GPIO_INTPOL_OFFSET(BANK)	(0x220 + (0x40 * BANK))
+/* Interrupt on any, reg-RW */
+#define ZYNQ_GPIO_INTANY_OFFSET(BANK)	(0x224 + (0x40 * BANK))
 
 /* Read/Write access to the GPIO PS registers */
 static inline u32 zynq_gpio_readreg(void __iomem *offset)
