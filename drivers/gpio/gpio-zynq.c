@@ -75,6 +75,21 @@ static unsigned int zynq_gpio_pin_table[] = {
 	117 /* 86 - 117 */
 };
 
+/* Maximum banks */
+#define ZYNQ_GPIO_MAX_BANK	4
+
+/* Disable all interrupts mask */
+#define ZYNQ_GPIO_IXR_DISABLE_ALL	0xFFFFFFFF
+
+/* GPIO pin high */
+#define ZYNQ_GPIO_PIN_HIGH 1
+
+/* Mid pin number of a bank */
+#define ZYNQ_GPIO_MID_PIN_NUM 16
+
+/* GPIO upper 16 bit mask */
+#define ZYNQ_GPIO_UPPER_MASK 0xFFFF0000
+
 /**
  * struct zynq_gpio - gpio device private data structure
  * @chip:	instance of the gpio_chip
@@ -108,7 +123,7 @@ static inline void zynq_gpio_get_bank_pin(unsigned int pin_num,
 					 unsigned int *bank_num,
 					 unsigned int *bank_pin_num)
 {
-	for (*bank_num = 0; *bank_num < 4; (*bank_num)++)
+	for (*bank_num = 0; *bank_num < ZYNQ_GPIO_MAX_BANK; (*bank_num)++)
 		if (pin_num <= zynq_gpio_pin_table[*bank_num])
 			break;
 
@@ -137,7 +152,7 @@ static int zynq_gpio_get_value(struct gpio_chip *chip, unsigned int pin)
 
 	return (zynq_gpio_readreg(gpio->base_addr +
 				 ZYNQ_GPIO_DATA_OFFSET(bank_num)) >>
-		bank_pin_num) & 1;
+		bank_pin_num) & ZYNQ_GPIO_PIN_HIGH;
 }
 
 /**
@@ -160,8 +175,9 @@ static void zynq_gpio_set_value(struct gpio_chip *chip, unsigned int pin,
 
 	zynq_gpio_get_bank_pin(pin, &bank_num, &bank_pin_num);
 
-	if (bank_pin_num >= 16) {
-		bank_pin_num -= 16; /* only 16 data bits in bit maskable reg */
+	if (bank_pin_num >= ZYNQ_GPIO_MID_PIN_NUM) {
+		/* only 16 data bits in bit maskable reg */
+		bank_pin_num -= ZYNQ_GPIO_MID_PIN_NUM;
 		reg_offset = ZYNQ_GPIO_DATA_MSW_OFFSET(bank_num);
 	} else {
 		reg_offset = ZYNQ_GPIO_DATA_LSW_OFFSET(bank_num);
@@ -173,8 +189,8 @@ static void zynq_gpio_set_value(struct gpio_chip *chip, unsigned int pin,
 	 */
 	if (state)
 		state = 1;
-	state = ~(1 << (bank_pin_num + 16)) & ((state << bank_pin_num) |
-					       0xFFFF0000);
+	state = ~(1 << (bank_pin_num + ZYNQ_GPIO_MID_PIN_NUM)) &
+		((state << bank_pin_num) | ZYNQ_GPIO_UPPER_MASK);
 
 	spin_lock_irqsave(&gpio->gpio_lock, flags);
 	zynq_gpio_writereg(state, gpio->base_addr + reg_offset);
@@ -423,7 +439,7 @@ static void zynq_gpio_irqhandler(unsigned int irq, struct irq_desc *desc)
 
 	chained_irq_enter(chip, desc);
 
-	for (bank_num = 0; bank_num < 4; bank_num++) {
+	for (bank_num = 0; bank_num < ZYNQ_GPIO_MAX_BANK; bank_num++) {
 		int_sts = zynq_gpio_readreg(gpio->base_addr +
 					   ZYNQ_GPIO_INTSTS_OFFSET(bank_num));
 		int_enb = zynq_gpio_readreg(gpio->base_addr +
@@ -635,8 +651,8 @@ static int zynq_gpio_probe(struct platform_device *pdev)
 	}
 
 	/* disable interrupts for all banks */
-	for (bank_num = 0; bank_num < 4; bank_num++) {
-		zynq_gpio_writereg(0xffffffff, gpio->base_addr +
+	for (bank_num = 0; bank_num < ZYNQ_GPIO_MAX_BANK; bank_num++) {
+		zynq_gpio_writereg(ZYNQ_GPIO_IXR_DISABLE_ALL, gpio->base_addr +
 				  ZYNQ_GPIO_INTDIS_OFFSET(bank_num));
 	}
 
