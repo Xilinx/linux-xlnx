@@ -291,7 +291,7 @@ static void zynq_gpio_irq_ack(struct irq_data *irq_data)
 	device_pin_num = irq_data->hwirq;
 	zynq_gpio_get_bank_pin(device_pin_num, &bank_num, &bank_pin_num);
 	zynq_gpio_writereg(gpio->base_addr +
-			   (ZYNQ_GPIO_INTSTS_OFFSET(bank_num)),
+			   ZYNQ_GPIO_INTSTS_OFFSET(bank_num),
 			   1 << bank_pin_num);
 }
 
@@ -705,7 +705,7 @@ static int zynq_gpio_remove(struct platform_device *pdev)
 
 static struct of_device_id zynq_gpio_of_match[] = {
 	{ .compatible = "xlnx,zynq-gpio-1.00.a", },
-	{ /* end of table */}
+	{ /* end of table */ }
 };
 MODULE_DEVICE_TABLE(of, zynq_gpio_of_match);
 
