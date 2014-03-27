@@ -65,8 +65,15 @@ static struct irq_domain *irq_domain;
 								any, reg-RW */
 
 /* Read/Write access to the GPIO PS registers */
-#define zynq_gpio_readreg(offset)		__raw_readl(offset)
-#define zynq_gpio_writereg(offset, val)	__raw_writel(val, offset)
+static inline u32 zynq_gpio_readreg(void __iomem *offset)
+{
+	return __raw_readl(offset);
+}
+
+static inline void zynq_gpio_writereg(void __iomem *offset, u32 val)
+{
+	__raw_writel(val, offset);
+}
 
 static unsigned int zynq_gpio_pin_table[] = {
 	31, /* 0 - 31 */
