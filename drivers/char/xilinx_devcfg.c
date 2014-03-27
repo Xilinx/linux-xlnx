@@ -2062,7 +2062,7 @@ static int xdevcfg_drv_remove(struct platform_device *pdev)
 }
 
 static struct of_device_id xdevcfg_of_match[] = {
-	{ .compatible = "xlnx,ps7-dev-cfg-1.00.a", },
+	{ .compatible = "xlnx,zynq-devcfg-1.0", },
 	{ /* end of table */}
 };
 MODULE_DEVICE_TABLE(of, xdevcfg_of_match);
