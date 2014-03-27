@@ -472,8 +472,7 @@ static void zynq_gpio_irqhandler(unsigned int irq, struct irq_desc *desc)
 	chained_irq_exit(chip, desc);
 }
 
-#ifdef CONFIG_PM_SLEEP
-static int zynq_gpio_suspend(struct device *dev)
+static int __maybe_unused zynq_gpio_suspend(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct zynq_gpio *gpio = platform_get_drvdata(pdev);
@@ -487,7 +486,7 @@ static int zynq_gpio_suspend(struct device *dev)
 	return 0;
 }
 
-static int zynq_gpio_resume(struct device *dev)
+static int __maybe_unused zynq_gpio_resume(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct zynq_gpio *gpio = platform_get_drvdata(pdev);
@@ -499,7 +498,6 @@ static int zynq_gpio_resume(struct device *dev)
 
 	return 0;
 }
-#endif
 
 #ifdef CONFIG_PM_RUNTIME
 static int zynq_gpio_runtime_suspend(struct device *dev)
