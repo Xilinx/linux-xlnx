@@ -146,14 +146,14 @@ static inline void zynq_gpio_get_bank_pin(unsigned int pin_num,
  */
 static int zynq_gpio_get_value(struct gpio_chip *chip, unsigned int pin)
 {
-	unsigned int bank_num, bank_pin_num;
+	unsigned int bank_num, bank_pin_num, data;
 	struct zynq_gpio *gpio = container_of(chip, struct zynq_gpio, chip);
 
 	zynq_gpio_get_bank_pin(pin, &bank_num, &bank_pin_num);
 
-	return (zynq_gpio_readreg(gpio->base_addr +
-				  ZYNQ_GPIO_DATA_OFFSET(bank_num)) >>
-		bank_pin_num) & ZYNQ_GPIO_PIN_HIGH;
+	data = zynq_gpio_readreg(gpio->base_addr +
+				 ZYNQ_GPIO_DATA_OFFSET(bank_num));
+	return (data >> bank_pin_num) & ZYNQ_GPIO_PIN_HIGH;
 }
 
 /**
