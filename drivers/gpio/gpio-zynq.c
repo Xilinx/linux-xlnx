@@ -483,8 +483,7 @@ static int __maybe_unused zynq_gpio_resume(struct device *dev)
 	return 0;
 }
 
-#ifdef CONFIG_PM_RUNTIME
-static int zynq_gpio_runtime_suspend(struct device *dev)
+static int __maybe_unused zynq_gpio_runtime_suspend(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct zynq_gpio *gpio = platform_get_drvdata(pdev);
@@ -494,7 +493,7 @@ static int zynq_gpio_runtime_suspend(struct device *dev)
 	return 0;
 }
 
-static int zynq_gpio_runtime_resume(struct device *dev)
+static int __maybe_unused zynq_gpio_runtime_resume(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct zynq_gpio *gpio = platform_get_drvdata(pdev);
@@ -502,7 +501,7 @@ static int zynq_gpio_runtime_resume(struct device *dev)
 	return clk_enable(gpio->clk);
 }
 
-static int zynq_gpio_idle(struct device *dev)
+static int __maybe_unused zynq_gpio_idle(struct device *dev)
 {
 	return pm_schedule_suspend(dev, 1);
 }
@@ -525,31 +524,11 @@ static void zynq_gpio_free(struct gpio_chip *chip, unsigned offset)
 	pm_runtime_put_sync(chip->dev);
 }
 
-static void zynq_gpio_pm_runtime_init(struct platform_device *pdev)
-{
-	struct zynq_gpio *gpio = platform_get_drvdata(pdev);
-
-	clk_disable(gpio->clk);
-	pm_runtime_enable(&pdev->dev);
-}
-
-#else /* ! CONFIG_PM_RUNTIME */
-#define zynq_gpio_request	NULL
-#define zynq_gpio_free	NULL
-static void zynq_gpio_pm_runtime_init(struct platform_device *pdev) {}
-#endif /* ! CONFIG_PM_RUNTIME */
-
-#if defined(CONFIG_PM_RUNTIME) || defined(CONFIG_PM_SLEEP)
 static const struct dev_pm_ops zynq_gpio_dev_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(zynq_gpio_suspend, zynq_gpio_resume)
 	SET_RUNTIME_PM_OPS(zynq_gpio_runtime_suspend, zynq_gpio_runtime_resume,
 			   zynq_gpio_idle)
 };
-#define ZYNQ_GPIO_PM	(&zynq_gpio_dev_pm_ops)
-
-#else /*! CONFIG_PM_RUNTIME || ! CONFIG_PM_SLEEP */
-#define ZYNQ_GPIO_PM	NULL
-#endif /*! CONFIG_PM_RUNTIME */
 
 /**
  * zynq_gpio_probe - Initialization method for a zynq_gpio device
@@ -655,7 +634,7 @@ static int zynq_gpio_probe(struct platform_device *pdev)
 	irq_set_handler_data(irq_num, (void *)gpio);
 	irq_set_chained_handler(irq_num, zynq_gpio_irqhandler);
 
-	zynq_gpio_pm_runtime_init(pdev);
+	pm_runtime_enable(&pdev->dev);
 
 	device_set_wakeup_capable(&pdev->dev, 1);
 
@@ -687,7 +666,7 @@ static struct platform_driver zynq_gpio_driver = {
 	.driver	= {
 		.name	= DRIVER_NAME,
 		.owner	= THIS_MODULE,
-		.pm	= ZYNQ_GPIO_PM,
+		.pm	= &zynq_gpio_dev_pm_ops,
 		.of_match_table = zynq_gpio_of_match,
 	},
 	.probe		= zynq_gpio_probe,
