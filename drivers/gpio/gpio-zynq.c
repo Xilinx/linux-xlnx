@@ -93,7 +93,6 @@ static unsigned int zynq_gpio_pin_table[] = {
  * @irq:	irq associated with the controller
  * @irq_base:	base of IRQ number for interrupt
  * @clk:	clock resource for this controller
- * @gpio_lock:	lock used for synchronization
  */
 struct zynq_gpio {
 	struct gpio_chip chip;
@@ -101,7 +100,6 @@ struct zynq_gpio {
 	unsigned int irq;
 	unsigned int irq_base;
 	struct clk *clk;
-	spinlock_t gpio_lock;
 };
 
 /**
@@ -164,7 +162,6 @@ static int zynq_gpio_get_value(struct gpio_chip *chip, unsigned int pin)
 static void zynq_gpio_set_value(struct gpio_chip *chip, unsigned int pin,
 				int state)
 {
-	unsigned long flags;
 	unsigned int reg_offset, bank_num, bank_pin_num;
 	struct zynq_gpio *gpio = container_of(chip, struct zynq_gpio, chip);
 
@@ -187,9 +184,7 @@ static void zynq_gpio_set_value(struct gpio_chip *chip, unsigned int pin,
 	state = ~(1 << (bank_pin_num + ZYNQ_GPIO_MID_PIN_NUM)) &
 		((state << bank_pin_num) | ZYNQ_GPIO_UPPER_MASK);
 
-	spin_lock_irqsave(&gpio->gpio_lock, flags);
 	zynq_gpio_writereg(gpio->base_addr + reg_offset, state);
-	spin_unlock_irqrestore(&gpio->gpio_lock, flags);
 }
 
 /**
@@ -578,8 +573,6 @@ static int zynq_gpio_probe(struct platform_device *pdev)
 	gpio = devm_kzalloc(&pdev->dev, sizeof(*gpio), GFP_KERNEL);
 	if (!gpio)
 		return -ENOMEM;
-
-	spin_lock_init(&gpio->gpio_lock);
 
 	platform_set_drvdata(pdev, gpio);
 
