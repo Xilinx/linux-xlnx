@@ -110,7 +110,7 @@
 			#dma-requests = <4>;
 			clock-names = "apb_pclk";
 			clocks = <&clkc 27>;
-			compatible = "xlnx,ps7-dma-1.00.a", "arm,primecell", "arm,pl330";
+			compatible = "arm,primecell", "arm,pl330";
 			interrupt-names = "abort", "dma0", "dma1", "dma2", "dma3",
 				"dma4", "dma5", "dma6", "dma7";
 			interrupt-parent = <&ps7_scugic_0>;
@@ -144,7 +144,7 @@
 		} ;
 		ps7_globaltimer_0: ps7-globaltimer@f8f00200 {
 			clocks = <&clkc 4>;
-			compatible = "xlnx,ps7-globaltimer-1.00.a", "arm,cortex-a9-global-timer";
+			compatible = "arm,cortex-a9-global-timer";
 			interrupt-parent = <&ps7_scugic_0>;
 			interrupts = <1 11 0x301>;
 			reg = <0xf8f00200 0x100>;
@@ -164,7 +164,7 @@
 		ps7_i2c_0: ps7-i2c@e0004000 {
 			clock-frequency = <400000>;
 			clocks = <&clkc 38>;
-			compatible = "xlnx,ps7-i2c-1.00.a", "cdns,i2c-r1p10";
+			compatible = "cdns,i2c-r1p10";
 			interrupt-parent = <&ps7_scugic_0>;
 			interrupts = <0 25 4>;
 			reg = <0xe0004000 0x1000>;
@@ -182,7 +182,7 @@
 			reg = <0xe0200000 0x1000>;
 		} ;
 		ps7_ocmc_0: ps7-ocmc@f800c000 {
-			compatible = "xlnx,ps7-ocmc-1.00.a", "xlnx,zynq-ocm-1.0";
+			compatible = "xlnx,zynq-ocm-1.0";
 			interrupt-parent = <&ps7_scugic_0>;
 			interrupts = <0 3 4>;
 			reg = <0xf800c000 0x1000>;
@@ -192,7 +192,7 @@
 			arm,tag-latency = <2 2 2>;
 			cache-level = <2>;
 			cache-unified ;
-			compatible = "xlnx,ps7-pl310-1.00.a", "arm,pl310-cache";
+			compatible = "arm,pl310-cache";
 			interrupt-parent = <&ps7_scugic_0>;
 			interrupts = <0 2 4>;
 			reg = <0xf8f02000 0x1000>;
@@ -249,7 +249,7 @@
 			#address-cells = <2>;
 			#interrupt-cells = <3>;
 			#size-cells = <1>;
-			compatible = "xlnx,ps7-scugic-1.00.a", "arm,cortex-a9-gic", "arm,gic";
+			compatible = "arm,cortex-a9-gic", "arm,gic";
 			interrupt-controller ;
 			num_cpus = <2>;
 			num_interrupts = <96>;
@@ -257,7 +257,7 @@
 		} ;
 		ps7_scutimer_0: ps7-scutimer@f8f00600 {
 			clocks = <&clkc 4>;
-			compatible = "xlnx,ps7-scutimer-1.00.a", "arm,cortex-a9-twd-timer";
+			compatible = "arm,cortex-a9-twd-timer";
 			interrupt-parent = <&ps7_scugic_0>;
 			interrupts = <1 13 0x301>;
 			reg = <0xf8f00600 0x20>;
@@ -274,7 +274,7 @@
 			clock-frequency = <50000000>;
 			clock-names = "clk_xin", "clk_ahb";
 			clocks = <&clkc 21>, <&clkc 32>;
-			compatible = "xlnx,ps7-sdio-1.00.a", "generic-sdhci", "arasan,sdhci-8.9a";
+			compatible = "arasan,sdhci-8.9a";
 			interrupt-parent = <&ps7_scugic_0>;
 			interrupts = <0 24 4>;
 			reg = <0xe0100000 0x1000>;
@@ -309,7 +309,7 @@
 		ps7_spi_1: ps7-spi@e0007000 {
 			clock-names = "ref_clk", "pclk";
 			clocks = <&clkc 26>, <&clkc 35>;
-			compatible = "xlnx,ps7-spi-1.00.a", "cdns,spi-r1p6";
+			compatible = "cdns,spi-r1p6";
 			interrupt-parent = <&ps7_scugic_0>;
 			interrupts = <0 49 4>;
 			num-chip-select = <4>;
@@ -331,7 +331,7 @@
 		} ;
 		ps7_ttc_0: ps7-ttc@f8001000 {
 			clocks = <&clkc 6>;
-			compatible = "xlnx,ps7-ttc-1.00.a", "cdns,ttc";
+			compatible = "cdns,ttc";
 			interrupt-names = "ttc0", "ttc1", "ttc2";
 			interrupt-parent = <&ps7_scugic_0>;
 			interrupts = <0 10 4>, <0 11 4>, <0 12 4>;
@@ -340,7 +340,7 @@
 		ps7_uart_1: serial@e0001000 {
 			clock-names = "ref_clk", "aper_clk";
 			clocks = <&clkc 24>, <&clkc 41>;
-			compatible = "xlnx,ps7-uart-1.00.a", "xlnx,xuartps";
+			compatible = "xlnx,xuartps";
 			current-speed = <115200>;
 			device_type = "serial";
 			interrupt-parent = <&ps7_scugic_0>;
