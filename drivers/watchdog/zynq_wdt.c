@@ -95,7 +95,7 @@ static struct zynq_wdt *wdt;
 static struct watchdog_info zynq_wdt_info = {
 	.identity	= "zynq_wdt watchdog",
 	.options	= WDIOF_SETTIMEOUT | WDIOF_KEEPALIVEPING |
-				WDIOF_MAGICCLOSE,
+			  WDIOF_MAGICCLOSE,
 };
 
 /* Write access to Registers */
@@ -211,7 +211,7 @@ static int zynq_wdt_start(struct watchdog_device *wdd)
 	data = count | ZYNQ_WDT_REGISTER_ACCESS_KEY | wdt->ctrl_clksel;
 	zynq_wdt_writereg(ZYNQ_WDT_CCR_OFFSET, data);
 	data = ZYNQ_WDT_ZMR_WDEN_MASK | ZYNQ_WDT_ZMR_RSTLEN_16 |
-			ZYNQ_WDT_ZMR_ZKEY_VAL;
+	       ZYNQ_WDT_ZMR_ZKEY_VAL;
 
 	/* Reset on timeout if specified in device tree. */
 	if (wdt->rst) {
@@ -296,7 +296,7 @@ static struct watchdog_device zynq_wdt_device = {
  * reset on the next boot.
  */
 static int zynq_wdt_notify_sys(struct notifier_block *this, unsigned long code,
-			      void *unused)
+			       void *unused)
 {
 	if (code == SYS_DOWN || code == SYS_HALT)
 		/* Stop the watchdog */
@@ -358,8 +358,8 @@ static int zynq_wdt_probe(struct platform_device *pdev)
 				       pdev->name, pdev);
 		if (ret) {
 			dev_err(&pdev->dev,
-				   "cannot register interrupt handler err=%d\n",
-				   ret);
+				"cannot register interrupt handler err=%d\n",
+				ret);
 			goto err_notifier;
 		}
 	}
@@ -369,12 +369,12 @@ static int zynq_wdt_probe(struct platform_device *pdev)
 	of_property_read_u32(pdev->dev.of_node, "timeout",
 			     &zynq_wdt_device.timeout);
 	if (wdt_timeout < ZYNQ_WDT_MAX_TIMEOUT &&
-			wdt_timeout > ZYNQ_WDT_MIN_TIMEOUT)
+	    wdt_timeout > ZYNQ_WDT_MIN_TIMEOUT)
 		zynq_wdt_device.timeout = wdt_timeout;
 	else
 		dev_info(&pdev->dev,
-			    "timeout limited to 1 - %d sec, using default=%d\n",
-			    ZYNQ_WDT_MAX_TIMEOUT, ZYNQ_WDT_DEFAULT_TIMEOUT);
+			 "timeout limited to 1 - %d sec, using default=%d\n",
+			 ZYNQ_WDT_MAX_TIMEOUT, ZYNQ_WDT_DEFAULT_TIMEOUT);
 
 	watchdog_set_nowayout(&zynq_wdt_device, nowayout);
 	watchdog_set_drvdata(&zynq_wdt_device, &wdt);
