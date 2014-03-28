@@ -101,7 +101,7 @@ static struct watchdog_info zynq_wdt_info = {
 /* Write access to Registers */
 static inline void zynq_wdt_writereg(u32 offset, u32 val)
 {
-	__raw_writel(val, (wdt->regs) + offset);
+	__raw_writel(val, wdt->regs + offset);
 }
 
 /*************************Register Map**************************************/
@@ -142,7 +142,7 @@ static int zynq_wdt_stop(struct watchdog_device *wdd)
 {
 	spin_lock(&wdt->io_lock);
 	zynq_wdt_writereg(ZYNQ_WDT_ZMR_OFFSET,
-			  (ZYNQ_WDT_ZMR_ZKEY_VAL & (~ZYNQ_WDT_ZMR_WDEN_MASK)));
+			  ZYNQ_WDT_ZMR_ZKEY_VAL & (~ZYNQ_WDT_ZMR_WDEN_MASK));
 	spin_unlock(&wdt->io_lock);
 
 	return 0;
@@ -208,7 +208,7 @@ static int zynq_wdt_start(struct watchdog_device *wdd)
 	count = (count << 2) & ZYNQ_WDT_CCR_CRV_MASK;
 
 	/* 0x00920000 - Counter register key value. */
-	data = (count | ZYNQ_WDT_REGISTER_ACCESS_KEY | wdt->ctrl_clksel);
+	data = count | ZYNQ_WDT_REGISTER_ACCESS_KEY | wdt->ctrl_clksel;
 	zynq_wdt_writereg(ZYNQ_WDT_CCR_OFFSET, data);
 	data = ZYNQ_WDT_ZMR_WDEN_MASK | ZYNQ_WDT_ZMR_RSTLEN_16 |
 			ZYNQ_WDT_ZMR_ZKEY_VAL;
@@ -508,7 +508,7 @@ static SIMPLE_DEV_PM_OPS(zynq_wdt_pm_ops, zynq_wdt_suspend, zynq_wdt_resume);
 
 static struct of_device_id zynq_wdt_of_match[] = {
 	{ .compatible = "xlnx,zynq-wdt-1.00.a", },
-	{ /* end of table */}
+	{ /* end of table */ }
 };
 MODULE_DEVICE_TABLE(of, zynq_wdt_of_match);
 
