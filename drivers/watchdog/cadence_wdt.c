@@ -364,7 +364,7 @@ static int cdns_wdt_probe(struct platform_device *pdev)
 
 	/* Initialize the members of cdns_wdt structure */
 	cdns_wdt_device->parent = &pdev->dev;
-	of_property_read_u32(pdev->dev.of_node, "timeout",
+	of_property_read_u32(pdev->dev.of_node, "timeout-sec",
 			     &cdns_wdt_device->timeout);
 	if (wdt_timeout < CDNS_WDT_MAX_TIMEOUT &&
 	    wdt_timeout > CDNS_WDT_MIN_TIMEOUT)
