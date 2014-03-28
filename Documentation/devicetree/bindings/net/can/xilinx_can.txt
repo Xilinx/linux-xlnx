@@ -2,7 +2,7 @@ Xilinx Axi CAN/Zynq CANPS controller Device Tree Bindings
 ---------------------------------------------------------
 
 Required properties:
-- compatible		: Should be "xlnx,zynq-can-1.00.a" for Zynq CAN
+- compatible		: Should be "xlnx,zynq-can-1.0" for Zynq CAN
 			  controllers and "xlnx,axi-can-1.00.a" for Axi CAN
 			  controllers.
 - reg			: Physical base address and size of the Axi CAN/Zynq
@@ -22,7 +22,7 @@ Example:
 
 For Zynq CANPS Dts file:
 	zynq_can_0: zynq-can@e0008000 {
-			compatible = "xlnx,zynq-can-1.00.a";
+			compatible = "xlnx,zynq-can-1.0";
 			clocks = <&clkc 19>, <&clkc 36>;
 			clock-names = "ref_clk", "aper_clk";
 			reg = <0xe0008000 0x1000>;
