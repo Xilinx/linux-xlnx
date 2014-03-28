@@ -10,8 +10,6 @@
  */
 
 #include <linux/clk.h>
-#include <linux/export.h>
-#include <linux/fs.h>
 #include <linux/init.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
@@ -21,8 +19,6 @@
 #include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/reboot.h>
-#include <linux/slab.h>
-#include <linux/uaccess.h>
 #include <linux/watchdog.h>
 
 #define ZYNQ_WDT_DEFAULT_TIMEOUT	10
