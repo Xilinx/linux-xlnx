@@ -393,10 +393,7 @@ static int zynq_wdt_probe(struct platform_device *pdev)
 	}
 
 	clock_f = clk_get_rate(wdt->clk);
-	if (clock_f <= ZYNQ_WDT_CLK_10MHZ) {/* For PEEP */
-		wdt->prescaler = ZYNQ_WDT_PRESCALE_64;
-		wdt->ctrl_clksel = ZYNQ_WDT_PRESCALE_SELECT_64;
-	} else if (clock_f <= ZYNQ_WDT_CLK_75MHZ) {
+	if (clock_f <= ZYNQ_WDT_CLK_75MHZ) {
 		wdt->prescaler = ZYNQ_WDT_PRESCALE_512;
 		wdt->ctrl_clksel = ZYNQ_WDT_PRESCALE_SELECT_512;
 	} else { /* For Zynq */
