@@ -369,7 +369,7 @@ static int zynq_wdt_probe(struct platform_device *pdev)
 		wdt->prescaler = 64;
 		wdt->ctrl_clksel = 1;
 	} else if (clock_f <= 75000000) {
-		wdt->prescaler = 256;
+		wdt->prescaler = 512;
 		wdt->ctrl_clksel = 2;
 	} else { /* For Zynq */
 		wdt->prescaler = 4096;
