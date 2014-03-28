@@ -1,5 +1,5 @@
 /*
- * Xilinx Zynq WDT driver
+ * Cadence WDT driver - Used by Xilinx Zynq
  *
  * Copyright (C) 2010 - 2014 Xilinx, Inc.
  *
@@ -21,42 +21,42 @@
 #include <linux/reboot.h>
 #include <linux/watchdog.h>
 
-#define ZYNQ_WDT_DEFAULT_TIMEOUT	10
+#define CDNS_WDT_DEFAULT_TIMEOUT	10
 /* Supports 1 - 516 sec */
-#define ZYNQ_WDT_MIN_TIMEOUT	1
-#define ZYNQ_WDT_MAX_TIMEOUT	516
+#define CDNS_WDT_MIN_TIMEOUT	1
+#define CDNS_WDT_MAX_TIMEOUT	516
 
 /* Restart key */
-#define ZYNQ_WDT_RESTART_KEY 0x00001999
+#define CDNS_WDT_RESTART_KEY 0x00001999
 
 /* Counter register access key */
-#define ZYNQ_WDT_REGISTER_ACCESS_KEY 0x00920000
+#define CDNS_WDT_REGISTER_ACCESS_KEY 0x00920000
 
 /* Counter value divisor */
-#define ZYNQ_WDT_COUNTER_VALUE_DIVISOR 0x1000
+#define CDNS_WDT_COUNTER_VALUE_DIVISOR 0x1000
 
 /* Clock prescaler value and selection */
-#define ZYNQ_WDT_PRESCALE_64	64
-#define ZYNQ_WDT_PRESCALE_512	512
-#define ZYNQ_WDT_PRESCALE_4096	4096
-#define ZYNQ_WDT_PRESCALE_SELECT_64	1
-#define ZYNQ_WDT_PRESCALE_SELECT_512	2
-#define ZYNQ_WDT_PRESCALE_SELECT_4096	3
+#define CDNS_WDT_PRESCALE_64	64
+#define CDNS_WDT_PRESCALE_512	512
+#define CDNS_WDT_PRESCALE_4096	4096
+#define CDNS_WDT_PRESCALE_SELECT_64	1
+#define CDNS_WDT_PRESCALE_SELECT_512	2
+#define CDNS_WDT_PRESCALE_SELECT_4096	3
 
 /* Input clock frequency */
-#define ZYNQ_WDT_CLK_10MHZ	10000000
-#define ZYNQ_WDT_CLK_75MHZ	75000000
+#define CDNS_WDT_CLK_10MHZ	10000000
+#define CDNS_WDT_CLK_75MHZ	75000000
 
 /* Counter maximum value */
-#define ZYNQ_WDT_COUNTER_MAX 0xFFF
+#define CDNS_WDT_COUNTER_MAX 0xFFF
 
-static int wdt_timeout = ZYNQ_WDT_DEFAULT_TIMEOUT;
+static int wdt_timeout = CDNS_WDT_DEFAULT_TIMEOUT;
 static int nowayout = WATCHDOG_NOWAYOUT;
 
 module_param(wdt_timeout, int, 0);
 MODULE_PARM_DESC(wdt_timeout,
 		 "Watchdog time in seconds. (default="
-		 __MODULE_STRING(ZYNQ_WDT_DEFAULT_TIMEOUT) ")");
+		 __MODULE_STRING(CDNS_WDT_DEFAULT_TIMEOUT) ")");
 
 module_param(nowayout, int, 0);
 MODULE_PARM_DESC(nowayout,
@@ -64,29 +64,31 @@ MODULE_PARM_DESC(nowayout,
 		 __MODULE_STRING(WATCHDOG_NOWAYOUT) ")");
 
 /**
- * struct zynq_wdt - Watchdog device structure
+ * struct cdns_wdt - Watchdog device structure
  * @regs: baseaddress of device
  * @rst: reset flag
  * @clk: struct clk * of a clock source
  * @prescaler: for saving prescaler value
  * @ctrl_clksel: counter clock prescaler selection
  * @io_lock: spinlock for IO register access
+ * @cdns_wdt_device: watchdog device structure
+ * @cdns_wdt_notifier: notifier structure
  *
- * Structure containing parameters specific to ps watchdog.
+ * Structure containing parameters specific to cadence watchdog.
  */
-struct zynq_wdt {
+struct cdns_wdt {
 	void __iomem		*regs;
 	u32			rst;
 	struct clk		*clk;
 	u32			prescaler;
 	u32			ctrl_clksel;
 	spinlock_t		io_lock;
-	struct watchdog_device	zynq_wdt_device;
-	struct notifier_block zynq_wdt_notifier;
+	struct watchdog_device	cdns_wdt_device;
+	struct notifier_block	cdns_wdt_notifier;
 };
 
 /* Write access to Registers */
-static inline void zynq_wdt_writereg(void __iomem *offset, u32 val)
+static inline void cdns_wdt_writereg(void __iomem *offset, u32 val)
 {
 	writel_relaxed(val, offset);
 }
@@ -94,29 +96,29 @@ static inline void zynq_wdt_writereg(void __iomem *offset, u32 val)
 /*************************Register Map**************************************/
 
 /* Register Offsets for the WDT */
-#define ZYNQ_WDT_ZMR_OFFSET	0x0	/* Zero Mode Register */
-#define ZYNQ_WDT_CCR_OFFSET	0x4	/* Counter Control Register */
-#define ZYNQ_WDT_RESTART_OFFSET	0x8	/* Restart Register */
-#define ZYNQ_WDT_SR_OFFSET	0xC	/* Status Register */
+#define CDNS_WDT_ZMR_OFFSET	0x0	/* Zero Mode Register */
+#define CDNS_WDT_CCR_OFFSET	0x4	/* Counter Control Register */
+#define CDNS_WDT_RESTART_OFFSET	0x8	/* Restart Register */
+#define CDNS_WDT_SR_OFFSET	0xC	/* Status Register */
 
 /*
  * Zero Mode Register - This register controls how the time out is indicated
  * and also contains the access code to allow writes to the register (0xABC).
  */
-#define ZYNQ_WDT_ZMR_WDEN_MASK	0x00000001 /* Enable the WDT */
-#define ZYNQ_WDT_ZMR_RSTEN_MASK	0x00000002 /* Enable the reset output */
-#define ZYNQ_WDT_ZMR_IRQEN_MASK	0x00000004 /* Enable IRQ output */
-#define ZYNQ_WDT_ZMR_RSTLEN_16	0x00000030 /* Reset pulse of 16 pclk cycles */
-#define ZYNQ_WDT_ZMR_ZKEY_VAL	0x00ABC000 /* Access key, 0xABC << 12 */
+#define CDNS_WDT_ZMR_WDEN_MASK	0x00000001 /* Enable the WDT */
+#define CDNS_WDT_ZMR_RSTEN_MASK	0x00000002 /* Enable the reset output */
+#define CDNS_WDT_ZMR_IRQEN_MASK	0x00000004 /* Enable IRQ output */
+#define CDNS_WDT_ZMR_RSTLEN_16	0x00000030 /* Reset pulse of 16 pclk cycles */
+#define CDNS_WDT_ZMR_ZKEY_VAL	0x00ABC000 /* Access key, 0xABC << 12 */
 /*
  * Counter Control register - This register controls how fast the timer runs
  * and the reset value and also contains the access code to allow writes to
  * the register.
  */
-#define ZYNQ_WDT_CCR_CRV_MASK	0x00003FFC /* Counter reset value */
+#define CDNS_WDT_CCR_CRV_MASK	0x00003FFC /* Counter reset value */
 
 /**
- * zynq_wdt_stop -  Stop the watchdog.
+ * cdns_wdt_stop - Stop the watchdog.
  *
  * @wdd: watchdog device
  *
@@ -125,19 +127,20 @@ static inline void zynq_wdt_writereg(void __iomem *offset, u32 val)
  *
  * Return: always 0
  */
-static int zynq_wdt_stop(struct watchdog_device *wdd)
+static int cdns_wdt_stop(struct watchdog_device *wdd)
 {
-	struct zynq_wdt *wdt = watchdog_get_drvdata(wdd);
+	struct cdns_wdt *wdt = watchdog_get_drvdata(wdd);
+
 	spin_lock(&wdt->io_lock);
-	zynq_wdt_writereg(wdt->regs + ZYNQ_WDT_ZMR_OFFSET,
-			  ZYNQ_WDT_ZMR_ZKEY_VAL & (~ZYNQ_WDT_ZMR_WDEN_MASK));
+	cdns_wdt_writereg(wdt->regs + CDNS_WDT_ZMR_OFFSET,
+			  CDNS_WDT_ZMR_ZKEY_VAL & (~CDNS_WDT_ZMR_WDEN_MASK));
 	spin_unlock(&wdt->io_lock);
 
 	return 0;
 }
 
 /**
- * zynq_wdt_reload -  Reload the watchdog timer (i.e. pat the watchdog).
+ * cdns_wdt_reload - Reload the watchdog timer (i.e. pat the watchdog).
  *
  * @wdd: watchdog device
  *
@@ -145,19 +148,20 @@ static int zynq_wdt_stop(struct watchdog_device *wdd)
  *
  * Return: always 0
  */
-static int zynq_wdt_reload(struct watchdog_device *wdd)
+static int cdns_wdt_reload(struct watchdog_device *wdd)
 {
-	struct zynq_wdt *wdt = watchdog_get_drvdata(wdd);
+	struct cdns_wdt *wdt = watchdog_get_drvdata(wdd);
+
 	spin_lock(&wdt->io_lock);
-	zynq_wdt_writereg(wdt->regs + ZYNQ_WDT_RESTART_OFFSET,
-			  ZYNQ_WDT_RESTART_KEY);
+	cdns_wdt_writereg(wdt->regs + CDNS_WDT_RESTART_OFFSET,
+			  CDNS_WDT_RESTART_KEY);
 	spin_unlock(&wdt->io_lock);
 
 	return 0;
 }
 
 /**
- * zynq_wdt_start -  Enable and start the watchdog.
+ * cdns_wdt_start - Enable and start the watchdog.
  *
  * @wdd: watchdog device
  *
@@ -174,9 +178,9 @@ static int zynq_wdt_reload(struct watchdog_device *wdd)
  *
  * Return: always 0
  */
-static int zynq_wdt_start(struct watchdog_device *wdd)
+static int cdns_wdt_start(struct watchdog_device *wdd)
 {
-	struct zynq_wdt *wdt = watchdog_get_drvdata(wdd);
+	struct cdns_wdt *wdt = watchdog_get_drvdata(wdd);
 	unsigned int data = 0;
 	unsigned short count;
 	unsigned long clock_f = clk_get_rate(wdt->clk);
@@ -186,61 +190,61 @@ static int zynq_wdt_start(struct watchdog_device *wdd)
 	 * counter reset to be written to control register.
 	 */
 	count = (wdd->timeout * (clock_f / wdt->prescaler)) /
-		 ZYNQ_WDT_COUNTER_VALUE_DIVISOR + 1;
+		 CDNS_WDT_COUNTER_VALUE_DIVISOR + 1;
 
 	/* Check for boundary conditions of counter value */
-	if (count > ZYNQ_WDT_COUNTER_MAX)
-		count = ZYNQ_WDT_COUNTER_MAX;
+	if (count > CDNS_WDT_COUNTER_MAX)
+		count = CDNS_WDT_COUNTER_MAX;
 
 	spin_lock(&wdt->io_lock);
-	zynq_wdt_writereg(wdt->regs + ZYNQ_WDT_ZMR_OFFSET,
-			  ZYNQ_WDT_ZMR_ZKEY_VAL);
+	cdns_wdt_writereg(wdt->regs + CDNS_WDT_ZMR_OFFSET,
+			  CDNS_WDT_ZMR_ZKEY_VAL);
 
 	/* Shift the count value to correct bit positions */
-	count = (count << 2) & ZYNQ_WDT_CCR_CRV_MASK;
+	count = (count << 2) & CDNS_WDT_CCR_CRV_MASK;
 
 	/* Write counter access key first to be able write to register */
-	data = count | ZYNQ_WDT_REGISTER_ACCESS_KEY | wdt->ctrl_clksel;
-	zynq_wdt_writereg(wdt->regs + ZYNQ_WDT_CCR_OFFSET, data);
-	data = ZYNQ_WDT_ZMR_WDEN_MASK | ZYNQ_WDT_ZMR_RSTLEN_16 |
-	       ZYNQ_WDT_ZMR_ZKEY_VAL;
+	data = count | CDNS_WDT_REGISTER_ACCESS_KEY | wdt->ctrl_clksel;
+	cdns_wdt_writereg(wdt->regs + CDNS_WDT_CCR_OFFSET, data);
+	data = CDNS_WDT_ZMR_WDEN_MASK | CDNS_WDT_ZMR_RSTLEN_16 |
+	       CDNS_WDT_ZMR_ZKEY_VAL;
 
 	/* Reset on timeout if specified in device tree. */
 	if (wdt->rst) {
-		data |= ZYNQ_WDT_ZMR_RSTEN_MASK;
-		data &= ~ZYNQ_WDT_ZMR_IRQEN_MASK;
+		data |= CDNS_WDT_ZMR_RSTEN_MASK;
+		data &= ~CDNS_WDT_ZMR_IRQEN_MASK;
 	} else {
-		data &= ~ZYNQ_WDT_ZMR_RSTEN_MASK;
-		data |= ZYNQ_WDT_ZMR_IRQEN_MASK;
+		data &= ~CDNS_WDT_ZMR_RSTEN_MASK;
+		data |= CDNS_WDT_ZMR_IRQEN_MASK;
 	}
-	zynq_wdt_writereg(wdt->regs + ZYNQ_WDT_ZMR_OFFSET, data);
+	cdns_wdt_writereg(wdt->regs + CDNS_WDT_ZMR_OFFSET, data);
 	spin_unlock(&wdt->io_lock);
-	zynq_wdt_writereg(wdt->regs + ZYNQ_WDT_RESTART_OFFSET,
-			  ZYNQ_WDT_RESTART_KEY);
+	cdns_wdt_writereg(wdt->regs + CDNS_WDT_RESTART_OFFSET,
+			  CDNS_WDT_RESTART_KEY);
 
 	return 0;
 }
 
 /**
- * zynq_wdt_settimeout -  Set a new timeout value for the watchdog device.
+ * cdns_wdt_settimeout - Set a new timeout value for the watchdog device.
  *
  * @wdd: watchdog device
  * @new_time: new timeout value that needs to be set
  * Return: 0 on success
  *
  * Update the watchdog_device timeout with new value which is used when
- * zynq_wdt_start is called.
+ * cdns_wdt_start is called.
  */
-static int zynq_wdt_settimeout(struct watchdog_device *wdd,
+static int cdns_wdt_settimeout(struct watchdog_device *wdd,
 			       unsigned int new_time)
 {
 	wdd->timeout = new_time;
 
-	return zynq_wdt_start(wdd);
+	return cdns_wdt_start(wdd);
 }
 
 /**
- * zynq_wdt_irq_handler - Notifies of watchdog timeout.
+ * cdns_wdt_irq_handler - Notifies of watchdog timeout.
  *
  * @irq: interrupt number
  * @dev_id: pointer to a platform device structure
@@ -249,7 +253,7 @@ static int zynq_wdt_settimeout(struct watchdog_device *wdd,
  * The handler is invoked when the watchdog times out and a
  * reset on timeout has not been enabled.
  */
-static irqreturn_t zynq_wdt_irq_handler(int irq, void *dev_id)
+static irqreturn_t cdns_wdt_irq_handler(int irq, void *dev_id)
 {
 	struct platform_device *pdev = dev_id;
 
@@ -262,23 +266,23 @@ static irqreturn_t zynq_wdt_irq_handler(int irq, void *dev_id)
  * Info structure used to indicate the features supported by the device
  * to the upper layers. This is defined in watchdog.h header file.
  */
-static struct watchdog_info zynq_wdt_info = {
-	.identity	= "zynq_wdt watchdog",
+static struct watchdog_info cdns_wdt_info = {
+	.identity	= "cdns_wdt watchdog",
 	.options	= WDIOF_SETTIMEOUT | WDIOF_KEEPALIVEPING |
 			  WDIOF_MAGICCLOSE,
 };
 
 /* Watchdog Core Ops */
-static struct watchdog_ops zynq_wdt_ops = {
+static struct watchdog_ops cdns_wdt_ops = {
 	.owner = THIS_MODULE,
-	.start = zynq_wdt_start,
-	.stop = zynq_wdt_stop,
-	.ping = zynq_wdt_reload,
-	.set_timeout = zynq_wdt_settimeout,
+	.start = cdns_wdt_start,
+	.stop = cdns_wdt_stop,
+	.ping = cdns_wdt_reload,
+	.set_timeout = cdns_wdt_settimeout,
 };
 
 /**
- * zynq_wdt_notify_sys -  Notifier for reboot or shutdown.
+ * cdns_wdt_notify_sys - Notifier for reboot or shutdown.
  *
  * @this: handle to notifier block
  * @code: turn off indicator
@@ -289,46 +293,46 @@ static struct watchdog_ops zynq_wdt_ops = {
  * because we need to disable the WDT before system goes down as WDT might
  * reset on the next boot.
  */
-static int zynq_wdt_notify_sys(struct notifier_block *this, unsigned long code,
+static int cdns_wdt_notify_sys(struct notifier_block *this, unsigned long code,
 			       void *unused)
 {
-	struct zynq_wdt *wdt = container_of(this, struct zynq_wdt,
-					    zynq_wdt_notifier);
+	struct cdns_wdt *wdt = container_of(this, struct cdns_wdt,
+					    cdns_wdt_notifier);
 	if (code == SYS_DOWN || code == SYS_HALT)
 		/* Stop the watchdog */
-		zynq_wdt_stop(&wdt->zynq_wdt_device);
+		cdns_wdt_stop(&wdt->cdns_wdt_device);
 
 	return NOTIFY_DONE;
 }
 
 /************************Platform Operations*****************************/
 /**
- * zynq_wdt_probe -  Probe call for the device.
+ * cdns_wdt_probe - Probe call for the device.
  *
  * @pdev: handle to the platform device structure.
  * Return: 0 on success, negative error otherwise.
  *
  * It does all the memory allocation and registration for the device.
  */
-static int zynq_wdt_probe(struct platform_device *pdev)
+static int cdns_wdt_probe(struct platform_device *pdev)
 {
 	struct resource *res;
 	int ret, irq;
 	unsigned long clock_f;
-	struct zynq_wdt *wdt;
-	struct watchdog_device *zynq_wdt_device;
+	struct cdns_wdt *wdt;
+	struct watchdog_device *cdns_wdt_device;
 
-	/* Allocate an instance of the zynq_wdt structure */
+	/* Allocate an instance of the cdns_wdt structure */
 	wdt = devm_kzalloc(&pdev->dev, sizeof(*wdt), GFP_KERNEL);
 	if (!wdt)
 		return -ENOMEM;
 
-	zynq_wdt_device = &wdt->zynq_wdt_device;
-	zynq_wdt_device->info = &zynq_wdt_info;
-	zynq_wdt_device->ops = &zynq_wdt_ops;
-	zynq_wdt_device->timeout = ZYNQ_WDT_DEFAULT_TIMEOUT;
-	zynq_wdt_device->min_timeout = ZYNQ_WDT_MIN_TIMEOUT;
-	zynq_wdt_device->max_timeout = ZYNQ_WDT_MAX_TIMEOUT;
+	cdns_wdt_device = &wdt->cdns_wdt_device;
+	cdns_wdt_device->info = &cdns_wdt_info;
+	cdns_wdt_device->ops = &cdns_wdt_ops;
+	cdns_wdt_device->timeout = CDNS_WDT_DEFAULT_TIMEOUT;
+	cdns_wdt_device->min_timeout = CDNS_WDT_MIN_TIMEOUT;
+	cdns_wdt_device->max_timeout = CDNS_WDT_MAX_TIMEOUT;
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	wdt->regs = devm_ioremap_resource(&pdev->dev, res);
@@ -339,7 +343,7 @@ static int zynq_wdt_probe(struct platform_device *pdev)
 	of_property_read_u32(pdev->dev.of_node, "reset", &wdt->rst);
 	irq = platform_get_irq(pdev, 0);
 	if (!wdt->rst && irq >= 0) {
-		ret = devm_request_irq(&pdev->dev, irq, zynq_wdt_irq_handler, 0,
+		ret = devm_request_irq(&pdev->dev, irq, cdns_wdt_irq_handler, 0,
 				       pdev->name, pdev);
 		if (ret) {
 			dev_err(&pdev->dev,
@@ -349,29 +353,29 @@ static int zynq_wdt_probe(struct platform_device *pdev)
 		}
 	}
 
-	wdt->zynq_wdt_notifier.notifier_call = &zynq_wdt_notify_sys;
+	wdt->cdns_wdt_notifier.notifier_call = &cdns_wdt_notify_sys;
 	/* Register the reboot notifier */
-	ret = register_reboot_notifier(&wdt->zynq_wdt_notifier);
+	ret = register_reboot_notifier(&wdt->cdns_wdt_notifier);
 	if (ret != 0) {
 		dev_err(&pdev->dev, "cannot register reboot notifier err=%d)\n",
 			ret);
 		return ret;
 	}
 
-	/* Initialize the members of zynq_wdt structure */
-	zynq_wdt_device->parent = &pdev->dev;
+	/* Initialize the members of cdns_wdt structure */
+	cdns_wdt_device->parent = &pdev->dev;
 	of_property_read_u32(pdev->dev.of_node, "timeout",
-			     &zynq_wdt_device->timeout);
-	if (wdt_timeout < ZYNQ_WDT_MAX_TIMEOUT &&
-	    wdt_timeout > ZYNQ_WDT_MIN_TIMEOUT)
-		zynq_wdt_device->timeout = wdt_timeout;
+			     &cdns_wdt_device->timeout);
+	if (wdt_timeout < CDNS_WDT_MAX_TIMEOUT &&
+	    wdt_timeout > CDNS_WDT_MIN_TIMEOUT)
+		cdns_wdt_device->timeout = wdt_timeout;
 	else
 		dev_info(&pdev->dev,
 			 "timeout limited to 1 - %d sec, using default=%d\n",
-			 ZYNQ_WDT_MAX_TIMEOUT, ZYNQ_WDT_DEFAULT_TIMEOUT);
+			 CDNS_WDT_MAX_TIMEOUT, CDNS_WDT_DEFAULT_TIMEOUT);
 
-	watchdog_set_nowayout(zynq_wdt_device, nowayout);
-	watchdog_set_drvdata(zynq_wdt_device, wdt);
+	watchdog_set_nowayout(cdns_wdt_device, nowayout);
+	watchdog_set_drvdata(cdns_wdt_device, wdt);
 
 	wdt->clk = devm_clk_get(&pdev->dev, NULL);
 	if (IS_ERR(wdt->clk)) {
@@ -387,18 +391,18 @@ static int zynq_wdt_probe(struct platform_device *pdev)
 	}
 
 	clock_f = clk_get_rate(wdt->clk);
-	if (clock_f <= ZYNQ_WDT_CLK_75MHZ) {
-		wdt->prescaler = ZYNQ_WDT_PRESCALE_512;
-		wdt->ctrl_clksel = ZYNQ_WDT_PRESCALE_SELECT_512;
-	} else { /* For Zynq */
-		wdt->prescaler = ZYNQ_WDT_PRESCALE_4096;
-		wdt->ctrl_clksel = ZYNQ_WDT_PRESCALE_SELECT_4096;
+	if (clock_f <= CDNS_WDT_CLK_75MHZ) {
+		wdt->prescaler = CDNS_WDT_PRESCALE_512;
+		wdt->ctrl_clksel = CDNS_WDT_PRESCALE_SELECT_512;
+	} else {
+		wdt->prescaler = CDNS_WDT_PRESCALE_4096;
+		wdt->ctrl_clksel = CDNS_WDT_PRESCALE_SELECT_4096;
 	}
 
 	spin_lock_init(&wdt->io_lock);
 
 	/* Register the WDT */
-	ret = watchdog_register_device(zynq_wdt_device);
+	ret = watchdog_register_device(cdns_wdt_device);
 	if (ret) {
 		dev_err(&pdev->dev, "Failed to register wdt device\n");
 		goto err_clk_disable;
@@ -406,7 +410,7 @@ static int zynq_wdt_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, wdt);
 
 	dev_info(&pdev->dev, "Xilinx Watchdog Timer at %p with timeout %ds%s\n",
-		 wdt->regs, zynq_wdt_device->timeout,
+		 wdt->regs, cdns_wdt_device->timeout,
 		 nowayout ? ", nowayout" : "");
 
 	return 0;
@@ -414,77 +418,77 @@ static int zynq_wdt_probe(struct platform_device *pdev)
 err_clk_disable:
 	clk_disable_unprepare(wdt->clk);
 err_notifier:
-	unregister_reboot_notifier(&wdt->zynq_wdt_notifier);
+	unregister_reboot_notifier(&wdt->cdns_wdt_notifier);
 
 	return ret;
 }
 
 /**
- * zynq_wdt_remove -  Probe call for the device.
+ * cdns_wdt_remove - Probe call for the device.
  *
  * @pdev: handle to the platform device structure.
  * Return: 0 on success, otherwise negative error.
  *
  * Unregister the device after releasing the resources.
  */
-static int zynq_wdt_remove(struct platform_device *pdev)
+static int cdns_wdt_remove(struct platform_device *pdev)
 {
-	struct zynq_wdt *wdt = platform_get_drvdata(pdev);
+	struct cdns_wdt *wdt = platform_get_drvdata(pdev);
 
-	zynq_wdt_stop(&wdt->zynq_wdt_device);
-	watchdog_unregister_device(&wdt->zynq_wdt_device);
-	unregister_reboot_notifier(&wdt->zynq_wdt_notifier);
+	cdns_wdt_stop(&wdt->cdns_wdt_device);
+	watchdog_unregister_device(&wdt->cdns_wdt_device);
+	unregister_reboot_notifier(&wdt->cdns_wdt_notifier);
 	clk_disable_unprepare(wdt->clk);
 
 	return 0;
 }
 
 /**
- * zynq_wdt_shutdown -  Stop the device.
+ * cdns_wdt_shutdown - Stop the device.
  *
  * @pdev: handle to the platform structure.
  *
  */
-static void zynq_wdt_shutdown(struct platform_device *pdev)
+static void cdns_wdt_shutdown(struct platform_device *pdev)
 {
-	struct zynq_wdt *wdt = platform_get_drvdata(pdev);
+	struct cdns_wdt *wdt = platform_get_drvdata(pdev);
 
 	/* Stop the device */
-	zynq_wdt_stop(&wdt->zynq_wdt_device);
+	cdns_wdt_stop(&wdt->cdns_wdt_device);
 	clk_disable_unprepare(wdt->clk);
 }
 
 /**
- * zynq_wdt_suspend -  Stop the device.
+ * cdns_wdt_suspend - Stop the device.
  *
  * @dev: handle to the device structure.
  * Return: 0 always.
  */
-static int __maybe_unused zynq_wdt_suspend(struct device *dev)
+static int __maybe_unused cdns_wdt_suspend(struct device *dev)
 {
 	struct platform_device *pdev = container_of(dev,
 			struct platform_device, dev);
-	struct zynq_wdt *wdt = platform_get_drvdata(pdev);
+	struct cdns_wdt *wdt = platform_get_drvdata(pdev);
 
 	/* Stop the device */
-	zynq_wdt_stop(&wdt->zynq_wdt_device);
+	cdns_wdt_stop(&wdt->cdns_wdt_device);
 	clk_disable(wdt->clk);
 
 	return 0;
 }
 
 /**
- * zynq_wdt_resume -  Resume the device.
+ * cdns_wdt_resume - Resume the device.
  *
  * @dev: handle to the device structure.
  * Return: 0 on success, errno otherwise.
  */
-static int __maybe_unused zynq_wdt_resume(struct device *dev)
+static int __maybe_unused cdns_wdt_resume(struct device *dev)
 {
 	int ret;
 	struct platform_device *pdev = container_of(dev,
 			struct platform_device, dev);
-	struct zynq_wdt *wdt = platform_get_drvdata(pdev);
+	struct cdns_wdt *wdt = platform_get_drvdata(pdev);
 
 	ret = clk_enable(wdt->clk);
 	if (ret) {
@@ -492,34 +496,35 @@ static int __maybe_unused zynq_wdt_resume(struct device *dev)
 		return ret;
 	}
 	/* Start the device */
-	zynq_wdt_start(&wdt->zynq_wdt_device);
+	cdns_wdt_start(&wdt->cdns_wdt_device);
 
 	return 0;
 }
 
-static SIMPLE_DEV_PM_OPS(zynq_wdt_pm_ops, zynq_wdt_suspend, zynq_wdt_resume);
+static SIMPLE_DEV_PM_OPS(cdns_wdt_pm_ops, cdns_wdt_suspend, cdns_wdt_resume);
 
-static struct of_device_id zynq_wdt_of_match[] = {
-	{ .compatible = "xlnx,zynq-wdt-1.00.a", },
+static struct of_device_id cdns_wdt_of_match[] = {
+	{ .compatible = "xlnx,zynq-wdt-r1p2", },
+	{ .compatible = "cdns,wdt-r1p2", },
 	{ /* end of table */ }
 };
-MODULE_DEVICE_TABLE(of, zynq_wdt_of_match);
+MODULE_DEVICE_TABLE(of, cdns_wdt_of_match);
 
 /* Driver Structure */
-static struct platform_driver zynq_wdt_driver = {
-	.probe		= zynq_wdt_probe,
-	.remove		= zynq_wdt_remove,
-	.shutdown	= zynq_wdt_shutdown,
+static struct platform_driver cdns_wdt_driver = {
+	.probe		= cdns_wdt_probe,
+	.remove		= cdns_wdt_remove,
+	.shutdown	= cdns_wdt_shutdown,
 	.driver		= {
-		.name	= "zynq-wdt",
+		.name	= "cdns-wdt",
 		.owner	= THIS_MODULE,
-		.of_match_table = zynq_wdt_of_match,
-		.pm	= &zynq_wdt_pm_ops,
+		.of_match_table = cdns_wdt_of_match,
+		.pm	= &cdns_wdt_pm_ops,
 	},
 };
 
-module_platform_driver(zynq_wdt_driver);
+module_platform_driver(cdns_wdt_driver);
 
 MODULE_AUTHOR("Xilinx, Inc.");
-MODULE_DESCRIPTION("Watchdog driver for PS WDT");
+MODULE_DESCRIPTION("Watchdog driver for Cadence WDT");
 MODULE_LICENSE("GPL");

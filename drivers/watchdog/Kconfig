@@ -338,9 +338,9 @@ config NUC900_WATCHDOG
 	  To compile this driver as a module, choose M here: the
 	  module will be called nuc900_wdt.
 
-config ZYNQ_WATCHDOG
-	tristate "Xilinx Zynq Watchdog Timer"
-	depends on ARCH_ZYNQ
+config CADENCE_WATCHDOG
+	tristate "Cadence Watchdog Timer"
+	depends on ARM && HAS_IOMEM
 	select WATCHDOG_CORE
 	help
 	  Say Y here if you want to include support for the watchdog
