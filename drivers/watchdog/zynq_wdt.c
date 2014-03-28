@@ -338,14 +338,6 @@ static int zynq_wdt_probe(struct platform_device *pdev)
 	if (IS_ERR(wdt->regs))
 		return PTR_ERR(wdt->regs);
 
-	/* Register the reboot notifier */
-	ret = register_reboot_notifier(&zynq_wdt_notifier);
-	if (ret != 0) {
-		dev_err(&pdev->dev, "cannot register reboot notifier err=%d)\n",
-			ret);
-		return ret;
-	}
-
 	/* Register the interrupt */
 	of_property_read_u32(pdev->dev.of_node, "reset", &wdt->rst);
 	irq = platform_get_irq(pdev, 0);
@@ -356,8 +348,16 @@ static int zynq_wdt_probe(struct platform_device *pdev)
 			dev_err(&pdev->dev,
 				"cannot register interrupt handler err=%d\n",
 				ret);
-			goto err_notifier;
+			return ret;
 		}
+	}
+
+	/* Register the reboot notifier */
+	ret = register_reboot_notifier(&zynq_wdt_notifier);
+	if (ret != 0) {
+		dev_err(&pdev->dev, "cannot register reboot notifier err=%d)\n",
+			ret);
+		return ret;
 	}
 
 	/* Initialize the members of zynq_wdt structure */
