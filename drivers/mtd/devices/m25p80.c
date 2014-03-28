@@ -1289,7 +1289,7 @@ static int m25p_probe(struct spi_device *spi)
 		u32 is_dual;
 		np = of_get_next_parent(spi->dev.of_node);
 		of_property_read_string(np, "compatible", &comp_str);
-		if (!strcmp(comp_str, "xlnx,zynq-qspi-1.00.a")) {
+		if (!strcmp(comp_str, "xlnx,zynq-qspi-1.0")) {
 			if (of_property_read_u32(np, "is-dual", &is_dual) < 0) {
 				/* Default to single if prop not defined */
 				flash->shift = 0;
@@ -1407,7 +1407,7 @@ static int m25p_probe(struct spi_device *spi)
 		const char *comp_str;
 		np = of_get_next_parent(spi->dev.of_node);
 		of_property_read_string(np, "compatible", &comp_str);
-		if (!strcmp(comp_str, "xlnx,zynq-qspi-1.00.a")) {
+		if (!strcmp(comp_str, "xlnx,zynq-qspi-1.0")) {
 			int status;
 			flash->addr_width = 3;
 			set_4byte(flash, info->jedec_id, 0);
