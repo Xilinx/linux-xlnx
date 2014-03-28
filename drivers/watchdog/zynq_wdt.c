@@ -99,7 +99,7 @@ static struct watchdog_info zynq_wdt_info = {
 };
 
 /* Write access to Registers */
-#define zynq_wdt_writereg(val, offset) __raw_writel(val, (wdt->regs) + offset)
+#define zynq_wdt_writereg(offset, val) __raw_writel(val, (wdt->regs) + offset)
 
 /*************************Register Map**************************************/
 
@@ -138,8 +138,8 @@ static struct watchdog_info zynq_wdt_info = {
 static int zynq_wdt_stop(struct watchdog_device *wdd)
 {
 	spin_lock(&wdt->io_lock);
-	zynq_wdt_writereg((ZYNQ_WDT_ZMR_ZKEY_VAL & (~ZYNQ_WDT_ZMR_WDEN_MASK)),
-			 ZYNQ_WDT_ZMR_OFFSET);
+	zynq_wdt_writereg(ZYNQ_WDT_ZMR_OFFSET,
+			  (ZYNQ_WDT_ZMR_ZKEY_VAL & (~ZYNQ_WDT_ZMR_WDEN_MASK)));
 	spin_unlock(&wdt->io_lock);
 
 	return 0;
@@ -157,7 +157,7 @@ static int zynq_wdt_stop(struct watchdog_device *wdd)
 static int zynq_wdt_reload(struct watchdog_device *wdd)
 {
 	spin_lock(&wdt->io_lock);
-	zynq_wdt_writereg(ZYNQ_WDT_RESTART_KEY, ZYNQ_WDT_RESTART_OFFSET);
+	zynq_wdt_writereg(ZYNQ_WDT_RESTART_OFFSET, ZYNQ_WDT_RESTART_KEY);
 	spin_unlock(&wdt->io_lock);
 
 	return 0;
@@ -199,14 +199,14 @@ static int zynq_wdt_start(struct watchdog_device *wdd)
 		count = ZYNQ_WDT_COUNTER_MAX;
 
 	spin_lock(&wdt->io_lock);
-	zynq_wdt_writereg(ZYNQ_WDT_ZMR_ZKEY_VAL, ZYNQ_WDT_ZMR_OFFSET);
+	zynq_wdt_writereg(ZYNQ_WDT_ZMR_OFFSET, ZYNQ_WDT_ZMR_ZKEY_VAL);
 
 	/* Shift the count value to correct bit positions */
 	count = (count << 2) & ZYNQ_WDT_CCR_CRV_MASK;
 
 	/* 0x00920000 - Counter register key value. */
 	data = (count | ZYNQ_WDT_REGISTER_ACCESS_KEY | wdt->ctrl_clksel);
-	zynq_wdt_writereg(data, ZYNQ_WDT_CCR_OFFSET);
+	zynq_wdt_writereg(ZYNQ_WDT_CCR_OFFSET, data);
 	data = ZYNQ_WDT_ZMR_WDEN_MASK | ZYNQ_WDT_ZMR_RSTLEN_16 |
 			ZYNQ_WDT_ZMR_ZKEY_VAL;
 
@@ -218,9 +218,9 @@ static int zynq_wdt_start(struct watchdog_device *wdd)
 		data &= ~ZYNQ_WDT_ZMR_RSTEN_MASK;
 		data |= ZYNQ_WDT_ZMR_IRQEN_MASK;
 	}
-	zynq_wdt_writereg(data, ZYNQ_WDT_ZMR_OFFSET);
+	zynq_wdt_writereg(ZYNQ_WDT_ZMR_OFFSET, data);
 	spin_unlock(&wdt->io_lock);
-	zynq_wdt_writereg(ZYNQ_WDT_RESTART_KEY, ZYNQ_WDT_RESTART_OFFSET);
+	zynq_wdt_writereg(ZYNQ_WDT_RESTART_OFFSET, ZYNQ_WDT_RESTART_KEY);
 
 	return 0;
 }
