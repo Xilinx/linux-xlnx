@@ -428,19 +428,13 @@ err_notifier:
  * Return: 0 on success, otherwise negative error.
  *
  * Unregister the device after releasing the resources.
- * Stop is allowed only when nowayout is disabled.
  */
 static int zynq_wdt_remove(struct platform_device *pdev)
 {
-	if (wdt && !nowayout) {
-		zynq_wdt_stop(&zynq_wdt_device);
-		watchdog_unregister_device(&zynq_wdt_device);
-		unregister_reboot_notifier(&zynq_wdt_notifier);
-		clk_disable_unprepare(wdt->clk);
-	} else {
-		dev_err(&pdev->dev, "Cannot stop watchdog, still ticking\n");
-		return -ENOTSUPP;
-	}
+	zynq_wdt_stop(&zynq_wdt_device);
+	watchdog_unregister_device(&zynq_wdt_device);
+	unregister_reboot_notifier(&zynq_wdt_notifier);
+	clk_disable_unprepare(wdt->clk);
 
 	return 0;
 }
