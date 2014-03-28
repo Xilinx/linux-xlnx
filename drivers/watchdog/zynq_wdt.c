@@ -30,6 +30,30 @@
 #define ZYNQ_WDT_MIN_TIMEOUT	1
 #define ZYNQ_WDT_MAX_TIMEOUT	516
 
+/* Restart key */
+#define ZYNQ_WDT_RESTART_KEY 0x00001999
+
+/* Counter register access key */
+#define ZYNQ_WDT_REGISTER_ACCESS_KEY 0x00920000
+
+/* Counter value divisor */
+#define ZYNQ_WDT_COUNTER_VALUE_DIVISOR 0x1000
+
+/* Clock prescaler value and selection */
+#define ZYNQ_WDT_PRESCALE_64	64
+#define ZYNQ_WDT_PRESCALE_512	512
+#define ZYNQ_WDT_PRESCALE_4096	4096
+#define ZYNQ_WDT_PRESCALE_SELECT_64	1
+#define ZYNQ_WDT_PRESCALE_SELECT_512	2
+#define ZYNQ_WDT_PRESCALE_SELECT_4096	3
+
+/* Input clock frequency */
+#define ZYNQ_WDT_CLK_10MHZ	10000000
+#define ZYNQ_WDT_CLK_75MHZ	75000000
+
+/* Counter maximum value */
+#define ZYNQ_WDT_COUNTER_MAX 0xFFF
+
 static int wdt_timeout = ZYNQ_WDT_DEFAULT_TIMEOUT;
 static int nowayout = WATCHDOG_NOWAYOUT;
 
@@ -133,7 +157,7 @@ static int zynq_wdt_stop(struct watchdog_device *wdd)
 static int zynq_wdt_reload(struct watchdog_device *wdd)
 {
 	spin_lock(&wdt->io_lock);
-	zynq_wdt_writereg(0x00001999, ZYNQ_WDT_RESTART_OFFSET);
+	zynq_wdt_writereg(ZYNQ_WDT_RESTART_KEY, ZYNQ_WDT_RESTART_OFFSET);
 	spin_unlock(&wdt->io_lock);
 
 	return 0;
@@ -167,11 +191,12 @@ static int zynq_wdt_start(struct watchdog_device *wdd)
 	 * 0x1000	- Counter Value Divide, to obtain the value of counter
 	 *		  reset to write to control register.
 	 */
-	count = (wdd->timeout * (clock_f / wdt->prescaler)) / 0x1000 + 1;
+	count = (wdd->timeout * (clock_f / wdt->prescaler)) /
+		 ZYNQ_WDT_COUNTER_VALUE_DIVISOR + 1;
 
 	/* Check for boundary conditions of counter value */
-	if (count > 0xFFF)
-		count = 0xFFF;
+	if (count > ZYNQ_WDT_COUNTER_MAX)
+		count = ZYNQ_WDT_COUNTER_MAX;
 
 	spin_lock(&wdt->io_lock);
 	zynq_wdt_writereg(ZYNQ_WDT_ZMR_ZKEY_VAL, ZYNQ_WDT_ZMR_OFFSET);
@@ -180,7 +205,7 @@ static int zynq_wdt_start(struct watchdog_device *wdd)
 	count = (count << 2) & ZYNQ_WDT_CCR_CRV_MASK;
 
 	/* 0x00920000 - Counter register key value. */
-	data = (count | 0x00920000 | wdt->ctrl_clksel);
+	data = (count | ZYNQ_WDT_REGISTER_ACCESS_KEY | wdt->ctrl_clksel);
 	zynq_wdt_writereg(data, ZYNQ_WDT_CCR_OFFSET);
 	data = ZYNQ_WDT_ZMR_WDEN_MASK | ZYNQ_WDT_ZMR_RSTLEN_16 |
 			ZYNQ_WDT_ZMR_ZKEY_VAL;
@@ -195,7 +220,7 @@ static int zynq_wdt_start(struct watchdog_device *wdd)
 	}
 	zynq_wdt_writereg(data, ZYNQ_WDT_ZMR_OFFSET);
 	spin_unlock(&wdt->io_lock);
-	zynq_wdt_writereg(0x00001999, ZYNQ_WDT_RESTART_OFFSET);
+	zynq_wdt_writereg(ZYNQ_WDT_RESTART_KEY, ZYNQ_WDT_RESTART_OFFSET);
 
 	return 0;
 }
@@ -366,15 +391,15 @@ static int zynq_wdt_probe(struct platform_device *pdev)
 	}
 
 	clock_f = clk_get_rate(wdt->clk);
-	if (clock_f <= 10000000) {/* For PEEP */
-		wdt->prescaler = 64;
-		wdt->ctrl_clksel = 1;
-	} else if (clock_f <= 75000000) {
-		wdt->prescaler = 512;
-		wdt->ctrl_clksel = 2;
+	if (clock_f <= ZYNQ_WDT_CLK_10MHZ) {/* For PEEP */
+		wdt->prescaler = ZYNQ_WDT_PRESCALE_64;
+		wdt->ctrl_clksel = ZYNQ_WDT_PRESCALE_SELECT_64;
+	} else if (clock_f <= ZYNQ_WDT_CLK_75MHZ) {
+		wdt->prescaler = ZYNQ_WDT_PRESCALE_512;
+		wdt->ctrl_clksel = ZYNQ_WDT_PRESCALE_SELECT_512;
 	} else { /* For Zynq */
-		wdt->prescaler = 4096;
-		wdt->ctrl_clksel = 3;
+		wdt->prescaler = ZYNQ_WDT_PRESCALE_4096;
+		wdt->ctrl_clksel = ZYNQ_WDT_PRESCALE_SELECT_4096;
 	}
 
 	spin_lock_init(&wdt->io_lock);
