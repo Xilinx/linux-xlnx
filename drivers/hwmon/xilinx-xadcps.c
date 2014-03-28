@@ -750,7 +750,7 @@ static int xadc_remove(struct platform_device *pdev)
 }
 
 static struct of_device_id xadcps_of_match[] = {
-	{ .compatible = "xlnx,ps7-xadc-1.00.a", },
+	{ .compatible = "xlnx,zynq-xadc-1.00.a", },
 	{ /* end of table */}
 };
 MODULE_DEVICE_TABLE(of, xadcps_of_match);

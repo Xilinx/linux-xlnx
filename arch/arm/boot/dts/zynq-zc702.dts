@@ -415,7 +415,7 @@
 		} ;
 		ps7_xadc: ps7-xadc@f8007100 {
 			clocks = <&clkc 12>;
-			compatible = "xlnx,ps7-xadc-1.00.a";
+			compatible = "xlnx,zynq-xadc-1.00.a";
 			interrupt-parent = <&ps7_scugic_0>;
 			interrupts = <0 7 4>;
 			reg = <0xf8007100 0x20>;
