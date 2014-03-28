@@ -81,23 +81,14 @@ struct zynq_wdt {
 	u32			prescaler;
 	u32			ctrl_clksel;
 	spinlock_t		io_lock;
-};
-static struct zynq_wdt *wdt;
-
-/*
- * Info structure used to indicate the features supported by the device
- * to the upper layers. This is defined in watchdog.h header file.
- */
-static struct watchdog_info zynq_wdt_info = {
-	.identity	= "zynq_wdt watchdog",
-	.options	= WDIOF_SETTIMEOUT | WDIOF_KEEPALIVEPING |
-			  WDIOF_MAGICCLOSE,
+	struct watchdog_device	zynq_wdt_device;
+	struct notifier_block zynq_wdt_notifier;
 };
 
 /* Write access to Registers */
-static inline void zynq_wdt_writereg(u32 offset, u32 val)
+static inline void zynq_wdt_writereg(void __iomem *offset, u32 val)
 {
-	writel_relaxed(val, wdt->regs + offset);
+	writel_relaxed(val, offset);
 }
 
 /*************************Register Map**************************************/
@@ -136,8 +127,9 @@ static inline void zynq_wdt_writereg(u32 offset, u32 val)
  */
 static int zynq_wdt_stop(struct watchdog_device *wdd)
 {
+	struct zynq_wdt *wdt = watchdog_get_drvdata(wdd);
 	spin_lock(&wdt->io_lock);
-	zynq_wdt_writereg(ZYNQ_WDT_ZMR_OFFSET,
+	zynq_wdt_writereg(wdt->regs + ZYNQ_WDT_ZMR_OFFSET,
 			  ZYNQ_WDT_ZMR_ZKEY_VAL & (~ZYNQ_WDT_ZMR_WDEN_MASK));
 	spin_unlock(&wdt->io_lock);
 
@@ -155,8 +147,10 @@ static int zynq_wdt_stop(struct watchdog_device *wdd)
  */
 static int zynq_wdt_reload(struct watchdog_device *wdd)
 {
+	struct zynq_wdt *wdt = watchdog_get_drvdata(wdd);
 	spin_lock(&wdt->io_lock);
-	zynq_wdt_writereg(ZYNQ_WDT_RESTART_OFFSET, ZYNQ_WDT_RESTART_KEY);
+	zynq_wdt_writereg(wdt->regs + ZYNQ_WDT_RESTART_OFFSET,
+			  ZYNQ_WDT_RESTART_KEY);
 	spin_unlock(&wdt->io_lock);
 
 	return 0;
@@ -182,6 +176,7 @@ static int zynq_wdt_reload(struct watchdog_device *wdd)
  */
 static int zynq_wdt_start(struct watchdog_device *wdd)
 {
+	struct zynq_wdt *wdt = watchdog_get_drvdata(wdd);
 	unsigned int data = 0;
 	unsigned short count;
 	unsigned long clock_f = clk_get_rate(wdt->clk);
@@ -198,14 +193,15 @@ static int zynq_wdt_start(struct watchdog_device *wdd)
 		count = ZYNQ_WDT_COUNTER_MAX;
 
 	spin_lock(&wdt->io_lock);
-	zynq_wdt_writereg(ZYNQ_WDT_ZMR_OFFSET, ZYNQ_WDT_ZMR_ZKEY_VAL);
+	zynq_wdt_writereg(wdt->regs + ZYNQ_WDT_ZMR_OFFSET,
+			  ZYNQ_WDT_ZMR_ZKEY_VAL);
 
 	/* Shift the count value to correct bit positions */
 	count = (count << 2) & ZYNQ_WDT_CCR_CRV_MASK;
 
 	/* Write counter access key first to be able write to register */
 	data = count | ZYNQ_WDT_REGISTER_ACCESS_KEY | wdt->ctrl_clksel;
-	zynq_wdt_writereg(ZYNQ_WDT_CCR_OFFSET, data);
+	zynq_wdt_writereg(wdt->regs + ZYNQ_WDT_CCR_OFFSET, data);
 	data = ZYNQ_WDT_ZMR_WDEN_MASK | ZYNQ_WDT_ZMR_RSTLEN_16 |
 	       ZYNQ_WDT_ZMR_ZKEY_VAL;
 
@@ -217,9 +213,10 @@ static int zynq_wdt_start(struct watchdog_device *wdd)
 		data &= ~ZYNQ_WDT_ZMR_RSTEN_MASK;
 		data |= ZYNQ_WDT_ZMR_IRQEN_MASK;
 	}
-	zynq_wdt_writereg(ZYNQ_WDT_ZMR_OFFSET, data);
+	zynq_wdt_writereg(wdt->regs + ZYNQ_WDT_ZMR_OFFSET, data);
 	spin_unlock(&wdt->io_lock);
-	zynq_wdt_writereg(ZYNQ_WDT_RESTART_OFFSET, ZYNQ_WDT_RESTART_KEY);
+	zynq_wdt_writereg(wdt->regs + ZYNQ_WDT_RESTART_OFFSET,
+			  ZYNQ_WDT_RESTART_KEY);
 
 	return 0;
 }
@@ -261,6 +258,16 @@ static irqreturn_t zynq_wdt_irq_handler(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
+/*
+ * Info structure used to indicate the features supported by the device
+ * to the upper layers. This is defined in watchdog.h header file.
+ */
+static struct watchdog_info zynq_wdt_info = {
+	.identity	= "zynq_wdt watchdog",
+	.options	= WDIOF_SETTIMEOUT | WDIOF_KEEPALIVEPING |
+			  WDIOF_MAGICCLOSE,
+};
+
 /* Watchdog Core Ops */
 static struct watchdog_ops zynq_wdt_ops = {
 	.owner = THIS_MODULE,
@@ -268,15 +275,6 @@ static struct watchdog_ops zynq_wdt_ops = {
 	.stop = zynq_wdt_stop,
 	.ping = zynq_wdt_reload,
 	.set_timeout = zynq_wdt_settimeout,
-};
-
-/* Watchdog Core Device */
-static struct watchdog_device zynq_wdt_device = {
-	.info = &zynq_wdt_info,
-	.ops = &zynq_wdt_ops,
-	.timeout = ZYNQ_WDT_DEFAULT_TIMEOUT,
-	.min_timeout = ZYNQ_WDT_MIN_TIMEOUT,
-	.max_timeout = ZYNQ_WDT_MAX_TIMEOUT,
 };
 
 /**
@@ -294,17 +292,14 @@ static struct watchdog_device zynq_wdt_device = {
 static int zynq_wdt_notify_sys(struct notifier_block *this, unsigned long code,
 			       void *unused)
 {
+	struct zynq_wdt *wdt = container_of(this, struct zynq_wdt,
+					    zynq_wdt_notifier);
 	if (code == SYS_DOWN || code == SYS_HALT)
 		/* Stop the watchdog */
-		zynq_wdt_stop(&zynq_wdt_device);
+		zynq_wdt_stop(&wdt->zynq_wdt_device);
 
 	return NOTIFY_DONE;
 }
-
-/* Notifier Structure */
-static struct notifier_block zynq_wdt_notifier = {
-	.notifier_call = zynq_wdt_notify_sys,
-};
 
 /************************Platform Operations*****************************/
 /**
@@ -320,18 +315,20 @@ static int zynq_wdt_probe(struct platform_device *pdev)
 	struct resource *res;
 	int ret, irq;
 	unsigned long clock_f;
-
-	/* Check whether WDT is in use, just for safety */
-	if (wdt) {
-		dev_err(&pdev->dev,
-			"Device Busy, only 1 zynq_wdt instance supported.\n");
-		return -EBUSY;
-	}
+	struct zynq_wdt *wdt;
+	struct watchdog_device *zynq_wdt_device;
 
 	/* Allocate an instance of the zynq_wdt structure */
 	wdt = devm_kzalloc(&pdev->dev, sizeof(*wdt), GFP_KERNEL);
 	if (!wdt)
 		return -ENOMEM;
+
+	zynq_wdt_device = &wdt->zynq_wdt_device;
+	zynq_wdt_device->info = &zynq_wdt_info;
+	zynq_wdt_device->ops = &zynq_wdt_ops;
+	zynq_wdt_device->timeout = ZYNQ_WDT_DEFAULT_TIMEOUT;
+	zynq_wdt_device->min_timeout = ZYNQ_WDT_MIN_TIMEOUT;
+	zynq_wdt_device->max_timeout = ZYNQ_WDT_MAX_TIMEOUT;
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	wdt->regs = devm_ioremap_resource(&pdev->dev, res);
@@ -352,8 +349,9 @@ static int zynq_wdt_probe(struct platform_device *pdev)
 		}
 	}
 
+	wdt->zynq_wdt_notifier.notifier_call = &zynq_wdt_notify_sys;
 	/* Register the reboot notifier */
-	ret = register_reboot_notifier(&zynq_wdt_notifier);
+	ret = register_reboot_notifier(&wdt->zynq_wdt_notifier);
 	if (ret != 0) {
 		dev_err(&pdev->dev, "cannot register reboot notifier err=%d)\n",
 			ret);
@@ -361,19 +359,19 @@ static int zynq_wdt_probe(struct platform_device *pdev)
 	}
 
 	/* Initialize the members of zynq_wdt structure */
-	zynq_wdt_device.parent = &pdev->dev;
+	zynq_wdt_device->parent = &pdev->dev;
 	of_property_read_u32(pdev->dev.of_node, "timeout",
-			     &zynq_wdt_device.timeout);
+			     &zynq_wdt_device->timeout);
 	if (wdt_timeout < ZYNQ_WDT_MAX_TIMEOUT &&
 	    wdt_timeout > ZYNQ_WDT_MIN_TIMEOUT)
-		zynq_wdt_device.timeout = wdt_timeout;
+		zynq_wdt_device->timeout = wdt_timeout;
 	else
 		dev_info(&pdev->dev,
 			 "timeout limited to 1 - %d sec, using default=%d\n",
 			 ZYNQ_WDT_MAX_TIMEOUT, ZYNQ_WDT_DEFAULT_TIMEOUT);
 
-	watchdog_set_nowayout(&zynq_wdt_device, nowayout);
-	watchdog_set_drvdata(&zynq_wdt_device, &wdt);
+	watchdog_set_nowayout(zynq_wdt_device, nowayout);
+	watchdog_set_drvdata(zynq_wdt_device, wdt);
 
 	wdt->clk = devm_clk_get(&pdev->dev, NULL);
 	if (IS_ERR(wdt->clk)) {
@@ -400,7 +398,7 @@ static int zynq_wdt_probe(struct platform_device *pdev)
 	spin_lock_init(&wdt->io_lock);
 
 	/* Register the WDT */
-	ret = watchdog_register_device(&zynq_wdt_device);
+	ret = watchdog_register_device(zynq_wdt_device);
 	if (ret) {
 		dev_err(&pdev->dev, "Failed to register wdt device\n");
 		goto err_clk_disable;
@@ -408,7 +406,7 @@ static int zynq_wdt_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, wdt);
 
 	dev_info(&pdev->dev, "Xilinx Watchdog Timer at %p with timeout %ds%s\n",
-		 wdt->regs, zynq_wdt_device.timeout,
+		 wdt->regs, zynq_wdt_device->timeout,
 		 nowayout ? ", nowayout" : "");
 
 	return 0;
@@ -416,7 +414,7 @@ static int zynq_wdt_probe(struct platform_device *pdev)
 err_clk_disable:
 	clk_disable_unprepare(wdt->clk);
 err_notifier:
-	unregister_reboot_notifier(&zynq_wdt_notifier);
+	unregister_reboot_notifier(&wdt->zynq_wdt_notifier);
 
 	return ret;
 }
@@ -431,9 +429,11 @@ err_notifier:
  */
 static int zynq_wdt_remove(struct platform_device *pdev)
 {
-	zynq_wdt_stop(&zynq_wdt_device);
-	watchdog_unregister_device(&zynq_wdt_device);
-	unregister_reboot_notifier(&zynq_wdt_notifier);
+	struct zynq_wdt *wdt = platform_get_drvdata(pdev);
+
+	zynq_wdt_stop(&wdt->zynq_wdt_device);
+	watchdog_unregister_device(&wdt->zynq_wdt_device);
+	unregister_reboot_notifier(&wdt->zynq_wdt_notifier);
 	clk_disable_unprepare(wdt->clk);
 
 	return 0;
@@ -447,8 +447,10 @@ static int zynq_wdt_remove(struct platform_device *pdev)
  */
 static void zynq_wdt_shutdown(struct platform_device *pdev)
 {
+	struct zynq_wdt *wdt = platform_get_drvdata(pdev);
+
 	/* Stop the device */
-	zynq_wdt_stop(&zynq_wdt_device);
+	zynq_wdt_stop(&wdt->zynq_wdt_device);
 	clk_disable_unprepare(wdt->clk);
 }
 
@@ -460,8 +462,12 @@ static void zynq_wdt_shutdown(struct platform_device *pdev)
  */
 static int __maybe_unused zynq_wdt_suspend(struct device *dev)
 {
+	struct platform_device *pdev = container_of(dev,
+			struct platform_device, dev);
+	struct zynq_wdt *wdt = platform_get_drvdata(pdev);
+
 	/* Stop the device */
-	zynq_wdt_stop(&zynq_wdt_device);
+	zynq_wdt_stop(&wdt->zynq_wdt_device);
 	clk_disable(wdt->clk);
 
 	return 0;
@@ -476,6 +482,9 @@ static int __maybe_unused zynq_wdt_suspend(struct device *dev)
 static int __maybe_unused zynq_wdt_resume(struct device *dev)
 {
 	int ret;
+	struct platform_device *pdev = container_of(dev,
+			struct platform_device, dev);
+	struct zynq_wdt *wdt = platform_get_drvdata(pdev);
 
 	ret = clk_enable(wdt->clk);
 	if (ret) {
@@ -483,7 +492,7 @@ static int __maybe_unused zynq_wdt_resume(struct device *dev)
 		return ret;
 	}
 	/* Start the device */
-	zynq_wdt_start(&zynq_wdt_device);
+	zynq_wdt_start(&wdt->zynq_wdt_device);
 
 	return 0;
 }
