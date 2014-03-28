@@ -322,8 +322,7 @@ static struct notifier_block zynq_wdt_notifier = {
 static int zynq_wdt_probe(struct platform_device *pdev)
 {
 	struct resource *res;
-	int ret;
-	int irq;
+	int ret, irq;
 	unsigned long clock_f;
 
 	/* Check whether WDT is in use, just for safety */
