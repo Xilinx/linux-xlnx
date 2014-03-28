@@ -509,37 +509,8 @@ static struct platform_driver zynq_wdt_driver = {
 	},
 };
 
-/**
- * zynq_wdt_init -  Register the WDT.
- *
- * Return: 0 on success, otherwise negative error.
- *
- * If using noway out, the use count will be incremented.
- * This will prevent unloading the module. An attempt to
- * unload the module will result in a warning from the kernel.
- */
-static int __init zynq_wdt_init(void)
-{
-	int res = platform_driver_register(&zynq_wdt_driver);
-
-	if (!res && nowayout)
-		try_module_get(THIS_MODULE);
-
-	return res;
-}
-
-/**
- * zynq_wdt_exit -  Unregister the WDT.
- */
-static void __exit zynq_wdt_exit(void)
-{
-	platform_driver_unregister(&zynq_wdt_driver);
-}
-
-module_init(zynq_wdt_init);
-module_exit(zynq_wdt_exit);
+module_platform_driver(zynq_wdt_driver);
 
 MODULE_AUTHOR("Xilinx, Inc.");
 MODULE_DESCRIPTION("Watchdog driver for PS WDT");
 MODULE_LICENSE("GPL");
-MODULE_ALIAS("platform: zynq_wdt");
