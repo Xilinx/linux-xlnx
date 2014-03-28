@@ -68,8 +68,8 @@ MODULE_PARM_DESC(nowayout,
 		 __MODULE_STRING(WATCHDOG_NOWAYOUT) ")");
 
 /**
- * struct zynq_wdt - Watchdog device structure.
- * @regs: baseaddress of device.
+ * struct zynq_wdt - Watchdog device structure
+ * @regs: baseaddress of device
  * @rst: reset flag
  * @clk: struct clk * of a clock source
  * @prescaler: for saving prescaler value
@@ -191,8 +191,8 @@ static int zynq_wdt_start(struct watchdog_device *wdd)
 	unsigned long clock_f = clk_get_rate(wdt->clk);
 
 	/*
-	 * 0x1000	- Counter Value Divide, to obtain the value of counter
-	 *		  reset to write to control register.
+	 * Counter value divisor to obtain the value of
+	 * counter reset to be written to control register.
 	 */
 	count = (wdd->timeout * (clock_f / wdt->prescaler)) /
 		 ZYNQ_WDT_COUNTER_VALUE_DIVISOR + 1;
@@ -207,7 +207,7 @@ static int zynq_wdt_start(struct watchdog_device *wdd)
 	/* Shift the count value to correct bit positions */
 	count = (count << 2) & ZYNQ_WDT_CCR_CRV_MASK;
 
-	/* 0x00920000 - Counter register key value. */
+	/* Write counter access key first to be able write to register */
 	data = count | ZYNQ_WDT_REGISTER_ACCESS_KEY | wdt->ctrl_clksel;
 	zynq_wdt_writereg(ZYNQ_WDT_CCR_OFFSET, data);
 	data = ZYNQ_WDT_ZMR_WDEN_MASK | ZYNQ_WDT_ZMR_RSTLEN_16 |
@@ -232,8 +232,8 @@ static int zynq_wdt_start(struct watchdog_device *wdd)
  * zynq_wdt_settimeout -  Set a new timeout value for the watchdog device.
  *
  * @wdd: watchdog device
- * @new_time: new timeout value that needs to be set.
- * Return: 0 on success.
+ * @new_time: new timeout value that needs to be set
+ * Return: 0 on success
  *
  * Update the watchdog_device timeout with new value which is used when
  * zynq_wdt_start is called.
@@ -286,10 +286,10 @@ static struct watchdog_device zynq_wdt_device = {
 /**
  * zynq_wdt_notify_sys -  Notifier for reboot or shutdown.
  *
- * @this: handle to notifier block.
- * @code: turn off indicator.
- * @unused: unused.
- * Return: NOTIFY_DONE.
+ * @this: handle to notifier block
+ * @code: turn off indicator
+ * @unused: unused
+ * Return: NOTIFY_DONE
  *
  * This notifier is invoked whenever the system reboot or shutdown occur
  * because we need to disable the WDT before system goes down as WDT might
