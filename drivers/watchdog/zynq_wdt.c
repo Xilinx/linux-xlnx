@@ -465,14 +465,13 @@ static void zynq_wdt_shutdown(struct platform_device *pdev)
 	clk_disable_unprepare(wdt->clk);
 }
 
-#ifdef CONFIG_PM_SLEEP
 /**
  * zynq_wdt_suspend -  Stop the device.
  *
  * @dev: handle to the device structure.
  * Return: 0 always.
  */
-static int zynq_wdt_suspend(struct device *dev)
+static int __maybe_unused zynq_wdt_suspend(struct device *dev)
 {
 	/* Stop the device */
 	zynq_wdt_stop(&zynq_wdt_device);
@@ -487,7 +486,7 @@ static int zynq_wdt_suspend(struct device *dev)
  * @dev: handle to the device structure.
  * Return: 0 on success, errno otherwise.
  */
-static int zynq_wdt_resume(struct device *dev)
+static int __maybe_unused zynq_wdt_resume(struct device *dev)
 {
 	int ret;
 
@@ -501,7 +500,6 @@ static int zynq_wdt_resume(struct device *dev)
 
 	return 0;
 }
-#endif
 
 static SIMPLE_DEV_PM_OPS(zynq_wdt_pm_ops, zynq_wdt_suspend, zynq_wdt_resume);
 
