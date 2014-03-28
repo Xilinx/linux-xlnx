@@ -222,7 +222,7 @@ static int zynq_ocm_remove(struct platform_device *pdev)
 }
 
 static struct of_device_id zynq_ocm_dt_ids[] = {
-	{ .compatible = "xlnx,zynq-ocm-1.0" },
+	{ .compatible = "xlnx,zynq-ocmc-1.0" },
 	{ /* end of table */ }
 };
 

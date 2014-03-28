@@ -214,7 +214,7 @@ static void __iomem *zynq_pm_ioremap(const char *comp)
 static void __iomem *zynq_pm_remap_ocm(void)
 {
 	struct device_node *np;
-	const char *comp = "xlnx,zynq-ocm-1.0";
+	const char *comp = "xlnx,zynq-ocmc-1.0";
 	void __iomem *base = NULL;
 
 	np = of_find_compatible_node(NULL, NULL, comp);

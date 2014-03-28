@@ -234,7 +234,7 @@
 			reg = <0xe0200000 0x1000>;
 		} ;
 		ps7_ocmc_0: ps7-ocmc@f800c000 {
-			compatible = "xlnx,zynq-ocm-1.0";
+			compatible = "xlnx,zynq-ocmc-1.0";
 			interrupt-parent = <&ps7_scugic_0>;
 			interrupts = <0 3 4>;
 			reg = <0xf800c000 0x1000>;
