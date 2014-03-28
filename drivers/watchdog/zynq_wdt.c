@@ -99,7 +99,10 @@ static struct watchdog_info zynq_wdt_info = {
 };
 
 /* Write access to Registers */
-#define zynq_wdt_writereg(offset, val) __raw_writel(val, (wdt->regs) + offset)
+static inline void zynq_wdt_writereg(u32 offset, u32 val)
+{
+	__raw_writel(val, (wdt->regs) + offset);
+}
 
 /*************************Register Map**************************************/
 
