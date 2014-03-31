@@ -492,7 +492,7 @@ config MTD_NAND_NUC900
 config MTD_NAND_PL353
 	tristate "ARM Pl353 NAND flash driver"
 	depends on MTD_NAND && ARM
-	select PL353_SMC
+	depends on PL353_SMC
 	help
 	  This enables access to the NAND flash device on PL353 SMC controller.
 
