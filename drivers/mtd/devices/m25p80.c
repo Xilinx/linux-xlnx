@@ -1285,11 +1285,10 @@ static int m25p_probe(struct spi_device *spi)
 
 	{
 #ifdef CONFIG_OF
-		const char *comp_str;
 		u32 is_dual;
 		np = of_get_next_parent(spi->dev.of_node);
-		of_property_read_string(np, "compatible", &comp_str);
-		if (!strcmp(comp_str, "xlnx,zynq-qspi-1.0")) {
+		if (of_property_match_string(np, "compatible",
+		    "xlnx,zynq-qspi-1.0") >= 0) {
 			if (of_property_read_u32(np, "is-dual", &is_dual) < 0) {
 				/* Default to single if prop not defined */
 				flash->shift = 0;
@@ -1404,10 +1403,9 @@ static int m25p_probe(struct spi_device *spi)
 	else if (flash->mtd.size > 0x1000000) {
 		/* enable 4-byte addressing if the device exceeds 16MiB */
 #ifdef CONFIG_OF
-		const char *comp_str;
 		np = of_get_next_parent(spi->dev.of_node);
-		of_property_read_string(np, "compatible", &comp_str);
-		if (!strcmp(comp_str, "xlnx,zynq-qspi-1.0")) {
+		if (of_property_match_string(np, "compatible",
+		    "xlnx,zynq-qspi-1.0") >= 0) {
 			int status;
 			flash->addr_width = 3;
 			set_4byte(flash, info->jedec_id, 0);
