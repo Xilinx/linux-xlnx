@@ -339,7 +339,8 @@ static int zynq_wdt_probe(struct platform_device *pdev)
 
 	/* Initialize the members of zynq_wdt structure */
 	zynq_wdt_device.parent = &pdev->dev;
-	of_get_property(pdev->dev.of_node, "timeout", &zynq_wdt_device.timeout);
+	of_property_read_u32(pdev->dev.of_node, "timeout",
+			     &zynq_wdt_device.timeout);
 	if (wdt_timeout < ZYNQ_WDT_MAX_TIMEOUT &&
 			wdt_timeout > ZYNQ_WDT_MIN_TIMEOUT)
 		zynq_wdt_device.timeout = wdt_timeout;
