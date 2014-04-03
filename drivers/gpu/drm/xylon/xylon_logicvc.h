@@ -29,7 +29,7 @@ unsigned int xylon_cvc_get_layers_num(struct xylon_cvc *cvc);
 unsigned int xylon_cvc_get_layers_max_width(struct xylon_cvc *cvc);
 
 u32 xylon_cvc_layer_get_format(struct xylon_cvc *cvc, int id);
-int xylon_cvc_layer_get_bits_per_pixel(struct xylon_cvc *cvc, int id);
+unsigned int xylon_cvc_layer_get_bits_per_pixel(struct xylon_cvc *cvc, int id);
 void xylon_cvc_layer_set_alpha(struct xylon_cvc *cvc, int id, u8 alpha);
 int xylon_cvc_layer_set_size_position(struct xylon_cvc *cvc, int id,
 				      int src_x, int src_y,

@@ -368,7 +368,7 @@ u32 xylon_cvc_layer_get_format(struct xylon_cvc *cvc, int id)
 	return drm_format;
 }
 
-int xylon_cvc_layer_get_bits_per_pixel(struct xylon_cvc *cvc, int id)
+unsigned int xylon_cvc_layer_get_bits_per_pixel(struct xylon_cvc *cvc, int id)
 {
 	struct xylon_cvc_layer_data *layer_data = cvc->layer_data[id];
 
