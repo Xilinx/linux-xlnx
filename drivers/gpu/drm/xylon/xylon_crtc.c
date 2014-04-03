@@ -452,6 +452,13 @@ void xylon_drm_crtc_int_free(struct drm_crtc *base_crtc, void *dev)
 	xylon_cvc_int_free(crtc->cvc, dev);
 }
 
+bool xylon_drm_crtc_check_format(struct drm_crtc *base_crtc, u32 fourcc)
+{
+	struct xylon_drm_crtc *crtc = to_xylon_crtc(base_crtc);
+
+	return xylon_drm_plane_check_format(crtc->manager, fourcc);
+}
+
 void xylon_drm_crtc_get_fix_parameters(struct drm_crtc *base_crtc)
 {
 	struct drm_device *dev = base_crtc->dev;
@@ -463,20 +470,6 @@ void xylon_drm_crtc_get_fix_parameters(struct drm_crtc *base_crtc)
 	dev->mode_config.min_height = crtc->fix.y_min;
 	dev->mode_config.max_width = crtc->fix.x_max;
 	dev->mode_config.max_height = crtc->fix.y_max;
-}
-
-int xylon_drm_crtc_get_bits_per_pixel(struct drm_crtc *base_crtc)
-{
-	struct xylon_drm_crtc *crtc = to_xylon_crtc(base_crtc);
-
-	return xylon_drm_plane_get_bits_per_pixel(crtc->private);
-}
-
-bool xylon_drm_crtc_check_format(struct drm_crtc *base_crtc, u32 fourcc)
-{
-	struct xylon_drm_crtc *crtc = to_xylon_crtc(base_crtc);
-
-	return xylon_drm_plane_check_format(crtc->manager, fourcc);
 }
 
 int xylon_drm_crtc_get_param(struct drm_crtc *base_crtc, unsigned int *p,

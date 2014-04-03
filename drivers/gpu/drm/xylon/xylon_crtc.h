@@ -39,9 +39,8 @@ void xylon_drm_crtc_int_free(struct drm_crtc *base_crtc, void *dev);
 void xylon_drm_crtc_cancel_page_flip(struct drm_crtc *base_crtc,
 				     struct drm_file *file);
 
-void xylon_drm_crtc_get_fix_parameters(struct drm_crtc *base_crtc);
-int xylon_drm_crtc_get_bits_per_pixel(struct drm_crtc *base_crtc);
 bool xylon_drm_crtc_check_format(struct drm_crtc *base_crtc, u32 fourcc);
+void xylon_drm_crtc_get_fix_parameters(struct drm_crtc *base_crtc);
 int xylon_drm_crtc_get_param(struct drm_crtc *base_crtc, unsigned int *p,
 			     int cmd);
 
