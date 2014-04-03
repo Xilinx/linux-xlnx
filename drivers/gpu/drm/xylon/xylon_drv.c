@@ -47,7 +47,8 @@ static int xylon_drm_load(struct drm_device *dev, unsigned long flags)
 {
 	struct platform_device *pdev = dev->platformdev;
 	struct xylon_drm_device *xdev;
-	int ret, bpp;
+	unsigned int bpp;
+	int ret;
 
 	xdev = devm_kzalloc(dev->dev, sizeof(*xdev), GFP_KERNEL);
 	if (!xdev)
@@ -96,7 +97,12 @@ static int xylon_drm_load(struct drm_device *dev, unsigned long flags)
 		goto err_irq;
 	}
 
-	bpp = xylon_drm_crtc_get_bits_per_pixel(xdev->crtc);
+	ret = xylon_drm_crtc_get_param(xdev->crtc, &bpp,
+				       XYLON_DRM_CRTC_BUFF_BPP);
+	if (ret) {
+		DRM_ERROR("failed get bpp\n");
+		goto err_fbdev;
+	}
 	xdev->fbdev = xylon_drm_fbdev_init(dev, bpp, 1, 1);
 	if (IS_ERR(xdev->fbdev)) {
 		DRM_ERROR("failed initialize fbdev\n");
