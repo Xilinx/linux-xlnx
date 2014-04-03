@@ -24,8 +24,11 @@
 #define KHZ (1000)
 #endif
 
-#define XYLON_DRM_CRTC_BUFF_WIDTH  0
-#define XYLON_DRM_CRTC_BUFF_HEIGHT 1
+enum xylon_drm_crtc_buff {
+	XYLON_DRM_CRTC_BUFF_BPP,
+	XYLON_DRM_CRTC_BUFF_WIDTH,
+	XYLON_DRM_CRTC_BUFF_HEIGHT
+};
 
 void xylon_drm_crtc_vblank(struct drm_crtc *base_crtc, bool enabled);
 
@@ -42,7 +45,7 @@ void xylon_drm_crtc_cancel_page_flip(struct drm_crtc *base_crtc,
 bool xylon_drm_crtc_check_format(struct drm_crtc *base_crtc, u32 fourcc);
 void xylon_drm_crtc_get_fix_parameters(struct drm_crtc *base_crtc);
 int xylon_drm_crtc_get_param(struct drm_crtc *base_crtc, unsigned int *p,
-			     int cmd);
+			     enum xylon_drm_crtc_buff param);
 
 struct drm_crtc *xylon_drm_crtc_create(struct drm_device *dev);
 void xylon_drm_crtc_destroy(struct drm_crtc *base_crtc);

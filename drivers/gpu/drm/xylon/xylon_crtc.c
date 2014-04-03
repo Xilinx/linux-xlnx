@@ -473,14 +473,17 @@ void xylon_drm_crtc_get_fix_parameters(struct drm_crtc *base_crtc)
 }
 
 int xylon_drm_crtc_get_param(struct drm_crtc *base_crtc, unsigned int *p,
-			     int cmd)
+			     enum xylon_drm_crtc_buff param)
 {
 	struct xylon_drm_crtc *crtc = to_xylon_crtc(base_crtc);
 
 	if (crtc->fix.x_max == 0)
 		return -ENODEV;
 
-	switch (cmd) {
+	switch (param) {
+	case XYLON_DRM_CRTC_BUFF_BPP:
+		*p = xylon_drm_plane_get_bits_per_pixel(crtc->private);
+		break;
 	case XYLON_DRM_CRTC_BUFF_WIDTH:
 		*p = crtc->fix.x_max;
 		break;
