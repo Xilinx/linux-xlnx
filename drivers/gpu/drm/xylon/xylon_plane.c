@@ -37,7 +37,7 @@ struct xylon_drm_plane {
 	u32 format;
 	u32 x;
 	u32 y;
-	int bpp;
+	unsigned int bpp;
 	int id;
 	bool priv;
 };
@@ -297,7 +297,7 @@ bool xylon_drm_plane_check_format(struct xylon_drm_plane_manager *manager,
 	return false;
 }
 
-int xylon_drm_plane_get_bits_per_pixel(struct drm_plane *base)
+unsigned int xylon_drm_plane_get_bits_per_pixel(struct drm_plane *base)
 {
 	struct xylon_drm_plane *plane = to_xylon_plane(base);
 
