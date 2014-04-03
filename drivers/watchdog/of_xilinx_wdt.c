@@ -41,7 +41,7 @@
 
 #define WATCHDOG_NAME     "Xilinx Watchdog"
 
-struct xilinx_wdt_device {
+struct xwdt_device {
 	void __iomem *base;
 	u32 wdt_interval;
 	spinlock_t spinlock;
@@ -51,20 +51,20 @@ struct xilinx_wdt_device {
 static int xilinx_wdt_start(struct watchdog_device *wdd)
 {
 	u32 control_status_reg;
-	struct xilinx_wdt_device *xilinx_wdt = watchdog_get_drvdata(wdd);
+	struct xwdt_device *xdev = watchdog_get_drvdata(wdd);
 
-	spin_lock(&xilinx_wdt->spinlock);
+	spin_lock(&xdev->spinlock);
 
 	/* Clean previous status and enable the watchdog timer */
-	control_status_reg = ioread32(xilinx_wdt->base + XWT_TWCSR0_OFFSET);
+	control_status_reg = ioread32(xdev->base + XWT_TWCSR0_OFFSET);
 	control_status_reg |= (XWT_CSR0_WRS_MASK | XWT_CSR0_WDS_MASK);
 
 	iowrite32((control_status_reg | XWT_CSR0_EWDT1_MASK),
-		  xilinx_wdt->base + XWT_TWCSR0_OFFSET);
+		  xdev->base + XWT_TWCSR0_OFFSET);
 
-	iowrite32(XWT_CSRX_EWDT2_MASK, xilinx_wdt->base + XWT_TWCSR1_OFFSET);
+	iowrite32(XWT_CSRX_EWDT2_MASK, xdev->base + XWT_TWCSR1_OFFSET);
 
-	spin_unlock(&xilinx_wdt->spinlock);
+	spin_unlock(&xdev->spinlock);
 
 	return 0;
 }
@@ -72,18 +72,18 @@ static int xilinx_wdt_start(struct watchdog_device *wdd)
 static int xilinx_wdt_stop(struct watchdog_device *wdd)
 {
 	u32 control_status_reg;
-	struct xilinx_wdt_device *xilinx_wdt = watchdog_get_drvdata(wdd);
+	struct xwdt_device *xdev = watchdog_get_drvdata(wdd);
 
-	spin_lock(&xilinx_wdt->spinlock);
+	spin_lock(&xdev->spinlock);
 
-	control_status_reg = ioread32(xilinx_wdt->base + XWT_TWCSR0_OFFSET);
+	control_status_reg = ioread32(xdev->base + XWT_TWCSR0_OFFSET);
 
 	iowrite32((control_status_reg & ~XWT_CSR0_EWDT1_MASK),
-		  xilinx_wdt->base + XWT_TWCSR0_OFFSET);
+		  xdev->base + XWT_TWCSR0_OFFSET);
 
-	iowrite32(0, xilinx_wdt->base + XWT_TWCSR1_OFFSET);
+	iowrite32(0, xdev->base + XWT_TWCSR1_OFFSET);
 
-	spin_unlock(&xilinx_wdt->spinlock);
+	spin_unlock(&xdev->spinlock);
 	pr_info("Stopped!\n");
 
 	return 0;
@@ -92,15 +92,15 @@ static int xilinx_wdt_stop(struct watchdog_device *wdd)
 static int xilinx_wdt_keepalive(struct watchdog_device *wdd)
 {
 	u32 control_status_reg;
-	struct xilinx_wdt_device *xilinx_wdt = watchdog_get_drvdata(wdd);
+	struct xwdt_device *xdev = watchdog_get_drvdata(wdd);
 
-	spin_lock(&xilinx_wdt->spinlock);
+	spin_lock(&xdev->spinlock);
 
-	control_status_reg = ioread32(xilinx_wdt->base + XWT_TWCSR0_OFFSET);
+	control_status_reg = ioread32(xdev->base + XWT_TWCSR0_OFFSET);
 	control_status_reg |= (XWT_CSR0_WRS_MASK | XWT_CSR0_WDS_MASK);
-	iowrite32(control_status_reg, xilinx_wdt->base + XWT_TWCSR0_OFFSET);
+	iowrite32(control_status_reg, xdev->base + XWT_TWCSR0_OFFSET);
 
-	spin_unlock(&xilinx_wdt->spinlock);
+	spin_unlock(&xdev->spinlock);
 
 	return 0;
 }
@@ -119,24 +119,24 @@ static const struct watchdog_ops xilinx_wdt_ops = {
 	.ping = xilinx_wdt_keepalive,
 };
 
-static u32 xilinx_wdt_selftest(struct xilinx_wdt_device *xilinx_wdt)
+static u32 xwdt_selftest(struct xwdt_device *xdev)
 {
 	int i;
 	u32 timer_value1;
 	u32 timer_value2;
 
-	spin_lock(&xilinx_wdt->spinlock);
+	spin_lock(&xdev->spinlock);
 
-	timer_value1 = ioread32(xilinx_wdt->base + XWT_TBR_OFFSET);
-	timer_value2 = ioread32(xilinx_wdt->base + XWT_TBR_OFFSET);
+	timer_value1 = ioread32(xdev->base + XWT_TBR_OFFSET);
+	timer_value2 = ioread32(xdev->base + XWT_TBR_OFFSET);
 
 	for (i = 0;
 		((i <= XWT_MAX_SELFTEST_LOOP_COUNT) &&
 			(timer_value2 == timer_value1)); i++) {
-		timer_value2 = ioread32(xilinx_wdt->base + XWT_TBR_OFFSET);
+		timer_value2 = ioread32(xdev->base + XWT_TBR_OFFSET);
 	}
 
-	spin_unlock(&xilinx_wdt->spinlock);
+	spin_unlock(&xdev->spinlock);
 
 	if (timer_value2 != timer_value1)
 		return ~XWT_TIMER_FAILED;
@@ -144,28 +144,28 @@ static u32 xilinx_wdt_selftest(struct xilinx_wdt_device *xilinx_wdt)
 		return XWT_TIMER_FAILED;
 }
 
-static int xilinx_wdt_probe(struct platform_device *pdev)
+static int xwdt_probe(struct platform_device *pdev)
 {
 	int rc;
 	u32 pfreq, enable_once;
 	struct resource *res;
-	struct xilinx_wdt_device *xilinx_wdt;
+	struct xwdt_device *xdev;
 	bool no_timeout = false;
 	struct watchdog_device *xilinx_wdt_wdd;
 
-	xilinx_wdt = devm_kzalloc(&pdev->dev, sizeof(*xilinx_wdt), GFP_KERNEL);
-	if (!xilinx_wdt)
+	xdev = devm_kzalloc(&pdev->dev, sizeof(*xdev), GFP_KERNEL);
+	if (!xdev)
 		return -ENOMEM;
 
-	xilinx_wdt_wdd = &xilinx_wdt->xilinx_wdt_wdd;
+	xilinx_wdt_wdd = &xdev->xilinx_wdt_wdd;
 	xilinx_wdt_wdd->info = &xilinx_wdt_ident;
 	xilinx_wdt_wdd->ops = &xilinx_wdt_ops;
 	xilinx_wdt_wdd->parent = &pdev->dev;
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	xilinx_wdt->base = devm_ioremap_resource(&pdev->dev, res);
-	if (IS_ERR(xilinx_wdt->base))
-		return PTR_ERR(xilinx_wdt->base);
+	xdev->base = devm_ioremap_resource(&pdev->dev, res);
+	if (IS_ERR(xdev->base))
+		return PTR_ERR(xdev->base);
 
 	rc = of_property_read_u32(pdev->dev.of_node, "clock-frequency", &pfreq);
 	if (rc) {
@@ -175,7 +175,7 @@ static int xilinx_wdt_probe(struct platform_device *pdev)
 	}
 
 	rc = of_property_read_u32(pdev->dev.of_node, "xlnx,wdt-interval",
-				  &xilinx_wdt->wdt_interval);
+				  &xdev->wdt_interval);
 	if (rc) {
 		dev_warn(&pdev->dev,
 			 "Parameter \"xlnx,wdt-interval\" not found\n");
@@ -195,13 +195,13 @@ static int xilinx_wdt_probe(struct platform_device *pdev)
 	 * ignored (interrupt), reset is only generated at second wdt overflow
 	 */
 	if (!no_timeout)
-		xilinx_wdt_wdd->timeout = 2 * ((1 << xilinx_wdt->wdt_interval) /
+		xilinx_wdt_wdd->timeout = 2 * ((1 << xdev->wdt_interval) /
 					  pfreq);
 
-	spin_lock_init(&xilinx_wdt->spinlock);
-	watchdog_set_drvdata(xilinx_wdt_wdd, xilinx_wdt);
+	spin_lock_init(&xdev->spinlock);
+	watchdog_set_drvdata(xilinx_wdt_wdd, xdev);
 
-	rc = xilinx_wdt_selftest(xilinx_wdt);
+	rc = xwdt_selftest(xdev);
 	if (rc == XWT_TIMER_FAILED) {
 		dev_err(&pdev->dev, "SelfTest routine error\n");
 		return rc;
@@ -214,41 +214,41 @@ static int xilinx_wdt_probe(struct platform_device *pdev)
 	}
 
 	dev_info(&pdev->dev, "Xilinx Watchdog Timer at %p with timeout %ds\n",
-		 xilinx_wdt->base, xilinx_wdt_wdd->timeout);
+		 xdev->base, xilinx_wdt_wdd->timeout);
 
-	platform_set_drvdata(pdev, xilinx_wdt);
+	platform_set_drvdata(pdev, xdev);
 
 	return 0;
 }
 
-static int xilinx_wdt_remove(struct platform_device *pdev)
+static int xwdt_remove(struct platform_device *pdev)
 {
-	struct xilinx_wdt_device *xilinx_wdt = platform_get_drvdata(pdev);
+	struct xwdt_device *xdev = platform_get_drvdata(pdev);
 
-	watchdog_unregister_device(&xilinx_wdt->xilinx_wdt_wdd);
+	watchdog_unregister_device(&xdev->xilinx_wdt_wdd);
 
 	return 0;
 }
 
 /* Match table for of_platform binding */
-static struct of_device_id xilinx_wdt_of_match[] = {
+static struct of_device_id xwdt_of_match[] = {
 	{ .compatible = "xlnx,xps-timebase-wdt-1.00.a", },
 	{ .compatible = "xlnx,xps-timebase-wdt-1.01.a", },
 	{},
 };
-MODULE_DEVICE_TABLE(of, xilinx_wdt_of_match);
+MODULE_DEVICE_TABLE(of, xwdt_of_match);
 
-static struct platform_driver xilinx_wdt_driver = {
-	.probe       = xilinx_wdt_probe,
-	.remove      = xilinx_wdt_remove,
+static struct platform_driver xwdt_driver = {
+	.probe       = xwdt_probe,
+	.remove      = xwdt_remove,
 	.driver = {
 		.owner = THIS_MODULE,
 		.name  = WATCHDOG_NAME,
-		.of_match_table = xilinx_wdt_of_match,
+		.of_match_table = xwdt_of_match,
 	},
 };
 
-module_platform_driver(xilinx_wdt_driver);
+module_platform_driver(xwdt_driver);
 
 MODULE_AUTHOR("Alejandro Cabrera <aldaya@gmail.com>");
 MODULE_DESCRIPTION("Xilinx Watchdog driver");
