@@ -177,26 +177,33 @@
 #define LOGICVC_SIZE_POSITION    (1 << 1)
 #define LOGICVC_BACKGROUND_LAYER (1 << 2)
 
-#define LOGICVC_LAYER_RGB         0
-#define LOGICVC_LAYER_YCBCR       1
-#define LOGICVC_LAYER_ALPHA       2
-#define LOGICVC_LAYER_UNSUPPORTED 255
+enum xylon_cvc_layer_type {
+	LOGICVC_LAYER_RGB,
+	LOGICVC_LAYER_YUV,
+	LOGICVC_LAYER_ALPHA
+};
 
-#define LOGICVC_ALPHA_LAYER      0
-#define LOGICVC_ALPHA_PIXEL      1
-#define LOGICVC_ALPHA_CLUT_16BPP 2
-#define LOGICVC_ALPHA_CLUT_32BPP 3
+enum xylon_cvc_layer_alpha_type {
+	LOGICVC_ALPHA_LAYER,
+	LOGICVC_ALPHA_PIXEL,
+	LOGICVC_ALPHA_CLUT_16BPP,
+	LOGICVC_ALPHA_CLUT_32BPP
+};
 
-#define LOGICVC_DI_PARALLEL          0
-#define LOGICVC_DI_ITU656            1
-#define LOGICVC_DI_LVDS_4_BIT        2
-#define LOGICVC_DI_CAMERA_LINK_4_BIT 3
-#define LOGICVC_DI_LVDS_3_BIT        4
-#define LOGICVC_DI_DVI               5
+enum xylon_cvc_display_interface {
+	LOGICVC_DI_PARALLEL,
+	LOGICVC_DI_ITU656,
+	LOGICVC_DI_LVDS_4_BIT,
+	LOGICVC_DI_CAMERA_LINK_4_BIT,
+	LOGICVC_DI_LVDS_3_BIT,
+	LOGICVC_DI_DVI
+};
 
-#define LOGICVC_DCS_RGB    0
-#define LOGICVC_DCS_YUV422 1
-#define LOGICVC_DCS_YUV444 2
+enum xylon_cvc_display_color_space {
+	LOGICVC_DCS_RGB,
+	LOGICVC_DCS_YUV422,
+	LOGICVC_DCS_YUV444
+};
 
 struct xylon_cvc_layer_data;
 
@@ -354,7 +361,7 @@ u32 xylon_cvc_layer_get_format(struct xylon_cvc *cvc, int id)
 			drm_format = DRM_FORMAT_ARGB8888;
 		break;
 
-	case LOGICVC_LAYER_YCBCR:
+	case LOGICVC_LAYER_YUV:
 		if (bpp == 16 && transp == LOGICVC_ALPHA_LAYER)
 			drm_format = DRM_FORMAT_YUYV;
 		else if (bpp == 32 && transp == LOGICVC_ALPHA_LAYER)
