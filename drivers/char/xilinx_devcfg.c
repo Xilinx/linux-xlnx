@@ -243,7 +243,7 @@ xdevcfg_write(struct file *file, const char __user *buf, size_t count,
 	char *kbuf;
 	int status;
 	unsigned long timeout;
-	u32 intr_reg;
+	u32 intr_reg, dma_len;
 	dma_addr_t dma_addr;
 	u32 transfer_length = 0;
 	struct xdevcfg_drvdata *drvdata = file->private_data;
@@ -259,8 +259,8 @@ xdevcfg_write(struct file *file, const char __user *buf, size_t count,
 	if (status)
 		goto err_clk;
 
-	kbuf = dma_alloc_coherent(drvdata->dev, count + drvdata->residue_len,
-				  &dma_addr, GFP_KERNEL);
+	dma_len = count + drvdata->residue_len;
+	kbuf = dma_alloc_coherent(drvdata->dev, dma_len, &dma_addr, GFP_KERNEL);
 	if (!kbuf) {
 		status = -ENOMEM;
 		goto err_unlock;
@@ -373,7 +373,7 @@ xdevcfg_write(struct file *file, const char __user *buf, size_t count,
 	status = user_count;
 
 error:
-	dma_free_coherent(drvdata->dev, count, kbuf, dma_addr);
+	dma_free_coherent(drvdata->dev, dma_len, kbuf, dma_addr);
 err_unlock:
 	mutex_unlock(&drvdata->sem);
 err_clk:
