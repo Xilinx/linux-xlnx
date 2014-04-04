@@ -455,11 +455,7 @@ static void done(struct zynq_ep *ep, struct zynq_req *req, int status)
 	}
 
 	if (req->mapped) {
-		dma_unmap_single(ep->udc->gadget.dev.parent,
-			req->req.dma, req->req.length,
-			ep_is_in(ep)
-				? DMA_TO_DEVICE
-				: DMA_FROM_DEVICE);
+		usb_gadget_unmap_request(&udc->gadget, &req->req, ep_is_in(ep));
 		req->req.dma = DMA_ADDR_INVALID;
 		req->mapped = 0;
 	} else
@@ -1156,11 +1152,11 @@ zynq_ep_queue(struct usb_ep *_ep, struct usb_request *_req, gfp_t gfp_flags)
 
 	/* map virtual address to hardware */
 	if (req->req.dma == DMA_ADDR_INVALID) {
-		req->req.dma = dma_map_single(ep->udc->gadget.dev.parent,
-					req->req.buf,
-					req->req.length, ep_is_in(ep)
-						? DMA_TO_DEVICE
-						: DMA_FROM_DEVICE);
+		int ret;
+
+		ret = usb_gadget_map_request(&udc->gadget, _req, ep_is_in(ep));
+		if (ret)
+			return ret;
 		req->mapped = 1;
 	} else {
 		dma_sync_single_for_device(ep->udc->gadget.dev.parent,
@@ -1719,6 +1715,7 @@ static int ep0_prime_status(struct zynq_udc *udc, int direction)
 {
 	struct zynq_req *req = udc->status_req;
 	struct zynq_ep *ep;
+	int ret;
 
 	if (direction == EP_DIR_IN)
 		udc->ep0_dir = USB_DIR_IN;
@@ -1734,9 +1731,10 @@ static int ep0_prime_status(struct zynq_udc *udc, int direction)
 	req->req.actual = 0;
 	req->req.complete = NULL;
 	req->dtd_count = 0;
-	req->req.dma = dma_map_single(ep->udc->gadget.dev.parent,
-				req->req.buf, req->req.length,
-				ep_is_in(ep) ? DMA_TO_DEVICE : DMA_FROM_DEVICE);
+	ret = usb_gadget_map_request(&udc->gadget, &req->req, ep_is_in(ep));
+	if (ret)
+		return ret;
+
 	req->mapped = 1;
 
 	if (zynq_req_to_dtd(req) == 0)
