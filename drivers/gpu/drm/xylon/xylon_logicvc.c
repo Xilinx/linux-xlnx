@@ -224,12 +224,8 @@ struct xylon_cvc_registers {
 	u32 imr;
 };
 
-struct xylon_cvc_layer_fix_data_info {
-	unsigned char id:4;
-};
-
 struct xylon_cvc_layer_fix_data {
-	struct xylon_cvc_layer_fix_data_info info;
+	unsigned int id;
 	u32 address;
 	u32 bpp;
 	u32 format;
@@ -763,7 +759,7 @@ static int xylonfb_parse_layer_info(struct device *dev,
 		return -ENOMEM;
 	}
 	layer_data->cvc = cvc;
-	layer_data->fix_data.info.id = id;
+	layer_data->fix_data.id = id;
 
 	cvc->layer_data[id] = layer_data;
 
