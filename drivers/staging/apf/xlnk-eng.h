@@ -28,7 +28,6 @@ struct xlnk_eng_device {
 extern int xlnk_eng_register_device(struct xlnk_eng_device *xlnk_dev);
 extern void xlnk_eng_unregister_device(struct xlnk_eng_device *xlnk_dev);
 extern struct xlnk_eng_device *xlnk_eng_request_by_name(char *name);
-extern void xlnk_eng_release(struct xlnk_eng_device *xlnk_dev);
 
 #endif
 

@@ -72,24 +72,36 @@ struct xlnk_eng_device *xlnk_eng_request_by_name(char *name)
 }
 EXPORT_SYMBOL(xlnk_eng_request_by_name);
 
-void xlnk_eng_release(struct xlnk_eng_device *xlnk_dev)
-{
-	if (!xlnk_dev)
-		return;
-
-	xlnk_dev->free(xlnk_dev);
-}
-EXPORT_SYMBOL(xlnk_eng_release);
-
-#define DRIVER_NAME "xilinx-xlnk-eng"
-
+/**
+ * struct xilinx_xlnk_eng_device - device structure for xilinx_xlnk_eng
+ * @common:	common device info
+ * @base:	base address for device
+ * @lock:	lock used by device
+ * @cnt:	usage count
+ * @info:	info for registering and unregistering uio device
+ */
 struct xilinx_xlnk_eng_device {
 	struct xlnk_eng_device common;
 	void __iomem *base;
 	spinlock_t lock;
 	int cnt;
+	struct uio_info *info;
 };
 
+static void xlnk_eng_release(struct device *dev)
+{
+	struct xilinx_xlnk_eng_device *xdev;
+	struct xlnk_eng_device *xlnk_dev;
+
+	xdev = dev_get_drvdata(dev);
+	xlnk_dev = &xdev->common;
+	if (!xlnk_dev)
+		return;
+
+	xlnk_dev->free(xlnk_dev);
+}
+
+#define DRIVER_NAME "xilinx-xlnk-eng"
 
 #define to_xilinx_xlnk(dev)	container_of(dev, \
 					struct xilinx_xlnk_eng_device, common)
@@ -140,7 +152,7 @@ static int xlnk_eng_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "Not enough memory for device\n");
 		return -ENOMEM;
 	}
-
+	xdev->info = info;
 	devname = devm_kzalloc(&pdev->dev, 64, GFP_KERNEL);
 	if (!devname) {
 		dev_err(&pdev->dev, "Not enough memory for device\n");
@@ -181,6 +193,7 @@ static int xlnk_eng_probe(struct platform_device *pdev)
 
 	xdev->common.alloc = xilinx_xlnk_alloc;
 	xdev->common.free = xilinx_xlnk_free;
+	xdev->common.dev->release = xlnk_eng_release;
 
 	dev_set_drvdata(&pdev->dev, xdev);
 
@@ -201,6 +214,16 @@ static int xlnk_eng_probe(struct platform_device *pdev)
 
 static int xlnk_eng_remove(struct platform_device *pdev)
 {
+	struct uio_info *info;
+	struct xilinx_xlnk_eng_device *xdev;
+
+	xdev = dev_get_drvdata(&pdev->dev);
+	info = xdev->info;
+
+	uio_unregister_device(info);
+	dev_info(&pdev->dev, "xilinx-xlnk-eng uio unregistered\n");
+	xlnk_eng_unregister_device(&xdev->common);
+
 	return 0;
 }
 
