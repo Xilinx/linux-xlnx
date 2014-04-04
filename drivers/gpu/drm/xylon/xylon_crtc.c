@@ -57,7 +57,7 @@ struct xylon_drm_crtc {
 	struct clk *pixel_clock;
 	struct xylon_cvc_fix fix;
 	struct videomode vmode;
-	u32 priv_plane_id;
+	u32 private_id;
 	int dpms;
 };
 
@@ -597,12 +597,12 @@ struct drm_crtc *xylon_drm_crtc_create(struct drm_device *dev)
 	}
 
 	ret = of_property_read_u32(dev->dev->of_node, "private-plane",
-				   &crtc->priv_plane_id);
+				   &crtc->private_id);
 	if (ret)
 		DRM_INFO("no private-plane property\n");
 
 	crtc->private = xylon_drm_plane_create(crtc->manager, 1, true,
-					       crtc->priv_plane_id);
+					       crtc->private_id);
 	if (IS_ERR(crtc->private)) {
 		DRM_ERROR("failed create private plane for crtc\n");
 		ret = PTR_ERR(crtc->private);
