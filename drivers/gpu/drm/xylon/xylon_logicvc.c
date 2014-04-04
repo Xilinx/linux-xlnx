@@ -261,13 +261,13 @@ struct xylon_cvc {
 	struct xylon_cvc_register_access reg_access;
 	struct xylon_cvc_registers *reg_list;
 	struct xylon_cvc_layer_data *layer_data[LOGICVC_MAX_LAYERS];
+	unsigned int flags;
 	unsigned int irq;
+	unsigned int layers;
 	unsigned int power_on_delay;
 	unsigned int signal_on_delay;
-	unsigned long ctrl;
 	u32 bg_layer_bpp;
-	u32 flags;
-	u32 layers;
+	u32 ctrl;
 	u32 pixel_stride;
 };
 
@@ -797,7 +797,7 @@ static int xylonfb_parse_layer_info(struct device *dev,
 	return id + 1;
 }
 
-static void xylon_cvc_init_ctrl(struct device_node *node, unsigned long *ctrl)
+static void xylon_cvc_init_ctrl(struct device_node *node, u32 *ctrl)
 {
 	u32 ctrl_reg = LOGICVC_CTRL_REG_INIT;
 	u32 pix_clk_act_high = 0;
