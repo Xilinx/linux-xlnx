@@ -500,7 +500,7 @@ static int xcan_rx(struct net_device *ndev)
 		/* The received frame is a standard format frame */
 		cf->can_id = (id_xcan & XCAN_IDR_ID1_MASK) >>
 				XCAN_IDR_ID1_SHIFT;
-		if (id_xcan & XCAN_IDR_RTR_MASK)
+		if (id_xcan & XCAN_IDR_SRR_MASK)
 			cf->can_id |= CAN_RTR_FLAG;
 	}
 
