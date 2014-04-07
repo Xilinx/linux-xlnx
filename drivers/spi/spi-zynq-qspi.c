@@ -114,57 +114,6 @@
 #define ZYNQ_QSPI_QUEUE_RUNNING		1
 
 /*
- * Definitions of the flash commands
- */
-/* Flash opcodes in ascending order */
-/* Write status register */
-#define	ZYNQ_QSPI_FLASH_OPCODE_WRSR		0x01
-/* Page program */
-#define	ZYNQ_QSPI_FLASH_OPCODE_PP		0x02
-/* Normal read data bytes */
-#define	ZYNQ_QSPI_FLASH_OPCODE_NORM_READ	0x03
-/* Write disable */
-#define	ZYNQ_QSPI_FLASH_OPCODE_WRDS		0x04
-/* Read status register 1 */
-#define	ZYNQ_QSPI_FLASH_OPCODE_RDSR1		0x05
-/* Write enable */
-#define	ZYNQ_QSPI_FLASH_OPCODE_WREN		0x06
-/* Bank Register Read */
-#define	ZYNQ_QSPI_FLASH_OPCODE_BRRD		0x16
-/* Bank Register Write */
-#define	ZYNQ_QSPI_FLASH_OPCODE_BRWR		0x17
-/* Micron - Bank Reg Read */
-#define	ZYNQ_QSPI_FLASH_OPCODE_EXTADRD		0xC8
-/* Micron - Bank Reg Write */
-#define	ZYNQ_QSPI_FLASH_OPCODE_EXTADWR		0xC5
-/* Fast read data bytes */
-#define	ZYNQ_QSPI_FLASH_OPCODE_FAST_READ	0x0B
-/* Erase 4KiB block */
-#define	ZYNQ_QSPI_FLASH_OPCODE_BE_4K		0x20
-/* Read status register 2 */
-#define	ZYNQ_QSPI_FLASH_OPCODE_RDSR2		0x35
-/* Read flag status register */
-#define	ZYNQ_QSPI_FLASH_OPCODE_RDFSR		0x70
-/* Dual read data bytes */
-#define	ZYNQ_QSPI_FLASH_OPCODE_DUAL_READ	0x3B
-/* Erase 32KiB block */
-#define	ZYNQ_QSPI_FLASH_OPCODE_BE_32K		0x52
-/* Quad read data bytes */
-#define	ZYNQ_QSPI_FLASH_OPCODE_QUAD_READ	0x6B
-/* Erase suspend */
-#define	ZYNQ_QSPI_FLASH_OPCODE_ERASE_SUS	0x75
-/* Erase resume */
-#define	ZYNQ_QSPI_FLASH_OPCODE_ERASE_RES	0x7A
-/* Read JEDEC ID */
-#define	ZYNQ_QSPI_FLASH_OPCODE_RDID		0x9F
-/* Erase whole flash block */
-#define	ZYNQ_QSPI_FLASH_OPCODE_BE		0xC7
-/* Sector erase (usually 64KB) */
-#define	ZYNQ_QSPI_FLASH_OPCODE_SE		0xD8
-/* Quad page program */
-#define ZYNQ_QSPI_FLASH_OPCODE_QPP		0x32
-
-/*
  * Macros for the QSPI controller read/write
  */
 #define zynq_qspi_read(addr)		readl_relaxed(addr)
@@ -181,7 +130,6 @@
  * @rxbuf:		Pointer to the RX buffer
  * @bytes_to_transfer:	Number of bytes left to transfer
  * @bytes_to_receive:	Number of bytes left to receive
- * @is_inst:		Flag to indicate the first message in a Transfer request
  * @is_dual:		Flag to indicate whether dual flash memories are used
  */
 struct zynq_qspi {
@@ -193,50 +141,7 @@ struct zynq_qspi {
 	void *rxbuf;
 	int bytes_to_transfer;
 	int bytes_to_receive;
-	bool is_inst;
 	u32 is_dual;
-};
-
-/**
- * struct zynq_qspi_inst_format - Defines qspi flash instruction format
- * @opcode:		Operational code of instruction
- * @inst_size:		Size of the instruction including address bytes
- * @offset:		Register address where instruction has to be written
- */
-struct zynq_qspi_inst_format {
-	u8 opcode;
-	u8 inst_size;
-	u8 offset;
-};
-
-/*
- * List of all the QSPI instructions and its format
- */
-static struct zynq_qspi_inst_format flash_inst[] = {
-	{ ZYNQ_QSPI_FLASH_OPCODE_WREN, 1, ZYNQ_QSPI_TXD_00_01_OFFSET },
-	{ ZYNQ_QSPI_FLASH_OPCODE_WRDS, 1, ZYNQ_QSPI_TXD_00_01_OFFSET },
-	{ ZYNQ_QSPI_FLASH_OPCODE_RDSR1, 1, ZYNQ_QSPI_TXD_00_01_OFFSET },
-	{ ZYNQ_QSPI_FLASH_OPCODE_RDSR2, 1, ZYNQ_QSPI_TXD_00_01_OFFSET },
-	{ ZYNQ_QSPI_FLASH_OPCODE_WRSR, 1, ZYNQ_QSPI_TXD_00_01_OFFSET },
-	{ ZYNQ_QSPI_FLASH_OPCODE_RDFSR, 1, ZYNQ_QSPI_TXD_00_01_OFFSET },
-	{ ZYNQ_QSPI_FLASH_OPCODE_PP, 4, ZYNQ_QSPI_TXD_00_00_OFFSET },
-	{ ZYNQ_QSPI_FLASH_OPCODE_SE, 4, ZYNQ_QSPI_TXD_00_00_OFFSET },
-	{ ZYNQ_QSPI_FLASH_OPCODE_BE_32K, 4, ZYNQ_QSPI_TXD_00_00_OFFSET },
-	{ ZYNQ_QSPI_FLASH_OPCODE_BE_4K, 4, ZYNQ_QSPI_TXD_00_00_OFFSET },
-	{ ZYNQ_QSPI_FLASH_OPCODE_BE, 1, ZYNQ_QSPI_TXD_00_01_OFFSET },
-	{ ZYNQ_QSPI_FLASH_OPCODE_ERASE_SUS, 1, ZYNQ_QSPI_TXD_00_01_OFFSET },
-	{ ZYNQ_QSPI_FLASH_OPCODE_ERASE_RES, 1, ZYNQ_QSPI_TXD_00_01_OFFSET },
-	{ ZYNQ_QSPI_FLASH_OPCODE_RDID, 1, ZYNQ_QSPI_TXD_00_01_OFFSET },
-	{ ZYNQ_QSPI_FLASH_OPCODE_NORM_READ, 4, ZYNQ_QSPI_TXD_00_00_OFFSET },
-	{ ZYNQ_QSPI_FLASH_OPCODE_FAST_READ, 1, ZYNQ_QSPI_TXD_00_01_OFFSET },
-	{ ZYNQ_QSPI_FLASH_OPCODE_DUAL_READ, 1, ZYNQ_QSPI_TXD_00_01_OFFSET },
-	{ ZYNQ_QSPI_FLASH_OPCODE_QUAD_READ, 1, ZYNQ_QSPI_TXD_00_01_OFFSET },
-	{ ZYNQ_QSPI_FLASH_OPCODE_BRRD, 1, ZYNQ_QSPI_TXD_00_01_OFFSET },
-	{ ZYNQ_QSPI_FLASH_OPCODE_BRWR, 2, ZYNQ_QSPI_TXD_00_10_OFFSET },
-	{ ZYNQ_QSPI_FLASH_OPCODE_EXTADRD, 1, ZYNQ_QSPI_TXD_00_01_OFFSET },
-	{ ZYNQ_QSPI_FLASH_OPCODE_EXTADWR, 2, ZYNQ_QSPI_TXD_00_10_OFFSET },
-	{ ZYNQ_QSPI_FLASH_OPCODE_QPP, 4, ZYNQ_QSPI_TXD_00_00_OFFSET },
-	/* Add all the instructions supported by the flash device */
 };
 
 /**
@@ -394,7 +299,6 @@ static void zynq_qspi_chipselect(struct spi_device *qspi, bool is_high)
 		config_reg &= ~ZYNQ_QSPI_CONFIG_SSCTRL_MASK;
 		config_reg |= (((~(0x0001 << qspi->chip_select)) << 10) &
 				ZYNQ_QSPI_CONFIG_SSCTRL_MASK);
-		xqspi->is_inst = 1;
 	}
 
 	zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_CONFIG_OFFSET, config_reg);
@@ -620,10 +524,7 @@ static int zynq_qspi_start_transfer(struct spi_master *master,
 				    struct spi_transfer *transfer)
 {
 	struct zynq_qspi *xqspi = spi_master_get_devdata(master);
-	u32 data = 0;
-	u8 instruction = 0;
-	u8 index;
-	struct zynq_qspi_inst_format *curr_inst;
+	u32 data;
 
 	xqspi->txbuf = transfer->tx_buf;
 	xqspi->rxbuf = transfer->rx_buf;
@@ -631,51 +532,18 @@ static int zynq_qspi_start_transfer(struct spi_master *master,
 	xqspi->bytes_to_receive = transfer->len;
 
 	zynq_qspi_setup_transfer(qspi, transfer);
-	if (xqspi->txbuf)
-		instruction = *(u8 *)xqspi->txbuf;
 
-	if (instruction && xqspi->is_inst) {
-		for (index = 0 ; index < ARRAY_SIZE(flash_inst); index++)
-			if (instruction == flash_inst[index].opcode)
-				break;
-
-		/* Instruction might have already been transmitted. This is a
-		 * 'data only' transfer */
-		if (index == ARRAY_SIZE(flash_inst))
-			goto xfer_data;
-
-		curr_inst = &flash_inst[index];
-
-		/* Get the instruction */
-		data = 0;
-		zynq_qspi_copy_write_data(xqspi, &data,
-					curr_inst->inst_size);
-
-		/* Write the instruction to LSB of the FIFO. The core is
-		 * designed such that it is not necessary to check whether the
-		 * write FIFO is full before writing. However, write would be
-		 * delayed if the user tries to write when write FIFO is full
-		 */
-		zynq_qspi_write(xqspi->regs + curr_inst->offset, data);
-		goto xfer_start;
+	if (transfer->len < 4) {
+		zynq_qspi_copy_write_data(xqspi, &data, transfer->len);
+		zynq_qspi_write((xqspi->regs + ZYNQ_QSPI_TXD_00_01_OFFSET +
+				((transfer->len - 1) * 4)), data);
+	} else {
+		zynq_qspi_fill_tx_fifo(xqspi, ZYNQ_QSPI_FIFO_DEPTH);
 	}
 
-xfer_data:
-	/* In case of Fast, Dual and Quad reads, transmit the instruction first.
-	 * Address and dummy byte will be transmitted in interrupt handler,
-	 * after instruction is transmitted */
-	if (((xqspi->is_inst == 0) && (xqspi->bytes_to_transfer >= 4)) ||
-	     ((xqspi->bytes_to_transfer >= 4) &&
-	      (instruction != ZYNQ_QSPI_FLASH_OPCODE_FAST_READ) &&
-	      (instruction != ZYNQ_QSPI_FLASH_OPCODE_DUAL_READ) &&
-	      (instruction != ZYNQ_QSPI_FLASH_OPCODE_QUAD_READ)))
-		zynq_qspi_fill_tx_fifo(xqspi, ZYNQ_QSPI_FIFO_DEPTH);
-
-xfer_start:
 	zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_IEN_OFFSET,
 			ZYNQ_QSPI_IXR_ALL_MASK);
 
-	xqspi->is_inst = 0;
 	return transfer->len;
 }
 
