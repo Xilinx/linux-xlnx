@@ -110,6 +110,7 @@
 #define ZYNQ_QSPI_FAST_READ_QOUT_CODE	0x6B /* read instruction code */
 #define ZYNQ_QSPI_FIFO_DEPTH		63 /* FIFO depth in words */
 #define ZYNQ_QSPI_RX_THRESHOLD		32 /* Rx FIFO threshold level */
+#define ZYNQ_QSPI_TX_THRESHOLD		1 /* Tx FIFO threshold level */
 
 /*
  * The modebits configurable by the driver to make the SPI support different
@@ -211,6 +212,9 @@ static void zynq_qspi_init_hw(struct zynq_qspi *xqspi)
 
 	zynq_qspi_write(xqspi, ZYNQ_QSPI_RX_THRESH_OFFSET,
 				ZYNQ_QSPI_RX_THRESHOLD);
+	zynq_qspi_write(xqspi, ZYNQ_QSPI_TX_THRESH_OFFSET,
+			ZYNQ_QSPI_TX_THRESHOLD);
+
 	if (xqspi->is_dual)
 		/* Enable two memories on seperate buses */
 		zynq_qspi_write(xqspi, ZYNQ_QSPI_LINEAR_CFG_OFFSET,
