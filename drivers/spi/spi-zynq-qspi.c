@@ -173,44 +173,30 @@
 
 /**
  * struct zynq_qspi - Defines qspi driver instance
- * @workqueue:		Queue of all the transfers
- * @work:		Information about current transfer
- * @queue:		Head of the queue
- * @queue_state:	Queue status
  * @regs:		Virtual address of the QSPI controller registers
  * @devclk:		Pointer to the peripheral clock
  * @aperclk:		Pointer to the APER clock
  * @irq:		IRQ number
  * @speed_hz:		Current QSPI bus clock speed in Hz
- * @trans_queue_lock:	Lock used for accessing transfer queue
  * @config_reg_lock:	Lock used for accessing configuration register
  * @txbuf:		Pointer	to the TX buffer
  * @rxbuf:		Pointer to the RX buffer
  * @bytes_to_transfer:	Number of bytes left to transfer
  * @bytes_to_receive:	Number of bytes left to receive
- * @dev_busy:		Device busy flag
- * @done:		Transfer complete status
  * @is_inst:		Flag to indicate the first message in a Transfer request
  * @is_dual:		Flag to indicate whether dual flash memories are used
  */
 struct zynq_qspi {
-	struct workqueue_struct *workqueue;
-	struct work_struct work;
-	struct list_head queue;
-	u8 queue_state;
 	void __iomem *regs;
 	struct clk *devclk;
 	struct clk *aperclk;
 	int irq;
 	u32 speed_hz;
-	spinlock_t trans_queue_lock;
 	spinlock_t config_reg_lock;
 	const void *txbuf;
 	void *rxbuf;
 	int bytes_to_transfer;
 	int bytes_to_receive;
-	u8 dev_busy;
-	struct completion done;
 	bool is_inst;
 	u32 is_dual;
 };
@@ -395,26 +381,26 @@ static void zynq_qspi_copy_write_data(struct zynq_qspi *xqspi, u32 *data,
 /**
  * zynq_qspi_chipselect - Select or deselect the chip select line
  * @qspi:	Pointer to the spi_device structure
- * @is_on:	Select(1) or deselect (0) the chip select line
+ * @is_high:	Select(0) or deselect (1) the chip select line
  */
-static void zynq_qspi_chipselect(struct spi_device *qspi, int is_on)
+static void zynq_qspi_chipselect(struct spi_device *qspi, bool is_high)
 {
 	struct zynq_qspi *xqspi = spi_master_get_devdata(qspi->master);
 	u32 config_reg;
 	unsigned long flags;
-
 	spin_lock_irqsave(&xqspi->config_reg_lock, flags);
 
 	config_reg = zynq_qspi_read(xqspi->regs + ZYNQ_QSPI_CONFIG_OFFSET);
 
-	if (is_on) {
+	if (is_high) {
+		/* Deselect the slave */
+		config_reg |= ZYNQ_QSPI_CONFIG_SSCTRL_MASK;
+	} else {
 		/* Select the slave */
 		config_reg &= ~ZYNQ_QSPI_CONFIG_SSCTRL_MASK;
 		config_reg |= (((~(0x0001 << qspi->chip_select)) << 10) &
 				ZYNQ_QSPI_CONFIG_SSCTRL_MASK);
-	} else {
-		/* Deselect the slave */
-		config_reg |= ZYNQ_QSPI_CONFIG_SSCTRL_MASK;
+		xqspi->is_inst = 1;
 	}
 
 	zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_CONFIG_OFFSET, config_reg);
@@ -550,7 +536,8 @@ static void zynq_qspi_fill_tx_fifo(struct zynq_qspi *xqspi, u32 size)
  */
 static irqreturn_t zynq_qspi_irq(int irq, void *dev_id)
 {
-	struct zynq_qspi *xqspi = dev_id;
+	struct spi_master *master = dev_id;
+	struct zynq_qspi *xqspi = spi_master_get_devdata(master);
 	u32 intr_status;
 	u8 offset[3] =	{ZYNQ_QSPI_TXD_00_01_OFFSET, ZYNQ_QSPI_TXD_00_10_OFFSET,
 		ZYNQ_QSPI_TXD_00_11_OFFSET};
@@ -631,7 +618,7 @@ static irqreturn_t zynq_qspi_irq(int irq, void *dev_id)
 				zynq_qspi_write(xqspi->regs +
 						ZYNQ_QSPI_IDIS_OFFSET,
 						ZYNQ_QSPI_IXR_ALL_MASK);
-				complete(&xqspi->done);
+				spi_finalize_current_transfer(master);
 			}
 		}
 	}
@@ -650,10 +637,11 @@ static irqreturn_t zynq_qspi_irq(int irq, void *dev_id)
  *
  * Return:	Number of bytes transferred in the last transfer
  */
-static int zynq_qspi_start_transfer(struct spi_device *qspi,
-			struct spi_transfer *transfer)
+static int zynq_qspi_start_transfer(struct spi_master *master,
+				    struct spi_device *qspi,
+				    struct spi_transfer *transfer)
 {
-	struct zynq_qspi *xqspi = spi_master_get_devdata(qspi->master);
+	struct zynq_qspi *xqspi = spi_master_get_devdata(master);
 	u32 data = 0;
 	u8 instruction = 0;
 	u8 index;
@@ -667,7 +655,6 @@ static int zynq_qspi_start_transfer(struct spi_device *qspi,
 	if (xqspi->txbuf)
 		instruction = *(u8 *)xqspi->txbuf;
 
-	reinit_completion(&xqspi->done);
 	if (instruction && xqspi->is_inst) {
 		for (index = 0 ; index < ARRAY_SIZE(flash_inst); index++)
 			if (instruction == flash_inst[index].opcode)
@@ -709,239 +696,8 @@ xfer_start:
 	zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_IEN_OFFSET,
 			ZYNQ_QSPI_IXR_ALL_MASK);
 
-	wait_for_completion(&xqspi->done);
-
-	return (transfer->len) - (xqspi->bytes_to_transfer);
-}
-
-/**
- * zynq_qspi_work_queue - Get the request from queue to perform transfers
- * @work:	Pointer to the work_struct structure
- */
-static void zynq_qspi_work_queue(struct work_struct *work)
-{
-	struct zynq_qspi *xqspi = container_of(work, struct zynq_qspi, work);
-	unsigned long flags;
-#ifdef CONFIG_SPI_ZYNQ_QSPI_DUAL_STACKED
-	u32 lqspi_cfg_reg;
-#endif
-
-	spin_lock_irqsave(&xqspi->trans_queue_lock, flags);
-	xqspi->dev_busy = 1;
-
-	/* Check if list is empty or queue is stoped */
-	if (list_empty(&xqspi->queue) ||
-		xqspi->queue_state == ZYNQ_QSPI_QUEUE_STOPPED) {
-		xqspi->dev_busy = 0;
-		spin_unlock_irqrestore(&xqspi->trans_queue_lock, flags);
-		return;
-	}
-
-	/* Keep requesting transfer till list is empty */
-	while (!list_empty(&xqspi->queue)) {
-		struct spi_message *msg;
-		struct spi_device *qspi;
-		struct spi_transfer *transfer = NULL;
-		unsigned cs_change = 1;
-		int status = 0;
-
-		msg = container_of(xqspi->queue.next, struct spi_message,
-					queue);
-		list_del_init(&msg->queue);
-		spin_unlock_irqrestore(&xqspi->trans_queue_lock, flags);
-		qspi = msg->spi;
-
-#ifdef CONFIG_SPI_ZYNQ_QSPI_DUAL_STACKED
-		lqspi_cfg_reg = zynq_qspi_read(xqspi->regs +
-					ZYNQ_QSPI_LINEAR_CFG_OFFSET);
-		if (qspi->master->flags & SPI_MASTER_U_PAGE)
-			lqspi_cfg_reg |= ZYNQ_QSPI_LCFG_U_PAGE_MASK;
-		else
-			lqspi_cfg_reg &= ~ZYNQ_QSPI_LCFG_U_PAGE_MASK;
-		zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_LINEAR_CFG_OFFSET,
-			      lqspi_cfg_reg);
-#endif
-
-		list_for_each_entry(transfer, &msg->transfers, transfer_list) {
-			if (transfer->speed_hz) {
-				status = zynq_qspi_setup_transfer(qspi,
-								  transfer);
-				if (status < 0)
-					break;
-			}
-
-			/* Select the chip if required */
-			if (cs_change) {
-				zynq_qspi_chipselect(qspi, 1);
-				xqspi->is_inst = 1;
-			}
-
-			cs_change = transfer->cs_change;
-
-			if (!transfer->tx_buf && !transfer->rx_buf &&
-				transfer->len) {
-				status = -EINVAL;
-				break;
-			}
-
-			/* Request the transfer */
-			if (transfer->len) {
-				status = zynq_qspi_start_transfer(qspi,
-								  transfer);
-				xqspi->is_inst = 0;
-			}
-
-			if (status != transfer->len) {
-				if (status > 0)
-					status = -EMSGSIZE;
-				break;
-			}
-			msg->actual_length += status;
-			status = 0;
-
-			if (transfer->delay_usecs)
-				udelay(transfer->delay_usecs);
-
-			if (cs_change)
-				/* Deselect the chip */
-				zynq_qspi_chipselect(qspi, 0);
-
-			if (transfer->transfer_list.next == &msg->transfers)
-				break;
-		}
-
-		msg->status = status;
-		msg->complete(msg->context);
-
-		zynq_qspi_setup_transfer(qspi, NULL);
-
-		if (!(status == 0 && cs_change))
-			zynq_qspi_chipselect(qspi, 0);
-
-		spin_lock_irqsave(&xqspi->trans_queue_lock, flags);
-	}
-	xqspi->dev_busy = 0;
-	spin_unlock_irqrestore(&xqspi->trans_queue_lock, flags);
-}
-
-/**
- * zynq_qspi_transfer - Add a new transfer request at the tail of work queue
- * @qspi:	Pointer to the spi_device structure
- * @message:	Pointer to the spi_transfer structure which provides information
- *		about next transfer parameters
- *
- * Return:	0 on success, -EINVAL on invalid input parameter and
- *		-ESHUTDOWN if queue is stopped by module unload function
- */
-static int zynq_qspi_transfer(struct spi_device *qspi,
-			    struct spi_message *message)
-{
-	struct zynq_qspi *xqspi = spi_master_get_devdata(qspi->master);
-	struct spi_transfer *transfer;
-	unsigned long flags;
-
-	if (xqspi->queue_state == ZYNQ_QSPI_QUEUE_STOPPED)
-		return -ESHUTDOWN;
-
-	message->actual_length = 0;
-	message->status = -EINPROGRESS;
-
-	/* Check each transfer's parameters */
-	list_for_each_entry(transfer, &message->transfers, transfer_list) {
-		if (!transfer->tx_buf && !transfer->rx_buf && transfer->len)
-			return -EINVAL;
-		/* We only support 8-bit transfers */
-		if (transfer->bits_per_word && transfer->bits_per_word != 8)
-			return -EINVAL;
-	}
-
-	spin_lock_irqsave(&xqspi->trans_queue_lock, flags);
-	list_add_tail(&message->queue, &xqspi->queue);
-	if (!xqspi->dev_busy)
-		queue_work(xqspi->workqueue, &xqspi->work);
-	spin_unlock_irqrestore(&xqspi->trans_queue_lock, flags);
-
-	return 0;
-}
-
-/**
- * zynq_qspi_start_queue - Starts the queue of the QSPI driver
- * @xqspi:	Pointer to the zynq_qspi structure
- *
- * Return:	0 on success and -EBUSY if queue is already running or device is
- *		busy
- */
-static inline int zynq_qspi_start_queue(struct zynq_qspi *xqspi)
-{
-	unsigned long flags;
-
-	spin_lock_irqsave(&xqspi->trans_queue_lock, flags);
-
-	if (xqspi->queue_state == ZYNQ_QSPI_QUEUE_RUNNING || xqspi->dev_busy) {
-		spin_unlock_irqrestore(&xqspi->trans_queue_lock, flags);
-		return -EBUSY;
-	}
-
-	xqspi->queue_state = ZYNQ_QSPI_QUEUE_RUNNING;
-	spin_unlock_irqrestore(&xqspi->trans_queue_lock, flags);
-
-	return 0;
-}
-
-/**
- * zynq_qspi_stop_queue - Stops the queue of the QSPI driver
- * @xqspi:	Pointer to the zynq_qspi structure
- *
- * This function waits till queue is empty and then stops the queue.
- * Maximum time out is set to 5 seconds.
- *
- * Return:	0 on success and -EBUSY if queue is not empty or device is busy
- */
-static inline int zynq_qspi_stop_queue(struct zynq_qspi *xqspi)
-{
-	unsigned long flags;
-	unsigned limit = 500;
-	int ret = 0;
-
-	if (xqspi->queue_state != ZYNQ_QSPI_QUEUE_RUNNING)
-		return ret;
-
-	spin_lock_irqsave(&xqspi->trans_queue_lock, flags);
-
-	while ((!list_empty(&xqspi->queue) || xqspi->dev_busy) && limit--) {
-		spin_unlock_irqrestore(&xqspi->trans_queue_lock, flags);
-		msleep(10);
-		spin_lock_irqsave(&xqspi->trans_queue_lock, flags);
-	}
-
-	if (!list_empty(&xqspi->queue) || xqspi->dev_busy)
-		ret = -EBUSY;
-
-	if (ret == 0)
-		xqspi->queue_state = ZYNQ_QSPI_QUEUE_STOPPED;
-
-	spin_unlock_irqrestore(&xqspi->trans_queue_lock, flags);
-
-	return ret;
-}
-
-/**
- * zynq_qspi_destroy_queue - Destroys the queue of the QSPI driver
- * @xqspi:	Pointer to the zynq_qspi structure
- *
- * Return:	0 on success and error value on failure
- */
-static inline int zynq_qspi_destroy_queue(struct zynq_qspi *xqspi)
-{
-	int ret;
-
-	ret = zynq_qspi_stop_queue(xqspi);
-	if (ret != 0)
-		return ret;
-
-	destroy_workqueue(xqspi->workqueue);
-
-	return 0;
+	xqspi->is_inst = 0;
+	return transfer->len;
 }
 
 #ifdef CONFIG_PM_SLEEP
@@ -958,19 +714,11 @@ static int zynq_qspi_suspend(struct device *_dev)
 	struct platform_device *pdev = container_of(_dev,
 			struct platform_device, dev);
 	struct spi_master *master = platform_get_drvdata(pdev);
-	struct zynq_qspi *xqspi = spi_master_get_devdata(master);
-	int ret = 0;
 
-	ret = zynq_qspi_stop_queue(xqspi);
-	if (ret != 0)
-		return ret;
+	spi_master_suspend(master);
 
-	zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_ENABLE_OFFSET, 0);
+	zynq_unprepare_transfer_hardware(master);
 
-	clk_disable(xqspi->devclk);
-	clk_disable(xqspi->aperclk);
-
-	dev_dbg(&pdev->dev, "suspend succeeded\n");
 	return 0;
 }
 
@@ -1003,15 +751,8 @@ static int zynq_qspi_resume(struct device *dev)
 		return ret;
 	}
 
-	zynq_qspi_init_hw(xqspi);
+	spi_master_resume(master);
 
-	ret = zynq_qspi_start_queue(xqspi);
-	if (ret != 0) {
-		dev_err(&pdev->dev, "problem starting queue (%d)\n", ret);
-		return ret;
-	}
-
-	dev_dbg(&pdev->dev, "resume succeeded\n");
 	return 0;
 }
 #endif /* ! CONFIG_PM_SLEEP */
@@ -1056,7 +797,7 @@ static int zynq_qspi_probe(struct platform_device *pdev)
 		goto remove_master;
 	}
 	ret = devm_request_irq(&pdev->dev, xqspi->irq, zynq_qspi_irq,
-			       0, pdev->name, xqspi);
+			       0, pdev->name, master);
 	if (ret != 0) {
 		ret = -ENXIO;
 		dev_err(&pdev->dev, "request_irq failed\n");
@@ -1096,8 +837,6 @@ static int zynq_qspi_probe(struct platform_device *pdev)
 	/* QSPI controller initializations */
 	zynq_qspi_init_hw(xqspi);
 
-	init_completion(&xqspi->done);
-
 	ret = of_property_read_u32(pdev->dev.of_node, "num-chip-select",
 				   (u32 *)&master->num_chipselect);
 	if (ret < 0) {
@@ -1106,39 +845,18 @@ static int zynq_qspi_probe(struct platform_device *pdev)
 	}
 
 	master->setup = zynq_qspi_setup;
-	master->transfer = zynq_qspi_transfer;
+	master->set_cs = zynq_qspi_chipselect;
+	master->transfer_one = zynq_qspi_start_transfer;
 	master->flags = SPI_MASTER_QUAD_MODE;
 
 	xqspi->speed_hz = clk_get_rate(xqspi->devclk) / 2;
 
-	xqspi->dev_busy = 0;
-
-	INIT_LIST_HEAD(&xqspi->queue);
-	spin_lock_init(&xqspi->trans_queue_lock);
 	spin_lock_init(&xqspi->config_reg_lock);
-
-	xqspi->queue_state = ZYNQ_QSPI_QUEUE_STOPPED;
-	xqspi->dev_busy = 0;
-
-	INIT_WORK(&xqspi->work, zynq_qspi_work_queue);
-	xqspi->workqueue =
-		create_singlethread_workqueue(dev_name(&pdev->dev));
-	if (!xqspi->workqueue) {
-		ret = -ENOMEM;
-		dev_err(&pdev->dev, "problem initializing queue\n");
-		goto clk_dis_all;
-	}
-
-	ret = zynq_qspi_start_queue(xqspi);
-	if (ret != 0) {
-		dev_err(&pdev->dev, "problem starting queue\n");
-		goto remove_queue;
-	}
 
 	ret = spi_register_master(master);
 	if (ret) {
 		dev_err(&pdev->dev, "spi_register_master failed\n");
-		goto remove_queue;
+		goto clk_dis_all;
 	}
 
 	dev_info(&pdev->dev, "at 0x%08X mapped to 0x%08X, irq=%d\n", res->start,
@@ -1146,8 +864,6 @@ static int zynq_qspi_probe(struct platform_device *pdev)
 
 	return ret;
 
-remove_queue:
-	(void)zynq_qspi_destroy_queue(xqspi);
 clk_dis_all:
 	clk_disable_unprepare(xqspi->devclk);
 clk_dis_aper:
@@ -1171,11 +887,6 @@ static int zynq_qspi_remove(struct platform_device *pdev)
 {
 	struct spi_master *master = platform_get_drvdata(pdev);
 	struct zynq_qspi *xqspi = spi_master_get_devdata(master);
-	int ret = 0;
-
-	ret = zynq_qspi_destroy_queue(xqspi);
-	if (ret != 0)
-		return ret;
 
 	zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_ENABLE_OFFSET, 0);
 
