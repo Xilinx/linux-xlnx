@@ -223,9 +223,7 @@ static void zynq_qspi_init_hw(struct zynq_qspi *xqspi)
 static void zynq_qspi_copy_read_data(struct zynq_qspi *xqspi, u32 data, u8 size)
 {
 	if (xqspi->rxbuf) {
-		data >>= (4 - size) * 8;
-		data = le32_to_cpu(data);
-		memcpy((u8 *)xqspi->rxbuf, &data, size);
+		memcpy(xqspi->rxbuf, ((u8 *) &data) + 4 - size, size);
 		xqspi->rxbuf += size;
 	}
 	xqspi->bytes_to_receive -= size;
@@ -244,32 +242,8 @@ static void zynq_qspi_copy_write_data(struct zynq_qspi *xqspi, u32 *data,
 {
 
 	if (xqspi->txbuf) {
-		switch (size) {
-		case 1:
-			*data = *((u8 *)xqspi->txbuf);
-			xqspi->txbuf += 1;
-			*data |= 0xFFFFFF00;
-			break;
-		case 2:
-			*data = *((u16 *)xqspi->txbuf);
-			xqspi->txbuf += 2;
-			*data |= 0xFFFF0000;
-			break;
-		case 3:
-			*data = *((u16 *)xqspi->txbuf);
-			xqspi->txbuf += 2;
-			*data |= (*((u8 *)xqspi->txbuf) << 16);
-			xqspi->txbuf += 1;
-			*data |= 0xFF000000;
-			break;
-		case 4:
-			*data = *((u32 *)xqspi->txbuf);
-			xqspi->txbuf += 4;
-			break;
-		default:
-			/* This will never execute */
-			break;
-		}
+		memcpy(data, xqspi->txbuf, size);
+		xqspi->txbuf += size;
 	} else {
 		*data = 0;
 	}
