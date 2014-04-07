@@ -176,7 +176,6 @@
  * @devclk:		Pointer to the peripheral clock
  * @aperclk:		Pointer to the APER clock
  * @irq:		IRQ number
- * @speed_hz:		Current QSPI bus clock speed in Hz
  * @config_reg_lock:	Lock used for accessing configuration register
  * @txbuf:		Pointer	to the TX buffer
  * @rxbuf:		Pointer to the RX buffer
@@ -190,7 +189,6 @@ struct zynq_qspi {
 	struct clk *devclk;
 	struct clk *aperclk;
 	int irq;
-	u32 speed_hz;
 	const void *txbuf;
 	void *rxbuf;
 	int bytes_to_transfer;
@@ -427,20 +425,17 @@ static int zynq_qspi_setup_transfer(struct spi_device *qspi,
 	u32 config_reg;
 	u32 req_hz;
 	u32 baud_rate_val = 0;
-	int update_baud = 0;
 
-	req_hz = (transfer) ? transfer->speed_hz : qspi->max_speed_hz;
+	if (transfer)
+		req_hz = transfer->speed_hz;
+	else
+		req_hz = qspi->max_speed_hz;
 
 	/* Set the clock frequency */
 	/* If req_hz == 0, default to lowest speed */
-	if (xqspi->speed_hz != req_hz) {
-		while ((baud_rate_val < 7)  &&
-			(clk_get_rate(xqspi->devclk) / (2 << baud_rate_val)) >
-			req_hz)
-				baud_rate_val++;
-		xqspi->speed_hz = req_hz;
-		update_baud = 1;
-	}
+	while ((baud_rate_val < 7)  &&
+		(clk_get_rate(xqspi->devclk) / (2 << baud_rate_val)) > req_hz)
+		baud_rate_val++;
 
 	config_reg = zynq_qspi_read(xqspi->regs + ZYNQ_QSPI_CONFIG_OFFSET);
 
@@ -452,16 +447,10 @@ static int zynq_qspi_setup_transfer(struct spi_device *qspi,
 	if (qspi->mode & SPI_CPOL)
 		config_reg |= ZYNQ_QSPI_CONFIG_CPOL_MASK;
 
-	if (update_baud) {
-		config_reg &= 0xFFFFFFC7;
-		config_reg |= (baud_rate_val << 3);
-	}
+	config_reg &= 0xFFFFFFC7;
+	config_reg |= (baud_rate_val << 3);
 
 	zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_CONFIG_OFFSET, config_reg);
-
-	dev_dbg(&qspi->dev, "%s, mode %d, %u bits/w, %u clock speed\n",
-		__func__, qspi->mode & MODEBITS, qspi->bits_per_word,
-		xqspi->speed_hz);
 
 	return 0;
 }
@@ -483,7 +472,7 @@ static int zynq_qspi_setup(struct spi_device *qspi)
 		return -EINVAL;
 	}
 
-	return zynq_qspi_setup_transfer(qspi, NULL);
+	return 0;
 }
 
 /**
@@ -641,6 +630,7 @@ static int zynq_qspi_start_transfer(struct spi_master *master,
 	xqspi->bytes_to_transfer = transfer->len;
 	xqspi->bytes_to_receive = transfer->len;
 
+	zynq_qspi_setup_transfer(qspi, transfer);
 	if (xqspi->txbuf)
 		instruction = *(u8 *)xqspi->txbuf;
 
@@ -836,7 +826,7 @@ static int zynq_qspi_probe(struct platform_device *pdev)
 	master->transfer_one = zynq_qspi_start_transfer;
 	master->flags = SPI_MASTER_QUAD_MODE;
 
-	xqspi->speed_hz = clk_get_rate(xqspi->devclk) / 2;
+	master->max_speed_hz = clk_get_rate(xqspi->devclk) / 2;
 
 	ret = spi_register_master(master);
 	if (ret) {
