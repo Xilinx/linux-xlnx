@@ -689,7 +689,6 @@ xfer_start:
 	return transfer->len;
 }
 
-#ifdef CONFIG_PM_SLEEP
 /**
  * zynq_qspi_suspend - Suspend method for the QSPI driver
  * @_dev:	Address of the platform_device structure
@@ -698,7 +697,7 @@ xfer_start:
  *
  * Return:	0 on success and error value on error
  */
-static int zynq_qspi_suspend(struct device *_dev)
+static int __maybe_unused zynq_qspi_suspend(struct device *_dev)
 {
 	struct platform_device *pdev = container_of(_dev,
 			struct platform_device, dev);
@@ -719,7 +718,7 @@ static int zynq_qspi_suspend(struct device *_dev)
  *
  * Return:	0 on success and error value on error
  */
-static int zynq_qspi_resume(struct device *dev)
+static int __maybe_unused zynq_qspi_resume(struct device *dev)
 {
 	struct platform_device *pdev = container_of(dev,
 			struct platform_device, dev);
@@ -744,7 +743,6 @@ static int zynq_qspi_resume(struct device *dev)
 
 	return 0;
 }
-#endif /* ! CONFIG_PM_SLEEP */
 
 static SIMPLE_DEV_PM_OPS(zynq_qspi_dev_pm_ops, zynq_qspi_suspend,
 			 zynq_qspi_resume);
