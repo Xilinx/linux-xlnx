@@ -67,6 +67,16 @@
 #define ZYNQ_QSPI_CONFIG_MSTREN_MASK	0x00000001 /* Master Mode */
 
 /*
+ * QSPI Configuration Register - Baud rate and slave select
+ *
+ * These are the values used in the calculation of baud rate divisor and
+ * setting the slave select.
+ */
+#define ZYNQ_QSPI_BAUD_DIV_MAX		7 /* Baud rate divisor maximum */
+#define ZYNQ_QSPI_BAUD_DIV_SHIFT	3 /* Baud rate divisor shift in CR */
+#define ZYNQ_QSPI_SS_SHIFT		10 /* Slave Select field shift in CR */
+
+/*
  * QSPI Interrupt Registers bit Masks
  *
  * All the four interrupt registers (Status/Mask/Enable/Disable) have the same
@@ -106,12 +116,6 @@
  * data formats
  */
 #define MODEBITS			(SPI_CPOL | SPI_CPHA)
-
-/*
- * Definitions for the status of queue
- */
-#define ZYNQ_QSPI_QUEUE_STOPPED		0
-#define ZYNQ_QSPI_QUEUE_RUNNING		1
 
 /*
  * Macros for the QSPI controller read/write
@@ -308,8 +312,9 @@ static void zynq_qspi_chipselect(struct spi_device *qspi, bool is_high)
 	} else {
 		/* Select the slave */
 		config_reg &= ~ZYNQ_QSPI_CONFIG_SSCTRL_MASK;
-		config_reg |= (((~(0x0001 << qspi->chip_select)) << 10) &
-				ZYNQ_QSPI_CONFIG_SSCTRL_MASK);
+		config_reg |= (((~(BIT(qspi->chip_select))) <<
+				 ZYNQ_QSPI_SS_SHIFT) &
+				 ZYNQ_QSPI_CONFIG_SSCTRL_MASK);
 	}
 
 	zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_CONFIG_OFFSET, config_reg);
@@ -348,7 +353,7 @@ static int zynq_qspi_setup_transfer(struct spi_device *qspi,
 
 	/* Set the clock frequency */
 	/* If req_hz == 0, default to lowest speed */
-	while ((baud_rate_val < 7)  &&
+	while ((baud_rate_val < ZYNQ_QSPI_BAUD_DIV_MAX)  &&
 		(clk_get_rate(xqspi->devclk) / (2 << baud_rate_val)) > req_hz)
 		baud_rate_val++;
 
@@ -362,8 +367,8 @@ static int zynq_qspi_setup_transfer(struct spi_device *qspi,
 	if (qspi->mode & SPI_CPOL)
 		config_reg |= ZYNQ_QSPI_CONFIG_CPOL_MASK;
 
-	config_reg &= 0xFFFFFFC7;
-	config_reg |= (baud_rate_val << 3);
+	config_reg &= ~ZYNQ_QSPI_CONFIG_BDRATE_MASK;
+	config_reg |= (baud_rate_val << ZYNQ_QSPI_BAUD_DIV_SHIFT);
 
 	zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_CONFIG_OFFSET, config_reg);
 
