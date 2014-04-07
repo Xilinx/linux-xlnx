@@ -97,9 +97,9 @@
 
 #define ZYNQ_QSPI_LCFG_DUMMY_SHIFT	8
 
-#define ZYNQ_QSPI_FAST_READ_QOUT_CODE	0x6B	/* read instruction code */
-#define ZYNQ_QSPI_FIFO_DEPTH		63	/* FIFO depth in words */
-#define ZYNQ_QSPI_RX_THRESHOLD		32	/* Rx FIFO threshold level */
+#define ZYNQ_QSPI_FAST_READ_QOUT_CODE	0x6B /* read instruction code */
+#define ZYNQ_QSPI_FIFO_DEPTH		63 /* FIFO depth in words */
+#define ZYNQ_QSPI_RX_THRESHOLD		32 /* Rx FIFO threshold level */
 
 /*
  * The modebits configurable by the driver to make the SPI support different
@@ -126,7 +126,7 @@
  * @aperclk:		Pointer to the APER clock
  * @irq:		IRQ number
  * @config_reg_lock:	Lock used for accessing configuration register
- * @txbuf:		Pointer	to the TX buffer
+ * @txbuf:		Pointer to the TX buffer
  * @rxbuf:		Pointer to the RX buffer
  * @bytes_to_transfer:	Number of bytes left to transfer
  * @bytes_to_receive:	Number of bytes left to receive
@@ -415,8 +415,8 @@ static irqreturn_t zynq_qspi_irq(int irq, void *dev_id)
 	struct spi_master *master = dev_id;
 	struct zynq_qspi *xqspi = spi_master_get_devdata(master);
 	u32 intr_status;
-	u8 offset[3] =	{ZYNQ_QSPI_TXD_00_01_OFFSET, ZYNQ_QSPI_TXD_00_10_OFFSET,
-		ZYNQ_QSPI_TXD_00_11_OFFSET};
+	u8 offset[3] = {ZYNQ_QSPI_TXD_00_01_OFFSET, ZYNQ_QSPI_TXD_00_10_OFFSET,
+			ZYNQ_QSPI_TXD_00_11_OFFSET};
 	u32 rxcount;
 	u32 rxindex = 0;
 
@@ -743,7 +743,7 @@ MODULE_ALIAS("platform:" DRIVER_NAME);
 
 static struct of_device_id zynq_qspi_of_match[] = {
 	{ .compatible = "xlnx,zynq-qspi-1.0", },
-	{ /* end of table */}
+	{ /* end of table */ }
 };
 MODULE_DEVICE_TABLE(of, zynq_qspi_of_match);
 
@@ -751,8 +751,8 @@ MODULE_DEVICE_TABLE(of, zynq_qspi_of_match);
  * zynq_qspi_driver - This structure defines the QSPI platform driver
  */
 static struct platform_driver zynq_qspi_driver = {
-	.probe	= zynq_qspi_probe,
-	.remove	= zynq_qspi_remove,
+	.probe = zynq_qspi_probe,
+	.remove = zynq_qspi_remove,
 	.driver = {
 		.name = DRIVER_NAME,
 		.owner = THIS_MODULE,
