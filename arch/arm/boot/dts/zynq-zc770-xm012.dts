@@ -254,7 +254,7 @@
 			ps7_nor_0: ps7-nor@e2000000 {
 				bank-width = <1>;
 				compatible = "cfi-flash";
-				reg = <0xe2000000 0x1000>;
+				reg = <0xe2000000 0x2000000>;
 				xlnx,sram-cycle-t0 = <0xb>;
 				xlnx,sram-cycle-t1 = <0xb>;
 				xlnx,sram-cycle-t2 = <0x4>;
