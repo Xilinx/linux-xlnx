@@ -651,20 +651,6 @@ static int zynq_qspi_probe(struct platform_device *pdev)
 		goto remove_master;
 	}
 
-	xqspi->irq = platform_get_irq(pdev, 0);
-	if (xqspi->irq < 0) {
-		ret = -ENXIO;
-		dev_err(&pdev->dev, "irq resource not found\n");
-		goto remove_master;
-	}
-	ret = devm_request_irq(&pdev->dev, xqspi->irq, zynq_qspi_irq,
-			       0, pdev->name, master);
-	if (ret != 0) {
-		ret = -ENXIO;
-		dev_err(&pdev->dev, "request_irq failed\n");
-		goto remove_master;
-	}
-
 	if (of_property_read_u32(pdev->dev.of_node, "is-dual", &xqspi->is_dual))
 		dev_warn(&pdev->dev, "couldn't determine configuration info "
 			 "about dual memories. defaulting to single memory\n");
@@ -698,6 +684,20 @@ static int zynq_qspi_probe(struct platform_device *pdev)
 	/* QSPI controller initializations */
 	zynq_qspi_init_hw(xqspi);
 
+	xqspi->irq = platform_get_irq(pdev, 0);
+	if (xqspi->irq <= 0) {
+		ret = -ENXIO;
+		dev_err(&pdev->dev, "irq resource not found\n");
+		goto remove_master;
+	}
+	ret = devm_request_irq(&pdev->dev, xqspi->irq, zynq_qspi_irq,
+			       0, pdev->name, master);
+	if (ret != 0) {
+		ret = -ENXIO;
+		dev_err(&pdev->dev, "request_irq failed\n");
+		goto remove_master;
+	}
+
 	ret = of_property_read_u32(pdev->dev.of_node, "num-cs",
 				   &num_cs);
 	if (ret < 0)
@@ -722,9 +722,6 @@ static int zynq_qspi_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "spi_register_master failed\n");
 		goto clk_dis_all;
 	}
-
-	dev_info(&pdev->dev, "at 0x%08X mapped to 0x%08X, irq=%d\n", res->start,
-		 (u32 __force)xqspi->regs, xqspi->irq);
 
 	return ret;
 
@@ -759,7 +756,6 @@ static int zynq_qspi_remove(struct platform_device *pdev)
 
 	spi_unregister_master(master);
 
-	dev_dbg(&pdev->dev, "remove succeeded\n");
 	return 0;
 }
 
