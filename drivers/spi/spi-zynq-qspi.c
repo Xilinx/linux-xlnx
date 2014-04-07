@@ -280,6 +280,47 @@ static void zynq_qspi_copy_write_data(struct zynq_qspi *xqspi, u32 *data,
 }
 
 /**
+ * zynq_prepare_transfer_hardware - Prepares hardware for transfer.
+ * @master:	Pointer to the spi_master structure which provides
+ *		information about the controller.
+ *
+ * This function enables SPI master controller.
+ *
+ * Return:	0 on success and error value on error
+ */
+static int zynq_prepare_transfer_hardware(struct spi_master *master)
+{
+	struct zynq_qspi *xqspi = spi_master_get_devdata(master);
+
+	clk_enable(xqspi->devclk);
+	clk_enable(xqspi->aperclk);
+	zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_ENABLE_OFFSET,
+		       ZYNQ_QSPI_ENABLE_ENABLE_MASK);
+
+	return 0;
+}
+
+/**
+ * zynq_unprepare_transfer_hardware - Relaxes hardware after transfer
+ * @master:	Pointer to the spi_master structure which provides
+ *		information about the controller.
+ *
+ * This function disables the SPI master controller.
+ *
+ * Return:	0 always
+ */
+static int zynq_unprepare_transfer_hardware(struct spi_master *master)
+{
+	struct zynq_qspi *xqspi = spi_master_get_devdata(master);
+
+	zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_ENABLE_OFFSET, 0);
+	clk_disable(xqspi->devclk);
+	clk_disable(xqspi->aperclk);
+
+	return 0;
+}
+
+/**
  * zynq_qspi_chipselect - Select or deselect the chip select line
  * @qspi:	Pointer to the spi_device structure
  * @is_high:	Select(0) or deselect (1) the chip select line
@@ -687,6 +728,8 @@ static int zynq_qspi_probe(struct platform_device *pdev)
 	master->setup = zynq_qspi_setup;
 	master->set_cs = zynq_qspi_chipselect;
 	master->transfer_one = zynq_qspi_start_transfer;
+	master->prepare_transfer_hardware = zynq_prepare_transfer_hardware;
+	master->unprepare_transfer_hardware = zynq_unprepare_transfer_hardware;
 	master->flags = SPI_MASTER_QUAD_MODE;
 
 	master->max_speed_hz = clk_get_rate(xqspi->devclk) / 2;
