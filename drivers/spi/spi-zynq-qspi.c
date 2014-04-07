@@ -397,7 +397,10 @@ static int zynq_qspi_setup_transfer(struct spi_device *qspi,
  */
 static int zynq_qspi_setup(struct spi_device *qspi)
 {
-	return 0;
+	if (qspi->master->busy)
+		return -EBUSY;
+
+	return zynq_qspi_setup_transfer(qspi, NULL);
 }
 
 /**
