@@ -117,12 +117,6 @@
  */
 #define MODEBITS			(SPI_CPOL | SPI_CPHA)
 
-/*
- * Macros for the QSPI controller read/write
- */
-#define zynq_qspi_read(addr)		readl_relaxed(addr)
-#define zynq_qspi_write(addr, val)	writel_relaxed((val), (addr))
-
 /**
  * struct zynq_qspi - Defines qspi driver instance
  * @regs:		Virtual address of the QSPI controller registers
@@ -148,6 +142,20 @@ struct zynq_qspi {
 	u32 is_dual;
 };
 
+/*
+ * Inline functions for the QSPI controller read/write
+ */
+static inline u32 zynq_qspi_read(struct zynq_qspi *xqspi, u32 offset)
+{
+	return readl_relaxed(xqspi->regs + offset);
+}
+
+static inline void zynq_qspi_write(struct zynq_qspi *xqspi, u32 offset,
+				   u32 val)
+{
+	writel_relaxed(val, xqspi->regs + offset);
+}
+
 /**
  * zynq_qspi_init_hw - Initialize the hardware
  * @xqspi:	Pointer to the zynq_qspi structure
@@ -172,19 +180,19 @@ static void zynq_qspi_init_hw(struct zynq_qspi *xqspi)
 {
 	u32 config_reg;
 
-	zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_ENABLE_OFFSET, 0);
-	zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_IDIS_OFFSET, 0x7F);
+	zynq_qspi_write(xqspi, ZYNQ_QSPI_ENABLE_OFFSET, 0);
+	zynq_qspi_write(xqspi, ZYNQ_QSPI_IDIS_OFFSET, 0x7F);
 
 	/* Disable linear mode as the boot loader may have used it */
-	zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_LINEAR_CFG_OFFSET, 0);
+	zynq_qspi_write(xqspi, ZYNQ_QSPI_LINEAR_CFG_OFFSET, 0);
 
 	/* Clear the RX FIFO */
-	while (zynq_qspi_read(xqspi->regs + ZYNQ_QSPI_STATUS_OFFSET) &
+	while (zynq_qspi_read(xqspi, ZYNQ_QSPI_STATUS_OFFSET) &
 			ZYNQ_QSPI_IXR_RXNEMTY_MASK)
-		zynq_qspi_read(xqspi->regs + ZYNQ_QSPI_RXD_OFFSET);
+		zynq_qspi_read(xqspi, ZYNQ_QSPI_RXD_OFFSET);
 
-	zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_STATUS_OFFSET , 0x7F);
-	config_reg = zynq_qspi_read(xqspi->regs + ZYNQ_QSPI_CONFIG_OFFSET);
+	zynq_qspi_write(xqspi, ZYNQ_QSPI_STATUS_OFFSET , 0x7F);
+	config_reg = zynq_qspi_read(xqspi, ZYNQ_QSPI_CONFIG_OFFSET);
 	config_reg &= ~(ZYNQ_QSPI_CONFIG_MSTREN_MASK |
 			ZYNQ_QSPI_CONFIG_CPOL_MASK |
 			ZYNQ_QSPI_CONFIG_CPHA_MASK |
@@ -196,25 +204,25 @@ static void zynq_qspi_init_hw(struct zynq_qspi *xqspi)
 			ZYNQ_QSPI_CONFIG_SSFORCE_MASK |
 			ZYNQ_QSPI_CONFIG_FWIDTH_MASK |
 			ZYNQ_QSPI_CONFIG_IFMODE_MASK);
-	zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_CONFIG_OFFSET, config_reg);
+	zynq_qspi_write(xqspi, ZYNQ_QSPI_CONFIG_OFFSET, config_reg);
 
-	zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_RX_THRESH_OFFSET,
+	zynq_qspi_write(xqspi, ZYNQ_QSPI_RX_THRESH_OFFSET,
 				ZYNQ_QSPI_RX_THRESHOLD);
 	if (xqspi->is_dual)
 		/* Enable two memories on seperate buses */
-		zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_LINEAR_CFG_OFFSET,
+		zynq_qspi_write(xqspi, ZYNQ_QSPI_LINEAR_CFG_OFFSET,
 			(ZYNQ_QSPI_LCFG_TWO_MEM_MASK |
 			 ZYNQ_QSPI_LCFG_SEP_BUS_MASK |
 			 (1 << ZYNQ_QSPI_LCFG_DUMMY_SHIFT) |
 			 ZYNQ_QSPI_FAST_READ_QOUT_CODE));
 #ifdef CONFIG_SPI_ZYNQ_QSPI_DUAL_STACKED
 	/* Enable two memories on shared bus */
-	zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_LINEAR_CFG_OFFSET,
+	zynq_qspi_write(xqspi, ZYNQ_QSPI_LINEAR_CFG_OFFSET,
 		 (ZYNQ_QSPI_LCFG_TWO_MEM_MASK |
 		 (1 << ZYNQ_QSPI_LCFG_DUMMY_SHIFT) |
 		 ZYNQ_QSPI_FAST_READ_QOUT_CODE));
 #endif
-	zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_ENABLE_OFFSET,
+	zynq_qspi_write(xqspi, ZYNQ_QSPI_ENABLE_OFFSET,
 			ZYNQ_QSPI_ENABLE_ENABLE_MASK);
 }
 
@@ -268,7 +276,7 @@ static int zynq_prepare_transfer_hardware(struct spi_master *master)
 
 	clk_enable(xqspi->devclk);
 	clk_enable(xqspi->aperclk);
-	zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_ENABLE_OFFSET,
+	zynq_qspi_write(xqspi, ZYNQ_QSPI_ENABLE_OFFSET,
 		       ZYNQ_QSPI_ENABLE_ENABLE_MASK);
 
 	return 0;
@@ -287,7 +295,7 @@ static int zynq_unprepare_transfer_hardware(struct spi_master *master)
 {
 	struct zynq_qspi *xqspi = spi_master_get_devdata(master);
 
-	zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_ENABLE_OFFSET, 0);
+	zynq_qspi_write(xqspi, ZYNQ_QSPI_ENABLE_OFFSET, 0);
 	clk_disable(xqspi->devclk);
 	clk_disable(xqspi->aperclk);
 
@@ -304,7 +312,7 @@ static void zynq_qspi_chipselect(struct spi_device *qspi, bool is_high)
 	struct zynq_qspi *xqspi = spi_master_get_devdata(qspi->master);
 	u32 config_reg;
 
-	config_reg = zynq_qspi_read(xqspi->regs + ZYNQ_QSPI_CONFIG_OFFSET);
+	config_reg = zynq_qspi_read(xqspi, ZYNQ_QSPI_CONFIG_OFFSET);
 
 	if (is_high) {
 		/* Deselect the slave */
@@ -317,7 +325,7 @@ static void zynq_qspi_chipselect(struct spi_device *qspi, bool is_high)
 				 ZYNQ_QSPI_CONFIG_SSCTRL_MASK);
 	}
 
-	zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_CONFIG_OFFSET, config_reg);
+	zynq_qspi_write(xqspi, ZYNQ_QSPI_CONFIG_OFFSET, config_reg);
 }
 
 /**
@@ -357,7 +365,7 @@ static int zynq_qspi_setup_transfer(struct spi_device *qspi,
 		(clk_get_rate(xqspi->devclk) / (2 << baud_rate_val)) > req_hz)
 		baud_rate_val++;
 
-	config_reg = zynq_qspi_read(xqspi->regs + ZYNQ_QSPI_CONFIG_OFFSET);
+	config_reg = zynq_qspi_read(xqspi, ZYNQ_QSPI_CONFIG_OFFSET);
 
 	/* Set the QSPI clock phase and clock polarity */
 	config_reg &= (~ZYNQ_QSPI_CONFIG_CPHA_MASK) &
@@ -370,7 +378,7 @@ static int zynq_qspi_setup_transfer(struct spi_device *qspi,
 	config_reg &= ~ZYNQ_QSPI_CONFIG_BDRATE_MASK;
 	config_reg |= (baud_rate_val << ZYNQ_QSPI_BAUD_DIV_SHIFT);
 
-	zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_CONFIG_OFFSET, config_reg);
+	zynq_qspi_write(xqspi, ZYNQ_QSPI_CONFIG_OFFSET, config_reg);
 
 	return 0;
 }
@@ -401,12 +409,12 @@ static void zynq_qspi_fill_tx_fifo(struct zynq_qspi *xqspi, u32 size)
 	for (fifocount = 0; (fifocount < size) &&
 			(xqspi->bytes_to_transfer >= 4); fifocount++) {
 		if (xqspi->txbuf) {
-			zynq_qspi_write(xqspi->regs +
+			zynq_qspi_write(xqspi,
 					ZYNQ_QSPI_TXD_00_00_OFFSET,
 						*((u32 *)xqspi->txbuf));
 			xqspi->txbuf += 4;
 		} else {
-			zynq_qspi_write(xqspi->regs +
+			zynq_qspi_write(xqspi,
 					ZYNQ_QSPI_TXD_00_00_OFFSET, 0x00);
 		}
 		xqspi->bytes_to_transfer -= 4;
@@ -434,8 +442,8 @@ static irqreturn_t zynq_qspi_irq(int irq, void *dev_id)
 	u32 rxcount;
 	u32 rxindex = 0;
 
-	intr_status = zynq_qspi_read(xqspi->regs + ZYNQ_QSPI_STATUS_OFFSET);
-	zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_STATUS_OFFSET , intr_status);
+	intr_status = zynq_qspi_read(xqspi, ZYNQ_QSPI_STATUS_OFFSET);
+	zynq_qspi_write(xqspi, ZYNQ_QSPI_STATUS_OFFSET , intr_status);
 
 	if ((intr_status & ZYNQ_QSPI_IXR_TXNFULL_MASK) ||
 		   (intr_status & ZYNQ_QSPI_IXR_RXNEMTY_MASK)) {
@@ -452,18 +460,18 @@ static irqreturn_t zynq_qspi_irq(int irq, void *dev_id)
 				(rxindex < ZYNQ_QSPI_RX_THRESHOLD)) {
 
 			if (xqspi->bytes_to_receive < 4 && !xqspi->is_dual) {
-				data = zynq_qspi_read(xqspi->regs +
+				data = zynq_qspi_read(xqspi,
 						ZYNQ_QSPI_RXD_OFFSET);
 				zynq_qspi_copy_read_data(xqspi, data,
 					xqspi->bytes_to_receive);
 			} else {
 				if (xqspi->rxbuf) {
 					(*(u32 *)xqspi->rxbuf) =
-					zynq_qspi_read(xqspi->regs +
+					zynq_qspi_read(xqspi,
 						ZYNQ_QSPI_RXD_OFFSET);
 					xqspi->rxbuf += 4;
 				} else {
-					data = zynq_qspi_read(xqspi->regs +
+					data = zynq_qspi_read(xqspi,
 							ZYNQ_QSPI_RXD_OFFSET);
 				}
 				xqspi->bytes_to_receive -= 4;
@@ -482,18 +490,18 @@ static irqreturn_t zynq_qspi_irq(int irq, void *dev_id)
 				zynq_qspi_copy_write_data(xqspi, &data,
 					xqspi->bytes_to_transfer);
 				if (xqspi->is_dual)
-					zynq_qspi_write(xqspi->regs +
+					zynq_qspi_write(xqspi,
 						ZYNQ_QSPI_TXD_00_00_OFFSET,
 							data);
 				else
-					zynq_qspi_write(xqspi->regs +
+					zynq_qspi_write(xqspi,
 						offset[tmp - 1], data);
 			}
 		} else {
 			/* If transfer and receive is completed then only send
 			 * complete signal */
 			if (!xqspi->bytes_to_receive) {
-				zynq_qspi_write(xqspi->regs +
+				zynq_qspi_write(xqspi,
 						ZYNQ_QSPI_IDIS_OFFSET,
 						ZYNQ_QSPI_IXR_ALL_MASK);
 				spi_finalize_current_transfer(master);
@@ -532,13 +540,13 @@ static int zynq_qspi_start_transfer(struct spi_master *master,
 
 	if (transfer->len < 4) {
 		zynq_qspi_copy_write_data(xqspi, &data, transfer->len);
-		zynq_qspi_write((xqspi->regs + ZYNQ_QSPI_TXD_00_01_OFFSET +
-				((transfer->len - 1) * 4)), data);
+		zynq_qspi_write(xqspi, ZYNQ_QSPI_TXD_00_01_OFFSET +
+				((transfer->len - 1) * 4), data);
 	} else {
 		zynq_qspi_fill_tx_fifo(xqspi, ZYNQ_QSPI_FIFO_DEPTH);
 	}
 
-	zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_IEN_OFFSET,
+	zynq_qspi_write(xqspi, ZYNQ_QSPI_IEN_OFFSET,
 			ZYNQ_QSPI_IXR_ALL_MASK);
 
 	return transfer->len;
@@ -733,7 +741,7 @@ static int zynq_qspi_remove(struct platform_device *pdev)
 	struct spi_master *master = platform_get_drvdata(pdev);
 	struct zynq_qspi *xqspi = spi_master_get_devdata(master);
 
-	zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_ENABLE_OFFSET, 0);
+	zynq_qspi_write(xqspi, ZYNQ_QSPI_ENABLE_OFFSET, 0);
 
 	clk_disable_unprepare(xqspi->devclk);
 	clk_disable_unprepare(xqspi->aperclk);
