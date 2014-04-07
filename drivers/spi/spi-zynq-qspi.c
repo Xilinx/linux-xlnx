@@ -690,6 +690,8 @@ static int zynq_qspi_probe(struct platform_device *pdev)
 
 	master->max_speed_hz = clk_get_rate(xqspi->devclk) / 2;
 	master->bits_per_word_mask = SPI_BPW_MASK(8);
+	master->mode_bits = SPI_CPOL | SPI_CPHA | SPI_RX_DUAL | SPI_RX_QUAD |
+			    SPI_TX_DUAL | SPI_TX_QUAD;
 
 	ret = spi_register_master(master);
 	if (ret) {
