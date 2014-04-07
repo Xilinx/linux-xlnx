@@ -503,9 +503,10 @@ static irqreturn_t zynq_qspi_irq(int irq, void *dev_id)
 				spi_finalize_current_transfer(master);
 			}
 		}
+		return IRQ_HANDLED;
 	}
 
-	return IRQ_HANDLED;
+	return IRQ_NONE;
 }
 
 /**
