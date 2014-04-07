@@ -437,8 +437,6 @@ static irqreturn_t zynq_qspi_irq(int irq, void *dev_id)
 
 	intr_status = zynq_qspi_read(xqspi->regs + ZYNQ_QSPI_STATUS_OFFSET);
 	zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_STATUS_OFFSET , intr_status);
-	zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_IDIS_OFFSET,
-			ZYNQ_QSPI_IXR_ALL_MASK);
 
 	if ((intr_status & ZYNQ_QSPI_IXR_TXNFULL_MASK) ||
 		   (intr_status & ZYNQ_QSPI_IXR_RXNEMTY_MASK)) {
@@ -494,18 +492,10 @@ static irqreturn_t zynq_qspi_irq(int irq, void *dev_id)
 					zynq_qspi_write(xqspi->regs +
 						offset[tmp - 1], data);
 			}
-			zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_IEN_OFFSET,
-					ZYNQ_QSPI_IXR_ALL_MASK);
 		} else {
 			/* If transfer and receive is completed then only send
 			 * complete signal */
-			if (xqspi->bytes_to_receive) {
-				/* There is still some data to be received.
-				   Enable Rx not empty interrupt */
-				zynq_qspi_write(xqspi->regs +
-						ZYNQ_QSPI_IEN_OFFSET,
-						ZYNQ_QSPI_IXR_ALL_MASK);
-			} else {
+			if (!xqspi->bytes_to_receive) {
 				zynq_qspi_write(xqspi->regs +
 						ZYNQ_QSPI_IDIS_OFFSET,
 						ZYNQ_QSPI_IXR_ALL_MASK);
