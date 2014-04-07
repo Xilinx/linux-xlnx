@@ -117,6 +117,9 @@
  */
 #define MODEBITS			(SPI_CPOL | SPI_CPHA)
 
+/* Default number of chip selects */
+#define ZYNQ_QSPI_DEFAULT_NUM_CS	1
+
 /**
  * struct zynq_qspi - Defines qspi driver instance
  * @regs:		Virtual address of the QSPI controller registers
@@ -624,6 +627,7 @@ static int zynq_qspi_probe(struct platform_device *pdev)
 	struct spi_master *master;
 	struct zynq_qspi *xqspi;
 	struct resource *res;
+	u32 num_cs;
 
 	master = spi_alloc_master(&pdev->dev, sizeof(*xqspi));
 	if (master == NULL)
@@ -687,12 +691,12 @@ static int zynq_qspi_probe(struct platform_device *pdev)
 	/* QSPI controller initializations */
 	zynq_qspi_init_hw(xqspi);
 
-	ret = of_property_read_u32(pdev->dev.of_node, "num-chip-select",
-				   (u32 *)&master->num_chipselect);
-	if (ret < 0) {
-		dev_err(&pdev->dev, "couldn't determine num-chip-select\n");
-		goto clk_dis_all;
-	}
+	ret = of_property_read_u32(pdev->dev.of_node, "num-cs",
+				   &num_cs);
+	if (ret < 0)
+		master->num_chipselect = ZYNQ_QSPI_DEFAULT_NUM_CS;
+	else
+		master->num_chipselect = num_cs;
 
 	master->setup = zynq_qspi_setup;
 	master->set_cs = zynq_qspi_chipselect;
