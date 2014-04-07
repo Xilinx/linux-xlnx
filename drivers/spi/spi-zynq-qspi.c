@@ -3,8 +3,6 @@
  *
  * Copyright (C) 2009 - 2014 Xilinx, Inc.
  *
- * based on Xilinx Zynq SPI Driver (spi-zynq.c)
- *
  * This program is free software; you can redistribute it and/or modify it under
  * the terms of the GNU General Public License version 2 as published by the
  * Free Software Foundation; either version 2 of the License, or (at your
@@ -22,14 +20,10 @@
 #include <linux/spi/spi.h>
 #include <linux/workqueue.h>
 
-/*
- * Name of this driver
- */
+/* Name of this driver */
 #define DRIVER_NAME			"zynq-qspi"
 
-/*
- * Register offset definitions
- */
+/* Register offset definitions */
 #define ZYNQ_QSPI_CONFIG_OFFSET		0x00 /* Configuration  Register, RW */
 #define ZYNQ_QSPI_STATUS_OFFSET		0x04 /* Interrupt Status Register, RO */
 #define ZYNQ_QSPI_IEN_OFFSET		0x08 /* Interrupt Enable Register, WO */
@@ -168,7 +162,7 @@ static inline void zynq_qspi_write(struct zynq_qspi *xqspi, u32 offset,
  * reset are
  *	- Master mode
  *	- Baud rate divisor is set to 2
- *	- Threshold value for TX FIFO not full interrupt is set to 1
+ *	- Tx thresold set to 1l Rx threshold set to 32
  *	- Flash memory interface mode enabled
  *	- Size of the word to be transferred as 8 bit
  * This function performs the following actions
@@ -192,7 +186,7 @@ static void zynq_qspi_init_hw(struct zynq_qspi *xqspi)
 
 	/* Clear the RX FIFO */
 	while (zynq_qspi_read(xqspi, ZYNQ_QSPI_STATUS_OFFSET) &
-			ZYNQ_QSPI_IXR_RXNEMTY_MASK)
+			      ZYNQ_QSPI_IXR_RXNEMTY_MASK)
 		zynq_qspi_read(xqspi, ZYNQ_QSPI_RXD_OFFSET);
 
 	zynq_qspi_write(xqspi, ZYNQ_QSPI_STATUS_OFFSET , 0x7F);
@@ -205,29 +199,29 @@ static void zynq_qspi_init_hw(struct zynq_qspi *xqspi)
 			ZYNQ_QSPI_CONFIG_MANSRTEN_MASK |
 			ZYNQ_QSPI_CONFIG_MANSRT_MASK);
 	config_reg |= (ZYNQ_QSPI_CONFIG_MSTREN_MASK |
-			ZYNQ_QSPI_CONFIG_SSFORCE_MASK |
-			ZYNQ_QSPI_CONFIG_FWIDTH_MASK |
-			ZYNQ_QSPI_CONFIG_IFMODE_MASK);
+		       ZYNQ_QSPI_CONFIG_SSFORCE_MASK |
+		       ZYNQ_QSPI_CONFIG_FWIDTH_MASK |
+		       ZYNQ_QSPI_CONFIG_IFMODE_MASK);
 	zynq_qspi_write(xqspi, ZYNQ_QSPI_CONFIG_OFFSET, config_reg);
 
 	zynq_qspi_write(xqspi, ZYNQ_QSPI_RX_THRESH_OFFSET,
-				ZYNQ_QSPI_RX_THRESHOLD);
+			ZYNQ_QSPI_RX_THRESHOLD);
 	zynq_qspi_write(xqspi, ZYNQ_QSPI_TX_THRESH_OFFSET,
 			ZYNQ_QSPI_TX_THRESHOLD);
 
 	if (xqspi->is_dual)
 		/* Enable two memories on seperate buses */
 		zynq_qspi_write(xqspi, ZYNQ_QSPI_LINEAR_CFG_OFFSET,
-			(ZYNQ_QSPI_LCFG_TWO_MEM_MASK |
-			 ZYNQ_QSPI_LCFG_SEP_BUS_MASK |
-			 (1 << ZYNQ_QSPI_LCFG_DUMMY_SHIFT) |
-			 ZYNQ_QSPI_FAST_READ_QOUT_CODE));
+				(ZYNQ_QSPI_LCFG_TWO_MEM_MASK |
+				ZYNQ_QSPI_LCFG_SEP_BUS_MASK |
+				(1 << ZYNQ_QSPI_LCFG_DUMMY_SHIFT) |
+				ZYNQ_QSPI_FAST_READ_QOUT_CODE));
 #ifdef CONFIG_SPI_ZYNQ_QSPI_DUAL_STACKED
 	/* Enable two memories on shared bus */
 	zynq_qspi_write(xqspi, ZYNQ_QSPI_LINEAR_CFG_OFFSET,
-		 (ZYNQ_QSPI_LCFG_TWO_MEM_MASK |
-		 (1 << ZYNQ_QSPI_LCFG_DUMMY_SHIFT) |
-		 ZYNQ_QSPI_FAST_READ_QOUT_CODE));
+			(ZYNQ_QSPI_LCFG_TWO_MEM_MASK |
+			(1 << ZYNQ_QSPI_LCFG_DUMMY_SHIFT) |
+			ZYNQ_QSPI_FAST_READ_QOUT_CODE));
 #endif
 	zynq_qspi_write(xqspi, ZYNQ_QSPI_ENABLE_OFFSET,
 			ZYNQ_QSPI_ENABLE_ENABLE_MASK);
@@ -257,7 +251,6 @@ static void zynq_qspi_copy_read_data(struct zynq_qspi *xqspi, u32 data, u8 size)
 static void zynq_qspi_copy_write_data(struct zynq_qspi *xqspi, u32 *data,
 				      u8 size)
 {
-
 	if (xqspi->txbuf) {
 		memcpy(data, xqspi->txbuf, size);
 		xqspi->txbuf += size;
@@ -275,7 +268,7 @@ static void zynq_qspi_copy_write_data(struct zynq_qspi *xqspi, u32 *data,
  *
  * This function enables SPI master controller.
  *
- * Return:	0 on success and error value on error
+ * Return:	Always 0
  */
 static int zynq_prepare_transfer_hardware(struct spi_master *master)
 {
@@ -284,7 +277,7 @@ static int zynq_prepare_transfer_hardware(struct spi_master *master)
 	clk_enable(xqspi->devclk);
 	clk_enable(xqspi->aperclk);
 	zynq_qspi_write(xqspi, ZYNQ_QSPI_ENABLE_OFFSET,
-		       ZYNQ_QSPI_ENABLE_ENABLE_MASK);
+			ZYNQ_QSPI_ENABLE_ENABLE_MASK);
 
 	return 0;
 }
@@ -296,7 +289,7 @@ static int zynq_prepare_transfer_hardware(struct spi_master *master)
  *
  * This function disables the SPI master controller.
  *
- * Return:	0 always
+ * Return:	Always 0
  */
 static int zynq_unprepare_transfer_hardware(struct spi_master *master)
 {
@@ -354,12 +347,10 @@ static void zynq_qspi_chipselect(struct spi_device *qspi, bool is_high)
  * controller.
  */
 static int zynq_qspi_setup_transfer(struct spi_device *qspi,
-		struct spi_transfer *transfer)
+				    struct spi_transfer *transfer)
 {
 	struct zynq_qspi *xqspi = spi_master_get_devdata(qspi->master);
-	u32 config_reg;
-	u32 req_hz;
-	u32 baud_rate_val = 0;
+	u32 config_reg, req_hz, baud_rate_val = 0;
 
 	if (transfer)
 		req_hz = transfer->speed_hz;
@@ -369,14 +360,14 @@ static int zynq_qspi_setup_transfer(struct spi_device *qspi,
 	/* Set the clock frequency */
 	/* If req_hz == 0, default to lowest speed */
 	while ((baud_rate_val < ZYNQ_QSPI_BAUD_DIV_MAX)  &&
-		(clk_get_rate(xqspi->devclk) / (2 << baud_rate_val)) > req_hz)
+	       (clk_get_rate(xqspi->devclk) / (2 << baud_rate_val)) > req_hz)
 		baud_rate_val++;
 
 	config_reg = zynq_qspi_read(xqspi, ZYNQ_QSPI_CONFIG_OFFSET);
 
 	/* Set the QSPI clock phase and clock polarity */
 	config_reg &= (~ZYNQ_QSPI_CONFIG_CPHA_MASK) &
-				(~ZYNQ_QSPI_CONFIG_CPOL_MASK);
+		      (~ZYNQ_QSPI_CONFIG_CPOL_MASK);
 	if (qspi->mode & SPI_CPHA)
 		config_reg |= ZYNQ_QSPI_CONFIG_CPHA_MASK;
 	if (qspi->mode & SPI_CPOL)
@@ -417,11 +408,11 @@ static void zynq_qspi_fill_tx_fifo(struct zynq_qspi *xqspi, u32 size)
 	u32 fifocount;
 
 	for (fifocount = 0; (fifocount < size) &&
-			(xqspi->bytes_to_transfer >= 4); fifocount++) {
+	     (xqspi->bytes_to_transfer >= 4); fifocount++) {
 		if (xqspi->txbuf) {
 			zynq_qspi_write(xqspi,
 					ZYNQ_QSPI_TXD_00_00_OFFSET,
-						*((u32 *)xqspi->txbuf));
+					*((u32 *)xqspi->txbuf));
 			xqspi->txbuf += 4;
 		} else {
 			zynq_qspi_write(xqspi,
@@ -440,26 +431,26 @@ static void zynq_qspi_fill_tx_fifo(struct zynq_qspi *xqspi, u32 size)
  * On TX empty interrupt this function reads the received data from RX FIFO and
  * fills the TX FIFO if there is any data remaining to be transferred.
  *
- * Return:	IRQ_HANDLED always
+ * Return:	IRQ_HANDLED when interrupt is handled; IRQ_NONE otherwise.
  */
 static irqreturn_t zynq_qspi_irq(int irq, void *dev_id)
 {
 	struct spi_master *master = dev_id;
 	struct zynq_qspi *xqspi = spi_master_get_devdata(master);
-	u32 intr_status;
+	u32 intr_status, rxcount, rxindex = 0;
 	u8 offset[3] = {ZYNQ_QSPI_TXD_00_01_OFFSET, ZYNQ_QSPI_TXD_00_10_OFFSET,
 			ZYNQ_QSPI_TXD_00_11_OFFSET};
-	u32 rxcount;
-	u32 rxindex = 0;
 
 	intr_status = zynq_qspi_read(xqspi, ZYNQ_QSPI_STATUS_OFFSET);
 	zynq_qspi_write(xqspi, ZYNQ_QSPI_STATUS_OFFSET , intr_status);
 
 	if ((intr_status & ZYNQ_QSPI_IXR_TXNFULL_MASK) ||
-		   (intr_status & ZYNQ_QSPI_IXR_RXNEMTY_MASK)) {
-		/* This bit is set when Tx FIFO has < THRESHOLD entries. We have
-		   the THRESHOLD value set to 1, so this bit indicates Tx FIFO
-		   is empty */
+	    (intr_status & ZYNQ_QSPI_IXR_RXNEMTY_MASK)) {
+		/*
+		 * This bit is set when Tx FIFO has < THRESHOLD entries.
+		 * We have the THRESHOLD value set to 1,
+		 * so this bit indicates Tx FIFO is empty.
+		 */
 		u32 data;
 
 		rxcount = xqspi->bytes_to_receive - xqspi->bytes_to_transfer;
@@ -467,18 +458,18 @@ static irqreturn_t zynq_qspi_irq(int irq, void *dev_id)
 
 		/* Read out the data from the RX FIFO */
 		while ((rxindex < rxcount) &&
-				(rxindex < ZYNQ_QSPI_RX_THRESHOLD)) {
+		       (rxindex < ZYNQ_QSPI_RX_THRESHOLD)) {
 
 			if (xqspi->bytes_to_receive < 4 && !xqspi->is_dual) {
 				data = zynq_qspi_read(xqspi,
-						ZYNQ_QSPI_RXD_OFFSET);
+						      ZYNQ_QSPI_RXD_OFFSET);
 				zynq_qspi_copy_read_data(xqspi, data,
 					xqspi->bytes_to_receive);
 			} else {
 				if (xqspi->rxbuf) {
 					(*(u32 *)xqspi->rxbuf) =
 					zynq_qspi_read(xqspi,
-						ZYNQ_QSPI_RXD_OFFSET);
+						       ZYNQ_QSPI_RXD_OFFSET);
 					xqspi->rxbuf += 4;
 				} else {
 					data = zynq_qspi_read(xqspi,
@@ -493,7 +484,7 @@ static irqreturn_t zynq_qspi_irq(int irq, void *dev_id)
 			if (xqspi->bytes_to_transfer >= 4) {
 				/* There is more data to send */
 				zynq_qspi_fill_tx_fifo(xqspi,
-						ZYNQ_QSPI_RX_THRESHOLD);
+						       ZYNQ_QSPI_RX_THRESHOLD);
 			} else {
 				int tmp;
 				tmp = xqspi->bytes_to_transfer;
@@ -508,8 +499,10 @@ static irqreturn_t zynq_qspi_irq(int irq, void *dev_id)
 						offset[tmp - 1], data);
 			}
 		} else {
-			/* If transfer and receive is completed then only send
-			 * complete signal */
+			/*
+			 * If transfer and receive is completed then only send
+			 * complete signal.
+			 */
 			if (!xqspi->bytes_to_receive) {
 				zynq_qspi_write(xqspi,
 						ZYNQ_QSPI_IDIS_OFFSET,
@@ -568,7 +561,7 @@ static int zynq_qspi_start_transfer(struct spi_master *master,
  *
  * This function stops the QSPI driver queue and disables the QSPI controller
  *
- * Return:	0 on success and error value on error
+ * Return:	Always 0
  */
 static int __maybe_unused zynq_qspi_suspend(struct device *_dev)
 {
