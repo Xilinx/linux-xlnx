@@ -370,12 +370,6 @@ static int zynq_qspi_setup_transfer(struct spi_device *qspi,
  */
 static int zynq_qspi_setup(struct spi_device *qspi)
 {
-	if (qspi->bits_per_word && qspi->bits_per_word != 8) {
-		dev_err(&qspi->dev, "%s, unsupported bits per word %u\n",
-			__func__, qspi->bits_per_word);
-		return -EINVAL;
-	}
-
 	return 0;
 }
 
@@ -696,6 +690,7 @@ static int zynq_qspi_probe(struct platform_device *pdev)
 	master->flags = SPI_MASTER_QUAD_MODE;
 
 	master->max_speed_hz = clk_get_rate(xqspi->devclk) / 2;
+	master->bits_per_word_mask = SPI_BPW_MASK(8);
 
 	ret = spi_register_master(master);
 	if (ret) {
