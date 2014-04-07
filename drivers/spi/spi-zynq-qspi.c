@@ -20,7 +20,6 @@
 #include <linux/of_address.h>
 #include <linux/platform_device.h>
 #include <linux/spi/spi.h>
-#include <linux/spinlock.h>
 #include <linux/workqueue.h>
 
 /*
@@ -192,7 +191,6 @@ struct zynq_qspi {
 	struct clk *aperclk;
 	int irq;
 	u32 speed_hz;
-	spinlock_t config_reg_lock;
 	const void *txbuf;
 	void *rxbuf;
 	int bytes_to_transfer;
@@ -387,8 +385,6 @@ static void zynq_qspi_chipselect(struct spi_device *qspi, bool is_high)
 {
 	struct zynq_qspi *xqspi = spi_master_get_devdata(qspi->master);
 	u32 config_reg;
-	unsigned long flags;
-	spin_lock_irqsave(&xqspi->config_reg_lock, flags);
 
 	config_reg = zynq_qspi_read(xqspi->regs + ZYNQ_QSPI_CONFIG_OFFSET);
 
@@ -404,8 +400,6 @@ static void zynq_qspi_chipselect(struct spi_device *qspi, bool is_high)
 	}
 
 	zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_CONFIG_OFFSET, config_reg);
-
-	spin_unlock_irqrestore(&xqspi->config_reg_lock, flags);
 }
 
 /**
@@ -433,7 +427,6 @@ static int zynq_qspi_setup_transfer(struct spi_device *qspi,
 	u32 config_reg;
 	u32 req_hz;
 	u32 baud_rate_val = 0;
-	unsigned long flags;
 	int update_baud = 0;
 
 	req_hz = (transfer) ? transfer->speed_hz : qspi->max_speed_hz;
@@ -448,8 +441,6 @@ static int zynq_qspi_setup_transfer(struct spi_device *qspi,
 		xqspi->speed_hz = req_hz;
 		update_baud = 1;
 	}
-
-	spin_lock_irqsave(&xqspi->config_reg_lock, flags);
 
 	config_reg = zynq_qspi_read(xqspi->regs + ZYNQ_QSPI_CONFIG_OFFSET);
 
@@ -467,8 +458,6 @@ static int zynq_qspi_setup_transfer(struct spi_device *qspi,
 	}
 
 	zynq_qspi_write(xqspi->regs + ZYNQ_QSPI_CONFIG_OFFSET, config_reg);
-
-	spin_unlock_irqrestore(&xqspi->config_reg_lock, flags);
 
 	dev_dbg(&qspi->dev, "%s, mode %d, %u bits/w, %u clock speed\n",
 		__func__, qspi->mode & MODEBITS, qspi->bits_per_word,
@@ -850,8 +839,6 @@ static int zynq_qspi_probe(struct platform_device *pdev)
 	master->flags = SPI_MASTER_QUAD_MODE;
 
 	xqspi->speed_hz = clk_get_rate(xqspi->devclk) / 2;
-
-	spin_lock_init(&xqspi->config_reg_lock);
 
 	ret = spi_register_master(master);
 	if (ret) {
