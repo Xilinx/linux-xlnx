@@ -276,7 +276,7 @@ static void __init zynq_clk_setup(struct device_node *np)
 	int ret;
 	struct clk *clk;
 	char *clk_name;
-	unsigned int fclk_enable;
+	unsigned int fclk_enable = 0;
 	const char *clk_output_name[clk_max];
 	const char *cpu_parents[4];
 	const char *periph_parents[4];
@@ -301,6 +301,8 @@ static void __init zynq_clk_setup(struct device_node *np)
 	periph_parents[1] = clk_output_name[iopll];
 	periph_parents[2] = clk_output_name[armpll];
 	periph_parents[3] = clk_output_name[ddrpll];
+
+	of_property_read_u32(np, "fclk-enable", &fclk_enable);
 
 	/* ps_clk */
 	ret = of_property_read_u32(np, "ps-clk-frequency", &tmp);

@@ -20,7 +20,7 @@
 #include "xylon_crtc.h"
 #include "xylon_irq.h"
 
-irqreturn_t xylon_drm_irq_handler(DRM_IRQ_ARGS)
+irqreturn_t xylon_drm_irq_handler(int irq, void *arg)
 {
 	struct drm_device *dev = (struct drm_device *)arg;
 	struct xylon_drm_device *xdev;

@@ -124,6 +124,8 @@ int snd_soc_dai_set_tristate(struct snd_soc_dai *dai, int tristate);
 int snd_soc_dai_digital_mute(struct snd_soc_dai *dai, int mute,
 			     int direction);
 
+int snd_soc_dai_is_dummy(struct snd_soc_dai *dai);
+
 struct snd_soc_dai_ops {
 	/*
 	 * DAI clocking configuration, all optional.
@@ -221,6 +223,8 @@ struct snd_soc_dai_driver {
 	struct snd_soc_pcm_stream capture;
 	struct snd_soc_pcm_stream playback;
 	unsigned int symmetric_rates:1;
+	unsigned int symmetric_channels:1;
+	unsigned int symmetric_samplebits:1;
 
 	/* probe ordering - for components with runtime dependencies */
 	int probe_order;
@@ -245,6 +249,8 @@ struct snd_soc_dai {
 	unsigned int capture_active:1;		/* stream is in use */
 	unsigned int playback_active:1;		/* stream is in use */
 	unsigned int symmetric_rates:1;
+	unsigned int symmetric_channels:1;
+	unsigned int symmetric_samplebits:1;
 	struct snd_pcm_runtime *runtime;
 	unsigned int active;
 	unsigned char probed:1;
@@ -259,6 +265,8 @@ struct snd_soc_dai {
 
 	/* Symmetry data - only valid if symmetry is being enforced */
 	unsigned int rate;
+	unsigned int channels;
+	unsigned int sample_bits;
 
 	/* parent platform/codec */
 	struct snd_soc_platform *platform;

@@ -246,7 +246,8 @@ static void __iomem *zynq_pm_remap_ocm(void)
 				__func__);
 			return NULL;
 		}
-		base = __arm_ioremap(pool_addr, zynq_sys_suspend_sz, MT_MEMORY);
+		base = __arm_ioremap(pool_addr, zynq_sys_suspend_sz,
+				     MT_MEMORY_RWX);
 		if (!base) {
 			pr_warn("%s: IOremap OCM pool failed\n", __func__);
 			return NULL;

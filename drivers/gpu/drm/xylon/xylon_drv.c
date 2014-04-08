@@ -312,7 +312,9 @@ static int xylon_drm_platform_probe(struct platform_device *pdev)
 
 static int xylon_drm_platform_remove(struct platform_device *pdev)
 {
-	drm_platform_exit(&xylon_drm_driver, pdev);
+	struct xylon_drm_device *xdev = platform_get_drvdata(pdev);
+
+	drm_put_dev(xdev->dev);
 
 	return 0;
 }
