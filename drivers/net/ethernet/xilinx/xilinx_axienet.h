@@ -9,7 +9,6 @@
 #define XILINX_AXIENET_H
 
 #include <linux/netdevice.h>
-#include <linux/of_irq.h>
 #include <linux/spinlock.h>
 #include <linux/interrupt.h>
 #include <linux/if_vlan.h>

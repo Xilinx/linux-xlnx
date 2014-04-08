@@ -1,7 +1,7 @@
 /*
  * Watchdog Device Driver for Xilinx axi/xps_timebase_wdt
  *
- * (C) Copyright 2013 Xilinx, Inc.
+ * (C) Copyright 2013 - 2014 Xilinx, Inc.
  * (C) Copyright 2011 (Alejandro Cabrera <aldaya@gmail.com>)
  *
  * This program is free software; you can redistribute it and/or
@@ -182,19 +182,18 @@ static int xilinx_wdt_probe(struct platform_device *pdev)
 		no_timeout = true;
 	}
 
-	/* FIXME this is weird */
 	rc = of_property_read_u32(pdev->dev.of_node, "xlnx,wdt-enable-once",
 				  &enable_once);
-	if (rc || enable_once) {
+	if (!rc && enable_once) {
 		dev_warn(&pdev->dev,
 			 "Parameter \"xlnx,wdt-enable-once\" not found\n");
 		watchdog_set_nowayout(xilinx_wdt_wdd, true);
 	}
 
-/*
- *  Twice of the 2^wdt_interval / freq  because the first wdt overflow is
- *  ignored (interrupt), reset is only generated at second wdt overflow
- */
+	/*
+	 * Twice of the 2^wdt_interval / freq  because the first wdt overflow is
+	 * ignored (interrupt), reset is only generated at second wdt overflow
+	 */
 	if (!no_timeout)
 		xilinx_wdt_wdd->timeout = 2 * ((1 << xilinx_wdt->wdt_interval) /
 					  pfreq);

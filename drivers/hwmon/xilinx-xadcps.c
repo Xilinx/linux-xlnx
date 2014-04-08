@@ -11,10 +11,6 @@
  * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
  * more details.
- *
- * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA
  */
 
 #include <linux/clk.h>
@@ -754,7 +750,7 @@ static int xadc_remove(struct platform_device *pdev)
 }
 
 static struct of_device_id xadcps_of_match[] = {
-	{ .compatible = "xlnx,ps7-xadc-1.00.a", },
+	{ .compatible = "xlnx,zynq-xadc-1.00.a", },
 	{ /* end of table */}
 };
 MODULE_DEVICE_TABLE(of, xadcps_of_match);

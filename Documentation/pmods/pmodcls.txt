@@ -1,0 +1,174 @@
+﻿PmodCLS
+========
+
+Copyright 2012, Digilent Inc.
+
+
+Description
+-----------
+
+The PmodCLS features an SPI-controlled monochrome LCD 16x2 Character Display,
+perfect for embedded applications requiring small, simple text output.
+
+The PmodCLS uses simple terminal-like display interface. It provides
+flexible communications using UART, SPI or TWI interface.
+
+This Linux character driver uses an SPI interface in order to configure the device,
+as well as to send the text to be displayed on the device.
+
+Commands are sent and characters are written to the display simply by sending
+characters over the communication link.
+
+
+The Reference Manual for PmodCLS display is available online at
+Digilent Inc. Website (www.digilentinc.com).
+
+
+Interface
+---------
+
+Signal     Description
+
+SDIN       SPI Data In (MOSI)
+SCLK       SPI Clock
+SS	   Slave Select
+
+
+Devicetree
+----------
+
+Required Properties:
+- compatible : Should be "dlgnt,pmodcls"
+- spi-bus-num :  Should specify the bus number for PmodCLS SPI controller.
+  This value cannot be shared by any other SPI controller present in the
+  device tree.
+- spi-sclk-gpio :  Should specify the GPIO for SCLK, see "gpios property" in
+  Documentation/devicetree/gpio.txt.
+- spi-sdin-gpio :  Should specify the GPIO for SDIN, see "gpios property" in
+  Documentation/devicetree/gpio.txt.
+
+Optional Properties:
+- spi-cs-gpio :  Should specify the GPIO for CS, see "gpios property" in
+  Documentation/devicetree/gpio.txt. If unspecified, CS is assumed to be
+  tied to ground.
+- spi-speed-hz : Should specify the spi speed (in Hz). If unspecified, spi
+  speed is assumed to be 625000 (625 kHz).
+
+Examples:
+
+	pmodcls {
+		compatible = "dglnt,pmodcls";
+		spi-bus-num = <0x3>;
+		spi-speed-hz = <625000>;
+		spi-sclk-gpio = <0x8 85 0>;
+		spi-sdin-gpio = <0x8 83 0>;
+		spi-cs-gpio = <0x8 82 0>;
+	};
+
+
+Configuration
+-------------
+
+The PmodCLS is located in the kernel configuration menu at
+Device Drivers -> Pmods -> PmodCLS. The driver can be built into the kernel
+by selecting (*) for it, or as a loadable module by selecting (M) for it.
+
+
+Device Nodes
+------------
+
+A char device node will be created for each PmodCLS device automatically.
+The name of the node is default to the one declared in the device tree.
+
+Instruction set
+-----------
+Instructions are sent using escape sequences. An escape sequence
+begins with ESC (character code 0x1B) followed by the left
+square bracket ‘[‘ , followed by 0 or more parameters separated by
+semicolons ‘;’ and ending with the command character.
+
+The commands are (as stated in the PmodCLS reference Manual):
+
+<pr>;<pc>H 	- set cursor position to <pr> row and <pc> col
+s 		- save cursor position
+u 		- restore saved cursor position
+j		- clear display and home cursor
+<ps>K 		- erase within line
+		0 = current position to end of line
+		1 = start of line to current position
+		2 = entire line
+<ps>N 		erase field in current line
+		<ps> = number of chars starting at current position
+<pn>@		- scroll left <pn> columns
+<pn>A		- scroll right <pn> columns
+* 		- reset; equivalent to cycling power of PmodCLS
+<ps>e 		- enable/disable display
+		0 = display off,
+		      backlight off
+		1 = display on,
+		      backlight off
+		2 = display off,
+		      backlight on
+		3 = display on,
+		      backlight on
+<ps>h 		- set display mode
+		0 = wrap line at 16 characters
+		1 = wrap line at 40 characters
+<ps>c		- set cursor mode
+		0 = cursor off
+		1 = cursor on,
+			blink off
+		2 = cursor on,
+			blink on
+<pn>a 		- save TWI address in EEPROM to <pn>
+<pn>b 		- save baud rate value in EEPROM to <pn>
+<pt>p 		- program character table into LCD
+<pt>t 		- save RAM character table to EEPROM
+<pt>l 		- load EEPROM character table to RAM
+<pn>;…<pn>;<ps>d- define user programmable character
+		 Be aware that after defining a user character you must
+		 program the character table into LCD (command 'p').
+<ps>m 		- save communication mode to EEPROM
+w 		- enable write to EEPROM
+<ps>n 		- save cursor mode to EEPROM
+<ps>o 		- save display mode to EEPROM
+
+Notations:
+<pr> 		row number (0 - 1)
+<pc> 		column number (0 – 39)
+<pn> 		numeric parameter
+		- decimal: 122 for ex.
+		- hex: 0x7A for ex.
+		- binary: 0b01111010 for ex.
+<ps> 		decimal selection parameter
+<pt> 		character table selector
+		(0 – 2 in EEPROM, 3 in RAM)
+
+
+Example of commands
+-----------
+
+- Set backlight on, display on
+echo -n -e "\x1B[3e" > /dev/pmodcls
+
+- Clear screen, cursor home
+echo -n -e "\x1B[j" > /dev/pmodcls
+
+- Position cursor (row 1, col 0)
+echo -n -e "\x1B[1;0H" > /dev/pmodcls
+
+- Display string
+echo -n -e "Digilent" > /dev/pmodcls
+
+- Display string on 2 rows (when current row is the first)
+echo -n -e "Hello\nDigilent" > /dev/pmodcls
+
+- Define user character 1 (in RAM)
+echo -n -e "\x1B[0;10;21;17;10;4;0;0;1d\x1B[3p" > /dev/pmodcls
+
+- Display user char 1
+echo -n -e "\x01" > /dev/pmodcls
+
+
+
+

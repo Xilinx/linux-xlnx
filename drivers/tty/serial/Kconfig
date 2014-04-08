@@ -709,7 +709,7 @@ config SERIAL_IP22_ZILOG_CONSOLE
 
 config SERIAL_SH_SCI
 	tristate "SuperH SCI(F) serial port support"
-	depends on HAVE_CLK && (SUPERH || ARCH_SHMOBILE)
+	depends on HAVE_CLK && (SUPERH || ARM || COMPILE_TEST)
 	select SERIAL_CORE
 
 config SERIAL_SH_SCI_NR_UARTS
@@ -1387,18 +1387,18 @@ config SERIAL_MXS_AUART_CONSOLE
 	  Enable a MXS AUART port to be the system console.
 
 config SERIAL_XILINX_PS_UART
-	tristate "Xilinx PS UART support"
+	tristate "Xilinx Zynq UART support"
 	depends on ARCH_ZYNQ
 	select SERIAL_CORE
 	help
-	  This driver supports the Xilinx PS UART port.
+	  This driver supports the Xilinx Zynq UART port.
 
 config SERIAL_XILINX_PS_UART_CONSOLE
-	bool "Xilinx PS UART console support"
+	bool "Xilinx Zynq UART console support"
 	depends on SERIAL_XILINX_PS_UART=y
 	select SERIAL_CORE_CONSOLE
 	help
-	  Enable a Xilinx PS UART port to be the system console.
+	  Enable a Xilinx Zynq UART port to be the system console.
 
 config SERIAL_AR933X
 	tristate "AR933X serial port support"
@@ -1512,6 +1512,7 @@ config SERIAL_FSL_LPUART_CONSOLE
 config SERIAL_ST_ASC
 	tristate "ST ASC serial port support"
 	select SERIAL_CORE
+	depends on ARM || COMPILE_TEST
 	help
 	  This driver is for the on-chip Asychronous Serial Controller on
 	  STMicroelectronics STi SoCs.

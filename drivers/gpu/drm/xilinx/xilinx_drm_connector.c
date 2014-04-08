@@ -19,11 +19,11 @@
 #include <drm/drm_crtc.h>
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_encoder_slave.h>
-#include <drm/i2c/adv7511.h>
 
 #include <linux/device.h>
 
 #include "xilinx_drm_drv.h"
+#include "xilinx_drm_connector.h"
 
 struct xilinx_drm_connector {
 	struct drm_connector base;

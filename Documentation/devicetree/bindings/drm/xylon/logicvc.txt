@@ -1,0 +1,91 @@
+Binding for Xylon configurable video controller logiCVC IP core
+
+Required properties:
+ - compatible: value must be "xylon,logicvc-4.00.a"
+ - reg: MMIO base address and size of the logiCVC IP core address space
+ - interrupts-parent: the phandle for interrupt controller
+ - interrupts: the interrupt number
+ - colorspace: video output colorspace
+      (0=RGB, 1=YUV 4:2:2, 2=YUV 4:4:4)
+ - interface: video output interface
+      (0=Parallel, 1=ITU656)
+ - pixel-stride: layer width in pixels
+      Common for all available logiCVC standard layers.
+
+ - layer_N: layer has its own configuration described with below properties,
+      where N is layer ID in range 0 - 4
+   - bits-per-pixel: layer bits per pixel configuration (16, 32)
+         Layer is configured to be used with specific pixel width in bits.
+         Pixels written to layer video memory must match in size to configured
+         bits per pixel value.
+   - format: layer format (0=RGB, 1=YUV)
+         Layer is configured to be used with specific color format.
+         Pixels written to layer video memory must match specified color format.
+   - transparency: layer transparency (0=Layer, 1=Pixel)
+         logiCVC layer can be configured to have transparency control on
+         layer or pixel level.
+         "Layer" mode enables controlling of layer transparency by changing
+         alpha value in single logiCVC register.
+         "Pixel" mode enables controlling of pixel transparency by changing
+         dedicated alpha bits of specific pixel in video memory.
+
+Optional properties:
+ - background-layer-bits-per-pixel: background layer bits per pixel (16, 32)
+      If omitted, last available layer is logiCVC standard layer, which has its
+      own video memory of specific size, color format and specified
+      bits per pixel.
+      If 16 or 32, last available layer is logiCVC background layer,
+      with only specified bits per pixel value.
+ - is-readable-regs: all logiCVC registers are available for reading
+      If omitted, only Interrupt Status, Power Control and IP Version registers
+      are available for reading.
+ - is-size-position: logiCVC functionality for controlling on screen layer size
+      and position is available
+      If omitted, functionality is not available.
+ - address: layer video memory address for layer_N where N is layer ID in
+      range 0 - 4
+      logiCVC can be configured to have layer video memory address hardcoded
+      as layer register reset value. This video memory is not part of the system
+      memory nor visible from the system. Still it is accessible by CPU and hw
+      devices.
+      If omitted, layer video memory address is set dynamically by
+      device driver.
+
+Example:
+
+	logicvc_0: logicvc@40000000 {
+		compatible = "xylon,logicvc-4.00.a";
+		reg = <0x40000000 0x6000>;
+		interrupt-parent = <&gic_0>;
+		interrupts = <0 59 4>;
+		background-layer-bits-per-pixel = <32>;
+		colorspace = <1>;
+		interface = <0>;
+		is-readable-regs;
+		is-size-position;
+		pixel-stride = <2048>;
+		layer_0 {
+			address = <0x30000000>;
+			bits-per-pixel = <16>;
+			format = <0>;
+			transparency = <0>;
+		};
+		layer_1 {
+			address = <0x30500000>;
+			bits-per-pixel = <32>;
+			format = <0>;
+			transparency = <0>;
+		};
+		layer_2 {
+			address = <0x30E00000>;
+			bits-per-pixel = <32>;
+			format = <0>;
+			transparency = <1>;
+		};
+		layer_3 {
+			address = <0x31700000>;
+			bits-per-pixel = <16>;
+			format = <1>;
+			transparency = <0>;
+		};
+	};

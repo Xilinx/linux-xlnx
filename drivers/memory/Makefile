@@ -9,4 +9,4 @@ obj-$(CONFIG_TI_EMIF)		+= emif.o
 obj-$(CONFIG_MVEBU_DEVBUS)	+= mvebu-devbus.o
 obj-$(CONFIG_TEGRA20_MC)	+= tegra20-mc.o
 obj-$(CONFIG_TEGRA30_MC)	+= tegra30-mc.o
-obj-$(CONFIG_ZYNQ_SMC)		+= zynq-smc.o
+obj-$(CONFIG_PL353_SMC)		+= pl353-smc.o

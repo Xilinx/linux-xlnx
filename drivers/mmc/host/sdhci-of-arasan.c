@@ -202,8 +202,6 @@ static int sdhci_arasan_remove(struct platform_device *pdev)
 
 static const struct of_device_id sdhci_arasan_of_match[] = {
 	{ .compatible = "arasan,sdhci-8.9a" },
-	{ .compatible = "xlnx,ps7-sdhci-1.00.a" },
-	{ .compatible = "generic-sdhci" },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, sdhci_arasan_of_match);

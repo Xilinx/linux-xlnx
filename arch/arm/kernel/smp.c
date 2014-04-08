@@ -25,6 +25,7 @@
 #include <linux/clockchips.h>
 #include <linux/completion.h>
 #include <linux/cpufreq.h>
+#include <linux/irq_work.h>
 
 #include <linux/atomic.h>
 #include <asm/smp.h>
@@ -66,6 +67,8 @@ enum ipi_msg_type {
 	IPI_CALL_FUNC,
 	IPI_CALL_FUNC_SINGLE,
 	IPI_CPU_STOP,
+	IPI_IRQ_WORK,
+	IPI_COMPLETION,
 };
 
 static DECLARE_COMPLETION(cpu_running);
@@ -80,7 +83,7 @@ void __init smp_set_ops(struct smp_operations *ops)
 
 static unsigned long get_arch_pgd(pgd_t *pgd)
 {
-	phys_addr_t pgdir = virt_to_phys(pgd);
+	phys_addr_t pgdir = virt_to_idmap(pgd);
 	BUG_ON(pgdir & ARCH_PGD_MASK);
 	return pgdir >> ARCH_PGD_SHIFT;
 }
@@ -448,12 +451,21 @@ void arch_send_call_function_single_ipi(int cpu)
 	smp_cross_call(cpumask_of(cpu), IPI_CALL_FUNC_SINGLE);
 }
 
+#ifdef CONFIG_IRQ_WORK
+void arch_irq_work_raise(void)
+{
+	if (is_smp())
+		smp_cross_call(cpumask_of(smp_processor_id()), IPI_IRQ_WORK);
+}
+#endif
+
 struct ipi {
 	const char *desc;
 	void (*handler)(void);
 };
 
 static void ipi_cpu_stop(void);
+static void ipi_complete(void);
 
 static struct ipi ipi_types[NR_IPI] = {
 #define S(x, s, f)	[x].desc = s, [x].handler = f
@@ -467,6 +479,10 @@ static struct ipi ipi_types[NR_IPI] = {
 	S(IPI_CALL_FUNC_SINGLE, "Single function call interrupts",
 				generic_smp_call_function_single_interrupt),
 	S(IPI_CPU_STOP, "CPU stop interrupts", ipi_cpu_stop),
+#ifdef CONFIG_IRQ_WORK
+	S(IPI_IRQ_WORK, "IRQ work interrupts", irq_work_run),
+#endif
+	S(IPI_COMPLETION, "completion interrupts", ipi_complete),
 };
 
 void show_ipi_list(struct seq_file *p, int prec)
@@ -526,6 +542,21 @@ static void ipi_cpu_stop(void)
 
 	while (1)
 		cpu_relax();
+}
+
+static DEFINE_PER_CPU(struct completion *, cpu_completion);
+
+int register_ipi_completion(struct completion *completion, int cpu)
+{
+	per_cpu(cpu_completion, cpu) = completion;
+	return IPI_COMPLETION;
+}
+
+static void ipi_complete(void)
+{
+	unsigned int cpu = smp_processor_id();
+
+	complete(per_cpu(cpu_completion, cpu));
 }
 
 /*

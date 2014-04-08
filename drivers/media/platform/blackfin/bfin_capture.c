@@ -422,7 +422,7 @@ static int bcap_start_streaming(struct vb2_queue *vq, unsigned int count)
 		return ret;
 	}
 
-	INIT_COMPLETION(bcap_dev->comp);
+	reinit_completion(&bcap_dev->comp);
 	bcap_dev->stop = false;
 	return 0;
 }
@@ -648,7 +648,9 @@ static int bcap_enum_dv_timings(struct file *file, void *priv,
 {
 	struct bcap_device *bcap_dev = video_drvdata(file);
 
-	return v4l2_subdev_call(bcap_dev->sd, video,
+	timings->pad = 0;
+
+	return v4l2_subdev_call(bcap_dev->sd, pad,
 			enum_dv_timings, timings);
 }
 

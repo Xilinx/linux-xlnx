@@ -150,21 +150,29 @@ make_space=y
 link_address=`${CROSS}size -x ${kernel} | grep ${kernel} | awk '{printf("0x%08x", and($4 + 0x0fffff, 0xfffe0000))}'`
 
 case "$platform" in
+of)
+    platformo="$object/of.o $object/epapr.o"
+    make_space=n
+    ;;
 pseries)
     platformo="$object/of.o $object/epapr.o"
     link_address='0x4000000'
+    make_space=n
     ;;
 maple)
     platformo="$object/of.o $object/epapr.o"
     link_address='0x400000'
+    make_space=n
     ;;
 pmac|chrp)
     platformo="$object/of.o $object/epapr.o"
+    make_space=n
     ;;
 coff)
     platformo="$object/crt0.o $object/of.o $object/epapr.o"
     lds=$object/zImage.coff.lds
     link_address='0x500000'
+    make_space=n
     pie=
     ;;
 miboot|uboot|uboot-fit)

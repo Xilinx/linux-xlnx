@@ -292,7 +292,7 @@ static int cdmatest_func(void *data)
 
 	set_user_nice(current, 10);
 
-	flags = DMA_CTRL_ACK | DMA_COMPL_SKIP_DEST_UNMAP | DMA_PREP_INTERRUPT;
+	flags = DMA_CTRL_ACK | DMA_PREP_INTERRUPT;
 
 	while (!kthread_should_stop()
 		&& !(iterations && total_tests >= iterations)) {
@@ -411,7 +411,7 @@ static int cdmatest_func(void *data)
 					thread_name, total_tests - 1);
 			failed_tests++;
 			continue;
-		} else if (status != DMA_SUCCESS) {
+		} else if (status != DMA_COMPLETE) {
 			pr_warn(
 			"%s: #%u: got completion callback, ",
 					thread_name, total_tests - 1);
@@ -422,7 +422,7 @@ static int cdmatest_func(void *data)
 			continue;
 		}
 
-		/* Unmap by myself (see DMA_COMPL_SKIP_DEST_UNMAP above) */
+		/* Unmap by myself */
 		for (i = 0; i < dst_cnt; i++)
 			dma_unmap_single(dev->dev, dma_dsts[i], test_buf_size,
 					DMA_MEM_TO_MEM);

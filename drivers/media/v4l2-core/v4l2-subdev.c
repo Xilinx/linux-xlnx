@@ -349,12 +349,83 @@ static long subdev_do_ioctl(struct file *file, unsigned int cmd, void *arg)
 			sd, pad, set_selection, subdev_fh, sel);
 	}
 
-	case VIDIOC_SUBDEV_G_EDID:
-		return v4l2_subdev_call(sd, pad, get_edid, arg);
+	case VIDIOC_G_EDID: {
+		struct v4l2_subdev_edid *edid = arg;
 
-	case VIDIOC_SUBDEV_S_EDID:
-		return v4l2_subdev_call(sd, pad, set_edid, arg);
+		if (edid->pad >= sd->entity.num_pads)
+			return -EINVAL;
+		if (edid->blocks && edid->edid == NULL)
+			return -EINVAL;
+
+		return v4l2_subdev_call(sd, pad, get_edid, edid);
+	}
+
+	case VIDIOC_S_EDID: {
+		struct v4l2_subdev_edid *edid = arg;
+
+		if (edid->pad >= sd->entity.num_pads)
+			return -EINVAL;
+		if (edid->blocks && edid->edid == NULL)
+			return -EINVAL;
+
+		return v4l2_subdev_call(sd, pad, set_edid, edid);
+	}
+
+	case VIDIOC_SUBDEV_DV_TIMINGS_CAP: {
+		struct v4l2_dv_timings_cap *cap = arg;
+
+		if (cap->pad >= sd->entity.num_pads)
+			return -EINVAL;
+
+		return v4l2_subdev_call(sd, pad, dv_timings_cap, cap);
+	}
+
+	case VIDIOC_SUBDEV_ENUM_DV_TIMINGS: {
+		struct v4l2_enum_dv_timings *dvt = arg;
+
+		if (dvt->pad >= sd->entity.num_pads)
+			return -EINVAL;
+
+		return v4l2_subdev_call(sd, pad, enum_dv_timings, dvt);
+	}
+
+	case VIDIOC_SUBDEV_QUERY_DV_TIMINGS:
+		return v4l2_subdev_call(sd, video, query_dv_timings, arg);
+
+	case VIDIOC_SUBDEV_G_DV_TIMINGS:
+		return v4l2_subdev_call(sd, video, g_dv_timings, arg);
+
+	case VIDIOC_SUBDEV_S_DV_TIMINGS:
+		return v4l2_subdev_call(sd, video, s_dv_timings, arg);
+
+	case VIDIOC_SUBDEV_G_ROUTING:
+		return v4l2_subdev_call(sd, pad, get_routing, arg);
+
+	case VIDIOC_SUBDEV_S_ROUTING: {
+		struct v4l2_subdev_routing *route = arg;
+		unsigned int i;
+
+		if (route->num_routes > sd->entity.num_pads)
+			return -EINVAL;
+
+		for (i = 0; i < route->num_routes; ++i) {
+			unsigned int sink = route->routes[i].sink;
+			unsigned int source = route->routes[i].source;
+			struct media_pad *pads = sd->entity.pads;
+
+			if (sink >= sd->entity.num_pads ||
+			    source >= sd->entity.num_pads)
+				return -EINVAL;
+
+			if (!(pads[sink].flags & MEDIA_PAD_FL_SINK) ||
+			    !(pads[source].flags & MEDIA_PAD_FL_SOURCE))
+				return -EINVAL;
+		}
+
+		return v4l2_subdev_call(sd, pad, set_routing, route);
+	}
 #endif
+
 	default:
 		return v4l2_subdev_call(sd, core, ioctl, cmd, arg);
 	}

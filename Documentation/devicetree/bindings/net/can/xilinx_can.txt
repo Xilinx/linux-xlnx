@@ -2,28 +2,32 @@ Xilinx Axi CAN/Zynq CANPS controller Device Tree Bindings
 ---------------------------------------------------------
 
 Required properties:
-- compatible		: Should be "xlnx,ps7-can" for Zynq CAN controllers and
-			  "xlnx,axi-can-1.00.a" for Axi CAN controllers.
+- compatible		: Should be "xlnx,zynq-can-1.0" for Zynq CAN
+			  controllers and "xlnx,axi-can-1.00.a" for Axi CAN
+			  controllers.
 - reg			: Physical base address and size of the Axi CAN/Zynq
 			  CANPS registers map.
 - interrupts		: Property with a value describing the interrupt
 			  number.
 - interrupt-parent	: Must be core interrupt controller
 - clock-names		: List of input clock names - "ref_clk", "aper_clk"
-			  (See clock bindings for details).
+			  (See clock bindings for details. Two clocks are
+			   required for Zynq CAN. For Axi CAN case it is one).
 - clocks		: Clock phandles (see clock bindings for details).
+- xlnx,can-tx-dpth	: Can Tx fifo depth (Required for Axi CAN).
+- xlnx,can-rx-dpth	: Can Rx fifo depth (Required for Axi CAN).
 
 
 Example:
 
 For Zynq CANPS Dts file:
-	ps7_can_0: ps7-can@e0008000 {
-			compatible = "xlnx,ps7-can";
+	zynq_can_0: zynq-can@e0008000 {
+			compatible = "xlnx,zynq-can-1.0";
 			clocks = <&clkc 19>, <&clkc 36>;
 			clock-names = "ref_clk", "aper_clk";
 			reg = <0xe0008000 0x1000>;
 			interrupts = <0 28 4>;
-			interrupt-parent = <&gic>;
+			interrupt-parent = <&intc>;
 		};
 For Axi CAN Dts file:
 	axi_can_0: axi-can@40000000 {
@@ -31,6 +35,8 @@ For Axi CAN Dts file:
 			clocks = <&clkc 0>;
 			clock-names = "ref_clk" ;
 			reg = <0x40000000 0x10000>;
-			interrupt-parent = <&ps7_scugic_0>;
+			interrupt-parent = <&intc>;
 			interrupts = <0 59 1>;
+			xlnx,can-tx-dpth = <0x40>;
+			xlnx,can-rx-dpth = <0x40>;
 		};

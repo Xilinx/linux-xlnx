@@ -1,5 +1,6 @@
 config MICROBLAZE
 	def_bool y
+	select ARCH_MIGHT_HAVE_PC_PARPORT
 	select HAVE_MEMBLOCK
 	select HAVE_MEMBLOCK_NODE_MAP
 	select HAVE_FUNCTION_TRACER
@@ -29,7 +30,9 @@ config MICROBLAZE
 	select MODULES_USE_ELF_RELA
 	select CLONE_BACKWARDS3
 	select CLKSRC_OF
+	select COMMON_CLK
 	select BUILDTIME_EXTABLE_SORT
+	select GENERIC_SCHED_CLOCK
 
 config SWAP
 	def_bool n

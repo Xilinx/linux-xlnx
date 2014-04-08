@@ -3,14 +3,14 @@ corrected and double bit ecc errors that are detected by the DDR ECC controller.
 ECC support for DDR is available in half-bus width(16 bit) configuration only.
 
 Required properties:
-- compatible: Should be "xlnx,ps7-ddrc" or "xlnx,ps7-ddrc-1.00.a"
+- compatible: Should be "xlnx,zynq-ddrc-1.0"
 - reg: Should contain DDR controller registers location and length.
 
 Example:
 ++++++++
 
-ps7_ddrc_0: ps7-ddrc@f8006000 {
-	compatible = "xlnx,ps7-ddrc-1.00.a", "xlnx,ps7-ddrc";
+zynq_ddrc_0: zynq-ddrc@f8006000 {
+	compatible = "xlnx,zynq-ddrc-1.0";
 	reg = <0xf8006000 0x1000>;
 };
 

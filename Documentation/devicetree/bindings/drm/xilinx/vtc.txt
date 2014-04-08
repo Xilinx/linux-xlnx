@@ -12,7 +12,7 @@ Example:
 
 	v_tc_0: v-tc@40010000 {
 		compatible = "xlnx,v-tc-5.01.a";
-		interrupt-parent = <&ps7_scugic_0>;
+		interrupt-parent = <&intc>;
 		interrupts = <0 54 4>;
 		reg = <0x40010000 0x10000>;
 	};

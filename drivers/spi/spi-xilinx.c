@@ -209,26 +209,11 @@ static void xilinx_spi_chipselect(struct spi_device *spi, int is_on)
 }
 
 /* spi_bitbang requires custom setup_transfer() to be defined if there is a
- * custom txrx_bufs(). We have nothing to setup here as the SPI IP block
- * supports 8 or 16 bits per word which cannot be changed in software.
- * SPI clock can't be changed in software either.
- * Check for correct bits per word. Chip select delay calculations could be
- * added here as soon as bitbang_work() can be made aware of the delay value.
+ * custom txrx_bufs().
  */
 static int xilinx_spi_setup_transfer(struct spi_device *spi,
 		struct spi_transfer *t)
 {
-	struct xilinx_spi *xspi = spi_master_get_devdata(spi->master);
-	u8 bits_per_word;
-
-	bits_per_word = (t && t->bits_per_word)
-			 ? t->bits_per_word : spi->bits_per_word;
-	if (bits_per_word != xspi->bits_per_word) {
-		dev_err(&spi->dev, "%s, unsupported bits_per_word=%d\n",
-			__func__, bits_per_word);
-		return -EINVAL;
-	}
-
 	return 0;
 }
 
@@ -258,7 +243,7 @@ static int xilinx_spi_txrx_bufs(struct spi_device *spi, struct spi_transfer *t)
 	xspi->tx_ptr = t->tx_buf;
 	xspi->rx_ptr = t->rx_buf;
 	xspi->remaining_bytes = t->len;
-	INIT_COMPLETION(xspi->done);
+	reinit_completion(&xspi->done);
 
 
 	/* Enable the transmit empty interrupt, which we use to determine
@@ -368,14 +353,11 @@ static int xilinx_spi_probe(struct platform_device *pdev)
 	if (!master)
 		return -ENODEV;
 
-	/* clear the dma_mask, to try to disable use of dma */
-	master->dev.dma_mask = 0;
-
 	/* the spi->mode bits understood by this driver: */
 	master->mode_bits = SPI_CPOL | SPI_CPHA;
 
 	xspi = spi_master_get_devdata(master);
-	xspi->bitbang.master = spi_master_get(master);
+	xspi->bitbang.master = master;
 	xspi->bitbang.chipselect = xilinx_spi_chipselect;
 	xspi->bitbang.setup_transfer = xilinx_spi_setup_transfer;
 	xspi->bitbang.txrx_bufs = xilinx_spi_txrx_bufs;
@@ -410,6 +392,7 @@ static int xilinx_spi_probe(struct platform_device *pdev)
 		xspi->write_fn = xspi_write32_be;
 	}
 
+	master->bits_per_word_mask = SPI_BPW_MASK(bits_per_word);
 	xspi->bits_per_word = bits_per_word;
 	if (xspi->bits_per_word == 8) {
 		xspi->tx_fn = xspi_tx8;

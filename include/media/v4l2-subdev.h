@@ -326,12 +326,8 @@ struct v4l2_subdev_video_ops {
 			struct v4l2_dv_timings *timings);
 	int (*g_dv_timings)(struct v4l2_subdev *sd,
 			struct v4l2_dv_timings *timings);
-	int (*enum_dv_timings)(struct v4l2_subdev *sd,
-			struct v4l2_enum_dv_timings *timings);
 	int (*query_dv_timings)(struct v4l2_subdev *sd,
 			struct v4l2_dv_timings *timings);
-	int (*dv_timings_cap)(struct v4l2_subdev *sd,
-			struct v4l2_dv_timings_cap *cap);
 	int (*enum_mbus_fmt)(struct v4l2_subdev *sd, unsigned int index,
 			     enum v4l2_mbus_pixelcode *code);
 	int (*enum_mbus_fsizes)(struct v4l2_subdev *sd,
@@ -503,8 +499,12 @@ struct v4l2_subdev_pad_ops {
 			     struct v4l2_subdev_selection *sel);
 	int (*set_selection)(struct v4l2_subdev *sd, struct v4l2_subdev_fh *fh,
 			     struct v4l2_subdev_selection *sel);
-	int (*get_edid)(struct v4l2_subdev *sd, struct v4l2_subdev_edid *edid);
-	int (*set_edid)(struct v4l2_subdev *sd, struct v4l2_subdev_edid *edid);
+	int (*get_edid)(struct v4l2_subdev *sd, struct v4l2_edid *edid);
+	int (*set_edid)(struct v4l2_subdev *sd, struct v4l2_edid *edid);
+	int (*dv_timings_cap)(struct v4l2_subdev *sd,
+			      struct v4l2_dv_timings_cap *cap);
+	int (*enum_dv_timings)(struct v4l2_subdev *sd,
+			       struct v4l2_enum_dv_timings *timings);
 #ifdef CONFIG_MEDIA_CONTROLLER
 	int (*link_validate)(struct v4l2_subdev *sd, struct media_link *link,
 			     struct v4l2_subdev_format *source_fmt,
@@ -514,6 +514,10 @@ struct v4l2_subdev_pad_ops {
 			      struct v4l2_mbus_frame_desc *fd);
 	int (*set_frame_desc)(struct v4l2_subdev *sd, unsigned int pad,
 			      struct v4l2_mbus_frame_desc *fd);
+	int (*get_routing)(struct v4l2_subdev *sd,
+			   struct v4l2_subdev_routing *route);
+	int (*set_routing)(struct v4l2_subdev *sd,
+			   struct v4l2_subdev_routing *route);
 };
 
 struct v4l2_subdev_ops {
@@ -559,6 +563,17 @@ struct v4l2_subdev_internal_ops {
 /* Set this flag if this subdev generates events. */
 #define V4L2_SUBDEV_FL_HAS_EVENTS		(1U << 3)
 
+struct regulator_bulk_data;
+
+struct v4l2_subdev_platform_data {
+	/* Optional regulators uset to power on/off the subdevice */
+	struct regulator_bulk_data *regulators;
+	int num_regulators;
+
+	/* Per-subdevice data, specific for a certain video host device */
+	void *host_priv;
+};
+
 /* Each instance of a subdev driver should create this struct, either
    stand-alone or embedded in a larger struct.
  */
@@ -592,6 +607,8 @@ struct v4l2_subdev {
 	struct v4l2_async_subdev *asd;
 	/* Pointer to the managing notifier. */
 	struct v4l2_async_notifier *notifier;
+	/* common part of subdevice platform data */
+	struct v4l2_subdev_platform_data *pdata;
 };
 
 #define media_entity_to_v4l2_subdev(ent) \
@@ -622,13 +639,13 @@ struct v4l2_subdev_fh {
 	v4l2_subdev_get_try_##fun_name(struct v4l2_subdev_fh *fh,	\
 				       unsigned int pad)		\
 	{								\
-		BUG_ON(unlikely(pad >= vdev_to_v4l2_subdev(		\
-					fh->vfh.vdev)->entity.num_pads)); \
+		BUG_ON(pad >= vdev_to_v4l2_subdev(			\
+					fh->vfh.vdev)->entity.num_pads); \
 		return &fh->pad[pad].field_name;			\
 	}
 
 __V4L2_SUBDEV_MK_GET_TRY(v4l2_mbus_framefmt, format, try_fmt)
-__V4L2_SUBDEV_MK_GET_TRY(v4l2_rect, crop, try_compose)
+__V4L2_SUBDEV_MK_GET_TRY(v4l2_rect, crop, try_crop)
 __V4L2_SUBDEV_MK_GET_TRY(v4l2_rect, compose, try_compose)
 #endif
 

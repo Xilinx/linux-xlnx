@@ -57,6 +57,7 @@ MODULE_LICENSE("GPL");
 #define ADV7511_MAX_HEIGHT 1200
 #define ADV7511_MIN_PIXELCLOCK 20000000
 #define ADV7511_MAX_PIXELCLOCK 225000000
+#define XYLON_LOGICVC_INTG
 
 /*
 **********************************************************************
@@ -82,7 +83,50 @@ struct adv7511_state_edid {
 	bool complete;
 };
 
+struct adv7511_in_params {
+	uint8_t input_id;
+	uint8_t input_style;
+	uint8_t input_color_depth;
+	uint8_t bit_justification;
+	uint8_t hsync_polarity;
+	uint8_t vsync_polarity;
+	uint8_t clock_delay;
+};
+
+struct adv7511_csc_coeff {
+	uint16_t a1;
+	uint16_t a2;
+	uint16_t a3;
+	uint16_t a4;
+	uint16_t b1;
+	uint16_t b2;
+	uint16_t b3;
+	uint16_t b4;
+	uint16_t c1;
+	uint16_t c2;
+	uint16_t c3;
+	uint16_t c4;
+};
+
+struct adv7511_out_params {
+	bool hdmi_mode;
+	uint8_t output_format;
+	uint8_t output_color_space;
+	uint8_t up_conversion;
+	uint8_t csc_enable;
+	uint8_t csc_scaling_factor;
+	struct adv7511_csc_coeff csc_coeff;
+};
+
+struct adv7511_config {
+	struct adv7511_in_params in_params;
+	struct adv7511_out_params out_params;
+	bool embedded_sync;
+	bool loaded;
+};
+
 struct adv7511_state {
+	struct adv7511_config cfg;
 	struct adv7511_platform_data pdata;
 	struct v4l2_subdev sd;
 	struct media_pad pad;
@@ -318,6 +362,9 @@ static void adv7511_set_IT_content_AVI_InfoFrame(struct v4l2_subdev *sd)
 
 static int adv7511_set_rgb_quantization_mode(struct v4l2_subdev *sd, struct v4l2_ctrl *ctrl)
 {
+#ifdef XYLON_LOGICVC_INTG
+	return 0;
+#endif
 	switch (ctrl->val) {
 	default:
 		return -EINVAL;
@@ -574,34 +621,6 @@ static int adv7511_isr(struct v4l2_subdev *sd, u32 status, bool *handled)
 	return 0;
 }
 
-static int adv7511_get_edid(struct v4l2_subdev *sd, struct v4l2_subdev_edid *edid)
-{
-	struct adv7511_state *state = get_adv7511_state(sd);
-
-	if (edid->pad != 0)
-		return -EINVAL;
-	if ((edid->blocks == 0) || (edid->blocks > 256))
-		return -EINVAL;
-	if (!edid->edid)
-		return -EINVAL;
-	if (!state->edid.segments) {
-		v4l2_dbg(1, debug, sd, "EDID segment 0 not found\n");
-		return -ENODATA;
-	}
-	if (edid->start_block >= state->edid.segments * 2)
-		return -E2BIG;
-	if ((edid->blocks + edid->start_block) >= state->edid.segments * 2)
-		edid->blocks = state->edid.segments * 2 - edid->start_block;
-
-	memcpy(edid->edid, &state->edid.data[edid->start_block * 128],
-			128 * edid->blocks);
-	return 0;
-}
-
-static const struct v4l2_subdev_pad_ops adv7511_pad_ops = {
-	.get_edid = adv7511_get_edid,
-};
-
 static const struct v4l2_subdev_core_ops adv7511_core_ops = {
 	.log_status = adv7511_log_status,
 #ifdef CONFIG_VIDEO_ADV_DEBUG
@@ -677,12 +696,18 @@ static int adv7511_g_dv_timings(struct v4l2_subdev *sd,
 static int adv7511_enum_dv_timings(struct v4l2_subdev *sd,
 				   struct v4l2_enum_dv_timings *timings)
 {
+	if (timings->pad != 0)
+		return -EINVAL;
+
 	return v4l2_enum_dv_timings_cap(timings, &adv7511_timings_cap, NULL, NULL);
 }
 
 static int adv7511_dv_timings_cap(struct v4l2_subdev *sd,
 				  struct v4l2_dv_timings_cap *cap)
 {
+	if (cap->pad != 0)
+		return -EINVAL;
+
 	*cap = adv7511_timings_cap;
 	return 0;
 }
@@ -691,8 +716,6 @@ static const struct v4l2_subdev_video_ops adv7511_video_ops = {
 	.s_stream = adv7511_s_stream,
 	.s_dv_timings = adv7511_s_dv_timings,
 	.g_dv_timings = adv7511_g_dv_timings,
-	.enum_dv_timings = adv7511_enum_dv_timings,
-	.dv_timings_cap = adv7511_dv_timings_cap,
 };
 
 /* ------------------------------ AUDIO OPS ------------------------------ */
@@ -774,6 +797,37 @@ static const struct v4l2_subdev_audio_ops adv7511_audio_ops = {
 	.s_routing = adv7511_s_routing,
 };
 
+/* ---------------------------- PAD OPS ------------------------------------- */
+
+static int adv7511_get_edid(struct v4l2_subdev *sd,
+			    struct v4l2_subdev_edid *edid)
+{
+	struct adv7511_state *state = get_adv7511_state(sd);
+
+	if (edid->pad != 0)
+		return -EINVAL;
+	if ((edid->blocks == 0) || (edid->blocks > 256))
+		return -EINVAL;
+	if (!state->edid.segments) {
+		v4l2_dbg(1, debug, sd, "EDID segment 0 not found\n");
+		return -ENODATA;
+	}
+	if (edid->start_block >= state->edid.segments * 2)
+		return -E2BIG;
+	if ((edid->blocks + edid->start_block) >= state->edid.segments * 2)
+		edid->blocks = state->edid.segments * 2 - edid->start_block;
+
+	memcpy(edid->edid, &state->edid.data[edid->start_block * 128],
+			128 * edid->blocks);
+	return 0;
+}
+
+static const struct v4l2_subdev_pad_ops adv7511_pad_ops = {
+	.get_edid = adv7511_get_edid,
+	.enum_dv_timings = adv7511_enum_dv_timings,
+	.dv_timings_cap = adv7511_dv_timings_cap,
+};
+
 /* --------------------- SUBDEV OPS --------------------------------------- */
 
 static const struct v4l2_subdev_ops adv7511_ops = {
@@ -849,34 +903,278 @@ static void adv7511_audio_setup(struct v4l2_subdev *sd)
 	adv7511_s_routing(sd, 0, 0, 0);
 }
 
+static void adv7511_set_ofdt_config(struct v4l2_subdev *sd)
+{
+	struct adv7511_state *state = get_adv7511_state(sd);
+	struct adv7511_config *config = &state->cfg;
+	uint8_t val_mask, val;
+	v4l2_dbg(1, debug, sd, "%s\n", __func__);
+
+	/* Input format */
+	val_mask = 0;
+	switch (config->in_params.input_id) {
+	default:
+	case 0:
+		val = 0x00;
+		break;
+	case 1:
+		val = 0x01;
+		break;
+	case 2:
+		val = 0x02;
+		config->embedded_sync = true;
+		break;
+	case 3:
+		val = 0x03;
+		break;
+	case 4:
+		val = 0x04;
+		config->embedded_sync = true;
+		break;
+	case 5:
+		val = 0x05;
+		break;
+	case 6:
+		val = 0x06;
+		break;
+	case 7:
+		val = 0x07;
+		break;
+	case 8:
+		val = 0x08;
+		config->embedded_sync = true;
+		break;
+	}
+	val_mask |= val;
+	adv7511_wr(sd, 0x15, val_mask);
+
+	/* Output format */
+	val_mask = 0;
+	switch (config->out_params.output_color_space) {
+	default:
+	case 0:
+		val = 0x00;
+		break;
+	case 1:
+		val = 0x01;
+		break;
+	}
+	val_mask |= (val << 0);
+	switch (config->in_params.input_style) {
+	case 1:
+		val = 0x02;
+		break;
+	case 2:
+		val = 0x01;
+		break;
+	case 3:
+		val = 0x03;
+		break;
+	default:
+		val = 0x00;
+		break;
+	}
+	val_mask |= (val << 2);
+	switch (config->in_params.input_color_depth) {
+	case 8:
+		val = 0x03;
+		break;
+	case 10:
+		val = 0x01;
+		break;
+	case 12:
+		val = 0x02;
+		break;
+	default:
+		val = 0x00;
+		break;
+	}
+	val_mask |= (val << 4);
+	switch (config->out_params.output_format) {
+	default:
+	case 0:
+		val = 0x00;
+		break;
+	case 1:
+		val = 0x01;
+		break;
+	}
+	val_mask |= (val << 7);
+	adv7511_wr(sd, 0x16, val_mask);
+
+	/* H, V sync polarity, interpolation style */
+	val_mask = 0;
+	switch (config->out_params.up_conversion) {
+	default:
+	case 0:
+		val = 0x00;
+		break;
+	case 1:
+		val = 0x01;
+		break;
+	}
+	val_mask |= (val << 2);
+	switch (config->in_params.hsync_polarity) {
+	default:
+	case 0:
+		val = 0x00;
+		break;
+	case 1:
+		val = 0x01;
+		break;
+	}
+	val_mask |= (val << 5);
+	switch (config->in_params.vsync_polarity) {
+	default:
+	case 0:
+		val = 0x00;
+		break;
+	case 1:
+		val = 0x01;
+		break;
+	}
+	val_mask |= (val << 6);
+	adv7511_wr(sd, 0x17, val_mask);
+
+	/* CSC mode, CSC coefficients */
+	if (config->out_params.csc_enable) {
+		switch (config->out_params.csc_scaling_factor) {
+		case 1:
+			val = 0x00;
+			break;
+		case 2:
+			val = 0x01;
+			break;
+		case 4:
+		default:
+			val = 0x02;
+			break;
+		}
+		adv7511_csc_conversion_mode(sd, val);
+		adv7511_csc_coeff(sd,
+				  config->out_params.csc_coeff.a1,
+				  config->out_params.csc_coeff.a2,
+				  config->out_params.csc_coeff.a3,
+				  config->out_params.csc_coeff.a4,
+				  config->out_params.csc_coeff.b1,
+				  config->out_params.csc_coeff.b2,
+				  config->out_params.csc_coeff.b3,
+				  config->out_params.csc_coeff.b4,
+				  config->out_params.csc_coeff.c1,
+				  config->out_params.csc_coeff.c2,
+				  config->out_params.csc_coeff.c3,
+				  config->out_params.csc_coeff.c4);
+		/* enable CSC */
+		adv7511_wr_and_or(sd, 0x18, 0x7f, 0x80);
+		/* AVI infoframe: Limited range RGB (16-235) */
+		adv7511_wr_and_or(sd, 0x57, 0xf3, 0x04);
+	}
+
+	/* AVI Info, Audio Info */
+	adv7511_wr_and_or(sd, 0x44, 0xe7, 0x10);
+
+	/* Video input justification */
+	val_mask = 0;
+	switch (config->in_params.bit_justification) {
+	default:
+	case 0:
+		val = 0x00;
+		break;
+	case 1:
+		val = 0x01;
+		break;
+	case 2:
+		val = 0x02;
+		break;
+	}
+	val_mask |= (val << 3);
+	adv7511_wr(sd, 0x48, val_mask);
+
+	/* Output format */
+	val_mask = 0x00;
+	if (config->out_params.output_format == 1) {
+		if (config->out_params.output_color_space == 0)
+			val_mask = 0x02;
+		else if (config->out_params.output_format == 1)
+			val_mask = 0x01;
+	}
+	val_mask <<= 5;
+	adv7511_wr(sd, 0x55, val_mask);
+
+	/* Picture format aspect ratio */
+	adv7511_wr(sd, 0x56, 0x28);
+
+	/* HDCP, Frame encryption, HDMI/DVI */
+	val_mask = 0x04;
+	if (config->out_params.hdmi_mode)
+		val_mask |= 0x02;
+	adv7511_wr(sd, 0xaf, val_mask);
+
+	/* Capture for input video clock */
+	val_mask = 0;
+	switch (config->in_params.clock_delay) {
+	default:
+	case 0:
+		val = 0x00;
+		break;
+	case 1:
+		val = 0x01;
+		break;
+	case 2:
+		val = 0x02;
+		break;
+	case 3:
+		val = 0x03;
+		break;
+	case 4:
+		val = 0x04;
+		break;
+	case 5:
+		val = 0x05;
+		break;
+	case 6:
+		val = 0x06;
+		break;
+	case 7:
+		val = 0x07;
+		break;
+	}
+	val_mask |= (val << 5);
+	adv7511_wr_and_or(sd, 0xba, 0x1f, val_mask);
+}
+
 /* Configure hdmi transmitter. */
 static void adv7511_setup(struct v4l2_subdev *sd)
 {
 	struct adv7511_state *state = get_adv7511_state(sd);
 	v4l2_dbg(1, debug, sd, "%s\n", __func__);
 
-	/* Input format: RGB 4:4:4 */
-	adv7511_wr_and_or(sd, 0x15, 0xf0, 0x0);
-	/* Output format: RGB 4:4:4 */
-	adv7511_wr_and_or(sd, 0x16, 0x7f, 0x0);
-	/* 1st order interpolation 4:2:2 -> 4:4:4 up conversion, Aspect ratio: 16:9 */
-	adv7511_wr_and_or(sd, 0x17, 0xf9, 0x06);
-	/* Disable pixel repetition */
-	adv7511_wr_and_or(sd, 0x3b, 0x9f, 0x0);
-	/* Disable CSC */
-	adv7511_wr_and_or(sd, 0x18, 0x7f, 0x0);
-	/* Output format: RGB 4:4:4, Active Format Information is valid,
-	 * underscanned */
-	adv7511_wr_and_or(sd, 0x55, 0x9c, 0x12);
-	/* AVI Info frame packet enable, Audio Info frame disable */
-	adv7511_wr_and_or(sd, 0x44, 0xe7, 0x10);
-	/* Colorimetry, Active format aspect ratio: same as picure. */
-	adv7511_wr(sd, 0x56, 0xa8);
-	/* No encryption */
-	adv7511_wr_and_or(sd, 0xaf, 0xed, 0x0);
+	if (!state->cfg.loaded) {
+		/* Input format: RGB 4:4:4 */
+		adv7511_wr_and_or(sd, 0x15, 0xf0, 0x0);
+		/* Output format: RGB 4:4:4 */
+		adv7511_wr_and_or(sd, 0x16, 0x7f, 0x0);
+		/* 1st order interpolation 4:2:2 -> 4:4:4 up conversion, Aspect ratio: 16:9 */
+		adv7511_wr_and_or(sd, 0x17, 0xf9, 0x06);
+		/* Disable pixel repetition */
+		adv7511_wr_and_or(sd, 0x3b, 0x9f, 0x0);
+		/* Disable CSC */
+		adv7511_wr_and_or(sd, 0x18, 0x7f, 0x0);
+		/* Output format: RGB 4:4:4, Active Format Information is valid,
+		* underscanned */
+		adv7511_wr_and_or(sd, 0x55, 0x9c, 0x12);
+		/* AVI Info frame packet enable, Audio Info frame disable */
+		adv7511_wr_and_or(sd, 0x44, 0xe7, 0x10);
+		/* Colorimetry, Active format aspect ratio: same as picure. */
+		adv7511_wr(sd, 0x56, 0xa8);
+		/* No encryption */
+		adv7511_wr_and_or(sd, 0xaf, 0xed, 0x0);
 
-	/* Positive clk edge capture for input video clock */
-	adv7511_wr_and_or(sd, 0xba, 0x1f, 0x60);
+		/* Positive clk edge capture for input video clock */
+		adv7511_wr_and_or(sd, 0xba, 0x1f, 0x60);
+	} else {
+		adv7511_set_ofdt_config(sd);
+	}
 
 	adv7511_audio_setup(sd);
 
@@ -1045,6 +1343,162 @@ static void adv7511_init_setup(struct v4l2_subdev *sd)
 	adv7511_s_audio_stream(sd, false);
 }
 
+
+static void adv7511_get_ofdt_config(struct i2c_client *client,
+	struct adv7511_state *state)
+{
+	struct device_node *dn = client->dev.of_node;
+	struct device_node *np;
+	struct adv7511_config *config = &state->cfg;
+	u32 const *prop;
+	int size;
+	bool vin_loaded, vout_loaded;
+
+	vin_loaded = vout_loaded = false;
+
+	prop = of_get_property(dn, "edid-addr", &size);
+	if (prop)
+		state->pdata.i2c_edid = (uint8_t)be32_to_cpup(prop);
+
+	np = of_find_node_by_name(dn, "video-input");
+	if (np) {
+		prop = of_get_property(np, "input-id", &size);
+		if (prop)
+			config->in_params.input_id =
+				(uint8_t)be32_to_cpup(prop);
+		prop = of_get_property(np, "input-style", &size);
+		if (prop)
+			config->in_params.input_style =
+				(uint8_t)be32_to_cpup(prop);
+		prop = of_get_property(np, "input-color-depth", &size);
+		if (prop)
+			config->in_params.input_color_depth =
+				(uint8_t)be32_to_cpup(prop);
+		prop = of_get_property(np, "bit-justification", &size);
+		if (prop)
+			config->in_params.bit_justification =
+				(uint8_t)be32_to_cpup(prop);
+		prop = of_get_property(np, "hsync-polarity", &size);
+		if (prop)
+			config->in_params.hsync_polarity =
+				(uint8_t)be32_to_cpup(prop);
+		prop = of_get_property(np, "vsync-polarity", &size);
+		if (prop)
+			config->in_params.vsync_polarity =
+				(uint8_t)be32_to_cpup(prop);
+		prop = of_get_property(np, "clock-delay", &size);
+		if (prop)
+			config->in_params.clock_delay =
+				(uint8_t)be32_to_cpup(prop);
+		vin_loaded = true;
+	} else {
+		pr_info("No video input configuration, using device default\n");
+	}
+
+	np = of_find_node_by_name(dn, "video-output");
+	if (np) {
+		prop = of_get_property(np, "hdmi-mode", &size);
+		if (prop) {
+			if (be32_to_cpup(prop) == 1)
+				config->out_params.hdmi_mode = true;
+		}
+		prop = of_get_property(np, "output-format", &size);
+		if (prop)
+			config->out_params.output_format =
+				(uint8_t)be32_to_cpup(prop);
+		prop = of_get_property(np, "output-color-space", &size);
+		if (prop)
+			config->out_params.output_color_space =
+				(uint8_t)be32_to_cpup(prop);
+		prop = of_get_property(np, "up-conversion", &size);
+		if (prop)
+			config->out_params.up_conversion =
+				(uint8_t)be32_to_cpup(prop);
+		prop = of_get_property(np, "csc-enable", &size);
+		if (prop)
+			config->out_params.csc_enable =
+				(uint8_t)be32_to_cpup(prop);
+		if (config->out_params.csc_enable) {
+			prop = of_get_property(np, "csc-scaling-factor", &size);
+			if (prop) {
+				config->out_params.csc_scaling_factor =
+					(uint8_t)be32_to_cpup(prop);
+			}
+			np = of_find_node_by_name(dn, "csc-coefficients");
+			if (np) {
+				prop = of_get_property(np, "a1", &size);
+				if (prop) {
+					config->out_params.csc_coeff.a1 =
+						(uint16_t)be32_to_cpup(prop);
+				}
+				prop = of_get_property(np, "a2", &size);
+				if (prop) {
+					config->out_params.csc_coeff.a2 =
+						(uint16_t)be32_to_cpup(prop);
+				}
+				prop = of_get_property(np, "a3", &size);
+				if (prop) {
+					config->out_params.csc_coeff.a3 =
+						(uint16_t)be32_to_cpup(prop);
+				}
+				prop = of_get_property(np, "a4", &size);
+				if (prop) {
+					config->out_params.csc_coeff.a4 =
+						(uint16_t)be32_to_cpup(prop);
+				}
+				prop = of_get_property(np, "b1", &size);
+				if (prop) {
+					config->out_params.csc_coeff.b1 =
+						(uint16_t)be32_to_cpup(prop);
+				}
+				prop = of_get_property(np, "b2", &size);
+				if (prop) {
+					config->out_params.csc_coeff.b2 =
+						(uint16_t)be32_to_cpup(prop);
+				}
+				prop = of_get_property(np, "b3", &size);
+				if (prop) {
+					config->out_params.csc_coeff.b3 =
+						(uint16_t)be32_to_cpup(prop);
+				}
+				prop = of_get_property(np, "b4", &size);
+				if (prop) {
+					config->out_params.csc_coeff.b4 =
+						(uint16_t)be32_to_cpup(prop);
+				}
+				prop = of_get_property(np, "c1", &size);
+				if (prop) {
+					config->out_params.csc_coeff.c1 =
+						(uint16_t)be32_to_cpup(prop);
+				}
+				prop = of_get_property(np, "c2", &size);
+				if (prop) {
+					config->out_params.csc_coeff.c2 =
+						(uint16_t)be32_to_cpup(prop);
+				}
+				prop = of_get_property(np, "c3", &size);
+				if (prop) {
+					config->out_params.csc_coeff.c3 =
+						(uint16_t)be32_to_cpup(prop);
+				}
+				prop = of_get_property(np, "c4", &size);
+				if (prop) {
+					config->out_params.csc_coeff.c4 =
+						(uint16_t)be32_to_cpup(prop);
+				}
+			} else {
+				pr_info("No CSC coefficients, using default\n");
+			}
+		}
+		vout_loaded = true;
+	} else {
+		pr_info("No video output configuration, using device default\n");
+	}
+
+	if (vin_loaded && vout_loaded)
+		config->loaded = true;
+}
+
 struct v4l2_subdev *adv7511_subdev(struct v4l2_subdev *sd)
 {
 	static struct v4l2_subdev *subdev;
@@ -1073,12 +1527,16 @@ static int adv7511_probe(struct i2c_client *client, const struct i2c_device_id *
 	if (!state)
 		return -ENOMEM;
 
-	/* Platform data */
-	if (!pdata) {
-		v4l_err(client, "No platform data!\n");
-		return -ENODEV;
+	if (client->dev.of_node) {
+		adv7511_get_ofdt_config(client, state);
+	} else {
+		/* Platform data */
+		if (!pdata) {
+			v4l_err(client, "No platform data!\n");
+			return -ENODEV;
+		}
+		memcpy(&state->pdata, pdata, sizeof(state->pdata));
 	}
-	memcpy(&state->pdata, pdata, sizeof(state->pdata));
 
 	sd = &state->sd;
 
@@ -1086,7 +1544,7 @@ static int adv7511_probe(struct i2c_client *client, const struct i2c_device_id *
 			 client->addr << 1);
 
 	v4l2_i2c_subdev_init(sd, client, &adv7511_ops);
-
+	adv7511_subdev(sd);
 	hdl = &state->hdl;
 	v4l2_ctrl_handler_init(hdl, 10);
 	/* add in ascending ID order */
@@ -1149,10 +1607,13 @@ static int adv7511_probe(struct i2c_client *client, const struct i2c_device_id *
 
 	INIT_DELAYED_WORK(&state->edid_handler, adv7511_edid_handler);
 
+#ifndef XYLON_LOGICVC_INTG
 	adv7511_init_setup(sd);
+#endif
 	adv7511_set_isr(sd, true);
+#ifndef XYLON_LOGICVC_INTG
 	adv7511_check_monitor_present_status(sd);
-
+#endif
 	v4l2_info(sd, "%s found @ 0x%x (%s)\n", client->name,
 			  client->addr << 1, client->adapter->name);
 	return 0;

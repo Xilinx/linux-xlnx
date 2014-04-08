@@ -1723,7 +1723,9 @@ vpif_enum_dv_timings(struct file *file, void *priv,
 	struct channel_obj *ch = fh->channel;
 	int ret;
 
-	ret = v4l2_subdev_call(ch->sd, video, enum_dv_timings, timings);
+	timings->pad = 0;
+
+	ret = v4l2_subdev_call(ch->sd, pad, enum_dv_timings, timings);
 	if (ret == -ENOIOCTLCMD || ret == -ENODEV)
 		return -EINVAL;
 	return ret;
@@ -2154,7 +2156,7 @@ static __init int vpif_probe(struct platform_device *pdev)
 
 			if (!vpif_obj.sd[i]) {
 				vpif_err("Error registering v4l2 subdevice\n");
-				err = -ENOMEM;
+				err = -ENODEV;
 				goto probe_subdev_out;
 			}
 			v4l2_info(&vpif_obj.v4l2_dev,

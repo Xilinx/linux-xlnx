@@ -29,13 +29,13 @@
 #include "xvdma.h"
 
 
-struct xvdma_dev *xvdma_dev_info[MAX_DEVICES + 1];
+static struct xvdma_dev *xvdma_dev_info[MAX_DEVICES + 1];
 static u64 dma_mask = 0xFFFFFFFFUL;
-struct chan_buf chan_buf[MAX_FRAMES];
-u32 num_devices;
-struct completion cmp;
+static struct chan_buf chan_buf[MAX_FRAMES];
+static u32 num_devices;
+static struct completion cmp;
 
-void xvdma_get_dev_info(u32 device_id, struct xvdma_dev *dev)
+static void xvdma_get_dev_info(u32 device_id, struct xvdma_dev *dev)
 {
 	int i;
 
@@ -79,7 +79,7 @@ static long xvdma_ioctl(struct file *file,
 			return -EFAULT;
 
 		devices = num_devices;
-		 if (copy_to_user((u32 *)arg,
+		 if (copy_to_user((u32 __user *)arg,
 			&devices, sizeof(u32)))
 			return -EFAULT;
 		break;
@@ -93,7 +93,7 @@ static long xvdma_ioctl(struct file *file,
 
 		xvdma_get_dev_info(xvdma_dev.device_id, &xvdma_dev);
 
-		if (copy_to_user((struct xvdma_dev *)arg,
+		if (copy_to_user((struct xvdma_dev __user *)arg,
 			&xvdma_dev, sizeof(struct xvdma_dev)))
 			return -EFAULT;
 		break;
@@ -152,7 +152,7 @@ static bool xvdma_filter(struct dma_chan *chan, void *param)
 	return false;
 }
 
-void vdma_sync_callback(void *completion)
+static void vdma_sync_callback(void *completion)
 {
 	complete(completion);
 }
@@ -202,8 +202,7 @@ void xvdma_prep_slave_sg(struct xvdma_buf_info *buf_info)
 	device_id = buf_info->device_id;
 
 	if (chan) {
-		flags = DMA_CTRL_ACK | DMA_COMPL_SKIP_DEST_UNMAP
-			| DMA_PREP_INTERRUPT;
+		flags = DMA_CTRL_ACK | DMA_PREP_INTERRUPT;
 
 		if (buf_info->fixed_buffer) {
 			chan_dev = chan->device;
@@ -273,7 +272,7 @@ void xvdma_device_control(struct xvdma_chan_cfg *chan_cfg)
 	}
 }
 
-void xvdma_add_dev_info(struct dma_chan *tx_chan,
+static void xvdma_add_dev_info(struct dma_chan *tx_chan,
 				struct dma_chan *rx_chan)
 {
 	static u32 i;
@@ -288,7 +287,7 @@ void xvdma_add_dev_info(struct dma_chan *tx_chan,
 	i++;
 }
 
-void xvdma_scan_channels(void)
+static void xvdma_scan_channels(void)
 {
 	dma_cap_mask_t mask;
 	u32 match_tx, match_rx;
@@ -317,7 +316,7 @@ void xvdma_scan_channels(void)
 	}
 }
 
-void xvdma_release_channels(void)
+static void xvdma_release_channels(void)
 {
 	int i;
 

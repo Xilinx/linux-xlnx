@@ -18,6 +18,7 @@
 #define __MACH_ZYNQ_COMMON_H__
 
 extern int zynq_slcr_init(void);
+extern int zynq_early_slcr_init(void);
 extern void zynq_slcr_system_reset(void);
 extern void zynq_slcr_cpu_stop(int cpu);
 extern void zynq_slcr_cpu_start(int cpu);
@@ -32,9 +33,6 @@ extern char zynq_secondary_trampoline_end;
 extern int zynq_cpun_start(u32 address, int cpu);
 extern struct smp_operations zynq_smp_ops __initdata;
 #endif
-
-extern void zynq_slcr_write(u32 val, u32 offset);
-extern u32 zynq_slcr_read(u32 offset);
 
 extern void zynq_slcr_init_preload_fpga(void);
 extern void zynq_slcr_init_postload_fpga(void);

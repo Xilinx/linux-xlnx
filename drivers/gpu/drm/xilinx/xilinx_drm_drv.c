@@ -54,20 +54,22 @@ struct xilinx_drm_private {
 /**
  * struct xilinx_video_format_desc - Xilinx Video IP video format description
  * @name: Xilinx video format name
+ * @bpp: bits per pixel
  * @xilinx_format: xilinx format code
  * @drm_format: drm format code
  */
 struct xilinx_video_format_desc {
 	const char *name;
+	unsigned int bpp;
 	unsigned int xilinx_format;
 	uint32_t drm_format;
 };
 
 static const struct xilinx_video_format_desc xilinx_video_formats[] = {
-	{ "yuv422", XILINX_VIDEO_FORMAT_YUV422, DRM_FORMAT_YUV422 },
-	{ "yuv444", XILINX_VIDEO_FORMAT_YUV444, DRM_FORMAT_YUV444 },
-	{ "xrgb888", XILINX_VIDEO_FORMAT_RGB, DRM_FORMAT_XRGB8888 },
-	{ "yuv420", XILINX_VIDEO_FORMAT_YUV420, DRM_FORMAT_YUV420 },
+	{ "yuv422", 16, XILINX_VIDEO_FORMAT_YUV422, DRM_FORMAT_YUV422 },
+	{ "yuv444", 24, XILINX_VIDEO_FORMAT_YUV444, DRM_FORMAT_YUV444 },
+	{ "xrgb888", 32, XILINX_VIDEO_FORMAT_RGB, DRM_FORMAT_XRGB8888 },
+	{ "yuv420", 16, XILINX_VIDEO_FORMAT_YUV420, DRM_FORMAT_YUV420 },
 };
 
 /* create a fb */
@@ -173,11 +175,27 @@ int xilinx_drm_format_by_name(const char *name, uint32_t *drm_format)
 	return -EINVAL;
 }
 
+/* get bpp of given format */
+static unsigned int xilinx_drm_format_bpp(uint32_t drm_format)
+{
+	const struct xilinx_video_format_desc *format;
+	unsigned int i;
+
+	for (i = 0; i < ARRAY_SIZE(xilinx_video_formats); i++) {
+		format = &xilinx_video_formats[i];
+		if (format->drm_format == drm_format)
+			return format->bpp;
+	}
+
+	return 0;
+}
+
 /* load xilinx drm */
 static int xilinx_drm_load(struct drm_device *drm, unsigned long flags)
 {
 	struct xilinx_drm_private *private;
 	struct platform_device *pdev = drm->platformdev;
+	unsigned int bpp;
 	int ret;
 
 	private = devm_kzalloc(drm->dev, sizeof(*private), GFP_KERNEL);
@@ -223,7 +241,8 @@ static int xilinx_drm_load(struct drm_device *drm, unsigned long flags)
 	drm->vblank_disable_allowed = 1;
 
 	/* initialize xilinx cma framebuffer */
-	private->fbdev = drm_fbdev_cma_init(drm, 32, 1, 1);
+	bpp = xilinx_drm_format_bpp(xilinx_drm_crtc_get_format(private->crtc));
+	private->fbdev = drm_fbdev_cma_init(drm, bpp, 1, 1);
 	if (IS_ERR(private->fbdev)) {
 		DRM_ERROR("failed to initialize drm cma fbdev\n");
 		ret = PTR_ERR(private->fbdev);
@@ -288,6 +307,8 @@ static void xilinx_drm_preclose(struct drm_device *drm, struct drm_file *file)
 static void xilinx_drm_lastclose(struct drm_device *drm)
 {
 	struct xilinx_drm_private *private = drm->dev_private;
+
+	xilinx_drm_crtc_restore(private->crtc);
 
 	drm_fbdev_cma_restore_mode(private->fbdev);
 }

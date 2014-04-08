@@ -1,7 +1,8 @@
 #
 # USB peripheral controller drivers
 #
-ccflags-$(CONFIG_USB_GADGET_DEBUG) := -DDEBUG
+ccflags-$(CONFIG_USB_GADGET_DEBUG)	:= -DDEBUG
+ccflags-$(CONFIG_USB_GADGET_VERBOSE)	+= -DVERBOSE_DEBUG
 
 obj-$(CONFIG_USB_GADGET)	+= udc-core.o
 obj-$(CONFIG_USB_LIBCOMPOSITE)	+= libcomposite.o
@@ -32,10 +33,10 @@ obj-$(CONFIG_USB_LPC32XX)	+= lpc32xx_udc.o
 obj-$(CONFIG_USB_EG20T)		+= pch_udc.o
 obj-$(CONFIG_USB_MV_UDC)	+= mv_udc.o
 mv_udc-y			:= mv_udc_core.o
-obj-$(CONFIG_USB_XUSBPS)	+= xilinx_usbps_udc.o
 obj-$(CONFIG_USB_FUSB300)	+= fusb300_udc.o
 obj-$(CONFIG_USB_FOTG210_UDC)	+= fotg210-udc.o
 obj-$(CONFIG_USB_MV_U3D)	+= mv_u3d_core.o
+obj-$(CONFIG_USB_ZYNQ)		+= zynq_udc.o
 
 # USB Functions
 usb_f_acm-y			:= f_acm.o
@@ -62,6 +63,8 @@ usb_f_ecm_subset-y		:= f_subset.o
 obj-$(CONFIG_USB_F_SUBSET)	+= usb_f_ecm_subset.o
 usb_f_rndis-y			:= f_rndis.o
 obj-$(CONFIG_USB_F_RNDIS)	+= usb_f_rndis.o
+usb_f_mass_storage-y		:= f_mass_storage.o storage_common.o
+obj-$(CONFIG_USB_F_MASS_STORAGE)+= usb_f_mass_storage.o
 
 #
 # USB gadget drivers

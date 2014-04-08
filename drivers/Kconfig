@@ -112,8 +112,6 @@ source "drivers/dca/Kconfig"
 
 source "drivers/auxdisplay/Kconfig"
 
-source "drivers/xilinx_common/Kconfig"
-
 source "drivers/uio/Kconfig"
 
 source "drivers/vfio/Kconfig"
@@ -167,5 +165,9 @@ source "drivers/ipack/Kconfig"
 source "drivers/reset/Kconfig"
 
 source "drivers/fmc/Kconfig"
+
+source "drivers/phy/Kconfig"
+
+source "drivers/powercap/Kconfig"
 
 endmenu

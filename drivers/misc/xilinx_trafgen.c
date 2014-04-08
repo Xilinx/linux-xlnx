@@ -1,7 +1,7 @@
 /*
  * Xilinx AXI Traffic Generator
  *
- * Copyright (C) 2013 Xilinx, Inc. All rights reserved.
+ * Copyright (C) 2013 - 2014 Xilinx, Inc.
  *
  * Description:
  * This driver is developed for AXI Traffic Generator IP, which is
@@ -471,6 +471,8 @@ static void xtg_prepare_param_word(struct xtg_dev_info *tg,
  * @dev: Device structure
  * @buf: Value to write
  * @opcode: Ioctl opcode
+ *
+ * Return: value read from the sysfs opcode.
  */
 static ssize_t xtg_sysfs_ioctl(struct device *dev, const char *buf,
 				enum xtg_sysfs_ioctl_opcode opcode)
@@ -1163,6 +1165,13 @@ static struct bin_attribute xtg_mram_attr = {
 	.mmap = xtg_mram_mmap,
 };
 
+static struct bin_attribute *xtg_bin_attrs[] = {
+	&xtg_mram_attr,
+	&xtg_pram_attr,
+	&xtg_cram_attr,
+	NULL,
+};
+
 static const struct attribute *xtg_attrs[] = {
 	&dev_attr_id.attr,
 	&dev_attr_resource.attr,
@@ -1186,61 +1195,16 @@ static const struct attribute *xtg_attrs[] = {
 	NULL,
 };
 
-/**
- * xtg_remove_sysfs_dev_files - Remove sysfs entries for device
- * @tg: Pointer to xtg_dev_info structure
- */
-static void xtg_remove_sysfs_dev_files(struct xtg_dev_info *tg)
-{
-	struct device *dev = tg->dev;
-
-	sysfs_remove_files(&dev->kobj, xtg_attrs);
-	sysfs_remove_bin_file(&dev->kobj, &xtg_mram_attr);
-	sysfs_remove_bin_file(&dev->kobj, &xtg_cram_attr);
-	sysfs_remove_bin_file(&dev->kobj, &xtg_pram_attr);
-}
-
-/**
- * xtg_create_sysfs_dev_files - Create sysfs entries for device
- * @tg: Pointer to xtg_dev_info structure
- *
- * Returns '0' on success and failure value on error
- */
-static int xtg_create_sysfs_dev_files(struct xtg_dev_info *tg)
-{
-	struct device *dev = tg->dev;
-	int err;
-
-	err = sysfs_create_files(&dev->kobj, xtg_attrs);
-	if (err < 0)
-		goto out;
-
-	err = sysfs_create_bin_file(&dev->kobj, &xtg_mram_attr);
-	if (err < 0)
-		goto out;
-
-	err = sysfs_create_bin_file(&dev->kobj, &xtg_cram_attr);
-	if (err < 0)
-		goto out;
-
-	err = sysfs_create_bin_file(&dev->kobj, &xtg_pram_attr);
-	if (err < 0)
-		goto out;
-
-	return 0;
-
-out:
-	xtg_remove_sysfs_dev_files(tg);
-
-	return err;
-}
-
+static const struct attribute_group xtg_attributes = {
+	.attrs = (struct attribute **)xtg_attrs,
+	.bin_attrs = xtg_bin_attrs,
+};
 /**
  * xtg_cmp_intr_handler - Master Complete Interrupt handler
  * @irq: IRQ number
  * @data: Pointer to the xtg_dev_info structure
  *
- * Returns IRQ_HANDLED always
+ * Return: IRQ_HANDLED always
  */
 static irqreturn_t xtg_cmp_intr_handler(int irq, void *data)
 {
@@ -1258,7 +1222,7 @@ static irqreturn_t xtg_cmp_intr_handler(int irq, void *data)
  * @irq: IRQ number
  * @data: Pointer to the xtg_dev_info structure
  *
- * Returns IRQ_HANDLED always
+ * Return: IRQ_HANDLED always
  */
 static irqreturn_t xtg_err_intr_handler(int irq, void *data)
 {
@@ -1281,13 +1245,17 @@ static irqreturn_t xtg_err_intr_handler(int irq, void *data)
  * xtg_probe - Driver probe function
  * @pdev: Pointer to the platform_device structure
  *
- * Returns '0' on success and failure value on error
+ * This is the driver probe routine. It does all the memory
+ * allocation and creates sysfs entires for the device.
+ *
+ * Return: 0 on success and failure value on error
  */
 static int xtg_probe(struct platform_device *pdev)
 {
 	struct xtg_dev_info *tg;
 	struct device_node *node;
 	struct resource *res;
+	struct device *dev;
 	int err, irq, var;
 
 	tg = devm_kzalloc(&pdev->dev, sizeof(*tg), GFP_KERNEL);
@@ -1295,7 +1263,7 @@ static int xtg_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	tg->dev = &(pdev->dev);
-
+	dev = tg->dev;
 	node = pdev->dev.of_node;
 
 	/* Map the registers */
@@ -1343,21 +1311,8 @@ static int xtg_probe(struct platform_device *pdev)
 
 	/*
 	 * Create sysfs file entries for the device
-	 *
-	 * NOTE: We can create sysfs entries by adding attribute groups
-	 * and then populate into device_driver structure. We see issue
-	 * here, as this process doesn't allow to add sysfs entries with
-	 * BIN attributes (SYSFS_KOBJ_BIN_ATTR). Also, this would create
-	 * sysfs entries under driver/ which will be a bit confusing for
-	 * users as bin files and normal files will be populated at diff
-	 * erent places. So to avoid this, we created this function to
-	 * add sysfs entries at a common place.
-	 *
-	 * this issue being addressed in mainline by
-	 * 'sysfs: add support for binary attributes in groups'.
-	 * It removes this overhead of creating/removing sysfs file entries.
 	 */
-	err = xtg_create_sysfs_dev_files(tg);
+	err = sysfs_create_group(&dev->kobj, &xtg_attributes);
 	if (err < 0) {
 		dev_err(tg->dev, "unable to create sysfs entries\n");
 		return err;
@@ -1387,15 +1342,19 @@ static int xtg_probe(struct platform_device *pdev)
  * xtg_remove - Driver remove function
  * @pdev: Pointer to the platform_device structure
  *
- * Always returns '0'
+ * This function frees all the resources allocated to the device.
+ *
+ * Return: 0 always
  */
 static int xtg_remove(struct platform_device *pdev)
 {
 	struct xtg_dev_info *tg;
+	struct device *dev;
 
 	tg = dev_get_drvdata(&pdev->dev);
+	dev = tg->dev;
+	sysfs_remove_group(&dev->kobj, &xtg_attributes);
 
-	xtg_remove_sysfs_dev_files(tg);
 
 	return 0;
 }

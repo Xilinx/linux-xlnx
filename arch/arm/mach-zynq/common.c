@@ -16,12 +16,10 @@
 
 #include <linux/init.h>
 #include <linux/kernel.h>
-#include <linux/cpu.h>
-#include <linux/cpumask.h>
 #include <linux/platform_device.h>
 #include <linux/clk.h>
+#include <linux/clk-provider.h>
 #include <linux/clk/zynq.h>
-#include <linux/opp.h>
 #include <linux/clocksource.h>
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
@@ -45,7 +43,7 @@
 void __iomem *zynq_scu_base;
 
 /**
- * zynq_memory_init() - Initialize special memory
+ * zynq_memory_init - Initialize special memory
  *
  * We need to stop things allocating the low memory as DMA can't work in
  * the 1st 512K of memory.  Using reserve vs remove is not totally clear yet.
@@ -53,86 +51,38 @@ void __iomem *zynq_scu_base;
 static void __init zynq_memory_init(void)
 {
 	/*
-	 * Reserve the 0-0x4000 addresses (before page tables and kernel)
-	 * which can't be used for DMA
+	 * Reserve the 0-0x4000 addresses (before swapper page tables
+	 * and kernel) which can't be used for DMA.
+	 * 0x0 - 0x4000 - reserving below not to be used by DMA
+	 * 0x4000 - 0x8000 swapper page table
+	 * 0x8000 - 0x80000 kernel .text
 	 */
 	if (!__pa(PAGE_OFFSET))
-		memblock_reserve(0, 0x4000);
+		memblock_reserve(__pa(PAGE_OFFSET), __pa(swapper_pg_dir));
 }
 
-#ifdef CONFIG_CPU_FREQ
-#define CPUFREQ_MIN_FREQ_HZ	200000000
-static unsigned int freq_divs[] __initdata = {
-	2, 3
+static struct platform_device zynq_cpuidle_device = {
+	.name = "cpuidle-zynq",
 };
-
-static long __init xilinx_calc_opp_freq(struct clk *clk, long rate)
-{
-	long rate_nearest = clk_round_rate_nearest(clk, rate);
-	long rate_round = clk_round_rate(clk, rate_nearest / 1000 * 1000);
-
-	if (rate_round != rate_nearest)
-		rate_nearest += 1000;
-
-	return rate_nearest;
-}
-
-/**
- * zynq_opp_init() - Register OPPs
- *
- * Registering frequency/voltage operating points for voltage and frequency
- * scaling. Currently we only support frequency scaling.
- */
-static int __init zynq_opp_init(void)
-{
-	long freq;
-	unsigned int i;
-	struct device *dev = get_cpu_device(0);
-	int ret = 0;
-	struct clk *cpuclk = clk_get(NULL, "cpufreq_clk");
-
-	if (!dev) {
-		pr_warn("%s: no cpu device. DVFS not available.", __func__);
-		return -ENODEV;
-	}
-
-	if (IS_ERR(cpuclk)) {
-		pr_warn("%s: CPU clock not found. DVFS not available.",
-				__func__);
-		return PTR_ERR(cpuclk);
-	}
-
-	/* frequency/voltage operating points. For now use f only */
-	freq = clk_get_rate(cpuclk);
-	ret |= opp_add(dev, xilinx_calc_opp_freq(cpuclk, freq), 0);
-	for (i = 0; i < ARRAY_SIZE(freq_divs); i++) {
-		long tmp = xilinx_calc_opp_freq(cpuclk, freq / freq_divs[i]);
-		if (tmp >= CPUFREQ_MIN_FREQ_HZ)
-			ret |= opp_add(dev, tmp, 0);
-	}
-	freq = xilinx_calc_opp_freq(cpuclk, CPUFREQ_MIN_FREQ_HZ);
-	if (freq >= CPUFREQ_MIN_FREQ_HZ && IS_ERR(opp_find_freq_exact(dev, freq,
-				1)))
-		ret |= opp_add(dev, freq, 0);
-
-	if (ret)
-		pr_warn("%s: Error adding OPPs.", __func__);
-
-	return ret;
-}
-device_initcall(zynq_opp_init);
-#endif
 
 #ifdef CONFIG_CACHE_L2X0
 static int __init zynq_l2c_init(void)
 {
-	/* 64KB way size, 8-way associativity, parity disabled,
-	 * prefetching option */
-#ifndef	CONFIG_XILINX_L2_PREFETCH
-	return l2x0_of_init(0x02060000, 0xF0F0FFFF);
-#else
-	return l2x0_of_init(0x72060000, 0xF0F0FFFF);
+	u32 auxctrl;
+
+	/*
+	 * 64KB way size, 8-way associativity, parity disabled,
+	 * prefetching option, shared attribute override enable
+	 */
+	auxctrl = L2X0_AUX_CTRL_SHARE_OVERRIDE_EN_MASK |
+			L2X0_AUX_CTRL_WAY_SIZE64K_MASK |
+			L2X0_AUX_CTRL_REPLACE_POLICY_RR_MASK;
+#ifdef CONFIG_XILINX_L2_PREFETCH
+	auxctrl |= L2X0_AUX_CTRL_EARLY_BRESP_EN_MASK |
+			L2X0_AUX_CTRL_INSTR_PREFETCH_EN_MASK |
+			L2X0_AUX_CTRL_DATA_PREFETCH_EN_MASK;
 #endif
+	return l2x0_of_init(auxctrl, 0xF0F0FFFF);
 }
 early_initcall(zynq_l2c_init);
 #endif
@@ -167,12 +117,22 @@ static void __init zynq_init_late(void)
  */
 static void __init zynq_init_machine(void)
 {
+	struct platform_device_info devinfo = { .name = "cpufreq-cpu0", };
+
 	of_platform_populate(NULL, of_default_bus_match_table, NULL, NULL);
+
+	platform_device_register(&zynq_cpuidle_device);
+	platform_device_register_full(&devinfo);
+
+	zynq_slcr_init();
 }
 
 static void __init zynq_timer_init(void)
 {
-	zynq_slcr_init();
+	zynq_early_slcr_init();
+
+	zynq_clock_init();
+	of_clk_init(NULL);
 	clocksource_of_init();
 }
 

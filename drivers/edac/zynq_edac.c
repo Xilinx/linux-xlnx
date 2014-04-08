@@ -2,7 +2,7 @@
  * Xilinx Zynq DDR ECC Driver
  * This driver is based on ppc4xx_edac.c drivers
  *
- * Copyright (C) 2012 - 2013 Xilinx, Inc.
+ * Copyright (C) 2012 - 2014 Xilinx, Inc.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -140,7 +140,7 @@ struct zynq_edac_priv {
  *
  * This routine determines there is any ecc error or not
  *
- * Returns zero if there is no error otherwise returns 1
+ * Return: zero if there is no error otherwise returns 1
  */
 static int zynq_edac_geterror_info(void __iomem *base,
 		struct zynq_ecc_status *perrstatus)
@@ -245,7 +245,7 @@ static void zynq_edac_generate_message(const struct mem_ctl_info *mci,
  * @mci:	Pointer to the edac memory controller instance
  * @perrstatus:	Pointer to the zynq ecc status structure
  *
- * This routine handles an xilinx,ps7-ddrc controller ECC correctable error.
+ * This routine handles the controller ECC correctable error.
  */
 static void zynq_edac_handle_error(struct mem_ctl_info *mci,
 			struct zynq_ecc_status *perrstatus)
@@ -303,7 +303,7 @@ static void zynq_edac_check(struct mem_ctl_info *mci)
  * This routine returns the EDAC device type width appropriate for the
  * current controller configuration.
  *
- * Returns a device type width enumeration.
+ * Return: a device type width enumeration.
  */
 static enum dev_type zynq_edac_get_dtype(void __iomem *base)
 {
@@ -332,10 +332,9 @@ static enum dev_type zynq_edac_get_dtype(void __iomem *base)
  * zynq_edac_get_eccstate - Return the controller ecc enable/disable status
  * @base:	Pointer to the ddr memory contoller base address
  *
- * This routine returns the ECC enable/diable status for the xlnx,ps7-ddrc
- * controller
+ * This routine returns the ECC enable/diable status for the controller
  *
- * Returns a ecc status boolean i.e true/false - enabled/disabled.
+ * Return: a ecc status boolean i.e true/false - enabled/disabled.
  */
 static bool zynq_edac_get_eccstate(void __iomem *base)
 {
@@ -360,12 +359,12 @@ static bool zynq_edac_get_eccstate(void __iomem *base)
 }
 
 /**
- * zynq_edac_get_memsize - Return the size of the attched mmeory device
+ * zynq_edac_get_memsize - reads the size of the attached memory device
+ *
+ * Return: the memory size in bytes
  *
  * This routine returns the size of the system memory by reading the sysinfo
  * information
- *
- * Returns the memory size in bytes
  */
 static u32 zynq_edac_get_memsize(void)
 {
@@ -384,7 +383,7 @@ static u32 zynq_edac_get_memsize(void)
  * This routine returns the EDAC memory type appropriate for the
  * current controller configuration.
  *
- * Returns a memory type enumeration.
+ * Return: a memory type enumeration.
  */
 static enum mem_type zynq_edac_get_mtype(void __iomem *base)
 {
@@ -408,7 +407,7 @@ static enum mem_type zynq_edac_get_mtype(void __iomem *base)
  * This routine initializes the chip select rows associated
  * with the EDAC memory controller instance
  *
- * Returns 0 if OK; otherwise, -EINVAL if the memory bank size
+ * Return: 0 if OK; otherwise, -EINVAL if the memory bank size
  * configuration cannot be determined.
  */
 static int zynq_edac_init_csrows(struct mem_ctl_info *mci)
@@ -445,9 +444,9 @@ static int zynq_edac_init_csrows(struct mem_ctl_info *mci)
  *
  * This routine performs initialization of the EDAC memory controller
  * instance and related driver-private data associated with the
- * xlnx,ps7-ddrc memory controller the instance is bound to.
+ * memory controller the instance is bound to.
  *
- * Returns 0 if OK; otherwise, < 0 on error.
+ * Return: 0 if OK; otherwise, < 0 on error.
  */
 static int zynq_edac_mc_init(struct mem_ctl_info *mci,
 			struct platform_device *pdev)
@@ -494,10 +493,10 @@ static int zynq_edac_mc_init(struct mem_ctl_info *mci,
  * zynq_edac_mc_probe - Check controller and bind driver
  * @pdev:	Pointer to the platform_device struct
  *
- * This routine probes a specific xilinx,ps7-ddrc controller
+ * This routine probes a specific controller
  * instance for binding with the driver.
  *
- * Returns 0 if the controller instance was successfully bound to the
+ * Return: 0 if the controller instance was successfully bound to the
  * driver; otherwise, < 0 on error.
  */
 static int zynq_edac_mc_probe(struct platform_device *pdev)
@@ -533,7 +532,7 @@ static int zynq_edac_mc_probe(struct platform_device *pdev)
 	layers[1].size = ZYNQ_EDAC_NR_CHANS;
 	layers[1].is_virt_csrow = false;
 
-	mci = edac_mc_alloc(pdev->id, ARRAY_SIZE(layers), layers,
+	mci = edac_mc_alloc(0, ARRAY_SIZE(layers), layers,
 			    sizeof(struct zynq_edac_priv));
 	if (mci == NULL) {
 		pr_err("Failed memory allocation for mci instance!\n");
@@ -573,10 +572,10 @@ free_edac_mc:
  * @pdev:	Pointer to the platform_device struct
  *
  * This routine unbinds the EDAC memory controller instance associated
- * with the specified xilinx,ps7-ddrc controller described by the
+ * with the specified controller described by the
  * OpenFirmware device tree node passed as a parameter.
  *
- * Unconditionally returns 0.
+ * Return: Unconditionally 0
  */
 static int zynq_edac_mc_remove(struct platform_device *pdev)
 {
@@ -590,7 +589,7 @@ static int zynq_edac_mc_remove(struct platform_device *pdev)
 
 /* Device tree node type and compatible tuples this driver can match on */
 static struct of_device_id zynq_edac_match[] = {
-	{ .compatible = "xlnx,ps7-ddrc-1.00.a", },
+	{ .compatible = "xlnx,zynq-ddrc-1.0", },
 	{ /* end of table */ }
 };
 

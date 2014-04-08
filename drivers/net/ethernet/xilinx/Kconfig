@@ -33,57 +33,16 @@ config XILINX_AXI_EMAC
 	  This driver supports the 10/100/1000 Ethernet from Xilinx for the
 	  AXI bus interface used in Xilinx Virtex FPGAs.
 
-#config XILINX_LL_TEMAC
-#	tristate "Xilinx LL TEMAC (LocalLink Tri-mode Ethernet MAC) driver"
-#	depends on (PPC || MICROBLAZE)
-#	select PHYLIB
-#	---help---
-#	  This driver supports the Xilinx 10/100/1000 LocalLink TEMAC
-#	  core used in Xilinx Spartan and Virtex FPGAs
-
-config XILINX_LLTEMAC
-	tristate "Xilinx LLTEMAC 10/100/1000 Ethernet MAC driver"
-	depends on XILINX_DRIVERS
-	select XILINX_EDK
-	select NEED_XILINX_LLDMA
-	help
-	  This driver supports the 10/100/1000 LLTEMAC.
-
-choice
-	prompt "Xilinx LLTEMAC PHY Support"
-	depends on XILINX_LLTEMAC
-	default XILINX_LLTEMAC_MARVELL_88E1111_GMII
-
-config XILINX_LLTEMAC_MARVELL_88E1111_RGMII
-	bool "MARVELL 88E1111 using RGMII"
-   help
-	  This phy is used by many Xilinx boards.  This option includes
-	  code for enabling RGMII over copper.
-
-config XILINX_LLTEMAC_MARVELL_88E1111_GMII
-	bool "MARVELL 88E1111 using GMII"
-   help
-	  This phy is used by many Xilinx boards.  This option includes
-	  code for enabling GMII over copper, and for setting the correct
-	  speed based on whatever the phy is able to autonegotiate.  This is
-	  usually the best option to use on ML40x and ML50x boards.
-
-config XILINX_LLTEMAC_MARVELL_88E1111_MII
-	bool "MARVELL 88E1111 using MII or other PHY"
-   help
-	  If your physical interface is not covered by the other
-	  selections, then choose this option.  This option includes generic
-	  speed autonegotation code.
-
-config XILINX_LLTEMAC_XILINX_1000BASEX
-	bool "Xilinx 1000BASE-X PHY"
-	help
-	  This PHY supports physical attachment via GT/GTP/GTX transceivers.
-
-endchoice
+config XILINX_LL_TEMAC
+	tristate "Xilinx LL TEMAC (LocalLink Tri-mode Ethernet MAC) driver"
+	depends on (PPC || MICROBLAZE)
+	select PHYLIB
+	---help---
+	  This driver supports the Xilinx 10/100/1000 LocalLink TEMAC
+	  core used in Xilinx Spartan and Virtex FPGAs
 
 config XILINX_PS_EMAC
-	tristate "Xilinx PS tri-speed EMAC support"
+	tristate "Xilinx Zynq tri-speed EMAC support"
 	depends on ARCH_ZYNQ
 	select PHYLIB
 	---help---

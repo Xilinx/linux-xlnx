@@ -183,7 +183,7 @@ static const struct platform_suspend_ops zynq_pm_ops = {
 
 /**
  * zynq_pm_ioremap() - Create IO mappings
- * @comp	DT compatible string
+ * @comp:	DT compatible string
  * Returns a pointer to the mapped memory or NULL.
  *
  * Remap the memory region for a compatible DT node.
@@ -214,7 +214,7 @@ static void __iomem *zynq_pm_ioremap(const char *comp)
 static void __iomem *zynq_pm_remap_ocm(void)
 {
 	struct device_node *np;
-	const char *comp = "xlnx,zynq-ocm-1.0";
+	const char *comp = "xlnx,zynq-ocmc-1.0";
 	void __iomem *base = NULL;
 
 	np = of_find_compatible_node(NULL, NULL, comp);
@@ -263,7 +263,7 @@ static void __iomem *zynq_pm_remap_ocm(void)
 
 int __init zynq_pm_late_init(void)
 {
-	ddrc_base = zynq_pm_ioremap("xlnx,ps7-ddrc");
+	ddrc_base = zynq_pm_ioremap("xlnx,zynq-ddrc-1.0");
 	if (!ddrc_base)
 		pr_warn("%s: Unable to map DDRC IO memory.\n", __func__);
 

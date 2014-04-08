@@ -198,9 +198,8 @@ static void ttc_set_mode(enum clock_event_mode mode,
 
 	switch (mode) {
 	case CLOCK_EVT_MODE_PERIODIC:
-		ttc_set_interval(timer,
-				DIV_ROUND_CLOSEST(ttce->ttc.freq,
-					PRESCALE * HZ));
+		ttc_set_interval(timer, DIV_ROUND_CLOSEST(ttce->ttc.freq,
+						PRESCALE * HZ));
 		break;
 	case CLOCK_EVT_MODE_ONESHOT:
 	case CLOCK_EVT_MODE_UNUSED:
@@ -423,4 +422,3 @@ static void __init ttc_timer_init(struct device_node *timer)
 }
 
 CLOCKSOURCE_OF_DECLARE(ttc, "cdns,ttc", ttc_timer_init);
-CLOCKSOURCE_OF_DECLARE(ttc1, "xlnx,ps7-ttc-1.00.a", ttc_timer_init);

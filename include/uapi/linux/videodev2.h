@@ -1086,12 +1086,15 @@ struct v4l2_dv_timings {
 
 /** struct v4l2_enum_dv_timings - DV timings enumeration
  * @index:	enumeration index
+ * @pad:	the pad number for which to enumerate timings (used with
+ *		v4l-subdev nodes only)
  * @reserved:	must be zeroed
  * @timings:	the timings for the given index
  */
 struct v4l2_enum_dv_timings {
 	__u32 index;
-	__u32 reserved[3];
+	__u32 pad;
+	__u32 reserved[2];
 	struct v4l2_dv_timings timings;
 };
 
@@ -1129,11 +1132,14 @@ struct v4l2_bt_timings_cap {
 
 /** struct v4l2_dv_timings_cap - DV timings capabilities
  * @type:	the type of the timings (same as in struct v4l2_dv_timings)
+ * @pad:	the pad number for which to query capabilities (used with
+ *		v4l-subdev nodes only)
  * @bt:		the BT656/1120 timings capabilities
  */
 struct v4l2_dv_timings_cap {
 	__u32 type;
-	__u32 reserved[3];
+	__u32 pad;
+	__u32 reserved[2];
 	union {
 		struct v4l2_bt_timings_cap bt;
 		__u32 raw_data[32];
@@ -1885,6 +1891,8 @@ struct v4l2_create_buffers {
 #define VIDIOC_QUERYMENU	_IOWR('V', 37, struct v4l2_querymenu)
 #define VIDIOC_G_INPUT		 _IOR('V', 38, int)
 #define VIDIOC_S_INPUT		_IOWR('V', 39, int)
+#define VIDIOC_G_EDID		_IOWR('V', 40, struct v4l2_edid)
+#define VIDIOC_S_EDID		_IOWR('V', 41, struct v4l2_edid)
 #define VIDIOC_G_OUTPUT		 _IOR('V', 46, int)
 #define VIDIOC_S_OUTPUT		_IOWR('V', 47, int)
 #define VIDIOC_ENUMOUTPUT	_IOWR('V', 48, struct v4l2_output)
