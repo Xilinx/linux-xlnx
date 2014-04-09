@@ -341,10 +341,6 @@ static irqreturn_t xdma_tx_intr_handler(int irq, void *data)
 
 static void xdma_chan_remove(struct xdma_chan *chan)
 {
-	dma_halt(chan);
-	xdma_free_chan_resources(chan);
-	free_irq(chan->irq, chan);
-	kfree(chan);
 }
 
 static void xdma_start_transfer(struct xdma_chan *chan,
@@ -766,6 +762,10 @@ void xdma_release_all_channels(void)
 }
 EXPORT_SYMBOL(xdma_release_all_channels);
 
+static void xdma_release(struct device *dev)
+{
+}
+
 int xdma_submit(struct xdma_chan *chan,
 			void *userbuf,
 			unsigned int size,
@@ -1076,7 +1076,7 @@ static int xdma_probe(struct platform_device *pdev)
 		}
 	}
 	xdev->channel_count = dma_config->channel_count;
-
+	pdev->dev.release = xdma_release;
 	/* Add the DMA device to the global list */
 	mutex_lock(&dma_list_mutex);
 	list_add_tail(&xdev->node, &dma_device_list);
