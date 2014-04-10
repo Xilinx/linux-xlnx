@@ -46,7 +46,9 @@
 
 /* Control Register Bit mask definitions */
 #define CDNS_I2C_CR_HOLD		BIT(4) /* Hold Bus bit */
+#define CDNS_I2C_CR_ACK_EN		BIT(3)
 #define CDNS_I2C_CR_NEA			BIT(2)
+#define CDNS_I2C_CR_MS			BIT(1)
 /* Read or Write Master transfer 0 = Transmitter, 1 = Receiver */
 #define CDNS_I2C_CR_RW			BIT(0)
 /* 1 = Auto init FIFO to zeroes */
@@ -73,17 +75,43 @@
  * All the four interrupt registers (Status/Mask/Enable/Disable) have the same
  * bit definitions.
  */
-#define CDNS_I2C_IXR_ALL_INTR_MASK	0x000002FF /* All ISR Mask */
-#define CDNS_I2C_IXR_ERR_INTR_MASK	0x000002E4
 #define CDNS_I2C_IXR_ARB_LOST		BIT(9)
+#define CDNS_I2C_IXR_RX_UNF		BIT(7)
+#define CDNS_I2C_IXR_TX_OVF		BIT(6)
+#define CDNS_I2C_IXR_RX_OVF		BIT(5)
+#define CDNS_I2C_IXR_SLV_RDY		BIT(4)
+#define CDNS_I2C_IXR_TO			BIT(3)
 #define CDNS_I2C_IXR_NACK		BIT(2)
 #define CDNS_I2C_IXR_DATA		BIT(1)
 #define CDNS_I2C_IXR_COMP		BIT(0)
 
-#define CDNS_I2C_FIFO_DEPTH	16		/* FIFO Depth */
-#define CDNS_I2C_TIMEOUT		msecs_to_jiffies(1000)
-#define CDNS_I2C_ENABLED_INTR	0x2EF		/* Enabled Interrupts */
+#define CDNS_I2C_IXR_ALL_INTR_MASK	(CDNS_I2C_IXR_ARB_LOST | \
+					 CDNS_I2C_IXR_RX_UNF | \
+					 CDNS_I2C_IXR_TX_OVF | \
+					 CDNS_I2C_IXR_RX_OVF | \
+					 CDNS_I2C_IXR_SLV_RDY | \
+					 CDNS_I2C_IXR_TO | \
+					 CDNS_I2C_IXR_NACK | \
+					 CDNS_I2C_IXR_DATA | \
+					 CDNS_I2C_IXR_COMP)
 
+#define CDNS_I2C_IXR_ERR_INTR_MASK	(CDNS_I2C_IXR_ARB_LOST | \
+					 CDNS_I2C_IXR_RX_UNF | \
+					 CDNS_I2C_IXR_TX_OVF | \
+					 CDNS_I2C_IXR_RX_OVF | \
+					 CDNS_I2C_IXR_NACK)
+
+#define CDNS_I2C_ENABLED_INTR_MASK	(CDNS_I2C_IXR_ARB_LOST | \
+					 CDNS_I2C_IXR_RX_UNF | \
+					 CDNS_I2C_IXR_TX_OVF | \
+					 CDNS_I2C_IXR_RX_OVF | \
+					 CDNS_I2C_IXR_NACK | \
+					 CDNS_I2C_IXR_DATA | \
+					 CDNS_I2C_IXR_COMP)
+
+#define CDNS_I2C_TIMEOUT		msecs_to_jiffies(1000)
+
+#define CDNS_I2C_FIFO_DEPTH		16
 /* FIFO depth at which the DATA interrupt occurs */
 #define CDNS_I2C_DATA_INTR_DEPTH	(CDNS_I2C_FIFO_DEPTH - 2)
 #define CDNS_I2C_MAX_TRANSFER_SIZE	255
@@ -333,7 +361,7 @@ static void cdns_i2c_mrecv(struct cdns_i2c *id)
 	/* Set the slave address in address register - triggers operation */
 	cdns_i2c_writereg(id->p_msg->addr & CDNS_I2C_ADDR_MASK,
 						CDNS_I2C_ADDR_OFFSET);
-	cdns_i2c_writereg(CDNS_I2C_ENABLED_INTR, CDNS_I2C_IER_OFFSET);
+	cdns_i2c_writereg(CDNS_I2C_ENABLED_INTR_MASK, CDNS_I2C_IER_OFFSET);
 }
 
 /**
@@ -396,7 +424,7 @@ static void cdns_i2c_msend(struct cdns_i2c *id)
 	cdns_i2c_writereg(id->p_msg->addr & CDNS_I2C_ADDR_MASK,
 						CDNS_I2C_ADDR_OFFSET);
 
-	cdns_i2c_writereg(CDNS_I2C_ENABLED_INTR, CDNS_I2C_IER_OFFSET);
+	cdns_i2c_writereg(CDNS_I2C_ENABLED_INTR_MASK, CDNS_I2C_IER_OFFSET);
 }
 
 /**
@@ -816,7 +844,8 @@ static int cdns_i2c_probe(struct platform_device *pdev)
 	if (ret || (id->i2c_clk > CDNS_I2C_SPEED_MAX))
 		id->i2c_clk = CDNS_I2C_SPEED_DEFAULT;
 
-	cdns_i2c_writereg(0xE, CDNS_I2C_CR_OFFSET);
+	cdns_i2c_writereg(CDNS_I2C_CR_ACK_EN | CDNS_I2C_CR_NEA | CDNS_I2C_CR_MS,
+			  CDNS_I2C_CR_OFFSET);
 
 	ret = cdns_i2c_setclk(id->input_clk, id);
 	if (ret) {
