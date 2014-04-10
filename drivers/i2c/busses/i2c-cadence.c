@@ -34,15 +34,15 @@
 #include <linux/platform_device.h>
 
 /* Register offsets for the I2C device. */
-#define CDNS_I2C_CR_OFFSET	0x00 /* Control Register, RW */
-#define CDNS_I2C_SR_OFFSET	0x04 /* Status Register, RO */
-#define CDNS_I2C_ADDR_OFFSET	0x08 /* I2C Address Register, RW */
-#define CDNS_I2C_DATA_OFFSET	0x0C /* I2C Data Register, RW */
-#define CDNS_I2C_ISR_OFFSET	0x10 /* Interrupt Status Register, RW */
+#define CDNS_I2C_CR_OFFSET		0x00 /* Control Register, RW */
+#define CDNS_I2C_SR_OFFSET		0x04 /* Status Register, RO */
+#define CDNS_I2C_ADDR_OFFSET		0x08 /* I2C Address Register, RW */
+#define CDNS_I2C_DATA_OFFSET		0x0C /* I2C Data Register, RW */
+#define CDNS_I2C_ISR_OFFSET		0x10 /* IRQ Status Register, RW */
 #define CDNS_I2C_XFER_SIZE_OFFSET	0x14 /* Transfer Size Register, RW */
 #define CDNS_I2C_TIME_OUT_OFFSET	0x1C /* Time Out Register, RW */
-#define CDNS_I2C_IER_OFFSET	0x24 /* Interrupt Enable Register, WO */
-#define CDNS_I2C_IDR_OFFSET	0x28 /* Interrupt Disable Register, WO */
+#define CDNS_I2C_IER_OFFSET		0x24 /* IRQ Enable Register, WO */
+#define CDNS_I2C_IDR_OFFSET		0x28 /* IRQ Disable Register, WO */
 
 /* Control Register Bit mask definitions */
 #define CDNS_I2C_CR_HOLD		BIT(4) /* Hold Bus bit */
@@ -88,7 +88,7 @@
 
 /* FIFO depth at which the DATA interrupt occurs */
 #define CDNS_I2C_DATA_INTR_DEPTH	(CDNS_I2C_FIFO_DEPTH - 2)
-#define CDNS_I2C_MAX_TRANSFER_SIZE	255 /* Max transfer size */
+#define CDNS_I2C_MAX_TRANSFER_SIZE	255
 /* Transfer size in multiples of data interrupt depth */
 #define CDNS_I2C_TRANSFER_SIZE	(CDNS_I2C_MAX_TRANSFER_SIZE - 3)
 
@@ -146,7 +146,7 @@ struct cdns_i2c {
 					     clk_rate_change_nb)
 
 /**
- * cdns_i2c_clear_bus_hold() - Clar bus hold bit
+ * cdns_i2c_clear_bus_hold() - Clear bus hold bit
  * @id:	Pointer to driver data struct
  *
  * Helper to clear the controller's bus hold bit.
@@ -163,10 +163,10 @@ static void cdns_i2c_clear_bus_hold(struct cdns_i2c *id)
  * @irq:	irq number for the I2C device
  * @ptr:	void pointer to cdns_i2c structure
  *
- * Return: IRQ_HANDLED always
- *
  * This function handles the data interrupt, transfer complete interrupt and
  * the error interrupts of the I2C device.
+ *
+ * Return: IRQ_HANDLED always
  */
 static irqreturn_t cdns_i2c_isr(int irq, void *ptr)
 {
@@ -486,11 +486,13 @@ static int cdns_i2c_process_msg(struct cdns_i2c *id, struct i2c_msg *msg,
  * @msgs:	pointer to the i2c message structure
  * @num:	the number of messages to transfer
  *
- * Return: number of msgs processed on success, negative error otherwise
+ * Initiates the send/recv activity based on the transfer message received.
  *
  * This function waits for the bus idle condition and updates the timeout if
  * modified by user. Then initiates the send/recv activity based on the
  * transfer message received.
+ *
+ * Return: number of msgs processed on success, negative error otherwise
  */
 static int cdns_i2c_master_xfer(struct i2c_adapter *adap, struct i2c_msg *msgs,
 				int num)
@@ -576,10 +578,10 @@ static const struct i2c_algorithm cdns_i2c_algo = {
  * @a:		First divider (return value)
  * @b:		Second divider (return value)
  *
- * Return: 0 on success, negative errno otherwise.
- *
  * f is used as input and output variable. As input it is used as target I2C
  * frequency. On function exit f holds the actually resulting I2C frequency.
+ *
+ * Return: 0 on success, negative errno otherwise.
  */
 static int cdns_i2c_calc_divs(unsigned long *f, unsigned long input_clk,
 		unsigned int *a, unsigned int *b)
@@ -634,8 +636,6 @@ static int cdns_i2c_calc_divs(unsigned long *f, unsigned long input_clk,
  * @clk_in:	I2C clock input frequency in Hz
  * @id:		Pointer to the I2C device structure
  *
- * Return: 0 on success, negative error otherwise
- *
  * The device must be idle rather than busy transferring data before setting
  * these device options.
  * The data rate is set by values in the control register.
@@ -644,6 +644,8 @@ static int cdns_i2c_calc_divs(unsigned long *f, unsigned long input_clk,
  * See the hardware data sheet for a full explanation of setting the serial
  * clock rate. The clock can not be faster than the input clock divide by 22.
  * The two most common clock rates are 100KHz and 400KHz.
+ *
+ * Return: 0 on success, negative error otherwise
  */
 static int cdns_i2c_setclk(unsigned long clk_in, struct cdns_i2c *id)
 {
@@ -670,15 +672,16 @@ static int cdns_i2c_setclk(unsigned long clk_in, struct cdns_i2c *id)
  * @nb:		Pointer to notifier block
  * @event:	Notification reason
  * @data:	Pointer to notification data object
- * Return:	NOTIFY_STOP if the rate change should be aborted, NOTIFY_OK
- *		to acknowedge the change, NOTIFY_DONE if the notification is
- *		considered irrelevant.
  *
  * This function is called when the cdns_i2c input clock frequency changes.
  * The callback checks whether a valid bus frequency can be generated after the
  * change. If so, the change is acknowledged, otherwise the change is aborted.
  * New dividers are written to the HW in the pre- or post change notification
  * depending on the scaling direction.
+ *
+ * Return:	NOTIFY_STOP if the rate change should be aborted, NOTIFY_OK
+ *		to acknowedge the change, NOTIFY_DONE if the notification is
+ *		considered irrelevant.
  */
 static int cdns_i2c_clk_notifier_cb(struct notifier_block *nb, unsigned long
 		event, void *data)
@@ -730,9 +733,10 @@ static int cdns_i2c_clk_notifier_cb(struct notifier_block *nb, unsigned long
 /**
  * cdns_i2c_suspend - Suspend method for the driver
  * @_dev:	Address of the platform_device structure
- * Return: 0 always
  *
  * Put the driver into low power mode.
+ *
+ * Return: 0 always
  */
 static int cdns_i2c_suspend(struct device *_dev)
 {
@@ -749,9 +753,10 @@ static int cdns_i2c_suspend(struct device *_dev)
 /**
  * cdns_i2c_resume - Resume from suspend
  * @_dev:	Address of the platform_device structure
- * Return: 0 on success and error value on error
  *
  * Resume operation after suspend.
+ *
+ * Return: 0 on success and error value on error
  */
 static int cdns_i2c_resume(struct device *_dev)
 {
@@ -779,11 +784,11 @@ static SIMPLE_DEV_PM_OPS(cdns_i2c_dev_pm_ops, cdns_i2c_suspend,
  * cdns_i2c_probe - Platform registration call
  * @pdev:	Handle to the platform device structure
  *
- * Return: 0 on success, negative error otherwise
- *
  * This function does all the memory allocation and registration for the i2c
  * device. User can modify the address mode to 10 bit address mode using the
  * ioctl call with option I2C_TENBIT.
+ *
+ * Return: 0 on success, negative error otherwise
  */
 static int cdns_i2c_probe(struct platform_device *pdev)
 {
@@ -872,9 +877,9 @@ err_clk_dis:
  * cdns_i2c_remove - Unregister the device after releasing the resources
  * @pdev:	Handle to the platform device structure
  *
- * Return: 0 always
- *
  * This function frees all the resources allocated to the device.
+ *
+ * Return: 0 always
  */
 static int cdns_i2c_remove(struct platform_device *pdev)
 {
@@ -889,7 +894,7 @@ static int cdns_i2c_remove(struct platform_device *pdev)
 
 static const struct of_device_id cdns_i2c_of_match[] = {
 	{ .compatible = "cdns,i2c-r1p10", },
-	{ /* end of table */}
+	{ /* end of table */ }
 };
 MODULE_DEVICE_TABLE(of, cdns_i2c_of_match);
 
@@ -906,6 +911,6 @@ static struct platform_driver cdns_i2c_drv = {
 
 module_platform_driver(cdns_i2c_drv);
 
-MODULE_AUTHOR("Xilinx, Inc.");
+MODULE_AUTHOR("Xilinx Inc.");
 MODULE_DESCRIPTION("Cadence I2C bus driver");
 MODULE_LICENSE("GPL");
