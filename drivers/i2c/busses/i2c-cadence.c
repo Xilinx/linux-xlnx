@@ -215,7 +215,7 @@ static irqreturn_t cdns_i2c_isr(int irq, void *ptr)
 			(id->recv_count >= CDNS_I2C_DATA_INTR_DEPTH)) {
 		/* Always read data interrupt threshold bytes */
 		bytes_to_recv = CDNS_I2C_DATA_INTR_DEPTH;
-		id->recv_count = id->recv_count - CDNS_I2C_DATA_INTR_DEPTH;
+		id->recv_count -= CDNS_I2C_DATA_INTR_DEPTH;
 		avail_bytes = cdns_i2c_readreg(CDNS_I2C_XFER_SIZE_OFFSET);
 
 		/*
@@ -326,7 +326,7 @@ static void cdns_i2c_mrecv(struct cdns_i2c *id)
 	ctrl_reg = cdns_i2c_readreg(CDNS_I2C_CR_OFFSET);
 	ctrl_reg |= CDNS_I2C_CR_RW | CDNS_I2C_CR_CLR_FIFO;
 
-	if ((id->p_msg->flags & I2C_M_RECV_LEN) == I2C_M_RECV_LEN)
+	if (id->p_msg->flags & I2C_M_RECV_LEN)
 		id->recv_count = I2C_SMBUS_BLOCK_MAX + 1;
 
 	/*
