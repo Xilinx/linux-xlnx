@@ -60,8 +60,6 @@
 #define CDNS_I2C_SR_BA		BIT(8)
 #define CDNS_I2C_SR_RXDV	BIT(5)
 
-#define CDNS_I2C_TIME_OUT_TO_MASK	0xff
-
 /*
  * I2C Address Register Bit mask definitions
  * Normal addressing mode uses [6:0] bits. Extended addressing mode uses [9:0]
@@ -76,14 +74,14 @@
  * bit definitions.
  */
 #define CDNS_I2C_IXR_ALL_INTR_MASK	0x000002FF /* All ISR Mask */
-#define CDNS_I2C_IXR_ERR_INTR_MASK	0x000002EC
+#define CDNS_I2C_IXR_ERR_INTR_MASK	0x000002E4
 #define CDNS_I2C_IXR_ARB_LOST		BIT(9)
 #define CDNS_I2C_IXR_NACK		BIT(2)
 #define CDNS_I2C_IXR_DATA		BIT(1)
 #define CDNS_I2C_IXR_COMP		BIT(0)
 
 #define CDNS_I2C_FIFO_DEPTH	16		/* FIFO Depth */
-#define CDNS_I2C_TIMEOUT	(2 * HZ)	/* Timeout for bus busy check */
+#define CDNS_I2C_TIMEOUT		msecs_to_jiffies(1000)
 #define CDNS_I2C_ENABLED_INTR	0x2EF		/* Enabled Interrupts */
 
 /* FIFO depth at which the DATA interrupt occurs */
@@ -116,7 +114,6 @@
  * @send_count:		Number of bytes still expected to send
  * @recv_count:		Number of bytes still expected to receive
  * @irq:		IRQ number
- * @cur_timeout:	The current timeout value used by the device
  * @input_clk:		Input clock to I2C controller
  * @i2c_clk:		Maximum I2C clock speed
  * @bus_hold_flag:	Flag used in repeated start for clearing HOLD bit
@@ -135,7 +132,6 @@ struct cdns_i2c {
 	unsigned int send_count;
 	unsigned int recv_count;
 	int irq;
-	int cur_timeout;
 	unsigned long input_clk;
 	unsigned int i2c_clk;
 	unsigned int bus_hold_flag;
@@ -461,7 +457,7 @@ static int cdns_i2c_process_msg(struct cdns_i2c *id, struct i2c_msg *msg,
 		cdns_i2c_msend(id);
 
 	/* Wait for the signal of completion */
-	ret = wait_for_completion_timeout(&id->xfer_done, HZ);
+	ret = wait_for_completion_timeout(&id->xfer_done, adap->timeout);
 	if (!ret) {
 		cdns_i2c_master_reset(adap);
 		dev_err(id->adap.dev.parent,
@@ -792,7 +788,7 @@ static int cdns_i2c_probe(struct platform_device *pdev)
 
 	id->adap.dev.of_node = pdev->dev.of_node;
 	id->adap.algo = &cdns_i2c_algo;
-	id->adap.timeout = 0x1F;	/* Default timeout value */
+	id->adap.timeout = CDNS_I2C_TIMEOUT;
 	id->adap.retries = 3;		/* Default retry value. */
 	id->adap.algo_data = id;
 	id->adap.dev.parent = &pdev->dev;
@@ -800,7 +796,6 @@ static int cdns_i2c_probe(struct platform_device *pdev)
 	snprintf(id->adap.name, sizeof(id->adap.name),
 		 "Cadence I2C at %08lx", (unsigned long)r_mem->start);
 
-	id->cur_timeout = id->adap.timeout;
 	id->clk = devm_clk_get(&pdev->dev, NULL);
 	if (IS_ERR(id->clk)) {
 		dev_err(&pdev->dev, "input clock not found.\n");
@@ -822,7 +817,6 @@ static int cdns_i2c_probe(struct platform_device *pdev)
 		id->i2c_clk = CDNS_I2C_SPEED_DEFAULT;
 
 	cdns_i2c_writereg(0xE, CDNS_I2C_CR_OFFSET);
-	cdns_i2c_writereg(id->adap.timeout, CDNS_I2C_TIME_OUT_OFFSET);
 
 	ret = cdns_i2c_setclk(id->input_clk, id);
 	if (ret) {
