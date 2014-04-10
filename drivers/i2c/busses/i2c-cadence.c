@@ -554,9 +554,13 @@ static int cdns_i2c_master_xfer(struct i2c_adapter *adap, struct i2c_msg *msgs,
 		if (ret)
 			return ret;
 
-		/* Report the other error interrupts to application as EIO */
-		if (id->err_status & 0xE4) {
+		/* Report the other error interrupts to application */
+		if (id->err_status) {
 			cdns_i2c_master_reset(adap);
+
+			if (id->err_status & CDNS_I2C_IXR_NACK)
+				return -ENXIO;
+
 			return -EIO;
 		}
 	}
