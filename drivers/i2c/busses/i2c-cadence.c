@@ -499,38 +499,18 @@ static int cdns_i2c_process_msg(struct cdns_i2c *id, struct i2c_msg *msg,
  *
  * Initiates the send/recv activity based on the transfer message received.
  *
- * This function waits for the bus idle condition and updates the timeout if
- * modified by user. Then initiates the send/recv activity based on the
- * transfer message received.
- *
  * Return: number of msgs processed on success, negative error otherwise
  */
 static int cdns_i2c_master_xfer(struct i2c_adapter *adap, struct i2c_msg *msgs,
 				int num)
 {
-	struct cdns_i2c *id = adap->algo_data;
-	unsigned long timeout;
 	int ret, count;
 	u32 reg;
+	struct cdns_i2c *id = adap->algo_data;
 
-	/* Waiting for bus-ready. If bus not ready, it returns after timeout */
-	timeout = jiffies + CDNS_I2C_TIMEOUT;
-	while (cdns_i2c_readreg(CDNS_I2C_SR_OFFSET) & CDNS_I2C_SR_BA) {
-		if (time_after(jiffies, timeout)) {
-			dev_warn(id->adap.dev.parent,
-					"timedout waiting for bus ready\n");
-			cdns_i2c_master_reset(adap);
-			return -ETIMEDOUT;
-		}
-		schedule_timeout(1);
-	}
-
-	/* The bus is free. Set the new timeout value if updated */
-	if (id->adap.timeout != id->cur_timeout) {
-		cdns_i2c_writereg(id->adap.timeout & CDNS_I2C_TIME_OUT_TO_MASK,
-					CDNS_I2C_TIME_OUT_OFFSET);
-		id->cur_timeout = id->adap.timeout;
-	}
+	/* Check if the bus is free */
+	if (cdns_i2c_readreg(CDNS_I2C_SR_OFFSET) & CDNS_I2C_SR_BA)
+		return -EAGAIN;
 
 	/*
 	 * Set the flag to one when multiple messages are to be
