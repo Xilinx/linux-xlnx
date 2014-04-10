@@ -5,8 +5,7 @@ Required properties:
   clocks: From common clock bindings. Phandle to input clock.
 
 Optional properties:
-  clock-frequency: Desired operating frequency, in Hz, of the bus (actual may
-		   be lower). Defaults to 400000 if not specified.
+  clock-frequency: Desired operating frequency, in Hz, of the bus.
 
 Example:
 
