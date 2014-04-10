@@ -443,7 +443,7 @@ static int cdns_i2c_process_msg(struct cdns_i2c *id, struct i2c_msg *msg,
 	id->p_msg = msg;
 	do {
 		id->err_status = 0;
-		init_completion(&id->xfer_done);
+		reinit_completion(&id->xfer_done);
 
 		/* Check for the TEN Bit mode on each msg */
 		reg = cdns_i2c_readreg(CDNS_I2C_CR_OFFSET);
@@ -809,6 +809,7 @@ static int cdns_i2c_probe(struct platform_device *pdev)
 	id->adap.retries = 3;		/* Default retry value. */
 	id->adap.algo_data = id;
 	id->adap.dev.parent = &pdev->dev;
+	init_completion(&id->xfer_done);
 	snprintf(id->adap.name, sizeof(id->adap.name),
 		 "Cadence I2C at %08lx", (unsigned long)r_mem->start);
 
