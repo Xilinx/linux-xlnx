@@ -437,57 +437,44 @@ static int cdns_i2c_process_msg(struct cdns_i2c *id, struct i2c_msg *msg,
 {
 	int ret;
 	u32 reg;
-	bool retry = false;
-	unsigned retries = adap->retries;
 
 	id->p_msg = msg;
-	do {
-		id->err_status = 0;
-		reinit_completion(&id->xfer_done);
+	id->err_status = 0;
+	reinit_completion(&id->xfer_done);
 
-		/* Check for the TEN Bit mode on each msg */
-		reg = cdns_i2c_readreg(CDNS_I2C_CR_OFFSET);
-		if (msg->flags & I2C_M_TEN) {
-			if (reg & CDNS_I2C_CR_NEA)
-				cdns_i2c_writereg(reg & ~CDNS_I2C_CR_NEA,
-						CDNS_I2C_CR_OFFSET);
-		} else {
-			if (!(reg & CDNS_I2C_CR_NEA))
-				cdns_i2c_writereg(reg | CDNS_I2C_CR_NEA,
-						CDNS_I2C_CR_OFFSET);
-		}
+	/* Check for the TEN Bit mode on each msg */
+	reg = cdns_i2c_readreg(CDNS_I2C_CR_OFFSET);
+	if (msg->flags & I2C_M_TEN) {
+		if (reg & CDNS_I2C_CR_NEA)
+			cdns_i2c_writereg(reg & ~CDNS_I2C_CR_NEA,
+					CDNS_I2C_CR_OFFSET);
+	} else {
+		if (!(reg & CDNS_I2C_CR_NEA))
+			cdns_i2c_writereg(reg | CDNS_I2C_CR_NEA,
+					CDNS_I2C_CR_OFFSET);
+	}
 
-		/* Check for the R/W flag on each msg */
-		if (msg->flags & I2C_M_RD)
-			cdns_i2c_mrecv(id);
-		else
-			cdns_i2c_msend(id);
+	/* Check for the R/W flag on each msg */
+	if (msg->flags & I2C_M_RD)
+		cdns_i2c_mrecv(id);
+	else
+		cdns_i2c_msend(id);
 
-		/* Wait for the signal of completion */
-		ret = wait_for_completion_timeout(&id->xfer_done, HZ);
-		if (!ret) {
-			cdns_i2c_master_reset(adap);
-			dev_err(id->adap.dev.parent,
-					"timeout waiting on completion\n");
-			return -ETIMEDOUT;
-		}
-		cdns_i2c_writereg(CDNS_I2C_IXR_ALL_INTR_MASK,
-				  CDNS_I2C_IDR_OFFSET);
+	/* Wait for the signal of completion */
+	ret = wait_for_completion_timeout(&id->xfer_done, HZ);
+	if (!ret) {
+		cdns_i2c_master_reset(adap);
+		dev_err(id->adap.dev.parent,
+				"timeout waiting on completion\n");
+		return -ETIMEDOUT;
+	}
 
-		/* If it is bus arbitration error, try again */
-		if (id->err_status & CDNS_I2C_IXR_ARB_LOST) {
-			dev_dbg(id->adap.dev.parent,
-				 "Lost ownership on bus, trying again\n");
-			if (retries--) {
-				mdelay(2);
-				retry = true;
-			} else {
-				dev_err(id->adap.dev.parent,
-					 "Retries completed, exit\n");
-				return -EREMOTEIO;
-			}
-		}
-	} while (retry);
+	cdns_i2c_writereg(CDNS_I2C_IXR_ALL_INTR_MASK,
+			  CDNS_I2C_IDR_OFFSET);
+
+	/* If it is bus arbitration error, try again */
+	if (id->err_status & CDNS_I2C_IXR_ARB_LOST)
+		return -EAGAIN;
 
 	return 0;
 }
