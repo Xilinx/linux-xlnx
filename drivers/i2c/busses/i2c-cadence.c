@@ -175,12 +175,15 @@ static irqreturn_t cdns_i2c_isr(int irq, void *ptr)
 	struct cdns_i2c *id = ptr;
 	/* Signal completion only after everything is updated */
 	int done_flag = 0;
+	irqreturn_t status = IRQ_NONE;
 
 	isr_status = cdns_i2c_readreg(CDNS_I2C_ISR_OFFSET);
 
 	/* Handling nack and arbitration lost interrupt */
-	if (isr_status & (CDNS_I2C_IXR_NACK | CDNS_I2C_IXR_ARB_LOST))
+	if (isr_status & (CDNS_I2C_IXR_NACK | CDNS_I2C_IXR_ARB_LOST)) {
 		done_flag = 1;
+		status = IRQ_HANDLED;
+	}
 
 	/* Handling Data interrupt */
 	if ((isr_status & CDNS_I2C_IXR_DATA) &&
@@ -212,6 +215,8 @@ static irqreturn_t cdns_i2c_isr(int irq, void *ptr)
 		if (!id->bus_hold_flag &&
 				(id->recv_count <= CDNS_I2C_FIFO_DEPTH))
 			cdns_i2c_clear_bus_hold(id);
+
+		status = IRQ_HANDLED;
 	}
 
 	/* Handling Transfer Complete interrupt */
@@ -263,15 +268,21 @@ static irqreturn_t cdns_i2c_isr(int irq, void *ptr)
 			}
 			done_flag = 1;
 		}
+
+		status = IRQ_HANDLED;
 	}
 
 	/* Update the status for errors */
 	id->err_status = isr_status & CDNS_I2C_IXR_ERR_INTR_MASK;
+	if (id->err_status)
+		status = IRQ_HANDLED;
+
 	cdns_i2c_writereg(isr_status, CDNS_I2C_ISR_OFFSET);
 
 	if (done_flag)
 		complete(&id->xfer_done);
-	return IRQ_HANDLED;
+
+	return status;
 }
 
 /**
