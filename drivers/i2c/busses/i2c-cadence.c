@@ -909,4 +909,3 @@ module_platform_driver(cdns_i2c_drv);
 MODULE_AUTHOR("Xilinx, Inc.");
 MODULE_DESCRIPTION("Cadence I2C bus driver");
 MODULE_LICENSE("GPL");
-MODULE_ALIAS("platform:" DRIVER_NAME);
