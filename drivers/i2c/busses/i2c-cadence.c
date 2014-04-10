@@ -99,8 +99,8 @@
 #define CDNS_I2C_DIVA_MAX	4
 #define CDNS_I2C_DIVB_MAX	64
 
-#define cdns_i2c_readreg(offset)	__raw_readl(id->membase + offset)
-#define cdns_i2c_writereg(val, offset)	__raw_writel(val, id->membase + offset)
+#define cdns_i2c_readreg(offset)       readl_relaxed(id->membase + offset)
+#define cdns_i2c_writereg(val, offset) writel_relaxed(val, id->membase + offset)
 
 /**
  * struct cdns_i2c - I2C device private data structure
