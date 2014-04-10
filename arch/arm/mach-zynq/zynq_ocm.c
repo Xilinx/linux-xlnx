@@ -48,10 +48,10 @@ struct zynq_ocm_dev {
 
 /**
  * zynq_ocm_irq_handler - Interrupt service routine of the OCM controller
- * @irq:        IRQ number
- * @data:     Pointer to the zynq_ocm_dev structure
+ * @irq:	IRQ number
+ * @data:	Pointer to the zynq_ocm_dev structure
  *
- * returns:     IRQ_HANDLED always
+ * Return:	IRQ_HANDLED always
  */
 static irqreturn_t zynq_ocm_irq_handler(int irq, void *data)
 {
@@ -75,11 +75,11 @@ static irqreturn_t zynq_ocm_irq_handler(int irq, void *data)
 
 /**
  * zynq_ocm_probe - Probe method for the OCM driver
- * @pdev:       Pointer to the platform_device structure
+ * @pdev:	Pointer to the platform_device structure
  *
  * This function initializes the driver data structures and the hardware.
  *
- * returns:     0 on success and error value on failure
+ * Return:	0 on success and error value on failure
  */
 static int zynq_ocm_probe(struct platform_device *pdev)
 {
@@ -203,13 +203,13 @@ static int zynq_ocm_probe(struct platform_device *pdev)
 
 /**
  * zynq_ocm_remove - Remove method for the OCM driver
- * @pdev:       Pointer to the platform_device structure
+ * @pdev:	Pointer to the platform_device structure
  *
  * This function is called if a device is physically removed from the system or
  * if the driver module is being unloaded. It frees all resources allocated to
  * the device.
  *
- * returns:     0 on success and error value on failure
+ * Return:	0 on success and error value on failure
  */
 static int zynq_ocm_remove(struct platform_device *pdev)
 {
