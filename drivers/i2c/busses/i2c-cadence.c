@@ -724,7 +724,6 @@ static int cdns_i2c_clk_notifier_cb(struct notifier_block *nb, unsigned long
 	}
 }
 
-#ifdef CONFIG_PM_SLEEP
 /**
  * cdns_i2c_suspend - Suspend method for the driver
  * @_dev:	Address of the platform_device structure
@@ -733,7 +732,7 @@ static int cdns_i2c_clk_notifier_cb(struct notifier_block *nb, unsigned long
  *
  * Return: 0 always
  */
-static int cdns_i2c_suspend(struct device *_dev)
+static int __maybe_unused cdns_i2c_suspend(struct device *_dev)
 {
 	struct platform_device *pdev = container_of(_dev,
 			struct platform_device, dev);
@@ -753,7 +752,7 @@ static int cdns_i2c_suspend(struct device *_dev)
  *
  * Return: 0 on success and error value on error
  */
-static int cdns_i2c_resume(struct device *_dev)
+static int __maybe_unused cdns_i2c_resume(struct device *_dev)
 {
 	struct platform_device *pdev = container_of(_dev,
 			struct platform_device, dev);
@@ -770,7 +769,6 @@ static int cdns_i2c_resume(struct device *_dev)
 
 	return 0;
 }
-#endif
 
 static SIMPLE_DEV_PM_OPS(cdns_i2c_dev_pm_ops, cdns_i2c_suspend,
 			 cdns_i2c_resume);
