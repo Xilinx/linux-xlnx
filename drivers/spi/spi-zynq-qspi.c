@@ -118,8 +118,8 @@
 /**
  * struct zynq_qspi - Defines qspi driver instance
  * @regs:		Virtual address of the QSPI controller registers
- * @devclk:		Pointer to the peripheral clock
- * @aperclk:		Pointer to the APER clock
+ * @refclk:		Pointer to the peripheral clock
+ * @pclk:		Pointer to the APB clock
  * @irq:		IRQ number
  * @config_reg_lock:	Lock used for accessing configuration register
  * @txbuf:		Pointer to the TX buffer
@@ -130,8 +130,8 @@
  */
 struct zynq_qspi {
 	void __iomem *regs;
-	struct clk *devclk;
-	struct clk *aperclk;
+	struct clk *refclk;
+	struct clk *pclk;
 	int irq;
 	const void *txbuf;
 	void *rxbuf;
@@ -274,8 +274,8 @@ static int zynq_prepare_transfer_hardware(struct spi_master *master)
 {
 	struct zynq_qspi *xqspi = spi_master_get_devdata(master);
 
-	clk_enable(xqspi->devclk);
-	clk_enable(xqspi->aperclk);
+	clk_enable(xqspi->refclk);
+	clk_enable(xqspi->pclk);
 	zynq_qspi_write(xqspi, ZYNQ_QSPI_ENABLE_OFFSET,
 			ZYNQ_QSPI_ENABLE_ENABLE_MASK);
 
@@ -296,8 +296,8 @@ static int zynq_unprepare_transfer_hardware(struct spi_master *master)
 	struct zynq_qspi *xqspi = spi_master_get_devdata(master);
 
 	zynq_qspi_write(xqspi, ZYNQ_QSPI_ENABLE_OFFSET, 0);
-	clk_disable(xqspi->devclk);
-	clk_disable(xqspi->aperclk);
+	clk_disable(xqspi->refclk);
+	clk_disable(xqspi->pclk);
 
 	return 0;
 }
@@ -360,7 +360,7 @@ static int zynq_qspi_setup_transfer(struct spi_device *qspi,
 	/* Set the clock frequency */
 	/* If req_hz == 0, default to lowest speed */
 	while ((baud_rate_val < ZYNQ_QSPI_BAUD_DIV_MAX)  &&
-	       (clk_get_rate(xqspi->devclk) / (2 << baud_rate_val)) > req_hz)
+	       (clk_get_rate(xqspi->refclk) / (2 << baud_rate_val)) > req_hz)
 		baud_rate_val++;
 
 	config_reg = zynq_qspi_read(xqspi, ZYNQ_QSPI_CONFIG_OFFSET);
@@ -592,16 +592,16 @@ static int __maybe_unused zynq_qspi_resume(struct device *dev)
 	struct zynq_qspi *xqspi = spi_master_get_devdata(master);
 	int ret = 0;
 
-	ret = clk_enable(xqspi->aperclk);
+	ret = clk_enable(xqspi->pclk);
 	if (ret) {
-		dev_err(dev, "Cannot enable APER clock.\n");
+		dev_err(dev, "Cannot enable APB clock.\n");
 		return ret;
 	}
 
-	ret = clk_enable(xqspi->devclk);
+	ret = clk_enable(xqspi->refclk);
 	if (ret) {
 		dev_err(dev, "Cannot enable device clock.\n");
-		clk_disable(xqspi->aperclk);
+		clk_disable(xqspi->pclk);
 		return ret;
 	}
 
@@ -648,30 +648,30 @@ static int zynq_qspi_probe(struct platform_device *pdev)
 		dev_warn(&pdev->dev, "couldn't determine configuration info "
 			 "about dual memories. defaulting to single memory\n");
 
-	xqspi->aperclk = devm_clk_get(&pdev->dev, "aper_clk");
-	if (IS_ERR(xqspi->aperclk)) {
-		dev_err(&pdev->dev, "aper_clk clock not found.\n");
-		ret = PTR_ERR(xqspi->aperclk);
+	xqspi->pclk = devm_clk_get(&pdev->dev, "pclk");
+	if (IS_ERR(xqspi->pclk)) {
+		dev_err(&pdev->dev, "pclk clock not found.\n");
+		ret = PTR_ERR(xqspi->pclk);
 		goto remove_master;
 	}
 
-	xqspi->devclk = devm_clk_get(&pdev->dev, "ref_clk");
-	if (IS_ERR(xqspi->devclk)) {
+	xqspi->refclk = devm_clk_get(&pdev->dev, "ref_clk");
+	if (IS_ERR(xqspi->refclk)) {
 		dev_err(&pdev->dev, "ref_clk clock not found.\n");
-		ret = PTR_ERR(xqspi->devclk);
+		ret = PTR_ERR(xqspi->refclk);
 		goto remove_master;
 	}
 
-	ret = clk_prepare_enable(xqspi->aperclk);
+	ret = clk_prepare_enable(xqspi->pclk);
 	if (ret) {
-		dev_err(&pdev->dev, "Unable to enable APER clock.\n");
+		dev_err(&pdev->dev, "Unable to enable APB clock.\n");
 		goto remove_master;
 	}
 
-	ret = clk_prepare_enable(xqspi->devclk);
+	ret = clk_prepare_enable(xqspi->refclk);
 	if (ret) {
 		dev_err(&pdev->dev, "Unable to enable device clock.\n");
-		goto clk_dis_aper;
+		goto clk_dis_pclk;
 	}
 
 	/* QSPI controller initializations */
@@ -705,7 +705,7 @@ static int zynq_qspi_probe(struct platform_device *pdev)
 	master->unprepare_transfer_hardware = zynq_unprepare_transfer_hardware;
 	master->flags = SPI_MASTER_QUAD_MODE;
 
-	master->max_speed_hz = clk_get_rate(xqspi->devclk) / 2;
+	master->max_speed_hz = clk_get_rate(xqspi->refclk) / 2;
 	master->bits_per_word_mask = SPI_BPW_MASK(8);
 	master->mode_bits = SPI_CPOL | SPI_CPHA | SPI_RX_DUAL | SPI_RX_QUAD |
 			    SPI_TX_DUAL | SPI_TX_QUAD;
@@ -719,9 +719,9 @@ static int zynq_qspi_probe(struct platform_device *pdev)
 	return ret;
 
 clk_dis_all:
-	clk_disable_unprepare(xqspi->devclk);
-clk_dis_aper:
-	clk_disable_unprepare(xqspi->aperclk);
+	clk_disable_unprepare(xqspi->refclk);
+clk_dis_pclk:
+	clk_disable_unprepare(xqspi->pclk);
 remove_master:
 	spi_master_put(master);
 	return ret;
@@ -744,8 +744,8 @@ static int zynq_qspi_remove(struct platform_device *pdev)
 
 	zynq_qspi_write(xqspi, ZYNQ_QSPI_ENABLE_OFFSET, 0);
 
-	clk_disable_unprepare(xqspi->devclk);
-	clk_disable_unprepare(xqspi->aperclk);
+	clk_disable_unprepare(xqspi->refclk);
+	clk_disable_unprepare(xqspi->pclk);
 
 	spi_unregister_master(master);
 

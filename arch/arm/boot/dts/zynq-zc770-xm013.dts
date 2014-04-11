@@ -202,7 +202,7 @@
 			reg = <0xf8f02000 0x1000>;
 		} ;
 		ps7_qspi_0: ps7-qspi@e000d000 {
-			clock-names = "ref_clk", "aper_clk";
+			clock-names = "ref_clk", "pclk";
 			clocks = <&clkc 10>, <&clkc 43>;
 			compatible = "xlnx,zynq-qspi-1.0";
 			interrupt-parent = <&ps7_scugic_0>;
