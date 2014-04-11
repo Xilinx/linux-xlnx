@@ -1,22 +1,22 @@
 config ARCH_ZYNQ
 	bool "Xilinx Zynq ARM Cortex A9 Platform" if ARCH_MULTI_V7
+	select ARCH_HAS_CPUFREQ
+	select ARCH_HAS_OPP
+	select ARCH_REQUIRE_GPIOLIB
 	select ARM_AMBA
 	select ARM_GIC
+	select ARM_GLOBAL_TIMER
+	select CACHE_L2X0
+	select CADENCE_TTC_TIMER
+	select GENERIC_ALLOCATOR
 	select GENERIC_CLOCKEVENTS
 	select HAVE_ARM_SCU if SMP
 	select HAVE_ARM_TWD if SMP
-	select ICST
-	select MIGHT_HAVE_CACHE_L2X0
 	select HAVE_SMP
-	select CACHE_L2X0
-	select ARCH_REQUIRE_GPIOLIB
-	select ARCH_HAS_CPUFREQ
-	select ARCH_HAS_OPP
-	select MIGHT_HAVE_PCI
-	select CADENCE_TTC_TIMER
-	select ARM_GLOBAL_TIMER
-	select GENERIC_ALLOCATOR
+	select ICST
 	select MFD_SYSCON
+	select MIGHT_HAVE_CACHE_L2X0
+	select MIGHT_HAVE_PCI
 	help
 	  Support for Xilinx Zynq ARM Cortex A9 Platform
 
