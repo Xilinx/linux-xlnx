@@ -480,9 +480,9 @@ MDC_DIV_64, MDC_DIV_96, MDC_DIV_128, MDC_DIV_224 };
 #endif
 
 #define xemacps_read(base, reg)						\
-	__raw_readl(((void __iomem *)(base)) + (reg))
+	readl_relaxed(((void __iomem *)(base)) + (reg))
 #define xemacps_write(base, reg, val)					\
-	__raw_writel((val), ((void __iomem *)(base)) + (reg))
+	writel_relaxed((val), ((void __iomem *)(base)) + (reg))
 
 struct ring_info {
 	struct sk_buff *skb;
