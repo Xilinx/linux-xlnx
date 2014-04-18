@@ -121,14 +121,12 @@ struct m25p {
 	u8			program_opcode;
 	u8			*command;
 	enum read_type		flash_read;
-	bool			fast_read;
 	u16			curbank;
 	u32			jedec_id;
 	bool			check_fsr;
 	bool			shift;
 	bool			isparallel;
 	bool			isstacked;
-	u8			dummycount;
 };
 
 static inline struct m25p *mtd_to_m25p(struct mtd_info *mtd)
@@ -451,14 +449,16 @@ static int set_quad_mode(struct m25p *flash, u32 jedec_id)
 			return -EINVAL;
 		}
 		return status;
+	/*
+	 * Revisit
+	 * Quad enable needs to be done explicitly only for spansion and
+	 * winbond devices. This is a non-volatile configuration that
+	 * only needs to be done once.
+	 * Especially with parallel and stacked configurations,
+	 * a direct call to spansion_quad_enable is not guaranteed to work.
+	 */
 	default:
-		status = spansion_quad_enable(flash);
-		if (status) {
-			dev_err(&flash->spi->dev,
-				"Spansion quad-read not enabled\n");
-			return -EINVAL;
-		}
-		return status;
+		return 0;
 	}
 }
 
@@ -1103,7 +1103,7 @@ struct flash_info {
 #define	M25P_NO_FR	0x08		/* Can't do fastread */
 #define	SECT_4K_PMC	0x10		/* OPCODE_BE_4K_PMC works uniformly */
 #define	M25P80_QUAD_READ	0x20    /* Flash supports Quad Read */
-#define	SECT_32K	0x20		/* OPCODE_BE_32K */
+#define	SECT_32K	0x80		/* OPCODE_BE_32K */
 #define E_FSR		0x40		/* Flag SR exists for flash */
 };
 
@@ -1185,19 +1185,26 @@ static const struct spi_device_id m25p_ids[] = {
 	{ "mx66l51235l", INFO(0xc2201a, 0, 64 * 1024, 1024, M25P80_QUAD_READ) },
 
 	/* Micron */
-	{ "n25q064",  INFO(0x20ba17, 0, 64 * 1024, 128, 0) },
-	{ "n25q128a11",  INFO(0x20bb18, 0, 64 * 1024, 256, 0) },
-	{ "n25q128a13",  INFO(0x20ba18, 0, 64 * 1024, 256, 0) },
+	{ "n25q064",  INFO(0x20ba17, 0, 64 * 1024, 128, M25P80_QUAD_READ) },
+	{ "n25q128a11",  INFO(0x20bb18, 0, 64 * 1024, 256, M25P80_QUAD_READ) },
+	{ "n25q128a13",  INFO(0x20ba18, 0, 64 * 1024, 256, M25P80_QUAD_READ) },
 	{ "n25q256a", INFO(0x20ba19, 0, 64 * 1024, 512, SECT_4K) },
 	/* Numonyx flash n25q128 - FIXME check the name */
-	{ "n25q128",   INFO(0x20bb18, 0, 64 * 1024, 256, 0) },
-	{ "n25q128a11",  INFO(0x20bb18, 0, 64 * 1024, 256, E_FSR) },
-	{ "n25q128a13",  INFO(0x20ba18, 0, 64 * 1024, 256, E_FSR) },
-	{ "n25q256a13", INFO(0x20ba19,  0, 64 * 1024,  512, SECT_4K | E_FSR) },
-	{ "n25q256a11", INFO(0x20bb19,  0, 64 * 1024,  512, SECT_4K | E_FSR) },
-	{ "n25q512a13", INFO(0x20ba20,  0, 64 * 1024,  1024, SECT_4K | E_FSR) },
-	{ "n25q512a11", INFO(0x20bb20,  0, 64 * 1024,  1024, SECT_4K | E_FSR) },
-	{ "n25q00aa13", INFO(0x20ba21,  0, 64 * 1024,  2048, SECT_4K | E_FSR) },
+	{ "n25q128",   INFO(0x20bb18, 0, 64 * 1024, 256, M25P80_QUAD_READ) },
+	{ "n25q128a11",  INFO(0x20bb18, 0, 64 * 1024, 256,
+			      E_FSR | M25P80_QUAD_READ) },
+	{ "n25q128a13",  INFO(0x20ba18, 0, 64 * 1024, 256,
+			      E_FSR | M25P80_QUAD_READ) },
+	{ "n25q256a13", INFO(0x20ba19,  0, 64 * 1024,  512,
+			     SECT_4K | E_FSR | M25P80_QUAD_READ) },
+	{ "n25q256a11", INFO(0x20bb19,  0, 64 * 1024,  512,
+			     SECT_4K | E_FSR | M25P80_QUAD_READ) },
+	{ "n25q512a13", INFO(0x20ba20,  0, 64 * 1024,  1024,
+			     SECT_4K | E_FSR | M25P80_QUAD_READ) },
+	{ "n25q512a11", INFO(0x20bb20,  0, 64 * 1024,  1024,
+			     SECT_4K | E_FSR | M25P80_QUAD_READ) },
+	{ "n25q00aa13", INFO(0x20ba21,  0, 64 * 1024,  2048,
+			     SECT_4K | E_FSR | M25P80_QUAD_READ) },
 
 	/* PMC */
 	{ "pm25lv512",   INFO(0,        0, 32 * 1024,    2, SECT_4K_PMC) },
@@ -1209,16 +1216,26 @@ static const struct spi_device_id m25p_ids[] = {
 	 */
 	{ "s25sl032p",  INFO(0x010215, 0x4d00,  64 * 1024,  64, 0) },
 	{ "s25sl064p",  INFO(0x010216, 0x4d00,  64 * 1024, 128, 0) },
-	{ "s25fl128s0", INFO(0x012018, 0x4d00, 256 * 1024,  64, 0) },
-	{ "s25fl128s1", INFO(0x012018, 0x4d01,  64 * 1024, 256, 0) },
-	{ "s25fl256s0", INFO(0x010219, 0x4d00, 256 * 1024, 128, 0) },
-	{ "s25fl256s1", INFO(0x010219, 0x4d01,  64 * 1024, 512, M25P80_QUAD_READ) },
-	{ "s25fl512s",  INFO(0x010220, 0x4d00, 256 * 1024, 256, M25P80_QUAD_READ) },
-	{ "s70fl01gs",  INFO(0x010221, 0x4d00, 256 * 1024, 256, 0) },
-	{ "s25sl12800", INFO(0x012018, 0x0300, 256 * 1024,  64, 0) },
-	{ "s25sl12801", INFO(0x012018, 0x0301,  64 * 1024, 256, 0) },
-	{ "s25fl129p0", INFO(0x012018, 0x4d00, 256 * 1024,  64, 0) },
-	{ "s25fl129p1", INFO(0x012018, 0x4d01,  64 * 1024, 256, 0) },
+	{ "s25fl128s0", INFO(0x012018, 0x4d00, 256 * 1024,  64,
+			     M25P80_QUAD_READ) },
+	{ "s25fl128s1", INFO(0x012018, 0x4d01,  64 * 1024, 256,
+			     M25P80_QUAD_READ) },
+	{ "s25fl256s0", INFO(0x010219, 0x4d00, 256 * 1024, 128,
+			     M25P80_QUAD_READ) },
+	{ "s25fl256s1", INFO(0x010219, 0x4d01,  64 * 1024, 512,
+			     M25P80_QUAD_READ) },
+	{ "s25fl512s",  INFO(0x010220, 0x4d00, 256 * 1024, 256,
+			     M25P80_QUAD_READ) },
+	{ "s70fl01gs",  INFO(0x010221, 0x4d00, 256 * 1024, 256,
+			     M25P80_QUAD_READ) },
+	{ "s25sl12800", INFO(0x012018, 0x0300, 256 * 1024,  64,
+			     M25P80_QUAD_READ) },
+	{ "s25sl12801", INFO(0x012018, 0x0301,  64 * 1024, 256,
+			     M25P80_QUAD_READ) },
+	{ "s25fl129p0", INFO(0x012018, 0x4d00, 256 * 1024,  64,
+			     M25P80_QUAD_READ) },
+	{ "s25fl129p1", INFO(0x012018, 0x4d01,  64 * 1024, 256,
+			     M25P80_QUAD_READ) },
 	{ "s25sl004a",  INFO(0x010212,      0,  64 * 1024,   8, 0) },
 	{ "s25sl008a",  INFO(0x010213,      0,  64 * 1024,  16, 0) },
 	{ "s25sl016a",  INFO(0x010214,      0,  64 * 1024,  32, 0) },
@@ -1295,11 +1312,14 @@ static const struct spi_device_id m25p_ids[] = {
 	/* And thus, the sector size of w25q64 is set to 32KiB for */
 	/* JFFS2 support. */
 	{ "w25q64", INFO(0xef4017, 0, 64 * 1024, 128, SECT_32K) },
-	{ "w25q128", INFO(0xef4018, 0, 64 * 1024, 256, SECT_4K) },
+	{ "w25q128", INFO(0xef4018, 0, 64 * 1024, 256,
+			  SECT_4K | M25P80_QUAD_READ) },
 	{ "w25q80", INFO(0xef5014, 0, 64 * 1024,  16, SECT_4K) },
 	{ "w25q80bl", INFO(0xef4014, 0, 64 * 1024,  16, SECT_4K) },
-	{ "w25q128", INFO(0xef4018, 0, 64 * 1024, 256, SECT_4K) },
-	{ "w25q256", INFO(0xef4019, 0, 64 * 1024, 512, SECT_4K) },
+	{ "w25q128", INFO(0xef4018, 0, 64 * 1024, 256,
+			  SECT_4K | M25P80_QUAD_READ) },
+	{ "w25q256", INFO(0xef4019, 0, 64 * 1024, 512,
+			  SECT_4K | M25P80_QUAD_READ) },
 
 	/* Catalyst / On Semiconductor -- non-JEDEC */
 	{ "cat25c11", CAT25_INFO(  16, 8, 16, 1, M25P_NO_ERASE | M25P_NO_FR) },
@@ -1522,7 +1542,6 @@ static int m25p_probe(struct spi_device *spi)
 
 	flash->read_opcode = OPCODE_NORM_READ;
 	flash->program_opcode = OPCODE_PP;
-	flash->dummycount = 0;
 
 	if (info->flags & M25P_NO_ERASE)
 		flash->mtd.flags |= MTD_NO_ERASE;
@@ -1579,11 +1598,8 @@ static int m25p_probe(struct spi_device *spi)
 
 	flash->program_opcode = OPCODE_PP;
 
-	if (spi->master->flags & SPI_MASTER_QUAD_MODE) {
-		flash->read_opcode = OPCODE_QUAD_READ;
+	if (spi->master->mode_bits & SPI_TX_QUAD)
 		flash->program_opcode = OPCODE_QPP;
-		flash->dummycount = 1;
-	}
 
 	if (info->addr_width)
 		flash->addr_width = info->addr_width;
