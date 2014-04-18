@@ -311,8 +311,23 @@ static void zynq_qspi_chipselect(struct spi_device *qspi, bool is_high)
 {
 	struct zynq_qspi *xqspi = spi_master_get_devdata(qspi->master);
 	u32 config_reg;
+#ifdef CONFIG_SPI_ZYNQ_QSPI_DUAL_STACKED
+	u32 lqspi_cfg_reg;
+#endif
 
 	config_reg = zynq_qspi_read(xqspi, ZYNQ_QSPI_CONFIG_OFFSET);
+
+	/* Select upper/lower page before asserting CS */
+#ifdef CONFIG_SPI_ZYNQ_QSPI_DUAL_STACKED
+		lqspi_cfg_reg = zynq_qspi_read(xqspi,
+					       ZYNQ_QSPI_LINEAR_CFG_OFFSET);
+		if (qspi->master->flags & SPI_MASTER_U_PAGE)
+			lqspi_cfg_reg |= ZYNQ_QSPI_LCFG_U_PAGE_MASK;
+		else
+			lqspi_cfg_reg &= ~ZYNQ_QSPI_LCFG_U_PAGE_MASK;
+		zynq_qspi_write(xqspi, ZYNQ_QSPI_LINEAR_CFG_OFFSET,
+				lqspi_cfg_reg);
+#endif
 
 	if (is_high) {
 		/* Deselect the slave */
