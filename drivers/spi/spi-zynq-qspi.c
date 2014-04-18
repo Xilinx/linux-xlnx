@@ -138,6 +138,7 @@ struct zynq_qspi {
 	int bytes_to_transfer;
 	int bytes_to_receive;
 	u32 is_dual;
+	u8 is_instr;
 };
 
 /*
@@ -240,6 +241,8 @@ static void zynq_qspi_copy_read_data(struct zynq_qspi *xqspi, u32 data, u8 size)
 		xqspi->rxbuf += size;
 	}
 	xqspi->bytes_to_receive -= size;
+	if (xqspi->bytes_to_receive < 0)
+		xqspi->bytes_to_receive = 0;
 }
 
 /**
@@ -338,6 +341,7 @@ static void zynq_qspi_chipselect(struct spi_device *qspi, bool is_high)
 		config_reg |= (((~(BIT(qspi->chip_select))) <<
 				 ZYNQ_QSPI_SS_SHIFT) &
 				 ZYNQ_QSPI_CONFIG_SSCTRL_MASK);
+		xqspi->is_instr = 1;
 	}
 
 	zynq_qspi_write(xqspi, ZYNQ_QSPI_CONFIG_OFFSET, config_reg);
@@ -438,6 +442,50 @@ static void zynq_qspi_fill_tx_fifo(struct zynq_qspi *xqspi, u32 size)
 }
 
 /**
+ * zynq_qspi_tx_dual_parallel - Handles odd byte tx for dual parallel
+ *
+ * In dual parallel configuration, when read/write data operations
+ * are performed, odd data bytes have to be converted to even to
+ * avoid a nibble of data to be written going to individual flash devices,
+ * where a byte is expected.
+ * This check is only for data and will not apply for commands.
+ *
+ * @xqspi:	Pointer to the zynq_qspi structure
+ * @data:	Data to be transmitted
+ * @len:	No. of bytes to be transmitted
+ */
+static inline void zynq_qspi_tx_dual_parallel(struct zynq_qspi *xqspi,
+					      u32 data, u32 len)
+{
+	len = len % 2 ? len + 1 : len;
+	if (len == 4)
+		zynq_qspi_write(xqspi, ZYNQ_QSPI_TXD_00_00_OFFSET, data);
+	else
+		zynq_qspi_write(xqspi, ZYNQ_QSPI_TXD_00_01_OFFSET +
+				((len - 1) * 4), data);
+}
+
+/**
+ * zynq_qspi_rx_dual_parallel - Handles odd byte rx for dual parallel
+ *
+ * In dual parallel configuration, when read/write data operations
+ * are performed, odd data bytes have to be converted to even to
+ * avoid a dummy nibble for read going to individual flash devices.
+ * This check is only for data and will not apply for commands or
+ * the dummy cycles transmitted for fast/quad read.
+ *
+ * @xqspi:	Pointer to the zynq_qspi structure
+ * @data:	Data word received
+ * @len:	No. of bytes to be read
+ */
+static inline void zynq_qspi_rx_dual_parallel(struct zynq_qspi *xqspi,
+					      u32 data, u32 len)
+{
+	len = len % 2 ? len + 1 : len;
+	zynq_qspi_copy_read_data(xqspi, data, len);
+}
+
+/**
  * zynq_qspi_irq - Interrupt service routine of the QSPI controller
  * @irq:	IRQ number
  * @dev_id:	Pointer to the xqspi structure
@@ -474,13 +522,7 @@ static irqreturn_t zynq_qspi_irq(int irq, void *dev_id)
 		/* Read out the data from the RX FIFO */
 		while ((rxindex < rxcount) &&
 		       (rxindex < ZYNQ_QSPI_RX_THRESHOLD)) {
-
-			if (xqspi->bytes_to_receive < 4 && !xqspi->is_dual) {
-				data = zynq_qspi_read(xqspi,
-						      ZYNQ_QSPI_RXD_OFFSET);
-				zynq_qspi_copy_read_data(xqspi, data,
-					xqspi->bytes_to_receive);
-			} else {
+			if (xqspi->bytes_to_receive >= 4) {
 				if (xqspi->rxbuf) {
 					(*(u32 *)xqspi->rxbuf) =
 					zynq_qspi_read(xqspi,
@@ -491,6 +533,16 @@ static irqreturn_t zynq_qspi_irq(int irq, void *dev_id)
 							ZYNQ_QSPI_RXD_OFFSET);
 				}
 				xqspi->bytes_to_receive -= 4;
+			} else {
+				data = zynq_qspi_read(xqspi,
+						      ZYNQ_QSPI_RXD_OFFSET);
+				if (!xqspi->is_dual || xqspi->is_instr)
+					zynq_qspi_copy_read_data(xqspi, data,
+						xqspi->bytes_to_receive);
+				else {
+					zynq_qspi_rx_dual_parallel(xqspi, data,
+						xqspi->bytes_to_receive);
+				}
 			}
 			rxindex++;
 		}
@@ -505,13 +557,14 @@ static irqreturn_t zynq_qspi_irq(int irq, void *dev_id)
 				tmp = xqspi->bytes_to_transfer;
 				zynq_qspi_copy_write_data(xqspi, &data,
 					xqspi->bytes_to_transfer);
-				if (xqspi->is_dual)
+
+				if (!xqspi->is_dual || xqspi->is_instr)
 					zynq_qspi_write(xqspi,
-						ZYNQ_QSPI_TXD_00_00_OFFSET,
-							data);
-				else
-					zynq_qspi_write(xqspi,
-						offset[tmp - 1], data);
+							offset[tmp - 1], data);
+				else {
+					zynq_qspi_tx_dual_parallel(xqspi, data,
+								   tmp);
+				}
 			}
 		} else {
 			/*
@@ -523,6 +576,7 @@ static irqreturn_t zynq_qspi_irq(int irq, void *dev_id)
 						ZYNQ_QSPI_IDIS_OFFSET,
 						ZYNQ_QSPI_IXR_ALL_MASK);
 				spi_finalize_current_transfer(master);
+				xqspi->is_instr = 0;
 			}
 		}
 		return IRQ_HANDLED;
@@ -556,12 +610,17 @@ static int zynq_qspi_start_transfer(struct spi_master *master,
 
 	zynq_qspi_setup_transfer(qspi, transfer);
 
-	if (transfer->len < 4) {
-		zynq_qspi_copy_write_data(xqspi, &data, transfer->len);
-		zynq_qspi_write(xqspi, ZYNQ_QSPI_TXD_00_01_OFFSET +
-				((transfer->len - 1) * 4), data);
-	} else {
+	if (transfer->len >= 4) {
 		zynq_qspi_fill_tx_fifo(xqspi, ZYNQ_QSPI_FIFO_DEPTH);
+	} else {
+		zynq_qspi_copy_write_data(xqspi, &data, transfer->len);
+
+		if (!xqspi->is_dual || xqspi->is_instr)
+			zynq_qspi_write(xqspi, ZYNQ_QSPI_TXD_00_01_OFFSET +
+					((transfer->len - 1) * 4), data);
+		else {
+			zynq_qspi_tx_dual_parallel(xqspi, data, transfer->len);
+		}
 	}
 
 	zynq_qspi_write(xqspi, ZYNQ_QSPI_IEN_OFFSET,
