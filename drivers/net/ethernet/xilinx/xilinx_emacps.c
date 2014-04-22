@@ -1484,6 +1484,9 @@ static irqreturn_t xemacps_interrupt(int irq, void *dev_id)
 			xemacps_write(lp->baseaddr,
 					XEMACPS_NWCTRL_OFFSET, regctrl);
 			spin_unlock(&lp->nwctrlreg_lock);
+			xemacps_write(lp->baseaddr,
+				XEMACPS_IDR_OFFSET, XEMACPS_IXR_FRAMERX_MASK);
+			napi_schedule(&lp->napi);
 		}
 
 		if (regisr & XEMACPS_IXR_FRAMERX_MASK) {
