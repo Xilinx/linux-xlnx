@@ -138,8 +138,8 @@ static int xvip_pipeline_start_stop(struct xvip_pipeline *pipe, bool start)
 
 	while (1) {
 		pad = xvip_get_entity_sink(entity, pad);
-		if (IS_ERR(pad))
-			return PTR_ERR(pad);
+		if (pad == NULL)
+			break;
 
 		if (!(pad->flags & MEDIA_PAD_FL_SINK))
 			break;
