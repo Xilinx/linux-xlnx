@@ -74,12 +74,16 @@ static const struct xilinx_video_format_desc xilinx_video_formats[] = {
 	{ "yuv420", 16, 16, XILINX_VIDEO_FORMAT_YUV420, DRM_FORMAT_YUV420 },
 };
 
+static unsigned int xilinx_drm_format_bpp(uint32_t drm_format);
+static unsigned int xilinx_drm_format_depth(uint32_t drm_format);
+
 /* create a fb */
 static struct drm_framebuffer *
 xilinx_drm_fb_create(struct drm_device *drm, struct drm_file *file_priv,
 		     struct drm_mode_fb_cmd2 *mode_cmd)
 {
 	struct xilinx_drm_private *private = drm->dev_private;
+	struct drm_framebuffer *fb;
 	bool res;
 
 	res = xilinx_drm_crtc_check_format(private->crtc,
@@ -90,7 +94,14 @@ xilinx_drm_fb_create(struct drm_device *drm, struct drm_file *file_priv,
 		return ERR_PTR(-EINVAL);
 	}
 
-	return drm_fb_cma_create(drm, file_priv, mode_cmd);
+	fb = drm_fb_cma_create(drm, file_priv, mode_cmd);
+	if (IS_ERR(fb))
+		return fb;
+
+	fb->bits_per_pixel = xilinx_drm_format_bpp(mode_cmd->pixel_format);
+	fb->depth = xilinx_drm_format_depth(mode_cmd->pixel_format);
+
+	return fb;
 }
 
 /* poll changed handler */
