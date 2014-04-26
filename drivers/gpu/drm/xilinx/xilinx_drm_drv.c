@@ -54,22 +54,24 @@ struct xilinx_drm_private {
 /**
  * struct xilinx_video_format_desc - Xilinx Video IP video format description
  * @name: Xilinx video format name
+ * @depth: color depth
  * @bpp: bits per pixel
  * @xilinx_format: xilinx format code
  * @drm_format: drm format code
  */
 struct xilinx_video_format_desc {
 	const char *name;
+	unsigned int depth;
 	unsigned int bpp;
 	unsigned int xilinx_format;
 	uint32_t drm_format;
 };
 
 static const struct xilinx_video_format_desc xilinx_video_formats[] = {
-	{ "yuv422", 16, XILINX_VIDEO_FORMAT_YUV422, DRM_FORMAT_YUYV },
-	{ "yuv444", 24, XILINX_VIDEO_FORMAT_YUV444, DRM_FORMAT_YUV444 },
-	{ "xrgb888", 32, XILINX_VIDEO_FORMAT_RGB, DRM_FORMAT_XRGB8888 },
-	{ "yuv420", 16, XILINX_VIDEO_FORMAT_YUV420, DRM_FORMAT_YUV420 },
+	{ "yuv422", 16, 16, XILINX_VIDEO_FORMAT_YUV422, DRM_FORMAT_YUYV },
+	{ "yuv444", 24, 24, XILINX_VIDEO_FORMAT_YUV444, DRM_FORMAT_YUV444 },
+	{ "xrgb888", 24, 32, XILINX_VIDEO_FORMAT_RGB, DRM_FORMAT_XRGB8888 },
+	{ "yuv420", 16, 16, XILINX_VIDEO_FORMAT_YUV420, DRM_FORMAT_YUV420 },
 };
 
 /* create a fb */
@@ -185,6 +187,21 @@ static unsigned int xilinx_drm_format_bpp(uint32_t drm_format)
 		format = &xilinx_video_formats[i];
 		if (format->drm_format == drm_format)
 			return format->bpp;
+	}
+
+	return 0;
+}
+
+/* get color depth of given format */
+static unsigned int xilinx_drm_format_depth(uint32_t drm_format)
+{
+	const struct xilinx_video_format_desc *format;
+	unsigned int i;
+
+	for (i = 0; i < ARRAY_SIZE(xilinx_video_formats); i++) {
+		format = &xilinx_video_formats[i];
+		if (format->drm_format == drm_format)
+			return format->depth;
 	}
 
 	return 0;
