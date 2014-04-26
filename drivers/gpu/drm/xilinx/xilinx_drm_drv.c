@@ -66,7 +66,7 @@ struct xilinx_video_format_desc {
 };
 
 static const struct xilinx_video_format_desc xilinx_video_formats[] = {
-	{ "yuv422", 16, XILINX_VIDEO_FORMAT_YUV422, DRM_FORMAT_YUV422 },
+	{ "yuv422", 16, XILINX_VIDEO_FORMAT_YUV422, DRM_FORMAT_YUYV },
 	{ "yuv444", 24, XILINX_VIDEO_FORMAT_YUV444, DRM_FORMAT_YUV444 },
 	{ "xrgb888", 32, XILINX_VIDEO_FORMAT_RGB, DRM_FORMAT_XRGB8888 },
 	{ "yuv420", 16, XILINX_VIDEO_FORMAT_YUV420, DRM_FORMAT_YUV420 },
