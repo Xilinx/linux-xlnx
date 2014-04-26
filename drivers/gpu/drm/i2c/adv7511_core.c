@@ -873,6 +873,7 @@ static int adv7511_probe(struct i2c_client *i2c, const struct i2c_device_id *id)
 	regmap_update_bits(adv7511->regmap, ADV7511_REG_POWER,
 			   ADV7511_POWER_POWER_DOWN, ADV7511_POWER_POWER_DOWN);
 
+	adv7511->dpms_mode = DRM_MODE_DPMS_OFF;
 	adv7511->current_edid_segment = -1;
 
 	i2c_set_clientdata(i2c, adv7511);
