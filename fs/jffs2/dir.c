@@ -121,6 +121,7 @@ static int jffs2_readdir(struct file *file, struct dir_context *ctx)
 	struct jffs2_inode_info *f = JFFS2_INODE_INFO(inode);
 	struct jffs2_full_dirent *fd;
 	unsigned long curofs = 1;
+	bool ret;
 
 	jffs2_dbg(1, "jffs2_readdir() for dir_i #%lu\n", inode->i_ino);
 
@@ -144,7 +145,10 @@ static int jffs2_readdir(struct file *file, struct dir_context *ctx)
 		}
 		jffs2_dbg(2, "Dirent %ld: \"%s\", ino #%u, type %d\n",
 			  (unsigned long)ctx->pos, fd->name, fd->ino, fd->type);
-		if (!dir_emit(ctx, fd->name, strlen(fd->name), fd->ino, fd->type))
+		mutex_unlock(&f->sem);
+		ret = dir_emit(ctx, fd->name, strlen(fd->name), fd->ino, fd->type);
+		mutex_lock(&f->sem);
+		if (!ret)
 			break;
 		ctx->pos++;
 	}
