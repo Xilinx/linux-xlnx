@@ -115,6 +115,12 @@ static void __init zynq_smp_prepare_cpus(unsigned int max_cpus)
 #ifdef CONFIG_HOTPLUG_CPU
 static int zynq_cpu_kill(unsigned cpu)
 {
+	unsigned long timeout = jiffies + msecs_to_jiffies(50);
+
+	while (zynq_slcr_cpu_state_read(cpu))
+		if (time_after(jiffies, timeout))
+			return 0;
+
 	zynq_slcr_cpu_stop(cpu);
 	return 1;
 }
@@ -127,6 +133,7 @@ static int zynq_cpu_kill(unsigned cpu)
  */
 static void zynq_cpu_die(unsigned int cpu)
 {
+	zynq_slcr_cpu_state_write(cpu, true);
 	/*
 	 * there is no power-control hardware on this platform, so all
 	 * we can do is put the core into WFI; this is safe as the calling
