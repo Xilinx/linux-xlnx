@@ -119,12 +119,13 @@ static int zynq_cpu_kill(unsigned cpu)
 	return 1;
 }
 
-/*
- * platform-specific code to shutdown a CPU
+/**
+ * zynq_cpu_die - platform-specific code to shutdown a CPU
+ * @cpu: cpu number
  *
- * Called with IRQs disabled
+ * Note: Called with IRQs disabled on the dying CPU.
  */
-static void zynq_platform_cpu_die(unsigned int cpu)
+static void zynq_cpu_die(unsigned int cpu)
 {
 	/*
 	 * there is no power-control hardware on this platform, so all
@@ -141,7 +142,7 @@ struct smp_operations zynq_smp_ops __initdata = {
 	.smp_prepare_cpus	= zynq_smp_prepare_cpus,
 	.smp_boot_secondary	= zynq_boot_secondary,
 #ifdef CONFIG_HOTPLUG_CPU
-	.cpu_die		= zynq_platform_cpu_die,
+	.cpu_die		= zynq_cpu_die,
 	.cpu_kill		= zynq_cpu_kill,
 #endif
 };
