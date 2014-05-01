@@ -758,13 +758,17 @@ static int xemacps_mii_probe(struct net_device *ndev)
 	struct net_local *lp = netdev_priv(ndev);
 	struct phy_device *phydev = NULL;
 
-	if (lp->phy_node) {
-		phydev = of_phy_connect(lp->ndev,
-					lp->phy_node,
-					&xemacps_adjust_link,
-					0,
-					lp->phy_interface);
+	if (!lp->phy_node) {
+		dev_info(&lp->pdev->dev, "%s: no PHY setup\n", ndev->name);
+		return 0;
 	}
+
+	phydev = of_phy_connect(lp->ndev,
+				lp->phy_node,
+				&xemacps_adjust_link,
+				0,
+				lp->phy_interface);
+
 	if (!phydev) {
 		dev_err(&lp->pdev->dev, "%s: no PHY found\n", ndev->name);
 		return -1;
@@ -845,8 +849,11 @@ static int xemacps_mii_init(struct net_local *lp)
 	of_address_to_resource(npp, 0, &res);
 	snprintf(lp->mii_bus->id, MII_BUS_ID_SIZE, "%.8llx",
 		 (unsigned long long)res.start);
-	if (of_mdiobus_register(lp->mii_bus, np))
-		goto err_out_free_mdio_irq;
+
+	if (lp->phy_node) {
+		if (of_mdiobus_register(lp->mii_bus, np))
+			goto err_out_free_mdio_irq;
+	}
 
 	return 0;
 
