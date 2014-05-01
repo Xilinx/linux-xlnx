@@ -42,9 +42,6 @@ extern void zynq_slcr_init_postload_fpga(void);
 extern void __iomem *zynq_slcr_base;
 extern void __iomem *zynq_scu_base;
 
-/* Hotplug */
-extern void zynq_platform_cpu_die(unsigned int cpu);
-
 #ifdef CONFIG_SUSPEND
 int zynq_pm_late_init(void);
 #else
