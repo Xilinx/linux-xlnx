@@ -163,9 +163,7 @@ static int zynq_pm_enter(suspend_state_t suspend_state)
 	switch (suspend_state) {
 	case PM_SUSPEND_STANDBY:
 	case PM_SUSPEND_MEM:
-		outer_disable();
 		cpu_suspend(0, zynq_pm_suspend);
-		outer_resume();
 		break;
 	default:
 		return -EINVAL;
