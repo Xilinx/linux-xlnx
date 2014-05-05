@@ -233,12 +233,25 @@ static void zynq_qspi_init_hw(struct zynq_qspi *xqspi)
  * @xqspi:	Pointer to the zynq_qspi structure
  * @data:	The 32 bit variable where data is stored
  * @size:	Number of bytes to be copied from data to RX buffer
+ *
+ * Note: In case of dual parallel connection, even number of bytes are read
+ * when odd bytes are requested to avoid transfer of a nibble to each flash.
+ * The receive buffer though, is populated with the number of bytes requested.
  */
 static void zynq_qspi_copy_read_data(struct zynq_qspi *xqspi, u32 data, u8 size)
 {
 	if (xqspi->rxbuf) {
-		memcpy(xqspi->rxbuf, ((u8 *) &data) + 4 - size, size);
-		xqspi->rxbuf += size;
+		if (!xqspi->is_dual || xqspi->is_instr) {
+			memcpy(xqspi->rxbuf, ((u8 *) &data) + 4 - size, size);
+			xqspi->rxbuf += size;
+		} else {
+			u8 buff[4], len;
+			len = size;
+			size = size % 2 ? size + 1 : size;
+			memcpy(buff, ((u8 *) &data) + 4 - size, size);
+			memcpy(xqspi->rxbuf, buff, len);
+			xqspi->rxbuf += len;
+		}
 	}
 	xqspi->bytes_to_receive -= size;
 	if (xqspi->bytes_to_receive < 0)
@@ -446,8 +459,8 @@ static void zynq_qspi_fill_tx_fifo(struct zynq_qspi *xqspi, u32 size)
  *
  * In dual parallel configuration, when read/write data operations
  * are performed, odd data bytes have to be converted to even to
- * avoid a nibble of data to be written going to individual flash devices,
- * where a byte is expected.
+ * avoid a nibble (of data when programming / dummy when reading)
+ * going to individual flash devices, where a byte is expected.
  * This check is only for data and will not apply for commands.
  *
  * @xqspi:	Pointer to the zynq_qspi structure
@@ -463,26 +476,6 @@ static inline void zynq_qspi_tx_dual_parallel(struct zynq_qspi *xqspi,
 	else
 		zynq_qspi_write(xqspi, ZYNQ_QSPI_TXD_00_01_OFFSET +
 				((len - 1) * 4), data);
-}
-
-/**
- * zynq_qspi_rx_dual_parallel - Handles odd byte rx for dual parallel
- *
- * In dual parallel configuration, when read/write data operations
- * are performed, odd data bytes have to be converted to even to
- * avoid a dummy nibble for read going to individual flash devices.
- * This check is only for data and will not apply for commands or
- * the dummy cycles transmitted for fast/quad read.
- *
- * @xqspi:	Pointer to the zynq_qspi structure
- * @data:	Data word received
- * @len:	No. of bytes to be read
- */
-static inline void zynq_qspi_rx_dual_parallel(struct zynq_qspi *xqspi,
-					      u32 data, u32 len)
-{
-	len = len % 2 ? len + 1 : len;
-	zynq_qspi_copy_read_data(xqspi, data, len);
 }
 
 /**
@@ -536,13 +529,8 @@ static irqreturn_t zynq_qspi_irq(int irq, void *dev_id)
 			} else {
 				data = zynq_qspi_read(xqspi,
 						      ZYNQ_QSPI_RXD_OFFSET);
-				if (!xqspi->is_dual || xqspi->is_instr)
-					zynq_qspi_copy_read_data(xqspi, data,
+				zynq_qspi_copy_read_data(xqspi, data,
 						xqspi->bytes_to_receive);
-				else {
-					zynq_qspi_rx_dual_parallel(xqspi, data,
-						xqspi->bytes_to_receive);
-				}
 			}
 			rxindex++;
 		}
