@@ -813,6 +813,7 @@ static int
 xilinx_drm_plane_init_manager(struct xilinx_drm_plane_manager *manager)
 {
 	unsigned int format;
+	uint32_t drm_format;
 	int ret = 0;
 
 	if (manager->osd) {
@@ -820,12 +821,12 @@ xilinx_drm_plane_init_manager(struct xilinx_drm_plane_manager *manager)
 		manager->max_width = xilinx_osd_get_max_width(manager->osd);
 
 		format = xilinx_osd_get_format(manager->osd);
-		ret = xilinx_drm_format_by_code(format, &manager->format);
+		ret = xilinx_drm_format_by_code(format, &drm_format);
+		if (drm_format != manager->format)
+			ret = -EINVAL;
 	} else {
 		/* without osd, only one plane is supported */
 		manager->num_planes = 1;
-		/* YUV422 based on the current pipeline design without osd */
-		manager->format = DRM_FORMAT_YUYV;
 		manager->max_width = 4096;
 	}
 
@@ -838,6 +839,7 @@ xilinx_drm_plane_probe_manager(struct drm_device *drm)
 	struct xilinx_drm_plane_manager *manager;
 	struct device *dev = drm->dev;
 	struct device_node *sub_node;
+	const char *format;
 	int ret;
 
 	manager = devm_kzalloc(dev, sizeof(*manager), GFP_KERNEL);
@@ -849,6 +851,20 @@ xilinx_drm_plane_probe_manager(struct drm_device *drm)
 	if (!manager->node) {
 		DRM_ERROR("failed to get a planes node\n");
 		return ERR_PTR(-EINVAL);
+	}
+
+	/* check the base pixel format of plane manager */
+	ret = of_property_read_string(manager->node, "xlnx,pixel-format",
+				      &format);
+	if (ret < 0) {
+		DRM_ERROR("failed to get a plane manager format\n");
+		return ERR_PTR(ret);
+	}
+
+	ret = xilinx_drm_format_by_name(format, &manager->format);
+	if (ret < 0) {
+		DRM_ERROR("invalid plane manager format\n");
+		return ERR_PTR(ret);
 	}
 
 	manager->drm = drm;
