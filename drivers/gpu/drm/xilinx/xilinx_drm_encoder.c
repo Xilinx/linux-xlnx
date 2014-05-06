@@ -30,7 +30,7 @@
 
 struct xilinx_drm_encoder {
 	struct drm_encoder_slave slave;
-	struct i2c_client *i2c_slave;
+	struct i2c_client *i2c_slv;
 	int dpms;
 };
 
@@ -138,7 +138,7 @@ void xilinx_drm_encoder_destroy(struct drm_encoder *base_encoder)
 	xilinx_drm_encoder_dpms(base_encoder, DRM_MODE_DPMS_OFF);
 
 	drm_encoder_cleanup(base_encoder);
-	put_device(&encoder->i2c_slave->dev);
+	put_device(&encoder->i2c_slv->dev);
 }
 
 static struct drm_encoder_funcs xilinx_drm_encoder_funcs = {
@@ -167,15 +167,15 @@ struct drm_encoder *xilinx_drm_encoder_create(struct drm_device *drm)
 		return ERR_PTR(-ENODEV);
 	}
 
-	encoder->i2c_slave = of_find_i2c_device_by_node(sub_node);
+	encoder->i2c_slv = of_find_i2c_device_by_node(sub_node);
 	of_node_put(sub_node);
-	if (!encoder->i2c_slave) {
+	if (!encoder->i2c_slv) {
 		DRM_DEBUG_KMS("failed to get an encoder slv\n");
 		return ERR_PTR(-EPROBE_DEFER);
 	}
 
 	/* initialize slave encoder */
-	i2c_driver = to_i2c_driver(encoder->i2c_slave->dev.driver);
+	i2c_driver = to_i2c_driver(encoder->i2c_slv->dev.driver);
 	drm_i2c_driver = to_drm_i2c_encoder_driver(i2c_driver);
 	if (!drm_i2c_driver) {
 		DRM_ERROR("failed to initialize encoder slave\n");
@@ -183,7 +183,7 @@ struct drm_encoder *xilinx_drm_encoder_create(struct drm_device *drm)
 		goto err_out;
 	}
 
-	ret = drm_i2c_driver->encoder_init(encoder->i2c_slave, drm,
+	ret = drm_i2c_driver->encoder_init(encoder->i2c_slv, drm,
 					   &encoder->slave);
 	if (ret) {
 		DRM_ERROR("failed to initialize encoder slave\n");
@@ -212,6 +212,6 @@ struct drm_encoder *xilinx_drm_encoder_create(struct drm_device *drm)
 	return &encoder->slave.base;
 
 err_out:
-	put_device(&encoder->i2c_slave->dev);
+	put_device(&encoder->i2c_slv->dev);
 	return ERR_PTR(ret);
 }
