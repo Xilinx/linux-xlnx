@@ -237,7 +237,7 @@ static int xilinx_drm_load(struct drm_device *drm, unsigned long flags)
 	if (IS_ERR(private->crtc)) {
 		DRM_DEBUG_DRIVER("failed to create xilinx crtc\n");
 		ret = PTR_ERR(private->crtc);
-		goto err_crtc;
+		goto err_out;
 	}
 
 	/* create a xilinx encoder */
@@ -245,7 +245,7 @@ static int xilinx_drm_load(struct drm_device *drm, unsigned long flags)
 	if (IS_ERR(private->encoder)) {
 		DRM_DEBUG_DRIVER("failed to create xilinx encoder\n");
 		ret = PTR_ERR(private->encoder);
-		goto err_encoder;
+		goto err_out;
 	}
 
 	/* create a xilinx connector */
@@ -253,13 +253,13 @@ static int xilinx_drm_load(struct drm_device *drm, unsigned long flags)
 	if (IS_ERR(private->connector)) {
 		DRM_DEBUG_DRIVER("failed to create xilinx connector\n");
 		ret = PTR_ERR(private->connector);
-		goto err_connector;
+		goto err_out;
 	}
 
 	ret = drm_vblank_init(drm, 1);
 	if (ret) {
 		dev_err(&pdev->dev, "failed to initialize vblank\n");
-		goto err_vblank;
+		goto err_out;
 	}
 
 	/* enable irq to enable vblank feature */
@@ -293,13 +293,7 @@ static int xilinx_drm_load(struct drm_device *drm, unsigned long flags)
 
 err_fbdev:
 	drm_vblank_cleanup(drm);
-err_vblank:
-	xilinx_drm_connector_destroy(private->connector);
-err_connector:
-	xilinx_drm_encoder_destroy(private->encoder);
-err_encoder:
-	xilinx_drm_crtc_destroy(private->crtc);
-err_crtc:
+err_out:
 	drm_mode_config_cleanup(drm);
 	if (ret == -EPROBE_DEFER)
 		DRM_INFO("load() is defered & will be called again\n");
