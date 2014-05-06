@@ -10,3 +10,19 @@ config DRM_XILINX
 	help
 	  DRM display driver for Xilinx IP based pipelines.
 
+config DRM_XILINX_DP
+	tristate "Xilinx DRM Display Port Driver"
+	depends on DRM_XILINX
+	help
+	  DRM driver for Xilinx Display Port IP.
+
+config DRM_XILINX_DP_DEBUG_FS
+	bool "Xilinx DRM DP debugfs"
+	depends on DEBUG_FS && DRM_XILINX_DP
+	help
+	  Enable the debugfs code for DPDMA driver. The debugfs code
+	  enables debugging or testing related features. It exposes some
+	  low level controls to the user space to help testing automation,
+	  as well as can enable additional diagnostic or statistical
+	  information.
+
