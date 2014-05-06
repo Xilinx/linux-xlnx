@@ -4,7 +4,6 @@ config DRM_XILINX
 	select DRM_KMS_HELPER
 	select DRM_KMS_CMA_HELPER
 	select DRM_GEM_CMA_HELPER
-	select DRM_ENCODER_ADV7511
 	select XILINX_AXIVDMA
 	help
 	  DRM display driver for Xilinx IP based pipelines.

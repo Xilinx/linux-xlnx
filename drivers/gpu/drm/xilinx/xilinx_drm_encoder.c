@@ -19,9 +19,7 @@
 #include <drm/drm_crtc.h>
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_encoder_slave.h>
-#include <drm/i2c/adv7511.h>
 
-#include <linux/hdmi.h>
 #include <linux/err.h>
 #include <linux/i2c.h>
 #include <linux/of.h>
@@ -33,19 +31,11 @@
 struct xilinx_drm_encoder {
 	struct drm_encoder_slave slave;
 	struct i2c_client *i2c_slave;
-	bool rgb;
 	int dpms;
 };
 
 #define to_xilinx_encoder(x)	\
 	container_of(x, struct xilinx_drm_encoder, slave)
-
-/* coefficients for adv7511 color space conversion */
-static const uint16_t adv7511_csc_ycbcr_to_rgb[] = {
-	0x0734, 0x04ad, 0x0000, 0x1c1b,
-	0x1ddc, 0x04ad, 0x1f24, 0x0135,
-	0x0000, 0x04ad, 0x087c, 0x1b77,
-};
 
 /* set encoder dpms */
 static void xilinx_drm_encoder_dpms(struct drm_encoder *base_encoder, int dpms)
@@ -92,14 +82,8 @@ static void xilinx_drm_encoder_mode_set(struct drm_encoder *base_encoder,
 					struct drm_display_mode *mode,
 					struct drm_display_mode *adjusted_mode)
 {
-	struct xilinx_drm_encoder *encoder;
-	struct drm_device *dev = base_encoder->dev;
 	struct drm_encoder_slave *encoder_slave;
 	struct drm_encoder_slave_funcs *encoder_sfuncs;
-	struct drm_connector *iter;
-	struct drm_connector *connector = NULL;
-	struct adv7511_video_config config;
-	struct edid *edid;
 
 	DRM_DEBUG_KMS("h: %d, v: %d\n",
 		      adjusted_mode->hdisplay, adjusted_mode->vdisplay);
@@ -107,56 +91,7 @@ static void xilinx_drm_encoder_mode_set(struct drm_encoder *base_encoder,
 		      adjusted_mode->vrefresh, adjusted_mode->clock);
 
 	encoder_slave = to_encoder_slave(base_encoder);
-	encoder = to_xilinx_encoder(encoder_slave);
-
-	/* search for a connector for this encoder.
-	 * assume there's only one connector for this encoder
-	 */
-	list_for_each_entry(iter, &dev->mode_config.connector_list, head) {
-		if (iter->encoder == base_encoder) {
-			connector = iter;
-			break;
-		}
-	}
-	if (!connector) {
-		DRM_ERROR("failed to find a connector\n");
-		return;
-	}
-
-	edid = adv7511_get_edid(base_encoder);
-	if (edid) {
-		config.hdmi_mode = drm_detect_hdmi_monitor(edid);
-		kfree(edid);
-	} else
-		config.hdmi_mode = false;
-
-	hdmi_avi_infoframe_init(&config.avi_infoframe);
-
-	config.avi_infoframe.scan_mode = HDMI_SCAN_MODE_UNDERSCAN;
-
-	if (encoder->rgb) {
-		config.csc_enable = false;
-		config.avi_infoframe.colorspace = HDMI_COLORSPACE_RGB;
-	} else {
-		config.csc_scaling_factor = ADV7511_CSC_SCALING_4;
-		config.csc_coefficents = adv7511_csc_ycbcr_to_rgb;
-
-		if ((connector->display_info.color_formats &
-		     DRM_COLOR_FORMAT_YCRCB422) &&
-		    config.hdmi_mode) {
-			config.csc_enable = false;
-			config.avi_infoframe.colorspace =
-				HDMI_COLORSPACE_YUV422;
-		} else {
-			config.csc_enable = true;
-			config.avi_infoframe.colorspace = HDMI_COLORSPACE_RGB;
-		}
-	}
-
 	encoder_sfuncs = encoder_slave->slave_funcs;
-	if (encoder_sfuncs->set_config)
-		encoder_sfuncs->set_config(base_encoder, &config);
-
 	if (encoder_sfuncs->mode_set)
 		encoder_sfuncs->mode_set(base_encoder, mode, adjusted_mode);
 }
@@ -260,8 +195,6 @@ struct drm_encoder *xilinx_drm_encoder_create(struct drm_device *drm)
 		ret = -ENODEV;
 		goto err_out;
 	}
-
-	encoder->rgb = of_property_read_bool(drm->dev->of_node, "adi,is-rgb");
 
 	/* initialize encoder */
 	encoder->slave.base.possible_crtcs = 1;
