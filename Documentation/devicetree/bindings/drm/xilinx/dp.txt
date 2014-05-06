@@ -1,0 +1,63 @@
+Device-Tree bindings for Xilinx DisplayPort IP core
+
+The IP core supports transmission of video data in DisplayPort protocol.
+
+Required properties:
+ - compatible: Should be "xlnx,v-dp-4.2".
+ - reg: Base address and size of the IP core.
+ - interrupts: Interrupt number.
+ - interrupts-parent: phandle for interrupt controller.
+ - clocks: phandle for aclk
+
+ - xlnx,dp-version: Version of DisplayPort protocol.
+ - xlnx,max-lanes: Maximum number of lanes of the IP core. The value should
+   be one of 1, 2, or 4.
+ - xlnx,max-link-rate: Maximum link rate of the IP core. The value should be
+   one of 162000, 270000, or 540000.
+ - xlnx,max-bpc: Maximum bits-per-color. The value should be one of 8, 10, 12,
+   or 16.
+ - xlnx,axi-clock: Clock rate of axi4-lite. This is required to provide
+   the correct clock divider for AUX.
+
+ - xlnx,colormetry: Color format. The value should be one of "rgb", "ycrcb422",
+   "ycrcb444", or "yonly". These are based on the DisplayPort specification.
+ - xlnx,bpc: bits-per-color value to be configured. The value should be one of
+   6, 8, 10, 12, or 16.
+
+Optional properties:
+ - clock-names: Should be 'aclk'.
+ - xlnx,enable-yonly: Enable yonly colormetry.
+ - xlnx,enable-ycrcb: Enable ycrcb colormetry.
+ - xlnx,enable-sync: Enable synchronous operation with video clock.
+
+Example:
+ - Since the DisplayPort IP core has the i2c interface to communicate with
+   the sink device, it better to specify the i2c bus address by an dt alias
+   as below. Otherwise it may take the i2c bus address which is required
+   by some other i2c adapters.
+
+	aliases {
+		...
+		i2c2 = &xlnx_dp;
+		...
+	} ;
+
+ - The example of DisplayPort device node is below.
+
+	xlnx_dp: dp@83c10000 {
+		compatible = "xlnx,v-dp-4.2";
+		reg = <0x83c10000 0x10000>;
+		interrupts = <0 57 4>;
+		interrupt-parent = <&ps7_scugic_0>;
+		clock-names = "aclk";
+		clocks = <&dp_aclk 0>;
+
+		xlnx,dp-version = "v1.2";
+		xlnx,max-lanes = <4>;
+		xlnx,max-link-rate = <270000>;
+		xlnx,max-bpc = <16>;
+		xlnx,enable-ycrcb;
+
+		xlnx,colormetry = "rgb";
+		xlnx,bpc = <8>;
+	};
