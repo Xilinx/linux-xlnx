@@ -70,8 +70,9 @@ struct xilinx_video_format_desc {
 static const struct xilinx_video_format_desc xilinx_video_formats[] = {
 	{ "yuv422", 16, 16, XILINX_VIDEO_FORMAT_YUV422, DRM_FORMAT_YUYV },
 	{ "yuv444", 24, 24, XILINX_VIDEO_FORMAT_YUV444, DRM_FORMAT_YUV444 },
-	{ "xrgb888", 24, 32, XILINX_VIDEO_FORMAT_RGB, DRM_FORMAT_XRGB8888 },
+	{ "rgb888", 24, 24, XILINX_VIDEO_FORMAT_RGB, DRM_FORMAT_RGB888 },
 	{ "yuv420", 16, 16, XILINX_VIDEO_FORMAT_YUV420, DRM_FORMAT_YUV420 },
+	{ "xrgb8888", 24, 32, XILINX_VIDEO_FORMAT_XRGB, DRM_FORMAT_XRGB8888 },
 };
 
 static unsigned int xilinx_drm_format_bpp(uint32_t drm_format);
