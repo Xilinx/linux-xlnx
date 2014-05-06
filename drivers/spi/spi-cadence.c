@@ -252,22 +252,12 @@ static void cdns_spi_config_clock(struct spi_device *spi,
  * Sets the operational mode of SPI controller for the next SPI transfer and
  * sets the requested clock frequency.
  *
- * Return:	0 on success and error value on error
+ * Return:	Always 0
  */
 static int cdns_spi_setup_transfer(struct spi_device *spi,
 		struct spi_transfer *transfer)
 {
 	struct cdns_spi *xspi = spi_master_get_devdata(spi->master);
-	u8 bits_per_word;
-
-	bits_per_word = transfer ?
-			transfer->bits_per_word : spi->bits_per_word;
-
-	if (bits_per_word != 8) {
-		dev_err(&spi->dev, "%s, unsupported bits per word %x\n",
-			__func__, spi->bits_per_word);
-		return -EINVAL;
-	}
 
 	cdns_spi_config_clock(spi, transfer);
 
@@ -289,9 +279,6 @@ static int cdns_spi_setup_transfer(struct spi_device *spi,
  */
 static int cdns_spi_setup(struct spi_device *spi)
 {
-	if (!spi->bits_per_word)
-		spi->bits_per_word = 8;
-
 	return cdns_spi_setup_transfer(spi, NULL);
 }
 
@@ -645,6 +632,8 @@ static int cdns_spi_probe(struct platform_device *pdev)
 	/* Set to default valid value */
 	master->max_speed_hz = clk_get_rate(xspi->ref_clk) / 4;
 	xspi->speed_hz = master->max_speed_hz;
+
+	master->bits_per_word_mask = SPI_BPW_MASK(8);
 
 	xspi->driver_state = CDNS_SPI_DRIVER_STATE_READY;
 
