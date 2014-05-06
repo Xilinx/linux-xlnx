@@ -634,7 +634,7 @@ xilinx_drm_plane_create(struct xilinx_drm_plane_manager *manager,
 	}
 
 	/* probe color space converter */
-	sub_node = of_parse_phandle(plane_node, "rgb2yuv", i);
+	sub_node = of_parse_phandle(plane_node, "xlnx,rgb2yuv", i);
 	if (sub_node) {
 		plane->rgb2yuv = xilinx_rgb2yuv_probe(dev, sub_node);
 		of_node_put(sub_node);
@@ -652,7 +652,7 @@ xilinx_drm_plane_create(struct xilinx_drm_plane_manager *manager,
 	}
 
 	/* probe chroma resampler */
-	sub_node = of_parse_phandle(plane_node, "cresample", i);
+	sub_node = of_parse_phandle(plane_node, "xlnx,cresample", i);
 	if (sub_node) {
 		plane->cresample = xilinx_cresample_probe(dev, sub_node);
 		of_node_put(sub_node);
@@ -854,7 +854,7 @@ xilinx_drm_plane_probe_manager(struct drm_device *drm)
 	manager->drm = drm;
 
 	/* probe an OSD. proceed even if there's no OSD */
-	sub_node = of_parse_phandle(dev->of_node, "osd", 0);
+	sub_node = of_parse_phandle(dev->of_node, "xlnx,osd", 0);
 	if (sub_node) {
 		manager->osd = xilinx_osd_probe(dev, sub_node);
 		of_node_put(sub_node);
