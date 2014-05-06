@@ -216,6 +216,7 @@ static void adv7511_set_link_config(struct adv7511 *adv7511,
 
 	adv7511->hsync_polarity = config->hsync_polarity;
 	adv7511->vsync_polarity = config->vsync_polarity;
+	adv7511->rgb = config->rgb;
 }
 
 int adv7511_packet_enable(struct adv7511 *adv7511, unsigned int packet)
@@ -789,6 +790,8 @@ static int adv7511_parse_dt(struct device_node *np,
 	config->gpio_pd = of_get_gpio(np, 0);
 	if (config->gpio_pd == -EPROBE_DEFER)
 		return -EPROBE_DEFER;
+
+	config->rgb = of_property_read_bool(np, "adi,is-rgb");
 
 	return 0;
 }
