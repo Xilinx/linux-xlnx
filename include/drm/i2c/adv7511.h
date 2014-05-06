@@ -356,6 +356,7 @@ enum adv7511_up_conversion {
  * @tmds_clock_inversion:	Whether to invert the TDMS clock
  * @timing_gen_seq:		Selects the order in which sync DE generation
  *				and sync adjustment are performt.
+ * @rgb:			Whether rgb format is configured
  * @vsync_polarity:		vsync input signal configuration
  * @hsync_polarity:		hsync input signal configuration
  * @gpio_pd:			GPIO controlling the PD (powerdown) pin
@@ -371,6 +372,7 @@ struct adv7511_link_config {
 	enum adv7511_input_color_depth input_color_depth;
 	bool tmds_clock_inversion;
 	enum adv7511_timing_gen_seq timing_gen_seq;
+	bool rgb;
 
 	enum adv7511_sync_polarity vsync_polarity;
 	enum adv7511_sync_polarity hsync_polarity;
@@ -453,6 +455,8 @@ struct adv7511 {
 	bool embedded_sync;
 	enum adv7511_sync_polarity vsync_polarity;
 	enum adv7511_sync_polarity hsync_polarity;
+
+	bool rgb;
 
 	struct edid *edid;
 
