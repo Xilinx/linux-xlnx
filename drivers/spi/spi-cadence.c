@@ -234,7 +234,7 @@ static void cdns_spi_config_clock_mode(struct spi_device *spi)
  * controller.
  */
 static void cdns_spi_config_clock_freq(struct spi_device *spi,
-				       struct spi_transfer *transfer)
+				  struct spi_transfer *transfer)
 {
 	struct cdns_spi *xspi = spi_master_get_devdata(spi->master);
 	u32 ctrl_reg, baud_rate_val;
@@ -454,10 +454,10 @@ static int cdns_unprepare_transfer_hardware(struct spi_master *master)
 static int cdns_spi_probe(struct platform_device *pdev)
 {
 	int ret = 0, irq;
-	u32 num_cs;
 	struct spi_master *master;
 	struct cdns_spi *xspi;
 	struct resource *res;
+	u32 num_cs;
 
 	master = spi_alloc_master(&pdev->dev, sizeof(*xspi));
 	if (master == NULL)
