@@ -21,6 +21,8 @@
 
 #include <drm/i2c/adv7511.h>
 
+#define MAX_CLOCK	165000
+
 static const uint8_t adv7511_register_defaults[] = {
 	0x12, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* 00 */
 	0x00, 0x00, 0x01, 0x0e, 0xbc, 0x18, 0x01, 0x13,
@@ -625,6 +627,18 @@ adv7511_encoder_detect(struct drm_encoder *encoder,
 	return status;
 }
 
+static int adv7511_encoder_mode_valid(struct drm_encoder *encoder,
+				      struct drm_display_mode *mode)
+{
+	if (mode->clock > MAX_CLOCK)
+		return MODE_CLOCK_HIGH;
+
+	if (mode->flags & DRM_MODE_FLAG_INTERLACE)
+		return MODE_NO_INTERLACE;
+
+	return MODE_OK;
+}
+
 static void adv7511_encoder_mode_set(struct drm_encoder *encoder,
 				     struct drm_display_mode *mode,
 				     struct drm_display_mode *adj_mode)
@@ -719,6 +733,7 @@ static struct drm_encoder_slave_funcs adv7511_encoder_funcs = {
 	.set_config = adv7511_set_config,
 	.dpms = adv7511_encoder_dpms,
 	/* .destroy = adv7511_encoder_destroy,*/
+	.mode_valid = adv7511_encoder_mode_valid,
 	.mode_set = adv7511_encoder_mode_set,
 	.detect = adv7511_encoder_detect,
 	.get_modes = adv7511_get_modes,
