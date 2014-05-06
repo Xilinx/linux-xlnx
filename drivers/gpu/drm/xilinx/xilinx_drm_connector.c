@@ -54,13 +54,18 @@ static int xilinx_drm_connector_get_modes(struct drm_connector *base_connector)
 static int xilinx_drm_connector_mode_valid(struct drm_connector *base_connector,
 					   struct drm_display_mode *mode)
 {
-	if (mode->clock > 165000)
-		return MODE_CLOCK_HIGH;
+	struct xilinx_drm_connector *connector =
+		to_xilinx_connector(base_connector);
+	struct drm_encoder *encoder = connector->encoder;
+	struct drm_encoder_slave *encoder_slave = to_encoder_slave(encoder);
+	struct drm_encoder_slave_funcs *encoder_sfuncs =
+		encoder_slave->slave_funcs;
+	int ret = MODE_OK;
 
-	if (mode->flags & DRM_MODE_FLAG_INTERLACE)
-		return MODE_NO_INTERLACE;
+	if (encoder_sfuncs->mode_valid)
+		ret = encoder_sfuncs->mode_valid(encoder, mode);
 
-	return MODE_OK;
+	return ret;
 }
 
 /* find best encoder: return stored encoder */
