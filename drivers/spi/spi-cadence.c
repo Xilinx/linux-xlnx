@@ -208,13 +208,8 @@ static void cdns_spi_config_clock(struct spi_device *spi,
 		struct spi_transfer *transfer)
 {
 	struct cdns_spi *xspi = spi_master_get_devdata(spi->master);
-	u32 ctrl_reg, req_hz, baud_rate_val;
+	u32 ctrl_reg, baud_rate_val;
 	unsigned long frequency;
-
-	if (transfer && transfer->speed_hz)
-		req_hz = transfer->speed_hz;
-	else
-		req_hz = spi->max_speed_hz;
 
 	frequency = clk_get_rate(xspi->ref_clk);
 
@@ -230,11 +225,11 @@ static void cdns_spi_config_clock(struct spi_device *spi,
 		ctrl_reg |= CDNS_SPI_CR_CPOL_MASK;
 
 	/* Set the clock frequency */
-	if (xspi->speed_hz != req_hz) {
+	if (xspi->speed_hz != transfer->speed_hz) {
 		/* first valid value is 1 */
 		baud_rate_val = CDNS_SPI_BAUD_DIV_MIN;
 		while ((baud_rate_val < CDNS_SPI_BAUD_DIV_MAX) &&
-		       (frequency / (2 << baud_rate_val)) > req_hz)
+		       (frequency / (2 << baud_rate_val)) > transfer->speed_hz)
 			baud_rate_val++;
 
 		ctrl_reg &= ~CDNS_SPI_CR_BAUD_DIV_MASK;
@@ -294,9 +289,6 @@ static int cdns_spi_setup_transfer(struct spi_device *spi,
  */
 static int cdns_spi_setup(struct spi_device *spi)
 {
-	if (!spi->max_speed_hz)
-		return -EINVAL;
-
 	if (!spi->bits_per_word)
 		spi->bits_per_word = 8;
 
@@ -651,7 +643,8 @@ static int cdns_spi_probe(struct platform_device *pdev)
 	master->mode_bits = SPI_CPOL | SPI_CPHA;
 
 	/* Set to default valid value */
-	xspi->speed_hz = clk_get_rate(xspi->ref_clk) / 4;
+	master->max_speed_hz = clk_get_rate(xspi->ref_clk) / 4;
+	xspi->speed_hz = master->max_speed_hz;
 
 	xspi->driver_state = CDNS_SPI_DRIVER_STATE_READY;
 
