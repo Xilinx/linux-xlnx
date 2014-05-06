@@ -168,6 +168,19 @@ struct drm_encoder *xilinx_drm_encoder_create(struct drm_device *drm)
 
 	encoder->dpms = DRM_MODE_DPMS_OFF;
 
+	/* initialize encoder */
+	encoder->slave.base.possible_crtcs = 1;
+	ret = drm_encoder_init(drm, &encoder->slave.base,
+			       &xilinx_drm_encoder_funcs,
+			       DRM_MODE_ENCODER_TMDS);
+	if (ret) {
+		DRM_ERROR("failed to initialize drm encoder\n");
+		return ERR_PTR(ret);
+	}
+
+	drm_encoder_helper_add(&encoder->slave.base,
+			       &xilinx_drm_encoder_helper_funcs);
+
 	/* get slave encoder */
 	sub_node = of_parse_phandle(drm->dev->of_node, "encoder-slave", 0);
 	if (!sub_node) {
@@ -227,19 +240,6 @@ struct drm_encoder *xilinx_drm_encoder_create(struct drm_device *drm)
 		ret = -ENODEV;
 		goto err_out;
 	}
-
-	/* initialize encoder */
-	encoder->slave.base.possible_crtcs = 1;
-	ret = drm_encoder_init(drm, &encoder->slave.base,
-			       &xilinx_drm_encoder_funcs,
-			       DRM_MODE_ENCODER_TMDS);
-	if (ret) {
-		DRM_ERROR("failed to initialize drm encoder\n");
-		goto err_out;
-	}
-
-	drm_encoder_helper_add(&encoder->slave.base,
-			       &xilinx_drm_encoder_helper_funcs);
 
 	return &encoder->slave.base;
 
