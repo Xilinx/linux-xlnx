@@ -95,6 +95,9 @@
 /* SPI FIFO depth in bytes */
 #define CDNS_SPI_FIFO_DEPTH	128
 
+/* Default number of chip select lines */
+#define CDNS_SPI_DEFAULT_NUM_CS		4
+
 /**
  * struct cdns_spi - This definition defines spi driver instance
  * @regs:		Virtual address of the SPI controller registers
@@ -106,6 +109,7 @@
  * @remaining_bytes:	Number of bytes left to transfer
  * @requested_bytes:	Number of bytes requested
  * @dev_busy:		Device busy flag
+ * @is_decoded_cs:	Flag for decoder property set or not
  */
 struct cdns_spi {
 	void __iomem *regs;
@@ -117,6 +121,7 @@ struct cdns_spi {
 	int remaining_bytes;
 	int requested_bytes;
 	u8 dev_busy;
+	u32 is_decoded_cs;
 };
 
 /* Macros for the SPI controller read/write */
@@ -179,9 +184,13 @@ static void cdns_spi_chipselect(struct spi_device *spi, bool is_high)
 	} else {
 		/* Select the slave */
 		ctrl_reg &= ~CDNS_SPI_CR_SSCTRL_MASK;
-		ctrl_reg |= ((~(CDNS_SPI_SS0 << spi->chip_select)) <<
-			     CDNS_SPI_SS_SHIFT) &
-			     CDNS_SPI_CR_SSCTRL_MASK;
+		if (!(xspi->is_decoded_cs))
+			ctrl_reg |= ((~(CDNS_SPI_SS0 << spi->chip_select)) <<
+				     CDNS_SPI_SS_SHIFT) &
+				     CDNS_SPI_CR_SSCTRL_MASK;
+		else
+			ctrl_reg |= (spi->chip_select << CDNS_SPI_SS_SHIFT) &
+				     CDNS_SPI_CR_SSCTRL_MASK;
 	}
 
 	cdns_spi_write(xspi, CDNS_SPI_CR_OFFSET, ctrl_reg);
@@ -509,13 +518,18 @@ static int cdns_spi_probe(struct platform_device *pdev)
 		goto remove_master;
 	}
 
-	ret = of_property_read_u32(pdev->dev.of_node, "num-chip-select",
-				   &num_cs);
-	master->num_chipselect = num_cs;
-	if (ret < 0) {
-		dev_err(&pdev->dev, "couldn't determine num-chip-select\n");
-		goto clk_dis_all;
-	}
+	ret = of_property_read_u32(pdev->dev.of_node, "num-cs", &num_cs);
+
+	if (ret < 0)
+		master->num_chipselect = CDNS_SPI_DEFAULT_NUM_CS;
+	else
+		master->num_chipselect = num_cs;
+
+	ret = of_property_read_u32(pdev->dev.of_node, "is-decoded-cs",
+				   &xspi->is_decoded_cs);
+
+	if (ret < 0)
+		xspi->is_decoded_cs = 0;
 
 	master->prepare_transfer_hardware = cdns_prepare_transfer_hardware;
 	master->transfer_one = cdns_transfer_one;
