@@ -19,6 +19,8 @@ Required properties:
  - xlnx,encoder-slave: the phandle for the encoder slave.
  - clocks: the phandle for the pixel clock
  - planes: the subnode for resources for each plane
+ - xlnx,connector-type: the type of connector. The value should be one of
+   "HDMIA" or "DisplayPort" depending on which connector type to be used.
 
 Required plane properties:
  - dmas: the phandle list of DMA specifiers
@@ -35,6 +37,7 @@ vdma - [remap] - rgb2yuv - cresample - [axi2vid] - adv7511
 		compatible = "xlnx,drm";
 		xlnx,vtc = <&v_tc_0>;
 		xlnx,encoder-slave = <&adv7511>;
+		xlnx,connector-type = "HDMIA";
 		clocks = <&si570>;
 		planes {
 			plane0 {
@@ -57,6 +60,7 @@ vdma - [remap] - rgb2yuv -|                               |
 		xlnx,cresample = <&v_cresample_0>;
 		xlnx,vtc = <&v_tc_0>;
 		xlnx,encoder-slave = <&adv7511>;
+		xlnx,connector-type = "DisplayPort";
 		clocks = <&si570>;
 		planes {
 			plane0 {
