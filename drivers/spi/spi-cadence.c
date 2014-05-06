@@ -315,13 +315,14 @@ static void cdns_spi_fill_tx_fifo(struct cdns_spi *xspi)
  * the SPI subsystem will identify the error as the remaining bytes to be
  * transferred is non-zero.
  *
- * Return:	IRQ_HANDLED always
+ * Return:	IRQ_HANDLED when handled; IRQ_NONE otherwise.
  */
 static irqreturn_t cdns_spi_irq(int irq, void *dev_id)
 {
 	struct cdns_spi *xspi = dev_id;
-	u32 intr_status;
+	u32 intr_status, status;
 
+	status = IRQ_NONE;
 	intr_status = cdns_spi_read(xspi->regs + CDNS_SPI_ISR_OFFSET);
 	cdns_spi_write(xspi->regs + CDNS_SPI_ISR_OFFSET, intr_status);
 
@@ -333,6 +334,7 @@ static irqreturn_t cdns_spi_irq(int irq, void *dev_id)
 		cdns_spi_write(xspi->regs + CDNS_SPI_IDR_OFFSET,
 			       CDNS_SPI_IXR_DEFAULT_MASK);
 		complete(&xspi->done);
+		status = IRQ_HANDLED;
 	} else if (intr_status & CDNS_SPI_IXR_TXOW_MASK) {
 		unsigned long trans_cnt;
 
@@ -359,9 +361,10 @@ static irqreturn_t cdns_spi_irq(int irq, void *dev_id)
 				       CDNS_SPI_IXR_DEFAULT_MASK);
 			complete(&xspi->done);
 		}
+		status = IRQ_HANDLED;
 	}
 
-	return IRQ_HANDLED;
+	return status;
 }
 
 /**
@@ -570,21 +573,6 @@ static int cdns_spi_probe(struct platform_device *pdev)
 		goto remove_master;
 	}
 
-	irq = platform_get_irq(pdev, 0);
-	if (irq < 0) {
-		ret = -ENXIO;
-		dev_err(&pdev->dev, "irq number is negative\n");
-		goto remove_master;
-	}
-
-	ret = devm_request_irq(&pdev->dev, irq, cdns_spi_irq,
-			       0, pdev->name, xspi);
-	if (ret != 0) {
-		ret = -ENXIO;
-		dev_err(&pdev->dev, "request_irq failed\n");
-		goto remove_master;
-	}
-
 	xspi->pclk = devm_clk_get(&pdev->dev, "pclk");
 	if (IS_ERR(xspi->pclk)) {
 		dev_err(&pdev->dev, "pclk clock not found.\n");
@@ -615,6 +603,21 @@ static int cdns_spi_probe(struct platform_device *pdev)
 	cdns_spi_init_hw(xspi->regs);
 
 	init_completion(&xspi->done);
+
+	irq = platform_get_irq(pdev, 0);
+	if (irq <= 0) {
+		ret = -ENXIO;
+		dev_err(&pdev->dev, "irq number is invalid\n");
+		goto remove_master;
+	}
+
+	ret = devm_request_irq(&pdev->dev, irq, cdns_spi_irq,
+			       0, pdev->name, xspi);
+	if (ret != 0) {
+		ret = -ENXIO;
+		dev_err(&pdev->dev, "request_irq failed\n");
+		goto remove_master;
+	}
 
 	ret = of_property_read_u32(pdev->dev.of_node, "num-chip-select",
 				   &num_cs);
