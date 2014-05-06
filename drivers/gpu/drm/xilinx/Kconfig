@@ -7,3 +7,9 @@ config DRM_XILINX
 	select XILINX_AXIVDMA
 	help
 	  DRM display driver for Xilinx IP based pipelines.
+
+config DRM_XILINX_DP
+	tristate "Xilinx DRM Display Port Driver"
+	depends on DRM_XILINX
+	help
+	  DRM driver for Xilinx Display Port IP.
