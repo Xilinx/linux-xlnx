@@ -482,7 +482,7 @@ struct drm_crtc *xilinx_drm_crtc_create(struct drm_device *drm)
 		return ERR_PTR(-ENOMEM);
 
 	/* probe chroma resampler and enable */
-	sub_node = of_parse_phandle(drm->dev->of_node, "cresample", 0);
+	sub_node = of_parse_phandle(drm->dev->of_node, "xlnx,cresample", 0);
 	if (sub_node) {
 		crtc->cresample = xilinx_cresample_probe(drm->dev, sub_node);
 		of_node_put(sub_node);
@@ -493,7 +493,7 @@ struct drm_crtc *xilinx_drm_crtc_create(struct drm_device *drm)
 	}
 
 	/* probe color space converter and enable */
-	sub_node = of_parse_phandle(drm->dev->of_node, "rgb2yuv", 0);
+	sub_node = of_parse_phandle(drm->dev->of_node, "xlnx,rgb2yuv", 0);
 	if (sub_node) {
 		crtc->rgb2yuv = xilinx_rgb2yuv_probe(drm->dev, sub_node);
 		of_node_put(sub_node);
@@ -535,7 +535,7 @@ struct drm_crtc *xilinx_drm_crtc_create(struct drm_device *drm)
 		goto err_out;
 	}
 
-	sub_node = of_parse_phandle(drm->dev->of_node, "vtc", 0);
+	sub_node = of_parse_phandle(drm->dev->of_node, "xlnx,vtc", 0);
 	if (!sub_node) {
 		DRM_ERROR("failed to get a video timing controller node\n");
 		ret = -ENODEV;

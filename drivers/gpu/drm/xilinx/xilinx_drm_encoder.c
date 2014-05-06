@@ -182,7 +182,7 @@ struct drm_encoder *xilinx_drm_encoder_create(struct drm_device *drm)
 			       &xilinx_drm_encoder_helper_funcs);
 
 	/* get slave encoder */
-	sub_node = of_parse_phandle(drm->dev->of_node, "encoder-slave", 0);
+	sub_node = of_parse_phandle(drm->dev->of_node, "xlnx,encoder-slave", 0);
 	if (!sub_node) {
 		DRM_ERROR("failed to get an encoder slave node\n");
 		return ERR_PTR(-ENODEV);
