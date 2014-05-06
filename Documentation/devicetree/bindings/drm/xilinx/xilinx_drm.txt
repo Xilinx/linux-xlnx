@@ -22,6 +22,16 @@ Required properties:
  - xlnx,connector-type: the type of connector. The value should be one of
    "HDMIA" or "DisplayPort" depending on which connector type to be used.
 
+Required planes properties:
+ - xlnx,pixel-format: the format of plane manager. The value should be one of
+   following format strings.
+
+	yuv422
+	yuv444
+	yuv420
+	rgb888
+	xrgb8888
+
 Required plane properties:
  - dmas: the phandle list of DMA specifiers
  - dma-names: the indentifier strings for DMAs
@@ -40,6 +50,7 @@ vdma - [remap] - rgb2yuv - cresample - [axi2vid] - adv7511
 		xlnx,connector-type = "HDMIA";
 		clocks = <&si570>;
 		planes {
+			xlnx,pixel-format = "yuv422";
 			plane0 {
 				dma = <&axi_vdma_0>;
 				dma-names = "vdma";
@@ -63,6 +74,7 @@ vdma - [remap] - rgb2yuv -|                               |
 		xlnx,connector-type = "DisplayPort";
 		clocks = <&si570>;
 		planes {
+			xlnx,pixel-format = "yuv422";
 			plane0 {
 				dma = <&axi_vdma_0>;
 				dma-names = "vdma";
