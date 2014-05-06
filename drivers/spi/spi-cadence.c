@@ -196,30 +196,16 @@ static void cdns_spi_chipselect(struct spi_device *spi, bool is_high)
 }
 
 /**
- * cdns_spi_config_clock - Sets clock polarity, phase and frequency
+ * cdns_spi_config_clock_mode - Sets clock polarity and phase
  * @spi:	Pointer to the spi_device structure
- * @transfer:	Pointer to the spi_transfer structure which provides
- *		information about next transfer setup parameters
  *
- * Sets the requested clock polarity, phase and frequency.
- * Note: If the requested frequency is not an exact match with what can be
- * obtained using the prescalar value the driver sets the clock frequency which
- * is lower than the requested frequency (maximum lower) for the transfer. If
- * the requested frequency is higher or lower than that is supported by the SPI
- * controller the driver will set the highest or lowest frequency supported by
- * controller.
+ * Sets the requested clock polarity and phase.
  */
-static void cdns_spi_config_clock(struct spi_device *spi,
-		struct spi_transfer *transfer)
+static void cdns_spi_config_clock_mode(struct spi_device *spi)
 {
 	struct cdns_spi *xspi = spi_master_get_devdata(spi->master);
-	u32 ctrl_reg, baud_rate_val;
-	unsigned long frequency;
+	u32 ctrl_reg;
 
-	frequency = clk_get_rate(xspi->ref_clk);
-
-	cdns_spi_write(xspi, CDNS_SPI_ER_OFFSET,
-		       CDNS_SPI_ER_DISABLE_MASK);
 	ctrl_reg = cdns_spi_read(xspi, CDNS_SPI_CR_OFFSET);
 
 	/* Set the SPI clock phase and clock polarity */
@@ -228,6 +214,34 @@ static void cdns_spi_config_clock(struct spi_device *spi,
 		ctrl_reg |= CDNS_SPI_CR_CPHA_MASK;
 	if (spi->mode & SPI_CPOL)
 		ctrl_reg |= CDNS_SPI_CR_CPOL_MASK;
+
+	cdns_spi_write(xspi, CDNS_SPI_CR_OFFSET, ctrl_reg);
+}
+
+/**
+ * cdns_spi_config_clock_freq - Sets clock frequency
+ * @spi:	Pointer to the spi_device structure
+ * @transfer:	Pointer to the spi_transfer structure which provides
+ *		information about next transfer setup parameters
+ *
+ * Sets the requested clock frequency.
+ * Note: If the requested frequency is not an exact match with what can be
+ * obtained using the prescalar value the driver sets the clock frequency which
+ * is lower than the requested frequency (maximum lower) for the transfer. If
+ * the requested frequency is higher or lower than that is supported by the SPI
+ * controller the driver will set the highest or lowest frequency supported by
+ * controller.
+ */
+static void cdns_spi_config_clock_freq(struct spi_device *spi,
+				       struct spi_transfer *transfer)
+{
+	struct cdns_spi *xspi = spi_master_get_devdata(spi->master);
+	u32 ctrl_reg, baud_rate_val;
+	unsigned long frequency;
+
+	frequency = clk_get_rate(xspi->ref_clk);
+
+	ctrl_reg = cdns_spi_read(xspi, CDNS_SPI_CR_OFFSET);
 
 	/* Set the clock frequency */
 	if (xspi->speed_hz != transfer->speed_hz) {
@@ -242,10 +256,7 @@ static void cdns_spi_config_clock(struct spi_device *spi,
 
 		xspi->speed_hz = frequency / (2 << baud_rate_val);
 	}
-
 	cdns_spi_write(xspi, CDNS_SPI_CR_OFFSET, ctrl_reg);
-	cdns_spi_write(xspi, CDNS_SPI_ER_OFFSET,
-		       CDNS_SPI_ER_ENABLE_MASK);
 }
 
 /**
@@ -260,31 +271,17 @@ static void cdns_spi_config_clock(struct spi_device *spi,
  * Return:	Always 0
  */
 static int cdns_spi_setup_transfer(struct spi_device *spi,
-		struct spi_transfer *transfer)
+				   struct spi_transfer *transfer)
 {
 	struct cdns_spi *xspi = spi_master_get_devdata(spi->master);
 
-	cdns_spi_config_clock(spi, transfer);
+	cdns_spi_config_clock_freq(spi, transfer);
 
 	dev_dbg(&spi->dev, "%s, mode %d, %u bits/w, %u clock speed\n",
 		__func__, spi->mode, spi->bits_per_word,
 		xspi->speed_hz);
 
 	return 0;
-}
-
-/**
- * cdns_spi_setup - Configure the SPI controller
- * @spi:	Pointer to the spi_device structure
- *
- * Sets the operational mode of SPI controller for the next SPI transfer, sets
- * the baud rate and divisor value to setup the requested spi clock.
- *
- * Return:	0 on success and error value on error
- */
-static int cdns_spi_setup(struct spi_device *spi)
-{
-	return cdns_spi_setup_transfer(spi, NULL);
 }
 
 /**
@@ -421,6 +418,8 @@ static int cdns_prepare_transfer_hardware(struct spi_master *master)
 	if (xspi->driver_state != CDNS_SPI_DRIVER_STATE_READY)
 		return -EINVAL;
 
+	cdns_spi_config_clock_mode(master->cur_msg->spi);
+
 	cdns_spi_write(xspi, CDNS_SPI_ER_OFFSET,
 		       CDNS_SPI_ER_ENABLE_MASK);
 
@@ -528,7 +527,7 @@ static int cdns_spi_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "couldn't determine num-chip-select\n");
 		goto clk_dis_all;
 	}
-	master->setup = cdns_spi_setup;
+
 	master->prepare_transfer_hardware = cdns_prepare_transfer_hardware;
 	master->transfer_one = cdns_transfer_one;
 	master->unprepare_transfer_hardware = cdns_unprepare_transfer_hardware;
