@@ -106,8 +106,8 @@
  * @speed_hz:		Current SPI bus clock speed in Hz
  * @txbuf:		Pointer	to the TX buffer
  * @rxbuf:		Pointer to the RX buffer
- * @remaining_bytes:	Number of bytes left to transfer
- * @requested_bytes:	Number of bytes requested
+ * @tx_bytes:		Number of bytes left to transfer
+ * @rx_bytes:		Number of bytes requested
  * @dev_busy:		Device busy flag
  * @is_decoded_cs:	Flag for decoder property set or not
  */
@@ -118,8 +118,8 @@ struct cdns_spi {
 	u32 speed_hz;
 	const u8 *txbuf;
 	u8 *rxbuf;
-	int remaining_bytes;
-	int requested_bytes;
+	int tx_bytes;
+	int rx_bytes;
 	u8 dev_busy;
 	u32 is_decoded_cs;
 };
@@ -294,14 +294,14 @@ static void cdns_spi_fill_tx_fifo(struct cdns_spi *xspi)
 	unsigned long trans_cnt = 0;
 
 	while ((trans_cnt < CDNS_SPI_FIFO_DEPTH) &&
-	       (xspi->remaining_bytes > 0)) {
+	       (xspi->tx_bytes > 0)) {
 		if (xspi->txbuf)
 			cdns_spi_write(xspi, CDNS_SPI_TXD_OFFSET,
 				       *xspi->txbuf++);
 		else
 			cdns_spi_write(xspi, CDNS_SPI_TXD_OFFSET, 0);
 
-		xspi->remaining_bytes--;
+		xspi->tx_bytes--;
 		trans_cnt++;
 	}
 }
@@ -342,7 +342,7 @@ static irqreturn_t cdns_spi_irq(int irq, void *dev_id)
 	} else if (intr_status & CDNS_SPI_IXR_TXOW_MASK) {
 		unsigned long trans_cnt;
 
-		trans_cnt = xspi->requested_bytes - xspi->remaining_bytes;
+		trans_cnt = xspi->rx_bytes - xspi->tx_bytes;
 
 		/* Read out the data from the RX FIFO */
 		while (trans_cnt) {
@@ -352,11 +352,11 @@ static irqreturn_t cdns_spi_irq(int irq, void *dev_id)
 			if (xspi->rxbuf)
 				*xspi->rxbuf++ = data;
 
-			xspi->requested_bytes--;
+			xspi->rx_bytes--;
 			trans_cnt--;
 		}
 
-		if (xspi->remaining_bytes) {
+		if (xspi->tx_bytes) {
 			/* There is more data to send */
 			cdns_spi_fill_tx_fifo(xspi);
 		} else {
@@ -391,8 +391,8 @@ static int cdns_transfer_one(struct spi_master *master,
 
 	xspi->txbuf = transfer->tx_buf;
 	xspi->rxbuf = transfer->rx_buf;
-	xspi->remaining_bytes = transfer->len;
-	xspi->requested_bytes = transfer->len;
+	xspi->tx_bytes = transfer->len;
+	xspi->rx_bytes = transfer->len;
 
 	cdns_spi_setup_transfer(spi, transfer);
 
