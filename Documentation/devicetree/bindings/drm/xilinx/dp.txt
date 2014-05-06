@@ -1,0 +1,65 @@
+Device-Tree bindings for Xilinx DisplayPort IP core
+
+The IP core supports transmission of video data in DisplayPort protocol.
+
+Required properties:
+ - compatible: Should be "xlnx,v-dp".
+ - reg: Base address and size of the IP core.
+ - interrupts: Interrupt number.
+ - interrupts-parent: phandle for interrupt controller.
+ - clocks: phandle for aclk and audio clock
+ - clock-names: The identification string, "aclk", is always required for
+   the axi clock. "aud_clk" is required only when audio needs to be enabled.
+
+ - xlnx,dp-version: Version of DisplayPort protocol.
+ - xlnx,max-lanes: Maximum number of lanes of the IP core. The value should
+   be one of 1, 2, or 4.
+ - xlnx,max-link-rate: Maximum link rate of the IP core. The value should be
+   one of 162000, 270000, or 540000.
+ - xlnx,max-bpc: Maximum bits-per-color. The value should be one of 8, 10, 12,
+   or 16.
+ - xlnx,axi-clock: Clock rate of axi4-lite. This is required to provide
+   the correct clock divider for AUX.
+
+ - xlnx,colormetry: Color format. The value should be one of "rgb", "ycrcb422",
+   "ycrcb444", or "yonly". These are based on the DisplayPort specification.
+ - xlnx,bpc: bits-per-color value to be configured. The value should be one of
+   6, 8, 10, 12, or 16.
+
+Optional properties:
+ - xlnx,enable-yonly: Enable yonly colormetry.
+ - xlnx,enable-ycrcb: Enable ycrcb colormetry.
+ - xlnx,enable-sync: Enable synchronous operation with video clock.
+ - xlnx,max-pclock-frequency: Maximum pixel clock rate(KHz). The value should
+   specify the maximum pixel clock rate in KHz that the IP core supports.
+ - xlnx,dp-sub: A phandle referencing the ZynqMP DisplayPort subsystem
+   which contains additional blocks such as buffer managers, blender, and audio.
+ - phy-names: Names for each phy lane. The name should be 'dp-phy' with lane
+   number. For example, 'dp-phy0', 'dp-phy1'. 'dp-phy0' should be the primary
+   lane, and used for PLL lock.
+ - phys: The phy phandles for each lane. This should follow the phy-zynqmp
+   definition in Documentation/devicetree/bindings/phy/phy-zynqmp.txt
+
+Example:
+
+	xlnx_dp: dp@83c10000 {
+		compatible = "xlnx,v-dp";
+		reg = <0x83c10000 0x10000>;
+		interrupts = <0 57 4>;
+		interrupt-parent = <&ps7_scugic_0>;
+		clocks = <&dp_aclk>, <&dp_aud_clk>;
+		clock-names = "aclk", "aud_clk";
+
+		xlnx,dp-version = "v1.2";
+		xlnx,max-lanes = <4>;
+		xlnx,max-link-rate = <270000>;
+		xlnx,max-bpc = <16>;
+		xlnx,max-pclock-frequency = <150000>;
+		xlnx,enable-ycrcb;
+
+		xlnx,colormetry = "rgb";
+		xlnx,bpc = <8>;
+
+		phy-names = "dp-phy0", "dp-phy1";
+		phys = <&lane1 PHY_TYPE_DP 0 3 27000000>, <&lane0 PHY_TYPE_DP 1 3 27000000>;
+		};
