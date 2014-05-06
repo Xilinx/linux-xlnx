@@ -23,6 +23,7 @@ enum xilinx_video_format {
 	XILINX_VIDEO_FORMAT_YUV444 = 1,
 	XILINX_VIDEO_FORMAT_RGB = 2,
 	XILINX_VIDEO_FORMAT_YUV420 = 3,
+	XILINX_VIDEO_FORMAT_XRGB = 16,
 };
 
 /* convert the xilinx format to the drm format */
