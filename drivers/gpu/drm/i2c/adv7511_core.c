@@ -69,6 +69,13 @@ static const struct reg_default adv7511_fixed_registers[] = {
 	{ 0x55, 0x02 },
 };
 
+/* Coefficients for color space conversion */
+static const uint16_t adv7511_csc_ycbcr_to_rgb[] = {
+	0x0734, 0x04ad, 0x0000, 0x1c1b,
+	0x1ddc, 0x04ad, 0x1f24, 0x0135,
+	0x0000, 0x04ad, 0x087c, 0x1b77,
+};
+
 static struct adv7511 *encoder_to_adv7511(struct drm_encoder *encoder)
 {
 	return to_encoder_slave(encoder)->slave_priv;
@@ -439,6 +446,53 @@ static int adv7511_get_edid_block(void *data, unsigned char *buf, int block,
 	return 0;
 }
 
+/**
+ * adv7511_set_default_config - Set adv7511 with default config
+ * @encoder: drm encoder
+ * @connector: drm connector
+ * @edid: edid from the connected display device
+ *
+ * Configure adv7511 with default values. This configuration is overwritten
+ * when client driver re-configures the adv7511 using adv7511_set_config().
+ */
+static void adv7511_set_default_config(struct drm_encoder *encoder,
+				       struct drm_connector *connector,
+				       struct edid *edid)
+{
+	struct adv7511 *adv7511 = encoder_to_adv7511(encoder);
+	struct adv7511_video_config config;
+
+	if (edid)
+		config.hdmi_mode = drm_detect_hdmi_monitor(edid);
+	else
+		config.hdmi_mode = false;
+
+	hdmi_avi_infoframe_init(&config.avi_infoframe);
+
+	config.avi_infoframe.scan_mode = HDMI_SCAN_MODE_UNDERSCAN;
+
+	if (adv7511->rgb) {
+		config.csc_enable = false;
+		config.avi_infoframe.colorspace = HDMI_COLORSPACE_RGB;
+	} else {
+		config.csc_scaling_factor = ADV7511_CSC_SCALING_4;
+		config.csc_coefficents = adv7511_csc_ycbcr_to_rgb;
+
+		if ((connector->display_info.color_formats &
+		     DRM_COLOR_FORMAT_YCRCB422) &&
+		    config.hdmi_mode) {
+			config.csc_enable = false;
+			config.avi_infoframe.colorspace =
+				HDMI_COLORSPACE_YUV422;
+		} else {
+			config.csc_enable = true;
+			config.avi_infoframe.colorspace = HDMI_COLORSPACE_RGB;
+		}
+	}
+
+	adv7511_set_config(encoder, &config);
+}
+
 static int adv7511_get_modes(struct drm_encoder *encoder,
 			     struct drm_connector *connector)
 {
@@ -469,6 +523,8 @@ static int adv7511_get_modes(struct drm_encoder *encoder,
 
 	drm_mode_connector_update_edid_property(connector, edid);
 	count = drm_add_edid_modes(connector, edid);
+
+	adv7511_set_default_config(encoder, connector, edid);
 
 	return count;
 }
