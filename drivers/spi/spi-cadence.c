@@ -95,12 +95,6 @@
 /* SPI FIFO depth in bytes */
 #define CDNS_SPI_FIFO_DEPTH	128
 
-/* Driver state - suspend/ready */
-enum driver_state_val {
-	CDNS_SPI_DRIVER_STATE_READY = 0,
-	CDNS_SPI_DRIVER_STATE_SUSPEND
-};
-
 /**
  * struct cdns_spi - This definition defines spi driver instance
  * @regs:		Virtual address of the SPI controller registers
@@ -112,7 +106,6 @@ enum driver_state_val {
  * @remaining_bytes:	Number of bytes left to transfer
  * @requested_bytes:	Number of bytes requested
  * @dev_busy:		Device busy flag
- * @driver_state:	Describes driver state - ready/suspended
  */
 struct cdns_spi {
 	void __iomem *regs;
@@ -124,7 +117,6 @@ struct cdns_spi {
 	int remaining_bytes;
 	int requested_bytes;
 	u8 dev_busy;
-	enum driver_state_val driver_state;
 };
 
 /* Macros for the SPI controller read/write */
@@ -409,14 +401,11 @@ static int cdns_transfer_one(struct spi_master *master,
  *
  * This function enables SPI master controller.
  *
- * Return:	0 on success and error value on error
+ * Return:	0 always
  */
 static int cdns_prepare_transfer_hardware(struct spi_master *master)
 {
 	struct cdns_spi *xspi = spi_master_get_devdata(master);
-
-	if (xspi->driver_state != CDNS_SPI_DRIVER_STATE_READY)
-		return -EINVAL;
 
 	cdns_spi_config_clock_mode(master->cur_msg->spi);
 
@@ -540,8 +529,6 @@ static int cdns_spi_probe(struct platform_device *pdev)
 
 	master->bits_per_word_mask = SPI_BPW_MASK(8);
 
-	xspi->driver_state = CDNS_SPI_DRIVER_STATE_READY;
-
 	ret = spi_register_master(master);
 	if (ret) {
 		dev_err(&pdev->dev, "spi_register_master failed\n");
@@ -597,7 +584,7 @@ static int cdns_spi_remove(struct platform_device *pdev)
  * This function disables the SPI controller and
  * changes the driver state to "suspend"
  *
- * Return:	0 on success and error value on error
+ * Return:	Always 0
  */
 static int __maybe_unused cdns_spi_suspend(struct device *dev)
 {
@@ -605,24 +592,13 @@ static int __maybe_unused cdns_spi_suspend(struct device *dev)
 			struct platform_device, dev);
 	struct spi_master *master = platform_get_drvdata(pdev);
 	struct cdns_spi *xspi = spi_master_get_devdata(master);
-	u32 ctrl_reg;
 
-	cdns_spi_write(xspi, CDNS_SPI_IDR_OFFSET,
-		       CDNS_SPI_IXR_DEFAULT_MASK);
+	spi_master_suspend(master);
 
-	ctrl_reg = cdns_spi_read(xspi, CDNS_SPI_CR_OFFSET);
-	ctrl_reg |= CDNS_SPI_CR_SSCTRL_MASK;
-	cdns_spi_write(xspi, CDNS_SPI_CR_OFFSET, ctrl_reg);
+	clk_disable_unprepare(xspi->ref_clk);
 
-	cdns_spi_write(xspi, CDNS_SPI_ER_OFFSET,
-		       CDNS_SPI_ER_DISABLE_MASK);
+	clk_disable_unprepare(xspi->pclk);
 
-	xspi->driver_state = CDNS_SPI_DRIVER_STATE_SUSPEND;
-
-	clk_disable(xspi->ref_clk);
-	clk_disable(xspi->pclk);
-
-	dev_dbg(&pdev->dev, "suspend succeeded\n");
 	return 0;
 }
 
@@ -642,22 +618,20 @@ static int __maybe_unused cdns_spi_resume(struct device *dev)
 	struct cdns_spi *xspi = spi_master_get_devdata(master);
 	int ret = 0;
 
-	ret = clk_enable(xspi->pclk);
+	ret = clk_prepare_enable(xspi->pclk);
 	if (ret) {
 		dev_err(dev, "Cannot enable APB clock.\n");
 		return ret;
 	}
 
-	ret = clk_enable(xspi->ref_clk);
+	ret = clk_prepare_enable(xspi->ref_clk);
 	if (ret) {
 		dev_err(dev, "Cannot enable device clock.\n");
 		clk_disable(xspi->pclk);
 		return ret;
 	}
+	spi_master_resume(master);
 
-	xspi->driver_state = CDNS_SPI_DRIVER_STATE_READY;
-
-	dev_dbg(&pdev->dev, "resume succeeded\n");
 	return 0;
 }
 
