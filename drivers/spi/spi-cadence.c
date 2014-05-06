@@ -549,9 +549,6 @@ static int cdns_spi_probe(struct platform_device *pdev)
 		goto clk_dis_all;
 	}
 
-	dev_info(&pdev->dev, "at 0x%08X mapped to 0x%08X, irq=%d\n",
-		 res->start, (u32 __force)xspi->regs, irq);
-
 	return ret;
 
 clk_dis_all:
@@ -585,9 +582,7 @@ static int cdns_spi_remove(struct platform_device *pdev)
 	clk_disable_unprepare(xspi->pclk);
 
 	spi_unregister_master(master);
-	spi_master_put(master);
 
-	dev_dbg(&pdev->dev, "remove succeeded\n");
 	return 0;
 }
 
