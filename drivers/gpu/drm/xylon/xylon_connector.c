@@ -55,10 +55,18 @@ static int xylon_drm_connector_get_modes(struct drm_connector *base_connector)
 static int xylon_drm_connector_mode_valid(struct drm_connector *base_connector,
 					  struct drm_display_mode *mode)
 {
-	if (mode->clock > CLOCK_HIGH_LIMIT)
-		return MODE_CLOCK_HIGH;
+	struct xylon_drm_connector *connector =
+		to_xylon_connector(base_connector);
+	struct drm_encoder *encoder = connector->encoder;
+	struct drm_encoder_slave *encoder_slave = to_encoder_slave(encoder);
+	struct drm_encoder_slave_funcs *encoder_sfuncs =
+		encoder_slave->slave_funcs;
+	int ret = MODE_OK;
 
-	return MODE_OK;
+	if (encoder_sfuncs->mode_valid)
+		ret = encoder_sfuncs->mode_valid(encoder, mode);
+
+	return ret;
 }
 
 static struct drm_encoder *
