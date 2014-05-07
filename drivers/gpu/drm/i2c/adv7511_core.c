@@ -958,6 +958,8 @@ static int adv7511_probe(struct i2c_client *i2c, const struct i2c_device_id *id)
 
 	adv7511_set_link_config(adv7511, &link_config);
 
+	regcache_mark_dirty(adv7511->regmap);
+
 	return 0;
 
 err_i2c_unregister_device:
