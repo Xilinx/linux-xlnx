@@ -2698,7 +2698,7 @@ static int struct_ep_setup(struct zynq_udc *udc,
 	/* for ep0: maxP defined in desc
 	 * for other eps, maxP is set by epautoconfig() called by gadget layer
 	 */
-	ep->ep.maxpacket = (unsigned short) ~0;
+	usb_ep_set_maxpacket_limit(&ep->ep, (unsigned short) ~0);
 
 	/* the queue lists any req for this ep */
 	INIT_LIST_HEAD(&ep->queue);
@@ -2825,7 +2825,8 @@ static int zynq_udc_probe(struct platform_device *pdev)
 	 * for other eps, gadget layer called ep_enable with defined desc
 	 */
 	udc_controller->eps[0].ep.desc = &zynq_ep0_desc;
-	udc_controller->eps[0].ep.maxpacket = USB_MAX_CTRL_PAYLOAD;
+	usb_ep_set_maxpacket_limit(&udc_controller->eps[0].ep,
+				   USB_MAX_CTRL_PAYLOAD);
 
 	/* setup the udc->eps[] for non-control endpoints and link
 	 * to gadget.ep_list */
