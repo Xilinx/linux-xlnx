@@ -384,9 +384,9 @@
 			reg = <0xf8001000 0x1000>;
 		} ;
 		ps7_uart_1: serial@e0001000 {
-			clock-names = "ref_clk", "aper_clk";
+			clock-names = "uart_clk", "pclk";
 			clocks = <&clkc 24>, <&clkc 41>;
-			compatible = "xlnx,xuartps";
+			compatible = "xlnx,xuartps", "cdns,uart-r1p8";
 			current-speed = <115200>;
 			device_type = "serial";
 			interrupt-parent = <&ps7_scugic_0>;

@@ -305,9 +305,9 @@
 		} ;
 		ps7_uart_0: serial@e0000000 {
 			status = "disabled";
-			clock-names = "ref_clk", "aper_clk";
+			clock-names = "uart_clk", "pclk";
 			clocks = <&clkc 23>, <&clkc 40>;
-			compatible = "xlnx,xuartps";
+			compatible = "xlnx,xuartps", "cdns,uart-r1p8";
 			current-speed = <115200>;
 			device_type = "serial";
 			interrupt-parent = <&ps7_scugic_0>;
@@ -317,9 +317,9 @@
 			xlnx,has-modem = <0x0>;
 		} ;
 		ps7_uart_1: serial@e0001000 {
-			clock-names = "ref_clk", "aper_clk";
+			clock-names = "uart_clk", "pclk";
 			clocks = <&clkc 24>, <&clkc 41>;
-			compatible = "xlnx,xuartps";
+			compatible = "xlnx,xuartps", "cdns,uart-r1p8";
 			current-speed = <115200>;
 			device_type = "serial";
 			interrupt-parent = <&ps7_scugic_0>;
