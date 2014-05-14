@@ -1331,11 +1331,10 @@ static SIMPLE_DEV_PM_OPS(xuartps_dev_pm_ops, xuartps_suspend, xuartps_resume);
  */
 static int xuartps_probe(struct platform_device *pdev)
 {
-	int rc;
+	int rc, id;
 	struct uart_port *port;
 	struct resource *res, *res2;
 	struct xuartps *xuartps_data;
-	int id;
 
 	xuartps_data = devm_kzalloc(&pdev->dev, sizeof(*xuartps_data),
 			GFP_KERNEL);
@@ -1385,10 +1384,8 @@ static int xuartps_probe(struct platform_device *pdev)
 #endif
 	/* Look for a serialN alias */
 	id = of_alias_get_id(pdev->dev.of_node, "serial");
-	if (id < 0) {
-		dev_warn(&pdev->dev, "failed to get alias id, errno %d\n", id);
+	if (id < 0)
 		id = 0;
-	}
 
 	/* Initialize the port structure */
 	port = xuartps_get_port(id);
