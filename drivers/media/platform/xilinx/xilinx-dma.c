@@ -905,8 +905,6 @@ int xvip_dma_init(struct xvip_composite_device *xdev, struct xvip_dma *dma,
 
 	dma->xdev = xdev;
 	dma->port = port;
-	mutex_init(&dma->lock);
-	mutex_init(&dma->pipe.lock);
 
 	dma->fmtinfo = xvip_get_format_by_fourcc(XVIP_DMA_DEF_FORMAT);
 	dma->format.pixelformat = dma->fmtinfo->fourcc;
@@ -925,6 +923,8 @@ int xvip_dma_init(struct xvip_composite_device *xdev, struct xvip_dma *dma,
 	if (ret < 0)
 		return ret;
 
+	mutex_init(&dma->lock);
+	mutex_init(&dma->pipe.lock);
 	/* ... and the video node... */
 	dma->video.v4l2_dev = &xdev->v4l2_dev;
 	dma->video.fops = &xvip_dma_fops;
