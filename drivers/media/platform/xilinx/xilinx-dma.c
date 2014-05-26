@@ -387,6 +387,11 @@ static void xvip_dma_buffer_queue(struct vb2_buffer *vb)
 
 	desc = dmaengine_prep_slave_single(dma->dma, buf->addr, buf->length,
 					   dir, flags);
+	if (!desc) {
+		dev_err(dma->xdev->dev, "Failed to prepare DMA transfer\n");
+		vb2_buffer_done(&buf->buf, VB2_BUF_STATE_ERROR);
+		return;
+	}
 	desc->callback = xvip_dma_complete;
 	desc->callback_param = buf;
 
