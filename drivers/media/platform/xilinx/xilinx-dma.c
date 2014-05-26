@@ -978,7 +978,6 @@ int xvip_dma_init(struct xvip_composite_device *xdev, struct xvip_dma *dma,
 	return 0;
 
 error:
-	vb2_dma_contig_cleanup_ctx(dma->alloc_ctx);
 	xvip_dma_cleanup(dma);
 	return ret;
 }
@@ -991,7 +990,9 @@ void xvip_dma_cleanup(struct xvip_dma *dma)
 	if (dma->dma)
 		dma_release_channel(dma->dma);
 
-	vb2_dma_contig_cleanup_ctx(dma->alloc_ctx);
+	if (!IS_ERR_OR_NULL(dma->alloc_ctx))
+		vb2_dma_contig_cleanup_ctx(dma->alloc_ctx);
+
 	media_entity_cleanup(&dma->video.entity);
 
 	mutex_destroy(&dma->lock);
