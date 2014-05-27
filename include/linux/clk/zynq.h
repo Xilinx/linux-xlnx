@@ -22,8 +22,6 @@
 
 #include <linux/spinlock.h>
 
-extern unsigned int zynq_clk_suspended;
-
 int zynq_clk_suspend_early(void);
 void zynq_clk_resume_late(void);
 void zynq_clk_topswitch_enable(void);
