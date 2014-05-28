@@ -21,7 +21,7 @@ Required properties:
 Example:
 
 For Zynq CANPS Dts file:
-	zynq_can_0: zynq-can@e0008000 {
+	zynq_can_0: can@e0008000 {
 			compatible = "xlnx,zynq-can-1.0";
 			clocks = <&clkc 19>, <&clkc 36>;
 			clock-names = "can_clk", "pclk";
