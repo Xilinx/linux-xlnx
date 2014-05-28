@@ -928,18 +928,16 @@ static const struct net_device_ops xcan_netdev_ops = {
 	.ndo_start_xmit	= xcan_start_xmit,
 };
 
-#ifdef CONFIG_PM_SLEEP
 /**
  * xcan_suspend - Suspend method for the driver
- * @_dev:	Address of the platform_device structure
+ * @dev:	Address of the platform_device structure
  *
  * Put the driver into low power mode.
  * Return: 0 always
  */
-static int xcan_suspend(struct device *_dev)
+static int __maybe_unused xcan_suspend(struct device *dev)
 {
-	struct platform_device *pdev = container_of(_dev,
-			struct platform_device, dev);
+	struct platform_device *pdev = dev_get_drvdata(dev);
 	struct net_device *ndev = platform_get_drvdata(pdev);
 	struct xcan_priv *priv = netdev_priv(ndev);
 
@@ -964,10 +962,9 @@ static int xcan_suspend(struct device *_dev)
  * Resume operation after suspend.
  * Return: 0 on success and failure value on error
  */
-static int xcan_resume(struct device *dev)
+static int __maybe_unused xcan_resume(struct device *dev)
 {
-	struct platform_device *pdev = container_of(dev,
-			struct platform_device, dev);
+	struct platform_device *pdev = dev_get_drvdata(dev);
 	struct net_device *ndev = platform_get_drvdata(pdev);
 	struct xcan_priv *priv = netdev_priv(ndev);
 	int ret;
@@ -995,7 +992,6 @@ static int xcan_resume(struct device *dev)
 
 	return 0;
 }
-#endif
 
 static SIMPLE_DEV_PM_OPS(xcan_dev_pm_ops, xcan_suspend, xcan_resume);
 
