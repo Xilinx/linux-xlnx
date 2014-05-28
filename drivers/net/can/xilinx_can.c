@@ -171,30 +171,57 @@ static struct can_bittiming_const xcan_bittiming_const = {
 };
 
 /**
- * xcan_write_reg - Write a value to the device register
+ * xcan_write_reg_le - Write a value to the device register little endian
  * @priv:	Driver private data structure
  * @reg:	Register offset
  * @val:	Value to write at the Register offset
  *
  * Write data to the paricular CAN register
  */
-static void xcan_write_reg(const struct xcan_priv *priv, enum xcan_reg reg,
+static void xcan_write_reg_le(const struct xcan_priv *priv, enum xcan_reg reg,
 			u32 val)
 {
-	writel(val, priv->reg_base + reg);
+	iowrite32(val, priv->reg_base + reg);
 }
 
 /**
- * xcan_read_reg - Read a value from the device register
+ * xcan_read_reg_le - Read a value from the device register little endian
  * @priv:	Driver private data structure
  * @reg:	Register offset
  *
  * Read data from the particular CAN register
  * Return: value read from the CAN register
  */
-static u32 xcan_read_reg(const struct xcan_priv *priv, enum xcan_reg reg)
+static u32 xcan_read_reg_le(const struct xcan_priv *priv, enum xcan_reg reg)
 {
-	return readl(priv->reg_base + reg);
+	return ioread32(priv->reg_base + reg);
+}
+
+/**
+ * xcan_write_reg_be - Write a value to the device register big endian
+ * @priv:	Driver private data structure
+ * @reg:	Register offset
+ * @val:	Value to write at the Register offset
+ *
+ * Write data to the paricular CAN register
+ */
+static void xcan_write_reg_be(const struct xcan_priv *priv, enum xcan_reg reg,
+			u32 val)
+{
+	iowrite32be(val, priv->reg_base + reg);
+}
+
+/**
+ * xcan_read_reg_be - Read a value from the device register big endian
+ * @priv:	Driver private data structure
+ * @reg:	Register offset
+ *
+ * Read data from the particular CAN register
+ * Return: value read from the CAN register
+ */
+static u32 xcan_read_reg_be(const struct xcan_priv *priv, enum xcan_reg reg)
+{
+	return ioread32be(priv->reg_base + reg);
 }
 
 /**
@@ -1029,9 +1056,6 @@ static int xcan_probe(struct platform_device *pdev)
 	ndev->mem_start = res->start;
 	ndev->mem_end = res->end;
 
-	priv->write_reg = xcan_write_reg;
-	priv->read_reg = xcan_read_reg;
-
 	/* Getting the CAN devclk info */
 	priv->devclk = devm_clk_get(&pdev->dev, "ref_clk");
 	if (IS_ERR(priv->devclk)) {
@@ -1073,6 +1097,14 @@ static int xcan_probe(struct platform_device *pdev)
 	if (ret) {
 		dev_err(&pdev->dev, "unable to enable aper clock\n");
 		goto err_unprepar_disabledev;
+	}
+
+	priv->write_reg = xcan_write_reg_le;
+	priv->read_reg = xcan_read_reg_le;
+
+	if (priv->read_reg(priv, XCAN_SR_OFFSET) != XCAN_SR_CONFIG_MASK) {
+		priv->write_reg = xcan_write_reg_be;
+		priv->read_reg = xcan_read_reg_be;
 	}
 
 	priv->can.clock.freq = clk_get_rate(priv->devclk);
