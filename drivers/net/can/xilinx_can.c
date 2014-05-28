@@ -131,8 +131,8 @@ enum xcan_reg {
  * @dev:			Network device data structure
  * @reg_base:			Ioremapped address to registers
  * @irq_flags:			For request_irq()
- * @aperclk:			Pointer to struct clk
- * @devclk:			Pointer to struct clk
+ * @bus_clk:			Pointer to struct clk
+ * @can_clk:			Pointer to struct clk
  */
 struct xcan_priv {
 	struct can_priv can;
@@ -149,8 +149,8 @@ struct xcan_priv {
 	struct net_device *dev;
 	void __iomem *reg_base;
 	unsigned long irq_flags;
-	struct clk *aperclk;
-	struct clk *devclk;
+	struct clk *bus_clk;
+	struct clk *can_clk;
 };
 
 /* CAN Bittiming constants as per Xilinx CAN specs */
@@ -946,8 +946,8 @@ static int xcan_suspend(struct device *_dev)
 	priv->write_reg(priv, XCAN_MSR_OFFSET, XCAN_MSR_SLEEP_MASK);
 	priv->can.state = CAN_STATE_SLEEPING;
 
-	clk_disable(priv->aperclk);
-	clk_disable(priv->devclk);
+	clk_disable(priv->bus_clk);
+	clk_disable(priv->can_clk);
 
 	return 0;
 }
@@ -967,14 +967,15 @@ static int xcan_resume(struct device *dev)
 	struct xcan_priv *priv = netdev_priv(ndev);
 	int ret;
 
-	ret = clk_enable(priv->aperclk);
+	ret = clk_enable(priv->bus_clk);
 	if (ret) {
 		dev_err(dev, "Cannot enable clock.\n");
 		return ret;
 	}
-	ret = clk_enable(priv->devclk);
+	ret = clk_enable(priv->can_clk);
 	if (ret) {
 		dev_err(dev, "Cannot enable clock.\n");
+		clk_disable_unprepare(priv->bus_clk);
 		return ret;
 	}
 
@@ -1059,37 +1060,41 @@ static int xcan_probe(struct platform_device *pdev)
 	SET_NETDEV_DEV(ndev, &pdev->dev);
 	ndev->netdev_ops = &xcan_netdev_ops;
 
-	/* Getting the CAN devclk info */
-	priv->devclk = devm_clk_get(&pdev->dev, "ref_clk");
-	if (IS_ERR(priv->devclk)) {
+	/* Getting the CAN can_clk info */
+	priv->can_clk = devm_clk_get(&pdev->dev, "can_clk");
+	if (IS_ERR(priv->can_clk)) {
 		dev_err(&pdev->dev, "Device clock not found.\n");
-		ret = PTR_ERR(priv->devclk);
+		ret = PTR_ERR(priv->can_clk);
 		goto err_free;
 	}
-
 	/* Check for type of CAN device */
 	if (of_device_is_compatible(pdev->dev.of_node,
 				    "xlnx,zynq-can-1.0")) {
-		priv->aperclk = devm_clk_get(&pdev->dev, "aper_clk");
-		if (IS_ERR(priv->aperclk)) {
-			dev_err(&pdev->dev, "aper clock not found\n");
-			ret = PTR_ERR(priv->aperclk);
+		priv->bus_clk = devm_clk_get(&pdev->dev, "pclk");
+		if (IS_ERR(priv->bus_clk)) {
+			dev_err(&pdev->dev, "bus clock not found\n");
+			ret = PTR_ERR(priv->bus_clk);
 			goto err_free;
 		}
 	} else {
-		priv->aperclk = priv->devclk;
+		priv->bus_clk = devm_clk_get(&pdev->dev, "s_axi_aclk");
+		if (IS_ERR(priv->bus_clk)) {
+			dev_err(&pdev->dev, "bus clock not found\n");
+			ret = PTR_ERR(priv->bus_clk);
+			goto err_free;
+		}
 	}
 
-	ret = clk_prepare_enable(priv->devclk);
+	ret = clk_prepare_enable(priv->can_clk);
 	if (ret) {
 		dev_err(&pdev->dev, "unable to enable device clock\n");
 		goto err_free;
 	}
 
-	ret = clk_prepare_enable(priv->aperclk);
+	ret = clk_prepare_enable(priv->bus_clk);
 	if (ret) {
-		dev_err(&pdev->dev, "unable to enable aper clock\n");
-		goto err_unprepar_disabledev;
+		dev_err(&pdev->dev, "unable to enable bus clock\n");
+		goto err_unprepare_disable_dev;
 	}
 
 	priv->write_reg = xcan_write_reg_le;
@@ -1100,14 +1105,14 @@ static int xcan_probe(struct platform_device *pdev)
 		priv->read_reg = xcan_read_reg_be;
 	}
 
-	priv->can.clock.freq = clk_get_rate(priv->devclk);
+	priv->can.clock.freq = clk_get_rate(priv->can_clk);
 
 	netif_napi_add(ndev, &priv->napi, xcan_rx_poll, rx_max);
 
 	ret = register_candev(ndev);
 	if (ret) {
 		dev_err(&pdev->dev, "fail to register failed (err=%d)\n", ret);
-		goto err_unprepar_disableaper;
+		goto err_unprepare_disable_busclk;
 	}
 
 	devm_can_led_init(ndev);
@@ -1118,10 +1123,10 @@ static int xcan_probe(struct platform_device *pdev)
 
 	return 0;
 
-err_unprepar_disableaper:
-	clk_disable_unprepare(priv->aperclk);
-err_unprepar_disabledev:
-	clk_disable_unprepare(priv->devclk);
+err_unprepare_disable_busclk:
+	clk_disable_unprepare(priv->bus_clk);
+err_unprepare_disable_dev:
+	clk_disable_unprepare(priv->can_clk);
 err_free:
 	free_candev(ndev);
 err:
@@ -1145,8 +1150,8 @@ static int xcan_remove(struct platform_device *pdev)
 
 	unregister_candev(ndev);
 	netif_napi_del(&priv->napi);
-	clk_disable_unprepare(priv->aperclk);
-	clk_disable_unprepare(priv->devclk);
+	clk_disable_unprepare(priv->bus_clk);
+	clk_disable_unprepare(priv->can_clk);
 
 	free_candev(ndev);
 
