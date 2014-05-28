@@ -39,24 +39,26 @@
 #define DRIVER_NAME	"XILINX_CAN"
 
 /* CAN registers set */
-#define XCAN_SRR_OFFSET			0x00 /* Software reset */
-#define XCAN_MSR_OFFSET			0x04 /* Mode select */
-#define XCAN_BRPR_OFFSET		0x08 /* Baud rate prescaler */
-#define XCAN_BTR_OFFSET			0x0C /* Bit timing */
-#define XCAN_ECR_OFFSET			0x10 /* Error counter */
-#define XCAN_ESR_OFFSET			0x14 /* Error status */
-#define XCAN_SR_OFFSET			0x18 /* Status */
-#define XCAN_ISR_OFFSET			0x1C /* Interrupt status */
-#define XCAN_IER_OFFSET			0x20 /* Interrupt enable */
-#define XCAN_ICR_OFFSET			0x24 /* Interrupt clear */
-#define XCAN_TXFIFO_ID_OFFSET		0x30 /* TX FIFO ID */
-#define XCAN_TXFIFO_DLC_OFFSET		0x34 /* TX FIFO DLC */
-#define XCAN_TXFIFO_DW1_OFFSET		0x38 /* TX FIFO Data Word 1 */
-#define XCAN_TXFIFO_DW2_OFFSET		0x3C /* TX FIFO Data Word 2 */
-#define XCAN_RXFIFO_ID_OFFSET		0x50 /* RX FIFO ID */
-#define XCAN_RXFIFO_DLC_OFFSET		0x54 /* RX FIFO DLC */
-#define XCAN_RXFIFO_DW1_OFFSET		0x58 /* RX FIFO Data Word 1 */
-#define XCAN_RXFIFO_DW2_OFFSET		0x5C /* RX FIFO Data Word 2 */
+enum xcan_reg {
+	XCAN_SRR_OFFSET		= 0x00, /* Software reset */
+	XCAN_MSR_OFFSET		= 0x04, /* Mode select */
+	XCAN_BRPR_OFFSET	= 0x08, /* Baud rate prescaler */
+	XCAN_BTR_OFFSET		= 0x0C, /* Bit timing */
+	XCAN_ECR_OFFSET		= 0x10, /* Error counter */
+	XCAN_ESR_OFFSET		= 0x14, /* Error status */
+	XCAN_SR_OFFSET		= 0x18, /* Status */
+	XCAN_ISR_OFFSET		= 0x1C, /* Interrupt status */
+	XCAN_IER_OFFSET		= 0x20, /* Interrupt enable */
+	XCAN_ICR_OFFSET		= 0x24, /* Interrupt clear */
+	XCAN_TXFIFO_ID_OFFSET	= 0x30,/* TX FIFO ID */
+	XCAN_TXFIFO_DLC_OFFSET	= 0x34, /* TX FIFO DLC */
+	XCAN_TXFIFO_DW1_OFFSET	= 0x38, /* TX FIFO Data Word 1 */
+	XCAN_TXFIFO_DW2_OFFSET	= 0x3C, /* TX FIFO Data Word 2 */
+	XCAN_RXFIFO_ID_OFFSET	= 0x50, /* RX FIFO ID */
+	XCAN_RXFIFO_DLC_OFFSET	= 0x54, /* RX FIFO DLC */
+	XCAN_RXFIFO_DW1_OFFSET	= 0x58, /* RX FIFO Data Word 1 */
+	XCAN_RXFIFO_DW2_OFFSET	= 0x5C, /* RX FIFO Data Word 2 */
+};
 
 /* CAN register bit masks - XCAN_<REG>_<BIT>_MASK */
 #define XCAN_SRR_CEN_MASK		0x00000002 /* CAN enable */
@@ -145,8 +147,9 @@ struct xcan_priv {
 	int xcan_echo_skb_max_rx;
 	struct napi_struct napi;
 	spinlock_t ech_skb_lock;
-	u32 (*read_reg)(const struct xcan_priv *priv, int reg);
-	void (*write_reg)(const struct xcan_priv *priv, int reg, u32 val);
+	u32 (*read_reg)(const struct xcan_priv *priv, enum xcan_reg reg);
+	void (*write_reg)(const struct xcan_priv *priv, enum xcan_reg reg,
+			u32 val);
 	struct net_device *dev;
 	void __iomem *reg_base;
 	unsigned long irq_flags;
@@ -175,7 +178,8 @@ static struct can_bittiming_const xcan_bittiming_const = {
  *
  * Write data to the paricular CAN register
  */
-static void xcan_write_reg(const struct xcan_priv *priv, int reg, u32 val)
+static void xcan_write_reg(const struct xcan_priv *priv, enum xcan_reg reg,
+			u32 val)
 {
 	writel(val, priv->reg_base + reg);
 }
@@ -188,7 +192,7 @@ static void xcan_write_reg(const struct xcan_priv *priv, int reg, u32 val)
  * Read data from the particular CAN register
  * Return: value read from the CAN register
  */
-static u32 xcan_read_reg(const struct xcan_priv *priv, int reg)
+static u32 xcan_read_reg(const struct xcan_priv *priv, enum xcan_reg reg)
 {
 	return readl(priv->reg_base + reg);
 }
