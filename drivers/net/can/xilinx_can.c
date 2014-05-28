@@ -481,7 +481,7 @@ static int xcan_start_xmit(struct sk_buff *skb, struct net_device *ndev)
  * This function is invoked from the CAN isr(poll) to process the Rx frames. It
  * does minimal processing and invokes "netif_receive_skb" to complete further
  * processing.
- * Return: 0 on success and negative error value on error
+ * Return: 1 on success and 0 on failure.
  */
 static int xcan_rx(struct net_device *ndev)
 {
@@ -489,23 +489,21 @@ static int xcan_rx(struct net_device *ndev)
 	struct net_device_stats *stats = &ndev->stats;
 	struct can_frame *cf;
 	struct sk_buff *skb;
-	u32 id_xcan, dlc, data1, data2;
+	u32 id_xcan, dlc, data[2] = {0, 0};
 
 	skb = alloc_can_skb(ndev, &cf);
-	if (!skb)
-		return -ENOMEM;
+	if (unlikely(!skb)) {
+		stats->rx_dropped++;
+		return 0;
+	}
 
 	/* Read a frame from Xilinx zynq CANPS */
 	id_xcan = priv->read_reg(priv, XCAN_RXFIFO_ID_OFFSET);
-	dlc = priv->read_reg(priv, XCAN_RXFIFO_DLC_OFFSET) & XCAN_DLCR_DLC_MASK;
-	data1 = priv->read_reg(priv, XCAN_RXFIFO_DW1_OFFSET);
-	data2 = priv->read_reg(priv, XCAN_RXFIFO_DW2_OFFSET);
-	netdev_dbg(ndev, "rx:id=0x%08x,dlc=0x%08x,d1=0x%08x,d2=0x%08x\n",
-		id_xcan, dlc, data1, data2);
+	dlc = priv->read_reg(priv, XCAN_RXFIFO_DLC_OFFSET) >>
+				XCAN_DLCR_DLC_SHIFT;
 
 	/* Change Xilinx CAN data length format to socketCAN data format */
-	cf->can_dlc = get_can_dlc((dlc & XCAN_DLCR_DLC_MASK) >>
-				XCAN_DLCR_DLC_SHIFT);
+	cf->can_dlc = get_can_dlc(dlc);
 
 	/* Change Xilinx CAN ID format to socketCAN ID format */
 	if (id_xcan & XCAN_IDR_IDE_MASK) {
@@ -524,20 +522,22 @@ static int xcan_rx(struct net_device *ndev)
 			cf->can_id |= CAN_RTR_FLAG;
 	}
 
-	/* Change Xilinx CAN data format to socketCAN data format */
-	*(u32 *)(cf->data) = ntohl(data1);
-	if (cf->can_dlc > 4)
-		*(u32 *)(cf->data + 4) = ntohl(data2);
-	else
-		*(u32 *)(cf->data + 4) = 0;
+	if (!(id_xcan & XCAN_IDR_SRR_MASK)) {
+		data[0] = priv->read_reg(priv, XCAN_RXFIFO_DW1_OFFSET);
+		data[1] = priv->read_reg(priv, XCAN_RXFIFO_DW2_OFFSET);
+
+		/* Change Xilinx CAN data format to socketCAN data format */
+		if (cf->can_dlc > 0)
+			*(__be32 *)(cf->data) = cpu_to_be32(data[0]);
+		if (cf->can_dlc > 4)
+			*(__be32 *)(cf->data + 4) = cpu_to_be32(data[1]);
+	}
+
 	stats->rx_bytes += cf->can_dlc;
-
-	can_led_event(ndev, CAN_LED_EVENT_RX);
-
+	stats->rx_packets++;
 	netif_receive_skb(skb);
 
-	stats->rx_packets++;
-	return 0;
+	return 1;
 }
 
 /**
@@ -698,9 +698,7 @@ static int xcan_rx_poll(struct napi_struct *napi, int quota)
 		if (isr & XCAN_IXR_RXOK_MASK) {
 			priv->write_reg(priv, XCAN_ICR_OFFSET,
 				XCAN_IXR_RXOK_MASK);
-			if (xcan_rx(ndev) < 0)
-				return work_done;
-			work_done++;
+			work_done += xcan_rx(ndev);
 		} else {
 			priv->write_reg(priv, XCAN_ICR_OFFSET,
 				XCAN_IXR_RXNEMP_MASK);
@@ -709,6 +707,9 @@ static int xcan_rx_poll(struct napi_struct *napi, int quota)
 		priv->write_reg(priv, XCAN_ICR_OFFSET, XCAN_IXR_RXNEMP_MASK);
 		isr = priv->read_reg(priv, XCAN_ISR_OFFSET);
 	}
+
+	if (work_done)
+		can_led_event(ndev, CAN_LED_EVENT_RX);
 
 	if (work_done < quota) {
 		napi_complete(napi);
