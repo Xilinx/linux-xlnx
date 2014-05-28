@@ -120,12 +120,10 @@ enum xcan_reg {
  * struct xcan_priv - This definition define CAN driver instance
  * @can:			CAN private data structure.
  * @open_time:			For holding timeout values
- * @waiting_ech_skb_index:	Pointer for skb
- * @ech_skb_next:		This tell the next packet in the queue
- * @waiting_ech_skb_num:	Gives the number of packets waiting
+ * @tx_head:			Tx CAN packets ready to send on the queue
+ * @tx_tail:			Tx CAN packets successfully sended on the queue
  * @tx_max:			Maximum number packets the driver can send
  * @napi:			NAPI structure
- * @ech_skb_lock:		For spinlock purpose
  * @read_reg:			For reading data from CAN registers
  * @write_reg:			For writing data to CAN registers
  * @dev:			Network device data structure
@@ -137,12 +135,10 @@ enum xcan_reg {
 struct xcan_priv {
 	struct can_priv can;
 	int open_time;
-	int waiting_ech_skb_index;
-	int ech_skb_next;
-	int waiting_ech_skb_num;
+	unsigned int tx_head;
+	unsigned int tx_tail;
 	unsigned int tx_max;
 	struct napi_struct napi;
-	spinlock_t ech_skb_lock;
 	u32 (*read_reg)(const struct xcan_priv *priv, enum xcan_reg reg);
 	void (*write_reg)(const struct xcan_priv *priv, enum xcan_reg reg,
 			u32 val);
@@ -407,30 +403,21 @@ static int xcan_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	struct xcan_priv *priv = netdev_priv(ndev);
 	struct net_device_stats *stats = &ndev->stats;
 	struct can_frame *cf = (struct can_frame *)skb->data;
-	u32 id, dlc, tmp_dw1, tmp_dw2 = 0, data1, data2 = 0;
-	unsigned long flags;
+	u32 id, dlc, data[2] = {0, 0};
+
+	if (can_dropped_invalid_skb(ndev, skb))
+		return NETDEV_TX_OK;
 
 	/* Check if the TX buffer is full */
-	if (priv->read_reg(priv, XCAN_SR_OFFSET) & XCAN_SR_TXFLL_MASK) {
+	if (unlikely(priv->read_reg(priv, XCAN_SR_OFFSET) &
+			XCAN_SR_TXFLL_MASK)) {
 		netif_stop_queue(ndev);
-		netdev_err(ndev, "TX register is still full!\n");
-		return NETDEV_TX_BUSY;
-	} else if (priv->waiting_ech_skb_num == priv->tx_max) {
-		netif_stop_queue(ndev);
-		netdev_err(ndev, "waiting:0x%08x, max:0x%08x\n",
-			priv->waiting_ech_skb_num, priv->tx_max);
+		netdev_err(ndev, "BUG!, TX FIFO full when queue awake!\n");
 		return NETDEV_TX_BUSY;
 	}
-	/* Watch carefully on the bit sequence */
-	if ((cf->can_id & CAN_EFF_FLAG) == 0) {
-		/* Standard CAN ID format */
-		id = ((cf->can_id & CAN_SFF_MASK) << XCAN_IDR_ID1_SHIFT) &
-			XCAN_IDR_ID1_MASK;
 
-		if (cf->can_id & CAN_RTR_FLAG)
-			/* Extended frames remote TX request */
-			id |= XCAN_IDR_SRR_MASK;
-	} else {
+	/* Watch carefully on the bit sequence */
+	if (cf->can_id & CAN_EFF_FLAG) {
 		/* Extended CAN ID format */
 		id = ((cf->can_id & CAN_EFF_MASK) << XCAN_IDR_ID2_SHIFT) &
 			XCAN_IDR_ID2_MASK;
@@ -446,36 +433,42 @@ static int xcan_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 		if (cf->can_id & CAN_RTR_FLAG)
 			/* Extended frames remote TX request */
 			id |= XCAN_IDR_RTR_MASK;
+	} else {
+		/* Standard CAN ID format */
+		id = ((cf->can_id & CAN_SFF_MASK) << XCAN_IDR_ID1_SHIFT) &
+			XCAN_IDR_ID1_MASK;
+
+		if (cf->can_id & CAN_RTR_FLAG)
+			/* Standard frames remote TX request */
+			id |= XCAN_IDR_SRR_MASK;
 	}
 
-	dlc = (cf->can_dlc & 0xf) << XCAN_DLCR_DLC_SHIFT;
+	dlc = cf->can_dlc << XCAN_DLCR_DLC_SHIFT;
 
-	tmp_dw1 = le32_to_cpup((u32 *)(cf->data));
-	data1 = htonl(tmp_dw1);
-	if (dlc > 4) {
-		tmp_dw2 = le32_to_cpup((u32 *)(cf->data + 4));
-		data2 = htonl(tmp_dw2);
-	}
+	if (cf->can_dlc > 0)
+		data[0] = be32_to_cpup((__be32 *)(cf->data + 0));
+	if (cf->can_dlc > 4)
+		data[1] = be32_to_cpup((__be32 *)(cf->data + 4));
 
-	netdev_dbg(ndev, "tx:id=0x%08x,dlc=0x%08x,d1=0x%08x,d2=0x%08x\n",
-			id, dlc, data1, data2);
+	can_put_echo_skb(skb, ndev, priv->tx_head % priv->tx_max);
+	priv->tx_head++;
 
 	/* Write the Frame to Xilinx CAN TX FIFO */
 	priv->write_reg(priv, XCAN_TXFIFO_ID_OFFSET, id);
+	/* If the CAN frame is RTR frame this write triggers tranmission */
 	priv->write_reg(priv, XCAN_TXFIFO_DLC_OFFSET, dlc);
-	priv->write_reg(priv, XCAN_TXFIFO_DW1_OFFSET, data1);
-	priv->write_reg(priv, XCAN_TXFIFO_DW2_OFFSET, data2);
-	stats->tx_bytes += cf->can_dlc;
-	ndev->trans_start = jiffies;
+	if (!(cf->can_id & CAN_RTR_FLAG)) {
+		priv->write_reg(priv, XCAN_TXFIFO_DW1_OFFSET, data[0]);
+		/* If the CAN frame is Standard/Extended frame this
+		 * write triggers tranmission
+		 */
+		priv->write_reg(priv, XCAN_TXFIFO_DW2_OFFSET, data[1]);
+		stats->tx_bytes += cf->can_dlc;
+	}
 
-	can_put_echo_skb(skb, ndev, priv->ech_skb_next);
-
-	priv->ech_skb_next = (priv->ech_skb_next + 1) %
-					priv->tx_max;
-
-	spin_lock_irqsave(&priv->ech_skb_lock, flags);
-	priv->waiting_ech_skb_num++;
-	spin_unlock_irqrestore(&priv->ech_skb_lock, flags);
+	/* Check if the TX buffer is full */
+	if ((priv->tx_head - priv->tx_tail) == priv->tx_max)
+		netif_stop_queue(ndev);
 
 	return NETDEV_TX_OK;
 }
@@ -729,39 +722,24 @@ static int xcan_rx_poll(struct napi_struct *napi, int quota)
 /**
  * xcan_tx_interrupt - Tx Done Isr
  * @ndev:	net_device pointer
+ * @isr:	Interrupt status register value
  */
-static void xcan_tx_interrupt(struct net_device *ndev)
+static void xcan_tx_interrupt(struct net_device *ndev, u32 isr)
 {
-	unsigned long flags;
 	struct xcan_priv *priv = netdev_priv(ndev);
 	struct net_device_stats *stats = &ndev->stats;
-	u32 processed = 0, txpackets;
 
-	stats->tx_packets++;
-	netdev_dbg(ndev, "%s: waiting total:%d,current:%d\n", __func__,
-			priv->waiting_ech_skb_num, priv->waiting_ech_skb_index);
-
-	txpackets = priv->waiting_ech_skb_num;
-
-	if (txpackets) {
-		can_get_echo_skb(ndev, priv->waiting_ech_skb_index);
-		priv->waiting_ech_skb_index =
-			(priv->waiting_ech_skb_index + 1) %
-			priv->tx_max;
-		processed++;
-		txpackets--;
+	while ((priv->tx_head - priv->tx_tail > 0) &&
+			(isr & XCAN_IXR_TXOK_MASK)) {
+		priv->write_reg(priv, XCAN_ICR_OFFSET, XCAN_IXR_TXOK_MASK);
+		can_get_echo_skb(ndev, priv->tx_tail %
+					priv->tx_max);
+		priv->tx_tail++;
+		stats->tx_packets++;
+		isr = priv->read_reg(priv, XCAN_ISR_OFFSET);
 	}
-
-	spin_lock_irqsave(&priv->ech_skb_lock, flags);
-	priv->waiting_ech_skb_num -= processed;
-	spin_unlock_irqrestore(&priv->ech_skb_lock, flags);
-
-	netdev_dbg(ndev, "%s: waiting total:%d,current:%d\n", __func__,
-			priv->waiting_ech_skb_num, priv->waiting_ech_skb_index);
-
-	netif_wake_queue(ndev);
-
 	can_led_event(ndev, CAN_LED_EVENT_TX);
+	netif_wake_queue(ndev);
 }
 
 /**
@@ -800,10 +778,8 @@ static irqreturn_t xcan_interrupt(int irq, void *dev_id)
 	}
 
 	/* Check for Tx interrupt and Processing it */
-	if (isr & XCAN_IXR_TXOK_MASK) {
-		priv->write_reg(priv, XCAN_ICR_OFFSET, XCAN_IXR_TXOK_MASK);
-		xcan_tx_interrupt(ndev);
-	}
+	if (isr & XCAN_IXR_TXOK_MASK)
+		xcan_tx_interrupt(ndev, isr);
 
 	/* Check for the type of error interrupt and Processing it */
 	if (isr & (XCAN_IXR_ERROR_MASK | XCAN_IXR_RXOFLW_MASK |
@@ -1053,7 +1029,6 @@ static int xcan_probe(struct platform_device *pdev)
 		goto err_free;
 	}
 
-	spin_lock_init(&priv->ech_skb_lock);
 	ndev->flags |= IFF_ECHO;	/* We support local echo */
 
 	platform_set_drvdata(pdev, ndev);
