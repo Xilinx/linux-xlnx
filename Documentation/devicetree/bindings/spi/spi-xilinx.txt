@@ -1,0 +1,23 @@
+Xilinx SPI controller Device Tree Bindings
+-------------------------------------------------
+
+Required properties:
+- compatible		: Should be "xlnx,xps-spi-2.00.a".
+			  "xlnx,xps-spi-2.00.b" (DEPRECATED)
+- reg			: Physical base address and size of SPI registers map.
+- interrupts		: Property with a value describing the interrupt
+			  number.
+- interrupt-parent	: Must be core interrupt controller
+
+Optional properties:
+- num-cs		: Number of chip selects used.
+- xlnx,num-ss-bits	: Number of chip selects used (DEPRECATED).
+
+Example:
+	spi@44a00000 {
+		compatible = "xlnx,xps-spi-2.00.a";
+		interrupt-parent = <&microblaze_0_axi_intc>;
+		interrupts = <0 0>;
+		reg = <0x44a00000 0x10000>;
+		num-cs = <0x1>;
+	} ;
