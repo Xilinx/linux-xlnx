@@ -14,8 +14,8 @@ Required properties:
 			  (See clock bindings for details. Two clocks are
 			   required for Zynq CAN. For Axi CAN case it is one).
 - clocks		: Clock phandles (see clock bindings for details).
-- xlnx,can-tx-dpth	: Can Tx fifo depth (Required for Axi CAN).
-- xlnx,can-rx-dpth	: Can Rx fifo depth (Required for Axi CAN).
+- tx-fifo-depth		: Can Tx fifo depth.
+- rx-fifo-depth		: Can Rx fifo depth.
 
 
 Example:
@@ -28,6 +28,8 @@ For Zynq CANPS Dts file:
 			reg = <0xe0008000 0x1000>;
 			interrupts = <0 28 4>;
 			interrupt-parent = <&intc>;
+			tx-fifo-depth = <0x40>;
+			rx-fifo-depth = <0x40>;
 		};
 For Axi CAN Dts file:
 	axi_can_0: axi-can@40000000 {
@@ -37,6 +39,6 @@ For Axi CAN Dts file:
 			reg = <0x40000000 0x10000>;
 			interrupt-parent = <&intc>;
 			interrupts = <0 59 1>;
-			xlnx,can-tx-dpth = <0x40>;
-			xlnx,can-rx-dpth = <0x40>;
+			tx-fifo-depth = <0x40>;
+			rx-fifo-depth = <0x40>;
 		};
