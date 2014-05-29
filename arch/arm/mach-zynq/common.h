@@ -32,6 +32,22 @@ extern void __iomem *zynq_scu_base;
 
 void zynq_pm_late_init(void);
 
+static inline void zynq_prefetch_init(void)
+{
+	/*
+	 * Enable prefetching in aux control register. L2 prefetch must
+	 * only be enabled if the slave supports it (PL310 does)
+	 */
+	asm volatile ("mrc   p15, 0, r1, c1, c0, 1\n"
+#ifdef CONFIG_XILINX_PREFETCH
+		      "orr   r1, r1, #6\n"
+#else
+		      "bic   r1, r1, #6\n"
+#endif
+		      "mcr   p15, 0, r1, c1, c0, 1\n"
+		      : : : "r1");
+}
+
 static inline void zynq_core_pm_init(void)
 {
 	/* A9 clock gating */
