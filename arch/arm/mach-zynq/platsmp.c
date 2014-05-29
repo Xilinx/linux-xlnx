@@ -118,6 +118,7 @@ static void __init zynq_smp_prepare_cpus(unsigned int max_cpus)
 static void zynq_secondary_init(unsigned int cpu)
 {
 	zynq_core_pm_init();
+	zynq_prefetch_init();
 }
 
 #ifdef CONFIG_HOTPLUG_CPU
