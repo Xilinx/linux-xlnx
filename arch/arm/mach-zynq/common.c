@@ -77,7 +77,7 @@ static int __init zynq_l2c_init(void)
 	auxctrl = L2X0_AUX_CTRL_SHARE_OVERRIDE_EN_MASK |
 			L2X0_AUX_CTRL_WAY_SIZE64K_MASK |
 			L2X0_AUX_CTRL_REPLACE_POLICY_RR_MASK;
-#ifdef CONFIG_XILINX_L2_PREFETCH
+#ifdef CONFIG_XILINX_PREFETCH
 	auxctrl |= L2X0_AUX_CTRL_EARLY_BRESP_EN_MASK |
 			L2X0_AUX_CTRL_INSTR_PREFETCH_EN_MASK |
 			L2X0_AUX_CTRL_DATA_PREFETCH_EN_MASK;
@@ -88,7 +88,7 @@ early_initcall(zynq_l2c_init);
 #endif
 
 
-#ifdef CONFIG_XILINX_L1_PREFETCH
+#ifdef CONFIG_XILINX_PREFETCH
 static void __init zynq_data_prefetch_enable(void *info)
 {
 	/*
@@ -106,7 +106,7 @@ static void __init zynq_init_late(void)
 {
 	zynq_pm_late_init();
 
-#ifdef CONFIG_XILINX_L1_PREFETCH
+#ifdef CONFIG_XILINX_PREFETCH
 	on_each_cpu(zynq_data_prefetch_enable, NULL, 0);
 #endif
 }
