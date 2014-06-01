@@ -535,6 +535,8 @@ xvip_dma_enum_format(struct file *file, void *fh, struct v4l2_fmtdesc *f)
 
 	mutex_lock(&dma->lock);
 	f->pixelformat = dma->format.pixelformat;
+	strlcpy(f->description, dma->fmtinfo->description,
+		sizeof(f->description));
 	mutex_unlock(&dma->lock);
 
 	return 0;
