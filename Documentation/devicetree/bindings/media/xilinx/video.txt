@@ -9,6 +9,9 @@ Each video IP core is represented by an AMBA bus child node in the device
 tree using bindings documented in this directory. Connections between the IP
 cores are represented as defined in ../video-interfaces.txt.
 
+The whole  pipeline is represented by an AMBA bus child node in the device
+tree using bindings documented in ./xlnx,axi-video.txt.
+
 Common properties
 -----------------
 
