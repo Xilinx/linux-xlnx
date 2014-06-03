@@ -47,7 +47,7 @@
  */
 ENTRY(zynq_sys_suspend)
 	push	{r4 - r7}
-	dsb
+
 	/* Check DDRC is in self-refresh mode */
 	ldr	r2, [r0, #MODE_STS_OFFS]
 	and	r2, #DDRC_STATUS_MASK
@@ -67,7 +67,7 @@ ENTRY(zynq_sys_suspend)
 	ands	r2, r4
 	bne	1b
 
-	dsb
+	dsb	sy
 
 	/*
 	 * Wait for DDRC pipeline/queues to drain.
@@ -80,7 +80,7 @@ ENTRY(zynq_sys_suspend)
 	subs	r3, #1
 	bne	1b
 
-	dsb
+	dsb	sy
 
 	/* read back CAM status once more */
 	ldr	r2, [r0, #MODE_STS_OFFS]
@@ -93,13 +93,13 @@ ENTRY(zynq_sys_suspend)
 	bic	r2, #DDRCLK_ENABLE_MASK
 	str	r2, [r1, #DDR_CLK_CTRL_OFFS]
 
-	dmb
+	dmb	st
 
 	ldr	r2, [r1, #DCI_CLK_CTRL_OFFS]
 	bic	r2, #DCICLK_ENABLE_MASK
 	str	r2, [r1, #DCI_CLK_CTRL_OFFS]
 
-	dmb
+	dmb	st
 
 	/* Bypass and powerdown DDR PLL */
 	ldr	r2, [r1, #DDRPLL_CTRL_OFFS]
@@ -109,8 +109,9 @@ ENTRY(zynq_sys_suspend)
 	str	r2, [r1, #DDRPLL_CTRL_OFFS]
 
 suspend:
+	dsb	sy
 	wfi
-	dsb
+	dsb	sy
 	cmp	r3, #0xff00
 	moveq	r0, #-1
 	beq	exit
@@ -121,31 +122,30 @@ suspend:
 	str	r2, [r1, #DDRPLL_CTRL_OFFS]
 	/* wait for lock */
 1:	ldr	r2, [r1, #PLLSTATUS_OFFS]
-	and	r2, #DDR_LOCK_MASK
-	cmp	r2, #0
+	ands	r2, #DDR_LOCK_MASK
 	beq	1b
 
-	dsb
+	dsb	sy
 
 	/* Disable PLL bypass */
 	ldr	r2, [r1, #DDRPLL_CTRL_OFFS]
 	bic	r2, #PLL_BYPASS_MASK
 	str	r2, [r1, #DDRPLL_CTRL_OFFS]
 
-	dmb
+	dmb	st
 
 	/* Start DDR clocks */
 	ldr	r2, [r1, #DCI_CLK_CTRL_OFFS]
 	orr	r2, #DCICLK_ENABLE_MASK
 	str	r2, [r1, #DCI_CLK_CTRL_OFFS]
 
-	dmb
+	dmb	st
 
 	ldr	r2, [r1, #DDR_CLK_CTRL_OFFS]
 	orr	r2, #DDRCLK_ENABLE_MASK
 	str	r2, [r1, #DDR_CLK_CTRL_OFFS]
 
-	dsb
+	dsb	sy
 
 	mov	r0, #0
 exit:	pop	{r4 - r7}
