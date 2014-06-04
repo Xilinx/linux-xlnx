@@ -656,7 +656,7 @@ static int zynq_gpio_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static struct of_device_id zynq_gpio_of_match[] = {
+static const struct of_device_id zynq_gpio_of_match[] = {
 	{ .compatible = "xlnx,zynq-gpio-1.0", },
 	{ /* end of table */ }
 };
