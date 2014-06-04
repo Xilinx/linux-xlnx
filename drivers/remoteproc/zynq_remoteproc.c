@@ -352,7 +352,7 @@ static int zynq_remoteproc_remove(struct platform_device *pdev)
 }
 
 /* Match table for OF platform binding */
-static struct of_device_id zynq_remoteproc_match[] = {
+static const struct of_device_id zynq_remoteproc_match[] = {
 	{ .compatible = "xlnx,zynq_remoteproc", },
 	{ /* end of list */ },
 };
