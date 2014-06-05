@@ -453,7 +453,7 @@ MDC_DIV_64, MDC_DIV_96, MDC_DIV_128, MDC_DIV_224 };
 #define XEMACPS_RXBUF_CFI_MASK		0x00010000 /* CFI frame */
 #define XEMACPS_RXBUF_EOF_MASK		0x00008000 /* End of frame. */
 #define XEMACPS_RXBUF_SOF_MASK		0x00004000 /* Start of frame. */
-#define XEMACPS_RXBUF_LEN_MASK		0x00003FFF /* Mask for length field */
+#define XEMACPS_RXBUF_LEN_MASK		0x00001FFF /* Mask for length field */
 
 #define XEMACPS_RXBUF_WRAP_MASK		0x00000002 /* Wrap bit, last BD */
 #define XEMACPS_RXBUF_NEW_MASK		0x00000001 /* Used bit.. */
