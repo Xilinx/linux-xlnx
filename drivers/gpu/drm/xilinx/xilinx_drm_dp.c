@@ -492,7 +492,7 @@ static int xilinx_drm_dp_phy_ready(struct xilinx_drm_dp *dp)
 			return 0;
 
 		if (i == 100) {
-			dev_err(dp->dev, "PHY isn't ready\n");
+			DRM_ERROR("PHY isn't ready\n");
 			return -ENODEV;
 		}
 
@@ -1089,7 +1089,7 @@ static int xilinx_drm_dp_encoder_init(struct platform_device *pdev,
 	/* Get aclk rate */
 	clock_rate = clk_get_rate(dp->aclk);
 	if (clock_rate < XILINX_DP_TX_CLK_DIVIDER_MHZ) {
-		dev_err(dp->dev, "aclk should be higher than 1MHz\n");
+		DRM_ERROR("aclk should be higher than 1MHz\n");
 		return -EINVAL;
 	}
 
