@@ -1397,18 +1397,20 @@ static int xilinx_drm_dp_probe(struct platform_device *pdev)
 	ret = xilinx_drm_dp_i2c_init(dp);
 	if (ret < 0) {
 		dev_err(dp->dev, "failed to initialize DP i2c\n");
-		return ret;
+		goto error;
 	}
 
 	irq = platform_get_irq(pdev, 0);
-	if (irq < 0)
-		return irq;
+	if (irq < 0) {
+		ret = irq;
+		goto error;
+	}
 
 	ret = devm_request_threaded_irq(dp->dev, irq, NULL,
 					xilinx_drm_dp_irq_handler, IRQF_ONESHOT,
 					dev_name(dp->dev), dp);
 	if (ret < 0)
-		return ret;
+		goto error;
 
 	version = xilinx_drm_readl(dp->iomem, XILINX_DP_TX_VERSION);
 
@@ -1423,7 +1425,8 @@ static int xilinx_drm_dp_probe(struct platform_device *pdev)
 	version = xilinx_drm_readl(dp->iomem, XILINX_DP_TX_CORE_ID);
 	if (version & XILINX_DP_TX_CORE_ID_DIRECTION) {
 		dev_err(dp->dev, "Receiver is not supported\n");
-		return -ENODEV;
+		ret = -ENODEV;
+		goto error;
 	}
 
 	dev_info(dp->dev, "Display Port, version %u.%02x%02x (tx)\n",
@@ -1435,6 +1438,10 @@ static int xilinx_drm_dp_probe(struct platform_device *pdev)
 		  XILINX_DP_TX_CORE_ID_REVISION_SHIFT));
 
 	return 0;
+
+error:
+	mutex_destroy(&dp->aux_lock);
+	return ret;
 }
 
 static int xilinx_drm_dp_remove(struct platform_device *pdev)
@@ -1444,6 +1451,8 @@ static int xilinx_drm_dp_remove(struct platform_device *pdev)
 	clk_disable_unprepare(dp->aclk);
 
 	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_ENABLE, 0);
+
+	mutex_destroy(&dp->aux_lock);
 
 	return 0;
 }
