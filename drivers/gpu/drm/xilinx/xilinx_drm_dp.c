@@ -22,6 +22,7 @@
 #include <drm/drm_encoder_slave.h>
 
 #include <linux/clk.h>
+#include <linux/delay.h>
 #include <linux/device.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
@@ -356,7 +357,7 @@ static int xilinx_drm_dp_aux_cmd_submit(struct xilinx_drm_dp *dp, u32 cmd,
 		    i == 2)
 			return -ETIMEDOUT;
 
-		udelay(1000);
+		usleep_range(1000, 1100);
 	}
 
 	reg = xilinx_drm_readl(iomem, XILINX_DP_TX_AUX_REPLY_CODE);
@@ -486,7 +487,7 @@ static int xilinx_drm_dp_phy_ready(struct xilinx_drm_dp *dp)
 	/* Wait for 100 * 1ms. This should be enough time for PHY to be ready */
 	do {
 		reg = xilinx_drm_readl(dp->iomem, XILINX_DP_TX_PHY_STATUS);
-		udelay(1000);
+		usleep_range(1000, 1100);
 	} while ((reg & XILINX_DP_TX_PHY_STATUS_READY_MASK) !=
 		 XILINX_DP_TX_PHY_STATUS_READY_MASK && --count > 0);
 
