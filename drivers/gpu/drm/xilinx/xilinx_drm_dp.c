@@ -346,13 +346,14 @@ static int xilinx_drm_dp_aux_cmd_submit(struct xilinx_drm_dp *dp, u32 cmd,
 			  (bytes - 1) << XILINX_DP_TX_AUX_COMMAND_BYTES_SHIFT);
 
 	/* Wait for reply to be delivered upto 2ms */
-	for (i = 0; i < 2; i++) {
+	for (i = 0; ; i++) {
 		reg = xilinx_drm_readl(iomem, XILINX_DP_TX_INTR_SIGNAL_STATE);
 
 		if (reg & XILINX_DP_TX_INTR_SIGNAL_STATE_REPLY)
 			break;
 
-		if (reg & XILINX_DP_TX_INTR_SIGNAL_STATE_REPLY_TIMEOUT)
+		if (reg & XILINX_DP_TX_INTR_SIGNAL_STATE_REPLY_TIMEOUT ||
+		    i == 2)
 			return -ETIMEDOUT;
 
 		udelay(1000);
