@@ -31,18 +31,6 @@ Optional properties:
  - xlnx,enable-sync: Enable synchronous operation with video clock.
 
 Example:
- - Since the DisplayPort IP core has the i2c interface to communicate with
-   the sink device, it better to specify the i2c bus address by an dt alias
-   as below. Otherwise it may take the i2c bus address which is required
-   by some other i2c adapters.
-
-	aliases {
-		...
-		i2c2 = &xlnx_dp;
-		...
-	} ;
-
- - The example of DisplayPort device node is below.
 
 	xlnx_dp: dp@83c10000 {
 		compatible = "xlnx,v-dp-4.2";
