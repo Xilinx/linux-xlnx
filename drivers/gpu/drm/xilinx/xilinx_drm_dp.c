@@ -280,7 +280,7 @@ struct xilinx_drm_dp_i2c {
  * @link_config: common link configuration between IP core and sink device
  * @mode: current mode between IP core and sink device
  * @train_set: set of training data
- * @aux_lock: mutex for aux communication
+ * @aux_lock: mutex to protect atomicity of xilinx_drm_dp_aux_cmd_submit()
  */
 struct xilinx_drm_dp {
 	struct drm_encoder *encoder;
@@ -314,6 +314,12 @@ static inline struct xilinx_drm_dp *to_dp(struct drm_encoder *encoder)
  * @addr: aux address
  * @buf: buffer for command data
  * @bytes: number of bytes for @buf
+ *
+ * Submit an aux command. All aux related commands, native or i2c aux
+ * read/write, are submitted through this function. This function involves in
+ * multiple register reads/writes, thus the synchronization needs to be done
+ * by holding @aux_lock if multi-thread access is possible. The calling thread
+ * goes into sleep if there's no immediate reply to the command submission.
  *
  * Return: 0 if the command is submitted properly, or corresponding error code:
  * -EBUSY when there is any request already being processed
