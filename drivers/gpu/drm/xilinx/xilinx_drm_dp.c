@@ -24,9 +24,9 @@
 #include <linux/clk.h>
 #include <linux/device.h>
 #include <linux/module.h>
+#include <linux/mutex.h>
 #include <linux/platform_device.h>
 #include <linux/pm.h>
-#include <linux/spinlock.h>
 
 #include "xilinx_drm_drv.h"
 
@@ -279,7 +279,7 @@ struct xilinx_drm_dp_i2c {
  * @link_config: common link configuration between IP core and sink device
  * @mode: current mode between IP core and sink device
  * @train_set: set of training data
- * @aux_lock: spinlock for aux communication
+ * @aux_lock: mutex for aux communication
  */
 struct xilinx_drm_dp {
 	struct drm_encoder *encoder;
@@ -296,7 +296,7 @@ struct xilinx_drm_dp {
 	struct xilinx_drm_dp_mode mode;
 	u8 train_set[4];
 
-	spinlock_t aux_lock;
+	struct mutex aux_lock;
 };
 
 static inline struct xilinx_drm_dp *to_dp(struct drm_encoder *encoder)
@@ -398,9 +398,9 @@ static int xilinx_drm_dp_aux_cmd(struct xilinx_drm_dp *dp, u32 cmd, u16 addr,
 
 	/* Retry at least 3 times per DP spec */
 	for (tries = 0; tries < 5; tries++) {
-		spin_lock(&dp->aux_lock);
+		mutex_lock(&dp->aux_lock);
 		ret = xilinx_drm_dp_aux_cmd_submit(dp, cmd, addr, buf, bytes);
-		spin_unlock(&dp->aux_lock);
+		mutex_unlock(&dp->aux_lock);
 		if (!ret || ret == -EIO)
 			break;
 
@@ -1373,7 +1373,7 @@ static int xilinx_drm_dp_probe(struct platform_device *pdev)
 	if (IS_ERR(dp->iomem))
 		return PTR_ERR(dp->iomem);
 
-	spin_lock_init(&dp->aux_lock);
+	mutex_init(&dp->aux_lock);
 
 	platform_set_drvdata(pdev, dp);
 
