@@ -482,21 +482,22 @@ static inline int xilinx_drm_dp_aux_read(struct xilinx_drm_dp *dp, u16 addr,
  */
 static int xilinx_drm_dp_phy_ready(struct xilinx_drm_dp *dp)
 {
-	u32 count = 100, reg;
+	u32 i, reg;
 
 	/* Wait for 100 * 1ms. This should be enough time for PHY to be ready */
-	do {
+	for (i = 0; ; i++) {
 		reg = xilinx_drm_readl(dp->iomem, XILINX_DP_TX_PHY_STATUS);
+		if ((reg & XILINX_DP_TX_PHY_STATUS_READY_MASK) ==
+		    XILINX_DP_TX_PHY_STATUS_READY_MASK)
+			return 0;
+
+		if (i == 100) {
+			dev_err(dp->dev, "PHY isn't ready\n");
+			return -ENODEV;
+		}
+
 		usleep_range(1000, 1100);
-	} while ((reg & XILINX_DP_TX_PHY_STATUS_READY_MASK) !=
-		 XILINX_DP_TX_PHY_STATUS_READY_MASK && --count > 0);
-
-	if (count == 0) {
-		dev_err(dp->dev, "PHY isn't ready\n");
-		return -ENODEV;
 	}
-
-	return 0;
 }
 
 /**
