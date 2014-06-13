@@ -87,6 +87,7 @@ static inline void arch_spin_unlock(arch_spinlock_t *lock)
 {
 	asm volatile(
 "	stlrh	%w1, %0\n"
+"	sev\n"
 	: "=Q" (lock->owner)
 	: "r" (lock->owner + 1)
 	: "memory");
