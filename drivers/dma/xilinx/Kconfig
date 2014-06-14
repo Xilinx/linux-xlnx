@@ -32,4 +32,20 @@ config XILINX_CDMATEST
 	  Simple DMA test client. Say N unless you're debugging a
 	  DMA Device driver.
 
+config XILINX_DPDMA
+	tristate "Xilinx DPDMA Engine"
+	select DMA_ENGINE
+	help
+	  Enable support for Xilinx DisplayPort DMA.
+
+config XILINX_DPDMA_DEBUG_FS
+	bool "Xilinx DPDMA debugfs"
+	depends on DEBUG_FS && XILINX_DPDMA
+	help
+	  Enable the debugfs code for DPDMA driver. The debugfs code
+	  enables debugging or testing related features. It exposes some
+	  low level controls to the user space to help testing automation,
+	  as well as can enable additional diagnostic or statistical
+	  information.
+
 endif # XILINX_DMA_ENGINES
