@@ -704,7 +704,7 @@ static int xtpg_probe(struct platform_device *pdev)
 	if (PTR_ERR(xtpg->vtmux_gpio) == -EPROBE_DEFER)
 		return -EPROBE_DEFER;
 	if (!IS_ERR(xtpg->vtmux_gpio))
-		gpiod_direction_output(xtpg->vtmux_gpio, 0);
+		gpiod_direction_output(xtpg->vtmux_gpio, 1);
 
 	xtpg->vtc = xvtc_of_get(pdev->dev.of_node);
 	if (IS_ERR(xtpg->vtc))
@@ -756,8 +756,7 @@ static int xtpg_probe(struct platform_device *pdev)
 	v4l2_ctrl_new_std_menu_items(&xtpg->ctrl_handler, &xtpg_ctrl_ops,
 				     V4L2_CID_TEST_PATTERN,
 				     ARRAY_SIZE(xtpg_pattern_strings) - 1,
-				     xtpg->npads == 2 ? 0 : 1,
-				     xtpg->npads == 2 ? 0 : 1,
+				     xtpg->npads == 2 ? 0 : 1, 9,
 				     xtpg_pattern_strings);
 
 	for (i = 0; i < ARRAY_SIZE(xtpg_ctrls); i++)
