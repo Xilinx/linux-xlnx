@@ -69,6 +69,8 @@
  * @vip_format: format information corresponding to the active format
  * @bayer: boolean flag if TPG is set to any bayer format
  * @ctrl_handler: control handler
+ * @pattern: test pattern control
+ * @streaming: is the video stream active
  * @vtc: video timing controller
  * @vtmux_gpio: video timing mux GPIO
  */
@@ -84,6 +86,8 @@ struct xtpg_device {
 	bool bayer;
 
 	struct v4l2_ctrl_handler ctrl_handler;
+	struct v4l2_ctrl *pattern;
+	bool streaming;
 
 	struct xvtc_device *vtc;
 	struct gpio_desc *vtmux_gpio;
@@ -92,6 +96,22 @@ struct xtpg_device {
 static inline struct xtpg_device *to_tpg(struct v4l2_subdev *subdev)
 {
 	return container_of(subdev, struct xtpg_device, xvip.subdev);
+}
+
+static u32 xtpg_get_bayer_phase(unsigned int code)
+{
+	switch (code) {
+	case V4L2_MBUS_FMT_SRGGB8_1X8:
+		return XTPG_BAYER_PHASE_RGGB;
+	case V4L2_MBUS_FMT_SGRBG8_1X8:
+		return XTPG_BAYER_PHASE_GRBG;
+	case V4L2_MBUS_FMT_SGBRG8_1X8:
+		return XTPG_BAYER_PHASE_GBRG;
+	case V4L2_MBUS_FMT_SBGGR8_1X8:
+		return XTPG_BAYER_PHASE_BGGR;
+	default:
+		return XTPG_BAYER_PHASE_OFF;
+	}
 }
 
 /* -----------------------------------------------------------------------------
@@ -103,11 +123,23 @@ static int xtpg_s_stream(struct v4l2_subdev *subdev, int enable)
 	struct xtpg_device *xtpg = to_tpg(subdev);
 	unsigned int width = xtpg->formats[0].width;
 	unsigned int height = xtpg->formats[0].height;
+	u32 pattern_mask;
+	bool passthrough;
+	u32 bayer_phase;
 
 	if (!enable) {
 		xvip_stop(&xtpg->xvip);
 		if (xtpg->vtc)
 			xvtc_generator_stop(xtpg->vtc);
+
+		/*
+		 * Restore the test pattern control range to the full menu
+		 * range.
+		 */
+		v4l2_ctrl_modify_range(xtpg->pattern, 0, xtpg->pattern->maximum,
+				       xtpg->npads == 2 ? 0 : 1, 9);
+
+		xtpg->streaming = false;
 		return 0;
 	}
 
@@ -127,6 +159,47 @@ static int xtpg_s_stream(struct v4l2_subdev *subdev, int enable)
 
 		xvtc_generator_start(xtpg->vtc, &config);
 	}
+
+	/*
+	 * Configure the bayer phase and video timing mux based on the
+	 * operation mode (passthrough or test pattern generation). The test
+	 * pattern can be modified by the control set handler, we thus need to
+	 * take the control lock here to avoid races.
+	 */
+	mutex_lock(xtpg->ctrl_handler.lock);
+
+	xvip_clr_and_set(&xtpg->xvip, XTPG_PATTERN_CONTROL,
+			 XTPG_PATTERN_MASK, xtpg->pattern->cur.val);
+
+	/*
+	 * Switching between passthrough and test pattern generation modes isn't
+	 * allowed during streaming, update the control range accordingly.
+	 */
+	if (xtpg->pattern->cur.val == 0) {
+		pattern_mask = ((1 << (xtpg->pattern->maximum + 1)) - 1) & ~1;
+		passthrough = true;
+	} else {
+		pattern_mask = 1;
+		passthrough = false;
+	}
+
+	__v4l2_ctrl_modify_range(xtpg->pattern, 0, xtpg->pattern->maximum,
+				 pattern_mask, passthrough ? 0 : 9);
+
+	xtpg->streaming = true;
+
+	mutex_unlock(xtpg->ctrl_handler.lock);
+
+	/*
+	 * For TPG v5.0, the bayer phase needs to be off for the pass through
+	 * mode, otherwise the external input would be subsampled.
+	 */
+	bayer_phase = passthrough ? XTPG_BAYER_PHASE_OFF
+		    : xtpg_get_bayer_phase(xtpg->formats[0].code);
+	xvip_write(&xtpg->xvip, XTPG_BAYER_PHASE, bayer_phase);
+
+	if (!IS_ERR(xtpg->vtmux_gpio))
+		gpiod_set_value_cansleep(xtpg->vtmux_gpio, !passthrough);
 
 	xvip_start(&xtpg->xvip);
 
@@ -160,22 +233,6 @@ static int xtpg_get_format(struct v4l2_subdev *subdev,
 	fmt->format = *__xtpg_get_pad_format(xtpg, fh, fmt->pad, fmt->which);
 
 	return 0;
-}
-
-static u32 xtpg_get_bayer_phase(unsigned int code)
-{
-	switch (code) {
-	case V4L2_MBUS_FMT_SRGGB8_1X8:
-		return XTPG_BAYER_PHASE_RGGB;
-	case V4L2_MBUS_FMT_SGRBG8_1X8:
-		return XTPG_BAYER_PHASE_GRBG;
-	case V4L2_MBUS_FMT_SGBRG8_1X8:
-		return XTPG_BAYER_PHASE_GBRG;
-	case V4L2_MBUS_FMT_SBGGR8_1X8:
-		return XTPG_BAYER_PHASE_BGGR;
-	default:
-		return XTPG_BAYER_PHASE_OFF;
-	}
 }
 
 static int xtpg_set_format(struct v4l2_subdev *subdev,
@@ -266,35 +323,6 @@ static int xtpg_close(struct v4l2_subdev *subdev, struct v4l2_subdev_fh *fh)
 	return 0;
 }
 
-static void xtpg_set_test_pattern(struct xtpg_device *xtpg,
-				  unsigned int pattern)
-{
-	u32 bayer_phase;
-
-	xvip_disable_reg_update(&xtpg->xvip);
-
-	/* TODO: For TPG v5.0, the bayer phase needs to be off for
-	 * the pass through mode, otherwise the external input would be
-	 * subsampled. This is a bit strange, and will be fixed when
-	 * the TPG IP core is updated.
-	 */
-	if (pattern)
-		bayer_phase =
-			xtpg_get_bayer_phase(xtpg->formats[0].code);
-	else
-		bayer_phase = XTPG_BAYER_PHASE_OFF;
-
-	xvip_write(&xtpg->xvip, XTPG_BAYER_PHASE, bayer_phase);
-
-	xvip_clr_and_set(&xtpg->xvip, XTPG_PATTERN_CONTROL, XTPG_PATTERN_MASK,
-			 pattern);
-
-	if (!IS_ERR(xtpg->vtmux_gpio))
-		gpiod_set_value_cansleep(xtpg->vtmux_gpio, pattern ? 1 : 0);
-
-	xvip_enable_reg_update(&xtpg->xvip);
-}
-
 static int xtpg_s_ctrl(struct v4l2_ctrl *ctrl)
 {
 	struct xtpg_device *xtpg = container_of(ctrl->handler,
@@ -302,7 +330,8 @@ static int xtpg_s_ctrl(struct v4l2_ctrl *ctrl)
 						ctrl_handler);
 	switch (ctrl->id) {
 	case V4L2_CID_TEST_PATTERN:
-		xtpg_set_test_pattern(xtpg, ctrl->val);
+		xvip_clr_and_set(&xtpg->xvip, XTPG_PATTERN_CONTROL,
+				 XTPG_PATTERN_MASK, ctrl->val);
 		return 0;
 	case V4L2_CID_XILINX_TPG_CROSS_HAIRS:
 		xvip_clr_or_set(&xtpg->xvip, XTPG_PATTERN_CONTROL,
@@ -753,11 +782,11 @@ static int xtpg_probe(struct platform_device *pdev)
 
 	v4l2_ctrl_handler_init(&xtpg->ctrl_handler, 18);
 
-	v4l2_ctrl_new_std_menu_items(&xtpg->ctrl_handler, &xtpg_ctrl_ops,
-				     V4L2_CID_TEST_PATTERN,
-				     ARRAY_SIZE(xtpg_pattern_strings) - 1,
-				     xtpg->npads == 2 ? 0 : 1, 9,
-				     xtpg_pattern_strings);
+	xtpg->pattern = v4l2_ctrl_new_std_menu_items(&xtpg->ctrl_handler,
+					&xtpg_ctrl_ops, V4L2_CID_TEST_PATTERN,
+					ARRAY_SIZE(xtpg_pattern_strings) - 1,
+					xtpg->npads == 2 ? 0 : 1, 9,
+					xtpg_pattern_strings);
 
 	for (i = 0; i < ARRAY_SIZE(xtpg_ctrls); i++)
 		v4l2_ctrl_new_custom(&xtpg->ctrl_handler, &xtpg_ctrls[i], NULL);
