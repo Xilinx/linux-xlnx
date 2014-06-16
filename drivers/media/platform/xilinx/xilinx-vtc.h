@@ -16,6 +16,9 @@
 struct device_node;
 struct xvtc_device;
 
+#define XVTC_MAX_HSIZE			8191
+#define XVTC_MAX_VSIZE			8191
+
 struct xvtc_config {
 	unsigned int hblank_start;
 	unsigned int hsync_start;
