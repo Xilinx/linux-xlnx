@@ -6,10 +6,26 @@ device.
 Required properties:
 - compatible: Should be "xlnx,axi-dma"
 - reg: Should contain DMA registers location and length.
-- interrupts: Should contain per channel DMA interrupts.
-- compatible (child node): It should be either "xlnx,axi-dma-mm2s-channel" or
+
+Option node properties:
+- xlnx,include-sg: Tells whether configured for Scatter-mode in
+	the hardware.
+- xlnx,sg-include-stscntrl-strm: Tells whether status and control streams
+	are configured in the hardware.
+
+Required child node properties:
+- compatible: It should be either "xlnx,axi-dma-mm2s-channel" or
 	"xlnx,axi-dma-s2mm-channel". It depends on the hardware design and it
 	can also have both channels.
+- interrupts: Should contain per channel DMA interrupts.
+- xlnx,data-width: Should contain the stream data width, take values
+	{32,64...1024}.
+- xlnx,device-id: Should contain device number in each channel. It should be
+	{0,1,2...so on} to the number of DMA devices configured in hardware.
+
+Optional child node properties:
+- xlnx,include-dre: Tells whether hardware is configured for Data
+	Realignment Engine.
 
 Example:
 ++++++++
@@ -20,9 +36,13 @@ axi_dma_0: axidma@40400000 {
 	dma-channel@40400000 {
 		compatible = "xlnx,axi-dma-mm2s-channel";
 		interrupts = < 0 59 4 >;
+		xlnx,datawidth = <0x40>;
+		xlnx,device-id = <0x0>;
 	} ;
 	dma-channel@40030030 {
 		compatible = "xlnx,axi-dma-s2mm-channel";
 		interrupts = < 0 58 4 >;
+		xlnx,datawidth = <0x40>;
+		xlnx,device-id = <0x0>;
 	} ;
 } ;
