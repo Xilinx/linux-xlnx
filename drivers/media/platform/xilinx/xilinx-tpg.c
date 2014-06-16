@@ -73,6 +73,7 @@
  * @xvip: Xilinx Video IP device
  * @pads: media pads
  * @npads: number of pads (1 or 2)
+ * @has_input: whether an input is connected to the sink pad
  * @formats: active V4L2 media bus format for each pad
  * @default_format: default V4L2 media bus format
  * @vip_format: format information corresponding to the active format
@@ -90,6 +91,7 @@ struct xtpg_device {
 
 	struct media_pad pads[2];
 	unsigned int npads;
+	bool has_input;
 
 	struct v4l2_mbus_framefmt formats[2];
 	struct v4l2_mbus_framefmt default_format;
@@ -127,6 +129,30 @@ static u32 xtpg_get_bayer_phase(unsigned int code)
 	}
 }
 
+static void xtpg_update_pattern_control(struct xtpg_device *xtpg,
+					bool passthrough, bool pattern)
+{
+	u32 pattern_mask = (1 << (xtpg->pattern->maximum + 1)) - 1;
+
+	/*
+	 * If the TPG has no sink pad or no input connected to its sink pad
+	 * passthrough mode can't be enabled.
+	 */
+	if (xtpg->npads == 1 || !xtpg->has_input)
+		passthrough = false;
+
+	/* If passthrough mode is allowed unmask bit 0. */
+	if (passthrough)
+		pattern_mask &= ~1;
+
+	/* If test pattern mode is allowed unmask all other bits. */
+	if (pattern)
+		pattern_mask &= 1;
+
+	__v4l2_ctrl_modify_range(xtpg->pattern, 0, xtpg->pattern->maximum,
+				 pattern_mask, pattern ? 9 : 0);
+}
+
 /* -----------------------------------------------------------------------------
  * V4L2 Subdevice Video Operations
  */
@@ -136,7 +162,6 @@ static int xtpg_s_stream(struct v4l2_subdev *subdev, int enable)
 	struct xtpg_device *xtpg = to_tpg(subdev);
 	unsigned int width = xtpg->formats[0].width;
 	unsigned int height = xtpg->formats[0].height;
-	u32 pattern_mask;
 	bool passthrough;
 	u32 bayer_phase;
 
@@ -145,13 +170,7 @@ static int xtpg_s_stream(struct v4l2_subdev *subdev, int enable)
 		if (xtpg->vtc)
 			xvtc_generator_stop(xtpg->vtc);
 
-		/*
-		 * Restore the test pattern control range to the full menu
-		 * range.
-		 */
-		v4l2_ctrl_modify_range(xtpg->pattern, 0, xtpg->pattern->maximum,
-				       xtpg->npads == 2 ? 0 : 1, 9);
-
+		xtpg_update_pattern_control(xtpg, true, true);
 		xtpg->streaming = false;
 		return 0;
 	}
@@ -196,16 +215,8 @@ static int xtpg_s_stream(struct v4l2_subdev *subdev, int enable)
 	 * Switching between passthrough and test pattern generation modes isn't
 	 * allowed during streaming, update the control range accordingly.
 	 */
-	if (xtpg->pattern->cur.val == 0) {
-		pattern_mask = ((1 << (xtpg->pattern->maximum + 1)) - 1) & ~1;
-		passthrough = true;
-	} else {
-		pattern_mask = 1;
-		passthrough = false;
-	}
-
-	__v4l2_ctrl_modify_range(xtpg->pattern, 0, xtpg->pattern->maximum,
-				 pattern_mask, passthrough ? 0 : 9);
+	passthrough = xtpg->pattern->cur.val == 0;
+	xtpg_update_pattern_control(xtpg, passthrough, !passthrough);
 
 	xtpg->streaming = true;
 
@@ -689,32 +700,42 @@ static int xtpg_parse_of(struct xtpg_device *xtpg)
 	struct device_node *ports;
 	struct device_node *port;
 	unsigned int nports = 0;
+	bool has_endpoint = false;
 
 	ports = of_get_child_by_name(node, "ports");
 	if (ports == NULL)
 		ports = node;
 
 	for_each_child_of_node(ports, port) {
-		if (port->name && (of_node_cmp(port->name, "port") == 0)) {
-			const struct xvip_video_format *vip_format;
+		const struct xvip_video_format *format;
+		struct device_node *endpoint;
 
-			vip_format = xvip_of_get_format(port);
-			if (IS_ERR(vip_format)) {
-				dev_err(dev, "invalid format in DT");
-				return PTR_ERR(vip_format);
-			}
+		if (!port->name || of_node_cmp(port->name, "port"))
+			continue;
 
-			/* Get and check the format description */
-			if (!xtpg->vip_format) {
-				xtpg->vip_format = vip_format;
-			} else if (xtpg->vip_format != vip_format) {
-				dev_err(dev, "in/out format mismatch in DT");
-				return -EINVAL;
-			}
-
-			/* Count the number of ports. */
-			nports++;
+		format = xvip_of_get_format(port);
+		if (IS_ERR(format)) {
+			dev_err(dev, "invalid format in DT");
+			return PTR_ERR(format);
 		}
+
+		/* Get and check the format description */
+		if (!xtpg->vip_format) {
+			xtpg->vip_format = format;
+		} else if (xtpg->vip_format != format) {
+			dev_err(dev, "in/out format mismatch in DT");
+			return -EINVAL;
+		}
+
+		if (nports == 0) {
+			endpoint = of_get_next_child(port, NULL);
+			if (endpoint)
+				has_endpoint = true;
+			of_node_put(endpoint);
+		}
+
+		/* Count the number of ports. */
+		nports++;
 	}
 
 	if (nports != 1 && nports != 2) {
@@ -723,6 +744,8 @@ static int xtpg_parse_of(struct xtpg_device *xtpg)
 	}
 
 	xtpg->npads = nports;
+	if (nports == 2 && has_endpoint)
+		xtpg->has_input = true;
 
 	return 0;
 }
@@ -812,8 +835,7 @@ static int xtpg_probe(struct platform_device *pdev)
 	xtpg->pattern = v4l2_ctrl_new_std_menu_items(&xtpg->ctrl_handler,
 					&xtpg_ctrl_ops, V4L2_CID_TEST_PATTERN,
 					ARRAY_SIZE(xtpg_pattern_strings) - 1,
-					xtpg->npads == 2 ? 0 : 1, 9,
-					xtpg_pattern_strings);
+					1, 9, xtpg_pattern_strings);
 
 	for (i = 0; i < ARRAY_SIZE(xtpg_ctrls); i++)
 		v4l2_ctrl_new_custom(&xtpg->ctrl_handler, &xtpg_ctrls[i], NULL);
@@ -824,6 +846,8 @@ static int xtpg_probe(struct platform_device *pdev)
 		goto error;
 	}
 	subdev->ctrl_handler = &xtpg->ctrl_handler;
+
+	xtpg_update_pattern_control(xtpg, true, true);
 
 	ret = v4l2_ctrl_handler_setup(&xtpg->ctrl_handler);
 	if (ret < 0) {
