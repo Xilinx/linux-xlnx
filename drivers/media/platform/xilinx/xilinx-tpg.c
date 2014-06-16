@@ -59,6 +59,15 @@
 #define XTPG_BAYER_PHASE_BGGR			3
 #define XTPG_BAYER_PHASE_OFF			4
 
+/*
+ * The minimum blanking value is one clock cycle for the front porch, one clock
+ * cycle for the sync pulse and one clock cycle for the back porch.
+ */
+#define XTPG_MIN_HBLANK			3
+#define XTPG_MAX_HBLANK			(XVTC_MAX_HSIZE - XVIP_MIN_WIDTH)
+#define XTPG_MIN_VBLANK			3
+#define XTPG_MAX_VBLANK			(XVTC_MAX_VSIZE - XVIP_MIN_HEIGHT)
+
 /**
  * struct xtpg_device - Xilinx Test Pattern Generator device structure
  * @xvip: Xilinx Video IP device
@@ -69,6 +78,8 @@
  * @vip_format: format information corresponding to the active format
  * @bayer: boolean flag if TPG is set to any bayer format
  * @ctrl_handler: control handler
+ * @hblank: horizontal blanking control
+ * @vblank: vertical blanking control
  * @pattern: test pattern control
  * @streaming: is the video stream active
  * @vtc: video timing controller
@@ -86,6 +97,8 @@ struct xtpg_device {
 	bool bayer;
 
 	struct v4l2_ctrl_handler ctrl_handler;
+	struct v4l2_ctrl *hblank;
+	struct v4l2_ctrl *vblank;
 	struct v4l2_ctrl *pattern;
 	bool streaming;
 
@@ -148,14 +161,22 @@ static int xtpg_s_stream(struct v4l2_subdev *subdev, int enable)
 	if (xtpg->vtc) {
 		struct xvtc_config config = {
 			.hblank_start = width,
-			.hsync_start = width + 10,
-			.hsync_end = width + 20,
-			.hsize = width + 100,
+			.hsync_start = width + 1,
 			.vblank_start = height,
-			.vsync_start = height + 10,
-			.vsync_end = height + 20,
-			.vsize = height + 100,
+			.vsync_start = height + 1,
 		};
+		unsigned int htotal;
+		unsigned int vtotal;
+
+		htotal = min_t(unsigned int, XVTC_MAX_HSIZE,
+			       v4l2_ctrl_g_ctrl(xtpg->hblank) + width);
+		vtotal = min_t(unsigned int, XVTC_MAX_VSIZE,
+			       v4l2_ctrl_g_ctrl(xtpg->vblank) + height);
+
+		config.hsync_end = htotal - 1;
+		config.hsize = htotal;
+		config.vsync_end = vtotal - 1;
+		config.vsize = vtotal;
 
 		xvtc_generator_start(xtpg->vtc, &config);
 	}
@@ -406,7 +427,7 @@ static int xtpg_s_ctrl(struct v4l2_ctrl *ctrl)
 		return 0;
 	}
 
-	return -EINVAL;
+	return 0;
 }
 
 static const struct v4l2_ctrl_ops xtpg_ctrl_ops = {
@@ -780,8 +801,14 @@ static int xtpg_probe(struct platform_device *pdev)
 	if (ret < 0)
 		goto error_media_init;
 
-	v4l2_ctrl_handler_init(&xtpg->ctrl_handler, 18);
+	v4l2_ctrl_handler_init(&xtpg->ctrl_handler, 3 + ARRAY_SIZE(xtpg_ctrls));
 
+	xtpg->vblank = v4l2_ctrl_new_std(&xtpg->ctrl_handler, &xtpg_ctrl_ops,
+					 V4L2_CID_VBLANK, XTPG_MIN_VBLANK,
+					 XTPG_MAX_VBLANK, 1, 100);
+	xtpg->hblank = v4l2_ctrl_new_std(&xtpg->ctrl_handler, &xtpg_ctrl_ops,
+					 V4L2_CID_HBLANK, XTPG_MIN_HBLANK,
+					 XTPG_MAX_HBLANK, 1, 100);
 	xtpg->pattern = v4l2_ctrl_new_std_menu_items(&xtpg->ctrl_handler,
 					&xtpg_ctrl_ops, V4L2_CID_TEST_PATTERN,
 					ARRAY_SIZE(xtpg_pattern_strings) - 1,
