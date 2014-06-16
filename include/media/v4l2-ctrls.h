@@ -505,6 +505,24 @@ void v4l2_ctrl_auto_cluster(unsigned ncontrols, struct v4l2_ctrl **controls,
 			u8 manual_val, bool set_volatile);
 
 
+/** v4l2_ctrl_lock() - Helper function to lock the handler
+  * associated with the control.
+  * @ctrl:	The control to lock.
+  */
+static inline void v4l2_ctrl_lock(struct v4l2_ctrl *ctrl)
+{
+	mutex_lock(ctrl->handler->lock);
+}
+
+/** v4l2_ctrl_unlock() - Helper function to unlock the handler
+  * associated with the control.
+  * @ctrl:	The control to unlock.
+  */
+static inline void v4l2_ctrl_unlock(struct v4l2_ctrl *ctrl)
+{
+	mutex_unlock(ctrl->handler->lock);
+}
+
 /** v4l2_ctrl_find() - Find a control with the given ID.
   * @hdl:	The control handler.
   * @id:	The control ID to find.
@@ -542,7 +560,7 @@ void v4l2_ctrl_activate(struct v4l2_ctrl *ctrl, bool active);
   */
 void v4l2_ctrl_grab(struct v4l2_ctrl *ctrl, bool grabbed);
 
-/** v4l2_ctrl_modify_range() - Update the range of a control.
+/** __v4l2_ctrl_modify_range() - Update the range of a control.
   * @ctrl:	The control to update.
   * @min:	The control's minimum value.
   * @max:	The control's maximum value.
@@ -556,28 +574,21 @@ void v4l2_ctrl_grab(struct v4l2_ctrl *ctrl, bool grabbed);
   * An error is returned if one of the range arguments is invalid for this
   * control type.
   *
-  * This function assumes that the control handler is not locked and will
-  * take the lock itself.
+  * This function must be called with the control handler locked.
   */
-int v4l2_ctrl_modify_range(struct v4l2_ctrl *ctrl,
+int __v4l2_ctrl_modify_range(struct v4l2_ctrl *ctrl,
 			s32 min, s32 max, u32 step, s32 def);
 
-/** v4l2_ctrl_lock() - Helper function to lock the handler
-  * associated with the control.
-  * @ctrl:	The control to lock.
-  */
-static inline void v4l2_ctrl_lock(struct v4l2_ctrl *ctrl)
+static inline int v4l2_ctrl_modify_range(struct v4l2_ctrl *ctrl,
+			s32 min, s32 max, u32 step, s32 def)
 {
-	mutex_lock(ctrl->handler->lock);
-}
+	int ret;
 
-/** v4l2_ctrl_unlock() - Helper function to unlock the handler
-  * associated with the control.
-  * @ctrl:	The control to unlock.
-  */
-static inline void v4l2_ctrl_unlock(struct v4l2_ctrl *ctrl)
-{
-	mutex_unlock(ctrl->handler->lock);
+	v4l2_ctrl_lock(ctrl);
+	ret = __v4l2_ctrl_modify_range(ctrl, min, max, step, def);
+	v4l2_ctrl_unlock(ctrl);
+
+	return ret;
 }
 
 /** v4l2_ctrl_notify() - Function to set a notify callback for a control.

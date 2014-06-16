@@ -2855,7 +2855,7 @@ void v4l2_ctrl_notify(struct v4l2_ctrl *ctrl, v4l2_ctrl_notify_fnc notify, void 
 }
 EXPORT_SYMBOL(v4l2_ctrl_notify);
 
-int v4l2_ctrl_modify_range(struct v4l2_ctrl *ctrl,
+int __v4l2_ctrl_modify_range(struct v4l2_ctrl *ctrl,
 			s32 min, s32 max, u32 step, s32 def)
 {
 	int ret = check_range(ctrl->type, min, max, step, def);
@@ -2873,7 +2873,6 @@ int v4l2_ctrl_modify_range(struct v4l2_ctrl *ctrl,
 	default:
 		return -EINVAL;
 	}
-	v4l2_ctrl_lock(ctrl);
 	ctrl->minimum = min;
 	ctrl->maximum = max;
 	ctrl->step = step;
@@ -2885,10 +2884,9 @@ int v4l2_ctrl_modify_range(struct v4l2_ctrl *ctrl,
 		ret = set_ctrl(NULL, ctrl, &c, V4L2_EVENT_CTRL_CH_RANGE);
 	else
 		send_event(NULL, ctrl, V4L2_EVENT_CTRL_CH_RANGE);
-	v4l2_ctrl_unlock(ctrl);
 	return ret;
 }
-EXPORT_SYMBOL(v4l2_ctrl_modify_range);
+EXPORT_SYMBOL(__v4l2_ctrl_modify_range);
 
 static int v4l2_ctrl_add_event(struct v4l2_subscribed_event *sev, unsigned elems)
 {
