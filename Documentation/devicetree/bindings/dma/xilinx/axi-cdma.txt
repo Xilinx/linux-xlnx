@@ -3,7 +3,24 @@ Xilinx AXI CDMA engine, it does transfers between memory and memory
 Required properties:
 - compatible: Should be "xlnx,axi-cdma"
 - reg: Should contain CDMA registers location and length.
+
+Option node properties:
+- xlnx,include-sg: Tells whether configured for Scatter-mode in
+	the hardware.
+
+Required child node properties:
 - interrupts: Should contain channel CDMA interrupts.
+- xlnx,data-width: Should contain the stream data width, take values
+	{32,64...1024}.
+- xlnx,device-id: Should contain device number in each channel. It should be
+	{0,1,2...so on} to the number of CDMA devices configured in hardware.
+
+Optional child node properties:
+- xlnx,include-dre: Tells whether hardware is configured for Data
+	Realignment Engine.
+- xlnx,lite-mode: Tells whether CDMA lite mode is configured in HW.
+- xlnx,max-burst-len: Should contain maximum burst length configured in the
+	HW. It is only valid if configured for lite mode.
 
 Example:
 ++++++++
@@ -13,6 +30,8 @@ axi_cdma_0: axicdma@40030000 {
 	reg = < 0x40030000 0x10000 >;
 	dma-channel@40030000 {
 		interrupts = < 0 59 4 >;
+		xlnx,datawidth = <0x40>;
+		xlnx,device-id = <0x0>;
 	} ;
 } ;
 
