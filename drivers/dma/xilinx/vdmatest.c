@@ -300,6 +300,11 @@ static int xilinx_vdmatest_slave_func(void *data)
 							thread->dsts[i],
 							test_buf_size,
 							DMA_DEV_TO_MEM);
+
+			if (dma_mapping_error(rx_dev->dev, dma_dsts[i])) {
+				failed_tests++;
+				continue;
+			}
 			xt.dst_start = dma_dsts[i];
 			xt.dir = DMA_DEV_TO_MEM;
 			xt.numf = vsize;
@@ -315,6 +320,11 @@ static int xilinx_vdmatest_slave_func(void *data)
 
 			dma_srcs[i] = dma_map_single(tx_dev->dev, buf, len,
 							DMA_MEM_TO_DEV);
+
+			if (dma_mapping_error(tx_dev->dev, dma_srcs[i])) {
+				failed_tests++;
+				continue;
+			}
 			xt.src_start = dma_srcs[i];
 			xt.dir = DMA_MEM_TO_DEV;
 			xt.numf = vsize;
