@@ -1137,6 +1137,9 @@ static void xilinx_vdma_chan_remove(struct xilinx_vdma_chan *chan)
 	vdma_ctrl_clr(chan, XILINX_VDMA_REG_DMACR,
 		      XILINX_VDMA_DMAXR_ALL_IRQ_MASK);
 
+	if (chan->irq > 0)
+		free_irq(chan->irq, chan);
+
 	list_del(&chan->common.device_node);
 }
 
@@ -1216,10 +1219,10 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 
 	/* Request the interrupt */
 	chan->irq = irq_of_parse_and_map(node, 0);
-	err = devm_request_irq(xdev->dev, chan->irq, xilinx_vdma_irq_handler,
-			       IRQF_SHARED, "xilinx-vdma-controller", chan);
+	err = request_irq(chan->irq, xilinx_vdma_irq_handler, IRQF_SHARED,
+			  "xilinx-vdma-controller", chan);
 	if (err) {
-		dev_err(xdev->dev, "unable to request IRQ\n");
+		dev_err(xdev->dev, "unable to request IRQ %d\n", chan->irq);
 		return err;
 	}
 
