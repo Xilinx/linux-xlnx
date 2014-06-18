@@ -1305,7 +1305,10 @@ static int xilinx_vdma_probe(struct platform_device *pdev)
 		return err;
 	}
 
-	of_property_read_u32(node, "xlnx,flush-fsync", &xdev->flush_on_fsync);
+	err = of_property_read_u32(node, "xlnx,flush-fsync",
+					&xdev->flush_on_fsync);
+	if (err < 0)
+		dev_warn(xdev->dev, "missing xlnx,flush-fsync property\n");
 
 	/* Initialize the DMA engine */
 	xdev->common.dev = &pdev->dev;
