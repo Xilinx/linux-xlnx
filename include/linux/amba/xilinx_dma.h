@@ -1,27 +1,12 @@
 /*
- * Xilinx DMA Engines support header file
+ * Xilinx DMA Engine drivers support header file
  *
  * Copyright (C) 2010-2014 Xilinx, Inc. All rights reserved.
- *
- * Based on the Freescale DMA driver.
- *
- * Description:
- *  . Axi CDMA engine, it does transfers between memory and memory, it
- *    only has one channel.
- *  . Axi DMA engine, it does transfers between memory and device. It can be
- *    configured to have one channel or two channels. If configured as two
- *    channels, one is to transmit to device and another is to receive from
- *    device.
- *  . Axi VDMA engine, it does transfers between memory and video devices.
- *    It can be configured to have one channel or two channels. If configured
- *    as two channels, one is to transmit to the video device and another is
- *    to receive from the video device.
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
  * (at your option) any later version.
- *
  */
 
 #ifndef __DMA_XILINX_DMA_H
