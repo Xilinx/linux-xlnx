@@ -1,7 +1,7 @@
 /*
  * Xilinx DMA Engines support header file
  *
- * Copyright (C) 2010 Xilinx, Inc. All rights reserved.
+ * Copyright (C) 2010-2014 Xilinx, Inc. All rights reserved.
  *
  * Based on the Freescale DMA driver.
  *

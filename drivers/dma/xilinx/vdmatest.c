@@ -1,7 +1,7 @@
 /*
  * XILINX VDMA Engine test client driver
  *
- * Copyright (C) 2010-2013 Xilinx, Inc. All rights reserved.
+ * Copyright (C) 2010-2014 Xilinx, Inc. All rights reserved.
  *
  * Based on Atmel DMA Test Client
  *
