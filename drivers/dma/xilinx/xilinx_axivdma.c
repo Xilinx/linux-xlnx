@@ -183,15 +183,12 @@ struct xilinx_vdma_tx_descriptor {
 	struct list_head node;
 };
 
-#define to_vdma_tx_descriptor(tx) \
-	container_of(tx, struct xilinx_vdma_tx_descriptor, async_tx)
-
 /**
  * struct xilinx_vdma_chan - Driver specific VDMA channel structure
  * @xdev: Driver specific device structure
  * @ctrl_offset: Control registers offset
  * @desc_offset: TX descriptor registers offset
-  * @lock: Descriptor operation lock
+ * @lock: Descriptor operation lock
  * @pending_list: Descriptors waiting
  * @active_desc: Active descriptor
  * @done_list: Complete descriptors
@@ -250,8 +247,11 @@ struct xilinx_vdma_device {
 	u32 flush_on_fsync;
 };
 
+/* Macros */
 #define to_xilinx_chan(chan) \
-			container_of(chan, struct xilinx_vdma_chan, common)
+	container_of(chan, struct xilinx_vdma_chan, common)
+#define to_vdma_tx_descriptor(tx) \
+	container_of(tx, struct xilinx_vdma_tx_descriptor, async_tx)
 
 /* IO accessors */
 static inline u32 vdma_read(struct xilinx_vdma_chan *chan, u32 reg)
@@ -375,7 +375,7 @@ xilinx_vdma_free_tx_descriptor(struct xilinx_vdma_chan *chan,
 /* Required functions */
 
 /**
- * xilinx_vdma_free_descriptors - Free descriptors list
+ * xilinx_vdma_free_desc_list - Free descriptors list
  * @chan: Driver specific VDMA channel
  * @list: List to parse and delete the descriptor
  */
@@ -853,7 +853,7 @@ static irqreturn_t xilinx_vdma_irq_handler(int irq, void *data)
 				chan, errors,
 				vdma_ctrl_read(chan, XILINX_VDMA_REG_CURDESC),
 				vdma_ctrl_read(chan, XILINX_VDMA_REG_TAILDESC));
-			chan->err = 1;
+			chan->err = true;
 		}
 	}
 
@@ -1226,7 +1226,8 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 		return err;
 	}
 
-	/* Initialize the DMA channel and add it to the DMA engine channels
+	/*
+	 * Initialize the DMA channel and add it to the DMA engine channels
 	 * list.
 	 */
 	chan->common.device = &xdev->common;
@@ -1275,9 +1276,8 @@ static int xilinx_vdma_probe(struct platform_device *pdev)
 	struct xilinx_vdma_device *xdev;
 	struct device_node *child;
 	struct resource *io;
-	int num_frames, i, err;
-
-	dev_info(&pdev->dev, "Probing xilinx axi vdma engine\n");
+	u32 num_frames;
+	int i, err;
 
 	/* Allocate and initialize the DMA engine structure */
 	xdev = devm_kzalloc(&pdev->dev, sizeof(*xdev), GFP_KERNEL);
@@ -1328,10 +1328,9 @@ static int xilinx_vdma_probe(struct platform_device *pdev)
 			goto error;
 	}
 
-	for (i = 0; i < XILINX_VDMA_MAX_CHANS_PER_DEVICE; i++) {
+	for (i = 0; i < XILINX_VDMA_MAX_CHANS_PER_DEVICE; i++)
 		if (xdev->chan[i])
 			xdev->chan[i]->num_frms = num_frames;
-	}
 
 	/* Register the DMA engine with the core */
 	dma_async_device_register(&xdev->common);
@@ -1344,13 +1343,14 @@ static int xilinx_vdma_probe(struct platform_device *pdev)
 		goto error;
 	}
 
+	dev_info(&pdev->dev, "Xilinx AXI VDMA Engine Driver Probed!!\n");
+
 	return 0;
 
 error:
-	for (i = 0; i < XILINX_VDMA_MAX_CHANS_PER_DEVICE; i++) {
+	for (i = 0; i < XILINX_VDMA_MAX_CHANS_PER_DEVICE; i++)
 		if (xdev->chan[i])
 			xilinx_vdma_chan_remove(xdev->chan[i]);
-	}
 
 	return err;
 }
@@ -1363,18 +1363,16 @@ error:
  */
 static int xilinx_vdma_remove(struct platform_device *pdev)
 {
-	struct xilinx_vdma_device *xdev;
+	struct xilinx_vdma_device *xdev = platform_get_drvdata(pdev);
 	int i;
 
 	of_dma_controller_free(pdev->dev.of_node);
 
-	xdev = platform_get_drvdata(pdev);
 	dma_async_device_unregister(&xdev->common);
 
-	for (i = 0; i < XILINX_VDMA_MAX_CHANS_PER_DEVICE; i++) {
+	for (i = 0; i < XILINX_VDMA_MAX_CHANS_PER_DEVICE; i++)
 		if (xdev->chan[i])
 			xilinx_vdma_chan_remove(xdev->chan[i]);
-	}
 
 	return 0;
 }
