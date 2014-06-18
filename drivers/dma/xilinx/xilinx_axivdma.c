@@ -641,9 +641,6 @@ static void xilinx_vdma_start_transfer(struct xilinx_vdma_chan *chan)
 		goto out_unlock;
 	}
 
-	if (chan->err)
-		goto out_unlock;
-
 	/*
 	 * If hardware is idle, then all descriptors on the running lists are
 	 * done, start new transfers
