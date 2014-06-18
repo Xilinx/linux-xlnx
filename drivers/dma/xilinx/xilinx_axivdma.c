@@ -208,7 +208,6 @@ struct xilinx_vdma_tx_descriptor {
  * @genlock: Support genlock mode
  * @err: Channel has errors
  * @tasklet: Cleanup work after irq
- * @private: Match info for channel request
  * @config: Device configuration info
  * @flush_on_fsync: Flush on Frame sync
  */
@@ -233,7 +232,6 @@ struct xilinx_vdma_chan {
 	bool genlock;
 	bool err;
 	struct tasklet_struct tasklet;
-	u32 private;
 	struct xilinx_vdma_config config;
 	bool flush_on_fsync;
 };
@@ -1192,7 +1190,6 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 {
 	struct xilinx_vdma_chan *chan;
 	bool has_dre = false;
-	u32 device_id;
 	u32 value;
 	int err;
 
@@ -1226,12 +1223,6 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 			xdev->common.copy_align = fls(width - 1);
 	}
 
-	err = of_property_read_u32(node, "xlnx,device-id", &device_id);
-	if (err < 0) {
-		dev_err(xdev->dev, "missing xlnx,device-id property\n");
-		return err;
-	}
-
 	if (of_device_is_compatible(node, "xlnx,axi-vdma-mm2s-channel")) {
 		chan->direction = DMA_MEM_TO_DEV;
 		chan->id = 0;
@@ -1258,14 +1249,6 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 		return -EINVAL;
 	}
 
-	/*
-	 * Used by DMA clients who doesnt have a device node and can request
-	 * the channel by passing this as a filter to 'dma_request_channel()'.
-	 */
-	chan->private = (chan->direction & 0xff) |
-			XILINX_DMA_IP_VDMA |
-			(device_id << XILINX_DMA_DEVICE_ID_SHIFT);
-
 	/* Request the interrupt */
 	chan->irq = irq_of_parse_and_map(node, 0);
 	err = devm_request_irq(xdev->dev, chan->irq, xilinx_vdma_irq_handler,
@@ -1279,7 +1262,6 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 	 * list.
 	 */
 	chan->common.device = &xdev->common;
-	chan->common.private = (void *)&(chan->private);
 
 	list_add_tail(&chan->common.device_node, &xdev->common.channels);
 	xdev->chan[chan->id] = chan;
