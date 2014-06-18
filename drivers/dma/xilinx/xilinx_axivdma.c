@@ -35,6 +35,8 @@
 #include <linux/of_irq.h>
 #include <linux/slab.h>
 
+#include "../dmaengine.h"
+
 /* Register/Descriptor Offsets */
 #define XILINX_VDMA_MM2S_CTRL_OFFSET		0x0000
 #define XILINX_VDMA_S2MM_CTRL_OFFSET		0x0030
@@ -161,13 +163,11 @@ struct xilinx_vdma_desc_hw {
  * struct xilinx_vdma_tx_segment - Descriptor segment
  * @hw: Hardware descriptor
  * @node: Node in the descriptor segments list
- * @cookie: Segment cookie
  * @phys: Physical address of segment
  */
 struct xilinx_vdma_tx_segment {
 	struct xilinx_vdma_desc_hw hw;
 	struct list_head node;
-	dma_cookie_t cookie;
 	dma_addr_t phys;
 } __aligned(64);
 
@@ -191,9 +191,7 @@ struct xilinx_vdma_tx_descriptor {
  * @xdev: Driver specific device structure
  * @ctrl_offset: Control registers offset
  * @desc_offset: TX descriptor registers offset
- * @completed_cookie: Maximum cookie completed
- * @cookie: The current cookie
- * @lock: Descriptor operation lock
+  * @lock: Descriptor operation lock
  * @pending_list: Descriptors waiting
  * @active_desc: Active descriptor
  * @done_list: Complete descriptors
@@ -215,8 +213,6 @@ struct xilinx_vdma_chan {
 	struct xilinx_vdma_device *xdev;
 	u32 ctrl_offset;
 	u32 desc_offset;
-	dma_cookie_t completed_cookie;
-	dma_cookie_t cookie;
 	spinlock_t lock;
 	struct list_head pending_list;
 	struct xilinx_vdma_tx_descriptor *active_desc;
@@ -507,8 +503,7 @@ static int xilinx_vdma_alloc_chan_resources(struct dma_chan *dchan)
 	tasklet_init(&chan->tasklet, xilinx_vdma_do_tasklet,
 			(unsigned long)chan);
 
-	chan->completed_cookie = DMA_MIN_COOKIE;
-	chan->cookie = DMA_MIN_COOKIE;
+	dma_cookie_init(dchan);
 
 	/* There is at least one descriptor free to be allocated */
 	return 1;
@@ -526,18 +521,7 @@ static enum dma_status xilinx_vdma_tx_status(struct dma_chan *dchan,
 					dma_cookie_t cookie,
 					struct dma_tx_state *txstate)
 {
-	struct xilinx_vdma_chan *chan = to_xilinx_chan(dchan);
-	dma_cookie_t last_used;
-	dma_cookie_t last_complete;
-
-	xilinx_vdma_chan_desc_cleanup(chan);
-
-	last_used = dchan->cookie;
-	last_complete = chan->completed_cookie;
-
-	dma_set_tx_state(txstate, last_complete, last_used, 0);
-
-	return dma_async_is_complete(cookie, last_complete, last_used);
+	return dma_cookie_status(dchan, cookie, txstate);
 }
 
 /**
@@ -765,10 +749,9 @@ static void xilinx_vdma_complete_descriptor(struct xilinx_vdma_chan *chan)
 		goto out_unlock;
 	}
 
+	dma_cookie_complete(&desc->async_tx);
 	list_add_tail(&desc->node, &chan->done_list);
 
-	/* Update the completed cookie and reset the active descriptor. */
-	chan->completed_cookie = desc->async_tx.cookie;
 	chan->active_desc = NULL;
 
 out_unlock:
@@ -901,7 +884,6 @@ static dma_cookie_t xilinx_vdma_tx_submit(struct dma_async_tx_descriptor *tx)
 {
 	struct xilinx_vdma_tx_descriptor *desc = to_vdma_tx_descriptor(tx);
 	struct xilinx_vdma_chan *chan = to_xilinx_chan(tx->chan);
-	struct xilinx_vdma_tx_segment *segment;
 	dma_cookie_t cookie;
 	unsigned long flags;
 	int err;
@@ -918,22 +900,7 @@ static dma_cookie_t xilinx_vdma_tx_submit(struct dma_async_tx_descriptor *tx)
 
 	spin_lock_irqsave(&chan->lock, flags);
 
-	/* Assign cookies to all of the segments that make up this transaction.
-	 * Use the cookie of the last segment as the transaction cookie.
-	 */
-	cookie = chan->cookie;
-
-	list_for_each_entry(segment, &desc->segments, node) {
-		if (cookie < DMA_MAX_COOKIE)
-			cookie++;
-		else
-			cookie = DMA_MIN_COOKIE;
-
-		segment->cookie = cookie;
-	}
-
-	tx->cookie = cookie;
-	chan->cookie = cookie;
+	cookie = dma_cookie_assign(tx);
 
 	/* Append the transaction to the pending transactions queue. */
 	list_add_tail(&desc->node, &chan->pending_list);
@@ -982,7 +949,6 @@ xilinx_vdma_prep_slave_sg(struct dma_chan *dchan, struct scatterlist *sgl,
 
 	dma_async_tx_descriptor_init(&desc->async_tx, &chan->common);
 	desc->async_tx.tx_submit = xilinx_vdma_tx_submit;
-	desc->async_tx.cookie = 0;
 	async_tx_ack(&desc->async_tx);
 
 	/* Build the list of transaction segments. */
