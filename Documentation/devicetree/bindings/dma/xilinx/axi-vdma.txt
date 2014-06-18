@@ -4,10 +4,13 @@ as two channels, one is to transmit to the video device and another is
 to receive from the video device.
 
 Required properties:
-- compatible: Should be "xlnx,axi-vdma"
+- compatible: Should be "xlnx,axi-vdma-1.00.a"
 - #dma-cells: Should be <1>, see "dmas" property below
 - reg: Should contain VDMA registers location and length.
 - xlnx,num-fstores: Should be the number of framebuffers as configured in h/w.
+- dma-channel child node: Should have at least one channel and can have up to
+	two channels per device. This node specifies the properties of each
+	DMA channel (see child node properties below).
 
 Option node properties:
 - xlnx,include-sg: Tells whether configured for Scatter-mode in
@@ -24,39 +27,36 @@ Required child node properties:
 - interrupts: Should contain per channel VDMA interrupts.
 - xlnx,data-width: Should contain the stream data width, take values
 	{32,64...1024}.
-- xlnx,device-id: Should contain device number in each channel. It should be
-	{0,1,2...so on} to the number of VDMA devices configured in hardware.
 
 Optional child node properties:
-- xlnx,include-dre: Tells whether hardware is configured for Data
+- xlnx,include-dre: Tells hardware is configured for Data
 	Realignment Engine.
-- xlnx,genlock-mode: Tells whether Genlock synchornisation is
+- xlnx,genlock-mode: Tells Genlock synchronization is
 	enabled/disabled in hardware.
 
 Example:
 ++++++++
 
 axi_vdma_0: axivdma@40030000 {
-	compatible = "xlnx,axi-vdma";
+	compatible = "xlnx,axi-vdma-1.00.a";
 	#dma_cells = <1>;
 	reg = < 0x40030000 0x10000 >;
 	xlnx,num-fstores = <0x8>;
+	xlnx,flush-fsync = <0x1>;
 	dma-channel@40030000 {
 		compatible = "xlnx,axi-vdma-mm2s-channel";
 		interrupts = < 0 54 4 >;
 		xlnx,datawidth = <0x40>;
-		xlnx,device-id = <0x0>;
 	} ;
 	dma-channel@40030030 {
 		compatible = "xlnx,axi-vdma-s2mm-channel";
 		interrupts = < 0 53 4 >;
 		xlnx,datawidth = <0x40>;
-		xlnx,device-id = <0x0>;
 	} ;
 } ;
 
 
-* Xilinx Video DMA client
+* DMA client
 
 Required properties:
 - dmas: a list of <[Video DMA device phandle] [Channel ID]> pairs,
@@ -64,11 +64,11 @@ Required properties:
 	channel.
 - dma-names: a list of DMA channel names, one per "dmas" entry
 
-VDMA Test Client Example:
-+++++++++++++++++++++++++
+Example:
+++++++++
 
 vdmatest_0: vdmatest@0 {
-	compatible ="xlnx,axi-vdma-test";
+	compatible ="xlnx,axi-vdma-test-1.00.a";
 	dmas = <&axi_vdma_0 0
 		&axi_vdma_0 1>;
 	dma-names = "vdma0", "vdma1";
