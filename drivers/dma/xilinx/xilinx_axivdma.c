@@ -419,7 +419,6 @@ static void xilinx_vdma_free_chan_resources(struct dma_chan *dchan)
 
 	dev_dbg(chan->dev, "Free all channel resources.\n");
 
-	tasklet_kill(&chan->tasklet);
 	xilinx_vdma_free_descriptors(chan);
 	dma_pool_destroy(chan->desc_pool);
 	chan->desc_pool = NULL;
@@ -499,9 +498,6 @@ static int xilinx_vdma_alloc_chan_resources(struct dma_chan *dchan)
 			chan->id);
 		return -ENOMEM;
 	}
-
-	tasklet_init(&chan->tasklet, xilinx_vdma_do_tasklet,
-			(unsigned long)chan);
 
 	dma_cookie_init(dchan);
 
@@ -1140,6 +1136,8 @@ static void xilinx_vdma_chan_remove(struct xilinx_vdma_chan *chan)
 	if (chan->irq > 0)
 		free_irq(chan->irq, chan);
 
+	tasklet_kill(&chan->tasklet);
+
 	list_del(&chan->common.device_node);
 }
 
@@ -1225,6 +1223,10 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 		dev_err(xdev->dev, "unable to request IRQ %d\n", chan->irq);
 		return err;
 	}
+
+	/* Initialize the tasklet */
+	tasklet_init(&chan->tasklet, xilinx_vdma_do_tasklet,
+			(unsigned long)chan);
 
 	/*
 	 * Initialize the DMA channel and add it to the DMA engine channels
