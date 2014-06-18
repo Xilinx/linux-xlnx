@@ -546,7 +546,7 @@ static enum dma_status xilinx_vdma_tx_status(struct dma_chan *dchan,
  *
  * Return: '1' if running, '0' if not.
  */
-static int xilinx_vdma_is_running(struct xilinx_vdma_chan *chan)
+static bool xilinx_vdma_is_running(struct xilinx_vdma_chan *chan)
 {
 	return !(vdma_ctrl_read(chan, XILINX_VDMA_REG_DMASR) &
 		 XILINX_VDMA_DMASR_HALTED) &&
@@ -560,7 +560,7 @@ static int xilinx_vdma_is_running(struct xilinx_vdma_chan *chan)
  *
  * Return: '1' if idle, '0' if not.
  */
-static int xilinx_vdma_is_idle(struct xilinx_vdma_chan *chan)
+static bool xilinx_vdma_is_idle(struct xilinx_vdma_chan *chan)
 {
 	return vdma_ctrl_read(chan, XILINX_VDMA_REG_DMASR) &
 		XILINX_VDMA_DMASR_IDLE;
