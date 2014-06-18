@@ -95,8 +95,7 @@ static unsigned int nr_channels;
 static unsigned int frm_cnt;
 static dma_addr_t dma_srcs[MAX_NUM_FRAMES];
 static dma_addr_t dma_dsts[MAX_NUM_FRAMES];
-static struct scatterlist tx_sg[MAX_NUM_FRAMES];
-static struct scatterlist rx_sg[MAX_NUM_FRAMES];
+static struct dma_interleaved_template xt;
 
 static void xilinx_vdmatest_init_srcs(u8 **bufs, unsigned int start,
 					unsigned int len)
@@ -284,39 +283,10 @@ static int xilinx_vdmatest_slave_func(void *data)
 		xilinx_vdmatest_init_srcs(thread->srcs, 0, len);
 		xilinx_vdmatest_init_dsts(thread->dsts, 0, len);
 
-		sg_init_table(tx_sg, frm_cnt);
-		sg_init_table(rx_sg, frm_cnt);
-
-		for (i = 0; i < frm_cnt; i++) {
-			u8 *buf = thread->srcs[i];
-
-			dma_srcs[i] = dma_map_single(tx_dev->dev, buf, len,
-							DMA_MEM_TO_DEV);
-			pr_debug("src buf %x dma %x\n", (unsigned int)buf,
-				 (unsigned int)dma_srcs[i]);
-			sg_dma_address(&tx_sg[i]) = dma_srcs[i];
-			sg_dma_len(&tx_sg[i]) = len;
-		}
-
-		for (i = 0; i < frm_cnt; i++) {
-			dma_dsts[i] = dma_map_single(rx_dev->dev,
-							thread->dsts[i],
-							test_buf_size,
-							DMA_DEV_TO_MEM);
-			pr_debug("dst %x dma %x\n",
-				 (unsigned int)thread->dsts[i],
-				 (unsigned int)dma_dsts[i]);
-			sg_dma_address(&rx_sg[i]) = dma_dsts[i];
-			sg_dma_len(&rx_sg[i]) = len;
-		}
-
 		/* Zero out configuration */
 		memset(&config, 0, sizeof(struct xilinx_vdma_config));
 
 		/* Set up hardware configuration information */
-		config.vsize = vsize;
-		config.hsize = hsize;
-		config.stride = hsize;
 		config.frm_cnt_en = 1;
 		config.coalesc = frm_cnt * 10;
 		config.park = 1;
@@ -325,11 +295,35 @@ static int xilinx_vdmatest_slave_func(void *data)
 		config.park = 0;
 		xilinx_vdma_channel_set_config(rx_chan, &config);
 
-		rxd = rx_dev->device_prep_slave_sg(rx_chan, rx_sg, frm_cnt,
-				DMA_DEV_TO_MEM, flags, NULL);
+		for (i = 0; i < frm_cnt; i++) {
+			dma_dsts[i] = dma_map_single(rx_dev->dev,
+							thread->dsts[i],
+							test_buf_size,
+							DMA_DEV_TO_MEM);
+			xt.dst_start = dma_dsts[i];
+			xt.dir = DMA_DEV_TO_MEM;
+			xt.numf = vsize;
+			xt.sgl[0].size = hsize;
+			xt.sgl[0].icg = hsize;
+			xt.frame_size = 1;
+			rxd = rx_dev->device_prep_interleaved_dma(rx_chan,
+								  &xt, flags);
+		}
 
-		txd = tx_dev->device_prep_slave_sg(tx_chan, tx_sg, frm_cnt,
-				DMA_MEM_TO_DEV, flags, NULL);
+		for (i = 0; i < frm_cnt; i++) {
+			u8 *buf = thread->srcs[i];
+
+			dma_srcs[i] = dma_map_single(tx_dev->dev, buf, len,
+							DMA_MEM_TO_DEV);
+			xt.src_start = dma_srcs[i];
+			xt.dir = DMA_MEM_TO_DEV;
+			xt.numf = vsize;
+			xt.sgl[0].size = hsize;
+			xt.sgl[0].icg = hsize;
+			xt.frame_size = 1;
+			txd = tx_dev->device_prep_interleaved_dma(tx_chan,
+								  &xt, flags);
+		}
 
 		if (!rxd || !txd) {
 			for (i = 0; i < frm_cnt; i++)

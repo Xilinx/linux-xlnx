@@ -50,10 +50,6 @@
  * Xilinx VDMA, hsize must be -1
  */
 struct xilinx_vdma_config {
-	int reserved;			/* Not used */
-	int vsize;			/* Vertical size */
-	int hsize;			/* Horizontal size */
-	int stride;			/* Stride */
 	int frm_dly;			/* Frame delay */
 	int gen_lock;			/* Whether in gen-lock mode */
 	int master;			/* Master that it syncs to */
