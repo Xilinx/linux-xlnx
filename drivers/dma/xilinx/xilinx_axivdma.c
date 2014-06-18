@@ -474,7 +474,7 @@ static void xilinx_vdma_do_tasklet(unsigned long data)
  * xilinx_vdma_alloc_chan_resources - Allocate channel resources
  * @dchan: DMA channel
  *
- * Return: '1' on success and failure value on error
+ * Return: '0' on success and failure value on error
  */
 static int xilinx_vdma_alloc_chan_resources(struct dma_chan *dchan)
 {
@@ -482,7 +482,7 @@ static int xilinx_vdma_alloc_chan_resources(struct dma_chan *dchan)
 
 	/* Has this channel already been allocated? */
 	if (chan->desc_pool)
-		return 1;
+		return 0;
 
 	/*
 	 * We need the descriptor to be aligned to 64bytes
@@ -500,9 +500,7 @@ static int xilinx_vdma_alloc_chan_resources(struct dma_chan *dchan)
 	}
 
 	dma_cookie_init(dchan);
-
-	/* There is at least one descriptor free to be allocated */
-	return 1;
+	return 0;
 }
 
 /**
