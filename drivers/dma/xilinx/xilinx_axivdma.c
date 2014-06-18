@@ -1295,30 +1295,6 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 }
 
 /**
- * struct of_dma_filter_xilinx_args - Channel filter args
- * @dev: DMA device structure
- * @chan_id: Channel id
- */
-struct of_dma_filter_xilinx_args {
-	struct dma_device *dev;
-	u32 chan_id;
-};
-
-/**
- * xilinx_vdma_dt_filter - VDMA channel filter function
- * @chan: DMA channel pointer
- * @param: Filter match value
- *
- * Returns true/false based on the result
- */
-static bool xilinx_vdma_dt_filter(struct dma_chan *chan, void *param)
-{
-	struct of_dma_filter_xilinx_args *args = param;
-
-	return chan->device == args->dev && chan->chan_id == args->chan_id;
-}
-
-/**
  * of_dma_xilinx_xlate - Translation function
  * @dma_spec: Pointer to DMA specifier as found in the device tree
  * @ofdma: Pointer to DMA controller data
@@ -1328,22 +1304,13 @@ static bool xilinx_vdma_dt_filter(struct dma_chan *chan, void *param)
 static struct dma_chan *of_dma_xilinx_xlate(struct of_phandle_args *dma_spec,
 						struct of_dma *ofdma)
 {
-	struct of_dma_filter_xilinx_args args;
-	dma_cap_mask_t cap;
+	struct xilinx_vdma_device *xdev = ofdma->of_dma_data;
+	int chan_id = dma_spec->args[0];
 
-	args.dev = ofdma->of_dma_data;
-	if (!args.dev)
+	if (chan_id >= XILINX_VDMA_MAX_CHANS_PER_DEVICE)
 		return NULL;
 
-	if (dma_spec->args_count != 1)
-		return NULL;
-
-	dma_cap_zero(cap);
-	dma_cap_set(DMA_SLAVE, cap);
-
-	args.chan_id = dma_spec->args[0];
-
-	return dma_request_channel(cap, xilinx_vdma_dt_filter, &args);
+	return dma_get_slave_channel(&xdev->chan[chan_id]->common);
 }
 
 /**
@@ -1420,9 +1387,12 @@ static int xilinx_vdma_probe(struct platform_device *pdev)
 	dma_async_device_register(&xdev->common);
 
 	err = of_dma_controller_register(node, of_dma_xilinx_xlate,
-					 &xdev->common);
-	if (err < 0)
+					 xdev);
+	if (err < 0) {
 		dev_err(&pdev->dev, "Unable to register DMA to DT\n");
+		dma_async_device_unregister(&xdev->common);
+		goto error;
+	}
 
 	return 0;
 
