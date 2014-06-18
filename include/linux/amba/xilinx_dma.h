@@ -27,24 +27,30 @@
 /* Device Id in the private structure */
 #define XILINX_DMA_DEVICE_ID_SHIFT	28
 
-/*
- * Device configuration structure
- *
- * If used to start/stop parking mode for Xilinx VDMA, vsize must be -1
- * If used to set interrupt coalescing and delay counter only for
- * Xilinx VDMA, hsize must be -1
+/**
+ * struct xilinx_vdma_config - VDMA Configuration structure
+ * @frm_dly: Frame delay
+ * @gen_lock: Whether in gen-lock mode
+ * @master: Master that it syncs to
+ * @frm_cnt_en: Enable frame count enable
+ * @park: Whether wants to park
+ * @park_frm: Frame to park on
+ * @coalesc: Interrupt coalescing threshold
+ * @delay: Delay counter
+ * @reset: Reset Channel
+ * @ext_fsync: External Frame Sync source
  */
 struct xilinx_vdma_config {
-	int frm_dly;			/* Frame delay */
-	int gen_lock;			/* Whether in gen-lock mode */
-	int master;			/* Master that it syncs to */
-	int frm_cnt_en;			/* Enable frame count enable */
-	int park;			/* Whether wants to park */
-	int park_frm;			/* Frame to park on */
-	int coalesc;			/* Interrupt coalescing threshold */
-	int delay;			/* Delay counter */
-	int reset;			/* Reset Channel */
-	int ext_fsync;			/* External Frame Sync */
+	int frm_dly;
+	int gen_lock;
+	int master;
+	int frm_cnt_en;
+	int park;
+	int park_frm;
+	int coalesc;
+	int delay;
+	int reset;
+	int ext_fsync;
 };
 
 /* Device configuration structure for DMA */
