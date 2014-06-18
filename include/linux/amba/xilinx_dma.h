@@ -12,8 +12,8 @@
 #ifndef __DMA_XILINX_DMA_H
 #define __DMA_XILINX_DMA_H
 
-#include <linux/dmaengine.h>
 #include <linux/dma-mapping.h>
+#include <linux/dmaengine.h>
 
 /* Specific hardware configuration-related constants */
 #define XILINX_DMA_NO_CHANGE	0xFFFF;
