@@ -1156,7 +1156,7 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 {
 	struct xilinx_vdma_chan *chan;
 	bool has_dre = false;
-	u32 value;
+	u32 value, width;
 	int err;
 
 	/* Allocate and initialize the channel structure */
@@ -1178,16 +1178,18 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 	chan->genlock = of_property_read_bool(node, "xlnx,genlock-mode");
 
 	err = of_property_read_u32(node, "xlnx,datawidth", &value);
-	if (!err) {
-		u32 width = value >> 3; /* Convert bits to bytes */
-
-		/* If data width is greater than 8 bytes, DRE is not in hw */
-		if (width > 8)
-			has_dre = false;
-
-		if (!has_dre)
-			xdev->common.copy_align = fls(width - 1);
+	if (err) {
+		dev_err(xdev->dev, "missing xlnx,datawidth property\n");
+		return err;
 	}
+	width = value >> 3; /* Convert bits to bytes */
+
+	/* If data width is greater than 8 bytes, DRE is not in hw */
+	if (width > 8)
+		has_dre = false;
+
+	if (!has_dre)
+		xdev->common.copy_align = fls(width - 1);
 
 	if (of_device_is_compatible(node, "xlnx,axi-vdma-mm2s-channel")) {
 		chan->direction = DMA_MEM_TO_DEV;
