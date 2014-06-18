@@ -609,7 +609,7 @@ static int xilinx_vdmatest_remove(struct platform_device *pdev)
 }
 
 static const struct of_device_id xilinx_vdmatest_of_ids[] = {
-	{ .compatible = "xlnx,axi-vdma-test",},
+	{ .compatible = "xlnx,axi-vdma-test-1.00.a",},
 	{}
 };
 
