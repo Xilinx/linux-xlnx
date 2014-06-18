@@ -15,14 +15,9 @@
 #include <linux/dma-mapping.h>
 #include <linux/dmaengine.h>
 
-/* Specific hardware configuration-related constants */
-#define XILINX_DMA_NO_CHANGE	0xFFFF;
-
 /* DMA IP masks */
 #define XILINX_DMA_IP_DMA	0x00100000	/* A DMA IP */
 #define XILINX_DMA_IP_CDMA	0x00200000	/* A Central DMA IP */
-#define XILINX_DMA_IP_VDMA	0x00400000	/* A Video DMA IP */
-#define XILINX_DMA_IP_MASK	0x00700000	/* DMA IP MASK */
 
 /* Device Id in the private structure */
 #define XILINX_DMA_DEVICE_ID_SHIFT	28
