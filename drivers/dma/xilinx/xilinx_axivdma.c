@@ -307,7 +307,7 @@ static inline void vdma_ctrl_set(struct xilinx_vdma_chan *chan, u32 reg,
  * xilinx_vdma_alloc_tx_segment - Allocate transaction segment
  * @chan: Driver specific VDMA channel
  *
- * Return the allocated segment on success and NULL on failure.
+ * Return: The allocated segment on success and NULL on failure.
  */
 static struct xilinx_vdma_tx_segment *
 xilinx_vdma_alloc_tx_segment(struct xilinx_vdma_chan *chan)
@@ -340,7 +340,7 @@ static void xilinx_vdma_free_tx_segment(struct xilinx_vdma_chan *chan,
  * xilinx_vdma_tx_descriptor - Allocate transaction descriptor
  * @chan: Driver specific VDMA channel
  *
- * Return the allocated descriptor on success and NULL on failure.
+ * Return: The allocated descriptor on success and NULL on failure.
  */
 static struct xilinx_vdma_tx_descriptor *
 xilinx_vdma_alloc_tx_descriptor(struct xilinx_vdma_chan *chan)
@@ -481,7 +481,7 @@ static void xilinx_vdma_do_tasklet(unsigned long data)
  * xilinx_vdma_alloc_chan_resources - Allocate channel resources
  * @dchan: DMA channel
  *
- * Returns '1' on success and failure value on error
+ * Return: '1' on success and failure value on error
  */
 static int xilinx_vdma_alloc_chan_resources(struct dma_chan *dchan)
 {
@@ -522,7 +522,7 @@ static int xilinx_vdma_alloc_chan_resources(struct dma_chan *dchan)
  * @cookie: Transaction identifier
  * @txstate: Transaction state
  *
- * Returns DMA transaction status
+ * Return: DMA transaction status
  */
 static enum dma_status xilinx_vdma_tx_status(struct dma_chan *dchan,
 					dma_cookie_t cookie,
@@ -546,7 +546,7 @@ static enum dma_status xilinx_vdma_tx_status(struct dma_chan *dchan,
  * xilinx_vdma_is_running - Check if VDMA channel is running
  * @chan: Driver specific VDMA channel
  *
- * Returns '1' if running, '0' if not.
+ * Return: '1' if running, '0' if not.
  */
 static int xilinx_vdma_is_running(struct xilinx_vdma_chan *chan)
 {
@@ -560,7 +560,7 @@ static int xilinx_vdma_is_running(struct xilinx_vdma_chan *chan)
  * xilinx_vdma_is_idle - Check if VDMA channel is idle
  * @chan: Driver specific VDMA channel
  *
- * Returns '1' if idle, '0' if not.
+ * Return: '1' if idle, '0' if not.
  */
 static int xilinx_vdma_is_idle(struct xilinx_vdma_chan *chan)
 {
@@ -781,7 +781,7 @@ out_unlock:
  * xilinx_vdma_reset - Reset VDMA channel
  * @chan: Driver specific VDMA channel
  *
- * Returns '0' on success and failure value on error
+ * Return: '0' on success and failure value on error
  */
 static int xilinx_vdma_reset(struct xilinx_vdma_chan *chan)
 {
@@ -815,7 +815,7 @@ static int xilinx_vdma_reset(struct xilinx_vdma_chan *chan)
  * xilinx_vdma_chan_reset - Reset VDMA channel and enable interrupts
  * @chan: Driver specific VDMA channel
  *
- * Returns '0' on success and failure value on error
+ * Return: '0' on success and failure value on error
  */
 static int xilinx_vdma_chan_reset(struct xilinx_vdma_chan *chan)
 {
@@ -838,7 +838,7 @@ static int xilinx_vdma_chan_reset(struct xilinx_vdma_chan *chan)
  * @irq: IRQ number
  * @data: Pointer to the Xilinx VDMA channel structure
  *
- * Returns IRQ_HANDLED/IRQ_NONE
+ * Return: IRQ_HANDLED/IRQ_NONE
  */
 static irqreturn_t xilinx_vdma_irq_handler(int irq, void *data)
 {
@@ -897,7 +897,7 @@ static irqreturn_t xilinx_vdma_irq_handler(int irq, void *data)
  * xilinx_vdma_tx_submit - Submit DMA transaction
  * @tx: Async transaction descriptor
  *
- * Returns cookie value on success and failure value on error
+ * Return: cookie value on success and failure value on error
  */
 static dma_cookie_t xilinx_vdma_tx_submit(struct dma_async_tx_descriptor *tx)
 {
@@ -1051,7 +1051,7 @@ static void xilinx_vdma_terminate_all(struct xilinx_vdma_chan *chan)
  * @chan: Driver specific VDMA Channel pointer
  * @cfg: Channel configuration pointer
  *
- * Returns '0' on success and failure value on error
+ * Return: '0' on success and failure value on error
  */
 static int xilinx_vdma_slave_config(struct xilinx_vdma_chan *chan,
 				    struct xilinx_vdma_config *cfg)
@@ -1141,7 +1141,7 @@ static int xilinx_vdma_slave_config(struct xilinx_vdma_chan *chan,
  * @cmd: DMA control command
  * @arg: Channel configuration
  *
- * Returns '0' on success and failure value on error
+ * Return: '0' on success and failure value on error
  */
 static int xilinx_vdma_device_control(struct dma_chan *dchan,
 				      enum dma_ctrl_cmd cmd, unsigned long arg)
@@ -1185,7 +1185,7 @@ static void xilinx_vdma_chan_remove(struct xilinx_vdma_chan *chan)
  * @xdev: Driver specific device structure
  * @node: Device node
  *
- * Returns '0' on success and failure value on error
+ * Return: '0' on success and failure value on error
  */
 static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 				  struct device_node *node)
@@ -1323,7 +1323,7 @@ static bool xilinx_vdma_dt_filter(struct dma_chan *chan, void *param)
  * @dma_spec: Pointer to DMA specifier as found in the device tree
  * @ofdma: Pointer to DMA controller data
  *
- * Returns DMA channel pointer on success and NULL on error
+ * Return: DMA channel pointer on success and NULL on error
  */
 static struct dma_chan *of_dma_xilinx_xlate(struct of_phandle_args *dma_spec,
 						struct of_dma *ofdma)
@@ -1350,7 +1350,7 @@ static struct dma_chan *of_dma_xilinx_xlate(struct of_phandle_args *dma_spec,
  * xilinx_vdma_probe - Driver probe function
  * @pdev: Pointer to the platform_device structure
  *
- * Returns '0' on success and failure value on error
+ * Return: '0' on success and failure value on error
  */
 static int xilinx_vdma_probe(struct platform_device *pdev)
 {
@@ -1439,7 +1439,7 @@ error:
  * xilinx_vdma_remove - Driver remove function
  * @pdev: Pointer to the platform_device structure
  *
- * Always returns '0'
+ * Return: Always '0'
  */
 static int xilinx_vdma_remove(struct platform_device *pdev)
 {
