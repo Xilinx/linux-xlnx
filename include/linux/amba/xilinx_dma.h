@@ -84,4 +84,8 @@ struct xilinx_cdma_config {
 	int reset;			/* Reset Channel */
 };
 
+
+int xilinx_vdma_channel_set_config(struct dma_chan *dchan,
+					struct xilinx_vdma_config *cfg);
+
 #endif

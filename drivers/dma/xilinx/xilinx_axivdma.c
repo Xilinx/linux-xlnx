@@ -1004,22 +1004,22 @@ static void xilinx_vdma_terminate_all(struct xilinx_vdma_chan *chan)
 }
 
 /**
- * xilinx_vdma_slave_config - Configure VDMA channel
+ * xilinx_vdma_channel_set_config - Configure VDMA channel
  * Run-time configuration for Axi VDMA, supports:
  * . halt the channel
  * . configure interrupt coalescing and inter-packet delay threshold
  * . start/stop parking
  * . enable genlock
- * . set transfer information using config struct
  *
- * @chan: Driver specific VDMA Channel pointer
- * @cfg: Channel configuration pointer
+ * @dchan: DMA channel
+ * @cfg: VDMA device configuration pointer
  *
  * Return: '0' on success and failure value on error
  */
-static int xilinx_vdma_slave_config(struct xilinx_vdma_chan *chan,
-				    struct xilinx_vdma_config *cfg)
+int xilinx_vdma_channel_set_config(struct dma_chan *dchan,
+					struct xilinx_vdma_config *cfg)
 {
+	struct xilinx_vdma_chan *chan = to_xilinx_chan(dchan);
 	u32 dmacr;
 
 	if (cfg->reset)
@@ -1081,6 +1081,7 @@ static int xilinx_vdma_slave_config(struct xilinx_vdma_chan *chan,
 
 	chan->config.coalesc = cfg->coalesc;
 	chan->config.delay = cfg->delay;
+
 	if (cfg->coalesc <= XILINX_VDMA_DMACR_FRAME_COUNT_MAX) {
 		dmacr |= cfg->coalesc << XILINX_VDMA_DMACR_FRAME_COUNT_SHIFT;
 		chan->config.coalesc = cfg->coalesc;
@@ -1096,8 +1097,10 @@ static int xilinx_vdma_slave_config(struct xilinx_vdma_chan *chan,
 	dmacr |= cfg->ext_fsync << XILINX_VDMA_DMACR_FSYNCSRC_SHIFT;
 
 	vdma_ctrl_write(chan, XILINX_VDMA_REG_DMACR, dmacr);
+
 	return 0;
 }
+EXPORT_SYMBOL(xilinx_vdma_channel_set_config);
 
 /**
  * xilinx_vdma_device_control - Configure DMA channel of the device
@@ -1112,16 +1115,12 @@ static int xilinx_vdma_device_control(struct dma_chan *dchan,
 {
 	struct xilinx_vdma_chan *chan = to_xilinx_chan(dchan);
 
-	switch (cmd) {
-	case DMA_TERMINATE_ALL:
-		xilinx_vdma_terminate_all(chan);
-		return 0;
-	case DMA_SLAVE_CONFIG:
-		return xilinx_vdma_slave_config(chan,
-					(struct xilinx_vdma_config *)arg);
-	default:
+	if (cmd != DMA_TERMINATE_ALL)
 		return -ENXIO;
-	}
+
+	xilinx_vdma_terminate_all(chan);
+
+	return 0;
 }
 
 /* -----------------------------------------------------------------------------

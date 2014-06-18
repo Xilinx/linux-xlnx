@@ -320,12 +320,10 @@ static int xilinx_vdmatest_slave_func(void *data)
 		config.frm_cnt_en = 1;
 		config.coalesc = frm_cnt * 10;
 		config.park = 1;
-		tx_dev->device_control(tx_chan, DMA_SLAVE_CONFIG,
-					(unsigned long)&config);
+		xilinx_vdma_channel_set_config(tx_chan, &config);
 
 		config.park = 0;
-		rx_dev->device_control(rx_chan, DMA_SLAVE_CONFIG,
-					(unsigned long)&config);
+		xilinx_vdma_channel_set_config(rx_chan, &config);
 
 		rxd = rx_dev->device_prep_slave_sg(rx_chan, rx_sg, frm_cnt,
 				DMA_DEV_TO_MEM, flags, NULL);
