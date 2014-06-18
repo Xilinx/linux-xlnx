@@ -590,15 +590,16 @@ static int xilinx_vdma_is_idle(struct xilinx_vdma_chan *chan)
  */
 static void xilinx_vdma_halt(struct xilinx_vdma_chan *chan)
 {
-	int loop = XILINX_VDMA_LOOP_COUNT + 1;
+	int loop = XILINX_VDMA_LOOP_COUNT;
 
 	vdma_ctrl_clr(chan, XILINX_VDMA_REG_DMACR, XILINX_VDMA_DMACR_RUNSTOP);
 
 	/* Wait for the hardware to halt */
-	while (loop--)
+	do {
 		if (vdma_ctrl_read(chan, XILINX_VDMA_REG_DMASR) &
 		    XILINX_VDMA_DMASR_HALTED)
 			break;
+	} while (loop--);
 
 	if (!loop) {
 		dev_err(chan->dev, "Cannot stop channel %p: %x\n",
@@ -615,15 +616,16 @@ static void xilinx_vdma_halt(struct xilinx_vdma_chan *chan)
  */
 static void xilinx_vdma_start(struct xilinx_vdma_chan *chan)
 {
-	int loop = XILINX_VDMA_LOOP_COUNT + 1;
+	int loop = XILINX_VDMA_LOOP_COUNT;
 
 	vdma_ctrl_set(chan, XILINX_VDMA_REG_DMACR, XILINX_VDMA_DMACR_RUNSTOP);
 
 	/* Wait for the hardware to start */
-	while (loop)
+	do {
 		if (!(vdma_ctrl_read(chan, XILINX_VDMA_REG_DMASR) &
 		      XILINX_VDMA_DMASR_HALTED))
 			break;
+	} while (loop--);
 
 	if (!loop) {
 		dev_err(chan->dev, "Cannot start channel %p: %x\n",
@@ -799,7 +801,7 @@ out_unlock:
  */
 static int xilinx_vdma_reset(struct xilinx_vdma_chan *chan)
 {
-	int loop = XILINX_VDMA_LOOP_COUNT + 1;
+	int loop = XILINX_VDMA_LOOP_COUNT;
 	u32 tmp;
 
 	vdma_ctrl_set(chan, XILINX_VDMA_REG_DMACR, XILINX_VDMA_DMACR_RESET);
@@ -808,9 +810,10 @@ static int xilinx_vdma_reset(struct xilinx_vdma_chan *chan)
 		XILINX_VDMA_DMACR_RESET;
 
 	/* Wait for the hardware to finish reset */
-	while (loop-- && tmp)
+	do {
 		tmp = vdma_ctrl_read(chan, XILINX_VDMA_REG_DMACR) &
 			XILINX_VDMA_DMACR_RESET;
+	} while (loop-- && tmp);
 
 	if (!loop) {
 		dev_err(chan->dev, "reset timeout, cr %x, sr %x\n",
