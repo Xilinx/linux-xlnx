@@ -443,7 +443,7 @@ static int __maybe_unused zynq_gpio_suspend(struct device *dev)
 
 	if (!device_may_wakeup(dev)) {
 		if (!pm_runtime_suspended(dev))
-			clk_disable(gpio->clk);
+			clk_disable_unprepare(gpio->clk);
 		return 0;
 	}
 
@@ -457,7 +457,7 @@ static int __maybe_unused zynq_gpio_resume(struct device *dev)
 
 	if (!device_may_wakeup(dev)) {
 		if (!pm_runtime_suspended(dev))
-			return clk_enable(gpio->clk);
+			return clk_prepare_enable(gpio->clk);
 	}
 
 	return 0;
@@ -468,7 +468,7 @@ static int __maybe_unused zynq_gpio_runtime_suspend(struct device *dev)
 	struct platform_device *pdev = to_platform_device(dev);
 	struct zynq_gpio *gpio = platform_get_drvdata(pdev);
 
-	clk_disable(gpio->clk);
+	clk_disable_unprepare(gpio->clk);
 
 	return 0;
 }
@@ -478,7 +478,7 @@ static int __maybe_unused zynq_gpio_runtime_resume(struct device *dev)
 	struct platform_device *pdev = to_platform_device(dev);
 	struct zynq_gpio *gpio = platform_get_drvdata(pdev);
 
-	return clk_enable(gpio->clk);
+	return clk_prepare_enable(gpio->clk);
 }
 
 static int __maybe_unused zynq_gpio_idle(struct device *dev)
