@@ -87,7 +87,7 @@ static unsigned int zynq_gpio_pin_table[] = {
 struct zynq_gpio {
 	struct gpio_chip chip;
 	void __iomem *base_addr;
-	unsigned int irq;
+	int irq;
 	unsigned int irq_base;
 	struct clk *clk;
 };
@@ -526,7 +526,6 @@ static const struct dev_pm_ops zynq_gpio_dev_pm_ops = {
 static int zynq_gpio_probe(struct platform_device *pdev)
 {
 	int ret, pin_num, bank_num, gpio_irq;
-	unsigned int irq_num;
 	struct zynq_gpio *gpio;
 	struct gpio_chip *chip;
 	struct resource *res;
@@ -542,8 +541,11 @@ static int zynq_gpio_probe(struct platform_device *pdev)
 	if (IS_ERR(gpio->base_addr))
 		return PTR_ERR(gpio->base_addr);
 
-	irq_num = platform_get_irq(pdev, 0);
-	gpio->irq = irq_num;
+	gpio->irq = platform_get_irq(pdev, 0);
+	if (gpio->irq < 0) {
+		dev_err(&pdev->dev, "invalid IRQ\n");
+		return gpio->irq;
+	}
 
 	/* configure the gpio chip */
 	chip = &gpio->chip;
@@ -611,8 +613,8 @@ static int zynq_gpio_probe(struct platform_device *pdev)
 		set_irq_flags(gpio_irq, IRQF_VALID);
 	}
 
-	irq_set_handler_data(irq_num, gpio);
-	irq_set_chained_handler(irq_num, zynq_gpio_irqhandler);
+	irq_set_handler_data(gpio->irq, gpio);
+	irq_set_chained_handler(gpio->irq, zynq_gpio_irqhandler);
 
 	pm_runtime_enable(&pdev->dev);
 
