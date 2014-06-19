@@ -306,11 +306,11 @@ config GPIO_XILINX
 	  Say yes here to support the Xilinx AXI/XPS GPIO device
 
 config GPIO_ZYNQ
-	tristate "Xilinx ZYNQ GPIO support"
+	tristate "Xilinx Zynq GPIO support"
 	depends on ARCH_ZYNQ
 	select GENERIC_IRQ_CHIP
 	help
-	  Say yes here to support Xilinx ZYNQ GPIO controller.
+	  Say yes here to support Xilinx Zynq GPIO controller.
 
 config GPIO_XTENSA
 	bool "Xtensa GPIO32 support"
