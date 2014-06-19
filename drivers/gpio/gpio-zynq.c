@@ -9,6 +9,7 @@
  * version.
  */
 
+#include <linux/bitops.h>
 #include <linux/clk.h>
 #include <linux/gpio.h>
 #include <linux/init.h>
@@ -193,7 +194,7 @@ static int zynq_gpio_dir_in(struct gpio_chip *chip, unsigned int pin)
 	zynq_gpio_get_bank_pin(pin, &bank_num, &bank_pin_num);
 	/* clear the bit in direction mode reg to set the pin as input */
 	reg = readl_relaxed(gpio->base_addr + ZYNQ_GPIO_DIRM_OFFSET(bank_num));
-	reg &= ~(1 << bank_pin_num);
+	reg &= ~BIT(bank_pin_num);
 	writel_relaxed(reg, gpio->base_addr + ZYNQ_GPIO_DIRM_OFFSET(bank_num));
 
 	return 0;
@@ -221,12 +222,12 @@ static int zynq_gpio_dir_out(struct gpio_chip *chip, unsigned int pin,
 
 	/* set the GPIO pin as output */
 	reg = readl_relaxed(gpio->base_addr + ZYNQ_GPIO_DIRM_OFFSET(bank_num));
-	reg |= 1 << bank_pin_num;
+	reg |= BIT(bank_pin_num);
 	writel_relaxed(reg, gpio->base_addr + ZYNQ_GPIO_DIRM_OFFSET(bank_num));
 
 	/* configure the output enable reg for the pin */
 	reg = readl_relaxed(gpio->base_addr + ZYNQ_GPIO_OUTEN_OFFSET(bank_num));
-	reg |= 1 << bank_pin_num;
+	reg |= BIT(bank_pin_num);
 	writel_relaxed(reg, gpio->base_addr + ZYNQ_GPIO_OUTEN_OFFSET(bank_num));
 
 	/* set the state of the pin */
@@ -273,7 +274,7 @@ static void zynq_gpio_irq_mask(struct irq_data *irq_data)
 
 	device_pin_num = irq_data->hwirq;
 	zynq_gpio_get_bank_pin(device_pin_num, &bank_num, &bank_pin_num);
-	writel_relaxed(1 << bank_pin_num,
+	writel_relaxed(BIT(bank_pin_num),
 			  gpio->base_addr + ZYNQ_GPIO_INTDIS_OFFSET(bank_num));
 }
 
@@ -293,7 +294,7 @@ static void zynq_gpio_irq_unmask(struct irq_data *irq_data)
 
 	device_pin_num = irq_data->hwirq;
 	zynq_gpio_get_bank_pin(device_pin_num, &bank_num, &bank_pin_num);
-	writel_relaxed(1 << bank_pin_num,
+	writel_relaxed(BIT(bank_pin_num),
 			  gpio->base_addr + ZYNQ_GPIO_INTEN_OFFSET(bank_num));
 }
 
@@ -334,26 +335,26 @@ static int zynq_gpio_set_irq_type(struct irq_data *irq_data, unsigned int type)
 	 */
 	switch (type) {
 	case IRQ_TYPE_EDGE_RISING:
-		int_type |= (1 << bank_pin_num);
-		int_pol |= (1 << bank_pin_num);
-		int_any &= ~(1 << bank_pin_num);
+		int_type |= BIT(bank_pin_num);
+		int_pol |= BIT(bank_pin_num);
+		int_any &= ~BIT(bank_pin_num);
 		break;
 	case IRQ_TYPE_EDGE_FALLING:
-		int_type |= (1 << bank_pin_num);
-		int_pol &= ~(1 << bank_pin_num);
-		int_any &= ~(1 << bank_pin_num);
+		int_type |= BIT(bank_pin_num);
+		int_pol &= ~BIT(bank_pin_num);
+		int_any &= ~BIT(bank_pin_num);
 		break;
 	case IRQ_TYPE_EDGE_BOTH:
-		int_type |= (1 << bank_pin_num);
-		int_any |= (1 << bank_pin_num);
+		int_type |= BIT(bank_pin_num);
+		int_any |= BIT(bank_pin_num);
 		break;
 	case IRQ_TYPE_LEVEL_HIGH:
-		int_type &= ~(1 << bank_pin_num);
-		int_pol |= (1 << bank_pin_num);
+		int_type &= ~BIT(bank_pin_num);
+		int_pol |= BIT(bank_pin_num);
 		break;
 	case IRQ_TYPE_LEVEL_LOW:
-		int_type &= ~(1 << bank_pin_num);
-		int_pol &= ~(1 << bank_pin_num);
+		int_type &= ~BIT(bank_pin_num);
+		int_pol &= ~BIT(bank_pin_num);
 		break;
 	default:
 		return -EINVAL;
