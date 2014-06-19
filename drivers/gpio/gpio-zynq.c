@@ -34,7 +34,7 @@ static struct irq_domain *irq_domain;
 /* MSW Mask & Data -WO */
 #define ZYNQ_GPIO_DATA_MSW_OFFSET(BANK)	(0x004 + (8 * BANK))
 /* Data Register-RW */
-#define ZYNQ_GPIO_DATA_OFFSET(BANK)	(0x040 + (4 * BANK))
+#define ZYNQ_GPIO_DATA_RO_OFFSET(BANK)	(0x060 + (4 * BANK))
 /* Direction mode reg-RW */
 #define ZYNQ_GPIO_DIRM_OFFSET(BANK)	(0x204 + (0x40 * BANK))
 /* Output enable reg-RW */
@@ -134,7 +134,8 @@ static int zynq_gpio_get_value(struct gpio_chip *chip, unsigned int pin)
 
 	zynq_gpio_get_bank_pin(pin, &bank_num, &bank_pin_num);
 
-	data = readl_relaxed(gpio->base_addr + ZYNQ_GPIO_DATA_OFFSET(bank_num));
+	data = readl_relaxed(gpio->base_addr +
+			     ZYNQ_GPIO_DATA_RO_OFFSET(bank_num));
 	return (data >> bank_pin_num) & ZYNQ_GPIO_PIN_HIGH;
 }
 
