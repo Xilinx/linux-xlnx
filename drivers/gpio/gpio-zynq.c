@@ -627,8 +627,14 @@ static int zynq_gpio_probe(struct platform_device *pdev)
  */
 static int zynq_gpio_remove(struct platform_device *pdev)
 {
+	int ret;
 	struct zynq_gpio *gpio = platform_get_drvdata(pdev);
 
+	ret = gpiochip_remove(&gpio->chip);
+	if (ret) {
+		dev_err(&pdev->dev, "Failed to remove gpio chip\n");
+		return ret;
+	}
 	clk_disable_unprepare(gpio->clk);
 	device_set_wakeup_capable(&pdev->dev, 0);
 	return 0;
