@@ -267,8 +267,7 @@ static int zynq_gpio_to_irq(struct gpio_chip *chip, unsigned offset)
  */
 static void zynq_gpio_irq_ack(struct irq_data *irq_data)
 {
-	struct zynq_gpio *gpio = (struct zynq_gpio *)
-				 irq_data_get_irq_chip_data(irq_data);
+	struct zynq_gpio *gpio = irq_data_get_irq_chip_data(irq_data);
 	unsigned int device_pin_num, bank_num, bank_pin_num;
 
 	device_pin_num = irq_data->hwirq;
@@ -287,8 +286,7 @@ static void zynq_gpio_irq_ack(struct irq_data *irq_data)
  */
 static void zynq_gpio_irq_mask(struct irq_data *irq_data)
 {
-	struct zynq_gpio *gpio = (struct zynq_gpio *)
-				 irq_data_get_irq_chip_data(irq_data);
+	struct zynq_gpio *gpio = irq_data_get_irq_chip_data(irq_data);
 	unsigned int device_pin_num, bank_num, bank_pin_num;
 
 	device_pin_num = irq_data->hwirq;
@@ -421,7 +419,7 @@ static struct irq_chip zynq_gpio_irqchip = {
  */
 static void zynq_gpio_irqhandler(unsigned int irq, struct irq_desc *desc)
 {
-	struct zynq_gpio *gpio = (struct zynq_gpio *)irq_get_handler_data(irq);
+	struct zynq_gpio *gpio = irq_get_handler_data(irq);
 	int gpio_irq = gpio->irq_base;
 	unsigned int int_sts, int_enb, bank_num;
 	struct irq_desc *gpio_irq_desc;
@@ -627,11 +625,11 @@ static int zynq_gpio_probe(struct platform_device *pdev)
 		gpio_irq = irq_find_mapping(irq_domain, pin_num);
 		irq_set_chip_and_handler(gpio_irq, &zynq_gpio_irqchip,
 					 handle_simple_irq);
-		irq_set_chip_data(gpio_irq, (void *)gpio);
+		irq_set_chip_data(gpio_irq, gpio);
 		set_irq_flags(gpio_irq, IRQF_VALID);
 	}
 
-	irq_set_handler_data(irq_num, (void *)gpio);
+	irq_set_handler_data(irq_num, gpio);
 	irq_set_chained_handler(irq_num, zynq_gpio_irqhandler);
 
 	pm_runtime_enable(&pdev->dev);
