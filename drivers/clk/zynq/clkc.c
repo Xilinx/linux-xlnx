@@ -106,7 +106,6 @@ static const char *gem1_emio_input_names[] __initdata = {"gem1_emio_clk"};
 static const char *swdt_ext_clk_input_names[] __initdata = {"swdt_ext_clk"};
 
 #ifdef CONFIG_SUSPEND
-static struct clk *armpll_save_parent;
 static struct clk *iopll_save_parent;
 
 #define TOPSW_CLK_CTRL_DIS_MASK	BIT(0)
@@ -116,22 +115,16 @@ int zynq_clk_suspend_early(void)
 	int ret;
 
 	iopll_save_parent = clk_get_parent(clks[iopll]);
-	armpll_save_parent = clk_get_parent(clks[armpll]);
 
 	ret = clk_set_parent(clks[iopll], ps_clk);
 	if (ret)
 		pr_info("%s: reparent iopll failed %d\n", __func__, ret);
-
-	ret = clk_set_parent(clks[armpll], ps_clk);
-	if (ret)
-		pr_info("%s: reparent armpll failed %d\n", __func__, ret);
 
 	return 0;
 }
 
 void zynq_clk_resume_late(void)
 {
-	clk_set_parent(clks[armpll], armpll_save_parent);
 	clk_set_parent(clks[iopll], iopll_save_parent);
 }
 

@@ -17,6 +17,7 @@
 
 #include <linux/linkage.h>
 
+#define ARMPLL_CTRL_OFFS	0x100
 #define DDRPLL_CTRL_OFFS	0x104
 #define PLLSTATUS_OFFS		0x10c
 #define DDR_CLK_CTRL_OFFS	0x124
@@ -28,6 +29,7 @@
 #define PLL_BYPASS_MASK		(1 << 4)
 #define DCICLK_ENABLE_MASK	1
 #define DDRCLK_ENABLE_MASK	3
+#define ARM_LOCK_MASK		(1 << 0)
 #define DDR_LOCK_MASK		(1 << 1)
 #define DDRC_STATUS_MASK	7
 
@@ -108,6 +110,13 @@ ENTRY(zynq_sys_suspend)
 	orr	r2, #(PLL_PWRDWN_MASK | PLL_RESET_MASK)
 	str	r2, [r1, #DDRPLL_CTRL_OFFS]
 
+	/* Bypass and powerdown ARM PLL */
+	ldr	r2, [r1, #ARMPLL_CTRL_OFFS]
+	orr	r2, #PLL_BYPASS_MASK
+	str	r2, [r1, #ARMPLL_CTRL_OFFS]
+	orr	r2, #(PLL_PWRDWN_MASK | PLL_RESET_MASK)
+	str	r2, [r1, #ARMPLL_CTRL_OFFS]
+
 suspend:
 	dsb	sy
 	wfi
@@ -115,6 +124,24 @@ suspend:
 	cmp	r3, #0xff00
 	moveq	r0, #-1
 	beq	exit
+
+	/* Power up ARM PLL */
+	ldr	r2, [r1, #ARMPLL_CTRL_OFFS]
+	bic	r2, #(PLL_PWRDWN_MASK | PLL_RESET_MASK)
+	str	r2, [r1, #ARMPLL_CTRL_OFFS]
+	/* wait for lock */
+1:	ldr	r2, [r1, #PLLSTATUS_OFFS]
+	ands	r2, #ARM_LOCK_MASK
+	beq	1b
+
+	dsb	sy
+
+	/* Disable ARM PLL bypass */
+	ldr	r2, [r1, #ARMPLL_CTRL_OFFS]
+	bic	r2, #PLL_BYPASS_MASK
+	str	r2, [r1, #ARMPLL_CTRL_OFFS]
+
+	dmb	st
 
 	/* Power up DDR PLL */
 	ldr	r2, [r1, #DDRPLL_CTRL_OFFS]
@@ -127,7 +154,7 @@ suspend:
 
 	dsb	sy
 
-	/* Disable PLL bypass */
+	/* Disable DDR PLL bypass */
 	ldr	r2, [r1, #DDRPLL_CTRL_OFFS]
 	bic	r2, #PLL_BYPASS_MASK
 	str	r2, [r1, #DDRPLL_CTRL_OFFS]
