@@ -15,8 +15,8 @@
  * GNU General Public License for more details.
  */
 
-#ifndef __XILINX_CONTROLS_H__
-#define __XILINX_CONTROLS_H__
+#ifndef __UAPI_XILINX_V4L2_CONTROLS_H__
+#define __UAPI_XILINX_V4L2_CONTROLS_H__
 
 #include <linux/v4l2-controls.h>
 
@@ -124,4 +124,4 @@
 /* The IP model */
 #define V4L2_CID_XILINX_HLS_MODEL		(V4L2_CID_XILINX_HLS + 1)
 
-#endif /* __XILINX_CONTROLS_H__ */
+#endif /* __UAPI_XILINX_V4L2_CONTROLS_H__ */
