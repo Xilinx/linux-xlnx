@@ -65,9 +65,9 @@ xylon_drm_plane_set_parameters(struct xylon_drm_plane *plane,
 
 }
 
-void xylon_drm_plane_dpms(struct drm_plane *base, int dpms)
+void xylon_drm_plane_dpms(struct drm_plane *base_plane, int dpms)
 {
-	struct xylon_drm_plane *plane = to_xylon_plane(base);
+	struct xylon_drm_plane *plane = to_xylon_plane(base_plane);
 	struct xylon_drm_plane_manager *manager = plane->manager;
 
 	switch (dpms) {
@@ -80,15 +80,15 @@ void xylon_drm_plane_dpms(struct drm_plane *base, int dpms)
 	}
 }
 
-void xylon_drm_plane_commit(struct drm_plane *base)
+void xylon_drm_plane_commit(struct drm_plane *base_plane)
 {
-	struct xylon_drm_plane *plane = to_xylon_plane(base);
+	struct xylon_drm_plane *plane = to_xylon_plane(base_plane);
 	struct xylon_drm_plane_manager *manager = plane->manager;
 
 	xylon_cvc_layer_update(manager->cvc, plane->id);
 }
 
-int xylon_drm_plane_fb_set(struct drm_plane *base,
+int xylon_drm_plane_fb_set(struct drm_plane *base_plane,
 			   struct drm_framebuffer *fb,
 			   int crtc_x, int crtc_y,
 			   unsigned int crtc_w, unsigned int crtc_h,
@@ -97,7 +97,7 @@ int xylon_drm_plane_fb_set(struct drm_plane *base,
 {
 	struct drm_gem_cma_object *cma_obj;
 	struct drm_gem_object *gem_obj;
-	struct xylon_drm_plane *plane = to_xylon_plane(base);
+	struct xylon_drm_plane *plane = to_xylon_plane(base_plane);
 	struct xylon_drm_plane_manager *manager = plane->manager;
 	int id = plane->id;
 	int ret;
@@ -134,7 +134,7 @@ int xylon_drm_plane_fb_set(struct drm_plane *base,
 	return 0;
 }
 
-static int xylon_drm_plane_update(struct drm_plane *base,
+static int xylon_drm_plane_update(struct drm_plane *base_plane,
 				  struct drm_crtc *crtc,
 				  struct drm_framebuffer *fb,
 				  int crtc_x, int crtc_y,
@@ -144,7 +144,8 @@ static int xylon_drm_plane_update(struct drm_plane *base,
 {
 	int ret;
 
-	ret = xylon_drm_plane_fb_set(base, fb, crtc_x, crtc_y, crtc_w, crtc_h,
+	ret = xylon_drm_plane_fb_set(base_plane, fb,
+				     crtc_x, crtc_y, crtc_w, crtc_h,
 				     src_x >> 16, src_y >> 16,
 				     src_w >> 16, src_h >> 16);
 	if (ret) {
@@ -152,16 +153,16 @@ static int xylon_drm_plane_update(struct drm_plane *base,
 		return ret;
 	}
 
-	xylon_drm_plane_commit(base);
+	xylon_drm_plane_commit(base_plane);
 
-	xylon_drm_plane_dpms(base, DRM_MODE_DPMS_ON);
+	xylon_drm_plane_dpms(base_plane, DRM_MODE_DPMS_ON);
 
 	return 0;
 }
 
-static int xylon_drm_plane_disable(struct drm_plane *base)
+static int xylon_drm_plane_disable(struct drm_plane *base_plane)
 {
-	struct xylon_drm_plane *plane = to_xylon_plane(base);
+	struct xylon_drm_plane *plane = to_xylon_plane(base_plane);
 	struct xylon_drm_plane_manager *manager = plane->manager;
 
 	xylon_cvc_layer_disable(manager->cvc, plane->id);
@@ -171,18 +172,18 @@ static int xylon_drm_plane_disable(struct drm_plane *base)
 	return 0;
 }
 
-void xylon_drm_plane_destroy(struct drm_plane *base)
+void xylon_drm_plane_destroy(struct drm_plane *base_plane)
 {
-	struct xylon_drm_plane *plane = to_xylon_plane(base);
+	struct xylon_drm_plane *plane = to_xylon_plane(base_plane);
 	struct xylon_drm_plane_manager *manager = plane->manager;
 	int id = plane->id;
 
 	xylon_cvc_layer_disable(manager->cvc, id);
 
-	drm_plane_cleanup(base);
+	drm_plane_cleanup(base_plane);
 }
 
-static int xylon_drm_plane_set_property(struct drm_plane *base,
+static int xylon_drm_plane_set_property(struct drm_plane *base_plane,
 					struct drm_property *property,
 					u64 val)
 {
@@ -297,16 +298,17 @@ bool xylon_drm_plane_check_format(struct xylon_drm_plane_manager *manager,
 	return false;
 }
 
-unsigned int xylon_drm_plane_get_bits_per_pixel(struct drm_plane *base)
+unsigned int xylon_drm_plane_get_bits_per_pixel(struct drm_plane *base_plane)
 {
-	struct xylon_drm_plane *plane = to_xylon_plane(base);
+	struct xylon_drm_plane *plane = to_xylon_plane(base_plane);
 
 	return plane->bpp;
 }
 
-int xylon_drm_plane_op(struct drm_plane *base, struct xylon_drm_plane_op *op)
+int xylon_drm_plane_op(struct drm_plane *base_plane,
+		       struct xylon_drm_plane_op *op)
 {
-	struct xylon_drm_plane *plane = to_xylon_plane(base);
+	struct xylon_drm_plane *plane = to_xylon_plane(base_plane);
 	struct xylon_drm_plane_manager *manager = plane->manager;
 	struct xylon_cvc *cvc = manager->cvc;
 	int id = plane->id;
