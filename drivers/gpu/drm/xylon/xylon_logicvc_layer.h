@@ -17,12 +17,13 @@
 #ifndef _XYLON_LOGICVC_LAYER_H_
 #define _XYLON_LOGICVC_LAYER_H_
 
-enum xylon_cvc_layer_ctrl_cmd {
-	LOGICVC_LAYER_CTRL_NONE,
-	LOGICVC_LAYER_CTRL_COLOR_TRANSP_DISABLE,
-	LOGICVC_LAYER_CTRL_COLOR_TRANSP_ENABLE,
-	LOGICVC_LAYER_CTRL_PIXEL_FORMAT_NORMAL,
-	LOGICVC_LAYER_CTRL_PIXEL_FORMAT_ANDROID
+enum xylon_cvc_layer_control {
+	LOGICVC_LAYER_COLOR_TRANSPARENCY_DISABLE,
+	LOGICVC_LAYER_COLOR_TRANSPARENCY_ENABLE,
+	LOGICVC_LAYER_INTERLACE_DISABLE,
+	LOGICVC_LAYER_INTERLACE_ENABLE,
+	LOGICVC_LAYER_PIXEL_FORMAT_ABGR_DISABLE,
+	LOGICVC_LAYER_PIXEL_FORMAT_ABGR_ENABLE
 };
 
 struct xylon_cvc;
@@ -44,7 +45,8 @@ void xylon_cvc_layer_set_address(struct xylon_cvc *cvc, int id,
 void xylon_cvc_layer_enable(struct xylon_cvc *cvc, int id);
 void xylon_cvc_layer_disable(struct xylon_cvc *cvc, int id);
 void xylon_cvc_layer_update(struct xylon_cvc *cvc, int id);
-void xylon_cvc_layer_ctrl(struct xylon_cvc *cvc, int id, int op);
+void xylon_cvc_layer_ctrl(struct xylon_cvc *cvc, int id,
+			  enum xylon_cvc_layer_control op);
 
 void xylon_cvc_layer_set_color_reg(struct xylon_cvc *cvc, int id, u32 color);
 

@@ -310,29 +310,28 @@ int xylon_drm_plane_op(struct drm_plane *base, struct xylon_drm_plane_op *op)
 	struct xylon_drm_plane_manager *manager = plane->manager;
 	struct xylon_cvc *cvc = manager->cvc;
 	int id = plane->id;
-	int param;
+	int param = 0;
 
 	switch (op->id) {
 	case XYLON_DRM_PLANE_OP_ID_CTRL:
-		param = LOGICVC_LAYER_CTRL_NONE;
 		switch (op->sid) {
 		case XYLON_DRM_PLANE_OP_SID_CTRL_COLOR_TRANSPARENCY:
 			switch (op->param) {
 			case XYLON_DRM_PLANE_OP_DISABLE:
-				param = LOGICVC_LAYER_CTRL_COLOR_TRANSP_DISABLE;
+				param = LOGICVC_LAYER_COLOR_TRANSPARENCY_DISABLE;
 				break;
 			case XYLON_DRM_PLANE_OP_ENABLE:
-				param = LOGICVC_LAYER_CTRL_COLOR_TRANSP_ENABLE;
+				param = LOGICVC_LAYER_COLOR_TRANSPARENCY_ENABLE;
 				break;
 			}
 			break;
 		case XYLON_DRM_PLANE_OP_SID_CTRL_PIXEL_FORMAT:
 			switch (op->param) {
 			case XYLON_DRM_PLANE_OP_PIXEL_FORMAT_NORMAL:
-				param = LOGICVC_LAYER_CTRL_PIXEL_FORMAT_NORMAL;
+				param = LOGICVC_LAYER_PIXEL_FORMAT_ABGR_DISABLE;
 				break;
 			case XYLON_DRM_PLANE_OP_PIXEL_FORMAT_ANDROID:
-				param = LOGICVC_LAYER_CTRL_PIXEL_FORMAT_ANDROID;
+				param = LOGICVC_LAYER_PIXEL_FORMAT_ABGR_ENABLE;
 				break;
 			}
 			break;

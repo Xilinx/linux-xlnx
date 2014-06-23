@@ -124,9 +124,8 @@
 /* logiCVC layer control register bits */
 #define LOGICVC_LAYER_CTRL_ENABLE			(1 << 0)
 #define LOGICVC_LAYER_CTRL_COLOR_TRANSPARENCY_BIT	(1 << 1)
-#define LOGICVC_LAYER_CTRL_PIXEL_FORMAT_BITS_ARGB	(0 << 4)
-#define LOGICVC_LAYER_CTRL_PIXEL_FORMAT_BITS_ABGR	(1 << 4)
-#define LOGICVC_LAYER_CTRL_PIXEL_FORMAT_MASK		0x70
+#define LOGICVC_LAYER_CTRL_INTERLACE_BIT		(1 << 3)
+#define LOGICVC_LAYER_CTRL_PIXEL_FORMAT_BIT_ABGR	(1 << 4)
 
 /* logiCVC control registers initial values */
 #define LOGICVC_CTRL_REG_INIT \
@@ -453,7 +452,8 @@ void xylon_cvc_layer_update(struct xylon_cvc *cvc, int id)
 					  layer_data);
 }
 
-void xylon_cvc_layer_ctrl(struct xylon_cvc *cvc, int id, int op)
+void xylon_cvc_layer_ctrl(struct xylon_cvc *cvc, int id,
+			  enum xylon_cvc_layer_control op)
 {
 	struct xylon_cvc_layer_data *layer_data = cvc->layer_data[id];
 	struct xylon_cvc_register_access *reg_access = &cvc->reg_access;
@@ -462,21 +462,24 @@ void xylon_cvc_layer_ctrl(struct xylon_cvc *cvc, int id, int op)
 						       layer_data);
 
 	switch (op) {
-	case LOGICVC_LAYER_CTRL_COLOR_TRANSP_DISABLE:
+	case LOGICVC_LAYER_COLOR_TRANSPARENCY_DISABLE:
 		regval |= LOGICVC_LAYER_CTRL_COLOR_TRANSPARENCY_BIT;
 		break;
-	case LOGICVC_LAYER_CTRL_COLOR_TRANSP_ENABLE:
+	case LOGICVC_LAYER_COLOR_TRANSPARENCY_ENABLE:
 		regval &= ~LOGICVC_LAYER_CTRL_COLOR_TRANSPARENCY_BIT;
 		break;
-	case LOGICVC_LAYER_CTRL_PIXEL_FORMAT_NORMAL:
-		regval &= ~LOGICVC_LAYER_CTRL_PIXEL_FORMAT_MASK;
-		regval |= LOGICVC_LAYER_CTRL_PIXEL_FORMAT_BITS_ARGB;
+	case LOGICVC_LAYER_INTERLACE_DISABLE:
+		regval |= LOGICVC_LAYER_CTRL_INTERLACE_BIT;
 		break;
-	case LOGICVC_LAYER_CTRL_PIXEL_FORMAT_ANDROID:
-		regval &= ~LOGICVC_LAYER_CTRL_PIXEL_FORMAT_MASK;
-		regval |= LOGICVC_LAYER_CTRL_PIXEL_FORMAT_BITS_ABGR;
+	case LOGICVC_LAYER_INTERLACE_ENABLE:
+		regval &= ~LOGICVC_LAYER_CTRL_INTERLACE_BIT;
 		break;
-	case LOGICVC_LAYER_CTRL_NONE:
+	case LOGICVC_LAYER_PIXEL_FORMAT_ABGR_DISABLE:
+		regval &= ~LOGICVC_LAYER_CTRL_PIXEL_FORMAT_BIT_ABGR;
+		break;
+	case LOGICVC_LAYER_PIXEL_FORMAT_ABGR_ENABLE:
+		regval |= LOGICVC_LAYER_CTRL_PIXEL_FORMAT_BIT_ABGR;
+		break;
 	default:
 		return;
 	}
