@@ -29,10 +29,21 @@
 #include "xylon_logicvc_helper.h"
 #include "xylon_logicvc_layer.h"
 #include "xylon_plane.h"
+#include "xylon_property.h"
+
+struct xylon_drm_plane_properties {
+	struct drm_property *control;
+	struct drm_property *color_transparency;
+	struct drm_property *interlace;
+	struct drm_property *pixel_format;
+	struct drm_property *transparency;
+	struct drm_property *transparent_color;
+};
 
 struct xylon_drm_plane {
 	struct drm_plane base;
 	struct xylon_drm_plane_manager *manager;
+	struct xylon_drm_plane_properties properties;
 	dma_addr_t paddr;
 	u32 format;
 	u32 x;
@@ -185,9 +196,40 @@ void xylon_drm_plane_destroy(struct drm_plane *base_plane)
 
 static int xylon_drm_plane_set_property(struct drm_plane *base_plane,
 					struct drm_property *property,
-					u64 val)
+					u64 value)
 {
-	return -EINVAL;
+	struct xylon_drm_plane *plane = to_xylon_plane(base_plane);
+	struct xylon_drm_plane_properties *props = &plane->properties;
+	struct xylon_drm_plane_op op;
+	unsigned int val = (unsigned int)value;
+
+	if (property == props->control) {
+		if (val)
+			xylon_drm_plane_dpms(base_plane, DRM_MODE_DPMS_ON);
+		else
+			xylon_drm_plane_dpms(base_plane, DRM_MODE_DPMS_OFF);
+	} else if (property == props->color_transparency) {
+		op.id = XYLON_DRM_PLANE_OP_ID_COLOR_TRANSPARENCY,
+		op.param = (bool)val;
+	} else if (property == props->interlace) {
+		op.id = XYLON_DRM_PLANE_OP_ID_INTERLACE;
+		op.param = (bool)val;
+	} else if (property == props->pixel_format) {
+		op.id = XYLON_DRM_PLANE_OP_ID_PIXEL_FORMAT;
+		op.param = (bool)val;
+	} else if (property == props->transparency) {
+		op.id = XYLON_DRM_PLANE_OP_ID_TRANSPARENCY;
+		op.param = (u32)val;
+	} else if (property == props->transparent_color) {
+		op.id = XYLON_DRM_PLANE_OP_ID_TRANSPARENT_COLOR;
+		op.param = (u32)val;
+	} else {
+		return -EINVAL;
+	}
+
+	xylon_drm_plane_op(base_plane, &op);
+
+	return 0;
 }
 
 static struct drm_plane_funcs xylon_drm_plane_funcs = {
@@ -196,6 +238,65 @@ static struct drm_plane_funcs xylon_drm_plane_funcs = {
 	.destroy = xylon_drm_plane_destroy,
 	.set_property = xylon_drm_plane_set_property,
 };
+
+static int xylon_drm_plane_create_properties(struct drm_plane *base_plane)
+{
+	struct drm_device *dev = base_plane->dev;
+	struct drm_mode_object *obj = &base_plane->base;
+	struct xylon_drm_plane *plane = to_xylon_plane(base_plane);
+	struct xylon_drm_plane_properties *props = &plane->properties;
+	int size;
+	bool last_plane = xylon_cvc_get_info(plane->manager->cvc,
+					     LOGICVC_INFO_LAST_LAYER,
+					     plane->id);
+
+	size = xylon_drm_property_size(property_control);
+	if (xylon_drm_property_create_list(dev, obj,
+					   &props->control,
+					   property_control,
+					   "control",
+					   size))
+		return -EINVAL;
+	size = xylon_drm_property_size(property_color_transparency);
+	if (xylon_drm_property_create_list(dev, obj,
+					   &props->color_transparency,
+					   property_color_transparency,
+					   "color_transparency",
+					   size))
+		return -EINVAL;
+	size = xylon_drm_property_size(property_interlace);
+	if (xylon_drm_property_create_list(dev, obj,
+					   &props->interlace,
+					   property_interlace,
+					   "interlace",
+					   size))
+		return -EINVAL;
+	size = xylon_drm_property_size(property_pixel_format);
+	if (xylon_drm_property_create_list(dev, obj,
+					   &props->pixel_format,
+					   property_pixel_format,
+					   "pixel_format",
+					   size))
+		return -EINVAL;
+	if (!last_plane &&
+	    xylon_drm_property_create_range(dev, obj,
+					    &props->transparency,
+					    "transparency",
+					    XYLON_DRM_PROPERTY_ALPHA_MIN,
+					    XYLON_DRM_PROPERTY_ALPHA_MAX,
+					    XYLON_DRM_PROPERTY_ALPHA_MAX))
+		return -EINVAL;
+	if (!last_plane &&
+	    xylon_drm_property_create_range(dev, obj,
+					    &props->transparent_color,
+					    "transparent_color",
+					    XYLON_DRM_PROPERTY_COLOR_MIN,
+					    XYLON_DRM_PROPERTY_COLOR_MAX,
+					    XYLON_DRM_PROPERTY_COLOR_MIN))
+		return -EINVAL;
+
+	return 0;
+}
 
 struct drm_plane *
 xylon_drm_plane_create(struct xylon_drm_plane_manager *manager,
@@ -238,6 +339,8 @@ xylon_drm_plane_create(struct xylon_drm_plane_manager *manager,
 	}
 	plane->manager = manager;
 	manager->plane[i] = plane;
+
+	xylon_drm_plane_create_properties(&plane->base);
 
 	return &plane->base;
 

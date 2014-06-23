@@ -32,13 +32,8 @@
 #include "xylon_drv.h"
 #include "xylon_logicvc_helper.h"
 #include "xylon_logicvc_hw.h"
-#include "xylon_logicvc_layer.h"
 #include "xylon_plane.h"
-
-#define XYLON_DRM_PROPERTY_ALPHA_MIN 0
-#define XYLON_DRM_PROPERTY_ALPHA_MAX 255
-#define XYLON_DRM_PROPERTY_COLOR_MIN 0
-#define XYLON_DRM_PROPERTY_COLOR_MAX 0xFFFFFFFF
+#include "xylon_property.h"
 
 struct xylon_drm_crtc_properties {
 	struct drm_property *bg_color;
@@ -68,41 +63,6 @@ struct xylon_drm_crtc {
 };
 
 #define to_xylon_crtc(x) container_of(x, struct xylon_drm_crtc, base)
-
-static const struct drm_prop_enum_list property_layer_update[] = {
-	{ 0, "Layer Update Enable" },
-	{ 1, "Layer Update Disable" }
-};
-
-static const struct drm_prop_enum_list property_pixel_data_polarity[] = {
-	{ 0, "Pixel Data Polarity Normal" },
-	{ 1, "Pixel Data Polarity Invert" }
-};
-
-static const struct drm_prop_enum_list property_pixel_data_trigger[] = {
-	{ 0, "Pixel Data Trigger Falling" },
-	{ 1, "Pixel Data Trigger Rising" }
-};
-
-static const struct drm_prop_enum_list property_control[] = {
-	{ 0, "Plane Disable" },
-	{ 1, "Plane Enable" }
-};
-
-static const struct drm_prop_enum_list property_color_transparency[] = {
-	{ 0, "Plane Color Transparency Disable" },
-	{ 1, "Plane Color Transparency Enable" }
-};
-
-static const struct drm_prop_enum_list property_interlace[] = {
-	{ 0, "Plane Interlace Disable" },
-	{ 1, "Plane Interlace Enable" }
-};
-
-static const struct drm_prop_enum_list property_pixel_format[] = {
-	{ 0, "Plane ABGR Format Disable" },
-	{ 1, "Plane ABGR Format Enable" }
-};
 
 static int xylon_drm_crtc_clk_set(struct xylon_drm_crtc *crtc)
 {
@@ -489,43 +449,6 @@ int xylon_drm_crtc_get_param(struct drm_crtc *base_crtc, unsigned int *p,
 	return 0;
 }
 
-static int xylon_drm_property_create_list(struct drm_device *dev,
-					  struct drm_mode_object *obj,
-					  struct drm_property **prop,
-					  const struct drm_prop_enum_list *list,
-					  const char *name,
-					  int size)
-{
-	if (*prop)
-		return 0;
-
-	*prop = drm_property_create_enum(dev, 0, name, list, size);
-	if (*prop == NULL)
-		return -EINVAL;
-
-	drm_object_attach_property(obj, *prop, 0);
-
-	return 0;
-}
-
-static int xylon_drm_property_create_range(struct drm_device *dev,
-					   struct drm_mode_object *obj,
-					   struct drm_property **prop,
-					   const char *name,
-					   u64 min, u64 max, u64 init)
-{
-	if (*prop)
-		return 0;
-
-	*prop = drm_property_create_range(dev, 0, name, min, max);
-	if (*prop == NULL)
-		return -EINVAL;
-
-	drm_object_attach_property(obj, *prop, init);
-
-	return 0;
-}
-
 static int xylon_drm_crtc_create_properties(struct drm_crtc *base_crtc)
 {
 	struct drm_device *dev = base_crtc->dev;
@@ -540,49 +463,49 @@ static int xylon_drm_crtc_create_properties(struct drm_crtc *base_crtc)
 					  0);
 	int size;
 
-	size = ARRAY_SIZE(property_layer_update);
+	size = xylon_drm_property_size(property_layer_update);
 	if (xylon_drm_property_create_list(dev, obj,
 					   &props->layer_update,
 					   property_layer_update,
 					   "layer_update",
 					   size))
 		return -EINVAL;
-	size = ARRAY_SIZE(property_pixel_data_polarity);
+	size = xylon_drm_property_size(property_pixel_data_polarity);
 	if (xylon_drm_property_create_list(dev, obj,
 					   &props->pixel_data_polarity,
 					   property_pixel_data_polarity,
 					   "pixel_data_polarity",
 					   size))
 		return -EINVAL;
-	size = ARRAY_SIZE(property_pixel_data_trigger);
+	size = xylon_drm_property_size(property_pixel_data_trigger);
 	if (xylon_drm_property_create_list(dev, obj,
 					   &props->pixel_data_trigger,
 					   property_pixel_data_trigger,
 					   "pixel_data_trigger",
 					   size))
 		return -EINVAL;
-	size = ARRAY_SIZE(property_control);
+	size = xylon_drm_property_size(property_control);
 	if (xylon_drm_property_create_list(dev, obj,
 					   &props->control,
 					   property_control,
 					   "control",
 					   size))
 		return -EINVAL;
-	size = ARRAY_SIZE(property_color_transparency);
+	size = xylon_drm_property_size(property_color_transparency);
 	if (xylon_drm_property_create_list(dev, obj,
 					   &props->color_transparency,
 					   property_color_transparency,
 					   "color_transparency",
 					   size))
 		return -EINVAL;
-	size = ARRAY_SIZE(property_interlace);
+	size = xylon_drm_property_size(property_interlace);
 	if (xylon_drm_property_create_list(dev, obj,
 					   &props->interlace,
 					   property_interlace,
 					   "interlace",
 					   size))
 		return -EINVAL;
-	size = ARRAY_SIZE(property_pixel_format);
+	size = xylon_drm_property_size(property_pixel_format);
 	if (xylon_drm_property_create_list(dev, obj,
 					   &props->pixel_format,
 					   property_pixel_format,
