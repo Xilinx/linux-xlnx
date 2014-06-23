@@ -50,20 +50,4 @@ void xylon_cvc_layer_ctrl(struct xylon_cvc *cvc, int id, int op);
 
 void xylon_cvc_set_hw_color(struct xylon_cvc *cvc, int id, u32 color);
 
-void xylon_cvc_int_state(struct xylon_cvc *cvc, unsigned int type,
-			 bool enabled);
-u32 xylon_cvc_int_get_active(struct xylon_cvc *cvc);
-void xylon_cvc_int_clear_active(struct xylon_cvc *cvc, u32 active);
-void xylon_cvc_int_hw_enable(struct xylon_cvc *cvc);
-void xylon_cvc_int_hw_disable(struct xylon_cvc *cvc);
-int xylon_cvc_int_request(struct xylon_cvc *cvc, unsigned long flags,
-			  irq_handler_t handler, void *dev);
-void xylon_cvc_int_free(struct xylon_cvc *cvc, void *dev);
-
-void xylon_cvc_reset(struct xylon_cvc *cvc);
-void xylon_cvc_enable(struct xylon_cvc *cvc, struct videomode *vmode);
-void xylon_cvc_disable(struct xylon_cvc *cvc);
-
-struct xylon_cvc *xylon_cvc_probe(struct device *dev, struct device_node *node);
-
 #endif /* _XYLON_LOGICVC_H_ */
