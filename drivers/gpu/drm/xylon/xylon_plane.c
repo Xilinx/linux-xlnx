@@ -312,49 +312,41 @@ int xylon_drm_plane_op(struct drm_plane *base_plane,
 	struct xylon_drm_plane_manager *manager = plane->manager;
 	struct xylon_cvc *cvc = manager->cvc;
 	int id = plane->id;
-	int param = 0;
+	int par;
 
 	switch (op->id) {
-	case XYLON_DRM_PLANE_OP_ID_CTRL:
-		switch (op->sid) {
-		case XYLON_DRM_PLANE_OP_SID_CTRL_COLOR_TRANSPARENCY:
-			switch (op->param) {
-			case XYLON_DRM_PLANE_OP_DISABLE:
-				param = LOGICVC_LAYER_COLOR_TRANSPARENCY_DISABLE;
-				break;
-			case XYLON_DRM_PLANE_OP_ENABLE:
-				param = LOGICVC_LAYER_COLOR_TRANSPARENCY_ENABLE;
-				break;
-			}
-			break;
-		case XYLON_DRM_PLANE_OP_SID_CTRL_PIXEL_FORMAT:
-			switch (op->param) {
-			case XYLON_DRM_PLANE_OP_PIXEL_FORMAT_NORMAL:
-				param = LOGICVC_LAYER_PIXEL_FORMAT_ABGR_DISABLE;
-				break;
-			case XYLON_DRM_PLANE_OP_PIXEL_FORMAT_ANDROID:
-				param = LOGICVC_LAYER_PIXEL_FORMAT_ABGR_ENABLE;
-				break;
-			}
-			break;
-		default:
-			return -EINVAL;
-		}
-		xylon_cvc_layer_ctrl(cvc, id, param);
-		break;
+	case XYLON_DRM_PLANE_OP_ID_BACKGROUND_COLOR:
+		xylon_cvc_layer_set_color_reg(cvc,
+					      BACKGROUND_LAYER_ID,
+					      op->param);
+		return 0;
 	case XYLON_DRM_PLANE_OP_ID_TRANSPARENCY:
 		xylon_cvc_layer_set_alpha(cvc, id, op->param);
-		break;
+		return 0;
 	case XYLON_DRM_PLANE_OP_ID_TRANSPARENT_COLOR:
 		xylon_cvc_layer_set_color_reg(cvc, id, op->param);
+		return 0;
+	case XYLON_DRM_PLANE_OP_ID_COLOR_TRANSPARENCY:
+		if (op->param)
+			par = LOGICVC_LAYER_COLOR_TRANSPARENCY_ENABLE;
+		else
+			par = LOGICVC_LAYER_COLOR_TRANSPARENCY_DISABLE;
 		break;
-	case XYLON_DRM_PLANE_OP_ID_BACKGORUND_COLOR:
-		xylon_cvc_layer_set_color_reg(cvc, BACKGROUND_LAYER_ID,
-					      op->param);
+	case XYLON_DRM_PLANE_OP_ID_INTERLACE:
+		if (op->param)
+			par = LOGICVC_LAYER_INTERLACE_ENABLE;
+		else
+			par = LOGICVC_LAYER_INTERLACE_DISABLE;
 		break;
-	default:
-		return -EINVAL;
+	case XYLON_DRM_PLANE_OP_ID_PIXEL_FORMAT:
+		if (op->param)
+			par = LOGICVC_LAYER_PIXEL_FORMAT_ABGR_ENABLE;
+		else
+			par = LOGICVC_LAYER_PIXEL_FORMAT_ABGR_DISABLE;
+		break;
 	}
+
+	xylon_cvc_layer_ctrl(cvc, id, par);
 
 	return 0;
 }
