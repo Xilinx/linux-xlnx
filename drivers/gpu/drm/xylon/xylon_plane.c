@@ -26,8 +26,8 @@
 
 #include "xylon_drv.h"
 #include "xylon_fb.h"
-#include "xylon_logicvc.h"
 #include "xylon_logicvc_helper.h"
+#include "xylon_logicvc_layer.h"
 #include "xylon_plane.h"
 
 struct xylon_drm_plane {

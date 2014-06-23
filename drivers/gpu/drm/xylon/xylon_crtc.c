@@ -30,9 +30,9 @@
 
 #include "xylon_crtc.h"
 #include "xylon_drv.h"
-#include "xylon_logicvc.h"
-#include "xylon_logicvc_hw.h"
 #include "xylon_logicvc_helper.h"
+#include "xylon_logicvc_hw.h"
+#include "xylon_logicvc_layer.h"
 #include "xylon_plane.h"
 
 #define XYLON_DRM_CRTC_ALPHA_MIN 0
