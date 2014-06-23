@@ -27,8 +27,6 @@
 #include "xylon_connector.h"
 #include "xylon_drv.h"
 
-#define CLOCK_HIGH_LIMIT 165000
-
 struct xylon_drm_connector {
 	struct drm_connector base;
 	struct drm_encoder *encoder;
