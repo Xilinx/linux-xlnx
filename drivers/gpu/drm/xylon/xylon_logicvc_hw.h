@@ -41,7 +41,6 @@ int xylon_cvc_int_request(struct xylon_cvc *cvc, unsigned long flags,
 			  irq_handler_t handler, void *dev);
 void xylon_cvc_int_free(struct xylon_cvc *cvc, void *dev);
 
-void xylon_cvc_reset(struct xylon_cvc *cvc);
 void xylon_cvc_enable(struct xylon_cvc *cvc, struct videomode *vmode);
 void xylon_cvc_disable(struct xylon_cvc *cvc);
 
