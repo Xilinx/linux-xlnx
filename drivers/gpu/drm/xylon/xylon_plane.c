@@ -78,15 +78,20 @@ xylon_drm_plane_set_parameters(struct xylon_drm_plane *plane,
 
 void xylon_drm_plane_dpms(struct drm_plane *base_plane, int dpms)
 {
+	struct drm_mode_object *obj = &base_plane->base;
 	struct xylon_drm_plane *plane = to_xylon_plane(base_plane);
 	struct xylon_drm_plane_manager *manager = plane->manager;
 
 	switch (dpms) {
 	case DRM_MODE_DPMS_ON:
 		xylon_cvc_layer_enable(manager->cvc, plane->id);
+		drm_object_property_set_value(obj, plane->properties.control,
+					      1);
 		break;
 	default:
 		xylon_cvc_layer_disable(manager->cvc, plane->id);
+		drm_object_property_set_value(obj, plane->properties.control,
+					      0);
 		break;
 	}
 }
@@ -298,6 +303,20 @@ static int xylon_drm_plane_create_properties(struct drm_plane *base_plane)
 	return 0;
 }
 
+static void
+xylon_drm_plane_properties_initial_value(struct drm_plane *base_plane)
+{
+	struct drm_mode_object *obj = &base_plane->base;
+	struct xylon_drm_plane *plane = to_xylon_plane(base_plane);
+	struct xylon_drm_plane_properties *props = &plane->properties;
+	bool val;
+
+	val = xylon_cvc_get_info(plane->manager->cvc,
+				 LOGICVC_INFO_LAYER_COLOR_TRANSPARENCY,
+				 plane->id);
+	drm_object_property_set_value(obj, props->color_transparency, val);
+}
+
 struct drm_plane *
 xylon_drm_plane_create(struct xylon_drm_plane_manager *manager,
 		       unsigned int possible_crtcs, bool priv, int priv_id)
@@ -341,6 +360,8 @@ xylon_drm_plane_create(struct xylon_drm_plane_manager *manager,
 	manager->plane[i] = plane;
 
 	xylon_drm_plane_create_properties(&plane->base);
+
+	xylon_drm_plane_properties_initial_value(&plane->base);
 
 	return &plane->base;
 

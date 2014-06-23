@@ -81,6 +81,7 @@ static int xylon_drm_crtc_clk_set(struct xylon_drm_crtc *crtc)
 
 static void xylon_drm_crtc_dpms(struct drm_crtc *base_crtc, int dpms)
 {
+	struct drm_mode_object *obj = &base_crtc->base;
 	struct xylon_drm_crtc *crtc = to_xylon_crtc(base_crtc);
 
 	if (crtc->dpms == dpms)
@@ -92,9 +93,11 @@ static void xylon_drm_crtc_dpms(struct drm_crtc *base_crtc, int dpms)
 	case DRM_MODE_DPMS_ON:
 	case DRM_MODE_DPMS_STANDBY:
 		xylon_drm_plane_dpms(crtc->private, dpms);
+		drm_object_property_set_value(obj, crtc->properties.control, 1);
 		break;
 	default:
 		xylon_cvc_disable(crtc->cvc);
+		drm_object_property_set_value(obj, crtc->properties.control, 0);
 		break;
 	}
 }
@@ -540,6 +543,29 @@ static int xylon_drm_crtc_create_properties(struct drm_crtc *base_crtc)
 	return 0;
 }
 
+static void xylon_drm_crtc_properties_initial_value(struct drm_crtc *base_crtc)
+{
+	struct drm_mode_object *obj = &base_crtc->base;
+	struct xylon_drm_crtc *crtc = to_xylon_crtc(base_crtc);
+	struct xylon_drm_crtc_properties *props = &crtc->properties;
+	bool val;
+
+	val = xylon_cvc_get_info(crtc->cvc,
+				 LOGICVC_INFO_LAYER_COLOR_TRANSPARENCY,
+				 crtc->private_id);
+	drm_object_property_set_value(obj, props->color_transparency, val);
+
+	val = xylon_cvc_get_info(crtc->cvc, LOGICVC_INFO_LAYER_UPDATE, 0);
+	drm_object_property_set_value(obj, props->layer_update, val);
+
+	val = xylon_cvc_get_info(crtc->cvc, LOGICVC_INFO_PIXEL_DATA_INVERT, 0);
+	drm_object_property_set_value(obj, props->pixel_data_polarity, val);
+
+	val = xylon_cvc_get_info(crtc->cvc,
+				 LOGICVC_INFO_PIXEL_DATA_TRIGGER_INVERT, 0);
+	drm_object_property_set_value(obj, props->pixel_data_trigger, val);
+}
+
 struct drm_crtc *xylon_drm_crtc_create(struct drm_device *dev)
 {
 	struct device_node *sub_node;
@@ -609,6 +635,8 @@ struct drm_crtc *xylon_drm_crtc_create(struct drm_device *dev)
 		DRM_ERROR("failed initialize crtc properties\n");
 		goto err_out;
 	}
+
+	xylon_drm_crtc_properties_initial_value(&crtc->base);
 
 	return &crtc->base;
 

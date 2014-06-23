@@ -855,6 +855,9 @@ static void xylon_cvc_init_ctrl(struct device_node *dn, u32 *ctrl)
 bool xylon_cvc_get_info(struct xylon_cvc *cvc, enum xylon_cvc_info info,
 			unsigned int param)
 {
+	struct xylon_cvc_layer_data *layer_data;
+	struct xylon_cvc_register_access *reg_access;
+
 	switch (info) {
 	case LOGICVC_INFO_BACKGROUND_LAYER:
 		if (cvc->flags & LOGICVC_FLAGS_BACKGROUND_LAYER)
@@ -862,6 +865,27 @@ bool xylon_cvc_get_info(struct xylon_cvc *cvc, enum xylon_cvc_info info,
 		break;
 	case LOGICVC_INFO_LAST_LAYER:
 		if (param == (cvc->layers - 1))
+			return true;
+		break;
+	case LOGICVC_INFO_LAYER_COLOR_TRANSPARENCY:
+		layer_data = cvc->layer_data[param];
+		reg_access = &cvc->reg_access;
+		if (!(reg_access->xylon_cvc_get_reg_val(layer_data->base,
+							LOGICVC_LAYER_CTRL_ROFF,
+							layer_data) &
+		    LOGICVC_LAYER_CTRL_COLOR_TRANSPARENCY_BIT))
+			return true;
+		break;
+	case LOGICVC_INFO_LAYER_UPDATE:
+		if (!(cvc->ctrl & LOGICVC_CTRL_DISABLE_LAYER_UPDATE))
+			return true;
+		break;
+	case LOGICVC_INFO_PIXEL_DATA_INVERT:
+		if (cvc->ctrl & LOGICVC_CTRL_PIXEL_DATA_INVERT)
+			return true;
+		break;
+	case LOGICVC_INFO_PIXEL_DATA_TRIGGER_INVERT:
+		if (cvc->ctrl & LOGICVC_CTRL_PIXEL_DATA_TRIGGER_INVERT)
 			return true;
 		break;
 	}
