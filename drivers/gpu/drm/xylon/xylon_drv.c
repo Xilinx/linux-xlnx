@@ -37,8 +37,8 @@
 
 #define DRIVER_NAME "xylon-drm"
 #define DRIVER_DESCRIPTION "Xylon DRM driver for logiCVC IP core"
-#define DRIVER_VERSION "1.0"
-#define DRIVER_DATE "20140210"
+#define DRIVER_VERSION "1.1"
+#define DRIVER_DATE "20140701"
 
 #define DRIVER_MAJOR 1
 #define DRIVER_MINOR 0
@@ -130,7 +130,7 @@ err_crtc:
 	drm_mode_config_cleanup(dev);
 
 	if (ret == -EPROBE_DEFER)
-		DRM_INFO("driver load defered, will be called again\n");
+		DRM_INFO("driver load deferred, will be called again\n");
 
 	return ret;
 }
