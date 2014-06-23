@@ -28,9 +28,9 @@
 #include <video/videomode.h>
 
 #include "xylon_drv.h"
-#include "xylon_logicvc.h"
-#include "xylon_logicvc_hw.h"
 #include "xylon_logicvc_helper.h"
+#include "xylon_logicvc_hw.h"
+#include "xylon_logicvc_layer.h"
 
 /*
  * All logiCVC registers are only 32-bit accessible.

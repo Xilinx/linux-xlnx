@@ -1,5 +1,5 @@
 /*
- * Xylon DRM driver logiCVC header
+ * Xylon DRM driver logiCVC layer header
  *
  * Copyright (C) 2014 Xylon d.o.o.
  * Author: Davor Joja <davor.joja@logicbricks.com>
@@ -14,8 +14,8 @@
  * GNU General Public License for more details.
  */
 
-#ifndef _XYLON_LOGICVC_H_
-#define _XYLON_LOGICVC_H_
+#ifndef _XYLON_LOGICVC_LAYER_H_
+#define _XYLON_LOGICVC_LAYER_H_
 
 enum xylon_cvc_layer_ctrl_cmd {
 	LOGICVC_LAYER_CTRL_NONE,
@@ -50,4 +50,4 @@ void xylon_cvc_layer_ctrl(struct xylon_cvc *cvc, int id, int op);
 
 void xylon_cvc_set_hw_color(struct xylon_cvc *cvc, int id, u32 color);
 
-#endif /* _XYLON_LOGICVC_H_ */
+#endif /* _XYLON_LOGICVC_LAYER_H_ */
