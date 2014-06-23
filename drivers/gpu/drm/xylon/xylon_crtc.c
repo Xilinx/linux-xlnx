@@ -35,10 +35,10 @@
 #include "xylon_logicvc_layer.h"
 #include "xylon_plane.h"
 
-#define XYLON_DRM_CRTC_ALPHA_MIN 0
-#define XYLON_DRM_CRTC_ALPHA_MAX 255
-#define XYLON_DRM_CRTC_COLOR_MIN 0
-#define XYLON_DRM_CRTC_COLOR_MAX 0xFFFFFFFF
+#define XYLON_DRM_PROPERTY_ALPHA_MIN 0
+#define XYLON_DRM_PROPERTY_ALPHA_MAX 255
+#define XYLON_DRM_PROPERTY_COLOR_MIN 0
+#define XYLON_DRM_PROPERTY_COLOR_MAX 0xFFFFFFFF
 
 struct xylon_drm_crtc_properties {
 	struct drm_property *ctrl;
@@ -517,39 +517,39 @@ static int xylon_drm_crtc_create_properties(struct drm_crtc *base_crtc)
 	prop = crtc->properties.transparency;
 	if (!prop) {
 		prop = drm_property_create_range(dev, 0, "transparency",
-						 XYLON_DRM_CRTC_ALPHA_MIN,
-						 XYLON_DRM_CRTC_ALPHA_MAX);
+						 XYLON_DRM_PROPERTY_ALPHA_MIN,
+						 XYLON_DRM_PROPERTY_ALPHA_MAX);
 		if (!prop)
 			goto err_property;
 
 		drm_object_attach_property(&base_crtc->base, prop,
-					   XYLON_DRM_CRTC_ALPHA_MAX);
+					   XYLON_DRM_PROPERTY_ALPHA_MAX);
 
 		crtc->properties.transparency = prop;
 	}
 	prop = crtc->properties.transparent_color;
 	if (!prop) {
 		prop = drm_property_create_range(dev, 0, "transparent_color",
-						 XYLON_DRM_CRTC_COLOR_MIN,
-						 XYLON_DRM_CRTC_COLOR_MAX);
+						 XYLON_DRM_PROPERTY_COLOR_MIN,
+						 XYLON_DRM_PROPERTY_COLOR_MAX);
 		if (!prop)
 			goto err_property;
 
 		drm_object_attach_property(&base_crtc->base, prop,
-					   XYLON_DRM_CRTC_COLOR_MIN);
+					   XYLON_DRM_PROPERTY_COLOR_MIN);
 
 		crtc->properties.transparent_color = prop;
 	}
 	prop = crtc->properties.bg_color;
 	if (!prop) {
 		prop = drm_property_create_range(dev, 0, "background_color",
-						 XYLON_DRM_CRTC_COLOR_MIN,
-						 XYLON_DRM_CRTC_COLOR_MAX);
+						 XYLON_DRM_PROPERTY_COLOR_MIN,
+						 XYLON_DRM_PROPERTY_COLOR_MAX);
 		if (!prop)
 			goto err_property;
 
 		drm_object_attach_property(&base_crtc->base, prop,
-					   XYLON_DRM_CRTC_COLOR_MIN);
+					   XYLON_DRM_PROPERTY_COLOR_MIN);
 
 		crtc->properties.bg_color = prop;
 	}
