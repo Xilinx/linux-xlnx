@@ -197,7 +197,7 @@ struct xylon_cvc_layer_fix_data {
 	unsigned int id;
 	u32 address;
 	u32 bpp;
-	u32 format;
+	u32 type;
 	u32 transparency;
 	u32 width;
 };
@@ -309,7 +309,7 @@ u32 xylon_cvc_layer_get_format(struct xylon_cvc *cvc, int id)
 	u32 bpp = layer_data->fix_data.bpp;
 	u32 transp = layer_data->fix_data.transparency;
 
-	switch (layer_data->fix_data.format) {
+	switch (layer_data->fix_data.type) {
 	case LOGICVC_LAYER_RGB:
 		if (bpp == 16 && transp == LOGICVC_ALPHA_LAYER)
 			drm_format = DRM_FORMAT_RGB565;
@@ -724,10 +724,10 @@ static int xylon_parse_hw_info(struct device *dev,
 		}
 		cvc->flags |= LOGICVC_FLAGS_BACKGROUND_LAYER;
 
-		ret = of_property_read_string(dn, "background-layer-format",
+		ret = of_property_read_string(dn, "background-layer-type",
 					      &string);
 		if (ret) {
-			DRM_ERROR("failed get bg-layer-format\n");
+			DRM_ERROR("failed get bg-layer-type\n");
 			return ret;
 		}
 		if (!strcmp(string, "rgb")) {
@@ -735,7 +735,7 @@ static int xylon_parse_hw_info(struct device *dev,
 		} else if (!strcmp(string, "yuv")) {
 			cvc->flags |= LOGICVC_FLAGS_BACKGROUND_LAYER_YUV;
 		} else {
-			DRM_ERROR("unsupported bg layer format\n");
+			DRM_ERROR("unsupported bg layer type\n");
 			return -EINVAL;
 		}
 	}
@@ -802,17 +802,17 @@ static int xylonfb_parse_layer_info(struct device *dev,
 		return ret;
 	}
 
-	ret = of_property_read_string(dn, "format", &string);
+	ret = of_property_read_string(dn, "type", &string);
 	if (ret) {
-		DRM_ERROR("failed get format\n");
+		DRM_ERROR("failed get type\n");
 		return ret;
 	}
 	if (!strcmp(string, "rgb")) {
-		layer_data->fix_data.format = LOGICVC_LAYER_RGB;
+		layer_data->fix_data.type = LOGICVC_LAYER_RGB;
 	} else if (!strcmp(string, "yuv")) {
-		layer_data->fix_data.format = LOGICVC_LAYER_YUV;
+		layer_data->fix_data.type = LOGICVC_LAYER_YUV;
 	} else {
-		DRM_ERROR("unsupported layer format\n");
+		DRM_ERROR("unsupported layer type\n");
 		return -EINVAL;
 	}
 
