@@ -345,10 +345,11 @@ int xylon_drm_plane_op(struct drm_plane *base, struct xylon_drm_plane_op *op)
 		xylon_cvc_layer_set_alpha(cvc, id, op->param);
 		break;
 	case XYLON_DRM_PLANE_OP_ID_TRANSPARENT_COLOR:
-		xylon_cvc_set_hw_color(cvc, id, op->param);
+		xylon_cvc_layer_set_color_reg(cvc, id, op->param);
 		break;
 	case XYLON_DRM_PLANE_OP_ID_BACKGORUND_COLOR:
-		xylon_cvc_set_hw_color(cvc, BACKGROUND_LAYER_ID, op->param);
+		xylon_cvc_layer_set_color_reg(cvc, BACKGROUND_LAYER_ID,
+					      op->param);
 		break;
 	default:
 		return -EINVAL;
@@ -371,7 +372,7 @@ xylon_drm_plane_probe_manager(struct drm_device *drm_dev,
 
 	manager->dev = drm_dev;
 	manager->cvc = cvc;
-	manager->planes = xylon_cvc_get_layers_num(cvc);
+	manager->planes = xylon_cvc_layer_get_total_count(cvc);
 
 	plane = devm_kzalloc(dev, sizeof(**plane) * manager->planes,
 			     GFP_KERNEL);
