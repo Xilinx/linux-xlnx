@@ -318,7 +318,7 @@ static void xylon_cvc_set_reg_mem(u32 value, void __iomem *base,
 	writel((*reg_mem), base + offset);
 }
 
-unsigned int xylon_cvc_get_layers_num(struct xylon_cvc *cvc)
+unsigned int xylon_cvc_layer_get_total_count(struct xylon_cvc *cvc)
 {
 	return cvc->layers;
 }
@@ -513,7 +513,7 @@ void xylon_cvc_layer_ctrl(struct xylon_cvc *cvc, int id, int op)
 					  layer_data);
 }
 
-void xylon_cvc_set_hw_color(struct xylon_cvc *cvc, int id, u32 color)
+void xylon_cvc_layer_set_color_reg(struct xylon_cvc *cvc, int id, u32 color)
 {
 	struct xylon_cvc_layer_data *layer_data;
 	void __iomem *base;

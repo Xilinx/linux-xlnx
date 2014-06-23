@@ -27,8 +27,7 @@ enum xylon_cvc_layer_ctrl_cmd {
 
 struct xylon_cvc;
 
-unsigned int xylon_cvc_get_layers_num(struct xylon_cvc *cvc);
-
+unsigned int xylon_cvc_layer_get_total_count(struct xylon_cvc *cvc);
 u32 xylon_cvc_layer_get_format(struct xylon_cvc *cvc, int id);
 unsigned int xylon_cvc_layer_get_bits_per_pixel(struct xylon_cvc *cvc, int id);
 void xylon_cvc_layer_set_alpha(struct xylon_cvc *cvc, int id, u8 alpha);
@@ -47,6 +46,6 @@ void xylon_cvc_layer_disable(struct xylon_cvc *cvc, int id);
 void xylon_cvc_layer_update(struct xylon_cvc *cvc, int id);
 void xylon_cvc_layer_ctrl(struct xylon_cvc *cvc, int id, int op);
 
-void xylon_cvc_set_hw_color(struct xylon_cvc *cvc, int id, u32 color);
+void xylon_cvc_layer_set_color_reg(struct xylon_cvc *cvc, int id, u32 color);
 
 #endif /* _XYLON_LOGICVC_LAYER_H_ */
