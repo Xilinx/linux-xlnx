@@ -646,9 +646,9 @@ void xylon_cvc_ctrl(struct xylon_cvc *cvc, enum xylon_cvc_control ctrl,
 	switch (ctrl) {
 	case LOGICVC_LAYER_UPDATE:
 		if (val)
-			cvc->ctrl |= LOGICVC_CTRL_DISABLE_LAYER_UPDATE;
-		else
 			cvc->ctrl &= ~LOGICVC_CTRL_DISABLE_LAYER_UPDATE;
+		else
+			cvc->ctrl |= LOGICVC_CTRL_DISABLE_LAYER_UPDATE;
 		break;
 	case LOGICVC_PIXEL_DATA_TRIGGER_INVERT:
 		if (val)
