@@ -128,10 +128,6 @@
 #define LOGICVC_LAYER_CTRL_PIXEL_FORMAT_BIT_ABGR	(1 << 4)
 
 /* logiCVC control registers initial values */
-#define LOGICVC_CTRL_REG_INIT \
-		(LOGICVC_CTRL_HSYNC | LOGICVC_CTRL_HSYNC_INVERT | \
-		 LOGICVC_CTRL_VSYNC | LOGICVC_CTRL_VSYNC_INVERT | \
-		 LOGICVC_CTRL_DATA_BLANK_SIGNAL)
 #define LOGICVC_DTYPE_REG_INIT 0
 
 /* logiCVC various definitions */
@@ -148,9 +144,17 @@
 #define LOGICVC_MAX_LINES	4096
 #define LOGICVC_MAX_LAYERS	5
 
-#define LOGICVC_FLAGS_READABLE_REGS	(1 << 0)
-#define LOGICVC_FLAGS_SIZE_POSITION	(1 << 1)
-#define LOGICVC_FLAGS_BACKGROUND_LAYER	(1 << 2)
+#define LOGICVC_FLAGS_READABLE_REGS		(1 << 0)
+#define LOGICVC_FLAGS_SIZE_POSITION		(1 << 1)
+#define LOGICVC_FLAGS_BACKGROUND_LAYER		(1 << 2)
+#define LOGICVC_FLAGS_BACKGROUND_LAYER_RGB	(1 << 3)
+#define LOGICVC_FLAGS_BACKGROUND_LAYER_YUV	(1 << 4)
+
+#define LOGICVC_COLOR_RGB_BLACK		0
+#define LOGICVC_COLOR_RGB_WHITE		0xFFFFFF
+#define LOGICVC_COLOR_RGB565_WHITE	0xFFFF
+#define LOGICVC_COLOR_YUV888_BLACK	0x8080
+#define LOGICVC_COLOR_YUV888_WHITE	0xFF8080
 
 enum xylon_cvc_layer_type {
 	LOGICVC_LAYER_RGB,
@@ -514,17 +518,35 @@ void xylon_cvc_layer_set_color_reg(struct xylon_cvc *cvc, int id, u32 color)
 
 	switch (layer_bpp) {
 	case 16:
-		r = color >> 16;
-		g = color >> 8;
-		b = color & 0xFF;
+		color &= LOGICVC_COLOR_RGB_WHITE;
+		if (cvc->flags & LOGICVC_FLAGS_BACKGROUND_LAYER_RGB &&
+		    (color != LOGICVC_COLOR_RGB_BLACK)) {
+			if (color != LOGICVC_COLOR_RGB_WHITE) {
+				r = color >> 16;
+				g = color >> 8;
+				b = color;
 
-		color = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) |
-			((b & 0xF8) >> 3);
+				color = ((r & 0xF8) << 8) |
+					((g & 0xFC) << 3) |
+					((b & 0xF8) >> 3);
+			} else {
+				color = LOGICVC_COLOR_RGB565_WHITE;
+			}
+		}
 		break;
 	case 32:
+		if (cvc->flags & LOGICVC_FLAGS_BACKGROUND_LAYER_YUV) {
+			if (color == LOGICVC_COLOR_RGB_BLACK)
+				color = LOGICVC_COLOR_YUV888_BLACK;
+			else if (color == LOGICVC_COLOR_RGB_WHITE)
+				color = LOGICVC_COLOR_YUV888_WHITE;
+		}
 		break;
 	default:
-		color = 0;
+		if (cvc->flags & LOGICVC_FLAGS_BACKGROUND_LAYER_YUV)
+			color = LOGICVC_COLOR_YUV888_BLACK;
+		else
+			color = LOGICVC_COLOR_RGB_BLACK;
 		DRM_INFO("unsupported bg layer bpp\n");
 		return;
 	}
@@ -616,6 +638,37 @@ void xylon_cvc_int_free(struct xylon_cvc *cvc, void *dev)
 	free_irq(cvc->irq, dev);
 }
 
+void xylon_cvc_ctrl(struct xylon_cvc *cvc, enum xylon_cvc_control ctrl,
+		    bool val)
+{
+	struct xylon_cvc_layer_data *layer_data = cvc->layer_data[0];
+
+	switch (ctrl) {
+	case LOGICVC_LAYER_UPDATE:
+		if (val)
+			cvc->ctrl |= LOGICVC_CTRL_DISABLE_LAYER_UPDATE;
+		else
+			cvc->ctrl &= ~LOGICVC_CTRL_DISABLE_LAYER_UPDATE;
+		break;
+	case LOGICVC_PIXEL_DATA_TRIGGER_INVERT:
+		if (val)
+			cvc->ctrl |= LOGICVC_CTRL_PIXEL_DATA_TRIGGER_INVERT;
+		else
+			cvc->ctrl &= ~LOGICVC_CTRL_PIXEL_DATA_TRIGGER_INVERT;
+		break;
+	case LOGICVC_PIXEL_DATA_INVERT:
+		if (val)
+			cvc->ctrl |= LOGICVC_CTRL_PIXEL_DATA_INVERT;
+		else
+			cvc->ctrl &= ~LOGICVC_CTRL_PIXEL_DATA_INVERT;
+		break;
+	}
+
+	cvc->reg_access.xylon_cvc_set_reg_val(cvc->ctrl, cvc->base,
+					      LOGICVC_CTRL_ROFF,
+					      layer_data);
+}
+
 void xylon_cvc_enable(struct xylon_cvc *cvc, struct videomode *vmode)
 {
 	void __iomem *base = cvc->base;
@@ -659,6 +712,7 @@ static int xylon_parse_hw_info(struct device *dev,
 			       struct device_node *dn, struct xylon_cvc *cvc)
 {
 	int ret;
+	const char *string;
 
 	if (of_property_read_bool(dn, "background-layer-bits-per-pixel")) {
 		ret = of_property_read_u32(dn,
@@ -669,6 +723,21 @@ static int xylon_parse_hw_info(struct device *dev,
 			return ret;
 		}
 		cvc->flags |= LOGICVC_FLAGS_BACKGROUND_LAYER;
+
+		ret = of_property_read_string(dn, "background-layer-format",
+					      &string);
+		if (ret) {
+			DRM_ERROR("failed get bg-layer-format\n");
+			return ret;
+		}
+		if (!strcmp(string, "rgb")) {
+			cvc->flags |= LOGICVC_FLAGS_BACKGROUND_LAYER_RGB;
+		} else if (!strcmp(string, "yuv")) {
+			cvc->flags |= LOGICVC_FLAGS_BACKGROUND_LAYER_YUV;
+		} else {
+			DRM_ERROR("unsupported bg layer format\n");
+			return -EINVAL;
+		}
 	}
 
 	if (of_property_read_bool(dn, "is-readable-regs"))
@@ -698,6 +767,7 @@ static int xylonfb_parse_layer_info(struct device *dev,
 	struct xylon_cvc_layer_data *layer_data;
 	int ret;
 	char layer_name[10];
+	const char *string;
 
 	snprintf(layer_name, sizeof(layer_name), "layer_%d", id);
 	dn = of_get_child_by_name(parent_dn, layer_name);
@@ -732,17 +802,32 @@ static int xylonfb_parse_layer_info(struct device *dev,
 		return ret;
 	}
 
-	ret = of_property_read_u32(dn, "format", &layer_data->fix_data.format);
+	ret = of_property_read_string(dn, "format", &string);
 	if (ret) {
 		DRM_ERROR("failed get format\n");
 		return ret;
 	}
+	if (!strcmp(string, "rgb")) {
+		layer_data->fix_data.format = LOGICVC_LAYER_RGB;
+	} else if (!strcmp(string, "yuv")) {
+		layer_data->fix_data.format = LOGICVC_LAYER_YUV;
+	} else {
+		DRM_ERROR("unsupported layer format\n");
+		return -EINVAL;
+	}
 
-	ret = of_property_read_u32(dn, "transparency",
-				   &layer_data->fix_data.transparency);
+	ret = of_property_read_string(dn, "transparency", &string);
 	if (ret) {
 		DRM_ERROR("failed get transparency\n");
 		return ret;
+	}
+	if (!strcmp(string, "layer")) {
+		layer_data->fix_data.transparency = LOGICVC_ALPHA_LAYER;
+	} else if (!strcmp(string, "pixel")) {
+		layer_data->fix_data.transparency = LOGICVC_ALPHA_PIXEL;
+	} else {
+		DRM_ERROR("unsupported layer transparency\n");
+		return -EINVAL;
 	}
 
 	layer_data->fix_data.width = cvc->pixel_stride;
@@ -750,26 +835,18 @@ static int xylonfb_parse_layer_info(struct device *dev,
 	return id + 1;
 }
 
-static void xylon_cvc_init_ctrl(struct device_node *node, u32 *ctrl)
+static void xylon_cvc_init_ctrl(struct device_node *dn, u32 *ctrl)
 {
-	u32 ctrl_reg = LOGICVC_CTRL_REG_INIT;
-	u32 pix_clk_act_high = 0;
-	u32 pix_data_invert = 0;
-	u32 sync = 0;
-	int ret;
+	u32 ctrl_reg = (LOGICVC_CTRL_HSYNC | LOGICVC_CTRL_VSYNC |
+			LOGICVC_CTRL_DATA_BLANK_SIGNAL);
 
-	ret = of_property_read_u32(node, "pixel-data-invert",
-				   &pix_data_invert);
-	ret = of_property_read_u32(node, "pixel-clock-active-high",
-				   &pix_clk_act_high);
-
-	if (!(sync & (1 << 0)))
-		ctrl_reg &= (~(1 << 1));
-	if (!(sync & (1 << 1)))
-		ctrl_reg &= (~(1 << 3));
-	if (pix_data_invert)
+	if (of_property_read_bool(dn, "is-hsync-active-low"))
+		ctrl_reg |= LOGICVC_CTRL_HSYNC_INVERT;
+	if (of_property_read_bool(dn, "is-vsync-active-low"))
+		ctrl_reg |= LOGICVC_CTRL_HSYNC_INVERT;
+	if (of_property_read_bool(dn, "is-pixel-data-invert"))
 		ctrl_reg |= LOGICVC_CTRL_PIXEL_DATA_INVERT;
-	if (pix_clk_act_high)
+	if (of_property_read_bool(dn, "is-pixel-data-output-trigger-high"))
 		ctrl_reg |= LOGICVC_CTRL_PIXEL_DATA_TRIGGER_INVERT;
 
 	*ctrl = ctrl_reg;
@@ -904,6 +981,10 @@ struct xylon_cvc *xylon_cvc_probe(struct device *dev, struct device_node *dn)
 		cvc->reg_access.xylon_cvc_get_reg_val = xylon_cvc_get_reg_mem;
 		cvc->reg_access.xylon_cvc_set_reg_val = xylon_cvc_set_reg_mem;
 	}
+
+	if (cvc->flags & LOGICVC_FLAGS_BACKGROUND_LAYER)
+		xylon_cvc_layer_set_color_reg(cvc, BACKGROUND_LAYER_ID,
+					      LOGICVC_COLOR_RGB_BLACK);
 
 	return cvc;
 }

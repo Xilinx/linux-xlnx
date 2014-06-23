@@ -31,6 +31,14 @@
 #define LOGICVC_INT_L3_CLUT_SW		(1 << 11)
 #define LOGICVC_INT_L4_CLUT_SW		(1 << 12)
 
+enum xylon_cvc_control {
+	LOGICVC_LAYER_UPDATE,
+	LOGICVC_PIXEL_DATA_INVERT,
+	LOGICVC_PIXEL_DATA_TRIGGER_INVERT
+};
+
+struct xylon_cvc;
+
 void xylon_cvc_int_state(struct xylon_cvc *cvc, unsigned int type,
 			 bool enabled);
 u32 xylon_cvc_int_get_active(struct xylon_cvc *cvc);
@@ -40,6 +48,9 @@ void xylon_cvc_int_hw_disable(struct xylon_cvc *cvc);
 int xylon_cvc_int_request(struct xylon_cvc *cvc, unsigned long flags,
 			  irq_handler_t handler, void *dev);
 void xylon_cvc_int_free(struct xylon_cvc *cvc, void *dev);
+
+void xylon_cvc_ctrl(struct xylon_cvc *cvc, enum xylon_cvc_control ctrl,
+		    bool val);
 
 void xylon_cvc_enable(struct xylon_cvc *cvc, struct videomode *vmode);
 void xylon_cvc_disable(struct xylon_cvc *cvc);
