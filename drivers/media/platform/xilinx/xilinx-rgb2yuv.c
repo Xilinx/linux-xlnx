@@ -19,12 +19,12 @@
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
+#include <linux/xilinx-v4l2-controls.h>
 
 #include <media/v4l2-async.h>
 #include <media/v4l2-ctrls.h>
 #include <media/v4l2-subdev.h>
 
-#include "xilinx-controls.h"
 #include "xilinx-vip.h"
 
 #define XRGB2YUV_YMAX					0x100
