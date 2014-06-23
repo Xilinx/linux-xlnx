@@ -145,14 +145,6 @@
 #define LOGICVC_DTYPE_REG_INIT 0
 
 /*
- * logiCVC display power signals
- */
-#define LOGICVC_EN_BLIGHT_MSK (1 << 0)
-#define LOGICVC_EN_VDD_MSK    (1 << 1)
-#define LOGICVC_EN_VEE_MSK    (1 << 2)
-#define LOGICVC_V_EN_MSK      (1 << 3)
-
-/*
  * logiCVC various definitions
  */
 #define LOGICVC_MAJOR_REVISION_SHIFT 11
@@ -162,7 +154,6 @@
 #define LOGICVC_PATCH_LEVEL_MASK     0x1F
 
 #define LOGICVC_LAYER_ON        (1 << 0)
-#define LOGICVC_SWAP_RB         (1 << 4)
 #define LOGICVC_PIX_DATA_INVERT (1 << 7)
 #define LOGICVC_PIX_ACT_HIGH    (1 << 8)
 #define LOGICVC_MIN_HRES         64
@@ -171,7 +162,6 @@
 #define LOGICVC_MAX_VRES         2048
 #define LOGICVC_MAX_LINES        4096
 #define LOGICVC_MAX_LAYERS       5
-#define LOGICVC_CLUT_SIZE        256
 
 #define LOGICVC_READABLE_REGS    (1 << 0)
 #define LOGICVC_SIZE_POSITION    (1 << 1)
@@ -331,13 +321,6 @@ static void xylon_cvc_set_reg_mem(u32 value, void __iomem *base,
 unsigned int xylon_cvc_get_layers_num(struct xylon_cvc *cvc)
 {
 	return cvc->layers;
-}
-
-unsigned int xylon_cvc_get_layers_max_width(struct xylon_cvc *cvc)
-{
-	struct xylon_cvc_layer_data *layer_data = cvc->layer_data[0];
-
-	return layer_data->fix_data.width;
 }
 
 u32 xylon_cvc_layer_get_format(struct xylon_cvc *cvc, int id)
@@ -654,13 +637,6 @@ int xylon_cvc_int_request(struct xylon_cvc *cvc, unsigned long flags,
 void xylon_cvc_int_free(struct xylon_cvc *cvc, void *dev)
 {
 	free_irq(cvc->irq, dev);
-}
-
-void xylon_cvc_reset(struct xylon_cvc *cvc)
-{
-	void __iomem *base = cvc->base;
-
-	writel(LOGICVC_DTYPE_REG_INIT, base + LOGICVC_DTYPE_ROFF);
 }
 
 void xylon_cvc_enable(struct xylon_cvc *cvc, struct videomode *vmode)
