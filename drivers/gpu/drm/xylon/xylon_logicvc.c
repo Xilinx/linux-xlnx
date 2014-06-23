@@ -36,41 +36,39 @@
  * All logiCVC registers are only 32-bit accessible.
  * All logiCVC registers are aligned to 8 byte boundary.
  */
-#define LOGICVC_REG_DIST_USED           8
-#define LOGICVC_HSYNC_FRONT_PORCH_ROFF (0  * LOGICVC_REG_DIST_USED)
-#define LOGICVC_HSYNC_ROFF             (1  * LOGICVC_REG_DIST_USED)
-#define LOGICVC_HSYNC_BACK_PORCH_ROFF  (2  * LOGICVC_REG_DIST_USED)
-#define LOGICVC_HRES_ROFF              (3  * LOGICVC_REG_DIST_USED)
-#define LOGICVC_VSYNC_FRONT_PORCH_ROFF (4  * LOGICVC_REG_DIST_USED)
-#define LOGICVC_VSYNC_ROFF             (5  * LOGICVC_REG_DIST_USED)
-#define LOGICVC_VSYNC_BACK_PORCH_ROFF  (6  * LOGICVC_REG_DIST_USED)
-#define LOGICVC_VRES_ROFF              (7  * LOGICVC_REG_DIST_USED)
-#define LOGICVC_CTRL_ROFF              (8  * LOGICVC_REG_DIST_USED)
-#define LOGICVC_DTYPE_ROFF             (9  * LOGICVC_REG_DIST_USED)
-#define LOGICVC_BACKGROUND_COLOR_ROFF  (10 * LOGICVC_REG_DIST_USED)
-#define LOGICVC_DOUBLE_CLUT_ROFF       (12 * LOGICVC_REG_DIST_USED)
-#define LOGICVC_INT_STAT_ROFF          (13 * LOGICVC_REG_DIST_USED)
-#define LOGICVC_INT_MASK_ROFF          (14 * LOGICVC_REG_DIST_USED)
-#define LOGICVC_POWER_CTRL_ROFF        (15 * LOGICVC_REG_DIST_USED)
-#define LOGICVC_IP_VERSION_ROFF        (31 * LOGICVC_REG_DIST_USED)
+#define LOGICVC_REG_DIST_USED		8
+#define LOGICVC_HSYNC_FRONT_PORCH_ROFF	(0  * LOGICVC_REG_DIST_USED)
+#define LOGICVC_HSYNC_ROFF		(1  * LOGICVC_REG_DIST_USED)
+#define LOGICVC_HSYNC_BACK_PORCH_ROFF	(2  * LOGICVC_REG_DIST_USED)
+#define LOGICVC_HRES_ROFF		(3  * LOGICVC_REG_DIST_USED)
+#define LOGICVC_VSYNC_FRONT_PORCH_ROFF	(4  * LOGICVC_REG_DIST_USED)
+#define LOGICVC_VSYNC_ROFF		(5  * LOGICVC_REG_DIST_USED)
+#define LOGICVC_VSYNC_BACK_PORCH_ROFF	(6  * LOGICVC_REG_DIST_USED)
+#define LOGICVC_VRES_ROFF		(7  * LOGICVC_REG_DIST_USED)
+#define LOGICVC_CTRL_ROFF		(8  * LOGICVC_REG_DIST_USED)
+#define LOGICVC_DTYPE_ROFF		(9  * LOGICVC_REG_DIST_USED)
+#define LOGICVC_BACKGROUND_COLOR_ROFF	(10 * LOGICVC_REG_DIST_USED)
+#define LOGICVC_DOUBLE_CLUT_ROFF	(12 * LOGICVC_REG_DIST_USED)
+#define LOGICVC_INT_STAT_ROFF		(13 * LOGICVC_REG_DIST_USED)
+#define LOGICVC_INT_MASK_ROFF		(14 * LOGICVC_REG_DIST_USED)
+#define LOGICVC_POWER_CTRL_ROFF		(15 * LOGICVC_REG_DIST_USED)
+#define LOGICVC_IP_VERSION_ROFF		(31 * LOGICVC_REG_DIST_USED)
 
 /*
  * logiCVC layer registers offsets (common for each layer)
  * Last possible logiCVC layer (No.4) implements only "Layer memory address"
  * and "Layer control" registers.
  */
-#define LOGICVC_LAYER_MEM_ADDR_ROFF          (0 * LOGICVC_REG_DIST_USED)
-#define LOGICVC_LAYER_HPOSITION_ROFF         (2 * LOGICVC_REG_DIST_USED)
-#define LOGICVC_LAYER_VPOSITION_ROFF         (3 * LOGICVC_REG_DIST_USED)
-#define LOGICVC_LAYER_WIDTH_ROFF             (4 * LOGICVC_REG_DIST_USED)
-#define LOGICVC_LAYER_HEIGHT_ROFF            (5 * LOGICVC_REG_DIST_USED)
-#define LOGICVC_LAYER_ALPHA_ROFF             (6 * LOGICVC_REG_DIST_USED)
-#define LOGICVC_LAYER_CTRL_ROFF              (7 * LOGICVC_REG_DIST_USED)
-#define LOGICVC_LAYER_TRANSPARENT_COLOR_ROFF (8 * LOGICVC_REG_DIST_USED)
+#define LOGICVC_LAYER_ADDR_ROFF		(0 * LOGICVC_REG_DIST_USED)
+#define LOGICVC_LAYER_HPOS_ROFF		(2 * LOGICVC_REG_DIST_USED)
+#define LOGICVC_LAYER_VPOS_ROFF		(3 * LOGICVC_REG_DIST_USED)
+#define LOGICVC_LAYER_HSIZE_ROFF	(4 * LOGICVC_REG_DIST_USED)
+#define LOGICVC_LAYER_VSIZE_ROFF	(5 * LOGICVC_REG_DIST_USED)
+#define LOGICVC_LAYER_ALPHA_ROFF	(6 * LOGICVC_REG_DIST_USED)
+#define LOGICVC_LAYER_CTRL_ROFF		(7 * LOGICVC_REG_DIST_USED)
+#define LOGICVC_LAYER_TRANSP_COLOR_ROFF	(8 * LOGICVC_REG_DIST_USED)
 
-/*
- * logiCVC interrupt bits
- */
+/* logiCVC interrupt bits */
 #define LOGICVC_INT_ALL \
 		(LOGICVC_INT_L0_UPDATED | LOGICVC_INT_L1_UPDATED | \
 		 LOGICVC_INT_L2_UPDATED | LOGICVC_INT_L3_UPDATED | \
@@ -84,93 +82,80 @@
 		 LOGICVC_INT_L2_UPDATED | LOGICVC_INT_L3_UPDATED | \
 		 LOGICVC_INT_L4_UPDATED | LOGICVC_INT_FIFO_UNDERRUN)
 
-/*
- * logiCVC layer base offsets
- */
-#define LOGICVC_LAYER_OFFSET      0x80
-#define LOGICVC_LAYER_BASE_OFFSET 0x100
-#define LOGICVC_LAYER_0_OFFSET   (0 * LOGICVC_LAYER_OFFSET)
-#define LOGICVC_LAYER_1_OFFSET   (1 * LOGICVC_LAYER_OFFSET)
-#define LOGICVC_LAYER_2_OFFSET   (2 * LOGICVC_LAYER_OFFSET)
-#define LOGICVC_LAYER_3_OFFSET   (3 * LOGICVC_LAYER_OFFSET)
-#define LOGICVC_LAYER_4_OFFSET   (4 * LOGICVC_LAYER_OFFSET)
+/* logiCVC layer base offsets */
+#define LOGICVC_LAYER_OFFSET		0x80
+#define LOGICVC_LAYER_BASE_OFFSET	0x100
+#define LOGICVC_LAYER_0_OFFSET		(0 * LOGICVC_LAYER_OFFSET)
+#define LOGICVC_LAYER_1_OFFSET		(1 * LOGICVC_LAYER_OFFSET)
+#define LOGICVC_LAYER_2_OFFSET		(2 * LOGICVC_LAYER_OFFSET)
+#define LOGICVC_LAYER_3_OFFSET		(3 * LOGICVC_LAYER_OFFSET)
+#define LOGICVC_LAYER_4_OFFSET		(4 * LOGICVC_LAYER_OFFSET)
 
 /*
  * logiCVC layer CLUT base offsets
  */
-#define LOGICVC_CLUT_OFFSET            0x800
-#define LOGICVC_CLUT_BASE_OFFSET       0x1000
-#define LOGICVC_CLUT_L0_CLUT_0_OFFSET (0 * LOGICVC_CLUT_OFFSET)
-#define LOGICVC_CLUT_L0_CLUT_1_OFFSET (1 * LOGICVC_CLUT_OFFSET)
-#define LOGICVC_CLUT_L1_CLUT_0_OFFSET (2 * LOGICVC_CLUT_OFFSET)
-#define LOGICVC_CLUT_L1_CLUT_1_OFFSET (3 * LOGICVC_CLUT_OFFSET)
-#define LOGICVC_CLUT_L2_CLUT_0_OFFSET (4 * LOGICVC_CLUT_OFFSET)
-#define LOGICVC_CLUT_L2_CLUT_1_OFFSET (5 * LOGICVC_CLUT_OFFSET)
-#define LOGICVC_CLUT_L3_CLUT_0_OFFSET (6 * LOGICVC_CLUT_OFFSET)
-#define LOGICVC_CLUT_L3_CLUT_1_OFFSET (7 * LOGICVC_CLUT_OFFSET)
-#define LOGICVC_CLUT_L4_CLUT_0_OFFSET (8 * LOGICVC_CLUT_OFFSET)
-#define LOGICVC_CLUT_L4_CLUT_1_OFFSET (9 * LOGICVC_CLUT_OFFSET)
-#define LOGICVC_CLUT_REGISTER_SIZE     8
-#define LOGICVC_CLUT_0_INDEX_OFFSET    2
-#define LOGICVC_CLUT_1_INDEX_OFFSET    1
+#define LOGICVC_CLUT_OFFSET		0x800
+#define LOGICVC_CLUT_BASE_OFFSET	0x1000
+#define LOGICVC_CLUT_L0_CLUT_0_OFFSET	(0 * LOGICVC_CLUT_OFFSET)
+#define LOGICVC_CLUT_L0_CLUT_1_OFFSET	(1 * LOGICVC_CLUT_OFFSET)
+#define LOGICVC_CLUT_L1_CLUT_0_OFFSET	(2 * LOGICVC_CLUT_OFFSET)
+#define LOGICVC_CLUT_L1_CLUT_1_OFFSET	(3 * LOGICVC_CLUT_OFFSET)
+#define LOGICVC_CLUT_L2_CLUT_0_OFFSET	(4 * LOGICVC_CLUT_OFFSET)
+#define LOGICVC_CLUT_L2_CLUT_1_OFFSET	(5 * LOGICVC_CLUT_OFFSET)
+#define LOGICVC_CLUT_L3_CLUT_0_OFFSET	(6 * LOGICVC_CLUT_OFFSET)
+#define LOGICVC_CLUT_L3_CLUT_1_OFFSET	(7 * LOGICVC_CLUT_OFFSET)
+#define LOGICVC_CLUT_L4_CLUT_0_OFFSET	(8 * LOGICVC_CLUT_OFFSET)
+#define LOGICVC_CLUT_L4_CLUT_1_OFFSET	(9 * LOGICVC_CLUT_OFFSET)
+#define LOGICVC_CLUT_REGISTER_SIZE	8
+#define LOGICVC_CLUT_0_INDEX_OFFSET	2
+#define LOGICVC_CLUT_1_INDEX_OFFSET	1
 
-/*
- * logiCVC control register bits
- */
-#define LOGICVC_CTRL_HSEN       (1 << 0)
-#define LOGICVC_CTRL_HSINV      (1 << 1)
-#define LOGICVC_CTRL_VSEN       (1 << 2)
-#define LOGICVC_CTRL_VSINV      (1 << 3)
-#define LOGICVC_CTRL_ENEN       (1 << 4)
-#define LOGICVC_CTRL_ENINV      (1 << 5)
-#define LOGICVC_CTRL_PIXINV     (1 << 7)
-#define LOGICVC_CTRL_CLKINV     (1 << 8)
-#define LOGICVC_CTRL_DIS_UPDATE (1 << 9)
+/* logiCVC control register bits */
+#define LOGICVC_CTRL_HSYNC			(1 << 0)
+#define LOGICVC_CTRL_HSYNC_INVERT		(1 << 1)
+#define LOGICVC_CTRL_VSYNC			(1 << 2)
+#define LOGICVC_CTRL_VSYNC_INVERT		(1 << 3)
+#define LOGICVC_CTRL_DATA_BLANK_SIGNAL		(1 << 4)
+#define LOGICVC_CTRL_DATA_BLANK_SIGNAL_INVERT	(1 << 5)
+#define LOGICVC_CTRL_PIXEL_DATA_INVERT		(1 << 7)
+#define LOGICVC_CTRL_PIXEL_DATA_TRIGGER_INVERT	(1 << 8)
+#define LOGICVC_CTRL_DISABLE_LAYER_UPDATE	(1 << 9)
 
-/*
- * logiCVC control register bits
- */
-#define LOGICVC_LAYER_CTRL_COLOR_TRANSP_BIT          (1 << 1)
-#define LOGICVC_LAYER_CTRL_PIXEL_FORMAT_MASK          0x70
-#define LOGICVC_LAYER_CTRL_PIXEL_FORMAT_BITS_NORMAL  (0 << 4)
-#define LOGICVC_LAYER_CTRL_PIXEL_FORMAT_BITS_ANDROID (1 << 4)
+/* logiCVC layer control register bits */
+#define LOGICVC_LAYER_CTRL_ENABLE			(1 << 0)
+#define LOGICVC_LAYER_CTRL_COLOR_TRANSPARENCY_BIT	(1 << 1)
+#define LOGICVC_LAYER_CTRL_PIXEL_FORMAT_BITS_ARGB	(0 << 4)
+#define LOGICVC_LAYER_CTRL_PIXEL_FORMAT_BITS_ABGR	(1 << 4)
+#define LOGICVC_LAYER_CTRL_PIXEL_FORMAT_MASK		0x70
 
-/*
- * logiCVC control registers initial values
- */
+/* logiCVC control registers initial values */
 #define LOGICVC_CTRL_REG_INIT \
-		(LOGICVC_CTRL_HSEN | LOGICVC_CTRL_HSINV | \
-		 LOGICVC_CTRL_VSEN | LOGICVC_CTRL_VSINV | \
-		 LOGICVC_CTRL_ENEN)
+		(LOGICVC_CTRL_HSYNC | LOGICVC_CTRL_HSYNC_INVERT | \
+		 LOGICVC_CTRL_VSYNC | LOGICVC_CTRL_VSYNC_INVERT | \
+		 LOGICVC_CTRL_DATA_BLANK_SIGNAL)
 #define LOGICVC_DTYPE_REG_INIT 0
 
-/*
- * logiCVC various definitions
- */
-#define LOGICVC_MAJOR_REVISION_SHIFT 11
-#define LOGICVC_MAJOR_REVISION_MASK  0x3F
-#define LOGICVC_MINOR_REVISION_SHIFT 5
-#define LOGICVC_MINOR_REVISION_MASK  0x3F
-#define LOGICVC_PATCH_LEVEL_MASK     0x1F
+/* logiCVC various definitions */
+#define LOGICVC_MAJOR_REVISION_SHIFT	11
+#define LOGICVC_MAJOR_REVISION_MASK	0x3F
+#define LOGICVC_MINOR_REVISION_SHIFT	5
+#define LOGICVC_MINOR_REVISION_MASK	0x3F
+#define LOGICVC_PATCH_LEVEL_MASK	0x1F
 
-#define LOGICVC_LAYER_ON        (1 << 0)
-#define LOGICVC_PIX_DATA_INVERT (1 << 7)
-#define LOGICVC_PIX_ACT_HIGH    (1 << 8)
-#define LOGICVC_MIN_HRES         64
-#define LOGICVC_MIN_VRES         1
-#define LOGICVC_MAX_HRES         2048
-#define LOGICVC_MAX_VRES         2048
-#define LOGICVC_MAX_LINES        4096
-#define LOGICVC_MAX_LAYERS       5
+#define LOGICVC_MIN_HRES	64
+#define LOGICVC_MIN_VRES	1
+#define LOGICVC_MAX_HRES	2048
+#define LOGICVC_MAX_VRES	2048
+#define LOGICVC_MAX_LINES	4096
+#define LOGICVC_MAX_LAYERS	5
 
-#define LOGICVC_READABLE_REGS    (1 << 0)
-#define LOGICVC_SIZE_POSITION    (1 << 1)
-#define LOGICVC_BACKGROUND_LAYER (1 << 2)
+#define LOGICVC_FLAGS_READABLE_REGS	(1 << 0)
+#define LOGICVC_FLAGS_SIZE_POSITION	(1 << 1)
+#define LOGICVC_FLAGS_BACKGROUND_LAYER	(1 << 2)
 
 enum xylon_cvc_layer_type {
 	LOGICVC_LAYER_RGB,
-	LOGICVC_LAYER_YUV,
-	LOGICVC_LAYER_ALPHA
+	LOGICVC_LAYER_YUV
 };
 
 enum xylon_cvc_layer_alpha_type {
@@ -178,15 +163,6 @@ enum xylon_cvc_layer_alpha_type {
 	LOGICVC_ALPHA_PIXEL,
 	LOGICVC_ALPHA_CLUT_16BPP,
 	LOGICVC_ALPHA_CLUT_32BPP
-};
-
-enum xylon_cvc_display_interface {
-	LOGICVC_DI_PARALLEL,
-	LOGICVC_DI_ITU656,
-	LOGICVC_DI_LVDS_4_BIT,
-	LOGICVC_DI_CAMERA_LINK_4_BIT,
-	LOGICVC_DI_LVDS_3_BIT,
-	LOGICVC_DI_DVI
 };
 
 enum xylon_cvc_display_color_space {
@@ -224,11 +200,11 @@ struct xylon_cvc_layer_fix_data {
 };
 
 struct xylon_cvc_layer_registers {
-	u32 mem_addr;
+	u32 addr;
 	u32 hpos;
 	u32 vpos;
-	u32 width;
-	u32 height;
+	u32 hsize;
+	u32 vsize;
 	u32 alpha;
 	u32 ctrl;
 	u32 transp;
@@ -339,14 +315,12 @@ u32 xylon_cvc_layer_get_format(struct xylon_cvc *cvc, int id)
 		else if (bpp == 32 && transp == LOGICVC_ALPHA_PIXEL)
 			drm_format = DRM_FORMAT_ARGB8888;
 		break;
-
 	case LOGICVC_LAYER_YUV:
 		if (bpp == 16 && transp == LOGICVC_ALPHA_LAYER)
 			drm_format = DRM_FORMAT_YUYV;
 		else if (bpp == 32 && transp == LOGICVC_ALPHA_LAYER)
 			drm_format = DRM_FORMAT_YUYV;
 		break;
-
 	default:
 		DRM_ERROR("unsupported layer format\n");
 	}
@@ -408,23 +382,23 @@ int xylon_cvc_layer_set_size_position(struct xylon_cvc *cvc, int id,
 
 		reg_access->xylon_cvc_set_reg_val(hres - dst_x - 1,
 						  base,
-						  LOGICVC_LAYER_HPOSITION_ROFF,
+						  LOGICVC_LAYER_HPOS_ROFF,
 						  layer_data);
 		reg_access->xylon_cvc_set_reg_val(vres - dst_y - 1,
 						  base,
-						  LOGICVC_LAYER_VPOSITION_ROFF,
+						  LOGICVC_LAYER_VPOS_ROFF,
 						  layer_data);
 		reg_access->xylon_cvc_set_reg_val(dst_x_size - 1,
 						  base,
-						  LOGICVC_LAYER_WIDTH_ROFF,
+						  LOGICVC_LAYER_HSIZE_ROFF,
 						  layer_data);
 		reg_access->xylon_cvc_set_reg_val(dst_y_size - 1,
 						  base,
-						  LOGICVC_LAYER_HEIGHT_ROFF,
+						  LOGICVC_LAYER_VSIZE_ROFF,
 						  layer_data);
 		reg_access->xylon_cvc_set_reg_val(layer_data->vmem_pbase,
 						  base,
-						  LOGICVC_LAYER_MEM_ADDR_ROFF,
+						  LOGICVC_LAYER_ADDR_ROFF,
 						  layer_data);
 	}
 
@@ -449,7 +423,7 @@ void xylon_cvc_layer_enable(struct xylon_cvc *cvc, int id)
 	struct xylon_cvc_layer_data *layer_data = cvc->layer_data[id];
 	struct xylon_cvc_register_access *reg_access = &cvc->reg_access;
 
-	layer_data->ctrl_flags |= LOGICVC_LAYER_ON;
+	layer_data->ctrl_flags |= LOGICVC_LAYER_CTRL_ENABLE;
 	reg_access->xylon_cvc_set_reg_val(layer_data->ctrl_flags,
 					  layer_data->base,
 					  LOGICVC_LAYER_CTRL_ROFF,
@@ -461,7 +435,7 @@ void xylon_cvc_layer_disable(struct xylon_cvc *cvc, int id)
 	struct xylon_cvc_layer_data *layer_data = cvc->layer_data[id];
 	struct xylon_cvc_register_access *reg_access = &cvc->reg_access;
 
-	layer_data->ctrl_flags &= (~LOGICVC_LAYER_ON);
+	layer_data->ctrl_flags &= (~LOGICVC_LAYER_CTRL_ENABLE);
 	reg_access->xylon_cvc_set_reg_val(layer_data->ctrl_flags,
 					  layer_data->base,
 					  LOGICVC_LAYER_CTRL_ROFF,
@@ -475,7 +449,7 @@ void xylon_cvc_layer_update(struct xylon_cvc *cvc, int id)
 
 	reg_access->xylon_cvc_set_reg_val(layer_data->vmem_pbase,
 					  layer_data->base,
-					  LOGICVC_LAYER_MEM_ADDR_ROFF,
+					  LOGICVC_LAYER_ADDR_ROFF,
 					  layer_data);
 }
 
@@ -489,18 +463,18 @@ void xylon_cvc_layer_ctrl(struct xylon_cvc *cvc, int id, int op)
 
 	switch (op) {
 	case LOGICVC_LAYER_CTRL_COLOR_TRANSP_DISABLE:
-		regval |= LOGICVC_LAYER_CTRL_COLOR_TRANSP_BIT;
+		regval |= LOGICVC_LAYER_CTRL_COLOR_TRANSPARENCY_BIT;
 		break;
 	case LOGICVC_LAYER_CTRL_COLOR_TRANSP_ENABLE:
-		regval &= ~LOGICVC_LAYER_CTRL_COLOR_TRANSP_BIT;
+		regval &= ~LOGICVC_LAYER_CTRL_COLOR_TRANSPARENCY_BIT;
 		break;
 	case LOGICVC_LAYER_CTRL_PIXEL_FORMAT_NORMAL:
 		regval &= ~LOGICVC_LAYER_CTRL_PIXEL_FORMAT_MASK;
-		regval |= LOGICVC_LAYER_CTRL_PIXEL_FORMAT_BITS_NORMAL;
+		regval |= LOGICVC_LAYER_CTRL_PIXEL_FORMAT_BITS_ARGB;
 		break;
 	case LOGICVC_LAYER_CTRL_PIXEL_FORMAT_ANDROID:
 		regval &= ~LOGICVC_LAYER_CTRL_PIXEL_FORMAT_MASK;
-		regval |= LOGICVC_LAYER_CTRL_PIXEL_FORMAT_BITS_ANDROID;
+		regval |= LOGICVC_LAYER_CTRL_PIXEL_FORMAT_BITS_ABGR;
 		break;
 	case LOGICVC_LAYER_CTRL_NONE:
 	default:
@@ -526,7 +500,7 @@ void xylon_cvc_layer_set_color_reg(struct xylon_cvc *cvc, int id, u32 color)
 		bg = true;
 
 	if (bg) {
-		if (!(cvc->flags & LOGICVC_BACKGROUND_LAYER))
+		if (!(cvc->flags & LOGICVC_FLAGS_BACKGROUND_LAYER))
 			return;
 		layer_data = cvc->layer_data[0];
 		layer_bpp = cvc->bg_layer_bpp;
@@ -557,7 +531,7 @@ void xylon_cvc_layer_set_color_reg(struct xylon_cvc *cvc, int id, u32 color)
 		offset = LOGICVC_BACKGROUND_COLOR_ROFF;
 	} else {
 		base = layer_data->base;
-		offset = LOGICVC_LAYER_TRANSPARENT_COLOR_ROFF;
+		offset = LOGICVC_LAYER_TRANSP_COLOR_ROFF;
 	}
 	cvc->reg_access.xylon_cvc_set_reg_val(color,
 					      base, offset,
@@ -691,16 +665,16 @@ static int xylon_parse_hw_info(struct device *dev,
 			DRM_ERROR("failed get bg-layer-bits-per-pixel\n");
 			return ret;
 		}
-		cvc->flags |= LOGICVC_BACKGROUND_LAYER;
+		cvc->flags |= LOGICVC_FLAGS_BACKGROUND_LAYER;
 	}
 
 	if (of_property_read_bool(dn, "is-readable-regs"))
-		cvc->flags |= LOGICVC_READABLE_REGS;
+		cvc->flags |= LOGICVC_FLAGS_READABLE_REGS;
 	else
 		DRM_INFO("logicvc registers not readable\n");
 
 	if (of_property_read_bool(dn, "is-size-position"))
-		cvc->flags |= LOGICVC_SIZE_POSITION;
+		cvc->flags |= LOGICVC_FLAGS_SIZE_POSITION;
 	else
 		DRM_INFO("logicvc size-position disabled\n");
 
@@ -791,9 +765,9 @@ static void xylon_cvc_init_ctrl(struct device_node *node, u32 *ctrl)
 	if (!(sync & (1 << 1)))
 		ctrl_reg &= (~(1 << 3));
 	if (pix_data_invert)
-		ctrl_reg |= LOGICVC_PIX_DATA_INVERT;
+		ctrl_reg |= LOGICVC_CTRL_PIXEL_DATA_INVERT;
 	if (pix_clk_act_high)
-		ctrl_reg |= LOGICVC_PIX_ACT_HIGH;
+		ctrl_reg |= LOGICVC_CTRL_PIXEL_DATA_TRIGGER_INVERT;
 
 	*ctrl = ctrl_reg;
 }
@@ -803,7 +777,7 @@ bool xylon_cvc_get_info(struct xylon_cvc *cvc, enum xylon_cvc_info info,
 {
 	switch (info) {
 	case LOGICVC_INFO_BACKGROUND_LAYER:
-		if (cvc->flags & LOGICVC_BACKGROUND_LAYER)
+		if (cvc->flags & LOGICVC_FLAGS_BACKGROUND_LAYER)
 			return true;
 		break;
 	case LOGICVC_INFO_LAST_LAYER:
@@ -833,7 +807,7 @@ void xylon_cvc_get_fix_parameters(struct xylon_cvc *cvc,
 
 static const struct of_device_id cvc_of_match[] = {
 	{ .compatible = "xylon,logicvc-4.00.a" },
-	{/* end of table */},
+	{/* end of table */}
 };
 
 struct xylon_cvc *xylon_cvc_probe(struct device *dev, struct device_node *dn)
@@ -917,7 +891,7 @@ struct xylon_cvc *xylon_cvc_probe(struct device *dev, struct device_node *dn)
 
 	xylon_cvc_init_ctrl(dn, &cvc->ctrl);
 
-	if (cvc->flags & LOGICVC_READABLE_REGS) {
+	if (cvc->flags & LOGICVC_FLAGS_READABLE_REGS) {
 		cvc->reg_access.xylon_cvc_get_reg_val = xylon_cvc_get_reg;
 		cvc->reg_access.xylon_cvc_set_reg_val = xylon_cvc_set_reg;
 	} else {
