@@ -17,7 +17,12 @@
 #ifndef _XYLON_LOGICVC_HELPER_H_
 #define _XYLON_LOGICVC_HELPER_H_
 
-#define CVC_BACKGROUND_LAYER 5
+#define BACKGROUND_LAYER_ID 5
+
+enum xylon_cvc_info {
+	LOGICVC_INFO_BACKGROUND_LAYER,
+	LOGICVC_INFO_LAST_LAYER
+};
 
 struct xylon_cvc;
 
@@ -31,6 +36,9 @@ struct xylon_cvc_fix {
 	unsigned int x_max;
 	unsigned int y_max;
 };
+
+bool xylon_cvc_get_info(struct xylon_cvc *cvc, enum xylon_cvc_info info,
+			unsigned int param);
 
 void xylon_cvc_get_fix_parameters(struct xylon_cvc *cvc,
 				  struct xylon_cvc_fix *cvc_fix);

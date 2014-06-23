@@ -348,7 +348,7 @@ int xylon_drm_plane_op(struct drm_plane *base, struct xylon_drm_plane_op *op)
 		xylon_cvc_set_hw_color(cvc, id, op->param);
 		break;
 	case XYLON_DRM_PLANE_OP_ID_BACKGORUND_COLOR:
-		xylon_cvc_set_hw_color(cvc, CVC_BACKGROUND_LAYER, op->param);
+		xylon_cvc_set_hw_color(cvc, BACKGROUND_LAYER_ID, op->param);
 		break;
 	default:
 		return -EINVAL;

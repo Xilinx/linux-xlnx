@@ -522,7 +522,7 @@ void xylon_cvc_set_hw_color(struct xylon_cvc *cvc, int id, u32 color)
 	u8 r, g, b;
 	bool bg = false;
 
-	if (id == CVC_BACKGROUND_LAYER)
+	if (id == BACKGROUND_LAYER_ID)
 		bg = true;
 
 	if (bg) {
@@ -796,6 +796,23 @@ static void xylon_cvc_init_ctrl(struct device_node *node, u32 *ctrl)
 		ctrl_reg |= LOGICVC_PIX_ACT_HIGH;
 
 	*ctrl = ctrl_reg;
+}
+
+bool xylon_cvc_get_info(struct xylon_cvc *cvc, enum xylon_cvc_info info,
+			unsigned int param)
+{
+	switch (info) {
+	case LOGICVC_INFO_BACKGROUND_LAYER:
+		if (cvc->flags & LOGICVC_BACKGROUND_LAYER)
+			return true;
+		break;
+	case LOGICVC_INFO_LAST_LAYER:
+		if (param == (cvc->layers - 1))
+			return true;
+		break;
+	}
+
+	return false;
 }
 
 void xylon_cvc_get_fix_parameters(struct xylon_cvc *cvc,
