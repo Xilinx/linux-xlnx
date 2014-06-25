@@ -117,4 +117,13 @@
 /* CD coefficient */
 #define V4L2_CID_XILINX_RGB2YUV_DCOEF		(V4L2_CID_XILINX_RGB2YUV + 13)
 
+/*
+ * Xilinx HLS Video IP
+ */
+
+#define V4L2_CID_XILINX_HLS			(V4L2_CID_USER_BASE + 0xc060)
+
+/* The IP model */
+#define V4L2_CID_XILINX_HLS_MODEL		(V4L2_CID_XILINX_HLS + 1)
+
 #endif /* __UAPI_XILINX_V4L2_CONTROLS_H__ */
