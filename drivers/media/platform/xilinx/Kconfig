@@ -33,6 +33,12 @@ config VIDEO_XILINX_CRESAMPLE
 	help
 	  Driver for the Xilinx Chroma Resampler
 
+config VIDEO_XILINX_HLS
+	tristate "Xilinx Video HLS Core"
+	depends on VIDEO_XILINX
+	help
+	  Driver for the Xilinx Video HLS Cores
+
 config VIDEO_XILINX_REMAPPER
 	tristate "Xilinx Video Remapper"
 	depends on VIDEO_XILINX
