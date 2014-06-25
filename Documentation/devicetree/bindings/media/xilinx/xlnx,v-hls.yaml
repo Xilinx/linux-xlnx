@@ -1,0 +1,136 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/media/xilinx/xlnx,v-hls.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Xilinx hls core.
+
+maintainers:
+  - Kunal Rane <kunal.rane@amd.com>
+
+description:
+  Xilinx High-Level Synthesis Core (HLS)
+  High-Level Synthesis cores are synthesized from a high-level function
+  description developed by the user. As such their functions vary widely, but
+  they all share a set of common characteristics that allow them to be described
+  by common bindings.
+
+properties:
+  compatible:
+    items:
+      - enum:
+          - xlnx,v-hls
+
+  reg:
+    maxItems: 1
+
+  clocks:
+    description: Reference to the video core clock.
+    maxItems: 1
+
+  ports:
+    type: object
+
+    properties:
+      "#address-cells":
+        const: 1
+
+      "#size-cells":
+        const: 0
+
+      "port@0":
+        type: object
+        description:
+          port@0 is input. similarly port@1 would be output.
+
+        properties:
+          reg:
+            description:
+              Input/sink port number.
+            anyOf:
+              - enum: [0, 1]
+
+          xlnx,video-format:
+            $ref: /schemas/types.yaml#/definitions/uint32
+            description:
+              Video format details for input and output port.
+              The possible values are -
+              0 - RGB
+              1 - YUV444
+              2 - YUV422
+              3 - YUV420
+            anyOf:
+              - enum: [0, 1, 2, 3]
+
+          xlnx,video-width:
+            $ref: /schemas/types.yaml#/definitions/uint32
+            description:
+              The video with to which input and output pads
+              of the VPSS IP are set.
+            anyOf:
+              - enum: [8, 10, 12, 16]
+
+          endpoint:
+            type: object
+
+            properties:
+              remote-endpoint: true
+
+            required:
+              - remote-endpoint
+
+            additionalProperties: false
+
+        required:
+          - reg
+          - xlnx,video-format
+          - xlnx,video-width
+          - endpoint
+
+        additionalProperties: false
+
+    required:
+      - "#address-cells"
+      - "#size-cells"
+      - port@0
+      - port@1
+
+    additionalProperties: false
+
+required:
+  - compatible
+  - reg
+  - clocks
+  - ports
+
+additionalProperties: false
+
+examples:
+  - |
+   hls_0:hls@43c00000 {
+        compatible = "xlnx,v-hls";
+        reg = <0x43c00000 0x24>;
+        clocks = <&clkc 15>;
+
+        ports {
+            #address-cells = <1>;
+            #size-cells = <0>;
+            port@0 {
+                reg = <0>;
+                xlnx,video-format = /bits/ 32 <0>;
+                xlnx,video-width = /bits/ 32 <8>;
+                hls0_in: endpoint {
+                    remote-endpoint = <&vdma_out>;
+                };
+            };
+            port@1 {
+                reg = <1>;
+                xlnx,video-format = /bits/ 32 <3>;
+                xlnx,video-width = /bits/ 32 <8>;
+                hls0_out: endpoint {
+                    remote-endpoint = <&vdma_in>;
+                };
+            };
+        };
+    };
