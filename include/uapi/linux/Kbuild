@@ -425,6 +425,7 @@ header-y += wireless.h
 header-y += x25.h
 header-y += xattr.h
 header-y += xfrm.h
+header-y += xilinx-hls.h
 header-y += hw_breakpoint.h
 header-y += zorro.h
 header-y += zorro_ids.h
