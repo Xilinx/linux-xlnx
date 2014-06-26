@@ -13,3 +13,10 @@ config DRM_XILINX_DP
 	depends on DRM_XILINX
 	help
 	  DRM driver for Xilinx Display Port IP.
+
+config DRM_XILINX_DP_SUB
+	tristate "Xilinx DRM Display Port Subsystem Driver"
+	depends on DRM_XILINX
+	select DRM_XILINX_DP
+	help
+	  DRM driver for Xilinx Display Port Subsystem.
