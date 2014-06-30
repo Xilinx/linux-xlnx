@@ -85,6 +85,9 @@
 #define	SR_BP_BIT_OFFSET	2	/* Offset to Block protect 0 */
 #define	SR_BP_BIT_MASK		(SR_BP2 | SR_BP1 | SR_BP0)
 #define	SR_SRWD			0x80	/* SR write protect */
+#define SR_BP3			0x40
+/* Bit to determine whether protection starts from top or bottom */
+#define SR_BP_TB		0x20
 
 #define BP_BITS_FROM_SR(sr)	(((sr) & SR_BP_BIT_MASK) >> SR_BP_BIT_OFFSET)
 
@@ -992,23 +995,61 @@ time_out:
 	return ret;
 }
 
-static inline uint16_t min_lockable_sectors(uint16_t n_sectors)
+static inline uint16_t min_lockable_sectors(struct m25p *flash,
+					    uint16_t n_sectors)
 {
-	return max(1, n_sectors/M25P_MAX_LOCKABLE_SECTORS);
+	uint16_t lock_granularity;
+
+	/*
+	 * Revisit - SST (not used by us) has the same JEDEC ID as micron but
+	 * protected area table is similar to that of spansion.
+	 */
+	lock_granularity = max(1, n_sectors/M25P_MAX_LOCKABLE_SECTORS);
+	if (JEDEC_MFR(flash->jedec_id) == 0x20)	/* Micron */
+		lock_granularity = 1;
+
+	return lock_granularity;
 }
 
 static inline uint32_t get_protected_area_start(struct m25p *flash,
-							uint8_t lock_bits)
+						uint8_t lock_bits)
 {
-	return flash->mtd.size - (1<<(lock_bits-1)) *
-		min_lockable_sectors(flash->n_sectors) * flash->sector_size;
+	u16 n_sectors;
+	u32 sector_size;
+	uint64_t mtd_size;
+
+	n_sectors = flash->n_sectors;
+	sector_size = flash->sector_size;
+	mtd_size = flash->mtd.size;
+
+	if (flash->isparallel) {
+		sector_size = (flash->sector_size >> 1);
+		mtd_size = (flash->mtd.size >> 1);
+	}
+	if (flash->isstacked) {
+		n_sectors = (flash->n_sectors >> 1);
+		mtd_size = (flash->mtd.size >> 1);
+	}
+
+	return mtd_size - (1<<(lock_bits-1)) *
+		min_lockable_sectors(flash, n_sectors) * sector_size;
 }
 
 static uint8_t min_protected_area_including_offset(struct m25p *flash,
-							uint32_t offset)
+						   uint32_t offset)
 {
-	uint8_t lock_bits;
-	for (lock_bits = 1; lock_bits < 7; lock_bits++) {
+	uint8_t lock_bits, lockbits_limit;
+
+	/*
+	 * Revisit - SST (not used by us) has the same JEDEC ID as micron but
+	 * protected area table is similar to that of spansion.
+	 * Mircon has 4 block protect bits.
+	 */
+	lockbits_limit = 7;
+	if (JEDEC_MFR(flash->jedec_id) == 0x20)	/* Micron */
+		lockbits_limit = 15;
+
+	for (lock_bits = 1; lock_bits < lockbits_limit; lock_bits++) {
 		if (offset >= get_protected_area_start(flash, lock_bits))
 			break;
 	}
@@ -1016,10 +1057,24 @@ static uint8_t min_protected_area_including_offset(struct m25p *flash,
 }
 
 static int write_sr_modify_protection(struct m25p *flash, uint8_t status,
-							uint8_t lock_bits)
+				      uint8_t lock_bits)
 {
-	uint8_t status_new = (status & ~SR_BP_BIT_MASK) |
-			((lock_bits << SR_BP_BIT_OFFSET) & SR_BP_BIT_MASK);
+	uint8_t status_new, bp_mask;
+
+	status_new = status & ~SR_BP_BIT_MASK;
+	bp_mask = (lock_bits << SR_BP_BIT_OFFSET) & SR_BP_BIT_MASK;
+
+	/* Micron */
+	if (JEDEC_MFR(flash->jedec_id) == 0x20) {
+		/* Protected area starts from top */
+		status_new &= ~SR_BP_TB;
+
+		if (lock_bits > 7)
+			bp_mask |= SR_BP3;
+	}
+
+	status_new |= bp_mask;
+
 	write_enable(flash);
 	if (write_sr(flash, status_new) < 0)
 		return 1;
@@ -1035,6 +1090,18 @@ static int m25p80_lock(struct mtd_info *mtd, loff_t ofs, uint64_t len)
 	int res = 0;
 
 	mutex_lock(&flash->lock);
+
+	if (flash->isparallel == 1)
+		offset /= 2;
+
+	if (flash->isstacked == 1) {
+		if (offset >= (flash->mtd.size / 2)) {
+			offset = offset - (flash->mtd.size / 2);
+			flash->spi->master->flags |= SPI_MASTER_U_PAGE;
+		} else
+			flash->spi->master->flags &= ~SPI_MASTER_U_PAGE;
+	}
+
 	/* Wait until finished previous command */
 	if (wait_till_ready(flash)) {
 		res = 1;
@@ -1061,6 +1128,18 @@ static int m25p80_unlock(struct mtd_info *mtd, loff_t ofs, uint64_t len)
 	int res = 0;
 
 	mutex_lock(&flash->lock);
+
+	if (flash->isparallel == 1)
+		offset /= 2;
+
+	if (flash->isstacked == 1) {
+		if (offset >= (flash->mtd.size / 2)) {
+			offset = offset - (flash->mtd.size / 2);
+			flash->spi->master->flags |= SPI_MASTER_U_PAGE;
+		} else
+			flash->spi->master->flags &= ~SPI_MASTER_U_PAGE;
+	}
+
 	/* Wait until finished previous command */
 	if (wait_till_ready(flash)) {
 		res = 1;
@@ -1136,11 +1215,10 @@ struct flash_info {
 #define	SST_WRITE	0x04		/* use SST byte programming */
 #define	M25P_NO_FR	0x08		/* Can't do fastread */
 #define	SECT_4K_PMC	0x10		/* OPCODE_BE_4K_PMC works uniformly */
-#define	M25P80_DUAL_READ	0x20    /* Flash supports Dual Read */
-#define	M25P80_QUAD_READ	0x40    /* Flash supports Quad Read */
-#define	M25P_FLASH_LOCK		0x80	/* Flash protection support */
-#define SECT_32K		0x200	/* OPCODE_BE_32K */
-#define E_FSR			0x100	/* Flag SR exists for flash */
+#define	M25P80_QUAD_READ	0x20    /* Flash supports Quad Read */
+#define	SECT_32K	0x100		/* OPCODE_BE_32K */
+#define E_FSR		0x40		/* Flag SR exists for flash */
+#define	M25P_FLASH_LOCK	0x80		/* Flash protection support */
 };
 
 #define INFO(_jedec_id, _ext_id, _sector_size, _n_sectors, _flags)	\
@@ -1222,25 +1300,34 @@ static const struct spi_device_id m25p_ids[] = {
 
 	/* Micron */
 	{ "n25q064",  INFO(0x20ba17, 0, 64 * 1024, 128, M25P80_QUAD_READ) },
-	{ "n25q128a11",  INFO(0x20bb18, 0, 64 * 1024, 256, M25P80_QUAD_READ) },
-	{ "n25q128a13",  INFO(0x20ba18, 0, 64 * 1024, 256, M25P80_QUAD_READ) },
-	{ "n25q256a", INFO(0x20ba19, 0, 64 * 1024, 512, SECT_4K) },
+	{ "n25q128a11",  INFO(0x20bb18, 0, 64 * 1024, 256, M25P80_QUAD_READ |
+							   M25P_FLASH_LOCK) },
+	{ "n25q128a13",  INFO(0x20ba18, 0, 64 * 1024, 256, M25P80_QUAD_READ |
+							   M25P_FLASH_LOCK) },
+	{ "n25q256a", INFO(0x20ba19, 0, 64 * 1024, 512, SECT_4K |
+							M25P_FLASH_LOCK) },
 	/* Numonyx flash n25q128 - FIXME check the name */
-	{ "n25q128",   INFO(0x20bb18, 0, 64 * 1024, 256, M25P80_QUAD_READ) },
+	{ "n25q128",   INFO(0x20bb18, 0, 64 * 1024, 256, M25P80_QUAD_READ |
+							 M25P_FLASH_LOCK) },
 	{ "n25q128a11",  INFO(0x20bb18, 0, 64 * 1024, 256,
-			      E_FSR | M25P80_QUAD_READ) },
+			      E_FSR | M25P80_QUAD_READ | M25P_FLASH_LOCK) },
 	{ "n25q128a13",  INFO(0x20ba18, 0, 64 * 1024, 256,
-			      E_FSR | M25P80_QUAD_READ) },
+			      E_FSR | M25P80_QUAD_READ | M25P_FLASH_LOCK) },
 	{ "n25q256a13", INFO(0x20ba19,  0, 64 * 1024,  512,
-			     SECT_4K | E_FSR | M25P80_QUAD_READ) },
+			     SECT_4K | E_FSR | M25P80_QUAD_READ |
+			     M25P_FLASH_LOCK) },
 	{ "n25q256a11", INFO(0x20bb19,  0, 64 * 1024,  512,
-			     SECT_4K | E_FSR | M25P80_QUAD_READ) },
+			     SECT_4K | E_FSR | M25P80_QUAD_READ |
+			     M25P_FLASH_LOCK) },
 	{ "n25q512a13", INFO(0x20ba20,  0, 64 * 1024,  1024,
-			     SECT_4K | E_FSR | M25P80_QUAD_READ) },
+			     SECT_4K | E_FSR | M25P80_QUAD_READ |
+			     M25P_FLASH_LOCK) },
 	{ "n25q512a11", INFO(0x20bb20,  0, 64 * 1024,  1024,
-			     SECT_4K | E_FSR | M25P80_QUAD_READ) },
+			     SECT_4K | E_FSR | M25P80_QUAD_READ |
+			     M25P_FLASH_LOCK) },
 	{ "n25q00aa13", INFO(0x20ba21,  0, 64 * 1024,  2048,
-			     SECT_4K | E_FSR | M25P80_QUAD_READ) },
+			     SECT_4K | E_FSR | M25P80_QUAD_READ |
+			     M25P_FLASH_LOCK) },
 
 	/* PMC */
 	{ "pm25lv512",   INFO(0,        0, 32 * 1024,    2, SECT_4K_PMC) },
@@ -1253,25 +1340,25 @@ static const struct spi_device_id m25p_ids[] = {
 	{ "s25sl032p",  INFO(0x010215, 0x4d00,  64 * 1024,  64, 0) },
 	{ "s25sl064p",  INFO(0x010216, 0x4d00,  64 * 1024, 128, 0) },
 	{ "s25fl128s0", INFO(0x012018, 0x4d00, 256 * 1024,  64,
-			     M25P80_QUAD_READ) },
+			     M25P80_QUAD_READ | M25P_FLASH_LOCK) },
 	{ "s25fl128s1", INFO(0x012018, 0x4d01,  64 * 1024, 256,
-			     M25P80_QUAD_READ) },
+			     M25P80_QUAD_READ | M25P_FLASH_LOCK) },
 	{ "s25fl256s0", INFO(0x010219, 0x4d00, 256 * 1024, 128,
-			     M25P80_QUAD_READ) },
+			     M25P80_QUAD_READ | M25P_FLASH_LOCK) },
 	{ "s25fl256s1", INFO(0x010219, 0x4d01,  64 * 1024, 512,
-			     M25P80_QUAD_READ) },
+			     M25P80_QUAD_READ | M25P_FLASH_LOCK) },
 	{ "s25fl512s",  INFO(0x010220, 0x4d00, 256 * 1024, 256,
-			     M25P80_QUAD_READ) },
+			     M25P80_QUAD_READ | M25P_FLASH_LOCK) },
 	{ "s70fl01gs",  INFO(0x010221, 0x4d00, 256 * 1024, 256,
 			     M25P80_QUAD_READ) },
 	{ "s25sl12800", INFO(0x012018, 0x0300, 256 * 1024,  64,
-			     M25P80_QUAD_READ) },
+			     M25P80_QUAD_READ | M25P_FLASH_LOCK) },
 	{ "s25sl12801", INFO(0x012018, 0x0301,  64 * 1024, 256,
-			     M25P80_QUAD_READ) },
+			     M25P80_QUAD_READ | M25P_FLASH_LOCK) },
 	{ "s25fl129p0", INFO(0x012018, 0x4d00, 256 * 1024,  64,
-			     M25P80_QUAD_READ) },
+			     M25P80_QUAD_READ | M25P_FLASH_LOCK) },
 	{ "s25fl129p1", INFO(0x012018, 0x4d01,  64 * 1024, 256,
-			     M25P80_QUAD_READ) },
+			     M25P80_QUAD_READ | M25P_FLASH_LOCK) },
 	{ "s25sl004a",  INFO(0x010212,      0,  64 * 1024,   8, 0) },
 	{ "s25sl008a",  INFO(0x010213,      0,  64 * 1024,  16, 0) },
 	{ "s25sl016a",  INFO(0x010214,      0,  64 * 1024,  32, 0) },
@@ -1527,6 +1614,7 @@ static int m25p_probe(struct spi_device *spi)
 					/* dual stacked */
 					flash->shift = 0;
 					flash->mtd.size <<= 1;
+					info->n_sectors <<= 1;
 					flash->isstacked = 1;
 					flash->isparallel = 0;
 #else
@@ -1551,9 +1639,8 @@ static int m25p_probe(struct spi_device *spi)
 	flash->mtd._erase = m25p80_erase;
 	flash->mtd._read = m25p80_read_ext;
 
-	/* flash protection support for STmicro chips */
-	if (JEDEC_MFR(info->jedec_id) == CFI_MFR_ST &&
-					(info->flags & M25P_FLASH_LOCK)) {
+	/* flash protection support for STmicro chips, Spansion and Micron */
+	if (info->flags & M25P_FLASH_LOCK) {
 		flash->mtd._lock = m25p80_lock;
 		flash->mtd._unlock = m25p80_unlock;
 		flash->mtd._is_locked = m25p80_is_locked;
