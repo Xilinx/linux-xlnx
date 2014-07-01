@@ -100,25 +100,19 @@
 #define XILINX_DP_TX_AUX_REPLY_CNT			0x13c
 #define XILINX_DP_TX_AUX_REPLY_CNT_MASK			0xff
 #define XILINX_DP_TX_INTR_STATUS			0x140
-#define XILINX_DP_TX_INTR_STATUS_HPD_IRQ		(1 << 0)
-#define XILINX_DP_TX_INTR_STATUS_HPD_EVENT		(1 << 1)
-#define XILINX_DP_TX_INTR_STATUS_REPLY_RECEIVED		(1 << 2)
-#define XILINX_DP_TX_INTR_STATUS_REPLY_TIMEOUT		(1 << 3)
-#define XILINX_DP_TX_INTR_STATUS_HPD_PULSE_DETECTED	(1 << 4)
-#define XILINX_DP_TX_INTR_STATUS_EXT_PKT_TXD		(1 << 5)
 #define XILINX_DP_TX_INTR_MASK				0x144
-#define XILINX_DP_TX_INTR_MASK_HPD_IRQ			(1 << 0)
-#define XILINX_DP_TX_INTR_MASK_HPD_EVENT		(1 << 1)
-#define XILINX_DP_TX_INTR_MASK_REPLY_RECV		(1 << 2)
-#define XILINX_DP_TX_INTR_MASK_REPLY_TIMEOUT		(1 << 3)
-#define XILINX_DP_TX_INTR_MASK_HPD_PULSE		(1 << 4)
-#define XILINX_DP_TX_INTR_MASK_EXT_PKT_TXD		(1 << 5)
-#define XILINX_DP_TX_INTR_MASK_ALL			(XILINX_DP_TX_INTR_MASK_HPD_IRQ | \
-							 XILINX_DP_TX_INTR_MASK_HPD_EVENT | \
-							 XILINX_DP_TX_INTR_MASK_REPLY_RECV | \
-							 XILINX_DP_TX_INTR_MASK_REPLY_TIMEOUT | \
-							 XILINX_DP_TX_INTR_MASK_HPD_PULSE | \
-							 XILINX_DP_TX_INTR_MASK_EXT_PKT_TXD)
+#define XILINX_DP_TX_INTR_HPD_IRQ			(1 << 0)
+#define XILINX_DP_TX_INTR_HPD_EVENT			(1 << 1)
+#define XILINX_DP_TX_INTR_REPLY_RECV			(1 << 2)
+#define XILINX_DP_TX_INTR_REPLY_TIMEOUT			(1 << 3)
+#define XILINX_DP_TX_INTR_HPD_PULSE			(1 << 4)
+#define XILINX_DP_TX_INTR_EXT_PKT_TXD			(1 << 5)
+#define XILINX_DP_TX_INTR_ALL				(XILINX_DP_TX_INTR_HPD_IRQ | \
+							 XILINX_DP_TX_INTR_HPD_EVENT | \
+							 XILINX_DP_TX_INTR_REPLY_RECV | \
+							 XILINX_DP_TX_INTR_REPLY_TIMEOUT | \
+							 XILINX_DP_TX_INTR_HPD_PULSE | \
+							 XILINX_DP_TX_INTR_EXT_PKT_TXD)
 #define XILINX_DP_TX_REPLY_DATA_CNT			0x148
 
 /* Main stream attribute registers */
@@ -1003,7 +997,7 @@ static int xilinx_drm_dp_encoder_init(struct platform_device *pdev,
 		return ret;
 
 	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_INTR_MASK,
-			  ~XILINX_DP_TX_INTR_MASK_ALL);
+			  ~XILINX_DP_TX_INTR_ALL);
 	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_ENABLE, 1);
 
 	return 0;
@@ -1041,7 +1035,7 @@ static irqreturn_t xilinx_drm_dp_irq_handler(int irq, void *data)
 
 	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_INTR_STATUS, status);
 
-	if (status & XILINX_DP_TX_INTR_STATUS_HPD_EVENT)
+	if (status & XILINX_DP_TX_INTR_HPD_EVENT)
 		drm_helper_hpd_irq_event(dp->encoder->dev);
 
 	return IRQ_HANDLED;
@@ -1232,7 +1226,7 @@ static int xilinx_drm_dp_probe(struct platform_device *pdev)
 	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_FORCE_SCRAMBLER_RESET, 1);
 	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_ENABLE, 0);
 	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_INTR_MASK,
-			  XILINX_DP_TX_INTR_MASK_ALL);
+			  XILINX_DP_TX_INTR_ALL);
 
 	dp->aux.name = "Xilinx DP AUX";
 	dp->aux.dev = dp->dev;
