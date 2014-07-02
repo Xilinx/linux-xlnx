@@ -1,0 +1,6 @@
+config SND_SOC_XILINX_DP
+	tristate "Audio support for the the Xilinx DisplayPort"
+	select SND_DMAENGINE_PCM
+	select SND_SOC_GENERIC_DMAENGINE_PCM
+	help
+	  Audio support the for Xilinx DisplayPort.
