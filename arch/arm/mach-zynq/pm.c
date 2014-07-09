@@ -266,9 +266,6 @@ int __init zynq_pm_late_init(void)
 	if (!ddrc_base)
 		pr_warn("%s: Unable to map DDRC IO memory.\n", __func__);
 
-	/*
-	 * FIXME: should be done by an ocm driver which then provides allocators
-	 */
 	ocm_base = zynq_pm_remap_ocm();
 	if (!ocm_base)
 		pr_warn("%s: Unable to map OCM.\n", __func__);
