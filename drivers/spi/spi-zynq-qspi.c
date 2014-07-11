@@ -540,7 +540,7 @@ static irqreturn_t zynq_qspi_irq(int irq, void *dev_id)
 				/* There is more data to send */
 				zynq_qspi_fill_tx_fifo(xqspi,
 						       ZYNQ_QSPI_RX_THRESHOLD);
-			} else {
+			} else if (intr_status & ZYNQ_QSPI_IXR_TXNFULL_MASK) {
 				int tmp;
 				tmp = xqspi->bytes_to_transfer;
 				zynq_qspi_copy_write_data(xqspi, &data,
