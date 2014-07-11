@@ -884,6 +884,10 @@ bool xylon_cvc_get_info(struct xylon_cvc *cvc, enum xylon_cvc_info info,
 		if (cvc->ctrl & LOGICVC_CTRL_PIXEL_DATA_TRIGGER_INVERT)
 			return true;
 		break;
+	case LOGICVC_INFO_SIZE_POSITION:
+		if (cvc->flags & LOGICVC_FLAGS_SIZE_POSITION)
+			return true;
+		break;
 	}
 
 	return false;
