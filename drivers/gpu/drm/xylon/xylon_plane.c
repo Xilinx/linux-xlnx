@@ -73,7 +73,6 @@ xylon_drm_plane_set_parameters(struct xylon_drm_plane *plane,
 
 	xylon_cvc_layer_set_address(manager->cvc, plane->id, plane->paddr,
 				    plane->x, plane->y);
-
 }
 
 void xylon_drm_plane_dpms(struct drm_plane *base_plane, int dpms)
@@ -124,14 +123,6 @@ int xylon_drm_plane_fb_set(struct drm_plane *base_plane,
 		return -EINVAL;
 	}
 
-	ret = xylon_cvc_layer_set_size_position(manager->cvc, id,
-						src_x, src_y, src_w, src_h,
-						crtc_x, crtc_y, crtc_w, crtc_h);
-	if (ret) {
-		DRM_ERROR("failed setting layer size parameters\n");
-		return -EINVAL;
-	}
-
 	gem_obj = xylon_drm_fb_get_gem_obj(fb);
 	if (!gem_obj) {
 		DRM_ERROR("failed get gem obj for fb\n");
@@ -146,6 +137,14 @@ int xylon_drm_plane_fb_set(struct drm_plane *base_plane,
 
 	xylon_drm_plane_set_parameters(plane, manager, cma_obj->paddr,
 				       src_x, src_y);
+
+	ret = xylon_cvc_layer_set_size_position(manager->cvc, id,
+						src_x, src_y, src_w, src_h,
+						crtc_x, crtc_y, crtc_w, crtc_h);
+	if (ret) {
+		DRM_ERROR("failed setting layer size parameters\n");
+		return -EINVAL;
+	}
 
 	return 0;
 }

@@ -399,10 +399,6 @@ int xylon_cvc_layer_set_size_position(struct xylon_cvc *cvc, int id,
 						  base,
 						  LOGICVC_LAYER_VSIZE_ROFF,
 						  layer_data);
-		reg_access->xylon_cvc_set_reg_val(layer_data->vmem_pbase,
-						  base,
-						  LOGICVC_LAYER_ADDR_ROFF,
-						  layer_data);
 	}
 
 	return 0;
