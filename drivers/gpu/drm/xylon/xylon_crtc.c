@@ -46,6 +46,8 @@ struct xylon_drm_crtc_properties {
 	struct drm_property *pixel_format;
 	struct drm_property *transparency;
 	struct drm_property *transparent_color;
+	struct drm_property *position_x;
+	struct drm_property *position_y;
 };
 
 struct xylon_drm_crtc {
@@ -118,6 +120,39 @@ static void xylon_drm_crtc_commit(struct drm_crtc *base_crtc)
 	xylon_cvc_enable(crtc->cvc, &crtc->vmode);
 
 	xylon_drm_crtc_dpms(base_crtc, DRM_MODE_DPMS_ON);
+
+	if (xylon_cvc_get_info(crtc->cvc, LOGICVC_INFO_SIZE_POSITION, 0)) {
+		struct xylon_drm_crtc_properties *p = &crtc->properties;
+
+		if (p->position_x) {
+			drm_object_property_set_value(&base_crtc->base,
+						      p->position_x,
+						      0);
+			p->position_x->values[1] = crtc->vmode.hactive;
+		} else {
+			xylon_drm_property_create_range(base_crtc->dev,
+							&base_crtc->base,
+							&p->position_x,
+							"position_x",
+							0,
+							crtc->vmode.hactive,
+							0);
+		}
+		if (p->position_y) {
+			drm_object_property_set_value(&base_crtc->base,
+						      p->position_y,
+						      0);
+			p->position_y->values[1] = crtc->vmode.vactive;
+		} else {
+			xylon_drm_property_create_range(base_crtc->dev,
+							&base_crtc->base,
+							&p->position_y,
+							"position_y",
+							0,
+							crtc->vmode.vactive,
+							0);
+		}
+	}
 }
 
 static bool xylon_drm_crtc_mode_fixup(struct drm_crtc *base_crtc,
@@ -287,10 +322,14 @@ static int xylon_drm_crtc_set_property(struct drm_crtc *base_crtc,
 				       struct drm_property *property,
 				       u64 value)
 {
+	struct drm_device *dev;
+	struct drm_mode_object *obj;
 	struct xylon_drm_crtc *crtc = to_xylon_crtc(base_crtc);
 	struct xylon_drm_crtc_properties *props = &crtc->properties;
 	struct xylon_drm_plane_op op;
 	u32 val = (u32)value;
+	s64 x = -1;
+	s64 y = -1;
 
 	if (property == props->bg_color) {
 		op.id = XYLON_DRM_PLANE_OP_ID_BACKGROUND_COLOR;
@@ -324,11 +363,38 @@ static int xylon_drm_crtc_set_property(struct drm_crtc *base_crtc,
 	} else if (property == props->transparent_color) {
 		op.id = XYLON_DRM_PLANE_OP_ID_TRANSPARENT_COLOR;
 		op.param = val;
+	} else if (property == props->position_x) {
+		dev = base_crtc->dev;
+		obj = &base_crtc->base;
+
+		x = val;
+		drm_object_property_get_value(obj, props->position_y,
+					      (u64 *)&y);
+	} else if (property == props->position_y) {
+		dev = base_crtc->dev;
+		obj = &base_crtc->base;
+
+		drm_object_property_get_value(obj, props->position_x,
+					      (u64 *)&x);
+		y = val;
 	} else {
 		return -EINVAL;
 	}
 
-	xylon_drm_plane_op(crtc->private, &op);
+	if (x > -1 && y > -1) {
+		if (xylon_drm_plane_fb_set(crtc->private, base_crtc->fb,
+					   (u32)x, (u32)y,
+					   base_crtc->hwmode.hdisplay - x,
+					   base_crtc->hwmode.vdisplay - y,
+					   base_crtc->x, base_crtc->y,
+					   base_crtc->hwmode.hdisplay - x,
+					   base_crtc->hwmode.vdisplay - y))
+			DRM_ERROR("failed set position\n");
+		else
+			xylon_drm_plane_commit(crtc->private);
+	} else {
+		xylon_drm_plane_op(crtc->private, &op);
+	}
 
 	return 0;
 }
