@@ -221,7 +221,8 @@
 #define XILINX_DP_TX_PHY_POSTCURSOR_LANE_2		0x254
 #define XILINX_DP_TX_PHY_POSTCURSOR_LANE_3		0x258
 #define XILINX_DP_TX_PHY_STATUS				0x280
-#define XILINX_DP_TX_PHY_STATUS_READY_MASK		0x4f
+#define XILINX_DP_TX_PHY_STATUS_PLL_LOCKED_SHIFT	4
+#define XILINX_DP_TX_PHY_STATUS_FPGA_PLL_LOCKED		(1 << 6)
 
 #define XILINX_DP_MISC0_RGB				(0)
 #define XILINX_DP_MISC0_YCRCB_422			(5 << 1)
@@ -418,13 +419,15 @@ static int xilinx_drm_dp_aux_cmd_submit(struct xilinx_drm_dp *dp, u32 cmd,
  */
 static int xilinx_drm_dp_phy_ready(struct xilinx_drm_dp *dp)
 {
-	u32 i, reg;
+	u32 i, reg, ready, lane;
+
+	lane = dp->config.max_lanes;
+	ready = XILINX_DP_TX_PHY_STATUS_FPGA_PLL_LOCKED | ((1 << lane) - 1);
 
 	/* Wait for 100 * 1ms. This should be enough time for PHY to be ready */
 	for (i = 0; ; i++) {
 		reg = xilinx_drm_readl(dp->iomem, XILINX_DP_TX_PHY_STATUS);
-		if ((reg & XILINX_DP_TX_PHY_STATUS_READY_MASK) ==
-		    XILINX_DP_TX_PHY_STATUS_READY_MASK)
+		if ((reg & ready) == ready)
 			return 0;
 
 		if (i == 100) {
@@ -434,6 +437,8 @@ static int xilinx_drm_dp_phy_ready(struct xilinx_drm_dp *dp)
 
 		usleep_range(1000, 1100);
 	}
+
+	return 0;
 }
 
 /**
