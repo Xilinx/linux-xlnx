@@ -234,8 +234,6 @@
 #define XILINX_DP_MISC0_BPC_16				(4 << 5)
 #define XILINX_DP_MISC1_Y_ONLY				(1 << 7)
 
-#define XILINX_DP_MAX_CLOCK				150000
-
 #define DP_REDUCED_BIT_RATE				162000
 #define DP_HIGH_BIT_RATE				270000
 #define DP_HIGH_BIT_RATE2				540000
@@ -272,6 +270,7 @@ struct xilinx_drm_dp_mode {
  * @max_lanes: max number of lanes
  * @max_link_rate: max link rate
  * @max_bpc: maximum bits-per-color
+ * @max_pclock: maximum pixel clock rate
  * @enable_yonly: enable yonly color space logic
  * @enable_ycrcb: enable ycrcb color space logic
  * @misc0: misc0 configuration (per DP v1.2 spec)
@@ -283,6 +282,7 @@ struct xilinx_drm_dp_config {
 	u32 max_lanes;
 	u32 max_link_rate;
 	u32 max_bpc;
+	u32 max_pclock;
 	bool enable_yonly;
 	bool enable_ycrcb;
 
@@ -796,10 +796,11 @@ static int xilinx_drm_dp_mode_valid(struct drm_encoder *encoder,
 	struct xilinx_drm_dp *dp = to_dp(encoder);
 	u8 max_lanes = dp->link_config.max_lanes;
 	u8 bpp = dp->config.bpp;
+	u32 max_pclock = dp->config.max_pclock;
 	int max_rate = dp->link_config.max_rate;
 	int rate;
 
-	if (mode->clock > XILINX_DP_MAX_CLOCK)
+	if (max_pclock && mode->clock > max_pclock)
 		return MODE_CLOCK_HIGH;
 
 	rate = xilinx_drm_dp_max_rate(max_rate, max_lanes, bpp);
@@ -1223,6 +1224,9 @@ static int xilinx_drm_dp_parse_of(struct xilinx_drm_dp *dp)
 	}
 
 	config->bpp = num_colors * bpc;
+
+	of_property_read_u32(node, "xlnx,max-pclock-frequency",
+			     &config->max_pclock);
 
 	return 0;
 }
