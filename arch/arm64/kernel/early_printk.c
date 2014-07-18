@@ -72,12 +72,24 @@ static void uart8250_32bit_printch(char ch)
 	writel_relaxed(ch, early_base + (UART_TX << 2));
 }
 
+/*
+ * Cadence Uart signel character TX.
+ */
+static void cdns_uart_printch(char ch)
+{
+	while ((readl_relaxed(early_base + CDNS_UART_SR_OFFSET) &
+		CDNS_UART_SR_TXEMPTY) != CDNS_UART_SR_TXEMPTY)
+		;
+	writel_relaxed(ch, early_base + CDNS_UART_FIFO_OFFSET);
+}
+
 struct earlycon_match {
 	const char *name;
 	void (*printch)(char ch);
 };
 
 static const struct earlycon_match earlycon_match[] __initconst = {
+	{ .name = "cdns,uart", .printch = cdns_uart_printch, },
 	{ .name = "pl011", .printch = pl011_printch, },
 	{ .name = "smh", .printch = smh_printch, },
 	{ .name = "uart8250-8bit", .printch = uart8250_8bit_printch, },
