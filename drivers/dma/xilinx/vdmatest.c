@@ -309,7 +309,7 @@ static int xilinx_vdmatest_slave_func(void *data)
 			xt.dir = DMA_DEV_TO_MEM;
 			xt.numf = vsize;
 			xt.sgl[0].size = hsize;
-			xt.sgl[0].icg = hsize;
+			xt.sgl[0].icg = 0;
 			xt.frame_size = 1;
 			rxd = rx_dev->device_prep_interleaved_dma(rx_chan,
 								  &xt, flags);
@@ -329,7 +329,7 @@ static int xilinx_vdmatest_slave_func(void *data)
 			xt.dir = DMA_MEM_TO_DEV;
 			xt.numf = vsize;
 			xt.sgl[0].size = hsize;
-			xt.sgl[0].icg = hsize;
+			xt.sgl[0].icg = 0;
 			xt.frame_size = 1;
 			txd = tx_dev->device_prep_interleaved_dma(tx_chan,
 								  &xt, flags);
