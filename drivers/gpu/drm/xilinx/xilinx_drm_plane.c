@@ -34,13 +34,13 @@
 #include "xilinx_rgb2yuv.h"
 
 /**
- * struct xilinx_drm_plane_vdma - Xilinx drm plane VDMA object
+ * struct xilinx_drm_plane_dma - Xilinx drm plane VDMA object
  *
  * @chan: dma channel
  * @xt: dma interleaved configuration template
  * @sgl: data chunk for dma_interleaved_template
  */
-struct xilinx_drm_plane_vdma {
+struct xilinx_drm_plane_dma {
 	struct dma_chan *chan;
 	struct dma_interleaved_template xt;
 	struct data_chunk sgl[1];
@@ -57,7 +57,7 @@ struct xilinx_drm_plane_vdma {
  * @alpha: alpha value
  * @priv: flag for private plane
  * @format: pixel format
- * @vdma: vdma object
+ * @dma: dma object
  * @rgb2yuv: rgb2yuv instance
  * @cresample: cresample instance
  * @osd_layer: osd layer
@@ -72,7 +72,7 @@ struct xilinx_drm_plane {
 	unsigned int alpha;
 	bool priv;
 	uint32_t format;
-	struct xilinx_drm_plane_vdma vdma;
+	struct xilinx_drm_plane_dma dma;
 	struct xilinx_rgb2yuv *rgb2yuv;
 	struct xilinx_cresample *cresample;
 	struct xilinx_osd_layer *osd_layer;
@@ -126,8 +126,8 @@ void xilinx_drm_plane_dpms(struct drm_plane *base_plane, int dpms)
 	plane->dpms = dpms;
 	switch (dpms) {
 	case DRM_MODE_DPMS_ON:
-		/* start vdma engine */
-		dma_async_issue_pending(plane->vdma.chan);
+		/* start dma engine */
+		dma_async_issue_pending(plane->dma.chan);
 
 		if (plane->rgb2yuv)
 			xilinx_rgb2yuv_enable(plane->rgb2yuv);
@@ -181,10 +181,10 @@ void xilinx_drm_plane_dpms(struct drm_plane *base_plane, int dpms)
 
 		/* reset vdma */
 		dma_config.reset = 1;
-		xilinx_vdma_channel_set_config(plane->vdma.chan, &dma_config);
+		xilinx_vdma_channel_set_config(plane->dma.chan, &dma_config);
 
-		/* stop vdma engine and release descriptors */
-		dmaengine_terminate_all(plane->vdma.chan);
+		/* stop dma engine and release descriptors */
+		dmaengine_terminate_all(plane->dma.chan);
 		break;
 	}
 }
@@ -199,18 +199,18 @@ void xilinx_drm_plane_commit(struct drm_plane *base_plane)
 	DRM_DEBUG_KMS("plane->id: %d\n", plane->id);
 
 	flags = DMA_CTRL_ACK | DMA_PREP_INTERRUPT;
-	desc = dmaengine_prep_interleaved_dma(plane->vdma.chan, &plane->vdma.xt,
+	desc = dmaengine_prep_interleaved_dma(plane->dma.chan, &plane->dma.xt,
 					      flags);
 	if (!desc) {
 		DRM_ERROR("failed to prepare DMA descriptor\n");
 		return;
 	}
 
-	/* submit vdma desc */
+	/* submit dma desc */
 	dmaengine_submit(desc);
 
-	/* start vdma with new mode */
-	dma_async_issue_pending(plane->vdma.chan);
+	/* start dma with new mode */
+	dma_async_issue_pending(plane->dma.chan);
 }
 
 /* mode set a plane */
@@ -251,15 +251,15 @@ int xilinx_drm_plane_mode_set(struct drm_plane *base_plane,
 	DRM_DEBUG_KMS("bpp: %d\n", fb->bits_per_pixel / 8);
 
 	/* configure dma desc */
-	plane->vdma.xt.numf = src_h;
-	plane->vdma.sgl[0].size = src_w * fb->bits_per_pixel / 8;
-	plane->vdma.sgl[0].icg = fb->pitches[0] - plane->vdma.sgl[0].size;
+	plane->dma.xt.numf = src_h;
+	plane->dma.sgl[0].size = src_w * fb->bits_per_pixel / 8;
+	plane->dma.sgl[0].icg = fb->pitches[0] - plane->dma.sgl[0].size;
 	offset = src_x * fb->bits_per_pixel / 8 + src_y * fb->pitches[0];
-	plane->vdma.xt.src_start = obj->paddr + offset;
-	plane->vdma.xt.frame_size = 1;
-	plane->vdma.xt.dir = DMA_MEM_TO_DEV;
-	plane->vdma.xt.src_sgl = true;
-	plane->vdma.xt.dst_sgl = false;
+	plane->dma.xt.src_start = obj->paddr + offset;
+	plane->dma.xt.frame_size = 1;
+	plane->dma.xt.dir = DMA_MEM_TO_DEV;
+	plane->dma.xt.src_sgl = true;
+	plane->dma.xt.dst_sgl = false;
 
 	/* set OSD dimensions */
 	if (plane->manager->osd) {
@@ -326,7 +326,7 @@ static void xilinx_drm_plane_destroy(struct drm_plane *base_plane)
 
 	drm_plane_cleanup(base_plane);
 
-	dma_release_channel(plane->vdma.chan);
+	dma_release_channel(plane->dma.chan);
 
 	if (plane->manager->osd) {
 		xilinx_osd_layer_disable(plane->osd_layer);
@@ -613,10 +613,10 @@ xilinx_drm_plane_create(struct xilinx_drm_plane_manager *manager,
 	plane->format = -1;
 	DRM_DEBUG_KMS("plane->id: %d\n", plane->id);
 
-	plane->vdma.chan = of_dma_request_slave_channel(plane_node, "vdma");
-	if (IS_ERR(plane->vdma.chan)) {
+	plane->dma.chan = of_dma_request_slave_channel(plane_node, "vdma");
+	if (IS_ERR(plane->dma.chan)) {
 		DRM_ERROR("failed to request dma channel\n");
-		ret = PTR_ERR(plane->vdma.chan);
+		ret = PTR_ERR(plane->dma.chan);
 		goto err_out;
 	}
 
@@ -718,7 +718,7 @@ err_init:
 		xilinx_osd_layer_put(plane->osd_layer);
 	}
 err_dma:
-	dma_release_channel(plane->vdma.chan);
+	dma_release_channel(plane->dma.chan);
 err_out:
 	of_node_put(plane_node);
 	return ERR_PTR(ret);
