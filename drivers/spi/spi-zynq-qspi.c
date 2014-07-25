@@ -121,12 +121,13 @@
  * @refclk:		Pointer to the peripheral clock
  * @pclk:		Pointer to the APB clock
  * @irq:		IRQ number
- * @config_reg_lock:	Lock used for accessing configuration register
  * @txbuf:		Pointer to the TX buffer
  * @rxbuf:		Pointer to the RX buffer
  * @bytes_to_transfer:	Number of bytes left to transfer
  * @bytes_to_receive:	Number of bytes left to receive
  * @is_dual:		Flag to indicate whether dual flash memories are used
+ * @is_instr:		Flag to indicate if transfer contains an instruction
+ *			(Used in dual parallel configuration)
  */
 struct zynq_qspi {
 	void __iomem *regs;
@@ -457,15 +458,15 @@ static void zynq_qspi_fill_tx_fifo(struct zynq_qspi *xqspi, u32 size)
 /**
  * zynq_qspi_tx_dual_parallel - Handles odd byte tx for dual parallel
  *
+ * @xqspi:	Pointer to the zynq_qspi structure
+ * @data:	Data to be transmitted
+ * @len:	No. of bytes to be transmitted
+ *
  * In dual parallel configuration, when read/write data operations
  * are performed, odd data bytes have to be converted to even to
  * avoid a nibble (of data when programming / dummy when reading)
  * going to individual flash devices, where a byte is expected.
  * This check is only for data and will not apply for commands.
- *
- * @xqspi:	Pointer to the zynq_qspi structure
- * @data:	Data to be transmitted
- * @len:	No. of bytes to be transmitted
  */
 static inline void zynq_qspi_tx_dual_parallel(struct zynq_qspi *xqspi,
 					      u32 data, u32 len)
@@ -575,6 +576,8 @@ static irqreturn_t zynq_qspi_irq(int irq, void *dev_id)
 
 /**
  * zynq_qspi_start_transfer - Initiates the QSPI transfer
+ * @master:	Pointer to the spi_master structure which provides
+ *		information about the controller.
  * @qspi:	Pointer to the spi_device structure
  * @transfer:	Pointer to the spi_transfer structure which provide information
  *		about next transfer parameters
