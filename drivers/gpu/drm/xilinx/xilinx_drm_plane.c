@@ -20,7 +20,6 @@
 #include <drm/drm_fb_cma_helper.h>
 #include <drm/drm_gem_cma_helper.h>
 
-#include <linux/amba/xilinx_dma.h>
 #include <linux/device.h>
 #include <linux/dmaengine.h>
 #include <linux/of_dma.h>
@@ -115,7 +114,6 @@ void xilinx_drm_plane_dpms(struct drm_plane *base_plane, int dpms)
 {
 	struct xilinx_drm_plane *plane = to_xilinx_plane(base_plane);
 	struct xilinx_drm_plane_manager *manager = plane->manager;
-	struct xilinx_vdma_config dma_config;
 
 	DRM_DEBUG_KMS("plane->id: %d\n", plane->id);
 	DRM_DEBUG_KMS("dpms: %d -> %d\n", plane->dpms, dpms);
@@ -178,10 +176,6 @@ void xilinx_drm_plane_dpms(struct drm_plane *base_plane, int dpms)
 			xilinx_rgb2yuv_disable(plane->rgb2yuv);
 			xilinx_rgb2yuv_reset(plane->rgb2yuv);
 		}
-
-		/* reset vdma */
-		dma_config.reset = 1;
-		xilinx_vdma_channel_set_config(plane->dma.chan, &dma_config);
 
 		/* stop dma engine and release descriptors */
 		dmaengine_terminate_all(plane->dma.chan);
