@@ -13,6 +13,7 @@
 #ifndef __XILINX_VIP_DMA_H__
 #define __XILINX_VIP_DMA_H__
 
+#include <linux/dmaengine.h>
 #include <linux/mutex.h>
 #include <linux/videodev2.h>
 
@@ -65,6 +66,8 @@ static inline struct xvip_pipeline *to_xvip_pipeline(struct media_entity *e)
  * @sequence: V4L2 buffers sequence number
  * @dma: DMA engine channel
  * @align: transfer alignment required by the DMA channel (in bytes)
+ * @xt: dma interleaved template for dma configuration
+ * @sgl: data chunk structure for dma_interleaved_template
  */
 struct xvip_dma {
 	struct list_head list;
@@ -85,6 +88,8 @@ struct xvip_dma {
 
 	struct dma_chan *dma;
 	unsigned int align;
+	struct dma_interleaved_template xt;
+	struct data_chunk sgl[1];
 };
 
 #define to_xvip_dma(vdev)	container_of(vdev, struct xvip_dma, video)
