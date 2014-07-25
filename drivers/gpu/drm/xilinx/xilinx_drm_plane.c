@@ -627,9 +627,9 @@ xilinx_drm_plane_create(struct xilinx_drm_plane_manager *manager,
 	DRM_DEBUG_KMS("plane->id: %d\n", plane->id);
 
 	plane->vdma.chan = of_dma_request_slave_channel(plane_node, "vdma");
-	if (!plane->vdma.chan) {
+	if (IS_ERR(plane->vdma.chan)) {
 		DRM_ERROR("failed to request dma channel\n");
-		ret = -ENODEV;
+		ret = PTR_ERR(plane->vdma.chan);
 		goto err_out;
 	}
 
