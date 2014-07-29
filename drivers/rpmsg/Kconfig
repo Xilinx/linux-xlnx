@@ -30,6 +30,4 @@ config RPMSG_FREERTOS_STAT
 	  This is just a sample to get statistic from FreeRTOS.
 	  Say either Y or M. You know you want to.
 
-source "drivers/rpmsg/host/Kconfig"
-
 endmenu
