@@ -180,8 +180,7 @@ struct ucred {
 #define AF_ALG		38	/* Algorithm sockets		*/
 #define AF_NFC		39	/* NFC sockets			*/
 #define AF_VSOCK	40	/* vSockets			*/
-#define AF_RPMSG	41	/* Remote-processor messaging   */
-#define AF_MAX		42	/* For now.. */
+#define AF_MAX		41	/* For now.. */
 
 /* Protocol families, same as address families. */
 #define PF_UNSPEC	AF_UNSPEC
@@ -227,7 +226,6 @@ struct ucred {
 #define PF_NFC		AF_NFC
 #define PF_VSOCK	AF_VSOCK
 #define PF_MAX		AF_MAX
-#define PF_RPMSG	AF_RPMSG
 
 /* Maximum queue length specifiable by listen.  */
 #define SOMAXCONN	128
