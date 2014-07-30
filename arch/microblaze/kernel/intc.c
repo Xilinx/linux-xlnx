@@ -33,9 +33,9 @@ static void __iomem *intc_baseaddr;
 #define MER_HIE (1<<1)
 
 static unsigned int (*read_fn)(void __iomem *);
-static void (*write_fn)(unsigned int, void __iomem *);
+static void (*write_fn)(u32, void __iomem *);
 
-static void intc_write32(unsigned int val, void __iomem *addr)
+static void intc_write32(u32 val, void __iomem *addr)
 {
 	iowrite32(val, addr);
 }
@@ -45,7 +45,7 @@ static unsigned int intc_read32(void __iomem *addr)
 	return ioread32(addr);
 }
 
-static void intc_write32_be(unsigned int val, void __iomem *addr)
+static void intc_write32_be(u32 val, void __iomem *addr)
 {
 	iowrite32be(val, addr);
 }

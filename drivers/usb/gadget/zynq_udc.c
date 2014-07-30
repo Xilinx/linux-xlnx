@@ -38,7 +38,6 @@
 
 #include <linux/io.h>
 #include <asm/byteorder.h>
-#include <asm/system.h>
 #include <asm/unaligned.h>
 #include <asm/dma.h>
 

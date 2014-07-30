@@ -1992,7 +1992,7 @@ static int adv7604_isr(struct v4l2_subdev *sd, u32 status, bool *handled)
 	return 0;
 }
 
-static int adv7604_get_edid(struct v4l2_subdev *sd, struct v4l2_subdev_edid *edid)
+static int adv7604_get_edid(struct v4l2_subdev *sd, struct v4l2_edid *edid)
 {
 	struct adv7604_state *state = to_state(sd);
 	u8 *data = NULL;
@@ -2060,7 +2060,7 @@ static int get_edid_spa_location(const u8 *edid)
 	return -1;
 }
 
-static int adv7604_set_edid(struct v4l2_subdev *sd, struct v4l2_subdev_edid *edid)
+static int adv7604_set_edid(struct v4l2_subdev *sd, struct v4l2_edid *edid)
 {
 	struct adv7604_state *state = to_state(sd);
 	const struct adv7604_chip_info *info = state->info;

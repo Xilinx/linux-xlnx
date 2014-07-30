@@ -55,3 +55,4 @@ obj-$(CONFIG_SRAM)		+= sram.o
 obj-$(CONFIG_XILINX_TRAFGEN)	+= xilinx_trafgen.o
 obj-y				+= mic/
 obj-$(CONFIG_GENWQE)		+= genwqe/
+obj-$(CONFIG_ECHO)		+= echo/

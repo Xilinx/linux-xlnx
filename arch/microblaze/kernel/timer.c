@@ -44,9 +44,9 @@ static unsigned int timer_clock_freq;
 #define TCSR_ENALL	(1<<10)
 
 static unsigned int (*read_fn)(void __iomem *);
-static void (*write_fn)(unsigned int, void __iomem *);
+static void (*write_fn)(u32, void __iomem *);
 
-static void timer_write32(unsigned int val, void __iomem *addr)
+static void timer_write32(u32 val, void __iomem *addr)
 {
 	iowrite32(val, addr);
 }
@@ -56,7 +56,7 @@ static unsigned int timer_read32(void __iomem *addr)
 	return ioread32(addr);
 }
 
-static void timer_write32_be(unsigned int val, void __iomem *addr)
+static void timer_write32_be(u32 val, void __iomem *addr)
 {
 	iowrite32be(val, addr);
 }
@@ -163,7 +163,7 @@ static irqreturn_t timer_interrupt(int irq, void *dev_id)
 {
 	struct clock_event_device *evt = &clockevent_xilinx_timer;
 #ifdef CONFIG_HEART_BEAT
-	heartbeat();
+	microblaze_heartbeat();
 #endif
 	timer_ack();
 	evt->event_handler(evt);
@@ -306,7 +306,7 @@ static void __init xilinx_timer_init(struct device_node *timer)
 
 	setup_irq(irq, &timer_irqaction);
 #ifdef CONFIG_HEART_BEAT
-	setup_heartbeat();
+	microblaze_setup_heartbeat();
 #endif
 	xilinx_clocksource_init();
 	xilinx_clockevent_init();
