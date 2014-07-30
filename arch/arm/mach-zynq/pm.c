@@ -61,7 +61,8 @@ static void zynq_pm_wake(void)
 static int zynq_pm_suspend(unsigned long arg)
 {
 	u32 reg;
-	int (*zynq_suspend_ptr)(void __iomem *, void __iomem *);
+	int (*zynq_suspend_ptr)(void __iomem *, void __iomem *) =
+		(__force void *)ocm_base;
 	int do_ddrpll_bypass = 1;
 
 	/* Enable DDR self-refresh and clock stop */
@@ -95,22 +96,9 @@ static int zynq_pm_suspend(unsigned long arg)
 		      : /* no inputs */
 		      : "r12");
 
-	if (ocm_base) {
-		/*
-		 * Copy code to suspend system into OCM. The suspend code
-		 * needs to run from OCM as DRAM may no longer be available
-		 * when the PLL is stopped.
-		 */
-		memcpy((__force void *)ocm_base, &zynq_sys_suspend,
-			zynq_sys_suspend_sz);
-		flush_icache_range((unsigned long)ocm_base,
-			(unsigned long)(ocm_base) + zynq_sys_suspend_sz);
-		zynq_suspend_ptr = (__force void *)ocm_base;
-	} else {
+	if (!ocm_base)
 		do_ddrpll_bypass = 0;
-	}
 
-	/* Transfer to suspend code in OCM */
 	if (do_ddrpll_bypass) {
 		/*
 		 * Going this way will turn off DDR related clocks and the DDR
@@ -267,8 +255,19 @@ int __init zynq_pm_late_init(void)
 		pr_warn("%s: Unable to map DDRC IO memory.\n", __func__);
 
 	ocm_base = zynq_pm_remap_ocm();
-	if (!ocm_base)
+	if (!ocm_base) {
 		pr_warn("%s: Unable to map OCM.\n", __func__);
+	} else {
+		/*
+		 * Copy code to suspend system into OCM. The suspend code
+		 * needs to run from OCM as DRAM may no longer be available
+		 * when the PLL is stopped.
+		 */
+		memcpy((__force void *)ocm_base, &zynq_sys_suspend,
+			zynq_sys_suspend_sz);
+		flush_icache_range((unsigned long)ocm_base,
+			(unsigned long)(ocm_base) + zynq_sys_suspend_sz);
+	}
 
 	suspend_set_ops(&zynq_pm_ops);
 
