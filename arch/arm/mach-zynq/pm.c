@@ -65,19 +65,6 @@ static int zynq_pm_suspend(unsigned long arg)
 		(__force void *)ocm_base;
 	int do_ddrpll_bypass = 1;
 
-	/* Enable DDR self-refresh and clock stop */
-	if (ddrc_base) {
-		reg = readl(ddrc_base + DDRC_CTRL_REG1_OFFS);
-		reg |= DDRC_SELFREFRESH_MASK;
-		writel(reg, ddrc_base + DDRC_CTRL_REG1_OFFS);
-
-		reg = readl(ddrc_base + DDRC_DRAM_PARAM_REG3_OFFS);
-		reg |= DDRC_CLOCKSTOP_MASK;
-		writel(reg, ddrc_base + DDRC_DRAM_PARAM_REG3_OFFS);
-	} else {
-		do_ddrpll_bypass = 0;
-	}
-
 	/* SCU standby mode */
 	if (zynq_scu_base) {
 		reg = readl(zynq_scu_base + SCU_CTRL);
@@ -96,7 +83,7 @@ static int zynq_pm_suspend(unsigned long arg)
 		      : /* no inputs */
 		      : "r12");
 
-	if (!ocm_base)
+	if (!ocm_base || !ddrc_base)
 		do_ddrpll_bypass = 0;
 
 	if (do_ddrpll_bypass) {
@@ -131,17 +118,6 @@ static int zynq_pm_suspend(unsigned long arg)
 		      : /* no outputs */
 		      : /* no inputs */
 		      : "r12");
-
-	/* Disable DDR self-refresh and clock stop */
-	if (ddrc_base) {
-		reg = readl(ddrc_base + DDRC_CTRL_REG1_OFFS);
-		reg &= ~DDRC_SELFREFRESH_MASK;
-		writel(reg, ddrc_base + DDRC_CTRL_REG1_OFFS);
-
-		reg = readl(ddrc_base + DDRC_DRAM_PARAM_REG3_OFFS);
-		reg &= ~DDRC_CLOCKSTOP_MASK;
-		writel(reg, ddrc_base + DDRC_DRAM_PARAM_REG3_OFFS);
-	}
 
 	return 0;
 }
@@ -250,9 +226,25 @@ static void __iomem *zynq_pm_remap_ocm(void)
 
 int __init zynq_pm_late_init(void)
 {
+	u32 reg;
+
 	ddrc_base = zynq_pm_ioremap("xlnx,zynq-ddrc-1.0");
-	if (!ddrc_base)
+	if (!ddrc_base) {
 		pr_warn("%s: Unable to map DDRC IO memory.\n", __func__);
+	} else {
+		/*
+		 * Enable DDRC self-refresh and clock stop features. The HW
+		 * takes care of entering/exiting the correct modes depending
+		 * on activity state.
+		 */
+		reg = readl(ddrc_base + DDRC_CTRL_REG1_OFFS);
+		reg |= DDRC_SELFREFRESH_MASK;
+		writel(reg, ddrc_base + DDRC_CTRL_REG1_OFFS);
+
+		reg = readl(ddrc_base + DDRC_DRAM_PARAM_REG3_OFFS);
+		reg |= DDRC_CLOCKSTOP_MASK;
+		writel(reg, ddrc_base + DDRC_DRAM_PARAM_REG3_OFFS);
+	}
 
 	ocm_base = zynq_pm_remap_ocm();
 	if (!ocm_base) {
