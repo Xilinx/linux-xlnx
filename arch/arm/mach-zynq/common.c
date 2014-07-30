@@ -90,6 +90,7 @@ early_initcall(zynq_l2c_init);
 static void __init zynq_init_late(void)
 {
 	zynq_pm_late_init();
+	zynq_core_pm_init();
 	zynq_prefetch_init();
 }
 

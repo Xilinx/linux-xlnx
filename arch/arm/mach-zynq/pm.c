@@ -65,13 +65,6 @@ static int zynq_pm_suspend(unsigned long arg)
 	/* Topswitch clock stop disable */
 	zynq_clk_topswitch_disable();
 
-	/* A9 clock gating */
-	asm volatile ("mrc  p15, 0, r12, c15, c0, 0\n"
-		      "orr  r12, r12, #1\n"
-		      "mcr  p15, 0, r12, c15, c0, 0\n"
-		      : /* no outputs */
-		      : /* no inputs */
-		      : "r12");
 
 	if (!ocm_base || !ddrc_base)
 		do_ddrpll_bypass = 0;
@@ -93,14 +86,6 @@ static int zynq_pm_suspend(unsigned long arg)
 
 	/* Topswitch clock stop enable */
 	zynq_clk_topswitch_enable();
-
-	/* A9 clock gating */
-	asm volatile ("mrc  p15, 0, r12, c15, c0, 0\n"
-		      "bic  r12, r12, #1\n"
-		      "mcr  p15, 0, r12, c15, c0, 0\n"
-		      : /* no outputs */
-		      : /* no inputs */
-		      : "r12");
 
 	return 0;
 }
