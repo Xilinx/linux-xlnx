@@ -1,9 +1,9 @@
 /*
  * Suspend support for Zynq
  *
- *  Copyright (C) 2012 Xilinx
+ *  Copyright (C) 2012 - 2014 Xilinx
  *
- *  Soren Brinkmann <soren.brinkmann@xilinx.com>
+ *  Sören Brinkmann <soren.brinkmann@xilinx.com>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,17 +19,10 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <linux/bitops.h>
-#include <linux/clk.h>
 #include <linux/clk/zynq.h>
-#include <linux/err.h>
 #include <linux/genalloc.h>
-#include <linux/init.h>
-#include <linux/io.h>
-#include <linux/kernel.h>
 #include <linux/of_address.h>
 #include <linux/of_device.h>
-#include <linux/slab.h>
 #include <linux/suspend.h>
 #include <asm/cacheflush.h>
 #include <asm/hardware/cache-l2x0.h>
