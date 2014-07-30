@@ -39,11 +39,9 @@
 
 #define DDRC_CTRL_REG1_OFFS		0x60
 #define DDRC_DRAM_PARAM_REG3_OFFS	0x20
-#define SCU_CTRL			0
 
 #define DDRC_CLOCKSTOP_MASK	BIT(23)
 #define DDRC_SELFREFRESH_MASK	BIT(12)
-#define SCU_STBY_EN_MASK	BIT(5)
 
 static void __iomem *ddrc_base;
 static void __iomem *ocm_base;
@@ -60,17 +58,9 @@ static void zynq_pm_wake(void)
 
 static int zynq_pm_suspend(unsigned long arg)
 {
-	u32 reg;
 	int (*zynq_suspend_ptr)(void __iomem *, void __iomem *) =
 		(__force void *)ocm_base;
 	int do_ddrpll_bypass = 1;
-
-	/* SCU standby mode */
-	if (zynq_scu_base) {
-		reg = readl(zynq_scu_base + SCU_CTRL);
-		reg |= SCU_STBY_EN_MASK;
-		writel(reg, zynq_scu_base + SCU_CTRL);
-	}
 
 	/* Topswitch clock stop disable */
 	zynq_clk_topswitch_disable();
@@ -103,13 +93,6 @@ static int zynq_pm_suspend(unsigned long arg)
 
 	/* Topswitch clock stop enable */
 	zynq_clk_topswitch_enable();
-
-	/* SCU standby mode */
-	if (zynq_scu_base) {
-		reg = readl(zynq_scu_base + SCU_CTRL);
-		reg &= ~SCU_STBY_EN_MASK;
-		writel(reg, zynq_scu_base + SCU_CTRL);
-	}
 
 	/* A9 clock gating */
 	asm volatile ("mrc  p15, 0, r12, c15, c0, 0\n"
