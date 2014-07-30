@@ -44,6 +44,8 @@
 #define DDRC_SELFREFRESH_MASK	BIT(12)
 
 static void __iomem *ddrc_base;
+
+#ifdef CONFIG_SUSPEND
 static void __iomem *ocm_base;
 
 static int zynq_pm_prepare_late(void)
@@ -112,30 +114,6 @@ static const struct platform_suspend_ops zynq_pm_ops = {
 };
 
 /**
- * zynq_pm_ioremap() - Create IO mappings
- * @comp:	DT compatible string
- * Returns a pointer to the mapped memory or NULL.
- *
- * Remap the memory region for a compatible DT node.
- */
-static void __iomem *zynq_pm_ioremap(const char *comp)
-{
-	struct device_node *np;
-	void __iomem *base = NULL;
-
-	np = of_find_compatible_node(NULL, NULL, comp);
-	if (np) {
-		base = of_iomap(np, 0);
-		of_node_put(np);
-	} else {
-		pr_warn("%s: no compatible node found for '%s'\n", __func__,
-				comp);
-	}
-
-	return base;
-}
-
-/**
  * zynq_pm_remap_ocm() - Remap OCM
  * Returns a pointer to the mapped memory or NULL.
  *
@@ -192,6 +170,53 @@ static void __iomem *zynq_pm_remap_ocm(void)
 	return base;
 }
 
+static void zynq_pm_suspend_init(void)
+{
+	ocm_base = zynq_pm_remap_ocm();
+	if (!ocm_base) {
+		pr_warn("%s: Unable to map OCM.\n", __func__);
+	} else {
+		/*
+		 * Copy code to suspend system into OCM. The suspend code
+		 * needs to run from OCM as DRAM may no longer be available
+		 * when the PLL is stopped.
+		 */
+		memcpy((__force void *)ocm_base, &zynq_sys_suspend,
+			zynq_sys_suspend_sz);
+		flush_icache_range((unsigned long)ocm_base,
+			(unsigned long)(ocm_base) + zynq_sys_suspend_sz);
+	}
+
+	suspend_set_ops(&zynq_pm_ops);
+}
+#else	/* CONFIG_SUSPEND */
+static void zynq_pm_suspend_init(void) { };
+#endif	/* CONFIG_SUSPEND */
+
+/**
+ * zynq_pm_ioremap() - Create IO mappings
+ * @comp:	DT compatible string
+ * Returns a pointer to the mapped memory or NULL.
+ *
+ * Remap the memory region for a compatible DT node.
+ */
+static void __iomem *zynq_pm_ioremap(const char *comp)
+{
+	struct device_node *np;
+	void __iomem *base = NULL;
+
+	np = of_find_compatible_node(NULL, NULL, comp);
+	if (np) {
+		base = of_iomap(np, 0);
+		of_node_put(np);
+	} else {
+		pr_warn("%s: no compatible node found for '%s'\n", __func__,
+				comp);
+	}
+
+	return base;
+}
+
 int __init zynq_pm_late_init(void)
 {
 	u32 reg;
@@ -214,22 +239,8 @@ int __init zynq_pm_late_init(void)
 		writel(reg, ddrc_base + DDRC_DRAM_PARAM_REG3_OFFS);
 	}
 
-	ocm_base = zynq_pm_remap_ocm();
-	if (!ocm_base) {
-		pr_warn("%s: Unable to map OCM.\n", __func__);
-	} else {
-		/*
-		 * Copy code to suspend system into OCM. The suspend code
-		 * needs to run from OCM as DRAM may no longer be available
-		 * when the PLL is stopped.
-		 */
-		memcpy((__force void *)ocm_base, &zynq_sys_suspend,
-			zynq_sys_suspend_sz);
-		flush_icache_range((unsigned long)ocm_base,
-			(unsigned long)(ocm_base) + zynq_sys_suspend_sz);
-	}
-
-	suspend_set_ops(&zynq_pm_ops);
+	/* set up suspend */
+	zynq_pm_suspend_init();
 
 	return 0;
 }
