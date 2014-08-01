@@ -224,6 +224,14 @@
 #define XILINX_DP_TX_PHY_STATUS_PLL_LOCKED_SHIFT	4
 #define XILINX_DP_TX_PHY_STATUS_FPGA_PLL_LOCKED		(1 << 6)
 
+/* Audio registers */
+#define XILINX_DP_TX_AUDIO_CONTROL			0x300
+#define XILINX_DP_TX_AUDIO_CHANNELS			0x304
+#define XILINX_DP_TX_AUDIO_INFO_DATA			0x308
+#define XILINX_DP_TX_AUDIO_M_AUD			0x328
+#define XILINX_DP_TX_AUDIO_N_AUD			0x32c
+#define XILINX_DP_TX_AUDIO_EXT_DATA			0x330
+
 #define XILINX_DP_MISC0_RGB				(0)
 #define XILINX_DP_MISC0_YCRCB_422			(5 << 1)
 #define XILINX_DP_MISC0_YCRCB_444			(6 << 1)
@@ -299,6 +307,7 @@ struct xilinx_drm_dp_config {
  * @config: IP core configuration from DTS
  * @aux: aux channel
  * @aclk: clock source device for internal axi4-lite clock
+ * @aud_clk: clock source device for audio clock
  * @dpms: current dpms state
  * @dpcd: DP configuration data from currently connected sink device
  * @link_config: common link configuration between IP core and sink device
@@ -313,6 +322,7 @@ struct xilinx_drm_dp {
 	struct xilinx_drm_dp_config config;
 	struct drm_dp_aux aux;
 	struct clk *aclk;
+	struct clk *aud_clk;
 
 	int dpms;
 	u8 dpcd[DP_RECEIVER_CAP_SIZE];
@@ -744,16 +754,23 @@ static void xilinx_drm_dp_dpms(struct drm_encoder *encoder, int dpms)
 
 	switch (dpms) {
 	case DRM_MODE_DPMS_ON:
+		if (dp->aud_clk)
+			xilinx_drm_writel(iomem, XILINX_DP_TX_AUDIO_CONTROL, 1);
+
 		xilinx_drm_writel(iomem, XILINX_DP_TX_PHY_POWER_DOWN, 0);
 		drm_dp_dpcd_writeb(&dp->aux, DP_SET_POWER, DP_SET_POWER_D0);
 		xilinx_drm_dp_train(dp);
 		xilinx_drm_writel(iomem, XILINX_DP_TX_ENABLE_MAIN_STREAM, 1);
+
 		return;
 	default:
 		xilinx_drm_writel(iomem, XILINX_DP_TX_ENABLE_MAIN_STREAM, 0);
 		drm_dp_dpcd_writeb(&dp->aux, DP_SET_POWER, DP_SET_POWER_D3);
 		xilinx_drm_writel(iomem, XILINX_DP_TX_PHY_POWER_DOWN,
 				  XILINX_DP_TX_PHY_POWER_DOWN_ALL);
+		if (dp->aud_clk)
+			xilinx_drm_writel(iomem, XILINX_DP_TX_AUDIO_CONTROL, 0);
+
 		return;
 	}
 }
@@ -895,7 +912,22 @@ static void xilinx_drm_dp_mode_set_stream(struct xilinx_drm_dp *dp,
 		reg = drm_dp_bw_code_to_link_rate(dp->mode.bw_code);
 		xilinx_drm_writel(dp->iomem, XILINX_DP_TX_N_VID, reg);
 		xilinx_drm_writel(dp->iomem, XILINX_DP_TX_M_VID, mode->clock);
+		if (dp->aud_clk) {
+			int aud_rate = clk_get_rate(dp->aud_clk) / 512;
+
+			if (aud_rate != 44100 && aud_rate != 48000)
+				dev_dbg(dp->dev, "Audio rate: %d\n", aud_rate);
+
+			xilinx_drm_writel(dp->iomem, XILINX_DP_TX_AUDIO_N_AUD,
+					  reg);
+			xilinx_drm_writel(dp->iomem, XILINX_DP_TX_AUDIO_M_AUD,
+					  aud_rate);
+		}
 	}
+
+	/* Only 2 channel is supported now */
+	if (dp->aud_clk)
+		xilinx_drm_writel(dp->iomem, XILINX_DP_TX_AUDIO_CHANNELS, 1);
 
 	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_USER_PIXEL_WIDTH, 1);
 
@@ -1247,7 +1279,7 @@ static int xilinx_drm_dp_probe(struct platform_device *pdev)
 	if (ret < 0)
 		return ret;
 
-	dp->aclk = devm_clk_get(dp->dev, NULL);
+	dp->aclk = devm_clk_get(dp->dev, "aclk");
 	if (IS_ERR(dp->aclk))
 		return PTR_ERR(dp->aclk);
 
@@ -1257,11 +1289,26 @@ static int xilinx_drm_dp_probe(struct platform_device *pdev)
 		return ret;
 	}
 
+	dp->aud_clk = devm_clk_get(dp->dev, "aud_clk");
+	if (IS_ERR(dp->aud_clk)) {
+		ret = PTR_ERR(dp->aud_clk);
+		if (ret == -EPROBE_DEFER)
+			goto error_aclk;
+		dp->aud_clk = NULL;
+		dev_dbg(dp->dev, "failed to get the aud_clk:\n");
+	} else {
+		ret = clk_prepare_enable(dp->aud_clk);
+		if (ret) {
+			dev_err(dp->dev, "failed to enable aud_clk\n");
+			goto error_aclk;
+		}
+	}
+
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	dp->iomem = devm_ioremap_resource(dp->dev, res);
 	if (IS_ERR(dp->iomem)) {
 		ret = PTR_ERR(dp->iomem);
-		goto error_clk;
+		goto error_aud_clk;
 	}
 
 	platform_set_drvdata(pdev, dp);
@@ -1325,7 +1372,10 @@ static int xilinx_drm_dp_probe(struct platform_device *pdev)
 
 error:
 	drm_dp_aux_unregister(&dp->aux);
-error_clk:
+error_aud_clk:
+	if (dp->aud_clk)
+		clk_disable_unprepare(dp->aud_clk);
+error_aclk:
 	clk_disable_unprepare(dp->aclk);
 	return ret;
 }
@@ -1338,6 +1388,8 @@ static int xilinx_drm_dp_remove(struct platform_device *pdev)
 
 	drm_dp_aux_unregister(&dp->aux);
 
+	if (dp->aud_clk)
+		clk_disable_unprepare(dp->aud_clk);
 	clk_disable_unprepare(dp->aclk);
 
 	return 0;
