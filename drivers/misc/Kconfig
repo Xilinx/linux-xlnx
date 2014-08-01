@@ -517,7 +517,7 @@ config SRAM
 
 config XILINX_TRAFGEN
 	tristate "Xilinx Traffic Generator"
-	depends on MICROBLAZE
+	depends on MICROBLAZE || ARCH_ZYNQ
 	help
 	  This option enables support for the Xilinx Traffic Generator driver.
 	  It is designed to generate AXI4 traffic which can be used to stress
