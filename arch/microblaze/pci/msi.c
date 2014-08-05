@@ -25,7 +25,7 @@
 
 #include <linux/pci.h>
 #include <linux/msi.h>
-#include <asm/irq.h>
+#include <linux/irq.h>
 #include "xilinx_axipcie.h"
 
 static DECLARE_BITMAP(msi_irq_in_use, XILINX_NUM_MSI_IRQS);
