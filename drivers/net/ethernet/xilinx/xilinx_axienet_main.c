@@ -1665,6 +1665,7 @@ static int axienet_probe(struct platform_device *pdev)
 	ret = register_netdev(lp->ndev);
 	if (ret) {
 		dev_err(lp->dev, "register_netdev() error (%i)\n", ret);
+		axienet_mdio_teardown(lp);
 		goto free_netdev;
 	}
 
