@@ -218,7 +218,7 @@ static int mb_remoteproc_probe(struct platform_device *pdev)
 		DMA_MEMORY_IO);
 	if (!ret) {
 		dev_err(&pdev->dev, "dma_declare_coherent_memory failed\n");
-		return ret;
+		return -ENOMEM;
 	}
 
 	ret = dma_set_coherent_mask(&pdev->dev, DMA_BIT_MASK(32));
