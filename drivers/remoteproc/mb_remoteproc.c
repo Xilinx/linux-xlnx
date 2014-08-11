@@ -233,7 +233,7 @@ static int mb_remoteproc_probe(struct platform_device *pdev)
 		/* Allocating shared IRQs will ensure that any module will
 		 * use these IRQs */
 		irq = platform_get_irq(pdev, count++);
-		if (irq == -ENXIO | irq == -EINVAL)
+		if (irq == -ENXIO || irq == -EINVAL)
 			break;
 		ret = devm_request_irq(&pdev->dev, irq, mb_remoteproc_interrupt,
 				       0, dev_name(&pdev->dev), &pdev->dev);

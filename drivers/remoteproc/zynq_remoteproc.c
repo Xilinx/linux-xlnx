@@ -226,7 +226,7 @@ static int zynq_remoteproc_probe(struct platform_device *pdev)
 		int irq;
 
 		irq = platform_get_irq(pdev, count++);
-		if (irq == -ENXIO | irq == -EINVAL)
+		if (irq == -ENXIO || irq == -EINVAL)
 			break;
 
 		tmp = kzalloc(sizeof(struct irq_list), GFP_KERNEL);
