@@ -2159,33 +2159,6 @@ static void xemacps_tx_timeout(struct net_device *ndev)
 }
 
 /**
- * xemacps_set_mac_address - set network interface mac address
- * @ndev: network interface device structure
- * @addr: pointer to MAC address
- * Return: 0 on success, negative value if error
- */
-static int xemacps_set_mac_address(struct net_device *ndev, void *addr)
-{
-	struct net_local *lp = netdev_priv(ndev);
-	struct sockaddr *hwaddr = (struct sockaddr *)addr;
-
-	if (netif_running(ndev))
-		return -EBUSY;
-
-	if (!is_valid_ether_addr(hwaddr->sa_data))
-		return -EADDRNOTAVAIL;
-
-	dev_dbg(&lp->pdev->dev, "hwaddr 0x%x 0x%x 0x%x 0x%x 0x%x 0x%x\n",
-		hwaddr->sa_data[0], hwaddr->sa_data[1], hwaddr->sa_data[2],
-		hwaddr->sa_data[3], hwaddr->sa_data[4], hwaddr->sa_data[5]);
-
-	memcpy(ndev->dev_addr, hwaddr->sa_data, ndev->addr_len);
-
-	xemacps_set_hwaddr(lp);
-	return 0;
-}
-
-/**
  * xemacps_clear_csum - Clear the csum field for  transport protocols
  * @skb: socket buffer
  * @ndev: network interface device structure
@@ -3121,7 +3094,7 @@ static struct net_device_ops netdev_ops = {
 	.ndo_stop		= xemacps_close,
 	.ndo_start_xmit		= xemacps_start_xmit,
 	.ndo_set_rx_mode	= xemacps_set_rx_mode,
-	.ndo_set_mac_address    = xemacps_set_mac_address,
+	.ndo_set_mac_address    = eth_mac_addr,
 	.ndo_do_ioctl		= xemacps_ioctl,
 	.ndo_change_mtu		= eth_change_mtu,
 	.ndo_tx_timeout		= xemacps_tx_timeout,
