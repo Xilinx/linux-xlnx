@@ -224,7 +224,7 @@ static int mb_remoteproc_probe(struct platform_device *pdev)
 	ret = dma_set_coherent_mask(&pdev->dev, DMA_BIT_MASK(32));
 	if (ret) {
 		dev_err(&pdev->dev, "dma_set_coherent_mask: %d\n", ret);
-		return ret;
+		goto dma_mask_fault;
 	}
 
 	/* Alloc IRQ based on DTS to be sure that no other driver will use it */
@@ -239,7 +239,7 @@ static int mb_remoteproc_probe(struct platform_device *pdev)
 				       0, dev_name(&pdev->dev), &pdev->dev);
 		if (ret) {
 			dev_err(&pdev->dev, "IRQ %d already allocated\n", irq);
-			return ret;
+			goto dma_mask_fault;
 		}
 
 		dev_info(&pdev->dev, "%d: Alloc irq: %d\n", count, irq);
@@ -249,95 +249,105 @@ static int mb_remoteproc_probe(struct platform_device *pdev)
 	local->reset_gpio = of_get_named_gpio(pdev->dev.of_node, "reset", 0);
 	if (local->reset_gpio < 0) {
 		dev_err(&pdev->dev, "reset-gpio property not found\n");
-		return local->reset_gpio;
+		ret = local->reset_gpio;
+		goto dma_mask_fault;
 	}
 	ret = devm_gpio_request_one(&pdev->dev, local->reset_gpio,
 				    GPIOF_OUT_INIT_HIGH, "mb_reset");
 	if (ret) {
 		dev_err(&pdev->dev, "Please specify gpio reset addr\n");
-		return ret;
+		goto dma_mask_fault;
 	}
 
 	/* Find out reset gpio and keep microblaze in reset */
 	local->mb_debug_gpio = of_get_named_gpio(pdev->dev.of_node, "debug", 0);
 	if (local->mb_debug_gpio < 0) {
 		dev_err(&pdev->dev, "mb-debug-gpio property not found\n");
-		return local->mb_debug_gpio;
+		ret = local->mb_debug_gpio;
+		goto dma_mask_fault;
 	}
 	ret = devm_gpio_request_one(&pdev->dev, local->mb_debug_gpio,
 				    GPIOF_OUT_INIT_LOW, "mb_debug");
 	if (ret) {
 		dev_err(&pdev->dev, "Please specify gpio debug pin\n");
-		return ret;
+		goto dma_mask_fault;
 	}
 
 	/* IPI number for getting irq from firmware */
 	local->ipi = of_get_named_gpio(pdev->dev.of_node, "ipino", 0);
 	if (local->ipi < 0) {
 		dev_err(&pdev->dev, "ipi-gpio property not found\n");
-		return local->ipi;
+		ret = local->ipi;
+		goto dma_mask_fault;
 	}
 	ret = devm_gpio_request_one(&pdev->dev, local->ipi, GPIOF_IN, "mb_ipi");
 	if (ret) {
 		dev_err(&pdev->dev, "Please specify gpio reset addr\n");
-		return ret;
+		goto dma_mask_fault;
 	}
 	ret = devm_request_irq(&pdev->dev, gpio_to_irq(local->ipi),
 			       ipi_kick, IRQF_SHARED|IRQF_TRIGGER_RISING,
 			       dev_name(&pdev->dev), local);
 	if (ret) {
 		dev_err(&pdev->dev, "IRQ %d already allocated\n", local->ipi);
-		return ret;
+		goto dma_mask_fault;
 	}
 
 	/* Find out vring0 pin */
 	local->vring0 = of_get_named_gpio(pdev->dev.of_node, "vring0", 0);
 	if (local->vring0 < 0) {
 		dev_err(&pdev->dev, "reset-gpio property not found\n");
-		return local->vring0;
+		ret = local->vring0;
+		goto dma_mask_fault;
 	}
 	ret = devm_gpio_request_one(&pdev->dev, local->vring0,
 				    GPIOF_DIR_OUT, "mb_vring0");
 	if (ret) {
 		dev_err(&pdev->dev, "Please specify gpio reset addr\n");
-		return ret;
+		goto dma_mask_fault;
 	}
 
 	/* Find out vring1 pin */
 	local->vring1 = of_get_named_gpio(pdev->dev.of_node, "vring1", 0);
 	if (local->vring1 < 0) {
 		dev_err(&pdev->dev, "reset-gpio property not found\n");
-		return local->vring1;
+		ret = local->vring1;
+		goto dma_mask_fault;
 	}
 	ret = devm_gpio_request_one(&pdev->dev, local->vring1,
 				    GPIOF_DIR_OUT, "mb_vring1");
 	if (ret) {
 		dev_err(&pdev->dev, "Please specify gpio reset addr\n");
-		return ret;
+		goto dma_mask_fault;
 	}
 
 	/* Allocate bram device */
 	bram_dev = of_parse_phandle(pdev->dev.of_node, "bram", 0);
 	if (!bram_dev) {
 		dev_err(&pdev->dev, "Please specify bram connection\n");
-		return -ENODEV;
+		ret = -ENODEV;
+		goto dma_mask_fault;
 	}
 	bram_pdev = of_find_device_by_node(bram_dev);
 	if (!bram_pdev) {
 		dev_err(&pdev->dev, "BRAM device hasn't found\n");
-		return -ENODEV;
+		ret = -ENODEV;
+		goto dma_mask_fault;
 	}
 	res = platform_get_resource(bram_pdev, IORESOURCE_MEM, 0);
 	local->vbase = devm_ioremap_resource(&pdev->dev, res);
-	if (!local->vbase)
-		return -ENODEV;
+	if (!local->vbase) {
+		ret = -ENODEV;
+		goto dma_mask_fault;
+	}
 
 	/* Load simple bootloader to bram */
 	local->bootloader = of_get_property(pdev->dev.of_node,
 					    "bram-firmware", NULL);
 	if (!local->bootloader) {
 		dev_err(&pdev->dev, "Please specify BRAM firmware\n");
-		return -ENODEV;
+		ret = -ENODEV;
+		goto dma_mask_fault;
 	}
 
 	dev_info(&pdev->dev, "Using microblaze BRAM bootloader: %s\n",
@@ -355,19 +365,25 @@ static int mb_remoteproc_probe(struct platform_device *pdev)
 				&mb_rproc_ops, prop, sizeof(struct rproc));
 		if (!local->rproc) {
 			dev_err(&pdev->dev, "rproc allocation failed\n");
-			return -ENOMEM;
+			ret = -ENODEV;
+			goto dma_mask_fault;
 		}
 
 		ret = rproc_add(local->rproc);
 		if (ret) {
 			dev_err(&pdev->dev, "rproc registration failed\n");
 			rproc_put(local->rproc);
-			return ret;
+			goto dma_mask_fault;
 		}
 		return 0;
+	} else {
+		ret = -ENODEV;
 	}
 
-	return -ENODEV;
+dma_mask_fault:
+	dma_release_declared_memory(&pdev->dev);
+
+	return ret;
 }
 
 static int mb_remoteproc_remove(struct platform_device *pdev)
