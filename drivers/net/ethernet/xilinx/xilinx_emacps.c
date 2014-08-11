@@ -2483,24 +2483,6 @@ static void xemacps_set_rx_mode(struct net_device *ndev)
 	xemacps_write(lp->baseaddr, XEMACPS_NWCFG_OFFSET, regval);
 }
 
-#define MIN_MTU 60
-#define MAX_MTU 1500
-/**
- * xemacps_change_mtu - Change maximum transfer unit
- * @ndev: network interface device structure
- * @new_mtu: new vlaue for maximum frame size
- * Return: 0 on success, negative value if error.
- */
-static int xemacps_change_mtu(struct net_device *ndev, int new_mtu)
-{
-	if ((new_mtu < MIN_MTU) ||
-		((new_mtu + ndev->hard_header_len) > MAX_MTU))
-		return -EINVAL;
-
-	ndev->mtu = new_mtu;	/* change mtu in net_device structure */
-	return 0;
-}
-
 /**
  * xemacps_get_settings - get device specific settings.
  * Usage: Issue "ethtool ethX" under linux prompt.
@@ -3141,7 +3123,7 @@ static struct net_device_ops netdev_ops = {
 	.ndo_set_rx_mode	= xemacps_set_rx_mode,
 	.ndo_set_mac_address    = xemacps_set_mac_address,
 	.ndo_do_ioctl		= xemacps_ioctl,
-	.ndo_change_mtu		= xemacps_change_mtu,
+	.ndo_change_mtu		= eth_change_mtu,
 	.ndo_tx_timeout		= xemacps_tx_timeout,
 	.ndo_get_stats		= xemacps_get_stats,
 };
