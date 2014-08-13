@@ -370,7 +370,6 @@ MODULE_DEVICE_TABLE(of, xvtc_of_id_table);
 
 static struct platform_driver xvtc_driver = {
 	.driver = {
-		.owner = THIS_MODULE,
 		.name = "xilinx-axi-vtc",
 		.of_match_table = xvtc_of_id_table,
 	},

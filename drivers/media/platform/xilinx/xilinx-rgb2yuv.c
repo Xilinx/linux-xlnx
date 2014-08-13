@@ -549,7 +549,6 @@ MODULE_DEVICE_TABLE(of, xrgb2yuv_of_id_table);
 
 static struct platform_driver xrgb2yuv_driver = {
 	.driver			= {
-		.owner		= THIS_MODULE,
 		.name		= "xilinx-rgb2yuv",
 		.pm		= &xrgb2yuv_pm_ops,
 		.of_match_table	= xrgb2yuv_of_id_table,

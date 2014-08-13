@@ -429,7 +429,6 @@ MODULE_DEVICE_TABLE(of, xcresample_of_id_table);
 
 static struct platform_driver xcresample_driver = {
 	.driver			= {
-		.owner		= THIS_MODULE,
 		.name		= "xilinx-cresample",
 		.pm		= &xcresample_pm_ops,
 		.of_match_table	= xcresample_of_id_table,

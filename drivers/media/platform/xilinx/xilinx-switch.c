@@ -439,7 +439,6 @@ MODULE_DEVICE_TABLE(of, xsw_of_id_table);
 
 static struct platform_driver xsw_driver = {
 	.driver = {
-		.owner		= THIS_MODULE,
 		.name		= "xilinx-axi-switch",
 		.of_match_table	= xsw_of_id_table,
 	},

@@ -441,7 +441,6 @@ static struct platform_driver xilinx_drm_private_driver = {
 	.probe			= xilinx_drm_platform_probe,
 	.remove			= xilinx_drm_platform_remove,
 	.driver			= {
-		.owner		= THIS_MODULE,
 		.name		= "xilinx-drm",
 		.pm		= &xilinx_drm_pm_ops,
 		.of_match_table	= xilinx_drm_of_match,

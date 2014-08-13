@@ -649,7 +649,6 @@ MODULE_DEVICE_TABLE(of, xvip_composite_of_id_table);
 
 static struct platform_driver xvip_composite_driver = {
 	.driver = {
-		.owner = THIS_MODULE,
 		.name = "xilinx-axi-video",
 		.of_match_table = xvip_composite_of_id_table,
 	},

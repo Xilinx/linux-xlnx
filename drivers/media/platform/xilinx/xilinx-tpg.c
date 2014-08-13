@@ -897,7 +897,6 @@ MODULE_DEVICE_TABLE(of, xtpg_of_id_table);
 
 static struct platform_driver xtpg_driver = {
 	.driver = {
-		.owner		= THIS_MODULE,
 		.name		= "xilinx-axi-tpg",
 		.pm		= &xtpg_pm_ops,
 		.of_match_table	= xtpg_of_id_table,

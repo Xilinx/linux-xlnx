@@ -996,7 +996,6 @@ MODULE_DEVICE_TABLE(of, xilinx_cdma_of_match);
 static struct platform_driver xilinx_cdma_driver = {
 	.driver = {
 		.name = "xilinx-cdma",
-		.owner = THIS_MODULE,
 		.of_match_table = xilinx_cdma_of_match,
 	},
 	.probe = xilinx_cdma_probe,

@@ -377,7 +377,6 @@ MODULE_DEVICE_TABLE(of, xcfa_of_id_table);
 
 static struct platform_driver xcfa_driver = {
 	.driver			= {
-		.owner		= THIS_MODULE,
 		.name		= "xilinx-cfa",
 		.pm		= &xcfa_pm_ops,
 		.of_match_table	= xcfa_of_id_table,

@@ -1095,7 +1095,6 @@ MODULE_DEVICE_TABLE(of, xilinx_dma_of_match);
 static struct platform_driver xilinx_dma_driver = {
 	.driver = {
 		.name = "xilinx-dma",
-		.owner = THIS_MODULE,
 		.of_match_table = xilinx_dma_of_match,
 	},
 	.probe = xilinx_dma_probe,

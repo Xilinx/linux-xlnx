@@ -3112,7 +3112,6 @@ static struct platform_driver xemacps_driver = {
 	.remove  = xemacps_remove,
 	.driver  = {
 		.name  = DRIVER_NAME,
-		.owner = THIS_MODULE,
 		.of_match_table = xemacps_of_match,
 		.pm = XEMACPS_PM,
 	},

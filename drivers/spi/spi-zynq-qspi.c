@@ -831,7 +831,6 @@ static struct platform_driver zynq_qspi_driver = {
 	.remove = zynq_qspi_remove,
 	.driver = {
 		.name = DRIVER_NAME,
-		.owner = THIS_MODULE,
 		.of_match_table = zynq_qspi_of_match,
 		.pm = &zynq_qspi_dev_pm_ops,
 	},

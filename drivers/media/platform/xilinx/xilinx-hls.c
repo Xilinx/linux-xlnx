@@ -477,7 +477,6 @@ MODULE_DEVICE_TABLE(of, xhls_of_id_table);
 
 static struct platform_driver xhls_driver = {
 	.driver = {
-		.owner = THIS_MODULE,
 		.name = "xilinx-axi-hls",
 		.of_match_table = xhls_of_id_table,
 	},

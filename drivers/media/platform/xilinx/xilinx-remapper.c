@@ -518,7 +518,6 @@ MODULE_DEVICE_TABLE(of, xremap_of_id_table);
 
 static struct platform_driver xremap_driver = {
 	.driver = {
-		.owner = THIS_MODULE,
 		.name = "xilinx-axi-remapper",
 		.of_match_table = xremap_of_id_table,
 	},
