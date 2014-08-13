@@ -1698,7 +1698,6 @@ static struct platform_driver axienet_driver = {
 	.probe = axienet_probe,
 	.remove = axienet_remove,
 	.driver = {
-		 .owner = THIS_MODULE,
 		 .name = "xilinx_axienet",
 		 .of_match_table = axienet_of_match,
 	},
