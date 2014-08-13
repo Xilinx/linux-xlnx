@@ -1322,7 +1322,6 @@ static struct platform_driver xadc_driver = {
 	.remove = xadc_remove,
 	.driver = {
 		.name = "xadc",
-		.owner = THIS_MODULE,
 		.of_match_table = xadc_of_match_table,
 	},
 };
