@@ -91,9 +91,9 @@
 &gem0 {
 	status = "okay";
 	phy-mode = "rgmii-id";
-	phy-handle = <&phy0>;
+	phy-handle = <&ethernet_phy>;
 
-	phy0: phy@1 {
+	ethernet_phy: ethernet-phy@1 {
 		reg = <1>;
 	};
 };
