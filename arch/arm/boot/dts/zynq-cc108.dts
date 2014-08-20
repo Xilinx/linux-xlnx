@@ -11,60 +11,30 @@
  * Version: Xilinx EDK 14.7 EDK_P.20131013
  *
  */
-
 /dts-v1/;
+/include/ "zynq-7000.dtsi"
+
 / {
-	#address-cells = <1>;
-	#size-cells = <1>;
-	compatible = "xlnx,zynq-7000";
+	compatible = "xlnx,zynq-cc108", "xlnx,zynq-7000";
 	model = "Xilinx Zynq";
+
 	aliases {
-		ethernet0 = &ps7_ethernet_0;
-		serial0 = &ps7_uart_1;
+		ethernet0 = &gem0;
+		serial0 = &uart1;
 		spi0 = &ps7_qspi_0;
-	} ;
+	};
+
 	chosen {
 		bootargs = "console=ttyPS0,115200 root=/dev/ram rw earlyprintk";
-		linux,stdout-path = "/amba@0/serial@e0001000";
-	} ;
-	cpus {
-		#address-cells = <1>;
-		#size-cells = <0>;
-		ps7_cortexa9_0: cpu@0 {
-			bus-handle = <&ps7_axi_interconnect_0>;
-			clock-latency = <1000>;
-			clocks = <&clkc 3>;
-			compatible = "arm,cortex-a9";
-			device_type = "cpu";
-			interrupt-handle = <&ps7_scugic_0>;
-			operating-points = <666667 1000000 333334 1000000 222223 1000000>;
-			reg = <0x0>;
-		} ;
-		ps7_cortexa9_1: cpu@1 {
-			bus-handle = <&ps7_axi_interconnect_0>;
-			clocks = <&clkc 3>;
-			compatible = "arm,cortex-a9";
-			device_type = "cpu";
-			interrupt-handle = <&ps7_scugic_0>;
-			reg = <0x1>;
-		} ;
-	} ;
-	pmu {
-		compatible = "arm,cortex-a9-pmu";
-		interrupt-parent = <&ps7_scugic_0>;
-		interrupts = <0 5 4>, <0 6 4>;
-		reg = <0xf8891000 0x1000>, <0xf8893000 0x1000>;
-		reg-names = "cpu0", "cpu1";
-	} ;
-	ps7_ddr_0: memory@0 {
+		linux,stdout-path = "/amba/serial@e0001000";
+	};
+
+	memory@0 {
 		device_type = "memory";
 		reg = <0x0 0x20000000>;
-	} ;
-	ps7_axi_interconnect_0: amba@0 {
-		#address-cells = <1>;
-		#size-cells = <1>;
-		compatible = "xlnx,ps7-axi-interconnect-1.00.a", "simple-bus";
-		ranges ;
+	};
+
+	amba {
 		ps7_afi_0: ps7-afi@f8008000 {
 			compatible = "xlnx,ps7-afi-1.00.a";
 			reg = <0xf8008000 0x1000>;
@@ -90,7 +60,7 @@
 			clock-names = "ref_clk", "fclk0", "fclk1", "fclk2", "fclk3";
 			clocks = <&clkc 12>, <&clkc 15>, <&clkc 16>, <&clkc 17>, <&clkc 18>;
 			compatible = "xlnx,zynq-devcfg-1.0";
-			interrupt-parent = <&ps7_scugic_0>;
+			interrupt-parent = <&intc>;
 			interrupts = <0 8 4>;
 			reg = <0xf8007000 0x100>;
 		} ;
@@ -103,42 +73,9 @@
 			compatible = "arm,primecell", "arm,pl330";
 			interrupt-names = "abort", "dma0", "dma1", "dma2", "dma3",
 				"dma4", "dma5", "dma6", "dma7";
-			interrupt-parent = <&ps7_scugic_0>;
+			interrupt-parent = <&intc>;
 			interrupts = <0 13 4>, <0 14 4>, <0 15 4>, <0 16 4>, <0 17 4>, <0 40 4>, <0 41 4>, <0 42 4>, <0 43 4>;
 			reg = <0xf8003000 0x1000>;
-		} ;
-		ps7_ethernet_0: ps7-ethernet@e000b000 {
-			#address-cells = <1>;
-			#size-cells = <0>;
-			clock-names = "ref_clk", "aper_clk";
-			clocks = <&clkc 13>, <&clkc 30>;
-			compatible = "xlnx,ps7-ethernet-1.00.a";
-			enet-reset = <&ps7_gpio_0 0 0>;
-			interrupt-parent = <&ps7_scugic_0>;
-			interrupts = <0 22 4>;
-			local-mac-address = [00 0a 35 00 00 00];
-			phy-handle = <&phy0>;
-			phy-mode = "rgmii-id";
-			reg = <0xe000b000 0x1000>;
-			xlnx,eth-mode = <0x1>;
-			xlnx,has-mdio = <0x1>;
-			xlnx,ptp-enet-clock = <111111115>;
-			mdio {
-				#address-cells = <1>;
-				#size-cells = <0>;
-				phy0: phy@1 {
-					compatible = "marvell,88e1510";
-					device_type = "ethernet-phy";
-					reg = <1>;
-				} ;
-			} ;
-		} ;
-		ps7_globaltimer_0: ps7-globaltimer@f8f00200 {
-			clocks = <&clkc 4>;
-			compatible = "arm,cortex-a9-global-timer";
-			interrupt-parent = <&ps7_scugic_0>;
-			interrupts = <1 11 0x301>;
-			reg = <0xf8f00200 0x100>;
 		} ;
 		ps7_gpio_0: ps7-gpio@e000a000 {
 			#gpio-cells = <2>;
@@ -148,7 +85,7 @@
 			gpio-controller ;
 			gpio-mask-high = <0x0>;
 			gpio-mask-low = <0x0>;
-			interrupt-parent = <&ps7_scugic_0>;
+			interrupt-parent = <&intc>;
 			interrupts = <0 20 4>;
 			reg = <0xe000a000 0x1000>;
 		} ;
@@ -158,25 +95,15 @@
 		} ;
 		ps7_ocmc_0: ps7-ocmc@f800c000 {
 			compatible = "xlnx,zynq-ocmc-1.0";
-			interrupt-parent = <&ps7_scugic_0>;
+			interrupt-parent = <&intc>;
 			interrupts = <0 3 4>;
 			reg = <0xf800c000 0x1000>;
-		} ;
-		ps7_pl310_0: ps7-pl310@f8f02000 {
-			arm,data-latency = <3 2 2>;
-			arm,tag-latency = <2 2 2>;
-			cache-level = <2>;
-			cache-unified ;
-			compatible = "arm,pl310-cache";
-			interrupt-parent = <&ps7_scugic_0>;
-			interrupts = <0 2 4>;
-			reg = <0xf8f02000 0x1000>;
 		} ;
 		ps7_qspi_0: ps7-qspi@e000d000 {
 			clock-names = "ref_clk", "pclk";
 			clocks = <&clkc 10>, <&clkc 43>;
 			compatible = "xlnx,zynq-qspi-1.0";
-			interrupt-parent = <&ps7_scugic_0>;
+			interrupt-parent = <&intc>;
 			interrupts = <0 19 4>;
 			is-dual = <0>;
 			num-cs = <1>;
@@ -225,114 +152,19 @@
 			compatible = "xlnx,ps7-qspi-linear-1.00.a";
 			reg = <0xfc000000 0x1000000>;
 		} ;
-		ps7_scugic_0: ps7-scugic@f8f01000 {
-			#address-cells = <2>;
-			#interrupt-cells = <3>;
-			#size-cells = <1>;
-			compatible = "arm,cortex-a9-gic", "arm,gic";
-			interrupt-controller ;
-			num_cpus = <2>;
-			num_interrupts = <96>;
-			reg = <0xf8f01000 0x1000>, <0xf8f00100 0x100>;
-		} ;
-		ps7_scutimer_0: ps7-scutimer@f8f00600 {
-			clocks = <&clkc 4>;
-			compatible = "arm,cortex-a9-twd-timer";
-			interrupt-parent = <&ps7_scugic_0>;
-			interrupts = <1 13 0x301>;
-			reg = <0xf8f00600 0x20>;
-		} ;
 		ps7_scuwdt_0: ps7-scuwdt@f8f00620 {
 			clocks = <&clkc 4>;
 			compatible = "xlnx,ps7-scuwdt-1.00.a";
 			device_type = "watchdog";
-			interrupt-parent = <&ps7_scugic_0>;
+			interrupt-parent = <&intc>;
 			interrupts = <1 14 0x301>;
 			reg = <0xf8f00620 0xe0>;
-		} ;
-		ps7_sd_1: ps7-sdio@e0101000 {
-			broken-cd ;
-			wp-inverted ;
-			clock-frequency = <50000000>;
-			clock-names = "clk_xin", "clk_ahb";
-			clocks = <&clkc 22>, <&clkc 33>;
-			compatible = "arasan,sdhci-8.9a";
-			interrupt-parent = <&ps7_scugic_0>;
-			interrupts = <0 47 4>;
-			reg = <0xe0101000 0x1000>;
-			xlnx,has-cd = <0x0>;
-			xlnx,has-power = <0x0>;
-			xlnx,has-wp = <0x0>;
-		} ;
-		ps7_slcr_0: ps7-slcr@f8000000 {
-			#address-cells = <1>;
-			#size-cells = <1>;
-			compatible = "xlnx,zynq-slcr", "syscon";
-			ranges ;
-			reg = <0xf8000000 0x1000>;
-			clkc: clkc@100 {
-				#clock-cells = <1>;
-				clock-output-names = "armpll", "ddrpll", "iopll", "cpu_6or4x", "cpu_3or2x",
-					"cpu_2x", "cpu_1x", "ddr2x", "ddr3x", "dci",
-					"lqspi", "smc", "pcap", "gem0", "gem1",
-					"fclk0", "fclk1", "fclk2", "fclk3", "can0",
-					"can1", "sdio0", "sdio1", "uart0", "uart1",
-					"spi0", "spi1", "dma", "usb0_aper", "usb1_aper",
-					"gem0_aper", "gem1_aper", "sdio0_aper", "sdio1_aper", "spi0_aper",
-					"spi1_aper", "can0_aper", "can1_aper", "i2c0_aper", "i2c1_aper",
-					"uart0_aper", "uart1_aper", "gpio_aper", "lqspi_aper", "smc_aper",
-					"swdt", "dbg_trc", "dbg_apb";
-				compatible = "xlnx,ps7-clkc";
-				fclk-enable = <0xf>;
-				ps-clk-frequency = <33333333>;
-				reg = <0x100 0x100>;
-			} ;
-		} ;
-		ps7_ttc_0: ps7-ttc@f8001000 {
-			clocks = <&clkc 6>;
-			compatible = "cdns,ttc";
-			interrupt-names = "ttc0", "ttc1", "ttc2";
-			interrupt-parent = <&ps7_scugic_0>;
-			interrupts = <0 10 4>, <0 11 4>, <0 12 4>;
-			reg = <0xf8001000 0x1000>;
-		} ;
-		ps7_ttc_1: ps7-ttc@f8002000 {
-			clocks = <&clkc 6>;
-			compatible = "cdns,ttc";
-			interrupt-parent = <&ps7_scugic_0>;
-			interrupts = <0 37 4>, <0 38 4>, <0 39 4>;
-			reg = <0xf8002000 0x1000>;
-		} ;
-		ps7_uart_0: serial@e0000000 {
-			status = "disabled";
-			clock-names = "uart_clk", "pclk";
-			clocks = <&clkc 23>, <&clkc 40>;
-			compatible = "xlnx,xuartps", "cdns,uart-r1p8";
-			current-speed = <115200>;
-			device_type = "serial";
-			interrupt-parent = <&ps7_scugic_0>;
-			interrupts = <0 27 4>;
-			port-number = <0>;
-			reg = <0xe0000000 0x1000>;
-			xlnx,has-modem = <0x0>;
-		} ;
-		ps7_uart_1: serial@e0001000 {
-			clock-names = "uart_clk", "pclk";
-			clocks = <&clkc 24>, <&clkc 41>;
-			compatible = "xlnx,xuartps", "cdns,uart-r1p8";
-			current-speed = <115200>;
-			device_type = "serial";
-			interrupt-parent = <&ps7_scugic_0>;
-			interrupts = <0 50 4>;
-			port-number = <0>;
-			reg = <0xe0001000 0x1000>;
-			xlnx,has-modem = <0x0>;
 		} ;
 		ps7_usb_0: ps7-usb@e0002000 {
 			clocks = <&clkc 28>;
 			compatible = "xlnx,ps7-usb-1.00.a", "xlnx,zynq-usb-1.00.a";
 			dr_mode = "peripheral";
-			interrupt-parent = <&ps7_scugic_0>;
+			interrupt-parent = <&intc>;
 			interrupts = <0 21 4>;
 			phy_type = "ulpi";
 			reg = <0xe0002000 0x1000>;
@@ -342,7 +174,7 @@
 			clocks = <&clkc 29>;
 			compatible = "xlnx,ps7-usb-1.00.a", "xlnx,zynq-usb-1.00.a";
 			dr_mode = "host";
-			interrupt-parent = <&ps7_scugic_0>;
+			interrupt-parent = <&intc>;
 			interrupts = <0 44 4>;
 			phy_type = "ulpi";
 			reg = <0xe0003000 0x1000>;
@@ -351,7 +183,7 @@
 			clocks = <&clkc 45>;
 			compatible = "xlnx,zynq-wdt-r1p2";
 			device_type = "watchdog";
-			interrupt-parent = <&ps7_scugic_0>;
+			interrupt-parent = <&intc>;
 			interrupts = <0 9 1>;
 			reg = <0xf8005000 0x1000>;
 			reset = <0>;
@@ -360,9 +192,29 @@
 		ps7_xadc: ps7-xadc@f8007100 {
 			clocks = <&clkc 12>;
 			compatible = "xlnx,zynq-xadc-1.00.a";
-			interrupt-parent = <&ps7_scugic_0>;
+			interrupt-parent = <&intc>;
 			interrupts = <0 7 4>;
 			reg = <0xf8007100 0x20>;
 		} ;
-	} ;
-} ;
+	};
+};
+
+&gem0 {
+	status = "okay";
+	phy-mode = "rgmii-id";
+
+	phy0: phy@1 {
+		compatible = "marvell,88e1510";
+		reg = <1>;
+	};
+};
+
+&sdhci1 {
+	status = "okay";
+	broken-cd ;
+	wp-inverted ;
+};
+
+&uart1 {
+	status = "okay";
+};
