@@ -41,19 +41,6 @@
 			reg = <0xf8006000 0x1000>;
 			xlnx,has-ecc = <0x0>;
 		} ;
-		ps7_dma_s: ps7-dma@f8003000 {
-			#dma-cells = <1>;
-			#dma-channels = <8>;
-			#dma-requests = <4>;
-			clock-names = "apb_pclk";
-			clocks = <&clkc 27>;
-			compatible = "arm,primecell", "arm,pl330";
-			interrupt-names = "abort", "dma0", "dma1", "dma2", "dma3",
-				"dma4", "dma5", "dma6", "dma7";
-			interrupt-parent = <&intc>;
-			interrupts = <0 13 4>, <0 14 4>, <0 15 4>, <0 16 4>, <0 17 4>, <0 40 4>, <0 41 4>, <0 42 4>, <0 43 4>;
-			reg = <0xf8003000 0x1000>;
-		} ;
 		ps7_gpio_0: ps7-gpio@e000a000 {
 			#gpio-cells = <2>;
 			clocks = <&clkc 42>;
