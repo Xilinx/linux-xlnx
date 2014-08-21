@@ -22,7 +22,7 @@
 		ethernet0 = &gem0;
 		serial0 = &uart1;
 		spi0 = &qspi;
-	} ;
+	};
 
 	memory {
 		device_type = "memory";
@@ -32,8 +32,8 @@
 	chosen {
 		bootargs = "console=ttyPS0,115200 root=/dev/ram rw earlyprintk";
 		linux,stdout-path = "/amba/serial@e0001000";
-	} ;
-} ;
+	};
+};
 
 &qspi {
 	status = "okay";
@@ -85,7 +85,7 @@
 	phy0: phy@0 {
 		compatible = "marvell,88e1510";
 		reg = <0>;
-	} ;
+	};
 };
 
 &sdhci0 {
