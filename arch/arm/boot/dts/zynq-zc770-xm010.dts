@@ -37,22 +37,6 @@
 	};
 
 	amba {
-		ps7_afi_0: ps7-afi@f8008000 {
-			compatible = "xlnx,ps7-afi-1.00.a";
-			reg = <0xf8008000 0x1000>;
-		} ;
-		ps7_afi_1: ps7-afi@f8009000 {
-			compatible = "xlnx,ps7-afi-1.00.a";
-			reg = <0xf8009000 0x1000>;
-		} ;
-		ps7_afi_2: ps7-afi@f800a000 {
-			compatible = "xlnx,ps7-afi-1.00.a";
-			reg = <0xf800a000 0x1000>;
-		} ;
-		ps7_afi_3: ps7-afi@f800b000 {
-			compatible = "xlnx,ps7-afi-1.00.a";
-			reg = <0xf800b000 0x1000>;
-		} ;
 		ps7_can_0: ps7-can@e0008000 {
 			clock-names = "ref_clk", "aper_clk";
 			clocks = <&clkc 19>, <&clkc 36>;
@@ -98,10 +82,6 @@
 			interrupt-parent = <&intc>;
 			interrupts = <0 20 4>;
 			reg = <0xe000a000 0x1000>;
-		} ;
-		ps7_iop_bus_config_0: ps7-iop-bus-config@e0200000 {
-			compatible = "xlnx,ps7-iop-bus-config-1.00.a";
-			reg = <0xe0200000 0x1000>;
 		} ;
 		ps7_ocmc_0: ps7-ocmc@f800c000 {
 			compatible = "xlnx,zynq-ocmc-1.0";
