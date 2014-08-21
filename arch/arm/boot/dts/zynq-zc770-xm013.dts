@@ -22,7 +22,7 @@
 		ethernet0 = &gem1;
 		i2c0 = &i2c1;
 		serial0 = &uart0;
-		spi0 = &ps7_spi_0;
+		spi0 = &spi0;
 		spi1 = &ps7_qspi_0;
 	};
 
@@ -81,27 +81,21 @@
 			};
 
 		} ;
-		ps7_spi_0: ps7-spi@e0006000 {
-			clock-names = "ref_clk", "pclk";
-			clocks = <&clkc 25>, <&clkc 34>;
-			compatible = "cdns,spi-r1p6";
-			interrupt-parent = <&intc>;
-			interrupts = <0 26 4>;
-			num-cs = <4>;
-			is-decoded-cs = <0>;
-			reg = <0xe0006000 0x1000>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-			eeprom: at25@0 {
-				at25,byte-len = <8192>;
-				at25,addr-mode = <2>;
-				at25,page-size = <32>;
+	};
+};
 
-				compatible = "atmel,at25";
-				reg = <2>;
-				spi-max-frequency = <1000000>;
-			};
-		} ;
+&spi0 {
+	status = "okay";
+	num-cs = <4>;
+	is-decoded-cs = <0>;
+	eeprom: at25@0 {
+		at25,byte-len = <8192>;
+		at25,addr-mode = <2>;
+		at25,page-size = <32>;
+
+		compatible = "atmel,at25";
+		reg = <2>;
+		spi-max-frequency = <1000000>;
 	};
 };
 
