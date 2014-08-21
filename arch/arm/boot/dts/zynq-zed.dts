@@ -47,12 +47,6 @@
 			interrupts = <0 20 4>;
 			reg = <0xe000a000 0x1000>;
 		} ;
-		ps7_ocmc_0: ps7-ocmc@f800c000 {
-			compatible = "xlnx,zynq-ocmc-1.0";
-			interrupt-parent = <&intc>;
-			interrupts = <0 3 4>;
-			reg = <0xf800c000 0x1000>;
-		} ;
 		ps7_qspi_0: ps7-qspi@e000d000 {
 			clock-names = "ref_clk", "pclk";
 			clocks = <&clkc 10>, <&clkc 43>;
