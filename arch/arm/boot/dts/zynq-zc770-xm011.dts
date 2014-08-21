@@ -48,14 +48,6 @@
 			reg = <0xf8006000 0x1000>;
 			xlnx,has-ecc = <0x0>;
 		} ;
-		ps7_dev_cfg_0: ps7-dev-cfg@f8007000 {
-			clock-names = "ref_clk", "fclk0", "fclk1", "fclk2", "fclk3";
-			clocks = <&clkc 12>, <&clkc 15>, <&clkc 16>, <&clkc 17>, <&clkc 18>;
-			compatible = "xlnx,zynq-devcfg-1.0";
-			interrupt-parent = <&intc>;
-			interrupts = <0 8 4>;
-			reg = <0xf8007000 0x100>;
-		} ;
 		ps7_dma_s: ps7-dma@f8003000 {
 			#dma-cells = <1>;
 			#dma-channels = <8>;
