@@ -36,11 +36,6 @@
 	};
 
 	amba {
-		ps7_ddrc_0: ps7-ddrc@f8006000 {
-			compatible = "xlnx,zynq-ddrc-1.0";
-			reg = <0xf8006000 0x1000>;
-			xlnx,has-ecc = <0x0>;
-		} ;
 		ps7_gpio_0: ps7-gpio@e000a000 {
 			#gpio-cells = <2>;
 			clocks = <&clkc 42>;
