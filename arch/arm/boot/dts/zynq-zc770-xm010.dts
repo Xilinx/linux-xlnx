@@ -23,7 +23,7 @@
 		i2c0 = &i2c0;
 		serial0 = &uart1;
 		spi0 = &spi1;
-		spi1 = &ps7_qspi_0;
+		spi1 = &qspi;
 	};
 
 	chosen {
@@ -35,52 +35,42 @@
 		device_type = "memory";
 		reg = <0x0 0x40000000>;
 	};
+};
 
-	amba {
-		ps7_qspi_0: ps7-qspi@e000d000 {
-			clock-names = "ref_clk", "pclk";
-			clocks = <&clkc 10>, <&clkc 43>;
-			compatible = "xlnx,zynq-qspi-1.0";
-			interrupt-parent = <&intc>;
-			interrupts = <0 19 4>;
-			is-dual = <0>;
-			num-cs = <1>;
-			reg = <0xe000d000 0x1000>;
-			xlnx,fb-clk = <0x1>;
-			xlnx,qspi-mode = <0x0>;
-			#address-cells = <1>;
-			#size-cells = <0>;
-			flash@0 {
-				compatible = "n25q128";
-				reg = <0x0>;
-				spi-tx-bus-width = <1>;
-				spi-rx-bus-width = <4>;
-				spi-max-frequency = <50000000>;
-				#address-cells = <1>;
-				#size-cells = <1>;
-				partition@qspi-fsbl-uboot {
-					label = "qspi-fsbl-uboot";
-					reg = <0x0 0x100000>;
-				};
-				partition@qspi-linux {
-					label = "qspi-linux";
-					reg = <0x100000 0x500000>;
-				};
-				partition@qspi-device-tree {
-					label = "qspi-device-tree";
-					reg = <0x600000 0x20000>;
-				};
-				partition@qspi-rootfs {
-					label = "qspi-rootfs";
-					reg = <0x620000 0x5E0000>;
-				};
-				partition@qspi-bitstream {
-					label = "qspi-bitstream";
-					reg = <0xC00000 0x400000>;
-				};
-			};
-
-		} ;
+&qspi {
+	status = "okay";
+	is-dual = <0>;
+	num-cs = <1>;
+	xlnx,fb-clk = <0x1>;
+	xlnx,qspi-mode = <0x0>;
+	flash@0 {
+		compatible = "n25q128";
+		reg = <0x0>;
+		spi-tx-bus-width = <1>;
+		spi-rx-bus-width = <4>;
+		spi-max-frequency = <50000000>;
+		#address-cells = <1>;
+		#size-cells = <1>;
+		partition@qspi-fsbl-uboot {
+			label = "qspi-fsbl-uboot";
+			reg = <0x0 0x100000>;
+		};
+		partition@qspi-linux {
+			label = "qspi-linux";
+			reg = <0x100000 0x500000>;
+		};
+		partition@qspi-device-tree {
+			label = "qspi-device-tree";
+			reg = <0x600000 0x20000>;
+		};
+		partition@qspi-rootfs {
+			label = "qspi-rootfs";
+			reg = <0x620000 0x5E0000>;
+		};
+		partition@qspi-bitstream {
+			label = "qspi-bitstream";
+			reg = <0xC00000 0x400000>;
+		};
 	};
 };
 
