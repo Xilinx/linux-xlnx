@@ -300,6 +300,17 @@
 			clocks = <&clkc 4>;
 		};
 
+		watchdog0: watchdog@f8005000 {
+			clocks = <&clkc 45>;
+			compatible = "xlnx,zynq-wdt-r1p2";
+			device_type = "watchdog";
+			interrupt-parent = <&intc>;
+			interrupts = <0 9 1>;
+			reg = <0xf8005000 0x1000>;
+			reset = <0>;
+			timeout-sec = <10>;
+		};
+
 		scuwatchdog: watchdog@f8f00620 {
 			clocks = <&clkc 4>;
 			compatible = "xlnx,ps7-scuwdt-1.00.a";

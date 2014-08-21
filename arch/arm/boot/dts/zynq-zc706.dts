@@ -90,16 +90,6 @@
 			reg = <0xe0002000 0x1000>;
 			usb-reset = <&gpio0 7 0>;
 		} ;
-		ps7_wdt_0: ps7-wdt@f8005000 {
-			clocks = <&clkc 45>;
-			compatible = "xlnx,zynq-wdt-r1p2";
-			device_type = "watchdog";
-			interrupt-parent = <&intc>;
-			interrupts = <0 9 1>;
-			reg = <0xf8005000 0x1000>;
-			reset = <0>;
-			timeout-sec = <10>;
-		} ;
 	};
 };
 
