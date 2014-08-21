@@ -319,5 +319,23 @@
 			interrupts = <1 14 0x301>;
 			reg = <0xf8f00620 0xe0>;
 		};
+
+		usb0: usb@e0002000 {
+			clocks = <&clkc 28>;
+			compatible = "xlnx,ps7-usb-1.00.a", "xlnx,zynq-usb-1.00.a";
+			status = "disabled";
+			interrupt-parent = <&intc>;
+			interrupts = <0 21 4>;
+			reg = <0xe0002000 0x1000>;
+		};
+
+		usb1: usb@e0003000 {
+			clocks = <&clkc 29>;
+			compatible = "xlnx,ps7-usb-1.00.a", "xlnx,zynq-usb-1.00.a";
+			status = "disabled";
+			interrupt-parent = <&intc>;
+			interrupts = <0 44 4>;
+			reg = <0xe0003000 0x1000>;
+		};
 	};
 };

@@ -97,17 +97,15 @@
 			is-decoded-cs = <0>;
 			reg = <0xe0006000 0x1000>;
 		} ;
-		ps7_usb_1: ps7-usb@e0003000 {
-			clocks = <&clkc 29>;
-			compatible = "xlnx,ps7-usb-1.00.a", "xlnx,zynq-usb-1.00.a";
-			dr_mode = "host";
-			interrupt-parent = <&intc>;
-			interrupts = <0 44 4>;
-			phy_type = "ulpi";
-			reg = <0xe0003000 0x1000>;
-		} ;
 	};
 };
+
+&usb1 {
+	status = "okay";
+	dr_mode = "host";
+	phy_type = "ulpi";
+};
+
 
 &can0 {
 	status = "okay";

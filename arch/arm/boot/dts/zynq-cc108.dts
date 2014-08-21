@@ -82,27 +82,22 @@
 				};
 			};
 		} ;
-		ps7_usb_0: ps7-usb@e0002000 {
-			clocks = <&clkc 28>;
-			compatible = "xlnx,ps7-usb-1.00.a", "xlnx,zynq-usb-1.00.a";
-			dr_mode = "peripheral";
-			interrupt-parent = <&intc>;
-			interrupts = <0 21 4>;
-			phy_type = "ulpi";
-			reg = <0xe0002000 0x1000>;
-			usb-reset = <&gpio0 9 0>;
-		} ;
-		ps7_usb_1: ps7-usb@e0003000 {
-			clocks = <&clkc 29>;
-			compatible = "xlnx,ps7-usb-1.00.a", "xlnx,zynq-usb-1.00.a";
-			dr_mode = "host";
-			interrupt-parent = <&intc>;
-			interrupts = <0 44 4>;
-			phy_type = "ulpi";
-			reg = <0xe0003000 0x1000>;
-		} ;
 	};
 };
+
+&usb0 {
+	status = "okay";
+	dr_mode = "peripheral";
+	phy_type = "ulpi";
+	usb-reset = <&gpio0 9 0>;
+};
+
+&usb1 {
+	status = "okay";
+	dr_mode = "host";
+	phy_type = "ulpi";
+};
+
 
 &gem0 {
 	status = "okay";
