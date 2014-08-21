@@ -31,59 +31,45 @@
 		device_type = "memory";
 		reg = <0x0 0x8000000>;
 	};
+};
 
-	amba {
-		ps7_smcc_0: ps7-smcc@e000e000 {
-			#address-cells = <1>;
-			#size-cells = <1>;
-			arm,addr25 = <0x0>;
-			arm,nor-chip-sel0 = <0x0>;
-			arm,nor-chip-sel1 = <0x0>;
-			arm,sram-chip-sel0 = <0x0>;
-			arm,sram-chip-sel1 = <0x0>;
-			clock-names = "memclk", "aclk";
-			clocks = <&clkc 11>, <&clkc 44>;
-			compatible = "arm,pl353-smc-r2p1";
-			interrupt-parent = <&intc>;
-			interrupts = <0 18 4>;
-			ranges ;
-			reg = <0xe000e000 0x1000>;
-			ps7_nand_0: ps7-nand@e1000000 {
-				arm,nand-cycle-t0 = <0x4>;
-				arm,nand-cycle-t1 = <0x4>;
-				arm,nand-cycle-t2 = <0x1>;
-				arm,nand-cycle-t3 = <0x2>;
-				arm,nand-cycle-t4 = <0x2>;
-				arm,nand-cycle-t5 = <0x2>;
-				arm,nand-cycle-t6 = <0x4>;
-				compatible = "arm,pl353-nand-r2p1";
-				reg = <0xe1000000 0x1000000>;
-				#address-cells = <0x1>;
-				#size-cells = <0x1>;
+&smcc {
+	status = "okay";
+	arm,addr25 = <0x0>;
+	arm,nor-chip-sel0 = <0x0>;
+	arm,nor-chip-sel1 = <0x0>;
+	arm,sram-chip-sel0 = <0x0>;
+	arm,sram-chip-sel1 = <0x0>;
+};
 
-				partition@nand-fsbl-uboot {
-					label = "nand-fsbl-uboot";
-					reg = <0x0 0x100000>;
-				};
-				partition@nand-linux {
-					label = "nand-linux";
-					reg = <0x100000 0x500000>;
-				};
-				partition@nand-device-tree {
-					label = "nand-device-tree";
-					reg = <0x600000 0x20000>;
-				};
-				partition@nand-rootfs {
-					label = "nand-rootfs";
-					reg = <0x620000 0x5E0000>;
-				};
-				partition@nand-bitstream {
-					label = "nand-bitstream";
-					reg = <0xC00000 0x400000>;
-
-				};
-			} ;
-		} ;
+&nand0 {
+	status = "okay";
+	arm,nand-cycle-t0 = <0x4>;
+	arm,nand-cycle-t1 = <0x4>;
+	arm,nand-cycle-t2 = <0x1>;
+	arm,nand-cycle-t3 = <0x2>;
+	arm,nand-cycle-t4 = <0x2>;
+	arm,nand-cycle-t5 = <0x2>;
+	arm,nand-cycle-t6 = <0x4>;
+	partition@nand-fsbl-uboot {
+		label = "nand-fsbl-uboot";
+		reg = <0x0 0x100000>;
+	};
+	partition@nand-linux {
+		label = "nand-linux";
+		reg = <0x100000 0x500000>;
+	};
+	partition@nand-device-tree {
+		label = "nand-device-tree";
+		reg = <0x600000 0x20000>;
+	};
+	partition@nand-rootfs {
+		label = "nand-rootfs";
+		reg = <0x620000 0x5E0000>;
+	};
+	partition@nand-bitstream {
+		label = "nand-bitstream";
+		reg = <0xC00000 0x400000>;
 	};
 };
 

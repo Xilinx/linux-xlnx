@@ -31,60 +31,46 @@
 		device_type = "memory";
 		reg = <0x0 0x8000000>;
 	};
+};
 
-	amba {
-		ps7_smcc_0: ps7-smcc@e000e000 {
-			#address-cells = <1>;
-			#size-cells = <1>;
-			arm,addr25 = <0x1>;
-			arm,nor-chip-sel0 = <0x1>;
-			arm,nor-chip-sel1 = <0x0>;
-			arm,sram-chip-sel0 = <0x0>;
-			arm,sram-chip-sel1 = <0x0>;
-			clock-names = "memclk", "aclk";
-			clocks = <&clkc 11>, <&clkc 44>;
-			compatible = "arm,pl353-smc-r2p1";
-			interrupt-parent = <&intc>;
-			interrupts = <0 18 4>;
-			ranges ;
-			reg = <0xe000e000 0x1000>;
-			ps7_nor_0: ps7-nor@e2000000 {
-				bank-width = <1>;
-				compatible = "cfi-flash";
-				reg = <0xe2000000 0x1000>;
-				xlnx,sram-cycle-t0 = <0xb>;
-				xlnx,sram-cycle-t1 = <0xb>;
-				xlnx,sram-cycle-t2 = <0x5>;
-				xlnx,sram-cycle-t3 = <0x4>;
-				xlnx,sram-cycle-t4 = <0x3>;
-				xlnx,sram-cycle-t5 = <0x3>;
-				xlnx,sram-cycle-t6 = <0x2>;
-				#address-cells = <1>;
-				#size-cells = <1>;
+&smcc {
+	status = "okay";
+	arm,addr25 = <0x1>;
+	arm,nor-chip-sel0 = <0x1>;
+	arm,nor-chip-sel1 = <0x0>;
+	arm,sram-chip-sel0 = <0x0>;
+	arm,sram-chip-sel1 = <0x0>;
+};
 
-				partition@nor-fsbl-uboot {
-					label = "nor-fsbl-uboot";
-					reg = <0x0 0x100000>;
-				};
-				partition@nor-linux {
-					label = "nor-linux";
-					reg = <0x100000 0x500000>;
-				};
-				partition@nor-device-tree {
-					label = "nor-device-tree";
-					reg = <0x600000 0x20000>;
-				};
-				partition@nor-rootfs {
-					label = "nor-rootfs";
-					reg = <0x620000 0x5E0000>;
-				};
-				partition@nor-bitstream {
-					label = "nor-bitstream";
-					reg = <0xC00000 0x400000>;
-				};
-
-			} ;
-		} ;
+&nor0 {
+	status = "okay";
+	bank-width = <1>;
+	xlnx,sram-cycle-t0 = <0xb>;
+	xlnx,sram-cycle-t1 = <0xb>;
+	xlnx,sram-cycle-t2 = <0x5>;
+	xlnx,sram-cycle-t3 = <0x4>;
+	xlnx,sram-cycle-t4 = <0x3>;
+	xlnx,sram-cycle-t5 = <0x3>;
+	xlnx,sram-cycle-t6 = <0x2>;
+	partition@nor-fsbl-uboot {
+		label = "nor-fsbl-uboot";
+		reg = <0x0 0x100000>;
+	};
+	partition@nor-linux {
+		label = "nor-linux";
+		reg = <0x100000 0x500000>;
+	};
+	partition@nor-device-tree {
+		label = "nor-device-tree";
+		reg = <0x600000 0x20000>;
+	};
+	partition@nor-rootfs {
+		label = "nor-rootfs";
+		reg = <0x620000 0x5E0000>;
+	};
+	partition@nor-bitstream {
+		label = "nor-bitstream";
+		reg = <0xC00000 0x400000>;
 	};
 };
 
