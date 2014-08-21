@@ -33,18 +33,6 @@
 	};
 
 	amba {
-		ps7_gpio_0: ps7-gpio@e000a000 {
-			#gpio-cells = <2>;
-			clocks = <&clkc 42>;
-			compatible = "xlnx,zynq-gpio-1.0";
-			emio-gpio-width = <64>;
-			gpio-controller ;
-			gpio-mask-high = <0x3cffff>;
-			gpio-mask-low = <0xff008002>;
-			interrupt-parent = <&intc>;
-			interrupts = <0 20 4>;
-			reg = <0xe000a000 0x1000>;
-		} ;
 		ps7_scuwdt_0: ps7-scuwdt@f8f00620 {
 			clocks = <&clkc 4>;
 			compatible = "xlnx,ps7-scuwdt-1.00.a";

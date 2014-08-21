@@ -37,18 +37,6 @@
 	};
 
 	amba {
-		ps7_gpio_0: ps7-gpio@e000a000 {
-			#gpio-cells = <2>;
-			clocks = <&clkc 42>;
-			compatible = "xlnx,zynq-gpio-1.0";
-			emio-gpio-width = <64>;
-			gpio-controller ;
-			gpio-mask-high = <0x0>;
-			gpio-mask-low = <0x200>;
-			interrupt-parent = <&intc>;
-			interrupts = <0 20 4>;
-			reg = <0xe000a000 0x1000>;
-		} ;
 		ps7_qspi_0: ps7-qspi@e000d000 {
 			clock-names = "ref_clk", "pclk";
 			clocks = <&clkc 10>, <&clkc 43>;
@@ -139,7 +127,7 @@
 			interrupts = <0 21 4>;
 			phy_type = "ulpi";
 			reg = <0xe0002000 0x1000>;
-			usb-reset = <&ps7_gpio_0 7 0>;
+			usb-reset = <&gpio0 7 0>;
 		} ;
 		ps7_wdt_0: ps7-wdt@f8005000 {
 			clocks = <&clkc 45>;
