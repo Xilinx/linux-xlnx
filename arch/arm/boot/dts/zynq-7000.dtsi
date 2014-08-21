@@ -299,5 +299,14 @@
 			reg = <0xf8f00600 0x20>;
 			clocks = <&clkc 4>;
 		};
+
+		scuwatchdog: watchdog@f8f00620 {
+			clocks = <&clkc 4>;
+			compatible = "xlnx,ps7-scuwdt-1.00.a";
+			device_type = "watchdog";
+			interrupt-parent = <&intc>;
+			interrupts = <1 14 0x301>;
+			reg = <0xf8f00620 0xe0>;
+		};
 	};
 };
