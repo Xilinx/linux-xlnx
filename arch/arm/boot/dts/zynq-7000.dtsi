@@ -203,7 +203,7 @@
 			interrupt-parent = <&intc>;
 			interrupts = <0 24 4>;
 			reg = <0xe0100000 0x1000>;
-		} ;
+		};
 
 		sdhci1: sdhci@e0101000 {
 			compatible = "arasan,sdhci-8.9a";
@@ -213,7 +213,7 @@
 			interrupt-parent = <&intc>;
 			interrupts = <0 47 4>;
 			reg = <0xe0101000 0x1000>;
-		} ;
+		};
 
 		slcr: slcr@f8000000 {
 			#address-cells = <1>;
@@ -266,7 +266,7 @@
 			interrupt-parent = <&intc>;
 			interrupts = <0 8 4>;
 			reg = <0xf8007000 0x100>;
-		} ;
+		};
 
 		global_timer: timer@f8f00200 {
 			compatible = "arm,cortex-a9-global-timer";
@@ -298,6 +298,6 @@
 			compatible = "arm,cortex-a9-twd-timer";
 			reg = <0xf8f00600 0x20>;
 			clocks = <&clkc 4>;
-		} ;
+		};
 	};
 };
