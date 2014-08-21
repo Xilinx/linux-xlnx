@@ -36,14 +36,6 @@
 	};
 
 	amba {
-		ps7_can_0: ps7-can@e0008000 {
-			clock-names = "ref_clk", "aper_clk";
-			clocks = <&clkc 19>, <&clkc 36>;
-			compatible = "xlnx,zynq-can-1.0";
-			interrupt-parent = <&intc>;
-			interrupts = <0 28 4>;
-			reg = <0xe0008000 0x1000>;
-		} ;
 		ps7_gpio_0: ps7-gpio@e000a000 {
 			#gpio-cells = <2>;
 			clocks = <&clkc 42>;
@@ -134,6 +126,10 @@
 			timeout-sec = <10>;
 		} ;
 	};
+};
+
+&can0 {
+	status = "okay";
 };
 
 &gem0 {
