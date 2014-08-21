@@ -81,12 +81,6 @@
 			};
 
 		} ;
-		ps7_qspi_linear_0: ps7-qspi-linear@fc000000 {
-			clock-names = "ref_clk", "aper_clk";
-			clocks = <&clkc 10>, <&clkc 43>;
-			compatible = "xlnx,ps7-qspi-linear-1.00.a";
-			reg = <0xfc000000 0x2000000>;
-		} ;
 		ps7_spi_0: ps7-spi@e0006000 {
 			clock-names = "ref_clk", "pclk";
 			clocks = <&clkc 25>, <&clkc 34>;
