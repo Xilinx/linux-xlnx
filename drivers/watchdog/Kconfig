@@ -147,6 +147,14 @@ config AT91SAM9X_WATCHDOG
 	  Watchdog timer embedded into AT91SAM9X and AT91CAP9 chips. This will
 	  reboot your system when the timeout is reached.
 
+config CADENCE_WATCHDOG
+	tristate "Cadence Watchdog Timer"
+	depends on ARM
+	select WATCHDOG_CORE
+	help
+	  Say Y here if you want to include support for the watchdog
+	  timer in the Xilinx Zynq.
+
 config 21285_WATCHDOG
 	tristate "DC21285 watchdog"
 	depends on FOOTBRIDGE
@@ -356,14 +364,6 @@ config NUC900_WATCHDOG
 	  for the Nuvoton NUC900 series SoCs.
 	  To compile this driver as a module, choose M here: the
 	  module will be called nuc900_wdt.
-
-config CADENCE_WATCHDOG
-	tristate "Cadence Watchdog Timer"
-	depends on ARM && HAS_IOMEM
-	select WATCHDOG_CORE
-	help
-	  Say Y here if you want to include support for the watchdog
-	  timer in the Xilinx Zynq.
 
 config TS72XX_WATCHDOG
 	tristate "TS-72XX SBC Watchdog"
