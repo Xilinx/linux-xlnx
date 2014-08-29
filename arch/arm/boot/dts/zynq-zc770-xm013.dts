@@ -98,7 +98,6 @@
 	phy-mode = "rgmii-id";
 
 	phy0: phy@7 {
-		compatible = "vitesse,vsc8211";
 		reg = <7>;
 	};
 };

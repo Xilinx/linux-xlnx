@@ -83,7 +83,6 @@
 	phy-mode = "rgmii-id";
 
 	phy0: phy@0 {
-		compatible = "marvell,88e1510";
 		reg = <0>;
 	};
 };
