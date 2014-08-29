@@ -34,6 +34,16 @@
 		bootargs = "console=ttyPS0,115200 root=/dev/ram rw earlyprintk";
 		linux,stdout-path = "/amba/serial@e0001000";
 	};
+
+	leds {
+		compatible = "gpio-leds";
+
+		ds23 {
+			label = "ds23";
+			gpios = <&gpio0 10 0>;
+			linux,default-trigger = "heartbeat";
+		};
+	};
 };
 
 &qspi {
