@@ -53,6 +53,7 @@ static void zynq_pm_wake(void)
 
 static int zynq_pm_suspend(unsigned long arg)
 {
+	u32 reg;
 	int (*zynq_suspend_ptr)(void __iomem *, void __iomem *) =
 		(__force void *)ocm_base;
 	int do_ddrpll_bypass = 1;
@@ -61,8 +62,14 @@ static int zynq_pm_suspend(unsigned long arg)
 	zynq_clk_topswitch_disable();
 
 
-	if (!ocm_base || !ddrc_base)
+	if (!ocm_base || !ddrc_base) {
 		do_ddrpll_bypass = 0;
+	} else {
+		/* enable DDRC self-refresh mode */
+		reg = readl(ddrc_base + DDRC_CTRL_REG1_OFFS);
+		reg |= DDRC_SELFREFRESH_MASK;
+		writel(reg, ddrc_base + DDRC_CTRL_REG1_OFFS);
+	}
 
 	if (do_ddrpll_bypass) {
 		/*
@@ -77,6 +84,13 @@ static int zynq_pm_suspend(unsigned long arg)
 	} else {
 		WARN_ONCE(1, "DRAM self-refresh not available\n");
 		cpu_do_idle();
+	}
+
+	/* disable DDRC self-refresh mode */
+	if (do_ddrpll_bypass) {
+		reg = readl(ddrc_base + DDRC_CTRL_REG1_OFFS);
+		reg &= ~DDRC_SELFREFRESH_MASK;
+		writel(reg, ddrc_base + DDRC_CTRL_REG1_OFFS);
 	}
 
 	/* Topswitch clock stop enable */
@@ -219,14 +233,10 @@ int __init zynq_pm_late_init(void)
 		pr_warn("%s: Unable to map DDRC IO memory.\n", __func__);
 	} else {
 		/*
-		 * Enable DDRC self-refresh and clock stop features. The HW
-		 * takes care of entering/exiting the correct modes depending
+		 * Enable DDRC clock stop feature. The HW takes care of
+		 * entering/exiting the correct mode depending
 		 * on activity state.
 		 */
-		reg = readl(ddrc_base + DDRC_CTRL_REG1_OFFS);
-		reg |= DDRC_SELFREFRESH_MASK;
-		writel(reg, ddrc_base + DDRC_CTRL_REG1_OFFS);
-
 		reg = readl(ddrc_base + DDRC_DRAM_PARAM_REG3_OFFS);
 		reg |= DDRC_CLOCKSTOP_MASK;
 		writel(reg, ddrc_base + DDRC_DRAM_PARAM_REG3_OFFS);
