@@ -1,0 +1,53 @@
+Device tree bindings for ARM PL353 static memory controller
+
+PL353 static memory controller supports two kinds of memory
+interfaces.i.e NAND and SRAM/NOR interfaces.
+The actual devices are instantiated from the child nodes of pl353 smc node.
+
+Required properties:
+- compatible		: Should be "arm,pl353-smc-r2p1"
+- reg			: Controller registers map and length.
+- clock-names		: List of input clock names - "ref_clk", "aper_clk"
+			  (See clock bindings for details).
+- clocks		: Clock phandles (see clock bindings for details).
+- address-cells		: Address cells, must be 1.
+- size-cells		: Size cells. Must be 1.
+
+Child nodes:
+ For NAND the "arm,pl353-nand-r2p1" and for NOR the "cfi-flash" drivers are
+supported as child nodes.
+
+Mandatory timing properties for child nodes:
+- arm,nand-cycle-t0	: Read cycle time(t_rc).
+- arm,nand-cycle-t1	: Write cycle time(t_wc).
+- arm,nand-cycle-t2	: re_n assertion delay(t_rea).
+- arm,nand-cycle-t3	: we_n de-assertion delay(t_wp).
+- arm,nand-cycle-t4	: Status read time(t_clr)
+- arm,nand-cycle-t5	: ID read time(t_ar)
+- arm,nand-cycle-t6	: busy to re_n(t_rr)
+
+for nand partition information please refer the below file
+Documentation/devicetree/bindings/mtd/partition.txt
+
+Example:
+	pl353smcc_0: pl353smcc@e000e000 {
+			compatible = "arm,pl353-smc-r2p1"
+			clock-names = "memclk", "aclk";
+			clocks = <&clkc 11>, <&clkc 44>;
+			reg = <0xe000e000 0x1000>;
+			#address-cells = <1>;
+			#size-cells = <1>;
+			ranges;
+			nand_0: nand@e1000000 {
+				compatible = "arm,pl353-nand-r2p1"
+				reg = <0xe1000000 0x1000000>;
+				arm,nand-cycle-t0 = <0x4>;
+				arm,nand-cycle-t1 = <0x4>;
+				arm,nand-cycle-t2 = <0x1>;
+				arm,nand-cycle-t3 = <0x2>;
+				arm,nand-cycle-t4 = <0x2>;
+				arm,nand-cycle-t5 = <0x2>;
+				arm,nand-cycle-t6 = <0x4>;
+				(...)
+			};
+	};
