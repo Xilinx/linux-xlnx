@@ -816,6 +816,19 @@ static int xemacps_mii_probe(struct net_device *ndev)
 		return 0;
 	}
 
+	if (lp->gmii2rgmii_phy_node) {
+		phydev = of_phy_attach(lp->ndev,
+					lp->gmii2rgmii_phy_node,
+					0, 0);
+		if (!phydev) {
+			dev_err(&lp->pdev->dev, "%s: no gmii to rgmii converter found\n",
+			ndev->name);
+			return -1;
+		}
+		lp->gmii2rgmii_phy_dev = phydev;
+	} else
+		lp->gmii2rgmii_phy_dev = NULL;
+
 	phydev = of_phy_connect(lp->ndev,
 				lp->phy_node,
 				&xemacps_adjust_link,
@@ -847,20 +860,6 @@ static int xemacps_mii_probe(struct net_device *ndev)
 
 	dev_dbg(&lp->pdev->dev, "attach [%s] phy driver\n",
 			lp->phy_dev->drv->name);
-
-	if (lp->gmii2rgmii_phy_node) {
-		phydev = of_phy_connect(lp->ndev,
-					lp->gmii2rgmii_phy_node,
-					NULL,
-					0, 0);
-		if (!phydev) {
-			dev_err(&lp->pdev->dev, "%s: no gmii to rgmii converter found\n",
-			ndev->name);
-			return -1;
-		}
-		lp->gmii2rgmii_phy_dev = phydev;
-	} else
-		lp->gmii2rgmii_phy_dev = NULL;
 
 	return 0;
 }
