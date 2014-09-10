@@ -668,25 +668,25 @@ static ssize_t xtg_sysfs_ioctl(struct device *dev, const char *buf,
 
 /* Sysfs functions */
 
-static ssize_t xtg_show_id(struct device *dev,
+static ssize_t id_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
 	ssize_t rdval = xtg_sysfs_ioctl(dev, buf, XTG_GET_DEVICE_ID);
 
 	return snprintf(buf, PAGE_SIZE, "%d\n", rdval);
 }
-static DEVICE_ATTR(id, S_IRUGO, xtg_show_id, NULL);
+static DEVICE_ATTR_RO(id);
 
-static ssize_t xtg_show_resource(struct device *dev,
+static ssize_t resource_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
 	ssize_t rdval = xtg_sysfs_ioctl(dev, buf, XTG_GET_RESOURCE);
 
 	return snprintf(buf, PAGE_SIZE, "0x%08x\n", rdval);
 }
-static DEVICE_ATTR(resource, S_IRUGO, xtg_show_resource, NULL);
+static DEVICE_ATTR_RO(resource);
 
-static ssize_t xtg_show_master_cmp_status(struct device *dev,
+static ssize_t master_start_stop_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
 	ssize_t rdval = xtg_sysfs_ioctl(dev, buf, XTG_GET_MASTER_CMP_STS);
@@ -694,17 +694,16 @@ static ssize_t xtg_show_master_cmp_status(struct device *dev,
 	return snprintf(buf, PAGE_SIZE, "%d\n", rdval);
 }
 
-static ssize_t xtg_start_master_logic(struct device *dev,
+static ssize_t master_start_stop_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size)
 {
 	xtg_sysfs_ioctl(dev, buf, XTG_START_MASTER_LOGIC);
 
 	return size;
 }
-static DEVICE_ATTR(start_master, 0644, xtg_show_master_cmp_status,
-				xtg_start_master_logic);
+static DEVICE_ATTR_RW(master_start_stop);
 
-static ssize_t xtg_show_slv_ctrl_status(struct device *dev,
+static ssize_t config_slave_status_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
 	ssize_t rdval = xtg_sysfs_ioctl(dev, buf, XTG_GET_SLV_CTRL_REG);
@@ -712,17 +711,16 @@ static ssize_t xtg_show_slv_ctrl_status(struct device *dev,
 	return snprintf(buf, PAGE_SIZE, "0x%08x\n", rdval);
 }
 
-static ssize_t xtg_config_slv_ctrl(struct device *dev,
+static ssize_t config_slave_status_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size)
 {
 	xtg_sysfs_ioctl(dev, buf, XTG_SET_SLV_CTRL_REG);
 
 	return size;
 }
-static DEVICE_ATTR(config_slave, 0644, xtg_show_slv_ctrl_status,
-				xtg_config_slv_ctrl);
+static DEVICE_ATTR_RW(config_slave_status);
 
-static ssize_t xtg_show_errs(struct device *dev,
+static ssize_t err_sts_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
 	ssize_t rdval = xtg_sysfs_ioctl(dev, buf, XTG_GET_ERR_STS);
@@ -730,79 +728,79 @@ static ssize_t xtg_show_errs(struct device *dev,
 	return snprintf(buf, PAGE_SIZE, "0x%08x\n", rdval);
 }
 
-static ssize_t xtg_clear_errs(struct device *dev,
+static ssize_t err_sts_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size)
 {
 	xtg_sysfs_ioctl(dev, buf, XTG_CLEAR_ERRORS);
 
 	return size;
 }
-static DEVICE_ATTR(err_sts, 0644, xtg_show_errs, xtg_clear_errs);
+static DEVICE_ATTR_RW(err_sts);
 
-static ssize_t xtg_enable_errs(struct device *dev,
+static ssize_t err_en_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size)
 {
 	xtg_sysfs_ioctl(dev, buf, XTG_ENABLE_ERRORS);
 
 	return size;
 }
-static DEVICE_ATTR(err_en, 0644, NULL, xtg_enable_errs);
+static DEVICE_ATTR_WO(err_en);
 
-static ssize_t xtg_enable_interrupts(struct device *dev,
+static ssize_t intr_en_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size)
 {
 	xtg_sysfs_ioctl(dev, buf, XTG_ENABLE_INTRS);
 
 	return size;
 }
-static DEVICE_ATTR(intr_en, 0644, NULL, xtg_enable_interrupts);
+static DEVICE_ATTR_WO(intr_en);
 
-static ssize_t xtg_show_last_valid_index(struct device *dev,
+static ssize_t last_valid_index_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
 	ssize_t rdval = xtg_sysfs_ioctl(dev, buf, XTG_GET_LAST_VALID_INDEX);
 
 	return snprintf(buf, PAGE_SIZE, "0x%08x\n", rdval);
 }
-static DEVICE_ATTR(last_valid_index, S_IRUGO, xtg_show_last_valid_index, NULL);
+static DEVICE_ATTR_RO(last_valid_index);
 
-static ssize_t xtg_show_config_status(struct device *dev,
+static ssize_t config_sts_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
 	ssize_t rdval = xtg_sysfs_ioctl(dev, buf, XTG_GET_CFG_STS);
 
 	return snprintf(buf, PAGE_SIZE, "0x%08x\n", rdval);
 }
-static DEVICE_ATTR(config_sts, S_IRUGO, xtg_show_config_status, NULL);
+static DEVICE_ATTR_RO(config_sts);
 
-static ssize_t xtg_clear_mram(struct device *dev,
+static ssize_t mram_clear_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size)
 {
 	xtg_sysfs_ioctl(dev, buf, XTG_CLEAR_MRAM);
 
 	return size;
 }
-static DEVICE_ATTR(mram_clear, 0644, NULL, xtg_clear_mram);
+static DEVICE_ATTR_WO(mram_clear);
 
-static ssize_t xtg_clear_cram(struct device *dev,
+static ssize_t cram_clear_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size)
 {
 	xtg_sysfs_ioctl(dev, buf, XTG_CLEAR_CRAM);
 
 	return size;
 }
-static DEVICE_ATTR(cram_clear, 0644, NULL, xtg_clear_cram);
+static DEVICE_ATTR_WO(cram_clear);
 
-static ssize_t xtg_clear_pram(struct device *dev,
+static ssize_t pram_clear_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size)
 {
 	xtg_sysfs_ioctl(dev, buf, XTG_CLEAR_CRAM);
 
 	return size;
 }
-static DEVICE_ATTR(pram_clear, 0644, NULL, xtg_clear_pram);
+static DEVICE_ATTR_WO(pram_clear);
 
-static ssize_t xtg_show_static_enable(struct device *dev,
+static ssize_t static_enable_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
 	ssize_t rdval = xtg_sysfs_ioctl(dev, buf, XTG_GET_STATIC_ENABLE);
@@ -810,16 +808,16 @@ static ssize_t xtg_show_static_enable(struct device *dev,
 	return snprintf(buf, PAGE_SIZE, "0x%08x\n", rdval);
 }
 
-static ssize_t xtg_static_enable(struct device *dev,
+static ssize_t static_enable_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size)
 {
 	xtg_sysfs_ioctl(dev, buf, XTG_SET_STATIC_ENABLE);
 
 	return size;
 }
-static DEVICE_ATTR(static_en, 0644, xtg_show_static_enable, xtg_static_enable);
+static DEVICE_ATTR_RW(static_enable);
 
-static ssize_t xtg_get_static_burstlen(struct device *dev,
+static ssize_t static_burstlen_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
 	ssize_t rdval = xtg_sysfs_ioctl(dev, buf, XTG_GET_STATIC_BURSTLEN);
@@ -827,17 +825,16 @@ static ssize_t xtg_get_static_burstlen(struct device *dev,
 	return snprintf(buf, PAGE_SIZE, "%d\n", rdval);
 }
 
-static ssize_t xtg_static_burstlen(struct device *dev,
+static ssize_t static_burstlen_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size)
 {
 	xtg_sysfs_ioctl(dev, buf, XTG_SET_STATIC_BURSTLEN);
 
 	return size;
 }
-static DEVICE_ATTR(static_burstlen, 0644, xtg_get_static_burstlen,
-			xtg_static_burstlen);
+static DEVICE_ATTR_RW(static_burstlen);
 
-static ssize_t xtg_get_static_transferdone(struct device *dev,
+static ssize_t static_transferdone_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
 	ssize_t rdval = xtg_sysfs_ioctl(dev, buf, XTG_GET_STATIC_TRANSFERDONE);
@@ -845,17 +842,16 @@ static ssize_t xtg_get_static_transferdone(struct device *dev,
 	return snprintf(buf, PAGE_SIZE, "%d\n", rdval);
 }
 
-static ssize_t xtg_static_transferdone(struct device *dev,
+static ssize_t static_transferdone_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size)
 {
 	xtg_sysfs_ioctl(dev, buf, XTG_SET_STATIC_TRANSFERDONE);
 
 	return size;
 }
-static DEVICE_ATTR(static_transferdone, 0644, xtg_get_static_transferdone,
-				xtg_static_transferdone);
+static DEVICE_ATTR_RW(static_transferdone);
 
-static ssize_t xtg_reset_static_transferdone(struct device *dev,
+static ssize_t reset_static_transferdone_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
 	ssize_t rdval = xtg_sysfs_ioctl(dev, buf, XTG_GET_STATIC_TRANSFERDONE);
@@ -865,10 +861,9 @@ static ssize_t xtg_reset_static_transferdone(struct device *dev,
 		rdval = 0;
 	return snprintf(buf, PAGE_SIZE, "%d\n", rdval);
 }
-static DEVICE_ATTR(reset_static_transferdone, 0644,
-			xtg_reset_static_transferdone, NULL);
+static DEVICE_ATTR_RO(reset_static_transferdone);
 
-static ssize_t xtg_show_stream_enable(struct device *dev,
+static ssize_t stream_enable_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
 	ssize_t rdval = xtg_sysfs_ioctl(dev, buf, XTG_GET_STREAM_ENABLE);
@@ -876,16 +871,16 @@ static ssize_t xtg_show_stream_enable(struct device *dev,
 	return snprintf(buf, PAGE_SIZE, "0x%08x\n", rdval);
 }
 
-static ssize_t xtg_stream_enable(struct device *dev,
+static ssize_t stream_enable_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size)
 {
 	xtg_sysfs_ioctl(dev, buf, XTG_SET_STREAM_ENABLE);
 
 	return size;
 }
-static DEVICE_ATTR(stream_en, 0644, xtg_show_stream_enable, xtg_stream_enable);
+static DEVICE_ATTR_RW(stream_enable);
 
-static ssize_t xtg_get_stream_transferlen(struct device *dev,
+static ssize_t stream_transferlen_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
 	ssize_t rdval = xtg_sysfs_ioctl(dev, buf, XTG_GET_STREAM_TRANSFERLEN);
@@ -893,17 +888,16 @@ static ssize_t xtg_get_stream_transferlen(struct device *dev,
 	return snprintf(buf, PAGE_SIZE, "%d\n", rdval);
 }
 
-static ssize_t xtg_set_stream_transferlen(struct device *dev,
+static ssize_t stream_transferlen_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size)
 {
 	xtg_sysfs_ioctl(dev, buf, XTG_SET_STREAM_TRANSFERLEN);
 
 	return size;
 }
-static DEVICE_ATTR(stream_transferlen, 0644, xtg_get_stream_transferlen,
-				xtg_set_stream_transferlen);
+static DEVICE_ATTR_RW(stream_transferlen);
 
-static ssize_t xtg_get_stream_transfercnt(struct device *dev,
+static ssize_t stream_transfercnt_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
 	ssize_t rdval = xtg_sysfs_ioctl(dev, buf, XTG_GET_STREAM_TRANSFERCNT);
@@ -911,15 +905,14 @@ static ssize_t xtg_get_stream_transfercnt(struct device *dev,
 	return snprintf(buf, PAGE_SIZE, "%d\n", rdval);
 }
 
-static ssize_t xtg_set_stream_transfercnt(struct device *dev,
+static ssize_t stream_transfercnt_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t size)
 {
 	xtg_sysfs_ioctl(dev, buf, XTG_SET_STREAM_TRANSFERCNT);
 
 	return size;
 }
-static DEVICE_ATTR(stream_transfercnt, 0644, xtg_get_stream_transfercnt,
-				xtg_set_stream_transfercnt);
+static DEVICE_ATTR_RW(stream_transfercnt);
 
 static ssize_t xtg_pram_read(struct file *filp, struct kobject *kobj,
 				struct bin_attribute *bin_attr,
@@ -1175,8 +1168,8 @@ static struct bin_attribute *xtg_bin_attrs[] = {
 static const struct attribute *xtg_attrs[] = {
 	&dev_attr_id.attr,
 	&dev_attr_resource.attr,
-	&dev_attr_start_master.attr,
-	&dev_attr_config_slave.attr,
+	&dev_attr_master_start_stop.attr,
+	&dev_attr_config_slave_status.attr,
 	&dev_attr_err_en.attr,
 	&dev_attr_err_sts.attr,
 	&dev_attr_intr_en.attr,
@@ -1185,12 +1178,12 @@ static const struct attribute *xtg_attrs[] = {
 	&dev_attr_mram_clear.attr,
 	&dev_attr_cram_clear.attr,
 	&dev_attr_pram_clear.attr,
-	&dev_attr_static_en.attr,
+	&dev_attr_static_enable.attr,
 	&dev_attr_static_burstlen.attr,
 	&dev_attr_static_transferdone.attr,
 	&dev_attr_stream_transfercnt.attr,
 	&dev_attr_stream_transferlen.attr,
-	&dev_attr_stream_en.attr,
+	&dev_attr_stream_enable.attr,
 	&dev_attr_reset_static_transferdone.attr,
 	NULL,
 };
