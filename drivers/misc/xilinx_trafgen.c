@@ -673,7 +673,7 @@ static ssize_t xtg_show_id(struct device *dev,
 {
 	ssize_t rdval = xtg_sysfs_ioctl(dev, buf, XTG_GET_DEVICE_ID);
 
-	return sprintf(buf, "%d\n", rdval);
+	return snprintf(buf, PAGE_SIZE, "%d\n", rdval);
 }
 static DEVICE_ATTR(id, S_IRUGO, xtg_show_id, NULL);
 
@@ -682,7 +682,7 @@ static ssize_t xtg_show_resource(struct device *dev,
 {
 	ssize_t rdval = xtg_sysfs_ioctl(dev, buf, XTG_GET_RESOURCE);
 
-	return sprintf(buf, "0x%08x\n", rdval);
+	return snprintf(buf, PAGE_SIZE, "0x%08x\n", rdval);
 }
 static DEVICE_ATTR(resource, S_IRUGO, xtg_show_resource, NULL);
 
@@ -691,7 +691,7 @@ static ssize_t xtg_show_master_cmp_status(struct device *dev,
 {
 	ssize_t rdval = xtg_sysfs_ioctl(dev, buf, XTG_GET_MASTER_CMP_STS);
 
-	return sprintf(buf, "%d\n", rdval);
+	return snprintf(buf, PAGE_SIZE, "%d\n", rdval);
 }
 
 static ssize_t xtg_start_master_logic(struct device *dev,
@@ -709,7 +709,7 @@ static ssize_t xtg_show_slv_ctrl_status(struct device *dev,
 {
 	ssize_t rdval = xtg_sysfs_ioctl(dev, buf, XTG_GET_SLV_CTRL_REG);
 
-	return sprintf(buf, "0x%08x\n", rdval);
+	return snprintf(buf, PAGE_SIZE, "0x%08x\n", rdval);
 }
 
 static ssize_t xtg_config_slv_ctrl(struct device *dev,
@@ -727,7 +727,7 @@ static ssize_t xtg_show_errs(struct device *dev,
 {
 	ssize_t rdval = xtg_sysfs_ioctl(dev, buf, XTG_GET_ERR_STS);
 
-	return sprintf(buf, "0x%08x\n", rdval);
+	return snprintf(buf, PAGE_SIZE, "0x%08x\n", rdval);
 }
 
 static ssize_t xtg_clear_errs(struct device *dev,
@@ -762,7 +762,7 @@ static ssize_t xtg_show_last_valid_index(struct device *dev,
 {
 	ssize_t rdval = xtg_sysfs_ioctl(dev, buf, XTG_GET_LAST_VALID_INDEX);
 
-	return sprintf(buf, "0x%08x\n", rdval);
+	return snprintf(buf, PAGE_SIZE, "0x%08x\n", rdval);
 }
 static DEVICE_ATTR(last_valid_index, S_IRUGO, xtg_show_last_valid_index, NULL);
 
@@ -771,7 +771,7 @@ static ssize_t xtg_show_config_status(struct device *dev,
 {
 	ssize_t rdval = xtg_sysfs_ioctl(dev, buf, XTG_GET_CFG_STS);
 
-	return sprintf(buf, "0x%08x\n", rdval);
+	return snprintf(buf, PAGE_SIZE, "0x%08x\n", rdval);
 }
 static DEVICE_ATTR(config_sts, S_IRUGO, xtg_show_config_status, NULL);
 
@@ -807,7 +807,7 @@ static ssize_t xtg_show_static_enable(struct device *dev,
 {
 	ssize_t rdval = xtg_sysfs_ioctl(dev, buf, XTG_GET_STATIC_ENABLE);
 
-	return sprintf(buf, "0x%08x\n", rdval);
+	return snprintf(buf, PAGE_SIZE, "0x%08x\n", rdval);
 }
 
 static ssize_t xtg_static_enable(struct device *dev,
@@ -824,7 +824,7 @@ static ssize_t xtg_get_static_burstlen(struct device *dev,
 {
 	ssize_t rdval = xtg_sysfs_ioctl(dev, buf, XTG_GET_STATIC_BURSTLEN);
 
-	return sprintf(buf, "%d\n", rdval);
+	return snprintf(buf, PAGE_SIZE, "%d\n", rdval);
 }
 
 static ssize_t xtg_static_burstlen(struct device *dev,
@@ -842,7 +842,7 @@ static ssize_t xtg_get_static_transferdone(struct device *dev,
 {
 	ssize_t rdval = xtg_sysfs_ioctl(dev, buf, XTG_GET_STATIC_TRANSFERDONE);
 
-	return sprintf(buf, "%d\n", rdval);
+	return snprintf(buf, PAGE_SIZE, "%d\n", rdval);
 }
 
 static ssize_t xtg_static_transferdone(struct device *dev,
@@ -863,7 +863,7 @@ static ssize_t xtg_reset_static_transferdone(struct device *dev,
 		rdval = 1;
 	else
 		rdval = 0;
-	return sprintf(buf, "%d\n", rdval);
+	return snprintf(buf, PAGE_SIZE, "%d\n", rdval);
 }
 static DEVICE_ATTR(reset_static_transferdone, 0644,
 			xtg_reset_static_transferdone, NULL);
@@ -873,7 +873,7 @@ static ssize_t xtg_show_stream_enable(struct device *dev,
 {
 	ssize_t rdval = xtg_sysfs_ioctl(dev, buf, XTG_GET_STREAM_ENABLE);
 
-	return sprintf(buf, "0x%08x\n", rdval);
+	return snprintf(buf, PAGE_SIZE, "0x%08x\n", rdval);
 }
 
 static ssize_t xtg_stream_enable(struct device *dev,
@@ -890,7 +890,7 @@ static ssize_t xtg_get_stream_transferlen(struct device *dev,
 {
 	ssize_t rdval = xtg_sysfs_ioctl(dev, buf, XTG_GET_STREAM_TRANSFERLEN);
 
-	return sprintf(buf, "%d\n", rdval);
+	return snprintf(buf, PAGE_SIZE, "%d\n", rdval);
 }
 
 static ssize_t xtg_set_stream_transferlen(struct device *dev,
@@ -908,7 +908,7 @@ static ssize_t xtg_get_stream_transfercnt(struct device *dev,
 {
 	ssize_t rdval = xtg_sysfs_ioctl(dev, buf, XTG_GET_STREAM_TRANSFERCNT);
 
-	return sprintf(buf, "%d\n", rdval);
+	return snprintf(buf, PAGE_SIZE, "%d\n", rdval);
 }
 
 static ssize_t xtg_set_stream_transfercnt(struct device *dev,
