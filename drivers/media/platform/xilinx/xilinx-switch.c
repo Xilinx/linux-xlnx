@@ -432,14 +432,14 @@ static int xsw_remove(struct platform_device *pdev)
 }
 
 static const struct of_device_id xsw_of_id_table[] = {
-	{ .compatible = "xlnx,axi-switch-1.0" },
+	{ .compatible = "xlnx,v-switch-1.0" },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, xsw_of_id_table);
 
 static struct platform_driver xsw_driver = {
 	.driver = {
-		.name		= "xilinx-axi-switch",
+		.name		= "xilinx-switch",
 		.of_match_table	= xsw_of_id_table,
 	},
 	.probe			= xsw_probe,
