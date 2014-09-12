@@ -642,14 +642,14 @@ static int xvip_composite_remove(struct platform_device *pdev)
 }
 
 static const struct of_device_id xvip_composite_of_id_table[] = {
-	{ .compatible = "xlnx,axi-video" },
+	{ .compatible = "xlnx,video" },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, xvip_composite_of_id_table);
 
 static struct platform_driver xvip_composite_driver = {
 	.driver = {
-		.name = "xilinx-axi-video",
+		.name = "xilinx-video",
 		.of_match_table = xvip_composite_of_id_table,
 	},
 	.probe = xvip_composite_probe,

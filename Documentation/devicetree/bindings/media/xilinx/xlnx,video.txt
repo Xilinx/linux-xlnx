@@ -6,13 +6,13 @@ General concept
 
 Xilinx video IP pipeline processes video streams through one or more Xilinx
 video IP cores. Each video IP core is represented as documented in video.txt
-and IP core specific documentation, xlnx,axi-*.txt, in this directory. The DT
+and IP core specific documentation, xlnx,v-*.txt, in this directory. The DT
 node of the VIPP represents as a top level node of the pipeline and defines
 mappings between DMAs and the video IP cores.
 
 Required properties:
 
-- compatible: Must be "xlnx,axi-video".
+- compatible: Must be "xlnx,video".
 
 - dmas, dma-names: List of one DMA specifier and identifier string (as defined
   in Documentation/devicetree/bindings/dma/dma.txt) per port. Each port
@@ -29,7 +29,7 @@ Required port properties:
 Example:
 
 	axi_video_cap {
-		compatible = "xlnx,axi-video";
+		compatible = "xlnx,video";
 		dmas = <&axi_vdma_1 1>, <&axi_vdma_3 1>;
 		dma-names = "port0", "port1";
 

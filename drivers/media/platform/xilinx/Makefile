@@ -1,6 +1,6 @@
-xilinx-axi-video-objs += xilinx-dma.o xilinx-vip.o xilinx-vipp.o
+xilinx-video-objs += xilinx-dma.o xilinx-vip.o xilinx-vipp.o
 
-obj-$(CONFIG_VIDEO_XILINX) += xilinx-axi-video.o
+obj-$(CONFIG_VIDEO_XILINX) += xilinx-video.o
 obj-$(CONFIG_VIDEO_XILINX_CFA) += xilinx-cfa.o
 obj-$(CONFIG_VIDEO_XILINX_CRESAMPLE) += xilinx-cresample.o
 obj-$(CONFIG_VIDEO_XILINX_HLS) += xilinx-hls.o
