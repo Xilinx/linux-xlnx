@@ -3,7 +3,7 @@ Xilinx Color Filter Array (CFA)
 
 Required properties:
 
-- compatible: Must be "xlnx,axi-cfa-7.0".
+- compatible: Must be "xlnx,v-cfa-7.0".
 
 - reg: Physical base address and length of the registers set for the device.
 
@@ -20,7 +20,7 @@ Required port properties:
 Example:
 
 	axi_cfa_0: axi_cfa {
-		compatible = "xlnx,axi-cfa-7.0";
+		compatible = "xlnx,v-cfa-7.0";
 		reg = <0x400b0000 0x10000>;
 
 
