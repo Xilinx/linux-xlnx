@@ -890,14 +890,14 @@ static int xtpg_remove(struct platform_device *pdev)
 static SIMPLE_DEV_PM_OPS(xtpg_pm_ops, xtpg_pm_suspend, xtpg_pm_resume);
 
 static const struct of_device_id xtpg_of_id_table[] = {
-	{ .compatible = "xlnx,axi-tpg-5.0" },
+	{ .compatible = "xlnx,v-tpg-5.0" },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, xtpg_of_id_table);
 
 static struct platform_driver xtpg_driver = {
 	.driver = {
-		.name		= "xilinx-axi-tpg",
+		.name		= "xilinx-tpg",
 		.pm		= &xtpg_pm_ops,
 		.of_match_table	= xtpg_of_id_table,
 	},
