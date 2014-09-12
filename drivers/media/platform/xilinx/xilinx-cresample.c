@@ -422,7 +422,7 @@ static SIMPLE_DEV_PM_OPS(xcresample_pm_ops, xcresample_pm_suspend,
 			 xcresample_pm_resume);
 
 static const struct of_device_id xcresample_of_id_table[] = {
-	{ .compatible = "xlnx,axi-cresample-4.0" },
+	{ .compatible = "xlnx,v-cresample-4.0" },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, xcresample_of_id_table);
