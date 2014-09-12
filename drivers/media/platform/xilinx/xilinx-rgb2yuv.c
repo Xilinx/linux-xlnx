@@ -542,7 +542,7 @@ static SIMPLE_DEV_PM_OPS(xrgb2yuv_pm_ops, xrgb2yuv_pm_suspend,
 			 xrgb2yuv_pm_resume);
 
 static const struct of_device_id xrgb2yuv_of_id_table[] = {
-	{ .compatible = "xlnx,axi-rgb2yuv-7.1" },
+	{ .compatible = "xlnx,v-rgb2yuv-7.1" },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, xrgb2yuv_of_id_table);

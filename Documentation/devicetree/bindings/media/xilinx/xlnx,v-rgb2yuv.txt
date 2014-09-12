@@ -3,7 +3,7 @@ Xilinx RGB to YUV (RGB2YUV)
 
 Required properties:
 
-- compatible: Must be "xlnx,axi-rgb2yuv-7.1".
+- compatible: Must be "xlnx,v-rgb2yuv-7.1".
 
 - reg: Physical base address and length of the registers set for the device.
 
@@ -20,7 +20,7 @@ Required port properties:
 Example:
 
 	axi_rgb2yuv_0: axi_rgb2yuv {
-		compatible = "xlnx,axi-rgb2yuv-7.1";
+		compatible = "xlnx,v-rgb2yuv-7.1";
 		reg = <0x40100000 0x10000>;
 
 		ports {
