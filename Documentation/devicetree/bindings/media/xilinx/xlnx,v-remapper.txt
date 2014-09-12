@@ -6,7 +6,7 @@ less, more or the same number of components as the input pixel.
 
 Required properties:
 
-- compatible: Must be "xlnx,axi-remapper".
+- compatible: Must be "xlnx,v-remapper".
 
 - xlnx,axi-video-width: Video pixel component width, as defined in video.txt.
 
@@ -29,7 +29,7 @@ Required properties:
 Example: RBG to xRGB remapper
 
 	axi_remapper_0: axi_remapper {
-		compatible = "xlnx,axi-remapper";
+		compatible = "xlnx,v-remapper";
 
 		xlnx,axi-video-width = <8>;
 
