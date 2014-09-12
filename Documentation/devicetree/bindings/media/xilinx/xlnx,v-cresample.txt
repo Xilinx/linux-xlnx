@@ -3,7 +3,7 @@ Xilinx Chroma Resampler (CRESAMPLE)
 
 Required properties:
 
-- compatible: Must be "xlnx,axi-cresample-4.0".
+- compatible: Must be "xlnx,v-cresample-4.0".
 
 - reg: Physical base address and length of the registers set for the device.
 
@@ -20,7 +20,7 @@ Required port properties:
 Example:
 
 	axi_cresample_0: axi_cresample {
-		compatible = "xlnx,axi-cresample-4.0";
+		compatible = "xlnx,v-cresample-4.0";
 		reg = <0x40120000 0x10000>;
 
 		ports {
