@@ -370,7 +370,7 @@ static int xcfa_remove(struct platform_device *pdev)
 static SIMPLE_DEV_PM_OPS(xcfa_pm_ops, xcfa_pm_suspend, xcfa_pm_resume);
 
 static const struct of_device_id xcfa_of_id_table[] = {
-	{ .compatible = "xlnx,axi-cfa-7.0" },
+	{ .compatible = "xlnx,v-cfa-7.0" },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, xcfa_of_id_table);
