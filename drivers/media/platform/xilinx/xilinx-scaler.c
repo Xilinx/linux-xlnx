@@ -669,7 +669,7 @@ static int xscaler_remove(struct platform_device *pdev)
 static SIMPLE_DEV_PM_OPS(xscaler_pm_ops, xscaler_pm_suspend, xscaler_pm_resume);
 
 static const struct of_device_id xscaler_of_id_table[] = {
-	{ .compatible = "xlnx,axi-scaler-8.1" },
+	{ .compatible = "xlnx,v-scaler-8.1" },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, xscaler_of_id_table);

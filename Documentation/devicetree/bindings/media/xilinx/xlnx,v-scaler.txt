@@ -3,7 +3,7 @@ Xilinx Scaler (SCALER)
 
 Required properties:
 
-- compatible: Must be "xlnx,axi-scaler-8.1".
+- compatible: Must be "xlnx,v-scaler-8.1".
 
 - reg: Physical base address and length of the registers set for the device.
 
@@ -36,7 +36,7 @@ Required port properties:
 Example:
 
 	axi_scaler_0: axi_scaler {
-		compatible = "xlnx,axi-scaler-8.1";
+		compatible = "xlnx,v-scaler-8.1";
 		reg = <0x43c30000 0x10000>;
 
 		xlnx,num-hori-taps = <12>;
