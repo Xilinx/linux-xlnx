@@ -363,14 +363,14 @@ static int xvtc_remove(struct platform_device *pdev)
 }
 
 static const struct of_device_id xvtc_of_id_table[] = {
-	{ .compatible = "xlnx,axi-vtc-6.1" },
+	{ .compatible = "xlnx,v-tc-6.1" },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, xvtc_of_id_table);
 
 static struct platform_driver xvtc_driver = {
 	.driver = {
-		.name = "xilinx-axi-vtc",
+		.name = "xilinx-vtc",
 		.of_match_table = xvtc_of_id_table,
 	},
 	.probe = xvtc_probe,
