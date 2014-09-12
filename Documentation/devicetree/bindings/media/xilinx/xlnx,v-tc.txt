@@ -6,7 +6,7 @@ detector.
 
 Required properties:
 
-  - compatible: Must be "xlnx,axi-vtc-6.1".
+  - compatible: Must be "xlnx,v-tc-6.1".
 
   - reg: Physical base address and length of the registers set for the device.
 
@@ -25,7 +25,7 @@ Optional properties:
 Example:
 
 	vtc: vtc@43c40000 {
-		compatible = "xlnx,axi-vtc-6.1";
+		compatible = "xlnx,v-tc-6.1";
 		reg = <0x43c40000 0x10000>;
 
 		clocks = <&clkc 15>;
