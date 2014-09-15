@@ -190,7 +190,7 @@ static int xylon_drm_crtc_mode_set(struct drm_crtc *base_crtc,
 	crtc->vmode.vback_porch = dm->vtotal - dm->vsync_end;
 	crtc->vmode.vsync_len = dm->vsync_end - dm->vsync_start;
 
-	ret = xylon_drm_plane_fb_set(crtc->private, base_crtc->fb,
+	ret = xylon_drm_plane_fb_set(crtc->private, base_crtc->primary->fb,
 				     0, 0, dm->hdisplay, dm->vdisplay,
 				     x, y, dm->hdisplay, dm->vdisplay);
 	if (ret) {
@@ -208,7 +208,7 @@ static int xylon_drm_crtc_mode_set_base(struct drm_crtc *base_crtc,
 	struct xylon_drm_crtc *crtc = to_xylon_crtc(base_crtc);
 	int ret;
 
-	ret = xylon_drm_plane_fb_set(crtc->private, base_crtc->fb,
+	ret = xylon_drm_plane_fb_set(crtc->private, base_crtc->primary->fb,
 				     0, 0,
 				     base_crtc->hwmode.hdisplay,
 				     base_crtc->hwmode.vdisplay,
@@ -305,7 +305,7 @@ static int xylon_drm_crtc_page_flip(struct drm_crtc *base_crtc,
 
 	xylon_drm_plane_commit(crtc->private);
 
-	base_crtc->fb = fb;
+	base_crtc->primary->fb = fb;
 
 	if (event) {
 		event->pipe = 0;
@@ -382,7 +382,8 @@ static int xylon_drm_crtc_set_property(struct drm_crtc *base_crtc,
 	}
 
 	if (x > -1 && y > -1) {
-		if (xylon_drm_plane_fb_set(crtc->private, base_crtc->fb,
+		if (xylon_drm_plane_fb_set(crtc->private,
+					   base_crtc->primary->fb,
 					   (u32)x, (u32)y,
 					   base_crtc->hwmode.hdisplay - x,
 					   base_crtc->hwmode.vdisplay - y,
