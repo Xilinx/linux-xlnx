@@ -97,6 +97,7 @@
 &gem0 {
 	status = "okay";
 	phy-mode = "rgmii-id";
+	phy-handle = <&phy0>;
 
 	phy0: phy@7 {
 		reg = <7>;
