@@ -45,6 +45,7 @@ config XILINX_PS_EMAC
 	tristate "Xilinx Zynq tri-speed EMAC support"
 	depends on ARCH_ZYNQ
 	select PHYLIB
+	select PTP_1588_CLOCK
 	---help---
 	  This driver supports tri-speed EMAC.
 
