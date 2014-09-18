@@ -1172,6 +1172,13 @@ static void __make_request(struct mddev *mddev, struct bio *bio)
 	int max_sectors;
 	int sectors;
 
+	/*
+	 * Register the new request and wait if the reconstruction
+	 * thread has put up a bar for new requests.
+	 * Continue immediately if no resync is active currently.
+	 */
+	wait_barrier(conf);
+
 	sectors = bio_sectors(bio);
 	while (test_bit(MD_RECOVERY_RESHAPE, &mddev->recovery) &&
 	    bio->bi_iter.bi_sector < conf->reshape_progress &&
@@ -1552,12 +1559,6 @@ static void make_request(struct mddev *mddev, struct bio *bio)
 
 	md_write_start(mddev, bio);
 
-	/*
-	 * Register the new request and wait if the reconstruction
-	 * thread has put up a bar for new requests.
-	 * Continue immediately if no resync is active currently.
-	 */
-	wait_barrier(conf);
 
 	do {
 
@@ -1683,13 +1684,12 @@ static void error(struct mddev *mddev, struct md_rdev *rdev)
 		spin_unlock_irqrestore(&conf->device_lock, flags);
 		return;
 	}
-	if (test_and_clear_bit(In_sync, &rdev->flags)) {
+	if (test_and_clear_bit(In_sync, &rdev->flags))
 		mddev->degraded++;
-			/*
-		 * if recovery is running, make sure it aborts.
-		 */
-		set_bit(MD_RECOVERY_INTR, &mddev->recovery);
-	}
+	/*
+	 * If recovery is running, make sure it aborts.
+	 */
+	set_bit(MD_RECOVERY_INTR, &mddev->recovery);
 	set_bit(Blocked, &rdev->flags);
 	set_bit(Faulty, &rdev->flags);
 	set_bit(MD_CHANGE_DEVS, &mddev->flags);
@@ -2953,6 +2953,7 @@ static sector_t sync_request(struct mddev *mddev, sector_t sector_nr,
 		 */
 		if (test_bit(MD_RECOVERY_RESHAPE, &mddev->recovery)) {
 			end_reshape(conf);
+			close_sync(conf);
 			return 0;
 		}
 
@@ -3081,6 +3082,7 @@ static sector_t sync_request(struct mddev *mddev, sector_t sector_nr,
 			}
 
 			r10_bio = mempool_alloc(conf->r10buf_pool, GFP_NOIO);
+			r10_bio->state = 0;
 			raise_barrier(conf, rb2 != NULL);
 			atomic_set(&r10_bio->remaining, 0);
 
@@ -3269,6 +3271,7 @@ static sector_t sync_request(struct mddev *mddev, sector_t sector_nr,
 		if (sync_blocks < max_sync)
 			max_sync = sync_blocks;
 		r10_bio = mempool_alloc(conf->r10buf_pool, GFP_NOIO);
+		r10_bio->state = 0;
 
 		r10_bio->mddev = mddev;
 		atomic_set(&r10_bio->remaining, 0);
@@ -4384,6 +4387,7 @@ static sector_t reshape_request(struct mddev *mddev, sector_t sector_nr,
 read_more:
 	/* Now schedule reads for blocks from sector_nr to last */
 	r10_bio = mempool_alloc(conf->r10buf_pool, GFP_NOIO);
+	r10_bio->state = 0;
 	raise_barrier(conf, sectors_done != 0);
 	atomic_set(&r10_bio->remaining, 0);
 	r10_bio->mddev = mddev;
@@ -4398,6 +4402,7 @@ read_more:
 		 * on all the target devices.
 		 */
 		// FIXME
+		mempool_free(r10_bio, conf->r10buf_pool);
 		set_bit(MD_RECOVERY_INTR, &mddev->recovery);
 		return sectors_done;
 	}
@@ -4410,7 +4415,7 @@ read_more:
 	read_bio->bi_private = r10_bio;
 	read_bio->bi_end_io = end_sync_read;
 	read_bio->bi_rw = READ;
-	read_bio->bi_flags &= ~(BIO_POOL_MASK - 1);
+	read_bio->bi_flags &= (~0UL << BIO_RESET_BITS);
 	read_bio->bi_flags |= 1 << BIO_UPTODATE;
 	read_bio->bi_vcnt = 0;
 	read_bio->bi_iter.bi_size = 0;

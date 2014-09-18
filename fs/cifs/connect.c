@@ -557,7 +557,7 @@ cifs_readv_from_socket(struct TCP_Server_Info *server, struct kvec *iov_orig,
 		try_to_freeze();
 
 		if (server_unresponsive(server)) {
-			total_read = -EAGAIN;
+			total_read = -ECONNABORTED;
 			break;
 		}
 
@@ -571,7 +571,7 @@ cifs_readv_from_socket(struct TCP_Server_Info *server, struct kvec *iov_orig,
 			break;
 		} else if (server->tcpStatus == CifsNeedReconnect) {
 			cifs_reconnect(server);
-			total_read = -EAGAIN;
+			total_read = -ECONNABORTED;
 			break;
 		} else if (length == -ERESTARTSYS ||
 			   length == -EAGAIN ||
@@ -588,7 +588,7 @@ cifs_readv_from_socket(struct TCP_Server_Info *server, struct kvec *iov_orig,
 			cifs_dbg(FYI, "Received no data or error: expecting %d\n"
 				 "got %d", to_read, length);
 			cifs_reconnect(server);
-			total_read = -EAGAIN;
+			total_read = -ECONNABORTED;
 			break;
 		}
 	}
@@ -786,7 +786,7 @@ standard_receive3(struct TCP_Server_Info *server, struct mid_q_entry *mid)
 		cifs_dbg(VFS, "SMB response too long (%u bytes)\n", pdu_length);
 		cifs_reconnect(server);
 		wake_up(&server->response_q);
-		return -EAGAIN;
+		return -ECONNABORTED;
 	}
 
 	/* switch to large buffer if too big for a small one */
@@ -837,7 +837,6 @@ cifs_demultiplex_thread(void *p)
 	struct TCP_Server_Info *server = p;
 	unsigned int pdu_length;
 	char *buf = NULL;
-	struct task_struct *task_to_wake = NULL;
 	struct mid_q_entry *mid_entry;
 
 	current->flags |= PF_MEMALLOC;
@@ -928,19 +927,7 @@ cifs_demultiplex_thread(void *p)
 	if (server->smallbuf) /* no sense logging a debug message if NULL */
 		cifs_small_buf_release(server->smallbuf);
 
-	task_to_wake = xchg(&server->tsk, NULL);
 	clean_demultiplex_info(server);
-
-	/* if server->tsk was NULL then wait for a signal before exiting */
-	if (!task_to_wake) {
-		set_current_state(TASK_INTERRUPTIBLE);
-		while (!signal_pending(current)) {
-			schedule();
-			set_current_state(TASK_INTERRUPTIBLE);
-		}
-		set_current_state(TASK_RUNNING);
-	}
-
 	module_put_and_exit(0);
 }
 
@@ -1600,6 +1587,7 @@ cifs_parse_mount_options(const char *mountdata, const char *devname,
 			tmp_end++;
 			if (!(tmp_end < end && tmp_end[1] == delim)) {
 				/* No it is not. Set the password to NULL */
+				kfree(vol->password);
 				vol->password = NULL;
 				break;
 			}
@@ -1637,6 +1625,7 @@ cifs_parse_mount_options(const char *mountdata, const char *devname,
 					options = end;
 			}
 
+			kfree(vol->password);
 			/* Now build new password string */
 			temp_len = strlen(value);
 			vol->password = kzalloc(temp_len+1, GFP_KERNEL);
@@ -2061,8 +2050,6 @@ cifs_find_tcp_session(struct smb_vol *vol)
 static void
 cifs_put_tcp_session(struct TCP_Server_Info *server)
 {
-	struct task_struct *task;
-
 	spin_lock(&cifs_tcp_ses_lock);
 	if (--server->srv_count > 0) {
 		spin_unlock(&cifs_tcp_ses_lock);
@@ -2086,10 +2073,6 @@ cifs_put_tcp_session(struct TCP_Server_Info *server)
 	kfree(server->session_key.response);
 	server->session_key.response = NULL;
 	server->session_key.len = 0;
-
-	task = xchg(&server->tsk, NULL);
-	if (task)
-		force_sig(SIGKILL, task);
 }
 
 static struct TCP_Server_Info *
@@ -2144,6 +2127,9 @@ cifs_get_tcp_session(struct smb_vol *volume_info)
 	       sizeof(tcp_ses->srcaddr));
 	memcpy(&tcp_ses->dstaddr, &volume_info->dstaddr,
 		sizeof(tcp_ses->dstaddr));
+#ifdef CONFIG_CIFS_SMB2
+	get_random_bytes(tcp_ses->client_guid, SMB2_CLIENT_GUID_SIZE);
+#endif
 	/*
 	 * at this point we are the only ones with the pointer
 	 * to the struct since the kernel thread not created yet
@@ -2225,7 +2211,7 @@ static int match_session(struct cifs_ses *ses, struct smb_vol *vol)
 			    vol->username ? vol->username : "",
 			    CIFS_MAX_USERNAME_LEN))
 			return 0;
-		if (strlen(vol->username) != 0 &&
+		if ((vol->username && strlen(vol->username) != 0) &&
 		    ses->password != NULL &&
 		    strncmp(ses->password,
 			    vol->password ? vol->password : "",
@@ -3931,13 +3917,6 @@ cifs_sb_master_tcon(struct cifs_sb_info *cifs_sb)
 	return tlink_tcon(cifs_sb_master_tlink(cifs_sb));
 }
 
-static int
-cifs_sb_tcon_pending_wait(void *unused)
-{
-	schedule();
-	return signal_pending(current) ? -ERESTARTSYS : 0;
-}
-
 /* find and return a tlink with given uid */
 static struct tcon_link *
 tlink_rb_search(struct rb_root *root, kuid_t uid)
@@ -4036,11 +4015,10 @@ cifs_sb_tlink(struct cifs_sb_info *cifs_sb)
 	} else {
 wait_for_construction:
 		ret = wait_on_bit(&tlink->tl_flags, TCON_LINK_PENDING,
-				  cifs_sb_tcon_pending_wait,
 				  TASK_INTERRUPTIBLE);
 		if (ret) {
 			cifs_put_tlink(tlink);
-			return ERR_PTR(ret);
+			return ERR_PTR(-ERESTARTSYS);
 		}
 
 		/* if it's good, return it */

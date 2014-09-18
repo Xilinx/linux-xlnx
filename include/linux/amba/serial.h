@@ -25,12 +25,6 @@
 
 #include <linux/types.h>
 
-/* CADENCE UART */
-#define CDNS_UART_SR_OFFSET	0x2C  /* Channel Status */
-#define CDNS_UART_FIFO_OFFSET	0x30  /* FIFO */
-
-#define CDNS_UART_SR_TXEMPTY	0x00000008 /* TX FIFO empty */
-
 /* -------------------------------------------------------------------------------
  *  From AMBA UART (PL010) Block Specification
  * -------------------------------------------------------------------------------
