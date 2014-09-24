@@ -1320,6 +1320,11 @@ static void macb_free_consistent(struct macb *bp)
 				  bp->tx_ring, bp->tx_ring_dma);
 		bp->tx_ring = NULL;
 	}
+	if (bp->tx_ringq1) {
+		dma_free_coherent(&bp->pdev->dev, TX_RING_BYTES,
+				  bp->tx_ringq1, bp->tx_ring_dmaq1);
+		bp->tx_ringq1 = NULL;
+	}
 }
 
 static int gem_alloc_rx_buffers(struct macb *bp)
@@ -1380,6 +1385,15 @@ static int macb_alloc_consistent(struct macb *bp)
 		   "Allocated TX ring of %d bytes at %08lx (mapped %p)\n",
 		   size, (unsigned long)bp->tx_ring_dma, bp->tx_ring);
 
+	bp->tx_ringq1 = dma_alloc_coherent(&bp->pdev->dev, size,
+					 &bp->tx_ring_dmaq1, GFP_KERNEL);
+
+	if (!bp->tx_ringq1)
+		goto out_err;
+	netdev_dbg(bp->dev,
+		   "Allocated TX ringq1 of %d bytes at %08lx (mapped %p)\n",
+		   size, (unsigned long)bp->tx_ring_dmaq1, bp->tx_ringq1);
+
 	if (bp->macbgem_ops.mog_alloc_rx_buffers(bp))
 		goto out_err;
 
@@ -1399,6 +1413,12 @@ static void gem_init_rings(struct macb *bp)
 		bp->tx_ring[i].ctrl = MACB_BIT(TX_USED);
 	}
 	bp->tx_ring[TX_RING_SIZE - 1].ctrl |= MACB_BIT(TX_WRAP);
+
+	for (i = 0; i < TX_RING_SIZE; i++) {
+		bp->tx_ringq1[i].addr = 0;
+		bp->tx_ringq1[i].ctrl = MACB_BIT(TX_USED);
+	}
+	bp->tx_ringq1[TX_RING_SIZE - 1].ctrl |= MACB_BIT(TX_WRAP);
 
 	bp->rx_tail = bp->rx_prepared_head = bp->tx_head = bp->tx_tail = 0;
 
@@ -1567,6 +1587,8 @@ static void macb_init_hw(struct macb *bp)
 	/* Initialize TX and RX buffers */
 	macb_writel(bp, RBQP, bp->rx_ring_dma);
 	macb_writel(bp, TBQP, bp->tx_ring_dma);
+	if (macb_is_gem(bp))
+		macb_writel(bp, TBQP1, bp->tx_ring_dmaq1);
 
 	/* Enable TX and RX */
 	macb_writel(bp, NCR, MACB_BIT(RE) | MACB_BIT(TE) | MACB_BIT(MPE));
