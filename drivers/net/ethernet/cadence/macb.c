@@ -2047,7 +2047,8 @@ static void macb_configure_caps(struct macb *bp)
 		}
 	}
 
-	if (MACB_BFEXT(IDNUM, macb_readl(bp, MID)) == 0x2)
+	if ((MACB_BFEXT(IDNUM, macb_readl(bp, MID)) == 0x2) ||
+		(MACB_BFEXT(IDNUM, macb_readl(bp, MID)) == 0x7))
 		bp->caps |= MACB_CAPS_MACB_IS_GEM;
 
 	if (macb_is_gem(bp)) {
