@@ -10,16 +10,16 @@ tree using bindings documented in this directory. Connections between the IP
 cores are represented as defined in ../video-interfaces.txt.
 
 The whole  pipeline is represented by an AMBA bus child node in the device
-tree using bindings documented in ./xlnx,axi-video.txt.
+tree using bindings documented in ./xlnx,video.txt.
 
 Common properties
 -----------------
 
 The following properties are common to all Xilinx video IP cores.
 
-- xlnx,axi-video-format: This property represents a video format transmitted
-  on an AXI bus between video IP cores. How the format relates to the IP core
-  is decribed in the IP core bindings documentation. The following formats are
+- xlnx,video-format: This property represents a video format transmitted on an
+  AXI bus between video IP cores. How the format relates to the IP core is
+  decribed in the IP core bindings documentation. The following formats are
   supported.
 
 	rbg
@@ -31,9 +31,9 @@ The following properties are common to all Xilinx video IP cores.
 	gbrg
 	bggr
 
-- xlnx,axi-video-width: This property qualifies the video format with the
-  sample width expressed as a number of bits per pixel component. All components
-  must use the same width.
+- xlnx,video-width: This property qualifies the video format with the sample
+  width expressed as a number of bits per pixel component. All components must
+  use the same width.
 
 The following table lists the supported formats and widths combinations, along
 with the corresponding media bus pixel code.
