@@ -374,36 +374,36 @@ static int xremap_parse_of(struct xremap_device *xremap)
 	int ret;
 
 	/* Parse the DT properties. */
-	ret = of_property_read_u32(node, "xlnx,axi-video-width",
+	ret = of_property_read_u32(node, "xlnx,video-width",
 				   &xremap->config.width);
 	if (ret < 0) {
 		dev_dbg(xremap->xvip.dev, "unable to parse %s property\n",
-			"xlnx,axi-video-width");
+			"xlnx,video-width");
 		return -EINVAL;
 	}
 
-	ret = of_property_read_u32(node, "#xlnx,axi-s-components",
+	ret = of_property_read_u32(node, "#xlnx,s-components",
 				   &xremap->config.num_s_components);
 	if (ret < 0) {
 		dev_dbg(xremap->xvip.dev, "unable to parse %s property\n",
-			"#xlnx,axi-s-components");
+			"#xlnx,s-components");
 		return -EINVAL;
 	}
 
-	ret = of_property_read_u32(node, "#xlnx,axi-m-components",
+	ret = of_property_read_u32(node, "#xlnx,m-components",
 				   &xremap->config.num_m_components);
 	if (ret < 0) {
 		dev_dbg(xremap->xvip.dev, "unable to parse %s property\n",
-			"#xlnx,axi-m-components");
+			"#xlnx,m-components");
 		return -EINVAL;
 	}
 
-	ret = of_property_read_u32_array(node, "xlnx,axi-component-maps",
+	ret = of_property_read_u32_array(node, "xlnx,component-maps",
 					 xremap->config.component_maps,
 					 xremap->config.num_m_components);
 	if (ret < 0) {
 		dev_dbg(xremap->xvip.dev, "unable to parse %s property\n",
-			"xlnx,axi-component-maps");
+			"xlnx,component-maps");
 		return -EINVAL;
 	}
 
