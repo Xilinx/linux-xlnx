@@ -12,14 +12,14 @@ Required properties:
 
 Required port properties:
 
-- xlnx,axi-video-format: Must be one of "yuv444", "yuv422", and "yuv420" for
-  the input port (0), and one of "yuv422" and "yuv420" for the output port (1).
+- xlnx,video-format: Must be one of "yuv444", "yuv422", and "yuv420" for the
+  input port (0), and one of "yuv422" and "yuv420" for the output port (1).
 
-- xlnx,axi-video-width: Video width as defined in video.txt
+- xlnx,video-width: Video width as defined in video.txt
 
 Example:
 
-	axi_cresample_0: axi_cresample {
+	cresample_0: cresample@40120000 {
 		compatible = "xlnx,v-cresample-4.0";
 		reg = <0x40120000 0x10000>;
 
@@ -30,8 +30,8 @@ Example:
 			port@0 {
 				reg = <0>;
 
-				xlnx,axi-input-video-format = "yuv444";
-				xlnx,axi-video-width = <8>;
+				xlnx,input-video-format = "yuv444";
+				xlnx,video-width = <8>;
 
 				cresample0_in: endpoint {
 					remote-endpoint = <&rgb2yuv0_out>;
@@ -40,8 +40,8 @@ Example:
 			port@1 {
 				reg = <1>;
 
-				xlnx,axi-output-video-format = "yuv422";
-				xlnx,axi-video-width = <8>;
+				xlnx,output-video-format = "yuv422";
+				xlnx,video-width = <8>;
 
 				cresample0_out: endpoint {
 					remote-endpoint = <&scaler0_in>;
