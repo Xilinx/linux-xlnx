@@ -28,9 +28,9 @@ Required port properties:
 
 Example:
 
-	axi_video_cap {
+	video_cap {
 		compatible = "xlnx,video";
-		dmas = <&axi_vdma_1 1>, <&axi_vdma_3 1>;
+		dmas = <&vdma_1 1>, <&vdma_3 1>;
 		dma-names = "port0", "port1";
 
 		ports {

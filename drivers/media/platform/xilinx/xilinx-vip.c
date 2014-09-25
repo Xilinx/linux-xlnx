@@ -90,8 +90,8 @@ EXPORT_SYMBOL_GPL(xvip_get_format_by_fourcc);
  * xvip_of_get_format - Parse a device tree node and return format information
  * @node: the device tree node
  *
- * Read the xlnx,axi-video-format and xlnx,axi-video-width properties from the
- * device tree @node passed as an argument and return the corresponding format
+ * Read the xlnx,video-format and xlnx,video-width properties from the device
+ * tree @node passed as an argument and return the corresponding format
  * information.
  *
  * Return: a pointer to the format information structure corresponding to the
@@ -104,11 +104,11 @@ const struct xvip_video_format *xvip_of_get_format(struct device_node *node)
 	u32 width;
 	int ret;
 
-	ret = of_property_read_string(node, "xlnx,axi-video-format", &name);
+	ret = of_property_read_string(node, "xlnx,video-format", &name);
 	if (ret < 0)
 		return ERR_PTR(ret);
 
-	ret = of_property_read_u32(node, "xlnx,axi-video-width", &width);
+	ret = of_property_read_u32(node, "xlnx,video-width", &width);
 	if (ret < 0)
 		return ERR_PTR(ret);
 
