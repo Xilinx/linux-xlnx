@@ -24,12 +24,12 @@ Required properties:
 
 Required port properties:
 
-- xlnx,axi-video-format: Video format as defined in video.txt.
-- xlnx,axi-video-width: Video width as defined in video.txt.
+- xlnx,video-format: Video format as defined in video.txt.
+- xlnx,video-width: Video width as defined in video.txt.
 
 Example:
 
-	axi_hls_0: axi_hls@43c00000 {
+	hls_0: hls@43c00000 {
 		compatible = "xlnx,axi-hls-sobel", "xlnx,axi-hls";
 		reg = <0x43c00000 0x24>, <0x43c00024 0xa0>;
 
@@ -40,8 +40,8 @@ Example:
 			port@0 {
 				reg = <0>;
 
-				xlnx,axi-video-format = "yuv422";
-				xlnx,axi-video-width = <8>;
+				xlnx,video-format = "yuv422";
+				xlnx,video-width = <8>;
 
 				hls0_in: endpoint {
 					remote-endpoint = <&vdma_out>;
@@ -50,8 +50,8 @@ Example:
 			port@1 {
 				reg = <1>;
 
-				xlnx,axi-video-format = "yuv422";
-				xlnx,axi-video-width = <8>;
+				xlnx,video-format = "yuv422";
+				xlnx,video-width = <8>;
 
 				hls0_out: endpoint {
 					remote-endpoint = <&vdma_in>;
