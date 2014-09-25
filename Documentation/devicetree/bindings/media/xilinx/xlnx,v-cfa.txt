@@ -12,14 +12,14 @@ Required properties:
 
 Required port properties:
 
-- xlnx,axi-video-format: Must be one of "rggb", "grbg", "gbrg", and "bggr" for
-  the input port (0), and "rbg" for the output port (1).
+- xlnx,video-format: Must be one of "rggb", "grbg", "gbrg", and "bggr" for the
+  input port (0), and "rbg" for the output port (1).
 
-- xlnx,axi-video-width: Video width as defined in video.txt
+- xlnx,video-width: Video width as defined in video.txt
 
 Example:
 
-	axi_cfa_0: axi_cfa {
+	cfa_0: cfa@400b0000 {
 		compatible = "xlnx,v-cfa-7.0";
 		reg = <0x400b0000 0x10000>;
 
@@ -31,8 +31,8 @@ Example:
 			port@0 {
 				reg = <0>;
 
-				xlnx,axi-video-format = "rggb";
-				xlnx,axi-video-width = <8>;
+				xlnx,video-format = "rggb";
+				xlnx,video-width = <8>;
 
 				cfa0_in: endpoint {
 					remote-endpoint = <&spc0_out>;
@@ -41,8 +41,8 @@ Example:
 			port@1 {
 				reg = <1>;
 
-				xlnx,axi-video-format = "rbg";
-				xlnx,axi-video-width = <8>;
+				xlnx,video-format = "rbg";
+				xlnx,video-width = <8>;
 
 				cfa0_out: endpoint {
 					remote-endpoint = <&ccm0_in>;
