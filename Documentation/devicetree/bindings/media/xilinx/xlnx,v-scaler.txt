@@ -28,14 +28,14 @@ Optional properties:
 
 Required port properties:
 
-- xlnx,axi-video-format: Must be one of "rbg", "yuv444", "yuv422", and "yuv420"
+- xlnx,video-format: Must be one of "rbg", "yuv444", "yuv422", and "yuv420"
   both input port (0) and output port (1). Both formats must be identical.
 
-- xlnx,axi-video-width: Video width as defined in video.txt
+- xlnx,video-width: Video width as defined in video.txt
 
 Example:
 
-	axi_scaler_0: axi_scaler {
+	scaler_0: scaler@43c30000 {
 		compatible = "xlnx,v-scaler-8.1";
 		reg = <0x43c30000 0x10000>;
 
@@ -51,8 +51,8 @@ Example:
 			port@0 {
 				reg = <0>;
 
-				xlnx,axi-video-format = "yuv422";
-				xlnx,axi-video-width = <8>;
+				xlnx,video-format = "yuv422";
+				xlnx,video-width = <8>;
 
 				scaler0_in: endpoint {
 					remote-endpoint = <&cresample0_out>;
@@ -61,8 +61,8 @@ Example:
 			port@1 {
 				reg = <1>;
 
-				xlnx,axi-video-format = "yuv422";
-				xlnx,axi-video-width = <8>;
+				xlnx,video-format = "yuv422";
+				xlnx,video-width = <8>;
 
 				scaler0_out: endpoint {
 					remote-endpoint = <&vcap0_in>;
