@@ -14,7 +14,7 @@ Required properties:
 
 Example:
 
-	axi_switch: axi_switch@43c10000 {
+	switch: switch@43c10000 {
 		compatible = "xlnx,v-switch-1.0";
 		reg = <0x43c10000 0x10000>;
 
