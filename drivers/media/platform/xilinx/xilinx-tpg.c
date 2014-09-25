@@ -129,8 +129,8 @@ static u32 xtpg_get_bayer_phase(unsigned int code)
 	}
 }
 
-static void xtpg_update_pattern_control(struct xtpg_device *xtpg,
-					bool passthrough, bool pattern)
+static void __xtpg_update_pattern_control(struct xtpg_device *xtpg,
+					  bool passthrough, bool pattern)
 {
 	u32 pattern_mask = (1 << (xtpg->pattern->maximum + 1)) - 1;
 
@@ -151,6 +151,14 @@ static void xtpg_update_pattern_control(struct xtpg_device *xtpg,
 
 	__v4l2_ctrl_modify_range(xtpg->pattern, 0, xtpg->pattern->maximum,
 				 pattern_mask, pattern ? 9 : 0);
+}
+
+static void xtpg_update_pattern_control(struct xtpg_device *xtpg,
+					bool passthrough, bool pattern)
+{
+	mutex_lock(xtpg->ctrl_handler.lock);
+	__xtpg_update_pattern_control(xtpg, passthrough, pattern);
+	mutex_unlock(xtpg->ctrl_handler.lock);
 }
 
 /* -----------------------------------------------------------------------------
@@ -216,7 +224,7 @@ static int xtpg_s_stream(struct v4l2_subdev *subdev, int enable)
 	 * allowed during streaming, update the control range accordingly.
 	 */
 	passthrough = xtpg->pattern->cur.val == 0;
-	xtpg_update_pattern_control(xtpg, passthrough, !passthrough);
+	__xtpg_update_pattern_control(xtpg, passthrough, !passthrough);
 
 	xtpg->streaming = true;
 
