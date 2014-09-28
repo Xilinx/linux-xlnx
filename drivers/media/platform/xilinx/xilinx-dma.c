@@ -312,6 +312,7 @@ done:
 /**
  * struct xvip_dma_buffer - Video DMA buffer
  * @buf: vb2 buffer base object
+ * @queue: buffer list entry in the DMA engine queued buffers list
  * @dma: DMA channel that uses the buffer
  * @addr: DMA bus address for the buffer memory
  * @length: total length of the buffer in bytes
@@ -319,6 +320,7 @@ done:
  */
 struct xvip_dma_buffer {
 	struct vb2_buffer buf;
+	struct list_head queue;
 
 	struct xvip_dma *dma;
 
@@ -333,6 +335,10 @@ static void xvip_dma_complete(void *param)
 {
 	struct xvip_dma_buffer *buf = param;
 	struct xvip_dma *dma = buf->dma;
+
+	spin_lock(&dma->queued_lock);
+	list_del(&buf->queue);
+	spin_unlock(&dma->queued_lock);
 
 	buf->buf.v4l2_buf.sequence = dma->sequence++;
 	v4l2_get_timestamp(&buf->buf.v4l2_buf.timestamp);
@@ -402,6 +408,10 @@ static void xvip_dma_buffer_queue(struct vb2_buffer *vb)
 	}
 	desc->callback = xvip_dma_complete;
 	desc->callback_param = buf;
+
+	spin_lock_irq(&dma->queued_lock);
+	list_add_tail(&buf->queue, &dma->queued_bufs);
+	spin_unlock_irq(&dma->queued_lock);
 
 	dmaengine_submit(desc);
 
@@ -475,6 +485,7 @@ static void xvip_dma_stop_streaming(struct vb2_queue *vq)
 {
 	struct xvip_dma *dma = vb2_get_drv_priv(vq);
 	struct xvip_pipeline *pipe = to_xvip_pipeline(&dma->video.entity);
+	struct xvip_dma_buffer *buf, *nbuf;
 	struct xilinx_vdma_config config;
 
 	/* Stop the pipeline. */
@@ -491,6 +502,14 @@ static void xvip_dma_stop_streaming(struct vb2_queue *vq)
 	/* Cleanup the pipeline and mark it as being stopped. */
 	xvip_pipeline_cleanup(pipe);
 	media_entity_pipeline_stop(&dma->video.entity);
+
+	/* Give back all queued buffers to videobuf2. */
+	spin_lock_irq(&dma->queued_lock);
+	list_for_each_entry_safe(buf, nbuf, &dma->queued_bufs, queue) {
+		vb2_buffer_done(&buf->buf, VB2_BUF_STATE_ERROR);
+		list_del(&buf->queue);
+	}
+	spin_unlock_irq(&dma->queued_lock);
 }
 
 static struct vb2_ops xvip_dma_queue_qops = {
@@ -912,6 +931,8 @@ int xvip_dma_init(struct xvip_composite_device *xdev, struct xvip_dma *dma,
 	dma->port = port;
 	mutex_init(&dma->lock);
 	mutex_init(&dma->pipe.lock);
+	INIT_LIST_HEAD(&dma->queued_bufs);
+	spin_lock_init(&dma->queued_lock);
 
 	dma->fmtinfo = xvip_get_format_by_fourcc(XVIP_DMA_DEF_FORMAT);
 	dma->format.pixelformat = dma->fmtinfo->fourcc;
