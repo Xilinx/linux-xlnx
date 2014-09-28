@@ -15,6 +15,7 @@
 
 #include <linux/dmaengine.h>
 #include <linux/mutex.h>
+#include <linux/spinlock.h>
 #include <linux/videodev2.h>
 
 #include <media/media-entity.h>
@@ -64,6 +65,8 @@ static inline struct xvip_pipeline *to_xvip_pipeline(struct media_entity *e)
  * @queue: vb2 buffers queue
  * @alloc_ctx: allocation context for the vb2 @queue
  * @sequence: V4L2 buffers sequence number
+ * @queued_bufs: list of queued buffers
+ * @queued_lock: protects the buf_queued list
  * @dma: DMA engine channel
  * @align: transfer alignment required by the DMA channel (in bytes)
  * @xt: dma interleaved template for dma configuration
@@ -85,6 +88,9 @@ struct xvip_dma {
 	struct vb2_queue queue;
 	void *alloc_ctx;
 	unsigned int sequence;
+
+	struct list_head queued_bufs;
+	spinlock_t queued_lock;
 
 	struct dma_chan *dma;
 	unsigned int align;
