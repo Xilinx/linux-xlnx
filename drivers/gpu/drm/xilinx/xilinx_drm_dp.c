@@ -29,6 +29,7 @@
 #include <linux/platform_device.h>
 #include <linux/pm.h>
 
+#include "xilinx_drm_dp_sub.h"
 #include "xilinx_drm_drv.h"
 
 /* Link configuration registers */
@@ -107,6 +108,7 @@
 #define XILINX_DP_TX_INTR_REPLY_TIMEOUT			(1 << 3)
 #define XILINX_DP_TX_INTR_HPD_PULSE			(1 << 4)
 #define XILINX_DP_TX_INTR_EXT_PKT_TXD			(1 << 5)
+#define XILINX_DP_TX_INTR_LIV_ABUF_UNDRFLW		(1 << 12)
 #define XILINX_DP_TX_INTR_VBLANK_START			(1 << 13)
 #define XILINX_DP_TX_INTR_PIXEL0_MATCH			(1 << 14)
 #define XILINX_DP_TX_INTR_PIXEL1_MATCH			(1 << 15)
@@ -132,6 +134,7 @@
 							 XILINX_DP_TX_INTR_REPLY_TIMEOUT | \
 							 XILINX_DP_TX_INTR_HPD_PULSE | \
 							 XILINX_DP_TX_INTR_EXT_PKT_TXD | \
+							 XILINX_DP_TX_INTR_LIV_ABUF_UNDRFLW | \
 							 XILINX_DP_TX_INTR_VBLANK_START | \
 							 XILINX_DP_TX_INTR_PIXEL0_MATCH | \
 							 XILINX_DP_TX_INTR_PIXEL1_MATCH | \
@@ -152,6 +155,10 @@
 							 XILINX_DP_TX_INTR_EXT_VSYNC_TS | \
 							 XILINX_DP_TX_INTR_VSYNC_TS)
 #define XILINX_DP_TX_REPLY_DATA_CNT			0x148
+#define XILINX_DP_SUB_TX_INTR_STATUS			0x3a0
+#define XILINX_DP_SUB_TX_INTR_MASK			0x3a4
+#define XILINX_DP_SUB_TX_INTR_EN			0x3a8
+#define XILINX_DP_SUB_TX_INTR_DS			0x3ac
 
 /* Main stream attribute registers */
 #define XILINX_DP_TX_MAIN_STREAM_HTOTAL			0x180
@@ -306,6 +313,7 @@ struct xilinx_drm_dp_config {
  * @iomem: device I/O memory for register access
  * @config: IP core configuration from DTS
  * @aux: aux channel
+ * @dp_sub: DisplayPort subsystem
  * @aclk: clock source device for internal axi4-lite clock
  * @aud_clk: clock source device for audio clock
  * @dpms: current dpms state
@@ -321,6 +329,7 @@ struct xilinx_drm_dp {
 
 	struct xilinx_drm_dp_config config;
 	struct drm_dp_aux aux;
+	struct xilinx_drm_dp_sub *dp_sub;
 	struct clk *aclk;
 	struct clk *aud_clk;
 
@@ -432,7 +441,9 @@ static int xilinx_drm_dp_phy_ready(struct xilinx_drm_dp *dp)
 	u32 i, reg, ready, lane;
 
 	lane = dp->config.max_lanes;
-	ready = XILINX_DP_TX_PHY_STATUS_FPGA_PLL_LOCKED | ((1 << lane) - 1);
+	ready = (1 << lane) - 1;
+	if (!dp->dp_sub)
+		ready |= XILINX_DP_TX_PHY_STATUS_FPGA_PLL_LOCKED;
 
 	/* Wait for 100 * 1ms. This should be enough time for PHY to be ready */
 	for (i = 0; ; i++) {
@@ -1070,8 +1081,12 @@ static int xilinx_drm_dp_encoder_init(struct platform_device *pdev,
 	if (ret < 0)
 		return ret;
 
-	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_INTR_MASK,
-			  ~XILINX_DP_TX_INTR_ALL);
+	if (dp->dp_sub)
+		xilinx_drm_writel(dp->iomem, XILINX_DP_SUB_TX_INTR_EN,
+				  XILINX_DP_TX_INTR_ALL);
+	else
+		xilinx_drm_writel(dp->iomem, XILINX_DP_TX_INTR_MASK,
+				  ~XILINX_DP_TX_INTR_ALL);
 	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_ENABLE, 1);
 
 	return 0;
@@ -1101,13 +1116,18 @@ static SIMPLE_DEV_PM_OPS(xilinx_drm_dp_pm_ops, xilinx_drm_dp_pm_suspend,
 static irqreturn_t xilinx_drm_dp_irq_handler(int irq, void *data)
 {
 	struct xilinx_drm_dp *dp = (struct xilinx_drm_dp *)data;
-	u32 status;
+	u32 reg, status;
 
-	status = xilinx_drm_readl(dp->iomem, XILINX_DP_TX_INTR_STATUS);
+	reg = dp->dp_sub ?
+	      XILINX_DP_SUB_TX_INTR_STATUS : XILINX_DP_TX_INTR_STATUS;
+	status = xilinx_drm_readl(dp->iomem, reg);
 	if (!status)
 		return IRQ_NONE;
 
-	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_INTR_STATUS, status);
+	xilinx_drm_writel(dp->iomem, reg, status);
+
+	if (status & XILINX_DP_TX_INTR_VBLANK_START)
+		xilinx_drm_dp_sub_handle_vblank(dp->dp_sub);
 
 	if (status & XILINX_DP_TX_INTR_HPD_EVENT)
 		drm_helper_hpd_irq_event(dp->encoder->dev);
@@ -1304,11 +1324,17 @@ static int xilinx_drm_dp_probe(struct platform_device *pdev)
 		}
 	}
 
+	dp->dp_sub = xilinx_drm_dp_sub_of_get(pdev->dev.of_node);
+	if (IS_ERR(dp->dp_sub)) {
+		ret = PTR_ERR(dp->dp_sub);
+		goto error_aud_clk;
+	}
+
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	dp->iomem = devm_ioremap_resource(dp->dev, res);
 	if (IS_ERR(dp->iomem)) {
 		ret = PTR_ERR(dp->iomem);
-		goto error_aud_clk;
+		goto error_dp_sub;
 	}
 
 	platform_set_drvdata(pdev, dp);
@@ -1319,8 +1345,12 @@ static int xilinx_drm_dp_probe(struct platform_device *pdev)
 			  XILINX_DP_TX_PHY_CONFIG_ALL_RESET);
 	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_FORCE_SCRAMBLER_RESET, 1);
 	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_ENABLE, 0);
-	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_INTR_MASK,
-			  XILINX_DP_TX_INTR_ALL);
+	if (dp->dp_sub)
+		xilinx_drm_writel(dp->iomem, XILINX_DP_SUB_TX_INTR_DS,
+				  XILINX_DP_TX_INTR_ALL);
+	else
+		xilinx_drm_writel(dp->iomem, XILINX_DP_TX_INTR_MASK,
+				  XILINX_DP_TX_INTR_ALL);
 
 	dp->aux.name = "Xilinx DP AUX";
 	dp->aux.dev = dp->dev;
@@ -1372,6 +1402,8 @@ static int xilinx_drm_dp_probe(struct platform_device *pdev)
 
 error:
 	drm_dp_aux_unregister(&dp->aux);
+error_dp_sub:
+	xilinx_drm_dp_sub_put(dp->dp_sub);
 error_aud_clk:
 	if (dp->aud_clk)
 		clk_disable_unprepare(dp->aud_clk);
@@ -1387,6 +1419,8 @@ static int xilinx_drm_dp_remove(struct platform_device *pdev)
 	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_ENABLE, 0);
 
 	drm_dp_aux_unregister(&dp->aux);
+
+	xilinx_drm_dp_sub_put(dp->dp_sub);
 
 	if (dp->aud_clk)
 		clk_disable_unprepare(dp->aud_clk);
