@@ -1261,8 +1261,10 @@ static int xilinx_drm_dp_probe(struct platform_device *pdev)
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	dp->iomem = devm_ioremap_resource(dp->dev, res);
-	if (IS_ERR(dp->iomem))
-		return PTR_ERR(dp->iomem);
+	if (IS_ERR(dp->iomem)) {
+		ret = PTR_ERR(dp->iomem);
+		goto error_clk;
+	}
 
 	platform_set_drvdata(pdev, dp);
 
@@ -1325,6 +1327,8 @@ static int xilinx_drm_dp_probe(struct platform_device *pdev)
 
 error:
 	drm_dp_aux_unregister(&dp->aux);
+error_clk:
+	clk_disable_unprepare(dp->aclk);
 	return ret;
 }
 
@@ -1332,11 +1336,11 @@ static int xilinx_drm_dp_remove(struct platform_device *pdev)
 {
 	struct xilinx_drm_dp *dp = platform_get_drvdata(pdev);
 
-	clk_disable_unprepare(dp->aclk);
-
 	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_ENABLE, 0);
 
 	drm_dp_aux_unregister(&dp->aux);
+
+	clk_disable_unprepare(dp->aclk);
 
 	return 0;
 }
