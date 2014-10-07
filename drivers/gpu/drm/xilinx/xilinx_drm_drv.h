@@ -42,4 +42,8 @@ static inline u32 xilinx_drm_readl(void __iomem *base, int offset)
 	return readl(base + offset);
 }
 
+struct drm_device;
+
+bool xilinx_drm_check_format(struct drm_device *drm, uint32_t fourcc);
+
 #endif /* _XILINX_DRM_H_ */

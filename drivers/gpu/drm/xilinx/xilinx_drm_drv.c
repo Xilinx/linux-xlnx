@@ -78,17 +78,31 @@ static const struct xilinx_video_format_desc xilinx_video_formats[] = {
 static unsigned int xilinx_drm_format_bpp(uint32_t drm_format);
 static unsigned int xilinx_drm_format_depth(uint32_t drm_format);
 
+/**
+ * xilinx_drm_check_format - Check if the given format is supported
+ * @drm: DRM device
+ * @fourcc: format fourcc
+ *
+ * Check if the given format @fourcc is supported by the current pipeline
+ *
+ * Return: true if the format is supported, or false
+ */
+bool xilinx_drm_check_format(struct drm_device *drm, uint32_t fourcc)
+{
+	struct xilinx_drm_private *private = drm->dev_private;
+
+	return xilinx_drm_crtc_check_format(private->crtc, fourcc);
+}
+
 /* create a fb */
 static struct drm_framebuffer *
 xilinx_drm_fb_create(struct drm_device *drm, struct drm_file *file_priv,
 		     struct drm_mode_fb_cmd2 *mode_cmd)
 {
-	struct xilinx_drm_private *private = drm->dev_private;
 	struct drm_framebuffer *fb;
 	bool res;
 
-	res = xilinx_drm_crtc_check_format(private->crtc,
-					   mode_cmd->pixel_format);
+	res = xilinx_drm_check_format(drm, mode_cmd->pixel_format);
 	if (!res) {
 		DRM_ERROR("unsupported pixel format %08x\n",
 			  mode_cmd->pixel_format);
