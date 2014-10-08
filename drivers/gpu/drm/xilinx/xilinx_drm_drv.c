@@ -75,9 +75,6 @@ static const struct xilinx_video_format_desc xilinx_video_formats[] = {
 	{ "xrgb8888", 24, 32, XILINX_VIDEO_FORMAT_XRGB, DRM_FORMAT_XRGB8888 },
 };
 
-static unsigned int xilinx_drm_format_bpp(uint32_t drm_format);
-static unsigned int xilinx_drm_format_depth(uint32_t drm_format);
-
 /**
  * xilinx_drm_check_format - Check if the given format is supported
  * @drm: DRM device
@@ -234,7 +231,7 @@ int xilinx_drm_format_by_name(const char *name, uint32_t *drm_format)
 }
 
 /* get bpp of given format */
-static unsigned int xilinx_drm_format_bpp(uint32_t drm_format)
+unsigned int xilinx_drm_format_bpp(uint32_t drm_format)
 {
 	const struct xilinx_video_format_desc *format;
 	unsigned int i;
@@ -249,7 +246,7 @@ static unsigned int xilinx_drm_format_bpp(uint32_t drm_format)
 }
 
 /* get color depth of given format */
-static unsigned int xilinx_drm_format_depth(uint32_t drm_format)
+unsigned int xilinx_drm_format_depth(uint32_t drm_format)
 {
 	const struct xilinx_video_format_desc *format;
 	unsigned int i;
