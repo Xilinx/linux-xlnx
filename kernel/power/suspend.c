@@ -12,6 +12,7 @@
 #include <linux/delay.h>
 #include <linux/errno.h>
 #include <linux/init.h>
+#include <linux/clockchips.h>
 #include <linux/console.h>
 #include <linux/cpu.h>
 #include <linux/cpuidle.h>
@@ -219,6 +220,8 @@ static int suspend_enter(suspend_state_t state, bool *wakeup)
 	if (error || suspend_test(TEST_CPUS))
 		goto Enable_cpus;
 
+	clockevents_notify(CLOCK_EVT_NOTIFY_SUSPEND, NULL);
+
 	arch_suspend_disable_irqs();
 	BUG_ON(!irqs_disabled());
 
@@ -231,6 +234,8 @@ static int suspend_enter(suspend_state_t state, bool *wakeup)
 		}
 		syscore_resume();
 	}
+
+	clockevents_notify(CLOCK_EVT_NOTIFY_RESUME, NULL);
 
 	arch_suspend_enable_irqs();
 	BUG_ON(irqs_disabled());
