@@ -28,6 +28,7 @@
 #include "xilinx_drm_drv.h"
 #include "xilinx_drm_encoder.h"
 #include "xilinx_drm_fb.h"
+#include "xilinx_drm_gem.h"
 
 #define DRIVER_NAME	"xilinx_drm"
 #define DRIVER_DESC	"Xilinx DRM KMS support for Xilinx"
@@ -391,7 +392,7 @@ static struct drm_driver xilinx_drm_driver = {
 	.gem_prime_mmap			= drm_gem_cma_prime_mmap,
 	.gem_free_object		= drm_gem_cma_free_object,
 	.gem_vm_ops			= &drm_gem_cma_vm_ops,
-	.dumb_create			= drm_gem_cma_dumb_create,
+	.dumb_create			= xilinx_drm_gem_cma_dumb_create,
 	.dumb_map_offset		= drm_gem_cma_dumb_map_offset,
 	.dumb_destroy			= drm_gem_dumb_destroy,
 
