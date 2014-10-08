@@ -46,5 +46,6 @@ struct drm_device;
 
 bool xilinx_drm_check_format(struct drm_device *drm, uint32_t fourcc);
 uint32_t xilinx_drm_get_format(struct drm_device *drm);
+unsigned int xilinx_drm_get_align(struct drm_device *drm);
 
 #endif /* _XILINX_DRM_H_ */

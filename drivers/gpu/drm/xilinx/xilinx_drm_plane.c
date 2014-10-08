@@ -499,6 +499,21 @@ uint32_t xilinx_drm_plane_get_format(struct drm_plane *base_plane)
 	return plane->format;
 }
 
+/**
+ * xilinx_drm_plane_get_align - Get the alignment value for pitch
+ * @base_plane: Base drm plane object
+ *
+ * Get the alignment value for pitch from the dma device
+ *
+ * Return: The alignment value if successful, or the error code.
+ */
+unsigned int xilinx_drm_plane_get_align(struct drm_plane *base_plane)
+{
+	struct xilinx_drm_plane *plane = to_xilinx_plane(base_plane);
+
+	return 1 << plane->dma.chan->device->copy_align;
+}
+
 /* create plane properties */
 static void
 xilinx_drm_plane_create_property(struct xilinx_drm_plane_manager *manager)

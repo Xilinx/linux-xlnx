@@ -389,6 +389,19 @@ uint32_t xilinx_drm_crtc_get_format(struct drm_crtc *base_crtc)
 	return xilinx_drm_plane_get_format(base_crtc->primary);
 }
 
+/**
+ * xilinx_drm_crtc_get_align - Get the alignment value for pitch
+ * @base_crtc: Base crtc object
+ *
+ * Get the alignment value for pitch from the plane
+ *
+ * Return: The alignment value if successful, or the error code.
+ */
+unsigned int xilinx_drm_crtc_get_align(struct drm_crtc *base_crtc)
+{
+	return xilinx_drm_plane_get_align(base_crtc->primary);
+}
+
 static struct drm_crtc_funcs xilinx_drm_crtc_funcs = {
 	.destroy	= xilinx_drm_crtc_destroy,
 	.set_config	= drm_crtc_helper_set_config,

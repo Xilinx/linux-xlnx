@@ -109,6 +109,21 @@ uint32_t xilinx_drm_get_format(struct drm_device *drm)
 	return xilinx_drm_crtc_get_format(private->crtc);
 }
 
+/**
+ * xilinx_drm_get_align - Get the alignment value for pitch
+ * @drm: DRM object
+ *
+ * Get the alignment value for pitch from the plane
+ *
+ * Return: The alignment value if successful, or the error code.
+ */
+unsigned int xilinx_drm_get_align(struct drm_device *drm)
+{
+	struct xilinx_drm_private *private = drm->dev_private;
+
+	return xilinx_drm_crtc_get_align(private->crtc);
+}
+
 /* create a fb */
 static struct drm_framebuffer *
 xilinx_drm_fb_create(struct drm_device *drm, struct drm_file *file_priv,
