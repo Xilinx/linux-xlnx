@@ -94,6 +94,21 @@ bool xilinx_drm_check_format(struct drm_device *drm, uint32_t fourcc)
 	return xilinx_drm_crtc_check_format(private->crtc, fourcc);
 }
 
+/**
+ * xilinx_drm_get_format - Get the current device format
+ * @drm: DRM device
+ *
+ * Get the current format of pipeline
+ *
+ * Return: the corresponding DRM_FORMAT_XXX
+ */
+uint32_t xilinx_drm_get_format(struct drm_device *drm)
+{
+	struct xilinx_drm_private *private = drm->dev_private;
+
+	return xilinx_drm_crtc_get_format(private->crtc);
+}
+
 /* create a fb */
 static struct drm_framebuffer *
 xilinx_drm_fb_create(struct drm_device *drm, struct drm_file *file_priv,
