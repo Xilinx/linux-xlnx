@@ -26,6 +26,7 @@
 #include <linux/platform_device.h>
 
 #include "xilinx_drm_drv.h"
+#include "xilinx_drm_fb.h"
 #include "xilinx_drm_plane.h"
 
 #include "xilinx_cresample.h"
@@ -226,7 +227,7 @@ int xilinx_drm_plane_mode_set(struct drm_plane *base_plane,
 	if (plane->rgb2yuv)
 		xilinx_rgb2yuv_configure(plane->rgb2yuv, crtc_w, crtc_h);
 
-	obj = drm_fb_cma_get_gem_obj(fb, 0);
+	obj = xilinx_drm_fb_get_gem_obj(fb, 0);
 	if (!obj) {
 		DRM_ERROR("failed to get a gem obj for fb\n");
 		return -EINVAL;

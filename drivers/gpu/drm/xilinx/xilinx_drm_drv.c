@@ -17,7 +17,6 @@
 
 #include <drm/drmP.h>
 #include <drm/drm_crtc_helper.h>
-#include <drm/drm_fb_cma_helper.h>
 #include <drm/drm_gem_cma_helper.h>
 
 #include <linux/device.h>
@@ -28,6 +27,7 @@
 #include "xilinx_drm_crtc.h"
 #include "xilinx_drm_drv.h"
 #include "xilinx_drm_encoder.h"
+#include "xilinx_drm_fb.h"
 
 #define DRIVER_NAME	"xilinx_drm"
 #define DRIVER_DESC	"Xilinx DRM KMS support for Xilinx"
@@ -47,7 +47,7 @@ struct xilinx_drm_private {
 	struct drm_crtc *crtc;
 	struct drm_encoder *encoder;
 	struct drm_connector *connector;
-	struct drm_fbdev_cma *fbdev;
+	struct drm_fb_helper *fb;
 	struct platform_device *pdev;
 };
 
@@ -121,37 +121,12 @@ unsigned int xilinx_drm_get_align(struct drm_device *drm)
 	return xilinx_drm_crtc_get_align(private->crtc);
 }
 
-/* create a fb */
-static struct drm_framebuffer *
-xilinx_drm_fb_create(struct drm_device *drm, struct drm_file *file_priv,
-		     struct drm_mode_fb_cmd2 *mode_cmd)
-{
-	struct drm_framebuffer *fb;
-	bool res;
-
-	res = xilinx_drm_check_format(drm, mode_cmd->pixel_format);
-	if (!res) {
-		DRM_ERROR("unsupported pixel format %08x\n",
-			  mode_cmd->pixel_format);
-		return ERR_PTR(-EINVAL);
-	}
-
-	fb = drm_fb_cma_create(drm, file_priv, mode_cmd);
-	if (IS_ERR(fb))
-		return fb;
-
-	fb->bits_per_pixel = xilinx_drm_format_bpp(mode_cmd->pixel_format);
-	fb->depth = xilinx_drm_format_depth(mode_cmd->pixel_format);
-
-	return fb;
-}
-
 /* poll changed handler */
 static void xilinx_drm_output_poll_changed(struct drm_device *drm)
 {
 	struct xilinx_drm_private *private = drm->dev_private;
 
-	drm_fbdev_cma_hotplug_event(private->fbdev);
+	xilinx_drm_fb_hotplug_event(private->fb);
 }
 
 static const struct drm_mode_config_funcs xilinx_drm_mode_config_funcs = {
@@ -266,6 +241,7 @@ static int xilinx_drm_load(struct drm_device *drm, unsigned long flags)
 	struct xilinx_drm_private *private;
 	struct platform_device *pdev = drm->platformdev;
 	unsigned int bpp;
+	unsigned int align;
 	int ret;
 
 	private = devm_kzalloc(drm->dev, sizeof(*private), GFP_KERNEL);
@@ -310,17 +286,18 @@ static int xilinx_drm_load(struct drm_device *drm, unsigned long flags)
 	/* allow disable vblank */
 	drm->vblank_disable_allowed = 1;
 
-	/* initialize xilinx cma framebuffer */
-	bpp = xilinx_drm_format_bpp(xilinx_drm_crtc_get_format(private->crtc));
-	private->fbdev = drm_fbdev_cma_init(drm, bpp, 1, 1);
-	if (IS_ERR(private->fbdev)) {
-		DRM_ERROR("failed to initialize drm cma fbdev\n");
-		ret = PTR_ERR(private->fbdev);
-		goto err_fbdev;
-	}
-
 	drm->dev_private = private;
 	private->drm = drm;
+
+	/* initialize xilinx framebuffer */
+	bpp = xilinx_drm_format_bpp(xilinx_drm_crtc_get_format(private->crtc));
+	align = xilinx_drm_crtc_get_align(private->crtc);
+	private->fb = xilinx_drm_fb_init(drm, bpp, 1, 1, align);
+	if (IS_ERR(private->fb)) {
+		DRM_ERROR("failed to initialize drm cma fb\n");
+		ret = PTR_ERR(private->fb);
+		goto err_fb;
+	}
 
 	drm_kms_helper_poll_init(drm);
 
@@ -333,7 +310,7 @@ static int xilinx_drm_load(struct drm_device *drm, unsigned long flags)
 
 	return 0;
 
-err_fbdev:
+err_fb:
 	drm_vblank_cleanup(drm);
 err_out:
 	drm_mode_config_cleanup(drm);
@@ -351,7 +328,7 @@ static int xilinx_drm_unload(struct drm_device *drm)
 
 	drm_kms_helper_poll_fini(drm);
 
-	drm_fbdev_cma_fini(private->fbdev);
+	xilinx_drm_fb_fini(private->fb);
 
 	drm_mode_config_cleanup(drm);
 
@@ -374,7 +351,7 @@ static void xilinx_drm_lastclose(struct drm_device *drm)
 
 	xilinx_drm_crtc_restore(private->crtc);
 
-	drm_fbdev_cma_restore_mode(private->fbdev);
+	xilinx_drm_fb_restore_mode(private->fb);
 }
 
 static const struct file_operations xilinx_drm_fops = {
