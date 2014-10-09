@@ -41,7 +41,7 @@ module_param(max_channels, uint, S_IRUGO);
 MODULE_PARM_DESC(max_channels,
 		"Maximum number of channels to use (default: all)");
 
-static unsigned int iterations;
+static unsigned int iterations = 5;
 module_param(iterations, uint, S_IRUGO);
 MODULE_PARM_DESC(iterations,
 		"Iterations before stopping test (default: infinite)");
@@ -80,6 +80,7 @@ struct cdmatest_thread {
 	u8 **srcs;
 	u8 **dsts;
 	enum dma_transaction_type type;
+	bool done;
 };
 
 struct cdmatest_chan {
@@ -92,8 +93,21 @@ struct cdmatest_chan {
  * These are protected by dma_list_mutex since they're only used by
  * the DMA filter function callback
  */
+static DECLARE_WAIT_QUEUE_HEAD(thread_wait);
 static LIST_HEAD(cdmatest_channels);
 static unsigned int nr_channels;
+
+static bool is_threaded_test_run(struct cdmatest_chan *tx_dtc)
+{
+	struct cdmatest_thread *thread;
+
+	list_for_each_entry(thread, &tx_dtc->threads, node) {
+		if (!thread->done)
+			return true;
+	}
+
+	return false;
+}
 
 static bool cdmatest_match_channel(struct dma_chan *chan)
 {
@@ -251,7 +265,6 @@ static int cdmatest_func(void *data)
 	ret = -ENOMEM;
 
 	/* JZ: limit testing scope here */
-	iterations = 5;
 
 	smp_rmb();
 	chan = thread->chan;
@@ -478,11 +491,8 @@ err_srcs:
 	pr_notice("%s: terminating after %u tests, %u failures (status %d)\n",
 			thread_name, total_tests, failed_tests, ret);
 
-	if (iterations > 0)
-		while (!kthread_should_stop()) {
-			DECLARE_WAIT_QUEUE_HEAD_ONSTACK(wait_cdmatest_exit);
-			interruptible_sleep_on(&wait_cdmatest_exit);
-		}
+	thread->done = true;
+	wake_up(&thread_wait);
 
 	return ret;
 }
@@ -582,6 +592,9 @@ static int cdmatest_add_channel(struct dma_chan *chan)
 
 	list_add_tail(&dtc->node, &cdmatest_channels);
 	nr_channels++;
+
+	if (iterations)
+		wait_event(thread_wait, !is_threaded_test_run(dtc));
 
 	return 0;
 }
