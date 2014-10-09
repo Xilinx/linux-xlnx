@@ -23,7 +23,7 @@ static unsigned int test_buf_size = 64;
 module_param(test_buf_size, uint, S_IRUGO);
 MODULE_PARM_DESC(test_buf_size, "Size of the memcpy test buffer");
 
-static unsigned int iterations;
+static unsigned int iterations = 5;
 module_param(iterations, uint, S_IRUGO);
 MODULE_PARM_DESC(iterations,
 		"Iterations before stopping test (default: infinite)");
@@ -53,6 +53,7 @@ struct dmatest_slave_thread {
 	u8 **srcs;
 	u8 **dsts;
 	enum dma_transaction_type type;
+	bool done;
 };
 
 struct dmatest_chan {
@@ -65,8 +66,27 @@ struct dmatest_chan {
  * These are protected by dma_list_mutex since they're only used by
  * the DMA filter function callback
  */
+static DECLARE_WAIT_QUEUE_HEAD(thread_wait);
 static LIST_HEAD(dmatest_channels);
 static unsigned int nr_channels;
+
+static bool is_threaded_test_run(struct dmatest_chan *tx_dtc,
+					struct dmatest_chan *rx_dtc)
+{
+	struct dmatest_slave_thread *thread;
+	int ret = false;
+
+	list_for_each_entry(thread, &tx_dtc->threads, node) {
+		if (!thread->done)
+			ret = true;
+	}
+
+	list_for_each_entry(thread, &rx_dtc->threads, node) {
+		if (!thread->done)
+			ret = true;
+	}
+	return ret;
+}
 
 static unsigned long dmatest_random(void)
 {
@@ -206,7 +226,6 @@ static int dmatest_slave_func(void *data)
 	ret = -ENOMEM;
 
 	/* JZ: limit testing scope here */
-	iterations = 5;
 	test_buf_size = 700;
 
 	smp_rmb();
@@ -473,11 +492,8 @@ err_srcs:
 	pr_notice("%s: terminating after %u tests, %u failures (status %d)\n",
 			thread_name, total_tests, failed_tests, ret);
 
-	if (iterations > 0)
-		while (!kthread_should_stop()) {
-			DECLARE_WAIT_QUEUE_HEAD_ONSTACK(wait_dmatest_exit);
-			interruptible_sleep_on(&wait_dmatest_exit);
-		}
+	thread->done = true;
+	wake_up(&thread_wait);
 
 	return ret;
 }
@@ -567,6 +583,9 @@ static int dmatest_add_slave_channels(struct dma_chan *tx_chan,
 	list_add_tail(&tx_dtc->node, &dmatest_channels);
 	list_add_tail(&rx_dtc->node, &dmatest_channels);
 	nr_channels += 2;
+
+	if (iterations)
+		wait_event(thread_wait, !is_threaded_test_run(tx_dtc, rx_dtc));
 
 	return 0;
 }
