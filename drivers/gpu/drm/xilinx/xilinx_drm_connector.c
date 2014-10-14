@@ -115,7 +115,7 @@ xilinx_drm_connector_detect(struct drm_connector *base_connector, bool force)
 /* destroy connector */
 void xilinx_drm_connector_destroy(struct drm_connector *base_connector)
 {
-	drm_sysfs_connector_remove(base_connector);
+	drm_connector_unregister(base_connector);
 	drm_connector_cleanup(base_connector);
 }
 
@@ -176,11 +176,11 @@ xilinx_drm_connector_create(struct drm_device *drm,
 	drm_connector_helper_add(&connector->base,
 				 &xilinx_drm_connector_helper_funcs);
 
-	/* add sysfs entry for connector */
-	ret = drm_sysfs_connector_add(&connector->base);
+	/* add entry for connector */
+	ret = drm_connector_register(&connector->base);
 	if (ret) {
-		DRM_ERROR("failed to add to sysfs\n");
-		goto err_sysfs;
+		DRM_ERROR("failed to register a connector\n");
+		goto err_register;
 	}
 
 	/* connect connector and encoder */
@@ -195,8 +195,8 @@ xilinx_drm_connector_create(struct drm_device *drm,
 	return &connector->base;
 
 err_attach:
-	drm_sysfs_connector_remove(&connector->base);
-err_sysfs:
+	drm_connector_unregister(&connector->base);
+err_register:
 	drm_connector_cleanup(&connector->base);
 	return ERR_PTR(ret);
 }
