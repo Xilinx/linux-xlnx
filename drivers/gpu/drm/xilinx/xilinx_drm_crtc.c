@@ -552,7 +552,8 @@ struct drm_crtc *xilinx_drm_crtc_create(struct drm_device *drm)
 	crtc->dpms = DRM_MODE_DPMS_OFF;
 
 	/* initialize drm crtc */
-	ret = drm_crtc_init(drm, &crtc->base, &xilinx_drm_crtc_funcs);
+	ret = drm_crtc_init_with_planes(drm, &crtc->base, crtc->priv_plane,
+					NULL, &xilinx_drm_crtc_funcs);
 	if (ret) {
 		DRM_ERROR("failed to initialize crtc\n");
 		goto err_plane;
