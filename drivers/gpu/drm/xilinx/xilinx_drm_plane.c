@@ -371,7 +371,8 @@ xilinx_drm_plane_update_prio(struct xilinx_drm_plane_manager *manager)
 	xilinx_osd_enable_rue(manager->osd);
 }
 
-void xilinx_drm_plane_set_zpos(struct drm_plane *base_plane, unsigned int zpos)
+static void xilinx_drm_plane_set_zpos(struct drm_plane *base_plane,
+				      unsigned int zpos)
 {
 	struct xilinx_drm_plane *plane = to_xilinx_plane(base_plane);
 	struct xilinx_drm_plane_manager *manager = plane->manager;
@@ -399,8 +400,8 @@ void xilinx_drm_plane_set_zpos(struct drm_plane *base_plane, unsigned int zpos)
 	}
 }
 
-void xilinx_drm_plane_set_alpha(struct drm_plane *base_plane,
-				unsigned int alpha)
+static void xilinx_drm_plane_set_alpha(struct drm_plane *base_plane,
+				       unsigned int alpha)
 {
 	struct xilinx_drm_plane *plane = to_xilinx_plane(base_plane);
 
@@ -446,22 +447,6 @@ int xilinx_drm_plane_get_max_width(struct drm_plane *base_plane)
 	struct xilinx_drm_plane *plane = to_xilinx_plane(base_plane);
 
 	return plane->manager->max_width;
-}
-
-/* get the max alpha value */
-unsigned int xilinx_drm_plane_get_max_alpha(struct drm_plane *base_plane)
-{
-	struct xilinx_drm_plane *plane = to_xilinx_plane(base_plane);
-
-	return plane->manager->default_alpha;
-}
-
-/* get the default z-position value which is the plane id */
-unsigned int xilinx_drm_plane_get_default_zpos(struct drm_plane *base_plane)
-{
-	struct xilinx_drm_plane *plane = to_xilinx_plane(base_plane);
-
-	return plane->id;
 }
 
 /* check if format is supported */
@@ -705,6 +690,8 @@ xilinx_drm_plane_create(struct xilinx_drm_plane_manager *manager,
 	plane->manager = manager;
 	manager->planes[i] = plane;
 
+	xilinx_drm_plane_attach_property(&plane->base);
+
 	of_node_put(plane_node);
 
 	return plane;
@@ -744,8 +731,6 @@ int xilinx_drm_plane_create_planes(struct xilinx_drm_plane_manager *manager,
 	struct xilinx_drm_plane *plane;
 	int i;
 
-	xilinx_drm_plane_create_property(manager);
-
 	/* find if there any available plane, and create if available */
 	for (i = 0; i < manager->num_planes; i++) {
 		if (manager->planes[i])
@@ -756,8 +741,6 @@ int xilinx_drm_plane_create_planes(struct xilinx_drm_plane_manager *manager,
 			DRM_ERROR("failed to allocate a plane\n");
 			return PTR_ERR(plane);
 		}
-
-		xilinx_drm_plane_attach_property(&plane->base);
 
 		manager->planes[i] = plane;
 	}
@@ -845,6 +828,8 @@ xilinx_drm_plane_probe_manager(struct drm_device *drm)
 	}
 
 	manager->default_alpha = OSD_MAX_ALPHA;
+
+	xilinx_drm_plane_create_property(manager);
 
 	return manager;
 }
