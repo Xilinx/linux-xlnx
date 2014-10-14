@@ -65,6 +65,7 @@ static void xilinx_drm_crtc_dpms(struct drm_crtc *base_crtc, int dpms)
 
 	switch (dpms) {
 	case DRM_MODE_DPMS_ON:
+		xilinx_drm_plane_manager_dpms(crtc->plane_manager, dpms);
 		xilinx_drm_plane_dpms(crtc->priv_plane, dpms);
 		if (crtc->rgb2yuv)
 			xilinx_rgb2yuv_enable(crtc->rgb2yuv);
@@ -84,6 +85,7 @@ static void xilinx_drm_crtc_dpms(struct drm_crtc *base_crtc, int dpms)
 			xilinx_rgb2yuv_reset(crtc->rgb2yuv);
 		}
 		xilinx_drm_plane_dpms(crtc->priv_plane, dpms);
+		xilinx_drm_plane_manager_dpms(crtc->plane_manager, dpms);
 		break;
 	}
 }
@@ -160,6 +162,9 @@ static int xilinx_drm_crtc_mode_set(struct drm_crtc *base_crtc,
 					 adjusted_mode->vdisplay);
 
 	/* configure a plane: vdma and osd layer */
+	xilinx_drm_plane_manager_mode_set(crtc->plane_manager,
+					  adjusted_mode->hdisplay,
+					  adjusted_mode->vdisplay);
 	ret = xilinx_drm_plane_mode_set(crtc->priv_plane,
 					base_crtc->primary->fb, 0, 0,
 					adjusted_mode->hdisplay,
@@ -183,6 +188,9 @@ static int _xilinx_drm_crtc_mode_set_base(struct drm_crtc *base_crtc,
 	int ret;
 
 	/* configure a plane */
+	xilinx_drm_plane_manager_mode_set(crtc->plane_manager,
+					  base_crtc->hwmode.hdisplay,
+					  base_crtc->hwmode.vdisplay);
 	ret = xilinx_drm_plane_mode_set(crtc->priv_plane,
 					fb, 0, 0,
 					base_crtc->hwmode.hdisplay,

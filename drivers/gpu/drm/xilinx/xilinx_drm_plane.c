@@ -142,12 +142,6 @@ void xilinx_drm_plane_dpms(struct drm_plane *base_plane, int dpms)
 			xilinx_osd_layer_set_alpha(plane->osd_layer, 1,
 						   plane->alpha);
 			xilinx_osd_layer_enable(plane->osd_layer);
-			if (plane->priv) {
-				/* set background color as black */
-				xilinx_osd_set_color(manager->osd, 0x0, 0x0,
-						     0x0);
-				xilinx_osd_enable(manager->osd);
-			}
 
 			xilinx_osd_enable_rue(manager->osd);
 		}
@@ -161,8 +155,6 @@ void xilinx_drm_plane_dpms(struct drm_plane *base_plane, int dpms)
 			xilinx_osd_layer_set_dimension(plane->osd_layer,
 						       0, 0, 0, 0);
 			xilinx_osd_layer_disable(plane->osd_layer);
-			if (plane->priv)
-				xilinx_osd_reset(manager->osd);
 
 			xilinx_osd_enable_rue(manager->osd);
 		}
@@ -258,11 +250,6 @@ int xilinx_drm_plane_mode_set(struct drm_plane *base_plane,
 	/* set OSD dimensions */
 	if (plane->manager->osd) {
 		xilinx_osd_disable_rue(plane->manager->osd);
-
-		/* if a plane is private, it's for crtc */
-		if (plane->priv)
-			xilinx_osd_set_dimension(plane->manager->osd,
-						 crtc_w, crtc_h);
 
 		xilinx_osd_layer_set_dimension(plane->osd_layer, crtc_x, crtc_y,
 					       src_w, src_h);
@@ -543,6 +530,49 @@ static void xilinx_drm_plane_attach_property(struct drm_plane *base_plane)
 		drm_object_attach_property(&base_plane->base,
 					   manager->alpha_prop,
 					   manager->default_alpha);
+}
+
+/**
+ * xilinx_drm_plane_manager_dpms - Set DPMS for the Xilinx plane manager
+ * @manager: Xilinx plane manager object
+ * @dpms: requested DPMS
+ *
+ * Set the Xilinx plane manager to the given DPMS state. This function is
+ * usually called from the CRTC driver with calling xilinx_drm_plane_dpms().
+ */
+void xilinx_drm_plane_manager_dpms(struct xilinx_drm_plane_manager *manager,
+				   int dpms)
+{
+	switch (dpms) {
+	case DRM_MODE_DPMS_ON:
+		if (manager->osd) {
+			xilinx_osd_disable_rue(manager->osd);
+			xilinx_osd_set_color(manager->osd, 0x0, 0x0, 0x0);
+			xilinx_osd_enable(manager->osd);
+			xilinx_osd_enable_rue(manager->osd);
+		}
+		break;
+	default:
+		if (manager->osd)
+			xilinx_osd_reset(manager->osd);
+		break;
+	}
+}
+
+/**
+ * xilinx_drm_plane_manager_mode_set - Set the mode to the Xilinx plane manager
+ * @manager: Xilinx plane manager object
+ * @crtc_w: CRTC width
+ * @crtc_h: CRTC height
+ *
+ * Set the width and height of the Xilinx plane manager. This function is uaully
+ * called from the CRTC driver before calling the xilinx_drm_plane_mode_set().
+ */
+void xilinx_drm_plane_manager_mode_set(struct xilinx_drm_plane_manager *manager,
+				      unsigned int crtc_w, unsigned int crtc_h)
+{
+	if (manager->osd)
+		xilinx_osd_set_dimension(manager->osd, crtc_w, crtc_h);
 }
 
 /* create a plane */
