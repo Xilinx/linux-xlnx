@@ -570,6 +570,7 @@ xilinx_drm_plane_create(struct xilinx_drm_plane_manager *manager,
 	char plane_name[16];
 	struct device_node *plane_node;
 	struct device_node *sub_node;
+	enum drm_plane_type type;
 	uint32_t fmt_in = -1;
 	uint32_t fmt_out = -1;
 	const char *fmt;
@@ -693,8 +694,10 @@ xilinx_drm_plane_create(struct xilinx_drm_plane_manager *manager,
 		plane->format = manager->format;
 
 	/* initialize drm plane */
-	ret = drm_plane_init(manager->drm, &plane->base, possible_crtcs,
-			     &xilinx_drm_plane_funcs, &plane->format, 1, priv);
+	type = priv ? DRM_PLANE_TYPE_PRIMARY : DRM_PLANE_TYPE_OVERLAY;
+	ret = drm_universal_plane_init(manager->drm, &plane->base,
+				       possible_crtcs, &xilinx_drm_plane_funcs,
+				       &plane->format, 1, type);
 	if (ret) {
 		DRM_ERROR("failed to initialize plane\n");
 		goto err_init;
