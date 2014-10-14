@@ -243,8 +243,6 @@ void xilinx_drm_crtc_destroy(struct drm_crtc *base_crtc)
 
 	clk_disable_unprepare(crtc->pixel_clock);
 
-	xilinx_drm_plane_destroy_planes(crtc->plane_manager);
-	xilinx_drm_plane_destroy_private(crtc->plane_manager, crtc->priv_plane);
 	xilinx_drm_plane_remove_manager(crtc->plane_manager);
 }
 
@@ -527,20 +525,20 @@ struct drm_crtc *xilinx_drm_crtc_create(struct drm_device *drm)
 	if (IS_ERR(crtc->pixel_clock)) {
 		DRM_DEBUG_KMS("failed to get pixel clock\n");
 		ret = -EPROBE_DEFER;
-		goto err_out;
+		goto err_plane;
 	}
 
 	ret = clk_prepare_enable(crtc->pixel_clock);
 	if (ret) {
 		DRM_DEBUG_KMS("failed to prepare/enable clock\n");
-		goto err_out;
+		goto err_plane;
 	}
 
 	sub_node = of_parse_phandle(drm->dev->of_node, "xlnx,vtc", 0);
 	if (!sub_node) {
 		DRM_ERROR("failed to get a video timing controller node\n");
 		ret = -ENODEV;
-		goto err_out;
+		goto err_plane;
 	}
 
 	crtc->vtc = xilinx_vtc_probe(drm->dev, sub_node);
@@ -548,7 +546,7 @@ struct drm_crtc *xilinx_drm_crtc_create(struct drm_device *drm)
 	if (IS_ERR(crtc->vtc)) {
 		DRM_ERROR("failed to probe video timing controller\n");
 		ret = PTR_ERR(crtc->vtc);
-		goto err_out;
+		goto err_plane;
 	}
 
 	crtc->dpms = DRM_MODE_DPMS_OFF;
@@ -557,7 +555,7 @@ struct drm_crtc *xilinx_drm_crtc_create(struct drm_device *drm)
 	ret = drm_crtc_init(drm, &crtc->base, &xilinx_drm_crtc_funcs);
 	if (ret) {
 		DRM_ERROR("failed to initialize crtc\n");
-		goto err_out;
+		goto err_plane;
 	}
 	drm_crtc_helper_add(&crtc->base, &xilinx_drm_crtc_helper_funcs);
 
@@ -565,9 +563,6 @@ struct drm_crtc *xilinx_drm_crtc_create(struct drm_device *drm)
 
 	return &crtc->base;
 
-err_out:
-	xilinx_drm_plane_destroy_planes(crtc->plane_manager);
-	xilinx_drm_plane_destroy_private(crtc->plane_manager, crtc->priv_plane);
 err_plane:
 	xilinx_drm_plane_remove_manager(crtc->plane_manager);
 	return ERR_PTR(ret);

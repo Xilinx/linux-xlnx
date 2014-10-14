@@ -44,11 +44,8 @@ struct xilinx_drm_plane_manager;
 struct drm_plane *
 xilinx_drm_plane_create_private(struct xilinx_drm_plane_manager *manager,
 				unsigned int possible_crtcs);
-void xilinx_drm_plane_destroy_private(struct xilinx_drm_plane_manager *manager,
-				      struct drm_plane *base_plane);
 int xilinx_drm_plane_create_planes(struct xilinx_drm_plane_manager *manager,
 				   unsigned int possible_crtcs);
-void xilinx_drm_plane_destroy_planes(struct xilinx_drm_plane_manager *manager);
 
 bool xilinx_drm_plane_check_format(struct xilinx_drm_plane_manager *manager,
 				   uint32_t format);

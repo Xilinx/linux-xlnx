@@ -734,34 +734,12 @@ xilinx_drm_plane_create_private(struct xilinx_drm_plane_manager *manager,
 	return &plane->base;
 }
 
-void xilinx_drm_plane_destroy_private(struct xilinx_drm_plane_manager *manager,
-				      struct drm_plane *base_plane)
-{
-	xilinx_drm_plane_destroy(base_plane);
-}
-
-/* destroy planes */
-void xilinx_drm_plane_destroy_planes(struct xilinx_drm_plane_manager *manager)
-{
-	struct xilinx_drm_plane *plane;
-	int i;
-
-	for (i = 0; i < manager->num_planes; i++) {
-		plane = manager->planes[i];
-		if (plane && !plane->priv) {
-			xilinx_drm_plane_destroy(&plane->base);
-			manager->planes[i] = NULL;
-		}
-	}
-}
-
 /* create extra planes */
 int xilinx_drm_plane_create_planes(struct xilinx_drm_plane_manager *manager,
 				   unsigned int possible_crtcs)
 {
 	struct xilinx_drm_plane *plane;
 	int i;
-	int err_ret;
 
 	xilinx_drm_plane_create_property(manager);
 
@@ -773,8 +751,7 @@ int xilinx_drm_plane_create_planes(struct xilinx_drm_plane_manager *manager,
 		plane = xilinx_drm_plane_create(manager, possible_crtcs, false);
 		if (IS_ERR(plane)) {
 			DRM_ERROR("failed to allocate a plane\n");
-			err_ret = PTR_ERR(plane);
-			goto err_out;
+			return PTR_ERR(plane);
 		}
 
 		xilinx_drm_plane_attach_property(&plane->base);
@@ -783,10 +760,6 @@ int xilinx_drm_plane_create_planes(struct xilinx_drm_plane_manager *manager,
 	}
 
 	return 0;
-
-err_out:
-	xilinx_drm_plane_destroy_planes(manager);
-	return err_ret;
 }
 
 /* initialize a plane manager: num_planes, format, max_width */
@@ -875,16 +848,5 @@ xilinx_drm_plane_probe_manager(struct drm_device *drm)
 
 void xilinx_drm_plane_remove_manager(struct xilinx_drm_plane_manager *manager)
 {
-	int i;
-
-	for (i = 0; i < manager->num_planes; i++) {
-		if (manager->planes[i] && !manager->planes[i]->priv) {
-			xilinx_drm_plane_dpms(&manager->planes[i]->base,
-					      DRM_MODE_DPMS_OFF);
-			xilinx_drm_plane_destroy(&manager->planes[i]->base);
-			manager->planes[i] = NULL;
-		}
-	}
-
 	of_node_put(manager->node);
 }
