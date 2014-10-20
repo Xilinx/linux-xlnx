@@ -51,6 +51,7 @@ struct zynq_usb2_platform_data {
 	struct usb_phy	*ulpi;
 	int		irq;
 	struct clk	*clk;
+	struct regulator *vbus;
 	unsigned	big_endian_mmio:1;
 	unsigned	big_endian_desc:1;
 	unsigned	es:1;		/* need USBMODE:ES */

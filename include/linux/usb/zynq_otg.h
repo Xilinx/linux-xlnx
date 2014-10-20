@@ -175,6 +175,10 @@ struct zynq_otg {
 	/* clk */
 	struct clk		*clk;
 
+	/* optional external VBUS regulator */
+	struct regulator *vbus;
+	bool vbus_enabled; /* Keep track of whether we wanted it enabled */
+
 	/* atomic notifier for interrupt context */
 	struct atomic_notifier_head	otg_notifier;
 
