@@ -2006,6 +2006,7 @@ static int adv7842_isr(struct v4l2_subdev *sd, u32 status, bool *handled)
 	if (irq_status[5] & 0x08) {
 		v4l2_dbg(1, debug, sd, "%s: irq %s mode\n", __func__,
 			 (io_read(sd, 0x65) & 0x08) ? "HDMI" : "DVI");
+		set_rgb_quantization_range(sd);
 		if (handled)
 			*handled = true;
 	}
@@ -2035,8 +2036,6 @@ static int adv7842_get_edid(struct v4l2_subdev *sd, struct v4l2_edid *edid)
 		return -EINVAL;
 	if (edid->start_block == 1)
 		edid->blocks = 1;
-	if (!edid->edid)
-		return -EINVAL;
 
 	switch (edid->pad) {
 	case ADV7842_EDID_PORT_A:
@@ -2614,6 +2613,12 @@ static int adv7842_core_init(struct v4l2_subdev *sd)
 
 	disable_input(sd);
 
+	/*
+	 * Disable I2C access to internal EDID ram from HDMI DDC ports
+	 * Disable auto edid enable when leaving powerdown mode
+	 */
+	rep_write_and_or(sd, 0x77, 0xd3, 0x20);
+
 	/* power */
 	io_write(sd, 0x0c, 0x42);   /* Power up part and power down VDP */
 	io_write(sd, 0x15, 0x80);   /* Power up pads */
@@ -2693,9 +2698,6 @@ static int adv7842_core_init(struct v4l2_subdev *sd)
 	select_input(sd, pdata->vid_std_select);
 
 	enable_input(sd);
-
-	/* disable I2C access to internal EDID ram from HDMI DDC ports */
-	rep_write_and_or(sd, 0x77, 0xf3, 0x00);
 
 	if (pdata->hpa_auto) {
 		/* HPA auto, HPA 0.5s after Edid set and Cable detect */
@@ -2873,8 +2875,6 @@ static const struct v4l2_ctrl_ops adv7842_ctrl_ops = {
 
 static const struct v4l2_subdev_core_ops adv7842_core_ops = {
 	.log_status = adv7842_log_status,
-	.g_std = adv7842_g_std,
-	.s_std = adv7842_s_std,
 	.ioctl = adv7842_ioctl,
 	.interrupt_service_routine = adv7842_isr,
 #ifdef CONFIG_VIDEO_ADV_DEBUG
@@ -2884,6 +2884,8 @@ static const struct v4l2_subdev_core_ops adv7842_core_ops = {
 };
 
 static const struct v4l2_subdev_video_ops adv7842_video_ops = {
+	.g_std = adv7842_g_std,
+	.s_std = adv7842_s_std,
 	.s_routing = adv7842_s_routing,
 	.querystd = adv7842_querystd,
 	.g_input_status = adv7842_g_input_status,

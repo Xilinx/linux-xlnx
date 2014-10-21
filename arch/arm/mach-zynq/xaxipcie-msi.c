@@ -30,56 +30,11 @@
 
 #define XILINX_NUM_MSI_IRQS	128
 
-static DECLARE_BITMAP(msi_irq_in_use, XILINX_NUM_MSI_IRQS);
-
 static unsigned long xaxipcie_msg_addr;
 static struct irq_domain *xaxipcie_irq_domain;
 static int xaxipcie_msi_irq_base;
-
-/* Dynamic irq allocate and deallocation */
-
-/**
- * create_irq- Dynamic irq allocate
- * void
- *
- * @return: Interrupt number allocated/ error
- *
- * @note: None
- */
-int create_irq(void)
-{
-	int irq, pos;
-again:
-	pos = find_first_zero_bit(msi_irq_in_use, XILINX_NUM_MSI_IRQS);
-
-	irq = irq_find_mapping(xaxipcie_irq_domain, pos);
-
-	/* test_and_set_bit operates on 32-bits at a time */
-	if (test_and_set_bit(pos, msi_irq_in_use))
-		goto again;
-
-	dynamic_irq_init(irq);
-	set_irq_flags(irq, IRQF_VALID);
-
-	return irq;
-}
-
-/**
- * destroy_irq- Dynamic irq de-allocate
- * @irq: Interrupt number to de-allocate
- *
- * @return: None
- *
- * @note: None
- */
-void destroy_irq(unsigned int irq)
-{
-	int pos = irq - xaxipcie_msi_irq_base;
-
-	dynamic_irq_cleanup(irq);
-
-	clear_bit(pos, msi_irq_in_use);
-}
+int xaxipcie_alloc_msi_irqdescs(struct device_node *node,
+					unsigned long msg_addr);
 
 /**
  * arch_teardown_msi_irq-Teardown the Interrupt
@@ -91,7 +46,7 @@ void destroy_irq(unsigned int irq)
  */
 void arch_teardown_msi_irq(unsigned int irq)
 {
-	destroy_irq(irq);
+	irq_free_desc(irq);
 }
 
 /**
@@ -127,11 +82,16 @@ static struct irq_chip xilinx_msi_chip = {
  */
 int arch_setup_msi_irq(struct pci_dev *pdev, struct msi_desc *desc)
 {
-	int irq = create_irq();
+	int irq = irq_alloc_desc_from(xaxipcie_msi_irq_base, -1);
 	struct msi_msg msg;
 
 	if (irq < 0)
 		return irq;
+
+	if (irq >= (xaxipcie_msi_irq_base + XILINX_NUM_MSI_IRQS + 1)) {
+		irq_free_desc(irq);
+		return -ENOSPC;
+	}
 
 	irq_set_msi_desc(irq, desc);
 
@@ -148,7 +108,6 @@ int arch_setup_msi_irq(struct pci_dev *pdev, struct msi_desc *desc)
 
 	return 0;
 }
-
 
 /**
  * xaxipcie_alloc_msi_irqdescs - allocate msi irq descs

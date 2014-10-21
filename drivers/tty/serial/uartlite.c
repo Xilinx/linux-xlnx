@@ -421,7 +421,10 @@ static void ulite_console_wait_tx(struct uart_port *port)
 	u8 val;
 	unsigned long timeout;
 
-	/* Spin waiting for TX fifo to have space available */
+	/*
+	 * Spin waiting for TX fifo to have space available.
+	 * When using the Microblaze Debug Module this can take up to 1s
+	 */
 	timeout = jiffies + msecs_to_jiffies(1000);
 	while (1) {
 		val = uart_in32(ULITE_STATUS, port);

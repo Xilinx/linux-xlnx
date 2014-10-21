@@ -16,19 +16,21 @@ Required Properties:
     detection pins, one per HDMI input. The active flag indicates the GPIO
     level that enables hot-plug detection.
 
+The device node must contain one 'port' child node per device input and output
+port, in accordance with the video interface bindings defined in
+Documentation/devicetree/bindings/media/video-interfaces.txt. The port nodes
+are numbered as follows.
+
+  Port			ADV7611
+------------------------------------------------------------
+  HDMI			0
+  Digital output	1
+
+The digital output port node must contain at least one endpoint.
+
 Optional Properties:
 
   - reset-gpios: Reference to the GPIO connected to the device's reset pin.
-
-  - adi,default-input: Index of the input to be configured as default. Valid
-    values are 0..5 for the ADV7604 and 0 for the ADV7611.
-
-  - adi,disable-power-down: Boolean property. When set forces the device to
-    ignore the power-down pin. The property is valid for the ADV7604 only as
-    the ADV7611 has no power-down pin.
-
-  - adi,disable-cable-reset: Boolean property. When set disables the HDMI
-    receiver automatic reset when the HDMI cable is unplugged.
 
 Optional Endpoint Properties:
 
@@ -51,8 +53,6 @@ Example:
 
 		reset-gpios = <&ioexp 0 GPIO_ACTIVE_LOW>;
 		hpd-gpios = <&ioexp 2 GPIO_ACTIVE_HIGH>;
-
-		adi,default-input = <0>;
 
 		#address-cells = <1>;
 		#size-cells = <0>;

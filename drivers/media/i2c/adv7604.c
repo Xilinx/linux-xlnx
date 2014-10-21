@@ -36,6 +36,7 @@
 #include <linux/v4l2-dv-timings.h>
 #include <linux/videodev2.h>
 #include <linux/workqueue.h>
+#include <linux/of_graph.h>
 
 #include <media/adv7604.h>
 #include <media/v4l2-ctrls.h>
@@ -2588,11 +2589,8 @@ static const struct adv7604_reg_seq adv7604_recommended_settings_hdmi[] = {
 };
 
 static const struct adv7604_reg_seq adv7611_recommended_settings_hdmi[] = {
-	/* ADV7611 Register Settings Recommendations Rev 1.5, May 2014 */
 	{ ADV7604_REG(ADV7604_PAGE_CP, 0x6c), 0x00 },
-	{ ADV7604_REG(ADV7604_PAGE_HDMI, 0x9b), 0x03 },
-	{ ADV7604_REG(ADV7604_PAGE_HDMI, 0x6f), 0x08 },
-	{ ADV7604_REG(ADV7604_PAGE_HDMI, 0x85), 0x1f },
+	{ ADV7604_REG(ADV7604_PAGE_HDMI, 0x6f), 0x0c },
 	{ ADV7604_REG(ADV7604_PAGE_HDMI, 0x87), 0x70 },
 	{ ADV7604_REG(ADV7604_PAGE_HDMI, 0x57), 0xda },
 	{ ADV7604_REG(ADV7604_PAGE_HDMI, 0x58), 0x01 },
@@ -2675,8 +2673,7 @@ static struct i2c_device_id adv7604_i2c_id[] = {
 };
 MODULE_DEVICE_TABLE(i2c, adv7604_i2c_id);
 
-static struct of_device_id adv7604_of_id[] = {
-	{ .compatible = "adi,adv7604", .data = &adv7604_chip_info[ADV7604] },
+static struct of_device_id adv7604_of_id[] __maybe_unused = {
 	{ .compatible = "adi,adv7611", .data = &adv7604_chip_info[ADV7611] },
 	{ }
 };
@@ -2688,12 +2685,11 @@ static int adv7604_parse_dt(struct adv7604_state *state)
 	struct device_node *endpoint;
 	struct device_node *np;
 	unsigned int flags;
-	int ret;
 
 	np = state->i2c_clients[ADV7604_PAGE_IO]->dev.of_node;
 
 	/* Parse the endpoint. */
-	endpoint = v4l2_of_get_next_endpoint(np, NULL);
+	endpoint = of_graph_get_next_endpoint(np, NULL);
 	if (!endpoint)
 		return -EINVAL;
 
@@ -2716,17 +2712,6 @@ static int adv7604_parse_dt(struct adv7604_state *state)
 		state->pdata.op_656_range = 1;
 	}
 
-	/* Parse device-specific properties. */
-	state->pdata.disable_pwrdnb =
-		of_property_read_bool(np, "adi,disable-power-down");
-	state->pdata.disable_cable_det_rst =
-		of_property_read_bool(np, "adi,disable-cable-reset");
-
-	ret = of_property_read_u32(np, "adi,default-input",
-				   &state->pdata.default_input);
-	if (ret < 0)
-		state->pdata.default_input = -1;
-
 	/* Disable the interrupt for now as no DT-based board uses it. */
 	state->pdata.int1_config = ADV7604_INT1_CONFIG_DISABLED;
 
@@ -2744,7 +2729,10 @@ static int adv7604_parse_dt(struct adv7604_state *state)
 	state->pdata.i2c_addresses[ADV7604_PAGE_CP] = 0x22;
 	state->pdata.i2c_addresses[ADV7604_PAGE_VDP] = 0x24;
 
-	/* HACK: Hardcode the remaining platform data fields. */
+	/* Hardcode the remaining platform data fields. */
+	state->pdata.disable_pwrdnb = 0;
+	state->pdata.disable_cable_det_rst = 0;
+	state->pdata.default_input = -1;
 	state->pdata.blank_data = 1;
 	state->pdata.alt_data_sat = 1;
 	state->pdata.op_format_mode_sel = ADV7604_OP_FORMAT_MODE0;

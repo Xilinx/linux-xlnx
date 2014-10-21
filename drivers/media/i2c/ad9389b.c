@@ -684,8 +684,7 @@ static const struct v4l2_subdev_video_ops ad9389b_video_ops = {
 
 /* ------------------------------ PAD OPS ------------------------------ */
 
-static int ad9389b_get_edid(struct v4l2_subdev *sd,
-			    struct v4l2_subdev_edid *edid)
+static int ad9389b_get_edid(struct v4l2_subdev *sd, struct v4l2_edid *edid)
 {
 	struct ad9389b_state *state = get_ad9389b_state(sd);
 

@@ -14,6 +14,9 @@
  * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
  * more details.
  *
+ * You should have received a copy of the GNU General Public License along with
+ * this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
  * The cpu idle uses wait-for-interrupt and RAM self refresh in order
  * to implement two idle states -
  * #1 wait-for-interrupt

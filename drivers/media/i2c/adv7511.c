@@ -822,8 +822,7 @@ static const struct v4l2_subdev_audio_ops adv7511_audio_ops = {
 
 /* ---------------------------- PAD OPS ------------------------------------- */
 
-static int adv7511_get_edid(struct v4l2_subdev *sd,
-			    struct v4l2_subdev_edid *edid)
+static int adv7511_get_edid(struct v4l2_subdev *sd, struct v4l2_edid *edid)
 {
 	struct adv7511_state *state = get_adv7511_state(sd);
 
