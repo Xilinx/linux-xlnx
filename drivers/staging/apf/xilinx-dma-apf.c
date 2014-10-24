@@ -38,7 +38,6 @@
 
 #include "xilinx-dma-apf.h"
 
-#include "xlnk-event-tracer-type.h"
 #include "xlnk.h"
 
 static DEFINE_MUTEX(dma_list_mutex);
@@ -362,7 +361,6 @@ static void xdma_start_transfer(struct xdma_chan *chan,
 	if (dma_is_running(chan) || dma_is_idle(chan)) {
 		/* Update tail ptr register and start the transfer */
 		DMA_OUT(&chan->regs->tdr, tail_phys);
-		xlnk_record_event(XLNK_ET_KERNEL_AFTER_DMA_KICKOFF);
 		return;
 	}
 
@@ -378,7 +376,6 @@ static void xdma_start_transfer(struct xdma_chan *chan,
 
 	/* Update tail ptr register and start the transfer */
 	DMA_OUT(&chan->regs->tdr, tail_phys);
-	xlnk_record_event(XLNK_ET_KERNEL_AFTER_DMA_KICKOFF);
 }
 
 static int xdma_setup_hw_desc(struct xdma_chan *chan,
@@ -632,12 +629,10 @@ static int pin_user_pages(unsigned long uaddr,
 	first_page = uaddr / PAGE_SIZE;
 	last_page = (uaddr + ulen - 1) / PAGE_SIZE;
 	num_pages = last_page - first_page + 1;
-	xlnk_record_event(XLNK_ET_KERNEL_BEFORE_GET_USER_PAGES);
 	down_read(&mm->mmap_sem);
 	status = get_user_pages(curr_task, mm, uaddr, num_pages, write, 1,
 				mapped_pages, NULL);
 	up_read(&mm->mmap_sem);
-	xlnk_record_event(XLNK_ET_KERNEL_AFTER_GET_USER_PAGES);
 
 	if (status == num_pages) {
 		sglist = kcalloc(num_pages,
@@ -784,7 +779,6 @@ int xdma_submit(struct xdma_chan *chan,
 	DEFINE_DMA_ATTRS(attrs);
 
 
-	xlnk_record_event(XLNK_ET_KERNEL_ENTER_DMA_SUBMIT);
 	dmahead = kmalloc(sizeof(struct xdma_head), GFP_KERNEL);
 	if (!dmahead)
 		return -ENOMEM;
@@ -818,7 +812,6 @@ int xdma_submit(struct xdma_chan *chan,
 		}
 	} else {
 		/* pin user pages is monitored separately */
-		xlnk_record_event(XLNK_ET_KERNEL_BEFORE_PIN_USER_PAGE);
 		status = pin_user_pages((unsigned long)userbuf, size,
 					dmadir != DMA_TO_DEVICE,
 					&sglist, &sgcnt, user_flags);
@@ -826,8 +819,6 @@ int xdma_submit(struct xdma_chan *chan,
 			pr_err("pin_user_pages failed\n");
 			return status;
 		}
-		xlnk_record_event(XLNK_ET_KERNEL_AFTER_PIN_USER_PAGE);
-		xlnk_record_event(XLNK_ET_KERNEL_BEFORE_DMA_MAP_SG);
 		if (!(user_flags & CF_FLAG_CACHE_FLUSH_INVALIDATE))
 			dma_set_attr(DMA_ATTR_SKIP_CPU_SYNC, &attrs);
 
@@ -838,7 +829,6 @@ int xdma_submit(struct xdma_chan *chan,
 			unpin_user_pages(sglist, sgcnt);
 			return -ENOMEM;
 		}
-		xlnk_record_event(XLNK_ET_KERNEL_AFTER_DMA_MAP_SG);
 
 		/* merge sg list to save dma bds */
 		sgcnt_dma = sgl_merge(sglist, sgcnt, &sglist_dma);
@@ -863,10 +853,8 @@ int xdma_submit(struct xdma_chan *chan,
 
 	dmahead->nappwords_o = nappwords_o;
 
-	xlnk_record_event(XLNK_ET_KERNEL_BEFORE_DMA_SETUP_BD);
 	status = xdma_setup_hw_desc(chan, dmahead, sglist_dma, sgcnt_dma,
 				    dmadir, nappwords_i, appwords_i);
-	xlnk_record_event(XLNK_ET_KERNEL_AFTER_DMA_SETUP_BD);
 	if (status) {
 		pr_err("setup hw desc failed\n");
 		if (!(user_flags & CF_FLAG_PHYSICALLY_CONTIGUOUS)) {
@@ -880,7 +868,6 @@ int xdma_submit(struct xdma_chan *chan,
 
 	*dmaheadpp = dmahead;
 
-	xlnk_record_event(XLNK_ET_KERNEL_LEAVE_DMA_SUBMIT);
 	return 0;
 }
 EXPORT_SYMBOL(xdma_submit);
@@ -891,7 +878,6 @@ int xdma_wait(struct xdma_head *dmahead, unsigned int user_flags)
 	void *kaddr, *paddr;
 	int size;
 	DEFINE_DMA_ATTRS(attrs);
-	xlnk_record_event(XLNK_ET_KERNEL_ENTER_DMA_WAIT);
 
 	if (chan->poll_mode) {
 		xilinx_chan_desc_cleanup(chan);
@@ -899,14 +885,12 @@ int xdma_wait(struct xdma_head *dmahead, unsigned int user_flags)
 		wait_for_completion(&dmahead->cmp);
 
 	if (!(user_flags & CF_FLAG_PHYSICALLY_CONTIGUOUS)) {
-		xlnk_record_event(XLNK_ET_KERNEL_BEFORE_DMA_UNMAP_SG);
 		if (!(user_flags & CF_FLAG_CACHE_FLUSH_INVALIDATE))
 			dma_set_attr(DMA_ATTR_SKIP_CPU_SYNC, &attrs);
 
 		get_dma_ops(chan->dev)->unmap_sg(chan->dev, dmahead->sglist,
 						 dmahead->sgcnt,
 						 dmahead->dmadir, &attrs);
-		xlnk_record_event(XLNK_ET_KERNEL_AFTER_DMA_UNMAP_SG);
 
 		unpin_user_pages(dmahead->sglist, dmahead->sgcnt);
 	} else {
@@ -921,7 +905,6 @@ int xdma_wait(struct xdma_head *dmahead, unsigned int user_flags)
 			dmac_unmap_area(kaddr, size, DMA_FROM_DEVICE);
 		}
 	}
-	xlnk_record_event(XLNK_ET_KERNEL_LEAVE_DMA_WAIT);
 	return 0;
 }
 EXPORT_SYMBOL(xdma_wait);

@@ -45,7 +45,6 @@
 
 
 #include "xlnk-ioctl.h"
-#include "xlnk-event-tracer-type.h"
 #include "xlnk.h"
 
 #ifdef CONFIG_XILINX_DMA_APF
@@ -102,9 +101,6 @@ static void xlnk_vma_close(struct vm_area_struct *vma);
 
 static int xlnk_init_bufpool(void);
 
-static void xlnk_start_benchmark_counter(void);
-static int xlnk_dump_events(unsigned long buf);
-static int xlnk_get_event_size(unsigned long buf);
 
 static int xlnk_shutdown(unsigned long buf);
 static int xlnk_recover_resource(unsigned long buf);
@@ -258,9 +254,6 @@ static int xlnk_probe(struct platform_device *pdev)
 
 	xlnk_devpacks_init();
 
-#ifdef CONFIG_ARCH_ZYNQ
-	xlnk_start_benchmark_counter();
-#endif
 
 	return 0;
 
@@ -1033,7 +1026,6 @@ static long xlnk_ioctl(struct file *filp, unsigned int code,
 {
 	int status = 0;
 
-	xlnk_record_event(XLNK_ET_KERNEL_ENTER_IOCTL);
 
 	if (_IOC_TYPE(code) != XLNK_IOC_MAGIC)
 		return -ENOTTY;
@@ -1072,14 +1064,8 @@ static long xlnk_ioctl(struct file *filp, unsigned int code,
 	case XLNK_IOCDEVUNREGISTER:
 		status = xlnk_devunregister_ioctl(filp, code, args);
 		break;
-	case XLNK_IOCGETEVENTSIZE:
-		status = xlnk_get_event_size(args);
-		break;
 	case XLNK_IOCCACHECTRL:
 		status = xlnk_cachecontrol_ioctl(filp, code, args);
-		break;
-	case XLNK_IOCDUMPEVENTS:
-		status = xlnk_dump_events(args);
 		break;
 	case XLNK_IOCSHUTDOWN:
 		status = xlnk_shutdown(args);
@@ -1089,7 +1075,6 @@ static long xlnk_ioctl(struct file *filp, unsigned int code,
 		break;
 	}
 
-	xlnk_record_event(XLNK_ET_KERNEL_LEAVE_IOCTL);
 	return status;
 }
 
@@ -1142,87 +1127,7 @@ static void xlnk_vma_close(struct vm_area_struct *vma)
 }
 
 
-#ifdef CONFIG_ARCH_ZYNQ
 
-/*
- * Xidane XLNK benchmark counter support
- */
-static u32 __iomem *bc_virt;
-
-
-/* Zynq global counter */
-static const unsigned long bc_phyaddr = 0xF8F00200;
-static const unsigned long bc_to_cpu_shift = 1;
-static const unsigned long bc_csr_size = 16;
-static const unsigned long bc_ctr_offset = 2;
-static const unsigned long bc_ctr_start = 1;
-static const unsigned long bc_data_offset;
-
-
-static void xlnk_start_benchmark_counter(void)
-{
-	bc_virt = ioremap(bc_phyaddr, bc_csr_size);
-	if (bc_virt) {
-		iowrite32(bc_ctr_start, bc_virt + bc_ctr_offset);
-		pr_info("xlnk: benchmark counter started\n");
-		/* iounmap(bc_virt); */
-	}
-}
-
-#define XLNK_EVENT_TRACER_ENTRY_NUM 60000
-static struct event_tracer {
-	u32 event_id;
-	u32 event_time;
-} xlnk_et[XLNK_EVENT_TRACER_ENTRY_NUM];
-
-static unsigned long xlnk_et_index;
-static unsigned long xlnk_et_numbers_to_dump;
-
-void xlnk_record_event(u32 event_id)
-{
-	if (xlnk_et_index >= XLNK_EVENT_TRACER_ENTRY_NUM)
-		return;
-
-	xlnk_et[xlnk_et_index].event_id = event_id;
-	xlnk_et[xlnk_et_index].event_time = ioread32(bc_virt +
-						bc_data_offset) <<
-						bc_to_cpu_shift;
-	xlnk_et_index++;
-}
-EXPORT_SYMBOL(xlnk_record_event);
-
-static int xlnk_get_event_size(unsigned long args)
-{
-	unsigned long __user *datap = (unsigned long __user *)args;
-
-	/* take a snapshot of current index and only copy this
-	 * size to user space thru xlnk_dump_events(), as the snapshot
-	 * value determine the dynamically created user space event
-	 * trace buffer size  but the xlnk_et_index could keep going up
-	 * with any xlnk_record_event() calls after this function
-	 */
-	xlnk_et_numbers_to_dump = xlnk_et_index;
-	put_user(xlnk_et_numbers_to_dump, datap);
-	return 0;
-}
-
-static int xlnk_dump_events(unsigned long buf)
-{
-	/* only dump the number of event traces reported thru
-	 * xlnk_get_event_size() and ignore the rest to avoid
-	 * buffer overflow issue
-	 */
-	if (copy_to_user((void __user *)buf, xlnk_et,
-		xlnk_et_numbers_to_dump * sizeof(struct event_tracer)))
-		return -EFAULT;
-
-	/* clear up event pool so it's ready to use again */
-	xlnk_et_index = 0;
-	xlnk_et_numbers_to_dump = 0;
-
-	return 0;
-}
-#endif
 
 
 static int xlnk_shutdown(unsigned long buf)

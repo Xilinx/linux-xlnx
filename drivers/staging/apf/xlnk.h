@@ -13,8 +13,6 @@
 #define CF_FLAG_PHYSICALLY_CONTIGUOUS	0x00000002
 #define CF_FLAG_DMAPOLLING		0x00000004
 
-extern void xlnk_record_event(u32 event_id);
-
 
 enum xlnk_dma_direction {
 	XLNK_DMA_BI = 0,
