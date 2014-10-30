@@ -471,7 +471,7 @@ error:
 	return ret;
 }
 
-static int xvip_dma_stop_streaming(struct vb2_queue *vq)
+static void xvip_dma_stop_streaming(struct vb2_queue *vq)
 {
 	struct xvip_dma *dma = vb2_get_drv_priv(vq);
 	struct xvip_pipeline *pipe = to_xvip_pipeline(&dma->video.entity);
@@ -491,8 +491,6 @@ static int xvip_dma_stop_streaming(struct vb2_queue *vq)
 	/* Cleanup the pipeline and mark it as being stopped. */
 	xvip_pipeline_cleanup(pipe);
 	media_entity_pipeline_stop(&dma->video.entity);
-
-	return 0;
 }
 
 static struct vb2_ops xvip_dma_queue_qops = {
