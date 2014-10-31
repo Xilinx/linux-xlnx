@@ -41,8 +41,6 @@
 	status = "okay";
 	is-dual = <1>;
 	num-cs = <1>;
-	xlnx,fb-clk = <0x1>;
-	xlnx,qspi-mode = <0x2>;
 	flash@0 {
 		compatible = "n25q128a11";
 		reg = <0x0>;
