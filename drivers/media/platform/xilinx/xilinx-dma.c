@@ -314,19 +314,11 @@ done:
  * @buf: vb2 buffer base object
  * @queue: buffer list entry in the DMA engine queued buffers list
  * @dma: DMA channel that uses the buffer
- * @addr: DMA bus address for the buffer memory
- * @length: total length of the buffer in bytes
- * @bytesused: number of bytes used in the buffer
  */
 struct xvip_dma_buffer {
 	struct vb2_buffer buf;
 	struct list_head queue;
-
 	struct xvip_dma *dma;
-
-	dma_addr_t addr;
-	unsigned int length;
-	unsigned int bytesused;
 };
 
 #define to_xvip_dma_buffer(vb)	container_of(vb, struct xvip_dma_buffer, buf)
@@ -342,7 +334,7 @@ static void xvip_dma_complete(void *param)
 
 	buf->buf.v4l2_buf.sequence = dma->sequence++;
 	v4l2_get_timestamp(&buf->buf.v4l2_buf.timestamp);
-	vb2_set_plane_payload(&buf->buf, 0, buf->length);
+	vb2_set_plane_payload(&buf->buf, 0, dma->format.sizeimage);
 	vb2_buffer_done(&buf->buf, VB2_BUF_STATE_DONE);
 }
 
@@ -367,9 +359,6 @@ static int xvip_dma_buffer_prepare(struct vb2_buffer *vb)
 	struct xvip_dma_buffer *buf = to_xvip_dma_buffer(vb);
 
 	buf->dma = dma;
-	buf->addr = vb2_dma_contig_plane_dma_addr(vb, 0);
-	buf->length = vb2_plane_size(vb, 0);
-	buf->bytesused = 0;
 
 	return 0;
 }
@@ -379,6 +368,7 @@ static void xvip_dma_buffer_queue(struct vb2_buffer *vb)
 	struct xvip_dma *dma = vb2_get_drv_priv(vb->vb2_queue);
 	struct xvip_dma_buffer *buf = to_xvip_dma_buffer(vb);
 	struct dma_async_tx_descriptor *desc;
+	dma_addr_t addr = vb2_dma_contig_plane_dma_addr(vb, 0);
 	u32 flags;
 
 	if (dma->queue.type == V4L2_BUF_TYPE_VIDEO_CAPTURE) {
@@ -386,13 +376,13 @@ static void xvip_dma_buffer_queue(struct vb2_buffer *vb)
 		dma->xt.dir = DMA_DEV_TO_MEM;
 		dma->xt.src_sgl = false;
 		dma->xt.dst_sgl = true;
-		dma->xt.dst_start = buf->addr;
+		dma->xt.dst_start = addr;
 	} else {
 		flags = DMA_PREP_INTERRUPT | DMA_CTRL_ACK;
 		dma->xt.dir = DMA_MEM_TO_DEV;
 		dma->xt.src_sgl = true;
 		dma->xt.dst_sgl = false;
-		dma->xt.src_start = buf->addr;
+		dma->xt.src_start = addr;
 	}
 
 	dma->xt.frame_size = 1;
