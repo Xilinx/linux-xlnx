@@ -650,7 +650,7 @@ xvip_dma_set_format(struct file *file, void *fh, struct v4l2_format *format)
 
 	mutex_lock(&dma->lock);
 
-	if (vb2_is_streaming(&dma->queue)) {
+	if (vb2_is_busy(&dma->queue)) {
 		ret = -EBUSY;
 		goto done;
 	}
