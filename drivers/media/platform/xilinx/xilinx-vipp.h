@@ -29,6 +29,7 @@
  * @entities: entities in the graph as a list of xvip_graph_entity
  * @num_subdevs: number of subdevs in the pipeline
  * @dmas: list of DMA channels at the pipeline output and input
+ * @v4l2_caps: V4L2 capabilities of the whole device (see VIDIOC_QUERYCAP)
  */
 struct xvip_composite_device {
 	struct v4l2_device v4l2_dev;
@@ -40,6 +41,7 @@ struct xvip_composite_device {
 	unsigned int num_subdevs;
 
 	struct list_head dmas;
+	u32 v4l2_caps;
 };
 
 #endif /* __XILINX_VIPP_H__ */
