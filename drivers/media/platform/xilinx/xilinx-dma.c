@@ -468,6 +468,15 @@ static int xvip_dma_start_streaming(struct vb2_queue *vq, unsigned int count)
 
 error:
 	media_entity_pipeline_stop(&dma->video.entity);
+
+	/* Give back all queued buffers to videobuf2. */
+	spin_lock_irq(&dma->queued_lock);
+	list_for_each_entry_safe(buf, nbuf, &dma->queued_bufs, queue) {
+		vb2_buffer_done(&buf->buf, VB2_BUF_STATE_QUEUED);
+		list_del(&buf->queue);
+	}
+	spin_unlock_irq(&dma->queued_lock);
+
 	return ret;
 }
 
