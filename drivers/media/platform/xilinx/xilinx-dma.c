@@ -409,23 +409,10 @@ static void xvip_dma_buffer_queue(struct vb2_buffer *vb)
 		dma_async_issue_pending(dma->dma);
 }
 
-static void xvip_dma_wait_prepare(struct vb2_queue *vq)
-{
-	struct xvip_dma *dma = vb2_get_drv_priv(vq);
-
-	mutex_unlock(&dma->lock);
-}
-
-static void xvip_dma_wait_finish(struct vb2_queue *vq)
-{
-	struct xvip_dma *dma = vb2_get_drv_priv(vq);
-
-	mutex_lock(&dma->lock);
-}
-
 static int xvip_dma_start_streaming(struct vb2_queue *vq, unsigned int count)
 {
 	struct xvip_dma *dma = vb2_get_drv_priv(vq);
+	struct xvip_dma_buffer *buf, *nbuf;
 	struct xvip_pipeline *pipe;
 	int ret;
 
@@ -515,8 +502,8 @@ static struct vb2_ops xvip_dma_queue_qops = {
 	.queue_setup = xvip_dma_queue_setup,
 	.buf_prepare = xvip_dma_buffer_prepare,
 	.buf_queue = xvip_dma_buffer_queue,
-	.wait_prepare = xvip_dma_wait_prepare,
-	.wait_finish = xvip_dma_wait_finish,
+	.wait_prepare = vb2_ops_wait_prepare,
+	.wait_finish = vb2_ops_wait_finish,
 	.start_streaming = xvip_dma_start_streaming,
 	.stop_streaming = xvip_dma_stop_streaming,
 };
@@ -562,11 +549,9 @@ xvip_dma_enum_format(struct file *file, void *fh, struct v4l2_fmtdesc *f)
 	if (f->index > 0)
 		return -EINVAL;
 
-	mutex_lock(&dma->lock);
 	f->pixelformat = dma->format.pixelformat;
 	strlcpy(f->description, dma->fmtinfo->description,
 		sizeof(f->description));
-	mutex_unlock(&dma->lock);
 
 	return 0;
 }
@@ -577,9 +562,7 @@ xvip_dma_get_format(struct file *file, void *fh, struct v4l2_format *format)
 	struct v4l2_fh *vfh = file->private_data;
 	struct xvip_dma *dma = to_xvip_dma(vfh->vdev);
 
-	mutex_lock(&dma->lock);
 	format->fmt.pix = dma->format;
-	mutex_unlock(&dma->lock);
 
 	return 0;
 }
@@ -653,16 +636,11 @@ xvip_dma_set_format(struct file *file, void *fh, struct v4l2_format *format)
 	struct xvip_dma *dma = to_xvip_dma(vfh->vdev);
 	const struct xvip_video_format *info;
 	struct xilinx_vdma_config config;
-	int ret;
 
 	__xvip_dma_try_format(dma, &format->fmt.pix, &info);
 
-	mutex_lock(&dma->lock);
-
-	if (vb2_is_busy(&dma->queue)) {
-		ret = -EBUSY;
-		goto done;
-	}
+	if (vb2_is_busy(&dma->queue))
+		return -EBUSY;
 
 	dma->format = format->fmt.pix;
 	dma->fmtinfo = info;
@@ -677,155 +655,7 @@ xvip_dma_set_format(struct file *file, void *fh, struct v4l2_format *format)
 	dmaengine_device_control(dma->dma, DMA_SLAVE_CONFIG,
 				 (unsigned long)&config);
 
-	ret = 0;
-
-done:
-	mutex_unlock(&dma->lock);
-	return ret;
-}
-
-static int
-xvip_dma_reqbufs(struct file *file, void *fh, struct v4l2_requestbuffers *rb)
-{
-	struct v4l2_fh *vfh = file->private_data;
-	struct xvip_dma *dma = to_xvip_dma(vfh->vdev);
-	int ret;
-
-	mutex_lock(&dma->lock);
-
-	if (dma->queue.owner && dma->queue.owner != vfh) {
-		ret = -EBUSY;
-		goto done;
-	}
-
-	ret = vb2_reqbufs(&dma->queue, rb);
-	if (ret < 0)
-		goto done;
-
-	dma->queue.owner = vfh;
-
-done:
-	mutex_unlock(&dma->lock);
-	return ret ? ret : rb->count;
-}
-
-static int
-xvip_dma_querybuf(struct file *file, void *fh, struct v4l2_buffer *buf)
-{
-	struct v4l2_fh *vfh = file->private_data;
-	struct xvip_dma *dma = to_xvip_dma(vfh->vdev);
-	int ret;
-
-	mutex_lock(&dma->lock);
-	ret = vb2_querybuf(&dma->queue, buf);
-	mutex_unlock(&dma->lock);
-
-	return ret;
-}
-
-static int
-xvip_dma_qbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
-{
-	struct v4l2_fh *vfh = file->private_data;
-	struct xvip_dma *dma = to_xvip_dma(vfh->vdev);
-	int ret;
-
-	mutex_lock(&dma->lock);
-
-	if (dma->queue.owner && dma->queue.owner != vfh) {
-		ret = -EBUSY;
-		goto done;
-	}
-
-	ret = vb2_qbuf(&dma->queue, buf);
-
-done:
-	mutex_unlock(&dma->lock);
-	return ret;
-}
-
-static int
-xvip_dma_dqbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
-{
-	struct v4l2_fh *vfh = file->private_data;
-	struct xvip_dma *dma = to_xvip_dma(vfh->vdev);
-	int ret;
-
-	mutex_lock(&dma->lock);
-
-	if (dma->queue.owner && dma->queue.owner != vfh) {
-		ret = -EBUSY;
-		goto done;
-	}
-
-	ret = vb2_dqbuf(&dma->queue, buf, file->f_flags & O_NONBLOCK);
-
-done:
-	mutex_unlock(&dma->lock);
-	return ret;
-}
-
-static int
-xvip_dma_expbuf(struct file *file, void *priv, struct v4l2_exportbuffer *eb)
-{
-	struct v4l2_fh *vfh = file->private_data;
-	struct xvip_dma *dma = to_xvip_dma(vfh->vdev);
-	int ret;
-
-	mutex_lock(&dma->lock);
-
-	if (dma->queue.owner && dma->queue.owner != vfh) {
-		ret = -EBUSY;
-		goto done;
-	}
-
-	ret = vb2_expbuf(&dma->queue, eb);
-
-done:
-	mutex_unlock(&dma->lock);
-	return ret;
-}
-
-static int
-xvip_dma_streamon(struct file *file, void *fh, enum v4l2_buf_type type)
-{
-	struct v4l2_fh *vfh = file->private_data;
-	struct xvip_dma *dma = to_xvip_dma(vfh->vdev);
-	int ret;
-
-	mutex_lock(&dma->lock);
-
-	if (dma->queue.owner && dma->queue.owner != vfh) {
-		ret = -EBUSY;
-		goto done;
-	}
-
-	ret = vb2_streamon(&dma->queue, type);
-
-done:
-	mutex_unlock(&dma->lock);
-	return ret;
-}
-
-static int
-xvip_dma_streamoff(struct file *file, void *fh, enum v4l2_buf_type type)
-{
-	struct v4l2_fh *vfh = file->private_data;
-	struct xvip_dma *dma = to_xvip_dma(vfh->vdev);
-	int ret;
-
-	mutex_lock(&dma->lock);
-
-	if (dma->queue.owner && dma->queue.owner != vfh) {
-		ret = -EBUSY;
-		goto done;
-	}
-
-	ret = vb2_streamoff(&dma->queue, type);
-
-done:
-	mutex_unlock(&dma->lock);
-	return ret;
+	return 0;
 }
 
 static const struct v4l2_ioctl_ops xvip_dma_ioctl_ops = {
@@ -837,88 +667,26 @@ static const struct v4l2_ioctl_ops xvip_dma_ioctl_ops = {
 	.vidioc_s_fmt_vid_out		= xvip_dma_set_format,
 	.vidioc_try_fmt_vid_cap		= xvip_dma_try_format,
 	.vidioc_try_fmt_vid_out		= xvip_dma_try_format,
-	.vidioc_reqbufs			= xvip_dma_reqbufs,
-	.vidioc_querybuf		= xvip_dma_querybuf,
-	.vidioc_qbuf			= xvip_dma_qbuf,
-	.vidioc_dqbuf			= xvip_dma_dqbuf,
-	.vidioc_expbuf			= xvip_dma_expbuf,
-	.vidioc_streamon		= xvip_dma_streamon,
-	.vidioc_streamoff		= xvip_dma_streamoff,
+	.vidioc_reqbufs			= vb2_ioctl_reqbufs,
+	.vidioc_querybuf		= vb2_ioctl_querybuf,
+	.vidioc_qbuf			= vb2_ioctl_qbuf,
+	.vidioc_dqbuf			= vb2_ioctl_dqbuf,
+	.vidioc_expbuf			= vb2_ioctl_expbuf,
+	.vidioc_streamon		= vb2_ioctl_streamon,
+	.vidioc_streamoff		= vb2_ioctl_streamoff,
 };
 
 /* -----------------------------------------------------------------------------
  * V4L2 file operations
  */
 
-static int xvip_dma_open(struct file *file)
-{
-	struct xvip_dma *dma = video_drvdata(file);
-	struct v4l2_fh *vfh;
-
-	vfh = kzalloc(sizeof(*vfh), GFP_KERNEL);
-	if (vfh == NULL)
-		return -ENOMEM;
-
-	v4l2_fh_init(vfh, &dma->video);
-	v4l2_fh_add(vfh);
-
-	file->private_data = vfh;
-
-	return 0;
-}
-
-static int xvip_dma_release(struct file *file)
-{
-	struct xvip_dma *dma = video_drvdata(file);
-	struct v4l2_fh *vfh = file->private_data;
-
-	mutex_lock(&dma->lock);
-	if (dma->queue.owner == vfh) {
-		vb2_queue_release(&dma->queue);
-		dma->queue.owner = NULL;
-	}
-	mutex_unlock(&dma->lock);
-
-	v4l2_fh_release(file);
-
-	file->private_data = NULL;
-
-	return 0;
-}
-
-static unsigned int xvip_dma_poll(struct file *file, poll_table *wait)
-{
-	struct v4l2_fh *vfh = file->private_data;
-	struct xvip_dma *dma = to_xvip_dma(vfh->vdev);
-	int ret;
-
-	mutex_lock(&dma->lock);
-	ret = vb2_poll(&dma->queue, file, wait);
-	mutex_unlock(&dma->lock);
-
-	return ret;
-}
-
-static int xvip_dma_mmap(struct file *file, struct vm_area_struct *vma)
-{
-	struct v4l2_fh *vfh = file->private_data;
-	struct xvip_dma *dma = to_xvip_dma(vfh->vdev);
-	int ret;
-
-	mutex_lock(&dma->lock);
-	ret = vb2_mmap(&dma->queue, vma);
-	mutex_unlock(&dma->lock);
-
-	return ret;
-}
-
-static struct v4l2_file_operations xvip_dma_fops = {
+static const struct v4l2_file_operations xvip_dma_fops = {
 	.owner		= THIS_MODULE,
 	.unlocked_ioctl	= video_ioctl2,
-	.open		= xvip_dma_open,
-	.release	= xvip_dma_release,
-	.poll		= xvip_dma_poll,
-	.mmap		= xvip_dma_mmap,
+	.open		= v4l2_fh_open,
+	.release	= vb2_fop_release,
+	.poll		= vb2_fop_poll,
+	.mmap		= vb2_fop_mmap,
 };
 
 /* -----------------------------------------------------------------------------
@@ -956,8 +724,9 @@ int xvip_dma_init(struct xvip_composite_device *xdev, struct xvip_dma *dma,
 		goto error;
 
 	/* ... and the video node... */
-	dma->video.v4l2_dev = &xdev->v4l2_dev;
 	dma->video.fops = &xvip_dma_fops;
+	dma->video.v4l2_dev = &xdev->v4l2_dev;
+	dma->video.queue = &dma->queue;
 	snprintf(dma->video.name, sizeof(dma->video.name), "%s %s %u",
 		 xdev->dev->of_node->name,
 		 type == V4L2_BUF_TYPE_VIDEO_CAPTURE ? "output" : "input",
@@ -967,6 +736,7 @@ int xvip_dma_init(struct xvip_composite_device *xdev, struct xvip_dma *dma,
 			   ? VFL_DIR_RX : VFL_DIR_TX;
 	dma->video.release = video_device_release_empty;
 	dma->video.ioctl_ops = &xvip_dma_ioctl_ops;
+	dma->video.lock = &dma->lock;
 
 	video_set_drvdata(&dma->video, dma);
 
@@ -977,6 +747,7 @@ int xvip_dma_init(struct xvip_composite_device *xdev, struct xvip_dma *dma,
 
 	dma->queue.type = type;
 	dma->queue.io_modes = VB2_MMAP | VB2_USERPTR | VB2_DMABUF;
+	dma->queue.lock = &dma->lock;
 	dma->queue.drv_priv = dma;
 	dma->queue.buf_struct_size = sizeof(struct xvip_dma_buffer);
 	dma->queue.ops = &xvip_dma_queue_qops;
