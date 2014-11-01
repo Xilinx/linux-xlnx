@@ -104,7 +104,7 @@ static int xhls_create_controls(struct xhls_device *xhls)
 		return xhls->ctrl_handler.error;
 	}
 
-	strlcpy(ctrl->cur.string, xhls->compatible, model.max + 1);
+	v4l2_ctrl_s_ctrl_string(ctrl, xhls->compatible);
 
 	xhls->xvip.subdev.ctrl_handler = &xhls->ctrl_handler;
 
