@@ -647,7 +647,7 @@ static struct v4l2_ctrl_config xtpg_ctrls[] = {
 	}, {
 		.ops	= &xtpg_ctrl_ops,
 		.id	= V4L2_CID_XILINX_TPG_STUCK_PIXEL_THRESH,
-		.name	= "Test Pattern: Stuck Pixel threshhold",
+		.name	= "Test Pattern: Stuck Pixel threshold",
 		.type	= V4L2_CTRL_TYPE_INTEGER,
 		.min	= 0,
 		.max	= (1 << 16) - 1,
