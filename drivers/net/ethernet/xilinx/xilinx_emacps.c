@@ -548,6 +548,7 @@ struct net_local {
 	unsigned int enetnum;
 	unsigned int lastrxfrmscntr;
 	unsigned int has_mdio;
+	unsigned int gen_timer_timeout;
 #ifdef CONFIG_XILINX_PS_EMAC_HWTSTAMP
 	struct hwtstamp_config hwtstamp_config;
 	struct ptp_clock *ptp_clock;
@@ -761,6 +762,8 @@ static void xemacps_adjust_link(struct net_device *ndev)
 			} else if (phydev->speed == SPEED_10) {
 				xemacps_set_freq(lp->devclk, 2500000,
 						&lp->pdev->dev);
+				lp->gen_timer_timeout =
+					XEAMCPS_GEN_PURPOSE_TIMER_LOAD * 5;
 			} else {
 				dev_err(&lp->pdev->dev,
 					"%s: unknown PHY speed %d\n",
@@ -2001,7 +2004,7 @@ static void xemacps_gen_purpose_timerhandler(unsigned long data)
 	xemacps_update_stats(data);
 	xemacps_resetrx_for_no_rxdata(data);
 	mod_timer(&(lp->gen_purpose_timer),
-		jiffies + msecs_to_jiffies(XEAMCPS_GEN_PURPOSE_TIMER_LOAD));
+		jiffies + msecs_to_jiffies(lp->gen_timer_timeout));
 }
 
 /**
@@ -2056,10 +2059,11 @@ static int xemacps_open(struct net_device *ndev)
 		goto err_pm_put;
 	}
 
+	lp->gen_timer_timeout = XEAMCPS_GEN_PURPOSE_TIMER_LOAD;
 	setup_timer(&(lp->gen_purpose_timer), xemacps_gen_purpose_timerhandler,
 							(unsigned long)lp);
 	mod_timer(&(lp->gen_purpose_timer),
-		jiffies + msecs_to_jiffies(XEAMCPS_GEN_PURPOSE_TIMER_LOAD));
+		jiffies + msecs_to_jiffies(lp->gen_timer_timeout));
 
 	netif_carrier_on(ndev);
 	netif_start_queue(ndev);
