@@ -36,6 +36,8 @@
 #define SPINOR_OP_RDID		0x9f	/* Read JEDEC ID */
 #define SPINOR_OP_RDCR		0x35	/* Read configuration register */
 #define SPINOR_OP_RDFSR		0x70	/* Read flag status register */
+#define SPINOR_OP_WREAR		0xc5	/* Write Extended Address Register */
+#define SPINOR_OP_RDEAR		0xc8	/* Read Extended Address Register */
 
 /* 4-byte address opcodes - used on Spansion and some Macronix flashes. */
 #define SPINOR_OP_READ4		0x13	/* Read data bytes (low frequency) */
@@ -56,6 +58,7 @@
 
 /* Used for Spansion flashes only. */
 #define SPINOR_OP_BRWR		0x17	/* Bank register write */
+#define	SPINOR_OP_BRRD		0x16	/* Bank register read */
 
 /* Status Register bits. */
 #define SR_WIP			1	/* Write in progress */
@@ -73,6 +76,9 @@
 
 /* Configuration Register bits. */
 #define CR_QUAD_EN_SPAN		0x2	/* Spansion Quad I/O */
+
+/* Extended/Bank Address Register bits */
+#define EAR_SEGMENT_MASK	0x7	/* 128 Mb segment mask */
 
 enum read_mode {
 	SPI_NOR_NORMAL = 0,
@@ -161,6 +167,8 @@ struct spi_nor {
 	u8			read_dummy;
 	u8			program_opcode;
 	enum read_mode		flash_read;
+	u32			jedec_id;
+	u16			curbank;
 	bool			shift;
 	bool			isparallel;
 	bool			isstacked;
