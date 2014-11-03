@@ -2042,8 +2042,10 @@ static int zynq_otg_probe(struct platform_device *pdev)
 		goto err_out_clk_disable;
 	}
 
-	if (xotg->otg.state == OTG_STATE_A_IDLE)
+	if (xotg->otg.state == OTG_STATE_A_IDLE) {
+		xotg->hsm.a_bus_req = 1;
 		zynq_update_transceiver();
+	}
 
 	return 0;
 
