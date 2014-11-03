@@ -1360,6 +1360,14 @@ static int xemacps_rx(struct net_local *lp, int budget)
 		if (!(regval & XEMACPS_RXBUF_NEW_MASK))
 			break;
 
+		regval = xemacps_read(lp->baseaddr, XEMACPS_RXSR_OFFSET);
+		xemacps_write(lp->baseaddr, XEMACPS_RXSR_OFFSET, regval);
+		if (regval & XEMACPS_RXSR_HRESPNOK_MASK) {
+			dev_err(&lp->pdev->dev, "RX error 0x%x\n", regval);
+			numbdfree = 0xFFFFFFFF;
+			break;
+		}
+
 		new_skb = netdev_alloc_skb(lp->ndev, XEMACPS_RX_BUF_SIZE);
 		if (new_skb == NULL) {
 			dev_err(&lp->ndev->dev, "no memory for new sk_buff\n");
@@ -1456,16 +1464,18 @@ static int xemacps_rx_poll(struct napi_struct *napi, int budget)
 {
 	struct net_local *lp = container_of(napi, struct net_local, napi);
 	int work_done = 0;
-	u32 regval;
+	u32 count;
 
 	spin_lock(&lp->rx_lock);
 	while (1) {
-		regval = xemacps_read(lp->baseaddr, XEMACPS_RXSR_OFFSET);
-		xemacps_write(lp->baseaddr, XEMACPS_RXSR_OFFSET, regval);
-		if (regval & XEMACPS_RXSR_HRESPNOK_MASK)
-			dev_err(&lp->pdev->dev, "RX error 0x%x\n", regval);
 
-		work_done += xemacps_rx(lp, budget - work_done);
+		count = xemacps_rx(lp, budget - work_done);
+		if (count == 0xFFFFFFFF) {
+			napi_complete(napi);
+			spin_unlock(&lp->rx_lock);
+			goto reset_hw;
+		}
+		work_done += count;
 		if (work_done >= budget)
 			break;
 
@@ -1490,6 +1500,9 @@ static int xemacps_rx_poll(struct napi_struct *napi, int budget)
 	}
 	spin_unlock(&lp->rx_lock);
 	return work_done;
+reset_hw:
+	queue_work(lp->txtimeout_handler_wq, &lp->txtimeout_reinit);
+	return 0;
 }
 
 /**
