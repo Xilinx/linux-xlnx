@@ -973,7 +973,9 @@ static int spi_nor_write(struct mtd_info *mtd, loff_t to, size_t len,
 			if (page_size > nor->page_size)
 				page_size = nor->page_size;
 
-			wait_till_ready(nor);
+			ret = wait_till_ready(nor);
+			if (ret)
+				return ret;
 			write_enable(nor);
 
 			nor->write(nor, (to + i) >> nor->shift, page_size,
