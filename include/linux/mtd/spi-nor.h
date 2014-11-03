@@ -67,7 +67,17 @@
 #define SR_BP0			4	/* Block protect 0 */
 #define SR_BP1			8	/* Block protect 1 */
 #define SR_BP2			0x10	/* Block protect 2 */
+#define	SR_BP_BIT_OFFSET	2	/* Offset to Block protect 0 */
+#define	SR_BP_BIT_MASK		(SR_BP2 | SR_BP1 | SR_BP0)
 #define SR_SRWD			0x80	/* SR write protect */
+#define SR_BP3			0x40
+/* Bit to determine whether protection starts from top or bottom */
+#define SR_BP_TB		0x20
+
+#define BP_BITS_FROM_SR(sr)	(((sr) & SR_BP_BIT_MASK) >> SR_BP_BIT_OFFSET)
+
+/* Highest resolution of sector locking */
+#define M25P_MAX_LOCKABLE_SECTORS	64
 
 #define SR_QUAD_EN_MX		0x40	/* Macronix Quad I/O */
 
@@ -169,6 +179,8 @@ struct spi_nor {
 	enum read_mode		flash_read;
 	u32			jedec_id;
 	u16			curbank;
+	u16			n_sectors;
+	u32			sector_size;
 	bool			shift;
 	bool			isparallel;
 	bool			isstacked;
