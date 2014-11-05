@@ -104,7 +104,7 @@ xylon_drm_connector_detect(struct drm_connector *base_connector, bool force)
 
 void xylon_drm_connector_destroy(struct drm_connector *base_connector)
 {
-	drm_sysfs_connector_remove(base_connector);
+	drm_connector_unregister(base_connector);
 	drm_connector_cleanup(base_connector);
 }
 
@@ -126,6 +126,7 @@ xylon_drm_connector_create(struct drm_device *dev,
 	if (!connector)
 		return ERR_PTR(-ENOMEM);
 
+	connector->base.encoder = base_encoder;
 	connector->base.polled = DRM_CONNECTOR_POLL_CONNECT |
 				 DRM_CONNECTOR_POLL_DISCONNECT;
 
@@ -140,13 +141,12 @@ xylon_drm_connector_create(struct drm_device *dev,
 	drm_connector_helper_add(&connector->base,
 				 &xylon_drm_connector_helper_funcs);
 
-	ret = drm_sysfs_connector_add(&connector->base);
+	ret = drm_connector_register(&connector->base);
 	if (ret) {
-		DRM_ERROR("failed add to sysfs\n");
-		goto err_add;
+		DRM_ERROR("failed register encoder connector\n");
+		goto err_register;
 	}
 
-	connector->base.encoder = base_encoder;
 	ret = drm_mode_connector_attach_encoder(&connector->base, base_encoder);
 	if (ret) {
 		DRM_ERROR("failed attach encoder connector\n");
@@ -157,8 +157,8 @@ xylon_drm_connector_create(struct drm_device *dev,
 	return &connector->base;
 
 err_attach:
-	drm_sysfs_connector_remove(&connector->base);
-err_add:
+	drm_connector_unregister(&connector->base);
+err_register:
 	drm_connector_cleanup(&connector->base);
 	return ERR_PTR(ret);
 }
