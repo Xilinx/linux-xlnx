@@ -28,7 +28,6 @@ extern const struct drm_prop_enum_list property_pixel_data_trigger[];
 extern const struct drm_prop_enum_list property_control[];
 extern const struct drm_prop_enum_list property_color_transparency[];
 extern const struct drm_prop_enum_list property_interlace[];
-extern const struct drm_prop_enum_list property_pixel_format[];
 
 int xylon_drm_property_size(const struct drm_prop_enum_list *list);
 

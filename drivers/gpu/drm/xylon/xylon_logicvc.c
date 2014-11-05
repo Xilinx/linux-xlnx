@@ -125,7 +125,6 @@
 #define LOGICVC_LAYER_CTRL_ENABLE			(1 << 0)
 #define LOGICVC_LAYER_CTRL_COLOR_TRANSPARENCY_BIT	(1 << 1)
 #define LOGICVC_LAYER_CTRL_INTERLACE_BIT		(1 << 3)
-#define LOGICVC_LAYER_CTRL_PIXEL_FORMAT_BIT_ABGR	(1 << 4)
 
 /* logiCVC control registers initial values */
 #define LOGICVC_DTYPE_REG_INIT 0
@@ -473,12 +472,6 @@ void xylon_cvc_layer_ctrl(struct xylon_cvc *cvc, int id,
 		break;
 	case LOGICVC_LAYER_INTERLACE_ENABLE:
 		regval &= ~LOGICVC_LAYER_CTRL_INTERLACE_BIT;
-		break;
-	case LOGICVC_LAYER_PIXEL_FORMAT_ABGR_DISABLE:
-		regval &= ~LOGICVC_LAYER_CTRL_PIXEL_FORMAT_BIT_ABGR;
-		break;
-	case LOGICVC_LAYER_PIXEL_FORMAT_ABGR_ENABLE:
-		regval |= LOGICVC_LAYER_CTRL_PIXEL_FORMAT_BIT_ABGR;
 		break;
 	default:
 		return;

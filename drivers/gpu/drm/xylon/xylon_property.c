@@ -54,12 +54,6 @@ const struct drm_prop_enum_list property_interlace[] = {
 	{/* end */}
 };
 
-const struct drm_prop_enum_list property_pixel_format[] = {
-	{ 0, "Plane ABGR Format Disable" },
-	{ 1, "Plane ABGR Format Enable" },
-	{/* end */}
-};
-
 int xylon_drm_property_size(const struct drm_prop_enum_list *list)
 {
 	int i = 0;
