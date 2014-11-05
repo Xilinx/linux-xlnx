@@ -2559,13 +2559,13 @@ xemacps_get_wol(struct net_device *ndev, struct ethtool_wolinfo *ewol)
 	ewol->supported = WAKE_MAGIC | WAKE_ARP | WAKE_UCAST | WAKE_MCAST;
 
 	regval = xemacps_read(lp->baseaddr, XEMACPS_WOL_OFFSET);
-	if (regval | XEMACPS_WOL_MCAST_MASK)
+	if (regval & XEMACPS_WOL_MCAST_MASK)
 		ewol->wolopts |= WAKE_MCAST;
-	if (regval | XEMACPS_WOL_ARP_MASK)
+	if (regval & XEMACPS_WOL_ARP_MASK)
 		ewol->wolopts |= WAKE_ARP;
-	if (regval | XEMACPS_WOL_SPEREG1_MASK)
+	if (regval & XEMACPS_WOL_SPEREG1_MASK)
 		ewol->wolopts |= WAKE_UCAST;
-	if (regval | XEMACPS_WOL_MAGIC_MASK)
+	if (regval & XEMACPS_WOL_MAGIC_MASK)
 		ewol->wolopts |= WAKE_MAGIC;
 
 }
