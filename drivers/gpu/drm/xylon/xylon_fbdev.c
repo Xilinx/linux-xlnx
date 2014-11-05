@@ -127,7 +127,7 @@ err_fb_alloc:
 	return ret;
 }
 
-static struct drm_fb_helper_funcs xylon_drm_fbdev_helper_funcs = {
+static const struct drm_fb_helper_funcs xylon_drm_fbdev_helper_funcs = {
 	.fb_probe = xylon_drm_fbdev_create,
 };
 
@@ -146,8 +146,9 @@ xylon_drm_fbdev_init(struct drm_device *dev,
 		return ERR_PTR(-ENOMEM);
 	}
 
-	fbdev->fb_helper.funcs = &xylon_drm_fbdev_helper_funcs;
 	helper = &fbdev->fb_helper;
+
+	drm_fb_helper_prepare(dev, helper, &xylon_drm_fbdev_helper_funcs);
 
 	ret = drm_fb_helper_init(dev, helper, num_crtc, max_conn_count);
 	if (ret < 0) {
