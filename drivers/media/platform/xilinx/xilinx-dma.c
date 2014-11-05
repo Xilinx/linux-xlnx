@@ -74,7 +74,8 @@ static int xvip_dma_verify_format(struct xvip_dma *dma)
 
 	if (dma->fmtinfo->code != fmt.format.code ||
 	    dma->format.height != fmt.format.height ||
-	    dma->format.width != fmt.format.width)
+	    dma->format.width != fmt.format.width ||
+	    dma->format.colorspace != fmt.format.colorspace)
 		return -EINVAL;
 
 	return 0;
@@ -587,7 +588,6 @@ __xvip_dma_try_format(struct xvip_dma *dma, struct v4l2_pix_format *pix,
 		info = xvip_get_format_by_fourcc(XVIP_DMA_DEF_FORMAT);
 
 	pix->pixelformat = info->fourcc;
-	pix->colorspace = V4L2_COLORSPACE_SRGB;
 	pix->field = V4L2_FIELD_NONE;
 
 	/* The transfer alignment requirements are expressed in bytes. Compute
