@@ -1251,7 +1251,7 @@ static int xilinx_drm_dp_probe(struct platform_device *pdev)
 
 	dp->aclk = devm_clk_get(dp->dev, NULL);
 	if (IS_ERR(dp->aclk))
-		return -EPROBE_DEFER;
+		return PTR_ERR(dp->aclk);
 
 	ret = clk_prepare_enable(dp->aclk);
 	if (ret) {
