@@ -530,7 +530,6 @@ xvip_dma_querycap(struct file *file, void *fh, struct v4l2_capability *cap)
 	strlcpy(cap->card, dma->video.name, sizeof(cap->card));
 	snprintf(cap->bus_info, sizeof(cap->bus_info), "platform:%s:%u",
 		 dma->xdev->dev->of_node->name, dma->port);
-	cap->bus_info[sizeof(cap->bus_info) - 1] = '\0';
 
 	return 0;
 }
