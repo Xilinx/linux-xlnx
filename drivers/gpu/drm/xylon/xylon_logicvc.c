@@ -115,8 +115,8 @@
 #define LOGICVC_CTRL_HSYNC_INVERT		(1 << 1)
 #define LOGICVC_CTRL_VSYNC			(1 << 2)
 #define LOGICVC_CTRL_VSYNC_INVERT		(1 << 3)
-#define LOGICVC_CTRL_DATA_BLANK_SIGNAL		(1 << 4)
-#define LOGICVC_CTRL_DATA_BLANK_SIGNAL_INVERT	(1 << 5)
+#define LOGICVC_CTRL_DATA_ENABLE		(1 << 4)
+#define LOGICVC_CTRL_DATA_ENABLE_INVERT		(1 << 5)
 #define LOGICVC_CTRL_PIXEL_DATA_INVERT		(1 << 7)
 #define LOGICVC_CTRL_PIXEL_DATA_TRIGGER_INVERT	(1 << 8)
 #define LOGICVC_CTRL_DISABLE_LAYER_UPDATE	(1 << 9)
@@ -826,7 +826,7 @@ static int xylonfb_parse_layer_info(struct device *dev,
 static void xylon_cvc_init_ctrl(struct device_node *dn, u32 *ctrl)
 {
 	u32 ctrl_reg = (LOGICVC_CTRL_HSYNC | LOGICVC_CTRL_VSYNC |
-			LOGICVC_CTRL_DATA_BLANK_SIGNAL);
+			LOGICVC_CTRL_DATA_ENABLE);
 
 	if (of_property_read_bool(dn, "is-hsync-active-low"))
 		ctrl_reg |= LOGICVC_CTRL_HSYNC_INVERT;
