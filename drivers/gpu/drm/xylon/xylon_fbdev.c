@@ -212,9 +212,7 @@ void xylon_drm_fbdev_restore_mode(struct xylon_drm_fb_device *fbdev)
 	if (fbdev) {
 		dev = fbdev->fb_helper.dev;
 
-		drm_modeset_lock_all(dev);
-		drm_fb_helper_restore_fbdev_mode(&fbdev->fb_helper);
-		drm_modeset_unlock_all(dev);
+		drm_fb_helper_restore_fbdev_mode_unlocked(&fbdev->fb_helper);
 	}
 }
 
