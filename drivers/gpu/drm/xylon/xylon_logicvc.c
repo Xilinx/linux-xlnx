@@ -697,8 +697,7 @@ void xylon_cvc_disable(struct xylon_cvc *cvc)
 			xylon_cvc_layer_disable(cvc, i);
 }
 
-static int xylon_parse_hw_info(struct device *dev,
-			       struct device_node *dn, struct xylon_cvc *cvc)
+static int xylon_parse_hw_info(struct device_node *dn, struct xylon_cvc *cvc)
 {
 	int ret;
 	const char *string;
@@ -970,7 +969,7 @@ struct xylon_cvc *xylon_cvc_probe(struct device *dev, struct device_node *dn)
 		 LOGICVC_MINOR_REVISION_MASK),
 		 ((ip_ver & LOGICVC_PATCH_LEVEL_MASK) + 'a'));
 
-	ret = xylon_parse_hw_info(dev, dn, cvc);
+	ret = xylon_parse_hw_info(dn, cvc);
 	if (ret)
 		return ERR_PTR(ret);
 
