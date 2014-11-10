@@ -219,7 +219,6 @@ struct xylon_cvc_layer_data {
 	void __iomem *clut_base;
 	dma_addr_t vmem_pbase;
 	struct xylon_cvc *cvc;
-	unsigned char ctrl_flags;
 };
 
 struct xylon_cvc {
@@ -420,9 +419,12 @@ void xylon_cvc_layer_enable(struct xylon_cvc *cvc, int id)
 {
 	struct xylon_cvc_layer_data *layer_data = cvc->layer_data[id];
 	struct xylon_cvc_register_access *reg_access = &cvc->reg_access;
+	u32 regval = reg_access->xylon_cvc_get_reg_val(layer_data->base,
+						       LOGICVC_LAYER_CTRL_ROFF,
+						       layer_data);
 
-	layer_data->ctrl_flags |= LOGICVC_LAYER_CTRL_ENABLE;
-	reg_access->xylon_cvc_set_reg_val(layer_data->ctrl_flags,
+	regval |= LOGICVC_LAYER_CTRL_ENABLE;
+	reg_access->xylon_cvc_set_reg_val(regval,
 					  layer_data->base,
 					  LOGICVC_LAYER_CTRL_ROFF,
 					  layer_data);
@@ -432,9 +434,12 @@ void xylon_cvc_layer_disable(struct xylon_cvc *cvc, int id)
 {
 	struct xylon_cvc_layer_data *layer_data = cvc->layer_data[id];
 	struct xylon_cvc_register_access *reg_access = &cvc->reg_access;
+	u32 regval = reg_access->xylon_cvc_get_reg_val(layer_data->base,
+						       LOGICVC_LAYER_CTRL_ROFF,
+						       layer_data);
 
-	layer_data->ctrl_flags &= (~LOGICVC_LAYER_CTRL_ENABLE);
-	reg_access->xylon_cvc_set_reg_val(layer_data->ctrl_flags,
+	regval &= (~LOGICVC_LAYER_CTRL_ENABLE);
+	reg_access->xylon_cvc_set_reg_val(regval,
 					  layer_data->base,
 					  LOGICVC_LAYER_CTRL_ROFF,
 					  layer_data);

@@ -297,7 +297,12 @@ xylon_drm_plane_properties_initial_value(struct drm_plane *base_plane)
 	struct drm_mode_object *obj = &base_plane->base;
 	struct xylon_drm_plane *plane = to_xylon_plane(base_plane);
 	struct xylon_drm_plane_properties *props = &plane->properties;
+	struct xylon_drm_plane_op op;
 	bool val;
+
+	op.id = XYLON_DRM_PLANE_OP_ID_COLOR_TRANSPARENCY;
+	op.param = false;
+	xylon_drm_plane_op(base_plane, &op);
 
 	val = xylon_cvc_get_info(plane->manager->cvc,
 				 LOGICVC_INFO_LAYER_COLOR_TRANSPARENCY,
