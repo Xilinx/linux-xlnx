@@ -348,7 +348,7 @@ static int xylon_drm_crtc_set_property(struct drm_crtc *base_crtc,
 		else
 			xylon_drm_crtc_dpms(base_crtc, DRM_MODE_DPMS_OFF);
 	} else if (property == props->color_transparency) {
-		op.id = XYLON_DRM_PLANE_OP_ID_COLOR_TRANSPARENCY,
+		op.id = XYLON_DRM_PLANE_OP_ID_COLOR_TRANSPARENCY;
 		op.param = (bool)val;
 	} else if (property == props->interlace) {
 		op.id = XYLON_DRM_PLANE_OP_ID_INTERLACE;
@@ -604,7 +604,12 @@ static void xylon_drm_crtc_properties_initial_value(struct drm_crtc *base_crtc)
 	struct drm_mode_object *obj = &base_crtc->base;
 	struct xylon_drm_crtc *crtc = to_xylon_crtc(base_crtc);
 	struct xylon_drm_crtc_properties *props = &crtc->properties;
+	struct xylon_drm_plane_op op;
 	bool val;
+
+	op.id = XYLON_DRM_PLANE_OP_ID_COLOR_TRANSPARENCY;
+	op.param = false;
+	xylon_drm_plane_op(crtc->private, &op);
 
 	val = xylon_cvc_get_info(crtc->cvc,
 				 LOGICVC_INFO_LAYER_COLOR_TRANSPARENCY,
