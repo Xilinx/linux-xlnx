@@ -42,7 +42,7 @@
 #include <linux/pagemap.h>
 #include <linux/errno.h>	/* error codes */
 #include <linux/dma-mapping.h>  /* dma */
-
+#include <linux/of.h>
 
 #include "xlnk-ioctl.h"
 #include "xlnk.h"
@@ -358,11 +358,17 @@ static int xlnk_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static const struct of_device_id xlnk_match[] = {
+	{ .compatible = "xlnx,xlnk-1.0", },
+	{}
+};
+MODULE_DEVICE_TABLE(of, xlnk_match);
 
 static struct platform_driver xlnk_driver = {
 	.driver = {
-		   .name = DRIVER_NAME,
-		   },
+		.name = DRIVER_NAME,
+		.of_match_table = xlnk_match,
+	},
 	.probe = xlnk_probe,
 	.remove = xlnk_remove,
 	.suspend = XLNK_SUSPEND,
@@ -370,18 +376,6 @@ static struct platform_driver xlnk_driver = {
 };
 
 static u64 dma_mask = 0xFFFFFFFFUL;
-
-static struct platform_device xlnk_device = {
-	.name = "xlnk",
-	.id = 0,
-	.dev = {
-		.platform_data = NULL,
-		.dma_mask = &dma_mask,
-		.coherent_dma_mask = 0xFFFFFFFF,
-	},
-	.resource = NULL,
-	.num_resources = 0,
-};
 
 /*
  * This function is called when an application opens handle to the
@@ -1148,23 +1142,7 @@ static int xlnk_recover_resource(unsigned long buf)
 	return 0;
 }
 
-static int __init xlnk_init(void)
-{
-	pr_info("%s driver initializing\n", DRIVER_NAME);
-
-	platform_device_register(&xlnk_device);
-
-	return platform_driver_register(&xlnk_driver);
-}
-
-static void __exit xlnk_exit(void)
-{
-	platform_driver_unregister(&xlnk_driver);
-}
-
-/* APF driver initialization and de-initialization functions */
-module_init(xlnk_init);
-module_exit(xlnk_exit);
+module_platform_driver(xlnk_driver);
 
 MODULE_DESCRIPTION("Xilinx APF driver");
 MODULE_LICENSE("GPL");
