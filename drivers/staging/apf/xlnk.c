@@ -443,8 +443,7 @@ static ssize_t xlnk_write(struct file *filp, const char __user *buf,
  */
 static int xlnk_release(struct inode *ip, struct file *filp)
 {
-	int status = 0;
-	return status;
+	return 0;
 }
 
 
