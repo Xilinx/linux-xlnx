@@ -132,7 +132,7 @@ config XPS_USB_HCD_XILINX
 		devices only.
 
 config USB_ZYNQ_DR_OF
-	tristate
+	tristate "Open Firmware support for Xilinx PS USB controller"
 	select USB_PHY
 	select USB_ULPI
 	select USB_ULPI_VIEWPORT

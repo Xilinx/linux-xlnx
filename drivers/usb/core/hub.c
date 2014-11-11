@@ -3196,6 +3196,7 @@ int usb_port_suspend(struct usb_device *udev, pm_message_t msg)
 	usb_unlock_port(port_dev);
 	return status;
 }
+EXPORT_SYMBOL_GPL(usb_port_suspend);
 
 /*
  * If the USB "suspend" state is in use (rather than "global suspend"),
