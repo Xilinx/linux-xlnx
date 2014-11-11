@@ -208,6 +208,11 @@ static int xlnk_probe(struct platform_device *pdev)
 	int err;
 	dev_t dev = 0;
 
+	xlnk_dev_buf = NULL;
+	xlnk_dev_size = 0;
+	xlnk_dev_vmas = 0;
+	xlnk_bufpool = NULL;
+
 	/* use 2.6 device model */
 	err = alloc_chrdev_region(&dev, 0, 1, driver_name);
 	if (err) {
@@ -1146,11 +1151,6 @@ static int xlnk_recover_resource(unsigned long buf)
 static int __init xlnk_init(void)
 {
 	pr_info("%s driver initializing\n", DRIVER_NAME);
-
-	xlnk_dev_buf = NULL;
-	xlnk_dev_size = 0;
-	xlnk_dev_vmas = 0;
-	xlnk_bufpool = NULL;
 
 	platform_device_register(&xlnk_device);
 
