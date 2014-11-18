@@ -203,23 +203,22 @@ static int xylon_drm_crtc_mode_set_base(struct drm_crtc *base_crtc,
 					int x, int y,
 					struct drm_framebuffer *old_fb)
 {
+	const struct drm_plane_funcs *funcs = base_crtc->primary->funcs;
 	int ret;
 
-	ret = xylon_drm_plane_fb_set(base_crtc->primary, base_crtc->primary->fb,
-				     0, 0,
-				     base_crtc->hwmode.hdisplay,
-				     base_crtc->hwmode.vdisplay,
-				     x, y,
-				     base_crtc->hwmode.hdisplay,
-				     base_crtc->hwmode.vdisplay);
+	ret = funcs->update_plane(base_crtc->primary,
+				  base_crtc,
+				  base_crtc->primary->fb,
+				  0, 0,
+				  base_crtc->hwmode.hdisplay,
+				  base_crtc->hwmode.vdisplay,
+				  x, y,
+				  base_crtc->hwmode.hdisplay,
+				  base_crtc->hwmode.vdisplay);
 	if (ret) {
 		DRM_ERROR("failed set plane mode\n");
 		return ret;
 	}
-
-	xylon_drm_plane_commit(base_crtc->primary);
-
-	xylon_drm_crtc_dpms(base_crtc, DRM_MODE_DPMS_ON);
 
 	return 0;
 }
