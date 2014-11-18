@@ -438,7 +438,7 @@ struct drm_crtc *xilinx_drm_crtc_create(struct drm_device *drm)
 	}
 
 	/* create a primary plane. there's only one crtc now */
-	primary_plane = xilinx_drm_plane_create_private(crtc->plane_manager,
+	primary_plane = xilinx_drm_plane_create_primary(crtc->plane_manager,
 							possible_crtcs);
 	if (IS_ERR(primary_plane)) {
 		DRM_ERROR("failed to create a primary plane for crtc\n");

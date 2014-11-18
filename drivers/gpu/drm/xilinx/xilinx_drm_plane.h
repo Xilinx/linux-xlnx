@@ -42,7 +42,7 @@ xilinx_drm_plane_manager_mode_set(struct xilinx_drm_plane_manager *manager,
 void xilinx_drm_plane_manager_dpms(struct xilinx_drm_plane_manager *manager,
 				   int dpms);
 struct drm_plane *
-xilinx_drm_plane_create_private(struct xilinx_drm_plane_manager *manager,
+xilinx_drm_plane_create_primary(struct xilinx_drm_plane_manager *manager,
 				unsigned int possible_crtcs);
 int xilinx_drm_plane_create_planes(struct xilinx_drm_plane_manager *manager,
 				   unsigned int possible_crtcs);

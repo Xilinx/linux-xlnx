@@ -54,7 +54,7 @@ struct xilinx_drm_plane_dma {
  * @zpos: user requested z-position value
  * @prio: actual layer priority
  * @alpha: alpha value
- * @priv: flag for private plane
+ * @primary: flag for primary plane
  * @format: pixel format
  * @dma: dma object
  * @rgb2yuv: rgb2yuv instance
@@ -69,7 +69,7 @@ struct xilinx_drm_plane {
 	unsigned int zpos;
 	unsigned int prio;
 	unsigned int alpha;
-	bool priv;
+	bool primary;
 	uint32_t format;
 	struct xilinx_drm_plane_dma dma;
 	struct xilinx_rgb2yuv *rgb2yuv;
@@ -578,7 +578,7 @@ void xilinx_drm_plane_manager_mode_set(struct xilinx_drm_plane_manager *manager,
 /* create a plane */
 static struct xilinx_drm_plane *
 xilinx_drm_plane_create(struct xilinx_drm_plane_manager *manager,
-			unsigned int possible_crtcs, bool priv)
+			unsigned int possible_crtcs, bool primary)
 {
 	struct xilinx_drm_plane *plane;
 	struct device *dev = manager->drm->dev;
@@ -614,7 +614,7 @@ xilinx_drm_plane_create(struct xilinx_drm_plane_manager *manager,
 		goto err_out;
 	}
 
-	plane->priv = priv;
+	plane->primary = primary;
 	plane->id = i;
 	plane->prio = i;
 	plane->zpos = i;
@@ -709,7 +709,7 @@ xilinx_drm_plane_create(struct xilinx_drm_plane_manager *manager,
 		plane->format = manager->format;
 
 	/* initialize drm plane */
-	type = priv ? DRM_PLANE_TYPE_PRIMARY : DRM_PLANE_TYPE_OVERLAY;
+	type = primary ? DRM_PLANE_TYPE_PRIMARY : DRM_PLANE_TYPE_OVERLAY;
 	ret = drm_universal_plane_init(manager->drm, &plane->base,
 				       possible_crtcs, &xilinx_drm_plane_funcs,
 				       &plane->format, 1, type);
@@ -738,16 +738,16 @@ err_out:
 	return ERR_PTR(ret);
 }
 
-/* create a private plane */
+/* create a primary plane */
 struct drm_plane *
-xilinx_drm_plane_create_private(struct xilinx_drm_plane_manager *manager,
+xilinx_drm_plane_create_primary(struct xilinx_drm_plane_manager *manager,
 				unsigned int possible_crtcs)
 {
 	struct xilinx_drm_plane *plane;
 
 	plane = xilinx_drm_plane_create(manager, possible_crtcs, true);
 	if (IS_ERR(plane)) {
-		DRM_ERROR("failed to allocate a private plane\n");
+		DRM_ERROR("failed to allocate a primary plane\n");
 		return ERR_CAST(plane);
 	}
 
