@@ -473,18 +473,12 @@ static void xvip_dma_stop_streaming(struct vb2_queue *vq)
 	struct xvip_dma *dma = vb2_get_drv_priv(vq);
 	struct xvip_pipeline *pipe = to_xvip_pipeline(&dma->video.entity);
 	struct xvip_dma_buffer *buf, *nbuf;
-	struct xilinx_vdma_config config;
 
 	/* Stop the pipeline. */
 	xvip_pipeline_set_stream(pipe, false);
 
 	/* Stop and reset the DMA engine. */
 	dmaengine_device_control(dma->dma, DMA_TERMINATE_ALL, 0);
-
-	config.reset = 1;
-
-	dmaengine_device_control(dma->dma, DMA_SLAVE_CONFIG,
-				 (unsigned long)&config);
 
 	/* Cleanup the pipeline and mark it as being stopped. */
 	xvip_pipeline_cleanup(pipe);
@@ -634,7 +628,6 @@ xvip_dma_set_format(struct file *file, void *fh, struct v4l2_format *format)
 	struct v4l2_fh *vfh = file->private_data;
 	struct xvip_dma *dma = to_xvip_dma(vfh->vdev);
 	const struct xvip_video_format *info;
-	struct xilinx_vdma_config config;
 
 	__xvip_dma_try_format(dma, &format->fmt.pix, &info);
 
@@ -643,16 +636,6 @@ xvip_dma_set_format(struct file *file, void *fh, struct v4l2_format *format)
 
 	dma->format = format->fmt.pix;
 	dma->fmtinfo = info;
-
-	/* Configure the DMA engine. */
-	memset(&config, 0, sizeof(config));
-
-	config.park = 1;
-	config.park_frm = 0;
-	config.ext_fsync = 2;
-
-	dmaengine_device_control(dma->dma, DMA_SLAVE_CONFIG,
-				 (unsigned long)&config);
 
 	return 0;
 }
