@@ -52,14 +52,13 @@ struct xylon_drm_crtc_properties {
 struct xylon_drm_crtc {
 	struct drm_crtc base;
 	struct drm_pending_vblank_event *event;
-	struct drm_plane *private;
 	struct xylon_drm_crtc_properties properties;
 	struct xylon_cvc *cvc;
 	struct xylon_drm_plane_manager *manager;
 	struct clk *pixel_clock;
 	struct xylon_cvc_fix fix;
 	struct videomode vmode;
-	u32 private_id;
+	u32 primary_id;
 	int dpms;
 };
 
@@ -93,7 +92,7 @@ static void xylon_drm_crtc_dpms(struct drm_crtc *base_crtc, int dpms)
 	switch (dpms) {
 	case DRM_MODE_DPMS_ON:
 	case DRM_MODE_DPMS_STANDBY:
-		xylon_drm_plane_dpms(crtc->private, dpms);
+		xylon_drm_plane_dpms(base_crtc->primary, dpms);
 		drm_object_property_set_value(obj, crtc->properties.control, 1);
 		break;
 	default:
@@ -114,7 +113,7 @@ static void xylon_drm_crtc_commit(struct drm_crtc *base_crtc)
 
 	xylon_drm_crtc_clk_set(crtc);
 
-	xylon_drm_plane_commit(crtc->private);
+	xylon_drm_plane_commit(base_crtc->primary);
 
 	xylon_cvc_enable(crtc->cvc, &crtc->vmode);
 
@@ -189,7 +188,7 @@ static int xylon_drm_crtc_mode_set(struct drm_crtc *base_crtc,
 	crtc->vmode.vback_porch = dm->vtotal - dm->vsync_end;
 	crtc->vmode.vsync_len = dm->vsync_end - dm->vsync_start;
 
-	ret = xylon_drm_plane_fb_set(crtc->private, base_crtc->primary->fb,
+	ret = xylon_drm_plane_fb_set(base_crtc->primary, base_crtc->primary->fb,
 				     0, 0, dm->hdisplay, dm->vdisplay,
 				     x, y, dm->hdisplay, dm->vdisplay);
 	if (ret) {
@@ -204,10 +203,9 @@ static int xylon_drm_crtc_mode_set_base(struct drm_crtc *base_crtc,
 					int x, int y,
 					struct drm_framebuffer *old_fb)
 {
-	struct xylon_drm_crtc *crtc = to_xylon_crtc(base_crtc);
 	int ret;
 
-	ret = xylon_drm_plane_fb_set(crtc->private, base_crtc->primary->fb,
+	ret = xylon_drm_plane_fb_set(base_crtc->primary, base_crtc->primary->fb,
 				     0, 0,
 				     base_crtc->hwmode.hdisplay,
 				     base_crtc->hwmode.vdisplay,
@@ -219,7 +217,7 @@ static int xylon_drm_crtc_mode_set_base(struct drm_crtc *base_crtc,
 		return ret;
 	}
 
-	xylon_drm_plane_commit(crtc->private);
+	xylon_drm_plane_commit(base_crtc->primary);
 
 	xylon_drm_crtc_dpms(base_crtc, DRM_MODE_DPMS_ON);
 
@@ -251,7 +249,6 @@ void xylon_drm_crtc_destroy(struct drm_crtc *base_crtc)
 	clk_disable_unprepare(crtc->pixel_clock);
 
 	xylon_drm_plane_destroy_all(crtc->manager);
-	xylon_drm_plane_destroy(crtc->private);
 	xylon_drm_plane_remove_manager(crtc->manager);
 }
 
@@ -290,7 +287,7 @@ static int xylon_drm_crtc_page_flip(struct drm_crtc *base_crtc,
 	}
 	spin_unlock_irqrestore(&dev->event_lock, flags);
 
-	ret = xylon_drm_plane_fb_set(crtc->private, fb,
+	ret = xylon_drm_plane_fb_set(base_crtc->primary, fb,
 				     0, 0,
 				     base_crtc->hwmode.hdisplay,
 				     base_crtc->hwmode.vdisplay,
@@ -302,7 +299,7 @@ static int xylon_drm_crtc_page_flip(struct drm_crtc *base_crtc,
 		return ret;
 	}
 
-	xylon_drm_plane_commit(crtc->private);
+	xylon_drm_plane_commit(base_crtc->primary);
 
 	base_crtc->primary->fb = fb;
 
@@ -378,7 +375,7 @@ static int xylon_drm_crtc_set_property(struct drm_crtc *base_crtc,
 	}
 
 	if (x > -1 && y > -1) {
-		if (xylon_drm_plane_fb_set(crtc->private,
+		if (xylon_drm_plane_fb_set(base_crtc->primary,
 					   base_crtc->primary->fb,
 					   (u32)x, (u32)y,
 					   base_crtc->hwmode.hdisplay - x,
@@ -388,9 +385,9 @@ static int xylon_drm_crtc_set_property(struct drm_crtc *base_crtc,
 					   base_crtc->hwmode.vdisplay - y))
 			DRM_ERROR("failed set position\n");
 		else
-			xylon_drm_plane_commit(crtc->private);
+			xylon_drm_plane_commit(base_crtc->primary);
 	} else {
-		xylon_drm_plane_op(crtc->private, &op);
+		xylon_drm_plane_op(base_crtc->primary, &op);
 	}
 
 	return 0;
@@ -502,7 +499,7 @@ int xylon_drm_crtc_get_param(struct drm_crtc *base_crtc, unsigned int *p,
 
 	switch (param) {
 	case XYLON_DRM_CRTC_BUFF_BPP:
-		*p = xylon_drm_plane_get_bits_per_pixel(crtc->private);
+		*p = xylon_drm_plane_get_bits_per_pixel(base_crtc->primary);
 		break;
 	case XYLON_DRM_CRTC_BUFF_WIDTH:
 		*p = crtc->fix.x_max;
@@ -523,7 +520,7 @@ static int xylon_drm_crtc_create_properties(struct drm_crtc *base_crtc)
 	struct xylon_drm_crtc_properties *props = &crtc->properties;
 	bool transp_prop = !xylon_cvc_get_info(crtc->cvc,
 					       LOGICVC_INFO_LAST_LAYER,
-					       crtc->private_id);
+					       crtc->primary_id);
 	bool bg_prop = xylon_cvc_get_info(crtc->cvc,
 					  LOGICVC_INFO_BACKGROUND_LAYER,
 					  0);
@@ -609,11 +606,11 @@ static void xylon_drm_crtc_properties_initial_value(struct drm_crtc *base_crtc)
 
 	op.id = XYLON_DRM_PLANE_OP_ID_COLOR_TRANSPARENCY;
 	op.param = false;
-	xylon_drm_plane_op(crtc->private, &op);
+	xylon_drm_plane_op(base_crtc->primary, &op);
 
 	val = xylon_cvc_get_info(crtc->cvc,
 				 LOGICVC_INFO_LAYER_COLOR_TRANSPARENCY,
-				 crtc->private_id);
+				 crtc->primary_id);
 	drm_object_property_set_value(obj, props->color_transparency, val);
 
 	val = xylon_cvc_get_info(crtc->cvc, LOGICVC_INFO_LAYER_UPDATE, 0);
@@ -630,6 +627,7 @@ static void xylon_drm_crtc_properties_initial_value(struct drm_crtc *base_crtc)
 struct drm_crtc *xylon_drm_crtc_create(struct drm_device *dev)
 {
 	struct device_node *sub_node;
+	struct drm_plane *primary;
 	struct xylon_drm_crtc *crtc;
 	int ret;
 
@@ -656,20 +654,16 @@ struct drm_crtc *xylon_drm_crtc_create(struct drm_device *dev)
 		return ERR_CAST(crtc->manager);
 	}
 
-	ret = of_property_read_u32(dev->dev->of_node, "private-plane",
-				   &crtc->private_id);
+	ret = of_property_read_u32(dev->dev->of_node, "primary-plane",
+				   &crtc->primary_id);
 	if (ret)
 		DRM_INFO("no private-plane property\n");
 
-	crtc->private = xylon_drm_plane_create(crtc->manager, 1, true,
-					       crtc->private_id);
-	if (IS_ERR(crtc->private)) {
-		DRM_ERROR("failed create private plane for crtc\n");
-		ret = PTR_ERR(crtc->private);
+	ret = xylon_drm_plane_create_all(crtc->manager, 1, crtc->primary_id);
+	if (ret) {
+		DRM_ERROR("failed create planes\n");
 		goto err_plane;
 	}
-
-	xylon_drm_plane_create_all(crtc->manager, 1);
 
 	crtc->pixel_clock = devm_clk_get(dev->dev, NULL);
 	if (IS_ERR(crtc->pixel_clock)) {
@@ -684,7 +678,9 @@ struct drm_crtc *xylon_drm_crtc_create(struct drm_device *dev)
 		goto err_out;
 	}
 
-	ret = drm_crtc_init(dev, &crtc->base, &xylon_drm_crtc_funcs);
+	primary = xylon_drm_plane_get_base(crtc->manager, crtc->primary_id);
+	ret = drm_crtc_init_with_planes(dev, &crtc->base, primary, NULL,
+					&xylon_drm_crtc_funcs);
 	if (ret) {
 		DRM_ERROR("failed initialize crtc\n");
 		goto err_out;
@@ -703,7 +699,6 @@ struct drm_crtc *xylon_drm_crtc_create(struct drm_device *dev)
 
 err_out:
 	xylon_drm_plane_destroy_all(crtc->manager);
-	xylon_drm_plane_destroy(crtc->private);
 err_plane:
 	xylon_drm_plane_remove_manager(crtc->manager);
 

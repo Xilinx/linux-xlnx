@@ -8,7 +8,7 @@ Required properties:
  - clocks: the phandle for the pixel clock generator
  - device: the phandle for logiCVC video controller device
  - encoder: the phandle for the video encoder
- - private-plane: logiCVC layer ID used for DRM driver private plane
+ - primary-plane: logiCVC layer ID used for DRM driver primary plane
 
 Example:
 
@@ -17,5 +17,5 @@ Example:
 		clocks = <&si570>;
 		device = <&logicvc_0>;
 		encoder = <&adv7511>;
-		private-plane = <0>;
+		primary-plane = <0>;
 	};

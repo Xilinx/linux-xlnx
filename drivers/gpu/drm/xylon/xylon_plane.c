@@ -186,7 +186,7 @@ static int xylon_drm_plane_disable(struct drm_plane *base_plane)
 	return 0;
 }
 
-void xylon_drm_plane_destroy(struct drm_plane *base_plane)
+static void xylon_drm_plane_destroy(struct drm_plane *base_plane)
 {
 	struct xylon_drm_plane *plane = to_xylon_plane(base_plane);
 	struct xylon_drm_plane_manager *manager = plane->manager;
@@ -232,7 +232,7 @@ static int xylon_drm_plane_set_property(struct drm_plane *base_plane,
 	return 0;
 }
 
-static struct drm_plane_funcs xylon_drm_plane_funcs = {
+static const struct drm_plane_funcs xylon_drm_plane_funcs = {
 	.update_plane = xylon_drm_plane_update,
 	.disable_plane = xylon_drm_plane_disable,
 	.destroy = xylon_drm_plane_destroy,
@@ -310,17 +310,20 @@ xylon_drm_plane_properties_initial_value(struct drm_plane *base_plane)
 	drm_object_property_set_value(obj, props->color_transparency, val);
 }
 
-struct drm_plane *
+static struct drm_plane *
 xylon_drm_plane_create(struct xylon_drm_plane_manager *manager,
-		       unsigned int possible_crtcs, bool priv, int priv_id)
+		       unsigned int possible_crtcs, bool primary,
+		       unsigned int primary_id)
 {
 	struct device *dev = manager->dev->dev;
 	struct xylon_drm_plane *plane;
 	struct xylon_cvc *cvc = manager->cvc;
+	enum drm_plane_type type;
+	u32 format;
 	int i, ret;
 
-	if (priv) {
-		i = priv_id;
+	if (primary) {
+		i = primary_id;
 	} else {
 		for (i = 0; i < manager->planes; i++)
 			if (!manager->plane[i])
@@ -341,10 +344,17 @@ xylon_drm_plane_create(struct xylon_drm_plane_manager *manager,
 	plane->format = xylon_cvc_layer_get_format(cvc, i);
 	plane->bpp = xylon_cvc_layer_get_bits_per_pixel(cvc, i);
 	plane->id = i;
-	plane->priv = priv;
+	plane->priv = primary_id;
 
-	ret = drm_plane_init(manager->dev, &plane->base, possible_crtcs,
-			     &xylon_drm_plane_funcs, &plane->format, 1, priv);
+	format = xylon_cvc_layer_get_format(cvc, i);
+	if (primary)
+		type = DRM_PLANE_TYPE_PRIMARY;
+	else
+		type = DRM_PLANE_TYPE_OVERLAY;
+
+	ret = drm_universal_plane_init(manager->dev, &plane->base,
+				       possible_crtcs, &xylon_drm_plane_funcs,
+				       &format, 1, type);
 	if (ret) {
 		DRM_ERROR("failed initialize plane\n");
 		goto err_init;
@@ -364,31 +374,24 @@ err_init:
 	return ERR_PTR(ret);
 }
 
-void xylon_drm_plane_destroy_all(struct xylon_drm_plane_manager *manager)
-{
-	struct xylon_drm_plane *plane;
-	int i;
-
-	for (i = 0; i < manager->planes; i++) {
-		plane = manager->plane[i];
-		if (plane && !plane->priv) {
-			xylon_drm_plane_destroy(&plane->base);
-			manager->plane[i] = NULL;
-		}
-	}
-}
-
 int xylon_drm_plane_create_all(struct xylon_drm_plane_manager *manager,
-			       unsigned int possible_crtcs)
+			       unsigned int possible_crtcs,
+			       unsigned int primary_id)
 {
 	struct drm_plane *plane;
 	int i, ret;
+	bool primary;
 
 	for (i = 0; i < manager->planes; i++) {
 		if (manager->plane[i])
 			continue;
+
+		primary = false;
+		if (i == primary_id)
+			primary = true;
+
 		plane = xylon_drm_plane_create(manager, possible_crtcs,
-					       false, 0);
+					       primary, primary_id);
 		if (IS_ERR(plane)) {
 			DRM_ERROR("failed allocate plane\n");
 			ret = PTR_ERR(plane);
@@ -401,6 +404,25 @@ int xylon_drm_plane_create_all(struct xylon_drm_plane_manager *manager,
 err_out:
 	xylon_drm_plane_destroy_all(manager);
 	return ret;
+}
+
+void xylon_drm_plane_destroy_all(struct xylon_drm_plane_manager *manager)
+{
+	int i;
+
+	for (i = 0; i < manager->planes; i++) {
+		if (manager->plane[i]) {
+			xylon_drm_plane_destroy(&manager->plane[i]->base);
+			manager->plane[i] = NULL;
+		}
+	}
+}
+
+struct drm_plane *
+xylon_drm_plane_get_base(struct xylon_drm_plane_manager *manager,
+			 unsigned int id)
+{
+	return &manager->plane[id]->base;
 }
 
 bool xylon_drm_plane_check_format(struct xylon_drm_plane_manager *manager,
