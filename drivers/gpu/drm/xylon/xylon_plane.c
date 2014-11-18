@@ -44,12 +44,9 @@ struct xylon_drm_plane {
 	struct xylon_drm_plane_manager *manager;
 	struct xylon_drm_plane_properties properties;
 	dma_addr_t paddr;
-	u32 format;
 	u32 x;
 	u32 y;
-	unsigned int bpp;
-	int id;
-	bool priv;
+	unsigned int id;
 };
 
 struct xylon_drm_plane_manager {
@@ -116,9 +113,9 @@ int xylon_drm_plane_fb_set(struct drm_plane *base_plane,
 	int id = plane->id;
 	int ret;
 
-	if (fb->pixel_format != plane->format) {
+	if (fb->pixel_format != base_plane->format_types[0]) {
 		DRM_ERROR("unsupported pixel format %08x %08x\n",
-			  fb->pixel_format, plane->format);
+			  fb->pixel_format, base_plane->format_types[0]);
 		return -EINVAL;
 	}
 
@@ -341,10 +338,7 @@ xylon_drm_plane_create(struct xylon_drm_plane_manager *manager,
 		return ERR_PTR(-ENOMEM);
 	}
 
-	plane->format = xylon_cvc_layer_get_format(cvc, i);
-	plane->bpp = xylon_cvc_layer_get_bits_per_pixel(cvc, i);
 	plane->id = i;
-	plane->priv = primary_id;
 
 	format = xylon_cvc_layer_get_format(cvc, i);
 	if (primary)
@@ -428,11 +422,16 @@ xylon_drm_plane_get_base(struct xylon_drm_plane_manager *manager,
 bool xylon_drm_plane_check_format(struct xylon_drm_plane_manager *manager,
 				  u32 format)
 {
+	struct drm_plane *base_plane;
 	int i;
 
-	for (i = 0; i < manager->planes; i++)
-		if (manager->plane[i] && (manager->plane[i]->format == format))
-			return true;
+	for (i = 0; i < manager->planes; i++) {
+		if (manager->plane[i]) {
+			base_plane = &manager->plane[i]->base;
+			if (format == base_plane->format_types[0])
+				return true;
+		}
+	}
 
 	return false;
 }
@@ -440,8 +439,9 @@ bool xylon_drm_plane_check_format(struct xylon_drm_plane_manager *manager,
 unsigned int xylon_drm_plane_get_bits_per_pixel(struct drm_plane *base_plane)
 {
 	struct xylon_drm_plane *plane = to_xylon_plane(base_plane);
+	struct xylon_drm_plane_manager *manager = plane->manager;
 
-	return plane->bpp;
+	return xylon_cvc_layer_get_bits_per_pixel(manager->cvc, plane->id);
 }
 
 int xylon_drm_plane_op(struct drm_plane *base_plane,
@@ -518,7 +518,7 @@ void xylon_drm_plane_remove_manager(struct xylon_drm_plane_manager *manager)
 	int i;
 
 	for (i = 0; i < manager->planes; i++) {
-		if (manager->plane[i] && !manager->plane[i]->priv) {
+		if (manager->plane[i]) {
 			xylon_drm_plane_destroy(&manager->plane[i]->base);
 			manager->plane[i] = NULL;
 		}
