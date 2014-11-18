@@ -36,37 +36,37 @@
  * All logiCVC registers are only 32-bit accessible.
  * All logiCVC registers are aligned to 8 byte boundary.
  */
-#define LOGICVC_REG_DIST_USED		8
-#define LOGICVC_HSYNC_FRONT_PORCH_ROFF	(0  * LOGICVC_REG_DIST_USED)
-#define LOGICVC_HSYNC_ROFF		(1  * LOGICVC_REG_DIST_USED)
-#define LOGICVC_HSYNC_BACK_PORCH_ROFF	(2  * LOGICVC_REG_DIST_USED)
-#define LOGICVC_HRES_ROFF		(3  * LOGICVC_REG_DIST_USED)
-#define LOGICVC_VSYNC_FRONT_PORCH_ROFF	(4  * LOGICVC_REG_DIST_USED)
-#define LOGICVC_VSYNC_ROFF		(5  * LOGICVC_REG_DIST_USED)
-#define LOGICVC_VSYNC_BACK_PORCH_ROFF	(6  * LOGICVC_REG_DIST_USED)
-#define LOGICVC_VRES_ROFF		(7  * LOGICVC_REG_DIST_USED)
-#define LOGICVC_CTRL_ROFF		(8  * LOGICVC_REG_DIST_USED)
-#define LOGICVC_DTYPE_ROFF		(9  * LOGICVC_REG_DIST_USED)
-#define LOGICVC_BACKGROUND_COLOR_ROFF	(10 * LOGICVC_REG_DIST_USED)
-#define LOGICVC_DOUBLE_CLUT_ROFF	(12 * LOGICVC_REG_DIST_USED)
-#define LOGICVC_INT_STAT_ROFF		(13 * LOGICVC_REG_DIST_USED)
-#define LOGICVC_INT_MASK_ROFF		(14 * LOGICVC_REG_DIST_USED)
-#define LOGICVC_POWER_CTRL_ROFF		(15 * LOGICVC_REG_DIST_USED)
-#define LOGICVC_IP_VERSION_ROFF		(31 * LOGICVC_REG_DIST_USED)
+#define LOGICVC_REG_STRIDE		8
+#define LOGICVC_HSYNC_FRONT_PORCH_ROFF	(0  * LOGICVC_REG_STRIDE)
+#define LOGICVC_HSYNC_ROFF		(1  * LOGICVC_REG_STRIDE)
+#define LOGICVC_HSYNC_BACK_PORCH_ROFF	(2  * LOGICVC_REG_STRIDE)
+#define LOGICVC_HRES_ROFF		(3  * LOGICVC_REG_STRIDE)
+#define LOGICVC_VSYNC_FRONT_PORCH_ROFF	(4  * LOGICVC_REG_STRIDE)
+#define LOGICVC_VSYNC_ROFF		(5  * LOGICVC_REG_STRIDE)
+#define LOGICVC_VSYNC_BACK_PORCH_ROFF	(6  * LOGICVC_REG_STRIDE)
+#define LOGICVC_VRES_ROFF		(7  * LOGICVC_REG_STRIDE)
+#define LOGICVC_CTRL_ROFF		(8  * LOGICVC_REG_STRIDE)
+#define LOGICVC_DTYPE_ROFF		(9  * LOGICVC_REG_STRIDE)
+#define LOGICVC_BACKGROUND_COLOR_ROFF	(10 * LOGICVC_REG_STRIDE)
+#define LOGICVC_DOUBLE_CLUT_ROFF	(12 * LOGICVC_REG_STRIDE)
+#define LOGICVC_INT_STAT_ROFF		(13 * LOGICVC_REG_STRIDE)
+#define LOGICVC_INT_MASK_ROFF		(14 * LOGICVC_REG_STRIDE)
+#define LOGICVC_POWER_CTRL_ROFF		(15 * LOGICVC_REG_STRIDE)
+#define LOGICVC_IP_VERSION_ROFF		(31 * LOGICVC_REG_STRIDE)
 
 /*
  * logiCVC layer registers offsets (common for each layer)
  * Last possible logiCVC layer (No.4) implements only "Layer memory address"
  * and "Layer control" registers.
  */
-#define LOGICVC_LAYER_ADDR_ROFF		(0 * LOGICVC_REG_DIST_USED)
-#define LOGICVC_LAYER_HPOS_ROFF		(2 * LOGICVC_REG_DIST_USED)
-#define LOGICVC_LAYER_VPOS_ROFF		(3 * LOGICVC_REG_DIST_USED)
-#define LOGICVC_LAYER_HSIZE_ROFF	(4 * LOGICVC_REG_DIST_USED)
-#define LOGICVC_LAYER_VSIZE_ROFF	(5 * LOGICVC_REG_DIST_USED)
-#define LOGICVC_LAYER_ALPHA_ROFF	(6 * LOGICVC_REG_DIST_USED)
-#define LOGICVC_LAYER_CTRL_ROFF		(7 * LOGICVC_REG_DIST_USED)
-#define LOGICVC_LAYER_TRANSP_COLOR_ROFF	(8 * LOGICVC_REG_DIST_USED)
+#define LOGICVC_LAYER_ADDR_ROFF		(0 * LOGICVC_REG_STRIDE)
+#define LOGICVC_LAYER_HPOS_ROFF		(2 * LOGICVC_REG_STRIDE)
+#define LOGICVC_LAYER_VPOS_ROFF		(3 * LOGICVC_REG_STRIDE)
+#define LOGICVC_LAYER_HSIZE_ROFF	(4 * LOGICVC_REG_STRIDE)
+#define LOGICVC_LAYER_VSIZE_ROFF	(5 * LOGICVC_REG_STRIDE)
+#define LOGICVC_LAYER_ALPHA_ROFF	(6 * LOGICVC_REG_STRIDE)
+#define LOGICVC_LAYER_CTRL_ROFF		(7 * LOGICVC_REG_STRIDE)
+#define LOGICVC_LAYER_TRANSP_COLOR_ROFF	(8 * LOGICVC_REG_STRIDE)
 
 /* logiCVC interrupt bits */
 #define LOGICVC_INT_ALL \
@@ -177,10 +177,10 @@ struct xylon_cvc_layer_data;
 
 struct xylon_cvc_register_access {
 	u32 (*xylon_cvc_get_reg_val)(void __iomem *reg_base_virt,
-				     unsigned long offset,
+				     unsigned int offset,
 				     struct xylon_cvc_layer_data *layer_data);
 	void (*xylon_cvc_set_reg_val)(u32 value, void __iomem *reg_base_virt,
-				      unsigned long offset,
+				      unsigned int offset,
 				      struct xylon_cvc_layer_data *layer_data);
 };
 
@@ -203,6 +203,7 @@ struct xylon_cvc_layer_fix_data {
 
 struct xylon_cvc_layer_registers {
 	u32 addr;
+	u32 unused;
 	u32 hpos;
 	u32 vpos;
 	u32 hsize;
@@ -214,7 +215,7 @@ struct xylon_cvc_layer_registers {
 
 struct xylon_cvc_layer_data {
 	struct xylon_cvc_layer_fix_data fix_data;
-	struct xylon_cvc_layer_registers *reg_list;
+	struct xylon_cvc_layer_registers regs;
 	void __iomem *base;
 	void __iomem *clut_base;
 	dma_addr_t vmem_pbase;
@@ -226,7 +227,7 @@ struct xylon_cvc {
 	void __iomem *base;
 	struct videomode *vmode;
 	struct xylon_cvc_register_access reg_access;
-	struct xylon_cvc_registers *reg_list;
+	struct xylon_cvc_registers regs;
 	struct xylon_cvc_layer_data *layer_data[LOGICVC_MAX_LAYERS];
 	unsigned int flags;
 	unsigned int irq;
@@ -239,60 +240,51 @@ struct xylon_cvc {
 };
 
 static u32 xylon_cvc_get_reg(void __iomem *base,
-			     unsigned long offset,
+			     unsigned int offset,
 			     struct xylon_cvc_layer_data *layer_data)
 {
 	return readl(base + offset);
 }
 
 static void xylon_cvc_set_reg(u32 value, void __iomem *base,
-			      unsigned long offset,
+			      unsigned int offset,
 			      struct xylon_cvc_layer_data *layer_data)
 {
 	writel(value, base + offset);
 }
 
-static void xylon_cvc_get_reg_mem_addr(unsigned long base,
-				       unsigned long offset,
-				       struct xylon_cvc_layer_data *layer_data,
-				       unsigned long **reg_mem)
+static unsigned long
+xylon_cvc_get_reg_mem_addr(void __iomem *base, unsigned int offset,
+		           struct xylon_cvc_layer_data *layer_data)
 {
-	struct xylon_cvc *cvc = layer_data->cvc;
-	unsigned long cvc_base = (unsigned long)cvc->base;
-	unsigned long dtype_addr, hpos_addr;
-	unsigned long ordinal = (offset >> 3) * sizeof(unsigned long);
+	unsigned int ordinal = offset / LOGICVC_REG_STRIDE;
 
-	if (base - cvc_base) {
-		hpos_addr = (unsigned long)&layer_data->reg_list->hpos;
-		*reg_mem = (unsigned long *)(hpos_addr + ordinal);
+	if ((unsigned long)base - (unsigned long)layer_data->cvc->base) {
+		return (unsigned long)(&layer_data->regs) +
+			(ordinal * sizeof(u32));
 	} else {
-		dtype_addr = (unsigned long)&cvc->reg_list->dtype;
-		*reg_mem = (unsigned long *)(dtype_addr + ordinal);
+		ordinal -= (LOGICVC_CTRL_ROFF / LOGICVC_REG_STRIDE);
+		return (unsigned long)(&layer_data->cvc->regs) +
+				       (ordinal * sizeof(u32));
 	}
 }
 
-static u32 xylon_cvc_get_reg_mem(void __iomem *base, unsigned long offset,
+static u32 xylon_cvc_get_reg_mem(void __iomem *base, unsigned int offset,
 				 struct xylon_cvc_layer_data *layer_data)
 {
-	unsigned long *reg_mem;
-
-	xylon_cvc_get_reg_mem_addr((unsigned long)base, offset,
-				   layer_data, &reg_mem);
-
-	return *reg_mem;
+	return *((unsigned long *)xylon_cvc_get_reg_mem_addr(base, offset,
+							     layer_data));
 }
 
 static void xylon_cvc_set_reg_mem(u32 value, void __iomem *base,
-				  unsigned long offset,
+				  unsigned int offset,
 				  struct xylon_cvc_layer_data *layer_data)
 {
-	unsigned long *reg_mem;
-
-	xylon_cvc_get_reg_mem_addr((unsigned long)base, offset, layer_data,
-				   &reg_mem);
-
-	*reg_mem = value;
-	writel((*reg_mem), base + offset);
+	unsigned long *reg_mem_addr =
+		(unsigned long *)xylon_cvc_get_reg_mem_addr(base, offset,
+							    layer_data);
+	*reg_mem_addr = value;
+	writel((*reg_mem_addr), (base + offset));
 }
 
 unsigned int xylon_cvc_layer_get_total_count(struct xylon_cvc *cvc)
@@ -997,9 +989,6 @@ struct xylon_cvc *xylon_cvc_probe(struct device *dev, struct device_node *dn)
 		cvc->reg_access.xylon_cvc_get_reg_val = xylon_cvc_get_reg;
 		cvc->reg_access.xylon_cvc_set_reg_val = xylon_cvc_set_reg;
 	} else {
-		cvc->reg_list = devm_kzalloc(dev,
-					     sizeof(struct xylon_cvc_registers),
-					     GFP_KERNEL);
 		cvc->reg_access.xylon_cvc_get_reg_val = xylon_cvc_get_reg_mem;
 		cvc->reg_access.xylon_cvc_set_reg_val = xylon_cvc_set_reg_mem;
 	}
