@@ -709,14 +709,12 @@ static int xilinx_drm_dp_train(struct xilinx_drm_dp *dp)
 	ret = xilinx_drm_dp_link_train_cr(dp);
 	if (ret) {
 		DRM_ERROR("failed to train clock recovery\n");
-		reg = xilinx_drm_readl(dp->iomem, XILINX_DP_TX_PHY_STATUS);
 		return ret;
 	}
 
 	ret = xilinx_drm_dp_link_train_ce(dp);
 	if (ret) {
 		DRM_ERROR("failed to train channel eq\n");
-		reg = xilinx_drm_readl(dp->iomem, XILINX_DP_TX_PHY_STATUS);
 		return ret;
 	}
 
