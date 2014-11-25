@@ -2821,6 +2821,7 @@ static int xemacps_probe(struct platform_device *pdev)
 	struct net_local *lp;
 	u32 regval = 0;
 	int rc = -ENXIO;
+	const u8 *mac_address;
 
 	r_mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	r_irq = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
@@ -2929,7 +2930,14 @@ static int xemacps_probe(struct platform_device *pdev)
 		goto err_out_clk_dis_all;
 	}
 
-	xemacps_update_hwaddr(lp);
+	mac_address = of_get_mac_address(lp->pdev->dev.of_node);
+	if (mac_address) {
+		ether_addr_copy(lp->ndev->dev_addr, mac_address);
+		xemacps_set_hwaddr(lp);
+	} else {
+		xemacps_update_hwaddr(lp);
+	}
+
 	tasklet_init(&lp->tx_bdreclaim_tasklet, xemacps_tx_poll,
 		     (unsigned long) ndev);
 	tasklet_disable(&lp->tx_bdreclaim_tasklet);
