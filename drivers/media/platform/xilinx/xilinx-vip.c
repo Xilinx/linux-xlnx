@@ -10,9 +10,11 @@
  * published by the Free Software Foundation.
  */
 
+#include <linux/clk.h>
 #include <linux/export.h>
 #include <linux/kernel.h>
 #include <linux/of.h>
+#include <linux/platform_device.h>
 
 #include <media/media-entity.h>
 
@@ -189,6 +191,31 @@ void xvip_clr_and_set(struct xvip_device *xvip, u32 addr, u32 clr, u32 set)
 	xvip_write(xvip, addr, reg);
 }
 EXPORT_SYMBOL_GPL(xvip_clr_and_set);
+
+int xvip_init_resources(struct xvip_device *xvip)
+{
+	struct platform_device *pdev = to_platform_device(xvip->dev);
+	struct resource *res;
+
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	xvip->iomem = devm_ioremap_resource(xvip->dev, res);
+	if (IS_ERR(xvip->iomem))
+		return PTR_ERR(xvip->iomem);
+
+	xvip->clk = devm_clk_get(xvip->dev, NULL);
+	if (IS_ERR(xvip->clk))
+		return PTR_ERR(xvip->clk);
+
+	clk_prepare_enable(xvip->clk);
+	return 0;
+}
+EXPORT_SYMBOL_GPL(xvip_init_resources);
+
+void xvip_cleanup_resources(struct xvip_device *xvip)
+{
+	clk_disable_unprepare(xvip->clk);
+}
+EXPORT_SYMBOL_GPL(xvip_cleanup_resources);
 
 /* -----------------------------------------------------------------------------
  * Subdev operation helpers

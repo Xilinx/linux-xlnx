@@ -16,6 +16,8 @@
 #include <linux/io.h>
 #include <media/v4l2-subdev.h>
 
+struct clk;
+
 /*
  * Minimum and maximum width and height common to most video IP cores. IP
  * cores with different requirements must define their own values.
@@ -97,6 +99,7 @@ struct xvip_device {
 	struct v4l2_subdev subdev;
 	struct device *dev;
 	void __iomem *iomem;
+	struct clk *clk;
 
 	unsigned int npads;
 	struct media_pad *pads;
@@ -166,6 +169,9 @@ static inline void xvip_set(struct xvip_device *xvip, u32 addr, u32 set)
 
 void xvip_clr_or_set(struct xvip_device *xvip, u32 addr, u32 mask, bool set);
 void xvip_clr_and_set(struct xvip_device *xvip, u32 addr, u32 clr, u32 set);
+
+int xvip_init_resources(struct xvip_device *xvip);
+void xvip_cleanup_resources(struct xvip_device *xvip);
 
 static inline void xvip_reset(struct xvip_device *xvip)
 {
