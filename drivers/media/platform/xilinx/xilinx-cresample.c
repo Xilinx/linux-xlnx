@@ -316,7 +316,6 @@ static int xcresample_parse_of(struct xcresample_device *xcresample)
 static int xcresample_probe(struct platform_device *pdev)
 {
 	struct xcresample_device *xcresample;
-	struct resource *res;
 	struct v4l2_subdev *subdev;
 	struct v4l2_mbus_framefmt *default_format;
 	int ret;
@@ -331,10 +330,9 @@ static int xcresample_probe(struct platform_device *pdev)
 	if (ret < 0)
 		return ret;
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	xcresample->xvip.iomem = devm_ioremap_resource(&pdev->dev, res);
-	if (IS_ERR(xcresample->xvip.iomem))
-		return PTR_ERR(xcresample->xvip.iomem);
+	ret = xvip_init_resources(&xcresample->xvip);
+	if (ret < 0)
+		return ret;
 
 	/* Reset and initialize the core */
 	xvip_reset(&xcresample->xvip);
@@ -368,7 +366,7 @@ static int xcresample_probe(struct platform_device *pdev)
 	subdev->entity.ops = &xcresample_media_ops;
 	ret = media_entity_init(&subdev->entity, 2, xcresample->pads, 0);
 	if (ret < 0)
-		return ret;
+		goto error;
 
 	v4l2_ctrl_handler_init(&xcresample->ctrl_handler, 2);
 	xcresample_field.def =
@@ -403,6 +401,7 @@ static int xcresample_probe(struct platform_device *pdev)
 error:
 	v4l2_ctrl_handler_free(&xcresample->ctrl_handler);
 	media_entity_cleanup(&subdev->entity);
+	xvip_cleanup_resources(&xcresample->xvip);
 	return ret;
 }
 
@@ -414,6 +413,8 @@ static int xcresample_remove(struct platform_device *pdev)
 	v4l2_async_unregister_subdev(subdev);
 	v4l2_ctrl_handler_free(&xcresample->ctrl_handler);
 	media_entity_cleanup(&subdev->entity);
+
+	xvip_cleanup_resources(&xcresample->xvip);
 
 	return 0;
 }
