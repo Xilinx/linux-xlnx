@@ -146,7 +146,6 @@
  * struct xvtc_device - Xilinx Video Timing Controller device structure
  * @xvip: Xilinx Video IP device
  * @list: entry in the global VTC list
- * @clk: video clock
  * @has_detector: the VTC has a timing detector
  * @has_generator: the VTC has a timing generator
  * @config: generator timings configuration
@@ -154,7 +153,6 @@
 struct xvtc_device {
 	struct xvip_device xvip;
 	struct list_head list;
-	struct clk *clk;
 
 	bool has_detector;
 	bool has_generator;
@@ -182,7 +180,7 @@ int xvtc_generator_start(struct xvtc_device *xvtc,
 	if (!xvtc->has_generator)
 		return -ENXIO;
 
-	ret = clk_prepare_enable(xvtc->clk);
+	ret = clk_prepare_enable(xvtc->xvip.clk);
 	if (ret < 0)
 		return ret;
 
@@ -245,7 +243,7 @@ int xvtc_generator_stop(struct xvtc_device *xvtc)
 
 	xvip_write(&xvtc->xvip, XVIP_CTRL_CONTROL, 0);
 
-	clk_disable_unprepare(xvtc->clk);
+	clk_disable_unprepare(xvtc->xvip.clk);
 
 	return 0;
 }
@@ -322,7 +320,6 @@ static int xvtc_parse_of(struct xvtc_device *xvtc)
 static int xvtc_probe(struct platform_device *pdev)
 {
 	struct xvtc_device *xvtc;
-	struct resource *res;
 	int ret;
 
 	xvtc = devm_kzalloc(&pdev->dev, sizeof(*xvtc), GFP_KERNEL);
@@ -335,14 +332,9 @@ static int xvtc_probe(struct platform_device *pdev)
 	if (ret < 0)
 		return ret;
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	xvtc->xvip.iomem = devm_ioremap_resource(&pdev->dev, res);
-	if (IS_ERR(xvtc->xvip.iomem))
-		return PTR_ERR(xvtc->xvip.iomem);
-
-	xvtc->clk = devm_clk_get(&pdev->dev, NULL);
-	if (IS_ERR(xvtc->clk))
-		return PTR_ERR(xvtc->clk);
+	ret = xvip_init_resources(&xvtc->xvip);
+	if (ret < 0)
+		return ret;
 
 	platform_set_drvdata(pdev, xvtc);
 
@@ -358,6 +350,8 @@ static int xvtc_remove(struct platform_device *pdev)
 	struct xvtc_device *xvtc = platform_get_drvdata(pdev);
 
 	xvtc_unregister_device(xvtc);
+
+	xvip_cleanup_resources(&xvtc->xvip);
 
 	return 0;
 }
