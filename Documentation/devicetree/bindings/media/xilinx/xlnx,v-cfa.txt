@@ -7,6 +7,8 @@ Required properties:
 
 - reg: Physical base address and length of the registers set for the device.
 
+- clocks: Reference to the video core clock.
+
 - ports: Video ports, using the DT bindings defined in ../video-interfaces.txt.
   The cfa has an input port (0) and an output port (1).
 
@@ -22,7 +24,7 @@ Example:
 	cfa_0: cfa@400b0000 {
 		compatible = "xlnx,v-cfa-7.0";
 		reg = <0x400b0000 0x10000>;
-
+		clocks = <&clkc 15>;
 
 		ports {
 			#address-cells = <1>;
