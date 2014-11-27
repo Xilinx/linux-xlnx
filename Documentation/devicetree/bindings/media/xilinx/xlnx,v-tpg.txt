@@ -13,6 +13,8 @@ Required properties:
 
 - reg: Physical base address and length of the registers set for the device.
 
+- clocks: Reference to the video core clock.
+
 - xlnx,video-format, xlnx,video-width: Video format and width, as defined in
   video.txt.
 
@@ -36,6 +38,7 @@ Example:
 	tpg_0: tpg@40050000 {
 		compatible = "xlnx,v-tpg-6.0", "xlnx,v-tpg-5.0";
 		reg = <0x40050000 0x10000>;
+		clocks = <&clkc 15>;
 
 		xlnx,vtc = <&vtc_3>;
 		timing-gpios = <&ps7_gpio_0 55 GPIO_ACTIVE_LOW>;
