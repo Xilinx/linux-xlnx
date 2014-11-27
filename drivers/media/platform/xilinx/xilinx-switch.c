@@ -348,7 +348,6 @@ static int xsw_probe(struct platform_device *pdev)
 {
 	struct v4l2_subdev *subdev;
 	struct xswitch_device *xsw;
-	struct resource *res;
 	unsigned int npads;
 	unsigned int i;
 	int ret;
@@ -363,10 +362,9 @@ static int xsw_probe(struct platform_device *pdev)
 	if (ret < 0)
 		return ret;
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	xsw->xvip.iomem = devm_ioremap_resource(&pdev->dev, res);
-	if (IS_ERR(xsw->xvip.iomem))
-		return PTR_ERR(xsw->xvip.iomem);
+	ret = xvip_init_resources(&xsw->xvip);
+	if (ret < 0)
+		return ret;
 
 	/* Initialize V4L2 subdevice and media entity. Pad numbers depend on the
 	 * number of pads.
@@ -375,7 +373,7 @@ static int xsw_probe(struct platform_device *pdev)
 	xsw->pads = devm_kzalloc(&pdev->dev, npads * sizeof(*xsw->pads),
 				 GFP_KERNEL);
 	if (!xsw->pads)
-		return -ENOMEM;
+		goto error;
 
 	for (i = 0; i < xsw->nsinks; ++i)
 		xsw->pads[i].flags = MEDIA_PAD_FL_SINK;
@@ -386,7 +384,7 @@ static int xsw_probe(struct platform_device *pdev)
 				    xsw->nsinks * sizeof(*xsw->formats),
 				    GFP_KERNEL);
 	if (!xsw->formats)
-		return -ENOMEM;
+		goto error;
 
 	for (i = 0; i < xsw->nsources; ++i)
 		xsw->routing[i] = i < xsw->nsinks ? i : -1;
@@ -404,7 +402,7 @@ static int xsw_probe(struct platform_device *pdev)
 
 	ret = media_entity_init(&subdev->entity, npads, xsw->pads, 0);
 	if (ret < 0)
-		return ret;
+		goto error;
 
 	platform_set_drvdata(pdev, xsw);
 
@@ -413,11 +411,15 @@ static int xsw_probe(struct platform_device *pdev)
 	ret = v4l2_async_register_subdev(subdev);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "failed to register subdev\n");
-		media_entity_cleanup(&subdev->entity);
-		return ret;
+		goto error;
 	}
 
 	return 0;
+
+error:
+	media_entity_cleanup(&subdev->entity);
+	xvip_cleanup_resources(&xsw->xvip);
+	return ret;
 }
 
 static int xsw_remove(struct platform_device *pdev)
@@ -427,6 +429,8 @@ static int xsw_remove(struct platform_device *pdev)
 
 	v4l2_async_unregister_subdev(subdev);
 	media_entity_cleanup(&subdev->entity);
+
+	xvip_cleanup_resources(&xsw->xvip);
 
 	return 0;
 }

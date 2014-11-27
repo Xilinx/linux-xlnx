@@ -7,6 +7,8 @@ Required properties:
 
   - reg: Physical base address and length of the registers set for the device.
 
+  - clocks: Reference to the video core clock.
+
   - #xlnx,inputs: Number of input ports
   - #xlnx,outputs: Number of outputs ports
 
@@ -17,6 +19,7 @@ Example:
 	switch: switch@43c10000 {
 		compatible = "xlnx,v-switch-1.0";
 		reg = <0x43c10000 0x10000>;
+		clocks = <&clkc 15>;
 
 		#xlnx,inputs = <2>;
 		#xlnx,outputs = <2>;
