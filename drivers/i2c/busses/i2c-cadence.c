@@ -113,6 +113,7 @@
 
 #define cdns_i2c_readreg(offset)       readl_relaxed(id->membase + offset)
 #define cdns_i2c_writereg(val, offset) writel_relaxed(val, id->membase + offset)
+#define CDNS_I2C_TIMEOUT_MAX	0xff
 
 /**
  * struct cdns_i2c - I2C device private data structure
@@ -857,6 +858,7 @@ static int cdns_i2c_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "reg adap failed: %d\n", ret);
 		goto err_clk_dis;
 	}
+	cdns_i2c_writereg(CDNS_I2C_TIMEOUT_MAX, CDNS_I2C_TIME_OUT_OFFSET);
 
 	dev_info(&pdev->dev, "%u kHz mmio %08lx irq %d\n",
 		 id->i2c_clk / 1000, (unsigned long)r_mem->start, id->irq);
