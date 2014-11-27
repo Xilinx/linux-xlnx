@@ -285,7 +285,6 @@ static int xcfa_parse_of(struct xcfa_device *xcfa)
 static int xcfa_probe(struct platform_device *pdev)
 {
 	struct xcfa_device *xcfa;
-	struct resource *res;
 	struct v4l2_subdev *subdev;
 	struct v4l2_mbus_framefmt *default_format;
 	int ret;
@@ -300,10 +299,9 @@ static int xcfa_probe(struct platform_device *pdev)
 	if (ret < 0)
 		return ret;
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	xcfa->xvip.iomem = devm_ioremap_resource(&pdev->dev, res);
-	if (IS_ERR(xcfa->xvip.iomem))
-		return PTR_ERR(xcfa->xvip.iomem);
+	ret = xvip_init_resources(&xcfa->xvip);
+	if (ret < 0)
+		return ret;
 
 	/* Reset and initialize the core */
 	xvip_reset(&xcfa->xvip);
@@ -337,7 +335,7 @@ static int xcfa_probe(struct platform_device *pdev)
 	subdev->entity.ops = &xcfa_media_ops;
 	ret = media_entity_init(&subdev->entity, 2, xcfa->pads, 0);
 	if (ret < 0)
-		return ret;
+		goto error;
 
 	platform_set_drvdata(pdev, xcfa);
 
@@ -353,6 +351,7 @@ static int xcfa_probe(struct platform_device *pdev)
 
 error:
 	media_entity_cleanup(&subdev->entity);
+	xvip_cleanup_resources(&xcfa->xvip);
 	return ret;
 }
 
@@ -363,6 +362,8 @@ static int xcfa_remove(struct platform_device *pdev)
 
 	v4l2_async_unregister_subdev(subdev);
 	media_entity_cleanup(&subdev->entity);
+
+	xvip_cleanup_resources(&xcfa->xvip);
 
 	return 0;
 }
