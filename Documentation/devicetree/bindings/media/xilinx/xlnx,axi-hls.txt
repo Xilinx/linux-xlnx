@@ -19,6 +19,8 @@ Required properties:
   The HLS core has two registers sets, the first one contains the core
   standard registers and the second one contains the custom user registers.
 
+- clocks: Reference to the video core clock.
+
 - ports: Video ports, using the DT bindings defined in ../video-interfaces.txt.
   The HLS core has one input port (0) and one output port (1).
 
@@ -32,6 +34,7 @@ Example:
 	hls_0: hls@43c00000 {
 		compatible = "xlnx,axi-hls-sobel", "xlnx,axi-hls";
 		reg = <0x43c00000 0x24>, <0x43c00024 0xa0>;
+		clocks = <&clkc 15>;
 
 		ports {
 			#address-cells = <1>;
