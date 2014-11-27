@@ -762,7 +762,6 @@ static int xtpg_probe(struct platform_device *pdev)
 {
 	struct v4l2_subdev *subdev;
 	struct xtpg_device *xtpg;
-	struct resource *res;
 	u32 i, bayer_phase;
 	int ret;
 
@@ -776,20 +775,23 @@ static int xtpg_probe(struct platform_device *pdev)
 	if (ret < 0)
 		return ret;
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	xtpg->xvip.iomem = devm_ioremap_resource(&pdev->dev, res);
-	if (IS_ERR(xtpg->xvip.iomem))
-		return PTR_ERR(xtpg->xvip.iomem);
+	ret = xvip_init_resources(&xtpg->xvip);
+	if (ret < 0)
+		return ret;
 
 	xtpg->vtmux_gpio = devm_gpiod_get_index(&pdev->dev, "timing", 0);
-	if (PTR_ERR(xtpg->vtmux_gpio) == -EPROBE_DEFER)
-		return -EPROBE_DEFER;
+	if (PTR_ERR(xtpg->vtmux_gpio) == -EPROBE_DEFER) {
+		ret = -EPROBE_DEFER;
+		goto error;
+	}
 	if (!IS_ERR(xtpg->vtmux_gpio))
 		gpiod_direction_output(xtpg->vtmux_gpio, 1);
 
 	xtpg->vtc = xvtc_of_get(pdev->dev.of_node);
-	if (IS_ERR(xtpg->vtc))
-		return PTR_ERR(xtpg->vtc);
+	if (IS_ERR(xtpg->vtc)) {
+		ret = PTR_ERR(xtpg->vtc);
+		goto error;
+	}
 
 	/* Reset and initialize the core */
 	xvip_reset(&xtpg->xvip);
@@ -830,7 +832,7 @@ static int xtpg_probe(struct platform_device *pdev)
 
 	ret = media_entity_init(&subdev->entity, xtpg->npads, xtpg->pads, 0);
 	if (ret < 0)
-		goto error_media_init;
+		goto error;
 
 	v4l2_ctrl_handler_init(&xtpg->ctrl_handler, 3 + ARRAY_SIZE(xtpg_ctrls));
 
@@ -878,8 +880,8 @@ static int xtpg_probe(struct platform_device *pdev)
 error:
 	v4l2_ctrl_handler_free(&xtpg->ctrl_handler);
 	media_entity_cleanup(&subdev->entity);
-error_media_init:
 	xvtc_put(xtpg->vtc);
+	xvip_cleanup_resources(&xtpg->xvip);
 	return ret;
 }
 
@@ -891,6 +893,8 @@ static int xtpg_remove(struct platform_device *pdev)
 	v4l2_async_unregister_subdev(subdev);
 	v4l2_ctrl_handler_free(&xtpg->ctrl_handler);
 	media_entity_cleanup(&subdev->entity);
+
+	xvip_cleanup_resources(&xtpg->xvip);
 
 	return 0;
 }
