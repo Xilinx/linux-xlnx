@@ -551,7 +551,6 @@ static int xscaler_parse_of(struct xscaler_device *xscaler)
 static int xscaler_probe(struct platform_device *pdev)
 {
 	struct xscaler_device *xscaler;
-	struct resource *res;
 	struct v4l2_subdev *subdev;
 	struct v4l2_mbus_framefmt *default_format;
 	u32 size;
@@ -567,10 +566,9 @@ static int xscaler_probe(struct platform_device *pdev)
 	if (ret < 0)
 		return ret;
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	xscaler->xvip.iomem = devm_ioremap_resource(&pdev->dev, res);
-	if (IS_ERR(xscaler->xvip.iomem))
-		return PTR_ERR(xscaler->xvip.iomem);
+	ret = xvip_init_resources(&xscaler->xvip);
+	if (ret < 0)
+		return ret;
 
 	/* Reset and initialize the core */
 	xvip_reset(&xscaler->xvip);
@@ -613,7 +611,7 @@ static int xscaler_probe(struct platform_device *pdev)
 
 	ret = media_entity_init(&subdev->entity, 2, xscaler->pads, 0);
 	if (ret < 0)
-		return ret;
+		goto error;
 
 	platform_set_drvdata(pdev, xscaler);
 
@@ -652,6 +650,7 @@ static int xscaler_probe(struct platform_device *pdev)
 
 error:
 	media_entity_cleanup(&subdev->entity);
+	xvip_cleanup_resources(&xscaler->xvip);
 	return ret;
 }
 
@@ -662,6 +661,8 @@ static int xscaler_remove(struct platform_device *pdev)
 
 	v4l2_async_unregister_subdev(subdev);
 	media_entity_cleanup(&subdev->entity);
+
+	xvip_cleanup_resources(&xscaler->xvip);
 
 	return 0;
 }

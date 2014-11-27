@@ -7,6 +7,8 @@ Required properties:
 
 - reg: Physical base address and length of the registers set for the device.
 
+- clocks: Reference to the video core clock.
+
 - xlnx,num-hori-taps, xlnx,num-vert-taps: The number of horizontal and vertical
   taps for scaling filter(range: 2 - 12).
 
@@ -38,6 +40,7 @@ Example:
 	scaler_0: scaler@43c30000 {
 		compatible = "xlnx,v-scaler-8.1";
 		reg = <0x43c30000 0x10000>;
+		clocks = <&clkc 15>;
 
 		xlnx,num-hori-taps = <12>;
 		xlnx,num-vert-taps = <12>;
