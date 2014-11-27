@@ -7,6 +7,8 @@ Required properties:
 
 - reg: Physical base address and length of the registers set for the device.
 
+- clocks: Reference to the video core clock.
+
 - ports: Video ports, using the DT bindings defined in ../video-interfaces.txt.
   The cresample as han input port (0) and an output port (1).
 
@@ -22,6 +24,7 @@ Example:
 	cresample_0: cresample@40120000 {
 		compatible = "xlnx,v-cresample-4.0";
 		reg = <0x40120000 0x10000>;
+		clocks = <&clkc 15>;
 
 		ports {
 			#address-cells = <1>;
