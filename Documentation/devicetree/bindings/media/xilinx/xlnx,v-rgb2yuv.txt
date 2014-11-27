@@ -7,6 +7,8 @@ Required properties:
 
 - reg: Physical base address and length of the registers set for the device.
 
+- clocks: Reference to the video core clock.
+
 - ports: Video ports, using the DT bindings defined in ../video-interfaces.txt.
   The rgb2yuv has an input port (0) and an output port (1).
 
@@ -22,6 +24,7 @@ Example:
 	rgb2yuv_0: rgb2yuv@40100000 {
 		compatible = "xlnx,v-rgb2yuv-7.1";
 		reg = <0x40100000 0x10000>;
+		clocks = <&clkc 15>;
 
 		ports {
 			#address-cells = <1>;
