@@ -10,6 +10,7 @@
  * published by the Free Software Foundation.
  */
 
+#include <linux/clk.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
@@ -464,6 +465,12 @@ static int xremap_probe(struct platform_device *pdev)
 	if (ret < 0)
 		return ret;
 
+	xremap->xvip.clk = devm_clk_get(xremap->xvip.dev, NULL);
+	if (IS_ERR(xremap->xvip.clk))
+		return PTR_ERR(xremap->xvip.clk);
+
+	clk_prepare_enable(xremap->xvip.clk);
+
 	/* Initialize V4L2 subdevice and media entity */
 	subdev = &xremap->xvip.subdev;
 	v4l2_subdev_init(subdev, &xremap_ops);
@@ -480,7 +487,7 @@ static int xremap_probe(struct platform_device *pdev)
 	subdev->entity.ops = &xremap_media_ops;
 	ret = media_entity_init(&subdev->entity, 2, xremap->pads, 0);
 	if (ret < 0)
-		return ret;
+		goto error;
 
 	platform_set_drvdata(pdev, xremap);
 
@@ -496,6 +503,7 @@ static int xremap_probe(struct platform_device *pdev)
 
 error:
 	media_entity_cleanup(&subdev->entity);
+	clk_disable_unprepare(xremap->xvip.clk);
 	return ret;
 }
 
@@ -506,6 +514,8 @@ static int xremap_remove(struct platform_device *pdev)
 
 	v4l2_async_unregister_subdev(subdev);
 	media_entity_cleanup(&subdev->entity);
+
+	clk_disable_unprepare(xremap->xvip.clk);
 
 	return 0;
 }
