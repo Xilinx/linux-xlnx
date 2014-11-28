@@ -8,6 +8,8 @@ Required properties:
 
 - compatible: Must be "xlnx,v-remapper".
 
+- clocks: Reference to the video core clock.
+
 - xlnx,video-width: Video pixel component width, as defined in video.txt.
 
 - #xlnx,s-components: Number of components per pixel at the input port
@@ -30,6 +32,8 @@ Example: RBG to xRGB remapper
 
 	remapper_0: remapper {
 		compatible = "xlnx,v-remapper";
+
+		clocks = <&clkc 15>;
 
 		xlnx,video-width = <8>;
 
