@@ -321,10 +321,8 @@ static void dma_halt(struct xilinx_dma_chan *chan)
 	} while (loop--);
 
 	if (!loop) {
-		pr_debug("Cannot stop channel %x: %x\n",
-			 (unsigned int)chan,
-			 (unsigned int)dma_read(chan,
-						XILINX_DMA_CONTROL_OFFSET));
+		dev_err(chan->dev, "Cannot stop channel %p: %x\n",
+			chan, dma_read(chan, XILINX_DMA_CONTROL_OFFSET));
 		chan->err = 1;
 	}
 }
@@ -346,10 +344,8 @@ static void dma_start(struct xilinx_dma_chan *chan)
 	} while (loop--);
 
 	if (!loop) {
-		pr_debug("Cannot start channel %x: %x\n",
-			 (unsigned int)chan,
-			 (unsigned int)dma_read(chan,
-						XILINX_DMA_CONTROL_OFFSET));
+		dev_err(chan->dev, "Cannot start channel %p: %x\n",
+			 chan, dma_read(chan, XILINX_DMA_CONTROL_OFFSET));
 
 		chan->err = 1;
 	}
