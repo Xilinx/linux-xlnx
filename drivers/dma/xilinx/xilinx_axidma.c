@@ -240,14 +240,17 @@ static enum dma_status xilinx_dma_desc_status(struct xilinx_dma_chan *chan,
 
 static void xilinx_chan_desc_cleanup(struct xilinx_dma_chan *chan)
 {
-	struct xilinx_dma_desc_sw *desc, *_desc;
+	struct xilinx_dma_desc_sw *desc;
 	unsigned long flags;
 
 	spin_lock_irqsave(&chan->lock, flags);
 
-	list_for_each_entry_safe(desc, _desc, &chan->active_list, node) {
+	while (!list_empty(&chan->active_list)) {
 		dma_async_tx_callback callback;
 		void *callback_param;
+
+		desc = list_first_entry(&chan->active_list,
+			struct xilinx_dma_desc_sw, node);
 
 		if (xilinx_dma_desc_status(chan, desc) == DMA_IN_PROGRESS)
 			break;
