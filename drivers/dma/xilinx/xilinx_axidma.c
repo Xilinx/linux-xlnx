@@ -314,13 +314,11 @@ static void dma_halt(struct xilinx_dma_chan *chan)
 		  ~XILINX_DMA_CR_RUNSTOP_MASK);
 
 	/* Wait for the hardware to halt */
-	while (loop) {
+	do {
 		if (dma_read(chan, XILINX_DMA_STATUS_OFFSET) &
 		      XILINX_DMA_SR_HALTED_MASK)
 			break;
-
-		loop -= 1;
-	}
+	} while (loop--);
 
 	if (!loop) {
 		pr_debug("Cannot stop channel %x: %x\n",
@@ -341,13 +339,11 @@ static void dma_start(struct xilinx_dma_chan *chan)
 		  XILINX_DMA_CR_RUNSTOP_MASK);
 
 	/* Wait for the hardware to start */
-	while (loop) {
+	do {
 		if (!(dma_read(chan, XILINX_DMA_STATUS_OFFSET) &
 		    XILINX_DMA_SR_HALTED_MASK))
 			break;
-
-		loop -= 1;
-	}
+	} while (loop--);
 
 	if (!loop) {
 		pr_debug("Cannot start channel %x: %x\n",
