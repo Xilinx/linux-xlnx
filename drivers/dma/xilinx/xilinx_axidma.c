@@ -415,8 +415,6 @@ static void xilinx_dma_start_transfer(struct xilinx_dma_chan *chan)
 	if (chan->err)
 		goto out_unlock;
 
-	pr_info("xilinx_dma_start_transfer::simple DMA mode\n");
-
 	desch = list_first_entry(&chan->pending_list,
 				 struct xilinx_dma_desc_sw, node);
 
