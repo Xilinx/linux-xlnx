@@ -9,7 +9,7 @@ by common bindings.
 
 Required properties:
 
-- compatible: This property must contain "xlnx,axi-hls" to indicate that the
+- compatible: This property must contain "xlnx,v-hls" to indicate that the
   core is compatible with the generic Xilinx HLS DT bindings. It can also
   contain a more specific string to identify the HLS core implementation. The
   value of those implementation-specific strings is out of scope for these DT
@@ -32,7 +32,7 @@ Required port properties:
 Example:
 
 	hls_0: hls@43c00000 {
-		compatible = "xlnx,axi-hls-sobel", "xlnx,axi-hls";
+		compatible = "xlnx,v-hls-sobel", "xlnx,v-hls";
 		reg = <0x43c00000 0x24>, <0x43c00024 0xa0>;
 		clocks = <&clkc 15>;
 

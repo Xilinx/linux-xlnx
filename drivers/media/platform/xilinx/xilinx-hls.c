@@ -472,14 +472,14 @@ static int xhls_remove(struct platform_device *pdev)
 }
 
 static const struct of_device_id xhls_of_id_table[] = {
-	{ .compatible = "xlnx,axi-hls" },
+	{ .compatible = "xlnx,v-hls" },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, xhls_of_id_table);
 
 static struct platform_driver xhls_driver = {
 	.driver = {
-		.name = "xilinx-axi-hls",
+		.name = "xilinx-hls",
 		.of_match_table = xhls_of_id_table,
 	},
 	.probe = xhls_probe,
