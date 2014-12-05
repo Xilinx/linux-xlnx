@@ -513,7 +513,7 @@ static int zynq_edac_mc_probe(struct platform_device *pdev)
 
 	/* Check for the ecc enable status */
 	if (zynq_edac_get_eccstate(baseaddr) == false) {
-		dev_err(&pdev->dev, "ecc not enabled\n");
+		dev_info(&pdev->dev, "ecc not enabled\n");
 		return -ENXIO;
 	}
 
