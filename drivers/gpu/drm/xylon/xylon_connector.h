@@ -23,6 +23,5 @@
 struct drm_connector *
 xylon_drm_connector_create(struct drm_device *dev,
 			   struct drm_encoder *base_encoder);
-void xylon_drm_connector_destroy(struct drm_connector *base_connector);
 
 #endif /* _XYLON_DRM_CONNECTOR_H_ */

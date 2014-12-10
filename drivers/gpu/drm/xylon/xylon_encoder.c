@@ -178,7 +178,7 @@ static struct drm_encoder_helper_funcs xylon_drm_encoder_helper_funcs = {
 	.get_crtc = xylon_drm_encoder_get_crtc,
 };
 
-void xylon_drm_encoder_destroy(struct drm_encoder *base_encoder)
+static void xylon_drm_encoder_destroy(struct drm_encoder *base_encoder)
 {
 	struct xylon_drm_encoder *encoder;
 	struct drm_encoder_slave *encoder_slave;

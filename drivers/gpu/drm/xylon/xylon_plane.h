@@ -44,7 +44,6 @@ int xylon_drm_plane_fb_set(struct drm_plane *base_plane,
 			   u32 src_w, u32 src_h);
 void xylon_drm_plane_commit(struct drm_plane *base_plane);
 
-void xylon_drm_plane_destroy_all(struct xylon_drm_plane_manager *manager);
 int xylon_drm_plane_create_all(struct xylon_drm_plane_manager *manager,
 			       unsigned int possible_crtcs,
 			       unsigned int primary_id);
@@ -63,6 +62,5 @@ int xylon_drm_plane_op(struct drm_plane *base_plane,
 struct xylon_drm_plane_manager *
 xylon_drm_plane_probe_manager(struct drm_device *dev,
 			      struct xylon_cvc *cvc);
-void xylon_drm_plane_remove_manager(struct xylon_drm_plane_manager *manager);
 
 #endif /* _XYLON_DRM_PLANE_H_ */

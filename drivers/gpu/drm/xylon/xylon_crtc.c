@@ -237,7 +237,7 @@ static struct drm_crtc_helper_funcs xylon_drm_crtc_helper_funcs = {
 	.load_lut = xylon_drm_crtc_load_lut,
 };
 
-void xylon_drm_crtc_destroy(struct drm_crtc *base_crtc)
+static void xylon_drm_crtc_destroy(struct drm_crtc *base_crtc)
 {
 	struct xylon_drm_crtc *crtc = to_xylon_crtc(base_crtc);
 
@@ -246,9 +246,6 @@ void xylon_drm_crtc_destroy(struct drm_crtc *base_crtc)
 	drm_crtc_cleanup(base_crtc);
 
 	clk_disable_unprepare(crtc->pixel_clock);
-
-	xylon_drm_plane_destroy_all(crtc->manager);
-	xylon_drm_plane_remove_manager(crtc->manager);
 }
 
 void xylon_drm_crtc_cancel_page_flip(struct drm_crtc *base_crtc,
@@ -661,7 +658,7 @@ struct drm_crtc *xylon_drm_crtc_create(struct drm_device *dev)
 	ret = xylon_drm_plane_create_all(crtc->manager, 1, crtc->primary_id);
 	if (ret) {
 		DRM_ERROR("failed create planes\n");
-		goto err_plane;
+		goto err_out;
 	}
 
 	crtc->pixel_clock = devm_clk_get(dev->dev, NULL);
@@ -697,9 +694,5 @@ struct drm_crtc *xylon_drm_crtc_create(struct drm_device *dev)
 	return &crtc->base;
 
 err_out:
-	xylon_drm_plane_destroy_all(crtc->manager);
-err_plane:
-	xylon_drm_plane_remove_manager(crtc->manager);
-
 	return ERR_PTR(ret);
 }
