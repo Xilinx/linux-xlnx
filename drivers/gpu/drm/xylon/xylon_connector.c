@@ -102,7 +102,7 @@ xylon_drm_connector_detect(struct drm_connector *base_connector, bool force)
 	return status;
 }
 
-void xylon_drm_connector_destroy(struct drm_connector *base_connector)
+static void xylon_drm_connector_destroy(struct drm_connector *base_connector)
 {
 	drm_connector_unregister(base_connector);
 	drm_connector_cleanup(base_connector);

@@ -21,6 +21,5 @@
 #define _XYLON_DRM_ENCODER_H_
 
 struct drm_encoder *xylon_drm_encoder_create(struct drm_device *dev);
-void xylon_drm_encoder_destroy(struct drm_encoder *base_encoder);
 
 #endif /* _XYLON_DRM_ENCODER_H_ */

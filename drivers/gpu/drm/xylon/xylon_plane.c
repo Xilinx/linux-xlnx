@@ -396,20 +396,7 @@ int xylon_drm_plane_create_all(struct xylon_drm_plane_manager *manager,
 	return 0;
 
 err_out:
-	xylon_drm_plane_destroy_all(manager);
 	return ret;
-}
-
-void xylon_drm_plane_destroy_all(struct xylon_drm_plane_manager *manager)
-{
-	int i;
-
-	for (i = 0; i < manager->planes; i++) {
-		if (manager->plane[i]) {
-			xylon_drm_plane_destroy(&manager->plane[i]->base);
-			manager->plane[i] = NULL;
-		}
-	}
 }
 
 struct drm_plane *
@@ -511,18 +498,4 @@ xylon_drm_plane_probe_manager(struct drm_device *drm_dev,
 		  manager->planes == 1 ? "plane" : "planes");
 
 	return manager;
-}
-
-void xylon_drm_plane_remove_manager(struct xylon_drm_plane_manager *manager)
-{
-	int i;
-
-	for (i = 0; i < manager->planes; i++) {
-		if (manager->plane[i]) {
-			xylon_drm_plane_destroy(&manager->plane[i]->base);
-			manager->plane[i] = NULL;
-		}
-	}
-
-	manager->plane = NULL;
 }
