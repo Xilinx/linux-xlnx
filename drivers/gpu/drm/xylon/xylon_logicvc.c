@@ -725,12 +725,12 @@ static int xylon_parse_hw_info(struct device_node *dn, struct xylon_cvc *cvc)
 		}
 	}
 
-	if (of_property_read_bool(dn, "is-readable-regs"))
+	if (of_property_read_bool(dn, "readable-regs"))
 		cvc->flags |= LOGICVC_FLAGS_READABLE_REGS;
 	else
 		DRM_INFO("logicvc registers not readable\n");
 
-	if (of_property_read_bool(dn, "is-size-position"))
+	if (of_property_read_bool(dn, "size-position"))
 		cvc->flags |= LOGICVC_FLAGS_SIZE_POSITION;
 	else
 		DRM_INFO("logicvc size-position disabled\n");
@@ -825,13 +825,13 @@ static void xylon_cvc_init_ctrl(struct device_node *dn, u32 *ctrl)
 	u32 ctrl_reg = (LOGICVC_CTRL_HSYNC | LOGICVC_CTRL_VSYNC |
 			LOGICVC_CTRL_DATA_ENABLE);
 
-	if (of_property_read_bool(dn, "is-hsync-active-low"))
+	if (of_property_read_bool(dn, "hsync-active-low"))
 		ctrl_reg |= LOGICVC_CTRL_HSYNC_INVERT;
-	if (of_property_read_bool(dn, "is-vsync-active-low"))
+	if (of_property_read_bool(dn, "vsync-active-low"))
 		ctrl_reg |= LOGICVC_CTRL_HSYNC_INVERT;
-	if (of_property_read_bool(dn, "is-pixel-data-invert"))
+	if (of_property_read_bool(dn, "pixel-data-invert"))
 		ctrl_reg |= LOGICVC_CTRL_PIXEL_DATA_INVERT;
-	if (of_property_read_bool(dn, "is-pixel-data-output-trigger-high"))
+	if (of_property_read_bool(dn, "pixel-data-output-trigger-high"))
 		ctrl_reg |= LOGICVC_CTRL_PIXEL_DATA_TRIGGER_INVERT;
 
 	*ctrl = ctrl_reg;

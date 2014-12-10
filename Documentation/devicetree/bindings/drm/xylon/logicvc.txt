@@ -39,20 +39,20 @@ Optional properties:
       background color register must be written with RGB565 value.
       If set to "yuv", background color register must be written with XYUV8888
       value.
- - is-hsync-active-low: horizontal synchronization pulse polarity
+ - hsync-active-low: horizontal synchronization pulse polarity
       If omitted, generated horizontal synchronization pulse polarity is logic
       high "H".
- - is-vsync-active-low: vertical synchronization pulse polarity
+ - vsync-active-low: vertical synchronization pulse polarity
       If omitted, generated vertical synchronization pulse polarity is logic
       high "H".
- - is-pixel-data-invert: output pixel data polarity
+ - pixel-data-invert: output pixel data polarity
       If omitted, logiCVC outputs pixel data at default interface polarity.
- - is-pixel-data-output-trigger-high: output pixel data trigger polarity
+ - pixel-data-output-trigger-high: output pixel data trigger polarity
       If omitted, logiCVC outputs pixel data on falling edge of pixel clock.
- - is-readable-regs: all logiCVC registers are available for reading
+ - readable-regs: all logiCVC registers are available for reading
       If omitted, only Interrupt Status, Power Control and IP Version registers
       are available for reading.
- - is-size-position: logiCVC functionality for controlling on screen layer size
+ - size-position: logiCVC functionality for controlling on screen layer size
       and position is available
       If omitted, functionality is not available.
  - address: layer video memory address for layer_N where N is layer ID in
@@ -73,10 +73,10 @@ Example:
 		interrupts = <0 59 4>;
 		background-layer-bits-per-pixel = <32>;
 		background-layer-type = "rgb";
-		is-hsync-active-low;
-		is-vsync-active-low;
-		is-readable-regs;
-		is-size-position;
+		hsync-active-low;
+		vsync-active-low;
+		readable-regs;
+		size-position;
 		pixel-stride = <2048>;
 		layer_0 {
 			address = <0x30000000>;
