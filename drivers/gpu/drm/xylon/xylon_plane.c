@@ -32,7 +32,6 @@
 #include "xylon_property.h"
 
 struct xylon_drm_plane_properties {
-	struct drm_property *control;
 	struct drm_property *color_transparency;
 	struct drm_property *interlace;
 	struct drm_property *transparency;
@@ -73,20 +72,15 @@ xylon_drm_plane_set_parameters(struct xylon_drm_plane *plane,
 
 void xylon_drm_plane_dpms(struct drm_plane *base_plane, int dpms)
 {
-	struct drm_mode_object *obj = &base_plane->base;
 	struct xylon_drm_plane *plane = to_xylon_plane(base_plane);
 	struct xylon_drm_plane_manager *manager = plane->manager;
 
 	switch (dpms) {
 	case DRM_MODE_DPMS_ON:
 		xylon_cvc_layer_enable(manager->cvc, plane->id);
-		drm_object_property_set_value(obj, plane->properties.control,
-					      1);
 		break;
 	default:
 		xylon_cvc_layer_disable(manager->cvc, plane->id);
-		drm_object_property_set_value(obj, plane->properties.control,
-					      0);
 		break;
 	}
 }
@@ -203,12 +197,7 @@ static int xylon_drm_plane_set_property(struct drm_plane *base_plane,
 	struct xylon_drm_plane_op op;
 	unsigned int val = (unsigned int)value;
 
-	if (property == props->control) {
-		if (val)
-			xylon_drm_plane_dpms(base_plane, DRM_MODE_DPMS_ON);
-		else
-			xylon_drm_plane_dpms(base_plane, DRM_MODE_DPMS_OFF);
-	} else if (property == props->color_transparency) {
+	if (property == props->color_transparency) {
 		op.id = XYLON_DRM_PLANE_OP_ID_COLOR_TRANSPARENCY,
 		op.param = (bool)val;
 	} else if (property == props->interlace) {
@@ -247,13 +236,6 @@ static int xylon_drm_plane_create_properties(struct drm_plane *base_plane)
 					     LOGICVC_INFO_LAST_LAYER,
 					     plane->id);
 
-	size = xylon_drm_property_size(property_control);
-	if (xylon_drm_property_create_list(dev, obj,
-					   &props->control,
-					   property_control,
-					   "control",
-					   size))
-		return -EINVAL;
 	size = xylon_drm_property_size(property_color_transparency);
 	if (xylon_drm_property_create_list(dev, obj,
 					   &props->color_transparency,

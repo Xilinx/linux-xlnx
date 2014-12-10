@@ -40,13 +40,10 @@ struct xylon_drm_crtc_properties {
 	struct drm_property *layer_update;
 	struct drm_property *pixel_data_polarity;
 	struct drm_property *pixel_data_trigger;
-	struct drm_property *control;
 	struct drm_property *color_transparency;
 	struct drm_property *interlace;
 	struct drm_property *transparency;
 	struct drm_property *transparent_color;
-	struct drm_property *position_x;
-	struct drm_property *position_y;
 };
 
 struct xylon_drm_crtc {
@@ -81,7 +78,6 @@ static int xylon_drm_crtc_clk_set(struct xylon_drm_crtc *crtc)
 
 static void xylon_drm_crtc_dpms(struct drm_crtc *base_crtc, int dpms)
 {
-	struct drm_mode_object *obj = &base_crtc->base;
 	struct xylon_drm_crtc *crtc = to_xylon_crtc(base_crtc);
 
 	if (crtc->dpms == dpms)
@@ -93,11 +89,9 @@ static void xylon_drm_crtc_dpms(struct drm_crtc *base_crtc, int dpms)
 	case DRM_MODE_DPMS_ON:
 	case DRM_MODE_DPMS_STANDBY:
 		xylon_drm_plane_dpms(base_crtc->primary, dpms);
-		drm_object_property_set_value(obj, crtc->properties.control, 1);
 		break;
 	default:
 		xylon_cvc_disable(crtc->cvc);
-		drm_object_property_set_value(obj, crtc->properties.control, 0);
 		break;
 	}
 }
@@ -118,39 +112,6 @@ static void xylon_drm_crtc_commit(struct drm_crtc *base_crtc)
 	xylon_cvc_enable(crtc->cvc, &crtc->vmode);
 
 	xylon_drm_crtc_dpms(base_crtc, DRM_MODE_DPMS_ON);
-
-	if (xylon_cvc_get_info(crtc->cvc, LOGICVC_INFO_SIZE_POSITION, 0)) {
-		struct xylon_drm_crtc_properties *p = &crtc->properties;
-
-		if (p->position_x) {
-			drm_object_property_set_value(&base_crtc->base,
-						      p->position_x,
-						      0);
-			p->position_x->values[1] = crtc->vmode.hactive;
-		} else {
-			xylon_drm_property_create_range(base_crtc->dev,
-							&base_crtc->base,
-							&p->position_x,
-							"position_x",
-							0,
-							crtc->vmode.hactive,
-							0);
-		}
-		if (p->position_y) {
-			drm_object_property_set_value(&base_crtc->base,
-						      p->position_y,
-						      0);
-			p->position_y->values[1] = crtc->vmode.vactive;
-		} else {
-			xylon_drm_property_create_range(base_crtc->dev,
-							&base_crtc->base,
-							&p->position_y,
-							"position_y",
-							0,
-							crtc->vmode.vactive,
-							0);
-		}
-	}
 }
 
 static bool xylon_drm_crtc_mode_fixup(struct drm_crtc *base_crtc,
@@ -314,8 +275,6 @@ static int xylon_drm_crtc_set_property(struct drm_crtc *base_crtc,
 				       struct drm_property *property,
 				       u64 value)
 {
-	struct drm_device *dev;
-	struct drm_mode_object *obj;
 	struct xylon_drm_crtc *crtc = to_xylon_crtc(base_crtc);
 	struct xylon_drm_crtc_properties *props = &crtc->properties;
 	struct xylon_drm_plane_op op;
@@ -335,11 +294,6 @@ static int xylon_drm_crtc_set_property(struct drm_crtc *base_crtc,
 	} else if (property == props->pixel_data_trigger) {
 		xylon_cvc_ctrl(crtc->cvc, LOGICVC_PIXEL_DATA_TRIGGER_INVERT,
 			       (bool)val);
-	} else if (property == props->control) {
-		if (val)
-			xylon_drm_crtc_dpms(base_crtc, DRM_MODE_DPMS_ON);
-		else
-			xylon_drm_crtc_dpms(base_crtc, DRM_MODE_DPMS_OFF);
 	} else if (property == props->color_transparency) {
 		op.id = XYLON_DRM_PLANE_OP_ID_COLOR_TRANSPARENCY;
 		op.param = (bool)val;
@@ -352,20 +306,6 @@ static int xylon_drm_crtc_set_property(struct drm_crtc *base_crtc,
 	} else if (property == props->transparent_color) {
 		op.id = XYLON_DRM_PLANE_OP_ID_TRANSPARENT_COLOR;
 		op.param = val;
-	} else if (property == props->position_x) {
-		dev = base_crtc->dev;
-		obj = &base_crtc->base;
-
-		x = val;
-		drm_object_property_get_value(obj, props->position_y,
-					      (u64 *)&y);
-	} else if (property == props->position_y) {
-		dev = base_crtc->dev;
-		obj = &base_crtc->base;
-
-		drm_object_property_get_value(obj, props->position_x,
-					      (u64 *)&x);
-		y = val;
 	} else {
 		return -EINVAL;
 	}
@@ -541,13 +481,6 @@ static int xylon_drm_crtc_create_properties(struct drm_crtc *base_crtc)
 					   &props->pixel_data_trigger,
 					   property_pixel_data_trigger,
 					   "pixel_data_trigger",
-					   size))
-		return -EINVAL;
-	size = xylon_drm_property_size(property_control);
-	if (xylon_drm_property_create_list(dev, obj,
-					   &props->control,
-					   property_control,
-					   "control",
 					   size))
 		return -EINVAL;
 	size = xylon_drm_property_size(property_color_transparency);
