@@ -190,7 +190,7 @@ struct drm_encoder *xilinx_drm_encoder_create(struct drm_device *drm)
 
 	/* initialize slave encoder */
 	encoder->i2c_slv = of_find_i2c_device_by_node(sub_node);
-	if (encoder->i2c_slv) {
+	if (encoder->i2c_slv && encoder->i2c_slv->dev.driver) {
 		i2c_driver = to_i2c_driver(encoder->i2c_slv->dev.driver);
 		drm_i2c_driver = to_drm_i2c_encoder_driver(i2c_driver);
 		if (!drm_i2c_driver) {
