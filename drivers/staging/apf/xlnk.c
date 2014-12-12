@@ -184,8 +184,8 @@ static void xlnk_devpacks_free(unsigned long base)
 	devpack = xlnk_devpacks_find(base);
 	if (devpack) {
 		platform_device_unregister(&devpack->pdev);
-		kfree(devpack);
 		xlnk_devpacks_delete(devpack);
+		kfree(devpack);
 	}
 }
 
@@ -198,8 +198,8 @@ static void xlnk_devpacks_free_all(void)
 		devpack = xlnk_devpacks[i];
 		if (devpack) {
 			platform_device_unregister(&devpack->pdev);
-			kfree(devpack);
 			xlnk_devpacks_delete(devpack);
+			kfree(devpack);
 		}
 	}
 }
