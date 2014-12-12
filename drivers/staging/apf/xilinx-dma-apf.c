@@ -779,11 +779,9 @@ int xdma_submit(struct xdma_chan *chan,
 	DEFINE_DMA_ATTRS(attrs);
 
 
-	dmahead = kmalloc(sizeof(struct xdma_head), GFP_KERNEL);
+	dmahead = kzalloc(sizeof(struct xdma_head), GFP_KERNEL);
 	if (!dmahead)
 		return -ENOMEM;
-
-	memset(dmahead, 0, sizeof(struct xdma_head));
 
 	dmahead->chan = chan;
 	dmahead->userbuf = userbuf;
