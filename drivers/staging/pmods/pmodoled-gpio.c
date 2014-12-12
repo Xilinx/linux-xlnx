@@ -622,14 +622,14 @@ static int gpio_pmodoled_of_probe(struct platform_device *pdev)
 	int status = 0;
 
 	/* Alloc Space for platform device structure */
-	gpio_pmodoled_dev = (struct gpio_pmodoled_device *)kzalloc(sizeof(*gpio_pmodoled_dev), GFP_KERNEL);
+	gpio_pmodoled_dev = kzalloc(sizeof(*gpio_pmodoled_dev), GFP_KERNEL);
 	if (!gpio_pmodoled_dev) {
 		status = -ENOMEM;
 		goto dev_alloc_err;
 	}
 
 	/* Alloc Graphic Buffer for device */
-	gpio_pmodoled_dev->disp_buf = (uint8_t *)kmalloc(DISPLAY_BUF_SZ, GFP_KERNEL);
+	gpio_pmodoled_dev->disp_buf = kmalloc(DISPLAY_BUF_SZ, GFP_KERNEL);
 	if (!gpio_pmodoled_dev->disp_buf) {
 		status = -ENOMEM;
 		dev_err(&pdev->dev, "Device Display data buffer allocation failed: %d\n", status);
@@ -665,7 +665,7 @@ static int gpio_pmodoled_of_probe(struct platform_device *pdev)
 	}
 
 	/* Alloc Space for platform data structure */
-	gpio_pmodoled_pdata = (struct spi_gpio_platform_data *)kzalloc(sizeof(*gpio_pmodoled_pdata), GFP_KERNEL);
+	gpio_pmodoled_pdata = kzalloc(sizeof(*gpio_pmodoled_pdata), GFP_KERNEL);
 	if (!gpio_pmodoled_pdata) {
 		status = -ENOMEM;
 		goto pdata_alloc_err;
@@ -678,7 +678,7 @@ static int gpio_pmodoled_of_probe(struct platform_device *pdev)
 	gpio_pmodoled_pdata->num_chipselect = 1;
 
 	/* Alloc Space for platform data structure */
-	gpio_pmodoled_pdev = (struct platform_device *)kzalloc(sizeof(*gpio_pmodoled_pdev), GFP_KERNEL);
+	gpio_pmodoled_pdev = kzalloc(sizeof(*gpio_pmodoled_pdev), GFP_KERNEL);
 	if (!gpio_pmodoled_pdev) {
 		status = -ENOMEM;
 		goto pdev_alloc_err;
