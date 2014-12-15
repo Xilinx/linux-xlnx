@@ -945,10 +945,10 @@ static void xemacps_update_hwaddr(struct net_local *lp)
 	addr[5] = (regvalh >> 8) & 0xFF;
 
 	if (is_valid_ether_addr(addr)) {
-		memcpy(lp->ndev->dev_addr, addr, sizeof(addr));
+		ether_addr_copy(lp->ndev->dev_addr, addr);
 	} else {
-		dev_info(&lp->pdev->dev, "invalid address, use assigned\n");
-		random_ether_addr(lp->ndev->dev_addr);
+		dev_info(&lp->pdev->dev, "invalid address, use random\n");
+		eth_hw_addr_random(lp->ndev);
 		dev_info(&lp->pdev->dev,
 				"MAC updated %02x:%02x:%02x:%02x:%02x:%02x\n",
 				lp->ndev->dev_addr[0], lp->ndev->dev_addr[1],
