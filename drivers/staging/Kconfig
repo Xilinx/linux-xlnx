@@ -114,4 +114,6 @@ source "drivers/staging/fbtft/Kconfig"
 
 source "drivers/staging/i2o/Kconfig"
 
+source "drivers/staging/mali/Kconfig"
+
 endif # STAGING
