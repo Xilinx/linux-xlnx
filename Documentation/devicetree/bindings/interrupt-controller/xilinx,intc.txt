@@ -1,0 +1,56 @@
+Xilinx Interrupt Controller
+
+The controller is a soft IP core that is configured at build time for the
+number of interrupts and the type of each interrupt. These details cannot
+be changed at run time.
+
+Required properties:
+
+- compatible : should be "xlnx,xps-intc-1.00.a"
+- reg : Specifies base physical address and size of the registers.
+- interrupt-controller : Identifies the node as an interrupt controller
+- #interrupt-cells : Specifies the number of cells needed to encode an
+		     interrupt source. The value shall be a minimum of 1.
+		     The Xilinx device trees typically use 2 but the 2nd value
+		     is not used.
+- xlnx,kind-of-intr : A 32 bit value specifying the interrupt type for each
+		      possible interrupt (1 = edge, 0 = level). The interrupt
+		      type typically comes in thru the device tree node of
+		      the interrupt generating device, but in this case
+		      the interrupt type is determined by the interrupt
+		      controller based on how it was implemented.
+- xlnx,num-intr-inputs: Specifies the number of interrupts supported
+		        by the specific implementation of the controller (1-32).
+
+Optional properties:
+- interrupt-parent : Specifies an interrupt controller from which it is
+		     chained (cascaded).
+- interrupts : Specifies the interrupt of the parent controller from which
+	       it is chained.
+
+Example:
+
+axi_intc_0: interrupt-controller@41800000 {
+	#interrupt-cells = <2>;
+	compatible = "xlnx,xps-intc-1.00.a";
+	interrupt-controller;
+	reg = <0x41800000 0x10000>;
+	xlnx,kind-of-intr = <0x1>;
+	xlnx,num-intr-inputs = <0x1>;
+};
+
+Chained Example:
+
+The interrupt is chained to hardware interrupt 61 (29 + 32) of the GIC
+for Zynq.
+
+axi_intc_0: interrupt-controller@41800000 {
+	#interrupt-cells = <2>;
+	compatible = "xlnx,xps-intc-1.00.a";
+	interrupt-controller;
+	interrupt-parent = <&ps7_scugic_0>;
+	interrupts = <0 29 4>;
+	reg = <0x41800000 0x10000>;
+	xlnx,kind-of-intr = <0x1>;
+	xlnx,num-intr-inputs = <0x1>;
+};
