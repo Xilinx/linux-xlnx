@@ -1612,8 +1612,6 @@ static int axienet_probe(struct platform_device *pdev)
 	 * the device-tree and accordingly set flags.
 	 */
 	of_property_read_u32(pdev->dev.of_node, "xlnx,rxmem", &lp->rxmem);
-	of_property_read_u32(pdev->dev.of_node, "xlnx,temac-type",
-					&lp->temac_type);
 	of_property_read_u32(pdev->dev.of_node, "xlnx,phy-type", &lp->phy_type);
 
 	/* Find the DMA node, map the DMA registers, and decode the DMA IRQs */
