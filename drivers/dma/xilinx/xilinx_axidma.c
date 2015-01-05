@@ -346,22 +346,19 @@ static void dma_start(struct xilinx_dma_chan *chan)
 
 static void xilinx_dma_start_transfer(struct xilinx_dma_chan *chan)
 {
-	unsigned long flags;
 	struct xilinx_dma_desc_sw *desch, *desct;
 	struct xilinx_dma_desc_hw *hw;
 
-	spin_lock_irqsave(&chan->lock, flags);
-
 	if (chan->err)
-		goto out_unlock;
+		return;
 
 	if (list_empty(&chan->pending_list))
-		goto out_unlock;
+		return;
 
 	/* If hardware is busy, cannot submit */
 	if (dma_is_running(chan) && !dma_is_idle(chan)) {
 		dev_dbg(chan->dev, "DMA controller still busy\n");
-		goto out_unlock;
+		return;
 	}
 
 	/*
@@ -371,7 +368,7 @@ static void xilinx_dma_start_transfer(struct xilinx_dma_chan *chan)
 	dma_halt(chan);
 
 	if (chan->err)
-		goto out_unlock;
+		return;
 
 	if (chan->has_sg) {
 		desch = list_first_entry(&chan->pending_list,
@@ -385,7 +382,7 @@ static void xilinx_dma_start_transfer(struct xilinx_dma_chan *chan)
 		dma_start(chan);
 
 		if (chan->err)
-			goto out_unlock;
+			return;
 		list_splice_tail_init(&chan->pending_list, &chan->active_list);
 
 		/* Update tail ptr register and start the transfer */
@@ -400,7 +397,7 @@ static void xilinx_dma_start_transfer(struct xilinx_dma_chan *chan)
 		dma_start(chan);
 
 		if (chan->err)
-			goto out_unlock;
+			return;
 
 		hw = &desch->hw;
 
@@ -410,16 +407,16 @@ static void xilinx_dma_start_transfer(struct xilinx_dma_chan *chan)
 		dma_write(chan, XILINX_DMA_BTT_OFFSET,
 			  hw->control & XILINX_DMA_MAX_TRANS_LEN);
 	}
-
-out_unlock:
-	spin_unlock_irqrestore(&chan->lock, flags);
 }
 
 static void xilinx_dma_issue_pending(struct dma_chan *dchan)
 {
 	struct xilinx_dma_chan *chan = to_xilinx_chan(dchan);
+	unsigned long flags;
 
+	spin_lock_irqsave(&chan->lock, flags);
 	xilinx_dma_start_transfer(chan);
+	spin_unlock_irqrestore(&chan->lock, flags);
 }
 
 /**
@@ -537,8 +534,8 @@ static irqreturn_t dma_intr_handler(int irq, void *data)
 	if (stat & XILINX_DMA_XR_IRQ_IOC_MASK) {
 		spin_lock(&chan->lock);
 		xilinx_dma_update_completed_cookie(chan);
-		spin_unlock(&chan->lock);
 		xilinx_dma_start_transfer(chan);
+		spin_unlock(&chan->lock);
 	}
 
 	tasklet_schedule(&chan->tasklet);
