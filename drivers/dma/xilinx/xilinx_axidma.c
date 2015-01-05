@@ -605,6 +605,8 @@ static dma_cookie_t xilinx_dma_tx_submit(struct dma_async_tx_descriptor *tx)
 
 	desc = container_of(tx, struct xilinx_dma_desc_sw, async_tx);
 
+	spin_lock_irqsave(&chan->lock, flags);
+
 	if (chan->err) {
 		/*
 		 * If reset fails, need to hard reset the system.
@@ -613,10 +615,8 @@ static dma_cookie_t xilinx_dma_tx_submit(struct dma_async_tx_descriptor *tx)
 		if (!dma_reset(chan))
 			chan->err = false;
 		else
-			return cookie;
+			goto out_unlock;
 	}
-
-	spin_lock_irqsave(&chan->lock, flags);
 
 	/*
 	 * Assign cookies to all of the software descriptors
@@ -636,6 +636,7 @@ static dma_cookie_t xilinx_dma_tx_submit(struct dma_async_tx_descriptor *tx)
 	/* Put this transaction onto the tail of the pending queue */
 	append_desc_queue(chan, desc);
 
+out_unlock:
 	spin_unlock_irqrestore(&chan->lock, flags);
 
 	return cookie;
