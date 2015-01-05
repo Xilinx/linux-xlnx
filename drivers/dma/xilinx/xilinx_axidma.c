@@ -433,8 +433,6 @@ static void xilinx_dma_update_completed_cookie(struct xilinx_dma_chan *chan)
 	struct xilinx_dma_desc_sw *desc = NULL;
 	struct xilinx_dma_desc_hw *hw = NULL;
 	unsigned long flags;
-	dma_cookie_t cookie = -EBUSY;
-	int done = 0;
 
 	spin_lock_irqsave(&chan->lock, flags);
 
@@ -452,18 +450,13 @@ static void xilinx_dma_update_completed_cookie(struct xilinx_dma_chan *chan)
 			if (!(hw->status & XILINX_DMA_BD_STS_ALL_MASK)) {
 				break;
 			} else {
-				done = 1;
-				cookie = desc->async_tx.cookie;
+				chan->completed_cookie = desc->async_tx.cookie;
 			}
 		} else {
 			/* In non-SG mode, all active entries are done */
-			done = 1;
-			cookie = desc->async_tx.cookie;
+			chan->completed_cookie = desc->async_tx.cookie;
 		}
 	}
-
-	if (done)
-		chan->completed_cookie = cookie;
 
 out_unlock:
 	spin_unlock_irqrestore(&chan->lock, flags);
