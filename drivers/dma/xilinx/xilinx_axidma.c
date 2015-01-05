@@ -391,28 +391,26 @@ static void xilinx_dma_start_transfer(struct xilinx_dma_chan *chan)
 
 		/* Update tail ptr register and start the transfer */
 		dma_write(chan, XILINX_DMA_TDESC_OFFSET, desct->async_tx.phys);
-		goto out_unlock;
+	} else {
+		desch = list_first_entry(&chan->pending_list,
+					 struct xilinx_dma_desc_sw, node);
+
+		list_del(&desch->node);
+		list_add_tail(&desch->node, &chan->active_list);
+
+		dma_start(chan);
+
+		if (chan->err)
+			goto out_unlock;
+
+		hw = &desch->hw;
+
+		dma_write(chan, XILINX_DMA_SRCADDR_OFFSET, hw->buf_addr);
+
+		/* Start the transfer */
+		dma_write(chan, XILINX_DMA_BTT_OFFSET,
+			  hw->control & XILINX_DMA_MAX_TRANS_LEN);
 	}
-
-	/* In simple mode */
-	desch = list_first_entry(&chan->pending_list,
-				 struct xilinx_dma_desc_sw, node);
-
-	list_del(&desch->node);
-	list_add_tail(&desch->node, &chan->active_list);
-
-	dma_start(chan);
-
-	if (chan->err)
-		goto out_unlock;
-
-	hw = &desch->hw;
-
-	dma_write(chan, XILINX_DMA_SRCADDR_OFFSET, hw->buf_addr);
-
-	/* Start the transfer */
-	dma_write(chan, XILINX_DMA_BTT_OFFSET,
-		  hw->control & XILINX_DMA_MAX_TRANS_LEN);
 
 out_unlock:
 	spin_unlock_irqrestore(&chan->lock, flags);
