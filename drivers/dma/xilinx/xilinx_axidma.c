@@ -505,10 +505,15 @@ static irqreturn_t dma_intr_handler(int irq, void *data)
 {
 	struct xilinx_dma_chan *chan = data;
 	u32 stat;
+	irqreturn_t ret = IRQ_HANDLED;
+
+	spin_lock(&chan->lock);
 
 	stat = dma_read(chan, XILINX_DMA_STATUS_OFFSET);
-	if (!(stat & XILINX_DMA_XR_IRQ_ALL_MASK))
-		return IRQ_NONE;
+	if (!(stat & XILINX_DMA_XR_IRQ_ALL_MASK)) {
+		ret = IRQ_NONE;
+		goto out_unlock;
+	}
 
 	/* Ack the interrupts */
 	dma_write(chan, XILINX_DMA_STATUS_OFFSET,
@@ -532,14 +537,16 @@ static irqreturn_t dma_intr_handler(int irq, void *data)
 		dev_dbg(chan->dev, "Inter-packet latency too long\n");
 
 	if (stat & XILINX_DMA_XR_IRQ_IOC_MASK) {
-		spin_lock(&chan->lock);
 		xilinx_dma_update_completed_cookie(chan);
 		xilinx_dma_start_transfer(chan);
-		spin_unlock(&chan->lock);
 	}
 
+out_unlock:
+	spin_unlock(&chan->lock);
+
 	tasklet_schedule(&chan->tasklet);
-	return IRQ_HANDLED;
+
+	return ret;
 }
 
 static void dma_do_tasklet(unsigned long data)
