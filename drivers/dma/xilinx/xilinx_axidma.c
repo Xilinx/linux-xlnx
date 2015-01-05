@@ -521,9 +521,7 @@ static int dma_reset(struct xilinx_dma_chan *chan)
 static irqreturn_t dma_intr_handler(int irq, void *data)
 {
 	struct xilinx_dma_chan *chan = data;
-	u32 stat, reg;
-
-	reg = dma_read(chan, XILINX_DMA_CONTROL_OFFSET);
+	u32 stat;
 
 	stat = dma_read(chan, XILINX_DMA_STATUS_OFFSET);
 	if (!(stat & XILINX_DMA_XR_IRQ_ALL_MASK))
@@ -532,9 +530,6 @@ static irqreturn_t dma_intr_handler(int irq, void *data)
 	/* Ack the interrupts */
 	dma_write(chan, XILINX_DMA_STATUS_OFFSET,
 		  XILINX_DMA_XR_IRQ_ALL_MASK);
-
-	/* Check for only the interrupts which are enabled */
-	stat &= (reg & XILINX_DMA_XR_IRQ_ALL_MASK);
 
 	if (stat & XILINX_DMA_XR_IRQ_ERROR_MASK) {
 		dev_err(chan->dev,
