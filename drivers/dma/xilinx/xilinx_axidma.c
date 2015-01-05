@@ -907,9 +907,12 @@ static int xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 
 	if (of_device_is_compatible(node, "xlnx,axi-dma-mm2s-channel"))
 		chan->direction = DMA_MEM_TO_DEV;
-
-	if (of_device_is_compatible(node, "xlnx,axi-dma-s2mm-channel"))
+	else if (of_device_is_compatible(node, "xlnx,axi-dma-s2mm-channel"))
 		chan->direction = DMA_DEV_TO_MEM;
+	else {
+		dev_err(xdev->dev, "Invalid channel compatible node\n");
+		return -EINVAL;
+	}
 
 	chan->regs = xdev->regs;
 
