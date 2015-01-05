@@ -447,11 +447,10 @@ static void xilinx_dma_update_completed_cookie(struct xilinx_dma_chan *chan)
 			hw = &desc->hw;
 
 			/* If a BD has no status bits set, hw has it */
-			if (!(hw->status & XILINX_DMA_BD_STS_ALL_MASK)) {
-				break;
-			} else {
+			if (hw->status & XILINX_DMA_BD_STS_ALL_MASK)
 				chan->completed_cookie = desc->async_tx.cookie;
-			}
+			else
+				break;
 		} else {
 			/* In non-SG mode, all active entries are done */
 			chan->completed_cookie = desc->async_tx.cookie;
