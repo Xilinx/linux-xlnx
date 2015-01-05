@@ -72,13 +72,6 @@
 #define XILINX_DMA_BD_SOP		0x08000000 /* Start of packet bit */
 #define XILINX_DMA_BD_EOP		0x04000000 /* End of packet bit */
 
-/* Feature encodings */
-#define XILINX_DMA_FTR_HAS_SG		0x00000100 /* Has SG */
-#define XILINX_DMA_FTR_HAS_SG_SHIFT	8 /* Has SG shift */
-/* Optional feature for dma */
-#define XILINX_DMA_FTR_STSCNTRL_STRM	0x00010000
-
-
 /* Delay loop counter to prevent hardware failure */
 #define XILINX_DMA_RESET_LOOP		1000000
 #define XILINX_DMA_HALT_LOOP		1000000
@@ -133,7 +126,6 @@ struct xilinx_dma_chan {
 	bool has_dre;			/* Support unaligned transfers */
 	int err;			/* Channel has errors */
 	struct tasklet_struct tasklet;	/* Cleanup work after irq */
-	u32 feature;			/* IP feature */
 	u32 private;			/* Match info for channel request */
 	void (*start_transfer)(struct xilinx_dma_chan *chan);
 	struct xilinx_dma_config config;
@@ -146,7 +138,6 @@ struct xilinx_dma_device {
 	struct device *dev;
 	struct dma_device common;
 	struct xilinx_dma_chan *chan[XILINX_DMA_MAX_CHANS_PER_DEVICE];
-	u32 feature;
 };
 
 #define to_xilinx_chan(chan) \
@@ -895,7 +886,7 @@ static void xilinx_dma_free_channels(struct xilinx_dma_device *xdev)
  * . Initialize special channel handling routines
  */
 static int xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
-				 struct device_node *node, u32 feature)
+				 struct device_node *node)
 {
 	struct xilinx_dma_chan *chan;
 	int err;
@@ -906,7 +897,6 @@ static int xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 	if (!chan)
 		return -ENOMEM;
 
-	chan->feature = feature;
 	chan->max_len = XILINX_DMA_MAX_TRANS_LEN;
 
 	chan->has_dre = of_property_read_bool(node, "xlnx,include-dre");
@@ -921,8 +911,6 @@ static int xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 		/* If data width is greater than 8 bytes, DRE is not in hw */
 		if (width > 8)
 			chan->has_dre = 0;
-
-		chan->feature |= width - 1;
 	}
 
 	err = of_property_read_u32(node, "xlnx,device-id", &device_id);
@@ -930,9 +918,6 @@ static int xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 		dev_err(xdev->dev, "unable to read device id property");
 		return err;
 	}
-
-	chan->has_sg = (xdev->feature & XILINX_DMA_FTR_HAS_SG) >>
-		       XILINX_DMA_FTR_HAS_SG_SHIFT;
 
 	chan->start_transfer = xilinx_dma_start_transfer;
 
@@ -1000,7 +985,8 @@ static int xilinx_dma_probe(struct platform_device *pdev)
 	struct device_node *child, *node;
 	struct resource *res;
 	int ret;
-	u32 value;
+	bool has_sg;
+	unsigned int i;
 
 	xdev = devm_kzalloc(&pdev->dev, sizeof(*xdev), GFP_KERNEL);
 	if (!xdev)
@@ -1018,15 +1004,7 @@ static int xilinx_dma_probe(struct platform_device *pdev)
 		return PTR_ERR(xdev->regs);
 
 	/* Check if SG is enabled */
-	value = of_property_read_bool(node, "xlnx,include-sg");
-	if (value)
-		xdev->feature |= XILINX_DMA_FTR_HAS_SG;
-
-	/* Check if status control streams are enabled */
-	value = of_property_read_bool(node,
-				      "xlnx,sg-include-stscntrl-strm");
-	if (value)
-		xdev->feature |= XILINX_DMA_FTR_STSCNTRL_STRM;
+	has_sg = of_property_read_bool(node, "xlnx,include-sg");
 
 	/* Axi DMA only do slave transfers */
 	dma_cap_set(DMA_SLAVE, xdev->common.cap_mask);
@@ -1044,11 +1022,16 @@ static int xilinx_dma_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, xdev);
 
 	for_each_child_of_node(node, child) {
-		ret = xilinx_dma_chan_probe(xdev, child, xdev->feature);
+		ret = xilinx_dma_chan_probe(xdev, child);
 		if (ret) {
 			dev_err(&pdev->dev, "Probing channels failed\n");
 			goto free_chan_resources;
 		}
+	}
+
+	for (i = 0; i < XILINX_DMA_MAX_CHANS_PER_DEVICE; ++i) {
+		if (xdev->chan[i])
+			xdev->chan[i]->has_sg = has_sg;
 	}
 
 	ret = dma_async_device_register(&xdev->common);
