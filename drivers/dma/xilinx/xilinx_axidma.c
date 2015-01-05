@@ -389,11 +389,6 @@ static void xilinx_dma_start_transfer(struct xilinx_dma_chan *chan)
 			goto out_unlock;
 		list_splice_tail_init(&chan->pending_list, &chan->active_list);
 
-		/* Enable interrupts */
-		dma_write(chan, XILINX_DMA_CONTROL_OFFSET,
-			  dma_read(chan, XILINX_DMA_CONTROL_OFFSET) |
-			  XILINX_DMA_XR_IRQ_ALL_MASK);
-
 		/* Update tail ptr register and start the transfer */
 		dma_write(chan, XILINX_DMA_TDESC_OFFSET, desct->async_tx.phys);
 		goto out_unlock;
@@ -417,11 +412,6 @@ static void xilinx_dma_start_transfer(struct xilinx_dma_chan *chan)
 		goto out_unlock;
 
 	hw = &desch->hw;
-
-	/* Enable interrupts */
-	dma_write(chan, XILINX_DMA_CONTROL_OFFSET,
-		  dma_read(chan, XILINX_DMA_CONTROL_OFFSET) |
-		  XILINX_DMA_XR_IRQ_ALL_MASK);
 
 	dma_write(chan, XILINX_DMA_SRCADDR_OFFSET, hw->buf_addr);
 
@@ -486,6 +476,25 @@ static void xilinx_dma_update_completed_cookie(struct xilinx_dma_chan *chan)
 out_unlock:
 	spin_unlock_irqrestore(&chan->lock, flags);
 }
+/**
+ * xilinx_dma_chan_config - Configure DMA Channel IRQThreshold, IRQDelay
+ * and enable interrupts
+ * @chan: DMA channel
+ */
+static void xilinx_dma_chan_config(struct xilinx_dma_chan *chan)
+{
+	u32 reg = dma_read(chan, XILINX_DMA_CONTROL_OFFSET);
+
+	reg &= ~XILINX_DMA_XR_COALESCE_MASK;
+	reg |= chan->config.coalesc << XILINX_DMA_COALESCE_SHIFT;
+
+	reg &= ~XILINX_DMA_XR_DELAY_MASK;
+	reg |= chan->config.delay << XILINX_DMA_DELAY_SHIFT;
+
+	reg |= XILINX_DMA_XR_IRQ_ALL_MASK;
+
+	dma_write(chan, XILINX_DMA_CONTROL_OFFSET, reg);
+}
 
 /* Reset hardware */
 static int dma_reset(struct xilinx_dma_chan *chan)
@@ -523,10 +532,6 @@ static irqreturn_t dma_intr_handler(int irq, void *data)
 	u32 stat, reg;
 
 	reg = dma_read(chan, XILINX_DMA_CONTROL_OFFSET);
-
-	/* Disable intr */
-	dma_write(chan, XILINX_DMA_CONTROL_OFFSET,
-		  reg & ~XILINX_DMA_XR_IRQ_ALL_MASK);
 
 	stat = dma_read(chan, XILINX_DMA_STATUS_OFFSET);
 	if (!(stat & XILINX_DMA_XR_IRQ_ALL_MASK))
@@ -836,22 +841,14 @@ static int xilinx_dma_device_control(struct dma_chan *dchan,
 		 * Use value XILINX_DMA_NO_CHANGE to signal no change
 		 */
 		struct xilinx_dma_config *cfg = (struct xilinx_dma_config *)arg;
-		u32 reg = dma_read(chan, XILINX_DMA_CONTROL_OFFSET);
 
-		if (cfg->coalesc <= XILINX_DMA_COALESCE_MAX) {
-			reg &= ~XILINX_DMA_XR_COALESCE_MASK;
-			reg |= cfg->coalesc << XILINX_DMA_COALESCE_SHIFT;
-
+		if (cfg->coalesc <= XILINX_DMA_COALESCE_MAX)
 			chan->config.coalesc = cfg->coalesc;
-		}
 
-		if (cfg->delay <= XILINX_DMA_DELAY_MAX) {
-			reg &= ~XILINX_DMA_XR_DELAY_MASK;
-			reg |= cfg->delay << XILINX_DMA_DELAY_SHIFT;
+		if (cfg->delay <= XILINX_DMA_DELAY_MAX)
 			chan->config.delay = cfg->delay;
-		}
 
-		dma_write(chan, XILINX_DMA_CONTROL_OFFSET, reg);
+		xilinx_dma_chan_config(chan);
 
 		return 0;
 	} else
@@ -1028,8 +1025,10 @@ static int xilinx_dma_probe(struct platform_device *pdev)
 	}
 
 	for (i = 0; i < XILINX_DMA_MAX_CHANS_PER_DEVICE; ++i) {
-		if (xdev->chan[i])
+		if (xdev->chan[i]) {
 			xdev->chan[i]->has_sg = has_sg;
+			xilinx_dma_chan_config(xdev->chan[i]);
+		}
 	}
 
 	ret = dma_async_device_register(&xdev->common);
