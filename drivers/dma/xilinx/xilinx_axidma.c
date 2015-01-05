@@ -395,8 +395,6 @@ static void xilinx_dma_start_transfer(struct xilinx_dma_chan *chan)
 	}
 
 	/* In simple mode */
-	dma_halt(chan);
-
 	if (chan->err)
 		goto out_unlock;
 
