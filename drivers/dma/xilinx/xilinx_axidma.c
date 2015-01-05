@@ -656,10 +656,8 @@ xilinx_dma_desc_sw *xilinx_dma_alloc_descriptor(struct xilinx_dma_chan *chan)
 	dma_addr_t pdesc;
 
 	desc = dma_pool_alloc(chan->desc_pool, GFP_ATOMIC, &pdesc);
-	if (!desc) {
-		dev_dbg(chan->dev, "out of memory for desc\n");
+	if (!desc)
 		return NULL;
-	}
 
 	memset(desc, 0, sizeof(*desc));
 	INIT_LIST_HEAD(&desc->tx_list);
