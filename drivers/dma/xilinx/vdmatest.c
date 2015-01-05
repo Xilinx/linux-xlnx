@@ -530,6 +530,7 @@ xilinx_vdmatest_add_slave_threads(struct xilinx_vdmatest_chan *tx_dtc,
 		pr_warn("xilinx_vdmatest: Failed to run thread %s-%s\n",
 				dma_chan_name(tx_chan), dma_chan_name(rx_chan));
 		kfree(thread);
+		return PTR_ERR(thread->task);
 	}
 
 	list_add_tail(&thread->node, &tx_dtc->threads);

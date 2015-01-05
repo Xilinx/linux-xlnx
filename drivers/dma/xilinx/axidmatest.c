@@ -538,6 +538,7 @@ static int dmatest_add_slave_threads(struct dmatest_chan *tx_dtc,
 		pr_warn("dmatest: Failed to run thread %s-%s\n",
 				dma_chan_name(tx_chan), dma_chan_name(rx_chan));
 		kfree(thread);
+		return PTR_ERR(thread->task);
 	}
 
 	/* srcbuf and dstbuf are allocated by the thread itself */
