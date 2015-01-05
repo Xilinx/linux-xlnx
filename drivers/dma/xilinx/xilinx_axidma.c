@@ -378,7 +378,7 @@ static void xilinx_dma_start_transfer(struct xilinx_dma_chan *chan)
 		desch = list_first_entry(&chan->pending_list,
 					 struct xilinx_dma_desc_sw, node);
 
-		desct = container_of(chan->pending_list.prev,
+		desct = list_last_entry(&chan->pending_list,
 				     struct xilinx_dma_desc_sw, node);
 
 		dma_write(chan, XILINX_DMA_CDESC_OFFSET, desch->async_tx.phys);
@@ -577,7 +577,7 @@ static void append_desc_queue(struct xilinx_dma_chan *chan,
 			      struct xilinx_dma_desc_sw *desc)
 {
 	struct xilinx_dma_desc_sw *tail =
-		container_of(chan->pending_list.prev,
+		list_last_entry(&chan->pending_list,
 			     struct xilinx_dma_desc_sw, node);
 	struct xilinx_dma_desc_hw *hw;
 
