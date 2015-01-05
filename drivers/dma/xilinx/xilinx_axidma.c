@@ -520,8 +520,6 @@ static int dma_reset(struct xilinx_dma_chan *chan)
 static irqreturn_t dma_intr_handler(int irq, void *data)
 {
 	struct xilinx_dma_chan *chan = data;
-	int update_cookie = 0;
-	int to_transfer = 0;
 	u32 stat, reg;
 
 	reg = dma_read(chan, XILINX_DMA_CONTROL_OFFSET);
@@ -559,15 +557,9 @@ static irqreturn_t dma_intr_handler(int irq, void *data)
 		dev_dbg(chan->dev, "Inter-packet latency too long\n");
 
 	if (stat & XILINX_DMA_XR_IRQ_IOC_MASK) {
-		update_cookie = 1;
-		to_transfer = 1;
-	}
-
-	if (update_cookie)
 		xilinx_dma_update_completed_cookie(chan);
-
-	if (to_transfer)
 		chan->start_transfer(chan);
+	}
 
 	tasklet_schedule(&chan->tasklet);
 	return IRQ_HANDLED;
