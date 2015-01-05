@@ -432,13 +432,10 @@ static void xilinx_dma_update_completed_cookie(struct xilinx_dma_chan *chan)
 {
 	struct xilinx_dma_desc_sw *desc = NULL;
 	struct xilinx_dma_desc_hw *hw = NULL;
-	unsigned long flags;
-
-	spin_lock_irqsave(&chan->lock, flags);
 
 	if (list_empty(&chan->active_list)) {
 		dev_dbg(chan->dev, "no running descriptors\n");
-		goto out_unlock;
+		return;
 	}
 
 	/* Get the last completed descriptor, update the cookie to that */
@@ -456,9 +453,6 @@ static void xilinx_dma_update_completed_cookie(struct xilinx_dma_chan *chan)
 			chan->completed_cookie = desc->async_tx.cookie;
 		}
 	}
-
-out_unlock:
-	spin_unlock_irqrestore(&chan->lock, flags);
 }
 /**
  * xilinx_dma_chan_config - Configure DMA Channel IRQThreshold, IRQDelay
@@ -541,7 +535,9 @@ static irqreturn_t dma_intr_handler(int irq, void *data)
 		dev_dbg(chan->dev, "Inter-packet latency too long\n");
 
 	if (stat & XILINX_DMA_XR_IRQ_IOC_MASK) {
+		spin_lock(&chan->lock);
 		xilinx_dma_update_completed_cookie(chan);
+		spin_unlock(&chan->lock);
 		xilinx_dma_start_transfer(chan);
 	}
 
