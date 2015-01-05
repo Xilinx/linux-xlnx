@@ -586,7 +586,7 @@ static int zynq_edac_mc_remove(struct platform_device *pdev)
 
 /* Device tree node type and compatible tuples this driver can match on */
 static const struct of_device_id zynq_edac_match[] = {
-	{ .compatible = "xlnx,zynq-ddrc-1.0", },
+	{ .compatible = "xlnx,zynq-ddrc-a05", },
 	{ /* end of table */ }
 };
 

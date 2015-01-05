@@ -228,7 +228,7 @@ int __init zynq_pm_late_init(void)
 {
 	u32 reg;
 
-	ddrc_base = zynq_pm_ioremap("xlnx,zynq-ddrc-1.0");
+	ddrc_base = zynq_pm_ioremap("xlnx,zynq-ddrc-a05");
 	if (!ddrc_base) {
 		pr_warn("%s: Unable to map DDRC IO memory.\n", __func__);
 	} else {
