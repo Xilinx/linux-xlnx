@@ -980,14 +980,19 @@ static int xilinx_dma_probe(struct platform_device *pdev)
 	bool has_sg;
 	unsigned int i;
 
+	node = pdev->dev.of_node;
+
+	if (of_get_child_count(node) == 0) {
+		dev_err(&pdev->dev, "no channels defined\n");
+		return -ENODEV;
+	}
+
 	xdev = devm_kzalloc(&pdev->dev, sizeof(*xdev), GFP_KERNEL);
 	if (!xdev)
 		return -ENOMEM;
 
 	xdev->dev = &(pdev->dev);
 	INIT_LIST_HEAD(&xdev->common.channels);
-
-	node = pdev->dev.of_node;
 
 	/* iomap registers */
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
