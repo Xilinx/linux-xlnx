@@ -10,8 +10,6 @@ Required properties:
 Option node properties:
 - xlnx,include-sg: Tells whether configured for Scatter-mode in
 	the hardware.
-- xlnx,sg-include-stscntrl-strm: Tells whether status and control streams
-	are configured in the hardware.
 
 Required child node properties:
 - compatible: It should be either "xlnx,axi-dma-mm2s-channel" or
