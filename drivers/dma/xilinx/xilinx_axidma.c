@@ -905,20 +905,17 @@ static int xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 
 	chan->start_transfer = xilinx_dma_start_transfer;
 
-	if (of_device_is_compatible(node, "xlnx,axi-dma-mm2s-channel"))
+	if (of_device_is_compatible(node, "xlnx,axi-dma-mm2s-channel")) {
+		chan->regs = xdev->regs;
+		chan->id = 0;
 		chan->direction = DMA_MEM_TO_DEV;
-	else if (of_device_is_compatible(node, "xlnx,axi-dma-s2mm-channel"))
-		chan->direction = DMA_DEV_TO_MEM;
-	else {
-		dev_err(xdev->dev, "Invalid channel compatible node\n");
-		return -EINVAL;
-	}
-
-	chan->regs = xdev->regs;
-
-	if (chan->direction == DMA_DEV_TO_MEM) {
+	} else if (of_device_is_compatible(node, "xlnx,axi-dma-s2mm-channel")) {
 		chan->regs = (xdev->regs + XILINX_DMA_RX_CHANNEL_OFFSET);
 		chan->id = 1;
+		chan->direction = DMA_DEV_TO_MEM;
+	} else {
+		dev_err(xdev->dev, "Invalid channel compatible node\n");
+		return -EINVAL;
 	}
 
 	/*
