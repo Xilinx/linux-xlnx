@@ -351,10 +351,10 @@ static void xilinx_dma_start_transfer(struct xilinx_dma_chan *chan)
 	struct xilinx_dma_desc_sw *desch, *desct;
 	struct xilinx_dma_desc_hw *hw;
 
-	if (chan->err)
-		return;
-
 	spin_lock_irqsave(&chan->lock, flags);
+
+	if (chan->err)
+		goto out_unlock;
 
 	if (list_empty(&chan->pending_list))
 		goto out_unlock;
