@@ -124,7 +124,7 @@ struct xilinx_dma_chan {
 	int max_len;			/* Maximum data len per transfer */
 	bool has_sg;			/* Support scatter transfers */
 	bool has_dre;			/* Support unaligned transfers */
-	int err;			/* Channel has errors */
+	bool err;			/* Channel has errors */
 	struct tasklet_struct tasklet;	/* Cleanup work after irq */
 	u32 private;			/* Match info for channel request */
 	struct xilinx_dma_config config;
@@ -316,7 +316,7 @@ static void dma_halt(struct xilinx_dma_chan *chan)
 	if (!loop) {
 		dev_err(chan->dev, "Cannot stop channel %p: %x\n",
 			chan, dma_read(chan, XILINX_DMA_CONTROL_OFFSET));
-		chan->err = 1;
+		chan->err = true;
 	}
 }
 
@@ -340,7 +340,7 @@ static void dma_start(struct xilinx_dma_chan *chan)
 		dev_err(chan->dev, "Cannot start channel %p: %x\n",
 			 chan, dma_read(chan, XILINX_DMA_CONTROL_OFFSET));
 
-		chan->err = 1;
+		chan->err = true;
 	}
 }
 
@@ -538,7 +538,7 @@ static irqreturn_t dma_intr_handler(int irq, void *data)
 			(unsigned int)dma_read(chan, XILINX_DMA_STATUS_OFFSET),
 			(unsigned int)dma_read(chan, XILINX_DMA_CDESC_OFFSET),
 			(unsigned int)dma_read(chan, XILINX_DMA_TDESC_OFFSET));
-		chan->err = 1;
+		chan->err = true;
 	}
 
 	/*
@@ -611,7 +611,7 @@ static dma_cookie_t xilinx_dma_tx_submit(struct dma_async_tx_descriptor *tx)
 		 * Channel is no longer functional
 		 */
 		if (!dma_reset(chan))
-			chan->err = 0;
+			chan->err = false;
 		else
 			return cookie;
 	}
