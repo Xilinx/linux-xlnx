@@ -863,6 +863,9 @@ static void xilinx_dma_free_channels(struct xilinx_dma_device *xdev)
 	int i;
 
 	for (i = 0; i < XILINX_DMA_MAX_CHANS_PER_DEVICE; i++) {
+		if (!xdev->chan[i])
+			continue;
+
 		list_del(&xdev->chan[i]->common.device_node);
 		tasklet_kill(&xdev->chan[i]->tasklet);
 		irq_dispose_mapping(xdev->chan[i]->irq);
