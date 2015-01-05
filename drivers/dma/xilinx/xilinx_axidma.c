@@ -127,7 +127,6 @@ struct xilinx_dma_chan {
 	int err;			/* Channel has errors */
 	struct tasklet_struct tasklet;	/* Cleanup work after irq */
 	u32 private;			/* Match info for channel request */
-	void (*start_transfer)(struct xilinx_dma_chan *chan);
 	struct xilinx_dma_config config;
 					/* Device configuration info */
 };
@@ -556,7 +555,7 @@ static irqreturn_t dma_intr_handler(int irq, void *data)
 
 	if (stat & XILINX_DMA_XR_IRQ_IOC_MASK) {
 		xilinx_dma_update_completed_cookie(chan);
-		chan->start_transfer(chan);
+		xilinx_dma_start_transfer(chan);
 	}
 
 	tasklet_schedule(&chan->tasklet);
@@ -902,8 +901,6 @@ static int xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 		dev_err(xdev->dev, "unable to read device id property");
 		return err;
 	}
-
-	chan->start_transfer = xilinx_dma_start_transfer;
 
 	if (of_device_is_compatible(node, "xlnx,axi-dma-mm2s-channel")) {
 		chan->regs = xdev->regs;
