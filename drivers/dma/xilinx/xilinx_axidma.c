@@ -888,6 +888,7 @@ static int xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 		return -ENOMEM;
 
 	chan->max_len = XILINX_DMA_MAX_TRANS_LEN;
+	chan->config.coalesc = 0x01;
 
 	chan->has_dre = of_property_read_bool(node, "xlnx,include-dre");
 
