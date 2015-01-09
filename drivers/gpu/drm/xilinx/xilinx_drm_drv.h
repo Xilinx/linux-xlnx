@@ -45,6 +45,16 @@ static inline u32 xilinx_drm_readl(void __iomem *base, int offset)
 	return readl(base + offset);
 }
 
+static inline void xilinx_drm_clr(void __iomem *base, int offset, u32 clr)
+{
+	xilinx_drm_writel(base, offset, xilinx_drm_readl(base, offset) & ~clr);
+}
+
+static inline void xilinx_drm_set(void __iomem *base, int offset, u32 set)
+{
+	xilinx_drm_writel(base, offset, xilinx_drm_readl(base, offset) | set);
+}
+
 struct drm_device;
 
 bool xilinx_drm_check_format(struct drm_device *drm, uint32_t fourcc);
