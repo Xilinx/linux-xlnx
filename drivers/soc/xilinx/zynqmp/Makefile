@@ -1,1 +1,1 @@
-obj-$(CONFIG_SUSPEND)	+= pm.o
+obj-$(CONFIG_SUSPEND)	+= sleep.o
