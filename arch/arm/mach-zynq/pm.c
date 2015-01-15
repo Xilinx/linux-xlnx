@@ -224,7 +224,12 @@ static void __iomem *zynq_pm_ioremap(const char *comp)
 	return base;
 }
 
-int __init zynq_pm_late_init(void)
+/**
+ * zynq_pm_late_init() - Power management init
+ *
+ * Initialization of power management related featurs and infrastructure.
+ */
+void __init zynq_pm_late_init(void)
 {
 	u32 reg;
 
@@ -244,6 +249,4 @@ int __init zynq_pm_late_init(void)
 
 	/* set up suspend */
 	zynq_pm_suspend_init();
-
-	return 0;
 }
