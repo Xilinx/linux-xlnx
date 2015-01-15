@@ -66,13 +66,6 @@ static struct platform_device zynq_cpuidle_device = {
 	.name = "cpuidle-zynq",
 };
 
-static void __init zynq_init_late(void)
-{
-	zynq_pm_late_init();
-	zynq_core_pm_init();
-	zynq_prefetch_init();
-}
-
 /**
  * zynq_get_revision - Get Zynq silicon revision
  *
@@ -103,6 +96,13 @@ static int __init zynq_get_revision(void)
 	iounmap(zynq_devcfg_base);
 
 	return revision;
+}
+
+static void __init zynq_init_late(void)
+{
+	zynq_pm_late_init();
+	zynq_core_pm_init();
+	zynq_prefetch_init();
 }
 
 /**
