@@ -159,7 +159,7 @@ static int of_platform_serial_probe(struct platform_device *ofdev)
 	if (of_find_property(ofdev->dev.of_node, "used-by-rtas", NULL))
 		return -EBUSY;
 
-	info = kmalloc(sizeof(*info), GFP_KERNEL);
+	info = kzalloc(sizeof(*info), GFP_KERNEL);
 	if (info == NULL)
 		return -ENOMEM;
 
@@ -197,10 +197,6 @@ static int of_platform_serial_probe(struct platform_device *ofdev)
 		if (of_property_read_bool(ofdev->dev.of_node,
 					  "auto-flow-control"))
 			port8250.capabilities |= UART_CAP_AFE;
-
-		if (of_property_read_bool(ofdev->dev.of_node,
-					  "has-hw-flow-control"))
-			port8250.port.flags |= UPF_HARD_FLOW;
 
 		ret = serial8250_register_8250_port(&port8250);
 		break;

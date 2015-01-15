@@ -599,7 +599,7 @@ static ssize_t xdevcfg_set_dap_en(struct device *dev,
 				XDCFG_CTRL_OFFSET);
 	spin_lock_irqsave(&drvdata->lock, flags);
 
-	status = strict_strtoul(buf, 10, &mask_bit);
+	status = kstrtoul(buf, 10, &mask_bit);
 
 	if (status)
 		goto err_unlock;
@@ -685,7 +685,7 @@ static ssize_t xdevcfg_set_dbgen(struct device *dev,
 	ctrl_reg_status = xdevcfg_readreg(drvdata->base_address +
 				XDCFG_CTRL_OFFSET);
 
-	status = strict_strtoul(buf, 10, &mask_bit);
+	status = kstrtoul(buf, 10, &mask_bit);
 
 	if (status)
 		goto err_clk;
@@ -775,7 +775,7 @@ static ssize_t xdevcfg_set_niden(struct device *dev,
 	ctrl_reg_status = xdevcfg_readreg(drvdata->base_address +
 				XDCFG_CTRL_OFFSET);
 
-	status = strict_strtoul(buf, 10, &mask_bit);
+	status = kstrtoul(buf, 10, &mask_bit);
 
 	if (status)
 		goto err_clk;
@@ -865,7 +865,7 @@ static ssize_t xdevcfg_set_spiden(struct device *dev,
 	ctrl_reg_status = xdevcfg_readreg(drvdata->base_address +
 				XDCFG_CTRL_OFFSET);
 
-	status = strict_strtoul(buf, 10, &mask_bit);
+	status = kstrtoul(buf, 10, &mask_bit);
 
 	if (status)
 		goto err_clk;
@@ -955,7 +955,7 @@ static ssize_t xdevcfg_set_spniden(struct device *dev,
 
 	ctrl_reg_status = xdevcfg_readreg(drvdata->base_address +
 				XDCFG_CTRL_OFFSET);
-	status = strict_strtoul(buf, 10, &mask_bit);
+	status = kstrtoul(buf, 10, &mask_bit);
 
 	if (status)
 		goto err_clk;
@@ -1045,7 +1045,7 @@ static ssize_t xdevcfg_set_seu(struct device *dev,
 	ctrl_reg_status = xdevcfg_readreg(drvdata->base_address +
 				XDCFG_CTRL_OFFSET);
 
-	status = strict_strtoul(buf, 10, &mask_bit);
+	status = kstrtoul(buf, 10, &mask_bit);
 
 	if (status)
 		goto err_clk;
@@ -1137,7 +1137,7 @@ static ssize_t xdevcfg_set_aes(struct device *dev,
 	ctrl_reg_status = xdevcfg_readreg(drvdata->base_address +
 				XDCFG_CTRL_OFFSET);
 
-	status = strict_strtoul(buf, 10, &mask_bit);
+	status = kstrtoul(buf, 10, &mask_bit);
 
 	if (status < 0)
 		goto err_clk;
@@ -1231,7 +1231,7 @@ static ssize_t xdevcfg_set_aes_en_lock(struct device *dev,
 	aes_en_lock_status = xdevcfg_readreg(drvdata->base_address +
 				XDCFG_LOCK_OFFSET);
 
-	status = strict_strtoul(buf, 10, &mask_bit);
+	status = kstrtoul(buf, 10, &mask_bit);
 
 	if (status)
 		goto err_clk;
@@ -1322,7 +1322,7 @@ static ssize_t xdevcfg_set_seu_lock(struct device *dev,
 	seu_lock_status = xdevcfg_readreg(drvdata->base_address +
 				XDCFG_LOCK_OFFSET);
 
-	status = strict_strtoul(buf, 10, &mask_bit);
+	status = kstrtoul(buf, 10, &mask_bit);
 
 	if (status)
 		goto err_clk;
@@ -1411,7 +1411,7 @@ static ssize_t xdevcfg_set_dbg_lock(struct device *dev,
 
 	lock_reg_status = xdevcfg_readreg(drvdata->base_address +
 				XDCFG_LOCK_OFFSET);
-	status = strict_strtoul(buf, 10, &mask_bit);
+	status = kstrtoul(buf, 10, &mask_bit);
 
 	if (status)
 		goto err_clk;
@@ -1528,7 +1528,7 @@ static ssize_t xdevcfg_set_is_partial_bitstream(struct device *dev,
 	ssize_t status;
 	struct xdevcfg_drvdata *drvdata = dev_get_drvdata(dev);
 
-	status = strict_strtoul(buf, 10, &mask_bit);
+	status = kstrtoul(buf, 10, &mask_bit);
 
 	if (status)
 		return status;

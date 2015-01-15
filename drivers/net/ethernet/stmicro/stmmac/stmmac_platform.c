@@ -30,13 +30,17 @@
 #include "stmmac.h"
 
 static const struct of_device_id stmmac_dt_ids[] = {
+#ifdef CONFIG_DWMAC_MESON
+	{ .compatible = "amlogic,meson6-dwmac", .data = &meson6_dwmac_data},
+#endif
 #ifdef CONFIG_DWMAC_SUNXI
 	{ .compatible = "allwinner,sun7i-a20-gmac", .data = &sun7i_gmac_data},
 #endif
 #ifdef CONFIG_DWMAC_STI
-	{ .compatible = "st,stih415-dwmac", .data = &sti_gmac_data},
-	{ .compatible = "st,stih416-dwmac", .data = &sti_gmac_data},
-	{ .compatible = "st,stid127-dwmac", .data = &sti_gmac_data},
+	{ .compatible = "st,stih415-dwmac", .data = &stih4xx_dwmac_data},
+	{ .compatible = "st,stih416-dwmac", .data = &stih4xx_dwmac_data},
+	{ .compatible = "st,stid127-dwmac", .data = &stid127_dwmac_data},
+	{ .compatible = "st,stih407-dwmac", .data = &stih4xx_dwmac_data},
 #endif
 #ifdef CONFIG_DWMAC_SOCFPGA
 	{ .compatible = "altr,socfpga-stmmac", .data = &socfpga_gmac_data },
@@ -157,22 +161,21 @@ static int stmmac_probe_config_dt(struct platform_device *pdev,
 	if (of_property_read_u32(np, "snps,phy-addr", &plat->phy_addr) == 0)
 		dev_warn(&pdev->dev, "snps,phy-addr property is deprecated\n");
 
-	plat->mdio_bus_data = devm_kzalloc(&pdev->dev,
-					   sizeof(struct stmmac_mdio_bus_data),
-					   GFP_KERNEL);
+	if (plat->phy_bus_name)
+		plat->mdio_bus_data = NULL;
+	else
+		plat->mdio_bus_data =
+			devm_kzalloc(&pdev->dev,
+				     sizeof(struct stmmac_mdio_bus_data),
+				     GFP_KERNEL);
 
-	plat->force_sf_dma_mode = of_property_read_bool(np, "snps,force_sf_dma_mode");
+	plat->force_sf_dma_mode =
+		of_property_read_bool(np, "snps,force_sf_dma_mode");
 
 	/* Set the maxmtu to a default of JUMBO_LEN in case the
 	 * parameter is not present in the device tree.
 	 */
 	plat->maxmtu = JUMBO_LEN;
-
-	/* Set default value for multicast hash bins */
-	plat->multicast_filter_bins = HASH_TABLE_SIZE;
-
-	/* Set default value for unicast filter entries */
-	plat->unicast_filter_entries = 1;
 
 	/*
 	 * Currently only the properties needed on SPEAr600
@@ -261,16 +264,23 @@ static int stmmac_pltfr_probe(struct platform_device *pdev)
 		return PTR_ERR(addr);
 
 	plat_dat = dev_get_platdata(&pdev->dev);
-	if (pdev->dev.of_node) {
-		if (!plat_dat)
-			plat_dat = devm_kzalloc(&pdev->dev,
+
+	if (!plat_dat)
+		plat_dat = devm_kzalloc(&pdev->dev,
 					sizeof(struct plat_stmmacenet_data),
 					GFP_KERNEL);
-		if (!plat_dat) {
-			pr_err("%s: ERROR: no memory", __func__);
-			return  -ENOMEM;
-		}
+	if (!plat_dat) {
+		pr_err("%s: ERROR: no memory", __func__);
+		return  -ENOMEM;
+	}
 
+	/* Set default value for multicast hash bins */
+	plat_dat->multicast_filter_bins = HASH_TABLE_SIZE;
+
+	/* Set default value for unicast filter entries */
+	plat_dat->unicast_filter_entries = 1;
+
+	if (pdev->dev.of_node) {
 		ret = stmmac_probe_config_dt(pdev, plat_dat, &mac);
 		if (ret) {
 			pr_err("%s: main dt probe failed", __func__);

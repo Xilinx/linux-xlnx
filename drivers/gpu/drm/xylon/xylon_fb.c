@@ -16,6 +16,7 @@
 
 #include <drm/drmP.h>
 #include <drm/drm_crtc_helper.h>
+#include <drm/drm_gem.h>
 
 #include "xylon_crtc.h"
 #include "xylon_drv.h"

@@ -1481,9 +1481,12 @@ static int do_set_master(struct net_device *dev, int ifindex)
 	return 0;
 }
 
+#define DO_SETLINK_MODIFIED	0x01
+/* notify flag means notify + modified. */
+#define DO_SETLINK_NOTIFY	0x03
 static int do_setlink(const struct sk_buff *skb,
 		      struct net_device *dev, struct ifinfomsg *ifm,
-		      struct nlattr **tb, char *ifname, int modified)
+		      struct nlattr **tb, char *ifname, int status)
 {
 	const struct net_device_ops *ops = dev->netdev_ops;
 	int err;
@@ -1495,6 +1498,7 @@ static int do_setlink(const struct sk_buff *skb,
 			goto errout;
 		}
 		if (!netlink_ns_capable(skb, net->user_ns, CAP_NET_ADMIN)) {
+			put_net(net);
 			err = -EPERM;
 			goto errout;
 		}
@@ -1502,7 +1506,7 @@ static int do_setlink(const struct sk_buff *skb,
 		put_net(net);
 		if (err)
 			goto errout;
-		modified = 1;
+		status |= DO_SETLINK_MODIFIED;
 	}
 
 	if (tb[IFLA_MAP]) {
@@ -1531,7 +1535,7 @@ static int do_setlink(const struct sk_buff *skb,
 		if (err < 0)
 			goto errout;
 
-		modified = 1;
+		status |= DO_SETLINK_NOTIFY;
 	}
 
 	if (tb[IFLA_ADDRESS]) {
@@ -1551,19 +1555,19 @@ static int do_setlink(const struct sk_buff *skb,
 		kfree(sa);
 		if (err)
 			goto errout;
-		modified = 1;
+		status |= DO_SETLINK_MODIFIED;
 	}
 
 	if (tb[IFLA_MTU]) {
 		err = dev_set_mtu(dev, nla_get_u32(tb[IFLA_MTU]));
 		if (err < 0)
 			goto errout;
-		modified = 1;
+		status |= DO_SETLINK_MODIFIED;
 	}
 
 	if (tb[IFLA_GROUP]) {
 		dev_set_group(dev, nla_get_u32(tb[IFLA_GROUP]));
-		modified = 1;
+		status |= DO_SETLINK_NOTIFY;
 	}
 
 	/*
@@ -1575,7 +1579,7 @@ static int do_setlink(const struct sk_buff *skb,
 		err = dev_change_name(dev, ifname);
 		if (err < 0)
 			goto errout;
-		modified = 1;
+		status |= DO_SETLINK_MODIFIED;
 	}
 
 	if (tb[IFLA_IFALIAS]) {
@@ -1583,7 +1587,7 @@ static int do_setlink(const struct sk_buff *skb,
 				    nla_len(tb[IFLA_IFALIAS]));
 		if (err < 0)
 			goto errout;
-		modified = 1;
+		status |= DO_SETLINK_NOTIFY;
 	}
 
 	if (tb[IFLA_BROADCAST]) {
@@ -1601,25 +1605,35 @@ static int do_setlink(const struct sk_buff *skb,
 		err = do_set_master(dev, nla_get_u32(tb[IFLA_MASTER]));
 		if (err)
 			goto errout;
-		modified = 1;
+		status |= DO_SETLINK_MODIFIED;
 	}
 
 	if (tb[IFLA_CARRIER]) {
 		err = dev_change_carrier(dev, nla_get_u8(tb[IFLA_CARRIER]));
 		if (err)
 			goto errout;
-		modified = 1;
+		status |= DO_SETLINK_MODIFIED;
 	}
 
-	if (tb[IFLA_TXQLEN])
-		dev->tx_queue_len = nla_get_u32(tb[IFLA_TXQLEN]);
+	if (tb[IFLA_TXQLEN]) {
+		unsigned long value = nla_get_u32(tb[IFLA_TXQLEN]);
+
+		if (dev->tx_queue_len ^ value)
+			status |= DO_SETLINK_NOTIFY;
+
+		dev->tx_queue_len = value;
+	}
 
 	if (tb[IFLA_OPERSTATE])
 		set_operstate(dev, nla_get_u8(tb[IFLA_OPERSTATE]));
 
 	if (tb[IFLA_LINKMODE]) {
+		unsigned char value = nla_get_u8(tb[IFLA_LINKMODE]);
+
 		write_lock_bh(&dev_base_lock);
-		dev->link_mode = nla_get_u8(tb[IFLA_LINKMODE]);
+		if (dev->link_mode ^ value)
+			status |= DO_SETLINK_NOTIFY;
+		dev->link_mode = value;
 		write_unlock_bh(&dev_base_lock);
 	}
 
@@ -1634,7 +1648,7 @@ static int do_setlink(const struct sk_buff *skb,
 			err = do_setvfinfo(dev, attr);
 			if (err < 0)
 				goto errout;
-			modified = 1;
+			status |= DO_SETLINK_NOTIFY;
 		}
 	}
 	err = 0;
@@ -1664,7 +1678,7 @@ static int do_setlink(const struct sk_buff *skb,
 			err = ops->ndo_set_vf_port(dev, vf, port);
 			if (err < 0)
 				goto errout;
-			modified = 1;
+			status |= DO_SETLINK_NOTIFY;
 		}
 	}
 	err = 0;
@@ -1682,7 +1696,7 @@ static int do_setlink(const struct sk_buff *skb,
 			err = ops->ndo_set_vf_port(dev, PORT_SELF_VF, port);
 		if (err < 0)
 			goto errout;
-		modified = 1;
+		status |= DO_SETLINK_NOTIFY;
 	}
 
 	if (tb[IFLA_AF_SPEC]) {
@@ -1699,15 +1713,20 @@ static int do_setlink(const struct sk_buff *skb,
 			if (err < 0)
 				goto errout;
 
-			modified = 1;
+			status |= DO_SETLINK_NOTIFY;
 		}
 	}
 	err = 0;
 
 errout:
-	if (err < 0 && modified)
-		net_warn_ratelimited("A link change request failed with some changes committed already. Interface %s may have been left with an inconsistent configuration, please check.\n",
-				     dev->name);
+	if (status & DO_SETLINK_MODIFIED) {
+		if (status & DO_SETLINK_NOTIFY)
+			netdev_state_change(dev);
+
+		if (err < 0)
+			net_warn_ratelimited("A link change request failed with some changes committed already. Interface %s may have been left with an inconsistent configuration, please check.\n",
+					     dev->name);
+	}
 
 	return err;
 }
@@ -1989,7 +2008,7 @@ replay:
 		}
 
 		if (dev) {
-			int modified = 0;
+			int status = 0;
 
 			if (nlh->nlmsg_flags & NLM_F_EXCL)
 				return -EEXIST;
@@ -2004,7 +2023,7 @@ replay:
 				err = ops->changelink(dev, tb, data);
 				if (err < 0)
 					return err;
-				modified = 1;
+				status |= DO_SETLINK_NOTIFY;
 			}
 
 			if (linkinfo[IFLA_INFO_SLAVE_DATA]) {
@@ -2015,10 +2034,10 @@ replay:
 							      tb, slave_data);
 				if (err < 0)
 					return err;
-				modified = 1;
+				status |= DO_SETLINK_NOTIFY;
 			}
 
-			return do_setlink(skb, dev, ifm, tb, ifname, modified);
+			return do_setlink(skb, dev, ifm, tb, ifname, status);
 		}
 
 		if (!(nlh->nlmsg_flags & NLM_F_CREATE)) {
@@ -2667,13 +2686,20 @@ static int rtnl_bridge_getlink(struct sk_buff *skb, struct netlink_callback *cb)
 	int idx = 0;
 	u32 portid = NETLINK_CB(cb->skb).portid;
 	u32 seq = cb->nlh->nlmsg_seq;
-	struct nlattr *extfilt;
 	u32 filter_mask = 0;
 
-	extfilt = nlmsg_find_attr(cb->nlh, sizeof(struct ifinfomsg),
-				  IFLA_EXT_MASK);
-	if (extfilt)
-		filter_mask = nla_get_u32(extfilt);
+	if (nlmsg_len(cb->nlh) > sizeof(struct ifinfomsg)) {
+		struct nlattr *extfilt;
+
+		extfilt = nlmsg_find_attr(cb->nlh, sizeof(struct ifinfomsg),
+					  IFLA_EXT_MASK);
+		if (extfilt) {
+			if (nla_len(extfilt) < sizeof(filter_mask))
+				return -EINVAL;
+
+			filter_mask = nla_get_u32(extfilt);
+		}
+	}
 
 	rcu_read_lock();
 	for_each_netdev_rcu(net, dev) {
@@ -2780,6 +2806,9 @@ static int rtnl_bridge_setlink(struct sk_buff *skb, struct nlmsghdr *nlh)
 	if (br_spec) {
 		nla_for_each_nested(attr, br_spec, rem) {
 			if (nla_type(attr) == IFLA_BRIDGE_FLAGS) {
+				if (nla_len(attr) < sizeof(flags))
+					return -EINVAL;
+
 				have_flags = true;
 				flags = nla_get_u16(attr);
 				break;
@@ -2850,6 +2879,9 @@ static int rtnl_bridge_dellink(struct sk_buff *skb, struct nlmsghdr *nlh)
 	if (br_spec) {
 		nla_for_each_nested(attr, br_spec, rem) {
 			if (nla_type(attr) == IFLA_BRIDGE_FLAGS) {
+				if (nla_len(attr) < sizeof(flags))
+					return -EINVAL;
+
 				have_flags = true;
 				flags = nla_get_u16(attr);
 				break;

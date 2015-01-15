@@ -29,6 +29,8 @@
 
 #define JEDEC_MFR(_jedec_id)	((_jedec_id) >> 16)
 
+static const struct spi_device_id *spi_nor_match_id(const char *name);
+
 /*
  * Read the status register, returning its value in the location
  * Return the status register value.
@@ -698,7 +700,7 @@ struct flash_info {
  * more nor chips.  This current list focusses on newer chips, which
  * have been converging on command sets which including JEDEC ID.
  */
-const struct spi_device_id spi_nor_ids[] = {
+static const struct spi_device_id spi_nor_ids[] = {
 	/* Atmel -- some are (confusingly) marketed as "DataFlash" */
 	{ "at25fs010",  INFO(0x1f6601, 0, 32 * 1024,   4, SECT_4K) },
 	{ "at25fs040",  INFO(0x1f6604, 0, 64 * 1024,   8, SECT_4K) },
@@ -839,6 +841,7 @@ const struct spi_device_id spi_nor_ids[] = {
 	{ "m25px32-s0", INFO(0x207316,  0, 64 * 1024, 64, SECT_4K) },
 	{ "m25px32-s1", INFO(0x206316,  0, 64 * 1024, 64, SECT_4K) },
 	{ "m25px64",    INFO(0x207117,  0, 64 * 1024, 128, 0) },
+	{ "m25px80",    INFO(0x207114,  0, 64 * 1024, 16, 0) },
 
 	/* Winbond -- w25x "blocks" are 64K, "sectors" are 4KiB */
 	{ "w25x10", INFO(0xef3011, 0, 64 * 1024,  2,  SECT_4K) },
@@ -865,7 +868,6 @@ const struct spi_device_id spi_nor_ids[] = {
 	{ "cat25128", CAT25_INFO(2048, 8, 64, 2, SPI_NOR_NO_ERASE | SPI_NOR_NO_FR) },
 	{ },
 };
-EXPORT_SYMBOL_GPL(spi_nor_ids);
 
 static const struct spi_device_id *spi_nor_read_id(struct spi_nor *nor)
 {
@@ -897,11 +899,6 @@ static const struct spi_device_id *spi_nor_read_id(struct spi_nor *nor)
 	}
 	dev_err(nor->dev, "unrecognized JEDEC id %06x\n", jedec);
 	return ERR_PTR(-ENODEV);
-}
-
-static const struct spi_device_id *jedec_probe(struct spi_nor *nor)
-{
-	return nor->read_id(nor);
 }
 
 static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
@@ -1254,11 +1251,10 @@ static int spi_nor_check(struct spi_nor *nor)
 	return 0;
 }
 
-int spi_nor_scan(struct spi_nor *nor, const struct spi_device_id *id,
-			enum read_mode mode)
+int spi_nor_scan(struct spi_nor *nor, const char *name, enum read_mode mode)
 {
+	const struct spi_device_id	*id = NULL;
 	struct flash_info		*info;
-	struct flash_platform_data	*data;
 	struct device *dev = nor->dev;
 	struct mtd_info *mtd = nor->mtd;
 	struct device_node *np = dev->of_node;
@@ -1270,34 +1266,16 @@ int spi_nor_scan(struct spi_nor *nor, const struct spi_device_id *id,
 	if (ret)
 		return ret;
 
-	/* Platform data helps sort out which chip type we have, as
-	 * well as how this board partitions it.  If we don't have
-	 * a chip ID, try the JEDEC id commands; they'll work for most
-	 * newer chips, even if we don't recognize the particular chip.
-	 */
-	data = dev_get_platdata(dev);
-	if (data && data->type) {
-		const struct spi_device_id *plat_id;
-
-		for (i = 0; i < ARRAY_SIZE(spi_nor_ids) - 1; i++) {
-			plat_id = &spi_nor_ids[i];
-			if (strcmp(data->type, plat_id->name))
-				continue;
-			break;
-		}
-
-		if (i < ARRAY_SIZE(spi_nor_ids) - 1)
-			id = plat_id;
-		else
-			dev_warn(dev, "unrecognized id %s\n", data->type);
-	}
+	id = spi_nor_match_id(name);
+	if (!id)
+		return -ENOENT;
 
 	info = (void *)id->driver_data;
 
 	if (info->jedec_id) {
 		const struct spi_device_id *jid;
 
-		jid = jedec_probe(nor);
+		jid = nor->read_id(nor);
 		if (IS_ERR(jid)) {
 			return PTR_ERR(jid);
 		} else if (jid != id) {
@@ -1329,11 +1307,8 @@ int spi_nor_scan(struct spi_nor *nor, const struct spi_device_id *id,
 		write_sr(nor, 0);
 	}
 
-	if (data && data->name)
-		mtd->name = data->name;
-	else
+	if (!mtd->name)
 		mtd->name = dev_name(dev);
-
 	mtd->type = MTD_NORFLASH;
 	mtd->writesize = 1;
 	mtd->flags = MTD_CAP_NORFLASH;
@@ -1407,6 +1382,7 @@ int spi_nor_scan(struct spi_nor *nor, const struct spi_device_id *id,
 	    nor->wait_till_ready == spi_nor_wait_till_ready)
 		nor->wait_till_ready = spi_nor_wait_till_fsr_ready;
 
+#ifdef CONFIG_MTD_SPI_NOR_USE_4K_SECTORS
 	/* prefer "small sector" erase if possible */
 	if (info->flags & SECT_4K) {
 		nor->erase_opcode = SPINOR_OP_BE_4K;
@@ -1414,7 +1390,9 @@ int spi_nor_scan(struct spi_nor *nor, const struct spi_device_id *id,
 	} else if (info->flags & SECT_4K_PMC) {
 		nor->erase_opcode = SPINOR_OP_BE_4K_PMC;
 		mtd->erasesize = 4096;
-	} else {
+	} else
+#endif
+	{
 		nor->erase_opcode = SPINOR_OP_SE;
 		mtd->erasesize = info->sector_size;
 	}
@@ -1549,7 +1527,7 @@ int spi_nor_scan(struct spi_nor *nor, const struct spi_device_id *id,
 }
 EXPORT_SYMBOL_GPL(spi_nor_scan);
 
-const struct spi_device_id *spi_nor_match_id(char *name)
+static const struct spi_device_id *spi_nor_match_id(const char *name)
 {
 	const struct spi_device_id *id = spi_nor_ids;
 
@@ -1560,7 +1538,6 @@ const struct spi_device_id *spi_nor_match_id(char *name)
 	}
 	return NULL;
 }
-EXPORT_SYMBOL_GPL(spi_nor_match_id);
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Huang Shijie <shijie8@gmail.com>");
