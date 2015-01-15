@@ -112,8 +112,12 @@ static void __init zynq_smp_prepare_cpus(unsigned int max_cpus)
 	scu_enable(zynq_scu_base);
 }
 
-/*
- * This function is in the hotplug path. Don't move it into the init section!!
+/**
+ * zynq_secondary_init - Initialize secondary CPU cores
+ * @cpu:	CPU that is initialized
+ *
+ * This function is in the hotplug path. Don't move it into the
+ * init section!!
  */
 static void zynq_secondary_init(unsigned int cpu)
 {
@@ -135,10 +139,11 @@ static int zynq_cpu_kill(unsigned cpu)
 }
 
 /**
- * zynq_cpu_die - platform-specific code to shutdown a CPU
- * @cpu: cpu number
+ * zynq_cpu_die - Let a CPU core die
+ * @cpu:	Dying CPU
  *
- * Note: Called with IRQs disabled on the dying CPU.
+ * Platform-specific code to shutdown a CPU.
+ * Called with IRQs disabled on the dying CPU.
  */
 static void zynq_cpu_die(unsigned int cpu)
 {
