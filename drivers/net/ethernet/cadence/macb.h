@@ -65,7 +65,6 @@
 #define MACB_USRIO				0x00c0
 #define MACB_WOL				0x00c4
 #define MACB_MID				0x00fc
-#define MACB_TBQP1				0x0440
 
 /* GEM register offsets. */
 #define GEM_NCFGR				0x0004
@@ -610,7 +609,6 @@ struct macb {
 
 	unsigned int		tx_head, tx_tail;
 	struct macb_dma_desc	*tx_ring;
-	struct macb_dma_desc	*tx_ringq1;
 	struct macb_tx_skb	*tx_skb;
 
 	spinlock_t		lock;
@@ -629,7 +627,6 @@ struct macb {
 
 	dma_addr_t		rx_ring_dma;
 	dma_addr_t		tx_ring_dma;
-	dma_addr_t		tx_ring_dmaq1;
 	dma_addr_t		rx_buffers_dma;
 
 	struct macb_or_gem_ops	macbgem_ops;
