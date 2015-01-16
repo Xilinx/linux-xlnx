@@ -1053,13 +1053,13 @@ static void cdns_uart_console_putchar(struct uart_port *port, int ch)
 
 static void cdns_early_write(struct console *con, const char *s, unsigned n)
 {
-       struct earlycon_device *dev = con->data;
+	struct earlycon_device *dev = con->data;
 
-       uart_console_write(&dev->port, s, n, cdns_uart_console_putchar);
+	uart_console_write(&dev->port, s, n, cdns_uart_console_putchar);
 }
 
 static int __init cdns_early_console_setup(struct earlycon_device *device,
-                                           const char *opt)
+					   const char *opt)
 {
 	if (!device->port.membase)
 		return -ENODEV;
