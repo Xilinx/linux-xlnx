@@ -287,7 +287,6 @@ MODULE_DEVICE_TABLE(of, xapm_of_match);
 static struct platform_driver xapm_driver = {
 	.driver = {
 		.name = "xilinx-axipmon",
-		.owner = THIS_MODULE,
 		.of_match_table = xapm_of_match,
 	},
 	.probe = xapm_probe,
