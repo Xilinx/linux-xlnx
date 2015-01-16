@@ -376,9 +376,9 @@ static int mb_remoteproc_probe(struct platform_device *pdev)
 			goto dma_mask_fault;
 		}
 		return 0;
-	} else {
-		ret = -ENODEV;
 	}
+
+	ret = -ENODEV;
 
 dma_mask_fault:
 	dma_release_declared_memory(&pdev->dev);
