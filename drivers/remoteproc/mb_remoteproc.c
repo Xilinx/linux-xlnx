@@ -148,7 +148,7 @@ static void mb_rproc_kick(struct rproc *rproc, int vqid)
 /* power off the remote processor */
 static int mb_rproc_stop(struct rproc *rproc)
 {
-  	struct device *dev = rproc->dev.parent;
+	struct device *dev = rproc->dev.parent;
 	struct platform_device *pdev = to_platform_device(dev);
 	struct mb_rproc_pdata *local = platform_get_drvdata(pdev);
 
