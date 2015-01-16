@@ -412,7 +412,6 @@ static struct platform_driver mb_remoteproc_driver = {
 	.remove = mb_remoteproc_remove,
 	.driver = {
 		.name = "mb_remoteproc",
-		.owner = THIS_MODULE,
 		.of_match_table = mb_remoteproc_match,
 	},
 };
