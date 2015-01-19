@@ -445,27 +445,48 @@ struct ipi {
 static void ipi_cpu_stop(void);
 static void ipi_complete(void);
 
-static struct ipi ipi_types[NR_IPI] __tracepoint_string = {
-#define S(x, s, f)	[x].desc = s, [x].handler = f
-	S(IPI_WAKEUP, "CPU wakeup interrupts", NULL),
+#define IPI_DESC_STRING_IPI_WAKEUP "CPU wakeup interrupts"
+#define IPI_DESC_STRING_IPI_TIMER "Timer broadcast interrupts"
+#define IPI_DESC_STRING_IPI_RESCHEDULE "Rescheduling interrupts"
+#define IPI_DESC_STRING_IPI_CALL_FUNC "Function call interrupts"
+#define IPI_DESC_STRING_IPI_CALL_FUNC_SINGLE "Single function call interrupts"
+#define IPI_DESC_STRING_IPI_CPU_STOP "CPU stop interrupts"
+#define IPI_DESC_STRING_IPI_IRQ_WORK "IRQ work interrupts"
+#define IPI_DESC_STRING_IPI_COMPLETION "completion interrupts"
+
+#define IPI_DESC_STR(x) IPI_DESC_STRING_ ## x
+
+static const char* ipi_desc_strings[] __tracepoint_string =
+		{
+			[IPI_WAKEUP] = IPI_DESC_STR(IPI_WAKEUP),
+			[IPI_TIMER] = IPI_DESC_STR(IPI_TIMER),
+			[IPI_RESCHEDULE] = IPI_DESC_STR(IPI_RESCHEDULE),
+			[IPI_CALL_FUNC] = IPI_DESC_STR(IPI_CALL_FUNC),
+			[IPI_CALL_FUNC_SINGLE] = IPI_DESC_STR(IPI_CALL_FUNC_SINGLE),
+			[IPI_CPU_STOP] = IPI_DESC_STR(IPI_CPU_STOP),
+			[IPI_IRQ_WORK] = IPI_DESC_STR(IPI_IRQ_WORK),
+			[IPI_COMPLETION] = IPI_DESC_STR(IPI_COMPLETION)
+		};
+
+static struct ipi ipi_types[NR_IPI] = {
+#define S(x, f)	[x].desc = IPI_DESC_STR(x), [x].handler = f
+	S(IPI_WAKEUP, NULL),
 #ifdef CONFIG_GENERIC_CLOCKEVENTS_BROADCAST
-	S(IPI_TIMER, "Timer broadcast interrupts", tick_receive_broadcast),
+	S(IPI_TIMER, tick_receive_broadcast),
 #endif
-	S(IPI_RESCHEDULE, "Rescheduling interrupts", scheduler_ipi),
-	S(IPI_CALL_FUNC, "Function call interrupts",
-					generic_smp_call_function_interrupt),
-	S(IPI_CALL_FUNC_SINGLE, "Single function call interrupts",
-				generic_smp_call_function_single_interrupt),
-	S(IPI_CPU_STOP, "CPU stop interrupts", ipi_cpu_stop),
+	S(IPI_RESCHEDULE, scheduler_ipi),
+	S(IPI_CALL_FUNC, generic_smp_call_function_interrupt),
+	S(IPI_CALL_FUNC_SINGLE, generic_smp_call_function_single_interrupt),
+	S(IPI_CPU_STOP, ipi_cpu_stop),
 #ifdef CONFIG_IRQ_WORK
-	S(IPI_IRQ_WORK, "IRQ work interrupts", irq_work_run),
+	S(IPI_IRQ_WORK, irq_work_run),
 #endif
-	S(IPI_COMPLETION, "completion interrupts", ipi_complete),
+	S(IPI_COMPLETION, ipi_complete),
 };
 
 static void smp_cross_call(const struct cpumask *target, unsigned int ipinr)
 {
-	trace_ipi_raise(target, ipi_types[ipinr].desc);
+	trace_ipi_raise(target, ipi_desc_strings[ipinr]);
 	__smp_cross_call(target, ipinr);
 }
 
