@@ -365,8 +365,10 @@ static void cdns_i2c_mrecv(struct cdns_i2c *id)
 		cdns_i2c_writereg(CDNS_I2C_TRANSFER_SIZE,
 				  CDNS_I2C_XFER_SIZE_OFFSET);
 		id->curr_recv_count = CDNS_I2C_TRANSFER_SIZE;
-	} else
+	} else {
 		cdns_i2c_writereg(id->recv_count, CDNS_I2C_XFER_SIZE_OFFSET);
+	}
+
 	/* Clear the bus hold flag if bytes to receive is less than FIFO size */
 	if (!id->bus_hold_flag &&
 		((id->p_msg->flags & I2C_M_RECV_LEN) != I2C_M_RECV_LEN) &&
