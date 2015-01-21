@@ -36,6 +36,8 @@ static int xaxipcie_msi_irq_base;
 int xaxipcie_alloc_msi_irqdescs(struct device_node *node,
 					unsigned long msg_addr);
 
+static DECLARE_BITMAP(xaxipcie_used_msi, XILINX_NUM_MSI_IRQS);
+
 /**
  * arch_teardown_msi_irq-Teardown the Interrupt
  * @irq: Interrupt number to teardown
@@ -46,7 +48,15 @@ int xaxipcie_alloc_msi_irqdescs(struct device_node *node,
  */
 void arch_teardown_msi_irq(unsigned int irq)
 {
-	irq_free_desc(irq);
+	if ((irq >= xaxipcie_msi_irq_base) &&
+			(irq < (xaxipcie_msi_irq_base + XILINX_NUM_MSI_IRQS))) {
+
+		clear_bit(irq - xaxipcie_msi_irq_base, xaxipcie_used_msi);
+		irq_free_desc(irq);
+	} else {
+		pr_err(
+		"Teardown MSI irq, not in AXI PCIE irq space? irq=%u\n", irq);
+	}
 }
 
 /**
@@ -82,29 +92,38 @@ static struct irq_chip xilinx_msi_chip = {
  */
 int arch_setup_msi_irq(struct pci_dev *pdev, struct msi_desc *desc)
 {
-	int irq = irq_alloc_desc_from(xaxipcie_msi_irq_base, -1);
 	struct msi_msg msg;
+	int virq;
+	int irq = 0;
 
-	if (irq < 0)
-		return irq;
+	while (irq < XILINX_NUM_MSI_IRQS) {
+		if (!test_and_set_bit(irq, xaxipcie_used_msi))
+			break;
+		irq++;
+	}
 
-	if (irq >= (xaxipcie_msi_irq_base + XILINX_NUM_MSI_IRQS + 1)) {
-		irq_free_desc(irq);
+	if (irq >= XILINX_NUM_MSI_IRQS)
+		return -ENOSPC;
+
+	virq = irq_create_mapping(xaxipcie_irq_domain, irq);
+
+	if (virq <= 0) {
+		clear_bit(irq, xaxipcie_used_msi);
 		return -ENOSPC;
 	}
 
-	irq_set_msi_desc(irq, desc);
+	irq_set_msi_desc(virq, desc);
 
 	msg.address_hi = 0x00000000;
 	msg.address_lo = xaxipcie_msg_addr;
-	msg.data = irq;
+	msg.data = virq;
 
-	pr_debug("irq %d addr_hi %08x low %08x data %08x\n",
-			irq, msg.address_hi, msg.address_lo, msg.data);
+	pr_debug("virq %d addr_hi %08x low %08x data %08x\n",
+			virq, msg.address_hi, msg.address_lo, msg.data);
 
-	write_msi_msg(irq, &msg);
+	write_msi_msg(virq, &msg);
 
-	irq_set_chip_and_handler(irq, &xilinx_msi_chip, handle_simple_irq);
+	irq_set_chip_and_handler(virq, &xilinx_msi_chip, handle_simple_irq);
 
 	return 0;
 }

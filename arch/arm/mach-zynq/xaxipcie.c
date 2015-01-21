@@ -260,7 +260,7 @@ static void __iomem *xaxi_pcie_get_config_base(
 
 	relbus = ((bus->number << BUS_LOC_SHIFT) | (devfn << DEV_LOC_SHIFT));
 
-	return port->header_remap + relbus + where;
+	return port->header_remap + relbus + (0xfffffffc & where);
 }
 
 /**
@@ -297,15 +297,16 @@ static int xaxi_pcie_read_config(struct pci_bus *bus,
 		return PCIBIOS_SUCCESSFUL;
 	}
 
+	*val = readl(addr);
+
 	switch (size) {
 	case XAXIPCIE_ACCESS8:
-		*val = readb(addr);
+		*val = (*val >> (8 * (where & 3))) & 0xff;
 		break;
 	case XAXIPCIE_ACCESS16:
-		*val = readw(addr);
+		*val = (*val >> (8 * (where & 3))) & 0xffff;
 		break;
 	default:
-		*val = readl(addr);
 		break;
 	}
 
@@ -335,6 +336,9 @@ static int xaxi_pcie_write_config(struct pci_bus *bus,
 	struct pci_sys_data *sys = bus->sysdata;
 	struct xaxi_pcie_port *port = sys->private_data;
 	void __iomem *addr;
+	u32 mask = (0x1ull << (size * 8)) - 1;
+	int shift = (where % 4) * 8;
+	u32 v;
 
 	if (xaxi_pcie_verify_config(port, bus, devfn) != 0)
 		return PCIBIOS_DEVICE_NOT_FOUND;
@@ -344,17 +348,11 @@ static int xaxi_pcie_write_config(struct pci_bus *bus,
 	if ((bus->number == 0) && devfn > 0)
 		return PCIBIOS_SUCCESSFUL;
 
-	switch (size) {
-	case XAXIPCIE_ACCESS8:
-		writeb(val, addr);
-		break;
-	case XAXIPCIE_ACCESS16:
-		writew(val, addr);
-		break;
-	default:
-		writel(val, addr);
-		break;
-	}
+	v = readl(addr);
+	v &= ~(mask << shift);
+	v |= (val & mask) << shift;
+
+	writel(v, addr);
 
 	wmb();
 
