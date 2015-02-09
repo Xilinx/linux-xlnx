@@ -1,6 +1,6 @@
 config DRM_XILINX
 	tristate "Xilinx DRM"
-	depends on DRM && ARCH_ZYNQ && HAVE_CLK
+	depends on DRM && HAVE_CLK
 	select DRM_KMS_HELPER
 	select DRM_KMS_CMA_HELPER
 	select DRM_GEM_CMA_HELPER
