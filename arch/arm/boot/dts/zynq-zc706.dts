@@ -32,7 +32,7 @@
 
 	chosen {
 		bootargs = "console=ttyPS0,115200 root=/dev/ram rw earlyprintk";
-		linux,stdout-path = "/amba/serial@e0001000";
+		linux,stdout-path = &uart1;
 	};
 
 	usb_phy0: phy0 {
