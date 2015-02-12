@@ -78,6 +78,7 @@
 /* AUX channel interface registers */
 #define XILINX_DP_TX_AUX_COMMAND			0x100
 #define XILINX_DP_TX_AUX_COMMAND_CMD_SHIFT		8
+#define XILINX_DP_TX_AUX_COMMAND_ADDRESS_ONLY		BIT(12)
 #define XILINX_DP_TX_AUX_COMMAND_BYTES_SHIFT		0
 #define XILINX_DP_TX_AUX_WRITE_FIFO			0x104
 #define XILINX_DP_TX_AUX_ADDRESS			0x108
@@ -329,17 +330,17 @@ static int xilinx_drm_dp_aux_cmd_submit(struct xilinx_drm_dp *dp, u32 cmd,
 
 	xilinx_drm_writel(iomem, XILINX_DP_TX_AUX_ADDRESS, addr);
 
-	if (!buf || !bytes)
-		return 0;
-
 	if (!is_read)
 		for (i = 0; i < bytes; i++)
 			xilinx_drm_writel(iomem, XILINX_DP_TX_AUX_WRITE_FIFO,
 					  buf[i]);
 
-	xilinx_drm_writel(iomem, XILINX_DP_TX_AUX_COMMAND,
-			  (cmd << XILINX_DP_TX_AUX_COMMAND_CMD_SHIFT) |
-			  (bytes - 1) << XILINX_DP_TX_AUX_COMMAND_BYTES_SHIFT);
+	reg = cmd << XILINX_DP_TX_AUX_COMMAND_CMD_SHIFT;
+	if (!buf || !bytes)
+		reg |= XILINX_DP_TX_AUX_COMMAND_ADDRESS_ONLY;
+	else
+		reg |= (bytes - 1) << XILINX_DP_TX_AUX_COMMAND_BYTES_SHIFT;
+	xilinx_drm_writel(iomem, XILINX_DP_TX_AUX_COMMAND, reg);
 
 	/* Wait for reply to be delivered upto 2ms */
 	for (i = 0; ; i++) {
