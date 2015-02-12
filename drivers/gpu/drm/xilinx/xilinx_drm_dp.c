@@ -258,29 +258,18 @@ struct xilinx_drm_dp_config {
 };
 
 /**
- * struct xilinx_drm_dp_i2c - i2c interface of DisplayPort Aux
- * @adapter: i2c adapter
- * @algo: i2c algorithm
- */
-struct xilinx_drm_dp_i2c {
-	struct i2c_adapter adapter;
-	struct i2c_algo_dp_aux_data algo;
-};
-
-/**
  * struct xilinx_drm_dp - Xilinx DisplayPort core
  * @encoder: pointer to the drm encoder structure
  * @dev: device structure
  * @iomem: device I/O memory for register access
  * @config: IP core configuration from DTS
- * @i2c: i2c interface structure for aux
+ * @aux: aux channel
  * @aclk: clock source device for internal axi4-lite clock
  * @dpms: current dpms state
  * @dpcd: DP configuration data from currently connected sink device
  * @link_config: common link configuration between IP core and sink device
  * @mode: current mode between IP core and sink device
  * @train_set: set of training data
- * @aux_lock: mutex to protect atomicity of xilinx_drm_dp_aux_cmd_submit()
  */
 struct xilinx_drm_dp {
 	struct drm_encoder *encoder;
@@ -288,7 +277,7 @@ struct xilinx_drm_dp {
 	void __iomem *iomem;
 
 	struct xilinx_drm_dp_config config;
-	struct xilinx_drm_dp_i2c i2c;
+	struct drm_dp_aux aux;
 	struct clk *aclk;
 
 	int dpms;
@@ -296,8 +285,6 @@ struct xilinx_drm_dp {
 	struct xilinx_drm_dp_link_config link_config;
 	struct xilinx_drm_dp_mode mode;
 	u8 train_set[4];
-
-	struct mutex aux_lock;
 };
 
 static inline struct xilinx_drm_dp *to_dp(struct drm_encoder *encoder)
@@ -314,21 +301,23 @@ static inline struct xilinx_drm_dp *to_dp(struct drm_encoder *encoder)
  * @addr: aux address
  * @buf: buffer for command data
  * @bytes: number of bytes for @buf
+ * @reply: reply code to be returned
  *
  * Submit an aux command. All aux related commands, native or i2c aux
- * read/write, are submitted through this function. This function involves in
- * multiple register reads/writes, thus the synchronization needs to be done
- * by holding @aux_lock if multi-thread access is possible. The calling thread
- * goes into sleep if there's no immediate reply to the command submission.
+ * read/write, are submitted through this function. The function is mapped to
+ * the transfer function of struct drm_dp_aux. This function involves in
+ * multiple register reads/writes, thus synchronization is needed, and it is
+ * done by drm_dp_helper using @hw_mutex. The calling thread goes into sleep
+ * if there's no immediate reply to the command submission. The reply code is
+ * returned at @reply if @reply != NULL.
  *
  * Return: 0 if the command is submitted properly, or corresponding error code:
  * -EBUSY when there is any request already being processed
  * -ETIMEDOUT when receiving reply is timed out
- * -EAGAIN when the command is deferred
- * -EIO when the command is NACKed, or received data is less than requested
+ * -EIO when received bytes are less than requested
  */
 static int xilinx_drm_dp_aux_cmd_submit(struct xilinx_drm_dp *dp, u32 cmd,
-					u16 addr, u8 *buf, u8 bytes)
+					u16 addr, u8 *buf, u8 bytes, u8 *reply)
 {
 	bool is_read = (cmd & AUX_READ_BIT) ? true : false;
 	void __iomem *iomem = dp->iomem;
@@ -340,7 +329,7 @@ static int xilinx_drm_dp_aux_cmd_submit(struct xilinx_drm_dp *dp, u32 cmd,
 
 	xilinx_drm_writel(iomem, XILINX_DP_TX_AUX_ADDRESS, addr);
 
-	if (!buf)
+	if (!buf || !bytes)
 		return 0;
 
 	if (!is_read)
@@ -367,15 +356,12 @@ static int xilinx_drm_dp_aux_cmd_submit(struct xilinx_drm_dp *dp, u32 cmd,
 	}
 
 	reg = xilinx_drm_readl(iomem, XILINX_DP_TX_AUX_REPLY_CODE);
-	if (reg == XILINX_DP_TX_AUX_REPLY_CODE_AUX_NACK ||
-	    reg == XILINX_DP_TX_AUX_REPLY_CODE_I2C_NACK)
-		return -EIO;
+	if (reply)
+		*reply = reg;
 
-	if (reg == XILINX_DP_TX_AUX_REPLY_CODE_AUX_DEFER ||
-	    reg == XILINX_DP_TX_AUX_REPLY_CODE_I2C_DEFER)
-		return -EAGAIN;
-
-	if (is_read) {
+	if (is_read &&
+	    (reg == XILINX_DP_TX_AUX_REPLY_CODE_AUX_ACK ||
+	     reg == XILINX_DP_TX_AUX_REPLY_CODE_I2C_ACK)) {
 		reg = xilinx_drm_readl(iomem, XILINX_DP_TX_REPLY_DATA_CNT);
 		if ((reg & XILINX_DP_TX_AUX_REPLY_CNT_MASK) != bytes)
 			return -EIO;
@@ -386,95 +372,6 @@ static int xilinx_drm_dp_aux_cmd_submit(struct xilinx_drm_dp *dp, u32 cmd,
 	}
 
 	return 0;
-}
-
-/**
- * xilinx_drm_dp_aux_cmd - Submit aux command and retry if needed
- * @dp: DisplayPort IP core structure
- * @cmd: aux command
- * @addr: aux address
- * @buf: buffer for command data
- * @bytes: number of bytes for @buf
- *
- * Return: the value returned from xilinx_drm_dp_aux_cmd_submit()
- */
-static int xilinx_drm_dp_aux_cmd(struct xilinx_drm_dp *dp, u32 cmd, u16 addr,
-				 u8 *buf, u8 bytes)
-{
-	int tries, ret;
-
-	/* Retry at least 3 times per DP spec */
-	for (tries = 0; tries < 5; tries++) {
-		mutex_lock(&dp->aux_lock);
-		ret = xilinx_drm_dp_aux_cmd_submit(dp, cmd, addr, buf, bytes);
-		mutex_unlock(&dp->aux_lock);
-		if (!ret || ret == -EIO)
-			break;
-
-		/* Wait for 400us per DP spec */
-		udelay(400);
-	}
-
-	return ret;
-}
-
-/**
- * xilinx_drm_dp_aux_cmd_byte - Submit aux command byte
- * @dp: DisplayPort IP core structure
- * @cmd: aux command
- * @addr: aux address
- * @byte: a byte for aux command
- *
- * Return: the value returned from xilinx_drm_dp_aux_cmd()
- */
-static inline int xilinx_drm_dp_aux_cmd_byte(struct xilinx_drm_dp *dp, u32 cmd,
-					     u16 addr, u8 *byte)
-{
-	return xilinx_drm_dp_aux_cmd(dp, cmd, addr, byte, 1);
-}
-
-/**
- * xilinx_drm_dp_aux_cmd_write - Submit write aux command
- * @dp: DisplayPort IP core structure
- * @addr: aux address
- * @buf: buffer for write command data
- * @bytes: number of bytes for @buf
- *
- * Return: the value returned from xilinx_drm_dp_aux_cmd()
- */
-static inline int xilinx_drm_dp_aux_write(struct xilinx_drm_dp *dp, u16 addr,
-					  u8 *buf, u8 bytes)
-{
-	return xilinx_drm_dp_aux_cmd(dp, DP_AUX_NATIVE_WRITE, addr, buf, bytes);
-}
-
-/**
- * xilinx_drm_dp_aux_cmd_write_byte - Submit write aux command for a byte
- * @dp: DisplayPort IP core structure
- * @addr: aux address
- * @byte: a byte for aux command
- *
- * Return: the value returned from xilinx_drm_dp_aux_cmd()
- */
-static inline int xilinx_drm_dp_aux_write_byte(struct xilinx_drm_dp *dp,
-					       u16 addr, u8 byte)
-{
-	return xilinx_drm_dp_aux_cmd_byte(dp, DP_AUX_NATIVE_WRITE, addr, &byte);
-}
-
-/**
- * xilinx_drm_dp_aux_cmd_read - Submit read aux command
- * @dp: DisplayPort IP core structure
- * @addr: aux address
- * @buf: buffer for read command data
- * @bytes: number of bytes for @buf
- *
- * Return: the value returned from xilinx_drm_dp_aux_cmd()
- */
-static inline int xilinx_drm_dp_aux_read(struct xilinx_drm_dp *dp, u16 addr,
-					 u8 *buf, u8 bytes)
-{
-	return xilinx_drm_dp_aux_cmd(dp, DP_AUX_NATIVE_READ, addr, buf, bytes);
 }
 
 /**
@@ -547,7 +444,7 @@ static void xilinx_drm_dp_adjust_train(struct xilinx_drm_dp *dp,
  * are predefined, and values(vs, pe, pc) are from the reference codes.
  *
  * Return: 0 if vs and emph are updated successfully, or the error code returned
- * by xilinx_drm_dp_aux_write().
+ * by drm_dp_dpcd_write().
  */
 static int xilinx_drm_dp_update_vs_emph(struct xilinx_drm_dp *dp)
 {
@@ -558,9 +455,9 @@ static int xilinx_drm_dp_update_vs_emph(struct xilinx_drm_dp *dp)
 	u8 pe[4] = { 0x0, 0x3, 0x5, 0x6 };
 	u8 pc[4] = { 0x0, 0xe, 0x14, 0x1b };
 
-	ret = xilinx_drm_dp_aux_write(dp, DP_TRAINING_LANE0_SET, train_set,
-				      dp->mode.lane_cnt);
-	if (ret)
+	ret = drm_dp_dpcd_write(&dp->aux, DP_TRAINING_LANE0_SET, train_set,
+				dp->mode.lane_cnt);
+	if (ret < 0)
 		return ret;
 
 	for (i = 0; i < dp->mode.lane_cnt; i++) {
@@ -607,10 +504,10 @@ static int xilinx_drm_dp_link_train_cr(struct xilinx_drm_dp *dp)
 	bool cr_done;
 	int ret;
 
-	ret = xilinx_drm_dp_aux_write_byte(dp, DP_TRAINING_PATTERN_SET,
-					   DP_TRAINING_PATTERN_1 |
-					   DP_LINK_SCRAMBLING_DISABLE);
-	if (ret)
+	ret = drm_dp_dpcd_writeb(&dp->aux, DP_TRAINING_PATTERN_SET,
+				 DP_TRAINING_PATTERN_1 |
+				 DP_LINK_SCRAMBLING_DISABLE);
+	if (ret < 0)
 		return ret;
 
 	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_TRAINING_PATTERN_SET,
@@ -625,9 +522,8 @@ static int xilinx_drm_dp_link_train_cr(struct xilinx_drm_dp *dp)
 
 		drm_dp_link_train_clock_recovery_delay(dp->dpcd);
 
-		ret = xilinx_drm_dp_aux_read(dp, DP_LANE0_1_STATUS, link_status,
-					     DP_LINK_STATUS_SIZE);
-		if (ret)
+		ret = drm_dp_dpcd_read_link_status(&dp->aux, link_status);
+		if (ret < 0)
 			return ret;
 
 		cr_done = drm_dp_clock_recovery_ok(link_status, lane_cnt);
@@ -655,9 +551,9 @@ static int xilinx_drm_dp_link_train_cr(struct xilinx_drm_dp *dp)
 	}
 
 	if (!cr_done)
-		ret = -EIO;
+		return -EIO;
 
-	return ret;
+	return 0;
 }
 
 /**
@@ -682,9 +578,9 @@ static int xilinx_drm_dp_link_train_ce(struct xilinx_drm_dp *dp)
 	else
 		pat = DP_TRAINING_PATTERN_2;
 
-	ret = xilinx_drm_dp_aux_write_byte(dp, DP_TRAINING_PATTERN_SET,
-					   pat | DP_LINK_SCRAMBLING_DISABLE);
-	if (ret)
+	ret = drm_dp_dpcd_writeb(&dp->aux, DP_TRAINING_PATTERN_SET,
+				 pat | DP_LINK_SCRAMBLING_DISABLE);
+	if (ret < 0)
 		return ret;
 
 	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_TRAINING_PATTERN_SET, pat);
@@ -696,9 +592,8 @@ static int xilinx_drm_dp_link_train_ce(struct xilinx_drm_dp *dp)
 
 		drm_dp_link_train_channel_eq_delay(dp->dpcd);
 
-		ret = xilinx_drm_dp_aux_read(dp, DP_LANE0_1_STATUS, link_status,
-					     DP_LINK_STATUS_SIZE);
-		if (ret)
+		ret = drm_dp_dpcd_read_link_status(&dp->aux, link_status);
+		if (ret < 0)
 			return ret;
 
 		ce_done = drm_dp_channel_eq_ok(link_status, lane_cnt);
@@ -709,9 +604,9 @@ static int xilinx_drm_dp_link_train_ce(struct xilinx_drm_dp *dp)
 	}
 
 	if (!ce_done)
-		ret = -EIO;
+		return -EIO;
 
-	return ret;
+	return 0;
 }
 
 /**
@@ -737,14 +632,14 @@ static int xilinx_drm_dp_train(struct xilinx_drm_dp *dp)
 		aux_lane_cnt = lane_cnt | DP_LANE_COUNT_ENHANCED_FRAME_EN;
 	}
 
-	ret = xilinx_drm_dp_aux_write_byte(dp, DP_LANE_COUNT_SET, aux_lane_cnt);
-	if (ret) {
+	ret = drm_dp_dpcd_writeb(&dp->aux, DP_LANE_COUNT_SET, aux_lane_cnt);
+	if (ret < 0) {
 		DRM_ERROR("failed to set lane count\n");
 		return ret;
 	}
 
-	ret = xilinx_drm_dp_aux_write_byte(dp, DP_LINK_BW_SET, bw_code);
-	if (ret) {
+	ret = drm_dp_dpcd_writeb(&dp->aux, DP_LINK_BW_SET, bw_code);
+	if (ret < 0) {
 		DRM_ERROR("failed to set DP bandwidth\n");
 		return ret;
 	}
@@ -789,9 +684,9 @@ static int xilinx_drm_dp_train(struct xilinx_drm_dp *dp)
 
 	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_TRAINING_PATTERN_SET,
 			  DP_TRAINING_PATTERN_DISABLE);
-	ret = xilinx_drm_dp_aux_write_byte(dp, DP_TRAINING_PATTERN_SET,
-					   DP_TRAINING_PATTERN_DISABLE);
-	if (ret) {
+	ret = drm_dp_dpcd_writeb(&dp->aux, DP_TRAINING_PATTERN_SET,
+				 DP_TRAINING_PATTERN_DISABLE);
+	if (ret < 0) {
 		DRM_ERROR("failed to disable training pattern\n");
 		return ret;
 	}
@@ -814,13 +709,13 @@ static void xilinx_drm_dp_dpms(struct drm_encoder *encoder, int dpms)
 	switch (dpms) {
 	case DRM_MODE_DPMS_ON:
 		xilinx_drm_writel(iomem, XILINX_DP_TX_PHY_POWER_DOWN, 0);
-		xilinx_drm_dp_aux_write_byte(dp, DP_SET_POWER, DP_SET_POWER_D0);
+		drm_dp_dpcd_writeb(&dp->aux, DP_SET_POWER, DP_SET_POWER_D0);
 		xilinx_drm_dp_train(dp);
 		xilinx_drm_writel(iomem, XILINX_DP_TX_ENABLE_MAIN_STREAM, 1);
 		return;
 	default:
 		xilinx_drm_writel(iomem, XILINX_DP_TX_ENABLE_MAIN_STREAM, 0);
-		xilinx_drm_dp_aux_write_byte(dp, DP_SET_POWER, DP_SET_POWER_D3);
+		drm_dp_dpcd_writeb(&dp->aux, DP_SET_POWER, DP_SET_POWER_D3);
 		xilinx_drm_writel(iomem, XILINX_DP_TX_PHY_POWER_DOWN,
 				  XILINX_DP_TX_PHY_POWER_DOWN_ALL);
 		return;
@@ -1032,9 +927,9 @@ xilinx_drm_dp_detect(struct drm_encoder *encoder,
 
 	state = xilinx_drm_readl(dp->iomem, XILINX_DP_TX_INTR_SIGNAL_STATE);
 	if (state & XILINX_DP_TX_INTR_SIGNAL_STATE_HPD) {
-		ret = xilinx_drm_dp_aux_read(dp, 0x0, dp->dpcd,
-					     sizeof(dp->dpcd));
-		if (ret)
+		ret = drm_dp_dpcd_read(&dp->aux, 0x0, dp->dpcd,
+				       sizeof(dp->dpcd));
+		if (ret < 0)
 			return connector_status_disconnected;
 
 		link_config->max_rate = min_t(int,
@@ -1057,7 +952,7 @@ static int xilinx_drm_dp_get_modes(struct drm_encoder *encoder,
 	struct edid *edid;
 	int ret;
 
-	edid = drm_get_edid(connector, &dp->i2c.adapter);
+	edid = drm_get_edid(connector, &dp->aux.ddc);
 	if (!edid)
 		return 0;
 
@@ -1151,72 +1046,18 @@ static irqreturn_t xilinx_drm_dp_irq_handler(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
-/**
- * xilinx_drm_dp_i2c_aux_ch - i2c algorithm for aux channel
- * @adapter: i2c adapter
- * @mode: mode of command
- * @write_byte: a byte to write
- * @read_byte: a byte to read
- *
- * Return: 0 if successful, or corresponding error code from
- * xilinx_drm_dp_aux_cmd_byte().
- */
-static int xilinx_drm_dp_i2c_aux_ch(struct i2c_adapter *adapter, int mode,
-				    uint8_t write_byte, uint8_t *read_byte)
+static ssize_t
+xilinx_drm_dp_aux_transfer(struct drm_dp_aux *aux, struct drm_dp_aux_msg *msg)
 {
-	struct i2c_algo_dp_aux_data *algo_data = adapter->algo_data;
-	struct xilinx_drm_dp_i2c *i2c = container_of(adapter,
-						     struct xilinx_drm_dp_i2c,
-						     adapter);
-	struct xilinx_drm_dp *dp = container_of(i2c, struct xilinx_drm_dp, i2c);
-	u32 cmd;
-	u8 *buf;
+	struct xilinx_drm_dp *dp = container_of(aux, struct xilinx_drm_dp, aux);
 	int ret;
 
-	/* Set up the command byte */
-	if (mode & MODE_I2C_READ) {
-		cmd = DP_AUX_I2C_READ;
-		buf = read_byte;
-	} else {
-		cmd = DP_AUX_I2C_WRITE;
-		buf = &write_byte;
-	}
-
-	if (!(mode & MODE_I2C_STOP))
-		cmd |= DP_AUX_I2C_MOT;
-
-	ret = xilinx_drm_dp_aux_cmd_byte(dp, cmd, algo_data->address, buf);
+	ret = xilinx_drm_dp_aux_cmd_submit(dp, msg->request, msg->address,
+					   msg->buffer, msg->size, &msg->reply);
 	if (ret < 0)
-		DRM_DEBUG_DRIVER("failed to submit DP aux command\n");
+		return ret;
 
-	return ret;
-}
-
-/**
- * xilinx_drm_dp_i2c_init - Initialize the i2c interface
- * @dp: DisplayPort IP core structure
- *
- * Return: 0 if successful, or corresponding error code from
- * i2c_dp_aux_add_bus().
- */
-static int xilinx_drm_dp_i2c_init(struct xilinx_drm_dp *dp)
-{
-	dp->i2c.algo.running = false;
-	dp->i2c.algo.address = 0;
-	dp->i2c.algo.aux_ch = xilinx_drm_dp_i2c_aux_ch;
-
-	memset(&dp->i2c.adapter, 0, sizeof(dp->i2c.adapter));
-
-	dp->i2c.adapter.owner = THIS_MODULE;
-	dp->i2c.adapter.class = I2C_CLASS_DDC;
-	strncpy(dp->i2c.adapter.name, "Xilinx DP I2C Aux",
-		 sizeof(dp->i2c.adapter.name) - 1);
-	dp->i2c.adapter.name[sizeof(dp->i2c.adapter.name) - 1] = '\0';
-	dp->i2c.adapter.algo_data = &dp->i2c.algo;
-	dp->i2c.adapter.dev.parent = dp->dev;
-	dp->i2c.adapter.dev.of_node = dp->dev->of_node;
-
-	return i2c_dp_aux_add_bus(&dp->i2c.adapter);
+	return msg->size;
 }
 
 static int xilinx_drm_dp_parse_of(struct xilinx_drm_dp *dp)
@@ -1381,8 +1222,6 @@ static int xilinx_drm_dp_probe(struct platform_device *pdev)
 	if (IS_ERR(dp->iomem))
 		return PTR_ERR(dp->iomem);
 
-	mutex_init(&dp->aux_lock);
-
 	platform_set_drvdata(pdev, dp);
 
 	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_SW_RESET,
@@ -1394,10 +1233,13 @@ static int xilinx_drm_dp_probe(struct platform_device *pdev)
 	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_INTR_MASK,
 			  XILINX_DP_TX_INTR_MASK_ALL);
 
-	ret = xilinx_drm_dp_i2c_init(dp);
+	dp->aux.name = "Xilinx DP AUX";
+	dp->aux.dev = dp->dev;
+	dp->aux.transfer = xilinx_drm_dp_aux_transfer;
+	ret = drm_dp_aux_register(&dp->aux);
 	if (ret < 0) {
-		dev_err(dp->dev, "failed to initialize DP i2c\n");
-		goto error;
+		dev_err(dp->dev, "failed to initialize DP aux\n");
+		return ret;
 	}
 
 	irq = platform_get_irq(pdev, 0);
@@ -1440,7 +1282,7 @@ static int xilinx_drm_dp_probe(struct platform_device *pdev)
 	return 0;
 
 error:
-	mutex_destroy(&dp->aux_lock);
+	drm_dp_aux_unregister(&dp->aux);
 	return ret;
 }
 
@@ -1452,7 +1294,7 @@ static int xilinx_drm_dp_remove(struct platform_device *pdev)
 
 	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_ENABLE, 0);
 
-	mutex_destroy(&dp->aux_lock);
+	drm_dp_aux_unregister(&dp->aux);
 
 	return 0;
 }
