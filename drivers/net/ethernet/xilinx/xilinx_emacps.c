@@ -548,7 +548,7 @@ struct net_local {
 	unsigned int enetnum;
 	unsigned int lastrxfrmscntr;
 	unsigned int has_mdio;
-	unsigned int gen_timer_timeout;
+	bool timerready;
 #ifdef CONFIG_XILINX_PS_EMAC_HWTSTAMP
 	struct hwtstamp_config hwtstamp_config;
 	struct ptp_clock *ptp_clock;
@@ -762,13 +762,15 @@ static void xemacps_adjust_link(struct net_device *ndev)
 			} else if (phydev->speed == SPEED_10) {
 				xemacps_set_freq(lp->devclk, 2500000,
 						&lp->pdev->dev);
-				lp->gen_timer_timeout =
-					XEAMCPS_GEN_PURPOSE_TIMER_LOAD * 5;
 			} else {
 				dev_err(&lp->pdev->dev,
 					"%s: unknown PHY speed %d\n",
 					__func__, phydev->speed);
 				return;
+			}
+			if (lp->timerready && (phydev->speed != SPEED_1000)) {
+				del_timer_sync(&(lp->gen_purpose_timer));
+				lp->timerready = false;
 			}
 
 			xemacps_write(lp->baseaddr, XEMACPS_NWCFG_OFFSET,
@@ -2004,7 +2006,7 @@ static void xemacps_gen_purpose_timerhandler(unsigned long data)
 	xemacps_update_stats(data);
 	xemacps_resetrx_for_no_rxdata(data);
 	mod_timer(&(lp->gen_purpose_timer),
-		jiffies + msecs_to_jiffies(lp->gen_timer_timeout));
+		jiffies + msecs_to_jiffies(XEAMCPS_GEN_PURPOSE_TIMER_LOAD));
 }
 
 /**
@@ -2046,6 +2048,11 @@ static int xemacps_open(struct net_device *ndev)
 
 	napi_enable(&lp->napi);
 	xemacps_init_hw(lp);
+
+	setup_timer(&(lp->gen_purpose_timer), xemacps_gen_purpose_timerhandler,
+							(unsigned long)lp);
+	lp->timerready = true;
+
 	rc = xemacps_mii_probe(ndev);
 	if (rc != 0) {
 		dev_err(&lp->pdev->dev,
@@ -2059,12 +2066,8 @@ static int xemacps_open(struct net_device *ndev)
 		goto err_pm_put;
 	}
 
-	lp->gen_timer_timeout = XEAMCPS_GEN_PURPOSE_TIMER_LOAD;
-	setup_timer(&(lp->gen_purpose_timer), xemacps_gen_purpose_timerhandler,
-							(unsigned long)lp);
 	mod_timer(&(lp->gen_purpose_timer),
-		jiffies + msecs_to_jiffies(lp->gen_timer_timeout));
-
+		jiffies + msecs_to_jiffies(XEAMCPS_GEN_PURPOSE_TIMER_LOAD));
 	netif_carrier_on(ndev);
 	netif_start_queue(ndev);
 	tasklet_enable(&lp->tx_bdreclaim_tasklet);
@@ -2074,6 +2077,10 @@ static int xemacps_open(struct net_device *ndev)
 err_pm_put:
 	napi_disable(&lp->napi);
 	xemacps_reset_hw(lp);
+	if (lp->timerready) {
+		del_timer_sync(&(lp->gen_purpose_timer));
+		lp->timerready = false;
+	}
 	pm_runtime_put(&lp->pdev->dev);
 err_free_rings:
 	xemacps_descriptor_free(lp);
@@ -2095,7 +2102,8 @@ static int xemacps_close(struct net_device *ndev)
 {
 	struct net_local *lp = netdev_priv(ndev);
 
-	del_timer_sync(&(lp->gen_purpose_timer));
+	if (lp->timerready)
+		del_timer_sync(&(lp->gen_purpose_timer));
 	netif_stop_queue(ndev);
 	napi_disable(&lp->napi);
 	tasklet_disable(&lp->tx_bdreclaim_tasklet);
