@@ -88,6 +88,8 @@ struct pl353_nand_command_format {
  * @nand_base:		Virtual address of the NAND flash device
  * @end_cmd_pending:	End command is pending
  * @end_cmd:		End command
+ * @row_addr_cycles:	Row address cycles
+ * @col_addr_cycles:	Column address cycles
  */
 struct pl353_nand_info {
 	struct nand_chip chip;
@@ -96,6 +98,8 @@ struct pl353_nand_info {
 	void __iomem *nand_base;
 	unsigned long end_cmd_pending;
 	unsigned long end_cmd;
+	u8 row_addr_cycles;
+	u8 col_addr_cycles;
 };
 
 /*
@@ -680,6 +684,7 @@ static void pl353_nand_cmd_function(struct mtd_info *mtd, unsigned int command,
 	unsigned long cmd_data = 0, end_cmd_valid = 0;
 	unsigned long cmd_phase_addr, data_phase_addr, end_cmd, i;
 	unsigned long timeout = jiffies + PL353_NAND_DEV_BUSY_TIMEOUT;
+	u32 addrcycles;
 
 	if (xnand->end_cmd_pending) {
 		/*
@@ -721,8 +726,15 @@ static void pl353_nand_cmd_function(struct mtd_info *mtd, unsigned int command,
 	else
 		end_cmd = curr_cmd->end_cmd;
 
+	if ((command == NAND_CMD_READ0) && (command == NAND_CMD_SEQIN))
+		addrcycles = xnand->row_addr_cycles + xnand->col_addr_cycles;
+	else if (command == NAND_CMD_ERASE1)
+		addrcycles = xnand->row_addr_cycles;
+	else
+		addrcycles = curr_cmd->addr_cycles;
+
 	cmd_phase_addr = (unsigned long __force)xnand->nand_base        |
-			 (curr_cmd->addr_cycles << ADDR_CYCLES_SHIFT)    |
+			 (addrcycles << ADDR_CYCLES_SHIFT)    |
 			 (end_cmd_valid << END_CMD_VALID_SHIFT)          |
 			 (COMMAND_PHASE)                                 |
 			 (end_cmd << END_CMD_SHIFT)                      |
@@ -1055,6 +1067,10 @@ static int pl353_nand_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "nand_scan_ident for NAND failed\n");
 		return -ENXIO;
 	}
+
+	xnand->row_addr_cycles = nand_chip->onfi_params.addr_cycles & 0xF;
+	xnand->col_addr_cycles =
+				(nand_chip->onfi_params.addr_cycles >> 4) & 0xF;
 
 	pl353_nand_ecc_init(mtd, ondie_ecc_state);
 	if (nand_chip->options & NAND_BUSWIDTH_16)
