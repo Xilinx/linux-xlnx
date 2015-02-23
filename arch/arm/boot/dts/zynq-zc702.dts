@@ -35,16 +35,6 @@
 		linux,stdout-path = "/amba/serial@e0001000";
 	};
 
-	leds {
-		compatible = "gpio-leds";
-
-		ds23 {
-			label = "ds23";
-			gpios = <&gpio0 10 0>;
-			linux,default-trigger = "heartbeat";
-		};
-	};
-
 	gpio-keys {
 		compatible = "gpio-keys";
 		#address-cells = <1>;
