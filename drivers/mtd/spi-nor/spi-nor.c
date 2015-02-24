@@ -869,6 +869,13 @@ static const struct spi_device_id spi_nor_ids[] = {
 	{ "cat25c09", CAT25_INFO( 128, 8, 32, 2, SPI_NOR_NO_ERASE | SPI_NOR_NO_FR) },
 	{ "cat25c17", CAT25_INFO( 256, 8, 32, 2, SPI_NOR_NO_ERASE | SPI_NOR_NO_FR) },
 	{ "cat25128", CAT25_INFO(2048, 8, 64, 2, SPI_NOR_NO_ERASE | SPI_NOR_NO_FR) },
+		/* ISSI flash */
+	{ "is25lp032", INFO(0x9d6016, 0, 64 * 1024, 64,
+				SECT_4K | SPI_NOR_QUAD_IO_READ) },
+	{ "is25lp064", INFO(0x9d6017, 0, 64 * 1024, 128,
+				SECT_4K | SPI_NOR_QUAD_IO_READ) },
+	{ "is25lp128", INFO(0x9D6018, 0, 64 * 1024, 256,
+				SECT_4K | SPI_NOR_QUAD_IO_READ) },
 	{ },
 };
 
@@ -1215,6 +1222,7 @@ static int set_quad_mode(struct spi_nor *nor, u32 jedec_id)
 	int status;
 
 	switch (JEDEC_MFR(jedec_id)) {
+	case CFI_MFR_ISSI:
 	case CFI_MFR_MACRONIX:
 		status = macronix_quad_enable(nor);
 		if (status) {
