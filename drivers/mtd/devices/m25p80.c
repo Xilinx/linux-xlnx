@@ -110,6 +110,7 @@ static inline unsigned int m25p80_rx_nbits(struct spi_nor *nor)
 	switch (nor->flash_read) {
 	case SPI_NOR_DUAL:
 		return 2;
+	case SPI_NOR_QUAD_IO:
 	case SPI_NOR_QUAD:
 		return 4;
 	default:

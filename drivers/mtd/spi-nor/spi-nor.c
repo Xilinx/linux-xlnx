@@ -100,6 +100,8 @@ static inline int spi_nor_read_dummy_cycles(struct spi_nor *nor)
 	case SPI_NOR_DUAL:
 	case SPI_NOR_QUAD:
 		return 1;
+	case SPI_NOR_QUAD_IO:
+		return 5;
 	case SPI_NOR_NORMAL:
 		return 0;
 	}
@@ -675,6 +677,7 @@ struct flash_info {
 #define	SPI_NOR_QUAD_READ	0x40    /* Flash supports Quad Read */
 #define	USE_FSR			0x80	/* use flag status register */
 #define	SPI_NOR_FLASH_LOCK	0x100	/* Flash protection support */
+#define	SPI_NOR_QUAD_IO_READ    0x200   /* Flash supports Quad IO read */
 };
 
 #define INFO(_jedec_id, _ext_id, _sector_size, _n_sectors, _flags)	\
@@ -1428,12 +1431,23 @@ int spi_nor_scan(struct spi_nor *nor, const char *name, enum read_mode mode)
 			return ret;
 		}
 		nor->flash_read = SPI_NOR_QUAD;
+	} else if (mode == SPI_NOR_QUAD &&
+		   info->flags & SPI_NOR_QUAD_IO_READ) {
+		ret = set_quad_mode(nor, info->jedec_id);
+		if (ret) {
+			dev_err(dev, "quad IO mode not supported\n");
+			return ret;
+		}
+		nor->flash_read = SPI_NOR_QUAD_IO;
 	} else if (mode == SPI_NOR_DUAL && info->flags & SPI_NOR_DUAL_READ) {
 		nor->flash_read = SPI_NOR_DUAL;
 	}
 
 	/* Default commands */
 	switch (nor->flash_read) {
+	case SPI_NOR_QUAD_IO:
+		nor->read_opcode = SPINOR_OP_READ_1_4_4;
+		break;
 	case SPI_NOR_QUAD:
 		nor->read_opcode = SPINOR_OP_READ_1_1_4;
 		break;
@@ -1476,6 +1490,9 @@ int spi_nor_scan(struct spi_nor *nor, const char *name, enum read_mode mode)
 		if (JEDEC_MFR(info->jedec_id) == CFI_MFR_AMD) {
 			/* Dedicated 4-byte command set */
 			switch (nor->flash_read) {
+			case SPI_NOR_QUAD_IO:
+				nor->read_opcode = SPINOR_OP_READ4_1_4_4;
+				break;
 			case SPI_NOR_QUAD:
 				nor->read_opcode = SPINOR_OP_READ4_1_1_4;
 				break;
