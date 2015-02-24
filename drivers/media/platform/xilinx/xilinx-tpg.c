@@ -782,7 +782,7 @@ static int xtpg_probe(struct platform_device *pdev)
 	xtpg->vtmux_gpio = devm_gpiod_get_index(&pdev->dev, "timing", 0);
 	if (PTR_ERR(xtpg->vtmux_gpio) == -EPROBE_DEFER) {
 		ret = -EPROBE_DEFER;
-		goto error;
+		goto error_resource;
 	}
 	if (!IS_ERR(xtpg->vtmux_gpio))
 		gpiod_direction_output(xtpg->vtmux_gpio, 1);
@@ -790,7 +790,7 @@ static int xtpg_probe(struct platform_device *pdev)
 	xtpg->vtc = xvtc_of_get(pdev->dev.of_node);
 	if (IS_ERR(xtpg->vtc)) {
 		ret = PTR_ERR(xtpg->vtc);
-		goto error;
+		goto error_resource;
 	}
 
 	/* Reset and initialize the core */
@@ -881,6 +881,7 @@ error:
 	v4l2_ctrl_handler_free(&xtpg->ctrl_handler);
 	media_entity_cleanup(&subdev->entity);
 	xvtc_put(xtpg->vtc);
+error_resource:
 	xvip_cleanup_resources(&xtpg->xvip);
 	return ret;
 }
