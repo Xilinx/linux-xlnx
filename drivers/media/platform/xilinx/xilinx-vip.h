@@ -90,6 +90,7 @@ struct clk;
  * @subdev: V4L2 subdevice
  * @dev: (OF) device
  * @iomem: device I/O register space remapped to kernel virtual memory
+ * @clk: video core clock
  * @npads: number of pads on the subdevice
  * @pads: media pads
  * @formats: active formats on the pads
