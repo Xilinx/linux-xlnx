@@ -32,6 +32,8 @@ Optional properties:
  - xlnx,enable-sync: Enable synchronous operation with video clock.
  - xlnx,max-pclock-frequency: Maximum pixel clock rate(KHz). The value should
    specify the maximum pixel clock rate in KHz that the IP core supports.
+ - xlnx,dp-sub: A phandle referencing the ZynqMP DisplayPort subsystem
+   which contains additional blocks such as buffer managers, blender, and audio.
 
 Example:
 
