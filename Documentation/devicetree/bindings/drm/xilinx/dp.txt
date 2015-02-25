@@ -7,7 +7,9 @@ Required properties:
  - reg: Base address and size of the IP core.
  - interrupts: Interrupt number.
  - interrupts-parent: phandle for interrupt controller.
- - clocks: phandle for aclk
+ - clocks: phandle for aclk and audio clock
+ - clock-names: The identification string, "aclk", is always required for
+   the axi clock. "aud_clk" is required only when audio needs to be enabled.
 
  - xlnx,dp-version: Version of DisplayPort protocol.
  - xlnx,max-lanes: Maximum number of lanes of the IP core. The value should
@@ -25,7 +27,6 @@ Required properties:
    6, 8, 10, 12, or 16.
 
 Optional properties:
- - clock-names: Should be 'aclk'.
  - xlnx,enable-yonly: Enable yonly colormetry.
  - xlnx,enable-ycrcb: Enable ycrcb colormetry.
  - xlnx,enable-sync: Enable synchronous operation with video clock.
@@ -39,8 +40,8 @@ Example:
 		reg = <0x83c10000 0x10000>;
 		interrupts = <0 57 4>;
 		interrupt-parent = <&ps7_scugic_0>;
-		clock-names = "aclk";
-		clocks = <&dp_aclk 0>;
+		clocks = <&dp_aclk>, <&dp_aud_clk>;
+		clock-names = "aclk", "aud_clk";
 
 		xlnx,dp-version = "v1.2";
 		xlnx,max-lanes = <4>;
