@@ -1,0 +1,25 @@
+Device-Tree bindings for Xilinx ZynqMP DisplayPort Subsystem
+
+The ZynqMP DisplayPort subsystem handles DMA channel buffer management,
+blending, and audio mixing. The DisplayPort subsystem receives display
+and audio frames from DPDMA and transmits output to the DisplayPort IP core.
+
+Required properties:
+ - compatible: Should be one of "xlnx,dp-sub".
+ - reg: Base address and size of the IP core.
+ - reg-names: "blend", "av_buf", and "aud" for Blender, AV Buffer manager, and
+   Audio modules respectively.
+
+ - xlnx,output-fmt: Output color format. The value should be one of "rgb",
+   "ycrcb422", "ycrcb444", or "yonly". These are based on the DisplayPort
+   specification. The value shall be synced with DP colormetry..
+
+Example:
+
+	xlnx_dp_sub: dp_sub@43c0a000 {
+		compatible = "xlnx,dp-sub";
+		reg = <0x43c0a000 0x1000>, <0x43c0b000 0x1000>,
+		      <0x43c0c000 0x1000>;
+		reg-names = "blend", "av_buf", "aud";
+		xlnx,output-fmt = "rgb";
+	};
