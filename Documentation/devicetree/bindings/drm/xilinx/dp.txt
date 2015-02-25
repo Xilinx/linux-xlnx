@@ -29,6 +29,8 @@ Optional properties:
  - xlnx,enable-yonly: Enable yonly colormetry.
  - xlnx,enable-ycrcb: Enable ycrcb colormetry.
  - xlnx,enable-sync: Enable synchronous operation with video clock.
+ - xlnx,max-pclock-frequency: Maximum pixel clock rate(KHz). The value should
+   specify the maximum pixel clock rate in KHz that the IP core supports.
 
 Example:
 
@@ -44,6 +46,7 @@ Example:
 		xlnx,max-lanes = <4>;
 		xlnx,max-link-rate = <270000>;
 		xlnx,max-bpc = <16>;
+		xlnx,max-pclock-frequency = <150000>;
 		xlnx,enable-ycrcb;
 
 		xlnx,colormetry = "rgb";
