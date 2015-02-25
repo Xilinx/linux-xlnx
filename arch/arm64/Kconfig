@@ -162,6 +162,11 @@ config ARCH_XGENE
 	help
 	  This enables support for AppliedMicro X-Gene SOC Family
 
+config ARCH_ZYNQMP
+	bool "Xilinx Zynq MP SOC Family"
+	help
+	  This enables support for Xilinx Zynq MP SOC Family
+
 endmenu
 
 menu "Bus support"
