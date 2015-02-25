@@ -1,0 +1,65 @@
+Device-Tree bindings for Xilinx ZynqMP DisplayPort Subsystem
+
+The ZynqMP DisplayPort subsystem handles DMA channel buffer management,
+blending, and audio mixing. The DisplayPort subsystem receives display
+and audio frames from DPDMA and transmits output to the DisplayPort IP core.
+
+Required properties:
+ - compatible: Should be one of "xlnx,dp-sub".
+ - reg: Base address and size of the IP core.
+ - reg-names: "blend", "av_buf", and "aud" for Blender, AV Buffer manager, and
+   Audio modules respectively.
+ - xlnx,output-fmt: Output color format. The value should be one of "rgb",
+   "ycrcb422", "ycrcb444", or "yonly". These are based on the DisplayPort
+   specification. The value shall be synced with DP colormetry..
+
+Optional properties:
+ - xlnx,vid-fmt: Video input color format. The value should be one of
+	"vyuy"
+	"uyvy"
+	"yuyv"
+	"yvyu"
+	"yuv422"
+	"yvu422"
+	"yuv444"
+	"yvu444"
+	"nv16"
+	"nv61
+	"bgr888"
+	"rgb888"
+	"xbgr8888"
+	"xrgb8888"
+	"xbgr2101010"
+	"xrgb2101010"
+	"yuv420"
+	"yvu420"
+	"nv12"
+	"nv21".
+   If nothing is specified, "vyuy" will be selected.
+ - xlnx,gfx-fmt: Graphics input color format. The value should be one of
+	"abgr8888"
+	"argb8888"
+	"rgba8888"
+	"bgra8888"
+	"bgr888"
+	"rgb888"
+	"rgba5551"
+	"bgra5551"
+	"rgba4444"
+	"bgra4444"
+	"rgb565"
+	"bgr565".
+   If nothing is specified, "abgr8888" will be selected.
+
+Optional properties:
+ - xlnx,vid-clk-pl: Should be used when the pixel clock is coming from PL.
+
+Example:
+
+	xlnx_dp_sub: dp_sub@43c0a000 {
+		compatible = "xlnx,dp-sub";
+		reg = <0x43c0a000 0x1000>, <0x43c0b000 0x1000>,
+		      <0x43c0c000 0x1000>;
+		reg-names = "blend", "av_buf", "aud";
+		xlnx,output-fmt = "rgb";
+	};
