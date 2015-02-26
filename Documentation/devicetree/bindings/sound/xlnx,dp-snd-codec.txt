@@ -1,0 +1,18 @@
+Device-Tree bindings for Xilinx ZynqMP DisplayPort Codec
+
+The codec driver handles the audio clock and format management.
+
+Required properties:
+ - compatible: Should be "xlnx,dp-snd-codec".
+ - clocks: The phandle for the audio clock. The audio clock should be
+   configured to the correct audio clock rate, which should be one of
+   (44100 * 512) or (48000 * 512).
+ - clock-names: The identification string should be "aud_clk".
+
+Example:
+
+	xlnx_dp_snd_codec0: dp_snd_codec0 {
+		compatible = "xlnx,dp-snd-codec";
+		clocks = <&dp_aud_clk>;
+		clock-names = "aud_clk";
+	};
