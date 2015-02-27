@@ -3,7 +3,7 @@ Device-Tree bindings for Xilinx DisplayPort IP core
 The IP core supports transmission of video data in DisplayPort protocol.
 
 Required properties:
- - compatible: Should be "xlnx,v-dp-4.2".
+ - compatible: Should be "xlnx,v-dp".
  - reg: Base address and size of the IP core.
  - interrupts: Interrupt number.
  - interrupts-parent: phandle for interrupt controller.
@@ -35,7 +35,7 @@ Optional properties:
 Example:
 
 	xlnx_dp: dp@83c10000 {
-		compatible = "xlnx,v-dp-4.2";
+		compatible = "xlnx,v-dp";
 		reg = <0x83c10000 0x10000>;
 		interrupts = <0 57 4>;
 		interrupt-parent = <&ps7_scugic_0>;
