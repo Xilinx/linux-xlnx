@@ -1344,7 +1344,7 @@ static int xilinx_drm_dp_remove(struct platform_device *pdev)
 }
 
 static const struct of_device_id xilinx_drm_dp_of_match[] = {
-	{ .compatible = "xlnx,v-dp-4.2", },
+	{ .compatible = "xlnx,v-dp", },
 	{ /* end of table */ },
 };
 MODULE_DEVICE_TABLE(of, xilinx_drm_dp_of_match);
