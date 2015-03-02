@@ -40,7 +40,7 @@ static int ehci_zynq_reinit(struct ehci_hcd *ehci);
 static int ehci_zynq_update_device(struct usb_hcd *hcd, struct usb_device
 		*udev)
 {
-	struct zynq_otg *xotg = xceiv_to_xotg(hcd->phy);
+	struct zynq_otg *xotg = xceiv_to_xotg(hcd->usb_phy);
 
 	if (udev->portnum == hcd->self.otg_port) {
 		/* HNP test device */
@@ -69,14 +69,14 @@ static void ehci_zynq_start_hnp(struct ehci_hcd *ehci)
 	ehci_writel(ehci, portsc, &ehci->regs->port_status[port]);
 	local_irq_restore(flags);
 
-	otg_start_hnp(hcd->phy->otg);
+	otg_start_hnp(hcd->usb_phy->otg);
 }
 
 static int ehci_zynq_otg_start_host(struct usb_phy *otg)
 {
 	struct usb_hcd		*hcd = bus_to_hcd(otg->otg->host);
 	struct zynq_otg *xotg =
-			xceiv_to_xotg(hcd->phy);
+			xceiv_to_xotg(hcd->usb_phy);
 
 	usb_add_hcd(hcd, xotg->irq, IRQF_SHARED);
 	return 0;
@@ -168,12 +168,12 @@ static int usb_hcd_zynq_probe(const struct hc_driver *driver,
 		struct ehci_hcd *ehci = hcd_to_ehci(hcd);
 
 		hcd->self.otg_port = 1;
-		hcd->phy = pdata->otg;
-		retval = otg_set_host(hcd->phy->otg,
+		hcd->usb_phy = pdata->otg;
+		retval = otg_set_host(hcd->usb_phy->otg,
 				&ehci_to_hcd(ehci)->self);
 		if (retval)
 			goto err_out_clk_disable;
-		xotg = xceiv_to_xotg(hcd->phy);
+		xotg = xceiv_to_xotg(hcd->usb_phy);
 		ehci->start_hnp = ehci_zynq_start_hnp;
 		xotg->start_host = ehci_zynq_otg_start_host;
 		xotg->stop_host = ehci_zynq_otg_stop_host;

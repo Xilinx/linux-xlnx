@@ -724,15 +724,15 @@ static irqreturn_t ehci_irq (struct usb_hcd *hcd)
 #ifdef CONFIG_USB_ZYNQ_PHY
 	if(hcd->phy) {
 		/* A device */
-		if (hcd->phy->otg->default_a &&
-			(hcd->phy->state == OTG_STATE_A_PERIPHERAL)) {
+		if (hcd->usb_phy->otg->default_a &&
+			(hcd->usb_phy->state == OTG_STATE_A_PERIPHERAL)) {
 			spin_unlock(&ehci->lock);
 			return IRQ_NONE;
 		}
 		/* B device */
-		if (!hcd->phy->otg->default_a &&
-			((hcd->phy->state != OTG_STATE_B_WAIT_ACON) &&
-			(hcd->phy->state != OTG_STATE_B_HOST))) {
+		if (!hcd->usb_phy->otg->default_a &&
+			((hcd->usb_phy->state != OTG_STATE_B_WAIT_ACON) &&
+			(hcd->usb_phy->state != OTG_STATE_B_HOST))) {
 			spin_unlock(&ehci->lock);
 			return IRQ_NONE;
 		}
