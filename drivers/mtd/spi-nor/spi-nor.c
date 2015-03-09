@@ -594,6 +594,18 @@ static int write_sr_modify_protection(struct spi_nor *nor, uint8_t status,
 	return 0;
 }
 
+static uint8_t bp_bits_from_sr(struct spi_nor *nor, uint8_t status)
+{
+    uint8_t ret;
+
+    ret = (((status) & SR_BP_BIT_MASK) >> SR_BP_BIT_OFFSET);
+    if (nor->jedec_id == 0x20) {
+        ret |= ((status & SR_BP3) >> (SR_BP_BIT_OFFSET + 1));
+    }
+
+    return ret;
+}
+
 static int spi_nor_lock(struct mtd_info *mtd, loff_t ofs, uint64_t len)
 {
 	struct spi_nor *nor = mtd_to_spi_nor(mtd);
@@ -627,7 +639,7 @@ static int spi_nor_lock(struct mtd_info *mtd, loff_t ofs, uint64_t len)
 	lock_bits = min_protected_area_including_offset(nor, offset);
 
 	/* Only modify protection if it will not unlock other areas */
-	if (lock_bits > BP_BITS_FROM_SR(status))
+	if (lock_bits > bp_bits_from_sr(nor, status))
 		ret = write_sr_modify_protection(nor, status, lock_bits);
 
 err:
@@ -668,7 +680,7 @@ static int spi_nor_unlock(struct mtd_info *mtd, loff_t ofs, uint64_t len)
 	lock_bits = min_protected_area_including_offset(nor, offset+len) - 1;
 
 	/* Only modify protection if it will not lock other areas */
-	if (lock_bits < BP_BITS_FROM_SR(status))
+	if (lock_bits < bp_bits_from_sr(nor, status))
 		ret = write_sr_modify_protection(nor, status, lock_bits);
 
 err:
@@ -694,7 +706,7 @@ static int spi_nor_is_locked(struct mtd_info *mtd, loff_t ofs, uint64_t len)
 	status = read_sr(nor);
 
 	protected_area_start = get_protected_area_start(nor,
-						BP_BITS_FROM_SR(status));
+						bp_bits_from_sr(nor, status));
 	if (offset >= protected_area_start)
 		ret = MTD_IS_LOCKED;
 	else if (offset+len < protected_area_start)

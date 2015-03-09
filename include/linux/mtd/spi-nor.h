@@ -76,8 +76,6 @@
 /* Bit to determine whether protection starts from top or bottom */
 #define SR_BP_TB		0x20
 
-#define BP_BITS_FROM_SR(sr)	(((sr) & SR_BP_BIT_MASK) >> SR_BP_BIT_OFFSET)
-
 /* Highest resolution of sector locking */
 #define M25P_MAX_LOCKABLE_SECTORS	64
 
