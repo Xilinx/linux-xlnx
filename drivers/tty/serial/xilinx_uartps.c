@@ -1153,7 +1153,7 @@ static int __init cdns_uart_console_setup(struct console *co, char *options)
 	if (co->index < 0 || co->index >= CDNS_UART_NR_PORTS)
 		return -EINVAL;
 
-	if (!port->mapbase) {
+	if (!port->membase) {
 		pr_debug("console on ttyPS%i not present\n", co->index);
 		return -ENODEV;
 	}
