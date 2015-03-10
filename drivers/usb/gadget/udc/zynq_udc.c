@@ -1590,7 +1590,6 @@ static int zynq_udc_start(struct usb_gadget *g,
 	/* hook up the driver */
 	udc_controller->driver = driver;
 	udc_controller->gadget.dev.driver = &driver->driver;
-	spin_unlock_irqrestore(&udc_controller->lock, flags);
 
 #ifdef CONFIG_USB_ZYNQ_PHY
 	if (gadget_is_otg(&udc_controller->gadget)) {
@@ -1601,6 +1600,7 @@ static int zynq_udc_start(struct usb_gadget *g,
 			driver->unbind(&udc_controller->gadget);
 			udc_controller->gadget.dev.driver = NULL;
 			udc_controller->driver = NULL;
+			spin_unlock_irqrestore(&udc_controller->lock, flags);
 			return retval;
 		}
 		/* Exporting start and stop routines */
@@ -1636,6 +1636,7 @@ static int zynq_udc_start(struct usb_gadget *g,
 	udc_controller->ep0_dir = 0;
 #endif
 
+	spin_unlock_irqrestore(&udc_controller->lock, flags);
 	pr_info("%s: bind to driver %s\n",
 			udc_controller->gadget.name, driver->driver.name);
 	if (retval)
