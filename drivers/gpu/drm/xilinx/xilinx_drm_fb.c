@@ -417,6 +417,9 @@ struct drm_framebuffer *xilinx_drm_fb_create(struct drm_device *drm,
 
 	drm_fb_get_bpp_depth(mode_cmd->pixel_format, &fb->base.depth,
 			     &fb->base.bits_per_pixel);
+	if (!fb->base.bits_per_pixel)
+		fb->base.bits_per_pixel =
+			xilinx_drm_format_bpp(mode_cmd->pixel_format);
 
 	return &fb->base;
 
