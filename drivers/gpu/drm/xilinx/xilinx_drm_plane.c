@@ -609,7 +609,6 @@ void xilinx_drm_plane_manager_dpms(struct xilinx_drm_plane_manager *manager,
 
 		if (manager->osd) {
 			xilinx_osd_disable_rue(manager->osd);
-			xilinx_osd_set_color(manager->osd, 0x0, 0x0, 0x0);
 			xilinx_osd_enable(manager->osd);
 			xilinx_osd_enable_rue(manager->osd);
 		}
