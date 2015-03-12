@@ -12,3 +12,4 @@ obj-$(CONFIG_STE_MODEM_RPROC)	 	+= ste_modem_rproc.o
 obj-$(CONFIG_DA8XX_REMOTEPROC)		+= da8xx_remoteproc.o
 obj-$(CONFIG_ZYNQ_REMOTEPROC)		+= zynq_remoteproc.o
 obj-$(CONFIG_MB_REMOTEPROC)		+= mb_remoteproc.o
+obj-$(CONFIG_ZYNQMP_R5_REMOTEPROC)     += zynqmp_r5_remoteproc.o
