@@ -1,0 +1,86 @@
+Xilinx ARM Cortex A53-R5 remoteproc driver
+==========================================
+
+ZynqMP family of devices use two Cortex R5 processors to help with various
+low power / real time tasks.
+
+This driver requires specific ZynqMP hardware design.
+
+ZynqMP R5 RemoteProc Device Node:
+=================================
+A zynqmp_r5_remoteproc device node is used to represent a R5 IP instance
+within ZynqMP SoC.
+
+Required properties:
+--------------------
+ - compatible : Should be "xlnx,zynqmp-r5-remoteproc-1.0"
+ - reg : Address and length of the register set for the device. It
+        contains in the same order as described reg-names
+ - reg-names: Contain the register set names.
+              "rpu_base" for RPU config register and "rpu_glbl_base" for RPU
+               global control register must be provided. If the user uses the
+               remoteproc driver with the RPMsg kernel driver, "ipi" for the IPI
+               register used to communicate with RPU is also required.
+               Otherwise, if user only uses the remoteproc driver to boot RPU
+               firmware, "ipi" is not required.
+ - srams : firmware memories
+ - pd-handle : power domain handle, as remoteproc is not hooked into
+               Linux runtime power management, we will not use
+               "power-domains" for the power domain handler. We use
+               the power domain handler only to get the power domain
+               id which is required to power on RPU.
+
+Optional properties:
+--------------------
+ - core_conf : R5 core configuration (valid string - split0 or split1 or
+               lock-step), default is lock-step.
+ - interrupts : Interrupt mapping for remoteproc IPI. It is required if the
+                user uses the remoteproc driver with the RPMsg kernel driver.
+ - interrupt-parent : Phandle for the interrupt controller. It is required if
+                      the user uses the remoteproc driver with the RPMsg kernel
+                      kernel driver.
+
+Example:
+--------
+	power-domains {
+		pd_r5_0: pd_r5_0 {
+			#power-domain-cells = <0x0>;
+			pd-id = <0x7>;
+		};
+		pd_tcm_0_a: pd_tcm_0_a {
+			#power-domain-cells = <0x0>;
+			pd-id = <0xf>;
+		};
+		pd_tcm_0_b: pd_tcm_0_b {
+			#power-domain-cells = <0x0>;
+			pd-id = <0x10>;
+		};
+	};
+
+	r5_0_tcm_a: tcm@ffe00000 {
+		compatible = "mmio-sram";
+		reg = <0x0 0xFFE00000 0x0 0x20000>;
+		pd-handle = <&pd_tcm_0_a>;
+	};
+	r5_0_tcm_b: tcm@ffe20000 {
+		compatible = "mmio-sram";
+		reg = <0x0 0xFFE20000 0x0 0x20000>;
+		pd-handle = <&pd_tcm_0_b>;
+	};
+	elf_ddr_0: ddr@3ed00000 {
+		compatible = "mmio-sram";
+		reg = <0x0 0x3ed00000 0x0 0x40000>;
+	};
+
+	zynqmp-r5-remoteproc@0 {
+		compatible = "xlnx,zynqmp-r5-remoteproc-1.0";
+		reg = <0x0 0xff9a0100 0x0 100>,
+			<0x0 0xff340000 0x0 0x100>,
+			<0x0 0xff9a0000 0x0 0x100>,
+		reg-names = "rpu_base", "ipi", "rpu_glbl_base";
+		core_conf = "split0";
+		srams = <&r5_0_tcm_a &r5_0_tcm_b &elf_ddr_0>;
+		interrupt-parent = <&gic>;
+		interrupts = <0 29 4>;
+		pd-handle = <&pd_r5_0>;
+	} ;
