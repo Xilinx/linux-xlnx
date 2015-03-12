@@ -140,6 +140,7 @@ static void rproc_virtio_del_vqs(struct virtio_device *vdev)
 
 	/* power down the remote processor before deleting vqs */
 	rproc_shutdown(rproc);
+	vdev->config->set_status(vdev, 0);
 
 	__rproc_virtio_del_vqs(vdev);
 }
