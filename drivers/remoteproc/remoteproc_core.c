@@ -22,6 +22,10 @@
  * GNU General Public License for more details.
  */
 
+#ifdef CONFIG_ARM64
+# define RPROC_CARVEOUT_USE_IOREMAP 1
+#endif
+
 #define pr_fmt(fmt)    "%s: " fmt, __func__
 
 #include <linux/kernel.h>
@@ -581,12 +585,26 @@ static int rproc_handle_carveout(struct rproc *rproc,
 		return -ENOMEM;
 	}
 
+#if RPROC_CARVEOUT_USE_IOREMAP
+	/*
+	 * WORKAROUND for handle multiple memory regions by using ioremap
+	 * This is a temporary solution until we have iommu/smmu ready
+	 */
+	va = devm_ioremap_nocache(dev, rsc->pa, rsc->len);
+	if (IS_ERR(va)) {
+		dev_err(dev->parent, "Unable to map memory %08x size %08x\n",
+			rsc->pa, rsc->len);
+		ret = PTR_ERR(va);
+		goto free_carv;
+	}
+#else
 	va = dma_alloc_coherent(dev->parent, rsc->len, &dma, GFP_KERNEL);
 	if (!va) {
 		dev_err(dev->parent, "dma_alloc_coherent err: %d\n", rsc->len);
 		ret = -ENOMEM;
 		goto free_carv;
 	}
+#endif
 
 	dev_dbg(dev, "carveout va %p, dma %llx, len 0x%x\n", va,
 					(unsigned long long)dma, rsc->len);
@@ -784,7 +802,10 @@ static void rproc_resource_cleanup(struct rproc *rproc)
 
 	/* clean up carveout allocations */
 	list_for_each_entry_safe(entry, tmp, &rproc->carveouts, node) {
+
+#if !RPROC_CARVEOUT_USE_IOREMAP
 		dma_free_coherent(dev->parent, entry->len, entry->va, entry->dma);
+#endif
 		list_del(&entry->node);
 		kfree(entry);
 	}
@@ -861,7 +882,7 @@ static int rproc_fw_boot(struct rproc *rproc, const struct firmware *fw)
 		goto clean_up;
 	}
 
-	memcpy(loaded_table, rproc->cached_table, tablesz);
+	memcpy_toio(loaded_table, rproc->cached_table, tablesz);
 
 	/* power up the remote processor */
 	ret = rproc->ops->start(rproc);
