@@ -549,6 +549,14 @@ config MTD_NAND_SUNXI
 	help
 	  Enables support for NAND Flash chips on Allwinner SoCs.
 
+config MTD_NAND_ARASAN
+	tristate "Support for Arasan Nand Flash controller"
+	depends on HAS_IOMEM
+	depends on HAS_DMA
+	help
+	  Enables the driver for the Arasan Nand Flash controller on
+	  Zynq Ultrascale+ MPSoC.
+
 config MTD_NAND_HISI504
 	tristate "Support for NAND controller on Hisilicon SoC Hip04"
 	depends on ARCH_HISI || COMPILE_TEST
