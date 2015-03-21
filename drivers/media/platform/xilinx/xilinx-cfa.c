@@ -1,9 +1,11 @@
 /*
  * Xilinx Color Filter Array
  *
- * Copyright (C) 2013 - 2014 Xilinx, Inc.
+ * Copyright (C) 2013-2015 Ideas on Board
+ * Copyright (C) 2013-2015 Xilinx, Inc.
  *
- * Author: Hyun Woo Kwon <hyunk@xilinx.com>
+ * Contacts: Hyun Kwon <hyun.kwon@xilinx.com>
+ *           Laurent Pinchart <laurent.pinchart@ideasonboard.com>
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
