@@ -18,6 +18,8 @@
 #include <linux/of.h>
 #include <linux/platform_device.h>
 
+#include <dt-bindings/media/xilinx-vip.h>
+
 #include "xilinx-vip.h"
 
 /* -----------------------------------------------------------------------------
@@ -25,21 +27,22 @@
  */
 
 static const struct xvip_video_format xvip_video_formats[] = {
-	{ "rbg", 8, 3, V4L2_MBUS_FMT_RBG888_1X24, 0, NULL },
-	{ "xrgb", 8, 4, V4L2_MBUS_FMT_RGB888_1X32_PADHI, V4L2_PIX_FMT_BGR32,
-	  "RGB32 (BE)" },
-	{ "yuv422", 8, 2, V4L2_MBUS_FMT_UYVY8_1X16, V4L2_PIX_FMT_YUYV,
-	  "4:2:2, packed, YUYV" },
-	{ "yuv444", 8, 3, V4L2_MBUS_FMT_VUY8_1X24, V4L2_PIX_FMT_YUV444,
-	  "4:4:4, packed, YUYV" },
-	{ "rggb", 8, 1, V4L2_MBUS_FMT_SRGGB8_1X8, V4L2_PIX_FMT_SGRBG8,
-	  "Bayer 8-bit RGGB" },
-	{ "grbg", 8, 1, V4L2_MBUS_FMT_SGRBG8_1X8, V4L2_PIX_FMT_SGRBG8,
-	  "Bayer 8-bit GRBG" },
-	{ "gbrg", 8, 1, V4L2_MBUS_FMT_SGBRG8_1X8, V4L2_PIX_FMT_SGBRG8,
-	  "Bayer 8-bit GBRG" },
-	{ "bggr", 8, 1, V4L2_MBUS_FMT_SBGGR8_1X8, V4L2_PIX_FMT_SBGGR8,
-	  "Bayer 8-bit BGGR" },
+	{ XVIP_VF_YUV_422, 8, NULL, V4L2_MBUS_FMT_UYVY8_1X16,
+	  2, V4L2_PIX_FMT_YUYV, "4:2:2, packed, YUYV" },
+	{ XVIP_VF_YUV_444, 8, NULL, V4L2_MBUS_FMT_VUY8_1X24,
+	  3, V4L2_PIX_FMT_YUV444, "4:4:4, packed, YUYV" },
+	{ XVIP_VF_RBG, 8, NULL, V4L2_MBUS_FMT_RBG888_1X24,
+	  3, 0, NULL },
+	{ XVIP_VF_MONO_SENSOR, 8, "mono", V4L2_MBUS_FMT_Y8_1X8,
+	  1, V4L2_PIX_FMT_GREY, "Greyscale 8-bit" },
+	{ XVIP_VF_MONO_SENSOR, 8, "rggb", V4L2_MBUS_FMT_SRGGB8_1X8,
+	  1, V4L2_PIX_FMT_SGRBG8, "Bayer 8-bit RGGB" },
+	{ XVIP_VF_MONO_SENSOR, 8, "grbg", V4L2_MBUS_FMT_SGRBG8_1X8,
+	  1, V4L2_PIX_FMT_SGRBG8, "Bayer 8-bit GRBG" },
+	{ XVIP_VF_MONO_SENSOR, 8, "gbrg", V4L2_MBUS_FMT_SGBRG8_1X8,
+	  1, V4L2_PIX_FMT_SGBRG8, "Bayer 8-bit GBRG" },
+	{ XVIP_VF_MONO_SENSOR, 8, "bggr", V4L2_MBUS_FMT_SBGGR8_1X8,
+	  1, V4L2_PIX_FMT_SBGGR8, "Bayer 8-bit BGGR" },
 };
 
 /**
@@ -92,21 +95,22 @@ EXPORT_SYMBOL_GPL(xvip_get_format_by_fourcc);
  * xvip_of_get_format - Parse a device tree node and return format information
  * @node: the device tree node
  *
- * Read the xlnx,video-format and xlnx,video-width properties from the device
- * tree @node passed as an argument and return the corresponding format
- * information.
+ * Read the xlnx,video-format, xlnx,video-width and xlnx,cfa-pattern properties
+ * from the device tree @node passed as an argument and return the corresponding
+ * format information.
  *
  * Return: a pointer to the format information structure corresponding to the
  * format name and width, or ERR_PTR if no corresponding format can be found.
  */
 const struct xvip_video_format *xvip_of_get_format(struct device_node *node)
 {
-	const char *name;
+	const char *pattern = "mono";
+	unsigned int vf_code;
 	unsigned int i;
 	u32 width;
 	int ret;
 
-	ret = of_property_read_string(node, "xlnx,video-format", &name);
+	ret = of_property_read_u32(node, "xlnx,video-format", &vf_code);
 	if (ret < 0)
 		return ERR_PTR(ret);
 
@@ -114,11 +118,20 @@ const struct xvip_video_format *xvip_of_get_format(struct device_node *node)
 	if (ret < 0)
 		return ERR_PTR(ret);
 
+	if (vf_code == XVIP_VF_MONO_SENSOR)
+		of_property_read_string(node, "xlnx,cfa-pattern", &pattern);
+
 	for (i = 0; i < ARRAY_SIZE(xvip_video_formats); ++i) {
 		const struct xvip_video_format *format = &xvip_video_formats[i];
 
-		if (strcmp(format->name, name) == 0 && format->width == width)
-			return format;
+		if (format->vf_code != vf_code || format->width != width)
+			continue;
+
+		if (vf_code == XVIP_VF_MONO_SENSOR &&
+		    strcmp(pattern, format->pattern))
+			continue;
+
+		return format;
 	}
 
 	return ERR_PTR(-EINVAL);

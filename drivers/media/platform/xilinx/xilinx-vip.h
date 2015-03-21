@@ -105,18 +105,20 @@ struct xvip_device {
 
 /**
  * struct xvip_video_format - Xilinx Video IP video format description
- * @name: AXI4 format name
+ * @vf_code: AXI4 video format code
  * @width: AXI4 format width in bits per component
- * @bpp: bytes per pixel (when stored in memory)
+ * @pattern: CFA pattern for Mono/Sensor formats
  * @code: media bus format code
+ * @bpp: bytes per pixel (when stored in memory)
  * @fourcc: V4L2 pixel format FCC identifier
  * @description: format description, suitable for userspace
  */
 struct xvip_video_format {
-	const char *name;
+	unsigned int vf_code;
 	unsigned int width;
-	unsigned int bpp;
+	const char *pattern;
 	unsigned int code;
+	unsigned int bpp;
 	u32 fourcc;
 	const char *description;
 };
