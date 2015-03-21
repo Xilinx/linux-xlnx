@@ -143,9 +143,6 @@ struct v4l2_mbus_framefmt *
 xvip_get_pad_format(struct v4l2_subdev_fh *fh,
 		    struct v4l2_mbus_framefmt *format,
 		    unsigned int pad, u32 which);
-void xvip_set_format(struct v4l2_mbus_framefmt *format,
-		     const struct xvip_video_format *vip_format,
-		     struct v4l2_subdev_format *fmt);
 
 static inline u32 xvip_read(struct xvip_device *xvip, u32 addr)
 {

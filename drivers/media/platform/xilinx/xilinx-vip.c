@@ -252,28 +252,6 @@ xvip_get_pad_format(struct v4l2_subdev_fh *fh,
 }
 EXPORT_SYMBOL_GPL(xvip_get_pad_format);
 
-/**
- * xvip_set_format - Set the subdevice format
- * @format: V4L2 frame format on media bus
- * @vip_format: Xilinx Video IP video format
- * @fmt: media bus format
- *
- * Set the subdevice format. The format code is defined in vip_format,
- * and width and height are defined in subdev format. The new format is stored
- * in @format.
- */
-void xvip_set_format(struct v4l2_mbus_framefmt *format,
-		     const struct xvip_video_format *vip_format,
-		     struct v4l2_subdev_format *fmt)
-{
-	format->code = vip_format->code;
-	format->width = clamp_t(unsigned int, fmt->format.width,
-				XVIP_MIN_WIDTH, XVIP_MAX_WIDTH);
-	format->height = clamp_t(unsigned int, fmt->format.height,
-			 XVIP_MIN_HEIGHT, XVIP_MAX_HEIGHT);
-}
-EXPORT_SYMBOL_GPL(xvip_set_format);
-
 /* -----------------------------------------------------------------------------
  * Subdev operations handlers
  */
