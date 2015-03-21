@@ -348,9 +348,13 @@ xvip_dma_queue_setup(struct vb2_queue *vq, const struct v4l2_format *fmt,
 {
 	struct xvip_dma *dma = vb2_get_drv_priv(vq);
 
+	/* Make sure the image size is large enough. */
+	if (fmt && fmt->fmt.pix.sizeimage < dma->format.sizeimage)
+		return -EINVAL;
+
 	*nplanes = 1;
 
-	sizes[0] = dma->format.sizeimage;
+	sizes[0] = fmt ? fmt->fmt.pix.sizeimage : dma->format.sizeimage;
 	alloc_ctxs[0] = dma->alloc_ctx;
 
 	return 0;
@@ -656,6 +660,7 @@ static const struct v4l2_ioctl_ops xvip_dma_ioctl_ops = {
 	.vidioc_querybuf		= vb2_ioctl_querybuf,
 	.vidioc_qbuf			= vb2_ioctl_qbuf,
 	.vidioc_dqbuf			= vb2_ioctl_dqbuf,
+	.vidioc_create_bufs		= vb2_ioctl_create_bufs,
 	.vidioc_expbuf			= vb2_ioctl_expbuf,
 	.vidioc_streamon		= vb2_ioctl_streamon,
 	.vidioc_streamoff		= vb2_ioctl_streamoff,
