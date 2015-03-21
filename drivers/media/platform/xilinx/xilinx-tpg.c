@@ -240,7 +240,7 @@ static int xtpg_s_stream(struct v4l2_subdev *subdev, int enable)
 		    : xtpg_get_bayer_phase(xtpg->formats[0].code);
 	xvip_write(&xtpg->xvip, XTPG_BAYER_PHASE, bayer_phase);
 
-	if (!IS_ERR(xtpg->vtmux_gpio))
+	if (xtpg->vtmux_gpio)
 		gpiod_set_value_cansleep(xtpg->vtmux_gpio, !passthrough);
 
 	xvip_start(&xtpg->xvip);
@@ -781,13 +781,12 @@ static int xtpg_probe(struct platform_device *pdev)
 	if (ret < 0)
 		return ret;
 
-	xtpg->vtmux_gpio = devm_gpiod_get_index(&pdev->dev, "timing", 0);
-	if (PTR_ERR(xtpg->vtmux_gpio) == -EPROBE_DEFER) {
-		ret = -EPROBE_DEFER;
+	xtpg->vtmux_gpio = devm_gpiod_get_optional(&pdev->dev, "timing",
+						   GPIOD_OUT_HIGH);
+	if (IS_ERR(xtpg->vtmux_gpio)) {
+		ret = PTR_ERR(xtpg->vtmux_gpio);
 		goto error_resource;
 	}
-	if (!IS_ERR(xtpg->vtmux_gpio))
-		gpiod_direction_output(xtpg->vtmux_gpio, 1);
 
 	xtpg->vtc = xvtc_of_get(pdev->dev.of_node);
 	if (IS_ERR(xtpg->vtc)) {
