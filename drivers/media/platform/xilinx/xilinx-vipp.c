@@ -15,6 +15,7 @@
 #include <linux/list.h>
 #include <linux/module.h>
 #include <linux/of.h>
+#include <linux/of_graph.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 
@@ -82,7 +83,7 @@ static int xvip_graph_build_one(struct xvip_composite_device *xdev,
 
 	while (1) {
 		/* Get the next endpoint and parse its link. */
-		next = v4l2_of_get_next_endpoint(entity->node, ep);
+		next = of_graph_get_next_endpoint(entity->node, ep);
 		if (next == NULL)
 			break;
 
@@ -203,7 +204,7 @@ static int xvip_graph_build_dma(struct xvip_composite_device *xdev)
 
 	while (1) {
 		/* Get the next endpoint and parse its link. */
-		next = v4l2_of_get_next_endpoint(node, ep);
+		next = of_graph_get_next_endpoint(node, ep);
 		if (next == NULL)
 			break;
 
@@ -356,7 +357,7 @@ static int xvip_graph_parse_one(struct xvip_composite_device *xdev,
 	dev_dbg(xdev->dev, "parsing node %s\n", node->full_name);
 
 	while (1) {
-		next = v4l2_of_get_next_endpoint(node, ep);
+		next = of_graph_get_next_endpoint(node, ep);
 		if (next == NULL)
 			break;
 
@@ -365,7 +366,7 @@ static int xvip_graph_parse_one(struct xvip_composite_device *xdev,
 
 		dev_dbg(xdev->dev, "handling endpoint %s\n", ep->full_name);
 
-		remote = v4l2_of_get_remote_port_parent(ep);
+		remote = of_graph_get_remote_port_parent(ep);
 		if (remote == NULL) {
 			ret = -EINVAL;
 			break;
