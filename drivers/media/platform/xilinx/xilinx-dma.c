@@ -735,6 +735,13 @@ int xvip_dma_init(struct xvip_composite_device *xdev, struct xvip_dma *dma,
 	if (IS_ERR(dma->alloc_ctx))
 		goto error;
 
+	/* Don't enable VB2_READ and VB2_WRITE, as using the read() and write()
+	 * V4L2 APIs would be inefficient. Testing on the command line with a
+	 * 'cat /dev/video?' thus won't be possible, but given that the driver
+	 * anyway requires a test tool to setup the pipeline before any video
+	 * stream can be started, requiring a specific V4L2 test tool as well
+	 * instead of 'cat' isn't really a drawback.
+	 */
 	dma->queue.type = type;
 	dma->queue.io_modes = VB2_MMAP | VB2_USERPTR | VB2_DMABUF;
 	dma->queue.lock = &dma->lock;
