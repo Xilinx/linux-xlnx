@@ -218,41 +218,6 @@ void xvip_cleanup_resources(struct xvip_device *xvip)
 EXPORT_SYMBOL_GPL(xvip_cleanup_resources);
 
 /* -----------------------------------------------------------------------------
- * Subdev operation helpers
- */
-
-/**
- * xvip_get_pad_format - Get the frame format on media bus for the pad
- * @fh: V4L2 subdevice file handle
- * @format: V4L2 active frame format on media bus
- * @pad: media pad
- * @which: media bus format type
- *
- * Get the frame format on media bus for the pad. Return corresponding
- * frame format. The try format is returned by v4l2_subdev_get_try_format(),
- * and when the active format is requested, the given frame format, @format,
- * is returned.
- *
- * Return: frame format on media bus if successful, or NULL if no format
- * is found.
- */
-struct v4l2_mbus_framefmt *
-xvip_get_pad_format(struct v4l2_subdev_fh *fh,
-		    struct v4l2_mbus_framefmt *format,
-		    unsigned int pad, u32 which)
-{
-	switch (which) {
-	case V4L2_SUBDEV_FORMAT_TRY:
-		return v4l2_subdev_get_try_format(fh, pad);
-	case V4L2_SUBDEV_FORMAT_ACTIVE:
-		return format;
-	default:
-		return NULL;
-	}
-}
-EXPORT_SYMBOL_GPL(xvip_get_pad_format);
-
-/* -----------------------------------------------------------------------------
  * Subdev operations handlers
  */
 
