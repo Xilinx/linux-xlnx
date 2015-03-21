@@ -274,42 +274,6 @@ void xvip_set_format(struct v4l2_mbus_framefmt *format,
 }
 EXPORT_SYMBOL_GPL(xvip_set_format);
 
-/**
- * xvip_init_formats - Initialize formats on all pads
- * @subdev: V4L2 subdevice
- * @fh: V4L2 subdev file handle
- *
- * Initialize all pad formats with default values. If fh is not NULL, try
- * formats are initialized on the file handle. Otherwise active formats are
- * initialized on the device.
- */
-void xvip_init_formats(struct v4l2_subdev *subdev, struct v4l2_subdev_fh *fh)
-{
-	struct xvip_device *xvip = container_of(subdev, struct xvip_device,
-						subdev);
-	struct v4l2_subdev_format format;
-
-	memset(&format, 0, sizeof(format));
-
-	format.which = fh ? V4L2_SUBDEV_FORMAT_TRY : V4L2_SUBDEV_FORMAT_ACTIVE;
-	format.format.width = xvip_read(xvip, XVIP_ACTIVE_SIZE) &
-			      XVIP_ACTIVE_HSIZE_MASK;
-	format.format.height = (xvip_read(xvip, XVIP_ACTIVE_SIZE) &
-				XVIP_ACTIVE_VSIZE_MASK) >>
-			       XVIP_ACTIVE_VSIZE_SHIFT;
-	format.format.field = V4L2_FIELD_NONE;
-	format.format.colorspace = V4L2_COLORSPACE_SRGB;
-
-	format.pad = XVIP_PAD_SOURCE;
-
-	v4l2_subdev_call(subdev, pad, set_fmt, fh, &format);
-
-	format.pad = XVIP_PAD_SINK;
-
-	v4l2_subdev_call(subdev, pad, set_fmt, fh, &format);
-}
-EXPORT_SYMBOL_GPL(xvip_init_formats);
-
 /* -----------------------------------------------------------------------------
  * Subdev operations handlers
  */
