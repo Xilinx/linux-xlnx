@@ -16,8 +16,6 @@
 #include <linux/of.h>
 #include <linux/platform_device.h>
 
-#include <media/media-entity.h>
-
 #include "xilinx-vip.h"
 
 /* -----------------------------------------------------------------------------
@@ -294,52 +292,3 @@ int xvip_enum_frame_size(struct v4l2_subdev *subdev, struct v4l2_subdev_fh *fh,
 	return 0;
 }
 EXPORT_SYMBOL_GPL(xvip_enum_frame_size);
-
-/* -----------------------------------------------------------------------------
- * Initialization and cleanup
- */
-
-/**
- * xvip_device_init - Initialize a video IP device
- * @xvip: the video IP device
- *
- * Allocate pads and formats for the device. The caller must have set the
- * following xvip fields prior to calling this function.
- *
- * - npads to the number of pads
- *
- * Return 0 on success or -ENOMEM on memory allocation failure.
- */
-int xvip_device_init(struct xvip_device *xvip)
-{
-	struct v4l2_mbus_framefmt *formats;
-	struct media_pad *pads;
-
-	pads = kzalloc(xvip->npads * sizeof(*pads), GFP_KERNEL);
-	formats = kzalloc(xvip->npads * sizeof(*formats), GFP_KERNEL);
-
-	if (pads == NULL || formats == NULL) {
-		kfree(pads);
-		kfree(formats);
-		return -ENOMEM;
-	}
-
-	xvip->pads = pads;
-	xvip->formats = formats;
-
-	return 0;
-}
-EXPORT_SYMBOL_GPL(xvip_device_init);
-
-/**
- * xvip_device_cleanup - Cleanup a video IP device
- * @xvip: the video IP device
- *
- * Free the memory allocated by xvip_device_init().
- */
-void xvip_device_cleanup(struct xvip_device *xvip)
-{
-	kfree(xvip->pads);
-	kfree(xvip->formats);
-}
-EXPORT_SYMBOL_GPL(xvip_device_cleanup);
