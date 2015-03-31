@@ -338,15 +338,8 @@ static int xilinx_spi_probe(struct platform_device *pdev)
 		num_cs = pdata->num_chipselect;
 		bits_per_word = pdata->bits_per_word;
 	} else {
-		if (of_property_read_u32(pdev->dev.of_node, "num-cs",
-					 &num_cs)) {
-			if (!of_property_read_u32(pdev->dev.of_node,
-						  "xlnx,num-ss-bits",
-						  &num_cs)) {
-			      dev_err(&pdev->dev,
-				      "property name 'xlnx,num-ss-bits' is deprecated.\n");
-			}
-		}
+		of_property_read_u32(pdev->dev.of_node, "xlnx,num-ss-bits",
+					  &num_cs);
 	}
 
 	if (!num_cs) {
