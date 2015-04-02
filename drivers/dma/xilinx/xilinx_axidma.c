@@ -590,12 +590,13 @@ out_splice:
 static dma_cookie_t xilinx_dma_tx_submit(struct dma_async_tx_descriptor *tx)
 {
 	struct xilinx_dma_chan *chan = to_xilinx_chan(tx->chan);
-	struct xilinx_dma_desc_sw *desc;
+	struct xilinx_dma_desc_sw *desc, *last_desc;
 	struct xilinx_dma_desc_sw *child;
 	unsigned long flags;
 	dma_cookie_t cookie = -EBUSY;
 
-	desc = container_of(tx, struct xilinx_dma_desc_sw, async_tx);
+	last_desc = container_of(tx, struct xilinx_dma_desc_sw, async_tx);
+    desc = container_of(last_desc->node.next, struct xilinx_dma_desc_sw, tx_list);
 
 	spin_lock_irqsave(&chan->lock, flags);
 
@@ -771,7 +772,7 @@ static struct dma_async_tx_descriptor *xilinx_dma_prep_slave_sg(
 	/* Set EOP to the last link descriptor of new list */
 	hw->control |= XILINX_DMA_BD_EOP;
 
-	return &first->async_tx;
+	return &new->async_tx;
 
 fail:
 	/*
