@@ -424,10 +424,12 @@ static int spi_nor_erase(struct mtd_info *mtd, struct erase_info *instr)
 			ret = nor->wait_till_ready(nor);
 			if (ret)
 				goto erase_err;
-			/* Update Extended Address Register */
-			ret = write_ear(nor, offset);
-			if (ret)
-				goto erase_err;
+			if (nor->addr_width == 3) {
+				/* Update Extended Address Register */
+				ret = write_ear(nor, offset);
+				if (ret)
+					goto erase_err;
+			}
 			if (nor->erase(nor, offset)) {
 				ret = -EIO;
 				goto erase_err;
@@ -942,7 +944,10 @@ static int spi_nor_read_ext(struct mtd_info *mtd, loff_t from, size_t len,
 	ret = spi_nor_lock_and_prep(nor, SPI_NOR_OPS_READ);
 	if (ret)
 		return ret;
-
+	if (nor->addr_width == 4) {
+		ret = nor->read(nor, from, len, retlen, buf);
+		goto read_err;
+	}
 	while (len) {
 		bank = addr / (OFFSET_16_MB << nor->shift);
 		rem_bank_len = ((OFFSET_16_MB << nor->shift) * (bank + 1)) -
@@ -976,8 +981,9 @@ static int spi_nor_read_ext(struct mtd_info *mtd, loff_t from, size_t len,
 
 	*retlen = read_count;
 
+read_err:
 	spi_nor_unlock_and_unprep(nor, SPI_NOR_OPS_READ);
-	return 0;
+	return ret;
 }
 
 static int sst_write(struct mtd_info *mtd, loff_t to, size_t len,
@@ -1119,7 +1125,10 @@ static int spi_nor_write_ext(struct mtd_info *mtd, loff_t to, size_t len,
 	ret = spi_nor_lock_and_prep(nor, SPI_NOR_OPS_WRITE);
 	if (ret)
 		return ret;
-
+	if (nor->addr_width == 4) {
+		ret = spi_nor_write(mtd, offset, len, retlen, buf);
+		goto write_err;
+	}
 	while (len) {
 		bank = addr / (OFFSET_16_MB << nor->shift);
 		rem_bank_len = ((OFFSET_16_MB << nor->shift) * (bank + 1)) -
@@ -1154,7 +1163,7 @@ static int spi_nor_write_ext(struct mtd_info *mtd, loff_t to, size_t len,
 
 write_err:
 	spi_nor_unlock_and_unprep(nor, SPI_NOR_OPS_WRITE);
-	return 0;
+	return ret;
 }
 
 static int macronix_quad_enable(struct spi_nor *nor)
