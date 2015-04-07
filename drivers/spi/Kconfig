@@ -583,6 +583,12 @@ config SPI_ZYNQ_QSPI_DUAL_STACKED
 	  Enable this option if your hw design is using dual stacked
 	  configuration.
 
+config SPI_XILINX_GQSPI
+	tristate "Xilinx Zynqmp GQSPI controller"
+	depends on SPI_MASTER
+	help
+	  Enables Xilinx GQSPI controller driver for Zynq UltraScale+ MPSoC.
+
 config SPI_XTENSA_XTFPGA
 	tristate "Xtensa SPI controller for xtfpga"
 	depends on (XTENSA && XTENSA_PLATFORM_XTFPGA) || COMPILE_TEST
