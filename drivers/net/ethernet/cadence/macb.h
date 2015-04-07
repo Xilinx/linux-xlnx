@@ -71,6 +71,7 @@
 #define GEM_NCFGR				0x0004
 #define GEM_USRIO				0x000c
 #define GEM_DMACFG				0x0010
+#define GEM_JML				0x0048
 #define GEM_HRB					0x0080
 #define GEM_HRT					0x0084
 #define GEM_SA1B				0x0088
@@ -466,6 +467,9 @@ struct macb_dma_desc {
 #define MACB_RX_BROADCAST_OFFSET		31
 #define MACB_RX_BROADCAST_SIZE			1
 
+#define MACB_RX_FRMLEN_MASK			0xFFF
+#define MACB_RX_JFRMLEN_MASK			0x3FFF
+
 /* RX checksum offload disabled: bit 24 clear in NCFGR */
 #define GEM_RX_TYPEID_MATCH_OFFSET		22
 #define GEM_RX_TYPEID_MATCH_SIZE		2
@@ -673,6 +677,9 @@ struct macb {
 	dma_addr_t skb_physaddr;		/* phys addr from pci_map_single */
 	int skb_length;				/* saved skb length for pci_unmap_single */
 	unsigned int		max_tx_length;
+	unsigned int		rx_frm_len_mask;
+	unsigned int		jumbo_max_len;
+	bool			isjumbo;
 };
 
 extern const struct ethtool_ops macb_ethtool_ops;
