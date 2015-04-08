@@ -584,7 +584,7 @@ config SPI_ZYNQ_QSPI_DUAL_STACKED
 	  configuration.
 
 config SPI_XILINX_GQSPI
-	tristate "Xilinx Zynqmp GQSPI controller"
+	tristate "Xilinx ZynqMP GQSPI controller"
 	depends on SPI_MASTER
 	help
 	  Enables Xilinx GQSPI controller driver for Zynq UltraScale+ MPSoC.
