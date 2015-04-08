@@ -231,8 +231,8 @@ static void zynqmp_qspi_init_hw(struct zynqmp_qspi *xqspi)
 					     GQSPI_QSPIDMA_DST_I_STS_OFST));
 	zynqmp_gqspi_write(xqspi, GQSPI_QSPIDMA_DST_STS_OFST,
 			   zynqmp_gqspi_read(xqspi,
-					     GQSPI_QSPIDMA_DST_STS_OFST |
-					     GQSPI_QSPIDMA_DST_STS_WTC));
+					     GQSPI_QSPIDMA_DST_STS_OFST) |
+					     GQSPI_QSPIDMA_DST_STS_WTC);
 	zynqmp_gqspi_write(xqspi, GQSPI_IDR_OFST, GQSPI_IDR_ALL_MASK);
 	zynqmp_gqspi_write(xqspi,
 			   GQSPI_QSPIDMA_DST_I_DIS_OFST,
