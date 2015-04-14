@@ -1,0 +1,16 @@
+Binding for Ceva AHCI SATA Controller
+
+Required properties:
+  - reg: Physical base address and size of the controller's register area.
+  - compatible: Compatibility string. Must be 'ceva,ahci-1v84'.
+  - clocks: Input clock specifier. Refer to common clock bindings.
+  - interrupts: Interrupt specifier. Refer to interrupt binding.
+
+Examples:
+	ahci@fd0c0000 {
+		compatible = "ceva,ahci-1v84";
+		reg = <0xfd0c0000 0x200>;
+		interrupt-parent = <&gic>;
+		interrupts = <0 133 4>;
+		clocks = <&clkc SATA_CLK_ID>;
+	};
