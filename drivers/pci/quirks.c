@@ -324,18 +324,52 @@ static void quirk_s3_64M(struct pci_dev *dev)
 DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_S3,	PCI_DEVICE_ID_S3_868,		quirk_s3_64M);
 DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_S3,	PCI_DEVICE_ID_S3_968,		quirk_s3_64M);
 
+static void quirk_io(struct pci_dev *dev, int pos, unsigned size,
+		     const char *name)
+{
+	u32 region;
+	struct pci_bus_region bus_region;
+	struct resource *res = dev->resource + pos;
+
+	pci_read_config_dword(dev, PCI_BASE_ADDRESS_0 + (pos << 2), &region);
+
+	if (!region)
+		return;
+
+	res->name = pci_name(dev);
+	res->flags = region & ~PCI_BASE_ADDRESS_IO_MASK;
+	res->flags |=
+		(IORESOURCE_IO | IORESOURCE_PCI_FIXED | IORESOURCE_SIZEALIGN);
+	region &= ~(size - 1);
+
+	/* Convert from PCI bus to resource space */
+	bus_region.start = region;
+	bus_region.end = region + size - 1;
+	pcibios_bus_to_resource(dev->bus, res, &bus_region);
+
+	dev_info(&dev->dev, FW_BUG "%s quirk: reg 0x%x: %pR\n",
+		 name, PCI_BASE_ADDRESS_0 + (pos << 2), res);
+}
+
 /*
  * Some CS5536 BIOSes (for example, the Soekris NET5501 board w/ comBIOS
  * ver. 1.33  20070103) don't set the correct ISA PCI region header info.
  * BAR0 should be 8 bytes; instead, it may be set to something like 8k
  * (which conflicts w/ BAR1's memory range).
+ *
+ * CS553x's ISA PCI BARs may also be read-only (ref:
+ * https://bugzilla.kernel.org/show_bug.cgi?id=85991 - Comment #4 forward).
  */
 static void quirk_cs5536_vsa(struct pci_dev *dev)
 {
+	static char *name = "CS5536 ISA bridge";
+
 	if (pci_resource_len(dev, 0) != 8) {
-		struct resource *res = &dev->resource[0];
-		res->end = res->start + 8 - 1;
-		dev_info(&dev->dev, "CS5536 ISA bridge bug detected (incorrect header); workaround applied\n");
+		quirk_io(dev, 0,   8, name);	/* SMB */
+		quirk_io(dev, 1, 256, name);	/* GPIO */
+		quirk_io(dev, 2,  64, name);	/* MFGPT */
+		dev_info(&dev->dev, "%s bug detected (incorrect header); workaround applied\n",
+			 name);
 	}
 }
 DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_AMD, PCI_DEVICE_ID_AMD_CS5536_ISA, quirk_cs5536_vsa);
@@ -377,6 +411,26 @@ static void quirk_ati_exploding_mce(struct pci_dev *dev)
 	request_region(0x3d3, 0x01, "RadeonIGP");
 }
 DECLARE_PCI_FIXUP_FINAL(PCI_VENDOR_ID_ATI,	PCI_DEVICE_ID_ATI_RS100,   quirk_ati_exploding_mce);
+
+/*
+ * In the AMD NL platform, this device ([1022:7912]) has a class code of
+ * PCI_CLASS_SERIAL_USB_XHCI (0x0c0330), which means the xhci driver will
+ * claim it.
+ * But the dwc3 driver is a more specific driver for this device, and we'd
+ * prefer to use it instead of xhci. To prevent xhci from claiming the
+ * device, change the class code to 0x0c03fe, which the PCI r3.0 spec
+ * defines as "USB device (not host controller)". The dwc3 driver can then
+ * claim it based on its Vendor and Device ID.
+ */
+static void quirk_amd_nl_class(struct pci_dev *pdev)
+{
+	/*
+	 * Use 'USB Device' (0x0c03fe) instead of PCI header provided
+	 */
+	pdev->class = 0x0c03fe;
+}
+DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_AMD, PCI_DEVICE_ID_AMD_NL_USB,
+		quirk_amd_nl_class);
 
 /*
  * Let's make the southbridge information explicit instead
@@ -3007,6 +3061,20 @@ DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_REALTEK, 0x8169,
 			 quirk_broken_intx_masking);
 DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_MELLANOX, PCI_ANY_ID,
 			 quirk_broken_intx_masking);
+
+static void quirk_no_bus_reset(struct pci_dev *dev)
+{
+	dev->dev_flags |= PCI_DEV_FLAGS_NO_BUS_RESET;
+}
+
+/*
+ * Atheros AR93xx chips do not behave after a bus reset.  The device will
+ * throw a Link Down error on AER-capable systems and regardless of AER,
+ * config space of the device is never accessible again and typically
+ * causes the system to hang or reset when access is attempted.
+ * http://www.spinics.net/lists/linux-pci/msg34797.html
+ */
+DECLARE_PCI_FIXUP_HEADER(PCI_VENDOR_ID_ATHEROS, 0x0030, quirk_no_bus_reset);
 
 #ifdef CONFIG_ACPI
 /*

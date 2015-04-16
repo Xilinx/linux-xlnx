@@ -204,8 +204,7 @@ static struct sha1_hash_ctx *sha1_ctx_mgr_resubmit(struct sha1_ctx_mgr *mgr, str
 			continue;
 		}
 
-		if (ctx)
-			ctx->status = HASH_CTX_STS_IDLE;
+		ctx->status = HASH_CTX_STS_IDLE;
 		return ctx;
 	}
 
@@ -932,4 +931,4 @@ module_exit(sha1_mb_mod_fini);
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("SHA1 Secure Hash Algorithm, multi buffer accelerated");
 
-MODULE_ALIAS("sha1");
+MODULE_ALIAS_CRYPTO("sha1");

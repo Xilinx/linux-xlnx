@@ -241,6 +241,8 @@ config USB_M66592
 	   dynamically linked module called "m66592_udc" and force all
 	   gadget drivers to also be dynamically linked.
 
+source "drivers/usb/gadget/udc/bdc/Kconfig"
+
 #
 # Controllers available only in discrete form (and all PCI controllers)
 #
@@ -398,32 +400,5 @@ config USB_DUMMY_HCD
 
 # NOTE:  Please keep dummy_hcd LAST so that "real hardware" appears
 # first and will be selected by default.
-
-config USB_ZYNQ
-	tristate "Xilinx Zynq Highspeed USB DR Peripheral Controller"
-	depends on ARCH_ZYNQ
-	default USB_GADGET
-	select USB_GADGET_DUALSPEED
-	select USB_ZYNQ_DR_OF if OF
-	select USB_GADGET_SELECTED
-	help
-	   Xilinx Zynq USB controller core supports device mode.
-
-	   Say "y" to link the driver statically, or "m" to build a
-	   dynamically linked module called "xilinx_usbps_udc" and
-	   force all gadget drivers to also be dynamically linked.
-
-config USB_ZYNQ_ERRATA_DT654401
-	bool "USB Errata: Adding a dTD to a Primed Endpoint May Not Get Recognized"
-	depends on USB_ZYNQ
-	---help---
-	  There is an issue with the add dTD tripwire semaphore (ATDTW bit
-	  in USBCMD register) that can cause the controller to ignore a dTD
-	  that is added to a primed endpoint. When this happens, the software
-	  can read the tripwire bit and the status bit at '1' even though
-	  the endpoint is unprimed.
-
-	  This issue is only applicable for the Zynq silicon revisions < 3.0.
-	  For silicon versions 3.0 and higher, disable this option.
 
 endmenu

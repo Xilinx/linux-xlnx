@@ -68,9 +68,9 @@ bool __blk_mq_tag_busy(struct blk_mq_hw_ctx *hctx)
 }
 
 /*
- * Wakeup all potentially sleeping on normal (non-reserved) tags
+ * Wakeup all potentially sleeping on tags
  */
-static void blk_mq_tag_wakeup_all(struct blk_mq_tags *tags)
+void blk_mq_tag_wakeup_all(struct blk_mq_tags *tags, bool include_reserve)
 {
 	struct blk_mq_bitmap_tags *bt;
 	int i, wake_index;
@@ -84,6 +84,12 @@ static void blk_mq_tag_wakeup_all(struct blk_mq_tags *tags)
 			wake_up(&bs->wait);
 
 		wake_index = bt_index_inc(wake_index);
+	}
+
+	if (include_reserve) {
+		bt = &tags->breserved_tags;
+		if (waitqueue_active(&bt->bs[0].wait))
+			wake_up(&bt->bs[0].wait);
 	}
 }
 
@@ -100,7 +106,7 @@ void __blk_mq_tag_idle(struct blk_mq_hw_ctx *hctx)
 
 	atomic_dec(&tags->active_queues);
 
-	blk_mq_tag_wakeup_all(tags);
+	blk_mq_tag_wakeup_all(tags, false);
 }
 
 /*
@@ -137,6 +143,7 @@ static inline bool hctx_may_queue(struct blk_mq_hw_ctx *hctx,
 static int __bt_get_word(struct blk_align_bitmap *bm, unsigned int last_tag)
 {
 	int tag, org_last_tag, end;
+	bool wrap = last_tag != 0;
 
 	org_last_tag = last_tag;
 	end = bm->depth;
@@ -148,15 +155,16 @@ restart:
 			 * We started with an offset, start from 0 to
 			 * exhaust the map.
 			 */
-			if (org_last_tag && last_tag) {
-				end = last_tag;
+			if (wrap) {
+				wrap = false;
+				end = org_last_tag;
 				last_tag = 0;
 				goto restart;
 			}
 			return -1;
 		}
 		last_tag = tag + 1;
-	} while (test_and_set_bit_lock(tag, &bm->word));
+	} while (test_and_set_bit(tag, &bm->word));
 
 	return tag;
 }
@@ -254,6 +262,21 @@ static int bt_get(struct blk_mq_alloc_data *data,
 		if (tag != -1)
 			break;
 
+		/*
+		 * We're out of tags on this hardware queue, kick any
+		 * pending IO submits before going to sleep waiting for
+		 * some to complete.
+		 */
+		blk_mq_run_hw_queue(hctx, false);
+
+		/*
+		 * Retry tag allocation after running the hardware queue,
+		 * as running the queue may also have found completions.
+		 */
+		tag = __bt_get(hctx, bt, last_tag);
+		if (tag != -1)
+			break;
+
 		blk_mq_put_ctx(data->ctx);
 
 		io_schedule();
@@ -340,11 +363,10 @@ static void bt_clear_tag(struct blk_mq_bitmap_tags *bt, unsigned int tag)
 	struct bt_wait_state *bs;
 	int wait_cnt;
 
-	/*
-	 * The unlock memory barrier need to order access to req in free
-	 * path and clearing tag bit
-	 */
-	clear_bit_unlock(TAG_TO_BIT(bt, tag), &bt->map[index].word);
+	clear_bit(TAG_TO_BIT(bt, tag), &bt->map[index].word);
+
+	/* Ensure that the wait list checks occur after clear_bit(). */
+	smp_mb();
 
 	bs = bt_wake_ptr(bt);
 	if (!bs)
@@ -360,21 +382,6 @@ static void bt_clear_tag(struct blk_mq_bitmap_tags *bt, unsigned int tag)
 	}
 }
 
-static void __blk_mq_put_tag(struct blk_mq_tags *tags, unsigned int tag)
-{
-	BUG_ON(tag >= tags->nr_tags);
-
-	bt_clear_tag(&tags->bitmap_tags, tag);
-}
-
-static void __blk_mq_put_reserved_tag(struct blk_mq_tags *tags,
-				      unsigned int tag)
-{
-	BUG_ON(tag >= tags->nr_reserved_tags);
-
-	bt_clear_tag(&tags->breserved_tags, tag);
-}
-
 void blk_mq_put_tag(struct blk_mq_hw_ctx *hctx, unsigned int tag,
 		    unsigned int *last_tag)
 {
@@ -383,10 +390,13 @@ void blk_mq_put_tag(struct blk_mq_hw_ctx *hctx, unsigned int tag,
 	if (tag >= tags->nr_reserved_tags) {
 		const int real_tag = tag - tags->nr_reserved_tags;
 
-		__blk_mq_put_tag(tags, real_tag);
+		BUG_ON(real_tag >= tags->nr_tags);
+		bt_clear_tag(&tags->bitmap_tags, real_tag);
 		*last_tag = real_tag;
-	} else
-		__blk_mq_put_reserved_tag(tags, tag);
+	} else {
+		BUG_ON(tag >= tags->nr_reserved_tags);
+		bt_clear_tag(&tags->breserved_tags, tag);
+	}
 }
 
 static void bt_for_each(struct blk_mq_hw_ctx *hctx,
@@ -580,9 +590,37 @@ int blk_mq_tag_update_depth(struct blk_mq_tags *tags, unsigned int tdepth)
 	 * static and should never need resizing.
 	 */
 	bt_update_count(&tags->bitmap_tags, tdepth);
-	blk_mq_tag_wakeup_all(tags);
+	blk_mq_tag_wakeup_all(tags, false);
 	return 0;
 }
+
+/**
+ * blk_mq_unique_tag() - return a tag that is unique queue-wide
+ * @rq: request for which to compute a unique tag
+ *
+ * The tag field in struct request is unique per hardware queue but not over
+ * all hardware queues. Hence this function that returns a tag with the
+ * hardware context index in the upper bits and the per hardware queue tag in
+ * the lower bits.
+ *
+ * Note: When called for a request that is queued on a non-multiqueue request
+ * queue, the hardware context index is set to zero.
+ */
+u32 blk_mq_unique_tag(struct request *rq)
+{
+	struct request_queue *q = rq->q;
+	struct blk_mq_hw_ctx *hctx;
+	int hwq = 0;
+
+	if (q->mq_ops) {
+		hctx = q->mq_ops->map_queue(q, rq->mq_ctx->cpu);
+		hwq = hctx->queue_num;
+	}
+
+	return (hwq << BLK_MQ_UNIQUE_TAG_BITS) |
+		(rq->tag & BLK_MQ_UNIQUE_TAG_MASK);
+}
+EXPORT_SYMBOL(blk_mq_unique_tag);
 
 ssize_t blk_mq_tag_sysfs_show(struct blk_mq_tags *tags, char *page)
 {

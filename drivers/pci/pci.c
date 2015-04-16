@@ -1012,11 +1012,7 @@ int pci_save_state(struct pci_dev *dev)
 	if (i != 0)
 		return i;
 
-	i = pci_save_vc_state(dev);
-	if (i != 0)
-		return i;
-
-	return 0;
+	return pci_save_vc_state(dev);
 }
 EXPORT_SYMBOL(pci_save_state);
 
@@ -1142,8 +1138,8 @@ EXPORT_SYMBOL_GPL(pci_store_saved_state);
  * @dev: PCI device that we're dealing with
  * @state: Saved state returned from pci_store_saved_state()
  */
-static int pci_load_saved_state(struct pci_dev *dev,
-				struct pci_saved_state *state)
+int pci_load_saved_state(struct pci_dev *dev,
+			 struct pci_saved_state *state)
 {
 	struct pci_cap_saved_data *cap;
 
@@ -1171,6 +1167,7 @@ static int pci_load_saved_state(struct pci_dev *dev,
 	dev->state_saved = true;
 	return 0;
 }
+EXPORT_SYMBOL_GPL(pci_load_saved_state);
 
 /**
  * pci_load_and_free_saved_state - Reload the save state pointed to by state,
@@ -3144,12 +3141,10 @@ static int pcie_flr(struct pci_dev *dev, int probe)
 		return 0;
 
 	if (!pci_wait_for_pending_transaction(dev))
-		dev_err(&dev->dev, "transaction is not cleared; proceeding with reset anyway\n");
+		dev_err(&dev->dev, "timed out waiting for pending transaction; performing function level reset anyway\n");
 
 	pcie_capability_set_word(dev, PCI_EXP_DEVCTL, PCI_EXP_DEVCTL_BCR_FLR);
-
 	msleep(100);
-
 	return 0;
 }
 
@@ -3174,16 +3169,12 @@ static int pci_af_flr(struct pci_dev *dev, int probe)
 	 * is used, so we use the conrol offset rather than status and shift
 	 * the test bit to match.
 	 */
-	if (pci_wait_for_pending(dev, pos + PCI_AF_CTRL,
+	if (!pci_wait_for_pending(dev, pos + PCI_AF_CTRL,
 				 PCI_AF_STATUS_TP << 8))
-		goto clear;
+		dev_err(&dev->dev, "timed out waiting for pending transaction; performing AF function level reset anyway\n");
 
-	dev_err(&dev->dev, "transaction is not cleared; proceeding with reset anyway\n");
-
-clear:
 	pci_write_config_byte(dev, pos + PCI_AF_CTRL, PCI_AF_CTRL_FLR);
 	msleep(100);
-
 	return 0;
 }
 
@@ -3280,7 +3271,8 @@ static int pci_parent_bus_reset(struct pci_dev *dev, int probe)
 {
 	struct pci_dev *pdev;
 
-	if (pci_is_root_bus(dev->bus) || dev->subordinate || !dev->bus->self)
+	if (pci_is_root_bus(dev->bus) || dev->subordinate ||
+	    !dev->bus->self || dev->dev_flags & PCI_DEV_FLAGS_NO_BUS_RESET)
 		return -ENOTTY;
 
 	list_for_each_entry(pdev, &dev->bus->devices, bus_list)
@@ -3314,7 +3306,8 @@ static int pci_dev_reset_slot_function(struct pci_dev *dev, int probe)
 {
 	struct pci_dev *pdev;
 
-	if (dev->subordinate || !dev->slot)
+	if (dev->subordinate || !dev->slot ||
+	    dev->dev_flags & PCI_DEV_FLAGS_NO_BUS_RESET)
 		return -ENOTTY;
 
 	list_for_each_entry(pdev, &dev->bus->devices, bus_list)
@@ -3566,6 +3559,20 @@ int pci_try_reset_function(struct pci_dev *dev)
 }
 EXPORT_SYMBOL_GPL(pci_try_reset_function);
 
+/* Do any devices on or below this bus prevent a bus reset? */
+static bool pci_bus_resetable(struct pci_bus *bus)
+{
+	struct pci_dev *dev;
+
+	list_for_each_entry(dev, &bus->devices, bus_list) {
+		if (dev->dev_flags & PCI_DEV_FLAGS_NO_BUS_RESET ||
+		    (dev->subordinate && !pci_bus_resetable(dev->subordinate)))
+			return false;
+	}
+
+	return true;
+}
+
 /* Lock devices from the top of the tree down */
 static void pci_bus_lock(struct pci_bus *bus)
 {
@@ -3614,6 +3621,22 @@ unlock:
 		pci_dev_unlock(dev);
 	}
 	return 0;
+}
+
+/* Do any devices on or below this slot prevent a bus reset? */
+static bool pci_slot_resetable(struct pci_slot *slot)
+{
+	struct pci_dev *dev;
+
+	list_for_each_entry(dev, &slot->bus->devices, bus_list) {
+		if (!dev->slot || dev->slot != slot)
+			continue;
+		if (dev->dev_flags & PCI_DEV_FLAGS_NO_BUS_RESET ||
+		    (dev->subordinate && !pci_bus_resetable(dev->subordinate)))
+			return false;
+	}
+
+	return true;
 }
 
 /* Lock devices from the top of the tree down */
@@ -3737,7 +3760,7 @@ static int pci_slot_reset(struct pci_slot *slot, int probe)
 {
 	int rc;
 
-	if (!slot)
+	if (!slot || !pci_slot_resetable(slot))
 		return -ENOTTY;
 
 	if (!probe)
@@ -3829,7 +3852,7 @@ EXPORT_SYMBOL_GPL(pci_try_reset_slot);
 
 static int pci_bus_reset(struct pci_bus *bus, int probe)
 {
-	if (!bus->self)
+	if (!bus->self || !pci_bus_resetable(bus))
 		return -ENOTTY;
 
 	if (probe)
@@ -4180,7 +4203,8 @@ int pci_resource_bar(struct pci_dev *dev, int resno, enum pci_bar_type *type)
 		return dev->rom_base_reg;
 	} else if (resno < PCI_BRIDGE_RESOURCES) {
 		/* device specific resource */
-		reg = pci_iov_resource_bar(dev, resno, type);
+		*type = pci_bar_unknown;
+		reg = pci_iov_resource_bar(dev, resno);
 		if (reg)
 			return reg;
 	}

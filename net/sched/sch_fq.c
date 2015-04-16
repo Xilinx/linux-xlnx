@@ -481,12 +481,11 @@ begin:
 		if (likely(rate))
 			do_div(len, rate);
 		/* Since socket rate can change later,
-		 * clamp the delay to 125 ms.
-		 * TODO: maybe segment the too big skb, as in commit
-		 * e43ac79a4bc ("sch_tbf: segment too big GSO packets")
+		 * clamp the delay to 1 second.
+		 * Really, providers of too big packets should be fixed !
 		 */
-		if (unlikely(len > 125 * NSEC_PER_MSEC)) {
-			len = 125 * NSEC_PER_MSEC;
+		if (unlikely(len > NSEC_PER_SEC)) {
+			len = NSEC_PER_SEC;
 			q->stat_pkts_too_long++;
 		}
 
@@ -671,8 +670,14 @@ static int fq_change(struct Qdisc *sch, struct nlattr *opt)
 	if (tb[TCA_FQ_FLOW_PLIMIT])
 		q->flow_plimit = nla_get_u32(tb[TCA_FQ_FLOW_PLIMIT]);
 
-	if (tb[TCA_FQ_QUANTUM])
-		q->quantum = nla_get_u32(tb[TCA_FQ_QUANTUM]);
+	if (tb[TCA_FQ_QUANTUM]) {
+		u32 quantum = nla_get_u32(tb[TCA_FQ_QUANTUM]);
+
+		if (quantum > 0)
+			q->quantum = quantum;
+		else
+			err = -EINVAL;
+	}
 
 	if (tb[TCA_FQ_INITIAL_QUANTUM])
 		q->initial_quantum = nla_get_u32(tb[TCA_FQ_INITIAL_QUANTUM]);

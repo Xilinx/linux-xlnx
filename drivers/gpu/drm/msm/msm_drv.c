@@ -29,6 +29,8 @@ static void msm_fb_output_poll_changed(struct drm_device *dev)
 static const struct drm_mode_config_funcs mode_config_funcs = {
 	.fb_create = msm_framebuffer_create,
 	.output_poll_changed = msm_fb_output_poll_changed,
+	.atomic_check = drm_atomic_helper_check,
+	.atomic_commit = msm_atomic_commit,
 };
 
 int msm_register_mmu(struct drm_device *dev, struct msm_mmu *mmu)
@@ -191,6 +193,7 @@ static int msm_load(struct drm_device *dev, unsigned long flags)
 
 	priv->wq = alloc_ordered_workqueue("msm", 0);
 	init_waitqueue_head(&priv->fence_event);
+	init_waitqueue_head(&priv->pending_crtcs_event);
 
 	INIT_LIST_HEAD(&priv->inactive_list);
 	INIT_LIST_HEAD(&priv->fence_cbs);
@@ -293,6 +296,8 @@ static int msm_load(struct drm_device *dev, unsigned long flags)
 		dev_err(dev->dev, "failed to install IRQ handler\n");
 		goto fail;
 	}
+
+	drm_mode_config_reset(dev);
 
 #ifdef CONFIG_DRM_MSM_FBDEV
 	priv->fbdev = msm_fbdev_init(dev);
@@ -619,6 +624,26 @@ int msm_wait_fence_interruptable(struct drm_device *dev, uint32_t fence,
 	return ret;
 }
 
+int msm_queue_fence_cb(struct drm_device *dev,
+		struct msm_fence_cb *cb, uint32_t fence)
+{
+	struct msm_drm_private *priv = dev->dev_private;
+	int ret = 0;
+
+	mutex_lock(&dev->struct_mutex);
+	if (!list_empty(&cb->work.entry)) {
+		ret = -EINVAL;
+	} else if (fence > priv->completed_fence) {
+		cb->fence = fence;
+		list_add_tail(&cb->work.entry, &priv->fence_cbs);
+	} else {
+		queue_work(priv->wq, &cb->work);
+	}
+	mutex_unlock(&dev->struct_mutex);
+
+	return ret;
+}
+
 /* called from workqueue */
 void msm_update_fence(struct drm_device *dev, uint32_t fence)
 {
@@ -832,6 +857,7 @@ static struct drm_driver msm_driver = {
 	.gem_prime_import_sg_table = msm_gem_prime_import_sg_table,
 	.gem_prime_vmap     = msm_gem_prime_vmap,
 	.gem_prime_vunmap   = msm_gem_prime_vunmap,
+	.gem_prime_mmap     = msm_gem_prime_mmap,
 #ifdef CONFIG_DEBUG_FS
 	.debugfs_init       = msm_debugfs_init,
 	.debugfs_cleanup    = msm_debugfs_cleanup,
@@ -987,7 +1013,6 @@ static struct platform_driver msm_platform_driver = {
 	.probe      = msm_pdev_probe,
 	.remove     = msm_pdev_remove,
 	.driver     = {
-		.owner  = THIS_MODULE,
 		.name   = "msm",
 		.of_match_table = dt_match,
 		.pm     = &msm_pm_ops,

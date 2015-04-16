@@ -212,8 +212,40 @@ void *ftrace_event_buffer_reserve(struct ftrace_event_buffer *fbuffer,
 }
 EXPORT_SYMBOL_GPL(ftrace_event_buffer_reserve);
 
+static DEFINE_SPINLOCK(tracepoint_iter_lock);
+
+static void output_printk(struct ftrace_event_buffer *fbuffer)
+{
+	struct ftrace_event_call *event_call;
+	struct trace_event *event;
+	unsigned long flags;
+	struct trace_iterator *iter = tracepoint_print_iter;
+
+	if (!iter)
+		return;
+
+	event_call = fbuffer->ftrace_file->event_call;
+	if (!event_call || !event_call->event.funcs ||
+	    !event_call->event.funcs->trace)
+		return;
+
+	event = &fbuffer->ftrace_file->event_call->event;
+
+	spin_lock_irqsave(&tracepoint_iter_lock, flags);
+	trace_seq_init(&iter->seq);
+	iter->ent = fbuffer->entry;
+	event_call->event.funcs->trace(iter, 0, event);
+	trace_seq_putc(&iter->seq, 0);
+	printk("%s", iter->seq.buffer);
+
+	spin_unlock_irqrestore(&tracepoint_iter_lock, flags);
+}
+
 void ftrace_event_buffer_commit(struct ftrace_event_buffer *fbuffer)
 {
+	if (tracepoint_printk)
+		output_printk(fbuffer);
+
 	event_trigger_unlock_commit(fbuffer->ftrace_file, fbuffer->buffer,
 				    fbuffer->event, fbuffer->entry,
 				    fbuffer->flags, fbuffer->pc);
@@ -461,7 +493,7 @@ static void remove_event_file_dir(struct ftrace_event_file *file)
 
 	if (dir) {
 		spin_lock(&dir->d_lock);	/* probably unneeded */
-		list_for_each_entry(child, &dir->d_subdirs, d_u.d_child) {
+		list_for_each_entry(child, &dir->d_subdirs, d_child) {
 			if (child->d_inode)	/* probably unneeded */
 				child->d_inode->i_private = NULL;
 		}
@@ -918,7 +950,7 @@ static int f_show(struct seq_file *m, void *v)
 	case FORMAT_HEADER:
 		seq_printf(m, "name: %s\n", ftrace_event_name(call));
 		seq_printf(m, "ID: %d\n", call->event.type);
-		seq_printf(m, "format:\n");
+		seq_puts(m, "format:\n");
 		return 0;
 
 	case FORMAT_FIELD_SEPERATOR:
@@ -1044,7 +1076,8 @@ event_filter_read(struct file *filp, char __user *ubuf, size_t cnt,
 	mutex_unlock(&event_mutex);
 
 	if (file)
-		r = simple_read_from_buffer(ubuf, cnt, ppos, s->buffer, s->len);
+		r = simple_read_from_buffer(ubuf, cnt, ppos,
+					    s->buffer, trace_seq_used(s));
 
 	kfree(s);
 
@@ -1210,7 +1243,8 @@ subsystem_filter_read(struct file *filp, char __user *ubuf, size_t cnt,
 	trace_seq_init(s);
 
 	print_subsystem_event_filter(system, s);
-	r = simple_read_from_buffer(ubuf, cnt, ppos, s->buffer, s->len);
+	r = simple_read_from_buffer(ubuf, cnt, ppos,
+				    s->buffer, trace_seq_used(s));
 
 	kfree(s);
 
@@ -1265,7 +1299,8 @@ show_header(struct file *filp, char __user *ubuf, size_t cnt, loff_t *ppos)
 	trace_seq_init(s);
 
 	func(s);
-	r = simple_read_from_buffer(ubuf, cnt, ppos, s->buffer, s->len);
+	r = simple_read_from_buffer(ubuf, cnt, ppos,
+				    s->buffer, trace_seq_used(s));
 
 	kfree(s);
 
@@ -1988,7 +2023,7 @@ event_enable_print(struct seq_file *m, unsigned long ip,
 		   ftrace_event_name(data->file->event_call));
 
 	if (data->count == -1)
-		seq_printf(m, ":unlimited\n");
+		seq_puts(m, ":unlimited\n");
 	else
 		seq_printf(m, ":count=%ld\n", data->count);
 
@@ -2394,12 +2429,39 @@ static __init int event_trace_memsetup(void)
 	return 0;
 }
 
+static __init void
+early_enable_events(struct trace_array *tr, bool disable_first)
+{
+	char *buf = bootup_event_buf;
+	char *token;
+	int ret;
+
+	while (true) {
+		token = strsep(&buf, ",");
+
+		if (!token)
+			break;
+		if (!*token)
+			continue;
+
+		/* Restarting syscalls requires that we stop them first */
+		if (disable_first)
+			ftrace_set_clr_event(tr, token, 0);
+
+		ret = ftrace_set_clr_event(tr, token, 1);
+		if (ret)
+			pr_warn("Failed to enable trace event: %s\n", token);
+
+		/* Put back the comma to allow this to be called again */
+		if (buf)
+			*(buf - 1) = ',';
+	}
+}
+
 static __init int event_trace_enable(void)
 {
 	struct trace_array *tr = top_trace_array();
 	struct ftrace_event_call **iter, *call;
-	char *buf = bootup_event_buf;
-	char *token;
 	int ret;
 
 	if (!tr)
@@ -2421,18 +2483,7 @@ static __init int event_trace_enable(void)
 	 */
 	__trace_early_add_events(tr);
 
-	while (true) {
-		token = strsep(&buf, ",");
-
-		if (!token)
-			break;
-		if (!*token)
-			continue;
-
-		ret = ftrace_set_clr_event(tr, token, 1);
-		if (ret)
-			pr_warn("Failed to enable trace event: %s\n", token);
-	}
+	early_enable_events(tr, false);
 
 	trace_printk_start_comm();
 
@@ -2442,6 +2493,31 @@ static __init int event_trace_enable(void)
 
 	return 0;
 }
+
+/*
+ * event_trace_enable() is called from trace_event_init() first to
+ * initialize events and perhaps start any events that are on the
+ * command line. Unfortunately, there are some events that will not
+ * start this early, like the system call tracepoints that need
+ * to set the TIF_SYSCALL_TRACEPOINT flag of pid 1. But event_trace_enable()
+ * is called before pid 1 starts, and this flag is never set, making
+ * the syscall tracepoint never get reached, but the event is enabled
+ * regardless (and not doing anything).
+ */
+static __init int event_trace_enable_again(void)
+{
+	struct trace_array *tr;
+
+	tr = top_trace_array();
+	if (!tr)
+		return -ENODEV;
+
+	early_enable_events(tr, true);
+
+	return 0;
+}
+
+early_initcall(event_trace_enable_again);
 
 static __init int event_trace_init(void)
 {
@@ -2477,8 +2553,14 @@ static __init int event_trace_init(void)
 #endif
 	return 0;
 }
-early_initcall(event_trace_memsetup);
-core_initcall(event_trace_enable);
+
+void __init trace_event_init(void)
+{
+	event_trace_memsetup();
+	init_ftrace_syscalls();
+	event_trace_enable();
+}
+
 fs_initcall(event_trace_init);
 
 #ifdef CONFIG_FTRACE_STARTUP_TEST

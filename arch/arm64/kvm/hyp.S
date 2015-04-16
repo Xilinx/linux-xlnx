@@ -761,10 +761,10 @@
 .macro activate_traps
 	ldr     x2, [x0, #VCPU_HCR_EL2]
 	msr     hcr_el2, x2
-	ldr	x2, =(CPTR_EL2_TTA)
+	mov	x2, #CPTR_EL2_TTA
 	msr	cptr_el2, x2
 
-	ldr	x2, =(1 << 15)	// Trap CP15 Cr=15
+	mov	x2, #(1 << 15)	// Trap CP15 Cr=15
 	msr	hstr_el2, x2
 
 	mrs	x2, mdcr_el2
@@ -1014,6 +1014,7 @@ ENTRY(__kvm_tlb_flush_vmid_ipa)
 	 * Instead, we invalidate Stage-2 for this IPA, and the
 	 * whole of Stage-1. Weep...
 	 */
+	lsr	x1, x1, #12
 	tlbi	ipas2e1is, x1
 	/*
 	 * We have to ensure completion of the invalidation at Stage-2,

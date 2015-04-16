@@ -150,7 +150,7 @@ static int map_lookup_elem(union bpf_attr *attr)
 	int ufd = attr->map_fd;
 	struct fd f = fdget(ufd);
 	struct bpf_map *map;
-	void *key, *value;
+	void *key, *value, *ptr;
 	int err;
 
 	if (CHECK_ATTR(BPF_MAP_LOOKUP_ELEM))
@@ -169,20 +169,29 @@ static int map_lookup_elem(union bpf_attr *attr)
 	if (copy_from_user(key, ukey, map->key_size) != 0)
 		goto free_key;
 
-	err = -ESRCH;
-	rcu_read_lock();
-	value = map->ops->map_lookup_elem(map, key);
+	err = -ENOMEM;
+	value = kmalloc(map->value_size, GFP_USER);
 	if (!value)
-		goto err_unlock;
+		goto free_key;
+
+	rcu_read_lock();
+	ptr = map->ops->map_lookup_elem(map, key);
+	if (ptr)
+		memcpy(value, ptr, map->value_size);
+	rcu_read_unlock();
+
+	err = -ENOENT;
+	if (!ptr)
+		goto free_value;
 
 	err = -EFAULT;
 	if (copy_to_user(uvalue, value, map->value_size) != 0)
-		goto err_unlock;
+		goto free_value;
 
 	err = 0;
 
-err_unlock:
-	rcu_read_unlock();
+free_value:
+	kfree(value);
 free_key:
 	kfree(key);
 err_put:
@@ -190,7 +199,7 @@ err_put:
 	return err;
 }
 
-#define BPF_MAP_UPDATE_ELEM_LAST_FIELD value
+#define BPF_MAP_UPDATE_ELEM_LAST_FIELD flags
 
 static int map_update_elem(union bpf_attr *attr)
 {
@@ -231,7 +240,7 @@ static int map_update_elem(union bpf_attr *attr)
 	 * therefore all map accessors rely on this fact, so do the same here
 	 */
 	rcu_read_lock();
-	err = map->ops->map_update_elem(map, key, value);
+	err = map->ops->map_update_elem(map, key, value, attr->flags);
 	rcu_read_unlock();
 
 free_value:

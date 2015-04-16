@@ -30,8 +30,6 @@ extern u32 zynq_slcr_get_ocm_config(void);
 extern u32 zynq_slcr_get_device_id(void);
 
 #ifdef CONFIG_SMP
-extern void zynq_secondary_startup(void);
-extern void secondary_startup(void);
 extern char zynq_secondary_trampoline;
 extern char zynq_secondary_trampoline_jump;
 extern char zynq_secondary_trampoline_end;

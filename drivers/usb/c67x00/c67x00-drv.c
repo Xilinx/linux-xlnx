@@ -213,7 +213,6 @@ static struct platform_driver c67x00_driver = {
 	.probe	= c67x00_drv_probe,
 	.remove	= c67x00_drv_remove,
 	.driver	= {
-		.owner = THIS_MODULE,
 		.name = "c67x00",
 		.of_match_table = of_match_ptr(c67x00_of_match),
 	},

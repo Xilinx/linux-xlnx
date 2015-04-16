@@ -187,6 +187,7 @@ int omap_prcm_event_to_irq(const char *name)
  */
 void omap_prcm_irq_cleanup(void)
 {
+	unsigned int irq;
 	int i;
 
 	if (!prcm_irq_setup) {
@@ -211,7 +212,11 @@ void omap_prcm_irq_cleanup(void)
 	kfree(prcm_irq_setup->priority_mask);
 	prcm_irq_setup->priority_mask = NULL;
 
-	irq_set_chained_handler(prcm_irq_setup->irq, NULL);
+	if (prcm_irq_setup->xlate_irq)
+		irq = prcm_irq_setup->xlate_irq(prcm_irq_setup->irq);
+	else
+		irq = prcm_irq_setup->irq;
+	irq_set_chained_handler(irq, NULL);
 
 	if (prcm_irq_setup->base_irq > 0)
 		irq_free_descs(prcm_irq_setup->base_irq,
@@ -259,6 +264,7 @@ int omap_prcm_register_chain_handler(struct omap_prcm_irq_setup *irq_setup)
 	int offset, i;
 	struct irq_chip_generic *gc;
 	struct irq_chip_type *ct;
+	unsigned int irq;
 
 	if (!irq_setup)
 		return -EINVAL;
@@ -298,7 +304,11 @@ int omap_prcm_register_chain_handler(struct omap_prcm_irq_setup *irq_setup)
 				1 << (offset & 0x1f);
 	}
 
-	irq_set_chained_handler(irq_setup->irq, omap_prcm_irq_handler);
+	if (irq_setup->xlate_irq)
+		irq = irq_setup->xlate_irq(irq_setup->irq);
+	else
+		irq = irq_setup->irq;
+	irq_set_chained_handler(irq, omap_prcm_irq_handler);
 
 	irq_setup->base_irq = irq_alloc_descs(-1, 0, irq_setup->nr_regs * 32,
 		0);
@@ -420,6 +430,105 @@ void prm_clear_context_loss_flags_old(u8 part, s16 inst, u16 idx)
 	else
 		WARN_ONCE(1, "prm: %s: no mapping function defined\n",
 			  __func__);
+}
+
+/**
+ * omap_prm_assert_hardreset - assert hardreset for an IP block
+ * @shift: register bit shift corresponding to the reset line
+ * @part: PRM partition
+ * @prm_mod: PRM submodule base or instance offset
+ * @offset: register offset
+ *
+ * Asserts a hardware reset line for an IP block.
+ */
+int omap_prm_assert_hardreset(u8 shift, u8 part, s16 prm_mod, u16 offset)
+{
+	if (!prm_ll_data->assert_hardreset) {
+		WARN_ONCE(1, "prm: %s: no mapping function defined\n",
+			  __func__);
+		return -EINVAL;
+	}
+
+	return prm_ll_data->assert_hardreset(shift, part, prm_mod, offset);
+}
+
+/**
+ * omap_prm_deassert_hardreset - deassert hardreset for an IP block
+ * @shift: register bit shift corresponding to the reset line
+ * @st_shift: reset status bit shift corresponding to the reset line
+ * @part: PRM partition
+ * @prm_mod: PRM submodule base or instance offset
+ * @offset: register offset
+ * @st_offset: status register offset
+ *
+ * Deasserts a hardware reset line for an IP block.
+ */
+int omap_prm_deassert_hardreset(u8 shift, u8 st_shift, u8 part, s16 prm_mod,
+				u16 offset, u16 st_offset)
+{
+	if (!prm_ll_data->deassert_hardreset) {
+		WARN_ONCE(1, "prm: %s: no mapping function defined\n",
+			  __func__);
+		return -EINVAL;
+	}
+
+	return prm_ll_data->deassert_hardreset(shift, st_shift, part, prm_mod,
+					       offset, st_offset);
+}
+
+/**
+ * omap_prm_is_hardreset_asserted - check the hardreset status for an IP block
+ * @shift: register bit shift corresponding to the reset line
+ * @part: PRM partition
+ * @prm_mod: PRM submodule base or instance offset
+ * @offset: register offset
+ *
+ * Checks if a hardware reset line for an IP block is enabled or not.
+ */
+int omap_prm_is_hardreset_asserted(u8 shift, u8 part, s16 prm_mod, u16 offset)
+{
+	if (!prm_ll_data->is_hardreset_asserted) {
+		WARN_ONCE(1, "prm: %s: no mapping function defined\n",
+			  __func__);
+		return -EINVAL;
+	}
+
+	return prm_ll_data->is_hardreset_asserted(shift, part, prm_mod, offset);
+}
+
+/**
+ * omap_prm_reconfigure_io_chain - clear latches and reconfigure I/O chain
+ *
+ * Clear any previously-latched I/O wakeup events and ensure that the
+ * I/O wakeup gates are aligned with the current mux settings.
+ * Calls SoC specific I/O chain reconfigure function if available,
+ * otherwise does nothing.
+ */
+void omap_prm_reconfigure_io_chain(void)
+{
+	if (!prcm_irq_setup || !prcm_irq_setup->reconfigure_io_chain)
+		return;
+
+	prcm_irq_setup->reconfigure_io_chain();
+}
+
+/**
+ * omap_prm_reset_system - trigger global SW reset
+ *
+ * Triggers SoC specific global warm reset to reboot the device.
+ */
+void omap_prm_reset_system(void)
+{
+	if (!prm_ll_data->reset_system) {
+		WARN_ONCE(1, "prm: %s: no mapping function defined\n",
+			  __func__);
+		return;
+	}
+
+	prm_ll_data->reset_system();
+
+	while (1)
+		cpu_relax();
 }
 
 /**

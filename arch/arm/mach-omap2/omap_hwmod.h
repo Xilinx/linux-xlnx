@@ -633,6 +633,7 @@ struct omap_hwmod_link {
  * @flags: hwmod flags (documented below)
  * @_lock: spinlock serializing operations on this hwmod
  * @node: list node for hwmod list (internal use)
+ * @parent_hwmod: (temporary) a pointer to the hierarchical parent of this hwmod
  *
  * @main_clk refers to this module's "main clock," which for our
  * purposes is defined as "the functional clock needed for register
@@ -643,6 +644,12 @@ struct omap_hwmod_link {
  * the omap_hwmod code and should not be set during initialization.
  *
  * @masters and @slaves are now deprecated.
+ *
+ * @parent_hwmod is temporary; there should be no need for it, as this
+ * information should already be expressed in the OCP interface
+ * structures.  @parent_hwmod is present as a workaround until we improve
+ * handling for hwmods with multiple parents (e.g., OMAP4+ DSS with
+ * multiple register targets across different interconnects).
  */
 struct omap_hwmod {
 	const char			*name;
@@ -669,6 +676,7 @@ struct omap_hwmod {
 	spinlock_t			_lock;
 	struct list_head		node;
 	struct omap_hwmod_ocp_if	*_mpu_port;
+	unsigned int			(*xlate_irq)(unsigned int);
 	u16				flags;
 	u8				mpu_rt_idx;
 	u8				response_lat;
@@ -680,6 +688,7 @@ struct omap_hwmod {
 	u8				_int_flags;
 	u8				_state;
 	u8				_postsetup_state;
+	struct omap_hwmod		*parent_hwmod;
 };
 
 struct omap_hwmod *omap_hwmod_lookup(const char *name);

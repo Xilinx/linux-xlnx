@@ -3018,14 +3018,13 @@ static int xemacps_remove(struct platform_device *pdev)
 }
 
 #ifdef CONFIG_PM
-#ifdef CONFIG_PM_SLEEP
 /**
  * xemacps_suspend - Suspend event
  * @device: Pointer to device structure
  *
  * Return: 0
  */
-static int xemacps_suspend(struct device *device)
+static int __maybe_unused xemacps_suspend(struct device *device)
 {
 	struct platform_device *pdev = container_of(device,
 			struct platform_device, dev);
@@ -3046,7 +3045,7 @@ static int xemacps_suspend(struct device *device)
  *
  * Return: 0 on success, errno otherwise.
  */
-static int xemacps_resume(struct device *device)
+static int __maybe_unused xemacps_resume(struct device *device)
 {
 	struct platform_device *pdev = container_of(device,
 			struct platform_device, dev);
@@ -3069,15 +3068,13 @@ static int xemacps_resume(struct device *device)
 	netif_device_attach(ndev);
 	return 0;
 }
-#endif /* ! CONFIG_PM_SLEEP */
 
-#ifdef CONFIG_PM_RUNTIME
-static int xemacps_runtime_idle(struct device *dev)
+static int __maybe_unused xemacps_runtime_idle(struct device *dev)
 {
 	return pm_schedule_suspend(dev, 1);
 }
 
-static int xemacps_runtime_resume(struct device *device)
+static int __maybe_unused xemacps_runtime_resume(struct device *device)
 {
 	int ret;
 	struct platform_device *pdev = container_of(device,
@@ -3098,7 +3095,7 @@ static int xemacps_runtime_resume(struct device *device)
 	return 0;
 }
 
-static int xemacps_runtime_suspend(struct device *device)
+static int __maybe_unused xemacps_runtime_suspend(struct device *device)
 {
 	struct platform_device *pdev = container_of(device,
 			struct platform_device, dev);
@@ -3109,7 +3106,6 @@ static int xemacps_runtime_suspend(struct device *device)
 	clk_disable(lp->aperclk);
 	return 0;
 }
-#endif /* CONFIG_PM_RUNTIME */
 
 static const struct dev_pm_ops xemacps_dev_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(xemacps_suspend, xemacps_resume)

@@ -614,7 +614,7 @@ static inline int perf_cgroup_connect(int fd, struct perf_event *event,
 	if (!f.file)
 		return -EBADF;
 
-	css = css_tryget_online_from_dir(f.file->f_dentry,
+	css = css_tryget_online_from_dir(f.file->f_path.dentry,
 					 &perf_event_cgrp_subsys);
 	if (IS_ERR(css)) {
 		ret = PTR_ERR(css);
@@ -4460,21 +4460,28 @@ perf_output_sample_regs(struct perf_output_handle *handle,
 	}
 }
 
-static void perf_sample_regs_user(struct perf_regs_user *regs_user,
-				  struct pt_regs *regs)
+static void perf_sample_regs_user(struct perf_regs *regs_user,
+				  struct pt_regs *regs,
+				  struct pt_regs *regs_user_copy)
 {
-	if (!user_mode(regs)) {
-		if (current->mm)
-			regs = task_pt_regs(current);
-		else
-			regs = NULL;
-	}
-
-	if (regs) {
+	if (user_mode(regs)) {
+		regs_user->abi = perf_reg_abi(current);
 		regs_user->regs = regs;
-		regs_user->abi  = perf_reg_abi(current);
+	} else if (current->mm) {
+		perf_get_regs_user(regs_user, regs, regs_user_copy);
+	} else {
+		regs_user->abi = PERF_SAMPLE_REGS_ABI_NONE;
+		regs_user->regs = NULL;
 	}
 }
+
+static void perf_sample_regs_intr(struct perf_regs *regs_intr,
+				  struct pt_regs *regs)
+{
+	regs_intr->regs = regs;
+	regs_intr->abi  = perf_reg_abi(current);
+}
+
 
 /*
  * Get remaining task size from user stack pointer.
@@ -4857,6 +4864,23 @@ void perf_output_sample(struct perf_output_handle *handle,
 	if (sample_type & PERF_SAMPLE_TRANSACTION)
 		perf_output_put(handle, data->txn);
 
+	if (sample_type & PERF_SAMPLE_REGS_INTR) {
+		u64 abi = data->regs_intr.abi;
+		/*
+		 * If there are no regs to dump, notice it through
+		 * first u64 being zero (PERF_SAMPLE_REGS_ABI_NONE).
+		 */
+		perf_output_put(handle, abi);
+
+		if (abi) {
+			u64 mask = event->attr.sample_regs_intr;
+
+			perf_output_sample_regs(handle,
+						data->regs_intr.regs,
+						mask);
+		}
+	}
+
 	if (!event->attr.watermark) {
 		int wakeup_events = event->attr.wakeup_events;
 
@@ -4922,11 +4946,13 @@ void perf_prepare_sample(struct perf_event_header *header,
 		header->size += size;
 	}
 
+	if (sample_type & (PERF_SAMPLE_REGS_USER | PERF_SAMPLE_STACK_USER))
+		perf_sample_regs_user(&data->regs_user, regs,
+				      &data->regs_user_copy);
+
 	if (sample_type & PERF_SAMPLE_REGS_USER) {
 		/* regs dump ABI info */
 		int size = sizeof(u64);
-
-		perf_sample_regs_user(&data->regs_user, regs);
 
 		if (data->regs_user.regs) {
 			u64 mask = event->attr.sample_regs_user;
@@ -4943,15 +4969,11 @@ void perf_prepare_sample(struct perf_event_header *header,
 		 * in case new sample type is added, because we could eat
 		 * up the rest of the sample size.
 		 */
-		struct perf_regs_user *uregs = &data->regs_user;
 		u16 stack_size = event->attr.sample_stack_user;
 		u16 size = sizeof(u64);
 
-		if (!uregs->abi)
-			perf_sample_regs_user(uregs, regs);
-
 		stack_size = perf_sample_ustack_size(stack_size, header->size,
-						     uregs->regs);
+						     data->regs_user.regs);
 
 		/*
 		 * If there is something to dump, add space for the dump
@@ -4962,6 +4984,21 @@ void perf_prepare_sample(struct perf_event_header *header,
 			size += sizeof(u64) + stack_size;
 
 		data->stack_user_size = stack_size;
+		header->size += size;
+	}
+
+	if (sample_type & PERF_SAMPLE_REGS_INTR) {
+		/* regs dump ABI info */
+		int size = sizeof(u64);
+
+		perf_sample_regs_intr(&data->regs_intr, regs);
+
+		if (data->regs_intr.regs) {
+			u64 mask = event->attr.sample_regs_intr;
+
+			size += hweight64(mask) * sizeof(u64);
+		}
+
 		header->size += size;
 	}
 }
@@ -6739,7 +6776,6 @@ skip_type:
 		__perf_event_init_context(&cpuctx->ctx);
 		lockdep_set_class(&cpuctx->ctx.mutex, &cpuctx_mutex);
 		lockdep_set_class(&cpuctx->ctx.lock, &cpuctx_lock);
-		cpuctx->ctx.type = cpu_context;
 		cpuctx->ctx.pmu = pmu;
 
 		__perf_cpu_hrtimer_init(cpuctx, cpu);
@@ -7151,6 +7187,8 @@ static int perf_copy_attr(struct perf_event_attr __user *uattr,
 			ret = -EINVAL;
 	}
 
+	if (attr->sample_type & PERF_SAMPLE_REGS_INTR)
+		ret = perf_reg_validate(attr->sample_regs_intr);
 out:
 	return ret;
 
@@ -7381,7 +7419,19 @@ SYSCALL_DEFINE5(perf_event_open,
 		 * task or CPU context:
 		 */
 		if (move_group) {
-			if (group_leader->ctx->type != ctx->type)
+			/*
+			 * Make sure we're both on the same task, or both
+			 * per-cpu events.
+			 */
+			if (group_leader->ctx->task != ctx->task)
+				goto err_context;
+
+			/*
+			 * Make sure we're both events for the same CPU;
+			 * grouping events for different CPUs is broken; since
+			 * you can never concurrently schedule them anyhow.
+			 */
+			if (group_leader->cpu != event->cpu)
 				goto err_context;
 		} else {
 			if (group_leader->ctx != ctx)
@@ -7435,11 +7485,11 @@ SYSCALL_DEFINE5(perf_event_open,
 
 	if (move_group) {
 		synchronize_rcu();
-		perf_install_in_context(ctx, group_leader, event->cpu);
+		perf_install_in_context(ctx, group_leader, group_leader->cpu);
 		get_ctx(ctx);
 		list_for_each_entry(sibling, &group_leader->sibling_list,
 				    group_entry) {
-			perf_install_in_context(ctx, sibling, event->cpu);
+			perf_install_in_context(ctx, sibling, sibling->cpu);
 			get_ctx(ctx);
 		}
 	}

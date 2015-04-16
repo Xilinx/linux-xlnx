@@ -125,9 +125,6 @@ struct kvm_vcpu_arch {
 	 * Anything that is not used directly from assembly code goes
 	 * here.
 	 */
-	/* dcache set/way operation pending */
-	int last_pcpu;
-	cpumask_t require_dcache_flush;
 
 	/* Don't run the guest on this vcpu */
 	bool pause;
@@ -150,8 +147,6 @@ struct kvm_vcpu_stat {
 	u32 halt_wakeup;
 };
 
-int kvm_vcpu_set_target(struct kvm_vcpu *vcpu,
-			const struct kvm_vcpu_init *init);
 int kvm_vcpu_preferred_target(struct kvm_vcpu_init *init);
 unsigned long kvm_arm_num_regs(struct kvm_vcpu *vcpu);
 int kvm_arm_copy_reg_indices(struct kvm_vcpu *vcpu, u64 __user *indices);

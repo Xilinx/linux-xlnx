@@ -417,7 +417,7 @@ static void ip6gre_err(struct sk_buff *skb, struct inet6_skb_parm *opt,
 		if (code == ICMPV6_HDR_FIELD)
 			teli = ip6_tnl_parse_tlv_enc_lim(skb, skb->data);
 
-		if (teli && teli == info - 2) {
+		if (teli && teli == be32_to_cpu(info) - 2) {
 			tel = (struct ipv6_tlv_tnl_enc_lim *) &skb->data[teli];
 			if (tel->encap_limit == 0) {
 				net_warn_ratelimited("%s: Too small encapsulation limit or routing loop in tunnel!\n",
@@ -429,7 +429,7 @@ static void ip6gre_err(struct sk_buff *skb, struct inet6_skb_parm *opt,
 		}
 		break;
 	case ICMPV6_PKT_TOOBIG:
-		mtu = info - offset;
+		mtu = be32_to_cpu(info) - offset;
 		if (mtu < IPV6_MIN_MTU)
 			mtu = IPV6_MIN_MTU;
 		t->dev->mtu = mtu;
@@ -902,7 +902,7 @@ static netdev_tx_t ip6gre_tunnel_xmit(struct sk_buff *skb,
 	struct net_device_stats *stats = &t->dev->stats;
 	int ret;
 
-	if (!ip6_tnl_xmit_ctl(t))
+	if (!ip6_tnl_xmit_ctl(t, &t->parms.laddr, &t->parms.raddr))
 		goto tx_err;
 
 	switch (skb->protocol) {

@@ -1040,6 +1040,7 @@ static int temac_of_probe(struct platform_device *op)
 	lp->regs = of_iomap(op->dev.of_node, 0);
 	if (!lp->regs) {
 		dev_err(&op->dev, "could not map temac regs.\n");
+		rc = -ENOMEM;
 		goto nodev;
 	}
 
@@ -1061,6 +1062,7 @@ static int temac_of_probe(struct platform_device *op)
 	np = of_parse_phandle(op->dev.of_node, "llink-connected", 0);
 	if (!np) {
 		dev_err(&op->dev, "could not find DMA node\n");
+		rc = -ENODEV;
 		goto err_iounmap;
 	}
 

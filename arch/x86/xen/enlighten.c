@@ -40,6 +40,7 @@
 #include <xen/interface/physdev.h>
 #include <xen/interface/vcpu.h>
 #include <xen/interface/memory.h>
+#include <xen/interface/nmi.h>
 #include <xen/interface/xen-mca.h>
 #include <xen/features.h>
 #include <xen/page.h>
@@ -66,6 +67,7 @@
 #include <asm/reboot.h>
 #include <asm/stackprotector.h>
 #include <asm/hypervisor.h>
+#include <asm/mach_traps.h>
 #include <asm/mwait.h>
 #include <asm/pci_x86.h>
 #include <asm/pat.h>
@@ -1100,12 +1102,6 @@ static int xen_write_msr_safe(unsigned int msr, unsigned low, unsigned high)
 		/* Fast syscall setup is all done in hypercalls, so
 		   these are all ignored.  Stub them out here to stop
 		   Xen console noise. */
-		break;
-
-	case MSR_IA32_CR_PAT:
-		if (smp_processor_id() == 0)
-			xen_set_pat(((u64)high << 32) | low);
-		break;
 
 	default:
 		ret = native_write_msr_safe(msr, low, high);
@@ -1357,6 +1353,21 @@ static const struct machine_ops xen_machine_ops __initconst = {
 	.emergency_restart = xen_emergency_restart,
 };
 
+static unsigned char xen_get_nmi_reason(void)
+{
+	unsigned char reason = 0;
+
+	/* Construct a value which looks like it came from port 0x61. */
+	if (test_bit(_XEN_NMIREASON_io_error,
+		     &HYPERVISOR_shared_info->arch.nmi_reason))
+		reason |= NMI_REASON_IOCHK;
+	if (test_bit(_XEN_NMIREASON_pci_serr,
+		     &HYPERVISOR_shared_info->arch.nmi_reason))
+		reason |= NMI_REASON_SERR;
+
+	return reason;
+}
+
 static void __init xen_boot_params_init_edd(void)
 {
 #if IS_ENABLED(CONFIG_EDD)
@@ -1541,8 +1552,11 @@ asmlinkage __visible void __init xen_start_kernel(void)
 	pv_info = xen_info;
 	pv_init_ops = xen_init_ops;
 	pv_apic_ops = xen_apic_ops;
-	if (!xen_pvh_domain())
+	if (!xen_pvh_domain()) {
 		pv_cpu_ops = xen_cpu_ops;
+
+		x86_platform.get_nmi_reason = xen_get_nmi_reason;
+	}
 
 	if (xen_feature(XENFEAT_auto_translated_physmap))
 		x86_init.resources.memory_setup = xen_auto_xlated_memory_setup;
@@ -1561,10 +1575,6 @@ asmlinkage __visible void __init xen_start_kernel(void)
 
 	/* Prevent unwanted bits from being set in PTEs. */
 	__supported_pte_mask &= ~_PAGE_GLOBAL;
-#if 0
-	if (!xen_initial_domain())
-#endif
-		__supported_pte_mask &= ~(_PAGE_PWT | _PAGE_PCD);
 
 	/*
 	 * Prevent page tables from being allocated in highmem, even
@@ -1618,14 +1628,6 @@ asmlinkage __visible void __init xen_start_kernel(void)
 	 */
 	acpi_numa = -1;
 #endif
-#ifdef CONFIG_X86_PAT
-	/*
-	 * For right now disable the PAT. We should remove this once
-	 * git commit 8eaffa67b43e99ae581622c5133e20b0f48bcef1
-	 * (xen/pat: Disable PAT support for now) is reverted.
-	 */
-	pat_enabled = 0;
-#endif
 	/* Don't do the full vcpu_info placement stuff until we have a
 	   possible map and a non-dummy shared_info. */
 	per_cpu(xen_vcpu, 0) = &HYPERVISOR_shared_info->vcpu_info[0];
@@ -1635,6 +1637,13 @@ asmlinkage __visible void __init xen_start_kernel(void)
 
 	xen_raw_console_write("mapping kernel into physical memory\n");
 	xen_setup_kernel_pagetable((pgd_t *)xen_start_info->pt_base, xen_start_info->nr_pages);
+
+	/*
+	 * Modify the cache mode translation tables to match Xen's PAT
+	 * configuration.
+	 */
+
+	pat_init_cache_modes();
 
 	/* keep using Xen gdt for now; no urgent need to change it */
 

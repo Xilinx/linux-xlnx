@@ -294,7 +294,6 @@
 			clkc: clkc@100 {
 				#clock-cells = <1>;
 				compatible = "xlnx,ps7-clkc";
-				ps-clk-frequency = <33333333>;
 				fclk-enable = <0xf>;
 				clock-output-names = "armpll", "ddrpll", "iopll", "cpu_6or4x",
 						"cpu_3or2x", "cpu_2x", "cpu_1x", "ddr2x", "ddr3x",
@@ -370,6 +369,26 @@
 			clocks = <&clkc 4>;
 		};
 
+		usb0: usb@e0002000 {
+			compatible = "xlnx,zynq-usb-2.20a", "chipidea,usb2";
+			status = "disabled";
+			clocks = <&clkc 28>;
+			interrupt-parent = <&intc>;
+			interrupts = <0 21 4>;
+			reg = <0xe0002000 0x1000>;
+			phy_type = "ulpi";
+		};
+
+		usb1: usb@e0003000 {
+			compatible = "xlnx,zynq-usb-2.20a", "chipidea,usb2";
+			status = "disabled";
+			clocks = <&clkc 29>;
+			interrupt-parent = <&intc>;
+			interrupts = <0 44 4>;
+			reg = <0xe0003000 0x1000>;
+			phy_type = "ulpi";
+		};
+
 		watchdog0: watchdog@f8005000 {
 			clocks = <&clkc 45>;
 			compatible = "cdns,wdt-r1p2";
@@ -377,24 +396,6 @@
 			interrupts = <0 9 1>;
 			reg = <0xf8005000 0x1000>;
 			timeout-sec = <10>;
-		};
-
-		usb0: usb@e0002000 {
-			clocks = <&clkc 28>;
-			compatible = "xlnx,ps7-usb-1.00.a", "xlnx,zynq-usb-1.00.a";
-			status = "disabled";
-			interrupt-parent = <&intc>;
-			interrupts = <0 21 4>;
-			reg = <0xe0002000 0x1000>;
-		};
-
-		usb1: usb@e0003000 {
-			clocks = <&clkc 29>;
-			compatible = "xlnx,ps7-usb-1.00.a", "xlnx,zynq-usb-1.00.a";
-			status = "disabled";
-			interrupt-parent = <&intc>;
-			interrupts = <0 44 4>;
-			reg = <0xe0003000 0x1000>;
 		};
 	};
 };

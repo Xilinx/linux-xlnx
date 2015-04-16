@@ -36,6 +36,7 @@
 #include <linux/file.h>
 #include <linux/fs.h>
 #include <linux/slab.h>
+#include <linux/sched.h>
 
 #include <asm/uaccess.h>
 
@@ -288,6 +289,9 @@ ssize_t ib_uverbs_get_context(struct ib_uverbs_file *file,
 	struct ib_uverbs_get_context_resp resp;
 	struct ib_udata                   udata;
 	struct ib_device                 *ibdev = file->device->ib_dev;
+#ifdef CONFIG_INFINIBAND_ON_DEMAND_PAGING
+	struct ib_device_attr		  dev_attr;
+#endif
 	struct ib_ucontext		 *ucontext;
 	struct file			 *filp;
 	int ret;
@@ -325,7 +329,24 @@ ssize_t ib_uverbs_get_context(struct ib_uverbs_file *file,
 	INIT_LIST_HEAD(&ucontext->ah_list);
 	INIT_LIST_HEAD(&ucontext->xrcd_list);
 	INIT_LIST_HEAD(&ucontext->rule_list);
+	rcu_read_lock();
+	ucontext->tgid = get_task_pid(current->group_leader, PIDTYPE_PID);
+	rcu_read_unlock();
 	ucontext->closing = 0;
+
+#ifdef CONFIG_INFINIBAND_ON_DEMAND_PAGING
+	ucontext->umem_tree = RB_ROOT;
+	init_rwsem(&ucontext->umem_rwsem);
+	ucontext->odp_mrs_count = 0;
+	INIT_LIST_HEAD(&ucontext->no_private_counters);
+
+	ret = ib_query_device(ibdev, &dev_attr);
+	if (ret)
+		goto err_free;
+	if (!(dev_attr.device_cap_flags & IB_DEVICE_ON_DEMAND_PAGING))
+		ucontext->invalidate_range = NULL;
+
+#endif
 
 	resp.num_comp_vectors = file->device->num_comp_vectors;
 
@@ -371,6 +392,7 @@ err_fd:
 	put_unused_fd(resp.async_fd);
 
 err_free:
+	put_pid(ucontext->tgid);
 	ibdev->dealloc_ucontext(ucontext);
 
 err:
@@ -945,6 +967,18 @@ ssize_t ib_uverbs_reg_mr(struct ib_uverbs_file *file,
 	if (!pd) {
 		ret = -EINVAL;
 		goto err_free;
+	}
+
+	if (cmd.access_flags & IB_ACCESS_ON_DEMAND) {
+		struct ib_device_attr attr;
+
+		ret = ib_query_device(pd->device, &attr);
+		if (ret || !(attr.device_cap_flags &
+				IB_DEVICE_ON_DEMAND_PAGING)) {
+			pr_debug("ODP support not available\n");
+			ret = -EINVAL;
+			goto err_put;
+		}
 	}
 
 	mr = pd->device->reg_user_mr(pd, cmd.start, cmd.length, cmd.hca_va,

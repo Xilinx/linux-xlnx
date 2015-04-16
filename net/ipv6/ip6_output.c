@@ -537,20 +537,6 @@ static void ip6_copy_metadata(struct sk_buff *to, struct sk_buff *from)
 	skb_copy_secmark(to, from);
 }
 
-static void ipv6_select_ident(struct frag_hdr *fhdr, struct rt6_info *rt)
-{
-	static u32 ip6_idents_hashrnd __read_mostly;
-	u32 hash, id;
-
-	net_get_random_once(&ip6_idents_hashrnd, sizeof(ip6_idents_hashrnd));
-
-	hash = __ipv6_addr_jhash(&rt->rt6i_dst.addr, ip6_idents_hashrnd);
-	hash = __ipv6_addr_jhash(&rt->rt6i_src.addr, hash);
-
-	id = ip_idents_reserve(hash, 1);
-	fhdr->identification = htonl(id);
-}
-
 int ip6_fragment(struct sk_buff *skb, int (*output)(struct sk_buff *))
 {
 	struct sk_buff *frag;
@@ -747,13 +733,11 @@ slow_path:
 		if (len < left)	{
 			len &= ~7;
 		}
-		/*
-		 *	Allocate buffer.
-		 */
 
-		if ((frag = alloc_skb(len + hlen + sizeof(struct frag_hdr) +
-				      hroom + troom, GFP_ATOMIC)) == NULL) {
-			NETDEBUG(KERN_INFO "IPv6: frag: no memory for new fragment!\n");
+		/* Allocate buffer */
+		frag = alloc_skb(len + hlen + sizeof(struct frag_hdr) +
+				 hroom + troom, GFP_ATOMIC);
+		if (!frag) {
 			IP6_INC_STATS(net, ip6_dst_idev(skb_dst(skb)),
 				      IPSTATS_MIB_FRAGFAILS);
 			err = -ENOMEM;
@@ -900,7 +884,8 @@ static int ip6_dst_lookup_tail(struct sock *sk,
 	if (*dst == NULL)
 		*dst = ip6_route_output(net, sk, fl6);
 
-	if ((err = (*dst)->error))
+	err = (*dst)->error;
+	if (err)
 		goto out_err_release;
 
 	if (ipv6_addr_any(&fl6->saddr)) {
@@ -948,7 +933,8 @@ static int ip6_dst_lookup_tail(struct sock *sk,
 			memcpy(&fl_gw6, fl6, sizeof(struct flowi6));
 			memset(&fl_gw6.daddr, 0, sizeof(struct in6_addr));
 			*dst = ip6_route_output(net, sk, &fl_gw6);
-			if ((err = (*dst)->error))
+			err = (*dst)->error;
+			if (err)
 				goto out_err_release;
 		}
 	}
@@ -1056,7 +1042,8 @@ static inline int ip6_ufo_append_data(struct sock *sk,
 	 * device, so create one single skb packet containing complete
 	 * udp datagram
 	 */
-	if ((skb = skb_peek_tail(&sk->sk_write_queue)) == NULL) {
+	skb = skb_peek_tail(&sk->sk_write_queue);
+	if (skb == NULL) {
 		skb = sock_alloc_send_skb(sk,
 			hh_len + fragheaderlen + transhdrlen + 20,
 			(flags & MSG_DONTWAIT), &err);
@@ -1536,7 +1523,8 @@ int ip6_push_pending_frames(struct sock *sk)
 	unsigned char proto = fl6->flowi6_proto;
 	int err = 0;
 
-	if ((skb = __skb_dequeue(&sk->sk_write_queue)) == NULL)
+	skb = __skb_dequeue(&sk->sk_write_queue);
+	if (skb == NULL)
 		goto out;
 	tail_skb = &(skb_shinfo(skb)->frag_list);
 

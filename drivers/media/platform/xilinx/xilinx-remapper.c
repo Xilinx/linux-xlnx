@@ -99,11 +99,11 @@ static inline struct xremap_device *to_remap(struct v4l2_subdev *subdev)
 
 static const struct xremap_mapping xremap_mappings[] = {
 	{
-		.code = V4L2_MBUS_FMT_RBG888_1X24,
+		.code = MEDIA_BUS_FMT_RBG888_1X24,
 		.width = 8,
 		.num_components = 3,
 		.outputs = (const struct xremap_mapping_output[]) {
-			{ V4L2_MBUS_FMT_RGB888_1X32_PADHI, 4, { 1, 0, 2, 4 } },
+			{ MEDIA_BUS_FMT_RGB888_1X32_PADHI, 4, { 1, 0, 2, 4 } },
 			{ },
 		},
 	},

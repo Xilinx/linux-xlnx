@@ -375,8 +375,8 @@ static int adv7511_wait_for_interrupt(struct adv7511 *adv7511, int irq,
 	return pending;
 }
 
-static int adv7511_get_edid_block(void *data, unsigned char *buf, int block,
-				  int len)
+static int adv7511_get_edid_block(void *data, u8 *buf, unsigned int block,
+				  size_t len)
 {
 	struct drm_encoder *encoder = data;
 	struct adv7511 *adv7511 = encoder_to_adv7511(encoder);

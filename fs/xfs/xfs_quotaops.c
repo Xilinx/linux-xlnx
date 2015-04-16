@@ -19,8 +19,6 @@
 #include "xfs_format.h"
 #include "xfs_log_format.h"
 #include "xfs_trans_resv.h"
-#include "xfs_sb.h"
-#include "xfs_ag.h"
 #include "xfs_mount.h"
 #include "xfs_inode.h"
 #include "xfs_quota.h"
@@ -133,7 +131,7 @@ STATIC int
 xfs_fs_get_dqblk(
 	struct super_block	*sb,
 	struct kqid		qid,
-	struct fs_disk_quota	*fdq)
+	struct qc_dqblk		*qdq)
 {
 	struct xfs_mount	*mp = XFS_M(sb);
 
@@ -143,14 +141,14 @@ xfs_fs_get_dqblk(
 		return -ESRCH;
 
 	return xfs_qm_scall_getquota(mp, from_kqid(&init_user_ns, qid),
-				      xfs_quota_type(qid.type), fdq);
+				      xfs_quota_type(qid.type), qdq);
 }
 
 STATIC int
 xfs_fs_set_dqblk(
 	struct super_block	*sb,
 	struct kqid		qid,
-	struct fs_disk_quota	*fdq)
+	struct qc_dqblk		*qdq)
 {
 	struct xfs_mount	*mp = XFS_M(sb);
 
@@ -162,7 +160,7 @@ xfs_fs_set_dqblk(
 		return -ESRCH;
 
 	return xfs_qm_scall_setqlim(mp, from_kqid(&init_user_ns, qid),
-				     xfs_quota_type(qid.type), fdq);
+				     xfs_quota_type(qid.type), qdq);
 }
 
 const struct quotactl_ops xfs_quotactl_operations = {

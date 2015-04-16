@@ -1,5 +1,7 @@
 menu "Device Drivers"
 
+source "drivers/amba/Kconfig"
+
 source "drivers/base/Kconfig"
 
 source "drivers/bus/Kconfig"
@@ -132,8 +134,6 @@ source "drivers/staging/Kconfig"
 
 source "drivers/platform/Kconfig"
 
-source "drivers/soc/Kconfig"
-
 source "drivers/clk/Kconfig"
 
 source "drivers/hwspinlock/Kconfig"
@@ -181,5 +181,7 @@ source "drivers/mcb/Kconfig"
 source "drivers/ras/Kconfig"
 
 source "drivers/thunderbolt/Kconfig"
+
+source "drivers/android/Kconfig"
 
 endmenu

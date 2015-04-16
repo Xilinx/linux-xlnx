@@ -311,6 +311,7 @@ static void unlink_empty_async_suspended(struct ehci_hcd *ehci);
 static void ehci_work(struct ehci_hcd *ehci);
 static void start_unlink_intr(struct ehci_hcd *ehci, struct ehci_qh *qh);
 static void end_unlink_intr(struct ehci_hcd *ehci, struct ehci_qh *qh);
+static int ehci_port_power(struct ehci_hcd *ehci, int portnum, bool enable);
 
 #include "ehci-timer.c"
 #include "ehci-hub.c"
@@ -329,9 +330,13 @@ static void ehci_turn_off_all_ports(struct ehci_hcd *ehci)
 {
 	int	port = HCS_N_PORTS(ehci->hcs_params);
 
-	while (port--)
+	while (port--) {
 		ehci_writel(ehci, PORT_RWC_BITS,
 				&ehci->regs->port_status[port]);
+		spin_unlock_irq(&ehci->lock);
+		ehci_port_power(ehci, port, false);
+		spin_lock_irq(&ehci->lock);
+	}
 }
 
 /*
@@ -340,21 +345,11 @@ static void ehci_turn_off_all_ports(struct ehci_hcd *ehci)
  */
 static void ehci_silence_controller(struct ehci_hcd *ehci)
 {
-#ifdef CONFIG_USB_ZYNQ_PHY
-	struct usb_hcd *hcd = ehci_to_hcd(ehci);
-#endif
-
 	ehci_halt(ehci);
 
 	spin_lock_irq(&ehci->lock);
 	ehci->rh_state = EHCI_RH_HALTED;
-#ifdef CONFIG_USB_ZYNQ_PHY
-	/* turn off for non-otg port */
-	if(!hcd->phy)
-		ehci_turn_off_all_ports(ehci);
-#else
 	ehci_turn_off_all_ports(ehci);
-#endif
 
 	/* make BIOS/etc use companion controller during reboot */
 	ehci_writel(ehci, 0, &ehci->regs->configured_flag);
@@ -437,12 +432,7 @@ static void ehci_stop (struct usb_hcd *hcd)
 
 	ehci_quiesce(ehci);
 	ehci_silence_controller(ehci);
-#ifdef CONFIG_USB_ZYNQ_PHY
-	if(!hcd->phy)
-		ehci_reset (ehci);
-#else
 	ehci_reset (ehci);
-#endif
 
 	hrtimer_cancel(&ehci->hrtimer);
 	remove_sysfs_files(ehci);
@@ -583,9 +573,6 @@ static int ehci_run (struct usb_hcd *hcd)
 	struct ehci_hcd		*ehci = hcd_to_ehci (hcd);
 	u32			temp;
 	u32			hcc_params;
-#if defined(CONFIG_ARCH_ZYNQ)
-	void __iomem *non_ehci = hcd->regs;
-#endif
 
 	hcd->uses_new_polling = 1;
 
@@ -655,11 +642,7 @@ static int ehci_run (struct usb_hcd *hcd)
 
 	ehci_writel(ehci, INTR_MASK,
 		    &ehci->regs->intr_enable); /* Turn On Interrupts */
-#if defined(CONFIG_ARCH_ZYNQ)
-	/* Modifying FIFO Burst Threshold value from 2 to 8 */
-	temp = readl(non_ehci + 0x164);
-	ehci_writel(ehci, 0x00080000, non_ehci + 0x164);
-#endif
+
 	/* GRR this is run-once init(), being done every time the HC starts.
 	 * So long as they're part of class devices, we can't do it init()
 	 * since the class device isn't created that early.
@@ -707,7 +690,6 @@ static irqreturn_t ehci_irq (struct usb_hcd *hcd)
 	struct ehci_hcd		*ehci = hcd_to_ehci (hcd);
 	u32			status, masked_status, pcd_status = 0, cmd;
 	int			bh;
-	u32			intr_en;
 	unsigned long		flags;
 
 	/*
@@ -719,30 +701,7 @@ static irqreturn_t ehci_irq (struct usb_hcd *hcd)
 	spin_lock_irqsave(&ehci->lock, flags);
 
 	status = ehci_readl(ehci, &ehci->regs->status);
-	intr_en = ehci_readl(ehci, &ehci->regs->intr_enable);
 
-#ifdef CONFIG_USB_ZYNQ_PHY
-	if(hcd->phy) {
-		/* A device */
-		if (hcd->usb_phy->otg->default_a &&
-			(hcd->usb_phy->state == OTG_STATE_A_PERIPHERAL)) {
-			spin_unlock(&ehci->lock);
-			return IRQ_NONE;
-		}
-		/* B device */
-		if (!hcd->usb_phy->otg->default_a &&
-			((hcd->usb_phy->state != OTG_STATE_B_WAIT_ACON) &&
-			(hcd->usb_phy->state != OTG_STATE_B_HOST))) {
-			spin_unlock(&ehci->lock);
-			return IRQ_NONE;
-		}
-		/* If HABA is set and B-disconnect occurs, don't process that interrupt */
-		if (ehci_is_TDI(ehci) && tdi_in_host_mode(ehci) == 0) {
-			spin_unlock(&ehci->lock);
-			return IRQ_NONE;
-		}
-	}
-#endif
 	/* e.g. cardbus physical eject */
 	if (status == ~(u32) 0) {
 		ehci_dbg (ehci, "device removed\n");
@@ -1279,6 +1238,8 @@ void ehci_init_driver(struct hc_driver *drv,
 		drv->hcd_priv_size += over->extra_priv_size;
 		if (over->reset)
 			drv->reset = over->reset;
+		if (over->port_power)
+			drv->port_power = over->port_power;
 	}
 }
 EXPORT_SYMBOL_GPL(ehci_init_driver);
@@ -1312,16 +1273,6 @@ MODULE_LICENSE ("GPL");
 #ifdef CONFIG_XPS_USB_HCD_XILINX
 #include "ehci-xilinx-of.c"
 #define XILINX_OF_PLATFORM_DRIVER	ehci_hcd_xilinx_of_driver
-#endif
-
-#ifdef CONFIG_USB_EHCI_ZYNQ
-#include "ehci-zynq.c"
-#define PLATFORM_DRIVER		ehci_zynq_driver
-#endif
-
-#ifdef CONFIG_USB_OCTEON_EHCI
-#include "ehci-octeon.c"
-#define PLATFORM_DRIVER		ehci_octeon_driver
 #endif
 
 #ifdef CONFIG_TILE_USB

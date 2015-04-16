@@ -136,21 +136,6 @@ config XPS_USB_HCD_XILINX
 		support both high speed and full speed devices, or high speed
 		devices only.
 
-config USB_ZYNQ_DR_OF
-	tristate "Open Firmware support for Xilinx PS USB controller"
-	select USB_PHY
-	select USB_ULPI
-	select USB_ULPI_VIEWPORT
-
-config USB_EHCI_ZYNQ
-	bool "Support for Xilinx Zynq EHCI USB controller"
-	depends on USB_EHCI_HCD && ARCH_ZYNQ
-	select USB_EHCI_ROOT_HUB_TT
-	select USB_ZYNQ_DR_OF
-	---help---
-		Xilinx Zynq USB host controller core is EHCI compilant and has
-		transaction translator built-in.
-
 config USB_EHCI_FSL
 	bool "Support for Freescale PPC on-chip EHCI USB controller"
 	depends on FSL_SOC
@@ -307,11 +292,15 @@ config USB_EHCI_HCD_PLATFORM
 	  If unsure, say N.
 
 config USB_OCTEON_EHCI
-	bool "Octeon on-chip EHCI support"
+	bool "Octeon on-chip EHCI support (DEPRECATED)"
 	depends on CAVIUM_OCTEON_SOC
 	default n
 	select USB_EHCI_BIG_ENDIAN_MMIO
+	select USB_EHCI_HCD_PLATFORM
 	help
+	  This option is deprecated now and the driver was removed, use
+	  USB_EHCI_HCD_PLATFORM instead.
+
 	  Enable support for the Octeon II SOC's on-chip EHCI
 	  controller.  It is needed for high-speed (480Mbit/sec)
 	  USB 2.0 device support.  All CN6XXX based chips with USB are
@@ -590,12 +579,16 @@ config USB_OHCI_HCD_PLATFORM
 	  If unsure, say N.
 
 config USB_OCTEON_OHCI
-	bool "Octeon on-chip OHCI support"
+	bool "Octeon on-chip OHCI support (DEPRECATED)"
 	depends on CAVIUM_OCTEON_SOC
 	default USB_OCTEON_EHCI
 	select USB_OHCI_BIG_ENDIAN_MMIO
 	select USB_OHCI_LITTLE_ENDIAN
+	select USB_OHCI_HCD_PLATFORM
 	help
+	  This option is deprecated now and the driver was removed, use
+	  USB_OHCI_HCD_PLATFORM instead.
+
 	  Enable support for the Octeon II SOC's on-chip OHCI
 	  controller.  It is needed for low-speed USB 1.0 device
 	  support.  All CN6XXX based chips with USB are supported.
@@ -768,12 +761,6 @@ config USB_IMX21_HCD
 
          To compile this driver as a module, choose M here: the
          module will be called "imx21-hcd".
-
-
-
-config USB_OCTEON2_COMMON
-	bool
-	default y if USB_OCTEON_EHCI || USB_OCTEON_OHCI
 
 config USB_HCD_BCMA
 	tristate "BCMA usb host driver"

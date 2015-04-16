@@ -225,7 +225,7 @@ void __cpu_die(unsigned int cpu)
 		pr_err("CPU%u: cpu didn't die\n", cpu);
 		return;
 	}
-	printk(KERN_NOTICE "CPU%u: shutdown\n", cpu);
+	pr_notice("CPU%u: shutdown\n", cpu);
 
 	/*
 	 * platform_cpu_kill() is generally expected to do the powering off
@@ -235,7 +235,7 @@ void __cpu_die(unsigned int cpu)
 	 * the requesting CPU and the dying CPU actually losing power.
 	 */
 	if (!platform_cpu_kill(cpu))
-		printk("CPU%u: unable to kill\n", cpu);
+		pr_err("CPU%u: unable to kill\n", cpu);
 }
 
 /*
@@ -351,7 +351,7 @@ asmlinkage void secondary_start_kernel(void)
 
 	cpu_init();
 
-	printk("CPU%u: Booted secondary processor\n", cpu);
+	pr_debug("CPU%u: Booted secondary processor\n", cpu);
 
 	preempt_disable();
 	trace_hardirqs_off();
@@ -387,8 +387,17 @@ asmlinkage void secondary_start_kernel(void)
 
 void __init smp_cpus_done(unsigned int max_cpus)
 {
-	printk(KERN_INFO "SMP: Total of %d processors activated.\n",
-	       num_online_cpus());
+	int cpu;
+	unsigned long bogosum = 0;
+
+	for_each_online_cpu(cpu)
+		bogosum += per_cpu(cpu_data, cpu).loops_per_jiffy;
+
+	printk(KERN_INFO "SMP: Total of %d processors activated "
+	       "(%lu.%02lu BogoMIPS).\n",
+	       num_online_cpus(),
+	       bogosum / (500000/HZ),
+	       (bogosum / (5000/HZ)) % 100);
 
 	hyp_mode_check();
 }
@@ -558,7 +567,7 @@ static void ipi_cpu_stop(void)
 	if (system_state == SYSTEM_BOOTING ||
 	    system_state == SYSTEM_RUNNING) {
 		raw_spin_lock(&stop_lock);
-		printk(KERN_CRIT "CPU%u: stopping\n", cpu);
+		pr_crit("CPU%u: stopping\n", cpu);
 		dump_stack();
 		raw_spin_unlock(&stop_lock);
 	}

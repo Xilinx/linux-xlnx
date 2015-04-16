@@ -10,9 +10,6 @@
 extern const char linux_banner[];
 extern const char linux_proc_banner[];
 
-extern char *log_buf_addr_get(void);
-extern u32 log_buf_len_get(void);
-
 static inline int printk_get_level(const char *buffer)
 {
 	if (buffer[0] == KERN_SOH_ASCII && buffer[1]) {
@@ -118,11 +115,12 @@ int no_printk(const char *fmt, ...)
 #ifdef CONFIG_EARLY_PRINTK
 extern asmlinkage __printf(1, 2)
 void early_printk(const char *fmt, ...);
-void early_vprintk(const char *fmt, va_list ap);
 #else
 static inline __printf(1, 2) __cold
 void early_printk(const char *s, ...) { }
 #endif
+
+typedef int(*printk_func_t)(const char *fmt, va_list args);
 
 #ifdef CONFIG_PRINTK
 asmlinkage __printf(5, 0)
@@ -162,6 +160,8 @@ extern int kptr_restrict;
 
 extern void wake_up_klogd(void);
 
+char *log_buf_addr_get(void);
+u32 log_buf_len_get(void);
 void log_buf_kexec_setup(void);
 void __init setup_log_buf(int early);
 void dump_stack_set_arch_desc(const char *fmt, ...);
@@ -195,6 +195,16 @@ static inline bool printk_timed_ratelimit(unsigned long *caller_jiffies,
 
 static inline void wake_up_klogd(void)
 {
+}
+
+static inline char *log_buf_addr_get(void)
+{
+	return NULL;
+}
+
+static inline u32 log_buf_len_get(void)
+{
+	return 0;
 }
 
 static inline void log_buf_kexec_setup(void)

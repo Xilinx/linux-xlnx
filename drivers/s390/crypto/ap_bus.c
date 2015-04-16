@@ -44,6 +44,7 @@
 #include <linux/hrtimer.h>
 #include <linux/ktime.h>
 #include <asm/facility.h>
+#include <linux/crypto.h>
 
 #include "ap_bus.h"
 
@@ -71,7 +72,7 @@ MODULE_AUTHOR("IBM Corporation");
 MODULE_DESCRIPTION("Adjunct Processor Bus driver, " \
 		   "Copyright IBM Corp. 2006, 2012");
 MODULE_LICENSE("GPL");
-MODULE_ALIAS("z90crypt");
+MODULE_ALIAS_CRYPTO("z90crypt");
 
 /*
  * Module parameter
@@ -1162,9 +1163,13 @@ static inline int ap_test_config_card_id(unsigned int id)
  */
 static inline int ap_test_config_domain(unsigned int domain)
 {
-	if (!ap_configuration)
-		return 1;
-	return ap_test_config(ap_configuration->aqm, domain);
+	if (!ap_configuration)	  /* QCI not supported */
+		if (domain < 16)
+			return 1; /* then domains 0...15 are configured */
+		else
+			return 0;
+	else
+		return ap_test_config(ap_configuration->aqm, domain);
 }
 
 /**

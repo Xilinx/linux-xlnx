@@ -832,12 +832,12 @@ static SIMPLE_DEV_PM_OPS(s5m_rtc_pm_ops, s5m_rtc_suspend, s5m_rtc_resume);
 static const struct platform_device_id s5m_rtc_id[] = {
 	{ "s5m-rtc",		S5M8767X },
 	{ "s2mps14-rtc",	S2MPS14X },
+	{ },
 };
 
 static struct platform_driver s5m_rtc_driver = {
 	.driver		= {
 		.name	= "s5m-rtc",
-		.owner	= THIS_MODULE,
 		.pm	= &s5m_rtc_pm_ops,
 	},
 	.probe		= s5m_rtc_probe,

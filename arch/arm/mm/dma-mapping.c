@@ -1940,19 +1940,8 @@ void arm_iommu_release_mapping(struct dma_iommu_mapping *mapping)
 }
 EXPORT_SYMBOL_GPL(arm_iommu_release_mapping);
 
-/**
- * arm_iommu_attach_device
- * @dev: valid struct device pointer
- * @mapping: io address space mapping structure (returned from
- *	arm_iommu_create_mapping)
- *
- * Attaches specified io address space mapping to the provided device,
- * this replaces the dma operations (dma_map_ops pointer) with the
- * IOMMU aware version. More than one client might be attached to
- * the same io address space mapping.
- */
-int arm_iommu_attach_device(struct device *dev,
-			    struct dma_iommu_mapping *mapping)
+static int __arm_iommu_attach_device(struct device *dev,
+				     struct dma_iommu_mapping *mapping)
 {
 	int err;
 
@@ -1962,21 +1951,39 @@ int arm_iommu_attach_device(struct device *dev,
 
 	kref_get(&mapping->kref);
 	dev->archdata.mapping = mapping;
-	set_dma_ops(dev, &iommu_ops);
 
 	pr_debug("Attached IOMMU controller to %s device.\n", dev_name(dev));
 	return 0;
 }
-EXPORT_SYMBOL_GPL(arm_iommu_attach_device);
 
 /**
- * arm_iommu_detach_device
+ * arm_iommu_attach_device
  * @dev: valid struct device pointer
+ * @mapping: io address space mapping structure (returned from
+ *	arm_iommu_create_mapping)
  *
- * Detaches the provided device from a previously attached map.
- * This voids the dma operations (dma_map_ops pointer)
+ * Attaches specified io address space mapping to the provided device.
+ * This replaces the dma operations (dma_map_ops pointer) with the
+ * IOMMU aware version.
+ *
+ * More than one client might be attached to the same io address space
+ * mapping.
  */
-void arm_iommu_detach_device(struct device *dev)
+int arm_iommu_attach_device(struct device *dev,
+			    struct dma_iommu_mapping *mapping)
+{
+	int err;
+
+	err = __arm_iommu_attach_device(dev, mapping);
+	if (err)
+		return err;
+
+	set_dma_ops(dev, &iommu_ops);
+	return 0;
+}
+EXPORT_SYMBOL_GPL(arm_iommu_attach_device);
+
+static void __arm_iommu_detach_device(struct device *dev)
 {
 	struct dma_iommu_mapping *mapping;
 
@@ -1989,10 +1996,99 @@ void arm_iommu_detach_device(struct device *dev)
 	iommu_detach_device(mapping->domain, dev);
 	kref_put(&mapping->kref, release_iommu_mapping);
 	dev->archdata.mapping = NULL;
-	set_dma_ops(dev, NULL);
 
 	pr_debug("Detached IOMMU controller from %s device.\n", dev_name(dev));
 }
+
+/**
+ * arm_iommu_detach_device
+ * @dev: valid struct device pointer
+ *
+ * Detaches the provided device from a previously attached map.
+ * This voids the dma operations (dma_map_ops pointer)
+ */
+void arm_iommu_detach_device(struct device *dev)
+{
+	__arm_iommu_detach_device(dev);
+	set_dma_ops(dev, NULL);
+}
 EXPORT_SYMBOL_GPL(arm_iommu_detach_device);
 
-#endif
+static struct dma_map_ops *arm_get_iommu_dma_map_ops(bool coherent)
+{
+	return coherent ? &iommu_coherent_ops : &iommu_ops;
+}
+
+static bool arm_setup_iommu_dma_ops(struct device *dev, u64 dma_base, u64 size,
+				    struct iommu_ops *iommu)
+{
+	struct dma_iommu_mapping *mapping;
+
+	if (!iommu)
+		return false;
+
+	mapping = arm_iommu_create_mapping(dev->bus, dma_base, size);
+	if (IS_ERR(mapping)) {
+		pr_warn("Failed to create %llu-byte IOMMU mapping for device %s\n",
+				size, dev_name(dev));
+		return false;
+	}
+
+	if (__arm_iommu_attach_device(dev, mapping)) {
+		pr_warn("Failed to attached device %s to IOMMU_mapping\n",
+				dev_name(dev));
+		arm_iommu_release_mapping(mapping);
+		return false;
+	}
+
+	return true;
+}
+
+static void arm_teardown_iommu_dma_ops(struct device *dev)
+{
+	struct dma_iommu_mapping *mapping = dev->archdata.mapping;
+
+	if (!mapping)
+		return;
+
+	__arm_iommu_detach_device(dev);
+	arm_iommu_release_mapping(mapping);
+}
+
+#else
+
+static bool arm_setup_iommu_dma_ops(struct device *dev, u64 dma_base, u64 size,
+				    struct iommu_ops *iommu)
+{
+	return false;
+}
+
+static void arm_teardown_iommu_dma_ops(struct device *dev) { }
+
+#define arm_get_iommu_dma_map_ops arm_get_dma_map_ops
+
+#endif	/* CONFIG_ARM_DMA_USE_IOMMU */
+
+static struct dma_map_ops *arm_get_dma_map_ops(bool coherent)
+{
+	return coherent ? &arm_coherent_dma_ops : &arm_dma_ops;
+}
+
+void arch_setup_dma_ops(struct device *dev, u64 dma_base, u64 size,
+			struct iommu_ops *iommu, bool coherent)
+{
+	struct dma_map_ops *dma_ops;
+
+	dev->archdata.dma_coherent = coherent;
+	if (arm_setup_iommu_dma_ops(dev, dma_base, size, iommu))
+		dma_ops = arm_get_iommu_dma_map_ops(coherent);
+	else
+		dma_ops = arm_get_dma_map_ops(coherent);
+
+	set_dma_ops(dev, dma_ops);
+}
+
+void arch_teardown_dma_ops(struct device *dev)
+{
+	arm_teardown_iommu_dma_ops(dev);
+}

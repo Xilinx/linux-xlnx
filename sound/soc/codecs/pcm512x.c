@@ -188,8 +188,8 @@ static const DECLARE_TLV_DB_SCALE(boost_tlv, 0, 80, 0);
 static const char * const pcm512x_dsp_program_texts[] = {
 	"FIR interpolation with de-emphasis",
 	"Low latency IIR with de-emphasis",
-	"Fixed process flow",
 	"High attenuation with de-emphasis",
+	"Fixed process flow",
 	"Ringing-less low latency FIR",
 };
 
@@ -517,7 +517,7 @@ void pcm512x_remove(struct device *dev)
 }
 EXPORT_SYMBOL_GPL(pcm512x_remove);
 
-#ifdef CONFIG_PM_RUNTIME
+#ifdef CONFIG_PM
 static int pcm512x_suspend(struct device *dev)
 {
 	struct pcm512x_priv *pcm512x = dev_get_drvdata(dev);

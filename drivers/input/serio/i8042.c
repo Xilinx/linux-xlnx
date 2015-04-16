@@ -67,6 +67,10 @@ static bool i8042_notimeout;
 module_param_named(notimeout, i8042_notimeout, bool, 0);
 MODULE_PARM_DESC(notimeout, "Ignore timeouts signalled by i8042");
 
+static bool i8042_kbdreset;
+module_param_named(kbdreset, i8042_kbdreset, bool, 0);
+MODULE_PARM_DESC(kbdreset, "Reset device connected to KBD port");
+
 #ifdef CONFIG_X86
 static bool i8042_dritek;
 module_param_named(dritek, i8042_dritek, bool, 0);
@@ -790,6 +794,16 @@ static int __init i8042_check_aux(void)
 		return -1;
 
 /*
+ * Reset keyboard (needed on some laptops to successfully detect
+ * touchpad, e.g., some Gigabyte laptop models with Elantech
+ * touchpads).
+ */
+	if (i8042_kbdreset) {
+		pr_warn("Attempting to reset device connected to KBD port\n");
+		i8042_kbd_write(NULL, (unsigned char) 0xff);
+	}
+
+/*
  * Test AUX IRQ delivery to make sure BIOS did not grab the IRQ and
  * used it for a PCI card or somethig else.
  */
@@ -1463,7 +1477,6 @@ static int i8042_remove(struct platform_device *dev)
 static struct platform_driver i8042_driver = {
 	.driver		= {
 		.name	= "i8042",
-		.owner	= THIS_MODULE,
 #ifdef CONFIG_PM
 		.pm	= &i8042_pm_ops,
 #endif

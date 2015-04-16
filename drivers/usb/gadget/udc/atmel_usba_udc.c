@@ -716,10 +716,10 @@ static int queue_dma(struct usba_udc *udc, struct usba_ep *ep,
 	req->using_dma = 1;
 	req->ctrl = USBA_BF(DMA_BUF_LEN, req->req.length)
 			| USBA_DMA_CH_EN | USBA_DMA_END_BUF_IE
-			| USBA_DMA_END_TR_EN | USBA_DMA_END_TR_IE;
+			| USBA_DMA_END_BUF_EN;
 
-	if (ep->is_in)
-		req->ctrl |= USBA_DMA_END_BUF_EN;
+	if (!ep->is_in)
+		req->ctrl |= USBA_DMA_END_TR_EN | USBA_DMA_END_TR_IE;
 
 	/*
 	 * Add this request to the queue and submit for DMA if
@@ -828,7 +828,7 @@ static int usba_ep_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 {
 	struct usba_ep *ep = to_usba_ep(_ep);
 	struct usba_udc *udc = ep->udc;
-	struct usba_request *req = to_usba_req(_req);
+	struct usba_request *req;
 	unsigned long flags;
 	u32 status;
 
@@ -836,6 +836,16 @@ static int usba_ep_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 			ep->ep.name, req);
 
 	spin_lock_irqsave(&udc->lock, flags);
+
+	list_for_each_entry(req, &ep->queue, queue) {
+		if (&req->req == _req)
+			break;
+	}
+
+	if (&req->req != _req) {
+		spin_unlock_irqrestore(&udc->lock, flags);
+		return -EINVAL;
+	}
 
 	if (req->using_dma) {
 		/*
@@ -987,8 +997,8 @@ usba_udc_set_selfpowered(struct usb_gadget *gadget, int is_selfpowered)
 
 static int atmel_usba_start(struct usb_gadget *gadget,
 		struct usb_gadget_driver *driver);
-static int atmel_usba_stop(struct usb_gadget *gadget,
-		struct usb_gadget_driver *driver);
+static int atmel_usba_stop(struct usb_gadget *gadget);
+
 static const struct usb_gadget_ops usba_udc_ops = {
 	.get_frame		= usba_udc_get_frame,
 	.wakeup			= usba_udc_wakeup,
@@ -1007,19 +1017,10 @@ static struct usb_endpoint_descriptor usba_ep0_desc = {
 	.bInterval = 1,
 };
 
-static void nop_release(struct device *dev)
-{
-
-}
-
 static struct usb_gadget usba_gadget_template = {
 	.ops		= &usba_udc_ops,
 	.max_speed	= USB_SPEED_HIGH,
 	.name		= "atmel_usba_udc",
-	.dev	= {
-		.init_name	= "gadget",
-		.release	= nop_release,
-	},
 };
 
 /*
@@ -1572,7 +1573,6 @@ static void usba_ep_irq(struct usba_udc *udc, struct usba_ep *ep)
 	if ((epstatus & epctrl) & USBA_RX_BK_RDY) {
 		DBG(DBG_BUS, "%s: RX data ready\n", ep->ep.name);
 		receive_data(ep);
-		usba_ep_writel(ep, CLR_STA, USBA_RX_BK_RDY);
 	}
 }
 
@@ -1685,11 +1685,10 @@ static irqreturn_t usba_udc_irq(int irq, void *devid)
 		usba_writel(udc, INT_CLR, USBA_END_OF_RESET);
 		reset_all_endpoints(udc);
 
-		if (udc->gadget.speed != USB_SPEED_UNKNOWN
-				&& udc->driver && udc->driver->disconnect) {
+		if (udc->gadget.speed != USB_SPEED_UNKNOWN && udc->driver) {
 			udc->gadget.speed = USB_SPEED_UNKNOWN;
 			spin_unlock(&udc->lock);
-			udc->driver->disconnect(&udc->gadget);
+			usb_gadget_udc_reset(&udc->gadget, udc->driver);
 			spin_lock(&udc->lock);
 		}
 
@@ -1791,8 +1790,6 @@ static int atmel_usba_start(struct usb_gadget *gadget,
 		return ret;
 	}
 
-	DBG(DBG_GADGET, "registered driver `%s'\n", driver->driver.name);
-
 	udc->vbus_prev = 0;
 	if (gpio_is_valid(udc->vbus_pin))
 		enable_irq(gpio_to_irq(udc->vbus_pin));
@@ -1809,8 +1806,7 @@ static int atmel_usba_start(struct usb_gadget *gadget,
 	return 0;
 }
 
-static int atmel_usba_stop(struct usb_gadget *gadget,
-		struct usb_gadget_driver *driver)
+static int atmel_usba_stop(struct usb_gadget *gadget)
 {
 	struct usba_udc *udc = container_of(gadget, struct usba_udc, gadget);
 	unsigned long flags;
@@ -1829,8 +1825,6 @@ static int atmel_usba_stop(struct usb_gadget *gadget,
 
 	clk_disable_unprepare(udc->hclk);
 	clk_disable_unprepare(udc->pclk);
-
-	DBG(DBG_GADGET, "unregistered driver `%s'\n", udc->driver->driver.name);
 
 	udc->driver = NULL;
 
@@ -2120,7 +2114,6 @@ static struct platform_driver udc_driver = {
 	.remove		= __exit_p(usba_udc_remove),
 	.driver		= {
 		.name		= "atmel_usba_udc",
-		.owner		= THIS_MODULE,
 		.of_match_table	= of_match_ptr(atmel_udc_dt_ids),
 	},
 };

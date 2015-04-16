@@ -131,6 +131,13 @@ static void fuse_req_init_context(struct fuse_req *req)
 	req->in.h.pid = current->pid;
 }
 
+void fuse_set_initialized(struct fuse_conn *fc)
+{
+	/* Make sure stores before this are seen on another CPU */
+	smp_wmb();
+	fc->initialized = 1;
+}
+
 static bool fuse_block_alloc(struct fuse_conn *fc, bool for_background)
 {
 	return !fc->initialized || (for_background && fc->blocked);
@@ -155,6 +162,8 @@ static struct fuse_req *__fuse_get_req(struct fuse_conn *fc, unsigned npages,
 		if (intr)
 			goto out;
 	}
+	/* Matches smp_wmb() in fuse_set_initialized() */
+	smp_rmb();
 
 	err = -ENOTCONN;
 	if (!fc->connected)
@@ -253,6 +262,8 @@ struct fuse_req *fuse_get_req_nofail_nopages(struct fuse_conn *fc,
 
 	atomic_inc(&fc->num_waiting);
 	wait_event(fc->blocked_waitq, fc->initialized);
+	/* Matches smp_wmb() in fuse_set_initialized() */
+	smp_rmb();
 	req = fuse_request_alloc(0);
 	if (!req)
 		req = get_reserved_req(fc, file);
@@ -510,6 +521,71 @@ void fuse_request_send(struct fuse_conn *fc, struct fuse_req *req)
 	__fuse_request_send(fc, req);
 }
 EXPORT_SYMBOL_GPL(fuse_request_send);
+
+static void fuse_adjust_compat(struct fuse_conn *fc, struct fuse_args *args)
+{
+	if (fc->minor < 4 && args->in.h.opcode == FUSE_STATFS)
+		args->out.args[0].size = FUSE_COMPAT_STATFS_SIZE;
+
+	if (fc->minor < 9) {
+		switch (args->in.h.opcode) {
+		case FUSE_LOOKUP:
+		case FUSE_CREATE:
+		case FUSE_MKNOD:
+		case FUSE_MKDIR:
+		case FUSE_SYMLINK:
+		case FUSE_LINK:
+			args->out.args[0].size = FUSE_COMPAT_ENTRY_OUT_SIZE;
+			break;
+		case FUSE_GETATTR:
+		case FUSE_SETATTR:
+			args->out.args[0].size = FUSE_COMPAT_ATTR_OUT_SIZE;
+			break;
+		}
+	}
+	if (fc->minor < 12) {
+		switch (args->in.h.opcode) {
+		case FUSE_CREATE:
+			args->in.args[0].size = sizeof(struct fuse_open_in);
+			break;
+		case FUSE_MKNOD:
+			args->in.args[0].size = FUSE_COMPAT_MKNOD_IN_SIZE;
+			break;
+		}
+	}
+}
+
+ssize_t fuse_simple_request(struct fuse_conn *fc, struct fuse_args *args)
+{
+	struct fuse_req *req;
+	ssize_t ret;
+
+	req = fuse_get_req(fc, 0);
+	if (IS_ERR(req))
+		return PTR_ERR(req);
+
+	/* Needs to be done after fuse_get_req() so that fc->minor is valid */
+	fuse_adjust_compat(fc, args);
+
+	req->in.h.opcode = args->in.h.opcode;
+	req->in.h.nodeid = args->in.h.nodeid;
+	req->in.numargs = args->in.numargs;
+	memcpy(req->in.args, args->in.args,
+	       args->in.numargs * sizeof(struct fuse_in_arg));
+	req->out.argvar = args->out.argvar;
+	req->out.numargs = args->out.numargs;
+	memcpy(req->out.args, args->out.args,
+	       args->out.numargs * sizeof(struct fuse_arg));
+	fuse_request_send(fc, req);
+	ret = req->out.h.error;
+	if (!ret && args->out.argvar) {
+		BUG_ON(args->out.numargs != 1);
+		ret = req->out.args[0].size;
+	}
+	fuse_put_request(fc, req);
+
+	return ret;
+}
 
 static void fuse_request_send_nowait_locked(struct fuse_conn *fc,
 					    struct fuse_req *req)
@@ -2098,7 +2174,7 @@ void fuse_abort_conn(struct fuse_conn *fc)
 	if (fc->connected) {
 		fc->connected = 0;
 		fc->blocked = 0;
-		fc->initialized = 1;
+		fuse_set_initialized(fc);
 		end_io_requests(fc);
 		end_queued_requests(fc);
 		end_polls(fc);
@@ -2117,7 +2193,7 @@ int fuse_dev_release(struct inode *inode, struct file *file)
 		spin_lock(&fc->lock);
 		fc->connected = 0;
 		fc->blocked = 0;
-		fc->initialized = 1;
+		fuse_set_initialized(fc);
 		end_queued_requests(fc);
 		end_polls(fc);
 		wake_up_all(&fc->blocked_waitq);

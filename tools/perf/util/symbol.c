@@ -51,7 +51,9 @@ static enum dso_binary_type binary_type_symtab[] = {
 	DSO_BINARY_TYPE__BUILDID_DEBUGINFO,
 	DSO_BINARY_TYPE__SYSTEM_PATH_DSO,
 	DSO_BINARY_TYPE__GUEST_KMODULE,
+	DSO_BINARY_TYPE__GUEST_KMODULE_COMP,
 	DSO_BINARY_TYPE__SYSTEM_PATH_KMODULE,
+	DSO_BINARY_TYPE__SYSTEM_PATH_KMODULE_COMP,
 	DSO_BINARY_TYPE__OPENEMBEDDED_DEBUGINFO,
 	DSO_BINARY_TYPE__NOT_FOUND,
 };
@@ -394,6 +396,7 @@ static struct symbol *symbols__find_by_name(struct rb_root *symbols,
 					    const char *name)
 {
 	struct rb_node *n;
+	struct symbol_name_rb_node *s;
 
 	if (symbols == NULL)
 		return NULL;
@@ -401,7 +404,6 @@ static struct symbol *symbols__find_by_name(struct rb_root *symbols,
 	n = symbols->rb_node;
 
 	while (n) {
-		struct symbol_name_rb_node *s;
 		int cmp;
 
 		s = rb_entry(n, struct symbol_name_rb_node, rb_node);
@@ -412,10 +414,24 @@ static struct symbol *symbols__find_by_name(struct rb_root *symbols,
 		else if (cmp > 0)
 			n = n->rb_right;
 		else
-			return &s->sym;
+			break;
 	}
 
-	return NULL;
+	if (n == NULL)
+		return NULL;
+
+	/* return first symbol that has same name (if any) */
+	for (n = rb_prev(n); n; n = rb_prev(n)) {
+		struct symbol_name_rb_node *tmp;
+
+		tmp = rb_entry(n, struct symbol_name_rb_node, rb_node);
+		if (strcmp(tmp->sym.name, s->sym.name))
+			break;
+
+		s = tmp;
+	}
+
+	return &s->sym;
 }
 
 struct symbol *dso__find_symbol(struct dso *dso,
@@ -434,6 +450,17 @@ struct symbol *dso__next_symbol(struct symbol *sym)
 	return symbols__next(sym);
 }
 
+struct symbol *symbol__next_by_name(struct symbol *sym)
+{
+	struct symbol_name_rb_node *s = container_of(sym, struct symbol_name_rb_node, sym);
+	struct rb_node *n = rb_next(&s->rb_node);
+
+	return n ? &rb_entry(n, struct symbol_name_rb_node, rb_node)->sym : NULL;
+}
+
+ /*
+  * Teturns first symbol that matched with @name.
+  */
 struct symbol *dso__find_symbol_by_name(struct dso *dso, enum map_type type,
 					const char *name)
 {
@@ -1300,7 +1327,9 @@ static bool dso__is_compatible_symtab_type(struct dso *dso, bool kmod,
 		return dso->kernel == DSO_TYPE_GUEST_KERNEL;
 
 	case DSO_BINARY_TYPE__GUEST_KMODULE:
+	case DSO_BINARY_TYPE__GUEST_KMODULE_COMP:
 	case DSO_BINARY_TYPE__SYSTEM_PATH_KMODULE:
+	case DSO_BINARY_TYPE__SYSTEM_PATH_KMODULE_COMP:
 		/*
 		 * kernel modules know their symtab type - it's set when
 		 * creating a module dso in machine__new_module().
@@ -1368,7 +1397,9 @@ int dso__load(struct dso *dso, struct map *map, symbol_filter_t filter)
 		return -1;
 
 	kmod = dso->symtab_type == DSO_BINARY_TYPE__SYSTEM_PATH_KMODULE ||
-		dso->symtab_type == DSO_BINARY_TYPE__GUEST_KMODULE;
+		dso->symtab_type == DSO_BINARY_TYPE__SYSTEM_PATH_KMODULE_COMP ||
+		dso->symtab_type == DSO_BINARY_TYPE__GUEST_KMODULE ||
+		dso->symtab_type == DSO_BINARY_TYPE__GUEST_KMODULE_COMP;
 
 	/*
 	 * Iterate over candidate debug images.
@@ -1505,18 +1536,19 @@ int dso__load_vmlinux_path(struct dso *dso, struct map *map,
 			   symbol_filter_t filter)
 {
 	int i, err = 0;
-	char *filename;
+	char *filename = NULL;
 
-	pr_debug("Looking at the vmlinux_path (%d entries long)\n",
-		 vmlinux_path__nr_entries + 1);
-
-	filename = dso__build_id_filename(dso, NULL, 0);
+	if (!symbol_conf.ignore_vmlinux_buildid)
+		filename = dso__build_id_filename(dso, NULL, 0);
 	if (filename != NULL) {
 		err = dso__load_vmlinux(dso, map, filename, true, filter);
 		if (err > 0)
 			goto out;
 		free(filename);
 	}
+
+	pr_debug("Looking at the vmlinux_path (%d entries long)\n",
+		 vmlinux_path__nr_entries + 1);
 
 	for (i = 0; i < vmlinux_path__nr_entries; ++i) {
 		err = dso__load_vmlinux(dso, map, vmlinux_path[i], false, filter);

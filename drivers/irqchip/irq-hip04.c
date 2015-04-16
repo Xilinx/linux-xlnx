@@ -176,8 +176,7 @@ static void __exception_irq_entry hip04_handle_irq(struct pt_regs *regs)
 		irqnr = irqstat & GICC_IAR_INT_ID_MASK;
 
 		if (likely(irqnr > 15 && irqnr <= HIP04_MAX_IRQS)) {
-			irqnr = irq_find_mapping(hip04_data.domain, irqnr);
-			handle_IRQ(irqnr, regs);
+			handle_domain_irq(hip04_data.domain, irqnr, regs);
 			continue;
 		}
 		if (irqnr < 16) {
@@ -382,7 +381,7 @@ hip04_of_init(struct device_node *node, struct device_node *parent)
 	 * It will be refined as each CPU probes its ID.
 	 */
 	for (i = 0; i < NR_HIP04_CPU_IF; i++)
-		hip04_cpu_map[i] = 0xff;
+		hip04_cpu_map[i] = 0xffff;
 
 	/*
 	 * Find out how many interrupts are supported.

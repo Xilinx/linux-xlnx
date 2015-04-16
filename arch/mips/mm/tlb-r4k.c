@@ -332,7 +332,7 @@ void __update_tlb(struct vm_area_struct * vma, unsigned long address, pte_t pte)
 	{
 		ptep = pte_offset_map(pmdp, address);
 
-#if defined(CONFIG_64BIT_PHYS_ADDR) && defined(CONFIG_CPU_MIPS32)
+#if defined(CONFIG_PHYS_ADDR_T_64BIT) && defined(CONFIG_CPU_MIPS32)
 		write_c0_entrylo0(ptep->pte_high);
 		ptep++;
 		write_c0_entrylo1(ptep->pte_high);
@@ -489,6 +489,8 @@ static void r4k_tlb_configure(void)
 #ifdef CONFIG_64BIT
 		pg |= PG_ELPA;
 #endif
+		if (cpu_has_rixiex)
+			pg |= PG_IEC;
 		write_c0_pagegrain(pg);
 	}
 

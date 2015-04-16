@@ -39,6 +39,7 @@
 #include <asm/setup.h>
 #include <asm/sizes.h>
 #include <asm/tlb.h>
+#include <asm/alternative.h>
 
 #include "mm.h"
 
@@ -325,6 +326,7 @@ void __init mem_init(void)
 void free_initmem(void)
 {
 	free_initmem_default(0);
+	free_alternatives_memory();
 }
 
 #ifdef CONFIG_BLK_DEV_INITRD
@@ -333,14 +335,8 @@ static int keep_initrd;
 
 void free_initrd_mem(unsigned long start, unsigned long end)
 {
-	if (!keep_initrd) {
-		if (start == initrd_start)
-			start = round_down(start, PAGE_SIZE);
-		if (end == initrd_end)
-			end = round_up(end, PAGE_SIZE);
-
+	if (!keep_initrd)
 		free_reserved_area((void *)start, (void *)end, 0, "initrd");
-	}
 }
 
 static int __init keepinitrd_setup(char *__unused)

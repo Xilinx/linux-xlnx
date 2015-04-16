@@ -485,7 +485,7 @@ static sense_reason_t compare_and_write_callback(struct se_cmd *cmd)
 	cmd->t_data_nents_orig = cmd->t_data_nents;
 	cmd->t_data_nents = 1;
 
-	cmd->sam_task_attr = MSG_HEAD_TAG;
+	cmd->sam_task_attr = TCM_HEAD_TAG;
 	cmd->transport_complete_callback = compare_and_write_post;
 	/*
 	 * Now reset ->execute_cmd() to the normal sbc_execute_rw() handler
@@ -852,7 +852,7 @@ sbc_parse_cdb(struct se_cmd *cmd, struct sbc_ops *ops)
 		size = READ_CAP_LEN;
 		cmd->execute_cmd = sbc_emulate_readcapacity;
 		break;
-	case SERVICE_ACTION_IN:
+	case SERVICE_ACTION_IN_16:
 		switch (cmd->t_task_cdb[1] & 0x1f) {
 		case SAI_READ_CAPACITY_16:
 			cmd->execute_cmd = sbc_emulate_readcapacity_16;
@@ -953,21 +953,6 @@ sbc_parse_cdb(struct se_cmd *cmd, struct sbc_ops *ops)
 
 	if (cmd->se_cmd_flags & SCF_SCSI_DATA_CDB) {
 		unsigned long long end_lba;
-
-		if (sectors > dev->dev_attrib.fabric_max_sectors) {
-			printk_ratelimited(KERN_ERR "SCSI OP %02xh with too"
-				" big sectors %u exceeds fabric_max_sectors:"
-				" %u\n", cdb[0], sectors,
-				dev->dev_attrib.fabric_max_sectors);
-			return TCM_INVALID_CDB_FIELD;
-		}
-		if (sectors > dev->dev_attrib.hw_max_sectors) {
-			printk_ratelimited(KERN_ERR "SCSI OP %02xh with too"
-				" big sectors %u exceeds backend hw_max_sectors:"
-				" %u\n", cdb[0], sectors,
-				dev->dev_attrib.hw_max_sectors);
-			return TCM_INVALID_CDB_FIELD;
-		}
 check_lba:
 		end_lba = dev->transport->get_blocks(dev) + 1;
 		if (cmd->t_task_lba + sectors > end_lba) {

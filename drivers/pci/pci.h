@@ -208,6 +208,7 @@ void __pci_bus_size_bridges(struct pci_bus *bus,
 void __pci_bus_assign_resources(const struct pci_bus *bus,
 				struct list_head *realloc_head,
 				struct list_head *fail_head);
+bool pci_bus_clip_resource(struct pci_dev *dev, int idx);
 
 /**
  * pci_ari_enabled - query ARI forwarding status
@@ -253,8 +254,7 @@ static inline void pci_restore_ats_state(struct pci_dev *dev)
 #ifdef CONFIG_PCI_IOV
 int pci_iov_init(struct pci_dev *dev);
 void pci_iov_release(struct pci_dev *dev);
-int pci_iov_resource_bar(struct pci_dev *dev, int resno,
-			 enum pci_bar_type *type);
+int pci_iov_resource_bar(struct pci_dev *dev, int resno);
 resource_size_t pci_sriov_resource_alignment(struct pci_dev *dev, int resno);
 void pci_restore_iov_state(struct pci_dev *dev);
 int pci_iov_bus_range(struct pci_bus *bus);
@@ -268,8 +268,7 @@ static inline void pci_iov_release(struct pci_dev *dev)
 
 {
 }
-static inline int pci_iov_resource_bar(struct pci_dev *dev, int resno,
-				       enum pci_bar_type *type)
+static inline int pci_iov_resource_bar(struct pci_dev *dev, int resno)
 {
 	return 0;
 }

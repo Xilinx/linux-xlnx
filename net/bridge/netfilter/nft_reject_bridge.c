@@ -14,6 +14,7 @@
 #include <linux/netfilter/nf_tables.h>
 #include <net/netfilter/nf_tables.h>
 #include <net/netfilter/nft_reject.h>
+#include <net/netfilter/nf_tables_bridge.h>
 #include <net/netfilter/ipv4/nf_reject.h>
 #include <net/netfilter/ipv6/nf_reject.h>
 #include <linux/ip.h>
@@ -35,30 +36,6 @@ static void nft_reject_br_push_etherhdr(struct sk_buff *oldskb,
 	skb_pull(nskb, ETH_HLEN);
 }
 
-static int nft_reject_iphdr_validate(struct sk_buff *oldskb)
-{
-	struct iphdr *iph;
-	u32 len;
-
-	if (!pskb_may_pull(oldskb, sizeof(struct iphdr)))
-		return 0;
-
-	iph = ip_hdr(oldskb);
-	if (iph->ihl < 5 || iph->version != 4)
-		return 0;
-
-	len = ntohs(iph->tot_len);
-	if (oldskb->len < len)
-		return 0;
-	else if (len < (iph->ihl*4))
-		return 0;
-
-	if (!pskb_may_pull(oldskb, iph->ihl*4))
-		return 0;
-
-	return 1;
-}
-
 static void nft_reject_br_send_v4_tcp_reset(struct sk_buff *oldskb, int hook)
 {
 	struct sk_buff *nskb;
@@ -66,7 +43,7 @@ static void nft_reject_br_send_v4_tcp_reset(struct sk_buff *oldskb, int hook)
 	const struct tcphdr *oth;
 	struct tcphdr _oth;
 
-	if (!nft_reject_iphdr_validate(oldskb))
+	if (!nft_bridge_iphdr_validate(oldskb))
 		return;
 
 	oth = nf_reject_ip_tcphdr_get(oldskb, &_oth, hook);
@@ -101,7 +78,7 @@ static void nft_reject_br_send_v4_unreach(struct sk_buff *oldskb, int hook,
 	void *payload;
 	__wsum csum;
 
-	if (!nft_reject_iphdr_validate(oldskb))
+	if (!nft_bridge_iphdr_validate(oldskb))
 		return;
 
 	/* IP header checks: fragment. */
@@ -146,25 +123,6 @@ static void nft_reject_br_send_v4_unreach(struct sk_buff *oldskb, int hook,
 	br_deliver(br_port_get_rcu(oldskb->dev), nskb);
 }
 
-static int nft_reject_ip6hdr_validate(struct sk_buff *oldskb)
-{
-	struct ipv6hdr *hdr;
-	u32 pkt_len;
-
-	if (!pskb_may_pull(oldskb, sizeof(struct ipv6hdr)))
-		return 0;
-
-	hdr = ipv6_hdr(oldskb);
-	if (hdr->version != 6)
-		return 0;
-
-	pkt_len = ntohs(hdr->payload_len);
-	if (pkt_len + sizeof(struct ipv6hdr) > oldskb->len)
-		return 0;
-
-	return 1;
-}
-
 static void nft_reject_br_send_v6_tcp_reset(struct net *net,
 					    struct sk_buff *oldskb, int hook)
 {
@@ -174,7 +132,7 @@ static void nft_reject_br_send_v6_tcp_reset(struct net *net,
 	unsigned int otcplen;
 	struct ipv6hdr *nip6h;
 
-	if (!nft_reject_ip6hdr_validate(oldskb))
+	if (!nft_bridge_ip6hdr_validate(oldskb))
 		return;
 
 	oth = nf_reject_ip6_tcphdr_get(oldskb, &_oth, &otcplen, hook);
@@ -207,7 +165,7 @@ static void nft_reject_br_send_v6_unreach(struct net *net,
 	unsigned int len;
 	void *payload;
 
-	if (!nft_reject_ip6hdr_validate(oldskb))
+	if (!nft_bridge_ip6hdr_validate(oldskb))
 		return;
 
 	/* Include "As much of invoking packet as possible without the ICMPv6
@@ -307,22 +265,12 @@ out:
 	data[NFT_REG_VERDICT].verdict = NF_DROP;
 }
 
-static int nft_reject_bridge_validate_hooks(const struct nft_chain *chain)
+static int nft_reject_bridge_validate(const struct nft_ctx *ctx,
+				      const struct nft_expr *expr,
+				      const struct nft_data **data)
 {
-	struct nft_base_chain *basechain;
-
-	if (chain->flags & NFT_BASE_CHAIN) {
-		basechain = nft_base_chain(chain);
-
-		switch (basechain->ops[0].hooknum) {
-		case NF_BR_PRE_ROUTING:
-		case NF_BR_LOCAL_IN:
-			break;
-		default:
-			return -EOPNOTSUPP;
-		}
-	}
-	return 0;
+	return nft_chain_validate_hooks(ctx->chain, (1 << NF_BR_PRE_ROUTING) |
+						    (1 << NF_BR_LOCAL_IN));
 }
 
 static int nft_reject_bridge_init(const struct nft_ctx *ctx,
@@ -332,7 +280,7 @@ static int nft_reject_bridge_init(const struct nft_ctx *ctx,
 	struct nft_reject *priv = nft_expr_priv(expr);
 	int icmp_code, err;
 
-	err = nft_reject_bridge_validate_hooks(ctx->chain);
+	err = nft_reject_bridge_validate(ctx, expr, NULL);
 	if (err < 0)
 		return err;
 
@@ -381,13 +329,6 @@ static int nft_reject_bridge_dump(struct sk_buff *skb,
 
 nla_put_failure:
 	return -1;
-}
-
-static int nft_reject_bridge_validate(const struct nft_ctx *ctx,
-				      const struct nft_expr *expr,
-				      const struct nft_data **data)
-{
-	return nft_reject_bridge_validate_hooks(ctx->chain);
 }
 
 static struct nft_expr_type nft_reject_bridge_type;

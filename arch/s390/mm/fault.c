@@ -261,8 +261,8 @@ static inline void report_user_fault(struct pt_regs *regs, long signr)
 		return;
 	if (!printk_ratelimit())
 		return;
-	printk(KERN_ALERT "User process fault: interruption code 0x%X ",
-	       regs->int_code);
+	printk(KERN_ALERT "User process fault: interruption code %04x ilc:%d",
+	       regs->int_code & 0xffff, regs->int_code >> 17);
 	print_vma_addr(KERN_CONT "in ", regs->psw.addr & PSW_ADDR_INSN);
 	printk(KERN_CONT "\n");
 	printk(KERN_ALERT "failing address: %016lx TEID: %016lx\n",
@@ -374,6 +374,12 @@ static noinline void do_fault_error(struct pt_regs *regs, int fault)
 				do_no_context(regs);
 			else
 				pagefault_out_of_memory();
+		} else if (fault & VM_FAULT_SIGSEGV) {
+			/* Kernel mode? Handle exceptions or die */
+			if (!user_mode(regs))
+				do_no_context(regs);
+			else
+				do_sigsegv(regs, SEGV_MAPERR);
 		} else if (fault & VM_FAULT_SIGBUS) {
 			/* Kernel mode? Handle exceptions or die */
 			if (!user_mode(regs))
@@ -548,7 +554,7 @@ out:
 	return fault;
 }
 
-void __kprobes do_protection_exception(struct pt_regs *regs)
+void do_protection_exception(struct pt_regs *regs)
 {
 	unsigned long trans_exc_code;
 	int fault;
@@ -574,8 +580,9 @@ void __kprobes do_protection_exception(struct pt_regs *regs)
 	if (unlikely(fault))
 		do_fault_error(regs, fault);
 }
+NOKPROBE_SYMBOL(do_protection_exception);
 
-void __kprobes do_dat_exception(struct pt_regs *regs)
+void do_dat_exception(struct pt_regs *regs)
 {
 	int access, fault;
 
@@ -584,6 +591,7 @@ void __kprobes do_dat_exception(struct pt_regs *regs)
 	if (unlikely(fault))
 		do_fault_error(regs, fault);
 }
+NOKPROBE_SYMBOL(do_dat_exception);
 
 #ifdef CONFIG_PFAULT 
 /*

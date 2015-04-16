@@ -189,6 +189,8 @@ static void __vb2_queue_cancel(struct vb2_queue *q);
 static int __vb2_buf_mem_alloc(struct vb2_buffer *vb)
 {
 	struct vb2_queue *q = vb->vb2_queue;
+	enum dma_data_direction dma_dir =
+		V4L2_TYPE_IS_OUTPUT(q->type) ? DMA_TO_DEVICE : DMA_FROM_DEVICE;
 	void *mem_priv;
 	int plane;
 
@@ -200,7 +202,7 @@ static int __vb2_buf_mem_alloc(struct vb2_buffer *vb)
 		unsigned long size = PAGE_ALIGN(q->plane_sizes[plane]);
 
 		mem_priv = call_ptr_memop(vb, alloc, q->alloc_ctx[plane],
-				      size, q->gfp_flags);
+				      size, dma_dir, q->gfp_flags);
 		if (IS_ERR_OR_NULL(mem_priv))
 			goto free;
 
@@ -1358,7 +1360,8 @@ static int __qbuf_userptr(struct vb2_buffer *vb, const struct v4l2_buffer *b)
 	void *mem_priv;
 	unsigned int plane;
 	int ret;
-	int write = !V4L2_TYPE_IS_OUTPUT(q->type);
+	enum dma_data_direction dma_dir =
+		V4L2_TYPE_IS_OUTPUT(q->type) ? DMA_TO_DEVICE : DMA_FROM_DEVICE;
 	bool reacquired = vb->planes[0].mem_priv == NULL;
 
 	memset(planes, 0, sizeof(planes[0]) * vb->num_planes);
@@ -1400,7 +1403,7 @@ static int __qbuf_userptr(struct vb2_buffer *vb, const struct v4l2_buffer *b)
 		/* Acquire each plane's memory */
 		mem_priv = call_ptr_memop(vb, get_userptr, q->alloc_ctx[plane],
 				      planes[plane].m.userptr,
-				      planes[plane].length, write);
+				      planes[plane].length, dma_dir);
 		if (IS_ERR_OR_NULL(mem_priv)) {
 			dprintk(1, "failed acquiring userspace "
 						"memory for plane %d\n", plane);
@@ -1461,7 +1464,8 @@ static int __qbuf_dmabuf(struct vb2_buffer *vb, const struct v4l2_buffer *b)
 	void *mem_priv;
 	unsigned int plane;
 	int ret;
-	int write = !V4L2_TYPE_IS_OUTPUT(q->type);
+	enum dma_data_direction dma_dir =
+		V4L2_TYPE_IS_OUTPUT(q->type) ? DMA_TO_DEVICE : DMA_FROM_DEVICE;
 	bool reacquired = vb->planes[0].mem_priv == NULL;
 
 	memset(planes, 0, sizeof(planes[0]) * vb->num_planes);
@@ -1509,7 +1513,7 @@ static int __qbuf_dmabuf(struct vb2_buffer *vb, const struct v4l2_buffer *b)
 
 		/* Acquire each plane's memory */
 		mem_priv = call_ptr_memop(vb, attach_dmabuf, q->alloc_ctx[plane],
-			dbuf, planes[plane].length, write);
+			dbuf, planes[plane].length, dma_dir);
 		if (IS_ERR(mem_priv)) {
 			dprintk(1, "failed to attach dmabuf\n");
 			ret = PTR_ERR(mem_priv);
@@ -3142,27 +3146,26 @@ static int vb2_thread(void *data)
 			prequeue--;
 		} else {
 			call_void_qop(q, wait_finish, q);
-			ret = vb2_internal_dqbuf(q, &fileio->b, 0);
+			if (!threadio->stop)
+				ret = vb2_internal_dqbuf(q, &fileio->b, 0);
 			call_void_qop(q, wait_prepare, q);
 			dprintk(5, "file io: vb2_dqbuf result: %d\n", ret);
 		}
-		if (threadio->stop)
-			break;
-		if (ret)
+		if (ret || threadio->stop)
 			break;
 		try_to_freeze();
 
 		vb = q->bufs[fileio->b.index];
 		if (!(fileio->b.flags & V4L2_BUF_FLAG_ERROR))
-			ret = threadio->fnc(vb, threadio->priv);
-		if (ret)
-			break;
+			if (threadio->fnc(vb, threadio->priv))
+				break;
 		call_void_qop(q, wait_finish, q);
 		if (set_timestamp)
 			v4l2_get_timestamp(&fileio->b.timestamp);
-		ret = vb2_internal_qbuf(q, &fileio->b);
+		if (!threadio->stop)
+			ret = vb2_internal_qbuf(q, &fileio->b);
 		call_void_qop(q, wait_prepare, q);
-		if (ret)
+		if (ret || threadio->stop)
 			break;
 	}
 
@@ -3231,11 +3234,11 @@ int vb2_thread_stop(struct vb2_queue *q)
 	threadio->stop = true;
 	vb2_internal_streamoff(q, q->type);
 	call_void_qop(q, wait_prepare, q);
+	err = kthread_stop(threadio->thread);
 	q->fileio = NULL;
 	fileio->req.count = 0;
 	vb2_reqbufs(q, &fileio->req);
 	kfree(fileio);
-	err = kthread_stop(threadio->thread);
 	threadio->thread = NULL;
 	kfree(threadio);
 	q->fileio = NULL;

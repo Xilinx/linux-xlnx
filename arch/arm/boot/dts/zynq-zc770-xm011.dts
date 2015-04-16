@@ -33,6 +33,11 @@
 		device_type = "memory";
 		reg = <0x0 0x40000000>;
 	};
+
+	usb_phy1: phy1 {
+		compatible = "usb-nop-xceiv";
+		#phy-cells = <0>;
+	};
 };
 
 &smcc {
@@ -82,13 +87,6 @@
 	is-decoded-cs = <0>;
 };
 
-&usb1 {
-	status = "okay";
-	dr_mode = "host";
-	phy_type = "ulpi";
-};
-
-
 &can0 {
 	status = "okay";
 };
@@ -105,4 +103,10 @@
 
 &uart1 {
 	status = "okay";
+};
+
+&usb1 {
+	status = "okay";
+	dr_mode = "host";
+	usb-phy = <&usb_phy1>;
 };

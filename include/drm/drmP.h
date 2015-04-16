@@ -125,8 +125,8 @@ struct dma_buf_attachment;
 extern __printf(2, 3)
 void drm_ut_debug_printk(const char *function_name,
 			 const char *format, ...);
-extern __printf(2, 3)
-void drm_err(const char *func, const char *format, ...);
+extern __printf(1, 2)
+void drm_err(const char *format, ...);
 
 /***********************************************************************/
 /** \name DRM template customization defaults */
@@ -155,7 +155,7 @@ void drm_err(const char *func, const char *format, ...);
  * \param arg arguments
  */
 #define DRM_ERROR(fmt, ...)				\
-	drm_err(__func__, fmt, ##__VA_ARGS__)
+	drm_err(fmt, ##__VA_ARGS__)
 
 /**
  * Rate limited error output.  Like DRM_ERROR() but won't flood the log.
@@ -170,7 +170,7 @@ void drm_err(const char *func, const char *format, ...);
 				      DEFAULT_RATELIMIT_BURST);		\
 									\
 	if (__ratelimit(&_rs))						\
-		drm_err(__func__, fmt, ##__VA_ARGS__);			\
+		drm_err(fmt, ##__VA_ARGS__);				\
 })
 
 #define DRM_INFO(fmt, ...)				\
@@ -809,7 +809,7 @@ struct drm_device {
 	struct drm_local_map *agp_buffer_map;
 	unsigned int agp_buffer_token;
 
-        struct drm_mode_config mode_config;	/**< Current mode config */
+	struct drm_mode_config mode_config;	/**< Current mode config */
 
 	/** \name GEM information */
 	/*@{ */
@@ -901,11 +901,15 @@ extern int drm_vblank_init(struct drm_device *dev, int num_crtcs);
 extern int drm_wait_vblank(struct drm_device *dev, void *data,
 			   struct drm_file *filp);
 extern u32 drm_vblank_count(struct drm_device *dev, int crtc);
+extern u32 drm_crtc_vblank_count(struct drm_crtc *crtc);
 extern u32 drm_vblank_count_and_time(struct drm_device *dev, int crtc,
 				     struct timeval *vblanktime);
 extern void drm_send_vblank_event(struct drm_device *dev, int crtc,
 				     struct drm_pending_vblank_event *e);
+extern void drm_crtc_send_vblank_event(struct drm_crtc *crtc,
+				       struct drm_pending_vblank_event *e);
 extern bool drm_handle_vblank(struct drm_device *dev, int crtc);
+extern bool drm_crtc_handle_vblank(struct drm_crtc *crtc);
 extern int drm_vblank_get(struct drm_device *dev, int crtc);
 extern void drm_vblank_put(struct drm_device *dev, int crtc);
 extern int drm_crtc_vblank_get(struct drm_crtc *crtc);
@@ -986,7 +990,7 @@ extern void drm_gem_dmabuf_release(struct dma_buf *dma_buf);
 
 extern int drm_prime_sg_to_page_addr_arrays(struct sg_table *sgt, struct page **pages,
 					    dma_addr_t *addrs, int max_pages);
-extern struct sg_table *drm_prime_pages_to_sg(struct page **pages, int nr_pages);
+extern struct sg_table *drm_prime_pages_to_sg(struct page **pages, unsigned int nr_pages);
 extern void drm_prime_gem_destroy(struct drm_gem_object *obj, struct sg_table *sg);
 
 
@@ -1028,10 +1032,25 @@ void drm_pci_agp_destroy(struct drm_device *dev);
 
 extern int drm_pci_init(struct drm_driver *driver, struct pci_driver *pdriver);
 extern void drm_pci_exit(struct drm_driver *driver, struct pci_driver *pdriver);
+#ifdef CONFIG_PCI
 extern int drm_get_pci_dev(struct pci_dev *pdev,
 			   const struct pci_device_id *ent,
 			   struct drm_driver *driver);
 extern int drm_pci_set_busid(struct drm_device *dev, struct drm_master *master);
+#else
+static inline int drm_get_pci_dev(struct pci_dev *pdev,
+				  const struct pci_device_id *ent,
+				  struct drm_driver *driver)
+{
+	return -ENOSYS;
+}
+
+static inline int drm_pci_set_busid(struct drm_device *dev,
+				    struct drm_master *master)
+{
+	return -ENOSYS;
+}
+#endif
 
 #define DRM_PCIE_SPEED_25 1
 #define DRM_PCIE_SPEED_50 2

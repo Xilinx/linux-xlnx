@@ -58,6 +58,26 @@ static void kvm_tlb_flush_vmid_ipa(struct kvm *kvm, phys_addr_t ipa)
 		kvm_call_hyp(__kvm_tlb_flush_vmid_ipa, kvm, ipa);
 }
 
+/*
+ * D-Cache management functions. They take the page table entries by
+ * value, as they are flushing the cache using the kernel mapping (or
+ * kmap on 32bit).
+ */
+static void kvm_flush_dcache_pte(pte_t pte)
+{
+	__kvm_flush_dcache_pte(pte);
+}
+
+static void kvm_flush_dcache_pmd(pmd_t pmd)
+{
+	__kvm_flush_dcache_pmd(pmd);
+}
+
+static void kvm_flush_dcache_pud(pud_t pud)
+{
+	__kvm_flush_dcache_pud(pud);
+}
+
 static int mmu_topup_memory_cache(struct kvm_mmu_memory_cache *cache,
 				  int min, int max)
 {
@@ -119,6 +139,26 @@ static void clear_pmd_entry(struct kvm *kvm, pmd_t *pmd, phys_addr_t addr)
 	put_page(virt_to_page(pmd));
 }
 
+/*
+ * Unmapping vs dcache management:
+ *
+ * If a guest maps certain memory pages as uncached, all writes will
+ * bypass the data cache and go directly to RAM.  However, the CPUs
+ * can still speculate reads (not writes) and fill cache lines with
+ * data.
+ *
+ * Those cache lines will be *clean* cache lines though, so a
+ * clean+invalidate operation is equivalent to an invalidate
+ * operation, because no cache lines are marked dirty.
+ *
+ * Those clean cache lines could be filled prior to an uncached write
+ * by the guest, and the cache coherent IO subsystem would therefore
+ * end up writing old data to disk.
+ *
+ * This is why right after unmapping a page/section and invalidating
+ * the corresponding TLBs, we call kvm_flush_dcache_p*() to make sure
+ * the IO subsystem will never hit in the cache.
+ */
 static void unmap_ptes(struct kvm *kvm, pmd_t *pmd,
 		       phys_addr_t addr, phys_addr_t end)
 {
@@ -128,9 +168,16 @@ static void unmap_ptes(struct kvm *kvm, pmd_t *pmd,
 	start_pte = pte = pte_offset_kernel(pmd, addr);
 	do {
 		if (!pte_none(*pte)) {
+			pte_t old_pte = *pte;
+
 			kvm_set_pte(pte, __pte(0));
-			put_page(virt_to_page(pte));
 			kvm_tlb_flush_vmid_ipa(kvm, addr);
+
+			/* No need to invalidate the cache for device mappings */
+			if ((pte_val(old_pte) & PAGE_S2_DEVICE) != PAGE_S2_DEVICE)
+				kvm_flush_dcache_pte(old_pte);
+
+			put_page(virt_to_page(pte));
 		}
 	} while (pte++, addr += PAGE_SIZE, addr != end);
 
@@ -149,8 +196,13 @@ static void unmap_pmds(struct kvm *kvm, pud_t *pud,
 		next = kvm_pmd_addr_end(addr, end);
 		if (!pmd_none(*pmd)) {
 			if (kvm_pmd_huge(*pmd)) {
+				pmd_t old_pmd = *pmd;
+
 				pmd_clear(pmd);
 				kvm_tlb_flush_vmid_ipa(kvm, addr);
+
+				kvm_flush_dcache_pmd(old_pmd);
+
 				put_page(virt_to_page(pmd));
 			} else {
 				unmap_ptes(kvm, pmd, addr, next);
@@ -173,8 +225,13 @@ static void unmap_puds(struct kvm *kvm, pgd_t *pgd,
 		next = kvm_pud_addr_end(addr, end);
 		if (!pud_none(*pud)) {
 			if (pud_huge(*pud)) {
+				pud_t old_pud = *pud;
+
 				pud_clear(pud);
 				kvm_tlb_flush_vmid_ipa(kvm, addr);
+
+				kvm_flush_dcache_pud(old_pud);
+
 				put_page(virt_to_page(pud));
 			} else {
 				unmap_pmds(kvm, pud, addr, next);
@@ -209,10 +266,9 @@ static void stage2_flush_ptes(struct kvm *kvm, pmd_t *pmd,
 
 	pte = pte_offset_kernel(pmd, addr);
 	do {
-		if (!pte_none(*pte)) {
-			hva_t hva = gfn_to_hva(kvm, addr >> PAGE_SHIFT);
-			kvm_flush_dcache_to_poc((void*)hva, PAGE_SIZE);
-		}
+		if (!pte_none(*pte) &&
+		    (pte_val(*pte) & PAGE_S2_DEVICE) != PAGE_S2_DEVICE)
+			kvm_flush_dcache_pte(*pte);
 	} while (pte++, addr += PAGE_SIZE, addr != end);
 }
 
@@ -226,12 +282,10 @@ static void stage2_flush_pmds(struct kvm *kvm, pud_t *pud,
 	do {
 		next = kvm_pmd_addr_end(addr, end);
 		if (!pmd_none(*pmd)) {
-			if (kvm_pmd_huge(*pmd)) {
-				hva_t hva = gfn_to_hva(kvm, addr >> PAGE_SHIFT);
-				kvm_flush_dcache_to_poc((void*)hva, PMD_SIZE);
-			} else {
+			if (kvm_pmd_huge(*pmd))
+				kvm_flush_dcache_pmd(*pmd);
+			else
 				stage2_flush_ptes(kvm, pmd, addr, next);
-			}
 		}
 	} while (pmd++, addr = next, addr != end);
 }
@@ -246,12 +300,10 @@ static void stage2_flush_puds(struct kvm *kvm, pgd_t *pgd,
 	do {
 		next = kvm_pud_addr_end(addr, end);
 		if (!pud_none(*pud)) {
-			if (pud_huge(*pud)) {
-				hva_t hva = gfn_to_hva(kvm, addr >> PAGE_SHIFT);
-				kvm_flush_dcache_to_poc((void*)hva, PUD_SIZE);
-			} else {
+			if (pud_huge(*pud))
+				kvm_flush_dcache_pud(*pud);
+			else
 				stage2_flush_pmds(kvm, pud, addr, next);
-			}
 		}
 	} while (pud++, addr = next, addr != end);
 }
@@ -278,7 +330,7 @@ static void stage2_flush_memslot(struct kvm *kvm,
  * Go through the stage 2 page tables and invalidate any cache lines
  * backing memory already mapped to the VM.
  */
-void stage2_flush_vm(struct kvm *kvm)
+static void stage2_flush_vm(struct kvm *kvm)
 {
 	struct kvm_memslots *slots;
 	struct kvm_memory_slot *memslot;
@@ -612,6 +664,71 @@ static void unmap_stage2_range(struct kvm *kvm, phys_addr_t start, u64 size)
 	unmap_range(kvm, kvm->arch.pgd, start, size);
 }
 
+static void stage2_unmap_memslot(struct kvm *kvm,
+				 struct kvm_memory_slot *memslot)
+{
+	hva_t hva = memslot->userspace_addr;
+	phys_addr_t addr = memslot->base_gfn << PAGE_SHIFT;
+	phys_addr_t size = PAGE_SIZE * memslot->npages;
+	hva_t reg_end = hva + size;
+
+	/*
+	 * A memory region could potentially cover multiple VMAs, and any holes
+	 * between them, so iterate over all of them to find out if we should
+	 * unmap any of them.
+	 *
+	 *     +--------------------------------------------+
+	 * +---------------+----------------+   +----------------+
+	 * |   : VMA 1     |      VMA 2     |   |    VMA 3  :    |
+	 * +---------------+----------------+   +----------------+
+	 *     |               memory region                |
+	 *     +--------------------------------------------+
+	 */
+	do {
+		struct vm_area_struct *vma = find_vma(current->mm, hva);
+		hva_t vm_start, vm_end;
+
+		if (!vma || vma->vm_start >= reg_end)
+			break;
+
+		/*
+		 * Take the intersection of this VMA with the memory region
+		 */
+		vm_start = max(hva, vma->vm_start);
+		vm_end = min(reg_end, vma->vm_end);
+
+		if (!(vma->vm_flags & VM_PFNMAP)) {
+			gpa_t gpa = addr + (vm_start - memslot->userspace_addr);
+			unmap_stage2_range(kvm, gpa, vm_end - vm_start);
+		}
+		hva = vm_end;
+	} while (hva < reg_end);
+}
+
+/**
+ * stage2_unmap_vm - Unmap Stage-2 RAM mappings
+ * @kvm: The struct kvm pointer
+ *
+ * Go through the memregions and unmap any reguler RAM
+ * backing memory already mapped to the VM.
+ */
+void stage2_unmap_vm(struct kvm *kvm)
+{
+	struct kvm_memslots *slots;
+	struct kvm_memory_slot *memslot;
+	int idx;
+
+	idx = srcu_read_lock(&kvm->srcu);
+	spin_lock(&kvm->mmu_lock);
+
+	slots = kvm_memslots(kvm);
+	kvm_for_each_memslot(memslot, slots)
+		stage2_unmap_memslot(kvm, memslot);
+
+	spin_unlock(&kvm->mmu_lock);
+	srcu_read_unlock(&kvm->srcu, idx);
+}
+
 /**
  * kvm_free_stage2_pgd - free all stage-2 tables
  * @kvm:	The KVM struct pointer for the VM.
@@ -840,6 +957,12 @@ static bool kvm_is_device_pfn(unsigned long pfn)
 	return !pfn_valid(pfn);
 }
 
+static void coherent_cache_guest_page(struct kvm_vcpu *vcpu, pfn_t pfn,
+				      unsigned long size, bool uncached)
+{
+	__coherent_cache_guest_page(vcpu, pfn, size, uncached);
+}
+
 static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 			  struct kvm_memory_slot *memslot, unsigned long hva,
 			  unsigned long fault_status)
@@ -853,6 +976,7 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 	struct vm_area_struct *vma;
 	pfn_t pfn;
 	pgprot_t mem_type = PAGE_S2;
+	bool fault_ipa_uncached;
 
 	write_fault = kvm_is_write_fault(vcpu);
 	if (fault_status == FSC_PERM && !write_fault) {
@@ -919,6 +1043,8 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 	if (!hugetlb && !force_pte)
 		hugetlb = transparent_hugepage_adjust(&pfn, &fault_ipa);
 
+	fault_ipa_uncached = memslot->flags & KVM_MEMSLOT_INCOHERENT;
+
 	if (hugetlb) {
 		pmd_t new_pmd = pfn_pmd(pfn, mem_type);
 		new_pmd = pmd_mkhuge(new_pmd);
@@ -926,7 +1052,7 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 			kvm_set_s2pmd_writable(&new_pmd);
 			kvm_set_pfn_dirty(pfn);
 		}
-		coherent_cache_guest_page(vcpu, hva & PMD_MASK, PMD_SIZE);
+		coherent_cache_guest_page(vcpu, pfn, PMD_SIZE, fault_ipa_uncached);
 		ret = stage2_set_pmd_huge(kvm, memcache, fault_ipa, &new_pmd);
 	} else {
 		pte_t new_pte = pfn_pte(pfn, mem_type);
@@ -934,7 +1060,7 @@ static int user_mem_abort(struct kvm_vcpu *vcpu, phys_addr_t fault_ipa,
 			kvm_set_s2pte_writable(&new_pte);
 			kvm_set_pfn_dirty(pfn);
 		}
-		coherent_cache_guest_page(vcpu, hva, PAGE_SIZE);
+		coherent_cache_guest_page(vcpu, pfn, PAGE_SIZE, fault_ipa_uncached);
 		ret = stage2_set_pte(kvm, memcache, fault_ipa, &new_pte,
 			pgprot_val(mem_type) == pgprot_val(PAGE_S2_DEVICE));
 	}
@@ -1294,11 +1420,12 @@ int kvm_arch_prepare_memory_region(struct kvm *kvm,
 		hva = vm_end;
 	} while (hva < reg_end);
 
-	if (ret) {
-		spin_lock(&kvm->mmu_lock);
+	spin_lock(&kvm->mmu_lock);
+	if (ret)
 		unmap_stage2_range(kvm, mem->guest_phys_addr, mem->memory_size);
-		spin_unlock(&kvm->mmu_lock);
-	}
+	else
+		stage2_flush_memslot(kvm, memslot);
+	spin_unlock(&kvm->mmu_lock);
 	return ret;
 }
 
@@ -1310,6 +1437,15 @@ void kvm_arch_free_memslot(struct kvm *kvm, struct kvm_memory_slot *free,
 int kvm_arch_create_memslot(struct kvm *kvm, struct kvm_memory_slot *slot,
 			    unsigned long npages)
 {
+	/*
+	 * Readonly memslots are not incoherent with the caches by definition,
+	 * but in practice, they are used mostly to emulate ROMs or NOR flashes
+	 * that the guest may consider devices and hence map as uncached.
+	 * To prevent incoherency issues in these cases, tag all readonly
+	 * regions as incoherent.
+	 */
+	if (slot->flags & KVM_MEM_READONLY)
+		slot->flags |= KVM_MEMSLOT_INCOHERENT;
 	return 0;
 }
 
@@ -1330,4 +1466,72 @@ void kvm_arch_flush_shadow_memslot(struct kvm *kvm,
 	spin_lock(&kvm->mmu_lock);
 	unmap_stage2_range(kvm, gpa, size);
 	spin_unlock(&kvm->mmu_lock);
+}
+
+/*
+ * See note at ARMv7 ARM B1.14.4 (TL;DR: S/W ops are not easily virtualized).
+ *
+ * Main problems:
+ * - S/W ops are local to a CPU (not broadcast)
+ * - We have line migration behind our back (speculation)
+ * - System caches don't support S/W at all (damn!)
+ *
+ * In the face of the above, the best we can do is to try and convert
+ * S/W ops to VA ops. Because the guest is not allowed to infer the
+ * S/W to PA mapping, it can only use S/W to nuke the whole cache,
+ * which is a rather good thing for us.
+ *
+ * Also, it is only used when turning caches on/off ("The expected
+ * usage of the cache maintenance instructions that operate by set/way
+ * is associated with the cache maintenance instructions associated
+ * with the powerdown and powerup of caches, if this is required by
+ * the implementation.").
+ *
+ * We use the following policy:
+ *
+ * - If we trap a S/W operation, we enable VM trapping to detect
+ *   caches being turned on/off, and do a full clean.
+ *
+ * - We flush the caches on both caches being turned on and off.
+ *
+ * - Once the caches are enabled, we stop trapping VM ops.
+ */
+void kvm_set_way_flush(struct kvm_vcpu *vcpu)
+{
+	unsigned long hcr = vcpu_get_hcr(vcpu);
+
+	/*
+	 * If this is the first time we do a S/W operation
+	 * (i.e. HCR_TVM not set) flush the whole memory, and set the
+	 * VM trapping.
+	 *
+	 * Otherwise, rely on the VM trapping to wait for the MMU +
+	 * Caches to be turned off. At that point, we'll be able to
+	 * clean the caches again.
+	 */
+	if (!(hcr & HCR_TVM)) {
+		trace_kvm_set_way_flush(*vcpu_pc(vcpu),
+					vcpu_has_cache_enabled(vcpu));
+		stage2_flush_vm(vcpu->kvm);
+		vcpu_set_hcr(vcpu, hcr | HCR_TVM);
+	}
+}
+
+void kvm_toggle_cache(struct kvm_vcpu *vcpu, bool was_enabled)
+{
+	bool now_enabled = vcpu_has_cache_enabled(vcpu);
+
+	/*
+	 * If switching the MMU+caches on, need to invalidate the caches.
+	 * If switching it off, need to clean the caches.
+	 * Clean + invalidate does the trick always.
+	 */
+	if (now_enabled != was_enabled)
+		stage2_flush_vm(vcpu->kvm);
+
+	/* Caches are now on, stop trapping VM ops (until a S/W op) */
+	if (now_enabled)
+		vcpu_set_hcr(vcpu, vcpu_get_hcr(vcpu) & ~HCR_TVM);
+
+	trace_kvm_toggle_cache(*vcpu_pc(vcpu), was_enabled, now_enabled);
 }
