@@ -151,7 +151,7 @@ static void xilinx_pcie_clear_err_interrupts(struct xilinx_pcie_port *port)
 	u32 val = pcie_read(port, XILINX_PCIE_REG_RPEFR);
 
 	if (val & XILINX_PCIE_RPEFR_ERR_VALID) {
-		dev_dbg(port->dev, "Requester ID %d\n",
+		dev_dbg(port->dev, "Requester ID %ld\n",
 			val & XILINX_PCIE_RPEFR_REQ_ID);
 		pcie_write(port, XILINX_PCIE_RPEFR_ALL_MASK,
 			   XILINX_PCIE_REG_RPEFR);
