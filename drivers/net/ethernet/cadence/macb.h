@@ -71,7 +71,7 @@
 #define GEM_NCFGR				0x0004
 #define GEM_USRIO				0x000c
 #define GEM_DMACFG				0x0010
-#define GEM_JML				0x0048
+#define GEM_JML					0x0048
 #define GEM_HRB					0x0080
 #define GEM_HRT					0x0084
 #define GEM_SA1B				0x0088
