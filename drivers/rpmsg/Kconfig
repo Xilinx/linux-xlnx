@@ -15,7 +15,7 @@ config RPMSG_SERVER_SAMPLE
 
 config RPMSG_FREERTOS_STAT
 	tristate "An FreeRTOS statistic"
-	depends on RPMSG
+	depends on RPMSG && NET
 	---help---
 	  This is just a sample to get statistic from FreeRTOS.
 	  Say either Y or M. You know you want to.
