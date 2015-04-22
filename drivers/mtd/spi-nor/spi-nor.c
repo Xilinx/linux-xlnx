@@ -1183,6 +1183,7 @@ static int spi_nor_write_ext(struct mtd_info *mtd, loff_t to, size_t len,
 		goto write_err;
 	}
 	while (len) {
+		actual_len = 0;
 		bank = addr / (OFFSET_16_MB << nor->shift);
 		rem_bank_len = ((OFFSET_16_MB << nor->shift) * (bank + 1)) -
 				addr;
