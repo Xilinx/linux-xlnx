@@ -622,8 +622,8 @@ struct console xenboot_console = {
 };
 #endif	/* CONFIG_EARLY_PRINTK */
 
-static void xenboot_write_console(struct console *console, const char *string,
-				  unsigned len)
+static void xenboot_write_console_earlycon(struct console *console,
+					   const char *string, unsigned len)
 {
 	dom0_write_console(0, string, len);
 }
@@ -631,7 +631,7 @@ static void xenboot_write_console(struct console *console, const char *string,
 static int __init xen_early_console_setup(struct earlycon_device *device,
 					   const char *opt)
 {
-	device->con->write = xenboot_write_console;
+	device->con->write = xenboot_write_console_earlycon;
 
 	return 0;
 }
