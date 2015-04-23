@@ -278,8 +278,7 @@ static struct drm_driver xylon_drm_driver = {
 	.minor = DRIVER_MINOR,
 };
 
-#if defined(CONFIG_PM_SLEEP) || defined(CONFIG_PM_RUNTIME)
-static int xylon_drm_pm_suspend(struct device *dev)
+static int __maybe_unused xylon_drm_pm_suspend(struct device *dev)
 {
 	struct xylon_drm_device *xdev = dev_get_drvdata(dev);
 
@@ -289,7 +288,7 @@ static int xylon_drm_pm_suspend(struct device *dev)
 	return 0;
 }
 
-static int xylon_drm_pm_resume(struct device *dev)
+static int __maybe_unused xylon_drm_pm_resume(struct device *dev)
 {
 	struct xylon_drm_device *xdev = dev_get_drvdata(dev);
 
@@ -298,7 +297,6 @@ static int xylon_drm_pm_resume(struct device *dev)
 
 	return 0;
 }
-#endif
 
 static const struct dev_pm_ops xylon_drm_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(xylon_drm_pm_suspend, xylon_drm_pm_resume)
