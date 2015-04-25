@@ -30,6 +30,7 @@
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
+#include <linux/of_dma.h>
 
 /* Hw specific definitions */
 #define XILINX_DMA_MAX_CHANS_PER_DEVICE	0x2 /* Max no of channels */
@@ -1017,9 +1018,21 @@ static int xilinx_dma_probe(struct platform_device *pdev)
 		goto free_chan_resources;
 	}
 
+	ret = of_dma_controller_register(node, 
+                of_dma_xlate_by_chan_id,
+				&xdev->common);
+    if (ret)
+    {
+		dev_err(&pdev->dev, "devicetree DMA controller registration failed\n");
+		goto unreg_dma_async_dev;
+    }
+
 	dev_info(&pdev->dev, "Probing xilinx axi dma engine...Successful\n");
 
 	return 0;
+
+unreg_dma_async_dev:
+	dma_async_device_unregister(&xdev->common);
 
 free_chan_resources:
 	xilinx_dma_free_channels(xdev);
@@ -1032,6 +1045,9 @@ static int xilinx_dma_remove(struct platform_device *pdev)
 	struct xilinx_dma_device *xdev;
 
 	xdev = platform_get_drvdata(pdev);
+
+	of_dma_controller_free(pdev->dev.of_node);
+
 	dma_async_device_unregister(&xdev->common);
 
 	xilinx_dma_free_channels(xdev);
