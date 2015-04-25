@@ -1,9 +1,11 @@
 /*
  * Xilinx Video IP Core
  *
- * Copyright (C) 2013 Ideas on Board SPRL
+ * Copyright (C) 2013-2015 Ideas on Board
+ * Copyright (C) 2013-2015 Xilinx, Inc.
  *
- * Contacts: Laurent Pinchart <laurent.pinchart@ideasonboard.com>
+ * Contacts: Hyun Kwon <hyun.kwon@xilinx.com>
+ *           Laurent Pinchart <laurent.pinchart@ideasonboard.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -91,9 +93,6 @@ struct clk;
  * @dev: (OF) device
  * @iomem: device I/O register space remapped to kernel virtual memory
  * @clk: video core clock
- * @npads: number of pads on the subdevice
- * @pads: media pads
- * @formats: active formats on the pads
  * @saved_ctrl: saved control register for resume / suspend
  */
 struct xvip_device {
@@ -101,34 +100,28 @@ struct xvip_device {
 	struct device *dev;
 	void __iomem *iomem;
 	struct clk *clk;
-
-	unsigned int npads;
-	struct media_pad *pads;
-	struct v4l2_mbus_framefmt *formats;
-
 	u32 saved_ctrl;
 };
 
 /**
  * struct xvip_video_format - Xilinx Video IP video format description
- * @name: AXI4 format name
+ * @vf_code: AXI4 video format code
  * @width: AXI4 format width in bits per component
- * @bpp: bytes per pixel (when stored in memory)
+ * @pattern: CFA pattern for Mono/Sensor formats
  * @code: media bus format code
+ * @bpp: bytes per pixel (when stored in memory)
  * @fourcc: V4L2 pixel format FCC identifier
  * @description: format description, suitable for userspace
  */
 struct xvip_video_format {
-	const char *name;
+	unsigned int vf_code;
 	unsigned int width;
-	unsigned int bpp;
+	const char *pattern;
 	unsigned int code;
+	unsigned int bpp;
 	u32 fourcc;
 	const char *description;
 };
-
-int xvip_device_init(struct xvip_device *xvip);
-void xvip_device_cleanup(struct xvip_device *xvip);
 
 const struct xvip_video_format *xvip_get_format_by_code(unsigned int code);
 const struct xvip_video_format *xvip_get_format_by_fourcc(u32 fourcc);
@@ -139,14 +132,6 @@ int xvip_enum_mbus_code(struct v4l2_subdev *subdev, struct v4l2_subdev_fh *fh,
 			struct v4l2_subdev_mbus_code_enum *code);
 int xvip_enum_frame_size(struct v4l2_subdev *subdev, struct v4l2_subdev_fh *fh,
 			 struct v4l2_subdev_frame_size_enum *fse);
-struct v4l2_mbus_framefmt *
-xvip_get_pad_format(struct v4l2_subdev_fh *fh,
-		    struct v4l2_mbus_framefmt *format,
-		    unsigned int pad, u32 which);
-void xvip_set_format(struct v4l2_mbus_framefmt *format,
-		     const struct xvip_video_format *vip_format,
-		     struct v4l2_subdev_format *fmt);
-void xvip_init_formats(struct v4l2_subdev *subdev, struct v4l2_subdev_fh *fh);
 
 static inline u32 xvip_read(struct xvip_device *xvip, u32 addr)
 {

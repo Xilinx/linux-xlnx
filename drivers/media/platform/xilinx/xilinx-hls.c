@@ -1,9 +1,11 @@
 /*
  * Xilinx HLS Core
  *
- * Copyright (C) 2013-2014 Ideas on Board SPRL
+ * Copyright (C) 2013-2015 Ideas on Board
+ * Copyright (C) 2013-2015 Xilinx, Inc.
  *
- * Contacts: Laurent Pinchart <laurent.pinchart@ideasonboard.com>
+ * Contacts: Hyun Kwon <hyun.kwon@xilinx.com>
+ *           Laurent Pinchart <laurent.pinchart@ideasonboard.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as

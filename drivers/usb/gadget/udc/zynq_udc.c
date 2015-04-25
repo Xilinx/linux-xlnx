@@ -2874,7 +2874,7 @@ err_kfree:
 /* Driver removal function
  * Free resources and finish pending transactions
  */
-static int __exit zynq_udc_remove(struct platform_device *pdev)
+static int zynq_udc_remove(struct platform_device *pdev)
 {
 	DECLARE_COMPLETION(done);
 

@@ -1,9 +1,11 @@
 /*
  * Xilinx Video IP Core
  *
- * Copyright (C) 2013 Ideas on Board SPRL
+ * Copyright (C) 2013-2015 Ideas on Board
+ * Copyright (C) 2013-2015 Xilinx, Inc.
  *
- * Contacts: Laurent Pinchart <laurent.pinchart@ideasonboard.com>
+ * Contacts: Hyun Kwon <hyun.kwon@xilinx.com>
+ *           Laurent Pinchart <laurent.pinchart@ideasonboard.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -16,7 +18,7 @@
 #include <linux/of.h>
 #include <linux/platform_device.h>
 
-#include <media/media-entity.h>
+#include <dt-bindings/media/xilinx-vip.h>
 
 #include "xilinx-vip.h"
 
@@ -25,21 +27,22 @@
  */
 
 static const struct xvip_video_format xvip_video_formats[] = {
-	{ "rbg", 8, 3, V4L2_MBUS_FMT_RBG888_1X24, 0, NULL },
-	{ "xrgb", 8, 4, V4L2_MBUS_FMT_RGB888_1X32_PADHI, V4L2_PIX_FMT_BGR32,
-	  "RGB32 (BE)" },
-	{ "yuv422", 8, 2, V4L2_MBUS_FMT_UYVY8_1X16, V4L2_PIX_FMT_YUYV,
-	  "4:2:2, packed, YUYV" },
-	{ "yuv444", 8, 3, V4L2_MBUS_FMT_VUY8_1X24, V4L2_PIX_FMT_YUV444,
-	  "4:4:4, packed, YUYV" },
-	{ "rggb", 8, 1, V4L2_MBUS_FMT_SRGGB8_1X8, V4L2_PIX_FMT_SGRBG8,
-	  "Bayer 8-bit RGGB" },
-	{ "grbg", 8, 1, V4L2_MBUS_FMT_SGRBG8_1X8, V4L2_PIX_FMT_SGRBG8,
-	  "Bayer 8-bit GRBG" },
-	{ "gbrg", 8, 1, V4L2_MBUS_FMT_SGBRG8_1X8, V4L2_PIX_FMT_SGBRG8,
-	  "Bayer 8-bit GBRG" },
-	{ "bggr", 8, 1, V4L2_MBUS_FMT_SBGGR8_1X8, V4L2_PIX_FMT_SBGGR8,
-	  "Bayer 8-bit BGGR" },
+	{ XVIP_VF_YUV_422, 8, NULL, V4L2_MBUS_FMT_UYVY8_1X16,
+	  2, V4L2_PIX_FMT_YUYV, "4:2:2, packed, YUYV" },
+	{ XVIP_VF_YUV_444, 8, NULL, V4L2_MBUS_FMT_VUY8_1X24,
+	  3, V4L2_PIX_FMT_YUV444, "4:4:4, packed, YUYV" },
+	{ XVIP_VF_RBG, 8, NULL, V4L2_MBUS_FMT_RBG888_1X24,
+	  3, 0, NULL },
+	{ XVIP_VF_MONO_SENSOR, 8, "mono", V4L2_MBUS_FMT_Y8_1X8,
+	  1, V4L2_PIX_FMT_GREY, "Greyscale 8-bit" },
+	{ XVIP_VF_MONO_SENSOR, 8, "rggb", V4L2_MBUS_FMT_SRGGB8_1X8,
+	  1, V4L2_PIX_FMT_SGRBG8, "Bayer 8-bit RGGB" },
+	{ XVIP_VF_MONO_SENSOR, 8, "grbg", V4L2_MBUS_FMT_SGRBG8_1X8,
+	  1, V4L2_PIX_FMT_SGRBG8, "Bayer 8-bit GRBG" },
+	{ XVIP_VF_MONO_SENSOR, 8, "gbrg", V4L2_MBUS_FMT_SGBRG8_1X8,
+	  1, V4L2_PIX_FMT_SGBRG8, "Bayer 8-bit GBRG" },
+	{ XVIP_VF_MONO_SENSOR, 8, "bggr", V4L2_MBUS_FMT_SBGGR8_1X8,
+	  1, V4L2_PIX_FMT_SBGGR8, "Bayer 8-bit BGGR" },
 };
 
 /**
@@ -92,21 +95,22 @@ EXPORT_SYMBOL_GPL(xvip_get_format_by_fourcc);
  * xvip_of_get_format - Parse a device tree node and return format information
  * @node: the device tree node
  *
- * Read the xlnx,video-format and xlnx,video-width properties from the device
- * tree @node passed as an argument and return the corresponding format
- * information.
+ * Read the xlnx,video-format, xlnx,video-width and xlnx,cfa-pattern properties
+ * from the device tree @node passed as an argument and return the corresponding
+ * format information.
  *
  * Return: a pointer to the format information structure corresponding to the
  * format name and width, or ERR_PTR if no corresponding format can be found.
  */
 const struct xvip_video_format *xvip_of_get_format(struct device_node *node)
 {
-	const char *name;
+	const char *pattern = "mono";
+	unsigned int vf_code;
 	unsigned int i;
 	u32 width;
 	int ret;
 
-	ret = of_property_read_string(node, "xlnx,video-format", &name);
+	ret = of_property_read_u32(node, "xlnx,video-format", &vf_code);
 	if (ret < 0)
 		return ERR_PTR(ret);
 
@@ -114,11 +118,20 @@ const struct xvip_video_format *xvip_of_get_format(struct device_node *node)
 	if (ret < 0)
 		return ERR_PTR(ret);
 
+	if (vf_code == XVIP_VF_MONO_SENSOR)
+		of_property_read_string(node, "xlnx,cfa-pattern", &pattern);
+
 	for (i = 0; i < ARRAY_SIZE(xvip_video_formats); ++i) {
 		const struct xvip_video_format *format = &xvip_video_formats[i];
 
-		if (strcmp(format->name, name) == 0 && format->width == width)
-			return format;
+		if (format->vf_code != vf_code || format->width != width)
+			continue;
+
+		if (vf_code == XVIP_VF_MONO_SENSOR &&
+		    strcmp(pattern, format->pattern))
+			continue;
+
+		return format;
 	}
 
 	return ERR_PTR(-EINVAL);
@@ -218,99 +231,6 @@ void xvip_cleanup_resources(struct xvip_device *xvip)
 EXPORT_SYMBOL_GPL(xvip_cleanup_resources);
 
 /* -----------------------------------------------------------------------------
- * Subdev operation helpers
- */
-
-/**
- * xvip_get_pad_format - Get the frame format on media bus for the pad
- * @fh: V4L2 subdevice file handle
- * @format: V4L2 active frame format on media bus
- * @pad: media pad
- * @which: media bus format type
- *
- * Get the frame format on media bus for the pad. Return corresponding
- * frame format. The try format is returned by v4l2_subdev_get_try_format(),
- * and when the active format is requested, the given frame format, @format,
- * is returned.
- *
- * Return: frame format on media bus if successful, or NULL if no format
- * is found.
- */
-struct v4l2_mbus_framefmt *
-xvip_get_pad_format(struct v4l2_subdev_fh *fh,
-		    struct v4l2_mbus_framefmt *format,
-		    unsigned int pad, u32 which)
-{
-	switch (which) {
-	case V4L2_SUBDEV_FORMAT_TRY:
-		return v4l2_subdev_get_try_format(fh, pad);
-	case V4L2_SUBDEV_FORMAT_ACTIVE:
-		return format;
-	default:
-		return NULL;
-	}
-}
-EXPORT_SYMBOL_GPL(xvip_get_pad_format);
-
-/**
- * xvip_set_format - Set the subdevice format
- * @format: V4L2 frame format on media bus
- * @vip_format: Xilinx Video IP video format
- * @fmt: media bus format
- *
- * Set the subdevice format. The format code is defined in vip_format,
- * and width and height are defined in subdev format. The new format is stored
- * in @format.
- */
-void xvip_set_format(struct v4l2_mbus_framefmt *format,
-		     const struct xvip_video_format *vip_format,
-		     struct v4l2_subdev_format *fmt)
-{
-	format->code = vip_format->code;
-	format->width = clamp_t(unsigned int, fmt->format.width,
-				XVIP_MIN_WIDTH, XVIP_MAX_WIDTH);
-	format->height = clamp_t(unsigned int, fmt->format.height,
-			 XVIP_MIN_HEIGHT, XVIP_MAX_HEIGHT);
-}
-EXPORT_SYMBOL_GPL(xvip_set_format);
-
-/**
- * xvip_init_formats - Initialize formats on all pads
- * @subdev: V4L2 subdevice
- * @fh: V4L2 subdev file handle
- *
- * Initialize all pad formats with default values. If fh is not NULL, try
- * formats are initialized on the file handle. Otherwise active formats are
- * initialized on the device.
- */
-void xvip_init_formats(struct v4l2_subdev *subdev, struct v4l2_subdev_fh *fh)
-{
-	struct xvip_device *xvip = container_of(subdev, struct xvip_device,
-						subdev);
-	struct v4l2_subdev_format format;
-
-	memset(&format, 0, sizeof(format));
-
-	format.which = fh ? V4L2_SUBDEV_FORMAT_TRY : V4L2_SUBDEV_FORMAT_ACTIVE;
-	format.format.width = xvip_read(xvip, XVIP_ACTIVE_SIZE) &
-			      XVIP_ACTIVE_HSIZE_MASK;
-	format.format.height = (xvip_read(xvip, XVIP_ACTIVE_SIZE) &
-				XVIP_ACTIVE_VSIZE_MASK) >>
-			       XVIP_ACTIVE_VSIZE_SHIFT;
-	format.format.field = V4L2_FIELD_NONE;
-	format.format.colorspace = V4L2_COLORSPACE_SRGB;
-
-	format.pad = XVIP_PAD_SOURCE;
-
-	v4l2_subdev_call(subdev, pad, set_fmt, fh, &format);
-
-	format.pad = XVIP_PAD_SINK;
-
-	v4l2_subdev_call(subdev, pad, set_fmt, fh, &format);
-}
-EXPORT_SYMBOL_GPL(xvip_init_formats);
-
-/* -----------------------------------------------------------------------------
  * Subdev operations handlers
  */
 
@@ -387,52 +307,3 @@ int xvip_enum_frame_size(struct v4l2_subdev *subdev, struct v4l2_subdev_fh *fh,
 	return 0;
 }
 EXPORT_SYMBOL_GPL(xvip_enum_frame_size);
-
-/* -----------------------------------------------------------------------------
- * Initialization and cleanup
- */
-
-/**
- * xvip_device_init - Initialize a video IP device
- * @xvip: the video IP device
- *
- * Allocate pads and formats for the device. The caller must have set the
- * following xvip fields prior to calling this function.
- *
- * - npads to the number of pads
- *
- * Return 0 on success or -ENOMEM on memory allocation failure.
- */
-int xvip_device_init(struct xvip_device *xvip)
-{
-	struct v4l2_mbus_framefmt *formats;
-	struct media_pad *pads;
-
-	pads = kzalloc(xvip->npads * sizeof(*pads), GFP_KERNEL);
-	formats = kzalloc(xvip->npads * sizeof(*formats), GFP_KERNEL);
-
-	if (pads == NULL || formats == NULL) {
-		kfree(pads);
-		kfree(formats);
-		return -ENOMEM;
-	}
-
-	xvip->pads = pads;
-	xvip->formats = formats;
-
-	return 0;
-}
-EXPORT_SYMBOL_GPL(xvip_device_init);
-
-/**
- * xvip_device_cleanup - Cleanup a video IP device
- * @xvip: the video IP device
- *
- * Free the memory allocated by xvip_device_init().
- */
-void xvip_device_cleanup(struct xvip_device *xvip)
-{
-	kfree(xvip->pads);
-	kfree(xvip->formats);
-}
-EXPORT_SYMBOL_GPL(xvip_device_cleanup);

@@ -1,9 +1,11 @@
 /*
  * Xilinx Video DMA
  *
- * Copyright (C) 2013 Ideas on Board SPRL
+ * Copyright (C) 2013-2015 Ideas on Board
+ * Copyright (C) 2013-2015 Xilinx, Inc.
  *
- * Contacts: Laurent Pinchart <laurent.pinchart@ideasonboard.com>
+ * Contacts: Hyun Kwon <hyun.kwon@xilinx.com>
+ *           Laurent Pinchart <laurent.pinchart@ideasonboard.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -346,9 +348,13 @@ xvip_dma_queue_setup(struct vb2_queue *vq, const struct v4l2_format *fmt,
 {
 	struct xvip_dma *dma = vb2_get_drv_priv(vq);
 
+	/* Make sure the image size is large enough. */
+	if (fmt && fmt->fmt.pix.sizeimage < dma->format.sizeimage)
+		return -EINVAL;
+
 	*nplanes = 1;
 
-	sizes[0] = dma->format.sizeimage;
+	sizes[0] = fmt ? fmt->fmt.pix.sizeimage : dma->format.sizeimage;
 	alloc_ctxs[0] = dma->alloc_ctx;
 
 	return 0;
@@ -479,7 +485,7 @@ static void xvip_dma_stop_streaming(struct vb2_queue *vq)
 	xvip_pipeline_set_stream(pipe, false);
 
 	/* Stop and reset the DMA engine. */
-	dmaengine_device_control(dma->dma, DMA_TERMINATE_ALL, 0);
+	dmaengine_terminate_all(dma->dma);
 
 	/* Cleanup the pipeline and mark it as being stopped. */
 	xvip_pipeline_cleanup(pipe);
@@ -654,6 +660,7 @@ static const struct v4l2_ioctl_ops xvip_dma_ioctl_ops = {
 	.vidioc_querybuf		= vb2_ioctl_querybuf,
 	.vidioc_qbuf			= vb2_ioctl_qbuf,
 	.vidioc_dqbuf			= vb2_ioctl_dqbuf,
+	.vidioc_create_bufs		= vb2_ioctl_create_bufs,
 	.vidioc_expbuf			= vb2_ioctl_expbuf,
 	.vidioc_streamon		= vb2_ioctl_streamon,
 	.vidioc_streamoff		= vb2_ioctl_streamoff,
@@ -728,6 +735,13 @@ int xvip_dma_init(struct xvip_composite_device *xdev, struct xvip_dma *dma,
 	if (IS_ERR(dma->alloc_ctx))
 		goto error;
 
+	/* Don't enable VB2_READ and VB2_WRITE, as using the read() and write()
+	 * V4L2 APIs would be inefficient. Testing on the command line with a
+	 * 'cat /dev/video?' thus won't be possible, but given that the driver
+	 * anyway requires a test tool to setup the pipeline before any video
+	 * stream can be started, requiring a specific V4L2 test tool as well
+	 * instead of 'cat' isn't really a drawback.
+	 */
 	dma->queue.type = type;
 	dma->queue.io_modes = VB2_MMAP | VB2_USERPTR | VB2_DMABUF;
 	dma->queue.lock = &dma->lock;
@@ -735,7 +749,8 @@ int xvip_dma_init(struct xvip_composite_device *xdev, struct xvip_dma *dma,
 	dma->queue.buf_struct_size = sizeof(struct xvip_dma_buffer);
 	dma->queue.ops = &xvip_dma_queue_qops;
 	dma->queue.mem_ops = &vb2_dma_contig_memops;
-	dma->queue.timestamp_flags = V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC;
+	dma->queue.timestamp_flags = V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC
+				   | V4L2_BUF_FLAG_TSTAMP_SRC_EOF;
 	ret = vb2_queue_init(&dma->queue);
 	if (ret < 0) {
 		dev_err(dma->xdev->dev, "failed to initialize VB2 queue\n");
