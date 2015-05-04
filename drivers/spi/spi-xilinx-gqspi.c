@@ -156,6 +156,7 @@ enum mode_type {GQSPI_MODE_IO, GQSPI_MODE_DMA};
  * @mode:		Defines the mode the gqspi is operating
  * @dma_addr:		Dma address after mapping the kernel buffer
  * @genfifoentry	Used for storing the genfifoentry instruction.
+ * @isinstr		Used to  determining the transfer is instruction
  */
 struct zynqmp_qspi {
 	void __iomem *regs;
@@ -173,6 +174,7 @@ struct zynqmp_qspi {
 	enum mode_type mode;
 	dma_addr_t dma_addr;
 	u32 genfifoentry;
+	bool isinstr;
 };
 
 /* functions for the GQSPI controller read/write */
@@ -377,6 +379,7 @@ static void zynqmp_qspi_chipselect(struct spi_device *qspi, bool is_high)
 	if (!is_high) {
 		genfifoentry |= xqspi->genfifocs;
 		genfifoentry |= GQSPI_GENFIFO_CS_SETUP;
+		xqspi->isinstr = true;
 	} else {
 		genfifoentry |= GQSPI_GENFIFO_CS_HOLD;
 	}
@@ -598,6 +601,7 @@ static irqreturn_t zynqmp_qspi_irq(int irq, void *dev_id)
 	    (xqspi->bytes_to_transfer == 0) &&
 		((status & GQSPI_IRQ_MASK) == GQSPI_IRQ_MASK)) {
 		writel(GQSPI_ISR_IDR_MASK, xqspi->regs + GQSPI_IDR_OFST);
+		xqspi->isinstr = false;
 		spi_finalize_current_transfer(master);
 		ret = IRQ_HANDLED;
 	}
@@ -746,9 +750,17 @@ static int zynqmp_qspi_start_transfer(struct spi_master *master,
 	xqspi->txbuf = transfer->tx_buf;
 	xqspi->rxbuf = transfer->rx_buf;
 
+	if (master->flags & SPI_BOTH_FLASH) {
+		zynqmp_gqspi_selectflash(xqspi,
+			GQSPI_SELECT_FLASH_CS_BOTH,
+			GQSPI_SELECT_FLASH_BUS_BOTH);
+	}
 	genfifoentry |= xqspi->genfifocs;
 	genfifoentry |= xqspi->genfifobus;
 
+	if ((!xqspi->isinstr) &&
+		(master->flags & SPI_DATA_STRIPE))
+		genfifoentry |= GQSPI_GENFIFO_STRIPE;
 	zynqmp_qspi_txrxsetup(xqspi, transfer, &genfifoentry);
 
 	if (xqspi->mode == GQSPI_MODE_DMA)
