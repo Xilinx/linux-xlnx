@@ -1002,6 +1002,10 @@ static int spi_nor_read_ext(struct mtd_info *mtd, loff_t from, size_t len,
 	if (ret)
 		return ret;
 	if (nor->addr_width == 4) {
+		/* Wait till previous write/erase is done. */
+		ret = spi_nor_wait_till_ready(nor);
+		if (ret)
+			goto read_err;
 		ret = nor->read(nor, from, len, retlen, buf);
 		goto read_err;
 	}
