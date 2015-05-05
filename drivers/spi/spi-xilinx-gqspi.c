@@ -572,7 +572,7 @@ static irqreturn_t zynqmp_qspi_irq(int irq, void *dev_id)
 	struct spi_master *master = dev_id;
 	struct zynqmp_qspi *xqspi = spi_master_get_devdata(master);
 	int ret = IRQ_NONE;
-	u32 status, mask, dma_status;
+	u32 status, mask, dma_status = 0;
 
 	status = readl(xqspi->regs + GQSPI_ISR_OFST);
 	writel(status, xqspi->regs + GQSPI_ISR_OFST);
