@@ -423,6 +423,7 @@ struct axidma_bd {
  * @jumbo_support: Stores hardware configuration for jumbo support. If hardware
  *		   can handle jumbo packets, this entry will be 1, else 0.
  * @use_acpport:  Tells whether the design contains the acp port or not.
+ * @is_10Gmac:	  Check for 10g mac.
  */
 struct axienet_local {
 	struct net_device *ndev;
@@ -470,6 +471,7 @@ struct axienet_local {
 	u32 coalesce_count_rx;
 	u32 coalesce_count_tx;
 	bool use_acpport;
+	u32 is_10Gmac;
 };
 
 /**
