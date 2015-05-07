@@ -480,7 +480,7 @@ struct axienet_option {
  * @lp:         Pointer to axienet local structure
  * @offset:     Address offset from the base address of Axi Ethernet core
  *
- * returns: The contents of the Axi Ethernet register
+ * Return: The contents of the Axi Ethernet register
  *
  * This function returns the contents of the corresponding register.
  */
