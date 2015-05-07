@@ -445,8 +445,8 @@ static void __axienet_device_reset(struct axienet_local *lp,
 	while (axienet_dma_in32(lp, offset) & XAXIDMA_CR_RESET_MASK) {
 		udelay(1);
 		if (--timeout == 0) {
-			dev_err(dev,
-				"axienet_device_reset DMA reset timeout!\n");
+			netdev_err(lp->ndev, "%s: DMA reset timeout!\n",
+				   __func__);
 			break;
 		}
 	}
@@ -485,9 +485,8 @@ static void axienet_device_reset(struct net_device *ndev)
 	}
 
 	if (axienet_dma_bd_init(ndev)) {
-		dev_err(&ndev->dev,
-			"axienet_device_reset descriptor "
-			"allocation failed\n");
+		netdev_err(ndev, "%s: descriptor allocation failed\n",
+			   __func__);
 	}
 
 	axienet_status = axienet_ior(lp, XAE_RCW1_OFFSET);
@@ -554,8 +553,7 @@ static void axienet_adjust_link(struct net_device *ndev)
 				emmc_reg |= XAE_EMMC_LINKSPD_10;
 				break;
 			default:
-				dev_err(&ndev->dev,
-					"Speed other than 10, 100 "
+				dev_err(&ndev->dev, "Speed other than 10, 100 "
 					"or 1Gbps is not supported\n");
 				break;
 			}
@@ -564,8 +562,8 @@ static void axienet_adjust_link(struct net_device *ndev)
 			lp->last_link = link_state;
 			phy_print_status(phy);
 		} else {
-			dev_err(&ndev->dev,
-				"Error setting Axi Ethernet mac speed\n");
+			netdev_err(ndev,
+				   "Error setting Axi Ethernet mac speed\n");
 		}
 	}
 }
@@ -1272,9 +1270,8 @@ axienet_ethtools_set_pauseparam(struct net_device *ndev,
 	struct axienet_local *lp = netdev_priv(ndev);
 
 	if (netif_running(ndev)) {
-		dev_err(&ndev->dev,
-			"%s: Please stop netif before applying configuration\n",
-			ndev->name);
+		netdev_err(ndev,
+			   "Please stop netif before applying configuration\n");
 		return -EFAULT;
 	}
 
@@ -1334,9 +1331,8 @@ static int axienet_ethtools_set_coalesce(struct net_device *ndev,
 	struct axienet_local *lp = netdev_priv(ndev);
 
 	if (netif_running(ndev)) {
-		dev_err(&ndev->dev,
-			"%s: Please stop netif before applying configuration\n",
-			ndev->name);
+		netdev_err(ndev,
+			   "Please stop netif before applying configuration\n");
 		return -EFAULT;
 	}
 
