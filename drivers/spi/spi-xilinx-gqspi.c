@@ -376,6 +376,19 @@ static void zynqmp_qspi_chipselect(struct spi_device *qspi, bool is_high)
 
 	genfifoentry |= GQSPI_GENFIFO_MODE_SPI;
 	genfifoentry |= xqspi->genfifobus;
+	if (qspi->master->flags & SPI_BOTH_FLASH) {
+		zynqmp_gqspi_selectflash(xqspi,
+			GQSPI_SELECT_FLASH_CS_BOTH,
+			GQSPI_SELECT_FLASH_BUS_BOTH);
+	} else if (qspi->master->flags & SPI_MASTER_U_PAGE) {
+		zynqmp_gqspi_selectflash(xqspi,
+			GQSPI_SELECT_FLASH_CS_UPPER,
+			GQSPI_SELECT_FLASH_BUS_LOWER);
+	} else {
+		zynqmp_gqspi_selectflash(xqspi,
+			GQSPI_SELECT_FLASH_CS_LOWER,
+			GQSPI_SELECT_FLASH_BUS_LOWER);
+	}
 	if (!is_high) {
 		genfifoentry |= xqspi->genfifocs;
 		genfifoentry |= GQSPI_GENFIFO_CS_SETUP;
@@ -750,11 +763,6 @@ static int zynqmp_qspi_start_transfer(struct spi_master *master,
 	xqspi->txbuf = transfer->tx_buf;
 	xqspi->rxbuf = transfer->rx_buf;
 
-	if (master->flags & SPI_BOTH_FLASH) {
-		zynqmp_gqspi_selectflash(xqspi,
-			GQSPI_SELECT_FLASH_CS_BOTH,
-			GQSPI_SELECT_FLASH_BUS_BOTH);
-	}
 	genfifoentry |= xqspi->genfifocs;
 	genfifoentry |= xqspi->genfifobus;
 
