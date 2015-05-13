@@ -1018,6 +1018,7 @@ static int spi_nor_read_ext(struct mtd_info *mtd, loff_t from, size_t len,
 	u32 read_count = 0;
 	u32 rem_bank_len = 0;
 	u8 bank = 0;
+	u8 stack_shift = 0;
 	int ret;
 
 #define OFFSET_16_MB 0x1000000
@@ -1029,25 +1030,18 @@ static int spi_nor_read_ext(struct mtd_info *mtd, loff_t from, size_t len,
 		return ret;
 	if (nor->isparallel)
 		nor->spi->master->flags |= SPI_DATA_STRIPE;
-	if (nor->addr_width == 4) {
-		/* Wait till previous write/erase is done. */
-		ret = spi_nor_wait_till_ready(nor);
-		if (ret)
-			goto read_err;
-		/* Die cross over issue is not handled */
-		if (nor->isparallel)
-			from /= 2;
-		ret = nor->read(nor, from, len, retlen, buf);
-		goto read_err;
-	}
+
 	while (len) {
-		bank = addr / (OFFSET_16_MB << nor->shift);
-		rem_bank_len = ((OFFSET_16_MB << nor->shift) * (bank + 1)) -
-				addr;
+		if (nor->addr_width == 3) {
+			bank = addr / (OFFSET_16_MB << nor->shift);
+			rem_bank_len = ((OFFSET_16_MB << nor->shift) *
+							(bank + 1)) - addr;
+		}
 		offset = addr;
 		if (nor->isparallel == 1)
 			offset /= 2;
 		if (nor->isstacked == 1) {
+			stack_shift = 1;
 			if (offset >= (nor->mtd->size / 2)) {
 				offset = offset - (nor->mtd->size / 2);
 				nor->spi->master->flags |= SPI_MASTER_U_PAGE;
@@ -1055,11 +1049,22 @@ static int spi_nor_read_ext(struct mtd_info *mtd, loff_t from, size_t len,
 				nor->spi->master->flags &= ~SPI_MASTER_U_PAGE;
 			}
 		}
-		write_ear(nor, offset);
+		/* Die cross over issue is not handled */
+		if (nor->addr_width == 4) {
+			rem_bank_len = (nor->mtd->size >> stack_shift) -
+					(offset << nor->shift);
+		}
+		if (nor->addr_width == 3)
+			write_ear(nor, offset);
 		if (len < rem_bank_len)
 			read_len = len;
 		else
 			read_len = rem_bank_len;
+
+		/* Wait till previous write/erase is done. */
+		ret = spi_nor_wait_till_ready(nor);
+		if (ret)
+			goto read_err;
 
 		ret = spi_nor_read(mtd, offset, read_len, &actual_len, buf);
 		if (ret)
@@ -1206,6 +1211,7 @@ static int spi_nor_write_ext(struct mtd_info *mtd, loff_t to, size_t len,
 	u32 write_count = 0;
 	u32 rem_bank_len = 0;
 	u8 bank = 0;
+	u8 stack_shift = 0;
 	int ret;
 
 #define OFFSET_16_MB 0x1000000
@@ -1217,19 +1223,18 @@ static int spi_nor_write_ext(struct mtd_info *mtd, loff_t to, size_t len,
 		return ret;
 	if (nor->isparallel)
 		nor->spi->master->flags |= SPI_DATA_STRIPE;
-	if (nor->addr_width == 4) {
-		/* Die cross over issue is not handled */
-		ret = spi_nor_write(mtd, offset, len, retlen, buf);
-		goto write_err;
-	}
+
 	while (len) {
 		actual_len = 0;
-		bank = addr / (OFFSET_16_MB << nor->shift);
-		rem_bank_len = ((OFFSET_16_MB << nor->shift) * (bank + 1)) -
-				addr;
+		if (nor->addr_width == 3) {
+			bank = addr / (OFFSET_16_MB << nor->shift);
+			rem_bank_len = ((OFFSET_16_MB << nor->shift) *
+							(bank + 1)) - addr;
+		}
 		offset = addr;
 
 		if (nor->isstacked == 1) {
+			stack_shift = 1;
 			if (offset >= (nor->mtd->size / 2)) {
 				offset = offset - (nor->mtd->size / 2);
 				nor->spi->master->flags |= SPI_MASTER_U_PAGE;
@@ -1237,7 +1242,11 @@ static int spi_nor_write_ext(struct mtd_info *mtd, loff_t to, size_t len,
 				nor->spi->master->flags &= ~SPI_MASTER_U_PAGE;
 			}
 		}
-		write_ear(nor, (offset >> nor->shift));
+		/* Die cross over issue is not handled */
+		if (nor->addr_width == 4)
+			rem_bank_len = (nor->mtd->size >> stack_shift) - offset;
+		if (nor->addr_width == 3)
+			write_ear(nor, (offset >> nor->shift));
 		if (len < rem_bank_len)
 			write_len = len;
 		else
@@ -1466,10 +1475,25 @@ int spi_nor_scan(struct spi_nor *nor, const char *name, enum read_mode mode)
 					nor->isstacked = 1;
 					nor->isparallel = 0;
 #else
-					/* single */
-					nor->shift = 0;
-					nor->isstacked = 0;
-					nor->isparallel = 0;
+					u32 is_stacked;
+					if (of_property_read_u32(np_spi,
+							"is-stacked",
+							&is_stacked) < 0) {
+						is_stacked = 0;
+					}
+					if (is_stacked) {
+						/* dual stacked */
+						nor->shift = 0;
+						mtd->size <<= 1;
+						info->n_sectors <<= 1;
+						nor->isstacked = 1;
+						nor->isparallel = 0;
+					} else {
+						/* single */
+						nor->shift = 0;
+						nor->isstacked = 0;
+						nor->isparallel = 0;
+					}
 #endif
 				}
 			}
@@ -1627,6 +1651,11 @@ int spi_nor_scan(struct spi_nor *nor, const char *name, enum read_mode mode)
 			mtd->erasesize = info->sector_size;
 		} else
 			set_4byte(nor, info, 1);
+			if (nor->isstacked) {
+				nor->spi->master->flags |= SPI_MASTER_U_PAGE;
+				set_4byte(nor, info, 1);
+				nor->spi->master->flags &= ~SPI_MASTER_U_PAGE;
+			}
 #ifdef CONFIG_OF
 		}
 #endif
