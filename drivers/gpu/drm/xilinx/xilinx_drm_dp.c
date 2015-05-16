@@ -773,6 +773,8 @@ static void xilinx_drm_dp_dpms(struct drm_encoder *encoder, int dpms)
 
 	switch (dpms) {
 	case DRM_MODE_DPMS_ON:
+		xilinx_drm_writel(dp->iomem, XILINX_DP_TX_SW_RESET,
+				  XILINX_DP_TX_SW_RESET_ALL);
 		if (dp->aud_clk)
 			xilinx_drm_writel(iomem, XILINX_DP_TX_AUDIO_CONTROL, 1);
 
@@ -1350,8 +1352,6 @@ static int xilinx_drm_dp_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, dp);
 
-	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_SW_RESET,
-			  XILINX_DP_TX_SW_RESET_ALL);
 	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_PHY_CONFIG,
 			  XILINX_DP_TX_PHY_CONFIG_ALL_RESET);
 	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_FORCE_SCRAMBLER_RESET, 1);
