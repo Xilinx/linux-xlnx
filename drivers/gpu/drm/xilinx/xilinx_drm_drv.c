@@ -380,6 +380,7 @@ static struct drm_driver xilinx_drm_driver = {
 	.unload				= xilinx_drm_unload,
 	.preclose			= xilinx_drm_preclose,
 	.lastclose			= xilinx_drm_lastclose,
+	.set_busid			= drm_platform_set_busid,
 
 	.get_vblank_counter		= drm_vblank_count,
 	.enable_vblank			= xilinx_drm_enable_vblank,
