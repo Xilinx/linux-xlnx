@@ -1070,7 +1070,7 @@ static int xilinx_drm_dp_encoder_init(struct platform_device *pdev,
 				      struct drm_encoder_slave *encoder)
 {
 	struct xilinx_drm_dp *dp = platform_get_drvdata(pdev);
-	int clock_rate, ret;
+	int clock_rate;
 	u32 reg = 0;
 
 	encoder->slave_priv = dp;
@@ -1090,9 +1090,6 @@ static int xilinx_drm_dp_encoder_init(struct platform_device *pdev,
 	if (dp->dp_sub)
 		reg = XILINX_DP_SUB_TX_PHY_CONFIG_EN_8B_10B;
 	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_PHY_CONFIG, reg);
-	ret = xilinx_drm_dp_phy_ready(dp);
-	if (ret < 0)
-		return ret;
 
 	if (dp->dp_sub)
 		xilinx_drm_writel(dp->iomem, XILINX_DP_SUB_TX_INTR_EN,
