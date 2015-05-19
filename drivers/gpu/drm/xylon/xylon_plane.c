@@ -360,6 +360,48 @@ err_init:
 	return ERR_PTR(ret);
 }
 
+void xylon_drm_plane_properties_restore(struct xylon_drm_plane_manager *manager)
+{
+	struct drm_mode_object *obj;
+	struct drm_plane *base_plane;
+	struct xylon_drm_plane *plane;
+	struct xylon_drm_plane_properties *props;
+	struct xylon_drm_plane_op op;
+	int i;
+
+	for (i = 0; i < manager->planes; i++) {
+		if (!manager->plane[i])
+			continue;
+
+		plane = manager->plane[i];
+		base_plane = &plane->base;
+		obj = &base_plane->base;
+		props = &plane->properties;
+
+		op.id = XYLON_DRM_PLANE_OP_ID_COLOR_TRANSPARENCY;
+		op.param = false;
+		xylon_drm_plane_op(base_plane, &op);
+		drm_object_property_set_value(obj, props->color_transparency,
+					      false);
+
+		op.id = XYLON_DRM_PLANE_OP_ID_INTERLACE;
+		xylon_drm_plane_op(base_plane, &op);
+		drm_object_property_set_value(obj, props->interlace, false);
+
+		op.id = XYLON_DRM_PLANE_OP_ID_TRANSPARENCY;
+		op.param = XYLON_DRM_PROPERTY_ALPHA_MAX;
+		xylon_drm_plane_op(base_plane, &op);
+		drm_object_property_set_value(obj, props->transparency,
+					      XYLON_DRM_PROPERTY_ALPHA_MAX);
+
+		op.id = XYLON_DRM_PLANE_OP_ID_TRANSPARENT_COLOR;
+		op.param = XYLON_DRM_PROPERTY_COLOR_MIN;
+		xylon_drm_plane_op(base_plane, &op);
+		drm_object_property_set_value(obj, props->transparent_color,
+					      XYLON_DRM_PROPERTY_COLOR_MIN);
+	}
+}
+
 int xylon_drm_plane_create_all(struct xylon_drm_plane_manager *manager,
 			       unsigned int possible_crtcs,
 			       unsigned int primary_id)

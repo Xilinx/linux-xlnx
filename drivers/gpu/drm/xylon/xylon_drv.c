@@ -161,6 +161,8 @@ static void xylon_drm_lastclose(struct drm_device *dev)
 {
 	struct xylon_drm_device *xdev = dev->dev_private;
 
+	xylon_drm_crtc_properties_restore(xdev->crtc);
+
 	xylon_drm_fbdev_restore_mode(xdev->fbdev);
 }
 

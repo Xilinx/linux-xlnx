@@ -44,6 +44,9 @@ int xylon_drm_plane_fb_set(struct drm_plane *base_plane,
 			   u32 src_w, u32 src_h);
 void xylon_drm_plane_commit(struct drm_plane *base_plane);
 
+void
+xylon_drm_plane_properties_restore(struct xylon_drm_plane_manager *manager);
+
 int xylon_drm_plane_create_all(struct xylon_drm_plane_manager *manager,
 			       unsigned int possible_crtcs,
 			       unsigned int primary_id);
