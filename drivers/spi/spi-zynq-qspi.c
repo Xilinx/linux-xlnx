@@ -240,22 +240,17 @@ static void zynq_qspi_init_hw(struct zynq_qspi *xqspi)
  */
 static void zynq_qspi_read_rx_fifo(struct zynq_qspi *xqspi, unsigned size)
 {
+	unsigned xsize;
 	u32 data;
 
 	data = zynq_qspi_read(xqspi, ZYNQ_QSPI_RXD_OFFSET);
 
 	if (xqspi->rxbuf) {
-		if (!xqspi->is_dual || xqspi->is_instr) {
-			memcpy(xqspi->rxbuf, ((u8 *) &data) + 4 - size, size);
-			xqspi->rxbuf += size;
-		} else {
-			u8 buff[4], len;
-			len = size;
-			size = size % 2 ? size + 1 : size;
-			memcpy(buff, ((u8 *) &data) + 4 - size, size);
-			memcpy(xqspi->rxbuf, buff, len);
-			xqspi->rxbuf += len;
-		}
+		xsize = size;
+		if (xqspi->is_dual && !xqspi->is_instr && (size%2))
+			xsize++;
+		memcpy(xqspi->rxbuf, ((u8 *) &data) + 4 - xsize, size);
+		xqspi->rxbuf += size;
 	}
 
 	xqspi->bytes_to_receive -= size;
