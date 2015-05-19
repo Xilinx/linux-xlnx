@@ -260,22 +260,37 @@ static void zynq_qspi_copy_read_data(struct zynq_qspi *xqspi, u32 data, u8 size)
 }
 
 /**
- * zynq_qspi_copy_write_data - Copy data from TX buffer
+ * zynq_qspi_write_tx_fifo - Write 1..4 bytes from TX buffer to TxFIFO
  * @xqspi:	Pointer to the zynq_qspi structure
- * @data:	Pointer to the 32 bit variable where data is to be copied
- * @size:	Number of bytes to be copied from TX buffer to data
+ * @size:	Number of bytes to be written (1..4)
+ *
+ * In dual parallel configuration, when read/write data operations
+ * are performed, odd data bytes have to be converted to even to
+ * avoid a nibble (of data when programming / dummy when reading)
+ * going to individual flash devices, where a byte is expected.
+ * This check is only for data and will not apply for commands.
  */
-static void zynq_qspi_copy_write_data(struct zynq_qspi *xqspi, u32 *data,
-				      u8 size)
+static void zynq_qspi_write_tx_fifo(struct zynq_qspi *xqspi, unsigned size)
 {
+	static const unsigned offset[4] = {
+		ZYNQ_QSPI_TXD_00_01_OFFSET, ZYNQ_QSPI_TXD_00_10_OFFSET,
+		ZYNQ_QSPI_TXD_00_11_OFFSET, ZYNQ_QSPI_TXD_00_00_OFFSET };
+	unsigned xsize;
+	u32 data;
+
 	if (xqspi->txbuf) {
-		memcpy(data, xqspi->txbuf, size);
+		memcpy(&data, xqspi->txbuf, size);
 		xqspi->txbuf += size;
 	} else {
-		*data = 0;
+		data = 0;
 	}
 
 	xqspi->bytes_to_transfer -= size;
+
+	xsize = size;
+	if (xqspi->is_dual && !xqspi->is_instr && (size%2))
+		xsize++;
+	zynq_qspi_write(xqspi, offset[xsize-1], data);
 }
 
 /**
@@ -456,30 +471,6 @@ static void zynq_qspi_fill_tx_fifo(struct zynq_qspi *xqspi, u32 size)
 }
 
 /**
- * zynq_qspi_tx_dual_parallel - Handles odd byte tx for dual parallel
- *
- * @xqspi:	Pointer to the zynq_qspi structure
- * @data:	Data to be transmitted
- * @len:	No. of bytes to be transmitted
- *
- * In dual parallel configuration, when read/write data operations
- * are performed, odd data bytes have to be converted to even to
- * avoid a nibble (of data when programming / dummy when reading)
- * going to individual flash devices, where a byte is expected.
- * This check is only for data and will not apply for commands.
- */
-static inline void zynq_qspi_tx_dual_parallel(struct zynq_qspi *xqspi,
-					      u32 data, u32 len)
-{
-	len = len % 2 ? len + 1 : len;
-	if (len == 4)
-		zynq_qspi_write(xqspi, ZYNQ_QSPI_TXD_00_00_OFFSET, data);
-	else
-		zynq_qspi_write(xqspi, ZYNQ_QSPI_TXD_00_01_OFFSET +
-				((len - 1) * 4), data);
-}
-
-/**
  * zynq_qspi_irq - Interrupt service routine of the QSPI controller
  * @irq:	IRQ number
  * @dev_id:	Pointer to the xqspi structure
@@ -495,8 +486,6 @@ static irqreturn_t zynq_qspi_irq(int irq, void *dev_id)
 	struct spi_master *master = dev_id;
 	struct zynq_qspi *xqspi = spi_master_get_devdata(master);
 	u32 intr_status, rxcount, rxindex = 0;
-	u8 offset[3] = {ZYNQ_QSPI_TXD_00_01_OFFSET, ZYNQ_QSPI_TXD_00_10_OFFSET,
-			ZYNQ_QSPI_TXD_00_11_OFFSET};
 
 	intr_status = zynq_qspi_read(xqspi, ZYNQ_QSPI_STATUS_OFFSET);
 	zynq_qspi_write(xqspi, ZYNQ_QSPI_STATUS_OFFSET , intr_status);
@@ -544,16 +533,7 @@ static irqreturn_t zynq_qspi_irq(int irq, void *dev_id)
 			} else if (intr_status & ZYNQ_QSPI_IXR_TXNFULL_MASK) {
 				int tmp;
 				tmp = xqspi->bytes_to_transfer;
-				zynq_qspi_copy_write_data(xqspi, &data,
-					xqspi->bytes_to_transfer);
-
-				if (!xqspi->is_dual || xqspi->is_instr)
-					zynq_qspi_write(xqspi,
-							offset[tmp - 1], data);
-				else {
-					zynq_qspi_tx_dual_parallel(xqspi, data,
-								   tmp);
-				}
+				zynq_qspi_write_tx_fifo(xqspi, tmp);
 			}
 		} else {
 			/*
@@ -592,7 +572,6 @@ static int zynq_qspi_start_transfer(struct spi_master *master,
 				    struct spi_transfer *transfer)
 {
 	struct zynq_qspi *xqspi = spi_master_get_devdata(master);
-	u32 data;
 
 	xqspi->txbuf = transfer->tx_buf;
 	xqspi->rxbuf = transfer->rx_buf;
@@ -604,14 +583,7 @@ static int zynq_qspi_start_transfer(struct spi_master *master,
 	if (transfer->len >= 4) {
 		zynq_qspi_fill_tx_fifo(xqspi, ZYNQ_QSPI_FIFO_DEPTH);
 	} else {
-		zynq_qspi_copy_write_data(xqspi, &data, transfer->len);
-
-		if (!xqspi->is_dual || xqspi->is_instr)
-			zynq_qspi_write(xqspi, ZYNQ_QSPI_TXD_00_01_OFFSET +
-					((transfer->len - 1) * 4), data);
-		else {
-			zynq_qspi_tx_dual_parallel(xqspi, data, transfer->len);
-		}
+		zynq_qspi_write_tx_fifo(xqspi, transfer->len);
 	}
 
 	zynq_qspi_write(xqspi, ZYNQ_QSPI_IEN_OFFSET,
