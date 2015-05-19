@@ -279,6 +279,7 @@ static void zynq_qspi_write_tx_fifo(struct zynq_qspi *xqspi, unsigned size)
 	u32 data;
 
 	if (xqspi->txbuf) {
+		data = 0xffffffff;
 		memcpy(&data, xqspi->txbuf, size);
 		xqspi->txbuf += size;
 	} else {
