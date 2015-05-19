@@ -187,7 +187,7 @@ struct drm_encoder *xylon_drm_encoder_create(struct drm_device *dev)
 
 	encoder->client = of_find_i2c_device_by_node(sub_node);
 	of_node_put(sub_node);
-	if (!encoder->client) {
+	if (!encoder->client || !encoder->client->dev.driver) {
 		DRM_INFO("failed find encoder\n");
 		return ERR_PTR(-EPROBE_DEFER);
 	}
