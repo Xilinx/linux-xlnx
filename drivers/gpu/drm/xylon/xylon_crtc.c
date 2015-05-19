@@ -172,9 +172,9 @@ static int xylon_drm_crtc_mode_set_base(struct drm_crtc *base_crtc,
 				  0, 0,
 				  base_crtc->hwmode.hdisplay,
 				  base_crtc->hwmode.vdisplay,
-				  x, y,
-				  base_crtc->hwmode.hdisplay,
-				  base_crtc->hwmode.vdisplay);
+				  x << 16, y << 16,
+				  base_crtc->hwmode.hdisplay << 16,
+				  base_crtc->hwmode.vdisplay << 16);
 	if (ret) {
 		DRM_ERROR("failed set plane mode\n");
 		return ret;
