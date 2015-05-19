@@ -329,7 +329,6 @@ static struct platform_driver xylon_drm_platform_driver = {
 	.probe = xylon_drm_platform_probe,
 	.remove = xylon_drm_platform_remove,
 	.driver = {
-		.owner = THIS_MODULE,
 		.name = DRIVER_NAME,
 		.pm = &xylon_drm_pm_ops,
 		.of_match_table = xylon_drm_of_match,
