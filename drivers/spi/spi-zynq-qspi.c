@@ -449,14 +449,30 @@ static int zynq_qspi_setup(struct spi_device *qspi)
 /**
  * zynq_qspi_fill_tx_fifo - Fills the TX FIFO with as many bytes as possible
  * @xqspi:	Pointer to the zynq_qspi structure
- * @size:	Size of the fifo to be filled
+ * @txcount:	Maximum number of words to write
+ * @txempty:	Indicates that TxFIFO is empty
  */
-static void zynq_qspi_fill_tx_fifo(struct zynq_qspi *xqspi, u32 size)
+static void zynq_qspi_fill_tx_fifo(struct zynq_qspi *xqspi, int txcount,
+				   bool txempty)
 {
-	u32 fifocount;
+	int count, len, k;
 
-	for (fifocount = 0; (fifocount < size) &&
-	     (xqspi->bytes_to_transfer >= 4); fifocount++) {
+	len = xqspi->bytes_to_transfer;
+	if (len && len < 4) {
+		/*
+		 * We must empty the TxFIFO between accesses to TXD0,
+		 * TXD1, TXD2, TXD3.
+		 */
+		if (txempty)
+			zynq_qspi_write_tx_fifo(xqspi, len);
+		return;
+	}
+
+	count = len/4;
+	if (count > txcount)
+		count = txcount;
+
+	for (k = 0; k < count; k++) {
 		if (xqspi->txbuf) {
 			zynq_qspi_write(xqspi,
 					ZYNQ_QSPI_TXD_00_00_OFFSET,
@@ -486,6 +502,8 @@ static irqreturn_t zynq_qspi_irq(int irq, void *dev_id)
 	struct spi_master *master = dev_id;
 	struct zynq_qspi *xqspi = spi_master_get_devdata(master);
 	u32 intr_status, rxcount, rxindex = 0;
+	bool txempty;
+	u32 data;
 
 	intr_status = zynq_qspi_read(xqspi, ZYNQ_QSPI_STATUS_OFFSET);
 	zynq_qspi_write(xqspi, ZYNQ_QSPI_STATUS_OFFSET , intr_status);
@@ -497,7 +515,7 @@ static irqreturn_t zynq_qspi_irq(int irq, void *dev_id)
 		 * We have the THRESHOLD value set to 1,
 		 * so this bit indicates Tx FIFO is empty.
 		 */
-		u32 data;
+		txempty = !!(intr_status & ZYNQ_QSPI_IXR_TXNFULL_MASK);
 
 		rxcount = xqspi->bytes_to_receive - xqspi->bytes_to_transfer;
 		rxcount = (rxcount % 4) ? ((rxcount/4) + 1) : (rxcount/4);
@@ -526,15 +544,9 @@ static irqreturn_t zynq_qspi_irq(int irq, void *dev_id)
 		}
 
 		if (xqspi->bytes_to_transfer) {
-			if (xqspi->bytes_to_transfer >= 4) {
-				/* There is more data to send */
-				zynq_qspi_fill_tx_fifo(xqspi,
-						       ZYNQ_QSPI_RX_THRESHOLD);
-			} else if (intr_status & ZYNQ_QSPI_IXR_TXNFULL_MASK) {
-				int tmp;
-				tmp = xqspi->bytes_to_transfer;
-				zynq_qspi_write_tx_fifo(xqspi, tmp);
-			}
+			/* There is more data to send */
+			zynq_qspi_fill_tx_fifo(xqspi, ZYNQ_QSPI_RX_THRESHOLD,
+					       txempty);
 		} else {
 			/*
 			 * If transfer and receive is completed then only send
@@ -580,11 +592,7 @@ static int zynq_qspi_start_transfer(struct spi_master *master,
 
 	zynq_qspi_setup_transfer(qspi, transfer);
 
-	if (transfer->len >= 4) {
-		zynq_qspi_fill_tx_fifo(xqspi, ZYNQ_QSPI_FIFO_DEPTH);
-	} else {
-		zynq_qspi_write_tx_fifo(xqspi, transfer->len);
-	}
+	zynq_qspi_fill_tx_fifo(xqspi, ZYNQ_QSPI_FIFO_DEPTH, true);
 
 	zynq_qspi_write(xqspi, ZYNQ_QSPI_IEN_OFFSET,
 			ZYNQ_QSPI_IXR_ALL_MASK);
