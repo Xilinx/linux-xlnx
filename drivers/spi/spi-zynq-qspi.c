@@ -472,18 +472,16 @@ static void zynq_qspi_fill_tx_fifo(struct zynq_qspi *xqspi, int txcount,
 	if (count > txcount)
 		count = txcount;
 
-	for (k = 0; k < count; k++) {
-		if (xqspi->txbuf) {
-			zynq_qspi_write(xqspi,
-					ZYNQ_QSPI_TXD_00_00_OFFSET,
-					*((u32 *)xqspi->txbuf));
-			xqspi->txbuf += 4;
-		} else {
-			zynq_qspi_write(xqspi,
-					ZYNQ_QSPI_TXD_00_00_OFFSET, 0x00);
-		}
-		xqspi->bytes_to_transfer -= 4;
+	if (xqspi->txbuf) {
+		writesl(xqspi->regs + ZYNQ_QSPI_TXD_00_00_OFFSET,
+			xqspi->txbuf, count);
+		xqspi->txbuf += count*4;
+	} else {
+		for (k = 0; k < count; k++)
+			writel_relaxed(0, xqspi->regs +
+					  ZYNQ_QSPI_TXD_00_00_OFFSET);
 	}
+	xqspi->bytes_to_transfer -= count*4;
 }
 
 /**
@@ -500,16 +498,15 @@ static void zynq_qspi_drain_rx_fifo(struct zynq_qspi *xqspi, int rxcount)
 	if (count > rxcount)
 		count = rxcount;
 
-	for (k = 0; k < count; k++) {
-		if (xqspi->rxbuf) {
-			(*(u32 *)xqspi->rxbuf) =
-				zynq_qspi_read(xqspi, ZYNQ_QSPI_RXD_OFFSET);
-			xqspi->rxbuf += 4;
-		} else {
-			zynq_qspi_read(xqspi, ZYNQ_QSPI_RXD_OFFSET);
-		}
-		xqspi->bytes_to_receive -= 4;
+	if (xqspi->rxbuf) {
+		readsl(xqspi->regs + ZYNQ_QSPI_RXD_OFFSET,
+		       xqspi->rxbuf, count);
+		xqspi->rxbuf += count*4;
+	} else {
+		for (k = 0; k < count; k++)
+			readl_relaxed(xqspi->regs + ZYNQ_QSPI_RXD_OFFSET);
 	}
+	xqspi->bytes_to_receive -= count*4;
 	len -= count*4;
 
 	if (len && len < 4 && count < rxcount)
