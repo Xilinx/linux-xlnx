@@ -21,7 +21,6 @@
 #include <drm/drm_crtc.h>
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_encoder_slave.h>
-#include <drm/i2c/adv7511.h>
 
 #include <linux/hdmi.h>
 #include <linux/err.h>
@@ -35,17 +34,10 @@
 struct xylon_drm_encoder {
 	struct drm_encoder_slave slave;
 	struct i2c_client *client;
-	bool rgb;
 	int dpms;
 };
 
 #define to_xylon_encoder(x) container_of(x, struct xylon_drm_encoder, slave)
-
-static const uint16_t adv7511_csc_ycbcr_to_rgb[] = {
-	0x0B37, 0x0800, 0x0000, 0x1A86,
-	0x1A49, 0x0800, 0x1D3F, 0x0422,
-	0x0000, 0x0800, 0x0E2D, 0x1914,
-};
 
 static void xylon_drm_encoder_dpms(struct drm_encoder *base_encoder, int dpms)
 {
@@ -93,8 +85,6 @@ static void xylon_drm_encoder_mode_set(struct drm_encoder *base_encoder,
 	struct drm_encoder_slave_funcs *encoder_sfuncs;
 	struct drm_connector *iter;
 	struct drm_connector *connector = NULL;
-	struct adv7511_video_config config;
-	struct edid *edid;
 
 	DRM_DEBUG("h: %d, v: %d\n",
 		  adjusted_mode->hdisplay, adjusted_mode->vdisplay);
@@ -115,40 +105,7 @@ static void xylon_drm_encoder_mode_set(struct drm_encoder *base_encoder,
 		return;
 	}
 
-	edid = adv7511_get_edid(base_encoder);
-	if (edid) {
-		config.hdmi_mode = drm_detect_hdmi_monitor(edid);
-		kfree(edid);
-	} else {
-		config.hdmi_mode = false;
-	}
-
-	hdmi_avi_infoframe_init(&config.avi_infoframe);
-
-	config.avi_infoframe.scan_mode = HDMI_SCAN_MODE_UNDERSCAN;
-
-	if (encoder->rgb) {
-		config.csc_enable = false;
-		config.avi_infoframe.colorspace = HDMI_COLORSPACE_RGB;
-	} else {
-		config.csc_scaling_factor = ADV7511_CSC_SCALING_2;
-		config.csc_coefficents = adv7511_csc_ycbcr_to_rgb;
-
-		if ((connector->display_info.color_formats &
-		    DRM_COLOR_FORMAT_YCRCB422) && config.hdmi_mode) {
-			config.csc_enable = false;
-			config.avi_infoframe.colorspace =
-				HDMI_COLORSPACE_YUV422;
-		} else {
-			config.csc_enable = true;
-			config.avi_infoframe.colorspace = HDMI_COLORSPACE_RGB;
-		}
-	}
-
 	encoder_sfuncs = encoder_slave->slave_funcs;
-	if (encoder_sfuncs->set_config)
-		encoder_sfuncs->set_config(base_encoder, &config);
-
 	if (encoder_sfuncs->mode_set)
 		encoder_sfuncs->mode_set(base_encoder, mode, adjusted_mode);
 }
@@ -243,8 +200,6 @@ struct drm_encoder *xylon_drm_encoder_create(struct drm_device *dev)
 		ret = -ENODEV;
 		goto err_out;
 	}
-
-	encoder->rgb = of_property_read_bool(dev->dev->of_node, "adi,is-rgb");
 
 	encoder->slave.base.possible_crtcs = 1;
 	ret = drm_encoder_init(dev, &encoder->slave.base,
