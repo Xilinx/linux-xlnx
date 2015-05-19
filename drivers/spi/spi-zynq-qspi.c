@@ -230,17 +230,20 @@ static void zynq_qspi_init_hw(struct zynq_qspi *xqspi)
 }
 
 /**
- * zynq_qspi_copy_read_data - Copy data to RX buffer
+ * zynq_qspi_read_rx_fifo - Read 1..4 bytes from RxFIFO to RX buffer
  * @xqspi:	Pointer to the zynq_qspi structure
- * @data:	The 32 bit variable where data is stored
- * @size:	Number of bytes to be copied from data to RX buffer
+ * @size:	Number of bytes to be read (1..4)
  *
  * Note: In case of dual parallel connection, even number of bytes are read
  * when odd bytes are requested to avoid transfer of a nibble to each flash.
  * The receive buffer though, is populated with the number of bytes requested.
  */
-static void zynq_qspi_copy_read_data(struct zynq_qspi *xqspi, u32 data, u8 size)
+static void zynq_qspi_read_rx_fifo(struct zynq_qspi *xqspi, unsigned size)
 {
+	u32 data;
+
+	data = zynq_qspi_read(xqspi, ZYNQ_QSPI_RXD_OFFSET);
+
 	if (xqspi->rxbuf) {
 		if (!xqspi->is_dual || xqspi->is_instr) {
 			memcpy(xqspi->rxbuf, ((u8 *) &data) + 4 - size, size);
@@ -254,6 +257,7 @@ static void zynq_qspi_copy_read_data(struct zynq_qspi *xqspi, u32 data, u8 size)
 			xqspi->rxbuf += len;
 		}
 	}
+
 	xqspi->bytes_to_receive -= size;
 	if (xqspi->bytes_to_receive < 0)
 		xqspi->bytes_to_receive = 0;
@@ -536,9 +540,7 @@ static irqreturn_t zynq_qspi_irq(int irq, void *dev_id)
 				}
 				xqspi->bytes_to_receive -= 4;
 			} else {
-				data = zynq_qspi_read(xqspi,
-						      ZYNQ_QSPI_RXD_OFFSET);
-				zynq_qspi_copy_read_data(xqspi, data,
+				zynq_qspi_read_rx_fifo(xqspi,
 						xqspi->bytes_to_receive);
 			}
 			rxindex++;
