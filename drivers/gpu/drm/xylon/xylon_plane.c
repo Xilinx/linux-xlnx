@@ -198,7 +198,7 @@ static int xylon_drm_plane_set_property(struct drm_plane *base_plane,
 	unsigned int val = (unsigned int)value;
 
 	if (property == props->color_transparency) {
-		op.id = XYLON_DRM_PLANE_OP_ID_COLOR_TRANSPARENCY,
+		op.id = XYLON_DRM_PLANE_OP_ID_COLOR_TRANSPARENCY;
 		op.param = (bool)val;
 	} else if (property == props->interlace) {
 		op.id = XYLON_DRM_PLANE_OP_ID_INTERLACE;
@@ -232,39 +232,46 @@ static int xylon_drm_plane_create_properties(struct drm_plane *base_plane)
 	struct xylon_drm_plane *plane = to_xylon_plane(base_plane);
 	struct xylon_drm_plane_properties *props = &plane->properties;
 	int size;
+	bool bg_layer = xylon_cvc_get_info(plane->manager->cvc,
+					   LOGICVC_INFO_BACKGROUND_LAYER,
+					   0);
 	bool last_plane = xylon_cvc_get_info(plane->manager->cvc,
 					     LOGICVC_INFO_LAST_LAYER,
 					     plane->id);
 
-	size = xylon_drm_property_size(property_color_transparency);
-	if (xylon_drm_property_create_list(dev, obj,
-					   &props->color_transparency,
-					   property_color_transparency,
-					   "color_transparency",
-					   size))
-		return -EINVAL;
+	if (bg_layer || !last_plane) {
+		size = xylon_drm_property_size(property_color_transparency);
+		if (xylon_drm_property_create_list(dev, obj,
+						   &props->color_transparency,
+						   property_color_transparency,
+						   "color_transparency",
+						   size))
+			return -EINVAL;
+	}
+	if (bg_layer || !last_plane) {
+		if (xylon_drm_property_create_range(dev, obj,
+					    &props->transparency,
+					    "transparency",
+					    XYLON_DRM_PROPERTY_ALPHA_MIN,
+					    XYLON_DRM_PROPERTY_ALPHA_MAX,
+					    XYLON_DRM_PROPERTY_ALPHA_MAX))
+			return -EINVAL;
+	}
+	if (bg_layer || !last_plane) {
+		if (xylon_drm_property_create_range(dev, obj,
+					    &props->transparent_color,
+					    "transparent_color",
+					    XYLON_DRM_PROPERTY_COLOR_MIN,
+					    XYLON_DRM_PROPERTY_COLOR_MAX,
+					    XYLON_DRM_PROPERTY_COLOR_MIN))
+			return -EINVAL;
+	}
 	size = xylon_drm_property_size(property_interlace);
 	if (xylon_drm_property_create_list(dev, obj,
 					   &props->interlace,
 					   property_interlace,
 					   "interlace",
 					   size))
-		return -EINVAL;
-	if (!last_plane &&
-	    xylon_drm_property_create_range(dev, obj,
-					    &props->transparency,
-					    "transparency",
-					    XYLON_DRM_PROPERTY_ALPHA_MIN,
-					    XYLON_DRM_PROPERTY_ALPHA_MAX,
-					    XYLON_DRM_PROPERTY_ALPHA_MAX))
-		return -EINVAL;
-	if (!last_plane &&
-	    xylon_drm_property_create_range(dev, obj,
-					    &props->transparent_color,
-					    "transparent_color",
-					    XYLON_DRM_PROPERTY_COLOR_MIN,
-					    XYLON_DRM_PROPERTY_COLOR_MAX,
-					    XYLON_DRM_PROPERTY_COLOR_MIN))
 		return -EINVAL;
 
 	return 0;
@@ -279,14 +286,17 @@ xylon_drm_plane_properties_initial_value(struct drm_plane *base_plane)
 	struct xylon_drm_plane_op op;
 	bool val;
 
-	op.id = XYLON_DRM_PLANE_OP_ID_COLOR_TRANSPARENCY;
-	op.param = false;
-	xylon_drm_plane_op(base_plane, &op);
+	if (props->color_transparency) {
+		op.id = XYLON_DRM_PLANE_OP_ID_COLOR_TRANSPARENCY;
+		op.param = false;
+		xylon_drm_plane_op(base_plane, &op);
 
-	val = xylon_cvc_get_info(plane->manager->cvc,
-				 LOGICVC_INFO_LAYER_COLOR_TRANSPARENCY,
-				 plane->id);
-	drm_object_property_set_value(obj, props->color_transparency, val);
+		val = xylon_cvc_get_info(plane->manager->cvc,
+					 LOGICVC_INFO_LAYER_COLOR_TRANSPARENCY,
+					 plane->id);
+		drm_object_property_set_value(obj, props->color_transparency,
+					      val);
+	}
 }
 
 static struct drm_plane *
