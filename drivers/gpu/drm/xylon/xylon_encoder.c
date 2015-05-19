@@ -167,6 +167,18 @@ struct drm_encoder *xylon_drm_encoder_create(struct drm_device *dev)
 
 	encoder->dpms = DRM_MODE_DPMS_OFF;
 
+	encoder->slave.base.possible_crtcs = 1;
+	ret = drm_encoder_init(dev, &encoder->slave.base,
+			       &xylon_drm_encoder_funcs,
+			       DRM_MODE_ENCODER_TMDS);
+	if (ret) {
+		DRM_ERROR("failed initialize encoder\n");
+		return ERR_PTR(ret);
+	}
+
+	drm_encoder_helper_add(&encoder->slave.base,
+			       &xylon_drm_encoder_helper_funcs);
+
 	sub_node = of_parse_phandle(dev->dev->of_node, "encoder", 0);
 	if (!sub_node) {
 		DRM_ERROR("failed get encoder\n");
@@ -184,38 +196,20 @@ struct drm_encoder *xylon_drm_encoder_create(struct drm_device *dev)
 	drm_i2c_driver = to_drm_i2c_encoder_driver(i2c_driver);
 	if (!drm_i2c_driver) {
 		DRM_ERROR("failed initialize encoder driver\n");
-		ret = -EPROBE_DEFER;
-		goto err_out;
+		return ERR_PTR(-EPROBE_DEFER);
 	}
 
 	ret = drm_i2c_driver->encoder_init(encoder->client, dev,
 					   &encoder->slave);
 	if (ret) {
 		DRM_ERROR("failed initialize encoder\n");
-		goto err_out;
+		return ERR_PTR(ret);
 	}
 
 	if (!encoder->slave.slave_funcs) {
 		DRM_ERROR("failed check encoder function\n");
-		ret = -ENODEV;
-		goto err_out;
+		return ERR_PTR(-ENODEV);
 	}
-
-	encoder->slave.base.possible_crtcs = 1;
-	ret = drm_encoder_init(dev, &encoder->slave.base,
-			       &xylon_drm_encoder_funcs,
-			       DRM_MODE_ENCODER_TMDS);
-	if (ret) {
-		DRM_ERROR("failed initialize encoder\n");
-		goto err_out;
-	}
-
-	drm_encoder_helper_add(&encoder->slave.base,
-			       &xylon_drm_encoder_helper_funcs);
 
 	return &encoder->slave.base;
-
-err_out:
-	put_device(&encoder->client->dev);
-	return ERR_PTR(ret);
 }
