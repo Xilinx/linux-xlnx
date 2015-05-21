@@ -30,6 +30,7 @@
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
+#include <linux/of_dma.h>
 
 /* Hw specific definitions */
 #define XILINX_DMA_MAX_CHANS_PER_DEVICE	0x2 /* Max no of channels */
@@ -590,12 +591,13 @@ out_splice:
 static dma_cookie_t xilinx_dma_tx_submit(struct dma_async_tx_descriptor *tx)
 {
 	struct xilinx_dma_chan *chan = to_xilinx_chan(tx->chan);
-	struct xilinx_dma_desc_sw *desc;
+	struct xilinx_dma_desc_sw *desc, *last_desc;
 	struct xilinx_dma_desc_sw *child;
 	unsigned long flags;
 	dma_cookie_t cookie = -EBUSY;
 
-	desc = container_of(tx, struct xilinx_dma_desc_sw, async_tx);
+	last_desc = container_of(tx, struct xilinx_dma_desc_sw, async_tx);
+    desc = container_of(last_desc->node.next, struct xilinx_dma_desc_sw, tx_list);
 
 	spin_lock_irqsave(&chan->lock, flags);
 
@@ -771,7 +773,7 @@ static struct dma_async_tx_descriptor *xilinx_dma_prep_slave_sg(
 	/* Set EOP to the last link descriptor of new list */
 	hw->control |= XILINX_DMA_BD_EOP;
 
-	return &first->async_tx;
+	return &new->async_tx;
 
 fail:
 	/*
@@ -1016,9 +1018,21 @@ static int xilinx_dma_probe(struct platform_device *pdev)
 		goto free_chan_resources;
 	}
 
+	ret = of_dma_controller_register(node, 
+                of_dma_xlate_by_chan_id,
+				&xdev->common);
+    if (ret)
+    {
+		dev_err(&pdev->dev, "devicetree DMA controller registration failed\n");
+		goto unreg_dma_async_dev;
+    }
+
 	dev_info(&pdev->dev, "Probing xilinx axi dma engine...Successful\n");
 
 	return 0;
+
+unreg_dma_async_dev:
+	dma_async_device_unregister(&xdev->common);
 
 free_chan_resources:
 	xilinx_dma_free_channels(xdev);
@@ -1031,6 +1045,9 @@ static int xilinx_dma_remove(struct platform_device *pdev)
 	struct xilinx_dma_device *xdev;
 
 	xdev = platform_get_drvdata(pdev);
+
+	of_dma_controller_free(pdev->dev.of_node);
+
 	dma_async_device_unregister(&xdev->common);
 
 	xilinx_dma_free_channels(xdev);
