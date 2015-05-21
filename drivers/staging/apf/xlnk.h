@@ -21,6 +21,22 @@ enum xlnk_dma_direction {
 	XLNK_DMA_NONE = 3,
 };
 
+struct dmabuf_args {
+	int dmabuf_fd;
+	void *user_vaddr;
+};
+
+struct xlnk_dmabuf_reg {
+	int dmabuf_fd;
+	void *user_vaddr;
+	struct dma_buf *dbuf;
+	struct dma_buf_attachment *dbuf_attach;
+	struct sg_table *dbuf_sg_table;
+	int is_mapped;
+	int dma_direction;
+	struct list_head list;
+};
+
 union xlnk_args {
 	struct {
 		unsigned int len;
@@ -32,6 +48,10 @@ union xlnk_args {
 		unsigned int id;
 		void *buf;
 	} freebuf;
+	struct {
+		int dmabuf_fd;
+		void *user_addr;
+	} dmabuf;
 	struct {
 		char name[64]; /* max length of 64 */
 		u32 dmachan; /* return value */

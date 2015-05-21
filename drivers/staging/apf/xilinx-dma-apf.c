@@ -35,6 +35,7 @@
 #include <linux/uaccess.h>
 #include <asm/cacheflush.h>
 #include <linux/sched.h>
+#include <linux/dma-buf.h>
 
 #include "xilinx-dma-apf.h"
 
@@ -45,6 +46,8 @@ static LIST_HEAD(dma_device_list);
 /* IO accessors */
 #define DMA_OUT(addr, val)      (iowrite32(val, addr))
 #define DMA_IN(addr)            (ioread32(addr))
+
+static int xdma_using_dbuf = 0;
 
 static int unpin_user_pages(struct scatterlist *sglist, unsigned int cnt);
 /* Driver functions */
@@ -768,7 +771,8 @@ int xdma_submit(struct xdma_chan *chan,
 			u32 *appwords_i,
 			unsigned int nappwords_o,
 			unsigned int user_flags,
-			struct xdma_head **dmaheadpp)
+			struct xdma_head **dmaheadpp,
+			struct xlnk_dmabuf_reg *dp)
 {
 	struct xdma_head *dmahead;
 	struct scatterlist *sglist, *sglist_dma;
@@ -789,7 +793,29 @@ int xdma_submit(struct xdma_chan *chan,
 	dmahead->dmadir = chan->direction;
 	dmahead->userflag = user_flags;
 	dmadir = chan->direction;
-	if (user_flags & CF_FLAG_PHYSICALLY_CONTIGUOUS) {
+	if (dp) {
+		if (!dp->is_mapped) {
+			dp->dbuf_attach = dma_buf_attach(dp->dbuf, chan->dev);
+			dp->dbuf_sg_table = dma_buf_map_attachment(
+				dp->dbuf_attach, chan->direction);
+
+			if (IS_ERR_OR_NULL(dp->dbuf_sg_table)) {
+				pr_err("%s unable to map sg_table for dbuf: %d\n",
+					__func__, (int)dp->dbuf_sg_table);
+				return -EINVAL;
+			}
+			dp->is_mapped = 1;
+		}
+
+		sglist_dma = dp->dbuf_sg_table->sgl;
+		sglist = dp->dbuf_sg_table->sgl;
+		sgcnt = dp->dbuf_sg_table->nents;
+		sgcnt_dma = dp->dbuf_sg_table->nents;
+
+		dmahead->userbuf = (void *)dp->dbuf_sg_table->sgl->dma_address;
+
+		xdma_using_dbuf = 1;
+	} else if (user_flags & CF_FLAG_PHYSICALLY_CONTIGUOUS) {
 		/*
 		 * convert physically contiguous buffer into
 		 * minimal length sg list
@@ -882,7 +908,9 @@ int xdma_wait(struct xdma_head *dmahead, unsigned int user_flags)
 	} else
 		wait_for_completion(&dmahead->cmp);
 
-	if (!(user_flags & CF_FLAG_PHYSICALLY_CONTIGUOUS)) {
+	if (xdma_using_dbuf == 1) {
+		xdma_using_dbuf = 0;
+	} else if (!(user_flags & CF_FLAG_PHYSICALLY_CONTIGUOUS)) {
 		if (!(user_flags & CF_FLAG_CACHE_FLUSH_INVALIDATE))
 			dma_set_attr(DMA_ATTR_SKIP_CPU_SYNC, &attrs);
 

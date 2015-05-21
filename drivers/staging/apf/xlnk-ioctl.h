@@ -9,8 +9,8 @@
 
 #define XLNK_IOCALLOCBUF	_IOWR(XLNK_IOC_MAGIC, 2, unsigned long)
 #define XLNK_IOCFREEBUF		_IOWR(XLNK_IOC_MAGIC, 3, unsigned long)
-
-
+#define XLNK_IOCADDDMABUF	_IOWR(XLNK_IOC_MAGIC, 4, unsigned long)
+#define XLNK_IOCCLEARDMABUF	_IOWR(XLNK_IOC_MAGIC, 5, unsigned long)
 
 #define XLNK_IOCDMAREQUEST	_IOWR(XLNK_IOC_MAGIC, 7, unsigned long)
 #define XLNK_IOCDMASUBMIT	_IOWR(XLNK_IOC_MAGIC, 8, unsigned long)

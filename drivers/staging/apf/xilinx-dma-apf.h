@@ -22,6 +22,9 @@
 /* dma stuff */
 #include <linux/dma-mapping.h>
 
+/* xlnk structures */
+#include "xlnk.h"
+
 #define XDMA_IOC_MAGIC 'X'
 #define XDMA_IOCRESET		_IO(XDMA_IOC_MAGIC, 0)
 #define XDMA_IOCREQUEST		_IOWR(XDMA_IOC_MAGIC, 1, unsigned long)
@@ -198,7 +201,8 @@ int xdma_submit(struct xdma_chan *chan,
 		u32 *appwords_i,
 		unsigned int nappwords_o,
 		unsigned int user_flags,
-		struct xdma_head **dmaheadpp);
+		struct xdma_head **dmaheadpp,
+		struct xlnk_dmabuf_reg *dp);
 int xdma_wait(struct xdma_head *dmahead, unsigned int user_flags);
 int xdma_getconfig(struct xdma_chan *chan,
 		   unsigned char *irq_thresh,

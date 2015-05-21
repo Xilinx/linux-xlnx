@@ -25,6 +25,7 @@
 #include <linux/mm.h>
 #include <asm/cacheflush.h>
 #include <linux/io.h>
+#include <linux/dma-buf.h>
 
 #include <linux/string.h>
 
@@ -44,6 +45,7 @@
 #include <linux/dma-mapping.h>  /* dma */
 #include <linux/clk.h>
 #include <linux/of.h>
+#include <linux/list.h>
 
 #include "xlnk-ioctl.h"
 #include "xlnk.h"
@@ -102,6 +104,7 @@ static void xlnk_vma_close(struct vm_area_struct *vma);
 
 static int xlnk_init_bufpool(void);
 
+LIST_HEAD(xlnk_dmabuf_list);
 
 static int xlnk_shutdown(unsigned long buf);
 static int xlnk_recover_resource(unsigned long buf);
@@ -812,6 +815,71 @@ static int xlnk_freebuf_ioctl(struct file *filp, unsigned int code,
 	return xlnk_freebuf(id);
 }
 
+static int xlnk_adddmabuf_ioctl(struct file *filp, unsigned int code,
+			unsigned long args)
+{
+	struct dmabuf_args db_args;
+	struct xlnk_dmabuf_reg *db;
+	int status;
+
+	status = copy_from_user(&db_args, (void __user *)args,
+			sizeof(struct dmabuf_args));
+
+	if (status)
+		return -ENOMEM;
+
+	pr_err("xlnk: registering dmabuf fd %d for virtual address %p\n",
+		db_args.dmabuf_fd, db_args.user_vaddr);
+
+	db = kzalloc(sizeof(struct xlnk_dmabuf_reg), GFP_KERNEL);
+	if (!db)
+		return -ENOMEM;
+
+	db->dmabuf_fd = db_args.dmabuf_fd;
+	db->user_vaddr = db_args.user_vaddr;
+
+	db->dbuf = dma_buf_get(db->dmabuf_fd);
+	if (IS_ERR_OR_NULL(db->dbuf)) {
+		pr_err("%s invalid dmabuf fd %d\n", __func__, db->dmabuf_fd);
+		return -EINVAL;
+	}
+	db->is_mapped = 0;
+
+	INIT_LIST_HEAD(&db->list);
+	list_add_tail(&db->list, &xlnk_dmabuf_list);
+
+	return 0;
+}
+
+static int xlnk_cleardmabuf_ioctl(struct file *filp, unsigned int code,
+				unsigned long args)
+{
+	struct dmabuf_args db_args;
+	struct xlnk_dmabuf_reg *dp, *dp_temp;
+	int status;
+
+	status = copy_from_user(&db_args, (void __user *)args,
+			sizeof(struct dmabuf_args));
+
+	if (status)
+		return -ENOMEM;
+
+	list_for_each_entry_safe(dp, dp_temp, &xlnk_dmabuf_list, list) {
+		if (dp->user_vaddr == db_args.user_vaddr) {
+			if (dp->is_mapped) {
+				dma_buf_unmap_attachment(dp->dbuf_attach,
+					dp->dbuf_sg_table, dp->dma_direction);
+				dma_buf_detach(dp->dbuf, dp->dbuf_attach);
+			}
+			dma_buf_put(dp->dbuf);
+			list_del(&dp->list);
+			kfree(dp);
+			return 0;
+		}
+	}
+	return 1;
+}
+
 static int xlnk_dmarequest_ioctl(struct file *filp, unsigned int code,
 				 unsigned long args)
 {
@@ -862,6 +930,7 @@ static int xlnk_dmasubmit_ioctl(struct file *filp, unsigned int code,
 #ifdef CONFIG_XILINX_DMA_APF
 	union xlnk_args temp_args;
 	struct xdma_head *dmahead;
+	struct xlnk_dmabuf_reg *dp, *cp;
 	int status = -1;
 
 	status = copy_from_user(&temp_args, (void __user *)args,
@@ -873,6 +942,15 @@ static int xlnk_dmasubmit_ioctl(struct file *filp, unsigned int code,
 	if (!temp_args.dmasubmit.dmachan)
 		return -ENODEV;
 
+	cp = NULL;
+
+	list_for_each_entry(dp, &xlnk_dmabuf_list, list) {
+		if (dp->user_vaddr == temp_args.dmasubmit.buf) {
+			cp = dp;
+			break;
+		}
+	}
+
 	status = xdma_submit((struct xdma_chan *)temp_args.dmasubmit.dmachan,
 						temp_args.dmasubmit.buf,
 						temp_args.dmasubmit.len,
@@ -880,7 +958,8 @@ static int xlnk_dmasubmit_ioctl(struct file *filp, unsigned int code,
 						temp_args.dmasubmit.appwords_i,
 						temp_args.dmasubmit.nappwords_o,
 						temp_args.dmasubmit.flag,
-						&dmahead);
+						&dmahead,
+						cp);
 
 	if (!status) {
 		temp_args.dmasubmit.dmahandle = (u32)dmahead;
@@ -1109,6 +1188,12 @@ static long xlnk_ioctl(struct file *filp, unsigned int code,
 		break;
 	case XLNK_IOCFREEBUF:
 		status = xlnk_freebuf_ioctl(filp, code, args);
+		break;
+	case XLNK_IOCADDDMABUF:
+		status = xlnk_adddmabuf_ioctl(filp, code, args);
+		break;
+	case XLNK_IOCCLEARDMABUF:
+		status = xlnk_cleardmabuf_ioctl(filp, code, args);
 		break;
 	case XLNK_IOCDMAREQUEST:
 		status = xlnk_dmarequest_ioctl(filp, code, args);
