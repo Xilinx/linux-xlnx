@@ -26,7 +26,7 @@ config XILINX_DMATEST
 
 config XILINX_VDMATEST
 	tristate "DMA Test client for VDMA"
-	depends on XILINX_AXIVDMA
+	depends on XILINX_VDMA
 	help
 	  Simple DMA test client. Say N unless you're debugging a
 	  DMA Device driver.
