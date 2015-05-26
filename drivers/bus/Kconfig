@@ -4,6 +4,39 @@
 
 menu "Bus devices"
 
+config ARM_CCI
+	bool
+
+config ARM_CCI400_COMMON
+	bool
+	select ARM_CCI
+
+config ARM_CCI400_PMU
+	bool "ARM CCI400 PMU support"
+	depends on (ARM && CPU_V7) || ARM64
+	depends on PERF_EVENTS
+	select ARM_CCI400_COMMON
+	help
+	  Support for PMU events monitoring on the ARM CCI-400 (cache coherent
+	  interconnect). CCI-400 supports counting events related to the
+	  connected slave/master interfaces.
+
+config ARM_CCI400_PORT_CTRL
+	bool
+	depends on ARM && OF && CPU_V7
+	select ARM_CCI400_COMMON
+	help
+	  Low level power management driver for CCI400 cache coherent
+	  interconnect for ARM platforms.
+
+config ARM_CCN
+	bool "ARM CCN driver support"
+	depends on ARM || ARM64
+	depends on PERF_EVENTS
+	help
+	  PMU (perf) driver supporting the ARM CCN (Cache Coherent Network)
+	  interconnect.
+
 config BRCMSTB_GISB_ARB
 	bool "Broadcom STB GISB bus arbiter"
 	depends on ARM || MIPS
@@ -42,41 +75,6 @@ config OMAP_INTERCONNECT
 
 	help
 	  Driver to enable OMAP interconnect error handling driver.
-
-config ARM_CCI400_PORT_CTRL
-	bool
-	depends on ARM && OF && CPU_V7
-	select ARM_CCI400_COMMON
-	help
-	  Low level power management driver for CCI400 cache coherent
-	  interconnect for ARM platforms.
-
-config ARM_CCI400_PMU
-	bool "ARM CCI400 PMU support"
-	default y
-	depends on ARM || ARM64
-	depends on HW_PERF_EVENTS
-	select ARM_CCI400_COMMON
-	help
-	  Support for PMU events monitoring on the ARM CCI cache coherent
-	  interconnect.
-
-	  If unsure, say Y
-
-config ARM_CCI400_COMMON
-	bool
-	select ARM_CCI
-
-config ARM_CCI
-	bool
-
-config ARM_CCN
-	bool "ARM CCN driver support"
-	depends on ARM || ARM64
-	depends on PERF_EVENTS
-	help
-	  PMU (perf) driver supporting the ARM CCN (Cache Coherent Network)
-	  interconnect.
 
 config VEXPRESS_CONFIG
 	bool "Versatile Express configuration bus"
