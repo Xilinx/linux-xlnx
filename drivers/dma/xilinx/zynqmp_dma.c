@@ -752,6 +752,7 @@ static irqreturn_t zynqmp_dma_irq_handler(int irq, void *data)
 {
 	struct zynqmp_dma_chan *chan = (struct zynqmp_dma_chan *)data;
 	u32 isr, imr, status;
+	irqreturn_t ret = IRQ_NONE;
 
 	isr = readl(chan->regs + ISR);
 	imr = readl(chan->regs + IMR);
@@ -766,7 +767,7 @@ static irqreturn_t zynqmp_dma_irq_handler(int irq, void *data)
 		zynqmp_dma_start_transfer(chan);
 		spin_unlock(&chan->lock);
 		tasklet_schedule(&chan->tasklet);
-		return IRQ_HANDLED;
+		ret = IRQ_HANDLED;
 	}
 
 	if (status & INT_ERR) {
@@ -774,17 +775,17 @@ static irqreturn_t zynqmp_dma_irq_handler(int irq, void *data)
 		writel(INT_ERR, chan->regs + IDS);
 		tasklet_schedule(&chan->tasklet);
 		dev_err(chan->dev, "Channel %p has has errors\n", chan);
-		return IRQ_HANDLED;
+		ret = IRQ_HANDLED;
 	}
 
 	if (status & INT_OVRFL) {
 		writel(INT_OVRFL, chan->regs + IDS);
 		zynqmp_dma_handle_ovfl_int(chan, status);
 		dev_dbg(chan->dev, "Channel %p overflow interrupt\n", chan);
-		return IRQ_HANDLED;
+		ret = IRQ_HANDLED;
 	}
 
-	return IRQ_NONE;
+	return ret;
 }
 
 /**
