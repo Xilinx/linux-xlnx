@@ -697,7 +697,8 @@ static void zynqmp_dma_free_chan_resources(struct dma_chan *dchan)
 	chan->active_desc = NULL;
 
 	spin_unlock_irqrestore(&chan->lock, flags);
-	dma_free_coherent(chan->dev, (DESC_SIZE(chan) * ZYNQMP_DMA_NUM_DESCS),
+	dma_free_coherent(chan->dev,
+			  (2 * DESC_SIZE(chan) * ZYNQMP_DMA_NUM_DESCS),
 			  chan->desc_pool_v, chan->desc_pool_p);
 }
 
