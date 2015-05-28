@@ -402,11 +402,11 @@ config XILINX_VDMA
 	  channels, Memory Mapped to Stream (MM2S) and Stream to
 	  Memory Mapped (S2MM) for the data transfers.
 
-config XILINX_ZDMA
-	tristate "Xilinx ZDMA Engine"
+config XILINX_ZYNQMP_DMA
+	tristate "Xilinx ZynqMP DMA Engine"
 	select DMA_ENGINE
 	help
-	  Enable support for Xilinx ZDMA controller.
+	  Enable support for Xilinx ZynqMP DMA controller.
 
 config DMA_SUN6I
 	tristate "Allwinner A31 SoCs DMA support"
