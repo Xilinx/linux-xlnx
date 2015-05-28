@@ -1098,10 +1098,11 @@ static int zynqmp_dma_chan_probe(struct zynqmp_dma_device *xdev,
 	if (err < 0)
 		dev_err(xdev->dev, "unable to read id property");
 
-	if (of_device_is_compatible(node, "xlnx,gdma-1.0"))
-		chan->bus_width = DMA_SLAVE_BUSWIDTH_16_BYTES;
-	else
-		chan->bus_width = DMA_SLAVE_BUSWIDTH_8_BYTES;
+	err = of_property_read_u32(node, "xlnx,bus-width", &chan->bus_width);
+	if (err < 0) {
+		dev_err(xdev->dev, "missing bus-width property");
+		return err;
+	}
 
 	xdev->chan = chan;
 	tasklet_init(&chan->tasklet, zynqmp_dma_do_tasklet, (ulong)chan);
@@ -1223,8 +1224,7 @@ static int zynqmp_dma_remove(struct platform_device *pdev)
 }
 
 static const struct of_device_id zynqmp_dma_of_match[] = {
-	{ .compatible = "xlnx,gdma-1.0", },
-	{ .compatible = "xlnx,adma-1.0", },
+	{ .compatible = "xlnx,zynqmp-dma-1.0", },
 	{}
 };
 MODULE_DEVICE_TABLE(of, zynqmp_dma_of_match);
