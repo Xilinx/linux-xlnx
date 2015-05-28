@@ -187,14 +187,12 @@ struct zynqmp_dma_desc_sw {
  * @desc_free_cnt: Descriptor available count
  * @dev: The dma device
  * @irq: Channel IRQ
- * @id: Channel ID
  * @has_sg: Support scatter gather transfers
  * @ovrfetch: Overfetch status
  * @ratectrl: Rate control value
  * @tasklet: Cleanup work after irq
  * @src_issue: Out standing transactions on source
  * @dst_issue: Out standing transactions on destination
- * @name: Name of the channel
  * @idle : Channel status;
  * @desc_size: Size of the low level descriptor
  * @err: Channel has errors
@@ -225,14 +223,12 @@ struct zynqmp_dma_chan {
 	u32 desc_free_cnt;
 	struct device *dev;
 	int irq;
-	int id;
 	bool has_sg;
 	bool ovrfetch;
 	u32 ratectrl;
 	struct tasklet_struct tasklet;
 	u32 src_issue;
 	u32 dst_issue;
-	char name[40];
 	bool idle;
 	u32 desc_size;
 	bool err;
@@ -1094,10 +1090,6 @@ static int zynqmp_dma_chan_probe(struct zynqmp_dma_device *xdev,
 	if (err < 0)
 		chan->src_issue = SRC_ISSUE_RST_VAL;
 
-	err = of_property_read_u32(node, "xlnx,id", &chan->id);
-	if (err < 0)
-		dev_err(xdev->dev, "unable to read id property");
-
 	err = of_property_read_u32(node, "xlnx,bus-width", &chan->bus_width);
 	if (err < 0) {
 		dev_err(xdev->dev, "missing bus-width property");
@@ -1106,7 +1098,6 @@ static int zynqmp_dma_chan_probe(struct zynqmp_dma_device *xdev,
 
 	xdev->chan = chan;
 	tasklet_init(&chan->tasklet, zynqmp_dma_do_tasklet, (ulong)chan);
-	snprintf(chan->name, sizeof(chan->name), "zynqmp_dmachan%d", chan->id);
 	spin_lock_init(&chan->lock);
 	INIT_LIST_HEAD(&chan->pending_list);
 	INIT_LIST_HEAD(&chan->done_list);
@@ -1118,7 +1109,7 @@ static int zynqmp_dma_chan_probe(struct zynqmp_dma_device *xdev,
 	zynqmp_dma_init(chan);
 	chan->irq = platform_get_irq(pdev, 0);
 	err = devm_request_irq(&pdev->dev, chan->irq, zynqmp_dma_irq_handler, 0,
-			       chan->name, chan);
+			       "zynqmp-dma", chan);
 	if (err)
 		return err;
 

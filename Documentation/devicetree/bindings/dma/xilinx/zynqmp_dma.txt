@@ -8,7 +8,6 @@ Required properties:
 - interrupt-parent: Interrupt controller the interrupt is routed through
 - interrupts: Should contain DMA channel interrupt.
 - xlnx,bus-width: Axi buswidth in bits. Should contain 128 or 64
-- id: Channel Id
 
 Optional properties:
 - xlnx,include-sg: Indicates the controller to operate in simple or scatter
@@ -46,7 +45,6 @@ fpd_dma_chan1: dma@FD500000 {
 	xlnx,overfetch;
 	xlnx,ratectrl = <0>;
 	xlnx,src-issue = <16>;
-	xlnx,id = <0>;
 	xlnx,desc-axi-cohrnt;
 	xlnx,src-axi-cohrnt;
 	xlnx,dst-axi-cohrnt;
