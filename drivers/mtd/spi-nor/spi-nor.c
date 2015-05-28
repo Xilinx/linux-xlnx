@@ -170,6 +170,20 @@ static inline int write_sr(struct spi_nor *nor, u8 val)
 }
 
 /*
+ * Write status Register and configuration register with 2 bytes
+ * The first byte will be written to the status register, while the
+ * second byte will be written to the configuration register.
+ * Return negative if error occured.
+ */
+static int write_sr_cr(struct spi_nor *nor, u16 val)
+{
+	nor->cmd_buf[0] = val & 0xff;
+	nor->cmd_buf[1] = (val >> 8);
+
+	return nor->write_reg(nor, SPINOR_OP_WRSR, nor->cmd_buf, 2, 0);
+}
+
+/*
  * Set write enable latch with Write Enable command.
  * Returns negative if error occurred.
  */
@@ -597,6 +611,7 @@ static int write_sr_modify_protection(struct spi_nor *nor, uint8_t status,
 				      uint8_t lock_bits)
 {
 	uint8_t status_new, bp_mask;
+	u16 val;
 
 	status_new = status & ~SR_BP_BIT_MASK;
 	bp_mask = (lock_bits << SR_BP_BIT_OFFSET) & SR_BP_BIT_MASK;
@@ -613,8 +628,17 @@ static int write_sr_modify_protection(struct spi_nor *nor, uint8_t status,
 	status_new |= bp_mask;
 
 	write_enable(nor);
-	if (write_sr(nor, status_new) < 0)
-		return 1;
+
+	/* For spansion flashes */
+	if (nor->jedec_id == CFI_MFR_AMD) {
+		val = read_cr(nor) << 8;
+		val |= status_new;
+		if (write_sr_cr(nor, val) < 0)
+			return 1;
+	} else {
+		if (write_sr(nor, status_new) < 0)
+			return 1;
+	}
 	return 0;
 }
 
@@ -1293,24 +1317,13 @@ static int macronix_quad_enable(struct spi_nor *nor)
 	return 0;
 }
 
-/*
- * Write status Register and configuration register with 2 bytes
- * The first byte will be written to the status register, while the
- * second byte will be written to the configuration register.
- * Return negative if error occured.
- */
-static int write_sr_cr(struct spi_nor *nor, u16 val)
-{
-	nor->cmd_buf[0] = val & 0xff;
-	nor->cmd_buf[1] = (val >> 8);
-
-	return nor->write_reg(nor, SPINOR_OP_WRSR, nor->cmd_buf, 2, 0);
-}
-
 static int __maybe_unused spansion_quad_enable(struct spi_nor *nor)
 {
 	int ret;
 	int quad_en = CR_QUAD_EN_SPAN << 8;
+
+	quad_en |= read_sr(nor);
+	quad_en |= (read_cr(nor) << 8);
 
 	write_enable(nor);
 
