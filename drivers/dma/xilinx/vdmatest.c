@@ -497,6 +497,7 @@ static void xilinx_vdmatest_cleanup_channel(struct xilinx_vdmatest_chan *dtc)
 		pr_info("xilinx_vdmatest: thread %s exited with status %d\n",
 				thread->task->comm, ret);
 		list_del(&thread->node);
+		put_task_struct(thread->task);
 		kfree(thread);
 	}
 	kfree(dtc);
@@ -533,6 +534,7 @@ xilinx_vdmatest_add_slave_threads(struct xilinx_vdmatest_chan *tx_dtc,
 		return PTR_ERR(thread->task);
 	}
 
+	get_task_struct(thread->task);
 	list_add_tail(&thread->node, &tx_dtc->threads);
 
 	/* Added one thread with 2 channels */
