@@ -1,0 +1,37 @@
+Xilinx ARM Cortex A9-A9 remoteproc driver
+==========================================
+
+Zynq family of devices can use one A9 processor to help with various
+low power / real time tasks.
+
+This driver requires specific Zynq hardware design.
+
+Zynq RemoteProc Device Node:
+=================================
+A zynq_remoteproc device node is used to represent the 2nd A9 instance
+within Zynq SoC.
+
+Required properties:
+--------------------
+ - compatible : should be "xlnx,zynq_remoteproc"
+ - reg : address and length of the register set for the device
+         which defines the memory for the firmware and the shared memory
+ - firmware: default firmware name
+ - vring0: soft interrupt for kicking from firmware
+ - vring1: soft interrupt for kicking from Linux kernel
+
+Optional properties:
+--------------------
+ - firmware : default firmware image name which can be loaded by remoteproc
+              framework - this value can be override by "firmware" module
+              parameter
+
+Example:
+--------
+	zynq_remoteproc@0 {
+		compatible = "xlnx,zynq_remoteproc";
+		reg = < 0x00000000 0x10000000 >;
+		firmware = "firmware";
+		vring0 = <15>;
+		vring1 = <14>;
+	};
