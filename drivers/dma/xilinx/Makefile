@@ -1,4 +1,4 @@
-obj-$(CONFIG_XILINX_AXIDMA) += xilinx_axidma.o
+obj-$(CONFIG_XILINX_AXIDMA) += xilinx_dma.o
 obj-$(CONFIG_XILINX_DMATEST) += axidmatest.o
 obj-$(CONFIG_XILINX_VDMATEST) += vdmatest.o
 obj-$(CONFIG_XILINX_AXICDMA) += xilinx_axicdma.o
