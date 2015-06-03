@@ -141,6 +141,7 @@ struct xilinx_dma_device {
 	struct device *dev;
 	struct dma_device common;
 	struct xilinx_dma_chan *chan[XILINX_DMA_MAX_CHANS_PER_DEVICE];
+	bool has_sg;
 };
 
 #define to_xilinx_chan(chan) \
@@ -897,6 +898,7 @@ static int xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 		return -ENOMEM;
 
 	chan->max_len = XILINX_DMA_MAX_TRANS_LEN;
+	chan->has_sg = xdev->has_sg;
 	chan->config.coalesc = 0x01;
 
 	chan->has_dre = of_property_read_bool(node, "xlnx,include-dre");
@@ -988,8 +990,6 @@ static int xilinx_dma_probe(struct platform_device *pdev)
 	struct device_node *child, *node;
 	struct resource *res;
 	int ret;
-	bool has_sg;
-	unsigned int i;
 
 	node = pdev->dev.of_node;
 
@@ -1012,7 +1012,7 @@ static int xilinx_dma_probe(struct platform_device *pdev)
 		return PTR_ERR(xdev->regs);
 
 	/* Check if SG is enabled */
-	has_sg = of_property_read_bool(node, "xlnx,include-sg");
+	xdev->has_sg = of_property_read_bool(node, "xlnx,include-sg");
 
 	/* Axi DMA only do slave transfers */
 	dma_cap_set(DMA_SLAVE, xdev->common.cap_mask);
@@ -1034,12 +1034,6 @@ static int xilinx_dma_probe(struct platform_device *pdev)
 		if (ret) {
 			dev_err(&pdev->dev, "Probing channels failed\n");
 			goto free_chan_resources;
-		}
-	}
-
-	for (i = 0; i < XILINX_DMA_MAX_CHANS_PER_DEVICE; ++i) {
-		if (xdev->chan[i]) {
-			xdev->chan[i]->has_sg = has_sg;
 		}
 	}
 
