@@ -68,5 +68,6 @@ struct xilinx_cdma_config {
 
 int xilinx_vdma_channel_set_config(struct dma_chan *dchan,
 					struct xilinx_vdma_config *cfg);
-
+int xilinx_dma_channel_set_config(struct dma_chan *dchan,
+					struct xilinx_dma_config *cfg);
 #endif

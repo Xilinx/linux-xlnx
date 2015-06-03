@@ -51,12 +51,12 @@
 #define XILINX_DMA_CR_RUNSTOP_MASK	BIT(0)
 #define XILINX_DMA_CR_RESET_MASK	BIT(2)
 
+#define XILINX_DMA_CR_DELAY_SHIFT	24
+#define XILINX_DMA_CR_COALESCE_SHIFT	16
 
-#define XILINX_DMA_XR_DELAY_MASK	0xFF000000 /* Delay timeout counter */
-#define XILINX_DMA_XR_COALESCE_MASK	0x00FF0000 /* Coalesce counter */
+#define XILINX_DMA_CR_DELAY_MAX		GENMASK(7, 0)
+#define XILINX_DMA_CR_COALESCE_MAX	GENMASK(7, 0)
 
-#define XILINX_DMA_DELAY_SHIFT		24 /* Delay timeout counter shift */
-#define XILINX_DMA_COALESCE_SHIFT	16 /* Coalesce counter shift */
 #define XILINX_DMA_SR_HALTED_MASK	BIT(0)
 #define XILINX_DMA_SR_IDLE_MASK		BIT(1)
 
@@ -404,6 +404,10 @@ static void xilinx_dma_start_transfer(struct xilinx_dma_chan *chan)
 	if (chan->err)
 		return;
 
+	/* Enable interrupts */
+	dma_ctrl_set(chan, XILINX_DMA_REG_CONTROL,
+		     XILINX_DMA_XR_IRQ_ALL_MASK);
+
 	if (chan->has_sg) {
 		desch = list_first_entry(&chan->pending_list,
 					 struct xilinx_dma_desc_sw, node);
@@ -484,25 +488,6 @@ static void xilinx_dma_update_completed_cookie(struct xilinx_dma_chan *chan)
 			chan->completed_cookie = desc->async_tx.cookie;
 		}
 	}
-}
-/**
- * xilinx_dma_chan_config - Configure DMA Channel IRQThreshold, IRQDelay
- * and enable interrupts
- * @chan: DMA channel
- */
-static void xilinx_dma_chan_config(struct xilinx_dma_chan *chan)
-{
-	u32 reg = dma_ctrl_read(chan, XILINX_DMA_REG_CONTROL);
-
-	reg &= ~XILINX_DMA_XR_COALESCE_MASK;
-	reg |= chan->config.coalesc << XILINX_DMA_COALESCE_SHIFT;
-
-	reg &= ~XILINX_DMA_XR_DELAY_MASK;
-	reg |= chan->config.delay << XILINX_DMA_DELAY_SHIFT;
-
-	reg |= XILINX_DMA_XR_IRQ_ALL_MASK;
-
-	dma_ctrl_write(chan, XILINX_DMA_REG_CONTROL, reg);
 }
 
 /* Reset hardware */
@@ -861,12 +846,40 @@ static int xilinx_dma_device_control(struct dma_chan *dchan,
 		if (cfg->delay <= XILINX_DMA_DELAY_MAX)
 			chan->config.delay = cfg->delay;
 
-		xilinx_dma_chan_config(chan);
-
 		return 0;
 	} else
 		return -ENXIO;
 }
+
+/**
+ * xilinx_dma_channel_set_config - Configure DMA channel
+ * @dchan: DMA channel
+ * @cfg: DMA device configuration pointer
+ * Return: '0' on success and failure value on error
+ */
+int xilinx_dma_channel_set_config(struct dma_chan *dchan,
+				  struct xilinx_dma_config *cfg)
+{
+	struct xilinx_dma_chan *chan = to_xilinx_chan(dchan);
+	u32 reg = dma_ctrl_read(chan, XILINX_DMA_REG_CONTROL);
+
+	if (!dma_is_idle(chan))
+		return -EBUSY;
+
+	if (cfg->reset)
+		return dma_reset(chan);
+
+	if (cfg->coalesc <= XILINX_DMA_CR_COALESCE_MAX)
+		reg |= cfg->coalesc << XILINX_DMA_CR_COALESCE_SHIFT;
+
+	if (cfg->delay <= XILINX_DMA_CR_DELAY_MAX)
+		reg |= cfg->delay << XILINX_DMA_CR_DELAY_SHIFT;
+
+	dma_ctrl_write(chan, XILINX_DMA_REG_CONTROL, reg);
+
+	return 0;
+}
+EXPORT_SYMBOL(xilinx_dma_channel_set_config);
 
 static void xilinx_dma_free_channels(struct xilinx_dma_device *xdev)
 {
@@ -1044,7 +1057,6 @@ static int xilinx_dma_probe(struct platform_device *pdev)
 	for (i = 0; i < XILINX_DMA_MAX_CHANS_PER_DEVICE; ++i) {
 		if (xdev->chan[i]) {
 			xdev->chan[i]->has_sg = has_sg;
-			xilinx_dma_chan_config(xdev->chan[i]);
 		}
 	}
 
