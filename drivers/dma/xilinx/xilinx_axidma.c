@@ -23,14 +23,11 @@
 #include <linux/init.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
-#include <linux/irqdomain.h>
 #include <linux/module.h>
-#include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/of_dma.h>
 #include <linux/of_irq.h>
 #include <linux/of_platform.h>
-#include <linux/platform_device.h>
 #include <linux/slab.h>
 
 #include "../dmaengine.h"
@@ -61,8 +58,6 @@
 #define XILINX_DMA_SR_HALTED_MASK	BIT(0)
 #define XILINX_DMA_SR_IDLE_MASK		BIT(1)
 
-#define XILINX_DMA_DELAY_MAX		0xFF /* Maximum delay counter value */
-#define XILINX_DMA_COALESCE_MAX		0xFF /* Max coalescing counter value */
 #define XILINX_DMA_XR_IRQ_IOC_MASK	BIT(12)
 #define XILINX_DMA_XR_IRQ_DELAY_MASK	BIT(13)
 #define XILINX_DMA_XR_IRQ_ERROR_MASK	BIT(14)
@@ -78,12 +73,7 @@
 #define XILINX_DMA_MAX_TRANS_LEN	GENMASK(22, 0)
 
 /* Delay loop counter to prevent hardware failure */
-#define XILINX_DMA_RESET_LOOP		1000000
-#define XILINX_DMA_HALT_LOOP		1000000
-
-#if defined(CONFIG_XILINX_DMATEST) || defined(CONFIG_XILINX_DMATEST_MODULE)
-# define TEST_DMA_WITH_LOOPBACK
-#endif
+#define XILINX_DMA_LOOP_COUNT		1000000
 
 /* Maximum number of Descriptors */
 #define XILINX_DMA_NUM_DESCS		64
@@ -416,7 +406,11 @@ static void xilinx_dma_free_chan_resources(struct dma_chan *dchan)
 			  chan->seg_v, chan->seg_p);
 }
 
-static void xilinx_chan_desc_cleanup(struct xilinx_dma_chan *chan)
+/**
+ * xilinx_dma_chan_desc_cleanup - Clean channel descriptors
+ * @chan: Driver specific dma channel
+ */
+static void xilinx_dma_chan_desc_cleanup(struct xilinx_dma_chan *chan)
 {
 	struct xilinx_dma_tx_descriptor *desc, *next;
 	unsigned long flags;
@@ -447,9 +441,17 @@ static void xilinx_chan_desc_cleanup(struct xilinx_dma_chan *chan)
 	spin_unlock_irqrestore(&chan->lock, flags);
 }
 
-static enum dma_status xilinx_tx_status(struct dma_chan *dchan,
-					dma_cookie_t cookie,
-					struct dma_tx_state *txstate)
+/**
+ * xilinx_dma_tx_status - Get dma transaction status
+ * @dchan: DMA channel
+ * @cookie: Transaction identifier
+ * @txstate: Transaction state
+ *
+ * Return: DMA transaction status
+ */
+static enum dma_status xilinx_dma_tx_status(struct dma_chan *dchan,
+					    dma_cookie_t cookie,
+					    struct dma_tx_state *txstate)
 {
 	struct xilinx_dma_chan *chan = to_xilinx_chan(dchan);
 	struct xilinx_dma_tx_descriptor *desc;
@@ -482,12 +484,12 @@ static enum dma_status xilinx_tx_status(struct dma_chan *dchan,
 }
 
 /**
- * dma_is_running - Check if DMA channel is running
+ * xilinx_dma_is_running - Check if DMA channel is running
  * @chan: Driver specific DMA channel
  *
  * Return: 'true' if running, 'false' if not.
  */
-static bool dma_is_running(struct xilinx_dma_chan *chan)
+static bool xilinx_dma_is_running(struct xilinx_dma_chan *chan)
 {
 	return !(dma_ctrl_read(chan, XILINX_DMA_REG_STATUS) &
 		 XILINX_DMA_SR_HALTED_MASK) &&
@@ -496,21 +498,24 @@ static bool dma_is_running(struct xilinx_dma_chan *chan)
 }
 
 /**
- * dma_is_idle - Check if DMA channel is idle
+ * xilinx_dma_is_idle - Check if DMA channel is idle
  * @chan: Driver specific DMA channel
  *
  * Return: 'true' if idle, 'false' if not.
  */
-static bool dma_is_idle(struct xilinx_dma_chan *chan)
+static bool xilinx_dma_is_idle(struct xilinx_dma_chan *chan)
 {
 	return dma_ctrl_read(chan, XILINX_DMA_REG_STATUS) &
 		XILINX_DMA_SR_IDLE_MASK;
 }
 
-/* Stop the hardware, the ongoing transfer will be finished */
-static void dma_halt(struct xilinx_dma_chan *chan)
+/**
+ * xilinx_dma_halt - Halt DMA channel
+ * @chan: Driver specific DMA channel
+ */
+static void xilinx_dma_halt(struct xilinx_dma_chan *chan)
 {
-	int loop = XILINX_DMA_HALT_LOOP;
+	int loop = XILINX_DMA_LOOP_COUNT;
 
 	dma_ctrl_clr(chan, XILINX_DMA_REG_CONTROL,
 		     XILINX_DMA_CR_RUNSTOP_MASK);
@@ -529,10 +534,13 @@ static void dma_halt(struct xilinx_dma_chan *chan)
 	}
 }
 
-/* Start the hardware. Transfers are not started yet */
-static void dma_start(struct xilinx_dma_chan *chan)
+/**
+ * xilinx_dma_start - Start DMA channel
+ * @chan: Driver specific DMA channel
+ */
+static void xilinx_dma_start(struct xilinx_dma_chan *chan)
 {
-	int loop = XILINX_DMA_HALT_LOOP;
+	int loop = XILINX_DMA_LOOP_COUNT;
 
 	dma_ctrl_set(chan, XILINX_DMA_REG_CONTROL,
 		     XILINX_DMA_CR_RUNSTOP_MASK);
@@ -572,8 +580,8 @@ static void xilinx_dma_start_transfer(struct xilinx_dma_chan *chan)
 	desc = list_first_entry(&chan->pending_list,
 				struct xilinx_dma_tx_descriptor, node);
 
-	if (chan->has_sg && dma_is_running(chan) &&
-	    !dma_is_idle(chan)) {
+	if (chan->has_sg && xilinx_dma_is_running(chan) &&
+	    !xilinx_dma_is_idle(chan)) {
 		tail = list_entry(desc->segments.prev,
 				  struct xilinx_dma_tx_segment, node);
 		dma_ctrl_write(chan, XILINX_DMA_REG_TAILDESC, tail->phys);
@@ -592,7 +600,7 @@ static void xilinx_dma_start_transfer(struct xilinx_dma_chan *chan)
 	dma_ctrl_set(chan, XILINX_DMA_REG_CONTROL,
 		     XILINX_DMA_XR_IRQ_ALL_MASK);
 
-	dma_start(chan);
+	xilinx_dma_start(chan);
 	if (chan->err)
 		return;
 
@@ -660,10 +668,15 @@ static void xilinx_dma_complete_descriptor(struct xilinx_dma_chan *chan)
 
 }
 
-/* Reset hardware */
-static int dma_reset(struct xilinx_dma_chan *chan)
+/**
+ * xilinx_dma_reset - Reset DMA channel
+ * @chan: Driver specific DMA channel
+ *
+ * Return: '0' on success and failure value on error
+ */
+static int xilinx_dma_chan_reset(struct xilinx_dma_chan *chan)
 {
-	int loop = XILINX_DMA_RESET_LOOP;
+	int loop = XILINX_DMA_LOOP_COUNT;
 	u32 tmp;
 
 	dma_ctrl_set(chan, XILINX_DMA_REG_CONTROL,
@@ -673,11 +686,10 @@ static int dma_reset(struct xilinx_dma_chan *chan)
 	      XILINX_DMA_CR_RESET_MASK;
 
 	/* Wait for the hardware to finish reset */
-	while (loop && tmp) {
+	do {
 		tmp = dma_ctrl_read(chan, XILINX_DMA_REG_CONTROL) &
 		      XILINX_DMA_CR_RESET_MASK;
-		loop -= 1;
-	}
+	} while (loop-- && tmp);
 
 	if (!loop) {
 		dev_err(chan->dev, "reset timeout, cr %x, sr %x\n",
@@ -686,10 +698,19 @@ static int dma_reset(struct xilinx_dma_chan *chan)
 		return -EBUSY;
 	}
 
+	chan->err = false;
+
 	return 0;
 }
 
-static irqreturn_t dma_intr_handler(int irq, void *data)
+/**
+ * xilinx_dma_irq_handler - DMA Interrupt handler
+ * @irq: IRQ number
+ * @data: Pointer to the Xilinx DMA channel structure
+ *
+ * Return: IRQ_HANDLED/IRQ_NONE
+ */
+static irqreturn_t xilinx_dma_irq_handler(int irq, void *data)
 {
 	struct xilinx_dma_chan *chan = data;
 	u32 status;
@@ -730,11 +751,15 @@ static irqreturn_t dma_intr_handler(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
-static void dma_do_tasklet(unsigned long data)
+/**
+ * xilinx_dma_do_tasklet - Schedule completion tasklet
+ * @data: Pointer to the Xilinx dma channel structure
+ */
+static void xilinx_dma_do_tasklet(unsigned long data)
 {
 	struct xilinx_dma_chan *chan = (struct xilinx_dma_chan *)data;
 
-	xilinx_chan_desc_cleanup(chan);
+	xilinx_dma_chan_desc_cleanup(chan);
 }
 
 /**
@@ -756,7 +781,7 @@ static dma_cookie_t xilinx_dma_tx_submit(struct dma_async_tx_descriptor *tx)
 		 * If reset fails, need to hard reset the system.
 		 * Channel is no longer functional
 		 */
-		err = dma_reset(chan);
+		err = xilinx_dma_chan_reset(chan);
 		if (err < 0)
 			return err;
 	}
@@ -884,7 +909,7 @@ static int xilinx_dma_terminate_all(struct dma_chan *dchan)
 	struct xilinx_dma_chan *chan = to_xilinx_chan(dchan);
 
 	/* Halt the DMA engine */
-	dma_halt(chan);
+	xilinx_dma_halt(chan);
 
 	/* Remove and free all of the descriptors in the lists */
 	xilinx_dma_free_descriptors(chan);
@@ -904,11 +929,11 @@ int xilinx_dma_channel_set_config(struct dma_chan *dchan,
 	struct xilinx_dma_chan *chan = to_xilinx_chan(dchan);
 	u32 reg = dma_ctrl_read(chan, XILINX_DMA_REG_CONTROL);
 
-	if (!dma_is_idle(chan))
+	if (!xilinx_dma_is_idle(chan))
 		return -EBUSY;
 
 	if (cfg->reset)
-		return dma_reset(chan);
+		return xilinx_dma_chan_reset(chan);
 
 	if (cfg->coalesc <= XILINX_DMA_CR_COALESCE_MAX)
 		reg |= cfg->coalesc << XILINX_DMA_CR_COALESCE_SHIFT;
@@ -939,11 +964,15 @@ static void xilinx_dma_chan_remove(struct xilinx_dma_chan *chan)
 	list_del(&chan->common.device_node);
 }
 
-/*
- * Probing channels
+/**
+ * xilinx_dma_chan_probe - Per Channel Probing
+ * It get channel features from the device tree entry and
+ * initialize special channel handling routines
  *
- * . Get channel features from the device tree entry
- * . Initialize special channel handling routines
+ * @xdev: Driver specific device structure
+ * @node: Device node
+ *
+ * Return: '0' on success and failure value on error
  */
 static int xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 				 struct device_node *node)
@@ -993,7 +1022,7 @@ static int xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 	xdev->chan[chan->id] = chan;
 
 	/* Initialize the channel */
-	err = dma_reset(chan);
+	err = xilinx_dma_chan_reset(chan);
 	if (err) {
 		dev_err(xdev->dev, "Reset channel failed\n");
 		return err;
@@ -1008,7 +1037,7 @@ static int xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 
 	/* find the IRQ line, if it exists in the device tree */
 	chan->irq = irq_of_parse_and_map(node, 0);
-	err = request_irq(chan->irq, dma_intr_handler,
+	err = request_irq(chan->irq, xilinx_dma_irq_handler,
 			  IRQF_SHARED,
 			  "xilinx-dma-controller", chan);
 	if (err) {
@@ -1016,7 +1045,9 @@ static int xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 		return err;
 	}
 
-	tasklet_init(&chan->tasklet, dma_do_tasklet, (unsigned long)chan);
+	/* Initialize the tasklet */
+	tasklet_init(&chan->tasklet, xilinx_dma_do_tasklet,
+		     (unsigned long)chan);
 
 	/* Add the channel to DMA device channel list */
 	list_add_tail(&chan->common.device_node, &xdev->common.channels);
@@ -1045,20 +1076,18 @@ static struct dma_chan *of_dma_xilinx_xlate(struct of_phandle_args *dma_spec,
 	return dma_get_slave_channel(&xdev->chan[chan_id]->common);
 }
 
+/**
+ * xilinx_dma_probe - Driver probe function
+ * @pdev: Pointer to the platform_device structure
+ *
+ * Return: '0' on success and failure value on error
+ */
 static int xilinx_dma_probe(struct platform_device *pdev)
 {
 	struct xilinx_dma_device *xdev;
 	struct device_node *child, *node;
 	struct resource *res;
-	int ret;
-	unsigned int i;
-
-	node = pdev->dev.of_node;
-
-	if (of_get_child_count(node) == 0) {
-		dev_err(&pdev->dev, "no channels defined\n");
-		return -ENODEV;
-	}
+	int i, ret;
 
 	xdev = devm_kzalloc(&pdev->dev, sizeof(*xdev), GFP_KERNEL);
 	if (!xdev)
@@ -1067,7 +1096,9 @@ static int xilinx_dma_probe(struct platform_device *pdev)
 	xdev->dev = &(pdev->dev);
 	INIT_LIST_HEAD(&xdev->common.channels);
 
-	/* iomap registers */
+	node = pdev->dev.of_node;
+
+	/* Map the registers */
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	xdev->regs = devm_ioremap_resource(&pdev->dev, res);
 	if (IS_ERR(xdev->regs))
@@ -1086,7 +1117,7 @@ static int xilinx_dma_probe(struct platform_device *pdev)
 		xilinx_dma_alloc_chan_resources;
 	xdev->common.device_free_chan_resources =
 		xilinx_dma_free_chan_resources;
-	xdev->common.device_tx_status = xilinx_tx_status;
+	xdev->common.device_tx_status = xilinx_dma_tx_status;
 	xdev->common.directions = BIT(DMA_DEV_TO_MEM) | BIT(DMA_MEM_TO_DEV);
 	xdev->common.residue_granularity = DMA_RESIDUE_GRANULARITY_SEGMENT;
 	xdev->common.dev = &pdev->dev;
@@ -1110,7 +1141,7 @@ static int xilinx_dma_probe(struct platform_device *pdev)
 		goto free_chan_resources;
 	}
 
-	dev_info(&pdev->dev, "Probing xilinx axi dma engine...Successful\n");
+	dev_info(&pdev->dev, "Xilinx AXI DMA Engine driver Probed!!\n");
 
 	return 0;
 
@@ -1122,12 +1153,17 @@ free_chan_resources:
 	return ret;
 }
 
+/**
+ * xilinx_dma_remove - Driver remove function
+ * @pdev: Pointer to the platform_device structure
+ *
+ * Return: Always '0'
+ */
 static int xilinx_dma_remove(struct platform_device *pdev)
 {
-	struct xilinx_dma_device *xdev;
+	struct xilinx_dma_device *xdev = platform_get_drvdata(pdev);
 	int i;
 
-	xdev = platform_get_drvdata(pdev);
 	of_dma_controller_free(pdev->dev.of_node);
 	dma_async_device_unregister(&xdev->common);
 

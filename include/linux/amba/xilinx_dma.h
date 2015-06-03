@@ -48,13 +48,16 @@ struct xilinx_vdma_config {
 	int ext_fsync;
 };
 
-/* Device configuration structure for DMA */
+/**
+ * struct xilinx_dma_config - DMA Configuration structure
+ * @coalesc: Interrupt coalescing threshold
+ * @delay: Delay counter
+ * @reset: Reset Channel
+ */
 struct xilinx_dma_config {
-	enum dma_transfer_direction direction;
-					/* Channel direction */
-	int coalesc;			/* Interrupt coalescing threshold */
-	int delay;			/* Delay counter */
-	int reset;			/* Reset Channel */
+	int coalesc;
+	int delay;
+	int reset;
 };
 
 /* Device configuration structure for CDMA */
