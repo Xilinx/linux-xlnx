@@ -27,6 +27,7 @@
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
+#include <linux/of_dma.h>
 #include <linux/of_irq.h>
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
@@ -945,6 +946,25 @@ static int xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 	return 0;
 }
 
+/**
+ * of_dma_xilinx_xlate - Translation function
+ * @dma_spec: Pointer to DMA specifier as found in the device tree
+ * @ofdma: Pointer to DMA controller data
+ *
+ * Return: DMA channel pointer on success and NULL on error
+ */
+static struct dma_chan *of_dma_xilinx_xlate(struct of_phandle_args *dma_spec,
+					    struct of_dma *ofdma)
+{
+	struct xilinx_dma_device *xdev = ofdma->of_dma_data;
+	int chan_id = dma_spec->args[0];
+
+	if (chan_id >= XILINX_DMA_MAX_CHANS_PER_DEVICE)
+		return NULL;
+
+	return dma_get_slave_channel(&xdev->chan[chan_id]->common);
+}
+
 static int xilinx_dma_probe(struct platform_device *pdev)
 {
 	struct xilinx_dma_device *xdev;
@@ -1007,9 +1027,12 @@ static int xilinx_dma_probe(struct platform_device *pdev)
 		}
 	}
 
-	ret = dma_async_device_register(&xdev->common);
+	dma_async_device_register(&xdev->common);
+
+	ret = of_dma_controller_register(node, of_dma_xilinx_xlate, xdev);
 	if (ret) {
-		dev_err(&pdev->dev, "DMA device registration failed\n");
+		dev_err(&pdev->dev, "Unable to register DMA to DT\n");
+		dma_async_device_unregister(&xdev->common);
 		goto free_chan_resources;
 	}
 
@@ -1028,6 +1051,7 @@ static int xilinx_dma_remove(struct platform_device *pdev)
 	struct xilinx_dma_device *xdev;
 
 	xdev = platform_get_drvdata(pdev);
+	of_dma_controller_free(pdev->dev.of_node);
 	dma_async_device_unregister(&xdev->common);
 
 	xilinx_dma_free_channels(xdev);
