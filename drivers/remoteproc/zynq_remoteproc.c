@@ -51,7 +51,6 @@ struct irq_list {
 struct zynq_rproc_pdata {
 	struct irq_list mylist;
 	struct rproc *rproc;
-	u32 ipino;
 	u32 vring0;
 	u32 vring1;
 	u32 mem_start;
@@ -261,23 +260,17 @@ static int zynq_remoteproc_probe(struct platform_device *pdev)
 	}
 
 	/* Allocate free IPI number */
-	ret = of_property_read_u32(pdev->dev.of_node, "ipino", &local->ipino);
-	if (ret < 0) {
-		dev_err(&pdev->dev, "unable to read property");
-		goto irq_fault;
-	}
-
-	ret = set_ipi_handler(local->ipino, ipi_kick, "Firmware kick");
-	if (ret) {
-		dev_err(&pdev->dev, "IPI handler already registered\n");
-		goto irq_fault;
-	}
-
 	/* Read vring0 ipi number */
 	ret = of_property_read_u32(pdev->dev.of_node, "vring0", &local->vring0);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "unable to read property");
 		goto ipi_fault;
+	}
+
+	ret = set_ipi_handler(local->vring0, ipi_kick, "Firmware kick");
+	if (ret) {
+		dev_err(&pdev->dev, "IPI handler already registered\n");
+		goto irq_fault;
 	}
 
 	/* Read vring1 ipi number */
@@ -315,7 +308,7 @@ static int zynq_remoteproc_probe(struct platform_device *pdev)
 rproc_fault:
 	rproc_put(local->rproc);
 ipi_fault:
-	clear_ipi_handler(local->ipino);
+	clear_ipi_handler(local->vring0);
 
 irq_fault:
 	clear_irq(pdev);
@@ -341,7 +334,7 @@ static int zynq_remoteproc_remove(struct platform_device *pdev)
 
 	dma_release_declared_memory(&pdev->dev);
 
-	clear_ipi_handler(local->ipino);
+	clear_ipi_handler(local->vring0);
 	clear_irq(pdev);
 
 	rproc_del(local->rproc);
