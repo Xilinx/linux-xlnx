@@ -32,9 +32,6 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 
-/* Hw specific definitions */
-#define XILINX_DMA_MAX_CHANS_PER_DEVICE	0x2 /* Max no of channels */
-#define XILINX_DMA_MAX_TRANS_LEN	0x7FFFFF /* Max transfer length */
 
 /* Register Offsets */
 #define XILINX_DMA_CONTROL_OFFSET	0x00 /* Control Reg */
@@ -46,32 +43,34 @@
 #define XILINX_DMA_BTT_OFFSET		0x28 /* Bytes to transfer Reg */
 
 /* General register bits definitions */
-#define XILINX_DMA_CR_RESET_MASK	0x00000004 /* Reset DMA engine */
-#define XILINX_DMA_CR_RUNSTOP_MASK	0x00000001 /* Start/stop DMA engine */
+#define XILINX_DMA_CR_RUNSTOP_MASK	BIT(0)
+#define XILINX_DMA_CR_RESET_MASK	BIT(2)
 
-#define XILINX_DMA_SR_HALTED_MASK	0x00000001 /* DMA channel halted */
-#define XILINX_DMA_SR_IDLE_MASK		0x00000002 /* DMA channel idle */
-
-#define XILINX_DMA_XR_IRQ_IOC_MASK	0x00001000 /* Completion interrupt */
-#define XILINX_DMA_XR_IRQ_DELAY_MASK	0x00002000 /* Delay interrupt */
-#define XILINX_DMA_XR_IRQ_ERROR_MASK	0x00004000 /* Error interrupt */
-#define XILINX_DMA_XR_IRQ_ALL_MASK	0x00007000 /* All interrupts */
 
 #define XILINX_DMA_XR_DELAY_MASK	0xFF000000 /* Delay timeout counter */
 #define XILINX_DMA_XR_COALESCE_MASK	0x00FF0000 /* Coalesce counter */
 
 #define XILINX_DMA_DELAY_SHIFT		24 /* Delay timeout counter shift */
 #define XILINX_DMA_COALESCE_SHIFT	16 /* Coalesce counter shift */
+#define XILINX_DMA_SR_HALTED_MASK	BIT(0)
+#define XILINX_DMA_SR_IDLE_MASK		BIT(1)
 
 #define XILINX_DMA_DELAY_MAX		0xFF /* Maximum delay counter value */
 #define XILINX_DMA_COALESCE_MAX		0xFF /* Max coalescing counter value */
+#define XILINX_DMA_XR_IRQ_IOC_MASK	BIT(12)
+#define XILINX_DMA_XR_IRQ_DELAY_MASK	BIT(13)
+#define XILINX_DMA_XR_IRQ_ERROR_MASK	BIT(14)
+#define XILINX_DMA_XR_IRQ_ALL_MASK	GENMASK(14, 12)
 
 #define XILINX_DMA_RX_CHANNEL_OFFSET	0x30 /* S2MM Channel Offset */
+/* BD definitions */
+#define XILINX_DMA_BD_STS_ALL_MASK	GENMASK(31, 28)
+#define XILINX_DMA_BD_SOP		BIT(27)
+#define XILINX_DMA_BD_EOP		BIT(26)
 
-/* BD definitions for AXI Dma */
-#define XILINX_DMA_BD_STS_ALL_MASK	0xF0000000
-#define XILINX_DMA_BD_SOP		0x08000000 /* Start of packet bit */
-#define XILINX_DMA_BD_EOP		0x04000000 /* End of packet bit */
+/* Hw specific definitions */
+#define XILINX_DMA_MAX_CHANS_PER_DEVICE	0x2
+#define XILINX_DMA_MAX_TRANS_LEN	GENMASK(22, 0)
 
 /* Delay loop counter to prevent hardware failure */
 #define XILINX_DMA_RESET_LOOP		1000000
