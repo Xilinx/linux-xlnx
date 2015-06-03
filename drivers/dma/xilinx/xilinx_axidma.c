@@ -43,6 +43,10 @@
 #define XILINX_DMA_REG_DSTADDR		0x20
 #define XILINX_DMA_REG_BTT		0x28
 
+/* Channel/Descriptor Offsets */
+#define XILINX_DMA_MM2S_CTRL_OFFSET	0x00
+#define XILINX_DMA_S2MM_CTRL_OFFSET	0x30
+
 /* General register bits definitions */
 #define XILINX_DMA_CR_RUNSTOP_MASK	BIT(0)
 #define XILINX_DMA_CR_RESET_MASK	BIT(2)
@@ -63,7 +67,6 @@
 #define XILINX_DMA_XR_IRQ_ERROR_MASK	BIT(14)
 #define XILINX_DMA_XR_IRQ_ALL_MASK	GENMASK(14, 12)
 
-#define XILINX_DMA_RX_CHANNEL_OFFSET	0x30 /* S2MM Channel Offset */
 /* BD definitions */
 #define XILINX_DMA_BD_STS_ALL_MASK	GENMASK(31, 28)
 #define XILINX_DMA_BD_SOP		BIT(27)
@@ -108,7 +111,8 @@ struct xilinx_dma_desc_sw {
 
 /* Per DMA specific operations should be embedded in the channel structure */
 struct xilinx_dma_chan {
-	void __iomem *regs;		/* Control status registers */
+	struct xilinx_dma_device *xdev;
+	u32 ctrl_offset;
 	dma_cookie_t completed_cookie;	/* The maximum cookie completed */
 	dma_cookie_t cookie;		/* The current cookie */
 	spinlock_t lock;		/* Descriptor operation lock */
@@ -143,14 +147,14 @@ struct xilinx_dma_device {
 	container_of(chan, struct xilinx_dma_chan, common)
 
 /* IO accessors */
-static inline void dma_write(struct xilinx_dma_chan *chan, u32 reg, u32 val)
+static inline void dma_write(struct xilinx_dma_chan *chan, u32 reg, u32 value)
 {
-	writel(val, chan->regs + reg);
+	iowrite32(value, chan->xdev->regs + reg);
 }
 
 static inline u32 dma_read(struct xilinx_dma_chan *chan, u32 reg)
 {
-	return readl(chan->regs + reg);
+	return ioread32(chan->xdev->regs + reg);
 }
 
 static int xilinx_dma_alloc_chan_resources(struct dma_chan *dchan)
@@ -897,12 +901,12 @@ static int xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 	}
 
 	if (of_device_is_compatible(node, "xlnx,axi-dma-mm2s-channel")) {
-		chan->regs = xdev->regs;
 		chan->id = 0;
+		chan->ctrl_offset = XILINX_DMA_MM2S_CTRL_OFFSET;
 		chan->direction = DMA_MEM_TO_DEV;
 	} else if (of_device_is_compatible(node, "xlnx,axi-dma-s2mm-channel")) {
-		chan->regs = (xdev->regs + XILINX_DMA_RX_CHANNEL_OFFSET);
 		chan->id = 1;
+		chan->ctrl_offset = XILINX_DMA_S2MM_CTRL_OFFSET;
 		chan->direction = DMA_DEV_TO_MEM;
 	} else {
 		dev_err(xdev->dev, "Invalid channel compatible node\n");
