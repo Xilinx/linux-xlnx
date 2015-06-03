@@ -283,7 +283,13 @@ static enum dma_status xilinx_tx_status(struct dma_chan *dchan,
 	return dma_async_is_complete(cookie, last_complete, last_used);
 }
 
-static int dma_is_running(struct xilinx_dma_chan *chan)
+/**
+ * dma_is_running - Check if DMA channel is running
+ * @chan: Driver specific DMA channel
+ *
+ * Return: 'true' if running, 'false' if not.
+ */
+static bool dma_is_running(struct xilinx_dma_chan *chan)
 {
 	return !(dma_read(chan, XILINX_DMA_REG_STATUS) &
 		 XILINX_DMA_SR_HALTED_MASK) &&
@@ -291,7 +297,13 @@ static int dma_is_running(struct xilinx_dma_chan *chan)
 		XILINX_DMA_CR_RUNSTOP_MASK);
 }
 
-static int dma_is_idle(struct xilinx_dma_chan *chan)
+/**
+ * dma_is_idle - Check if DMA channel is idle
+ * @chan: Driver specific DMA channel
+ *
+ * Return: 'true' if idle, 'false' if not.
+ */
+static bool dma_is_idle(struct xilinx_dma_chan *chan)
 {
 	return dma_read(chan, XILINX_DMA_REG_STATUS) &
 	       XILINX_DMA_SR_IDLE_MASK;
