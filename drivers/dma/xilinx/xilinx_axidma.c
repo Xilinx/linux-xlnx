@@ -1,15 +1,16 @@
 /*
- * Xilinx AXI DMA Engine support
+ * DMA driver for Xilinx DMA Engine
  *
- * Copyright (C) 2012 - 2013 Xilinx, Inc. All rights reserved.
+ * Copyright (C) 2010 - 2015 Xilinx, Inc. All rights reserved.
  *
  * Based on the Freescale DMA driver.
  *
  * Description:
- *  . Axi DMA engine, it does transfers between memory and device. It can be
- *    configured to have one channel or two channels. If configured as two
- *    channels, one is to transmit to a device and another is to receive from
- *    a device.
+ *  The AXI DMA, is a soft IP, which provides high-bandwidth Direct Memory
+ *  Access between memory and AXI4-Stream-type target peripherals. It can be
+ *  configured to have one channel or two channels and if configured as two
+ *  channels, one is to transmit data from memory to a device and another is
+ *  to receive from a device.
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
