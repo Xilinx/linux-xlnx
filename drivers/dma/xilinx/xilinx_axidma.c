@@ -126,7 +126,6 @@ struct xilinx_dma_chan {
 	bool has_dre;			/* Support unaligned transfers */
 	bool err;			/* Channel has errors */
 	struct tasklet_struct tasklet;	/* Cleanup work after irq */
-	u32 private;			/* Match info for channel request */
 	struct xilinx_dma_config config;
 					/* Device configuration info */
 };
@@ -872,7 +871,7 @@ static int xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 {
 	struct xilinx_dma_chan *chan;
 	int err;
-	u32 device_id, value, width = 0;
+	u32 value, width = 0;
 
 	/* alloc channel */
 	chan = devm_kzalloc(xdev->dev, sizeof(*chan), GFP_KERNEL);
@@ -896,12 +895,6 @@ static int xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 			chan->has_dre = 0;
 	}
 
-	err = of_property_read_u32(node, "xlnx,device-id", &device_id);
-	if (err) {
-		dev_err(xdev->dev, "unable to read device id property");
-		return err;
-	}
-
 	if (of_device_is_compatible(node, "xlnx,axi-dma-mm2s-channel")) {
 		chan->regs = xdev->regs;
 		chan->id = 0;
@@ -914,14 +907,6 @@ static int xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 		dev_err(xdev->dev, "Invalid channel compatible node\n");
 		return -EINVAL;
 	}
-
-	/*
-	 * Used by dmatest channel matching in slave transfers
-	 * Can change it to be a structure to have more matching information
-	 */
-	chan->private = (chan->direction & 0xFF) | XILINX_DMA_IP_DMA |
-			(device_id << XILINX_DMA_DEVICE_ID_SHIFT);
-	chan->common.private = (void *)&(chan->private);
 
 	if (!chan->has_dre)
 		xdev->common.copy_align = fls(width - 1);
