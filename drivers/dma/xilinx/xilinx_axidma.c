@@ -1051,7 +1051,7 @@ static int xilinx_dma_remove(struct platform_device *pdev)
 }
 
 static const struct of_device_id xilinx_dma_of_match[] = {
-	{ .compatible = "xlnx,axi-dma", },
+	{ .compatible = "xlnx,axi-dma-1.00.a",},
 	{}
 };
 MODULE_DEVICE_TABLE(of, xilinx_dma_of_match);
