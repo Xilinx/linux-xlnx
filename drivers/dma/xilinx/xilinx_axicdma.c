@@ -118,8 +118,6 @@ struct xilinx_cdma_chan {
 	int err;				/* Channel has errors */
 	struct tasklet_struct tasklet;		/* Cleanup work after irq */
 	u32 feature;				/* IP feature */
-	u32 private;				/* Match info for
-							channel request */
 	void (*start_transfer)(struct xilinx_cdma_chan *chan);
 	struct xilinx_cdma_config config;	/* Device configuration info */
 };
@@ -814,7 +812,7 @@ static int xilinx_cdma_chan_probe(struct xilinx_cdma_device *xdev,
 {
 	struct xilinx_cdma_chan *chan;
 	int err;
-	u32 device_id, value, width = 0;
+	u32 value, width = 0;
 
 	/* alloc channel */
 	chan = devm_kzalloc(xdev->dev, sizeof(*chan), GFP_KERNEL);
@@ -838,12 +836,6 @@ static int xilinx_cdma_chan_probe(struct xilinx_cdma_device *xdev,
 			chan->has_dre = 0;
 
 		chan->feature |= width - 1;
-	}
-
-	err = of_property_read_u32(node, "xlnx,device-id", &device_id);
-	if (err) {
-		dev_err(xdev->dev, "unable to read device id property");
-		return err;
 	}
 
 	chan->direction = DMA_MEM_TO_MEM;
@@ -870,14 +862,6 @@ static int xilinx_cdma_chan_probe(struct xilinx_cdma_device *xdev,
 	}
 
 	chan->regs = xdev->regs;
-
-	/*
-	 * Used by dmatest channel matching in slave transfers
-	 * Can change it to be a structure to have more matching information
-	 */
-	chan->private = (chan->direction & 0xFF) | XILINX_DMA_IP_CDMA |
-			(device_id << XILINX_DMA_DEVICE_ID_SHIFT);
-	chan->common.private = (void *)&(chan->private);
 
 	if (!chan->has_dre)
 		xdev->common.copy_align = fls(width - 1);
