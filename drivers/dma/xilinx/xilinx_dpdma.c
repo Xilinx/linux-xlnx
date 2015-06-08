@@ -1374,15 +1374,6 @@ static void xilinx_dpdma_chan_handle_err(struct xilinx_dpdma_chan *chan)
 	spin_unlock_irqrestore(&chan->lock, flags);
 }
 
-static int xilinx_dpdma_chan_config(struct xilinx_dpdma_chan *chan,
-				    struct dma_slave_config *config)
-{
-	if (config->direction != DMA_MEM_TO_DEV)
-		return -EINVAL;
-
-	return 0;
-}
-
 /* DMA tx descriptor */
 
 static dma_cookie_t xilinx_dpdma_tx_submit(struct dma_async_tx_descriptor *tx)
@@ -1492,33 +1483,6 @@ static void xilinx_dpdma_free_chan_resources(struct dma_chan *dchan)
 	xilinx_dpdma_chan_free_resources(chan);
 }
 
-static int xilinx_dpdma_device_control(struct dma_chan *dchan,
-				       enum dma_ctrl_cmd cmd, unsigned long arg)
-{
-	struct xilinx_dpdma_chan *chan = to_xilinx_chan(dchan);
-	int ret = 0;
-
-	switch (cmd) {
-	case DMA_TERMINATE_ALL:
-		ret = xilinx_dpdma_chan_terminate_all(chan);
-		break;
-	case DMA_PAUSE:
-		xilinx_dpdma_chan_pause(chan);
-		break;
-	case DMA_RESUME:
-		xilinx_dpdma_chan_unpause(chan);
-		break;
-	case DMA_SLAVE_CONFIG:
-		ret = xilinx_dpdma_chan_config(chan,
-					       (struct dma_slave_config *)arg);
-		break;
-	default:
-		return -ENOSYS;
-	}
-
-	return ret;
-}
-
 static enum dma_status xilinx_dpdma_tx_status(struct dma_chan *dchan,
 					      dma_cookie_t cookie,
 					      struct dma_tx_state *txstate)
@@ -1534,18 +1498,32 @@ static void xilinx_dpdma_issue_pending(struct dma_chan *dchan)
 	xilinx_dpdma_chan_issue_pending(chan);
 }
 
-#define XILINX_DPDMA_BUSWIDTHS	BIT(DMA_SLAVE_BUSWIDTH_UNDEFINED)
-
-static int xilinx_dpdma_slave_caps(struct dma_chan *dchan,
-				   struct dma_slave_caps *caps)
+static int xilinx_dpdma_config(struct dma_chan *dchan,
+			       struct dma_slave_config *config)
 {
-	caps->src_addr_widths = XILINX_DPDMA_BUSWIDTHS;
-	caps->directions = BIT(DMA_MEM_TO_DEV);
-	caps->cmd_pause = true;
-	caps->cmd_terminate = true;
-	caps->residue_granularity = DMA_RESIDUE_GRANULARITY_DESCRIPTOR;
+	if (config->direction != DMA_MEM_TO_DEV)
+		return -EINVAL;
 
 	return 0;
+}
+
+static int xilinx_dpdma_pause(struct dma_chan *dchan)
+{
+	xilinx_dpdma_chan_pause(to_xilinx_chan(dchan));
+
+	return 0;
+}
+
+static int xilinx_dpdma_resume(struct dma_chan *dchan)
+{
+	xilinx_dpdma_chan_unpause(to_xilinx_chan(dchan));
+
+	return 0;
+}
+
+static int xilinx_dpdma_terminate_all(struct dma_chan *dchan)
+{
+	return xilinx_dpdma_chan_terminate_all(to_xilinx_chan(dchan));
 }
 
 /* Xilinx DPDMA device operations */
@@ -1847,10 +1825,15 @@ static int xilinx_dpdma_probe(struct platform_device *pdev)
 	ddev->device_prep_slave_sg = xilinx_dpdma_prep_slave_sg;
 	ddev->device_prep_dma_cyclic = xilinx_dpdma_prep_dma_cyclic;
 	ddev->device_prep_interleaved_dma = xilinx_dpdma_prep_interleaved_dma;
-	ddev->device_control = xilinx_dpdma_device_control;
 	ddev->device_tx_status = xilinx_dpdma_tx_status;
 	ddev->device_issue_pending = xilinx_dpdma_issue_pending;
-	ddev->device_slave_caps = xilinx_dpdma_slave_caps;
+	ddev->device_config = xilinx_dpdma_config;
+	ddev->device_pause = xilinx_dpdma_pause;
+	ddev->device_resume = xilinx_dpdma_resume;
+	ddev->device_terminate_all = xilinx_dpdma_terminate_all;
+	ddev->src_addr_widths = BIT(DMA_SLAVE_BUSWIDTH_UNDEFINED);
+	ddev->directions = BIT(DMA_MEM_TO_DEV);
+	ddev->residue_granularity = DMA_RESIDUE_GRANULARITY_BURST;
 
 	for_each_child_of_node(node, child) {
 		chan = xilinx_dpdma_chan_probe(child, xdev);

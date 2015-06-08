@@ -48,4 +48,6 @@ obj-y	+= omap/
 
 obj-$(CONFIG_VIDEO_XILINX)		+= xilinx/
 
+obj-$(CONFIG_VIDEO_AM437X_VPFE)		+= am437x/
+
 ccflags-y += -I$(srctree)/drivers/media/i2c

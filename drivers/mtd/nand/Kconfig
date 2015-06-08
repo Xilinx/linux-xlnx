@@ -421,7 +421,7 @@ config MTD_NAND_ORION
 
 config MTD_NAND_FSL_ELBC
 	tristate "NAND support for Freescale eLBC controllers"
-	depends on PPC_OF
+	depends on PPC
 	select FSL_LBC
 	help
 	  Various Freescale chips, including the 8313, include a NAND Flash
@@ -536,5 +536,11 @@ config MTD_NAND_ARASAN
 	depends on MTD_NAND
 	help
 	  Enables the driver for the Arasan Nand Flash controller in ZynqMP SoC.
+
+config MTD_NAND_HISI504
+	tristate "Support for NAND controller on Hisilicon SoC Hip04"
+	depends on HAS_DMA
+	help
+	  Enables support for NAND controller on Hisilicon SoC Hip04.
 
 endif # MTD_NAND

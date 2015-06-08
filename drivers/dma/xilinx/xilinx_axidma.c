@@ -809,46 +809,29 @@ fail:
 	return NULL;
 }
 
-/* Run-time device configuration for Axi DMA */
-static int xilinx_dma_device_control(struct dma_chan *dchan,
-				     enum dma_ctrl_cmd cmd, unsigned long arg)
+/**
+ * xilinx_dma_terminate_all - Halt the channel and free descriptors
+ * @dchan: DMA Channel pointer
+ *
+ * Return: '0' always
+ */
+static int xilinx_dma_terminate_all(struct dma_chan *dchan)
 {
-	struct xilinx_dma_chan *chan;
+	struct xilinx_dma_chan *chan = to_xilinx_chan(dchan);
 	unsigned long flags;
 
-	if (!dchan)
-		return -EINVAL;
+	/* Halt the DMA engine */
+	dma_halt(chan);
 
-	chan = to_xilinx_chan(dchan);
+	spin_lock_irqsave(&chan->lock, flags);
 
-	if (cmd == DMA_TERMINATE_ALL) {
-		/* Halt the DMA engine */
-		dma_halt(chan);
+	/* Remove and free all of the descriptors in the lists */
+	xilinx_dma_free_desc_list(chan, &chan->pending_list);
+	xilinx_dma_free_desc_list(chan, &chan->active_list);
 
-		spin_lock_irqsave(&chan->lock, flags);
+	spin_unlock_irqrestore(&chan->lock, flags);
 
-		/* Remove and free all of the descriptors in the lists */
-		xilinx_dma_free_desc_list(chan, &chan->pending_list);
-		xilinx_dma_free_desc_list(chan, &chan->active_list);
-
-		spin_unlock_irqrestore(&chan->lock, flags);
-		return 0;
-	} else if (cmd == DMA_SLAVE_CONFIG) {
-		/*
-		 * Configure interrupt coalescing and delay counter
-		 * Use value XILINX_DMA_NO_CHANGE to signal no change
-		 */
-		struct xilinx_dma_config *cfg = (struct xilinx_dma_config *)arg;
-
-		if (cfg->coalesc <= XILINX_DMA_COALESCE_MAX)
-			chan->config.coalesc = cfg->coalesc;
-
-		if (cfg->delay <= XILINX_DMA_DELAY_MAX)
-			chan->config.delay = cfg->delay;
-
-		return 0;
-	} else
-		return -ENXIO;
+	return 0;
 }
 
 /**
@@ -1035,7 +1018,7 @@ static int xilinx_dma_probe(struct platform_device *pdev)
 	dma_cap_set(DMA_SLAVE, xdev->common.cap_mask);
 	dma_cap_set(DMA_PRIVATE, xdev->common.cap_mask);
 	xdev->common.device_prep_slave_sg = xilinx_dma_prep_slave_sg;
-	xdev->common.device_control = xilinx_dma_device_control;
+	xdev->common.device_terminate_all = xilinx_dma_terminate_all;
 	xdev->common.device_issue_pending = xilinx_dma_issue_pending;
 	xdev->common.device_alloc_chan_resources =
 		xilinx_dma_alloc_chan_resources;

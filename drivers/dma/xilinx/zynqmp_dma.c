@@ -555,27 +555,6 @@ static void zynqmp_dma_start(struct zynqmp_dma_chan *chan)
 }
 
 /**
- * zynqmp_dma_device_slave_caps - Slave channel capabilities
- * @dchan: DMA channel pointer
- * @caps: Slave capabilities to set
- *
- * Return: Always '0'
- */
-static int zynqmp_dma_device_slave_caps(struct dma_chan *dchan,
-				  struct dma_slave_caps *caps)
-{
-	struct zynqmp_dma_chan *chan = to_chan(dchan);
-
-	caps->src_addr_widths = chan->bus_width;
-	caps->dstn_addr_widths = chan->bus_width;
-	caps->cmd_pause = false;
-	caps->cmd_terminate = false;
-	caps->residue_granularity = DMA_RESIDUE_GRANULARITY_BURST;
-
-	return 0;
-}
-
-/**
  * zynqmp_dma_handle_ovfl_int - Process the overflow interrupt
  * @chan: ZynqMP DMA channel pointer
  * @status: Interrupt status value
@@ -816,28 +795,19 @@ static void zynqmp_dma_do_tasklet(unsigned long data)
 }
 
 /**
- * zynqmp_dma_device_control - Configure DMA channel of the device
+ * zynqmp_dma_device_terminate_all - Aborts all transfers on a channel
  * @dchan: DMA channel pointer
- * @cmd: DMA control command
- * @arg: Channel configuration
  *
- * Return: '0' on success and failure value on error
+ * Return: Always '0'
  */
-static int zynqmp_dma_device_control(struct dma_chan *dchan,
-			       enum dma_ctrl_cmd cmd, unsigned long arg)
+static int zynqmp_dma_device_terminate_all(struct dma_chan *dchan)
 {
 	struct zynqmp_dma_chan *chan = to_chan(dchan);
 	unsigned long flags;
 
-	switch (cmd) {
-	case DMA_TERMINATE_ALL:
-		spin_lock_irqsave(&chan->lock, flags);
-		zynqmp_dma_reset(chan);
-		spin_unlock_irqrestore(&chan->lock, flags);
-		break;
-	default:
-		return -ENXIO;
-	}
+	spin_lock_irqsave(&chan->lock, flags);
+	zynqmp_dma_reset(chan);
+	spin_unlock_irqrestore(&chan->lock, flags);
 
 	return 0;
 }
@@ -1161,12 +1131,11 @@ static int zynqmp_dma_probe(struct platform_device *pdev)
 	p = &xdev->common;
 	p->device_prep_dma_sg = zynqmp_dma_prep_sg;
 	p->device_prep_dma_memcpy = zynqmp_dma_prep_memcpy;
-	p->device_control = zynqmp_dma_device_control;
+	p->device_terminate_all = zynqmp_dma_device_terminate_all;
 	p->device_issue_pending = zynqmp_dma_issue_pending;
 	p->device_alloc_chan_resources = zynqmp_dma_alloc_chan_resources;
 	p->device_free_chan_resources = zynqmp_dma_free_chan_resources;
 	p->device_tx_status = zynqmp_dma_tx_status;
-	p->device_slave_caps = zynqmp_dma_device_slave_caps;
 	p->dev = &pdev->dev;
 
 	platform_set_drvdata(pdev, xdev);
@@ -1176,6 +1145,9 @@ static int zynqmp_dma_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "Probing channel failed\n");
 		goto free_chan_resources;
 	}
+
+	p->dst_addr_widths = xdev->chan->bus_width;
+	p->src_addr_widths = xdev->chan->bus_width;
 
 	dma_async_device_register(&xdev->common);
 

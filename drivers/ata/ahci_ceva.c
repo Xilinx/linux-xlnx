@@ -75,6 +75,8 @@
 #define PORT_SCTL_SPD	(0x1 << 4)
 #define PORT_SCTL_IPM	(0x3 << 8)
 
+#define DRV_NAME	"ahci-ceva"
+
 struct ceva_ahci_priv {
 	struct platform_device *ahci_pdev;
 };
@@ -147,6 +149,10 @@ static void ahci_ceva_setup(struct ahci_host_priv *hpriv)
 	writel(tmp, mmio + PORT_SCR_CTL);
 }
 
+static struct scsi_host_template ahci_platform_sht = {
+	AHCI_SHT(DRV_NAME),
+};
+
 static int ceva_ahci_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
@@ -168,7 +174,8 @@ static int ceva_ahci_probe(struct platform_device *pdev)
 	/* CEVA specific Initialization */
 	ahci_ceva_setup(hpriv);
 
-	return ahci_platform_init_host(pdev, hpriv, &ahci_ceva_port_info);
+	return ahci_platform_init_host(pdev, hpriv, &ahci_ceva_port_info,
+					&ahci_platform_sht);
 }
 
 static int __maybe_unused ceva_ahci_suspend(struct device *dev)
@@ -187,7 +194,7 @@ static struct platform_driver ceva_ahci_driver = {
 	.probe = ceva_ahci_probe,
 	.remove = ata_platform_remove_one,
 	.driver = {
-		.name = "ahci-ceva",
+		.name = DRV_NAME,
 		.of_match_table = ceva_ahci_of_match,
 		.pm = &ahci_ceva_pm_ops,
 	},

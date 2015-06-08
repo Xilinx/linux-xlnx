@@ -20,7 +20,7 @@
  */
 
 #include <linux/suspend.h>
-#include <asm/suspend.h>
+#include <asm/cpuidle.h>
 
 static int zynqmp_pm_enter(suspend_state_t suspend_state)
 {

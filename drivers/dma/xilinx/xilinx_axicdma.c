@@ -753,30 +753,29 @@ fail:
 	return NULL;
 }
 
-/* Run-time device configuration for Axi CDMA */
-static int xilinx_cdma_device_control(struct dma_chan *dchan,
-				      enum dma_ctrl_cmd cmd, unsigned long arg)
+/**
+ * xilinx_cdma_terminate_all - Free the descriptors
+ * @dchan: DMA Channel pointer
+ *
+ * Return: '0' always
+ */
+static int xilinx_cdma_terminate_all(struct dma_chan *dchan)
 {
-	struct xilinx_cdma_chan *chan;
+	struct xilinx_cdma_chan *chan = to_xilinx_chan(dchan);
 	unsigned long flags;
 
-	if (!dchan)
-		return -EINVAL;
+	spin_lock_irqsave(&chan->lock, flags);
 
-	chan = to_xilinx_chan(dchan);
+	/* Reset the channel */
+	cdma_reset(chan);
 
-	if (cmd == DMA_TERMINATE_ALL) {
-		spin_lock_irqsave(&chan->lock, flags);
+	/* Remove and free all of the descriptors in the lists */
+	xilinx_cdma_free_desc_list(chan, &chan->pending_list);
+	xilinx_cdma_free_desc_list(chan, &chan->active_list);
 
-		/* Remove and free all of the descriptors in the lists */
-		xilinx_cdma_free_desc_list(chan, &chan->pending_list);
-		xilinx_cdma_free_desc_list(chan, &chan->active_list);
+	spin_unlock_irqrestore(&chan->lock, flags);
 
-		spin_unlock_irqrestore(&chan->lock, flags);
-		return 0;
-	}
-
-	return -ENXIO;
+	return 0;
 }
 
 /**
@@ -967,8 +966,7 @@ static int xilinx_cdma_probe(struct platform_device *pdev)
 	/* Axi CDMA only does memcpy */
 	dma_cap_set(DMA_MEMCPY, xdev->common.cap_mask);
 	xdev->common.device_prep_dma_memcpy = xilinx_cdma_prep_memcpy;
-
-	xdev->common.device_control = xilinx_cdma_device_control;
+	xdev->common.device_terminate_all = xilinx_cdma_terminate_all;
 	xdev->common.device_issue_pending = xilinx_cdma_issue_pending;
 	xdev->common.device_alloc_chan_resources =
 		xilinx_cdma_alloc_chan_resources;
