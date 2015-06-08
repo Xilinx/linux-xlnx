@@ -31,6 +31,8 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 
+#include "../dmaengine.h"
+
 /* Hw specific definitions */
 #define XILINX_CDMA_MAX_TRANS_LEN      GENMASK(22, 0)
 
@@ -44,9 +46,10 @@
 #define XILINX_CDMA_BTT_OFFSET		0x28 /* Bytes to transfer Reg */
 
 /* General register bits definitions */
-#define XILINX_CDMA_CR_RESET_MASK	BIT(2)
+#define XILINX_CDMA_CR_RESET_MASK 	BIT(2)
+#define XILINX_CDMA_CR_SGMODE          BIT(3)
 
-#define XILINX_CDMA_SR_IDLE_MASK	BIT(1)
+#define XILINX_CDMA_SR_IDLE_MASK       BIT(1)
 
 #define XILINX_CDMA_XR_IRQ_IOC_MASK    BIT(12)
 #define XILINX_CDMA_XR_IRQ_DELAY_MASK  BIT(13)
@@ -89,13 +92,29 @@ struct xilinx_cdma_desc_hw {
 	u32 status;	/* 0x1C */
 } __aligned(64);
 
-/* Software descriptor */
-struct xilinx_cdma_desc_sw {
+/**
+ * struct xilinx_cdma_tx_segment - Descriptor segment
+ * @hw: Hardware descriptor
+ * @node: Node in the descriptor segments list
+ * @phys: Physical address of segment
+ */
+struct xilinx_cdma_tx_segment {
 	struct xilinx_cdma_desc_hw hw;
 	struct list_head node;
-	struct list_head tx_list;
-	struct dma_async_tx_descriptor async_tx;
+	dma_addr_t phys;
 } __aligned(64);
+
+/**
+ * struct xilinx_cdma_tx_descriptor - Per Transaction structure
+ * @async_tx: Async transaction descriptor
+ * @segments: TX segments list
+ * @node: Node in the channel descriptors list
+ */
+struct xilinx_cdma_tx_descriptor {
+	struct dma_async_tx_descriptor async_tx;
+	struct list_head segments;
+	struct list_head node;
+};
 
 /* Per DMA specific operations should be embedded in the channel structure */
 struct xilinx_cdma_chan {
@@ -104,8 +123,9 @@ struct xilinx_cdma_chan {
 	dma_cookie_t cookie;			/* The current cookie */
 	spinlock_t lock;			/* Descriptor operation lock */
 	bool sg_waiting;			/* SG transfer waiting */
-	struct list_head active_list;		/* Active descriptors */
-	struct list_head pending_list;		/* Descriptors waiting */
+	struct list_head done_list;
+	struct list_head pending_list;
+	struct xilinx_cdma_tx_descriptor *active_desc;
 	struct dma_chan common;			/* DMA common channel */
 	struct dma_pool *desc_pool;		/* Descriptors pool */
 	struct device *dev;			/* The dma device */
@@ -117,10 +137,9 @@ struct xilinx_cdma_chan {
 	bool has_sg;				/* Support scatter transfers */
 	bool has_dre;				/* For unaligned transfers */
 	int err;				/* Channel has errors */
+	bool idle;
 	struct tasklet_struct tasklet;		/* Cleanup work after irq */
 	u32 feature;				/* IP feature */
-	void (*start_transfer)(struct xilinx_cdma_chan *chan);
-	struct xilinx_cdma_config config;	/* Device configuration info */
 };
 
 struct xilinx_cdma_device {
@@ -128,12 +147,14 @@ struct xilinx_cdma_device {
 	struct device *dev;
 	struct dma_device common;
 	struct xilinx_cdma_chan *chan;
-	u32 feature;
 	bool has_sg;				/* Support scatter transfers */
+	u32 feature;
 };
 
 #define to_xilinx_chan(chan) \
 	container_of(chan, struct xilinx_cdma_chan, common)
+#define to_cdma_tx_descriptor(tx) \
+	container_of(tx, struct xilinx_cdma_tx_descriptor, async_tx)
 
 /* IO accessors */
 static inline void
@@ -161,56 +182,121 @@ static inline void cdma_ctrl_set(struct xilinx_cdma_chan *chan, u32 reg,
 
 /* Required functions */
 
+/**
+ * xilinx_cdma_alloc_tx_segment - Allocate transaction segment
+ * @chan: Driver specific cdma channel
+ *
+ * Return: The allocated segment on success and NULL on failure.
+ */
+static struct xilinx_cdma_tx_segment *
+xilinx_cdma_alloc_tx_segment(struct xilinx_cdma_chan *chan)
+{
+	struct xilinx_cdma_tx_segment *segment;
+	dma_addr_t phys;
+
+	segment = dma_pool_alloc(chan->desc_pool, GFP_ATOMIC, &phys);
+	if (!segment)
+		return NULL;
+
+	memset(segment, 0, sizeof(*segment));
+	segment->phys = phys;
+
+	return segment;
+}
+
+/**
+ * xilinx_cdma_free_tx_segment - Free transaction segment
+ * @chan: Driver specific cdma channel
+ * @segment: cdma transaction segment
+ */
+static void xilinx_cdma_free_tx_segment(struct xilinx_cdma_chan *chan,
+					struct xilinx_cdma_tx_segment *segment)
+{
+	dma_pool_free(chan->desc_pool, segment, segment->phys);
+}
+
+/**
+ * xilinx_cdma_tx_descriptor - Allocate transaction descriptor
+ * @chan: Driver specific cdma channel
+ *
+ * Return: The allocated descriptor on success and NULL on failure.
+ */
+static struct xilinx_cdma_tx_descriptor *
+xilinx_cdma_alloc_tx_descriptor(struct xilinx_cdma_chan *chan)
+{
+	struct xilinx_cdma_tx_descriptor *desc;
+
+	desc = kzalloc(sizeof(*desc), GFP_KERNEL);
+	if (!desc)
+		return NULL;
+
+	INIT_LIST_HEAD(&desc->segments);
+
+	return desc;
+}
+
+/**
+ * xilinx_cdma_free_tx_descriptor - Free transaction descriptor
+ * @chan: Driver specific cdma channel
+ * @desc: cdma transaction descriptor
+ */
+static void
+xilinx_cdma_free_tx_descriptor(struct xilinx_cdma_chan *chan,
+			       struct xilinx_cdma_tx_descriptor *desc)
+{
+	struct xilinx_cdma_tx_segment *segment, *next;
+
+	if (!desc)
+		return;
+
+	list_for_each_entry_safe(segment, next, &desc->segments, node) {
+		list_del(&segment->node);
+		xilinx_cdma_free_tx_segment(chan, segment);
+	}
+
+	kfree(desc);
+}
+
+/**
+ * xilinx_cdma_alloc_chan_resources - Allocate channel resources
+ * @dchan: DMA channel
+ *
+ * Return: '0' on success and failure value on error
+ */
 static int xilinx_cdma_alloc_chan_resources(struct dma_chan *dchan)
 {
 	struct xilinx_cdma_chan *chan = to_xilinx_chan(dchan);
 
 	/* Has this channel already been allocated? */
 	if (chan->desc_pool)
-		return 1;
+		return 0;
 
 	/*
 	 * We need the descriptor to be aligned to 64bytes
 	 * for meeting Xilinx DMA specification requirement.
 	 */
-	chan->desc_pool =
-		dma_pool_create("xilinx_cdma_desc_pool",
+	chan->desc_pool = dma_pool_create("xilinx_cdma_desc_pool",
 				chan->dev,
-				sizeof(struct xilinx_cdma_desc_sw),
-				__alignof__(struct xilinx_cdma_desc_sw), 0);
+				sizeof(struct xilinx_cdma_tx_segment),
+				__alignof__(struct xilinx_cdma_tx_segment), 0);
 	if (!chan->desc_pool) {
 		dev_err(chan->dev,
-			"unable to allocate channel %d descriptor pool\n",
-			chan->id);
+			"unable to allocate channel descriptor pool\n");
 		return -ENOMEM;
 	}
 
-	chan->completed_cookie = 1;
-	chan->cookie = 1;
-
-	/* there is at least one descriptor free to be allocated */
-	return 1;
+	dma_cookie_init(dchan);
+	return 0;
 }
 
 static void xilinx_cdma_free_desc_list(struct xilinx_cdma_chan *chan,
 				       struct list_head *list)
 {
-	struct xilinx_cdma_desc_sw *desc, *_desc;
+	struct xilinx_cdma_tx_descriptor *desc, *next;
 
-	list_for_each_entry_safe(desc, _desc, list, node) {
+	list_for_each_entry_safe(desc, next, list, node) {
 		list_del(&desc->node);
-		dma_pool_free(chan->desc_pool, desc, desc->async_tx.phys);
-	}
-}
-
-static void xilinx_cdma_free_desc_list_reverse(struct xilinx_cdma_chan *chan,
-					       struct list_head *list)
-{
-	struct xilinx_cdma_desc_sw *desc, *_desc;
-
-	list_for_each_entry_safe_reverse(desc, _desc, list, node) {
-		list_del(&desc->node);
-		dma_pool_free(chan->desc_pool, desc, desc->async_tx.phys);
+		xilinx_cdma_free_tx_descriptor(chan, desc);
 	}
 }
 
@@ -219,9 +305,8 @@ static void xilinx_cdma_free_chan_resources(struct dma_chan *dchan)
 	struct xilinx_cdma_chan *chan = to_xilinx_chan(dchan);
 	unsigned long flags;
 
-	dev_dbg(chan->dev, "Free all channel resources.\n");
 	spin_lock_irqsave(&chan->lock, flags);
-	xilinx_cdma_free_desc_list(chan, &chan->active_list);
+	xilinx_cdma_free_desc_list(chan, &chan->done_list);
 	xilinx_cdma_free_desc_list(chan, &chan->pending_list);
 	spin_unlock_irqrestore(&chan->lock, flags);
 
@@ -229,27 +314,16 @@ static void xilinx_cdma_free_chan_resources(struct dma_chan *dchan)
 	chan->desc_pool = NULL;
 }
 
-static enum dma_status xilinx_cdma_desc_status(struct xilinx_cdma_chan *chan,
-					       struct xilinx_cdma_desc_sw *desc)
-{
-	return dma_async_is_complete(desc->async_tx.cookie,
-				     chan->completed_cookie,
-				     chan->cookie);
-}
-
 static void xilinx_cdma_chan_desc_cleanup(struct xilinx_cdma_chan *chan)
 {
-	struct xilinx_cdma_desc_sw *desc, *_desc;
+	struct xilinx_cdma_tx_descriptor *desc, *next;
 	unsigned long flags;
 
 	spin_lock_irqsave(&chan->lock, flags);
 
-	list_for_each_entry_safe(desc, _desc, &chan->active_list, node) {
+	list_for_each_entry_safe(desc, next, &chan->done_list, node) {
 		dma_async_tx_callback callback;
 		void *callback_param;
-
-		if (xilinx_cdma_desc_status(chan, desc) == DMA_IN_PROGRESS)
-			break;
 
 		/* Remove from the list of running transactions */
 		list_del(&desc->node);
@@ -265,7 +339,7 @@ static void xilinx_cdma_chan_desc_cleanup(struct xilinx_cdma_chan *chan)
 
 		/* Run any dependencies, then free the descriptor */
 		dma_run_dependencies(&desc->async_tx);
-		dma_pool_free(chan->desc_pool, desc, desc->async_tx.phys);
+		xilinx_cdma_free_tx_descriptor(chan, desc);
 	}
 
 	spin_unlock_irqrestore(&chan->lock, flags);
@@ -275,18 +349,7 @@ static enum dma_status xilinx_tx_status(struct dma_chan *dchan,
 					dma_cookie_t cookie,
 					struct dma_tx_state *txstate)
 {
-	struct xilinx_cdma_chan *chan = to_xilinx_chan(dchan);
-	dma_cookie_t last_used;
-	dma_cookie_t last_complete;
-
-	xilinx_cdma_chan_desc_cleanup(chan);
-
-	last_used = dchan->cookie;
-	last_complete = chan->completed_cookie;
-
-	dma_set_tx_state(txstate, last_complete, last_used, 0);
-
-	return dma_async_is_complete(cookie, last_complete, last_used);
+	return dma_cookie_status(dchan, cookie, txstate);
 }
 
 /**
@@ -301,84 +364,64 @@ static bool cdma_is_idle(struct xilinx_cdma_chan *chan)
 	       XILINX_CDMA_SR_IDLE_MASK;
 }
 
-/* Only needed for Axi CDMA v2_00_a or earlier core */
-static void cdma_sg_toggle(struct xilinx_cdma_chan *chan)
-{
-	cdma_write(chan, XILINX_CDMA_CONTROL_OFFSET,
-		   cdma_read(chan, XILINX_CDMA_CONTROL_OFFSET) &
-		   ~XILINX_CDMA_CR_SGMODE_MASK);
-
-	cdma_write(chan, XILINX_CDMA_CONTROL_OFFSET,
-		   cdma_read(chan, XILINX_CDMA_CONTROL_OFFSET) |
-		   XILINX_CDMA_CR_SGMODE_MASK);
-}
-
 static void xilinx_cdma_start_transfer(struct xilinx_cdma_chan *chan)
 {
-	unsigned long flags;
-	struct xilinx_cdma_desc_sw *desch, *desct;
-	struct xilinx_cdma_desc_hw *hw;
+	struct xilinx_cdma_tx_descriptor *desc;
+	struct xilinx_cdma_tx_segment *head, *tail;
 
 	if (chan->err)
 		return;
 
-	spin_lock_irqsave(&chan->lock, flags);
-
 	if (list_empty(&chan->pending_list))
-		goto out_unlock;
+		return;
+
+	if (!chan->idle)
+		return;
 
 	/* If hardware is busy, cannot submit */
-	if (!cdma_is_idle(chan)) {
-		dev_dbg(chan->dev, "DMA controller still busy %x\n",
-			cdma_read(chan, XILINX_CDMA_STATUS_OFFSET));
-		goto out_unlock;
+	if (chan->has_sg && !cdma_is_idle(chan)) {
+		tail = list_entry(desc->segments.prev,
+                                  struct xilinx_cdma_tx_segment, node);
+		cdma_write(chan, XILINX_CDMA_TDESC_OFFSET, tail->phys);
+                goto out_free_desc;
 	}
 
-	/* Enable interrupts */
-	cdma_ctrl_set(chan, XILINX_CDMA_CONTROL_OFFSET,
-				XILINX_CDMA_XR_IRQ_ALL_MASK);
-
-	desch = list_first_entry(&chan->pending_list,
-				 struct xilinx_cdma_desc_sw, node);
+	desc = list_first_entry(&chan->pending_list,
+				struct xilinx_cdma_tx_descriptor, node);
 
 	if (chan->has_sg) {
+		head = list_first_entry(&desc->segments,
+					struct xilinx_cdma_tx_segment, node);
+		tail = list_entry(desc->segments.prev,
+				  struct xilinx_cdma_tx_segment, node);
 
-		/* If hybrid mode, append pending list to active list */
-		desct = container_of(chan->pending_list.prev,
-				     struct xilinx_cdma_desc_sw, node);
+		cdma_write(chan, XILINX_CDMA_CDESC_OFFSET, head->phys);
 
-		list_splice_tail_init(&chan->pending_list, &chan->active_list);
+		/* Update tail ptr register which will start the transfer */
+		cdma_write(chan, XILINX_CDMA_TDESC_OFFSET, tail->phys);
+	} else {
+		/* In simple mode */
+		struct xilinx_cdma_tx_segment *segment;
+		struct xilinx_cdma_desc_hw *hw;
 
-		/*
-		 * If hardware is idle, then all descriptors on the active list
-		 * are done, start new transfers
-		 */
-		cdma_sg_toggle(chan);
+		segment = list_first_entry(&desc->segments,
+					   struct xilinx_cdma_tx_segment,
+					   node);
 
-		cdma_write(chan, XILINX_CDMA_CDESC_OFFSET,
-			   desch->async_tx.phys);
+		hw = &segment->hw;
 
-		/* Update tail ptr register and start the transfer */
-		cdma_write(chan, XILINX_CDMA_TDESC_OFFSET,
-			   desch->async_tx.phys);
-		goto out_unlock;
+		cdma_write(chan, XILINX_CDMA_SRCADDR_OFFSET, hw->src_addr);
+		cdma_write(chan, XILINX_CDMA_DSTADDR_OFFSET, hw->dest_addr);
+
+		/* Start the transfer */
+		cdma_write(chan, XILINX_CDMA_BTT_OFFSET,
+				hw->control & XILINX_CDMA_MAX_TRANS_LEN);
 	}
 
-	/* In simple mode */
-	list_del(&desch->node);
-	list_add_tail(&desch->node, &chan->active_list);
-
-	hw = &desch->hw;
-
-	cdma_write(chan, XILINX_CDMA_SRCADDR_OFFSET, hw->src_addr);
-	cdma_write(chan, XILINX_CDMA_DSTADDR_OFFSET, hw->dest_addr);
-
-	/* Start the transfer */
-	cdma_write(chan, XILINX_CDMA_BTT_OFFSET,
-		   hw->control & XILINX_CDMA_MAX_TRANS_LEN);
-
-out_unlock:
-	spin_unlock_irqrestore(&chan->lock, flags);
+out_free_desc:
+	list_del(&desc->node);
+	chan->idle = false;
+	chan->active_desc = desc;
 }
 
 /*
@@ -388,55 +431,31 @@ out_unlock:
 static void xilinx_cdma_issue_pending(struct dma_chan *dchan)
 {
 	struct xilinx_cdma_chan *chan = to_xilinx_chan(dchan);
+	unsigned long flags;
 
+	spin_lock_irqsave(&chan->lock, flags);
 	xilinx_cdma_start_transfer(chan);
+	spin_unlock_irqrestore(&chan->lock, flags);
 }
 
 /**
- * xilinx_cdma_update_completed_cookie - Update the completed cookie.
+ * xilinx_cdma_complete_descriptor - Mark the active descriptor as complete
  * @chan : xilinx DMA channel
- *
- * CONTEXT: hardirq
  */
-static void xilinx_cdma_update_completed_cookie(struct xilinx_cdma_chan *chan)
+static void xilinx_cdma_complete_descriptor(struct xilinx_cdma_chan *chan)
 {
-	struct xilinx_cdma_desc_sw *desc = NULL;
-	struct xilinx_cdma_desc_hw *hw = NULL;
-	unsigned long flags;
-	dma_cookie_t cookie = -EBUSY;
-	int done = 0;
+	struct xilinx_cdma_tx_descriptor *desc;
 
-	spin_lock_irqsave(&chan->lock, flags);
-
-	if (list_empty(&chan->active_list)) {
+	desc = chan->active_desc;
+	if (!desc) {
 		dev_dbg(chan->dev, "no running descriptors\n");
-		goto out_unlock;
+		return;
 	}
 
-	/* Get the last completed descriptor, update the cookie to that */
-	list_for_each_entry(desc, &chan->active_list, node) {
-		if (chan->has_sg) {
-			hw = &desc->hw;
+	dma_cookie_complete(&desc->async_tx);
+	list_add_tail(&desc->node, &chan->done_list);
 
-			/* If a BD has no status bits set, hw has it */
-			if (!(hw->status & XILINX_CDMA_BD_STS_ALL_MASK)) {
-				break;
-			} else {
-				done = 1;
-				cookie = desc->async_tx.cookie;
-			}
-		} else {
-			/* In non-SG mode, all active entries are done */
-			done = 1;
-			cookie = desc->async_tx.cookie;
-		}
-	}
-
-	if (done)
-		chan->completed_cookie = cookie;
-
-out_unlock:
-	spin_unlock_irqrestore(&chan->lock, flags);
+	chan->active_desc = NULL;
 }
 
 /* Reset hardware */
@@ -477,15 +496,7 @@ static int cdma_reset(struct xilinx_cdma_chan *chan)
 static irqreturn_t cdma_intr_handler(int irq, void *data)
 {
 	struct xilinx_cdma_chan *chan = data;
-	int update_cookie = 0;
-	int to_transfer = 0;
-	u32 stat, reg;
-
-	reg = cdma_read(chan, XILINX_CDMA_CONTROL_OFFSET);
-
-	/* Disable intr */
-	cdma_ctrl_clr(chan, XILINX_CDMA_CONTROL_OFFSET,
-		XILINX_CDMA_XR_IRQ_ALL_MASK);
+	u32 stat;
 
 	stat = cdma_read(chan, XILINX_CDMA_STATUS_OFFSET);
 	if (!(stat & XILINX_CDMA_XR_IRQ_ALL_MASK))
@@ -494,9 +505,6 @@ static irqreturn_t cdma_intr_handler(int irq, void *data)
 	/* Ack the interrupts */
 	cdma_write(chan, XILINX_CDMA_STATUS_OFFSET,
 		   XILINX_CDMA_XR_IRQ_ALL_MASK);
-
-	/* Check for only the interrupts which are enabled */
-	stat &= (reg & XILINX_CDMA_XR_IRQ_ALL_MASK);
 
 	if (stat & XILINX_CDMA_XR_IRQ_ERROR_MASK) {
 		dev_err(chan->dev,
@@ -516,15 +524,12 @@ static irqreturn_t cdma_intr_handler(int irq, void *data)
 		dev_dbg(chan->dev, "Inter-packet latency too long\n");
 
 	if (stat & XILINX_CDMA_XR_IRQ_IOC_MASK) {
-		update_cookie = 1;
-		to_transfer = 1;
+		spin_lock(&chan->lock);
+		xilinx_cdma_complete_descriptor(chan);
+		chan->idle = true;
+		xilinx_cdma_start_transfer(chan);
+		spin_unlock(&chan->lock);
 	}
-
-	if (update_cookie)
-		xilinx_cdma_update_completed_cookie(chan);
-
-	if (to_transfer)
-		chan->start_transfer(chan);
 
 	tasklet_schedule(&chan->tasklet);
 	return IRQ_HANDLED;
@@ -537,33 +542,6 @@ static void cdma_do_tasklet(unsigned long data)
 	xilinx_cdma_chan_desc_cleanup(chan);
 }
 
-/* Append the descriptor list to the pending list */
-static void append_desc_queue(struct xilinx_cdma_chan *chan,
-			      struct xilinx_cdma_desc_sw *desc)
-{
-	struct xilinx_cdma_desc_sw *tail =
-		container_of(chan->pending_list.prev,
-			     struct xilinx_cdma_desc_sw, node);
-	struct xilinx_cdma_desc_hw *hw;
-
-	if (list_empty(&chan->pending_list))
-		goto out_splice;
-
-	/*
-	 * Add the hardware descriptor to the chain of hardware descriptors
-	 * that already exists in memory.
-	 */
-	hw = &(tail->hw);
-	hw->next_desc = (u32)desc->async_tx.phys;
-
-	/*
-	 * Add the software descriptor and all children to the list
-	 * of pending transactions
-	 */
-out_splice:
-	list_splice_tail_init(&desc->tx_list, &chan->pending_list);
-}
-
 /*
  * Assign cookie to each descriptor, and append the descriptors to the pending
  * list
@@ -571,67 +549,31 @@ out_splice:
 static dma_cookie_t xilinx_cdma_tx_submit(struct dma_async_tx_descriptor *tx)
 {
 	struct xilinx_cdma_chan *chan = to_xilinx_chan(tx->chan);
-	struct xilinx_cdma_desc_sw *desc =
-		container_of(tx, struct xilinx_cdma_desc_sw, async_tx);
-	struct xilinx_cdma_desc_sw *child;
+	struct xilinx_cdma_tx_descriptor *desc = to_cdma_tx_descriptor(tx);
+	dma_cookie_t cookie;
 	unsigned long flags;
-	dma_cookie_t cookie = -EBUSY;
+	int err;
 
 	if (chan->err) {
 		/*
 		 * If reset fails, need to hard reset the system.
 		 * Channel is no longer functional
 		 */
-		if (!cdma_reset(chan))
-			chan->err = 0;
-		else
-			return cookie;
+		err = cdma_reset(chan);
+		if (err < 0)
+			return err;
 	}
 
 	spin_lock_irqsave(&chan->lock, flags);
 
-	/*
-	 * assign cookies to all of the software descriptors
-	 * that make up this transaction
-	 */
-	cookie = chan->cookie;
-	list_for_each_entry(child, &desc->tx_list, node) {
-		cookie++;
-		if (cookie < 0)
-			cookie = DMA_MIN_COOKIE;
+	cookie = dma_cookie_assign(tx);
 
-		child->async_tx.cookie = cookie;
-	}
-
-	chan->cookie = cookie;
-
-	/* put this transaction onto the tail of the pending queue */
-	append_desc_queue(chan, desc);
+	/* Append the transaction to the pending transactions queue. */
+	list_add_tail(&desc->node, &chan->pending_list);
 
 	spin_unlock_irqrestore(&chan->lock, flags);
 
 	return cookie;
-}
-
-static struct xilinx_cdma_desc_sw *xilinx_cdma_alloc_descriptor(
-	struct xilinx_cdma_chan *chan)
-{
-	struct xilinx_cdma_desc_sw *desc;
-	dma_addr_t pdesc;
-
-	desc = dma_pool_alloc(chan->desc_pool, GFP_ATOMIC, &pdesc);
-	if (!desc) {
-		dev_dbg(chan->dev, "out of memory for desc\n");
-		return NULL;
-	}
-
-	memset(desc, 0, sizeof(*desc));
-	INIT_LIST_HEAD(&desc->tx_list);
-	dma_async_tx_descriptor_init(&desc->async_tx, &chan->common);
-	desc->async_tx.tx_submit = xilinx_cdma_tx_submit;
-	desc->async_tx.phys = pdesc;
-
-	return desc;
 }
 
 /**
@@ -646,111 +588,51 @@ static struct dma_async_tx_descriptor *xilinx_cdma_prep_memcpy(
 	struct dma_chan *dchan, dma_addr_t dma_dst, dma_addr_t dma_src,
 	size_t len, unsigned long flags)
 {
-	struct xilinx_cdma_chan *chan;
-	struct xilinx_cdma_desc_sw *first = NULL, *prev = NULL, *new;
-	struct xilinx_cdma_desc_hw *hw, *prev_hw;
-	size_t copy;
-	dma_addr_t src = dma_src;
-	dma_addr_t dst = dma_dst;
+	struct xilinx_cdma_chan *chan = to_xilinx_chan(dchan);
+	struct xilinx_cdma_desc_hw *hw;
+	struct xilinx_cdma_tx_descriptor *desc;
+	struct xilinx_cdma_tx_segment *segment, *prev;
 
-	if (!dchan)
+	if (!len || len > XILINX_CDMA_MAX_TRANS_LEN)
 		return NULL;
 
-	if (!len)
+	desc = xilinx_cdma_alloc_tx_descriptor(chan);
+	if (!desc)
 		return NULL;
 
-	chan = to_xilinx_chan(dchan);
+	dma_async_tx_descriptor_init(&desc->async_tx, &chan->common);
+	desc->async_tx.tx_submit = xilinx_cdma_tx_submit;
+	async_tx_ack(&desc->async_tx);
 
-	if (chan->err) {
+	/* Allocate the link descriptor from DMA pool */
+	segment = xilinx_cdma_alloc_tx_segment(chan);
+	if (!segment)
+		goto error;
 
-		/*
-		 * If reset fails, need to hard reset the system.
-		 * Channel is no longer functional
-		 */
-		if (!cdma_reset(chan))
-			chan->err = 0;
-		else
-			return NULL;
-	}
+	hw = &segment->hw;
+	hw->control = len;
+	hw->src_addr = dma_src;
+	hw->dest_addr = dma_dst;
 
-	/*
-	 * If build does not have Data Realignment Engine (DRE),
-	 * src has to be aligned
-	 */
-	if (!chan->has_dre) {
-		if ((dma_src &
-		     (chan->feature & XILINX_CDMA_FTR_DATA_WIDTH_MASK)) ||
-		    (dma_dst &
-		     (chan->feature & XILINX_CDMA_FTR_DATA_WIDTH_MASK))) {
+	/* Fill the previous next descriptor with current */
+	prev = list_last_entry(&desc->segments,
+				struct xilinx_cdma_tx_segment, node);
+	prev->hw.next_desc = segment->phys;
 
-			dev_err(chan->dev,
-				"Src/Dest address not aligned when no DRE\n");
+	/* Insert the segment into the descriptor segments list. */
+	list_add_tail(&segment->node, &desc->segments);
 
-			return NULL;
-		}
-	}
+	prev = segment;
 
-	do {
-		/* Allocate descriptor from DMA pool */
-		new = xilinx_cdma_alloc_descriptor(chan);
-		if (!new) {
-			dev_err(chan->dev,
-				"No free memory for link descriptor\n");
-			goto fail;
-		}
+	/* Link the last hardware descriptor with the first. */
+	segment = list_first_entry(&desc->segments,
+				struct xilinx_cdma_tx_segment, node);
+	prev->hw.next_desc = segment->phys;
 
-		copy = min_t(size_t, len, chan->max_len);
+	return &desc->async_tx;
 
-		/* if lite build, transfer cannot cross page boundary */
-		if (chan->is_lite)
-			copy = min(copy, (size_t)(PAGE_MASK -
-						  (src & PAGE_MASK)));
-
-		if (!copy) {
-			dev_err(chan->dev,
-				"Got zero transfer length for %x\n",
-				(unsigned int)src);
-			goto fail;
-		}
-
-		hw = &(new->hw);
-		hw->control =
-			(hw->control & ~XILINX_CDMA_MAX_TRANS_LEN) | copy;
-		hw->src_addr = src;
-		hw->dest_addr = dst;
-
-		if (!first)
-			first = new;
-		else {
-			prev_hw = &(prev->hw);
-			prev_hw->next_desc = new->async_tx.phys;
-		}
-
-		new->async_tx.cookie = 0;
-		async_tx_ack(&new->async_tx);
-
-		prev = new;
-		len -= copy;
-		src += copy;
-		dst += copy;
-
-		/* Insert the descriptor to the list */
-		list_add_tail(&new->node, &first->tx_list);
-	} while (len);
-
-	/* Link the last BD with the first BD */
-	hw->next_desc = first->async_tx.phys;
-
-	new->async_tx.flags = flags; /* client is in control of this ack */
-	new->async_tx.cookie = -EBUSY;
-
-	return &first->async_tx;
-
-fail:
-	if (!first)
-		return NULL;
-
-	xilinx_cdma_free_desc_list_reverse(chan, &first->tx_list);
+error:
+	xilinx_cdma_free_tx_descriptor(chan, desc);
 	return NULL;
 }
 
@@ -772,7 +654,7 @@ static int xilinx_cdma_terminate_all(struct dma_chan *dchan)
 
 	/* Remove and free all of the descriptors in the lists */
 	xilinx_cdma_free_desc_list(chan, &chan->pending_list);
-	xilinx_cdma_free_desc_list(chan, &chan->active_list);
+	xilinx_cdma_free_desc_list(chan, &chan->done_list);
 
 	spin_unlock_irqrestore(&chan->lock, flags);
 
@@ -860,8 +742,6 @@ static int xilinx_cdma_chan_probe(struct xilinx_cdma_device *xdev,
 	}
 
 	chan->direction = DMA_MEM_TO_MEM;
-	chan->start_transfer = xilinx_cdma_start_transfer;
-
 	chan->has_sg = xdev->has_sg;
 
 	chan->is_lite = of_property_read_bool(node, "xlnx,lite-mode");
@@ -898,7 +778,7 @@ static int xilinx_cdma_chan_probe(struct xilinx_cdma_device *xdev,
 
 	spin_lock_init(&chan->lock);
 	INIT_LIST_HEAD(&chan->pending_list);
-	INIT_LIST_HEAD(&chan->active_list);
+	INIT_LIST_HEAD(&chan->done_list);
 
 	chan->common.device = &xdev->common;
 
@@ -916,6 +796,8 @@ static int xilinx_cdma_chan_probe(struct xilinx_cdma_device *xdev,
 
 	/* Add the channel to DMA device channel list */
 	list_add_tail(&chan->common.device_node, &xdev->common.channels);
+
+	chan->idle = true;
 
 	return 0;
 }
