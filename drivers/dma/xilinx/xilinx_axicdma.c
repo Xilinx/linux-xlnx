@@ -31,7 +31,7 @@
 #include <linux/slab.h>
 
 /* Hw specific definitions */
-#define XILINX_CDMA_MAX_TRANS_LEN	0x7FFFFF /* Max transfer length */
+#define XILINX_CDMA_MAX_TRANS_LEN      GENMASK(22, 0)
 
 /* Register Offsets */
 #define XILINX_CDMA_CONTROL_OFFSET	0x00 /* Control Reg */
@@ -43,17 +43,17 @@
 #define XILINX_CDMA_BTT_OFFSET		0x28 /* Bytes to transfer Reg */
 
 /* General register bits definitions */
-#define XILINX_CDMA_CR_RESET_MASK	0x00000004 /* Reset DMA engine */
+#define XILINX_CDMA_CR_RESET_MASK	BIT(2)
 
-#define XILINX_CDMA_SR_IDLE_MASK	0x00000002 /* DMA channel idle */
+#define XILINX_CDMA_SR_IDLE_MASK	BIT(1)
 
-#define XILINX_CDMA_XR_IRQ_IOC_MASK	0x00001000 /* Completion interrupt */
-#define XILINX_CDMA_XR_IRQ_DELAY_MASK	0x00002000 /* Delay interrupt */
-#define XILINX_CDMA_XR_IRQ_ERROR_MASK	0x00004000 /* Error interrupt */
-#define XILINX_CDMA_XR_IRQ_ALL_MASK	0x00007000 /* All interrupts */
+#define XILINX_CDMA_XR_IRQ_IOC_MASK    BIT(12)
+#define XILINX_CDMA_XR_IRQ_DELAY_MASK  BIT(13)
+#define XILINX_CDMA_XR_IRQ_ERROR_MASK  BIT(14)
+#define XILINX_CDMA_XR_IRQ_ALL_MASK    GENMASK(14, 12)
 
-#define XILINX_CDMA_XR_DELAY_MASK	0xFF000000 /* Delay timeout counter */
-#define XILINX_CDMA_XR_COALESCE_MASK	0x00FF0000 /* Coalesce counter */
+#define XILINX_CDMA_XR_DELAY_MASK      GENMASK(31, 24)
+#define XILINX_CDMA_XR_COALESCE_MASK   GENMASK(23, 16)
 
 #define XILINX_CDMA_DELAY_SHIFT		24 /* Delay counter shift */
 #define XILINX_CDMA_COALESCE_SHIFT	16 /* Coaelsce counter shift */
