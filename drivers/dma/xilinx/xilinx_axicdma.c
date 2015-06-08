@@ -996,7 +996,7 @@ static int xilinx_cdma_remove(struct platform_device *pdev)
 }
 
 static const struct of_device_id xilinx_cdma_of_match[] = {
-	{ .compatible = "xlnx,axi-cdma", },
+	{ .compatible = "xlnx,axi-cdma-1.00.a", },
 	{}
 };
 MODULE_DEVICE_TABLE(of, xilinx_cdma_of_match);
