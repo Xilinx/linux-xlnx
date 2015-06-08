@@ -1,12 +1,14 @@
 /*
- * Xilinx Central DMA Engine support
+ * DMA driver for Xilinx Central DMA Engine
  *
- * Copyright (C) 2010 - 2013 Xilinx, Inc. All rights reserved.
+ * Copyright (C) 2010 - 2015 Xilinx, Inc. All rights reserved.
  *
  * Based on the Freescale DMA driver.
  *
  * Description:
- *  . Axi CDMA engine, it does transfers between memory and memory
+ *  The AXI CDMA, is a soft IP, which provides high-bandwidth Direct Memory
+ *  Access (DMA) between a memory-mapped source address and a memory-mapped
+ *  destination address.
  *
  * This is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
