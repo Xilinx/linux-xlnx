@@ -158,6 +158,7 @@ struct xilinx_dma_tx_descriptor {
  * @err: Channel has errors
  * @idle: Channel status
  * @tasklet: Cleanup work after irq
+ * @residue: Residue
  */
 struct xilinx_dma_chan {
 	struct xilinx_dma_device *xdev;
@@ -177,6 +178,7 @@ struct xilinx_dma_chan {
 	int err;
 	bool idle;
 	struct tasklet_struct tasklet;
+	u32 residue;
 };
 
 /**
@@ -449,9 +451,32 @@ static enum dma_status xilinx_tx_status(struct dma_chan *dchan,
 					dma_cookie_t cookie,
 					struct dma_tx_state *txstate)
 {
+	struct xilinx_dma_chan *chan = to_xilinx_chan(dchan);
+	struct xilinx_dma_tx_descriptor *desc;
+	struct xilinx_dma_tx_segment *segment;
+	struct xilinx_dma_desc_hw *hw;
 	enum dma_status ret;
+	unsigned long flags;
+	u32 residue;
 
 	ret = dma_cookie_status(dchan, cookie, txstate);
+	if (ret == DMA_COMPLETE || !txstate)
+		return ret;
+
+	spin_lock_irqsave(&chan->lock, flags);
+	if (chan->has_sg) {
+		while (!list_empty(&desc->segments)) {
+			segment = list_first_entry(&desc->segments,
+					struct xilinx_dma_tx_segment, node);
+			hw = &segment->hw;
+			residue += (hw->control - hw->status) &
+				   XILINX_DMA_MAX_TRANS_LEN;
+		}
+	}
+
+	chan->residue = residue;
+	dma_set_residue(txstate, chan->residue);
+	spin_unlock_irqrestore(&chan->lock, flags);
 
 	return ret;
 }
@@ -675,7 +700,7 @@ static irqreturn_t dma_intr_handler(int irq, void *data)
 		return IRQ_NONE;
 
 	dma_ctrl_write(chan, XILINX_DMA_REG_STATUS,
-		       stat & XILINX_DMA_XR_IRQ_ALL_MASK);
+		       status & XILINX_DMA_XR_IRQ_ALL_MASK);
 
 	if (status & XILINX_DMA_XR_IRQ_ERROR_MASK) {
 		dev_err(chan->dev,
@@ -1026,6 +1051,7 @@ static int xilinx_dma_probe(struct platform_device *pdev)
 	struct device_node *child, *node;
 	struct resource *res;
 	int ret;
+	unsigned int i;
 
 	node = pdev->dev.of_node;
 
@@ -1061,6 +1087,8 @@ static int xilinx_dma_probe(struct platform_device *pdev)
 	xdev->common.device_free_chan_resources =
 		xilinx_dma_free_chan_resources;
 	xdev->common.device_tx_status = xilinx_tx_status;
+	xdev->common.directions = BIT(DMA_DEV_TO_MEM) | BIT(DMA_MEM_TO_DEV);
+	xdev->common.residue_granularity = DMA_RESIDUE_GRANULARITY_SEGMENT;
 	xdev->common.dev = &pdev->dev;
 
 	platform_set_drvdata(pdev, xdev);
