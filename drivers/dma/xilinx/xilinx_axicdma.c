@@ -129,6 +129,7 @@ struct xilinx_cdma_device {
 	struct dma_device common;
 	struct xilinx_cdma_chan *chan;
 	u32 feature;
+	bool has_sg;				/* Support scatter transfers */
 };
 
 #define to_xilinx_chan(chan) \
@@ -861,8 +862,7 @@ static int xilinx_cdma_chan_probe(struct xilinx_cdma_device *xdev,
 	chan->direction = DMA_MEM_TO_MEM;
 	chan->start_transfer = xilinx_cdma_start_transfer;
 
-	chan->has_sg = (xdev->feature & XILINX_CDMA_FTR_HAS_SG) >>
-		       XILINX_CDMA_FTR_HAS_SG_SHIFT;
+	chan->has_sg = xdev->has_sg;
 
 	chan->is_lite = of_property_read_bool(node, "xlnx,lite-mode");
 	if (chan->is_lite) {
@@ -941,7 +941,6 @@ static int xilinx_cdma_probe(struct platform_device *pdev)
 	struct device_node *child, *node;
 	struct resource *res;
 	int ret;
-	u32 value;
 
 	xdev = devm_kzalloc(&pdev->dev, sizeof(*xdev), GFP_KERNEL);
 	if (!xdev)
@@ -959,9 +958,7 @@ static int xilinx_cdma_probe(struct platform_device *pdev)
 		return PTR_ERR(xdev->regs);
 
 	/* Check if SG is enabled */
-	value = of_property_read_bool(node, "xlnx,include-sg");
-	if (value)
-		xdev->feature |= XILINX_CDMA_FTR_HAS_SG;
+	xdev->has_sg = of_property_read_bool(node, "xlnx,include-sg");
 
 	/* Axi CDMA only does memcpy */
 	dma_cap_set(DMA_MEMCPY, xdev->common.cap_mask);
