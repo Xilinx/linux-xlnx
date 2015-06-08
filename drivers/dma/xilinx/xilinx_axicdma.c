@@ -277,7 +277,13 @@ static enum dma_status xilinx_tx_status(struct dma_chan *dchan,
 	return dma_async_is_complete(cookie, last_complete, last_used);
 }
 
-static int cdma_is_idle(struct xilinx_cdma_chan *chan)
+/**
+ * cdma_is_idle - Check if cdma channel is idle
+ * @chan: Driver specific cdma channel
+ *
+ * Return: 'true' if idle, 'false' if not.
+ */
+static bool cdma_is_idle(struct xilinx_cdma_chan *chan)
 {
 	return cdma_read(chan, XILINX_CDMA_STATUS_OFFSET) &
 	       XILINX_CDMA_SR_IDLE_MASK;
