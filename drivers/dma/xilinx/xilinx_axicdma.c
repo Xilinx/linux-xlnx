@@ -146,6 +146,18 @@ static inline u32 cdma_read(struct xilinx_cdma_chan *chan, u32 reg)
 	return readl(chan->regs + reg);
 }
 
+static inline void cdma_ctrl_clr(struct xilinx_cdma_chan *chan, u32 reg,
+				u32 clr)
+{
+	cdma_write(chan, reg, cdma_read(chan, reg) & ~clr);
+}
+
+static inline void cdma_ctrl_set(struct xilinx_cdma_chan *chan, u32 reg,
+				u32 set)
+{
+	cdma_write(chan, reg, cdma_read(chan, reg) | set);
+}
+
 /* Required functions */
 
 static int xilinx_cdma_alloc_chan_resources(struct dma_chan *dchan)
@@ -322,9 +334,8 @@ static void xilinx_cdma_start_transfer(struct xilinx_cdma_chan *chan)
 	}
 
 	/* Enable interrupts */
-	cdma_write(chan, XILINX_CDMA_CONTROL_OFFSET,
-		   cdma_read(chan, XILINX_CDMA_CONTROL_OFFSET) |
-		   XILINX_CDMA_XR_IRQ_ALL_MASK);
+	cdma_ctrl_set(chan, XILINX_CDMA_CONTROL_OFFSET,
+				XILINX_CDMA_XR_IRQ_ALL_MASK);
 
 	desch = list_first_entry(&chan->pending_list,
 				 struct xilinx_cdma_desc_sw, node);
@@ -433,9 +444,8 @@ static int cdma_reset(struct xilinx_cdma_chan *chan)
 	int loop = XILINX_CDMA_RESET_LOOP;
 	u32 tmp;
 
-	cdma_write(chan, XILINX_CDMA_CONTROL_OFFSET,
-		   cdma_read(chan, XILINX_CDMA_CONTROL_OFFSET) |
-		   XILINX_CDMA_CR_RESET_MASK);
+	cdma_ctrl_set(chan, XILINX_CDMA_CONTROL_OFFSET,
+			XILINX_CDMA_CR_RESET_MASK);
 
 	tmp = cdma_read(chan, XILINX_CDMA_CONTROL_OFFSET) &
 	      XILINX_CDMA_CR_RESET_MASK;
@@ -456,8 +466,8 @@ static int cdma_reset(struct xilinx_cdma_chan *chan)
 
 	/* For Axi CDMA, always do sg transfers if sg mode is built in */
 	if (chan->has_sg)
-		cdma_write(chan, XILINX_CDMA_CONTROL_OFFSET,
-			   tmp | XILINX_CDMA_CR_SGMODE_MASK);
+		cdma_ctrl_set(chan, XILINX_CDMA_CONTROL_OFFSET,
+				XILINX_CDMA_CR_SGMODE_MASK);
 
 	return 0;
 }
@@ -473,8 +483,8 @@ static irqreturn_t cdma_intr_handler(int irq, void *data)
 	reg = cdma_read(chan, XILINX_CDMA_CONTROL_OFFSET);
 
 	/* Disable intr */
-	cdma_write(chan, XILINX_CDMA_CONTROL_OFFSET,
-		   reg & ~XILINX_CDMA_XR_IRQ_ALL_MASK);
+	cdma_ctrl_clr(chan, XILINX_CDMA_CONTROL_OFFSET,
+		XILINX_CDMA_XR_IRQ_ALL_MASK);
 
 	stat = cdma_read(chan, XILINX_CDMA_STATUS_OFFSET);
 	if (!(stat & XILINX_CDMA_XR_IRQ_ALL_MASK))
