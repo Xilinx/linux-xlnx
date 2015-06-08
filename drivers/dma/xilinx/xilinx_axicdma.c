@@ -774,35 +774,45 @@ static int xilinx_cdma_device_control(struct dma_chan *dchan,
 
 		spin_unlock_irqrestore(&chan->lock, flags);
 		return 0;
-	} else if (cmd == DMA_SLAVE_CONFIG) {
-		/*
-		 * Configure interrupt coalescing and delay counter
-		 * Use value XILINX_CDMA_NO_CHANGE to signal no change
-		 */
-		struct xilinx_cdma_config *cfg =
-			(struct xilinx_cdma_config *)arg;
-		u32 reg = cdma_read(chan, XILINX_CDMA_CONTROL_OFFSET);
-
-		if (cfg->coalesc <= XILINX_CDMA_COALESCE_MAX) {
-			reg &= ~XILINX_CDMA_XR_COALESCE_MASK;
-			reg |= cfg->coalesc << XILINX_CDMA_COALESCE_SHIFT;
-
-			chan->config.coalesc = cfg->coalesc;
-		}
-
-		if (cfg->delay <= XILINX_CDMA_DELAY_MAX) {
-			reg &= ~XILINX_CDMA_XR_DELAY_MASK;
-			reg |= cfg->delay << XILINX_CDMA_DELAY_SHIFT;
-			chan->config.delay = cfg->delay;
-		}
-
-		cdma_write(chan, XILINX_CDMA_CONTROL_OFFSET, reg);
-
-		return 0;
 	}
 
 	return -ENXIO;
 }
+
+/**
+ * xilinx_cdma_channel_set_config - Configure cdma channel
+ * @dchan: DMA channel
+ * @cfg: cdma device configuration pointer
+ *
+ * Return: '0' on success and failure value on error
+ */
+int xilinx_cdma_channel_set_config(struct dma_chan *dchan,
+					struct xilinx_cdma_config *cfg)
+{
+	struct xilinx_cdma_chan *chan = to_xilinx_chan(dchan);
+	u32 reg = cdma_read(chan, XILINX_CDMA_CONTROL_OFFSET);
+
+	if (!cdma_is_idle(chan))
+		return -EBUSY;
+
+	if (cfg->reset)
+		return cdma_reset(chan);
+
+	if (cfg->coalesc <= XILINX_CDMA_COALESCE_MAX) {
+		reg &= ~XILINX_CDMA_XR_COALESCE_MASK;
+		reg |= cfg->coalesc << XILINX_CDMA_COALESCE_SHIFT;
+	}
+
+	if (cfg->delay <= XILINX_CDMA_DELAY_MAX) {
+		reg &= ~XILINX_CDMA_XR_DELAY_MASK;
+		reg |= cfg->delay << XILINX_CDMA_DELAY_SHIFT;
+	}
+
+	cdma_write(chan, XILINX_CDMA_CONTROL_OFFSET, reg);
+
+	return 0;
+}
+EXPORT_SYMBOL(xilinx_cdma_channel_set_config);
 
 static void xilinx_cdma_free_channels(struct xilinx_cdma_device *xdev)
 {
