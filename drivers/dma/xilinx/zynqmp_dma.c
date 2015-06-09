@@ -1190,4 +1190,4 @@ module_platform_driver(zynqmp_dma_driver);
 
 MODULE_AUTHOR("Xilinx, Inc.");
 MODULE_DESCRIPTION("Xilinx ZynqMP DMA DMA driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

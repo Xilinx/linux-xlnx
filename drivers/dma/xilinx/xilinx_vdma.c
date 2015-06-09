@@ -1363,4 +1363,4 @@ module_platform_driver(xilinx_vdma_driver);
 
 MODULE_AUTHOR("Xilinx, Inc.");
 MODULE_DESCRIPTION("Xilinx VDMA driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

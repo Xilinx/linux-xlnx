@@ -230,4 +230,4 @@ module_platform_driver(pl310_edac_l2_driver);
 
 MODULE_AUTHOR("Xilinx Inc.");
 MODULE_DESCRIPTION("pl310 L2 EDAC driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

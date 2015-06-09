@@ -1193,4 +1193,4 @@ module_platform_driver(xilinx_dma_driver);
 
 MODULE_AUTHOR("Xilinx, Inc.");
 MODULE_DESCRIPTION("Xilinx DMA driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

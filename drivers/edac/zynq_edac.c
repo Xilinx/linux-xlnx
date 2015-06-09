@@ -606,4 +606,4 @@ module_platform_driver(zynq_edac_mc_driver);
 
 MODULE_AUTHOR("Xilinx, Inc.");
 MODULE_DESCRIPTION("Zynq DDR ECC driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

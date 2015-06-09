@@ -857,6 +857,6 @@ static struct platform_driver gpio_pmodoled_driver = {
 module_platform_driver(gpio_pmodoled_driver);
 
 MODULE_AUTHOR("Digilent, Inc.");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION(DRIVER_NAME ": PmodOLED display driver");
 MODULE_ALIAS(DRIVER_NAME);

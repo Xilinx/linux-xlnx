@@ -1372,4 +1372,4 @@ module_platform_driver(xtg_driver);
 
 MODULE_AUTHOR("Xilinx Inc.");
 MODULE_DESCRIPTION("Xilinx Traffic Generator driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");

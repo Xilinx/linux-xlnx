@@ -532,4 +532,4 @@ module_platform_driver(synps_edac_mc_driver);
 
 MODULE_AUTHOR("Xilinx Inc");
 MODULE_DESCRIPTION("Synopsys DDR ECC driver");
-MODULE_LICENSE("GPL v2");
+MODULE_LICENSE("GPL");
