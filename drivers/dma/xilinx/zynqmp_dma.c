@@ -270,10 +270,10 @@ static void zynqmp_dma_update_desc_to_ctrlr(struct zynqmp_dma_chan *chan,
 
 	addr = chan->desc_pool_p  + (desc->index * DESC_SIZE(chan));
 	writel(addr, chan->regs + SRC_START_LSB);
-	writel((addr >> 32), chan->regs + SRC_START_MSB);
+	writel(upper_32_bits(addr), chan->regs + SRC_START_MSB);
 	addr = addr + (DESC_SIZE(chan) * ZYNQMP_DMA_NUM_DESCS);
 	writel(addr, chan->regs + DST_START_LSB);
-	writel((addr >> 32), chan->regs + DST_START_MSB);
+	writel(upper_32_bits(addr), chan->regs + DST_START_MSB);
 }
 
 /**
@@ -304,7 +304,7 @@ static void zynqmp_dma_config_simple_desc(struct zynqmp_dma_chan *chan,
 	u32 val;
 
 	writel(src, chan->regs + SRC_DSCR_WRD0);
-	writel(src >> 32, chan->regs + SRC_DSCR_WRD1);
+	writel(upper_32_bits(src), chan->regs + SRC_DSCR_WRD1);
 	writel(len, chan->regs + SRC_DSCR_WRD2);
 
 	if (chan->src_axi_cohrnt)
@@ -313,7 +313,7 @@ static void zynqmp_dma_config_simple_desc(struct zynqmp_dma_chan *chan,
 		writel(0, chan->regs + SRC_DSCR_WRD3);
 
 	writel(dst, chan->regs + DST_DSCR_WRD0);
-	writel(dst >> 32, chan->regs + DST_DSCR_WRD1);
+	writel(upper_32_bits(dst), chan->regs + DST_DSCR_WRD1);
 	writel(len, chan->regs + DST_DSCR_WRD2);
 
 	if (chan->dst_axi_cohrnt)
@@ -351,7 +351,7 @@ static void zynqmp_dma_config_sg_ll_desc(struct zynqmp_dma_chan *chan,
 
 	if (prev) {
 		dma_addr_t addr = chan->desc_pool_p +
-				  ((u64)sdesc - (u64)chan->desc_pool_v);
+			    ((dma_addr_t)sdesc - (dma_addr_t)chan->desc_pool_v);
 		ddesc = prev + ZYNQMP_DMA_NUM_DESCS;
 		prev->nxtdscraddr = addr;
 		ddesc->nxtdscraddr = addr + DST_DESC_BASE(chan);
@@ -577,7 +577,7 @@ static void zynqmp_dma_handle_ovfl_int(struct zynqmp_dma_chan *chan, u32 status)
  * zynqmp_dma_start_transfer - Initiate the new transfer
  * @chan: ZynqMP DMA channel pointer
  */
-void zynqmp_dma_start_transfer(struct zynqmp_dma_chan *chan)
+static void zynqmp_dma_start_transfer(struct zynqmp_dma_chan *chan)
 {
 	struct zynqmp_dma_desc_sw *desc;
 
@@ -632,7 +632,7 @@ static void zynqmp_dma_chan_desc_cleanup(struct zynqmp_dma_chan *chan)
  * zynqmp_dma_complete_descriptor - Mark the active descriptor as complete
  * @chan: ZynqMP DMA channel pointer
  */
-void zynqmp_dma_complete_descriptor(struct zynqmp_dma_chan *chan)
+static void zynqmp_dma_complete_descriptor(struct zynqmp_dma_chan *chan)
 {
 	struct zynqmp_dma_desc_sw *desc = chan->active_desc;
 
