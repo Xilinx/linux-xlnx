@@ -126,6 +126,10 @@
 
 #define IDS_DEFAULT_MASK	0xFFF
 
+/* Bus width in bits */
+#define ZYNQMP_DMA_BUS_WIDTH_64		64
+#define ZYNQMP_DMA_BUS_WIDTH_128	128
+
 #define DESC_SIZE(chan)		(chan->desc_size)
 #define DST_DESC_BASE(chan)	(DESC_SIZE(chan) * ZYNQMP_DMA_NUM_DESCS)
 
@@ -1011,6 +1015,19 @@ static int zynqmp_dma_chan_probe(struct zynqmp_dma_device *xdev,
 	if (IS_ERR(chan->regs))
 		return PTR_ERR(chan->regs);
 
+	chan->bus_width = ZYNQMP_DMA_BUS_WIDTH_64;
+	chan->src_issue = SRC_ISSUE_RST_VAL;
+	chan->dst_burst_len = AWLEN_RST_VAL;
+	chan->src_burst_len = ARLEN_RST_VAL;
+	chan->dst_axi_cache = AWCACHE_RST_VAL;
+	chan->src_axi_cache = ARCACHE_RST_VAL;
+	err = of_property_read_u32(node, "xlnx,bus-width", &chan->bus_width);
+	if ((err < 0) && ((chan->bus_width != ZYNQMP_DMA_BUS_WIDTH_64) ||
+			  (chan->bus_width != ZYNQMP_DMA_BUS_WIDTH_128))) {
+		dev_err(xdev->dev, "invalid bus-width value");
+		return err;
+	}
+
 	chan->has_sg = of_property_read_bool(node, "xlnx,include-sg");
 	chan->ovrfetch = of_property_read_bool(node, "xlnx,overfetch");
 	chan->desc_axi_cohrnt =
@@ -1020,53 +1037,17 @@ static int zynqmp_dma_chan_probe(struct zynqmp_dma_device *xdev,
 	chan->dst_axi_cohrnt =
 			of_property_read_bool(node, "xlnx,dst-axi-cohrnt");
 
-	err = of_property_read_u32(node, "xlnx,desc-axi-qos",
-				   &chan->desc_axi_qos);
-	if (err < 0)
-		chan->desc_axi_qos = 0;
-
-	err = of_property_read_u32(node, "xlnx,desc-axi-cache",
-				   &chan->desc_axi_cache);
-	if (err < 0)
-		chan->desc_axi_cache = 0;
-
-	err = of_property_read_u32(node, "xlnx,src-axi-qos",
-				   &chan->src_axi_qos);
-	if (err < 0)
-		chan->src_axi_qos = 0;
-	err = of_property_read_u32(node, "xlnx,src-axi-cache",
-				   &chan->src_axi_cache);
-	if (err < 0)
-		chan->src_axi_cache = ARCACHE_RST_VAL;
-	err = of_property_read_u32(node, "xlnx,dst-axi-qos",
-				   &chan->dst_axi_qos);
-	if (err < 0)
-		chan->dst_axi_qos = 0;
-	err = of_property_read_u32(node, "xlnx,dst-axi-cache",
-				   &chan->dst_axi_cache);
-	if (err < 0)
-		chan->dst_axi_cache = AWCACHE_RST_VAL;
-	err = of_property_read_u32(node, "xlnx,src-burst-len",
-				   &chan->src_burst_len);
-	if (err < 0)
-		chan->src_burst_len = ARLEN_RST_VAL;
-	err = of_property_read_u32(node, "xlnx,dst-burst-len",
-				   &chan->dst_burst_len);
-	if (err < 0)
-		chan->dst_burst_len = AWLEN_RST_VAL;
-	err = of_property_read_u32(node, "xlnx,ratectrl", &chan->ratectrl);
-	if (err < 0)
-		chan->ratectrl = 0;
-	err = of_property_read_u32(node, "xlnx,src-issue",
-				   &chan->src_issue);
-	if (err < 0)
-		chan->src_issue = SRC_ISSUE_RST_VAL;
-
-	err = of_property_read_u32(node, "xlnx,bus-width", &chan->bus_width);
-	if (err < 0) {
-		dev_err(xdev->dev, "missing bus-width property");
-		return err;
-	}
+	of_property_read_u32(node, "xlnx,desc-axi-qos", &chan->desc_axi_qos);
+	of_property_read_u32(node, "xlnx,desc-axi-cache",
+			     &chan->desc_axi_cache);
+	of_property_read_u32(node, "xlnx,src-axi-qos", &chan->src_axi_qos);
+	of_property_read_u32(node, "xlnx,src-axi-cache", &chan->src_axi_cache);
+	of_property_read_u32(node, "xlnx,dst-axi-qos", &chan->dst_axi_qos);
+	of_property_read_u32(node, "xlnx,dst-axi-cache", &chan->dst_axi_cache);
+	of_property_read_u32(node, "xlnx,src-burst-len", &chan->src_burst_len);
+	of_property_read_u32(node, "xlnx,dst-burst-len", &chan->dst_burst_len);
+	of_property_read_u32(node, "xlnx,ratectrl", &chan->ratectrl);
+	of_property_read_u32(node, "xlnx,src-issue", &chan->src_issue);
 
 	xdev->chan = chan;
 	tasklet_init(&chan->tasklet, zynqmp_dma_do_tasklet, (ulong)chan);
@@ -1080,6 +1061,8 @@ static int zynqmp_dma_chan_probe(struct zynqmp_dma_device *xdev,
 
 	zynqmp_dma_init(chan);
 	chan->irq = platform_get_irq(pdev, 0);
+	if (chan->irq < 0)
+		return -ENXIO;
 	err = devm_request_irq(&pdev->dev, chan->irq, zynqmp_dma_irq_handler, 0,
 			       "zynqmp-dma", chan);
 	if (err)
@@ -1146,8 +1129,8 @@ static int zynqmp_dma_probe(struct platform_device *pdev)
 		goto free_chan_resources;
 	}
 
-	p->dst_addr_widths = xdev->chan->bus_width;
-	p->src_addr_widths = xdev->chan->bus_width;
+	p->dst_addr_widths = xdev->chan->bus_width / 8;
+	p->src_addr_widths = xdev->chan->bus_width / 8;
 
 	dma_async_device_register(&xdev->common);
 
