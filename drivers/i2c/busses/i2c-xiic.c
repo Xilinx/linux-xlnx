@@ -401,6 +401,8 @@ static void xiic_process(struct xiic_i2c *i2c)
 		 */
 		xiic_reinit(i2c);
 
+		if (i2c->rx_msg)
+			xiic_wakeup(i2c, STATE_ERROR);
 		if (i2c->tx_msg)
 			xiic_wakeup(i2c, STATE_ERROR);
 
