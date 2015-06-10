@@ -696,6 +696,7 @@ static int xiic_xfer(struct i2c_adapter *adap, struct i2c_msg *msgs, int num)
 		i2c->tx_msg = NULL;
 		i2c->rx_msg = NULL;
 		i2c->nmsgs = 0;
+		dev_err(adap->dev.parent, "Controller timed out\n");
 		return -ETIMEDOUT;
 	}
 }
