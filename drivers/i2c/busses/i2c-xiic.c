@@ -357,9 +357,11 @@ static void xiic_wakeup(struct xiic_i2c *i2c, int code)
 	wake_up(&i2c->wait);
 }
 
-static void xiic_process(struct xiic_i2c *i2c)
+static irqreturn_t xiic_process(int irq, void *dev_id)
 {
+	struct xiic_i2c *i2c = dev_id;
 	u32 pend, isr, ier;
+	unsigned long flags;
 	u32 clr = 0;
 
 	/* Get the interrupt Status from the IPIF. There is no clearing of
@@ -367,6 +369,7 @@ static void xiic_process(struct xiic_i2c *i2c)
 	 * To find which interrupts are pending; AND interrupts pending with
 	 * interrupts masked.
 	 */
+	spin_lock(&i2c->lock);
 	isr = xiic_getreg32(i2c, XIIC_IISR_OFFSET);
 	ier = xiic_getreg32(i2c, XIIC_IIER_OFFSET);
 	pend = isr & ier;
@@ -377,11 +380,6 @@ static void xiic_process(struct xiic_i2c *i2c)
 		__func__, xiic_getreg8(i2c, XIIC_SR_REG_OFFSET),
 		i2c->tx_msg, i2c->nmsgs);
 
-	/* Do not processes a devices interrupts if the device has no
-	 * interrupts pending
-	 */
-	if (!pend)
-		return;
 
 	/* Service requesting interrupt */
 	if ((pend & XIIC_INTR_ARB_LOST_MASK) ||
@@ -503,6 +501,8 @@ out:
 	dev_dbg(i2c->adap.dev.parent, "%s clr: 0x%x\n", __func__, clr);
 
 	xiic_setreg32(i2c, XIIC_IISR_OFFSET, clr);
+	spin_unlock(&i2c->lock);
+	return IRQ_HANDLED;
 }
 
 static int xiic_bus_busy(struct xiic_i2c *i2c)
@@ -603,16 +603,21 @@ static void xiic_start_send(struct xiic_i2c *i2c)
 static irqreturn_t xiic_isr(int irq, void *dev_id)
 {
 	struct xiic_i2c *i2c = dev_id;
-
-	spin_lock(&i2c->lock);
+	u32 pend, isr, ier;
+	irqreturn_t ret = IRQ_HANDLED;
+	/* Do not processes a devices interrupts if the device has no
+	 * interrupts pending
+	 */
 
 	dev_dbg(i2c->adap.dev.parent, "%s entry\n", __func__);
 
-	xiic_process(i2c);
+	isr = xiic_getreg32(i2c, XIIC_IISR_OFFSET);
+	ier = xiic_getreg32(i2c, XIIC_IIER_OFFSET);
+	pend = isr & ier;
+	if (pend)
+		ret = IRQ_WAKE_THREAD;
 
-	spin_unlock(&i2c->lock);
-
-	return IRQ_HANDLED;
+	return ret;
 }
 
 static void __xiic_start_xfer(struct xiic_i2c *i2c)
@@ -753,7 +758,10 @@ static int xiic_i2c_probe(struct platform_device *pdev)
 	spin_lock_init(&i2c->lock);
 	init_waitqueue_head(&i2c->wait);
 
-	ret = devm_request_irq(&pdev->dev, irq, xiic_isr, 0, pdev->name, i2c);
+	ret = devm_request_threaded_irq(&pdev->dev, irq, xiic_isr,
+					xiic_process, IRQF_ONESHOT,
+					pdev->name, i2c);
+
 	if (ret < 0) {
 		dev_err(&pdev->dev, "Cannot claim IRQ\n");
 		return ret;
