@@ -1219,6 +1219,8 @@ enum of_reconfig_change {
 };
 
 #ifdef CONFIG_OF_DYNAMIC
+#include <linux/slab.h>
+
 extern int of_reconfig_notifier_register(struct notifier_block *);
 extern int of_reconfig_notifier_unregister(struct notifier_block *);
 extern int of_reconfig_notify(unsigned long, struct of_reconfig_data *rd);
@@ -1262,6 +1264,23 @@ static inline int of_changeset_update_property(struct of_changeset *ocs,
 {
 	return of_changeset_action(ocs, OF_RECONFIG_UPDATE_PROPERTY, np, prop);
 }
+
+struct device_node *of_changeset_create_device_nodev(
+	struct of_changeset *ocs, struct device_node *parent,
+	const char *fmt, va_list vargs);
+
+__printf(3, 4) struct device_node *
+of_changeset_create_device_node(struct of_changeset *ocs,
+	struct device_node *parent, const char *fmt, ...);
+
+int __of_changeset_add_update_property_copy(struct of_changeset *ocs,
+		struct device_node *np, const char *name, const void *value,
+		int length, bool update);
+
+int __of_changeset_add_update_property_string_list(
+		struct of_changeset *ocs, struct device_node *np,
+		const char *name, const char **strs, int count, bool update);
+
 #else /* CONFIG_OF_DYNAMIC */
 static inline int of_reconfig_notifier_register(struct notifier_block *nb)
 {
@@ -1281,7 +1300,318 @@ static inline int of_reconfig_get_state_change(unsigned long action,
 {
 	return -EINVAL;
 }
+
+static inline struct device_node *of_changeset_create_device_nodev(
+	struct of_changeset *ocs, struct device_node *parent,
+	const char *fmt, va_list vargs)
+{
+	return ERR_PTR(-EINVAL);
+}
+
+static inline __printf(3, 4) struct device_node *
+of_changeset_create_device_node(struct of_changeset *ocs,
+	struct device_node *parent, const char *fmt, ...)
+{
+	return ERR_PTR(-EINVAL);
+}
+
+static inline int __of_changeset_add_update_property_copy(
+	struct of_changeset *ocs, struct device_node *np,
+	const char *name, const void *value, int length, bool update)
+{
+	return -EINVAL;
+}
+
+static inline __printf(4, 5) int of_changeset_add_property_stringf(
+		struct of_changeset *ocs, struct device_node *np,
+		const char *name, const char *fmt, ...)
+{
+	return -EINVAL;
+}
+
+static inline int of_changeset_update_property_stringf(
+	struct of_changeset *ocs, struct device_node *np,
+	const char *name, const char *fmt, ...)
+{
+	return -EINVAL;
+}
+
+static inline int __of_changeset_add_update_property_string_list(
+		struct of_changeset *ocs, struct device_node *np,
+		const char *name, const char **strs, int count, bool update)
+{
+	return -EINVAL;
+}
+
 #endif /* CONFIG_OF_DYNAMIC */
+
+#ifdef CONFIG_OF_DYNAMIC
+/**
+ * of_changeset_add_property_copy - Create a new property copying name & value
+ *
+ * @ocs:	changeset pointer
+ * @np:		device node pointer
+ * @name:	name of the property
+ * @value:	pointer to the value data
+ * @length:	length of the value in bytes
+ *
+ * Adds a property to the changeset by making copies of the name & value
+ * entries.
+ *
+ * Returns zero on success, a negative error value otherwise.
+ */
+static inline int of_changeset_add_property_copy(struct of_changeset *ocs,
+	struct device_node *np, const char *name,
+	const void *value, int length)
+{
+	return __of_changeset_add_update_property_copy(ocs, np, name, value,
+			length, false);
+}
+
+/**
+ * of_changeset_update_property_copy - Update a property copying name & value
+ *
+ * @ocs:	changeset pointer
+ * @np:		device node pointer
+ * @name:	name of the property
+ * @value:	pointer to the value data
+ * @length:	length of the value in bytes
+ *
+ * Update a property to the changeset by making copies of the name & value
+ * entries.
+ *
+ * Returns zero on success, a negative error value otherwise.
+ */
+static inline int of_changeset_update_property_copy(struct of_changeset *ocs,
+	struct device_node *np, const char *name,
+	const void *value, int length)
+{
+	return __of_changeset_add_update_property_copy(ocs, np, name, value,
+			length, true);
+}
+
+/**
+ * __of_changeset_add_update_property_string - Create/update a string property
+ *
+ * @ocs:	changeset pointer
+ * @np:		device node pointer
+ * @name:	name of the property
+ * @str:	string property value
+ * @update:	True on update operation
+ *
+ * Adds/updates a string property to the changeset by making copies of the name
+ * and the given value. The @update parameter controls whether an add or
+ * update takes place.
+ *
+ * Returns zero on success, a negative error value otherwise.
+ */
+static inline int __of_changeset_add_update_property_string(
+	struct of_changeset *ocs, struct device_node *np, const char *name,
+	const char *str, bool update)
+{
+	return __of_changeset_add_update_property_copy(ocs, np, name, str,
+			strlen(str) + 1, update);
+}
+
+/**
+ * __of_changeset_add_update_property_stringv - Create/update a formatted
+ *						string property
+ *
+ * @ocs:	changeset pointer
+ * @np:		device node pointer
+ * @name:	name of the property
+ * @fmt:	format of string property
+ * @vargs:	arguments of the format string
+ * @update:	True on update operation
+ *
+ * Adds/updates a string property to the changeset by making copies of the name
+ * and the formatted value. The @update parameter controls whether an add or
+ * update takes place.
+ *
+ * Returns zero on success, a negative error value otherwise.
+ */
+static inline int __of_changeset_add_update_property_stringv(
+	struct of_changeset *ocs, struct device_node *np, const char *name,
+	const char *fmt, va_list vargs, bool update)
+{
+	char *str;
+	int ret;
+
+	str = kvasprintf(GFP_KERNEL, fmt, vargs);
+	if (!str)
+		return -ENOMEM;
+	ret = __of_changeset_add_update_property_string(ocs, np, name, str,
+			update);
+	kfree(str);
+
+	return ret;
+}
+
+/**
+ * of_changeset_add_property_string_list - Create a new string list property
+ *
+ * @ocs:	changeset pointer
+ * @np:		device node pointer
+ * @name:	name of the property
+ * @strs:	pointer to the string list
+ * @count:	string count
+ *
+ * Adds a string list property to the changeset.
+ *
+ * Returns zero on success, a negative error value otherwise.
+ */
+static inline int of_changeset_add_property_string_list(
+	struct of_changeset *ocs, struct device_node *np, const char *name,
+	const char **strs, int count)
+{
+	return __of_changeset_add_update_property_string_list(ocs, np, name,
+			strs, count, false);
+}
+
+/**
+ * of_changeset_update_property_string_list - Update string list property
+ *
+ * @ocs:	changeset pointer
+ * @np:		device node pointer
+ * @name:	name of the property
+ * @strs:	pointer to the string list
+ * @count:	string count
+ *
+ * Updates a string list property to the changeset.
+ *
+ * Returns zero on success, a negative error value otherwise.
+ */
+static inline int of_changeset_update_property_string_list(
+	struct of_changeset *ocs, struct device_node *np,
+	const char *name, const char **strs, int count)
+{
+	return __of_changeset_add_update_property_string_list(ocs, np, name,
+			strs, count, true);
+}
+
+/**
+ * of_changeset_add_property_string - Adds a string property
+ *
+ * @ocs:	changeset pointer
+ * @np:		device node pointer
+ * @name:	name of the property
+ * @str:	string property
+ *
+ * Adds a string property to the changeset by making copies of the name
+ * and the string value.
+ *
+ * Returns zero on success, a negative error value otherwise.
+ */
+static inline int of_changeset_add_property_string(
+	struct of_changeset *ocs, struct device_node *np,
+	const char *name, const char *str)
+{
+	return __of_changeset_add_update_property_string(ocs, np, name, str,
+			false);
+}
+
+/**
+ * of_changeset_update_property_string - Update a string property
+ *
+ * @ocs:	changeset pointer
+ * @np:		device node pointer
+ * @name:	name of the property
+ * @str:	string property
+ *
+ * Updates a string property to the changeset by making copies of the name
+ * and the string value.
+ *
+ * Returns zero on success, a negative error value otherwise.
+ */
+static inline int of_changeset_update_property_string(
+	struct of_changeset *ocs, struct device_node *np,
+	const char *name, const char *str)
+{
+	return __of_changeset_add_update_property_string(ocs, np, name, str,
+			true);
+}
+
+/**
+ * of_changeset_add_property_u32 - Create a new u32 property
+ *
+ * @ocs:	changeset pointer
+ * @np:		device node pointer
+ * @name:	name of the property
+ * @val:	value in host endian format
+ *
+ * Adds a u32 property to the changeset.
+ *
+ * Returns zero on success, a negative error value otherwise.
+ */
+static inline int of_changeset_add_property_u32(struct of_changeset *ocs,
+		struct device_node *np, const char *name, u32 val)
+{
+	val = cpu_to_be32(val);
+	return __of_changeset_add_update_property_copy(ocs, np, name, &val,
+			sizeof(val), false);
+}
+
+/**
+ * of_changeset_update_property_u32 - Update u32 property
+ *
+ * @ocs:	changeset pointer
+ * @np:		device node pointer
+ * @name:	name of the property
+ * @val:	value in host endian format
+ *
+ * Updates a u32 property to the changeset.
+ *
+ * Returns zero on success, a negative error value otherwise.
+ */
+static inline int of_changeset_update_property_u32(
+	struct of_changeset *ocs, struct device_node *np,
+	const char *name, u32 val)
+{
+	val = cpu_to_be32(val);
+	return __of_changeset_add_update_property_copy(ocs, np, name, &val,
+			sizeof(val), true);
+}
+
+/**
+ * of_changeset_add_property_bool - Create a new u32 property
+ *
+ * @ocs:	changeset pointer
+ * @np:		device node pointer
+ * @name:	name of the property
+ *
+ * Adds a bool property to the changeset. Note that there is
+ * no option to set the value to false, since the property
+ * existing sets it to true.
+ *
+ * Returns zero on success, a negative error value otherwise.
+ */
+static inline int of_changeset_add_property_bool(
+	struct of_changeset *ocs, struct device_node *np, const char *name)
+{
+	return __of_changeset_add_update_property_copy(ocs, np, name, "", 0,
+			false);
+}
+
+/**
+ * of_changeset_update_property_bool - Update a bool property
+ *
+ * @ocs:	changeset pointer
+ * @np:		device node pointer
+ * @name:	name of the property
+ *
+ * Updates a property to the changeset. Note that there is
+ * no option to set the value to false, since the property
+ * existing sets it to true.
+ *
+ * Returns zero on success, a negative error value otherwise.
+ */
+static inline int of_changeset_update_property_bool(struct of_changeset *ocs,
+		struct device_node *np, const char *name)
+{
+	return __of_changeset_add_update_property_copy(ocs, np, name, "", 0,
+			true);
+}
+#endif
 
 /* CONFIG_OF_RESOLVE api */
 extern int of_resolve_phandles(struct device_node *tree);
