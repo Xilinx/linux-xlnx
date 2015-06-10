@@ -397,8 +397,9 @@ struct property *__of_prop_dup(const struct property *prop, gfp_t allocflags)
 }
 
 /**
- * __of_node_dup() - Duplicate or create an empty device node dynamically.
- * @fmt: Format string (plus vargs) for new full name of the device node
+ * __of_node_dupv() - Duplicate or create an empty device node dynamically.
+ * @fmt: Format string for new full name of the device node
+ * @vargs: va_list containing the arugments for the node full name
  *
  * Create an device tree node, either by duplicating an empty node or by allocating
  * an empty one suitable for further modification.  The node data are
@@ -406,17 +407,15 @@ struct property *__of_prop_dup(const struct property *prop, gfp_t allocflags)
  * OF_DETACHED bits set. Returns the newly allocated node or NULL on out of
  * memory error.
  */
-struct device_node *__of_node_dup(const struct device_node *np, const char *fmt, ...)
+struct device_node *__of_node_dupv(const struct device_node *np,
+		const char *fmt, va_list vargs)
 {
-	va_list vargs;
 	struct device_node *node;
 
 	node = kzalloc(sizeof(*node), GFP_KERNEL);
 	if (!node)
 		return NULL;
-	va_start(vargs, fmt);
 	node->full_name = kvasprintf(GFP_KERNEL, fmt, vargs);
-	va_end(vargs);
 	if (!node->full_name) {
 		kfree(node);
 		return NULL;
@@ -446,6 +445,24 @@ struct device_node *__of_node_dup(const struct device_node *np, const char *fmt,
  err_prop:
 	of_node_put(node); /* Frees the node and properties */
 	return NULL;
+}
+
+/**
+ * __of_node_dup() - Duplicate or create an empty device node dynamically.
+ * @fmt: Format string (plus vargs) for new full name of the device node
+ *
+ * See: __of_node_dupv()
+ */
+struct device_node *__of_node_dup(const struct device_node *np,
+		const char *fmt, ...)
+{
+	va_list vargs;
+	struct device_node *node;
+
+	va_start(vargs, fmt);
+	node = __of_node_dupv(np, fmt, vargs);
+	va_end(vargs);
+	return node;
 }
 
 static void __of_changeset_entry_destroy(struct of_changeset_entry *ce)
