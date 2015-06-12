@@ -496,9 +496,8 @@ static irqreturn_t r5_remoteproc_interrupt(int irq, void *dev_id)
 
 	dev_dbg(dev, "KICK Linux because of pending message(irq%d)\n", irq);
 
-	schedule_work(&local->workqueue);
-
 	local->ipi_ops->clear(local);
+	schedule_work(&local->workqueue);
 
 	dev_dbg(dev, "KICK Linux handled\n");
 	return IRQ_HANDLED;
