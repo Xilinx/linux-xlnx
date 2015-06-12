@@ -331,13 +331,11 @@ struct rproc;
  * @start:	power on the device and boot it
  * @stop:	power off the device
  * @kick:	kick a virtqueue (virtqueue id given as a parameter)
- * @kva_to_guest_addr_kva: kernel virtual address to guest address in kernel virtual address form
  */
 struct rproc_ops {
 	int (*start)(struct rproc *rproc);
 	int (*stop)(struct rproc *rproc);
 	void (*kick)(struct rproc *rproc, int vqid);
-	void *(*kva_to_guest_addr_kva)(struct rproc *rproc, void *va, struct virtqueue *vq);
 };
 
 /**

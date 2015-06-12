@@ -482,26 +482,10 @@ static int zynqmp_r5_rproc_stop(struct rproc *rproc)
 	return 0;
 }
 
-static void *zynqmp_r5_kva_to_guest_addr_kva(struct rproc *rproc,
-				void *va, struct virtqueue *vq)
-{
-	struct rproc_vring *rvring;
-
-	rvring = (struct rproc_vring *)(vq->priv);
-
-	/*
-	 * Remoteproc uses dma_alloc_coherent to set up the address of vring.
-	 * It assumes the remote has the same memory address mapping for
-	 * vring.
-	 */
-	return (void *)(phys_to_virt(rvring->dma) + (va - rvring->va));
-}
-
 static struct rproc_ops zynqmp_r5_rproc_ops = {
 	.start		= zynqmp_r5_rproc_start,
 	.stop		= zynqmp_r5_rproc_stop,
 	.kick		= zynqmp_r5_rproc_kick,
-	.kva_to_guest_addr_kva = zynqmp_r5_kva_to_guest_addr_kva,
 };
 
 static irqreturn_t r5_remoteproc_interrupt(int irq, void *dev_id)
@@ -540,16 +524,6 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 	if (!res) {
 		dev_err(&pdev->dev, "invalid address for vring0\n");
 		return -ENXIO;
-	}
-
-	ret = dma_declare_coherent_memory(&pdev->dev, res->start,
-		res->start, resource_size(res),
-		DMA_MEMORY_IO | DMA_MEMORY_EXCLUSIVE);
-	if (!(ret & DMA_MEMORY_IO)) {
-		dev_err(&pdev->dev, "dma_declare_coherent_memory failed %x - %x\n",
-			(u32)res->start, (u32)res->end);
-		ret = -ENOMEM;
-		goto err_exit;
 	}
 
 	/* FIXME: it may need to extend to 64/48 bit */
