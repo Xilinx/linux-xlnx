@@ -38,8 +38,7 @@
 		.endm
 
 		.macro	senduart,rd,rx
-ARM_BE8(	rev	\rd, \rd )
-		str	\rd, [\rx, #UART_FIFO_OFFSET]	@ TXDATA
+		strb	\rd, [\rx, #UART_FIFO_OFFSET]	@ TXDATA
 		.endm
 
 		.macro	waituart,rd,rx
