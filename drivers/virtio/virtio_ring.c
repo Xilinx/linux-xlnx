@@ -120,6 +120,16 @@ static struct vring_desc *alloc_indirect(struct virtqueue *_vq,
 	return desc;
 }
 
+static inline void vring_desc_set(struct virtio_device *vdev,
+				  struct vring_desc *desc,
+				  struct scatterlist *sg,
+				  unsigned int flags)
+{
+	desc->flags = cpu_to_virtio16(vdev, flags);
+	desc->addr = cpu_to_virtio64(vdev, sg_phys(sg));
+	desc->len = cpu_to_virtio32(vdev, sg->length);
+}
+
 static inline int virtqueue_add(struct virtqueue *_vq,
 				struct scatterlist *sgs[],
 				unsigned int total_sg,
@@ -205,18 +215,16 @@ static inline int virtqueue_add(struct virtqueue *_vq,
 
 	for (n = 0; n < out_sgs; n++) {
 		for (sg = sgs[n]; sg; sg = sg_next(sg)) {
-			desc[i].flags = cpu_to_virtio16(_vq->vdev, VRING_DESC_F_NEXT);
-			desc[i].addr = cpu_to_virtio64(_vq->vdev, sg_phys(sg));
-			desc[i].len = cpu_to_virtio32(_vq->vdev, sg->length);
+			vring_desc_set(_vq->vdev, desc + i, sg,
+				       VRING_DESC_F_NEXT);
 			prev = i;
 			i = virtio16_to_cpu(_vq->vdev, desc[i].next);
 		}
 	}
 	for (; n < (out_sgs + in_sgs); n++) {
 		for (sg = sgs[n]; sg; sg = sg_next(sg)) {
-			desc[i].flags = cpu_to_virtio16(_vq->vdev, VRING_DESC_F_NEXT | VRING_DESC_F_WRITE);
-			desc[i].addr = cpu_to_virtio64(_vq->vdev, sg_phys(sg));
-			desc[i].len = cpu_to_virtio32(_vq->vdev, sg->length);
+			vring_desc_set(_vq->vdev, desc + i, sg,
+				       VRING_DESC_F_NEXT | VRING_DESC_F_WRITE);
 			prev = i;
 			i = virtio16_to_cpu(_vq->vdev, desc[i].next);
 		}
