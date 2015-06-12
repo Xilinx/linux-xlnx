@@ -44,6 +44,14 @@ int virtqueue_add_inbuf(struct virtqueue *vq,
 			void *data,
 			gfp_t gfp);
 
+int __virtqueue_add_sgs(struct virtqueue *vq,
+			struct scatterlist *sgs[],
+			unsigned int out_sgs,
+			unsigned int in_sgs,
+			void *data,
+			gfp_t gfp,
+			bool dma);
+
 int virtqueue_add_sgs(struct virtqueue *vq,
 		      struct scatterlist *sgs[],
 		      unsigned int out_sgs,
