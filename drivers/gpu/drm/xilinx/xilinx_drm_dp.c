@@ -201,7 +201,6 @@
 							 XILINX_DP_TX_PHY_CONFIG_GTTX_RESET | \
 							 XILINX_DP_TX_PHY_CONFIG_PHY_PMA_RESET | \
 							 XILINX_DP_TX_PHY_CONFIG_PHY_PCS_RESET)
-#define XILINX_DP_SUB_TX_PHY_CONFIG_EN_8B_10B		BIT(16)
 #define XILINX_DP_TX_PHY_PREEMPHASIS_LANE_0		0x210
 #define XILINX_DP_TX_PHY_PREEMPHASIS_LANE_1		0x214
 #define XILINX_DP_TX_PHY_PREEMPHASIS_LANE_2		0x218
@@ -1071,7 +1070,6 @@ static int xilinx_drm_dp_encoder_init(struct platform_device *pdev,
 {
 	struct xilinx_drm_dp *dp = platform_get_drvdata(pdev);
 	int clock_rate;
-	u32 reg = 0;
 
 	encoder->slave_priv = dp;
 	encoder->slave_funcs = &xilinx_drm_dp_encoder_funcs;
@@ -1087,9 +1085,8 @@ static int xilinx_drm_dp_encoder_init(struct platform_device *pdev,
 
 	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_CLK_DIVIDER,
 			  clock_rate / XILINX_DP_TX_CLK_DIVIDER_MHZ);
-	if (dp->dp_sub)
-		reg = XILINX_DP_SUB_TX_PHY_CONFIG_EN_8B_10B;
-	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_PHY_CONFIG, reg);
+	xilinx_drm_clr(dp->iomem, XILINX_DP_TX_PHY_CONFIG,
+		       XILINX_DP_TX_PHY_CONFIG_ALL_RESET);
 
 	if (dp->dp_sub)
 		xilinx_drm_writel(dp->iomem, XILINX_DP_SUB_TX_INTR_EN,
@@ -1349,8 +1346,8 @@ static int xilinx_drm_dp_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, dp);
 
-	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_PHY_CONFIG,
-			  XILINX_DP_TX_PHY_CONFIG_ALL_RESET);
+	xilinx_drm_set(dp->iomem, XILINX_DP_TX_PHY_CONFIG,
+		       XILINX_DP_TX_PHY_CONFIG_ALL_RESET);
 	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_FORCE_SCRAMBLER_RESET, 1);
 	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_ENABLE, 0);
 	if (dp->dp_sub)
