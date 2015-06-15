@@ -509,6 +509,7 @@ static void dmatest_cleanup_channel(struct dmatest_chan *dtc)
 		pr_debug("dmatest: thread %s exited with status %d\n",
 				thread->task->comm, ret);
 		list_del(&thread->node);
+		put_task_struct(thread->task);
 		kfree(thread);
 	}
 	kfree(dtc);
@@ -542,7 +543,7 @@ static int dmatest_add_slave_threads(struct dmatest_chan *tx_dtc,
 	}
 
 	/* srcbuf and dstbuf are allocated by the thread itself */
-
+	get_task_struct(thread->task);
 	list_add_tail(&thread->node, &tx_dtc->threads);
 
 	/* Added one thread with 2 channels */
