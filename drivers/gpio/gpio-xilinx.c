@@ -561,7 +561,6 @@ MODULE_DEVICE_TABLE(of, xgpio_of_match);
 static struct platform_driver xilinx_gpio_driver = {
 	.probe = xgpio_of_probe,
 	.driver = {
-		.owner = THIS_MODULE,
 		.name = "xilinx-gpio",
 		.of_match_table = xgpio_of_match,
 	},

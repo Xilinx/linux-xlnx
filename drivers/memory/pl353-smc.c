@@ -544,7 +544,6 @@ static struct platform_driver pl353_smc_driver = {
 	.remove		= pl353_smc_remove,
 	.driver		= {
 		.name	= "pl353-smc",
-		.owner	= THIS_MODULE,
 		.pm	= &pl353_smc_dev_pm_ops,
 		.of_match_table = pl353_smc_of_match,
 	},

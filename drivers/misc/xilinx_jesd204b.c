@@ -445,7 +445,6 @@ static int jesd204b_remove(struct platform_device *pdev)
 static struct platform_driver jesd204b_driver = {
 	.driver = {
 		.name = KBUILD_MODNAME,
-		.owner = THIS_MODULE,
 		.of_match_table = jesd204b_of_match,
 	},
 	.probe		= jesd204b_probe,
