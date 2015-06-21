@@ -2064,11 +2064,6 @@ static int xemacps_open(struct net_device *ndev)
 	if (rc != 0) {
 		dev_err(&lp->pdev->dev,
 			"%s mii_probe fail.\n", lp->mii_bus->name);
-		if (rc == (-2)) {
-			mdiobus_unregister(lp->mii_bus);
-			kfree(lp->mii_bus->irq);
-			mdiobus_free(lp->mii_bus);
-		}
 		rc = -ENXIO;
 		goto err_pm_put;
 	}
