@@ -496,7 +496,6 @@ struct xemacps_bd {
 	u32 ctrl;
 };
 
-
 /* Our private device data. */
 struct net_local {
 	void __iomem *baseaddr;
@@ -689,7 +688,6 @@ timeout:
 	pm_runtime_put(&lp->pdev->dev);
 	return -ETIMEDOUT;
 }
-
 
 /**
  * xemacps_mdio_reset - mdio reset. It seems to be required per open
@@ -1000,6 +998,7 @@ static void xemacps_set_hwaddr(struct net_local *lp)
 static void xemacps_reset_hw(struct net_local *lp)
 {
 	u32 regisr;
+
 	/* make sure we have the buffer for ourselves */
 	wmb();
 
@@ -1097,6 +1096,7 @@ static void xemacps_systim_to_hwtstamp(struct net_local *lp,
 				u64 regval)
 {
 	u64 ns;
+
 	ns = timecounter_cyc2time(&lp->tc, regval);
 	memset(shhwtstamps, 0, sizeof(struct skb_shared_hwtstamps));
 	shhwtstamps->hwtstamp = ns_to_ktime(ns);
@@ -1432,6 +1432,7 @@ static int xemacps_rx(struct net_local *lp, int budget)
 			}
 		}
 #endif /* CONFIG_XILINX_PS_EMAC_HWTSTAMP */
+
 		size += len;
 		packets++;
 		netif_receive_skb(skb);
@@ -1642,6 +1643,7 @@ static irqreturn_t xemacps_interrupt(int irq, void *dev_id)
 				XEMACPS_IDR_OFFSET, XEMACPS_IXR_FRAMERX_MASK);
 			napi_schedule(&lp->napi);
 		}
+
 		regisr = xemacps_read(lp->baseaddr, XEMACPS_ISR_OFFSET);
 		xemacps_write(lp->baseaddr, XEMACPS_ISR_OFFSET, regisr);
 	}
@@ -2575,7 +2577,6 @@ xemacps_get_wol(struct net_device *ndev, struct ethtool_wolinfo *ewol)
 		ewol->wolopts |= WAKE_UCAST;
 	if (regval & XEMACPS_WOL_MAGIC_MASK)
 		ewol->wolopts |= WAKE_MAGIC;
-
 }
 
 /**
@@ -2812,7 +2813,6 @@ static int xemacps_ioctl(struct net_device *ndev, struct ifreq *rq, int cmd)
 		dev_info(&lp->pdev->dev, "ioctl %d not implemented.\n", cmd);
 		return -EOPNOTSUPP;
 	}
-
 }
 
 /**
@@ -2927,7 +2927,6 @@ static int xemacps_probe(struct platform_device *pdev)
 	/* Set MDIO clock divider */
 	regval = (MDC_DIV_224 << XEMACPS_NWCFG_MDC_SHIFT_MASK);
 	xemacps_write(lp->baseaddr, XEMACPS_NWCFG_OFFSET, regval);
-
 
 	regval = XEMACPS_NWCTRL_MDEN_MASK;
 	xemacps_write(lp->baseaddr, XEMACPS_NWCTRL_OFFSET, regval);
