@@ -840,6 +840,10 @@ static int xemacps_mii_probe(struct net_device *ndev)
 
 	if (!phydev) {
 		dev_err(&lp->pdev->dev, "%s: no PHY found\n", ndev->name);
+		if (lp->gmii2rgmii_phy_dev) {
+			phy_disconnect(lp->gmii2rgmii_phy_dev);
+			lp->gmii2rgmii_phy_dev = NULL;
+		}
 		return -1;
 	}
 
@@ -2111,7 +2115,7 @@ static int xemacps_close(struct net_device *ndev)
 	tasklet_disable(&lp->tx_bdreclaim_tasklet);
 	if (lp->phy_dev)
 		phy_disconnect(lp->phy_dev);
-	if (lp->gmii2rgmii_phy_node)
+	if (lp->gmii2rgmii_phy_dev)
 		phy_disconnect(lp->gmii2rgmii_phy_dev);
 	netif_carrier_off(ndev);
 
