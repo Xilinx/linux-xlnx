@@ -2055,6 +2055,7 @@ static int xemacps_open(struct net_device *ndev)
 							(unsigned long)lp);
 	lp->timerready = true;
 
+	netif_carrier_off(ndev);
 	rc = xemacps_mii_probe(ndev);
 	if (rc != 0) {
 		dev_err(&lp->pdev->dev,
@@ -2070,7 +2071,6 @@ static int xemacps_open(struct net_device *ndev)
 
 	mod_timer(&(lp->gen_purpose_timer),
 		jiffies + msecs_to_jiffies(XEAMCPS_GEN_PURPOSE_TIMER_LOAD));
-	netif_carrier_on(ndev);
 	netif_start_queue(ndev);
 	tasklet_enable(&lp->tx_bdreclaim_tasklet);
 
@@ -2109,11 +2109,12 @@ static int xemacps_close(struct net_device *ndev)
 	netif_stop_queue(ndev);
 	napi_disable(&lp->napi);
 	tasklet_disable(&lp->tx_bdreclaim_tasklet);
-	netif_carrier_off(ndev);
 	if (lp->phy_dev)
 		phy_disconnect(lp->phy_dev);
 	if (lp->gmii2rgmii_phy_node)
 		phy_disconnect(lp->gmii2rgmii_phy_dev);
+	netif_carrier_off(ndev);
+
 	xemacps_reset_hw(lp);
 #ifdef CONFIG_XILINX_PS_EMAC_HWTSTAMP
 	xemacps_ptp_close(lp);
