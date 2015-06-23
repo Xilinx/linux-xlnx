@@ -19,6 +19,11 @@ config FPGA_MGR_SYSFS
 	help
 	  FPGA Manager SysFS interface.
 
+config FPGA_MGR_SOCFPGA
+	tristate "Altera SOCFPGA"
+	help
+	  FPGA manager driver support for Altera SOCFPGA.
+
 endif # FPGA
 
 endmenu
