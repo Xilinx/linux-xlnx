@@ -47,6 +47,7 @@ obj-$(CONFIG_XILINX_VIDEO_IP)	+= video/axivdma/
 obj-$(CONFIG_XILINX_APF)	+= apf/
 obj-$(CONFIG_PMODS)		+= pmods/
 obj-$(CONFIG_COMMON_CLK_XLNX_CLKWZRD)	+= clocking-wizard/
+obj-$(CONFIG_FPGA)		+= fpga/
 obj-$(CONFIG_FB_TFT)		+= fbtft/
 obj-$(CONFIG_I2O)		+= i2o/
 obj-$(CONFIG_MALI400)		+= mali/

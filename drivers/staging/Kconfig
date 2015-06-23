@@ -110,6 +110,8 @@ source "drivers/staging/pmods/Kconfig"
 
 source "drivers/staging/clocking-wizard/Kconfig"
 
+source "drivers/staging/fpga/Kconfig"
+
 source "drivers/staging/fbtft/Kconfig"
 
 source "drivers/staging/i2o/Kconfig"
