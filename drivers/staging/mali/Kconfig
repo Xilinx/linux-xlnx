@@ -18,6 +18,14 @@ config ARM_MALI_R5P2_00REL0
 
 endchoice
 
+# Setup default options
+config MALI400
+	tristate
+	default y
+
+config MALI_DT
+	def_bool y
+
 # Source different driver versions
 if ARM_MALI_R5P1_01REL0
 source "drivers/staging/mali/DX910-SW-99002-r5p1-01rel0/driver/src/devicedrv/mali/Kconfig"
