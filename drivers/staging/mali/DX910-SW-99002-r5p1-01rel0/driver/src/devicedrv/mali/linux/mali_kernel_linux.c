@@ -365,7 +365,6 @@ int mali_module_init(void)
 	int err = 0;
 
 	MALI_DEBUG_PRINT(2, ("Inserting Mali v%d device driver. \n", _MALI_API_VERSION));
-	MALI_DEBUG_PRINT(2, ("Compiled: %s, time: %s.\n", __DATE__, __TIME__));
 	MALI_DEBUG_PRINT(2, ("Driver revision: %s\n", SVN_REV_STRING));
 
 #if MALI_ENABLE_CPU_CYCLES
