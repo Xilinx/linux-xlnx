@@ -117,6 +117,14 @@ mali-y += \
 	linux/mali_pmu_power_up_down.o \
 	__malidrv_build_info.o
 
+# Hardcode arm platform files
+ifeq ($(MALI_PLATFORM_FILES),)
+	MALI_PLATFORM_FILES += platform/arm/arm.c
+	MALI_PLATFORM_FILES += platform/arm/arm_core_scaling.c
+endif
+
+EXTRA_DEFINES += -DMALI_FAKE_PLATFORM_DEVICE=1
+
 ifneq ($(MALI_PLATFORM_FILES),)
 	mali-y += $(MALI_PLATFORM_FILES:.c=.o)
 endif
