@@ -78,7 +78,6 @@ config ZYNQ_REMOTEPROC
 config MB_REMOTEPROC
 	tristate "Support Microblaze remoteproc"
 	depends on ARCH_ZYNQ && !DEBUG_SG
-	select GPIO_XILINX
 	select REMOTEPROC
 	select RPMSG
 	default m
