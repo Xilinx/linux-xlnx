@@ -37,6 +37,10 @@
 #include <linux/sched.h>
 #include <linux/dma-buf.h>
 
+#include <linux/of.h>
+#include <linux/irq.h>
+#include <linux/of_irq.h>
+
 #include "xilinx-dma-apf.h"
 
 #include "xlnk.h"
@@ -965,6 +969,40 @@ int xdma_setconfig(struct xdma_chan *chan,
 }
 EXPORT_SYMBOL(xdma_setconfig);
 
+static struct of_device_id gic_match[] = {
+	{ .compatible = "arm,cortex-a9-gic", },
+	{ .compatible = "arm,cortex-a15-gic", },
+	{ },
+};
+
+static struct device_node *gic_node;
+
+unsigned int xlate_irq(unsigned int hwirq)
+{
+	struct of_phandle_args irq_data;
+	unsigned int irq;
+
+	if (!gic_node)
+		gic_node = of_find_matching_node(NULL, gic_match);
+
+	if (WARN_ON(!gic_node))
+		return hwirq;
+
+	irq_data.np = gic_node;
+	irq_data.args_count = 3;
+	irq_data.args[0] = 0;
+	irq_data.args[1] = hwirq - 32; /* GIC SPI offset */
+	irq_data.args[2] = IRQ_TYPE_LEVEL_HIGH;
+
+	irq = irq_create_of_mapping(&irq_data);
+	if (WARN_ON(!irq))
+		irq = hwirq;
+
+	pr_info("%s: hwirq %d, irq %d\n", __func__, hwirq, irq);
+
+	return irq;
+}
+
 /* Brute-force probing for xilinx DMA
  */
 static int xdma_probe(struct platform_device *pdev)
@@ -1041,7 +1079,7 @@ static int xdma_probe(struct platform_device *pdev)
 		xdev->chan[chan->id] = chan;
 
 		/* The IRQ resource */
-		chan->irq = dma_config->channel_config[i].irq;
+		chan->irq = xlate_irq(dma_config->channel_config[i].irq);
 		if (chan->irq <= 0) {
 			pr_err("get_resource for IRQ for dev %d failed\n",
 				pdev->id);
