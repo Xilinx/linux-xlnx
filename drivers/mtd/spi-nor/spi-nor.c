@@ -689,6 +689,8 @@ static int spi_nor_lock(struct mtd_info *mtd, loff_t ofs, uint64_t len)
 	/* Only modify protection if it will not unlock other areas */
 	if (lock_bits > bp_bits_from_sr(nor, status))
 		ret = write_sr_modify_protection(nor, status, lock_bits);
+	else
+		dev_err(nor->dev, "trying to unlock already locked area\n");
 
 err:
 	spi_nor_unlock_and_unprep(nor, SPI_NOR_OPS_LOCK);
@@ -730,6 +732,8 @@ static int spi_nor_unlock(struct mtd_info *mtd, loff_t ofs, uint64_t len)
 	/* Only modify protection if it will not lock other areas */
 	if (lock_bits < bp_bits_from_sr(nor, status))
 		ret = write_sr_modify_protection(nor, status, lock_bits);
+	else
+		dev_err(nor->dev, "trying to lock already unlocked area\n");
 
 err:
 	spi_nor_unlock_and_unprep(nor, SPI_NOR_OPS_UNLOCK);
