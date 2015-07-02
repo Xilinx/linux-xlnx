@@ -202,13 +202,18 @@ static const char * const zynq_dt_match[] = {
 };
 
 DT_MACHINE_START(XILINX_EP107, "Xilinx Zynq Platform")
+#ifndef CONFIG_XILINX_APF
 	/* 64KB way size, 8-way associativity, parity disabled */
-#ifdef CONFIG_XILINX_PREFETCH
+# ifdef CONFIG_XILINX_PREFETCH
 	.l2c_aux_val	= 0x30400000,
 	.l2c_aux_mask	= 0xcfbfffff,
-#else
+# else
 	.l2c_aux_val	= 0x00400000,
 	.l2c_aux_mask	= 0xffbfffff,
+# endif
+#else
+	.l2c_aux_val	= 0x00000000,
+	.l2c_aux_mask	= 0xffffffff,
 #endif
 	.smp		= smp_ops(zynq_smp_ops),
 	.map_io		= zynq_map_io,
