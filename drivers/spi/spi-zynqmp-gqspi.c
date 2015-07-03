@@ -547,12 +547,12 @@ static void zynqmp_qspi_readrxfifo(struct zynqmp_qspi *xqspi, u32 size)
 	while ((count < size) && (xqspi->bytes_to_receive > 0)) {
 		if (xqspi->bytes_to_receive >= 4) {
 			(*(u32 *) xqspi->rxbuf) =
-			    readl(xqspi->regs + GQSPI_RXD_OFST);
+				zynqmp_gqspi_read(xqspi, GQSPI_RXD_OFST);
 			xqspi->rxbuf += 4;
 			xqspi->bytes_to_receive -= 4;
 			count += 4;
 		} else {
-			data = readl(xqspi->regs + GQSPI_RXD_OFST);
+			data = zynqmp_gqspi_read(xqspi, GQSPI_RXD_OFST);
 			count += xqspi->bytes_to_receive;
 			zynqmp_qspi_copy_read_data(xqspi, data,
 						   xqspi->bytes_to_receive);
@@ -579,27 +579,26 @@ static void zynqmp_process_dma_irq(struct zynqmp_qspi *xqspi)
 	xqspi->dma_rx_bytes = 0;
 
 	/* Disabling the DMA interrupts */
-	writel(GQSPI_QSPIDMA_DST_I_EN_DONE_MASK,
-			xqspi->regs + GQSPI_QSPIDMA_DST_I_DIS_OFST);
+	zynqmp_gqspi_write(xqspi, GQSPI_QSPIDMA_DST_I_DIS_OFST,
+				GQSPI_QSPIDMA_DST_I_EN_DONE_MASK);
 
 	if (xqspi->bytes_to_receive > 0) {
 		/* Switch to IO mode,for remaining bytes to receive */
-		config_reg = readl(xqspi->regs + GQSPI_CONFIG_OFST);
+		config_reg = zynqmp_gqspi_read(xqspi, GQSPI_CONFIG_OFST);
 		config_reg &= ~GQSPI_CFG_MODE_EN_MASK;
-		writel(config_reg, xqspi->regs + GQSPI_CONFIG_OFST);
+		zynqmp_gqspi_write(xqspi, GQSPI_CONFIG_OFST, config_reg);
 
 		/* Initiate the transfer of remaining bytes */
 		genfifoentry = xqspi->genfifoentry;
 		genfifoentry |= xqspi->bytes_to_receive;
-		writel(genfifoentry,
-				xqspi->regs + GQSPI_GEN_FIFO_OFST);
+		zynqmp_gqspi_write(xqspi, GQSPI_GEN_FIFO_OFST, genfifoentry);
 
 		/* Dummy generic FIFO entry */
-		writel(0x0, xqspi->regs + GQSPI_GEN_FIFO_OFST);
+		zynqmp_gqspi_write(xqspi, GQSPI_GEN_FIFO_OFST, 0x0);
 
 		/* Manual start */
 		zynqmp_gqspi_write(xqspi, GQSPI_CONFIG_OFST,
-			(readl(xqspi->regs + GQSPI_CONFIG_OFST) |
+			(zynqmp_gqspi_read(xqspi, GQSPI_CONFIG_OFST) |
 			GQSPI_CFG_START_GEN_FIFO_MASK));
 
 		/* Enable the RX interrupts for IO mode */
@@ -629,14 +628,16 @@ static irqreturn_t zynqmp_qspi_irq(int irq, void *dev_id)
 	int ret = IRQ_NONE;
 	u32 status, mask, dma_status = 0;
 
-	status = readl(xqspi->regs + GQSPI_ISR_OFST);
-	writel(status, xqspi->regs + GQSPI_ISR_OFST);
-	mask = (status & ~(readl(xqspi->regs + GQSPI_IMASK_OFST)));
+	status = zynqmp_gqspi_read(xqspi, GQSPI_ISR_OFST);
+	zynqmp_gqspi_write(xqspi, GQSPI_ISR_OFST, status);
+	mask = (status & ~(zynqmp_gqspi_read(xqspi, GQSPI_IMASK_OFST)));
 
 	/* Read and clear DMA status */
 	if (xqspi->mode == GQSPI_MODE_DMA) {
-		dma_status = readl(xqspi->regs + GQSPI_QSPIDMA_DST_I_STS_OFST);
-		writel(dma_status, xqspi->regs + GQSPI_QSPIDMA_DST_I_STS_OFST);
+		dma_status =
+			zynqmp_gqspi_read(xqspi, GQSPI_QSPIDMA_DST_I_STS_OFST);
+		zynqmp_gqspi_write(xqspi, GQSPI_QSPIDMA_DST_I_STS_OFST,
+								dma_status);
 	}
 
 	if (mask & GQSPI_ISR_TXNOT_FULL_MASK) {
@@ -655,7 +656,7 @@ static irqreturn_t zynqmp_qspi_irq(int irq, void *dev_id)
 
 	if ((xqspi->bytes_to_receive == 0) && (xqspi->bytes_to_transfer == 0)
 			&& ((status & GQSPI_IRQ_MASK) == GQSPI_IRQ_MASK)) {
-		writel(GQSPI_ISR_IDR_MASK, xqspi->regs + GQSPI_IDR_OFST);
+		zynqmp_gqspi_write(xqspi, GQSPI_IDR_OFST, GQSPI_ISR_IDR_MASK);
 		xqspi->isinstr = false;
 		spi_finalize_current_transfer(master);
 		ret = IRQ_HANDLED;
@@ -762,8 +763,8 @@ static void zynqmp_qspi_txrxsetup(struct zynqmp_qspi *xqspi,
 		*genfifoentry |= zynqmp_qspi_selectspimode(transfer->tx_nbits);
 		xqspi->bytes_to_transfer = transfer->len;
 		if (xqspi->mode == GQSPI_MODE_DMA) {
-			config_reg = zynqmp_gqspi_read(xqspi,
-							GQSPI_CONFIG_OFST);
+			config_reg =
+				zynqmp_gqspi_read(xqspi, GQSPI_CONFIG_OFST);
 			config_reg &= ~GQSPI_CFG_MODE_EN_MASK;
 			zynqmp_gqspi_write(xqspi, GQSPI_CONFIG_OFST,
 								config_reg);
@@ -864,7 +865,7 @@ static int zynqmp_qspi_start_transfer(struct spi_master *master,
 	if ((xqspi->mode == GQSPI_MODE_IO) &&
 			(xqspi->rxbuf != NULL)) {
 		/* Dummy generic FIFO entry */
-		writel(0x0, xqspi->regs + GQSPI_GEN_FIFO_OFST);
+		zynqmp_gqspi_write(xqspi, GQSPI_GEN_FIFO_OFST, 0x0);
 	}
 
 	/* Since we are using manual mode */
