@@ -613,7 +613,7 @@ config SPI_ZYNQ_QSPI_DUAL_STACKED
 	  Enable this option if your hw design is using dual stacked
 	  configuration.
 
-config SPI_XILINX_GQSPI
+config SPI_ZYNQMP_GQSPI
 	tristate "Xilinx ZynqMP GQSPI controller"
 	depends on SPI_MASTER
 	help
