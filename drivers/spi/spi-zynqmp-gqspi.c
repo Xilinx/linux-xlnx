@@ -198,44 +198,49 @@ static inline void zynqmp_gqspi_write(struct zynqmp_qspi *xqspi, u32 offset,
 }
 
 /**
- * zynqmp_gqspi_selectflash:	For selection of flash
+ * zynqmp_gqspi_selectslave:	For selection of slave device
  * @instanceptr:	Pointer to the zynqmp_qspi structure
  * @flashcs:	For chip select
  * @flashbus:	To check which bus is selected- upper or lower
  */
-static void zynqmp_gqspi_selectflash(struct zynqmp_qspi *instanceptr,
-				     u8 flashcs, u8 flashbus)
+static void zynqmp_gqspi_selectslave(struct zynqmp_qspi *instanceptr,
+				     u8 slavecs, u8 slavebus)
 {
 	/*
 	 * Bus and CS lines selected here will be updated in the instance and
 	 * used for subsequent GENFIFO entries during transfer.
 	 */
+
 	/* Choose slave select line */
-	switch (flashcs) {
+	switch (slavecs) {
 	case GQSPI_SELECT_FLASH_CS_BOTH:
 		instanceptr->genfifocs = GQSPI_GENFIFO_CS_LOWER |
-		    GQSPI_GENFIFO_CS_UPPER;
+						GQSPI_GENFIFO_CS_UPPER;
 		break;
 	case GQSPI_SELECT_FLASH_CS_UPPER:
 		instanceptr->genfifocs = GQSPI_GENFIFO_CS_UPPER;
 		break;
 	case GQSPI_SELECT_FLASH_CS_LOWER:
-	default:
 		instanceptr->genfifocs = GQSPI_GENFIFO_CS_LOWER;
+		break;
+	default:
+		dev_warn(instanceptr->dev, "Invalid slave select\n");
 	}
 
-	/* Choose bus */
-	switch (flashbus) {
+	/* Choose the bus */
+	switch (slavebus) {
 	case GQSPI_SELECT_FLASH_BUS_BOTH:
 		instanceptr->genfifobus = GQSPI_GENFIFO_BUS_LOWER |
-		    GQSPI_GENFIFO_BUS_UPPER;
+			GQSPI_GENFIFO_BUS_UPPER;
 		break;
 	case GQSPI_SELECT_FLASH_BUS_UPPER:
 		instanceptr->genfifobus = GQSPI_GENFIFO_BUS_UPPER;
 		break;
 	case GQSPI_SELECT_FLASH_BUS_LOWER:
-	default:
 		instanceptr->genfifobus = GQSPI_GENFIFO_BUS_LOWER;
+		break;
+	default:
+		dev_warn(instanceptr->dev, "Invalid slave bus\n");
 	}
 }
 
@@ -315,7 +320,7 @@ static void zynqmp_qspi_init_hw(struct zynqmp_qspi *xqspi)
 			   GQSPI_RX_FIFO_THRESHOLD);
 	zynqmp_gqspi_write(xqspi, GQSPI_GF_THRESHOLD_OFST,
 			   GQSPI_GEN_FIFO_THRESHOLD_RESET_VAL);
-	zynqmp_gqspi_selectflash(xqspi,
+	zynqmp_gqspi_selectslave(xqspi,
 				 GQSPI_SELECT_FLASH_CS_LOWER,
 				 GQSPI_SELECT_FLASH_BUS_LOWER);
 	/* Initialize DMA */
@@ -330,13 +335,13 @@ static void zynqmp_qspi_init_hw(struct zynqmp_qspi *xqspi)
 /**
  * zynqmp_qspi_copy_read_data:	Copy data to RX buffer
  * @xqspi:	Pointer to the zynqmp_qspi structure
- * @data:	The 32 bit variable where data is stored
+ * @data:	The variable where data is stored
  * @size:	Number of bytes to be copied from data to RX buffer
  */
 static void zynqmp_qspi_copy_read_data(struct zynqmp_qspi *xqspi,
-				       u32 data, u8 size)
+				       ulong data, u8 size)
 {
-	memcpy(xqspi->rxbuf, ((u8 *) &data), size);
+	memcpy(xqspi->rxbuf, &data, size);
 	xqspi->rxbuf += size;
 	xqspi->bytes_to_receive -= size;
 }
@@ -394,15 +399,15 @@ static void zynqmp_qspi_chipselect(struct spi_device *qspi, bool is_high)
 	genfifoentry |= xqspi->genfifobus;
 
 	if (qspi->master->flags & SPI_BOTH_FLASH) {
-		zynqmp_gqspi_selectflash(xqspi,
+		zynqmp_gqspi_selectslave(xqspi,
 			GQSPI_SELECT_FLASH_CS_BOTH,
 			GQSPI_SELECT_FLASH_BUS_BOTH);
 	} else if (qspi->master->flags & SPI_MASTER_U_PAGE) {
-		zynqmp_gqspi_selectflash(xqspi,
+		zynqmp_gqspi_selectslave(xqspi,
 			GQSPI_SELECT_FLASH_CS_UPPER,
 			GQSPI_SELECT_FLASH_BUS_LOWER);
 	} else {
-		zynqmp_gqspi_selectflash(xqspi,
+		zynqmp_gqspi_selectslave(xqspi,
 			GQSPI_SELECT_FLASH_CS_LOWER,
 			GQSPI_SELECT_FLASH_BUS_LOWER);
 	}
@@ -541,8 +546,8 @@ static void zynqmp_qspi_filltxfifo(struct zynqmp_qspi *xqspi, int size)
  */
 static void zynqmp_qspi_readrxfifo(struct zynqmp_qspi *xqspi, u32 size)
 {
+	ulong data;
 	int count = 0;
-	u32 data;
 
 	while ((count < size) && (xqspi->bytes_to_receive > 0)) {
 		if (xqspi->bytes_to_receive >= 4) {
@@ -667,10 +672,12 @@ static irqreturn_t zynqmp_qspi_irq(int irq, void *dev_id)
 
 /**
  * zynqmp_qspi_selectspimode:	Selects SPI mode - x1 or x2 or x4.
+ * @xqspi:	xqspi is a pointer to the GQSPI instance
  * @spimode:	spimode - SPI or DUAL or QUAD.
  * Return:	Mask to set desired SPI mode in GENFIFO entry.
  */
-static inline u32 zynqmp_qspi_selectspimode(u8 spimode)
+static inline u32 zynqmp_qspi_selectspimode(struct zynqmp_qspi *xqspi,
+						u8 spimode)
 {
 	u32 mask;
 
@@ -682,8 +689,10 @@ static inline u32 zynqmp_qspi_selectspimode(u8 spimode)
 		mask = GQSPI_GENFIFO_MODE_QUADSPI;
 		break;
 	case GQSPI_SELECT_MODE_SPI:
-	default:
 		mask = GQSPI_GENFIFO_MODE_SPI;
+		break;
+	default:
+		dev_warn(xqspi->dev, "Invalid SPI mode\n");
 	}
 
 	return mask;
@@ -760,7 +769,8 @@ static void zynqmp_qspi_txrxsetup(struct zynqmp_qspi *xqspi,
 		*genfifoentry &= ~GQSPI_GENFIFO_RX;
 		*genfifoentry |= GQSPI_GENFIFO_DATA_XFER;
 		*genfifoentry |= GQSPI_GENFIFO_TX;
-		*genfifoentry |= zynqmp_qspi_selectspimode(transfer->tx_nbits);
+		*genfifoentry |=
+			zynqmp_qspi_selectspimode(xqspi, transfer->tx_nbits);
 		xqspi->bytes_to_transfer = transfer->len;
 		if (xqspi->mode == GQSPI_MODE_DMA) {
 			config_reg =
@@ -781,7 +791,8 @@ static void zynqmp_qspi_txrxsetup(struct zynqmp_qspi *xqspi,
 		/* Setup RX */
 		*genfifoentry |= GQSPI_GENFIFO_DATA_XFER;
 		*genfifoentry |= GQSPI_GENFIFO_RX;
-		*genfifoentry |= zynqmp_qspi_selectspimode(transfer->rx_nbits);
+		*genfifoentry |=
+			zynqmp_qspi_selectspimode(xqspi, transfer->rx_nbits);
 		xqspi->bytes_to_transfer = 0;
 		xqspi->bytes_to_receive = transfer->len;
 		zynq_qspi_setuprxdma(xqspi);
