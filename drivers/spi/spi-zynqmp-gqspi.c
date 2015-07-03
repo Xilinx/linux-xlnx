@@ -402,7 +402,8 @@ static int zynqmp_unprepare_transfer_hardware(struct spi_master *master)
 static void zynqmp_qspi_chipselect(struct spi_device *qspi, bool is_high)
 {
 	struct zynqmp_qspi *xqspi = spi_master_get_devdata(qspi->master);
-	u32 genfifoentry = 0x0, statusreg, timeout;
+	ulong timeout;
+	u32 genfifoentry = 0x0, statusreg;
 
 	genfifoentry |= GQSPI_GENFIFO_MODE_SPI;
 	genfifoentry |= xqspi->genfifobus;
@@ -431,22 +432,29 @@ static void zynqmp_qspi_chipselect(struct spi_device *qspi, bool is_high)
 
 	zynqmp_gqspi_write(xqspi, GQSPI_GEN_FIFO_OFST, genfifoentry);
 
-	if (is_high) {
-		/* Manually start the generic FIFO command */
-		zynqmp_gqspi_write(xqspi, GQSPI_CONFIG_OFST,
-				zynqmp_gqspi_read(xqspi, GQSPI_CONFIG_OFST) |
-				GQSPI_CFG_START_GEN_FIFO_MASK);
-		timeout = 10000;
-		/* Wait until the generic FIFO command is empty */
-		do {
-			statusreg = zynqmp_gqspi_read(xqspi, GQSPI_ISR_OFST);
-			timeout--;
-		} while (!(statusreg &
-			   GQSPI_ISR_GENFIFOEMPTY_MASK) &&
-			 (statusreg & GQSPI_ISR_TXEMPTY_MASK) && timeout);
-		if (!timeout)
-			dev_err(xqspi->dev, "Chip select timed out\n");
-	}
+	/* Dummy generic FIFO entry */
+	zynqmp_gqspi_write(xqspi, GQSPI_GEN_FIFO_OFST, 0x0);
+
+	/* Manually start the generic FIFO command */
+	zynqmp_gqspi_write(xqspi, GQSPI_CONFIG_OFST,
+			zynqmp_gqspi_read(xqspi, GQSPI_CONFIG_OFST) |
+			GQSPI_CFG_START_GEN_FIFO_MASK);
+
+	timeout = jiffies + msecs_to_jiffies(1000);
+
+	/* Wait until the generic FIFO command is empty */
+	do {
+		statusreg = zynqmp_gqspi_read(xqspi, GQSPI_ISR_OFST);
+
+		if ((statusreg & GQSPI_ISR_GENFIFOEMPTY_MASK) &&
+			(statusreg & GQSPI_ISR_TXEMPTY_MASK))
+			break;
+		else
+			cpu_relax();
+	} while (!time_after_eq(jiffies, timeout));
+
+	if (time_after_eq(jiffies, timeout))
+		dev_err(xqspi->dev, "Chip select timed out\n");
 }
 
 /**
