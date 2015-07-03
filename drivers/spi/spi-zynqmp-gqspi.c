@@ -353,16 +353,25 @@ static void zynqmp_qspi_copy_read_data(struct zynqmp_qspi *xqspi,
  *
  * This function enables SPI master controller.
  *
- * Return:	Always 0
+ * Return:	0 on success; error value otherwise
  */
 static int zynqmp_prepare_transfer_hardware(struct spi_master *master)
 {
 	struct zynqmp_qspi *xqspi = spi_master_get_devdata(master);
+	int ret;
 
-	clk_enable(xqspi->refclk);
-	clk_enable(xqspi->pclk);
+	ret = clk_enable(xqspi->refclk);
+	if (ret)
+		goto clk_err;
+
+	ret = clk_enable(xqspi->pclk);
+	if (ret)
+		goto clk_err;
+
 	zynqmp_gqspi_write(xqspi, GQSPI_EN_OFST, GQSPI_EN_MASK);
 	return 0;
+clk_err:
+	return ret;
 }
 
 /**
@@ -466,6 +475,7 @@ static int zynqmp_qspi_setup_transfer(struct spi_device *qspi,
 				      struct spi_transfer *transfer)
 {
 	struct zynqmp_qspi *xqspi = spi_master_get_devdata(qspi->master);
+	ulong clk_rate;
 	u32 config_reg, req_hz, baud_rate_val = 0;
 
 	if (transfer)
@@ -475,8 +485,10 @@ static int zynqmp_qspi_setup_transfer(struct spi_device *qspi,
 
 	/* Set the clock frequency */
 	/* If req_hz == 0, default to lowest speed */
+	clk_rate = clk_get_rate(xqspi->refclk);
+
 	while ((baud_rate_val < GQSPI_BAUD_DIV_MAX) &&
-	       (clk_get_rate(xqspi->refclk) /
+	       (clk_rate /
 		(GQSPI_BAUD_DIV_SHIFT << baud_rate_val)) > req_hz)
 		baud_rate_val++;
 
