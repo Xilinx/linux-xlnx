@@ -523,13 +523,13 @@ static int zynqmp_qspi_setup_transfer(struct spi_device *qspi,
  * Sets the operational mode of QSPI controller for the next QSPI transfer,
  * baud rate and divisor value to setup the requested qspi clock.
  *
- * Return:	0 Always
+ * Return:	0 on success; error value otherwise.
  */
 static int zynqmp_qspi_setup(struct spi_device *qspi)
 {
 	if (qspi->master->busy)
 		return -EBUSY;
-	return zynqmp_qspi_setup_transfer(qspi, NULL);
+	return 0;
 }
 
 /**
@@ -841,6 +841,8 @@ static int zynqmp_qspi_start_transfer(struct spi_master *master,
 
 	xqspi->txbuf = transfer->tx_buf;
 	xqspi->rxbuf = transfer->rx_buf;
+
+	zynqmp_qspi_setup_transfer(qspi, transfer);
 
 	genfifoentry |= xqspi->genfifocs;
 	genfifoentry |= xqspi->genfifobus;
