@@ -510,6 +510,7 @@ static void cdmatest_cleanup_channel(struct cdmatest_chan *dtc)
 		pr_debug("cdmatest: thread %s exited with status %d\n",
 				thread->task->comm, ret);
 		list_del(&thread->node);
+		put_task_struct(thread->task);
 		kfree(thread);
 	}
 	kfree(dtc);
@@ -553,7 +554,7 @@ static int cdmatest_add_threads(struct cdmatest_chan *dtc,
 		}
 
 		/* srcbuf and dstbuf are allocated by the thread itself */
-
+		get_task_struct(thread->task);
 		list_add_tail(&thread->node, &dtc->threads);
 	}
 
