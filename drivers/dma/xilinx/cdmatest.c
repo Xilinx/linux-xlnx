@@ -16,6 +16,8 @@
 #include <linux/module.h>
 #include <linux/random.h>
 #include <linux/slab.h>
+#include <linux/of_dma.h>
+#include <linux/platform_device.h>
 #include <linux/wait.h>
 #include <linux/amba/xilinx_dma.h>
 
@@ -599,44 +601,31 @@ static int cdmatest_add_channel(struct dma_chan *chan)
 	return 0;
 }
 
-static bool filter(struct dma_chan *chan, void *param)
+static int xilinx_cdmatest_probe(struct platform_device *pdev)
 {
-	if (!cdmatest_match_channel(chan) ||
-			!cdmatest_match_device(chan->device))
-		return false;
-
-	return true;
-}
-
-static int __init cdmatest_init(void)
-{
-	dma_cap_mask_t mask;
 	struct dma_chan *chan;
-	int err = 0;
+	int err;
 
-	dma_cap_zero(mask);
-	dma_cap_set(DMA_MEMCPY, mask);
-	for (;;) {
-		chan = dma_request_channel(mask, filter, NULL);
-
-		if (chan) {
-			err = cdmatest_add_channel(chan);
-			if (err) {
-				dma_release_channel(chan);
-				break; /* add_channel failed, punt */
-			}
-		} else
-			break; /* no more channels available */
-		if (max_channels && nr_channels >= max_channels)
-			break; /* we have all we need */
+	chan = dma_request_slave_channel(&pdev->dev, "cdma");
+	if (IS_ERR(chan)) {
+		pr_err("xilinx_cdmatest: No channel\n");
+		return PTR_ERR(chan);
 	}
+
+	err = cdmatest_add_channel(chan);
+	if (err) {
+		pr_err("xilinx_cdmatest: Unable to add channel\n");
+		goto free_tx;
+	}
+	return 0;
+
+free_tx:
+	dma_release_channel(chan);
 
 	return err;
 }
-/* when compiled-in wait for drivers to load first */
-late_initcall(cdmatest_init);
 
-static void __exit cdmatest_exit(void)
+static int xilinx_cdmatest_remove(struct platform_device *pdev)
 {
 	struct cdmatest_chan *dtc, *_dtc;
 	struct dma_chan *chan;
@@ -645,12 +634,40 @@ static void __exit cdmatest_exit(void)
 		list_del(&dtc->node);
 		chan = dtc->chan;
 		cdmatest_cleanup_channel(dtc);
-		pr_debug("cdmatest: dropped channel %s\n",
-			 dma_chan_name(chan));
+		pr_info("xilinx_cdmatest: dropped channel %s\n",
+			dma_chan_name(chan));
 		dma_release_channel(chan);
 	}
+	return 0;
 }
-module_exit(cdmatest_exit);
+
+static const struct of_device_id xilinx_cdmatest_of_ids[] = {
+	{ .compatible = "xlnx,axi-cdma-test-1.00.a", },
+	{}
+};
+
+static struct platform_driver xilinx_cdmatest_driver = {
+	.driver = {
+		.name = "xilinx_cdmatest",
+		.owner = THIS_MODULE,
+		.of_match_table = xilinx_cdmatest_of_ids,
+	},
+	.probe = xilinx_cdmatest_probe,
+	.remove = xilinx_cdmatest_remove,
+};
+
+static int __init cdma_init(void)
+{
+	return platform_driver_register(&xilinx_cdmatest_driver);
+
+}
+late_initcall(cdma_init);
+
+static void __exit cdma_exit(void)
+{
+	platform_driver_unregister(&xilinx_cdmatest_driver);
+}
+module_exit(cdma_exit)
 
 MODULE_AUTHOR("Xilinx, Inc.");
 MODULE_DESCRIPTION("Xilinx AXI CDMA Test Client");
