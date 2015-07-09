@@ -1815,7 +1815,6 @@ static int xilinx_dpdma_probe(struct platform_device *pdev)
 	INIT_LIST_HEAD(&xdev->common.channels);
 	dma_cap_set(DMA_SLAVE, ddev->cap_mask);
 	dma_cap_set(DMA_PRIVATE, ddev->cap_mask);
-	dma_cap_set(DMA_SG, ddev->cap_mask);
 	dma_cap_set(DMA_CYCLIC, ddev->cap_mask);
 	dma_cap_set(DMA_INTERLEAVE, ddev->cap_mask);
 	ddev->copy_align = fls(XILINX_DPDMA_ALIGN_BYTES - 1);
