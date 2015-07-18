@@ -139,7 +139,8 @@ static int pl310_edac_l2_probe(struct platform_device *pdev)
 	}
 
 	dci = edac_device_alloc_ctl_info(sizeof(*priv), "l2cache",
-					 1, "L", 1, 1, NULL, 0, 0);
+					 1, "L", 1, 1, NULL, 0,
+					 edac_device_alloc_index());
 	if (IS_ERR(dci))
 		return PTR_ERR(dci);
 
