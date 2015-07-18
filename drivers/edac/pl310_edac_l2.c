@@ -210,7 +210,7 @@ static int pl310_edac_l2_remove(struct platform_device *pdev)
 }
 
 /* Device tree node type and compatible tuples this driver can match on */
-static struct of_device_id pl310_edac_l2_match[] = {
+static const struct of_device_id pl310_edac_l2_match[] = {
 	{ .compatible = "arm,pl310-cache", },
 	{ /* end of table */ }
 };
