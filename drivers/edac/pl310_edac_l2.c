@@ -219,7 +219,6 @@ MODULE_DEVICE_TABLE(of, pl310_edac_l2_match);
 static struct platform_driver pl310_edac_l2_driver = {
 	.driver = {
 		 .name = "pl310-edac-l2",
-		 .owner = THIS_MODULE,
 		 .of_match_table = pl310_edac_l2_match,
 	},
 	.probe = pl310_edac_l2_probe,
