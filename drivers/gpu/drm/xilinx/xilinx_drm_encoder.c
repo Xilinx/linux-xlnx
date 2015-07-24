@@ -147,10 +147,10 @@ static struct drm_encoder_funcs xilinx_drm_encoder_funcs = {
 };
 
 /* create encoder */
-struct drm_encoder *xilinx_drm_encoder_create(struct drm_device *drm)
+struct drm_encoder *xilinx_drm_encoder_create(struct drm_device *drm,
+					      struct device_node *node)
 {
 	struct xilinx_drm_encoder *encoder;
-	struct device_node *sub_node;
 	struct i2c_client *i2c_slv;
 	struct i2c_driver *i2c_driver;
 	struct drm_i2c_encoder_driver *drm_i2c_driver;
@@ -166,8 +166,9 @@ struct drm_encoder *xilinx_drm_encoder_create(struct drm_device *drm)
 
 	encoder->dpms = DRM_MODE_DPMS_OFF;
 
-	/* initialize encoder */
+	/* FIXME: Use DT to figure out crtcs / clones */
 	encoder->slave.base.possible_crtcs = 1;
+	encoder->slave.base.possible_clones = ~0;
 	ret = drm_encoder_init(drm, &encoder->slave.base,
 			       &xilinx_drm_encoder_funcs,
 			       DRM_MODE_ENCODER_TMDS);
@@ -179,15 +180,8 @@ struct drm_encoder *xilinx_drm_encoder_create(struct drm_device *drm)
 	drm_encoder_helper_add(&encoder->slave.base,
 			       &xilinx_drm_encoder_helper_funcs);
 
-	/* get slave encoder */
-	sub_node = of_parse_phandle(drm->dev->of_node, "xlnx,encoder-slave", 0);
-	if (!sub_node) {
-		DRM_ERROR("failed to get an encoder slave node\n");
-		return ERR_PTR(-ENODEV);
-	}
-
 	/* initialize slave encoder */
-	i2c_slv = of_find_i2c_device_by_node(sub_node);
+	i2c_slv = of_find_i2c_device_by_node(node);
 	if (i2c_slv && i2c_slv->dev.driver) {
 		i2c_driver = to_i2c_driver(i2c_slv->dev.driver);
 		drm_i2c_driver = to_drm_i2c_encoder_driver(i2c_driver);
@@ -201,7 +195,7 @@ struct drm_encoder *xilinx_drm_encoder_create(struct drm_device *drm)
 		ret = drm_i2c_driver->encoder_init(i2c_slv, drm,
 						   &encoder->slave);
 	} else {
-		platform_slv = of_find_device_by_node(sub_node);
+		platform_slv = of_find_device_by_node(node);
 		if (!platform_slv) {
 			DRM_DEBUG_KMS("failed to get an encoder slv\n");
 			return ERR_PTR(-EPROBE_DEFER);
@@ -226,8 +220,6 @@ struct drm_encoder *xilinx_drm_encoder_create(struct drm_device *drm)
 		ret = drm_platform_driver->encoder_init(platform_slv, drm,
 							&encoder->slave);
 	}
-
-	of_node_put(sub_node);
 
 	if (ret) {
 		DRM_ERROR("failed to initialize encoder slave\n");

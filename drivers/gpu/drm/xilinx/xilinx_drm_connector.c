@@ -134,7 +134,7 @@ static const struct xilinx_drm_connector_type connector_types[] = {
 /* create connector */
 struct drm_connector *
 xilinx_drm_connector_create(struct drm_device *drm,
-			    struct drm_encoder *base_encoder)
+			    struct drm_encoder *base_encoder, int id)
 {
 	struct xilinx_drm_connector *connector;
 	const char *string;
@@ -148,8 +148,8 @@ xilinx_drm_connector_create(struct drm_device *drm,
 	connector->base.polled = DRM_CONNECTOR_POLL_CONNECT |
 				 DRM_CONNECTOR_POLL_DISCONNECT;
 
-	ret = of_property_read_string(drm->dev->of_node, "xlnx,connector-type",
-				      &string);
+	ret = of_property_read_string_index(drm->dev->of_node,
+					    "xlnx,connector-type", id, &string);
 	if (ret < 0) {
 		dev_err(drm->dev, "No connector type in DT\n");
 		return ERR_PTR(ret);

@@ -21,7 +21,8 @@
 struct drm_device;
 struct drm_encoder;
 
-struct drm_encoder *xilinx_drm_encoder_create(struct drm_device *drm);
+struct drm_encoder *xilinx_drm_encoder_create(struct drm_device *drm,
+					      struct device_node *node);
 void xilinx_drm_encoder_destroy(struct drm_encoder *base_encoder);
 
 #endif /* _XILINX_DRM_ENCODER_H_ */

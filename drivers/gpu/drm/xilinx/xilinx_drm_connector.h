@@ -23,7 +23,7 @@ struct drm_connector;
 
 struct drm_connector *
 xilinx_drm_connector_create(struct drm_device *drm,
-			    struct drm_encoder *base_encoder);
+			    struct drm_encoder *base_encoder, int id);
 void xilinx_drm_connector_destroy(struct drm_connector *base_connector);
 
 #endif /* _XILINX_DRM_CONNECTOR_H_ */
