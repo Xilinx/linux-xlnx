@@ -31,8 +31,7 @@
 
 struct xilinx_drm_encoder {
 	struct drm_encoder_slave slave;
-	struct i2c_client *i2c_slv;
-	struct platform_device *platform_slv;
+	struct device *dev;
 	int dpms;
 };
 
@@ -140,10 +139,7 @@ void xilinx_drm_encoder_destroy(struct drm_encoder *base_encoder)
 	xilinx_drm_encoder_dpms(base_encoder, DRM_MODE_DPMS_OFF);
 
 	drm_encoder_cleanup(base_encoder);
-	if (encoder->i2c_slv)
-		put_device(&encoder->i2c_slv->dev);
-	if (encoder->platform_slv)
-		put_device(&encoder->platform_slv->dev);
+	put_device(encoder->dev);
 }
 
 static struct drm_encoder_funcs xilinx_drm_encoder_funcs = {
@@ -155,9 +151,11 @@ struct drm_encoder *xilinx_drm_encoder_create(struct drm_device *drm)
 {
 	struct xilinx_drm_encoder *encoder;
 	struct device_node *sub_node;
+	struct i2c_client *i2c_slv;
 	struct i2c_driver *i2c_driver;
 	struct drm_i2c_encoder_driver *drm_i2c_driver;
 	struct device_driver *device_driver;
+	struct platform_device *platform_slv;
 	struct platform_driver *platform_driver;
 	struct drm_platform_encoder_driver *drm_platform_driver;
 	int ret = 0;
@@ -189,9 +187,9 @@ struct drm_encoder *xilinx_drm_encoder_create(struct drm_device *drm)
 	}
 
 	/* initialize slave encoder */
-	encoder->i2c_slv = of_find_i2c_device_by_node(sub_node);
-	if (encoder->i2c_slv && encoder->i2c_slv->dev.driver) {
-		i2c_driver = to_i2c_driver(encoder->i2c_slv->dev.driver);
+	i2c_slv = of_find_i2c_device_by_node(sub_node);
+	if (i2c_slv && i2c_slv->dev.driver) {
+		i2c_driver = to_i2c_driver(i2c_slv->dev.driver);
 		drm_i2c_driver = to_drm_i2c_encoder_driver(i2c_driver);
 		if (!drm_i2c_driver) {
 			DRM_ERROR("failed to initialize i2c slave\n");
@@ -199,16 +197,17 @@ struct drm_encoder *xilinx_drm_encoder_create(struct drm_device *drm)
 			goto err_out;
 		}
 
-		ret = drm_i2c_driver->encoder_init(encoder->i2c_slv, drm,
+		encoder->dev = &i2c_slv->dev;
+		ret = drm_i2c_driver->encoder_init(i2c_slv, drm,
 						   &encoder->slave);
 	} else {
-		encoder->platform_slv = of_find_device_by_node(sub_node);
-		if (!encoder->platform_slv) {
+		platform_slv = of_find_device_by_node(sub_node);
+		if (!platform_slv) {
 			DRM_DEBUG_KMS("failed to get an encoder slv\n");
 			return ERR_PTR(-EPROBE_DEFER);
 		}
 
-		device_driver = encoder->platform_slv->dev.driver;
+		device_driver = platform_slv->dev.driver;
 		if (!device_driver) {
 			DRM_DEBUG_KMS("failed to get device driver\n");
 			return ERR_PTR(-EPROBE_DEFER);
@@ -223,8 +222,8 @@ struct drm_encoder *xilinx_drm_encoder_create(struct drm_device *drm)
 			goto err_out;
 		}
 
-		ret = drm_platform_driver->encoder_init(encoder->platform_slv,
-							drm,
+		encoder->dev = &platform_slv->dev;
+		ret = drm_platform_driver->encoder_init(platform_slv, drm,
 							&encoder->slave);
 	}
 
