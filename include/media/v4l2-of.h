@@ -17,6 +17,7 @@
 #include <linux/list.h>
 #include <linux/types.h>
 #include <linux/errno.h>
+#include <linux/of_graph.h>
 
 #include <media/v4l2-mediabus.h>
 
