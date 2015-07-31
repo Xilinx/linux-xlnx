@@ -11,6 +11,7 @@
 
 #include <linux/cdev.h>
 #include <linux/clk.h>
+#include <linux/delay.h>
 #include <linux/dma-mapping.h>
 #include <linux/fs.h>
 #include <linux/init.h>
@@ -186,6 +187,7 @@ static void xdevcfg_reset_pl(void __iomem *base_address)
 			XDCFG_STATUS_PCFG_INIT_MASK)
 		;
 
+	msleep(5);
 	xdevcfg_writereg(base_address + XDCFG_CTRL_OFFSET,
 			(xdevcfg_readreg(base_address + XDCFG_CTRL_OFFSET) |
 			 XDCFG_CTRL_PCFG_PROG_B_MASK));
