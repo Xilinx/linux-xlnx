@@ -51,7 +51,6 @@ static LIST_HEAD(dma_device_list);
 #define DMA_OUT(addr, val)      (iowrite32(val, addr))
 #define DMA_IN(addr)            (ioread32(addr))
 
-static int xdma_using_dbuf = 0;
 
 static int unpin_user_pages(struct scatterlist *sglist, unsigned int cnt);
 /* Driver functions */
@@ -817,8 +816,7 @@ int xdma_submit(struct xdma_chan *chan,
 		sgcnt_dma = dp->dbuf_sg_table->nents;
 
 		dmahead->userbuf = (void *)dp->dbuf_sg_table->sgl->dma_address;
-
-		xdma_using_dbuf = 1;
+		dmahead->is_dmabuf = 1;
 	} else if (user_flags & CF_FLAG_PHYSICALLY_CONTIGUOUS) {
 		/*
 		 * convert physically contiguous buffer into
@@ -912,8 +910,8 @@ int xdma_wait(struct xdma_head *dmahead, unsigned int user_flags)
 	} else
 		wait_for_completion(&dmahead->cmp);
 
-	if (xdma_using_dbuf == 1) {
-		xdma_using_dbuf = 0;
+	if (dmahead->is_dmabuf) {
+		dmahead->is_dmabuf = 0;
 	} else if (!(user_flags & CF_FLAG_PHYSICALLY_CONTIGUOUS)) {
 		if (!(user_flags & CF_FLAG_CACHE_FLUSH_INVALIDATE))
 			dma_set_attr(DMA_ATTR_SKIP_CPU_SYNC, &attrs);
