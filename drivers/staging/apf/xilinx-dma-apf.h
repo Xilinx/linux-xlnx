@@ -189,6 +189,7 @@ struct xdma_head {
 	u32 appwords_o[XDMA_MAX_APPWORDS];
 	unsigned int userflag;
 	u32 last_bd_index;
+	u32 is_dmabuf;
 };
 
 struct xdma_chan *xdma_request_channel(char *name);
