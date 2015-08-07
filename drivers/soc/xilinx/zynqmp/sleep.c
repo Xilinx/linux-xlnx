@@ -41,7 +41,7 @@ static const struct platform_suspend_ops zynqmp_pm_ops = {
 	.valid		= suspend_valid_only_mem,
 };
 
-int __init zynqmp_pm_late_init(void)
+static int __init zynqmp_pm_late_init(void)
 {
 	suspend_set_ops(&zynqmp_pm_ops);
 
