@@ -619,6 +619,9 @@ static int write_sr_modify_protection(struct spi_nor *nor, uint8_t status,
 
 	/* Micron */
 	if (nor->jedec_id == CFI_MFR_ST) {
+		/* To support chips with more than 896 sectors (56MB) */
+		status_new &= ~SR_BP3;
+
 		/* Protected area starts from top */
 		status_new &= ~SR_BP_TB;
 

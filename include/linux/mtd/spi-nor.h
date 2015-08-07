@@ -73,10 +73,11 @@
 #define SR_BP0			4	/* Block protect 0 */
 #define SR_BP1			8	/* Block protect 1 */
 #define SR_BP2			0x10	/* Block protect 2 */
+/* SR_BP3 only used on some Micron chip; must NOT be in SR_BP_BIT_MASK */
+#define SR_BP3			0x40	/* Block protect 3 */
 #define	SR_BP_BIT_OFFSET	2	/* Offset to Block protect 0 */
 #define	SR_BP_BIT_MASK		(SR_BP2 | SR_BP1 | SR_BP0)
 #define SR_SRWD			0x80	/* SR write protect */
-#define SR_BP3			0x40
 /* Bit to determine whether protection starts from top or bottom */
 #define SR_BP_TB		0x20
 
