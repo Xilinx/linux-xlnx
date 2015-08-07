@@ -2105,7 +2105,7 @@ static const struct net_device_ops macb_netdev_ops = {
 
 #if defined(CONFIG_OF)
 static struct macb_config pc302gem_config = {
-	.caps = MACB_CAPS_SG_DISABLED | MACB_CAPS_GIGABIT_MODE_AVAILABLE,
+	.caps = MACB_CAPS_GIGABIT_MODE_AVAILABLE,
 	.dma_burst_length = 16,
 };
 
