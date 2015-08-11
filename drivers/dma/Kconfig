@@ -390,7 +390,7 @@ source "drivers/dma/xilinx/Kconfig"
 
 config XILINX_VDMA
 	tristate "Xilinx AXI VDMA Engine"
-	depends on (ARCH_ZYNQ || MICROBLAZE)
+	depends on (ARCH_ZYNQ || MICROBLAZE || ARM64)
 	select DMA_ENGINE
 	help
 	  Enable support for Xilinx AXI VDMA Soft IP.
