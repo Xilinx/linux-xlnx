@@ -36,9 +36,13 @@
 #define XILINX_DMA_REG_CONTROL		0x00
 #define XILINX_DMA_REG_STATUS		0x04
 #define XILINX_DMA_REG_CURDESC		0x08
+#define XILINX_DMA_REG_CURDESCMSB	0x0C
 #define XILINX_DMA_REG_TAILDESC		0x10
+#define XILINX_DMA_REG_TAILDESCMSB	0x14
 #define XILINX_DMA_REG_SRCADDR		0x18
+#define XILINX_DMA_REG_SRCADDRMSB	0x1C
 #define XILINX_DMA_REG_DSTADDR		0x20
+#define XILINX_DMA_REG_DSTADDRMSB	0x24
 #define XILINX_DMA_REG_BTT		0x28
 
 /* Channel/Descriptor Offsets */
@@ -82,22 +86,22 @@
 /**
  * struct xilinx_dma_desc_hw - Hardware Descriptor
  * @next_desc: Next Descriptor Pointer @0x00
- * @pad1: Reserved @0x04
+ * @next_desc_msb: MSB of Next Descriptor Pointer @0x04
  * @buf_addr: Buffer address @0x08
- * @pad2: Reserved @0x0C
- * @pad3: Reserved @0x10
- * @pad4: Reserved @0x14
+ * @buf_addr_msb: MSB of Buffer address @0x0C
+ * @pad1: Reserved @0x10
+ * @pad2: Reserved @0x14
  * @control: Control field @0x18
  * @status: Status field @0x1C
  * @app: APP Fields @0x20 - 0x30
  */
 struct xilinx_dma_desc_hw {
 	u32 next_desc;
-	u32 pad1;
+	u32 next_desc_msb;
 	u32 buf_addr;
+	u32 buf_addr_msb;
+	u32 pad1;
 	u32 pad2;
-	u32 pad3;
-	u32 pad4;
 	u32 control;
 	u32 status;
 	u32 app[XILINX_DMA_NUM_APP_WORDS];
@@ -198,6 +202,13 @@ static inline void dma_write(struct xilinx_dma_chan *chan, u32 reg, u32 value)
 	iowrite32(value, chan->xdev->regs + reg);
 }
 
+#if defined(CONFIG_PHYS_ADDR_T_64BIT)
+static inline void dma_writeq(struct xilinx_dma_chan *chan, u32 reg, u64 value)
+{
+	writeq(value, chan->xdev->regs + reg);
+}
+#endif
+
 static inline u32 dma_read(struct xilinx_dma_chan *chan, u32 reg)
 {
 	return ioread32(chan->xdev->regs + reg);
@@ -213,6 +224,14 @@ static inline void dma_ctrl_write(struct xilinx_dma_chan *chan, u32 reg,
 {
 	dma_write(chan, chan->ctrl_offset + reg, value);
 }
+
+#if defined(CONFIG_PHYS_ADDR_T_64BIT)
+static inline void dma_ctrl_writeq(struct xilinx_dma_chan *chan, u32 reg,
+				u64 value)
+{
+	dma_writeq(chan, chan->ctrl_offset + reg, value);
+}
+#endif
 
 static inline void dma_ctrl_clr(struct xilinx_dma_chan *chan, u32 reg, u32 clr)
 {
@@ -259,10 +278,12 @@ xilinx_dma_alloc_tx_segment(struct xilinx_dma_chan *chan)
 static void xilinx_dma_clean_hw_desc(struct xilinx_dma_desc_hw *hw)
 {
 	u32 next_desc = hw->next_desc;
+	u32 next_desc_msb = hw->next_desc_msb;
 
 	memset(hw, 0, sizeof(struct xilinx_dma_desc_hw));
 
 	hw->next_desc = next_desc;
+	hw->next_desc_msb = next_desc_msb;
 }
 
 /**
@@ -344,11 +365,20 @@ static int xilinx_dma_alloc_chan_resources(struct dma_chan *dchan)
 	}
 
 	for (i = 0; i < XILINX_DMA_NUM_DESCS; i++) {
+#ifdef CONFIG_PHYS_ADDR_T_64BIT
 		chan->seg_v[i].hw.next_desc =
-				chan->seg_p + sizeof(*chan->seg_v) *
-				((i + 1) % XILINX_DMA_NUM_DESCS);
-		chan->seg_v[i].phys =
-				chan->seg_p + sizeof(*chan->seg_v) * i;
+		lower_32_bits(chan->seg_p + sizeof(*chan->seg_v) *
+			((i + 1) % XILINX_DMA_NUM_DESCS));
+		chan->seg_v[i].hw.next_desc_msb =
+		upper_32_bits(chan->seg_p + sizeof(*chan->seg_v) *
+			((i + 1) % XILINX_DMA_NUM_DESCS));
+#else
+		chan->seg_v[i].hw.next_desc =
+			chan->seg_p + sizeof(*chan->seg_v) *
+			((i + 1) % XILINX_DMA_NUM_DESCS);
+#endif
+
+		chan->seg_v[i].phys = chan->seg_p + sizeof(*chan->seg_v) * i;
 		list_add_tail(&chan->seg_v[i].node, &chan->free_seg_list);
 	}
 
@@ -584,7 +614,11 @@ static void xilinx_dma_start_transfer(struct xilinx_dma_chan *chan)
 	    !xilinx_dma_is_idle(chan)) {
 		tail = list_entry(desc->segments.prev,
 				  struct xilinx_dma_tx_segment, node);
+#ifdef CONFIG_PHYS_ADDR_T_64BIT
+		dma_ctrl_writeq(chan, XILINX_DMA_REG_TAILDESC, tail->phys);
+#else
 		dma_ctrl_write(chan, XILINX_DMA_REG_TAILDESC, tail->phys);
+#endif
 		goto out_free_desc;
 	}
 
@@ -593,7 +627,11 @@ static void xilinx_dma_start_transfer(struct xilinx_dma_chan *chan)
 					struct xilinx_dma_tx_segment, node);
 		tail = list_entry(desc->segments.prev,
 				  struct xilinx_dma_tx_segment, node);
+#ifdef CONFIG_PHYS_ADDR_T_64BIT
+		dma_ctrl_writeq(chan, XILINX_DMA_REG_CURDESC, head->phys);
+#else
 		dma_ctrl_write(chan, XILINX_DMA_REG_CURDESC, head->phys);
+#endif
 	}
 
 	/* Enable interrupts */
@@ -606,7 +644,11 @@ static void xilinx_dma_start_transfer(struct xilinx_dma_chan *chan)
 
 	/* Start the transfer */
 	if (chan->has_sg) {
+#ifdef CONFIG_PHYS_ADDR_T_64BIT
+		dma_ctrl_writeq(chan, XILINX_DMA_REG_TAILDESC, tail->phys);
+#else
 		dma_ctrl_write(chan, XILINX_DMA_REG_TAILDESC, tail->phys);
+#endif
 	} else {
 		struct xilinx_dma_tx_segment *segment;
 		struct xilinx_dma_desc_hw *hw;
@@ -615,12 +657,23 @@ static void xilinx_dma_start_transfer(struct xilinx_dma_chan *chan)
 					   struct xilinx_dma_tx_segment, node);
 		hw = &segment->hw;
 
-		if (desc->direction == DMA_MEM_TO_DEV)
+		if (desc->direction == DMA_MEM_TO_DEV) {
+#ifdef CONFIG_PHYS_ADDR_T_64BIT
+			dma_ctrl_writeq(chan, XILINX_DMA_REG_SRCADDR,
+					hw->buf_addr);
+#else
 			dma_ctrl_write(chan, XILINX_DMA_REG_SRCADDR,
 				       hw->buf_addr);
-		else
+#endif
+		} else {
+#ifdef CONFIG_PHYS_ADDR_T_64BIT
+			dma_ctrl_writeq(chan, XILINX_DMA_REG_DSTADDR,
+					hw->buf_addr);
+#else
 			dma_ctrl_write(chan, XILINX_DMA_REG_DSTADDR,
 				       hw->buf_addr);
+#endif
+		}
 
 		/* Start the transfer */
 		dma_ctrl_write(chan, XILINX_DMA_REG_BTT,
@@ -725,10 +778,12 @@ static irqreturn_t xilinx_dma_irq_handler(int irq, void *data)
 
 	if (status & XILINX_DMA_XR_IRQ_ERROR_MASK) {
 		dev_err(chan->dev,
-			"Channel %p has errors %x, cdr %x tdr %x\n",
+			"Channel %p has errors %x cdr %x cdr msb %x tdr %x tdr msb %x",
 			chan, dma_ctrl_read(chan, XILINX_DMA_REG_STATUS),
 			dma_ctrl_read(chan, XILINX_DMA_REG_CURDESC),
-			dma_ctrl_read(chan, XILINX_DMA_REG_TAILDESC));
+			dma_ctrl_read(chan, XILINX_DMA_REG_CURDESCMSB),
+			dma_ctrl_read(chan, XILINX_DMA_REG_TAILDESC),
+			dma_ctrl_read(chan, XILINX_DMA_REG_TAILDESCMSB));
 		chan->err = true;
 	}
 
@@ -856,7 +911,14 @@ static struct dma_async_tx_descriptor *xilinx_dma_prep_slave_sg(
 			hw = &segment->hw;
 
 			/* Fill in the descriptor */
+#ifdef CONFIG_PHYS_ADDR_T_64BIT
+			hw->buf_addr =
+				lower_32_bits(sg_dma_address(sg) + sg_used);
+			hw->buf_addr_msb =
+				upper_32_bits(sg_dma_address(sg) + sg_used);
+#else
 			hw->buf_addr = sg_dma_address(sg) + sg_used;
+#endif
 
 			hw->control = copy;
 
