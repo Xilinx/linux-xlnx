@@ -38,7 +38,9 @@
 #define XILINX_CDMA_CDESC_OFFSET       0x08
 #define XILINX_CDMA_TDESC_OFFSET       0x10
 #define XILINX_CDMA_SRCADDR_OFFSET     0x18
+#define XILINX_CDMA_SRCADDR_MSB_OFFSET 0x1C
 #define XILINX_CDMA_DSTADDR_OFFSET     0x20
+#define XILINX_CDMA_DSTADDR_MSB_OFFSET 0x24
 #define XILINX_CDMA_BTT_OFFSET         0x28
 
 /* General register bits definitions */
@@ -61,6 +63,8 @@
 #define XILINX_CDMA_COALESCE_MAX       GENMASK(7, 0)
 #define XILINX_CDMA_COALESCE_SHIFT     16
 
+#define XILINX_CDMA_DESC_LSB_MASK		GENMASK(31, 6)
+
 /* Delay loop counter to prevent hardware failure */
 #define XILINX_CDMA_RESET_LOOP         1000000
 
@@ -70,21 +74,21 @@
 /**
  * struct xilinx_cdma_desc_hw - Hardware Descriptor
  * @next_desc: Next Descriptor Pointer @0x00
- * @pad1: Reserved @0x04
+ * @next_descmsb: Next Descriptor Pointer MSB @0x04
  * @src_addr: Source address @0x08
- * @pad2: Reserved @0x0C
+ * @src_addrmsb: Source address MSB @0x0C
  * @dest_addr: Destination address @0x10
- * @pad3: Reserved @0x14
+ * @dest_addrmsb: Destination address MSB @0x14
  * @control: Control field @0x18
  * @status: Status field @0x1C
  */
 struct xilinx_cdma_desc_hw {
 	u32 next_desc;
-	u32 pad1;
+	u32 next_descmsb;
 	u32 src_addr;
-	u32 pad2;
+	u32 src_addrmsb;
 	u32 dest_addr;
-	u32 pad3;
+	u32 dest_addrmsb;
 	u32 control;
 	u32 status;
 } __aligned(64);
@@ -177,6 +181,13 @@ static inline u32 cdma_read(struct xilinx_cdma_chan *chan, u32 reg)
 {
 	return readl(chan->xdev->regs + reg);
 }
+
+#if defined(CONFIG_PHYS_ADDR_T_64BIT)
+static inline void cdma_writeq(struct xilinx_cdma_chan *chan, u32 reg, u64 val)
+{
+	writeq(val, chan->xdev->regs + reg);
+}
+#endif
 
 static inline void cdma_ctrl_clr(struct xilinx_cdma_chan *chan, u32 reg,
 				u32 clr)
@@ -431,10 +442,18 @@ static void xilinx_cdma_start_transfer(struct xilinx_cdma_chan *chan)
 		tail = list_entry(desc->segments.prev,
 				  struct xilinx_cdma_tx_segment, node);
 
+#if defined(CONFIG_PHYS_ADDR_T_64BIT)
+		cdma_writeq(chan, XILINX_CDMA_CDESC_OFFSET, head->phys);
+#else
 		cdma_write(chan, XILINX_CDMA_CDESC_OFFSET, head->phys);
+#endif
 
 		/* Update tail ptr register which will start the transfer */
+#if defined(CONFIG_PHYS_ADDR_T_64BIT)
+		cdma_writeq(chan, XILINX_CDMA_TDESC_OFFSET, tail->phys);
+#else
 		cdma_write(chan, XILINX_CDMA_TDESC_OFFSET, tail->phys);
+#endif
 	} else {
 		/* In simple mode */
 		struct xilinx_cdma_tx_segment *segment;
@@ -448,6 +467,12 @@ static void xilinx_cdma_start_transfer(struct xilinx_cdma_chan *chan)
 
 		cdma_write(chan, XILINX_CDMA_SRCADDR_OFFSET, hw->src_addr);
 		cdma_write(chan, XILINX_CDMA_DSTADDR_OFFSET, hw->dest_addr);
+#if defined(CONFIG_PHYS_ADDR_T_64BIT)
+		cdma_write(chan, XILINX_CDMA_SRCADDR_MSB_OFFSET,
+			   hw->src_addrmsb);
+		cdma_write(chan, XILINX_CDMA_DSTADDR_MSB_OFFSET,
+			   hw->dest_addrmsb);
+#endif
 
 		/* Start the transfer */
 		cdma_write(chan, XILINX_CDMA_BTT_OFFSET,
@@ -669,13 +694,21 @@ xilinx_cdma_prep_memcpy(struct dma_chan *dchan, dma_addr_t dma_dst,
 
 	hw = &segment->hw;
 	hw->control = len;
-	hw->src_addr = dma_src;
-	hw->dest_addr = dma_dst;
+	hw->src_addr = lower_32_bits(dma_src);
+	hw->dest_addr = lower_32_bits(dma_dst);
+#if defined(CONFIG_PHYS_ADDR_T_64BIT)
+	hw->src_addrmsb = upper_32_bits(dma_src);
+	hw->dest_addrmsb = upper_32_bits(dma_dst);
+#endif
 
 	/* Fill the previous next descriptor with current */
 	prev = list_last_entry(&desc->segments,
 				struct xilinx_cdma_tx_segment, node);
-	prev->hw.next_desc = segment->phys;
+	prev->hw.next_desc = (u32)(segment->phys &
+				    XILINX_CDMA_DESC_LSB_MASK);
+#if defined(CONFIG_PHYS_ADDR_T_64BIT)
+	prev->hw.next_descmsb = upper_32_bits(segment->phys);
+#endif
 
 	/* Insert the segment into the descriptor segments list. */
 	list_add_tail(&segment->node, &desc->segments);
@@ -685,7 +718,11 @@ xilinx_cdma_prep_memcpy(struct dma_chan *dchan, dma_addr_t dma_dst,
 	/* Link the last hardware descriptor with the first. */
 	segment = list_first_entry(&desc->segments,
 				struct xilinx_cdma_tx_segment, node);
-	prev->hw.next_desc = segment->phys;
+	prev->hw.next_desc = (u32)(segment->phys &
+				    XILINX_CDMA_DESC_LSB_MASK);
+#if defined(CONFIG_PHYS_ADDR_T_64BIT)
+	prev->hw.next_descmsb = upper_32_bits(segment->phys);
+#endif
 
 	return &desc->async_tx;
 
