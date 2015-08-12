@@ -1,0 +1,13 @@
+Xilinx Zynq MPSoC Device Tree Bindings
+
+Zynq MPSoC based systems rely on the "psci" node to detect the presence of PMU
+firmware as well as to determine the calling method (either "smc" or "hvc")
+to the PM-API firmware layer.
+
+Required properties:
+ - compatible  : Must contain:  "xlnx,zynqmp-pm"
+
+ - method      : The method of calling the PM-API firmware layer.
+                 Permitted values are:
+                 "smc" : To be used in configurations without a hypervisor
+                 "hvc" : To be used when hypervisor is present
