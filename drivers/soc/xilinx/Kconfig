@@ -5,3 +5,13 @@ menuconfig SOC_XILINX_ZYNQMP
 	bool "Xilinx Zynq MPSoC driver support"
 	depends on ARCH_ZYNQMP
 
+if SOC_XILINX_ZYNQMP
+
+config ZYNQMP_PM_API_DEBUGFS
+	bool "Enable Xilinx Zynq MPSoC Power Management API debugfs functionality"
+	depends on DEBUG_FS && PM
+	help
+	  Say yes to enable power domain management API requests through debugfs
+	  In doubt, say N
+
+endif #SOC_XILINX_ZYNQMP
