@@ -27,9 +27,6 @@ Optional properties:
  - core_conf : R5 core configuration (valid string - split0 or split1 or
                lock-step), default is lock-step.
  - method : RPU and IPI control method - direct, smc, hvc, default is smc.
- - ipi_dest_mask : IPI channel destination mask. This is used to clear
-         ipi SR and let the rpu know the kernel has completed the work.
-         default mask is "0x100"
 
 Example:
 --------

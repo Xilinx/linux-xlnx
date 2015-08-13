@@ -68,6 +68,12 @@
 
 #define MAX_INSTANCES		2 /* Support upto 2 RPU */
 
+/* RPU IPI mask */
+#define RPU_IPI_INIT_MASK	0x00000100
+#define RPU_IPI_MASK(n)		(RPU_IPI_INIT_MASK << n)
+#define RPU_0_IPI_MASK		RPU_IPI_MASK(0)
+#define RPU_1_IPI_MASK		RPU_IPI_MASK(1)
+
 /* Store rproc for IPI handler */
 static struct platform_device *remoteprocdev[MAX_INSTANCES];
 
@@ -645,18 +651,13 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 	}
 	dev_dbg(&pdev->dev, "vring0 irq: %d\n", local->vring0);
 
-	ret = of_property_read_u32(pdev->dev.of_node, "ipi_dest_mask",
-		&local->ipi_dest_mask);
-	if (ret < 0) {
-		dev_warn(&pdev->dev, "default ipi_dest_mask used: 0x100\n");
-		local->ipi_dest_mask = 0x100;
-	}
-	dev_info(&pdev->dev, "ipi_dest_mask: 0x%x\n", local->ipi_dest_mask);
-
-	if (local->rpu_id == 0)
+	if (local->rpu_id == 0) {
+		local->ipi_dest_mask = RPU_0_IPI_MASK;
 		rproc_firmware = firmware;
-	else
+	} else {
+		local->ipi_dest_mask = RPU_1_IPI_MASK;
 		rproc_firmware = firmware1;
+	}
 
 	dev_dbg(&pdev->dev, "Using firmware: %s\n", rproc_firmware);
 	local->rproc = rproc_alloc(&pdev->dev, dev_name(&pdev->dev),
