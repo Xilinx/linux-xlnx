@@ -23,7 +23,6 @@ Required properties:
 
 Optional properties:
 --------------------
- - bootmem : R5 boot device (valid string, ocm or tcm), default is ocm.
  - core_conf : R5 core configuration (valid string - split0 or split1 or
                lock-step), default is lock-step.
  - method : RPU and IPI control method - direct, smc, hvc, default is smc.
@@ -36,7 +35,6 @@ Example:
 		reg-names = "vring0", "ipi", "rpu_base", "apb_base";
 		core_conf = "split0";
 		method = "direct";
-		bootmem = "ocm";
 		interrupt-parent = <&gic>;
 		interrupts = <0 49 4>;
 	} ;

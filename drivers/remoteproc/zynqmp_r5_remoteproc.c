@@ -167,6 +167,27 @@ struct zynqmp_r5_rproc_pdata {
 	u32 vring0;
 };
 
+/* Get firmware ELF file entry address */
+static int get_firmware_entry_addr(struct zynqmp_r5_rproc_pdata *pdata,
+			u32 *elf_entry_p)
+{
+	struct elf32_hdr *ehdr = 0;
+	const struct firmware *firmware_p;
+	struct rproc *rproc = pdata->rproc;
+	int ret;
+
+	ret = request_firmware(&firmware_p, rproc->firmware, &rproc->dev);
+	if (ret < 0) {
+		dev_err(&rproc->dev, "%s: request_firmware failed: %d\n",
+			__func__, ret);
+		return ret;
+	}
+	ehdr = (struct elf32_hdr *)firmware_p->data;
+	*elf_entry_p = (unsigned int)ehdr->e_entry;
+	release_firmware(firmware_p);
+	return 0;
+}
+
 /*
  * TODO: Update HW RPU operation when the driver is ready
  */
@@ -437,6 +458,8 @@ static int zynqmp_r5_rproc_start(struct rproc *rproc)
 	struct device *dev = rproc->dev.parent;
 	struct platform_device *pdev = to_platform_device(dev);
 	struct zynqmp_r5_rproc_pdata *local = platform_get_drvdata(pdev);
+	u32 bootaddr = 0;
+	int ret;
 
 	dev_dbg(dev, "%s\n", __func__);
 	/* limit to two RPU support */
@@ -453,6 +476,18 @@ static int zynqmp_r5_rproc_start(struct rproc *rproc)
 	 */
 	wmb();
 	/* Set up R5 */
+	ret = get_firmware_entry_addr(local, &bootaddr);
+	if (ret < 0) {
+		dev_err(dev, "%s: failed to get RPU boot addr.\n", __func__);
+		return ret;
+	}
+	if (!bootaddr)
+		local->bootmem = TCM;
+	else
+		local->bootmem = OCM;
+	dev_info(dev, "RPU boot from %s.",
+		local->bootmem == OCM ? "OCM" : "TCM");
+
 	local->rpu_ops->core_conf(local);
 	local->rpu_ops->en_reset(local, true);
 	local->rpu_ops->halt(local, true);
@@ -633,23 +668,6 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 			ret = PTR_ERR(local->ipi_base);
 			goto dma_mask_fault;
 		}
-	}
-
-	prop = of_get_property(pdev->dev.of_node, "bootmem", NULL);
-	if (!prop) {
-		dev_warn(&pdev->dev, "default bootmem property used: tcm\n");
-		prop = "tcm";
-	}
-
-	dev_info(&pdev->dev, "RPU bootmem: %s\n", prop);
-	if (!strcmp(prop, "tcm")) {
-		local->bootmem = TCM;
-	} else if (!strcmp(prop, "ocm")) {
-		local->bootmem = OCM;
-	} else {
-		dev_err(&pdev->dev, "Invalid R5 bootmem property - %s\n",
-			prop);
-		goto dma_mask_fault;
 	}
 
 	/* IPI IRQ */
