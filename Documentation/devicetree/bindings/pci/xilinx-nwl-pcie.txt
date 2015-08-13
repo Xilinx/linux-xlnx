@@ -1,0 +1,39 @@
+* Xilinx NWL PCIe Root Port Bridge DT description
+
+Required properties:
+- compatible: Should contain "xlnx,nwl-pcie-2.11"
+- #address-cells: Address representation for root ports, set to <3>
+- #size-cells: Size representation for root ports, set to <2>
+- #interrupt-cells: specifies the number of cells needed to encode an
+	interrupt source. The value must be 1.
+- reg: Should contain Bridge, PCIe Controller registers location and length
+- device_type: must be "pci"
+- interrupts: Should contain NWL PCIe interrupt
+- ranges: ranges for the PCI memory regions (I/O space region is not
+	supported by hardware)
+	Please refer to the standard PCI bus binding document for a more
+	detailed explanation
+
+Optional properties:
+- xlnx,msi-fifo: To enable MSI FIFO mode
+
+Example:
+++++++++
+nwl_pcie: pcie@fd0e0000 {
+	compatible = "xlnx,nwl-pcie-2.11";
+	#address-cells = <3>;
+	#size-cells = <2>;
+	#interrupt-cells = <1>;
+	device_type = "pci";
+	interrupt-parent = <&gic>;
+	interrupts = < 0 118 4
+		       0 116 4
+		       0 115 4		// MSI_1 [63...32]
+		       0 114 4 >;	// MSI_0 [31...0]
+	interrupt-names = "misc", "intx", "msi_1", "msi_0";
+	reg = <0x0 0xfd0e0000 0x1000
+	       0x0 0xfd480000 0x1000
+	       0x0 0xE0000000 0x1000000>;
+	reg-names = "breg", "pcireg", "cfg";
+	ranges = <0x02000000 0x00000000 0xE1000000 0x00000000 0xE1000000 0 0x0F000000>;
+};
