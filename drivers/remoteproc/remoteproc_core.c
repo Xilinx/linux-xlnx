@@ -597,6 +597,11 @@ static int rproc_handle_carveout(struct rproc *rproc,
 		ret = PTR_ERR(va);
 		goto free_carv;
 	}
+	/* In case of TCM, have to initialize the memory after ioremap,
+	 * otherwise, when loading segments to the memory, kernel will
+	 * report "Bad mode in Synchronous Abort handler detected" error.
+	 */
+	memset_io(va, 0, rsc->len);
 #else
 	va = dma_alloc_coherent(dev->parent, rsc->len, &dma, GFP_KERNEL);
 	if (!va) {
