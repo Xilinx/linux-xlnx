@@ -31,8 +31,8 @@ Example:
 --------
 	zynqmp-r5-remoteproc@0 {
 		compatible = "xlnx,zynqmp-r5-remoteproc";
-		reg = <0x0 0x3ed00000 0x800000>, <0x0 0xff300000 0x100>, <0x0 0xff9a0000 0x400>, <0x0 0xff5e0000 0x400>;
-		reg-names = "vring0", "ipi", "rpu_base", "apb_base";
+		reg = <0x0 0xff300000 0x100>, <0x0 0xff9a0000 0x400>, <0x0 0xff5e0000 0x400>;
+		reg-names = "ipi", "rpu_base", "apb_base";
 		core_conf = "split0";
 		method = "direct";
 		interrupt-parent = <&gic>;

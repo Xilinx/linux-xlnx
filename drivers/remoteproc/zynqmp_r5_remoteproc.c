@@ -579,13 +579,6 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, local);
 
-	/* Declare vring for firmware */
-	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "vring0");
-	if (!res) {
-		dev_err(&pdev->dev, "invalid address for vring0\n");
-		return -ENXIO;
-	}
-
 	/* FIXME: it may need to extend to 64/48 bit */
 	ret = dma_set_coherent_mask(&pdev->dev, DMA_BIT_MASK(32));
 	if (ret) {
