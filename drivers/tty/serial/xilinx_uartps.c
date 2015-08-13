@@ -692,7 +692,7 @@ static void cdns_uart_set_termios(struct uart_port *port,
 
 	if (termios->c_iflag & IGNPAR)
 		port->ignore_status_mask |= CDNS_UART_IXR_PARITY |
-			CDNS_UART_IXR_FRAMING | CDNS_UART_IXR_OVERRUN;
+					    CDNS_UART_IXR_FRAMING;
 
 	/* ignore all characters if CREAD is not set */
 	if ((termios->c_cflag & CREAD) == 0)
