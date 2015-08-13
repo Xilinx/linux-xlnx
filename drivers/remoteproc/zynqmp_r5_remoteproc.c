@@ -717,7 +717,6 @@ rproc_fault:
 dma_mask_fault:
 	dma_release_declared_memory(&pdev->dev);
 
-err_exit:
 	return 0;
 }
 
