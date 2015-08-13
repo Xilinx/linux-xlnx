@@ -612,6 +612,7 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 	} else {
 		dev_err(&pdev->dev, "Invalid core_conf mode provided - %s , %d\n",
 			prop, local->rpu_mode);
+		ret = -EINVAL;
 		goto dma_mask_fault;
 	}
 
@@ -637,6 +638,7 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 	} else {
 		dev_err(&pdev->dev, "Invalid method provided - %s\n",
 			prop);
+		ret = -EINVAL;
 		goto dma_mask_fault;
 	}
 
@@ -717,7 +719,7 @@ rproc_fault:
 dma_mask_fault:
 	dma_release_declared_memory(&pdev->dev);
 
-	return 0;
+	return ret;
 }
 
 static int zynqmp_r5_remoteproc_remove(struct platform_device *pdev)
