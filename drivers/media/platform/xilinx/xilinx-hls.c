@@ -40,8 +40,8 @@
 #define XHLS_REG_ISR				0x0c
 #define XHLS_REG_ISR_DONE			(1 << 0)
 #define XHLS_REG_ISR_READY			(1 << 1)
-#define XHLS_REG_ROWS				0x14
-#define XHLS_REG_COLS				0x1c
+#define XHLS_REG_ROWS				0x10
+#define XHLS_REG_COLS				0x18
 
 /**
  * struct xhls_device - Xilinx HLS Core device structure
