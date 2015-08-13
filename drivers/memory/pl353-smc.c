@@ -384,8 +384,8 @@ default_nand_timing:
 		/* set default NAND flash timing property */
 		dev_warn(&pdev->dev, "Using default timing for");
 		dev_warn(&pdev->dev, "2Gb Numonyx MT29F2G08ABAEAWP NAND flash");
-		dev_warn(&pdev->dev, "t_wp, t_clr, t_ar are set to 4");
-		dev_warn(&pdev->dev, "t_rc, t_wc, t_rr are set to 2");
+		dev_warn(&pdev->dev, "t_wp, t_clr, t_ar are set to 2");
+		dev_warn(&pdev->dev, "t_rc, t_wc, t_rr are set to 4");
 		dev_warn(&pdev->dev, "t_rea is set to 1");
 		t_rc = t_wc = t_rr = 4;
 		t_rea = 1;
