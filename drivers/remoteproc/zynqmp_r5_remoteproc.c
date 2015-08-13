@@ -30,7 +30,6 @@
 #include <linux/interrupt.h>
 #include <linux/of_irq.h>
 #include <linux/of_platform.h>
-#include <asm/cacheflush.h>
 #include <linux/slab.h>
 #include <linux/cpu.h>
 #include <linux/delay.h>
@@ -414,8 +413,6 @@ static struct ipi_ops ipi_hvc_ops = {
 
 static void handle_event(struct zynqmp_r5_rproc_pdata *local)
 {
-	flush_cache_all();
-
 	if (rproc_vq_interrupt(local->rproc, 0) == IRQ_NONE)
 		dev_dbg(&remoteprocdev[local->rpu_id]->dev, \
 			"no message found in vqid 0\n");
@@ -448,9 +445,13 @@ static int zynqmp_r5_rproc_start(struct rproc *rproc)
 	else
 		INIT_WORK(&local->workqueue, handle_event1);
 
-	flush_cache_all();
 	remoteprocdev[local->rpu_id] = pdev;
 
+	/*
+	 * Use memory barrier to make sure all write memory operations
+	 * complemeted.
+	 */
+	wmb();
 	/* Set up R5 */
 	local->rpu_ops->core_conf(local);
 	local->rpu_ops->en_reset(local, true);
@@ -474,6 +475,11 @@ static void zynqmp_r5_rproc_kick(struct rproc *rproc, int vqid)
 
 	dev_dbg(dev, "KICK Firmware to start send messages vqid %d\n", vqid);
 
+	/*
+	 * Use memory barrier to make sure write memory operations
+	 * completed.
+	 */
+	wmb();
 	/*
 	 * send irq to R5 firmware
 	 * Currently vqid is not used because we only got one.
