@@ -724,7 +724,7 @@ static void cdns_uart_set_termios(struct uart_port *port,
 	else
 		cval |= CDNS_UART_MR_STOPMODE_1_BIT; /* 1 STOP bit */
 
-	if (termios->c_cflag & PARENB) {
+	if ((termios->c_cflag & PARENB) || (termios->c_cflag & PARODD)) {
 		/* Mark or Space parity */
 		if (termios->c_cflag & CMSPAR) {
 			if (termios->c_cflag & PARODD)
