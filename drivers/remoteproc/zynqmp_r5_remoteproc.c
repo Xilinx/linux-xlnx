@@ -80,7 +80,8 @@ static struct platform_device *remoteprocdev[MAX_INSTANCES];
 #define DEFAULT_FIRMWARE_NAME	"rproc-rpu-fw"
 
 /* Module parameter */
-static char *firmware;
+static char *firmware = "r5_0_firmware";
+static char *firmware1 = "r5_1_firmware";
 
 struct zynqmp_r5_rproc_pdata;
 
@@ -509,6 +510,7 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 	struct resource *res;
 	int ret = 0;
 	int method = 0;
+	char *rproc_firmware = 0;
 	struct zynqmp_r5_rproc_pdata *local;
 
 	local = devm_kzalloc(&pdev->dev, sizeof(struct zynqmp_r5_rproc_pdata),
@@ -651,29 +653,23 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 	}
 	dev_info(&pdev->dev, "ipi_dest_mask: 0x%x\n", local->ipi_dest_mask);
 
-	/* Module param firmware first */
-	prop = of_get_property(pdev->dev.of_node, "firmware", NULL);
-	if (firmware)
-		prop = firmware;
-	else if (!prop)
-		prop = DEFAULT_FIRMWARE_NAME;
+	if (local->rpu_id == 0)
+		rproc_firmware = firmware;
+	else
+		rproc_firmware = firmware1;
 
-	if (prop) {
-		dev_dbg(&pdev->dev, "Using firmware: %s\n", prop);
-		local->rproc = rproc_alloc(&pdev->dev, dev_name(&pdev->dev),
-			&zynqmp_r5_rproc_ops, prop, sizeof(struct rproc));
-		if (!local->rproc) {
-			dev_err(&pdev->dev, "rproc allocation failed\n");
-			goto rproc_fault;
-		}
+	dev_dbg(&pdev->dev, "Using firmware: %s\n", rproc_firmware);
+	local->rproc = rproc_alloc(&pdev->dev, dev_name(&pdev->dev),
+		&zynqmp_r5_rproc_ops, rproc_firmware, sizeof(struct rproc));
+	if (!local->rproc) {
+		dev_err(&pdev->dev, "rproc allocation failed\n");
+		goto rproc_fault;
+	}
 
-		ret = rproc_add(local->rproc);
-		if (ret) {
-			dev_err(&pdev->dev, "rproc registration failed\n");
-			goto rproc_fault;
-		}
-	} else {
-		ret = -ENODEV;
+	ret = rproc_add(local->rproc);
+	if (ret) {
+		dev_err(&pdev->dev, "rproc registration failed\n");
+		goto rproc_fault;
 	}
 
 	return ret;
@@ -720,7 +716,9 @@ static struct platform_driver zynqmp_r5_remoteproc_driver = {
 module_platform_driver(zynqmp_r5_remoteproc_driver);
 
 module_param(firmware, charp, 0);
-MODULE_PARM_DESC(firmware, "Override the firmware image name.");
+module_param(firmware1, charp, 0);
+MODULE_PARM_DESC(firmware, "Override the RPU-0 firmware image name.");
+MODULE_PARM_DESC(firmware1, "Override the RPU-1 firmware image name.");
 
 MODULE_AUTHOR("Jason Wu <j.wu@xilinx.com>");
 MODULE_LICENSE("GPL v2");

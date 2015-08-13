@@ -23,9 +23,6 @@ Required properties:
 
 Optional properties:
 --------------------
- - firmware : Default firmware image name "rproc-rpu-fw" which can be
-              loaded by remoteproc framework. This value can be override
-              by "firmware" module parameter.
  - bootmem : R5 boot device (valid string, ocm or tcm), default is ocm.
  - core_conf : R5 core configuration (valid string - split0 or split1 or
                lock-step), default is lock-step.
@@ -43,7 +40,6 @@ Example:
 		core_conf = "split0";
 		method = "direct";
 		bootmem = "ocm";
-		firmware = "r5_image";
 		interrupt-parent = <&gic>;
 		interrupts = <0 49 4>;
 	} ;
