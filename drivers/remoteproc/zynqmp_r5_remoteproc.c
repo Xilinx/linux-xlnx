@@ -545,6 +545,24 @@ static struct rproc_ops zynqmp_r5_rproc_ops = {
 	.kick		= zynqmp_r5_rproc_kick,
 };
 
+/* Release R5 from reset and make it halted.
+ * In case the firmware uses TCM, in order to load firmware to TCM,
+ * will need to release R5 from reset and stay in halted state.
+ */
+static void zynqmp_r5_rproc_init(struct rproc *rproc)
+{
+	struct device *dev = rproc->dev.parent;
+	struct platform_device *pdev = to_platform_device(dev);
+	struct zynqmp_r5_rproc_pdata *local = platform_get_drvdata(pdev);
+	void *r5_mem_ptr = 0;
+
+	dev_dbg(dev, "%s\n", __func__);
+
+	local->rpu_ops->en_reset(local, true);
+	local->rpu_ops->halt(local, true);
+	local->rpu_ops->en_reset(local, false);
+}
+
 static irqreturn_t r5_remoteproc_interrupt(int irq, void *dev_id)
 {
 	struct device *dev = dev_id;
@@ -698,6 +716,7 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 		goto rproc_fault;
 	}
 
+	zynqmp_r5_rproc_init(local->rproc);
 	ret = rproc_add(local->rproc);
 	if (ret) {
 		dev_err(&pdev->dev, "rproc registration failed\n");
