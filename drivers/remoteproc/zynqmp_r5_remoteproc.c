@@ -99,7 +99,7 @@ struct zynqmp_r5_rproc_pdata;
  * @trigger:        Trigger IPI
  */
 struct ipi_ops {
-	void (*clear)(struct zynqmp_r5_rproc_pdata *pdata);
+	irqreturn_t (*clear)(struct zynqmp_r5_rproc_pdata *pdata);
 	void (*reset)(struct zynqmp_r5_rproc_pdata *pdata);
 	void (*set_mask)(struct zynqmp_r5_rproc_pdata *pdata);
 	void (*trigger)(struct zynqmp_r5_rproc_pdata *pdata);
@@ -307,17 +307,24 @@ static struct rpu_ops rpu_hvc_ops = {
 /*
  * TODO: Update HW ipi operation when the driver is ready
  */
-static void hw_clear_ipi(struct zynqmp_r5_rproc_pdata *pdata)
+static irqreturn_t hw_clear_ipi(struct zynqmp_r5_rproc_pdata *pdata)
 {
+	u32 ipi_reg = 0;
 	pr_debug("%s: irq issuer %08x clear IPI\n", __func__,
 			 pdata->ipi_dest_mask);
-	reg_write(pdata->ipi_base, ISR_OFFSET, pdata->ipi_dest_mask);
+	ipi_reg = reg_read(pdata->ipi_base, ISR_OFFSET);
+	if (ipi_reg & pdata->ipi_dest_mask) {
+		reg_write(pdata->ipi_base, ISR_OFFSET, pdata->ipi_dest_mask);
+		return IRQ_HANDLED;
+	}
+
+	return IRQ_NONE;
 }
 
 static void hw_ipi_reset(struct zynqmp_r5_rproc_pdata *pdata)
 {
-	reg_write(pdata->ipi_base, IDR_OFFSET, IPI_ALL_MASK);
-	reg_write(pdata->ipi_base, ISR_OFFSET, IPI_ALL_MASK);
+	reg_write(pdata->ipi_base, IDR_OFFSET, pdata->ipi_dest_mask);
+	reg_write(pdata->ipi_base, ISR_OFFSET, pdata->ipi_dest_mask);
 	/* add delay to allow ipi to be settle */
 	udelay(10);
 	pr_debug("IPI reset done\n");
@@ -349,9 +356,10 @@ static struct ipi_ops ipi_hw_ops = {
 	.trigger        = hw_trigger_ipi,
 };
 
-static void smc_clear_ipi(struct zynqmp_r5_rproc_pdata *pdata)
+static irqreturn_t smc_clear_ipi(struct zynqmp_r5_rproc_pdata *pdata)
 {
 	pr_err("%s: atf smc to be implemented\n", __func__);
+	return IRQ_NONE;
 }
 
 static void smc_ipi_reset(struct zynqmp_r5_rproc_pdata *pdata)
@@ -376,9 +384,10 @@ static struct ipi_ops ipi_smc_ops = {
 	.trigger        = smc_trigger_ipi,
 };
 
-static void hvc_clear_ipi(struct zynqmp_r5_rproc_pdata *pdata)
+static irqreturn_t hvc_clear_ipi(struct zynqmp_r5_rproc_pdata *pdata)
 {
 	pr_err("%s: hypervisor hvc to be implemented\n", __func__);
+	return IRQ_NONE;
 }
 
 static void hvc_ipi_reset(struct zynqmp_r5_rproc_pdata *pdata)
@@ -500,10 +509,13 @@ static irqreturn_t r5_remoteproc_interrupt(int irq, void *dev_id)
 	struct device *dev = dev_id;
 	struct platform_device *pdev = to_platform_device(dev);
 	struct zynqmp_r5_rproc_pdata *local = platform_get_drvdata(pdev);
+	irqreturn_t ret;
 
 	dev_dbg(dev, "KICK Linux because of pending message(irq%d)\n", irq);
 
-	local->ipi_ops->clear(local);
+	ret = local->ipi_ops->clear(local);
+	if (ret != IRQ_HANDLED)
+		return ret;
 	schedule_work(&local->workqueue);
 
 	dev_dbg(dev, "KICK Linux handled\n");
@@ -642,7 +654,7 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 		goto dma_mask_fault;
 	}
 	ret = devm_request_irq(&pdev->dev, local->vring0,
-		r5_remoteproc_interrupt, 0, dev_name(&pdev->dev),
+		r5_remoteproc_interrupt, IRQF_SHARED, dev_name(&pdev->dev),
 		&pdev->dev);
 	if (ret) {
 		dev_err(&pdev->dev, "IRQ %d already allocated\n",
