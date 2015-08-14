@@ -32,7 +32,7 @@
 void usage(void)
 {
 	printf("*argv[0] -d <UIO_DEV_FILE> -i|-o <VALUE>\n");
-	printf(" -d UIO device file. e.g. /dev/uio0");
+	printf(" -d UIO device file. e.g. /dev/uio0\n");
 	return;
 }
 
@@ -106,7 +106,7 @@ int main(int argc, char *argv[])
 		return -1;
 	}
 
-	baseaddr = (u32)mmap(0, MAP_SIZE , PROT_READ|PROT_WRITE,
+	baseaddr = (ulong)mmap(0, MAP_SIZE , PROT_READ|PROT_WRITE,
 				MAP_SHARED , fd, 0);
 	if ((u32 *)baseaddr == MAP_FAILED)
 		perror("mmap failed\n");

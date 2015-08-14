@@ -877,14 +877,18 @@ const char *getmetricname(u8 metrics)
 * @note		None.
 *
 *****************************************************************************/
-void setwriteid(u16 writeid)
+void setwriteid(u32 writeid)
 {
 	u32 regval;
 
-	regval = readreg(baseaddr, XAPM_ID_OFFSET);
-	regval = regval & ~(XAPM_ID_WID_MASK);
-	regval = regval | writeid;
-	writereg(baseaddr, XAPM_ID_OFFSET, regval);
+	if (params->is_32bit_filter == 0) {
+		regval = readreg(baseaddr, XAPM_ID_OFFSET);
+		regval = regval & ~(XAPM_ID_WID_MASK);
+		regval = regval | writeid;
+		writereg(baseaddr, XAPM_ID_OFFSET, regval);
+	} else {
+		writereg(baseaddr, XAPM_ID_OFFSET, writeid);
+	}
 }
 
 /****************************************************************************/
@@ -900,14 +904,18 @@ void setwriteid(u16 writeid)
 * @note		None.
 *
 *****************************************************************************/
-void setreadid(u16 readid)
+void setreadid(u32 readid)
 {
 	u32 regval;
 
-	regval = readreg(baseaddr, XAPM_ID_OFFSET);
-	regval = regval & ~(XAPM_ID_RID_MASK);
-	regval = regval | (readid << 16);
-	writereg(baseaddr, XAPM_ID_OFFSET, regval);
+	if (params->is_32bit_filter == 0) {
+		regval = readreg(baseaddr, XAPM_ID_OFFSET);
+		regval = regval & ~(XAPM_ID_RID_MASK);
+		regval = regval | (readid << 16);
+		writereg(baseaddr, XAPM_ID_OFFSET, regval);
+	} else {
+		writereg(baseaddr, XAPM_RID_OFFSET, readid);
+	}
 }
 
 /****************************************************************************/
@@ -920,14 +928,18 @@ void setreadid(u16 readid)
 * @note		None.
 *
 *****************************************************************************/
-u16 getwriteid(void)
+u32 getwriteid(void)
 {
 
-	u16 writeid;
+	u32 writeid;
 	u32 regval;
 
-	regval = readreg(baseaddr, XAPM_ID_OFFSET);
-	writeid = regval & XAPM_ID_WID_MASK;
+	if (params->is_32bit_filter == 0) {
+		regval = readreg(baseaddr, XAPM_ID_OFFSET);
+		writeid = regval & XAPM_ID_WID_MASK;
+	} else {
+		writeid = XAPM_IDMASK_OFFSET;
+	}
 
 	return writeid;
 }
@@ -942,15 +954,19 @@ u16 getwriteid(void)
 * @note		None.
 *
 *****************************************************************************/
-u16 getreadid(void)
+u32 getreadid(void)
 {
 
-	u16 readid;
+	u32 readid;
 	u32 regval;
 
-	regval = readreg(baseaddr, XAPM_ID_OFFSET);
-	regval = regval & XAPM_ID_RID_MASK;
-	readid = regval >> 16;
+	if (params->is_32bit_filter == 0) {
+		regval = readreg(baseaddr, XAPM_ID_OFFSET);
+		regval = regval & XAPM_ID_RID_MASK;
+		readid = regval >> 16;
+	} else {
+		readid = XAPM_RID_OFFSET;
+	}
 
 	return readid;
 }
@@ -1161,14 +1177,18 @@ u8 getrdlatencyend(void)
 * @note		None.
 *
 *****************************************************************************/
-void setwriteidmask(u16 wrmask)
+void setwriteidmask(u32 wrmask)
 {
 	u32 regval;
 
-	regval = readreg(baseaddr, XAPM_IDMASK_OFFSET);
-	regval = regval & ~(XAPM_MASKID_WID_MASK);
-	regval = regval | wrmask;
-	writereg(baseaddr, XAPM_IDMASK_OFFSET, regval);
+	if (params->is_32bit_filter == 0) {
+		regval = readreg(baseaddr, XAPM_IDMASK_OFFSET);
+		regval = regval & ~(XAPM_MASKID_WID_MASK);
+		regval = regval | wrmask;
+		writereg(baseaddr, XAPM_IDMASK_OFFSET, regval);
+	} else {
+		writereg(baseaddr, XAPM_IDMASK_OFFSET, wrmask);
+	}
 }
 
 /****************************************************************************/
@@ -1183,14 +1203,18 @@ void setwriteidmask(u16 wrmask)
 * @note		None.
 *
 *****************************************************************************/
-void setreadidmask(u16 rdmask)
+void setreadidmask(u32 rdmask)
 {
 	u32 regval;
 
-	regval = readreg(baseaddr, XAPM_IDMASK_OFFSET);
-	regval = regval & ~(XAPM_MASKID_RID_MASK);
-	regval = regval | (rdmask << 16);
-	writereg(baseaddr, XAPM_IDMASK_OFFSET, regval);
+	if (params->is_32bit_filter == 0) {
+		regval = readreg(baseaddr, XAPM_IDMASK_OFFSET);
+		regval = regval & ~(XAPM_MASKID_RID_MASK);
+		regval = regval | (rdmask << 16);
+		writereg(baseaddr, XAPM_IDMASK_OFFSET, regval);
+	} else {
+		writereg(baseaddr, XAPM_RIDMASK_OFFSET, rdmask);
+	}
 }
 
 /****************************************************************************/
@@ -1203,15 +1227,18 @@ void setreadidmask(u16 rdmask)
 * @note		None.
 *
 *****************************************************************************/
-u16 getwriteidmask(void)
+u32 getwriteidmask(void)
 {
 
-	u16 wrmask;
+	u32 wrmask;
 	u32 regval;
 
-	regval = readreg(baseaddr, XAPM_IDMASK_OFFSET);
-	wrmask = regval & XAPM_MASKID_WID_MASK;
-
+	if (params->is_32bit_filter == 0) {
+		regval = readreg(baseaddr, XAPM_IDMASK_OFFSET);
+		wrmask = regval & XAPM_MASKID_WID_MASK;
+	} else {
+		wrmask = XAPM_IDMASK_OFFSET;
+	}
 	return wrmask;
 }
 
@@ -1225,15 +1252,18 @@ u16 getwriteidmask(void)
 * @note		None.
 *
 *****************************************************************************/
-u16 getreadidmask(void)
+u32 getreadidmask(void)
 {
 
-	u16 rdmask;
+	u32 rdmask;
 	u32 regval;
 
-	regval = readreg(baseaddr, XAPM_IDMASK_OFFSET);
-	regval = regval & XAPM_MASKID_RID_MASK;
-	rdmask = regval >> 16;
-
+	if (params->is_32bit_filter == 0) {
+		regval = readreg(baseaddr, XAPM_IDMASK_OFFSET);
+		regval = regval & XAPM_MASKID_RID_MASK;
+		rdmask = regval >> 16;
+	} else {
+		rdmask = XAPM_RIDMASK_OFFSET;
+	}
 	return rdmask;
 }

@@ -6,6 +6,7 @@ extern "C" {
 #endif
 
 #include <stdint.h>
+#include <stdbool.h>
 
 
 #define XST_SUCCESS	0
@@ -297,6 +298,10 @@ extern "C" {
 
 #define XAPM_IDMASK_OFFSET		0x0308	/* ID Mask Register */
 
+#define XAPM_RID_OFFSET                 0x030C	/* Latency Write ID Register */
+
+#define XAPM_RIDMASK_OFFSET             0x0310	/* Read ID mask register */
+
 #define XAPM_FEC_OFFSET			0x0400	/* flag Enable
 							Control Register */
 
@@ -499,8 +504,9 @@ extern "C" {
 typedef unsigned char u8;
 typedef uint16_t u16;
 typedef uint32_t u32;
+typedef unsigned long ulong;
 
-u32 baseaddr;
+ulong baseaddr;
 
 struct xapm_param {
 	u32	mode;
@@ -514,6 +520,7 @@ struct xapm_param {
 	u32	globalcntwidth;
 	u32     scalefactor;
 	u32	isr;
+	bool	is_32bit_filter;
 };
 
 static struct xapm_param *params;
@@ -896,13 +903,13 @@ void disableeventlogtrigger(void);
 
 const char *getmetricname(u8 metrics);
 
-void setwriteid(u16 writeid);
+void setwriteid(u32 writeid);
 
-void setreadid(u16 readid);
+void setreadid(u32 readid);
 
-u16 getwriteid(void);
+u32 getwriteid(void);
 
-u16 getreadid(void);
+u32 getreadid(void);
 
 void setwrlatencystart(u8 param);
 
@@ -920,13 +927,13 @@ u8 getrdlatencystart(void);
 
 u8 getrdlatencyend(void);
 
-void setwriteidmask(u16 wrmask);
+void setwriteidmask(u32 wrmask);
 
-void setreadidmask(u16 rdmask);
+void setreadidmask(u32 rdmask);
 
-u16 getwriteidmask(void);
+u32 getwriteidmask(void);
 
-u16 getreadidmask(void);
+u32 getreadidmask(void);
 
 
 #ifdef __cplusplus
