@@ -630,7 +630,7 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 	prop = of_get_property(pdev->dev.of_node, "method", NULL);
 	if (!prop) {
 		dev_warn(&pdev->dev, "default method used: smc\n");
-		prop = "smc";
+		prop = "direct";
 	}
 
 	dev_info(&pdev->dev, "IPI/RPU control method: %s\n", prop);

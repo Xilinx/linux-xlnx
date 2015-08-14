@@ -25,7 +25,8 @@ Optional properties:
 --------------------
  - core_conf : R5 core configuration (valid string - split0 or split1 or
                lock-step), default is lock-step.
- - method : RPU and IPI control method - direct, smc, hvc, default is smc.
+ - method : RPU and IPI control method - direct, smc, hvc, default is default.
+            smc, hvc unimplemented now.
 
 Example:
 --------
@@ -34,7 +35,6 @@ Example:
 		reg = <0x0 0xff300000 0x100>, <0x0 0xff9a0000 0x400>, <0x0 0xff5e0000 0x400>;
 		reg-names = "ipi", "rpu_base", "apb_base";
 		core_conf = "split0";
-		method = "direct";
 		interrupt-parent = <&gic>;
 		interrupts = <0 49 4>;
 	} ;
