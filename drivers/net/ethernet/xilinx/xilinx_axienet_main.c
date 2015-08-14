@@ -156,35 +156,23 @@ static void axienet_dma_bd_release(struct net_device *ndev)
 	struct axienet_local *lp = netdev_priv(ndev);
 
 	for (i = 0; i < RX_BD_NUM; i++) {
-		if (lp->use_acpport) {
-			dma_unmap_single(ndev->dev.parent, lp->rx_bd_v[i].phys,
-					 lp->max_frm_size, DMA_FROM_DEVICE);
-		}
+		dma_unmap_single(ndev->dev.parent, lp->rx_bd_v[i].phys,
+				 lp->max_frm_size, DMA_FROM_DEVICE);
 		dev_kfree_skb((struct sk_buff *)
 			      (lp->rx_bd_v[i].sw_id_offset));
 	}
 
 	if (lp->rx_bd_v) {
-		if (lp->use_acpport) {
-			kfree(lp->rx_bd_v);
-			lp->rx_bd_v = NULL;
-		} else {
-			dma_free_coherent(ndev->dev.parent,
-					  sizeof(*lp->rx_bd_v) * RX_BD_NUM,
-					  lp->rx_bd_v,
-					  lp->rx_bd_p);
-		}
+		dma_free_coherent(ndev->dev.parent,
+				  sizeof(*lp->rx_bd_v) * RX_BD_NUM,
+				  lp->rx_bd_v,
+				  lp->rx_bd_p);
 	}
 	if (lp->tx_bd_v) {
-		if (lp->use_acpport) {
-			kfree(lp->tx_bd_v);
-			lp->tx_bd_v = NULL;
-		} else {
-			dma_free_coherent(ndev->dev.parent,
-					  sizeof(*lp->tx_bd_v) * TX_BD_NUM,
-					  lp->tx_bd_v,
-					  lp->tx_bd_p);
-		}
+		dma_free_coherent(ndev->dev.parent,
+				  sizeof(*lp->tx_bd_v) * TX_BD_NUM,
+				  lp->tx_bd_v,
+				  lp->tx_bd_p);
 	}
 }
 
@@ -211,31 +199,15 @@ static int axienet_dma_bd_init(struct net_device *ndev)
 	lp->rx_bd_ci = 0;
 
 	/* Allocate the Tx and Rx buffer descriptors. */
-	if (lp->use_acpport) {
-		lp->tx_bd_v = kmalloc(sizeof(*lp->tx_bd_v) * TX_BD_NUM,
-				      GFP_DMA);
-		lp->tx_bd_p = virt_to_phys(lp->tx_bd_v);
-		memset(lp->tx_bd_v, 0, sizeof(*lp->tx_bd_v) * TX_BD_NUM);
-	} else {
-		lp->tx_bd_v = dma_zalloc_coherent(ndev->dev.parent,
-					sizeof(*lp->tx_bd_v) * TX_BD_NUM,
-					&lp->tx_bd_p, GFP_KERNEL);
-	}
-
+	lp->tx_bd_v = dma_zalloc_coherent(ndev->dev.parent,
+					  sizeof(*lp->tx_bd_v) * TX_BD_NUM,
+					  &lp->tx_bd_p, GFP_KERNEL);
 	if (!lp->tx_bd_v)
 		goto out;
 
-	if (lp->use_acpport) {
-		lp->rx_bd_v = kmalloc(sizeof(*lp->rx_bd_v) * RX_BD_NUM,
-				      GFP_DMA);
-		lp->rx_bd_p = virt_to_phys(lp->rx_bd_v);
-		memset(lp->rx_bd_v, 0, sizeof(*lp->rx_bd_v) * RX_BD_NUM);
-	} else {
-		lp->rx_bd_v = dma_zalloc_coherent(ndev->dev.parent,
-					sizeof(*lp->rx_bd_v) * RX_BD_NUM,
-					&lp->rx_bd_p, GFP_KERNEL);
-	}
-
+	lp->rx_bd_v = dma_zalloc_coherent(ndev->dev.parent,
+					  sizeof(*lp->rx_bd_v) * RX_BD_NUM,
+					  &lp->rx_bd_p, GFP_KERNEL);
 	if (!lp->rx_bd_v)
 		goto out;
 
@@ -255,13 +227,10 @@ static int axienet_dma_bd_init(struct net_device *ndev)
 			goto out;
 
 		lp->rx_bd_v[i].sw_id_offset = (u32) skb;
-		if (lp->use_acpport)
-			lp->rx_bd_v[i].phys = virt_to_phys(skb->data);
-		else
-			lp->rx_bd_v[i].phys = dma_map_single(ndev->dev.parent,
-							     skb->data,
-							     lp->max_frm_size,
-							     DMA_FROM_DEVICE);
+		lp->rx_bd_v[i].phys = dma_map_single(ndev->dev.parent,
+						     skb->data,
+						     lp->max_frm_size,
+						     DMA_FROM_DEVICE);
 		lp->rx_bd_v[i].cntrl = lp->max_frm_size;
 	}
 
@@ -630,11 +599,9 @@ static void axienet_start_xmit_done(struct net_device *ndev)
 	cur_p = &lp->tx_bd_v[lp->tx_bd_ci];
 	status = cur_p->status;
 	while (status & XAXIDMA_BD_STS_COMPLETE_MASK) {
-		if (!lp->use_acpport)
-			dma_unmap_single(ndev->dev.parent, cur_p->phys,
-					 (cur_p->cntrl &
-					 XAXIDMA_BD_CTRL_LENGTH_MASK),
-					 DMA_TO_DEVICE);
+		dma_unmap_single(ndev->dev.parent, cur_p->phys,
+				(cur_p->cntrl & XAXIDMA_BD_CTRL_LENGTH_MASK),
+				DMA_TO_DEVICE);
 		if (cur_p->app4)
 			dev_kfree_skb_irq((struct sk_buff *)cur_p->app4);
 		/*cur_p->phys = 0;*/
@@ -730,11 +697,7 @@ static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	}
 
 	cur_p->cntrl = skb_headlen(skb) | XAXIDMA_BD_CTRL_TXSOF_MASK;
-
-	if (lp->use_acpport)
-		cur_p->phys = virt_to_phys(skb->data);
-	else
-		cur_p->phys = dma_map_single(ndev->dev.parent, skb->data,
+	cur_p->phys = dma_map_single(ndev->dev.parent, skb->data,
 				     skb_headlen(skb), DMA_TO_DEVICE);
 
 	for (ii = 0; ii < num_frag; ii++) {
@@ -742,14 +705,10 @@ static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 		lp->tx_bd_tail %= TX_BD_NUM;
 		cur_p = &lp->tx_bd_v[lp->tx_bd_tail];
 		frag = &skb_shinfo(skb)->frags[ii];
-		if (lp->use_acpport)
-			cur_p->phys = virt_to_phys(skb_frag_address(frag));
-		else
-			cur_p->phys = dma_map_single(ndev->dev.parent,
-						skb_frag_address(frag),
-						skb_frag_size(frag),
-						DMA_TO_DEVICE);
-
+		cur_p->phys = dma_map_single(ndev->dev.parent,
+					     skb_frag_address(frag),
+					     skb_frag_size(frag),
+					     DMA_TO_DEVICE);
 		cur_p->cntrl = skb_frag_size(frag);
 	}
 
@@ -805,10 +764,9 @@ static int axienet_recv(struct net_device *ndev, int budget)
 		else
 			length = cur_p->app4 & 0x0000FFFF;
 
-		if (!lp->use_acpport)
-			dma_unmap_single(ndev->dev.parent, cur_p->phys,
-					 lp->max_frm_size,
-					 DMA_FROM_DEVICE);
+		dma_unmap_single(ndev->dev.parent, cur_p->phys,
+				 lp->max_frm_size,
+				 DMA_FROM_DEVICE);
 
 		skb_put(skb, length);
 		skb->protocol = eth_type_trans(skb, ndev);
@@ -841,14 +799,9 @@ static int axienet_recv(struct net_device *ndev, int budget)
 			break;
 		}
 
-		if (lp->use_acpport)
-			cur_p->phys = virt_to_phys(new_skb->data);
-		else
-			cur_p->phys = dma_map_single(ndev->dev.parent,
-						new_skb->data,
-						lp->max_frm_size,
-						DMA_FROM_DEVICE);
-
+		cur_p->phys = dma_map_single(ndev->dev.parent, new_skb->data,
+					     lp->max_frm_size,
+					     DMA_FROM_DEVICE);
 		cur_p->cntrl = lp->max_frm_size;
 		cur_p->status = 0;
 		cur_p->sw_id_offset = (u32) new_skb;
@@ -1530,8 +1483,7 @@ static void axienet_dma_err_handler(unsigned long data)
 	for (i = 0; i < TX_BD_NUM; i++) {
 		cur_p = &lp->tx_bd_v[i];
 		if (cur_p->phys)
-			if (!lp->use_acpport)
-				dma_unmap_single(ndev->dev.parent, cur_p->phys,
+			dma_unmap_single(ndev->dev.parent, cur_p->phys,
 					 (cur_p->cntrl &
 					  XAXIDMA_BD_CTRL_LENGTH_MASK),
 					 DMA_TO_DEVICE);
@@ -1727,8 +1679,6 @@ static int axienet_probe(struct platform_device *pdev)
 	 */
 	of_property_read_u32(pdev->dev.of_node, "xlnx,rxmem", &lp->rxmem);
 	of_property_read_u32(pdev->dev.of_node, "xlnx,phy-type", &lp->phy_type);
-	lp->use_acpport = of_property_read_bool(pdev->dev.of_node,
-						"xlnx,has-acp");
 	if (of_device_is_compatible(pdev->dev.of_node, "xlnx,ten-gig-eth-mac"))
 		lp->is_10Gmac = 1;
 
