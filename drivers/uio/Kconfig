@@ -157,7 +157,7 @@ config UIO_MF624
 
 config UIO_XILINX_APM
 	tristate "Xilinx AXI Performance Monitor driver"
-	depends on MICROBLAZE || ARCH_ZYNQ
+	depends on MICROBLAZE || ARCH_ZYNQ || ARCH_ZYNQMP
 	help
 	  This driver is developed for AXI Performance Monitor IP, designed to
 	  monitor AXI4 traffic for performance analysis of AXI bus in the
