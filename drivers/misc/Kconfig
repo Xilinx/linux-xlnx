@@ -778,6 +778,7 @@ config XILINX_TRAFGEN
 
 	  If unsure, say N
 
+source "drivers/misc/jesd204b/Kconfig"
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"
