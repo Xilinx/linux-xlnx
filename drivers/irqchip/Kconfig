@@ -126,7 +126,7 @@ config VERSATILE_FPGA_IRQ_NR
 
 config XILINX_INTC
 	bool "Xilinx Interrupt Controller (IP core)"
-	depends on ARCH_ZYNQ
+	depends on ARCH_ZYNQ || ARCH_ZYNQMP
 	select IRQ_DOMAIN
 	help
 	  Support for the Xilinx Interrupt Controller which can be used
