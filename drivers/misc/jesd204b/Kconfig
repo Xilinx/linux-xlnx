@@ -1,0 +1,16 @@
+#
+# Jesd204b support
+#
+
+config XILINX_JESD204B
+	tristate "Xilinx JESD204B"
+	help
+	  This option enables support for the Xilinx JESD204B driver.
+	  It is designed to allow user to access JESD204B IP registers
+	  with sysfs entries. JESD204B is the protocol used by High-Speed
+	  data converters to transfer data to FPGA/ASIC.
+
+	  If unsure, say N.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called jesd204b.

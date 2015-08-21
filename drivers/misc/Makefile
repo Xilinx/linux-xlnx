@@ -59,3 +59,4 @@ obj-$(CONFIG_XILINX_SDFEC)	+= xilinx_sdfec.o
 obj-$(CONFIG_HISI_HIKEY_USB)	+= hisi_hikey_usb.o
 obj-$(CONFIG_XILINX_FLEX_PM)	+= xilinx_flex_pm.o
 obj-$(CONFIG_XILINX_TRAFGEN)	+= xilinx_trafgen.o
+obj-$(CONFIG_XILINX_JESD204B)	+= jesd204b/
