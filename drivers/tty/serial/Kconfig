@@ -604,7 +604,7 @@ config SERIAL_IMX_CONSOLE
 
 config SERIAL_UARTLITE
 	tristate "Xilinx uartlite serial port support"
-	depends on PPC32 || MICROBLAZE || MFD_TIMBERDALE || ARCH_ZYNQ
+	depends on PPC32 || MICROBLAZE || MFD_TIMBERDALE || ARCH_ZYNQ || ARCH_ZYNQMP
 	select SERIAL_CORE
 	help
 	  Say Y here if you want to use the Xilinx uartlite serial controller.
