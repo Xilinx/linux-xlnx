@@ -12,8 +12,6 @@
 #include <linux/clk-provider.h>
 #include <linux/debugfs.h>
 #include <linux/delay.h>
-#include <linux/dmaengine.h>
-#include <linux/dma-mapping.h>
 #include <linux/errno.h>
 #include <linux/init.h>
 #include <linux/io.h>
@@ -26,16 +24,6 @@
 
 #include "xilinx_jesd204b.h"
 
-struct jesd204b_state {
-	struct device	*dev;
-	void __iomem	*regs;
-	struct clk	*clk;
-	u32		lanes;
-	u32		vers_id;
-	u32		addr;
-	u32		transmit;
-	unsigned long	rate;
-};
 
 struct child_clk {
 	struct clk_hw		hw;
@@ -99,8 +87,8 @@ static ssize_t jesd204b_laneinfo_read(struct device *dev,
 	val1 = jesd204b_read(st, XLNX_JESD204_REG_SC2_ADJ_CTRL(lane));
 	val2 = jesd204b_read(st, XLNX_JESD204_REG_LANE_VERSION(lane));
 	ret += sprintf(buf + ret,
-		       "ADJCNT: %d, PHYADJ: %d, ADJDIR: %d, JESDV: %d,"
-		       "SUBCLASS: %d\n", XLNX_JESD204_LANE_ADJ_CNT(val1),
+		"ADJCNT: %d, PHYADJ: %d, ADJDIR: %d, JESDV: %d, SUBCLASS: %d\n",
+		       XLNX_JESD204_LANE_ADJ_CNT(val1),
 		       XLNX_JESD204_LANE_PHASE_ADJ_REQ(val1),
 		       XLNX_JESD204_LANE_ADJ_CNT_DIR(val1),
 		       XLNX_JESD204_LANE_JESDV(val2),
@@ -248,8 +236,9 @@ static const struct clk_ops clkout_ops = {
 
 /* Match table for of_platform binding */
 static const struct of_device_id jesd204b_of_match[] = {
-	{ .compatible = "xlnx,jesd204-5.1", .data = (void *) 51},
-	{ .compatible = "xlnx,jesd204-5.2", .data = (void *) 51},
+	{ .compatible = "xlnx,jesd204-5.1",},
+	{ .compatible = "xlnx,jesd204-5.2",},
+	{ .compatible = "xlnx,jesd204-6.1",},
 	{ /* end of list */ },
 };
 MODULE_DEVICE_TABLE(of, jesd204b_of_match);
@@ -261,14 +250,8 @@ static int jesd204b_probe(struct platform_device *pdev)
 	struct clk *clk;
 	struct child_clk *clk_priv;
 	struct clk_init_data init;
-	const char *parent_name;
-	const char *clk_name;
-	struct clk *clk_out;
 	unsigned frmcnt, bytecnt, subclass, val;
 	int ret;
-
-	const struct of_device_id *of_id = of_match_device(jesd204b_of_match,
-							   &pdev->dev);
 
 	clk = devm_clk_get(&pdev->dev, NULL);
 	if (IS_ERR(clk))
@@ -280,18 +263,18 @@ static int jesd204b_probe(struct platform_device *pdev)
 
 	mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	st->regs = devm_ioremap_resource(&pdev->dev, mem);
-	if (IS_ERR(st->regs))
+	if (IS_ERR(st->regs)) {
+		dev_err(&pdev->dev, "Failed ioremap\n");
 		return PTR_ERR(st->regs);
+	}
 
 	st->dev = &pdev->dev;
 
 	platform_set_drvdata(pdev, st);
 
 	st->clk = clk;
+	clk_set_rate(st->clk, 156250000);
 	st->rate = clk_get_rate(clk);
-
-	if (of_id && of_id->data)
-		st->vers_id = (unsigned) of_id->data;
 
 	ret = of_property_read_u32(pdev->dev.of_node,
 				   "xlnx,frames-per-multiframe", &frmcnt);
@@ -323,6 +306,8 @@ static int jesd204b_probe(struct platform_device *pdev)
 		st->lanes = jesd204b_read(st, XLNX_JESD204_REG_LANES) + 1;
 
 	jesd204b_write(st, XLNX_JESD204_REG_RESET, XLNX_JESD204_RESET);
+	while (!jesd204b_read(st, XLNX_JESD204_REG_RESET))
+		msleep(1);
 
 	jesd204b_write(st, XLNX_JESD204_REG_ILA_CTRL,
 		       (of_property_read_bool(pdev->dev.of_node,
@@ -351,7 +336,6 @@ static int jesd204b_probe(struct platform_device *pdev)
 	device_create_file(&pdev->dev, &dev_attr_reg_access);
 
 	device_create_file(&pdev->dev, &dev_attr_sync_status);
-
 	switch (st->lanes) {
 	case 8:
 		device_create_file(&pdev->dev, &dev_attr_lane4_info);
@@ -368,6 +352,7 @@ static int jesd204b_probe(struct platform_device *pdev)
 			device_create_file(&pdev->dev,
 					   &dev_attr_lane7_syncstat);
 		}
+		/* fall through */
 	case 4:
 		device_create_file(&pdev->dev, &dev_attr_lane2_info);
 		device_create_file(&pdev->dev, &dev_attr_lane3_info);
@@ -377,11 +362,13 @@ static int jesd204b_probe(struct platform_device *pdev)
 			device_create_file(&pdev->dev,
 					   &dev_attr_lane3_syncstat);
 		}
+		/* fall through */
 	case 2:
 		device_create_file(&pdev->dev, &dev_attr_lane1_info);
 		if (!st->transmit)
 			device_create_file(&pdev->dev,
 					   &dev_attr_lane1_syncstat);
+		/* fall through */
 	case 1:
 		device_create_file(&pdev->dev, &dev_attr_lane0_info);
 		if (!st->transmit)
@@ -402,29 +389,16 @@ static int jesd204b_probe(struct platform_device *pdev)
 	clk_priv->rate = st->rate;
 	clk_priv->st = st;
 
-	ret = of_property_read_string(pdev->dev.of_node, "clock-output-names",
-				      &clk_name);
-	if (ret < 0)
+	ret = clk_prepare_enable(clk);
+	if (ret) {
+		dev_err(&pdev->dev, "Unable to enable clock.\n");
 		return ret;
-
-	init.name = clk_name;
-	init.ops = &clkout_ops;
-	init.flags = 0;
-
-	parent_name = of_clk_get_parent_name(pdev->dev.of_node, 0);
-	init.parent_names = &parent_name;
-	init.num_parents = 1;
-
-	clk_out = clk_register(&pdev->dev, &clk_priv->hw);
-	if (IS_ERR(clk_out))
-		kfree(clk_priv);
-
-	of_clk_add_provider(pdev->dev.of_node, of_clk_src_simple_get, clk_out);
-
+	}
 	val = jesd204b_read(st, XLNX_JESD204_REG_VERSION);
 
-	dev_info(&pdev->dev, "AXI-JESD204B %d.%d Rev %d, at 0x%08llX "
-		 "mapped to 0x%p", XLNX_JESD204_VERSION_MAJOR(val),
+	dev_info(&pdev->dev,
+		 "AXI-JESD204B %d.%d Rev %d, at 0x%08llX mapped to 0x%p",
+		 XLNX_JESD204_VERSION_MAJOR(val),
 		 XLNX_JESD204_VERSION_MINOR(val),
 		 XLNX_JESD204_VERSION_REV(val),
 		 (unsigned long long)mem->start, st->regs);

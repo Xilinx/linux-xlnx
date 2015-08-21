@@ -9,7 +9,21 @@
  */
 
 #ifndef XILINX_JESD204B_H_
-#define XILIXN_JESD204B_H_
+#define XILINX_JESD204B_H_
+
+struct jesd204b_state {
+	struct device	*dev;
+	void __iomem	*regs;
+	void __iomem	*phy;
+	struct clk	*clk;
+	u32		lanes;
+	u32		vers_id;
+	u32		addr;
+	u32		band;
+	u32		transmit;
+	u32		pll;
+	unsigned long	rate;
+};
 
 #define XLNX_JESD204_REG_VERSION		0x000
 #define XLNX_JESD204_VERSION_MAJOR(x)		(((x) >> 24) & 0xFF)

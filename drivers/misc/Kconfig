@@ -528,17 +528,7 @@ config XILINX_TRAFGEN
 
 	  If unsure, say N
 
-config XILINX_JESD204B
-	tristate "Xilinx JESD204B"
-	depends on MICROBLAZE
-	help
-	  This option enables support for the Xilinx JESD204B driver.
-	  It is designed to allow user to access JESD204B IP registers
-	  with sysfs entries. JESD204B is the protocol used by High-Speed
-	  data converters to transfer data to FPGA/ASIC.
-
-	  If unsure, say N
-
+source "drivers/misc/jesd204b/Kconfig"
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
 source "drivers/misc/cb710/Kconfig"
