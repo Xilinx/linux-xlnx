@@ -341,6 +341,16 @@
 
 #define DELAY_OF_ONE_MILLISEC		1000
 
+#define XAXIENET_NAPI_WEIGHT		64
+
+/* Read/Write access to the registers */
+#ifndef out_be32
+#if defined(CONFIG_ARCH_ZYNQ) || defined(CONFIG_ARCH_ZYNQMP)
+#define in_be32(offset)		__raw_readl(offset)
+#define out_be32(offset, val)	__raw_writel(val, offset)
+#endif
+#endif
+
 /**
  * struct axidma_bd - Axi Dma buffer descriptor layout
  * @next:         MM2S/S2MM Next Descriptor Pointer
