@@ -489,8 +489,8 @@ static int zynqmp_r5_rproc_start(struct rproc *rproc)
 		local->bootmem == OCM ? "OCM" : "TCM");
 
 	local->rpu_ops->core_conf(local);
-	local->rpu_ops->en_reset(local, true);
 	local->rpu_ops->halt(local, true);
+	local->rpu_ops->en_reset(local, true);
 	local->rpu_ops->bootdev(local);
 	/* Add delay before release from halt and reset */
 	udelay(500);
@@ -531,8 +531,8 @@ static int zynqmp_r5_rproc_stop(struct rproc *rproc)
 
 	dev_dbg(dev, "%s\n", __func__);
 
-	local->rpu_ops->en_reset(local, true);
 	local->rpu_ops->halt(local, true);
+	local->rpu_ops->en_reset(local, true);
 
 	local->ipi_ops->reset(local);
 
@@ -558,7 +558,6 @@ static void zynqmp_r5_rproc_init(struct rproc *rproc)
 
 	dev_dbg(dev, "%s\n", __func__);
 
-	local->rpu_ops->en_reset(local, true);
 	local->rpu_ops->halt(local, true);
 	local->rpu_ops->en_reset(local, false);
 }
