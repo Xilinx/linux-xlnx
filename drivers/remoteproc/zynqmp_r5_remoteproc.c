@@ -658,7 +658,7 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 	if (method == HW) {
 		res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
 			"rpu_base");
-		local->rpu_base = devm_ioremap_resource(&pdev->dev, res);
+		local->rpu_base = devm_ioremap(&pdev->dev, res->start, resource_size(res));
 		if (IS_ERR(local->rpu_base)) {
 			dev_err(&pdev->dev, "Unable to map RPU I/O memory\n");
 			ret = PTR_ERR(local->rpu_base);
@@ -667,7 +667,7 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 
 		res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
 			"apb_base");
-		local->crl_apb_base = devm_ioremap_resource(&pdev->dev, res);
+		local->crl_apb_base = devm_ioremap(&pdev->dev, res->start, resource_size(res));
 		if (IS_ERR(local->crl_apb_base)) {
 			dev_err(&pdev->dev, "Unable to map CRL_APB I/O memory\n");
 			ret = PTR_ERR(local->crl_apb_base);
@@ -675,7 +675,7 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 		}
 
 		res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "ipi");
-		local->ipi_base = devm_ioremap_resource(&pdev->dev, res);
+		local->ipi_base = devm_ioremap(&pdev->dev, res->start, resource_size(res));
 		if (IS_ERR(local->ipi_base)) {
 			pr_err("%s: Unable to map IPI\n", __func__);
 			ret = PTR_ERR(local->ipi_base);
