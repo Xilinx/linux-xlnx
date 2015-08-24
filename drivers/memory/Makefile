@@ -13,6 +13,6 @@ obj-$(CONFIG_FSL_CORENET_CF)	+= fsl-corenet-cf.o
 obj-$(CONFIG_FSL_IFC)		+= fsl_ifc.o
 obj-$(CONFIG_MVEBU_DEVBUS)	+= mvebu-devbus.o
 obj-$(CONFIG_TEGRA20_MC)	+= tegra20-mc.o
-obj-$(CONFIG_PL353_SMC)		+= pl353-smc.o
+obj-$(CONFIG_PL353_SMC)		+= pl35x-smc.o
 
 obj-$(CONFIG_TEGRA_MC)		+= tegra/
