@@ -17,7 +17,7 @@
 #include <linux/io.h>
 #include <linux/ioport.h>
 #include <linux/irq.h>
-#include <linux/memory/pl353-smc.h>
+#include <linux/memory/pl35x-smc.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/mtd/mtd.h>
