@@ -554,7 +554,6 @@ static void zynqmp_r5_rproc_init(struct rproc *rproc)
 	struct device *dev = rproc->dev.parent;
 	struct platform_device *pdev = to_platform_device(dev);
 	struct zynqmp_r5_rproc_pdata *local = platform_get_drvdata(pdev);
-	void *r5_mem_ptr = 0;
 
 	dev_dbg(dev, "%s\n", __func__);
 
