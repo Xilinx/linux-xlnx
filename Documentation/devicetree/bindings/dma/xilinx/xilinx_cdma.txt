@@ -25,7 +25,7 @@ Example:
 
 axi_cdma_0: axicdma@7e200000 {
        compatible = "xlnx,axi-cdma-1.00.a";
-       #dma_cells = <1>;
+       #dma-cells = <1>;
        reg = < 0x7e200000 0x10000 >;
        dma-channel@7e200000 {
                compatible = "xlnx,axi-cdma-channel";

@@ -39,7 +39,7 @@ Example:
 
 axi_vdma_0: axivdma@40030000 {
 	compatible = "xlnx,axi-vdma-1.00.a";
-	#dma_cells = <1>;
+	#dma-cells = <1>;
 	reg = < 0x40030000 0x10000 >;
 	xlnx,num-fstores = <0x8>;
 	xlnx,flush-fsync = <0x1>;
