@@ -484,12 +484,12 @@ static enum dma_status xilinx_dma_tx_status(struct dma_chan *dchan,
 					    struct dma_tx_state *txstate)
 {
 	struct xilinx_dma_chan *chan = to_xilinx_chan(dchan);
-	struct xilinx_dma_tx_descriptor *desc;
+	struct xilinx_dma_tx_descriptor *desc = chan->active_desc;
 	struct xilinx_dma_tx_segment *segment;
 	struct xilinx_dma_desc_hw *hw;
 	enum dma_status ret;
 	unsigned long flags;
-	u32 residue;
+	u32 residue = 0;
 
 	ret = dma_cookie_status(dchan, cookie, txstate);
 	if (ret == DMA_COMPLETE || !txstate)
