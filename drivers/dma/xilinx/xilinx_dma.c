@@ -497,9 +497,7 @@ static enum dma_status xilinx_dma_tx_status(struct dma_chan *dchan,
 
 	spin_lock_irqsave(&chan->lock, flags);
 	if (chan->has_sg) {
-		while (!list_empty(&desc->segments)) {
-			segment = list_first_entry(&desc->segments,
-					struct xilinx_dma_tx_segment, node);
+		list_for_each_entry(segment, &desc->segments, node) {
 			hw = &segment->hw;
 			residue += (hw->control - hw->status) &
 				   XILINX_DMA_MAX_TRANS_LEN;
