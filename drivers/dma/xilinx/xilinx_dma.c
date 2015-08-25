@@ -503,10 +503,10 @@ static enum dma_status xilinx_dma_tx_status(struct dma_chan *dchan,
 				   XILINX_DMA_MAX_TRANS_LEN;
 		}
 	}
+	spin_unlock_irqrestore(&chan->lock, flags);
 
 	chan->residue = residue;
 	dma_set_residue(txstate, chan->residue);
-	spin_unlock_irqrestore(&chan->lock, flags);
 
 	return ret;
 }
