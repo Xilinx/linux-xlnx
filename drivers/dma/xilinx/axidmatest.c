@@ -340,11 +340,11 @@ static int dmatest_slave_func(void *data)
 		/* Only one interrupt */
 		config.coalesc = 1;
 		config.delay = 0;
-		xilinx_dma_channel_set_config(rx_chan, (unsigned long)&config);
+		xilinx_dma_channel_set_config(rx_chan, &config);
 
 		config.coalesc = 1;
 		config.delay = 0;
-		xilinx_dma_channel_set_config(tx_chan, (unsigned long)&config);
+		xilinx_dma_channel_set_config(tx_chan, &config);
 
 		rxd = rx_dev->device_prep_slave_sg(rx_chan, rx_sg, bd_cnt,
 				DMA_DEV_TO_MEM, flags, NULL);
