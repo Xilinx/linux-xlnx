@@ -935,7 +935,7 @@ static int zynqmp_pm_api_debugfs_remove(void)
 }
 #endif /* CONFIG_ZYNQMP_PM_API_DEBUGFS */
 
-static const struct of_device_id pm_of_match[] __initconst = {
+static const struct of_device_id pm_of_match[] = {
 	{ .compatible = "xlnx,zynqmp-pm", },
 	{ /* end of table */ },
 };
