@@ -133,6 +133,9 @@ static noinline int do_fw_call_smc(u64 arg0, u64 arg1, u64 arg2,
 		__asmeq("%2", "x2")
 		"smc	#0\n"
 		: "+r" (arg0), "+r" (arg1), "+r" (arg2)
+		: /* no input only */
+		: "x3", "x4", "x5", "x6", "x7", "x8", "x9", "x10", "x11", "x12",
+		  "x13", "x14", "x15", "x16", "x17"
 		);
 
 	if (ret_payload != NULL) {
@@ -172,6 +175,9 @@ static noinline int do_fw_call_hvc(u64 arg0, u64 arg1, u64 arg2,
 		__asmeq("%2", "x2")
 		"hvc	#0\n"
 		: "+r" (arg0), "+r" (arg1), "+r" (arg2)
+		: /* no input only */
+		: "x3", "x4", "x5", "x6", "x7", "x8", "x9", "x10", "x11", "x12",
+		  "x13", "x14", "x15", "x16", "x17"
 		);
 
 	if (ret_payload != NULL) {
