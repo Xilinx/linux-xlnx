@@ -77,10 +77,6 @@ int zynqmp_pm_request_suspend(const u32 node,
 				      const enum zynqmp_pm_request_ack ack,
 				      const u32 latency,
 				      const u32 state);
-int zynqmp_pm_self_suspend(const u32 node,
-				const u32 latency,
-				const u32 state);
-int zynqmp_pm_abort_suspend(const enum zynqmp_pm_abort_reason reason);
 int zynqmp_pm_request_wakeup(const u32 node,
 				     const enum zynqmp_pm_request_ack ack);
 int zynqmp_pm_set_wakeup_source(const u32 target,
@@ -110,10 +106,6 @@ int zynqmp_pm_set_max_latency(const u32 node,
 int zynqmp_pm_get_api_version(u32 *version);
 int zynqmp_pm_set_configuration(const u32 physical_addr);
 int zynqmp_pm_get_node_status(const u32 node);
-int zynqmp_pm_register_notifier(const u32 node,
-					const u32 event,
-					const u32 wake,
-					const u32 enable);
 int zynqmp_pm_get_operating_characteristic(const u32 node,
 					const enum zynqmp_pm_opchar_type type);
 
