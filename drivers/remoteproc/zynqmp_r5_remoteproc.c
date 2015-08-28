@@ -558,6 +558,7 @@ static void zynqmp_r5_rproc_init(struct rproc *rproc)
 
 	dev_dbg(dev, "%s\n", __func__);
 
+	local->rpu_ops->core_conf(local);
 	local->rpu_ops->halt(local, true);
 	local->rpu_ops->en_reset(local, false);
 }
