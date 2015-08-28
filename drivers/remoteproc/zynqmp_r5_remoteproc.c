@@ -55,6 +55,7 @@
 #define CPU_R5_CTRL_OFFSET	0x00000090 /* RPU Global Control*/
 #define RST_LPD_TOP_OFFSET	0x0000023C /* LPD block */
 #define RPU0_RESET_BIT		BIT(0) /* RPU CPU0 reset bit */
+#define RPU_AMBA_RST_MASK	BIT(2) /* RPU AMBA reset bit */
 
 /* IPI reg offsets */
 #define TRIG_OFFSET		0x00000000
@@ -220,7 +221,7 @@ static void hw_r5_reset(struct zynqmp_r5_rproc_pdata *pdata,
 	if (do_reset)
 		tmp |= (RPU0_RESET_BIT << pdata->rpu_id);
 	else
-		tmp &= ~(RPU0_RESET_BIT << pdata->rpu_id);
+		tmp &= ~((RPU0_RESET_BIT << pdata->rpu_id) | RPU_AMBA_RST_MASK);
 	reg_write(pdata->crl_apb_base, RST_LPD_TOP_OFFSET, tmp);
 }
 
