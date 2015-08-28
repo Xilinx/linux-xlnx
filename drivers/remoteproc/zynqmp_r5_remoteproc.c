@@ -56,6 +56,7 @@
 #define RST_LPD_TOP_OFFSET	0x0000023C /* LPD block */
 #define RPU0_RESET_BIT		BIT(0) /* RPU CPU0 reset bit */
 #define RPU_AMBA_RST_MASK	BIT(2) /* RPU AMBA reset bit */
+#define RPU_CLKACT_MASK		BIT(24) /* RPU clock active bit */
 
 /* IPI reg offsets */
 #define TRIG_OFFSET		0x00000000
@@ -111,12 +112,14 @@ struct ipi_ops {
  * @core_conf:      Core configuration
  * @halt:           Enable/Disable halt
  * @en_reset:       Enable/Disable reset
+ * @en_clock:       Enable clock
  */
 struct rpu_ops {
 	void (*bootdev)(struct zynqmp_r5_rproc_pdata *pdata);
 	void (*core_conf)(struct zynqmp_r5_rproc_pdata *pdata);
 	void (*halt)(struct zynqmp_r5_rproc_pdata *pdata, bool do_halt);
 	void (*en_reset)(struct zynqmp_r5_rproc_pdata *pdata, bool do_reset);
+	void (*en_clock)(struct zynqmp_r5_rproc_pdata *pdata);
 };
 
 /* enumerations for RPU/IPI control methods */
@@ -262,11 +265,26 @@ static void hw_r5_core_config(struct zynqmp_r5_rproc_pdata *pdata)
 	reg_write(pdata->rpu_base, 0, tmp);
 }
 
+static void hw_r5_enable_clock(struct zynqmp_r5_rproc_pdata *pdata)
+{
+	u32 tmp;
+
+	pr_debug("%s: mode: %d\n", __func__, pdata->rpu_mode);
+	tmp = reg_read(pdata->crl_apb_base, CPU_R5_CTRL_OFFSET);
+	if (!(tmp & RPU_CLKACT_MASK)) {
+		tmp |= RPU_CLKACT_MASK;
+		reg_write(pdata->crl_apb_base, CPU_R5_CTRL_OFFSET, tmp);
+		/* Give some delay for clock to propogate */
+		udelay(500);
+	}
+}
+
 static struct rpu_ops rpu_hw_ops = {
 	.bootdev       = hw_r5_boot_dev,
 	.core_conf     = hw_r5_core_config,
 	.halt          = hw_r5_halt,
-	.en_reset         = hw_r5_reset,
+	.en_reset      = hw_r5_reset,
+	.en_clock      = hw_r5_enable_clock,
 };
 
 static void smc_r5_boot_dev(struct zynqmp_r5_rproc_pdata *pdata)
@@ -291,11 +309,17 @@ static void smc_r5_core_config(struct zynqmp_r5_rproc_pdata *pdata)
 	pr_err("%s: atf smc to be implemented\n", __func__);
 }
 
+static void smc_r5_enable_clock(struct zynqmp_r5_rproc_pdata *pdata)
+{
+	pr_err("%s: atf smc to be implemented\n", __func__);
+}
+
 static struct rpu_ops rpu_smc_ops = {
 	.bootdev       = smc_r5_boot_dev,
 	.core_conf     = smc_r5_core_config,
 	.halt          = smc_r5_halt,
 	.en_reset      = smc_r5_reset,
+	.en_clock      = smc_r5_enable_clock,
 };
 
 static void hvc_r5_boot_dev(struct zynqmp_r5_rproc_pdata *pdata)
@@ -318,11 +342,17 @@ static void hvc_r5_core_config(struct zynqmp_r5_rproc_pdata *pdata)
 	pr_err("%s: hypervisor hvc to be implemented\n", __func__);
 }
 
+static void hvc_r5_enable_clock(struct zynqmp_r5_rproc_pdata *pdata)
+{
+	pr_err("%s: hypervisor hvc to be implemented\n", __func__);
+}
+
 static struct rpu_ops rpu_hvc_ops = {
 	.bootdev       = hvc_r5_boot_dev,
 	.core_conf     = hvc_r5_core_config,
 	.halt          = hvc_r5_halt,
 	.en_reset      = hvc_r5_reset,
+	.en_clock      = hvc_r5_enable_clock,
 };
 
 /*
@@ -561,6 +591,7 @@ static void zynqmp_r5_rproc_init(struct rproc *rproc)
 	local->rpu_ops->core_conf(local);
 	local->rpu_ops->halt(local, true);
 	local->rpu_ops->en_reset(local, false);
+	local->rpu_ops->en_clock(local);
 }
 
 static irqreturn_t r5_remoteproc_interrupt(int irq, void *dev_id)
