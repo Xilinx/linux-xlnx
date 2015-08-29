@@ -23,6 +23,7 @@
 #include <linux/init.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
+#include <linux/iopoll.h>
 #include <linux/module.h>
 #include <linux/of_address.h>
 #include <linux/of_dma.h>
@@ -82,6 +83,10 @@
 /* Maximum number of Descriptors */
 #define XILINX_DMA_NUM_DESCS		64
 #define XILINX_DMA_NUM_APP_WORDS	5
+
+#define xilinx_dma_poll_timeout(chan, reg, val, cond, delay_us, timeout_us) \
+	readl_poll_timeout(chan->xdev->regs + chan->ctrl_offset + reg, val, \
+			   cond, delay_us, timeout_us)
 
 /**
  * struct xilinx_dma_desc_hw - Hardware Descriptor
@@ -548,19 +553,18 @@ static bool xilinx_dma_is_idle(struct xilinx_dma_chan *chan)
  */
 static void xilinx_dma_halt(struct xilinx_dma_chan *chan)
 {
-	int loop = XILINX_DMA_LOOP_COUNT;
+	int err = 0;
+	u32 val;
 
 	chan->ctrl_reg &= ~XILINX_DMA_CR_RUNSTOP_MASK;
 	dma_ctrl_write(chan, XILINX_DMA_REG_CONTROL, chan->ctrl_reg);
 
 	/* Wait for the hardware to halt */
-	do {
-		if (dma_ctrl_read(chan, XILINX_DMA_REG_STATUS) &
-			XILINX_DMA_SR_HALTED_MASK)
-			break;
-	} while (loop--);
+	err = xilinx_dma_poll_timeout(chan, XILINX_DMA_REG_STATUS, val,
+				      (val & XILINX_DMA_SR_HALTED_MASK), 10,
+				      XILINX_DMA_LOOP_COUNT);
 
-	if (!loop) {
+	if (err) {
 		dev_err(chan->dev, "Cannot stop channel %p: %x\n",
 			chan, dma_ctrl_read(chan, XILINX_DMA_REG_STATUS));
 		chan->err = true;
@@ -573,19 +577,18 @@ static void xilinx_dma_halt(struct xilinx_dma_chan *chan)
  */
 static void xilinx_dma_start(struct xilinx_dma_chan *chan)
 {
-	int loop = XILINX_DMA_LOOP_COUNT;
+	int err = 0;
+	u32 val;
 
 	chan->ctrl_reg |= XILINX_DMA_CR_RUNSTOP_MASK;
 	dma_ctrl_write(chan, XILINX_DMA_REG_CONTROL, chan->ctrl_reg);
 
 	/* Wait for the hardware to start */
-	do {
-		if (!dma_ctrl_read(chan, XILINX_DMA_REG_STATUS) &
-			XILINX_DMA_SR_HALTED_MASK)
-			break;
-	} while (loop--);
+	err = xilinx_dma_poll_timeout(chan, XILINX_DMA_REG_STATUS, val,
+				      !(val & XILINX_DMA_SR_HALTED_MASK), 10,
+				      XILINX_DMA_LOOP_COUNT);
 
-	if (!loop) {
+	if (err) {
 		dev_err(chan->dev, "Cannot start channel %p: %x\n",
 			 chan, dma_ctrl_read(chan, XILINX_DMA_REG_STATUS));
 		chan->err = true;
@@ -716,30 +719,26 @@ static void xilinx_dma_complete_descriptor(struct xilinx_dma_chan *chan)
 }
 
 /**
- * xilinx_dma_reset - Reset DMA channel
+ * xilinx_dma_chan_reset - Reset DMA channel
  * @chan: Driver specific DMA channel
  *
  * Return: '0' on success and failure value on error
  */
 static int xilinx_dma_chan_reset(struct xilinx_dma_chan *chan)
 {
-	int loop = XILINX_DMA_LOOP_COUNT;
-	u32 tmp;
-
-	dma_ctrl_set(chan, XILINX_DMA_REG_CONTROL,
-		     XILINX_DMA_CR_RESET_MASK);
+	int err = 0;
+	u32 val;
 
 	chan->ctrl_reg = dma_ctrl_read(chan, XILINX_DMA_REG_CONTROL);
 	dma_ctrl_write(chan, XILINX_DMA_REG_CONTROL, chan->ctrl_reg |
 		       XILINX_DMA_CR_RESET_MASK);
 
 	/* Wait for the hardware to finish reset */
-	do {
-		tmp = dma_ctrl_read(chan, XILINX_DMA_REG_CONTROL) &
-		      XILINX_DMA_CR_RESET_MASK;
-	} while (loop-- && tmp);
+	err = xilinx_dma_poll_timeout(chan, XILINX_DMA_REG_CONTROL, val,
+				      !(val & XILINX_DMA_CR_RESET_MASK), 10,
+				      XILINX_DMA_LOOP_COUNT);
 
-	if (!loop) {
+	if (err) {
 		dev_err(chan->dev, "reset timeout, cr %x, sr %x\n",
 			dma_ctrl_read(chan, XILINX_DMA_REG_CONTROL),
 			dma_ctrl_read(chan, XILINX_DMA_REG_STATUS));
@@ -748,7 +747,7 @@ static int xilinx_dma_chan_reset(struct xilinx_dma_chan *chan)
 
 	chan->err = false;
 
-	return 0;
+	return err;
 }
 
 /**
