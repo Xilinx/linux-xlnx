@@ -81,7 +81,8 @@
 #define XILINX_DMA_LOOP_COUNT		1000000
 
 /* Maximum number of Descriptors */
-#define XILINX_DMA_NUM_DESCS		64
+#define XILINX_DMA_NUM_DESCS		255
+#define XILINX_DMA_COALESCE_MAX		255
 #define XILINX_DMA_NUM_APP_WORDS	5
 
 #define xilinx_dma_poll_timeout(chan, reg, val, cond, delay_us, timeout_us) \
@@ -155,8 +156,8 @@ struct xilinx_dma_tx_descriptor {
  * @irq: Channel IRQ
  * @id: Channel ID
  * @has_sg: Support scatter transfers
+ * @idle: Check for channel idle
  * @err: Channel has errors
- * @idle: Channel status
  * @tasklet: Cleanup work after irq
  * @residue: Residue
  * @desc_pendingcount: Descriptor pending count
@@ -200,6 +201,7 @@ struct xilinx_dma_device {
 	bool has_sg;
 };
 
+/* Macros */
 #define to_xilinx_chan(chan) \
 	container_of(chan, struct xilinx_dma_chan, common)
 #define to_dma_tx_descriptor(tx) \
@@ -236,7 +238,7 @@ static inline void dma_ctrl_write(struct xilinx_dma_chan *chan, u32 reg,
 
 #if defined(CONFIG_PHYS_ADDR_T_64BIT)
 static inline void dma_ctrl_writeq(struct xilinx_dma_chan *chan, u32 reg,
-				u64 value)
+				   u64 value)
 {
 	dma_writeq(chan, chan->ctrl_offset + reg, value);
 }
@@ -519,32 +521,6 @@ static enum dma_status xilinx_dma_tx_status(struct dma_chan *dchan,
 	dma_set_residue(txstate, chan->residue);
 
 	return ret;
-}
-
-/**
- * xilinx_dma_is_running - Check if DMA channel is running
- * @chan: Driver specific DMA channel
- *
- * Return: 'true' if running, 'false' if not.
- */
-static bool xilinx_dma_is_running(struct xilinx_dma_chan *chan)
-{
-	return !(dma_ctrl_read(chan, XILINX_DMA_REG_STATUS) &
-		 XILINX_DMA_SR_HALTED_MASK) &&
-		(dma_ctrl_read(chan, XILINX_DMA_REG_CONTROL) &
-		 XILINX_DMA_CR_RUNSTOP_MASK);
-}
-
-/**
- * xilinx_dma_is_idle - Check if DMA channel is idle
- * @chan: Driver specific DMA channel
- *
- * Return: 'true' if idle, 'false' if not.
- */
-static bool xilinx_dma_is_idle(struct xilinx_dma_chan *chan)
-{
-	return dma_ctrl_read(chan, XILINX_DMA_REG_STATUS) &
-		XILINX_DMA_SR_IDLE_MASK;
 }
 
 /**
