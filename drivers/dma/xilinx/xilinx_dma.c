@@ -1012,36 +1012,6 @@ static int xilinx_dma_terminate_all(struct dma_chan *dchan)
 }
 
 /**
- * xilinx_dma_channel_set_config - Configure DMA channel
- * @dchan: DMA channel
- * @cfg: DMA device configuration pointer
- * Return: '0' on success and failure value on error
- */
-int xilinx_dma_channel_set_config(struct dma_chan *dchan,
-				  struct xilinx_dma_config *cfg)
-{
-	struct xilinx_dma_chan *chan = to_xilinx_chan(dchan);
-	u32 reg = dma_ctrl_read(chan, XILINX_DMA_REG_CONTROL);
-
-	if (!xilinx_dma_is_idle(chan))
-		return -EBUSY;
-
-	if (cfg->reset)
-		return xilinx_dma_chan_reset(chan);
-
-	if (cfg->coalesc <= XILINX_DMA_CR_COALESCE_MAX)
-		reg |= cfg->coalesc << XILINX_DMA_CR_COALESCE_SHIFT;
-
-	if (cfg->delay <= XILINX_DMA_CR_DELAY_MAX)
-		reg |= cfg->delay << XILINX_DMA_CR_DELAY_SHIFT;
-
-	dma_ctrl_write(chan, XILINX_DMA_REG_CONTROL, reg);
-
-	return 0;
-}
-EXPORT_SYMBOL(xilinx_dma_channel_set_config);
-
-/**
  * xilinx_dma_chan_remove - Per Channel remove function
  * @chan: Driver specific DMA channel
  */
