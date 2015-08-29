@@ -137,6 +137,7 @@ struct xilinx_dma_tx_descriptor {
  * struct xilinx_dma_chan - Driver specific DMA channel structure
  * @xdev: Driver specific device structure
  * @ctrl_offset: Control registers offset
+ * @ctrl_reg: Control register value
  * @lock: Descriptor operation lock
  * @pending_list: Descriptors waiting
  * @active_desc: Active descriptor
@@ -157,6 +158,7 @@ struct xilinx_dma_tx_descriptor {
 struct xilinx_dma_chan {
 	struct xilinx_dma_device *xdev;
 	u32 ctrl_offset;
+	u32 ctrl_reg;
 	spinlock_t lock;
 	struct list_head pending_list;
 	struct xilinx_dma_tx_descriptor *active_desc;
@@ -232,16 +234,6 @@ static inline void dma_ctrl_writeq(struct xilinx_dma_chan *chan, u32 reg,
 	dma_writeq(chan, chan->ctrl_offset + reg, value);
 }
 #endif
-
-static inline void dma_ctrl_clr(struct xilinx_dma_chan *chan, u32 reg, u32 clr)
-{
-	dma_ctrl_write(chan, reg, dma_ctrl_read(chan, reg) & ~clr);
-}
-
-static inline void dma_ctrl_set(struct xilinx_dma_chan *chan, u32 reg, u32 set)
-{
-	dma_ctrl_write(chan, reg, dma_ctrl_read(chan, reg) | set);
-}
 
 /* -----------------------------------------------------------------------------
  * Descriptors and segments alloc and free
@@ -383,6 +375,11 @@ static int xilinx_dma_alloc_chan_resources(struct dma_chan *dchan)
 	}
 
 	dma_cookie_init(dchan);
+
+	/* Enable interrupts */
+	chan->ctrl_reg |= XILINX_DMA_XR_IRQ_ALL_MASK;
+	dma_ctrl_write(chan, XILINX_DMA_REG_CONTROL, chan->ctrl_reg);
+
 	return 0;
 }
 
@@ -545,8 +542,8 @@ static void xilinx_dma_halt(struct xilinx_dma_chan *chan)
 {
 	int loop = XILINX_DMA_LOOP_COUNT;
 
-	dma_ctrl_clr(chan, XILINX_DMA_REG_CONTROL,
-		     XILINX_DMA_CR_RUNSTOP_MASK);
+	chan->ctrl_reg &= ~XILINX_DMA_CR_RUNSTOP_MASK;
+	dma_ctrl_write(chan, XILINX_DMA_REG_CONTROL, chan->ctrl_reg);
 
 	/* Wait for the hardware to halt */
 	do {
@@ -570,8 +567,8 @@ static void xilinx_dma_start(struct xilinx_dma_chan *chan)
 {
 	int loop = XILINX_DMA_LOOP_COUNT;
 
-	dma_ctrl_set(chan, XILINX_DMA_REG_CONTROL,
-		     XILINX_DMA_CR_RUNSTOP_MASK);
+	chan->ctrl_reg |= XILINX_DMA_CR_RUNSTOP_MASK;
+	dma_ctrl_write(chan, XILINX_DMA_REG_CONTROL, chan->ctrl_reg);
 
 	/* Wait for the hardware to start */
 	do {
@@ -733,8 +730,9 @@ static int xilinx_dma_chan_reset(struct xilinx_dma_chan *chan)
 	dma_ctrl_set(chan, XILINX_DMA_REG_CONTROL,
 		     XILINX_DMA_CR_RESET_MASK);
 
-	tmp = dma_ctrl_read(chan, XILINX_DMA_REG_CONTROL) &
-	      XILINX_DMA_CR_RESET_MASK;
+	chan->ctrl_reg = dma_ctrl_read(chan, XILINX_DMA_REG_CONTROL);
+	dma_ctrl_write(chan, XILINX_DMA_REG_CONTROL, chan->ctrl_reg |
+		       XILINX_DMA_CR_RESET_MASK);
 
 	/* Wait for the hardware to finish reset */
 	do {
@@ -1014,7 +1012,8 @@ EXPORT_SYMBOL(xilinx_dma_channel_set_config);
 static void xilinx_dma_chan_remove(struct xilinx_dma_chan *chan)
 {
 	/* Disable interrupts */
-	dma_ctrl_clr(chan, XILINX_DMA_REG_CONTROL, XILINX_DMA_XR_IRQ_ALL_MASK);
+	chan->ctrl_reg &= ~XILINX_DMA_XR_IRQ_ALL_MASK;
+	dma_ctrl_write(chan, XILINX_DMA_REG_CONTROL, chan->ctrl_reg);
 
 	if (chan->irq > 0)
 		free_irq(chan->irq, chan);
