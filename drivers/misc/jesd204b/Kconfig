@@ -14,3 +14,15 @@ config XILINX_JESD204B
 
 	  To compile this driver as a module, choose M here: the
 	  module will be called jesd204b.
+
+config XILINX_JESD204B_PHY
+	tristate "JESD Phy Driver"
+	depends on XILINX_JESD204B
+	help
+	  This is JESD204b Phy Interface. It enables support for xilinx jesd204b phy
+	  controller.
+
+	  If unsure, say N.
+
+	  To compile this driver as a module, choose M here: the
+	  module will be called jesd204b_phy.
