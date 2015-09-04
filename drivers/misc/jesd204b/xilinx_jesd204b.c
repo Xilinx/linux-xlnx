@@ -276,26 +276,6 @@ static int jesd204b_probe(struct platform_device *pdev)
 	clk_set_rate(st->clk, 156250000);
 	st->rate = clk_get_rate(clk);
 
-	ret = of_property_read_u32(pdev->dev.of_node,
-				   "xlnx,frames-per-multiframe", &frmcnt);
-	if (ret) {
-		dev_err(&pdev->dev, "Failed to read required dt property\n");
-		return ret;
-	}
-
-	ret = of_property_read_u32(pdev->dev.of_node, "xlnx,bytes-per-frame",
-				   &bytecnt);
-	if (ret) {
-		dev_err(&pdev->dev, "Failed to read required dt property\n");
-		return ret;
-	}
-
-	ret = of_property_read_u32(pdev->dev.of_node, "xlnx,subclass",
-				   &subclass);
-	if (ret) {
-		dev_err(&pdev->dev, "Failed to read required dt property\n");
-		return ret;
-	}
 
 	of_property_read_u32(pdev->dev.of_node, "xlnx,node-is-transmit",
 			     &st->transmit);
@@ -322,16 +302,6 @@ static int jesd204b_probe(struct platform_device *pdev)
 			"xlnx,sysref-always-enable") ?
 			XLNX_JESD204_ALWAYS_SYSREF_EN : 0));
 
-	jesd204b_write(st, XLNX_JESD204_REG_ILA_MFC,
-		       XLNX_JESD204_ILA_MFC(frmcnt));
-
-	jesd204b_write(st, XLNX_JESD204_REG_OCTETS_PER_FRAME,
-		       XLNX_JESD204_OCTETS_PER_FRAME(bytecnt));
-
-	jesd204b_write(st, XLNX_JESD204_REG_FRAMES_PER_MFRAME,
-		       XLNX_JESD204_FRAMES_PER_MFRAME(frmcnt));
-
-	jesd204b_write(st, XLNX_JESD204_REG_SUBCLASS, subclass);
 
 	device_create_file(&pdev->dev, &dev_attr_reg_access);
 
