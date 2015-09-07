@@ -451,6 +451,20 @@ config CPU_BIG_ENDIAN
        help
          Say Y if you plan on running a kernel in big-endian mode.
 
+config CPU_ICACHE_DISABLE
+	bool "Disable I-Cache (I-bit)"
+	default n
+	help
+	  Say Y here to disable the processor instruction cache. Unless
+	  you have a reason not to or are unsure, say N.
+
+config CONFIG_CPU_DCACHE_DISABLE
+	bool "Disable D-Cache (C-bit)"
+	default n
+	help
+	  Say Y here to disable the processor data cache. Unless
+	  you have a reason not to or are unsure, say N
+
 config SMP
 	bool "Symmetric Multi-Processing"
 	help

@@ -258,4 +258,12 @@ ENDPROC(__cpu_setup)
 	.type	crval, #object
 crval:
 	.word	0xfcffffff			// clear
+#if defined(CONFIG_CPU_ICACHE_DISABLE) && defined(CONFIG_CPU_DCACHE_DISABLE)
+	.word	0x34d5c919			// set
+#elif defined(CONFIG_CPU_ICACHE_DISABLE)
+	.word	0x34d5c91d			// set
+#elif defined(CONFIG_CPU_DCACHE_DISABLE)
+	.word	0x34d5d919			// set
+#else
 	.word	0x34d5d91d			// set
+#endif
