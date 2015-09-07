@@ -458,7 +458,7 @@ config CPU_ICACHE_DISABLE
 	  Say Y here to disable the processor instruction cache. Unless
 	  you have a reason not to or are unsure, say N.
 
-config CONFIG_CPU_DCACHE_DISABLE
+config CPU_DCACHE_DISABLE
 	bool "Disable D-Cache (C-bit)"
 	default n
 	help
