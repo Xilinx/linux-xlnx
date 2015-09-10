@@ -428,7 +428,7 @@ static const struct of_device_id matches_nor[] = {
 };
 
 static const struct of_device_id matches_nand[] = {
-	{ .compatible = "arm,pl35x-nand-r2p1" },
+	{ .compatible = "arm,pl353-nand-r2p1" },
 	{}
 };
 
