@@ -328,20 +328,17 @@ static DEFINE_MUTEX(xilinx_drm_dp_sub_lock);
  * xilinx_drm_dp_sub_blend_layer_enable - Enable a layer
  * @blend: blend object
  * @layer: layer to enable
- * @bypass: bypass flag when the other layer is disabled
  *
  * Enable a layer @layer.
  */
 static void
 xilinx_drm_dp_sub_blend_layer_enable(struct xilinx_drm_dp_sub_blend *blend,
-				     struct xilinx_drm_dp_sub_layer *layer,
-				     bool bypass)
+				     struct xilinx_drm_dp_sub_layer *layer)
 {
 	u32 reg;
 
 	reg = layer->fmt->rgb ? XILINX_DP_SUB_V_BLEND_LAYER_CONTROL_RGB : 0;
-	reg |= bypass ? XILINX_DP_SUB_V_BLEND_LAYER_CONTROL_BYPASS :
-	       XILINX_DP_SUB_V_BLEND_LAYER_CONTROL_EN;
+	reg |= XILINX_DP_SUB_V_BLEND_LAYER_CONTROL_EN;
 
 	xilinx_drm_writel(blend->base,
 			  XILINX_DP_SUB_V_BLEND_LAYER_CONTROL + layer->offset,
@@ -977,11 +974,7 @@ void xilinx_drm_dp_sub_layer_enable(struct xilinx_drm_dp_sub *dp_sub,
 
 	spin_lock_irqsave(&dp_sub->lock, flags);
 	xilinx_drm_dp_sub_av_buf_enable_vid(&dp_sub->av_buf, layer);
-	xilinx_drm_dp_sub_blend_layer_enable(&dp_sub->blend, layer,
-					     !layer->other->enabled);
-	if (layer->other->enabled)
-		xilinx_drm_dp_sub_blend_layer_enable(&dp_sub->blend,
-						     layer->other, false);
+	xilinx_drm_dp_sub_blend_layer_enable(&dp_sub->blend, layer);
 	layer->enabled = true;
 	spin_unlock_irqrestore(&dp_sub->lock, flags);
 }
@@ -1002,9 +995,6 @@ void xilinx_drm_dp_sub_layer_disable(struct xilinx_drm_dp_sub *dp_sub,
 	spin_lock_irqsave(&dp_sub->lock, flags);
 	xilinx_drm_dp_sub_av_buf_disable_vid(&dp_sub->av_buf, layer);
 	xilinx_drm_dp_sub_blend_layer_disable(&dp_sub->blend, layer);
-	if (layer->other->enabled)
-		xilinx_drm_dp_sub_blend_layer_enable(&dp_sub->blend,
-						     layer->other, true);
 	layer->enabled = false;
 	spin_unlock_irqrestore(&dp_sub->lock, flags);
 }
