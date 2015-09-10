@@ -49,6 +49,7 @@
 #define XILINX_DP_SUB_V_BLEND_LAYER_CONTROL_EN			BIT(0)
 #define XILINX_DP_SUB_V_BLEND_LAYER_CONTROL_RGB			BIT(1)
 #define XILINX_DP_SUB_V_BLEND_LAYER_CONTROL_BYPASS		BIT(8)
+#define XILINX_DP_SUB_V_BLEND_NUM_COEFF				9
 #define XILINX_DP_SUB_V_BLEND_RGB2YCBCR_COEFF0			0x20
 #define XILINX_DP_SUB_V_BLEND_RGB2YCBCR_COEFF1			0x24
 #define XILINX_DP_SUB_V_BLEND_RGB2YCBCR_COEFF2			0x28
@@ -58,21 +59,34 @@
 #define XILINX_DP_SUB_V_BLEND_RGB2YCBCR_COEFF6			0x38
 #define XILINX_DP_SUB_V_BLEND_RGB2YCBCR_COEFF7			0x3c
 #define XILINX_DP_SUB_V_BLEND_RGB2YCBCR_COEFF8			0x40
-#define XILINX_DP_SUB_V_BLEND_YCBCR2RGB_COEFF0			0x44
-#define XILINX_DP_SUB_V_BLEND_YCBCR2RGB_COEFF1			0x48
-#define XILINX_DP_SUB_V_BLEND_YCBCR2RGB_COEFF2			0x4c
-#define XILINX_DP_SUB_V_BLEND_YCBCR2RGB_COEFF3			0x50
-#define XILINX_DP_SUB_V_BLEND_YCBCR2RGB_COEFF4			0x54
-#define XILINX_DP_SUB_V_BLEND_YCBCR2RGB_COEFF5			0x58
-#define XILINX_DP_SUB_V_BLEND_YCBCR2RGB_COEFF6			0x5c
-#define XILINX_DP_SUB_V_BLEND_YCBCR2RGB_COEFF7			0x60
-#define XILINX_DP_SUB_V_BLEND_YCBCR2RGB_COEFF8			0x64
-#define XILINX_DP_SUB_V_BLEND_LUMA_INCSC_OFFSET			0x68
-#define XILINX_DP_SUB_V_BLEND_CR_INCSC_OFFSET			0x6c
-#define XILINX_DP_SUB_V_BLEND_CB_INCSC_OFFSET			0x70
+#define XILINX_DP_SUB_V_BLEND_IN1CSC_COEFF0			0x44
+#define XILINX_DP_SUB_V_BLEND_IN1CSC_COEFF1			0x48
+#define XILINX_DP_SUB_V_BLEND_IN1CSC_COEFF2			0x4c
+#define XILINX_DP_SUB_V_BLEND_IN1CSC_COEFF3			0x50
+#define XILINX_DP_SUB_V_BLEND_IN1CSC_COEFF4			0x54
+#define XILINX_DP_SUB_V_BLEND_IN1CSC_COEFF5			0x58
+#define XILINX_DP_SUB_V_BLEND_IN1CSC_COEFF6			0x5c
+#define XILINX_DP_SUB_V_BLEND_IN1CSC_COEFF7			0x60
+#define XILINX_DP_SUB_V_BLEND_IN1CSC_COEFF8			0x64
+#define XILINX_DP_SUB_V_BLEND_NUM_OFFSET			3
+#define XILINX_DP_SUB_V_BLEND_LUMA_IN1CSC_OFFSET		0x68
+#define XILINX_DP_SUB_V_BLEND_CR_IN1CSC_OFFSET			0x6c
+#define XILINX_DP_SUB_V_BLEND_CB_IN1CSC_OFFSET			0x70
 #define XILINX_DP_SUB_V_BLEND_LUMA_OUTCSC_OFFSET		0x74
 #define XILINX_DP_SUB_V_BLEND_CR_OUTCSC_OFFSET			0x78
 #define XILINX_DP_SUB_V_BLEND_CB_OUTCSC_OFFSET			0x7c
+#define XILINX_DP_SUB_V_BLEND_IN2CSC_COEFF0			0x80
+#define XILINX_DP_SUB_V_BLEND_IN2CSC_COEFF1			0x84
+#define XILINX_DP_SUB_V_BLEND_IN2CSC_COEFF2			0x88
+#define XILINX_DP_SUB_V_BLEND_IN2CSC_COEFF3			0x8c
+#define XILINX_DP_SUB_V_BLEND_IN2CSC_COEFF4			0x90
+#define XILINX_DP_SUB_V_BLEND_IN2CSC_COEFF5			0x94
+#define XILINX_DP_SUB_V_BLEND_IN2CSC_COEFF6			0x98
+#define XILINX_DP_SUB_V_BLEND_IN2CSC_COEFF7			0x9c
+#define XILINX_DP_SUB_V_BLEND_IN2CSC_COEFF8			0xa0
+#define XILINX_DP_SUB_V_BLEND_LUMA_IN2CSC_OFFSET		0xa4
+#define XILINX_DP_SUB_V_BLEND_CR_IN2CSC_OFFSET			0xa8
+#define XILINX_DP_SUB_V_BLEND_CB_IN2CSC_OFFSET			0xac
 #define XILINX_DP_SUB_V_BLEND_CHROMA_KEY_ENABLE			0x1d0
 #define XILINX_DP_SUB_V_BLEND_CHROMA_KEY_COMP1			0x1d4
 #define XILINX_DP_SUB_V_BLEND_CHROMA_KEY_COMP2			0x1d8
@@ -335,7 +349,11 @@ static void
 xilinx_drm_dp_sub_blend_layer_enable(struct xilinx_drm_dp_sub_blend *blend,
 				     struct xilinx_drm_dp_sub_layer *layer)
 {
-	u32 reg;
+	u32 reg, offset, i;
+	u16 sdtv_coeffs[] = { 0x1000, 0x166f, 0x0,
+			      0x1000, 0x7483, 0x7a7f,
+			      0x1000, 0x0, 0x1c5a };
+	u32 full_range_offsets[] = { 0x0, 0x1800, 0x1800 };
 
 	reg = layer->fmt->rgb ? XILINX_DP_SUB_V_BLEND_LAYER_CONTROL_RGB : 0;
 	reg |= XILINX_DP_SUB_V_BLEND_LAYER_CONTROL_EN;
@@ -343,6 +361,28 @@ xilinx_drm_dp_sub_blend_layer_enable(struct xilinx_drm_dp_sub_blend *blend,
 	xilinx_drm_writel(blend->base,
 			  XILINX_DP_SUB_V_BLEND_LAYER_CONTROL + layer->offset,
 			  reg);
+
+	if (layer->fmt->rgb)
+		return;
+
+	if (layer->id == XILINX_DRM_DP_SUB_LAYER_VID)
+		offset = XILINX_DP_SUB_V_BLEND_IN1CSC_COEFF0;
+	else
+		offset = XILINX_DP_SUB_V_BLEND_IN2CSC_COEFF0;
+
+	/* Hardcode SDTV coefficients. Can be runtime configurable */
+	for (i = 0; i < XILINX_DP_SUB_V_BLEND_NUM_COEFF; i++)
+		xilinx_drm_writel(blend->base, offset + i * 4, sdtv_coeffs[i]);
+
+	if (layer->id == XILINX_DRM_DP_SUB_LAYER_VID)
+		offset = XILINX_DP_SUB_V_BLEND_LUMA_IN1CSC_OFFSET;
+	else
+		offset = XILINX_DP_SUB_V_BLEND_LUMA_IN2CSC_OFFSET;
+
+	/* Hardcode full range coefficients. Can be runtime configurable */
+	for (i = 0; i < XILINX_DP_SUB_V_BLEND_NUM_OFFSET; i++)
+		xilinx_drm_writel(blend->base, offset + i * 4,
+				  full_range_offsets[i]);
 }
 
 /**
@@ -1350,6 +1390,25 @@ static int xilinx_drm_dp_sub_parse_of(struct xilinx_drm_dp_sub *dp_sub)
 
 	xilinx_drm_writel(dp_sub->blend.base,
 			  XILINX_DP_SUB_V_BLEND_OUTPUT_VID_FMT, fmt);
+
+	if (fmt != XILINX_DP_SUB_V_BLEND_OUTPUT_VID_FMT_RGB) {
+		u16 sdtv_coeffs[] = { 0x4c9, 0x864, 0x1d3,
+				      0x7d4d, 0x7ab3, 0x800,
+				      0x800, 0x794d, 0x7eb3 };
+		u32 full_range_offsets[] = { 0x0, 0x8000000, 0x8000000 };
+		u32 offset, i;
+
+		/* Hardcode SDTV coefficients. Can be runtime configurable */
+		offset = XILINX_DP_SUB_V_BLEND_RGB2YCBCR_COEFF0;
+		for (i = 0; i < XILINX_DP_SUB_V_BLEND_NUM_COEFF; i++)
+			xilinx_drm_writel(dp_sub->blend.base, offset + i * 4,
+					  sdtv_coeffs[i]);
+
+		offset = XILINX_DP_SUB_V_BLEND_LUMA_OUTCSC_OFFSET;
+		for (i = 0; i < XILINX_DP_SUB_V_BLEND_NUM_OFFSET; i++)
+			xilinx_drm_writel(dp_sub->blend.base, offset + i * 4,
+					  full_range_offsets[i]);
+	}
 
 	ret = of_property_read_bool(node, "xlnx,vid-primary");
 	if (ret)
