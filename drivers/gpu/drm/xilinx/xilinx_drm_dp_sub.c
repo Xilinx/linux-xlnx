@@ -428,18 +428,41 @@ xilinx_drm_dp_sub_blend_set_bg_color(struct xilinx_drm_dp_sub_blend *blend,
 /**
  * xilinx_drm_dp_sub_blend_set_alpha - Set the alpha for blending
  * @blend: blend object
- * @enable: flag to enable or disable alpha blending
  * @alpha: alpha value to be used
  *
- * Set the alpha for blending. @enable can be used to enable or disable
- * blending.
+ * Set the alpha for blending.
  */
 static void
 xilinx_drm_dp_sub_blend_set_alpha(struct xilinx_drm_dp_sub_blend *blend,
-				  bool enable, u32 alpha)
+				  u32 alpha)
 {
+	u32 reg;
+
+	reg = xilinx_drm_readl(blend->base,
+			       XILINX_DP_SUB_V_BLEND_SET_GLOBAL_ALPHA);
+	reg &= ~XILINX_DP_SUB_V_BLEND_SET_GLOBAL_ALPHA_MASK;
+	reg |= alpha << 1;
 	xilinx_drm_writel(blend->base, XILINX_DP_SUB_V_BLEND_SET_GLOBAL_ALPHA,
-			  alpha << 1 | enable);
+			  reg);
+}
+
+/**
+ * xilinx_drm_dp_sub_blend_enable_alpha - Enable/disable the global alpha
+ * @blend: blend object
+ * @enable: flag to enable or disable alpha blending
+ *
+ * Enable/disable the global alpha blending based on @enable.
+ */
+static void
+xilinx_drm_dp_sub_blend_enable_alpha(struct xilinx_drm_dp_sub_blend *blend,
+				     bool enable)
+{
+	if (enable)
+		xilinx_drm_set(blend->base,
+			       XILINX_DP_SUB_V_BLEND_SET_GLOBAL_ALPHA, BIT(0));
+	else
+		xilinx_drm_clr(blend->base,
+			       XILINX_DP_SUB_V_BLEND_SET_GLOBAL_ALPHA, BIT(0));
 }
 
 static const struct xilinx_drm_dp_sub_fmt blend_output_fmts[] = {
@@ -1178,10 +1201,28 @@ void xilinx_drm_dp_sub_set_alpha(struct xilinx_drm_dp_sub *dp_sub, u32 alpha)
 	unsigned long flags;
 
 	spin_lock_irqsave(&dp_sub->lock, flags);
-	xilinx_drm_dp_sub_blend_set_alpha(&dp_sub->blend, true, alpha);
+	xilinx_drm_dp_sub_blend_set_alpha(&dp_sub->blend, alpha);
 	spin_unlock_irqrestore(&dp_sub->lock, flags);
 }
 EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_set_alpha);
+
+/**
+ * xilinx_drm_dp_sub_enable_alpha - Enable/disable the global alpha blending
+ * @dp_sub: DP subsystem
+ * @enable: flag to enable or disable alpha blending
+ *
+ * Set the alpha value for blending.
+ */
+void
+xilinx_drm_dp_sub_enable_alpha(struct xilinx_drm_dp_sub *dp_sub, bool enable)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&dp_sub->lock, flags);
+	xilinx_drm_dp_sub_blend_enable_alpha(&dp_sub->blend, enable);
+	spin_unlock_irqrestore(&dp_sub->lock, flags);
+}
+EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_enable_alpha);
 
 /**
  * xilinx_drm_dp_sub_handle_vblank - Vblank handling wrapper

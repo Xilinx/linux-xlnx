@@ -48,6 +48,8 @@ int xilinx_drm_dp_sub_set_output_fmt(struct xilinx_drm_dp_sub *dp_sub,
 void xilinx_drm_dp_sub_set_bg_color(struct xilinx_drm_dp_sub *dp_sub,
 				    u32 c0, u32 c1, u32 c2);
 void xilinx_drm_dp_sub_set_alpha(struct xilinx_drm_dp_sub *dp_sub, u32 alpha);
+void
+xilinx_drm_dp_sub_enable_alpha(struct xilinx_drm_dp_sub *dp_sub, bool enable);
 
 void xilinx_drm_dp_sub_enable_vblank(struct xilinx_drm_dp_sub *dp_sub,
 				     void (*vblank_fn)(void *),
