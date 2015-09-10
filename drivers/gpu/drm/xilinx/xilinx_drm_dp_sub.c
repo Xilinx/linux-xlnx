@@ -420,7 +420,7 @@ static const struct xilinx_drm_dp_sub_fmt blend_output_fmts[] = {
 		.rgb		= false,
 		.sf[0]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
 		.sf[1]		= XILINX_DP_SUB_AV_BUF_4BIT_SF,
-		.sf[2]		= XILINX_DP_SUB_AV_BUF_NULL_SF
+		.sf[2]		= XILINX_DP_SUB_AV_BUF_4BIT_SF,
 	}
 };
 
@@ -451,28 +451,28 @@ static const struct xilinx_drm_dp_sub_fmt av_buf_vid_fmts[] = {
 		.rgb		= false,
 		.sf[0]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
 		.sf[1]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
-		.sf[2]		= XILINX_DP_SUB_AV_BUF_NULL_SF
+		.sf[2]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
 	}, {
 		.drm_fmt	= DRM_FORMAT_YUYV,
 		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_VYUY,
 		.rgb		= false,
 		.sf[0]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
 		.sf[1]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
-		.sf[2]		= XILINX_DP_SUB_AV_BUF_NULL_SF
+		.sf[2]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
 	}, {
 		.drm_fmt	= DRM_FORMAT_UYVY,
 		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_YVYU,
 		.rgb		= false,
 		.sf[0]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
 		.sf[1]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
-		.sf[2]		= XILINX_DP_SUB_AV_BUF_NULL_SF
+		.sf[2]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
 	}, {
 		.drm_fmt	= DRM_FORMAT_VYUY,
 		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_YUYV,
 		.rgb		= false,
 		.sf[0]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
 		.sf[1]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
-		.sf[2]		= XILINX_DP_SUB_AV_BUF_NULL_SF
+		.sf[2]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
 	}, {
 		.drm_fmt	= DRM_FORMAT_BGR888,
 		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_RGB888,
@@ -808,11 +808,11 @@ xilinx_drm_dp_sub_av_buf_init_sf(struct xilinx_drm_dp_sub_av_buf *av_buf,
 
 	offset = XILINX_DP_SUB_AV_BUF_GFX_COMP0_SF;
 	for (i = 0; i < XILINX_DP_SUB_AV_BUF_NUM_SF; i++)
-		xilinx_drm_writel(av_buf->base, offset, gfx_fmt->sf[i]);
+		xilinx_drm_writel(av_buf->base, offset + i * 4, gfx_fmt->sf[i]);
 
 	offset = XILINX_DP_SUB_AV_BUF_VID_COMP0_SF;
 	for (i = 0; i < XILINX_DP_SUB_AV_BUF_NUM_SF; i++)
-		xilinx_drm_writel(av_buf->base, offset, vid_fmt->sf[i]);
+		xilinx_drm_writel(av_buf->base, offset + i * 4, vid_fmt->sf[i]);
 }
 
 /* Audio functions */
