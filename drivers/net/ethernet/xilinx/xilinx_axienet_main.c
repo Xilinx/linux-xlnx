@@ -34,6 +34,10 @@
 #include <linux/phy.h>
 #include <linux/mii.h>
 #include <linux/ethtool.h>
+#include <linux/iopoll.h>
+#include <linux/ptp_classify.h>
+#include <linux/net_tstamp.h>
+#include <net/sock.h>
 
 #include "xilinx_axienet.h"
 
@@ -47,6 +51,8 @@
 #define DRIVER_VERSION		"1.00a"
 
 #define AXIENET_REGS_N		32
+#define AXIENET_TS_HEADER_LEN	8
+#define NS_PER_SEC              1000000000ULL /* Nanoseconds per second */
 
 /* Match table for of_platform binding */
 static const struct of_device_id axienet_of_match[] = {
@@ -584,6 +590,59 @@ static void axienet_adjust_link(struct net_device *ndev)
 	}
 }
 
+#ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
+/**
+ * axienet_tx_hwtstamp - Read tx timestamp from hw and update it to the skbuff
+ * @lp:		Pointer to axienet local structure
+ * @cur_p:	Pointer to the axi_dma current bd
+ *
+ * Return:	None.
+ */
+static void axienet_tx_hwtstamp(struct axienet_local *lp,
+				struct axidma_bd *cur_p)
+{
+	u32 sec = 0, nsec = 0, val;
+	u64 time64;
+	int err = 0;
+	struct skb_shared_hwtstamps *shhwtstamps =
+		skb_hwtstamps((struct sk_buff *)cur_p->ptp_tx_skb);
+
+	val = axienet_txts_ior(lp, XAXIFIFO_TXTS_ISR);
+	if (unlikely(!(val & XAXIFIFO_TXTS_INT_RC_MASK)))
+		dev_info(lp->dev, "Did't get FIFO rx interrupt %d\n", val);
+
+	/* If FIFO is configured in cut through Mode we will get Rx complete
+	 * interrupt even one byte is there in the fifo wait for the full packet
+	 */
+	err = readl_poll_timeout(lp->tx_ts_regs + XAXIFIFO_TXTS_RLR,
+				 val, ((val & XAXIFIFO_TXTS_RXFD_MASK) >= 16),
+				 10, 1000000);
+
+	if (err)
+		netdev_err(lp->ndev, "%s: Didn't get the full timestamp packet",
+			    __func__);
+
+	nsec = axienet_txts_ior(lp, XAXIFIFO_TXTS_RXFD);
+	sec  = axienet_txts_ior(lp, XAXIFIFO_TXTS_RXFD);
+	val = axienet_txts_ior(lp, XAXIFIFO_TXTS_RXFD);
+	val = ((val & XAXIFIFO_TXTS_TAG_MASK) >> XAXIFIFO_TXTS_TAG_SHIFT);
+	if (val != cur_p->ptp_tx_ts_tag)
+		dev_info(lp->dev, "Mismatching 2-step tag. Got %x,"
+			 "expected %x\n", val, cur_p->ptp_tx_ts_tag);
+
+	val = axienet_txts_ior(lp, XAXIFIFO_TXTS_RXFD);
+
+	time64 = sec * NS_PER_SEC + nsec;
+	memset(shhwtstamps, 0, sizeof(struct skb_shared_hwtstamps));
+	shhwtstamps->hwtstamp = ns_to_ktime(time64);
+	skb_pull((struct sk_buff *)cur_p->ptp_tx_skb, AXIENET_TS_HEADER_LEN);
+
+	skb_tstamp_tx((struct sk_buff *)cur_p->ptp_tx_skb, shhwtstamps);
+	dev_kfree_skb_any((struct sk_buff *)cur_p->ptp_tx_skb);
+	cur_p->ptp_tx_skb = 0;
+}
+#endif
+
 /**
  * axienet_start_xmit_done - Invoked once a transmit is completed by the
  * Axi DMA Tx channel.
@@ -606,6 +665,10 @@ static void axienet_start_xmit_done(struct net_device *ndev)
 	cur_p = &lp->tx_bd_v[lp->tx_bd_ci];
 	status = cur_p->status;
 	while (status & XAXIDMA_BD_STS_COMPLETE_MASK) {
+#ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
+		if (cur_p->ptp_tx_skb)
+			axienet_tx_hwtstamp(lp, cur_p);
+#endif
 		dma_unmap_single(ndev->dev.parent, cur_p->phys,
 				(cur_p->cntrl & XAXIDMA_BD_CTRL_LENGTH_MASK),
 				DMA_TO_DEVICE);
@@ -656,6 +719,42 @@ static inline int axienet_check_tx_bd_space(struct axienet_local *lp,
 	return 0;
 }
 
+#ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
+/**
+ * axienet_create_tsheader - Create timestamp header for tx
+ * @lp:		Pointer to axienet local structure
+ * @buf:	Pointer to the buf to copy timestamp header
+ * @msg_type:	PTP message type
+ *
+ * Return:	None.
+ */
+static void axienet_create_tsheader(struct axienet_local *lp, u8 *buf,
+				    u8 msg_type)
+{
+	struct axidma_bd *cur_p;
+	u64 val;
+
+	cur_p = &lp->tx_bd_v[lp->tx_bd_tail];
+
+	if (msg_type == TX_TS_OP_ONESTEP) {
+		buf[0] = TX_TS_OP_ONESTEP;
+		buf[1] = TX_TS_CSUM_UPDATE;
+		buf[4] = TX_PTP_TS_OFFSET;
+		buf[6] = TX_PTP_CSUM_OFFSET;
+	} else {
+		buf[0] = TX_TS_OP_TWOSTEP;
+		buf[2] = cur_p->ptp_tx_ts_tag & 0xFF;
+		buf[3] = (cur_p->ptp_tx_ts_tag >> 8) & 0xFF;
+	}
+
+	if (!lp->is_10Gmac) {
+		memcpy(&val, buf, AXIENET_TS_HEADER_LEN);
+		swab64s(&val);
+		memcpy(buf, &val, AXIENET_TS_HEADER_LEN);
+	}
+}
+#endif
+
 /**
  * axienet_start_xmit - Starts the transmission.
  * @skb:	sk_buff pointer that contains data to be Txed.
@@ -700,6 +799,49 @@ static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	}
 	spin_unlock_irqrestore(&lp->tx_lock, flags);
 
+#ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
+	if ((lp->tstamp_config.tx_type == HWTSTAMP_TX_ONESTEP_SYNC) ||
+	    (lp->tstamp_config.tx_type == HWTSTAMP_TX_ON)) {
+		u8 *tmp;
+		struct sk_buff *new_skb;
+
+		if (skb_headroom(skb) < AXIENET_TS_HEADER_LEN) {
+			new_skb = skb_realloc_headroom(skb,
+						       AXIENET_TS_HEADER_LEN);
+			if (!new_skb) {
+				dev_err(&ndev->dev, "failed "
+					"to allocate new socket buffer\n");
+				dev_kfree_skb_any(skb);
+				return NETDEV_TX_OK;
+			}
+
+			/*  Transfer the ownership to the
+			 *  new socket buffer if required
+			 */
+			if (skb->sk)
+				skb_set_owner_w(new_skb, skb->sk);
+			dev_kfree_skb(skb);
+			skb = new_skb;
+		}
+
+		tmp = skb_push(skb, AXIENET_TS_HEADER_LEN);
+		memset(tmp, 0, AXIENET_TS_HEADER_LEN);
+		cur_p->ptp_tx_ts_tag++;
+
+		if (skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP) {
+			if (lp->tstamp_config.tx_type ==
+				HWTSTAMP_TX_ONESTEP_SYNC) {
+				axienet_create_tsheader(lp, tmp,
+							TX_TS_OP_ONESTEP);
+			} else {
+				axienet_create_tsheader(lp, tmp,
+							TX_TS_OP_TWOSTEP);
+				skb_shinfo(skb)->tx_flags |= SKBTX_IN_PROGRESS;
+				cur_p->ptp_tx_skb = (unsigned long)skb_get(skb);
+			}
+		}
+	}
+#endif
 	if (skb->ip_summed == CHECKSUM_PARTIAL && !lp->is_10Gmac) {
 		if (lp->features & XAE_FEATURE_FULL_TX_CSUM) {
 			/* Tx Full Checksum Offload Enabled */
@@ -788,6 +930,32 @@ static int axienet_recv(struct net_device *ndev, int budget)
 				 DMA_FROM_DEVICE);
 
 		skb_put(skb, length);
+#ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
+		if (lp->tstamp_config.rx_filter == HWTSTAMP_FILTER_ALL) {
+			u32 sec, nsec;
+			u64 time64;
+			struct skb_shared_hwtstamps *shhwtstamps;
+
+			if (!lp->is_10Gmac) {
+				/* The first 8 bytes will be the timestamp */
+				memcpy(&sec, &skb->data[0], 4);
+				memcpy(&nsec, &skb->data[4], 4);
+
+				sec = cpu_to_be32(sec);
+				nsec = cpu_to_be32(nsec);
+			} else {
+				/* The first 8 bytes will be the timestamp */
+				memcpy(&nsec, &skb->data[0], 4);
+				memcpy(&sec, &skb->data[4], 4);
+			}
+
+			/* Remove these 8 bytes from the buffer */
+			skb_pull(skb, 8);
+			time64 = sec * NS_PER_SEC + nsec;
+			shhwtstamps = skb_hwtstamps(skb);
+			shhwtstamps->hwtstamp = ns_to_ktime(time64);
+		}
+#endif
 		skb->protocol = eth_type_trans(skb, ndev);
 		/*skb_checksum_none_assert(skb);*/
 		skb->ip_summed = CHECKSUM_NONE;
@@ -1161,18 +1329,129 @@ static void axienet_poll_controller(struct net_device *ndev)
 }
 #endif
 
+#ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
+/**
+ *  axienet_set_timestamp_mode - sets up the hardware for the requested mode
+ *  @lp: Pointer to axienet local structure
+ *  @config: the hwtstamp configuration requested
+ *
+ * Return: 0 on success, Negative value on errors
+ */
+static int axienet_set_timestamp_mode(struct axienet_local *lp,
+				      struct hwtstamp_config *config)
+{
+	u32 regval;
+
+	/* reserved for future extensions */
+	if (config->flags)
+		return -EINVAL;
+
+	/* Read the current value in the MAC TX CTRL register */
+	regval = axienet_ior(lp, XAE_TC_OFFSET);
+
+	switch (config->tx_type) {
+	case HWTSTAMP_TX_OFF:
+		regval &= ~XAE_TC_INBAND1588_MASK;
+		break;
+	case HWTSTAMP_TX_ON:
+		config->tx_type = HWTSTAMP_TX_ON;
+		regval |= XAE_TC_INBAND1588_MASK;
+		break;
+	case HWTSTAMP_TX_ONESTEP_SYNC:
+		config->tx_type = HWTSTAMP_TX_ONESTEP_SYNC;
+		regval |= XAE_TC_INBAND1588_MASK;
+		break;
+	default:
+		return -ERANGE;
+	}
+
+	axienet_iow(lp, XAE_TC_OFFSET, regval);
+
+	/* Read the current value in the MAC RX RCW1 register */
+	regval = axienet_ior(lp, XAE_RCW1_OFFSET);
+
+	/* On RX always timestamp everything */
+	switch (config->rx_filter) {
+	case HWTSTAMP_FILTER_NONE:
+		regval &= ~XAE_RCW1_INBAND1588_MASK;
+		break;
+	default:
+		config->rx_filter = HWTSTAMP_FILTER_ALL;
+		regval |= XAE_RCW1_INBAND1588_MASK;
+	}
+
+	axienet_iow(lp, XAE_RCW1_OFFSET, regval);
+	return 0;
+}
+
+/**
+ * axienet_set_ts_config - user entry point for timestamp mode
+ * @lp: Pointer to axienet local structure
+ * @ifr: ioctl data
+ *
+ * Set hardware to the requested more. If unsupported return an error
+ * with no changes. Otherwise, store the mode for future reference
+ *
+ * Return: 0 on success, Negative value on errors
+ */
+static int axienet_set_ts_config(struct axienet_local *lp, struct ifreq *ifr)
+{
+	struct hwtstamp_config config;
+	int err;
+
+	if (copy_from_user(&config, ifr->ifr_data, sizeof(config)))
+		return -EFAULT;
+
+	err = axienet_set_timestamp_mode(lp, &config);
+	if (err)
+		return err;
+
+	/* save these settings for future reference */
+	memcpy(&lp->tstamp_config, &config, sizeof(lp->tstamp_config));
+
+	return copy_to_user(ifr->ifr_data, &config,
+			    sizeof(config)) ? -EFAULT : 0;
+}
+
+/**
+ * axienet_get_ts_config - return the current timestamp configuration
+ * to the user
+ * @lp: pointer to axienet local structure
+ * @ifr: ioctl data
+ *
+ * Return: 0 on success, Negative value on errors
+ */
+static int axienet_get_ts_config(struct axienet_local *lp, struct ifreq *ifr)
+{
+	struct hwtstamp_config *config = &lp->tstamp_config;
+
+	return copy_to_user(ifr->ifr_data, config,
+			    sizeof(*config)) ? -EFAULT : 0;
+}
+#endif
+
 /* Ioctl MII Interface */
 static int axienet_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 {
-	struct axienet_local *priv = netdev_priv(dev);
+	struct axienet_local *lp = netdev_priv(dev);
 
 	if (!netif_running(dev))
 		return -EINVAL;
 
-	if (!priv->phy_dev)
+	switch (cmd) {
+	case SIOCGMIIPHY:
+	case SIOCGMIIREG:
+	case SIOCSMIIREG:
+		return phy_mii_ioctl(lp->phy_dev, rq, cmd);
+#ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
+	case SIOCSHWTSTAMP:
+		return axienet_set_ts_config(lp, rq);
+	case SIOCGHWTSTAMP:
+		return axienet_get_ts_config(lp, rq);
+#endif
+	default:
 		return -EOPNOTSUPP;
-
-	return phy_mii_ioctl(priv->phy_dev, rq, cmd);
+	}
 }
 
 static const struct net_device_ops axienet_netdev_ops = {
@@ -1460,6 +1739,29 @@ static int axienet_ethtools_set_coalesce(struct net_device *ndev,
 	return 0;
 }
 
+#ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
+/**
+ * axienet_ethtools_get_ts_info - Get h/w timestamping capabilities.
+ * @ndev:	Pointer to net_device structure
+ * @info:	Pointer to ethtool_ts_info structure
+ *
+ * Return: 0, on success, Non-zero error value on failure.
+ */
+static int axienet_ethtools_get_ts_info(struct net_device *ndev,
+					struct ethtool_ts_info *info)
+{
+	info->so_timestamping = SOF_TIMESTAMPING_TX_HARDWARE |
+				SOF_TIMESTAMPING_RX_HARDWARE |
+				SOF_TIMESTAMPING_RAW_HARDWARE;
+	info->tx_types = (1 << HWTSTAMP_TX_OFF) | (1 << HWTSTAMP_TX_ON);
+	info->rx_filters = (1 << HWTSTAMP_FILTER_NONE) |
+			   (1 << HWTSTAMP_FILTER_ALL);
+	info->phc_index = 0;
+
+	return 0;
+}
+#endif
+
 static struct ethtool_ops axienet_ethtool_ops = {
 	.get_settings   = axienet_ethtools_get_settings,
 	.set_settings   = axienet_ethtools_set_settings,
@@ -1471,6 +1773,9 @@ static struct ethtool_ops axienet_ethtool_ops = {
 	.set_pauseparam = axienet_ethtools_set_pauseparam,
 	.get_coalesce   = axienet_ethtools_get_coalesce,
 	.set_coalesce   = axienet_ethtools_set_coalesce,
+#ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
+	.get_ts_info    = axienet_ethtools_get_ts_info,
+#endif
 };
 
 /**
@@ -1711,6 +2016,32 @@ static int axienet_probe(struct platform_device *pdev)
 
 	lp->eth_hasnobuf = of_property_read_bool(pdev->dev.of_node,
 						 "xlnx,eth-hasnobuf");
+
+#ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
+	struct resource txtsres;
+
+	/* Find AXI Stream FIFO */
+	np = of_parse_phandle(pdev->dev.of_node, "axififo-connected", 0);
+	if (IS_ERR(np)) {
+		dev_err(&pdev->dev, "could not find TX Timestamp FIFO\n");
+		ret = PTR_ERR(np);
+		goto free_netdev;
+	}
+
+	ret = of_address_to_resource(np, 0, &txtsres);
+	if (ret) {
+		dev_err(&pdev->dev, "unable to get Tx Timestamp resource\n");
+		goto free_netdev;
+	}
+
+	lp->tx_ts_regs = devm_ioremap_resource(&pdev->dev, &txtsres);
+	if (IS_ERR(lp->tx_ts_regs)) {
+		dev_err(&pdev->dev, "could not map Tx Timestamp regs\n");
+		ret = PTR_ERR(lp->tx_ts_regs);
+		goto free_netdev;
+	}
+	of_node_put(np);
+#endif
 
 	/* Find the DMA node, map the DMA registers, and decode the DMA IRQs */
 	np = of_parse_phandle(pdev->dev.of_node, "axistream-connected", 0);
