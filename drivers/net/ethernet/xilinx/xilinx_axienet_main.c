@@ -48,7 +48,7 @@
 #define AXIENET_REGS_N		32
 
 /* Match table for of_platform binding */
-static struct of_device_id axienet_of_match[] = {
+static const struct of_device_id axienet_of_match[] = {
 	{ .compatible = "xlnx,axi-ethernet-1.00.a", },
 	{ .compatible = "xlnx,axi-ethernet-1.01.a", },
 	{ .compatible = "xlnx,axi-ethernet-2.01.a", },
@@ -298,7 +298,7 @@ static void axienet_set_mac_address(struct net_device *ndev, void *address)
 	struct axienet_local *lp = netdev_priv(ndev);
 
 	if (address)
-		memcpy(ndev->dev_addr, address, ETH_ALEN);
+		ether_addr_copy(ndev->dev_addr, address);
 	if (!is_valid_ether_addr(ndev->dev_addr))
 		eth_random_addr(ndev->dev_addr);
 
@@ -332,6 +332,7 @@ static void axienet_set_mac_address(struct net_device *ndev, void *address)
 static int netdev_set_mac_address(struct net_device *ndev, void *p)
 {
 	struct sockaddr *addr = p;
+
 	axienet_set_mac_address(ndev, addr->sa_data);
 	return 0;
 }
@@ -642,6 +643,7 @@ static inline int axienet_check_tx_bd_space(struct axienet_local *lp,
 					    int num_frag)
 {
 	struct axidma_bd *cur_p;
+
 	cur_p = &lp->tx_bd_v[(lp->tx_bd_tail + num_frag) % TX_BD_NUM];
 	if (cur_p->status & XAXIDMA_BD_STS_ALL_MASK)
 		return NETDEV_TX_BUSY;
@@ -1129,6 +1131,7 @@ static int axienet_change_mtu(struct net_device *ndev, int new_mtu)
 static void axienet_poll_controller(struct net_device *ndev)
 {
 	struct axienet_local *lp = netdev_priv(ndev);
+
 	disable_irq(lp->tx_irq);
 	disable_irq(lp->rx_irq);
 	axienet_rx_irq(lp->tx_irq, ndev);
@@ -1183,6 +1186,7 @@ static int axienet_ethtools_get_settings(struct net_device *ndev,
 {
 	struct axienet_local *lp = netdev_priv(ndev);
 	struct phy_device *phydev = lp->phy_dev;
+
 	if (!phydev)
 		return -ENODEV;
 	return phy_ethtool_gset(phydev, ecmd);
@@ -1206,6 +1210,7 @@ static int axienet_ethtools_set_settings(struct net_device *ndev,
 {
 	struct axienet_local *lp = netdev_priv(ndev);
 	struct phy_device *phydev = lp->phy_dev;
+
 	if (!phydev)
 		return -ENODEV;
 	return phy_ethtool_sset(phydev, ecmd);
@@ -1312,6 +1317,7 @@ axienet_ethtools_get_pauseparam(struct net_device *ndev,
 {
 	u32 regval;
 	struct axienet_local *lp = netdev_priv(ndev);
+
 	epauseparm->autoneg  = 0;
 	regval = axienet_ior(lp, XAE_FCC_OFFSET);
 	epauseparm->tx_pause = regval & XAE_FCC_FCTX_MASK;
@@ -1373,6 +1379,7 @@ static int axienet_ethtools_get_coalesce(struct net_device *ndev,
 {
 	u32 regval = 0;
 	struct axienet_local *lp = netdev_priv(ndev);
+
 	regval = axienet_dma_in32(lp, XAXIDMA_RX_CR_OFFSET);
 	ecoalesce->rx_max_coalesced_frames = (regval & XAXIDMA_COALESCE_MASK)
 					     >> XAXIDMA_COALESCE_SHIFT;
