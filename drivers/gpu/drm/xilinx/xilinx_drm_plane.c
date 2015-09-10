@@ -153,7 +153,7 @@ void xilinx_drm_plane_dpms(struct drm_plane *base_plane, int dpms)
 
 			xilinx_osd_layer_set_priority(plane->osd_layer,
 						      plane->prio);
-			xilinx_osd_layer_set_alpha(plane->osd_layer, 1,
+			xilinx_osd_layer_set_alpha(plane->osd_layer,
 						   plane->alpha);
 			xilinx_osd_layer_enable(plane->osd_layer);
 
@@ -436,7 +436,7 @@ static void xilinx_drm_plane_set_alpha(struct drm_plane *base_plane,
 
 	/* FIXME: use global alpha for now */
 	if (plane->osd_layer)
-		xilinx_osd_layer_set_alpha(plane->osd_layer, 1, plane->alpha);
+		xilinx_osd_layer_set_alpha(plane->osd_layer, plane->alpha);
 	else if (manager->dp_sub)
 		xilinx_drm_dp_sub_set_alpha(manager->dp_sub, plane->alpha);
 }

@@ -25,8 +25,8 @@ struct xilinx_osd;
 struct xilinx_osd_layer;
 
 /* osd layer configuration */
-void xilinx_osd_layer_set_alpha(struct xilinx_osd_layer *layer, u32 enable,
-				u32 alpha);
+void xilinx_osd_layer_set_alpha(struct xilinx_osd_layer *layer, u32 alpha);
+void xilinx_osd_layer_enable_alpha(struct xilinx_osd_layer *layer, bool enable);
 void xilinx_osd_layer_set_priority(struct xilinx_osd_layer *layer, u32 prio);
 void xilinx_osd_layer_set_dimension(struct xilinx_osd_layer *layer,
 				    u16 xstart, u16 ystart,

@@ -124,8 +124,7 @@ struct xilinx_osd {
 
 /* osd layer operation */
 /* set layer alpha */
-void xilinx_osd_layer_set_alpha(struct xilinx_osd_layer *layer, u32 enable,
-				u32 alpha)
+void xilinx_osd_layer_set_alpha(struct xilinx_osd_layer *layer, u32 alpha)
 {
 	u32 value;
 
@@ -133,11 +132,22 @@ void xilinx_osd_layer_set_alpha(struct xilinx_osd_layer *layer, u32 enable,
 	DRM_DEBUG_DRIVER("alpha: 0x%08x\n", alpha);
 
 	value = xilinx_drm_readl(layer->base, OSD_LXC);
-	value = enable ? (value | OSD_LXC_GALPHAEN) :
-		(value & ~OSD_LXC_GALPHAEN);
 	value &= ~OSD_LXC_ALPHA_MASK;
 	value |= (alpha << OSD_LXC_ALPHA_SHIFT) & OSD_LXC_ALPHA_MASK;
 	xilinx_drm_writel(layer->base, OSD_LXC, value);
+}
+
+void xilinx_osd_layer_enable_alpha(struct xilinx_osd_layer *layer, bool enable)
+{
+	u32 value;
+
+	DRM_DEBUG_DRIVER("layer->id: %d\n", layer->id);
+	DRM_DEBUG_DRIVER("enable: %d\n", enable);
+
+	value = xilinx_drm_readl(layer->base, OSD_LXC);
+	value = enable ? (value | OSD_LXC_GALPHAEN) :
+		(value & ~OSD_LXC_GALPHAEN);
+	xilinx_drm_writel(layer->base, OSD_LXC, enable);
 }
 
 /* set layer priority */
