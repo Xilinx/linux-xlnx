@@ -1224,7 +1224,7 @@ static int xilinx_drm_dp_parse_of(struct xilinx_drm_dp *dp)
 		num_colors = 3;
 	} else if (config->enable_ycrcb && strcmp(string, "ycrcb422") == 0) {
 		config->misc0 |= XILINX_DP_MISC0_YCRCB_422;
-		num_colors = 3;
+		num_colors = 2;
 	} else if (config->enable_ycrcb && strcmp(string, "ycrcb444") == 0) {
 		config->misc0 |= XILINX_DP_MISC0_YCRCB_444;
 		num_colors = 3;
