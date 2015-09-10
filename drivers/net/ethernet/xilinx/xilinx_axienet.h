@@ -426,6 +426,7 @@ struct axidma_bd {
  * @is_10Gmac:	  Check for 10g mac.
  * @phy_interface: Phy interface type.
  * @phy_flags:	Phy interface flags.
+ * @eth_hasnobuf: Ethernet is configured in Non buf mode.
  */
 struct axienet_local {
 	struct net_device *ndev;
@@ -476,6 +477,7 @@ struct axienet_local {
 	u32 is_10Gmac;
 	u32 phy_interface;
 	u32 phy_flags;
+	bool eth_hasnobuf;
 };
 
 /**

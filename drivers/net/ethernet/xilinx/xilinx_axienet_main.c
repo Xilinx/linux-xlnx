@@ -308,7 +308,7 @@ static void axienet_set_mac_address(struct net_device *ndev, void *address)
 	if (!is_valid_ether_addr(ndev->dev_addr))
 		eth_random_addr(ndev->dev_addr);
 
-	if (lp->is_10Gmac)
+	if (lp->is_10Gmac || lp->eth_hasnobuf)
 		return;
 
 	/* Set up unicast MAC address filter set its mac address */
@@ -360,7 +360,7 @@ static void axienet_set_multicast_list(struct net_device *ndev)
 	u32 reg, af0reg, af1reg;
 	struct axienet_local *lp = netdev_priv(ndev);
 
-	if (lp->is_10Gmac)
+	if (lp->is_10Gmac || lp->eth_hasnobuf)
 		return;
 
 	if (ndev->flags & (IFF_ALLMULTI | IFF_PROMISC) ||
@@ -507,7 +507,7 @@ static void axienet_device_reset(struct net_device *ndev)
 	axienet_status &= ~XAE_RCW1_RX_MASK;
 	axienet_iow(lp, XAE_RCW1_OFFSET, axienet_status);
 
-	if (!lp->is_10Gmac) {
+	if (!lp->is_10Gmac || lp->eth_hasnobuf) {
 		axienet_status = axienet_ior(lp, XAE_IP_OFFSET);
 		if (axienet_status & XAE_INT_RXRJECT_MASK)
 			axienet_iow(lp, XAE_IS_OFFSET, XAE_INT_RXRJECT_MASK);
@@ -778,7 +778,7 @@ static int axienet_recv(struct net_device *ndev, int budget)
 		tail_p = lp->rx_bd_p + sizeof(*lp->rx_bd_v) * lp->rx_bd_ci;
 		skb = (struct sk_buff *) (cur_p->sw_id_offset);
 
-		if (lp->is_10Gmac)
+		if (lp->is_10Gmac || lp->eth_hasnobuf)
 			length = cur_p->status & XAXIDMA_BD_STS_ACTUAL_LEN_MASK;
 		else
 			length = cur_p->app4 & 0x0000FFFF;
@@ -1590,7 +1590,7 @@ static void axienet_dma_err_handler(unsigned long data)
 	axienet_status &= ~XAE_RCW1_RX_MASK;
 	axienet_iow(lp, XAE_RCW1_OFFSET, axienet_status);
 
-	if (!lp->is_10Gmac) {
+	if (!lp->is_10Gmac || !lp->eth_hasnobuf) {
 		axienet_status = axienet_ior(lp, XAE_IP_OFFSET);
 		if (axienet_status & XAE_INT_RXRJECT_MASK)
 			axienet_iow(lp, XAE_IS_OFFSET, XAE_INT_RXRJECT_MASK);
@@ -1708,6 +1708,9 @@ static int axienet_probe(struct platform_device *pdev)
 	of_property_read_u32(pdev->dev.of_node, "xlnx,phy-type", &lp->phy_type);
 	if (of_device_is_compatible(pdev->dev.of_node, "xlnx,ten-gig-eth-mac"))
 		lp->is_10Gmac = 1;
+
+	lp->eth_hasnobuf = of_property_read_bool(pdev->dev.of_node,
+						 "xlnx,eth-hasnobuf");
 
 	/* Find the DMA node, map the DMA registers, and decode the DMA IRQs */
 	np = of_parse_phandle(pdev->dev.of_node, "axistream-connected", 0);
