@@ -56,6 +56,7 @@ struct xilinx_drm_plane_dma {
  * @zpos: user requested z-position value
  * @prio: actual layer priority
  * @alpha: alpha value
+ * @alpha_enable: alpha enable value
  * @primary: flag for primary plane
  * @format: pixel format
  * @dma: dma object
@@ -72,6 +73,7 @@ struct xilinx_drm_plane {
 	unsigned int zpos;
 	unsigned int prio;
 	unsigned int alpha;
+	unsigned int alpha_enable;
 	bool primary;
 	uint32_t format;
 	struct xilinx_drm_plane_dma dma;
@@ -96,6 +98,7 @@ struct xilinx_drm_plane {
  * @max_width: maximum width
  * @zpos_prop: z-position(priority) property
  * @alpha_prop: alpha value property
+ * @alpha_enable_prop: alpha enable property
  * @default_alpha: default alpha value
  * @planes: xilinx drm planes
  */
@@ -109,6 +112,7 @@ struct xilinx_drm_plane_manager {
 	int max_width;
 	struct drm_property *zpos_prop;
 	struct drm_property *alpha_prop;
+	struct drm_property *alpha_enable_prop;
 	unsigned int default_alpha;
 	struct xilinx_drm_plane *planes[MAX_PLANES];
 };
@@ -131,9 +135,12 @@ void xilinx_drm_plane_dpms(struct drm_plane *base_plane, int dpms)
 	switch (dpms) {
 	case DRM_MODE_DPMS_ON:
 		if (manager->dp_sub) {
-			if (plane->primary)
+			if (plane->primary) {
+				xilinx_drm_dp_sub_enable_alpha(manager->dp_sub,
+						plane->alpha_enable);
 				xilinx_drm_dp_sub_set_alpha(manager->dp_sub,
 							    plane->alpha);
+			}
 			xilinx_drm_dp_sub_layer_enable(manager->dp_sub,
 						       plane->dp_layer);
 		}
@@ -153,6 +160,8 @@ void xilinx_drm_plane_dpms(struct drm_plane *base_plane, int dpms)
 
 			xilinx_osd_layer_set_priority(plane->osd_layer,
 						      plane->prio);
+			xilinx_osd_layer_enable_alpha(plane->osd_layer,
+						   plane->alpha_enable);
 			xilinx_osd_layer_set_alpha(plane->osd_layer,
 						   plane->alpha);
 			xilinx_osd_layer_enable(plane->osd_layer);
@@ -434,11 +443,27 @@ static void xilinx_drm_plane_set_alpha(struct drm_plane *base_plane,
 
 	plane->alpha = alpha;
 
-	/* FIXME: use global alpha for now */
 	if (plane->osd_layer)
 		xilinx_osd_layer_set_alpha(plane->osd_layer, plane->alpha);
 	else if (manager->dp_sub)
 		xilinx_drm_dp_sub_set_alpha(manager->dp_sub, plane->alpha);
+}
+
+static void xilinx_drm_plane_enable_alpha(struct drm_plane *base_plane,
+					  bool enable)
+{
+	struct xilinx_drm_plane *plane = to_xilinx_plane(base_plane);
+	struct xilinx_drm_plane_manager *manager = plane->manager;
+
+	if (plane->alpha_enable == enable)
+		return;
+
+	plane->alpha_enable = enable;
+
+	if (plane->osd_layer)
+		xilinx_osd_layer_enable_alpha(plane->osd_layer, enable);
+	else if (manager->dp_sub)
+		xilinx_drm_dp_sub_enable_alpha(manager->dp_sub, enable);
 }
 
 /* set property of a plane */
@@ -453,6 +478,8 @@ static int xilinx_drm_plane_set_property(struct drm_plane *base_plane,
 		xilinx_drm_plane_set_zpos(base_plane, val);
 	else if (property == manager->alpha_prop)
 		xilinx_drm_plane_set_alpha(base_plane, val);
+	else if (property == manager->alpha_enable_prop)
+		xilinx_drm_plane_enable_alpha(base_plane, val);
 	else
 		return -EINVAL;
 
@@ -529,6 +556,11 @@ void xilinx_drm_plane_restore(struct xilinx_drm_plane_manager *manager)
 			drm_object_property_set_value(&plane->base.base,
 						      manager->alpha_prop,
 						      plane->alpha);
+
+		plane->alpha_enable = true;
+		if (manager->alpha_enable_prop)
+			drm_object_property_set_value(&plane->base.base,
+					manager->alpha_enable_prop, true);
 	}
 }
 
@@ -562,9 +594,13 @@ xilinx_drm_plane_create_property(struct xilinx_drm_plane_manager *manager)
 		manager->zpos_prop = drm_property_create_range(manager->drm, 0,
 				"zpos", 0, manager->num_planes - 1);
 
-	if (manager->osd || manager->dp_sub)
+	if (manager->osd || manager->dp_sub) {
 		manager->alpha_prop = drm_property_create_range(manager->drm, 0,
 				"alpha", 0, manager->default_alpha);
+		manager->alpha_enable_prop =
+			drm_property_create_bool(manager->drm, 0,
+						 "global alpha enable");
+	}
 }
 
 /* attach plane properties */
@@ -585,7 +621,11 @@ static void xilinx_drm_plane_attach_property(struct drm_plane *base_plane)
 		drm_object_attach_property(&base_plane->base,
 					   manager->alpha_prop,
 					   manager->default_alpha);
+		drm_object_attach_property(&base_plane->base,
+					   manager->alpha_enable_prop, false);
 	}
+
+	plane->alpha_enable = true;
 }
 
 /**
