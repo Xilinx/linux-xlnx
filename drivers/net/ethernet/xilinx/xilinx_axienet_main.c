@@ -28,6 +28,7 @@
 #include <linux/of_platform.h>
 #include <linux/of_irq.h>
 #include <linux/of_address.h>
+#include <linux/of_net.h>
 #include <linux/skbuff.h>
 #include <linux/spinlock.h>
 #include <linux/phy.h>
@@ -1005,16 +1006,9 @@ static int axienet_open(struct net_device *ndev)
 		return ret;
 
 	if (lp->phy_node && !lp->is_10Gmac) {
-		if (lp->phy_type == XAE_PHY_TYPE_GMII ||
-		    lp->phy_type == XAE_PHY_TYPE_1000BASE_X) {
-			lp->phy_dev = of_phy_connect(lp->ndev, lp->phy_node,
+		lp->phy_dev = of_phy_connect(lp->ndev, lp->phy_node,
 					     axienet_adjust_link, 0,
-					     PHY_INTERFACE_MODE_GMII);
-		} else if (lp->phy_type == XAE_PHY_TYPE_RGMII_2_0) {
-			lp->phy_dev = of_phy_connect(lp->ndev, lp->phy_node,
-					     axienet_adjust_link, 0,
-					     PHY_INTERFACE_MODE_RGMII_ID);
-		}
+					     lp->phy_interface);
 
 		if (!lp->phy_dev)
 			dev_err(lp->dev, "of_phy_connect() failed\n");
@@ -1728,6 +1722,11 @@ static int axienet_probe(struct platform_device *pdev)
 
 	lp->coalesce_count_rx = XAXIDMA_DFT_RX_THRESHOLD;
 	lp->coalesce_count_tx = XAXIDMA_DFT_TX_THRESHOLD;
+
+	ret = of_get_phy_mode(pdev->dev.of_node);
+	if (ret < 0)
+		dev_warn(&pdev->dev, "couldn't find phy i/f\n");
+	lp->phy_interface = ret;
 
 	lp->phy_node = of_parse_phandle(pdev->dev.of_node, "phy-handle", 0);
 	if (lp->phy_node) {
