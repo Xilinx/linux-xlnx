@@ -425,6 +425,7 @@ struct axidma_bd {
  *		   can handle jumbo packets, this entry will be 1, else 0.
  * @is_10Gmac:	  Check for 10g mac.
  * @phy_interface: Phy interface type.
+ * @phy_flags:	Phy interface flags.
  */
 struct axienet_local {
 	struct net_device *ndev;
@@ -474,6 +475,7 @@ struct axienet_local {
 	u32 coalesce_count_tx;
 	u32 is_10Gmac;
 	u32 phy_interface;
+	u32 phy_flags;
 };
 
 /**

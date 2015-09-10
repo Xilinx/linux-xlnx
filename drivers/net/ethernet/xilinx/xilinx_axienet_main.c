@@ -1033,7 +1033,7 @@ static int axienet_open(struct net_device *ndev)
 
 	if (lp->phy_node && !lp->is_10Gmac) {
 		lp->phy_dev = of_phy_connect(lp->ndev, lp->phy_node,
-					     axienet_adjust_link, 0,
+					     axienet_adjust_link, lp->phy_flags,
 					     lp->phy_interface);
 
 		if (!lp->phy_dev)
@@ -1754,6 +1754,8 @@ static int axienet_probe(struct platform_device *pdev)
 	if (ret < 0)
 		dev_warn(&pdev->dev, "couldn't find phy i/f\n");
 	lp->phy_interface = ret;
+	if (lp->phy_type == XAE_PHY_TYPE_1000BASE_X)
+		lp->phy_flags = XAE_PHY_TYPE_1000BASE_X;
 
 	lp->phy_node = of_parse_phandle(pdev->dev.of_node, "phy-handle", 0);
 	if (lp->phy_node) {
