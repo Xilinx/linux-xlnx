@@ -691,6 +691,13 @@ static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 		spin_unlock_irqrestore(&lp->tx_lock, flags);
 		return NETDEV_TX_BUSY;
 	}
+
+	if (lp->tx_bd_ci > lp->tx_bd_tail) {
+		if (!netif_queue_stopped(ndev))
+			netif_stop_queue(ndev);
+		spin_unlock_irqrestore(&lp->tx_lock, flags);
+		return NETDEV_TX_BUSY;
+	}
 	spin_unlock_irqrestore(&lp->tx_lock, flags);
 
 	if (skb->ip_summed == CHECKSUM_PARTIAL && !lp->is_10Gmac) {
