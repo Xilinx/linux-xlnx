@@ -1832,7 +1832,7 @@ static int xilinx_dpdma_probe(struct platform_device *pdev)
 	ddev->device_terminate_all = xilinx_dpdma_terminate_all;
 	ddev->src_addr_widths = BIT(DMA_SLAVE_BUSWIDTH_UNDEFINED);
 	ddev->directions = BIT(DMA_MEM_TO_DEV);
-	ddev->residue_granularity = DMA_RESIDUE_GRANULARITY_BURST;
+	ddev->residue_granularity = DMA_RESIDUE_GRANULARITY_DESCRIPTOR;
 
 	for_each_child_of_node(node, child) {
 		chan = xilinx_dpdma_chan_probe(child, xdev);
