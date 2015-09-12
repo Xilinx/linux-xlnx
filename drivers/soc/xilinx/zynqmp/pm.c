@@ -789,7 +789,7 @@ static ssize_t zynqmp_pm_debugfs_api_write(struct file *file,
 	case MMIO_READ:
 		ret = zynqmp_pm_mmio_read(pm_api_arg[0],
 				     pm_api_arg[1], &pm_api_arg[2]);
-		pr_info("%s MMIO value: %x\n", __func__, pm_api_arg[2]);
+		pr_info("%s MMIO value: %#x\n", __func__, pm_api_arg[2]);
 		break;
 	case MMIO_WRITE:
 		ret = zynqmp_pm_mmio_write(pm_api_arg[0],
