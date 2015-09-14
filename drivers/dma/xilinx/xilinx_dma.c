@@ -432,9 +432,16 @@ static void xilinx_dma_free_descriptors(struct xilinx_dma_chan *chan)
 static void xilinx_dma_free_chan_resources(struct dma_chan *dchan)
 {
 	struct xilinx_dma_chan *chan = to_xilinx_chan(dchan);
+	unsigned long flags;
 
 	xilinx_dma_free_descriptors(chan);
 
+	/* Remove all segments from free segment list */
+	spin_lock_irqsave(&chan->lock, flags);
+	INIT_LIST_HEAD(&chan->free_seg_list);
+	spin_unlock_irqrestore(&chan->lock, flags);
+
+	/* Free memory that was allocated for the segments */
 	dma_free_coherent(chan->dev,
 			  sizeof(*chan->seg_v) * XILINX_DMA_NUM_DESCS,
 			  chan->seg_v, chan->seg_p);
