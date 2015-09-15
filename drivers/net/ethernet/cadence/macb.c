@@ -1649,7 +1649,7 @@ static void macb_init_hw(struct macb *bp)
 	config |= MACB_BF(RBOF, NET_IP_ALIGN);	/* Make eth data aligned */
 	config |= MACB_BIT(PAE);		/* PAuse Enable */
 	config |= MACB_BIT(DRFCS);		/* Discard Rx FCS */
-	if (bp->isjumbo)
+	if (bp->caps & MACB_CAPS_JUMBO)
 		config |= MACB_BIT(JFRAME);	/* Enable jumbo frames */
 	else
 		config |= MACB_BIT(BIG);	/* Receive oversized frames */
@@ -1661,13 +1661,13 @@ static void macb_init_hw(struct macb *bp)
 		config |= MACB_BIT(NBC);	/* No BroadCast */
 	config |= macb_dbw(bp);
 	macb_writel(bp, NCFGR, config);
-	if (bp->isjumbo && bp->jumbo_max_len)
+	if ((bp->caps & MACB_CAPS_JUMBO) && bp->jumbo_max_len)
 		gem_writel(bp, JML, bp->jumbo_max_len);
 	bp->speed = SPEED_10;
 	bp->duplex = DUPLEX_HALF;
 
 	bp->rx_frm_len_mask = MACB_RX_FRMLEN_MASK;
-	if (bp->isjumbo)
+	if (bp->caps & MACB_CAPS_JUMBO)
 		bp->rx_frm_len_mask = MACB_RX_JFRMLEN_MASK;
 
 	macb_configure_dma(bp);
@@ -1881,7 +1881,10 @@ static int macb_change_mtu(struct net_device *dev, int new_mtu)
 	if (netif_running(dev))
 		return -EBUSY;
 
-	max_mtu = gem_readl(bp, JML) - ETH_HLEN - ETH_FCS_LEN;
+	max_mtu = ETH_DATA_LEN;
+	if (bp->caps & MACB_CAPS_JUMBO)
+		max_mtu = gem_readl(bp, JML) - ETH_HLEN - ETH_FCS_LEN;
+
 	if ((new_mtu > max_mtu) || (new_mtu < GEM_MTU_MIN_SIZE))
 		return -EINVAL;
 
@@ -2165,11 +2168,11 @@ static const struct net_device_ops macb_netdev_ops = {
 	.ndo_open		= macb_open,
 	.ndo_stop		= macb_close,
 	.ndo_start_xmit		= macb_start_xmit,
-	.ndo_change_mtu		= macb_change_mtu,
 	.ndo_set_rx_mode	= macb_set_rx_mode,
 	.ndo_get_stats		= macb_get_stats,
 	.ndo_do_ioctl		= macb_ioctl,
 	.ndo_validate_addr	= eth_validate_addr,
+	.ndo_change_mtu		= macb_change_mtu,
 	.ndo_set_mac_address	= eth_mac_addr,
 #ifdef CONFIG_NET_POLL_CONTROLLER
 	.ndo_poll_controller	= macb_poll_controller,
@@ -2193,6 +2196,12 @@ static const struct macb_config sama5d4_config = {
 	.dma_burst_length = 4,
 };
 
+static const struct macb_config zynqmp_config = {
+	.caps = MACB_CAPS_GIGABIT_MODE_AVAILABLE | MACB_CAPS_JUMBO,
+	.dma_burst_length = 16,
+	.jumbo_max_len = 10240,
+};
+
 static const struct of_device_id macb_dt_ids[] = {
 	{ .compatible = "cdns,at32ap7000-macb" },
 	{ .compatible = "cdns,at91sam9260-macb" },
@@ -2201,6 +2210,7 @@ static const struct of_device_id macb_dt_ids[] = {
 	{ .compatible = "cdns,gem", .data = &pc302gem_config },
 	{ .compatible = "atmel,sama5d3-gem", .data = &sama5d3_config },
 	{ .compatible = "atmel,sama5d4-gem", .data = &sama5d4_config },
+	{ .compatible = "cdns,zynqmp-gem", .data = &zynqmp_config},
 	{ /* sentinel */ }
 };
 MODULE_DEVICE_TABLE(of, macb_dt_ids);
@@ -2272,6 +2282,8 @@ static void macb_probe_queues(void __iomem *mem,
 
 static int macb_probe(struct platform_device *pdev)
 {
+	struct device_node *np = pdev->dev.of_node;
+	const struct macb_config *macb_config = NULL;
 	struct macb_platform_data *pdata;
 	struct resource *regs;
 	struct net_device *dev;
@@ -2351,10 +2363,18 @@ static int macb_probe(struct platform_device *pdev)
 	bp->hclk = hclk;
 	bp->tx_clk = tx_clk;
 
-	of_property_read_u32(pdev->dev.of_node, "jumbo-max-len",
-			     &bp->jumbo_max_len);
-	bp->isjumbo = of_property_read_bool(pdev->dev.of_node,
-					    "jumbo-supported");
+	if (np) {
+		const struct of_device_id *match;
+
+		match = of_match_node(macb_dt_ids, np);
+		if (match && match->data) {
+			macb_config = match->data;
+		}
+	}
+
+	if (macb_config)
+		bp->jumbo_max_len = macb_config->jumbo_max_len;
+
 	spin_lock_init(&bp->lock);
 
 	/* set the queue register mapping once for all: queue0 has a special

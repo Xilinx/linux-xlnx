@@ -71,7 +71,7 @@
 #define GEM_NCFGR		0x0004 /* Network Config */
 #define GEM_USRIO		0x000c /* User IO */
 #define GEM_DMACFG		0x0010 /* DMA Configuration */
-#define GEM_JML			0x0048
+#define GEM_JML			0x0048 /* Jumbo Max Length */
 #define GEM_HRB			0x0080 /* Hash Bottom */
 #define GEM_HRT			0x0084 /* Hash Top */
 #define GEM_SA1B		0x0088 /* Specific1 Bottom */
@@ -396,6 +396,7 @@
 #define MACB_CAPS_GIGABIT_MODE_AVAILABLE	0x20000000
 #define MACB_CAPS_SG_DISABLED			0x40000000
 #define MACB_CAPS_MACB_IS_GEM			0x80000000
+#define MACB_CAPS_JUMBO				0x00000010
 
 /* Bit manipulation macros */
 #define MACB_BIT(name)					\
@@ -756,6 +757,7 @@ struct macb_or_gem_ops {
 struct macb_config {
 	u32			caps;
 	unsigned int		dma_burst_length;
+	int	jumbo_max_len;
 };
 
 struct macb_queue {
@@ -822,11 +824,10 @@ struct macb {
 	dma_addr_t skb_physaddr;		/* phys addr from pci_map_single */
 	int skb_length;				/* saved skb length for pci_unmap_single */
 	unsigned int		max_tx_length;
-	unsigned int		rx_frm_len_mask;
-	unsigned int		jumbo_max_len;
-	bool			isjumbo;
 
 	u64			ethtool_stats[GEM_STATS_LEN];
+	unsigned int		rx_frm_len_mask;
+	unsigned int		jumbo_max_len;
 };
 
 extern const struct ethtool_ops macb_ethtool_ops;
