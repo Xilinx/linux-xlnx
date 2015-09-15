@@ -996,12 +996,13 @@ static void xilinx_dma_chan_remove(struct xilinx_dma_chan *chan)
 	chan->ctrl_reg &= ~XILINX_DMA_XR_IRQ_ALL_MASK;
 	dma_ctrl_write(chan, XILINX_DMA_REG_CONTROL, chan->ctrl_reg);
 
-	if (chan->irq > 0)
+	if (chan->irq > 0) {
 		free_irq(chan->irq, chan);
 
-	tasklet_kill(&chan->tasklet);
+		tasklet_kill(&chan->tasklet);
 
-	list_del(&chan->common.device_node);
+		list_del(&chan->common.device_node);
+	}
 }
 
 /**
