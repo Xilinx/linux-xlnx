@@ -33,6 +33,7 @@ Optional properties for PHY child node:
 - phy-handle : see ethernet.txt file in the same directory
 
 Optional properties:
+- tsu-clk: Time stamp unit clock frequency used.
 - rx-watermark: Set watermark value for pbuf_rxcutthru reg and enable
   rx partial store and forward, only when compatible = "cdns,zynqmp-gem".
   Value should be less than 0xFFF.
