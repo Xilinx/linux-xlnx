@@ -29,6 +29,9 @@ Optional properties for PHY child node:
 - magic-packet : If present, indicates that the hardware supports waking
   up via magic packet.
 
+Optional properties:
+- tsu-clk: Time stamp unit clock frequency used.
+
 Examples:
 
 	macb0: ethernet@fffc4000 {
