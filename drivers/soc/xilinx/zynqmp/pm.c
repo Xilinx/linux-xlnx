@@ -552,7 +552,6 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_mmio_write);
 /**
  * zynqmp_pm_mmio_read - Read value from protected mmio
  * @address:	Address to write to
- * @mask:	Mask to apply
  * @value:	Value to read
  *
  * This function provides access to PM-related control registers
@@ -560,16 +559,14 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_mmio_write);
  *
  * Return:	Returns status, either success or error+reason
  */
-int zynqmp_pm_mmio_read(const u32 address,
-				    const u32 mask,
-				    u32 *value)
+int zynqmp_pm_mmio_read(const u32 address, u32 *value)
 {
 	u32 ret_payload[PAYLOAD_ARG_CNT];
 
-	if (value == NULL)
-		return zynqmp_pm_ret_code(XST_PM_CONFLICT);
+	if (!value)
+		return -EINVAL;
 
-	invoke_pm_fn(MMIO_READ, address, mask, 0, 0, ret_payload);
+	invoke_pm_fn(MMIO_READ, address, 0, 0, 0, ret_payload);
 	*value = ret_payload[1];
 
 	return zynqmp_pm_ret_code((enum pm_ret_status)ret_payload[0]);
@@ -787,9 +784,8 @@ static ssize_t zynqmp_pm_debugfs_api_write(struct file *file,
 		pr_info("%s Reset status: %u\n", __func__, pm_api_arg[1]);
 		break;
 	case MMIO_READ:
-		ret = zynqmp_pm_mmio_read(pm_api_arg[0],
-				     pm_api_arg[1], &pm_api_arg[2]);
-		pr_info("%s MMIO value: %#x\n", __func__, pm_api_arg[2]);
+		ret = zynqmp_pm_mmio_read(pm_api_arg[0], &pm_api_arg[1]);
+		pr_info("%s MMIO value: %#x\n", __func__, pm_api_arg[1]);
 		break;
 	case MMIO_WRITE:
 		ret = zynqmp_pm_mmio_write(pm_api_arg[0],

@@ -117,8 +117,6 @@ int zynqmp_pm_reset_get_status(const u32 reset,
 int zynqmp_pm_mmio_write(const u32 address,
 				     const u32 mask,
 				     const u32 value);
-int zynqmp_pm_mmio_read(const u32 address,
-				    const u32 mask,
-				    u32 *value);
+int zynqmp_pm_mmio_read(const u32 address, u32 *value);
 
 #endif /* __SOC_ZYNQMP_PM_H__ */
