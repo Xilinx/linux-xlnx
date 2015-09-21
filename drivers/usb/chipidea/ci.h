@@ -106,6 +106,19 @@ enum ci_role {
 	CI_ROLE_END,
 };
 
+enum ci_revision {
+	CI_REVISION_1X = 10,	/* Revision 1.x */
+	CI_REVISION_20 = 20, /* Revision 2.0 */
+	CI_REVISION_21, /* Revision 2.1 */
+	CI_REVISION_22, /* Revision 2.2 */
+	CI_REVISION_23, /* Revision 2.3 */
+	CI_REVISION_24, /* Revision 2.4 */
+	CI_REVISION_25, /* Revision 2.5 */
+	CI_REVISION_25_PLUS, /* Revision above than 2.5 */
+	CI_REVISION_UNKNOWN = 99, /* Unknown Revision */
+};
+
+
 /**
  * struct ci_role_driver - host/gadget role driver
  * @start: start this role
@@ -220,6 +233,8 @@ struct ci_hdrc {
 	bool				id_event;
 	bool				b_sess_valid_event;
 	bool				imx28_write_fix;
+	enum ci_revision		rev;
+
 };
 
 static inline struct ci_role_driver *ci_role(struct ci_hdrc *ci)
