@@ -30,6 +30,7 @@ static const struct ci_hdrc_platform_data ci_default_pdata = {
 
 static struct ci_hdrc_platform_data ci_zynq_pdata = {
 	.capoffset	= DEF_CAPOFFSET,
+	.flags          = CI_HDRC_PHY_VBUS_CONTROL,
 };
 
 static const struct of_device_id ci_hdrc_usb2_of_match[] = {
