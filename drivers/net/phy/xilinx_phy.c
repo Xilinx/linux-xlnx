@@ -21,15 +21,13 @@
 #include <linux/mii.h>
 #include <linux/phy.h>
 #include <linux/of.h>
+#include <linux/xilinx_phy.h>
 
-#define XILINX_PHY_ID			0x01740c00
-#define XILINX_PHY_ID_MASK		0xfffffff0
 #define MII_PHY_STATUS_SPD_MASK		0x0C00
 #define MII_PHY_STATUS_FULLDUPLEX	0x1000
 #define MII_PHY_STATUS_1000		0x0800
 #define MII_PHY_STATUS_100		0x0400
 #define XPCSPMA_PHY_CTRL_ISOLATE_DISABLE 0xFBFF
-#define	XPCSPMA_TYPEIS_1000BASE_X	5
 
 static int xilinxphy_read_status(struct phy_device *phydev)
 {
@@ -87,7 +85,7 @@ static int xilinxphy_read_status(struct phy_device *phydev)
 	/* For 1000BASE-X Phy Mode the speed/duplex will always be
 	 * 1000Mbps/fullduplex
 	 */
-	if (phydev->dev_flags == XPCSPMA_TYPEIS_1000BASE_X) {
+	if (phydev->dev_flags == XAE_PHY_TYPE_1000BASE_X) {
 		phydev->duplex = DUPLEX_FULL;
 		phydev->speed = SPEED_1000;
 	}
