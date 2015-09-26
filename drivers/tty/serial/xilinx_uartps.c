@@ -127,10 +127,12 @@ MODULE_PARM_DESC(rx_timeout, "Rx timeout, 1-255");
 #define CDNS_UART_IXR_RXTRIG	0x00000001 /* RX FIFO trigger interrupt */
 #define CDNS_UART_IXR_RXFULL	0x00000004 /* RX FIFO full interrupt. */
 #define CDNS_UART_IXR_RXEMPTY	0x00000002 /* RX FIFO empty interrupt. */
-#define CDNS_UART_IXR_MASK	0x00001FFF /* Valid bit mask */
+#define CDNS_UART_IXR_MASK	0x00003FFF /* Valid bit mask */
 
 /* Goes in read_status_mask for break detection as the HW doesn't do it*/
-#define CDNS_UART_IXR_BRK	0x80000000
+#define CDNS_UART_IXR_BRK	0x00002000
+
+#define CDNS_UART_BRK_DET	BIT(1)
 
 /*
  * Modem Control register:
@@ -171,7 +173,12 @@ struct cdns_uart {
 	struct clk		*pclk;
 	unsigned int		baud;
 	struct notifier_block	clk_rate_change_nb;
+	u32			quirks;
 };
+struct cdns_platform_data {
+	u32 quirks;
+};
+
 #define to_cdns_uart(_nb) container_of(_nb, struct cdns_uart, \
 		clk_rate_change_nb);
 
@@ -228,27 +235,38 @@ static void cdns_uart_handle_tx(void *dev_id)
 static void cdns_uart_handle_rx(void *dev_id, unsigned int isrstatus)
 {
 	struct uart_port *port = (struct uart_port *)dev_id;
+	struct cdns_uart *cdns_uart = port->private_data;
 	unsigned int data;
 	unsigned int framerrprocessed = 0;
 	char status = TTY_NORMAL;
+	bool is_brk_support;
+
+	is_brk_support = cdns_uart->quirks & CDNS_UART_BRK_DET;
 
 	while ((cdns_uart_readl(CDNS_UART_SR_OFFSET) &
 		CDNS_UART_SR_RXEMPTY) != CDNS_UART_SR_RXEMPTY) {
 		data = cdns_uart_readl(CDNS_UART_FIFO_OFFSET);
 		port->icount.rx++;
 		/*
-		 * There is no hardware break detection, so we interpret
+		 * There is no hardware break detection in Zynq, so we interpret
 		 * framing error with all-zeros data as a break sequence.
 		 * Most of the time, there's another non-zero byte at the
 		 * end of the sequence.
 		 */
-		if (isrstatus & CDNS_UART_IXR_FRAMING) {
+		if (!is_brk_support && (isrstatus & CDNS_UART_IXR_FRAMING)) {
 			if (!data) {
 				port->read_status_mask |= CDNS_UART_IXR_BRK;
 				framerrprocessed = 1;
 				continue;
 			}
 		}
+		if (is_brk_support && (isrstatus & CDNS_UART_IXR_BRK)) {
+			port->icount.brk++;
+			status = TTY_BREAK;
+			if (uart_handle_break(port))
+				continue;
+		}
+
 		isrstatus &= port->read_status_mask;
 		isrstatus &= ~port->ignore_status_mask;
 
@@ -769,8 +787,11 @@ static void cdns_uart_set_termios(struct uart_port *port,
  */
 static int cdns_uart_startup(struct uart_port *port)
 {
+	struct cdns_uart *cdns_uart = port->private_data;
+	bool is_brk_support;
 	unsigned int retval = 0, status = 0;
 
+	is_brk_support = cdns_uart->quirks & CDNS_UART_BRK_DET;
 	retval = request_irq(port->irq, cdns_uart_isr, 0, CDNS_UART_NAME,
 								(void *)port);
 	if (retval)
@@ -833,6 +854,11 @@ static int cdns_uart_startup(struct uart_port *port)
 		CDNS_UART_IXR_FRAMING | CDNS_UART_IXR_OVERRUN |
 		CDNS_UART_IXR_RXTRIG | CDNS_UART_IXR_TOUT,
 		CDNS_UART_IER_OFFSET);
+	if (is_brk_support) {
+		status = cdns_uart_readl(CDNS_UART_IMR_OFFSET);
+		cdns_uart_writel((status | CDNS_UART_IXR_BRK),
+					CDNS_UART_IER_OFFSET);
+	}
 
 	return retval;
 }
@@ -1340,6 +1366,16 @@ static int cdns_uart_resume(struct device *device)
 
 static SIMPLE_DEV_PM_OPS(cdns_uart_dev_pm_ops, cdns_uart_suspend,
 		cdns_uart_resume);
+static const struct cdns_platform_data zynqmp_uart_def = {
+					.quirks = CDNS_UART_BRK_DET, };
+/* Match table for of_platform binding */
+static const struct of_device_id cdns_uart_of_match[] = {
+	{ .compatible = "xlnx,xuartps", },
+	{ .compatible = "cdns,uart-r1p8", },
+	{ .compatible = "cdns,uart-r1p12", .data = &zynqmp_uart_def },
+	{}
+};
+MODULE_DEVICE_TABLE(of, cdns_uart_of_match);
 
 /**
  * cdns_uart_probe - Platform driver probe
@@ -1353,11 +1389,19 @@ static int cdns_uart_probe(struct platform_device *pdev)
 	struct uart_port *port;
 	struct resource *res;
 	struct cdns_uart *cdns_uart_data;
+	const struct of_device_id *match;
 
 	cdns_uart_data = devm_kzalloc(&pdev->dev, sizeof(*cdns_uart_data),
 			GFP_KERNEL);
 	if (!cdns_uart_data)
 		return -ENOMEM;
+
+	match = of_match_node(cdns_uart_of_match, pdev->dev.of_node);
+	if (match && match->data) {
+		const struct cdns_platform_data *data = match->data;
+
+		cdns_uart_data->quirks = data->quirks;
+	}
 
 	cdns_uart_data->pclk = devm_clk_get(&pdev->dev, "pclk");
 	if (IS_ERR(cdns_uart_data->pclk)) {
@@ -1480,14 +1524,6 @@ static int cdns_uart_remove(struct platform_device *pdev)
 	clk_disable_unprepare(cdns_uart_data->pclk);
 	return rc;
 }
-
-/* Match table for of_platform binding */
-static struct of_device_id cdns_uart_of_match[] = {
-	{ .compatible = "xlnx,xuartps", },
-	{ .compatible = "cdns,uart-r1p8", },
-	{}
-};
-MODULE_DEVICE_TABLE(of, cdns_uart_of_match);
 
 static struct platform_driver cdns_uart_platform_driver = {
 	.probe   = cdns_uart_probe,
