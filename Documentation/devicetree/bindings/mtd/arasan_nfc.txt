@@ -5,9 +5,13 @@ Required properties:
 - reg: Memory map for module access
 - interrupt-parent: Interrupt controller the interrupt is routed through
 - interrupts: Should contain the interrupt for the device
+- clock-name: List of input clocks - "clk_sys", "clk_flash"
+	      (See clock bindings for details)
+- clocks: Clock phandles (see clock bindings for details)
 
 Optional properties:
 - arasan,has-mdma: Enables Dma support
+- num-cs: Number of chip selects used
 
 for nand partition information please refer the below file
 Documentation/devicetree/bindings/mtd/partition.txt
@@ -16,9 +20,12 @@ Example:
 	nand0: nand@ff100000 {
 		compatible = "arasan,nfc-v3p10"
 		reg = <0x0 0xff100000 0x1000>;
+		clock-name = "clk_sys", "clk_flash"
+		clocks = <&misc_clk &misc_clk>;
 		interrupt-parent = <&gic>;
 		interrupts = <0 14 4>;
 		arasan,has-mdma;
+		num-cs = <1>;
 		partition@0 {
 			label = "u-boot";
 			reg = <0x0 0x0 0x1000000>;
