@@ -354,8 +354,8 @@ static void anfc_read_buf(struct mtd_info *mtd, uint8_t *buf, int len)
 			dev_err(nfc->dev, "Rdbuf mapping error");
 			return;
 		}
-		writel(paddr, nfc->base + DMA_ADDR0_OFST);
-		writel(paddr >> 32, nfc->base + DMA_ADDR1_OFST);
+		writel(lower_32_bits(paddr), nfc->base + DMA_ADDR0_OFST);
+		writel(upper_32_bits(paddr), nfc->base + DMA_ADDR1_OFST);
 		anfc_enable_intrs(nfc, nfc->rdintrmask);
 		writel(PROG_PGRD, nfc->base + PROG_OFST);
 		anfc_wait_for_event(nfc, XFER_COMPLETE);
@@ -410,8 +410,8 @@ static void anfc_write_buf(struct mtd_info *mtd, const uint8_t *buf, int len)
 			dev_err(nfc->dev, "Writebuf mapping error");
 			return;
 		}
-		writel(paddr, nfc->base + DMA_ADDR0_OFST);
-		writel(paddr >> 32, nfc->base + DMA_ADDR1_OFST);
+		writel(lower_32_bits(paddr), nfc->base + DMA_ADDR0_OFST);
+		writel(upper_32_bits(paddr), nfc->base + DMA_ADDR1_OFST);
 		anfc_enable_intrs(nfc, XFER_COMPLETE);
 		writel(PROG_PGPROG, nfc->base + PROG_OFST);
 		anfc_wait_for_event(nfc, XFER_COMPLETE);
