@@ -822,8 +822,14 @@ static int anfc_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "nand_scan_ident for NAND failed\n");
 		return -ENXIO;
 	}
-	nfc->raddr_cycles = nand_chip->onfi_params.addr_cycles & 0xF;
-	nfc->caddr_cycles = (nand_chip->onfi_params.addr_cycles >> 4) & 0xF;
+	if (nand_chip->onfi_version) {
+		nfc->raddr_cycles = nand_chip->onfi_params.addr_cycles & 0xF;
+		nfc->caddr_cycles =
+				(nand_chip->onfi_params.addr_cycles >> 4) & 0xF;
+	} else {
+		/* For non-ONFI devices, configuring the address cyles as 5 */
+		nfc->raddr_cycles = nfc->caddr_cycles = 5;
+	}
 
 	if (anfc_ecc_init(mtd, &nand_chip->ecc))
 		return -ENXIO;
