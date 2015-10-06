@@ -279,20 +279,25 @@ static int anfc_device_ready(struct mtd_info *mtd,
 			     struct nand_chip *chip)
 {
 	u8 status;
-	u32 timeout = STATUS_TIMEOUT;
+	unsigned long timeout = jiffies + STATUS_TIMEOUT;
 
-	while (timeout--) {
+	do {
 		chip->cmdfunc(mtd, NAND_CMD_STATUS, 0, 0);
 		status = chip->read_byte(mtd);
 		if (status & ONFI_STATUS_READY) {
 			if (status & ONFI_STATUS_FAIL)
 				return NAND_STATUS_FAIL;
-			return 0;
+			break;
 		}
+		cpu_relax();
+	} while (!time_after_eq(jiffies, timeout));
+
+	if (time_after_eq(jiffies, timeout)) {
+		pr_err("%s timed out\n", __func__);
+		return -ETIMEDOUT;
 	}
 
-	pr_err("%s timed out\n", __func__);
-	return -ETIMEDOUT;
+	return 0;
 }
 
 static int anfc_read_oob(struct mtd_info *mtd, struct nand_chip *chip,
