@@ -213,6 +213,9 @@ struct nand_chip;
 #define ONFI_TIMING_MODE_5		(1 << 5)
 #define ONFI_TIMING_MODE_UNKNOWN	(1 << 6)
 
+/* ONFI data interface mode */
+#define ONFI_DATA_INTERFACE_NVDDR	(1 << 4)
+
 /* ONFI feature address */
 #define ONFI_FEATURE_ADDR_TIMING_MODE	0x1
 
