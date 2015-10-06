@@ -2603,7 +2603,15 @@ static int nand_do_write_oob(struct mtd_info *mtd, loff_t to,
 	 * if we don't do this. I have no clue why, but I seem to have 'fixed'
 	 * it in the doc2000 driver in August 1999.  dwmw2.
 	 */
-	chip->cmdfunc(mtd, NAND_CMD_RESET, -1, -1);
+	/*
+	 * Nand onfi compatible devices may support different data interface
+	 * modes like SDR, NVDDR and NVDDR2. Giving reset to device places the
+	 * device in to power-up state and places the target in the SDR data
+	 * interface mode. This will be the problem for devices configured for
+	 * NVDDR modes. So, limiting the reset operation to Toshiba devices.
+	 */
+	if (chip->onfi_params.jedec_id == NAND_MFR_TOSHIBA)
+		chip->cmdfunc(mtd, NAND_CMD_RESET, -1, -1);
 
 	/* Check, if it is write protected */
 	if (nand_check_wp(mtd)) {
