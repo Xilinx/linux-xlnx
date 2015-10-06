@@ -100,7 +100,6 @@
  * @codeword_size:	Code word size information.
  * @eccbits:		Number of ecc bits.
  * @bch:		Bch / Hamming mode enable/disable.
- * @eccaddr:		Ecc start address information.
  * @eccsize:		Ecc size information.
  */
 struct anfc_ecc_matrix {
@@ -108,45 +107,43 @@ struct anfc_ecc_matrix {
 	u32 codeword_size;
 	u8 eccbits;
 	u8 bch;
-	u16 eccaddr;
 	u16 eccsize;
 };
 
 static const struct anfc_ecc_matrix ecc_matrix[] = {
-	{512,	512,	1,	0,	0x20D,	0x3},
-	{512,	512,	4,	1,	0x209,	0x7},
-	{512,	512,	8,	1,	0x203,	0xD},
+	{512,	512,	1,	0,	0x3},
+	{512,	512,	4,	1,	0x7},
+	{512,	512,	8,	1,	0xD},
 	/* 2K byte page */
-	{2048,	512,	1,	0,	0x834,	0xC},
-	{2048,	512,	4,	1,	0x826,	0x1A},
-	{2048,	512,	8,	1,	0x80c,	0x34},
-	{2048,	512,	12,	1,	0x822,	0x4E},
-	{2048,	1024,	24,	1,	0x81c,	0x54},
+	{2048,	512,	1,	0,	0xC},
+	{2048,	512,	4,	1,	0x1A},
+	{2048,	512,	8,	1,	0x34},
+	{2048,	512,	12,	1,	0x4E},
+	{2048,	1024,	24,	1,	0x54},
 	/* 4K byte page */
-	{4096,	512,	1,	0,	0x1068,	0x18},
-	{4096,	512,	4,	1,	0x104c,	0x34},
-	{4096,	512,	8,	1,	0x1018,	0x68},
-	{4096,	512,	12,	1,	0x1044,	0x9C},
-	{4096,	1024,	4,	1,	0x1038,	0xA8},
+	{4096,	512,	1,	0,	0x18},
+	{4096,	512,	4,	1,	0x34},
+	{4096,	512,	8,	1,	0x68},
+	{4096,	512,	12,	1,	0x9C},
+	{4096,	1024,	4,	1,	0xA8},
 	/* 8K byte page */
-	{8192,	512,	1,	0,	0x20d0,	0x30},
-	{8192,	512,	4,	1,	0x2098,	0x68},
-	{8192,	512,	8,	1,	0x2030,	0xD0},
-	{8192,	512,	12,	1,	0x2088,	0x138},
-	{8192,	1024,	24,	1,	0x2070,	0x150},
+	{8192,	512,	1,	0,	0x30},
+	{8192,	512,	4,	1,	0x68},
+	{8192,	512,	8,	1,	0xD0},
+	{8192,	512,	12,	1,	0x138},
+	{8192,	1024,	24,	1,	0x150},
 	/* 16K byte page */
-	{16384,	512,	1,	0,	0x4460,	0x60},
-	{16384,	512,	4,	1,	0x43f0,	0xD0},
-	{16384,	512,	8,	1,	0x4320,	0x1A0},
-	{16384,	512,	12,	1,	0x4250,	0x270},
-	{16384,	1024,	24,	1,	0x4220,	0x2A0}
+	{16384,	512,	1,	0,	0x60},
+	{16384,	512,	4,	1,	0xD0},
+	{16384,	512,	8,	1,	0x1A0},
+	{16384,	512,	12,	1,	0x270},
+	{16384,	1024,	24,	1,	0x2A0}
 };
 
 /**
  * struct anfc - Defines the Arasan NAND flash driver instance
  * @chip:		NAND chip information structure.
  * @mtd:		MTD information structure.
- * @parts:		Pointer to the mtd_partition structure.
  * @dev:		Pointer to the device structure.
  * @base:		Virtual address of the NAND flash device.
  * @curr_cmd:		Current command issued.
@@ -169,7 +166,6 @@ static const struct anfc_ecc_matrix ecc_matrix[] = {
 struct anfc {
 	struct nand_chip chip;
 	struct mtd_info mtd;
-	struct mtd_partition *parts;
 	struct device *dev;
 
 	void __iomem *base;
@@ -802,7 +798,6 @@ static int anfc_probe(struct platform_device *pdev)
 	nand_chip->options = NAND_BUSWIDTH_AUTO;
 	nand_chip->bbt_options = NAND_BBT_USE_FLASH;
 	nand_chip->select_chip = anfc_select_chip;
-	mtd->size = nand_chip->chipsize;
 	nfc->dma = of_property_read_bool(pdev->dev.of_node,
 					 "arasan,has-mdma");
 	platform_set_drvdata(pdev, nfc);
