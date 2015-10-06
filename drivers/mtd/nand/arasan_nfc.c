@@ -159,6 +159,7 @@ static const struct anfc_ecc_matrix ecc_matrix[] = {
  * @pktsize:		Packet size for read / write operation.
  * @bufshift:		Variable used for indexing buffer operation
  * @rdintrmask:		Interrupt mask value for read operation.
+ * @num_cs:		Number of chip selects in use.
  * @bufrdy:		Completion event for buffer ready.
  * @xfercomp:		Completion event for transfer complete.
  * @ecclayout:		Ecc layout object
@@ -186,6 +187,7 @@ struct anfc {
 	u32 pktsize;
 	u32 bufshift;
 	u32 rdintrmask;
+	u32 num_cs;
 
 	struct completion bufrdy;
 	struct completion xfercomp;
@@ -805,6 +807,8 @@ static int anfc_probe(struct platform_device *pdev)
 	nand_chip->select_chip = anfc_select_chip;
 	nfc->dma = of_property_read_bool(pdev->dev.of_node,
 					 "arasan,has-mdma");
+	nfc->num_cs = 1;
+	of_property_read_u32(pdev->dev.of_node, "num-cs", &nfc->num_cs);
 	platform_set_drvdata(pdev, nfc);
 	init_completion(&nfc->bufrdy);
 	init_completion(&nfc->xfercomp);
@@ -818,7 +822,7 @@ static int anfc_probe(struct platform_device *pdev)
 	if (err)
 		return err;
 
-	if (nand_scan_ident(mtd, 1, NULL)) {
+	if (nand_scan_ident(mtd, nfc->num_cs, NULL)) {
 		dev_err(&pdev->dev, "nand_scan_ident for NAND failed\n");
 		return -ENXIO;
 	}
