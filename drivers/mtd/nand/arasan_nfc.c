@@ -8,7 +8,7 @@
  * Free Software Foundation; either version 2 of the License, or (at your
  * option) any later version.
  */
-
+#include <linux/clk.h>
 #include <linux/delay.h>
 #include <linux/dma-mapping.h>
 #include <linux/interrupt.h>
@@ -155,6 +155,8 @@ static const struct anfc_ecc_matrix ecc_matrix[] = {
  * @dev:		Pointer to the device structure.
  * @base:		Virtual address of the NAND flash device.
  * @curr_cmd:		Current command issued.
+ * @clk_sys:		Pointer to the system clock.
+ * @clk_flash:		Pointer to the flash clock.
  * @dma:		Dma enable/disable.
  * @bch:		Bch / Hamming mode enable/disable.
  * @err:		Error identifier.
@@ -180,6 +182,8 @@ struct anfc {
 
 	void __iomem *base;
 	int curr_cmd;
+	struct clk *clk_sys;
+	struct clk *clk_flash;
 
 	bool dma;
 	bool bch;
@@ -917,11 +921,35 @@ static int anfc_probe(struct platform_device *pdev)
 			       0, "arasannfc", nfc);
 	if (err)
 		return err;
+	nfc->clk_sys = devm_clk_get(&pdev->dev, "clk_sys");
+	if (IS_ERR(nfc->clk_sys)) {
+		dev_err(&pdev->dev, "sys clock not found.\n");
+		return PTR_ERR(nfc->clk_sys);
+	}
+
+	nfc->clk_flash = devm_clk_get(&pdev->dev, "clk_flash");
+	if (IS_ERR(nfc->clk_flash)) {
+		dev_err(&pdev->dev, "flash clock not found.\n");
+		return PTR_ERR(nfc->clk_flash);
+	}
+
+	err = clk_prepare_enable(nfc->clk_sys);
+	if (err) {
+		dev_err(&pdev->dev, "Unable to enable sys clock.\n");
+		return err;
+	}
+
+	err = clk_prepare_enable(nfc->clk_flash);
+	if (err) {
+		dev_err(&pdev->dev, "Unable to enable flash clock.\n");
+		goto clk_dis_sys;
+	}
 
 	nfc->spktsize = SDR_MODE_PACKET_SIZE;
 	if (nand_scan_ident(mtd, nfc->num_cs, NULL)) {
+		err = -ENXIO;
 		dev_err(&pdev->dev, "nand_scan_ident for NAND failed\n");
-		return -ENXIO;
+		goto clk_dis_all;
 	}
 	if (nand_chip->onfi_version) {
 		nfc->raddr_cycles = nand_chip->onfi_params.addr_cycles & 0xF;
@@ -933,26 +961,44 @@ static int anfc_probe(struct platform_device *pdev)
 	}
 
 	if (anfc_init_timing_mode(nfc)) {
+		err = -ENXIO;
 		dev_err(&pdev->dev, "timing mode init failed\n");
-		return -ENXIO;
+		goto clk_dis_all;
 	}
 
-	if (anfc_ecc_init(mtd, &nand_chip->ecc))
-		return -ENXIO;
+	if (anfc_ecc_init(mtd, &nand_chip->ecc)) {
+		err = -ENXIO;
+		goto clk_dis_all;
+	}
 
 	if (nand_scan_tail(mtd)) {
+		err = -ENXIO;
 		dev_err(&pdev->dev, "nand_scan_tail for NAND failed\n");
-		return -ENXIO;
+		goto clk_dis_all;
 	}
 
 	ppdata.of_node = pdev->dev.of_node;
 
-	return mtd_device_parse_register(&nfc->mtd, NULL, &ppdata, NULL, 0);
+	err = mtd_device_parse_register(&nfc->mtd, NULL, &ppdata, NULL, 0);
+	if (err)
+		goto clk_dis_all;
+
+	return err;
+
+clk_dis_all:
+	clk_disable_unprepare(nfc->clk_flash);
+clk_dis_sys:
+	clk_disable_unprepare(nfc->clk_sys);
+
+	return err;
 }
 
 static int anfc_remove(struct platform_device *pdev)
 {
 	struct anfc *nfc = platform_get_drvdata(pdev);
+
+	clk_disable_unprepare(nfc->clk_sys);
+	clk_disable_unprepare(nfc->clk_flash);
 
 	nand_release(&nfc->mtd);
 
