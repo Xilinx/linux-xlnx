@@ -45,6 +45,7 @@
 #include <linux/of_mdio.h>
 #include <linux/timer.h>
 #include <linux/ptp_clock_kernel.h>
+#include <linux/timecounter.h>
 
 /************************** Constant Definitions *****************************/
 
