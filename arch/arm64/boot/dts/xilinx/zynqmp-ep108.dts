@@ -32,12 +32,34 @@
 	};
 };
 
+&amba {
+	misc_clk: misc_clk {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <25000000>;
+	};
+
+	i2c_clk: i2c_clk {
+		compatible = "fixed-clock";
+		#clock-cells = <0x0>;
+		clock-frequency = <111111111>;
+	};
+
+	sata_clk: sata_clk {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <75000000>;
+	};
+};
+
 &can0 {
 	status = "okay";
+	clocks = <&misc_clk &misc_clk>;
 };
 
 &gem0 {
 	status = "okay";
+	clocks = <&misc_clk>, <&misc_clk>, <&misc_clk>;
 	phy-handle = <&phy0>;
 	phy-mode = "rgmii-id";
 	phy0: phy@0{
@@ -48,10 +70,12 @@
 
 &gpio {
 	status = "okay";
+	clocks = <&misc_clk>;
 };
 
 &i2c0 {
 	status = "okay";
+	clocks = <&i2c_clk>;
 	clock-frequency = <400000>;
 	eeprom@54 {
 		compatible = "at,24c64";
@@ -61,6 +85,7 @@
 
 &i2c1 {
 	status = "okay";
+	clocks = <&i2c_clk>;
 	clock-frequency = <400000>;
 	eeprom@55 {
 		compatible = "at,24c64";
@@ -70,19 +95,23 @@
 
 &sata {
 	status = "okay";
+	clocks = <&sata_clk>;
 	ceva,broken-gen2;
 };
 
 &sdhci0 {
 	status = "okay";
+	clocks = <&misc_clk>, <&misc_clk>;
 };
 
 &sdhci1 {
 	status = "okay";
+	clocks = <&misc_clk>, <&misc_clk>;
 };
 
 &spi0 {
 	status = "okay";
+	clocks = <&misc_clk &misc_clk>;
 	num-cs = <1>;
 	spi0_flash0: spi0_flash0@0 {
 		compatible = "m25p80";
@@ -100,6 +129,7 @@
 
 &spi1 {
 	status = "okay";
+	clocks = <&misc_clk &misc_clk>;
 	num-cs = <1>;
 	spi1_flash0: spi1_flash0@0 {
 		compatible = "m25p80";
@@ -117,6 +147,7 @@
 
 &uart0 {
 	status = "okay";
+	clocks = <&misc_clk &misc_clk>;
 };
 
 &usb0 {
@@ -127,10 +158,12 @@
 
 &usb1 {
 	status = "okay";
+	clocks = <&misc_clk>, <&misc_clk>;
 	dr_mode = "host";
 	maximum-speed = "high-speed";
 };
 
 &watchdog0 {
 	status = "okay";
+	clocks= <&misc_clk>;
 };
