@@ -308,6 +308,8 @@
 			clock-names = "pclk", "hclk", "tx_clk";
 			#address-cells = <1>;
 			#size-cells = <0>;
+			jumbo-max-len = <10240>;
+			jumbo-supported;
 		};
 
 		gem1: ethernet@ff0c0000 {
@@ -319,6 +321,8 @@
 			clock-names = "pclk", "hclk", "tx_clk";
 			#address-cells = <1>;
 			#size-cells = <0>;
+			jumbo-max-len = <10240>;
+			jumbo-supported;
 		};
 
 		gem2: ethernet@ff0d0000 {
@@ -330,6 +334,8 @@
 			clock-names = "pclk", "hclk", "tx_clk";
 			#address-cells = <1>;
 			#size-cells = <0>;
+			jumbo-max-len = <10240>;
+			jumbo-supported;
 		};
 
 		gem3: ethernet@ff0e0000 {
@@ -341,6 +347,8 @@
 			clock-names = "pclk", "hclk", "tx_clk";
 			#address-cells = <1>;
 			#size-cells = <0>;
+			jumbo-max-len = <10240>;
+			jumbo-supported;
 		};
 
 		gpio: gpio@ff0a0000 {
