@@ -50,6 +50,20 @@
 		#clock-cells = <0>;
 		clock-frequency = <75000000>;
 	};
+
+	dp_aclk: clock0 {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <50000000>; /* 316 663 000 DC2 hw design */
+		clock-accuracy = <100>;
+	};
+
+	dp_aud_clk: clock1 {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <22579200>; /* 2483600 DC2 hw design */
+		clock-accuracy = <100>;
+	};
 };
 
 &can0 {
@@ -167,4 +181,21 @@
 &watchdog0 {
 	status = "okay";
 	clocks= <&misc_clk>;
+};
+
+&xilinx_drm {
+	clocks = <&misc_clk>;
+};
+
+&xlnx_dp {
+	clocks = <&dp_aclk>, <&dp_aud_clk>;
+	xlnx,max-pclock-frequency = <200000>;
+};
+
+&xlnx_dp_snd_codec0 {
+	clocks = <&dp_aud_clk>;
+};
+
+&xlnx_dpdma {
+	clocks = <&misc_clk>;
 };
