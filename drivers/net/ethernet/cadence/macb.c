@@ -2158,7 +2158,9 @@ static int macb_close(struct net_device *dev)
 
 	spin_lock_irqsave(&bp->lock, flags);
 	macb_reset_hw(bp);
-	macb_ptp_close(bp);
+	if ((gem_readl(bp, DCFG5) & GEM_BIT(TSU)) &&
+	    (bp->caps & MACB_CAPS_TSU))
+		macb_ptp_close(bp);
 	netif_carrier_off(dev);
 	spin_unlock_irqrestore(&bp->lock, flags);
 
