@@ -152,6 +152,7 @@
 
 &usb0 {
 	status = "okay";
+	clocks = <&misc_clk>, <&misc_clk>;
 	dr_mode = "peripheral";
 	maximum-speed = "high-speed";
 };
