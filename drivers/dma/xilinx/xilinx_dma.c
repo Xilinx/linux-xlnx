@@ -40,10 +40,8 @@
 #define XILINX_DMA_REG_CURDESCMSB	0x0C
 #define XILINX_DMA_REG_TAILDESC		0x10
 #define XILINX_DMA_REG_TAILDESCMSB	0x14
-#define XILINX_DMA_REG_SRCADDR		0x18
-#define XILINX_DMA_REG_SRCADDRMSB	0x1C
-#define XILINX_DMA_REG_DSTADDR		0x20
-#define XILINX_DMA_REG_DSTADDRMSB	0x24
+#define XILINX_DMA_REG_SRCDSTADDR	0x18
+#define XILINX_DMA_REG_SRCDSTADDRMSB	0x1C
 #define XILINX_DMA_REG_BTT		0x28
 
 /* Channel/Descriptor Offsets */
@@ -639,27 +637,14 @@ static void xilinx_dma_start_transfer(struct xilinx_dma_chan *chan)
 					   struct xilinx_dma_tx_segment, node);
 		hw = &segment->hw;
 
-		if (head_desc->direction == DMA_MEM_TO_DEV) {
 #ifdef CONFIG_PHYS_ADDR_T_64BIT
-			dma_ctrl_writeq(chan, XILINX_DMA_REG_SRCADDR,
-					hw->buf_addr);
+		dma_ctrl_writeq(chan, XILINX_DMA_REG_SRCDSTADDR, hw->buf_addr);
 #else
-			dma_ctrl_write(chan, XILINX_DMA_REG_SRCADDR,
-				       hw->buf_addr);
+		dma_ctrl_write(chan, XILINX_DMA_REG_SRCDSTADDR, hw->buf_addr);
 #endif
-		} else {
-#ifdef CONFIG_PHYS_ADDR_T_64BIT
-			dma_ctrl_writeq(chan, XILINX_DMA_REG_DSTADDR,
-					hw->buf_addr);
-#else
-			dma_ctrl_write(chan, XILINX_DMA_REG_DSTADDR,
-				       hw->buf_addr);
-#endif
-
 		/* Start the transfer */
 		dma_ctrl_write(chan, XILINX_DMA_REG_BTT,
 			       hw->control & XILINX_DMA_MAX_TRANS_LEN);
-		}
 	}
 
 	list_splice_tail_init(&chan->pending_list, &chan->active_list);
