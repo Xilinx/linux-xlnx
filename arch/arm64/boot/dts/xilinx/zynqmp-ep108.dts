@@ -14,6 +14,7 @@
 /dts-v1/;
 
 /include/ "zynqmp.dtsi"
+/include/ "zynqmp-ep108-clk.dtsi"
 
 / {
 	model = "ZynqMP EP108";
@@ -35,48 +36,12 @@
 	};
 };
 
-&amba {
-	misc_clk: misc_clk {
-		compatible = "fixed-clock";
-		#clock-cells = <0>;
-		clock-frequency = <25000000>;
-	};
-
-	i2c_clk: i2c_clk {
-		compatible = "fixed-clock";
-		#clock-cells = <0x0>;
-		clock-frequency = <111111111>;
-	};
-
-	sata_clk: sata_clk {
-		compatible = "fixed-clock";
-		#clock-cells = <0>;
-		clock-frequency = <75000000>;
-	};
-
-	dp_aclk: clock0 {
-		compatible = "fixed-clock";
-		#clock-cells = <0>;
-		clock-frequency = <50000000>; /* 316 663 000 DC2 hw design */
-		clock-accuracy = <100>;
-	};
-
-	dp_aud_clk: clock1 {
-		compatible = "fixed-clock";
-		#clock-cells = <0>;
-		clock-frequency = <22579200>; /* 2483600 DC2 hw design */
-		clock-accuracy = <100>;
-	};
-};
-
 &can0 {
 	status = "okay";
-	clocks = <&misc_clk &misc_clk>;
 };
 
 &gem0 {
 	status = "okay";
-	clocks = <&misc_clk>, <&misc_clk>, <&misc_clk>;
 	phy-handle = <&phy0>;
 	phy-mode = "rgmii-id";
 	phy0: phy@0{
@@ -87,12 +52,10 @@
 
 &gpio {
 	status = "okay";
-	clocks = <&misc_clk>;
 };
 
 &i2c0 {
 	status = "okay";
-	clocks = <&i2c_clk>;
 	clock-frequency = <400000>;
 	eeprom@54 {
 		compatible = "at,24c64";
@@ -102,7 +65,6 @@
 
 &i2c1 {
 	status = "okay";
-	clocks = <&i2c_clk>;
 	clock-frequency = <400000>;
 	eeprom@55 {
 		compatible = "at,24c64";
@@ -112,23 +74,19 @@
 
 &sata {
 	status = "okay";
-	clocks = <&sata_clk>;
 	ceva,broken-gen2;
 };
 
 &sdhci0 {
 	status = "okay";
-	clocks = <&misc_clk>, <&misc_clk>;
 };
 
 &sdhci1 {
 	status = "okay";
-	clocks = <&misc_clk>, <&misc_clk>;
 };
 
 &spi0 {
 	status = "okay";
-	clocks = <&misc_clk &misc_clk>;
 	num-cs = <1>;
 	spi0_flash0: spi0_flash0@0 {
 		compatible = "m25p80";
@@ -146,7 +104,6 @@
 
 &spi1 {
 	status = "okay";
-	clocks = <&misc_clk &misc_clk>;
 	num-cs = <1>;
 	spi1_flash0: spi1_flash0@0 {
 		compatible = "m25p80";
@@ -164,41 +121,24 @@
 
 &uart0 {
 	status = "okay";
-	clocks = <&misc_clk &misc_clk>;
 };
 
 &usb0 {
 	status = "okay";
-	clocks = <&misc_clk>, <&misc_clk>;
 	dr_mode = "peripheral";
 	maximum-speed = "high-speed";
 };
 
 &usb1 {
 	status = "okay";
-	clocks = <&misc_clk>, <&misc_clk>;
 	dr_mode = "host";
 	maximum-speed = "high-speed";
 };
 
 &watchdog0 {
 	status = "okay";
-	clocks= <&misc_clk>;
-};
-
-&xilinx_drm {
-	clocks = <&misc_clk>;
 };
 
 &xlnx_dp {
-	clocks = <&dp_aclk>, <&dp_aud_clk>;
 	xlnx,max-pclock-frequency = <200000>;
-};
-
-&xlnx_dp_snd_codec0 {
-	clocks = <&dp_aud_clk>;
-};
-
-&xlnx_dpdma {
-	clocks = <&misc_clk>;
 };
