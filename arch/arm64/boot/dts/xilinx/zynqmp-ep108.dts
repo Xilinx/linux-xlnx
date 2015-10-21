@@ -171,3 +171,7 @@
 &xlnx_dp {
 	xlnx,max-pclock-frequency = <200000>;
 };
+
+&xlnx_dpdma {
+	xlnx,axi-clock-freq = <200000000>;
+};
