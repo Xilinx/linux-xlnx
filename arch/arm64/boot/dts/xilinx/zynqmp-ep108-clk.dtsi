@@ -107,7 +107,6 @@
 
 &xlnx_dp {
 	clocks = <&dp_aclk>, <&dp_aud_clk>;
-	xlnx,max-pclock-frequency = <200000>;
 };
 
 &xlnx_dp_snd_codec0 {
