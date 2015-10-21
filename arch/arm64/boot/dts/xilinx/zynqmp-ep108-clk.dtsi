@@ -65,6 +65,10 @@
 	clocks = <&i2c_clk>;
 };
 
+&qspi {
+	clocks = <&misc_clk &misc_clk>;
+};
+
 &sata {
 	clocks = <&sata_clk>;
 };
