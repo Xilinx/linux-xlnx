@@ -51,6 +51,7 @@
 /* General register bits definitions */
 #define XILINX_DMA_CR_RUNSTOP_MASK	BIT(0)
 #define XILINX_DMA_CR_RESET_MASK	BIT(2)
+#define XILINX_DMA_CR_CYCLIC_BD_EN_MASK	BIT(4)
 
 #define XILINX_DMA_CR_DELAY_SHIFT	24
 #define XILINX_DMA_CR_COALESCE_SHIFT	16
@@ -135,6 +136,7 @@ struct xilinx_dma_tx_descriptor {
 	struct list_head segments;
 	struct list_head node;
 	enum dma_transfer_direction direction;
+	bool cyclic;
 };
 
 /**
@@ -176,6 +178,7 @@ struct xilinx_dma_chan {
 	int irq;
 	int id;
 	bool has_sg;
+	bool cyclic;
 	int err;
 	bool idle;
 	struct tasklet_struct tasklet;
@@ -446,6 +449,29 @@ static void xilinx_dma_free_chan_resources(struct dma_chan *dchan)
 }
 
 /**
+ * xilinx_dma_chan_handle_cyclic - Cyclic dma callback
+ * @chan: Driver specific dma channel
+ * @desc: dma transaction descriptor
+ * @flags: flags for spin lock
+ */
+static void xilinx_dma_chan_handle_cyclic(struct xilinx_dma_chan *chan,
+					  struct xilinx_dma_tx_descriptor *desc,
+					  unsigned long *flags)
+{
+	dma_async_tx_callback callback;
+	void *callback_param;
+
+	callback = desc->async_tx.callback;
+	callback_param = desc->async_tx.callback_param;
+	if (callback) {
+		spin_unlock_irqrestore(&chan->lock, *flags);
+		callback(callback_param);
+		spin_lock_irqsave(&chan->lock, *flags);
+	}
+}
+
+
+/**
  * xilinx_dma_chan_desc_cleanup - Clean channel descriptors
  * @chan: Driver specific dma channel
  */
@@ -462,6 +488,11 @@ static void xilinx_dma_chan_desc_cleanup(struct xilinx_dma_chan *chan)
 
 		desc = list_first_entry(&chan->done_list,
 			struct xilinx_dma_tx_descriptor, node);
+
+		if (desc->cyclic) {
+			xilinx_dma_chan_handle_cyclic(chan, desc, &flags);
+			break;
+		}
 
 		/* Remove from the list of running transactions */
 		list_del(&desc->node);
@@ -679,7 +710,8 @@ static void xilinx_dma_complete_descriptor(struct xilinx_dma_chan *chan)
 
 	list_for_each_entry_safe(desc, next, &chan->active_list, node) {
 		list_del(&desc->node);
-		dma_cookie_complete(&desc->async_tx);
+		if (!desc->cyclic)
+			dma_cookie_complete(&desc->async_tx);
 		list_add_tail(&desc->node, &chan->done_list);
 	}
 }
@@ -830,6 +862,11 @@ static dma_cookie_t xilinx_dma_tx_submit(struct dma_async_tx_descriptor *tx)
 	unsigned long flags;
 	int err;
 
+	if (chan->cyclic) {
+		xilinx_dma_free_tx_descriptor(chan, desc);
+		return -EBUSY;
+	}
+
 	if (chan->err) {
 		/*
 		 * If reset fails, need to hard reset the system.
@@ -846,6 +883,9 @@ static dma_cookie_t xilinx_dma_tx_submit(struct dma_async_tx_descriptor *tx)
 
 	/* Put this transaction onto the tail of the pending queue */
 	append_desc_queue(chan, desc);
+
+	if (desc->cyclic)
+		chan->cyclic = true;
 
 	spin_unlock_irqrestore(&chan->lock, flags);
 
@@ -958,6 +998,103 @@ error:
 }
 
 /**
+ * xilinx_dma_prep_dma_cyclic - prepare descriptors for a DMA_SLAVE transaction
+ * @chan: DMA channel
+ * @sgl: scatterlist to transfer to/from
+ * @sg_len: number of entries in @scatterlist
+ * @direction: DMA direction
+ * @flags: transfer ack flags
+ */
+static struct dma_async_tx_descriptor *xilinx_dma_prep_dma_cyclic(
+	struct dma_chan *dchan, dma_addr_t buf_addr, size_t buf_len,
+	size_t period_len, enum dma_transfer_direction direction,
+	unsigned long flags)
+{
+	struct xilinx_dma_chan *chan = to_xilinx_chan(dchan);
+	struct xilinx_dma_tx_descriptor *desc;
+	struct xilinx_dma_tx_segment *segment;
+	size_t copy, sg_used;
+	unsigned int num_periods;
+	int i;
+
+	num_periods = buf_len / period_len;
+
+	if (!is_slave_direction(direction))
+		return NULL;
+
+	/* Allocate a transaction descriptor. */
+	desc = xilinx_dma_alloc_tx_descriptor(chan);
+	if (!desc)
+		return NULL;
+
+	desc->direction = direction;
+	dma_async_tx_descriptor_init(&desc->async_tx, &chan->common);
+	desc->async_tx.tx_submit = xilinx_dma_tx_submit;
+
+	for (i = 0; i < num_periods; ++i) {
+		sg_used = 0;
+
+		while (sg_used < period_len) {
+			struct xilinx_dma_desc_hw *hw;
+
+			/* Get a free segment */
+			segment = xilinx_dma_alloc_tx_segment(chan);
+			if (!segment)
+				goto error;
+
+			/*
+			 * Calculate the maximum number of bytes to transfer,
+			 * making sure it is less than the hw limit
+			 */
+			copy = min_t(size_t, period_len - sg_used,
+				     XILINX_DMA_MAX_TRANS_LEN);
+			hw = &segment->hw;
+
+#ifdef CONFIG_PHYS_ADDR_T_64BIT
+			hw->buf_addr = lower_32_bits(buf_addr + sg_used +
+						     (period_len * i));
+			hw->buf_addr_msb = upper_32_bits(buf_addr + sg_used +
+							 (period_len * i));
+#else
+			hw->buf_addr = buf_addr + sg_used + (period_len*i);
+#endif
+			hw->control = copy;
+
+			sg_used += copy;
+
+			/*
+			 * Insert the segment into the descriptor segments
+			 * list.
+			 */
+			list_add_tail(&segment->node, &desc->segments);
+		}
+	}
+
+	segment = list_first_entry(&desc->segments,
+				   struct xilinx_dma_tx_segment, node);
+	desc->async_tx.phys = segment->phys;
+	desc->cyclic = true;
+	chan->ctrl_reg |= XILINX_DMA_CR_CYCLIC_BD_EN_MASK;
+	dma_ctrl_write(chan, XILINX_DMA_REG_CONTROL, chan->ctrl_reg);
+
+	/* For the last DMA_MEM_TO_DEV transfer, set EOP */
+	if (direction == DMA_MEM_TO_DEV) {
+		segment->hw.control |= XILINX_DMA_BD_SOP;
+		segment = list_last_entry(&desc->segments,
+					  struct xilinx_dma_tx_segment,
+					  node);
+		segment->hw.control |= XILINX_DMA_BD_EOP;
+	}
+
+	return &desc->async_tx;
+
+error:
+	xilinx_dma_free_tx_descriptor(chan, desc);
+	return NULL;
+
+}
+
+/**
  * xilinx_dma_terminate_all - Halt the channel and free descriptors
  * @dchan: DMA Channel pointer
  *
@@ -972,6 +1109,11 @@ static int xilinx_dma_terminate_all(struct dma_chan *dchan)
 
 	/* Remove and free all of the descriptors in the lists */
 	xilinx_dma_free_descriptors(chan);
+	if (chan->cyclic) {
+		chan->ctrl_reg &= ~XILINX_DMA_CR_CYCLIC_BD_EN_MASK;
+		dma_ctrl_write(chan, XILINX_DMA_REG_CONTROL, chan->ctrl_reg);
+		chan->cyclic = false;
+	}
 
 	return 0;
 }
@@ -1142,7 +1284,9 @@ static int xilinx_dma_probe(struct platform_device *pdev)
 	/* Axi DMA only do slave transfers */
 	dma_cap_set(DMA_SLAVE, xdev->common.cap_mask);
 	dma_cap_set(DMA_PRIVATE, xdev->common.cap_mask);
+	dma_cap_set(DMA_CYCLIC, xdev->common.cap_mask);
 	xdev->common.device_prep_slave_sg = xilinx_dma_prep_slave_sg;
+	xdev->common.device_prep_dma_cyclic = xilinx_dma_prep_dma_cyclic;
 	xdev->common.device_terminate_all = xilinx_dma_terminate_all;
 	xdev->common.device_issue_pending = xilinx_dma_issue_pending;
 	xdev->common.device_alloc_chan_resources =
