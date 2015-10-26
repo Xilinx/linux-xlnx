@@ -1995,7 +1995,7 @@ static void dm_request_fn(struct request_queue *q)
 		/* Establish tio->ti before queuing work (map_tio_request) */
 		tio->ti = ti;
 		queue_kthread_work(&md->kworker, &tio->work);
-		BUG_ON(!irqs_disabled());
+		BUG_ON_NONRT(!irqs_disabled());
 	}
 
 	goto out;

@@ -22,6 +22,7 @@ config X86_64
 ### Arch settings
 config X86
 	def_bool y
+	select HAVE_PREEMPT_LAZY
 	select ARCH_MIGHT_HAVE_ACPI_PDC if ACPI
 	select ARCH_HAS_DEBUG_STRICT_USER_COPY_CHECKS
 	select ARCH_HAS_FAST_MULTIPLIER
@@ -201,8 +202,11 @@ config ARCH_MAY_HAVE_PC_FDC
 	def_bool y
 	depends on ISA_DMA_API
 
+config RWSEM_GENERIC_SPINLOCK
+	def_bool PREEMPT_RT_FULL
+
 config RWSEM_XCHGADD_ALGORITHM
-	def_bool y
+	def_bool !RWSEM_GENERIC_SPINLOCK && !PREEMPT_RT_FULL
 
 config GENERIC_CALIBRATE_DELAY
 	def_bool y
@@ -843,7 +847,7 @@ config IOMMU_HELPER
 config MAXSMP
 	bool "Enable Maximum number of SMP Processors and NUMA Nodes"
 	depends on X86_64 && SMP && DEBUG_KERNEL
-	select CPUMASK_OFFSTACK
+	select CPUMASK_OFFSTACK if !PREEMPT_RT_FULL
 	---help---
 	  Enable maximum number of CPUS and NUMA Nodes for this architecture.
 	  If unsure, say N.

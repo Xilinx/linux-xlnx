@@ -835,13 +835,13 @@ no_timer:
 
 void kvm_s390_vcpu_wakeup(struct kvm_vcpu *vcpu)
 {
-	if (waitqueue_active(&vcpu->wq)) {
+	if (swaitqueue_active(&vcpu->wq)) {
 		/*
 		 * The vcpu gave up the cpu voluntarily, mark it as a good
 		 * yield-candidate.
 		 */
 		vcpu->preempted = true;
-		wake_up_interruptible(&vcpu->wq);
+		swait_wake_interruptible(&vcpu->wq);
 		vcpu->stat.halt_wakeup++;
 	}
 }
@@ -962,7 +962,7 @@ int kvm_s390_inject_program_int(struct kvm_vcpu *vcpu, u16 code)
 	spin_lock(&li->lock);
 	irq.u.pgm.code = code;
 	__inject_prog(vcpu, &irq);
-	BUG_ON(waitqueue_active(li->wq));
+	BUG_ON(swaitqueue_active(li->wq));
 	spin_unlock(&li->lock);
 	return 0;
 }
@@ -981,7 +981,7 @@ int kvm_s390_inject_prog_irq(struct kvm_vcpu *vcpu,
 	spin_lock(&li->lock);
 	irq.u.pgm = *pgm_info;
 	rc = __inject_prog(vcpu, &irq);
-	BUG_ON(waitqueue_active(li->wq));
+	BUG_ON(swaitqueue_active(li->wq));
 	spin_unlock(&li->lock);
 	return rc;
 }

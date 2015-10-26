@@ -90,6 +90,7 @@ static cycle_t read_pit_clk(struct clocksource *cs)
 	return elapsed;
 }
 
+static struct irqaction at91sam926x_pit_irq;
 /*
  * Clockevent device:  interrupts every 1/HZ (== pit_cycles * MCK/16)
  */
@@ -100,6 +101,8 @@ pit_clkevt_mode(enum clock_event_mode mode, struct clock_event_device *dev)
 
 	switch (mode) {
 	case CLOCK_EVT_MODE_PERIODIC:
+		/* Set up irq handler */
+		setup_irq(at91sam926x_pit_irq.irq, &at91sam926x_pit_irq);
 		/* update clocksource counter */
 		data->cnt += data->cycle * PIT_PICNT(pit_read(data->base, AT91_PIT_PIVR));
 		pit_write(data->base, AT91_PIT_MR,
@@ -113,6 +116,7 @@ pit_clkevt_mode(enum clock_event_mode mode, struct clock_event_device *dev)
 		/* disable irq, leaving the clocksource active */
 		pit_write(data->base, AT91_PIT_MR,
 			  (data->cycle - 1) | AT91_PIT_PITEN);
+		remove_irq(at91sam926x_pit_irq.irq, &at91sam926x_pit_irq);
 		break;
 	case CLOCK_EVT_MODE_RESUME:
 		break;

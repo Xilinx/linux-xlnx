@@ -95,10 +95,14 @@ bool idr_is_empty(struct idr *idp);
  * Each idr_preload() should be matched with an invocation of this
  * function.  See idr_preload() for details.
  */
+#ifdef CONFIG_PREEMPT_RT_FULL
+void idr_preload_end(void);
+#else
 static inline void idr_preload_end(void)
 {
 	preempt_enable();
 }
+#endif
 
 /**
  * idr_find - return pointer for given id

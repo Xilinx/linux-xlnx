@@ -382,14 +382,14 @@ static int ecb_encrypt(struct blkcipher_desc *desc,
 	err = blkcipher_walk_virt(desc, &walk);
 	desc->flags &= ~CRYPTO_TFM_REQ_MAY_SLEEP;
 
-	kernel_fpu_begin();
 	while ((nbytes = walk.nbytes)) {
+		kernel_fpu_begin();
 		aesni_ecb_enc(ctx, walk.dst.virt.addr, walk.src.virt.addr,
-			      nbytes & AES_BLOCK_MASK);
+				nbytes & AES_BLOCK_MASK);
+		kernel_fpu_end();
 		nbytes &= AES_BLOCK_SIZE - 1;
 		err = blkcipher_walk_done(desc, &walk, nbytes);
 	}
-	kernel_fpu_end();
 
 	return err;
 }
@@ -406,14 +406,14 @@ static int ecb_decrypt(struct blkcipher_desc *desc,
 	err = blkcipher_walk_virt(desc, &walk);
 	desc->flags &= ~CRYPTO_TFM_REQ_MAY_SLEEP;
 
-	kernel_fpu_begin();
 	while ((nbytes = walk.nbytes)) {
+		kernel_fpu_begin();
 		aesni_ecb_dec(ctx, walk.dst.virt.addr, walk.src.virt.addr,
 			      nbytes & AES_BLOCK_MASK);
+		kernel_fpu_end();
 		nbytes &= AES_BLOCK_SIZE - 1;
 		err = blkcipher_walk_done(desc, &walk, nbytes);
 	}
-	kernel_fpu_end();
 
 	return err;
 }
@@ -430,14 +430,14 @@ static int cbc_encrypt(struct blkcipher_desc *desc,
 	err = blkcipher_walk_virt(desc, &walk);
 	desc->flags &= ~CRYPTO_TFM_REQ_MAY_SLEEP;
 
-	kernel_fpu_begin();
 	while ((nbytes = walk.nbytes)) {
+		kernel_fpu_begin();
 		aesni_cbc_enc(ctx, walk.dst.virt.addr, walk.src.virt.addr,
 			      nbytes & AES_BLOCK_MASK, walk.iv);
+		kernel_fpu_end();
 		nbytes &= AES_BLOCK_SIZE - 1;
 		err = blkcipher_walk_done(desc, &walk, nbytes);
 	}
-	kernel_fpu_end();
 
 	return err;
 }
@@ -454,14 +454,14 @@ static int cbc_decrypt(struct blkcipher_desc *desc,
 	err = blkcipher_walk_virt(desc, &walk);
 	desc->flags &= ~CRYPTO_TFM_REQ_MAY_SLEEP;
 
-	kernel_fpu_begin();
 	while ((nbytes = walk.nbytes)) {
+		kernel_fpu_begin();
 		aesni_cbc_dec(ctx, walk.dst.virt.addr, walk.src.virt.addr,
 			      nbytes & AES_BLOCK_MASK, walk.iv);
+		kernel_fpu_end();
 		nbytes &= AES_BLOCK_SIZE - 1;
 		err = blkcipher_walk_done(desc, &walk, nbytes);
 	}
-	kernel_fpu_end();
 
 	return err;
 }
@@ -513,18 +513,20 @@ static int ctr_crypt(struct blkcipher_desc *desc,
 	err = blkcipher_walk_virt_block(desc, &walk, AES_BLOCK_SIZE);
 	desc->flags &= ~CRYPTO_TFM_REQ_MAY_SLEEP;
 
-	kernel_fpu_begin();
 	while ((nbytes = walk.nbytes) >= AES_BLOCK_SIZE) {
+		kernel_fpu_begin();
 		aesni_ctr_enc_tfm(ctx, walk.dst.virt.addr, walk.src.virt.addr,
 			              nbytes & AES_BLOCK_MASK, walk.iv);
+		kernel_fpu_end();
 		nbytes &= AES_BLOCK_SIZE - 1;
 		err = blkcipher_walk_done(desc, &walk, nbytes);
 	}
 	if (walk.nbytes) {
+		kernel_fpu_begin();
 		ctr_crypt_final(ctx, &walk);
+		kernel_fpu_end();
 		err = blkcipher_walk_done(desc, &walk, 0);
 	}
-	kernel_fpu_end();
 
 	return err;
 }

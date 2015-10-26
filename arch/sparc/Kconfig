@@ -185,12 +185,10 @@ config NR_CPUS
 source kernel/Kconfig.hz
 
 config RWSEM_GENERIC_SPINLOCK
-	bool
-	default y if SPARC32
+	def_bool PREEMPT_RT_FULL
 
 config RWSEM_XCHGADD_ALGORITHM
-	bool
-	default y if SPARC64
+	def_bool !RWSEM_GENERIC_SPINLOCK && !PREEMPT_RT_FULL
 
 config GENERIC_HWEIGHT
 	bool
@@ -530,6 +528,10 @@ endmenu
 menu "Executable file formats"
 
 source "fs/Kconfig.binfmt"
+
+config EARLY_PRINTK
+	bool
+	default y
 
 config COMPAT
 	bool

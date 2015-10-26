@@ -30,6 +30,7 @@
 #include <linux/idr.h>
 #include <linux/spinlock.h>
 #include <linux/percpu.h>
+#include <linux/locallock.h>
 
 #define MAX_IDR_SHIFT		(sizeof(int) * 8 - 1)
 #define MAX_IDR_BIT		(1U << MAX_IDR_SHIFT)
@@ -366,6 +367,35 @@ static void idr_fill_slot(struct idr *idr, void *ptr, int id,
 	idr_mark_full(pa, id);
 }
 
+#ifdef CONFIG_PREEMPT_RT_FULL
+static DEFINE_LOCAL_IRQ_LOCK(idr_lock);
+
+static inline void idr_preload_lock(void)
+{
+	local_lock(idr_lock);
+}
+
+static inline void idr_preload_unlock(void)
+{
+	local_unlock(idr_lock);
+}
+
+void idr_preload_end(void)
+{
+	idr_preload_unlock();
+}
+EXPORT_SYMBOL(idr_preload_end);
+#else
+static inline void idr_preload_lock(void)
+{
+	preempt_disable();
+}
+
+static inline void idr_preload_unlock(void)
+{
+	preempt_enable();
+}
+#endif
 
 /**
  * idr_preload - preload for idr_alloc()
@@ -401,7 +431,7 @@ void idr_preload(gfp_t gfp_mask)
 	WARN_ON_ONCE(in_interrupt());
 	might_sleep_if(gfp_mask & __GFP_WAIT);
 
-	preempt_disable();
+	idr_preload_lock();
 
 	/*
 	 * idr_alloc() is likely to succeed w/o full idr_layer buffer and
@@ -413,9 +443,9 @@ void idr_preload(gfp_t gfp_mask)
 	while (__this_cpu_read(idr_preload_cnt) < MAX_IDR_FREE) {
 		struct idr_layer *new;
 
-		preempt_enable();
+		idr_preload_unlock();
 		new = kmem_cache_zalloc(idr_layer_cache, gfp_mask);
-		preempt_disable();
+		idr_preload_lock();
 		if (!new)
 			break;
 

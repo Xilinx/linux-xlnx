@@ -2706,6 +2706,31 @@ static irqreturn_t sdhci_thread_irq(int irq, void *dev_id)
 	return isr ? IRQ_HANDLED : IRQ_NONE;
 }
 
+#ifdef CONFIG_PREEMPT_RT_BASE
+static irqreturn_t sdhci_rt_irq(int irq, void *dev_id)
+{
+	irqreturn_t ret;
+
+	local_bh_disable();
+	ret = sdhci_irq(irq, dev_id);
+	local_bh_enable();
+	if (ret == IRQ_WAKE_THREAD)
+		ret = sdhci_thread_irq(irq, dev_id);
+	return ret;
+}
+#endif
+
+static int sdhci_req_irq(struct sdhci_host *host)
+{
+#ifdef CONFIG_PREEMPT_RT_BASE
+	return request_threaded_irq(host->irq, NULL, sdhci_rt_irq,
+				    IRQF_SHARED, mmc_hostname(host->mmc), host);
+#else
+	return request_threaded_irq(host->irq, sdhci_irq, sdhci_thread_irq,
+				    IRQF_SHARED, mmc_hostname(host->mmc), host);
+#endif
+}
+
 /*****************************************************************************\
  *                                                                           *
  * Suspend/resume                                                            *
@@ -2773,9 +2798,7 @@ int sdhci_resume_host(struct sdhci_host *host)
 	}
 
 	if (!device_may_wakeup(mmc_dev(host->mmc))) {
-		ret = request_threaded_irq(host->irq, sdhci_irq,
-					   sdhci_thread_irq, IRQF_SHARED,
-					   mmc_hostname(host->mmc), host);
+		ret = sdhci_req_irq(host);
 		if (ret)
 			return ret;
 	} else {
@@ -3431,8 +3454,7 @@ int sdhci_add_host(struct sdhci_host *host)
 
 	sdhci_init(host, 0);
 
-	ret = request_threaded_irq(host->irq, sdhci_irq, sdhci_thread_irq,
-				   IRQF_SHARED,	mmc_hostname(mmc), host);
+	ret = sdhci_req_irq(host);
 	if (ret) {
 		pr_err("%s: Failed to request IRQ %d: %d\n",
 		       mmc_hostname(mmc), host->irq, ret);

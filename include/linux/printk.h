@@ -115,9 +115,11 @@ int no_printk(const char *fmt, ...)
 #ifdef CONFIG_EARLY_PRINTK
 extern asmlinkage __printf(1, 2)
 void early_printk(const char *fmt, ...);
+extern void printk_kill(void);
 #else
 static inline __printf(1, 2) __cold
 void early_printk(const char *s, ...) { }
+static inline void printk_kill(void) { }
 #endif
 
 typedef int(*printk_func_t)(const char *fmt, va_list args);

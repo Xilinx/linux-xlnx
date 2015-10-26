@@ -37,6 +37,7 @@
 #include <linux/nmi.h>
 #include <linux/mutex.h>
 #include <linux/slab.h>
+#include <linux/kdb.h>
 #include <linux/uaccess.h>
 #include <linux/pm_runtime.h>
 #ifdef CONFIG_SPARC
@@ -81,7 +82,16 @@ static unsigned int skip_txen_test; /* force skip of txen test at init time */
 #define DEBUG_INTR(fmt...)	do { } while (0)
 #endif
 
-#define PASS_LIMIT	512
+/*
+ * On -rt we can have a more delays, and legitimately
+ * so - so don't drop work spuriously and spam the
+ * syslog:
+ */
+#ifdef CONFIG_PREEMPT_RT_FULL
+# define PASS_LIMIT	1000000
+#else
+# define PASS_LIMIT	512
+#endif
 
 #define BOTH_EMPTY 	(UART_LSR_TEMT | UART_LSR_THRE)
 
@@ -3251,7 +3261,7 @@ serial8250_console_write(struct console *co, const char *s, unsigned int count)
 
 	if (port->sysrq)
 		locked = 0;
-	else if (oops_in_progress)
+	else if (oops_in_progress || in_kdb_printk())
 		locked = spin_trylock_irqsave(&port->lock, flags);
 	else
 		spin_lock_irqsave(&port->lock, flags);

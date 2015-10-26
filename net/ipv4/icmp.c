@@ -69,6 +69,7 @@
 #include <linux/jiffies.h>
 #include <linux/kernel.h>
 #include <linux/fcntl.h>
+#include <linux/sysrq.h>
 #include <linux/socket.h>
 #include <linux/in.h>
 #include <linux/inet.h>
@@ -867,6 +868,30 @@ static bool icmp_redirect(struct sk_buff *skb)
 }
 
 /*
+ * 32bit and 64bit have different timestamp length, so we check for
+ * the cookie at offset 20 and verify it is repeated at offset 50
+ */
+#define CO_POS0		20
+#define CO_POS1		50
+#define CO_SIZE		sizeof(int)
+#define ICMP_SYSRQ_SIZE	57
+
+/*
+ * We got a ICMP_SYSRQ_SIZE sized ping request. Check for the cookie
+ * pattern and if it matches send the next byte as a trigger to sysrq.
+ */
+static void icmp_check_sysrq(struct net *net, struct sk_buff *skb)
+{
+	int cookie = htonl(net->ipv4.sysctl_icmp_echo_sysrq);
+	char *p = skb->data;
+
+	if (!memcmp(&cookie, p + CO_POS0, CO_SIZE) &&
+	    !memcmp(&cookie, p + CO_POS1, CO_SIZE) &&
+	    p[CO_POS0 + CO_SIZE] == p[CO_POS1 + CO_SIZE])
+		handle_sysrq(p[CO_POS0 + CO_SIZE]);
+}
+
+/*
  *	Handle ICMP_ECHO ("ping") requests.
  *
  *	RFC 1122: 3.2.2.6 MUST have an echo server that answers ICMP echo
@@ -893,6 +918,11 @@ static bool icmp_echo(struct sk_buff *skb)
 		icmp_param.data_len	   = skb->len;
 		icmp_param.head_len	   = sizeof(struct icmphdr);
 		icmp_reply(&icmp_param, skb);
+
+		if (skb->len == ICMP_SYSRQ_SIZE &&
+		    net->ipv4.sysctl_icmp_echo_sysrq) {
+			icmp_check_sysrq(net, skb);
+		}
 	}
 	/* should there be an ICMP stat for ignored echos? */
 	return true;

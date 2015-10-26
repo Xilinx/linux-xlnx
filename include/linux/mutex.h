@@ -19,6 +19,17 @@
 #include <asm/processor.h>
 #include <linux/osq_lock.h>
 
+#ifdef CONFIG_DEBUG_LOCK_ALLOC
+# define __DEP_MAP_MUTEX_INITIALIZER(lockname) \
+	, .dep_map = { .name = #lockname }
+#else
+# define __DEP_MAP_MUTEX_INITIALIZER(lockname)
+#endif
+
+#ifdef CONFIG_PREEMPT_RT_FULL
+# include <linux/mutex_rt.h>
+#else
+
 /*
  * Simple, straightforward mutexes with strict semantics:
  *
@@ -99,13 +110,6 @@ do {							\
 static inline void mutex_destroy(struct mutex *lock) {}
 #endif
 
-#ifdef CONFIG_DEBUG_LOCK_ALLOC
-# define __DEP_MAP_MUTEX_INITIALIZER(lockname) \
-		, .dep_map = { .name = #lockname }
-#else
-# define __DEP_MAP_MUTEX_INITIALIZER(lockname)
-#endif
-
 #define __MUTEX_INITIALIZER(lockname) \
 		{ .count = ATOMIC_INIT(1) \
 		, .wait_lock = __SPIN_LOCK_UNLOCKED(lockname.wait_lock) \
@@ -172,6 +176,8 @@ extern int __must_check mutex_lock_killable(struct mutex *lock);
  */
 extern int mutex_trylock(struct mutex *lock);
 extern void mutex_unlock(struct mutex *lock);
+
+#endif /* !PREEMPT_RT_FULL */
 
 extern int atomic_dec_and_mutex_lock(atomic_t *cnt, struct mutex *lock);
 

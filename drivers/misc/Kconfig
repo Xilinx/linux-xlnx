@@ -54,6 +54,7 @@ config AD525X_DPOT_SPI
 config ATMEL_TCLIB
 	bool "Atmel AT32/AT91 Timer/Counter Library"
 	depends on (AVR32 || ARCH_AT91)
+	default y if PREEMPT_RT_FULL
 	help
 	  Select this if you want a library to allocate the Timer/Counter
 	  blocks found on many Atmel processors.  This facilitates using
@@ -69,8 +70,7 @@ config ATMEL_TCB_CLKSRC
 	  are combined to make a single 32-bit timer.
 
 	  When GENERIC_CLOCKEVENTS is defined, the third timer channel
-	  may be used as a clock event device supporting oneshot mode
-	  (delays of up to two seconds) based on the 32 KiHz clock.
+	  may be used as a clock event device supporting oneshot mode.
 
 config ATMEL_TCB_CLKSRC_BLOCK
 	int
@@ -83,6 +83,15 @@ config ATMEL_TCB_CLKSRC_BLOCK
 	  choice of which one to use for the clock framework.  The other
 	  TC can be used for other purposes, such as PWM generation and
 	  interval timing.
+
+config ATMEL_TCB_CLKSRC_USE_SLOW_CLOCK
+	bool "TC Block use 32 KiHz clock"
+	depends on ATMEL_TCB_CLKSRC
+	default y if !PREEMPT_RT_FULL
+	help
+	  Select this to use 32 KiHz base clock rate as TC block clock
+	  source for clock events.
+
 
 config DUMMY_IRQ
 	tristate "Dummy IRQ handler"
@@ -112,6 +121,35 @@ config IBM_ASM
 	  website <http://www-03.ibm.com/systems/info/x86servers/serverproven/compat/us/>
 	  for information on the specific driver level and support statement
 	  for your IBM server.
+
+config HWLAT_DETECTOR
+	tristate "Testing module to detect hardware-induced latencies"
+	depends on DEBUG_FS
+	depends on RING_BUFFER
+	default m
+	---help---
+	  A simple hardware latency detector. Use this module to detect
+	  large latencies introduced by the behavior of the underlying
+	  system firmware external to Linux. We do this using periodic
+	  use of stop_machine to grab all available CPUs and measure
+	  for unexplainable gaps in the CPU timestamp counter(s). By
+	  default, the module is not enabled until the "enable" file
+	  within the "hwlat_detector" debugfs directory is toggled.
+
+	  This module is often used to detect SMI (System Management
+	  Interrupts) on x86 systems, though is not x86 specific. To
+	  this end, we default to using a sample window of 1 second,
+	  during which we will sample for 0.5 seconds. If an SMI or
+	  similar event occurs during that time, it is recorded
+	  into an 8K samples global ring buffer until retreived.
+
+	  WARNING: This software should never be enabled (it can be built
+	  but should not be turned on after it is loaded) in a production
+	  environment where high latencies are a concern since the
+	  sampling mechanism actually introduces latencies for
+	  regular tasks while the CPU(s) are being held.
+
+	  If unsure, say N
 
 config PHANTOM
 	tristate "Sensable PHANToM (PCI)"

@@ -187,6 +187,24 @@ config IRQSOFF_TRACER
 	  enabled. This option and the preempt-off timing option can be
 	  used together or separately.)
 
+config INTERRUPT_OFF_HIST
+	bool "Interrupts-off Latency Histogram"
+	depends on IRQSOFF_TRACER
+	help
+	  This option generates continuously updated histograms (one per cpu)
+	  of the duration of time periods with interrupts disabled. The
+	  histograms are disabled by default. To enable them, write a non-zero
+	  number to
+
+	      /sys/kernel/debug/tracing/latency_hist/enable/preemptirqsoff
+
+	  If PREEMPT_OFF_HIST is also selected, additional histograms (one
+	  per cpu) are generated that accumulate the duration of time periods
+	  when both interrupts and preemption are disabled. The histogram data
+	  will be located in the debug file system at
+
+	      /sys/kernel/debug/tracing/latency_hist/irqsoff
+
 config PREEMPT_TRACER
 	bool "Preemption-off Latency Tracer"
 	default n
@@ -211,6 +229,24 @@ config PREEMPT_TRACER
 	  enabled. This option and the irqs-off timing option can be
 	  used together or separately.)
 
+config PREEMPT_OFF_HIST
+	bool "Preemption-off Latency Histogram"
+	depends on PREEMPT_TRACER
+	help
+	  This option generates continuously updated histograms (one per cpu)
+	  of the duration of time periods with preemption disabled. The
+	  histograms are disabled by default. To enable them, write a non-zero
+	  number to
+
+	      /sys/kernel/debug/tracing/latency_hist/enable/preemptirqsoff
+
+	  If INTERRUPT_OFF_HIST is also selected, additional histograms (one
+	  per cpu) are generated that accumulate the duration of time periods
+	  when both interrupts and preemption are disabled. The histogram data
+	  will be located in the debug file system at
+
+	      /sys/kernel/debug/tracing/latency_hist/preemptoff
+
 config SCHED_TRACER
 	bool "Scheduling Latency Tracer"
 	select GENERIC_TRACER
@@ -220,6 +256,74 @@ config SCHED_TRACER
 	help
 	  This tracer tracks the latency of the highest priority task
 	  to be scheduled in, starting from the point it has woken up.
+
+config WAKEUP_LATENCY_HIST
+	bool "Scheduling Latency Histogram"
+	depends on SCHED_TRACER
+	help
+	  This option generates continuously updated histograms (one per cpu)
+	  of the scheduling latency of the highest priority task.
+	  The histograms are disabled by default. To enable them, write a
+	  non-zero number to
+
+	      /sys/kernel/debug/tracing/latency_hist/enable/wakeup
+
+	  Two different algorithms are used, one to determine the latency of
+	  processes that exclusively use the highest priority of the system and
+	  another one to determine the latency of processes that share the
+	  highest system priority with other processes. The former is used to
+	  improve hardware and system software, the latter to optimize the
+	  priority design of a given system. The histogram data will be
+	  located in the debug file system at
+
+	      /sys/kernel/debug/tracing/latency_hist/wakeup
+
+	  and
+
+	      /sys/kernel/debug/tracing/latency_hist/wakeup/sharedprio
+
+	  If both Scheduling Latency Histogram and Missed Timer Offsets
+	  Histogram are selected, additional histogram data will be collected
+	  that contain, in addition to the wakeup latency, the timer latency, in
+	  case the wakeup was triggered by an expired timer. These histograms
+	  are available in the
+
+	      /sys/kernel/debug/tracing/latency_hist/timerandwakeup
+
+	  directory. They reflect the apparent interrupt and scheduling latency
+	  and are best suitable to determine the worst-case latency of a given
+	  system. To enable these histograms, write a non-zero number to
+
+	      /sys/kernel/debug/tracing/latency_hist/enable/timerandwakeup
+
+config MISSED_TIMER_OFFSETS_HIST
+	depends on HIGH_RES_TIMERS
+	select GENERIC_TRACER
+	bool "Missed Timer Offsets Histogram"
+	help
+	  Generate a histogram of missed timer offsets in microseconds. The
+	  histograms are disabled by default. To enable them, write a non-zero
+	  number to
+
+	      /sys/kernel/debug/tracing/latency_hist/enable/missed_timer_offsets
+
+	  The histogram data will be located in the debug file system at
+
+	      /sys/kernel/debug/tracing/latency_hist/missed_timer_offsets
+
+	  If both Scheduling Latency Histogram and Missed Timer Offsets
+	  Histogram are selected, additional histogram data will be collected
+	  that contain, in addition to the wakeup latency, the timer latency, in
+	  case the wakeup was triggered by an expired timer. These histograms
+	  are available in the
+
+	      /sys/kernel/debug/tracing/latency_hist/timerandwakeup
+
+	  directory. They reflect the apparent interrupt and scheduling latency
+	  and are best suitable to determine the worst-case latency of a given
+	  system. To enable these histograms, write a non-zero number to
+
+	      /sys/kernel/debug/tracing/latency_hist/enable/timerandwakeup
 
 config ENABLE_DEFAULT_TRACERS
 	bool "Trace process context switches and events"
