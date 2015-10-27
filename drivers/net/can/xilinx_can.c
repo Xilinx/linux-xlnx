@@ -25,6 +25,7 @@
 #include <linux/module.h>
 #include <linux/netdevice.h>
 #include <linux/of.h>
+#include <linux/of_gpio.h>
 #include <linux/platform_device.h>
 #include <linux/skbuff.h>
 #include <linux/string.h>
@@ -143,6 +144,8 @@ struct xcan_priv {
 	unsigned long irq_flags;
 	struct clk *bus_clk;
 	struct clk *can_clk;
+	int transceiver_enable;
+	bool te_active_low;
 };
 
 /* CAN Bittiming constants as per Xilinx CAN specs */
@@ -835,6 +838,13 @@ static int xcan_open(struct net_device *ndev)
 	struct xcan_priv *priv = netdev_priv(ndev);
 	int ret;
 
+	if (gpio_is_valid(priv->transceiver_enable)) {
+		if (priv->te_active_low)
+			gpio_set_value(priv->transceiver_enable, 0);
+		else
+			gpio_set_value(priv->transceiver_enable, 1);
+	}
+
 	ret = request_irq(ndev->irq, xcan_interrupt, priv->irq_flags,
 			ndev->name, ndev);
 	if (ret < 0) {
@@ -907,6 +917,13 @@ static int xcan_close(struct net_device *ndev)
 	clk_disable_unprepare(priv->can_clk);
 	free_irq(ndev->irq, ndev);
 	close_candev(ndev);
+
+	if (gpio_is_valid(priv->transceiver_enable)) {
+		if (priv->te_active_low)
+			gpio_set_value(priv->transceiver_enable, 1);
+		else
+			gpio_set_value(priv->transceiver_enable, 0);
+	}
 
 	can_led_event(ndev, CAN_LED_EVENT_STOP);
 
@@ -1041,6 +1058,7 @@ static int xcan_probe(struct platform_device *pdev)
 	struct xcan_priv *priv;
 	void __iomem *addr;
 	int ret, rx_max, tx_max;
+	enum of_gpio_flags flags;
 
 	/* Get the virtual base address for the device */
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
@@ -1130,6 +1148,29 @@ static int xcan_probe(struct platform_device *pdev)
 
 	netif_napi_add(ndev, &priv->napi, xcan_rx_poll, rx_max);
 
+	priv->transceiver_enable = of_get_named_gpio_flags(pdev->dev.of_node, "transceiver-enable", 0, &flags);
+	if (gpio_is_valid(priv->transceiver_enable)) {
+		if (gpio_request(priv->transceiver_enable, "transceiver-enable")) {
+			dev_err(&pdev->dev, "transceiver_enable pin [%d] is busy !\n", priv->transceiver_enable);
+			ret = priv->transceiver_enable = -EBUSY;
+			goto err_unprepare_disable_dev;
+		} else {
+			dev_dbg(&pdev->dev, "transceiver_enable pin [%d] is registered.\n", priv->transceiver_enable);
+			priv->te_active_low = flags & OF_GPIO_ACTIVE_LOW;
+			if (priv->te_active_low) {
+				gpio_direction_output(priv->transceiver_enable, 1);
+			} else {
+				gpio_direction_output(priv->transceiver_enable, 0);
+			}
+		}
+	} else if (priv->transceiver_enable != -ENOENT) {
+		dev_err(&pdev->dev, "transceiver_enable pin failed (err=%d)\n", priv->transceiver_enable);
+		ret = priv->transceiver_enable;
+		goto err_unprepare_disable_dev;
+	} else {
+		dev_dbg(&pdev->dev, "transceiver_enable pin not defined in device tree.\n");
+	}
+
 	ret = register_candev(ndev);
 	if (ret) {
 		dev_err(&pdev->dev, "fail to register failed (err=%d)\n", ret);
@@ -1169,6 +1210,9 @@ static int xcan_remove(struct platform_device *pdev)
 
 	if (set_reset_mode(ndev) < 0)
 		netdev_err(ndev, "mode resetting failed!\n");
+
+	if (gpio_is_valid(priv->transceiver_enable))
+		gpio_free(priv->transceiver_enable);
 
 	unregister_candev(ndev);
 	netif_napi_del(&priv->napi);
