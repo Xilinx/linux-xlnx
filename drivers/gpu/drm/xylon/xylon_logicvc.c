@@ -900,7 +900,7 @@ void xylon_cvc_get_fix_parameters(struct xylon_cvc *cvc,
 
 static const struct of_device_id cvc_of_match[] = {
 	{ .compatible = "xylon,logicvc-4.00.a" },
-	{ .compatible = "xylon,logicvc-4.01.a" },
+	{ .compatible = "xylon,logicvc-5.0" },
 	{/* end of table */}
 };
 
