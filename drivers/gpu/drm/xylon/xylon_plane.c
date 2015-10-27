@@ -149,6 +149,9 @@ static int xylon_drm_plane_update(struct drm_plane *base_plane,
 {
 	int ret;
 
+	crtc->x = crtc_x;
+	crtc->y = crtc_y;
+
 	ret = xylon_drm_plane_fb_set(base_plane, fb,
 				     crtc_x, crtc_y, crtc_w, crtc_h,
 				     src_x >> 16, src_y >> 16,
