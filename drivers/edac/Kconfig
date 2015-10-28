@@ -510,6 +510,13 @@ config EDAC_XGENE
 	  Support for error detection and correction on the
 	  APM X-Gene family of SOCs.
 
+config EDAC_CORTEX_ARM64
+	tristate "ARM Cortex A57/A53"
+	depends on EDAC_MM_EDAC && ARM64
+	help
+	  Support for error detection and correction on the
+	  ARM Cortex A57 and A53.
+
 config EDAC_TI
 	tristate "Texas Instruments DDR3 ECC Controller"
 	depends on ARCH_KEYSTONE || SOC_DRA7XX
