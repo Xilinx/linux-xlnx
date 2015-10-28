@@ -30,7 +30,6 @@
 #include <linux/smp.h>
 #include <linux/irqchip/arm-gic.h>
 #include <asm/outercache.h>
-#include <asm/cacheflush.h>
 #include <linux/slab.h>
 #include <linux/cpu.h>
 
@@ -65,9 +64,6 @@ static void handle_event(struct work_struct *work)
 {
 	struct zynq_rproc_pdata *local = platform_get_drvdata(remoteprocdev);
 
-	flush_cache_all();
-	outer_flush_range(local->mem_start, local->mem_end);
-
 	if (rproc_vq_interrupt(local->rproc, 0) == IRQ_NONE)
 		dev_dbg(&remoteprocdev->dev, "no message found in vqid 0\n");
 }
@@ -88,9 +84,8 @@ static int zynq_rproc_start(struct rproc *rproc)
 	dev_dbg(dev, "%s\n", __func__);
 	INIT_WORK(&workqueue, handle_event);
 
-	flush_cache_all();
-	outer_flush_range(local->mem_start, local->mem_end);
 
+	mb();
 	remoteprocdev = pdev;
 	ret = zynq_cpun_start(rproc->bootaddr, 1);
 
