@@ -62,6 +62,11 @@
 		method = "smc";
 	};
 
+	firmware {
+		compatible = "xlnx,zynqmp-pm";
+		method = "smc";
+	};
+
 	timer {
 		compatible = "arm,armv8-timer";
 		interrupt-parent = <&gic>;
