@@ -32,6 +32,7 @@
 #include "i915_trace.h"
 #include "intel_drv.h"
 #include <linux/dma_remapping.h>
+#include <linux/uaccess.h>
 
 #define  __EXEC_OBJECT_HAS_PIN (1<<31)
 #define  __EXEC_OBJECT_HAS_FENCE (1<<30)
@@ -421,7 +422,7 @@ i915_gem_execbuffer_relocate_entry(struct drm_i915_gem_object *obj,
 	}
 
 	/* We can't wait for rendering with pagefaults disabled */
-	if (obj->active && in_atomic())
+	if (obj->active && pagefault_disabled())
 		return -EFAULT;
 
 	if (use_cpu_reloc(obj))
@@ -1278,7 +1279,9 @@ i915_gem_ringbuffer_submission(struct drm_device *dev, struct drm_file *file,
 			return ret;
 	}
 
+#ifndef CONFIG_PREEMPT_RT_BASE
 	trace_i915_gem_ring_dispatch(intel_ring_get_request(ring), flags);
+#endif
 
 	i915_gem_execbuffer_move_to_active(vmas, ring);
 	i915_gem_execbuffer_retire_commands(dev, file, ring, batch_obj);

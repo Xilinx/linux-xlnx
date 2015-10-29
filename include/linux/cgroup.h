@@ -22,6 +22,7 @@
 #include <linux/seq_file.h>
 #include <linux/kernfs.h>
 #include <linux/wait.h>
+#include <linux/work-simple.h>
 
 #ifdef CONFIG_CGROUPS
 
@@ -91,6 +92,7 @@ struct cgroup_subsys_state {
 	/* percpu_ref killing and RCU release */
 	struct rcu_head rcu_head;
 	struct work_struct destroy_work;
+	struct swork_event destroy_swork;
 };
 
 /* bits in struct cgroup_subsys_state flags field */

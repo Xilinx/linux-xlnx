@@ -635,7 +635,7 @@ config RCU_FANOUT_EXACT
 
 config RCU_FAST_NO_HZ
 	bool "Accelerate last non-dyntick-idle CPU's grace periods"
-	depends on NO_HZ_COMMON && SMP
+	depends on NO_HZ_COMMON && SMP && !PREEMPT_RT_FULL
 	default n
 	help
 	  This option permits CPUs to enter dynticks-idle state even if
@@ -662,7 +662,7 @@ config TREE_RCU_TRACE
 config RCU_BOOST
 	bool "Enable RCU priority boosting"
 	depends on RT_MUTEXES && PREEMPT_RCU
-	default n
+	default y if PREEMPT_RT_FULL
 	help
 	  This option boosts the priority of preempted RCU readers that
 	  block the current preemptible RCU grace period for too long.
@@ -1092,6 +1092,7 @@ config CFS_BANDWIDTH
 config RT_GROUP_SCHED
 	bool "Group scheduling for SCHED_RR/FIFO"
 	depends on CGROUP_SCHED
+	depends on !PREEMPT_RT_FULL
 	default n
 	help
 	  This feature lets you explicitly allocate real CPU bandwidth
@@ -1664,6 +1665,7 @@ choice
 
 config SLAB
 	bool "SLAB"
+	depends on !PREEMPT_RT_FULL
 	help
 	  The regular slab allocator that is established and known to work
 	  well in all environments. It organizes cache hot objects in
@@ -1682,6 +1684,7 @@ config SLUB
 config SLOB
 	depends on EXPERT
 	bool "SLOB (Simple Allocator)"
+	depends on !PREEMPT_RT_FULL
 	help
 	   SLOB replaces the stock allocator with a drastically simpler
 	   allocator. SLOB is generally more space efficient but
@@ -1691,7 +1694,7 @@ endchoice
 
 config SLUB_CPU_PARTIAL
 	default y
-	depends on SLUB && SMP
+	depends on SLUB && SMP && !PREEMPT_RT_FULL
 	bool "SLUB per cpu partial cache"
 	help
 	  Per cpu partial caches accellerate objects allocation and freeing

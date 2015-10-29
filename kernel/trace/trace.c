@@ -1592,6 +1592,7 @@ tracing_generic_entry_update(struct trace_entry *entry, unsigned long flags,
 	struct task_struct *tsk = current;
 
 	entry->preempt_count		= pc & 0xff;
+	entry->preempt_lazy_count	= preempt_lazy_count();
 	entry->pid			= (tsk) ? tsk->pid : 0;
 	entry->flags =
 #ifdef CONFIG_TRACE_IRQFLAGS_SUPPORT
@@ -1601,8 +1602,11 @@ tracing_generic_entry_update(struct trace_entry *entry, unsigned long flags,
 #endif
 		((pc & HARDIRQ_MASK) ? TRACE_FLAG_HARDIRQ : 0) |
 		((pc & SOFTIRQ_MASK) ? TRACE_FLAG_SOFTIRQ : 0) |
-		(tif_need_resched() ? TRACE_FLAG_NEED_RESCHED : 0) |
+		(tif_need_resched_now() ? TRACE_FLAG_NEED_RESCHED : 0) |
+		(need_resched_lazy() ? TRACE_FLAG_NEED_RESCHED_LAZY : 0) |
 		(test_preempt_need_resched() ? TRACE_FLAG_PREEMPT_RESCHED : 0);
+
+	entry->migrate_disable = (tsk) ? __migrate_disabled(tsk) & 0xFF : 0;
 }
 EXPORT_SYMBOL_GPL(tracing_generic_entry_update);
 
@@ -2520,14 +2524,17 @@ get_total_entries(struct trace_buffer *buf,
 
 static void print_lat_help_header(struct seq_file *m)
 {
-	seq_puts(m, "#                  _------=> CPU#            \n"
-		    "#                 / _-----=> irqs-off        \n"
-		    "#                | / _----=> need-resched    \n"
-		    "#                || / _---=> hardirq/softirq \n"
-		    "#                ||| / _--=> preempt-depth   \n"
-		    "#                |||| /     delay            \n"
-		    "#  cmd     pid   ||||| time  |   caller      \n"
-		    "#     \\   /      |||||  \\    |   /         \n");
+	seq_puts(m, "#                   _--------=> CPU#              \n"
+		    "#                  / _-------=> irqs-off          \n"
+		    "#                 | / _------=> need-resched      \n"
+		    "#                 || / _-----=> need-resched_lazy \n"
+		    "#                 ||| / _----=> hardirq/softirq   \n"
+		    "#                 |||| / _---=> preempt-depth     \n"
+		    "#                 ||||| / _--=> preempt-lazy-depth\n"
+		    "#                 |||||| / _-=> migrate-disable   \n"
+		    "#                 ||||||| /     delay             \n"
+		    "#  cmd     pid    |||||||| time  |   caller       \n"
+		    "#     \\   /      ||||||||  \\   |   /            \n");
 }
 
 static void print_event_info(struct trace_buffer *buf, struct seq_file *m)
@@ -2553,11 +2560,14 @@ static void print_func_help_header_irq(struct trace_buffer *buf, struct seq_file
 	print_event_info(buf, m);
 	seq_puts(m, "#                              _-----=> irqs-off\n"
 		    "#                             / _----=> need-resched\n"
-		    "#                            | / _---=> hardirq/softirq\n"
-		    "#                            || / _--=> preempt-depth\n"
-		    "#                            ||| /     delay\n"
-		    "#           TASK-PID   CPU#  ||||    TIMESTAMP  FUNCTION\n"
-		    "#              | |       |   ||||       |         |\n");
+		    "#                            |/  _-----=> need-resched_lazy\n"
+		    "#                            || / _---=> hardirq/softirq\n"
+		    "#                            ||| / _--=> preempt-depth\n"
+		    "#                            |||| /_--=> preempt-lazy-depth\n"
+		    "#                            |||||  _-=> migrate-disable   \n"
+		    "#                            ||||| /    delay\n"
+		    "#           TASK-PID   CPU#  ||||||    TIMESTAMP  FUNCTION\n"
+		    "#              | |       |   ||||||       |         |\n");
 }
 
 void

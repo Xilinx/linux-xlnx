@@ -34,22 +34,39 @@
 #endif
 
 struct lglock {
+#ifndef CONFIG_PREEMPT_RT_FULL
 	arch_spinlock_t __percpu *lock;
+#else
+	struct rt_mutex __percpu *lock;
+#endif
 #ifdef CONFIG_DEBUG_LOCK_ALLOC
 	struct lock_class_key lock_key;
 	struct lockdep_map    lock_dep_map;
 #endif
 };
 
-#define DEFINE_LGLOCK(name)						\
+#ifndef CONFIG_PREEMPT_RT_FULL
+# define DEFINE_LGLOCK(name)						\
 	static DEFINE_PER_CPU(arch_spinlock_t, name ## _lock)		\
 	= __ARCH_SPIN_LOCK_UNLOCKED;					\
 	struct lglock name = { .lock = &name ## _lock }
 
-#define DEFINE_STATIC_LGLOCK(name)					\
+# define DEFINE_STATIC_LGLOCK(name)					\
 	static DEFINE_PER_CPU(arch_spinlock_t, name ## _lock)		\
 	= __ARCH_SPIN_LOCK_UNLOCKED;					\
 	static struct lglock name = { .lock = &name ## _lock }
+#else
+
+# define DEFINE_LGLOCK(name)						\
+	static DEFINE_PER_CPU(struct rt_mutex, name ## _lock)		\
+	= __RT_MUTEX_INITIALIZER( name ## _lock);			\
+	struct lglock name = { .lock = &name ## _lock }
+
+# define DEFINE_STATIC_LGLOCK(name)					\
+	static DEFINE_PER_CPU(struct rt_mutex, name ## _lock)		\
+	= __RT_MUTEX_INITIALIZER( name ## _lock);			\
+	static struct lglock name = { .lock = &name ## _lock }
+#endif
 
 void lg_lock_init(struct lglock *lg, char *name);
 void lg_local_lock(struct lglock *lg);
@@ -58,6 +75,12 @@ void lg_local_lock_cpu(struct lglock *lg, int cpu);
 void lg_local_unlock_cpu(struct lglock *lg, int cpu);
 void lg_global_lock(struct lglock *lg);
 void lg_global_unlock(struct lglock *lg);
+
+#ifndef CONFIG_PREEMPT_RT_FULL
+#define lg_global_trylock_relax(name)	lg_global_lock(name)
+#else
+void lg_global_trylock_relax(struct lglock *lg);
+#endif
 
 #else
 /* When !CONFIG_SMP, map lglock to spinlock */

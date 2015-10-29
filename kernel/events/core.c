@@ -6556,6 +6556,7 @@ static void perf_swevent_init_hrtimer(struct perf_event *event)
 
 	hrtimer_init(&hwc->hrtimer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	hwc->hrtimer.function = perf_swevent_hrtimer;
+	hwc->hrtimer.irqsafe = 1;
 
 	/*
 	 * Since hrtimers have a fixed rate, we can do a static freq->period

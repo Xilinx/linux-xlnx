@@ -613,6 +613,7 @@ asmlinkage void do_notify_resume(struct pt_regs *regs, void *unused,
 	__u32 thread_info_flags)
 {
 	local_irq_enable();
+	preempt_check_resched();
 
 	user_exit();
 

@@ -185,6 +185,9 @@ static inline void smp_init(void) { }
 #define get_cpu()		({ preempt_disable(); smp_processor_id(); })
 #define put_cpu()		preempt_enable()
 
+#define get_cpu_light()		({ migrate_disable(); smp_processor_id(); })
+#define put_cpu_light()		migrate_enable()
+
 /*
  * Callback to arch code if there's nosmp or maxcpus=0 on the
  * boot command line:

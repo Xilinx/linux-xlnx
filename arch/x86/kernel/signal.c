@@ -740,6 +740,14 @@ do_notify_resume(struct pt_regs *regs, void *unused, __u32 thread_info_flags)
 {
 	user_exit();
 
+#ifdef ARCH_RT_DELAYS_SIGNAL_SEND
+	if (unlikely(current->forced_info.si_signo)) {
+		struct task_struct *t = current;
+		force_sig_info(t->forced_info.si_signo, &t->forced_info, t);
+		t->forced_info.si_signo = 0;
+	}
+#endif
+
 	if (thread_info_flags & _TIF_UPROBE)
 		uprobe_notify_resume(regs);
 

@@ -796,7 +796,7 @@ void ipoib_mcast_restart_task(struct work_struct *work)
 
 	ipoib_mcast_stop_thread(dev, 0);
 
-	local_irq_save(flags);
+	local_irq_save_nort(flags);
 	netif_addr_lock(dev);
 	spin_lock(&priv->lock);
 
@@ -878,7 +878,7 @@ void ipoib_mcast_restart_task(struct work_struct *work)
 
 	spin_unlock(&priv->lock);
 	netif_addr_unlock(dev);
-	local_irq_restore(flags);
+	local_irq_restore_nort(flags);
 
 	/* We have to cancel outside of the spinlock */
 	list_for_each_entry_safe(mcast, tmcast, &remove_list, list) {

@@ -1,0 +1,26 @@
+--- kernel/power/hibernate.c
++++ kernel/power/hibernate.c
+@@ -316,6 +318,7 @@
+ 	syscore_resume();
+ 
+  Enable_irqs:
++	system_state = SYSTEM_RUNNING;
+ 	local_irq_enable();
+ 
+  Enable_cpus:
+@@ -473,6 +477,7 @@
+ 	syscore_resume();
+ 
+  Enable_irqs:
++	system_state = SYSTEM_RUNNING;
+ 	local_irq_enable();
+ 
+  Enable_cpus:
+@@ -571,6 +577,7 @@
+ 
+  Power_up:
+ 	syscore_resume();
++	system_state = SYSTEM_RUNNING;
+ 	local_irq_enable();
+ 	enable_nonboot_cpus();
+ 

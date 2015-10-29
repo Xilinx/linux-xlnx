@@ -63,6 +63,7 @@
 #include <linux/errqueue.h>
 #include <linux/prefetch.h>
 #include <linux/if_vlan.h>
+#include <linux/locallock.h>
 
 #include <net/protocol.h>
 #include <net/dst.h>
@@ -339,6 +340,7 @@ struct netdev_alloc_cache {
 };
 static DEFINE_PER_CPU(struct netdev_alloc_cache, netdev_alloc_cache);
 static DEFINE_PER_CPU(struct netdev_alloc_cache, napi_alloc_cache);
+static DEFINE_LOCAL_IRQ_LOCK(netdev_alloc_lock);
 
 static struct page *__page_frag_refill(struct netdev_alloc_cache *nc,
 				       gfp_t gfp_mask)
@@ -415,9 +417,9 @@ static void *__netdev_alloc_frag(unsigned int fragsz, gfp_t gfp_mask)
 	unsigned long flags;
 	void *data;
 
-	local_irq_save(flags);
+	local_lock_irqsave(netdev_alloc_lock, flags);
 	data = __alloc_page_frag(&netdev_alloc_cache, fragsz, gfp_mask);
-	local_irq_restore(flags);
+	local_unlock_irqrestore(netdev_alloc_lock, flags);
 	return data;
 }
 

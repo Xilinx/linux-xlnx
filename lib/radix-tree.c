@@ -195,12 +195,13 @@ radix_tree_node_alloc(struct radix_tree_root *root)
 		 * succeed in getting a node here (and never reach
 		 * kmem_cache_alloc)
 		 */
-		rtp = this_cpu_ptr(&radix_tree_preloads);
+		rtp = &get_cpu_var(radix_tree_preloads);
 		if (rtp->nr) {
 			ret = rtp->nodes[rtp->nr - 1];
 			rtp->nodes[rtp->nr - 1] = NULL;
 			rtp->nr--;
 		}
+		put_cpu_var(radix_tree_preloads);
 		/*
 		 * Update the allocation stack trace as this is more useful
 		 * for debugging.
@@ -240,6 +241,7 @@ radix_tree_node_free(struct radix_tree_node *node)
 	call_rcu(&node->rcu_head, radix_tree_node_rcu_free);
 }
 
+#ifndef CONFIG_PREEMPT_RT_FULL
 /*
  * Load up this CPU's radix_tree_node buffer with sufficient objects to
  * ensure that the addition of a single element in the tree cannot fail.  On
@@ -305,6 +307,7 @@ int radix_tree_maybe_preload(gfp_t gfp_mask)
 	return 0;
 }
 EXPORT_SYMBOL(radix_tree_maybe_preload);
+#endif
 
 /*
  *	Return the maximum key which can be store into a

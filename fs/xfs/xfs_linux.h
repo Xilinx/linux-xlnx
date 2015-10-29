@@ -119,7 +119,7 @@ typedef __uint64_t __psunsigned_t;
 /*
  * Feature macros (disable/enable)
  */
-#ifdef CONFIG_SMP
+#if defined(CONFIG_SMP) && !defined(CONFIG_PREEMPT_RT_FULL)
 #define HAVE_PERCPU_SB	/* per cpu superblock counters are a 2.6 feature */
 #else
 #undef  HAVE_PERCPU_SB	/* per cpu superblock counters are a 2.6 feature */

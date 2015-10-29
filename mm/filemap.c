@@ -168,7 +168,9 @@ static void page_cache_tree_delete(struct address_space *mapping,
 	if (!workingset_node_pages(node) &&
 	    list_empty(&node->private_list)) {
 		node->private_data = mapping;
-		list_lru_add(&workingset_shadow_nodes, &node->private_list);
+		local_lock(workingset_shadow_lock);
+		list_lru_add(&__workingset_shadow_nodes, &node->private_list);
+		local_unlock(workingset_shadow_lock);
 	}
 }
 
@@ -535,9 +537,12 @@ static int page_cache_tree_insert(struct address_space *mapping,
 		 * node->private_list is protected by
 		 * mapping->tree_lock.
 		 */
-		if (!list_empty(&node->private_list))
-			list_lru_del(&workingset_shadow_nodes,
+		if (!list_empty(&node->private_list)) {
+			local_lock(workingset_shadow_lock);
+			list_lru_del(&__workingset_shadow_nodes,
 				     &node->private_list);
+			local_unlock(workingset_shadow_lock);
+		}
 	}
 	return 0;
 }

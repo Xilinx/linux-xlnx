@@ -29,6 +29,7 @@
 #include <linux/pm.h>
 #include <linux/thermal.h>
 #include <linux/debugfs.h>
+#include <linux/work-simple.h>
 #include <asm/cpu_device_id.h>
 #include <asm/mce.h>
 
@@ -352,7 +353,7 @@ static void pkg_temp_thermal_threshold_work_fn(struct work_struct *work)
 	}
 }
 
-static int pkg_temp_thermal_platform_thermal_notify(__u64 msr_val)
+static void platform_thermal_notify_work(struct swork_event *event)
 {
 	unsigned long flags;
 	int cpu = smp_processor_id();
@@ -369,7 +370,7 @@ static int pkg_temp_thermal_platform_thermal_notify(__u64 msr_val)
 			pkg_work_scheduled[phy_id]) {
 		disable_pkg_thres_interrupt();
 		spin_unlock_irqrestore(&pkg_work_lock, flags);
-		return -EINVAL;
+		return;
 	}
 	pkg_work_scheduled[phy_id] = 1;
 	spin_unlock_irqrestore(&pkg_work_lock, flags);
@@ -378,8 +379,47 @@ static int pkg_temp_thermal_platform_thermal_notify(__u64 msr_val)
 	schedule_delayed_work_on(cpu,
 				&per_cpu(pkg_temp_thermal_threshold_work, cpu),
 				msecs_to_jiffies(notify_delay_ms));
+}
+
+#ifdef CONFIG_PREEMPT_RT_FULL
+static struct swork_event notify_work;
+
+static int thermal_notify_work_init(void)
+{
+	int err;
+
+	err = swork_get();
+	if (err)
+		return err;
+
+	INIT_SWORK(&notify_work, platform_thermal_notify_work);
 	return 0;
 }
+
+static void thermal_notify_work_cleanup(void)
+{
+	swork_put();
+}
+
+static int pkg_temp_thermal_platform_thermal_notify(__u64 msr_val)
+{
+	swork_queue(&notify_work);
+	return 0;
+}
+
+#else  /* !CONFIG_PREEMPT_RT_FULL */
+
+static int thermal_notify_work_init(void) { return 0; }
+
+static int thermal_notify_work_cleanup(void) {  }
+
+static int pkg_temp_thermal_platform_thermal_notify(__u64 msr_val)
+{
+	platform_thermal_notify_work(NULL);
+
+	return 0;
+}
+#endif /* CONFIG_PREEMPT_RT_FULL */
 
 static int find_siblings_cpu(int cpu)
 {
@@ -584,6 +624,9 @@ static int __init pkg_temp_thermal_init(void)
 	if (!x86_match_cpu(pkg_temp_thermal_ids))
 		return -ENODEV;
 
+	if (!thermal_notify_work_init())
+		return -ENODEV;
+
 	spin_lock_init(&pkg_work_lock);
 	platform_thermal_package_notify =
 			pkg_temp_thermal_platform_thermal_notify;
@@ -608,7 +651,7 @@ err_ret:
 	kfree(pkg_work_scheduled);
 	platform_thermal_package_notify = NULL;
 	platform_thermal_package_rate_control = NULL;
-
+	thermal_notify_work_cleanup();
 	return -ENODEV;
 }
 
@@ -633,6 +676,7 @@ static void __exit pkg_temp_thermal_exit(void)
 	mutex_unlock(&phy_dev_list_mutex);
 	platform_thermal_package_notify = NULL;
 	platform_thermal_package_rate_control = NULL;
+	thermal_notify_work_cleanup();
 	for_each_online_cpu(i)
 		cancel_delayed_work_sync(
 			&per_cpu(pkg_temp_thermal_threshold_work, i));

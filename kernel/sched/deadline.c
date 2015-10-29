@@ -580,6 +580,7 @@ void init_dl_task_timer(struct sched_dl_entity *dl_se)
 
 	hrtimer_init(timer, CLOCK_MONOTONIC, HRTIMER_MODE_REL);
 	timer->function = dl_task_timer;
+	timer->irqsafe = 1;
 }
 
 static

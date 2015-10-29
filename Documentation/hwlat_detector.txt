@@ -1,0 +1,64 @@
+Introduction:
+-------------
+
+The module hwlat_detector is a special purpose kernel module that is used to
+detect large system latencies induced by the behavior of certain underlying
+hardware or firmware, independent of Linux itself. The code was developed
+originally to detect SMIs (System Management Interrupts) on x86 systems,
+however there is nothing x86 specific about this patchset. It was
+originally written for use by the "RT" patch since the Real Time
+kernel is highly latency sensitive.
+
+SMIs are usually not serviced by the Linux kernel, which typically does not
+even know that they are occuring. SMIs are instead are set up by BIOS code
+and are serviced by BIOS code, usually for "critical" events such as
+management of thermal sensors and fans. Sometimes though, SMIs are used for
+other tasks and those tasks can spend an inordinate amount of time in the
+handler (sometimes measured in milliseconds). Obviously this is a problem if
+you are trying to keep event service latencies down in the microsecond range.
+
+The hardware latency detector works by hogging all of the cpus for configurable
+amounts of time (by calling stop_machine()), polling the CPU Time Stamp Counter
+for some period, then looking for gaps in the TSC data. Any gap indicates a
+time when the polling was interrupted and since the machine is stopped and
+interrupts turned off the only thing that could do that would be an SMI.
+
+Note that the SMI detector should *NEVER* be used in a production environment.
+It is intended to be run manually to determine if the hardware platform has a
+problem with long system firmware service routines.
+
+Usage:
+------
+
+Loading the module hwlat_detector passing the parameter "enabled=1" (or by
+setting the "enable" entry in "hwlat_detector" debugfs toggled on) is the only
+step required to start the hwlat_detector. It is possible to redefine the
+threshold in microseconds (us) above which latency spikes will be taken
+into account (parameter "threshold=").
+
+Example:
+
+	# modprobe hwlat_detector enabled=1 threshold=100
+
+After the module is loaded, it creates a directory named "hwlat_detector" under
+the debugfs mountpoint, "/debug/hwlat_detector" for this text. It is necessary
+to have debugfs mounted, which might be on /sys/debug on your system.
+
+The /debug/hwlat_detector interface contains the following files:
+
+count			- number of latency spikes observed since last reset
+enable			- a global enable/disable toggle (0/1), resets count
+max			- maximum hardware latency actually observed (usecs)
+sample			- a pipe from which to read current raw sample data
+			  in the format <timestamp> <latency observed usecs>
+			  (can be opened O_NONBLOCK for a single sample)
+threshold		- minimum latency value to be considered (usecs)
+width			- time period to sample with CPUs held (usecs)
+			  must be less than the total window size (enforced)
+window			- total period of sampling, width being inside (usecs)
+
+By default we will set width to 500,000 and window to 1,000,000, meaning that
+we will sample every 1,000,000 usecs (1s) for 500,000 usecs (0.5s). If we
+observe any latencies that exceed the threshold (initially 100 usecs),
+then we write to a global sample ring buffer of 8K samples, which is
+consumed by reading from the "sample" (pipe) debugfs file interface.

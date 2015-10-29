@@ -359,8 +359,24 @@ END(ret_from_exception)
 ENTRY(resume_kernel)
 	DISABLE_INTERRUPTS(CLBR_ANY)
 need_resched:
+	# preempt count == 0 + NEED_RS set?
 	cmpl $0,PER_CPU_VAR(__preempt_count)
+#ifndef CONFIG_PREEMPT_LAZY
 	jnz restore_all
+#else
+	jz test_int_off
+
+	# atleast preempt count == 0 ?
+	cmpl $_PREEMPT_ENABLED,PER_CPU_VAR(__preempt_count)
+	jne restore_all
+
+	cmpl $0,TI_preempt_lazy_count(%ebp)	# non-zero preempt_lazy_count ?
+	jnz restore_all
+
+	testl $_TIF_NEED_RESCHED_LAZY, TI_flags(%ebp)
+	jz restore_all
+test_int_off:
+#endif
 	testl $X86_EFLAGS_IF,PT_EFLAGS(%esp)	# interrupts off (exception path) ?
 	jz restore_all
 	call preempt_schedule_irq
@@ -591,7 +607,7 @@ ENDPROC(system_call)
 	ALIGN
 	RING0_PTREGS_FRAME		# can't unwind into user space anyway
 work_pending:
-	testb $_TIF_NEED_RESCHED, %cl
+	testl $_TIF_NEED_RESCHED_MASK, %ecx
 	jz work_notifysig
 work_resched:
 	call schedule
@@ -604,7 +620,7 @@ work_resched:
 	andl $_TIF_WORK_MASK, %ecx	# is there any work to be done other
 					# than syscall tracing?
 	jz restore_all
-	testb $_TIF_NEED_RESCHED, %cl
+	testl $_TIF_NEED_RESCHED_MASK, %ecx
 	jnz work_resched
 
 work_notifysig:				# deal with pending signals and

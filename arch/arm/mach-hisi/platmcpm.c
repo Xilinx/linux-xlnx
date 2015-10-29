@@ -57,7 +57,7 @@
 
 static void __iomem *sysctrl, *fabric;
 static int hip04_cpu_table[HIP04_MAX_CLUSTERS][HIP04_MAX_CPUS_PER_CLUSTER];
-static DEFINE_SPINLOCK(boot_lock);
+static DEFINE_RAW_SPINLOCK(boot_lock);
 static u32 fabric_phys_addr;
 /*
  * [0]: bootwrapper physical address
@@ -104,7 +104,7 @@ static int hip04_mcpm_power_up(unsigned int cpu, unsigned int cluster)
 	if (cluster >= HIP04_MAX_CLUSTERS || cpu >= HIP04_MAX_CPUS_PER_CLUSTER)
 		return -EINVAL;
 
-	spin_lock_irq(&boot_lock);
+	raw_spin_lock_irq(&boot_lock);
 
 	if (hip04_cpu_table[cluster][cpu])
 		goto out;
@@ -133,7 +133,7 @@ static int hip04_mcpm_power_up(unsigned int cpu, unsigned int cluster)
 	udelay(20);
 out:
 	hip04_cpu_table[cluster][cpu]++;
-	spin_unlock_irq(&boot_lock);
+	raw_spin_unlock_irq(&boot_lock);
 
 	return 0;
 }
@@ -149,7 +149,7 @@ static void hip04_mcpm_power_down(void)
 
 	__mcpm_cpu_going_down(cpu, cluster);
 
-	spin_lock(&boot_lock);
+	raw_spin_lock(&boot_lock);
 	BUG_ON(__mcpm_cluster_state(cluster) != CLUSTER_UP);
 	hip04_cpu_table[cluster][cpu]--;
 	if (hip04_cpu_table[cluster][cpu] == 1) {
@@ -162,7 +162,7 @@ static void hip04_mcpm_power_down(void)
 
 	last_man = hip04_cluster_is_down(cluster);
 	if (last_man && __mcpm_outbound_enter_critical(cpu, cluster)) {
-		spin_unlock(&boot_lock);
+		raw_spin_unlock(&boot_lock);
 		/* Since it's Cortex A15, disable L2 prefetching. */
 		asm volatile(
 		"mcr	p15, 1, %0, c15, c0, 3 \n\t"
@@ -173,7 +173,7 @@ static void hip04_mcpm_power_down(void)
 		hip04_set_snoop_filter(cluster, 0);
 		__mcpm_outbound_leave_critical(cluster, CLUSTER_DOWN);
 	} else {
-		spin_unlock(&boot_lock);
+		raw_spin_unlock(&boot_lock);
 		v7_exit_coherency_flush(louis);
 	}
 
@@ -192,7 +192,7 @@ static int hip04_mcpm_wait_for_powerdown(unsigned int cpu, unsigned int cluster)
 	       cpu >= HIP04_MAX_CPUS_PER_CLUSTER);
 
 	count = TIMEOUT_MSEC / POLL_MSEC;
-	spin_lock_irq(&boot_lock);
+	raw_spin_lock_irq(&boot_lock);
 	for (tries = 0; tries < count; tries++) {
 		if (hip04_cpu_table[cluster][cpu]) {
 			ret = -EBUSY;
@@ -202,10 +202,10 @@ static int hip04_mcpm_wait_for_powerdown(unsigned int cpu, unsigned int cluster)
 		data = readl_relaxed(sysctrl + SC_CPU_RESET_STATUS(cluster));
 		if (data & CORE_WFI_STATUS(cpu))
 			break;
-		spin_unlock_irq(&boot_lock);
+		raw_spin_unlock_irq(&boot_lock);
 		/* Wait for clean L2 when the whole cluster is down. */
 		msleep(POLL_MSEC);
-		spin_lock_irq(&boot_lock);
+		raw_spin_lock_irq(&boot_lock);
 	}
 	if (tries >= count)
 		goto err;
@@ -220,10 +220,10 @@ static int hip04_mcpm_wait_for_powerdown(unsigned int cpu, unsigned int cluster)
 	}
 	if (tries >= count)
 		goto err;
-	spin_unlock_irq(&boot_lock);
+	raw_spin_unlock_irq(&boot_lock);
 	return 0;
 err:
-	spin_unlock_irq(&boot_lock);
+	raw_spin_unlock_irq(&boot_lock);
 	return ret;
 }
 
@@ -235,10 +235,10 @@ static void hip04_mcpm_powered_up(void)
 	cpu = MPIDR_AFFINITY_LEVEL(mpidr, 0);
 	cluster = MPIDR_AFFINITY_LEVEL(mpidr, 1);
 
-	spin_lock(&boot_lock);
+	raw_spin_lock(&boot_lock);
 	if (!hip04_cpu_table[cluster][cpu])
 		hip04_cpu_table[cluster][cpu] = 1;
-	spin_unlock(&boot_lock);
+	raw_spin_unlock(&boot_lock);
 }
 
 static void __naked hip04_mcpm_power_up_setup(unsigned int affinity_level)

@@ -39,7 +39,7 @@ static int __glue_ecb_crypt_128bit(const struct common_glue_ctx *gctx,
 	void *ctx = crypto_blkcipher_ctx(desc->tfm);
 	const unsigned int bsize = 128 / 8;
 	unsigned int nbytes, i, func_bytes;
-	bool fpu_enabled = false;
+	bool fpu_enabled;
 	int err;
 
 	err = blkcipher_walk_virt(desc, walk);
@@ -49,7 +49,7 @@ static int __glue_ecb_crypt_128bit(const struct common_glue_ctx *gctx,
 		u8 *wdst = walk->dst.virt.addr;
 
 		fpu_enabled = glue_fpu_begin(bsize, gctx->fpu_blocks_limit,
-					     desc, fpu_enabled, nbytes);
+					     desc, false, nbytes);
 
 		for (i = 0; i < gctx->num_funcs; i++) {
 			func_bytes = bsize * gctx->funcs[i].num_blocks;
@@ -71,10 +71,10 @@ static int __glue_ecb_crypt_128bit(const struct common_glue_ctx *gctx,
 		}
 
 done:
+		glue_fpu_end(fpu_enabled);
 		err = blkcipher_walk_done(desc, walk, nbytes);
 	}
 
-	glue_fpu_end(fpu_enabled);
 	return err;
 }
 
@@ -194,7 +194,7 @@ int glue_cbc_decrypt_128bit(const struct common_glue_ctx *gctx,
 			    struct scatterlist *src, unsigned int nbytes)
 {
 	const unsigned int bsize = 128 / 8;
-	bool fpu_enabled = false;
+	bool fpu_enabled;
 	struct blkcipher_walk walk;
 	int err;
 
@@ -203,12 +203,12 @@ int glue_cbc_decrypt_128bit(const struct common_glue_ctx *gctx,
 
 	while ((nbytes = walk.nbytes)) {
 		fpu_enabled = glue_fpu_begin(bsize, gctx->fpu_blocks_limit,
-					     desc, fpu_enabled, nbytes);
+					     desc, false, nbytes);
 		nbytes = __glue_cbc_decrypt_128bit(gctx, desc, &walk);
+		glue_fpu_end(fpu_enabled);
 		err = blkcipher_walk_done(desc, &walk, nbytes);
 	}
 
-	glue_fpu_end(fpu_enabled);
 	return err;
 }
 EXPORT_SYMBOL_GPL(glue_cbc_decrypt_128bit);
@@ -278,7 +278,7 @@ int glue_ctr_crypt_128bit(const struct common_glue_ctx *gctx,
 			  struct scatterlist *src, unsigned int nbytes)
 {
 	const unsigned int bsize = 128 / 8;
-	bool fpu_enabled = false;
+	bool fpu_enabled;
 	struct blkcipher_walk walk;
 	int err;
 
@@ -287,12 +287,11 @@ int glue_ctr_crypt_128bit(const struct common_glue_ctx *gctx,
 
 	while ((nbytes = walk.nbytes) >= bsize) {
 		fpu_enabled = glue_fpu_begin(bsize, gctx->fpu_blocks_limit,
-					     desc, fpu_enabled, nbytes);
+					     desc, false, nbytes);
 		nbytes = __glue_ctr_crypt_128bit(gctx, desc, &walk);
+		glue_fpu_end(fpu_enabled);
 		err = blkcipher_walk_done(desc, &walk, nbytes);
 	}
-
-	glue_fpu_end(fpu_enabled);
 
 	if (walk.nbytes) {
 		glue_ctr_crypt_final_128bit(
@@ -348,7 +347,7 @@ int glue_xts_crypt_128bit(const struct common_glue_ctx *gctx,
 			  void *tweak_ctx, void *crypt_ctx)
 {
 	const unsigned int bsize = 128 / 8;
-	bool fpu_enabled = false;
+	bool fpu_enabled;
 	struct blkcipher_walk walk;
 	int err;
 
@@ -361,21 +360,21 @@ int glue_xts_crypt_128bit(const struct common_glue_ctx *gctx,
 
 	/* set minimum length to bsize, for tweak_fn */
 	fpu_enabled = glue_fpu_begin(bsize, gctx->fpu_blocks_limit,
-				     desc, fpu_enabled,
+				     desc, false,
 				     nbytes < bsize ? bsize : nbytes);
-
 	/* calculate first value of T */
 	tweak_fn(tweak_ctx, walk.iv, walk.iv);
+	glue_fpu_end(fpu_enabled);
 
 	while (nbytes) {
+		fpu_enabled = glue_fpu_begin(bsize, gctx->fpu_blocks_limit,
+				desc, false, nbytes);
 		nbytes = __glue_xts_crypt_128bit(gctx, crypt_ctx, desc, &walk);
 
+		glue_fpu_end(fpu_enabled);
 		err = blkcipher_walk_done(desc, &walk, nbytes);
 		nbytes = walk.nbytes;
 	}
-
-	glue_fpu_end(fpu_enabled);
-
 	return err;
 }
 EXPORT_SYMBOL_GPL(glue_xts_crypt_128bit);
