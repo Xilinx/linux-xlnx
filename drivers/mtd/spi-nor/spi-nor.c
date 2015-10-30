@@ -58,6 +58,8 @@ struct flash_info {
 #define	USE_FSR			0x80	/* use flag status register */
 #define	SPI_NOR_FLASH_LOCK	0x100	/* Flash protection support */
 #define	SPI_NOR_QUAD_IO_READ	0x200	/* Flash supports Quad IO read */
+/* Unlock the Global protection for sst flashes */
+#define	SST_GLOBAL_PROT_UNLK	0x400
 };
 
 #define JEDEC_MFR(info)	((info)->id[0])
@@ -1514,6 +1516,12 @@ int spi_nor_scan(struct spi_nor *nor, const char *name, enum read_mode mode)
 	    JEDEC_MFR(info) == CFI_MFR_SST) {
 		write_enable(nor);
 		write_sr(nor, 0);
+
+		if (info->flags & SST_GLOBAL_PROT_UNLK) {
+			write_enable(nor);
+			/* Unlock global write protection bits */
+			nor->write_reg(nor, GLOBAL_BLKPROT_UNLK, NULL, 0, 0);
+		}
 	}
 
 	if (!mtd->name)
