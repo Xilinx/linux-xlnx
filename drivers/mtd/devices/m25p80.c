@@ -278,7 +278,7 @@ static const struct spi_device_id m25p_ids[] = {
 	{"s25fl016k"},	{"s25fl064k"},	{"s25fl132k"},
 	{"sst25vf040b"},{"sst25vf080b"},{"sst25vf016b"},{"sst25vf032b"},
 	{"sst25vf064c"},{"sst25wf512"},	{"sst25wf010"},	{"sst25wf020"},
-	{"sst25wf040"},
+	{"sst25wf040"}, {"sst26wf016B"},
 	{"m25p05"},	{"m25p10"},	{"m25p20"},	{"m25p40"},
 	{"m25p80"},	{"m25p16"},	{"m25p32"},	{"m25p64"},
 	{"m25p128"},	{"n25q032"},
