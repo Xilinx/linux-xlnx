@@ -1446,6 +1446,7 @@ int spi_nor_scan(struct spi_nor *nor, const char *name, enum read_mode mode)
 	struct mtd_info *mtd = nor->mtd;
 	struct device_node *np = dev->of_node;
 	struct device_node *np_spi;
+	uint64_t actual_size;
 	int ret;
 	int i;
 
@@ -1510,6 +1511,7 @@ int spi_nor_scan(struct spi_nor *nor, const char *name, enum read_mode mode)
 	mtd->size = info->sector_size * info->n_sectors;
 	mtd->_erase = spi_nor_erase;
 	mtd->_read = spi_nor_read_ext;
+	actual_size = mtd->size;
 
 	{
 #ifdef CONFIG_OF
@@ -1679,7 +1681,7 @@ int spi_nor_scan(struct spi_nor *nor, const char *name, enum read_mode mode)
 
 	if (info->addr_width)
 		nor->addr_width = info->addr_width;
-	else if (mtd->size > 0x1000000) {
+	else if (actual_size > 0x1000000) {
 #ifdef CONFIG_OF
 		np_spi = of_get_next_parent(np);
 		if (of_property_match_string(np_spi, "compatible",
