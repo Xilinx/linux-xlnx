@@ -29,6 +29,7 @@
 #include <linux/ctype.h>
 #include <linux/genhd.h>
 #include <linux/ktime.h>
+#include <linux/clockchips.h>
 #include <trace/events/power.h>
 
 #include "power.h"
