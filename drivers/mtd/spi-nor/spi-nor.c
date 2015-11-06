@@ -1330,8 +1330,14 @@ static int __maybe_unused spansion_quad_enable(struct spi_nor *nor)
 	int ret;
 	int quad_en = CR_QUAD_EN_SPAN << 8;
 
+	if (nor->isparallel)
+		nor->spi->master->flags |= SPI_DATA_STRIPE;
+
 	quad_en |= read_sr(nor);
 	quad_en |= (read_cr(nor) << 8);
+
+	if (nor->isparallel)
+		nor->spi->master->flags &= ~SPI_DATA_STRIPE;
 
 	write_enable(nor);
 
@@ -1342,12 +1348,19 @@ static int __maybe_unused spansion_quad_enable(struct spi_nor *nor)
 		return -EINVAL;
 	}
 
+	if (nor->isparallel)
+		nor->spi->master->flags |= SPI_DATA_STRIPE;
 	/* read back and check it */
 	ret = read_cr(nor);
 	if (!(ret > 0 && (ret & CR_QUAD_EN_SPAN))) {
 		dev_err(nor->dev, "Spansion Quad bit not set\n");
+		if (nor->isparallel)
+			nor->spi->master->flags &= ~SPI_DATA_STRIPE;
 		return -EINVAL;
 	}
+
+	if (nor->isparallel)
+		nor->spi->master->flags &= ~SPI_DATA_STRIPE;
 
 	return 0;
 }
