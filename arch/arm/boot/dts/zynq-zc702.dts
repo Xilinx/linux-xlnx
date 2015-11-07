@@ -115,6 +115,7 @@
 	status = "okay";
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_can0_default>;
+	transceiver-enable = <&gpio0 9 1>;
 };
 
 &clkc {

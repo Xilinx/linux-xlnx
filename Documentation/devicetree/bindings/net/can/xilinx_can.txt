@@ -17,6 +17,9 @@ Required properties:
 - tx-fifo-depth		: Can Tx fifo depth.
 - rx-fifo-depth		: Can Rx fifo depth.
 
+Optional properties:
+- transceiver-enable    : Provide the GPIO pin that controls the CAN transceiver.
+			  Flags can be 0 [Active High] or 1 [Active Low].
 
 Example:
 
@@ -41,4 +44,16 @@ For Axi CAN Dts file:
 			interrupts = <0 59 1>;
 			tx-fifo-depth = <0x40>;
 			rx-fifo-depth = <0x40>;
+		};
+For ZC702 CAN Dts file:
+	can_0: can@e0008000 {
+			clocks = <&clkc 19>, <&clkc 36>;
+			clock-names = "can_clk", "pclk";
+			compatible = "xlnx,zynq-can-1.0";
+			interrupt-parent = <&ps7_scugic_0>;
+			interrupts = <0 28 4>;
+			reg = <0xe0008000 0x1000>;
+			tx-fifo-depth = <0x40>;
+			rx-fifo-depth = <0x40>;
+			transceiver-enable = <&gpio0 9 1>;
 		};
