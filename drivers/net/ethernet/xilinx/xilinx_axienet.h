@@ -417,6 +417,7 @@ struct axidma_bd {
  * @tx_lock:	Spin lock for tx path
  * @tx_irq:	Axidma TX IRQ number
  * @rx_irq:	Axidma RX IRQ number
+ * @eth_irq:	Axi Ethernet IRQ number
  * @phy_type:	Phy type to identify between MII/GMII/RGMII/SGMII/1000 Base-X
  * @options:	AxiEthernet option word
  * @last_link:	Phy link state in which the PHY was negotiated earlier
@@ -468,6 +469,7 @@ struct axienet_local {
 
 	int tx_irq;
 	int rx_irq;
+	int eth_irq;
 	u32 phy_type;
 
 	u32 options;			/* Current options word */
