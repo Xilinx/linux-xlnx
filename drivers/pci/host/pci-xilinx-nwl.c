@@ -240,6 +240,7 @@ struct nwl_pcie {
 	int irq_misc;
 	u32 ecam_value;
 	u8 last_busno;
+	u8 root_busno;
 	u8 link_up;
 	bool enable_msi_fifo;
 	struct pci_bus *bus;
@@ -274,6 +275,30 @@ static inline bool nwl_pcie_is_link_up(struct nwl_pcie *pcie, u32 check_bit)
 	return status;
 }
 
+static bool nwl_pcie_valid_device(struct pci_bus *bus, unsigned int devfn)
+{
+	struct nwl_pcie *pcie = bus->sysdata;
+
+	/* Check link,before accessing downstream ports */
+	if (bus->number != pcie->root_busno) {
+		if (!nwl_pcie_is_link_up(pcie, PCIE_USER_LINKUP))
+			return false;
+	}
+
+	/* Only one device down on each root port */
+	if (bus->number == pcie->root_busno && devfn > 0)
+		return false;
+
+	/*
+	 * Do not read more than one device on the bus directly attached
+	 * to root port.
+	 */
+	if (bus->primary == pcie->root_busno && devfn > 0)
+		return false;
+
+	return true;
+}
+
 /**
  * nwl_pcie_get_config_base - Get configuration base
  *
@@ -290,6 +315,9 @@ static void __iomem *nwl_pcie_get_config_base(struct pci_bus *bus,
 {
 	struct nwl_pcie *pcie = bus->sysdata;
 	int relbus;
+
+	if (!nwl_pcie_valid_device(bus, devfn))
+		return NULL;
 
 	relbus = (bus->number << ECAM_BUS_LOC_SHIFT) |
 			(devfn << ECAM_DEV_LOC_SHIFT);
@@ -369,12 +397,11 @@ static int nwl_nwl_readl_config(struct pci_bus *bus,
 {
 	void __iomem *addr;
 
-	if (!bus->number && devfn > 0) {
-		*val = 0xFFFFFFFF;
+	addr = nwl_pcie_get_config_base(bus, devfn, where);
+	if (!addr) {
+		*val = ~0;
 		return PCIBIOS_DEVICE_NOT_FOUND;
 	}
-
-	addr = nwl_pcie_get_config_base(bus, devfn, where);
 
 	switch (size) {
 	case 1:
@@ -412,10 +439,9 @@ static int nwl_nwl_writel_config(struct pci_bus *bus,
 	int err = 0;
 	struct nwl_pcie *pcie = bus->sysdata;
 
-	if (!bus->number && devfn > 0)
-		return PCIBIOS_DEVICE_NOT_FOUND;
-
 	addr = nwl_pcie_get_config_base(bus, devfn, where);
+	if (!addr)
+		return PCIBIOS_DEVICE_NOT_FOUND;
 
 	switch (size) {
 	case 1:
@@ -993,7 +1019,8 @@ static int nwl_pcie_probe(struct platform_device *pdev)
 		pr_err("Getting bridge resources failed\n");
 		return err;
 	}
-	bus = pci_create_root_bus(&pdev->dev, 0,
+
+	bus = pci_create_root_bus(&pdev->dev, pcie->root_busno,
 				  &nwl_pcie_ops, pcie, &res);
 	if (!bus)
 		return -ENOMEM;
