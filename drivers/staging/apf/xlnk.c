@@ -258,7 +258,8 @@ static int xlnk_probe(struct platform_device *pdev)
 	/* use 2.6 device model */
 	err = alloc_chrdev_region(&dev, 0, 1, driver_name);
 	if (err) {
-		pr_err("%s: Can't get major %d\n", __func__, driver_major);
+		dev_err(&pdev->dev, "%s: Can't get major %d\n",
+			 __func__, driver_major);
 		goto err1;
 	}
 
@@ -269,27 +270,28 @@ static int xlnk_probe(struct platform_device *pdev)
 	err = cdev_add(&xlnk_cdev, dev, 1);
 
 	if (err) {
-		pr_err("%s: Failed to add XLNK device\n", __func__);
+		dev_err(&pdev->dev, "%s: Failed to add XLNK device\n",
+			 __func__);
 		goto err3;
 	}
 
 	/* udev support */
 	xlnk_class = class_create(THIS_MODULE, "xlnk");
 	if (IS_ERR(xlnk_class)) {
-		pr_err("%s: Error creating xlnk class\n", __func__);
+		dev_err(xlnk_dev, "%s: Error creating xlnk class\n", __func__);
 		goto err3;
 	}
 
 	driver_major = MAJOR(dev);
 
-	pr_info("xlnk major %d\n", driver_major);
+	dev_info(&pdev->dev, "Major %d\n", driver_major);
 
 	device_create(xlnk_class, NULL, MKDEV(driver_major, 0),
 			  NULL, "xlnk");
 
 	xlnk_init_bufpool();
 
-	pr_info("%s driver loaded\n", DRIVER_NAME);
+	dev_info(&pdev->dev, "%s driver loaded\n", DRIVER_NAME);
 
 	xlnk_pdev = pdev;
 	xlnk_dev = &pdev->dev;
@@ -326,9 +328,9 @@ static int xlnk_probe(struct platform_device *pdev)
 	}
 	platform_set_drvdata(xlnk_pdev, xlnk_dat);
 	if (xlnk_pdev)
-		pr_info("xlnk_pdev is not null\n");
+		dev_info(&pdev->dev, "xlnk_pdev is not null\n");
 	else
-		pr_info("xlnk_pdev is null\n");
+		dev_info(&pdev->dev, "xlnk_pdev is null\n");
 
 	xlnk_devpacks_init();
 
@@ -374,8 +376,8 @@ static int xlnk_allocbuf(unsigned int len, unsigned int cacheable)
 	xlnk_bufcacheable[id] = cacheable;
 
 	if (!xlnk_bufpool[id]) {
-		pr_err("%s: dma_alloc_coherent of %d byte buffer failed\n",
-		       __func__, len);
+		dev_err(xlnk_dev, "%s: dma_alloc_coherent of %d byte buffer failed\n",
+			 __func__, len);
 		return -ENOMEM;
 	}
 
@@ -390,7 +392,7 @@ static int xlnk_init_bufpool(void)
 	*((char *)xlnk_dev_buf) = '\0';
 
 	if (!xlnk_dev_buf) {
-		pr_err("%s: malloc failed\n", __func__);
+		dev_err(xlnk_dev, "%s: malloc failed\n", __func__);
 		return -ENOMEM;
 	}
 
@@ -828,7 +830,7 @@ static int xlnk_adddmabuf_ioctl(struct file *filp, unsigned int code,
 	if (status)
 		return -ENOMEM;
 
-	pr_err("xlnk: registering dmabuf fd %d for virtual address %p\n",
+	dev_err(xlnk_dev, "xlnk: registering dmabuf fd %d for virtual address %p\n",
 		db_args.dmabuf_fd, db_args.user_vaddr);
 
 	db = kzalloc(sizeof(struct xlnk_dmabuf_reg), GFP_KERNEL);
@@ -840,7 +842,8 @@ static int xlnk_adddmabuf_ioctl(struct file *filp, unsigned int code,
 
 	db->dbuf = dma_buf_get(db->dmabuf_fd);
 	if (IS_ERR_OR_NULL(db->dbuf)) {
-		pr_err("%s invalid dmabuf fd %d\n", __func__, db->dmabuf_fd);
+		dev_err(xlnk_dev, "%s Invalid dmabuf fd %d\n",
+			 __func__, db->dmabuf_fd);
 		return -EINVAL;
 	}
 	db->is_mapped = 0;
@@ -1139,13 +1142,14 @@ static int xlnk_cachecontrol_ioctl(struct file *filp, unsigned int code,
 						sizeof(union xlnk_args));
 
 	if (status) {
-		pr_err("Error in copy_from_user. status = %d\n", status);
+		dev_err(xlnk_dev, "Error in copy_from_user. status = %d\n",
+			status);
 		return -ENOMEM;
 	}
 
 	if (!(temp_args.cachecontrol.action == 0 ||
 		  temp_args.cachecontrol.action == 1)) {
-		pr_err("Illegal action specified to cachecontrol_ioctl: %d\n",
+		dev_err(xlnk_dev, "Illegal action specified to cachecontrol_ioctl: %d\n",
 		       temp_args.cachecontrol.action);
 		return -EINVAL;
 	}
