@@ -830,7 +830,7 @@ static int xlnk_adddmabuf_ioctl(struct file *filp, unsigned int code,
 	if (status)
 		return -ENOMEM;
 
-	dev_err(xlnk_dev, "xlnk: registering dmabuf fd %d for virtual address %p\n",
+	dev_dbg(xlnk_dev, "Registering dmabuf fd %d for virtual address %p\n",
 		db_args.dmabuf_fd, db_args.user_vaddr);
 
 	db = kzalloc(sizeof(struct xlnk_dmabuf_reg), GFP_KERNEL);
