@@ -147,7 +147,7 @@ void xilinx_osd_layer_enable_alpha(struct xilinx_osd_layer *layer, bool enable)
 	value = xilinx_drm_readl(layer->base, OSD_LXC);
 	value = enable ? (value | OSD_LXC_GALPHAEN) :
 		(value & ~OSD_LXC_GALPHAEN);
-	xilinx_drm_writel(layer->base, OSD_LXC, enable);
+	xilinx_drm_writel(layer->base, OSD_LXC, value);
 }
 
 /* set layer priority */
