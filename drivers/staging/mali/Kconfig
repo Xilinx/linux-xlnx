@@ -13,8 +13,8 @@ choice
 config ARM_MALI_R5P1_01REL0
 	bool "r5p1-01rel0"
 
-config ARM_MALI_R5P2_00REL0
-	bool "r5p2-00rel0"
+#config ARM_MALI_R5P2_00REL0
+#	bool "r5p2-00rel0"
 
 endchoice
 
