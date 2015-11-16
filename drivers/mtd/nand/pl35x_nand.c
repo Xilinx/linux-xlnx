@@ -366,7 +366,7 @@ static int pl35x_nand_write_oob(struct mtd_info *mtd, struct nand_chip *chip,
 	chip->cmdfunc(mtd, NAND_CMD_PAGEPROG, -1, -1);
 	status = chip->waitfunc(mtd, chip);
 
-	return status & NAND_STATUS_FAIL ? -EIO : 0;
+	return (status & NAND_STATUS_FAIL) ? -EIO : 0;
 }
 
 /**
