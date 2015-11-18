@@ -163,6 +163,31 @@ static u32 xtpg_get_bayer_phase(unsigned int code)
 	}
 }
 
+static void xtpg_config_vtc(struct xtpg_device *xtpg, int width, int height)
+{
+
+	struct xvtc_config config = {
+		.hblank_start = width,
+		.hsync_start = width + 1,
+		.vblank_start = height,
+		.vsync_start = height + 1,
+	};
+	unsigned int htotal;
+	unsigned int vtotal;
+
+	htotal = min_t(unsigned int, XVTC_MAX_HSIZE,
+		       v4l2_ctrl_g_ctrl(xtpg->hblank) + width);
+	vtotal = min_t(unsigned int, XVTC_MAX_VSIZE,
+		       v4l2_ctrl_g_ctrl(xtpg->vblank) + height);
+
+	config.hsync_end = htotal - 1;
+	config.hsize = htotal;
+	config.vsync_end = vtotal - 1;
+	config.vsize = vtotal;
+
+	xvtc_generator_start(xtpg->vtc, &config);
+}
+
 static void __xtpg_update_pattern_control(struct xtpg_device *xtpg,
 					  bool passthrough, bool pattern)
 {
@@ -251,29 +276,8 @@ static int xtpg_s_stream(struct v4l2_subdev *subdev, int enable)
 		xvip_set_frame_size(&xtpg->xvip, &xtpg->formats[0]);
 	}
 
-	if (xtpg->vtc) {
-		struct xvtc_config config = {
-			.hblank_start = width,
-			.hsync_start = width + 1,
-			.vblank_start = height,
-			.vsync_start = height + 1,
-		};
-		unsigned int htotal;
-		unsigned int vtotal;
-
-		htotal = min_t(unsigned int, XVTC_MAX_HSIZE,
-			       v4l2_ctrl_g_ctrl(xtpg->hblank) + width);
-		vtotal = min_t(unsigned int, XVTC_MAX_VSIZE,
-			       v4l2_ctrl_g_ctrl(xtpg->vblank) + height);
-
-		config.hsync_end = htotal - 1;
-		config.hsize = htotal;
-		config.vsync_end = vtotal - 1;
-		config.vsize = vtotal;
-
-		xvtc_generator_start(xtpg->vtc, &config);
-	}
-
+	if (xtpg->vtc)
+		xtpg_config_vtc(xtpg, width, height);
 	/*
 	 * Configure the bayer phase and video timing mux based on the
 	 * operation mode (passthrough or test pattern generation). The test
