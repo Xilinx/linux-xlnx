@@ -43,14 +43,13 @@ static int xilinxphy_read_status(struct phy_device *phydev)
 
 	if (AUTONEG_ENABLE == phydev->autoneg) {
 		status = phy_read(phydev, MII_LPA);
-		status = status & MII_PHY_STATUS_SPD_MASK;
 
 		if (status & MII_PHY_STATUS_FULLDUPLEX)
 			phydev->duplex = DUPLEX_FULL;
 		else
 			phydev->duplex = DUPLEX_HALF;
 
-		switch (status) {
+		switch (status & MII_PHY_STATUS_SPD_MASK) {
 		case MII_PHY_STATUS_1000:
 			phydev->speed = SPEED_1000;
 			break;
