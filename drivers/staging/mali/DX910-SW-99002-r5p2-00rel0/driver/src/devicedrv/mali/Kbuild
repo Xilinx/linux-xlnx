@@ -25,7 +25,7 @@ MALI_ENABLE_CPU_CYCLES ?= 0
 # For customer releases the Linux Device Drivers will be provided as ARM proprietary and GPL releases:
 # The ARM proprietary product will only include the license/proprietary directory
 # The GPL product will only include the license/gpl directory
-ifeq ($(wildcard $(src)/linux/license/gpl/*),)
+ifeq ($(wildcard $(srctree)/$(src)/linux/license/gpl/*),)
     ccflags-y += -I$(src)/linux/license/proprietary
     ifeq ($(CONFIG_MALI400_PROFILING),y)
         $(error Profiling is incompatible with non-GPL license)
