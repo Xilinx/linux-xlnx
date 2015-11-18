@@ -1925,6 +1925,8 @@ static void macb_init_hw(struct macb *bp)
 	macb_set_hwaddr(bp);
 
 	config = macb_mdc_clk_div(bp);
+	if (bp->phy_interface == PHY_INTERFACE_MODE_SGMII)
+		config |= GEM_BIT(SGMIIEN) | GEM_BIT(PCSSEL);
 	config |= macb_readl(bp, NCFGR) & (3 << 21);
 	config |= MACB_BF(RBOF, NET_IP_ALIGN);	/* Make eth data aligned */
 	config |= MACB_BIT(PAE);		/* PAuse Enable */
@@ -2852,6 +2854,9 @@ static int macb_probe(struct platform_device *pdev)
 #else
 		macb_or_gem_writel(bp, USRIO, 0);
 #endif
+	else if (bp->phy_interface == PHY_INTERFACE_MODE_SGMII)
+		macb_or_gem_writel(bp, NCFGR, gem_readl(bp, NCFGR) |
+				   GEM_BIT(SGMIIEN) | GEM_BIT(PCSSEL));
 	else
 #if defined(CONFIG_ARCH_AT91)
 		macb_or_gem_writel(bp, USRIO, MACB_BIT(CLKEN));
