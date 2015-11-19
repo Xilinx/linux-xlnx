@@ -123,17 +123,6 @@ unsigned long pci_address_to_pio(phys_addr_t address)
 }
 EXPORT_SYMBOL_GPL(pci_address_to_pio);
 
-/*
- * Return the domain number for this bus.
- */
-int pci_domain_nr(struct pci_bus *bus)
-{
-	struct pci_controller *hose = pci_bus_to_host(bus);
-
-	return hose->global_number;
-}
-EXPORT_SYMBOL(pci_domain_nr);
-
 /* This routine is meant to be used early during boot, when the
  * PCI bus numbers have not yet been assigned, and you need to
  * issue PCI config cycles to an OF device.
@@ -695,37 +684,7 @@ int pci_proc_domain(struct pci_bus *bus)
  */
 static void pcibios_fixup_resources(struct pci_dev *dev)
 {
-	struct pci_controller *hose = pci_bus_to_host(dev->bus);
-	int i;
 
-	if (!hose) {
-		pr_err("No host bridge for PCI dev %s !\n",
-		       pci_name(dev));
-		return;
-	}
-	for (i = 0; i < DEVICE_COUNT_RESOURCE; i++) {
-		struct resource *res = dev->resource + i;
-		if (!res->flags)
-			continue;
-		if (res->start == 0) {
-			pr_debug("PCI:%s Resource %d %016llx-%016llx [%x]",
-				 pci_name(dev), i,
-				 (unsigned long long)res->start,
-				 (unsigned long long)res->end,
-				 (unsigned int)res->flags);
-			pr_debug("is unassigned\n");
-			res->end -= res->start;
-			res->start = 0;
-			res->flags |= IORESOURCE_UNSET;
-			continue;
-		}
-
-		pr_debug("PCI:%s Resource %d %016llx-%016llx [%x]\n",
-			 pci_name(dev), i,
-			 (unsigned long long)res->start,
-			 (unsigned long long)res->end,
-			 (unsigned int)res->flags);
-	}
 }
 DECLARE_PCI_FIXUP_HEADER(PCI_ANY_ID, PCI_ANY_ID, pcibios_fixup_resources);
 
@@ -867,21 +826,8 @@ void pcibios_fixup_bus(struct pci_bus *bus)
 	 * bases. This is -not- called when generating the PCI tree from
 	 * the OF device-tree.
 	 */
-	if (bus->self != NULL)
-		pci_read_bridge_bases(bus);
-
-	/* Now fixup the bus bus */
-	pcibios_setup_bus_self(bus);
-
-	/* Now fixup devices on that bus */
-	pcibios_setup_bus_devices(bus);
 }
 EXPORT_SYMBOL(pcibios_fixup_bus);
-
-static int skip_isa_ioresource_align(struct pci_dev *dev)
-{
-	return 0;
-}
 
 /*
  * We need to avoid collisions with `mirrored' VGA ports
@@ -899,19 +845,19 @@ static int skip_isa_ioresource_align(struct pci_dev *dev)
 resource_size_t pcibios_align_resource(void *data, const struct resource *res,
 				resource_size_t size, resource_size_t align)
 {
-	struct pci_dev *dev = data;
 	resource_size_t start = res->start;
-
-	if (res->flags & IORESOURCE_IO) {
-		if (skip_isa_ioresource_align(dev))
-			return start;
-		if (start & 0x300)
-			start = (start + 0x3ff) & ~0x3ff;
-	}
 
 	return start;
 }
 EXPORT_SYMBOL(pcibios_align_resource);
+
+int pcibios_add_device(struct pci_dev *dev)
+{
+	dev->irq = of_irq_parse_and_map_pci(dev, 0, 0);
+
+	return 0;
+}
+EXPORT_SYMBOL(pcibios_add_device);
 
 /*
  * Reparent resource children of pr that conflict with res
@@ -1335,9 +1281,21 @@ static void pcibios_setup_phb_resources(struct pci_controller *hose,
 
 struct device_node *pcibios_get_phb_of_node(struct pci_bus *bus)
 {
-	struct pci_controller *hose = bus->sysdata;
+	struct device_node *np;
 
-	return of_node_get(hose->dn);
+	for_each_node_by_type(np, "pci") {
+		const void *prop;
+		unsigned int bus_min;
+
+		prop = of_get_property(np, "bus-range", NULL);
+		if (!prop)
+			continue;
+		bus_min = be32_to_cpup(prop);
+		if (bus->number == bus_min)
+			return np;
+	}
+
+	return NULL;
 }
 
 static void pcibios_scan_phb(struct pci_controller *hose)

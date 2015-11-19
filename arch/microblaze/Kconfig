@@ -271,17 +271,15 @@ config PCI
 config PCI_DOMAINS
 	def_bool PCI
 
+config PCI_DOMAINS_GENERIC
+	def_bool PCI_DOMAINS
+
 config PCI_SYSCALL
 	def_bool PCI
 
 config PCI_XILINX
 	bool "Xilinx PCI host bridge support"
 	depends on PCI
-
-config XILINX_AXIPCIE
-	bool "Xilinx AXI PCIe host bridge support"
-	depends on PCI
-	select ARCH_SUPPORTS_MSI
 
 source "drivers/pci/Kconfig"
 
