@@ -65,7 +65,8 @@ static int ehci_ci_portpower(struct usb_hcd *hcd, int portnum, bool enable)
 		}
 	}
 
-	if (ci->platdata->flags & CI_HDRC_PHY_VBUS_CONTROL) {
+	if (ci->platdata->flags & CI_HDRC_PHY_VBUS_CONTROL &&
+			ci->usb_phy && ci->usb_phy->set_vbus) {
 		if (enable)
 			ci->usb_phy->set_vbus(ci->usb_phy, 1);
 		else
