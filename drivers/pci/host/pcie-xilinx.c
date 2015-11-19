@@ -728,7 +728,7 @@ static int xilinx_pcie_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static struct of_device_id xilinx_pcie_of_match[] = {
+static const struct of_device_id xilinx_pcie_of_match[] = {
 	{ .compatible = "xlnx,axi-pcie-host-1.00.a", },
 	{}
 };
