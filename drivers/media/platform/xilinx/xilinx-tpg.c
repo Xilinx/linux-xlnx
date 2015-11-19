@@ -140,6 +140,8 @@ struct xtpg_device {
 	struct v4l2_ctrl *hblank;
 	struct v4l2_ctrl *vblank;
 	struct v4l2_ctrl *pattern;
+	struct v4l2_ctrl *moving_box;
+	struct v4l2_ctrl *cross_hair;
 	bool streaming;
 	bool is_hls;
 
@@ -542,10 +544,14 @@ static int xtpg_hls_s_ctrl(struct v4l2_ctrl *ctrl)
 				 XTPG_PATTERN_MASK, ctrl->val);
 		return 0;
 	case V4L2_CID_XILINX_TPG_CROSS_HAIRS:
+		if (ctrl->val)
+			__v4l2_ctrl_s_ctrl(xtpg->moving_box, 0x0);
 		xvip_write(&xtpg->xvip, XTPG_HLS_FG_PATTERN,
 			   ctrl->val << XTPG_HLS_FG_CROSS_HAIR_SHIFT);
 		return 0;
 	case V4L2_CID_XILINX_TPG_MOVING_BOX:
+		if (ctrl->val)
+			__v4l2_ctrl_s_ctrl(xtpg->cross_hair, 0x0);
 		xvip_write(&xtpg->xvip, XTPG_HLS_FG_PATTERN, ctrl->val);
 		return 0;
 	case V4L2_CID_XILINX_TPG_COLOR_MASK:
@@ -1176,6 +1182,12 @@ static int xtpg_probe(struct platform_device *pdev)
 		ret = xtpg->ctrl_handler.error;
 		goto error;
 	}
+
+	xtpg->moving_box = v4l2_ctrl_find(&xtpg->ctrl_handler,
+					  V4L2_CID_XILINX_TPG_MOVING_BOX);
+	xtpg->cross_hair = v4l2_ctrl_find(&xtpg->ctrl_handler,
+					  V4L2_CID_XILINX_TPG_CROSS_HAIRS);
+
 	subdev->ctrl_handler = &xtpg->ctrl_handler;
 
 	xtpg_update_pattern_control(xtpg, true, true);
