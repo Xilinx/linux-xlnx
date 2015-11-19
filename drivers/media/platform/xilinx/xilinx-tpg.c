@@ -1051,6 +1051,7 @@ static int xtpg_probe(struct platform_device *pdev)
 	struct v4l2_subdev *subdev;
 	struct xtpg_device *xtpg;
 	const struct v4l2_ctrl_config *ctrl_config;
+	const struct v4l2_ctrl_ops *ctrl_ops;
 	u32 i, bayer_phase;
 	u32 ctrl_cnt;
 	u32 qmenu_cnt;
@@ -1104,6 +1105,7 @@ static int xtpg_probe(struct platform_device *pdev)
 
 	if (xtpg->is_hls) {
 		ctrl_config = xtpg_hls_ctrls;
+		ctrl_ops = &xtpg_hls_ctrl_ops;
 		ctrl_cnt = ARRAY_SIZE(xtpg_hls_ctrls);
 		qmenu_cnt = ARRAY_SIZE(xtpg_hls_pattern_strings);
 		xtpg->default_format.width = xvip_read(&xtpg->xvip,
@@ -1112,6 +1114,7 @@ static int xtpg_probe(struct platform_device *pdev)
 							XHLS_REG_ROWS);
 	} else {
 		ctrl_config = xtpg_ctrls;
+		ctrl_ops = &xtpg_ctrl_ops;
 		ctrl_cnt = ARRAY_SIZE(xtpg_ctrls);
 		qmenu_cnt = ARRAY_SIZE(xtpg_pattern_strings);
 		xvip_get_frame_size(&xtpg->xvip, &xtpg->default_format);
@@ -1141,17 +1144,17 @@ static int xtpg_probe(struct platform_device *pdev)
 
 	v4l2_ctrl_handler_init(&xtpg->ctrl_handler, 3 + ctrl_cnt);
 
-	xtpg->vblank = v4l2_ctrl_new_std(&xtpg->ctrl_handler, &xtpg_ctrl_ops,
+	xtpg->vblank = v4l2_ctrl_new_std(&xtpg->ctrl_handler, ctrl_ops,
 					 V4L2_CID_VBLANK, XTPG_MIN_VBLANK,
 					 XTPG_MAX_VBLANK, 1, 100);
-	xtpg->hblank = v4l2_ctrl_new_std(&xtpg->ctrl_handler, &xtpg_ctrl_ops,
+	xtpg->hblank = v4l2_ctrl_new_std(&xtpg->ctrl_handler, ctrl_ops,
 					 V4L2_CID_HBLANK, XTPG_MIN_HBLANK,
 					 XTPG_MAX_HBLANK, 1, 100);
 
 	if (xtpg->is_hls)
 		xtpg->pattern =
 			v4l2_ctrl_new_std_menu_items(&xtpg->ctrl_handler,
-						     &xtpg_ctrl_ops,
+						     ctrl_ops,
 						     V4L2_CID_TEST_PATTERN,
 						     qmenu_cnt - 1,
 						     1, 9,
@@ -1159,7 +1162,7 @@ static int xtpg_probe(struct platform_device *pdev)
 	else
 		xtpg->pattern =
 			v4l2_ctrl_new_std_menu_items(&xtpg->ctrl_handler,
-						     &xtpg_ctrl_ops,
+						     ctrl_ops,
 						     V4L2_CID_TEST_PATTERN,
 						     qmenu_cnt - 1,
 						     1, 9,
