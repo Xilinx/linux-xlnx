@@ -855,10 +855,10 @@ static struct v4l2_ctrl_config xtpg_hls_ctrls[] = {
 	}, {
 		.ops	= &xtpg_hls_ctrl_ops,
 		.id	= V4L2_CID_XILINX_TPG_COLOR_MASK,
-		.name	= "Test Pattern: Color Mask",
+		.name	= "Test Pattern: Color Mask (RGB)",
 		.type	= V4L2_CTRL_TYPE_BITMASK,
 		.min	= 0,
-		.max	= 0xf,
+		.max	= 0x4,
 		.def	= 0,
 	}, {
 		.ops	= &xtpg_hls_ctrl_ops,
