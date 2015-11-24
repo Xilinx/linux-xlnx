@@ -18,6 +18,9 @@ Required properties:
    "ycrcb422", "ycrcb444", or "yonly". These are based on the DisplayPort
    specification. The value shall be synced with DP colormetry..
 
+Optional properties:
+ - xlnx,vid-clk-pl: Should be used when the pixel clock is coming from PL.
+
 Example:
 
 	xlnx_dp_sub: dp_sub@43c0a000 {
