@@ -680,7 +680,7 @@ static int xilinx_drm_dp_train(struct xilinx_drm_dp *dp)
 	u32 reg;
 	u8 bw_code = dp->mode.bw_code;
 	u8 lane_cnt = dp->mode.lane_cnt;
-	u8 aux_lane_cnt;
+	u8 aux_lane_cnt = lane_cnt;
 	bool enhanced;
 	int ret;
 
@@ -689,7 +689,7 @@ static int xilinx_drm_dp_train(struct xilinx_drm_dp *dp)
 	enhanced = drm_dp_enhanced_frame_cap(dp->dpcd);
 	if (enhanced) {
 		xilinx_drm_writel(dp->iomem, XILINX_DP_TX_ENHANCED_FRAME_EN, 1);
-		aux_lane_cnt = lane_cnt | DP_LANE_COUNT_ENHANCED_FRAME_EN;
+		aux_lane_cnt |= DP_LANE_COUNT_ENHANCED_FRAME_EN;
 	}
 
 	ret = drm_dp_dpcd_writeb(&dp->aux, DP_LANE_COUNT_SET, aux_lane_cnt);
@@ -721,6 +721,7 @@ static int xilinx_drm_dp_train(struct xilinx_drm_dp *dp)
 		reg = XILINX_DP_TX_PHY_CLOCK_FEEDBACK_SETTING_270;
 		break;
 	case DP_LINK_BW_5_4:
+	default:
 		reg = XILINX_DP_TX_PHY_CLOCK_FEEDBACK_SETTING_540;
 		break;
 	}
