@@ -228,7 +228,7 @@ EXPORT_SYMBOL(dmam_release_declared_memory);
 int dma_common_get_sgtable(struct device *dev, struct sg_table *sgt,
 		 void *cpu_addr, dma_addr_t handle, size_t size)
 {
-	struct page *page = virt_to_page(cpu_addr);
+	struct page *page = phys_to_page(dma_to_phys(dev, handle));
 	int ret;
 
 	ret = sg_alloc_table(sgt, 1, GFP_KERNEL);
