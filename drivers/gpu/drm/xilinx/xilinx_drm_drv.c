@@ -36,6 +36,11 @@
 #define DRIVER_MAJOR	1
 #define DRIVER_MINOR	0
 
+static uint xilinx_drm_fbdev_vres = 2;
+module_param_named(fbdev_vres, xilinx_drm_fbdev_vres, uint, 0444);
+MODULE_PARM_DESC(fbdev_vres,
+		 "fbdev virtual resolution multiplier for fb (default: 2)");
+
 /*
  * TODO: The possible pipeline configurations are numerous with Xilinx soft IPs.
  * It's not too bad for now, but the more proper way(Common Display Framework,
@@ -306,7 +311,8 @@ static int xilinx_drm_load(struct drm_device *drm, unsigned long flags)
 	/* initialize xilinx framebuffer */
 	bpp = xilinx_drm_format_bpp(xilinx_drm_crtc_get_format(private->crtc));
 	align = xilinx_drm_crtc_get_align(private->crtc);
-	private->fb = xilinx_drm_fb_init(drm, bpp, 1, 1, align);
+	private->fb = xilinx_drm_fb_init(drm, bpp, 1, 1, align,
+					 xilinx_drm_fbdev_vres);
 	if (IS_ERR(private->fb)) {
 		DRM_ERROR("failed to initialize drm cma fb\n");
 		ret = PTR_ERR(private->fb);
