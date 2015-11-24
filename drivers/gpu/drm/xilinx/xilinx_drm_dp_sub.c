@@ -318,6 +318,7 @@ struct xilinx_drm_dp_sub {
 	void (*vblank_fn)(void *);
 	void *vblank_data;
 	spinlock_t lock;
+	bool vid_clk_pl;
 };
 
 /**
@@ -1298,7 +1299,8 @@ void xilinx_drm_dp_sub_enable(struct xilinx_drm_dp_sub *dp_sub)
 	gfx_fmt = dp_sub->layers[XILINX_DRM_DP_SUB_LAYER_GFX].fmt;
 	xilinx_drm_dp_sub_av_buf_init_fmts(&dp_sub->av_buf, vid_fmt, gfx_fmt);
 	xilinx_drm_dp_sub_av_buf_init_sf(&dp_sub->av_buf, vid_fmt, gfx_fmt);
-	xilinx_drm_dp_sub_av_buf_set_vid_clock_src(&dp_sub->av_buf, true);
+	xilinx_drm_dp_sub_av_buf_set_vid_clock_src(&dp_sub->av_buf,
+						   !dp_sub->vid_clk_pl);
 	xilinx_drm_dp_sub_av_buf_set_vid_timing_src(&dp_sub->av_buf, true);
 	xilinx_drm_dp_sub_av_buf_set_aud_clock_src(&dp_sub->av_buf, true);
 	xilinx_drm_dp_sub_av_buf_enable_buf(&dp_sub->av_buf);
@@ -1512,6 +1514,8 @@ static int xilinx_drm_dp_sub_parse_of(struct xilinx_drm_dp_sub *dp_sub)
 		dev_err(dp_sub->dev, "Invalid gfx-fmt in DT\n");
 		return -EINVAL;
 	}
+
+	dp_sub->vid_clk_pl = of_property_read_bool(node, "xlnx,vid-clk-pl");
 
 	return 0;
 }
