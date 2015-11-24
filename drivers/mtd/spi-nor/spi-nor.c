@@ -1796,6 +1796,14 @@ static const struct spi_device_id *spi_nor_match_id(const char *name)
 	return NULL;
 }
 
+void spi_nor_shutdown(struct spi_nor *nor)
+{
+	if (nor->addr_width == 3 &&
+		(nor->mtd->size >> nor->shift) > 0x1000000)
+		write_ear(nor, 0);
+}
+EXPORT_SYMBOL_GPL(spi_nor_shutdown);
+
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Huang Shijie <shijie8@gmail.com>");
 MODULE_AUTHOR("Mike Lavender");

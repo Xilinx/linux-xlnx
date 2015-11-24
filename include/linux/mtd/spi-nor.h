@@ -236,4 +236,13 @@ struct spi_nor {
  */
 int spi_nor_scan(struct spi_nor *nor, const char *name, enum read_mode mode);
 
+/**
+ * spi_nor_shutdown() - prepare for reboot
+ * @nor:	the spi_nor structure
+ *
+ * The drivers can use this fuction to get the address back to
+ * 0 as will be required for a ROM boot.
+ */
+void spi_nor_shutdown(struct spi_nor *nor);
+
 #endif

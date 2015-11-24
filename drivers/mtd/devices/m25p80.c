@@ -248,6 +248,13 @@ static int m25p_remove(struct spi_device *spi)
 	return mtd_device_unregister(&flash->mtd);
 }
 
+static void m25p_shutdown(struct spi_device *spi)
+{
+	struct m25p *flash = spi_get_drvdata(spi);
+
+	spi_nor_shutdown(&flash->spi_nor);
+}
+
 /*
  * XXX This needs to be kept in sync with spi_nor_ids.  We can't share
  * it with spi-nor, because if this is built as a module then modpost
@@ -307,6 +314,7 @@ static struct spi_driver m25p80_driver = {
 	.id_table	= m25p_ids,
 	.probe	= m25p_probe,
 	.remove	= m25p_remove,
+	.shutdown = m25p_shutdown,
 
 	/* REVISIT: many of these chips have deep power-down modes, which
 	 * should clearly be entered on suspend() to minimize power use.
