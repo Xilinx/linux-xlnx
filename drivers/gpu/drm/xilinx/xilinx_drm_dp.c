@@ -85,6 +85,7 @@
 #define XILINX_DP_TX_AUX_ADDRESS			0x108
 #define XILINX_DP_TX_CLK_DIVIDER			0x10c
 #define XILINX_DP_TX_CLK_DIVIDER_MHZ			1000000
+#define XILINX_DP_TX_CLK_DIVIDER_AUX_FILTER_SHIFT	8
 #define XILINX_DP_TX_INTR_SIGNAL_STATE			0x130
 #define XILINX_DP_TX_INTR_SIGNAL_STATE_HPD		(1 << 0)
 #define XILINX_DP_TX_INTR_SIGNAL_STATE_REQUEST		(1 << 1)
@@ -1070,6 +1071,7 @@ static int xilinx_drm_dp_encoder_init(struct platform_device *pdev,
 {
 	struct xilinx_drm_dp *dp = platform_get_drvdata(pdev);
 	int clock_rate;
+	u32 reg, w;
 
 	encoder->slave_priv = dp;
 	encoder->slave_funcs = &xilinx_drm_dp_encoder_funcs;
@@ -1083,8 +1085,22 @@ static int xilinx_drm_dp_encoder_init(struct platform_device *pdev,
 		return -EINVAL;
 	}
 
-	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_CLK_DIVIDER,
-			  clock_rate / XILINX_DP_TX_CLK_DIVIDER_MHZ);
+	/* Allowable values for this register are: 8, 16, 24, 32, 40, 48 */
+	for (w = 8; w <= 48; w += 8) {
+		/* AUX pulse width should be between 0.4 to 0.6 usec */
+		if (w >= (4 * clock_rate / 10000000) &&
+		    w <= (6 * clock_rate / 10000000))
+			break;
+	}
+
+	if (w > 48) {
+		DRM_ERROR("aclk frequency too high\n");
+		return -EINVAL;
+	}
+	reg = w << XILINX_DP_TX_CLK_DIVIDER_AUX_FILTER_SHIFT;
+
+	reg |= clock_rate / XILINX_DP_TX_CLK_DIVIDER_MHZ;
+	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_CLK_DIVIDER, reg);
 	xilinx_drm_clr(dp->iomem, XILINX_DP_TX_PHY_CONFIG,
 		       XILINX_DP_TX_PHY_CONFIG_ALL_RESET);
 
