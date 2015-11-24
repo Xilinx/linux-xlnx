@@ -1018,6 +1018,8 @@ xilinx_drm_dp_detect(struct drm_encoder *encoder,
 
 	state = xilinx_drm_readl(dp->iomem, XILINX_DP_TX_INTR_SIGNAL_STATE);
 	if (state & XILINX_DP_TX_INTR_SIGNAL_STATE_HPD) {
+		xilinx_drm_writel(dp->iomem, XILINX_DP_TX_SW_RESET,
+				  XILINX_DP_TX_SW_RESET_ALL);
 		ret = drm_dp_dpcd_read(&dp->aux, 0x0, dp->dpcd,
 				       sizeof(dp->dpcd));
 		if (ret < 0)
