@@ -28,7 +28,6 @@
 #include <linux/mutex.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
-#include <linux/spinlock.h>
 
 #include "xilinx_drm_dp_sub.h"
 #include "xilinx_drm_drv.h"
@@ -306,7 +305,6 @@ struct xilinx_drm_dp_sub_aud {
  * @list: entry in the global DP subsystem list
  * @vblank_fn: vblank handler
  * @vblank_data: vblank data to be used in vblank_fn
- * @lock: lock for access to struct xilinx_drm_dp_sub
  */
 struct xilinx_drm_dp_sub {
 	struct device *dev;
@@ -317,7 +315,6 @@ struct xilinx_drm_dp_sub {
 	struct list_head list;
 	void (*vblank_fn)(void *);
 	void *vblank_data;
-	spinlock_t lock;
 	bool vid_clk_pl;
 };
 
@@ -925,21 +922,15 @@ int xilinx_drm_dp_sub_layer_check_size(struct xilinx_drm_dp_sub *dp_sub,
 				       uint32_t width, uint32_t height)
 {
 	struct xilinx_drm_dp_sub_layer *other = layer->other;
-	unsigned long flags;
-
-	spin_lock_irqsave(&dp_sub->lock, flags);
 
 	if (other->enabled && (other->w != width || other->h != height)) {
 		dev_err(dp_sub->dev, "Layer width:height must be %d:%d\n",
 			other->w, other->h);
-		spin_unlock_irqrestore(&dp_sub->lock, flags);
 		return -EINVAL;
 	}
 
 	layer->w = width;
 	layer->h = height;
-
-	spin_unlock_irqrestore(&dp_sub->lock, flags);
 
 	return 0;
 }
@@ -988,9 +979,6 @@ int xilinx_drm_dp_sub_layer_set_fmt(struct xilinx_drm_dp_sub *dp_sub,
 	const struct xilinx_drm_dp_sub_fmt *fmt;
 	u32 size, fmts, mask;
 	bool vid;
-	unsigned long flags;
-
-	spin_lock_irqsave(&dp_sub->lock, flags);
 
 	if (layer->id == XILINX_DRM_DP_SUB_LAYER_VID) {
 		table = av_buf_vid_fmts;
@@ -1005,10 +993,8 @@ int xilinx_drm_dp_sub_layer_set_fmt(struct xilinx_drm_dp_sub *dp_sub,
 	}
 
 	fmt = xilinx_drm_dp_sub_map_fmt(table, size, drm_fmt);
-	if (!fmt) {
-		spin_unlock_irqrestore(&dp_sub->lock, flags);
+	if (!fmt)
 		return -EINVAL;
-	}
 
 	fmts = xilinx_drm_dp_sub_av_buf_get_fmt(&dp_sub->av_buf);
 	fmts &= mask;
@@ -1016,8 +1002,6 @@ int xilinx_drm_dp_sub_layer_set_fmt(struct xilinx_drm_dp_sub *dp_sub,
 	xilinx_drm_dp_sub_av_buf_set_fmt(&dp_sub->av_buf, fmts);
 
 	layer->fmt = fmt;
-
-	spin_unlock_irqrestore(&dp_sub->lock, flags);
 
 	return 0;
 }
@@ -1049,13 +1033,9 @@ EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_layer_get_fmt);
 void xilinx_drm_dp_sub_layer_enable(struct xilinx_drm_dp_sub *dp_sub,
 				    struct xilinx_drm_dp_sub_layer *layer)
 {
-	unsigned long flags;
-
-	spin_lock_irqsave(&dp_sub->lock, flags);
 	xilinx_drm_dp_sub_av_buf_enable_vid(&dp_sub->av_buf, layer);
 	xilinx_drm_dp_sub_blend_layer_enable(&dp_sub->blend, layer);
 	layer->enabled = true;
-	spin_unlock_irqrestore(&dp_sub->lock, flags);
 }
 EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_layer_enable);
 
@@ -1069,13 +1049,9 @@ EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_layer_enable);
 void xilinx_drm_dp_sub_layer_disable(struct xilinx_drm_dp_sub *dp_sub,
 				     struct xilinx_drm_dp_sub_layer *layer)
 {
-	unsigned long flags;
-
-	spin_lock_irqsave(&dp_sub->lock, flags);
 	xilinx_drm_dp_sub_av_buf_disable_vid(&dp_sub->av_buf, layer);
 	xilinx_drm_dp_sub_blend_layer_disable(&dp_sub->blend, layer);
 	layer->enabled = false;
-	spin_unlock_irqrestore(&dp_sub->lock, flags);
 }
 EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_layer_disable);
 
@@ -1093,10 +1069,7 @@ struct xilinx_drm_dp_sub_layer *
 xilinx_drm_dp_sub_layer_get(struct xilinx_drm_dp_sub *dp_sub, bool primary)
 {
 	struct xilinx_drm_dp_sub_layer *layer = NULL;
-	unsigned long flags;
 	unsigned int i;
-
-	spin_lock_irqsave(&dp_sub->lock, flags);
 
 	for (i = 0; i < XILINX_DRM_DP_SUB_NUM_LAYERS; i++) {
 		if (dp_sub->layers[i].primary == primary) {
@@ -1105,12 +1078,8 @@ xilinx_drm_dp_sub_layer_get(struct xilinx_drm_dp_sub *dp_sub, bool primary)
 		}
 	}
 
-	if (!layer || !layer->avail) {
-		spin_unlock_irqrestore(&dp_sub->lock, flags);
+	if (!layer || !layer->avail)
 		return ERR_PTR(-ENODEV);
-	}
-
-	spin_unlock_irqrestore(&dp_sub->lock, flags);
 
 	return layer;
 
@@ -1127,11 +1096,7 @@ EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_layer_get);
 void xilinx_drm_dp_sub_layer_put(struct xilinx_drm_dp_sub *dp_sub,
 				 struct xilinx_drm_dp_sub_layer *layer)
 {
-	unsigned long flags;
-
-	spin_lock_irqsave(&dp_sub->lock, flags);
 	layer->avail = true;
-	spin_unlock_irqrestore(&dp_sub->lock, flags);
 }
 EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_layer_put);
 
@@ -1151,20 +1116,13 @@ int xilinx_drm_dp_sub_set_output_fmt(struct xilinx_drm_dp_sub *dp_sub,
 				     uint32_t drm_fmt)
 {
 	const struct xilinx_drm_dp_sub_fmt *fmt;
-	unsigned long flags;
-
-	spin_lock_irqsave(&dp_sub->lock, flags);
 
 	fmt = xilinx_drm_dp_sub_map_fmt(blend_output_fmts,
 					ARRAY_SIZE(blend_output_fmts), drm_fmt);
-	if (!fmt) {
-		spin_unlock_irqrestore(&dp_sub->lock, flags);
+	if (!fmt)
 		return -EINVAL;
-	}
 
 	xilinx_drm_dp_sub_blend_set_output_fmt(&dp_sub->blend, fmt->dp_sub_fmt);
-
-	spin_unlock_irqrestore(&dp_sub->lock, flags);
 
 	return 0;
 }
@@ -1182,11 +1140,7 @@ EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_set_output_fmt);
 void xilinx_drm_dp_sub_set_bg_color(struct xilinx_drm_dp_sub *dp_sub,
 				    u32 c0, u32 c1, u32 c2)
 {
-	unsigned long flags;
-
-	spin_lock_irqsave(&dp_sub->lock, flags);
 	xilinx_drm_dp_sub_blend_set_bg_color(&dp_sub->blend, c0, c1, c2);
-	spin_unlock_irqrestore(&dp_sub->lock, flags);
 }
 EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_set_bg_color);
 
@@ -1199,11 +1153,7 @@ EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_set_bg_color);
  */
 void xilinx_drm_dp_sub_set_alpha(struct xilinx_drm_dp_sub *dp_sub, u32 alpha)
 {
-	unsigned long flags;
-
-	spin_lock_irqsave(&dp_sub->lock, flags);
 	xilinx_drm_dp_sub_blend_set_alpha(&dp_sub->blend, alpha);
-	spin_unlock_irqrestore(&dp_sub->lock, flags);
 }
 EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_set_alpha);
 
@@ -1217,11 +1167,7 @@ EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_set_alpha);
 void
 xilinx_drm_dp_sub_enable_alpha(struct xilinx_drm_dp_sub *dp_sub, bool enable)
 {
-	unsigned long flags;
-
-	spin_lock_irqsave(&dp_sub->lock, flags);
 	xilinx_drm_dp_sub_blend_enable_alpha(&dp_sub->blend, enable);
-	spin_unlock_irqrestore(&dp_sub->lock, flags);
 }
 EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_enable_alpha);
 
@@ -1234,12 +1180,8 @@ EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_enable_alpha);
  */
 void xilinx_drm_dp_sub_handle_vblank(struct xilinx_drm_dp_sub *dp_sub)
 {
-	unsigned long flags;
-
-	spin_lock_irqsave(&dp_sub->lock, flags);
 	if (dp_sub->vblank_fn)
 		dp_sub->vblank_fn(dp_sub->vblank_data);
-	spin_unlock_irqrestore(&dp_sub->lock, flags);
 }
 EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_handle_vblank);
 
@@ -1256,12 +1198,8 @@ void xilinx_drm_dp_sub_enable_vblank(struct xilinx_drm_dp_sub *dp_sub,
 				     void (*vblank_fn)(void *),
 				     void *vblank_data)
 {
-	unsigned long flags;
-
-	spin_lock_irqsave(&dp_sub->lock, flags);
 	dp_sub->vblank_fn = vblank_fn;
 	dp_sub->vblank_data = vblank_data;
-	spin_unlock_irqrestore(&dp_sub->lock, flags);
 }
 EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_enable_vblank);
 
@@ -1273,12 +1211,8 @@ EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_enable_vblank);
  */
 void xilinx_drm_dp_sub_disable_vblank(struct xilinx_drm_dp_sub *dp_sub)
 {
-	unsigned long flags;
-
-	spin_lock_irqsave(&dp_sub->lock, flags);
 	dp_sub->vblank_fn = NULL;
 	dp_sub->vblank_data = NULL;
-	spin_unlock_irqrestore(&dp_sub->lock, flags);
 }
 EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_disable_vblank);
 
@@ -1292,9 +1226,7 @@ void xilinx_drm_dp_sub_enable(struct xilinx_drm_dp_sub *dp_sub)
 {
 	const struct xilinx_drm_dp_sub_fmt *vid_fmt;
 	const struct xilinx_drm_dp_sub_fmt *gfx_fmt;
-	unsigned long flags;
 
-	spin_lock_irqsave(&dp_sub->lock, flags);
 	vid_fmt = dp_sub->layers[XILINX_DRM_DP_SUB_LAYER_VID].fmt;
 	gfx_fmt = dp_sub->layers[XILINX_DRM_DP_SUB_LAYER_GFX].fmt;
 	xilinx_drm_dp_sub_av_buf_init_fmts(&dp_sub->av_buf, vid_fmt, gfx_fmt);
@@ -1306,7 +1238,6 @@ void xilinx_drm_dp_sub_enable(struct xilinx_drm_dp_sub *dp_sub)
 	xilinx_drm_dp_sub_av_buf_enable_buf(&dp_sub->av_buf);
 	xilinx_drm_dp_sub_av_buf_enable_aud(&dp_sub->av_buf);
 	xilinx_drm_dp_sub_aud_init(&dp_sub->aud);
-	spin_unlock_irqrestore(&dp_sub->lock, flags);
 }
 EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_enable);
 
@@ -1318,12 +1249,8 @@ EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_enable);
  */
 void xilinx_drm_dp_sub_disable(struct xilinx_drm_dp_sub *dp_sub)
 {
-	unsigned long flags;
-
-	spin_lock_irqsave(&dp_sub->lock, flags);
 	xilinx_drm_dp_sub_av_buf_disable_aud(&dp_sub->av_buf);
 	xilinx_drm_dp_sub_av_buf_disable_buf(&dp_sub->av_buf);
-	spin_unlock_irqrestore(&dp_sub->lock, flags);
 }
 EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_disable);
 
@@ -1531,8 +1458,6 @@ static int xilinx_drm_dp_sub_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	dp_sub->dev = &pdev->dev;
-
-	spin_lock_init(&dp_sub->lock);
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "blend");
 	dp_sub->blend.base = devm_ioremap_resource(&pdev->dev, res);
