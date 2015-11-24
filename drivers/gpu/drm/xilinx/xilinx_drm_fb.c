@@ -135,6 +135,37 @@ xilinx_drm_fb_get_gem_obj(struct drm_framebuffer *base_fb, unsigned int plane)
 	return fb->obj[plane];
 }
 
+int xilinx_drm_fb_helper_pan_display(struct fb_var_screeninfo *var,
+			      struct fb_info *info)
+{
+	struct drm_fb_helper *fb_helper = info->par;
+	struct drm_device *dev = fb_helper->dev;
+	struct drm_mode_set *modeset;
+	int ret = 0;
+	int i;
+
+	if (__drm_modeset_lock_all(dev, !!oops_in_progress))
+		return -EBUSY;
+
+	for (i = 0; i < fb_helper->crtc_count; i++) {
+		modeset = &fb_helper->crtc_info[i].mode_set;
+
+		modeset->x = var->xoffset;
+		modeset->y = var->yoffset;
+
+		if (modeset->num_connectors) {
+			ret = drm_mode_set_config_internal(modeset);
+			if (!ret) {
+				drm_wait_one_vblank(dev, i);
+				info->var.xoffset = var->xoffset;
+				info->var.yoffset = var->yoffset;
+			}
+		}
+	}
+	drm_modeset_unlock_all(dev);
+	return ret;
+}
+
 static struct fb_ops xilinx_drm_fbdev_ops = {
 	.owner		= THIS_MODULE,
 	.fb_fillrect	= sys_fillrect,
@@ -143,7 +174,7 @@ static struct fb_ops xilinx_drm_fbdev_ops = {
 	.fb_check_var	= drm_fb_helper_check_var,
 	.fb_set_par	= drm_fb_helper_set_par,
 	.fb_blank	= drm_fb_helper_blank,
-	.fb_pan_display	= drm_fb_helper_pan_display,
+	.fb_pan_display	= xilinx_drm_fb_helper_pan_display,
 	.fb_setcmap	= drm_fb_helper_setcmap,
 };
 
