@@ -1087,12 +1087,22 @@ static int xilinx_vdma_device_control(struct dma_chan *dchan,
 				      enum dma_ctrl_cmd cmd, unsigned long arg)
 {
 	struct xilinx_vdma_chan *chan = to_xilinx_chan(dchan);
-
-	if (cmd != DMA_TERMINATE_ALL)
+	
+	if (!dchan)
+		return -EINVAL;
+		
+	switch(cmd){
+	case DMA_TERMINATE_ALL:
+		xilinx_vdma_terminate_all(chan);
+		break;
+	case DMA_SLAVE_CONFIG:
+		struct xilinx_vdma_config *cfg = (struct xilinx_vdma_config *)arg;
+		xilinx_vdma_channel_set_config(dchan, cfg);
+		break;
+	default:
 		return -ENXIO;
-
-	xilinx_vdma_terminate_all(chan);
-
+	}
+	
 	return 0;
 }
 
