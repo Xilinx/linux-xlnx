@@ -993,9 +993,11 @@ static int xtpg_probe(struct platform_device *pdev)
 		xvip_get_frame_size(&xtpg->xvip, &xtpg->default_format);
 	}
 
-	bayer_phase = xtpg_get_bayer_phase(xtpg->vip_format->code);
-	if (!xtpg->is_hls && bayer_phase != XTPG_BAYER_PHASE_OFF)
-		xtpg->bayer = true;
+	if (!xtpg->is_hls) {
+		bayer_phase = xtpg_get_bayer_phase(xtpg->vip_format->code);
+		if (bayer_phase != XTPG_BAYER_PHASE_OFF)
+			xtpg->bayer = true;
+	}
 
 	xtpg->formats[0] = xtpg->default_format;
 	if (xtpg->npads == 2)
