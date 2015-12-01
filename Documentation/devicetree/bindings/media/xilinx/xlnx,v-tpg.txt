@@ -31,6 +31,9 @@ Optional properties:
   input. The GPIO active level corresponds to the selection of VTC-generated
   video timings.
 
+- reset-gpios: Specifier for a GPIO that assert TPG (AP_RST_N) reset.
+  This property is mandatory for TPG v7.0.
+
 The xlnx,vtc and timing-gpios properties are mandatory when the TPG is
 synthesized with two ports and forbidden when synthesized with one port.
 
