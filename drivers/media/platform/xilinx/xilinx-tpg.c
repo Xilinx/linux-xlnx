@@ -643,6 +643,7 @@ static const char *const xtpg_hls_pattern_strings[] = {
 	"Color Sweep",
 	"Vertical/Horizontal Ramps",
 	"Black/White Checker Board",
+	"PseudoRandom",
 };
 
 static const char *const xtpg_hls_fg_strings[] = {
