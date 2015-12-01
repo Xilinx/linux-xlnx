@@ -208,11 +208,19 @@ static int xtpg_s_stream(struct v4l2_subdev *subdev, int enable)
 	u32 bayer_phase;
 
 	if (!enable) {
-		if (xtpg->is_hls)
-			/* Disable auto-start */
-			xvip_write(&xtpg->xvip, XVIP_CTRL_CONTROL, 0x0);
-		else
+		if (!xtpg->is_hls) {
 			xvip_stop(&xtpg->xvip);
+		} else {
+			/*
+			 * There is an known issue in TPG v7.0 that on
+			 * resolution change it doesn't generates pattern
+			 * correctly i.e some hor/ver offset is added.
+			 * As a workaround issue reset on stop.
+			 */
+			gpiod_set_value_cansleep(xtpg->rst_gpio, 0x1);
+			gpiod_set_value_cansleep(xtpg->rst_gpio, 0x0);
+			v4l2_ctrl_handler_setup(&xtpg->ctrl_handler);
+		}
 
 		if (xtpg->vtc)
 			xvtc_generator_stop(xtpg->vtc);
