@@ -223,14 +223,14 @@ static int xtpg_s_stream(struct v4l2_subdev *subdev, int enable)
 	if (xtpg->is_hls) {
 		u32 fmt;
 
-		switch (xtpg->vip_format->fourcc) {
-		case V4L2_PIX_FMT_YUYV:
+		switch (xtpg->vip_format->code) {
+		case MEDIA_BUS_FMT_UYVY8_1X16:
 			fmt = XTPG_HLS_COLOR_FORMAT_YUV_422;
 			break;
-		case V4L2_PIX_FMT_YUV444:
+		case MEDIA_BUS_FMT_VUY8_1X24:
 			fmt = XTPG_HLS_COLOR_FORMAT_YUV_444;
 			break;
-		case V4L2_PIX_FMT_RGB24:
+		case MEDIA_BUS_FMT_RBG888_1X24:
 			fmt = XTPG_HLS_COLOR_FORMAT_RGB;
 			break;
 		}
