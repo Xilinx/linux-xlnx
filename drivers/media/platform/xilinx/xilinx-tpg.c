@@ -116,6 +116,7 @@
  * @is_hls: whether the IP core is HLS based
  * @vtc: video timing controller
  * @vtmux_gpio: video timing mux GPIO
+ * @rst_gpio: reset IP core GPIO
  */
 struct xtpg_device {
 	struct xvip_device xvip;
@@ -138,6 +139,7 @@ struct xtpg_device {
 
 	struct xvtc_device *vtc;
 	struct gpio_desc *vtmux_gpio;
+	struct gpio_desc *rst_gpio;
 };
 
 static inline struct xtpg_device *to_tpg(struct v4l2_subdev *subdev)
@@ -957,14 +959,28 @@ static int xtpg_probe(struct platform_device *pdev)
 		goto error_resource;
 	}
 
+	if (xtpg->is_hls) {
+		xtpg->rst_gpio = devm_gpiod_get(&pdev->dev, "reset",
+						   GPIOD_OUT_HIGH);
+		if (IS_ERR(xtpg->rst_gpio)) {
+			ret = PTR_ERR(xtpg->rst_gpio);
+			goto error_resource;
+		}
+	}
+
 	xtpg->vtc = xvtc_of_get(pdev->dev.of_node);
 	if (IS_ERR(xtpg->vtc)) {
 		ret = PTR_ERR(xtpg->vtc);
 		goto error_resource;
 	}
 
-	/* Reset and initialize the core - No reset for HLS based TPG version */
-	if (!xtpg->is_hls)
+	/*
+	 * Reset and initialize the core. For TPG HLS version there
+	 * is no SW_RESET bit hence using GPIO based reset.
+	 */
+	if (xtpg->is_hls)
+		gpiod_set_value_cansleep(xtpg->rst_gpio, 0x0);
+	else
 		xvip_reset(&xtpg->xvip);
 
 	/* Initialize V4L2 subdevice and media entity. Pad numbers depend on the
