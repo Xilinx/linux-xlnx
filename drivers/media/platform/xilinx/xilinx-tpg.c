@@ -207,7 +207,6 @@ static int xtpg_s_stream(struct v4l2_subdev *subdev, int enable)
 	unsigned int height = xtpg->formats[0].height;
 	bool passthrough;
 	u32 bayer_phase;
-	u32 xtpg_pattern_offset;
 
 	if (!enable) {
 		if (xtpg->is_hls)
@@ -241,10 +240,8 @@ static int xtpg_s_stream(struct v4l2_subdev *subdev, int enable)
 		xvip_write(&xtpg->xvip, XTPG_HLS_COLOR_FORMAT, fmt);
 		xvip_write(&xtpg->xvip, XHLS_REG_COLS, width);
 		xvip_write(&xtpg->xvip, XHLS_REG_ROWS, height);
-		xtpg_pattern_offset = XTPG_HLS_BG_PATTERN;
 	} else {
 		xvip_set_frame_size(&xtpg->xvip, &xtpg->formats[0]);
-		xtpg_pattern_offset = XTPG_PATTERN_CONTROL;
 	}
 
 	if (xtpg->vtc) {
@@ -278,7 +275,11 @@ static int xtpg_s_stream(struct v4l2_subdev *subdev, int enable)
 	 */
 	mutex_lock(xtpg->ctrl_handler.lock);
 
-	xvip_clr_and_set(&xtpg->xvip, xtpg_pattern_offset,
+	if (xtpg->is_hls)
+		xvip_write(&xtpg->xvip, XTPG_HLS_BG_PATTERN,
+			   xtpg->pattern->cur.val);
+	else
+		xvip_clr_and_set(&xtpg->xvip, XTPG_PATTERN_CONTROL,
 			 XTPG_PATTERN_MASK, xtpg->pattern->cur.val);
 
 	/*
