@@ -67,10 +67,14 @@
  */
 #define XTPG_HLS_BG_PATTERN			0x0020
 #define XTPG_HLS_FG_PATTERN			0x0028
-#define XTPG_HLS_FG_CROSS_HAIR_SHIFT		0x1
+#define XTPG_HLS_FG_PATTERN_CROSS_HAIR		(1 << 1)
 #define XTPG_HLS_MASK_ID			0x0030
 #define XTPG_HLS_MOTION_SPEED			0x0038
 #define XTPG_HLS_COLOR_FORMAT			0x0040
+#define XTPG_HLS_COLOR_FORMAT_RGB		0
+#define XTPG_HLS_COLOR_FORMAT_YUV_444		1
+#define XTPG_HLS_COLOR_FORMAT_YUV_422		2
+#define XTPG_HLS_COLOR_FORMAT_YUV_420		3
 #define XTPG_HLS_CROSS_HAIR_HOR			0x0048
 #define XTPG_HLS_CROSS_HAIR_VER			0x0050
 #define XTPG_HLS_ZPLATE_HOR_CNTL_START		0x0058
@@ -82,6 +86,7 @@
 #define XTPG_HLS_BOX_COLOR_GREEN_CR		0x0088
 #define XTPG_HLS_BOX_COLOR_BLUE_Y		0x0090
 #define XTPG_HLS_ENABLE_INPUT			0x0098
+#define XTPG_HLS_USE_INPUT_VID_STREAM		(1 << 0)
 #define XTPG_HLS_PASS_THRU_START_X		0x00a0
 #define XTPG_HLS_PASS_THRU_START_Y		0x00a8
 #define XTPG_HLS_PASS_THRU_END_X		0x00b0
@@ -95,16 +100,6 @@
 #define XTPG_MAX_HBLANK			(XVTC_MAX_HSIZE - XVIP_MIN_WIDTH)
 #define XTPG_MIN_VBLANK			3
 #define XTPG_MAX_VBLANK			(XVTC_MAX_VSIZE - XVIP_MIN_HEIGHT)
-
-/* TPG v7 supported color formats */
-typedef enum {
-	XVIDC_CSF_RGB = 0,
-	XVIDC_CSF_YCRCB_444,
-	XVIDC_CSF_YCRCB_422,
-	XVIDC_CSF_YCRCB_420 = 4,
-	XVIDC_CSF_NUM_SUPPORTED,
-	XVIDC_CSF_UNKNOWN
-} xtpg_hls_color_format;
 
 /**
  * struct xtpg_device - Xilinx Test Pattern Generator device structure
@@ -121,6 +116,7 @@ typedef enum {
  * @vblank: vertical blanking control
  * @pattern: test pattern control
  * @streaming: is the video stream active
+ * @is_hls: whether the IP core is HLS based
  * @vtc: video timing controller
  * @vtmux_gpio: video timing mux GPIO
  */
@@ -212,8 +208,8 @@ static int xtpg_s_stream(struct v4l2_subdev *subdev, int enable)
 	unsigned int width = xtpg->formats[0].width;
 	unsigned int height = xtpg->formats[0].height;
 	bool passthrough;
-	u32 bayer_phase, xtpg_pattern_offset;
-	xtpg_hls_color_format fmt;
+	u32 bayer_phase;
+	u32 xtpg_pattern_offset;
 
 	if (!enable) {
 		if (xtpg->is_hls)
@@ -231,22 +227,21 @@ static int xtpg_s_stream(struct v4l2_subdev *subdev, int enable)
 	}
 
 	if (xtpg->is_hls) {
+		u32 fmt;
+
 		switch (xtpg->vip_format->fourcc) {
 		case V4L2_PIX_FMT_YUYV:
-			fmt = XVIDC_CSF_YCRCB_422;
+			fmt = XTPG_HLS_COLOR_FORMAT_YUV_422;
 			break;
 		case V4L2_PIX_FMT_YUV444:
-			fmt = XVIDC_CSF_YCRCB_444;
+			fmt = XTPG_HLS_COLOR_FORMAT_YUV_444;
 			break;
 		case V4L2_PIX_FMT_RGB24:
-			fmt = XVIDC_CSF_RGB;
+			fmt = XTPG_HLS_COLOR_FORMAT_RGB;
 			break;
 		}
-		/* Set video color format */
 		xvip_write(&xtpg->xvip, XTPG_HLS_COLOR_FORMAT, fmt);
-		/* Set number of active pixels per scanline */
 		xvip_write(&xtpg->xvip, XHLS_REG_COLS, width);
-		/* Set number of active lines per frame */
 		xvip_write(&xtpg->xvip, XHLS_REG_ROWS, height);
 		xtpg_pattern_offset = XTPG_HLS_BG_PATTERN;
 	} else {
@@ -303,9 +298,8 @@ static int xtpg_s_stream(struct v4l2_subdev *subdev, int enable)
 		gpiod_set_value_cansleep(xtpg->vtmux_gpio, !passthrough);
 
 	if (xtpg->is_hls) {
-		/* Use video stream entering slave AXI4Stream video interface */
-		xvip_set(&xtpg->xvip, XTPG_HLS_ENABLE_INPUT, 0x1);
-		/* Start the TPG in auto-restart mode */
+		xvip_set(&xtpg->xvip, XTPG_HLS_ENABLE_INPUT,
+			 XTPG_HLS_USE_INPUT_VID_STREAM);
 		xvip_set(&xtpg->xvip, XVIP_CTRL_CONTROL,
 			 XHLS_REG_CTRL_AUTO_RESTART |
 			 XVIP_CTRL_CONTROL_SW_ENABLE);
@@ -316,7 +310,7 @@ static int xtpg_s_stream(struct v4l2_subdev *subdev, int enable)
 		 * be subsampled.
 		 */
 		bayer_phase = passthrough ? XTPG_BAYER_PHASE_OFF
-			: xtpg_get_bayer_phase(xtpg->formats[0].code);
+			    : xtpg_get_bayer_phase(xtpg->formats[0].code);
 		xvip_write(&xtpg->xvip, XTPG_BAYER_PHASE, bayer_phase);
 		xvip_start(&xtpg->xvip);
 	}
@@ -547,7 +541,7 @@ static int xtpg_hls_s_ctrl(struct v4l2_ctrl *ctrl)
 		if (ctrl->val)
 			__v4l2_ctrl_s_ctrl(xtpg->moving_box, 0x0);
 		xvip_write(&xtpg->xvip, XTPG_HLS_FG_PATTERN,
-			   ctrl->val << XTPG_HLS_FG_CROSS_HAIR_SHIFT);
+			   ctrl->val ? XTPG_HLS_FG_PATTERN_CROSS_HAIR : 0);
 		return 0;
 	case V4L2_CID_XILINX_TPG_MOVING_BOX:
 		if (ctrl->val)
@@ -958,7 +952,6 @@ static struct v4l2_ctrl_config xtpg_hls_ctrls[] = {
 	}
 };
 
-
 /* -----------------------------------------------------------------------------
  * Media Operations
  */
@@ -1061,8 +1054,8 @@ static int xtpg_probe(struct platform_device *pdev)
 	struct xtpg_device *xtpg;
 	const struct v4l2_ctrl_config *ctrl_config;
 	u32 i, bayer_phase;
-	u32 ctrl_cnt;
-	u32 qmenu_cnt;
+	u32 nctrls;
+	u32 npatterns;
 	int ret;
 
 	xtpg = devm_kzalloc(&pdev->dev, sizeof(*xtpg), GFP_KERNEL);
@@ -1113,16 +1106,16 @@ static int xtpg_probe(struct platform_device *pdev)
 
 	if (xtpg->is_hls) {
 		ctrl_config = xtpg_hls_ctrls;
-		ctrl_cnt = ARRAY_SIZE(xtpg_hls_ctrls);
-		qmenu_cnt = ARRAY_SIZE(xtpg_hls_pattern_strings);
+		nctrls = ARRAY_SIZE(xtpg_hls_ctrls);
+		npatterns = ARRAY_SIZE(xtpg_hls_pattern_strings);
 		xtpg->default_format.width = xvip_read(&xtpg->xvip,
 						       XHLS_REG_COLS);
 		xtpg->default_format.height = xvip_read(&xtpg->xvip,
 							XHLS_REG_ROWS);
 	} else {
 		ctrl_config = xtpg_ctrls;
-		ctrl_cnt = ARRAY_SIZE(xtpg_ctrls);
-		qmenu_cnt = ARRAY_SIZE(xtpg_pattern_strings);
+		nctrls = ARRAY_SIZE(xtpg_ctrls);
+		npatterns = ARRAY_SIZE(xtpg_pattern_strings);
 		xvip_get_frame_size(&xtpg->xvip, &xtpg->default_format);
 	}
 
@@ -1148,7 +1141,7 @@ static int xtpg_probe(struct platform_device *pdev)
 	if (ret < 0)
 		goto error;
 
-	v4l2_ctrl_handler_init(&xtpg->ctrl_handler, 3 + ctrl_cnt);
+	v4l2_ctrl_handler_init(&xtpg->ctrl_handler, 3 + nctrls);
 
 	xtpg->vblank = v4l2_ctrl_new_std(&xtpg->ctrl_handler, &xtpg_ctrl_ops,
 					 V4L2_CID_VBLANK, XTPG_MIN_VBLANK,
@@ -1162,7 +1155,7 @@ static int xtpg_probe(struct platform_device *pdev)
 			v4l2_ctrl_new_std_menu_items(&xtpg->ctrl_handler,
 						     &xtpg_ctrl_ops,
 						     V4L2_CID_TEST_PATTERN,
-						     qmenu_cnt - 1,
+						     npatterns - 1,
 						     1, 9,
 						     xtpg_hls_pattern_strings);
 	else
@@ -1170,10 +1163,11 @@ static int xtpg_probe(struct platform_device *pdev)
 			v4l2_ctrl_new_std_menu_items(&xtpg->ctrl_handler,
 						     &xtpg_ctrl_ops,
 						     V4L2_CID_TEST_PATTERN,
-						     qmenu_cnt - 1,
+						     npatterns - 1,
 						     1, 9,
 						     xtpg_pattern_strings);
-	for (i = 0; i < ctrl_cnt; i++)
+
+	for (i = 0; i < nctrls; i++)
 		v4l2_ctrl_new_custom(&xtpg->ctrl_handler,
 				     &ctrl_config[i], NULL);
 
