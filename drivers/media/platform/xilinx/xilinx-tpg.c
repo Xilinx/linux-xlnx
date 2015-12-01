@@ -698,7 +698,7 @@ static struct v4l2_ctrl_config xtpg_ctrls[] = {
 		.name	= "Test Pattern: Color Mask",
 		.type	= V4L2_CTRL_TYPE_BITMASK,
 		.min	= 0,
-		.max	= 0xf,
+		.max	= 0x7,
 		.def	= 0,
 	}, {
 		.ops	= &xtpg_ctrl_ops,
@@ -864,7 +864,7 @@ static struct v4l2_ctrl_config xtpg_hls_ctrls[] = {
 		.name	= "Test Pattern: Color Mask (RGB)",
 		.type	= V4L2_CTRL_TYPE_BITMASK,
 		.min	= 0,
-		.max	= 0x4,
+		.max	= 0x7,
 		.def	= 0,
 	}, {
 		.ops	= &xtpg_hls_ctrl_ops,
