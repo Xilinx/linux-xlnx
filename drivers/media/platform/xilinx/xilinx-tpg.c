@@ -136,8 +136,6 @@ struct xtpg_device {
 	struct v4l2_ctrl *hblank;
 	struct v4l2_ctrl *vblank;
 	struct v4l2_ctrl *pattern;
-	struct v4l2_ctrl *moving_box;
-	struct v4l2_ctrl *cross_hair;
 	bool streaming;
 	bool is_hls;
 
@@ -537,15 +535,7 @@ static int xtpg_hls_s_ctrl(struct v4l2_ctrl *ctrl)
 		xvip_clr_and_set(&xtpg->xvip, XTPG_HLS_BG_PATTERN,
 				 XTPG_PATTERN_MASK, ctrl->val);
 		return 0;
-	case V4L2_CID_XILINX_TPG_CROSS_HAIRS:
-		if (ctrl->val)
-			__v4l2_ctrl_s_ctrl(xtpg->moving_box, 0x0);
-		xvip_write(&xtpg->xvip, XTPG_HLS_FG_PATTERN,
-			   ctrl->val ? XTPG_HLS_FG_PATTERN_CROSS_HAIR : 0);
-		return 0;
-	case V4L2_CID_XILINX_TPG_MOVING_BOX:
-		if (ctrl->val)
-			__v4l2_ctrl_s_ctrl(xtpg->cross_hair, 0x0);
+	case V4L2_CID_XILINX_TPG_HLS_FG_PATTERN:
 		xvip_write(&xtpg->xvip, XTPG_HLS_FG_PATTERN, ctrl->val);
 		return 0;
 	case V4L2_CID_XILINX_TPG_COLOR_MASK:
@@ -665,6 +655,22 @@ static const char *const xtpg_hls_pattern_strings[] = {
 	"Color Sweep",
 	"Vertical/Horizontal Ramps",
 	"Black/White Checker Board",
+};
+
+static const char *const xtpg_hls_fg_strings[] = {
+	"No Overlay",
+	"Moving Box",
+	"Cross Hairs",
+};
+
+static const struct v4l2_ctrl_config xtpg_hls_fg_ctrl = {
+	.ops	= &xtpg_hls_ctrl_ops,
+	.id     = V4L2_CID_XILINX_TPG_HLS_FG_PATTERN,
+	.name   = "Test Pattern: Foreground Pattern",
+	.type   = V4L2_CTRL_TYPE_MENU,
+	.min	= 0,
+	.max	= ARRAY_SIZE(xtpg_hls_fg_strings) - 1,
+	.qmenu	= xtpg_hls_fg_strings,
 };
 
 static struct v4l2_ctrl_config xtpg_ctrls[] = {
@@ -835,24 +841,6 @@ static struct v4l2_ctrl_config xtpg_ctrls[] = {
 
 static struct v4l2_ctrl_config xtpg_hls_ctrls[] = {
 	{
-		.ops	= &xtpg_hls_ctrl_ops,
-		.id	= V4L2_CID_XILINX_TPG_CROSS_HAIRS,
-		.name	= "Test Pattern: Cross Hairs",
-		.type	= V4L2_CTRL_TYPE_BOOLEAN,
-		.min	= false,
-		.max	= true,
-		.step	= 1,
-		.def	= 0,
-	}, {
-		.ops	= &xtpg_hls_ctrl_ops,
-		.id	= V4L2_CID_XILINX_TPG_MOVING_BOX,
-		.name	= "Test Pattern: Moving Box",
-		.type	= V4L2_CTRL_TYPE_BOOLEAN,
-		.min	= false,
-		.max	= true,
-		.step	= 1,
-		.def	= 0,
-	}, {
 		.ops	= &xtpg_hls_ctrl_ops,
 		.id	= V4L2_CID_XILINX_TPG_COLOR_MASK,
 		.name	= "Test Pattern: Color Mask (RGB)",
@@ -1141,7 +1129,10 @@ static int xtpg_probe(struct platform_device *pdev)
 	if (ret < 0)
 		goto error;
 
-	v4l2_ctrl_handler_init(&xtpg->ctrl_handler, 3 + nctrls);
+	if (xtpg->is_hls)
+		v4l2_ctrl_handler_init(&xtpg->ctrl_handler, 4 + nctrls);
+	else
+		v4l2_ctrl_handler_init(&xtpg->ctrl_handler, 3 + nctrls);
 
 	xtpg->vblank = v4l2_ctrl_new_std(&xtpg->ctrl_handler, &xtpg_ctrl_ops,
 					 V4L2_CID_VBLANK, XTPG_MIN_VBLANK,
@@ -1150,7 +1141,7 @@ static int xtpg_probe(struct platform_device *pdev)
 					 V4L2_CID_HBLANK, XTPG_MIN_HBLANK,
 					 XTPG_MAX_HBLANK, 1, 100);
 
-	if (xtpg->is_hls)
+	if (xtpg->is_hls) {
 		xtpg->pattern =
 			v4l2_ctrl_new_std_menu_items(&xtpg->ctrl_handler,
 						     &xtpg_ctrl_ops,
@@ -1158,7 +1149,9 @@ static int xtpg_probe(struct platform_device *pdev)
 						     npatterns - 1,
 						     1, 9,
 						     xtpg_hls_pattern_strings);
-	else
+		v4l2_ctrl_new_custom(&xtpg->ctrl_handler,
+				     &xtpg_hls_fg_ctrl, NULL);
+	} else {
 		xtpg->pattern =
 			v4l2_ctrl_new_std_menu_items(&xtpg->ctrl_handler,
 						     &xtpg_ctrl_ops,
@@ -1166,6 +1159,7 @@ static int xtpg_probe(struct platform_device *pdev)
 						     npatterns - 1,
 						     1, 9,
 						     xtpg_pattern_strings);
+	}
 
 	for (i = 0; i < nctrls; i++)
 		v4l2_ctrl_new_custom(&xtpg->ctrl_handler,
@@ -1176,11 +1170,6 @@ static int xtpg_probe(struct platform_device *pdev)
 		ret = xtpg->ctrl_handler.error;
 		goto error;
 	}
-
-	xtpg->moving_box = v4l2_ctrl_find(&xtpg->ctrl_handler,
-					  V4L2_CID_XILINX_TPG_MOVING_BOX);
-	xtpg->cross_hair = v4l2_ctrl_find(&xtpg->ctrl_handler,
-					  V4L2_CID_XILINX_TPG_CROSS_HAIRS);
 
 	subdev->ctrl_handler = &xtpg->ctrl_handler;
 
