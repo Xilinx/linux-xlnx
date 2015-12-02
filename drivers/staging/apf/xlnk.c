@@ -1160,14 +1160,12 @@ static int xlnk_cachecontrol_ioctl(struct file *filp, unsigned int code,
 
 	if (temp_args.cachecontrol.action == 0) {
 		/* flush cache */
-		dmac_map_area(kaddr, size, DMA_TO_DEVICE);
 		outer_clean_range((unsigned int)paddr,
 				  (unsigned int)(paddr + size));
 	} else {
 		/* invalidate cache */
 		outer_inv_range((unsigned int)paddr,
 				(unsigned int)(paddr + size));
-		dmac_unmap_area(kaddr, size, DMA_FROM_DEVICE);
 	}
 
 	return 0;

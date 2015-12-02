@@ -830,7 +830,6 @@ int xdma_submit(struct xdma_chan *chan,
 		sgcnt_dma = sgcnt;
 		if (user_flags & CF_FLAG_CACHE_FLUSH_INVALIDATE) {
 			kaddr = phys_to_virt((phys_addr_t)userbuf);
-			dmac_map_area(kaddr, size, DMA_TO_DEVICE);
 			if (dmadir == DMA_TO_DEVICE) {
 				outer_clean_range((phys_addr_t)userbuf,
 						(u32)userbuf + size);
@@ -930,7 +929,6 @@ int xdma_wait(struct xdma_head *dmahead, unsigned int user_flags)
 				outer_inv_range((phys_addr_t)paddr,
 						(u32)paddr + size);
 			}
-			dmac_unmap_area(kaddr, size, DMA_FROM_DEVICE);
 		}
 	}
 	return 0;
