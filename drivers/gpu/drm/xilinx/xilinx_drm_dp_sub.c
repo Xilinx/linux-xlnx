@@ -191,6 +191,7 @@
 #define XILINX_DP_SUB_AV_BUF_CLK_SRC_AUD_FROM_PS		BIT(1)
 #define XILINX_DP_SUB_AV_BUF_CLK_SRC_VID_INTERNAL_TIMING	BIT(2)
 #define XILINX_DP_SUB_AV_BUF_SRST_REG				0x124
+#define XILINX_DP_SUB_AV_BUF_SRST_REG_VID_RST			BIT(1)
 #define XILINX_DP_SUB_AV_BUF_AUDIO_CH_CONFIG			0x12c
 #define XILINX_DP_SUB_AV_BUF_GFX_COMP0_SF			0x200
 #define XILINX_DP_SUB_AV_BUF_GFX_COMP1_SF			0x204
@@ -776,6 +777,31 @@ xilinx_drm_dp_sub_av_buf_enable_aud(struct xilinx_drm_dp_sub_av_buf *av_buf)
 }
 
 /**
+ * xilinx_drm_dp_sub_av_buf_enable - Enable the video pipe
+ * @av_buf: av buffer manager
+ *
+ * De-assert the video pipe reset
+ */
+static void
+xilinx_drm_dp_sub_av_buf_enable(struct xilinx_drm_dp_sub_av_buf *av_buf)
+{
+	xilinx_drm_writel(av_buf->base, XILINX_DP_SUB_AV_BUF_SRST_REG, 0);
+}
+
+/**
+ * xilinx_drm_dp_sub_av_buf_disable - Disable the video pipe
+ * @av_buf: av buffer manager
+ *
+ * Assert the video pipe reset
+ */
+static void
+xilinx_drm_dp_sub_av_buf_disable(struct xilinx_drm_dp_sub_av_buf *av_buf)
+{
+	xilinx_drm_writel(av_buf->base, XILINX_DP_SUB_AV_BUF_SRST_REG,
+			  XILINX_DP_SUB_AV_BUF_SRST_REG_VID_RST);
+}
+
+/**
  * xilinx_drm_dp_sub_av_buf_disable_aud - Disable audio
  * @av_buf: av buffer manager
  *
@@ -1229,6 +1255,7 @@ void xilinx_drm_dp_sub_enable(struct xilinx_drm_dp_sub *dp_sub)
 
 	vid_fmt = dp_sub->layers[XILINX_DRM_DP_SUB_LAYER_VID].fmt;
 	gfx_fmt = dp_sub->layers[XILINX_DRM_DP_SUB_LAYER_GFX].fmt;
+	xilinx_drm_dp_sub_av_buf_enable(&dp_sub->av_buf);
 	xilinx_drm_dp_sub_av_buf_init_fmts(&dp_sub->av_buf, vid_fmt, gfx_fmt);
 	xilinx_drm_dp_sub_av_buf_init_sf(&dp_sub->av_buf, vid_fmt, gfx_fmt);
 	xilinx_drm_dp_sub_av_buf_set_vid_clock_src(&dp_sub->av_buf,
@@ -1251,6 +1278,7 @@ void xilinx_drm_dp_sub_disable(struct xilinx_drm_dp_sub *dp_sub)
 {
 	xilinx_drm_dp_sub_av_buf_disable_aud(&dp_sub->av_buf);
 	xilinx_drm_dp_sub_av_buf_disable_buf(&dp_sub->av_buf);
+	xilinx_drm_dp_sub_av_buf_disable(&dp_sub->av_buf);
 }
 EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_disable);
 
