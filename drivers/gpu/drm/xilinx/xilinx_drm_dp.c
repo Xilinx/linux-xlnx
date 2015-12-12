@@ -743,6 +743,8 @@ static void xilinx_drm_dp_dpms(struct drm_encoder *encoder, int dpms)
 {
 	struct xilinx_drm_dp *dp = to_dp(encoder);
 	void __iomem *iomem = dp->iomem;
+	unsigned int i;
+	int ret;
 
 	if (dp->dpms == dpms)
 		return;
@@ -757,7 +759,13 @@ static void xilinx_drm_dp_dpms(struct drm_encoder *encoder, int dpms)
 			xilinx_drm_writel(iomem, XILINX_DP_TX_AUDIO_CONTROL, 1);
 
 		xilinx_drm_writel(iomem, XILINX_DP_TX_PHY_POWER_DOWN, 0);
-		drm_dp_dpcd_writeb(&dp->aux, DP_SET_POWER, DP_SET_POWER_D0);
+		for (i = 0; i < 3; i++) {
+			ret = drm_dp_dpcd_writeb(&dp->aux, DP_SET_POWER,
+						 DP_SET_POWER_D0);
+			if (ret == 1)
+				break;
+			usleep_range(300, 500);
+		}
 		xilinx_drm_dp_train(dp);
 		xilinx_drm_writel(iomem, XILINX_DP_TX_ENABLE_MAIN_STREAM, 1);
 
