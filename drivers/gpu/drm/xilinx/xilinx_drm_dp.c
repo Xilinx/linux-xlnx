@@ -481,7 +481,7 @@ static void xilinx_drm_dp_adjust_train(struct xilinx_drm_dp *dp,
  * @dp: DisplayPort IP core structure
  *
  * Update the training values based on the request from sink. The mapped values
- * are predefined, and values(vs, pe, pc) are from the reference codes.
+ * are predefined, and values(vs, pe, pc) are from the device manual.
  *
  * Return: 0 if vs and emph are updated successfully, or the error code returned
  * by drm_dp_dpcd_write().
@@ -489,11 +489,16 @@ static void xilinx_drm_dp_adjust_train(struct xilinx_drm_dp *dp,
 static int xilinx_drm_dp_update_vs_emph(struct xilinx_drm_dp *dp)
 {
 	u8 *train_set = dp->train_set;
-	u8 i, level;
+	u8 i, v_level, p_level;
 	int ret;
-	u8 vs[4] = { 0x3, 0x7, 0xb, 0xf };
-	u8 pe[4] = { 0x0, 0x3, 0x5, 0x6 };
-	u8 pc[4] = { 0x0, 0xe, 0x14, 0x1b };
+	static u8 vs[4][4] = { { 0x2a, 0x27, 0x24, 0x20 },
+			       { 0x27, 0x23, 0x20, 0xff },
+			       { 0x24, 0x20, 0xff, 0xff },
+			       { 0xff, 0xff, 0xff, 0xff } };
+	static u8 pe[4][4] = { { 0x2, 0x2, 0x2, 0x2 },
+			       { 0x1, 0x1, 0x1, 0xff },
+			       { 0x0, 0x0, 0xff, 0xff },
+			       { 0xff, 0xff, 0xff, 0xff } };
 
 	ret = drm_dp_dpcd_write(&dp->aux, DP_TRAINING_LANE0_SET, train_set,
 				dp->mode.lane_cnt);
@@ -501,28 +506,20 @@ static int xilinx_drm_dp_update_vs_emph(struct xilinx_drm_dp *dp)
 		return ret;
 
 	for (i = 0; i < dp->mode.lane_cnt; i++) {
-		level = (train_set[i] & DP_TRAIN_VOLTAGE_SWING_MASK) >>
-			DP_TRAIN_VOLTAGE_SWING_SHIFT;
+		v_level = (train_set[i] & DP_TRAIN_VOLTAGE_SWING_MASK) >>
+			  DP_TRAIN_VOLTAGE_SWING_SHIFT;
+		p_level = (train_set[i] & DP_TRAIN_PRE_EMPHASIS_MASK) >>
+			  DP_TRAIN_PRE_EMPHASIS_SHIFT;
+
 		xilinx_drm_writel(dp->iomem,
 				  XILINX_DP_TX_PHY_VOLTAGE_DIFF_LANE_0 + i * 4,
-				  vs[level]);
-
-		level = (train_set[i] & DP_TRAIN_PRE_EMPHASIS_MASK) >>
-			DP_TRAIN_PRE_EMPHASIS_SHIFT;
+				  vs[p_level][v_level]);
 		xilinx_drm_writel(dp->iomem,
-				  XILINX_DP_TX_PHY_PREEMPHASIS_LANE_0 + i * 4,
-				  pe[level]);
-	}
-
-	for (i = 0; i < dp->mode.lane_cnt; i++) {
-		level = (train_set[i] & DP_TRAIN_PRE_EMPHASIS_MASK) >>
-			DP_TRAIN_PRE_EMPHASIS_SHIFT;
+				  XILINX_DP_TX_PHY_PRECURSOR_LANE_0 + i * 4,
+				  pe[p_level][v_level]);
 		xilinx_drm_writel(dp->iomem,
 				  XILINX_DP_TX_PHY_POSTCURSOR_LANE_0 + i * 4,
-				  pc[level]);
-
-		xilinx_drm_writel(dp->iomem,
-				  XILINX_DP_TX_PHY_PRECURSOR_LANE_0 + i * 4, 0);
+				  0);
 	}
 
 	return 0;
