@@ -108,6 +108,10 @@
 #define XILINX_DPDMA_CH_CNTL				0x18
 #define XILINX_DPDMA_CH_CNTL_ENABLE			BIT(0)
 #define XILINX_DPDMA_CH_CNTL_PAUSE			BIT(1)
+#define XILINX_DPDMA_CH_CNTL_QOS_DSCR_WR_SHIFT		2
+#define XILINX_DPDMA_CH_CNTL_QOS_DSCR_RD_SHIFT		6
+#define XILINX_DPDMA_CH_CNTL_QOS_DATA_RD_SHIFT		10
+#define XILINX_DPDMA_CH_CNTL_QOS_VID_CLASS		11
 #define XILINX_DPDMA_CH_STATUS				0x1c
 #define XILINX_DPDMA_CH_STATUS_OTRAN_CNT_MASK		(0xf << 21)
 #define XILINX_DPDMA_CH_STATUS_OTRAN_CNT_SHIFT		21
@@ -987,11 +991,20 @@ error:
  * xilinx_dpdma_chan_enable - Enable the channel
  * @chan: DPDMA channel
  *
- * Enable the channel.
+ * Enable the channel. Set the QoS values for video class.
  */
 static inline void xilinx_dpdma_chan_enable(struct xilinx_dpdma_chan *chan)
 {
-	dpdma_set(chan->reg, XILINX_DPDMA_CH_CNTL, XILINX_DPDMA_CH_CNTL_ENABLE);
+	u32 reg;
+
+	reg = XILINX_DPDMA_CH_CNTL_ENABLE;
+	reg |= XILINX_DPDMA_CH_CNTL_QOS_VID_CLASS <<
+	       XILINX_DPDMA_CH_CNTL_QOS_DSCR_WR_SHIFT;
+	reg |= XILINX_DPDMA_CH_CNTL_QOS_VID_CLASS <<
+	       XILINX_DPDMA_CH_CNTL_QOS_DSCR_RD_SHIFT;
+	reg |= XILINX_DPDMA_CH_CNTL_QOS_VID_CLASS <<
+	       XILINX_DPDMA_CH_CNTL_QOS_DATA_RD_SHIFT;
+	dpdma_set(chan->reg, XILINX_DPDMA_CH_CNTL, reg);
 }
 
 /**
