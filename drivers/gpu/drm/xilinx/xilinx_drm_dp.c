@@ -113,18 +113,8 @@
 #define XILINX_DP_TX_INTR_VBLANK_START			(1 << 13)
 #define XILINX_DP_TX_INTR_PIXEL0_MATCH			(1 << 14)
 #define XILINX_DP_TX_INTR_PIXEL1_MATCH			(1 << 15)
-#define XILINX_DP_TX_INTR_CHBUF5_UNDERFLW		(1 << 16)
-#define XILINX_DP_TX_INTR_CHBUF4_UNDERFLW		(1 << 17)
-#define XILINX_DP_TX_INTR_CHBUF3_UNDERFLW		(1 << 18)
-#define XILINX_DP_TX_INTR_CHBUF2_UNDERFLW		(1 << 19)
-#define XILINX_DP_TX_INTR_CHBUF1_UNDERFLW		(1 << 20)
-#define XILINX_DP_TX_INTR_CHBUF0_UNDERFLW		(1 << 21)
-#define XILINX_DP_TX_INTR_CHBUF5_OVERFLW		(1 << 22)
-#define XILINX_DP_TX_INTR_CHBUF4_OVERFLW		(1 << 23)
-#define XILINX_DP_TX_INTR_CHBUF3_OVERFLW		(1 << 24)
-#define XILINX_DP_TX_INTR_CHBUF2_OVERFLW		(1 << 25)
-#define XILINX_DP_TX_INTR_CHBUF1_OVERFLW		(1 << 26)
-#define XILINX_DP_TX_INTR_CHBUF0_OVERFLW		(1 << 27)
+#define XILINX_DP_TX_INTR_CHBUF_UNDERFLW_MASK		0x3f0000
+#define XILINX_DP_TX_INTR_CHBUF_OVERFLW_MASK		0xfc00000
 #define XILINX_DP_TX_INTR_CUST_TS_2			(1 << 28)
 #define XILINX_DP_TX_INTR_CUST_TS			(1 << 29)
 #define XILINX_DP_TX_INTR_EXT_VSYNC_TS			(1 << 30)
@@ -139,18 +129,8 @@
 							 XILINX_DP_TX_INTR_VBLANK_START | \
 							 XILINX_DP_TX_INTR_PIXEL0_MATCH | \
 							 XILINX_DP_TX_INTR_PIXEL1_MATCH | \
-							 XILINX_DP_TX_INTR_CHBUF5_UNDERFLW | \
-							 XILINX_DP_TX_INTR_CHBUF4_UNDERFLW | \
-							 XILINX_DP_TX_INTR_CHBUF3_UNDERFLW | \
-							 XILINX_DP_TX_INTR_CHBUF2_UNDERFLW | \
-							 XILINX_DP_TX_INTR_CHBUF1_UNDERFLW | \
-							 XILINX_DP_TX_INTR_CHBUF0_UNDERFLW | \
-							 XILINX_DP_TX_INTR_CHBUF5_OVERFLW | \
-							 XILINX_DP_TX_INTR_CHBUF4_OVERFLW | \
-							 XILINX_DP_TX_INTR_CHBUF3_OVERFLW | \
-							 XILINX_DP_TX_INTR_CHBUF2_OVERFLW | \
-							 XILINX_DP_TX_INTR_CHBUF1_OVERFLW | \
-							 XILINX_DP_TX_INTR_CHBUF0_OVERFLW | \
+							 XILINX_DP_TX_INTR_CHBUF_UNDERFLW_MASK | \
+							 XILINX_DP_TX_INTR_CHBUF_OVERFLW_MASK | \
 							 XILINX_DP_TX_INTR_CUST_TS_2 | \
 							 XILINX_DP_TX_INTR_CUST_TS | \
 							 XILINX_DP_TX_INTR_EXT_VSYNC_TS | \
@@ -1149,6 +1129,13 @@ static irqreturn_t xilinx_drm_dp_irq_handler(int irq, void *data)
 	status = xilinx_drm_readl(dp->iomem, reg);
 	if (!status)
 		return IRQ_NONE;
+
+	dev_dbg(dp->dev, "%s",
+		status & XILINX_DP_TX_INTR_CHBUF_UNDERFLW_MASK ?
+		"underflow interrupt\n" : "");
+	dev_dbg(dp->dev, "%s",
+		status & XILINX_DP_TX_INTR_CHBUF_OVERFLW_MASK ?
+		"overflow interrupt\n" : "");
 
 	xilinx_drm_writel(dp->iomem, reg, status);
 
