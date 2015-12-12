@@ -38,6 +38,7 @@
 #define XILINX_DP_TX_ENHANCED_FRAME_EN			0x8
 #define XILINX_DP_TX_TRAINING_PATTERN_SET		0xc
 #define XILINX_DP_TX_SCRAMBLING_DISABLE			0x14
+#define XILINX_DP_TX_DOWNSPREAD_CTL			0x18
 #define XILINX_DP_TX_SW_RESET				0x1c
 #define XILINX_DP_TX_SW_RESET_STREAM1			(1 << 0)
 #define XILINX_DP_TX_SW_RESET_STREAM2			(1 << 1)
@@ -667,6 +668,15 @@ static int xilinx_drm_dp_train(struct xilinx_drm_dp *dp)
 	if (enhanced) {
 		xilinx_drm_writel(dp->iomem, XILINX_DP_TX_ENHANCED_FRAME_EN, 1);
 		aux_lane_cnt |= DP_LANE_COUNT_ENHANCED_FRAME_EN;
+	}
+
+	if (dp->dpcd[3] & 0x1) {
+		xilinx_drm_writel(dp->iomem, XILINX_DP_TX_DOWNSPREAD_CTL, 1);
+		drm_dp_dpcd_writeb(&dp->aux, DP_DOWNSPREAD_CTRL,
+				   DP_SPREAD_AMP_0_5);
+	} else {
+		xilinx_drm_writel(dp->iomem, XILINX_DP_TX_DOWNSPREAD_CTL, 0);
+		drm_dp_dpcd_writeb(&dp->aux, DP_DOWNSPREAD_CTRL, 0);
 	}
 
 	ret = drm_dp_dpcd_writeb(&dp->aux, DP_LANE_COUNT_SET, aux_lane_cnt);
