@@ -64,9 +64,9 @@
 #include <linux/slab.h>
 
 /*---------------------  Static Definitions -------------------------*/
-//
-// Define module options
-//
+/*
+ * Define module options
+ */
 MODULE_AUTHOR("VIA Networking Technologies, Inc., <lyndonchen@vntek.com.tw>");
 MODULE_LICENSE("GPL");
 MODULE_DESCRIPTION("VIA Networking Solomon-A/B/G Wireless LAN Adapter Driver");
@@ -126,9 +126,9 @@ DEVICE_PARAM(LongRetryLimit, "long frame retry limits");
 
 DEVICE_PARAM(BasebandType, "baseband type");
 
-//
-// Static vars definitions
-//
+/*
+ * Static vars definitions
+ */
 static CHIP_INFO chip_info_table[] = {
 	{ VT3253,       "VIA Networking Solomon-A/B/G Wireless LAN Adapter ",
 	  256, 1,     DEVICE_FLAGS_IP_ALIGN|DEVICE_FLAGS_TX_ALIGN },
@@ -231,9 +231,9 @@ device_set_options(struct vnt_private *pDevice)
 	pr_debug(" byBBType= %d\n", (int)pDevice->byBBType);
 }
 
-//
-// Initialisation of MAC & BBP registers
-//
+/*
+ * Initialisation of MAC & BBP registers
+ */
 
 static void device_init_registers(struct vnt_private *pDevice)
 {
@@ -530,12 +530,12 @@ static bool device_init_rings(struct vnt_private *pDevice)
 	void *vir_pool;
 
 	/*allocate all RD/TD rings a single pool*/
-	vir_pool = pci_zalloc_consistent(pDevice->pcid,
+	vir_pool = dma_zalloc_coherent(&pDevice->pcid->dev,
 					 pDevice->sOpts.nRxDescs0 * sizeof(SRxDesc) +
 					 pDevice->sOpts.nRxDescs1 * sizeof(SRxDesc) +
 					 pDevice->sOpts.nTxDescs[0] * sizeof(STxDesc) +
 					 pDevice->sOpts.nTxDescs[1] * sizeof(STxDesc),
-					 &pDevice->pool_dma);
+					 &pDevice->pool_dma, GFP_ATOMIC);
 	if (vir_pool == NULL) {
 		dev_err(&pDevice->pcid->dev, "allocate desc dma memory failed\n");
 		return false;
@@ -549,16 +549,17 @@ static bool device_init_rings(struct vnt_private *pDevice)
 	pDevice->rd1_pool_dma = pDevice->rd0_pool_dma +
 		pDevice->sOpts.nRxDescs0 * sizeof(SRxDesc);
 
-	pDevice->tx0_bufs = pci_zalloc_consistent(pDevice->pcid,
+	pDevice->tx0_bufs = dma_zalloc_coherent(&pDevice->pcid->dev,
 						  pDevice->sOpts.nTxDescs[0] * PKT_BUF_SZ +
 						  pDevice->sOpts.nTxDescs[1] * PKT_BUF_SZ +
 						  CB_BEACON_BUF_SIZE +
 						  CB_MAX_BUF_SIZE,
-						  &pDevice->tx_bufs_dma0);
+						  &pDevice->tx_bufs_dma0,
+						  GFP_ATOMIC);
 	if (pDevice->tx0_bufs == NULL) {
 		dev_err(&pDevice->pcid->dev, "allocate buf dma memory failed\n");
 
-		pci_free_consistent(pDevice->pcid,
+		dma_free_coherent(&pDevice->pcid->dev,
 				    pDevice->sOpts.nRxDescs0 * sizeof(SRxDesc) +
 				    pDevice->sOpts.nRxDescs1 * sizeof(SRxDesc) +
 				    pDevice->sOpts.nTxDescs[0] * sizeof(STxDesc) +
@@ -574,7 +575,7 @@ static bool device_init_rings(struct vnt_private *pDevice)
 	pDevice->td1_pool_dma = pDevice->td0_pool_dma +
 		pDevice->sOpts.nTxDescs[0] * sizeof(STxDesc);
 
-	// vir_pool: pvoid type
+	/* vir_pool: pvoid type */
 	pDevice->apTD0Rings = vir_pool
 		+ pDevice->sOpts.nRxDescs0 * sizeof(SRxDesc)
 		+ pDevice->sOpts.nRxDescs1 * sizeof(SRxDesc);
@@ -604,7 +605,7 @@ static bool device_init_rings(struct vnt_private *pDevice)
 
 static void device_free_rings(struct vnt_private *pDevice)
 {
-	pci_free_consistent(pDevice->pcid,
+	dma_free_coherent(&pDevice->pcid->dev,
 			    pDevice->sOpts.nRxDescs0 * sizeof(SRxDesc) +
 			    pDevice->sOpts.nRxDescs1 * sizeof(SRxDesc) +
 			    pDevice->sOpts.nTxDescs[0] * sizeof(STxDesc) +
@@ -614,7 +615,7 @@ static void device_free_rings(struct vnt_private *pDevice)
 		);
 
 	if (pDevice->tx0_bufs)
-		pci_free_consistent(pDevice->pcid,
+		dma_free_coherent(&pDevice->pcid->dev,
 				    pDevice->sOpts.nTxDescs[0] * PKT_BUF_SZ +
 				    pDevice->sOpts.nTxDescs[1] * PKT_BUF_SZ +
 				    CB_BEACON_BUF_SIZE +
@@ -679,8 +680,8 @@ static void device_free_rd0_ring(struct vnt_private *pDevice)
 		PSRxDesc        pDesc = &(pDevice->aRD0Ring[i]);
 		PDEVICE_RD_INFO  pRDInfo = pDesc->pRDInfo;
 
-		pci_unmap_single(pDevice->pcid, pRDInfo->skb_dma,
-				 pDevice->rx_buf_sz, PCI_DMA_FROMDEVICE);
+		dma_unmap_single(&pDevice->pcid->dev, pRDInfo->skb_dma,
+				 pDevice->rx_buf_sz, DMA_FROM_DEVICE);
 
 		dev_kfree_skb(pRDInfo->skb);
 
@@ -696,8 +697,8 @@ static void device_free_rd1_ring(struct vnt_private *pDevice)
 		PSRxDesc        pDesc = &(pDevice->aRD1Ring[i]);
 		PDEVICE_RD_INFO  pRDInfo = pDesc->pRDInfo;
 
-		pci_unmap_single(pDevice->pcid, pRDInfo->skb_dma,
-				 pDevice->rx_buf_sz, PCI_DMA_FROMDEVICE);
+		dma_unmap_single(&pDevice->pcid->dev, pRDInfo->skb_dma,
+				 pDevice->rx_buf_sz, DMA_FROM_DEVICE);
 
 		dev_kfree_skb(pRDInfo->skb);
 
@@ -765,8 +766,8 @@ static void device_free_td0_ring(struct vnt_private *pDevice)
 		PDEVICE_TD_INFO  pTDInfo = pDesc->pTDInfo;
 
 		if (pTDInfo->skb_dma && (pTDInfo->skb_dma != pTDInfo->buf_dma))
-			pci_unmap_single(pDevice->pcid, pTDInfo->skb_dma,
-					 pTDInfo->skb->len, PCI_DMA_TODEVICE);
+			dma_unmap_single(&pDevice->pcid->dev, pTDInfo->skb_dma,
+					 pTDInfo->skb->len, DMA_TO_DEVICE);
 
 		if (pTDInfo->skb)
 			dev_kfree_skb(pTDInfo->skb);
@@ -784,8 +785,8 @@ static void device_free_td1_ring(struct vnt_private *pDevice)
 		PDEVICE_TD_INFO  pTDInfo = pDesc->pTDInfo;
 
 		if (pTDInfo->skb_dma && (pTDInfo->skb_dma != pTDInfo->buf_dma))
-			pci_unmap_single(pDevice->pcid, pTDInfo->skb_dma,
-					 pTDInfo->skb->len, PCI_DMA_TODEVICE);
+			dma_unmap_single(&pDevice->pcid->dev, pTDInfo->skb_dma,
+					 pTDInfo->skb->len, DMA_TO_DEVICE);
 
 		if (pTDInfo->skb)
 			dev_kfree_skb(pTDInfo->skb);
@@ -831,9 +832,9 @@ static bool device_alloc_rx_buf(struct vnt_private *pDevice, PSRxDesc pRD)
 	ASSERT(pRDInfo->skb);
 
 	pRDInfo->skb_dma =
-		pci_map_single(pDevice->pcid,
+		dma_map_single(&pDevice->pcid->dev,
 			       skb_put(pRDInfo->skb, skb_tailroom(pRDInfo->skb)),
-			       pDevice->rx_buf_sz, PCI_DMA_FROMDEVICE);
+			       pDevice->rx_buf_sz, DMA_FROM_DEVICE);
 
 	*((unsigned int *)&(pRD->m_rd0RD0)) = 0; /* FIX cast */
 
@@ -911,7 +912,11 @@ static int vnt_int_report_rate(struct vnt_private *priv,
 
 	if (!(tsr1 & TSR1_TERR)) {
 		info->status.rates[0].idx = idx;
-		info->flags |= IEEE80211_TX_STAT_ACK;
+
+		if (info->flags & IEEE80211_TX_CTL_NO_ACK)
+			info->flags |= IEEE80211_TX_STAT_NOACK_TRANSMITTED;
+		else
+			info->flags |= IEEE80211_TX_STAT_ACK;
 	}
 
 	return 0;
@@ -933,12 +938,9 @@ static int device_tx_srv(struct vnt_private *pDevice, unsigned int uIdx)
 		byTsr0 = pTD->m_td0TD0.byTSR0;
 		byTsr1 = pTD->m_td0TD0.byTSR1;
 
-		//Only the status of first TD in the chain is correct
+		/* Only the status of first TD in the chain is correct */
 		if (pTD->m_td1TD1.byTCR & TCR_STP) {
 			if ((pTD->pTDInfo->byFlags & TD_FLAGS_NETIF_SKB) != 0) {
-
-				vnt_int_report_rate(pDevice, pTD->pTDInfo, byTsr0, byTsr1);
-
 				if (!(byTsr1 & TSR1_TERR)) {
 					if (byTsr0 != 0) {
 						pr_debug(" Tx[%d] OK but has error. tsr1[%02X] tsr0[%02X]\n",
@@ -957,6 +959,9 @@ static int device_tx_srv(struct vnt_private *pDevice, unsigned int uIdx)
 						 (int)uIdx, byTsr1, byTsr0);
 				}
 			}
+
+			vnt_int_report_rate(pDevice, pTD->pTDInfo, byTsr0, byTsr1);
+
 			device_free_tx_buf(pDevice, pTD);
 			pDevice->iTDUsed[uIdx]--;
 		}
@@ -982,16 +987,14 @@ static void device_free_tx_buf(struct vnt_private *pDevice, PSTxDesc pDesc)
 	PDEVICE_TD_INFO  pTDInfo = pDesc->pTDInfo;
 	struct sk_buff *skb = pTDInfo->skb;
 
-	// pre-allocated buf_dma can't be unmapped.
+	/* pre-allocated buf_dma can't be unmapped. */
 	if (pTDInfo->skb_dma && (pTDInfo->skb_dma != pTDInfo->buf_dma)) {
-		pci_unmap_single(pDevice->pcid, pTDInfo->skb_dma, skb->len,
-				 PCI_DMA_TODEVICE);
+		dma_unmap_single(&pDevice->pcid->dev, pTDInfo->skb_dma,
+				 skb->len, DMA_TO_DEVICE);
 	}
 
-	if (pTDInfo->byFlags & TD_FLAGS_NETIF_SKB)
+	if (skb)
 		ieee80211_tx_status_irqsafe(pDevice->hw, skb);
-	else
-		dev_kfree_skb_irq(skb);
 
 	pTDInfo->skb_dma = 0;
 	pTDInfo->skb = NULL;
@@ -1074,7 +1077,7 @@ static  irqreturn_t  device_intr(int irq,  void *dev_instance)
 
 	spin_lock_irqsave(&pDevice->lock, flags);
 
-	//Make sure current page is 0
+	/* Make sure current page is 0 */
 	VNSvInPortB(pDevice->PortOffset + MAC_REG_PAGE1SEL, &byOrgPageSel);
 	if (byOrgPageSel == 1)
 		MACvSelectPage0(pDevice->PortOffset);
@@ -1082,10 +1085,12 @@ static  irqreturn_t  device_intr(int irq,  void *dev_instance)
 		byOrgPageSel = 0;
 
 	MACvReadMIBCounter(pDevice->PortOffset, &dwMIBCounter);
-	// TBD....
-	// Must do this after doing rx/tx, cause ISR bit is slow
-	// than RD/TD write back
-	// update ISR counter
+	/*
+	 * TBD....
+	 * Must do this after doing rx/tx, cause ISR bit is slow
+	 * than RD/TD write back
+	 * update ISR counter
+	 */
 	STAvUpdate802_11Counter(&pDevice->s802_11Counter, &pDevice->scStatistic, dwMIBCounter);
 	while (pDevice->dwIsr != 0) {
 		STAvUpdateIsrStatCounter(&pDevice->scStatistic, pDevice->dwIsr);
@@ -1201,14 +1206,6 @@ static int vnt_tx_packet(struct vnt_private *priv, struct sk_buff *skb)
 	if (dma_idx == TYPE_AC0DMA)
 		head_td->pTDInfo->byFlags = TD_FLAGS_NETIF_SKB;
 
-	priv->iTDUsed[dma_idx]++;
-
-	/* Take ownership */
-	wmb();
-	head_td->m_td0TD0.f1Owner = OWNED_BY_NIC;
-
-	/* get Next */
-	wmb();
 	priv->apCurrTD[dma_idx] = head_td->next;
 
 	spin_unlock_irqrestore(&priv->lock, flags);
@@ -1229,10 +1226,17 @@ static int vnt_tx_packet(struct vnt_private *priv, struct sk_buff *skb)
 
 	head_td->buff_addr = cpu_to_le32(head_td->pTDInfo->skb_dma);
 
+	/* Poll Transmit the adapter */
+	wmb();
+	head_td->m_td0TD0.f1Owner = OWNED_BY_NIC;
+	wmb(); /* second memory barrier */
+
 	if (head_td->pTDInfo->byFlags & TD_FLAGS_NETIF_SKB)
 		MACvTransmitAC0(priv->PortOffset);
 	else
 		MACvTransmit0(priv->PortOffset);
+
+	priv->iTDUsed[dma_idx]++;
 
 	spin_unlock_irqrestore(&priv->lock, flags);
 
@@ -1413,8 +1417,15 @@ static void vnt_bss_info_changed(struct ieee80211_hw *hw,
 
 	priv->current_aid = conf->aid;
 
-	if (changed & BSS_CHANGED_BSSID)
+	if (changed & BSS_CHANGED_BSSID) {
+		unsigned long flags;
+
+		spin_lock_irqsave(&priv->lock, flags);
+
 		MACvWriteBSSIDAddress(priv->PortOffset, (u8 *)conf->bssid);
+
+		spin_unlock_irqrestore(&priv->lock, flags);
+	}
 
 	if (changed & BSS_CHANGED_BASIC_RATES) {
 		priv->basic_rates = conf->basic_rates;
@@ -1474,7 +1485,7 @@ static void vnt_bss_info_changed(struct ieee80211_hw *hw,
 	if (changed & BSS_CHANGED_ASSOC && priv->op_mode != NL80211_IFTYPE_AP) {
 		if (conf->assoc) {
 			CARDbUpdateTSF(priv, conf->beacon_rate->hw_value,
-				       conf->sync_device_ts, conf->sync_tsf);
+				       conf->sync_tsf);
 
 			CARDbSetBeaconPeriod(priv, conf->beacon_int);
 

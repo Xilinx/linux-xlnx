@@ -118,7 +118,6 @@ enum ci_revision {
 	CI_REVISION_UNKNOWN = 99, /* Unknown Revision */
 };
 
-
 /**
  * struct ci_role_driver - host/gadget role driver
  * @start: start this role
@@ -163,7 +162,10 @@ struct hw_bank {
  * @role: current role
  * @is_otg: if the device is otg-capable
  * @fsm: otg finite state machine
- * @fsm_timer: pointer to timer list of otg fsm
+ * @otg_fsm_hrtimer: hrtimer for otg fsm timers
+ * @hr_timeouts: time out list for active otg fsm timers
+ * @enabled_otg_timer_bits: bits of enabled otg timers
+ * @next_otg_timer: next nearest enabled timer to be expired
  * @work: work for role changing
  * @wq: workqueue thread
  * @qh_pool: allocation pool for queue heads
@@ -191,6 +193,10 @@ struct hw_bank {
  * @b_sess_valid_event: indicates there is a vbus event, and handled
  * at ci_otg_work
  * @imx28_write_fix: Freescale imx28 needs swp instruction for writing
+ * @supports_runtime_pm: if runtime pm is supported
+ * @in_lpm: if the core in low power mode
+ * @wakeup_int: if wakeup interrupt occur
+ * @rev: The revision number for controller
  */
 struct ci_hdrc {
 	struct device			*dev;
@@ -202,7 +208,10 @@ struct ci_hdrc {
 	bool				is_otg;
 	struct usb_otg			otg;
 	struct otg_fsm			fsm;
-	struct ci_otg_fsm_timer_list	*fsm_timer;
+	struct hrtimer			otg_fsm_hrtimer;
+	ktime_t				hr_timeouts[NUM_OTG_FSM_TIMERS];
+	unsigned			enabled_otg_timer_bits;
+	enum otg_fsm_timer		next_otg_timer;
 	struct work_struct		work;
 	struct workqueue_struct		*wq;
 
@@ -233,8 +242,10 @@ struct ci_hdrc {
 	bool				id_event;
 	bool				b_sess_valid_event;
 	bool				imx28_write_fix;
+	bool				supports_runtime_pm;
+	bool				in_lpm;
+	bool				wakeup_int;
 	enum ci_revision		rev;
-
 };
 
 static inline struct ci_role_driver *ci_role(struct ci_hdrc *ci)

@@ -237,7 +237,7 @@ EXPORT_SYMBOL_GPL(xvip_cleanup_resources);
 /**
  * xvip_enum_mbus_code - Enumerate the media format code
  * @subdev: V4L2 subdevice
- * @fh: V4L2 subdevice file handle
+ * @cfg: V4L2 subdev pad configuration
  * @code: returning media bus code
  *
  * Enumerate the media bus code of the subdevice. Return the corresponding
@@ -248,15 +248,22 @@ EXPORT_SYMBOL_GPL(xvip_cleanup_resources);
  * Return: 0 if the media bus code is found, or -EINVAL if the format index
  * is not valid.
  */
-int xvip_enum_mbus_code(struct v4l2_subdev *subdev, struct v4l2_subdev_fh *fh,
+int xvip_enum_mbus_code(struct v4l2_subdev *subdev,
+			struct v4l2_subdev_pad_config *cfg,
 			struct v4l2_subdev_mbus_code_enum *code)
 {
 	struct v4l2_mbus_framefmt *format;
 
+	/* Enumerating frame sizes based on the active configuration isn't
+	 * supported yet.
+	 */
+	if (code->which == V4L2_SUBDEV_FORMAT_ACTIVE)
+		return -EINVAL;
+
 	if (code->index)
 		return -EINVAL;
 
-	format = v4l2_subdev_get_try_format(fh, code->pad);
+	format = v4l2_subdev_get_try_format(subdev, cfg, code->pad);
 
 	code->code = format->code;
 
@@ -267,7 +274,7 @@ EXPORT_SYMBOL_GPL(xvip_enum_mbus_code);
 /**
  * xvip_enum_frame_size - Enumerate the media bus frame size
  * @subdev: V4L2 subdevice
- * @fh: V4L2 subdevice file handle
+ * @cfg: V4L2 subdev pad configuration
  * @fse: returning media bus frame size
  *
  * This function is a drop-in implementation of the subdev enum_frame_size pad
@@ -279,12 +286,19 @@ EXPORT_SYMBOL_GPL(xvip_enum_mbus_code);
  * Return: 0 if the media bus frame size is found, or -EINVAL
  * if the index or the code is not valid.
  */
-int xvip_enum_frame_size(struct v4l2_subdev *subdev, struct v4l2_subdev_fh *fh,
+int xvip_enum_frame_size(struct v4l2_subdev *subdev,
+			 struct v4l2_subdev_pad_config *cfg,
 			 struct v4l2_subdev_frame_size_enum *fse)
 {
 	struct v4l2_mbus_framefmt *format;
 
-	format = v4l2_subdev_get_try_format(fh, fse->pad);
+	/* Enumerating frame sizes based on the active configuration isn't
+	 * supported yet.
+	 */
+	if (fse->which == V4L2_SUBDEV_FORMAT_ACTIVE)
+		return -EINVAL;
+
+	format = v4l2_subdev_get_try_format(subdev, cfg, fse->pad);
 
 	if (fse->index || fse->code != format->code)
 		return -EINVAL;

@@ -405,6 +405,7 @@ enum rproc_crash_type {
  * @table_ptr: pointer to the resource table in effect
  * @cached_table: copy of the resource table
  * @table_csum: checksum of the resource table
+ * @has_iommu: flag to indicate if remote processor is behind an MMU
  */
 struct rproc {
 	struct klist_node node;
@@ -436,6 +437,7 @@ struct rproc {
 	struct resource_table *table_ptr;
 	struct resource_table *cached_table;
 	u32 table_csum;
+	bool has_iommu;
 };
 
 /* we currently support only two vrings per rvdev */

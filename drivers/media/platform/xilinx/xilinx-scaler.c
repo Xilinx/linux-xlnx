@@ -50,6 +50,19 @@
 #define XSCALER_COEF_DATA_IN			0x0134
 #define XSCALER_COEF_DATA_IN_SHIFT		16
 
+/* Fixed point operations */
+#define FRAC_N	8
+
+static inline s16 fixp_new(s16 a)
+{
+	return a << FRAC_N;
+}
+
+static inline s16 fixp_mult(s16 a, s16 b)
+{
+	return ((s32)(a * b)) >> FRAC_N;
+}
+
 /**
  * struct xscaler_device - Xilinx Scaler device structure
  * @xvip: Xilinx Video IP device
@@ -97,12 +110,12 @@ static inline struct xscaler_device *to_scaler(struct v4l2_subdev *subdev)
  *
  * Return: the coefficient value in fixed point format.
  */
-static fixp_t lanczos(fixp_t x, fixp_t a)
+static s16 lanczos(s16 x, s16 a)
 {
-	fixp_t pi;
-	fixp_t numerator;
-	fixp_t denominator;
-	fixp_t temp;
+	s16 pi;
+	s16 numerator;
+	s16 denominator;
+	s16 temp;
 
 	if (x < -a || x > a)
 		return 0;
@@ -118,14 +131,14 @@ static fixp_t lanczos(fixp_t x, fixp_t a)
 
 	/* sin(pi * x) */
 	temp = fixp_mult(fixp_new(180), x);
-	temp = fixp_sin(temp >> FRAC_N);
+	temp = fixp_sin16(temp >> FRAC_N);
 
 	/* a * sin(pi * x) */
 	numerator = fixp_mult(temp , a);
 
 	/* sin(pi * x / a) */
 	temp = (fixp_mult(fixp_new(180), x) << FRAC_N) / a;
-	temp = fixp_sin(temp >> FRAC_N);
+	temp = fixp_sin16(temp >> FRAC_N);
 
 	/* a * sin(pi * x) * sin(pi * x / a) */
 	numerator = fixp_mult(temp, numerator);
@@ -152,8 +165,8 @@ static fixp_t lanczos(fixp_t x, fixp_t a)
  */
 static int xscaler_set_coefs(struct xscaler_device *xscaler, s16 taps)
 {
-	fixp_t *coef;
-	fixp_t dy;
+	s16 *coef;
+	s16 dy;
 	u32 coef_val;
 	u16 phases = xscaler->max_num_phases;
 	u16 i;
@@ -164,7 +177,7 @@ static int xscaler_set_coefs(struct xscaler_device *xscaler, s16 taps)
 		return -ENOMEM;
 
 	for (i = 0; i < phases; i++) {
-		fixp_t sum = 0;
+		s16 sum = 0;
 
 		dy = ((fixp_new(i) << FRAC_N) / fixp_new(phases));
 
@@ -269,12 +282,12 @@ static int xscaler_s_stream(struct v4l2_subdev *subdev, int enable)
  */
 
 static int xscaler_enum_frame_size(struct v4l2_subdev *subdev,
-				   struct v4l2_subdev_fh *fh,
+				   struct v4l2_subdev_pad_config *cfg,
 				   struct v4l2_subdev_frame_size_enum *fse)
 {
 	struct v4l2_mbus_framefmt *format;
 
-	format = v4l2_subdev_get_try_format(fh, fse->pad);
+	format = v4l2_subdev_get_try_format(subdev, cfg, fse->pad);
 
 	if (fse->index || fse->code != format->code)
 		return -EINVAL;
@@ -289,12 +302,13 @@ static int xscaler_enum_frame_size(struct v4l2_subdev *subdev,
 
 static struct v4l2_mbus_framefmt *
 __xscaler_get_pad_format(struct xscaler_device *xscaler,
-			 struct v4l2_subdev_fh *fh,
+			 struct v4l2_subdev_pad_config *cfg,
 			 unsigned int pad, u32 which)
 {
 	switch (which) {
 	case V4L2_SUBDEV_FORMAT_TRY:
-		return v4l2_subdev_get_try_format(fh, pad);
+		return v4l2_subdev_get_try_format(&xscaler->xvip.subdev, cfg,
+						  pad);
 	case V4L2_SUBDEV_FORMAT_ACTIVE:
 		return &xscaler->formats[pad];
 	default:
@@ -302,13 +316,14 @@ __xscaler_get_pad_format(struct xscaler_device *xscaler,
 	}
 }
 
-static struct v4l2_rect *
-__xscaler_get_crop(struct xscaler_device *xscaler, struct v4l2_subdev_fh *fh,
-		   u32 which)
+static struct v4l2_rect *__xscaler_get_crop(struct xscaler_device *xscaler,
+					    struct v4l2_subdev_pad_config *cfg,
+					    u32 which)
 {
 	switch (which) {
 	case V4L2_SUBDEV_FORMAT_TRY:
-		return v4l2_subdev_get_try_crop(fh, XVIP_PAD_SINK);
+		return v4l2_subdev_get_try_crop(&xscaler->xvip.subdev, cfg,
+						XVIP_PAD_SINK);
 	case V4L2_SUBDEV_FORMAT_ACTIVE:
 		return &xscaler->crop;
 	default:
@@ -317,12 +332,12 @@ __xscaler_get_crop(struct xscaler_device *xscaler, struct v4l2_subdev_fh *fh,
 }
 
 static int xscaler_get_format(struct v4l2_subdev *subdev,
-			      struct v4l2_subdev_fh *fh,
+			      struct v4l2_subdev_pad_config *cfg,
 			      struct v4l2_subdev_format *fmt)
 {
 	struct xscaler_device *xscaler = to_scaler(subdev);
 
-	fmt->format = *__xscaler_get_pad_format(xscaler, fh, fmt->pad,
+	fmt->format = *__xscaler_get_pad_format(xscaler, cfg, fmt->pad,
 						fmt->which);
 
 	return 0;
@@ -341,25 +356,25 @@ static void xscaler_try_crop(const struct v4l2_mbus_framefmt *sink,
 }
 
 static int xscaler_set_format(struct v4l2_subdev *subdev,
-			      struct v4l2_subdev_fh *fh,
+			      struct v4l2_subdev_pad_config *cfg,
 			      struct v4l2_subdev_format *fmt)
 {
 	struct xscaler_device *xscaler = to_scaler(subdev);
-	struct v4l2_mbus_framefmt *__format;
+	struct v4l2_mbus_framefmt *format;
 	struct v4l2_rect *crop;
 
-	__format = __xscaler_get_pad_format(xscaler, fh, fmt->pad, fmt->which);
+	format = __xscaler_get_pad_format(xscaler, cfg, fmt->pad, fmt->which);
 
-	__format->width = clamp_t(unsigned int, fmt->format.width,
+	format->width = clamp_t(unsigned int, fmt->format.width,
 				  XSCALER_MIN_WIDTH, XSCALER_MAX_WIDTH);
-	__format->height = clamp_t(unsigned int, fmt->format.height,
+	format->height = clamp_t(unsigned int, fmt->format.height,
 				   XSCALER_MIN_HEIGHT, XSCALER_MAX_HEIGHT);
 
-	fmt->format = *__format;
+	fmt->format = *format;
 
 	if (fmt->pad == XVIP_PAD_SINK) {
 		/* Set the crop rectangle to the full frame */
-		crop = __xscaler_get_crop(xscaler, fh, fmt->which);
+		crop = __xscaler_get_crop(xscaler, cfg, fmt->which);
 		crop->left = 0;
 		crop->top = 0;
 		crop->width = fmt->format.width;
@@ -370,7 +385,7 @@ static int xscaler_set_format(struct v4l2_subdev *subdev,
 }
 
 static int xscaler_get_selection(struct v4l2_subdev *subdev,
-				 struct v4l2_subdev_fh *fh,
+				 struct v4l2_subdev_pad_config *cfg,
 				 struct v4l2_subdev_selection *sel)
 {
 	struct xscaler_device *xscaler = to_scaler(subdev);
@@ -381,7 +396,7 @@ static int xscaler_get_selection(struct v4l2_subdev *subdev,
 
 	switch (sel->target) {
 	case V4L2_SEL_TGT_CROP_BOUNDS:
-		format = __xscaler_get_pad_format(xscaler, fh, XVIP_PAD_SINK,
+		format = __xscaler_get_pad_format(xscaler, cfg, XVIP_PAD_SINK,
 						  sel->which);
 		sel->r.left = 0;
 		sel->r.top = 0;
@@ -389,7 +404,7 @@ static int xscaler_get_selection(struct v4l2_subdev *subdev,
 		sel->r.height = format->height;
 		return 0;
 	case V4L2_SEL_TGT_CROP:
-		sel->r = *__xscaler_get_crop(xscaler, fh, sel->which);
+		sel->r = *__xscaler_get_crop(xscaler, cfg, sel->which);
 		return 0;
 	default:
 		return -EINVAL;
@@ -397,7 +412,7 @@ static int xscaler_get_selection(struct v4l2_subdev *subdev,
 }
 
 static int xscaler_set_selection(struct v4l2_subdev *subdev,
-				 struct v4l2_subdev_fh *fh,
+				 struct v4l2_subdev_pad_config *cfg,
 				 struct v4l2_subdev_selection *sel)
 {
 	struct xscaler_device *xscaler = to_scaler(subdev);
@@ -406,10 +421,10 @@ static int xscaler_set_selection(struct v4l2_subdev *subdev,
 	if ((sel->target != V4L2_SEL_TGT_CROP) || (sel->pad != XVIP_PAD_SINK))
 		return -EINVAL;
 
-	format = __xscaler_get_pad_format(xscaler, fh, XVIP_PAD_SINK,
+	format = __xscaler_get_pad_format(xscaler, cfg, XVIP_PAD_SINK,
 					  sel->which);
 	xscaler_try_crop(format, &sel->r);
-	*__xscaler_get_crop(xscaler, fh, sel->which) = sel->r;
+	*__xscaler_get_crop(xscaler, cfg, sel->which) = sel->r;
 
 	return 0;
 }
@@ -421,14 +436,14 @@ static int xscaler_set_selection(struct v4l2_subdev *subdev,
 static int xscaler_open(struct v4l2_subdev *subdev, struct v4l2_subdev_fh *fh)
 {
 	struct xscaler_device *xscaler = to_scaler(subdev);
-	struct v4l2_mbus_framefmt *__format;
+	struct v4l2_mbus_framefmt *format;
 
 	/* Initialize with default formats */
-	__format = v4l2_subdev_get_try_format(fh, XVIP_PAD_SINK);
-	*__format = xscaler->default_formats[XVIP_PAD_SINK];
+	format = v4l2_subdev_get_try_format(subdev, fh->pad, XVIP_PAD_SINK);
+	*format = xscaler->default_formats[XVIP_PAD_SINK];
 
-	__format = v4l2_subdev_get_try_format(fh, XVIP_PAD_SOURCE);
-	*__format = xscaler->default_formats[XVIP_PAD_SOURCE];
+	format = v4l2_subdev_get_try_format(subdev, fh->pad, XVIP_PAD_SOURCE);
+	*format = xscaler->default_formats[XVIP_PAD_SOURCE];
 
 	return 0;
 }

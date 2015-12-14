@@ -12,7 +12,7 @@
  * published by the Free Software Foundation.
  */
 
-#include <linux/amba/xilinx_dma.h>
+#include <linux/dma/xilinx_dma.h>
 #include <linux/lcm.h>
 #include <linux/list.h>
 #include <linux/module.h>
@@ -335,6 +335,7 @@ static void xvip_dma_complete(void *param)
 	list_del(&buf->queue);
 	spin_unlock(&dma->queued_lock);
 
+	buf->buf.v4l2_buf.field = V4L2_FIELD_NONE;
 	buf->buf.v4l2_buf.sequence = dma->sequence++;
 	v4l2_get_timestamp(&buf->buf.v4l2_buf.timestamp);
 	vb2_set_plane_payload(&buf->buf, 0, dma->format.sizeimage);

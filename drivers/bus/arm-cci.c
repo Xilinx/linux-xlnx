@@ -619,6 +619,25 @@ static ssize_t cci_pmu_event_show(struct device *dev,
 					 (unsigned long)eattr->var);
 }
 
+static int probe_cci_revision(void)
+{
+	int rev;
+	rev = readl_relaxed(cci_ctrl_base + CCI_PID2) & CCI_PID2_REV_MASK;
+	rev >>= CCI_PID2_REV_SHIFT;
+
+	if (rev < CCI_REV_R1_PX)
+		return CCI_REV_R0;
+	else
+		return CCI_REV_R1;
+}
+
+static const struct cci_pmu_model *probe_cci_model(struct platform_device *pdev)
+{
+	if (platform_has_secure_cci_access())
+		return &cci_pmu_models[probe_cci_revision()];
+	return NULL;
+}
+
 static int pmu_is_valid_counter(struct cci_pmu *cci_pmu, int idx)
 {
 	return 0 <= idx && idx <= CCI_PMU_CNTR_LAST(cci_pmu);
@@ -1404,6 +1423,35 @@ static struct cci_pmu_model cci_pmu_models[] = {
 #endif
 };
 
+static struct cci_pmu_model cci_pmu_models[] = {
+	[CCI_REV_R0] = {
+		.name = "CCI_400",
+		.event_ranges = {
+			[CCI_IF_SLAVE] = {
+				CCI_REV_R0_SLAVE_PORT_MIN_EV,
+				CCI_REV_R0_SLAVE_PORT_MAX_EV,
+			},
+			[CCI_IF_MASTER] = {
+				CCI_REV_R0_MASTER_PORT_MIN_EV,
+				CCI_REV_R0_MASTER_PORT_MAX_EV,
+			},
+		},
+	},
+	[CCI_REV_R1] = {
+		.name = "CCI_400_r1",
+		.event_ranges = {
+			[CCI_IF_SLAVE] = {
+				CCI_REV_R1_SLAVE_PORT_MIN_EV,
+				CCI_REV_R1_SLAVE_PORT_MAX_EV,
+			},
+			[CCI_IF_MASTER] = {
+				CCI_REV_R1_MASTER_PORT_MIN_EV,
+				CCI_REV_R1_MASTER_PORT_MAX_EV,
+			},
+		},
+	},
+};
+
 static const struct of_device_id arm_cci_pmu_matches[] = {
 #ifdef CONFIG_ARM_CCI400_PMU
 	{
@@ -1500,11 +1548,19 @@ static int cci_pmu_probe(struct platform_device *pdev)
 	struct resource *res;
 	struct cci_pmu *cci_pmu;
 	int i, ret, irq;
+	const struct cci_pmu_model *model;
+
+	model = get_cci_model(pdev);
+	if (!model) {
+		dev_warn(&pdev->dev, "CCI PMU version not supported\n");
+		return -ENODEV;
+	}
 
 	cci_pmu = cci_pmu_alloc(pdev);
 	if (IS_ERR(cci_pmu))
 		return PTR_ERR(cci_pmu);
 
+	pmu->model = model;
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	cci_pmu->base = devm_ioremap_resource(&pdev->dev, res);
 	if (IS_ERR(cci_pmu->base))

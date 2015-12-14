@@ -139,7 +139,7 @@ config USB_ISP1301
 
 config USB_MSM_OTG
 	tristate "Qualcomm on-chip USB OTG controller support"
-	depends on (USB || USB_GADGET) && (ARCH_MSM || ARCH_QCOM || COMPILE_TEST)
+	depends on (USB || USB_GADGET) && (ARCH_QCOM || COMPILE_TEST)
 	depends on RESET_CONTROLLER
 	select USB_PHY
 	help
@@ -210,7 +210,6 @@ config USB_ULPI
 
 config USB_ULPI_VIEWPORT
 	bool
-	depends on USB_ULPI
 	help
 	  Provides read/write operations to the ULPI phy register set for
 	  controllers with a viewport register (e.g. Chipidea/ARC controllers).

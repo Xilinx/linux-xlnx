@@ -18,7 +18,7 @@
  * (at your option) any later version.
  */
 
-#include <linux/amba/xilinx_dma.h>
+#include <linux/dma/xilinx_dma.h>
 #include <linux/bitops.h>
 #include <linux/init.h>
 #include <linux/interrupt.h>

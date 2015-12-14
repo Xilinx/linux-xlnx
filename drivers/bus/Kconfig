@@ -36,7 +36,6 @@ config ARM_CCI400_PORT_CTRL
 
 config ARM_CCI500_PMU
 	bool "ARM CCI500 PMU support"
-	default y
 	depends on (ARM && CPU_V7) || ARM64
 	depends on PERF_EVENTS
 	select ARM_CCI_PMU
@@ -72,12 +71,32 @@ config IMX_WEIM
 	  The WEIM(Wireless External Interface Module) works like a bus.
 	  You can attach many different devices on it, such as NOR, onenand.
 
+config MIPS_CDMM
+	bool "MIPS Common Device Memory Map (CDMM) Driver"
+	depends on CPU_MIPSR2
+	help
+	  Driver needed for the MIPS Common Device Memory Map bus in MIPS
+	  cores. This bus is for per-CPU tightly coupled devices such as the
+	  Fast Debug Channel (FDC).
+
+	  For this to work, either your bootloader needs to enable the CDMM
+	  region at an unused physical address on the boot CPU, or else your
+	  platform code needs to implement mips_cdmm_phys_base() (see
+	  asm/cdmm.h).
+
 config MVEBU_MBUS
 	bool
 	depends on PLAT_ORION
 	help
 	  Driver needed for the MBus configuration on Marvell EBU SoCs
 	  (Kirkwood, Dove, Orion5x, MV78XX0 and Armada 370/XP).
+
+config OMAP_INTERCONNECT
+	tristate "OMAP INTERCONNECT DRIVER"
+	depends on ARCH_OMAP2PLUS
+
+	help
+	  Driver to enable OMAP interconnect error handling driver.
 
 config OMAP_OCP2SCP
 	tristate "OMAP OCP2SCP DRIVER"
@@ -88,12 +107,18 @@ config OMAP_OCP2SCP
 	  OCP2SCP and in OMAP5, both USB PHY and SATA PHY is connected via
 	  OCP2SCP.
 
-config OMAP_INTERCONNECT
-	tristate "OMAP INTERCONNECT DRIVER"
-	depends on ARCH_OMAP2PLUS
-
+config SIMPLE_PM_BUS
+	bool "Simple Power-Managed Bus Driver"
+	depends on OF && PM
+	depends on ARCH_SHMOBILE || COMPILE_TEST
 	help
-	  Driver to enable OMAP interconnect error handling driver.
+	  Driver for transparent busses that don't need a real driver, but
+	  where the bus controller is part of a PM domain, or under the control
+	  of a functional clock, and thus relies on runtime PM for managing
+	  this PM domain and/or clock.
+	  An example of such a bus controller is the Renesas Bus State
+	  Controller (BSC, sometimes called "LBSC within Bus Bridge", or
+	  "External Bus Interface") as found on several Renesas ARM SoCs.
 
 config VEXPRESS_CONFIG
 	bool "Versatile Express configuration bus"
