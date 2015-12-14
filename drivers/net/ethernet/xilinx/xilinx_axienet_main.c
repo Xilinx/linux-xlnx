@@ -315,7 +315,7 @@ static void axienet_set_mac_address(struct net_device *ndev, void *address)
 	if (!is_valid_ether_addr(ndev->dev_addr))
 		eth_random_addr(ndev->dev_addr);
 
-	if (lp->is_10Gmac || lp->eth_hasnobuf)
+	if (lp->is_10Gmac)
 		return;
 
 	/* Set up unicast MAC address filter set its mac address */
@@ -514,7 +514,7 @@ static void axienet_device_reset(struct net_device *ndev)
 	axienet_status &= ~XAE_RCW1_RX_MASK;
 	axienet_iow(lp, XAE_RCW1_OFFSET, axienet_status);
 
-	if (!lp->is_10Gmac || lp->eth_hasnobuf) {
+	if (!lp->is_10Gmac && !lp->eth_hasnobuf) {
 		axienet_status = axienet_ior(lp, XAE_IP_OFFSET);
 		if (axienet_status & XAE_INT_RXRJECT_MASK)
 			axienet_iow(lp, XAE_IS_OFFSET, XAE_INT_RXRJECT_MASK);
@@ -847,7 +847,8 @@ static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 		}
 	}
 #endif
-	if (skb->ip_summed == CHECKSUM_PARTIAL && !lp->is_10Gmac) {
+	if (skb->ip_summed == CHECKSUM_PARTIAL && !lp->is_10Gmac &&
+		!lp->eth_hasnobuf) {
 		if (lp->features & XAE_FEATURE_FULL_TX_CSUM) {
 			/* Tx Full Checksum Offload Enabled */
 			cur_p->app0 |= 2;
@@ -858,7 +859,8 @@ static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 			cur_p->app0 |= 1;
 			cur_p->app1 = (csum_start_off << 16) | csum_index_off;
 		}
-	} else if (skb->ip_summed == CHECKSUM_UNNECESSARY && !lp->is_10Gmac) {
+	} else if (skb->ip_summed == CHECKSUM_UNNECESSARY && !lp->is_10Gmac &&
+		!lp->eth_hasnobuf) {
 		cur_p->app0 |= 2; /* Tx Full Checksum Offload Enabled */
 	}
 
@@ -966,7 +968,8 @@ static int axienet_recv(struct net_device *ndev, int budget)
 		skb->ip_summed = CHECKSUM_NONE;
 
 		/* if we're doing Rx csum offload, set it up */
-		if (lp->features & XAE_FEATURE_FULL_RX_CSUM && !lp->is_10Gmac) {
+		if (lp->features & XAE_FEATURE_FULL_RX_CSUM &&
+			!lp->is_10Gmac && !lp->eth_hasnobuf) {
 			csumstatus = (cur_p->app2 &
 				      XAE_FULL_CSUM_STATUS_MASK) >> 3;
 			if ((csumstatus == XAE_IP_TCP_CSUM_VALIDATED) ||
@@ -975,7 +978,8 @@ static int axienet_recv(struct net_device *ndev, int budget)
 			}
 		} else if ((lp->features & XAE_FEATURE_PARTIAL_RX_CSUM) != 0 &&
 			   skb->protocol == htons(ETH_P_IP) &&
-			   skb->len > 64 && !lp->is_10Gmac) {
+			   skb->len > 64 && !lp->is_10Gmac &&
+			   !lp->eth_hasnobuf) {
 			skb->csum = be32_to_cpu(cur_p->app3 & 0xFFFF);
 			skb->ip_summed = CHECKSUM_COMPLETE;
 		}
@@ -1942,7 +1946,7 @@ static void axienet_dma_err_handler(unsigned long data)
 	axienet_status &= ~XAE_RCW1_RX_MASK;
 	axienet_iow(lp, XAE_RCW1_OFFSET, axienet_status);
 
-	if (!lp->is_10Gmac || !lp->eth_hasnobuf) {
+	if (!lp->is_10Gmac && !lp->eth_hasnobuf) {
 		axienet_status = axienet_ior(lp, XAE_IP_OFFSET);
 		if (axienet_status & XAE_INT_RXRJECT_MASK)
 			axienet_iow(lp, XAE_IS_OFFSET, XAE_INT_RXRJECT_MASK);
