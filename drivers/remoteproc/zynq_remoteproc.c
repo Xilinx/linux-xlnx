@@ -78,7 +78,6 @@ static int zynq_rproc_start(struct rproc *rproc)
 {
 	struct device *dev = rproc->dev.parent;
 	struct platform_device *pdev = to_platform_device(dev);
-	struct zynq_rproc_pdata *local = platform_get_drvdata(pdev);
 	int ret;
 
 	dev_dbg(dev, "%s\n", __func__);
