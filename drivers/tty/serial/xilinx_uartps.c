@@ -270,47 +270,45 @@ static void cdns_uart_handle_rx(void *dev_id, unsigned int isrstatus)
 		isrstatus &= port->read_status_mask;
 		isrstatus &= ~port->ignore_status_mask;
 
-		if ((isrstatus & CDNS_UART_IXR_TOUT) ||
-		    (isrstatus & CDNS_UART_IXR_RXTRIG)) {
-			if (data &&
-			    (port->read_status_mask & CDNS_UART_IXR_BRK)) {
-				port->read_status_mask &= ~CDNS_UART_IXR_BRK;
-				port->icount.brk++;
-				if (uart_handle_break(port))
-					continue;
-			}
+		if (data &&
+		    (port->read_status_mask & CDNS_UART_IXR_BRK)) {
+			port->read_status_mask &= ~CDNS_UART_IXR_BRK;
+			port->icount.brk++;
+			if (uart_handle_break(port))
+				continue;
+		}
 
 #ifdef SUPPORT_SYSRQ
-			/*
-			 * uart_handle_sysrq_char() doesn't work if
-			 * spinlocked, for some reason
-			 */
-			 if (port->sysrq) {
-				spin_unlock(&port->lock);
-				if (uart_handle_sysrq_char(port,
-							(unsigned char)data)) {
-					spin_lock(&port->lock);
-					continue;
-				}
+		/*
+		 * uart_handle_sysrq_char() doesn't work if
+		 * spinlocked, for some reason
+		 */
+		 if (port->sysrq) {
+			spin_unlock(&port->lock);
+			if (uart_handle_sysrq_char(port,
+						(unsigned char)data)) {
 				spin_lock(&port->lock);
+				continue;
 			}
-#endif
-			if (isrstatus & CDNS_UART_IXR_PARITY) {
-				port->icount.parity++;
-				status = TTY_PARITY;
-			}
-			if ((isrstatus & CDNS_UART_IXR_FRAMING) &&
-			    !framerrprocessed) {
-				port->icount.frame++;
-				status = TTY_FRAME;
-			}
-			if (isrstatus & CDNS_UART_IXR_OVERRUN) {
-				port->icount.overrun++;
-				tty_insert_flip_char(&port->state->port, 0,
-						     TTY_OVERRUN);
-			}
-			tty_insert_flip_char(&port->state->port, data, status);
+			spin_lock(&port->lock);
 		}
+#endif
+		if (isrstatus & CDNS_UART_IXR_PARITY) {
+			port->icount.parity++;
+			status = TTY_PARITY;
+		}
+		if ((isrstatus & CDNS_UART_IXR_FRAMING) &&
+		    !framerrprocessed) {
+			port->icount.frame++;
+			status = TTY_FRAME;
+		}
+		if (isrstatus & CDNS_UART_IXR_OVERRUN) {
+			port->icount.overrun++;
+			tty_insert_flip_char(&port->state->port, 0,
+					     TTY_OVERRUN);
+		}
+		tty_insert_flip_char(&port->state->port, data, status);
+		isrstatus = 0;
 	}
 	spin_unlock(&port->lock);
 	tty_flip_buffer_push(&port->state->port);
