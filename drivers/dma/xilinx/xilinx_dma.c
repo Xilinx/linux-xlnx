@@ -85,7 +85,7 @@
 #define XILINX_DMA_NUM_APP_WORDS	5
 
 #define xilinx_dma_poll_timeout(chan, reg, val, cond, delay_us, timeout_us) \
-	readl_poll_timeout(chan->xdev->regs + chan->ctrl_offset + reg, val, \
+	readl_poll_timeout_atomic(chan->xdev->regs + chan->ctrl_offset + reg, val, \
 			   cond, delay_us, timeout_us)
 
 /**
