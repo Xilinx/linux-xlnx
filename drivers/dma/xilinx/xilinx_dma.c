@@ -806,6 +806,7 @@ static int xilinx_dma_chan_reset(struct xilinx_dma_chan *chan)
 	}
 
 	chan->err = false;
+	chan->idle = true;
 
 	return err;
 }
@@ -1263,6 +1264,9 @@ static int xilinx_dma_terminate_all(struct dma_chan *dchan)
 
 	/* Halt the DMA engine */
 	xilinx_dma_halt(chan);
+
+	if (chan->err)
+		xilinx_dma_chan_reset(chan);
 
 	/* Remove and free all of the descriptors in the lists */
 	xilinx_dma_free_descriptors(chan);
