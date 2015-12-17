@@ -1107,8 +1107,23 @@ static int xilinx_dma_terminate_all(struct dma_chan *dchan)
 	if (chan->err)
 		xilinx_dma_chan_reset(chan);
 
-	/* Remove and free all of the descriptors in the lists */
-	xilinx_dma_free_descriptors(chan);
+	/* Gracefully clear any outstanding requests. */
+	{
+		unsigned long flags;
+		bool run_tasklet;
+		spin_lock_irqsave(&chan->lock, flags);
+
+		list_splice_tail_init(&chan->active_list,  &chan->done_list);
+		list_splice_tail_init(&chan->pending_list, &chan->done_list);
+
+		run_tasklet = !list_empty(&chan->done_list);
+
+		spin_unlock_irqrestore(&chan->lock, flags);
+
+		if ( run_tasklet )
+			tasklet_schedule(&chan->tasklet);
+	}
+
 	if (chan->cyclic) {
 		chan->ctrl_reg &= ~XILINX_DMA_CR_CYCLIC_BD_EN_MASK;
 		dma_ctrl_write(chan, XILINX_DMA_REG_CONTROL, chan->ctrl_reg);
