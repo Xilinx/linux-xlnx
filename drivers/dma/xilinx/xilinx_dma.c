@@ -833,7 +833,7 @@ static irqreturn_t xilinx_dma_irq_handler(int irq, void *data)
 	if (status & XILINX_DMA_XR_IRQ_ERROR_MASK) {
 		dev_err(chan->dev,
 			"Channel %p has errors %x cdr %x cdr msb %x tdr %x tdr msb %x",
-			chan, dma_ctrl_read(chan, XILINX_DMA_REG_STATUS),
+			chan, status,
 			dma_ctrl_read(chan, XILINX_DMA_REG_CURDESC),
 			dma_ctrl_read(chan, XILINX_DMA_REG_CURDESCMSB),
 			dma_ctrl_read(chan, XILINX_DMA_REG_TAILDESC),
