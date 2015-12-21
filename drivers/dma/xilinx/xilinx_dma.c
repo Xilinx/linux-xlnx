@@ -796,12 +796,11 @@ static int xilinx_dma_chan_reset(struct xilinx_dma_chan *chan)
 static irqreturn_t xilinx_dma_irq_handler(int irq, void *data)
 {
 	struct xilinx_dma_chan *chan = data;
+	unsigned long iflags;
 	u32 status;
 
 	/* Read the status and ack the interrupts. */
 	status = dma_ctrl_read(chan, XILINX_DMA_REG_STATUS);
-	if (!(status & XILINX_DMA_XR_IRQ_ALL_MASK))
-		return IRQ_NONE;
 
 	dma_ctrl_write(chan, XILINX_DMA_REG_STATUS,
 		       status & XILINX_DMA_XR_IRQ_ALL_MASK);
@@ -824,11 +823,9 @@ static irqreturn_t xilinx_dma_irq_handler(int irq, void *data)
 	if (status & XILINX_DMA_XR_IRQ_DELAY_MASK)
 		dev_dbg(chan->dev, "Inter-packet latency too long\n");
 
-	if (status & XILINX_DMA_XR_IRQ_IOC_MASK) {
-		spin_lock(&chan->lock);
-		xilinx_dma_complete_descriptor(chan);
-		spin_unlock(&chan->lock);
-	}
+	spin_lock_irqsave(&chan->lock, iflags);
+	xilinx_dma_complete_descriptor(chan);
+	spin_unlock_irqrestore(&chan->lock, iflags);
 
 	tasklet_schedule(&chan->tasklet);
 	return IRQ_HANDLED;
