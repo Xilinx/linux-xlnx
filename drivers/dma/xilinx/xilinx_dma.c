@@ -31,6 +31,7 @@
 #include <linux/of_platform.h>
 #include <linux/slab.h>
 #include <linux/dmapool.h>
+#include <linux/timer.h>
 
 #include "../dmaengine.h"
 
@@ -82,6 +83,10 @@
 #define XILINX_DMA_LOOP_COUNT		1000000
 
 #define XILINX_DMA_NUM_APP_WORDS	5
+
+/* Poll timeout */
+#define XILINX_DMA_POLL_TIMEOUT_JIFFIES \
+	( (HZ/100) > 0 ? (HZ/100) : 1 )
 
 #define xilinx_dma_poll_timeout(chan, reg, val, cond, delay_us, timeout_us) \
 	readl_poll_timeout_atomic(chan->xdev->regs + chan->ctrl_offset + reg, val, \
@@ -160,6 +165,8 @@ struct xilinx_dma_tx_descriptor {
  * @residue: Residue
  * @seg_pool: DMA Segment (Buffer Descriptor) Pool
  * @seg_reserve: Extra allocated segment.
+ * @poll_timer: Status polling timer.
+ * @removing: Removal-in-progress indicator.
  */
 struct xilinx_dma_chan {
 	struct xilinx_dma_device *xdev;
@@ -189,6 +196,15 @@ struct xilinx_dma_chan {
 	 * after reaching taildesc.  This way, it is possible to issue additional
 	 * transfers without halting and restarting the channel. */
 	struct xilinx_dma_tx_segment *seg_reserve;
+
+	/* Even with IrqThreshold set to 1, it is possible to "miss" the last
+	 * interrupt in a group of segments/Buffer Descriptors passed to the DMA.
+	 * When the DMA is active, if an interrupt has not been received for a
+	 * certain interval, automatically re-poll the status of the DMA and
+	 * process any completed descriptors. */
+	struct timer_list poll_timer;
+
+	atomic_t removing;
 };
 
 /**
@@ -786,17 +802,13 @@ static int xilinx_dma_chan_reset(struct xilinx_dma_chan *chan)
 	return err;
 }
 
-/**
- * xilinx_dma_irq_handler - DMA Interrupt handler
- * @irq: IRQ number
- * @data: Pointer to the Xilinx DMA channel structure
- *
- * Return: IRQ_HANDLED/IRQ_NONE
- */
-static irqreturn_t xilinx_dma_irq_handler(int irq, void *data)
+
+/* May run either as a direct result of an interrupt, or from kernel timer
+ * (atomic) context. */
+static int xilinx_dma_check_status( struct xilinx_dma_chan *chan )
 {
-	struct xilinx_dma_chan *chan = data;
 	unsigned long iflags;
+	bool schedule_poll = false;
 	u32 status;
 
 	/* Read the status and ack the interrupts. */
@@ -824,11 +836,41 @@ static irqreturn_t xilinx_dma_irq_handler(int irq, void *data)
 		dev_dbg(chan->dev, "Inter-packet latency too long\n");
 
 	spin_lock_irqsave(&chan->lock, iflags);
+
 	xilinx_dma_complete_descriptor(chan);
+
+	if ( !chan->idle )
+		schedule_poll = true;
+
 	spin_unlock_irqrestore(&chan->lock, iflags);
 
-	tasklet_schedule(&chan->tasklet);
+	if ( !atomic_read( &chan->removing ) )
+	{
+		tasklet_schedule(&chan->tasklet);
+		if (schedule_poll)
+			mod_timer( &chan->poll_timer, jiffies + XILINX_DMA_POLL_TIMEOUT_JIFFIES );
+	}
+
 	return IRQ_HANDLED;
+}
+
+static void xilinx_dma_poll_timer_handler(unsigned long data)
+{
+	struct xilinx_dma_chan *chan = (struct xilinx_dma_chan*)data;
+	xilinx_dma_check_status(chan);
+}
+
+/**
+ * xilinx_dma_irq_handler - DMA Interrupt handler
+ * @irq: IRQ number
+ * @data: Pointer to the Xilinx DMA channel structure
+ *
+ * Return: IRQ_HANDLED/IRQ_NONE
+ */
+static irqreturn_t xilinx_dma_irq_handler(int irq, void *data)
+{
+	struct xilinx_dma_chan *chan = data;
+	return xilinx_dma_check_status(chan);
 }
 
 /**
@@ -1230,10 +1272,14 @@ static void xilinx_dma_chan_remove(struct xilinx_dma_chan *chan)
 	chan->ctrl_reg &= ~XILINX_DMA_XR_IRQ_ALL_MASK;
 	dma_ctrl_write(chan, XILINX_DMA_REG_CONTROL, chan->ctrl_reg);
 
+	atomic_set( &chan->removing, 1 );
+
 	if (chan->irq > 0)
 		free_irq(chan->irq, chan);
 
 	tasklet_kill(&chan->tasklet);
+
+	del_timer_sync( &chan->poll_timer );
 
 	list_del(&chan->common.device_node);
 }
@@ -1264,6 +1310,7 @@ static int xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 	chan->dev = xdev->dev;
 	chan->xdev = xdev;
 	chan->has_sg = xdev->has_sg;
+	atomic_set( &chan->removing, 0 );
 
 	has_dre = of_property_read_bool(node, "xlnx,include-dre");
 
@@ -1322,6 +1369,9 @@ static int xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 	/* Initialize the tasklet */
 	tasklet_init(&chan->tasklet, xilinx_dma_do_tasklet,
 		     (unsigned long)chan);
+
+	/* Initialize polling timer */
+	setup_timer( &chan->poll_timer, &xilinx_dma_poll_timer_handler, (unsigned long) chan );
 
 	/* Add the channel to DMA device channel list */
 	list_add_tail(&chan->common.device_node, &xdev->common.channels);
