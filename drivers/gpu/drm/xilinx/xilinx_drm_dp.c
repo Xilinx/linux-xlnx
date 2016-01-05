@@ -802,10 +802,27 @@ static void xilinx_drm_dp_restore(struct drm_encoder *encoder)
 	/* no op */
 }
 
+#define XILINX_DP_SUB_TX_MIN_H_BACKPORCH	12
+
 static bool xilinx_drm_dp_mode_fixup(struct drm_encoder *encoder,
 				     const struct drm_display_mode *mode,
 				     struct drm_display_mode *adjusted_mode)
 {
+	struct xilinx_drm_dp *dp = to_dp(encoder);
+	int diff = mode->htotal - mode->hsync_end;
+
+	/*
+	 * ZynqMP DP requires horizontal backporch to be greater than 12.
+	 * This limitation may conflict with the sink device.
+	 */
+	if (dp->dp_sub && diff < XILINX_DP_SUB_TX_MIN_H_BACKPORCH) {
+		diff = XILINX_DP_SUB_TX_MIN_H_BACKPORCH - diff;
+		adjusted_mode->htotal += diff;
+		adjusted_mode->clock = adjusted_mode->vtotal *
+				       adjusted_mode->htotal *
+				       adjusted_mode->vrefresh / 1000;
+	}
+
 	return true;
 }
 
