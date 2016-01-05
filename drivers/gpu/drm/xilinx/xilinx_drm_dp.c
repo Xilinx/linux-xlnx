@@ -1145,12 +1145,10 @@ static irqreturn_t xilinx_drm_dp_irq_handler(int irq, void *data)
 	if (!status)
 		return IRQ_NONE;
 
-	dev_dbg(dp->dev, "%s",
-		status & XILINX_DP_TX_INTR_CHBUF_UNDERFLW_MASK ?
-		"underflow interrupt\n" : "");
-	dev_dbg(dp->dev, "%s",
-		status & XILINX_DP_TX_INTR_CHBUF_OVERFLW_MASK ?
-		"overflow interrupt\n" : "");
+	if (status & XILINX_DP_TX_INTR_CHBUF_UNDERFLW_MASK)
+		dev_dbg(dp->dev, "underflow interrupt\n");
+	if (status & XILINX_DP_TX_INTR_CHBUF_OVERFLW_MASK)
+		dev_dbg(dp->dev, "overflow interrupt\n");
 
 	xilinx_drm_writel(dp->iomem, reg, status);
 
