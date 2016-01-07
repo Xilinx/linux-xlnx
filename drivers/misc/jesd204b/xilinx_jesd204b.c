@@ -250,7 +250,7 @@ static int jesd204b_probe(struct platform_device *pdev)
 	struct clk *clk;
 	struct child_clk *clk_priv;
 	struct clk_init_data init;
-	unsigned frmcnt, bytecnt, subclass, val;
+	unsigned val;
 	int ret;
 
 	clk = devm_clk_get(&pdev->dev, NULL);
