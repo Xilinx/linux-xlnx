@@ -1179,7 +1179,8 @@ static int xemacps_ptp_enable(struct ptp_clock_info *ptp,
  * @ts: Timespec structure to hold the current time value
  * Return: Always returns zero
  */
-static int xemacps_ptp_gettime(struct ptp_clock_info *ptp, struct timespec *ts)
+static int xemacps_ptp_gettime(struct ptp_clock_info *ptp,
+				struct timespec64 *ts)
 {
 	unsigned long flags;
 	struct net_local *lp = container_of(ptp, struct net_local, ptp_caps);
@@ -1202,7 +1203,7 @@ static int xemacps_ptp_gettime(struct ptp_clock_info *ptp, struct timespec *ts)
  * Return: Always returns zero
  */
 static int xemacps_ptp_settime(struct ptp_clock_info *ptp,
-			       const struct timespec *ts)
+			       const struct timespec64 *ts)
 {
 	unsigned long flags;
 	struct net_local *lp = container_of(ptp, struct net_local, ptp_caps);
@@ -1290,8 +1291,8 @@ static void xemacps_ptp_init(struct net_local *lp)
 	lp->ptp_caps.pps = 0;
 	lp->ptp_caps.adjfreq = xemacps_ptp_adjfreq;
 	lp->ptp_caps.adjtime = xemacps_ptp_adjtime;
-	lp->ptp_caps.gettime = xemacps_ptp_gettime;
-	lp->ptp_caps.settime = xemacps_ptp_settime;
+	lp->ptp_caps.gettime64 = xemacps_ptp_gettime;
+	lp->ptp_caps.settime64 = xemacps_ptp_settime;
 	lp->ptp_caps.enable = xemacps_ptp_enable;
 
 	rate = clk_get_rate(lp->aperclk);
