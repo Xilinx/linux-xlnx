@@ -325,6 +325,7 @@ static irqreturn_t xadc_zynq_interrupt_handler(int irq, void *devid)
 
 #define XADC_ZYNQ_TCK_RATE_MAX 50000000
 #define XADC_ZYNQ_IGAP_DEFAULT 20
+#define XADC_ZYNQ_PCAP_RATE_MAX 200000000
 
 static int xadc_zynq_setup(struct platform_device *pdev,
 	struct iio_dev *indio_dev, int irq)
@@ -343,6 +344,10 @@ static int xadc_zynq_setup(struct platform_device *pdev,
 	xadc->zynq_intmask = ~0;
 
 	pcap_rate = clk_get_rate(xadc->clk);
+
+	if (pcap_rate > XADC_ZYNQ_PCAP_RATE_MAX)
+		clk_set_rate(xadc->clk,
+			(unsigned long) XADC_ZYNQ_PCAP_RATE_MAX);
 
 	if (tck_rate > XADC_ZYNQ_TCK_RATE_MAX)
 		tck_rate = XADC_ZYNQ_TCK_RATE_MAX;
@@ -370,6 +375,9 @@ static int xadc_zynq_setup(struct platform_device *pdev,
 	xadc_write_reg(xadc, XADC_ZYNQ_REG_CFG, XADC_ZYNQ_CFG_ENABLE |
 			XADC_ZYNQ_CFG_REDGE | XADC_ZYNQ_CFG_WEDGE |
 			tck_div | XADC_ZYNQ_CFG_IGAP(igap));
+
+	if (pcap_rate > XADC_ZYNQ_PCAP_RATE_MAX)
+		clk_set_rate(xadc->clk, pcap_rate);
 
 	return 0;
 }
