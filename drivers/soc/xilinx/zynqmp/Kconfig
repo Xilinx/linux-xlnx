@@ -17,4 +17,13 @@ config ZYNQMP_POWER
 	  to handle power management callbacks from firmware.
 	  In doubt, say N.
 
+config ZYNQMP_PM_DOMAINS
+	bool "Enable Zynq MPSoC generic PM domains"
+	default y
+	depends on PM
+	select PM_GENERIC_DOMAINS
+	help
+	  Say yes to enable device power management through PM domains
+	  In doubt, say N
+
 endmenu
