@@ -1,0 +1,41 @@
+Device Tree bindings for Xilinx Zynq MPSoC PM domains
+
+The binding for zynqmp-genpd follow the common generic PM domain binding[1].
+
+[1] Documentation/devicetree/bindings/power/power_domain.txt
+
+== Zynq MPSoC Generic PM Domain Node ==
+
+Required properties:
+ - compatible: Must be: "xlnx,zynqmp-genpd"
+
+This node contains a number of subnodes, each representing a single PM domain
+that PM domain consumer devices reference.
+
+== PM Domain Nodes ==
+
+Required properties:
+ - #power-domain-cells: Number of cells in a PM domain specifier. Must be 0.
+ - pd-id: Unique domain identifier of as defined by platform firmware. This
+	  identifier is passed to the PM firmware.
+
+Example:
+	zynqmp-genpd {
+		compatible = "xlnx,zynqmp-genpd";
+
+		pd_usb0: pd-usb0 {
+			pd-id = <22>;
+			#power-domain-cells = <0>;
+		};
+
+		pd_sata: pd-sata {
+			pd-id = <25>;
+			#power-domain-cells = <0>;
+		};
+	};
+
+	sata0: ahci@SATA_AHCI_HBA {
+		...
+		power-domains = <&pd_sata>;
+		...
+	};
