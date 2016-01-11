@@ -21,4 +21,14 @@ config ZYNQMP_PM_API_DEBUGFS
 	  Say yes to enable power domain management API requests through debugfs
 	  In doubt, say N
 
+config ZYNQMP_PM_DOMAINS
+	bool "Enable Zynq MPSoC generic PM domains"
+	default y
+	depends on ZYNQMP_PM_API
+	depends on PM
+	select PM_GENERIC_DOMAINS
+	help
+	  Say yes to enable device power management through PM domains
+	  In doubt, say N
+
 endif #SOC_XILINX_ZYNQMP
