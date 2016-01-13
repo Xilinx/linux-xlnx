@@ -1118,6 +1118,8 @@ int ubi_detach_mtd_dev(int ubi_num, int anyway)
 	 */
 	get_device(&ubi->dev);
 
+	clear_bakvol(ubi);
+
 	ubi_debugfs_exit_dev(ubi);
 	uif_close(ubi);
 
