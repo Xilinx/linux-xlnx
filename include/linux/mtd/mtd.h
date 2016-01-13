@@ -204,6 +204,9 @@ struct mtd_info {
 			  struct mtd_oob_ops *ops);
 	int (*_write_oob) (struct mtd_info *mtd, loff_t to,
 			   struct mtd_oob_ops *ops);
+	int (*_dual_plane_write_oob) (struct mtd_info *mtd, loff_t to_plane0,
+			struct mtd_oob_ops *ops_plane0, loff_t to_plane1,
+					struct mtd_oob_ops *ops_plane1);
 	int (*_get_fact_prot_info) (struct mtd_info *mtd, size_t len,
 				    size_t *retlen, struct otp_info *buf);
 	int (*_read_fact_prot_reg) (struct mtd_info *mtd, loff_t from,
@@ -278,6 +281,22 @@ static inline int mtd_write_oob(struct mtd_info *mtd, loff_t to,
 	if (!(mtd->flags & MTD_WRITEABLE))
 		return -EROFS;
 	return mtd->_write_oob(mtd, to, ops);
+}
+
+static inline int mtd_write_dual_plane_oob(struct mtd_info *mtd,
+		loff_t to_plane0, struct mtd_oob_ops *ops0, loff_t to_plane1,
+						struct mtd_oob_ops *ops1)
+{
+	ops0->retlen = ops0->oobretlen = 0;
+	ops1->retlen = ops1->oobretlen = 0;
+
+	if (!mtd->_dual_plane_write_oob)
+		return -EOPNOTSUPP;
+	if (!(mtd->flags & MTD_WRITEABLE))
+		return -EROFS;
+
+	return mtd->_dual_plane_write_oob(mtd, to_plane0, ops0,
+						to_plane1, ops1);
 }
 
 int mtd_get_fact_prot_info(struct mtd_info *mtd, size_t len, size_t *retlen,
