@@ -77,6 +77,21 @@ config MTD_UBI_FASTMAP
 
 	   If in doubt, say "N".
 
+config MTD_UBI_MLC_NAND_BAKVOL
+	bool "UBI solution for NAND pair page (Experimental feature)"
+	default n
+	help
+	   This used for MLC NAND paired page power-cut protection.
+
+	   MLC NAND paired page power loss is a known issue so far.
+	   Namely, MLC NAND pages are coupled in a sense that if you cut
+	   power while writing to a page, you corrupt not only this page,
+	   but also one of the previous pages which is paired with the current
+	   one. More detail information,please refer to follwoing link:
+	   http://www.linux-mtd.infradead.org/doc/ubifs.html
+
+	   If in doubt, say "N".
+
 config MTD_UBI_GLUEBI
 	tristate "MTD devices emulation driver (gluebi)"
 	help
