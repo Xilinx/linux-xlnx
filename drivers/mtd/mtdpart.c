@@ -203,6 +203,23 @@ static int part_write_oob(struct mtd_info *mtd, loff_t to,
 	return part->master->_write_oob(part->master, to + part->offset, ops);
 }
 
+static int part_write_dual_plane_oob(struct mtd_info *mtd, loff_t to_plane0,
+			    struct mtd_oob_ops *ops_plane0, loff_t to_plane1,
+			    struct mtd_oob_ops *ops_plane1)
+{
+	struct mtd_part *part = PART(mtd);
+
+	if ((to_plane0 >= mtd->size) || ((to_plane1 >= mtd->size)))
+		return -EINVAL;
+	if ((ops_plane0->datbuf && to_plane0 + ops_plane0->len > mtd->size) ||
+	    (ops_plane1->datbuf && to_plane1 + ops_plane0->len > mtd->size))
+		return -EINVAL;
+
+	return part->master->_dual_plane_write_oob(part->master,
+				to_plane0 + part->offset, ops_plane0,
+				to_plane1 + part->offset, ops_plane1);
+}
+
 static int part_write_user_prot_reg(struct mtd_info *mtd, loff_t from,
 		size_t len, size_t *retlen, u_char *buf)
 {
@@ -409,6 +426,8 @@ static struct mtd_part *allocate_partition(struct mtd_info *master,
 		slave->mtd._read_oob = part_read_oob;
 	if (master->_write_oob)
 		slave->mtd._write_oob = part_write_oob;
+	if (master->_dual_plane_write_oob)
+		slave->mtd._dual_plane_write_oob = part_write_dual_plane_oob;
 	if (master->_read_user_prot_reg)
 		slave->mtd._read_user_prot_reg = part_read_user_prot_reg;
 	if (master->_read_fact_prot_reg)
