@@ -1313,7 +1313,7 @@ static int ubi_write_fastmap(struct ubi_device *ubi,
 
 	for (i = 0; i < new_fm->used_blocks; i++) {
 		ret = ubi_io_write(ubi, fm_raw + (i * ubi->leb_size),
-			new_fm->e[i]->pnum, ubi->leb_start, ubi->leb_size);
+			new_fm->e[i]->pnum, ubi->leb_start, ubi->leb_size, 1);
 		if (ret) {
 			ubi_err(ubi, "unable to write fastmap to PEB %i!",
 				new_fm->e[i]->pnum);
