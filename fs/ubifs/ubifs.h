@@ -1479,6 +1479,8 @@ extern const struct inode_operations ubifs_dir_inode_operations;
 extern const struct inode_operations ubifs_symlink_inode_operations;
 extern struct backing_dev_info ubifs_backing_dev_info;
 extern struct ubifs_compressor *ubifs_compressors[UBIFS_COMPR_TYPES_CNT];
+extern void init_bakvol(struct ubi_volume_desc *desc, uint8_t choice);
+extern int ubi_corrupted_data_recovery(struct ubi_volume_desc *desc);
 
 /* io.c */
 void ubifs_ro_mode(struct ubifs_info *c, int err);
