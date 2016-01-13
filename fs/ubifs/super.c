@@ -1270,6 +1270,11 @@ static int mount_ubifs(struct ubifs_info *c)
 		c->need_recovery = 1;
 	}
 
+#ifdef CONFIG_MTD_UBI_MLC_NAND_BAKVOL
+	if (c->need_recovery)
+		ubi_corrupted_data_recovery(c->ubi);
+#endif
+
 	if (c->need_recovery && !c->ro_mount) {
 		err = ubifs_recover_inl_heads(c, c->sbuf);
 		if (err)
@@ -1462,6 +1467,8 @@ static int mount_ubifs(struct ubifs_info *c)
 		c->bud_bytes, c->bud_bytes >> 10, c->bud_bytes >> 20);
 	dbg_gen("max. seq. number:    %llu", c->max_sqnum);
 	dbg_gen("commit number:       %llu", c->cmt_no);
+
+	init_bakvol(c->ubi, 1);
 
 	return 0;
 
@@ -1774,6 +1781,10 @@ static void ubifs_put_super(struct super_block *sb)
 	 * the mutex is locked.
 	 */
 	mutex_lock(&c->umount_mutex);
+
+	/* Disable ubi MLC power loss backup function */
+	init_bakvol(c->ubi, 0);
+
 	if (!c->ro_mount) {
 		/*
 		 * First of all kill the background thread to make sure it does
