@@ -31,6 +31,7 @@
 #define __UBI_MEDIA_H__
 
 #include <asm/byteorder.h>
+#include <linux/list.h>
 
 /* The version of UBI images supported by this implementation */
 #define UBI_VERSION 1
@@ -295,7 +296,11 @@ struct ubi_vid_hdr {
 } __packed;
 
 /* Internal UBI volumes count */
+#ifdef CONFIG_MTD_UBI_MLC_NAND_BAKVOL
+#define UBI_INT_VOL_COUNT 2
+#else
 #define UBI_INT_VOL_COUNT 1
+#endif
 
 /*
  * Starting ID of internal volumes: 0x7fffefff.
@@ -312,6 +317,15 @@ struct ubi_vid_hdr {
 #define UBI_LAYOUT_VOLUME_NAME   "layout volume"
 #define UBI_LAYOUT_VOLUME_COMPAT UBI_COMPAT_REJECT
 
+/* The backup log volume */
+
+#define UBI_BACKUP_VOLUME_ID     (UBI_INTERNAL_VOL_START + 1)
+#define UBI_BACKUP_VOLUME_TYPE   UBI_VID_DYNAMIC
+#define UBI_BACKUP_VOLUME_ALIGN  1
+#define UBI_BACKUP_VOLUME_EBS    20
+#define UBI_BACKUP_VOLUME_NAME   "bakvol"
+#define UBI_BACKUP_VOLUME_COMPAT UBI_COMPAT_REJECT
+
 /* The maximum number of volumes per one UBI device */
 #define UBI_MAX_VOLUMES 128
 
@@ -323,6 +337,56 @@ struct ubi_vid_hdr {
 
 /* Size of the volume table record without the ending CRC */
 #define UBI_VTBL_RECORD_SIZE_CRC (UBI_VTBL_RECORD_SIZE - sizeof(__be32))
+
+/**
+ * struct ubi_bkblk_info - the information for one backup block .
+ * @peb: physical block number
+ * @leb:  logic block number
+ * @plane: this block belongs to which plane
+ * @pgnum: the page number that already be programmed last time.
+ */
+struct ubi_bkblk_info {
+	__be32  peb;
+	__be32  leb;
+	__u8    plane;
+	__be32  pgnum;
+	struct  list_head node;
+}__packed;
+
+/**
+ * struct bakvol_oob_info - user oob area structure.
+ * @addr: address of source/backup page
+ * @crc: CRC-32 checksum of addr
+ *
+ */
+struct bakvol_oob_info {
+	loff_t addr;
+	__le32 crc;
+} __packed;
+
+/* Sizes of bakvol oob area */
+#define UBI_BAKVOL_OOB_SIZE sizeof(struct bakvol_oob_info)
+
+/* Sizes of bakvol oob area without the ending CRC */
+#define UBI_BAKVOL_OOB_SIZE_CRC (UBI_BAKVOL_OOB_SIZE - sizeof(__be32))
+
+/**
+ * struct ubi_bkblk_tbl - a table for backup blocks.
+ * @bakvol_flag: indicate if backup volume be initted
+ * @bcount_of_plane: block count that has bee applied for corresponding plane
+ * @head: the list of backup blocks.
+ */
+struct ubi_bkblk_tbl {
+	__u8    bakvol_flag;
+#define UBI_BAKVOL_INIT_START 0x01 /* init bakvol module start */
+#define UBI_BAKVOL_REJECT 0x02 /* reject bakvol module operations */
+#define UBI_BAKVOL_INIT_DONE 0x04 /* init bakvol module done */
+#define UBI_BAKVOL_ENABLE 0x08 /* enable bakvol module */
+#define UBI_BAKVOL_DISABLE 0x10 /* disable bakvol module */
+#define UBI_BAKVOL_RECOVERY 0x20 /* bakvol recovery already done */
+	__be32  bcount_of_plane[2];
+	struct  list_head head;
+}__packed;;
 
 /**
  * struct ubi_vtbl_record - a record in the volume table.
