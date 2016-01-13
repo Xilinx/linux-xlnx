@@ -604,7 +604,7 @@ retry:
 
 	memcpy(ubi->peb_buf + offset, buf, len);
 
-	err = ubi_io_write_data(ubi, ubi->peb_buf, new_pnum, 0, data_size);
+	err = ubi_io_write_data(ubi, ubi->peb_buf, new_pnum, 0, data_size, 0);
 	if (err) {
 		mutex_unlock(&ubi->buf_mutex);
 		up_read(&ubi->fm_eba_sem);
@@ -675,7 +675,7 @@ int ubi_eba_write_leb(struct ubi_device *ubi, struct ubi_volume *vol, int lnum,
 		dbg_eba("write %d bytes at offset %d of LEB %d:%d, PEB %d",
 			len, offset, vol_id, lnum, pnum);
 
-		err = ubi_io_write_data(ubi, buf, pnum, offset, len);
+		err = ubi_io_write_data(ubi, buf, pnum, offset, len, ((lnum < 3) ? 0 : 1));
 		if (err) {
 			ubi_warn(ubi, "failed to write data to PEB %d", pnum);
 			if (err == -EIO && ubi->bad_allowed)
@@ -726,7 +726,7 @@ retry:
 	}
 
 	if (len) {
-		err = ubi_io_write_data(ubi, buf, pnum, offset, len);
+		err = ubi_io_write_data(ubi, buf, pnum, offset, len, ((lnum < 3) ? 0 : 1));
 		if (err) {
 			ubi_warn(ubi, "failed to write %d bytes at offset %d of LEB %d:%d, PEB %d",
 				 len, offset, vol_id, lnum, pnum);
@@ -848,7 +848,7 @@ retry:
 		goto write_error;
 	}
 
-	err = ubi_io_write_data(ubi, buf, pnum, 0, len);
+	err = ubi_io_write_data(ubi, buf, pnum, 0, len, ((lnum < 3) ? 0:1));
 	if (err) {
 		ubi_warn(ubi, "failed to write %d bytes of data to PEB %d",
 			 len, pnum);
@@ -968,7 +968,7 @@ retry:
 		goto write_error;
 	}
 
-	err = ubi_io_write_data(ubi, buf, pnum, 0, len);
+	err = ubi_io_write_data(ubi, buf, pnum, 0, len, ((lnum < 3) ? 0 : 1));
 	if (err) {
 		ubi_warn(ubi, "failed to write %d bytes of data to PEB %d",
 			 len, pnum);
@@ -1194,7 +1194,8 @@ int ubi_eba_copy_leb(struct ubi_device *ubi, int from, int to,
 	}
 
 	if (data_size > 0) {
-		err = ubi_io_write_data(ubi, ubi->peb_buf, to, 0, aldata_size);
+		err = ubi_io_write_data(ubi, ubi->peb_buf, to, 0, aldata_size,
+			((lnum < 3) ? 0 : 1));
 		if (err) {
 			if (err == -EIO)
 				err = MOVE_TARGET_WR_ERR;
