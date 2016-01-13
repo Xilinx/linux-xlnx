@@ -919,6 +919,15 @@ static int scan_peb(struct ubi_device *ubi, struct ubi_attach_info *ai,
 	err = ubi_io_read_vid_hdr(ubi, pnum, vidh, 0);
 	if (err < 0)
 		return err;
+
+#ifdef CONFIG_MTD_UBI_MLC_NAND_BAKVOL
+	/*
+	 * Before analyze VID header, call ubi_bakvol_peb_scan to
+	 * find out backup block and build the backup log volume first.
+	 */
+	ubi_bakvol_peb_scan(ubi, vidh, pnum);
+#endif
+
 	switch (err) {
 	case 0:
 		break;
@@ -995,7 +1004,8 @@ static int scan_peb(struct ubi_device *ubi, struct ubi_attach_info *ai,
 		*vid = vol_id;
 	if (sqnum)
 		*sqnum = be64_to_cpu(vidh->sqnum);
-	if (vol_id > UBI_MAX_VOLUMES && vol_id != UBI_LAYOUT_VOLUME_ID) {
+	if ((vol_id > UBI_MAX_VOLUMES && vol_id != UBI_LAYOUT_VOLUME_ID)
+					&& vol_id != UBI_BACKUP_VOLUME_ID) {
 		int lnum = be32_to_cpu(vidh->lnum);
 
 		/* Unsupported internal volume */
@@ -1408,6 +1418,12 @@ int ubi_attach(struct ubi_device *ubi, int force_scan)
 	if (!ai)
 		return -ENOMEM;
 
+#ifdef CONFIG_MTD_UBI_MLC_NAND_BAKVOL
+	err = ubi_bakvol_module_init(ubi);
+	if (err)
+		goto out_ai;
+#endif
+
 #ifdef CONFIG_MTD_UBI_FASTMAP
 	/* On small flash devices we disable fastmap in any case. */
 	if ((int)mtd_div_by_eb(ubi->mtd->size, ubi->mtd) <= UBI_FM_MAX_START) {
@@ -1448,6 +1464,12 @@ int ubi_attach(struct ubi_device *ubi, int force_scan)
 	err = ubi_read_volume_table(ubi, ai);
 	if (err)
 		goto out_ai;
+
+#ifdef CONFIG_MTD_UBI_MLC_NAND_BAKVOL
+	err = ubi_bakvol_module_init_tail(ubi, ai);
+	if (err)
+		goto out_ai;
+#endif
 
 	err = ubi_wl_init(ubi, ai);
 	if (err)
