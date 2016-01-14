@@ -323,6 +323,12 @@ config MTD_NAND_CS553X
 
 	  If you say "m", the module will be called cs553x_nand.
 
+config MTD_ZED_PL_NAND
+        tristate "zynq zed pl NAND controller support"
+        depends on MTD_NAND
+        help
+          this is used for zynq zed  board pl nand controller.
+
 config MTD_NAND_ATMEL
 	tristate "Support for NAND Flash / SmartMedia on AT91 and AVR32"
 	depends on ARCH_AT91 || AVR32

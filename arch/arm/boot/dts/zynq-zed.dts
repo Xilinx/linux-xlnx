@@ -37,6 +37,139 @@
 		compatible = "usb-nop-xceiv";
 		#phy-cells = <0>;
 	};
+	/******** below is my adding devices ********/
+
+	zed_ethernet_0: zed-emac@e000b000 {
+		#address-cells = <1>;
+		#size-cells = <0>;
+		clock-names = "ref_clk", "aper_clk";
+		clocks = <&clkc 13>, <&clkc 30>;
+		compatible = "xlnx,ps7-ethernet-1.00.a";
+		/* interrupt-parent = <&ps7_scugic_0>;*/
+		interrupt-parent = <&intc>;
+		interrupts = <0 22 4>;
+		local-mac-address = [00 0a 35 00 00 00];
+		phy-handle = <&phy0>;
+		phy-mode = "rgmii-id";
+		reg = <0xe000b000 0x1000>;
+		xlnx,eth-mode = <0x1>;
+		xlnx,has-mdio = <0x1>;
+		xlnx,ptp-enet-clock = <111111115>;
+		mdio {
+                #address-cells = <1>;
+                #size-cells = <0>;
+			phy0: phy@0 {
+                        compatible = "marvell,88e1510";
+                        device_type = "ethernet-phy";
+                        reg = <0>;
+			} ;
+		} ;
+	} ;
+
+       zed_nand_controller_0: zed_micron_nand@7aa00000 {
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "xlnx,Zed-Hspeed-Nand-1.0";
+		interrupt-parent = <&intc>;
+		interrupts = <0 57 4>; /* correspond IRQ 89*/
+		reg = <0x7aa00000 0x100>, <0x7ab00000 0x100>,
+			<0x7ac00000 0x100>, <0x40400000 0x100>;
+		xlnx,nand-width = <8>;
+		zed,nand-mode = <0>;
+		/*zed,nand-has-dma;*/
+		partition@0 {
+			label = "test0-256MB";
+			reg = <0x00000000 0x10000000>;
+		};
+		partition@1 {
+			label = "test1-256MB";
+			reg = <0x10000000 0x10000000>;
+		};
+		partition@2 {
+			label = "test2-512MB";
+			reg = <0x20000000 0x20000000>;
+		};
+		partition@3 {
+			label = "test3-1GB";
+			reg = <0x40000000 0x40000000>;
+		};
+		partition@4 {
+			label = "test4";
+			reg = <0x80000000 0x40000000>;
+		};
+	};
+       ps7_qspi_0: zynq-qspi@e000d000 {  /*zynq qspi controller */
+                 clock-names = "ref_clk", "pclk";
+                        clocks = <&clkc 10>, <&clkc 43>;
+                        compatible = "xlnx,zynq-qspi-1.0";
+                        interrupt-parent = <&intc>;
+                        interrupts = <0 19 4>;
+                        is-dual = <0>;
+                        num-chip-select = <1>;
+                        reg = <0xe000d000 0x1000>;
+                        xlnx,fb-clk = <0x1>;
+                        xlnx,qspi-mode = <0x0>;
+                        #address-cells = <1>;
+                        #size-cells = <0>;
+                        flash@0 {
+                                compatible = "s25fl256s1";
+                                //compatible = "n25q128a13";
+                                reg = <0x0>;
+                                spi-max-frequency = <50000000>;
+                                #address-cells = <1>;
+                                #size-cells = <1>;
+#if 0
+                                partition@qspi-fsbl-uboot {
+                                        label = "qspi-fsbl-uboot";
+                                        reg = <0x0 0x100000>;
+                                };
+#endif
+                                partition@qspi-linux {
+                                        label = "qspi-linux";
+                                        reg = <0x100000 0x500000>;
+                                };
+                                partition@qspi-device-tree {
+                                        label = "qspi-device-tree";
+                                        reg = <0x600000 0x20000>;
+                                };
+                                partition@qspi-rootfs {
+                                        label = "qspi-rootfs";
+                                        reg = <0x620000 0x5E0000>;
+                                };
+                                partition@qspi-bitstream {
+                                        label = "qspi-bitstream";
+                                        reg = <0xC00000 0x400000>;
+                                };
+                        };
+#if 0
+                        flash@1 {
+                                compatible = "n25q128";
+                                reg = <0x0>;
+                                spi-max-frequency = <50000000>;
+                                #address-cells = <1>;
+                                #size-cells = <1>;
+                                partition@qspi-fsbl-uboot {
+                                        label = "env";
+                                        reg = <0x0 0x100000>;
+                                };
+                                partition@qspi-linux {
+                                        label = "data0";
+                                        reg = <0x100000 0x500000>;
+                                };
+                                partition@qspi-device-tree {
+                                        label = "data1";
+                                        reg = <0x600000 0x200000>;
+                                };
+                                partition@qspi-rootfs {
+                                        label = "qspi-rootfs";
+                                        reg = <0x800000 0x800000>;
+                                };
+                        };
+
+#endif
+
+                } ;
+	/******** my adding device end ********/
 };
 
 &clkc {
