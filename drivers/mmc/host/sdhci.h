@@ -412,6 +412,8 @@ struct sdhci_host {
 #define SDHCI_QUIRK2_ACMD23_BROKEN			(1<<14)
 /* Broken Clock divider zero in controller */
 #define SDHCI_QUIRK2_CLOCK_DIV_ZERO_BROKEN		(1<<15)
+/* Tuning Broken for HS200, SDR50 and SDR104 */
+#define SDHCI_QUIRK2_BROKEN_TUNING			(1<<16)
 /*
  * When internal clock is disabled, a delay is needed before modifying the
  * SD clock frequency or enabling back the internal clock.
@@ -545,6 +547,7 @@ struct sdhci_ops {
 	void	(*platform_init)(struct sdhci_host *host);
 	void    (*card_event)(struct sdhci_host *host);
 	void	(*voltage_switch)(struct sdhci_host *host);
+	void	(*tune_clk)(struct sdhci_host *host);
 	int	(*select_drive_strength)(struct sdhci_host *host,
 					 struct mmc_card *card,
 					 unsigned int max_dtr, int host_drv,

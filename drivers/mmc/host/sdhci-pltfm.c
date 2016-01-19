@@ -90,6 +90,9 @@ void sdhci_get_of_property(struct platform_device *pdev)
 	if (of_get_property(np, "no-1-8-v", NULL))
 		host->quirks2 |= SDHCI_QUIRK2_NO_1_8_V;
 
+	if (of_get_property(np, "broken-tuning", NULL))
+		host->quirks2 |= SDHCI_QUIRK2_BROKEN_TUNING;
+
 	if (of_device_is_compatible(np, "fsl,p2020-rev1-esdhc"))
 		host->quirks |= SDHCI_QUIRK_BROKEN_DMA;
 

@@ -52,6 +52,22 @@ static unsigned int sdhci_arasan_get_timeout_clock(struct sdhci_host *host)
 	return freq;
 }
 
+void arasan_tune_sdclk(struct sdhci_host *host)
+{
+	unsigned int clock;
+
+	clock = host->clock;
+
+	/*
+	 * As per controller erratum, program the SDCLK Frequency
+	 * Select of clock control register with a value, say
+	 * clock/2. Wait for the Internal clock stable and program
+	 * the desired frequency.
+	 */
+	host->ops->set_clock(host, clock/2);
+
+	host->ops->set_clock(host, host->clock);
+}
 static struct sdhci_ops sdhci_arasan_ops = {
 	.set_clock = sdhci_set_clock,
 	.get_max_clock = sdhci_pltfm_clk_get_max_clock,
@@ -59,6 +75,7 @@ static struct sdhci_ops sdhci_arasan_ops = {
 	.set_bus_width = sdhci_set_bus_width,
 	.reset = sdhci_reset,
 	.set_uhs_signaling = sdhci_set_uhs_signaling,
+	.tune_clk = arasan_tune_sdclk,
 };
 
 static struct sdhci_pltfm_data sdhci_arasan_pdata = {
