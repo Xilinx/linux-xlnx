@@ -20,6 +20,8 @@ Required Properties:
 Optional Properties:
   - broken-tuning: Indicates tuning broken in Silicon 1.0 of
 			  Zynq Ultrascale+ MPSoC.
+  - broken-mmc-highspeed: Indicates to force
+				the controller to use in standard speed.
 
 Example:
 	sdhci@e0100000 {
