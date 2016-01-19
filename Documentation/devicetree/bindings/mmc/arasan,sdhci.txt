@@ -17,6 +17,10 @@ Required Properties:
   - interrupt-parent: Phandle for the interrupt controller that services
 		      interrupts for this device.
 
+Optional Properties:
+  - broken-tuning: Indicates tuning broken in Silicon 1.0 of
+			  Zynq Ultrascale+ MPSoC.
+
 Example:
 	sdhci@e0100000 {
 		compatible = "arasan,sdhci-8.9a";
