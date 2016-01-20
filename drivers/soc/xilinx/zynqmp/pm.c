@@ -364,13 +364,12 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_request_node);
 /**
  * zynqmp_pm_release_node - PM call to release a node
  * @node:	Node ID of the slave
- * @latency:	Requested maximum wakeup latency
  *
  * Return:	Returns status, either success or error+reason
  */
-int zynqmp_pm_release_node(const u32 node, const u32 latency)
+int zynqmp_pm_release_node(const u32 node)
 {
-	return invoke_pm_fn(RELEASE_NODE, node, latency, 0, 0, NULL);
+	return invoke_pm_fn(RELEASE_NODE, node, 0, 0, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_release_node);
 
@@ -742,9 +741,7 @@ static ssize_t zynqmp_pm_debugfs_api_write(struct file *file,
 				ZYNQMP_PM_REQUEST_ACK_CALLBACK_STANDARD);
 		break;
 	case RELEASE_NODE:
-		ret = zynqmp_pm_release_node(pm_api_arg[0],
-				pm_api_arg[1] ? pm_api_arg[1] :
-						ZYNQMP_PM_MAX_LATENCY);
+		ret = zynqmp_pm_release_node(pm_api_arg[0]);
 		break;
 	case SET_REQUIREMENT:
 		ret = zynqmp_pm_set_requirement(pm_api_arg[0],

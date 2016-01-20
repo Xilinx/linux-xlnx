@@ -93,8 +93,7 @@ int zynqmp_pm_request_node(const u32 node,
 				   const u32 capabilities,
 				   const u32 qos,
 				   const enum zynqmp_pm_request_ack ack);
-int zynqmp_pm_release_node(const u32,
-				const u32 latency);
+int zynqmp_pm_release_node(const u32 node);
 int zynqmp_pm_set_requirement(const u32 node,
 				   const u32 capabilities,
 				   const u32 qos,
