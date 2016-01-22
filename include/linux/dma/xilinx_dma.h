@@ -60,8 +60,25 @@ struct xilinx_cdma_config {
         int reset;
 };
 
+/**
+ * struct xilinx_mcdma_config - DMA Multi channel configuration structure
+ * @tdest: Channel to operate on
+ * @tid:   Channel configuration
+ * @tuser: Tuser configuration
+ * @ax_user: ax_user value
+ * @ax_cache: ax_cache value
+ */
+struct xilinx_mcdma_config {
+	u8 tdest;
+	u8 tid;
+	u8 tuser;
+	u8 ax_user;
+	u8 ax_cache;
+};
 int xilinx_vdma_channel_set_config(struct dma_chan *dchan,
 					struct xilinx_vdma_config *cfg);
 int xilinx_cdma_channel_set_config(struct dma_chan *dchan,
                                         struct xilinx_cdma_config *cfg);
+int xilinx_dma_channel_mcdma_set_config(struct dma_chan *dchan,
+					struct xilinx_mcdma_config *cfg);
 #endif
