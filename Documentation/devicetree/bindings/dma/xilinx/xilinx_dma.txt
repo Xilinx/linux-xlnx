@@ -14,11 +14,14 @@ Required properties:
 Optional properties:
 - xlnx,include-sg: Tells whether configured for Scatter-mode in
 	the hardware.
+- xlnx,multichannel-dma: Tells whether configured for multi-channel
+	mode in the hardware.
 
 Required child node properties:
 - compatible: It should be either "xlnx,axi-dma-mm2s-channel" or
 	"xlnx,axi-dma-s2mm-channel".
 - interrupts: Should contain per channel DMA interrupts.
+- dma-channels: Number of dma channels in child node.
 - xlnx,datawidth: Should contain the stream data width, take values
 	{32,64...1024}.
 
@@ -35,11 +38,13 @@ axi_dma_0: axidma@40400000 {
 	reg = < 0x40400000 0x10000 >;
 	dma-channel@40400000 {
 		compatible = "xlnx,axi-dma-mm2s-channel";
+		dma-channels = <0x1>;
 		interrupts = < 0 59 4 >;
 		xlnx,datawidth = <0x40>;
 	} ;
 	dma-channel@40400030 {
 		compatible = "xlnx,axi-dma-s2mm-channel";
+		dma-channels = <0x1>;
 		interrupts = < 0 58 4 >;
 		xlnx,datawidth = <0x40>;
 	} ;
