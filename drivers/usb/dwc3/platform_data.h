@@ -48,6 +48,7 @@ struct dwc3_platform_data {
 	unsigned tx_de_emphasis:2;
 
 	u32 fladj_value;
+	bool refclk_fladj;
 
 	const char *hsphy_interface;
 };

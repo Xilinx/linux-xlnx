@@ -147,9 +147,11 @@ static int dwc3_soft_reset(struct dwc3 *dwc)
 /*
  * dwc3_frame_length_adjustment - Adjusts frame length if required
  * @dwc3: Pointer to our controller context structure
- * @fladj: Value of GFLADJ_30MHZ to adjust frame length
+ * @fladj: Value of GFLADJ_30MHZ and GFLADJ_REFCLK_FLADJ to adjust frame length
+ * @refclk_fladj: Boolean to update GFLADJ_REFCLK_FLADJ field also
  */
-static void dwc3_frame_length_adjustment(struct dwc3 *dwc, u32 fladj)
+static void dwc3_frame_length_adjustment(struct dwc3 *dwc, u32 fladj,
+					bool refclk_fladj)
 {
 	u32 reg;
 	u32 dft;
@@ -161,6 +163,16 @@ static void dwc3_frame_length_adjustment(struct dwc3 *dwc, u32 fladj)
 		return;
 
 	reg = dwc3_readl(dwc->regs, DWC3_GFLADJ);
+
+	if (refclk_fladj) {
+		if (!dev_WARN_ONCE(dwc->dev, (reg & DWC3_GFLADJ_REFCLK_FLADJ ==
+		    fladj & DWC3_GFLADJ_REFCLK_FLADJ),
+		    "refclk fladj request value same as default, ignoring\n")) {
+			reg &= ~DWC3_GFLADJ_REFCLK_FLADJ;
+			reg |= (fladj & DWC3_GFLADJ_REFCLK_FLADJ);
+		}
+	}
+
 	dft = reg & DWC3_GFLADJ_30MHZ_MASK;
 	if (!dev_WARN_ONCE(dwc->dev, dft == fladj,
 	    "request value same as default, ignoring\n")) {
@@ -815,6 +827,7 @@ static int dwc3_probe(struct platform_device *pdev)
 	u8			tx_de_emphasis;
 	u8			hird_threshold;
 	u32			fladj = 0;
+	bool                    refclk_fladj = false;
 
 	int			ret;
 
@@ -926,6 +939,7 @@ static int dwc3_probe(struct platform_device *pdev)
 				    &dwc->hsphy_interface);
 	device_property_read_u32(dev, "snps,quirk-frame-length-adjustment",
 				 &fladj);
+	refclk_fladj = device_property_read_bool(dev, "snps,refclk_fladj");
 
 	if (pdata) {
 		dwc->maximum_speed = pdata->maximum_speed;
@@ -958,6 +972,7 @@ static int dwc3_probe(struct platform_device *pdev)
 
 		dwc->hsphy_interface = pdata->hsphy_interface;
 		fladj = pdata->fladj_value;
+		refclk_fladj = pdata->refclk_fladj;
 	}
 
 	/* default to superspeed if no maximum_speed passed */
@@ -1015,7 +1030,7 @@ static int dwc3_probe(struct platform_device *pdev)
 	}
 
 	/* Adjust Frame Length */
-	dwc3_frame_length_adjustment(dwc, fladj);
+	dwc3_frame_length_adjustment(dwc, fladj, refclk_fladj);
 
 	usb_phy_set_suspend(dwc->usb2_phy, 0);
 	usb_phy_set_suspend(dwc->usb3_phy, 0);
