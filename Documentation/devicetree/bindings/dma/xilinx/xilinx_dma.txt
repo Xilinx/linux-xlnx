@@ -12,8 +12,6 @@ Required properties:
 	DMA channel (see child node properties below).
 
 Optional properties:
-- xlnx,include-sg: Tells whether configured for Scatter-mode in
-	the hardware.
 - xlnx,multichannel-dma: Tells whether configured for multi-channel
 	mode in the hardware.
 
