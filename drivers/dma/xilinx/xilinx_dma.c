@@ -61,6 +61,7 @@
 
 #define XILINX_DMA_SR_HALTED_MASK	BIT(0)
 #define XILINX_DMA_SR_IDLE_MASK		BIT(1)
+#define XILINX_DMA_SR_SG_MASK		BIT(3)
 
 #define XILINX_DMA_XR_IRQ_IOC_MASK	BIT(12)
 #define XILINX_DMA_XR_IRQ_DELAY_MASK	BIT(13)
@@ -192,14 +193,12 @@ struct xilinx_dma_chan {
  * @dev: Device Structure
  * @common: DMA device structure
  * @chan: Driver specific DMA channel
- * @has_sg: Specifies whether Scatter-Gather is present or not
  */
 struct xilinx_dma_device {
 	void __iomem *regs;
 	struct device *dev;
 	struct dma_device common;
 	struct xilinx_dma_chan *chan[XILINX_DMA_MAX_CHANS_PER_DEVICE];
-	bool has_sg;
 };
 
 /* Macros */
@@ -1161,7 +1160,6 @@ static int xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 
 	chan->dev = xdev->dev;
 	chan->xdev = xdev;
-	chan->has_sg = xdev->has_sg;
 	chan->desc_pendingcount = 0x0;
 
 	has_dre = of_property_read_bool(node, "xlnx,include-dre");
@@ -1218,6 +1216,12 @@ static int xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 		dev_err(xdev->dev, "unable to request IRQ %d\n", chan->irq);
 		return err;
 	}
+
+	/* check if SG is enabled */
+	if (dma_ctrl_read(chan, XILINX_DMA_REG_STATUS) & XILINX_DMA_SR_SG_MASK)
+		chan->has_sg = true;
+	dev_dbg(chan->dev, "ch %d: SG %s\n", chan->id,
+		chan->has_sg ? "enabled" : "disabled");
 
 	/* Initialize the tasklet */
 	tasklet_init(&chan->tasklet, xilinx_dma_do_tasklet,
@@ -1277,9 +1281,6 @@ static int xilinx_dma_probe(struct platform_device *pdev)
 	xdev->regs = devm_ioremap_resource(&pdev->dev, res);
 	if (IS_ERR(xdev->regs))
 		return PTR_ERR(xdev->regs);
-
-	/* Check if SG is enabled */
-	xdev->has_sg = of_property_read_bool(node, "xlnx,include-sg");
 
 	/* Axi DMA only do slave transfers */
 	dma_cap_set(DMA_SLAVE, xdev->common.cap_mask);

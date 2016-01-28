@@ -11,10 +11,6 @@ Required properties:
 	two channels per device. This node specifies the properties of each
 	DMA channel (see child node properties below).
 
-Optional properties:
-- xlnx,include-sg: Tells whether configured for Scatter-mode in
-	the hardware.
-
 Required child node properties:
 - compatible: It should be either "xlnx,axi-dma-mm2s-channel" or
 	"xlnx,axi-dma-s2mm-channel".
