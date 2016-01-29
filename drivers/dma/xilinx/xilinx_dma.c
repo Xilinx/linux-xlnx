@@ -600,6 +600,8 @@ static void xilinx_dma_halt(struct xilinx_dma_chan *chan)
 		dev_err(chan->dev, "Cannot stop channel %p: %x\n",
 			chan, dma_ctrl_read(chan, XILINX_DMA_REG_STATUS));
 		chan->err = true;
+	} else {
+		chan->idle = true;
 	}
 }
 
