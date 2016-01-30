@@ -157,7 +157,6 @@ int xilinx_drm_fb_helper_pan_display(struct fb_var_screeninfo *var,
 		if (modeset->num_connectors) {
 			ret = drm_mode_set_config_internal(modeset);
 			if (!ret) {
-				drm_wait_one_vblank(dev, i);
 				info->var.xoffset = var->xoffset;
 				info->var.yoffset = var->yoffset;
 			}
@@ -165,6 +164,25 @@ int xilinx_drm_fb_helper_pan_display(struct fb_var_screeninfo *var,
 	}
 	drm_modeset_unlock_all(dev);
 	return ret;
+}
+
+int
+xilinx_drm_fb_ioctl(struct fb_info *info, unsigned int cmd, unsigned long arg)
+{
+	struct drm_fb_helper *fb_helper = info->par;
+	struct drm_device *dev = fb_helper->dev;
+	unsigned int i;
+
+	switch (cmd) {
+	case FBIO_WAITFORVSYNC:
+		for (i = 0; i < fb_helper->crtc_count; i++)
+			drm_wait_one_vblank(dev, i);
+		return 0;
+	default:
+		return -ENOTTY;
+	}
+
+	return 0;
 }
 
 static struct fb_ops xilinx_drm_fbdev_ops = {
@@ -177,6 +195,7 @@ static struct fb_ops xilinx_drm_fbdev_ops = {
 	.fb_blank	= drm_fb_helper_blank,
 	.fb_pan_display	= xilinx_drm_fb_helper_pan_display,
 	.fb_setcmap	= drm_fb_helper_setcmap,
+	.fb_ioctl	= xilinx_drm_fb_ioctl,
 };
 
 /**
