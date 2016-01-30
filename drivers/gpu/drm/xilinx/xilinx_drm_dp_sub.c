@@ -317,6 +317,8 @@ struct xilinx_drm_dp_sub {
 	void (*vblank_fn)(void *);
 	void *vblank_data;
 	bool vid_clk_pl;
+	u32 alpha;
+	bool alpha_en;
 };
 
 /**
@@ -1062,6 +1064,21 @@ void xilinx_drm_dp_sub_layer_enable(struct xilinx_drm_dp_sub *dp_sub,
 	xilinx_drm_dp_sub_av_buf_enable_vid(&dp_sub->av_buf, layer);
 	xilinx_drm_dp_sub_blend_layer_enable(&dp_sub->blend, layer);
 	layer->enabled = true;
+	if (layer->other->enabled) {
+		xilinx_drm_dp_sub_blend_set_alpha(&dp_sub->blend,
+						  dp_sub->alpha);
+		xilinx_drm_dp_sub_blend_enable_alpha(&dp_sub->blend,
+						     dp_sub->alpha_en);
+	} else {
+		u32 alpha;
+
+		if (layer->id == XILINX_DRM_DP_SUB_LAYER_VID)
+			alpha = 0;
+		else
+			alpha = XILINX_DRM_DP_SUB_MAX_ALPHA;
+		xilinx_drm_dp_sub_blend_set_alpha(&dp_sub->blend, alpha);
+		xilinx_drm_dp_sub_blend_enable_alpha(&dp_sub->blend, true);
+	}
 }
 EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_layer_enable);
 
@@ -1078,6 +1095,16 @@ void xilinx_drm_dp_sub_layer_disable(struct xilinx_drm_dp_sub *dp_sub,
 	xilinx_drm_dp_sub_av_buf_disable_vid(&dp_sub->av_buf, layer);
 	xilinx_drm_dp_sub_blend_layer_disable(&dp_sub->blend, layer);
 	layer->enabled = false;
+	if (layer->other->enabled) {
+		u32 alpha;
+
+		if (layer->id == XILINX_DRM_DP_SUB_LAYER_VID)
+			alpha = XILINX_DRM_DP_SUB_MAX_ALPHA;
+		else
+			alpha = 0;
+		xilinx_drm_dp_sub_blend_set_alpha(&dp_sub->blend, alpha);
+		xilinx_drm_dp_sub_blend_enable_alpha(&dp_sub->blend, true);
+	}
 }
 EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_layer_disable);
 
@@ -1179,7 +1206,10 @@ EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_set_bg_color);
  */
 void xilinx_drm_dp_sub_set_alpha(struct xilinx_drm_dp_sub *dp_sub, u32 alpha)
 {
-	xilinx_drm_dp_sub_blend_set_alpha(&dp_sub->blend, alpha);
+	dp_sub->alpha = alpha;
+	if (dp_sub->layers[XILINX_DRM_DP_SUB_LAYER_VID].enabled &&
+	    dp_sub->layers[XILINX_DRM_DP_SUB_LAYER_GFX].enabled)
+		xilinx_drm_dp_sub_blend_set_alpha(&dp_sub->blend, alpha);
 }
 EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_set_alpha);
 
@@ -1193,7 +1223,10 @@ EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_set_alpha);
 void
 xilinx_drm_dp_sub_enable_alpha(struct xilinx_drm_dp_sub *dp_sub, bool enable)
 {
-	xilinx_drm_dp_sub_blend_enable_alpha(&dp_sub->blend, enable);
+	dp_sub->alpha_en = enable;
+	if (dp_sub->layers[XILINX_DRM_DP_SUB_LAYER_VID].enabled &&
+	    dp_sub->layers[XILINX_DRM_DP_SUB_LAYER_GFX].enabled)
+		xilinx_drm_dp_sub_blend_enable_alpha(&dp_sub->blend, enable);
 }
 EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_enable_alpha);
 
