@@ -41,5 +41,5 @@ int xilinx_drm_gem_cma_dumb_create(struct drm_file *file_priv,
 
 	args->pitch = ALIGN(pitch, xilinx_drm_get_align(drm));
 
-	return drm_gem_cma_dumb_create(file_priv, drm, args);
+	return drm_gem_cma_dumb_create_internal(file_priv, drm, args);
 }
