@@ -246,6 +246,7 @@
 #define GEM_SGMIIEN_OFFSET	27
 #define GEM_SGMIIEN_SIZE	1
 
+
 /* Constants for data bus width. */
 #define GEM_DBW32		0 /* 32 bit AMBA AHB data bus width */
 #define GEM_DBW64		1 /* 64 bit AMBA AHB data bus width */

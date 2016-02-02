@@ -412,7 +412,8 @@ static int pl35x_nand_read_page_raw(struct mtd_info *mtd,
  */
 static int pl35x_nand_write_page_raw(struct mtd_info *mtd,
 				    struct nand_chip *chip,
-				    const uint8_t *buf, int oob_required)
+				    const uint8_t *buf, int oob_required,
+				    int page)
 {
 	unsigned long data_phase_addr;
 	uint8_t *p;
@@ -447,7 +448,7 @@ static int pl35x_nand_write_page_raw(struct mtd_info *mtd,
  */
 static int pl35x_nand_write_page_hwecc(struct mtd_info *mtd,
 				    struct nand_chip *chip, const uint8_t *buf,
-				    int oob_required)
+				    int oob_required, int page)
 {
 	int i, eccsize = chip->ecc.size;
 	int eccsteps = chip->ecc.steps;
@@ -508,7 +509,7 @@ static int pl35x_nand_write_page_hwecc(struct mtd_info *mtd,
  */
 static int pl35x_nand_write_page_swecc(struct mtd_info *mtd,
 				    struct nand_chip *chip, const uint8_t *buf,
-				    int oob_required)
+				    int oob_required, int page)
 {
 	int i, eccsize = chip->ecc.size;
 	int eccbytes = chip->ecc.bytes;
@@ -524,7 +525,7 @@ static int pl35x_nand_write_page_swecc(struct mtd_info *mtd,
 	for (i = 0; i < chip->ecc.total; i++)
 		chip->oob_poi[eccpos[i]] = ecc_calc[i];
 
-	chip->ecc.write_page_raw(mtd, chip, buf, 1);
+	chip->ecc.write_page_raw(mtd, chip, buf, 1, page);
 
 	return 0;
 }

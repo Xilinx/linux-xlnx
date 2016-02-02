@@ -112,7 +112,7 @@ struct smp_operations {
 
 struct of_cpu_method {
 	const char *method;
-	struct smp_operations *ops;
+	const struct smp_operations *ops;
 };
 
 #define CPU_METHOD_OF_DECLARE(name, _method, _ops)			\
@@ -122,7 +122,7 @@ struct of_cpu_method {
 /*
  * set platform specific SMP operations
  */
-extern void smp_set_ops(struct smp_operations *);
+extern void smp_set_ops(const struct smp_operations *);
 
 extern int set_ipi_handler(int ipinr, void *handler, char *desc);
 extern void clear_ipi_handler(int ipinr);

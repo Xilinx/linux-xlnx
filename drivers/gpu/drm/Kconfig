@@ -268,3 +268,5 @@ source "drivers/gpu/drm/xylon/Kconfig"
 source "drivers/gpu/drm/amd/amdkfd/Kconfig"
 
 source "drivers/gpu/drm/imx/Kconfig"
+
+source "drivers/gpu/drm/vc4/Kconfig"
