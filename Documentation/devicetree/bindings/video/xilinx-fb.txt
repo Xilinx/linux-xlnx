@@ -1,0 +1,35 @@
+Xilinx Axi TFT controller Device Tree Bindings
+---------------------------------------------------------
+
+Required properties:
+- compatible		: Can be any of the following
+			  "xlnx,xps-tft-1.00.a","xlnx,xps-tft-2.00.a",
+			  "xlnx,xps-tft-2.01.a","xlnx,plb-tft-cntlr-ref-1.00.a",
+			  "xlnx,plb-dvi-cntlr-ref-1.00.c"
+- reg			: Physical base address and size of the Axi Tft
+			  registers map
+- interrupts		: Property with a value describing the interrupt
+			  number
+- interrupt-parent	: Must be core interrupt controller
+- xlnx,dcr-splb-slave-if :	Accessing TFT Controller through Bus or DCR interface.
+				for BUS its value is 1 and for DCR it is 0.
+				default is BUS i.e. 1
+- resolution :	<xres yres> pixel resolution of framebuffer.Some
+		implementations use a different resolution
+- virtual-resolution :	<xvirt yvirt> Size of framebuffer in memory.
+- rotate-display :	(empty) rotate display 180 degrees
+- phys-size :	<screen_width_mm screen_height_mm> width and heigth of
+		screen
+
+Example:
+axi_tft_0: axi_tft@44a00000 {
+	compatible = "xlnx,xps-tft-1.00.a";
+	interrupt-parent = <&axi_intc>;
+	interrupts = <1 0>;
+	reg = <0x44a00000 0x10000>;
+	xlnx,dcr-splb-slave-if = <0x1>;
+	resolution = <640 480>;
+	virtual-resolution = <1024 480>;
+	phys-size = <1024 512>;
+	rotate-display;
+};
