@@ -152,7 +152,7 @@ enum mode_type {GQSPI_MODE_IO, GQSPI_MODE_DMA};
  * @genfifobus:		Used to select the upper or lower bus
  * @dma_rx_bytes:	Remaining bytes to receive by DMA mode
  * @dma_addr:		DMA address after mapping the kernel buffer
- * @genfifoentry:	Used for storing the genfifoentry instruction
+ * @genfifoentry:	Used for storing the genfifoentry instruction.
  * @isinstr:		To determine whether the transfer is instruction
  * @mode:		Defines the mode in which QSPI is operating
  */
@@ -215,7 +215,7 @@ static void zynqmp_gqspi_selectslave(struct zynqmp_qspi *instanceptr,
 	switch (slavecs) {
 	case GQSPI_SELECT_FLASH_CS_BOTH:
 		instanceptr->genfifocs = GQSPI_GENFIFO_CS_LOWER |
-						GQSPI_GENFIFO_CS_UPPER;
+			GQSPI_GENFIFO_CS_UPPER;
 		break;
 	case GQSPI_SELECT_FLASH_CS_UPPER:
 		instanceptr->genfifocs = GQSPI_GENFIFO_CS_UPPER;
@@ -390,7 +390,6 @@ static int zynqmp_unprepare_transfer_hardware(struct spi_master *master)
 	zynqmp_gqspi_write(xqspi, GQSPI_EN_OFST, 0x0);
 	clk_disable(xqspi->refclk);
 	clk_disable(xqspi->pclk);
-
 	return 0;
 }
 
@@ -605,7 +604,7 @@ static void zynqmp_process_dma_irq(struct zynqmp_qspi *xqspi)
 
 	/* Disabling the DMA interrupts */
 	zynqmp_gqspi_write(xqspi, GQSPI_QSPIDMA_DST_I_DIS_OFST,
-				GQSPI_QSPIDMA_DST_I_EN_DONE_MASK);
+					GQSPI_QSPIDMA_DST_I_EN_DONE_MASK);
 
 	if (xqspi->bytes_to_receive > 0) {
 		/* Switch to IO mode,for remaining bytes to receive */
@@ -686,7 +685,6 @@ static irqreturn_t zynqmp_qspi_irq(int irq, void *dev_id)
 		spi_finalize_current_transfer(master);
 		ret = IRQ_HANDLED;
 	}
-
 	return ret;
 }
 
@@ -699,7 +697,7 @@ static irqreturn_t zynqmp_qspi_irq(int irq, void *dev_id)
 static inline u32 zynqmp_qspi_selectspimode(struct zynqmp_qspi *xqspi,
 						u8 spimode)
 {
-	u32 mask;
+	u32 mask = 0;
 
 	switch (spimode) {
 	case GQSPI_SELECT_MODE_DUALSPI:
@@ -793,8 +791,8 @@ static void zynqmp_qspi_txrxsetup(struct zynqmp_qspi *xqspi,
 			zynqmp_qspi_selectspimode(xqspi, transfer->tx_nbits);
 		xqspi->bytes_to_transfer = transfer->len;
 		if (xqspi->mode == GQSPI_MODE_DMA) {
-			config_reg =
-				zynqmp_gqspi_read(xqspi, GQSPI_CONFIG_OFST);
+			config_reg = zynqmp_gqspi_read(xqspi,
+							GQSPI_CONFIG_OFST);
 			config_reg &= ~GQSPI_CFG_MODE_EN_MASK;
 			zynqmp_gqspi_write(xqspi, GQSPI_CONFIG_OFST,
 								config_reg);

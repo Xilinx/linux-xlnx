@@ -24,13 +24,6 @@ config AMD_PHY
 	---help---
 	  Currently supports the am79c874
 
-config AMD_XGBE_PHY
-	tristate "Driver for the AMD 10GbE (amd-xgbe) PHYs"
-	depends on (OF || ACPI) && HAS_IOMEM
-	depends on ARM64 || COMPILE_TEST
-	---help---
-	  Currently supports the AMD 10GbE PHY
-
 config MARVELL_PHY
 	tristate "Drivers for Marvell PHYs"
 	---help---
@@ -198,7 +191,7 @@ config MDIO_BUS_MUX_GPIO
 
 config MDIO_BUS_MUX_MMIOREG
 	tristate "Support for MMIO device-controlled MDIO bus multiplexers"
-	depends on OF_MDIO
+	depends on OF_MDIO && HAS_IOMEM
 	select MDIO_BUS_MUX
 	help
 	  This module provides a driver for MDIO bus multiplexers that

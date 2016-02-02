@@ -116,10 +116,10 @@ source "drivers/staging/fpga/Kconfig"
 
 source "drivers/staging/fbtft/Kconfig"
 
-source "drivers/staging/i2o/Kconfig"
-
 source "drivers/staging/mali/Kconfig"
 
 source "drivers/staging/fsl-mc/Kconfig"
+
+source "drivers/staging/wilc1000/Kconfig"
 
 endif # STAGING

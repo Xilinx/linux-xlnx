@@ -1,4 +1,4 @@
-Binding for Ceva AHCI SATA Controller
+Binding for CEVA AHCI SATA Controller
 
 Required properties:
   - reg: Physical base address and size of the controller's register area.
@@ -35,6 +35,10 @@ Required properties:
 			ceva,phy-retry-params = /bits/ 16 <RIT RCT>;
 			RIT:  Retry Interval Timer.
 			RCT:  Rate Change Timer.
+
+Optional properties:
+  - ceva,broken-gen2: limit to gen1 speed instead of gen2.
+
 Examples:
 	ahci@fd0c0000 {
 		compatible = "ceva,ahci-1v84";
@@ -52,4 +56,5 @@ Examples:
 		ceva,p1-comwake-params = /bits/ 8 <0x04 0x0B 0x08 0x0F>;
 		ceva,p1-burst-params = /bits/ 8 <0x0A 0x08 0x4A 0x06>;
 		ceva,p1-retry-params = /bits/ 16 <0x0216 0x7F06>;
+		ceva,broken-gen2;
 	};

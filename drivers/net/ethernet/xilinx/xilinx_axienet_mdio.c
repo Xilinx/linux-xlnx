@@ -204,8 +204,8 @@ int axienet_mdio_setup(struct axienet_local *lp, struct device_node *np)
 		of_node_put(npp);
 	}
 
-	axienet_iow(lp, XAE_MDIO_MC_OFFSET, (((u32)clk_div) |
-						XAE_MDIO_MC_MDIOEN_MASK));
+	axienet_iow(lp, XAE_MDIO_MC_OFFSET,
+		    (((u32)clk_div) | XAE_MDIO_MC_MDIOEN_MASK));
 
 	ret = axienet_mdio_wait_until_ready(lp);
 	if (ret < 0)

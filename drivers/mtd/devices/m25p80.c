@@ -311,6 +311,33 @@ static const struct spi_device_id m25p_ids[] = {
 	{"w25q128"},	{"w25q256"},	{"cat25c11"},
 	{"cat25c03"},	{"cat25c09"},	{"cat25c17"},	{"cat25128"},
 	{"is25lp032"},	{"is25lp064"},	{"is25lp128"},
+	/*
+	 * Entries not used in DTs that should be safe to drop after replacing
+	 * them with "nor-jedec" in platform data.
+	 */
+	{"s25sl064a"},	{"w25x16"},	{"m25p10"},	{"m25px64"},
+
+	/*
+	 * Entries that were used in DTs without "nor-jedec" fallback and should
+	 * be kept for backward compatibility.
+	 */
+	{"at25df321a"},	{"at25df641"},	{"at26df081a"},
+	{"mr25h256"},
+	{"mx25l4005a"},	{"mx25l1606e"},	{"mx25l6405d"},	{"mx25l12805d"},
+	{"mx25l25635e"},{"mx66l51235l"},
+	{"n25q064"},	{"n25q128a11"},	{"n25q128a13"},	{"n25q512a"},
+	{"s25fl256s1"},	{"s25fl512s"},	{"s25sl12801"},	{"s25fl008k"},
+	{"s25fl064k"},
+	{"sst25vf040b"},{"sst25vf016b"},{"sst25vf032b"},{"sst25wf040"},
+	{"m25p40"},	{"m25p80"},	{"m25p16"},	{"m25p32"},
+	{"m25p64"},	{"m25p128"},
+	{"w25x80"},	{"w25x32"},	{"w25q32"},	{"w25q32dw"},
+	{"w25q80bl"},	{"w25q128"},	{"w25q256"},
+
+	/* Flashes that can't be detected using JEDEC */
+	{"m25p05-nonjedec"},	{"m25p10-nonjedec"},	{"m25p20-nonjedec"},
+	{"m25p40-nonjedec"},	{"m25p80-nonjedec"},	{"m25p16-nonjedec"},
+	{"m25p32-nonjedec"},	{"m25p64-nonjedec"},	{"m25p128-nonjedec"},
 
 	/*
 	 * Generic support for SPI NOR that can be identified by the JEDEC READ

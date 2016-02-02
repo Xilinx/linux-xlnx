@@ -74,6 +74,15 @@ static int ehci_ci_portpower(struct usb_hcd *hcd, int portnum, bool enable)
 			ci->usb_phy->set_vbus(ci->usb_phy, 0);
 	}
 
+	if (enable && (ci->platdata->phy_mode == USBPHY_INTERFACE_MODE_HSIC)) {
+		/*
+		 * Marvell 28nm HSIC PHY requires forcing the port to HS mode.
+		 * As HSIC is always HS, this should be safe for others.
+		 */
+		hw_port_test_set(ci, 5);
+		hw_port_test_set(ci, 0);
+	}
+
 	return 0;
 };
 
@@ -247,9 +256,12 @@ int ci_hdrc_host_init(struct ci_hdrc *ci)
 	rdrv->name	= "host";
 	ci->roles[CI_ROLE_HOST] = rdrv;
 
+	return 0;
+}
+
+void ci_hdrc_host_driver_init(void)
+{
 	ehci_init_driver(&ci_ehci_hc_driver, &ehci_ci_overrides);
 	orig_bus_suspend = ci_ehci_hc_driver.bus_suspend;
 	ci_ehci_hc_driver.bus_suspend = ci_ehci_bus_suspend;
-
-	return 0;
 }

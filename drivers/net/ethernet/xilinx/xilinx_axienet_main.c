@@ -1965,7 +1965,7 @@ static void axienet_dma_err_handler(unsigned long data)
 
 /**
  * axienet_probe - Axi Ethernet probe function.
- * @pdev:		Pointer to platform device structure.
+ * @pdev:	Pointer to platform device structure.
  *
  * Return: 0, on success
  *	    Non-zero error value on failure.
@@ -2134,12 +2134,12 @@ static int axienet_probe(struct platform_device *pdev)
 
 	/* Retrieve the MAC address */
 	ret = of_property_read_u8_array(pdev->dev.of_node,
-			"local-mac-address", mac_addr, 6);
+					"local-mac-address", mac_addr, 6);
 	if (ret) {
 		dev_err(&pdev->dev, "could not find MAC address\n");
 		goto free_netdev;
 	}
-	axienet_set_mac_address(ndev, (void *) mac_addr);
+	axienet_set_mac_address(ndev, (void *)mac_addr);
 
 	lp->coalesce_count_rx = XAXIDMA_DFT_RX_THRESHOLD;
 	lp->coalesce_count_tx = XAXIDMA_DFT_TX_THRESHOLD;
