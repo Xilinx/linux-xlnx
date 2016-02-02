@@ -356,8 +356,8 @@ static void free_pasid_states(struct device_state *dev_state)
 		free_pasid_states_level2(dev_state->states);
 	else if (dev_state->pasid_levels == 1)
 		free_pasid_states_level1(dev_state->states);
-	else if (dev_state->pasid_levels != 0)
-		BUG();
+	else
+		BUG_ON(dev_state->pasid_levels != 0);
 
 	free_page((unsigned long)dev_state->states);
 }
@@ -511,6 +511,13 @@ static void do_fault(struct work_struct *work)
 	vma = find_extend_vma(mm, address);
 	if (!vma || address < vma->vm_start) {
 		/* failed to get a vma in the right range */
+		up_read(&mm->mmap_sem);
+		handle_fault_error(fault);
+		goto out;
+	}
+
+	if (!(vma->vm_flags & (VM_READ | VM_EXEC | VM_WRITE))) {
+		/* handle_mm_fault would BUG_ON() */
 		up_read(&mm->mmap_sem);
 		handle_fault_error(fault);
 		goto out;

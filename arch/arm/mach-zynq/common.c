@@ -187,7 +187,6 @@ static void __init zynq_map_io(void)
 
 static void __init zynq_irq_init(void)
 {
-	gic_set_irqchip_flags(IRQCHIP_SKIP_SET_WAKE | IRQCHIP_MASK_ON_SUSPEND);
 	irqchip_init();
 }
 
@@ -207,8 +206,8 @@ DT_MACHINE_START(XILINX_EP107, "Xilinx Zynq Platform")
 	.l2c_aux_mask	= 0xffbfffff,
 # endif
 #else
-	.l2c_aux_val	= 0x00000000,
-	.l2c_aux_mask	= 0xffffffff,
+	.l2c_aux_val	= 0x00400000,
+	.l2c_aux_mask	= 0xffbfffff,
 #endif
 	.smp		= smp_ops(zynq_smp_ops),
 	.map_io		= zynq_map_io,

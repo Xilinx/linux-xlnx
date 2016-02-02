@@ -86,9 +86,25 @@ static int ehci_ci_portpower(struct usb_hcd *hcd, int portnum, bool enable)
 	return 0;
 };
 
+static int ehci_ci_reset(struct usb_hcd *hcd)
+{
+	struct device *dev = hcd->self.controller;
+	struct ci_hdrc *ci = dev_get_drvdata(dev);
+	int ret;
+
+	ret = ehci_setup(hcd);
+	if (ret)
+		return ret;
+
+	ci_platform_configure(ci);
+
+	return ret;
+}
+
 static const struct ehci_driver_overrides ehci_ci_overrides = {
 	.extra_priv_size = sizeof(struct ehci_ci_priv),
 	.port_power	 = ehci_ci_portpower,
+	.reset		 = ehci_ci_reset,
 };
 
 static irqreturn_t host_irq(struct ci_hdrc *ci)
@@ -159,12 +175,6 @@ static int host_start(struct ci_hdrc *ci)
 			hcd->self.otg_port = 1;
 		}
 	}
-
-	if (ci->platdata->flags & CI_HDRC_DISABLE_STREAMING)
-		hw_write(ci, OP_USBMODE, USBMODE_CI_SDIS, USBMODE_CI_SDIS);
-
-	if (ci->platdata->flags & CI_HDRC_FORCE_FULLSPEED)
-		hw_write(ci, OP_PORTSC, PORTSC_PFSC, PORTSC_PFSC);
 
 	return ret;
 

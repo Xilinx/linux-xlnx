@@ -30,6 +30,8 @@
 #define SPI_NOR_MAX_ID_LEN	6
 
 struct flash_info {
+	char		*name;
+
 	/*
 	 * This array stores the ID bytes.
 	 * The first three bytes are the JEDIC ID.
@@ -64,7 +66,7 @@ struct flash_info {
 
 #define JEDEC_MFR(info)	((info)->id[0])
 
-static const struct spi_device_id *spi_nor_match_id(const char *name);
+static const struct flash_info *spi_nor_match_id(const char *name);
 
 /*
  * Read the status register, returning its value in the location
@@ -208,7 +210,7 @@ static inline struct spi_nor *mtd_to_spi_nor(struct mtd_info *mtd)
 }
 
 /* Enable/disable 4-byte addressing mode. */
-static inline int set_4byte(struct spi_nor *nor, struct flash_info *info,
+static inline int set_4byte(struct spi_nor *nor, const struct flash_info *info,
 			    int enable)
 {
 	int status;
@@ -777,7 +779,6 @@ err:
 
 /* Used when the "_ext_id" is two bytes at most */
 #define INFO(_jedec_id, _ext_id, _sector_size, _n_sectors, _flags)	\
-	((kernel_ulong_t)&(struct flash_info) {				\
 		.id = {							\
 			((_jedec_id) >> 16) & 0xff,			\
 			((_jedec_id) >> 8) & 0xff,			\
@@ -789,11 +790,9 @@ err:
 		.sector_size = (_sector_size),				\
 		.n_sectors = (_n_sectors),				\
 		.page_size = 256,					\
-		.flags = (_flags),					\
-	})
+		.flags = (_flags),
 
 #define INFO6(_jedec_id, _ext_id, _sector_size, _n_sectors, _flags)	\
-	((kernel_ulong_t)&(struct flash_info) {				\
 		.id = {							\
 			((_jedec_id) >> 16) & 0xff,			\
 			((_jedec_id) >> 8) & 0xff,			\
@@ -806,17 +805,14 @@ err:
 		.sector_size = (_sector_size),				\
 		.n_sectors = (_n_sectors),				\
 		.page_size = 256,					\
-		.flags = (_flags),					\
-	})
+		.flags = (_flags),
 
 #define CAT25_INFO(_sector_size, _n_sectors, _page_size, _addr_width, _flags)	\
-	((kernel_ulong_t)&(struct flash_info) {				\
 		.sector_size = (_sector_size),				\
 		.n_sectors = (_n_sectors),				\
 		.page_size = (_page_size),				\
 		.addr_width = (_addr_width),				\
-		.flags = (_flags),					\
-	})
+		.flags = (_flags),
 
 /* NOTE: double check command sets and memory organization when you add
  * more nor chips.  This current list focusses on newer chips, which
@@ -829,7 +825,7 @@ err:
  * For historical (and compatibility) reasons (before we got above config) some
  * old entries may be missing 4K flag.
  */
-static const struct spi_device_id spi_nor_ids[] = {
+static const struct flash_info spi_nor_ids[] = {
 	/* Atmel -- some are (confusingly) marketed as "DataFlash" */
 	{ "at25fs010",  INFO(0x1f6601, 0, 32 * 1024,   4, SECT_4K) },
 	{ "at25fs040",  INFO(0x1f6604, 0, 64 * 1024,   8, SECT_4K) },
@@ -897,14 +893,15 @@ static const struct spi_device_id spi_nor_ids[] = {
 
 	/* Micron */
 	{ "n25q032",	 INFO(0x20ba16, 0, 64 * 1024,   64, SPI_NOR_QUAD_READ) },
-	{ "n25q064",     INFO(0x20ba17, 0, 64 * 1024,  128, SPI_NOR_QUAD_READ) },
+	{ "n25q064",     INFO(0x20ba17, 0, 64 * 1024,  128, SECT_4K | SPI_NOR_QUAD_READ) },
+	{ "n25q064a",    INFO(0x20bb17, 0, 64 * 1024,  128, SECT_4K | SPI_NOR_QUAD_READ) },
 	{ "n25q128a11",  INFO(0x20bb18, 0, 64 * 1024,  256, SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ | SPI_NOR_FLASH_LOCK) },
 	{ "n25q128a13",  INFO(0x20ba18, 0, 64 * 1024,  256, SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ | SPI_NOR_FLASH_LOCK) },
 	{ "n25q256a",    INFO(0x20bb19, 0, 64 * 1024,  512, SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ | USE_FSR | SPI_NOR_FLASH_LOCK) },
 	{ "n25q256a13",  INFO(0x20ba19, 0, 64 * 1024,  512, SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ | USE_FSR | SPI_NOR_FLASH_LOCK) },
 	{ "n25q512a",    INFO(0x20bb20, 0, 64 * 1024, 1024, SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ | USE_FSR | SPI_NOR_FLASH_LOCK) },
 	{ "n25q512a13",  INFO(0x20ba20, 0, 64 * 1024, 1024, SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ | USE_FSR | SPI_NOR_FLASH_LOCK) },
-	{ "n25q512ax3",  INFO(0x20ba20, 0, 64 * 1024, 1024, USE_FSR | SPI_NOR_FLASH_LOCK) },
+	{ "n25q512ax3",  INFO(0x20ba20, 0, 64 * 1024, 1024, SECT_4K | USE_FSR | SPI_NOR_QUAD_READ | SPI_NOR_FLASH_LOCK) },
 	{ "n25q00",      INFO(0x20ba21, 0, 64 * 1024, 2048, SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ | USE_FSR | SPI_NOR_FLASH_LOCK) },
 
 	/* PMC */
@@ -916,7 +913,7 @@ static const struct spi_device_id spi_nor_ids[] = {
 	 * for the chips listed here (without boot sectors).
 	 */
 	{ "s25sl032p",  INFO(0x010215, 0x4d00,  64 * 1024,  64, SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ) },
-	{ "s25sl064p",  INFO(0x010216, 0x4d00,  64 * 1024, 128, 0) },
+	{ "s25sl064p",  INFO(0x010216, 0x4d00,  64 * 1024, 128, SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ) },
 	{ "s25fl256s0", INFO(0x010219, 0x4d00, 256 * 1024, 128, SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ | SPI_NOR_FLASH_LOCK) },
 	{ "s25fl256s1", INFO(0x010219, 0x4d01,  64 * 1024, 512, SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ) },
 	{ "s25fl512s",  INFO(0x010220, 0x4d00, 256 * 1024, 256, SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ) },
@@ -936,6 +933,7 @@ static const struct spi_device_id spi_nor_ids[] = {
 	{ "s25fl064k",  INFO(0xef4017,      0,  64 * 1024, 128, SECT_4K) },
 	{ "s25fl132k",  INFO(0x014016,      0,  64 * 1024,  64, SECT_4K) },
 	{ "s25fl164k",  INFO(0x014017,      0,  64 * 1024, 128, SECT_4K) },
+	{ "s25fl204k",  INFO(0x014013,      0,  64 * 1024,   8, SECT_4K) },
 
 	/* SST -- large erase sizes are "overlays", "sectors" are 4K */
 	{ "sst25vf040b", INFO(0xbf258d, 0, 64 * 1024,  8, SECT_4K | SST_WRITE) },
@@ -946,6 +944,7 @@ static const struct spi_device_id spi_nor_ids[] = {
 	{ "sst25wf512",  INFO(0xbf2501, 0, 64 * 1024,  1, SECT_4K | SST_WRITE) },
 	{ "sst25wf010",  INFO(0xbf2502, 0, 64 * 1024,  2, SECT_4K | SST_WRITE) },
 	{ "sst25wf020",  INFO(0xbf2503, 0, 64 * 1024,  4, SECT_4K | SST_WRITE) },
+	{ "sst25wf020a", INFO(0x621612, 0, 64 * 1024,  4, SECT_4K) },
 	{ "sst25wf040",  INFO(0xbf2504, 0, 64 * 1024,  8, SECT_4K | SST_WRITE) },
 	{ "sst25wf080",  INFO(0xbf2505, 0, 64 * 1024, 16, SECT_4K | SST_WRITE) },
 	{ "sst26wf016B", INFO(0xbf2651, 0, 64 * 1024, 32, SECT_4K |
@@ -1021,11 +1020,11 @@ static const struct spi_device_id spi_nor_ids[] = {
 	{ },
 };
 
-static const struct spi_device_id *spi_nor_read_id(struct spi_nor *nor)
+static const struct flash_info *spi_nor_read_id(struct spi_nor *nor)
 {
 	int			tmp;
 	u8			id[SPI_NOR_MAX_ID_LEN];
-	struct flash_info	*info;
+	const struct flash_info	*info;
 	nor->spi->master->flags &= ~SPI_BOTH_FLASH;
 
 	/* If more than one flash are present,need to read id of second flash */
@@ -1036,7 +1035,7 @@ static const struct spi_device_id *spi_nor_read_id(struct spi_nor *nor)
 	}
 
 	for (tmp = 0; tmp < ARRAY_SIZE(spi_nor_ids) - 1; tmp++) {
-		info = (void *)spi_nor_ids[tmp].driver_data;
+		info = &spi_nor_ids[tmp];
 		if (info->id_len) {
 			if (!memcmp(info->id, id, info->id_len))
 				return &spi_nor_ids[tmp];
@@ -1423,7 +1422,7 @@ static int micron_quad_enable(struct spi_nor *nor)
 	return 0;
 }
 
-static int set_quad_mode(struct spi_nor *nor, struct flash_info *info)
+static int set_quad_mode(struct spi_nor *nor, const struct flash_info *info)
 {
 	int status;
 
@@ -1472,8 +1471,7 @@ static int spi_nor_check(struct spi_nor *nor)
 
 int spi_nor_scan(struct spi_nor *nor, const char *name, enum read_mode mode)
 {
-	const struct spi_device_id	*id = NULL;
-	struct flash_info		*info;
+	struct flash_info *info = NULL;
 	struct device *dev = nor->dev;
 	struct mtd_info *mtd = nor->mtd;
 	struct device_node *np = dev->of_node;
@@ -1486,27 +1484,25 @@ int spi_nor_scan(struct spi_nor *nor, const char *name, enum read_mode mode)
 	if (ret)
 		return ret;
 
-	/* Try to auto-detect if chip name wasn't specified */
-	if (!name)
-		id = spi_nor_read_id(nor);
-	else
-		id = spi_nor_match_id(name);
-	if (IS_ERR_OR_NULL(id))
+	if (name)
+		info = spi_nor_match_id(name);
+	/* Try to auto-detect if chip name wasn't specified or not found */
+	if (!info)
+		info = spi_nor_read_id(nor);
+	if (IS_ERR_OR_NULL(info))
 		return -ENOENT;
-
-	info = (void *)id->driver_data;
 
 	/*
 	 * If caller has specified name of flash model that can normally be
 	 * detected using JEDEC, let's verify it.
 	 */
 	if (name && info->id_len) {
-		const struct spi_device_id *jid;
+		const struct flash_info *jinfo;
 
-		jid = spi_nor_read_id(nor);
-		if (IS_ERR(jid)) {
-			return PTR_ERR(jid);
-		} else if (jid != id) {
+		jinfo = spi_nor_read_id(nor);
+		if (IS_ERR(jinfo)) {
+			return PTR_ERR(jinfo);
+		} else if (jinfo != info) {
 			/*
 			 * JEDEC knows better, so overwrite platform ID. We
 			 * can't trust partitions any longer, but we'll let
@@ -1515,9 +1511,8 @@ int spi_nor_scan(struct spi_nor *nor, const char *name, enum read_mode mode)
 			 * information, even if it's not 100% accurate.
 			 */
 			dev_warn(dev, "found %s, expected %s\n",
-				 jid->name, id->name);
-			id = jid;
-			info = (void *)jid->driver_data;
+				 jinfo->name, info->name);
+			info = jinfo;
 		}
 	}
 
@@ -1776,7 +1771,7 @@ int spi_nor_scan(struct spi_nor *nor, const char *name, enum read_mode mode)
 
 	nor->read_dummy = spi_nor_read_dummy_cycles(nor);
 
-	dev_info(dev, "%s (%lld Kbytes)\n", id->name,
+	dev_info(dev, "%s (%lld Kbytes)\n", info->name,
 			(long long)mtd->size >> 10);
 
 	dev_dbg(dev,
@@ -1799,11 +1794,11 @@ int spi_nor_scan(struct spi_nor *nor, const char *name, enum read_mode mode)
 }
 EXPORT_SYMBOL_GPL(spi_nor_scan);
 
-static const struct spi_device_id *spi_nor_match_id(const char *name)
+static const struct flash_info *spi_nor_match_id(const char *name)
 {
-	const struct spi_device_id *id = spi_nor_ids;
+	const struct flash_info *id = spi_nor_ids;
 
-	while (id->name[0]) {
+	while (id->name) {
 		if (!strcmp(name, id->name))
 			return id;
 		id++;

@@ -289,7 +289,9 @@ struct be_cmd_req_hdr {
 	u32 timeout;		/* dword 1 */
 	u32 request_length;	/* dword 2 */
 	u8 version;		/* dword 3 */
-	u8 rsvd[3];		/* dword 3 */
+	u8 rsvd1;		/* dword 3 */
+	u8 pf_num;		/* dword 3 */
+	u8 rsvd2;		/* dword 3 */
 };
 
 #define RESP_HDR_INFO_OPCODE_SHIFT	0	/* bits 0 - 7 */
@@ -1500,6 +1502,8 @@ struct be_cmd_resp_acpi_wol_magic_config_v1 {
 #define BE_PME_D3COLD_CAP		0x80
 
 /********************** LoopBack test *********************/
+#define SET_LB_MODE_TIMEOUT		12000
+
 struct be_cmd_req_loopback_test {
 	struct be_cmd_req_hdr hdr;
 	u32 loopback_type;
@@ -1640,15 +1644,21 @@ struct be_cmd_req_set_qos {
 struct mgmt_hba_attribs {
 	u32 rsvd0[24];
 	u8 controller_model_number[32];
-	u32 rsvd1[79];
-	u8 rsvd2[3];
+	u32 rsvd1[16];
+	u32 controller_serial_number[8];
+	u32 rsvd2[55];
+	u8 rsvd3[3];
 	u8 phy_port;
-	u32 rsvd3[13];
+	u32 rsvd4[13];
 } __packed;
 
 struct mgmt_controller_attrib {
 	struct mgmt_hba_attribs hba_attribs;
-	u32 rsvd0[10];
+	u32 rsvd0[2];
+	u16 rsvd1;
+	u8 pci_func_num;
+	u8 rsvd2;
+	u32 rsvd3[7];
 } __packed;
 
 struct be_cmd_req_cntl_attribs {
@@ -1763,6 +1773,7 @@ struct be_cmd_req_set_mac_list {
 /*********************** HSW Config ***********************/
 #define PORT_FWD_TYPE_VEPA		0x3
 #define PORT_FWD_TYPE_VEB		0x2
+#define PORT_FWD_TYPE_PASSTHRU		0x1
 
 #define ENABLE_MAC_SPOOFCHK		0x2
 #define DISABLE_MAC_SPOOFCHK		0x3

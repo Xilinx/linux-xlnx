@@ -3545,6 +3545,7 @@ static int pair_device(struct sock *sk, struct hci_dev *hdev, void *data,
 				       auth_type);
 	} else {
 		u8 addr_type;
+		struct hci_conn_params *p;
 
 		/* Convert from L2CAP channel address type to HCI address type
 		 */
@@ -3562,11 +3563,15 @@ static int pair_device(struct sock *sk, struct hci_dev *hdev, void *data,
 		 * If connection parameters already exist, then they
 		 * will be kept and this function does nothing.
 		 */
-		hci_conn_params_add(hdev, &cp->addr.bdaddr, addr_type);
+		p = hci_conn_params_add(hdev, &cp->addr.bdaddr, addr_type);
 
-		conn = hci_connect_le(hdev, &cp->addr.bdaddr, addr_type,
-				      sec_level, HCI_LE_CONN_TIMEOUT,
-				      HCI_ROLE_MASTER);
+		if (p->auto_connect == HCI_AUTO_CONN_EXPLICIT)
+			p->auto_connect = HCI_AUTO_CONN_DISABLED;
+
+		conn = hci_connect_le_scan(hdev, &cp->addr.bdaddr,
+					   addr_type, sec_level,
+					   HCI_LE_CONN_TIMEOUT,
+					   HCI_ROLE_MASTER);
 	}
 
 	if (IS_ERR(conn)) {
@@ -4210,7 +4215,7 @@ static bool trigger_le_scan(struct hci_request *req, u16 interval, u8 *status)
 		/* Don't let discovery abort an outgoing connection attempt
 		 * that's using directed advertising.
 		 */
-		if (hci_conn_hash_lookup_state(hdev, LE_LINK, BT_CONNECT)) {
+		if (hci_lookup_le_connect(hdev)) {
 			*status = MGMT_STATUS_REJECTED;
 			return false;
 		}
@@ -6107,17 +6112,30 @@ static int hci_conn_params_set(struct hci_request *req, bdaddr_t *addr,
 	switch (auto_connect) {
 	case HCI_AUTO_CONN_DISABLED:
 	case HCI_AUTO_CONN_LINK_LOSS:
+		/* If auto connect is being disabled when we're trying to
+		 * connect to device, keep connecting.
+		 */
+		if (params->explicit_connect)
+			list_add(&params->action, &hdev->pend_le_conns);
+
 		__hci_update_background_scan(req);
 		break;
 	case HCI_AUTO_CONN_REPORT:
-		list_add(&params->action, &hdev->pend_le_reports);
+		if (params->explicit_connect)
+			list_add(&params->action, &hdev->pend_le_conns);
+		else
+			list_add(&params->action, &hdev->pend_le_reports);
 		__hci_update_background_scan(req);
 		break;
 	case HCI_AUTO_CONN_DIRECT:
 	case HCI_AUTO_CONN_ALWAYS:
 		if (!is_connected(hdev, addr, addr_type)) {
 			list_add(&params->action, &hdev->pend_le_conns);
-			__hci_update_background_scan(req);
+			/* If we are in scan phase of connecting, we were
+			 * already added to pend_le_conns and scanning.
+			 */
+			if (params->auto_connect != HCI_AUTO_CONN_EXPLICIT)
+				__hci_update_background_scan(req);
 		}
 		break;
 	}
@@ -6225,6 +6243,17 @@ static int add_device(struct sock *sk, struct hci_dev *hdev,
 		auto_conn = HCI_AUTO_CONN_DIRECT;
 	else
 		auto_conn = HCI_AUTO_CONN_REPORT;
+
+	/* Kernel internally uses conn_params with resolvable private
+	 * address, but Add Device allows only identity addresses.
+	 * Make sure it is enforced before calling
+	 * hci_conn_params_lookup.
+	 */
+	if (!hci_is_identity_address(&cp->addr.bdaddr, addr_type)) {
+		err = cmd->cmd_complete(cmd, MGMT_STATUS_INVALID_PARAMS);
+		mgmt_pending_remove(cmd);
+		goto unlock;
+	}
 
 	/* If the connection parameters don't exist for this device,
 	 * they will be created and configured with defaults.
@@ -6340,6 +6369,18 @@ static int remove_device(struct sock *sk, struct hci_dev *hdev,
 		else
 			addr_type = ADDR_LE_DEV_RANDOM;
 
+		/* Kernel internally uses conn_params with resolvable private
+		 * address, but Remove Device allows only identity addresses.
+		 * Make sure it is enforced before calling
+		 * hci_conn_params_lookup.
+		 */
+		if (!hci_is_identity_address(&cp->addr.bdaddr, addr_type)) {
+			err = cmd->cmd_complete(cmd,
+						MGMT_STATUS_INVALID_PARAMS);
+			mgmt_pending_remove(cmd);
+			goto unlock;
+		}
+
 		params = hci_conn_params_lookup(hdev, &cp->addr.bdaddr,
 						addr_type);
 		if (!params) {
@@ -6349,7 +6390,8 @@ static int remove_device(struct sock *sk, struct hci_dev *hdev,
 			goto unlock;
 		}
 
-		if (params->auto_connect == HCI_AUTO_CONN_DISABLED) {
+		if (params->auto_connect == HCI_AUTO_CONN_DISABLED ||
+		    params->auto_connect == HCI_AUTO_CONN_EXPLICIT) {
 			err = cmd->cmd_complete(cmd,
 						MGMT_STATUS_INVALID_PARAMS);
 			mgmt_pending_remove(cmd);
@@ -6385,6 +6427,10 @@ static int remove_device(struct sock *sk, struct hci_dev *hdev,
 			if (p->auto_connect == HCI_AUTO_CONN_DISABLED)
 				continue;
 			device_removed(sk, hdev, &p->addr, p->addr_type);
+			if (p->explicit_connect) {
+				p->auto_connect = HCI_AUTO_CONN_EXPLICIT;
+				continue;
+			}
 			list_del(&p->action);
 			list_del(&p->list);
 			kfree(p);

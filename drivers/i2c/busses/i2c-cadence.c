@@ -116,7 +116,7 @@
 
 #define CDNS_I2C_TIMEOUT_MAX	0xFF
 
-#define CDNS_I2C_BROKEN_HOLD_BIT	0x00000001
+#define CDNS_I2C_BROKEN_HOLD_BIT	BIT(0)
 
 #define cdns_i2c_readreg(offset)       readl_relaxed(id->membase + offset)
 #define cdns_i2c_writereg(val, offset) writel_relaxed(val, id->membase + offset)
@@ -623,6 +623,7 @@ static int cdns_i2c_master_xfer(struct i2c_adapter *adap, struct i2c_msg *msgs,
 	u32 reg;
 	struct cdns_i2c *id = adap->algo_data;
 	bool hold_quirk;
+
 	/* Check if the bus is free */
 	if (msgs->len)
 		if (cdns_i2c_readreg(CDNS_I2C_SR_OFFSET) & CDNS_I2C_SR_BA)
@@ -905,7 +906,8 @@ static SIMPLE_DEV_PM_OPS(cdns_i2c_dev_pm_ops, cdns_i2c_suspend,
 			 cdns_i2c_resume);
 
 static const struct cdns_platform_data r1p10_i2c_def = {
-				.quirks = CDNS_I2C_BROKEN_HOLD_BIT, };
+	.quirks = CDNS_I2C_BROKEN_HOLD_BIT,
+};
 
 static const struct of_device_id cdns_i2c_of_match[] = {
 	{ .compatible = "cdns,i2c-r1p10", .data = &r1p10_i2c_def },
@@ -950,6 +952,7 @@ static int cdns_i2c_probe(struct platform_device *pdev)
 
 	id->irq = platform_get_irq(pdev, 0);
 
+	id->adap.owner = THIS_MODULE;
 	id->adap.dev.of_node = pdev->dev.of_node;
 	id->adap.algo = &cdns_i2c_algo;
 	id->adap.timeout = CDNS_I2C_TIMEOUT;

@@ -418,9 +418,6 @@ static int xgpio_irq_setup(struct device_node *np, struct xgpio_instance *chip)
 		irq_set_chip_and_handler(gpio_irq, &xgpio_irqchip,
 					 handle_simple_irq);
 		irq_set_chip_data(gpio_irq, (void *)chip);
-#ifdef CONFIG_ARCH_ZYNQ
-		set_irq_flags(gpio_irq, IRQF_VALID);
-#endif
 	}
 	irq_set_handler_data(res.start, (void *)chip);
 	irq_set_chained_handler(res.start, xgpio_irqhandler);

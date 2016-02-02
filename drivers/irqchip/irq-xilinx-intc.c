@@ -14,9 +14,9 @@
 #include <linux/of_irq.h>
 #include <linux/io.h>
 #include <linux/interrupt.h>
+#include <linux/irqchip.h>
 #include <linux/irqchip/chained_irq.h>
 #include <linux/slab.h>
-#include "irqchip.h"
 
 /**
  * struct intc - Interrupt controller private data structure

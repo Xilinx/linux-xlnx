@@ -96,7 +96,8 @@ static int zynq_ocm_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	zynq_ocm->pool = devm_gen_pool_create(&pdev->dev,
-					      ilog2(ZYNQ_OCM_GRANULARITY), -1);
+					      ilog2(ZYNQ_OCM_GRANULARITY),
+					      NUMA_NO_NODE, NULL);
 	if (!zynq_ocm->pool)
 		return -ENOMEM;
 

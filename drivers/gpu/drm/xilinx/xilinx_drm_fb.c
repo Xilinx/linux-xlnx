@@ -144,9 +144,10 @@ int xilinx_drm_fb_helper_pan_display(struct fb_var_screeninfo *var,
 	int ret = 0;
 	int i;
 
-	if (__drm_modeset_lock_all(dev, !!oops_in_progress))
+	if (oops_in_progress)
 		return -EBUSY;
 
+	drm_modeset_lock_all(dev);
 	for (i = 0; i < fb_helper->crtc_count; i++) {
 		modeset = &fb_helper->crtc_info[i].mode_set;
 
