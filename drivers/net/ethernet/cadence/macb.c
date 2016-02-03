@@ -28,6 +28,7 @@
 #include <linux/phy.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
+#include <linux/of_gpio.h>
 #include <linux/of_mdio.h>
 #include <linux/of_net.h>
 #include <linux/net_tstamp.h>
@@ -2603,6 +2604,38 @@ static void macb_configure_caps(struct macb *bp, const struct macb_config *dt_co
 	dev_dbg(&bp->pdev->dev, "Cadence caps 0x%08x\n", bp->caps);
 }
 
+#if defined(CONFIG_OF)
+static void macb_reset_phy(struct platform_device *pdev)
+{
+	int err, phy_reset, msec = 1;
+	bool active_low;
+	struct device_node *np = pdev->dev.of_node;
+
+	if (!np)
+		return;
+
+	of_property_read_u32(np, "phy-reset-duration", &msec);
+	active_low = of_property_read_bool(np, "phy-reset-active-low");
+
+	phy_reset = of_get_named_gpio(np, "phy-reset-gpio", 0);
+	if (!gpio_is_valid(phy_reset))
+		return;
+
+	err = devm_gpio_request_one(&pdev->dev, phy_reset,
+				    (!active_low | GPIOF_DIR_OUT), "phy-reset");
+	if (err) {
+		dev_err(&pdev->dev, "failed to get phy-reset-gpio: %d\n", err);
+		return;
+	}
+	msleep(msec);
+	gpio_set_value(phy_reset, active_low);
+}
+#else /* CONFIG_OF */
+static void macb_reset_phy(struct platform_device *pdev)
+{
+}
+#endif /* CONFIG_OF */
+
 static void macb_probe_queues(void __iomem *mem,
 			      bool native_io,
 			      unsigned int *queue_mask,
@@ -3281,6 +3314,8 @@ static int macb_probe(struct platform_device *pdev)
 	} else {
 		bp->phy_interface = err;
 	}
+
+	macb_reset_phy(pdev);
 
 	/* IP specific init */
 	err = init(pdev);
