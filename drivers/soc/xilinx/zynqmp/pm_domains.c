@@ -40,17 +40,16 @@ struct zynqmp_pm_domain {
 };
 
 /**
- * zynqmp_gpd_req_device - request/release device in PM domain
+ * zynqmp_gpd_set_power - power on/off PM domain
  * @domain:	Generic PM domain
  * @power_on:	Flag to specify whether to power on or off PM domain
  *
- * Depending on power_on flag, this functions calls zynqmp_pm_req/release_node
- * to inform PM firmware if it needs a resource (device inside PM domain).
+ * This functions calls zynqmp_pm_set_requirement to trigger power state change
+ * of a resource (device inside PM domain), depending on power_on flag.
  *
  * Return:	0 on success, error code otherwise.
  */
-static int zynqmp_gpd_req_device(struct generic_pm_domain *domain,
-				 bool power_on)
+static int zynqmp_gpd_set_power(struct generic_pm_domain *domain, bool power_on)
 {
 	int status;
 	struct zynqmp_pm_domain *pd;
@@ -63,10 +62,10 @@ static int zynqmp_gpd_req_device(struct generic_pm_domain *domain,
 	}
 
 	if (!power_on)
-		status = zynqmp_pm_release_node(pd->node_id,
-						ZYNQMP_PM_MAX_LATENCY);
+		status = zynqmp_pm_set_requirement(pd->node_id, 0, 0,
+						ZYNQMP_PM_REQUEST_ACK_NO);
 	else
-		status = zynqmp_pm_request_node(pd->node_id,
+		status = zynqmp_pm_set_requirement(pd->node_id,
 						ZYNQMP_PM_CAPABILITY_ACCESS,
 						ZYNQMP_PM_MAX_QOS,
 						ZYNQMP_PM_REQUEST_ACK_NO);
@@ -84,7 +83,7 @@ static int zynqmp_gpd_req_device(struct generic_pm_domain *domain,
  */
 static int zynqmp_gpd_power_on(struct generic_pm_domain *domain)
 {
-	return zynqmp_gpd_req_device(domain, true);
+	return zynqmp_gpd_set_power(domain, true);
 }
 
 /**
@@ -98,7 +97,7 @@ static int zynqmp_gpd_power_on(struct generic_pm_domain *domain)
  */
 static int zynqmp_gpd_power_off(struct generic_pm_domain *domain)
 {
-	return zynqmp_gpd_req_device(domain, false);
+	return zynqmp_gpd_set_power(domain, false);
 }
 
 /**
