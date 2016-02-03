@@ -151,8 +151,6 @@ out:
 
 static void __init zynq_timer_init(void)
 {
-	zynq_early_slcr_init();
-
 	zynq_clock_init();
 	of_clk_init(NULL);
 	clocksource_probe();
@@ -187,6 +185,7 @@ static void __init zynq_map_io(void)
 
 static void __init zynq_irq_init(void)
 {
+	zynq_early_slcr_init();
 	irqchip_init();
 }
 
