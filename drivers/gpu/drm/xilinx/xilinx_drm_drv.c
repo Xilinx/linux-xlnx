@@ -143,7 +143,7 @@ static const struct drm_mode_config_funcs xilinx_drm_mode_config_funcs = {
 };
 
 /* enable vblank */
-static int xilinx_drm_enable_vblank(struct drm_device *drm, int crtc)
+static int xilinx_drm_enable_vblank(struct drm_device *drm, unsigned int crtc)
 {
 	struct xilinx_drm_private *private = drm->dev_private;
 
@@ -153,7 +153,7 @@ static int xilinx_drm_enable_vblank(struct drm_device *drm, int crtc)
 }
 
 /* disable vblank */
-static void xilinx_drm_disable_vblank(struct drm_device *drm, int crtc)
+static void xilinx_drm_disable_vblank(struct drm_device *drm, unsigned int crtc)
 {
 	struct xilinx_drm_private *private = drm->dev_private;
 
@@ -397,7 +397,7 @@ static struct drm_driver xilinx_drm_driver = {
 	.lastclose			= xilinx_drm_lastclose,
 	.set_busid			= drm_platform_set_busid,
 
-	.get_vblank_counter		= drm_vblank_no_hw_count,
+	.get_vblank_counter		= drm_vblank_no_hw_counter,
 	.enable_vblank			= xilinx_drm_enable_vblank,
 	.disable_vblank			= xilinx_drm_disable_vblank,
 
