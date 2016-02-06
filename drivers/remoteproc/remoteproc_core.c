@@ -594,10 +594,10 @@ static int rproc_handle_carveout(struct rproc *rproc,
 	 * This is a temporary solution until we have iommu/smmu ready
 	 */
 	va = devm_ioremap_nocache(dev, rsc->pa, rsc->len);
-	if (IS_ERR(va)) {
+	if (!va) {
 		dev_err(dev->parent, "Unable to map memory %08x size %08x\n",
 			rsc->pa, rsc->len);
-		ret = PTR_ERR(va);
+		ret = -ENOMEM;
 		goto free_carv;
 	}
 	/* In case of TCM, have to initialize the memory after ioremap,
