@@ -170,14 +170,24 @@ int
 xilinx_drm_fb_ioctl(struct fb_info *info, unsigned int cmd, unsigned long arg)
 {
 	struct drm_fb_helper *fb_helper = info->par;
-	struct drm_device *dev = fb_helper->dev;
 	unsigned int i;
+	int ret = 0;
 
 	switch (cmd) {
 	case FBIO_WAITFORVSYNC:
-		for (i = 0; i < fb_helper->crtc_count; i++)
-			drm_wait_one_vblank(dev, i);
-		return 0;
+		for (i = 0; i < fb_helper->crtc_count; i++) {
+			struct drm_mode_set *mode_set;
+			struct drm_crtc *crtc;
+
+			mode_set = &fb_helper->crtc_info[i].mode_set;
+			crtc = mode_set->crtc;
+			ret = drm_crtc_vblank_get(crtc);
+			if (ret) {
+				drm_crtc_wait_one_vblank(crtc);
+				drm_crtc_vblank_put(crtc);
+			}
+		}
+		return ret;
 	default:
 		return -ENOTTY;
 	}
