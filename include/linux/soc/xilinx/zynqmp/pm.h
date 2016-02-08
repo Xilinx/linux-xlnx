@@ -40,7 +40,7 @@
 enum zynqmp_pm_request_ack {
 	ZYNQMP_PM_REQUEST_ACK_NO = 1,
 	ZYNQMP_PM_REQUEST_ACK_BLOCKING,
-	ZYNQMP_PM_REQUEST_ACK_CALLBACK_STANDARD,
+	ZYNQMP_PM_REQUEST_ACK_NON_BLOCKING,
 };
 
 enum zynqmp_pm_abort_reason {
