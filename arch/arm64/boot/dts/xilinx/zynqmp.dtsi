@@ -252,6 +252,7 @@
 		#address-cells = <2>;
 		#size-cells = <2>;
 		ranges;
+
 		gic: interrupt-controller@f9010000 {
 			compatible = "arm,gic-400", "arm,cortex-a15-gic";
 			#interrupt-cells = <3>;
