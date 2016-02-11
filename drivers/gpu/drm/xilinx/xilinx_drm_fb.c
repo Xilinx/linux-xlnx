@@ -182,7 +182,7 @@ xilinx_drm_fb_ioctl(struct fb_info *info, unsigned int cmd, unsigned long arg)
 			mode_set = &fb_helper->crtc_info[i].mode_set;
 			crtc = mode_set->crtc;
 			ret = drm_crtc_vblank_get(crtc);
-			if (ret) {
+			if (!ret) {
 				drm_crtc_wait_one_vblank(crtc);
 				drm_crtc_vblank_put(crtc);
 			}
