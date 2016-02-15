@@ -230,9 +230,9 @@ struct nwl_pcie {
 	void __iomem *breg_base;
 	void __iomem *pcireg_base;
 	void __iomem *ecam_base;
-	u32 phys_breg_base;
-	u32 phys_pcie_reg_base;
-	u32 phys_ecam_base;
+	phys_addr_t phys_breg_base;
+	phys_addr_t phys_pcie_reg_base;
+	phys_addr_t phys_ecam_base;
 	u32 breg_size;
 	u32 pcie_reg_size;
 	u32 ecam_size;
