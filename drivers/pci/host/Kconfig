@@ -18,7 +18,7 @@ config PCI_MVEBU
 
 config PCI_XILINX_NWL
 	bool "NWL PCIe Core"
-	depends on ARCH_ZYNQMP && PCI_MSI
+	depends on ARCH_ZYNQMP
 	help
 	 Say 'Y' here if you want kernel to support for Xilinx
 	 NWL PCIe controller.The controller can act as Root Port
