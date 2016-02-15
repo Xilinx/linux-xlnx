@@ -1066,6 +1066,7 @@ static int nwl_pcie_probe(struct platform_device *pdev)
 	struct device_node *node = pdev->dev.of_node;
 	struct nwl_pcie *pcie;
 	struct pci_bus *bus;
+	struct pci_bus *child;
 	int err;
 
 	resource_size_t iobase = 0;
@@ -1122,6 +1123,8 @@ static int nwl_pcie_probe(struct platform_device *pdev)
 	}
 	pci_scan_child_bus(bus);
 	pci_assign_unassigned_bus_resources(bus);
+	list_for_each_entry(child, &bus->children, node)
+		pcie_bus_configure_settings(child);
 	pci_bus_add_devices(bus);
 	platform_set_drvdata(pdev, pcie);
 
