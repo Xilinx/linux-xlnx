@@ -861,9 +861,6 @@ static int nwl_pcie_bridge_init(struct nwl_pcie *pcie)
 	nwl_bridge_writel(pcie, nwl_bridge_readl(pcie, BRCFG_PCIE_RX0) |
 			  CFG_DMA_REG_BAR, BRCFG_PCIE_RX0);
 
-	/* Enable the bridge config interrupt */
-	nwl_bridge_writel(pcie, nwl_bridge_readl(pcie, BRCFG_INTERRUPT) |
-			  BRCFG_INTERRUPT_MASK, BRCFG_INTERRUPT);
 	/* Enable Ingress subtractive decode translation */
 	nwl_bridge_writel(pcie, SET_ISUB_CONTROL, I_ISUB_CONTROL);
 
@@ -961,6 +958,11 @@ static int nwl_pcie_bridge_init(struct nwl_pcie *pcie)
 			pcie->irq_intx);
 		return err;
 	}
+
+	/* Enable the bridge config interrupt */
+	nwl_bridge_writel(pcie, nwl_bridge_readl(pcie, BRCFG_INTERRUPT) |
+			  BRCFG_INTERRUPT_MASK, BRCFG_INTERRUPT);
+
 	/* Enable all legacy interrupts */
 	nwl_bridge_writel(pcie, MSGF_LEG_SR_MASKALL, MSGF_LEG_MASK);
 
