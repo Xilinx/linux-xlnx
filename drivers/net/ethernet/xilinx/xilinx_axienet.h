@@ -399,7 +399,7 @@ struct axidma_bd {
 	u32 app2;	/* TX csum seed */
 	u32 app3;
 	u32 app4;
-	u32 sw_id_offset;
+	phys_addr_t sw_id_offset; /* first unused field by h/w */
 	u32 ptp_tx_skb;
 	u32 ptp_tx_ts_tag;
 	phys_addr_t tx_skb;
