@@ -677,14 +677,15 @@ static void axienet_start_xmit_done(struct net_device *ndev)
 		dma_unmap_single(ndev->dev.parent, cur_p->phys,
 				(cur_p->cntrl & XAXIDMA_BD_CTRL_LENGTH_MASK),
 				DMA_TO_DEVICE);
-		if (cur_p->app4)
-			dev_kfree_skb_irq((struct sk_buff *)cur_p->app4);
+		if (cur_p->tx_skb)
+			dev_kfree_skb_irq((struct sk_buff *)cur_p->tx_skb);
 		/*cur_p->phys = 0;*/
 		cur_p->app0 = 0;
 		cur_p->app1 = 0;
 		cur_p->app2 = 0;
 		cur_p->app4 = 0;
 		cur_p->status = 0;
+		cur_p->tx_skb = 0;
 
 		size += status & XAXIDMA_BD_STS_ACTUAL_LEN_MASK;
 		packets++;
@@ -881,7 +882,7 @@ static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	}
 
 	cur_p->cntrl |= XAXIDMA_BD_CTRL_TXEOF_MASK;
-	cur_p->app4 = (unsigned long)skb;
+	cur_p->tx_skb = (phys_addr_t)skb;
 
 	tail_p = lp->tx_bd_p + sizeof(*lp->tx_bd_v) * lp->tx_bd_tail;
 	/* Ensure BD write before starting transfer */
@@ -1869,8 +1870,8 @@ static void axienet_dma_err_handler(unsigned long data)
 					 (cur_p->cntrl &
 					  XAXIDMA_BD_CTRL_LENGTH_MASK),
 					 DMA_TO_DEVICE);
-		if (cur_p->app4)
-			dev_kfree_skb_irq((struct sk_buff *) cur_p->app4);
+		if (cur_p->tx_skb)
+			dev_kfree_skb_irq((struct sk_buff *) cur_p->tx_skb);
 		cur_p->phys = 0;
 		cur_p->cntrl = 0;
 		cur_p->status = 0;
@@ -1880,6 +1881,7 @@ static void axienet_dma_err_handler(unsigned long data)
 		cur_p->app3 = 0;
 		cur_p->app4 = 0;
 		cur_p->sw_id_offset = 0;
+		cur_p->tx_skb = 0;
 	}
 
 	for (i = 0; i < RX_BD_NUM; i++) {
