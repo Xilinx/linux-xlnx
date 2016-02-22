@@ -1136,9 +1136,7 @@ static irqreturn_t axienet_tx_irq(int irq, void *_ndev)
 	status = axienet_dma_in32(lp, XAXIDMA_TX_SR_OFFSET);
 	if (status & (XAXIDMA_IRQ_IOC_MASK | XAXIDMA_IRQ_DELAY_MASK)) {
 		axienet_dma_out32(lp, XAXIDMA_TX_SR_OFFSET, status);
-		spin_lock(&lp->tx_lock);
 		axienet_start_xmit_done(lp->ndev);
-		spin_unlock(&lp->tx_lock);
 		goto out;
 	}
 	if (!(status & XAXIDMA_IRQ_ALL_MASK))
