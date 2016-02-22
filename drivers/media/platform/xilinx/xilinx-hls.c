@@ -191,12 +191,13 @@ static int xhls_s_stream(struct v4l2_subdev *subdev, int enable)
  */
 
 static struct v4l2_mbus_framefmt *
-__xhls_get_pad_format(struct xhls_device *xhls, struct v4l2_subdev_fh *fh,
+__xhls_get_pad_format(struct xhls_device *xhls,
+		      struct v4l2_subdev_pad_config *cfg,
 		      unsigned int pad, u32 which)
 {
 	switch (which) {
 	case V4L2_SUBDEV_FORMAT_TRY:
-		return v4l2_subdev_get_try_format(fh, pad);
+		return v4l2_subdev_get_try_format(&xhls->xvip.subdev, cfg, pad);
 	case V4L2_SUBDEV_FORMAT_ACTIVE:
 		return &xhls->formats[pad];
 	default:
@@ -205,38 +206,39 @@ __xhls_get_pad_format(struct xhls_device *xhls, struct v4l2_subdev_fh *fh,
 }
 
 static int xhls_get_format(struct v4l2_subdev *subdev,
-			   struct v4l2_subdev_fh *fh,
+			   struct v4l2_subdev_pad_config *cfg,
 			   struct v4l2_subdev_format *fmt)
 {
 	struct xhls_device *xhls = to_hls(subdev);
 
-	fmt->format = *__xhls_get_pad_format(xhls, fh, fmt->pad, fmt->which);
+	fmt->format = *__xhls_get_pad_format(xhls, cfg, fmt->pad, fmt->which);
 
 	return 0;
 }
 
 static int xhls_set_format(struct v4l2_subdev *subdev,
-			   struct v4l2_subdev_fh *fh,
+			   struct v4l2_subdev_pad_config *cfg,
 			   struct v4l2_subdev_format *fmt)
 {
 	struct xhls_device *xhls = to_hls(subdev);
-	struct v4l2_mbus_framefmt *__format;
+	struct v4l2_mbus_framefmt *format;
 
-	__format = __xhls_get_pad_format(xhls, fh, fmt->pad, fmt->which);
+	format = __xhls_get_pad_format(xhls, cfg, fmt->pad, fmt->which);
 
 	if (fmt->pad == XVIP_PAD_SOURCE) {
-		fmt->format = *__format;
+		fmt->format = *format;
 		return 0;
 	}
 
-	xvip_set_format_size(__format, fmt);
+	xvip_set_format_size(format, fmt);
 
-	fmt->format = *__format;
+	fmt->format = *format;
 
 	/* Propagate the format to the source pad. */
-	__format = __xhls_get_pad_format(xhls, fh, XVIP_PAD_SOURCE, fmt->which);
+	format = __xhls_get_pad_format(xhls, cfg, XVIP_PAD_SOURCE,
+					 fmt->which);
 
-	xvip_set_format_size(__format, fmt);
+	xvip_set_format_size(format, fmt);
 
 	return 0;
 }
@@ -251,10 +253,10 @@ static int xhls_open(struct v4l2_subdev *subdev, struct v4l2_subdev_fh *fh)
 	struct v4l2_mbus_framefmt *format;
 
 	/* Initialize with default formats */
-	format = v4l2_subdev_get_try_format(fh, XVIP_PAD_SINK);
+	format = v4l2_subdev_get_try_format(subdev, fh->pad, XVIP_PAD_SINK);
 	*format = xhls->default_formats[XVIP_PAD_SINK];
 
-	format = v4l2_subdev_get_try_format(fh, XVIP_PAD_SOURCE);
+	format = v4l2_subdev_get_try_format(subdev, fh->pad, XVIP_PAD_SOURCE);
 	*format = xhls->default_formats[XVIP_PAD_SOURCE];
 
 	return 0;
