@@ -41,6 +41,7 @@
 /* Internal RAM Offsets */
 #define XTG_PARAM_RAM_OFFSET	   0x1000  /* Parameter RAM offset */
 #define XTG_COMMAND_RAM_OFFSET	   0x8000  /* Command RAM offset */
+#define XTG_COMMAND_RAM_MSB_OFFSET 0xa000	/**< Command RAM MSB Offset */
 #define XTG_MASTER_RAM_INIT_OFFSET 0x10000 /* Master RAM initial offset(v1.0) */
 #define XTG_MASTER_RAM_OFFSET	   0xc000  /* Master RAM offset */
 
@@ -161,8 +162,10 @@
 /* Internal RAM Sizes */
 #define XTG_PRM_RAM_BLOCK_SIZE	0x400	/* PRAM Block size (1KB) */
 #define XTG_CMD_RAM_BLOCK_SIZE	0x1000	/* CRAM Block size (4KB) */
+#define XTG_EXTCMD_RAM_BLOCK_SIZE 0x400	/**< Extended CMDRAM Block Size (1KB) */
 #define XTG_PARAM_RAM_SIZE	0x800	/* Parameter RAM (2KB) */
 #define XTG_COMMAND_RAM_SIZE	0x2000	/* Command RAM (8KB) */
+#define XTG_EXTCMD_RAM_SIZE	0x800	/* Command RAM (2KB) */
 #define XTG_MASTER_RAM_SIZE	0x2000	/* Master RAM (8KB) */
 
 /* RAM Access Flags */
@@ -193,6 +196,9 @@
 /* Macro */
 #define to_xtg_dev_info(n)	((struct xtg_dev_info *)dev_get_drvdata(n))
 
+#define CMD_WDS	0x4	/* No of words in command ram per command */
+#define EXT_WDS	0x1	/* No of words in extended ram per command */
+#define MSB_INDEX	0x4
 /**
  * struct xtg_cram - Command RAM structure
  * @addr: Address Driven to a*_addr line
@@ -221,7 +227,7 @@
  * if found a proper placeholder (in uapi/).
  */
 struct xtg_cram {
-	u32 addr;
+	phys_addr_t addr;
 	u32 valid_cmd;
 	u32 last_addr;
 	u32 prot;
@@ -286,7 +292,7 @@ struct xtg_pram {
 struct xtg_dev_info {
 	void __iomem *regs;
 	struct device *dev;
-	u32 phys_base_addr;
+	phys_addr_t phys_base_addr;
 	s16 last_rd_valid_idx;
 	s16 last_wr_valid_idx;
 	u32 id;
@@ -374,14 +380,28 @@ static void xtg_access_rams(struct xtg_dev_info *tg, int where,
 	case XTG_WRITE_RAM_ZERO:
 		for (index = 0; count > 0; index++, count -= 4)
 			writel(0x0, tg->regs + where + index * 4);
+#ifdef CONFIG_PHYS_ADDR_T_64BIT
+		writel(0x0, tg->regs + where +
+			(XTG_COMMAND_RAM_MSB_OFFSET - XTG_COMMAND_RAM_OFFSET) +
+			XTG_EXTCMD_RAM_BLOCK_SIZE - XTG_CMD_RAM_BLOCK_SIZE);
+#endif
 		break;
 	case XTG_WRITE_RAM:
 		for (index = 0; count > 0; index++, count -= 4)
 			writel(data[index], tg->regs + where + index * 4);
+#ifdef CONFIG_PHYS_ADDR_T_64BIT
+		writel(data[MSB_INDEX],	tg->regs + where +
+			(XTG_COMMAND_RAM_MSB_OFFSET - XTG_COMMAND_RAM_OFFSET) +
+			XTG_EXTCMD_RAM_BLOCK_SIZE - XTG_CMD_RAM_BLOCK_SIZE);
+#endif
 		break;
 	case XTG_READ_RAM:
 		for (index = 0; count > 0; index++, count -= 4)
 			data[index] = readl(tg->regs + where + index * 4);
+#ifdef CONFIG_PHYS_ADDR_T_64BIT
+		data[MSB_INDEX] = readl(tg->regs + where +
+			(XTG_COMMAND_RAM_MSB_OFFSET - XTG_COMMAND_RAM_OFFSET));
+#endif
 		break;
 	}
 }
@@ -396,7 +416,12 @@ static void xtg_prepare_cmd_words(struct xtg_dev_info *tg,
 				const struct xtg_cram *cmdp, u32 *cmd_words)
 {
 	/* Command Word 0 */
-	cmd_words[0] = cmdp->addr;
+	cmd_words[0] = lower_32_bits(cmdp->addr);
+
+	/* Command Word 4 */
+#ifdef CONFIG_PHYS_ADDR_T_64BIT
+	cmd_words[MSB_INDEX] = upper_32_bits(cmdp->addr);
+#endif
 
 	/* Command Word 1 */
 	cmd_words[1] = 0;
@@ -1033,7 +1058,7 @@ static ssize_t xtg_cram_write(struct file *filp, struct kobject *kobj,
 	/* Program each command */
 	if (count == sizeof(struct xtg_cram)) {
 		struct xtg_cram *cmdp = (struct xtg_cram *)buf;
-		u32 cmd_words[4];
+		u32 cmd_words[CMD_WDS + EXT_WDS];
 
 		if (!cmdp)
 			return -EINVAL;
@@ -1086,7 +1111,8 @@ static ssize_t xtg_cram_mmap(struct file *filp, struct kobject *kobj,
 
 	ret = remap_pfn_range(vma, vma->vm_start, (tg->phys_base_addr +
 			XTG_COMMAND_RAM_OFFSET) >> PAGE_SHIFT,
-			XTG_COMMAND_RAM_SIZE, vma->vm_page_prot);
+			XTG_COMMAND_RAM_SIZE + XTG_EXTCMD_RAM_SIZE,
+			vma->vm_page_prot);
 	return ret;
 }
 
