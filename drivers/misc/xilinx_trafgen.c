@@ -378,8 +378,7 @@ static void xtg_access_rams(struct xtg_dev_info *tg, int where,
 
 	switch (flags) {
 	case XTG_WRITE_RAM_ZERO:
-		for (index = 0; count > 0; index++, count -= 4)
-			writel(0x0, tg->regs + where + index * 4);
+		memset_io(tg->regs + where, 0, count);
 #ifdef CONFIG_PHYS_ADDR_T_64BIT
 		writel(0x0, tg->regs + where +
 			(XTG_COMMAND_RAM_MSB_OFFSET - XTG_COMMAND_RAM_OFFSET) +
