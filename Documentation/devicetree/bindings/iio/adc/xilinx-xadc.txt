@@ -15,6 +15,8 @@ Required properties:
 		  configuration interface to interface to the XADC hardmacro.
 		* "xlnx,axi-xadc-1.00.a": When using the axi-xadc pcore to
 		  interface to the XADC hardmacro.
+		* "xlnx,axi-sysmon-1.3": When using the axi-sysmon pcore to
+		  interface to the sysmon hardmacro.
 	- reg: Address and length of the register set for the device
 	- interrupts: Interrupt for the XADC control interface.
 	- clocks: When using the ZYNQ this must be the ZYNQ PCAP clock,
@@ -100,6 +102,23 @@ Examples:
 		interrupts = <0 53 4>;
 		interrupt-parent = <&gic>;
 		clocks = <&fpga1_clk>;
+
+		xlnx,channels {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			channel@0 {
+				reg = <0>;
+				xlnx,bipolar;
+			};
+		};
+	};
+
+	xadc@44a00000 {
+		compatible = "xlnx,axi-sysmon-1.3";
+		interrupt-parent = <&axi_intc_0>;
+		interrupts = <2 2>;
+		clocks = <&clk_bus_0>;
+		reg = <0x44a00000 0x10000>;
 
 		xlnx,channels {
 			#address-cells = <1>;
