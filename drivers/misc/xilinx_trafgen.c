@@ -370,16 +370,19 @@ static void xtg_access_rams(struct xtg_dev_info *tg, int where,
 {
 	u32 index;
 
-	for (index = 0; count > 0; index++, count -= 4) {
-		if (flags) {
-			if (flags & XTG_WRITE_RAM_ZERO)
-				writel(0x0, tg->regs + where + index * 4);
-			else
-				writel(data[index],
-					tg->regs + where + index * 4);
-		} else {
+	switch (flags) {
+	case XTG_WRITE_RAM_ZERO:
+		for (index = 0; count > 0; index++, count -= 4)
+			writel(0x0, tg->regs + where + index * 4);
+		break;
+	case XTG_WRITE_RAM:
+		for (index = 0; count > 0; index++, count -= 4)
+			writel(data[index], tg->regs + where + index * 4);
+		break;
+	case XTG_READ_RAM:
+		for (index = 0; count > 0; index++, count -= 4)
 			data[index] = readl(tg->regs + where + index * 4);
-		}
+		break;
 	}
 }
 
