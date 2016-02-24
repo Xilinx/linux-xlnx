@@ -2137,6 +2137,11 @@ static void macb_init_hw(struct macb *bp)
 			     MACB_BIT(HRESP));
 	}
 
+	if ((bp->phy_interface == PHY_INTERFACE_MODE_SGMII) &&
+	    (bp->caps & MACB_CAPS_PCS))
+		gem_writel(bp, PCSCNTRL,
+			   gem_readl(bp, PCSCNTRL) | GEM_BIT(PCSAUTONEG));
+
 	/* Enable TX and RX */
 	macb_writel(bp, NCR, MACB_BIT(RE) | MACB_BIT(TE) | MACB_BIT(MPE) |
 		    MACB_BIT(PTPUNI));
@@ -2906,6 +2911,11 @@ static int macb_init(struct platform_device *pdev)
 		val |= GEM_BIT(SGMIIEN) | GEM_BIT(PCSSEL);
 	macb_writel(bp, NCFGR, val);
 
+	if ((bp->phy_interface == PHY_INTERFACE_MODE_SGMII) &&
+	    (bp->caps & MACB_CAPS_PCS))
+		gem_writel(bp, PCSCNTRL,
+			   gem_readl(bp, PCSCNTRL) | GEM_BIT(PCSAUTONEG));
+
 	return 0;
 }
 
@@ -3278,7 +3288,7 @@ static const struct macb_config np4_config = {
 
 static const struct macb_config zynqmp_config = {
 	.caps = MACB_CAPS_GIGABIT_MODE_AVAILABLE | MACB_CAPS_JUMBO |
-		MACB_CAPS_TSU,
+		MACB_CAPS_TSU | MACB_CAPS_PCS,
 	.dma_burst_length = 16,
 	.clk_init = macb_clk_init,
 	.init = macb_init,
