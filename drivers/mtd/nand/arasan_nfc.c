@@ -165,7 +165,6 @@ static const struct anfc_ecc_matrix ecc_matrix[] = {
  * @raddr_cycles:	Row address cycle information.
  * @caddr_cycles:	Column address cycle information.
  * @irq:		irq number
- * @page:		Page address to be use for write oob operations.
  * @pktsize:		Packet size for read / write operation.
  * @bufshift:		Variable used for indexing buffer operation
  * @rdintrmask:		Interrupt mask value for read operation.
@@ -196,7 +195,6 @@ struct anfc {
 	u16 caddr_cycles;
 
 	u32 irq;
-	u32 page;
 	u32 pktsize;
 	u32 bufshift;
 	u32 rdintrmask;
@@ -502,7 +500,7 @@ static int anfc_read_page_hwecc(struct mtd_info *mtd,
 
 static int anfc_write_page_hwecc(struct mtd_info *mtd,
 				 struct nand_chip *chip, const uint8_t *buf,
-				 int oob_required)
+				 int oob_required, int page)
 {
 	u32 val, i;
 	struct anfc *nfc = container_of(mtd, struct anfc, mtd);
@@ -519,7 +517,7 @@ static int anfc_write_page_hwecc(struct mtd_info *mtd,
 
 	if (oob_required) {
 		anfc_device_ready(mtd, chip);
-		chip->cmdfunc(mtd, NAND_CMD_READOOB, 0, nfc->page);
+		chip->cmdfunc(mtd, NAND_CMD_READOOB, 0, page);
 		if (nfc->dma)
 			nfc->rdintrmask = XFER_COMPLETE;
 		else
@@ -527,7 +525,7 @@ static int anfc_write_page_hwecc(struct mtd_info *mtd,
 		chip->read_buf(mtd, ecc_calc, mtd->oobsize);
 		for (i = 0; i < chip->ecc.total; i++)
 			chip->oob_poi[eccpos[i]] = ecc_calc[eccpos[i]];
-		chip->ecc.write_oob(mtd, chip, nfc->page);
+		chip->ecc.write_oob(mtd, chip, page);
 	}
 
 	return 0;
@@ -682,7 +680,6 @@ static void anfc_cmd_function(struct mtd_info *mtd,
 		break;
 	case NAND_CMD_SEQIN:
 		addrcycles = nfc->raddr_cycles + nfc->caddr_cycles;
-		nfc->page = page_addr;
 		anfc_prepare_cmd(nfc, cmd, NAND_CMD_PAGEPROG, 1,
 				 mtd->writesize, addrcycles);
 		anfc_setpagecoladdr(nfc, page_addr, column);
