@@ -882,15 +882,18 @@ static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 				     skb_headlen(skb), DMA_TO_DEVICE);
 
 	for (ii = 0; ii < num_frag; ii++) {
+		u32 len;
+
 		++lp->tx_bd_tail;
 		lp->tx_bd_tail %= TX_BD_NUM;
 		cur_p = &lp->tx_bd_v[lp->tx_bd_tail];
 		frag = &skb_shinfo(skb)->frags[ii];
+		len = skb_frag_size(frag);
 		cur_p->phys = dma_map_single(ndev->dev.parent,
 					     skb_frag_address(frag),
-					     skb_frag_size(frag),
+					     len,
 					     DMA_TO_DEVICE);
-		cur_p->cntrl = skb_frag_size(frag);
+		cur_p->cntrl = len;
 	}
 
 	cur_p->cntrl |= XAXIDMA_BD_CTRL_TXEOF_MASK;
