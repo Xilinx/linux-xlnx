@@ -799,7 +799,6 @@ static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	u32 num_frag;
 	u32 csum_start_off;
 	u32 csum_index_off;
-	skb_frag_t *frag;
 	dma_addr_t tail_p;
 	struct axienet_local *lp = netdev_priv(ndev);
 	struct axidma_bd *cur_p;
@@ -883,6 +882,7 @@ static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 
 	for (ii = 0; ii < num_frag; ii++) {
 		u32 len;
+		skb_frag_t *frag;
 
 		++lp->tx_bd_tail;
 		lp->tx_bd_tail %= TX_BD_NUM;
