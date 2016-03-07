@@ -915,7 +915,7 @@ static int xemacps_mii_init(struct net_local *lp)
 		 (unsigned long long)res.start);
 
 	if (lp->phy_node) {
-		if (of_mdiobus_register(lp->mii_bus, np))
+		if (of_mdiobus_register(lp->mii_bus, lp->phy_node))
 			goto err_out_free_mdio_irq;
 	}
 
@@ -2916,6 +2916,29 @@ static int xemacps_probe(struct platform_device *pdev)
 							&lp->has_mdio);
 	lp->phy_node = of_parse_phandle(lp->pdev->dev.of_node,
 						"phy-handle", 0);
+
+	/* support for fixed phy */
+	if (!lp->phy_node) {
+		if (!of_phy_is_fixed_link(lp->pdev->dev.of_node)) {
+			dev_err(&pdev->dev, "no PHY specified\n");
+			rc = -ENODEV;
+			goto err_out_clk_dis_aper;
+		}
+
+		rc = of_phy_register_fixed_link(lp->pdev->dev.of_node);
+		if (rc < 0) {
+			dev_err(&pdev->dev, "cannot register fixed PHY\n");
+			goto err_out_clk_dis_aper;
+		}
+
+		/* In the case of a fixed PHY, the DT node associated
+		 * to the PHY is the Ethernet MAC DT node.
+		 */
+		lp->phy_node = of_node_get(lp->pdev->dev.of_node);
+		dev_info(&pdev->dev, "registered fixed PHY\n");
+	}
+
+
 	lp->gmii2rgmii_phy_node = of_parse_phandle(lp->pdev->dev.of_node,
 						"gmii2rgmii-phy-handle", 0);
 	rc = of_get_phy_mode(lp->pdev->dev.of_node);
