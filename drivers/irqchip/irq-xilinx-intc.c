@@ -76,14 +76,6 @@ static void intc_enable_or_unmask(struct irq_data *d)
 
 	pr_debug("enable_or_unmask: %ld\n", d->hwirq);
 
-	/*
-	 * ack level irqs because they can't be acked during
-	 * ack function since the handle_level_irq function
-	 * acks the irq before calling the interrupt handler
-	 */
-	if (irqd_is_level_type(d))
-		local_intc->write_fn(mask, local_intc->baseaddr + IAR);
-
 	local_intc->write_fn(mask, local_intc->baseaddr + SIE);
 }
 
