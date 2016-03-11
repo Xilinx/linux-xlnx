@@ -22,6 +22,7 @@
 #include <linux/edac.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
+#include <linux/interrupt.h>
 #include <linux/of.h>
 
 #include "edac_core.h"
@@ -99,6 +100,87 @@
 /* DDR ECC Quirks */
 #define DDR_ECC_INTR_SUPPORT    BIT(0)
 
+/* ZynqMP Enhanced DDR memory controller registers that are relevant to ECC */
+/* ECC Configuration Registers */
+#define ECC_CFG0_OFST	0x70
+#define ECC_CFG1_OFST	0x74
+
+/* ECC Status Register */
+#define ECC_STAT_OFST	0x78
+
+/* ECC Clear Register */
+#define ECC_CLR_OFST	0x7C
+
+/* ECC Error count Register */
+#define ECC_ERRCNT_OFST	0x80
+
+/* ECC Corrected Error Address Register */
+#define ECC_CEADDR0_OFST	0x84
+#define ECC_CEADDR1_OFST	0x88
+
+/* ECC Syndrome Registers */
+#define ECC_CSYND0_OFST	0x8C
+#define ECC_CSYND1_OFST	0x90
+#define ECC_CSYND2_OFST	0x94
+
+/* ECC Bit Mask0 Address Register */
+#define ECC_BITMASK0_OFST	0x98
+#define ECC_BITMASK1_OFST	0x9C
+#define ECC_BITMASK2_OFST	0xA0
+
+/* ECC UnCorrected Error Address Register */
+#define ECC_UEADDR0_OFST	0xA4
+#define ECC_UEADDR1_OFST	0xA8
+
+/* ECC Syndrome Registers */
+#define ECC_UESYND0_OFST	0xAC
+#define ECC_UESYND1_OFST	0xB0
+#define ECC_UESYND2_OFST	0xB4
+
+/* ECC Poison Address Reg */
+#define ECC_POISON0_OFST	0xB8
+#define ECC_POISON1_OFST	0xBC
+
+/* Control regsiter bitfield definitions */
+#define ECC_CTRL_BUSWIDTH_MASK	0x3000
+#define ECC_CTRL_BUSWIDTH_SHIFT	12
+#define ECC_CTRL_CLR_CE_ERRCNT	BIT(2)
+#define ECC_CTRL_CLR_UE_ERRCNT	BIT(3)
+
+/* DDR Control Register width definitions  */
+#define DDRCTL_EWDTH_16		0
+#define DDRCTL_EWDTH_32		1
+#define DDRCTL_EWDTH_64		2
+
+/* ECC status regsiter definitions */
+#define ECC_STAT_UECNT_MASK	0xF0000
+#define ECC_STAT_UECNT_SHIFT	16
+#define ECC_STAT_CECNT_MASK	0xF00
+#define ECC_STAT_CECNT_SHIFT	8
+#define ECC_STAT_BITNUM_MASK	0x7F
+
+/* DDR QOS Interrupt regsiter definitions */
+#define DDR_QOS_IRQ_STAT_OFST	0x20200
+#define DDR_QOSUE_MASK		0x4
+#define	DDR_QOSCE_MASK		0x2
+#define	ECC_CE_UE_INTR_MASK	0x6
+
+/* ECC Corrected Error Register Mask and Shifts*/
+#define ECC_CEADDR0_RW_MASK	0x3FFFF
+#define ECC_CEADDR0_RNK_MASK	BIT(24)
+#define ECC_CEADDR1_BNKGRP_MASK	0x3000000
+#define ECC_CEADDR1_BNKNR_MASK	0x70000
+#define ECC_CEADDR1_BLKNR_MASK	0xF00
+#define ECC_CEADDR1_BNKGRP_SHIFT	24
+#define ECC_CEADDR1_BNKNR_SHIFT	16
+
+/* DDR Memory type defines */
+#define MEM_TYPE_DDR3 0x1
+#define MEM_TYPE_LPDDR3 0x1
+#define MEM_TYPE_DDR2 0x4
+#define MEM_TYPE_DDR4 0x10
+#define MEM_TYPE_LPDDR4 0x10
+
 /**
  * struct ecc_error_info - ECC error log information
  * @row:	Row number
@@ -106,6 +188,8 @@
  * @bank:	Bank number
  * @bitpos:	Bit position
  * @data:	Data causing the error
+ * @bankgrpnr:	Bank group number
+ * @blknr:	Block number
  */
 struct ecc_error_info {
 	u32 row;
@@ -113,6 +197,8 @@ struct ecc_error_info {
 	u32 bank;
 	u32 bitpos;
 	u32 data;
+	u32 bankgrpnr;
+	u32 blknr;
 };
 
 /**
@@ -171,7 +257,7 @@ struct synps_platform_data {
  *
  * Determines there is any ecc error or not
  *
- * Return: one if there is no error otherwise returns zero
+ * Return: 1 if there is no error otherwise returns 0
  */
 static int synps_edac_geterror_info(void __iomem *base,
 				    struct synps_ecc_status *p)
@@ -219,6 +305,64 @@ out:
 }
 
 /**
+ * synps_enh_edac_geterror_info - Get the current ecc error info
+ * @base:	Pointer to the base address of the ddr memory controller
+ * @p:		Pointer to the synopsys ecc status structure
+ *
+ * Determines there is any ecc error or not
+ *
+ * Return: one if there is no error otherwise returns zero
+ */
+static int synps_enh_edac_geterror_info(void __iomem *base,
+					struct synps_ecc_status *p)
+{
+	u32 regval, clearval = 0;
+
+	regval = readl(base + ECC_STAT_OFST);
+	if (!regval)
+		return 1;
+
+	p->ce_cnt = (regval & ECC_STAT_CECNT_MASK) >> ECC_STAT_CECNT_SHIFT;
+	p->ue_cnt = (regval & ECC_STAT_UECNT_MASK) >> ECC_STAT_UECNT_SHIFT;
+	p->ceinfo.bitpos = (regval & ECC_STAT_BITNUM_MASK);
+
+	regval = readl(base + ECC_CEADDR0_OFST);
+	if (!(p->ce_cnt))
+		goto ue_err;
+
+	regval = readl(base + ECC_CEADDR0_OFST);
+	p->ceinfo.row = (regval & ECC_CEADDR0_RW_MASK);
+	p->ceinfo.bank = (regval & ECC_CEADDR1_BNKNR_MASK) >>
+					ECC_CEADDR1_BNKNR_SHIFT;
+	p->ceinfo.bankgrpnr = (regval &	ECC_CEADDR1_BNKGRP_MASK) >>
+					ECC_CEADDR1_BNKGRP_SHIFT;
+	p->ceinfo.blknr = (regval & ECC_CEADDR1_BLKNR_MASK);
+	p->ceinfo.data = readl(base + ECC_CSYND0_OFST);
+	edac_dbg(3, "ce bit position: %d data: %d\n", p->ceinfo.bitpos,
+		 p->ceinfo.data);
+	clearval = ECC_CTRL_CLR_CE_ERR | ECC_CTRL_CLR_CE_ERRCNT;
+
+ue_err:
+	regval = readl(base + ECC_UEADDR0_OFST);
+	if (!(p->ue_cnt))
+		goto out;
+
+	p->ueinfo.row = (regval & ECC_CEADDR0_RW_MASK);
+	p->ueinfo.bankgrpnr = (regval & ECC_CEADDR1_BNKGRP_MASK) >>
+					ECC_CEADDR1_BNKGRP_SHIFT;
+	p->ueinfo.bank = (regval & ECC_CEADDR1_BNKNR_MASK) >>
+					ECC_CEADDR1_BNKNR_SHIFT;
+	p->ueinfo.blknr = (regval & ECC_CEADDR1_BLKNR_MASK);
+	p->ueinfo.data = readl(base + ECC_UESYND0_OFST);
+	clearval |= ECC_CTRL_CLR_UE_ERR | ECC_CTRL_CLR_UE_ERRCNT;
+out:
+	writel(clearval, base + ECC_CLR_OFST);
+	writel(0x0, base + ECC_CLR_OFST);
+
+	return 0;
+}
+
+/**
  * synps_edac_handle_error - Handle controller error types CE and UE
  * @mci:	Pointer to the edac memory controller instance
  * @p:		Pointer to the synopsys ecc status structure
@@ -252,6 +396,41 @@ static void synps_edac_handle_error(struct mem_ctl_info *mci,
 	}
 
 	memset(p, 0, sizeof(*p));
+}
+
+/**
+ * synps_edac_intr_handler - synps edac isr
+ * @irq:        irq number
+ * @dev_id:     device id poniter
+ *
+ * This is the Isr routine called by edac core interrupt thread.
+ * Used to check and post ECC errors.
+ *
+ * Return: IRQ_NONE, if interrupt not set or IRQ_HANDLED otherwise
+ */
+static irqreturn_t synps_edac_intr_handler(int irq, void *dev_id)
+{
+	struct mem_ctl_info *mci = dev_id;
+	struct synps_edac_priv *priv = mci->pvt_info;
+	int status, regval;
+
+	regval = readl(priv->baseaddr + DDR_QOS_IRQ_STAT_OFST) &
+			(DDR_QOSCE_MASK | DDR_QOSUE_MASK);
+	if (!(regval & ECC_CE_UE_INTR_MASK))
+		return IRQ_NONE;
+	status = priv->p_data->synps_edac_geterror_info(priv->baseaddr,
+				&priv->stat);
+	if (status)
+		return IRQ_NONE;
+
+	priv->ce_cnt += priv->stat.ce_cnt;
+	priv->ue_cnt += priv->stat.ue_cnt;
+	synps_edac_handle_error(mci, &priv->stat);
+
+	edac_dbg(3, "Total error count ce %d ue %d\n",
+		 priv->ce_cnt, priv->ue_cnt);
+	writel(regval, priv->baseaddr + DDR_QOS_IRQ_STAT_OFST);
+	return IRQ_HANDLED;
 }
 
 /**
@@ -310,6 +489,40 @@ static enum dev_type synps_edac_get_dtype(const void __iomem *base)
 }
 
 /**
+ * synps_enh_edac_get_dtype - Return the controller memory width
+ * @base:	Pointer to the ddr memory controller base address
+ *
+ * Get the EDAC device type width appropriate for the current controller
+ * configuration.
+ *
+ * Return: a device type width enumeration.
+ */
+static enum dev_type synps_enh_edac_get_dtype(const void __iomem *base)
+{
+	enum dev_type dt;
+	u32 width;
+
+	width = readl(base + CTRL_OFST);
+	width = (width & ECC_CTRL_BUSWIDTH_MASK) >>
+		ECC_CTRL_BUSWIDTH_SHIFT;
+	switch (width) {
+	case DDRCTL_EWDTH_16:
+		dt = DEV_X2;
+		break;
+	case DDRCTL_EWDTH_32:
+		dt = DEV_X4;
+		break;
+	case DDRCTL_EWDTH_64:
+		dt = DEV_X8;
+		break;
+	default:
+		dt = DEV_UNKNOWN;
+	}
+
+	return dt;
+}
+
+/**
  * synps_edac_get_eccstate - Return the controller ecc enable/disable status
  * @base:	Pointer to the ddr memory controller base address
  *
@@ -329,6 +542,32 @@ static bool synps_edac_get_eccstate(void __iomem *base)
 
 	ecctype = readl(base + SCRUB_OFST) & SCRUB_MODE_MASK;
 	if ((ecctype == SCRUB_MODE_SECDED) && (dt == DEV_X2))
+		state = true;
+
+	return state;
+}
+
+/**
+ * synps_enh_edac_get_eccstate - Return the controller ecc enable/disable status
+ * @base:	Pointer to the ddr memory controller base address
+ *
+ * Get the ECC enable/disable status for the controller
+ *
+ * Return: a ecc status boolean i.e true/false - enabled/disabled.
+ */
+static bool synps_enh_edac_get_eccstate(void __iomem *base)
+{
+	enum dev_type dt;
+	u32 ecctype;
+	bool state = false;
+
+	dt = synps_enh_edac_get_dtype(base);
+	if (dt == DEV_UNKNOWN)
+		return state;
+
+	ecctype = readl(base + ECC_CFG0_OFST) & SCRUB_MODE_MASK;
+	if ((ecctype == SCRUB_MODE_SECDED) &&
+	    ((dt == DEV_X2) || (dt == DEV_X4) || (dt == DEV_X8)))
 		state = true;
 
 	return state;
@@ -368,6 +607,32 @@ static enum mem_type synps_edac_get_mtype(const void __iomem *base)
 		mt = MEM_DDR3;
 	else
 		mt = MEM_DDR2;
+
+	return mt;
+}
+
+/**
+ * synps_enh_edac_get_mtype - Returns controller memory type
+ * @base:	pointer to the synopsys ecc status structure
+ *
+ * Get the EDAC memory type appropriate for the current controller
+ * configuration.
+ *
+ * Return: a memory type enumeration.
+ */
+static enum mem_type synps_enh_edac_get_mtype(const void __iomem *base)
+{
+	enum mem_type mt;
+	u32 memtype;
+
+	memtype = readl(base + CTRL_OFST);
+
+	if ((memtype & MEM_TYPE_DDR3) || (memtype & MEM_TYPE_LPDDR3))
+		mt = MEM_DDR3;
+	else if (memtype & MEM_TYPE_DDR2)
+		mt = MEM_RDDR2;
+	else if ((memtype & MEM_TYPE_LPDDR4) || (memtype & MEM_TYPE_DDR4))
+		mt = MEM_DDR4;
 
 	return mt;
 }
@@ -440,9 +705,12 @@ static int synps_edac_mc_init(struct mem_ctl_info *mci,
 	mci->dev_name = SYNPS_EDAC_MOD_STRING;
 	mci->mod_name = SYNPS_EDAC_MOD_VER;
 	mci->mod_ver = "1";
-
-	edac_op_state = EDAC_OPSTATE_POLL;
-	mci->edac_check = synps_edac_check;
+	if (priv->p_data->quirks & DDR_ECC_INTR_SUPPORT) {
+		edac_op_state = EDAC_OPSTATE_INT;
+	} else {
+		edac_op_state = EDAC_OPSTATE_POLL;
+		mci->edac_check = synps_edac_check;
+	}
 	mci->ctl_page_to_phys = NULL;
 
 	status = synps_edac_init_csrows(mci);
@@ -458,8 +726,18 @@ static const struct synps_platform_data zynq_edac_def = {
 	.quirks				= 0,
 };
 
+static const struct synps_platform_data zynqmp_enh_edac_def = {
+	.synps_edac_geterror_info	= synps_enh_edac_geterror_info,
+	.synps_edac_get_mtype		= synps_enh_edac_get_mtype,
+	.synps_edac_get_dtype		= synps_enh_edac_get_dtype,
+	.synps_edac_get_eccstate	= synps_enh_edac_get_eccstate,
+	.quirks				= DDR_ECC_INTR_SUPPORT,
+};
+
 static const struct of_device_id synps_edac_match[] = {
 	{ .compatible = "xlnx,zynq-ddrc-a05", .data = (void *)&zynq_edac_def },
+	{ .compatible = "xlnx,zynqmp-ddrc-2.40a",
+				.data = (void *)&zynqmp_enh_edac_def},
 	{ /* end of table */ }
 };
 
@@ -479,7 +757,7 @@ static int synps_edac_mc_probe(struct platform_device *pdev)
 	struct mem_ctl_info *mci;
 	struct edac_mc_layer layers[2];
 	struct synps_edac_priv *priv;
-	int rc;
+	int rc, irq, status;
 	struct resource *res;
 	void __iomem *baseaddr;
 	const struct of_device_id *match;
@@ -526,6 +804,23 @@ static int synps_edac_mc_probe(struct platform_device *pdev)
 		edac_printk(KERN_ERR, EDAC_MC,
 			    "Failed to initialize instance\n");
 		goto free_edac_mc;
+	}
+
+	if (priv->p_data->quirks & DDR_ECC_INTR_SUPPORT) {
+		irq = platform_get_irq(pdev, 0);
+		if (irq < 0) {
+			edac_printk(KERN_ERR, EDAC_MC,
+					"No irq %d in DT\n", irq);
+			return -ENODEV;
+		}
+
+		status = devm_request_irq(&pdev->dev, irq,
+			synps_edac_intr_handler,
+			0, dev_name(&pdev->dev), mci);
+		if (status < 0) {
+			edac_printk(KERN_ERR, EDAC_MC, "Failed to request Irq\n");
+			goto free_edac_mc;
+		}
 	}
 
 	rc = edac_mc_add_mc(mci);

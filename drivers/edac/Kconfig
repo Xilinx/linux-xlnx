@@ -385,7 +385,7 @@ config EDAC_ALTERA_MC
 
 config EDAC_SYNOPSYS
 	tristate "Synopsys DDR Memory Controller"
-	depends on EDAC_MM_EDAC && ARCH_ZYNQ
+	depends on EDAC_MM_EDAC && (ARCH_ZYNQ || ARM64)
 	help
 	  Support for error detection and correction on the Synopsys DDR
 	  memory controller.
