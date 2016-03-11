@@ -497,7 +497,16 @@ static int gpio_keys_setup_key(struct platform_device *pdev,
 		INIT_DELAYED_WORK(&bdata->work, gpio_keys_gpio_work_func);
 
 		isr = gpio_keys_gpio_isr;
+
+
+#ifndef CONFIG_ARCH_ZYNQ
 		irqflags = IRQF_TRIGGER_RISING | IRQF_TRIGGER_FALLING;
+#else
+/*
+ * Zynq does not support IRQF_TRIGGER_FALLING, so we set only rising
+*/
+		irqflags = IRQF_TRIGGER_RISING;	
+#endif
 
 	} else {
 		if (!button->irq) {
