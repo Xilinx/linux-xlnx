@@ -2780,6 +2780,7 @@ static int macb_init(struct platform_device *pdev)
 #ifdef CONFIG_ARCH_DMA_ADDR_T_64BIT
 			queue->TBQPH = GEM_TBQPH(hw_q -1);
 #endif
+			queue->RBQP = GEM_RBQP(hw_q - 1);
 		} else {
 			/* queue0 uses legacy registers */
 			queue->ISR  = MACB_ISR;
@@ -2790,6 +2791,7 @@ static int macb_init(struct platform_device *pdev)
 #ifdef CONFIG_ARCH_DMA_ADDR_T_64BIT
 			queue->TBQPH = MACB_TBQPH;
 #endif
+			queue->RBQP = MACB_RBQP;
 		}
 
 		/* get irq: here we use the linux queue index, not the hardware
