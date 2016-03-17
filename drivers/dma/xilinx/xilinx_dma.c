@@ -1350,6 +1350,8 @@ static int xilinx_dma_terminate_all(struct dma_chan *dchan)
 	/* Halt the DMA engine */
 	xilinx_dma_halt(chan);
 
+	tasklet_kill(&chan->tasklet);
+
 	if (chan->err)
 		xilinx_dma_chan_reset(chan);
 
