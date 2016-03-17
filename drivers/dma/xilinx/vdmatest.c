@@ -17,7 +17,7 @@
  * published by the Free Software Foundation.
  */
 
-#include <linux/amba/xilinx_dma.h>
+#include <linux/dma/xilinx_dma.h>
 #include <linux/delay.h>
 #include <linux/init.h>
 #include <linux/kthread.h>
