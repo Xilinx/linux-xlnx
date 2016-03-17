@@ -837,6 +837,8 @@ static int xilinx_dma_chan_reset(struct xilinx_dma_chan *chan)
 		return -EBUSY;
 	}
 
+	/* restore local copy with HW val after reset */
+	chan->ctrl_reg = dma_ctrl_read(chan, XILINX_DMA_REG_CONTROL);
 	chan->err = false;
 	chan->idle = true;
 
