@@ -709,6 +709,7 @@ extern void spi_res_release(struct spi_controller *ctlr,
  * @len: size of rx and tx buffers (in bytes)
  * @speed_hz: Select a speed other than the device default for this
  *      transfer. If 0 the default (from @spi_device) is used.
+ * @dummy: number of dummy cycles.
  * @bits_per_word: select a bits_per_word other than the device default
  *      for this transfer. If 0 the default (from @spi_device) is used.
  * @cs_change: affects chipselect after this transfer completes
@@ -797,7 +798,7 @@ struct spi_transfer {
 	u8		bits_per_word;
 	u16		delay_usecs;
 	u32		speed_hz;
-
+	u32		dummy;
 	struct list_head transfer_list;
 };
 
