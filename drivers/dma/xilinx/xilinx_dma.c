@@ -645,29 +645,39 @@ static void xilinx_dma_start_transfer(struct xilinx_dma_chan *chan)
 		return;
 
 	head_desc = list_first_entry(&chan->pending_list,
-				     struct xilinx_dma_tx_descriptor, node);
+				struct xilinx_dma_tx_descriptor, node);
 	tail_desc = list_last_entry(&chan->pending_list,
-				    struct xilinx_dma_tx_descriptor, node);
-	tail_segment = list_last_entry(&tail_desc->segments,
-				       struct xilinx_dma_tx_segment, node);
+				struct xilinx_dma_tx_descriptor, node);
 
 	/* If channel is not halted, the tail descriptor's next_desc points to
 	 * chan->seg_reserve.  Swap head_segment and chan->seg_reserve, keeping
 	 * Buffer Descriptor contents from head_segment. */
 	{
-	    struct xilinx_dma_tx_segment *old_head, *new_head;
 
+		struct xilinx_dma_tx_segment *old_head, *new_head;
 		old_head = list_first_entry(&head_desc->segments,
 					struct xilinx_dma_tx_segment, node);
 		new_head = chan->seg_reserve;
 
-		/* Copy Buffer Descriptor fields. */
+		/* Copy Buffer Descriptor fields. make the seg_reserve HW
+		 * data = the first pending seg.
+		 *  chan->seg_reserve->hw = pend_head_seg->hw
+		 */
 		new_head->hw = old_head->hw;
 
-		/* Swap and save new reserve */
-		list_replace_init(&old_head->node, &new_head->node);
+		/* Make the old seg_reserve the new head of the pending list,
+		 * and use the old head of the pending list as new reserve
+		 */
+		list_replace_init( &old_head->node, &new_head->node );
 		chan->seg_reserve = old_head;
 
+		tail_desc = list_last_entry(&chan->pending_list,
+				struct xilinx_dma_tx_descriptor, node);
+
+		tail_segment = list_last_entry(&tail_desc->segments,
+				struct xilinx_dma_tx_segment, node);
+
+		/* attach the reserve segment to the tail of our pending list */
 #ifdef CONFIG_PHYS_ADDR_T_64BIT
 		tail_segment->hw.next_desc     = lower_32_bits(chan->seg_reserve->phys);
 		tail_segment->hw.next_desc_msb = upper_32_bits(chan->seg_reserve->phys);
