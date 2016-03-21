@@ -391,9 +391,9 @@ static int xilinx_dma_alloc_chan_resources(struct dma_chan *dchan)
 
 	dma_cookie_init(dchan);
 
-	/* Enable interrupts */
-	chan->ctrl_reg |= XILINX_DMA_XR_IRQ_ALL_MASK;
-	dma_ctrl_write(chan, XILINX_DMA_REG_CONTROL, chan->ctrl_reg);
+	/* clear isr reg */
+	dma_ctrl_write(chan, XILINX_DMA_REG_STATUS,
+		       XILINX_DMA_XR_IRQ_ALL_MASK);
 
 	return 0;
 }
@@ -772,6 +772,10 @@ static void xilinx_dma_issue_pending(struct dma_chan *dchan)
 {
 	struct xilinx_dma_chan *chan = to_xilinx_chan(dchan);
 	unsigned long flags;
+
+	/* Enable interrupts */
+	chan->ctrl_reg |= XILINX_DMA_XR_IRQ_ALL_MASK;
+	dma_ctrl_write(chan, XILINX_DMA_REG_CONTROL, chan->ctrl_reg);
 
 	spin_lock_irqsave(&chan->lock, flags);
 	xilinx_dma_start_transfer(chan);
@@ -1349,6 +1353,10 @@ static int xilinx_dma_terminate_all(struct dma_chan *dchan)
 {
 	struct xilinx_dma_chan *chan = to_xilinx_chan(dchan);
 
+	/* Disable interrupts */
+	chan->ctrl_reg &= ~XILINX_DMA_XR_IRQ_ALL_MASK;
+	dma_ctrl_write(chan, XILINX_DMA_REG_CONTROL, chan->ctrl_reg);
+
 	/* Halt the DMA engine */
 	xilinx_dma_halt(chan);
 
@@ -1364,6 +1372,11 @@ static int xilinx_dma_terminate_all(struct dma_chan *dchan)
 		dma_ctrl_write(chan, XILINX_DMA_REG_CONTROL, chan->ctrl_reg);
 		chan->cyclic = false;
 	}
+
+	/* clear isr for next time */
+	dma_ctrl_write(chan, XILINX_DMA_REG_STATUS,
+		       XILINX_DMA_XR_IRQ_ALL_MASK);
+
 
 	return 0;
 }
