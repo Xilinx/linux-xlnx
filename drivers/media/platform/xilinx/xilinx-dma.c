@@ -72,8 +72,7 @@ static int xvip_dma_verify_format(struct xvip_dma *dma)
 
 	if (dma->fmtinfo->code != fmt.format.code ||
 	    dma->format.height != fmt.format.height ||
-	    dma->format.width != fmt.format.width ||
-	    dma->format.colorspace != fmt.format.colorspace)
+	    dma->format.width != fmt.format.width)
 		return -EINVAL;
 
 	return 0;
