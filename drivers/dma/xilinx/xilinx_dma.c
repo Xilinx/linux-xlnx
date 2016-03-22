@@ -690,7 +690,6 @@ static void xilinx_dma_start_transfer(struct xilinx_dma_chan *chan)
 	chan->ctrl_reg |= 1 << XILINX_DMA_CR_COALESCE_SHIFT;    // setting IrqThreshold != 1 is unreliable
 	dma_ctrl_write(chan, XILINX_DMA_REG_CONTROL, chan->ctrl_reg);
 
-
 	if (chan->has_sg && !chan->mcdma) {
 		BUG_ON(head_seg_phys & 0x3F);
 #ifdef CONFIG_PHYS_ADDR_T_64BIT
@@ -781,8 +780,10 @@ static void xilinx_dma_issue_pending(struct dma_chan *dchan)
 	struct xilinx_dma_chan *chan = to_xilinx_chan(dchan);
 	unsigned long flags;
 
-	/* Enable interrupts */
-	chan->ctrl_reg |= XILINX_DMA_XR_IRQ_ALL_MASK;
+	/* Config and Enable interrupts (note: setting IrqThreshold != 1 is unreliable) */
+	chan->ctrl_reg &= ~XILINX_DMA_CR_COALESCE_MAX;
+	chan->ctrl_reg |= 1 << XILINX_DMA_CR_COALESCE_SHIFT |
+		XILINX_DMA_XR_IRQ_ALL_MASK;
 	dma_ctrl_write(chan, XILINX_DMA_REG_CONTROL, chan->ctrl_reg);
 
 	spin_lock_irqsave(&chan->lock, flags);
