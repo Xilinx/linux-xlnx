@@ -1107,7 +1107,10 @@ static int xtpg_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, xtpg);
 
-	xvip_print_version(&xtpg->xvip);
+	if (!xtpg->is_hls)
+		xvip_print_version(&xtpg->xvip);
+	else
+		dev_info(&pdev->dev, "device found, version 7.0\n");
 
 	ret = v4l2_async_register_subdev(subdev);
 	if (ret < 0) {
