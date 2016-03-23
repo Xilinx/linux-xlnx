@@ -429,6 +429,7 @@ static void xilinx_dma_free_descriptors(struct xilinx_dma_chan *chan)
 	spin_unlock_irqrestore(&chan->lock, flags);
 }
 
+static int xilinx_dma_terminate_all(struct dma_chan *dchan);
 /**
  * xilinx_dma_free_chan_resources - Free channel resources
  * @dchan: DMA channel
@@ -441,7 +442,7 @@ static void xilinx_dma_free_chan_resources(struct dma_chan *dchan)
 	struct dma_pool *pool_to_free = NULL;
 	struct xilinx_dma_tx_segment *seg_to_free = NULL;
 
-	xilinx_dma_free_descriptors(chan);
+	xilinx_dma_terminate_all(&chan->common);
 
 	/* Free memory that was allocated for the segments (from non-atomic context) */
 	spin_lock_irqsave(&chan->lock, flags);
