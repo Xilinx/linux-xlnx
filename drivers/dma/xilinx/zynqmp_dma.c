@@ -22,6 +22,7 @@
 #include <linux/of_irq.h>
 #include <linux/of_platform.h>
 #include <linux/slab.h>
+#include <linux/clk.h>
 
 #include "../dmaengine.h"
 
@@ -224,6 +225,8 @@ struct zynqmp_dma_desc_sw {
  * @dst_axi_qos: Dest data axi qos attribute
  * @src_burst_len: Source burst length
  * @dst_burst_len: Dest burst length
+ * @clk_main: Pointer to main clock
+ * @clk_apb: Pointer to apb clock
  */
 struct zynqmp_dma_chan {
 	struct zynqmp_dma_device *zdev;
@@ -260,6 +263,8 @@ struct zynqmp_dma_chan {
 	u32 dst_axi_qos;
 	u32 src_burst_len;
 	u32 dst_burst_len;
+	struct clk *clk_main;
+	struct clk *clk_apb;
 };
 
 /**
@@ -1040,6 +1045,8 @@ static void zynqmp_dma_chan_remove(struct zynqmp_dma_chan *chan)
 	devm_free_irq(chan->zdev->dev, chan->irq, chan);
 	tasklet_kill(&chan->tasklet);
 	list_del(&chan->common.device_node);
+	clk_disable_unprepare(chan->clk_apb);
+	clk_disable_unprepare(chan->clk_main);
 }
 
 /**
@@ -1122,6 +1129,29 @@ static int zynqmp_dma_chan_probe(struct zynqmp_dma_device *zdev,
 			       "zynqmp-dma", chan);
 	if (err)
 		return err;
+	chan->clk_main = devm_clk_get(&pdev->dev, "clk_main");
+	if (IS_ERR(chan->clk_main)) {
+		dev_err(&pdev->dev, "main clock not found.\n");
+		return PTR_ERR(chan->clk_main);
+	}
+
+	chan->clk_apb = devm_clk_get(&pdev->dev, "clk_apb");
+	if (IS_ERR(chan->clk_apb)) {
+		dev_err(&pdev->dev, "apb clock not found.\n");
+		return PTR_ERR(chan->clk_apb);
+	}
+
+	err = clk_prepare_enable(chan->clk_main);
+	if (err) {
+		dev_err(&pdev->dev, "Unable to enable main clock.\n");
+		return err;
+	}
+
+	err = clk_prepare_enable(chan->clk_apb);
+	if (err) {
+		dev_err(&pdev->dev, "Unable to enable apb clock.\n");
+		return err;
+	}
 
 	chan->desc_size = sizeof(struct zynqmp_dma_desc_ll);
 	chan->idle = true;
