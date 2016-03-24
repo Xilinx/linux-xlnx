@@ -461,13 +461,27 @@ static void zynqmp_dma_init(struct zynqmp_dma_chan *chan)
 static dma_cookie_t zynqmp_dma_tx_submit(struct dma_async_tx_descriptor *tx)
 {
 	struct zynqmp_dma_chan *chan = to_chan(tx->chan);
-	struct zynqmp_dma_desc_sw *desc = tx_to_desc(tx);
+	struct zynqmp_dma_desc_sw *desc, *new;
 	dma_cookie_t cookie;
 	unsigned long flags;
 
-	cookie = dma_cookie_assign(tx);
+	new = tx_to_desc(tx);
 	spin_lock_irqsave(&chan->lock, flags);
-	list_add_tail(&desc->node, &chan->pending_list);
+	cookie = dma_cookie_assign(tx);
+
+	if (!list_empty(&chan->pending_list) && chan->has_sg) {
+		desc = list_last_entry(&chan->pending_list,
+				     struct zynqmp_dma_desc_sw, node);
+		if (!list_empty(&desc->tx_list))
+			desc = list_last_entry(&desc->tx_list,
+					       struct zynqmp_dma_desc_sw, node);
+		desc->src_v->nxtdscraddr = new->src_p;
+		desc->src_v->ctrl &= ~ZYNQMP_DMA_DESC_CTRL_STOP;
+		desc->dst_v->nxtdscraddr = new->dst_p;
+		desc->dst_v->ctrl &= ~ZYNQMP_DMA_DESC_CTRL_STOP;
+	}
+
+	list_add_tail(&new->node, &chan->pending_list);
 	spin_unlock_irqrestore(&chan->lock, flags);
 
 	return cookie;
