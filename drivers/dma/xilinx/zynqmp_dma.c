@@ -186,7 +186,7 @@ struct zynqmp_dma_desc_sw {
 
 /**
  * struct zynqmp_dma_chan - Driver specific DMA channel structure
- * @xdev: Driver specific device structure
+ * @zdev: Driver specific device structure
  * @regs: Control registers offset
  * @lock: Descriptor operation lock
  * @pending_list: Descriptors waiting
@@ -222,7 +222,7 @@ struct zynqmp_dma_desc_sw {
  * @dst_burst_len: Dest burst length
  */
 struct zynqmp_dma_chan {
-	struct zynqmp_dma_device *xdev;
+	struct zynqmp_dma_device *zdev;
 	void __iomem *regs;
 	spinlock_t lock;
 	struct list_head pending_list;
@@ -1010,12 +1010,12 @@ static void zynqmp_dma_chan_remove(struct zynqmp_dma_chan *chan)
 
 /**
  * zynqmp_dma_chan_probe - Per Channel Probing
- * @xdev: Driver specific device structure
+ * @zdev: Driver specific device structure
  * @pdev: Pointer to the platform_device structure
  *
  * Return: '0' on success and failure value on error
  */
-static int zynqmp_dma_chan_probe(struct zynqmp_dma_device *xdev,
+static int zynqmp_dma_chan_probe(struct zynqmp_dma_device *zdev,
 			   struct platform_device *pdev)
 {
 	struct zynqmp_dma_chan *chan;
@@ -1023,11 +1023,11 @@ static int zynqmp_dma_chan_probe(struct zynqmp_dma_device *xdev,
 	struct device_node *node = pdev->dev.of_node;
 	int err;
 
-	chan = devm_kzalloc(xdev->dev, sizeof(*chan), GFP_KERNEL);
+	chan = devm_kzalloc(zdev->dev, sizeof(*chan), GFP_KERNEL);
 	if (!chan)
 		return -ENOMEM;
-	chan->dev = xdev->dev;
-	chan->xdev = xdev;
+	chan->dev = zdev->dev;
+	chan->zdev = zdev;
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	chan->regs = devm_ioremap_resource(&pdev->dev, res);
@@ -1043,7 +1043,7 @@ static int zynqmp_dma_chan_probe(struct zynqmp_dma_device *xdev,
 	err = of_property_read_u32(node, "xlnx,bus-width", &chan->bus_width);
 	if ((err < 0) && ((chan->bus_width != ZYNQMP_DMA_BUS_WIDTH_64) ||
 			  (chan->bus_width != ZYNQMP_DMA_BUS_WIDTH_128))) {
-		dev_err(xdev->dev, "invalid bus-width value");
+		dev_err(zdev->dev, "invalid bus-width value");
 		return err;
 	}
 
@@ -1068,15 +1068,15 @@ static int zynqmp_dma_chan_probe(struct zynqmp_dma_device *xdev,
 	of_property_read_u32(node, "xlnx,ratectrl", &chan->ratectrl);
 	of_property_read_u32(node, "xlnx,src-issue", &chan->src_issue);
 
-	xdev->chan = chan;
+	zdev->chan = chan;
 	tasklet_init(&chan->tasklet, zynqmp_dma_do_tasklet, (ulong)chan);
 	spin_lock_init(&chan->lock);
 	INIT_LIST_HEAD(&chan->pending_list);
 	INIT_LIST_HEAD(&chan->done_list);
 
 	dma_cookie_init(&chan->common);
-	chan->common.device = &xdev->common;
-	list_add_tail(&chan->common.device_node, &xdev->common.channels);
+	chan->common.device = &zdev->common;
+	list_add_tail(&chan->common.device_node, &zdev->common.channels);
 
 	zynqmp_dma_init(chan);
 	chan->irq = platform_get_irq(pdev, 0);
@@ -1102,9 +1102,9 @@ static int zynqmp_dma_chan_probe(struct zynqmp_dma_device *xdev,
 static struct dma_chan *of_zynqmp_dma_xlate(struct of_phandle_args *dma_spec,
 					    struct of_dma *ofdma)
 {
-	struct zynqmp_dma_device *xdev = ofdma->of_dma_data;
+	struct zynqmp_dma_device *zdev = ofdma->of_dma_data;
 
-	return dma_get_slave_channel(&xdev->chan->common);
+	return dma_get_slave_channel(&zdev->chan->common);
 }
 
 /**
@@ -1115,22 +1115,22 @@ static struct dma_chan *of_zynqmp_dma_xlate(struct of_phandle_args *dma_spec,
  */
 static int zynqmp_dma_probe(struct platform_device *pdev)
 {
-	struct zynqmp_dma_device *xdev;
+	struct zynqmp_dma_device *zdev;
 	struct dma_device *p;
 	int ret;
 
-	xdev = devm_kzalloc(&pdev->dev, sizeof(*xdev), GFP_KERNEL);
-	if (!xdev)
+	zdev = devm_kzalloc(&pdev->dev, sizeof(*zdev), GFP_KERNEL);
+	if (!zdev)
 		return -ENOMEM;
 
-	xdev->dev = &pdev->dev;
-	INIT_LIST_HEAD(&xdev->common.channels);
+	zdev->dev = &pdev->dev;
+	INIT_LIST_HEAD(&zdev->common.channels);
 
 	dma_set_mask(&pdev->dev, DMA_BIT_MASK(44));
-	dma_cap_set(DMA_SG, xdev->common.cap_mask);
-	dma_cap_set(DMA_MEMCPY, xdev->common.cap_mask);
+	dma_cap_set(DMA_SG, zdev->common.cap_mask);
+	dma_cap_set(DMA_MEMCPY, zdev->common.cap_mask);
 
-	p = &xdev->common;
+	p = &zdev->common;
 	p->device_prep_dma_sg = zynqmp_dma_prep_sg;
 	p->device_prep_dma_memcpy = zynqmp_dma_prep_memcpy;
 	p->device_terminate_all = zynqmp_dma_device_terminate_all;
@@ -1140,24 +1140,24 @@ static int zynqmp_dma_probe(struct platform_device *pdev)
 	p->device_tx_status = zynqmp_dma_tx_status;
 	p->dev = &pdev->dev;
 
-	platform_set_drvdata(pdev, xdev);
+	platform_set_drvdata(pdev, zdev);
 
-	ret = zynqmp_dma_chan_probe(xdev, pdev);
+	ret = zynqmp_dma_chan_probe(zdev, pdev);
 	if (ret) {
 		dev_err(&pdev->dev, "Probing channel failed\n");
 		goto free_chan_resources;
 	}
 
-	p->dst_addr_widths = xdev->chan->bus_width / 8;
-	p->src_addr_widths = xdev->chan->bus_width / 8;
+	p->dst_addr_widths = zdev->chan->bus_width / 8;
+	p->src_addr_widths = zdev->chan->bus_width / 8;
 
-	dma_async_device_register(&xdev->common);
+	dma_async_device_register(&zdev->common);
 
 	ret = of_dma_controller_register(pdev->dev.of_node,
-					 of_zynqmp_dma_xlate, xdev);
+					 of_zynqmp_dma_xlate, zdev);
 	if (ret) {
 		dev_err(&pdev->dev, "Unable to register DMA to DT\n");
-		dma_async_device_unregister(&xdev->common);
+		dma_async_device_unregister(&zdev->common);
 		goto free_chan_resources;
 	}
 
@@ -1166,8 +1166,7 @@ static int zynqmp_dma_probe(struct platform_device *pdev)
 	return 0;
 
 free_chan_resources:
-	if (xdev->chan)
-		zynqmp_dma_chan_remove(xdev->chan);
+	zynqmp_dma_chan_remove(zdev->chan);
 	return ret;
 }
 
@@ -1179,13 +1178,12 @@ free_chan_resources:
  */
 static int zynqmp_dma_remove(struct platform_device *pdev)
 {
-	struct zynqmp_dma_device *xdev = platform_get_drvdata(pdev);
+	struct zynqmp_dma_device *zdev = platform_get_drvdata(pdev);
 
 	of_dma_controller_free(pdev->dev.of_node);
-	dma_async_device_unregister(&xdev->common);
+	dma_async_device_unregister(&zdev->common);
 
-	if (xdev->chan)
-		zynqmp_dma_chan_remove(xdev->chan);
+	zynqmp_dma_chan_remove(zdev->chan);
 
 	return 0;
 }
