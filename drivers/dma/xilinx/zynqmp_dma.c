@@ -26,112 +26,120 @@
 #include "../dmaengine.h"
 
 /* Register Offsets */
-#define ISR				0x100
-#define IMR				0x104
-#define IER				0x108
-#define IDS				0x10C
-#define CTRL0				0x110
-#define CTRL1				0x114
-#define DATA_ATTR			0x120
-#define DSCR_ATTR			0x124
-#define SRC_DSCR_WRD0			0x128
-#define SRC_DSCR_WRD1			0x12C
-#define SRC_DSCR_WRD2			0x130
-#define SRC_DSCR_WRD3			0x134
-#define DST_DSCR_WRD0			0x138
-#define DST_DSCR_WRD1			0x13C
-#define DST_DSCR_WRD2			0x140
-#define DST_DSCR_WRD3			0x144
-#define SRC_START_LSB			0x158
-#define SRC_START_MSB			0x15C
-#define DST_START_LSB			0x160
-#define DST_START_MSB			0x164
-#define TOTAL_BYTE			0x188
-#define RATE_CTRL			0x18C
-#define IRQ_SRC_ACCT			0x190
-#define IRQ_DST_ACCT			0x194
-#define CTRL2				0x200
+#define ZYNQMP_DMA_ISR			0x100
+#define ZYNQMP_DMA_IMR			0x104
+#define ZYNQMP_DMA_IER			0x108
+#define ZYNQMP_DMA_IDS			0x10C
+#define ZYNQMP_DMA_CTRL0		0x110
+#define ZYNQMP_DMA_CTRL1		0x114
+#define ZYNQMP_DMA_DATA_ATTR		0x120
+#define ZYNQMP_DMA_DSCR_ATTR		0x124
+#define ZYNQMP_DMA_SRC_DSCR_WRD0	0x128
+#define ZYNQMP_DMA_SRC_DSCR_WRD1	0x12C
+#define ZYNQMP_DMA_SRC_DSCR_WRD2	0x130
+#define ZYNQMP_DMA_SRC_DSCR_WRD3	0x134
+#define ZYNQMP_DMA_DST_DSCR_WRD0	0x138
+#define ZYNQMP_DMA_DST_DSCR_WRD1	0x13C
+#define ZYNQMP_DMA_DST_DSCR_WRD2	0x140
+#define ZYNQMP_DMA_DST_DSCR_WRD3	0x144
+#define ZYNQMP_DMA_SRC_START_LSB	0x158
+#define ZYNQMP_DMA_SRC_START_MSB	0x15C
+#define ZYNQMP_DMA_DST_START_LSB	0x160
+#define ZYNQMP_DMA_DST_START_MSB	0x164
+#define ZYNQMP_DMA_TOTAL_BYTE		0x188
+#define ZYNQMP_DMA_RATE_CTRL		0x18C
+#define ZYNQMP_DMA_IRQ_SRC_ACCT		0x190
+#define ZYNQMP_DMA_IRQ_DST_ACCT		0x194
+#define ZYNQMP_DMA_CTRL2		0x200
 
 /* Interrupt registers bit field definitions */
-#define DMA_DONE			BIT(10)
-#define AXI_WR_DATA			BIT(9)
-#define AXI_RD_DATA			BIT(8)
-#define AXI_RD_DST_DSCR			BIT(7)
-#define AXI_RD_SRC_DSCR			BIT(6)
-#define IRQ_DST_ACCT_ERR		BIT(5)
-#define IRQ_SRC_ACCT_ERR		BIT(4)
-#define BYTE_CNT_OVRFL			BIT(3)
-#define INV_APB				BIT(0)
+#define ZYNQMP_DMA_DONE			BIT(10)
+#define ZYNQMP_DMA_AXI_WR_DATA		BIT(9)
+#define ZYNQMP_DMA_AXI_RD_DATA		BIT(8)
+#define ZYNQMP_DMA_AXI_RD_DST_DSCR	BIT(7)
+#define ZYNQMP_DMA_AXI_RD_SRC_DSCR	BIT(6)
+#define ZYNQMP_DMA_IRQ_DST_ACCT_ERR	BIT(5)
+#define ZYNQMP_DMA_IRQ_SRC_ACCT_ERR	BIT(4)
+#define ZYNQMP_DMA_BYTE_CNT_OVRFL	BIT(3)
+#define ZYNQMP_DMA_INV_APB		BIT(0)
 
 /* Control 0 register bit field definitions */
-#define OVR_FETCH			BIT(7)
-#define POINT_TYPE_SG			BIT(6)
-#define RATE_CTRL_EN			BIT(3)
+#define ZYNQMP_DMA_OVR_FETCH		BIT(7)
+#define ZYNQMP_DMA_POINT_TYPE_SG	BIT(6)
+#define ZYNQMP_DMA_RATE_CTRL_EN		BIT(3)
 
 /* Control 1 register bit field definitions */
-#define SRC_ISSUE			GENMASK(4, 0)
+#define ZYNQMP_DMA_SRC_ISSUE		GENMASK(4, 0)
 
 /* Data Attribute register bit field definitions */
-#define ARBURST				GENMASK(27, 26)
-#define ARCACHE				GENMASK(25, 22)
-#define ARCACHE_OFST			22
-#define ARQOS				GENMASK(21, 18)
-#define ARQOS_OFST			18
-#define ARLEN				GENMASK(17, 14)
-#define ARLEN_OFST			14
-#define AWBURST				GENMASK(13, 12)
-#define AWCACHE				GENMASK(11, 8)
-#define AWCACHE_OFST			8
-#define AWQOS				GENMASK(7, 4)
-#define AWQOS_OFST			4
-#define AWLEN				GENMASK(3, 0)
-#define AWLEN_OFST			0
+#define ZYNQMP_DMA_ARBURST		GENMASK(27, 26)
+#define ZYNQMP_DMA_ARCACHE		GENMASK(25, 22)
+#define ZYNQMP_DMA_ARCACHE_OFST		22
+#define ZYNQMP_DMA_ARQOS		GENMASK(21, 18)
+#define ZYNQMP_DMA_ARQOS_OFST		18
+#define ZYNQMP_DMA_ARLEN		GENMASK(17, 14)
+#define ZYNQMP_DMA_ARLEN_OFST		14
+#define ZYNQMP_DMA_AWBURST		GENMASK(13, 12)
+#define ZYNQMP_DMA_AWCACHE		GENMASK(11, 8)
+#define ZYNQMP_DMA_AWCACHE_OFST		8
+#define ZYNQMP_DMA_AWQOS		GENMASK(7, 4)
+#define ZYNQMP_DMA_AWQOS_OFST		4
+#define ZYNQMP_DMA_AWLEN		GENMASK(3, 0)
+#define ZYNQMP_DMA_AWLEN_OFST		0
 
 /* Descriptor Attribute register bit field definitions */
-#define AXCOHRNT			BIT(8)
-#define AXCACHE				GENMASK(7, 4)
-#define AXCACHE_OFST			4
-#define AXQOS				GENMASK(3, 0)
-#define AXQOS_OFST			0
+#define ZYNQMP_DMA_AXCOHRNT		BIT(8)
+#define ZYNQMP_DMA_AXCACHE		GENMASK(7, 4)
+#define ZYNQMP_DMA_AXCACHE_OFST		4
+#define ZYNQMP_DMA_AXQOS		GENMASK(3, 0)
+#define ZYNQMP_DMA_AXQOS_OFST		0
 
 /* Control register 2 bit field definitions */
-#define ENABLE				BIT(0)
+#define ZYNQMP_DMA_ENABLE		BIT(0)
 
 /* Buffer Descriptor definitions */
-#define DESC_CTRL_STOP			0x10
-#define DESC_CTRL_COMP_INT		0x4
-#define DESC_CTRL_SIZE_256		0x2
-#define DESC_CTRL_COHRNT		0x1
+#define ZYNQMP_DMA_DESC_CTRL_STOP	0x10
+#define ZYNQMP_DMA_DESC_CTRL_COMP_INT	0x4
+#define ZYNQMP_DMA_DESC_CTRL_SIZE_256	0x2
+#define ZYNQMP_DMA_DESC_CTRL_COHRNT	0x1
 
 /* Interrupt Mask specific definitions */
-#define INT_ERR		(AXI_RD_DATA | AXI_WR_DATA | AXI_RD_DST_DSCR | \
-			  AXI_RD_SRC_DSCR | INV_APB)
-#define INT_OVRFL	(BYTE_CNT_OVRFL | IRQ_SRC_ACCT_ERR | IRQ_DST_ACCT_ERR)
-#define INT_DONE	DMA_DONE
-#define INT_EN_DEFAULT_MASK	(INT_DONE | INT_ERR | INT_OVRFL)
+#define ZYNQMP_DMA_INT_ERR	(ZYNQMP_DMA_AXI_RD_DATA | \
+				ZYNQMP_DMA_AXI_WR_DATA | \
+				ZYNQMP_DMA_AXI_RD_DST_DSCR | \
+				ZYNQMP_DMA_AXI_RD_SRC_DSCR | \
+				ZYNQMP_DMA_INV_APB)
+#define ZYNQMP_DMA_INT_OVRFL	(ZYNQMP_DMA_BYTE_CNT_OVRFL | \
+				ZYNQMP_DMA_IRQ_SRC_ACCT_ERR | \
+				ZYNQMP_DMA_IRQ_DST_ACCT_ERR)
+#define ZYNQMP_DMA_INT_DONE	ZYNQMP_DMA_DONE
+#define ZYNQMP_DMA_INT_EN_DEFAULT_MASK	(ZYNQMP_DMA_INT_DONE | \
+					ZYNQMP_DMA_INT_ERR | \
+					ZYNQMP_DMA_INT_OVRFL)
 
 /* Max number of descriptors per channel */
-#define ZYNQMP_DMA_NUM_DESCS		32
+#define ZYNQMP_DMA_NUM_DESCS	32
 
 /* Max transfer size per descriptor */
 #define ZYNQMP_DMA_MAX_TRANS_LEN	0x40000000
 
 /* Reset values for data attributes */
-#define ARCACHE_RST_VAL		0x2
-#define ARLEN_RST_VAL		0xF
-#define AWCACHE_RST_VAL		0x2
-#define AWLEN_RST_VAL		0xF
+#define ZYNQMP_DMA_ARCACHE_RST_VAL	0x2
+#define ZYNQMP_DMA_ARLEN_RST_VAL	0xF
+#define ZYNQMP_DMA_AWCACHE_RST_VAL	0x2
+#define ZYNQMP_DMA_AWLEN_RST_VAL	0xF
 
-#define SRC_ISSUE_RST_VAL	0x1F
+#define ZYNQMP_DMA_SRC_ISSUE_RST_VAL	0x1F
 
-#define IDS_DEFAULT_MASK	0xFFF
+#define ZYNQMP_DMA_IDS_DEFAULT_MASK	0xFFF
 
 /* Bus width in bits */
 #define ZYNQMP_DMA_BUS_WIDTH_64		64
 #define ZYNQMP_DMA_BUS_WIDTH_128	128
 
-#define DESC_SIZE(chan)		(chan->desc_size)
-#define DST_DESC_BASE(chan)	(DESC_SIZE(chan) * ZYNQMP_DMA_NUM_DESCS)
+#define ZYNQMP_DMA_DESC_SIZE(chan)	(chan->desc_size)
+#define DST_DESC_BASE(chan)	(ZYNQMP_DMA_DESC_SIZE(chan) * \
+				ZYNQMP_DMA_NUM_DESCS)
 
 #define to_chan(chan)		container_of(chan, struct zynqmp_dma_chan, \
 					     common)
@@ -272,12 +280,12 @@ static void zynqmp_dma_update_desc_to_ctrlr(struct zynqmp_dma_chan *chan,
 {
 	dma_addr_t addr;
 
-	addr = chan->desc_pool_p  + (desc->index * DESC_SIZE(chan));
-	writel(addr, chan->regs + SRC_START_LSB);
-	writel(upper_32_bits(addr), chan->regs + SRC_START_MSB);
-	addr = addr + (DESC_SIZE(chan) * ZYNQMP_DMA_NUM_DESCS);
-	writel(addr, chan->regs + DST_START_LSB);
-	writel(upper_32_bits(addr), chan->regs + DST_START_MSB);
+	addr = chan->desc_pool_p  + (desc->index * ZYNQMP_DMA_DESC_SIZE(chan));
+	writel(addr, chan->regs + ZYNQMP_DMA_SRC_START_LSB);
+	writel(upper_32_bits(addr), chan->regs + ZYNQMP_DMA_SRC_START_MSB);
+	addr = addr + (ZYNQMP_DMA_DESC_SIZE(chan) * ZYNQMP_DMA_NUM_DESCS);
+	writel(addr, chan->regs + ZYNQMP_DMA_DST_START_LSB);
+	writel(upper_32_bits(addr), chan->regs + ZYNQMP_DMA_DST_START_MSB);
 }
 
 /**
@@ -289,9 +297,9 @@ static void zynqmp_dma_desc_config_eod(struct zynqmp_dma_chan *chan, void *desc)
 {
 	struct zynqmp_dma_desc_ll *hw = (struct zynqmp_dma_desc_ll *)desc;
 
-	hw->ctrl |= DESC_CTRL_STOP;
+	hw->ctrl |= ZYNQMP_DMA_DESC_CTRL_STOP;
 	hw += ZYNQMP_DMA_NUM_DESCS;
-	hw->ctrl |= DESC_CTRL_COMP_INT | DESC_CTRL_STOP;
+	hw->ctrl |= ZYNQMP_DMA_DESC_CTRL_COMP_INT | ZYNQMP_DMA_DESC_CTRL_STOP;
 }
 
 /**
@@ -307,24 +315,26 @@ static void zynqmp_dma_config_simple_desc(struct zynqmp_dma_chan *chan,
 {
 	u32 val;
 
-	writel(src, chan->regs + SRC_DSCR_WRD0);
-	writel(upper_32_bits(src), chan->regs + SRC_DSCR_WRD1);
-	writel(len, chan->regs + SRC_DSCR_WRD2);
+	writel(src, chan->regs + ZYNQMP_DMA_SRC_DSCR_WRD0);
+	writel(upper_32_bits(src), chan->regs + ZYNQMP_DMA_SRC_DSCR_WRD1);
+	writel(len, chan->regs + ZYNQMP_DMA_SRC_DSCR_WRD2);
 
 	if (chan->src_axi_cohrnt)
-		writel(DESC_CTRL_COHRNT, chan->regs + SRC_DSCR_WRD3);
+		writel(ZYNQMP_DMA_DESC_CTRL_COHRNT,
+			chan->regs + ZYNQMP_DMA_SRC_DSCR_WRD3);
 	else
-		writel(0, chan->regs + SRC_DSCR_WRD3);
+		writel(0, chan->regs + ZYNQMP_DMA_SRC_DSCR_WRD3);
 
-	writel(dst, chan->regs + DST_DSCR_WRD0);
-	writel(upper_32_bits(dst), chan->regs + DST_DSCR_WRD1);
-	writel(len, chan->regs + DST_DSCR_WRD2);
+	writel(dst, chan->regs + ZYNQMP_DMA_DST_DSCR_WRD0);
+	writel(upper_32_bits(dst), chan->regs + ZYNQMP_DMA_DST_DSCR_WRD1);
+	writel(len, chan->regs + ZYNQMP_DMA_DST_DSCR_WRD2);
 
 	if (chan->dst_axi_cohrnt)
-		val = DESC_CTRL_COHRNT | DESC_CTRL_COMP_INT;
+		val = ZYNQMP_DMA_DESC_CTRL_COHRNT |
+				ZYNQMP_DMA_DESC_CTRL_COMP_INT;
 	else
-		val = DESC_CTRL_COMP_INT;
-	writel(val, chan->regs + DST_DSCR_WRD3);
+		val = ZYNQMP_DMA_DESC_CTRL_COMP_INT;
+	writel(val, chan->regs + ZYNQMP_DMA_DST_DSCR_WRD3);
 }
 
 /**
@@ -347,18 +357,18 @@ static void zynqmp_dma_config_sg_ll_desc(struct zynqmp_dma_chan *chan,
 	sdesc->addr = src;
 	ddesc->addr = dst;
 
-	sdesc->ctrl = ddesc->ctrl = DESC_CTRL_SIZE_256;
+	sdesc->ctrl = ddesc->ctrl = ZYNQMP_DMA_DESC_CTRL_SIZE_256;
 	if (chan->src_axi_cohrnt)
-		sdesc->ctrl |= DESC_CTRL_COHRNT;
+		sdesc->ctrl |= ZYNQMP_DMA_DESC_CTRL_COHRNT;
 	else
-		ddesc->ctrl |= DESC_CTRL_COHRNT;
+		ddesc->ctrl |= ZYNQMP_DMA_DESC_CTRL_COHRNT;
 
 	if (prev) {
 		dma_addr_t addr = chan->desc_pool_p +
 			    ((dma_addr_t)sdesc - (dma_addr_t)chan->desc_pool_v);
 		ddesc = prev + ZYNQMP_DMA_NUM_DESCS;
 		prev->nxtdscraddr = addr;
-		ddesc->nxtdscraddr = addr + DST_DESC_BASE(chan);
+		ddesc->nxtdscraddr = addr + ZYNQMP_DMA_DESC_SIZE(chan);
 	}
 }
 
@@ -370,48 +380,56 @@ static void zynqmp_dma_init(struct zynqmp_dma_chan *chan)
 {
 	u32 val;
 
-	writel(IDS_DEFAULT_MASK, chan->regs + IDS);
-	val = readl(chan->regs + ISR);
-	writel(val, chan->regs + ISR);
-	writel(0x0, chan->regs + TOTAL_BYTE);
+	writel(ZYNQMP_DMA_IDS_DEFAULT_MASK, chan->regs + ZYNQMP_DMA_IDS);
+	val = readl(chan->regs + ZYNQMP_DMA_ISR);
+	writel(val, chan->regs + ZYNQMP_DMA_ISR);
+	writel(0x0, chan->regs + ZYNQMP_DMA_TOTAL_BYTE);
 
-	val = readl(chan->regs + CTRL1);
+	val = readl(chan->regs + ZYNQMP_DMA_CTRL1);
 	if (chan->src_issue)
-		val = (val & ~SRC_ISSUE) | chan->src_issue;
-	writel(val, chan->regs + CTRL1);
+		val = (val & ~ZYNQMP_DMA_SRC_ISSUE) | chan->src_issue;
+	writel(val, chan->regs + ZYNQMP_DMA_CTRL1);
 
 	val = 0;
 	if (chan->ovrfetch)
-		val |= OVR_FETCH;
+		val |= ZYNQMP_DMA_OVR_FETCH;
 	if (chan->has_sg)
-		val |= POINT_TYPE_SG;
+		val |= ZYNQMP_DMA_POINT_TYPE_SG;
 	if (chan->ratectrl) {
-		val |= RATE_CTRL_EN;
-		writel(chan->ratectrl, chan->regs + RATE_CTRL);
+		val |= ZYNQMP_DMA_RATE_CTRL_EN;
+		writel(chan->ratectrl, chan->regs + ZYNQMP_DMA_RATE_CTRL);
 	}
-	writel(val, chan->regs + CTRL0);
+	writel(val, chan->regs + ZYNQMP_DMA_CTRL0);
 
 	val = 0;
 	if (chan->desc_axi_cohrnt)
-		val |= AXCOHRNT;
+		val |= ZYNQMP_DMA_AXCOHRNT;
 	val |= chan->desc_axi_cache;
-	val =  (val & ~AXCACHE) | (chan->desc_axi_cache << AXCACHE_OFST);
+	val = (val & ~ZYNQMP_DMA_AXCACHE) |
+			(chan->desc_axi_cache << ZYNQMP_DMA_AXCACHE_OFST);
 	val |= chan->desc_axi_qos;
-	val =  (val & ~AXQOS) | (chan->desc_axi_qos << AXQOS_OFST);
-	writel(val, chan->regs + DSCR_ATTR);
+	val = (val & ~ZYNQMP_DMA_AXQOS) |
+			(chan->desc_axi_qos << ZYNQMP_DMA_AXQOS_OFST);
+	writel(val, chan->regs + ZYNQMP_DMA_DSCR_ATTR);
 
-	val = readl(chan->regs + DATA_ATTR);
-	val = (val & ~ARCACHE) | (chan->src_axi_cache << ARCACHE_OFST);
-	val = (val & ~AWCACHE) | (chan->dst_axi_cache << AWCACHE_OFST);
-	val = (val & ~ARQOS) | (chan->src_axi_qos << ARQOS_OFST);
-	val = (val & ~AWQOS) | (chan->dst_axi_qos << AWQOS_OFST);
-	val = (val & ~ARLEN) | (chan->src_burst_len << ARLEN_OFST);
-	val = (val & ~AWLEN) | (chan->dst_burst_len << AWLEN_OFST);
-	writel(val, chan->regs + DATA_ATTR);
+	val = readl(chan->regs + ZYNQMP_DMA_DATA_ATTR);
+	val = (val & ~ZYNQMP_DMA_ARCACHE) |
+		(chan->src_axi_cache << ZYNQMP_DMA_ARCACHE_OFST);
+	val = (val & ~ZYNQMP_DMA_AWCACHE) |
+		(chan->dst_axi_cache << ZYNQMP_DMA_AWCACHE_OFST);
+	val = (val & ~ZYNQMP_DMA_ARQOS) |
+		(chan->src_axi_qos << ZYNQMP_DMA_ARQOS_OFST);
+	val = (val & ~ZYNQMP_DMA_AWQOS) |
+		(chan->dst_axi_qos << ZYNQMP_DMA_AWQOS_OFST);
+	val = (val & ~ZYNQMP_DMA_ARLEN) |
+		(chan->src_burst_len << ZYNQMP_DMA_ARLEN_OFST);
+	val = (val & ~ZYNQMP_DMA_AWLEN) |
+		(chan->dst_burst_len << ZYNQMP_DMA_AWLEN_OFST);
+	writel(val, chan->regs + ZYNQMP_DMA_DATA_ATTR);
 
 	/* Clearing the interrupt account rgisters */
-	val = readl(chan->regs + IRQ_SRC_ACCT);
-	val = readl(chan->regs + IRQ_DST_ACCT);
+	val = readl(chan->regs + ZYNQMP_DMA_IRQ_SRC_ACCT);
+	val = readl(chan->regs + ZYNQMP_DMA_IRQ_DST_ACCT);
 
 	chan->idle = true;
 }
@@ -480,7 +498,7 @@ static void *zynqmp_dma_get_descriptor(struct zynqmp_dma_chan *chan,
 	if (!chan->has_sg)
 		return NULL;
 
-	size = DESC_SIZE(chan);
+	size = ZYNQMP_DMA_DESC_SIZE(chan);
 	spin_lock_irqsave(&chan->lock, flags);
 	mem = chan->desc_pool_v + (chan->desc_tail * size);
 	if (!sdesc->cnt)
@@ -488,8 +506,8 @@ static void *zynqmp_dma_get_descriptor(struct zynqmp_dma_chan *chan,
 	chan->desc_tail =  (chan->desc_tail + 1) % ZYNQMP_DMA_NUM_DESCS;
 	spin_unlock_irqrestore(&chan->lock, flags);
 	/* Clear the src and dst descriptor memory */
-	memset(mem, 0, DESC_SIZE(chan));
-	memset(mem + DST_DESC_BASE(chan), 0, DESC_SIZE(chan));
+	memset(mem, 0, ZYNQMP_DMA_DESC_SIZE(chan));
+	memset(mem + DST_DESC_BASE(chan), 0, ZYNQMP_DMA_DESC_SIZE(chan));
 	sdesc->cnt = sdesc->cnt + 1;
 	return mem;
 }
@@ -553,9 +571,9 @@ static int zynqmp_dma_alloc_chan_resources(struct dma_chan *dchan)
  */
 static void zynqmp_dma_start(struct zynqmp_dma_chan *chan)
 {
-	writel(INT_EN_DEFAULT_MASK, chan->regs + IER);
-	writel(0, chan->regs + TOTAL_BYTE);
-	writel(ENABLE, chan->regs + CTRL2);
+	writel(ZYNQMP_DMA_INT_EN_DEFAULT_MASK, chan->regs + ZYNQMP_DMA_IER);
+	writel(0, chan->regs + ZYNQMP_DMA_TOTAL_BYTE);
+	writel(ZYNQMP_DMA_ENABLE, chan->regs + ZYNQMP_DMA_CTRL2);
 }
 
 /**
@@ -567,14 +585,14 @@ static void zynqmp_dma_handle_ovfl_int(struct zynqmp_dma_chan *chan, u32 status)
 {
 	u32 val;
 
-	if (status & BYTE_CNT_OVRFL) {
-		val = readl(chan->regs + TOTAL_BYTE);
-		writel(0, chan->regs + TOTAL_BYTE);
+	if (status & ZYNQMP_DMA_BYTE_CNT_OVRFL) {
+		val = readl(chan->regs + ZYNQMP_DMA_TOTAL_BYTE);
+		writel(0, chan->regs + ZYNQMP_DMA_TOTAL_BYTE);
 	}
-	if (status & IRQ_DST_ACCT_ERR)
-		val = readl(chan->regs + IRQ_DST_ACCT);
-	if (status & IRQ_SRC_ACCT_ERR)
-		val = readl(chan->regs + IRQ_SRC_ACCT);
+	if (status & ZYNQMP_DMA_IRQ_DST_ACCT_ERR)
+		val = readl(chan->regs + ZYNQMP_DMA_IRQ_DST_ACCT);
+	if (status & ZYNQMP_DMA_IRQ_SRC_ACCT_ERR)
+		val = readl(chan->regs + ZYNQMP_DMA_IRQ_SRC_ACCT);
 }
 
 /**
@@ -681,8 +699,8 @@ static void zynqmp_dma_free_chan_resources(struct dma_chan *dchan)
 
 	spin_unlock_irqrestore(&chan->lock, flags);
 	dma_free_coherent(chan->dev,
-			  (2 * DESC_SIZE(chan) * ZYNQMP_DMA_NUM_DESCS),
-			  chan->desc_pool_v, chan->desc_pool_p);
+		(2 * ZYNQMP_DMA_DESC_SIZE(chan) * ZYNQMP_DMA_NUM_DESCS),
+		chan->desc_pool_v, chan->desc_pool_p);
 }
 
 /**
@@ -702,7 +720,8 @@ static enum dma_status zynqmp_dma_tx_status(struct dma_chan *dchan,
 
 	ret = dma_cookie_status(dchan, cookie, txstate);
 	if (ret != DMA_COMPLETE)
-		dma_set_residue(txstate, readl(chan->regs + TOTAL_BYTE));
+		dma_set_residue(txstate, readl(chan->regs +
+					ZYNQMP_DMA_TOTAL_BYTE));
 
 	return ret;
 }
@@ -713,7 +732,7 @@ static enum dma_status zynqmp_dma_tx_status(struct dma_chan *dchan,
  */
 static void zynqmp_dma_reset(struct zynqmp_dma_chan *chan)
 {
-	writel(IDS_DEFAULT_MASK, chan->regs + IDS);
+	writel(ZYNQMP_DMA_IDS_DEFAULT_MASK, chan->regs + ZYNQMP_DMA_IDS);
 
 	zynqmp_dma_complete_descriptor(chan);
 	zynqmp_dma_chan_desc_cleanup(chan);
@@ -738,13 +757,13 @@ static irqreturn_t zynqmp_dma_irq_handler(int irq, void *data)
 	u32 isr, imr, status;
 	irqreturn_t ret = IRQ_NONE;
 
-	isr = readl(chan->regs + ISR);
-	imr = readl(chan->regs + IMR);
+	isr = readl(chan->regs + ZYNQMP_DMA_ISR);
+	imr = readl(chan->regs + ZYNQMP_DMA_IMR);
 	status = isr & ~imr;
 
-	writel(isr, chan->regs+ISR);
-	if (status & INT_DONE) {
-		writel(INT_DONE, chan->regs + IDS);
+	writel(isr, chan->regs + ZYNQMP_DMA_ISR);
+	if (status & ZYNQMP_DMA_INT_DONE) {
+		writel(ZYNQMP_DMA_INT_DONE, chan->regs + ZYNQMP_DMA_IDS);
 		spin_lock(&chan->lock);
 		zynqmp_dma_complete_descriptor(chan);
 		chan->idle = true;
@@ -754,16 +773,16 @@ static irqreturn_t zynqmp_dma_irq_handler(int irq, void *data)
 		ret = IRQ_HANDLED;
 	}
 
-	if (status & INT_ERR) {
+	if (status & ZYNQMP_DMA_INT_ERR) {
 		chan->err = true;
-		writel(INT_ERR, chan->regs + IDS);
+		writel(ZYNQMP_DMA_INT_ERR, chan->regs + ZYNQMP_DMA_IDS);
 		tasklet_schedule(&chan->tasklet);
 		dev_err(chan->dev, "Channel %p has has errors\n", chan);
 		ret = IRQ_HANDLED;
 	}
 
-	if (status & INT_OVRFL) {
-		writel(INT_OVRFL, chan->regs + IDS);
+	if (status & ZYNQMP_DMA_INT_OVRFL) {
+		writel(ZYNQMP_DMA_INT_OVRFL, chan->regs + ZYNQMP_DMA_IDS);
 		zynqmp_dma_handle_ovfl_int(chan, status);
 		dev_dbg(chan->dev, "Channel %p overflow interrupt\n", chan);
 		ret = IRQ_HANDLED;
@@ -791,8 +810,8 @@ static void zynqmp_dma_do_tasklet(unsigned long data)
 		return;
 	}
 
-	val = readl(chan->regs + IRQ_SRC_ACCT);
-	val = readl(chan->regs + IRQ_DST_ACCT);
+	val = readl(chan->regs + ZYNQMP_DMA_IRQ_SRC_ACCT);
+	val = readl(chan->regs + ZYNQMP_DMA_IRQ_DST_ACCT);
 	zynqmp_dma_chan_desc_cleanup(chan);
 
 	spin_unlock_irqrestore(&chan->lock, flags);
@@ -1016,11 +1035,11 @@ static int zynqmp_dma_chan_probe(struct zynqmp_dma_device *xdev,
 		return PTR_ERR(chan->regs);
 
 	chan->bus_width = ZYNQMP_DMA_BUS_WIDTH_64;
-	chan->src_issue = SRC_ISSUE_RST_VAL;
-	chan->dst_burst_len = AWLEN_RST_VAL;
-	chan->src_burst_len = ARLEN_RST_VAL;
-	chan->dst_axi_cache = AWCACHE_RST_VAL;
-	chan->src_axi_cache = ARCACHE_RST_VAL;
+	chan->src_issue = ZYNQMP_DMA_SRC_ISSUE_RST_VAL;
+	chan->dst_burst_len = ZYNQMP_DMA_AWLEN_RST_VAL;
+	chan->src_burst_len = ZYNQMP_DMA_ARLEN_RST_VAL;
+	chan->dst_axi_cache = ZYNQMP_DMA_AWCACHE_RST_VAL;
+	chan->src_axi_cache = ZYNQMP_DMA_ARCACHE_RST_VAL;
 	err = of_property_read_u32(node, "xlnx,bus-width", &chan->bus_width);
 	if ((err < 0) && ((chan->bus_width != ZYNQMP_DMA_BUS_WIDTH_64) ||
 			  (chan->bus_width != ZYNQMP_DMA_BUS_WIDTH_128))) {
