@@ -271,6 +271,18 @@ struct zynqmp_dma_device {
 };
 
 /**
+ * zynqmp_dma_chan_is_idle - Provides the channel idle status
+ * @chan: ZynqMP DMA DMA channel pointer
+ *
+ * Return: 'true' if the channel is idle otherwise 'false'
+ */
+static inline bool zynqmp_dma_chan_is_idle(struct zynqmp_dma_chan *chan)
+{
+	return chan->idle;
+
+}
+
+/**
  * zynqmp_dma_update_desc_to_ctrlr - Updates descriptor to the controller
  * @chan: ZynqMP DMA DMA channel pointer
  * @desc: Transaction descriptor pointer
@@ -573,6 +585,7 @@ static void zynqmp_dma_start(struct zynqmp_dma_chan *chan)
 {
 	writel(ZYNQMP_DMA_INT_EN_DEFAULT_MASK, chan->regs + ZYNQMP_DMA_IER);
 	writel(0, chan->regs + ZYNQMP_DMA_TOTAL_BYTE);
+	chan->idle = false;
 	writel(ZYNQMP_DMA_ENABLE, chan->regs + ZYNQMP_DMA_CTRL2);
 }
 
@@ -606,7 +619,7 @@ static void zynqmp_dma_start_transfer(struct zynqmp_dma_chan *chan)
 	if (list_empty(&chan->pending_list))
 		return;
 
-	if (!chan->idle)
+	if (!zynqmp_dma_chan_is_idle(chan))
 		return;
 
 	desc = list_first_entry(&chan->pending_list,
