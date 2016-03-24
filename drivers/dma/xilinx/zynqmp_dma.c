@@ -164,24 +164,28 @@ struct zynqmp_dma_desc_ll {
 
 /**
  * struct zynqmp_dma_desc_sw - Per Transaction structure
- * @cnt: Descriptor count required for this transfer
- * @index: Dma pool index of the first desc
  * @src: Source address for simple mode dma
  * @dst: Destination address for simple mode dma
  * @len: Transfer length for simple mode dma
  * @node: Node in the channel descriptor list
+ * @tx_list: List head for the current transfer
  * @async_tx: Async transaction descriptor
- * @direction: Transfer direction
+ * @src_v: Virtual address of the src descriptor
+ * @src_p: Physical address of the src descriptor
+ * @dst_v: Virtual address of the dst descriptor
+ * @dst_p: Physical address of the dst descriptor
  */
 struct zynqmp_dma_desc_sw {
-	u32 cnt;
-	u32 index;
 	u64 src;
 	u64 dst;
 	u32 len;
 	struct list_head node;
+	struct list_head tx_list;
 	struct dma_async_tx_descriptor async_tx;
-	enum dma_transfer_direction direction;
+	struct zynqmp_dma_desc_ll *src_v;
+	dma_addr_t src_p;
+	struct zynqmp_dma_desc_ll *dst_v;
+	dma_addr_t dst_p;
 };
 
 /**
@@ -190,12 +194,13 @@ struct zynqmp_dma_desc_sw {
  * @regs: Control registers offset
  * @lock: Descriptor operation lock
  * @pending_list: Descriptors waiting
- * @active_desc: Active descriptor
+ * @free_list: Descriptors free
+ * @active_list: Descriptors active
+ * @sw_desc_pool: SW descriptor pool
  * @done_list: Complete descriptors
  * @common: DMA common channel
  * @desc_pool_v: Statically allocated descriptor base
  * @desc_pool_p: Physical allocated descriptor base
- * @desc_tail: Current descriptor available index
  * @desc_free_cnt: Descriptor available count
  * @dev: The dma device
  * @irq: Channel IRQ
@@ -226,12 +231,13 @@ struct zynqmp_dma_chan {
 	void __iomem *regs;
 	spinlock_t lock;
 	struct list_head pending_list;
-	struct zynqmp_dma_desc_sw *active_desc;
+	struct list_head free_list;
+	struct list_head active_list;
+	struct zynqmp_dma_desc_sw *sw_desc_pool;
 	struct list_head done_list;
 	struct dma_chan common;
 	void *desc_pool_v;
 	dma_addr_t desc_pool_p;
-	u32 desc_tail;
 	u32 desc_free_cnt;
 	struct device *dev;
 	int irq;
@@ -292,10 +298,10 @@ static void zynqmp_dma_update_desc_to_ctrlr(struct zynqmp_dma_chan *chan,
 {
 	dma_addr_t addr;
 
-	addr = chan->desc_pool_p  + (desc->index * ZYNQMP_DMA_DESC_SIZE(chan));
+	addr = desc->src_p;
 	writel(addr, chan->regs + ZYNQMP_DMA_SRC_START_LSB);
 	writel(upper_32_bits(addr), chan->regs + ZYNQMP_DMA_SRC_START_MSB);
-	addr = addr + (ZYNQMP_DMA_DESC_SIZE(chan) * ZYNQMP_DMA_NUM_DESCS);
+	addr = desc->dst_p;
 	writel(addr, chan->regs + ZYNQMP_DMA_DST_START_LSB);
 	writel(upper_32_bits(addr), chan->regs + ZYNQMP_DMA_DST_START_MSB);
 }
@@ -310,12 +316,12 @@ static void zynqmp_dma_desc_config_eod(struct zynqmp_dma_chan *chan, void *desc)
 	struct zynqmp_dma_desc_ll *hw = (struct zynqmp_dma_desc_ll *)desc;
 
 	hw->ctrl |= ZYNQMP_DMA_DESC_CTRL_STOP;
-	hw += ZYNQMP_DMA_NUM_DESCS;
+	hw++;
 	hw->ctrl |= ZYNQMP_DMA_DESC_CTRL_COMP_INT | ZYNQMP_DMA_DESC_CTRL_STOP;
 }
 
 /**
- * zynqmp_dma_config_simple_desc - Configure the transfer params to channel registers
+ * zynqmp_dma_config_simple_desc - Configure the transfer parameters
  * @chan: ZynqMP DMA channel pointer
  * @src: Source buffer address
  * @dst: Destination buffer address
@@ -363,7 +369,7 @@ static void zynqmp_dma_config_sg_ll_desc(struct zynqmp_dma_chan *chan,
 				   dma_addr_t src, dma_addr_t dst, size_t len,
 				   struct zynqmp_dma_desc_ll *prev)
 {
-	struct zynqmp_dma_desc_ll *ddesc = sdesc + ZYNQMP_DMA_NUM_DESCS;
+	struct zynqmp_dma_desc_ll *ddesc = sdesc + 1;
 
 	sdesc->size = ddesc->size = len;
 	sdesc->addr = src;
@@ -378,7 +384,7 @@ static void zynqmp_dma_config_sg_ll_desc(struct zynqmp_dma_chan *chan,
 	if (prev) {
 		dma_addr_t addr = chan->desc_pool_p +
 			    ((dma_addr_t)sdesc - (dma_addr_t)chan->desc_pool_v);
-		ddesc = prev + ZYNQMP_DMA_NUM_DESCS;
+		ddesc = prev + 1;
 		prev->nxtdscraddr = addr;
 		ddesc->nxtdscraddr = addr + ZYNQMP_DMA_DESC_SIZE(chan);
 	}
@@ -468,60 +474,31 @@ static dma_cookie_t zynqmp_dma_tx_submit(struct dma_async_tx_descriptor *tx)
 }
 
 /**
- * zynqmp_dma_alloc_tx_descriptor - Allocate transaction descriptor
+ * zynqmp_dma_get_descriptor - Get the sw descriptor from the pool
  * @chan: ZynqMP DMA channel pointer
  *
- * Return: The allocated descriptor on success and NULL on failure
+ * Return: The sw descriptor
  */
 static struct zynqmp_dma_desc_sw *
-zynqmp_dma_alloc_tx_descriptor(struct zynqmp_dma_chan *chan)
+zynqmp_dma_get_descriptor(struct zynqmp_dma_chan *chan)
 {
 	struct zynqmp_dma_desc_sw *desc;
-
-	desc = kzalloc(sizeof(*desc), GFP_KERNEL);
-	if (!desc)
-		return NULL;
-
-	dma_async_tx_descriptor_init(&desc->async_tx, &chan->common);
-	desc->async_tx.tx_submit = zynqmp_dma_tx_submit;
-	desc->async_tx.cookie = 0;
-	desc->cnt = 0;
-	async_tx_ack(&desc->async_tx);
-
-	desc->async_tx.cookie = -EBUSY;
-
-	return desc;
-}
-
-/**
- * zynqmp_dma_get_descriptor - Allocates the hw descriptor
- * @chan: ZynqMP DMA channel pointer
- * @sdesc: Transaction descriptor pointer
- *
- * Return: The hw descriptor and NULL for simple dma mode
- */
-static void *zynqmp_dma_get_descriptor(struct zynqmp_dma_chan *chan,
-				 struct zynqmp_dma_desc_sw *sdesc)
-{
-	u32 size;
-	void *mem;
 	unsigned long flags;
 
-	if (!chan->has_sg)
-		return NULL;
-
-	size = ZYNQMP_DMA_DESC_SIZE(chan);
 	spin_lock_irqsave(&chan->lock, flags);
-	mem = chan->desc_pool_v + (chan->desc_tail * size);
-	if (!sdesc->cnt)
-		sdesc->index = chan->desc_tail;
-	chan->desc_tail =  (chan->desc_tail + 1) % ZYNQMP_DMA_NUM_DESCS;
+	desc = list_first_entry(&chan->free_list, struct zynqmp_dma_desc_sw,
+				 node);
+	list_del(&desc->node);
 	spin_unlock_irqrestore(&chan->lock, flags);
+
+	INIT_LIST_HEAD(&desc->tx_list);
 	/* Clear the src and dst descriptor memory */
-	memset(mem, 0, ZYNQMP_DMA_DESC_SIZE(chan));
-	memset(mem + DST_DESC_BASE(chan), 0, ZYNQMP_DMA_DESC_SIZE(chan));
-	sdesc->cnt = sdesc->cnt + 1;
-	return mem;
+	if (chan->has_sg) {
+		memset((void *)desc->src_v, 0, ZYNQMP_DMA_DESC_SIZE(chan));
+		memset((void *)desc->dst_v, 0, ZYNQMP_DMA_DESC_SIZE(chan));
+	}
+
+	return desc;
 }
 
 /**
@@ -532,10 +509,16 @@ static void *zynqmp_dma_get_descriptor(struct zynqmp_dma_chan *chan,
 static void zynqmp_dma_free_descriptor(struct zynqmp_dma_chan *chan,
 				 struct zynqmp_dma_desc_sw *sdesc)
 {
-	if (!chan->has_sg)
-		return;
+	struct zynqmp_dma_desc_sw *child, *next;
 
-	chan->desc_free_cnt += sdesc->cnt;
+	chan->desc_free_cnt++;
+	list_add_tail(&sdesc->node, &chan->free_list);
+	list_for_each_entry_safe(child, next, &sdesc->tx_list, node) {
+		chan->desc_free_cnt++;
+		INIT_LIST_HEAD(&child->tx_list);
+		list_move_tail(&child->node, &chan->free_list);
+	}
+	INIT_LIST_HEAD(&sdesc->tx_list);
 }
 
 /**
@@ -556,11 +539,29 @@ static void zynqmp_dma_free_desc_list(struct zynqmp_dma_chan *chan,
  * zynqmp_dma_alloc_chan_resources - Allocate channel resources
  * @dchan: DMA channel
  *
- * Return: '0' on success and failure value on error
+ * Return: Number of descriptors on success and failure value on error
  */
 static int zynqmp_dma_alloc_chan_resources(struct dma_chan *dchan)
 {
 	struct zynqmp_dma_chan *chan = to_chan(dchan);
+	struct zynqmp_dma_desc_sw *desc;
+	int i;
+
+	chan->sw_desc_pool = kzalloc(sizeof(*desc) * ZYNQMP_DMA_NUM_DESCS,
+				     GFP_KERNEL);
+	if (!chan->sw_desc_pool)
+		return -ENOMEM;
+	chan->idle = true;
+	chan->desc_free_cnt = ZYNQMP_DMA_NUM_DESCS;
+
+	INIT_LIST_HEAD(&chan->free_list);
+
+	for (i = 0; i < ZYNQMP_DMA_NUM_DESCS; i++) {
+		desc = chan->sw_desc_pool + i;
+		dma_async_tx_descriptor_init(&desc->async_tx, &chan->common);
+		desc->async_tx.tx_submit = zynqmp_dma_tx_submit;
+		list_add_tail(&desc->node, &chan->free_list);
+	}
 
 	if (!chan->has_sg)
 		return 0;
@@ -571,10 +572,17 @@ static int zynqmp_dma_alloc_chan_resources(struct dma_chan *dchan)
 	if (!chan->desc_pool_v)
 		return -ENOMEM;
 
-	chan->desc_free_cnt = ZYNQMP_DMA_NUM_DESCS;
-	chan->desc_tail = 0;
+	for (i = 0; i < ZYNQMP_DMA_NUM_DESCS; i++) {
+		desc = chan->sw_desc_pool + i;
+		desc->src_v = (struct zynqmp_dma_desc_ll *) (chan->desc_pool_v +
+					(i * ZYNQMP_DMA_DESC_SIZE(chan) * 2));
+		desc->dst_v = (struct zynqmp_dma_desc_ll *) (desc->src_v + 1);
+		desc->src_p = chan->desc_pool_p +
+				(i * ZYNQMP_DMA_DESC_SIZE(chan) * 2);
+		desc->dst_p = desc->src_p + ZYNQMP_DMA_DESC_SIZE(chan);
+	}
 
-	return 0;
+	return ZYNQMP_DMA_NUM_DESCS;
 }
 
 /**
@@ -616,17 +624,19 @@ static void zynqmp_dma_start_transfer(struct zynqmp_dma_chan *chan)
 {
 	struct zynqmp_dma_desc_sw *desc;
 
-	if (list_empty(&chan->pending_list))
-		return;
-
 	if (!zynqmp_dma_chan_is_idle(chan))
 		return;
 
-	desc = list_first_entry(&chan->pending_list,
-				struct zynqmp_dma_desc_sw, node);
-	list_del(&desc->node);
-	chan->idle = false;
-	chan->active_desc = desc;
+	desc = list_first_entry_or_null(&chan->pending_list,
+					struct zynqmp_dma_desc_sw, node);
+	if (!desc)
+		return;
+
+	if (chan->has_sg)
+		list_splice_tail_init(&chan->pending_list, &chan->active_list);
+	else
+		list_move_tail(&desc->node, &chan->active_list);
+
 	if (chan->has_sg)
 		zynqmp_dma_update_desc_to_ctrlr(chan, desc);
 	else
@@ -657,9 +667,7 @@ static void zynqmp_dma_chan_desc_cleanup(struct zynqmp_dma_chan *chan)
 			callback(callback_param);
 
 		/* Run any dependencies, then free the descriptor */
-		dma_run_dependencies(&desc->async_tx);
 		zynqmp_dma_free_descriptor(chan, desc);
-		kfree(desc);
 	}
 }
 
@@ -669,15 +677,15 @@ static void zynqmp_dma_chan_desc_cleanup(struct zynqmp_dma_chan *chan)
  */
 static void zynqmp_dma_complete_descriptor(struct zynqmp_dma_chan *chan)
 {
-	struct zynqmp_dma_desc_sw *desc = chan->active_desc;
+	struct zynqmp_dma_desc_sw *desc;
 
+	desc = list_first_entry_or_null(&chan->active_list,
+					struct zynqmp_dma_desc_sw, node);
 	if (!desc)
 		return;
-
+	list_del(&desc->node);
 	dma_cookie_complete(&desc->async_tx);
 	list_add_tail(&desc->node, &chan->done_list);
-
-	chan->active_desc = NULL;
 }
 
 /**
@@ -705,15 +713,15 @@ static void zynqmp_dma_free_chan_resources(struct dma_chan *dchan)
 
 	spin_lock_irqsave(&chan->lock, flags);
 
+	zynqmp_dma_free_desc_list(chan, &chan->active_list);
 	zynqmp_dma_free_desc_list(chan, &chan->pending_list);
 	zynqmp_dma_free_desc_list(chan, &chan->done_list);
-	kfree(chan->active_desc);
-	chan->active_desc = NULL;
 
 	spin_unlock_irqrestore(&chan->lock, flags);
 	dma_free_coherent(chan->dev,
 		(2 * ZYNQMP_DMA_DESC_SIZE(chan) * ZYNQMP_DMA_NUM_DESCS),
 		chan->desc_pool_v, chan->desc_pool_p);
+	kfree(chan->sw_desc_pool);
 }
 
 /**
@@ -750,10 +758,10 @@ static void zynqmp_dma_reset(struct zynqmp_dma_chan *chan)
 	zynqmp_dma_complete_descriptor(chan);
 	zynqmp_dma_chan_desc_cleanup(chan);
 
+	zynqmp_dma_free_desc_list(chan, &chan->active_list);
 	zynqmp_dma_free_desc_list(chan, &chan->pending_list);
 	zynqmp_dma_free_desc_list(chan, &chan->done_list);
-	kfree(chan->active_desc);
-	chan->active_desc = NULL;
+
 	zynqmp_dma_init(chan);
 }
 
@@ -842,7 +850,12 @@ static int zynqmp_dma_device_terminate_all(struct dma_chan *dchan)
 	unsigned long flags;
 
 	spin_lock_irqsave(&chan->lock, flags);
-	zynqmp_dma_reset(chan);
+	writel(ZYNQMP_DMA_IDS_DEFAULT_MASK, chan->regs + ZYNQMP_DMA_IDS);
+
+	zynqmp_dma_free_desc_list(chan, &chan->active_list);
+	zynqmp_dma_free_desc_list(chan, &chan->done_list);
+	zynqmp_dma_free_desc_list(chan, &chan->pending_list);
+
 	spin_unlock_irqrestore(&chan->lock, flags);
 
 	return 0;
@@ -863,8 +876,8 @@ static struct dma_async_tx_descriptor *zynqmp_dma_prep_memcpy(
 				dma_addr_t dma_src, size_t len, ulong flags)
 {
 	struct zynqmp_dma_chan *chan;
-	struct zynqmp_dma_desc_sw *new;
-	void *desc, *prev = NULL;
+	struct zynqmp_dma_desc_sw *new, *first = NULL;
+	void *desc = NULL, *prev = NULL;
 	size_t copy;
 	u32 desc_cnt;
 	unsigned long irqflags;
@@ -885,16 +898,13 @@ static struct dma_async_tx_descriptor *zynqmp_dma_prep_memcpy(
 	chan->desc_free_cnt = chan->desc_free_cnt - desc_cnt;
 	spin_unlock_irqrestore(&chan->lock, irqflags);
 
-	new = zynqmp_dma_alloc_tx_descriptor(chan);
-	if (!new)
-		return NULL;
-
 	do {
 		/* Allocate and populate the descriptor */
-		desc = zynqmp_dma_get_descriptor(chan, new);
+		new = zynqmp_dma_get_descriptor(chan);
 
 		copy = min_t(size_t, len, ZYNQMP_DMA_MAX_TRANS_LEN);
 		if (chan->has_sg) {
+			desc = (struct zynqmp_dma_desc_ll *)new->src_v;
 			zynqmp_dma_config_sg_ll_desc(chan, desc, dma_src,
 						     dma_dst, copy, prev);
 		} else {
@@ -907,14 +917,18 @@ static struct dma_async_tx_descriptor *zynqmp_dma_prep_memcpy(
 		len -= copy;
 		dma_src += copy;
 		dma_dst += copy;
-
+		if (!first)
+			first = new;
+		else
+			list_add_tail(&new->node, &first->tx_list);
 	} while (len);
 
 	if (chan->has_sg)
 		zynqmp_dma_desc_config_eod(chan, desc);
 
-	new->async_tx.flags = flags;
-	return &new->async_tx;
+	async_tx_ack(&first->async_tx);
+	first->async_tx.flags = flags;
+	return &first->async_tx;
 }
 
 /**
@@ -933,7 +947,7 @@ static struct dma_async_tx_descriptor *zynqmp_dma_prep_sg(
 			unsigned int dst_sg_len, struct scatterlist *src_sg,
 			unsigned int src_sg_len, unsigned long flags)
 {
-	struct zynqmp_dma_desc_sw *new;
+	struct zynqmp_dma_desc_sw *new, *first = NULL;
 	struct zynqmp_dma_chan *chan = to_chan(dchan);
 	void *desc = NULL, *prev = NULL;
 	size_t len, dst_avail, src_avail;
@@ -950,7 +964,7 @@ static struct dma_async_tx_descriptor *zynqmp_dma_prep_sg(
 					 ZYNQMP_DMA_MAX_TRANS_LEN);
 
 	spin_lock_irqsave(&chan->lock, irqflags);
-	if ((desc_cnt > chan->desc_free_cnt) && chan->has_sg) {
+	if (desc_cnt > chan->desc_free_cnt) {
 		spin_unlock_irqrestore(&chan->lock, irqflags);
 		dev_dbg(chan->dev, "chan %p descs are not available\n", chan);
 		return NULL;
@@ -958,17 +972,14 @@ static struct dma_async_tx_descriptor *zynqmp_dma_prep_sg(
 	chan->desc_free_cnt = chan->desc_free_cnt - desc_cnt;
 	spin_unlock_irqrestore(&chan->lock, irqflags);
 
-	new = zynqmp_dma_alloc_tx_descriptor(chan);
-	if (!new)
-		return NULL;
-
 	dst_avail = sg_dma_len(dst_sg);
 	src_avail = sg_dma_len(src_sg);
 
 	/* Run until we are out of scatterlist entries */
 	while (true) {
 		/* Allocate and populate the descriptor */
-		desc = zynqmp_dma_get_descriptor(chan, new);
+		new = zynqmp_dma_get_descriptor(chan);
+		desc = (struct zynqmp_dma_desc_ll *)new->src_v;
 		len = min_t(size_t, src_avail, dst_avail);
 		len = min_t(size_t, len, ZYNQMP_DMA_MAX_TRANS_LEN);
 		if (len == 0)
@@ -983,6 +994,11 @@ static struct dma_async_tx_descriptor *zynqmp_dma_prep_sg(
 		prev = desc;
 		dst_avail -= len;
 		src_avail -= len;
+
+		if (!first)
+			first = new;
+		else
+			list_add_tail(&new->node, &first->tx_list);
 fetch:
 		/* Fetch the next dst scatterlist entry */
 		if (dst_avail == 0) {
@@ -1007,8 +1023,8 @@ fetch:
 	}
 
 	zynqmp_dma_desc_config_eod(chan, desc);
-	new->async_tx.flags = flags;
-	return &new->async_tx;
+	first->async_tx.flags = flags;
+	return &first->async_tx;
 }
 
 /**
@@ -1017,6 +1033,10 @@ fetch:
  */
 static void zynqmp_dma_chan_remove(struct zynqmp_dma_chan *chan)
 {
+	if (!chan)
+		return;
+
+	devm_free_irq(chan->zdev->dev, chan->irq, chan);
 	tasklet_kill(&chan->tasklet);
 	list_del(&chan->common.device_node);
 }
@@ -1084,8 +1104,10 @@ static int zynqmp_dma_chan_probe(struct zynqmp_dma_device *zdev,
 	zdev->chan = chan;
 	tasklet_init(&chan->tasklet, zynqmp_dma_do_tasklet, (ulong)chan);
 	spin_lock_init(&chan->lock);
+	INIT_LIST_HEAD(&chan->active_list);
 	INIT_LIST_HEAD(&chan->pending_list);
 	INIT_LIST_HEAD(&chan->done_list);
+	INIT_LIST_HEAD(&chan->free_list);
 
 	dma_cookie_init(&chan->common);
 	chan->common.device = &zdev->common;
