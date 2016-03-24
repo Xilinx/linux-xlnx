@@ -50,4 +50,10 @@ config XILINX_DPDMA
 	help
 	  Enable support for Xilinx DisplayPort DMA.
 
+config XILINX_ZYNQMP_DMATEST
+	tristate "DMA Test client for Zynqmp DMA"
+	help
+	  Simple DMA test client. Say N unless you're debugging a
+	  DMA Device driver.
+
 endif # XILINX_DMA_ENGINES
