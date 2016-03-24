@@ -750,15 +750,7 @@ static enum dma_status zynqmp_dma_tx_status(struct dma_chan *dchan,
 				      dma_cookie_t cookie,
 				      struct dma_tx_state *txstate)
 {
-	struct zynqmp_dma_chan *chan = to_chan(dchan);
-	enum dma_status ret;
-
-	ret = dma_cookie_status(dchan, cookie, txstate);
-	if (ret != DMA_COMPLETE)
-		dma_set_residue(txstate, readl(chan->regs +
-					ZYNQMP_DMA_TOTAL_BYTE));
-
-	return ret;
+	return dma_cookie_status(dchan, cookie, txstate);
 }
 
 /**
