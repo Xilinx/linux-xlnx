@@ -8,6 +8,8 @@ Required properties:
 - interrupt-parent: Interrupt controller the interrupt is routed through
 - interrupts: Should contain DMA channel interrupt.
 - xlnx,bus-width: Axi buswidth in bits. Should contain 128 or 64
+- clock-names: List of input clocks "clk_main", "clk_apb"
+	(see clock bindings for details)
 
 Optional properties:
 - xlnx,include-sg: Indicates the controller to operate in simple or scatter
@@ -40,6 +42,7 @@ fpd_dma_chan1: dma@FD500000 {
 	reg = <0x0 0xFD500000 0x1000>;
 	interrupt-parent = <&gic>;
 	interrupts = <0 117 4>;
+	clock-names = "clk_main", "clk_apb";
 	xlnx,bus-width = <128>;
 	xlnx,include-sg;
 	xlnx,overfetch;
