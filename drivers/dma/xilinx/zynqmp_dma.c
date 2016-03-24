@@ -140,8 +140,6 @@
 #define ZYNQMP_DMA_BUS_WIDTH_128	128
 
 #define ZYNQMP_DMA_DESC_SIZE(chan)	(chan->desc_size)
-#define DST_DESC_BASE(chan)	(ZYNQMP_DMA_DESC_SIZE(chan) * \
-				ZYNQMP_DMA_NUM_DESCS)
 
 #define to_chan(chan)		container_of(chan, struct zynqmp_dma_chan, \
 					     common)
@@ -211,7 +209,6 @@ struct zynqmp_dma_desc_sw {
  * @ratectrl: Rate control value
  * @tasklet: Cleanup work after irq
  * @src_issue: Out standing transactions on source
- * @dst_issue: Out standing transactions on destination
  * @idle : Channel status;
  * @desc_size: Size of the low level descriptor
  * @err: Channel has errors
@@ -248,7 +245,6 @@ struct zynqmp_dma_chan {
 	u32 ratectrl;
 	struct tasklet_struct tasklet;
 	u32 src_issue;
-	u32 dst_issue;
 	bool idle;
 	u32 desc_size;
 	bool err;
@@ -380,7 +376,7 @@ static void zynqmp_dma_config_sg_ll_desc(struct zynqmp_dma_chan *chan,
 	sdesc->ctrl = ddesc->ctrl = ZYNQMP_DMA_DESC_CTRL_SIZE_256;
 	if (chan->src_axi_cohrnt)
 		sdesc->ctrl |= ZYNQMP_DMA_DESC_CTRL_COHRNT;
-	else
+	if (chan->dst_axi_cohrnt)
 		ddesc->ctrl |= ZYNQMP_DMA_DESC_CTRL_COHRNT;
 
 	if (prev) {
@@ -801,13 +797,13 @@ static irqreturn_t zynqmp_dma_irq_handler(int irq, void *data)
 	if (status & ZYNQMP_DMA_INT_ERR) {
 		chan->err = true;
 		tasklet_schedule(&chan->tasklet);
-		dev_err(chan->dev, "Channel %p has has errors\n", chan);
+		dev_err(chan->dev, "Channel %p has errors\n", chan);
 		ret = IRQ_HANDLED;
 	}
 
 	if (status & ZYNQMP_DMA_INT_OVRFL) {
 		zynqmp_dma_handle_ovfl_int(chan, status);
-		dev_dbg(chan->dev, "Channel %p overflow interrupt\n", chan);
+		dev_info(chan->dev, "Channel %p overflow interrupt\n", chan);
 		ret = IRQ_HANDLED;
 	}
 
@@ -1246,5 +1242,5 @@ static struct platform_driver zynqmp_dma_driver = {
 module_platform_driver(zynqmp_dma_driver);
 
 MODULE_AUTHOR("Xilinx, Inc.");
-MODULE_DESCRIPTION("Xilinx ZynqMP DMA DMA driver");
+MODULE_DESCRIPTION("Xilinx ZynqMP DMA driver");
 MODULE_LICENSE("GPL");
