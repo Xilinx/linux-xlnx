@@ -212,6 +212,7 @@ struct xilinx_vdma_tx_descriptor {
  * @config: Device configuration info
  * @flush_on_fsync: Flush on Frame sync
  * @desc_pendingcount: Descriptor pending count
+ * @desc_submitcount: Descriptor h/w submitted count
  */
 struct xilinx_vdma_chan {
 	struct xilinx_vdma_device *xdev;
@@ -236,6 +237,7 @@ struct xilinx_vdma_chan {
 	struct xilinx_vdma_config config;
 	bool flush_on_fsync;
 	u32 desc_pendingcount;
+	u32 desc_submitcount;
 };
 
 /**
@@ -706,9 +708,10 @@ static void xilinx_vdma_start_transfer(struct xilinx_vdma_chan *chan)
 		struct xilinx_vdma_tx_segment *segment, *last = NULL;
 		int i = 0;
 
-		list_for_each_entry(desc, &chan->pending_list, node) {
-			segment = list_first_entry(&desc->segments,
-					   struct xilinx_vdma_tx_segment, node);
+		if (chan->desc_submitcount < chan->num_frms)
+			i = chan->desc_submitcount;
+
+		list_for_each_entry(segment, &desc->segments, node) {
 #if defined(CONFIG_PHYS_ADDR_T_64BIT)
 			vdma_desc_write_64(chan,
 					XILINX_VDMA_REG_START_ADDRESS(i++),
@@ -731,9 +734,18 @@ static void xilinx_vdma_start_transfer(struct xilinx_vdma_chan *chan)
 		vdma_desc_write(chan, XILINX_VDMA_REG_VSIZE, last->hw.vsize);
 	}
 
-	list_splice_tail_init(&chan->pending_list, &chan->active_list);
-	chan->desc_pendingcount = 0;
 	chan->idle = false;
+	if (!chan->has_sg) {
+		list_del(&desc->node);
+		list_add_tail(&desc->node, &chan->active_list);
+		chan->desc_submitcount++;
+		chan->desc_pendingcount--;
+		if (chan->desc_submitcount == chan->num_frms)
+			chan->desc_submitcount = 0;
+	} else {
+		list_splice_tail_init(&chan->pending_list, &chan->active_list);
+		chan->desc_pendingcount = 0;
+	}
 }
 
 /**
@@ -917,7 +929,8 @@ append:
 	list_add_tail(&desc->node, &chan->pending_list);
 	chan->desc_pendingcount++;
 
-	if (unlikely(chan->desc_pendingcount > chan->num_frms)) {
+	if (chan->has_sg &&
+	    unlikely(chan->desc_pendingcount > chan->num_frms)) {
 		dev_dbg(chan->dev, "desc pendingcount is too high\n");
 		chan->desc_pendingcount = chan->num_frms;
 		BUG();
