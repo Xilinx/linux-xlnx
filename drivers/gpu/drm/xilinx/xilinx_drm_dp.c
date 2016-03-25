@@ -802,7 +802,7 @@ static void xilinx_drm_dp_restore(struct drm_encoder *encoder)
 	/* no op */
 }
 
-#define XILINX_DP_SUB_TX_MIN_H_BACKPORCH	12
+#define XILINX_DP_SUB_TX_MIN_H_BACKPORCH	20
 
 static bool xilinx_drm_dp_mode_fixup(struct drm_encoder *encoder,
 				     const struct drm_display_mode *mode,
