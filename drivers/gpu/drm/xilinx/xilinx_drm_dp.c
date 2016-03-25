@@ -1130,27 +1130,6 @@ static int xilinx_drm_dp_encoder_init(struct platform_device *pdev,
 	return 0;
 }
 
-static int __maybe_unused xilinx_drm_dp_pm_suspend(struct device *dev)
-{
-	struct xilinx_drm_dp *dp = dev_get_drvdata(dev);
-
-	xilinx_drm_dp_dpms(dp->encoder, DRM_MODE_DPMS_OFF);
-
-	return 0;
-}
-
-static int __maybe_unused xilinx_drm_dp_pm_resume(struct device *dev)
-{
-	struct xilinx_drm_dp *dp = dev_get_drvdata(dev);
-
-	xilinx_drm_dp_dpms(dp->encoder, DRM_MODE_DPMS_ON);
-
-	return 0;
-}
-
-static SIMPLE_DEV_PM_OPS(xilinx_drm_dp_pm_ops, xilinx_drm_dp_pm_suspend,
-			 xilinx_drm_dp_pm_resume);
-
 static irqreturn_t xilinx_drm_dp_irq_handler(int irq, void *data)
 {
 	struct xilinx_drm_dp *dp = (struct xilinx_drm_dp *)data;
@@ -1494,7 +1473,6 @@ static struct drm_platform_encoder_driver xilinx_drm_dp_driver = {
 		.driver			= {
 			.owner		= THIS_MODULE,
 			.name		= "xilinx-drm-dp",
-			.pm		= &xilinx_drm_dp_pm_ops,
 			.of_match_table	= xilinx_drm_dp_of_match,
 		},
 	},
