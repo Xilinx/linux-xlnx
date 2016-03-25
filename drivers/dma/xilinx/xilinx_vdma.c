@@ -368,7 +368,6 @@ static struct xilinx_vdma_tx_descriptor *
 xilinx_vdma_alloc_tx_descriptor(struct xilinx_vdma_chan *chan)
 {
 	struct xilinx_vdma_tx_descriptor *desc;
-	unsigned long flags;
 
 	desc = kzalloc(sizeof(*desc), GFP_KERNEL);
 	if (!desc)
@@ -551,7 +550,7 @@ static enum dma_status xilinx_vdma_tx_status(struct dma_chan *dchan,
  *
  * Return: '1' if running, '0' if not.
  */
-static bool xilinx_vdma_is_running(struct xilinx_vdma_chan *chan)
+static bool __maybe_unused xilinx_vdma_is_running(struct xilinx_vdma_chan *chan)
 {
 	return !(vdma_ctrl_read(chan, XILINX_VDMA_REG_DMASR) &
 		 XILINX_VDMA_DMASR_HALTED) &&
@@ -565,7 +564,7 @@ static bool xilinx_vdma_is_running(struct xilinx_vdma_chan *chan)
  *
  * Return: '1' if idle, '0' if not.
  */
-static bool xilinx_vdma_is_idle(struct xilinx_vdma_chan *chan)
+static bool __maybe_unused xilinx_vdma_is_idle(struct xilinx_vdma_chan *chan)
 {
 	return vdma_ctrl_read(chan, XILINX_VDMA_REG_DMASR) &
 		XILINX_VDMA_DMASR_IDLE;
@@ -592,6 +591,8 @@ static void xilinx_vdma_halt(struct xilinx_vdma_chan *chan)
 			chan, vdma_ctrl_read(chan, XILINX_VDMA_REG_DMASR));
 		chan->err = true;
 	}
+
+	chan->idle = true;
 
 	return;
 }
@@ -630,7 +631,6 @@ static void xilinx_vdma_start_transfer(struct xilinx_vdma_chan *chan)
 {
 	struct xilinx_vdma_config *config = &chan->config;
 	struct xilinx_vdma_tx_descriptor *desc, *tail_desc;
-	unsigned long flags;
 	u32 reg;
 	struct xilinx_vdma_tx_segment *tail_segment;
 
@@ -1176,7 +1176,6 @@ static int xilinx_vdma_chan_probe(struct xilinx_vdma_device *xdev,
 	chan->dev = xdev->dev;
 	chan->xdev = xdev;
 	chan->has_sg = xdev->has_sg;
-	chan->desc_pendingcount = 0x0;
 
 	spin_lock_init(&chan->lock);
 	INIT_LIST_HEAD(&chan->pending_list);
