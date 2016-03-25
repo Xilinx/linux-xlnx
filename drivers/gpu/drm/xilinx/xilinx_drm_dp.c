@@ -816,11 +816,13 @@ static bool xilinx_drm_dp_mode_fixup(struct drm_encoder *encoder,
 	 * This limitation may conflict with the sink device.
 	 */
 	if (dp->dp_sub && diff < XILINX_DP_SUB_TX_MIN_H_BACKPORCH) {
+		int vrefresh = (adjusted_mode->clock * 1000) /
+			       (adjusted_mode->vtotal * adjusted_mode->htotal);
+
 		diff = XILINX_DP_SUB_TX_MIN_H_BACKPORCH - diff;
 		adjusted_mode->htotal += diff;
 		adjusted_mode->clock = adjusted_mode->vtotal *
-				       adjusted_mode->htotal *
-				       adjusted_mode->vrefresh / 1000;
+				       adjusted_mode->htotal * vrefresh / 1000;
 	}
 
 	return true;
