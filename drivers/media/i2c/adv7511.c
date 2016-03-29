@@ -1729,6 +1729,14 @@ static void adv7511_get_ofdt_config(struct i2c_client *client,
 	if (prop)
 		state->pdata.i2c_edid = (uint8_t)be32_to_cpup(prop);
 
+	prop = of_get_property(dn, "pktmem-addr", &size);
+	if (prop)
+		state->pdata.i2c_pktmem = (uint8_t)be32_to_cpup(prop);
+
+	prop = of_get_property(dn, "cec-addr", &size);
+	if (prop)
+		state->pdata.i2c_cec = (uint8_t)be32_to_cpup(prop);
+
 	np = of_find_node_by_name(dn, "video-input");
 	if (np) {
 		prop = of_get_property(np, "input-id", &size);
