@@ -1045,8 +1045,6 @@ static void zynqmp_dma_chan_remove(struct zynqmp_dma_chan *chan)
 	devm_free_irq(chan->zdev->dev, chan->irq, chan);
 	tasklet_kill(&chan->tasklet);
 	list_del(&chan->common.device_node);
-	clk_disable_unprepare(chan->clk_apb);
-	clk_disable_unprepare(chan->clk_main);
 }
 
 /**
@@ -1149,6 +1147,7 @@ static int zynqmp_dma_chan_probe(struct zynqmp_dma_device *zdev,
 
 	err = clk_prepare_enable(chan->clk_apb);
 	if (err) {
+		clk_disable_unprepare(chan->clk_main);
 		dev_err(&pdev->dev, "Unable to enable apb clock.\n");
 		return err;
 	}
@@ -1224,12 +1223,16 @@ static int zynqmp_dma_probe(struct platform_device *pdev)
 	if (ret) {
 		dev_err(&pdev->dev, "Unable to register DMA to DT\n");
 		dma_async_device_unregister(&zdev->common);
-		goto free_chan_resources;
+		goto free_resources;
 	}
 
 	dev_info(&pdev->dev, "ZynqMP DMA driver Probe success\n");
 
 	return 0;
+
+free_resources:
+	clk_disable_unprepare(zdev->chan->clk_apb);
+	clk_disable_unprepare(zdev->chan->clk_main);
 
 free_chan_resources:
 	zynqmp_dma_chan_remove(zdev->chan);
@@ -1248,6 +1251,8 @@ static int zynqmp_dma_remove(struct platform_device *pdev)
 
 	of_dma_controller_free(pdev->dev.of_node);
 	dma_async_device_unregister(&zdev->common);
+	clk_disable_unprepare(zdev->chan->clk_apb);
+	clk_disable_unprepare(zdev->chan->clk_main);
 
 	zynqmp_dma_chan_remove(zdev->chan);
 
