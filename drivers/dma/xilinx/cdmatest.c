@@ -111,20 +111,6 @@ static bool is_threaded_test_run(struct cdmatest_chan *tx_dtc)
 	return false;
 }
 
-static bool cdmatest_match_channel(struct dma_chan *chan)
-{
-	if (test_channel[0] == '\0')
-		return true;
-	return strcmp(dma_chan_name(chan), test_channel) == 0;
-}
-
-static bool cdmatest_match_device(struct dma_device *device)
-{
-	if (test_device[0] == '\0')
-		return true;
-	return strcmp(dev_name(device->dev), test_device) == 0;
-}
-
 static unsigned long cdmatest_random(void)
 {
 	unsigned long buf;
