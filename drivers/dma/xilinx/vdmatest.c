@@ -232,7 +232,7 @@ static int xilinx_vdmatest_slave_func(void *data)
 	const char *thread_name;
 	unsigned int len, error_count;
 	unsigned int failed_tests = 0, total_tests = 0;
-	dma_cookie_t tx_cookie, rx_cookie;
+	dma_cookie_t tx_cookie = 0, rx_cookie = 0;
 	enum dma_status status;
 	enum dma_ctrl_flags flags;
 	int ret = -ENOMEM, i;
