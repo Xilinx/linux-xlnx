@@ -91,7 +91,7 @@
 #define XILINX_DMA_LOOP_COUNT		1000000
 
 /* Maximum number of Descriptors */
-#define XILINX_DMA_NUM_DESCS		255
+#define XILINX_DMA_NUM_DESCS		240
 #define XILINX_DMA_COALESCE_MAX		255
 #define XILINX_DMA_NUM_APP_WORDS	5
 
