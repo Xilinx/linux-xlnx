@@ -428,9 +428,9 @@ static void xilinx_cdma_start_transfer(struct xilinx_cdma_chan *chan)
 	/* If hardware is busy, cannot submit */
 	if (chan->has_sg && !xilinx_cdma_is_idle(chan)) {
 		tail = list_entry(desc->segments.prev,
-                                  struct xilinx_cdma_tx_segment, node);
+				  struct xilinx_cdma_tx_segment, node);
 		cdma_write(chan, XILINX_CDMA_TDESC_OFFSET, tail->phys);
-                goto out_free_desc;
+		goto out_free_desc;
 	}
 
 	desc = list_first_entry(&chan->pending_list,
