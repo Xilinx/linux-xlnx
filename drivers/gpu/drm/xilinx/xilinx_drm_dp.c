@@ -230,6 +230,14 @@
 #define DP_HIGH_BIT_RATE2				540000
 #define DP_MAX_TRAINING_TRIES				5
 
+/* FIXME: Program SERDES registers directly. This conflicts with the ZynqMP
+ * PHY driver, and should be removed when there's the PHY driver
+ * This is enabled by default, and can be disbled by bootarg.
+ */
+static uint xilinx_drm_dp_gt_prog = 1;
+module_param_named(gt_prog, xilinx_drm_dp_gt_prog, uint, 0400);
+MODULE_PARM_DESC(gt_prog, "dp gt program: 0=dp only, 1=serdes only");
+
 enum dp_version {
 	DP_V1_1A = 0x11,
 	DP_V1_2 = 0x12
@@ -287,6 +295,7 @@ struct xilinx_drm_dp_config {
  * @encoder: pointer to the drm encoder structure
  * @dev: device structure
  * @iomem: device I/O memory for register access
+ * @serdes: serdes I/O memory for register access
  * @config: IP core configuration from DTS
  * @aux: aux channel
  * @dp_sub: DisplayPort subsystem
@@ -302,6 +311,7 @@ struct xilinx_drm_dp {
 	struct drm_encoder *encoder;
 	struct device *dev;
 	void __iomem *iomem;
+	void __iomem *serdes;
 
 	struct xilinx_drm_dp_config config;
 	struct drm_dp_aux aux;
@@ -499,6 +509,23 @@ static int xilinx_drm_dp_update_vs_emph(struct xilinx_drm_dp *dp)
 				dp->mode.lane_cnt);
 	if (ret < 0)
 		return ret;
+
+	if (xilinx_drm_dp_gt_prog) {
+		for (i = 0; i < dp->mode.lane_cnt; i++) {
+			v_level = (train_set[i] &
+				   DP_TRAIN_VOLTAGE_SWING_MASK) >>
+				  DP_TRAIN_VOLTAGE_SWING_SHIFT;
+			p_level = (train_set[i] & DP_TRAIN_PRE_EMPHASIS_MASK) >>
+				  DP_TRAIN_PRE_EMPHASIS_SHIFT;
+
+			xilinx_drm_writel(dp->serdes, 0xcc0 + i * 0x4000,
+					  vs[p_level][v_level]);
+			xilinx_drm_writel(dp->serdes, 0x48 + i * 0x4000,
+					  pe[p_level][v_level]);
+		}
+
+		return 0;
+	}
 
 	for (i = 0; i < dp->mode.lane_cnt; i++) {
 		v_level = (train_set[i] & DP_TRAIN_VOLTAGE_SWING_MASK) >>
@@ -1362,6 +1389,13 @@ static int xilinx_drm_dp_probe(struct platform_device *pdev)
 	if (IS_ERR(dp->iomem)) {
 		ret = PTR_ERR(dp->iomem);
 		goto error_dp_sub;
+	}
+
+	if (xilinx_drm_dp_gt_prog) {
+		res = platform_get_resource(pdev, IORESOURCE_MEM, 1);
+		dp->serdes = devm_ioremap_resource(dp->dev, res);
+		if (IS_ERR(dp->serdes))
+			dev_info(dp->dev, "serdes not mapped\n");
 	}
 
 	platform_set_drvdata(pdev, dp);
