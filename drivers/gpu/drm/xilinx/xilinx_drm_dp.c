@@ -1180,14 +1180,15 @@ static irqreturn_t xilinx_drm_dp_irq_handler(int irq, void *data)
 		drm_helper_hpd_irq_event(dp->encoder->dev);
 
 	if (status & XILINX_DP_TX_INTR_HPD_IRQ) {
-		u8 align_status;
-		int ret;
+		u8 status[DP_LINK_STATUS_SIZE + 2];
 
-		ret = drm_dp_dpcd_readb(&dp->aux, DP_LANE_ALIGN_STATUS_UPDATED,
-					&align_status);
-		if ((ret == 1) && !(align_status & DP_INTERLANE_ALIGN_DONE))
+		drm_dp_dpcd_read(&dp->aux, DP_SINK_COUNT, status,
+				 DP_LINK_STATUS_SIZE + 2);
+
+		if (status[4] & DP_LINK_STATUS_UPDATED ||
+		    !drm_dp_clock_recovery_ok(&status[2], dp->mode.lane_cnt) ||
+		    !drm_dp_channel_eq_ok(&status[2], dp->mode.lane_cnt))
 			xilinx_drm_dp_train(dp);
-
 	}
 
 	return IRQ_HANDLED;
