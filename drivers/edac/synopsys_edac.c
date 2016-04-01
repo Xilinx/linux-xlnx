@@ -149,9 +149,9 @@
 #define ECC_CTRL_CLR_UE_ERRCNT	BIT(3)
 
 /* DDR Control Register width definitions  */
-#define DDRCTL_EWDTH_16		0
+#define DDRCTL_EWDTH_16		2
 #define DDRCTL_EWDTH_32		1
-#define DDRCTL_EWDTH_64		2
+#define DDRCTL_EWDTH_64		0
 
 /* ECC status regsiter definitions */
 #define ECC_STAT_UECNT_MASK	0xF0000
@@ -171,7 +171,7 @@
 #define ECC_CEADDR0_RNK_MASK	BIT(24)
 #define ECC_CEADDR1_BNKGRP_MASK	0x3000000
 #define ECC_CEADDR1_BNKNR_MASK	0x70000
-#define ECC_CEADDR1_BLKNR_MASK	0xF00
+#define ECC_CEADDR1_BLKNR_MASK	0xFFF
 #define ECC_CEADDR1_BNKGRP_SHIFT	24
 #define ECC_CEADDR1_BNKNR_SHIFT	16
 
