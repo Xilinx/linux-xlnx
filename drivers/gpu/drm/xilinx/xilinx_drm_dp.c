@@ -458,6 +458,7 @@ static void xilinx_drm_dp_adjust_train(struct xilinx_drm_dp *dp,
 {
 	u8 *train_set = dp->train_set;
 	u8 voltage = 0, preemphasis = 0;
+	u8 max_preemphasis;
 	u8 i;
 
 	for (i = 0; i < dp->mode.lane_cnt; i++) {
@@ -474,7 +475,10 @@ static void xilinx_drm_dp_adjust_train(struct xilinx_drm_dp *dp,
 	if (voltage >= DP_TRAIN_VOLTAGE_SWING_LEVEL_3)
 		voltage |= DP_TRAIN_MAX_SWING_REACHED;
 
-	if (preemphasis >= DP_TRAIN_PRE_EMPH_LEVEL_3)
+	max_preemphasis = (dp->dp_sub) ? DP_TRAIN_PRE_EMPH_LEVEL_2 :
+					 DP_TRAIN_PRE_EMPH_LEVEL_3;
+
+	if (preemphasis >= max_preemphasis)
 		preemphasis |= DP_TRAIN_MAX_PRE_EMPHASIS_REACHED;
 
 	for (i = 0; i < dp->mode.lane_cnt; i++)
