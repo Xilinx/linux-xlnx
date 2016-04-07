@@ -697,15 +697,15 @@ static void xilinx_dma_start_transfer(struct xilinx_dma_chan *chan)
 	if (chan->has_sg && chan->mcdma) {
 		if (head_desc->direction == DMA_MEM_TO_DEV) {
 			dma_ctrl_write(chan, XILINX_DMA_REG_CURDESC,
-				       head_desc->async_tx.phys);
+				       head_seg_phys);
 		} else {
 			if (!config->tdest) {
 				dma_ctrl_write(chan, XILINX_DMA_REG_CURDESC,
-				       head_desc->async_tx.phys);
+				       head_seg_phys);
 			} else {
 				dma_ctrl_write(chan,
 					XILINX_DMA_MCRX_CDESC(config->tdest),
-				       head_desc->async_tx.phys);
+				       head_seg_phys);
 			}
 		}
 	}
