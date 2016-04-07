@@ -45,6 +45,16 @@
 	};
 };
 
+&gem0 {
+	status = "okay";
+	phy-mode = "rgmii-id";
+	phy-handle = <&ethernet_phy>;
+
+	ethernet_phy: ethernet-phy@1 {
+		reg = <1>;
+	};
+};
+
 &qspi {
 	status = "okay";
 	is-dual = <0>;
@@ -81,16 +91,6 @@
 			label = "qspi-uboot-env";
 			reg = <0xf00000 0x100000>; /* 1MB */
 		};
-	};
-};
-
-&gem0 {
-	status = "okay";
-	phy-mode = "rgmii-id";
-	phy-handle = <&ethernet_phy>;
-
-	ethernet_phy: ethernet-phy@1 {
-		reg = <1>;
 	};
 };
 
