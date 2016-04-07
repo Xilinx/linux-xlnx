@@ -37,6 +37,34 @@
 	};
 };
 
+&can1 {
+	status = "okay";
+};
+
+&gem1 {
+	status = "okay";
+	phy-mode = "rgmii-id";
+	phy-handle = <&ethernet_phy>;
+
+	ethernet_phy: ethernet-phy@7 {
+		reg = <7>;
+	};
+};
+
+&i2c1 {
+	status = "okay";
+	clock-frequency = <400000>;
+
+	si570: clock-generator@55 {
+		#clock-cells = <0>;
+		compatible = "silabs,si570";
+		temperature-stability = <50>;
+		reg = <0x55>;
+		factory-fout = <156250000>;
+		clock-frequency = <148500000>;
+	};
+};
+
 &qspi {
 	status = "okay";
 	is-dual = <1>;
@@ -84,34 +112,6 @@
 		compatible = "atmel,at25";
 		reg = <2>;
 		spi-max-frequency = <1000000>;
-	};
-};
-
-&can1 {
-	status = "okay";
-};
-
-&gem1 {
-	status = "okay";
-	phy-mode = "rgmii-id";
-	phy-handle = <&ethernet_phy>;
-
-	ethernet_phy: ethernet-phy@7 {
-		reg = <7>;
-	};
-};
-
-&i2c1 {
-	status = "okay";
-	clock-frequency = <400000>;
-
-	si570: clock-generator@55 {
-		#clock-cells = <0>;
-		compatible = "silabs,si570";
-		temperature-stability = <50>;
-		reg = <0x55>;
-		factory-fout = <156250000>;
-		clock-frequency = <148500000>;
 	};
 };
 
