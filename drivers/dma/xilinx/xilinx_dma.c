@@ -1536,10 +1536,14 @@ static int xilinx_dma_channel_probe(struct xilinx_dma_device *xdev,
 				    struct device_node *node) {
 	int ret, i, nr_channels;
 
-	ret = of_property_read_u32(node, "dma-channels", &nr_channels);
-	if (ret) {
-		dev_err(xdev->dev, "unable to read dma-channels property");
-		return ret;
+	if (xdev->mcdma) {
+		ret = of_property_read_u32(node, "dma-channels", &nr_channels);
+		if (ret) {
+			dev_err(xdev->dev, "unable to read dma-channels property");
+			return ret;
+		}
+	} else {
+		nr_channels = 1;
 	}
 
 	xdev->nr_channels += nr_channels;
