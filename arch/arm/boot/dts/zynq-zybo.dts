@@ -21,6 +21,7 @@
 	aliases {
 		ethernet0 = &gem0;
 		serial0 = &uart1;
+		spi0 = &qspi;
 		mmc0 = &sdhci0;
 	};
 
@@ -53,6 +54,10 @@
 	ethernet_phy: ethernet-phy@0 {
 		reg = <0>;
 	};
+};
+
+&qspi {
+	status = "okay";
 };
 
 &sdhci0 {
