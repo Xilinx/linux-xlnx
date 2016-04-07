@@ -23,6 +23,7 @@
 		i2c0 = &i2c0;
 		serial0 = &uart1;
 		spi0 = &qspi;
+		mmc0 = &sdhci0;
 	};
 
 	memory {
