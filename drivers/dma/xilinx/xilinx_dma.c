@@ -208,7 +208,8 @@ struct xilinx_dma_chan {
 	 * an extra segment allocated so that the "next descriptor" pointer on the
 	 * tail descriptor always points to a valid descriptor, even when paused
 	 * after reaching taildesc.  This way, it is possible to issue additional
-	 * transfers without halting and restarting the channel. */
+	 * transfers without halting and restarting the channel.
+	 */
 	struct xilinx_dma_tx_segment *seg_reserve;
 };
 
@@ -376,15 +377,15 @@ static int xilinx_dma_alloc_chan_resources(struct dma_chan *dchan)
 		return -ENOMEM;
 	}
 
-	BUG_ON( chan->seg_reserve );
+	BUG_ON(chan->seg_reserve);
 	chan->seg_reserve = xilinx_dma_alloc_tx_segment(chan);
 
-	if ( !chan->seg_reserve )
-	{
+	if (!chan->seg_reserve) {
 		dev_err(chan->dev,
-	        "unable to allocate segment from new descriptor pool\n");
-	    dma_pool_destroy( chan->seg_pool );
-	    chan->seg_pool = NULL;
+			"unable to allocate segment from new descriptor pool\n");
+		dma_pool_destroy( chan->seg_pool );
+		chan->seg_pool = NULL;
+
 		return -ENOMEM;
 	}
 
@@ -460,7 +461,7 @@ static void xilinx_dma_free_chan_resources(struct dma_chan *dchan)
 			/* no longer safe to call xilinx_dma_free_tx_segment() here */
 			dma_pool_free(pool_to_free, seg_to_free, seg_to_free->phys);
 		}
-		dma_pool_destroy( pool_to_free );
+		dma_pool_destroy(pool_to_free);
 	}
 }
 
@@ -664,7 +665,7 @@ static void xilinx_dma_start_transfer(struct xilinx_dma_chan *chan)
 		new_head->hw = old_head->hw;
 
 		/* Swap and save new reserve */
-		list_replace_init( &old_head->node, &new_head->node );
+		list_replace_init(&old_head->node, &new_head->node);
 		chan->seg_reserve = old_head;
 
 #ifdef CONFIG_PHYS_ADDR_T_64BIT
@@ -683,7 +684,7 @@ static void xilinx_dma_start_transfer(struct xilinx_dma_chan *chan)
 
 
 	if (chan->has_sg && !chan->mcdma) {
-		BUG_ON( head_seg_phys & 0x3F );
+		BUG_ON(head_seg_phys & 0x3F);
 #ifdef CONFIG_PHYS_ADDR_T_64BIT
 		dma_ctrl_writeq(chan, XILINX_DMA_REG_CURDESC,
 			       head_seg_phys );
@@ -717,7 +718,7 @@ static void xilinx_dma_start_transfer(struct xilinx_dma_chan *chan)
 	/* Start the transfer */
 	if (chan->has_sg && !chan->mcdma) {
 
-		BUG_ON( !tail_segment->phys || tail_segment->phys & 0x3F );
+		BUG_ON(!tail_segment->phys || tail_segment->phys & 0x3F);
 
 #ifdef CONFIG_PHYS_ADDR_T_64BIT
 		dma_ctrl_writeq(chan, XILINX_DMA_REG_TAILDESC,
@@ -792,7 +793,7 @@ static void xilinx_dma_complete_descriptor(struct xilinx_dma_chan *chan)
 		const struct xilinx_dma_tx_segment * const tail_segment =
 			list_last_entry(&desc->segments, struct xilinx_dma_tx_segment, node);
 
-		if ( ! (tail_segment->hw.status & XILINX_DMA_BD_CMPLT) )
+		if (!(tail_segment->hw.status & XILINX_DMA_BD_CMPLT))
 			break;  // we've processed all the completed descriptors so far
 		// If we get here, this descriptor has been completed
 		list_del(&desc->node);
@@ -1108,13 +1109,14 @@ static struct dma_async_tx_descriptor *xilinx_dma_prep_slave_sg(
 	enum dma_transfer_direction direction, unsigned long flags,
 	void *context)
 {
-	struct xilinx_dma_chan *chan = to_xilinx_chan(dchan);
-	struct xilinx_dma_tx_descriptor *desc;
-	struct xilinx_dma_tx_segment *segment = NULL;
-	u32 *app_w = (u32 *)context;
-	struct scatterlist *sg;
 	size_t copy, sg_used;
 	int i;
+	struct xilinx_dma_tx_descriptor *desc;
+	struct scatterlist *sg;
+	struct xilinx_dma_desc_hw *hw;
+	struct xilinx_dma_chan *chan = to_xilinx_chan(dchan);
+	struct xilinx_dma_tx_segment *last_segment, *prev_segment, *segment = NULL;
+	u32 *app_w = (u32 *)context;
 
 	if (!is_slave_direction(direction))
 		return NULL;
@@ -1134,24 +1136,20 @@ static struct dma_async_tx_descriptor *xilinx_dma_prep_slave_sg(
 
 		/* Loop until the entire scatterlist entry is used */
 		while (sg_used < sg_dma_len(sg)) {
-			struct xilinx_dma_desc_hw *hw;
 
-			/* Get a free segment */
-			{
-				struct xilinx_dma_tx_segment *prev_segment = segment;
+			prev_segment = segment;
+			segment = xilinx_dma_alloc_tx_segment(chan);
+			if (!segment)
+				goto error;
 
-				segment = xilinx_dma_alloc_tx_segment(chan);
-				if (!segment)
-					goto error;
-
-				if ( prev_segment ) {   // link prev -> current
+			/*  link prev -> current */
+			if (prev_segment) {
 #ifdef CONFIG_PHYS_ADDR_T_64BIT
-					prev_segment->hw.next_desc_msb = upper_32_bits(segment->phys);
-					prev_segment->hw.next_desc     = lower_32_bits(segment->phys);
+				prev_segment->hw.next_desc_msb = upper_32_bits(segment->phys);
+				prev_segment->hw.next_desc     = lower_32_bits(segment->phys);
 #else
-					prev_segment->hw.next_desc = segment->phys;
+				prev_segment->hw.next_desc = segment->phys;
 #endif
-				}
 			}
 
 			/*
@@ -1190,21 +1188,17 @@ static struct dma_async_tx_descriptor *xilinx_dma_prep_slave_sg(
 		}
 	}
 
-	{
-		struct xilinx_dma_tx_segment *last_segment = segment;
+	last_segment = segment;
+	segment = list_first_entry(&desc->segments,
+				struct xilinx_dma_tx_segment, node);
 
-		segment = list_first_entry(&desc->segments,
-					   struct xilinx_dma_tx_segment, node);
-
-		/* Link last segment to first */
+	/* Link last segment to first */
 #ifdef CONFIG_PHYS_ADDR_T_64BIT
-		last_segment->hw.next_desc     = lower_32_bits(segment->phys);
-		last_segment->hw.next_desc_msb = upper_32_bits(segment->phys);
+	last_segment->hw.next_desc     = lower_32_bits(segment->phys);
+	last_segment->hw.next_desc_msb = upper_32_bits(segment->phys);
 #else
-		last_segment->hw.next_desc = segment->phys;
+	last_segment->hw.next_desc = segment->phys;
 #endif
-	}
-
 	desc->async_tx.phys = segment->phys;    // first segment's address
 
 	/* Set SOP and EOP */
@@ -1269,7 +1263,7 @@ static struct dma_async_tx_descriptor *xilinx_dma_prep_dma_cyclic(
 				if (!segment)
 					goto error;
 
-				if ( prev_segment ) {   // link prev -> current
+				if (prev_segment) {   // link prev -> current
 #ifdef CONFIG_PHYS_ADDR_T_64BIT
 					prev_segment->hw.next_desc_msb = upper_32_bits(segment->phys);
 					prev_segment->hw.next_desc     = lower_32_bits(segment->phys);
@@ -1384,7 +1378,6 @@ static void xilinx_dma_chan_remove(struct xilinx_dma_chan *chan)
 		free_irq(chan->irq, chan);
 
 	tasklet_kill(&chan->tasklet);
-
 	list_del(&chan->common.device_node);
 }
 
