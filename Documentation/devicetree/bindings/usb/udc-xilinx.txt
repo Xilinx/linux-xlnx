@@ -13,10 +13,9 @@ Optional properties:
 - clocks		: Input clock specifier. Refer to common clock bindings.
 
 Example:
- 		axi-usb2-device@42e00000 {
-                        compatible = "xlnx,usb2-device-4.00.a";
-                        interrupts = <0x0 0x39 0x1>;
-                        reg = <0x42e00000 0x10000>;
-                        xlnx,has-builtin-dma;
-                };
-
+		axi-usb2-device@42e00000 {
+			compatible = "xlnx,usb2-device-4.00.a";
+			interrupts = <0x0 0x39 0x1>;
+			reg = <0x42e00000 0x10000>;
+			xlnx,has-builtin-dma;
+		};
