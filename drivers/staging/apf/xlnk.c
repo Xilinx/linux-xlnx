@@ -46,6 +46,7 @@
 #include <linux/clk.h>
 #include <linux/of.h>
 #include <linux/list.h>
+#include <asm/cacheflush.h>
 
 #include "xlnk-ioctl.h"
 #include "xlnk.h"
@@ -350,6 +351,19 @@ static int xlnk_buf_findnull(void)
 
 	for (i = 1; i < xlnk_bufpool_size; i++) {
 		if (!xlnk_bufpool[i])
+			return i;
+	}
+
+	return 0;
+}
+
+static int xlnk_buf_find_by_phys_addr(unsigned long addr)
+{
+	int i;
+
+	for (i = 1; i < xlnk_bufpool_size; i++) {
+		if (xlnk_phyaddr[i] <= addr &&
+		    xlnk_phyaddr[i] + xlnk_buflen[i] > addr)
 			return i;
 	}
 
@@ -1137,6 +1151,7 @@ static int xlnk_cachecontrol_ioctl(struct file *filp, unsigned int code,
 	union xlnk_args temp_args;
 	int status, size;
 	void *paddr, *kaddr;
+	int buf_id;
 
 	status = copy_from_user(&temp_args, (void __user *)args,
 						sizeof(union xlnk_args));
@@ -1156,19 +1171,17 @@ static int xlnk_cachecontrol_ioctl(struct file *filp, unsigned int code,
 
 	size = temp_args.cachecontrol.size;
 	paddr = temp_args.cachecontrol.phys_addr;
-	kaddr = phys_to_virt((unsigned int)paddr);
-
-	if (temp_args.cachecontrol.action == 0) {
-		/* flush cache */
-		__cpuc_flush_dcache_area(kaddr, size);
-		outer_clean_range((unsigned int)paddr,
-				  (unsigned int)(paddr + size));
-	} else {
-		/* invalidate cache */
-		__cpuc_flush_dcache_area(kaddr, size);
-		outer_inv_range((unsigned int)paddr,
-				(unsigned int)(paddr + size));
+	buf_id = xlnk_buf_find_by_phys_addr(paddr);
+	if (buf_id == 0) {
+		pr_err("Illegal cachecontrol on non-sds_alloc memory");
+		return -EINVAL;
 	}
+	kaddr = xlnk_bufpool[buf_id];
+
+	__cpuc_flush_dcache_area(kaddr, size);
+	outer_flush_range(paddr, paddr + size);
+	if (temp_args.cachecontrol.action == 1)
+		outer_inv_range(paddr, paddr + size);
 
 	return 0;
 }
