@@ -84,12 +84,13 @@ static ssize_t xlnk_dev_size;
 static int xlnk_dev_vmas;
 
 #define XLNK_BUF_POOL_SIZE	256
-static void **xlnk_bufpool;
 static unsigned int xlnk_bufpool_size = XLNK_BUF_POOL_SIZE;
+static void *xlnk_bufpool[XLNK_BUF_POOL_SIZE];
+static void *xlnk_bufpool_alloc_point[XLNK_BUF_POOL_SIZE];
+static unsigned int xlnk_userbuf[XLNK_BUF_POOL_SIZE];
 static dma_addr_t xlnk_phyaddr[XLNK_BUF_POOL_SIZE];
 static size_t xlnk_buflen[XLNK_BUF_POOL_SIZE];
 static unsigned int  xlnk_bufcacheable[XLNK_BUF_POOL_SIZE];
-
 
 static int xlnk_open(struct inode *ip, struct file *filp);  /* Open */
 static int xlnk_release(struct inode *ip, struct file *filp);   /* Release */
@@ -254,7 +255,6 @@ static int xlnk_probe(struct platform_device *pdev)
 	xlnk_dev_buf = NULL;
 	xlnk_dev_size = 0;
 	xlnk_dev_vmas = 0;
-	xlnk_bufpool = NULL;
 
 	/* use 2.6 device model */
 	err = alloc_chrdev_region(&dev, 0, 1, driver_name);
@@ -377,23 +377,27 @@ static int xlnk_buf_find_by_phys_addr(unsigned long addr)
 static int xlnk_allocbuf(unsigned int len, unsigned int cacheable)
 {
 	int id;
+	void *kaddr;
+	dma_addr_t phys_addr_anchor;
+	unsigned int page_dst;
 
 	id = xlnk_buf_findnull();
 
-	if (id <= 0)
-		return -ENOMEM;
-
-	xlnk_bufpool[id] = dma_alloc_coherent(xlnk_dev, len,
-					      &xlnk_phyaddr[id],
-					      GFP_KERNEL | GFP_DMA);
-	xlnk_buflen[id] = len;
-	xlnk_bufcacheable[id] = cacheable;
-
-	if (!xlnk_bufpool[id]) {
-		dev_err(xlnk_dev, "%s: dma_alloc_coherent of %d byte buffer failed\n",
-			 __func__, len);
+	if (id <= 0 || id >= XLNK_BUF_POOL_SIZE) {
+		pr_err("No id could be found in range\n");
 		return -ENOMEM;
 	}
+	kaddr = kmalloc(len + PAGE_SIZE, GFP_KERNEL | GFP_DMA);
+	if (!kaddr)
+		return -ENOMEM;
+	phys_addr_anchor = virt_to_phys(kaddr);
+	xlnk_bufpool_alloc_point[id] = kaddr;
+	page_dst = (((phys_addr_anchor + (PAGE_SIZE - 1))
+		/ PAGE_SIZE) * PAGE_SIZE) - phys_addr_anchor;
+	xlnk_bufpool[id] = (void *)((uint8_t *)kaddr + page_dst);
+	xlnk_buflen[id] = len;
+	xlnk_bufcacheable[id] = cacheable;
+	xlnk_phyaddr[id] = phys_addr_anchor + page_dst;
 
 	return id;
 }
@@ -409,9 +413,6 @@ static int xlnk_init_bufpool(void)
 		dev_err(xlnk_dev, "%s: malloc failed\n", __func__);
 		return -ENOMEM;
 	}
-
-	xlnk_bufpool = kmalloc(sizeof(void *) * xlnk_bufpool_size,
-				   GFP_KERNEL);
 
 	xlnk_bufpool[0] = xlnk_dev_buf;
 	for (i = 1; i < xlnk_bufpool_size; i++)
@@ -429,9 +430,6 @@ static int xlnk_remove(struct platform_device *pdev)
 
 	kfree(xlnk_dev_buf);
 	xlnk_dev_buf = NULL;
-
-	kfree(xlnk_bufpool);
-	xlnk_bufpool = NULL;
 
 	devno = MKDEV(driver_major, 0);
 	cdev_del(&xlnk_cdev);
@@ -795,9 +793,7 @@ static int xlnk_freebuf(int id)
 	if (!xlnk_bufpool[id])
 		return -ENOMEM;
 
-	dma_free_coherent(xlnk_dev, xlnk_buflen[id], xlnk_bufpool[id],
-			  xlnk_phyaddr[id]);
-
+	kfree(xlnk_bufpool_alloc_point[id]);
 	xlnk_bufpool[id] = NULL;
 	xlnk_phyaddr[id] = (dma_addr_t)NULL;
 	xlnk_buflen[id] = 0;
