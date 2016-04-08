@@ -136,12 +136,12 @@ struct xlnk_device_pack {
 
 };
 
-static struct xlnk_device_pack *xlnk_devpacks[16];
+static struct xlnk_device_pack *xlnk_devpacks[MAX_XLNK_DMAS];
 static void xlnk_devpacks_init(void)
 {
 	unsigned int i;
 
-	for (i = 0; i < 16; i++)
+	for (i = 0; i < MAX_XLNK_DMAS; i++)
 		xlnk_devpacks[0] = NULL;
 
 }
@@ -150,7 +150,7 @@ static void xlnk_devpacks_delete(struct xlnk_device_pack *devpack)
 {
 	unsigned int i;
 
-	for (i = 0; i < 16; i++) {
+	for (i = 0; i < MAX_XLNK_DMAS; i++) {
 		if (xlnk_devpacks[i] == devpack)
 			xlnk_devpacks[i] = NULL;
 	}
@@ -160,7 +160,7 @@ static void xlnk_devpacks_add(struct xlnk_device_pack *devpack)
 {
 	unsigned int i;
 
-	for (i = 0; i < 16; i++) {
+	for (i = 0; i < MAX_XLNK_DMAS; i++) {
 		if (xlnk_devpacks[i] == NULL) {
 			xlnk_devpacks[i] = devpack;
 			break;
@@ -172,7 +172,7 @@ static struct xlnk_device_pack *xlnk_devpacks_find(unsigned long base)
 {
 	unsigned int i;
 
-	for (i = 0; i < 16; i++) {
+	for (i = 0; i < MAX_XLNK_DMAS; i++) {
 		if (xlnk_devpacks[i]
 			&& xlnk_devpacks[i]->res[0].start == base)
 			return xlnk_devpacks[i];
@@ -197,7 +197,7 @@ static void xlnk_devpacks_free_all(void)
 	struct xlnk_device_pack *devpack;
 	unsigned int i;
 
-	for (i = 0; i < 16; i++) {
+	for (i = 0; i < MAX_XLNK_DMAS; i++) {
 		devpack = xlnk_devpacks[i];
 		if (devpack) {
 			platform_device_unregister(&devpack->pdev);
