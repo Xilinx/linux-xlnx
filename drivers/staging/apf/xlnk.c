@@ -142,7 +142,7 @@ static void xlnk_devpacks_init(void)
 	unsigned int i;
 
 	for (i = 0; i < MAX_XLNK_DMAS; i++)
-		xlnk_devpacks[0] = NULL;
+		xlnk_devpacks[i] = NULL;
 
 }
 
@@ -1232,6 +1232,9 @@ static long xlnk_ioctl(struct file *filp, unsigned int code,
 	case XLNK_IOCRECRES: /* recover resource */
 		status = xlnk_recover_resource(args);
 		break;
+	default:
+		pr_err("xlnk- Unknown ioctl code emitted\n");
+		status = -EINVAL;
 	}
 
 	return status;
@@ -1265,8 +1268,10 @@ static int xlnk_mmap(struct file *filp, struct vm_area_struct *vma)
 					 vma->vm_end - vma->vm_start,
 					 vma->vm_page_prot);
 	}
-	if (status)
+	if (status) {
+		pr_err("xlnk_mmap failed with code %d\n", EAGAIN);
 		return -EAGAIN;
+	}
 
 	xlnk_vma_open(vma);
 	vma->vm_ops = &xlnk_vm_ops;
