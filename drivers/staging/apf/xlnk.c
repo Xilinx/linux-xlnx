@@ -573,7 +573,7 @@ static int xlnk_devregister(char *name, unsigned int id,
 	devpack->pdev.id = id;
 
 	devpack->pdev.dev.dma_mask = &dma_mask;
-	devpack->pdev.dev.coherent_dma_mask = 0xFFFFFFFF;
+	devpack->pdev.dev.coherent_dma_mask = dma_mask;
 
 	devpack->res[0].start = base;
 	devpack->res[0].end = base + size - 1;
@@ -620,11 +620,11 @@ static int xlnk_dmaregister(char *name, unsigned int id,
 
 	struct xlnk_device_pack *devpack;
 
-	if (strcmp(name, "xilinx-axidma"))
+	if (chan_num < 1 || chan_num > 2) {
+		pr_err("%s: Expected either 1 or 2 channels, got %d\n",
+		       __func__, chan_num);
 		return -EINVAL;
-
-	if (chan_num < 1 || chan_num > 2)
-		return -EINVAL;
+	}
 
 	devpack = xlnk_devpacks_find(base);
 	if (devpack) {
@@ -637,8 +637,7 @@ static int xlnk_dmaregister(char *name, unsigned int id,
 	if (!devpack)
 		return -ENOMEM;
 
-	strcpy(devpack->name, name);
-	devpack->pdev.name = devpack->name;
+	devpack->pdev.name = "xilinx-axidma";
 
 	devpack->pdev.id = id;
 
@@ -646,7 +645,8 @@ static int xlnk_dmaregister(char *name, unsigned int id,
 	devpack->dma_chan_cfg[0].datawidth   = chan0_data_width;
 	devpack->dma_chan_cfg[0].irq = chan0_irq;
 	devpack->dma_chan_cfg[0].poll_mode   = chan0_poll_mode;
-	devpack->dma_chan_cfg[0].type = chan0_dir ?
+	devpack->dma_chan_cfg[0].type =
+		(chan0_dir == XLNK_DMA_FROM_DEVICE) ?
 					"axi-dma-s2mm-channel" :
 					"axi-dma-mm2s-channel";
 
@@ -655,11 +655,13 @@ static int xlnk_dmaregister(char *name, unsigned int id,
 		devpack->dma_chan_cfg[1].datawidth   = chan1_data_width;
 		devpack->dma_chan_cfg[1].irq = chan1_irq;
 		devpack->dma_chan_cfg[1].poll_mode   = chan1_poll_mode;
-		devpack->dma_chan_cfg[1].type = chan1_dir ?
+		devpack->dma_chan_cfg[1].type =
+			(chan1_dir == XLNK_DMA_FROM_DEVICE) ?
 						"axi-dma-s2mm-channel" :
 						"axi-dma-mm2s-channel";
 	}
 
+	devpack->dma_dev_cfg.name = devpack->name;
 	devpack->dma_dev_cfg.type = "axi-dma";
 	devpack->dma_dev_cfg.include_sg = 1;
 	devpack->dma_dev_cfg.sg_include_stscntrl_strm = 1;
@@ -669,7 +671,7 @@ static int xlnk_dmaregister(char *name, unsigned int id,
 	devpack->pdev.dev.platform_data = &devpack->dma_dev_cfg;
 
 	devpack->pdev.dev.dma_mask = &dma_mask;
-	devpack->pdev.dev.coherent_dma_mask = 0xFFFFFFFF;
+	devpack->pdev.dev.coherent_dma_mask = dma_mask;
 
 	devpack->res[0].start = base;
 	devpack->res[0].end = base + size - 1;
@@ -730,7 +732,7 @@ static int xlnk_mcdmaregister(char *name, unsigned int id,
 
 	devpack->pdev.dev.platform_data	 = &devpack->mcdma_dev_cfg;
 	devpack->pdev.dev.dma_mask = &dma_mask;
-	devpack->pdev.dev.coherent_dma_mask = 0xFFFFFFFF;
+	devpack->pdev.dev.coherent_dma_mask = dma_mask;
 	devpack->pdev.dev.release = xdma_if_device_release,
 
 	devpack->res[0].start = base;
@@ -778,10 +780,11 @@ static int xlnk_allocbuf_ioctl(struct file *filp, unsigned int code,
 	if (id <= 0)
 		return -ENOMEM;
 
-	put_user(id, temp_args.allocbuf.idptr);
-	put_user((u32)(xlnk_phyaddr[id]), temp_args.allocbuf.phyaddrptr);
+	temp_args.allocbuf.id = id;
+	temp_args.allocbuf.phyaddr = xlnk_phyaddr[id];
+	status = copy_to_user(args, &temp_args, sizeof(union xlnk_args));
 
-	return 0;
+	return status;
 }
 
 static int xlnk_freebuf(int id)

@@ -1051,9 +1051,9 @@ static int xdma_probe(struct platform_device *pdev)
 		chan->dev = xdev->dev;
 		chan->max_len = XDMA_MAX_TRANS_LEN;
 		chan->direction = dma_chan_dir;
-		sprintf(chan->name, "%schan%d", dev_name(&pdev->dev), chan->id);
-		pr_info("  chan%d name: %s\n", chan->id, chan->name);
-		pr_info("  chan%d direction: %s\n", chan->id,
+		sprintf(chan->name, "%s:%d", dma_config->name, chan->id);
+		pr_info("  chan %d name: %s\n", chan->id, chan->name);
+		pr_info("  chan %d direction: %s\n", chan->id,
 			dma_chan_dir == DMA_FROM_DEVICE ?
 				"FROM_DEVICE" : "TO_DEVICE");
 

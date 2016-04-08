@@ -107,6 +107,7 @@ struct dma_channel_config {
 };
 struct dma_device_config {
 	char *type;
+	char *name;
 	unsigned int include_sg;
 	unsigned int sg_include_stscntrl_strm;  /* dma only */
 	unsigned int channel_count;
@@ -124,8 +125,8 @@ struct xdma_desc_hw {
 	u32 status;     /* 0x1c */
 	u32 app[5];      /* 0x20 */
 	u32 dmahead;
-	u32 sw_flag;	/* 0x38 */
 	u32 Reserved0;
+	u32 sw_flag;	/* 0x3C */
 } __aligned(64);
 
 /* shared by all Xilinx DMA engines */

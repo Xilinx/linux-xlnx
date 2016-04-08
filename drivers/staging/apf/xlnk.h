@@ -40,9 +40,9 @@ struct xlnk_dmabuf_reg {
 union xlnk_args {
 	struct {
 		unsigned int len;
-		unsigned int __user *idptr;
-		unsigned int __user *phyaddrptr;
-		unsigned int cacheable;
+		int id;
+		unsigned int phyaddr;
+		unsigned char cacheable;
 	} allocbuf;
 	struct {
 		unsigned int id;
@@ -87,7 +87,7 @@ union xlnk_args {
 		u32 dmachan;
 	} dmarelease;
 	struct {
-		unsigned long base;
+		unsigned int base;
 		unsigned int size;
 		unsigned int irqs[8];
 		char name[32];
@@ -99,7 +99,7 @@ union xlnk_args {
 	struct {
 		char name[32];
 		unsigned int id;
-		unsigned long base;
+		unsigned int base;
 		unsigned int size;
 		unsigned int chan_num;
 		unsigned int chan0_dir;
@@ -116,7 +116,7 @@ union xlnk_args {
 	struct {
 		char name[32];
 		unsigned int id;
-		unsigned long base;
+		unsigned int base;
 		unsigned int size;
 		unsigned int mm2s_chan_num;
 		unsigned int mm2s_chan_irq;
