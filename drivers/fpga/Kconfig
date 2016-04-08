@@ -11,6 +11,13 @@ config FPGA
 	  kernel.  The FPGA framework adds a FPGA manager class and FPGA
 	  manager drivers.
 
+config FPGA_BRIDGE
+	bool "FPGA Bridge Framework"
+	depends on OF
+	help
+	  Say Y here if you want to support bridges connected between host
+	  processors and FPGAs or between FPGAs.
+
 if FPGA
 
 config FPGA_MGR_SOCFPGA
@@ -23,6 +30,19 @@ config FPGA_MGR_ZYNQ_FPGA
 	tristate "Xilinx Zynq FPGA"
 	help
 	  FPGA manager driver support for Xilinx Zynq FPGAs.
+
+config FPGA_AREA
+	bool "Device Tree Based FPGA Reprogramming"
+	depends on FPGA_BRIDGE
+	help
+	  Enable FPGA Area which supports programming FPGAs under control of Device Tree.
+
+config SOCFPGA_FPGA_BRIDGE
+	bool "Altera SoCFPGA FPGA Bridges"
+	depends on ARCH_SOCFPGA && FPGA_BRIDGE
+	help
+	  Say Y to enable drivers for FPGA bridges for Altera SOCFPGA devices.
+
 
 endif # FPGA
 
