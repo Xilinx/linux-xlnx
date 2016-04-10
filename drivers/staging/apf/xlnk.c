@@ -1160,10 +1160,12 @@ static int xlnk_cachecontrol_ioctl(struct file *filp, unsigned int code,
 
 	if (temp_args.cachecontrol.action == 0) {
 		/* flush cache */
+		__cpuc_flush_dcache_area(kaddr, size);
 		outer_clean_range((unsigned int)paddr,
 				  (unsigned int)(paddr + size));
 	} else {
 		/* invalidate cache */
+		__cpuc_flush_dcache_area(kaddr, size);
 		outer_inv_range((unsigned int)paddr,
 				(unsigned int)(paddr + size));
 	}

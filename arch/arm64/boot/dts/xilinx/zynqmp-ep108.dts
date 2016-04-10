@@ -20,10 +20,14 @@
 	model = "ZynqMP EP108";
 
 	aliases {
+		mmc0 = &sdhci0;
+		mmc1 = &sdhci1;
 		serial0 = &uart0;
 		spi0 = &qspi;
 		spi1 = &spi0;
 		spi2 = &spi1;
+		usb0 = &usb0;
+		usb1 = &usb1;
 	};
 
 	chosen {
@@ -196,11 +200,19 @@
 
 &usb0 {
 	status = "okay";
+};
+
+&dwc3_0 {
+	status = "okay";
 	dr_mode = "peripheral";
 	maximum-speed = "high-speed";
 };
 
 &usb1 {
+	status = "okay";
+};
+
+&dwc3_1 {
 	status = "okay";
 	dr_mode = "host";
 	maximum-speed = "high-speed";

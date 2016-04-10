@@ -433,8 +433,8 @@ static int xilinx_drm_pm_suspend(struct device *dev)
 	struct drm_device *drm = private->drm;
 	struct drm_connector *connector;
 
-	drm_modeset_lock_all(drm);
 	drm_kms_helper_poll_disable(drm);
+	drm_modeset_lock_all(drm);
 	list_for_each_entry(connector, &drm->mode_config.connector_list, head) {
 		int old_dpms = connector->dpms;
 
@@ -465,7 +465,7 @@ static int xilinx_drm_pm_resume(struct device *dev)
 			connector->funcs->dpms(connector, dpms);
 		}
 	}
-	drm_kms_helper_poll_enable(drm);
+	drm_kms_helper_poll_enable_locked(drm);
 	drm_modeset_unlock_all(drm);
 
 	return 0;

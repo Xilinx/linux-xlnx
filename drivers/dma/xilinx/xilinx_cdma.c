@@ -425,16 +425,16 @@ static void xilinx_cdma_start_transfer(struct xilinx_cdma_chan *chan)
 	if (!chan->idle)
 		return;
 
+	desc = list_first_entry(&chan->pending_list,
+				struct xilinx_cdma_tx_descriptor, node);
+
 	/* If hardware is busy, cannot submit */
 	if (chan->has_sg && !xilinx_cdma_is_idle(chan)) {
 		tail = list_entry(desc->segments.prev,
-                                  struct xilinx_cdma_tx_segment, node);
+				  struct xilinx_cdma_tx_segment, node);
 		cdma_write(chan, XILINX_CDMA_TDESC_OFFSET, tail->phys);
-                goto out_free_desc;
+		goto out_free_desc;
 	}
-
-	desc = list_first_entry(&chan->pending_list,
-				struct xilinx_cdma_tx_descriptor, node);
 
 	if (chan->has_sg) {
 		head = list_first_entry(&desc->segments,
@@ -583,11 +583,11 @@ static irqreturn_t xilinx_cdma_irq_handler(int irq, void *data)
 
 	if (stat & XILINX_CDMA_XR_IRQ_ERROR_MASK) {
 		dev_err(chan->dev,
-			"Channel %x has errors %x, cdr %x tdr %x\n",
-			(u32)chan,
-			(u32)cdma_read(chan, XILINX_CDMA_STATUS_OFFSET),
-			(u32)cdma_read(chan, XILINX_CDMA_CDESC_OFFSET),
-			(u32)cdma_read(chan, XILINX_CDMA_TDESC_OFFSET));
+			"Channel %p has errors %x, cdr %x tdr %x\n",
+			chan,
+			cdma_read(chan, XILINX_CDMA_STATUS_OFFSET),
+			cdma_read(chan, XILINX_CDMA_CDESC_OFFSET),
+			cdma_read(chan, XILINX_CDMA_TDESC_OFFSET));
 		chan->err = true;
 	}
 

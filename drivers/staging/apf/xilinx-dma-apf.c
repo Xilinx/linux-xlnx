@@ -831,6 +831,7 @@ int xdma_submit(struct xdma_chan *chan,
 		if (user_flags & CF_FLAG_CACHE_FLUSH_INVALIDATE) {
 			kaddr = phys_to_virt((phys_addr_t)userbuf);
 			if (dmadir == DMA_TO_DEVICE) {
+				__cpuc_flush_dcache_area(kaddr, size);
 				outer_clean_range((phys_addr_t)userbuf,
 						(u32)userbuf + size);
 			}
@@ -926,6 +927,7 @@ int xdma_wait(struct xdma_head *dmahead, unsigned int user_flags)
 			size = dmahead->size;
 			kaddr = phys_to_virt((phys_addr_t)paddr);
 			if (dmahead->dmadir != DMA_TO_DEVICE) {
+				__cpuc_flush_dcache_area(kaddr, size);
 				outer_inv_range((phys_addr_t)paddr,
 						(u32)paddr + size);
 			}

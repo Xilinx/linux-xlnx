@@ -259,7 +259,7 @@ static int xtpg_s_stream(struct v4l2_subdev *subdev, int enable)
 	}
 
 	if (xtpg->is_hls) {
-		u32 fmt;
+		u32 fmt = 0;
 
 		switch (xtpg->vip_format->code) {
 		case MEDIA_BUS_FMT_UYVY8_1X16:

@@ -25,6 +25,7 @@
 		gpio0 = &gpio;
 		i2c0 = &i2c0;
 		i2c1 = &i2c1;
+		mmc0 = &sdhci1;
 		rtc0 = &rtc;
 		serial0 = &uart0;
 		serial1 = &uart1;
@@ -529,6 +530,7 @@ drivers/hwmon/pmbus/Makefile:11:obj-$(CONFIG_SENSORS_MAX20751)  += max20751.o
 
 &qspi {
 	status = "okay";
+	is-dual = <1>;
 	flash@0 {
 		compatible = "m25p80"; /* 32MB */
 		#address-cells = <1>;

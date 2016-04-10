@@ -192,6 +192,7 @@ xilinx_drm_connector_create(struct drm_device *drm,
 		goto err_attach;
 	}
 	connector->encoder = base_encoder;
+	connector->base.dpms = DRM_MODE_DPMS_OFF;
 
 	return &connector->base;
 

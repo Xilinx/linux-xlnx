@@ -17,7 +17,7 @@
  * published by the Free Software Foundation.
  */
 
-#include <linux/amba/xilinx_dma.h>
+#include <linux/dma/xilinx_dma.h>
 #include <linux/delay.h>
 #include <linux/init.h>
 #include <linux/kthread.h>
@@ -232,7 +232,7 @@ static int xilinx_vdmatest_slave_func(void *data)
 	const char *thread_name;
 	unsigned int len, error_count;
 	unsigned int failed_tests = 0, total_tests = 0;
-	dma_cookie_t tx_cookie, rx_cookie;
+	dma_cookie_t tx_cookie = 0, rx_cookie = 0;
 	enum dma_status status;
 	enum dma_ctrl_flags flags;
 	int ret = -ENOMEM, i;
@@ -332,6 +332,7 @@ static int xilinx_vdmatest_slave_func(void *data)
 			xt.frame_size = 1;
 			rxd = rx_dev->device_prep_interleaved_dma(rx_chan,
 								  &xt, flags);
+			rx_cookie = rxd->tx_submit(rxd);
 		}
 
 		for (i = 0; i < frm_cnt; i++) {
@@ -352,6 +353,7 @@ static int xilinx_vdmatest_slave_func(void *data)
 			xt.frame_size = 1;
 			txd = tx_dev->device_prep_interleaved_dma(tx_chan,
 								  &xt, flags);
+			tx_cookie = txd->tx_submit(txd);
 		}
 
 		if (!rxd || !txd) {
@@ -372,12 +374,10 @@ static int xilinx_vdmatest_slave_func(void *data)
 		init_completion(&rx_cmp);
 		rxd->callback = xilinx_vdmatest_slave_rx_callback;
 		rxd->callback_param = &rx_cmp;
-		rx_cookie = rxd->tx_submit(rxd);
 
 		init_completion(&tx_cmp);
 		txd->callback = xilinx_vdmatest_slave_tx_callback;
 		txd->callback_param = &tx_cmp;
-		tx_cookie = txd->tx_submit(txd);
 
 		if (dma_submit_error(rx_cookie) ||
 				dma_submit_error(tx_cookie)) {
