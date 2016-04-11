@@ -1090,7 +1090,7 @@ static int xadc_parse_dt(struct iio_dev *indio_dev, struct device_node *np,
 	unsigned int num_channels;
 	const char *external_mux;
 	u32 ext_mux_chan;
-	int reg;
+	u32 reg;
 	int ret;
 
 	*conf = 0;
@@ -1142,12 +1142,12 @@ static int xadc_parse_dt(struct iio_dev *indio_dev, struct device_node *np,
 				break;
 			}
 
-			channels[num_channels] = xadc_channels[reg + 9];
-			channels[num_channels].channel = num_channels - 1;
-
 			ret = of_property_read_u32(child, "reg", &reg);
 			if (ret || reg > 16)
 				continue;
+
+			channels[num_channels] = xadc_channels[reg + 9];
+			channels[num_channels].channel = num_channels - 1;
 
 			if (of_property_read_bool(child, "xlnx,bipolar"))
 				channels[num_channels].scan_type.sign = 's';
