@@ -49,6 +49,7 @@
 #include <asm/cacheflush.h>
 
 #include "xlnk-ioctl.h"
+#include "xlnk-sysdef.h"
 #include "xlnk.h"
 
 #ifdef CONFIG_XILINX_DMA_APF
@@ -87,10 +88,10 @@ static int xlnk_dev_vmas;
 static unsigned int xlnk_bufpool_size = XLNK_BUF_POOL_SIZE;
 static void *xlnk_bufpool[XLNK_BUF_POOL_SIZE];
 static void *xlnk_bufpool_alloc_point[XLNK_BUF_POOL_SIZE];
-static unsigned int xlnk_userbuf[XLNK_BUF_POOL_SIZE];
+static xlnk_intptr_type xlnk_userbuf[XLNK_BUF_POOL_SIZE];
 static dma_addr_t xlnk_phyaddr[XLNK_BUF_POOL_SIZE];
 static size_t xlnk_buflen[XLNK_BUF_POOL_SIZE];
-static unsigned int  xlnk_bufcacheable[XLNK_BUF_POOL_SIZE];
+static unsigned int xlnk_bufcacheable[XLNK_BUF_POOL_SIZE];
 
 static int xlnk_open(struct inode *ip, struct file *filp);  /* Open */
 static int xlnk_release(struct inode *ip, struct file *filp);   /* Release */
@@ -128,8 +129,8 @@ struct xlnk_device_pack {
 	struct resource res[8];
 
 #ifdef CONFIG_XILINX_DMA_APF
-	struct dma_channel_config dma_chan_cfg[4];  /* for xidane dma only */
-	struct dma_device_config dma_dev_cfg;	   /* for xidane dma only */
+	struct xdma_channel_config dma_chan_cfg[4];  /* for xidane dma only */
+	struct xdma_device_config dma_dev_cfg;	   /* for xidane dma only */
 #endif
 
 #ifdef CONFIG_XILINX_MCDMA
@@ -538,7 +539,7 @@ static int xlnk_release(struct inode *ip, struct file *filp)
 static int xlnk_devregister(char *name, unsigned int id,
 				unsigned long base, unsigned int size,
 				unsigned int *irqs,
-				u32 *handle)
+				xlnk_intptr_type *handle)
 {
 	unsigned int nres;
 	unsigned int nirq;
@@ -549,7 +550,7 @@ static int xlnk_devregister(char *name, unsigned int id,
 
 	devpack = xlnk_devpacks_find(base);
 	if (devpack) {
-		*handle = (u32)devpack;
+		*handle = (xlnk_intptr_type)devpack;
 		return 0;
 	}
 	nirq = 0;
@@ -594,7 +595,7 @@ static int xlnk_devregister(char *name, unsigned int id,
 		*handle = 0;
 	} else {
 		xlnk_devpacks_add(devpack);
-		*handle = (u32)devpack;
+		*handle = (xlnk_intptr_type)devpack;
 	}
 	return status;
 }
@@ -612,7 +613,7 @@ static int xlnk_dmaregister(char *name, unsigned int id,
 				unsigned int chan1_poll_mode,
 				unsigned int chan1_include_dre,
 				unsigned int chan1_data_width,
-				u32 *handle)
+				xlnk_intptr_type *handle)
 {
 	int status = -1;
 
@@ -628,7 +629,7 @@ static int xlnk_dmaregister(char *name, unsigned int id,
 
 	devpack = xlnk_devpacks_find(base);
 	if (devpack) {
-		*handle = (u32)devpack;
+		*handle = (xlnk_intptr_type)devpack;
 		return 0;
 	}
 
@@ -686,7 +687,7 @@ static int xlnk_dmaregister(char *name, unsigned int id,
 		*handle = 0;
 	} else {
 		xlnk_devpacks_add(devpack);
-		*handle = (u32)devpack;
+		*handle = (xlnk_intptr_type)devpack;
 	}
 
 #endif
@@ -699,7 +700,7 @@ static int xlnk_mcdmaregister(char *name, unsigned int id,
 			      unsigned int mm2s_chan_irq,
 			      unsigned int s2mm_chan_num,
 			      unsigned int s2mm_chan_irq,
-			      u32 *handle)
+			      xlnk_intptr_type *handle)
 {
 	int status = -1;
 
@@ -712,7 +713,7 @@ static int xlnk_mcdmaregister(char *name, unsigned int id,
 
 	devpack = xlnk_devpacks_find(base);
 	if (devpack) {
-		*handle = (u32)devpack;
+		*handle = (xlnk_intptr_type)devpack;
 		return 0;
 	}
 
@@ -752,7 +753,7 @@ static int xlnk_mcdmaregister(char *name, unsigned int id,
 		*handle = 0;
 	} else {
 		xlnk_devpacks_add(devpack);
-		*handle = (u32)devpack;
+		*handle = (xlnk_intptr_type)devpack;
 	}
 
 #endif
@@ -766,7 +767,7 @@ static int xlnk_allocbuf_ioctl(struct file *filp, unsigned int code,
 
 	union xlnk_args temp_args;
 	int status;
-	int id;
+	xlnk_intptr_type id;
 
 	status = copy_from_user(&temp_args, (void __user *)args,
 				sizeof(union xlnk_args));
@@ -781,7 +782,7 @@ static int xlnk_allocbuf_ioctl(struct file *filp, unsigned int code,
 		return -ENOMEM;
 
 	temp_args.allocbuf.id = id;
-	temp_args.allocbuf.phyaddr = xlnk_phyaddr[id];
+	temp_args.allocbuf.phyaddr = (xlnk_intptr_type)(xlnk_phyaddr[id]);
 	status = copy_to_user(args, &temp_args, sizeof(union xlnk_args));
 
 	return status;
@@ -833,6 +834,9 @@ static int xlnk_freebuf_ioctl(struct file *filp, unsigned int code,
 static int xlnk_adddmabuf_ioctl(struct file *filp, unsigned int code,
 			unsigned long args)
 {
+#if XLNK_SYS_BIT_WIDTH == 64
+	return -EINVAL;
+#else
 	struct dmabuf_args db_args;
 	struct xlnk_dmabuf_reg *db;
 	int status;
@@ -865,11 +869,15 @@ static int xlnk_adddmabuf_ioctl(struct file *filp, unsigned int code,
 	list_add_tail(&db->list, &xlnk_dmabuf_list);
 
 	return 0;
+#endif
 }
 
 static int xlnk_cleardmabuf_ioctl(struct file *filp, unsigned int code,
 				unsigned long args)
 {
+#if XLNK_SYS_BIT_WIDTH == 64
+	return -EINVAL;
+#else
 	struct dmabuf_args db_args;
 	struct xlnk_dmabuf_reg *dp, *dp_temp;
 	int status;
@@ -894,6 +902,7 @@ static int xlnk_cleardmabuf_ioctl(struct file *filp, unsigned int code,
 		}
 	}
 	return 1;
+#endif
 }
 
 static int xlnk_dmarequest_ioctl(struct file *filp, unsigned int code,
@@ -921,7 +930,7 @@ static int xlnk_dmarequest_ioctl(struct file *filp, unsigned int code,
 		return -ENOMEM;
 	}
 
-	temp_args.dmarequest.dmachan = (u32)chan;
+	temp_args.dmarequest.dmachan = (xlnk_intptr_type)chan;
 	temp_args.dmarequest.bd_space_phys_addr = chan->bd_phys_addr;
 	temp_args.dmarequest.bd_space_size = chan->bd_chain_size;
 
@@ -978,9 +987,9 @@ static int xlnk_dmasubmit_ioctl(struct file *filp, unsigned int code,
 						cp);
 
 	if (!status) {
-		temp_args.dmasubmit.dmahandle = (u32)dmahead;
+		temp_args.dmasubmit.dmahandle = (xlnk_intptr_type)dmahead;
 		temp_args.dmasubmit.last_bd_index =
-					(u32)dmahead->last_bd_index;
+			(xlnk_intptr_type)dmahead->last_bd_index;
 		if (copy_to_user((void __user *)args, &temp_args,
 				sizeof(union xlnk_args)))
 			return -EFAULT;
@@ -1050,7 +1059,7 @@ static int xlnk_devregister_ioctl(struct file *filp, unsigned int code,
 {
 	union xlnk_args temp_args;
 	int status;
-	u32 handle;
+	xlnk_intptr_type handle;
 
 	status = copy_from_user(&temp_args, (void __user *)args,
 				sizeof(union xlnk_args));
@@ -1073,7 +1082,7 @@ static int xlnk_dmaregister_ioctl(struct file *filp, unsigned int code,
 {
 	union xlnk_args temp_args;
 	int status;
-	u32 handle;
+	xlnk_intptr_type handle;
 
 	status = copy_from_user(&temp_args, (void __user *)args,
 				sizeof(union xlnk_args));
@@ -1106,7 +1115,7 @@ static int xlnk_mcdmaregister_ioctl(struct file *filp, unsigned int code,
 {
 	union xlnk_args temp_args;
 	int status;
-	u32 handle;
+	xlnk_intptr_type handle;
 
 	status = copy_from_user(&temp_args, (void __user *)args,
 				sizeof(union xlnk_args));
@@ -1176,12 +1185,17 @@ static int xlnk_cachecontrol_ioctl(struct file *filp, unsigned int code,
 		return -EINVAL;
 	}
 	kaddr = xlnk_bufpool[buf_id];
-
+#if XLNK_SYS_BIT_WIDTH == 32
 	__cpuc_flush_dcache_area(kaddr, size);
 	outer_flush_range(paddr, paddr + size);
 	if (temp_args.cachecontrol.action == 1)
 		outer_inv_range(paddr, paddr + size);
-
+#else
+	if (temp_args.cachecontrol.action == 1)
+		__dma_map_area(kaddr, size, DMA_FROM_DEVICE);
+	else
+		__dma_map_area(kaddr, size, DMA_TO_DEVICE);
+#endif
 	return 0;
 }
 
