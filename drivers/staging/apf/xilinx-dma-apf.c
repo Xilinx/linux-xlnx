@@ -782,7 +782,6 @@ int xdma_submit(struct xdma_chan *chan,
 	unsigned int sgcnt, sgcnt_dma;
 	enum dma_data_direction dmadir;
 	int status;
-	void *kaddr;
 	DEFINE_DMA_ATTRS(attrs);
 
 
@@ -829,6 +828,7 @@ int xdma_submit(struct xdma_chan *chan,
 		sglist_dma = sglist;
 		sgcnt_dma = sgcnt;
 		if (user_flags & CF_FLAG_CACHE_FLUSH_INVALIDATE) {
+			void *kaddr = phys_to_virt((phys_addr_t)userbuf);
 			__cpuc_flush_dcache_area(kaddr, size);
 			outer_clean_range((phys_addr_t)userbuf,
 					  (u32)userbuf + size);

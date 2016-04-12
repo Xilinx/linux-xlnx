@@ -636,7 +636,7 @@ static int xlnk_dmaregister(char *name, unsigned int id,
 			  GFP_KERNEL);
 	if (!devpack)
 		return -ENOMEM;
-
+	strcpy(devpack->name, name);
 	devpack->pdev.name = "xilinx-axidma";
 
 	devpack->pdev.id = id;
@@ -1245,7 +1245,6 @@ static long xlnk_ioctl(struct file *filp, unsigned int code,
 		status = xlnk_recover_resource(args);
 		break;
 	default:
-		pr_err("xlnk- Unknown ioctl code emitted\n");
 		status = -EINVAL;
 	}
 
