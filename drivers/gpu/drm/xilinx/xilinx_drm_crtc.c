@@ -263,6 +263,16 @@ void xilinx_drm_crtc_destroy(struct drm_crtc *base_crtc)
 	xilinx_drm_plane_remove_manager(crtc->plane_manager);
 }
 
+/* crtc set config helper */
+int xilinx_drm_crtc_helper_set_config(struct drm_mode_set *set)
+{
+	struct drm_device *drm = set->crtc->dev;
+
+	xilinx_drm_set_config(drm, set);
+
+	return drm_crtc_helper_set_config(set);
+}
+
 /* cancel page flip functions */
 void xilinx_drm_crtc_cancel_page_flip(struct drm_crtc *base_crtc,
 				      struct drm_file *file)
@@ -429,7 +439,7 @@ unsigned int xilinx_drm_crtc_get_align(struct drm_crtc *base_crtc)
 
 static struct drm_crtc_funcs xilinx_drm_crtc_funcs = {
 	.destroy	= xilinx_drm_crtc_destroy,
-	.set_config	= drm_crtc_helper_set_config,
+	.set_config	= xilinx_drm_crtc_helper_set_config,
 	.page_flip	= xilinx_drm_crtc_page_flip,
 };
 
