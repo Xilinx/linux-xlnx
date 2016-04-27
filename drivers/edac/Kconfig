@@ -494,6 +494,13 @@ config EDAC_SYNOPSYS
 	  Support for error detection and correction on the Synopsys DDR
 	  memory controller.
 
+config EDAC_ZYNQMP_OCM
+	tristate "Xilinx ZynqMP OCM Controller"
+	depends on ARCH_ZYNQMP
+	help
+	  Support for error detection and correction on the xilinx ZynqMP OCM
+	  controller.
+
 config EDAC_XGENE
 	tristate "APM X-Gene SoC"
 	depends on (ARM64 || COMPILE_TEST)
