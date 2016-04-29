@@ -1284,7 +1284,7 @@ static int axienet_open(struct net_device *ndev)
 	if (ret)
 		goto err_rx_irq;
 
-	if (!lp->eth_hasnobuf) {
+	if (!lp->eth_hasnobuf && !lp->is_10Gmac) {
 		/* Enable interrupts for Axi Ethernet */
 		ret = request_irq(lp->eth_irq, axienet_err_irq, 0, ndev->name,
 				  ndev);
@@ -1341,7 +1341,7 @@ static int axienet_stop(struct net_device *ndev)
 	free_irq(lp->tx_irq, ndev);
 	free_irq(lp->rx_irq, ndev);
 
-	if (!lp->eth_hasnobuf)
+	if (!lp->eth_hasnobuf && !lp->is_10Gmac)
 		free_irq(lp->eth_irq, ndev);
 
 	if (lp->phy_dev)
@@ -2097,7 +2097,7 @@ static int axienet_probe(struct platform_device *pdev)
 	lp->eth_hasnobuf = of_property_read_bool(pdev->dev.of_node,
 						 "xlnx,eth-hasnobuf");
 
-	if (!lp->eth_hasnobuf)
+	if (!lp->eth_hasnobuf && !lp->is_10Gmac)
 		lp->eth_irq = platform_get_irq(pdev, 0);
 
 #ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
