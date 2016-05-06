@@ -502,7 +502,8 @@ static int zynqmp_pm_register_notifier(const u32 node, const u32 event,
  *
  * Return:		Returns status, either success or error+reason
  */
-int zynqmp_pm_reset_assert(const u32 reset, const u32 assert_flag)
+int zynqmp_pm_reset_assert(const enum zynqmp_pm_reset reset,
+			   const enum zynqmp_pm_reset_action assert_flag)
 {
 	return invoke_pm_fn(RESET_ASSERT, reset, assert_flag, 0, 0, NULL);
 }
@@ -515,7 +516,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_reset_assert);
  *
  * Return:	Returns status, either success or error+reason
  */
-int zynqmp_pm_reset_get_status(const u32 reset, u32 *status)
+int zynqmp_pm_reset_get_status(const enum zynqmp_pm_reset reset, u32 *status)
 {
 	u32 ret_payload[PAYLOAD_ARG_CNT];
 

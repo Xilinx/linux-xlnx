@@ -2,6 +2,9 @@
 #define _XLNK_OS_H
 
 #include <linux/stddef.h>
+#include <linux/dmaengine.h>
+#include "xilinx-dma-apf.h"
+#include "xlnk-sysdef.h"
 
 #define XLNK_FLAG_COHERENT		0x00000001
 #define XLNK_FLAG_KERNEL_BUFFER		0x00000002
@@ -13,7 +16,6 @@
 #define CF_FLAG_PHYSICALLY_CONTIGUOUS	0x00000002
 #define CF_FLAG_DMAPOLLING		0x00000004
 
-
 enum xlnk_dma_direction {
 	XLNK_DMA_BI = 0,
 	XLNK_DMA_TO_DEVICE = 1,
@@ -21,14 +23,30 @@ enum xlnk_dma_direction {
 	XLNK_DMA_NONE = 3,
 };
 
-struct dmabuf_args {
-	int dmabuf_fd;
-	void *user_vaddr;
+struct __attribute__ ((__packed__)) dmabuf_args {
+	xlnk_int_type dmabuf_fd;
+	xlnk_intptr_type user_vaddr;
+};
+
+struct xlnk_dma_transfer_handle {
+	dma_addr_t dma_addr;
+	unsigned long transfer_length;
+	void *kern_addr;
+	unsigned long user_addr;
+	enum dma_data_direction transfer_direction;
+	struct scatterlist *sg_list;
+	int sg_list_size;
+	int sg_effective_length;
+	int flags;
+	struct dma_chan *channel;
+	dma_cookie_t dma_cookie;
+	struct dma_async_tx_descriptor *async_desc;
+	struct completion completion_handle;
 };
 
 struct xlnk_dmabuf_reg {
-	int dmabuf_fd;
-	void *user_vaddr;
+	xlnk_int_type dmabuf_fd;
+	xlnk_intptr_type user_vaddr;
 	struct dma_buf *dbuf;
 	struct dma_buf_attachment *dbuf_attach;
 	struct sg_table *dbuf_sg_table;
@@ -37,98 +55,97 @@ struct xlnk_dmabuf_reg {
 	struct list_head list;
 };
 
+/* CROSSES KERNEL-USER BOUNDARY */
 union xlnk_args {
-	struct {
-		unsigned int len;
-		unsigned int __user *idptr;
-		unsigned int __user *phyaddrptr;
-		unsigned int cacheable;
+	struct __attribute__ ((__packed__)) {
+		xlnk_uint_type len;
+		xlnk_int_type id;
+		xlnk_intptr_type phyaddr;
+		xlnk_byte_type cacheable;
 	} allocbuf;
-	struct {
-		unsigned int id;
-		void *buf;
+	struct __attribute__ ((__packed__)) {
+		xlnk_uint_type id;
+		xlnk_intptr_type buf;
 	} freebuf;
-	struct {
-		int dmabuf_fd;
-		void *user_addr;
+	struct __attribute__ ((__packed__)) {
+		xlnk_int_type dmabuf_fd;
+		xlnk_intptr_type user_addr;
 	} dmabuf;
-	struct {
-		char name[64]; /* max length of 64 */
-		u32 dmachan; /* return value */
-		unsigned int bd_space_phys_addr;/*for bd chain used by dmachan*/
-		unsigned int bd_space_size; /* bd chain size in bytes */
+	struct __attribute__ ((__packed__)) {
+		xlnk_char_type name[64];
+		xlnk_intptr_type dmachan;
+		xlnk_uint_type bd_space_phys_addr;
+		xlnk_uint_type bd_space_size;
 	} dmarequest;
 #define XLNK_MAX_APPWORDS 5
-	struct {
-		u32 dmachan;
-		void *buf;      /* buffer base address */
-		void *buf2;	/* used to point src_buf in cdma case */
-		unsigned int buf_offset; /* used on kernel allocated buffers */
-		unsigned int len;
-		unsigned int bufflag; /* zero all the time so far */
-		u32 sglist; /* ignored */
-		unsigned int sgcnt; /* ignored */
-		enum xlnk_dma_direction dmadir;
-		unsigned int nappwords_i; /* n appwords passed to BD */
-		unsigned int appwords_i[XLNK_MAX_APPWORDS];
-		unsigned int nappwords_o; /* n appwords passed from BD */
-		/* appwords array we only accept 5 max */
-		unsigned int flag;
-		u32 dmahandle; /* return value */
-		unsigned int last_bd_index; /*index of last bd used by request*/
+	struct __attribute__ ((__packed__)) {
+		xlnk_intptr_type dmachan;
+		xlnk_intptr_type buf;
+		xlnk_intptr_type buf2;
+		xlnk_uint_type buf_offset;
+		xlnk_uint_type len;
+		xlnk_uint_type bufflag;
+		xlnk_intptr_type sglist;
+		xlnk_uint_type sgcnt;
+		xlnk_enum_type dmadir;
+		xlnk_uint_type nappwords_i;
+		xlnk_uint_type appwords_i[XLNK_MAX_APPWORDS];
+		xlnk_uint_type nappwords_o;
+		xlnk_uint_type flag;
+		xlnk_intptr_type dmahandle; /* return value */
+		xlnk_uint_type last_bd_index;
 	} dmasubmit;
-	struct {
-		u32 dmahandle;
-		unsigned int nappwords; /* n appwords read from BD */
-		unsigned int appwords[XLNK_MAX_APPWORDS];
+	struct __attribute__ ((__packed__)) {
+		xlnk_intptr_type dmahandle;
+		xlnk_uint_type nappwords;
+		xlnk_uint_type appwords[XLNK_MAX_APPWORDS];
 		/* appwords array we only accept 5 max */
 	} dmawait;
-	struct {
-		u32 dmachan;
+	struct __attribute__ ((__packed__)) {
+		xlnk_intptr_type dmachan;
 	} dmarelease;
-	struct {
-		unsigned long base;
-		unsigned int size;
-		unsigned int irqs[8];
-		char name[32];
-		unsigned int id;
+	struct __attribute__ ((__packed__))  {
+		xlnk_intptr_type base;
+		xlnk_uint_type size;
+		xlnk_uint_type irqs[8];
+		xlnk_char_type name[32];
+		xlnk_uint_type id;
 	} devregister;
-	struct {
-		unsigned int base;
+	struct __attribute__ ((__packed__)) {
+		xlnk_intptr_type base;
 	} devunregister;
-	struct {
-		char name[32];
-		unsigned int id;
-		unsigned long base;
-		unsigned int size;
-		unsigned int chan_num;
-		unsigned int chan0_dir;
-		unsigned int chan0_irq;
-		unsigned int chan0_poll_mode;
-		unsigned int chan0_include_dre;
-		unsigned int chan0_data_width;
-		unsigned int chan1_dir;
-		unsigned int chan1_irq;
-		unsigned int chan1_poll_mode;
-		unsigned int chan1_include_dre;
-		unsigned int chan1_data_width;
+	struct __attribute__ ((__packed__)) {
+		xlnk_char_type name[32];
+		xlnk_uint_type id;
+		xlnk_intptr_type base;
+		xlnk_uint_type size;
+		xlnk_uint_type chan_num;
+		xlnk_uint_type chan0_dir;
+		xlnk_uint_type chan0_irq;
+		xlnk_uint_type chan0_poll_mode;
+		xlnk_uint_type chan0_include_dre;
+		xlnk_uint_type chan0_data_width;
+		xlnk_uint_type chan1_dir;
+		xlnk_uint_type chan1_irq;
+		xlnk_uint_type chan1_poll_mode;
+		xlnk_uint_type chan1_include_dre;
+		xlnk_uint_type chan1_data_width;
 	} dmaregister;
-	struct {
-		char name[32];
-		unsigned int id;
-		unsigned long base;
-		unsigned int size;
-		unsigned int mm2s_chan_num;
-		unsigned int mm2s_chan_irq;
-		unsigned int s2mm_chan_num;
-		unsigned int s2mm_chan_irq;
+	struct __attribute__ ((__packed__)) {
+		xlnk_char_type name[32];
+		xlnk_uint_type id;
+		xlnk_intptr_type base;
+		xlnk_uint_type size;
+		xlnk_uint_type mm2s_chan_num;
+		xlnk_uint_type mm2s_chan_irq;
+		xlnk_uint_type s2mm_chan_num;
+		xlnk_uint_type s2mm_chan_irq;
 	} mcdmaregister;
-	struct {
-		void *phys_addr;
-		int size;
-		int action;
+	struct __attribute__ ((__packed__)) {
+		xlnk_intptr_type phys_addr;
+		xlnk_uint_type size;
+		xlnk_int_type action;
 	} cachecontrol;
 };
-
 
 #endif

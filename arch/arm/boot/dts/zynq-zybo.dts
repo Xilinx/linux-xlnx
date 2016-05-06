@@ -12,7 +12,7 @@
  * GNU General Public License for more details.
  */
 /dts-v1/;
-/include/ "zynq-7000.dtsi"
+#include "zynq-7000.dtsi"
 
 / {
 	model = "Zynq ZYBO Development Board";
@@ -21,6 +21,8 @@
 	aliases {
 		ethernet0 = &gem0;
 		serial0 = &uart1;
+		spi0 = &qspi;
+		mmc0 = &sdhci0;
 	};
 
 	memory {
@@ -34,8 +36,8 @@
 	};
 
 	usb_phy0: phy0 {
-		#phy-cells = <0>;
 		compatible = "usb-nop-xceiv";
+		#phy-cells = <0>;
 		reset-gpios = <&gpio0 46 1>;
 	};
 };
@@ -52,6 +54,10 @@
 	ethernet_phy: ethernet-phy@0 {
 		reg = <0>;
 	};
+};
+
+&qspi {
+	status = "okay";
 };
 
 &sdhci0 {

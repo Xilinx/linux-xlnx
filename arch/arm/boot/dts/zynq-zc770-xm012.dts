@@ -12,7 +12,7 @@
  *
  */
 /dts-v1/;
-/include/ "zynq-7000.dtsi"
+#include "zynq-7000.dtsi"
 
 / {
 	compatible = "xlnx,zynq-zc770-xm012", "xlnx,zynq-7000";
@@ -36,13 +36,28 @@
 	};
 };
 
-&smcc {
+&can1 {
 	status = "okay";
-	arm,addr25 = <0x1>;
-	arm,nor-chip-sel0 = <0x1>;
-	arm,nor-chip-sel1 = <0x0>;
-	arm,sram-chip-sel0 = <0x0>;
-	arm,sram-chip-sel1 = <0x0>;
+};
+
+&i2c0 {
+	status = "okay";
+	clock-frequency = <400000>;
+
+	m24c02_eeprom@52 {
+		compatible = "at,24c02";
+		reg = <0x52>;
+	};
+};
+
+&i2c1 {
+	status = "okay";
+	clock-frequency = <400000>;
+
+	m24c02_eeprom@52 {
+		compatible = "at,24c02";
+		reg = <0x52>;
+	};
 };
 
 &nor0 {
@@ -77,34 +92,19 @@
 	};
 };
 
+&smcc {
+	status = "okay";
+	arm,addr25 = <0x1>;
+	arm,nor-chip-sel0 = <0x1>;
+	arm,nor-chip-sel1 = <0x0>;
+	arm,sram-chip-sel0 = <0x0>;
+	arm,sram-chip-sel1 = <0x0>;
+};
+
 &spi1 {
 	status = "okay";
 	num-cs = <4>;
 	is-decoded-cs = <0>;
-};
-
-&can1 {
-	status = "okay";
-};
-
-&i2c0 {
-	status = "okay";
-	clock-frequency = <400000>;
-
-	m24c02_eeprom@52 {
-		compatible = "at,24c02";
-		reg = <0x52>;
-	};
-};
-
-&i2c1 {
-	status = "okay";
-	clock-frequency = <400000>;
-
-	m24c02_eeprom@52 {
-		compatible = "at,24c02";
-		reg = <0x52>;
-	};
 };
 
 &uart1 {

@@ -788,8 +788,6 @@ static void xilinx_drm_dp_dpms(struct drm_encoder *encoder, int dpms)
 
 	switch (dpms) {
 	case DRM_MODE_DPMS_ON:
-		xilinx_drm_writel(dp->iomem, XILINX_DP_TX_SW_RESET,
-				  XILINX_DP_TX_SW_RESET_ALL);
 		if (dp->aud_clk)
 			xilinx_drm_writel(iomem, XILINX_DP_TX_AUDIO_CONTROL, 1);
 
@@ -802,6 +800,8 @@ static void xilinx_drm_dp_dpms(struct drm_encoder *encoder, int dpms)
 			usleep_range(300, 500);
 		}
 		xilinx_drm_dp_train(dp);
+		xilinx_drm_writel(dp->iomem, XILINX_DP_TX_SW_RESET,
+				  XILINX_DP_TX_SW_RESET_ALL);
 		xilinx_drm_writel(iomem, XILINX_DP_TX_ENABLE_MAIN_STREAM, 1);
 
 		return;

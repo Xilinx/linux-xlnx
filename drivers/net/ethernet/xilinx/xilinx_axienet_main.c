@@ -1275,6 +1275,14 @@ static int axienet_open(struct net_device *ndev)
 	tasklet_init(&lp->dma_err_tasklet, axienet_dma_err_handler,
 		     (unsigned long) lp);
 
+	/* Enable NAPI scheduling before enabling Axi DMA Rx IRQ, or you
+	 * might run into a race condition; the RX ISR disables IRQ processing
+	 * before scheduling the NAPI function to complete the processing.
+	 * If NAPI scheduling is (still) disabled at that time, no more RX IRQs
+	 * will be processed as only the NAPI function re-enables them!
+	 */
+	napi_enable(&lp->napi);
+
 	/* Enable interrupts for Axi DMA Tx */
 	ret = request_irq(lp->tx_irq, axienet_tx_irq, 0, ndev->name, ndev);
 	if (ret)
@@ -1284,15 +1292,13 @@ static int axienet_open(struct net_device *ndev)
 	if (ret)
 		goto err_rx_irq;
 
-	if (!lp->eth_hasnobuf) {
+	if (!lp->eth_hasnobuf && !lp->is_10Gmac) {
 		/* Enable interrupts for Axi Ethernet */
 		ret = request_irq(lp->eth_irq, axienet_err_irq, 0, ndev->name,
 				  ndev);
 		if (ret)
 			goto err_eth_irq;
 	}
-
-	napi_enable(&lp->napi);
 
 	return 0;
 
@@ -1301,6 +1307,7 @@ err_eth_irq:
 err_rx_irq:
 	free_irq(lp->tx_irq, ndev);
 err_tx_irq:
+	napi_disable(&lp->napi);
 	if (lp->phy_dev)
 		phy_disconnect(lp->phy_dev);
 	lp->phy_dev = NULL;
@@ -1341,7 +1348,7 @@ static int axienet_stop(struct net_device *ndev)
 	free_irq(lp->tx_irq, ndev);
 	free_irq(lp->rx_irq, ndev);
 
-	if (!lp->eth_hasnobuf)
+	if (!lp->eth_hasnobuf && !lp->is_10Gmac)
 		free_irq(lp->eth_irq, ndev);
 
 	if (lp->phy_dev)
@@ -2097,7 +2104,7 @@ static int axienet_probe(struct platform_device *pdev)
 	lp->eth_hasnobuf = of_property_read_bool(pdev->dev.of_node,
 						 "xlnx,eth-hasnobuf");
 
-	if (!lp->eth_hasnobuf)
+	if (!lp->eth_hasnobuf && !lp->is_10Gmac)
 		lp->eth_irq = platform_get_irq(pdev, 0);
 
 #ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP

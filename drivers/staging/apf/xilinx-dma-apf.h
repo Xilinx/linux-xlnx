@@ -24,6 +24,7 @@
 
 /* xlnk structures */
 #include "xlnk.h"
+#include "xlnk-sysdef.h"
 
 #define XDMA_IOC_MAGIC 'X'
 #define XDMA_IOCRESET		_IO(XDMA_IOC_MAGIC, 0)
@@ -96,7 +97,7 @@
 #define XDMA_BD_CLEANUP_THRESHOLD	((XDMA_MAX_BD_CNT * 8) / 10)
 
 /* Platform data definition until ARM supports device tree */
-struct dma_channel_config {
+struct xdma_channel_config {
 	char *type;
 	unsigned int include_dre;
 	unsigned int datawidth;
@@ -105,27 +106,35 @@ struct dma_channel_config {
 	unsigned int poll_mode;
 	unsigned int lite_mode;
 };
-struct dma_device_config {
+
+struct xdma_device_config {
 	char *type;
+	char *name;
 	unsigned int include_sg;
 	unsigned int sg_include_stscntrl_strm;  /* dma only */
 	unsigned int channel_count;
-	struct dma_channel_config *channel_config;
+	struct xdma_channel_config *channel_config;
 };
 
 struct xdma_desc_hw {
-	u32 next_desc;	/* 0x00 */
+	xlnk_intptr_type next_desc;	/* 0x00 */
+#if XLNK_SYS_BIT_WIDTH == 32
 	u32 pad1;       /* 0x04 */
-	u32 src_addr;   /* 0x08 */
+#endif
+	xlnk_intptr_type src_addr;   /* 0x08 */
+#if XLNK_SYS_BIT_WIDTH == 32
 	u32 pad2;       /* 0x0c */
+#endif
 	u32 addr_vsize; /* 0x10 */
 	u32 hsize;       /* 0x14 */
 	u32 control;    /* 0x18 */
 	u32 status;     /* 0x1c */
 	u32 app[5];      /* 0x20 */
-	u32 dmahead;
-	u32 sw_flag;	/* 0x38 */
+	xlnk_intptr_type dmahead;
+#if XLNK_SYS_BIT_WIDTH == 32
 	u32 Reserved0;
+#endif
+	u32 sw_flag;	/* 0x3C */
 } __aligned(64);
 
 /* shared by all Xilinx DMA engines */
@@ -133,13 +142,13 @@ struct xdma_regs {
 	u32 cr;        /* 0x00 Control Register */
 	u32 sr;        /* 0x04 Status Register */
 	u32 cdr;       /* 0x08 Current Descriptor Register */
-	u32 pad1;
+	u32 cdr_hi;
 	u32 tdr;       /* 0x10 Tail Descriptor Register */
-	u32 pad2;
+	u32 tdr_hi;
 	u32 src;       /* 0x18 Source Address Register (cdma) */
-	u32 pad3;
+	u32 src_hi;
 	u32 dst;       /* 0x20 Destination Address Register (cdma) */
-	u32 pad4;
+	u32 dst_hi;
 	u32 btt_ref;   /* 0x28 Bytes To Transfer (cdma) or
 					park_ref (vdma) */
 	u32 version;   /* 0x2c version (vdma) */
