@@ -746,12 +746,12 @@ static void macb_tx_interrupt(struct macb_queue *queue)
 					    macb_tx_ring_wrap(tail), skb->data);
 				bp->stats.tx_packets++;
 				bp->stats.tx_bytes += skb->len;
+#ifdef CONFIG_MACB_EXT_BD
+				if (skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP)
+					macb_handle_txtstamp(bp, skb, desc);
+#endif
 			}
 
-#ifdef CONFIG_MACB_EXT_BD
-			if (skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP)
-				macb_handle_txtstamp(bp, skb, desc);
-#endif
 			/* Now we can safely release resources */
 			macb_tx_unmap(bp, tx_skb);
 
