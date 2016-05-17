@@ -23,3 +23,4 @@ obj-y					+= broadcom/	\
 					   samsung/	\
 					   st/		\
 					   ti/
+obj-$(CONFIG_PHY_XILINX_ZYNQMP)		+= phy-zynqmp.o
