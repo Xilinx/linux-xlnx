@@ -128,6 +128,12 @@
 #define TX_DIG_61_OFFSET		0x4000
 #define TM_DISABLE_SCRAMBLE_ENCODER	0x0F
 
+#define L0_TX_ANA_TM_18			0x0048
+#define TX_ANA_TM_18_OFFSET		0x4000
+
+#define L0_TXPMD_TM_48			0x0CC0
+#define TXPMD_TM_48_OFFSET		0x4000
+
 #define LANE_CLK_SHARE_MASK		0x8F
 
 #define SATA_CONTROL_OFFSET		0x0100
@@ -257,6 +263,40 @@ struct xpsgtr_dev {
 	void __iomem *lpd;
 	bool tx_term_fix;
 };
+
+int xpsgtr_override_deemph(struct phy *phy, u8 plvl, u8 vlvl)
+{
+	struct xpsgtr_phy *gtr_phy = phy_get_drvdata(phy);
+	struct xpsgtr_dev *gtr_dev = gtr_phy->data;
+	static u8 vs[4][4] = { { 0x2a, 0x27, 0x24, 0x20 },
+			       { 0x27, 0x23, 0x20, 0xff },
+			       { 0x24, 0x20, 0xff, 0xff },
+			       { 0xff, 0xff, 0xff, 0xff } };
+
+	writel(vs[plvl][vlvl],
+	       gtr_dev->serdes + gtr_phy->lane * TX_ANA_TM_18_OFFSET +
+	       L0_TX_ANA_TM_18);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(xpsgtr_override_deemph);
+
+int xpsgtr_margining_factor(struct phy *phy, u8 plvl, u8 vlvl)
+{
+	struct xpsgtr_phy *gtr_phy = phy_get_drvdata(phy);
+	struct xpsgtr_dev *gtr_dev = gtr_phy->data;
+	static u8 pe[4][4] = { { 0x2, 0x2, 0x2, 0x2 },
+			       { 0x1, 0x1, 0x1, 0xff },
+			       { 0x0, 0x0, 0xff, 0xff },
+			       { 0xff, 0xff, 0xff, 0xff } };
+
+	writel(pe[plvl][vlvl],
+	       gtr_dev->serdes + gtr_phy->lane * TXPMD_TM_48_OFFSET +
+	       L0_TXPMD_TM_48);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(xpsgtr_margining_factor);
 
 /**
  * xpsgtr_configure_pll - configures SSC settings for a lane

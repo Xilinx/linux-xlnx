@@ -23,9 +23,21 @@ struct phy;
 
 #if defined(CONFIG_PHY_XILINX_ZYNQMP)
 
+extern int xpsgtr_override_deemph(struct phy *phy, u8 plvl, u8 vlvl);
+extern int xpsgtr_margining_factor(struct phy *phy, u8 plvl, u8 vlvl);
 extern int xpsgtr_wait_pll_lock(struct phy *phy);
 
 #else
+
+static inline int xpsgtr_override_deemph(struct phy *base, u8 plvl, u8 vlvl)
+{
+	return -ENODEV;
+}
+
+static inline int xpsgtr_margining_factor(struct phy *base, u8 plvl, u8 vlvl)
+{
+	return -ENODEV;
+}
 
 extern inline int xpsgtr_wait_pll_lock(struct phy *phy)
 {
