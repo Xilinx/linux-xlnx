@@ -347,8 +347,10 @@ static int xgpio_to_irq(struct gpio_chip *gc, unsigned offset)
  * @irq: gpio irq number
  * @desc: Pointer to interrupt description
  */
-static void xgpio_irqhandler(unsigned int irq, struct irq_desc *desc)
+static void xgpio_irqhandler(struct irq_desc *desc)
 {
+	unsigned int irq = irq_desc_get_irq(desc);
+
 	struct xgpio_instance *chip = (struct xgpio_instance *)
 						irq_get_handler_data(irq);
 	struct of_mm_gpio_chip *mm_gc = &chip->mmchip;
