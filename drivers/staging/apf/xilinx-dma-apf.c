@@ -196,7 +196,7 @@ static void xilinx_chan_desc_cleanup(struct xdma_chan *chan)
 	spin_lock_irqsave(&chan->lock, flags);
 #define XDMA_BD_STS_RXEOF_MASK 0x04000000
 	desc = chan->bds[chan->bd_cur];
-	while ((desc->status & XDMA_BD_STS_ALL_MASK)) {
+	while (desc->status & XDMA_BD_STS_ALL_MASK) {
 		if ((desc->status & XDMA_BD_STS_RXEOF_MASK) &&
 		    !(desc->dmahead)) {
 			pr_info("ERROR: premature EOF on DMA\n");
@@ -417,8 +417,10 @@ static int xdma_setup_hw_desc(struct xdma_chan *chan,
 	int status;
 	unsigned long flags;
 	unsigned int bd_used_saved;
-	if (!chan)
+	if (!chan) {
+		pr_err("Requested transfer on invalid channel\n");
 		return -ENODEV;
+	}
 
 	/* if we almost run out of bd, try to recycle some */
 	if ((chan->poll_mode) && (chan->bd_used >= XDMA_BD_CLEANUP_THRESHOLD))
@@ -625,7 +627,8 @@ static unsigned int sgl_merge(struct scatterlist *sgl, unsigned int sgl_len,
 	return sg_merged_num;
 }
 
-static struct page *mapped_pages[XDMA_MAX_BD_CNT];
+static int mapped_pages_count;
+static struct page **mapped_pages;
 static int pin_user_pages(unsigned long uaddr,
 			   unsigned int ulen,
 			   int write,
@@ -649,6 +652,16 @@ static int pin_user_pages(unsigned long uaddr,
 	first_page = uaddr / PAGE_SIZE;
 	last_page = (uaddr + ulen - 1) / PAGE_SIZE;
 	num_pages = last_page - first_page + 1;
+	if (mapped_pages_count < num_pages) {
+		if (mapped_pages)
+			vfree(mapped_pages);
+		mapped_pages_count = num_pages * 2;
+		mapped_pages = vmalloc(sizeof(*mapped_pages) *
+				       mapped_pages_count);
+		if (!mapped_pages)
+			return -ENOMEM;
+	}
+
 	down_read(&mm->mmap_sem);
 	status = get_user_pages(curr_task, mm, uaddr, num_pages, write, 1,
 				mapped_pages, NULL);
@@ -694,7 +707,7 @@ static int pin_user_pages(unsigned long uaddr,
 
 		return 0;
 	} else {
-
+		pr_err("Failed to pin user pages\n");
 		for (pgidx = 0; pgidx < status; pgidx++) {
 			page_cache_release(mapped_pages[pgidx]);
 		}
