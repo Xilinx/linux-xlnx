@@ -371,7 +371,7 @@ static void xdma_start_transfer(struct xdma_chan *chan,
 		DMA_OUT(&chan->regs->tdr, tail_phys);
 #else
 		DMA_OUT(&chan->regs->tdr, GET_LOW(tail_phys));
-		DMA_OUT(&chan->regs->tdr_hi, GET_HI(tail_phys));
+/*		DMA_OUT(&chan->regs->tdr_hi, GET_HI(tail_phys));*/
 #endif
 		return;
 	}
@@ -380,7 +380,7 @@ static void xdma_start_transfer(struct xdma_chan *chan,
 	DMA_OUT(&chan->regs->cdr, cur_phys);
 #else
 	DMA_OUT(&chan->regs->cdr, GET_LOW(cur_phys));
-	DMA_OUT(&chan->regs->cdr_hi, GET_HI(cur_phys));
+/*	DMA_OUT(&chan->regs->cdr_hi, GET_HI(cur_phys));*/
 #endif
 
 	dma_start(chan);
@@ -396,7 +396,7 @@ static void xdma_start_transfer(struct xdma_chan *chan,
 	DMA_OUT(&chan->regs->tdr, tail_phys);
 #else
 	DMA_OUT(&chan->regs->tdr, GET_LOW(tail_phys));
-	DMA_OUT(&chan->regs->tdr_hi, GET_HI(tail_phys));
+/*	DMA_OUT(&chan->regs->tdr_hi, GET_HI(tail_phys));*/
 #endif
 }
 
@@ -417,7 +417,6 @@ static int xdma_setup_hw_desc(struct xdma_chan *chan,
 	int status;
 	unsigned long flags;
 	unsigned int bd_used_saved;
-
 	if (!chan)
 		return -ENODEV;
 
@@ -509,7 +508,6 @@ static int xdma_setup_hw_desc(struct xdma_chan *chan,
 	xdma_start_transfer(chan, start_index, end_index2);
 
 	spin_unlock_irqrestore(&chan->lock, flags);
-
 	return 0;
 
 out_clean:
@@ -800,7 +798,6 @@ int xdma_submit(struct xdma_chan *chan,
 	int status;
 	DEFINE_DMA_ATTRS(attrs);
 
-
 	dmahead = kzalloc(sizeof(struct xdma_head), GFP_KERNEL);
 	if (!dmahead)
 		return -ENOMEM;
@@ -813,10 +810,6 @@ int xdma_submit(struct xdma_chan *chan,
 	dmadir = chan->direction;
 	if (dp) {
 		if (!dp->is_mapped) {
-#if XLNK_SYS_BIT_WIDTH == 64
-			return -EINVAL;
-#else
-
 			dp->dbuf_attach = dma_buf_attach(dp->dbuf, chan->dev);
 			dp->dbuf_sg_table = dma_buf_map_attachment(
 				dp->dbuf_attach, chan->direction);
@@ -827,7 +820,6 @@ int xdma_submit(struct xdma_chan *chan,
 				return -EINVAL;
 			}
 			dp->is_mapped = 1;
-#endif
 		}
 
 		sglist_dma = dp->dbuf_sg_table->sgl;
@@ -863,6 +855,10 @@ int xdma_submit(struct xdma_chan *chan,
 #endif
 		}
 	} else {
+#if XLNK_SYS_BIT_WIDTH == 64
+		pr_err("ERROR: MPSoC SG-DMA does not support malloc\n");
+		return -EFAULT;
+#else
 		/* pin user pages is monitored separately */
 		status = pin_user_pages((unsigned long)userbuf, size,
 					dmadir != DMA_TO_DEVICE,
@@ -890,6 +886,7 @@ int xdma_submit(struct xdma_chan *chan,
 			unpin_user_pages(sglist, sgcnt);
 			return -ENOMEM;
 		}
+#endif
 	}
 	dmahead->sglist = sglist;
 	dmahead->sgcnt = sgcnt;
@@ -914,12 +911,10 @@ int xdma_submit(struct xdma_chan *chan,
 							 sgcnt, dmadir, &attrs);
 			unpin_user_pages(sglist, sgcnt);
 		}
-
 		return -ENOMEM;
 	}
 
 	*dmaheadpp = dmahead;
-
 	return 0;
 }
 EXPORT_SYMBOL(xdma_submit);
@@ -928,7 +923,6 @@ int xdma_wait(struct xdma_head *dmahead, unsigned int user_flags)
 {
 	struct xdma_chan *chan = dmahead->chan;
 	DEFINE_DMA_ATTRS(attrs);
-
 	if (chan->poll_mode)
 		xilinx_chan_desc_cleanup(chan);
 	else
@@ -1002,7 +996,11 @@ unsigned int xlate_irq(unsigned int hwirq)
 	irq_data.np = gic_node;
 	irq_data.args_count = 3;
 	irq_data.args[0] = 0;
+#if XLNK_SYS_BIT_WIDTH == 32
 	irq_data.args[1] = hwirq - 32; /* GIC SPI offset */
+#else
+	irq_data.args[1] = hwirq;
+#endif
 	irq_data.args[2] = IRQ_TYPE_LEVEL_HIGH;
 
 	irq = irq_create_of_mapping(&irq_data);

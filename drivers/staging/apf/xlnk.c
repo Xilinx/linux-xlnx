@@ -43,7 +43,6 @@
 #include <linux/pagemap.h>
 #include <linux/errno.h>	/* error codes */
 #include <linux/dma-mapping.h>  /* dma */
-#include <linux/clk.h>
 #include <linux/of.h>
 #include <linux/list.h>
 #include <linux/dma/xilinx_dma.h>
@@ -178,7 +177,7 @@ static void xlnk_devpacks_add(struct xlnk_device_pack *devpack)
 	}
 }
 
-static struct xlnk_device_pack *xlnk_devpacks_find(unsigned long base)
+static struct xlnk_device_pack *xlnk_devpacks_find(xlnk_intptr_type base)
 {
 	unsigned int i;
 
@@ -190,7 +189,7 @@ static struct xlnk_device_pack *xlnk_devpacks_find(unsigned long base)
 	return NULL;
 }
 
-static void xlnk_devpacks_free(unsigned long base)
+static void xlnk_devpacks_free(xlnk_intptr_type base)
 {
 	struct xlnk_device_pack *devpack;
 
@@ -229,41 +228,6 @@ static void xlnk_devpacks_free_all(void)
 	}
 }
 
-/**
- * struct xlnk_data - data specific to xlnk
- * @numxclks:	number of clocks available
- * @clks:	pointer to array of clocks
- *
- * This struct should contain all the data specific to xlnk
- */
-struct xlnk_data {
-	int numxclks;
-	struct clk **clks;
-};
-
-/**
- * xlnk_clk_control() - turn all xlnk clocks on or off
- * @turn_on:	false - turn off (disable), true - turn on (enable)
- *
- * This function obtains a list of available clocks from the driver data
- * and enables or disables all of them based on the value of turn_on
- */
-static void xlnk_clk_control(bool turn_on)
-{
-	struct xlnk_data *xlnk_dat;
-	int i;
-
-	xlnk_dat = platform_get_drvdata(xlnk_pdev);
-	for (i = 0; i < xlnk_dat->numxclks; i++) {
-		if (IS_ERR(xlnk_dat->clks[i]))
-			continue;
-		if (turn_on)
-			clk_prepare_enable(xlnk_dat->clks[i]);
-		else
-			clk_disable_unprepare(xlnk_dat->clks[i]);
-	}
-}
-
 static void xlnk_load_config_from_dt(struct platform_device *pdev)
 {
 	const char *dma_name = NULL;
@@ -291,9 +255,6 @@ static void xlnk_load_config_from_dt(struct platform_device *pdev)
 static int xlnk_probe(struct platform_device *pdev)
 {
 	int err, i;
-	const char *clkname;
-	struct clk **clks;
-	struct xlnk_data *xlnk_dat;
 	dev_t dev = 0;
 
 	xlnk_dev_buf = NULL;
@@ -347,40 +308,9 @@ static int xlnk_probe(struct platform_device *pdev)
 
 	xlnk_pdev = pdev;
 	xlnk_dev = &pdev->dev;
-	xlnk_dat = devm_kzalloc(xlnk_dev,
-				sizeof(*xlnk_dat),
-				GFP_KERNEL);
-	if (!xlnk_dat)
-		return -ENOMEM;
 
 	xlnk_load_config_from_dt(pdev);
 
-	xlnk_dat->numxclks = of_property_count_strings(xlnk_dev->of_node,
-							"clock-names");
-	if (xlnk_dat->numxclks > 0) {
-		clks = devm_kmalloc_array(xlnk_dev,
-					xlnk_dat->numxclks,
-					sizeof(struct clk *),
-					GFP_KERNEL);
-		if (!clks)
-			return -ENOMEM;
-
-		xlnk_dat->clks = clks;
-		for (i = 0; i < xlnk_dat->numxclks; i++) {
-			of_property_read_string_index(xlnk_dev->of_node,
-						"clock-names",
-						i,
-						&clkname);
-			if (clkname) {
-				clks[i] = devm_clk_get(xlnk_dev, clkname);
-				if (IS_ERR(clks[i]))
-					dev_warn(xlnk_dev,
-						"Unable to get clk\n");
-			} else
-				dev_warn(xlnk_dev, "Unable to get clock\n");
-		}
-	}
-	platform_set_drvdata(xlnk_pdev, xlnk_dat);
 	if (xlnk_pdev)
 		dev_info(&pdev->dev, "xlnk_pdev is not null\n");
 	else
@@ -410,7 +340,7 @@ static int xlnk_buf_findnull(void)
 	return 0;
 }
 
-static int xlnk_buf_find_by_phys_addr(unsigned long addr)
+static int xlnk_buf_find_by_phys_addr(xlnk_intptr_type addr)
 {
 	int i;
 
@@ -527,7 +457,6 @@ static int xlnk_open(struct inode *ip, struct file *filp)
 
 	if ((filp->f_flags & O_ACCMODE) == O_WRONLY)
 		xlnk_dev_size = 0;
-	xlnk_clk_control(true);
 
 	return status;
 }
@@ -583,13 +512,12 @@ static ssize_t xlnk_write(struct file *filp, const char __user *buf,
  */
 static int xlnk_release(struct inode *ip, struct file *filp)
 {
-	xlnk_clk_control(false);
 	return 0;
 }
 
 
 static int xlnk_devregister(char *name, unsigned int id,
-				unsigned long base, unsigned int size,
+				xlnk_intptr_type base, unsigned int size,
 				unsigned int *irqs,
 				xlnk_intptr_type *handle)
 {
@@ -654,7 +582,7 @@ static int xlnk_devregister(char *name, unsigned int id,
 }
 
 static int xlnk_dmaregister(char *name, unsigned int id,
-				unsigned long base, unsigned int size,
+				xlnk_intptr_type base, unsigned int size,
 				unsigned int chan_num,
 				unsigned int chan0_dir,
 				unsigned int chan0_irq,
@@ -764,7 +692,7 @@ static int xlnk_dmaregister(char *name, unsigned int id,
 }
 
 static int xlnk_mcdmaregister(char *name, unsigned int id,
-			      unsigned long base, unsigned int size,
+			      xlnk_intptr_type base, unsigned int size,
 			      unsigned int mm2s_chan_num,
 			      unsigned int mm2s_chan_irq,
 			      unsigned int s2mm_chan_num,
@@ -907,28 +835,25 @@ static int xlnk_freebuf_ioctl(struct file *filp, unsigned int code,
 static int xlnk_adddmabuf_ioctl(struct file *filp, unsigned int code,
 			unsigned long args)
 {
-#if XLNK_SYS_BIT_WIDTH == 64
-	return -EINVAL;
-#else
-	struct dmabuf_args db_args;
+	union xlnk_args temp_args;
 	struct xlnk_dmabuf_reg *db;
 	int status;
 
-	status = copy_from_user(&db_args, (void __user *)args,
-			sizeof(struct dmabuf_args));
+	status = copy_from_user(&temp_args, (void __user *)args,
+				sizeof(union xlnk_args));
 
 	if (status)
 		return -ENOMEM;
 
 	dev_dbg(xlnk_dev, "Registering dmabuf fd %d for virtual address %p\n",
-		db_args.dmabuf_fd, db_args.user_vaddr);
+		temp_args.dmabuf.dmabuf_fd, temp_args.dmabuf.user_addr);
 
 	db = kzalloc(sizeof(struct xlnk_dmabuf_reg), GFP_KERNEL);
 	if (!db)
 		return -ENOMEM;
 
-	db->dmabuf_fd = db_args.dmabuf_fd;
-	db->user_vaddr = db_args.user_vaddr;
+	db->dmabuf_fd = temp_args.dmabuf.dmabuf_fd;
+	db->user_vaddr = temp_args.dmabuf.user_addr;
 
 	db->dbuf = dma_buf_get(db->dmabuf_fd);
 	if (IS_ERR_OR_NULL(db->dbuf)) {
@@ -942,27 +867,23 @@ static int xlnk_adddmabuf_ioctl(struct file *filp, unsigned int code,
 	list_add_tail(&db->list, &xlnk_dmabuf_list);
 
 	return 0;
-#endif
 }
 
 static int xlnk_cleardmabuf_ioctl(struct file *filp, unsigned int code,
 				unsigned long args)
 {
-#if XLNK_SYS_BIT_WIDTH == 64
-	return -EINVAL;
-#else
-	struct dmabuf_args db_args;
+	union xlnk_args temp_args;
 	struct xlnk_dmabuf_reg *dp, *dp_temp;
 	int status;
 
-	status = copy_from_user(&db_args, (void __user *)args,
-			sizeof(struct dmabuf_args));
+	status = copy_from_user(&temp_args, (void __user *)args,
+				sizeof(union xlnk_args));
 
 	if (status)
 		return -ENOMEM;
 
 	list_for_each_entry_safe(dp, dp_temp, &xlnk_dmabuf_list, list) {
-		if (dp->user_vaddr == db_args.user_vaddr) {
+		if (dp->user_vaddr == temp_args.dmabuf.user_addr) {
 			if (dp->is_mapped) {
 				dma_buf_unmap_attachment(dp->dbuf_attach,
 					dp->dbuf_sg_table, dp->dma_direction);
@@ -975,7 +896,6 @@ static int xlnk_cleardmabuf_ioctl(struct file *filp, unsigned int code,
 		}
 	}
 	return 1;
-#endif
 }
 
 static int xlnk_dmarequest_ioctl(struct file *filp, unsigned int code,
@@ -1044,7 +964,6 @@ static void xlnk_complete_dma_callback(void *args)
 static int xlnk_dmasubmit_ioctl(struct file *filp, unsigned int code,
 				unsigned long args)
 {
-
 #ifdef CONFIG_XILINX_DMA_APF
 	union xlnk_args temp_args;
 	struct xdma_head *dmahead;
@@ -1238,8 +1157,8 @@ static int xlnk_dmasubmit_ioctl(struct file *filp, unsigned int code,
 		if (copy_to_user((void __user *)args, &temp_args,
 				sizeof(union xlnk_args)))
 			return -EFAULT;
-		return 0;
 	}
+	return status;
 #endif
 	return -ENOMEM;
 }

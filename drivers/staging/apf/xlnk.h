@@ -23,11 +23,6 @@ enum xlnk_dma_direction {
 	XLNK_DMA_NONE = 3,
 };
 
-struct __attribute__ ((__packed__)) dmabuf_args {
-	xlnk_int_type dmabuf_fd;
-	xlnk_intptr_type user_vaddr;
-};
-
 struct xlnk_dma_transfer_handle {
 	dma_addr_t dma_addr;
 	unsigned long transfer_length;
