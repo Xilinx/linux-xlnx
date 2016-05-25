@@ -58,7 +58,7 @@ lane3:
 			- <PHY_TYPE_DP 0 LANE_NUM FREQUENCY>
 			- <PHY_TYPE_SGMII 3 LANE_NUM FREQUENCY>
 
-Note:	LANE_NUM : This determines which lane's refernce clock is shared by controller.
+Note:	LANE_NUM : This determines which lane's reference clock is shared by controller.
 	FREQUENCY: This the clock frequency at which controller wants to operate.
 
 
