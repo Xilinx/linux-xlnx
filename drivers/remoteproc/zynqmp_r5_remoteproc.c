@@ -92,36 +92,6 @@ static char *firmware1 = "r5_1_firmware";
 
 struct zynqmp_r5_rproc_pdata;
 
-/**
- * struct ipi_ops - IPI operation handlers
- * @clear:          Clear IPI
- * @reset:          Reset IPI channel
- * @set_mask:       Destination mask
- * @trigger:        Trigger IPI
- */
-struct ipi_ops {
-	irqreturn_t (*clear)(struct zynqmp_r5_rproc_pdata *pdata);
-	void (*reset)(struct zynqmp_r5_rproc_pdata *pdata);
-	void (*set_mask)(struct zynqmp_r5_rproc_pdata *pdata);
-	void (*trigger)(struct zynqmp_r5_rproc_pdata *pdata);
-};
-
-/**
- * struct rpu_ops - RPU operation handlers
- * @bootdev:        Boot device
- * @core_conf:      Core configuration
- * @halt:           Enable/Disable halt
- * @en_reset:       Enable/Disable reset
- * @en_clock:       Enable clock
- */
-struct rpu_ops {
-	void (*bootdev)(struct zynqmp_r5_rproc_pdata *pdata);
-	void (*core_conf)(struct zynqmp_r5_rproc_pdata *pdata);
-	void (*halt)(struct zynqmp_r5_rproc_pdata *pdata, bool do_halt);
-	void (*en_reset)(struct zynqmp_r5_rproc_pdata *pdata, bool do_reset);
-	void (*en_clock)(struct zynqmp_r5_rproc_pdata *pdata);
-};
-
 /* enumerations for RPU/IPI control methods */
 enum control_method {
 	SMC = 0,
@@ -144,8 +114,6 @@ enum rpu_core_conf {
 /**
  * struct zynqmp_r5_rproc_pdata - zynqmp rpu remote processor instance state
  * @rproc: rproc handle
- * @ipi_ops: IPI related operation handlers
- * @rpu_ops: RPU related operation handlers
  * @workqueue: workqueue for the RPU remoteproc
  * @rpu_base: virt ptr to RPU control address registers
  * @crl_apb_base: virt ptr to CRL_APB address registers for RPU
@@ -158,8 +126,6 @@ enum rpu_core_conf {
  */
 struct zynqmp_r5_rproc_pdata {
 	struct rproc *rproc;
-	struct ipi_ops *ipi_ops;
-	struct rpu_ops *rpu_ops;
 	struct work_struct workqueue;
 	void __iomem *rpu_base;
 	void __iomem *crl_apb_base;
@@ -192,10 +158,14 @@ static int get_firmware_entry_addr(struct zynqmp_r5_rproc_pdata *pdata,
 	return 0;
 }
 
-/*
- * TODO: Update HW RPU operation when the driver is ready
+/**
+ * r5_boot_addr_config - configure the boot address of R5:w
+ * @pdata: platform data
+ *
+ * This function will set the boot address based on if the
+ * boot memory in the ELF file is TCM or OCM
  */
-static void hw_r5_boot_dev(struct zynqmp_r5_rproc_pdata *pdata)
+static void r5_boot_addr_config(struct zynqmp_r5_rproc_pdata *pdata)
 {
 	u32 tmp;
 	u32 offset = RPU_1_CFG_OFFSET;
@@ -213,8 +183,17 @@ static void hw_r5_boot_dev(struct zynqmp_r5_rproc_pdata *pdata)
 	reg_write(pdata->rpu_base, offset, tmp);
 }
 
-static void hw_r5_reset(struct zynqmp_r5_rproc_pdata *pdata,
-						bool do_reset)
+/**
+ * r5_reset - change the R5 reset bit
+ * @pdata: platform data
+ * @do_reset: 1 to reset, 0 to release reset
+ *
+ * If the do_reset is 1, the function to set the
+ * R5 reset bit. It do_reset is 0, the function
+ * will clear the reset bit.
+ */
+static void r5_reset(struct zynqmp_r5_rproc_pdata *pdata,
+			bool do_reset)
 {
 	u32 tmp;
 
@@ -228,7 +207,16 @@ static void hw_r5_reset(struct zynqmp_r5_rproc_pdata *pdata,
 	reg_write(pdata->crl_apb_base, RST_LPD_TOP_OFFSET, tmp);
 }
 
-static void hw_r5_halt(struct zynqmp_r5_rproc_pdata *pdata,
+/**
+ * r5_halt - change the R5 halt bit
+ * @pdata: platform data
+ * @do_halt: 1 to halt, 0 to release halt
+ *
+ * If the do_halt is 1, the function to set the
+ * R5 halt bit. It do_halt is 0, the function
+ * will clear the halt bit.
+ */
+static void r5_halt(struct zynqmp_r5_rproc_pdata *pdata,
 						bool do_halt)
 {
 	u32 tmp;
@@ -247,7 +235,14 @@ static void hw_r5_halt(struct zynqmp_r5_rproc_pdata *pdata,
 	reg_write(pdata->rpu_base, offset, tmp);
 }
 
-static void hw_r5_core_config(struct zynqmp_r5_rproc_pdata *pdata)
+/**
+ * r5_mode_config - configure R5 operation mode
+ * @pdata: platform data
+ *
+ * configure R5 to split mode or lockstep mode
+ * based on the platform data.
+ */
+static void r5_mode_config(struct zynqmp_r5_rproc_pdata *pdata)
 {
 	u32 tmp;
 
@@ -265,7 +260,13 @@ static void hw_r5_core_config(struct zynqmp_r5_rproc_pdata *pdata)
 	reg_write(pdata->rpu_base, 0, tmp);
 }
 
-static void hw_r5_enable_clock(struct zynqmp_r5_rproc_pdata *pdata)
+/**
+ * r5_enable_clock - enable R5 clock
+ * @pdata: platform data
+ *
+ * enable R5 clock if it is disabled.
+ */
+static void r5_enable_clock(struct zynqmp_r5_rproc_pdata *pdata)
 {
 	u32 tmp;
 
@@ -279,189 +280,22 @@ static void hw_r5_enable_clock(struct zynqmp_r5_rproc_pdata *pdata)
 	}
 }
 
-static struct rpu_ops rpu_hw_ops = {
-	.bootdev       = hw_r5_boot_dev,
-	.core_conf     = hw_r5_core_config,
-	.halt          = hw_r5_halt,
-	.en_reset      = hw_r5_reset,
-	.en_clock      = hw_r5_enable_clock,
-};
-
-static void smc_r5_boot_dev(struct zynqmp_r5_rproc_pdata *pdata)
-{
-	pr_err("%s: atf smc to be implemented\n", __func__);
-}
-
-static void smc_r5_reset(struct zynqmp_r5_rproc_pdata *pdata,
-						bool do_reset)
-{
-	pr_err("%s: atf smc to be implemented\n", __func__);
-}
-
-static void smc_r5_halt(struct zynqmp_r5_rproc_pdata *pdata,
-						bool do_halt)
-{
-	pr_err("%s: atf smc to be implemented\n", __func__);
-}
-
-static void smc_r5_core_config(struct zynqmp_r5_rproc_pdata *pdata)
-{
-	pr_err("%s: atf smc to be implemented\n", __func__);
-}
-
-static void smc_r5_enable_clock(struct zynqmp_r5_rproc_pdata *pdata)
-{
-	pr_err("%s: atf smc to be implemented\n", __func__);
-}
-
-static struct rpu_ops rpu_smc_ops = {
-	.bootdev       = smc_r5_boot_dev,
-	.core_conf     = smc_r5_core_config,
-	.halt          = smc_r5_halt,
-	.en_reset      = smc_r5_reset,
-	.en_clock      = smc_r5_enable_clock,
-};
-
-static void hvc_r5_boot_dev(struct zynqmp_r5_rproc_pdata *pdata)
-{
-	pr_err("%s: hypervisor hvc to be implemented\n", __func__);
-}
-
-static void hvc_r5_reset(struct zynqmp_r5_rproc_pdata *pdata, bool do_reset)
-{
-	pr_err("%s: hypervisor hvc to be implemented\n", __func__);
-}
-
-static void hvc_r5_halt(struct zynqmp_r5_rproc_pdata *pdata, bool do_halt)
-{
-	pr_err("%s: hypervisor hvc to be implemented\n", __func__);
-}
-
-static void hvc_r5_core_config(struct zynqmp_r5_rproc_pdata *pdata)
-{
-	pr_err("%s: hypervisor hvc to be implemented\n", __func__);
-}
-
-static void hvc_r5_enable_clock(struct zynqmp_r5_rproc_pdata *pdata)
-{
-	pr_err("%s: hypervisor hvc to be implemented\n", __func__);
-}
-
-static struct rpu_ops rpu_hvc_ops = {
-	.bootdev       = hvc_r5_boot_dev,
-	.core_conf     = hvc_r5_core_config,
-	.halt          = hvc_r5_halt,
-	.en_reset      = hvc_r5_reset,
-	.en_clock      = hvc_r5_enable_clock,
-};
-
-/*
- * TODO: Update HW ipi operation when the driver is ready
+/**
+ * ipi_init - Initialize R5 IPI
+ * @pdata: platform data
+ *
+ * Clear IPI interrupt status register and then enable IPI interrupt.
  */
-static irqreturn_t hw_clear_ipi(struct zynqmp_r5_rproc_pdata *pdata)
-{
-	u32 ipi_reg = 0;
-	pr_debug("%s: irq issuer %08x clear IPI\n", __func__,
-			 pdata->ipi_dest_mask);
-	ipi_reg = reg_read(pdata->ipi_base, ISR_OFFSET);
-	if (ipi_reg & pdata->ipi_dest_mask) {
-		reg_write(pdata->ipi_base, ISR_OFFSET, pdata->ipi_dest_mask);
-		return IRQ_HANDLED;
-	}
-
-	return IRQ_NONE;
-}
-
-static void hw_ipi_reset(struct zynqmp_r5_rproc_pdata *pdata)
-{
-	reg_write(pdata->ipi_base, IDR_OFFSET, pdata->ipi_dest_mask);
-	reg_write(pdata->ipi_base, ISR_OFFSET, pdata->ipi_dest_mask);
-	/* add delay to allow ipi to be settle */
-	udelay(10);
-	pr_debug("IPI reset done\n");
-}
-
-static void hw_set_ipi_mask(struct zynqmp_r5_rproc_pdata *pdata)
-{
-	pr_debug("%s: set IPI mask %08x\n", __func__, pdata->ipi_dest_mask);
-	reg_write(pdata->ipi_base, IER_OFFSET, pdata->ipi_dest_mask);
-}
-
-static void hw_trigger_ipi(struct zynqmp_r5_rproc_pdata *pdata)
-{
-	pr_debug("%s: dest %08x\n", __func__, pdata->ipi_dest_mask);
-	reg_write(pdata->ipi_base, TRIG_OFFSET, pdata->ipi_dest_mask);
-}
-
 static void ipi_init(struct zynqmp_r5_rproc_pdata *pdata)
 {
 	pr_debug("%s\n", __func__);
-	pdata->ipi_ops->reset(pdata);
-	pdata->ipi_ops->set_mask(pdata);
+	/* Disable R5 IPI interrupt */
+	reg_write(pdata->ipi_base, IDR_OFFSET, pdata->ipi_dest_mask);
+	/* Clear R5 IPI interrupt */
+	reg_write(pdata->ipi_base, ISR_OFFSET, pdata->ipi_dest_mask);
+	/* Enable R5 IPI interrupt */
+	reg_write(pdata->ipi_base, IER_OFFSET, pdata->ipi_dest_mask);
 }
-
-static struct ipi_ops ipi_hw_ops = {
-	.clear          = hw_clear_ipi,
-	.reset          = hw_ipi_reset,
-	.set_mask       = hw_set_ipi_mask,
-	.trigger        = hw_trigger_ipi,
-};
-
-static irqreturn_t smc_clear_ipi(struct zynqmp_r5_rproc_pdata *pdata)
-{
-	pr_err("%s: atf smc to be implemented\n", __func__);
-	return IRQ_NONE;
-}
-
-static void smc_ipi_reset(struct zynqmp_r5_rproc_pdata *pdata)
-{
-	pr_err("%s: atf smc to be implemented\n", __func__);
-}
-
-static void smc_set_ipi_mask(struct zynqmp_r5_rproc_pdata *pdata)
-{
-	pr_err("%s: atf smc to be implemented\n", __func__);
-}
-
-static void smc_trigger_ipi(struct zynqmp_r5_rproc_pdata *pdata)
-{
-	pr_err("%s: atf smc to be implemented\n", __func__);
-}
-
-static struct ipi_ops ipi_smc_ops = {
-	.clear          = smc_clear_ipi,
-	.reset          = smc_ipi_reset,
-	.set_mask       = smc_set_ipi_mask,
-	.trigger        = smc_trigger_ipi,
-};
-
-static irqreturn_t hvc_clear_ipi(struct zynqmp_r5_rproc_pdata *pdata)
-{
-	pr_err("%s: hypervisor hvc to be implemented\n", __func__);
-	return IRQ_NONE;
-}
-
-static void hvc_ipi_reset(struct zynqmp_r5_rproc_pdata *pdata)
-{
-	pr_err("%s: hypervisor hvc to be implemented\n", __func__);
-}
-
-static void hvc_set_ipi_mask(struct zynqmp_r5_rproc_pdata *pdata)
-{
-	pr_err("%s: hypervisor hvc to be implemented\n", __func__);
-}
-
-static void hvc_trigger_ipi(struct zynqmp_r5_rproc_pdata *pdata)
-{
-	pr_err("%s: hypervisor hvc to be implemented\n", __func__);
-}
-
-static struct ipi_ops ipi_hvc_ops = {
-	.clear          = hvc_clear_ipi,
-	.reset          = hvc_ipi_reset,
-	.set_mask       = hvc_set_ipi_mask,
-	.trigger        = hvc_trigger_ipi,
-};
 
 static void handle_event(struct zynqmp_r5_rproc_pdata *local)
 {
@@ -519,14 +353,14 @@ static int zynqmp_r5_rproc_start(struct rproc *rproc)
 	dev_info(dev, "RPU boot from %s.",
 		local->bootmem == OCM ? "OCM" : "TCM");
 
-	local->rpu_ops->core_conf(local);
-	local->rpu_ops->halt(local, true);
-	local->rpu_ops->en_reset(local, true);
-	local->rpu_ops->bootdev(local);
+	r5_mode_config(local);
+	r5_halt(local, true);
+	r5_reset(local, true);
+	r5_boot_addr_config(local);
 	/* Add delay before release from halt and reset */
 	udelay(500);
-	local->rpu_ops->en_reset(local, false);
-	local->rpu_ops->halt(local, false);
+	r5_reset(local, false);
+	r5_halt(local, false);
 
 	ipi_init(local);
 	return 0;
@@ -550,7 +384,7 @@ static void zynqmp_r5_rproc_kick(struct rproc *rproc, int vqid)
 	 * send irq to R5 firmware
 	 * Currently vqid is not used because we only got one.
 	 */
-	local->ipi_ops->trigger(local);
+	reg_write(local->ipi_base, TRIG_OFFSET, local->ipi_dest_mask);
 }
 
 /* power off the remote processor */
@@ -562,11 +396,11 @@ static int zynqmp_r5_rproc_stop(struct rproc *rproc)
 
 	dev_dbg(dev, "%s\n", __func__);
 
-	local->rpu_ops->halt(local, true);
-	local->rpu_ops->en_reset(local, true);
+	r5_halt(local, true);
+	r5_reset(local, true);
 
-	local->ipi_ops->reset(local);
-
+	reg_write(local->ipi_base, IDR_OFFSET, local->ipi_dest_mask);
+	reg_write(local->ipi_base, ISR_OFFSET, local->ipi_dest_mask);
 	return 0;
 }
 
@@ -588,10 +422,10 @@ static void zynqmp_r5_rproc_init(struct rproc *rproc)
 
 	dev_dbg(dev, "%s\n", __func__);
 
-	local->rpu_ops->core_conf(local);
-	local->rpu_ops->halt(local, true);
-	local->rpu_ops->en_reset(local, false);
-	local->rpu_ops->en_clock(local);
+	r5_mode_config(local);
+	r5_halt(local, true);
+	r5_reset(local, false);
+	r5_enable_clock(local);
 }
 
 static irqreturn_t r5_remoteproc_interrupt(int irq, void *dev_id)
@@ -599,16 +433,17 @@ static irqreturn_t r5_remoteproc_interrupt(int irq, void *dev_id)
 	struct device *dev = dev_id;
 	struct platform_device *pdev = to_platform_device(dev);
 	struct zynqmp_r5_rproc_pdata *local = platform_get_drvdata(pdev);
-	irqreturn_t ret;
+	u32 ipi_reg;
+
+	/* Check if there is a kick from R5 */
+	ipi_reg = reg_read(local->ipi_base, ISR_OFFSET);
+	if (!(ipi_reg & local->ipi_dest_mask))
+		return IRQ_NONE;
 
 	dev_dbg(dev, "KICK Linux because of pending message(irq%d)\n", irq);
-
-	ret = local->ipi_ops->clear(local);
-	if (ret != IRQ_HANDLED)
-		return ret;
+	reg_write(local->ipi_base, ISR_OFFSET, local->ipi_dest_mask);
 	schedule_work(&local->workqueue);
 
-	dev_dbg(dev, "KICK Linux handled\n");
 	return IRQ_HANDLED;
 }
 
@@ -664,54 +499,32 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 		prop = "direct";
 	}
 
-	dev_info(&pdev->dev, "IPI/RPU control method: %s\n", prop);
-	if (!strcmp(prop, "direct")) {
-		method = HW;
-		local->ipi_ops = &ipi_hw_ops;
-		local->rpu_ops = &rpu_hw_ops;
-	} else if (!strcmp(prop, "hvc")) {
-		method = HVC;
-		local->ipi_ops = &ipi_hvc_ops;
-		local->rpu_ops = &rpu_hvc_ops;
-	} else if (!strcmp(prop, "smc")) {
-		method = SMC;
-		local->ipi_ops = &ipi_smc_ops;
-		local->rpu_ops = &rpu_smc_ops;
-	} else {
-		dev_err(&pdev->dev, "Invalid method provided - %s\n",
-			prop);
-		ret = -EINVAL;
+	/* Handle direct hardware access */
+	/* (TODO: remove once RPU and IPI drivers are ready ) */
+	res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
+		"rpu_base");
+	local->rpu_base = devm_ioremap(&pdev->dev, res->start, resource_size(res));
+	if (IS_ERR(local->rpu_base)) {
+		dev_err(&pdev->dev, "Unable to map RPU I/O memory\n");
+		ret = PTR_ERR(local->rpu_base);
 		goto dma_mask_fault;
 	}
 
-	/* Handle direct hardware access */
-	/* (TODO: remove once RPU and IPI drivers are ready ) */
-	if (method == HW) {
-		res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
-			"rpu_base");
-		local->rpu_base = devm_ioremap(&pdev->dev, res->start, resource_size(res));
-		if (IS_ERR(local->rpu_base)) {
-			dev_err(&pdev->dev, "Unable to map RPU I/O memory\n");
-			ret = PTR_ERR(local->rpu_base);
-			goto dma_mask_fault;
-		}
+	res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
+		"apb_base");
+	local->crl_apb_base = devm_ioremap(&pdev->dev, res->start, resource_size(res));
+	if (IS_ERR(local->crl_apb_base)) {
+		dev_err(&pdev->dev, "Unable to map CRL_APB I/O memory\n");
+		ret = PTR_ERR(local->crl_apb_base);
+		goto dma_mask_fault;
+	}
 
-		res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
-			"apb_base");
-		local->crl_apb_base = devm_ioremap(&pdev->dev, res->start, resource_size(res));
-		if (IS_ERR(local->crl_apb_base)) {
-			dev_err(&pdev->dev, "Unable to map CRL_APB I/O memory\n");
-			ret = PTR_ERR(local->crl_apb_base);
-			goto dma_mask_fault;
-		}
-
-		res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "ipi");
-		local->ipi_base = devm_ioremap(&pdev->dev, res->start, resource_size(res));
-		if (IS_ERR(local->ipi_base)) {
-			pr_err("%s: Unable to map IPI\n", __func__);
-			ret = PTR_ERR(local->ipi_base);
-			goto dma_mask_fault;
-		}
+	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "ipi");
+	local->ipi_base = devm_ioremap(&pdev->dev, res->start, resource_size(res));
+	if (IS_ERR(local->ipi_base)) {
+		pr_err("%s: Unable to map IPI\n", __func__);
+		ret = PTR_ERR(local->ipi_base);
+		goto dma_mask_fault;
 	}
 
 	/* IPI IRQ */
