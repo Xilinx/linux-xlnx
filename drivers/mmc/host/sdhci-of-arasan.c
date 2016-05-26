@@ -31,6 +31,11 @@
 #define SDHCI_ARASAN_VENDOR_REGISTER	0x78
 
 #define VENDOR_ENHANCED_STROBE		BIT(0)
+#define CLK_CTRL_TIMEOUT_SHIFT		16
+#define CLK_CTRL_TIMEOUT_MASK		(0xf << CLK_CTRL_TIMEOUT_SHIFT)
+#define CLK_CTRL_TIMEOUT_MIN_EXP	13
+#define SD_CLK_25_MHZ				25000000
+#define SD_CLK_19_MHZ				19000000
 
 #define PHY_CLK_TOO_SLOW_HZ		400000
 
@@ -195,6 +200,12 @@ static void sdhci_arasan_set_clock(struct sdhci_host *host, unsigned int clock)
 			 */
 			ctrl_phy = true;
 		}
+	}
+
+	if ((host->quirks2 & SDHCI_QUIRK2_CLOCK_STANDARD_25_BROKEN) &&
+		(host->version >= SDHCI_SPEC_300)) {
+		if (clock == SD_CLK_25_MHZ)
+			clock = SD_CLK_19_MHZ;
 	}
 
 	if (ctrl_phy && sdhci_arasan->is_phy_on) {
@@ -640,6 +651,10 @@ static int sdhci_arasan_probe(struct platform_device *pdev)
 	if (ret) {
 		dev_err(&pdev->dev, "parsing dt failed (%d)\n", ret);
 		goto unreg_clk;
+	}
+
+	if (of_device_is_compatible(pdev->dev.of_node, "arasan,sdhci-8.9a")) {
+		host->quirks2 |= SDHCI_QUIRK2_CLOCK_STANDARD_25_BROKEN;
 	}
 
 	sdhci_arasan->phy = ERR_PTR(-ENODEV);
