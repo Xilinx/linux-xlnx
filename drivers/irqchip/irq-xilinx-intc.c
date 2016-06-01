@@ -123,7 +123,7 @@ static struct irq_chip intc_dev = {
 
 static unsigned int get_irq(struct intc *local_intc)
 {
-	unsigned int hwirq, irq = -1;
+	int hwirq, irq = -1;
 
 	hwirq = local_intc->read_fn(local_intc->baseaddr + IVR);
 	if (hwirq != -1U)
@@ -157,11 +157,12 @@ static const struct irq_domain_ops xintc_irq_domain_ops = {
 	.map = xintc_map,
 };
 
-static void intc_handler(u32 irq, struct irq_desc *desc)
+static void intc_handler(struct irq_desc *desc)
 {
-	struct irq_chip *chip = irq_get_chip(irq);
+	struct irq_chip *chip = irq_desc_get_chip(desc);
 	struct intc *local_intc =
 		irq_data_get_irq_handler_data(&desc->irq_data);
+	int irq;
 
 	pr_debug("intc_handler: input irq = %d\n", desc->irq_data.irq);
 	chained_irq_enter(chip, desc);
