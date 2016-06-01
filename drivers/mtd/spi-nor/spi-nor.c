@@ -270,6 +270,8 @@ static int read_ear(struct spi_nor *nor, struct flash_info *info)
 	/* This is actually Micron */
 	else if (JEDEC_MFR(info) == CFI_MFR_ST)
 		code = SPINOR_OP_RDEAR;
+	else if (JEDEC_MFR(info) == SNOR_MFR_WINBOND)
+		code = SPINOR_OP_RDEAR;
 	else
 		return -EINVAL;
 
@@ -379,6 +381,11 @@ static int write_ear(struct spi_nor *nor, u32 addr)
 		write_enable(nor);
 		code = SPINOR_OP_WREAR;
 	}
+	if (nor->jedec_id == SNOR_MFR_WINBOND) {
+		write_enable(nor);
+		code = SPINOR_OP_WREAR;
+	}
+
 	nor->cmd_buf[0] = ear;
 
 	ret = nor->write_reg(nor, code, nor->cmd_buf, 1);
