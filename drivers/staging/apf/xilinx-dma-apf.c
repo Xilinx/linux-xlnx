@@ -822,6 +822,10 @@ int xdma_submit(struct xdma_chan *chan,
 	dmahead->userflag = user_flags;
 	dmadir = chan->direction;
 	if (dp) {
+		struct scatterlist *sg;
+		int i;
+		unsigned int remaining_size = size;
+
 		if (!dp->is_mapped) {
 			dp->dbuf_attach = dma_buf_attach(dp->dbuf, chan->dev);
 			dp->dbuf_sg_table = dma_buf_map_attachment(
@@ -839,6 +843,15 @@ int xdma_submit(struct xdma_chan *chan,
 		sglist = dp->dbuf_sg_table->sgl;
 		sgcnt = dp->dbuf_sg_table->nents;
 		sgcnt_dma = dp->dbuf_sg_table->nents;
+
+		for_each_sg(sglist, sg, sgcnt, i) {
+			if (sg_dma_len(sg) > remaining_size) {
+				sg_dma_len(sg) = remaining_size;
+				remaining_size = 0;
+			} else {
+				remaining_size -= sg_dma_len(sg);
+			}
+		}
 
 		dmahead->userbuf = (void *)dp->dbuf_sg_table->sgl->dma_address;
 		dmahead->is_dmabuf = 1;
