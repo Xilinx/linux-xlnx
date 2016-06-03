@@ -822,11 +822,13 @@ int xdma_submit(struct xdma_chan *chan,
 	dmahead->userflag = user_flags;
 	dmadir = chan->direction;
 	if (dp) {
-		struct scatterlist *sg;
-		int i;
-		unsigned int remaining_size = size;
 
 		if (!dp->is_mapped) {
+			struct scatterlist *sg;
+			int cpy_size;
+			int i;
+			unsigned int remaining_size = size;
+
 			dp->dbuf_attach = dma_buf_attach(dp->dbuf, chan->dev);
 			dp->dbuf_sg_table = dma_buf_map_attachment(
 				dp->dbuf_attach, chan->direction);
@@ -836,24 +838,35 @@ int xdma_submit(struct xdma_chan *chan,
 					__func__, (int)dp->dbuf_sg_table);
 				return -EINVAL;
 			}
+			cpy_size = dp->dbuf_sg_table->nents *
+				sizeof(struct scatterlist);
+			dp->sg_list = vmalloc(cpy_size);
+			if (!dp->sg_list)
+				return -ENOMEM;
+			dp->sg_list_cnt = 0;
+			memcpy(dp->sg_list, dp->dbuf_sg_table->sgl, cpy_size);
+			for_each_sg(dp->sg_list,
+				    sg,
+				    dp->dbuf_sg_table->nents,
+				    i) {
+				if (remaining_size == 0) {
+					sg_dma_len(sg) = 0;
+				} else if (sg_dma_len(sg) > remaining_size) {
+					sg_dma_len(sg) = remaining_size;
+					dp->sg_list_cnt++;
+				} else {
+					remaining_size -= sg_dma_len(sg);
+					dp->sg_list_cnt++;
+				}
+			}
 			dp->is_mapped = 1;
 		}
 
-		sglist_dma = dp->dbuf_sg_table->sgl;
-		sglist = dp->dbuf_sg_table->sgl;
-		sgcnt = dp->dbuf_sg_table->nents;
-		sgcnt_dma = dp->dbuf_sg_table->nents;
-
-		for_each_sg(sglist, sg, sgcnt, i) {
-			if (sg_dma_len(sg) > remaining_size) {
-				sg_dma_len(sg) = remaining_size;
-				remaining_size = 0;
-			} else {
-				remaining_size -= sg_dma_len(sg);
-			}
-		}
-
-		dmahead->userbuf = (void *)dp->dbuf_sg_table->sgl->dma_address;
+		sglist_dma = dp->sg_list;
+		sglist = dp->sg_list;
+		sgcnt = dp->sg_list_cnt;
+		sgcnt_dma = dp->sg_list_cnt;
+		dmahead->userbuf = (void *)sglist->dma_address;
 		dmahead->is_dmabuf = 1;
 	} else if (user_flags & CF_FLAG_PHYSICALLY_CONTIGUOUS) {
 		/*

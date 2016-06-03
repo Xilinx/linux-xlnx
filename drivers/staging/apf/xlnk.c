@@ -888,6 +888,8 @@ static int xlnk_cleardmabuf_ioctl(struct file *filp, unsigned int code,
 				dma_buf_unmap_attachment(dp->dbuf_attach,
 					dp->dbuf_sg_table, dp->dma_direction);
 				dma_buf_detach(dp->dbuf, dp->dbuf_attach);
+				if (dp->sg_list)
+					vfree(dp->sg_list);
 			}
 			dma_buf_put(dp->dbuf);
 			list_del(&dp->list);
