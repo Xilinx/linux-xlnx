@@ -102,11 +102,17 @@ static int zynqmp_pm_ret_code(u32 ret_status)
 	}
 }
 
+static noinline int do_fw_call_fail(u64 arg0, u64 arg1, u64 arg2,
+				    u32 *ret_payload)
+{
+	return -ENODEV;
+}
+
 /*
  * PM function call wrapper
  * Invoke do_fw_call_smc or do_fw_call_hvc, depending on the configuration
  */
-static int (*do_fw_call)(u64, u64, u64, u32 *ret_payload);
+static int (*do_fw_call)(u64, u64, u64, u32 *ret_payload) = do_fw_call_fail;
 
 /**
  * do_fw_call_smc - Call system-level power management layer (SMC)
@@ -987,6 +993,9 @@ static int zynqmp_pm_probe(struct platform_device *pdev)
 		       __func__,
 		       ZYNQMP_PM_VERSION_MAJOR, ZYNQMP_PM_VERSION_MINOR,
 		       pm_api_version >> 16, pm_api_version & 0xffff);
+
+		do_fw_call = do_fw_call_fail;
+
 		return -EIO;
 	}
 
