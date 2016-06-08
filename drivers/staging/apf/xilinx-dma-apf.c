@@ -370,8 +370,8 @@ static void xdma_start_transfer(struct xdma_chan *chan,
 #if XLNK_SYS_BIT_WIDTH == 32
 		DMA_OUT(&chan->regs->tdr, tail_phys);
 #else
+		DMA_OUT(&chan->regs->tdr_hi, GET_HI(tail_phys));
 		DMA_OUT(&chan->regs->tdr, GET_LOW(tail_phys));
-/*		DMA_OUT(&chan->regs->tdr_hi, GET_HI(tail_phys));*/
 #endif
 		return;
 	}
@@ -379,8 +379,8 @@ static void xdma_start_transfer(struct xdma_chan *chan,
 #if XLNK_SYS_BIT_WIDTH == 32
 	DMA_OUT(&chan->regs->cdr, cur_phys);
 #else
+	DMA_OUT(&chan->regs->cdr_hi, GET_HI(cur_phys));
 	DMA_OUT(&chan->regs->cdr, GET_LOW(cur_phys));
-/*	DMA_OUT(&chan->regs->cdr_hi, GET_HI(cur_phys));*/
 #endif
 
 	dma_start(chan);
@@ -395,8 +395,8 @@ static void xdma_start_transfer(struct xdma_chan *chan,
 #if XLNK_SYS_BIT_WIDTH == 32
 	DMA_OUT(&chan->regs->tdr, tail_phys);
 #else
+	DMA_OUT(&chan->regs->tdr_hi, GET_HI(tail_phys));
 	DMA_OUT(&chan->regs->tdr, GET_LOW(tail_phys));
-/*	DMA_OUT(&chan->regs->tdr_hi, GET_HI(tail_phys));*/
 #endif
 }
 
@@ -629,12 +629,12 @@ static unsigned int sgl_merge(struct scatterlist *sgl, unsigned int sgl_len,
 
 static int mapped_pages_count;
 static struct page **mapped_pages;
-static int pin_user_pages(unsigned long uaddr,
-			   unsigned int ulen,
-			   int write,
-			   struct scatterlist **scatterpp,
-			   unsigned int *cntp,
-			   unsigned int user_flags)
+static int pin_user_pages(xlnk_intptr_type uaddr,
+			  unsigned int ulen,
+			  int write,
+			  struct scatterlist **scatterpp,
+			  unsigned int *cntp,
+			  unsigned int user_flags)
 {
 	int status;
 	struct mm_struct *mm = current->mm;
@@ -795,7 +795,7 @@ static void xdma_release(struct device *dev)
 }
 
 int xdma_submit(struct xdma_chan *chan,
-			void *userbuf,
+			xlnk_intptr_type userbuf,
 			unsigned int size,
 			unsigned int nappwords_i,
 			u32 *appwords_i,
@@ -840,7 +840,7 @@ int xdma_submit(struct xdma_chan *chan,
 			}
 			cpy_size = dp->dbuf_sg_table->nents *
 				sizeof(struct scatterlist);
-			dp->sg_list = vmalloc(cpy_size);
+			dp->sg_list = kmalloc(cpy_size, GFP_KERNEL);
 			if (!dp->sg_list)
 				return -ENOMEM;
 			dp->sg_list_cnt = 0;
@@ -866,7 +866,7 @@ int xdma_submit(struct xdma_chan *chan,
 		sglist = dp->sg_list;
 		sgcnt = dp->sg_list_cnt;
 		sgcnt_dma = dp->sg_list_cnt;
-		dmahead->userbuf = (void *)sglist->dma_address;
+		dmahead->userbuf = (xlnk_intptr_type)sglist->dma_address;
 		dmahead->is_dmabuf = 1;
 	} else if (user_flags & CF_FLAG_PHYSICALLY_CONTIGUOUS) {
 		/*
@@ -880,26 +880,22 @@ int xdma_submit(struct xdma_chan *chan,
 		sglist_dma = sglist;
 		sgcnt_dma = sgcnt;
 		if (user_flags & CF_FLAG_CACHE_FLUSH_INVALIDATE) {
-			void *kaddr = phys_to_virt((phys_addr_t)userbuf);
+			void *kaddr = phys_to_virt(userbuf);
 #if XLNK_SYS_BIT_WIDTH == 32
 			__cpuc_flush_dcache_area(kaddr, size);
-			outer_clean_range((phys_addr_t)userbuf,
-					  (u32)userbuf + size);
+			outer_clean_range(userbuf,
+					  userbuf + size);
 			if (dmadir == DMA_FROM_DEVICE) {
-				outer_inv_range((phys_addr_t)userbuf,
-						(u32)userbuf + size);
+				outer_inv_range(userbuf,
+						userbuf + size);
 			}
 #else
 			__dma_map_area(kaddr, size, dmadir);
 #endif
 		}
 	} else {
-#if XLNK_SYS_BIT_WIDTH == 64
-		pr_err("ERROR: MPSoC SG-DMA does not support malloc\n");
-		return -EFAULT;
-#else
 		/* pin user pages is monitored separately */
-		status = pin_user_pages((unsigned long)userbuf, size,
+		status = pin_user_pages(userbuf, size,
 					dmadir != DMA_TO_DEVICE,
 					&sglist, &sgcnt, user_flags);
 		if (status < 0) {
@@ -925,7 +921,6 @@ int xdma_submit(struct xdma_chan *chan,
 			unpin_user_pages(sglist, sgcnt);
 			return -ENOMEM;
 		}
-#endif
 	}
 	dmahead->sglist = sglist;
 	dmahead->sgcnt = sgcnt;

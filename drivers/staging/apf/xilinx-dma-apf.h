@@ -186,7 +186,7 @@ struct xdma_device {
 };
 
 struct xdma_head {
-	void *userbuf;
+	xlnk_intptr_type userbuf;
 	unsigned int size;
 	unsigned int dmaflag;
 	enum dma_data_direction dmadir;
@@ -205,7 +205,7 @@ struct xdma_chan *xdma_request_channel(char *name);
 void xdma_release_channel(struct xdma_chan *chan);
 void xdma_release_all_channels(void);
 int xdma_submit(struct xdma_chan *chan,
-		void *userbuf,
+		xlnk_intptr_type userbuf,
 		unsigned int size,
 		unsigned int nappwords_i,
 		u32 *appwords_i,
