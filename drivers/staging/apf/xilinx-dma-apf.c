@@ -953,14 +953,25 @@ int xdma_submit(struct xdma_chan *chan,
 }
 EXPORT_SYMBOL(xdma_submit);
 
-int xdma_wait(struct xdma_head *dmahead, unsigned int user_flags)
+int xdma_wait(struct xdma_head *dmahead,
+	      unsigned int user_flags,
+	      unsigned int *operating_flags)
 {
 	struct xdma_chan *chan = dmahead->chan;
 	DEFINE_DMA_ATTRS(attrs);
-	if (chan->poll_mode)
+	if (chan->poll_mode) {
 		xilinx_chan_desc_cleanup(chan);
-	else
-		wait_for_completion(&dmahead->cmp);
+		*operating_flags |= XDMA_FLAGS_WAIT_COMPLETE;
+	} else {
+		if (*operating_flags & XDMA_FLAGS_TRYWAIT) {
+			if (!wait_for_completion_timeout(&dmahead->cmp, 1))
+				return 0;
+			*operating_flags |= XDMA_FLAGS_WAIT_COMPLETE;
+		} else {
+			wait_for_completion(&dmahead->cmp);
+			*operating_flags |= XDMA_FLAGS_WAIT_COMPLETE;
+		}
+	}
 
 	if (dmahead->is_dmabuf) {
 		dmahead->is_dmabuf = 0;
@@ -968,9 +979,11 @@ int xdma_wait(struct xdma_head *dmahead, unsigned int user_flags)
 		if (!(user_flags & CF_FLAG_CACHE_FLUSH_INVALIDATE))
 			dma_set_attr(DMA_ATTR_SKIP_CPU_SYNC, &attrs);
 
-		get_dma_ops(chan->dev)->unmap_sg(chan->dev, dmahead->sglist,
+		get_dma_ops(chan->dev)->unmap_sg(chan->dev,
+						 dmahead->sglist,
 						 dmahead->sgcnt,
-						 dmahead->dmadir, &attrs);
+						 dmahead->dmadir,
+						 &attrs);
 
 		unpin_user_pages(dmahead->sglist, dmahead->sgcnt);
 	}

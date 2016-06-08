@@ -1214,18 +1214,21 @@ static int xlnk_dmawait_ioctl(struct file *filp, unsigned int code,
 		struct xdma_head *dmahead =
 			(struct xdma_head *)temp_args.dmawait.dmahandle;
 
-		status = xdma_wait(dmahead, dmahead->userflag);
-		if (temp_args.dmawait.nappwords) {
-			memcpy(temp_args.dmawait.appwords,
-			       dmahead->appwords_o,
-			       dmahead->nappwords_o * sizeof(u32));
-
-			if (copy_to_user((void __user *)args,
-					 &temp_args,
-					 sizeof(union xlnk_args)))
-				return -EFAULT;
+		status = xdma_wait(dmahead,
+				   dmahead->userflag,
+				   &temp_args.dmawait.flags);
+		if (temp_args.dmawait.flags & XDMA_FLAGS_WAIT_COMPLETE) {
+			if (temp_args.dmawait.nappwords) {
+				memcpy(temp_args.dmawait.appwords,
+				       dmahead->appwords_o,
+				       dmahead->nappwords_o * sizeof(u32));
+			}
+			kfree(dmahead);
 		}
-		kfree(dmahead);
+		if (copy_to_user((void __user *)args,
+				 &temp_args,
+				 sizeof(union xlnk_args)))
+			return -EFAULT;
 	}
 #endif
 

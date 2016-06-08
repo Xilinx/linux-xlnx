@@ -97,6 +97,7 @@ union xlnk_args {
 		xlnk_uint_type nappwords;
 		xlnk_uint_type appwords[XLNK_MAX_APPWORDS];
 		/* appwords array we only accept 5 max */
+		xlnk_uint_type flags;
 	} dmawait;
 	struct __attribute__ ((__packed__)) {
 		xlnk_intptr_type dmachan;
