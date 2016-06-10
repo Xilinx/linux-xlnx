@@ -96,6 +96,9 @@
 #define XDMA_MAX_APPWORDS		5
 #define XDMA_BD_CLEANUP_THRESHOLD	((XDMA_MAX_BD_CNT * 8) / 10)
 
+#define XDMA_FLAGS_WAIT_COMPLETE 1
+#define XDMA_FLAGS_TRYWAIT 2
+
 /* Platform data definition until ARM supports device tree */
 struct xdma_channel_config {
 	char *type;
@@ -186,7 +189,7 @@ struct xdma_device {
 };
 
 struct xdma_head {
-	void *userbuf;
+	xlnk_intptr_type userbuf;
 	unsigned int size;
 	unsigned int dmaflag;
 	enum dma_data_direction dmadir;
@@ -205,7 +208,7 @@ struct xdma_chan *xdma_request_channel(char *name);
 void xdma_release_channel(struct xdma_chan *chan);
 void xdma_release_all_channels(void);
 int xdma_submit(struct xdma_chan *chan,
-		void *userbuf,
+		xlnk_intptr_type userbuf,
 		unsigned int size,
 		unsigned int nappwords_i,
 		u32 *appwords_i,
@@ -213,7 +216,9 @@ int xdma_submit(struct xdma_chan *chan,
 		unsigned int user_flags,
 		struct xdma_head **dmaheadpp,
 		struct xlnk_dmabuf_reg *dp);
-int xdma_wait(struct xdma_head *dmahead, unsigned int user_flags);
+int xdma_wait(struct xdma_head *dmahead,
+	      unsigned int user_flags,
+	      unsigned int *operating_flags);
 int xdma_getconfig(struct xdma_chan *chan,
 		   unsigned char *irq_thresh,
 		   unsigned char *irq_delay);

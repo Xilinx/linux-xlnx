@@ -124,6 +124,45 @@ static void xgpio_set(struct gpio_chip *gc, unsigned int gpio, int val)
 }
 
 /**
+ * xgpio_set_multiple - Write the specified signals of the GPIO device.
+ * @gc:     Pointer to gpio_chip device structure.
+ * @mask:   Mask of the GPIOS to modify.
+ * @bits:   Value to be wrote on each GPIO
+ *
+ * This function writes the specified values in to the specified signals of the
+ * GPIO devices.
+ */
+static void xgpio_set_multiple(struct gpio_chip *gc, unsigned long *mask,
+			       unsigned long *bits)
+{
+	unsigned long flags;
+	struct of_mm_gpio_chip *mm_gc = to_of_mm_gpio_chip(gc);
+	struct xgpio_instance *chip =
+	    container_of(mm_gc, struct xgpio_instance, mmchip);
+	void __iomem *regs = mm_gc->regs;
+	int i;
+
+	spin_lock_irqsave(&chip->gpio_lock, flags);
+
+	/* Write to GPIO signals */
+	for (i = 0; i < gc->ngpio; i++) {
+		if (*mask == 0)
+			break;
+		if (__test_and_clear_bit(i, mask)) {
+			if (test_bit(i, bits))
+				chip->gpio_state |= BIT(i);
+			else
+				chip->gpio_state &= ~BIT(i);
+		}
+	}
+
+	xgpio_writereg(regs + chip->offset + XGPIO_DATA_OFFSET,
+		       chip->gpio_state);
+
+	spin_unlock_irqrestore(&chip->gpio_lock, flags);
+}
+
+/**
  * xgpio_dir_in - Set the direction of the specified GPIO signal as input.
  * @gc:     Pointer to gpio_chip device structure.
  * @gpio:   GPIO signal number.
@@ -473,6 +512,7 @@ static int xgpio_of_probe(struct platform_device *pdev)
 	chip->mmchip.gc.direction_output = xgpio_dir_out;
 	chip->mmchip.gc.get = xgpio_get;
 	chip->mmchip.gc.set = xgpio_set;
+	chip->mmchip.gc.set_multiple = xgpio_set_multiple;
 
 	chip->mmchip.save_regs = xgpio_save_regs;
 
@@ -527,6 +567,7 @@ static int xgpio_of_probe(struct platform_device *pdev)
 		chip->mmchip.gc.direction_output = xgpio_dir_out;
 		chip->mmchip.gc.get = xgpio_get;
 		chip->mmchip.gc.set = xgpio_set;
+		chip->mmchip.gc.set_multiple = xgpio_set_multiple;
 
 		chip->mmchip.save_regs = xgpio_save_regs;
 

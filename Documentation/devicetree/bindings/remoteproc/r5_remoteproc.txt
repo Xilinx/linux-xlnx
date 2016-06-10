@@ -25,8 +25,6 @@ Optional properties:
 --------------------
  - core_conf : R5 core configuration (valid string - split0 or split1 or
                lock-step), default is lock-step.
- - method : RPU and IPI control method - direct, smc, hvc, default is default.
-            smc, hvc unimplemented now.
 
 Example:
 --------

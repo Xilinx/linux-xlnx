@@ -414,6 +414,9 @@ struct sdhci_host {
 #define SDHCI_QUIRK2_CLOCK_DIV_ZERO_BROKEN		(1<<15)
 /* Tuning Broken for HS200, SDR50 and SDR104 */
 #define SDHCI_QUIRK2_BROKEN_TUNING			(1<<16)
+/* Broken Clock between 19MHz-25MHz */
+#define SDHCI_QUIRK2_CLOCK_STANDARD_25_BROKEN		(1<<17)
+
 /*
  * When internal clock is disabled, a delay is needed before modifying the
  * SD clock frequency or enabling back the internal clock.

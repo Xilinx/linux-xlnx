@@ -15,6 +15,8 @@
 
 #include "zynqmp.dtsi"
 #include "zynqmp-clk.dtsi"
+#include <dt-bindings/gpio/gpio.h>
+#include <dt-bindings/phy/phy.h>
 
 / {
 	model = "ZynqMP ZCU102 RevA";
@@ -41,6 +43,20 @@
 	memory {
 		device_type = "memory";
 		reg = <0x0 0x0 0x0 0x80000000>, <0x8 0x00000000 0x0 0x80000000>;
+	};
+
+	gpio-keys {
+		compatible = "gpio-keys";
+		#address-cells = <1>;
+		#size-cells = <0>;
+		autorepeat;
+		sw19 {
+			label = "sw19";
+			gpios = <&gpio 22 GPIO_ACTIVE_HIGH>;
+			linux,code = <108>; /* down */
+			gpio-key,wakeup;
+			autorepeat;
+		};
 	};
 
 	leds {
@@ -582,12 +598,18 @@ drivers/hwmon/pmbus/Makefile:11:obj-$(CONFIG_SENSORS_MAX20751)  += max20751.o
 	ceva,p1-comwake-params = /bits/ 8 <0x06 0x14 0x08 0x0E>;
 	ceva,p1-burst-params = /bits/ 8 <0x13 0x08 0x4A 0x06>;
 	ceva,p1-retry-params = /bits/ 16 <0x96A4 0x3FFC>;
+	phy-names = "sata-phy";
+	phys = <&lane3 PHY_TYPE_SATA 1 1 125000000>;
 };
 
 /* SD1 with level shifter */
 &sdhci1 {
 	status = "okay";
 	no-1-8-v;	/* for 1.0 silicon */
+};
+
+&serdes {
+	status = "okay";
 };
 
 &uart0 {
@@ -606,6 +628,8 @@ drivers/hwmon/pmbus/Makefile:11:obj-$(CONFIG_SENSORS_MAX20751)  += max20751.o
 &dwc3_0 {
 	status = "okay";
 	dr_mode = "host";
+	phy-names = "usb3-phy";
+	phys = <&lane2 PHY_TYPE_USB3 0 2 26000000>;
 };
 
 &xilinx_drm {
@@ -615,6 +639,8 @@ drivers/hwmon/pmbus/Makefile:11:obj-$(CONFIG_SENSORS_MAX20751)  += max20751.o
 
 &xlnx_dp {
 	status = "okay";
+	phy-names = "dp-phy0", "dp-phy1";
+	phys = <&lane1 PHY_TYPE_DP 0 3 27000000>, <&lane0 PHY_TYPE_DP 1 3 27000000>;
 };
 
 &xlnx_dp_sub {

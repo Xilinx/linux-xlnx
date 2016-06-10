@@ -653,6 +653,13 @@
 			power-domains = <&pd_i2c1>;
 		};
 
+		ocm: memory-controller@ff960000 {
+			compatible = "xlnx,zynqmp-ocmc-1.0";
+			reg = <0x0 0xff960000 0x1000>;
+			interrupt-parent = <&gic>;
+			interrupts = <0 10 4>;
+		};
+
 		pcie: pcie@fd0e0000 {
 			compatible = "xlnx,nwl-pcie-2.11";
 			status = "disabled";
@@ -706,6 +713,27 @@
 			interrupt-parent = <&gic>;
 			interrupts = <0 26 4>, <0 27 4>;
 			interrupt-names = "alarm", "sec";
+		};
+
+		serdes: zynqmp_phy@fd400000 {
+			compatible = "xlnx,zynqmp-psgtr";
+			status = "disabled";
+			reg = <0x0 0xfd400000 0x40000>, <0x0 0xfd3d0000 0x1000>,
+				<0x0 0xfd1a0000 0x1000>, <0x0 0xff5e0000 0x1000>;
+			reg-names = "serdes", "siou", "fpd", "lpd";
+			xlnx,tx_termination_fix;
+			lane0: lane@0 {
+				#phy-cells = <4>;
+			};
+			lane1: lane@1 {
+				#phy-cells = <4>;
+			};
+			lane2: lane@2 {
+				#phy-cells = <4>;
+			};
+			lane3: lane@3 {
+				#phy-cells = <4>;
+			};
 		};
 
 		sata: ahci@fd0c0000 {
@@ -943,8 +971,7 @@
 		xlnx_dp: dp@fd4a0000 {
 			compatible = "xlnx,v-dp";
 			status = "disabled";
-			reg = <0x0 0xfd4a0000 0x1000>,
-			      <0x0 0xfd400000 0x20000>;
+			reg = <0x0 0xfd4a0000 0x1000>;
 			interrupts = <0 119 4>;
 			interrupt-parent = <&gic>;
 			clock-names = "aclk", "aud_clk";
