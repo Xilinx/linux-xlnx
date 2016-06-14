@@ -133,6 +133,17 @@ config RESET_ZYNQ
 	help
 	  This enables the reset controller driver for Xilinx Zynq SoCs.
 
+config ZYNQMP_RESET_CONTROLLER
+	bool "Xilinx ZYNQMP Reset Controller Support"
+	depends on ARCH_ZYNQMP
+	help
+	  ZYNQMP Reset Controller support.
+
+	  This framework is designed to abstract reset handling of devices
+	  via SoC-internal reset controller modules.
+
+	  If sure, say yes.If unsure, say no.
+
 source "drivers/reset/sti/Kconfig"
 source "drivers/reset/hisilicon/Kconfig"
 source "drivers/reset/tegra/Kconfig"
