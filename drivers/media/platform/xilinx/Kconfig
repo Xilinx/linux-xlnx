@@ -67,4 +67,10 @@ config VIDEO_XILINX_VTC
 	help
 	   Driver for the Xilinx Video Timing Controller
 
+config VIDEO_XILINX_CSI2RXSS
+	tristate "Xilinx CSI2 Rx Subsystem"
+	depends on VIDEO_XILINX
+	---help---
+	Driver for Xilinx MIPI CSI2 Rx Subsystem
+
 endif #VIDEO_XILINX
