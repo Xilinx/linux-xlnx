@@ -457,6 +457,7 @@ header-y += wireless.h
 header-y += x25.h
 header-y += xattr.h
 header-y += xfrm.h
+header-y += xilinx-csi2rxss.h
 header-y += xilinx-hls.h
 header-y += xilinx-v4l2-controls.h
 header-y += zorro.h
