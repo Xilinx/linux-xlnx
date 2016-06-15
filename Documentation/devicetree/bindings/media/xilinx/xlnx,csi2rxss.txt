@@ -1,0 +1,108 @@
+
+Xilinx MIPI CSI2 Receiver Subsystem (CSI2RxSS)
+----------------------------------------------
+
+The Xilinx MIPI CSI2 Receiver Subsystem is used to capture MIPI CSI2 traffic
+from compliant camera sensors and send the output as AXI4 Stream video data
+for image processing. The subsystem consists of a MIPI DPHY in slave mode
+which captures the data packets. This is passed along the MIPI CSI2 IP which
+extracts the packet data. This data is taken in by the Video Format Bridge
+(VFB) if selected and converted into AXI4 Stream video data at selected
+pixels per clock as per AXI4-Stream Video IP and System Design UG934.
+
+For more details, please refer to PG232 MIPI CSI-2 Receiver Subsystem v2.0
+
+Required properties:
+
+- compatible: Must contain "xlnx,mipi-csi2-rx-subsystem-2.0"
+
+- reg: Physical base address and length of the registers set for the device.
+
+- xlnx,max-lanes: Maximum active lanes in the design.
+
+- xlnx,en-active-lanes: Enable Active lanes configuration in Protocol
+  Configuration Register.
+
+- xlnx,dphy-present: This is equivalent to whether DPHY register interface is
+  enabled or not.
+
+- xlnx,iic-present: This shows whether subsystem's IIC is present or not. This
+  affects the base address of the DPHY.
+
+- xlnx,vc: Virtual Channel, specifies virtual channel number to be filtered.
+  If this is 4 then all virtual channels are allowed.
+
+- xlnx,csi-pxl-format: This denotes the CSI Data type selected in hw design.
+  Packets other than this data type (except for RAW8 and User defined data
+  types) will be filtered out. Possible values are RAW6, RAW7, RAW8, RAW10,
+  RAW12, RAW14, RGB444, RGB555, RGB565, RGB666, RGB888 and YUV4228bit.
+
+- xlnx,vfb: Video Format Bridge, Denotes if Video Format Bridge is selected
+  so that output is as per AXI stream documented in UG934.
+
+- xlnx,ppc: Pixels per clock, Number of pixels to be transferred per pixel
+  clock. This is valid only if xlnx,vfb property is set to 1.
+
+- xlnx,axis-tdata-width: AXI Stream width, This denotes the AXI Stream width.
+  It depends on Data type chosen, Video Format Bridge enabled/disabled and
+  pixels per clock. If VFB is disabled then its value is either 0x20 (32 bit)
+  or 0x40(64 bit) width.
+
+- xlnx,video-format, xlnx,video-width: Video format and width, as defined in
+  video.txt.
+
+- port: Video port, using the DT bindings defined in ../video-interfaces.txt.
+  The CSI 2 Rx Subsystem has a two ports, one input port for connecting to
+  camera sensor and other is output port.
+
+- data-lanes: The number of data lanes through which CSI2 Rx Subsystem is
+  connected to the camera sensor as per video-interfaces.txt
+
+Example:
+
+	csiss_1: csiss@a0020000 {
+		compatible = "xlnx,mipi-csi2-rx-subsystem-2.0";
+		reg = <0x0 0xa0020000 0x0 0x20000>;
+		interrupt-parent = <&gic>;
+		interrupts = <0 95 4>;
+
+		reset-gpios = <&gpio 81 1>;
+		xlnx,max-lanes = <0x4>;
+		xlnx,en-active-lanes;
+		xlnx,dphy-present;
+		xlnx,iic-present;
+		xlnx,vc = <0x4>;
+		xlnx,csi-pxl-format = "RAW8";
+		xlnx,vfb;
+		xlnx,ppc = <0x4>;
+		xlnx,axis-tdata-width = <0x20>;
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			port@0 {
+				reg = <0>;
+
+				xlnx,video-format = <XVIP_VF_YUV_422>;
+				xlnx,video-width = <8>;
+				csiss_out: endpoint {
+					remote-endpoint = <&vcap_csiss_in>;
+				};
+			};
+			port@1 {
+				reg = <1>;
+
+				xlnx,video-format = <XVIP_VF_YUV_422>;
+				xlnx,video-width = <8>;
+
+				csiss_in: endpoint {
+					data-lanes = <1 2 3 4>;
+					/* MIPI CSI2 Camera handle */
+					remote-endpoint = <&vs2016_out>;
+				};
+
+			};
+
+		};
+	};
