@@ -1,0 +1,15 @@
+* ARM Cortex A57 and A53 L1/L2 cache error reporting
+
+CPU Memory Error Syndrome and L2 Memory Error Syndrome registers can be used
+for checking L1 and L2 memory errors.
+
+The following section describes the Cortex A57/A53 EDAC DT node binding.
+
+Required properties:
+- compatible: Should be "arm,cortex-a57-edac" or "arm,cortex-a53-edac"
+
+Example:
+	edac {
+		compatible = "arm,cortex-a57-edac";
+	};
+
