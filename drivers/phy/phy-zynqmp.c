@@ -268,12 +268,12 @@ int xpsgtr_override_deemph(struct phy *phy, u8 plvl, u8 vlvl)
 {
 	struct xpsgtr_phy *gtr_phy = phy_get_drvdata(phy);
 	struct xpsgtr_dev *gtr_dev = gtr_phy->data;
-	static u8 vs[4][4] = { { 0x2a, 0x27, 0x24, 0x20 },
-			       { 0x27, 0x23, 0x20, 0xff },
-			       { 0x24, 0x20, 0xff, 0xff },
+	static u8 pe[4][4] = { { 0x2, 0x2, 0x2, 0x2 },
+			       { 0x1, 0x1, 0x1, 0xff },
+			       { 0x0, 0x0, 0xff, 0xff },
 			       { 0xff, 0xff, 0xff, 0xff } };
 
-	writel(vs[plvl][vlvl],
+	writel(pe[plvl][vlvl],
 	       gtr_dev->serdes + gtr_phy->lane * TX_ANA_TM_18_OFFSET +
 	       L0_TX_ANA_TM_18);
 
@@ -285,12 +285,12 @@ int xpsgtr_margining_factor(struct phy *phy, u8 plvl, u8 vlvl)
 {
 	struct xpsgtr_phy *gtr_phy = phy_get_drvdata(phy);
 	struct xpsgtr_dev *gtr_dev = gtr_phy->data;
-	static u8 pe[4][4] = { { 0x2, 0x2, 0x2, 0x2 },
-			       { 0x1, 0x1, 0x1, 0xff },
-			       { 0x0, 0x0, 0xff, 0xff },
+	static u8 vs[4][4] = { { 0x2a, 0x27, 0x24, 0x20 },
+			       { 0x27, 0x23, 0x20, 0xff },
+			       { 0x24, 0x20, 0xff, 0xff },
 			       { 0xff, 0xff, 0xff, 0xff } };
 
-	writel(pe[plvl][vlvl],
+	writel(vs[plvl][vlvl],
 	       gtr_dev->serdes + gtr_phy->lane * TXPMD_TM_48_OFFSET +
 	       L0_TXPMD_TM_48);
 
