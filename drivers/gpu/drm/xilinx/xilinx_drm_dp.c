@@ -205,6 +205,8 @@
 #define XILINX_DP_TX_PHY_POSTCURSOR_LANE_1		0x250
 #define XILINX_DP_TX_PHY_POSTCURSOR_LANE_2		0x254
 #define XILINX_DP_TX_PHY_POSTCURSOR_LANE_3		0x258
+#define XILINX_DP_SUB_TX_PHY_PRECURSOR_LANE_0		0x24c
+#define XILINX_DP_SUB_TX_PHY_PRECURSOR_LANE_1		0x250
 #define XILINX_DP_TX_PHY_STATUS				0x280
 #define XILINX_DP_TX_PHY_STATUS_PLL_LOCKED_SHIFT	4
 #define XILINX_DP_TX_PHY_STATUS_FPGA_PLL_LOCKED		(1 << 6)
@@ -515,9 +517,11 @@ static int xilinx_drm_dp_update_vs_emph(struct xilinx_drm_dp *dp)
 			  DP_TRAIN_PRE_EMPHASIS_SHIFT;
 
 		if (dp->phy[i]) {
+			u32 reg = XILINX_DP_SUB_TX_PHY_PRECURSOR_LANE_0 + i * 4;
+
 			xpsgtr_margining_factor(dp->phy[i], p_level, v_level);
 			xpsgtr_override_deemph(dp->phy[i], p_level, v_level);
-
+			xilinx_drm_writel(dp->iomem, reg, 0x2);
 		} else {
 			u32 reg;
 
