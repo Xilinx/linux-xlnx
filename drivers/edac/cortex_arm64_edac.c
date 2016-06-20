@@ -54,6 +54,13 @@
 
 #define EDAC_MOD_STR			DRV_NAME
 
+/* Error injectin macros*/
+#define L1_DCACHE_ERRINJ_ENABLE		(1 << 6)
+#define L1_DCACHE_ERRINJ_DISABLE	(~(1 << 6))
+#define L2_DCACHE_ERRINJ_ENABLE		(1 << 29)
+#define L2_DCACHE_ERRINJ_DISABLE	(~(1 << 29))
+#define L2_ECC_PROTECTION		(1 << 22)
+
 static int poll_msec = 100;
 
 struct cortex_arm64_edac {
@@ -84,6 +91,52 @@ static inline u64 read_l2merrsr_el1(void)
 static inline void write_l2merrsr_el1(u64 val)
 {
 	asm volatile("msr s3_1_c15_c2_3, %0" :: "r" (val));
+}
+
+static inline void cortexa53_edac_busy_on_inst(void)
+{
+	asm volatile("isb sy");
+}
+
+static inline void cortexa53_edac_busy_on_data(void)
+{
+	asm volatile("dsb sy");
+}
+
+static inline void write_l2actrl_el1(u64 val)
+{
+	asm volatile("msr s3_1_c15_c0_0, %0" :: "r" (val));
+	cortexa53_edac_busy_on_inst();
+}
+
+static inline u64 read_l2actrl_el1(void)
+{
+	u64 val;
+
+	asm volatile("mrs %0, s3_1_c15_c0_0" : "=r" (val));
+	return val;
+}
+
+static inline u64 read_l2ctlr_el1(void)
+{
+	u64 rval;
+
+	asm volatile("mrs %0,  S3_1_C11_C0_2" : "=r" (rval));
+	return rval;
+
+}
+
+static inline u64 read_l1actrl_el1(void)
+{
+	u64 rval;
+
+	asm volatile("mrs %0,  S3_1_C15_C2_0" : "=r" (rval));
+	return rval;
+}
+
+static inline void write_l1actrl_el1(u64 val)
+{
+	asm volatile("msr S3_1_C15_C2_0, %0" :: "r" (val));
 }
 
 static void parse_cpumerrsr(void *arg)
@@ -267,6 +320,85 @@ static void cortex_arm64_edac_check(struct edac_device_ctl_info *edac_ctl)
 	put_online_cpus();
 }
 
+static ssize_t cortexa53_edac_inject_L2_show(struct edac_device_ctl_info
+							*dci, char *data)
+{
+	return sprintf(data, "L2ACTLR_EL1: [0x%llx]\n\r", read_l2actrl_el1());
+}
+
+static ssize_t cortexa53_edac_inject_L2_store(
+		struct edac_device_ctl_info *dci, const char *data,
+		size_t count)
+{
+	u64 l2actrl, l2ecc;
+
+	if (!data)
+		return -EFAULT;
+
+	l2ecc = read_l2ctlr_el1();
+	if ((l2ecc & L2_ECC_PROTECTION)) {
+		l2actrl = read_l2actrl_el1();
+		l2actrl = l2actrl | L2_DCACHE_ERRINJ_ENABLE;
+		write_l2actrl_el1(l2actrl);
+		cortexa53_edac_busy_on_inst();
+	} else {
+		edac_printk(KERN_CRIT, EDAC_MOD_STR, "L2 ECC not enabled\n");
+	}
+
+	return count;
+}
+
+static ssize_t cortexa53_edac_inject_L1_show(struct edac_device_ctl_info
+							*dci, char *data)
+{
+	return sprintf(data, "L1CTLR_EL1: [0x%llx]\n\r", read_l1actrl_el1());
+}
+
+static ssize_t cortexa53_edac_inject_L1_store(
+		struct edac_device_ctl_info *dci, const char *data,
+		size_t count)
+{
+	u64 l1actrl;
+
+	if (!data)
+		return -EFAULT;
+
+	l1actrl = read_l1actrl_el1();
+	l1actrl |= L1_DCACHE_ERRINJ_ENABLE;
+	write_l1actrl_el1(l1actrl);
+	cortexa53_edac_busy_on_inst();
+
+	return count;
+}
+
+static struct edac_dev_sysfs_attribute cortexa53_edac_sysfs_attributes[] = {
+	{
+		.attr = {
+			.name = "inject_L2_Cache_Error",
+			.mode = (S_IRUGO | S_IWUSR)
+		},
+		.show = cortexa53_edac_inject_L2_show,
+		.store = cortexa53_edac_inject_L2_store},
+	{
+		.attr = {
+			.name = "inject_L1_Cache_Error",
+			.mode = (S_IRUGO | S_IWUSR)
+		},
+		.show = cortexa53_edac_inject_L1_show,
+		.store = cortexa53_edac_inject_L1_store},
+
+	/* End of list */
+	{
+		.attr = {.name = NULL}
+	}
+};
+
+static void cortexa53_set_edac_sysfs_attributes(struct edac_device_ctl_info
+						*edac_dev)
+{
+	edac_dev->sysfs_attributes = cortexa53_edac_sysfs_attributes;
+}
+
 static int cortex_arm64_edac_probe(struct platform_device *pdev)
 {
 	int rc;
@@ -293,6 +425,8 @@ static int cortex_arm64_edac_probe(struct platform_device *pdev)
 	drv->edac_ctl->dev_name = dev_name(dev);
 	drv->edac_ctl->ctl_name = "cache_err";
 	platform_set_drvdata(pdev, drv);
+
+	cortexa53_set_edac_sysfs_attributes(drv->edac_ctl);
 
 	rc = edac_device_add_device(drv->edac_ctl);
 	if (rc)
