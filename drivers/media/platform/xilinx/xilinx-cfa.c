@@ -335,7 +335,7 @@ static int xcfa_probe(struct platform_device *pdev)
 	xcfa->pads[XVIP_PAD_SINK].flags = MEDIA_PAD_FL_SINK;
 	xcfa->pads[XVIP_PAD_SOURCE].flags = MEDIA_PAD_FL_SOURCE;
 	subdev->entity.ops = &xcfa_media_ops;
-	ret = media_entity_init(&subdev->entity, 2, xcfa->pads, 0);
+	ret = media_entity_pads_init(&subdev->entity, 2, xcfa->pads);
 	if (ret < 0)
 		goto error;
 

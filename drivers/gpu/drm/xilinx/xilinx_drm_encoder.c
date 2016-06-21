@@ -171,7 +171,7 @@ struct drm_encoder *xilinx_drm_encoder_create(struct drm_device *drm,
 	encoder->slave.base.possible_clones = ~0;
 	ret = drm_encoder_init(drm, &encoder->slave.base,
 			       &xilinx_drm_encoder_funcs,
-			       DRM_MODE_ENCODER_TMDS);
+			       DRM_MODE_ENCODER_TMDS, NULL);
 	if (ret) {
 		DRM_ERROR("failed to initialize drm encoder\n");
 		return ERR_PTR(ret);

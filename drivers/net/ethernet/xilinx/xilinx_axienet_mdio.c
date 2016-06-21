@@ -218,7 +218,6 @@ int axienet_mdio_setup(struct axienet_local *lp, struct device_node *np)
 	bus->read = axienet_mdio_read;
 	bus->write = axienet_mdio_write;
 	bus->parent = lp->dev;
-	bus->irq = lp->mdio_irqs; /* preallocated IRQ table */
 	lp->mii_bus = bus;
 
 	ret = of_mdiobus_register(bus, np1);

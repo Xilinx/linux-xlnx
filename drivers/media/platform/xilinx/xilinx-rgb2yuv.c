@@ -488,7 +488,7 @@ static int xrgb2yuv_probe(struct platform_device *pdev)
 	xrgb2yuv->pads[XVIP_PAD_SINK].flags = MEDIA_PAD_FL_SINK;
 	xrgb2yuv->pads[XVIP_PAD_SOURCE].flags = MEDIA_PAD_FL_SOURCE;
 	subdev->entity.ops = &xrgb2yuv_media_ops;
-	ret = media_entity_init(&subdev->entity, 2, xrgb2yuv->pads, 0);
+	ret = media_entity_pads_init(&subdev->entity, 2, xrgb2yuv->pads);
 	if (ret < 0)
 		goto error;
 

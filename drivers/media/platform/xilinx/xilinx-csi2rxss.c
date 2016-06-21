@@ -1609,7 +1609,7 @@ static int xcsi2rxss_probe(struct platform_device *pdev)
 
 	v4l2_set_subdevdata(subdev, xcsi2rxss);
 
-	ret = media_entity_init(&subdev->entity, 2, xcsi2rxss->pads, 0);
+	ret = media_entity_pads_init(&subdev->entity, 2, xcsi2rxss->pads);
 	if (ret < 0)
 		goto error;
 

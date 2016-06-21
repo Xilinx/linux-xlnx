@@ -843,7 +843,7 @@ xilinx_drm_plane_create(struct xilinx_drm_plane_manager *manager,
 	type = primary ? DRM_PLANE_TYPE_PRIMARY : DRM_PLANE_TYPE_OVERLAY;
 	ret = drm_universal_plane_init(manager->drm, &plane->base,
 				       possible_crtcs, &xilinx_drm_plane_funcs,
-				       &plane->format, 1, type);
+				       &plane->format, 1, type, NULL);
 	if (ret) {
 		DRM_ERROR("failed to initialize plane\n");
 		goto err_init;

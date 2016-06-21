@@ -489,7 +489,7 @@ static int xremap_probe(struct platform_device *pdev)
 	xremap->pads[XREMAP_PAD_SINK].flags = MEDIA_PAD_FL_SINK;
 	xremap->pads[XREMAP_PAD_SOURCE].flags = MEDIA_PAD_FL_SOURCE;
 	subdev->entity.ops = &xremap_media_ops;
-	ret = media_entity_init(&subdev->entity, 2, xremap->pads, 0);
+	ret = media_entity_pads_init(&subdev->entity, 2, xremap->pads);
 	if (ret < 0)
 		goto error;
 

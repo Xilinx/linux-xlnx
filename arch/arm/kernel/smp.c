@@ -69,11 +69,15 @@ enum ipi_msg_type {
 	IPI_TIMER,
 	IPI_RESCHEDULE,
 	IPI_CALL_FUNC,
-	IPI_CALL_FUNC_SINGLE,
 	IPI_CPU_STOP,
 	IPI_IRQ_WORK,
 	IPI_COMPLETION,
-	IPI_CPU_BACKTRACE = 15,
+	IPI_CPU_BACKTRACE,
+	/*
+	 * SGI8-15 can be reserved by secure firmware, and thus may
+	 * not be usable by the kernel. Please keep the above limited
+	 * to at most 8 entries.
+	 */
 };
 
 static DECLARE_COMPLETION(cpu_running);
@@ -481,7 +485,6 @@ static void ipi_complete(void);
 #define IPI_DESC_STRING_IPI_TIMER "Timer broadcast interrupts"
 #define IPI_DESC_STRING_IPI_RESCHEDULE "Rescheduling interrupts"
 #define IPI_DESC_STRING_IPI_CALL_FUNC "Function call interrupts"
-#define IPI_DESC_STRING_IPI_CALL_FUNC_SINGLE "Single function call interrupts"
 #define IPI_DESC_STRING_IPI_CPU_STOP "CPU stop interrupts"
 #define IPI_DESC_STRING_IPI_IRQ_WORK "IRQ work interrupts"
 #define IPI_DESC_STRING_IPI_COMPLETION "completion interrupts"
@@ -494,7 +497,6 @@ static const char* ipi_desc_strings[] __tracepoint_string =
 			[IPI_TIMER] = IPI_DESC_STR(IPI_TIMER),
 			[IPI_RESCHEDULE] = IPI_DESC_STR(IPI_RESCHEDULE),
 			[IPI_CALL_FUNC] = IPI_DESC_STR(IPI_CALL_FUNC),
-			[IPI_CALL_FUNC_SINGLE] = IPI_DESC_STR(IPI_CALL_FUNC_SINGLE),
 			[IPI_CPU_STOP] = IPI_DESC_STR(IPI_CPU_STOP),
 			[IPI_IRQ_WORK] = IPI_DESC_STR(IPI_IRQ_WORK),
 			[IPI_COMPLETION] = IPI_DESC_STR(IPI_COMPLETION)
@@ -508,7 +510,6 @@ static struct ipi ipi_types[NR_IPI] = {
 #endif
 	S(IPI_RESCHEDULE, scheduler_ipi),
 	S(IPI_CALL_FUNC, generic_smp_call_function_interrupt),
-	S(IPI_CALL_FUNC_SINGLE, generic_smp_call_function_single_interrupt),
 	S(IPI_CPU_STOP, ipi_cpu_stop),
 #ifdef CONFIG_IRQ_WORK
 	S(IPI_IRQ_WORK, irq_work_run),
@@ -560,7 +561,7 @@ void arch_send_wakeup_ipi_mask(const struct cpumask *mask)
 
 void arch_send_call_function_single_ipi(int cpu)
 {
-	smp_cross_call(cpumask_of(cpu), IPI_CALL_FUNC_SINGLE);
+	smp_cross_call(cpumask_of(cpu), IPI_CALL_FUNC);
 }
 
 #ifdef CONFIG_IRQ_WORK

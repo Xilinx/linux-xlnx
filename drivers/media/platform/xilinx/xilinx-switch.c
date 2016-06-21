@@ -183,7 +183,7 @@ static int xsw_get_routing(struct v4l2_subdev *subdev,
 	struct xswitch_device *xsw = to_xsw(subdev);
 	unsigned int i;
 
-	mutex_lock(&subdev->entity.parent->graph_mutex);
+	mutex_lock(&subdev->entity.graph_obj.mdev->graph_mutex);
 
 	for (i = 0; i < min(xsw->nsources, route->num_routes); ++i) {
 		route->routes[i].sink = xsw->routing[i];
@@ -192,7 +192,7 @@ static int xsw_get_routing(struct v4l2_subdev *subdev,
 
 	route->num_routes = xsw->nsources;
 
-	mutex_unlock(&subdev->entity.parent->graph_mutex);
+	mutex_unlock(&subdev->entity.graph_obj.mdev->graph_mutex);
 
 	return 0;
 }
@@ -204,7 +204,7 @@ static int xsw_set_routing(struct v4l2_subdev *subdev,
 	unsigned int i;
 	int ret = 0;
 
-	mutex_lock(&subdev->entity.parent->graph_mutex);
+	mutex_lock(&subdev->entity.graph_obj.mdev->graph_mutex);
 
 	if (subdev->entity.stream_count) {
 		ret = -EBUSY;
@@ -219,7 +219,7 @@ static int xsw_set_routing(struct v4l2_subdev *subdev,
 			route->routes[i].sink;
 
 done:
-	mutex_unlock(&subdev->entity.parent->graph_mutex);
+	mutex_unlock(&subdev->entity.graph_obj.mdev->graph_mutex);
 	return ret;
 }
 
@@ -403,7 +403,7 @@ static int xsw_probe(struct platform_device *pdev)
 
 	xsw_init_formats(subdev, NULL);
 
-	ret = media_entity_init(&subdev->entity, npads, xsw->pads, 0);
+	ret = media_entity_pads_init(&subdev->entity, npads, xsw->pads);
 	if (ret < 0)
 		goto error;
 

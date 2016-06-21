@@ -417,7 +417,7 @@ static int xhls_probe(struct platform_device *pdev)
 	xhls->pads[XVIP_PAD_SINK].flags = MEDIA_PAD_FL_SINK;
 	xhls->pads[XVIP_PAD_SOURCE].flags = MEDIA_PAD_FL_SOURCE;
 	subdev->entity.ops = &xhls_media_ops;
-	ret = media_entity_init(&subdev->entity, 2, xhls->pads, 0);
+	ret = media_entity_pads_init(&subdev->entity, 2, xhls->pads);
 	if (ret < 0)
 		goto error;
 

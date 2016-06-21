@@ -367,7 +367,7 @@ static int xcresample_probe(struct platform_device *pdev)
 	xcresample->pads[XVIP_PAD_SINK].flags = MEDIA_PAD_FL_SINK;
 	xcresample->pads[XVIP_PAD_SOURCE].flags = MEDIA_PAD_FL_SOURCE;
 	subdev->entity.ops = &xcresample_media_ops;
-	ret = media_entity_init(&subdev->entity, 2, xcresample->pads, 0);
+	ret = media_entity_pads_init(&subdev->entity, 2, xcresample->pads);
 	if (ret < 0)
 		goto error;
 

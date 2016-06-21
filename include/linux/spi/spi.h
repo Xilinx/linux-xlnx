@@ -429,6 +429,12 @@ struct spi_master {
 #define SPI_DATA_STRIPE		BIT(7)		/* support data stripe */
 #define SPI_BOTH_FLASH		BIT(8)		/* enable both flashes */
 
+	/*
+	 * on some hardware transfer size may be constrained
+	 * the limit may depend on device transfer settings
+	 */
+	size_t (*max_transfer_size)(struct spi_device *spi);
+
 	/* lock and mutex for SPI bus locking */
 	spinlock_t		bus_lock_spinlock;
 	struct mutex		bus_lock_mutex;
@@ -768,10 +774,15 @@ struct spi_message {
 	void			*state;
 };
 
+static inline void spi_message_init_no_memset(struct spi_message *m)
+{
+	INIT_LIST_HEAD(&m->transfers);
+}
+
 static inline void spi_message_init(struct spi_message *m)
 {
 	memset(m, 0, sizeof *m);
-	INIT_LIST_HEAD(&m->transfers);
+	spi_message_init_no_memset(m);
 }
 
 static inline void
@@ -837,6 +848,15 @@ extern int spi_setup(struct spi_device *spi);
 extern int spi_async(struct spi_device *spi, struct spi_message *message);
 extern int spi_async_locked(struct spi_device *spi,
 			    struct spi_message *message);
+
+static inline size_t
+spi_max_transfer_size(struct spi_device *spi)
+{
+	struct spi_master *master = spi->master;
+	if (!master->max_transfer_size)
+		return SIZE_MAX;
+	return master->max_transfer_size(spi);
+}
 
 /*---------------------------------------------------------------------------*/
 
@@ -1121,12 +1141,7 @@ spi_add_device(struct spi_device *spi);
 extern struct spi_device *
 spi_new_device(struct spi_master *, struct spi_board_info *);
 
-static inline void
-spi_unregister_device(struct spi_device *spi)
-{
-	if (spi)
-		device_unregister(&spi->dev);
-}
+extern void spi_unregister_device(struct spi_device *spi);
 
 extern const struct spi_device_id *
 spi_get_device_id(const struct spi_device *sdev);

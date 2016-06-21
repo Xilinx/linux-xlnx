@@ -106,10 +106,21 @@ void gic_raise_softirq(const struct cpumask *mask, unsigned int irq);
 
 void gic_set_cpu(unsigned int cpu, unsigned int irq);
 
+/*
+ * Subdrivers that need some preparatory work can initialize their
+ * chips and call this to register their GICs.
+ */
+int gic_of_init(struct device_node *node, struct device_node *parent);
+
+/*
+ * Legacy platforms not converted to DT yet must use this to init
+ * their GIC
+ */
 void gic_init(unsigned int nr, int start,
 	      void __iomem *dist , void __iomem *cpu);
 
-int gicv2m_of_init(struct device_node *node, struct irq_domain *parent);
+int gicv2m_init(struct fwnode_handle *parent_handle,
+		struct irq_domain *parent);
 
 void gic_send_sgi(unsigned int cpu_id, unsigned int irq);
 int gic_get_cpu_id(unsigned int cpu);

@@ -556,7 +556,7 @@ struct drm_crtc *xylon_drm_crtc_create(struct drm_device *dev)
 
 	primary = xylon_drm_plane_get_base(crtc->manager, crtc->primary_id);
 	ret = drm_crtc_init_with_planes(dev, &crtc->base, primary, NULL,
-					&xylon_drm_crtc_funcs);
+					&xylon_drm_crtc_funcs, NULL);
 	if (ret) {
 		DRM_ERROR("failed initialize crtc\n");
 		goto err_out;

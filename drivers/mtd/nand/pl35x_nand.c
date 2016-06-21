@@ -83,8 +83,6 @@ struct pl35x_nand_command_format {
 /**
  * struct pl35x_nand_info - Defines the NAND flash driver instance
  * @chip:		NAND chip information structure
- * @mtd:		MTD information structure
- * @parts:		Pointer to the mtd_partition structure
  * @nand_base:		Virtual address of the NAND flash device
  * @end_cmd_pending:	End command is pending
  * @end_cmd:		End command
@@ -93,8 +91,6 @@ struct pl35x_nand_command_format {
  */
 struct pl35x_nand_info {
 	struct nand_chip chip;
-	struct mtd_info mtd;
-	struct mtd_partition *parts;
 	void __iomem *nand_base;
 	unsigned long end_cmd_pending;
 	unsigned long end_cmd;
@@ -677,10 +673,10 @@ static void pl35x_nand_select_chip(struct mtd_info *mtd, int chip)
 static void pl35x_nand_cmd_function(struct mtd_info *mtd, unsigned int command,
 				 int column, int page_addr)
 {
-	struct nand_chip *chip = mtd->priv;
+	struct nand_chip *chip = mtd_to_nand(mtd);
 	const struct pl35x_nand_command_format *curr_cmd = NULL;
 	struct pl35x_nand_info *xnand =
-		container_of(mtd, struct pl35x_nand_info, mtd);
+		container_of(chip, struct pl35x_nand_info, chip);
 	void __iomem *cmd_addr;
 	unsigned long cmd_data = 0, end_cmd_valid = 0;
 	unsigned long cmd_phase_addr, data_phase_addr, end_cmd, i;
@@ -827,7 +823,7 @@ static void pl35x_nand_cmd_function(struct mtd_info *mtd, unsigned int command,
 static void pl35x_nand_read_buf(struct mtd_info *mtd, uint8_t *buf, int len)
 {
 	int i;
-	struct nand_chip *chip = mtd->priv;
+	struct nand_chip *chip =  mtd_to_nand(mtd);
 	unsigned long *ptr = (unsigned long *)buf;
 
 	len >>= 2;
@@ -845,7 +841,7 @@ static void pl35x_nand_write_buf(struct mtd_info *mtd, const uint8_t *buf,
 				int len)
 {
 	int i;
-	struct nand_chip *chip = mtd->priv;
+	struct nand_chip *chip = mtd_to_nand(mtd);
 	unsigned long *ptr = (unsigned long *)buf;
 
 	len >>= 2;
@@ -879,7 +875,7 @@ static int pl35x_nand_device_ready(struct mtd_info *mtd)
  */
 static int pl35x_nand_detect_ondie_ecc(struct mtd_info *mtd)
 {
-	struct nand_chip *nand_chip = mtd->priv;
+	struct nand_chip *nand_chip =  mtd_to_nand(mtd);
 	u8 maf_id, dev_id, i, get_feature;
 	u8 set_feature[4] = { 0x08, 0x00, 0x00, 0x00 };
 
@@ -938,7 +934,7 @@ static int pl35x_nand_detect_ondie_ecc(struct mtd_info *mtd)
  */
 static void pl35x_nand_ecc_init(struct mtd_info *mtd, int ondie_ecc_state)
 {
-	struct nand_chip *nand_chip = mtd->priv;
+	struct nand_chip *nand_chip = mtd_to_nand(mtd);
 
 	nand_chip->ecc.mode = NAND_ECC_HW;
 	nand_chip->ecc.read_oob = pl35x_nand_read_oob;
@@ -1017,7 +1013,6 @@ static int pl35x_nand_probe(struct platform_device *pdev)
 	struct mtd_info *mtd;
 	struct nand_chip *nand_chip;
 	struct resource *res;
-	struct mtd_part_parser_data ppdata;
 	int ondie_ecc_state;
 
 	xnand = devm_kzalloc(&pdev->dev, sizeof(*xnand), GFP_KERNEL);
@@ -1030,14 +1025,14 @@ static int pl35x_nand_probe(struct platform_device *pdev)
 	if (IS_ERR(xnand->nand_base))
 		return PTR_ERR(xnand->nand_base);
 
-	/* Link the private data with the MTD structure */
-	mtd = &xnand->mtd;
 	nand_chip = &xnand->chip;
+	mtd = nand_to_mtd(nand_chip);
 
-	nand_chip->priv = xnand;
+	nand_set_controller_data(nand_chip, xnand);
 	mtd->priv = nand_chip;
 	mtd->owner = THIS_MODULE;
 	mtd->name = PL35X_NAND_DRIVER_NAME;
+	nand_set_flash_node(nand_chip, pdev->dev.of_node);
 
 	/* Set address of NAND IO lines */
 	nand_chip->IO_ADDR_R = xnand->nand_base;
@@ -1083,9 +1078,7 @@ static int pl35x_nand_probe(struct platform_device *pdev)
 		return -ENXIO;
 	}
 
-	ppdata.of_node = pdev->dev.of_node;
-
-	mtd_device_parse_register(&xnand->mtd, NULL, &ppdata, NULL, 0);
+	mtd_device_register(mtd, NULL, 0);
 
 	return 0;
 }
@@ -1102,11 +1095,10 @@ static int pl35x_nand_probe(struct platform_device *pdev)
 static int pl35x_nand_remove(struct platform_device *pdev)
 {
 	struct pl35x_nand_info *xnand = platform_get_drvdata(pdev);
+	struct mtd_info *mtd = nand_to_mtd(&xnand->chip);
 
 	/* Release resources, unregister device */
-	nand_release(&xnand->mtd);
-	/* kfree(NULL) is safe */
-	kfree(xnand->parts);
+	nand_release(mtd);
 
 	return 0;
 }
