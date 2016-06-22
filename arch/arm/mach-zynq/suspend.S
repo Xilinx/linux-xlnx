@@ -36,6 +36,7 @@
 #define DDRC_OPMODE_SR		3
 #define MAXTRIES		100
 
+	.arm
 	.text
 
 /**
