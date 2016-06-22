@@ -41,7 +41,12 @@ int zynq_cpun_start(u32 address, int cpu)
 
 	/* MS: Expectation that SLCR are directly map and accessible */
 	/* Not possible to jump to non aligned address */
+	/* Address LSB decides execution mode: 0 for ARM, 1 for Thumb2 */
+#ifndef CONFIG_THUMB2_KERNEL
 	if (!(address & 3) && (!address || (address >= trampoline_code_size))) {
+#else
+	if (!((address & 3) ^ 1) && (!address || (address >= trampoline_code_size))) {
+#endif
 		/* Store pointer to ioremap area which points to address 0x0 */
 		static u8 __iomem *zero;
 		u32 trampoline_size = &zynq_secondary_trampoline_jump -
