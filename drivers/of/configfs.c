@@ -48,8 +48,7 @@ static int create_overlay(struct cfs_overlay_item *overlay, void *blob)
 	of_fdt_unflatten_tree(blob, NULL, &overlay->overlay);
 	if (overlay->overlay == NULL) {
 		pr_err("%s: failed to unflatten tree\n", __func__);
-		err = -EINVAL;
-		goto out_err;
+		return -EINVAL;
 	}
 	pr_debug("%s: unflattened OK\n", __func__);
 
@@ -60,7 +59,7 @@ static int create_overlay(struct cfs_overlay_item *overlay, void *blob)
 	err = of_resolve_phandles(overlay->overlay);
 	if (err != 0) {
 		pr_err("%s: Failed to resolve tree\n", __func__);
-		goto out_err;
+		return err;
 	}
 	pr_debug("%s: resolved OK\n", __func__);
 
@@ -68,12 +67,11 @@ static int create_overlay(struct cfs_overlay_item *overlay, void *blob)
 	if (err < 0) {
 		pr_err("%s: Failed to create overlay (err=%d)\n",
 				__func__, err);
-		goto out_err;
+		return err;
 	}
 	overlay->ov_id = err;
 
-out_err:
-	return err;
+	return 0;
 }
 
 static inline struct cfs_overlay_item *to_cfs_overlay_item(
@@ -126,7 +124,8 @@ out_err:
 	overlay->fw = NULL;
 
 	overlay->path[0] = '\0';
-	return err;
+
+	return count;
 }
 
 static ssize_t cfs_overlay_item_status_show(struct config_item *item,
