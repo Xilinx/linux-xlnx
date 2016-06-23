@@ -48,6 +48,7 @@
 static DEFINE_MUTEX(dma_list_mutex);
 static LIST_HEAD(dma_device_list);
 /* IO accessors */
+#define DMA_OUT_64(addr, val)   (writeq(val, addr))
 #define DMA_OUT(addr, val)      (iowrite32(val, addr))
 #define DMA_IN(addr)            (ioread32(addr))
 
@@ -354,8 +355,8 @@ static void xdma_start_transfer(struct xdma_chan *chan,
 				int start_index,
 				int end_index)
 {
-	dma_addr_t cur_phys;
-	dma_addr_t tail_phys;
+	xlnk_intptr_type cur_phys;
+	xlnk_intptr_type tail_phys;
 	u32 regval;
 
 	if (chan->err)
@@ -370,8 +371,7 @@ static void xdma_start_transfer(struct xdma_chan *chan,
 #if XLNK_SYS_BIT_WIDTH == 32
 		DMA_OUT(&chan->regs->tdr, tail_phys);
 #else
-		DMA_OUT(&chan->regs->tdr_hi, GET_HI(tail_phys));
-		DMA_OUT(&chan->regs->tdr, GET_LOW(tail_phys));
+		DMA_OUT_64(&chan->regs->tdr, tail_phys);
 #endif
 		return;
 	}
@@ -379,8 +379,7 @@ static void xdma_start_transfer(struct xdma_chan *chan,
 #if XLNK_SYS_BIT_WIDTH == 32
 	DMA_OUT(&chan->regs->cdr, cur_phys);
 #else
-	DMA_OUT(&chan->regs->cdr_hi, GET_HI(cur_phys));
-	DMA_OUT(&chan->regs->cdr, GET_LOW(cur_phys));
+	DMA_OUT_64(&chan->regs->cdr, cur_phys);
 #endif
 
 	dma_start(chan);
@@ -395,8 +394,7 @@ static void xdma_start_transfer(struct xdma_chan *chan,
 #if XLNK_SYS_BIT_WIDTH == 32
 	DMA_OUT(&chan->regs->tdr, tail_phys);
 #else
-	DMA_OUT(&chan->regs->tdr_hi, GET_HI(tail_phys));
-	DMA_OUT(&chan->regs->tdr, GET_LOW(tail_phys));
+	DMA_OUT_64(&chan->regs->tdr, tail_phys);
 #endif
 }
 
