@@ -33,7 +33,9 @@
 static int mali_core_scaling_enable = 0;
 
 void mali_gpu_utilization_callback(struct mali_gpu_utilization_data *data);
+#if !(defined(CONFIG_ARCH_ZYNQ) || defined(CONFIG_ARCH_ZYNQMP))
 static u32 mali_read_phys(u32 phys_addr);
+#endif
 #if defined(CONFIG_ARCH_REALVIEW)
 static void mali_write_phys(u32 phys_addr, u32 value);
 #endif
@@ -321,6 +323,7 @@ int mali_platform_device_deinit(struct platform_device *device)
 
 #endif /* CONFIG_MALI_DT */
 
+#if !(defined(CONFIG_ARCH_ZYNQ) || defined(CONFIG_ARCH_ZYNQMP))
 static u32 mali_read_phys(u32 phys_addr)
 {
 	u32 phys_addr_page = phys_addr & 0xFFFFE000;
@@ -335,6 +338,7 @@ static u32 mali_read_phys(u32 phys_addr)
 
 	return ret;
 }
+#endif
 
 #if defined(CONFIG_ARCH_REALVIEW)
 static void mali_write_phys(u32 phys_addr, u32 value)
