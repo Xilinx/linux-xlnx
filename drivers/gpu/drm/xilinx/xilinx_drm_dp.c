@@ -1422,6 +1422,7 @@ static int xilinx_drm_dp_probe(struct platform_device *pdev)
 			if (IS_ERR(dp->phy[i])) {
 				dev_err(dp->dev, "failed to get phy lane\n");
 				ret = PTR_ERR(dp->phy[i]);
+				dp->phy[i] = NULL;
 				goto error_dp_sub;
 			}
 
