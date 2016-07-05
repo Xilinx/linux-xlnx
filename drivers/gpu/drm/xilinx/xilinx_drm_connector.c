@@ -185,7 +185,6 @@ xilinx_drm_connector_create(struct drm_device *drm,
 	}
 
 	/* connect connector and encoder */
-	connector->base.encoder = base_encoder;
 	ret = drm_mode_connector_attach_encoder(&connector->base, base_encoder);
 	if (ret) {
 		DRM_ERROR("failed to attach connector to encoder\n");
