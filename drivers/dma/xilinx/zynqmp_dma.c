@@ -734,6 +734,10 @@ static void zynqmp_dma_free_chan_resources(struct dma_chan *dchan)
 	zynqmp_dma_free_desc_list(chan, &chan->done_list);
 
 	spin_unlock_bh(&chan->lock);
+
+	if (!chan->has_sg)
+		return;
+
 	dma_free_coherent(chan->dev,
 		(2 * ZYNQMP_DMA_DESC_SIZE(chan) * ZYNQMP_DMA_NUM_DESCS),
 		chan->desc_pool_v, chan->desc_pool_p);
