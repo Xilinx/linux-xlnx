@@ -179,6 +179,8 @@ struct xilinx_dma_tx_descriptor {
  * @tasklet: Cleanup work after irq
  * @residue: Residue
  * @desc_pendingcount: Descriptor pending count
+ * @cyclic_seg_v: Statically allocated segments base for cyclic dma
+ * @cyclic_seg_p: Physical allocated segments base for cyclic dma
  */
 struct xilinx_dma_chan {
 	struct xilinx_dma_device *xdev;
@@ -204,6 +206,8 @@ struct xilinx_dma_chan {
 	struct tasklet_struct tasklet;
 	u32 residue;
 	u32 desc_pendingcount;
+	struct xilinx_dma_tx_segment *cyclic_seg_v;
+	dma_addr_t cyclic_seg_p;
 };
 
 /**
@@ -407,6 +411,23 @@ static int xilinx_dma_alloc_chan_resources(struct dma_chan *dchan)
 		list_add_tail(&chan->seg_v[i].node, &chan->free_seg_list);
 	}
 
+	/*
+	 * For Cyclic DMA We need to Program the Tail Descriptor
+	 * register with some value which is not a part of the BD chain
+	 * So allocating a desc segment during channel allocation for
+	 * programming tail descriptor.
+	 */
+	chan->cyclic_seg_v = dma_zalloc_coherent(chan->dev,
+						 sizeof(*chan->cyclic_seg_v),
+						 &chan->cyclic_seg_p,
+						 GFP_KERNEL);
+	if (!chan->cyclic_seg_v) {
+		dev_err(chan->dev,
+			"unable to allocate desc segment for cyclic DMA\n");
+		return -ENOMEM;
+	}
+	chan->cyclic_seg_v->phys = chan->cyclic_seg_p;
+
 	dma_cookie_init(dchan);
 
 	/* Enable interrupts */
@@ -464,6 +485,11 @@ static void xilinx_dma_free_chan_resources(struct dma_chan *dchan)
 	spin_lock_irqsave(&chan->lock, flags);
 	INIT_LIST_HEAD(&chan->free_seg_list);
 	spin_unlock_irqrestore(&chan->lock, flags);
+
+	/* Free Memory that is allocated for cyclic DMA Mode */
+	dma_free_coherent(chan->dev,
+			  sizeof(*chan->cyclic_seg_v),
+			  chan->cyclic_seg_v, chan->cyclic_seg_p);
 
 	/* Free memory that was allocated for the segments */
 	dma_free_coherent(chan->dev,
@@ -692,6 +718,15 @@ static void xilinx_dma_start_transfer(struct xilinx_dma_chan *chan)
 
 	/* Start the transfer */
 	if (chan->has_sg && !chan->mcdma) {
+		if (chan->cyclic) {
+#ifdef CONFIG_PHYS_ADDR_T_64BIT
+			dma_ctrl_writeq(chan, XILINX_DMA_REG_TAILDESC,
+					chan->cyclic_seg_p);
+#else
+			dma_ctrl_write(chan, XILINX_DMA_REG_TAILDESC,
+				       chan->cyclic_seg_p);
+#endif
+		} else {
 #ifdef CONFIG_PHYS_ADDR_T_64BIT
 		dma_ctrl_writeq(chan, XILINX_DMA_REG_TAILDESC,
 			       tail_segment->phys);
@@ -699,6 +734,7 @@ static void xilinx_dma_start_transfer(struct xilinx_dma_chan *chan)
 		dma_ctrl_write(chan, XILINX_DMA_REG_TAILDESC,
 			       tail_segment->phys);
 #endif
+		}
 	} else if (chan->has_sg && chan->mcdma) {
 
 		if (head_desc->direction == DMA_MEM_TO_DEV) {
@@ -1172,7 +1208,7 @@ static struct dma_async_tx_descriptor *xilinx_dma_prep_dma_cyclic(
 {
 	struct xilinx_dma_chan *chan = to_xilinx_chan(dchan);
 	struct xilinx_dma_tx_descriptor *desc;
-	struct xilinx_dma_tx_segment *segment;
+	struct xilinx_dma_tx_segment *segment, *tail_segment;
 	size_t copy, sg_used;
 	unsigned int num_periods;
 	int i;
@@ -1237,14 +1273,19 @@ static struct dma_async_tx_descriptor *xilinx_dma_prep_dma_cyclic(
 	chan->ctrl_reg |= XILINX_DMA_CR_CYCLIC_BD_EN_MASK;
 	dma_ctrl_write(chan, XILINX_DMA_REG_CONTROL, chan->ctrl_reg);
 
+	tail_segment = list_last_entry(&desc->segments,
+				       struct xilinx_dma_tx_segment,
+				       node);
 	/* For the last DMA_MEM_TO_DEV transfer, set EOP */
 	if (direction == DMA_MEM_TO_DEV) {
 		segment->hw.control |= XILINX_DMA_BD_SOP;
-		segment = list_last_entry(&desc->segments,
-					  struct xilinx_dma_tx_segment,
-					  node);
-		segment->hw.control |= XILINX_DMA_BD_EOP;
+		tail_segment->hw.control |= XILINX_DMA_BD_EOP;
 	}
+
+	tail_segment->hw.next_desc = (u32)segment->phys;
+#ifdef CONFIG_PHYS_ADDR_T_64BIT
+	tail_segment->hw.next_desc_msb = upper_32_bits(segment->phys);
+#endif
 
 	return &desc->async_tx;
 
