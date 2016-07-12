@@ -345,7 +345,8 @@ static int xlnk_buf_find_by_phys_addr(xlnk_intptr_type addr)
 	int i;
 
 	for (i = 1; i < xlnk_bufpool_size; i++) {
-		if (xlnk_phyaddr[i] <= addr &&
+		if (xlnk_bufpool[i] &&
+		    xlnk_phyaddr[i] <= addr &&
 		    xlnk_phyaddr[i] + xlnk_buflen[i] > addr)
 			return i;
 	}
@@ -374,12 +375,16 @@ static int xlnk_allocbuf(unsigned int len, unsigned int cacheable)
 		kaddr = dma_alloc_noncoherent(xlnk_dev,
 					      len,
 					      &phys_addr_anchor,
-					      GFP_KERNEL);
+					      GFP_KERNEL |
+					      GFP_DMA |
+					      __GFP_REPEAT);
 	else
 		kaddr = dma_alloc_coherent(xlnk_dev,
 					   len,
 					   &phys_addr_anchor,
-					   GFP_KERNEL);
+					   GFP_KERNEL |
+					   GFP_DMA |
+					   __GFP_REPEAT);
 	if (!kaddr)
 		return -ENOMEM;
 	xlnk_bufpool_alloc_point[id] = kaddr;
