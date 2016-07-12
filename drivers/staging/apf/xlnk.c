@@ -1163,8 +1163,9 @@ static int xlnk_dmasubmit_ioctl(struct file *filp, unsigned int code,
 		void *kaddr = NULL;
 
 		if (buf_id) {
-			xlnk_intptr_type addr_delta = xlnk_phyaddr[buf_id] -
-				temp_args.dmasubmit.buf;
+			xlnk_intptr_type addr_delta =
+				temp_args.dmasubmit.buf -
+				xlnk_phyaddr[buf_id];
 			kaddr = (u8 *)(xlnk_bufpool[buf_id]) + addr_delta;
 		}
 		status = xdma_submit((struct xdma_chan *)
