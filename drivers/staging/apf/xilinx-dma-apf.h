@@ -209,6 +209,7 @@ void xdma_release_channel(struct xdma_chan *chan);
 void xdma_release_all_channels(void);
 int xdma_submit(struct xdma_chan *chan,
 		xlnk_intptr_type userbuf,
+		void *kaddr,
 		unsigned int size,
 		unsigned int nappwords_i,
 		u32 *appwords_i,

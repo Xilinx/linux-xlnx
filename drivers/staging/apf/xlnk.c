@@ -370,17 +370,23 @@ static int xlnk_allocbuf(unsigned int len, unsigned int cacheable)
 		pr_err("No id could be found in range\n");
 		return -ENOMEM;
 	}
-	kaddr = kmalloc(len + PAGE_SIZE, GFP_KERNEL | GFP_DMA);
+	if (cacheable)
+		kaddr = dma_alloc_noncoherent(xlnk_dev,
+					      len,
+					      &phys_addr_anchor,
+					      GFP_KERNEL);
+	else
+		kaddr = dma_alloc_coherent(xlnk_dev,
+					   len,
+					   &phys_addr_anchor,
+					   GFP_KERNEL);
 	if (!kaddr)
 		return -ENOMEM;
-	phys_addr_anchor = virt_to_phys(kaddr);
 	xlnk_bufpool_alloc_point[id] = kaddr;
-	page_dst = (((phys_addr_anchor + (PAGE_SIZE - 1))
-		/ PAGE_SIZE) * PAGE_SIZE) - phys_addr_anchor;
-	xlnk_bufpool[id] = (void *)((uint8_t *)kaddr + page_dst);
+	xlnk_bufpool[id] = kaddr;
 	xlnk_buflen[id] = len;
 	xlnk_bufcacheable[id] = cacheable;
-	xlnk_phyaddr[id] = phys_addr_anchor + page_dst;
+	xlnk_phyaddr[id] = phys_addr_anchor;
 
 	return id;
 }
@@ -389,7 +395,7 @@ static int xlnk_init_bufpool(void)
 {
 	unsigned int i;
 
-	xlnk_dev_buf = kmalloc(8192, GFP_KERNEL | __GFP_DMA);
+	xlnk_dev_buf = kmalloc(8192, GFP_KERNEL | GFP_DMA);
 	*((char *)xlnk_dev_buf) = '\0';
 
 	if (!xlnk_dev_buf) {
@@ -768,7 +774,7 @@ static int xlnk_allocbuf_ioctl(struct file *filp, unsigned int code,
 
 	union xlnk_args temp_args;
 	int status;
-	xlnk_intptr_type id;
+	xlnk_int_type id;
 
 	status = copy_from_user(&temp_args, (void __user *)args,
 				sizeof(union xlnk_args));
@@ -791,14 +797,22 @@ static int xlnk_allocbuf_ioctl(struct file *filp, unsigned int code,
 
 static int xlnk_freebuf(int id)
 {
-
 	if (id <= 0 || id >= xlnk_bufpool_size)
 		return -ENOMEM;
 
 	if (!xlnk_bufpool[id])
 		return -ENOMEM;
 
-	kfree(xlnk_bufpool_alloc_point[id]);
+	if (xlnk_bufcacheable[id])
+		dma_free_noncoherent(xlnk_dev,
+				     xlnk_buflen[id],
+				     xlnk_bufpool_alloc_point[id],
+				     xlnk_phyaddr[id]);
+	else
+		dma_free_coherent(xlnk_dev,
+				  xlnk_buflen[id],
+				  xlnk_bufpool_alloc_point[id],
+				  xlnk_phyaddr[id]);
 	xlnk_bufpool[id] = NULL;
 	xlnk_phyaddr[id] = (dma_addr_t)NULL;
 	xlnk_buflen[id] = 0;
@@ -1139,9 +1153,19 @@ static int xlnk_dmasubmit_ioctl(struct file *filp, unsigned int code,
 		}
 		temp_args.dmasubmit.dmahandle = (xlnk_intptr_type)t;
 	} else {
+		int buf_id =
+			xlnk_buf_find_by_phys_addr(temp_args.dmasubmit.buf);
+		void *kaddr = NULL;
+
+		if (buf_id) {
+			xlnk_intptr_type addr_delta = xlnk_phyaddr[buf_id] -
+				temp_args.dmasubmit.buf;
+			kaddr = (u8 *)(xlnk_bufpool[buf_id]) + addr_delta;
+		}
 		status = xdma_submit((struct xdma_chan *)
 				     (temp_args.dmasubmit.dmachan),
 				     temp_args.dmasubmit.buf,
+						 kaddr,
 				     temp_args.dmasubmit.len,
 				     temp_args.dmasubmit.nappwords_i,
 				     temp_args.dmasubmit.appwords_i,

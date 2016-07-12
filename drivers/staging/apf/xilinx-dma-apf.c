@@ -794,6 +794,7 @@ static void xdma_release(struct device *dev)
 
 int xdma_submit(struct xdma_chan *chan,
 			xlnk_intptr_type userbuf,
+			void *kaddr,
 			unsigned int size,
 			unsigned int nappwords_i,
 			u32 *appwords_i,
@@ -878,7 +879,10 @@ int xdma_submit(struct xdma_chan *chan,
 		sglist_dma = sglist;
 		sgcnt_dma = sgcnt;
 		if (user_flags & CF_FLAG_CACHE_FLUSH_INVALIDATE) {
-			void *kaddr = phys_to_virt(userbuf);
+			if (!kaddr) {
+				pr_err("Whoops, cannot flush without an address\n");
+				return -EINVAL;
+			}
 #if XLNK_SYS_BIT_WIDTH == 32
 			__cpuc_flush_dcache_area(kaddr, size);
 			outer_clean_range(userbuf,
