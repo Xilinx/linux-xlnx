@@ -11,12 +11,6 @@ menuconfig XILINX_DMA_ENGINES
 
 if XILINX_DMA_ENGINES
 
-config XILINX_AXIDMA
-	tristate "Xilinx AXI DMA Engine"
-	select DMA_ENGINE
-	help
-	  Enable support for Xilinx Axi DMA (memory and device transfer).
-
 config XILINX_DMATEST
 	tristate "DMA Test client for AXI DMA"
 	depends on XILINX_AXIDMA

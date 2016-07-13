@@ -15,12 +15,6 @@
 #include <linux/dma-mapping.h>
 #include <linux/dmaengine.h>
 
-/* DMA IP masks */
-#define XILINX_DMA_IP_DMA	0x00100000	/* A DMA IP */
-
-/* Device Id in the private structure */
-#define XILINX_DMA_DEVICE_ID_SHIFT	28
-
 /**
  * struct xilinx_vdma_config - VDMA Configuration structure
  * @frm_dly: Frame delay
@@ -47,23 +41,7 @@ struct xilinx_vdma_config {
 	int ext_fsync;
 };
 
-/**
- * struct xilinx_mcdma_config - DMA Multi channel configuration structure
- * @tdest: Channel to operate on
- * @tid:   Channel configuration
- * @tuser: Tuser configuration
- * @ax_user: ax_user value
- * @ax_cache: ax_cache value
- */
-struct xilinx_mcdma_config {
-	u8 tdest;
-	u8 tid;
-	u8 tuser;
-	u8 ax_user;
-	u8 ax_cache;
-};
 int xilinx_vdma_channel_set_config(struct dma_chan *dchan,
 					struct xilinx_vdma_config *cfg);
-int xilinx_dma_channel_mcdma_set_config(struct dma_chan *dchan,
-					struct xilinx_mcdma_config *cfg);
+
 #endif
