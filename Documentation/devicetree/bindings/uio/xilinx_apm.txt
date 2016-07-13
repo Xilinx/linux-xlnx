@@ -1,0 +1,44 @@
+* Xilinx AXI Performance monitor IP
+
+Required properties:
+- compatible: "xlnx,axi-perf-monitor"
+- interrupts: Should contain APM interrupts.
+- interrupt-parent: Must be core interrupt controller.
+- reg: Should contain APM registers location and length.
+- xlnx,enable-profile: Enables the profile mode.
+- xlnx,enable-trace: Enables trace mode.
+- xlnx,num-monitor-slots: Maximum number of slots in APM.
+- xlnx,enable-event-count: Enable event count.
+- xlnx,enable-event-log: Enable event logging.
+- xlnx,have-sampled-metric-cnt:Sampled metric counters enabled in APM.
+- xlnx,num-of-counters: Number of counters in APM
+- xlnx,metric-count-width: Metric Counter width (32/64)
+- xlnx,metrics-sample-count-width: Sampled metric counter width
+- xlnx,global-count-width: Global Clock counter width
+- clocks: Input clock specifier.
+
+Optional properties:
+- xlnx,id-filter-32bit: APM is in 32-bit mode
+
+Example:
+++++++++
+
+apm: apm@44a00000 {
+    compatible = "xlnx,axi-perf-monitor";
+    interrupt-parent = <&axi_intc_1>;
+    interrupts = <1 2>;
+    reg = <0x44a00000 0x1000>;
+    clocks = <&clkc 15>;
+    xlnx,enable-profile = <0>;
+    xlnx,enable-trace = <0>;
+    xlnx,num-monitor-slots = <4>;
+    xlnx,enable-event-count = <1>;
+    xlnx,enable-event-log = <1>;
+    xlnx,have-sampled-metric-cnt = <1>;
+    xlnx,num-of-counters = <8>;
+    xlnx,metric-count-width = <32>;
+    xlnx,metrics-sample-count-width = <32>;
+    xlnx,global-count-width = <32>;
+    xlnx,metric-count-scale = <1>;
+    xlnx,id-filter-32bit;
+};
