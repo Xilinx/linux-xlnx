@@ -13,21 +13,21 @@ if XILINX_DMA_ENGINES
 
 config XILINX_DMATEST
 	tristate "DMA Test client for AXI DMA"
-	depends on XILINX_AXIDMA
+	depends on XILINX_DMA
 	help
 	  Simple DMA test client. Say N unless you're debugging a
 	  DMA Device driver.
 
 config XILINX_VDMATEST
 	tristate "DMA Test client for VDMA"
-	depends on XILINX_VDMA
+	depends on XILINX_DMA
 	help
 	  Simple DMA test client. Say N unless you're debugging a
 	  DMA Device driver.
 
 config XILINX_CDMATEST
 	tristate "DMA Test client for CDMA"
-	depends on XILINX_AXICDMA
+	depends on XILINX_DMA
 	help
 	  Simple DMA test client. Say N unless you're debugging a
 	  DMA Device driver.
