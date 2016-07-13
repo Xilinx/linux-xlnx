@@ -17,7 +17,6 @@
 
 /* DMA IP masks */
 #define XILINX_DMA_IP_DMA	0x00100000	/* A DMA IP */
-#define XILINX_DMA_IP_CDMA	0x00200000	/* A Central DMA IP */
 
 /* Device Id in the private structure */
 #define XILINX_DMA_DEVICE_ID_SHIFT	28
@@ -49,18 +48,6 @@ struct xilinx_vdma_config {
 };
 
 /**
- * struct xilinx_cdma_config - CDMA Configuration structure
- * @coalesc: Interrupt coalescing threshold
- * @delay: Delay counter
- * @reset: Reset Channel
- */
-struct xilinx_cdma_config {
-        int coalesc;
-        int delay;
-        int reset;
-};
-
-/**
  * struct xilinx_mcdma_config - DMA Multi channel configuration structure
  * @tdest: Channel to operate on
  * @tid:   Channel configuration
@@ -77,8 +64,6 @@ struct xilinx_mcdma_config {
 };
 int xilinx_vdma_channel_set_config(struct dma_chan *dchan,
 					struct xilinx_vdma_config *cfg);
-int xilinx_cdma_channel_set_config(struct dma_chan *dchan,
-                                        struct xilinx_cdma_config *cfg);
 int xilinx_dma_channel_mcdma_set_config(struct dma_chan *dchan,
 					struct xilinx_mcdma_config *cfg);
 #endif

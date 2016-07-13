@@ -31,12 +31,6 @@ config XILINX_VDMATEST
 	  Simple DMA test client. Say N unless you're debugging a
 	  DMA Device driver.
 
-config XILINX_AXICDMA
-	tristate "Xilinx AXI CDMA Engine"
-	select DMA_ENGINE
-	help
-	  Enable support for Xilinx Axi Central DMA (memory to memory transfer).
-
 config XILINX_CDMATEST
 	tristate "DMA Test client for CDMA"
 	depends on XILINX_AXICDMA
