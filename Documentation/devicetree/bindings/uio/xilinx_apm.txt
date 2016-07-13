@@ -15,6 +15,7 @@ Required properties:
 - xlnx,metric-count-width: Metric Counter width (32/64)
 - xlnx,metrics-sample-count-width: Sampled metric counter width
 - xlnx,global-count-width: Global Clock counter width
+- clocks: Input clock specifier.
 
 Example:
 ++++++++
@@ -24,6 +25,7 @@ apm: apm@44a00000 {
     interrupt-parent = <&axi_intc_1>;
     interrupts = <1 2>;
     reg = <0x44a00000 0x1000>;
+    clocks = <&clkc 15>;
     xlnx,enable-profile = <0>;
     xlnx,enable-trace = <0>;
     xlnx,num-monitor-slots = <4>;

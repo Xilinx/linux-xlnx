@@ -23,6 +23,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <linux/clk.h>
 #include <linux/io.h>
 #include <linux/module.h>
 #include <linux/of.h>
@@ -51,6 +52,7 @@
  * @globalcntwidth: Global Clock counter width
  * @scalefactor: Scaling factor
  * @isr: Interrupts info shared to userspace
+ * @clk: Clock handle
  */
 struct xapm_param {
 	u32 mode;
@@ -65,6 +67,7 @@ struct xapm_param {
 	u32 scalefactor;
 	u32 isr;
 	bool is_32bit_filter;
+	struct clk *clk;
 };
 
 /**
@@ -218,13 +221,24 @@ static int xapm_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	}
 
+	xapm->param.clk = devm_clk_get(&pdev->dev, NULL);
+	if (IS_ERR(xapm->param.clk)) {
+			dev_err(&pdev->dev, "axi clock error\n");
+			return PTR_ERR(xapm->param.clk);
+	}
+
+	ret = clk_prepare_enable(xapm->param.clk);
+	if (ret) {
+		dev_err(&pdev->dev, "Unable to enable clock.\n");
+		return ret;
+	}
 	/* Initialize mode as Advanced so that if no mode in dts, default
 	 * is Advanced
 	 */
 	xapm->param.mode = XAPM_MODE_ADVANCED;
 	ret = xapm_getprop(pdev, &xapm->param);
 	if (ret < 0)
-		return ret;
+		goto err_clk_dis;
 
 	xapm->info.mem[0].name = "xilinx_apm";
 	xapm->info.mem[0].addr = res->start;
@@ -243,7 +257,8 @@ static int xapm_probe(struct platform_device *pdev)
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0) {
 		dev_err(&pdev->dev, "unable to get irq\n");
-		return irq;
+		ret = irq;
+		goto err_clk_dis;
 	}
 
 	xapm->info.irq = irq;
@@ -255,7 +270,7 @@ static int xapm_probe(struct platform_device *pdev)
 	ret = uio_register_device(&pdev->dev, &xapm->info);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "unable to register to UIO\n");
-		return ret;
+		goto err_clk_dis;
 	}
 
 	platform_set_drvdata(pdev, xapm);
@@ -263,6 +278,10 @@ static int xapm_probe(struct platform_device *pdev)
 	dev_info(&pdev->dev, "Probed Xilinx APM\n");
 
 	return 0;
+
+err_clk_dis:
+	clk_disable_unprepare(&xapm->param.clk);
+	return ret;
 }
 
 /**
@@ -276,6 +295,7 @@ static int xapm_remove(struct platform_device *pdev)
 	struct xapm_dev *xapm = platform_get_drvdata(pdev);
 
 	uio_unregister_device(&xapm->info);
+	clk_disable_unprepare(&xapm->param.clk);
 
 	return 0;
 }
