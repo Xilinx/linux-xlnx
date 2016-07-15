@@ -169,11 +169,8 @@ objflags=-S
 tmp=$tmpdir/zImage.$$.o
 ksection=.kernel:vmlinux.strip
 isection=.kernel:initrd
+link_address='0x400000'
 make_space=y
-
-# default auto-calculate link_address to make room for the kernel
-# round up kernel image size to nearest megabyte
-link_address=`${CROSS}size -x ${kernel} | grep ${kernel} | awk '{printf("0x%08x", and($4 + 0x0fffff, 0xfffe0000))}'`
 
 case "$platform" in
 of)
@@ -205,7 +202,7 @@ coff)
     make_space=n
     pie=
     ;;
-miboot|uboot|uboot-fit)
+miboot|uboot*)
     # miboot and U-boot want just the bare bits, not an ELF binary
     ext=bin
     objflags="-O binary"
@@ -385,16 +382,6 @@ uboot-obs600)
     if [ -z "$cacheit" ]; then
 	rm -f "$vmz"
     fi
-    exit 0
-    ;;
-uboot-fit)
-    pwd
-    rm -f "$ofile"
-    #[ "$vmz" != vmlinux.bin.gz ] && mv "$vmz" "vmlinux.bin.gz"
-    mv "$dtb" "target.dtb"
-    cp arch/powerpc/boot/kernel_fdt.its .
-    mkimage -f kernel_fdt.its "$ofile"
-    #rm kernet_fdt.its
     exit 0
     ;;
 esac

@@ -627,13 +627,6 @@ END_FTR_SECTION_IFSET(CPU_FTR_SPE)
 	andc	r11,r11,r0
 	MTMSRD(r11)
 	isync
-#if defined(CONFIG_XILINX_VIRTEX_5_FXT) && defined(CONFIG_PPC_FPU)
-	mfspr   r5,SPRN_CCR0
-	andis.  r5,r5, ~(1<<6)@l
-	andi.	r5,r5, ~(1<<5)@l
-	mtspr   SPRN_CCR0,r5
-	isync
-#endif
 1:	stw	r11,_MSR(r1)
 	mfcr	r10
 	stw	r10,_CCR(r1)

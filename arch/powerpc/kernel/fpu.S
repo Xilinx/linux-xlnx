@@ -106,21 +106,6 @@ _GLOBAL(store_fp_state)
  * restored by fast_exception_return, i.e. r3 - r6, r10 and r11.
  */
 _GLOBAL(load_up_fpu)
-#if defined(CONFIG_XILINX_VIRTEX_5_FXT) && defined(CONFIG_PPC_FPU)
-	li	r3,0
-	lis	r5,excep_state@h
-	ori	r5,r5,excep_state@l
-	stw	r3,0(r5)
-
-	mfspr   r5,SPRN_CCR0
-	/* set CCR0[9] to disable the load miss queue inside the ppc440 */
-	oris    r5,r5, (1<<6)
-	/* set CCR0[26] to ... */
-	ori	r5,r5, (1<<5)
-	mtspr   SPRN_CCR0,r5
-	isync
-#endif
-
 	mfmsr	r5
 	ori	r5,r5,MSR_FP
 #ifdef CONFIG_VSX
