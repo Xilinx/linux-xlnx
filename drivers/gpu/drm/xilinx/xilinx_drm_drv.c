@@ -81,6 +81,7 @@ static const struct xilinx_video_format_desc xilinx_video_formats[] = {
 	{ "rgb565", 16, 16, XILINX_VIDEO_FORMAT_NONE, DRM_FORMAT_RGB565 },
 	{ "xbgr8888", 24, 32, XILINX_VIDEO_FORMAT_NONE, DRM_FORMAT_XBGR8888 },
 	{ "abgr8888", 32, 32, XILINX_VIDEO_FORMAT_NONE, DRM_FORMAT_ABGR8888 },
+	{ "nv16", 16, 16, XILINX_VIDEO_FORMAT_NONE, DRM_FORMAT_NV16 },
 };
 
 /**
