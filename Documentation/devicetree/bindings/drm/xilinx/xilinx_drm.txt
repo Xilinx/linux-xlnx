@@ -38,6 +38,7 @@ Required planes properties:
 Required plane properties:
  - dmas: the phandle list of DMA specifiers
  - dma-names: the indentifier strings for DMAs. The value should be "dma"
+   followed by the index: "dma0", "dma1".
  - xlnx,rgb2yuv: the phandle for rgb2ycrcb IP if used for plane
  - xlnx,cresample: the phandle for chroma resampler IP if used for plane
 
@@ -56,7 +57,7 @@ vdma - [remap] - rgb2yuv - cresample - [axi2vid] - adv7511
 			xlnx,pixel-format = "yuv422";
 			plane0 {
 				dma = <&axi_vdma_0>;
-				dma-names = "dma";
+				dma-names = "dma0";
 				xlnx,rgb2yuv = <&v_rgb2ycrcb_0>;
 				xlnx,cresample = <&v_cresample_0>;
 			};
@@ -80,11 +81,11 @@ vdma - [remap] - rgb2yuv -|                               |
 			xlnx,pixel-format = "yuv422";
 			plane0 {
 				dma = <&axi_vdma_0>;
-				dma-names = "dma";
+				dma-names = "dma0";
 			};
 			plane1 {
 				dma = <&axi_vdma_1>;
-				dma-names = "dma";
+				dma-names = "dma0";
 				xlnx,rgb2yuv = <&v_rgb2ycrcb_0>;
 			};
 		};
@@ -103,11 +104,13 @@ dpdma - ZynqMP DP subsystem - DP
 			xlnx,pixel-format = "rgb565";
 			plane0 {
 				dmas = <&xlnx_dpdma 3>;
-				dma-names = "dma";
+				dma-names = "dma0";
 			};
 			plane1 {
-				dmas = <&xlnx_dpdma 0>;
-				dma-names = "dma";
+				dmas = <&xlnx_dpdma 0>,
+				       <&xlnx_dpdma 1>,
+				       <&xlnx_dpdma 2>;
+				dma-names = "dma0", "dma1", "dma2";
 			};
 		};
 	};
