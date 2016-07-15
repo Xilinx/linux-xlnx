@@ -12,5 +12,20 @@ menuconfig RESET_CONTROLLER
 
 	  If unsure, say no.
 
+if RESET_CONTROLLER
+
+config ZYNQMP_RESET_CONTROLLER
+	bool "Xilinx ZYNQMP Reset Controller Support"
+	depends on ZYNQMP_PM_API
+        help
+	 ZYNQMP Reset Controller support.
+
+         This framework is designed to abstract reset handling of devices
+         via SoC-internal reset controller modules.
+
+         If sure, say yes.If unsure, say no.
+
+endif
+
 source "drivers/reset/sti/Kconfig"
 source "drivers/reset/hisilicon/Kconfig"
