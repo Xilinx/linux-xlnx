@@ -100,11 +100,11 @@
 #define XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_VYUY			(1 << 0)
 #define XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_YVYU			(2 << 0)
 #define XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_YUYV			(3 << 0)
-#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_YU16			(4 << 0)
-#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_YU24			(5 << 0)
-#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_YU16CI		(6 << 0)
+#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_YV16			(4 << 0)
+#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_YV24			(5 << 0)
+#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_YV16CI		(6 << 0)
 #define XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_MONO			(7 << 0)
-#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_YU16CI2		(8 << 0)
+#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_YV16CI2		(8 << 0)
 #define XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_YUV444		(9 << 0)
 #define XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_RGB888		(10 << 0)
 #define XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_RGBA8880		(11 << 0)
@@ -534,6 +534,15 @@ static const struct xilinx_drm_dp_sub_fmt av_buf_vid_fmts[] = {
 		.sf[1]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
 		.sf[2]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
 		.name		= "yuyv",
+	}, {
+		.drm_fmt	= DRM_FORMAT_NV16,
+		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_YV16CI,
+		.rgb		= false,
+		.chroma_sub	= true,
+		.sf[0]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.sf[1]		= XILINX_DP_SUB_AV_BUF_4BIT_SF,
+		.sf[2]		= XILINX_DP_SUB_AV_BUF_4BIT_SF,
+		.name		= "nv16",
 	}, {
 		.drm_fmt	= DRM_FORMAT_BGR888,
 		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_RGB888,
