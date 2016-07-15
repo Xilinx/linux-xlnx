@@ -481,7 +481,7 @@ struct drm_crtc *xilinx_drm_crtc_create(struct drm_device *drm)
 	/* probe a plane manager */
 	crtc->plane_manager = xilinx_drm_plane_probe_manager(drm);
 	if (IS_ERR(crtc->plane_manager)) {
-		if ((int)crtc->plane_manager != -EPROBE_DEFER)
+		if (PTR_ERR(crtc->plane_manager) != -EPROBE_DEFER)
 			DRM_ERROR("failed to probe a plane manager\n");
 		return ERR_CAST(crtc->plane_manager);
 	}
