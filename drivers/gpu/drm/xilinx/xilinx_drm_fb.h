@@ -30,9 +30,9 @@ xilinx_drm_fb_init(struct drm_device *drm, unsigned int preferred_bpp,
 void xilinx_drm_fb_fini(struct drm_fb_helper *fb_helper);
 
 void xilinx_drm_fb_restore_mode(struct drm_fb_helper *fb_helper);
-struct drm_framebuffer *xilinx_drm_fb_create(struct drm_device *drm,
-					     struct drm_file *file_priv,
-					     struct drm_mode_fb_cmd2 *mode_cmd);
+struct drm_framebuffer *
+xilinx_drm_fb_create(struct drm_device *drm, struct drm_file *file_priv,
+		     const struct drm_mode_fb_cmd2 *mode_cmd);
 void xilinx_drm_fb_hotplug_event(struct drm_fb_helper *fb_helper);
 void xilinx_drm_fb_set_config(struct drm_fb_helper *fb_helper,
 				struct drm_mode_set *set);

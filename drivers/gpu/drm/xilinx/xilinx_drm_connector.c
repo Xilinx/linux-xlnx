@@ -45,7 +45,7 @@ static int xilinx_drm_connector_get_modes(struct drm_connector *base_connector)
 		to_xilinx_connector(base_connector);
 	struct drm_encoder *encoder = connector->encoder;
 	struct drm_encoder_slave *encoder_slave = to_encoder_slave(encoder);
-	struct drm_encoder_slave_funcs *encoder_sfuncs =
+	const struct drm_encoder_slave_funcs *encoder_sfuncs =
 		encoder_slave->slave_funcs;
 	int count = 0;
 
@@ -63,7 +63,7 @@ static int xilinx_drm_connector_mode_valid(struct drm_connector *base_connector,
 		to_xilinx_connector(base_connector);
 	struct drm_encoder *encoder = connector->encoder;
 	struct drm_encoder_slave *encoder_slave = to_encoder_slave(encoder);
-	struct drm_encoder_slave_funcs *encoder_sfuncs =
+	const struct drm_encoder_slave_funcs *encoder_sfuncs =
 		encoder_slave->slave_funcs;
 	int ret = MODE_OK;
 
@@ -97,7 +97,7 @@ xilinx_drm_connector_detect(struct drm_connector *base_connector, bool force)
 	enum drm_connector_status status = connector_status_unknown;
 	struct drm_encoder *encoder = connector->encoder;
 	struct drm_encoder_slave *encoder_slave = to_encoder_slave(encoder);
-	struct drm_encoder_slave_funcs *encoder_sfuncs =
+	const struct drm_encoder_slave_funcs *encoder_sfuncs =
 		encoder_slave->slave_funcs;
 
 	if (encoder_sfuncs->detect)

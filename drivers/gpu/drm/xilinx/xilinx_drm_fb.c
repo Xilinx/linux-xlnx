@@ -91,7 +91,8 @@ static struct drm_framebuffer_funcs xilinx_drm_fb_funcs = {
  * Return: a xilinx_drm_fb object, or ERR_PTR.
  */
 static struct xilinx_drm_fb *
-xilinx_drm_fb_alloc(struct drm_device *drm, struct drm_mode_fb_cmd2 *mode_cmd,
+xilinx_drm_fb_alloc(struct drm_device *drm,
+		    const struct drm_mode_fb_cmd2 *mode_cmd,
 		    struct drm_gem_cma_object **obj, unsigned int num_planes)
 {
 	struct xilinx_drm_fb *fb;
@@ -467,9 +468,9 @@ void xilinx_drm_fb_restore_mode(struct drm_fb_helper *fb_helper)
  *
  * Return: a drm_framebuffer object if successful, or ERR_PTR.
  */
-struct drm_framebuffer *xilinx_drm_fb_create(struct drm_device *drm,
-					     struct drm_file *file_priv,
-					     struct drm_mode_fb_cmd2 *mode_cmd)
+struct drm_framebuffer *
+xilinx_drm_fb_create(struct drm_device *drm, struct drm_file *file_priv,
+		     const struct drm_mode_fb_cmd2 *mode_cmd)
 {
 	struct xilinx_drm_fb *fb;
 	struct drm_gem_cma_object *objs[4];

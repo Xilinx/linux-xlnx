@@ -43,7 +43,7 @@ static void xilinx_drm_encoder_dpms(struct drm_encoder *base_encoder, int dpms)
 {
 	struct xilinx_drm_encoder *encoder;
 	struct drm_encoder_slave *encoder_slave;
-	struct drm_encoder_slave_funcs *encoder_sfuncs;
+	const struct drm_encoder_slave_funcs *encoder_sfuncs;
 
 	encoder_slave = to_encoder_slave(base_encoder);
 	encoder_sfuncs = encoder_slave->slave_funcs;
@@ -66,7 +66,7 @@ xilinx_drm_encoder_mode_fixup(struct drm_encoder *base_encoder,
 			      struct drm_display_mode *adjusted_mode)
 {
 	struct drm_encoder_slave *encoder_slave;
-	struct drm_encoder_slave_funcs *encoder_sfuncs = NULL;
+	const struct drm_encoder_slave_funcs *encoder_sfuncs = NULL;
 	bool ret = true;
 
 	encoder_slave = to_encoder_slave(base_encoder);
@@ -84,7 +84,7 @@ static void xilinx_drm_encoder_mode_set(struct drm_encoder *base_encoder,
 					struct drm_display_mode *adjusted_mode)
 {
 	struct drm_encoder_slave *encoder_slave;
-	struct drm_encoder_slave_funcs *encoder_sfuncs;
+	const struct drm_encoder_slave_funcs *encoder_sfuncs;
 
 	DRM_DEBUG_KMS("h: %d, v: %d\n",
 		      adjusted_mode->hdisplay, adjusted_mode->vdisplay);
