@@ -134,7 +134,6 @@ static struct phy_driver xilinx_drivers[] = {
 		.read_status = &xilinxphy_read_status,
 		.resume = &genphy_resume,
 		.suspend = &genphy_suspend,
-		.driver = { .owner = THIS_MODULE },
 	},
 };
 
