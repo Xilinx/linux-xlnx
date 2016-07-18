@@ -936,6 +936,8 @@ struct macb {
 	int			phc_index;
 	unsigned int		ns_incr;
 	unsigned int		subns_incr;
+
+	struct tasklet_struct   hresp_err_tasklet;
 };
 
 static inline bool macb_is_gem(struct macb *bp)
