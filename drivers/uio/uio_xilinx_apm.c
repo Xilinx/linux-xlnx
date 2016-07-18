@@ -280,7 +280,7 @@ static int xapm_probe(struct platform_device *pdev)
 	return 0;
 
 err_clk_dis:
-	clk_disable_unprepare(&xapm->param.clk);
+	clk_disable_unprepare(xapm->param.clk);
 	return ret;
 }
 
@@ -295,7 +295,7 @@ static int xapm_remove(struct platform_device *pdev)
 	struct xapm_dev *xapm = platform_get_drvdata(pdev);
 
 	uio_unregister_device(&xapm->info);
-	clk_disable_unprepare(&xapm->param.clk);
+	clk_disable_unprepare(xapm->param.clk);
 
 	return 0;
 }
