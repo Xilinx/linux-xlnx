@@ -92,6 +92,7 @@
 #define SR_BP0			BIT(2)	/* Block protect 0 */
 #define SR_BP1			BIT(3)	/* Block protect 1 */
 #define SR_BP2			BIT(4)	/* Block protect 2 */
+#define SR_TB			BIT(5)	/* Top/Bottom protect */
 /* SR_BP3 only used on some Micron chip; must NOT be in SR_BP_BIT_MASK */
 #define SR_BP3			BIT(6)	/* Block protect 3 */
 #define	SR_BP_BIT_OFFSET	2	/* Offset to Block protect 0 */
@@ -136,6 +137,7 @@ enum spi_nor_ops {
 
 enum spi_nor_option_flags {
 	SNOR_F_USE_FSR		= BIT(0),
+	SNOR_F_HAS_SR_TB	= BIT(1),
 };
 
 /**

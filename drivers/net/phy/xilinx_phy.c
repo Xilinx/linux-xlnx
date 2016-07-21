@@ -94,7 +94,7 @@ static int xilinxphy_read_status(struct phy_device *phydev)
 
 static int xilinxphy_of_init(struct phy_device *phydev)
 {
-	struct device *dev = &phydev->dev;
+	struct device *dev = &phydev->mdio.dev;
 	struct device_node *of_node = dev->of_node;
 	u32 phytype;
 

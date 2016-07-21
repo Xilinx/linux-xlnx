@@ -58,5 +58,6 @@ obj-$(CONFIG_MTD_NAND_PL35X)		+= pl35x_nand.o
 obj-$(CONFIG_MTD_NAND_ARASAN)		+= arasan_nfc.o
 obj-$(CONFIG_MTD_NAND_HISI504)	        += hisi504_nand.o
 obj-$(CONFIG_MTD_NAND_BRCMNAND)		+= brcmnand/
+obj-$(CONFIG_MTD_NAND_QCOM)		+= qcom_nandc.o
 
 nand-objs := nand_base.o nand_bbt.o nand_timings.o

@@ -92,13 +92,7 @@
 #define ECAM_DEV_NUM_SHIFT		12
 
 /* Number of MSI IRQs */
-#ifdef CONFIG_ARM
-#define XILINX_NUM_MSI_IRQS	128
-#define TOT_NR_IRQS		XILINX_NUM_MSI_IRQS
-#else
-#define TOT_NR_IRQS		NR_IRQS
-#endif
-
+#define XILINX_NUM_MSI_IRQS		128
 
 /**
  * struct xilinx_pcie_port - PCIe port information
@@ -243,20 +237,15 @@ static void xilinx_pcie_destroy_msi(unsigned int irq)
  */
 static int xilinx_pcie_assign_msi(struct xilinx_pcie_port *port)
 {
-	int irq;
 	int pos;
 
 	pos = find_first_zero_bit(msi_irq_in_use, XILINX_NUM_MSI_IRQS);
-	irq = pos;
-#ifdef CONFIG_MICROBLAZE
-	irq = IRQ_XILINX_MSI_0 + pos;
-#endif
-	if (irq < TOT_NR_IRQS)
+	if (pos < XILINX_NUM_MSI_IRQS)
 		set_bit(pos, msi_irq_in_use);
 	else
 		return -ENOSPC;
 
-	return irq;
+	return pos;
 }
 
 /**
@@ -530,7 +519,7 @@ static void xilinx_pcie_free_irq_domain(struct xilinx_pcie_port *port)
 
 		free_pages(port->msi_pages, 0);
 
-		num_irqs = TOT_NR_IRQS;
+		num_irqs = XILINX_NUM_MSI_IRQS;
 	} else {
 		/* INTx */
 		num_irqs = 4;
@@ -575,7 +564,7 @@ static int xilinx_pcie_init_irq_domain(struct xilinx_pcie_port *port)
 	/* Setup MSI */
 	if (IS_ENABLED(CONFIG_PCI_MSI)) {
 		port->irq_domain = irq_domain_add_linear(node,
-							 TOT_NR_IRQS,
+							 XILINX_NUM_MSI_IRQS,
 							 &msi_domain_ops,
 							 &xilinx_pcie_msi_chip);
 		if (!port->irq_domain) {
@@ -716,7 +705,7 @@ static int xilinx_pcie_probe(struct platform_device *pdev)
 #endif
 	pci_scan_child_bus(bus);
 	pci_assign_unassigned_bus_resources(bus);
-#ifdef CONFIG_ARM
+#ifndef CONFIG_MICROBLAZE
 	pci_fixup_irqs(pci_common_swizzle, of_irq_parse_and_map_pci);
 #endif
 	pci_bus_add_devices(bus);
@@ -740,7 +729,7 @@ static int xilinx_pcie_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static const struct of_device_id xilinx_pcie_of_match[] = {
+static struct of_device_id xilinx_pcie_of_match[] = {
 	{ .compatible = "xlnx,axi-pcie-host-1.00.a", },
 	{}
 };

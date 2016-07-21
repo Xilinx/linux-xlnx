@@ -822,10 +822,7 @@ void pcibios_setup_bus_devices(struct pci_bus *bus)
 
 void pcibios_fixup_bus(struct pci_bus *bus)
 {
-	/* When called from the generic PCI probe, read PCI<->PCI bridge
-	 * bases. This is -not- called when generating the PCI tree from
-	 * the OF device-tree.
-	 */
+	/* nothing to do */
 }
 EXPORT_SYMBOL(pcibios_fixup_bus);
 
@@ -845,9 +842,7 @@ EXPORT_SYMBOL(pcibios_fixup_bus);
 resource_size_t pcibios_align_resource(void *data, const struct resource *res,
 				resource_size_t size, resource_size_t align)
 {
-	resource_size_t start = res->start;
-
-	return start;
+	return res->start;
 }
 EXPORT_SYMBOL(pcibios_align_resource);
 
@@ -1277,25 +1272,6 @@ static void pcibios_setup_phb_resources(struct pci_controller *hose,
 		 (unsigned long long)hose->pci_mem_offset);
 	pr_debug("PCI: PHB IO  offset     = %08lx\n",
 		 (unsigned long)hose->io_base_virt - _IO_BASE);
-}
-
-struct device_node *pcibios_get_phb_of_node(struct pci_bus *bus)
-{
-	struct device_node *np;
-
-	for_each_node_by_type(np, "pci") {
-		const void *prop;
-		unsigned int bus_min;
-
-		prop = of_get_property(np, "bus-range", NULL);
-		if (!prop)
-			continue;
-		bus_min = be32_to_cpup(prop);
-		if (bus->number == bus_min)
-			return np;
-	}
-
-	return NULL;
 }
 
 static void pcibios_scan_phb(struct pci_controller *hose)
