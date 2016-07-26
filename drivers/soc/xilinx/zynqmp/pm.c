@@ -906,28 +906,12 @@ static int zynqmp_pm_api_debugfs_init(void)
 	return err;
 }
 
-/**
- * zynqmp_pm_api_debugfs_remove - Remove debugfs functionality
- *
- * Return:	Returns 0
- */
-static int zynqmp_pm_api_debugfs_remove(void)
-{
-	debugfs_remove_recursive(zynqmp_pm_debugfs_dir);
-	zynqmp_pm_debugfs_dir = NULL;
-	return 0;
-}
-
 #else
 static int zynqmp_pm_api_debugfs_init(void)
 {
 	return 0;
 }
 
-static int zynqmp_pm_api_debugfs_remove(void)
-{
-	return 0;
-}
 #endif /* CONFIG_ZYNQMP_PM_API_DEBUGFS */
 
 static const struct of_device_id pm_of_match[] = {
@@ -993,28 +977,14 @@ static int zynqmp_pm_probe(struct platform_device *pdev)
 	return 0;
 }
 
-/**
- * zynqmp_pm_remove - Remove debugfs interface
- *
- * @pdev:	Pointer to the platform_device structure
- *
- * Return:	Returns 0
- */
-static int zynqmp_pm_remove(struct platform_device *pdev)
-{
-	zynqmp_pm_api_debugfs_remove();
-
-	return 0;
-}
-
 static struct platform_driver zynqmp_pm_platform_driver = {
 	.probe   = zynqmp_pm_probe,
-	.remove  = zynqmp_pm_remove,
 	.driver  = {
 			.name             = DRIVER_NAME,
 			.of_match_table   = pm_of_match,
 		   },
 };
+builtin_platform_driver(zynqmp_pm_platform_driver);
 
 static int __init zynqmp_plat_init(void)
 {
@@ -1050,7 +1020,3 @@ np_err:
 }
 
 early_initcall(zynqmp_plat_init);
-module_platform_driver(zynqmp_pm_platform_driver);
-
-MODULE_DESCRIPTION("Xilinx Zynq MPSoC Power Management API platform driver.");
-MODULE_LICENSE("GPL");
