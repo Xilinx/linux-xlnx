@@ -16,7 +16,6 @@ if RESET_CONTROLLER
 
 config ZYNQMP_RESET_CONTROLLER
 	bool "Xilinx ZYNQMP Reset Controller Support"
-	depends on ZYNQMP_PM_API
         help
 	 ZYNQMP Reset Controller support.
 
