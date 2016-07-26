@@ -980,24 +980,10 @@ static void get_set_conduit_method(struct device_node *np)
  */
 static int zynqmp_pm_probe(struct platform_device *pdev)
 {
-	struct device_node *np;
-
-	np = pdev->dev.of_node;
-
-	get_set_conduit_method(np);
 
 	/* Check PM API version number */
-	zynqmp_pm_get_api_version(&pm_api_version);
-	if (pm_api_version != ZYNQMP_PM_VERSION) {
-		pr_err("%s power management API version error. Expected: v%d.%d - Found: v%d.%d\n",
-		       __func__,
-		       ZYNQMP_PM_VERSION_MAJOR, ZYNQMP_PM_VERSION_MINOR,
-		       pm_api_version >> 16, pm_api_version & 0xffff);
-
-		do_fw_call = do_fw_call_fail;
-
-		return -EIO;
-	}
+	if (pm_api_version != ZYNQMP_PM_VERSION)
+		return -ENODEV;
 
 	pr_info("%s Power management API v%d.%d\n", __func__,
 		ZYNQMP_PM_VERSION_MAJOR, ZYNQMP_PM_VERSION_MINOR);
@@ -1030,6 +1016,40 @@ static struct platform_driver zynqmp_pm_platform_driver = {
 		   },
 };
 
+static int __init zynqmp_plat_init(void)
+{
+	struct device_node *np;
+	int ret = 0;
+
+	np = of_find_compatible_node(NULL, NULL, "xlnx,zynqmp-pm");
+	if (!np) {
+		pr_err("%s: pm node not found\n", __func__);
+		ret = -ENXIO;
+		goto np_err;
+	}
+
+	get_set_conduit_method(np);
+
+	/* Check PM API version number */
+	zynqmp_pm_get_api_version(&pm_api_version);
+	if (pm_api_version != ZYNQMP_PM_VERSION) {
+		pr_err("%s power management API version error. Expected: v%d.%d - Found: v%d.%d\n",
+		       __func__,
+		       ZYNQMP_PM_VERSION_MAJOR, ZYNQMP_PM_VERSION_MINOR,
+		       pm_api_version >> 16, pm_api_version & 0xffff);
+
+		do_fw_call = do_fw_call_fail;
+	}
+
+	pr_info("%s Power management API v%d.%d\n", __func__,
+		ZYNQMP_PM_VERSION_MAJOR, ZYNQMP_PM_VERSION_MINOR);
+
+np_err:
+	of_node_put(np);
+	return ret;
+}
+
+early_initcall(zynqmp_plat_init);
 module_platform_driver(zynqmp_pm_platform_driver);
 
 MODULE_DESCRIPTION("Xilinx Zynq MPSoC Power Management API platform driver.");
