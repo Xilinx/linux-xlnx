@@ -1,0 +1,15 @@
+Device tree bindings for Zynq's eFuse Controller
+
+The Zynq eFuse controller provides the access to the chip efuses which contain
+information about device DNA, security settings and also device status.
+
+Required properties:
+ compatible: Compatibility string. Must be "xlnx,zynq-efuse".
+ reg: Specify the base and size of the EFUSE controller registers
+      in the memory map. E.g.: reg = <0xf800d000 0x20>;
+
+Example:
+efuse: efuse@f800d000 {
+	compatible = "xlnx,zynq-efuse";
+	reg = <0xf800d000 0x20>;
+};
