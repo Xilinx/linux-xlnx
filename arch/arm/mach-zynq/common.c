@@ -176,6 +176,7 @@ static void __init zynq_map_io(void)
 
 static void __init zynq_irq_init(void)
 {
+	zynq_early_efuse_init();
 	zynq_early_slcr_init();
 	irqchip_init();
 }
