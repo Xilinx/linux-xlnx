@@ -4,7 +4,7 @@
 #
 
 # Common support
-obj-y				:= common.o slcr.o pm.o
+obj-y				:= common.o efuse.o slcr.o pm.o
 obj-$(CONFIG_SMP)		+= headsmp.o platsmp.o
 ORIG_AFLAGS := $(KBUILD_AFLAGS)
 KBUILD_AFLAGS = $(subst -march=armv6k,,$(ORIG_AFLAGS))
