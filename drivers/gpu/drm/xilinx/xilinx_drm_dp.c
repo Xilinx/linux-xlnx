@@ -999,8 +999,8 @@ static int xilinx_drm_dp_mode_configure(struct xilinx_drm_dp *dp, int pclock,
 	u8 max_lanes = dp->link_config.max_lanes;
 	u8 max_link_rate_code = drm_dp_link_rate_to_bw_code(max_rate);
 	u8 bpp = dp->config.bpp;
-	u8 lane_cnt, i;
-	s8 clock;
+	u8 lane_cnt;
+	s8 clock, i;
 
 	for (i = ARRAY_SIZE(bws) - 1; i >= 0; i--) {
 		if (current_bw && bws[i] >= current_bw)
