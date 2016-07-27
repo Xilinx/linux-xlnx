@@ -2041,7 +2041,6 @@ static struct platform_driver xilinx_dpdma_driver = {
 	.remove			= xilinx_dpdma_remove,
 	.driver			= {
 		.name		= "xilinx-dpdma",
-		.owner		= THIS_MODULE,
 		.of_match_table	= xilinx_dpdma_of_match,
 	},
 };
