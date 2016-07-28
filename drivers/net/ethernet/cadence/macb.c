@@ -2063,12 +2063,14 @@ static void macb_init_hw(struct macb *bp)
 		bp->rx_frm_len_mask = MACB_RX_JFRMLEN_MASK;
 
 
+#ifdef CONFIG_MACB_EXT_BD
 	gem_writel(bp, TXBDCNTRL,
 		   (gem_readl(bp, TXBDCNTRL) & ~(GEM_TXBDCNTRL_MODE_ALL)) |
 		   GEM_TXBDCNTRL_MODE_PTP_EVNT);
 	gem_writel(bp, RXBDCNTRL,
 		   (gem_readl(bp, RXBDCNTRL) & ~(GEM_RXBDCNTRL_MODE_ALL)) |
 		   GEM_RXBDCNTRL_MODE_PTP_EVNT);
+#endif
 
 	if ((gem_readl(bp, DCFG5) & GEM_BIT(TSU)) &&
 	    (bp->caps & MACB_CAPS_TSU)) {
