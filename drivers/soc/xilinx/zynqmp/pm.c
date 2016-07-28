@@ -240,6 +240,7 @@ static int invoke_pm_fn(u32 pm_api_id, u32 arg0, u32 arg1, u32 arg2, u32 arg3,
 
 /* PM-APIs for suspending of APU */
 
+#ifdef CONFIG_ZYNQMP_PM_API_DEBUGFS
 /**
  * zynqmp_pm_self_suspend - PM call for master to suspend itself
  * @node:	Node ID of the master or subsystem
@@ -254,6 +255,35 @@ static int zynqmp_pm_self_suspend(const u32 node,
 {
 	return invoke_pm_fn(SELF_SUSPEND, node, latency, state, 0, NULL);
 }
+
+/**
+ * zynqmp_pm_abort_suspend - PM call to announce that a prior suspend request
+ *				is to be aborted.
+ * @reason:	Reason for the abort
+ *
+ * Return:	Returns status, either success or error+reason
+ */
+static int zynqmp_pm_abort_suspend(const enum zynqmp_pm_abort_reason reason)
+{
+	return invoke_pm_fn(ABORT_SUSPEND, reason, 0, 0, 0, NULL);
+}
+
+/**
+ * zynqmp_pm_register_notifier - Register the PU to be notified of PM events
+ * @node:	Node ID of the slave
+ * @event:	The event to be notified about
+ * @wake:	Wake up on event
+ * @enable:	Enable or disable the notifier
+ *
+ * Return:	Returns status, either success or error+reason
+ */
+static int zynqmp_pm_register_notifier(const u32 node, const u32 event,
+				       const u32 wake, const u32 enable)
+{
+	return invoke_pm_fn(REGISTER_NOTIFIER, node, event,
+						wake, enable, NULL);
+}
+#endif
 
 /**
  * zynqmp_pm_request_suspend - PM call to request for another PU or subsystem to
@@ -289,18 +319,6 @@ int zynqmp_pm_force_powerdown(const u32 target,
 	return invoke_pm_fn(FORCE_POWERDOWN, target, ack, 0, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_force_powerdown);
-
-/**
- * zynqmp_pm_abort_suspend - PM call to announce that a prior suspend request
- *				is to be aborted.
- * @reason:	Reason for the abort
- *
- * Return:	Returns status, either success or error+reason
- */
-static int zynqmp_pm_abort_suspend(const enum zynqmp_pm_abort_reason reason)
-{
-	return invoke_pm_fn(ABORT_SUSPEND, reason, 0, 0, 0, NULL);
-}
 
 /**
  * zynqmp_pm_request_wakeup - PM call for to wake up selected master or subsystem
@@ -481,22 +499,6 @@ int zynqmp_pm_get_operating_characteristic(const u32 node,
 						node, type, 0, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_get_operating_characteristic);
-
-/**
- * zynqmp_pm_register_notifier - Register the PU to be notified of PM events
- * @node:	Node ID of the slave
- * @event:	The event to be notified about
- * @wake:	Wake up on event
- * @enable:	Enable or disable the notifier
- *
- * Return:	Returns status, either success or error+reason
- */
-static int zynqmp_pm_register_notifier(const u32 node, const u32 event,
-				       const u32 wake, const u32 enable)
-{
-	return invoke_pm_fn(REGISTER_NOTIFIER, node, event,
-						wake, enable, NULL);
-}
 
 /* Direct-Control API functions */
 
