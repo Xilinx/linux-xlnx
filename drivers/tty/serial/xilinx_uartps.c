@@ -242,7 +242,7 @@ static void cdns_uart_handle_rx(void *dev_id, unsigned int isrstatus)
 	struct uart_port *port = (struct uart_port *)dev_id;
 	struct cdns_uart *cdns_uart = port->private_data;
 	unsigned int data;
-	unsigned int rxbs_status;
+	unsigned int rxbs_status = 0;
 	unsigned int status_mask;
 	unsigned int framerrprocessed = 0;
 	char status = TTY_NORMAL;
