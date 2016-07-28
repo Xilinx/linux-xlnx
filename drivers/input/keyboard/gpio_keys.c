@@ -649,8 +649,6 @@ gpio_keys_get_devtree_pdata(struct device *dev)
 
 	i = 0;
 	for_each_available_child_of_node(node, pp) {
-		enum of_gpio_flags flags;
-
 		button = &pdata->buttons[i++];
 
 		button->gpio = of_get_gpio_flags(pp, 0, &button->irq_flags);
