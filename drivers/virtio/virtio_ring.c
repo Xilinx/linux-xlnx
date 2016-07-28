@@ -161,6 +161,7 @@ struct device *vring_dma_dev(const struct vring_virtqueue *vq)
 	return vq->vq.vdev->dev.parent;
 }
 
+#if 0
 /* Map one sg entry. */
 static dma_addr_t vring_map_one_sg(const struct vring_virtqueue *vq,
 				   struct scatterlist *sg,
@@ -178,6 +179,7 @@ static dma_addr_t vring_map_one_sg(const struct vring_virtqueue *vq,
 			    sg_page(sg), sg->offset, sg->length,
 			    direction);
 }
+#endif
 
 static dma_addr_t vring_map_single(const struct vring_virtqueue *vq,
 				   void *cpu_addr, size_t size,
