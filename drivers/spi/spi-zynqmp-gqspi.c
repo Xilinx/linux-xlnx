@@ -1141,6 +1141,8 @@ static int zynqmp_qspi_probe(struct platform_device *pdev)
 	if (ret)
 		goto clk_dis_all;
 
+	dma_set_mask(&pdev->dev, DMA_BIT_MASK(44));
+
 	return 0;
 
 clk_dis_all:
