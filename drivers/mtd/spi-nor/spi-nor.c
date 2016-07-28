@@ -1833,10 +1833,10 @@ int spi_nor_scan(struct spi_nor *nor, const char *name, enum read_mode mode)
 		return ret;
 
 	if (name)
-		info = spi_nor_match_id(name);
+		info = (struct flash_info *)spi_nor_match_id(name);
 	/* Try to auto-detect if chip name wasn't specified or not found */
 	if (!info)
-		info = spi_nor_read_id(nor);
+		info = (struct flash_info *)spi_nor_read_id(nor);
 	if (IS_ERR_OR_NULL(info))
 		return -ENOENT;
 
@@ -1860,7 +1860,7 @@ int spi_nor_scan(struct spi_nor *nor, const char *name, enum read_mode mode)
 			 */
 			dev_warn(dev, "found %s, expected %s\n",
 				 jinfo->name, info->name);
-			info = jinfo;
+			info = (struct flash_info *)jinfo;
 		}
 	}
 
