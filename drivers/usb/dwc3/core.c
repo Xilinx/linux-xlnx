@@ -153,8 +153,9 @@ static void dwc3_frame_length_adjustment(struct dwc3 *dwc, u32 fladj,
 	reg = dwc3_readl(dwc->regs, DWC3_GFLADJ);
 
 	if (refclk_fladj) {
-		if (!dev_WARN_ONCE(dwc->dev, (reg & DWC3_GFLADJ_REFCLK_FLADJ ==
-		    fladj & DWC3_GFLADJ_REFCLK_FLADJ),
+		if (!dev_WARN_ONCE(dwc->dev,
+				   ((reg & DWC3_GFLADJ_REFCLK_FLADJ) ==
+				    (fladj & DWC3_GFLADJ_REFCLK_FLADJ)),
 		    "refclk fladj request value same as default, ignoring\n")) {
 			reg &= ~DWC3_GFLADJ_REFCLK_FLADJ;
 			reg |= (fladj & DWC3_GFLADJ_REFCLK_FLADJ);
