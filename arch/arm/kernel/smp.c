@@ -502,11 +502,17 @@ static const char* ipi_desc_strings[] __tracepoint_string =
 			[IPI_COMPLETION] = IPI_DESC_STR(IPI_COMPLETION)
 		};
 
+
+static void tick_receive_broadcast_local(void)
+{
+	tick_receive_broadcast();
+}
+
 static struct ipi ipi_types[NR_IPI] = {
 #define S(x, f)	[x].desc = IPI_DESC_STR(x), [x].handler = f
 	S(IPI_WAKEUP, NULL),
 #ifdef CONFIG_GENERIC_CLOCKEVENTS_BROADCAST
-	S(IPI_TIMER, tick_receive_broadcast),
+	S(IPI_TIMER, tick_receive_broadcast_local),
 #endif
 	S(IPI_RESCHEDULE, scheduler_ipi),
 	S(IPI_CALL_FUNC, generic_smp_call_function_interrupt),
