@@ -32,10 +32,12 @@
 #include <linux/platform_device.h>
 #include <linux/delay.h>
 #include <dt-bindings/phy/phy.h>
+#include <linux/soc/xilinx/zynqmp/pm.h>
 #include <linux/list.h>
 
 #define MAX_LANES			4
 
+#define RST_LPD_IOU0			0x0230
 #define RST_LPD				0x023C
 #define RST_FPD				0x0100
 #define RST_ULPI			0x0250
@@ -48,6 +50,10 @@
 #define DP_RESET			BIT(16)
 #define USB0_RESET			(BIT(6) | BIT(8) | BIT(10))
 #define USB1_RESET			(BIT(7) | BIT(9) | BIT(11))
+#define GEM0_RESET			BIT(0)
+#define GEM1_RESET			BIT(1)
+#define GEM2_RESET			BIT(2)
+#define GEM3_RESET			BIT(3)
 
 #define ICM_CFG0			0x10010
 #define ICM_CFG1			0x10014
@@ -147,11 +153,36 @@
 #define L0_TXPMD_TM_48			0x0CC0
 #define TXPMD_TM_48_OFFSET		0x4000
 
+#define TX_PROT_BUS_WIDTH		0x10040
+#define RX_PROT_BUS_WIDTH		0x10044
+
+#define PROT_BUS_WIDTH_SHIFT		2
+#define PROT_BUS_WIDTH_10		0x0
+#define PROT_BUS_WIDTH_20		0x1
+#define PROT_BUS_WIDTH_40		0x2
+
 #define LANE_CLK_SHARE_MASK		0x8F
 
 #define SATA_CONTROL_OFFSET		0x0100
 
 #define CONTROLLERS_PER_LANE		5
+
+#define IOU_SLCR			0xFF180000
+
+#define IOU_GEM_CTRL_OFFSET		0x360
+#define SGMII_SD_MASK			0x3
+#define SGMII_SD_OFFSET			2
+#define SGMII_PCS_SD_0			0x0
+#define SGMII_PCS_SD_1			0x1
+#define SGMII_PCS_SD_PHY		0x2
+
+#define IOU_GEM_CLK_CTRL_OFFSET		0x308
+#define GEM_CLK_CTRL_MASK		0xF
+#define GEM_CLK_CTRL_OFFSET		5
+#define GEM_RX_SRC_SEL_GTR		0x1
+#define GEM_REF_SRC_SEL_GTR		0x2
+#define GEM_SGMII_MODE			0x4
+#define GEM_FIFO_CLK_PL			0x8
 
 #define XPSGTR_TYPE_USB0	0 /* USB controller 0 */
 #define XPSGTR_TYPE_USB1	1 /* USB controller 1 */
@@ -531,6 +562,26 @@ static void xpsgtr_controller_reset(struct xpsgtr_phy *gtr_phy)
 		reg |= DP_RESET;
 		writel(reg, gtr_dev->fpd + RST_FPD);
 		break;
+	case XPSGTR_TYPE_SGMII0:
+		reg = readl(gtr_dev->lpd + RST_LPD_IOU0);
+		reg |= GEM0_RESET;
+		writel(reg, gtr_dev->lpd + RST_LPD_IOU0);
+		break;
+	case XPSGTR_TYPE_SGMII1:
+		reg = readl(gtr_dev->lpd + RST_LPD_IOU0);
+		reg |= GEM1_RESET;
+		writel(reg, gtr_dev->lpd + RST_LPD_IOU0);
+		break;
+	case XPSGTR_TYPE_SGMII2:
+		reg = readl(gtr_dev->lpd + RST_LPD_IOU0);
+		reg |= GEM2_RESET;
+		writel(reg, gtr_dev->lpd + RST_LPD_IOU0);
+		break;
+	case XPSGTR_TYPE_SGMII3:
+		reg = readl(gtr_dev->lpd + RST_LPD_IOU0);
+		reg |= GEM3_RESET;
+		writel(reg, gtr_dev->lpd + RST_LPD_IOU0);
+		break;
 	default:
 		break;
 	}
@@ -567,6 +618,26 @@ static void xpsgtr_controller_release_reset(struct xpsgtr_phy *gtr_phy)
 		reg = readl(gtr_dev->fpd + RST_FPD);
 		reg &= ~DP_RESET;
 		writel(reg, gtr_dev->fpd + RST_FPD);
+		break;
+	case XPSGTR_TYPE_SGMII0:
+		reg = readl(gtr_dev->lpd + RST_LPD_IOU0);
+		reg &= ~GEM0_RESET;
+		writel(reg, gtr_dev->lpd + RST_LPD_IOU0);
+		break;
+	case XPSGTR_TYPE_SGMII1:
+		reg = readl(gtr_dev->lpd + RST_LPD_IOU0);
+		reg &= ~GEM1_RESET;
+		writel(reg, gtr_dev->lpd + RST_LPD_IOU0);
+		break;
+	case XPSGTR_TYPE_SGMII2:
+		reg = readl(gtr_dev->lpd + RST_LPD_IOU0);
+		reg &= ~GEM2_RESET;
+		writel(reg, gtr_dev->lpd + RST_LPD_IOU0);
+		break;
+	case XPSGTR_TYPE_SGMII3:
+		reg = readl(gtr_dev->lpd + RST_LPD_IOU0);
+		reg &= ~GEM3_RESET;
+		writel(reg, gtr_dev->lpd + RST_LPD_IOU0);
 		break;
 	default:
 		break;
@@ -609,6 +680,32 @@ int xpsgtr_wait_pll_lock(struct phy *phy)
 EXPORT_SYMBOL_GPL(xpsgtr_wait_pll_lock);
 
 /**
+ * xpsgtr_set_txwidth - This function sets the tx bus width of the lane
+ * @gtr_phy: pointer to lane
+ * @width: tx bus width size
+ */
+static void xpsgtr_set_txwidth(struct xpsgtr_phy *gtr_phy, u32 width)
+{
+	struct xpsgtr_dev *gtr_dev = gtr_phy->data;
+
+	writel(gtr_phy->lane * PROT_BUS_WIDTH_SHIFT >> width,
+					gtr_dev->serdes + TX_PROT_BUS_WIDTH);
+}
+
+/**
+ * xpsgtr_set_rxwidth() - This function sets the rx bus width of the lane
+ * @gtr_phy: pointer to lane
+ * @width: rx bus width size
+ */
+static void xpsgtr_set_rxwidth(struct xpsgtr_phy *gtr_phy, u32 width)
+{
+	struct xpsgtr_dev *gtr_dev = gtr_phy->data;
+
+	writel(gtr_phy->lane * PROT_BUS_WIDTH_SHIFT >> width,
+					gtr_dev->serdes + RX_PROT_BUS_WIDTH);
+}
+
+/**
  * xpsgtr_bypass_scramenc - This bypasses scrambler and 8b/10b encoder feature
  * @gtr_phy: pointer to lane
  */
@@ -634,6 +731,25 @@ static void xpsgtr_bypass_descramdec(struct xpsgtr_phy *gtr_phy)
 	/* bypass Descrambler and 8b/10b decoder */
 	offset = gtr_phy->lane * TM_DIG_6_OFFSET + L0_TM_DIG_6;
 	writel(TM_DISABLE_DESCRAMBLE_DECODER, gtr_dev->serdes + offset);
+}
+
+/**
+ * xpsgtr_misc_sgmii - miscellaneous settings for SGMII
+ * @gtr_phy: pointer to lane
+ */
+static void xpsgtr_misc_sgmii(struct xpsgtr_phy *gtr_phy)
+{
+	/* Set SGMII protocol tx bus width 10 bits */
+	xpsgtr_set_txwidth(gtr_phy, PROT_BUS_WIDTH_10);
+
+	/* Set SGMII protocol rx bus width 10 bits */
+	xpsgtr_set_rxwidth(gtr_phy, PROT_BUS_WIDTH_10);
+
+	/* bypass Descrambler and 8b/10b decoder */
+	xpsgtr_bypass_descramdec(gtr_phy);
+
+	/* bypass Scrambler and 8b/10b Encoder */
+	xpsgtr_bypass_scramenc(gtr_phy);
 }
 
 /**
@@ -682,6 +798,59 @@ static void xpsgtr_ulpi_reset(struct xpsgtr_phy *gtr_phy)
 
 	writel(RST_ULPI_HI, gtr_dev->lpd + RST_ULPI);
 
+}
+
+/**
+ * xpsgtr_set_sgmii_pcs - This function sets the sgmii mode for GEM.
+ * @gtr_phy: pointer to lane
+ *
+ * Return: 0 on success, -EINVAL on non existing SGMII type or error from
+ * communication with firmware
+ */
+static int xpsgtr_set_sgmii_pcs(struct xpsgtr_phy *gtr_phy)
+{
+	u32 shift, mask, value;
+	u32 ret = 0;
+	struct xpsgtr_dev *gtr_dev = gtr_phy->data;
+
+	/* Set the PCS signal detect to 1 */
+	switch (gtr_phy->type) {
+	case XPSGTR_TYPE_SGMII0:
+		shift = 0;
+		break;
+	case XPSGTR_TYPE_SGMII1:
+		shift = 1;
+		break;
+	case XPSGTR_TYPE_SGMII2:
+		shift = 2;
+		break;
+	case XPSGTR_TYPE_SGMII3:
+		shift = 3;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	/* Tie the GEM PCS Signal Detect to 1 */
+	mask = SGMII_SD_MASK << SGMII_SD_OFFSET * shift;
+	value = SGMII_PCS_SD_1 << SGMII_SD_OFFSET * shift;
+	ret = zynqmp_pm_mmio_write(IOU_SLCR + IOU_GEM_CTRL_OFFSET, mask, value);
+	if (ret < 0) {
+		dev_err(gtr_dev->dev, "failed to set GEM PCS SD\n");
+		return ret;
+	}
+
+	/* Set the GEM to SGMII mode */
+	mask = GEM_CLK_CTRL_MASK << GEM_CLK_CTRL_OFFSET * shift;
+	value = GEM_RX_SRC_SEL_GTR | GEM_SGMII_MODE;
+	ret = zynqmp_pm_mmio_write(IOU_SLCR + IOU_GEM_CLK_CTRL_OFFSET,
+								mask, value);
+	if (ret < 0) {
+		dev_err(gtr_dev->dev, "failed to set GEM to SGMII mode\n");
+		return ret;
+	}
+
+	return ret;
 }
 
 /**
@@ -787,6 +956,9 @@ static int xpsgtr_phy_init(struct phy *phy)
 	if (gtr_phy->protocol == ICM_PROTOCOL_SATA)
 		xpsgtr_misc_sata(gtr_phy);
 
+	if (gtr_phy->protocol == ICM_PROTOCOL_SGMII)
+		xpsgtr_misc_sgmii(gtr_phy);
+
 	/* Bring controller out of reset */
 	xpsgtr_controller_release_reset(gtr_phy);
 
@@ -815,6 +987,9 @@ static int xpsgtr_phy_init(struct phy *phy)
 	if (gtr_phy->protocol == ICM_PROTOCOL_USB)
 		xpsgtr_ulpi_reset(gtr_phy);
 
+	/* Select SGMII Mode for GEM and set the PCS Signal detect*/
+	if (gtr_phy->protocol == ICM_PROTOCOL_SGMII)
+		ret = xpsgtr_set_sgmii_pcs(gtr_phy);
 out:
 	mutex_unlock(&gtr_dev->gtr_mutex);
 	return ret;
