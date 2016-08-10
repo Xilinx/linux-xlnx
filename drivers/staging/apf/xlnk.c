@@ -1081,9 +1081,7 @@ static int xlnk_dmasubmit_ioctl(struct file *filp, unsigned int code,
 			}
 			down_read(&current->mm->mmap_sem);
 			locked_page_count =
-				get_user_pages(current,
-					       current->mm,
-					       first_page * PAGE_SIZE,
+				get_user_pages(first_page * PAGE_SIZE,
 					       t->sg_list_size, 1, 1,
 					       xlnk_page_store, NULL);
 			up_read(&current->mm->mmap_sem);
@@ -1092,7 +1090,7 @@ static int xlnk_dmasubmit_ioctl(struct file *filp, unsigned int code,
 
 				pr_err("could not get user pages");
 				for (i = 0; i < locked_page_count; i++)
-					page_cache_release(xlnk_page_store[i]);
+					put_page(xlnk_page_store[i]);
 				kfree(t->sg_list);
 				vfree(t);
 				return -EFAULT;
@@ -1130,7 +1128,7 @@ static int xlnk_dmasubmit_ioctl(struct file *filp, unsigned int code,
 
 				pr_err("could not map user pages");
 				for (i = 0; i < locked_page_count; i++)
-					page_cache_release(xlnk_page_store[i]);
+					put_page(xlnk_page_store[i]);
 				kfree(t->sg_list);
 				vfree(t);
 				return -EFAULT;
@@ -1236,7 +1234,7 @@ static int xlnk_dmawait_ioctl(struct file *filp, unsigned int code,
 				     t->sg_list_size,
 				     t->transfer_direction);
 			for (i = 0; i < t->sg_list_size; i++)
-				page_cache_release(sg_page(t->sg_list + i));
+				put_page(sg_page(t->sg_list + i));
 		}
 		kfree(t->sg_list);
 		vfree(t);

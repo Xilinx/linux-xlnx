@@ -661,7 +661,7 @@ static int pin_user_pages(xlnk_intptr_type uaddr,
 	}
 
 	down_read(&mm->mmap_sem);
-	status = get_user_pages(curr_task, mm, uaddr, num_pages, write, 1,
+	status = get_user_pages(uaddr, num_pages, write, 1,
 				mapped_pages, NULL);
 	up_read(&mm->mmap_sem);
 
@@ -707,7 +707,7 @@ static int pin_user_pages(xlnk_intptr_type uaddr,
 	} else {
 		pr_err("Failed to pin user pages\n");
 		for (pgidx = 0; pgidx < status; pgidx++) {
-			page_cache_release(mapped_pages[pgidx]);
+			put_page(mapped_pages[pgidx]);
 		}
 		return -ENOMEM;
 	}
@@ -724,7 +724,7 @@ static int unpin_user_pages(struct scatterlist *sglist, unsigned int cnt)
 	for (i = 0; i < cnt; i++) {
 		pg = sg_page(sglist + i);
 		if (pg) {
-			page_cache_release(pg);
+			put_page(pg);
 		}
 	}
 
