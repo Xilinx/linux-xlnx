@@ -642,16 +642,13 @@ static void xpsgtr_bypass_descramdec(struct xpsgtr_phy *gtr_phy)
  */
 static void xpsgtr_misc_sata(struct xpsgtr_phy *gtr_phy)
 {
-	u32 offset;
 	struct xpsgtr_dev *gtr_dev = gtr_phy->data;
 
 	/* bypass Descrambler and 8b/10b decoder */
-	offset = gtr_phy->lane * TM_DIG_6_OFFSET + L0_TM_DIG_6;
-	writel(TM_DISABLE_DESCRAMBLE_DECODER, gtr_dev->serdes + offset);
+	xpsgtr_bypass_descramdec(gtr_phy);
 
 	/* bypass Scrambler and 8b/10b Encoder */
-	offset = gtr_phy->lane * TX_DIG_61_OFFSET + L0_TX_DIG_61;
-	writel(TM_DISABLE_SCRAMBLE_ENCODER, gtr_dev->serdes + offset);
+	xpsgtr_bypass_scramenc(gtr_phy);
 
 	writel(gtr_phy->lane, gtr_dev->siou + SATA_CONTROL_OFFSET);
 }
