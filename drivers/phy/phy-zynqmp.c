@@ -609,6 +609,34 @@ int xpsgtr_wait_pll_lock(struct phy *phy)
 EXPORT_SYMBOL_GPL(xpsgtr_wait_pll_lock);
 
 /**
+ * xpsgtr_bypass_scramenc - This bypasses scrambler and 8b/10b encoder feature
+ * @gtr_phy: pointer to lane
+ */
+static void xpsgtr_bypass_scramenc(struct xpsgtr_phy *gtr_phy)
+{
+	u32 offset;
+	struct xpsgtr_dev *gtr_dev = gtr_phy->data;
+
+	/* bypass Scrambler and 8b/10b Encoder */
+	offset = gtr_phy->lane * TX_DIG_61_OFFSET + L0_TX_DIG_61;
+	writel(TM_DISABLE_SCRAMBLE_ENCODER, gtr_dev->serdes + offset);
+}
+
+/**
+ * xpsgtr_bypass_descramdec - bypasses descrambler and 8b/10b encoder feature
+ * @gtr_phy: pointer to lane
+ */
+static void xpsgtr_bypass_descramdec(struct xpsgtr_phy *gtr_phy)
+{
+	u32 offset;
+	struct xpsgtr_dev *gtr_dev = gtr_phy->data;
+
+	/* bypass Descrambler and 8b/10b decoder */
+	offset = gtr_phy->lane * TM_DIG_6_OFFSET + L0_TM_DIG_6;
+	writel(TM_DISABLE_DESCRAMBLE_DECODER, gtr_dev->serdes + offset);
+}
+
+/**
  * xpsgtr_misc_sata - miscellaneous settings for SATA
  * @gtr_phy: pointer to lane
  */
