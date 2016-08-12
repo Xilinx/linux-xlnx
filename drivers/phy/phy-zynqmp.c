@@ -694,7 +694,7 @@ static void xpsgtr_set_txwidth(struct xpsgtr_phy *gtr_phy, u32 width)
 }
 
 /**
- * xpsgtr_set_rxwidth() - This function sets the rx bus width of the lane
+ * xpsgtr_set_rxwidth - This function sets the rx bus width of the lane
  * @gtr_phy: pointer to lane
  * @width: rx bus width size
  */
