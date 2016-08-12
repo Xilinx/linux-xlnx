@@ -577,7 +577,7 @@ static int spi_nor_erase(struct mtd_info *mtd, struct erase_info *instr)
 
 			write_enable(nor);
 
-			ret = spi_nor_erase_sector(nor, addr);
+			ret = spi_nor_erase_sector(nor, offset);
 			if (ret)
 				goto erase_err;
 
