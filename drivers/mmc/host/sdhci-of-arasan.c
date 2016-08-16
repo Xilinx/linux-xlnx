@@ -22,8 +22,11 @@
 #include <linux/clk-provider.h>
 #include <linux/mfd/syscon.h>
 #include <linux/module.h>
+#include <linux/delay.h>
 #include <linux/of_device.h>
+#include <linux/pm_runtime.h>
 #include <linux/phy/phy.h>
+#include <linux/mmc/mmc.h>
 #include <linux/soc/xilinx/zynqmp/tap_delays.h>
 #include <linux/soc/xilinx/zynqmp/fw.h>
 #include <linux/pinctrl/consumer.h>
@@ -40,6 +43,7 @@
 #define CLK_CTRL_TIMEOUT_MIN_EXP	13
 #define SD_CLK_25_MHZ				25000000
 #define SD_CLK_19_MHZ				19000000
+#define MAX_TUNING_LOOP 40
 
 #define PHY_CLK_TOO_SLOW_HZ		400000
 
@@ -170,6 +174,193 @@ static int sdhci_arasan_syscon_write(struct sdhci_host *host,
 	return ret;
 }
 
+static void arasan_zynqmp_dll_reset(struct sdhci_host *host, u8 deviceid)
+{
+	u16 clk;
+	unsigned long timeout;
+
+	clk = sdhci_readw(host, SDHCI_CLOCK_CONTROL);
+	clk &= ~(SDHCI_CLOCK_CARD_EN | SDHCI_CLOCK_INT_EN);
+	sdhci_writew(host, clk, SDHCI_CLOCK_CONTROL);
+
+	/* Issue DLL Reset */
+	zynqmp_dll_reset(deviceid);
+
+	clk = sdhci_readw(host, SDHCI_CLOCK_CONTROL);
+	clk |= SDHCI_CLOCK_INT_EN;
+	sdhci_writew(host, clk, SDHCI_CLOCK_CONTROL);
+
+	/* Wait max 20 ms */
+	timeout = 20;
+	while (!((clk = sdhci_readw(host, SDHCI_CLOCK_CONTROL))
+				& SDHCI_CLOCK_INT_STABLE)) {
+		if (timeout == 0) {
+			dev_err(mmc_dev(host->mmc),
+				": Internal clock never stabilised.\n");
+			return;
+		}
+		timeout--;
+		mdelay(1);
+	}
+
+	clk |= SDHCI_CLOCK_CARD_EN;
+	sdhci_writew(host, clk, SDHCI_CLOCK_CONTROL);
+}
+
+static int arasan_zynqmp_execute_tuning(struct sdhci_host *host, u32 opcode)
+{
+	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
+	struct sdhci_arasan_data *sdhci_arasan = sdhci_pltfm_priv(pltfm_host);
+	struct mmc_host *mmc = host->mmc;
+	u16 ctrl;
+	int tuning_loop_counter = MAX_TUNING_LOOP;
+	int err = 0;
+	unsigned long flags;
+	unsigned int tuning_count = 0;
+
+	spin_lock_irqsave(&host->lock, flags);
+
+	if (host->tuning_mode == SDHCI_TUNING_MODE_1)
+		tuning_count = host->tuning_count;
+
+	ctrl = sdhci_readw(host, SDHCI_HOST_CONTROL2);
+	ctrl |= SDHCI_CTRL_EXEC_TUNING;
+	if (host->quirks2 & SDHCI_QUIRK2_TUNING_WORK_AROUND)
+		ctrl |= SDHCI_CTRL_TUNED_CLK;
+	sdhci_writew(host, ctrl, SDHCI_HOST_CONTROL2);
+
+	mdelay(1);
+
+	arasan_zynqmp_dll_reset(host, sdhci_arasan->device_id);
+
+	/*
+	 * As per the Host Controller spec v3.00, tuning command
+	 * generates Buffer Read Ready interrupt, so enable that.
+	 *
+	 * Note: The spec clearly says that when tuning sequence
+	 * is being performed, the controller does not generate
+	 * interrupts other than Buffer Read Ready interrupt. But
+	 * to make sure we don't hit a controller bug, we _only_
+	 * enable Buffer Read Ready interrupt here.
+	 */
+	sdhci_writel(host, SDHCI_INT_DATA_AVAIL, SDHCI_INT_ENABLE);
+	sdhci_writel(host, SDHCI_INT_DATA_AVAIL, SDHCI_SIGNAL_ENABLE);
+
+	/*
+	 * Issue CMD19 repeatedly till Execute Tuning is set to 0 or the number
+	 * of loops reaches 40 times or a timeout of 150ms occurs.
+	 */
+	do {
+		struct mmc_command cmd = {0};
+		struct mmc_request mrq = {NULL};
+
+		cmd.opcode = opcode;
+		cmd.arg = 0;
+		cmd.flags = MMC_RSP_R1 | MMC_CMD_ADTC;
+		cmd.retries = 0;
+		cmd.data = NULL;
+		cmd.mrq = &mrq;
+		cmd.error = 0;
+
+		if (tuning_loop_counter-- == 0)
+			break;
+
+		mrq.cmd = &cmd;
+
+		/*
+		 * In response to CMD19, the card sends 64 bytes of tuning
+		 * block to the Host Controller. So we set the block size
+		 * to 64 here.
+		 */
+		if (cmd.opcode == MMC_SEND_TUNING_BLOCK_HS200) {
+			if (mmc->ios.bus_width == MMC_BUS_WIDTH_8) {
+				sdhci_writew(host, SDHCI_MAKE_BLKSZ(7, 128),
+					     SDHCI_BLOCK_SIZE);
+			} else if (mmc->ios.bus_width == MMC_BUS_WIDTH_4) {
+				sdhci_writew(host, SDHCI_MAKE_BLKSZ(7, 64),
+					     SDHCI_BLOCK_SIZE);
+			}
+		} else {
+			sdhci_writew(host, SDHCI_MAKE_BLKSZ(7, 64),
+				     SDHCI_BLOCK_SIZE);
+		}
+
+		/*
+		 * The tuning block is sent by the card to the host controller.
+		 * So we set the TRNS_READ bit in the Transfer Mode register.
+		 * This also takes care of setting DMA Enable and Multi Block
+		 * Select in the same register to 0.
+		 */
+		sdhci_writew(host, SDHCI_TRNS_READ, SDHCI_TRANSFER_MODE);
+
+		sdhci_send_command(host, &cmd);
+
+		host->cmd = NULL;
+
+		spin_unlock_irqrestore(&host->lock, flags);
+		/* Wait for Buffer Read Ready interrupt */
+		wait_event_interruptible_timeout(host->buf_ready_int,
+					(host->tuning_done == 1),
+					msecs_to_jiffies(50));
+		spin_lock_irqsave(&host->lock, flags);
+
+		if (!host->tuning_done) {
+			dev_warn(mmc_dev(host->mmc),
+				 ": Timeout for Buffer Read Ready interrupt, back to fixed sampling clock\n");
+			ctrl = sdhci_readw(host, SDHCI_HOST_CONTROL2);
+			ctrl &= ~SDHCI_CTRL_TUNED_CLK;
+			ctrl &= ~SDHCI_CTRL_EXEC_TUNING;
+			sdhci_writew(host, ctrl, SDHCI_HOST_CONTROL2);
+
+			err = -EIO;
+			goto out;
+		}
+
+		host->tuning_done = 0;
+
+		ctrl = sdhci_readw(host, SDHCI_HOST_CONTROL2);
+
+		/* eMMC spec does not require a delay between tuning cycles */
+		if (opcode == MMC_SEND_TUNING_BLOCK)
+			mdelay(1);
+	} while (ctrl & SDHCI_CTRL_EXEC_TUNING);
+
+	/*
+	 * The Host Driver has exhausted the maximum number of loops allowed,
+	 * so use fixed sampling frequency.
+	 */
+	if (tuning_loop_counter < 0) {
+		ctrl &= ~SDHCI_CTRL_TUNED_CLK;
+		sdhci_writew(host, ctrl, SDHCI_HOST_CONTROL2);
+	}
+	if (!(ctrl & SDHCI_CTRL_TUNED_CLK)) {
+		dev_warn(mmc_dev(host->mmc),
+			 ": Tuning failed, back to fixed sampling clock\n");
+		err = -EIO;
+	} else {
+		arasan_zynqmp_dll_reset(host, sdhci_arasan->device_id);
+	}
+
+out:
+	/*
+	 * In case tuning fails, host controllers which support
+	 * re-tuning can try tuning again at a later time, when the
+	 * re-tuning timer expires.  So for these controllers, we
+	 * return 0. Since there might be other controllers who do not
+	 * have this capability, we return error for them.
+	 */
+	if (tuning_count)
+		err = 0;
+
+	host->mmc->retune_period = err ? 0 : tuning_count;
+
+	sdhci_writel(host, host->ier, SDHCI_INT_ENABLE);
+	sdhci_writel(host, host->ier, SDHCI_SIGNAL_ENABLE);
+	spin_unlock_irqrestore(&host->lock, flags);
+
+	return err;
+}
+
 static void sdhci_arasan_set_clock(struct sdhci_host *host, unsigned int clock)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
@@ -286,7 +477,7 @@ static int sdhci_arasan_voltage_switch(struct mmc_host *mmc,
 	return -EINVAL;
 }
 
-static const struct sdhci_ops sdhci_arasan_ops = {
+static struct sdhci_ops sdhci_arasan_ops = {
 	.set_clock = sdhci_arasan_set_clock,
 	.get_max_clock = sdhci_pltfm_clk_get_max_clock,
 	.get_timeout_clock = sdhci_pltfm_clk_get_max_clock,
@@ -710,6 +901,8 @@ static int sdhci_arasan_probe(struct platform_device *pdev)
 					"\"xlnx,device_id \" property is missing.\n");
 				goto clk_disable_all;
 			}
+			sdhci_arasan_ops.platform_execute_tuning =
+				arasan_zynqmp_execute_tuning;
 		}
 	}
 
