@@ -857,6 +857,7 @@ static int anfc_init_timing_mode(struct anfc *nfc)
 		err = chip->onfi_set_features(mtd, chip,
 					ONFI_FEATURE_ADDR_TIMING_MODE,
 					(uint8_t *)&feature[0]);
+		chip->select_chip(mtd, -1);
 		if (err)
 			return err;
 	}
