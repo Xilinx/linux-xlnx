@@ -33,6 +33,11 @@
 /* SMC SIP service Call Function Identifier Prefix */
 #define PM_SIP_SVC	0xC2000000
 
+/* FPGA PCAP Interface Identifiers */
+#define PCAP_INIT      0x00000001
+#define PCAP_WRITE     0x00000002
+#define PCAP_DONE      0x00000004
+
 /* Number of 32bits values in payload */
 #define PAYLOAD_ARG_CNT	5U
 
@@ -65,6 +70,9 @@ enum pm_api_id {
 	RESET_GET_STATUS,
 	MMIO_WRITE,
 	MMIO_READ,
+	PM_INIT,
+	FPGA_LOAD,
+	FPGA_GET_STATUS,
 };
 
 /* PMU-FW return status codes */
@@ -580,6 +588,75 @@ int zynqmp_pm_mmio_read(const u32 address, u32 *value)
 	return zynqmp_pm_ret_code((enum pm_ret_status)ret_payload[0]);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_mmio_read);
+
+/**
+ * zynqmp_pm_fpga_init -This function initialize the PCAP interface.
+ *
+ * This function provides access to xilfpga library to initialize the
+ * the PCAP interface.
+ *
+ * Return:      Returns status, either success or error+reason
+ */
+int zynqmp_pm_fpga_init(void)
+{
+	return invoke_pm_fn(FPGA_LOAD, 0, 0, 0, PCAP_INIT, NULL);
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_fpga_init);
+
+/**
+ * zynqmp_pm_fpga_load - Perform the fpga load
+ * @address:    Address to write to
+ * @size        pl bitstream size
+ *
+ * This function provides access to xilfpga library to transfer
+ * the required bitstream into PL.
+ *
+ * Return:      Returns status, either success or error+reason
+ */
+int zynqmp_pm_fpga_load(const u64 address, const u32 size)
+{
+	return invoke_pm_fn(FPGA_LOAD, (u32)address,
+			((u32)(address >> 32)), size, PCAP_WRITE, NULL);
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_fpga_load);
+
+/**
+ * zynqmp_pm_fpga_done -This function checks whether the bitstream
+ *                      is properly programmed or NOT
+ *
+ * This function provides access to xilfpga library to checks
+ * whether the bitstream is properly programmed or NOT.
+ *
+ * Return:      Returns status, either success or error+reason
+ */
+int zynqmp_pm_fpga_done(void)
+{
+	return invoke_pm_fn(FPGA_LOAD, 0, 0, 0, PCAP_DONE, NULL);
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_fpga_done);
+
+/**
+ * zynqmp_pm_fpga_get_status - Read value from PCAP status register
+ * @value:      Value to read
+ *
+ *This function provides access to the xilfpga library to get
+ *the PCAP status
+ *
+ * Return:      Returns status, either success or error+reason
+ */
+int zynqmp_pm_fpga_get_status(u32 *value)
+{
+	u32 ret_payload[PAYLOAD_ARG_CNT];
+
+	if (!value)
+		return -EINVAL;
+
+	invoke_pm_fn(FPGA_GET_STATUS, 0, 0, 0, 0, ret_payload);
+	*value = ret_payload[1];
+
+	return zynqmp_pm_ret_code((enum pm_ret_status)ret_payload[0]);
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_fpga_get_status);
 
 #ifdef CONFIG_ZYNQMP_PM_API_DEBUGFS
 /**

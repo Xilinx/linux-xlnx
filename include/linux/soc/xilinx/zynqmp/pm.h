@@ -244,5 +244,9 @@ int zynqmp_pm_mmio_write(const u32 address,
 				     const u32 mask,
 				     const u32 value);
 int zynqmp_pm_mmio_read(const u32 address, u32 *value);
+int zynqmp_pm_fpga_init(void);
+int zynqmp_pm_fpga_load(const u64 address, const u32 size);
+int zynqmp_pm_fpga_done(void);
+int zynqmp_pm_fpga_get_status(u32 *value);
 
 #endif /* __SOC_ZYNQMP_PM_H__ */
