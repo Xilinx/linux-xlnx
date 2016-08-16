@@ -473,6 +473,8 @@ static inline int zynqmp_is_valid_ioctl(u32 ioctl_id)
 	case IOCTL_GET_PLL_FRAC_MODE:
 	case IOCTL_SET_PLL_FRAC_DATA:
 	case IOCTL_GET_PLL_FRAC_DATA:
+	case IOCTL_SD_DLL_RESET:
+	case IOCTL_SET_SD_TAPDELAY:
 		return 1;
 	default:
 		return 0;
