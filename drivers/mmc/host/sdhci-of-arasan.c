@@ -24,6 +24,7 @@
 #include <linux/module.h>
 #include <linux/of_device.h>
 #include <linux/phy/phy.h>
+#include <linux/soc/xilinx/zynqmp/tap_delays.h>
 #include <linux/regmap.h>
 #include "sdhci-pltfm.h"
 #include <linux/of.h>
@@ -93,6 +94,8 @@ struct sdhci_arasan_data {
 	struct sdhci_host *host;
 	struct clk	*clk_ahb;
 	struct phy	*phy;
+	u32 mio_bank;
+	u32 device_id;
 	bool		is_phy_on;
 
 	struct clk_hw	sdcardclk_hw;
@@ -206,6 +209,11 @@ static void sdhci_arasan_set_clock(struct sdhci_host *host, unsigned int clock)
 		(host->version >= SDHCI_SPEC_300)) {
 		if (clock == SD_CLK_25_MHZ)
 			clock = SD_CLK_19_MHZ;
+		if ((host->timing != MMC_TIMING_LEGACY) &&
+			(host->timing != MMC_TIMING_UHS_SDR12))
+			arasan_zynqmp_set_tap_delay(sdhci_arasan->device_id,
+						    host->timing,
+						    sdhci_arasan->mio_bank);
 	}
 
 	if (ctrl_phy && sdhci_arasan->is_phy_on) {
@@ -382,6 +390,7 @@ static const struct of_device_id sdhci_arasan_of_match[] = {
 	{ .compatible = "arasan,sdhci-8.9a" },
 	{ .compatible = "arasan,sdhci-5.1" },
 	{ .compatible = "arasan,sdhci-4.9a" },
+	{ .compatible = "xlnx,zynqmp-8.9a" },
 
 	{ /* sentinel */ }
 };
@@ -653,9 +662,30 @@ static int sdhci_arasan_probe(struct platform_device *pdev)
 		goto unreg_clk;
 	}
 
-	if (of_device_is_compatible(pdev->dev.of_node, "arasan,sdhci-8.9a")) {
+	if (of_device_is_compatible(pdev->dev.of_node, "xlnx,zynqmp-8.9a") ||
+		of_device_is_compatible(pdev->dev.of_node,
+					"arasan,sdhci-8.9a")) {
 		host->quirks |= SDHCI_QUIRK_MULTIBLOCK_READ_ACMD12;
 		host->quirks2 |= SDHCI_QUIRK2_CLOCK_STANDARD_25_BROKEN;
+		if (of_device_is_compatible(pdev->dev.of_node,
+					    "xlnx,zynqmp-8.9a")) {
+			ret = of_property_read_u32(pdev->dev.of_node,
+						   "xlnx,mio_bank",
+						   &sdhci_arasan->mio_bank);
+			if (ret < 0) {
+				dev_err(&pdev->dev,
+					"\"xlnx,mio_bank \" property is missing.\n");
+				goto clk_disable_all;
+			}
+			ret = of_property_read_u32(pdev->dev.of_node,
+						   "xlnx,device_id",
+						   &sdhci_arasan->device_id);
+			if (ret < 0) {
+				dev_err(&pdev->dev,
+					"\"xlnx,device_id \" property is missing.\n");
+				goto clk_disable_all;
+			}
+		}
 	}
 
 	sdhci_arasan->phy = ERR_PTR(-ENODEV);
