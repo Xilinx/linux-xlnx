@@ -2004,10 +2004,6 @@ static int sdhci_execute_tuning(struct mmc_host *mmc, u32 opcode)
 		pr_info(DRIVER_NAME ": Tuning procedure failed, falling back to fixed sampling clock\n");
 		err = -EIO;
 	}
-	if ((host->quirks2 & SDHCI_QUIRK2_BROKEN_TUNING) &&
-		(tuning_loop_counter >= 0) && (ctrl & SDHCI_CTRL_TUNED_CLK)) {
-		host->ops->tune_clk(host);
-	}
 
 out:
 	if (tuning_count) {
