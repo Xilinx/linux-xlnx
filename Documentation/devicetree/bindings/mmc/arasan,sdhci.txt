@@ -10,7 +10,8 @@ Device Tree Bindings for the Arasan SDHCI Controller
 
 Required Properties:
   - compatible: Compatibility string. Must be 'arasan,sdhci-8.9a' or
-                'arasan,sdhci-4.9a' or 'arasan,sdhci-5.1'
+                'arasan,sdhci-4.9a' or 'arasan,sdhci-5.1' or
+                'xlnx,zynqmp-8.9a'
   - reg: From mmc bindings: Register location and length.
   - clocks: From clock bindings: Handles to clock inputs.
   - clock-names: From clock bindings: Tuple including "clk_xin" and "clk_ahb"
@@ -21,6 +22,10 @@ Required Properties:
 Required Properties for "arasan,sdhci-5.1":
   - phys: From PHY bindings: Phandle for the Generic PHY for arasan.
   - phy-names:  MUST be "phy_arasan".
+
+Required Properties for "xlnx,zynqmp-8.9a":
+  - xlnx,mio_bank: The value will be 0/1/2 depending on MIO bank selection.
+  - xlnx,device_id: Unique Id of the device, value will be 0/1.
 
 Optional Properties:
   - broken-tuning: Indicates tuning broken in Silicon 1.0 of
