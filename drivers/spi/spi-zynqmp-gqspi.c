@@ -51,6 +51,7 @@
 #define GQSPI_QSPIDMA_DST_I_MASK_OFST	0x00000820
 #define GQSPI_QSPIDMA_DST_ADDR_OFST	0x00000800
 #define GQSPI_QSPIDMA_DST_ADDR_MSB_OFST 0x00000828
+#define GQSPI_DATA_DLY_ADJ_OFST		0x000001F8
 
 /* GQSPI register bit masks */
 #define GQSPI_SEL_MASK				0x00000001
@@ -139,6 +140,21 @@
 #define GQSPI_RX_BUS_WIDTH_QUAD		0x4
 #define GQSPI_RX_BUS_WIDTH_DUAL		0x2
 #define GQSPI_RX_BUS_WIDTH_SINGLE	0x1
+#define GQSPI_LPBK_DLY_ADJ_LPBK_SHIFT	5
+#define GQSPI_LPBK_DLY_ADJ_DLY_1	0x2
+#define GQSPI_LPBK_DLY_ADJ_DLY_1_SHIFT	3
+#define GQSPI_LPBK_DLY_ADJ_DLY_0	0x3
+#define GQSPI_USE_DATA_DLY		0x1
+#define GQSPI_USE_DATA_DLY_SHIFT	31
+#define GQSPI_DATA_DLY_ADJ_VALUE	0x2
+#define GQSPI_DATA_DLY_ADJ_SHIFT	28
+#define TAP_DLY_BYPASS_LQSPI_RX_VALUE	0x1
+#define TAP_DLY_BYPASS_LQSPI_RX_SHIFT	2
+
+#define GQSPI_FREQ_40MHZ	40000000
+#define GQSPI_FREQ_100MHZ	100000000
+#define GQSPI_FREQ_150MHZ	150000000
+#define IOU_TAPDLY_BYPASS_MASK	0x7
 
 #define SPI_AUTOSUSPEND_TIMEOUT		3000
 enum mode_type {GQSPI_MODE_IO, GQSPI_MODE_DMA};
@@ -252,6 +268,46 @@ static void zynqmp_gqspi_selectslave(struct zynqmp_qspi *instanceptr,
 	default:
 		dev_warn(instanceptr->dev, "Invalid slave bus\n");
 	}
+}
+
+/**
+ * zynqmp_qspi_set_tapdelay:	To configure qspi tap delays
+ * @xqspi:		Pointer to the zynqmp_qspi structure
+ * @baudrateval:	Buadrate to configure
+ */
+void zynqmp_qspi_set_tapdelay(struct zynqmp_qspi *xqspi, u32 baudrateval)
+{
+	u32 lpbkdlyadj = 0, datadlyadj = 0, clk_rate;
+	u32 reqhz = 0;
+
+	if (!eemi_ops->ioctl)
+		return;
+
+	clk_rate = clk_get_rate(xqspi->refclk);
+	reqhz = (clk_rate / (GQSPI_BAUD_DIV_SHIFT << baudrateval));
+
+	if (reqhz < GQSPI_FREQ_40MHZ) {
+		eemi_ops->ioctl(NODE_QSPI, IOCTL_SET_TAPDELAY_BYPASS,
+			       PM_TAPDELAY_QSPI, PM_TAPDELAY_BYPASS_ENABLE,
+			       NULL);
+	} else if (reqhz < GQSPI_FREQ_100MHZ) {
+		eemi_ops->ioctl(NODE_QSPI, IOCTL_SET_TAPDELAY_BYPASS,
+			       PM_TAPDELAY_QSPI, PM_TAPDELAY_BYPASS_ENABLE,
+			       NULL);
+		lpbkdlyadj = zynqmp_gqspi_read(xqspi, GQSPI_LPBK_DLY_ADJ_OFST);
+		lpbkdlyadj |= (GQSPI_LPBK_DLY_ADJ_USE_LPBK_MASK);
+		datadlyadj = zynqmp_gqspi_read(xqspi, GQSPI_DATA_DLY_ADJ_OFST);
+		datadlyadj |= ((GQSPI_USE_DATA_DLY << GQSPI_USE_DATA_DLY_SHIFT)
+				| (GQSPI_DATA_DLY_ADJ_VALUE <<
+					GQSPI_DATA_DLY_ADJ_SHIFT));
+	} else if (reqhz < GQSPI_FREQ_150MHZ) {
+		lpbkdlyadj = zynqmp_gqspi_read(xqspi, GQSPI_LPBK_DLY_ADJ_OFST);
+		lpbkdlyadj |= ((GQSPI_LPBK_DLY_ADJ_USE_LPBK_MASK) |
+				GQSPI_LPBK_DLY_ADJ_DLY_0);
+	}
+
+	zynqmp_gqspi_write(xqspi, GQSPI_LPBK_DLY_ADJ_OFST, lpbkdlyadj);
+	zynqmp_gqspi_write(xqspi, GQSPI_DATA_DLY_ADJ_OFST, datadlyadj);
 }
 
 /**
@@ -513,6 +569,7 @@ static int zynqmp_qspi_setup_transfer(struct spi_device *qspi,
 		zynqmp_gqspi_write(xqspi, GQSPI_CONFIG_OFST, config_reg);
 		xqspi->speed_hz = clk_rate / (GQSPI_BAUD_DIV_SHIFT <<
 				baud_rate_val);
+		zynqmp_qspi_set_tapdelay(xqspi, baud_rate_val);
 	}
 
 	return 0;
