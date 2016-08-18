@@ -162,6 +162,7 @@ static const struct zynqmp_eemi_ops *eemi_ops;
  * @genfifoentry:	Used for storing the genfifoentry instruction.
  * @isinstr:		To determine whether the transfer is instruction
  * @mode:		Defines the mode in which QSPI is operating
+ * @speed_hz:		Current SPI bus clock speed in hz
  */
 struct zynqmp_qspi {
 	void __iomem *regs;
@@ -181,6 +182,7 @@ struct zynqmp_qspi {
 	u32 genfifoentry;
 	bool isinstr;
 	enum mode_type mode;
+	u32 speed_hz;
 };
 
 /**
@@ -486,28 +488,33 @@ static int zynqmp_qspi_setup_transfer(struct spi_device *qspi,
 	else
 		req_hz = qspi->max_speed_hz;
 
-	/* Set the clock frequency */
-	/* If req_hz == 0, default to lowest speed */
-	clk_rate = clk_get_rate(xqspi->refclk);
+	if (xqspi->speed_hz != req_hz) {
+		/* Set the clock frequency */
+		/* If req_hz == 0, default to lowest speed */
+		clk_rate = clk_get_rate(xqspi->refclk);
 
-	while ((baud_rate_val < GQSPI_BAUD_DIV_MAX) &&
-	       (clk_rate /
-		(GQSPI_BAUD_DIV_SHIFT << baud_rate_val)) > req_hz)
-		baud_rate_val++;
+		while ((baud_rate_val < GQSPI_BAUD_DIV_MAX) &&
+		       (clk_rate /
+			(GQSPI_BAUD_DIV_SHIFT << baud_rate_val)) > req_hz)
+			baud_rate_val++;
 
-	config_reg = zynqmp_gqspi_read(xqspi, GQSPI_CONFIG_OFST);
+		config_reg = zynqmp_gqspi_read(xqspi, GQSPI_CONFIG_OFST);
 
-	/* Set the QSPI clock phase and clock polarity */
-	config_reg &= (~GQSPI_CFG_CLK_PHA_MASK) & (~GQSPI_CFG_CLK_POL_MASK);
+		/* Set the QSPI clock phase and clock polarity */
+		config_reg &= (~GQSPI_CFG_CLK_PHA_MASK) &
+			(~GQSPI_CFG_CLK_POL_MASK);
 
-	if (qspi->mode & SPI_CPHA)
-		config_reg |= GQSPI_CFG_CLK_PHA_MASK;
-	if (qspi->mode & SPI_CPOL)
-		config_reg |= GQSPI_CFG_CLK_POL_MASK;
+		if (qspi->mode & SPI_CPHA)
+			config_reg |= GQSPI_CFG_CLK_PHA_MASK;
+		if (qspi->mode & SPI_CPOL)
+			config_reg |= GQSPI_CFG_CLK_POL_MASK;
+		config_reg &= ~GQSPI_CFG_BAUD_RATE_DIV_MASK;
+		config_reg |= (baud_rate_val << GQSPI_CFG_BAUD_RATE_DIV_SHIFT);
+		zynqmp_gqspi_write(xqspi, GQSPI_CONFIG_OFST, config_reg);
+		xqspi->speed_hz = clk_rate / (GQSPI_BAUD_DIV_SHIFT <<
+				baud_rate_val);
+	}
 
-	config_reg &= ~GQSPI_CFG_BAUD_RATE_DIV_MASK;
-	config_reg |= (baud_rate_val << GQSPI_CFG_BAUD_RATE_DIV_SHIFT);
-	zynqmp_gqspi_write(xqspi, GQSPI_CONFIG_OFST, config_reg);
 	return 0;
 }
 
@@ -1187,6 +1194,7 @@ static int zynqmp_qspi_probe(struct platform_device *pdev)
 	master->bits_per_word_mask = SPI_BPW_MASK(8);
 	master->mode_bits = SPI_CPOL | SPI_CPHA | SPI_RX_DUAL | SPI_RX_QUAD |
 			    SPI_TX_DUAL | SPI_TX_QUAD;
+	xqspi->speed_hz = master->max_speed_hz;
 
 	if (master->dev.parent == NULL)
 		master->dev.parent = &master->dev;
