@@ -364,6 +364,14 @@ static int xilinx_drm_unload(struct drm_device *drm)
 	return 0;
 }
 
+int xilinx_drm_open(struct drm_device *dev, struct drm_file *file)
+{
+	if (drm_is_control_client(file))
+		file->universal_planes = 1;
+
+	return 0;
+}
+
 /* preclose */
 static void xilinx_drm_preclose(struct drm_device *drm, struct drm_file *file)
 {
@@ -402,6 +410,7 @@ static struct drm_driver xilinx_drm_driver = {
 					  DRIVER_PRIME,
 	.load				= xilinx_drm_load,
 	.unload				= xilinx_drm_unload,
+	.open				= xilinx_drm_open,
 	.preclose			= xilinx_drm_preclose,
 	.lastclose			= xilinx_drm_lastclose,
 	.set_busid			= drm_platform_set_busid,
