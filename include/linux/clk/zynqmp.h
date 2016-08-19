@@ -56,4 +56,16 @@ struct clk *zynqmp_clk_register_divider(struct device *dev, const char *name,
 		resource_size_t *reg, u8 shift, u8 width,
 		u8 clk_divider_flags);
 
+struct clk *zynqmp_clk_register_mux(struct device *dev, const char *name,
+		const char  **parent_names, u8 num_parents,
+		unsigned long flags,
+		resource_size_t *reg, u8 shift, u8 width,
+		u8 clk_mux_flags);
+
+struct clk *zynqmp_clk_register_mux_table(struct device *dev, const char *name,
+		const char * const *parent_names, u8 num_parents,
+		unsigned long flags,
+		resource_size_t *reg, u8 shift, u32 mask,
+		u8 clk_mux_flags, u32 *table);
+
 #endif
