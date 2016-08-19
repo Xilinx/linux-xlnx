@@ -19,6 +19,8 @@
 #include <linux/spinlock.h>
 #include <linux/soc/xilinx/zynqmp/pm.h>
 
+struct device;
+
 static inline u32 zynqmp_pm_mmio_readl(void __iomem *reg)
 {
 	u32 val;
@@ -43,5 +45,10 @@ static inline int zynqmp_pm_mmio_writel(u32 val, void __iomem *reg)
 struct clk *clk_register_zynqmp_pll(const char *name, const char *parent,
 		unsigned long flag, resource_size_t *pll_ctrl,
 		resource_size_t *pll_status, u8 lock_index);
+
+struct clk *zynqmp_clk_register_gate(struct device *dev, const char *name,
+		const char *parent_name, unsigned long flags,
+		resource_size_t *reg, u8 bit_idx,
+		u8 clk_gate_flags);
 
 #endif
