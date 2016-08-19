@@ -39,4 +39,9 @@ static inline int zynqmp_pm_mmio_writel(u32 val, void __iomem *reg)
 		pr_err("Write failed\n");
 	return ret;
 }
+
+struct clk *clk_register_zynqmp_pll(const char *name, const char *parent,
+		unsigned long flag, resource_size_t *pll_ctrl,
+		resource_size_t *pll_status, u8 lock_index);
+
 #endif
