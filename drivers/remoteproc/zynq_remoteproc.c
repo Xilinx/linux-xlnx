@@ -280,24 +280,28 @@ static int zynq_remoteproc_probe(struct platform_device *pdev)
 	else
 		prop = of_get_property(pdev->dev.of_node, "firmware", NULL);
 
-	if (prop) {
-		dev_dbg(&pdev->dev, "Using firmware: %s\n", prop);
-		local->rproc = rproc_alloc(&pdev->dev, dev_name(&pdev->dev),
-				&zynq_rproc_ops, prop, sizeof(struct rproc));
-		if (!local->rproc) {
-			dev_err(&pdev->dev, "rproc allocation failed\n");
-			goto ipi_fault;
-		}
-
-		ret = rproc_add(local->rproc);
-		if (ret) {
-			dev_err(&pdev->dev, "rproc registration failed\n");
-			goto rproc_fault;
-		}
-
-		return ret;
-	} else
+	if (!prop) {
 		ret = -ENODEV;
+		dev_err(&pdev->dev, "No firmware\n");
+		goto ipi_fault;
+	}
+
+	dev_dbg(&pdev->dev, "Using firmware: %s\n", prop);
+	local->rproc = rproc_alloc(&pdev->dev, dev_name(&pdev->dev),
+			&zynq_rproc_ops, prop, sizeof(struct rproc));
+	if (!local->rproc) {
+		ret = -ENOMEM;
+		dev_err(&pdev->dev, "rproc allocation failed\n");
+		goto ipi_fault;
+	}
+
+	ret = rproc_add(local->rproc);
+	if (ret) {
+		dev_err(&pdev->dev, "rproc registration failed\n");
+		goto rproc_fault;
+	}
+
+	return 0;
 
 rproc_fault:
 	rproc_put(local->rproc);
@@ -311,10 +315,8 @@ dma_mask_fault:
 	dma_release_declared_memory(&pdev->dev);
 
 dma_fault:
-	/* Cpu can't be power on - for example in nosmp mode */
-	ret |= cpu_up(1);
-	if (ret)
-		dev_err(&pdev->dev, "Can't power on cpu1 %d\n", ret);
+	if (cpu_up(1)) /* Cpu can't power on for example in nosmp mode */
+		dev_err(&pdev->dev, "Can't power on cpu1\n");
 
 	return ret;
 }
