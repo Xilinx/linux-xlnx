@@ -51,4 +51,9 @@ struct clk *zynqmp_clk_register_gate(struct device *dev, const char *name,
 		resource_size_t *reg, u8 bit_idx,
 		u8 clk_gate_flags);
 
+struct clk *zynqmp_clk_register_divider(struct device *dev, const char *name,
+		const char *parent_name, unsigned long flags,
+		resource_size_t *reg, u8 shift, u8 width,
+		u8 clk_divider_flags);
+
 #endif
