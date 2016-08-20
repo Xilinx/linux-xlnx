@@ -6,8 +6,12 @@ FW interface.
 
 Required properties:
 - compatible: should contain "xlnx,zynqmp-pcap-fpga"
+- clocks: phandle for clocks required operation
+- clock-names: name for the clock, should be "ref_clk"
 
 Example:
 	zynqmp_pcap: pcap {
 		compatible = "xlnx,zynqmp-pcap-fpga";
+		clocks = <&clkc 41>;
+		clock-names = "ref_clk";
 	};
