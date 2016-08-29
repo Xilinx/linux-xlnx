@@ -443,7 +443,7 @@ static struct drm_driver xilinx_drm_driver = {
 	.minor				= DRIVER_MINOR,
 };
 
-#if defined(CONFIG_PM_SLEEP) || defined(CONFIG_PM_RUNTIME)
+#if defined(CONFIG_PM_SLEEP)
 /* suspend xilinx drm */
 static int xilinx_drm_pm_suspend(struct device *dev)
 {
@@ -492,7 +492,6 @@ static int xilinx_drm_pm_resume(struct device *dev)
 
 static const struct dev_pm_ops xilinx_drm_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(xilinx_drm_pm_suspend, xilinx_drm_pm_resume)
-	SET_RUNTIME_PM_OPS(xilinx_drm_pm_suspend, xilinx_drm_pm_resume, NULL)
 };
 
 /* init xilinx drm platform */
