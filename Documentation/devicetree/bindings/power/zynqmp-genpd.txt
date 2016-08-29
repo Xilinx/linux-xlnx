@@ -16,8 +16,8 @@ that PM domain consumer devices reference.
 
 Required properties:
  - #power-domain-cells: Number of cells in a PM domain specifier. Must be 0.
- - pd-id: Unique domain identifier of as defined by platform firmware. This
-	  identifier is passed to the PM firmware.
+ - pd-id: List of domain identifiers of as defined by platform firmware. These
+	  identifiers are passed to the PM firmware.
 
 Example:
 	zynqmp-genpd {
@@ -31,6 +31,11 @@ Example:
 		pd_sata: pd-sata {
 			pd-id = <25>;
 			#power-domain-cells = <0>;
+		};
+
+		pd_gpu: pd-gpu {
+			pd-id = <58 20 21>;
+			#power-domain-cells = <0x0>;
 		};
 	};
 

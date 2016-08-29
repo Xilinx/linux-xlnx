@@ -32,45 +32,14 @@
 /**
  * struct zynqmp_pm_domain - Wrapper around struct generic_pm_domain
  * @gpd:		Generic power domain
- * @node_id:	PM node id of a device inside PM domain
+ * @node_ids:		PM node IDs corresponding to device(s) inside PM domain
+ * @node_id_num:	Number of PM node IDs
  */
 struct zynqmp_pm_domain {
 	struct generic_pm_domain gpd;
-	u32 node_id;
+	u32 *node_ids;
+	int node_id_num;
 };
-
-/**
- * zynqmp_gpd_set_power - power on/off PM domain
- * @domain:	Generic PM domain
- * @power_on:	Flag to specify whether to power on or off PM domain
- *
- * This functions calls zynqmp_pm_set_requirement to trigger power state change
- * of a resource (device inside PM domain), depending on power_on flag.
- *
- * Return:	0 on success, error code otherwise.
- */
-static int zynqmp_gpd_set_power(struct generic_pm_domain *domain, bool power_on)
-{
-	int status;
-	struct zynqmp_pm_domain *pd;
-
-	pd = container_of(domain, struct zynqmp_pm_domain, gpd);
-	if (pd->node_id == 0) {
-		pr_err("%s: unknown node specified, powering %s domain %s\n",
-			__func__, power_on ? "on" : "off", pd->gpd.name);
-		return -EINVAL;
-	}
-
-	if (!power_on)
-		status = zynqmp_pm_set_requirement(pd->node_id, 0, 0,
-						ZYNQMP_PM_REQUEST_ACK_NO);
-	else
-		status = zynqmp_pm_set_requirement(pd->node_id,
-						ZYNQMP_PM_CAPABILITY_ACCESS,
-						ZYNQMP_PM_MAX_QOS,
-						ZYNQMP_PM_REQUEST_ACK_NO);
-	return status;
-}
 
 /**
  * zynqmp_gpd_power_on - Power on PM domain
@@ -83,7 +52,19 @@ static int zynqmp_gpd_set_power(struct generic_pm_domain *domain, bool power_on)
  */
 static int zynqmp_gpd_power_on(struct generic_pm_domain *domain)
 {
-	return zynqmp_gpd_set_power(domain, true);
+	int i, status = 0;
+	struct zynqmp_pm_domain *pd;
+
+	pd = container_of(domain, struct zynqmp_pm_domain, gpd);
+	for (i = 0; i < pd->node_id_num; i++) {
+		status = zynqmp_pm_set_requirement(pd->node_ids[i],
+					ZYNQMP_PM_CAPABILITY_ACCESS,
+					ZYNQMP_PM_MAX_QOS,
+					ZYNQMP_PM_REQUEST_ACK_NO);
+		if (status)
+			break;
+	}
+	return status;
 }
 
 /**
@@ -97,7 +78,30 @@ static int zynqmp_gpd_power_on(struct generic_pm_domain *domain)
  */
 static int zynqmp_gpd_power_off(struct generic_pm_domain *domain)
 {
-	return zynqmp_gpd_set_power(domain, false);
+	int i, status = 0;
+	struct zynqmp_pm_domain *pd;
+
+	pd = container_of(domain, struct zynqmp_pm_domain, gpd);
+	for (i = pd->node_id_num - 1; i >= 0; i--) {
+		status = zynqmp_pm_set_requirement(pd->node_ids[i], 0, 0,
+						ZYNQMP_PM_REQUEST_ACK_NO);
+		/**
+		 * If powering down of any node inside this domain fails,
+		 * turn on previously powered down nodes of this domain
+		 */
+		if (status)
+			goto err_turn_on;
+	}
+	return 0;
+
+err_turn_on:
+	for (i++; i < pd->node_id_num; i++) {
+		zynqmp_pm_set_requirement(pd->node_ids[i],
+					ZYNQMP_PM_CAPABILITY_ACCESS,
+					ZYNQMP_PM_MAX_QOS,
+					ZYNQMP_PM_REQUEST_ACK_NO);
+	}
+	return status;
 }
 
 /**
@@ -116,7 +120,6 @@ static int __init zynqmp_gpd_probe(struct platform_device *pdev)
 	struct device_node *child_err, *child, *np = pdev->dev.of_node;
 
 	for_each_child_of_node(np, child) {
-		u32 node_id;
 		struct zynqmp_pm_domain *pd;
 
 		pd = devm_kzalloc(&pdev->dev, sizeof(*pd), GFP_KERNEL);
@@ -125,11 +128,23 @@ static int __init zynqmp_gpd_probe(struct platform_device *pdev)
 			goto err_cleanup;
 		}
 
-		ret = of_property_read_u32(child, "pd-id", &node_id);
+		ret = of_property_count_u32_elems(child, "pd-id");
+		if (ret <= 0)
+			goto err_cleanup;
+
+		pd->node_id_num = ret;
+		pd->node_ids = devm_kcalloc(&pdev->dev, ret,
+					sizeof(*pd->node_ids), GFP_KERNEL);
+		if (!pd->node_ids) {
+			ret = -ENOMEM;
+			goto err_cleanup;
+		}
+
+		ret = of_property_read_u32_array(child, "pd-id", pd->node_ids,
+							pd->node_id_num);
 		if (ret)
 			goto err_cleanup;
 
-		pd->node_id = node_id;
 		pd->gpd.name = kstrdup(child->name, GFP_KERNEL);
 		pd->gpd.power_off = zynqmp_gpd_power_off;
 		pd->gpd.power_on = zynqmp_gpd_power_on;
