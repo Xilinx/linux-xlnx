@@ -22,12 +22,15 @@
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/of.h>
+#include <linux/of_address.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/string.h>
 #include <linux/sysctl.h>
 #include <linux/types.h>
 #include <linux/uaccess.h>
+#include <linux/regmap.h>
+#include <linux/mfd/syscon.h>
 
 extern void zynq_slcr_init_preload_fpga(void);
 extern void zynq_slcr_init_postload_fpga(void);
@@ -56,7 +59,7 @@ static DEFINE_MUTEX(xdevcfg_mutex);
 						    *  Reset FPGA */
 #define XDCFG_CTRL_PCAP_PR_MASK		0x08000000 /* Enable PCAP for PR */
 #define XDCFG_CTRL_PCAP_MODE_MASK	0x04000000 /* Enable PCAP */
-#define XDCFG_CTRL_PCAP_RATE_EN_MASK  0x02000000 /* Enable PCAP Quad Rate */
+#define XDCFG_CTRL_PCAP_RATE_EN_MASK	0x02000000 /* Enable PCAP Quad Rate */
 #define XDCFG_CTRL_PCFG_AES_EN_MASK	0x00000E00 /* AES Enable Mask */
 #define XDCFG_CTRL_SEU_EN_MASK		0x00000100 /* SEU Enable Mask */
 #define XDCFG_CTRL_SPNIDEN_MASK		0x00000040 /* Secure Non Invasive
@@ -92,6 +95,9 @@ static DEFINE_MUTEX(xdevcfg_mutex);
 #define XDCFG_IXR_ALL_MASK		0xF8F7F87F
 /* Miscellaneous constant values */
 #define XDCFG_DMA_INVALID_ADDRESS	0xFFFFFFFF  /* Invalid DMA address */
+#define SLCR_PSS_IDCODE			0x530 /* PS IDCODE */
+#define SLCR_PSS_IDCODE_DEVICE_SHIFT	12
+#define SLCR_PSS_IDCODE_DEVICE_MASK	0x1F
 
 static const char * const fclk_name[] = {
 	"fclk0",
@@ -100,6 +106,19 @@ static const char * const fclk_name[] = {
 	"fclk3"
 };
 #define NUMFCLKS ARRAY_SIZE(fclk_name)
+
+static const struct _version_map {
+	unsigned int version_reg; char *part;
+} version_map[] = {
+	{0x02, "7z010"},
+	{0x1b, "7z015"},
+	{0x07, "7z020"},
+	{0x0c, "7z030"},
+	{0x11, "7z045"},
+	{0x00, NULL}
+};
+
+static struct regmap *zynq_slcr_regmap;
 
 /**
  * struct xdevcfg_drvdata - Device Configuration driver structure
@@ -230,6 +249,93 @@ static irqreturn_t xdevcfg_irq(int irq, void *data)
 }
 
 /**
+ * zynq_slcr_read - Read a register in SLCR block
+ *
+ * @val:	Pointer to value to be read from SLCR
+ * @offset:	Register offset in SLCR block
+ *
+ * Return:	a negative value on error, 0 on success
+ */
+static int zynq_slcr_read(u32 *val, u32 offset)
+{
+	return regmap_read(zynq_slcr_regmap, offset, val);
+}
+
+/**
+ * zynq_slcr_get_device_id - Read device code id
+ *
+ * 7z010: 0x02
+ * 7z015: 0x1b
+ * 7z020: 0x07
+ * 7z030: 0x0c
+ * 7z045: 0x11
+ *
+ * Return:	Device code id
+ */
+static u32 zynq_slcr_get_device_id(void)
+{
+	u32 val;
+
+	zynq_slcr_read(&val, SLCR_PSS_IDCODE);
+	val >>= SLCR_PSS_IDCODE_DEVICE_SHIFT;
+	val &= SLCR_PSS_IDCODE_DEVICE_MASK;
+
+	return val;
+}
+
+#define BITSTREAM_FIRST_KEY_POS	13
+#define BITSTREAM_FIRST_KEY	0x61
+#define BITSTREAM_FIRST_DEV_ID	0x62
+
+int check_zynq_version(unsigned int version_reg, char *bitstream_version)
+{
+	int c = 0;
+
+	while (version_map[c].version_reg) {
+		if (version_reg == version_map[c].version_reg) {
+			if (strstr(bitstream_version,
+				version_map[c].part) != NULL)
+				return 0;
+		}
+		c++;
+	}
+	return -1;
+}
+
+/*
+ * Get Zynq's version from the bitstream header
+ */
+int get_version_from_bitstream(char *header, long count, char *dst)
+{
+	unsigned int i = BITSTREAM_FIRST_KEY_POS;
+	unsigned int key = BITSTREAM_FIRST_KEY;
+	unsigned int c_key;
+	unsigned int len;
+
+	while (i < count) {
+		c_key = header[i];
+		if (c_key != key++) {
+			pr_err("Error while parsing bitstream header\n");
+			return -1;
+		}
+		i++;
+		len = header[i] + header[i+1];
+		i += 2;
+
+		if (c_key == BITSTREAM_FIRST_DEV_ID) {
+			if (len < 16) {
+				strncpy(dst, &header[i], 16);
+				return 0;
+			}
+		}
+
+		i = i + len;
+	}
+	return 0;
+}
+
+
+/**
  * xdevcfg_write() - The is the driver write function.
  *
  * @file:	Pointer to the file structure.
@@ -251,6 +357,7 @@ xdevcfg_write(struct file *file, const char __user *buf, size_t count,
 	struct xdevcfg_drvdata *drvdata = file->private_data;
 	size_t user_count = count;
 	int i;
+	char version[16];
 
 	status = clk_enable(drvdata->clk);
 	if (status)
@@ -298,6 +405,26 @@ xdevcfg_write(struct file *file, const char __user *buf, size_t count,
 		/* Remove the header, aligning the data on word boundary */
 		if (i != count - 4) {
 			count -= i;
+
+			/* read the version from the header */
+			status = get_version_from_bitstream(kbuf, i, version);
+			if (status) {
+				pr_err("Could not read the version from the bitstream\n");
+				status = -EFAULT;
+				goto error;
+			}
+
+			/* read the version number from the register and compare
+			 * with the one of the bitstream
+			 */
+			status = check_zynq_version(zynq_slcr_get_device_id(),
+						 version);
+			if (status) {
+				pr_err("Bitstream does not match the device\n",
+						status);
+				status = -EFAULT;
+				goto error;
+			}
 			memmove(kbuf, kbuf + i, count);
 		}
 	}
@@ -307,7 +434,7 @@ xdevcfg_write(struct file *file, const char __user *buf, size_t count,
 	count -= drvdata->residue_len;
 	memcpy(drvdata->residue_buf, kbuf + count, drvdata->residue_len);
 
-	/* Fixup endianess of the data */
+	/* Fixup endianness of the data */
 	if (drvdata->endian_swap) {
 		for (i = 0; i < count; i += 4) {
 			u32 *p = (u32 *)&kbuf[i];
@@ -1918,6 +2045,12 @@ static int xdevcfg_drv_probe(struct platform_device *pdev)
 	const void *prop;
 	int size;
 	struct device *dev;
+
+	zynq_slcr_regmap = syscon_regmap_lookup_by_compatible("xlnx,zynq-slcr");
+	if (IS_ERR(zynq_slcr_regmap)) {
+		pr_err("%s: failed to find zynq-slcr\n", __func__);
+		return -ENODEV;
+	}
 
 	drvdata = devm_kzalloc(&pdev->dev, sizeof(*drvdata), GFP_KERNEL);
 	if (!drvdata)
