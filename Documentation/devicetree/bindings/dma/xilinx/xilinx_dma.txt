@@ -101,7 +101,8 @@ axi_vdma_0: axivdma@40030000 {
 Required properties:
 - dmas: a list of <[Video DMA device phandle] [Channel ID]> pairs,
 	where Channel ID is '0' for write/tx and '1' for read/rx
-	channel.
+	channel if both channels are enabled.
+	If only one channel is enabled either tx or rx the Channel ID is '0'.
 - dma-names: a list of DMA channel names, one per "dmas" entry
 
 Example:
