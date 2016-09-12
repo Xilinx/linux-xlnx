@@ -788,6 +788,12 @@ static void pl35x_nand_cmd_function(struct mtd_info *mtd, unsigned int command,
 
 	pl35x_nand_write32(cmd_addr, cmd_data);
 
+	/*
+	 * Ensure writes to the command register are observed by chip
+	 * before proceeding to ndelay() and other reads/writes.
+	 */
+	dsb(st);
+
 	if (curr_cmd->end_cmd_valid) {
 		xnand->end_cmd = curr_cmd->end_cmd;
 		xnand->end_cmd_pending = 1;
