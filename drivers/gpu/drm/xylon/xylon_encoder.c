@@ -170,7 +170,7 @@ struct drm_encoder *xylon_drm_encoder_create(struct drm_device *dev)
 	encoder->slave.base.possible_crtcs = 1;
 	ret = drm_encoder_init(dev, &encoder->slave.base,
 			       &xylon_drm_encoder_funcs,
-			       DRM_MODE_ENCODER_TMDS);
+			       DRM_MODE_ENCODER_TMDS, NULL);
 	if (ret) {
 		DRM_ERROR("failed initialize encoder\n");
 		return ERR_PTR(ret);
