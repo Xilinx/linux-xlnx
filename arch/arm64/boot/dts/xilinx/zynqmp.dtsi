@@ -49,6 +49,11 @@
 		};
 	};
 
+	dcc: dcc {
+		compatible = "arm,dcc";
+		status = "disabled";
+	};
+
 	power-domains {
 		compatible = "xlnx,zynqmp-genpd";
 
