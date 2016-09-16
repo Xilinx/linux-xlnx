@@ -162,6 +162,8 @@
 #define PROT_BUS_WIDTH_20		0x1
 #define PROT_BUS_WIDTH_40		0x2
 
+#define TX_TERM_FIX_VAL			0x11
+
 #define LANE_CLK_SHARE_MASK		0x8F
 
 #define SATA_CONTROL_OFFSET		0x0100
@@ -878,7 +880,7 @@ static int xpsgtr_phy_init(struct phy *phy)
 	/*
 	 * There is a functional issue in the GT. The TX termination resistance
 	 * can be out of spec due to a bug in the calibration logic. Below is
-	 * the workaround to fix it.
+	 * the workaround to fix it. This below is required for XCZU9EG silicon.
 	 */
 	if (gtr_dev->tx_term_fix) {
 
@@ -896,8 +898,11 @@ static int xpsgtr_phy_init(struct phy *phy)
 		writel(TM_OVERRIDE_NSW_CODE, gtr_dev->serdes +
 				L3_TM_CALIB_DIG19);
 
-		/* Writing to ICM_CFG0 restes the serdes */
-		writel(1, gtr_dev->serdes + ICM_CFG0);
+		/* As a part of work around sequence for PMOS calibration fix,
+		 * we need to configure any lane ICM_CFG to valid protocol. This
+		 * will deassert the CMN_Resetn signal.
+		 */
+		writel(TX_TERM_FIX_VAL, gtr_dev->serdes + ICM_CFG1);
 
 		/* Clear Test Mode reset */
 		reg = readl(gtr_dev->serdes + TM_CMN_RST);
