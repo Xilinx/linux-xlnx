@@ -94,7 +94,9 @@ static xlnk_intptr_type xlnk_userbuf[XLNK_BUF_POOL_SIZE];
 static dma_addr_t xlnk_phyaddr[XLNK_BUF_POOL_SIZE];
 static size_t xlnk_buflen[XLNK_BUF_POOL_SIZE];
 static unsigned int xlnk_bufcacheable[XLNK_BUF_POOL_SIZE];
+static spinlock_t xlnk_buf_lock;
 
+/* only used with standard DMA mode */
 static struct page **xlnk_page_store;
 static int xlnk_page_store_size;
 
@@ -145,11 +147,13 @@ struct xlnk_device_pack {
 
 };
 
+static spinlock_t xlnk_devpack_lock;
 static struct xlnk_device_pack *xlnk_devpacks[MAX_XLNK_DMAS];
 static void xlnk_devpacks_init(void)
 {
 	unsigned int i;
 
+	spin_lock_init(&xlnk_devpack_lock);
 	for (i = 0; i < MAX_XLNK_DMAS; i++)
 		xlnk_devpacks[i] = NULL;
 
@@ -169,12 +173,14 @@ static void xlnk_devpacks_add(struct xlnk_device_pack *devpack)
 {
 	unsigned int i;
 
+	spin_lock_irq(&xlnk_devpack_lock);
 	for (i = 0; i < MAX_XLNK_DMAS; i++) {
 		if (xlnk_devpacks[i] == NULL) {
 			xlnk_devpacks[i] = devpack;
 			break;
 		}
 	}
+	spin_unlock_irq(&xlnk_devpack_lock);
 }
 
 static struct xlnk_device_pack *xlnk_devpacks_find(xlnk_intptr_type base)
@@ -365,12 +371,6 @@ static int xlnk_allocbuf(unsigned int len, unsigned int cacheable)
 	dma_addr_t phys_addr_anchor;
 	unsigned int page_dst;
 
-	id = xlnk_buf_findnull();
-
-	if (id <= 0 || id >= XLNK_BUF_POOL_SIZE) {
-		pr_err("No id could be found in range\n");
-		return -ENOMEM;
-	}
 	if (cacheable)
 		kaddr = dma_alloc_noncoherent(xlnk_dev,
 					      len,
@@ -387,11 +387,22 @@ static int xlnk_allocbuf(unsigned int len, unsigned int cacheable)
 					   __GFP_REPEAT);
 	if (!kaddr)
 		return -ENOMEM;
-	xlnk_bufpool_alloc_point[id] = kaddr;
-	xlnk_bufpool[id] = kaddr;
-	xlnk_buflen[id] = len;
-	xlnk_bufcacheable[id] = cacheable;
-	xlnk_phyaddr[id] = phys_addr_anchor;
+
+	spin_lock(&xlnk_buf_lock);
+	id = xlnk_buf_findnull();
+	if (id > 0 && id < XLNK_BUF_POOL_SIZE) {
+		xlnk_bufpool_alloc_point[id] = kaddr;
+		xlnk_bufpool[id] = kaddr;
+		xlnk_buflen[id] = len;
+		xlnk_bufcacheable[id] = cacheable;
+		xlnk_phyaddr[id] = phys_addr_anchor;
+	}
+	spin_unlock(&xlnk_buf_lock);
+
+	if (id <= 0 || id >= XLNK_BUF_POOL_SIZE) {
+		pr_err("No id could be found in range\n");
+		return -ENOMEM;
+	}
 
 	return id;
 }
@@ -400,6 +411,7 @@ static int xlnk_init_bufpool(void)
 {
 	unsigned int i;
 
+	spin_lock_init(&xlnk_buf_lock);
 	xlnk_dev_buf = kmalloc(8192, GFP_KERNEL | GFP_DMA);
 	*((char *)xlnk_dev_buf) = '\0';
 
@@ -802,25 +814,37 @@ static int xlnk_allocbuf_ioctl(struct file *filp, unsigned int code,
 
 static int xlnk_freebuf(int id)
 {
+	void *alloc_point;
+	dma_addr_t p_addr;
+	size_t buf_len;
+	int cacheable;
 	if (id <= 0 || id >= xlnk_bufpool_size)
 		return -ENOMEM;
 
 	if (!xlnk_bufpool[id])
 		return -ENOMEM;
 
-	if (xlnk_bufcacheable[id])
-		dma_free_noncoherent(xlnk_dev,
-				     xlnk_buflen[id],
-				     xlnk_bufpool_alloc_point[id],
-				     xlnk_phyaddr[id]);
-	else
-		dma_free_coherent(xlnk_dev,
-				  xlnk_buflen[id],
-				  xlnk_bufpool_alloc_point[id],
-				  xlnk_phyaddr[id]);
+	spin_lock(&xlnk_buf_lock);
+	alloc_point = xlnk_bufpool_alloc_point[id];
+	p_addr = xlnk_phyaddr[id];
+	buf_len = xlnk_buflen[id];
 	xlnk_bufpool[id] = NULL;
 	xlnk_phyaddr[id] = (dma_addr_t)NULL;
 	xlnk_buflen[id] = 0;
+	cacheable = xlnk_bufcacheable[id];
+	xlnk_bufcacheable[id] = 0;
+	spin_unlock(&xlnk_buf_lock);
+
+	if (cacheable)
+		dma_free_noncoherent(xlnk_dev,
+				     buf_len,
+				     alloc_point,
+				     p_addr);
+	else
+		dma_free_coherent(xlnk_dev,
+				  buf_len,
+				  alloc_point,
+				  p_addr);
 
 	return 0;
 }
@@ -1156,16 +1180,20 @@ static int xlnk_dmasubmit_ioctl(struct file *filp, unsigned int code,
 		}
 		temp_args.dmasubmit.dmahandle = (xlnk_intptr_type)t;
 	} else {
-		int buf_id =
-			xlnk_buf_find_by_phys_addr(temp_args.dmasubmit.buf);
+		int buf_id;
 		void *kaddr = NULL;
 
+		spin_lock(&xlnk_buf_lock);
+		buf_id =
+			xlnk_buf_find_by_phys_addr(temp_args.dmasubmit.buf);
 		if (buf_id) {
 			xlnk_intptr_type addr_delta =
 				temp_args.dmasubmit.buf -
 				xlnk_phyaddr[buf_id];
 			kaddr = (u8 *)(xlnk_bufpool[buf_id]) + addr_delta;
 		}
+		spin_unlock(&xlnk_buf_lock);
+
 		status = xdma_submit((struct xdma_chan *)
 				     (temp_args.dmasubmit.dmachan),
 				     temp_args.dmasubmit.buf,
@@ -1419,12 +1447,17 @@ static int xlnk_cachecontrol_ioctl(struct file *filp, unsigned int code,
 
 	size = temp_args.cachecontrol.size;
 	paddr = temp_args.cachecontrol.phys_addr;
+
+	spin_lock(&xlnk_buf_lock);
 	buf_id = xlnk_buf_find_by_phys_addr(paddr);
+	kaddr = xlnk_bufpool[buf_id];
+	spin_unlock(&xlnk_buf_lock);
+
 	if (buf_id == 0) {
 		pr_err("Illegal cachecontrol on non-sds_alloc memory");
 		return -EINVAL;
 	}
-	kaddr = xlnk_bufpool[buf_id];
+
 #if XLNK_SYS_BIT_WIDTH == 32
 	__cpuc_flush_dcache_area(kaddr, size);
 	outer_flush_range(paddr, paddr + size);
@@ -1541,7 +1574,6 @@ static struct vm_operations_struct xlnk_vm_ops = {
 /* This function maps kernel space memory to user space memory. */
 static int xlnk_mmap(struct file *filp, struct vm_area_struct *vma)
 {
-
 	int bufid;
 	int status;
 

@@ -178,6 +178,7 @@ struct xdma_chan {
 	int    max_len;				/* Maximum len per transfer */
 	int    err;				/* Channel has errors */
 	int    client_count;
+	struct scatterlist scratch_sglist[XDMA_MAX_BD_CNT];
 };
 
 struct xdma_device {
