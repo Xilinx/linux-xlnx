@@ -37,6 +37,7 @@
 #define MAXTRIES		100
 
 	.text
+	.align 3
 
 /**
  * zynq_sys_suspend - Enter suspend

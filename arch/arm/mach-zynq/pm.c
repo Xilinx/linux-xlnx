@@ -23,6 +23,7 @@
 #include <linux/genalloc.h>
 #include <linux/suspend.h>
 #include <asm/cacheflush.h>
+#include <asm/fncpy.h>
 #include <asm/hardware/cache-l2x0.h>
 #include <asm/mach/map.h>
 #include <asm/suspend.h>
@@ -42,7 +43,7 @@
 static void __iomem *ddrc_base;
 
 #ifdef CONFIG_SUSPEND
-static void __iomem *ocm_base;
+static int (*zynq_suspend_ptr)(void __iomem *, void __iomem *);
 
 static int zynq_pm_prepare_late(void)
 {
@@ -57,15 +58,12 @@ static void zynq_pm_wake(void)
 static int zynq_pm_suspend(unsigned long arg)
 {
 	u32 reg;
-	int (*zynq_suspend_ptr)(void __iomem *, void __iomem *) =
-		(__force void *)ocm_base;
 	int do_ddrpll_bypass = 1;
 
 	/* Topswitch clock stop disable */
 	zynq_clk_topswitch_disable();
 
-
-	if (!ocm_base || !ddrc_base) {
+	if (!zynq_suspend_ptr || !ddrc_base) {
 		do_ddrpll_bypass = 0;
 	} else {
 		/* enable DDRC self-refresh mode */
@@ -182,7 +180,8 @@ static void __iomem *zynq_pm_remap_ocm(void)
 
 static void zynq_pm_suspend_init(void)
 {
-	ocm_base = zynq_pm_remap_ocm();
+	void __iomem *ocm_base = zynq_pm_remap_ocm();
+
 	if (!ocm_base) {
 		pr_warn("%s: Unable to map OCM.\n", __func__);
 	} else {
@@ -191,10 +190,9 @@ static void zynq_pm_suspend_init(void)
 		 * needs to run from OCM as DRAM may no longer be available
 		 * when the PLL is stopped.
 		 */
-		memcpy((__force void *)ocm_base, &zynq_sys_suspend,
-			zynq_sys_suspend_sz);
-		flush_icache_range((unsigned long)ocm_base,
-			(unsigned long)(ocm_base) + zynq_sys_suspend_sz);
+		zynq_suspend_ptr = fncpy((__force void *)ocm_base,
+					 (__force void *)&zynq_sys_suspend,
+					 zynq_sys_suspend_sz);
 	}
 
 	suspend_set_ops(&zynq_pm_ops);
