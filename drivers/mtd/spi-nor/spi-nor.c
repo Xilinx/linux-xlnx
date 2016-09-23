@@ -101,7 +101,7 @@ static int read_sr(struct spi_nor *nor)
 			pr_err("error %d reading SR\n", (int) ret);
 			return ret;
 		}
-		val[0] |= val[1];
+		val[0] &= val[1];
 	} else {
 		ret = nor->read_reg(nor, SPINOR_OP_RDSR, &val[0], 1);
 		if (ret < 0) {
@@ -512,8 +512,6 @@ static int spi_nor_erase(struct mtd_info *mtd, struct erase_info *instr)
 	if (ret)
 		return ret;
 
-	if (nor->isparallel)
-		nor->spi->master->flags |= SPI_DATA_STRIPE;
 	/* whole-chip erase? */
 	if (len == mtd->size) {
 		unsigned long timeout;
@@ -598,8 +596,6 @@ erase_err:
 	instr->state = ret ? MTD_ERASE_FAILED : MTD_ERASE_DONE;
 	mtd_erase_callback(instr);
 
-	if (nor->isparallel)
-		nor->spi->master->flags &= ~SPI_DATA_STRIPE;
 	return ret;
 }
 
@@ -1372,7 +1368,7 @@ static const struct flash_info *spi_nor_read_id(struct spi_nor *nor)
 	int			tmp;
 	u8			id[SPI_NOR_MAX_ID_LEN];
 	const struct flash_info	*info;
-	nor->spi->master->flags &= ~SPI_BOTH_FLASH;
+	nor->spi->master->flags &= ~(SPI_BOTH_FLASH | SPI_DATA_STRIPE);
 
 	/* If more than one flash are present,need to read id of second flash */
 	tmp = nor->read_reg(nor, SPINOR_OP_RDID, id, SPI_NOR_MAX_ID_LEN);
@@ -1425,8 +1421,6 @@ static int spi_nor_read_ext(struct mtd_info *mtd, loff_t from, size_t len,
 	ret = spi_nor_lock_and_prep(nor, SPI_NOR_OPS_READ);
 	if (ret)
 		return ret;
-	if (nor->isparallel)
-		nor->spi->master->flags |= SPI_DATA_STRIPE;
 
 	while (len) {
 		if (nor->addr_width == 3) {
@@ -1476,8 +1470,6 @@ static int spi_nor_read_ext(struct mtd_info *mtd, loff_t from, size_t len,
 	*retlen = read_count;
 
 read_err:
-	if (nor->isparallel)
-		nor->spi->master->flags &= ~SPI_DATA_STRIPE;
 	spi_nor_unlock_and_unprep(nor, SPI_NOR_OPS_READ);
 	return ret;
 }
@@ -1618,8 +1610,6 @@ static int spi_nor_write_ext(struct mtd_info *mtd, loff_t to, size_t len,
 	ret = spi_nor_lock_and_prep(nor, SPI_NOR_OPS_WRITE);
 	if (ret)
 		return ret;
-	if (nor->isparallel)
-		nor->spi->master->flags |= SPI_DATA_STRIPE;
 
 	while (len) {
 		actual_len = 0;
@@ -1662,8 +1652,6 @@ static int spi_nor_write_ext(struct mtd_info *mtd, loff_t to, size_t len,
 	*retlen = write_count;
 
 write_err:
-	if (nor->isparallel)
-		nor->spi->master->flags &= ~SPI_DATA_STRIPE;
 	spi_nor_unlock_and_unprep(nor, SPI_NOR_OPS_WRITE);
 	return ret;
 }
@@ -1696,14 +1684,8 @@ static int spansion_quad_enable(struct spi_nor *nor)
 	int ret;
 	int quad_en = CR_QUAD_EN_SPAN << 8;
 
-	if (nor->isparallel)
-		nor->spi->master->flags |= SPI_DATA_STRIPE;
-
 	quad_en |= read_sr(nor);
 	quad_en |= (read_cr(nor) << 8);
-
-	if (nor->isparallel)
-		nor->spi->master->flags &= ~SPI_DATA_STRIPE;
 
 	write_enable(nor);
 
@@ -1714,19 +1696,12 @@ static int spansion_quad_enable(struct spi_nor *nor)
 		return -EINVAL;
 	}
 
-	if (nor->isparallel)
-		nor->spi->master->flags |= SPI_DATA_STRIPE;
 	/* read back and check it */
 	ret = read_cr(nor);
 	if (!(ret > 0 && (ret & CR_QUAD_EN_SPAN))) {
 		dev_err(nor->dev, "Spansion Quad bit not set\n");
-		if (nor->isparallel)
-			nor->spi->master->flags &= ~SPI_DATA_STRIPE;
 		return -EINVAL;
 	}
-
-	if (nor->isparallel)
-		nor->spi->master->flags &= ~SPI_DATA_STRIPE;
 
 	return 0;
 }
@@ -1922,7 +1897,8 @@ int spi_nor_scan(struct spi_nor *nor, const char *name, enum read_mode mode)
 					nor->isparallel = 1;
 					nor->isstacked = 0;
 					nor->spi->master->flags |=
-							SPI_BOTH_FLASH;
+							(SPI_BOTH_FLASH
+							| SPI_DATA_STRIPE);
 				} else {
 #ifdef CONFIG_SPI_ZYNQ_QSPI_DUAL_STACKED
 					/* dual stacked */
