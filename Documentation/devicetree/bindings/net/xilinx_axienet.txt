@@ -15,11 +15,13 @@ driver.
 For more details about mdio please refer phy.txt file in the same directory.
 
 Required properties:
+<<<<<<< HEAD
 - compatible	: Must be one of "xlnx,axi-ethernet-1.00.a",
 		  "xlnx,axi-ethernet-1.01.a", "xlnx,axi-ethernet-2.01.a"
 		  for Axi Ethenret 1G MAC
 		  controllers and "xlnx,ten-gig-eth-mac" for Axi
-		  Ethernet 10G MAC controllers.
+		  Ethernet 10G MAC controllers and
+		  "xlnx,xxv-ethernet-1.0" for 10G/25G MAC.
 - reg		: Address and length of the IO space.
 - interrupts	: Should be a list of two interrupt, TX and RX.
 - interrupt-parent	: Must be core interrupt controller.
