@@ -818,6 +818,10 @@ int xdma_submit(struct xdma_chan *chan,
 	dmahead->dmadir = chan->direction;
 	dmahead->userflag = user_flags;
 	dmadir = chan->direction;
+
+	if (!(user_flags & CF_FLAG_CACHE_FLUSH_INVALIDATE))
+		dma_set_attr(DMA_ATTR_SKIP_CPU_SYNC, &attrs);
+
 	if (dp) {
 		if (!dp->is_mapped) {
 			struct scatterlist *sg;
@@ -891,8 +895,6 @@ int xdma_submit(struct xdma_chan *chan,
 			pr_err("pin_user_pages failed\n");
 			return status;
 		}
-		if (!(user_flags & CF_FLAG_CACHE_FLUSH_INVALIDATE))
-			dma_set_attr(DMA_ATTR_SKIP_CPU_SYNC, &attrs);
 
 		status = get_dma_ops(chan->dev)->map_sg(chan->dev, sglist,
 							sgcnt, dmadir, &attrs);
@@ -963,26 +965,19 @@ int xdma_wait(struct xdma_head *dmahead,
 		}
 	}
 
+	if (!(user_flags & CF_FLAG_CACHE_FLUSH_INVALIDATE))
+		dma_set_attr(DMA_ATTR_SKIP_CPU_SYNC, &attrs);
+
 	if (dmahead->is_dmabuf) {
 		dmahead->is_dmabuf = 0;
-	} else if (user_flags & CF_FLAG_PHYSICALLY_CONTIGUOUS) {
-		if (user_flags & CF_FLAG_CACHE_FLUSH_INVALIDATE)
-			get_dma_ops(chan->dev)->unmap_sg(chan->dev,
-							 dmahead->sglist,
-							 dmahead->sgcnt,
-							 dmahead->dmadir,
-							 &attrs);
-	} else  {
-		if (!(user_flags & CF_FLAG_CACHE_FLUSH_INVALIDATE))
-			dma_set_attr(DMA_ATTR_SKIP_CPU_SYNC, &attrs);
-
+	} else {
 		get_dma_ops(chan->dev)->unmap_sg(chan->dev,
 						 dmahead->sglist,
 						 dmahead->sgcnt,
 						 dmahead->dmadir,
 						 &attrs);
-
-		unpin_user_pages(dmahead->sglist, dmahead->sgcnt);
+		if (!(user_flags & CF_FLAG_PHYSICALLY_CONTIGUOUS))
+			unpin_user_pages(dmahead->sglist, dmahead->sgcnt);
 	}
 	return 0;
 }
