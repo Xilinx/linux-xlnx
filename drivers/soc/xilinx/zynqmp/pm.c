@@ -361,9 +361,9 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_set_wakeup_source);
  *
  * Return:	Returns status, either success or error+reason
  */
-int zynqmp_pm_system_shutdown(const u32 restart)
+int zynqmp_pm_system_shutdown(const u32 type, const u32 subtype)
 {
-	return invoke_pm_fn(SYSTEM_SHUTDOWN, restart, 0, 0, 0, NULL);
+	return invoke_pm_fn(SYSTEM_SHUTDOWN, type, subtype, 0, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_system_shutdown);
 
@@ -794,7 +794,7 @@ static ssize_t zynqmp_pm_debugfs_api_write(struct file *file,
 					pm_api_arg[1], pm_api_arg[2]);
 		break;
 	case SYSTEM_SHUTDOWN:
-		ret = zynqmp_pm_system_shutdown(pm_api_arg[0]);
+		ret = zynqmp_pm_system_shutdown(pm_api_arg[0], pm_api_arg[1]);
 		break;
 	case REQUEST_NODE:
 		ret = zynqmp_pm_request_node(pm_api_arg[0],

@@ -209,7 +209,7 @@ int zynqmp_pm_request_wakeup(const u32 node,
 int zynqmp_pm_set_wakeup_source(const u32 target,
 					const u32 wakeup_node,
 					const u32 enable);
-int zynqmp_pm_system_shutdown(const u32 restart);
+int zynqmp_pm_system_shutdown(const u32 type, const u32 subtype);
 
 /* API for suspending of RPU */
 int zynqmp_pm_force_powerdown(const u32 target,
