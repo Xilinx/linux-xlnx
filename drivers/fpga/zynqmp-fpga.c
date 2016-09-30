@@ -57,7 +57,8 @@ static int zynqmp_fpga_ops_write(struct fpga_manager *mgr,
 		return -ENOMEM;
 
 	memcpy(kbuf, buf, size);
-	__flush_cache_user_range(kbuf, kbuf + size);
+	__flush_cache_user_range((unsigned long)kbuf,
+				(unsigned long)kbuf + size);
 
 	/**
 	 * Translate size from bytes to number of 32bit words that
