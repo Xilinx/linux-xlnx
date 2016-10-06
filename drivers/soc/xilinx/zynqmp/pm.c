@@ -68,6 +68,7 @@ enum pm_api_id {
 	PM_INIT,
 	FPGA_LOAD,
 	FPGA_GET_STATUS,
+	GET_CHIPID,
 };
 
 /* PMU-FW return status codes */
@@ -464,6 +465,29 @@ int zynqmp_pm_get_api_version(u32 *version)
 EXPORT_SYMBOL_GPL(zynqmp_pm_get_api_version);
 
 /**
+ * zynqmp_pm_get_chipid - Get silicon ID registers
+ * @idcode:	IDCODE register
+ * @version:	version register
+ *
+ * Return:	Returns the status of the operation and the idcode and version
+ *		registers in @idcode and @version.
+ */
+int zynqmp_pm_get_chipid(u32 *idcode, u32 *version)
+{
+	u32 ret_payload[PAYLOAD_ARG_CNT];
+
+	if (!idcode || !version)
+		return -EINVAL;
+
+	invoke_pm_fn(GET_CHIPID, 0, 0, 0, 0, ret_payload);
+	*idcode = ret_payload[1];
+	*version = ret_payload[2];
+
+	return zynqmp_pm_ret_code((enum pm_ret_status)ret_payload[0]);
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_get_chipid);
+
+/**
  * zynqmp_pm_set_configuration - PM call to set system configuration
  * @physical_addr:	Physical 32-bit address of data structure in memory
  *
@@ -745,6 +769,8 @@ static ssize_t zynqmp_pm_debugfs_api_write(struct file *file,
 		pm_id = MMIO_READ;
 	else if (strncasecmp(pm_api_req, "MMIO_WRITE", 10) == 0)
 		pm_id = MMIO_WRITE;
+	else if (strncasecmp(pm_api_req, "GET_CHIPID", 9) == 0)
+		pm_id = GET_CHIPID;
 	/* If no name was entered look for PM-API ID instead */
 	else if (kstrtouint(pm_api_req, 10, &pm_id))
 		ret = -EINVAL;
@@ -851,6 +877,11 @@ static ssize_t zynqmp_pm_debugfs_api_write(struct file *file,
 	case MMIO_WRITE:
 		ret = zynqmp_pm_mmio_write(pm_api_arg[0],
 				     pm_api_arg[1], pm_api_arg[2]);
+		break;
+	case GET_CHIPID:
+		ret = zynqmp_pm_get_chipid(&pm_api_arg[0], &pm_api_arg[1]);
+		pr_info("%s idcode: %#x, version:%#x\n",
+			__func__, pm_api_arg[0], pm_api_arg[1]);
 		break;
 	default:
 		pr_err("%s Unsupported PM-API request\n", __func__);
