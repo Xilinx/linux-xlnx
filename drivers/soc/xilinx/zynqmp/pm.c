@@ -924,14 +924,14 @@ static const struct file_operations fops_zynqmp_pm_dbgfs = {
  * Return:      Returns 0 on success
  *		Corresponding error code otherwise
  */
-static int zynqmp_pm_api_debugfs_init(void)
+static int zynqmp_pm_api_debugfs_init(struct device *dev)
 {
 	int err;
 
 	/* Initialize debugfs interface */
 	zynqmp_pm_debugfs_dir = debugfs_create_dir(DRIVER_NAME, NULL);
 	if (!zynqmp_pm_debugfs_dir) {
-		pr_err("%s debugfs_create_dir failed\n", __func__);
+		dev_err(dev, "debugfs_create_dir failed\n");
 		return -ENODEV;
 	}
 
@@ -940,7 +940,7 @@ static int zynqmp_pm_api_debugfs_init(void)
 					zynqmp_pm_debugfs_dir, NULL,
 					&fops_zynqmp_pm_dbgfs);
 	if (!zynqmp_pm_debugfs_power) {
-		pr_err("%s debugfs_create_file power failed\n", __func__);
+		dev_err(dev, "debugfs_create_file power failed\n");
 		err = -ENODEV;
 		goto err_dbgfs;
 	}
@@ -950,8 +950,7 @@ static int zynqmp_pm_api_debugfs_init(void)
 					zynqmp_pm_debugfs_dir, NULL,
 					&fops_zynqmp_pm_dbgfs);
 	if (!zynqmp_pm_debugfs_api_version) {
-		pr_err("%s debugfs_create_file api_version failed\n",
-								__func__);
+		dev_err(dev, "debugfs_create_file api_version failed\n");
 		err = -ENODEV;
 		goto err_dbgfs;
 	}
@@ -964,7 +963,7 @@ static int zynqmp_pm_api_debugfs_init(void)
 }
 
 #else
-static int zynqmp_pm_api_debugfs_init(void)
+static int zynqmp_pm_api_debugfs_init(struct device *dev)
 {
 	return 0;
 }
@@ -1026,10 +1025,10 @@ static int zynqmp_pm_probe(struct platform_device *pdev)
 	if (pm_api_version != ZYNQMP_PM_VERSION)
 		return -ENODEV;
 
-	pr_info("%s Power management API v%d.%d\n", __func__,
+	dev_info(&pdev->dev, "Power management API v%d.%d\n",
 		ZYNQMP_PM_VERSION_MAJOR, ZYNQMP_PM_VERSION_MINOR);
 
-	zynqmp_pm_api_debugfs_init();
+	zynqmp_pm_api_debugfs_init(&pdev->dev);
 
 	return 0;
 }
