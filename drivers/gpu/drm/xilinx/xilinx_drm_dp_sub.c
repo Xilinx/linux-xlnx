@@ -576,6 +576,16 @@ static const struct xilinx_drm_dp_sub_fmt av_buf_vid_fmts[] = {
 		.sf[2]		= XILINX_DP_SUB_AV_BUF_4BIT_SF,
 		.name		= "nv16",
 	}, {
+		.drm_fmt	= DRM_FORMAT_NV61,
+		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FMT_NL_VID_YV16CI2,
+		.rgb		= false,
+		.swap		= false,
+		.chroma_sub	= true,
+		.sf[0]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.sf[1]		= XILINX_DP_SUB_AV_BUF_4BIT_SF,
+		.sf[2]		= XILINX_DP_SUB_AV_BUF_4BIT_SF,
+		.name		= "nv61",
+	}, {
 		.drm_fmt	= DRM_FORMAT_BGR888,
 		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FMT_NL_VID_RGB888,
 		.rgb		= true,
@@ -615,6 +625,26 @@ static const struct xilinx_drm_dp_sub_fmt av_buf_vid_fmts[] = {
 		.sf[1]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
 		.sf[2]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
 		.name		= "xrgb8888",
+	}, {
+		.drm_fmt	= DRM_FORMAT_NV12,
+		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FMT_NL_VID_YV16CI_420,
+		.rgb		= false,
+		.swap		= false,
+		.chroma_sub	= true,
+		.sf[0]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.sf[1]		= XILINX_DP_SUB_AV_BUF_4BIT_SF,
+		.sf[2]		= XILINX_DP_SUB_AV_BUF_4BIT_SF,
+		.name		= "nv12",
+	}, {
+		.drm_fmt	= DRM_FORMAT_NV21,
+		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FMT_NL_VID_YV16CI2_420,
+		.rgb		= false,
+		.swap		= false,
+		.chroma_sub	= true,
+		.sf[0]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.sf[1]		= XILINX_DP_SUB_AV_BUF_4BIT_SF,
+		.sf[2]		= XILINX_DP_SUB_AV_BUF_4BIT_SF,
+		.name		= "nv21",
 	}
 };
 
