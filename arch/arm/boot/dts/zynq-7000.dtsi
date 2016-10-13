@@ -271,6 +271,7 @@
 			interrupt-parent = <&intc>;
 			interrupts = <0 24 4>;
 			reg = <0xe0100000 0x1000>;
+			broken-adma2;
 		};
 
 		sdhci1: sdhci@e0101000 {
@@ -281,6 +282,7 @@
 			interrupt-parent = <&intc>;
 			interrupts = <0 47 4>;
 			reg = <0xe0101000 0x1000>;
+			broken-adma2;
 		};
 
 		slcr: slcr@f8000000 {
