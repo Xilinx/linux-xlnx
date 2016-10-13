@@ -29,11 +29,27 @@ Required planes properties:
  - xlnx,pixel-format: the format of plane manager. The value should be one of
    following format strings.
 
-	yuv422
-	yuv444
-	yuv420
-	rgb888
-	xrgb8888
+	"yuv420"
+	"yuv422"
+	"yuv444"
+	"nv12"
+	"nv21"
+	"nv16"
+	"nv61"
+	"abgr1555"
+	"argb1555"
+	"abgr4444"
+	"argb4444"
+	"bgr565"
+	"rgb565"
+	"bgr888"
+	"rgb888"
+	"xbgr8888"
+	"xrgb8888"
+	"abgr8888"
+	"argb8888"
+	"bgra8888"
+	"rgba8888"
 
 Required plane properties:
  - dmas: the phandle list of DMA specifiers
