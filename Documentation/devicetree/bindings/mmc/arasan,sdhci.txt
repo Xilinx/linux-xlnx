@@ -30,6 +30,8 @@ Required Properties for "xlnx,zynqmp-8.9a":
 Optional Properties:
   - broken-mmc-highspeed: Indicates to force
 				the controller to use in standard speed.
+  - broken-adma2: Indicates ADMA2 is broken and force the controller to
+		  use SDMA mode.
 
 Example:
 	sdhci@e0100000 {
