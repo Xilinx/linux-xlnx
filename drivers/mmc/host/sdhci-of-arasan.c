@@ -436,6 +436,8 @@ static int sdhci_arasan_probe(struct platform_device *pdev)
 					"arasan,sdhci-8.9a")) {
 		host->quirks |= SDHCI_QUIRK_MULTIBLOCK_READ_ACMD12;
 		host->quirks2 |= SDHCI_QUIRK2_CLOCK_STANDARD_25_BROKEN;
+		if (of_get_property(pdev->dev.of_node, "broken-adma2", NULL))
+			host->quirks |= SDHCI_QUIRK_BROKEN_ADMA;
 		if (of_device_is_compatible(pdev->dev.of_node,
 					    "xlnx,zynqmp-8.9a")) {
 			ret = of_property_read_u32(pdev->dev.of_node,
