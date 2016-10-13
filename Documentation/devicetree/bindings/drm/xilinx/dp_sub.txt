@@ -10,10 +10,30 @@ Required properties:
  - reg-names: "blend", "av_buf", and "aud" for Blender, AV Buffer manager, and
    Audio modules respectively.
 
- - xlnx,vid-fmt: Video input color format. The value should be one of "vyuv",
-   "yuyv", "bgr888", or "xbgr8888".
+ - xlnx,vid-fmt: Video input color format. The value should be one of
+	"vyuv"
+	"yuyv"
+	"nv16"
+	"nv61
+	"bgr888"
+	"rgb888"
+	"xbgr8888"
+	"xrgb8888"
+	"nv12"
+	"nv21"
  - xlnx,gfx-fmt: Graphics input color format. The value should be one of
-   "abgr8888", "rgba8888", "rgb888", "abgr1555", "abgr4444", or "rgb565".
+	"abgr8888"
+	"argb8888"
+	"rgba8888"
+	"bgra8888"
+	"bgr888"
+	"rgb888"
+	"abgr1555"
+	"argb1555"
+	"abgr4444"
+	"argb4444"
+	"rgb565".
+	"bgr565".
  - xlnx,output-fmt: Output color format. The value should be one of "rgb",
    "ycrcb422", "ycrcb444", or "yonly". These are based on the DisplayPort
    specification. The value shall be synced with DP colormetry..
