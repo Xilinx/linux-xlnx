@@ -53,6 +53,7 @@ struct xilinx_drm_private {
 	struct drm_crtc *crtc;
 	struct drm_fb_helper *fb;
 	struct platform_device *pdev;
+	bool is_master;
 };
 
 /**
@@ -377,8 +378,13 @@ static int xilinx_drm_unload(struct drm_device *drm)
 
 int xilinx_drm_open(struct drm_device *dev, struct drm_file *file)
 {
-	if (drm_is_control_client(file))
-		file->universal_planes = 1;
+	struct xilinx_drm_private *private = dev->dev_private;
+
+	if (!(drm_is_primary_client(file) && !file->minor->master) &&
+			capable(CAP_SYS_ADMIN)) {
+		file->is_master = 1;
+		private->is_master = true;
+	}
 
 	return 0;
 }
@@ -390,6 +396,11 @@ static void xilinx_drm_preclose(struct drm_device *drm, struct drm_file *file)
 
 	/* cancel pending page flip request */
 	xilinx_drm_crtc_cancel_page_flip(private->crtc, file);
+
+	if (private->is_master) {
+		private->is_master = false;
+		file->is_master = 0;
+	}
 }
 
 /* restore the default mode when xilinx drm is released */
@@ -400,6 +411,11 @@ static void xilinx_drm_lastclose(struct drm_device *drm)
 	xilinx_drm_crtc_restore(private->crtc);
 
 	xilinx_drm_fb_restore_mode(private->fb);
+}
+
+static int xilinx_drm_set_busid(struct drm_device *dev, struct drm_master *master)
+{
+	return 0;
 }
 
 static const struct file_operations xilinx_drm_fops = {
@@ -424,7 +440,7 @@ static struct drm_driver xilinx_drm_driver = {
 	.open				= xilinx_drm_open,
 	.preclose			= xilinx_drm_preclose,
 	.lastclose			= xilinx_drm_lastclose,
-	.set_busid			= drm_platform_set_busid,
+	.set_busid			= xilinx_drm_set_busid,
 
 	.get_vblank_counter		= drm_vblank_no_hw_counter,
 	.enable_vblank			= xilinx_drm_enable_vblank,
