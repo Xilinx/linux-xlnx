@@ -31,6 +31,13 @@ config FPGA_MGR_ZYNQMP_FPGA
 	help
 	  FPGA manager driver support for Xilinx ZynqMp FPGAs.
 
+config FPGA_BRIDGE
+	tristate "FPGA Bridge Framework"
+	depends on OF
+	help
+	  Say Y here if you want to support bridges connected between host
+	  processors and FPGAs or between FPGAs.
+
 endif # FPGA
 
 endmenu
