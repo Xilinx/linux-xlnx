@@ -295,6 +295,7 @@ struct xilinx_drm_dp_config {
  * @config: IP core configuration from DTS
  * @aux: aux channel
  * @dp_sub: DisplayPort subsystem
+ * @phy: PHY handles for DP lanes
  * @aclk: clock source device for internal axi4-lite clock
  * @aud_clk: clock source device for audio clock
  * @dpms: current dpms state
