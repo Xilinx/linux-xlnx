@@ -141,7 +141,7 @@ clkc: clkc@ff5e0020 {
 			"cpu_r5_core","csu_spb","csu_pll","pcap","iou_switch",
 			"gem_tsu_ref","gem_tsu","gem0_ref","gem1_ref","gem2_ref","gem3_ref",
 			"gem0_tx","gem1_tx","gem2_tx","gem3_tx","qspi_ref","sdio0_ref","sdio1_ref",
-			"uart0_ref","uart1_ref","spi0_ref","spi1_ref
-			","nand_ref","i2c0_ref","i2c1_ref","can0_ref","can1_ref","can0","can1","dll_ref",
+			"uart0_ref","uart1_ref","spi0_ref","spi1_ref",
+			"nand_ref","i2c0_ref","i2c1_ref","can0_ref","can1_ref","can0","can1","dll_ref",
 			"adma_ref","timestamp_ref","ams_ref","pl0","pl1","pl2","pl3","wdt";
 };
