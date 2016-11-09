@@ -310,6 +310,9 @@ struct xilinx_drm_dp_sub_aud {
  * @list: entry in the global DP subsystem list
  * @vblank_fn: vblank handler
  * @vblank_data: vblank data to be used in vblank_fn
+ * @vid_clk_pl: flag if the clock is from PL
+ * @alpha: stored global alpha value
+ * @alpha_en: flag if the global alpha is enabled
  */
 struct xilinx_drm_dp_sub {
 	struct device *dev;
