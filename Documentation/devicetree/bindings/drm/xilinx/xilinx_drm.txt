@@ -30,7 +30,10 @@ Required planes properties:
    following format strings.
 
 	"yuv420"
+	"uvy422"
+	"vuy422"
 	"yuv422"
+	"yv4u22"
 	"yuv444"
 	"nv12"
 	"nv21"
@@ -38,8 +41,8 @@ Required planes properties:
 	"nv61"
 	"abgr1555"
 	"argb1555"
-	"abgr4444"
-	"argb4444"
+	"rgba4444"
+	"bgra4444"
 	"bgr565"
 	"rgb565"
 	"bgr888"
