@@ -480,12 +480,6 @@ xilinx_drm_fb_create(struct drm_device *drm, struct drm_file *file_priv,
 	int ret;
 	int i;
 
-	if (!xilinx_drm_check_format(drm, mode_cmd->pixel_format)) {
-		DRM_ERROR("unsupported pixel format %08x\n",
-			  mode_cmd->pixel_format);
-		return ERR_PTR(-EINVAL);
-	}
-
 	hsub = drm_format_horz_chroma_subsampling(mode_cmd->pixel_format);
 	vsub = drm_format_vert_chroma_subsampling(mode_cmd->pixel_format);
 
