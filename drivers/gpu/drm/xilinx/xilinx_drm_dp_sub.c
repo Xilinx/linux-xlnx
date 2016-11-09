@@ -256,6 +256,8 @@ enum xilinx_drm_dp_sub_layer_type {
  * @primary: flag for primary plane
  * @enabled: flag if the layer is enabled
  * @fmt: format descriptor
+ * @drm_fmts: array of supported DRM formats
+ * @num_fmts: number of supported DRM formats
  * @w: width
  * @h: height
  * @other: other layer
@@ -267,6 +269,8 @@ struct xilinx_drm_dp_sub_layer {
 	bool primary;
 	bool enabled;
 	const struct xilinx_drm_dp_sub_fmt *fmt;
+	uint32_t *drm_fmts;
+	unsigned int num_fmts;
 	uint32_t w;
 	uint32_t h;
 	struct xilinx_drm_dp_sub_layer *other;
@@ -1580,8 +1584,9 @@ xilinx_drm_dp_sub_unregister_device(struct xilinx_drm_dp_sub *dp_sub)
 static int xilinx_drm_dp_sub_parse_of(struct xilinx_drm_dp_sub *dp_sub)
 {
 	struct device_node *node = dp_sub->dev->of_node;
+	struct xilinx_drm_dp_sub_layer *layer;
 	const char *string;
-	u32 fmt, i;
+	u32 fmt, i, size;
 	bool ret;
 
 	ret = of_property_read_string(node, "xlnx,output-fmt", &string);
@@ -1633,43 +1638,57 @@ static int xilinx_drm_dp_sub_parse_of(struct xilinx_drm_dp_sub *dp_sub)
 		dp_sub->layers[XILINX_DRM_DP_SUB_LAYER_GFX].primary = true;
 
 	ret = of_property_read_string(node, "xlnx,vid-fmt", &string);
-	if (ret < 0) {
-		dev_err(dp_sub->dev, "No video format in DT\n");
-		return ret;
-	}
+	if (!ret) {
+		layer = &dp_sub->layers[XILINX_DRM_DP_SUB_LAYER_VID];
+		size = ARRAY_SIZE(av_buf_vid_fmts);
+		layer->num_fmts = size;
+		layer->drm_fmts = devm_kzalloc(dp_sub->dev,
+					       sizeof(*layer->drm_fmts) * size,
+					       GFP_KERNEL);
+		if (!layer->drm_fmts)
+			return -ENOMEM;
 
-	for (i = 0; i < ARRAY_SIZE(av_buf_vid_fmts); i++) {
-		const struct xilinx_drm_dp_sub_fmt *fmt = &av_buf_vid_fmts[i];
+		for (i = 0; i < layer->num_fmts; i++) {
+			const struct xilinx_drm_dp_sub_fmt *fmt =
+				&av_buf_vid_fmts[i];
 
-		if (strcmp(string, fmt->name) == 0) {
-			dp_sub->layers[XILINX_DRM_DP_SUB_LAYER_VID].fmt = fmt;
-			break;
+			if (strcmp(string, fmt->name) == 0)
+				layer->fmt = fmt;
+
+			layer->drm_fmts[i] = fmt->drm_fmt;
 		}
-	}
 
-	if (!dp_sub->layers[XILINX_DRM_DP_SUB_LAYER_VID].fmt) {
-		dev_err(dp_sub->dev, "Invalid vid-fmt in DT\n");
-		return -EINVAL;
+		if (!layer->fmt) {
+			dev_info(dp_sub->dev, "Invalid vid-fmt in DT\n");
+			layer->fmt = &av_buf_vid_fmts[0];
+		}
 	}
 
 	ret = of_property_read_string(node, "xlnx,gfx-fmt", &string);
-	if (ret < 0) {
-		dev_err(dp_sub->dev, "No gfx format in DT\n");
-		return ret;
-	}
+	if (!ret) {
+		layer = &dp_sub->layers[XILINX_DRM_DP_SUB_LAYER_GFX];
+		size = ARRAY_SIZE(av_buf_gfx_fmts);
+		layer->num_fmts = size;
+		layer->drm_fmts = devm_kzalloc(dp_sub->dev,
+					       sizeof(*layer->drm_fmts) * size,
+					       GFP_KERNEL);
+		if (!layer->drm_fmts)
+			return -ENOMEM;
 
-	for (i = 0; i < ARRAY_SIZE(av_buf_gfx_fmts); i++) {
-		const struct xilinx_drm_dp_sub_fmt *fmt = &av_buf_gfx_fmts[i];
+		for (i = 0; i < layer->num_fmts; i++) {
+			const struct xilinx_drm_dp_sub_fmt *fmt =
+				&av_buf_gfx_fmts[i];
 
-		if (strcmp(string, fmt->name) == 0) {
-			dp_sub->layers[XILINX_DRM_DP_SUB_LAYER_GFX].fmt = fmt;
-			break;
+			if (strcmp(string, fmt->name) == 0)
+				layer->fmt = fmt;
+
+			layer->drm_fmts[i] = fmt->drm_fmt;
 		}
-	}
 
-	if (!dp_sub->layers[XILINX_DRM_DP_SUB_LAYER_GFX].fmt) {
-		dev_err(dp_sub->dev, "Invalid gfx-fmt in DT\n");
-		return -EINVAL;
+		if (!layer->fmt) {
+			dev_info(dp_sub->dev, "Invalid vid-fmt in DT\n");
+			layer->fmt = &av_buf_gfx_fmts[0];
+		}
 	}
 
 	dp_sub->vid_clk_pl = of_property_read_bool(node, "xlnx,vid-clk-pl");
