@@ -1225,6 +1225,25 @@ uint32_t xilinx_drm_dp_sub_layer_get_fmt(struct xilinx_drm_dp_sub *dp_sub,
 EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_layer_get_fmt);
 
 /**
+ * xilinx_drm_dp_sub_get_fmt - Get the supported DRM formats of the layer
+ * @dp_sub: DP subsystem
+ * @layer: layer to get the formats
+ * @drm_fmts: pointer to array of DRM format strings
+ * @num_fmts: pointer to number of returned DRM formats
+ *
+ * Get the supported DRM formats of the given layer.
+ */
+void xilinx_drm_dp_sub_layer_get_fmts(struct xilinx_drm_dp_sub *dp_sub,
+				      struct xilinx_drm_dp_sub_layer *layer,
+				      uint32_t **drm_fmts,
+				      unsigned int *num_fmts)
+{
+	*drm_fmts = layer->drm_fmts;
+	*num_fmts = layer->num_fmts;
+}
+EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_layer_get_fmts);
+
+/**
  * xilinx_drm_dp_sub_layer_enable - Enable the layer
  * @dp_sub: DP subsystem
  * @layer: layer to esable

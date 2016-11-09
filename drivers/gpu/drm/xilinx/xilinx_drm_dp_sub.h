@@ -34,6 +34,10 @@ int xilinx_drm_dp_sub_layer_set_fmt(struct xilinx_drm_dp_sub *dp_sub,
 				    uint32_t drm_fmt);
 uint32_t xilinx_drm_dp_sub_layer_get_fmt(struct xilinx_drm_dp_sub *dp_sub,
 					 struct xilinx_drm_dp_sub_layer *layer);
+void xilinx_drm_dp_sub_layer_get_fmts(struct xilinx_drm_dp_sub *dp_sub,
+				      struct xilinx_drm_dp_sub_layer *layer,
+				      uint32_t **drm_fmts,
+				      unsigned int *num_fmts);
 void xilinx_drm_dp_sub_layer_enable(struct xilinx_drm_dp_sub *dp_sub,
 				    struct xilinx_drm_dp_sub_layer *layer);
 void xilinx_drm_dp_sub_layer_disable(struct xilinx_drm_dp_sub *dp_sub,
