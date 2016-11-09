@@ -280,6 +280,9 @@ int xilinx_drm_plane_mode_set(struct drm_plane *base_plane,
 		unsigned int height = src_h / (i ? vsub : 1);
 		unsigned int cpp = drm_format_plane_cpp(fb->pixel_format, i);
 
+		if (!cpp)
+			cpp = xilinx_drm_format_bpp(fb->pixel_format) >> 3;
+
 		obj = xilinx_drm_fb_get_gem_obj(fb, i);
 		if (!obj) {
 			DRM_ERROR("failed to get a gem obj for fb\n");
