@@ -728,6 +728,8 @@ xilinx_drm_plane_create(struct xilinx_drm_plane_manager *manager,
 	const char *fmt;
 	int i;
 	int ret;
+	uint32_t *fmts = NULL;
+	unsigned int num_fmts = 0;
 
 	for (i = 0; i < manager->num_planes; i++)
 		if (!manager->planes[i])
@@ -874,6 +876,9 @@ xilinx_drm_plane_create(struct xilinx_drm_plane_manager *manager,
 		plane->format =
 			xilinx_drm_dp_sub_layer_get_fmt(manager->dp_sub,
 							plane->dp_layer);
+		xilinx_drm_dp_sub_layer_get_fmts(manager->dp_sub,
+						 plane->dp_layer, &fmts,
+						 &num_fmts);
 	}
 
 	/* If there's no IP other than VDMA, pick the manager's format */
@@ -884,7 +889,8 @@ xilinx_drm_plane_create(struct xilinx_drm_plane_manager *manager,
 	type = primary ? DRM_PLANE_TYPE_PRIMARY : DRM_PLANE_TYPE_OVERLAY;
 	ret = drm_universal_plane_init(manager->drm, &plane->base,
 				       possible_crtcs, &xilinx_drm_plane_funcs,
-				       &plane->format, 1, type, NULL);
+				       fmts ? fmts : &plane->format,
+				       num_fmts ? num_fmts : 1, type, NULL);
 	if (ret) {
 		DRM_ERROR("failed to initialize plane\n");
 		goto err_init;
