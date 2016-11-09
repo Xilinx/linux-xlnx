@@ -324,6 +324,14 @@ int xilinx_drm_plane_mode_set(struct drm_plane *base_plane,
 							 src_w, src_h);
 		if (ret)
 			return ret;
+
+		ret = xilinx_drm_dp_sub_layer_set_fmt(plane->manager->dp_sub,
+						      plane->dp_layer,
+						      fb->pixel_format);
+		if (ret) {
+			DRM_ERROR("failed to set dp_sub layer fmt\n");
+			return ret;
+		}
 	}
 
 	return 0;
