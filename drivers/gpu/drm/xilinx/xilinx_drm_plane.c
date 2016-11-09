@@ -260,11 +260,6 @@ int xilinx_drm_plane_mode_set(struct drm_plane *base_plane,
 
 	DRM_DEBUG_KMS("plane->id: %d\n", plane->id);
 
-	if (fb->pixel_format != plane->format) {
-		DRM_ERROR("unsupported pixel format %08x\n", fb->pixel_format);
-		return -EINVAL;
-	}
-
 	/* configure cresample */
 	if (plane->cresample)
 		xilinx_cresample_configure(plane->cresample, crtc_w, crtc_h);
