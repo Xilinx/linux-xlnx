@@ -708,7 +708,6 @@ static const struct xilinx_drm_dp_sub_fmt av_buf_gfx_fmts[] = {
 		.sf[1]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
 		.sf[2]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
 		.name		= "bgra8888",
-
 	}, {
 		.drm_fmt	= DRM_FORMAT_BGR888,
 		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FMT_NL_GFX_RGB888,
@@ -730,7 +729,7 @@ static const struct xilinx_drm_dp_sub_fmt av_buf_gfx_fmts[] = {
 		.sf[2]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
 		.name		= "rgb888",
 	}, {
-		.drm_fmt	= DRM_FORMAT_ABGR1555,
+		.drm_fmt	= DRM_FORMAT_RGBA5551,
 		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FMT_NL_GFX_RGBA5551,
 		.rgb		= true,
 		.swap		= false,
@@ -738,9 +737,9 @@ static const struct xilinx_drm_dp_sub_fmt av_buf_gfx_fmts[] = {
 		.sf[0]		= XILINX_DP_SUB_AV_BUF_5BIT_SF,
 		.sf[1]		= XILINX_DP_SUB_AV_BUF_5BIT_SF,
 		.sf[2]		= XILINX_DP_SUB_AV_BUF_5BIT_SF,
-		.name		= "abgr1555",
+		.name		= "rgba5551",
 	}, {
-		.drm_fmt	= DRM_FORMAT_ARGB1555,
+		.drm_fmt	= DRM_FORMAT_BGRA5551,
 		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FMT_NL_GFX_RGBA5551,
 		.rgb		= true,
 		.swap		= true,
@@ -748,9 +747,9 @@ static const struct xilinx_drm_dp_sub_fmt av_buf_gfx_fmts[] = {
 		.sf[0]		= XILINX_DP_SUB_AV_BUF_5BIT_SF,
 		.sf[1]		= XILINX_DP_SUB_AV_BUF_5BIT_SF,
 		.sf[2]		= XILINX_DP_SUB_AV_BUF_5BIT_SF,
-		.name		= "argb1555",
+		.name		= "bgra5551",
 	}, {
-		.drm_fmt	= DRM_FORMAT_ABGR4444,
+		.drm_fmt	= DRM_FORMAT_RGBA4444,
 		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FMT_NL_GFX_RGBA4444,
 		.rgb		= true,
 		.swap		= false,
@@ -758,9 +757,9 @@ static const struct xilinx_drm_dp_sub_fmt av_buf_gfx_fmts[] = {
 		.sf[0]		= XILINX_DP_SUB_AV_BUF_4BIT_SF,
 		.sf[1]		= XILINX_DP_SUB_AV_BUF_4BIT_SF,
 		.sf[2]		= XILINX_DP_SUB_AV_BUF_4BIT_SF,
-		.name		= "abgr4444",
+		.name		= "rgba4444",
 	}, {
-		.drm_fmt	= DRM_FORMAT_ARGB4444,
+		.drm_fmt	= DRM_FORMAT_BGRA4444,
 		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FMT_NL_GFX_RGBA4444,
 		.rgb		= true,
 		.swap		= true,
@@ -768,7 +767,7 @@ static const struct xilinx_drm_dp_sub_fmt av_buf_gfx_fmts[] = {
 		.sf[0]		= XILINX_DP_SUB_AV_BUF_4BIT_SF,
 		.sf[1]		= XILINX_DP_SUB_AV_BUF_4BIT_SF,
 		.sf[2]		= XILINX_DP_SUB_AV_BUF_4BIT_SF,
-		.name		= "argb4444",
+		.name		= "bgra4444",
 	}, {
 		.drm_fmt	= DRM_FORMAT_RGB565,
 		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FMT_NL_GFX_RGB565,
