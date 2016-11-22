@@ -32,6 +32,7 @@
 
 /* SMC SIP service Call Function Identifier Prefix */
 #define PM_SIP_SVC	0xC2000000
+#define GET_CALLBACK_DATA 0xa01
 
 /* Number of 32bits values in payload */
 #define PAYLOAD_ARG_CNT	5U
@@ -660,6 +661,20 @@ int zynqmp_pm_fpga_get_status(u32 *value)
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_fpga_get_status);
 
+static void zynqmp_pm_get_callback_data(u32 *buf)
+{
+	invoke_pm_fn(GET_CALLBACK_DATA, 0, 0, 0, 0, buf);
+}
+
+static irqreturn_t zynqmp_pm_isr(int irq, void *data)
+{
+	u32 buf[PAYLOAD_ARG_CNT];
+
+	zynqmp_pm_get_callback_data(buf);
+
+	return IRQ_HANDLED;
+}
+
 #ifdef CONFIG_ZYNQMP_PM_API_DEBUGFS
 /**
  * zynqmp_pm_argument_value - Extract argument value from a PM-API request
@@ -1051,10 +1066,23 @@ static void get_set_conduit_method(struct device_node *np)
  */
 static int zynqmp_pm_probe(struct platform_device *pdev)
 {
+	int ret, irq;
 
 	/* Check PM API version number */
 	if (pm_api_version != ZYNQMP_PM_VERSION)
 		return -ENODEV;
+
+	irq = platform_get_irq(pdev, 0);
+	if (irq <= 0) {
+		return -ENXIO;
+	}
+
+	ret = request_irq(irq, zynqmp_pm_isr, 0, DRIVER_NAME, pdev);
+	if (ret) {
+		dev_err(&pdev->dev, "request_irq '%d' failed with %d\n",
+			irq, ret);
+		return ret;
+	}
 
 	dev_info(&pdev->dev, "Power management API v%d.%d\n",
 		ZYNQMP_PM_VERSION_MAJOR, ZYNQMP_PM_VERSION_MINOR);
