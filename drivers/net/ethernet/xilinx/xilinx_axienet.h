@@ -451,6 +451,7 @@ struct axidma_bd {
  * @phy_interface: Phy interface type.
  * @phy_flags:	Phy interface flags.
  * @eth_hasnobuf: Ethernet is configured in Non buf mode.
+ * @axienet_config: Ethernet config structure
  * @tx_ts_regs:	  Base address for the axififo device address space.
  * @tstamp_config: Hardware timestamp config structure.
  */
@@ -504,11 +505,29 @@ struct axienet_local {
 	u32 phy_interface;
 	u32 phy_flags;
 	bool eth_hasnobuf;
+	const struct axienet_config *axienet_config;
 
 #ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
 	void __iomem *tx_ts_regs;
 	struct hwtstamp_config tstamp_config;
 #endif
+};
+
+/**
+ * enum axienet_ip_type - AXIENET IP/MAC type.
+ *
+ * @XAXIENET_1G:	 IP is 1G MAC
+ * @XAXIENET_LEGACY_10G: IP type is legacy 10G MAC.
+ *
+ */
+enum axienet_ip_type {
+	XAXIENET_1G = 0,
+	XAXIENET_LEGACY_10G,
+};
+
+struct axienet_config {
+	enum axienet_ip_type mactype;
+	void (*setoptions)(struct net_device *ndev, u32 options);
 };
 
 /**
