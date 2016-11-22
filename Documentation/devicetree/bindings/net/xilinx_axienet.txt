@@ -37,6 +37,7 @@ Optional properties:
 - xlnx,phy-type		: Phy device type.
 - dma-coherent		: For ACP port designs to allocate cohernet memory.
 - xlnx,eth-hasnobuf	: Used when 1G MAC is configured in non processor mode.
+- xlnx,rxtsfifo 	: Configures the axi fifo for receive timestamping.
 
 Example:
 
