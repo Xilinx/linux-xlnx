@@ -1142,7 +1142,7 @@ static int axienet_recv(struct net_device *ndev, int budget)
 			time64 = sec * NS_PER_SEC + nsec;
 			shhwtstamps = skb_hwtstamps(skb);
 			shhwtstamps->hwtstamp = ns_to_ktime(time64);
-		} else {
+		} else if (lp->axienet_config->mactype == XAXIENET_10G_25G) {
 			axienet_rx_hwtstamp(lp, skb);
 		}
 #endif
