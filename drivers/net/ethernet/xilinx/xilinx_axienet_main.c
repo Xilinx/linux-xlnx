@@ -347,7 +347,8 @@ static void axienet_set_mac_address(struct net_device *ndev, void *address)
 	if (!is_valid_ether_addr(ndev->dev_addr))
 		eth_random_addr(ndev->dev_addr);
 
-	if (lp->axienet_config->mactype != XAXIENET_1G)
+	if (lp->axienet_config->mactype != XAXIENET_1G &&
+	    lp->axienet_config->mactype != XAXIENET_2_5G)
 		return;
 
 	/* Set up unicast MAC address filter set its mac address */
@@ -647,6 +648,8 @@ static void axienet_adjust_link(struct net_device *ndev)
 			emmc_reg &= ~XAE_EMMC_LINKSPEED_MASK;
 
 			switch (phy->speed) {
+			case SPEED_2500:
+				emmc_reg |= XAE_EMMC_LINKSPD_2500;
 			case SPEED_1000:
 				emmc_reg |= XAE_EMMC_LINKSPD_1000;
 				break;
@@ -905,7 +908,8 @@ static void axienet_create_tsheader(struct axienet_local *lp, u8 *buf,
 		buf[3] = (cur_p->ptp_tx_ts_tag >> 8) & 0xFF;
 	}
 
-	if (lp->axienet_config->mactype == XAXIENET_1G) {
+	if (lp->axienet_config->mactype == XAXIENET_1G ||
+	    lp->axienet_config->mactype == XAXIENET_2_5G) {
 		memcpy(&val, buf, AXIENET_TS_HEADER_LEN);
 		swab64s(&val);
 		memcpy(buf, &val, AXIENET_TS_HEADER_LEN);
@@ -1124,7 +1128,8 @@ static int axienet_recv(struct net_device *ndev, int budget)
 			u64 time64;
 			struct skb_shared_hwtstamps *shhwtstamps;
 
-			if (lp->axienet_config->mactype == XAXIENET_1G) {
+			if (lp->axienet_config->mactype == XAXIENET_1G ||
+			    lp->axienet_config->mactype == XAXIENET_2_5G) {
 				/* The first 8 bytes will be the timestamp */
 				memcpy(&sec, &skb->data[0], 4);
 				memcpy(&nsec, &skb->data[4], 4);
@@ -1435,7 +1440,8 @@ static int axienet_open(struct net_device *ndev)
 	if (ret < 0)
 		return ret;
 
-	if (lp->phy_node && (lp->axienet_config->mactype == XAXIENET_1G)) {
+	if (lp->phy_node && ((lp->axienet_config->mactype == XAXIENET_1G) ||
+			     (lp->axienet_config->mactype == XAXIENET_2_5G))) {
 		lp->phy_dev = of_phy_connect(lp->ndev, lp->phy_node,
 					     axienet_adjust_link, lp->phy_flags,
 					     lp->phy_interface);
@@ -2184,6 +2190,12 @@ static const struct axienet_config axienet_1g_config = {
 	.tx_ptplen = XAE_TX_PTP_LEN,
 };
 
+static const struct axienet_config axienet_2_5g_config = {
+	.mactype = XAXIENET_2_5G,
+	.setoptions = axienet_setoptions,
+	.tx_ptplen = XAE_TX_PTP_LEN,
+};
+
 static const struct axienet_config axienet_10g_config = {
 	.mactype = XAXIENET_LEGACY_10G,
 	.setoptions = axienet_setoptions,
@@ -2201,6 +2213,8 @@ static const struct of_device_id axienet_of_match[] = {
 	{ .compatible = "xlnx,axi-ethernet-1.00.a", .data = &axienet_1g_config},
 	{ .compatible = "xlnx,axi-ethernet-1.01.a", .data = &axienet_1g_config},
 	{ .compatible = "xlnx,axi-ethernet-2.01.a", .data = &axienet_1g_config},
+	{ .compatible = "xlnx,axi-2_5-gig-ethernet-1.0",
+						.data = &axienet_2_5g_config},
 	{ .compatible = "xlnx,ten-gig-eth-mac", .data = &axienet_10g_config},
 	{ .compatible = "xlnx,xxv-ethernet-1.0",
 						.data = &axienet_10g25g_config},
