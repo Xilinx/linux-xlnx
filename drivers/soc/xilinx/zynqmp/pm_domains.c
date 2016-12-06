@@ -60,7 +60,7 @@ static int zynqmp_gpd_power_on(struct generic_pm_domain *domain)
 		status = zynqmp_pm_set_requirement(pd->node_ids[i],
 					ZYNQMP_PM_CAPABILITY_ACCESS,
 					ZYNQMP_PM_MAX_QOS,
-					ZYNQMP_PM_REQUEST_ACK_NO);
+					ZYNQMP_PM_REQUEST_ACK_BLOCKING);
 		if (status)
 			break;
 	}
