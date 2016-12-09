@@ -100,6 +100,65 @@ static int zynqmp_gpd_power_off(struct generic_pm_domain *domain)
 }
 
 /**
+ * zynqmp_gpd_attach_dev - Attach device to the PM domain
+ * @domain:	Generic PM domain
+ * @dev:	Device to attach
+ *
+ * Return:	0 on success, error code otherwise.
+ */
+static int zynqmp_gpd_attach_dev(struct generic_pm_domain *domain,
+				struct device *dev)
+{
+	int i, status;
+	struct zynqmp_pm_domain *pd;
+
+	/* If this is not the first device to attach there is nothing to do */
+	if (domain->device_count)
+		return 0;
+
+	pd = container_of(domain, struct zynqmp_pm_domain, gpd);
+	for (i = 0; i < pd->node_id_num; i++) {
+		status = zynqmp_pm_request_node(pd->node_ids[i], 0, 0,
+						ZYNQMP_PM_REQUEST_ACK_BLOCKING);
+		/* If requesting a node fails print and return the error */
+		if (status) {
+			pr_err("%s error %d, node %u\n", __func__, status,
+				pd->node_ids[i]);
+			return status;
+		}
+	}
+
+	return 0;
+}
+
+/**
+ * zynqmp_gpd_detach_dev - Detach device from the PM domain
+ * @domain:	Generic PM domain
+ * @dev:	Device to detach
+ */
+static void zynqmp_gpd_detach_dev(struct generic_pm_domain *domain,
+				struct device *dev)
+{
+	int i, status;
+	struct zynqmp_pm_domain *pd;
+
+	/* If this is not the last device to detach there is nothing to do */
+	if (domain->device_count)
+		return;
+
+	pd = container_of(domain, struct zynqmp_pm_domain, gpd);
+	for (i = 0; i < pd->node_id_num; i++) {
+		status = zynqmp_pm_release_node(pd->node_ids[i]);
+		/* If releasing a node fails print the error and return */
+		if (status) {
+			pr_err("%s error %d, node %u\n", __func__, status,
+				pd->node_ids[i]);
+			return;
+		}
+	}
+}
+
+/**
  * zynqmp_gpd_probe - Initialize ZynqMP specific PM domains
  * @pdev:	Platform device pointer
  *
@@ -143,12 +202,15 @@ static int __init zynqmp_gpd_probe(struct platform_device *pdev)
 		pd->gpd.name = kstrdup(child->name, GFP_KERNEL);
 		pd->gpd.power_off = zynqmp_gpd_power_off;
 		pd->gpd.power_on = zynqmp_gpd_power_on;
+		pd->gpd.attach_dev = zynqmp_gpd_attach_dev;
+		pd->gpd.detach_dev = zynqmp_gpd_detach_dev;
 
 		ret = of_genpd_add_provider_simple(child, &pd->gpd);
 		if (ret)
 			goto err_cleanup;
 
-		pm_genpd_init(&pd->gpd, NULL, false);
+		/* Mark all PM domains as initially powered off */
+		pm_genpd_init(&pd->gpd, NULL, true);
 	}
 
 	return 0;
