@@ -28,6 +28,7 @@
 #include <linux/uaccess.h>
 #include <linux/platform_device.h>
 #include <linux/debugfs.h>
+#include <linux/suspend.h>
 #include <linux/soc/xilinx/zynqmp/pm.h>
 
 /* SMC SIP service Call Function Identifier Prefix */
@@ -37,7 +38,25 @@
 /* Number of 32bits values in payload */
 #define PAYLOAD_ARG_CNT	5U
 
+/* Number of arguments for a callback */
+#define CB_ARG_CNT	4
+
+/* Payload size (consists of callback API ID + arguments) */
+#define CB_PAYLOAD_SIZE	(CB_ARG_CNT + 1)
+
 #define DRIVER_NAME	"zynqmp_pm"
+
+/**
+ * struct zynqmp_pm_work_struct - Wrapper for struct work_struct
+ * @callback_work:	Work structure
+ * @args:		Callback arguments
+ */
+struct zynqmp_pm_work_struct {
+	struct work_struct callback_work;
+	u32 args[CB_ARG_CNT];
+};
+
+static struct zynqmp_pm_work_struct *zynqmp_pm_init_suspend_work;
 
 static u32 pm_api_version;
 
@@ -70,6 +89,12 @@ enum pm_api_id {
 	FPGA_LOAD,
 	FPGA_GET_STATUS,
 	GET_CHIPID,
+};
+
+enum pm_api_cb_id {
+	PM_INIT_SUSPEND_CB = 30,
+	PM_ACKNOWLEDGE_CB,
+	PM_NOTIFY_CB,
 };
 
 /* PMU-FW return status codes */
@@ -668,10 +693,25 @@ static void zynqmp_pm_get_callback_data(u32 *buf)
 
 static irqreturn_t zynqmp_pm_isr(int irq, void *data)
 {
-	u32 buf[PAYLOAD_ARG_CNT];
+	u32 payload[CB_PAYLOAD_SIZE];
 
-	zynqmp_pm_get_callback_data(buf);
+	zynqmp_pm_get_callback_data(payload);
 
+	/* First element is callback API ID, others are callback arguments */
+	if (payload[0] == PM_INIT_SUSPEND_CB) {
+
+		if (work_pending(&zynqmp_pm_init_suspend_work->callback_work))
+			goto done;
+
+		/* Copy callback arguments into work's structure */
+		memcpy(zynqmp_pm_init_suspend_work->args, &payload[1],
+			sizeof(zynqmp_pm_init_suspend_work->args));
+
+		queue_work(system_unbound_wq,
+				&zynqmp_pm_init_suspend_work->callback_work);
+	}
+
+done:
 	return IRQ_HANDLED;
 }
 
@@ -1056,6 +1096,17 @@ static void get_set_conduit_method(struct device_node *np)
 }
 
 /**
+ * zynqmp_pm_init_suspend_work_fn - Initialize suspend
+ * @work:	Pointer to work_struct
+ *
+ * Bottom-half of PM callback IRQ handler.
+ */
+static void zynqmp_pm_init_suspend_work_fn(struct work_struct *work)
+{
+	pm_suspend(PM_SUSPEND_MEM);
+}
+
+/**
  * zynqmp_pm_probe - Probe existence of the PMU Firmware
  *			and initialize debugfs interface
  *
@@ -1084,12 +1135,25 @@ static int zynqmp_pm_probe(struct platform_device *pdev)
 		return ret;
 	}
 
+	zynqmp_pm_init_suspend_work = devm_kzalloc(&pdev->dev,
+			sizeof(struct zynqmp_pm_work_struct), GFP_KERNEL);
+	if (!zynqmp_pm_init_suspend_work)
+		goto work_err;
+
+	INIT_WORK(&zynqmp_pm_init_suspend_work->callback_work,
+		zynqmp_pm_init_suspend_work_fn);
+
 	dev_info(&pdev->dev, "Power management API v%d.%d\n",
 		ZYNQMP_PM_VERSION_MAJOR, ZYNQMP_PM_VERSION_MINOR);
 
 	zynqmp_pm_api_debugfs_init(&pdev->dev);
 
 	return 0;
+
+work_err:
+	dev_err(&pdev->dev, "unable to allocate work struct for callbacks\n");
+	free_irq(irq, 0);
+	return -ENOMEM;
 }
 
 static struct platform_driver zynqmp_pm_platform_driver = {
