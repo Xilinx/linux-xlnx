@@ -29,16 +29,21 @@
 
 #define DRIVER_NAME "zynqmp_gpd"
 
+/* Flag stating if PM nodes mapped to the PM domain has been requested */
+#define ZYNQMP_PM_DOMAIN_REQUESTED	BIT(0)
+
 /**
  * struct zynqmp_pm_domain - Wrapper around struct generic_pm_domain
  * @gpd:		Generic power domain
  * @node_ids:		PM node IDs corresponding to device(s) inside PM domain
  * @node_id_num:	Number of PM node IDs
+ * @flags:		ZynqMP PM domain flags
  */
 struct zynqmp_pm_domain {
 	struct generic_pm_domain gpd;
 	u32 *node_ids;
 	int node_id_num;
+	u8 flags;
 };
 
 /**
@@ -82,6 +87,11 @@ static int zynqmp_gpd_power_off(struct generic_pm_domain *domain)
 	struct zynqmp_pm_domain *pd;
 
 	pd = container_of(domain, struct zynqmp_pm_domain, gpd);
+
+	/* If domain is already released there is nothing to be done */
+	if (!(pd->flags & ZYNQMP_PM_DOMAIN_REQUESTED))
+		return 0;
+
 	for (i = pd->node_id_num - 1; i >= 0; i--) {
 		status = zynqmp_pm_set_requirement(pd->node_ids[i], 0, 0,
 						ZYNQMP_PM_REQUEST_ACK_NO);
@@ -128,6 +138,8 @@ static int zynqmp_gpd_attach_dev(struct generic_pm_domain *domain,
 		}
 	}
 
+	pd->flags |= ZYNQMP_PM_DOMAIN_REQUESTED;
+
 	return 0;
 }
 
@@ -156,6 +168,8 @@ static void zynqmp_gpd_detach_dev(struct generic_pm_domain *domain,
 			return;
 		}
 	}
+
+	pd->flags &= ~ZYNQMP_PM_DOMAIN_REQUESTED;
 }
 
 /**
