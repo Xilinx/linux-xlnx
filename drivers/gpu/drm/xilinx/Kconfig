@@ -21,3 +21,9 @@ config DRM_XILINX_DP_SUB
 	select DRM_XILINX_DP
 	help
 	  DRM driver for Xilinx Display Port Subsystem.
+
+config DRM_XILINX_MIXER
+	tristate "Xilinx DRM mixer driver component"
+	depends on DRM_XILINX
+	help
+	  Include support for video mixer IP into the Xilinx DRM driver

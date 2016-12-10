@@ -111,9 +111,8 @@ void xilinx_drm_plane_dpms(struct drm_plane *base_plane, int dpms)
 			xilinx_osd_enable_rue(manager->osd);
 		}
 		if(manager->mixer) {
+			xilinx_drm_mixer_mark_layer_inactive(plane);
 			xilinx_drm_mixer_layer_disable(plane);
-			/* JPM This routine is called by plane disable.  No 
-			 * sense in resetting the entire IP here for that*/
 		}
 		if (plane->cresample) {
 			xilinx_cresample_disable(plane->cresample);
@@ -183,13 +182,9 @@ int xilinx_drm_plane_mode_set(struct drm_plane *base_plane,
 	struct drm_gem_cma_object *obj;
 	size_t offset;
 	unsigned int hsub, vsub, i;
+	int ret;
 
 	DRM_DEBUG_KMS("plane->id: %d\n", plane->id);
-
-	if (fb->pixel_format != plane->format) {
-		DRM_ERROR("unsupported pixel format %08x\n", fb->pixel_format);
-		return -EINVAL;
-	}
 
 	/* configure cresample */
 	if (plane->cresample)
@@ -210,6 +205,9 @@ int xilinx_drm_plane_mode_set(struct drm_plane *base_plane,
 		unsigned int width = src_w / (i ? hsub : 1);
 		unsigned int height = src_h / (i ? vsub : 1);
 		unsigned int cpp = drm_format_plane_cpp(fb->pixel_format, i);
+
+		if (!cpp)
+			cpp = xilinx_drm_format_bpp(fb->pixel_format) >> 3;
 
 		obj = xilinx_drm_fb_get_gem_obj(fb, i);
 		if (!obj) {
@@ -245,19 +243,32 @@ int xilinx_drm_plane_mode_set(struct drm_plane *base_plane,
 	}
 
 	if (plane->manager->mixer) {
-		return xilinx_drm_mixer_set_layer_dimensions(plane, 
+		ret = xilinx_drm_mixer_mark_layer_active(plane);
+		if(ret)
+			return ret;
+
+		ret = xilinx_drm_mixer_set_layer_dimensions(plane, 
 							     crtc_x, crtc_y, 
 							     src_w, src_h); 
+		if(ret)
+			return ret;
 	}
 
 	if (plane->manager->dp_sub) {
-		int ret;
 
 		ret = xilinx_drm_dp_sub_layer_check_size(plane->manager->dp_sub,
 							 plane->dp_layer,
 							 src_w, src_h);
 		if (ret)
 			return ret;
+
+		ret = xilinx_drm_dp_sub_layer_set_fmt(plane->manager->dp_sub,
+						      plane->dp_layer,
+						      fb->pixel_format);
+		if (ret) {
+			DRM_ERROR("failed to set dp_sub layer fmt\n");
+			return ret;
+		}
 	}
 
 	return 0;
@@ -283,10 +294,14 @@ static int xilinx_drm_plane_update(struct drm_plane *base_plane,
 		return ret;
 	}
 
-	/* make sure a plane is on */
-	xilinx_drm_plane_dpms(base_plane, DRM_MODE_DPMS_ON);
+	/* JPM TODO verify that commiting fb before dpms call works
+	   better than the orginal order which as to call commit
+	   AFTER dpms(plane,ON) */
 	/* apply the new fb addr */
 	xilinx_drm_plane_commit(base_plane);
+
+	/* make sure a plane is on */
+	xilinx_drm_plane_dpms(base_plane, DRM_MODE_DPMS_ON);
 
 	return 0;
 }
@@ -319,11 +334,10 @@ static void xilinx_drm_plane_destroy(struct drm_plane *base_plane)
 		xilinx_osd_layer_disable(plane->osd_layer);
 		xilinx_osd_layer_put(plane->osd_layer);
 	}
-#ifdef JPM_MIX
+
 	if(plane->manager->mixer) {
 		xilinx_drm_mixer_layer_disable(plane);
 	}
-#endif
 
 	if (plane->manager->dp_sub) {
 		xilinx_drm_dp_sub_layer_disable(plane->manager->dp_sub,
@@ -551,6 +565,11 @@ void xilinx_drm_plane_restore(struct xilinx_drm_plane_manager *manager)
 	for (i = 0; i < manager->num_planes; i++) {
 		plane = manager->planes[i];
 
+		if(manager->mixer) {
+			xilinx_drm_mixer_mark_layer_inactive(plane);	
+			xilinx_drm_mixer_layer_disable(plane);
+		}
+
 		plane->prio = plane->zpos = plane->id;
 		if (manager->zpos_prop)
 			drm_object_property_set_value(&plane->base.base,
@@ -576,6 +595,7 @@ void xilinx_drm_plane_restore(struct xilinx_drm_plane_manager *manager)
 			xilinx_drm_mixer_set_layer_scale(plane,
 							XVMIX_SCALE_FACTOR_1X);
 	}
+		
 }
 
 /* get the plane format */
@@ -617,19 +637,17 @@ xilinx_drm_plane_create_property(struct xilinx_drm_plane_manager *manager)
 						 "global alpha enable");
 	}
 
-    /* JPM We should only attach to planes linked to layers than can support
-    * these properties */
 	if (manager->mixer) {
 
 		manager->mixer_scale_prop = 
 			drm_property_create_range(manager->drm, 0,
-						"mixer_scale", 
+						"scale", 
 						XVMIX_SCALE_FACTOR_1X, 
 						XVMIX_SCALE_FACTOR_4X);
 
 		manager->mixer_alpha_prop = 
 			drm_property_create_range(manager->drm, 0,
-						"mixer_alpha",
+						"alpha",
 						XVMIX_ALPHA_MIN,
 						XVMIX_ALPHA_MAX);
 	}
@@ -736,8 +754,7 @@ void xilinx_drm_plane_manager_mode_set(struct xilinx_drm_plane_manager *manager,
 {
 	if (manager->osd)
 		xilinx_osd_set_dimension(manager->osd, crtc_w, crtc_h);
-	if (manager->mixer)
-		xilinx_mixer_set_active_area(manager->mixer, crtc_w, crtc_h);
+	
 }
 
 /* create a plane */
@@ -758,6 +775,8 @@ xilinx_drm_plane_create(struct xilinx_drm_plane_manager *manager,
 	int i;
 	int ret;
 	bool dma_plane = true;
+	uint32_t *fmts = NULL;
+	unsigned int num_fmts = 0;
 
 	for (i = 0; i < manager->num_planes; i++)
 		if (!manager->planes[i])
@@ -926,6 +945,9 @@ xilinx_drm_plane_create(struct xilinx_drm_plane_manager *manager,
 		plane->format =
 			xilinx_drm_dp_sub_layer_get_fmt(manager->dp_sub,
 							plane->dp_layer);
+		xilinx_drm_dp_sub_layer_get_fmts(manager->dp_sub,
+						 plane->dp_layer, &fmts,
+						 &num_fmts);
 	}
 
 	/* If there's no IP other than VDMA, pick the manager's format */
@@ -935,7 +957,8 @@ xilinx_drm_plane_create(struct xilinx_drm_plane_manager *manager,
 	/* initialize drm plane */
 	ret = drm_universal_plane_init(manager->drm, &plane->base,
 				       possible_crtcs, &xilinx_drm_plane_funcs,
-				       &plane->format, 1, type, NULL);
+				       fmts ? fmts : &plane->format,
+				       num_fmts ? num_fmts : 1, type, NULL);
 	if (ret) {
 		DRM_ERROR("failed to initialize plane\n");
 		goto err_init;
@@ -943,7 +966,6 @@ xilinx_drm_plane_create(struct xilinx_drm_plane_manager *manager,
 	plane->manager = manager;
 	manager->planes[plane->id] = plane;
 
-	/* JPM ensure logo layer alpha and scale property are set in hw layer init*/
 	xilinx_drm_plane_attach_property(&plane->base);
 
 	of_node_put(plane_node);
@@ -1021,10 +1043,6 @@ xilinx_drm_plane_init_manager(struct xilinx_drm_plane_manager *manager)
 	unsigned int format;
 	uint32_t drm_format;
 	int ret = 0;
-
-	/* JPM TODO - See about init plane manager video format to that of
-	* mixer 
-	*/
 
 	if (manager->mixer) {
 		manager->num_planes = 

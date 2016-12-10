@@ -1,0 +1,27 @@
+!_TAG_FILE_FORMAT	2	/extended format; --format=1 will not append ;" to lines/
+!_TAG_FILE_SORTED	1	/0=unsorted, 1=sorted, 2=foldcase/
+!_TAG_PROGRAM_AUTHOR	Darren Hiebert	/dhiebert@users.sourceforge.net/
+!_TAG_PROGRAM_NAME	Exuberant Ctags	//
+!_TAG_PROGRAM_URL	http://ctags.sourceforge.net	/official site/
+!_TAG_PROGRAM_VERSION	5.9~svn20110310	//
+COLOR_NAME_SIZE	xilinx_drm_mixer.c	13;"	d	file:
+XLNX_MIXER	xilinx_drm_mixer.h	7;"	d
+XLNX_MIXER_INFO	xilinx_drm_mixer.h	10;"	d
+__XLNX_DRM_MIXER__	xilinx_drm_mixer.h	2;"	d
+color_fmt_tbl	xilinx_drm_mixer.c	/^struct color_fmt_tbl {$/;"	s	file:
+color_table	xilinx_drm_mixer.c	/^static struct color_fmt_tbl color_table[] = {$/;"	v	typeref:struct:color_fmt_tbl	file:
+drm_format	xilinx_drm_mixer.c	/^    u32 drm_format;$/;"	m	struct:color_fmt_tbl	file:
+fmt_id	xilinx_drm_mixer.c	/^    xv_comm_color_fmt_id fmt_id;$/;"	m	struct:color_fmt_tbl	file:
+name	xilinx_drm_mixer.c	/^    char name[COLOR_NAME_SIZE+1];$/;"	m	struct:color_fmt_tbl	file:
+xilinx_drm_mixer_fmt_to_drm_fmt	xilinx_drm_mixer.c	/^int xilinx_drm_mixer_fmt_to_drm_fmt(xv_comm_color_fmt_id id, u32 *output) $/;"	f
+xilinx_drm_mixer_get_layer	xilinx_drm_mixer.c	/^xilinx_drm_mixer_get_layer(struct xv_mixer *mixer, xv_mixer_layer_id layer_id)$/;"	f
+xilinx_drm_mixer_layer_disable	xilinx_drm_mixer.c	/^xilinx_drm_mixer_layer_disable(struct xilinx_drm_plane *plane)$/;"	f
+xilinx_drm_mixer_layer_enable	xilinx_drm_mixer.c	/^xilinx_drm_mixer_layer_enable(struct xilinx_drm_plane *plane)$/;"	f
+xilinx_drm_mixer_of_init_layer_data	xilinx_drm_mixer.c	/^static int xilinx_drm_mixer_of_init_layer_data(struct device_node *node, $/;"	f	file:
+xilinx_drm_mixer_probe	xilinx_drm_mixer.c	/^struct xv_mixer * xilinx_drm_mixer_probe(struct device *dev, $/;"	f
+xilinx_drm_mixer_reset	xilinx_drm_mixer.c	/^void xilinx_drm_mixer_reset(struct xv_mixer *mixer) {$/;"	f
+xilinx_drm_mixer_set_layer_alpha	xilinx_drm_mixer.c	/^xilinx_drm_mixer_set_layer_alpha(struct xilinx_drm_plane *plane,$/;"	f
+xilinx_drm_mixer_set_layer_dimensions	xilinx_drm_mixer.c	/^xilinx_drm_mixer_set_layer_dimensions(struct xilinx_drm_plane *plane,$/;"	f
+xilinx_drm_mixer_set_layer_scale	xilinx_drm_mixer.c	/^xilinx_drm_mixer_set_layer_scale(struct xilinx_drm_plane *plane,$/;"	f
+xilinx_drm_mixer_string_to_fmt	xilinx_drm_mixer.c	/^int xilinx_drm_mixer_string_to_fmt(const char *color_fmt, u32 *output)$/;"	f
+xv_mixer_match	xilinx_drm_mixer.c	/^static const struct of_device_id xv_mixer_match[] = {$/;"	v	typeref:struct:of_device_id	file:

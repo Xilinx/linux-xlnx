@@ -1549,8 +1549,9 @@ struct xilinx_drm_dp_sub *xilinx_drm_dp_sub_of_get(struct device_node *np)
 
 	of_node_put(xilinx_drm_dp_sub_node);
 
-	if (!found)
+	if (!found) {
 		return ERR_PTR(-EPROBE_DEFER);
+	}
 
 	return found;
 }

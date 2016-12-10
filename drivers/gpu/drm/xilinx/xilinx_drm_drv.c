@@ -188,13 +188,21 @@ static void xilinx_drm_disable_vblank(struct drm_device *drm, unsigned int crtc)
 static void xilinx_drm_mode_config_init(struct drm_device *drm)
 {
 	struct xilinx_drm_private *private = drm->dev_private;
-
 	drm->mode_config.min_width = 0;
 	drm->mode_config.min_height = 0;
+	drm->mode_config.max_height = 4096;
 
 	drm->mode_config.max_width =
 		xilinx_drm_crtc_get_max_width(private->crtc);
-	drm->mode_config.max_height = 4096;
+
+	drm->mode_config.max_height =
+		xilinx_drm_crtc_get_max_height(private->crtc);
+
+	drm->mode_config.cursor_width =
+		xilinx_drm_crtc_get_max_cursor_width(private->crtc);
+
+	drm->mode_config.cursor_height =
+		xilinx_drm_crtc_get_max_cursor_height(private->crtc);
 
 	drm->mode_config.funcs = &xilinx_drm_mode_config_funcs;
 }
@@ -249,7 +257,7 @@ unsigned int xilinx_drm_format_bpp(uint32_t drm_format)
 			return format->bpp;
 	}
 
-	return 0;
+	return 0; 
 }
 
 /* get color depth of given format */
@@ -312,6 +320,7 @@ static int xilinx_drm_load(struct drm_device *drm, unsigned long flags)
 		i++;
 	}
 
+
 	if (i == 0) {
 		DRM_ERROR("failed to get an encoder slave node\n");
 		return -ENODEV;
@@ -335,8 +344,10 @@ static int xilinx_drm_load(struct drm_device *drm, unsigned long flags)
 	/* initialize xilinx framebuffer */
 	bpp = xilinx_drm_format_bpp(xilinx_drm_crtc_get_format(private->crtc));
 	align = xilinx_drm_crtc_get_align(private->crtc);
+
 	private->fb = xilinx_drm_fb_init(drm, bpp, 1, 1, align,
 					 xilinx_drm_fbdev_vres);
+
 	if (IS_ERR(private->fb)) {
 		DRM_ERROR("failed to initialize drm cma fb\n");
 		ret = PTR_ERR(private->fb);
@@ -346,6 +357,7 @@ static int xilinx_drm_load(struct drm_device *drm, unsigned long flags)
 	drm_kms_helper_poll_init(drm);
 
 	/* set up mode config for xilinx */
+	/* JPM the call below queries manager's primary plane for max width.  Do we set this? */
 	xilinx_drm_mode_config_init(drm);
 
 	drm_helper_disable_unused_functions(drm);
@@ -446,6 +458,7 @@ static struct drm_driver xilinx_drm_driver = {
 	.set_busid			= xilinx_drm_set_busid,
 
 	.get_vblank_counter		= drm_vblank_no_hw_counter,
+    /* JPM TODO update these vblank for possible mixer interrupts */
 	.enable_vblank			= xilinx_drm_enable_vblank,
 	.disable_vblank			= xilinx_drm_disable_vblank,
 
@@ -473,7 +486,7 @@ static struct drm_driver xilinx_drm_driver = {
 	.minor				= DRIVER_MINOR,
 };
 
-#if defined(CONFIG_PM_SLEEP)
+#if defined(CONFIG_PM_SLEEP) || defined(CONFIG_PM_RUNTIME)
 /* suspend xilinx drm */
 static int xilinx_drm_pm_suspend(struct device *dev)
 {
@@ -522,6 +535,7 @@ static int xilinx_drm_pm_resume(struct device *dev)
 
 static const struct dev_pm_ops xilinx_drm_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(xilinx_drm_pm_suspend, xilinx_drm_pm_resume)
+	SET_RUNTIME_PM_OPS(xilinx_drm_pm_suspend, xilinx_drm_pm_resume, NULL)
 };
 
 /* init xilinx drm platform */

@@ -37,6 +37,7 @@
 #include "xilinx_rgb2yuv.h"
 #include "xilinx_vtc.h"
 
+
 struct xilinx_drm_crtc {
 	struct drm_crtc base;
 	struct xilinx_cresample *cresample;
@@ -63,7 +64,6 @@ static void xilinx_drm_crtc_dpms(struct drm_crtc *base_crtc, int dpms)
 		return;
 
 	crtc->dpms = dpms;
-
 	switch (dpms) {
 	case DRM_MODE_DPMS_ON:
 		xilinx_drm_plane_manager_dpms(crtc->plane_manager, dpms);
@@ -103,8 +103,14 @@ static void xilinx_drm_crtc_prepare(struct drm_crtc *base_crtc)
 /* apply mode to crtc pipe */
 static void xilinx_drm_crtc_commit(struct drm_crtc *base_crtc)
 {
-	xilinx_drm_crtc_dpms(base_crtc, DRM_MODE_DPMS_ON);
+	/* JPM TODO possible issue here base on order.  If mixer
+	 * is turned on before dma, and an empty stream is passed
+         * to layer, it may cause lockup of video output for mixer
+         * may need to perform plane_commit() first and crtc_dpms()
+	 * second.
+	*/
 	xilinx_drm_plane_commit(base_crtc->primary);
+	xilinx_drm_crtc_dpms(base_crtc, DRM_MODE_DPMS_ON);
 }
 
 /* fix mode */
@@ -131,11 +137,12 @@ static int xilinx_drm_crtc_mode_set(struct drm_crtc *base_crtc,
 	/* set pixel clock */
 	ret = clk_set_rate(crtc->pixel_clock, adjusted_mode->clock * 1000);
 	if (ret) {
-		DRM_ERROR("failed to set a pixel clock\n");
+		DRM_ERROR("failed to set a pixel clock.  ret code = %d\n", ret);
 		return ret;
 	}
 
 	diff = clk_get_rate(crtc->pixel_clock) - adjusted_mode->clock * 1000;
+
 	if (abs(diff) > (adjusted_mode->clock * 1000) / 20)
 		DRM_INFO("actual pixel clock rate(%d) is off by %ld\n",
 				adjusted_mode->clock, diff);
@@ -171,7 +178,7 @@ static int xilinx_drm_crtc_mode_set(struct drm_crtc *base_crtc,
 					 adjusted_mode->hdisplay,
 					 adjusted_mode->vdisplay);
 
-	/* configure a plane: vdma and osd layer */
+	/* configure a plane: vdma and osd|mixer layer */
 	xilinx_drm_plane_manager_mode_set(crtc->plane_manager,
 					  adjusted_mode->hdisplay,
 					  adjusted_mode->vdisplay);
@@ -408,6 +415,24 @@ void xilinx_drm_crtc_restore(struct drm_crtc *base_crtc)
 unsigned int xilinx_drm_crtc_get_max_width(struct drm_crtc *base_crtc)
 {
 	return xilinx_drm_plane_get_max_width(base_crtc->primary);
+}
+
+/* check max height */
+unsigned int xilinx_drm_crtc_get_max_height(struct drm_crtc *base_crtc)
+{
+	return xilinx_drm_plane_get_max_height(base_crtc->primary);
+}
+
+/* check max cursor width */
+unsigned int xilinx_drm_crtc_get_max_cursor_width(struct drm_crtc *base_crtc)
+{
+	return xilinx_drm_plane_get_max_cursor_width(base_crtc->primary);
+}
+
+/* check max cursor height */
+unsigned int xilinx_drm_crtc_get_max_cursor_height(struct drm_crtc *base_crtc)
+{
+	return xilinx_drm_plane_get_max_cursor_height(base_crtc->primary);
 }
 
 /* check format */

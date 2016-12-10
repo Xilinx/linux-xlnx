@@ -69,9 +69,9 @@ struct xilinx_drm_plane {
 	unsigned int prio;
 	unsigned int alpha;
 	unsigned int alpha_enable;
-	bool primary; /* JPM TODO base plane has "type" field for this */
+	bool primary;
 	uint32_t format;
-	struct xilinx_drm_plane_dma dma[MAX_NUM_SUB_PLANES]; /* JPM TODO OSD vs DP-SUB?*/
+	struct xilinx_drm_plane_dma dma[MAX_NUM_SUB_PLANES];
 	struct xilinx_rgb2yuv *rgb2yuv;
 	struct xilinx_cresample *cresample;
 	struct xilinx_osd_layer *osd_layer;
