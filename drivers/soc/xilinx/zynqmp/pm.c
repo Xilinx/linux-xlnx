@@ -843,7 +843,7 @@ static ssize_t zynqmp_pm_debugfs_api_write(struct file *file,
 					ZYNQMP_PM_CAPABILITY_ACCESS,
 			pm_api_arg[2] ? pm_api_arg[2] : 0,
 			pm_api_arg[3] ? pm_api_arg[3] :
-				ZYNQMP_PM_REQUEST_ACK_NON_BLOCKING);
+				ZYNQMP_PM_REQUEST_ACK_BLOCKING);
 		break;
 	case RELEASE_NODE:
 		ret = zynqmp_pm_release_node(pm_api_arg[0]);
@@ -854,7 +854,7 @@ static ssize_t zynqmp_pm_debugfs_api_write(struct file *file,
 					ZYNQMP_PM_CAPABILITY_CONTEXT,
 			pm_api_arg[2] ? pm_api_arg[2] : 0,
 			pm_api_arg[3] ? pm_api_arg[3] :
-				ZYNQMP_PM_REQUEST_ACK_NON_BLOCKING);
+				ZYNQMP_PM_REQUEST_ACK_BLOCKING);
 		break;
 	case SET_MAX_LATENCY:
 		ret = zynqmp_pm_set_max_latency(pm_api_arg[0],
