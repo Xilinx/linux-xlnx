@@ -213,6 +213,8 @@ struct xv_mixer {
 	} logo_rgb_buffers;
 
 	struct gpio_desc *reset_gpio;
+
+	void *		private;
 };
 
 

@@ -83,7 +83,8 @@ xilinx_drm_mixer_parse_dt_bg_video_fmt (struct device_node *layer_node,
 
 /************************* IMPLEMENTATIONS ***********************************/
 struct xv_mixer * xilinx_drm_mixer_probe(struct device *dev, 
-                                        struct device_node *node)
+                                        struct device_node *node,
+					struct xilinx_drm_plane_manager *manager)
 {
 
 	struct xv_mixer			*mixer;
@@ -160,6 +161,7 @@ struct xv_mixer * xilinx_drm_mixer_probe(struct device *dev,
 		dev_err(dev, "Incomplete mixer video format in dt\n");
 		return ERR_PTR(-EINVAL);
 	}
+	mixer->private = (void *)manager;
 
 
 	/* Parse out logo data from device tree */
@@ -438,21 +440,22 @@ xilinx_drm_mixer_get_layer(struct xv_mixer *mixer, xv_mixer_layer_id layer_id)
 }
 
 void xilinx_drm_mixer_reset(struct xv_mixer *mixer) {
+
 	struct xv_mixer_layer_data layer;
+	struct xilinx_drm_plane_manager *manager =
+		(struct xilinx_drm_plane_manager *)mixer->private;
 	int i;
 	int ret;
 	
 	gpiod_set_raw_value(mixer->reset_gpio, 0x0);
-	/* reset must be held for > 16 ap_clk cycles @100 Mhz 
-	which is about ~160 ns */
-	ndelay(300);
+
+	udelay(1);
+
 	gpiod_set_raw_value(mixer->reset_gpio, 0x1);
 
-	/* JPM restore layer properties and bg color after reset */
-	
-	/* JPM must re-write/init register values here based on new mode*/
+	/* restore layer properties and bg color after reset */
 	xilinx_mixer_set_bkg_col(mixer, mixer->bg_color, mixer->bg_layer_bpc);
-
+#if 0
 	for(i = 0; i <= mixer->layer_cnt; i++) {
 
 		layer = mixer->layer_data[i];
@@ -465,14 +468,16 @@ void xilinx_drm_mixer_reset(struct xv_mixer *mixer) {
 						layer.layer_regs.scale_fact);
 		if(ret)
 			DRM_ERROR("Problem restoring scale property for mixer"
-				  "layer %u\n", layer.id); 
+				  " layer %u\n", layer.id); 
 
 		ret = xilinx_mixer_set_layer_alpha(mixer, layer.id,
 						layer.layer_regs.alpha);
 		if(ret)
 			DRM_ERROR("Problem restoring alpha property for mixer"
-				  "layer %u\n", layer.id); 
+				  " layer %u\n", layer.id); 
 	}
+#endif
+	xilinx_drm_plane_restore(manager);	
 
 	/* JPM TODO remove this.  Just a temporary measure to test logo layer
 	   after resets.  Need to update logo buffer in response to

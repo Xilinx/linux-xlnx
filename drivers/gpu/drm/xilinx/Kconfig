@@ -24,6 +24,6 @@ config DRM_XILINX_DP_SUB
 
 config DRM_XILINX_MIXER
 	tristate "Xilinx DRM mixer driver component"
-	depends on DRM_XILINX
+	select DRM_XILINX
 	help
 	  Include support for video mixer IP into the Xilinx DRM driver

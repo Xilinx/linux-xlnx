@@ -555,13 +555,11 @@ void xilinx_drm_plane_restore(struct xilinx_drm_plane_manager *manager)
 {
 	struct xilinx_drm_plane *plane;
 	unsigned int i;
-
 	/*
 	 * Reinitialize property default values as they get reset by DPMS OFF
 	 * operation. User will read the correct default values later, and
 	 * planes will be initialized with default values.
 	 */
-
 	for (i = 0; i < manager->num_planes; i++) {
 		plane = manager->planes[i];
 
@@ -571,29 +569,40 @@ void xilinx_drm_plane_restore(struct xilinx_drm_plane_manager *manager)
 		}
 
 		plane->prio = plane->zpos = plane->id;
+
 		if (manager->zpos_prop)
 			drm_object_property_set_value(&plane->base.base,
 						      manager->zpos_prop,
 						      plane->prio);
 
 		plane->alpha = manager->default_alpha;
+
 		if (manager->alpha_prop)
 			drm_object_property_set_value(&plane->base.base,
 						      manager->alpha_prop,
 						      plane->alpha);
 
 		plane->alpha_enable = true;
+
 		if (manager->alpha_enable_prop)
 			drm_object_property_set_value(&plane->base.base,
 					manager->alpha_enable_prop, true);
 
-		if(manager->mixer_alpha_prop) 
+		if(manager->mixer_alpha_prop){ 
+			drm_object_property_set_value(&plane->base.base,
+						      manager->mixer_alpha_prop,
+						      XVMIX_ALPHA_MAX);
 			xilinx_drm_mixer_set_layer_alpha(plane,
 							XVMIX_ALPHA_MAX);
+		}
 
-		if(manager->mixer_scale_prop)
+		if(manager->mixer_scale_prop) {
+			drm_object_property_set_value(&plane->base.base,
+						      manager->mixer_scale_prop,
+						      XVMIX_SCALE_FACTOR_1X);
 			xilinx_drm_mixer_set_layer_scale(plane,
 							XVMIX_SCALE_FACTOR_1X);
+		}
 	}
 		
 }
@@ -1132,7 +1141,7 @@ xilinx_drm_plane_probe_manager(struct drm_device *drm)
 	/* Mixer addition */
 	sub_node = of_parse_phandle(dev->of_node, "xlnx,mixer", 0);
 	if (sub_node) {
-		manager->mixer = xilinx_drm_mixer_probe(dev, sub_node);
+		manager->mixer = xilinx_drm_mixer_probe(dev, sub_node, manager);
 		of_node_put(sub_node);
 		if (IS_ERR(manager->mixer)) {
 			of_node_put(manager->node);
