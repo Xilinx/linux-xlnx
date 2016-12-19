@@ -817,49 +817,48 @@ int xdma_submit(struct xdma_chan *chan,
 	dmahead->size = size;
 	dmahead->dmadir = chan->direction;
 	dmahead->userflag = user_flags;
+	dmahead->dmabuf = dp;
 	dmadir = chan->direction;
 
 	if (!(user_flags & CF_FLAG_CACHE_FLUSH_INVALIDATE))
 		dma_set_attr(DMA_ATTR_SKIP_CPU_SYNC, &attrs);
 
 	if (dp) {
-		if (!dp->is_mapped) {
-			struct scatterlist *sg;
-			int cpy_size;
-			int i;
-			unsigned int remaining_size = size;
+		int i;
+		int cpy_size;
+		struct scatterlist *sg;
+		unsigned int remaining_size = size;
+		unsigned int observed_size = 0;
 
-			dp->dbuf_attach = dma_buf_attach(dp->dbuf, chan->dev);
-			dp->dbuf_sg_table = dma_buf_map_attachment(
-				dp->dbuf_attach, chan->direction);
-
-			if (IS_ERR_OR_NULL(dp->dbuf_sg_table)) {
-				pr_err("%s unable to map sg_table for dbuf: %d\n",
-					__func__, (int)dp->dbuf_sg_table);
-				return -EINVAL;
+		dp->dbuf_attach = dma_buf_attach(dp->dbuf, chan->dev);
+		dp->dbuf_sg_table = dma_buf_map_attachment(dp->dbuf_attach,
+							   chan->direction);
+		if (IS_ERR_OR_NULL(dp->dbuf_sg_table)) {
+			pr_err("%s unable to map sg_table for dbuf: %d\n",
+			       __func__, (int)dp->dbuf_sg_table);
+			return -EINVAL;
+		}
+		cpy_size = dp->dbuf_sg_table->nents *
+			sizeof(struct scatterlist);
+		dp->sg_list = kmalloc(cpy_size, GFP_KERNEL);
+		if (!dp->sg_list)
+			return -ENOMEM;
+		dp->sg_list_cnt = 0;
+		memcpy(dp->sg_list, dp->dbuf_sg_table->sgl, cpy_size);
+		for_each_sg(dp->sg_list,
+			    sg,
+			    dp->dbuf_sg_table->nents,
+			    i) {
+			observed_size += sg_dma_len(sg);
+			if (remaining_size == 0) {
+				sg_dma_len(sg) = 0;
+			} else if (sg_dma_len(sg) > remaining_size) {
+				sg_dma_len(sg) = remaining_size;
+				dp->sg_list_cnt++;
+			} else {
+				remaining_size -= sg_dma_len(sg);
+				dp->sg_list_cnt++;
 			}
-			cpy_size = dp->dbuf_sg_table->nents *
-				sizeof(struct scatterlist);
-			dp->sg_list = kmalloc(cpy_size, GFP_KERNEL);
-			if (!dp->sg_list)
-				return -ENOMEM;
-			dp->sg_list_cnt = 0;
-			memcpy(dp->sg_list, dp->dbuf_sg_table->sgl, cpy_size);
-			for_each_sg(dp->sg_list,
-				    sg,
-				    dp->dbuf_sg_table->nents,
-				    i) {
-				if (remaining_size == 0) {
-					sg_dma_len(sg) = 0;
-				} else if (sg_dma_len(sg) > remaining_size) {
-					sg_dma_len(sg) = remaining_size;
-					dp->sg_list_cnt++;
-				} else {
-					remaining_size -= sg_dma_len(sg);
-					dp->sg_list_cnt++;
-				}
-			}
-			dp->is_mapped = 1;
 		}
 
 		sglist_dma = dp->sg_list;
@@ -867,7 +866,6 @@ int xdma_submit(struct xdma_chan *chan,
 		sgcnt = dp->sg_list_cnt;
 		sgcnt_dma = dp->sg_list_cnt;
 		dmahead->userbuf = (xlnk_intptr_type)sglist->dma_address;
-		dmahead->is_dmabuf = 1;
 	} else if (user_flags & CF_FLAG_PHYSICALLY_CONTIGUOUS) {
 		sglist = chan->scratch_sglist;
 		sgcnt = phy_buf_to_sgl(userbuf, size, sglist);
@@ -951,6 +949,7 @@ int xdma_wait(struct xdma_head *dmahead,
 {
 	struct xdma_chan *chan = dmahead->chan;
 	DEFINE_DMA_ATTRS(attrs);
+
 	if (chan->poll_mode) {
 		xilinx_chan_desc_cleanup(chan);
 		*operating_flags |= XDMA_FLAGS_WAIT_COMPLETE;
@@ -965,12 +964,17 @@ int xdma_wait(struct xdma_head *dmahead,
 		}
 	}
 
-	if (!(user_flags & CF_FLAG_CACHE_FLUSH_INVALIDATE))
-		dma_set_attr(DMA_ATTR_SKIP_CPU_SYNC, &attrs);
-
-	if (dmahead->is_dmabuf) {
-		dmahead->is_dmabuf = 0;
+	if (dmahead->dmabuf) {
+		dma_buf_unmap_attachment(dmahead->dmabuf->dbuf_attach,
+					 dmahead->dmabuf->dbuf_sg_table,
+					 dmahead->dmabuf->dma_direction);
+		kfree(dmahead->dmabuf->sg_list);
+		dma_buf_detach(dmahead->dmabuf->dbuf,
+			       dmahead->dmabuf->dbuf_attach);
 	} else {
+		if (!(user_flags & CF_FLAG_CACHE_FLUSH_INVALIDATE))
+			dma_set_attr(DMA_ATTR_SKIP_CPU_SYNC, &attrs);
+
 		get_dma_ops(chan->dev)->unmap_sg(chan->dev,
 						 dmahead->sglist,
 						 dmahead->sgcnt,
@@ -979,6 +983,7 @@ int xdma_wait(struct xdma_head *dmahead,
 		if (!(user_flags & CF_FLAG_PHYSICALLY_CONTIGUOUS))
 			unpin_user_pages(dmahead->sglist, dmahead->sgcnt);
 	}
+
 	return 0;
 }
 EXPORT_SYMBOL(xdma_wait);
