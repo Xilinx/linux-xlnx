@@ -47,13 +47,15 @@
  *
  * @param[in] dev Device member of drm device
  * @param[in] node Open firmware(of) device tree node describing the mixer IP
+ * @param[in] manager Plane manager object to bind to mixer instance
  *
  * @returns reference to mixer instance struct; err pointer otherwise
  *
 */ 
 struct xv_mixer *
 xilinx_drm_mixer_probe(struct device *dev, 
-		       struct device_node *node);
+		       struct device_node *node,
+		       struct xilinx_drm_plane_manager *manager);
 
 /**
  * Hold the reset line for the IP core low for 300 nano seconds and then
