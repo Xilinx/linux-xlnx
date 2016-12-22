@@ -881,15 +881,11 @@ static int xlnk_adddmabuf_ioctl(struct file *filp, unsigned int code,
 	union xlnk_args temp_args;
 	struct xlnk_dmabuf_reg *db;
 	int status;
-
 	status = copy_from_user(&temp_args, (void __user *)args,
 				sizeof(union xlnk_args));
 
 	if (status)
 		return -ENOMEM;
-
-	dev_dbg(xlnk_dev, "Registering dmabuf fd %d for virtual address %p\n",
-		temp_args.dmabuf.dmabuf_fd, temp_args.dmabuf.user_addr);
 
 	db = kzalloc(sizeof(struct xlnk_dmabuf_reg), GFP_KERNEL);
 	if (!db)
@@ -897,14 +893,7 @@ static int xlnk_adddmabuf_ioctl(struct file *filp, unsigned int code,
 
 	db->dmabuf_fd = temp_args.dmabuf.dmabuf_fd;
 	db->user_vaddr = temp_args.dmabuf.user_addr;
-
 	db->dbuf = dma_buf_get(db->dmabuf_fd);
-	if (IS_ERR_OR_NULL(db->dbuf)) {
-		dev_err(xlnk_dev, "%s Invalid dmabuf fd %d\n",
-			 __func__, db->dmabuf_fd);
-		return -EINVAL;
-	}
-	db->is_mapped = 0;
 
 	INIT_LIST_HEAD(&db->list);
 	list_add_tail(&db->list, &xlnk_dmabuf_list);
@@ -927,12 +916,6 @@ static int xlnk_cleardmabuf_ioctl(struct file *filp, unsigned int code,
 
 	list_for_each_entry_safe(dp, dp_temp, &xlnk_dmabuf_list, list) {
 		if (dp->user_vaddr == temp_args.dmabuf.user_addr) {
-			if (dp->is_mapped) {
-				dma_buf_unmap_attachment(dp->dbuf_attach,
-					dp->dbuf_sg_table, dp->dma_direction);
-				dma_buf_detach(dp->dbuf, dp->dbuf_attach);
-				kfree(dp->sg_list);
-			}
 			dma_buf_put(dp->dbuf);
 			list_del(&dp->list);
 			kfree(dp);

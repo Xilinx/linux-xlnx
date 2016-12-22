@@ -7,7 +7,8 @@ Required properties:
 			  "xlnx,axi-ethernet-2.01.a" for Axi Ethenret 1G MAC
 			  controllers and "xlnx,ten-gig-eth-mac" for Axi
 			  Ethernet 10G MAC controllers and
-			  "xlnx,xxv-ethernet-1.0" for 10G/25G MAC.
+			  "xlnx,xxv-ethernet-1.0" for 10G/25G MAC and
+			  "xlnx,axi-2_5-gig-ethernet-1.0" for 2.5G MAC.
 - reg			: Physical base address and size of the Axi 1G/10G
 			  Ethernet registers map.
 - interrupts		: Property with a value describing the interrupt
@@ -24,6 +25,7 @@ Optional properties:
 - xlnx,phy-type		: Phy device type.
 - dma-coherent		: For ACP port designs to allocate cohernet memory.
 - xlnx,eth-hasnobuf	: Used when 1G MAC is configured in non processor mode.
+- xlnx,rxtsfifo 	: Configures the axi fifo for receive timestamping.
 
 Example:
 

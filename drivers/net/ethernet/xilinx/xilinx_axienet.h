@@ -140,11 +140,17 @@
 
 /* AXI Tx Timestamp Stream FIFO Register Definitions */
 #define XAXIFIFO_TXTS_ISR	0x00000000 /* Interrupt Status Register */
+#define XAXIFIFO_TXTS_TXFD	0x00000010 /* Tx Data Write Port */
+#define XAXIFIFO_TXTS_TLR	0x00000014 /* Transmit Length Register */
+#define XAXIFIFO_TXTS_RFO	0x0000001C /* Rx Fifo Occupancy */
+#define XAXIFIFO_TXTS_RDFR	0x00000018 /* Rx Fifo reset */
 #define XAXIFIFO_TXTS_RXFD	0x00000020 /* Rx Data Read Port */
 #define XAXIFIFO_TXTS_RLR	0x00000024 /* Receive Length Register */
+#define XAXIFIFO_TXTS_SRR	0x00000028 /* AXI4-Stream Reset */
 
 #define XAXIFIFO_TXTS_INT_RC_MASK	0x04000000
 #define XAXIFIFO_TXTS_RXFD_MASK		0x7FFFFFFF
+#define XAXIFIFO_TXTS_RESET_MASK	0x000000A5
 #define XAXIFIFO_TXTS_TAG_MASK		0xFFFF0000
 #define XAXIFIFO_TXTS_TAG_SHIFT		16
 
@@ -284,6 +290,7 @@
 #define XAE_EMMC_LINKSPD_10	0x00000000 /* Link Speed mask for 10 Mbit */
 #define XAE_EMMC_LINKSPD_100	0x40000000 /* Link Speed mask for 100 Mbit */
 #define XAE_EMMC_LINKSPD_1000	0x80000000 /* Link Speed mask for 1000 Mbit */
+#define XAE_EMMC_LINKSPD_2500	0x80000000 /* Link Speed mask for 2500 Mbit */
 
 /* Bit masks for Axi Ethernet PHYC register */
 #define XAE_PHYC_SGMIILINKSPEED_MASK	0xC0000000 /* SGMII link speed mask*/
@@ -362,6 +369,28 @@
 #define out_be32(offset, val)	__raw_writel(val, offset)
 #endif
 #endif
+
+/* XXV MAC Register Definitions */
+#define XXV_TC_OFFSET			0x0000000C
+#define XXV_RCW1_OFFSET			0x00000014
+#define XXV_JUM_OFFSET			0x00000018
+#define XXV_TICKREG_OFFSET		0x00000020
+#define XXV_STATRX_BLKLCK_OFFSET	0x0000040C
+
+/* XXV MAC Register Mask Definitions */
+#define XXV_TC_TX_MASK		BIT(0)
+#define XXV_RCW1_RX_MASK	BIT(0)
+#define XXV_RCW1_FCS_MASK	BIT(1)
+#define XXV_TC_FCS_MASK		BIT(1)
+#define XXV_MIN_JUM_MASK	GENMASK(7, 0)
+#define XXV_MAX_JUM_MASK	GENMASK(10, 8)
+#define XXV_RX_BLKLCK_MASK	BIT(0)
+#define XXV_TICKREG_STATEN_MASK BIT(0)
+#define XXV_MAC_MIN_PKT_LEN	64
+
+/* PTP Packet length */
+#define XAE_TX_PTP_LEN		16
+#define XXV_TX_PTP_LEN		12
 
 /**
  * struct axidma_bd - Axi Dma buffer descriptor layout
@@ -447,12 +476,14 @@ struct axidma_bd {
  * @csum_offload_on_rx_path:	Stores the checksum selection on RX side.
  * @coalesce_count_rx:	Store the irq coalesce on RX side.
  * @coalesce_count_tx:	Store the irq coalesce on TX side.
- * @is_10Gmac:	  Check for 10g mac.
  * @phy_interface: Phy interface type.
  * @phy_flags:	Phy interface flags.
  * @eth_hasnobuf: Ethernet is configured in Non buf mode.
+ * @axienet_config: Ethernet config structure
  * @tx_ts_regs:	  Base address for the axififo device address space.
+ * @rx_ts_regs:	  Base address for the rx axififo device address space.
  * @tstamp_config: Hardware timestamp config structure.
+ * @tx_ptpheader: Stores the tx ptp header.
  */
 struct axienet_local {
 	struct net_device *ndev;
@@ -500,15 +531,39 @@ struct axienet_local {
 
 	u32 coalesce_count_rx;
 	u32 coalesce_count_tx;
-	u32 is_10Gmac;
 	u32 phy_interface;
 	u32 phy_flags;
 	bool eth_hasnobuf;
+	const struct axienet_config *axienet_config;
 
 #ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
 	void __iomem *tx_ts_regs;
+	void __iomem *rx_ts_regs;
 	struct hwtstamp_config tstamp_config;
+	u8 *tx_ptpheader;
 #endif
+};
+
+/**
+ * enum axienet_ip_type - AXIENET IP/MAC type.
+ *
+ * @XAXIENET_1G:	 IP is 1G MAC
+ * @XAXIENET_2_5G:	 IP type is 2.5G MAC.
+ * @XAXIENET_LEGACY_10G: IP type is legacy 10G MAC.
+ * @XAXIENET_10G_25G:	 IP type is 10G/25G MAC(XXV MAC).
+ *
+ */
+enum axienet_ip_type {
+	XAXIENET_1G = 0,
+	XAXIENET_2_5G,
+	XAXIENET_LEGACY_10G,
+	XAXIENET_10G_25G,
+};
+
+struct axienet_config {
+	enum axienet_ip_type mactype;
+	void (*setoptions)(struct net_device *ndev, u32 options);
+	u32 tx_ptplen;
 };
 
 /**
@@ -518,6 +573,12 @@ struct axienet_local {
  * @m_or:	Mask to be ORed for setting the option in the register
  */
 struct axienet_option {
+	u32 opt;
+	u32 reg;
+	u32 m_or;
+};
+
+struct xxvenet_option {
 	u32 opt;
 	u32 reg;
 	u32 m_or;
@@ -578,6 +639,33 @@ static inline void axienet_txts_iow(struct  axienet_local *lp, off_t reg,
 				    u32 value)
 {
 	out_be32((lp->tx_ts_regs + reg), value);
+}
+
+/**
+ * axienet_rxts_ior - Memory mapped AXI FIFO MM S register read
+ * @lp:         Pointer to axienet_local structure
+ * @reg:     Address offset from the base address of AXI FIFO MM S
+ *              core
+ *
+ * Return: the contents of the AXI FIFO MM S register
+ */
+
+static inline u32 axienet_rxts_ior(struct axienet_local *lp, off_t reg)
+{
+	return in_be32(lp->rx_ts_regs + reg);
+}
+
+/**
+ * axienet_rxts_iow - Memory mapper AXI FIFO MM S register write
+ * @lp:         Pointer to axienet_local structure
+ * @reg:     Address offset from the base address of AXI FIFO MM S
+ *              core.
+ * @value:      Value to be written into the AXI FIFO MM S register
+ */
+static inline void axienet_rxts_iow(struct  axienet_local *lp, off_t reg,
+				    u32 value)
+{
+	out_be32((lp->rx_ts_regs + reg), value);
 }
 #endif
 

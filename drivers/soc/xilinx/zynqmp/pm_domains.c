@@ -60,7 +60,7 @@ static int zynqmp_gpd_power_on(struct generic_pm_domain *domain)
 		status = zynqmp_pm_set_requirement(pd->node_ids[i],
 					ZYNQMP_PM_CAPABILITY_ACCESS,
 					ZYNQMP_PM_MAX_QOS,
-					ZYNQMP_PM_REQUEST_ACK_NO);
+					ZYNQMP_PM_REQUEST_ACK_BLOCKING);
 		if (status)
 			break;
 	}
@@ -87,20 +87,15 @@ static int zynqmp_gpd_power_off(struct generic_pm_domain *domain)
 						ZYNQMP_PM_REQUEST_ACK_NO);
 		/**
 		 * If powering down of any node inside this domain fails,
-		 * turn on previously powered down nodes of this domain
+		 * report and return the error
 		 */
-		if (status)
-			goto err_turn_on;
+		if (status) {
+			pr_err("%s error %d, node %u\n", __func__, status,
+				pd->node_ids[i]);
+			return status;
+		}
 	}
-	return 0;
 
-err_turn_on:
-	for (i++; i < pd->node_id_num; i++) {
-		zynqmp_pm_set_requirement(pd->node_ids[i],
-					ZYNQMP_PM_CAPABILITY_ACCESS,
-					ZYNQMP_PM_MAX_QOS,
-					ZYNQMP_PM_REQUEST_ACK_NO);
-	}
 	return status;
 }
 
