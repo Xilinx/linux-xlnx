@@ -403,10 +403,17 @@ xilinx_drm_mixer_set_layer_dimensions(struct xilinx_drm_plane *plane,
 	*/
 	int ret = 0;
 	struct xv_mixer *mixer = plane->manager->mixer;
-	xv_mixer_layer_id layer_id = plane->mixer_layer->id;
+	struct xv_mixer_layer_data *layer_data; 
+		
+	layer_data = plane->mixer_layer;
+	xv_mixer_layer_id layer_id = layer_data->id;
 
 	if(layer_id != XVMIX_LAYER_MASTER && layer_id < XVMIX_LAYER_ALL) {
-		xilinx_drm_mixer_layer_disable(plane);
+
+		if(mixer_layer_width(layer_data) != width || 
+			mixer_layer_height(layer_data) != height)
+			xilinx_drm_mixer_layer_disable(plane);
+
 		ret = xilinx_mixer_set_layer_window(mixer, layer_id,
 						     crtc_x, crtc_y, 
 						     width, height, 0);
@@ -414,6 +421,8 @@ xilinx_drm_mixer_set_layer_dimensions(struct xilinx_drm_plane *plane,
 		/*JPM TODO update l2 driver code to use linux error codes*/
 		if(ret)
 			return -EINVAL;
+
+		xilinx_drm_mixer_layer_enable(plane);
 
 	}
 
