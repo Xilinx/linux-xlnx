@@ -955,7 +955,7 @@ int xdma_wait(struct xdma_head *dmahead,
 		*operating_flags |= XDMA_FLAGS_WAIT_COMPLETE;
 	} else {
 		if (*operating_flags & XDMA_FLAGS_TRYWAIT) {
-			if (!wait_for_completion_timeout(&dmahead->cmp, 1))
+			if (!try_wait_for_completion(&dmahead->cmp))
 				return 0;
 			*operating_flags |= XDMA_FLAGS_WAIT_COMPLETE;
 		} else {
