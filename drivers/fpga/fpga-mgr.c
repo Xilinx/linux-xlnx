@@ -8,6 +8,7 @@
  * With code from the mailing list:
  * Copyright (C) 2013 Xilinx, Inc.
  */
+#include <linux/kernel.h>
 #include <linux/firmware.h>
 #include <linux/fpga/fpga-mgr.h>
 #include <linux/idr.h>
@@ -420,6 +421,8 @@ static ssize_t firmware_store(struct device *dev,
 
 	/* flags indicates whether to do full or partial reconfiguration */
 	info.flags = mgr->flags;
+	memcpy(info.key, mgr->key, ENCRYPTED_KEY_LEN);
+	memcpy(info.iv, mgr->key, ENCRYPTED_IV_LEN);
 
 	/* lose terminating \n */
 	strcpy(image_name, buf);
@@ -428,6 +431,66 @@ static ssize_t firmware_store(struct device *dev,
 		image_name[len - 1] = 0;
 
 	ret = fpga_mgr_firmware_load(mgr, &info, image_name);
+	if (ret)
+		return ret;
+
+	return count;
+}
+
+static ssize_t key_show(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
+	struct fpga_manager *mgr = to_fpga_manager(dev);
+
+	return snprintf(buf, ENCRYPTED_KEY_LEN + 1, "%s\n", mgr->key);
+}
+
+static ssize_t key_store(struct device *dev,
+			struct device_attribute *attr,
+			const char *buf, size_t count)
+{
+	struct fpga_manager *mgr = to_fpga_manager(dev);
+
+	memcpy(mgr->key, buf, count);
+
+	return count;
+}
+
+static ssize_t iv_show(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
+	struct fpga_manager *mgr = to_fpga_manager(dev);
+
+	return snprintf(buf, ENCRYPTED_IV_LEN + 1, "%s\r\n", mgr->iv);
+}
+
+static ssize_t iv_store(struct device *dev,
+			struct device_attribute *attr,
+			const char *buf, size_t count)
+{
+	struct fpga_manager *mgr = to_fpga_manager(dev);
+
+	memcpy(mgr->iv, buf, count);
+
+	return count;
+}
+
+static ssize_t flags_show(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
+	struct fpga_manager *mgr = to_fpga_manager(dev);
+
+	return sprintf(buf, "%lx\n", mgr->flags);
+}
+
+static ssize_t flags_store(struct device *dev,
+			struct device_attribute *attr,
+			const char *buf, size_t count)
+{
+	struct fpga_manager *mgr = to_fpga_manager(dev);
+	int ret;
+
+	ret = kstrtol(buf, 16, &mgr->flags);
 	if (ret)
 		return ret;
 
@@ -463,12 +526,18 @@ static ssize_t status_show(struct device *dev,
 static DEVICE_ATTR_RO(name);
 static DEVICE_ATTR_RO(state);
 static DEVICE_ATTR_WO(firmware);
+static DEVICE_ATTR_RW(flags);
+static DEVICE_ATTR_RW(key);
+static DEVICE_ATTR_RW(iv);
 static DEVICE_ATTR_RO(status);
 
 static struct attribute *fpga_mgr_attrs[] = {
 	&dev_attr_name.attr,
 	&dev_attr_state.attr,
 	&dev_attr_firmware.attr,
+	&dev_attr_flags.attr,
+	&dev_attr_key.attr,
+	&dev_attr_iv.attr,
 	&dev_attr_status.attr,
 	NULL,
 };
