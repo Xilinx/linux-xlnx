@@ -23,7 +23,8 @@
 #include <linux/soc/xilinx/zynqmp/pm.h>
 
 /* Constant Definitions */
-#define IXR_FPGA_DONE_MASK 0X00000008U
+#define IXR_FPGA_DONE_MASK	0X00000008U
+#define IXR_FPGA_ENCRYPTION_EN	0x00000008U
 
 struct zynqmp_fpga_priv {
 	struct device *dev;
@@ -46,19 +47,32 @@ static int zynqmp_fpga_ops_write(struct fpga_manager *mgr,
 {
 	struct zynqmp_fpga_priv *priv;
 	char *kbuf;
+	size_t dma_size;
 	dma_addr_t dma_addr;
 	u32 transfer_length;
 	int ret;
 
 	priv = mgr->priv;
 
-	kbuf = dma_alloc_coherent(priv->dev, size, &dma_addr, GFP_KERNEL);
+	if (mgr->flags & IXR_FPGA_ENCRYPTION_EN)
+		dma_size = size + ENCRYPTED_KEY_LEN + ENCRYPTED_IV_LEN;
+	else
+		dma_size = size;
+
+	kbuf = dma_alloc_coherent(priv->dev, dma_size, &dma_addr, GFP_KERNEL);
 	if (!kbuf)
 		return -ENOMEM;
 
 	memcpy(kbuf, buf, size);
+
+	if (mgr->flags & IXR_FPGA_ENCRYPTION_EN) {
+		memcpy(kbuf + size, mgr->key, ENCRYPTED_KEY_LEN);
+		memcpy(kbuf + size + ENCRYPTED_KEY_LEN, mgr->iv,
+						ENCRYPTED_IV_LEN);
+	}
+
 	__flush_cache_user_range((unsigned long)kbuf,
-				(unsigned long)kbuf + size);
+				 (unsigned long)kbuf + dma_size);
 
 	/**
 	 * Translate size from bytes to number of 32bit words that
@@ -69,9 +83,9 @@ static int zynqmp_fpga_ops_write(struct fpga_manager *mgr,
 	else
 		transfer_length = size >> 2;
 
-	ret = zynqmp_pm_fpga_load(dma_addr, transfer_length, priv->flags);
+	ret = zynqmp_pm_fpga_load(dma_addr, transfer_length, mgr->flags);
 
-	dma_free_coherent(priv->dev, size, kbuf, dma_addr);
+	dma_free_coherent(priv->dev, dma_size, kbuf, dma_addr);
 
 	return ret;
 }
