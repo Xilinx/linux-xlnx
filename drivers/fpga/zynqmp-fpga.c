@@ -128,7 +128,7 @@ static int zynqmp_fpga_probe(struct platform_device *pdev)
 	if (ret < 0)
 		dev_err(dev, "no usable DMA configuration");
 
-	err = fpga_mgr_register(dev, "Xilinx ZynqMp FPGA Manager",
+	err = fpga_mgr_register(dev, "Xilinx ZynqMP FPGA Manager",
 				&zynqmp_fpga_ops, priv);
 	if (err) {
 		dev_err(dev, "unable to register FPGA manager");
