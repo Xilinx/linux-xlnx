@@ -214,7 +214,7 @@ struct xv_mixer {
 
 	struct gpio_desc *reset_gpio;
 
-	void *		private;
+	void *private;
 };
 
 

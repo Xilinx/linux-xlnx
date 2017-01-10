@@ -35,7 +35,11 @@
 #include <linux/of_address.h>
 #include <linux/gpio/consumer.h>
 
+#include <drm/drm_crtc.h>
+#include <drm/drm_gem_cma_helper.h>
+
 #include "xilinx_drm_drv.h"
+#include "xilinx_drm_fb.h"
 
 #include "crtc/mixer/drm/xilinx_drm_mixer.h"
 
@@ -293,7 +297,7 @@ int xilinx_drm_mixer_string_to_fmt(const char *color_fmt, u32 *output)
 	if(output)
 		return 0;
 
-	return -1;
+	return -EINVAL;
 }
 
 int xilinx_drm_mixer_fmt_to_drm_fmt(xv_comm_color_fmt_id id, u32 *output) 
@@ -308,7 +312,7 @@ int xilinx_drm_mixer_fmt_to_drm_fmt(xv_comm_color_fmt_id id, u32 *output)
 	if(output)
 		return 0;
 
-	return -1;
+	return -EINVAL;
 } 
 
 
@@ -429,10 +433,9 @@ xilinx_drm_mixer_set_layer_dimensions(struct xilinx_drm_plane *plane,
 	if(layer_id == XVMIX_LAYER_MASTER) { 
 		xilinx_drm_mixer_layer_disable(plane);
 
-		/*JPM TODO update l2 driver code to use linux error codes*/
 		ret = xilinx_mixer_set_active_area(mixer, width, height);
 		if(ret)
-			return -EINVAL;
+			return ret;
 
 		xilinx_drm_mixer_layer_enable(plane);
 	}
@@ -464,35 +467,8 @@ void xilinx_drm_mixer_reset(struct xv_mixer *mixer) {
 
 	/* restore layer properties and bg color after reset */
 	xilinx_mixer_set_bkg_col(mixer, mixer->bg_color, mixer->bg_layer_bpc);
-#if 0
-	for(i = 0; i <= mixer->layer_cnt; i++) {
 
-		layer = mixer->layer_data[i];
-		/* all layers disabled so no need to explicitly disable/enable */
-		/* JPM TODO determine if we should permit scale to be zero'd. 
-		   restoring from cache may not be the right thing to do during
-		   a modeset to a lower resolution.  Would risk layer exceeding
-		   active area */
-		ret = xilinx_mixer_set_layer_scaling(mixer, layer.id,
-						layer.layer_regs.scale_fact);
-		if(ret)
-			DRM_ERROR("Problem restoring scale property for mixer"
-				  " layer %u\n", layer.id); 
-
-		ret = xilinx_mixer_set_layer_alpha(mixer, layer.id,
-						layer.layer_regs.alpha);
-		if(ret)
-			DRM_ERROR("Problem restoring alpha property for mixer"
-				  " layer %u\n", layer.id); 
-	}
-#endif
 	xilinx_drm_plane_restore(manager);	
-
-	/* JPM TODO remove this.  Just a temporary measure to test logo layer
-	   after resets.  Need to update logo buffer in response to
-	   plane_update() calls via a check to see if a new buffer has been
-	   provided */
-	xilinx_mixer_logo_load(mixer,64,64,NULL,NULL,NULL);
 } 
 
 static int xilinx_drm_mixer_parse_dt_logo_data (struct device_node *node,
@@ -516,6 +492,7 @@ static int xilinx_drm_mixer_parse_dt_logo_data (struct device_node *node,
 		/* set defaults for logo layer */
 		layer_data->hw_config.is_streaming = false;
 		layer_data->hw_config.vid_fmt = XVIDC_CSF_RGB;
+		layer_data->layer_regs.buff_addr = 0;
 		layer_data->id = XVMIX_LAYER_LOGO;
 
 		ret  = of_property_read_u32(logo_node, "xlnx,logo-width", 
@@ -624,7 +601,7 @@ xilinx_drm_mixer_mark_layer_active(struct xilinx_drm_plane *plane) {
 	return 0;
 }
 
-
+/* TODO JPM this routine throws a segfault on module unload */
 int
 xilinx_drm_mixer_mark_layer_inactive(struct xilinx_drm_plane *plane) {
 
@@ -635,4 +612,76 @@ xilinx_drm_mixer_mark_layer_inactive(struct xilinx_drm_plane *plane) {
 
 
 	return 0;
+}
+
+int
+xilinx_drm_mixer_update_logo_img(struct xilinx_drm_plane *plane,
+				 struct drm_framebuffer *fb,
+				 uint32_t src_w, uint32_t src_h) {
+
+	struct drm_gem_cma_object *buffer;
+	struct xv_mixer_layer_data *logo_layer = plane->mixer_layer;
+	uint32_t pixel_cnt = src_h * src_w;
+	uint32_t comp_offset = 3; /* offset for each color comp in RG24 buffer */
+	uint32_t pixel_cmp_cnt = pixel_cnt * comp_offset; /* assumes RG24 */
+	uint32_t layer_pixel_fmt;
+	uint8_t r_data[pixel_cnt];
+	uint8_t g_data[pixel_cnt];
+	uint8_t b_data[pixel_cnt];
+	uint8_t *pixel_mem_data;
+	int ret, i, j;
+
+	/* ensure valid conditions for update */
+	if(logo_layer->id != XVMIX_LAYER_LOGO)
+		return 0;
+
+	if(src_h > logo_layer->hw_config.max_height ||
+	   src_w > logo_layer->hw_config.max_width) {
+		DRM_ERROR("CRTC logo/cursor layer dimensions exceed maximum permissible"
+			  " size of h:%u x w:%u\n",
+			  logo_layer->hw_config.max_height,
+			  logo_layer->hw_config.max_width); 
+		return -EINVAL;
+	}
+
+	ret = xilinx_drm_mixer_fmt_to_drm_fmt(logo_layer->hw_config.vid_fmt,
+					      &layer_pixel_fmt);
+	if(ret)
+		return ret;	
+
+	if(fb->pixel_format != layer_pixel_fmt) {
+		DRM_ERROR("CRTC logo/cursor layer video format does not match"
+			  " framebuffer video format\n");
+		return -EINVAL;	
+	}
+
+	/* JPM TODO aside from consistency check above, we're implicitly
+	 * assuming that data in RG24 formatted for logo layer.  May need
+	 * a case() statement in the future for GR24 */
+	buffer = xilinx_drm_fb_get_gem_obj(fb, 0);
+
+	/* ensure buffer attributes have changed to indicate new logo
+	 * has been created
+	*/
+	if(buffer->vaddr == logo_layer->layer_regs.buff_addr &&
+	   src_w == logo_layer->layer_regs.width &&
+           src_h == logo_layer->layer_regs.height)
+		return 0;
+
+	/* cache buffer address for future comparison */
+	logo_layer->layer_regs.buff_addr = buffer->vaddr;
+
+	pixel_mem_data = (uint8_t *)(buffer->vaddr); 	
+
+	for(i = 0, j = 0; i < pixel_cmp_cnt && j < pixel_cnt; i += comp_offset, j++) {
+		b_data[j] = pixel_mem_data[i];
+		g_data[j] = pixel_mem_data[i+1];
+		r_data[j] = pixel_mem_data[i+2];
+	}
+
+	ret = xilinx_mixer_logo_load(plane->manager->mixer,
+				     src_w, src_h,
+				     &r_data, &g_data, &b_data); 
+	
+	return ret;
 }

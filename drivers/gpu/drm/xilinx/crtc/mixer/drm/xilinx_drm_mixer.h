@@ -208,4 +208,8 @@ xilinx_drm_mixer_set_layer_dimensions(struct xilinx_drm_plane *plane,
 struct xv_mixer_layer_data *
 xilinx_drm_mixer_get_layer(struct xv_mixer *mixer, xv_mixer_layer_id id);
 
+int
+xilinx_drm_mixer_update_logo_img(struct xilinx_drm_plane *plane,
+				 struct drm_framebuffer *fb,
+				 uint32_t src_w, uint32_t src_h);
 #endif /* end __XLNX_DRM_MIXER__ */

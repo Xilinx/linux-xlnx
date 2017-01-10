@@ -89,8 +89,6 @@ void xilinx_mixer_init(struct xv_mixer *mixer)
 
 	xilinx_mixer_intrpt_disable(mixer);
 
-	/* JPM TODO remove logo hack.  For testing */
-	xilinx_mixer_logo_load(mixer,64,64,NULL,NULL,NULL);
 	xilinx_mixer_start(mixer);
 
 }
@@ -201,7 +199,7 @@ static int is_window_valid(struct xv_mixer *mixer,
 
 		return 0;
 	} 
-	return -1;
+	return -EINVAL;
 }
 
 /*****************************************************************************/
@@ -219,7 +217,7 @@ int xilinx_mixer_set_active_area(struct xv_mixer *mixer,
 
 	if(hactive > ld->hw_config.max_width || 
 	   vactive > ld->hw_config.max_height)
-	return -1;
+	return -EINVAL;
 
 	/* set resolution */
 	reg_writel(reg_base_addr, XV_MIX_CTRL_ADDR_HWREG_HEIGHT_DATA, vactive);
@@ -317,15 +315,9 @@ void xilinx_mixer_layer_disable(struct xv_mixer *mixer,
   	}
 }
 
-/*****************************************************************************/
-/**
+/******************************************************************************
 *
 * This function returns state of the specified layer [enabled or disabled]
-*
-* @param    InstancePtr is a pointer to the core instance.
-* @param    LayerId is the layer index for which information is requested
-*
-* @return   Enabled(1)/Disabled(0)
 *
 ******************************************************************************/
 int xilinx_mixer_is_layer_enabled(struct xv_mixer *mixer, 
@@ -338,8 +330,7 @@ int xilinx_mixer_is_layer_enabled(struct xv_mixer *mixer,
 	return ((state & mask) ? 1 : 0);
 }
 
-/*****************************************************************************/
-/**
+/******************************************************************************
 * This function sets the background color to be displayed when stream layer is
 * disabled
 *
@@ -385,21 +376,8 @@ void xilinx_mixer_set_bkg_col(struct xv_mixer *mixer,
 		XV_MIX_CTRL_ADDR_HWREG_BACKGROUND_V_B_DATA, v_b_val);
 }
 
-/*****************************************************************************/
-/**
+/******************************************************************************
 * This function configures the window coordinates of the specified layer
-*
-* @param  InstancePtr is a pointer to core instance to be worked upon
-* @param  LayerId is the layer for which window coordinates are to be set
-* @param  Win is the window coordinates in pixels
-* @param  StrideInBytes is the stride of the requested window
-*           yuv422 Color space requires 2 Bytes/Pixel
-*           yuv444 Color space requires 4 Bytes/Pixel
-*           Equation to compute stride is as follows
-*              Stride = (Window_Width * (YUV422 ? 2 : 4))
-*           (Applicable only when layer type is Memory)
-*
-* @note   Applicable only for Layer1-7 and Logo Layer
 *
 ******************************************************************************/
 int xilinx_mixer_set_layer_window(struct xv_mixer *mixer,
@@ -417,13 +395,13 @@ int xilinx_mixer_set_layer_window(struct xv_mixer *mixer,
 	layer_data = xilinx_mixer_get_layer_data(mixer, layer_id);
 
 	if(!layer_data)
-		return (-1);
+		return (-ENODEV);
 
 	/* Check window coordinates */
 	scale = xilinx_mixer_get_layer_scaling(mixer, layer_id);
 
 	if(is_window_valid(mixer, x_pos, y_pos, win_width, win_height, scale)){
-		return(-1);
+		return(-EINVAL);
 	}
 
 	switch(layer_id) {
@@ -470,7 +448,7 @@ int xilinx_mixer_set_layer_window(struct xv_mixer *mixer,
 				u32 align = 2 * mixer->ppc * 4;
 				if((stride_bytes % align) != 0) {
 					win_valid = false;
-					status   = -1;
+					status   = -EINVAL;
 				} else {
 					win_valid = true;
 				}
@@ -514,7 +492,7 @@ int xilinx_mixer_set_layer_window(struct xv_mixer *mixer,
 			}
 		}
 		} else {
-			status = -1;
+			status = -EINVAL;
 		}
 
 		break;
@@ -560,7 +538,7 @@ int xilinx_mixer_get_layer_window(struct xv_mixer *mixer,
 
 			status = 0;
 		} else {
-			status = -1;
+			status = -EINVAL;
 		}
 		break;
 
@@ -580,7 +558,7 @@ int xilinx_mixer_get_layer_window(struct xv_mixer *mixer,
 
 			status = 0;
 		} else {
-			status = -1;
+			status = -EINVAL;
 		}
 		break;
 	}
@@ -588,19 +566,9 @@ int xilinx_mixer_get_layer_window(struct xv_mixer *mixer,
 	return(status);
 }
 
-/*****************************************************************************/
-/**
+/******************************************************************************
 * This function moved the window position of the specified layer to new
 * corrdinates
-*
-* @param  InstancePtr is a pointer to core instance to be worked upon
-* @param  LayerId is the layer for which window position is to be set
-* @param  StartX is the new X position
-* @param  StartY is the new Y position
-*
-* @return XST_SUCCESS if command is successful else error code with reason
-*
-* @note   Applicable only for Layer1-7 and Logo Layer
 *
 ******************************************************************************/
 int xilinx_mixer_move_layer_window(struct xv_mixer *mixer,
@@ -637,7 +605,7 @@ int xilinx_mixer_move_layer_window(struct xv_mixer *mixer,
 	*/
 	if(is_window_valid(mixer, new_x_pos, new_y_pos, 
 		*win_width, *win_height, scale_val)) {
-		return(-1);
+		return(-EINVAL);
 	}
 
 	switch(layer_id) {
@@ -683,8 +651,7 @@ int xilinx_mixer_move_layer_window(struct xv_mixer *mixer,
 	return(status);
 }
 
-/*****************************************************************************/
-/**
+/******************************************************************************
 * This function configures the scaling factor of the specified layer
 *
 * Applicable only for Layer1-7 and Logo Layer
@@ -717,7 +684,7 @@ int xilinx_mixer_set_layer_scaling(struct xv_mixer *mixer,
 
 	if(is_window_valid(mixer, layer_x_pos, layer_y_pos,
 		      layer_width, layer_height, scale)) {
-		return(-1);
+		return(-EINVAL);
 	}
 
 	switch(layer_id) {
@@ -821,7 +788,7 @@ int xilinx_mixer_set_layer_alpha(struct xv_mixer *mixer,
 			status = 0;
 
 		} else {
-			status = -1;
+			status = -EINVAL;
 		}
 		break;
 
@@ -838,7 +805,7 @@ int xilinx_mixer_set_layer_alpha(struct xv_mixer *mixer,
 
 			status = 0;
 		} else {
-			status = -1;
+			status = -EINVAL;
 		}
 		break;
 	}
@@ -857,7 +824,7 @@ int xilinx_mixer_get_layer_alpha(struct xv_mixer *mixer,
 
 	void __iomem *reg_base_addr = mixer->reg_base_addr;
 	struct xv_mixer_layer_data *layer_data;
-	int status = -1;
+	int status = -EINVAL;
 
 	layer_data = xilinx_mixer_get_layer_data(mixer, layer_id);
 
@@ -897,7 +864,7 @@ int xilinx_mixer_get_layer_colorspace_fmt(struct xv_mixer *mixer,
                               xv_comm_color_fmt_id *Cfmt)
 {
 	struct xv_mixer_layer_data *layer_data;
-	int status = -1;
+	int status = -EINVAL;
 
 	layer_data = xilinx_mixer_get_layer_data(mixer, layer_id);
 
@@ -937,7 +904,7 @@ int xilinx_mixer_set_layer_buff_addr(struct xv_mixer *mixer,
 		align = 2 * mixer->ppc * 4;
 		if((buff_addr % align) != 0) {
 			 win_valid = 0;
-			 status   = -1;
+			 status   = -EINVAL;
 		} else {
 			win_valid = 1;
 		}
@@ -965,7 +932,7 @@ int xilinx_mixer_get_layer_buff_addr(struct xv_mixer *mixer,
                              xv_mixer_layer_id layer_id, u32 buff_addr)
 {
 	void __iomem *reg_base_addr = mixer->reg_base_addr;
-	int status = -1;
+	int status = -EINVAL;
 
 	if(layer_id < mixer->layer_cnt) {
 
@@ -986,7 +953,7 @@ int xilinx_mixer_get_layer_buff_addr(struct xv_mixer *mixer,
 int xilinx_mixer_set_logo_color_key(struct xv_mixer *mixer)
 {
 
-	int status = -1;
+	int status = -ENODEV;
 
 	if(mixer->logo_layer_enabled && mixer->logo_color_key_enabled) {
 
@@ -1024,16 +991,8 @@ int xilinx_mixer_set_logo_color_key(struct xv_mixer *mixer)
 	return status;
 }
 
-/*****************************************************************************/
-/**
+/******************************************************************************
 * This function reads the logo layer color key data
-*
-* @param  InstancePtr is a pointer to core instance to be worked upon
-* @param  ColorKeyData is the structure that holds return min/max values
-*
-* @return XST_SUCCESS or XST_FAILURE
-*
-* @note   none
 *
 ******************************************************************************/
 int xilinx_mixer_get_logo_color_key(struct xv_mixer *mixer)
@@ -1041,7 +1000,7 @@ int xilinx_mixer_get_logo_color_key(struct xv_mixer *mixer)
 	void __iomem *reg_base_addr = mixer->reg_base_addr;
 	u8 *rgb_min = mixer->logo_color_key.rgb_min;
 	u8 *rgb_max = mixer->logo_color_key.rgb_max;
-	int status = -1;
+	int status = -ENODEV;
 
 	if(mixer->logo_layer_enabled && mixer->logo_color_key_enabled) {
 
@@ -1068,26 +1027,10 @@ int xilinx_mixer_get_logo_color_key(struct xv_mixer *mixer)
 	return status;
 }
 
-/*****************************************************************************/
-/**
+/******************************************************************************
 * This function loads the logo data into core BRAM
 *
-* @param  InstancePtr is a pointer to core instance to be worked upon
-* @param  Win is logo window (logo width must be multiple of 4 bytes)
-* @param  RBuffer is the pointer to Red buffer
-* @param  GBuffer is the pointer to Green buffer
-* @param  BBuffer is the pointer to Blue buffer
-*
-* @return XST_SUCCESS or XST_FAILURE
-*
-* @note   none
-*
 ******************************************************************************/
-
-/* JPM TODO REMOVE THIS HACK INCLUDE ASAP */
-#include "logo_img.c"
-
-
 int xilinx_mixer_logo_load(struct xv_mixer *mixer,
                    	u32 logo_w, u32 logo_h,
                    	u8 *r_buffer,
@@ -1096,12 +1039,6 @@ int xilinx_mixer_logo_load(struct xv_mixer *mixer,
 {
 	void __iomem *reg_base_addr = mixer->reg_base_addr;
 	struct xv_mixer_layer_data *layer_data;
-
-	/* JPM TODO REMOVE THIS HACK ASAP */
-	r_buffer = (u8*)&Logo_R;
-	g_buffer = (u8*)&Logo_G;
-	b_buffer = (u8*)&Logo_B;
-	/* END HACK */
 
 	int status = 0;
 	int x,y;
@@ -1112,7 +1049,7 @@ int xilinx_mixer_logo_load(struct xv_mixer *mixer,
 	layer_data = xilinx_mixer_get_layer_data(mixer, XVMIX_LAYER_LOGO);
 
 	if(!layer_data)
-		return -1;
+		return -ENODEV;
 
 	if(mixer->logo_layer_enabled && 
 		logo_w <= layer_data->hw_config.max_width &&
@@ -1162,7 +1099,7 @@ int xilinx_mixer_logo_load(struct xv_mixer *mixer,
 				curr_x_pos, curr_y_pos, logo_w, logo_h, 0);
 	}
 	else {
-		status = -1;
+		status = -EINVAL;
 	}
 	return(status);
 }
@@ -1180,180 +1117,3 @@ struct xv_mixer_layer_data* xilinx_mixer_get_layer_data(struct xv_mixer *mixer,
 	}
 	return NULL;
 }
-#if 0
-/*****************************************************************************/
-/**
-* This function reports the mixer status
-*
-* @param  InstancePtr is a pointer to core instance to be worked upon
-*
-* @return none
-*
-* @note   none
-*
-******************************************************************************/
-void XVMix_DbgReportStatus(XV_Mix_l2 *InstancePtr)
-{
-  XV_mix *MixPtr;
-  u32 index, IsEnabled, ctrl;
-  const char *Status[2] = {"Disabled", "Enabled"};
-
-  Xil_AssertVoid(InstancePtr != NULL);
-
-  xil_printf("\r\n\r\n----->MIXER STATUS<----\r\n");
-  MixPtr = &InstancePtr->Mix;
-
-  ctrl  = XV_mix_ReadReg(MixPtr->Config.BaseAddress, XV_MIX_CTRL_ADDR_AP_CTRL);
-
-  xil_printf("Pixels Per Clock: %d\r\n", InstancePtr->Mix.Config.PixPerClk);
-  xil_printf("Color Depth:      %d\r\n", InstancePtr->Mix.Config.MaxDataWidth);
-  xil_printf("Number of Layers: %d\r\n",XVMix_GetNumLayers(InstancePtr));
-  xil_printf("Control Reg:      0x%x\r\n", ctrl);
-  xil_printf("Layer Enable Reg: 0x%x\r\n\r\n",XV_mix_Get_HwReg_layerEnable(MixPtr));
-
-  IsEnabled = XVMix_IsLayerEnabled(InstancePtr, XVMIX_LAYER_MASTER);
-  xil_printf("Layer Master: %s\r\n", Status[IsEnabled]);
-  for(index = XVMIX_LAYER_1; index<XVMIX_LAYER_LOGO; ++index) {
-      xil_printf("Layer %d     : %s\r\n" ,index,
-              Status[(XVMix_IsLayerEnabled(InstancePtr, index))]);
-  }
-  IsEnabled = XVMix_IsLayerEnabled(InstancePtr, XVMIX_LAYER_LOGO);
-  xil_printf("Layer Logo  : %s\r\n\r\n", Status[IsEnabled]);
-
-  xil_printf("Background Color Y/R: %d\r\n", XV_mix_Get_HwReg_background_Y_R(MixPtr));
-  xil_printf("Background Color U/G: %d\r\n", XV_mix_Get_HwReg_background_U_G(MixPtr));
-  xil_printf("Background Color V/B: %d\r\n\r\n", XV_mix_Get_HwReg_background_V_B(MixPtr));
-}
-
-/*****************************************************************************/
-/**
-* This function reports the mixer status of the specified layer
-*
-* @param  InstancePtr is a pointer to core instance to be worked upon
-* @param  LayerId is the layer to be updated
-*
-* @return none
-*
-* @note   none
-*
-******************************************************************************/
-void XVMix_DbgLayerInfo(XV_Mix_l2 *InstancePtr, XVMix_LayerId LayerId)
-{
-  XV_mix *MixPtr;
-  u32 index, IsEnabled;
-  u32 ReadVal;
-  XVidC_VideoWindow Win;
-  XVidC_ColorFormat ColFormat;
-  XVMix_LayerType LayerType;
-  char *Status[2] = {"Disabled", "Enabled"};
-  char *ScaleFactor[3] = {"1x", "2x", "4x"};
-  char *IntfType[2] = {"Memory", "Stream"};
-
-  Xil_AssertVoid(InstancePtr != NULL);
-  Xil_AssertVoid((LayerId >= XVMIX_LAYER_MASTER) &&
-                 (LayerId <= XVMIX_LAYER_LOGO));
-
-  MixPtr = &InstancePtr->Mix;
-  IsEnabled = XVMix_IsLayerEnabled(InstancePtr, LayerId);
-
-  switch(LayerId) {
-    case XVMIX_LAYER_MASTER:
-        xil_printf("\r\n\r\n----->Master Layer Status<----\r\n");
-        xil_printf("State: %s\r\n", Status[IsEnabled]);
-        if(IsEnabled) {
-		  u32 width, height;
-
-		  XVMix_GetLayerColorFormat(InstancePtr, LayerId, &ColFormat);
-          width  = XV_mix_Get_HwReg_width(&InstancePtr->Mix);
-          height = XV_mix_Get_HwReg_height(&InstancePtr->Mix);
-          xil_printf("Color Format: %s\r\n\r\n",
-                     XVidC_GetColorFormatStr(ColFormat));
-          xil_printf("Resolution: %d x %d\r\n", width, height);
-          xil_printf("Stream Info->\r\n");
-          XVidC_ReportStreamInfo(&InstancePtr->Stream);
-        }
-	    break;
-
-    case XVMIX_LAYER_LOGO:
-	    xil_printf("\r\n\r\n----->Layer LOGO Status<----\r\n");
-        xil_printf("State: %s\r\n", Status[IsEnabled]);
-        if(IsEnabled) {
-
-          ReadVal = XVMix_GetLayerAlpha(InstancePtr, LayerId);
-          xil_printf("Alpha: %d\r\n", ReadVal);
-          ReadVal = XVMix_GetLayerScaleFactor(InstancePtr, LayerId);
-          xil_printf("Scale: %s\r\n\r\n", ScaleFactor[ReadVal]);
-          xil_printf("Window Data: \r\n");
-          XVMix_GetLayerWindow(InstancePtr, LayerId, &Win);
-          xil_printf("   Start X    = %d\r\n", Win.StartX);
-          xil_printf("   Start Y    = %d\r\n", Win.StartY);
-          xil_printf("   Win Width  = %d\r\n", Win.Width);
-          xil_printf("   Win Height = %d\r\n", Win.Height);
-
-		  IsEnabled = XVMix_IsLogoColorKeyEnabled(InstancePtr);
-		  if(IsEnabled) {
-		    XVMix_LogoColorKey Data;
-
-		    XVMix_GetLogoColorKey(InstancePtr, &Data);
-            xil_printf("\r\nColor Key Data: \r\n");
-            xil_printf("     Min    Max\r\n");
-            xil_printf("    -----  -----\r\n");
-            xil_printf("  R: %3d    %3d\r\n", Data.RGB_Min[0],Data.RGB_Max[0]);
-            xil_printf("  G: %3d    %3d\r\n", Data.RGB_Min[1],Data.RGB_Max[1]);
-            xil_printf("  B: %3d    %3d\r\n", Data.RGB_Min[2],Data.RGB_Max[2]);
-		  } else {
-            xil_printf("Color Key: %s\r\n", Status[IsEnabled]);
-		  }
-        }
-	    break;
-
-    default: //Layer1-7
-        LayerType = XVMix_GetLayerInterfaceType(InstancePtr, LayerId);
-        xil_printf("\r\n\r\n----->Layer %d Status<----\r\n", LayerId);
-        xil_printf("State: %s\r\n", Status[IsEnabled]);
-        xil_printf("Type : %s\r\n", IntfType[LayerType]);
-        if(IsEnabled) {
-		  u32 Stride, Reg, Offset;
-
-          xil_printf("Addr : 0x%x\r\n",
-                       XVMix_GetLayerBufferAddr(InstancePtr, LayerId));
-
-          IsEnabled = XVMix_IsAlphaEnabled(InstancePtr, LayerId);
-          if (IsEnabled) {
-              ReadVal = XVMix_GetLayerAlpha(InstancePtr, LayerId);
-              xil_printf("Alpha: %d\r\n", ReadVal);
-          } else {
-              xil_printf("Alpha: %s\r\n", Status[IsEnabled]);
-          }
-
-          IsEnabled = XVMix_IsScalingEnabled(InstancePtr, LayerId);
-          if (IsEnabled) {
-              ReadVal = XVMix_GetLayerScaleFactor(InstancePtr, LayerId);
-              xil_printf("Scale: %s\r\n", ScaleFactor[ReadVal]);
-          } else {
-              xil_printf("Scale: %s\r\n", Status[IsEnabled]);
-          }
-
-		  XVMix_GetLayerColorFormat(InstancePtr, LayerId, &ColFormat);
-          xil_printf("Color Format: %s\r\n\r\n",
-                          XVidC_GetColorFormatStr(ColFormat));
-
-          xil_printf("Window Data: \r\n");
-          Reg = XV_MIX_CTRL_ADDR_HWREG_LAYERSTRIDE_0_DATA;
-          Offset = LayerId*XVMIX_REG_OFFSET;
-          Stride = XV_mix_ReadReg(MixPtr->Config.BaseAddress,
-                                  (Reg+Offset));
-
-          XVMix_GetLayerWindow(InstancePtr, LayerId, &Win);
-          xil_printf("   Start X    = %d\r\n", Win.StartX);
-          xil_printf("   Start Y    = %d\r\n", Win.StartY);
-          xil_printf("   Win Width  = %d\r\n", Win.Width);
-          xil_printf("   Win Height = %d\r\n", Win.Height);
-          xil_printf("   Win Stride = %d\r\n", Stride);
-        } //Layer State
-	    break;
-  }
-}
-
-/** @} */
-#endif

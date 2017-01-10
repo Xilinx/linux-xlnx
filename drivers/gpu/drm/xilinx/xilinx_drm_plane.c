@@ -247,9 +247,14 @@ int xilinx_drm_plane_mode_set(struct drm_plane *base_plane,
 		if(ret)
 			return ret;
 
+		ret = xilinx_drm_mixer_update_logo_img(plane, fb, src_w, src_h);
+
+		if(ret)
+			return ret;
+
 		ret = xilinx_drm_mixer_set_layer_dimensions(plane, 
-							     crtc_x, crtc_y, 
-							     src_w, src_h); 
+							    crtc_x, crtc_y,
+							    src_w, src_h);
 		if(ret)
 			return ret;
 	}
@@ -294,9 +299,6 @@ static int xilinx_drm_plane_update(struct drm_plane *base_plane,
 		return ret;
 	}
 
-	/* JPM TODO verify that commiting fb before dpms call works
-	   better than the orginal order which as to call commit
-	   AFTER dpms(plane,ON) */
 	/* apply the new fb addr */
 	xilinx_drm_plane_commit(base_plane);
 
