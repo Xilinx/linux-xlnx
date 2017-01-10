@@ -86,7 +86,7 @@ static void *xlnk_dev_buf;
 static ssize_t xlnk_dev_size;
 static int xlnk_dev_vmas;
 
-#define XLNK_BUF_POOL_SIZE	256
+#define XLNK_BUF_POOL_SIZE	4096
 static unsigned int xlnk_bufpool_size = XLNK_BUF_POOL_SIZE;
 static void *xlnk_bufpool[XLNK_BUF_POOL_SIZE];
 static void *xlnk_bufpool_alloc_point[XLNK_BUF_POOL_SIZE];
