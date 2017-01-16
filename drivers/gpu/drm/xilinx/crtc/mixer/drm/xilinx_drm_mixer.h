@@ -68,7 +68,14 @@ xilinx_drm_mixer_probe(struct device *dev,
 void
 xilinx_drm_mixer_reset(struct xv_mixer *mixer);
 
-/*JPM TODO implement start with auto-restart */
+/**
+ * Start generation of video stream from mixer
+ * 
+ * @param[in] mixer IP core instance to reset
+ *
+ * @note sets the mixer to auto-restart so that video will be streamed
+ *       continuously
+*/
 void
 xilinx_drm_mixer_start(struct xv_mixer *mixer);
 
@@ -80,7 +87,7 @@ xilinx_drm_mixer_start(struct xv_mixer *mixer);
  *                      tree (e.g. "rgb", "yuv422", "yuv444")
  * @param[out] output Enum value of video format id
  *
- * @returns 0 on success; -1 if no entry was found in table
+ * @returns 0 on success; -EINVAL if no entry was found in table
  *
  * @note Should not be used outside of DRM driver.
  */  
@@ -94,7 +101,7 @@ xilinx_drm_mixer_string_to_fmt(const char *color_fmt, u32 *output);
  * @param[in] id Xilinx enum value for a color space type (e.g. YUV422)
  * @param[out] output DRM fourcc value for corresponding Xilinx color space id
  *
- * @returns 0 on success; -1 if no matching entry found
+ * @returns 0 on success; -EINVAL if no matching entry found
  *
  * @note Should not be used outside of DRM driver.
 */
@@ -111,7 +118,8 @@ xilinx_drm_mixer_fmt_to_drm_fmt(xv_comm_color_fmt_id id, u32 *output);
  * 		  1 = 2x
  * 		  2 = 4x 
  *
- * @returns 0 on success; -1 on failure
+ * @returns 0 on success; either -EINVAL if scale value is illegal or
+ *          -ENODEV if layer does not exist (null)
 */
 int
 xilinx_drm_mixer_set_layer_scale(struct xilinx_drm_plane *plane,
@@ -124,7 +132,7 @@ xilinx_drm_mixer_set_layer_scale(struct xilinx_drm_plane *plane,
  * @param[in] val Value of transparency setting (0-255) with 255 being opaque
  * 		  0 being fully transparent
  * 
- * @returns 0 on success; -1 on failure
+ * @returns 0 on success; -EINVAL on failure
 */
 int
 xilinx_drm_mixer_set_layer_alpha(struct xilinx_drm_plane *plane,
@@ -157,6 +165,8 @@ xilinx_drm_mixer_layer_enable(struct xilinx_drm_plane *plane);
  * 		enabled when size or scale registeres are update.
  * 		In-active layers can be updated but will not be
  * 		enabled in hardware.
+ *
+ * @returns 0 on success; -ENODEV if mixer layer does not exist
 */
 int
 xilinx_drm_mixer_mark_layer_active(struct xilinx_drm_plane *plane);
@@ -169,6 +179,8 @@ xilinx_drm_mixer_mark_layer_active(struct xilinx_drm_plane *plane);
  * 		enabled when size or scale registeres are update.
  * 		In-active layers can be updated but will not be
  * 		enabled in hardware.
+ *
+ * @returns 0 on success; -ENODEV if mixer layer does not exist
 */
 int
 xilinx_drm_mixer_mark_layer_inactive(struct xilinx_drm_plane *plane);
@@ -182,7 +194,8 @@ xilinx_drm_mixer_mark_layer_inactive(struct xilinx_drm_plane *plane);
  * @param[in] width Width, in pixels, to render from stream or memory buffer
  * @param[in] height Height, in pixels, to render from stream or memory buffer
  * 
- * @returns 0 if successful; -1 if corrdinates and/or height are invalid
+ * @returns 0 if successful; Either -EINVAL if coordindate data is invalid 
+ * 	      or -ENODEV if layer data not present
  *
  * @note New size and coordinates of window must fit within the currently active
  * area of the crtc (e.g. the background resolution)
@@ -208,6 +221,20 @@ xilinx_drm_mixer_set_layer_dimensions(struct xilinx_drm_plane *plane,
 struct xv_mixer_layer_data *
 xilinx_drm_mixer_get_layer(struct xv_mixer *mixer, xv_mixer_layer_id id);
 
+/**
+ * Updates internal R, G and B buffer array of mixer from kernel framebuffer
+ * which is expected to be arranged as RGB888 (fourcc 'RG24') packed 24 bit data
+ * 
+ * @param[in] plane Xilinx drm plane object with current video format information
+ * @param[in] fb Framebuffer with which to obtain reference to backing storage
+ * @param[in] src_w  Width of buffer to read RGB888 data
+ * @param[in] src_h  Height of buffer to read RGB888 data
+ *
+ * @returns 0 on success; -EINVAL if format and/or size of buffer is invalid
+ *
+ * @note Initial call caches buffer kernel virtual address.  Subsequent calls will
+ *       only re-load buffer if virtual address and/or size changes.
+*/
 int
 xilinx_drm_mixer_update_logo_img(struct xilinx_drm_plane *plane,
 				 struct drm_framebuffer *fb,

@@ -1065,6 +1065,7 @@ xilinx_drm_plane_init_manager(struct xilinx_drm_plane_manager *manager)
 		format = mixer_video_fmt(manager->mixer);
 
 		ret = xilinx_drm_mixer_fmt_to_drm_fmt(format, &drm_format);
+
 		/* JPM TODO we comply with manager device tree format but, likely,
 		 * we'll want to just clobber that device tree setting with the
 		 * mixer setting if a mixer is the central crtc object */

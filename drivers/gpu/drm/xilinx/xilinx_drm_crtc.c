@@ -103,12 +103,6 @@ static void xilinx_drm_crtc_prepare(struct drm_crtc *base_crtc)
 /* apply mode to crtc pipe */
 static void xilinx_drm_crtc_commit(struct drm_crtc *base_crtc)
 {
-	/* JPM TODO possible issue here base on order.  If mixer
-	 * is turned on before dma, and an empty stream is passed
-         * to layer, it may cause lockup of video output for mixer
-         * may need to perform plane_commit() first and crtc_dpms()
-	 * second.
-	*/
 	xilinx_drm_plane_commit(base_crtc->primary);
 	xilinx_drm_crtc_dpms(base_crtc, DRM_MODE_DPMS_ON);
 }

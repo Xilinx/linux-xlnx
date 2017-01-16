@@ -344,24 +344,6 @@ void xilinx_mixer_set_bkg_col(struct xv_mixer *mixer,
 	u16 v_b_val;
 	u16 scale;
 
-#if 0   /* JPM mixer is always in RGB mode for bg layer data */
-	xv_comm_color_fmt_id col_fmt;
-	col_fmt = reg_readl(mixer->reg_base_addr, 
-		XV_MIX_CTRL_ADDR_HWREG_VIDEO_FORMAT_DATA);
-
-	if(col_fmt == XVIDC_CSF_RGB) {
-		scale = ((1<<bpc)-1);
-		y_r_val = bkgndColorRGB[col_id][0] * scale;
-		u_g_val = bkgndColorRGB[col_id][1] * scale;
-		v_b_val = bkgndColorRGB[col_id][2] * scale;
-	}
-	else {/*YUV*/
-		scale =  (1<<(bpc-XVIDC_BPC_8));
-		y_r_val = bkgndColorYUV[col_id][0] * scale;
-		u_g_val = bkgndColorYUV[col_id][1] * scale;
-		v_b_val = bkgndColorYUV[col_id][2] * scale;
-	}
-#endif
 	scale = ((1<<bpc)-1);
 	y_r_val = bkgndColorRGB[col_id][0] * scale;
 	u_g_val = bkgndColorRGB[col_id][1] * scale;
@@ -429,7 +411,7 @@ int xilinx_mixer_set_layer_window(struct xv_mixer *mixer,
 			layer_data->layer_regs.height = win_height;
 
 		} else {
-			status = -1;
+			status = -EINVAL;
 		}
 		break;
 

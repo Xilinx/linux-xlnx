@@ -238,7 +238,8 @@ struct xv_mixer {
  *   		          stride = (win_width * (YUV422 ? 2 : 4))
  *		          Only applicable when layer is of type memory
  *
- * @return 0 on success; -1 if position is invalid or otherwise illegal
+ * @return 0 on success; -EINVAL if position is invalid or -ENODEV if layer
+ *         data is not found
  *
  * @note Applicable only for layers 1-7 or the logo layer
 */
@@ -259,7 +260,7 @@ xilinx_mixer_set_layer_window(struct xv_mixer *mixer,
  * @param[in] hactive Width of new background image dimension
  * @param[in] vactive Height of new background image dimension
  * 
- * @return 0 on success; -1 on failure
+ * @return 0 on success; -EINVAL on failure
 */
 int 
 xilinx_mixer_set_active_area(struct xv_mixer *mixer,
@@ -347,7 +348,9 @@ xilinx_mixer_get_layer_data(struct xv_mixer *mixer,
  * @param[in] layer_id logical id of video layer subject to new scale setting 
  * @param[in] scale scale factor (1x, 2x or 4x) for horiz. and vert. dimensions
  *
- * @return 0 on success; -1 on failure to set scale for layer
+ * @return 0 on success; -EINVAL on failure to set scale for layer (likely
+ *         returned if resulting size of layer exceeds dimensions of active
+ *         display area
  *
  * @note Not applicable to background stream layer (layer 0)
 */
@@ -365,7 +368,7 @@ xilinx_mixer_set_layer_scaling(struct xv_mixer *mixer,
  *            255 = completely opaque
  *            0 = fully transparent
  * 
- * @returns 0 on success; -1 on failure
+ * @returns 0 on success; -EINVAL on failure
  * 
  * @note not applicable to background streaming layer 
 */
@@ -403,7 +406,18 @@ xilinx_mixer_stop(struct xv_mixer *mixer);
 void
 xilinx_mixer_init(struct xv_mixer *mixer);
 
-
+/**
+ * Loads mixer's internal data blocks with planar R, G and B data for logo.
+ *
+ * @param[in] mixer Mixer instance to act upon
+ * @param[in] logo_w Width of logo in pixels
+ * @param[in] logo_h Height of logo in pixels
+ * @param[in] r_buffer Pointer to byte buffer array of R data values
+ * @param[in] g_buffer Pointer to byte buffer array of G data values
+ * @param[in] b_buffer Pointer to byte buffer array of B data values
+ *
+ * @returns 0 on success; -ENODEV if logo layer not enabled; -EINVAL otherwise
+*/
 int
 xilinx_mixer_logo_load(struct xv_mixer *mixer, u32 logo_w, u32 logo_h,
 		       u8 *r_buf, u8 *g_buf, u8 *b_buf);

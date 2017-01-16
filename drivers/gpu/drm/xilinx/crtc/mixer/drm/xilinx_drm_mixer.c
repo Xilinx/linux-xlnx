@@ -1,6 +1,6 @@
 /******************************************************************************
  *
- * Copyright (C) 2016 Xilinx, Inc.  All rights reserved.
+ * Copyright (C) 2016,2017 Xilinx, Inc.  All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -356,7 +356,7 @@ xilinx_drm_mixer_set_layer_alpha(struct xilinx_drm_plane *plane,
 		if(val > XVMIX_ALPHA_MAX || val < XVMIX_ALPHA_MIN) {
 		    DRM_ERROR("Property setting for mixer layer alpha exceeds "
 			      "legal values\n");
-		    return -1;
+		    return -EINVAL;
 		}
 		ret = xilinx_mixer_set_layer_alpha(mixer, layer->id ,val);
 		if(ret)
@@ -364,7 +364,7 @@ xilinx_drm_mixer_set_layer_alpha(struct xilinx_drm_plane *plane,
 
 		return 0;
 	}
-	return -1;
+	return -EINVAL;
 }
 
 
@@ -422,9 +422,8 @@ xilinx_drm_mixer_set_layer_dimensions(struct xilinx_drm_plane *plane,
 						     crtc_x, crtc_y, 
 						     width, height, 0);
 
-		/*JPM TODO update l2 driver code to use linux error codes*/
 		if(ret)
-			return -EINVAL;
+			return ret;
 
 		xilinx_drm_mixer_layer_enable(plane);
 
@@ -484,7 +483,7 @@ static int xilinx_drm_mixer_parse_dt_logo_data (struct device_node *node,
 		logo_node = of_get_child_by_name(node, "logo");
 		if(!logo_node) {
 			DRM_ERROR("No logo node specified in device tree.\n");
-			return -1;
+			return -EINVAL;
 		}
 
 		layer_data = &(mixer->layer_data[1]);
@@ -500,8 +499,19 @@ static int xilinx_drm_mixer_parse_dt_logo_data (struct device_node *node,
 
 		if (ret) {
 		    DRM_ERROR("Failed to get logo width prop\n");
-		    return -1; 
+		    return -EINVAL; 
 		}
+
+		if(layer_data->hw_config.max_width > XVMIX_LOGO_LAYER_WIDTH_MAX ||
+		   layer_data->hw_config.max_width < XVMIX_LOGO_LAYER_WIDTH_MIN) {
+			DRM_ERROR("Mixer logo layer width dimensions exceed "
+				  "min/max limit of %d to %d\n",
+				  XVMIX_LOGO_LAYER_WIDTH_MIN,
+				  XVMIX_LOGO_LAYER_WIDTH_MAX);
+			return -EINVAL;
+		}
+		      
+
 		mixer->max_logo_layer_width = layer_data->hw_config.max_width; 	
 
 		ret = of_property_read_u32(logo_node, "xlnx,logo-height",
@@ -509,7 +519,16 @@ static int xilinx_drm_mixer_parse_dt_logo_data (struct device_node *node,
 
 		if (ret) {
 		    DRM_ERROR("Failed to get logo height prop\n");
-		    return -1;
+		    return -EINVAL;
+		}
+
+		if(layer_data->hw_config.max_height > XVMIX_LOGO_LAYER_HEIGHT_MAX ||
+		   layer_data->hw_config.max_height < XVMIX_LOGO_LAYER_HEIGHT_MIN) {
+			DRM_ERROR("Mixer logo layer height dimensions exceed min/max"
+				  " limit of %d to %d\n",
+			          XVMIX_LOGO_LAYER_HEIGHT_MIN,
+				  XVMIX_LOGO_LAYER_HEIGHT_MAX);
+			return -EINVAL;
 		}
 
 		mixer->max_logo_layer_height = layer_data->hw_config.max_height; 	
@@ -601,7 +620,7 @@ xilinx_drm_mixer_mark_layer_active(struct xilinx_drm_plane *plane) {
 	return 0;
 }
 
-/* TODO JPM this routine throws a segfault on module unload */
+/* TODO JPM:BUG this routine throws a segfault on module unload */
 int
 xilinx_drm_mixer_mark_layer_inactive(struct xilinx_drm_plane *plane) {
 

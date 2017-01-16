@@ -414,6 +414,10 @@ static inline u32 reg_readl(void __iomem *base, int offset)
 #define XVMIX_ALPHA_MAX                  (256)
 #define XVMIX_LAYER_WIDTH_MIN            (64)
 #define XVMIX_LAYER_HEIGHT_MIN           XVMIX_LAYER_WIDTH_MIN
+#define XVMIX_LOGO_LAYER_WIDTH_MIN       (32)
+#define XVMIX_LOGO_LAYER_HEIGHT_MIN      XVMIX_LOGO_LAYER_WIDTH_MIN
+#define XVMIX_LOGO_LAYER_WIDTH_MAX       (256)
+#define XVMIX_LOGO_LAYER_HEIGHT_MAX      XVMIX_LOGO_LAYER_WIDTH_MAX
 #define XVMIX_IRQ_DONE_MASK              (0x01)
 #define XVMIX_IRQ_READY_MASK             (0x02)
 
