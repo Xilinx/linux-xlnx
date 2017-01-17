@@ -43,8 +43,8 @@
 
 #include "crtc/mixer/drm/xilinx_drm_mixer.h"
 
-#include "crtc/mixer/hw/xilinx_mixer_hw.h"
-#include "crtc/mixer/hw/xilinx_video_mixer.h"
+#include "crtc/mixer/hw/xilinx_mixer_regs.h"
+#include "crtc/mixer/hw/xilinx_mixer_data.h"
 
 #define COLOR_NAME_SIZE 10
 

@@ -32,7 +32,7 @@
 
 #ifndef __XLNX_DRM_MIXER__
 #define __XLNX_DRM_MIXER__
-#include "crtc/mixer/hw/xilinx_video_mixer.h"
+#include "crtc/mixer/hw/xilinx_mixer_data.h"
 #include "xilinx_drm_plane.h"
 
 #define XLNX_MIXER	"DRM XV_MIXER: "

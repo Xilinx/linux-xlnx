@@ -1,7 +1,7 @@
 #include <linux/types.h>
 
-#include "crtc/mixer/hw/xilinx_mixer_hw.h"
-#include "crtc/mixer/hw/xilinx_video_mixer.h"
+#include "crtc/mixer/hw/xilinx_mixer_regs.h"
+#include "crtc/mixer/hw/xilinx_mixer_data.h"
 
 
 /************************** Constant Definitions *****************************/

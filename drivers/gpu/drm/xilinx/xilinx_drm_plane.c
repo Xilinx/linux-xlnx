@@ -25,16 +25,18 @@
 #include <linux/of_dma.h>
 #include <linux/platform_device.h>
 
+/* drm component libs */
 #include "xilinx_drm_dp_sub.h"
 #include "xilinx_drm_drv.h"
 #include "xilinx_drm_fb.h"
 #include "xilinx_drm_plane.h"
 #include "crtc/mixer/drm/xilinx_drm_mixer.h"
 
+/* hardware layer libs */
 #include "xilinx_cresample.h"
 #include "xilinx_osd.h"
 #include "xilinx_rgb2yuv.h"
-#include "crtc/mixer/hw/xilinx_video_mixer.h" 
+#include "crtc/mixer/hw/xilinx_mixer_data.h" 
 
 /*********************************PROTOTYPES*********************************/
 static int

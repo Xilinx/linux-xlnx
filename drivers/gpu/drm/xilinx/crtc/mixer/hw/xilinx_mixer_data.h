@@ -31,7 +31,7 @@
 ******************************************************************************/
 
 /**
-* @file xilinx_video_mixer.h
+* @file xilinx_mixer_data.h
 * Defines all of the enums and data structures necessary to utilize the
 * mixer hardware accessor functions.  
 */
@@ -39,7 +39,7 @@
 #define __XV_VIDEO_MIXER__
 
 #include <linux/types.h>
-#include "crtc/mixer/hw/xilinx_mixer_hw.h"
+#include "crtc/mixer/hw/xilinx_mixer_regs.h"
 
 /************************** Inline Functions *********************************/
 #define mixer_layer_x_pos(l)	    l->layer_regs.x_pos
