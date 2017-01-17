@@ -144,4 +144,13 @@ config MESON_EFUSE
 	  This driver can also be built as a module. If so, the module
 	  will be called nvmem_meson_efuse.
 
+config NVMEM_ZYNQMP
+	bool "Xilinx ZYNQMP SoC nvmem firmware support"
+	depends on ARCH_ZYNQMP
+	help
+	  This is a driver to access hardware related data like soc revision,
+	  IDCODE... etc.
+
+	  If sure, say yes. If unsure, say no.
+
 endif
