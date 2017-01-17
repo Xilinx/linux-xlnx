@@ -33,6 +33,7 @@
 #include <linux/platform_device.h>
 #include <linux/delay.h>
 #include <dt-bindings/phy/phy.h>
+#include <linux/soc/xilinx/zynqmp/fw.h>
 #include <linux/soc/xilinx/zynqmp/pm.h>
 #include <linux/list.h>
 
@@ -1161,6 +1162,7 @@ static int xpsgtr_probe(struct platform_device *pdev)
 	struct phy_provider *provider;
 	struct phy *phy;
 	struct resource *res;
+	char *soc_rev;
 	int lanecount, port = 0, index = 0;
 
 	gtr_dev = devm_kzalloc(&pdev->dev, sizeof(*gtr_dev), GFP_KERNEL);
@@ -1199,8 +1201,15 @@ static int xpsgtr_probe(struct platform_device *pdev)
 	gtr_dev->dev = &pdev->dev;
 	platform_set_drvdata(pdev, gtr_dev);
 	mutex_init(&gtr_dev->gtr_mutex);
-	gtr_dev->tx_term_fix = of_property_read_bool(np,
-					"xlnx,tx_termination_fix");
+
+	/* Deferred probe is also handled if nvmem is not ready */
+	soc_rev = zynqmp_nvmem_get_silicon_version(&pdev->dev,
+						   "soc_revision");
+	if (IS_ERR(soc_rev))
+		return PTR_ERR(soc_rev);
+
+	if (*soc_rev == ZYNQMP_SILICON_V1)
+		gtr_dev->tx_term_fix = true;
 
 	for_each_child_of_node(np, child) {
 		struct xpsgtr_phy *gtr_phy;

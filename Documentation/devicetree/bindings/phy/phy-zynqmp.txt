@@ -16,11 +16,6 @@ Required properties (controller (parent) node):
 			- lpd: Low power domain peripherals reset control
 			- fpd: Full power domain peripherals reset control
 
--xlnx,tx_termination_fix: Include fix for a functional issue in the GT. The TX
-			  termination resistance can be out of spec due to a
-			  bug in the calibration logic. This issue maybe be fixed
-			  in future silicon versions.
-
 Required nodes	:  A sub-node is required for each lane the controller
 		   provides.
 
@@ -69,7 +64,6 @@ Example:
 		reg = <0x0 0xfd400000 0x0 0x40000>, <0x0 0xfd3d0000 0x0 0x1000>,
 			<0x0 0xfd1a0000 0x0 0x1000>, <0x0 0xff5e0000 0x0 0x1000>;
 		reg-names = "serdes", "siou", "fpd", "lpd";
-		xlnx,tx_termination_fix;
 
 		lane0: lane@0 {
 			#phy-cells = <4>;
