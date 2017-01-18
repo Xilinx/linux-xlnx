@@ -966,7 +966,7 @@ static int xscaler_parse_of(struct xscaler_device *xscaler)
 	if (ret < 0)
 		return ret;
 	dev_info(xscaler->xvip.dev,
-		"Num Hori Taps %d", xscaler->num_vert_taps);
+		"Num Vert Taps %d", xscaler->num_vert_taps);
 
 	ret = of_property_read_u32(node, "xlnx,max-num-phases",
 				   &xscaler->max_num_phases);
