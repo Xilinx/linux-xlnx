@@ -372,7 +372,13 @@ xilinx_drm_mixer_set_layer_alpha(struct xilinx_drm_plane *plane,
 void
 xilinx_drm_mixer_layer_disable(struct xilinx_drm_plane *plane)
 {
-	struct xv_mixer *mixer = plane->manager->mixer;
+	struct xv_mixer *mixer;
+
+	if(plane)
+		mixer = plane->manager->mixer;
+	else
+		return;
+
 	u32 layer_id = plane->mixer_layer->id;
 	if(layer_id < XVMIX_LAYER_MASTER  || layer_id > XVMIX_LAYER_LOGO)
 		return;
@@ -384,7 +390,13 @@ xilinx_drm_mixer_layer_disable(struct xilinx_drm_plane *plane)
 void
 xilinx_drm_mixer_layer_enable(struct xilinx_drm_plane *plane)
 {
-	struct xv_mixer *mixer = plane->manager->mixer;
+	struct xv_mixer *mixer;
+
+	if(plane)
+		mixer = plane->manager->mixer;
+	else
+		return;
+
 	u32 layer_id = plane->mixer_layer->id;
 
 	if(layer_id < XVMIX_LAYER_MASTER  || layer_id > XVMIX_LAYER_LOGO) {
@@ -624,7 +636,7 @@ xilinx_drm_mixer_mark_layer_active(struct xilinx_drm_plane *plane) {
 int
 xilinx_drm_mixer_mark_layer_inactive(struct xilinx_drm_plane *plane) {
 
-	if(!plane->mixer_layer)
+	if(!plane || !plane->mixer_layer)
 		return -ENODEV;
 
 	mixer_layer_active(plane->mixer_layer) = false;

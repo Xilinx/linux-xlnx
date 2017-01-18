@@ -6,6 +6,7 @@ config DRM_XILINX
 	select DRM_GEM_CMA_HELPER
 	select DMA_ENGINE
 	select DRM_XILINX_DP_SUB
+	select DRM_XILINX_MIXER
 	help
 	  DRM display driver for Xilinx IP based pipelines.
 
@@ -24,6 +25,6 @@ config DRM_XILINX_DP_SUB
 
 config DRM_XILINX_MIXER
 	tristate "Xilinx DRM mixer driver component"
-	select DRM_XILINX
+	depends on DRM_XILINX
 	help
 	  Include support for video mixer IP into the Xilinx DRM driver

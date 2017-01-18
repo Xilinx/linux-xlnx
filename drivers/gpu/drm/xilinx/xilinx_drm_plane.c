@@ -559,6 +559,9 @@ void xilinx_drm_plane_restore(struct xilinx_drm_plane_manager *manager)
 {
 	struct xilinx_drm_plane *plane;
 	unsigned int i;
+
+	if(!manager)
+		return;
 	/*
 	 * Reinitialize property default values as they get reset by DPMS OFF
 	 * operation. User will read the correct default values later, and
@@ -566,6 +569,9 @@ void xilinx_drm_plane_restore(struct xilinx_drm_plane_manager *manager)
 	 */
 	for (i = 0; i < manager->num_planes; i++) {
 		plane = manager->planes[i];
+
+		if(!plane)
+			continue;
 
 		if(manager->mixer) {
 			xilinx_drm_mixer_mark_layer_inactive(plane);	
