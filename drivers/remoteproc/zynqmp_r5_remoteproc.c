@@ -92,13 +92,6 @@ static char *firmware1 = "r5_1_firmware";
 
 struct zynqmp_r5_rproc_pdata;
 
-/* enumerations for RPU/IPI control methods */
-enum control_method {
-	SMC = 0,
-	HVC,
-	HW,
-};
-
 /* enumerations for R5 boot device */
 enum rpu_bootmem {
 	TCM = 0,
@@ -452,7 +445,6 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 	const unsigned char *prop;
 	struct resource *res;
 	int ret = 0;
-	int method = 0;
 	char *rproc_firmware = 0;
 	struct zynqmp_r5_rproc_pdata *local;
 
@@ -493,14 +485,6 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 		goto dma_mask_fault;
 	}
 
-	prop = of_get_property(pdev->dev.of_node, "method", NULL);
-	if (!prop) {
-		dev_warn(&pdev->dev, "default method used: smc\n");
-		prop = "direct";
-	}
-
-	/* Handle direct hardware access */
-	/* (TODO: remove once RPU and IPI drivers are ready ) */
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
 		"rpu_base");
 	local->rpu_base = devm_ioremap(&pdev->dev, res->start, resource_size(res));
