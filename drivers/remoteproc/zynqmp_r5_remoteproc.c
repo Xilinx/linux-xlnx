@@ -263,6 +263,32 @@ static void r5_enable_clock(struct zynqmp_r5_rproc_pdata *pdata)
 }
 
 /**
+ * r5_request_tcm - request access to TCM
+ * @pdata: platform data
+ *
+ * Request access to TCM
+ */
+static int r5_request_tcm(struct zynqmp_r5_rproc_pdata *pdata)
+{
+	r5_enable_clock(pdata);
+	r5_reset(pdata, false);
+
+	return 0;
+}
+
+/**
+ * r5_release_tcm - release TCM
+ * @pdata: platform data
+ *
+ * Release TCM
+ */
+
+static void r5_release_tcm(struct zynqmp_r5_rproc_pdata *pdata)
+{
+	r5_reset(pdata, true);
+}
+
+/**
  * ipi_init - Initialize R5 IPI
  * @pdata: platform data
  *
