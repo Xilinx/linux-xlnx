@@ -355,7 +355,6 @@ static int zynqmp_r5_rproc_stop(struct rproc *rproc)
 	dev_dbg(dev, "%s\n", __func__);
 
 	r5_halt(local, true);
-	r5_reset(local, true);
 
 	reg_write(local->ipi_base, IDR_OFFSET, local->ipi_dest_mask);
 	reg_write(local->ipi_base, ISR_OFFSET, local->ipi_dest_mask);
