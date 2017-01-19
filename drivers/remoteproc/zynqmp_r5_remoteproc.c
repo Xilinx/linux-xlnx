@@ -302,8 +302,7 @@ static void handle_event_notified(struct work_struct *work)
 static int zynqmp_r5_rproc_start(struct rproc *rproc)
 {
 	struct device *dev = rproc->dev.parent;
-	struct platform_device *pdev = to_platform_device(dev);
-	struct zynqmp_r5_rproc_pdata *local = platform_get_drvdata(pdev);
+	struct zynqmp_r5_rproc_pdata *local = rproc->priv;
 	u32 bootaddr = 0;
 	int ret;
 
@@ -346,8 +345,7 @@ static int zynqmp_r5_rproc_start(struct rproc *rproc)
 static void zynqmp_r5_rproc_kick(struct rproc *rproc, int vqid)
 {
 	struct device *dev = rproc->dev.parent;
-	struct platform_device *pdev = to_platform_device(dev);
-	struct zynqmp_r5_rproc_pdata *local = platform_get_drvdata(pdev);
+	struct zynqmp_r5_rproc_pdata *local = rproc->priv;
 
 	dev_dbg(dev, "KICK Firmware to start send messages vqid %d\n", vqid);
 
@@ -367,8 +365,7 @@ static void zynqmp_r5_rproc_kick(struct rproc *rproc, int vqid)
 static int zynqmp_r5_rproc_stop(struct rproc *rproc)
 {
 	struct device *dev = rproc->dev.parent;
-	struct platform_device *pdev = to_platform_device(dev);
-	struct zynqmp_r5_rproc_pdata *local = platform_get_drvdata(pdev);
+	struct zynqmp_r5_rproc_pdata *local = rproc->priv;
 
 	dev_dbg(dev, "%s\n", __func__);
 
@@ -393,8 +390,7 @@ static struct rproc_ops zynqmp_r5_rproc_ops = {
 static void zynqmp_r5_rproc_init(struct rproc *rproc)
 {
 	struct device *dev = rproc->dev.parent;
-	struct platform_device *pdev = to_platform_device(dev);
-	struct zynqmp_r5_rproc_pdata *local = platform_get_drvdata(pdev);
+	struct zynqmp_r5_rproc_pdata *local = rproc->priv;
 
 	dev_dbg(dev, "%s\n", __func__);
 
@@ -408,7 +404,8 @@ static irqreturn_t r5_remoteproc_interrupt(int irq, void *dev_id)
 {
 	struct device *dev = dev_id;
 	struct platform_device *pdev = to_platform_device(dev);
-	struct zynqmp_r5_rproc_pdata *local = platform_get_drvdata(pdev);
+	struct rproc *rproc = platform_get_drvdata(pdev);
+	struct zynqmp_r5_rproc_pdata *local = rproc->priv;
 	u32 ipi_reg;
 
 	/* Check if there is a kick from R5 */
@@ -428,21 +425,26 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 	const unsigned char *prop;
 	struct resource *res;
 	int ret = 0;
-	char *rproc_firmware = 0;
 	struct zynqmp_r5_rproc_pdata *local;
+	struct rproc *rproc;
 
-	local = devm_kzalloc(&pdev->dev, sizeof(struct zynqmp_r5_rproc_pdata),
-				 GFP_KERNEL);
-	if (!local)
+	rproc = rproc_alloc(&pdev->dev, dev_name(&pdev->dev),
+		&zynqmp_r5_rproc_ops, firmware,
+		sizeof(struct zynqmp_r5_rproc_pdata));
+	if (!rproc) {
+		dev_err(&pdev->dev, "rproc allocation failed\n");
 		return -ENOMEM;
+	}
+	local = rproc->priv;
+	local->rproc = rproc;
 
-	platform_set_drvdata(pdev, local);
+	platform_set_drvdata(pdev, rproc);
 
 	/* FIXME: it may need to extend to 64/48 bit */
 	ret = dma_set_coherent_mask(&pdev->dev, DMA_BIT_MASK(32));
 	if (ret) {
 		dev_err(&pdev->dev, "dma_set_coherent_mask: %d\n", ret);
-		goto dma_mask_fault;
+		goto rproc_fault;
 	}
 
 	prop = of_get_property(pdev->dev.of_node, "core_conf", NULL);
@@ -455,17 +457,20 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 	if (!strcmp(prop, "split0")) {
 		local->rpu_mode = SPLIT;
 		local->rpu_id = 0;
+		local->ipi_dest_mask = RPU_0_IPI_MASK;
 	} else if (!strcmp(prop, "split1")) {
 		local->rpu_mode = SPLIT;
 		local->rpu_id = 1;
+		local->ipi_dest_mask = RPU_1_IPI_MASK;
 	} else if (!strcmp(prop, "lock-step")) {
 		local->rpu_mode = LOCK_STEP;
 		local->rpu_id = 0;
+		local->ipi_dest_mask = RPU_0_IPI_MASK;
 	} else {
 		dev_err(&pdev->dev, "Invalid core_conf mode provided - %s , %d\n",
 			prop, local->rpu_mode);
 		ret = -EINVAL;
-		goto dma_mask_fault;
+		goto rproc_fault;
 	}
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
@@ -474,7 +479,7 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 	if (IS_ERR(local->rpu_base)) {
 		dev_err(&pdev->dev, "Unable to map RPU I/O memory\n");
 		ret = PTR_ERR(local->rpu_base);
-		goto dma_mask_fault;
+		goto rproc_fault;
 	}
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
@@ -483,7 +488,7 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 	if (IS_ERR(local->crl_apb_base)) {
 		dev_err(&pdev->dev, "Unable to map CRL_APB I/O memory\n");
 		ret = PTR_ERR(local->crl_apb_base);
-		goto dma_mask_fault;
+		goto rproc_fault;
 	}
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "ipi");
@@ -491,7 +496,7 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 	if (IS_ERR(local->ipi_base)) {
 		pr_err("%s: Unable to map IPI\n", __func__);
 		ret = PTR_ERR(local->ipi_base);
-		goto dma_mask_fault;
+		goto rproc_fault;
 	}
 
 	/* IPI IRQ */
@@ -499,7 +504,7 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 	if (local->vring0 < 0) {
 		ret = local->vring0;
 		dev_err(&pdev->dev, "unable to find IPI IRQ\n");
-		goto dma_mask_fault;
+		goto rproc_fault;
 	}
 	ret = devm_request_irq(&pdev->dev, local->vring0,
 		r5_remoteproc_interrupt, IRQF_SHARED, dev_name(&pdev->dev),
@@ -507,25 +512,14 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 	if (ret) {
 		dev_err(&pdev->dev, "IRQ %d already allocated\n",
 			local->vring0);
-		goto dma_mask_fault;
+		goto rproc_fault;
 	}
 	dev_dbg(&pdev->dev, "vring0 irq: %d\n", local->vring0);
 
-	if (local->rpu_id == 0) {
-		local->ipi_dest_mask = RPU_0_IPI_MASK;
-		rproc_firmware = firmware;
-	} else {
-		local->ipi_dest_mask = RPU_1_IPI_MASK;
-		rproc_firmware = firmware1;
-	}
-
-	dev_dbg(&pdev->dev, "Using firmware: %s\n", rproc_firmware);
-	local->rproc = rproc_alloc(&pdev->dev, dev_name(&pdev->dev),
-		&zynqmp_r5_rproc_ops, rproc_firmware, sizeof(struct rproc));
-	if (!local->rproc) {
-		dev_err(&pdev->dev, "rproc allocation failed\n");
-		goto rproc_fault;
-	}
+	/* change firmware if the remote is RPU1*/
+	if (local->rpu_id)
+		rproc->firmware = firmware1;
+	dev_dbg(&pdev->dev, "Using firmware: %s\n", rproc->firmware);
 
 	zynqmp_r5_rproc_init(local->rproc);
 	ret = rproc_add(local->rproc);
@@ -547,12 +541,12 @@ dma_mask_fault:
 
 static int zynqmp_r5_remoteproc_remove(struct platform_device *pdev)
 {
-	struct zynqmp_r5_rproc_pdata *local = platform_get_drvdata(pdev);
+	struct rproc *rproc = platform_get_drvdata(pdev);
 
 	dev_info(&pdev->dev, "%s\n", __func__);
 
-	rproc_del(local->rproc);
-	rproc_free(local->rproc);
+	rproc_del(rproc);
+	rproc_free(rproc);
 
 	dma_release_declared_memory(&pdev->dev);
 
