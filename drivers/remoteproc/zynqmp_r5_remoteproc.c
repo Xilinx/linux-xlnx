@@ -75,9 +75,6 @@
 #define RPU_0_IPI_MASK		RPU_IPI_MASK(0)
 #define RPU_1_IPI_MASK		RPU_IPI_MASK(1)
 
-/* Store rproc for IPI handler */
-static struct platform_device *remoteprocdev[MAX_INSTANCES];
-
 /* Register access macros */
 #define reg_read(base, reg) \
 	readl(((void __iomem *)(base)) + (reg))
@@ -290,26 +287,17 @@ static void ipi_init(struct zynqmp_r5_rproc_pdata *pdata)
 	reg_write(pdata->ipi_base, IER_OFFSET, pdata->ipi_dest_mask);
 }
 
-static void handle_event(struct zynqmp_r5_rproc_pdata *local)
+static void handle_event_notified(struct work_struct *work)
 {
+	struct zynqmp_r5_rproc_pdata *local = container_of(
+				work, struct zynqmp_r5_rproc_pdata,
+				workqueue);
+
 	if (rproc_vq_interrupt(local->rproc, 0) == IRQ_NONE)
-		dev_dbg(&remoteprocdev[local->rpu_id]->dev, \
+		dev_dbg(local->rproc->dev.parent,
 			"no message found in vqid 0\n");
 }
 
-static void handle_event0(struct work_struct *work)
-{
-	struct zynqmp_r5_rproc_pdata *local = platform_get_drvdata(remoteprocdev[0]);
-
-	handle_event(local);
-}
-
-static void handle_event1(struct work_struct *work)
-{
-	struct zynqmp_r5_rproc_pdata *local = platform_get_drvdata(remoteprocdev[1]);
-
-	handle_event(local);
-}
 
 static int zynqmp_r5_rproc_start(struct rproc *rproc)
 {
@@ -320,13 +308,8 @@ static int zynqmp_r5_rproc_start(struct rproc *rproc)
 	int ret;
 
 	dev_dbg(dev, "%s\n", __func__);
-	/* limit to two RPU support */
 	if (local->rpu_id == 0)
-		INIT_WORK(&local->workqueue, handle_event0);
-	else
-		INIT_WORK(&local->workqueue, handle_event1);
-
-	remoteprocdev[local->rpu_id] = pdev;
+		INIT_WORK(&local->workqueue, handle_event_notified);
 
 	/*
 	 * Use memory barrier to make sure all write memory operations
