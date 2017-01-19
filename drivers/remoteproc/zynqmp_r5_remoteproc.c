@@ -465,13 +465,13 @@ static int zynqmp_r5_rproc_init(struct rproc *rproc)
 {
 	struct device *dev = rproc->dev.parent;
 	struct zynqmp_r5_rproc_pdata *local = rproc->priv;
+	int ret;
 
 	dev_dbg(dev, "%s\n", __func__);
 
-	r5_mode_config(local);
-	r5_halt(local, true);
-	r5_reset(local, false);
-	r5_enable_clock(local);
+	ret = r5_request_tcm(local);
+	if (ret)
+		return ret;
 
 	return zynqmp_r5_rproc_add_mems(local);
 }
@@ -654,6 +654,8 @@ static int zynqmp_r5_remoteproc_remove(struct platform_device *pdev)
 			gen_pool_free((struct gen_pool *)mem->priv,
 				      (unsigned long)mem->va, mem->len);
 	}
+
+	r5_release_tcm(local);
 
 	rproc_free(rproc);
 
