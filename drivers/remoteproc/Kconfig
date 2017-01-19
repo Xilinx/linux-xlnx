@@ -141,7 +141,7 @@ config ZYNQMP_R5_REMOTEPROC
 	tristate "ZynqMP_r5 remoteproc support"
 	depends on ARM64
 	select REMOTEPROC
-	select RPMSG
+	select RPMSG_VIRTIO
 	help
 	  Say y here to support ZynqMP R5 remote processors via the remote
 	  processor framework.
