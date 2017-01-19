@@ -149,7 +149,7 @@ static int get_firmware_entry_addr(struct zynqmp_r5_rproc_pdata *pdata,
 }
 
 /**
- * r5_boot_addr_config - configure the boot address of R5:w
+ * r5_boot_addr_config - configure the boot address of R5
  * @pdata: platform data
  *
  * This function will set the boot address based on if the
