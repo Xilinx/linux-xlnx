@@ -262,13 +262,11 @@ static struct vring_desc *alloc_indirect(struct virtqueue *_vq,
 static inline void vring_desc_set(struct virtio_device *vdev,
 				  struct vring_desc *desc,
 				  struct scatterlist *sg,
-				  unsigned int flags,
-				  bool dma)
+				  unsigned int flags)
 {
 	desc->flags = cpu_to_virtio16(vdev, flags);
-	desc->addr = cpu_to_virtio64(vdev,
-				     dma ? sg_dma_address(sg) : sg_phys(sg));
-	desc->len = cpu_to_virtio32(vdev, dma ? sg_dma_len(sg) : sg->length);
+	desc->addr = cpu_to_virtio64(vdev, sg_phys(sg));
+	desc->len = cpu_to_virtio32(vdev, sg->length);
 }
 
 static inline int virtqueue_add(struct virtqueue *_vq,
@@ -277,8 +275,7 @@ static inline int virtqueue_add(struct virtqueue *_vq,
 				unsigned int out_sgs,
 				unsigned int in_sgs,
 				void *data,
-				gfp_t gfp,
-				bool dma)
+				gfp_t gfp)
 {
 	struct vring_virtqueue *vq = to_vvq(_vq);
 	struct scatterlist *sg;
@@ -316,7 +313,7 @@ static inline int virtqueue_add(struct virtqueue *_vq,
 
 	/* If the host supports indirect descriptor tables, and we have multiple
 	 * buffers, then go indirect. FIXME: tune this threshold */
-	if (!dma && vq->indirect && total_sg > 1 && vq->vq.num_free)
+	if (vq->indirect && total_sg > 1 && vq->vq.num_free)
 		desc = alloc_indirect(_vq, total_sg, gfp);
 	else
 		desc = NULL;
@@ -351,7 +348,7 @@ static inline int virtqueue_add(struct virtqueue *_vq,
 	for (n = 0; n < out_sgs; n++) {
 		for (sg = sgs[n]; sg; sg = sg_next(sg)) {
 			vring_desc_set(_vq->vdev, desc + i, sg,
-				       VRING_DESC_F_NEXT, dma);
+				       VRING_DESC_F_NEXT);
 			prev = i;
 			i = virtio16_to_cpu(_vq->vdev, desc[i].next);
 		}
@@ -359,8 +356,7 @@ static inline int virtqueue_add(struct virtqueue *_vq,
 	for (; n < (out_sgs + in_sgs); n++) {
 		for (sg = sgs[n]; sg; sg = sg_next(sg)) {
 			vring_desc_set(_vq->vdev, desc + i, sg,
-				       VRING_DESC_F_NEXT | VRING_DESC_F_WRITE,
-				       dma);
+				       VRING_DESC_F_NEXT | VRING_DESC_F_WRITE);
 			prev = i;
 			i = virtio16_to_cpu(_vq->vdev, desc[i].next);
 		}
@@ -467,8 +463,7 @@ int virtqueue_add_sgs(struct virtqueue *_vq,
 		for (sg = sgs[i]; sg; sg = sg_next(sg))
 			total_sg++;
 	}
-	return virtqueue_add(_vq, sgs, total_sg, out_sgs, in_sgs, data, gfp,
-			     false);
+	return virtqueue_add(_vq, sgs, total_sg, out_sgs, in_sgs, data, gfp);
 }
 EXPORT_SYMBOL_GPL(virtqueue_add_sgs);
 
@@ -490,7 +485,7 @@ int virtqueue_add_outbuf(struct virtqueue *vq,
 			 void *data,
 			 gfp_t gfp)
 {
-	return virtqueue_add(vq, &sg, num, 1, 0, data, gfp, false);
+	return virtqueue_add(vq, &sg, num, 1, 0, data, gfp);
 }
 EXPORT_SYMBOL_GPL(virtqueue_add_outbuf);
 
@@ -512,7 +507,7 @@ int virtqueue_add_inbuf(struct virtqueue *vq,
 			void *data,
 			gfp_t gfp)
 {
-	return virtqueue_add(vq, &sg, num, 0, 1, data, gfp, false);
+	return virtqueue_add(vq, &sg, num, 0, 1, data, gfp);
 }
 EXPORT_SYMBOL_GPL(virtqueue_add_inbuf);
 
