@@ -446,20 +446,18 @@ unmap_release:
  * @in_num: the number of scatterlists which are writable (after readable ones)
  * @data: the token identifying the buffer.
  * @gfp: how to do memory allocations (if necessary).
- * @dma: Use DMA mapped scatterlists. (Only for remoteproc/rpmsg).
  *
  * Caller must ensure we don't call this with other virtqueue operations
  * at the same time (except where noted).
  *
  * Returns zero or a negative error (ie. ENOSPC, ENOMEM, EIO).
  */
-int __virtqueue_add_sgs(struct virtqueue *_vq,
-			struct scatterlist *sgs[],
-			unsigned int out_sgs,
-			unsigned int in_sgs,
-			void *data,
-			gfp_t gfp,
-			bool dma)
+int virtqueue_add_sgs(struct virtqueue *_vq,
+		      struct scatterlist *sgs[],
+		      unsigned int out_sgs,
+		      unsigned int in_sgs,
+		      void *data,
+		      gfp_t gfp)
 {
 	unsigned int i, total_sg = 0;
 
@@ -470,18 +468,7 @@ int __virtqueue_add_sgs(struct virtqueue *_vq,
 			total_sg++;
 	}
 	return virtqueue_add(_vq, sgs, total_sg, out_sgs, in_sgs, data, gfp,
-			     dma);
-}
-EXPORT_SYMBOL_GPL(__virtqueue_add_sgs);
-
-int virtqueue_add_sgs(struct virtqueue *_vq,
-		      struct scatterlist *sgs[],
-		      unsigned int out_sgs,
-		      unsigned int in_sgs,
-		      void *data,
-		      gfp_t gfp)
-{
-	return __virtqueue_add_sgs(_vq, sgs, out_sgs, in_sgs, data, gfp, false);
+			     false);
 }
 EXPORT_SYMBOL_GPL(virtqueue_add_sgs);
 
