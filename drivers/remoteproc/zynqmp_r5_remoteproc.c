@@ -33,6 +33,8 @@
 #include <linux/slab.h>
 #include <linux/cpu.h>
 #include <linux/delay.h>
+#include <linux/list.h>
+#include <linux/genalloc.h>
 
 #include "remoteproc_internal.h"
 
@@ -83,6 +85,9 @@
 
 #define DEFAULT_FIRMWARE_NAME	"rproc-rpu-fw"
 
+/* Maximum on chip memories used by the driver*/
+#define MAX_ON_CHIP_MEMS        32
+
 /* Module parameter */
 static char *firmware = "r5_0_firmware";
 static char *firmware1 = "r5_1_firmware";
@@ -99,6 +104,12 @@ enum rpu_bootmem {
 enum rpu_core_conf {
 	LOCK_STEP = 0,
 	SPLIT,
+};
+
+/* On-chip memory pool element */
+struct mem_pool_st {
+	struct list_head node;
+	struct gen_pool *pool;
 };
 
 /**
@@ -122,6 +133,8 @@ struct zynqmp_r5_rproc_pdata {
 	void __iomem *ipi_base;
 	enum rpu_core_conf rpu_mode;
 	enum rpu_bootmem bootmem;
+	struct list_head mem_pools;
+	struct list_head mems;
 	u32 ipi_dest_mask;
 	u32 rpu_id;
 	u32 vring0;
@@ -349,17 +362,81 @@ static int zynqmp_r5_rproc_stop(struct rproc *rproc)
 	return 0;
 }
 
+static void *zynqmp_r5_rproc_da_to_va(struct rproc *rproc, u64 da, int len)
+{
+	struct rproc_mem_entry *mem;
+	void *va = 0;
+	struct zynqmp_r5_rproc_pdata *local = rproc->priv;
+
+	list_for_each_entry(mem, &local->mems, node) {
+		int offset = da - mem->da;
+
+		/* try next carveout if da is too small */
+		if (offset < 0)
+			continue;
+
+		/* try next carveout if da is too large */
+		if (offset + len > mem->len)
+			continue;
+
+		va = mem->va + offset;
+
+		break;
+	}
+	return va;
+}
+
 static struct rproc_ops zynqmp_r5_rproc_ops = {
 	.start		= zynqmp_r5_rproc_start,
 	.stop		= zynqmp_r5_rproc_stop,
 	.kick		= zynqmp_r5_rproc_kick,
+	.da_to_va       = zynqmp_r5_rproc_da_to_va,
 };
+
+static int zynqmp_r5_rproc_add_mems(struct zynqmp_r5_rproc_pdata *pdata)
+{
+	struct mem_pool_st *mem_node;
+	size_t mem_size;
+	struct gen_pool *mem_pool;
+	struct rproc_mem_entry *mem;
+	dma_addr_t dma;
+	void *va;
+	struct device *dev = pdata->rproc->dev.parent;
+
+	list_for_each_entry(mem_node, &pdata->mem_pools, node) {
+		mem_pool = mem_node->pool;
+		mem_size = gen_pool_size(mem_pool);
+		mem  = devm_kzalloc(dev, sizeof(struct rproc_mem_entry),
+				GFP_KERNEL);
+		if (!mem)
+			return -ENOMEM;
+
+		va = gen_pool_dma_alloc(mem_pool, mem_size, &dma);
+		if (!va) {
+			dev_err(dev, "Failed to allocate dma carveout mem.\n");
+			return -ENOMEM;
+		}
+		mem->priv = (void *)mem_pool;
+		mem->va = va;
+		mem->len = mem_size;
+		mem->dma = dma;
+		if ((dma & 0xFFF00000) == 0xFFE00000)
+			mem->da = (dma & 0x000FFFFF);
+		else
+			mem->da = dma;
+		dev_dbg(dev, "%s: va = %p, da = 0x%x dma = 0x%llx\n",
+			__func__, va, mem->da, mem->dma);
+		list_add_tail(&mem->node, &pdata->mems);
+	}
+	return 0;
+}
+
 
 /* Release R5 from reset and make it halted.
  * In case the firmware uses TCM, in order to load firmware to TCM,
  * will need to release R5 from reset and stay in halted state.
  */
-static void zynqmp_r5_rproc_init(struct rproc *rproc)
+static int zynqmp_r5_rproc_init(struct rproc *rproc)
 {
 	struct device *dev = rproc->dev.parent;
 	struct zynqmp_r5_rproc_pdata *local = rproc->priv;
@@ -370,6 +447,8 @@ static void zynqmp_r5_rproc_init(struct rproc *rproc)
 	r5_halt(local, true);
 	r5_reset(local, false);
 	r5_enable_clock(local);
+
+	return zynqmp_r5_rproc_add_mems(local);
 }
 
 static irqreturn_t r5_remoteproc_interrupt(int irq, void *dev_id)
@@ -399,6 +478,10 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 	int ret = 0;
 	struct zynqmp_r5_rproc_pdata *local;
 	struct rproc *rproc;
+	struct gen_pool *mem_pool = NULL;
+	struct mem_pool_st *mem_node = NULL;
+	char mem_name[16];
+	int i;
 
 	rproc = rproc_alloc(&pdev->dev, dev_name(&pdev->dev),
 		&zynqmp_r5_rproc_ops, firmware,
@@ -471,6 +554,24 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 		goto rproc_fault;
 	}
 
+	/* Find on-chip memory */
+	INIT_LIST_HEAD(&local->mem_pools);
+	INIT_LIST_HEAD(&local->mems);
+	for (i = 0; i < MAX_ON_CHIP_MEMS; i++) {
+		sprintf(mem_name, "sram_%d", i);
+		mem_pool = of_gen_pool_get(pdev->dev.of_node,
+					mem_name, 0);
+		if (mem_pool) {
+			mem_node = devm_kzalloc(&pdev->dev,
+					sizeof(struct mem_pool_st),
+					GFP_KERNEL);
+			if (!mem_node)
+				goto rproc_fault;
+			mem_node->pool = mem_pool;
+			list_add_tail(&mem_node->node, &local->mem_pools);
+		}
+	}
+
 	/* IPI IRQ */
 	local->vring0 = platform_get_irq(pdev, 0);
 	if (local->vring0 < 0) {
@@ -493,7 +594,12 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 		rproc->firmware = firmware1;
 	dev_dbg(&pdev->dev, "Using firmware: %s\n", rproc->firmware);
 
-	zynqmp_r5_rproc_init(local->rproc);
+	ret = zynqmp_r5_rproc_init(local->rproc);
+	if (ret) {
+		dev_err(&pdev->dev, "failed to init ZynqMP R5 rproc\n");
+		goto rproc_fault;
+	}
+
 	ret = rproc_add(local->rproc);
 	if (ret) {
 		dev_err(&pdev->dev, "rproc registration failed\n");
@@ -514,10 +620,19 @@ dma_mask_fault:
 static int zynqmp_r5_remoteproc_remove(struct platform_device *pdev)
 {
 	struct rproc *rproc = platform_get_drvdata(pdev);
+	struct zynqmp_r5_rproc_pdata *local = rproc->priv;
+	struct rproc_mem_entry *mem;
 
 	dev_info(&pdev->dev, "%s\n", __func__);
 
 	rproc_del(rproc);
+
+	list_for_each_entry(mem, &local->mems, node) {
+		if (mem->priv)
+			gen_pool_free((struct gen_pool *)mem->priv,
+				      (unsigned long)mem->va, mem->len);
+	}
+
 	rproc_free(rproc);
 
 	dma_release_declared_memory(&pdev->dev);
