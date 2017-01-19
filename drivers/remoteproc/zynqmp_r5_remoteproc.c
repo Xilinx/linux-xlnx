@@ -611,9 +611,6 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 rproc_fault:
 	rproc_free(local->rproc);
 
-dma_mask_fault:
-	dma_release_declared_memory(&pdev->dev);
-
 	return ret;
 }
 
@@ -634,8 +631,6 @@ static int zynqmp_r5_remoteproc_remove(struct platform_device *pdev)
 	}
 
 	rproc_free(rproc);
-
-	dma_release_declared_memory(&pdev->dev);
 
 	return 0;
 }
