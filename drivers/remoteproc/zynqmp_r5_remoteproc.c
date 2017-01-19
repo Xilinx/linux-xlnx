@@ -127,27 +127,6 @@ struct zynqmp_r5_rproc_pdata {
 	u32 vring0;
 };
 
-/* Get firmware ELF file entry address */
-static int get_firmware_entry_addr(struct zynqmp_r5_rproc_pdata *pdata,
-			u32 *elf_entry_p)
-{
-	struct elf32_hdr *ehdr = 0;
-	const struct firmware *firmware_p;
-	struct rproc *rproc = pdata->rproc;
-	int ret;
-
-	ret = request_firmware(&firmware_p, rproc->firmware, &rproc->dev);
-	if (ret < 0) {
-		dev_err(&rproc->dev, "%s: request_firmware failed: %d\n",
-			__func__, ret);
-		return ret;
-	}
-	ehdr = (struct elf32_hdr *)firmware_p->data;
-	*elf_entry_p = (unsigned int)ehdr->e_entry;
-	release_firmware(firmware_p);
-	return 0;
-}
-
 /**
  * r5_boot_addr_config - configure the boot address of R5
  * @pdata: platform data
@@ -303,8 +282,6 @@ static int zynqmp_r5_rproc_start(struct rproc *rproc)
 {
 	struct device *dev = rproc->dev.parent;
 	struct zynqmp_r5_rproc_pdata *local = rproc->priv;
-	u32 bootaddr = 0;
-	int ret;
 
 	dev_dbg(dev, "%s\n", __func__);
 	if (local->rpu_id == 0)
@@ -316,12 +293,7 @@ static int zynqmp_r5_rproc_start(struct rproc *rproc)
 	 */
 	wmb();
 	/* Set up R5 */
-	ret = get_firmware_entry_addr(local, &bootaddr);
-	if (ret < 0) {
-		dev_err(dev, "%s: failed to get RPU boot addr.\n", __func__);
-		return ret;
-	}
-	if (!bootaddr)
+	if (!rproc->bootaddr)
 		local->bootmem = TCM;
 	else
 		local->bootmem = OCM;
