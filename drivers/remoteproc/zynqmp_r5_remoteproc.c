@@ -293,10 +293,10 @@ static int zynqmp_r5_rproc_start(struct rproc *rproc)
 	 */
 	wmb();
 	/* Set up R5 */
-	if (!rproc->bootaddr)
-		local->bootmem = TCM;
-	else
+	if ((rproc->bootaddr & 0xF0000000) == 0xF0000000)
 		local->bootmem = OCM;
+	else
+		local->bootmem = TCM;
 	dev_info(dev, "RPU boot from %s.",
 		local->bootmem == OCM ? "OCM" : "TCM");
 
