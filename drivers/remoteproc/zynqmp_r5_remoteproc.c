@@ -313,6 +313,7 @@ static int zynqmp_r5_rproc_start(struct rproc *rproc)
 	dev_info(dev, "RPU boot from %s.",
 		local->bootmem == OCM ? "OCM" : "TCM");
 
+	ipi_init(local);
 	r5_mode_config(local);
 	r5_halt(local, true);
 	r5_reset(local, true);
@@ -322,7 +323,6 @@ static int zynqmp_r5_rproc_start(struct rproc *rproc)
 	r5_reset(local, false);
 	r5_halt(local, false);
 
-	ipi_init(local);
 	return 0;
 }
 
