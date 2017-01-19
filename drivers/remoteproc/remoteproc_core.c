@@ -22,10 +22,6 @@
  * GNU General Public License for more details.
  */
 
-#ifdef CONFIG_ARM64
-# define RPROC_CARVEOUT_USE_IOREMAP 1
-#endif
-
 #define pr_fmt(fmt)    "%s: " fmt, __func__
 
 #include <linux/kernel.h>
@@ -583,24 +579,6 @@ static int rproc_handle_carveout(struct rproc *rproc,
 	if (!carveout)
 		return -ENOMEM;
 
-#if RPROC_CARVEOUT_USE_IOREMAP
-	/*
-	 * WORKAROUND for handle multiple memory regions by using ioremap
-	 * This is a temporary solution until we have iommu/smmu ready
-	 */
-	va = devm_ioremap_nocache(dev, rsc->pa, rsc->len);
-	if (!va) {
-		dev_err(dev->parent, "Unable to map memory %08x size %08x\n",
-			rsc->pa, rsc->len);
-		ret = -ENOMEM;
-		goto free_carv;
-	}
-	/* In case of TCM, have to initialize the memory after ioremap,
-	 * otherwise, when loading segments to the memory, kernel will
-	 * report "Bad mode in Synchronous Abort handler detected" error.
-	 */
-	memset_io(va, 0, rsc->len);
-#else
 	va = dma_alloc_coherent(dev->parent, rsc->len, &dma, GFP_KERNEL);
 	if (!va) {
 		dev_err(dev->parent,
@@ -608,7 +586,6 @@ static int rproc_handle_carveout(struct rproc *rproc,
 		ret = -ENOMEM;
 		goto free_carv;
 	}
-#endif
 
 	dev_dbg(dev, "carveout va %p, dma %pad, len 0x%x\n",
 		va, &dma, rsc->len);
@@ -797,11 +774,8 @@ static void rproc_resource_cleanup(struct rproc *rproc)
 
 	/* clean up carveout allocations */
 	list_for_each_entry_safe(entry, tmp, &rproc->carveouts, node) {
-
-#if !RPROC_CARVEOUT_USE_IOREMAP
 		dma_free_coherent(dev->parent, entry->len, entry->va,
 				  entry->dma);
-#endif
 		list_del(&entry->node);
 		kfree(entry);
 	}
