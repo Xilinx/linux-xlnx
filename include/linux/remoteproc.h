@@ -115,8 +115,7 @@ enum fw_resource_type {
 	RSC_DEVMEM	= 1,
 	RSC_TRACE	= 2,
 	RSC_VDEV	= 3,
-	RSC_MMU		= 4,
-	RSC_LAST	= 5,
+	RSC_LAST	= 4,
 };
 
 #define FW_RSC_ADDR_ANY (-1)
