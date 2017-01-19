@@ -583,7 +583,7 @@ static int rproc_handle_carveout(struct rproc *rproc,
 	if (!carveout)
 		return -ENOMEM;
 
-#if defined(RPROC_CARVEOUT_USE_IOREMAP)
+#if RPROC_CARVEOUT_USE_IOREMAP
 	/*
 	 * WORKAROUND for handle multiple memory regions by using ioremap
 	 * This is a temporary solution until we have iommu/smmu ready
@@ -798,7 +798,7 @@ static void rproc_resource_cleanup(struct rproc *rproc)
 	/* clean up carveout allocations */
 	list_for_each_entry_safe(entry, tmp, &rproc->carveouts, node) {
 
-#if !defined(RPROC_CARVEOUT_USE_IOREMAP)
+#if !RPROC_CARVEOUT_USE_IOREMAP
 		dma_free_coherent(dev->parent, entry->len, entry->va,
 				  entry->dma);
 #endif
