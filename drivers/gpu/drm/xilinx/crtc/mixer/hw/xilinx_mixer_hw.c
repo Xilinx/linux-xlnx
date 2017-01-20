@@ -288,8 +288,6 @@ void xilinx_mixer_layer_disable(struct xv_mixer *mixer,
 {
 	u32 num_layers, curr_state;
 	void __iomem *reg_addr = mixer->reg_base_addr;
-	struct xv_mixer_layer_data *layer_data;
-	int i;
 
 	num_layers = mixer->layer_cnt;
 

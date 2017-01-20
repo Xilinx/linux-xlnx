@@ -198,8 +198,10 @@ struct xv_mixer * xilinx_drm_mixer_probe(struct device *dev,
 
 	/*Pull device out of reset */
 	mixer->reset_gpio = devm_gpiod_get_optional(dev, "reset", GPIOD_OUT_LOW);
-	if(IS_ERR(mixer->reset_gpio))
-		return(ERR_PTR(mixer->reset_gpio));
+	if(IS_ERR(mixer->reset_gpio)) {
+		dev_err(dev, "Failed to obtain reset info from dts for mixer\n");
+		return (ERR_PTR(-EINVAL));
+	}
 
 	gpiod_set_raw_value(mixer->reset_gpio, 0x1);
 
@@ -373,13 +375,14 @@ void
 xilinx_drm_mixer_layer_disable(struct xilinx_drm_plane *plane)
 {
 	struct xv_mixer *mixer;
+	u32 layer_id;
 
 	if(plane)
 		mixer = plane->manager->mixer;
 	else
 		return;
 
-	u32 layer_id = plane->mixer_layer->id;
+	layer_id = plane->mixer_layer->id;
 	if(layer_id < XVMIX_LAYER_MASTER  || layer_id > XVMIX_LAYER_LOGO)
 		return;
 
@@ -391,13 +394,14 @@ void
 xilinx_drm_mixer_layer_enable(struct xilinx_drm_plane *plane)
 {
 	struct xv_mixer *mixer;
+	u32 layer_id;
 
 	if(plane)
 		mixer = plane->manager->mixer;
 	else
 		return;
 
-	u32 layer_id = plane->mixer_layer->id;
+	layer_id = plane->mixer_layer->id;
 
 	if(layer_id < XVMIX_LAYER_MASTER  || layer_id > XVMIX_LAYER_LOGO) {
 		DRM_DEBUG_KMS("Attempt to activate invalid layer: %d\n", layer_id);
@@ -420,9 +424,10 @@ xilinx_drm_mixer_set_layer_dimensions(struct xilinx_drm_plane *plane,
 	int ret = 0;
 	struct xv_mixer *mixer = plane->manager->mixer;
 	struct xv_mixer_layer_data *layer_data; 
+	xv_mixer_layer_id layer_id;
 		
 	layer_data = plane->mixer_layer;
-	xv_mixer_layer_id layer_id = layer_data->id;
+	layer_id = layer_data->id;
 
 	if(layer_id != XVMIX_LAYER_MASTER && layer_id < XVMIX_LAYER_ALL) {
 
@@ -464,11 +469,8 @@ xilinx_drm_mixer_get_layer(struct xv_mixer *mixer, xv_mixer_layer_id layer_id)
 
 void xilinx_drm_mixer_reset(struct xv_mixer *mixer) {
 
-	struct xv_mixer_layer_data layer;
 	struct xilinx_drm_plane_manager *manager =
 		(struct xilinx_drm_plane_manager *)mixer->private;
-	int i;
-	int ret;
 	
 	gpiod_set_raw_value(mixer->reset_gpio, 0x0);
 
@@ -655,11 +657,11 @@ xilinx_drm_mixer_update_logo_img(struct xilinx_drm_plane *plane,
 	uint32_t pixel_cnt = src_h * src_w;
 	uint32_t comp_offset = 3; /* offset for each color comp in RG24 buffer */
 	uint32_t pixel_cmp_cnt = pixel_cnt * comp_offset; /* assumes RG24 */
-	uint32_t layer_pixel_fmt;
-	uint8_t r_data[pixel_cnt];
-	uint8_t g_data[pixel_cnt];
-	uint8_t b_data[pixel_cnt];
-	uint8_t *pixel_mem_data;
+	uint32_t layer_pixel_fmt = 0;
+	u8 r_data[pixel_cnt];
+	u8 g_data[pixel_cnt];
+	u8 b_data[pixel_cnt];
+	u8 *pixel_mem_data;
 	int ret, i, j;
 
 	/* ensure valid conditions for update */
@@ -668,8 +670,8 @@ xilinx_drm_mixer_update_logo_img(struct xilinx_drm_plane *plane,
 
 	if(src_h > logo_layer->hw_config.max_height ||
 	   src_w > logo_layer->hw_config.max_width) {
-		DRM_ERROR("CRTC logo/cursor layer dimensions exceed maximum permissible"
-			  " size of h:%u x w:%u\n",
+		DRM_ERROR("CRTC logo/cursor layer dimensions exceed maximum "
+			  "permissible size of h:%u x w:%u\n",
 			  logo_layer->hw_config.max_height,
 			  logo_layer->hw_config.max_width); 
 		return -EINVAL;
@@ -694,17 +696,19 @@ xilinx_drm_mixer_update_logo_img(struct xilinx_drm_plane *plane,
 	/* ensure buffer attributes have changed to indicate new logo
 	 * has been created
 	*/
-	if(buffer->vaddr == logo_layer->layer_regs.buff_addr &&
+	if((unsigned long)buffer->vaddr == logo_layer->layer_regs.buff_addr &&
 	   src_w == logo_layer->layer_regs.width &&
            src_h == logo_layer->layer_regs.height)
 		return 0;
 
 	/* cache buffer address for future comparison */
-	logo_layer->layer_regs.buff_addr = buffer->vaddr;
+	logo_layer->layer_regs.buff_addr = (unsigned long)buffer->vaddr;
 
-	pixel_mem_data = (uint8_t *)(buffer->vaddr); 	
+	pixel_mem_data = (u8 *)(buffer->vaddr); 	
 
-	for(i = 0, j = 0; i < pixel_cmp_cnt && j < pixel_cnt; i += comp_offset, j++) {
+	for(i = 0, j = 0;
+	    i < pixel_cmp_cnt && j < pixel_cnt;
+	    i += comp_offset, j++) {
 		b_data[j] = pixel_mem_data[i];
 		g_data[j] = pixel_mem_data[i+1];
 		r_data[j] = pixel_mem_data[i+2];
@@ -712,7 +716,7 @@ xilinx_drm_mixer_update_logo_img(struct xilinx_drm_plane *plane,
 
 	ret = xilinx_mixer_logo_load(plane->manager->mixer,
 				     src_w, src_h,
-				     &r_data, &g_data, &b_data); 
+				     &(r_data[0]), &(g_data[0]), &(b_data[0])); 
 	
 	return ret;
 }
