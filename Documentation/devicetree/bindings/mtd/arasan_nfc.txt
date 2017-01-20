@@ -25,10 +25,16 @@ Example:
 		interrupt-parent = <&gic>;
 		interrupts = <0 14 4>;
 		arasan,has-mdma;
-		num-cs = <1>;
-		partition@0 {
-			label = "u-boot";
-			reg = <0x0 0x0 0x1000000>;
+		#address-cells = <1>;
+		#size-cells = <0>
+
+		nand@0 {
+			reg = <0>;
+			partition@0 {
+				label = "filesystem";
+				reg = <0x0 0x0 0x400000>;
+                        };
+			(...)
 		};
-		(...)
+
 	};
