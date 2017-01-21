@@ -1271,10 +1271,10 @@ static void xilinx_dma_start_transfer(struct xilinx_dma_chan *chan)
 	if (chan->err)
 		return;
 
-	if (list_empty(&chan->pending_list))
+	if (!chan->idle)
 		return;
 
-	if (!chan->idle)
+	if (list_empty(&chan->pending_list))
 		return;
 
 	head_desc = list_first_entry(&chan->pending_list,
