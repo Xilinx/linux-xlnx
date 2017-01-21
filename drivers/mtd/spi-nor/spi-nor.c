@@ -76,6 +76,10 @@ struct flash_info {
 					 * bit. Must be used with
 					 * SPI_NOR_HAS_LOCK.
 						*/
+#define	SST_GLOBAL_PROT_UNLK	0x100	/* Unlock the Global protection for
+					 * sst flashes
+					 */
+
 };
 
 #define JEDEC_MFR(info)	((info)->id[0])
@@ -1001,6 +1005,7 @@ static const struct flash_info spi_nor_ids[] = {
 	{ "s25fl132k",  INFO(0x014016,      0,  64 * 1024,  64, SECT_4K) },
 	{ "s25fl164k",  INFO(0x014017,      0,  64 * 1024, 128, SECT_4K) },
 	{ "s25fl204k",  INFO(0x014013,      0,  64 * 1024,   8, SECT_4K | SPI_NOR_DUAL_READ) },
+	{ "sst26wf016B", INFO(0xbf2651, 0, 64 * 1024, 32, SECT_4K | SST_GLOBAL_PROT_UNLK) },
 
 	/* SST -- large erase sizes are "overlays", "sectors" are 4K */
 	{ "sst25vf040b", INFO(0xbf258d, 0, 64 * 1024,  8, SECT_4K | SST_WRITE) },
@@ -1471,6 +1476,11 @@ int spi_nor_scan(struct spi_nor *nor, const char *name, enum read_mode mode)
 	    info->flags & SPI_NOR_HAS_LOCK) {
 		write_enable(nor);
 		write_sr(nor, 0);
+		if (info->flags & SST_GLOBAL_PROT_UNLK) {
+			write_enable(nor);
+			/* Unlock global write protection bits */
+			nor->write_reg(nor, GLOBAL_BLKPROT_UNLK, NULL, 0);
+		}
 		spi_nor_wait_till_ready(nor);
 	}
 
