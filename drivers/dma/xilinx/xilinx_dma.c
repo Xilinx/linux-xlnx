@@ -324,6 +324,7 @@ struct xilinx_dma_tx_descriptor {
  * @genlock: Support genlock mode
  * @err: Channel has errors
  * @idle: Check for channel idle
+ * @has_fstoreen: Check for frame store configuration
  * @tasklet: Cleanup work after irq
  * @config: Device configuration info
  * @flush_on_fsync: Flush on Frame sync
@@ -359,6 +360,7 @@ struct xilinx_dma_chan {
 	bool genlock;
 	bool err;
 	bool idle;
+	bool has_fstoreen;
 	struct tasklet_struct tasklet;
 	struct xilinx_vdma_config config;
 	bool flush_on_fsync;
@@ -1049,6 +1051,27 @@ static void xilinx_vdma_start_transfer(struct xilinx_dma_chan *chan)
 	if (list_empty(&chan->pending_list))
 		return;
 
+	/*
+	 * Note: When VDMA is built with default h/w configuration
+	 * User should submit frames upto H/W configured.
+	 * If users submits less than h/w configured
+	 * VDMA engine tries to write to a invalid location
+	 * Results undefined behaviour/memory corruption.
+	 *
+	 * If user would like to submit frames less than h/w capable
+	 * On S2MM side please enable debug info 13 at the h/w level
+	 * On MM2S side please enable debug info 6 at the h/w level
+	 * It will allows the frame buffers numbers to be modified at runtime.
+	 */
+	if (!chan->has_fstoreen &&
+	     chan->desc_pendingcount < chan->num_frms) {
+		dev_warn(chan->dev, "Frame Store Configuration is not enabled at the\n");
+		dev_warn(chan->dev, "H/w level enable Debug info 13 or 6 at the h/w level\n");
+		dev_warn(chan->dev, "OR Submit the frames upto h/w Capable\n\r");
+
+		return;
+	}
+
 	desc = list_first_entry(&chan->pending_list,
 				struct xilinx_dma_tx_descriptor, node);
 	tail_desc = list_last_entry(&chan->pending_list,
@@ -1111,25 +1134,38 @@ static void xilinx_vdma_start_transfer(struct xilinx_dma_chan *chan)
 	if (chan->has_sg) {
 		dma_ctrl_write(chan, XILINX_DMA_REG_TAILDESC,
 				tail_segment->phys);
+		list_splice_tail_init(&chan->pending_list, &chan->active_list);
+		chan->desc_pendingcount = 0;
 	} else {
 		struct xilinx_vdma_tx_segment *segment, *last = NULL;
-		int i = 0;
+		int i = 0, j = 0;
 
 		if (chan->desc_submitcount < chan->num_frms)
 			i = chan->desc_submitcount;
 
-		list_for_each_entry(segment, &desc->segments, node) {
-			if (chan->ext_addr)
-				vdma_desc_write_64(chan,
-					XILINX_VDMA_REG_START_ADDRESS_64(i++),
-					segment->hw.buf_addr,
-					segment->hw.buf_addr_msb);
-			else
-				vdma_desc_write(chan,
-					XILINX_VDMA_REG_START_ADDRESS(i++),
-					segment->hw.buf_addr);
+		for (j = 0; j < chan->num_frms; ) {
+			list_for_each_entry(segment, &desc->segments, node) {
+				if (chan->ext_addr)
+					vdma_desc_write_64(chan,
+					  XILINX_VDMA_REG_START_ADDRESS_64(i++),
+					  segment->hw.buf_addr,
+					  segment->hw.buf_addr_msb);
+				else
+					vdma_desc_write(chan,
+					    XILINX_VDMA_REG_START_ADDRESS(i++),
+					    segment->hw.buf_addr);
 
-			last = segment;
+				last = segment;
+			}
+			list_del(&desc->node);
+			list_add_tail(&desc->node, &chan->active_list);
+			j++;
+			if (list_empty(&chan->pending_list) ||
+			    (i == chan->num_frms))
+				break;
+			desc = list_first_entry(&chan->pending_list,
+						struct xilinx_dma_tx_descriptor,
+						node);
 		}
 
 		if (!last)
@@ -1140,20 +1176,14 @@ static void xilinx_vdma_start_transfer(struct xilinx_dma_chan *chan)
 		vdma_desc_write(chan, XILINX_DMA_REG_FRMDLY_STRIDE,
 				last->hw.stride);
 		vdma_desc_write(chan, XILINX_DMA_REG_VSIZE, last->hw.vsize);
+
+		chan->desc_submitcount += j;
+		chan->desc_pendingcount -= j;
+		if (chan->desc_submitcount == chan->num_frms)
+			chan->desc_submitcount = 0;
 	}
 
 	chan->idle = false;
-	if (!chan->has_sg) {
-		list_del(&desc->node);
-		list_add_tail(&desc->node, &chan->active_list);
-		chan->desc_submitcount++;
-		chan->desc_pendingcount--;
-		if (chan->desc_submitcount == chan->num_frms)
-			chan->desc_submitcount = 0;
-	} else {
-		list_splice_tail_init(&chan->pending_list, &chan->active_list);
-		chan->desc_pendingcount = 0;
-	}
 }
 
 /**
@@ -1386,6 +1416,7 @@ static int xilinx_dma_reset(struct xilinx_dma_chan *chan)
 
 	chan->err = false;
 	chan->idle = true;
+	chan->desc_submitcount = 0;
 
 	return err;
 }
@@ -2355,6 +2386,7 @@ static int xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 	has_dre = of_property_read_bool(node, "xlnx,include-dre");
 
 	chan->genlock = of_property_read_bool(node, "xlnx,genlock-mode");
+	chan->has_fstoreen = of_property_read_bool(node, "xlnx,fstore-enable");
 
 	err = of_property_read_u32(node, "xlnx,datawidth", &value);
 	if (err) {
