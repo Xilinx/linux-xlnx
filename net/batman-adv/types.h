@@ -330,7 +330,9 @@ struct batadv_orig_node {
 	DECLARE_BITMAP(bcast_bits, BATADV_TQ_LOCAL_WINDOW_SIZE);
 	u32 last_bcast_seqno;
 	struct hlist_head neigh_list;
-	/* neigh_list_lock protects: neigh_list and router */
+	/* neigh_list_lock protects: neigh_list, ifinfo_list,
+	 * last_bonding_candidate and router
+	 */
 	spinlock_t neigh_list_lock;
 	struct hlist_node hash_entry;
 	struct batadv_priv *bat_priv;
@@ -657,6 +659,9 @@ struct batadv_priv_tt {
  * @num_requests: number of bla requests in flight
  * @claim_hash: hash table containing mesh nodes this host has claimed
  * @backbone_hash: hash table containing all detected backbone gateways
+ * @loopdetect_addr: MAC address used for own loopdetection frames
+ * @loopdetect_lasttime: time when the loopdetection frames were sent
+ * @loopdetect_next: how many periods to wait for the next loopdetect process
  * @bcast_duplist: recently received broadcast packets array (for broadcast
  *  duplicate suppression)
  * @bcast_duplist_curr: index of last broadcast packet added to bcast_duplist
@@ -668,6 +673,9 @@ struct batadv_priv_bla {
 	atomic_t num_requests;
 	struct batadv_hashtable *claim_hash;
 	struct batadv_hashtable *backbone_hash;
+	u8 loopdetect_addr[ETH_ALEN];
+	unsigned long loopdetect_lasttime;
+	atomic_t loopdetect_next;
 	struct batadv_bcast_duplist_entry bcast_duplist[BATADV_DUPLIST_SIZE];
 	int bcast_duplist_curr;
 	/* protects bcast_duplist & bcast_duplist_curr */
@@ -1012,6 +1020,7 @@ struct batadv_socket_packet {
  *  resolved
  * @crc: crc16 checksum over all claims
  * @crc_lock: lock protecting crc
+ * @report_work: work struct for reporting detected loops
  * @refcount: number of contexts the object is used
  * @rcu: struct used for freeing in an RCU-safe manner
  */
@@ -1025,6 +1034,7 @@ struct batadv_bla_backbone_gw {
 	atomic_t request_sent;
 	u16 crc;
 	spinlock_t crc_lock; /* protects crc */
+	struct work_struct report_work;
 	struct kref refcount;
 	struct rcu_head rcu;
 };
@@ -1034,6 +1044,7 @@ struct batadv_bla_backbone_gw {
  * @addr: mac address of claimed non-mesh client
  * @vid: vlan id this client was detected on
  * @backbone_gw: pointer to backbone gw claiming this client
+ * @backbone_lock: lock protecting backbone_gw pointer
  * @lasttime: last time we heard of claim (locals only)
  * @hash_entry: hlist node for batadv_priv_bla::claim_hash
  * @refcount: number of contexts the object is used
@@ -1043,6 +1054,7 @@ struct batadv_bla_claim {
 	u8 addr[ETH_ALEN];
 	unsigned short vid;
 	struct batadv_bla_backbone_gw *backbone_gw;
+	spinlock_t backbone_lock; /* protects backbone_gw */
 	unsigned long lasttime;
 	struct hlist_node hash_entry;
 	struct rcu_head rcu;
@@ -1129,11 +1141,13 @@ struct batadv_tt_change_node {
  * struct batadv_tt_req_node - data to keep track of the tt requests in flight
  * @addr: mac address address of the originator this request was sent to
  * @issued_at: timestamp used for purging stale tt requests
+ * @refcount: number of contexts the object is used by
  * @list: list node for batadv_priv_tt::req_list
  */
 struct batadv_tt_req_node {
 	u8 addr[ETH_ALEN];
 	unsigned long issued_at;
+	struct kref refcount;
 	struct hlist_node list;
 };
 

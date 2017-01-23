@@ -488,7 +488,7 @@ xilinx_drm_fb_create(struct drm_device *drm, struct drm_file *file_priv,
 		unsigned int height = mode_cmd->height / (i ? vsub : 1);
 		unsigned int min_size;
 
-		obj = drm_gem_object_lookup(drm, file_priv,
+		obj = drm_gem_object_lookup(file_priv,
 					    mode_cmd->handles[i]);
 		if (!obj) {
 			DRM_ERROR("Failed to lookup GEM object\n");

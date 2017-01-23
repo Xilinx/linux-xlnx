@@ -499,7 +499,7 @@ static const char* ipi_desc_strings[] __tracepoint_string =
 			[IPI_CALL_FUNC] = IPI_DESC_STR(IPI_CALL_FUNC),
 			[IPI_CPU_STOP] = IPI_DESC_STR(IPI_CPU_STOP),
 			[IPI_IRQ_WORK] = IPI_DESC_STR(IPI_IRQ_WORK),
-			[IPI_COMPLETION] = IPI_DESC_STR(IPI_COMPLETION)
+			[IPI_COMPLETION] = IPI_DESC_STR(IPI_COMPLETION),
 		};
 
 
@@ -525,7 +525,7 @@ static struct ipi ipi_types[NR_IPI] = {
 
 static void smp_cross_call(const struct cpumask *target, unsigned int ipinr)
 {
-	trace_ipi_raise(target, ipi_desc_strings[ipinr]);
+	trace_ipi_raise_rcuidle(target, ipi_desc_strings[ipinr]);
 	__smp_cross_call(target, ipinr);
 }
 

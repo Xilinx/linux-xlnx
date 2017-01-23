@@ -45,6 +45,7 @@ static const char *perf_event__names[] = {
 	[PERF_RECORD_STAT]			= "STAT",
 	[PERF_RECORD_STAT_ROUND]		= "STAT_ROUND",
 	[PERF_RECORD_EVENT_UPDATE]		= "EVENT_UPDATE",
+	[PERF_RECORD_TIME_CONV]			= "TIME_CONV",
 };
 
 const char *perf_event__name(unsigned int id)
@@ -672,6 +673,8 @@ int perf_event__synthesize_kernel_mmap(struct perf_tool *tool,
 	int err;
 	union perf_event *event;
 
+	if (symbol_conf.kptr_restrict)
+		return -1;
 	if (map == NULL)
 		return -1;
 

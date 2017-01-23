@@ -218,8 +218,7 @@ int sock_create_lite(int family, int type, int proto, struct socket **res);
 struct socket *sock_alloc(void);
 void sock_release(struct socket *sock);
 int sock_sendmsg(struct socket *sock, struct msghdr *msg);
-int sock_recvmsg(struct socket *sock, struct msghdr *msg, size_t size,
-		 int flags);
+int sock_recvmsg(struct socket *sock, struct msghdr *msg, int flags);
 struct file *sock_alloc_file(struct socket *sock, int flags, const char *dname);
 struct socket *sockfd_lookup(int fd, int *err);
 struct socket *sock_from_file(struct file *file, int *err);
@@ -252,7 +251,8 @@ do {									\
 	DEFINE_DYNAMIC_DEBUG_METADATA(descriptor, fmt);			\
 	if (unlikely(descriptor.flags & _DPRINTK_FLAGS_PRINT) &&	\
 	    net_ratelimit())						\
-		__dynamic_pr_debug(&descriptor, fmt, ##__VA_ARGS__);	\
+		__dynamic_pr_debug(&descriptor, pr_fmt(fmt),		\
+		                   ##__VA_ARGS__);			\
 } while (0)
 #elif defined(DEBUG)
 #define net_dbg_ratelimited(fmt, ...)				\

@@ -121,10 +121,13 @@ static int __tcf_ipt_init(struct tc_action_net *tn, struct nlattr *nla,
 	}
 
 	td = (struct xt_entry_target *)nla_data(tb[TCA_IPT_TARG]);
-	if (nla_len(tb[TCA_IPT_TARG]) < td->u.target_size)
+	if (nla_len(tb[TCA_IPT_TARG]) < td->u.target_size) {
+		if (exists)
+			tcf_hash_release(a, bind);
 		return -EINVAL;
+	}
 
-	if (!tcf_hash_check(tn, index, a, bind)) {
+	if (!exists) {
 		ret = tcf_hash_create(tn, index, est, a, sizeof(*ipt), bind,
 				      false);
 		if (ret)
@@ -280,7 +283,7 @@ static int tcf_ipt_dump(struct sk_buff *skb, struct tc_action *a, int bind, int 
 	tm.install = jiffies_to_clock_t(jiffies - ipt->tcf_tm.install);
 	tm.lastuse = jiffies_to_clock_t(jiffies - ipt->tcf_tm.lastuse);
 	tm.expires = jiffies_to_clock_t(ipt->tcf_tm.expires);
-	if (nla_put(skb, TCA_IPT_TM, sizeof (tm), &tm))
+	if (nla_put_64bit(skb, TCA_IPT_TM, sizeof(tm), &tm, TCA_IPT_PAD))
 		goto nla_put_failure;
 	kfree(t);
 	return skb->len;

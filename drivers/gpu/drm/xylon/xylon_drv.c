@@ -89,7 +89,6 @@ static int xylon_drm_load(struct drm_device *dev, unsigned long flags)
 		DRM_ERROR("failed initialize vblank\n");
 		goto err_out;
 	}
-	dev->vblank_disable_allowed = 1;
 
 	ret = xylon_drm_irq_install(dev);
 	if (ret < 0) {

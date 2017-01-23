@@ -43,7 +43,7 @@ void rds_tcp_state_change(struct sock *sk)
 	struct rds_connection *conn;
 	struct rds_tcp_connection *tc;
 
-	read_lock(&sk->sk_callback_lock);
+	read_lock_bh(&sk->sk_callback_lock);
 	conn = sk->sk_user_data;
 	if (!conn) {
 		state_change = sk->sk_state_change;
@@ -54,22 +54,22 @@ void rds_tcp_state_change(struct sock *sk)
 
 	rdsdebug("sock %p state_change to %d\n", tc->t_sock, sk->sk_state);
 
-	switch(sk->sk_state) {
-		/* ignore connecting sockets as they make progress */
-		case TCP_SYN_SENT:
-		case TCP_SYN_RECV:
-			break;
-		case TCP_ESTABLISHED:
-			rds_connect_complete(conn);
-			break;
-		case TCP_CLOSE_WAIT:
-		case TCP_CLOSE:
-			rds_conn_drop(conn);
-		default:
-			break;
+	switch (sk->sk_state) {
+	/* ignore connecting sockets as they make progress */
+	case TCP_SYN_SENT:
+	case TCP_SYN_RECV:
+		break;
+	case TCP_ESTABLISHED:
+		rds_connect_path_complete(conn, RDS_CONN_CONNECTING);
+		break;
+	case TCP_CLOSE_WAIT:
+	case TCP_CLOSE:
+		rds_conn_drop(conn);
+	default:
+		break;
 	}
 out:
-	read_unlock(&sk->sk_callback_lock);
+	read_unlock_bh(&sk->sk_callback_lock);
 	state_change(sk);
 }
 

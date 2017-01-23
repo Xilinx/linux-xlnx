@@ -12,6 +12,9 @@ menuconfig RESET_CONTROLLER
 
 	  If unsure, say no.
 
+config RESET_OXNAS
+	bool
+
 if RESET_CONTROLLER
 
 config ZYNQMP_RESET_CONTROLLER

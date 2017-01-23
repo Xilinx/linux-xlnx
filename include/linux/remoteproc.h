@@ -366,6 +366,8 @@ enum rproc_state {
 /**
  * enum rproc_crash_type - remote processor crash types
  * @RPROC_MMUFAULT:	iommu fault
+ * @RPROC_WATCHDOG:	watchdog bite
+ * @RPROC_FATAL_ERROR	fatal error
  *
  * Each element of the enum is used as an array index. So that, the value of
  * the elements should be always something sane.
@@ -374,6 +376,8 @@ enum rproc_state {
  */
 enum rproc_crash_type {
 	RPROC_MMUFAULT,
+	RPROC_WATCHDOG,
+	RPROC_FATAL_ERROR,
 };
 
 /**
