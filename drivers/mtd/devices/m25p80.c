@@ -165,6 +165,7 @@ static ssize_t m25p80_read(struct spi_nor *nor, loff_t from, size_t len,
 
 	flash->command[0] = nor->read_opcode;
 	m25p_addr2cmd(nor, from, flash->command);
+
 	t[0].tx_buf = flash->command;
 	t[0].len = m25p_cmdsz(nor) + dummy;
 	t[0].dummy = nor->read_dummy;

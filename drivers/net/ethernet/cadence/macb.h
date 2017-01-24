@@ -841,7 +841,8 @@ struct macb_config {
 	u32			caps;
 	unsigned int		dma_burst_length;
 	int	(*clk_init)(struct platform_device *pdev, struct clk **pclk,
-			    struct clk **hclk, struct clk **tx_clk);
+			    struct clk **hclk, struct clk **tx_clk,
+			    struct clk **rx_clk);
 	int	(*init)(struct platform_device *pdev);
 	int	jumbo_max_len;
 };
@@ -890,6 +891,7 @@ struct macb {
 	struct clk		*pclk;
 	struct clk		*hclk;
 	struct clk		*tx_clk;
+	struct clk		*rx_clk;
 	struct net_device	*dev;
 	struct napi_struct	napi;
 	struct net_device_stats	stats;

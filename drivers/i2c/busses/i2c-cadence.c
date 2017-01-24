@@ -1045,10 +1045,8 @@ static int cdns_i2c_probe(struct platform_device *pdev)
 		 id->i2c_clk / 1000, (unsigned long)r_mem->start, id->irq);
 
 	ret = i2c_add_adapter(&id->adap);
-	if (ret < 0) {
-		dev_err(&pdev->dev, "reg adap failed: %d\n", ret);
+	if (ret < 0)
 		goto err_clk_dis;
-	}
 
 	return 0;
 
