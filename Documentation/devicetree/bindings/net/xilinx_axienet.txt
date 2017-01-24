@@ -38,6 +38,7 @@ Optional properties:
 - dma-coherent		: For ACP port designs to allocate cohernet memory.
 - xlnx,eth-hasnobuf	: Used when 1G MAC is configured in non processor mode.
 - xlnx,rxtsfifo 	: Configures the axi fifo for receive timestamping.
+- xlnx,include-dre	: Tells whether DMA h/w is configured with DRE or not.
 
 Example:
 

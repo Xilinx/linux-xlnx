@@ -258,6 +258,18 @@ static int axienet_dma_bd_init(struct net_device *ndev)
 				      ((i + 1) % TX_BD_NUM);
 	}
 
+	if (!lp->eth_hasdre) {
+		lp->tx_bufs = dma_zalloc_coherent(ndev->dev.parent,
+						  XAE_MAX_PKT_LEN * TX_BD_NUM,
+						  &lp->tx_bufs_dma,
+						  GFP_KERNEL);
+		if (!lp->tx_bufs)
+			goto out;
+
+		for (i = 0; i < TX_BD_NUM; i++)
+			lp->tx_buf[i] = &lp->tx_bufs[i * XAE_MAX_PKT_LEN];
+	}
+
 	for (i = 0; i < RX_BD_NUM; i++) {
 		lp->rx_bd_v[i].next = lp->rx_bd_p +
 				      sizeof(*lp->rx_bd_v) *
@@ -1044,8 +1056,23 @@ static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	}
 
 	cur_p->cntrl = (skb_headlen(skb) | XAXIDMA_BD_CTRL_TXSOF_MASK) + pad;
-	cur_p->phys = dma_map_single(ndev->dev.parent, skb->data,
-				     skb_headlen(skb), DMA_TO_DEVICE);
+	if (!lp->eth_hasdre &&
+	    (((phys_addr_t)skb->data & 0x3) || (num_frag > 0))) {
+		skb_copy_and_csum_dev(skb, lp->tx_buf[lp->tx_bd_tail]);
+
+		cur_p->phys = lp->tx_bufs_dma +
+			      (lp->tx_buf[lp->tx_bd_tail] - lp->tx_bufs);
+
+		if (num_frag > 0) {
+			pad = skb_pagelen(skb) - skb_headlen(skb);
+			cur_p->cntrl = (skb_headlen(skb) |
+					XAXIDMA_BD_CTRL_TXSOF_MASK) + pad;
+		}
+		goto out;
+	} else {
+		cur_p->phys = dma_map_single(ndev->dev.parent, skb->data,
+					     skb_headlen(skb), DMA_TO_DEVICE);
+	}
 	cur_p->tx_desc_mapping = DESC_DMA_MAP_SINGLE;
 
 	for (ii = 0; ii < num_frag; ii++) {
@@ -1063,6 +1090,7 @@ static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 		cur_p->tx_desc_mapping = DESC_DMA_MAP_PAGE;
 	}
 
+out:
 	cur_p->cntrl |= XAXIDMA_BD_CTRL_TXEOF_MASK;
 	cur_p->tx_skb = (phys_addr_t)skb;
 
@@ -2387,6 +2415,7 @@ static int axienet_probe(struct platform_device *pdev)
 		ret = -ENOMEM;
 		goto free_netdev;
 	}
+	lp->eth_hasdre = of_property_read_bool(np, "xlnx,include-dre");
 
 	spin_lock_init(&lp->tx_lock);
 	spin_lock_init(&lp->rx_lock);
