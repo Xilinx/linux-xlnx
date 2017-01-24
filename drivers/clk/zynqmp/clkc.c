@@ -177,7 +177,6 @@ static const char *pll_src_mux_parents[8];
 static const char *input_clks[5];
 static const char *clk_output_name[clk_max];
 static const char *acpu_parents[4];
-static const char *ddr_parents[2];
 static const char *wdt_ext_clk_mux_parents[3];
 static const char *periph_parents[clk_max][4];
 static const char *gem_tsu_mux_parents[4];
@@ -591,30 +590,7 @@ static void __init zynqmp_clk_setup(struct device_node *np)
 			CLK_SET_RATE_PARENT | CLK_SET_RATE_NO_REPARENT,
 			(resource_size_t *)IOU_SLCR_WDT_CLK_SEL, 0, 1, 0);
 
-	/* DDR clocks */
-	ddr_parents[0] = clk_output_name[dpll];
-	ddr_parents[1] = clk_output_name[vpll];
-
-	clk = zynqmp_clk_register_mux(NULL, "ddr_mux", ddr_parents, 2,
-			CLK_SET_RATE_NO_REPARENT,
-			(resource_size_t *)CRF_APB_DDR_CTRL, 0, 3, 0);
-
-	clks[ddr_ref] = zynqmp_clk_register_divider(NULL,
-			clk_output_name[ddr_ref],
-			"ddr_mux", 0, (resource_size_t *)CRF_APB_DDR_CTRL, 8, 6,
-			CLK_DIVIDER_ONE_BASED | CLK_DIVIDER_ALLOW_ZERO);
-
-	clk_prepare_enable(clks[ddr_ref]);
-
 	/* Peripheral clock parents */
-	zynqmp_clk_get_parents(clk_output_name, periph_parents[dbg_trace],
-					iopll_to_fpd, dpll, apll);
-	zynqmp_clk_get_parents(clk_output_name, periph_parents[dbg_fpd],
-					iopll_to_fpd, dpll, apll);
-	zynqmp_clk_get_parents(clk_output_name, periph_parents[dbg_lpd],
-					rpll, iopll, dpll);
-	zynqmp_clk_get_parents(clk_output_name, periph_parents[dbg_tstmp],
-					iopll_to_fpd, dpll, apll);
 	zynqmp_clk_get_parents(clk_output_name, periph_parents[dp_video_ref],
 					vpll, dpll, rpll_to_fpd);
 	zynqmp_clk_get_parents(clk_output_name, periph_parents[dp_audio_ref],
@@ -717,24 +693,6 @@ static void __init zynqmp_clk_setup(struct device_node *np)
 			periph_parents[pl3]);
 
 	/* Peripheral clock */
-	zynqmp_clk_register_periph_clk(dbg_trace, clk_output_name[dbg_trace],
-			CRF_APB_DBG_TRACE_CTRL, periph_parents[dbg_trace], 1,
-			0, 24);
-
-	zynqmp_clk_get_parents(clk_output_name, periph_parents[dbg_fpd],
-					iopll_to_fpd, dpll, apll);
-	zynqmp_clk_register_periph_clk(dbg_fpd, clk_output_name[dbg_fpd],
-			CRF_APB_DBG_FPD_CTRL, periph_parents[dbg_fpd], 1, 0,
-			24);
-
-	zynqmp_clk_register_periph_clk(dbg_lpd, clk_output_name[dbg_lpd],
-			CRL_APB_DBG_LPD_CTRL, periph_parents[dbg_lpd], 1, 0,
-			24);
-
-	zynqmp_clk_register_periph_clk(dbg_tstmp, clk_output_name[dbg_tstmp],
-			CRF_APB_DBG_TSTMP_CTRL, periph_parents[dbg_tstmp], 0,
-			0, 0);
-
 	zynqmp_clk_register_periph_clk(dp_video_ref,
 			clk_output_name[dp_video_ref],
 			CRF_APB_DP_VIDEO_REF_CTRL,
