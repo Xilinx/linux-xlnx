@@ -261,7 +261,7 @@ static int xylon_drm_crtc_page_flip(struct drm_crtc *base_crtc,
 
 	if (event) {
 		event->pipe = 0;
-		drm_vblank_get(dev, 0);
+		drm_crtc_vblank_get(0);
 		spin_lock_irqsave(&dev->event_lock, flags);
 		crtc->event = event;
 		spin_unlock_irqrestore(&dev->event_lock, flags);

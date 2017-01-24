@@ -286,8 +286,8 @@ void xilinx_drm_crtc_cancel_page_flip(struct drm_crtc *base_crtc,
 	event = crtc->event;
 	if (event && (event->base.file_priv == file)) {
 		crtc->event = NULL;
-		event->base.destroy(&event->base);
-		drm_vblank_put(drm, 0);
+		kfree(&event->base);
+		drm_crtc_vblank_put(base_crtc);
 	}
 	spin_unlock_irqrestore(&drm->event_lock, flags);
 }
@@ -304,8 +304,8 @@ static void xilinx_drm_crtc_finish_page_flip(struct drm_crtc *base_crtc)
 	event = crtc->event;
 	crtc->event = NULL;
 	if (event) {
-		drm_send_vblank_event(drm, 0, event);
-		drm_vblank_put(drm, 0);
+		drm_crtc_send_vblank_event(base_crtc, event);
+		drm_crtc_vblank_put(base_crtc);
 	}
 	spin_unlock_irqrestore(&drm->event_lock, flags);
 }
@@ -340,7 +340,7 @@ static int xilinx_drm_crtc_page_flip(struct drm_crtc *base_crtc,
 
 	if (event) {
 		event->pipe = 0;
-		drm_vblank_get(drm, 0);
+		drm_crtc_vblank_get(base_crtc);
 		spin_lock_irqsave(&drm->event_lock, flags);
 		crtc->event = event;
 		spin_unlock_irqrestore(&drm->event_lock, flags);

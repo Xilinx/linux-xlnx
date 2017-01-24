@@ -12,6 +12,8 @@ menuconfig RESET_CONTROLLER
 
 	  If unsure, say no.
 
+if RESET_CONTROLLER
+
 config RESET_OXNAS
 	bool
 
@@ -20,14 +22,26 @@ if RESET_CONTROLLER
 config ZYNQMP_RESET_CONTROLLER
 	bool "Xilinx ZYNQMP Reset Controller Support"
         help
-	 ZYNQMP Reset Controller support.
+	  ZYNQMP Reset Controller support.
 
-         This framework is designed to abstract reset handling of devices
-         via SoC-internal reset controller modules.
+	  This framework is designed to abstract reset handling of devices
+	  via SoC-internal reset controller modules.
 
-         If sure, say yes.If unsure, say no.
+	  If sure, say yes.If unsure, say no.
 
 endif
 
+config TI_SYSCON_RESET
+	tristate "TI SYSCON Reset Driver"
+	depends on HAS_IOMEM
+	select MFD_SYSCON
+	help
+	  This enables the reset driver support for TI devices with
+	  memory-mapped reset registers as part of a syscon device node. If
+	  you wish to use the reset framework for such memory-mapped devices,
+	  say Y here. Otherwise, say N.
+
 source "drivers/reset/sti/Kconfig"
 source "drivers/reset/hisilicon/Kconfig"
+
+endif

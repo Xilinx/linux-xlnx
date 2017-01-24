@@ -328,6 +328,7 @@ static int xilinx_drm_load(struct drm_device *drm, unsigned long flags)
 
 	drm->dev_private = private;
 	private->drm = drm;
+	xilinx_drm_mode_config_init(drm);
 
 	/* initialize xilinx framebuffer */
 	bpp = xilinx_drm_format_bpp(xilinx_drm_crtc_get_format(private->crtc));
@@ -341,9 +342,6 @@ static int xilinx_drm_load(struct drm_device *drm, unsigned long flags)
 	}
 
 	drm_kms_helper_poll_init(drm);
-
-	/* set up mode config for xilinx */
-	xilinx_drm_mode_config_init(drm);
 
 	drm_helper_disable_unused_functions(drm);
 
@@ -380,7 +378,7 @@ int xilinx_drm_open(struct drm_device *dev, struct drm_file *file)
 {
 	struct xilinx_drm_private *private = dev->dev_private;
 
-	if (!(drm_is_primary_client(file) && !file->minor->master) &&
+	if (!(drm_is_primary_client(file) && !dev->master) &&
 			capable(CAP_SYS_ADMIN)) {
 		file->is_master = 1;
 		private->is_master = true;

@@ -630,7 +630,7 @@ static void axienet_adjust_link(struct net_device *ndev)
 	u32 link_state;
 	u32 setspeed = 1;
 	struct axienet_local *lp = netdev_priv(ndev);
-	struct phy_device *phy = lp->phy_dev;
+	struct phy_device *phy = ndev->phydev;
 
 	link_state = phy->speed | (phy->duplex << 1) | phy->link;
 	if (lp->last_link != link_state) {
@@ -1430,6 +1430,7 @@ static int axienet_open(struct net_device *ndev)
 {
 	int ret = 0;
 	struct axienet_local *lp = netdev_priv(ndev);
+	struct phy_device *phydev = NULL;
 
 	dev_dbg(&ndev->dev, "axienet_open()\n");
 
@@ -1440,16 +1441,26 @@ static int axienet_open(struct net_device *ndev)
 	if (ret < 0)
 		return ret;
 
-	if (lp->phy_node && ((lp->axienet_config->mactype == XAXIENET_1G) ||
-			     (lp->axienet_config->mactype == XAXIENET_2_5G))) {
-		lp->phy_dev = of_phy_connect(lp->ndev, lp->phy_node,
-					     axienet_adjust_link, lp->phy_flags,
-					     lp->phy_interface);
+	if (lp->phy_node) {
+		if (lp->phy_type == XAE_PHY_TYPE_GMII) {
+			phydev = of_phy_connect(lp->ndev, lp->phy_node,
+						axienet_adjust_link, 0,
+						PHY_INTERFACE_MODE_GMII);
+		} else if (lp->phy_type == XAE_PHY_TYPE_RGMII_2_0) {
+			phydev = of_phy_connect(lp->ndev, lp->phy_node,
+						axienet_adjust_link, 0,
+						PHY_INTERFACE_MODE_RGMII_ID);
+		} else if ((lp->axienet_config->mactype == XAXIENET_1G) ||
+			     (lp->axienet_config->mactype == XAXIENET_2_5G)) {
+			phydev = of_phy_connect(lp->ndev, lp->phy_node,
+						axienet_adjust_link, lp->phy_flags,
+						lp->phy_interface);
+		}
 
-		if (!lp->phy_dev)
+		if (!phydev)
 			dev_err(lp->dev, "of_phy_connect() failed\n");
 		else
-			phy_start(lp->phy_dev);
+			phy_start(phydev);
 	}
 
 	/* Enable tasklets for Axi DMA error handling */
@@ -1489,9 +1500,9 @@ err_rx_irq:
 	free_irq(lp->tx_irq, ndev);
 err_tx_irq:
 	napi_disable(&lp->napi);
-	if (lp->phy_dev)
-		phy_disconnect(lp->phy_dev);
-	lp->phy_dev = NULL;
+	if (phydev)
+		phy_disconnect(phydev);
+	phydev = NULL;
 	tasklet_kill(&lp->dma_err_tasklet);
 	dev_err(lp->dev, "request_irq() failed\n");
 	return ret;
@@ -1532,9 +1543,8 @@ static int axienet_stop(struct net_device *ndev)
 	if ((lp->axienet_config->mactype == XAXIENET_1G) && !lp->eth_hasnobuf)
 		free_irq(lp->eth_irq, ndev);
 
-	if (lp->phy_dev)
-		phy_disconnect(lp->phy_dev);
-	lp->phy_dev = NULL;
+	if (ndev->phydev)
+		phy_disconnect(ndev->phydev);
 
 	axienet_dma_bd_release(ndev);
 	return 0;
@@ -1698,8 +1708,6 @@ static int axienet_get_ts_config(struct axienet_local *lp, struct ifreq *ifr)
 /* Ioctl MII Interface */
 static int axienet_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 {
-	struct axienet_local *lp = netdev_priv(dev);
-
 	if (!netif_running(dev))
 		return -EINVAL;
 
@@ -1707,7 +1715,7 @@ static int axienet_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 	case SIOCGMIIPHY:
 	case SIOCGMIIREG:
 	case SIOCSMIIREG:
-		return phy_mii_ioctl(lp->phy_dev, rq, cmd);
+		return phy_mii_ioctl(dev->phydev, rq, cmd);
 #ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
 	case SIOCSHWTSTAMP:
 		return axienet_set_ts_config(lp, rq);
@@ -1748,8 +1756,7 @@ static const struct net_device_ops axienet_netdev_ops = {
 static int axienet_ethtools_get_settings(struct net_device *ndev,
 					 struct ethtool_cmd *ecmd)
 {
-	struct axienet_local *lp = netdev_priv(ndev);
-	struct phy_device *phydev = lp->phy_dev;
+	struct phy_device *phydev = ndev->phydev;
 
 	if (!phydev)
 		return -ENODEV;
@@ -1772,8 +1779,7 @@ static int axienet_ethtools_get_settings(struct net_device *ndev,
 static int axienet_ethtools_set_settings(struct net_device *ndev,
 					 struct ethtool_cmd *ecmd)
 {
-	struct axienet_local *lp = netdev_priv(ndev);
-	struct phy_device *phydev = lp->phy_dev;
+	struct phy_device *phydev = ndev->phydev;
 
 	if (!phydev)
 		return -ENODEV;
@@ -2040,6 +2046,8 @@ static struct ethtool_ops axienet_ethtool_ops = {
 #ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
 	.get_ts_info    = axienet_ethtools_get_ts_info,
 #endif
+	.get_link_ksettings = phy_ethtool_get_link_ksettings,
+	.set_link_ksettings = phy_ethtool_set_link_ksettings,
 };
 
 /**
@@ -2400,9 +2408,9 @@ static int axienet_probe(struct platform_device *pdev)
 
 	/* Find the DMA node, map the DMA registers, and decode the DMA IRQs */
 	np = of_parse_phandle(pdev->dev.of_node, "axistream-connected", 0);
-	if (IS_ERR(np)) {
+	if (!np) {
 		dev_err(&pdev->dev, "could not find DMA node\n");
-		ret = PTR_ERR(np);
+		ret = -ENODEV;
 		goto free_netdev;
 	}
 	ret = of_address_to_resource(np, 0, &dmares);

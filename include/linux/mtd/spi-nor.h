@@ -45,9 +45,7 @@
 #define SPINOR_OP_READ_FAST	0x0b	/* Read data bytes (high frequency) */
 #define SPINOR_OP_READ_1_1_2	0x3b	/* Read data bytes (Dual SPI) */
 #define SPINOR_OP_READ_1_1_4	0x6b	/* Read data bytes (Quad SPI) */
-#define SPINOR_OP_READ_1_4_4	0xeb	/* Read data bytes (Quad I/O) */
 #define SPINOR_OP_PP		0x02	/* Page program (up to 256 bytes) */
-#define SPINOR_OP_QPP		0x32	/* Quad page program */
 #define SPINOR_OP_BE_4K		0x20	/* Erase 4KiB block */
 #define SPINOR_OP_BE_4K_PMC	0xd7	/* Erase 4KiB block on PMC chips */
 #define SPINOR_OP_BE_32K	0x52	/* Erase 32KiB block */
@@ -56,15 +54,12 @@
 #define SPINOR_OP_RDID		0x9f	/* Read JEDEC ID */
 #define SPINOR_OP_RDCR		0x35	/* Read configuration register */
 #define SPINOR_OP_RDFSR		0x70	/* Read flag status register */
-#define SPINOR_OP_WREAR		0xc5	/* Write Extended Address Register */
-#define SPINOR_OP_RDEAR		0xc8	/* Read Extended Address Register */
 
 /* 4-byte address opcodes - used on Spansion and some Macronix flashes. */
 #define SPINOR_OP_READ4		0x13	/* Read data bytes (low frequency) */
 #define SPINOR_OP_READ4_FAST	0x0c	/* Read data bytes (high frequency) */
 #define SPINOR_OP_READ4_1_1_2	0x3c	/* Read data bytes (Dual SPI) */
 #define SPINOR_OP_READ4_1_1_4	0x6c	/* Read data bytes (Quad SPI) */
-#define SPINOR_OP_READ4_1_4_4	0xec	/* Read data bytes (Quad IO) */
 #define SPINOR_OP_PP_4B		0x12	/* Page program (up to 256 bytes) */
 #define SPINOR_OP_SE_4B		0xdc	/* Sector erase (usually 64KiB) */
 
@@ -72,7 +67,6 @@
 #define SPINOR_OP_BP		0x02	/* Byte program */
 #define SPINOR_OP_WRDI		0x04	/* Write disable */
 #define SPINOR_OP_AAI_WP	0xad	/* Auto address increment word program */
-#define GLOBAL_BLKPROT_UNLK	0x98	/* Clear global write protection bits */
 
 /* Used for Macronix and Winbond flashes. */
 #define SPINOR_OP_EN4B		0xb7	/* Enter 4-byte mode */
@@ -80,7 +74,6 @@
 
 /* Used for Spansion flashes only. */
 #define SPINOR_OP_BRWR		0x17	/* Bank register write */
-#define	SPINOR_OP_BRRD		0x16	/* Bank register read */
 
 /* Used for Micron flashes only. */
 #define SPINOR_OP_RD_EVCR      0x65    /* Read EVCR register */
@@ -94,16 +87,7 @@
 #define SR_BP1			BIT(3)	/* Block protect 1 */
 #define SR_BP2			BIT(4)	/* Block protect 2 */
 #define SR_TB			BIT(5)	/* Top/Bottom protect */
-/* SR_BP3 only used on some Micron chip; must NOT be in SR_BP_BIT_MASK */
-#define SR_BP3			BIT(6)	/* Block protect 3 */
-#define	SR_BP_BIT_OFFSET	2	/* Offset to Block protect 0 */
-#define	SR_BP_BIT_MASK		(SR_BP2 | SR_BP1 | SR_BP0)
 #define SR_SRWD			BIT(7)	/* SR write protect */
-/* Bit to determine whether protection starts from top or bottom */
-#define SR_BP_TB		BIT(5)
-
-/* Highest resolution of sector locking */
-#define M25P_MAX_LOCKABLE_SECTORS	64
 
 #define SR_QUAD_EN_MX		BIT(6)	/* Macronix Quad I/O */
 
@@ -116,15 +100,11 @@
 /* Configuration Register bits. */
 #define CR_QUAD_EN_SPAN		BIT(1)	/* Spansion Quad I/O */
 
-/* Extended/Bank Address Register bits */
-#define EAR_SEGMENT_MASK	0x7	/* 128 Mb segment mask */
-
 enum read_mode {
 	SPI_NOR_NORMAL = 0,
 	SPI_NOR_FAST,
 	SPI_NOR_DUAL,
 	SPI_NOR_QUAD,
-	SPI_NOR_QUAD_IO,
 };
 
 #define SPI_NOR_MAX_CMD_SIZE	8
@@ -177,8 +157,7 @@ struct spi_nor {
 	struct mtd_info		mtd;
 	struct mutex		lock;
 	struct device		*dev;
-	struct spi_device	*spi;
-	struct device_node	*flash_node;
+	struct spi_device       *spi;
 	u32			page_size;
 	u8			addr_width;
 	u8			erase_opcode;
@@ -186,14 +165,10 @@ struct spi_nor {
 	u8			read_dummy;
 	u8			program_opcode;
 	enum read_mode		flash_read;
-	u32			jedec_id;
-	u16			curbank;
-	u16			n_sectors;
-	u32			sector_size;
+	bool			sst_write_second;
 	bool			shift;
 	bool			isparallel;
-	bool			isstacked;
-	bool			sst_write_second;
+	bool                    isstacked;
 	u32			flags;
 	u8			cmd_buf[SPI_NOR_MAX_CMD_SIZE];
 
@@ -202,10 +177,10 @@ struct spi_nor {
 	int (*read_reg)(struct spi_nor *nor, u8 opcode, u8 *buf, int len);
 	int (*write_reg)(struct spi_nor *nor, u8 opcode, u8 *buf, int len);
 
-	int (*read)(struct spi_nor *nor, loff_t from,
-			size_t len, size_t *retlen, u_char *read_buf);
-	void (*write)(struct spi_nor *nor, loff_t to,
-			size_t len, size_t *retlen, const u_char *write_buf);
+	ssize_t (*read)(struct spi_nor *nor, loff_t from,
+			size_t len, u_char *read_buf);
+	ssize_t (*write)(struct spi_nor *nor, loff_t to,
+			size_t len, const u_char *write_buf);
 	int (*erase)(struct spi_nor *nor, loff_t offs);
 
 	int (*flash_lock)(struct spi_nor *nor, loff_t ofs, uint64_t len);
@@ -241,14 +216,5 @@ static inline struct device_node *spi_nor_get_flash_node(struct spi_nor *nor)
  * Return: 0 for success, others for failure.
  */
 int spi_nor_scan(struct spi_nor *nor, const char *name, enum read_mode mode);
-
-/**
- * spi_nor_shutdown() - prepare for reboot
- * @nor:	the spi_nor structure
- *
- * The drivers can use this fuction to get the address back to
- * 0 as will be required for a ROM boot.
- */
-void spi_nor_shutdown(struct spi_nor *nor);
 
 #endif

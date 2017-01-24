@@ -129,7 +129,7 @@ static void xgpio_set(struct gpio_chip *gc, unsigned int gpio, int val)
  * @mask:   Mask of the GPIOS to modify.
  * @bits:   Value to be wrote on each GPIO
  *
- * This function writes the specified values in to the specified signals of the
+ * This function writes the specified values into the specified signals of the
  * GPIO devices.
  */
 static void xgpio_set_multiple(struct gpio_chip *gc, unsigned long *mask,
