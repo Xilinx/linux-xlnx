@@ -126,42 +126,109 @@ static const struct pl35x_nand_command_format pl35x_nand_commands[] = {
 	 */
 };
 
-/* Define default oob placement schemes for large and small page devices */
-static struct nand_ecclayout nand_oob_16 = {
-	.eccbytes = 3,
-	.eccpos = {0, 1, 2},
-	.oobfree = {
-		{.offset = 8,
-		 . length = 8} }
+static int pl35x_ecc_ooblayout16_ecc(struct mtd_info *mtd, int section,
+				   struct mtd_oob_region *oobregion)
+{
+	struct nand_chip *chip = mtd_to_nand(mtd);
+
+	if (section >= chip->ecc.steps)
+		return -ERANGE;
+
+	oobregion->offset = (section * 16) + 0;
+	oobregion->length = chip->ecc.bytes;
+
+	return 0;
+}
+
+static int pl35x_ecc_ooblayout16_free(struct mtd_info *mtd, int section,
+				    struct mtd_oob_region *oobregion)
+{
+	struct nand_chip *chip = mtd_to_nand(mtd);
+
+	if (section >= chip->ecc.steps)
+		return -ERANGE;
+
+	oobregion->offset = (section * 16) + 8;
+
+	oobregion->length = 8;
+
+	return 0;
+}
+
+static const struct mtd_ooblayout_ops fsmc_ecc_ooblayout16_ops = {
+	.ecc = pl35x_ecc_ooblayout16_ecc,
+	.free = pl35x_ecc_ooblayout16_free,
+};
+static int pl35x_ecc_ooblayout64_ecc(struct mtd_info *mtd, int section,
+				   struct mtd_oob_region *oobregion)
+{
+	struct nand_chip *chip = mtd_to_nand(mtd);
+
+	if (section >= chip->ecc.steps)
+		return -ERANGE;
+
+	oobregion->offset = (section * 16) + 52;
+	oobregion->length = chip->ecc.bytes;
+
+	return 0;
+}
+
+static int pl35x_ecc_ooblayout64_free(struct mtd_info *mtd, int section,
+				    struct mtd_oob_region *oobregion)
+{
+	struct nand_chip *chip = mtd_to_nand(mtd);
+
+	if (section >= chip->ecc.steps)
+		return -ERANGE;
+
+	oobregion->offset = (section * 16) + 2;
+
+	oobregion->length = 50;
+
+	return 0;
+}
+
+static const struct mtd_ooblayout_ops fsmc_ecc_ooblayout64_ops = {
+	.ecc = pl35x_ecc_ooblayout64_ecc,
+	.free = pl35x_ecc_ooblayout64_free,
+};
+static int pl35x_ecc_ooblayout_ondie64_ecc(struct mtd_info *mtd, int section,
+				   struct mtd_oob_region *oobregion)
+{
+	struct nand_chip *chip = mtd_to_nand(mtd);
+
+	if (section >= chip->ecc.steps)
+		return -ERANGE;
+
+	oobregion->offset = (section * 16) + 8;
+	oobregion->length = chip->ecc.bytes;
+
+	return 0;
+}
+
+static int pl35x_ecc_ooblayout_ondie64_free(struct mtd_info *mtd, int section,
+				    struct mtd_oob_region *oobregion)
+{
+	struct nand_chip *chip = mtd_to_nand(mtd);
+
+	if (section >= chip->ecc.steps)
+		return -ERANGE;
+
+
+	oobregion->length = 4;
+	if (!section)
+		oobregion->offset = 4;
+	else
+		oobregion->offset = (section * 16) + 4;
+
+	return 0;
+}
+
+static const struct mtd_ooblayout_ops fsmc_ecc_ooblayout_ondie64_ops = {
+	.ecc = pl35x_ecc_ooblayout_ondie64_ecc,
+	.free = pl35x_ecc_ooblayout_ondie64_free,
 };
 
-static struct nand_ecclayout nand_oob_64 = {
-	.eccbytes = 12,
-	.eccpos = {
-		   52, 53, 54, 55, 56, 57,
-		   58, 59, 60, 61, 62, 63},
-	.oobfree = {
-		{.offset = 2,
-		 .length = 50} }
-};
-
-static struct nand_ecclayout ondie_nand_oob_64 = {
-	.eccbytes = 32,
-
-	.eccpos = {
-		8, 9, 10, 11, 12, 13, 14, 15,
-		24, 25, 26, 27, 28, 29, 30, 31,
-		40, 41, 42, 43, 44, 45, 46, 47,
-		56, 57, 58, 59, 60, 61, 62, 63
-	},
-
-	.oobfree = {
-		{ .offset = 4, .length = 4 },
-		{ .offset = 20, .length = 4 },
-		{ .offset = 36, .length = 4 },
-		{ .offset = 52, .length = 4 }
-	}
-};
 
 /* Generic flash bbt decriptors */
 static uint8_t bbt_pattern[] = { 'B', 'b', 't', '0' };
@@ -204,7 +271,6 @@ static int pl35x_nand_calculate_hwecc(struct mtd_info *mtd,
 	u32 ecc_value, ecc_status;
 	u8 ecc_reg, ecc_byte;
 	unsigned long timeout = jiffies + PL35X_NAND_ECC_BUSY_TIMEOUT;
-
 	/* Wait till the ECC operation is complete or timeout */
 	do {
 		if (pl35x_smc_ecc_is_busy())
@@ -446,13 +512,13 @@ static int pl35x_nand_write_page_hwecc(struct mtd_info *mtd,
 				    struct nand_chip *chip, const uint8_t *buf,
 				    int oob_required, int page)
 {
-	int i, eccsize = chip->ecc.size;
+	int eccsize = chip->ecc.size;
 	int eccsteps = chip->ecc.steps;
 	uint8_t *ecc_calc = chip->buffers->ecccalc;
 	const uint8_t *p = buf;
-	uint32_t *eccpos = chip->ecc.layout->eccpos;
 	unsigned long data_phase_addr;
 	uint8_t *oob_ptr;
+	u32 ret;
 
 	for ( ; (eccsteps - 1); eccsteps--) {
 		chip->write_buf(mtd, p, eccsize);
@@ -467,13 +533,14 @@ static int pl35x_nand_write_page_hwecc(struct mtd_info *mtd,
 	chip->IO_ADDR_W = (void __iomem * __force)data_phase_addr;
 	chip->write_buf(mtd, p, PL35X_NAND_LAST_TRANSFER_LENGTH);
 
-	/* Wait for ECC to be calculated and read the error values */
 	p = buf;
 	chip->ecc.calculate(mtd, p, &ecc_calc[0]);
 
-	for (i = 0; i < chip->ecc.total; i++)
-		chip->oob_poi[eccpos[i]] = ~(ecc_calc[i]);
-
+	/* Wait for ECC to be calculated and read the error values */
+	ret = mtd_ooblayout_set_eccbytes(mtd, ecc_calc, chip->oob_poi,
+						0, chip->ecc.total);
+	if (ret)
+		return ret;
 	/* Clear ECC last bit */
 	data_phase_addr = (unsigned long __force)chip->IO_ADDR_W;
 	data_phase_addr &= ~PL35X_NAND_ECC_LAST;
@@ -512,15 +579,15 @@ static int pl35x_nand_write_page_swecc(struct mtd_info *mtd,
 	int eccsteps = chip->ecc.steps;
 	uint8_t *ecc_calc = chip->buffers->ecccalc;
 	const uint8_t *p = buf;
-	uint32_t *eccpos = chip->ecc.layout->eccpos;
+	u32 ret;
 
-	/* Software ecc calculation */
 	for (i = 0; eccsteps; eccsteps--, i += eccbytes, p += eccsize)
-		chip->ecc.calculate(mtd, p, &ecc_calc[i]);
+		chip->ecc.calculate(mtd, p, &ecc_calc[0]);
 
-	for (i = 0; i < chip->ecc.total; i++)
-		chip->oob_poi[eccpos[i]] = ecc_calc[i];
-
+	ret = mtd_ooblayout_set_eccbytes(mtd, ecc_calc, chip->oob_poi,
+						0, chip->ecc.total);
+	if (ret)
+		return ret;
 	chip->ecc.write_page_raw(mtd, chip, buf, 1, page);
 
 	return 0;
@@ -549,9 +616,9 @@ static int pl35x_nand_read_page_hwecc(struct mtd_info *mtd,
 	uint8_t *p = buf;
 	uint8_t *ecc_calc = chip->buffers->ecccalc;
 	uint8_t *ecc_code = chip->buffers->ecccode;
-	uint32_t *eccpos = chip->ecc.layout->eccpos;
 	unsigned long data_phase_addr;
 	uint8_t *oob_ptr;
+	u32 ret;
 
 	for ( ; (eccsteps - 1); eccsteps--) {
 		chip->read_buf(mtd, p, eccsize);
@@ -588,8 +655,10 @@ static int pl35x_nand_read_page_hwecc(struct mtd_info *mtd,
 	oob_ptr += (mtd->oobsize - PL35X_NAND_LAST_TRANSFER_LENGTH);
 	chip->read_buf(mtd, oob_ptr, PL35X_NAND_LAST_TRANSFER_LENGTH);
 
-	for (i = 0; i < chip->ecc.total; i++)
-		ecc_code[i] = ~(chip->oob_poi[eccpos[i]]);
+	ret = mtd_ooblayout_get_eccbytes(mtd, ecc_code, chip->oob_poi, 0,
+						 chip->ecc.total);
+	if (ret)
+		return ret;
 
 	eccsteps = chip->ecc.steps;
 	p = buf;
@@ -625,15 +694,15 @@ static int pl35x_nand_read_page_swecc(struct mtd_info *mtd,
 	uint8_t *p = buf;
 	uint8_t *ecc_calc = chip->buffers->ecccalc;
 	uint8_t *ecc_code = chip->buffers->ecccode;
-	uint32_t *eccpos = chip->ecc.layout->eccpos;
+	u32 ret;
 
 	chip->ecc.read_page_raw(mtd, chip, buf, page, 1);
 
 	for (i = 0; eccsteps; eccsteps--, i += eccbytes, p += eccsize)
 		chip->ecc.calculate(mtd, p, &ecc_calc[i]);
 
-	for (i = 0; i < chip->ecc.total; i++)
-		ecc_code[i] = chip->oob_poi[eccpos[i]];
+	ret = mtd_ooblayout_get_eccbytes(mtd, ecc_calc, chip->oob_poi,
+						0, chip->ecc.total);
 
 	eccsteps = chip->ecc.steps;
 	p = buf;
@@ -932,16 +1001,17 @@ static int pl35x_nand_detect_ondie_ecc(struct mtd_info *mtd)
  * This function initializes the ecc block and functional pointers as per the
  * ecc mode
  */
-static void pl35x_nand_ecc_init(struct mtd_info *mtd, int ondie_ecc_state)
+static void pl35x_nand_ecc_init(struct mtd_info *mtd, struct nand_ecc_ctrl *ecc,
+	int ondie_ecc_state)
 {
 	struct nand_chip *nand_chip = mtd_to_nand(mtd);
 
-	nand_chip->ecc.mode = NAND_ECC_HW;
-	nand_chip->ecc.read_oob = pl35x_nand_read_oob;
-	nand_chip->ecc.read_page_raw = pl35x_nand_read_page_raw;
-	nand_chip->ecc.strength = 1;
-	nand_chip->ecc.write_oob = pl35x_nand_write_oob;
-	nand_chip->ecc.write_page_raw = pl35x_nand_write_page_raw;
+	ecc->mode = NAND_ECC_HW;
+	ecc->read_oob = pl35x_nand_read_oob;
+	ecc->read_page_raw = pl35x_nand_read_page_raw;
+	ecc->strength = 1;
+	ecc->write_oob = pl35x_nand_write_oob;
+	ecc->write_page_raw = pl35x_nand_write_page_raw;
 
 	if (ondie_ecc_state) {
 		/* bypass the controller ECC block */
@@ -951,11 +1021,11 @@ static void pl35x_nand_ecc_init(struct mtd_info *mtd, int ondie_ecc_state)
 		 * The software ECC routines won't work with the
 		 * SMC controller
 		 */
-		nand_chip->ecc.bytes = 0;
-		nand_chip->ecc.layout = &ondie_nand_oob_64;
-		nand_chip->ecc.read_page = pl35x_nand_read_page_raw;
-		nand_chip->ecc.write_page = pl35x_nand_write_page_raw;
-		nand_chip->ecc.size = mtd->writesize;
+		ecc->bytes = 0;
+		mtd_set_ooblayout(mtd, &fsmc_ecc_ooblayout_ondie64_ops);
+		ecc->read_page = pl35x_nand_read_page_raw;
+		ecc->write_page = pl35x_nand_write_page_raw;
+		ecc->size = mtd->writesize;
 		/*
 		 * On-Die ECC spare bytes offset 8 is used for ECC codes
 		 * Use the BBT pattern descriptors
@@ -964,13 +1034,13 @@ static void pl35x_nand_ecc_init(struct mtd_info *mtd, int ondie_ecc_state)
 		nand_chip->bbt_md = &bbt_mirror_descr;
 	} else {
 		/* Hardware ECC generates 3 bytes ECC code for each 512 bytes */
-		nand_chip->ecc.bytes = 3;
-		nand_chip->ecc.calculate = pl35x_nand_calculate_hwecc;
-		nand_chip->ecc.correct = pl35x_nand_correct_data;
-		nand_chip->ecc.hwctl = NULL;
-		nand_chip->ecc.read_page = pl35x_nand_read_page_hwecc;
-		nand_chip->ecc.size = PL35X_NAND_ECC_SIZE;
-		nand_chip->ecc.write_page = pl35x_nand_write_page_hwecc;
+		ecc->bytes = 3;
+		ecc->calculate = pl35x_nand_calculate_hwecc;
+		ecc->correct = pl35x_nand_correct_data;
+		ecc->hwctl = NULL;
+		ecc->read_page = pl35x_nand_read_page_hwecc;
+		ecc->size = PL35X_NAND_ECC_SIZE;
+		ecc->write_page = pl35x_nand_write_page_hwecc;
 
 		pl35x_smc_set_ecc_pg_size(mtd->writesize);
 		switch (mtd->writesize) {
@@ -984,18 +1054,18 @@ static void pl35x_nand_ecc_init(struct mtd_info *mtd, int ondie_ecc_state)
 			 * The software ECC routines won't work with the
 			 * SMC controller
 			 */
-			nand_chip->ecc.calculate = nand_calculate_ecc;
-			nand_chip->ecc.correct = nand_correct_data;
-			nand_chip->ecc.read_page = pl35x_nand_read_page_swecc;
-			nand_chip->ecc.write_page = pl35x_nand_write_page_swecc;
-			nand_chip->ecc.size = 256;
+			ecc->calculate = nand_calculate_ecc;
+			ecc->correct = nand_correct_data;
+			ecc->read_page = pl35x_nand_read_page_swecc;
+			ecc->write_page = pl35x_nand_write_page_swecc;
+			ecc->size = 256;
 			break;
 		}
 
 		if (mtd->oobsize == 16)
-			nand_chip->ecc.layout = &nand_oob_16;
+			mtd_set_ooblayout(mtd, &fsmc_ecc_ooblayout16_ops);
 		else if (mtd->oobsize == 64)
-			nand_chip->ecc.layout = &nand_oob_64;
+			mtd_set_ooblayout(mtd, &fsmc_ecc_ooblayout64_ops);
 	}
 }
 
@@ -1068,7 +1138,7 @@ static int pl35x_nand_probe(struct platform_device *pdev)
 	xnand->col_addr_cycles =
 				(nand_chip->onfi_params.addr_cycles >> 4) & 0xF;
 
-	pl35x_nand_ecc_init(mtd, ondie_ecc_state);
+	pl35x_nand_ecc_init(mtd, &nand_chip->ecc, ondie_ecc_state);
 	if (nand_chip->options & NAND_BUSWIDTH_16)
 		pl35x_smc_set_buswidth(PL35X_SMC_MEM_WIDTH_16);
 
