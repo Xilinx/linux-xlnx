@@ -1,0 +1,130 @@
+	Binding for Xilinx ZynqMP Pinctrl
+
+Required properties:
+- compatible: "xlnx,zynqmp-pinctrl"
+- reg: Offset and length of pinctrl space in IOU_SLCR
+
+Please refer to pinctrl-bindings.txt in this directory for details of the
+common pinctrl bindings used by client devices, including the meaning of the
+phrase "pin configuration node".
+
+ZynqMP's pin configuration nodes act as a container for an arbitrary number of
+subnodes. Each of these subnodes represents some desired configuration for a
+pin, a group, or a list of pins or groups. This configuration can include the
+mux function to select on those pin(s)/group(s), and various pin configuration
+parameters, such as pull-up, slew rate, etc.
+
+Each configuration node can consist of multiple nodes describing the pinmux and
+pinconf options. Those nodes can be pinmux nodes or pinconf nodes.
+
+The name of each subnode is not important; all subnodes should be enumerated
+and processed purely based on their content.
+
+Required properties for pinmux nodes are:
+ - groups: A list of pinmux groups.
+ - function: The name of a pinmux function to activate for the specified set
+   of groups.
+
+Required properties for configuration nodes:
+One of:
+ - pins: A list of pin names
+ - groups: A list of pinmux groups.
+
+The following generic properties as defined in pinctrl-bindings.txt are valid
+to specify in a pinmux subnode:
+ groups, function
+
+The following generic properties as defined in pinctrl-bindings.txt are valid
+to specify in a pinconf subnode:
+ groups, pins, bias-disable, bias-pull-up, bias-pull-down, slew-rate
+
+ Valid arguments for 'slew-rate' are 'SLEW_RATE_SLOW' and 'SLEW_RATE_FAST' to
+ select between slow and fast respectively.
+
+ Valid values for groups are:
+  ethernet0_0_grp, ethernet1_0_grp, ethernet2_0_grp, ethernet3_0_grp,
+  gemtsu0_0_grp - gemtsu0_2_grp, mdio0_0_grp, mdio1_0_grp - mdio1_1_grp,
+  mdio2_0_grp, mdio3_0_grp, qspi0_0_grp, qspi_ss_grp, qspi_fbclk_grp,
+  spi0_0_grp - spi0_5_grp, spi0_0_ss0_grp - spi0_5_ss0_grp,
+  spi0_0_ss1_grp - spi0_5_ss1_grp, spi0_0_ss2_grp - spi0_5_ss2_grp,
+  spi1_0_grp - spi1_5_grp, spi1_0_ss0_grp - spi1_5_ss0_grp,
+  spi1_0_ss1_grp - spi1_5_ss1_grp, spi1_0_ss2_grp - spi1_5_ss2_grp,
+  sdio0_0_grp - sdio0_2_grp, sdio0_0_pc_grp - sdio0_2_pc_grp,
+  sdio0_0_cd_grp - sdio0_2_cd_grp, sdio0_0_wp_grp - sdio0_2_wp_grp,
+  sdio1_0_grp - sdio1_1_grp, sdio1_0_pc_grp - sdio1_1_pc_grp,
+  sdio1_0_cd_grp - sdio1_1_cd_grp, sdio1_0_wp_grp - sdio1_2_wp_grp,
+  sdio1_1bit_0_0_grp - sdio1_1bit_0_7_grp,
+  sdio1_1bit_1_0_grp - sdio1_1bit_1_3_grp,
+  sdio0_4bit_0_0_grp - sdio0_4bit_0_1_grp,
+  sdio0_4bit_1_0_grp - sdio0_4bit_1_1_grp,
+  sdio0_4bit_2_0_grp - sdio0_4bit_2_1_grp,
+  sdio0_1bit_0_0_grp - sdio0_1bit_0_7_grp,
+  sdio0_1bit_1_0_grp - sdio0_1bit_1_7_grp,
+  sdio0_1bit_2_0_grp - sdio0_1bit_2_7_grp,
+  sdio1_4bit_0_0_grp - sdio1_4bit_0_1_grp, sdio1_4bit_1_0_grp,
+  nand0_0_grp, nand0_0_ce_grp - nand0_1_ce_grp,
+  nand0_0_rb_grp - nand0_1_rb_grp, nand0_0_dqs_grp - nand0_1_dqs_grp,
+  can0_0_grp - can0_18_grp, can1_0_grp - can1_19_grp,
+  uart0_0_grp - uart0_18_grp, uart1_0_grp - uart1_18_grp,
+  i2c0_0_grp - i2c0_18_grp, i2c1_0_grp - i2c1_19_grp,
+  ttc0_0_clk_grp - ttc0_8_clk_grp, ttc0_0_wav_grp - ttc0_8_wav_grp,
+  ttc1_0_clk_grp - ttc1_8_clk_grp, ttc1_0_wav_grp - ttc1_8_wav_grp,
+  ttc2_0_clk_grp - ttc2_8_clk_grp, ttc2_0_wav_grp - ttc2_8_wav_grp,
+  ttc3_0_clk_grp - ttc3_8_clk_grp, ttc3_0_wav_grp - ttc3_8_wav_grp,
+  swdt0_0_clk_grp - swdt0_12_clk_grp, swdt0_0_rst_grp - swdt0_12_rst_grp,
+  swdt1_0_clk_grp - swdt1_12_clk_grp, swdt1_0_rst_grp - swdt1_12_rst_grp,
+  gpio0_0_grp_grp - gpio0_77_grp, usb0_0_grp, usb1_0_grp,
+  pmu0_0_grp - pmu0_11_grp,
+  pcie0_0_grp - pcie0_7_grp, csu0_0_grp - csu0_11_grp,
+  dpaux0_0_grp - dpaux0_3_grp, pjtag0_0_grp - pjtag0_5_grp,
+  trace0_0_grp - trace0_2_grp, trace0_0_clk_grp - trace0_2_clk_grp,
+  testscan0_0_grp
+
+ Valid values for pins are:
+   MIO0 - MIO77
+
+ Valid values for function are:
+   ethernet0, ethernet1, ethernet2, ethernet3, gemtsu0, usb0, usb1, mdio0,
+   mdio1, mdio2, mdio3, qspi0, qspi_fbclk, qspi_ss, spi0, spi1, spi0_ss,
+   spi1_ss, sdio0, sdio0_pc, sdio0_wp, sdio0_cd, sdio1, sdio1_pc, sdio1_wp,
+   sdio1_cd, nand0, nand0_ce, nand0_rb, nand0_dqs, can0, can1, uart0, uart1,
+   i2c0, i2c1, ttc0_clk, ttc0_wav, ttc1_clk, ttc1_wav, ttc2_clk, ttc2_wav,
+   ttc3_clk, ttc3_wav, swdt0_clk, swdt0_rst, swdt1_clk, swdt1_rst, gpio0, pmu0,
+   pcie0, csu0, dpaux0, pjtag0, trace0, trace0_clk, testscan0
+
+The following driver-specific properties as defined here are valid to specify in
+a pin configuration subnode:
+ - io-standard: Configure the pin to use the selected IO standard. Valid
+   arguments are 'IO_STANDARD_LVCMOS33' and 'IO_STANDARD_LVCMOS18'.
+ - schmitt-cmos: Selects either Schmitt or CMOS input for MIO pins. Valid
+   arguments are 'PIN_INPUT_TYPE_SCHMITT' and 'PIN_INPUT_TYPE_CMOS'.
+
+Example:
+	pinctrl0: pinctrl@ff180000 {
+		compatible = "xlnx,pinctrl-zynqmp";
+		reg = <0x0 0xff180000 0x0 0x1000>;
+
+		pinctrl_uart1_default: uart1-default {
+			mux {
+				groups = "uart0_4_grp";
+				function = "uart0";
+			};
+
+			conf {
+				groups = "uart0_4_grp";
+				slew-rate = <SLEW_RATE_SLOW>;
+				io-standard = <IO_STANDARD_LVCMOS18>;
+			};
+
+			conf-rx {
+				pins = "MIO18";
+				bias-high-impedance;
+			};
+
+			conf-tx {
+				pins = "MIO19";
+				bias-disable;
+				schmitt-cmos = <PIN_INPUT_TYPE_CMOS>;
+			};
+		};
+	};
