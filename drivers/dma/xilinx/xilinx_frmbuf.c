@@ -175,11 +175,14 @@ struct xilinx_frmbuf_format_desc {
 
 
 static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
-	{ "rgb24", 10, 4, "RGBX8 (RGB)"},
-	{ "yuv32", 11, 4, "YUVX8 (4:4:4)"},
+	{ "xlx1", 10, 4, "RGBX8 (RGB)"},
+	{ "xlx2", 11, 4, "YUVX8 (4:4:4)"},
 	{ "yuyv", 12, 2, "YUYV8 (4:2:2)"},
 	{ "nv16", 18, 1, "Y_UV8 (4:2:2 semi-planer)"},
 	{ "nv12", 19, 1, "Y_UV8_420 (4:2:0 semi-planar)"},
+	{ "rgb3", 20, 3, "RGB8 (RGB)"},
+	{ "grey", 21, 3, "YUV8 (YUV)"},
+	{ "xlx3", 24, 4, "Y8 (YUV)"}
 };
 
 static const struct xilinx_frmbuf_config frmbuf_wr_config = {
