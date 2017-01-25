@@ -61,7 +61,7 @@
 
 /* HW specific definitions */
 #define XILINX_DMA_MAX_CHANS_PER_DEVICE		1
-#define XILINX_FRMBUF_ISR_ALL_IRQ_MASK  \
+#define XILINX_FRMBUF_ISR_ALL_IRQ_MASK	\
 		(XILINX_FRMBUF_ISR_AP_DONE_IRQ | \
 		XILINX_FRMBUF_ISR_AP_READY_IRQ)
 
@@ -126,7 +126,7 @@ struct xilinx_frmbuf_chan {
 };
 
 enum xilinx_dma_type {
-	xilinx_frmbuf_wr_dma = 1,	
+	xilinx_frmbuf_wr_dma = 1,
 	xilinx_frmbuf_rd_dma,
 };
 
@@ -186,12 +186,12 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 };
 
 static const struct xilinx_frmbuf_config frmbuf_wr_config = {
-	.type = xilinx_frmbuf_wr_dma, 
+	.type = xilinx_frmbuf_wr_dma,
 	.nr_chans = 1,
 };
 
 static const struct xilinx_frmbuf_config frmbuf_rd_config = {
-	.type = xilinx_frmbuf_rd_dma, 
+	.type = xilinx_frmbuf_rd_dma,
 	.nr_chans = 1,
 };
 
@@ -239,31 +239,31 @@ static inline void frmbuf_set(struct xilinx_frmbuf_chan *chan, u32 reg,
 /* get bytes per pixel of given format */
 unsigned int xilinx_frmbuf_format_bpp(const char *video_fmt)
 {
-        const struct xilinx_frmbuf_format_desc *format;
-        unsigned int i;
+	const struct xilinx_frmbuf_format_desc *format;
+	unsigned int i;
 
-        for (i = 0; i < ARRAY_SIZE(xilinx_frmbuf_formats); i++) {
-                format = &xilinx_frmbuf_formats[i];
-                if (strcmp(format->name, video_fmt) == 0)
-                        return format->bytes_per_pixel;
-        }
+	for (i = 0; i < ARRAY_SIZE(xilinx_frmbuf_formats); i++) {
+		format = &xilinx_frmbuf_formats[i];
+		if (strcmp(format->name, video_fmt) == 0)
+			return format->bytes_per_pixel;
+	}
 
-        return 0;
+	return 0;
 }
 
 /* get id of given format */
 unsigned int xilinx_frmbuf_format_id(const char *video_fmt)
 {
-        const struct xilinx_frmbuf_format_desc *format;
-        unsigned int i;
+	const struct xilinx_frmbuf_format_desc *format;
+	unsigned int i;
 
-        for (i = 0; i < ARRAY_SIZE(xilinx_frmbuf_formats); i++) {
-                format = &xilinx_frmbuf_formats[i];
-                if (strcmp(format->name, video_fmt) == 0)
-                        return format->id;
-        }
+	for (i = 0; i < ARRAY_SIZE(xilinx_frmbuf_formats); i++) {
+		format = &xilinx_frmbuf_formats[i];
+		if (strcmp(format->name, video_fmt) == 0)
+			return format->id;
+	}
 
-        return 0;
+	return 0;
 }
 
 /**
@@ -278,13 +278,7 @@ static struct dma_chan *of_dma_xilinx_xlate(struct of_phandle_args *dma_spec,
 {
 	struct xilinx_frmbuf_device *xdev = ofdma->of_dma_data;
 
-	/* JN DEBUG START */
-	struct dma_chan *chan_ptr;
-	chan_ptr = dma_get_slave_channel(&xdev->chan->common);
-	/* JN DEBUG END */
-
-	/*return dma_get_slave_channel(&xdev->chan->common);*/
-	return chan_ptr;
+	return dma_get_slave_channel(&xdev->chan->common);
 }
 
 /* -----------------------------------------------------------------------------
@@ -695,12 +689,8 @@ xilinx_frmbuf_dma_prep_interleaved(struct dma_chan *dchan,
 	struct xilinx_frmbuf_tx_descriptor *desc;
 	struct xilinx_frmbuf_desc_hw *hw;
 	int bytes_per_pixel;
-	/* JN TODO fix this! */
-	/*
-	if (xt->dir != DMA_DEV_TO_MEM)
-		return NULL;
-	*/
-	if(chan->direction != xt->dir)
+
+	if (chan->direction != xt->dir)
 		return NULL;
 
 	if (!xt->numf || !xt->sgl[0].size)
@@ -729,15 +719,13 @@ xilinx_frmbuf_dma_prep_interleaved(struct dma_chan *dchan,
 	 * It is width x bytes/pixel rounded up to
 	 * a multiple of AXI_MM_DATA_WIDTH in bytes.
 	 */
-	hw->stride = ((xt->sgl[0].icg + xt->sgl[0].size)/2)* bytes_per_pixel;
+	hw->stride = ((xt->sgl[0].icg + xt->sgl[0].size) / 2) * bytes_per_pixel;
 
-	if(chan->direction == DMA_MEM_TO_DEV) {
+	if (chan->direction == DMA_MEM_TO_DEV)
 		hw->buf_addr = xt->src_start;
-	}else{
+	else
 		hw->buf_addr = xt->dst_start;
-	}
-	
-	/*hw->buf_addr = xt->dst_start;*/
+
 	return &desc->async_tx;
 }
 
@@ -822,24 +810,25 @@ static int xilinx_frmbuf_chan_probe(struct xilinx_frmbuf_device *xdev,
 	}
 
 	ret = of_property_read_string(node, "xlnx,vid-fmt", &string);
-        if (ret < 0) {
-                dev_err(xdev->dev, "No video format in DT\n");
-                return ret;
-        }
+	if (ret < 0) {
+		dev_err(xdev->dev, "No video format in DT\n");
+		return ret;
+	}
 
 	for (i = 0; i < ARRAY_SIZE(xilinx_frmbuf_formats); i++) {
-                const struct xilinx_frmbuf_format_desc *fmt = &xilinx_frmbuf_formats[i];
+		const struct xilinx_frmbuf_format_desc *fmt =
+					&xilinx_frmbuf_formats[i];
 
-                if (strcmp(string, fmt->name) == 0) {
-                        chan->video_fmt = fmt->name;
-                        break;
-                }
-        }
+		if (strcmp(string, fmt->name) == 0) {
+			chan->video_fmt = fmt->name;
+			break;
+		}
+	}
 
 	if (!chan->video_fmt) {
-                dev_err(xdev->dev, "Invalid vid-fmt in DT\n");
-                return -EINVAL;
-        }
+		dev_err(xdev->dev, "Invalid vid-fmt in DT\n");
+		return -EINVAL;
+	}
 
 	/* Request the interrupt */
 	chan->irq = irq_of_parse_and_map(node, 0);
@@ -894,21 +883,20 @@ static int xilinx_frmbuf_probe(struct platform_device *pdev)
 	xdev->dev = &pdev->dev;
 	if (node) {
 		const struct of_device_id *match;
-	
+
 		match = of_match_node(xilinx_frmbuf_of_ids, node);
-		if (match && match->data) {
+		if (match && match->data)
 			xdev->frmbuf_config = match->data;
-		}
 	}
 
 #ifdef GPIO_RESET
 	xdev->rst_gpio = devm_gpiod_get(&pdev->dev, "reset",
 						   GPIOD_OUT_HIGH);
-	if(!xdev->rst_gpio){
+	if (!xdev->rst_gpio) {
 		dev_err(&pdev->dev, "Unable to locate reset property in dt\n");
-		goto error; 
+		goto error;
 	}
-		
+
 	gpiod_set_value_cansleep(xdev->rst_gpio, 0x0);
 #endif
 
@@ -936,18 +924,14 @@ static int xilinx_frmbuf_probe(struct platform_device *pdev)
 
 	if (xdev->frmbuf_config->type == xilinx_frmbuf_wr_dma) {
 		xdev->common.directions = BIT(DMA_DEV_TO_MEM);
-		dev_info(&pdev->dev, 
-			"Xilinx AXI FrameBuffer DMA_DEV_TO_MEM \n");
-	}
-	else if (xdev->frmbuf_config->type == xilinx_frmbuf_rd_dma) {
+		dev_info(&pdev->dev, "Xilinx AXI frmbuf DMA_DEV_TO_MEM\n");
+	} else if (xdev->frmbuf_config->type == xilinx_frmbuf_rd_dma) {
 		xdev->common.directions = BIT(DMA_MEM_TO_DEV);
-		dev_info(&pdev->dev, 
-			"Xilinx AXI FrameBuffer DMA_MEM_TO_DEV \n");
-	}
-	else {
+		dev_info(&pdev->dev, "Xilinx AXI frmbuf DMA_MEM_TO_DEV\n");
+	} else {
 		return -EINVAL;
 	}
-		
+
 	xdev->common.device_alloc_chan_resources =
 				xilinx_frmbuf_alloc_chan_resources;
 	xdev->common.device_free_chan_resources =
