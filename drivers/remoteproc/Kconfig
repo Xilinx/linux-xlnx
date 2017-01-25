@@ -131,7 +131,6 @@ config MB_REMOTEPROC
 	depends on ARCH_ZYNQ && !DEBUG_SG
 	select REMOTEPROC
 	select RPMSG
-	default m
 	help
 	  Say y here to support Xilinx Microblaze remote processors
 	  on the Xilinx Zynq.
