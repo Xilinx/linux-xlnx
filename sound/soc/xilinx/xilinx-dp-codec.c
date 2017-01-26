@@ -63,6 +63,8 @@ static int xilinx_dp_codec_probe(struct platform_device *pdev)
 	}
 
 	rate = clk_get_rate(codec->aud_clk) / 512;
+	/* Ignore some offset */
+	rate = ALIGN(rate, 100);
 	if (rate == 44100) {
 		xilinx_dp_codec_dai.playback.rates = SNDRV_PCM_RATE_44100;
 	} else if (rate == 48000) {
