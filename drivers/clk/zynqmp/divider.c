@@ -85,8 +85,11 @@ static long zynqmp_clk_divider_round_rate(struct clk_hw *hw,
 		return DIV_ROUND_UP_ULL((u64)*prate, bestdiv);
 	}
 
-	return divider_round_rate(hw, rate, prate, divider->table,
-				  divider->width, divider->flags);
+	bestdiv = divider_get_val(rate, *prate, divider->table, divider->width,
+			divider->flags);
+	*prate = rate * bestdiv;
+
+	return rate;
 }
 
 static int zynqmp_clk_divider_set_rate(struct clk_hw *hw, unsigned long rate,
