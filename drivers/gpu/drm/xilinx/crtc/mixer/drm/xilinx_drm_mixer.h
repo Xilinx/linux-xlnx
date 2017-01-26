@@ -43,7 +43,7 @@
 /**
  * Used to parse device tree for mixer node and initialize the mixer IP core
  * to a default state wherein a background color is generated and all layers
- * are initially disabled.  
+ * are initially disabled.
  *
  * @param[in] dev Device member of drm device
  * @param[in] node Open firmware(of) device tree node describing the mixer IP
@@ -51,16 +51,16 @@
  *
  * @returns reference to mixer instance struct; err pointer otherwise
  *
-*/ 
+*/
 struct xv_mixer *
-xilinx_drm_mixer_probe(struct device *dev, 
-		       struct device_node *node,
-		       struct xilinx_drm_plane_manager *manager);
+xilinx_drm_mixer_probe(struct device *dev,
+		struct device_node *node,
+		struct xilinx_drm_plane_manager *manager);
 
 /**
  * Hold the reset line for the IP core low for 300 nano seconds and then
- * brings line high to pull out of reset.  The core can then be reprogrammed with
- * new mode settings and subsequently started to begin generating video
+ * brings line high to pull out of reset.  The core can then be reprogrammed
+ * with new mode settings and subsequently started to begin generating video
  *
  * @param[in] mixer IP core instance to reset
  *
@@ -70,7 +70,7 @@ xilinx_drm_mixer_reset(struct xv_mixer *mixer);
 
 /**
  * Start generation of video stream from mixer
- * 
+ *
  * @param[in] mixer IP core instance to reset
  *
  * @note sets the mixer to auto-restart so that video will be streamed
@@ -81,8 +81,8 @@ xilinx_drm_mixer_start(struct xv_mixer *mixer);
 
 /**
  * Internal method used to look-up color format index based on device tree
- * string.  
- * 
+ * string.
+ *
  * @param[in] color_fmt String value representing color format found in device
  *                      tree (e.g. "rgb", "yuv422", "yuv444")
  * @param[out] output Enum value of video format id
@@ -90,14 +90,14 @@ xilinx_drm_mixer_start(struct xv_mixer *mixer);
  * @returns 0 on success; -EINVAL if no entry was found in table
  *
  * @note Should not be used outside of DRM driver.
- */  
-int 
+ */
+int
 xilinx_drm_mixer_string_to_fmt(const char *color_fmt, u32 *output);
 
 /**
  * Internal method used to use Xilinx color id and match to DRM-based fourcc
  * color code.
- * 
+ *
  * @param[in] id Xilinx enum value for a color space type (e.g. YUV422)
  * @param[out] output DRM fourcc value for corresponding Xilinx color space id
  *
@@ -105,7 +105,7 @@ xilinx_drm_mixer_string_to_fmt(const char *color_fmt, u32 *output);
  *
  * @note Should not be used outside of DRM driver.
 */
-int 
+int
 xilinx_drm_mixer_fmt_to_drm_fmt(xv_comm_color_fmt_id id, u32 *output);
 
 
@@ -114,33 +114,33 @@ xilinx_drm_mixer_fmt_to_drm_fmt(xv_comm_color_fmt_id id, u32 *output);
  *
  * @param[in] plane Drm plane object describing layer to be modified
  * @param[in] val Index of scale factor to use:
- * 		  0 = 1x
- * 		  1 = 2x
- * 		  2 = 4x 
+ *		0 = 1x
+ *		1 = 2x
+ *		2 = 4x
  *
  * @returns 0 on success; either -EINVAL if scale value is illegal or
  *          -ENODEV if layer does not exist (null)
 */
 int
 xilinx_drm_mixer_set_layer_scale(struct xilinx_drm_plane *plane,
-                                 uint64_t val);
+				uint64_t val);
 
 /**
  * Change the transparency of an entire plane
- * 
+ *
  * @param[in] plane Video layer affected by new alpha setting
  * @param[in] val Value of transparency setting (0-255) with 255 being opaque
- * 		  0 being fully transparent
- * 
+ *		0 being fully transparent
+ *
  * @returns 0 on success; -EINVAL on failure
 */
 int
 xilinx_drm_mixer_set_layer_alpha(struct xilinx_drm_plane *plane,
-                                 uint64_t val);
+				uint64_t val);
 
 /**
  * Disables video output represented by the plane object
- * 
+ *
  * @param[in] plane Drm plane object describing video layer to disable
  *
 */
@@ -149,7 +149,7 @@ xilinx_drm_mixer_layer_disable(struct xilinx_drm_plane *plane);
 
 /**
  * Enables video output represented by the plane object
- * 
+ *
  * @param[in] plane Drm plane object describing video layer to enable
  *
 */
@@ -159,12 +159,12 @@ xilinx_drm_mixer_layer_enable(struct xilinx_drm_plane *plane);
 
 /**
  * Enables video output represented by the plane object
- * 
+ *
  * @param[in] plane Drm plane object describing video layer to mark
- * 		as active.  Only layers marked 'active' will be
- * 		enabled when size or scale registeres are update.
- * 		In-active layers can be updated but will not be
- * 		enabled in hardware.
+ *		as active.  Only layers marked 'active' will be
+ *		enabled when size or scale registeres are update.
+ *		In-active layers can be updated but will not be
+ *		enabled in hardware.
  *
  * @returns 0 on success; -ENODEV if mixer layer does not exist
 */
@@ -173,12 +173,12 @@ xilinx_drm_mixer_mark_layer_active(struct xilinx_drm_plane *plane);
 
 /**
  * Enables video output represented by the plane object
- * 
+ *
  * @param[in] plane Drm plane object describing video layer to mark
- * 		as inactive.  Only layers marked 'active' will be
- * 		enabled when size or scale registeres are update.
- * 		In-active layers can be updated but will not be
- * 		enabled in hardware.
+ *		as inactive.  Only layers marked 'active' will be
+ *		enabled when size or scale registeres are update.
+ *		In-active layers can be updated but will not be
+ *		enabled in hardware.
  *
  * @returns 0 on success; -ENODEV if mixer layer does not exist
 */
@@ -193,30 +193,30 @@ xilinx_drm_mixer_mark_layer_inactive(struct xilinx_drm_plane *plane);
  * @param[in] crtc_y New vertical anchor position from which to begin rendering
  * @param[in] width Width, in pixels, to render from stream or memory buffer
  * @param[in] height Height, in pixels, to render from stream or memory buffer
- * 
- * @returns 0 if successful; Either -EINVAL if coordindate data is invalid 
- * 	      or -ENODEV if layer data not present
+ *
+ * @returns 0 if successful; Either -EINVAL if coordindate data is invalid
+ *	      or -ENODEV if layer data not present
  *
  * @note New size and coordinates of window must fit within the currently active
  * area of the crtc (e.g. the background resolution)
 */
 int
 xilinx_drm_mixer_set_layer_dimensions(struct xilinx_drm_plane *plane,
-                                      u32 crtc_x, u32 crtc_y,
-                                      u32 width, u32 height);
+				u32 crtc_x, u32 crtc_y,
+				u32 width, u32 height);
 
 /**
  * Obtains a pointer to a struct containing layer-specific data for the mixer IP
- * 
+ *
  * @param[in] mixer Instance of mixer for which to obtain layer data
- * @param[in] id logical layer id (e.g. 0=background, 1=overlay) for which to obtain
- * 	         layer information
+ * @param[in] id logical layer id (e.g. 0=background, 1=overlay) for which to
+ *		obtain layer information
  *
- * @returns pointer to struct xv_mixer_layer_data for layer specified by id; NULL on
- *          failure.
+ * @returns pointer to struct xv_mixer_layer_data for layer specified by id;
+	NULL on failure.
  *
- * @note Does not apply to logo layer.  Logo layer data is contained within the 
- *       struct xv_mixer instance.
+ * @note Does not apply to logo layer.  Logo layer data is contained within the
+ *	struct xv_mixer instance.
 */
 struct xv_mixer_layer_data *
 xilinx_drm_mixer_get_layer(struct xv_mixer *mixer, xv_mixer_layer_id id);
@@ -224,19 +224,19 @@ xilinx_drm_mixer_get_layer(struct xv_mixer *mixer, xv_mixer_layer_id id);
 /**
  * Updates internal R, G and B buffer array of mixer from kernel framebuffer
  * which is expected to be arranged as RGB888 (fourcc 'RG24') packed 24 bit data
- * 
- * @param[in] plane Xilinx drm plane object with current video format information
+ *
+ * @param[in] plane Xilinx drm plane object with current video format info
  * @param[in] fb Framebuffer with which to obtain reference to backing storage
  * @param[in] src_w  Width of buffer to read RGB888 data
  * @param[in] src_h  Height of buffer to read RGB888 data
  *
  * @returns 0 on success; -EINVAL if format and/or size of buffer is invalid
  *
- * @note Initial call caches buffer kernel virtual address.  Subsequent calls will
- *       only re-load buffer if virtual address and/or size changes.
+ * @note Initial call caches buffer kernel virtual address.  Subsequent calls
+ *       will only re-load buffer if virtual address and/or size changes.
 */
 int
 xilinx_drm_mixer_update_logo_img(struct xilinx_drm_plane *plane,
-				 struct drm_framebuffer *fb,
-				 uint32_t src_w, uint32_t src_h);
+				struct drm_framebuffer *fb,
+				uint32_t src_w, uint32_t src_h);
 #endif /* end __XLNX_DRM_MIXER__ */

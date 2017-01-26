@@ -33,15 +33,15 @@
 /**
 * @file xilinx_mixer_data.h
 * Defines all of the enums and data structures necessary to utilize the
-* mixer hardware accessor functions.  
+* mixer hardware accessor functions.
 */
-#ifndef __XV_VIDEO_MIXER__
-#define __XV_VIDEO_MIXER__
+#ifndef __XV_VIDEO_MIXER_DATA__
+#define __XV_VIDEO_MIXER_DATA__
 
 #include <linux/types.h>
 #include "crtc/mixer/hw/xilinx_mixer_regs.h"
 
-/************************** Inline Functions *********************************/
+/*********************** Inline Functions/Macros *****************************/
 #define mixer_layer_x_pos(l)	    l->layer_regs.x_pos
 #define mixer_layer_y_pos(l)	    l->layer_regs.y_pos
 #define mixer_layer_width(l)	    l->layer_regs.width
@@ -53,8 +53,8 @@
 #define mixer_layer_fmt(l)          l->hw_config.vid_fmt
 
 #define mixer_video_fmt(m)                               \
-    (xilinx_mixer_get_layer_data(m,XVMIX_LAYER_MASTER))->\
-    hw_config.vid_fmt
+	((xilinx_mixer_get_layer_data(m, XVMIX_LAYER_MASTER))->\
+	hw_config.vid_fmt)
 
 /************************** Enums ********************************************/
 /**
@@ -78,7 +78,7 @@ typedef enum {
 
 /**
  * @enum xv_mixer_bkg_color_id
- * Used to select a set of values used to program mixer internal background 
+ * Used to select a set of values used to program mixer internal background
  * color generator to generate the selected color
 */
 typedef enum {
@@ -94,8 +94,7 @@ typedef enum {
  * @enum xv_mixer_scale_factor
  * Selection of legal scaling factors for layers which support scaling.
 */
-typedef enum
-{
+typedef enum {
 	XVMIX_SCALE_FACTOR_1X = 0,
 	XVMIX_SCALE_FACTOR_2X,
 	XVMIX_SCALE_FACTOR_4X,
@@ -155,15 +154,17 @@ struct xv_mixer_layer_data {
 		bool    is_streaming;
 		u32     max_width;
 		u32     max_height;
+		u32     min_width;
+		u32     min_height;
 	} hw_config;
 
 	struct {
-		u64     buff_addr; /* JPM TODO not implemented yet */
+		u64     buff_addr; /* JPM TODO mem layer not implemented yet */
 		u32     x_pos;
 		u32     y_pos;
 		u32     width;
 		u32     height;
-		u32     stride; /* JPM TODO not implemented yet */
+		u32     stride; /* JPM TODO mem layer not implemented yet */
 		u32     alpha;
 		bool	is_active;
 		xv_mixer_scale_factor scale_fact;
@@ -179,7 +180,7 @@ struct xv_mixer_layer_data {
  * primary data structure for many L2 driver functions. Logo layer data, if
  * enabled within the IP, is described in this structure.  All other layers
  * are described by an instance of xv_mixer_layer_data referenced by this
- * struct. 
+ * struct.
 */
 struct xv_mixer {
 
@@ -187,30 +188,24 @@ struct xv_mixer {
 	void __iomem        *reg_base_addr;
 	bool                logo_layer_enabled;
 	bool                logo_color_key_enabled;
-	u32        	    max_layer_width;
-	u32        	    max_layer_height;
-	u32        	    max_logo_layer_width;
-	u32        	    max_logo_layer_height;
-	u32        	    max_layers;
-	u32        	    bg_layer_bpc;
-	u32        	    ppc; /* JPM not intialized in driver yet.  
-				    For memory interfaces */
+	u32                 max_layer_width;
+	u32                 max_layer_height;
+	u32                 max_logo_layer_width;
+	u32                 max_logo_layer_height;
+	u32                 max_layers;
+	u32                 bg_layer_bpc;
+	u32                 ppc; /* JPM TODO not supported yet */
 
 	xv_mixer_bkg_color_id      bg_color;
 
-	struct xv_mixer_layer_data *layer_data; 
+	struct xv_mixer_layer_data *layer_data;
 	u32 layer_cnt;
 
+	/* JPM TODO color key feature not yet implemented */
 	struct {
 		u8 rgb_min[3];
 		u8 rgb_max[3];
 	} logo_color_key;
-
-	struct {
-		u8 *r_buffer;
-		u8 *g_buffer;
-		u8 *b_buffer;
-	} logo_rgb_buffers;
 
 	struct gpio_desc *reset_gpio;
 
@@ -230,12 +225,12 @@ struct xv_mixer {
  * @param[in] y_pos new    Row to start display of overlay layer
  * @param[in] win_width    Number of active columns to dislay for overlay layer
  * @param[in] win_height   Number of active columns to display for overlay layer
- * @param[in] stride_bytes Width in bytes of overaly memory buffer 
- * 			  (memory layer only) 
+ * @param[in] stride_bytes Width in bytes of overaly memory buffer
+ *			  (memory layer only)
  *                         yuv422 colorspace requires 2 bytes/pixel
- * 			  yu444 colorspace requires 4 bytes/pixel
+ *			  yu444 colorspace requires 4 bytes/pixel
  *			  Equation to ocmpute stride is as follows:
- *   		          stride = (win_width * (YUV422 ? 2 : 4))
+ *		          stride = (win_width * (YUV422 ? 2 : 4))
  *		          Only applicable when layer is of type memory
  *
  * @return 0 on success; -EINVAL if position is invalid or -ENODEV if layer
@@ -243,12 +238,12 @@ struct xv_mixer {
  *
  * @note Applicable only for layers 1-7 or the logo layer
 */
-int 
+int
 xilinx_mixer_set_layer_window(struct xv_mixer *mixer,
-                              xv_mixer_layer_id layer_id,
-                              u32 x_pos, u32 y_pos,
-                              u32 win_width, u32 win_height,
-                              u32 stride_bytes);
+				xv_mixer_layer_id layer_id,
+				u32 x_pos, u32 y_pos,
+				u32 win_width, u32 win_height,
+				u32 stride_bytes);
 
 
 /**
@@ -259,22 +254,22 @@ xilinx_mixer_set_layer_window(struct xv_mixer *mixer,
  * @param[in] mixer Mixer instance for which to set a new viewable area
  * @param[in] hactive Width of new background image dimension
  * @param[in] vactive Height of new background image dimension
- * 
+ *
  * @return 0 on success; -EINVAL on failure
 */
-int 
+int
 xilinx_mixer_set_active_area(struct xv_mixer *mixer,
-                             u32 hactive, u32 vactive);
+				u32 hactive, u32 vactive);
 
 /**
  * Set the color to be output as background color when background stream layer
- * is disabled 
+ * is disabled
  *
  * @param[in] mixer Mixer instance to program with new background color
  * @param[in] col_id Logical id of the background color to output (see enum)
  * @param[in] bpc  Data width per color component (e.g. 8, 10, 12 or 16)
 */
-void 
+void
 xilinx_mixer_set_bkg_col(struct xv_mixer *mixer,
 			 xv_mixer_bkg_color_id col_id,
 			 xv_comm_colordepth bpc);
@@ -285,9 +280,9 @@ xilinx_mixer_set_bkg_col(struct xv_mixer *mixer,
  * @param[in] mixer Mixer instance in which to enable a video layer
  * @param[in] layer_id Logical id (e.g. 8 = logo layer) to enable
 */
-void 
+void
 xilinx_mixer_layer_enable(struct xv_mixer *mixer,
-                          xv_mixer_layer_id layer_id);
+			xv_mixer_layer_id layer_id);
 
 /**
  * Disables the layer denoted by layer_id in the IP core.
@@ -296,37 +291,37 @@ xilinx_mixer_layer_enable(struct xv_mixer *mixer,
  * @param[in] layer_id Logical id of the layer to be disabled (0-8)
  *
  * @note Layer 0 will indicate the background layer and layer 8 the logo
- * layer.  Passing in the enum value XVMIX_LAYER_ALL will disable all 
+ * layer.  Passing in the enum value XVMIX_LAYER_ALL will disable all
  * layers.
 */
-void 
+void
 xilinx_mixer_layer_disable(struct xv_mixer *mixer,
-                           xv_mixer_layer_id layer_id);
+			xv_mixer_layer_id layer_id);
 
 /**
  * Disables all interrupts in the mixer IP core
  *
  * @param[in] mixer instance in which to disable interrupts
 */
-void 
+void
 xilinx_mixer_intrpt_disable(struct xv_mixer *mixer);
 
 /**
  * Return the current degree of scaling for the layer specified
- * 
+ *
  * @param[in] mixer Mixer instance for which layer information is requested
  * @param[in] layer_id Logical id of layer for which scale setting is requested
  *
  * @returns current layer scaling setting (defaults to 0 if scaling no enabled)
- * 			0 = no scaling (or scaling not permitted)
- * 			1 = 2x scaling (both horiz. and vert.) 
- * 			2 = 4x scaling (both horiz. and vert.) 
+ *			0 = no scaling (or scaling not permitted)
+ *			1 = 2x scaling (both horiz. and vert.)
+ *			2 = 4x scaling (both horiz. and vert.)
  *
  * @note Only applicable to layers 1-7 and logo layer
 */
-int 
+int
 xilinx_mixer_get_layer_scaling(struct xv_mixer *mixer,
-                               xv_mixer_layer_id layer_id);
+				xv_mixer_layer_id layer_id);
 
 /**
  * Retrieve pointer to data structure containing hardware and current register
@@ -334,18 +329,18 @@ xilinx_mixer_get_layer_scaling(struct xv_mixer *mixer,
  *
  * @param[in] mixer Mixer instance to interrogate
  * @param[in] layer_id Logical id of layer for which data is requested
- * 
+ *
  * @returns Structure containing layer-specific data; NULL upon failure
 */
 struct xv_mixer_layer_data*
 xilinx_mixer_get_layer_data(struct xv_mixer *mixer,
-                            xv_mixer_layer_id);
+			xv_mixer_layer_id);
 
 /**
  * Sets the scaling factor for the specified video layer
- * 
- * @param[in] mixer instance of mixer to be subject of scaling request 
- * @param[in] layer_id logical id of video layer subject to new scale setting 
+ *
+ * @param[in] mixer instance of mixer to be subject of scaling request
+ * @param[in] layer_id logical id of video layer subject to new scale setting
  * @param[in] scale scale factor (1x, 2x or 4x) for horiz. and vert. dimensions
  *
  * @return 0 on success; -EINVAL on failure to set scale for layer (likely
@@ -356,38 +351,38 @@ xilinx_mixer_get_layer_data(struct xv_mixer *mixer,
 */
 int
 xilinx_mixer_set_layer_scaling(struct xv_mixer *mixer,
-                              xv_mixer_layer_id layer_id,
-                              xv_mixer_scale_factor scale);
+				xv_mixer_layer_id layer_id,
+				xv_mixer_scale_factor scale);
 
 /**
- * Set the layer global transparency for a video overlay 
- * 
+ * Set the layer global transparency for a video overlay
+ *
  * @param[in] mixer instance of mixer controlling layer to modify
  * @param[in] layer_id logical id of video overlay to adjust alpha setting
  * @param[in] alpha desired alpha setting (0-255) for layer specified
  *            255 = completely opaque
  *            0 = fully transparent
- * 
+ *
  * @returns 0 on success; -EINVAL on failure
- * 
- * @note not applicable to background streaming layer 
+ *
+ * @note not applicable to background streaming layer
 */
 int
 xilinx_mixer_set_layer_alpha(struct xv_mixer *mixer,
-			     xv_mixer_layer_id layer_id,
-                             u32 alpha);
+				xv_mixer_layer_id layer_id,
+				u32 alpha);
 
 /**
  * Start the mixer core video generator
- * 
- * @param[in] mixer mixer core instance for which to begin video output 
+ *
+ * @param[in] mixer mixer core instance for which to begin video output
 */
 void
 xilinx_mixer_start(struct xv_mixer *mixer);
 
 /**
  * Stop the mixer core video generator
- * 
+ *
  * @param[in] mixer mixer core instance for which to stop video output
 */
 void
@@ -420,5 +415,6 @@ xilinx_mixer_init(struct xv_mixer *mixer);
 */
 int
 xilinx_mixer_logo_load(struct xv_mixer *mixer, u32 logo_w, u32 logo_h,
-		       u8 *r_buf, u8 *g_buf, u8 *b_buf);
-#endif /* __XV_VIDEO_MIXER */
+			u8 *r_buf, u8 *g_buf, u8 *b_buf);
+
+#endif /* __XV_VIDEO_MIXER_DATA__ */
