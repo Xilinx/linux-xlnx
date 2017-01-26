@@ -295,22 +295,26 @@ static int __init zynqmp_clk_register_pll_clk(enum zynqmp_clk pll_clk,
 	bypass_parents[0] = int_mux_name;
 	bypass_parents[1] = post_src_mux_name;
 
-	clk = clk_register_zynqmp_pll(clk_int_name, pre_src_mux_name, flags,
+	clks[pll_clk] = clk_register_zynqmp_pll(clk_int_name, pre_src_mux_name,
+			flags | CLK_SET_RATE_NO_REPARENT,
 			clk_ctrl_reg, status_reg, lock_index);
+
 	clk = zynqmp_clk_register_mux(NULL, pre_src_mux_name,
 			pll_src_mux_parents, 8,	0, clk_ctrl_reg, 20, 3, 0);
 
-	clk = clk_register_fixed_factor(NULL, int_half_name, clk_int_name, 0,
-			1, 2);
+	clk = clk_register_fixed_factor(NULL, int_half_name, clk_int_name,
+			CLK_SET_RATE_NO_REPARENT | CLK_SET_RATE_PARENT, 1, 2);
 
 	clk = zynqmp_clk_register_mux(NULL, int_mux_name, int_mux_parents, 2,
-			CLK_SET_RATE_NO_REPARENT, clk_ctrl_reg, 16, 1, 0);
+			CLK_SET_RATE_NO_REPARENT | CLK_SET_RATE_PARENT,
+			clk_ctrl_reg, 16, 1, 0);
 
 	clk = zynqmp_clk_register_mux(NULL, post_src_mux_name,
 			pll_src_mux_parents, 8,	0, clk_ctrl_reg, 24, 3, 0);
 
-	clks[pll_clk] = zynqmp_clk_register_mux(NULL, clk_name, bypass_parents,
-			2, CLK_SET_RATE_NO_REPARENT, clk_ctrl_reg, 3, 1, 0);
+	clk = zynqmp_clk_register_mux(NULL, clk_name, bypass_parents,
+			2, CLK_SET_RATE_NO_REPARENT | CLK_SET_RATE_PARENT,
+			clk_ctrl_reg, 3, 1, 0);
 
 	kfree(clk_int_name);
 	kfree(pre_src_mux_name);
@@ -347,6 +351,7 @@ err_clk_int_name:
  * Return:			Error code on failure
  */
 static int __init zynqmp_clk_register_periph_clk(
+		unsigned long flags,
 		enum zynqmp_clk periph_clk,
 		const char *clk_name, resource_size_t clk_ctrl_reg,
 		const char **parents, unsigned int gated,
@@ -357,6 +362,8 @@ static int __init zynqmp_clk_register_periph_clk(
 	char *div0_name;
 	char *div1_name = NULL;
 	char *parent_div_name;
+
+	flags |= CLK_SET_RATE_NO_REPARENT;
 
 	mux_name = kasprintf(GFP_KERNEL, "%s_mux", clk_name);
 	if (!mux_name)
@@ -371,12 +378,11 @@ static int __init zynqmp_clk_register_periph_clk(
 	}
 
 	clk = zynqmp_clk_register_mux(NULL, mux_name, parents, 4,
-			CLK_SET_RATE_NO_REPARENT,
-			(resource_size_t *)clk_ctrl_reg, 0, 3, 0);
+			flags, (resource_size_t *)clk_ctrl_reg, 0, 3, 0);
 	if (!clk)
 		goto err_div1_name;
 
-	clk = zynqmp_clk_register_divider(NULL, div0_name, mux_name, 0,
+	clk = zynqmp_clk_register_divider(NULL, div0_name, mux_name, flags,
 				(resource_size_t *)clk_ctrl_reg, 8, 6,
 				CLK_DIVIDER_ONE_BASED | CLK_DIVIDER_ALLOW_ZERO);
 
@@ -385,8 +391,8 @@ static int __init zynqmp_clk_register_periph_clk(
 
 	parent_div_name = div0_name;
 	if (two_divisors) {
-		clk = zynqmp_clk_register_divider(NULL, div1_name, div0_name, 0,
-				(resource_size_t *)clk_ctrl_reg, 16, 6,
+		clk = zynqmp_clk_register_divider(NULL, div1_name, div0_name,
+				flags, (resource_size_t *)clk_ctrl_reg, 16, 6,
 				CLK_DIVIDER_ONE_BASED | CLK_DIVIDER_ALLOW_ZERO);
 		parent_div_name = div1_name;
 	}
@@ -717,39 +723,39 @@ static void __init zynqmp_clk_setup(struct device_node *np)
 			periph_parents[pl3]);
 
 	/* Peripheral clock */
-	zynqmp_clk_register_periph_clk(dbg_trace, clk_output_name[dbg_trace],
+	zynqmp_clk_register_periph_clk(0, dbg_trace, clk_output_name[dbg_trace],
 			CRF_APB_DBG_TRACE_CTRL, periph_parents[dbg_trace], 1,
 			0, 24);
 
 	zynqmp_clk_get_parents(clk_output_name, periph_parents[dbg_fpd],
 					iopll_to_fpd, dpll, apll);
-	zynqmp_clk_register_periph_clk(dbg_fpd, clk_output_name[dbg_fpd],
+	zynqmp_clk_register_periph_clk(0, dbg_fpd, clk_output_name[dbg_fpd],
 			CRF_APB_DBG_FPD_CTRL, periph_parents[dbg_fpd], 1, 0,
 			24);
 
-	zynqmp_clk_register_periph_clk(dbg_lpd, clk_output_name[dbg_lpd],
+	zynqmp_clk_register_periph_clk(0, dbg_lpd, clk_output_name[dbg_lpd],
 			CRL_APB_DBG_LPD_CTRL, periph_parents[dbg_lpd], 1, 0,
 			24);
 
-	zynqmp_clk_register_periph_clk(dbg_tstmp, clk_output_name[dbg_tstmp],
+	zynqmp_clk_register_periph_clk(0, dbg_tstmp, clk_output_name[dbg_tstmp],
 			CRF_APB_DBG_TSTMP_CTRL, periph_parents[dbg_tstmp], 0,
 			0, 0);
 
-	zynqmp_clk_register_periph_clk(dp_video_ref,
+	zynqmp_clk_register_periph_clk(CLK_SET_RATE_PARENT, dp_video_ref,
 			clk_output_name[dp_video_ref],
 			CRF_APB_DP_VIDEO_REF_CTRL,
 			periph_parents[dp_video_ref], 1, 1, 24);
 
-	zynqmp_clk_register_periph_clk(dp_audio_ref,
+	zynqmp_clk_register_periph_clk(0, dp_audio_ref,
 			clk_output_name[dp_audio_ref],
 			CRF_APB_DP_AUDIO_REF_CTRL,
 			periph_parents[dp_audio_ref], 1, 1, 24);
 
-	zynqmp_clk_register_periph_clk(dp_stc_ref,
+	zynqmp_clk_register_periph_clk(0, dp_stc_ref,
 			clk_output_name[dp_stc_ref], CRF_APB_DP_STC_REF_CTRL,
 			periph_parents[dp_stc_ref], 1, 1, 24);
 
-	zynqmp_clk_register_periph_clk(gpu_ref, clk_output_name[gpu_ref],
+	zynqmp_clk_register_periph_clk(0, gpu_ref, clk_output_name[gpu_ref],
 			CRF_APB_GPU_REF_CTRL, periph_parents[gpu_ref], 1, 0,
 			24);
 	clks[gpu_pp0_ref] = zynqmp_clk_register_gate(NULL,
@@ -761,40 +767,41 @@ static void __init zynqmp_clk_setup(struct device_node *np)
 			CLK_SET_RATE_PARENT,
 			(resource_size_t *)CRF_APB_GPU_REF_CTRL, 26, 0);
 
-	zynqmp_clk_register_periph_clk(sata_ref, clk_output_name[sata_ref],
+	zynqmp_clk_register_periph_clk(0, sata_ref, clk_output_name[sata_ref],
 			CRF_APB_SATA_REF_CTRL, periph_parents[sata_ref], 1, 0,
 			24);
 
-	zynqmp_clk_register_periph_clk(pcie_ref, clk_output_name[pcie_ref],
+	zynqmp_clk_register_periph_clk(0, pcie_ref, clk_output_name[pcie_ref],
 			CRF_APB_PCIE_REF_CTRL, periph_parents[pcie_ref], 1, 0,
 			24);
 
-	zynqmp_clk_register_periph_clk(gdma_ref, clk_output_name[gdma_ref],
+	zynqmp_clk_register_periph_clk(0, gdma_ref, clk_output_name[gdma_ref],
 			CRF_APB_GDMA_REF_CTRL, periph_parents[gdma_ref], 1, 0,
 			24);
 
-	zynqmp_clk_register_periph_clk(dpdma_ref, clk_output_name[dpdma_ref],
+	zynqmp_clk_register_periph_clk(0, dpdma_ref, clk_output_name[dpdma_ref],
 			CRF_APB_DPDMA_REF_CTRL, periph_parents[dpdma_ref], 1, 0,
 			24);
 
-	zynqmp_clk_register_periph_clk(topsw_main, clk_output_name[topsw_main],
+	zynqmp_clk_register_periph_clk(0, topsw_main,
+			clk_output_name[topsw_main],
 			CRF_APB_TOPSW_MAIN_CTRL, periph_parents[topsw_main],
 			CLK_IGNORE_UNUSED, 0, 24);
 
-	zynqmp_clk_register_periph_clk(topsw_lsbus,
+	zynqmp_clk_register_periph_clk(0, topsw_lsbus,
 			clk_output_name[topsw_lsbus], CRF_APB_TOPSW_LSBUS_CTRL,
 			periph_parents[topsw_lsbus], CLK_IGNORE_UNUSED, 0, 24);
 
-	zynqmp_clk_register_periph_clk(gtgref0_ref,
+	zynqmp_clk_register_periph_clk(0, gtgref0_ref,
 			clk_output_name[gtgref0_ref], CRF_APB_GTGREF0_REF_CTRL,
 			periph_parents[gtgref0_ref], 1, 0, 24);
 
-	zynqmp_clk_register_periph_clk(usb3_dual_ref,
+	zynqmp_clk_register_periph_clk(0, usb3_dual_ref,
 			clk_output_name[usb3_dual_ref],
 			CRL_APB_USB3_DUAL_REF_CTRL,
 			periph_parents[usb3_dual_ref], 1, 1, 25);
 
-	zynqmp_clk_register_periph_clk(usb0_bus_ref,
+	zynqmp_clk_register_periph_clk(0, usb0_bus_ref,
 			clk_output_name[usb0_bus_ref],
 			CRL_APB_USB0_BUS_REF_CTRL,
 			periph_parents[usb0_bus_ref], 1, 1, 25);
@@ -804,7 +811,7 @@ static void __init zynqmp_clk_setup(struct device_node *np)
 			CLK_SET_RATE_PARENT | CLK_SET_RATE_NO_REPARENT,
 			(resource_size_t *)CRL_APB_USB0_BUS_REF_CTRL, 2, 1, 0);
 
-	zynqmp_clk_register_periph_clk(usb1_bus_ref,
+	zynqmp_clk_register_periph_clk(0, usb1_bus_ref,
 			clk_output_name[usb1_bus_ref],
 			CRL_APB_USB1_BUS_REF_CTRL,
 			periph_parents[usb1_bus_ref], 1, 1, 25);
@@ -942,7 +949,7 @@ static void __init zynqmp_clk_setup(struct device_node *np)
 	gem_tsu_mux_parents[2] = "mio_clk_26";
 	gem_tsu_mux_parents[3] = "mio_clk_50_or_51";
 
-	zynqmp_clk_register_periph_clk(gem_tsu_ref,
+	zynqmp_clk_register_periph_clk(0, gem_tsu_ref,
 			clk_output_name[gem_tsu_ref], CRL_APB_GEM_TSU_REF_CTRL,
 			periph_parents[gem_tsu_ref], 1, 1, 24);
 
@@ -951,31 +958,31 @@ static void __init zynqmp_clk_setup(struct device_node *np)
 			CLK_SET_RATE_PARENT | CLK_SET_RATE_NO_REPARENT,
 			(resource_size_t *)IOU_SLCR_GEM_CLK_CTRL, 20, 2, 0);
 
-	zynqmp_clk_register_periph_clk(qspi_ref, clk_output_name[qspi_ref],
+	zynqmp_clk_register_periph_clk(0, qspi_ref, clk_output_name[qspi_ref],
 			CRL_APB_QSPI_REF_CTRL, periph_parents[qspi_ref], 1, 1,
 			24);
 
-	zynqmp_clk_register_periph_clk(sdio0_ref, clk_output_name[sdio0_ref],
+	zynqmp_clk_register_periph_clk(0, sdio0_ref, clk_output_name[sdio0_ref],
 			CRL_APB_SDIO0_REF_CTRL, periph_parents[sdio0_ref], 1,
 			1, 24);
 
-	zynqmp_clk_register_periph_clk(sdio1_ref, clk_output_name[sdio1_ref],
+	zynqmp_clk_register_periph_clk(0, sdio1_ref, clk_output_name[sdio1_ref],
 			CRL_APB_SDIO1_REF_CTRL, periph_parents[sdio1_ref], 1,
 			1, 24);
 
-	zynqmp_clk_register_periph_clk(uart0_ref, clk_output_name[uart0_ref],
+	zynqmp_clk_register_periph_clk(0, uart0_ref, clk_output_name[uart0_ref],
 			CRL_APB_UART0_REF_CTRL, periph_parents[uart0_ref], 1,
 			1, 24);
 
-	zynqmp_clk_register_periph_clk(uart1_ref, clk_output_name[uart1_ref],
+	zynqmp_clk_register_periph_clk(0, uart1_ref, clk_output_name[uart1_ref],
 			CRL_APB_UART1_REF_CTRL, periph_parents[uart1_ref], 1,
 			1, 24);
 
-	zynqmp_clk_register_periph_clk(spi0_ref, clk_output_name[spi0_ref],
+	zynqmp_clk_register_periph_clk(0, spi0_ref, clk_output_name[spi0_ref],
 			CRL_APB_SPI0_REF_CTRL, periph_parents[spi0_ref], 1, 1,
 			24);
 
-	zynqmp_clk_register_periph_clk(spi1_ref, clk_output_name[spi1_ref],
+	zynqmp_clk_register_periph_clk(0, spi1_ref, clk_output_name[spi1_ref],
 			CRL_APB_SPI1_REF_CTRL, periph_parents[spi1_ref], 1, 1,
 			24);
 
@@ -993,7 +1000,7 @@ static void __init zynqmp_clk_setup(struct device_node *np)
 			can_mio_mux_parents[i] = dummy_nm;
 	}
 	kfree(clk_name);
-	zynqmp_clk_register_periph_clk(can0_ref, clk_output_name[can0_ref],
+	zynqmp_clk_register_periph_clk(0, can0_ref, clk_output_name[can0_ref],
 			CRL_APB_CAN0_REF_CTRL, periph_parents[can0_ref], 1, 1,
 			24);
 	clk = zynqmp_clk_register_mux(NULL, "can0_mio_mux",
@@ -1005,7 +1012,7 @@ static void __init zynqmp_clk_setup(struct device_node *np)
 			CLK_SET_RATE_PARENT | CLK_SET_RATE_NO_REPARENT,
 			(resource_size_t *)IOU_SLCR_CAN_MIO_CTRL, 7, 1, 0);
 
-	zynqmp_clk_register_periph_clk(can1_ref, clk_output_name[can1_ref],
+	zynqmp_clk_register_periph_clk(0, can1_ref, clk_output_name[can1_ref],
 			CRL_APB_CAN1_REF_CTRL, periph_parents[can1_ref], 1, 1,
 			24);
 	clk = zynqmp_clk_register_mux(NULL, "can1_mio_mux",
@@ -1017,37 +1024,37 @@ static void __init zynqmp_clk_setup(struct device_node *np)
 			CLK_SET_RATE_PARENT | CLK_SET_RATE_NO_REPARENT,
 			(resource_size_t *)IOU_SLCR_CAN_MIO_CTRL, 22, 1, 0);
 
-	zynqmp_clk_register_periph_clk(cpu_r5, clk_output_name[cpu_r5],
+	zynqmp_clk_register_periph_clk(0, cpu_r5, clk_output_name[cpu_r5],
 			CRL_APB_CPU_R5_CTRL, periph_parents[cpu_r5],
 			CLK_IGNORE_UNUSED, 0, 24);
 	clk = zynqmp_clk_register_gate(NULL, "cpu_r5_core_gate", "cpu_r5_div0",
 			CLK_IGNORE_UNUSED,
 			(resource_size_t *)CRL_APB_CPU_R5_CTRL, 25, 0);
 
-	zynqmp_clk_register_periph_clk(iou_switch, clk_output_name[iou_switch],
-			CRL_APB_IOU_SWITCH_CTRL, periph_parents[iou_switch],
-			CLK_IGNORE_UNUSED, 0, 24);
+	zynqmp_clk_register_periph_clk(0, iou_switch,
+			clk_output_name[iou_switch], CRL_APB_IOU_SWITCH_CTRL,
+			periph_parents[iou_switch], CLK_IGNORE_UNUSED, 0, 24);
 
-	zynqmp_clk_register_periph_clk(csu_pll, clk_output_name[csu_pll],
+	zynqmp_clk_register_periph_clk(0, csu_pll, clk_output_name[csu_pll],
 			CRL_APB_CSU_PLL_CTRL, periph_parents[csu_pll], 1, 0,
 			24);
 
-	zynqmp_clk_register_periph_clk(pcap, clk_output_name[pcap],
+	zynqmp_clk_register_periph_clk(0, pcap, clk_output_name[pcap],
 			CRL_APB_PCAP_CTRL, periph_parents[pcap], 1, 0, 24);
 
-	zynqmp_clk_register_periph_clk(lpd_switch, clk_output_name[lpd_switch],
-			CRL_APB_LPD_SWITCH_CTRL, periph_parents[lpd_switch],
-			CLK_IGNORE_UNUSED, 0, 24);
+	zynqmp_clk_register_periph_clk(0, lpd_switch,
+			clk_output_name[lpd_switch], CRL_APB_LPD_SWITCH_CTRL,
+			periph_parents[lpd_switch], CLK_IGNORE_UNUSED, 0, 24);
 
-	zynqmp_clk_register_periph_clk(lpd_lsbus, clk_output_name[lpd_lsbus],
+	zynqmp_clk_register_periph_clk(0, lpd_lsbus, clk_output_name[lpd_lsbus],
 			CRL_APB_LPD_LSBUS_CTRL, periph_parents[lpd_lsbus],
 			CLK_IGNORE_UNUSED, 0, 24);
 
-	zynqmp_clk_register_periph_clk(nand_ref, clk_output_name[nand_ref],
+	zynqmp_clk_register_periph_clk(0, nand_ref, clk_output_name[nand_ref],
 			CRL_APB_NAND_REF_CTRL, periph_parents[nand_ref], 1, 1,
 			24);
 
-	zynqmp_clk_register_periph_clk(adma_ref, clk_output_name[adma_ref],
+	zynqmp_clk_register_periph_clk(0, adma_ref, clk_output_name[adma_ref],
 			CRL_APB_ADMA_REF_CTRL, periph_parents[adma_ref], 1, 0,
 			24);
 
@@ -1059,15 +1066,15 @@ static void __init zynqmp_clk_setup(struct device_node *np)
 				(resource_size_t *)CRL_APB_DLL_REF_CTRL,
 				0, 3, 0);
 
-	zynqmp_clk_register_periph_clk(ams_ref, clk_output_name[ams_ref],
+	zynqmp_clk_register_periph_clk(0, ams_ref, clk_output_name[ams_ref],
 			CRL_APB_AMS_REF_CTRL, periph_parents[ams_ref], 1, 1,
 			24);
 
-	zynqmp_clk_register_periph_clk(i2c0_ref, clk_output_name[i2c0_ref],
+	zynqmp_clk_register_periph_clk(0, i2c0_ref, clk_output_name[i2c0_ref],
 			CRL_APB_I2C0_REF_CTRL, periph_parents[i2c0_ref], 1,
 			1, 24);
 
-	zynqmp_clk_register_periph_clk(i2c1_ref, clk_output_name[i2c1_ref],
+	zynqmp_clk_register_periph_clk(0, i2c1_ref, clk_output_name[i2c1_ref],
 			CRL_APB_I2C1_REF_CTRL, periph_parents[i2c1_ref], 1,
 			1, 24);
 
