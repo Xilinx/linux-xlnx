@@ -92,6 +92,8 @@
 static char *firmware = "r5_0_firmware";
 static char *firmware1 = "r5_1_firmware";
 
+static bool autoboot __read_mostly = true;
+
 struct zynqmp_r5_rproc_pdata;
 
 /* enumerations for R5 boot device */
@@ -625,6 +627,8 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 		goto rproc_fault;
 	}
 
+	rproc->auto_boot = autoboot;
+
 	ret = rproc_add(local->rproc);
 	if (ret) {
 		dev_err(&pdev->dev, "rproc registration failed\n");
@@ -681,8 +685,11 @@ module_platform_driver(zynqmp_r5_remoteproc_driver);
 
 module_param(firmware, charp, 0);
 module_param(firmware1, charp, 0);
+module_param_named(autoboot,  autoboot, bool, 0444);
 MODULE_PARM_DESC(firmware, "Override the RPU-0 firmware image name.");
 MODULE_PARM_DESC(firmware1, "Override the RPU-1 firmware image name.");
+MODULE_PARM_DESC(autoboot,
+	"enable | disable autoboot. (default: true)");
 
 MODULE_AUTHOR("Jason Wu <j.wu@xilinx.com>");
 MODULE_LICENSE("GPL v2");
