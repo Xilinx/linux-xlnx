@@ -117,6 +117,8 @@ struct mem_pool_st {
 /**
  * struct zynqmp_r5_rproc_pdata - zynqmp rpu remote processor instance state
  * @rproc: rproc handle
+ * @fw_ops: local firmware operations
+ * @defaulta_fw_ops: default rproc firmware operations
  * @workqueue: workqueue for the RPU remoteproc
  * @rpu_base: virt ptr to RPU control address registers
  * @crl_apb_base: virt ptr to CRL_APB address registers for RPU
@@ -129,6 +131,8 @@ struct mem_pool_st {
  */
 struct zynqmp_r5_rproc_pdata {
 	struct rproc *rproc;
+	struct rproc_fw_ops fw_ops;
+	const struct rproc_fw_ops *default_fw_ops;
 	struct work_struct workqueue;
 	void __iomem *rpu_base;
 	void __iomem *crl_apb_base;
@@ -498,6 +502,32 @@ static irqreturn_t r5_remoteproc_interrupt(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
+/*
+ * Empty RSC table
+ */
+static struct resource_table r5_rproc_default_rsc_table = {
+	.ver = 1,
+	.num = 0,
+};
+
+/* Redefine r5 resource table to allow empty resource table */
+static struct resource_table *r5_rproc_find_rsc_table(
+			struct rproc *rproc,
+			const struct firmware *fw,
+			int *tablesz)
+{
+	struct zynqmp_r5_rproc_pdata *local = rproc->priv;
+	struct resource_table *rsc;
+
+	rsc = local->default_fw_ops->find_rsc_table(rproc, fw, tablesz);
+	if (!rsc) {
+		*tablesz = sizeof(r5_rproc_default_rsc_table);
+		return &r5_rproc_default_rsc_table;
+	} else {
+		return rsc;
+	}
+}
+
 static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 {
 	const unsigned char *prop;
@@ -628,6 +658,12 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 	}
 
 	rproc->auto_boot = autoboot;
+
+	/* Set local firmware operations */
+	memcpy(&local->fw_ops, rproc->fw_ops, sizeof(local->fw_ops));
+	local->fw_ops.find_rsc_table = r5_rproc_find_rsc_table;
+	local->default_fw_ops = rproc->fw_ops;
+	rproc->fw_ops = &local->fw_ops;
 
 	ret = rproc_add(local->rproc);
 	if (ret) {
