@@ -876,6 +876,14 @@ static int rproc_fw_boot(struct rproc *rproc, const struct firmware *fw)
 	/* reset max_notifyid */
 	rproc->max_notifyid = -1;
 
+	/* look for remote processor memory and declare them. */
+	ret = rproc_handle_resources(rproc, tablesz, rproc_rproc_mem_handler);
+	if (ret) {
+		dev_err(dev, "Failed to declare rproc memory resource: %d\n",
+			ret);
+		goto clean_up;
+	}
+
 	/* look for virtio devices and register them */
 	ret = rproc_handle_resources(rproc, tablesz, rproc_vdev_handler);
 	if (ret) {
@@ -1186,6 +1194,8 @@ void rproc_shutdown(struct rproc *rproc)
 	rproc->state = RPROC_OFFLINE;
 
 	dev_info(dev, "stopped remote processor %s\n", rproc->name);
+
+	dma_release_declared_memory(dev->parent);
 
 out:
 	mutex_unlock(&rproc->lock);
