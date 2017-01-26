@@ -68,8 +68,14 @@ static inline enum pll_mode pll_frac_get_mode(struct clk_hw *hw)
 {
 	struct zynqmp_pll *clk = to_zynqmp_pll(hw);
 	u32 reg;
+	int ret;
 
-	reg = zynqmp_pm_mmio_readl(clk->pll_ctrl + FRAC_OFFSET);
+	ret = zynqmp_pm_mmio_read((u32)(ulong)(clk->pll_ctrl + FRAC_OFFSET),
+					&reg);
+	if (ret)
+		pr_warn_once("Read fail pll address: %x\n",
+				(u32)(ulong)(clk->pll_ctrl + FRAC_OFFSET));
+
 	reg = reg & PLLFCFG_FRAC_EN;
 	return reg ? PLL_MODE_FRAC : PLL_MODE_INT;
 }
@@ -184,8 +190,12 @@ static int zynqmp_pll_is_enabled(struct clk_hw *hw)
 {
 	u32 reg;
 	struct zynqmp_pll *clk = to_zynqmp_pll(hw);
+	int ret;
 
-	reg = zynqmp_pm_mmio_readl(clk->pll_ctrl);
+	ret = zynqmp_pm_mmio_read((u32)(ulong)clk->pll_ctrl, &reg);
+	if (ret)
+		pr_warn_once("Read fail pll address: %x\n",
+				(u32)(ulong)clk->pll_ctrl);
 
 	return !(reg & (PLLCTRL_RESET_MASK));
 }

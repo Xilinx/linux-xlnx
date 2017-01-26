@@ -48,13 +48,17 @@ static void clk_gate_endisable(struct clk_hw *hw, int enable)
 	struct clk_gate *gate = to_clk_gate(hw);
 	int set = gate->flags & CLK_GATE_SET_TO_DISABLE ? 1 : 0;
 	u32 reg;
+	int ret;
 
 	set ^= enable;
 
 	if (gate->flags & CLK_GATE_HIWORD_MASK) {
 		reg = BIT(gate->bit_idx + 16);
 	} else {
-		reg = zynqmp_pm_mmio_readl(gate->reg);
+		ret = zynqmp_pm_mmio_read((u32)(ulong)gate->reg, &reg);
+		if (ret)
+			pr_warn_once("Read fail gate address: %x\n",
+					(u32)(ulong)gate->reg);
 
 		if (!set)
 			reg &= ~BIT(gate->bit_idx);
@@ -62,7 +66,9 @@ static void clk_gate_endisable(struct clk_hw *hw, int enable)
 
 	if (set)
 		reg |= BIT(gate->bit_idx);
-	zynqmp_pm_mmio_writel(reg, gate->reg);
+	ret = zynqmp_pm_mmio_writel(reg, gate->reg);
+	if (ret)
+		pr_warn_once("Write failed gate address:%x\n", (u32)(ulong)reg);
 }
 
 static int zynqmp_clk_gate_enable(struct clk_hw *hw)
@@ -80,9 +86,13 @@ static void zynqmp_clk_gate_disable(struct clk_hw *hw)
 static int zynqmp_clk_gate_is_enabled(struct clk_hw *hw)
 {
 	u32 reg;
+	int ret;
 	struct clk_gate *gate = to_clk_gate(hw);
 
-	reg = zynqmp_pm_mmio_readl(gate->reg);
+	ret = zynqmp_pm_mmio_read((u32)(ulong)gate->reg, &reg);
+	if (ret)
+		pr_warn_once("Read failed gate address: %x\n",
+				(u32)(ulong)gate->reg);
 
 	/* if a set bit disables this clk, flip it before masking */
 	if (gate->flags & CLK_GATE_SET_TO_DISABLE)

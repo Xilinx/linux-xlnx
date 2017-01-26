@@ -33,6 +33,7 @@ static u8 zynqmp_clk_mux_get_parent(struct clk_hw *hw)
 	struct clk_mux *mux = to_clk_mux(hw);
 	int num_parents = clk_hw_get_num_parents(hw);
 	u32 val;
+	int ret;
 
 	/*
 	 * FIXME need a mux-specific flag to determine if val is bitwise or
@@ -41,7 +42,11 @@ static u8 zynqmp_clk_mux_get_parent(struct clk_hw *hw)
 	 * OTOH, pmd_trace_clk_mux_ck uses a separate bit for each clock, so
 	 * val = 0x4 really means "bit 2, index starts at bit 0"
 	 */
-	val = zynqmp_pm_mmio_readl(mux->reg) >> mux->shift;
+	ret = zynqmp_pm_mmio_read((u32)(ulong)mux->reg, &val);
+	if (ret)
+		pr_warn_once("Read fail mux address: %x\n",
+				(u32)(ulong)mux->reg);
+	val = val >> mux->shift;
 	val &= mux->mask;
 
 	if (mux->table) {
@@ -66,6 +71,7 @@ static int zynqmp_clk_mux_set_parent(struct clk_hw *hw, u8 index)
 {
 	struct clk_mux *mux = to_clk_mux(hw);
 	u32 val;
+	int ret;
 
 	if (mux->table) {
 		index = mux->table[index];
@@ -80,11 +86,17 @@ static int zynqmp_clk_mux_set_parent(struct clk_hw *hw, u8 index)
 	if (mux->flags & CLK_MUX_HIWORD_MASK) {
 		val = mux->mask << (mux->shift + 16);
 	} else {
-		val = zynqmp_pm_mmio_readl(mux->reg);
+		ret = zynqmp_pm_mmio_read((u32)(ulong)mux->reg, &val);
+		if (ret)
+			pr_warn_once("Read fail mux address: %x\n",
+					(u32)(ulong)mux->reg);
 		val &= ~(mux->mask << mux->shift);
 	}
 	val |= index << mux->shift;
-	zynqmp_pm_mmio_writel(val, mux->reg);
+	ret = zynqmp_pm_mmio_writel(val, mux->reg);
+	if (ret)
+		pr_warn_once("Write failed to mux address:%x\n",
+				(u32)(ulong)mux->reg);
 
 	return 0;
 }
