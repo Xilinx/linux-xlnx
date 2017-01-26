@@ -682,6 +682,42 @@ static int rproc_count_vrings(struct rproc *rproc, struct fw_rsc_vdev *rsc,
 	return 0;
 }
 
+/**
+ * rproc_handle_rproc_mem() - handle remote processor memory
+ * @rproc: rproc handle
+ * @rsc: the resource entry
+ * @avail: size of available data (for image validation)
+ *
+ * This function will handle declare the remote procesor's memory
+ * as DMA memory of the remoteproc, and then, the host can use it
+ * as shared memory, e.g. vrings ahre shared buffers.
+ */
+static int rproc_handle_rproc_mem(struct rproc *rproc,
+				 struct fw_rsc_rproc_mem *rsc,
+				 int offset, int avail)
+{
+	struct device *dev = &rproc->dev;
+	int ret;
+
+	if (sizeof(*rsc) > avail) {
+		dev_err(dev, "rproc_mem rsc is truncated\n");
+		return -EINVAL;
+	}
+
+	if (rsc->pa == FW_RSC_ADDR_ANY) {
+		dev_err(dev, "not able to declare rproc mem, pa is 0x%x\n",
+			rsc->pa);
+		return -EINVAL;
+	}
+	ret = dma_declare_coherent_memory(dev->parent, rsc->pa,
+		rsc->pa, rsc->len, DMA_MEMORY_MAP);
+	if (!ret) {
+		dev_err(dev, "failed to declare rproc mem as DMA mem.\n");
+		return -ENOMEM;
+	}
+	return 0;
+}
+
 /*
  * A lookup table for resource handlers. The indices are defined in
  * enum fw_resource_type.
@@ -695,6 +731,10 @@ static rproc_handle_resource_t rproc_loading_handlers[RSC_LAST] = {
 
 static rproc_handle_resource_t rproc_vdev_handler[RSC_LAST] = {
 	[RSC_VDEV] = (rproc_handle_resource_t)rproc_handle_vdev,
+};
+
+static rproc_handle_resource_t rproc_rproc_mem_handler[RSC_LAST] = {
+	[RSC_RPROC_MEM] = (rproc_handle_resource_t)rproc_handle_rproc_mem,
 };
 
 /* handle firmware resource entries before booting the remote processor */
