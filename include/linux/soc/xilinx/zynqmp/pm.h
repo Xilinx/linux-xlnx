@@ -236,7 +236,8 @@ int zynqmp_pm_get_node_status(const u32 node,
 				u32 *const requirements,
 				u32 *const usage);
 int zynqmp_pm_get_operating_characteristic(const u32 node,
-					const enum zynqmp_pm_opchar_type type);
+					const enum zynqmp_pm_opchar_type type,
+					u32 *const result);
 
 /* Direct-Control API functions */
 int zynqmp_pm_reset_assert(const enum zynqmp_pm_reset reset,
