@@ -1,0 +1,81 @@
+Xilinx Scaler (SCALER)
+------------------------------------
+
+Required properties:
+
+- compatible: Must be "xlnx,v-scaler-hls-8.1".
+
+- reg: Physical base address and length of the registers set for the device.
+
+- clocks: Reference to the video core clock.
+
+- xlnx,num-hori-taps, xlnx,num-vert-taps: The number of horizontal and vertical
+  taps for scaling filter(range: 6,8,10,12).
+
+- xlnx,max-num-phases: The maximum number of phases for scaling filter
+  (Only allowed is 64).
+
+- xlnx,max-num-lines : The maxiumum number of lines for the scaler
+ (For this IP the values is 2160)
+
+- xlnx,max-pixels : The maxium number of pixes on a line
+ (For this IP the value is 3840)
+ 
+- xlnx,pix-per-clk : The pixels per clock property of the IP
+ (Currently only 1 pixel per clock is supported)
+
+- ports: Video ports, using the DT bindings defined in ../video-interfaces.txt.
+  The scaler has an input port (0) and an output port (1).
+
+
+Required port properties:
+
+- xlnx,video-format: Must be one of RBG, YUV_422, YUV_422 or YUV_420 for
+  both input port (0) and output port (1). The two formats must be identical.
+
+- xlnx,video-width: Video width as defined in video.txt
+
+Example:
+
+	scalar_1:scalar@a0000000 {
+		compatible = "xlnx,v-scaler-hls-8.1";
+		reg = <0x0 0xa0000000 0x0 0x40000>;
+		clocks = <&vid_stream_clk>;
+		xlnx,num-hori-taps = <6>;
+                xlnx,num-vert-taps = <6>;
+                xlnx,max-num-phases = <64>;
+                xlnx,max-lines = <2160>;
+                xlnx,max-pixels = <3840>;
+                xlnx,pix-per-clk = <1>;
+
+		ports {
+                        #address-cells = <1>;
+                        #size-cells = <0>;
+
+                        port@0 {
+                                reg = <0>;
+
+                                xlnx,video-format = <XVIP_VF_RBG>;
+                                xlnx,video-width = <8>;
+
+                                scalar_in: endpoint {
+                                        remote-endpoint = <&csc_out>;
+                                };
+                        };
+                        /*
+                         * Do not change this 
+                         * Reason being VDMA supports only YUV 422
+                         */
+                        port@1 {
+                                reg = <1>;
+
+                                xlnx,video-format = <XVIP_VF_YUV_422>;
+                                xlnx,video-width = <8>;
+
+                                scalar_out: endpoint {
+                                        remote-endpoint = <&vcap_tpg_in>;
+                                };
+                        };
+                };
+
+	};
