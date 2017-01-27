@@ -714,12 +714,12 @@ xilinx_frmbuf_dma_prep_interleaved(struct dma_chan *dchan,
 	/* vsize is number of active hor pixels */
 	hw->vsize = xt->numf;
 	/* hsize is number of active ver pixels */
-	hw->hsize = xt->sgl[0].size/2;
+	hw->hsize = xt->sgl[0].size/bytes_per_pixel;
 	/* Stride is given in bytes.
 	 * It is width x bytes/pixel rounded up to
 	 * a multiple of AXI_MM_DATA_WIDTH in bytes.
 	 */
-	hw->stride = ((xt->sgl[0].icg + xt->sgl[0].size) / 2) * bytes_per_pixel;
+	hw->stride = xt->sgl[0].icg + xt->sgl[0].size;
 
 	if (chan->direction == DMA_MEM_TO_DEV)
 		hw->buf_addr = xt->src_start;
