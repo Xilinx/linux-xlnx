@@ -183,15 +183,22 @@ static void r5_boot_addr_config(struct zynqmp_r5_rproc_pdata *pdata)
 static void r5_reset(struct zynqmp_r5_rproc_pdata *pdata,
 			bool do_reset)
 {
-	u32 tmp;
+	u32 tmp, mask;
 
 	pr_debug("%s: R5 ID: %d, reset %d\n", __func__, pdata->rpu_id,
 			 do_reset);
+	if (pdata->rpu_mode == SPLIT)
+		mask = RPU0_RESET_BIT << pdata->rpu_id;
+	else
+		mask = RPU0_RESET_BIT | (RPU0_RESET_BIT << 1);
+	if (!do_reset)
+		mask |= RPU_AMBA_RST_MASK;
+
 	tmp = reg_read(pdata->crl_apb_base, RST_LPD_TOP_OFFSET);
 	if (do_reset)
-		tmp |= (RPU0_RESET_BIT << pdata->rpu_id);
+		tmp |= mask;
 	else
-		tmp &= ~((RPU0_RESET_BIT << pdata->rpu_id) | RPU_AMBA_RST_MASK);
+		tmp &= ~mask;
 	reg_write(pdata->crl_apb_base, RST_LPD_TOP_OFFSET, tmp);
 }
 
@@ -212,15 +219,23 @@ static void r5_halt(struct zynqmp_r5_rproc_pdata *pdata,
 
 	pr_debug("%s: R5 ID: %d, halt %d\n", __func__, pdata->rpu_id,
 			 do_halt);
+
 	if (pdata->rpu_id == 0)
 		offset = RPU_0_CFG_OFFSET;
-
 	tmp = reg_read(pdata->rpu_base, offset);
 	if (do_halt)
 		tmp &= ~nCPUHALT_BIT;
 	else
 		tmp |= nCPUHALT_BIT;
 	reg_write(pdata->rpu_base, offset, tmp);
+	if (pdata->rpu_mode != SPLIT) {
+		tmp = reg_read(pdata->rpu_base, RPU_1_CFG_OFFSET);
+		if (do_halt)
+			tmp &= ~nCPUHALT_BIT;
+		else
+			tmp |= nCPUHALT_BIT;
+		reg_write(pdata->rpu_base, RPU_1_CFG_OFFSET, tmp);
+	}
 }
 
 /**
