@@ -398,13 +398,26 @@ static int zynqmp_r5_rproc_stop(struct rproc *rproc)
 {
 	struct device *dev = rproc->dev.parent;
 	struct zynqmp_r5_rproc_pdata *local = rproc->priv;
+	struct rproc_mem_entry *mem, *nmem;
 
 	dev_dbg(dev, "%s\n", __func__);
 
+	r5_reset(local, true);
 	r5_halt(local, true);
-
+	r5_request_tcm(local);
 	reg_write(local->ipi_base, IDR_OFFSET, local->ipi_dest_mask);
 	reg_write(local->ipi_base, ISR_OFFSET, local->ipi_dest_mask);
+
+	/* After it reset was once asserted, TCM will be initialized
+	 * before it can be read. E.g. remoteproc virtio will access
+	 * TCM if vdev rsc entry is in TCM after RPU stop.
+	 * The following is to initialize the TCM.
+	 */
+	list_for_each_entry_safe(mem, nmem, &local->mems, node) {
+		if ((mem->dma & 0xFFF00000) == 0xFFE00000)
+			memset(mem->va, 0, mem->len);
+	}
+
 	return 0;
 }
 
