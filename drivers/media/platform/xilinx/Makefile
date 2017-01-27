@@ -6,6 +6,7 @@ obj-$(CONFIG_VIDEO_XILINX_CRESAMPLE) += xilinx-cresample.o
 obj-$(CONFIG_VIDEO_XILINX_HLS) += xilinx-hls.o
 obj-$(CONFIG_VIDEO_XILINX_RGB2YUV) += xilinx-rgb2yuv.o
 obj-$(CONFIG_VIDEO_XILINX_SCALER) += xilinx-scaler.o
+obj-$(CONFIG_VIDEO_XILINX_SCALER_HLS_VPSS) += xilinx-scaler-hls.o
 obj-$(CONFIG_VIDEO_XILINX_REMAPPER) += xilinx-remapper.o
 obj-$(CONFIG_VIDEO_XILINX_SWITCH) += xilinx-switch.o
 obj-$(CONFIG_VIDEO_XILINX_TPG) += xilinx-tpg.o

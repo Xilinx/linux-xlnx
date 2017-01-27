@@ -2,7 +2,7 @@
  * Xilinx HLS Scaler
  *
  * Copyright (C) 2013-2015 Ideas on Board
- * Copyright (C) 2013-2015 Xilinx, Inc.
+ * Copyright (C) 2013-2017 Xilinx, Inc.
  *
  * Contacts: Radhey Shyam Pandey <radheys@xilinx.com>
  *           Hyun Kwon <hyun.kwon@xilinx.com>
@@ -33,66 +33,66 @@
 #include "xilinx-vscaler-hw.h"
 #include "xilinx-scaler-coeff.h"
 
-#define XSCALER_MIN_WIDTH                       32
-#define XSCALER_MAX_WIDTH			4096
-#define XSCALER_MIN_HEIGHT			32
-#define XSCALER_MAX_HEIGHT			4096
+#define XSCALER_MIN_WIDTH			(32)
+#define XSCALER_MAX_WIDTH			(4096)
+#define XSCALER_MIN_HEIGHT			(32)
+#define XSCALER_MAX_HEIGHT			(4096)
 
 /* Modify to defaults incase it is not configured from application */
-#define XSCALER_DEF_IN_HEIGHT			720
-#define XSCALER_DEF_IN_WIDTH			1280
-#define XSCALER_DEF_OUT_HEIGHT			1080
-#define XSCALER_DEF_OUT_WIDTH			1920
+#define XSCALER_DEF_IN_HEIGHT			(720)
+#define XSCALER_DEF_IN_WIDTH			(1280)
+#define XSCALER_DEF_OUT_HEIGHT			(1080)
+#define XSCALER_DEF_OUT_WIDTH			(1920)
 
-#define XSCALER_HSF				0x0100
-#define XSCALER_VSF				0x0104
-#define XSCALER_SF_SHIFT			20
-#define XSCALER_SF_MASK				0xffffff
-#define XSCALER_SOURCE_SIZE			0x0108
-#define XSCALER_SIZE_HORZ_SHIFT			0
-#define XSCALER_SIZE_VERT_SHIFT			16
-#define XSCALER_SIZE_MASK			0xfff
-#define XSCALER_HAPERTURE			0x010c
-#define XSCALER_VAPERTURE			0x0110
-#define XSCALER_APERTURE_START_SHIFT		0
-#define XSCALER_APERTURE_END_SHIFT		16
-#define XSCALER_OUTPUT_SIZE			0x0114
-#define XSCALER_COEF_DATA_IN			0x0134
-#define XSCALER_COEF_DATA_IN_SHIFT		16
+#define XSCALER_HSF				(0x0100)
+#define XSCALER_VSF				(0x0104)
+#define XSCALER_SF_SHIFT			(20)
+#define XSCALER_SF_MASK				(0xffffff)
+#define XSCALER_SOURCE_SIZE			(0x0108)
+#define XSCALER_SIZE_HORZ_SHIFT			(0)
+#define XSCALER_SIZE_VERT_SHIFT			(16)
+#define XSCALER_SIZE_MASK			(0xfff)
+#define XSCALER_HAPERTURE			(0x010c)
+#define XSCALER_VAPERTURE			(0x0110)
+#define XSCALER_APERTURE_START_SHIFT		(0)
+#define XSCALER_APERTURE_END_SHIFT		(16)
+#define XSCALER_OUTPUT_SIZE			(0x0114)
+#define XSCALER_COEF_DATA_IN			(0x0134)
+#define XSCALER_COEF_DATA_IN_SHIFT		(16)
 
 /* Video subsytems block offset */
-#define S_AXIS_RESET_OFF 0x00010000
-#define V_HSCALER_OFF    0x00000000
-#define V_VSCALER_OFF    0x00020000
+#define S_AXIS_RESET_OFF			(0x00010000)
+#define V_HSCALER_OFF				(0x00000000)
+#define V_VSCALER_OFF				(0x00020000)
 
 /* HW Reset Network GPIO Channel */
-#define GPIO_CH_RESET_SEL               1
-#define RESET_MASK_VIDEO_IN             0x01
-#define RESET_MASK_IP_AXIS              0x02
-#define RESET_MASK_IP_AXIMM             0x01
-#define RESET_MASK_ALL_BLOCKS           (RESET_MASK_VIDEO_IN  | \
+#define GPIO_CH_RESET_SEL					(1)
+#define RESET_MASK_VIDEO_IN					(0x01)
+#define RESET_MASK_IP_AXIS					(0x02)
+#define RESET_MASK_IP_AXIMM					(0x01)
+#define RESET_MASK_ALL_BLOCKS		(RESET_MASK_VIDEO_IN  | \
 						RESET_MASK_IP_AXIS)
-#define XGPIO_DATA_OFFSET	        0x0
-#define XGPIO_TRI_OFFSET	        0x4
-#define XGPIO_DATA2_OFFSET	        0x8
-#define XGPIO_TRI2_OFFSET	        0xC
+#define XGPIO_DATA_OFFSET					(0x0)
+#define XGPIO_TRI_OFFSET					(0x4)
+#define XGPIO_DATA2_OFFSET					(0x8)
+#define XGPIO_TRI2_OFFSET					(0xC)
 
-#define XGPIO_GIE_OFFSET	        0x11C
-#define XGPIO_ISR_OFFSET                0x120
-#define XGPIO_IER_OFFSET	        0x128
-#define XGPIO_CHAN_OFFSET	        8
-#define STEP_PRECISION                  65536
+#define XGPIO_GIE_OFFSET			(0x11C)
+#define XGPIO_ISR_OFFSET			(0x120)
+#define XGPIO_IER_OFFSET			(0x128)
+#define XGPIO_CHAN_OFFSET			(8)
+#define STEP_PRECISION				(65536)
 
 /* Video IP Formats */
-#define XVIDC_CSF_RGB                   0
-#define XVIDC_CSF_YCRCB_444             1
-#define XVIDC_CSF_YCRCB_422             2
-#define XVIDC_CSF_YCRCB_420             3
+#define XVIDC_CSF_RGB				(0)
+#define XVIDC_CSF_YCRCB_444			(1)
+#define XVIDC_CSF_YCRCB_422			(2)
+#define XVIDC_CSF_YCRCB_420			(3)
 
 /* Mask definitions for Low and high 16 bits in a 32 bit number */
-#define XHSC_MASK_LOW_16BITS            0x0000FFFF
-#define XHSC_MASK_HIGH_16BITS           0xFFFF0000
-#define STEP_PRECISION_SHIFT 16
+#define XHSC_MASK_LOW_16BITS			(0x0000FFFF)
+#define XHSC_MASK_HIGH_16BITS			(0xFFFF0000)
+#define STEP_PRECISION_SHIFT			(16)
 
 /**
  * struct xscaler_device - Xilinx Scaler device structure
@@ -135,70 +135,72 @@ static inline struct xscaler_device *to_scaler(struct v4l2_subdev *subdev)
 	return container_of(subdev, struct xscaler_device, xvip.subdev);
 }
 
-static void CalculatePhases(struct xscaler_device *xscaler, u32 WidthIn,
-			    u32 WidthOut, u32 PixelRate)
+static void calculate_phases(struct xscaler_device *xscaler, u32 width_in,
+			    u32 width_out, u32 pixel_rate)
 {
-	int loopWidth;
+	int loop_width;
 	int x, s;
 	int offset = 0;
-	int xWritePos = 0;
-	u64 OutputWriteEn;
-	int GetNewPix;
-	u64 PhaseH;
-	u64 arrayIdx;
-	int xReadPos = 0;
-	int nrRds = 0;
-	int nrRdsClck = 0;
+	int xwrite_pos = 0;
+	u64 output_write_en;
+	int get_new_pix;
+	u64 phaseH;
+	u64 array_idx;
+	int xread_pos = 0;
+	int nr_rds = 0;
+	int nr_rds_clck = 0;
 	int nphases = xscaler->max_num_phases;
 	int nppc = xscaler->pix_per_clk;
 	int shift = STEP_PRECISION_SHIFT - ilog2(nphases);
 
-	loopWidth = ((WidthIn > WidthOut) ? WidthIn + (nppc-1) :
-		     WidthOut  + (nppc-1))/nppc;
-	arrayIdx = 0;
-	for (x = 0; x < loopWidth; x++) {
+	loop_width = ((width_in > width_out) ? width_in + (nppc-1) :
+		     width_out  + (nppc-1))/nppc;
+	array_idx = 0;
+	for (x = 0; x < loop_width; x++) {
 		xscaler->phasesH[x] = 0;
-		nrRdsClck = 0;
+		nr_rds_clck = 0;
 		for (s = 0; s < nppc; s++) {
-			PhaseH = (offset >> shift) & (nphases - 1);
-			GetNewPix = 0;
-			OutputWriteEn = 0;
+			phaseH = (offset >> shift) & (nphases - 1);
+			get_new_pix = 0;
+			output_write_en = 0;
 			if ((offset >> STEP_PRECISION_SHIFT) != 0) {
 				/* read a new input sample */
-				GetNewPix = 1;
+				get_new_pix = 1;
 				offset = offset - (1<<STEP_PRECISION_SHIFT);
-				OutputWriteEn = 0;
-				arrayIdx++;
-				xReadPos++;
+				output_write_en = 0;
+				array_idx++;
+				xread_pos++;
 			}
 			if (((offset >> STEP_PRECISION_SHIFT) == 0) &&
-			    (xWritePos < WidthOut)) {
+			    (xwrite_pos < width_out)) {
 				/* produce a new output sample */
-				offset += PixelRate;
-				OutputWriteEn = 1;
-				xWritePos++;
+				offset += pixel_rate;
+				output_write_en = 1;
+				xwrite_pos++;
 			}
 
 			xscaler->phasesH[x] = xscaler->phasesH[x] |
-			  (PhaseH << (s*9));
+			  (phaseH << (s*9));
 			xscaler->phasesH[x] = xscaler->phasesH[x] |
-			  ((arrayIdx << 6) + (s*9));
+			  ((array_idx << 6) + (s*9));
 			xscaler->phasesH[x] = xscaler->phasesH[x] |
-			  ((OutputWriteEn << 8) + (s*9));
+			  ((output_write_en << 8) + (s*9));
 
-			if (GetNewPix)
-				nrRdsClck++;
+			if (get_new_pix)
+				nr_rds_clck++;
 		}
-		if (arrayIdx >= nppc)
-			arrayIdx &= (nppc-1);
+		if (array_idx >= nppc)
+			array_idx &= (nppc-1);
 
-		nrRds += nrRdsClck;
-		if (nrRds >= nppc)
-			nrRds -= nppc;
+		nr_rds += nr_rds_clck;
+		if (nr_rds >= nppc)
+			nr_rds -= nppc;
 	}
 }
 
-void XV_HScalerLoadExtCoeff(struct xscaler_device *xscaler, const short *Coeff, int ntaps)
+static void
+xv_hscaler_load_ext_coeff(struct xscaler_device *xscaler,
+			const short *coeff, int ntaps)
 {
 	int i, j, pad, offset;
 	int  nphases = xscaler->max_num_phases;
@@ -229,7 +231,7 @@ void XV_HScalerLoadExtCoeff(struct xscaler_device *xscaler, const short *Coeff, 
 	/* Load User defined coefficients into scaler coefficient table */
 	for (i = 0; i < nphases; i++) {
 		for (j = 0; j < ntaps; ++j)
-			xscaler->hscaler_coeff[i][j+offset] = Coeff[i*ntaps+j];
+			xscaler->hscaler_coeff[i][j+offset] = coeff[i*ntaps+j];
 	}
 
 	if (pad) { /* effective taps < max_taps */
@@ -246,8 +248,9 @@ void XV_HScalerLoadExtCoeff(struct xscaler_device *xscaler, const short *Coeff, 
 
 }
 
-static void XV_HScalerSelectCoeff(struct xscaler_device *xscaler, u32 WidthIn,
-				  u32 WidthOut)
+static void
+xv_hscaler_select_coeff(struct xscaler_device *xscaler, u32 width_in,
+				  u32 width_out)
 {
 	const short *coeff;
 	u16 hscale_ratio;
@@ -258,14 +261,14 @@ static void XV_HScalerSelectCoeff(struct xscaler_device *xscaler, u32 WidthIn,
 	 * @TO : validate input arguments
 	 */
 
-	is_scale_down = (WidthOut < WidthIn);
+	is_scale_down = (width_out < width_in);
 
 	/*
 	 * Scale Down Mode will use dynamic filter selection logic
 	 * Scale Up Mode (including 1:1) will always use 6 tap filter
 	 */
 	if (is_scale_down) {
-		hscale_ratio = ((WidthIn * 10)/WidthOut);
+		hscale_ratio = ((width_in * 10)/width_out);
 
 		switch (xscaler->num_hori_taps) {
 		case XV_HSCALER_TAPS_6:
@@ -330,11 +333,11 @@ static void XV_HScalerSelectCoeff(struct xscaler_device *xscaler, u32 WidthIn,
 		ntaps = XV_HSCALER_TAPS_6;
 	}
 
-	XV_HScalerLoadExtCoeff(xscaler, coeff, ntaps);
+	xv_hscaler_load_ext_coeff(xscaler, coeff, ntaps);
 
 }
 
-static void XV_HScalerSetCoeff(struct xscaler_device *xscaler)
+static void xv_hscaler_set_coeff(struct xscaler_device *xscaler)
 {
 
 	int val, i, j, offset, rdIndx;
@@ -357,7 +360,9 @@ static void XV_HScalerSetCoeff(struct xscaler_device *xscaler)
 	}
 }
 
-void XV_VScalerLoadExtCoeff(struct xscaler_device *xscaler, const short *Coeff, int ntaps)
+static void
+xv_vscaler_load_ext_coeff(struct xscaler_device *xscaler,
+			const short *coeff, int ntaps)
 {
 	int i, j, pad, offset;
 	int nphases = xscaler->max_num_phases;
@@ -388,7 +393,7 @@ void XV_VScalerLoadExtCoeff(struct xscaler_device *xscaler, const short *Coeff, 
 	/* Load User defined coefficients into scaler coefficient table */
 	for (i = 0; i < nphases; i++) {
 		for (j = 0; j < ntaps; ++j)
-			xscaler->vscaler_coeff[i][j+offset] = Coeff[i*ntaps+j];
+			xscaler->vscaler_coeff[i][j+offset] = coeff[i*ntaps+j];
 	}
 
 	if (pad) { /* effective taps < max_taps */
@@ -403,7 +408,7 @@ void XV_VScalerLoadExtCoeff(struct xscaler_device *xscaler, const short *Coeff, 
 	}
 }
 
-static void XV_VScalerSetCoeff(struct xscaler_device *xscaler)
+static void xv_vscaler_set_coeff(struct xscaler_device *xscaler)
 {
 	int nphases = xscaler->max_num_phases;
 	int ntaps   = xscaler->num_vert_taps;
@@ -427,8 +432,9 @@ static void XV_VScalerSetCoeff(struct xscaler_device *xscaler)
 	}
 }
 
-static void XV_VScalerSelectCoeff(struct xscaler_device *xscaler, u32 HeightIn,
-				  u32 HeightOut)
+static void
+xv_vscaler_select_coeff(struct xscaler_device *xscaler, u32 height_in,
+				  u32 height_out)
 {
 	const short *coeff;
 	u16 vscale_ratio;
@@ -437,14 +443,14 @@ static void XV_VScalerSelectCoeff(struct xscaler_device *xscaler, u32 HeightIn,
 	/*
 	 * TODO: validates input arguments
 	 */
-	is_scale_down = (HeightOut < HeightIn);
+	is_scale_down = (height_out < height_in);
 	/* Scale Down Mode will use dynamic filter selection logic
 	 * Scale Up Mode (including 1:1) will always use 6 tap filter
 	 */
 
 
 	if (is_scale_down) {
-		vscale_ratio = ((HeightIn * 10) / HeightOut);
+		vscale_ratio = ((height_in * 10) / height_out);
 
 		switch (xscaler->num_vert_taps) {
 		case XV_VSCALER_TAPS_6:
@@ -469,7 +475,7 @@ static void XV_VScalerSelectCoeff(struct xscaler_device *xscaler, u32 HeightIn,
 				coeff = &xvsc_coeff_taps10[0][0];
 				ntaps = XV_VSCALER_TAPS_10;
 			} else if (vscale_ratio > 15) {
-			 	dev_info(xscaler->xvip.dev, "v-scaler : scale down 8 tap");
+				dev_info(xscaler->xvip.dev, "v-scaler : scale down 8 tap");
 				coeff = &xvsc_coeff_taps8[0][0];
 				ntaps = XV_VSCALER_TAPS_8;
 			} else {
@@ -509,36 +515,36 @@ static void XV_VScalerSelectCoeff(struct xscaler_device *xscaler, u32 HeightIn,
 		ntaps = XV_VSCALER_TAPS_6;
 	}
 
-	XV_VScalerLoadExtCoeff(xscaler, coeff, ntaps);
+	xv_vscaler_load_ext_coeff(xscaler, coeff, ntaps);
 }
 
 /*
  * V4L2 Subdevice Video Operations
  */
 
-static inline void XVprocSs_ResetBlock(struct xvip_device *xvip, u32 channel,
-								u32 ipBlock)
+static inline void xv_procss_reset_block(struct xvip_device *xvip, u32 channel,
+								u32 ip_block)
 {
 	u32 val;
 
 	if (xvip) {
 		val = xvip_read(xvip, ((channel - 1) * XGPIO_CHAN_OFFSET) +
 				XGPIO_DATA_OFFSET + S_AXIS_RESET_OFF);
-		val &= ~ipBlock;
+		val &= ~ip_block;
 		xvip_write(xvip, ((channel - 1) * XGPIO_CHAN_OFFSET) +
 			   XGPIO_DATA_OFFSET + S_AXIS_RESET_OFF, val);
 	}
 }
 
-inline void XVprocSs_EnableBlock(struct xvip_device *xvip, u32 channel,
-				 u32 ipBlock)
+inline void xv_procss_enable_block(struct xvip_device *xvip, u32 channel,
+				 u32 ip_block)
 {
 	u32 val;
 
 	if (xvip) {
 		val = xvip_read(xvip, ((channel - 1) * XGPIO_CHAN_OFFSET) +
 				XGPIO_DATA_OFFSET + S_AXIS_RESET_OFF);
-		val |= ipBlock;
+		val |= ip_block;
 		xvip_write(xvip, ((channel - 1) * XGPIO_CHAN_OFFSET) +
 			   XGPIO_DATA_OFFSET + S_AXIS_RESET_OFF, val);
 	}
@@ -547,10 +553,10 @@ inline void XVprocSs_EnableBlock(struct xvip_device *xvip, u32 channel,
 static inline void xscaler_reset(struct xscaler_device *xscaler)
 {
 	/* Reset All IP Blocks on AXIS interface*/
-	XVprocSs_ResetBlock(&xscaler->xvip, GPIO_CH_RESET_SEL,
+	xv_procss_reset_block(&xscaler->xvip, GPIO_CH_RESET_SEL,
 			    RESET_MASK_ALL_BLOCKS);
 	udelay(100);
-	XVprocSs_EnableBlock(&xscaler->xvip, GPIO_CH_RESET_SEL,
+	xv_procss_enable_block(&xscaler->xvip, GPIO_CH_RESET_SEL,
 			     RESET_MASK_IP_AXIS);
 }
 
@@ -559,6 +565,7 @@ static int xv_vscaler_setup_video_fmt
 				u32 code_in)
 {
 	int video_in;
+
 	switch (code_in) {
 	case MEDIA_BUS_FMT_UYVY8_1_5X8:
 		dev_info(xscaler->xvip.dev,
@@ -580,11 +587,11 @@ static int xv_vscaler_setup_video_fmt
 			"Vscaler Input Media Format RGB\n");
 		video_in = XVIDC_CSF_RGB;
 		break;
-	default :
+	default:
 		dev_err(xscaler->xvip.dev,
 			"Vscaler Unsupported Input Media Format 0x%x",
 			code_in);
-		return (-EINVAL);
+		return -EINVAL;
 	}
 	xvip_write(&xscaler->xvip, V_VSCALER_OFF +
 		XV_VSCALER_CTRL_ADDR_HWREG_COLORMODE_DATA,
@@ -593,20 +600,18 @@ static int xv_vscaler_setup_video_fmt
 	 * Vscaler will upscale to YUV 422 before
 	 * Hscaler starts operation
 	 */
-	if (video_in == XVIDC_CSF_YCRCB_420) {
-		return (XVIDC_CSF_YCRCB_422);
-	}
-	return (video_in);
+	if (video_in == XVIDC_CSF_YCRCB_420)
+		return XVIDC_CSF_YCRCB_422;
+	return video_in;
 }
 
 static int xv_hscaler_setup_video_fmt
-		(struct xscaler_device *xscaler,
-				u32 code_out,
-				u32 vsc_out)
+	(struct xscaler_device *xscaler, u32 code_out, u32 vsc_out)
 {
 
 	u32 video_out;
-	switch(vsc_out) {
+
+	switch (vsc_out) {
 	case XVIDC_CSF_YCRCB_420:
 		dev_info(xscaler->xvip.dev,
 		"Hscaler Input Media Format is YUV 420");
@@ -624,7 +629,7 @@ static int xv_hscaler_setup_video_fmt
 		dev_info(xscaler->xvip.dev,
 		"Hscaler Input Media Format is RGB");
 		break;
-	default :
+	default:
 		dev_err(xscaler->xvip.dev,
 		"Hscaler got unsupported format from Vscaler");
 		return -EINVAL;
@@ -655,16 +660,16 @@ static int xv_hscaler_setup_video_fmt
 			"Hscaler Output Media Format YUV 444\n");
 		video_out = XVIDC_CSF_RGB;
 		break;
-	default :
+	default:
 		dev_err(xscaler->xvip.dev,
 			"Hscaler Unsupported Output Media Format 0x%x",
 			code_out);
-		return (-EINVAL);
+		return -EINVAL;
 	}
 	xvip_write(&xscaler->xvip, V_HSCALER_OFF +
 		XV_HSCALER_CTRL_ADDR_HWREG_COLORMODEOUT_DATA,
 						video_out);
-	return (0);
+	return 0;
 }
 
 static int xscaler_s_stream(struct v4l2_subdev *subdev, int enable)
@@ -699,12 +704,12 @@ static int xscaler_s_stream(struct v4l2_subdev *subdev, int enable)
 
 
 	/* UpScale mode V Scaler is before H Scaler
-	 * VScaler_setup
+	 * V-Scaler_setup
 	 */
 	line_rate = (height_in * STEP_PRECISION) / height_out;
 
-	XV_VScalerSelectCoeff(xscaler, height_in, height_out);
-	XV_VScalerSetCoeff(xscaler);
+	xv_vscaler_select_coeff(xscaler, height_in, height_out);
+	xv_vscaler_set_coeff(xscaler);
 
 	xvip_write(&xscaler->xvip, V_VSCALER_OFF +
 		   XV_VSCALER_CTRL_ADDR_HWREG_HEIGHTIN_DATA, height_in);
@@ -720,7 +725,7 @@ static int xscaler_s_stream(struct v4l2_subdev *subdev, int enable)
 		return -EINVAL;
 	}
 
-	/* HScaler_setup */
+	/* H-Scaler_setup */
 	pixel_rate = (width_in * STEP_PRECISION)/width_out;
 
 	xvip_write(&xscaler->xvip, V_HSCALER_OFF +
@@ -737,18 +742,18 @@ static int xscaler_s_stream(struct v4l2_subdev *subdev, int enable)
 	}
 
 	/* Set Polyphasse coeff */
-	XV_HScalerSelectCoeff(xscaler, width_in, width_out);
+	xv_hscaler_select_coeff(xscaler, width_in, width_out);
 	/* Program generated coefficients into the IP register bank */
-	XV_HScalerSetCoeff(xscaler);
+	xv_hscaler_set_coeff(xscaler);
 
 
 	/* Set HPHASE coeff */
 	loop_width = xscaler->max_pixels/xscaler->pix_per_clk;
 	offset = V_HSCALER_OFF + XV_HSCALER_CTRL_ADDR_HWREG_PHASESH_V_BASE;
 
-	CalculatePhases(xscaler, width_in, width_out, pixel_rate);
+	calculate_phases(xscaler, width_in, width_out, pixel_rate);
 
-	/* PhaseH is 64bits but only lower 16b of each entry is valid
+	/* phaseH is 64bits but only lower 16b of each entry is valid
 	 * Form 32b word with 16bit LSB from 2 consecutive entries
 	 * Need 1 32b write to get 2 entries into IP registers
 	 * (i is array loc and index is address offset)
@@ -768,7 +773,7 @@ static int xscaler_s_stream(struct v4l2_subdev *subdev, int enable)
 	/* TODO : Split into start/autorestart enable calls */
 	xvip_write(&xscaler->xvip, V_VSCALER_OFF +
 		   XV_VSCALER_CTRL_ADDR_AP_CTRL, 0x81);
-	XVprocSs_EnableBlock(&xscaler->xvip, GPIO_CH_RESET_SEL,
+	xv_procss_enable_block(&xscaler->xvip, GPIO_CH_RESET_SEL,
 			     RESET_MASK_VIDEO_IN);
 
 	return 0;
@@ -833,12 +838,12 @@ static int xscaler_set_format(struct v4l2_subdev *subdev,
 	struct v4l2_mbus_framefmt *format;
 
 	format = __xscaler_get_pad_format(xscaler, cfg, fmt->pad, fmt->which);
+	*format = fmt->format;
 
 	format->width = clamp_t(unsigned int, fmt->format.width,
-				  XSCALER_MIN_WIDTH, XSCALER_MAX_WIDTH);
+				XSCALER_MIN_WIDTH, XSCALER_MAX_WIDTH);
 	format->height = clamp_t(unsigned int, fmt->format.height,
-				   XSCALER_MIN_HEIGHT, XSCALER_MAX_HEIGHT);
-
+				XSCALER_MIN_HEIGHT, XSCALER_MAX_HEIGHT);
 	fmt->format = *format;
 	return 0;
 }
@@ -847,7 +852,8 @@ static int xscaler_set_format(struct v4l2_subdev *subdev,
  * V4L2 Subdevice Operations
  */
 
-static int xscaler_open(struct v4l2_subdev *subdev, struct v4l2_subdev_fh *fh)
+static int
+xscaler_open(struct v4l2_subdev *subdev, struct v4l2_subdev_fh *fh)
 {
 	struct xscaler_device *xscaler = to_scaler(subdev);
 	struct v4l2_mbus_framefmt *format;
@@ -862,7 +868,8 @@ static int xscaler_open(struct v4l2_subdev *subdev, struct v4l2_subdev_fh *fh)
 	return 0;
 }
 
-static int xscaler_close(struct v4l2_subdev *subdev, struct v4l2_subdev_fh *fh)
+static int
+xscaler_close(struct v4l2_subdev *subdev, struct v4l2_subdev_fh *fh)
 {
 	return 0;
 }
@@ -900,16 +907,18 @@ static const struct media_entity_operations xscaler_media_ops = {
  * Power Management
  */
 
-static int __maybe_unused xscaler_pm_suspend(__attribute__((unused)) struct device *dev)
+static int __maybe_unused
+xscaler_pm_suspend(__attribute__((unused)) struct device *dev)
 {
-	/*Placeholder for pm ops */
+	/* Placeholder for pm ops */
 
 	return 0;
 }
 
-static int __maybe_unused xscaler_pm_resume(struct device *dev)
+static int __maybe_unused
+xscaler_pm_resume(struct device *dev)
 {
-	/*Placeholder for pm ops */
+	/* Placeholder for pm ops */
 
 	return 0;
 }
@@ -922,7 +931,7 @@ static int xscaler_parse_of(struct xscaler_device *xscaler)
 {
 	struct device *dev = xscaler->xvip.dev;
 	struct device_node *node = xscaler->xvip.dev->of_node;
-	const struct xvip_video_format * vip_format;
+	const struct xvip_video_format *vip_format;
 	struct device_node *ports;
 	struct device_node *port;
 	int ret;
