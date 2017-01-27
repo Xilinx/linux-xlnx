@@ -326,6 +326,14 @@ config PINCTRL_RK805
 	help
 	  This selects the pinctrl driver for RK805.
 
+config PINCTRL_ZYNQMP
+	bool "Pinctrl driver for Xilinx ZynqMP"
+	depends on ARCH_ZYNQMP
+	select PINMUX
+	select GENERIC_PINCONF
+	help
+	  This selects the pinctrl driver for Xilinx ZynqMP.
+
 config PINCTRL_OCELOT
 	bool "Pinctrl driver for the Microsemi Ocelot SoCs"
 	default y
