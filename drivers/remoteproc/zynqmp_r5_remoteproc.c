@@ -345,8 +345,7 @@ static int zynqmp_r5_rproc_start(struct rproc *rproc)
 	struct zynqmp_r5_rproc_pdata *local = rproc->priv;
 
 	dev_dbg(dev, "%s\n", __func__);
-	if (local->rpu_id == 0)
-		INIT_WORK(&local->workqueue, handle_event_notified);
+	INIT_WORK(&local->workqueue, handle_event_notified);
 
 	/*
 	 * Use memory barrier to make sure all write memory operations
