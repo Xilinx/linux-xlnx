@@ -294,6 +294,8 @@ config ARCH_ZX
 
 config ARCH_ZYNQMP
 	bool "Xilinx ZynqMP Family"
+	select PINCTRL
+	select PINCTRL_ZYNQMP
 	select ZYNQMP_FIRMWARE
 	help
 	  This enables support for Xilinx ZynqMP Family
