@@ -231,7 +231,10 @@ int zynqmp_pm_set_max_latency(const u32 node,
 /* Miscellaneous API functions */
 int zynqmp_pm_get_api_version(u32 *version);
 int zynqmp_pm_set_configuration(const u32 physical_addr);
-int zynqmp_pm_get_node_status(const u32 node);
+int zynqmp_pm_get_node_status(const u32 node,
+				u32 *const status,
+				u32 *const requirements,
+				u32 *const usage);
 int zynqmp_pm_get_operating_characteristic(const u32 node,
 					const enum zynqmp_pm_opchar_type type);
 

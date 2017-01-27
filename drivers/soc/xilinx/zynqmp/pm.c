@@ -528,13 +528,39 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_set_configuration);
 
 /**
  * zynqmp_pm_get_node_status - PM call to request a node's current power state
- * @node:	Node ID of the slave
+ * @node:		ID of the component or sub-system in question
+ * @status:		Current operating state of the requested node
+ * @requirements:	Current requirements asserted on the node,
+ *			used for slave nodes only.
+ * @usage:		Usage information, used for slave nodes only:
+ *			0 - No master is currently using the node
+ *			1 - Only requesting master is currently using the node
+ *			2 - Only other masters are currently using the node
+ *			3 - Both the current and at least one other master
+ *			is currently using the node
  *
  * Return:	Returns status, either success or error+reason
  */
-int zynqmp_pm_get_node_status(const u32 node)
+int zynqmp_pm_get_node_status(const u32 node,
+				u32 *const status,
+				u32 *const requirements,
+				u32 *const usage)
 {
-	return invoke_pm_fn(GET_NODE_STATUS, node, 0, 0, 0, NULL);
+	u32 ret_payload[PAYLOAD_ARG_CNT];
+
+	if (!status)
+		return -EINVAL;
+
+	invoke_pm_fn(GET_NODE_STATUS, node, 0, 0, 0, ret_payload);
+	if (ret_payload[0] == XST_PM_SUCCESS) {
+		*status = ret_payload[1];
+		if (requirements)
+			*requirements = ret_payload[2];
+		if (usage)
+			*usage = ret_payload[3];
+	}
+
+	return zynqmp_pm_ret_code((enum pm_ret_status)ret_payload[0]);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_get_node_status);
 
@@ -906,7 +932,14 @@ static ssize_t zynqmp_pm_debugfs_api_write(struct file *file,
 		ret = zynqmp_pm_set_configuration(pm_api_arg[0]);
 		break;
 	case GET_NODE_STATUS:
-		ret = zynqmp_pm_get_node_status(pm_api_arg[0]);
+		ret = zynqmp_pm_get_node_status(pm_api_arg[0],
+						&pm_api_arg[1],
+						&pm_api_arg[2],
+						&pm_api_arg[3]);
+		if (!ret)
+			pr_info("GET_NODE_STATUS:\n\tNodeId: %u\n\tStatus: %u\n\tRequirements: %u\n\tUsage: %u\n",
+				pm_api_arg[0], pm_api_arg[1],
+				pm_api_arg[2], pm_api_arg[3]);
 		break;
 	case GET_OPERATING_CHARACTERISTIC:
 		ret = zynqmp_pm_get_operating_characteristic(pm_api_arg[0],
