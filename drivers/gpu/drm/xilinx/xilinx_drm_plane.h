@@ -80,7 +80,7 @@ struct xilinx_drm_plane {
 	struct xilinx_drm_plane_manager *manager;
 };
 
-#ifdef __XV_VIDEO_MIXER__
+#ifdef __XLNX_DRM_MIXER__
 #define MAX_PLANES XVMIX_MAX_SUPPORTED_LAYERS
 #else
 #define MAX_PLANES 8
@@ -101,7 +101,7 @@ struct xilinx_drm_plane {
  * @max_cursor_height: maximum pixel size for cursor layer height
  * @zpos_prop: z-position(priority) property
  * @alpha_prop: alpha value property
- * @scale_prop: set scaling (vert and horz) for plane 
+ * @scale_prop: set scaling (vert and horz) for plane
  *              (0=no scaling, 1=2x, 2=4x)
  * @alpha_enable_prop: alpha enable property
  * @default_alpha: default alpha value
@@ -111,14 +111,14 @@ struct xilinx_drm_plane_manager {
 	struct drm_device *drm;
 	struct device_node *node;
 	struct xilinx_osd *osd;
-	struct xv_mixer *mixer; 
+	struct xv_mixer *mixer;
 	struct xilinx_drm_dp_sub *dp_sub;
 	int num_planes;
 	int max_planes;
 	uint32_t format;
-	int max_width; 
+	int max_width;
 	int max_height;
-	int max_cursor_width; 
+	int max_cursor_width;
 	int max_cursor_height;
 	struct drm_property *zpos_prop;
 	struct drm_property *alpha_prop;
@@ -138,11 +138,11 @@ void xilinx_drm_plane_dpms(struct drm_plane *base_plane, int dpms);
 void xilinx_drm_plane_commit(struct drm_plane *base_plane);
 
 int xilinx_drm_plane_mode_set(struct drm_plane *base_plane,
-                              struct drm_framebuffer *fb,
-                              int crtc_x, int crtc_y,
-                              unsigned int crtc_w, unsigned int crtc_h,
-                              uint32_t src_x, uint32_t src_y,
-                              uint32_t src_w, uint32_t src_h);
+				struct drm_framebuffer *fb,
+				int crtc_x, int crtc_y,
+				unsigned int crtc_w, unsigned int crtc_h,
+				uint32_t src_x, uint32_t src_y,
+				uint32_t src_w, uint32_t src_h);
 
 int xilinx_drm_plane_get_max_width(struct drm_plane *base_plane);
 
@@ -178,6 +178,7 @@ void xilinx_drm_plane_restore(struct xilinx_drm_plane_manager *manager);
 
 struct xilinx_drm_plane_manager *
 xilinx_drm_plane_probe_manager(struct drm_device *drm);
+
 void xilinx_drm_plane_remove_manager(struct xilinx_drm_plane_manager *manager);
 
 #endif /* _XILINX_DRM_PLANE_H_ */

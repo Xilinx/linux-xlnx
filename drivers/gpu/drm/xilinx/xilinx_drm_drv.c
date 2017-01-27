@@ -188,6 +188,7 @@ static void xilinx_drm_disable_vblank(struct drm_device *drm, unsigned int crtc)
 static void xilinx_drm_mode_config_init(struct drm_device *drm)
 {
 	struct xilinx_drm_private *private = drm->dev_private;
+
 	drm->mode_config.min_width = 0;
 	drm->mode_config.min_height = 0;
 	drm->mode_config.max_height = 4096;
@@ -257,7 +258,7 @@ unsigned int xilinx_drm_format_bpp(uint32_t drm_format)
 			return format->bpp;
 	}
 
-	return 0; 
+	return 0;
 }
 
 /* get color depth of given format */
@@ -357,7 +358,6 @@ static int xilinx_drm_load(struct drm_device *drm, unsigned long flags)
 	drm_kms_helper_poll_init(drm);
 
 	/* set up mode config for xilinx */
-	/* JPM the call below queries manager's primary plane for max width.  Do we set this? */
 	xilinx_drm_mode_config_init(drm);
 
 	drm_helper_disable_unused_functions(drm);
@@ -428,7 +428,8 @@ static void xilinx_drm_lastclose(struct drm_device *drm)
 	xilinx_drm_fb_restore_mode(private->fb);
 }
 
-static int xilinx_drm_set_busid(struct drm_device *dev, struct drm_master *master)
+static int
+xilinx_drm_set_busid(struct drm_device *dev, struct drm_master *master)
 {
 	return 0;
 }
