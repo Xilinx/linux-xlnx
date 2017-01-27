@@ -1,0 +1,74 @@
+The Xilinx framebuffer DMA engine supports two soft IP blocks.  One IP
+block is used for reading frame data from memory (FB Read) to the device 
+and the other IP block is used for writing frame data from the device 
+to memory (FB Write).  Both the FB Read/Write IP blocks are aware of the
+format of the data being written to or read from memory including RGB and 
+YUV in packed, planar, and semi-planar formats.  Because the FB Read/Write
+is format aware, only one buffer pointer is needed by the IP blocks even
+when planar or semi-planar format are used.
+
+FB Read Required properties:
+- #dma-cells        : should be 1
+- compatible		: Should be "xlnx,axi-frmbuf-rd-1.00.a"
+- interrupt-parent	: Interrupt controller the interrupt is routed through.
+- interrupts		: Should contain DMA channel interrupt.
+- reset-gpios       : Should contain GPIO reset phandle.
+- reg			    : Memory map for module access.
+- xlnx,vid-format	: Format of the frame buffer data to read.  Possible
+                      values include:
+                    "xlx1" = RGBX8 (RGB)
+                    "xlx2" = YUVX8 (4:4:4)
+                    "yuyv" = YUYV8 (4:2:2)
+                    "nv16" = Y_UV8 (4:2:2 semi-planar)
+                    "nv12" = Y_UV8_420 (4:2:0 semi-planar)
+                    "rgb3" = RGB8 (RGB)
+                    "grey" = YUV8 (YUV) 
+                    "xlx3" = Y8 (YUV)
+
+Optional properties:
+- None 
+
+Example:
+++++++++
+v_frmbuf_rd_0: v_frmbuf_rd@80000000 {
+        #dma-cells = <1>;
+        compatible = "xlnx,axi-frmbuf-rd-1.00.a";
+        interrupt-parent = <&gic>;
+        interrupts = <0 92 4>;
+        reset-gpios = <&gpio 80 1>;
+        reg = <0x0 0x80000000 0x0 0x10000>;
+        xlnx,vid-fmt = "yuyv";
+};
+
+FB Write Required properties:
+- #dma-cells        : should be 1
+- compatible		: Should be "xlnx,axi-frmbuf-wr-1.00.a"
+- interrupt-parent	: Interrupt controller the interrupt is routed through.
+- interrupts		: Should contain DMA channel interrupt.
+- reset-gpios       : Should contain GPIO reset phandle.
+- reg			    : Memory map for module access.
+- xlnx,vid-format	: Format of the frame buffer data to read.  Possible
+                      values include:
+                    "xlx1" = RGBX8 (RGB)
+                    "xlx2" = YUVX8 (4:4:4)
+                    "yuyv" = YUYV8 (4:2:2)
+                    "nv16" = Y_UV8 (4:2:2 semi-planar)
+                    "nv12" = Y_UV8_420 (4:2:0 semi-planar)
+                    "rgb3" = RGB8 (RGB)
+                    "grey" = YUV8 (YUV) 
+                    "xlx3" = Y8 (YUV)
+
+Optional properties:
+- None 
+
+Example:
+++++++++
+v_frmbuf_wr_0: v_frmbuf_wr@80000000 {
+        #dma-cells = <1>;
+        compatible = "xlnx,axi-frmbuf-wr-1.00.a";
+        interrupt-parent = <&gic>;
+        interrupts = <0 92 4>;
+        reset-gpios = <&gpio 80 1>;
+        reg = <0x0 0x80000000 0x0 0x10000>;
+        xlnx,vid-fmt = "yuyv";
+};
