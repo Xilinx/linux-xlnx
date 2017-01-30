@@ -385,7 +385,6 @@ static int write_ear(struct spi_nor *nor, u32 addr)
 		write_enable(nor);
 		code = SPINOR_OP_WREAR;
 	}
-	printk("jedecid %x\n\r",nor->jedec_id);
 	nor->cmd_buf[0] = ear;
 
 	ret = nor->write_reg(nor, code, nor->cmd_buf, 1);
@@ -1361,8 +1360,8 @@ static const struct flash_info *spi_nor_read_id(struct spi_nor *nor)
 				return &spi_nor_ids[tmp];
 		}
 	}
-	dev_err(nor->dev, "unrecognized JEDEC id bytes: %02x, %02x, %02x info: %02x, %02x, %02x\n",
-		id[0], id[1], id[2],info->id[0],info->id[1],info->id[2]);
+	dev_err(nor->dev, "unrecognized JEDEC id bytes: %02x, %02x, %02x\n",
+		id[0], id[1], id[2]);
 	return ERR_PTR(-ENODEV);
 }
 
@@ -2002,7 +2001,6 @@ int spi_nor_scan(struct spi_nor *nor, const char *name, enum read_mode mode)
 				nor->spi->master->flags |= SPI_MASTER_U_PAGE;
 				set_4byte(nor, info, 1);
 				nor->spi->master->flags &= ~SPI_MASTER_U_PAGE;
-				printk("4 Byte addressing for stacked\n\r");
 			}
 #ifdef CONFIG_OF
 		}
@@ -2019,17 +2017,19 @@ int spi_nor_scan(struct spi_nor *nor, const char *name, enum read_mode mode)
 
 	nor->read_dummy = spi_nor_read_dummy_cycles(nor);
 
-	printk("%s (%lld Kbytes)\n", info->name,
+	dev_info(dev, "%s (%lld Kbytes)\n", info->name,
 			(long long)mtd->size >> 10);
 
-	printk("mtd .name = %s, .size = 0x%llx (%lldMiB), "
+	dev_dbg(dev,
+		"mtd .name = %s, .size = 0x%llx (%lldMiB), "
 		".erasesize = 0x%.8x (%uKiB) .numeraseregions = %d\n",
 		mtd->name, (long long)mtd->size, (long long)(mtd->size >> 20),
 		mtd->erasesize, mtd->erasesize / 1024, mtd->numeraseregions);
 
 	if (mtd->numeraseregions)
 		for (i = 0; i < mtd->numeraseregions; i++)
-			printk("mtd.eraseregions[%d] = { .offset = 0x%llx, "
+			dev_dbg(dev,
+				"mtd.eraseregions[%d] = { .offset = 0x%llx, "
 				".erasesize = 0x%.8x (%uKiB), "
 				".numblocks = %d }\n",
 				i, (long long)mtd->eraseregions[i].offset,
