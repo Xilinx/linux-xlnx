@@ -12,6 +12,9 @@ Required properties:
 
 Optional properties:
 - num-cs		: Number of chip selects used.
+- has-io-mode		: boolean property describes the controller operating
+			  mode. if exists controller will operate in IO mode
+			  else dma mode.
 
 Example:
 	qspi: spi@ff0f0000 {
