@@ -384,7 +384,8 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_set_wakeup_source);
 
 /**
  * zynqmp_pm_system_shutdown - PM call to request a system shutdown or restart
- * @restart:	Shutdown or restart? 0 for shutdown, 1 for restart
+ * @type:	Shutdown or restart? 0 for shutdown, 1 for restart
+ * @subtype:	Specifies which system should be restarted or shut down
  *
  * Return:	Returns status, either success or error+reason
  */
@@ -637,7 +638,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_mmio_read);
 /**
  * zynqmp_pm_fpga_load - Perform the fpga load
  * @address:    Address to write to
- * @size        pl bitstream size
+ * @size:       pl bitstream size
  * @flags:
  *	BIT(0) - Bit-stream type.
  *		 0 - Full Bit-stream.
@@ -1006,6 +1007,7 @@ static const struct file_operations fops_zynqmp_pm_dbgfs = {
 
 /**
  * zynqmp_pm_api_debugfs_init - Initialize debugfs interface
+ * @dev:        Pointer to device structure
  *
  * Return:      Returns 0 on success
  *		Corresponding error code otherwise
