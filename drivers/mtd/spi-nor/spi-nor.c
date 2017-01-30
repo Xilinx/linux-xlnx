@@ -1376,10 +1376,18 @@ static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
 	u32 read_len = 0;
 	u32 rem_bank_len = 0;
 	u8 bank;
+	u8 is_ofst_odd = 0;
 
 #define OFFSET_16_MB 0x1000000
 
 	dev_dbg(nor->dev, "from 0x%08x, len %zd\n", (u32)from, len);
+
+	if ((nor->isparallel) && (offset & 1)) {
+		/* We can hit this case when we use file system like ubifs */
+		from = (loff_t)(from - 1);
+		len = (size_t)(len + 1);
+		is_ofst_odd = 1;
+	}
 
 	ret = spi_nor_lock_and_prep(nor, SPI_NOR_OPS_READ);
 	if (ret)
@@ -1434,7 +1442,12 @@ static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
 			goto read_err;
 
 		WARN_ON(ret > len);
-		*retlen += ret;
+		if (is_ofst_odd == 1) {
+			memcpy(buf, (buf + 1), (len - 1));
+			*retlen += (ret - 1);
+		} else {
+			*retlen += ret;
+		}
 		buf += ret;
 		from += ret;
 		len -= ret;
