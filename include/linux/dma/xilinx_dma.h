@@ -15,6 +15,28 @@
 #include <linux/dma-mapping.h>
 #include <linux/dmaengine.h>
 
+
+/**
+ * enum xdma_ip_type: DMA IP type.
+ *
+ * XDMA_TYPE_AXIDMA: Axi dma ip.
+ * XDMA_TYPE_CDMA: Axi cdma ip.
+ * XDMA_TYPE_VDMA: Axi vdma ip.
+ *
+ */
+enum xdma_ip_type {
+	XDMA_TYPE_AXIDMA = 0,
+	XDMA_TYPE_CDMA,
+	XDMA_TYPE_VDMA,
+	XDMA_TYPE_FRMBUF,
+};
+
+enum vid_frmwork_type {
+	XDMA_DRM = 0,
+	XDMA_V4L2,
+};
+
+
 /**
  * struct xilinx_vdma_config - VDMA Configuration structure
  * @frm_dly: Frame delay
@@ -41,21 +63,16 @@ struct xilinx_vdma_config {
 	int ext_fsync;
 };
 
-/**
- * enum xdma_ip_type: DMA IP type.
- *
- * XDMA_TYPE_AXIDMA: Axi dma ip.
- * XDMA_TYPE_CDMA: Axi cdma ip.
- * XDMA_TYPE_VDMA: Axi vdma ip.
- *
- */
-enum xdma_ip_type {
-	XDMA_TYPE_AXIDMA = 0,
-	XDMA_TYPE_CDMA,
-	XDMA_TYPE_VDMA,
+
+struct xilinx_xdma_config {
+	uint32_t fourcc;
+	enum vid_frmwork_type type;
 };
+
+
 
 int xilinx_vdma_channel_set_config(struct dma_chan *dchan,
 					struct xilinx_vdma_config *cfg);
+
 
 #endif

@@ -25,6 +25,7 @@
 #include <linux/dmaengine.h>
 #include <linux/of_dma.h>
 #include <linux/platform_device.h>
+#include <linux/dma/xilinx_dma.h>
 
 /* drm component libs */
 #include "xilinx_drm_dp_sub.h"
@@ -148,8 +149,13 @@ void xilinx_drm_plane_commit(struct drm_plane *base_plane)
 {
 	struct xilinx_drm_plane *plane = to_xilinx_plane(base_plane);
 	struct dma_async_tx_descriptor *desc;
+	struct xilinx_xdma_config dma_config;
 	enum dma_ctrl_flags flags;
 	unsigned int i;
+
+	/* for xilinx video framebuffer dma, if used */
+	dma_config.fourcc = plane->format;
+	dma_config.type = XDMA_DRM;
 
 	DRM_DEBUG_KMS("plane->id: %d\n", plane->id);
 
@@ -157,6 +163,10 @@ void xilinx_drm_plane_commit(struct drm_plane *base_plane)
 		struct xilinx_drm_plane_dma *dma = &plane->dma[i];
 
 		if (dma->chan && dma->is_active) {
+
+			/* set first channel private data */
+			dma->chan->private = &dma_config;
+
 			flags = DMA_CTRL_ACK | DMA_PREP_INTERRUPT;
 			desc = dmaengine_prep_interleaved_dma(dma->chan,
 							      &dma->xt,

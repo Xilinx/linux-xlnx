@@ -31,6 +31,10 @@
 #include <linux/slab.h>
 #include <linux/gpio/consumer.h>
 #include <linux/kthread.h>
+
+#include <uapi/drm/drm_fourcc.h>
+#include <uapi/linux/videodev2.h>
+
 #include "../dmaengine.h"
 
 /* TODO: Remove GPIO reset in 2016.3*/
@@ -171,18 +175,28 @@ struct xilinx_frmbuf_format_desc {
 	unsigned int id;
 	unsigned int bytes_per_pixel;
 	const char *description;
+	uint32_t drm_fmt;
+	uint32_t v4l2_fmt;
 };
 
 
 static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
-	{ "xlx1", 10, 4, "RGBX8 (RGB)"},
-	{ "xlx2", 11, 4, "YUVX8 (4:4:4)"},
-	{ "yuyv", 12, 2, "YUYV8 (4:2:2)"},
-	{ "nv16", 18, 1, "Y_UV8 (4:2:2 semi-planer)"},
-	{ "nv12", 19, 1, "Y_UV8_420 (4:2:0 semi-planar)"},
-	{ "rgb3", 20, 3, "RGB8 (RGB)"},
-	{ "grey", 21, 3, "YUV8 (YUV)"},
-	{ "xlx3", 24, 4, "Y8 (YUV)"}
+	{ "xlx1", 10, 4, "RGBX8 (RGB)",
+		DRM_FORMAT_RGBX8888, NULL},
+	{ "xlx2", 11, 4, "YUVX8 (4:4:4)",
+		NULL, NULL},
+	{ "yuyv", 12, 2, "YUYV8 (4:2:2)",
+		DRM_FORMAT_YUYV, V4L2_PIX_FMT_YUYV},
+	{ "nv16", 18, 1, "Y_UV8 (4:2:2 2-plane)",
+		DRM_FORMAT_NV16, V4L2_PIX_FMT_NV16},
+	{ "nv12", 19, 1, "Y_UV8_420 (4:2:0 2-plane)",
+		DRM_FORMAT_NV12, V4L2_PIX_FMT_NV12   },
+	{ "rgb3", 20, 3, "RGB8 (RGB)",
+		DRM_FORMAT_BGR888, V4L2_PIX_FMT_RGB24},
+	{ "grey", 21, 3, "YUV8 (YUV)",
+		NULL, NULL},
+	{ "xlx3", 24, 4, "Y8 (YUV)",
+		NULL, V4L2_PIX_FMT_GREY}
 };
 
 static const struct xilinx_frmbuf_config frmbuf_wr_config = {
@@ -204,6 +218,7 @@ static const struct of_device_id xilinx_frmbuf_of_ids[] = {
 /******************************PROTOTYPES*************************************/
 static int xilinx_frmbuf_chan_reset(struct xilinx_frmbuf_chan *chan);
 
+static int xilinx_frmbuf_set_vid_fmt(struct xilinx_frmbuf_chan *chan);
 
 /* Macros */
 #define to_xilinx_chan(chan) \
@@ -235,6 +250,39 @@ static inline void frmbuf_set(struct xilinx_frmbuf_chan *chan, u32 reg,
 	frmbuf_write(chan, reg, frmbuf_read(chan, reg) | set);
 }
 
+static int xilinx_frmbuf_set_vid_fmt(struct xilinx_frmbuf_chan *chan)
+{
+	struct xilinx_xdma_config *config =
+		(struct xilinx_xdma_config *)chan->common.private;
+	int i;
+	struct device *dev = chan->xdev->dev;
+	uint32_t code;
+
+	if (!config) {
+		dev_err(dev, "Missing dma config in dma_chan obj\n");
+		return -1;
+	}
+
+	for (i = 0; i < ARRAY_SIZE(xilinx_frmbuf_formats); i++) {
+		if (config->type == XDMA_DRM &&
+			config->fourcc == xilinx_frmbuf_formats[i].drm_fmt) {
+			chan->video_fmt = xilinx_frmbuf_formats[i].name;
+			return 0;
+		}
+
+		if (config->type == XDMA_V4L2 &&
+			config->fourcc == xilinx_frmbuf_formats[i].v4l2_fmt) {
+			chan->video_fmt = xilinx_frmbuf_formats[i].name;
+			return 0;
+		}
+
+	}
+
+	dev_err(dev, "No matching video format for fourcc code = %u\n",
+		config->fourcc);
+
+	return -1;
+}
 
 /* get bytes per pixel of given format */
 unsigned int xilinx_frmbuf_format_bpp(const char *video_fmt)
@@ -708,6 +756,9 @@ xilinx_frmbuf_dma_prep_interleaved(struct dma_chan *dchan,
 	desc->async_tx.tx_submit = xilinx_frmbuf_tx_submit;
 	async_tx_ack(&desc->async_tx);
 
+	if (xilinx_frmbuf_set_vid_fmt(chan))
+		return NULL;
+
 	bytes_per_pixel = xilinx_frmbuf_format_bpp(chan->video_fmt);
 	/* Fill in the hardware descriptor */
 	hw = &desc->hw;
@@ -809,6 +860,7 @@ static int xilinx_frmbuf_chan_probe(struct xilinx_frmbuf_device *xdev,
 		return -EINVAL;
 	}
 
+#if 0
 	ret = of_property_read_string(node, "xlnx,vid-fmt", &string);
 	if (ret < 0) {
 		dev_err(xdev->dev, "No video format in DT\n");
@@ -829,6 +881,7 @@ static int xilinx_frmbuf_chan_probe(struct xilinx_frmbuf_device *xdev,
 		dev_err(xdev->dev, "Invalid vid-fmt in DT\n");
 		return -EINVAL;
 	}
+#endif
 
 	/* Request the interrupt */
 	chan->irq = irq_of_parse_and_map(node, 0);
