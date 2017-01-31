@@ -1079,14 +1079,11 @@ static int cdns_i2c_probe(struct platform_device *pdev)
 	}
 
 	id->pinctrl = devm_pinctrl_get(&pdev->dev);
-	if (IS_ERR(id->pinctrl)) {
-		ret = PTR_ERR(id->pinctrl);
-		goto err_clk_dis;
+	if (!IS_ERR(id->pinctrl)) {
+		ret = cdns_i2c_init_recovery_info(id, pdev);
+		if (ret)
+			return ret;
 	}
-
-	ret = cdns_i2c_init_recovery_info(id, pdev);
-	if (ret)
-		return ret;
 
 	r_mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	id->membase = devm_ioremap_resource(&pdev->dev, r_mem);
