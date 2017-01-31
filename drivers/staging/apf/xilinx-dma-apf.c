@@ -275,10 +275,12 @@ static void dump_cur_bd(struct xdma_chan *chan)
 			sizeof(struct xdma_desc_hw);
 
 	dev_err(chan->dev, "cur bd @ %08x\n",   (u32)DMA_IN(&chan->regs->cdr));
-	dev_err(chan->dev, "  buf  = 0x%08x\n", chan->bds[index]->src_addr);
+	dev_err(chan->dev, "  buf  = %p\n",
+		(void *)chan->bds[index]->src_addr);
 	dev_err(chan->dev, "  ctrl = 0x%08x\n", chan->bds[index]->control);
 	dev_err(chan->dev, "  sts  = 0x%08x\n", chan->bds[index]->status);
-	dev_err(chan->dev, "  next = 0x%08x\n", chan->bds[index]->next_desc);
+	dev_err(chan->dev, "  next = %p\n",
+		(void *)chan->bds[index]->next_desc);
 }
 
 static irqreturn_t xdma_rx_intr_handler(int irq, void *data)
@@ -637,7 +639,6 @@ static int pin_user_pages(xlnk_intptr_type uaddr,
 {
 	int status;
 	struct mm_struct *mm = current->mm;
-	struct task_struct *curr_task = current;
 	unsigned int first_page;
 	unsigned int last_page;
 	unsigned int num_pages;
@@ -735,35 +736,19 @@ struct xdma_chan *xdma_request_channel(char *name)
 	int i;
 	struct xdma_device *device, *tmp;
 
-	mutex_lock(&dma_list_mutex);
 	list_for_each_entry_safe(device, tmp, &dma_device_list, node) {
 		for (i = 0; i < device->channel_count; i++) {
-			if (device->chan[i]->client_count)
-				continue;
 			if (!strcmp(device->chan[i]->name, name)) {
-				device->chan[i]->client_count++;
-				mutex_unlock(&dma_list_mutex);
 				return device->chan[i];
 			}
 		}
 	}
-	mutex_unlock(&dma_list_mutex);
 	return NULL;
 }
 EXPORT_SYMBOL(xdma_request_channel);
 
 void xdma_release_channel(struct xdma_chan *chan)
-{
-	mutex_lock(&dma_list_mutex);
-	if (!chan->client_count) {
-		mutex_unlock(&dma_list_mutex);
-		return;
-	}
-	chan->client_count--;
-	dma_halt(chan);
-	xilinx_chan_desc_reinit(chan);
-	mutex_unlock(&dma_list_mutex);
-}
+{ }
 EXPORT_SYMBOL(xdma_release_channel);
 
 void xdma_release_all_channels(void)
@@ -776,7 +761,6 @@ void xdma_release_all_channels(void)
 			if (device->chan[i]->client_count) {
 				dma_halt(device->chan[i]);
 				xilinx_chan_desc_reinit(device->chan[i]);
-				device->chan[i]->client_count = 0;
 				pr_info("%s: chan %s freed\n",
 						__func__,
 						device->chan[i]->name);
@@ -834,8 +818,8 @@ int xdma_submit(struct xdma_chan *chan,
 		dp->dbuf_sg_table = dma_buf_map_attachment(dp->dbuf_attach,
 							   chan->direction);
 		if (IS_ERR_OR_NULL(dp->dbuf_sg_table)) {
-			pr_err("%s unable to map sg_table for dbuf: %d\n",
-			       __func__, (int)dp->dbuf_sg_table);
+			pr_err("%s unable to map sg_table for dbuf: %p\n",
+			       __func__, dp->dbuf_sg_table);
 			return -EINVAL;
 		}
 		cpy_size = dp->dbuf_sg_table->nents *
@@ -1068,9 +1052,8 @@ static int xdma_probe(struct platform_device *pdev)
 	int dma_chan_dir;
 	int dma_chan_reg_offset;
 
-	pr_info("%s: probe dma %x, nres %d, id %d\n", __func__,
-		 (unsigned int)&pdev->dev,
-		 pdev->num_resources, pdev->id);
+	pr_info("%s: probe dma %p, nres %d, id %d\n", __func__,
+		&pdev->dev, pdev->num_resources, pdev->id);
 
 	xdev = devm_kzalloc(&pdev->dev, sizeof(struct xdma_device), GFP_KERNEL);
 	if (!xdev) {

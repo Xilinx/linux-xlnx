@@ -48,6 +48,7 @@
 #include <linux/dma/xilinx_dma.h>
 #include <linux/uio_driver.h>
 #include <asm/cacheflush.h>
+#include <linux/semaphore.h>
 
 #include "xlnk-ioctl.h"
 #include "xlnk-config.h"
@@ -135,6 +136,7 @@ struct xlnk_device_pack {
 	struct platform_device pdev;
 	struct resource res[8];
 	struct uio_info *io_ptr;
+	int refs;
 
 #ifdef CONFIG_XILINX_DMA_APF
 	struct xdma_channel_config dma_chan_cfg[4];  /* for xidane dma only */
@@ -147,13 +149,13 @@ struct xlnk_device_pack {
 
 };
 
-static spinlock_t xlnk_devpack_lock;
+static struct semaphore xlnk_devpack_sem;
 static struct xlnk_device_pack *xlnk_devpacks[MAX_XLNK_DMAS];
 static void xlnk_devpacks_init(void)
 {
 	unsigned int i;
 
-	spin_lock_init(&xlnk_devpack_lock);
+	sema_init(&xlnk_devpack_sem, 1);
 	for (i = 0; i < MAX_XLNK_DMAS; i++)
 		xlnk_devpacks[i] = NULL;
 
@@ -162,7 +164,6 @@ static void xlnk_devpacks_init(void)
 static void xlnk_devpacks_delete(struct xlnk_device_pack *devpack)
 {
 	unsigned int i;
-
 	for (i = 0; i < MAX_XLNK_DMAS; i++) {
 		if (xlnk_devpacks[i] == devpack)
 			xlnk_devpacks[i] = NULL;
@@ -172,15 +173,13 @@ static void xlnk_devpacks_delete(struct xlnk_device_pack *devpack)
 static void xlnk_devpacks_add(struct xlnk_device_pack *devpack)
 {
 	unsigned int i;
-
-	spin_lock_irq(&xlnk_devpack_lock);
+	devpack->refs = 1;
 	for (i = 0; i < MAX_XLNK_DMAS; i++) {
 		if (xlnk_devpacks[i] == NULL) {
 			xlnk_devpacks[i] = devpack;
 			break;
 		}
 	}
-	spin_unlock_irq(&xlnk_devpack_lock);
 }
 
 static struct xlnk_device_pack *xlnk_devpacks_find(xlnk_intptr_type base)
@@ -199,19 +198,28 @@ static void xlnk_devpacks_free(xlnk_intptr_type base)
 {
 	struct xlnk_device_pack *devpack;
 
+	down(&xlnk_devpack_sem);
 	devpack = xlnk_devpacks_find(base);
-	if (devpack) {
-		if (xlnk_config_dma_type(xlnk_config_dma_standard)) {
-			if (devpack->io_ptr)
-				uio_unregister_device(devpack->io_ptr);
-			if (strcmp(devpack->pdev.name, "xilinx-axidma") != 0)
-				platform_device_unregister(&devpack->pdev);
-		} else {
-			platform_device_unregister(&devpack->pdev);
-		}
-		xlnk_devpacks_delete(devpack);
-		kfree(devpack);
+	if (!devpack) {
+		up(&xlnk_devpack_sem);
+		return;
 	}
+	devpack->refs--;
+	if (devpack->refs) {
+		up(&xlnk_devpack_sem);
+		return;
+	}
+	if (xlnk_config_dma_type(xlnk_config_dma_standard)) {
+		if (devpack->io_ptr)
+			uio_unregister_device(devpack->io_ptr);
+		if (strcmp(devpack->pdev.name, "xilinx-axidma") != 0)
+			platform_device_unregister(&devpack->pdev);
+	} else {
+		platform_device_unregister(&devpack->pdev);
+	}
+	xlnk_devpacks_delete(devpack);
+	kfree(devpack);
+	up(&xlnk_devpack_sem);
 }
 
 static void xlnk_devpacks_free_all(void)
@@ -260,7 +268,7 @@ static void xlnk_load_config_from_dt(struct platform_device *pdev)
 
 static int xlnk_probe(struct platform_device *pdev)
 {
-	int err, i;
+	int err;
 	dev_t dev = 0;
 
 	xlnk_dev_buf = NULL;
@@ -369,7 +377,6 @@ static int xlnk_allocbuf(unsigned int len, unsigned int cacheable)
 	int id;
 	void *kaddr;
 	dma_addr_t phys_addr_anchor;
-	unsigned int page_dst;
 
 	if (cacheable)
 		kaddr = dma_alloc_noncoherent(xlnk_dev,
@@ -551,56 +558,63 @@ static int xlnk_devregister(char *name, unsigned int id,
 	unsigned int i;
 	int status;
 
+	down(&xlnk_devpack_sem);
 	devpack = xlnk_devpacks_find(base);
 	if (devpack) {
 		*handle = (xlnk_intptr_type)devpack;
-		return 0;
-	}
-	nirq = 0;
-	irqptr = irqs;
-
-	while (*irqptr) {
-		nirq++;
-		irqptr++;
-	}
-
-	if (nirq > 7)
-		return -ENOMEM;
-
-	nres = nirq + 1;
-
-	devpack = kzalloc(sizeof(struct xlnk_device_pack),
-			  GFP_KERNEL);
-	devpack->io_ptr = NULL;
-	strcpy(devpack->name, name);
-	devpack->pdev.name = devpack->name;
-
-	devpack->pdev.id = id;
-
-	devpack->pdev.dev.dma_mask = &dma_mask;
-	devpack->pdev.dev.coherent_dma_mask = dma_mask;
-
-	devpack->res[0].start = base;
-	devpack->res[0].end = base + size - 1;
-	devpack->res[0].flags = IORESOURCE_MEM;
-
-	for (i = 0; i < nirq; i++) {
-		devpack->res[i+1].start = irqs[i];
-		devpack->res[i+1].end = irqs[i];
-		devpack->res[i+1].flags = IORESOURCE_IRQ;
-	}
-
-	devpack->pdev.resource = devpack->res;
-	devpack->pdev.num_resources = nres;
-
-	status = platform_device_register(&devpack->pdev);
-	if (status) {
-		kfree(devpack);
-		*handle = 0;
+		devpack->refs++;
+		status = 0;
 	} else {
-		xlnk_devpacks_add(devpack);
-		*handle = (xlnk_intptr_type)devpack;
+		nirq = 0;
+		irqptr = irqs;
+
+		while (*irqptr) {
+			nirq++;
+			irqptr++;
+		}
+
+		if (nirq > 7) {
+			up(&xlnk_devpack_sem);
+			return -ENOMEM;
+		}
+
+		nres = nirq + 1;
+
+		devpack = kzalloc(sizeof(*devpack),
+				  GFP_KERNEL);
+		devpack->io_ptr = NULL;
+		strcpy(devpack->name, name);
+		devpack->pdev.name = devpack->name;
+
+		devpack->pdev.id = id;
+
+		devpack->pdev.dev.dma_mask = &dma_mask;
+		devpack->pdev.dev.coherent_dma_mask = dma_mask;
+
+		devpack->res[0].start = base;
+		devpack->res[0].end = base + size - 1;
+		devpack->res[0].flags = IORESOURCE_MEM;
+
+		for (i = 0; i < nirq; i++) {
+			devpack->res[i + 1].start = irqs[i];
+			devpack->res[i + 1].end = irqs[i];
+			devpack->res[i + 1].flags = IORESOURCE_IRQ;
+		}
+
+		devpack->pdev.resource = devpack->res;
+		devpack->pdev.num_resources = nres;
+
+		status = platform_device_register(&devpack->pdev);
+		if (status) {
+			kfree(devpack);
+			*handle = 0;
+		} else {
+			xlnk_devpacks_add(devpack);
+			*handle = (xlnk_intptr_type)devpack;
+		}
 	}
+	up(&xlnk_devpack_sem);
+
 	return status;
 }
 
@@ -631,84 +645,94 @@ static int xlnk_dmaregister(char *name, unsigned int id,
 		return -EINVAL;
 	}
 
+	down(&xlnk_devpack_sem);
 	devpack = xlnk_devpacks_find(base);
 	if (devpack) {
 		*handle = (xlnk_intptr_type)devpack;
-		return 0;
-	}
-
-	devpack = kzalloc(sizeof(struct xlnk_device_pack),
-			  GFP_KERNEL);
-	if (!devpack)
-		return -ENOMEM;
-	strcpy(devpack->name, name);
-	devpack->pdev.name = "xilinx-axidma";
-	if (xlnk_config_dma_type(xlnk_config_dma_standard) &&
-	    chan0_data_width == 0 && chan1_data_width == 0) {
-		devpack->io_ptr = kzalloc(sizeof(*devpack->io_ptr),
-					  GFP_KERNEL);
-		if (!devpack->io_ptr)
-			return -EFAULT;
-		devpack->io_ptr->name = devpack->name;
-		devpack->io_ptr->version = "0.0.1";
-		devpack->io_ptr->irq = -1;
-		if (uio_register_device(xlnk_dev, devpack->io_ptr)) {
-			pr_err("UIO dummy failed to install\n");
-			return -EFAULT;
-		}
+		devpack->refs++;
+		status = 0;
 	} else {
-		devpack->io_ptr = NULL;
-	}
+		devpack = kzalloc(sizeof(*devpack),
+				  GFP_KERNEL);
+		if (!devpack) {
+			up(&xlnk_devpack_sem);
+			return -ENOMEM;
+		}
+		strcpy(devpack->name, name);
+		devpack->pdev.name = "xilinx-axidma";
+		if (xlnk_config_dma_type(xlnk_config_dma_standard) &&
+		    chan0_data_width == 0 &&
+		    chan1_data_width == 0) {
+			devpack->io_ptr = kzalloc(sizeof(*devpack->io_ptr),
+						  GFP_KERNEL);
+			if (!devpack->io_ptr) {
+				up(&xlnk_devpack_sem);
+				return -EFAULT;
+			}
+			devpack->io_ptr->name = devpack->name;
+			devpack->io_ptr->version = "0.0.1";
+			devpack->io_ptr->irq = -1;
+			if (uio_register_device(xlnk_dev, devpack->io_ptr)) {
+				pr_err("UIO dummy failed to install\n");
+				up(&xlnk_devpack_sem);
+				return -EFAULT;
+			}
+		} else {
+			devpack->io_ptr = NULL;
+		}
 
-	devpack->pdev.id = id;
+		devpack->pdev.id = id;
 
-	devpack->dma_chan_cfg[0].include_dre = chan0_include_dre;
-	devpack->dma_chan_cfg[0].datawidth   = chan0_data_width;
-	devpack->dma_chan_cfg[0].irq = chan0_irq;
-	devpack->dma_chan_cfg[0].poll_mode   = chan0_poll_mode;
-	devpack->dma_chan_cfg[0].type =
-		(chan0_dir == XLNK_DMA_FROM_DEVICE) ?
+		devpack->dma_chan_cfg[0].include_dre = chan0_include_dre;
+		devpack->dma_chan_cfg[0].datawidth   = chan0_data_width;
+		devpack->dma_chan_cfg[0].irq = chan0_irq;
+		devpack->dma_chan_cfg[0].poll_mode   = chan0_poll_mode;
+		devpack->dma_chan_cfg[0].type =
+			(chan0_dir == XLNK_DMA_FROM_DEVICE) ?
+				"axi-dma-s2mm-channel" :
+				"axi-dma-mm2s-channel";
+
+		if (chan_num > 1) {
+			devpack->dma_chan_cfg[1].include_dre =
+				chan1_include_dre;
+			devpack->dma_chan_cfg[1].datawidth = chan1_data_width;
+			devpack->dma_chan_cfg[1].irq = chan1_irq;
+			devpack->dma_chan_cfg[1].poll_mode = chan1_poll_mode;
+			devpack->dma_chan_cfg[1].type =
+				(chan1_dir == XLNK_DMA_FROM_DEVICE) ?
 					"axi-dma-s2mm-channel" :
 					"axi-dma-mm2s-channel";
+		}
 
-	if (chan_num > 1) {
-		devpack->dma_chan_cfg[1].include_dre = chan1_include_dre;
-		devpack->dma_chan_cfg[1].datawidth   = chan1_data_width;
-		devpack->dma_chan_cfg[1].irq = chan1_irq;
-		devpack->dma_chan_cfg[1].poll_mode   = chan1_poll_mode;
-		devpack->dma_chan_cfg[1].type =
-			(chan1_dir == XLNK_DMA_FROM_DEVICE) ?
-						"axi-dma-s2mm-channel" :
-						"axi-dma-mm2s-channel";
+		devpack->dma_dev_cfg.name = devpack->name;
+		devpack->dma_dev_cfg.type = "axi-dma";
+		devpack->dma_dev_cfg.include_sg = 1;
+		devpack->dma_dev_cfg.sg_include_stscntrl_strm = 1;
+		devpack->dma_dev_cfg.channel_count = chan_num;
+		devpack->dma_dev_cfg.channel_config = &devpack->dma_chan_cfg[0];
+
+		devpack->pdev.dev.platform_data = &devpack->dma_dev_cfg;
+
+		devpack->pdev.dev.dma_mask = &dma_mask;
+		devpack->pdev.dev.coherent_dma_mask = dma_mask;
+
+		devpack->res[0].start = base;
+		devpack->res[0].end = base + size - 1;
+		devpack->res[0].flags = IORESOURCE_MEM;
+
+		devpack->pdev.resource = devpack->res;
+		devpack->pdev.num_resources = 1;
+		if (xlnk_config_dma_type(xlnk_config_dma_manual))
+			status = platform_device_register(&devpack->pdev);
+		if (status) {
+			kfree(devpack);
+			*handle = 0;
+		} else {
+			xlnk_devpacks_add(devpack);
+			*handle = (xlnk_intptr_type)devpack;
+		}
 	}
-
-	devpack->dma_dev_cfg.name = devpack->name;
-	devpack->dma_dev_cfg.type = "axi-dma";
-	devpack->dma_dev_cfg.include_sg = 1;
-	devpack->dma_dev_cfg.sg_include_stscntrl_strm = 1;
-	devpack->dma_dev_cfg.channel_count = chan_num;
-	devpack->dma_dev_cfg.channel_config = &devpack->dma_chan_cfg[0];
-
-	devpack->pdev.dev.platform_data = &devpack->dma_dev_cfg;
-
-	devpack->pdev.dev.dma_mask = &dma_mask;
-	devpack->pdev.dev.coherent_dma_mask = dma_mask;
-
-	devpack->res[0].start = base;
-	devpack->res[0].end = base + size - 1;
-	devpack->res[0].flags = IORESOURCE_MEM;
-
-	devpack->pdev.resource = devpack->res;
-	devpack->pdev.num_resources = 1;
-	if (xlnk_config_dma_type(xlnk_config_dma_manual))
-		status = platform_device_register(&devpack->pdev);
-	if (status) {
-		kfree(devpack);
-		*handle = 0;
-	} else {
-		xlnk_devpacks_add(devpack);
-		*handle = (xlnk_intptr_type)devpack;
-	}
+	up(&xlnk_devpack_sem);
 
 #endif
 	return status;
@@ -734,8 +758,10 @@ static int xlnk_mcdmaregister(char *name, unsigned int id,
 	if (strcmp(name, "xdma"))
 		return -EINVAL;
 
-
 	devpack = xlnk_devpacks_find(base);
+	if (devpack) {
+		devpack->refs++;
+	}
 	if (devpack) {
 		*handle = (xlnk_intptr_type)devpack;
 		return 0;
@@ -807,7 +833,9 @@ static int xlnk_allocbuf_ioctl(struct file *filp, unsigned int code,
 
 	temp_args.allocbuf.id = id;
 	temp_args.allocbuf.phyaddr = (xlnk_intptr_type)(xlnk_phyaddr[id]);
-	status = copy_to_user(args, &temp_args, sizeof(union xlnk_args));
+	status = copy_to_user((void __user *)args,
+			      &temp_args,
+			      sizeof(union xlnk_args));
 
 	return status;
 }
@@ -959,9 +987,11 @@ static int xlnk_dmarequest_ioctl(struct file *filp, unsigned int code,
 		}
 		temp_args.dmarequest.dmachan = (xlnk_intptr_type)chan;
 	} else {
-		struct xdma_chan *chan =
-			xdma_request_channel(temp_args.dmarequest.name);
+		struct xdma_chan *chan;
 
+		down(&xlnk_devpack_sem);
+		chan = xdma_request_channel(temp_args.dmarequest.name);
+		up(&xlnk_devpack_sem);
 		if (!chan)
 			return -ENOMEM;
 		temp_args.dmarequest.dmachan = (xlnk_intptr_type)chan;
@@ -1211,7 +1241,6 @@ static int xlnk_dmawait_ioctl(struct file *filp, unsigned int code,
 
 #ifdef CONFIG_XILINX_DMA_APF
 	union xlnk_args temp_args;
-	struct xdma_head *dmahead;
 
 	status = copy_from_user(&temp_args, (void __user *)args,
 				sizeof(union xlnk_args));
@@ -1287,13 +1316,14 @@ static int xlnk_dmarelease_ioctl(struct file *filp, unsigned int code,
 
 	if (status)
 		return -ENOMEM;
-
+	down(&xlnk_devpack_sem);
 	if (xlnk_config_dma_type(xlnk_config_dma_standard))
 		dma_release_channel((struct dma_chan *)
 				   (temp_args.dmarelease.dmachan));
 	else
 		xdma_release_channel((struct xdma_chan *)
 				    (temp_args.dmarelease.dmachan));
+	up(&xlnk_devpack_sem);
 #endif
 
 	return status;
@@ -1404,7 +1434,8 @@ static int xlnk_cachecontrol_ioctl(struct file *filp, unsigned int code,
 {
 	union xlnk_args temp_args;
 	int status, size;
-	void *paddr, *kaddr;
+	void *kaddr;
+	xlnk_intptr_type paddr;
 	int buf_id;
 
 	if (xlnk_config_dma_type(xlnk_config_dma_standard)) {
@@ -1474,7 +1505,7 @@ static int xlnk_config_ioctl(struct file *filp, unsigned long args)
 		status = xlnk_set_config(&block);
 	} else {
 		xlnk_get_config(&block);
-		status = copy_to_user(args, &block,
+		status = copy_to_user((void __user *)args, &block,
 				      sizeof(struct xlnk_config_block));
 	}
 	return status;
