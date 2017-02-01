@@ -140,6 +140,52 @@ static void rproc_disable_iommu(struct rproc *rproc)
 }
 
 /**
+ * rproc_idr_alloc() - allocate id with idr_alloc()
+ * @rproc: handle of a remote processor
+ * @ptr: pointer to the resource to allocate id for
+ * @rsc_type: type of the resource for which to allocate id
+ * @start: start id
+ * @end: end id
+ *
+ * This function returns an ID from idr_alloc() or negative number
+ * if it fails.
+ */
+int rproc_idr_alloc(struct rproc *rproc, void *ptr, unsigned int rsc_type,
+		    int start, int end)
+{
+	struct rproc_id_rsc *rsc;
+	int ret;
+
+	rsc = kzalloc(sizeof(*rsc), GFP_KERNEL);
+	if (!rsc)
+		return -ENOMEM;
+
+	rsc->rsc_ptr = ptr;
+	rsc->rsc_type = rsc_type;
+
+	ret = idr_alloc(&rproc->notifyids, rsc, start, end, GFP_KERNEL);
+	if (ret < 0)
+		kfree(rsc);
+	return ret;
+}
+
+/**
+ * rproc_idr_remove() - remove id with idr_remove()
+ * @rproc: handle of a remote processor
+ * @id: id to remove
+ */
+void rproc_idr_remove(struct rproc *rproc, int id)
+{
+	struct rproc_id_rsc *rsc;
+
+	rsc = idr_find(&rproc->notifyids, id);
+	if (!rsc)
+		return;
+	idr_remove(&rproc->notifyids, id);
+	kfree(rsc);
+}
+
+/**
  * rproc_da_to_va() - lookup the kernel virtual address for a remoteproc address
  * @rproc: handle of a remote processor
  * @da: remoteproc device address to translate
