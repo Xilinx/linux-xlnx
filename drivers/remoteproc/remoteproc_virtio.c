@@ -30,7 +30,7 @@
 #include "remoteproc_internal.h"
 
 /* kick the remote processor, and let it know which virtqueue to poke at */
-static bool rproc_virtio_notify(struct virtqueue *vq)
+static bool rproc_vq_notify(struct virtqueue *vq)
 {
 	struct rproc_vring *rvring = vq->priv;
 	struct rproc *rproc = rvring->rvdev->rproc;
@@ -136,7 +136,7 @@ static struct virtqueue *rp_find_vq(struct virtio_device *vdev,
 	 * the 'weak' smp barriers, since we're talking with a real device.
 	 */
 	vq = vring_new_virtqueue(id, len, rvring->align, vdev, false, ctx,
-				 addr, rproc_virtio_notify, callback, name);
+				 addr, rproc_vq_notify, callback, name);
 	if (!vq) {
 		dev_err(dev, "vring_new_virtqueue %s failed\n", name);
 		rproc_free_vring(rvring);
