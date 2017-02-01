@@ -37,9 +37,6 @@
 
 #include "../dmaengine.h"
 
-/* TODO: Remove GPIO reset in 2016.3*/
-#define GPIO_RESET
-
 /* Register/Descriptor Offsets */
 #define XILINX_FRMBUF_CTRL_OFFSET		0x0000
 #define XILINX_FRMBUF_GIE_OFFSET		0x0004
@@ -942,7 +939,6 @@ static int xilinx_frmbuf_probe(struct platform_device *pdev)
 			xdev->frmbuf_config = match->data;
 	}
 
-#ifdef GPIO_RESET
 	xdev->rst_gpio = devm_gpiod_get(&pdev->dev, "reset",
 						   GPIOD_OUT_HIGH);
 	if (!xdev->rst_gpio) {
@@ -951,7 +947,6 @@ static int xilinx_frmbuf_probe(struct platform_device *pdev)
 	}
 
 	gpiod_set_value_cansleep(xdev->rst_gpio, 0x0);
-#endif
 
 	xdev->dbg_thread = kthread_create(xilinx_frmbuf_dbg_thread,
 						xdev, "dbg_thread");
