@@ -900,6 +900,60 @@ static bool rproc_is_running(struct rproc *rproc)
 	return (rproc->state == RPROC_RUNNING) ? true : false;
 }
 
+/**
+ * rproc_handle_fw_chksum() - handle firmware checksum resource
+ * @rproc: rproc handle
+ * @fw: firmware
+ * @offset: returns fw_chksum resource offset.
+ *
+ * This function will handle request to set the firmware checksum.
+ */
+static
+struct fw_rsc_fw_chksum *rproc_handle_fw_chksum(struct rproc *rproc,
+				const struct firmware *fw, int *offset)
+{
+	struct fw_rsc_fw_chksum *rsc = NULL;
+	int i, tablesz;
+	struct device *dev = &rproc->dev;
+	struct resource_table *table;
+
+	/* look for the resource table */
+	table = rproc_find_rsc_table(rproc, fw, &tablesz);
+	if (!table) {
+		dev_err(dev, "Failed to find resource table\n");
+		return NULL;
+	}
+
+	for (i = 0; i < rproc->table_ptr->num; i++) {
+		int ret = 0;
+		int tmpoffset = rproc->table_ptr->offset[i];
+		struct fw_rsc_hdr *hdr = (void *)rproc->table_ptr + tmpoffset;
+		int avail = tablesz - tmpoffset - sizeof(*hdr);
+
+		if (hdr->type != RSC_FW_CHKSUM)
+			continue;
+
+		rsc = (struct fw_rsc_fw_chksum *)((void *)hdr + sizeof(*hdr));
+		if (sizeof(*rsc) > avail) {
+			dev_err(dev, "firmware checksum rsc is truncated\n");
+			return NULL;
+		}
+		if (rproc->fw_ops->get_chksum) {
+			ret = rproc->fw_ops->get_chksum(rproc, fw,
+				rsc->algo, rsc->chksum, sizeof(rsc->chksum));
+			if (ret) {
+				dev_err(dev,
+					"failed to get firmware chksum.\n");
+				return NULL;
+			}
+		}
+		*offset = tmpoffset + sizeof(*hdr);
+		return rsc;
+	}
+
+	return NULL;
+}
+
 /*
  * check if the remote needs start.
  */
