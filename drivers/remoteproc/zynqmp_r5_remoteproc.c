@@ -283,6 +283,48 @@ static void r5_enable_clock(struct zynqmp_r5_rproc_pdata *pdata)
 	}
 }
 
+/*
+ * r5_is_running - check if r5 is running
+ * @pdata: platform data
+ *
+ * check if R5 is running
+ * @retrun: true if r5 is running, false otherwise
+ */
+static bool r5_is_running(struct zynqmp_r5_rproc_pdata *pdata)
+{
+	u32 tmp, mask;
+
+	pr_debug("%s: rpu id: %d\n", __func__, pdata->rpu_id);
+
+	tmp = reg_read(pdata->crl_apb_base, RST_LPD_TOP_OFFSET);
+	mask = RPU_AMBA_RST_MASK;
+	if (pdata->rpu_mode == SPLIT)
+		mask |= RPU0_RESET_BIT << pdata->rpu_id;
+	else
+		mask |= RPU0_RESET_BIT | (RPU0_RESET_BIT << 1);
+	if (tmp & mask)
+		return false;
+
+	if (pdata->rpu_mode == SPLIT) {
+		u32 offset = RPU_0_CFG_OFFSET;
+
+		if (pdata->rpu_id)
+			offset = RPU_1_CFG_OFFSET;
+
+		tmp = reg_read(pdata->rpu_base, offset);
+		if (tmp & nCPUHALT_BIT)
+			return true;
+	} else {
+		tmp = reg_read(pdata->rpu_base, RPU_0_CFG_OFFSET);
+		if (!(tmp & nCPUHALT_BIT))
+			return false;
+		tmp = reg_read(pdata->rpu_base, RPU_1_CFG_OFFSET);
+		if (tmp & nCPUHALT_BIT)
+			return true;
+	}
+	return false;
+}
+
 /**
  * r5_request_tcm - request access to TCM
  * @pdata: platform data
@@ -421,6 +463,17 @@ static int zynqmp_r5_rproc_stop(struct rproc *rproc)
 	return 0;
 }
 
+/* check if ZynqMP r5 is running */
+static bool zynqmp_r5_rproc_is_running(struct rproc *rproc)
+{
+	struct device *dev = rproc->dev.parent;
+	struct zynqmp_r5_rproc_pdata *local = rproc->priv;
+
+	dev_dbg(dev, "%s\n", __func__);
+
+	return r5_is_running(local);
+}
+
 static void *zynqmp_r5_rproc_da_to_va(struct rproc *rproc, u64 da, int len)
 {
 	struct rproc_mem_entry *mem;
@@ -448,6 +501,7 @@ static void *zynqmp_r5_rproc_da_to_va(struct rproc *rproc, u64 da, int len)
 static struct rproc_ops zynqmp_r5_rproc_ops = {
 	.start		= zynqmp_r5_rproc_start,
 	.stop		= zynqmp_r5_rproc_stop,
+	.is_running     = zynqmp_r5_rproc_is_running,
 	.kick		= zynqmp_r5_rproc_kick,
 	.da_to_va       = zynqmp_r5_rproc_da_to_va,
 };
