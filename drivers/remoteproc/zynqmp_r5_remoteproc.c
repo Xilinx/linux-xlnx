@@ -333,9 +333,16 @@ static bool r5_is_running(struct zynqmp_r5_rproc_pdata *pdata)
  */
 static int r5_request_tcm(struct zynqmp_r5_rproc_pdata *pdata)
 {
+	bool is_running = r5_is_running(pdata);
+
 	r5_mode_config(pdata);
-	r5_enable_clock(pdata);
-	r5_reset(pdata, false);
+
+	if (!is_running) {
+		r5_reset(pdata, true);
+		r5_halt(pdata, true);
+		r5_enable_clock(pdata);
+		r5_reset(pdata, false);
+	}
 
 	return 0;
 }
