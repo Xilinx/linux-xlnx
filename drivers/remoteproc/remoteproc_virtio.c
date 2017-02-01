@@ -363,6 +363,8 @@ int rproc_add_virtio_dev(struct rproc_vdev *rvdev, int id)
 	struct device *dev = &rproc->dev;
 	struct virtio_device *vdev = &rvdev->vdev;
 	int ret;
+	int idr_start, idr_end;
+	struct fw_rsc_vdev *rsc;
 
 	vdev->id.device	= id,
 	vdev->config = &rproc_virtio_config_ops,
@@ -382,6 +384,25 @@ int rproc_add_virtio_dev(struct rproc_vdev *rvdev, int id)
 
 	/* Reference the vdev and vring allocations */
 	kref_get(&rvdev->refcount);
+
+	/*
+	 * Assign an rproc-wide unique index for this rvdev
+	 */
+	rsc = (void *)rproc->table_ptr + rvdev->rsc_offset;
+	if (rsc->notifyid == FW_RSC_ADDR_ANY) {
+		idr_start = 0;
+		idr_end = 0;
+	} else {
+		idr_start = rsc->notifyid;
+		idr_end = 0;
+	}
+	ret = rproc_idr_alloc(rproc, rvdev, RPROC_IDR_VDEV,
+			idr_start, idr_end);
+	if (ret < 0) {
+		dev_err(dev, "rvdev idr_alloc failed: %d\n", ret);
+		return ret;
+	}
+	rsc->notifyid = ret;
 
 	ret = register_virtio_device(vdev);
 	if (ret) {
@@ -404,5 +425,11 @@ out:
  */
 void rproc_remove_virtio_dev(struct rproc_vdev *rvdev)
 {
+	struct rproc *rproc = rvdev->rproc;
+	struct fw_rsc_vdev *rsc;
+
+	rsc = (void *)rproc->table_ptr + rvdev->rsc_offset;
+	rproc_idr_remove(rproc, rsc->notifyid);
+
 	unregister_virtio_device(&rvdev->vdev);
 }
