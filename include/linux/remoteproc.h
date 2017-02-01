@@ -534,6 +534,7 @@ struct rproc_vring {
  * @vdev: the virio device
  * @vring: the vrings for this vdev
  * @rsc_offset: offset of the vdev's resource entry
+ * @config_wait_complete: mark asynchronous vdev config wait complete
  */
 struct rproc_vdev {
 	struct kref refcount;
@@ -546,6 +547,7 @@ struct rproc_vdev {
 	struct virtio_device vdev;
 	struct rproc_vring vring[RVDEV_NUM_VRINGS];
 	u32 rsc_offset;
+	struct completion config_wait_complete;
 };
 
 struct rproc *rproc_get_by_phandle(phandle phandle);

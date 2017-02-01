@@ -342,6 +342,7 @@ int rproc_add_virtio_dev(struct rproc_vdev *rvdev, int id)
 	vdev->dev.parent = dev;
 	vdev->dev.release = rproc_virtio_dev_release;
 
+	init_completion(&rvdev->config_wait_complete);
 	/*
 	 * We're indirectly making a non-temporary copy of the rproc pointer
 	 * here, because drivers probed with this vdev will indirectly
