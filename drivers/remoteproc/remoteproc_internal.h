@@ -93,6 +93,12 @@ extern struct class rproc_class;
 int rproc_init_sysfs(void);
 void rproc_exit_sysfs(void);
 
+/* rproc idr_alloc wrapper */
+int rproc_idr_alloc(struct rproc *rproc, void *ptr, unsigned int rsc_type,
+		    int start, int end);
+/* rproc idr_remove wrapper */
+void rproc_idr_remove(struct rproc *rproc, int id);
+
 void rproc_free_vring(struct rproc_vring *rvring);
 int rproc_alloc_vring(struct rproc_vdev *rvdev, int i);
 
