@@ -353,6 +353,30 @@ static void r5_release_tcm(struct zynqmp_r5_rproc_pdata *pdata)
 }
 
 /**
+ * disable_ipi - disable IPI
+ * @pdata: platform data
+ *
+ * Disable IPI interrupt
+ */
+static inline void disable_ipi(struct zynqmp_r5_rproc_pdata *pdata)
+{
+	/* Disable R5 IPI interrupt */
+	reg_write(pdata->ipi_base, IDR_OFFSET, pdata->ipi_dest_mask);
+}
+
+/**
+ * enable_ipi - enable IPI
+ * @pdata: platform data
+ *
+ * Enable IPI interrupt
+ */
+static inline void enable_ipi(struct zynqmp_r5_rproc_pdata *pdata)
+{
+	/* Enable R5 IPI interrupt */
+	reg_write(pdata->ipi_base, IER_OFFSET, pdata->ipi_dest_mask);
+}
+
+/**
  * ipi_init - Initialize R5 IPI
  * @pdata: platform data
  *
