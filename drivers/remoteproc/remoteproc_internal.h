@@ -33,6 +33,7 @@ struct rproc;
  *			expects to find it
  * @sanity_check:	sanity check the fw image
  * @get_boot_addr:	get boot address to entry point specified in firmware
+ * @get_chksum:		get checksum of the loadable sections of the firmware
  */
 struct rproc_fw_ops {
 	struct resource_table *(*find_rsc_table)(struct rproc *rproc,
@@ -43,6 +44,8 @@ struct rproc_fw_ops {
 	int (*load)(struct rproc *rproc, const struct firmware *fw);
 	int (*sanity_check)(struct rproc *rproc, const struct firmware *fw);
 	u32 (*get_boot_addr)(struct rproc *rproc, const struct firmware *fw);
+	int (*get_chksum)(struct rproc *rproc, const struct firmware *fw,
+			char *algo, u8 *chksum, int output_size);
 };
 
 /* from remoteproc_core.c */
