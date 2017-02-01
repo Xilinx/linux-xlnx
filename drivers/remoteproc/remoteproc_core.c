@@ -890,6 +890,27 @@ static void rproc_resource_cleanup(struct rproc *rproc)
 	dma_release_declared_memory(dev->parent);
 }
 
+/*
+ * check if the remote is running
+ */
+static bool rproc_is_running(struct rproc *rproc)
+{
+	if (rproc->ops->is_running)
+		return rproc->ops->is_running(rproc);
+	return (rproc->state == RPROC_RUNNING) ? true : false;
+}
+
+/*
+ * check if the remote needs start.
+ */
+static bool rproc_is_running_fw(struct rproc *rproc, const struct firmware *fw)
+{
+	(void)rproc;
+	(void) fw;
+
+	return false;
+}
+
 static int rproc_start(struct rproc *rproc, const struct firmware *fw)
 {
 	struct resource_table *table, *loaded_table;
@@ -948,24 +969,15 @@ static int rproc_start(struct rproc *rproc, const struct firmware *fw)
 }
 
 /*
- * check if the remote is running
- */
-static bool rproc_is_running(struct rproc *rproc)
-{
-	if (rproc->ops->is_running)
-		return rproc->ops->is_running(rproc);
-	return (rproc->state == RPROC_RUNNING) ? true : false;
-}
-
-/*
  * take a firmware and boot a remote processor with it.
  */
 static int rproc_fw_boot(struct rproc *rproc, const struct firmware *fw)
 {
 	struct device *dev = &rproc->dev;
 	const char *name = rproc->firmware;
-	struct resource_table *table;
+	struct resource_table *table, *loaded_table;
 	int ret, tablesz;
+	bool is_running = false;
 
 	ret = rproc_fw_sanity_check(rproc, fw);
 	if (ret)
@@ -1008,6 +1020,19 @@ static int rproc_fw_boot(struct rproc *rproc, const struct firmware *fw)
 	/* reset max_notifyid */
 	rproc->max_notifyid = -1;
 
+	/* check if the rproc is already running the firmware */
+	/* As it may be required to know if the remote is already running
+	 * when handling the resource table, check if the remote is already
+	 * running the expected firmware before handling the resource table.
+	 */
+	is_running = rproc_is_running_fw(rproc, fw);
+	if (is_running) {
+		rproc->state = RPROC_RUNNING_INDEPENDENT;
+		loaded_table = rproc_find_loaded_rsc_table(rproc, fw);
+		if (loaded_table)
+			rproc->table_ptr = loaded_table;
+	}
+
 	/* look for remote processor memory and declare them. */
 	ret = rproc_handle_resources(rproc, tablesz, rproc_rproc_mem_handler);
 	if (ret) {
@@ -1023,9 +1048,24 @@ static int rproc_fw_boot(struct rproc *rproc, const struct firmware *fw)
 		goto clean_up_resources;
 	}
 
-	ret = rproc_start(rproc, fw);
-	if (ret)
-		goto clean_up_resources;
+	if (!is_running) {
+		/* If rproc is running, stop it first */
+		if (rproc_is_running(rproc)) {
+			dev_info(dev, "Restarting the remote.\n");
+			ret = rproc->ops->stop(rproc);
+			if (ret) {
+				atomic_inc(&rproc->power);
+				dev_err(dev, "can't stop rproc: %d\n", ret);
+				goto clean_up_resources;
+			}
+		}
+
+		ret = rproc_start(rproc, fw);
+		if (ret)
+			goto clean_up_resources;
+	} else {
+		dev_info(dev, "remote is already running. Do not restart\n");
+	}
 
 	return 0;
 
