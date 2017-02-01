@@ -271,12 +271,10 @@ int rproc_alloc_vring(struct rproc_vdev *rvdev, int i)
 
 	/*
 	 * Assign an rproc-wide unique index for this vring
-	 * TODO: assign a notifyid for rvdev updates as well
-	 * TODO: support predefined notifyids (via resource table)
 	 */
 	ret = rproc_idr_alloc(rproc, rvring, RPROC_IDR_VRING, 0, 0);
 	if (ret < 0) {
-		dev_err(dev, "idr_alloc failed: %d\n", ret);
+		dev_err(dev, "rvfing idr_alloc failed: %d\n", ret);
 		dma_free_coherent(dev->parent, size, va, dma);
 		return ret;
 	}
