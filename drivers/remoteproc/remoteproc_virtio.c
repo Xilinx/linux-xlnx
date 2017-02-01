@@ -233,8 +233,19 @@ static void rproc_virtio_reset(struct virtio_device *vdev)
 
 	rsc = (void *)rvdev->rproc->table_ptr + rvdev->rsc_offset;
 
-	rsc->status = 0;
 	dev_dbg(&vdev->dev, "reset !\n");
+	if (rvdev->rproc->state == RPROC_RUNNING_INDEPENDENT) {
+		rsc->status = VIRTIO_CONFIG_S_NEEDS_RESET;
+		virtio_mb(false);
+		rproc_virtio_notify(rvdev);
+		while (rsc->status) {
+			if (!wait_for_completion_timeout(
+				&rvdev->config_wait_complete, HZ))
+				break;
+		}
+	} else {
+		rsc->status = 0;
+	}
 }
 
 /* provide the vdev features as retrieved from the firmware */
