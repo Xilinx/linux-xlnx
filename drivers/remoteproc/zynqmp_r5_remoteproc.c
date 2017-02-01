@@ -35,6 +35,8 @@
 #include <linux/delay.h>
 #include <linux/list.h>
 #include <linux/genalloc.h>
+#include <linux/pfn.h>
+#include <linux/idr.h>
 
 #include "remoteproc_internal.h"
 
@@ -383,15 +385,30 @@ static inline void enable_ipi(struct zynqmp_r5_rproc_pdata *pdata)
 	reg_write(pdata->ipi_base, IER_OFFSET, pdata->ipi_dest_mask);
 }
 
+/**
+ * event_notified_idr_cb - event notified idr callback
+ * @id: idr id
+ * @ptr: pointer to idr private data
+ * @data: data passed to idr_for_each callback
+ *
+ * Pass notification to remtoeproc virtio
+ */
+static int event_notified_idr_cb(int id, void *ptr, void *data)
+{
+	struct rproc *rproc = data;
+	(void)rproc_virtio_interrupt(rproc, id);
+	return 0;
+}
+
 static void handle_event_notified(struct work_struct *work)
 {
+	struct rproc *rproc;
 	struct zynqmp_r5_rproc_pdata *local = container_of(
 				work, struct zynqmp_r5_rproc_pdata,
 				workqueue);
 
-	if (rproc_vq_interrupt(local->rproc, 0) == IRQ_NONE)
-		dev_dbg(local->rproc->dev.parent,
-			"no message found in vqid 0\n");
+	rproc = local->rproc;
+	idr_for_each(&rproc->notifyids, event_notified_idr_cb, rproc);
 }
 
 
