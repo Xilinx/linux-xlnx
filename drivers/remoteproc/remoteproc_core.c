@@ -959,10 +959,33 @@ struct fw_rsc_fw_chksum *rproc_handle_fw_chksum(struct rproc *rproc,
  */
 static bool rproc_is_running_fw(struct rproc *rproc, const struct firmware *fw)
 {
-	(void)rproc;
-	(void) fw;
+	struct resource_table *loaded_table;
+	struct fw_rsc_fw_chksum *rsc, *loaded_rsc;
+	int rsc_fw_chksum_offset;
 
-	return false;
+	rsc = rproc_handle_fw_chksum(rproc, fw, &rsc_fw_chksum_offset);
+	if (!rsc)
+		return false;
+
+	if (!rproc_is_running(rproc))
+		return false;
+
+	/* look for the loaded resource table */
+	loaded_table = rproc_find_loaded_rsc_table(rproc, fw);
+	if (!loaded_table)
+		return false;
+
+	loaded_rsc = (void *)loaded_table + rsc_fw_chksum_offset;
+	if (!loaded_rsc->algo || !loaded_rsc->chksum)
+		return false;
+
+	if (strncmp(rsc->algo, loaded_rsc->algo, strlen(rsc->algo)))
+		return false;
+
+	if (memcmp(rsc->chksum, loaded_rsc->chksum, sizeof(rsc->chksum)))
+		return false;
+
+	return true;
 }
 
 static int rproc_start(struct rproc *rproc, const struct firmware *fw)
