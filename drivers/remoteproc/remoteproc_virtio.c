@@ -43,6 +43,44 @@ static bool rproc_virtio_notify(struct virtqueue *vq)
 }
 
 /**
+ * rproc_virtio_interrupt() - tell remoteproc that a vdev is interrupted
+ * @rproc: handle to the remote processor
+ * @notifyid: index of the signalled virtqueue (unique per this @rproc)
+ *
+ * This function should be called by the platform-specific rproc driver,
+ * when the remote processor signals that a specific virtqueue has pending
+ * messages available.
+ *
+ * Returns IRQ_NONE if no message was found in the @notifyid virtqueue,
+ * and otherwise returns IRQ_HANDLED.
+ */
+irqreturn_t rproc_virtio_interrupt(struct rproc *rproc, int notifyid)
+{
+	struct rproc_id_rsc *rsc;
+	struct rproc_vring *rvring;
+
+	dev_dbg(&rproc->dev, "virtio index %d is interrupted\n", notifyid);
+
+	rsc = idr_find(&rproc->notifyids, notifyid);
+	if (!rsc || !rsc->rsc_ptr)
+		return IRQ_NONE;
+
+	if (rsc->rsc_type == RPROC_IDR_VRING) {
+		rvring = rsc->rsc_ptr;
+		if (!rvring->vq)
+			return IRQ_NONE;
+		return vring_interrupt(0, rvring->vq);
+	} else if (rsc->rsc_type == RPROC_IDR_VDEV) {
+		dev_info(&rproc->dev, "vdev intr is not supported yet.\n");
+		return IRQ_NONE;
+	}
+
+	dev_err(&rproc->dev, "Unknown rsc type: 0x%x\n", rsc->rsc_type);
+	return IRQ_NONE;
+}
+EXPORT_SYMBOL(rproc_virtio_interrupt);
+
+/**
  * rproc_vq_interrupt() - tell remoteproc that a virtqueue is interrupted
  * @rproc: handle to the remote processor
  * @notifyid: index of the signalled virtqueue (unique per this @rproc)
@@ -56,15 +94,7 @@ static bool rproc_virtio_notify(struct virtqueue *vq)
  */
 irqreturn_t rproc_vq_interrupt(struct rproc *rproc, int notifyid)
 {
-	struct rproc_vring *rvring;
-
-	dev_dbg(&rproc->dev, "vq index %d is interrupted\n", notifyid);
-
-	rvring = idr_find(&rproc->notifyids, notifyid);
-	if (!rvring || !rvring->vq)
-		return IRQ_NONE;
-
-	return vring_interrupt(0, rvring->vq);
+	return rproc_virtio_interrupt(rproc, notifyid);
 }
 EXPORT_SYMBOL(rproc_vq_interrupt);
 
