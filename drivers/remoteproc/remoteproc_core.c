@@ -826,6 +826,16 @@ static void rproc_resource_cleanup(struct rproc *rproc)
 }
 
 /*
+ * check if the remote is running
+ */
+static bool rproc_is_running(struct rproc *rproc)
+{
+	if (rproc->ops->is_running)
+		return rproc->ops->is_running(rproc);
+	return (rproc->state == RPROC_RUNNING) ? true : false;
+}
+
+/*
  * take a firmware and boot a remote processor with it.
  */
 static int rproc_fw_boot(struct rproc *rproc, const struct firmware *fw)
