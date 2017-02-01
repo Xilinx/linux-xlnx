@@ -376,23 +376,6 @@ static inline void enable_ipi(struct zynqmp_r5_rproc_pdata *pdata)
 	reg_write(pdata->ipi_base, IER_OFFSET, pdata->ipi_dest_mask);
 }
 
-/**
- * ipi_init - Initialize R5 IPI
- * @pdata: platform data
- *
- * Clear IPI interrupt status register and then enable IPI interrupt.
- */
-static void ipi_init(struct zynqmp_r5_rproc_pdata *pdata)
-{
-	pr_debug("%s\n", __func__);
-	/* Disable R5 IPI interrupt */
-	reg_write(pdata->ipi_base, IDR_OFFSET, pdata->ipi_dest_mask);
-	/* Clear R5 IPI interrupt */
-	reg_write(pdata->ipi_base, ISR_OFFSET, pdata->ipi_dest_mask);
-	/* Enable R5 IPI interrupt */
-	reg_write(pdata->ipi_base, IER_OFFSET, pdata->ipi_dest_mask);
-}
-
 static void handle_event_notified(struct work_struct *work)
 {
 	struct zynqmp_r5_rproc_pdata *local = container_of(
@@ -411,7 +394,6 @@ static int zynqmp_r5_rproc_start(struct rproc *rproc)
 	struct zynqmp_r5_rproc_pdata *local = rproc->priv;
 
 	dev_dbg(dev, "%s\n", __func__);
-	INIT_WORK(&local->workqueue, handle_event_notified);
 
 	/*
 	 * Use memory barrier to make sure all write memory operations
@@ -426,7 +408,6 @@ static int zynqmp_r5_rproc_start(struct rproc *rproc)
 	dev_info(dev, "RPU boot from %s.",
 		local->bootmem == OCM ? "OCM" : "TCM");
 
-	ipi_init(local);
 	r5_mode_config(local);
 	r5_halt(local, true);
 	r5_reset(local, true);
@@ -435,6 +416,9 @@ static int zynqmp_r5_rproc_start(struct rproc *rproc)
 	udelay(500);
 	r5_reset(local, false);
 	r5_halt(local, false);
+
+	/* Make sure IPI is enabled */
+	enable_ipi(local);
 
 	return 0;
 }
@@ -471,8 +455,8 @@ static int zynqmp_r5_rproc_stop(struct rproc *rproc)
 	r5_reset(local, true);
 	r5_halt(local, true);
 	r5_request_tcm(local);
-	reg_write(local->ipi_base, IDR_OFFSET, local->ipi_dest_mask);
-	reg_write(local->ipi_base, ISR_OFFSET, local->ipi_dest_mask);
+
+	disable_ipi(local);
 
 	/* After it reset was once asserted, TCM will be initialized
 	 * before it can be read. E.g. remoteproc virtio will access
@@ -585,6 +569,7 @@ static int zynqmp_r5_rproc_init(struct rproc *rproc)
 	if (ret)
 		return ret;
 
+	enable_ipi(local);
 	return zynqmp_r5_rproc_add_mems(local);
 }
 
@@ -735,6 +720,9 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 		}
 	}
 
+	/* Disable IPI before requesting IPI IRQ */
+	disable_ipi(local);
+	INIT_WORK(&local->workqueue, handle_event_notified);
 	/* IPI IRQ */
 	local->vring0 = platform_get_irq(pdev, 0);
 	if (local->vring0 < 0) {
