@@ -29,6 +29,20 @@
 
 #include "remoteproc_internal.h"
 
+/* kick the remote processor, and let it know the virtio dev has update */
+static bool rproc_virtio_notify(struct rproc_vdev *rvdev)
+{
+	struct rproc *rproc;
+	struct fw_rsc_vdev *rsc;
+
+	if (!rvdev)
+		return false;
+	rproc = rvdev->rproc;
+	rsc = (void *)rproc->table_ptr + rvdev->rsc_offset;
+	rproc->ops->kick(rproc, rsc->notifyid);
+	return true;
+}
+
 /* kick the remote processor, and let it know which virtqueue to poke at */
 static bool rproc_vq_notify(struct virtqueue *vq)
 {
