@@ -72,6 +72,7 @@ struct rproc_fw_ops {
 
 /* from remoteproc_core.c */
 void rproc_release(struct kref *kref);
+irqreturn_t rproc_virtio_interrupt(struct rproc *rproc, int notifyid);
 irqreturn_t rproc_vq_interrupt(struct rproc *rproc, int vq_id);
 void rproc_vdev_release(struct kref *ref);
 

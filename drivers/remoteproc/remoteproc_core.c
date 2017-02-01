@@ -274,7 +274,7 @@ int rproc_alloc_vring(struct rproc_vdev *rvdev, int i)
 	 * TODO: assign a notifyid for rvdev updates as well
 	 * TODO: support predefined notifyids (via resource table)
 	 */
-	ret = idr_alloc(&rproc->notifyids, rvring, 0, 0, GFP_KERNEL);
+	ret = rproc_idr_alloc(rproc, rvring, RPROC_IDR_VRING, 0, 0);
 	if (ret < 0) {
 		dev_err(dev, "idr_alloc failed: %d\n", ret);
 		dma_free_coherent(dev->parent, size, va, dma);
@@ -337,8 +337,9 @@ void rproc_free_vring(struct rproc_vring *rvring)
 	int idx = rvring->rvdev->vring - rvring;
 	struct fw_rsc_vdev *rsc;
 
-	dma_free_coherent(rproc->dev.parent, size, rvring->va, rvring->dma);
-	idr_remove(&rproc->notifyids, rvring->notifyid);
+	dma_free_coherent(rproc->dev.parent, size, rvring->va,
+				  rvring->dma);
+	rproc_idr_remove(rproc, rvring->notifyid);
 
 	/* reset resource entry info */
 	rsc = (void *)rproc->table_ptr + rvring->rvdev->rsc_offset;
