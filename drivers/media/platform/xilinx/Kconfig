@@ -43,6 +43,12 @@ config VIDEO_XILINX_SCALER
 	---help---
 	   Driver for the Xilinx Video Scaler
 
+config VIDEO_XILINX_SCALER_HLS_VPSS
+	tristate "Xilinx Video VPSS Scaler only"
+	depends on VIDEO_XILINX
+	---help---
+	   Driver for Xilin xHLS  VPSS Scaler only
+
 config VIDEO_XILINX_SWITCH
 	tristate "Xilinx Video Switch"
 	depends on VIDEO_XILINX
