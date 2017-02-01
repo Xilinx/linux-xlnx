@@ -23,6 +23,28 @@
 #include <linux/irqreturn.h>
 #include <linux/firmware.h>
 
+
+/**
+ * enum rproc_id_rsc_type -  types of data which needs idr
+ *
+ * @RPROC_IDR_VDEV: rproc vdev data type
+ * @RPROC_IDR_VRING: rpring vring data type
+ */
+enum rproc_id_rsc_type {
+	RPROC_IDR_VDEV  = 0,
+	RPROC_IDR_VRING = 1,
+};
+
+/**
+ * struct rproc_id_rsc - rproc resource with assigned id
+ * @rsc_type: type of resource
+ * @rsc_ptr: pointer to the resource data;
+ */
+struct rproc_id_rsc {
+	unsigned int rsc_type;
+	void *rsc_ptr;
+};
+
 struct rproc;
 
 /**
