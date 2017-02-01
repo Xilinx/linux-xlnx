@@ -384,7 +384,8 @@ enum rproc_state {
 	RPROC_RUNNING	= 2,
 	RPROC_CRASHED	= 3,
 	RPROC_DELETED	= 4,
-	RPROC_LAST	= 5,
+	RPROC_RUNNING_INDEPENDENT = 5,
+	RPROC_LAST	= 6,
 };
 
 /**
