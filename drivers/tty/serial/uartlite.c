@@ -24,6 +24,7 @@
 #include <linux/of_address.h>
 #include <linux/of_device.h>
 #include <linux/of_platform.h>
+#include <linux/clk.h>
 
 #define ULITE_NAME		"ttyUL"
 #define ULITE_MAJOR		204
@@ -59,6 +60,7 @@
 
 struct uartlite_data {
 	const struct uartlite_reg_ops *reg_ops;
+	struct clk *clk;
 };
 
 struct uartlite_reg_ops {
@@ -264,7 +266,14 @@ static void ulite_break_ctl(struct uart_port *port, int ctl)
 
 static int ulite_startup(struct uart_port *port)
 {
+	struct uartlite_data *pdata = port->private_data;
 	int ret;
+
+	ret = clk_enable(pdata->clk);
+	if (ret) {
+		dev_err(port->dev, "Failed to enable clock\n");
+		return ret;
+	}
 
 	ret = request_irq(port->irq, ulite_isr, IRQF_SHARED | IRQF_TRIGGER_RISING,
 			  "uartlite", port);
@@ -280,9 +289,12 @@ static int ulite_startup(struct uart_port *port)
 
 static void ulite_shutdown(struct uart_port *port)
 {
+	struct uartlite_data *pdata = port->private_data;
+
 	uart_out32(0, ULITE_CONTROL, port);
 	uart_in32(ULITE_CONTROL, port); /* dummy */
 	free_irq(port->irq, port);
+	clk_disable(pdata->clk);
 }
 
 static void ulite_set_termios(struct uart_port *port, struct ktermios *termios,
@@ -373,6 +385,17 @@ static int ulite_verify_port(struct uart_port *port, struct serial_struct *ser)
 	return -EINVAL;
 }
 
+static void ulite_pm(struct uart_port *port, unsigned int state,
+	      unsigned int oldstate)
+{
+	struct uartlite_data *pdata = port->private_data;
+
+	if (!state)
+		clk_enable(pdata->clk);
+	else
+		clk_disable(pdata->clk);
+}
+
 #ifdef CONFIG_CONSOLE_POLL
 static int ulite_get_poll_char(struct uart_port *port)
 {
@@ -408,6 +431,7 @@ static const struct uart_ops ulite_ops = {
 	.request_port	= ulite_request_port,
 	.config_port	= ulite_config_port,
 	.verify_port	= ulite_verify_port,
+	.pm		= ulite_pm,
 #ifdef CONFIG_CONSOLE_POLL
 	.poll_get_char	= ulite_get_poll_char,
 	.poll_put_char	= ulite_put_poll_char,
@@ -669,9 +693,43 @@ static int ulite_release(struct device *dev)
 	return rc;
 }
 
+/**
+ * ulite_suspend - Stop the device.
+ *
+ * @dev: handle to the device structure.
+ * Return: 0 always.
+ */
+static int __maybe_unused ulite_suspend(struct device *dev)
+{
+	struct uart_port *port = dev_get_drvdata(dev);
+
+	if (port)
+		uart_suspend_port(&ulite_uart_driver, port);
+
+	return 0;
+}
+
+/**
+ * ulite_resume - Resume the device.
+ *
+ * @dev: handle to the device structure.
+ * Return: 0 on success, errno otherwise.
+ */
+static int __maybe_unused ulite_resume(struct device *dev)
+{
+	struct uart_port *port = dev_get_drvdata(dev);
+
+	if (port)
+		uart_resume_port(&ulite_uart_driver, port);
+
+	return 0;
+}
+
 /* ---------------------------------------------------------------------
  * Platform bus binding
  */
+
+static SIMPLE_DEV_PM_OPS(ulite_pm_ops, ulite_suspend, ulite_resume);
 
 #if defined(CONFIG_OF)
 /* Match table for of_platform binding */
@@ -687,7 +745,7 @@ static int ulite_probe(struct platform_device *pdev)
 {
 	struct resource *res;
 	struct uartlite_data *pdata;
-	int irq;
+	int irq, ret;
 	int id = pdev->id;
 #ifdef CONFIG_OF
 	const __be32 *prop;
@@ -709,11 +767,33 @@ static int ulite_probe(struct platform_device *pdev)
 	if (irq <= 0)
 		return -ENXIO;
 
+	pdata->clk = devm_clk_get(&pdev->dev, "ulite_clk");
+	if (IS_ERR(pdata->clk)) {
+		if (PTR_ERR(pdata->clk) != -ENOENT)
+			return PTR_ERR(pdata->clk);
+
+		/*
+		 * Clock framework support is optional, continue on
+		 * anyways if we don't find a matching clock.
+		 */
+		pdata->clk = NULL;
+	}
+
+	ret = clk_prepare(pdata->clk);
+	if (ret) {
+		dev_err(&pdev->dev, "Failed to prepare clock\n");
+		return ret;
+	}
+
 	return ulite_assign(&pdev->dev, id, res->start, irq, pdata);
 }
 
 static int ulite_remove(struct platform_device *pdev)
 {
+	struct uart_port *port = dev_get_drvdata(&pdev->dev);
+	struct uartlite_data *pdata = port->private_data;
+
+	clk_disable_unprepare(pdata->clk);
 	return ulite_release(&pdev->dev);
 }
 
@@ -726,6 +806,7 @@ static struct platform_driver ulite_platform_driver = {
 	.driver = {
 		.name  = "uartlite",
 		.of_match_table = of_match_ptr(ulite_of_match),
+		.pm = &ulite_pm_ops,
 	},
 };
 
