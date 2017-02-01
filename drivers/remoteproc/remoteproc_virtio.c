@@ -58,6 +58,7 @@ irqreturn_t rproc_virtio_interrupt(struct rproc *rproc, int notifyid)
 {
 	struct rproc_id_rsc *rsc;
 	struct rproc_vring *rvring;
+	struct rproc_vdev *rvdev;
 
 	dev_dbg(&rproc->dev, "virtio index %d is interrupted\n", notifyid);
 
@@ -71,8 +72,9 @@ irqreturn_t rproc_virtio_interrupt(struct rproc *rproc, int notifyid)
 			return IRQ_NONE;
 		return vring_interrupt(0, rvring->vq);
 	} else if (rsc->rsc_type == RPROC_IDR_VDEV) {
-		dev_info(&rproc->dev, "vdev intr is not supported yet.\n");
-		return IRQ_NONE;
+		rvdev = rsc->rsc_ptr;
+		complete_all(&rvdev->config_wait_complete);
+		return IRQ_HANDLED;
 	}
 
 	dev_err(&rproc->dev, "Unknown rsc type: 0x%x\n", rsc->rsc_type);
