@@ -8,6 +8,7 @@ config REMOTEPROC
 	select FW_LOADER
 	select VIRTIO
 	select VIRTUALIZATION
+	select CRYPTO
 
 config OMAP_REMOTEPROC
 	tristate "OMAP remoteproc support"
