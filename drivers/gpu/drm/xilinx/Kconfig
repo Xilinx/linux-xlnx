@@ -44,3 +44,10 @@ config DRM_XILINX_DP_SUB_DEBUG_FS
 	  as well as can enable additional diagnostic or statistical
 	  information.
 
+config DRM_XILINX_MIPI_DSI
+	tristate "Xilinx DRM MIPI DSI Driver"
+	depends on DRM_XILINX
+	select DRM_PANEL
+	select DRM_MIPI_DSI
+	help
+	  DRM driver for Xilinx MIPI DSI IP.
