@@ -24,6 +24,8 @@ Required properties:
 
 Optional properties:
  - xlnx,dp-sub: the phandle to DisplayPort subsystem node for ZynqMP.
+ - ports: device graph binding can be used to define connectivity. The DT
+   bindings are defined in Documentation/devicetree/bindings/graph.txt.
 
 Required planes properties:
  - xlnx,pixel-format: the format of plane manager. The value should be one of
@@ -130,6 +132,29 @@ dpdma - ZynqMP DP subsystem - DP
 				       <&xlnx_dpdma 1>,
 				       <&xlnx_dpdma 2>;
 				dma-names = "dma0", "dma1", "dma2";
+			};
+		};
+	};
+
+- Example 4:
+vdma - Xilinx MIPI DSI
+	xilinx_drm: xilinx_drm {
+		compatible = "xlnx,drm";
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			port@0 {
+				reg = <0>;
+				drm_port: endpoint {
+					remote-endpoint = <&mipi_port>;
+				};
+			};
+		};
+		planes {
+			xlnx,pixel-format = "rgb888";
+			plane0 {
+				dmas = <&axi_vdma_0 0>;
+				dma-names = "dma0";
 			};
 		};
 	};
