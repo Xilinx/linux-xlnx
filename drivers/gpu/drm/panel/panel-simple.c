@@ -3472,6 +3472,34 @@ static const struct panel_desc_dsi auo_b080uan01 = {
 	.lanes = 4,
 };
 
+static const struct drm_display_mode auo_b101uan01_mode = {
+	.clock = 154500,
+	.hdisplay = 1920,
+	.hsync_start = 1920 + 185,
+	.hsync_end = 1920 + 185,
+	.htotal = 1920 + 185 + 925,
+	.vdisplay = 1200,
+	.vsync_start = 1200 + 3,
+	.vsync_end = 1200 + 3 + 5,
+	.vtotal = 1200 + 3 + 5 + 4,
+	.vrefresh = 60,
+};
+
+static const struct panel_desc_dsi auo_b101uan01 = {
+	.desc = {
+		.modes = &auo_b101uan01_mode,
+		.num_modes = 1,
+		.bpc = 8,
+		.size = {
+			.width = 108,
+			.height = 272,
+		},
+	},
+	.flags = MIPI_DSI_MODE_VIDEO | MIPI_DSI_MODE_VIDEO_SYNC_PULSE,
+	.format = MIPI_DSI_FMT_RGB888,
+	.lanes = 4,
+};
+
 static const struct drm_display_mode boe_tv080wum_nl0_mode = {
 	.clock = 160000,
 	.hdisplay = 1200,
@@ -3650,6 +3678,9 @@ static const struct of_device_id dsi_of_match[] = {
 	{
 		.compatible = "auo,b080uan01",
 		.data = &auo_b080uan01
+	}, {
+		.compatible = "auo,b101uan01",
+		.data = &auo_b101uan01
 	}, {
 		.compatible = "boe,tv080wum-nl0",
 		.data = &boe_tv080wum_nl0
