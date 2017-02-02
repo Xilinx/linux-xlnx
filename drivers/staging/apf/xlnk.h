@@ -9,9 +9,11 @@
 #define XLNK_FLAG_COHERENT		0x00000001
 #define XLNK_FLAG_KERNEL_BUFFER		0x00000002
 #define XLNK_FLAG_DMAPOLLING		0x00000004
+#define XLNK_FLAG_IOMMU_VALID		0x00000008
 #define XLNK_FLAG_PHYSICAL_ADDR		0x00000100
 #define XLNK_FLAG_VIRTUAL_ADDR		0x00000200
-
+#define XLNK_FLAG_MEM_ACQUIRE		0x00001000
+#define XLNK_FLAG_MEM_RELEASE		0x00002000
 #define CF_FLAG_CACHE_FLUSH_INVALIDATE	0x00000001
 #define CF_FLAG_PHYSICALLY_CONTIGUOUS	0x00000002
 #define CF_FLAG_DMAPOLLING		0x00000004
@@ -144,6 +146,14 @@ union xlnk_args {
 		xlnk_uint_type size;
 		xlnk_int_type action;
 	} cachecontrol;
+	struct __attribute__ ((__packed__)) {
+		xlnk_intptr_type virt_addr;
+		xlnk_int_type size;
+		xlnk_enum_type dir;
+		xlnk_int_type flags;
+		xlnk_intptr_type phys_addr;
+		xlnk_intptr_type token;
+	} memop;
 };
 
 #endif
