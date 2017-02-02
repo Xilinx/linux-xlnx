@@ -137,7 +137,7 @@ static int xilinx_drm_crtc_mode_set(struct drm_crtc *base_crtc,
 
 	diff = clk_get_rate(crtc->pixel_clock) - adjusted_mode->clock * 1000;
 	if (abs(diff) > (adjusted_mode->clock * 1000) / 20)
-		DRM_INFO("actual pixel clock rate(%d) is off by %ld\n",
+		DRM_DEBUG_KMS("actual pixel clock rate(%d) is off by %ld\n",
 				adjusted_mode->clock, diff);
 
 	if (crtc->vtc) {
@@ -500,9 +500,13 @@ struct drm_crtc *xilinx_drm_crtc_create(struct drm_device *drm)
 
 	crtc->pixel_clock = devm_clk_get(drm->dev, NULL);
 	if (IS_ERR(crtc->pixel_clock)) {
-		DRM_DEBUG_KMS("failed to get pixel clock\n");
-		ret = -EPROBE_DEFER;
-		goto err_plane;
+		if (IS_ERR(crtc->pixel_clock) == -EPROBE_DEFER) {
+			goto err_plane;
+		} else {
+			DRM_DEBUG_KMS("failed to get pixel clock\n");
+			crtc->pixel_clock = NULL;
+		}
+
 	}
 
 	ret = clk_prepare_enable(crtc->pixel_clock);
