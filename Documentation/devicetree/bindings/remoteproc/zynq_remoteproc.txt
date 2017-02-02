@@ -14,16 +14,23 @@ within Zynq SoC.
 Required properties:
 --------------------
  - compatible : should be "xlnx,zynq_remoteproc"
- - reg : address and length of the register set for the device
-         which defines the memory for the firmware and the shared memory
  - vring0: soft interrupt for kicking from firmware
  - vring1: soft interrupt for kicking from Linux kernel
+ - sram0: memory for the firmware
 
 Example:
 --------
+
+	amba {
+		elf_ddr_0: ddr@3ed00000 {
+			compatible = "mmio-sram";
+			reg = <0x100000 0x80000>;
+		};
+	};
+
 	zynq_remoteproc@0 {
 		compatible = "xlnx,zynq_remoteproc";
-		reg = < 0x00000000 0x10000000 >;
 		vring0 = <15>;
 		vring1 = <14>;
+		sram_0 =  <&elf_ddr_0>;
 	};
