@@ -1533,6 +1533,7 @@ static int xlnk_memop_ioctl(struct file *filp, unsigned long arg_addr)
 	xlnk_intptr_type p_addr;
 	int status = 0;
 	int buf_id;
+	struct xlnk_dmabuf_reg *cp;
 	int cacheable;
 	void *k_addr;
 	enum dma_data_direction dmadir;
@@ -1571,10 +1572,19 @@ static int xlnk_memop_ioctl(struct file *filp, unsigned long arg_addr)
 			(args.memop.virt_addr - xlnk_userbuf[buf_id]);
 		p_addr = xlnk_phyaddr[buf_id] +
 			(args.memop.virt_addr - xlnk_userbuf[buf_id]);
+	} else {
+		struct xlnk_dmabuf_reg *dp;
+
+		list_for_each_entry(dp, &xlnk_dmabuf_list, list) {
+			if (dp->user_vaddr == args.memop.virt_addr) {
+				cp = dp;
+				break;
+			}
+		}
 	}
 	spin_unlock(&xlnk_buf_lock);
 
-	if (buf_id <= 0) {
+	if (buf_id <= 0 && !cp) {
 		pr_err("Error, buffer not found\n");
 		return -EINVAL;
 	}
@@ -1582,45 +1592,75 @@ static int xlnk_memop_ioctl(struct file *filp, unsigned long arg_addr)
 	dmadir = (enum dma_data_direction)args.memop.dir;
 
 	if (args.memop.flags & XLNK_FLAG_COHERENT || !cacheable) {
-		pr_err("Skipping flush.  cacheable=%d, flags = %d\n",
-		       cacheable,
-		       args.memop.flags);
 		dma_set_attr(DMA_ATTR_SKIP_CPU_SYNC, &attrs);
 	}
 
-	page_id = p_addr >> PAGE_SHIFT;
-	page_offset = p_addr - (page_id << PAGE_SHIFT);
-	sg_init_table(&sg, 1);
-	sg_set_page(&sg, pfn_to_page(page_id), args.memop.size, page_offset);
-	sg_dma_len(&sg) = args.memop.size;
+	if (buf_id > 0) {
+		page_id = p_addr >> PAGE_SHIFT;
+		page_offset = p_addr - (page_id << PAGE_SHIFT);
+		sg_init_table(&sg, 1);
+		sg_set_page(&sg,
+			    pfn_to_page(page_id),
+			    args.memop.size,
+			    page_offset);
+		sg_dma_len(&sg) = args.memop.size;
+	}
 
 	if (args.memop.flags & XLNK_FLAG_MEM_ACQUIRE) {
-		status = get_dma_ops(xlnk_dev)->map_sg(xlnk_dev,
-						       &sg,
-						       1,
-						       dmadir,
-						       &attrs);
-		if (!status) {
-			pr_err("Failed to map address\n");
-			return -EINVAL;
-		}
-		args.memop.phys_addr = (xlnk_intptr_type)sg_dma_address(&sg);
-		args.memop.token = (xlnk_intptr_type)sg_dma_address(&sg);
-		status = copy_to_user((void __user *)arg_addr,
-				      &args,
-				      sizeof(union xlnk_args));
-		if (status) {
-			pr_err("Error in copy_to_user.  status = %d\n",
-			       status);
+		if (buf_id > 0) {
+			status = get_dma_ops(xlnk_dev)->map_sg(xlnk_dev,
+							       &sg,
+							       1,
+							       dmadir,
+							       &attrs);
+			if (!status) {
+				pr_err("Failed to map address\n");
+				return -EINVAL;
+			}
+			args.memop.phys_addr = (xlnk_intptr_type)
+				sg_dma_address(&sg);
+			args.memop.token = (xlnk_intptr_type)
+				sg_dma_address(&sg);
+			status = copy_to_user((void __user *)arg_addr,
+					      &args,
+					      sizeof(union xlnk_args));
+			if (status)
+				pr_err("Error in copy_to_user.  status = %d\n",
+				       status);
+		} else {
+			cp->dbuf_attach = dma_buf_attach(cp->dbuf,
+							 xlnk_dev);
+			cp->dbuf_sg_table =
+				dma_buf_map_attachment(cp->dbuf_attach,
+						       dmadir);
+			if (cp->dbuf_sg_table->nents != 1) {
+				pr_err("Non-SG-DMA datamovers require physically contiguous DMABUFs.  DMABUF is not physically contiguous\n");
+				dma_buf_unmap_attachment(cp->dbuf_attach,
+							 cp->dbuf_sg_table,
+							 dmadir);
+				dma_buf_detach(cp->dbuf,
+					       cp->dbuf_attach);
+				return -EINVAL;
+			}
+			args.memop.phys_addr = (xlnk_intptr_type)
+				sg_dma_address(cp->dbuf_sg_table->sgl);
+			args.memop.token = 0;
 		}
 	} else {
-		sg_dma_address(&sg) = (dma_addr_t)args.memop.token;
-		sg_dma_len(&sg) = args.memop.size;
-		get_dma_ops(xlnk_dev)->unmap_sg(xlnk_dev,
-						&sg,
-						1,
-						dmadir,
-						&attrs);
+		if (buf_id > 0) {
+			sg_dma_address(&sg) = (dma_addr_t)args.memop.token;
+			sg_dma_len(&sg) = args.memop.size;
+			get_dma_ops(xlnk_dev)->unmap_sg(xlnk_dev,
+							&sg,
+							1,
+							dmadir,
+							&attrs);
+		} else {
+			dma_buf_unmap_attachment(cp->dbuf_attach,
+						 cp->dbuf_sg_table,
+						 dmadir);
+			dma_buf_detach(cp->dbuf, cp->dbuf_attach);
+		}
 	}
 
 	return status;
