@@ -1,0 +1,61 @@
+Device-Tree bindings for Xilinx MIPI DSI Tx IP core
+
+The IP core supports transmission of video data in MIPI DSI protocol.
+
+Required properties:
+ - compatible: Should be "xlnx,mipi-dsi-tx-subsystem".
+ - reg: Base address and size of the IP core.
+ - xlnx,dsi-datatype: Color format. The value should be one of "MIPI_DSI_FMT_RGB888",
+   "MIPI_DSI_FMT_RGB666", "MIPI_DSI_FMT_RGB666_PACKED" or "MIPI_DSI_FMT_RGB565".
+ - simple_panel: The subnode for connected panel. This represents the
+   DSI peripheral connected to the DSI host node. please refer to
+   Documentation/devicetree/bindings/display/mipi-dsi-bus.txt. The
+   simple-panel driver has auo,b101uan01 panel timing parameters added along
+   with other existing panels. DSI driver derive the required Tx IP controller
+   timing values from the panel timing parameters. Refer to the
+   xilinx_dsi_mode_set() in the DSI driver on how to derive the DSI
+   Tx controller timing paramters.
+ - ports: Connects to the drm device node through device graph binding.
+   The port should contain a 'remote-endpoint' subnode that points to the
+   endpoint in the port of the drm device node. Refer to
+   Documentation/devicetree/bindings/graph.txt.
+ - xlnx,dsi-num-lanes: Possible number of DSI lanes for the Tx controller.
+   The values should be 1, 2, 3 or 4. Based on xlnx,dsi-num-lanes and
+   line rate for the MIPI D-PHY core in Mbps, the AXI4-stream received by
+   Xilinx MIPI DSI Tx IP core adds markers as per DSI protocol and the packet
+   thus framed is convered to serial data by MIPI D-PHY core. Please refer
+   Xilinx pg238 for more details. This value should be equal to the number
+   of lanes supported by the connected DSI panel. Panel has to support this
+   value or has to be programmed to the same value that DSI Tx controller is
+   configured to.
+
+Required simple_panel properties:
+ - compatible: Value should be one of the panel name mentioned in the
+   of_match_table of simple panel driver drivers/gpu/drm/panel/panel-simple.c
+   e.g. "auo,b101uan01".
+
+Example:
+
+#include <dt-bindings/drm/mipi-dsi.h>
+	mipi_dsi_tx_subsystem_0: mipi_dsi_tx_subsystem@80000000 {
+		compatible = "xlnx,mipi-dsi-tx-subsystem";
+		reg = <0x0 0x80000000 0x0 0x10000>;
+		xlnx,dsi-num-lanes = <4>;
+		xlnx,dsi-data-type = <MIPI_DSI_FMT_RGB888>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			port@0 {
+				reg = <0>;
+				mipi_port: endpoint {
+					remote-endpoint = <&drm_port>;
+				};
+			};
+		};
+		simple_panel: simple-panel@0 {
+			compatible = "auo,b101uan01";
+			reg = <0>;
+		};
+	};
