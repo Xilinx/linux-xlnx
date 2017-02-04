@@ -871,6 +871,11 @@ static int ams_probe(struct platform_device *pdev)
 		return ret;
 	}
 
+	ams->clk = devm_clk_get(&pdev->dev, NULL);
+	if (IS_ERR(ams->clk))
+		return PTR_ERR(ams->clk);
+	clk_prepare_enable(ams->clk);
+
 	return iio_device_register(indio_dev);
 }
 
@@ -883,6 +888,7 @@ static int ams_remove(struct platform_device *pdev)
 
 	/* Unregister the device */
 	iio_device_unregister(indio_dev);
+	clk_disable_unprepare(ams->clk);
 	return 0;
 }
 
