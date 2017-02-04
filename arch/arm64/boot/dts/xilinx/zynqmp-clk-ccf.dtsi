@@ -190,6 +190,10 @@
 	clocks = <&clkc 62>;
 };
 
+&pcie {
+	clocks = <&clkc 23>;
+};
+
 &qspi {
 	clocks = <&clkc 53>, <&clkc 31>;
 };
@@ -232,6 +236,10 @@
 
 &watchdog0 {
 	clocks = <&clkc 75>;
+};
+
+&xilinx_ams {
+	clocks = <&clkc 70>;
 };
 
 &xilinx_drm {
