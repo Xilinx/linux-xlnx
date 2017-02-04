@@ -219,12 +219,12 @@ static int __init zynqmp_gpd_probe(struct platform_device *pdev)
 		pd->gpd.attach_dev = zynqmp_gpd_attach_dev;
 		pd->gpd.detach_dev = zynqmp_gpd_detach_dev;
 
+		/* Mark all PM domains as initially powered off */
+		pm_genpd_init(&pd->gpd, NULL, true);
+
 		ret = of_genpd_add_provider_simple(child, &pd->gpd);
 		if (ret)
 			goto err_cleanup;
-
-		/* Mark all PM domains as initially powered off */
-		pm_genpd_init(&pd->gpd, NULL, true);
 	}
 
 	return 0;
