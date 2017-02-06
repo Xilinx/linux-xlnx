@@ -14,7 +14,7 @@
 /dts-v1/;
 
 #include "zynqmp.dtsi"
-#include "zynqmp-clk.dtsi"
+#include "zynqmp-clk-ccf.dtsi"
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/pinctrl/pinctrl-zynqmp.h>
 #include <dt-bindings/phy/phy.h>
@@ -946,7 +946,6 @@ drivers/hwmon/pmbus/Makefile:11:obj-$(CONFIG_SENSORS_MAX20751)  += max20751.o
 
 &xilinx_drm {
 	status = "okay";
-	clocks = <&si570_1>;
 };
 
 &xlnx_dp {
@@ -958,7 +957,6 @@ drivers/hwmon/pmbus/Makefile:11:obj-$(CONFIG_SENSORS_MAX20751)  += max20751.o
 
 &xlnx_dp_sub {
 	status = "okay";
-	xlnx,vid-clk-pl;
 };
 
 &xlnx_dp_snd_pcm0 {
