@@ -15,7 +15,7 @@
 /dts-v1/;
 
 #include "zynqmp.dtsi"
-#include "zynqmp-clk.dtsi"
+#include "zynqmp-clk-ccf.dtsi"
 #include <dt-bindings/interrupt-controller/irq.h>
 #include <dt-bindings/gpio/gpio.h>
 #include <dt-bindings/phy/phy.h>
@@ -473,7 +473,6 @@
 
 &xilinx_drm {
 	status = "okay";
-	clocks = <&dp_clk_wiz>;
 };
 
 &xlnx_dp {
