@@ -86,6 +86,10 @@
 	clocks = <&clkc 64>, <&clkc 31>;
 };
 
+&cpu0 {
+	clocks = <&clkc 10>;
+};
+
 &fpd_dma_chan1 {
 	clocks = <&clkc 19>, <&clkc 31>;
 };
