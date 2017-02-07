@@ -519,7 +519,8 @@ struct drm_crtc *xilinx_drm_crtc_create(struct drm_device *drm)
 
 	crtc->pixel_clock = devm_clk_get(drm->dev, NULL);
 	if (IS_ERR(crtc->pixel_clock)) {
-		if (IS_ERR(crtc->pixel_clock) == -EPROBE_DEFER) {
+		if (PTR_ERR(crtc->pixel_clock) == -EPROBE_DEFER) {
+			ret = PTR_ERR(crtc->pixel_clock);
 			goto err_plane;
 		} else {
 			DRM_DEBUG_KMS("failed to get pixel clock\n");
