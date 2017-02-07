@@ -1888,7 +1888,7 @@ static int xilinx_dpdma_probe(struct platform_device *pdev)
 	struct dma_device *ddev;
 	struct resource *res;
 	struct device_node *node, *child;
-	u32 i, freq;
+	u32 i;
 	int irq, ret;
 
 	xdev = devm_kzalloc(&pdev->dev, sizeof(*xdev), GFP_KERNEL);
