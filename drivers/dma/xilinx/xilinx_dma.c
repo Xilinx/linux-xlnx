@@ -575,7 +575,7 @@ xilinx_cdma_alloc_tx_segment(struct xilinx_dma_chan *chan)
 static struct xilinx_axidma_tx_segment *
 xilinx_axidma_alloc_tx_segment(struct xilinx_dma_chan *chan)
 {
-	struct xilinx_axidma_tx_segment *segment;
+	struct xilinx_axidma_tx_segment *segment = NULL;
 	unsigned long flags;
 
 	spin_lock_irqsave(&chan->lock, flags);
