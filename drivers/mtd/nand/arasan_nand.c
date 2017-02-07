@@ -567,7 +567,6 @@ static void anfc_cmd_function(struct mtd_info *mtd,
 	struct anfc *nfc = to_anfc(chip->controller);
 	bool wait = false, read = false;
 	u32 addrcycles, prog;
-	u32 *bufptr = (u32 *)nfc->buf;
 
 	nfc->bufshift = 0;
 	nfc->curr_cmd = cmd;
