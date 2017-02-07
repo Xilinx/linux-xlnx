@@ -353,14 +353,20 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_force_powerdown);
 /**
  * zynqmp_pm_request_wakeup - PM call for to wake up selected master or subsystem
  * @node:	Node ID of the master or subsystem
+ * @set_addr:	Specifies whether the address argument is relevant
+ * @address:	Address from which to resume when woken up
  * @ack:	Flag to specify whether acknowledge requested
  *
  * Return:	Returns status, either success or error+reason
  */
 int zynqmp_pm_request_wakeup(const u32 node,
+				     const bool set_addr,
+				     const u64 address,
 				     const enum zynqmp_pm_request_ack ack)
 {
-	return invoke_pm_fn(REQUEST_WAKEUP, node, ack, 0, 0, NULL);
+	/* set_addr flag is encoded into 1st bit of address */
+	return invoke_pm_fn(REQUEST_WAKEUP, node, address | set_addr,
+				address >> 32, ack, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_request_wakeup);
 
@@ -905,7 +911,8 @@ static ssize_t zynqmp_pm_debugfs_api_write(struct file *file,
 		break;
 	case REQUEST_WAKEUP:
 		ret = zynqmp_pm_request_wakeup(pm_api_arg[0],
-				pm_api_arg[1] ? pm_api_arg[1] :
+				pm_api_arg[1], pm_api_arg[2],
+				pm_api_arg[3] ? pm_api_arg[3] :
 						ZYNQMP_PM_REQUEST_ACK_NO);
 		break;
 	case SET_WAKEUP_SOURCE:

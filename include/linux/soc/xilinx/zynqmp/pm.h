@@ -205,6 +205,8 @@ int zynqmp_pm_request_suspend(const u32 node,
 				      const u32 latency,
 				      const u32 state);
 int zynqmp_pm_request_wakeup(const u32 node,
+				     const bool set_addr,
+				     const u64 address,
 				     const enum zynqmp_pm_request_ack ack);
 int zynqmp_pm_set_wakeup_source(const u32 target,
 					const u32 wakeup_node,
