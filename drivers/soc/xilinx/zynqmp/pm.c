@@ -767,14 +767,14 @@ done:
  * Return:	Argument value in unsigned integer format on success
  *		0 otherwise
  */
-static u32 zynqmp_pm_argument_value(char *arg)
+static u64 zynqmp_pm_argument_value(char *arg)
 {
-	u32 value;
+	u64 value;
 
 	if (!arg)
 		return 0;
 
-	if (!kstrtouint(arg, 0, &value))
+	if (!kstrtou64(arg, 0, &value))
 		return value;
 
 	return 0;
@@ -804,7 +804,9 @@ static ssize_t zynqmp_pm_debugfs_api_write(struct file *file,
 	char *kern_buff;
 	char *pm_api_req;
 	u32 pm_id = 0;
-	u32 pm_api_arg[4];
+	u64 pm_api_arg[4];
+	/* Return values from PM APIs calls */
+	u32 pm_api_ret[3] = {0, 0, 0};
 	int ret;
 	int i = 0;
 
@@ -951,22 +953,22 @@ static ssize_t zynqmp_pm_debugfs_api_write(struct file *file,
 		break;
 	case GET_NODE_STATUS:
 		ret = zynqmp_pm_get_node_status(pm_api_arg[0],
-						&pm_api_arg[1],
-						&pm_api_arg[2],
-						&pm_api_arg[3]);
+						&pm_api_ret[0],
+						&pm_api_ret[1],
+						&pm_api_ret[2]);
 		if (!ret)
-			pr_info("GET_NODE_STATUS:\n\tNodeId: %u\n\tStatus: %u\n\tRequirements: %u\n\tUsage: %u\n",
-				pm_api_arg[0], pm_api_arg[1],
-				pm_api_arg[2], pm_api_arg[3]);
+			pr_info("GET_NODE_STATUS:\n\tNodeId: %llu\n\tStatus: %u\n\tRequirements: %u\n\tUsage: %u\n",
+				pm_api_arg[0], pm_api_ret[0],
+				pm_api_ret[1], pm_api_ret[2]);
 		break;
 	case GET_OPERATING_CHARACTERISTIC:
 		ret = zynqmp_pm_get_operating_characteristic(pm_api_arg[0],
 				pm_api_arg[1] ? pm_api_arg[1] :
 				ZYNQMP_PM_OPERATING_CHARACTERISTIC_POWER,
-				&pm_api_arg[2]);
+				&pm_api_ret[0]);
 		if (!ret)
-			pr_info("GET_OPERATING_CHARACTERISTIC:\n\tNodeId: %u\n\tType: %u\n\tResult: %u\n",
-				pm_api_arg[0], pm_api_arg[1], pm_api_arg[2]);
+			pr_info("GET_OPERATING_CHARACTERISTIC:\n\tNodeId: %llu\n\tType: %llu\n\tResult: %u\n",
+				pm_api_arg[0], pm_api_arg[1], pm_api_ret[0]);
 		break;
 	case REGISTER_NOTIFIER:
 		ret = zynqmp_pm_register_notifier(pm_api_arg[0],
@@ -978,21 +980,21 @@ static ssize_t zynqmp_pm_debugfs_api_write(struct file *file,
 		ret = zynqmp_pm_reset_assert(pm_api_arg[0], pm_api_arg[1]);
 		break;
 	case RESET_GET_STATUS:
-		ret = zynqmp_pm_reset_get_status(pm_api_arg[0], &pm_api_arg[1]);
-		pr_info("%s Reset status: %u\n", __func__, pm_api_arg[1]);
+		ret = zynqmp_pm_reset_get_status(pm_api_arg[0], &pm_api_ret[0]);
+		pr_info("%s Reset status: %u\n", __func__, pm_api_ret[0]);
 		break;
 	case MMIO_READ:
-		ret = zynqmp_pm_mmio_read(pm_api_arg[0], &pm_api_arg[1]);
-		pr_info("%s MMIO value: %#x\n", __func__, pm_api_arg[1]);
+		ret = zynqmp_pm_mmio_read(pm_api_arg[0], &pm_api_ret[0]);
+		pr_info("%s MMIO value: %#x\n", __func__, pm_api_ret[0]);
 		break;
 	case MMIO_WRITE:
 		ret = zynqmp_pm_mmio_write(pm_api_arg[0],
 				     pm_api_arg[1], pm_api_arg[2]);
 		break;
 	case GET_CHIPID:
-		ret = zynqmp_pm_get_chipid(&pm_api_arg[0], &pm_api_arg[1]);
+		ret = zynqmp_pm_get_chipid(&pm_api_ret[0], &pm_api_ret[1]);
 		pr_info("%s idcode: %#x, version:%#x\n",
-			__func__, pm_api_arg[0], pm_api_arg[1]);
+			__func__, pm_api_ret[0], pm_api_ret[1]);
 		break;
 	default:
 		pr_err("%s Unsupported PM-API request\n", __func__);
