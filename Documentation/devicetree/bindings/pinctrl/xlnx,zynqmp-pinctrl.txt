@@ -52,7 +52,9 @@ to specify in a pinconf subnode:
   sdio0_0_grp - sdio0_2_grp, sdio0_0_pc_grp - sdio0_2_pc_grp,
   sdio0_0_cd_grp - sdio0_2_cd_grp, sdio0_0_wp_grp - sdio0_2_wp_grp,
   sdio1_0_grp - sdio1_1_grp, sdio1_0_pc_grp - sdio1_1_pc_grp,
-  sdio1_0_cd_grp - sdio1_1_cd_grp, sdio1_0_wp_grp - sdio1_2_wp_grp, nand0_0_grp,
+  sdio1_0_cd_grp - sdio1_1_cd_grp, sdio1_0_wp_grp - sdio1_2_wp_grp,
+  nand0_0_grp, nand0_0_ce_grp - nand0_1_ce_grp,
+  nand0_0_rb_grp - nand0_1_rb_grp, nand0_0_dqs_grp - nand0_1_dqs_grp,
   can0_0_grp - can0_18_grp, can1_0_grp - can1_19_grp,
   uart0_0_grp - uart0_18_grp, uart1_0_grp - uart1_18_grp,
   i2c0_0_grp - i2c0_18_grp, i2c1_0_grp - i2c1_19_grp,
@@ -75,10 +77,10 @@ to specify in a pinconf subnode:
    ethernet0, ethernet1, ethernet2, ethernet3, gemtsu0, usb0, usb1, mdio0,
    mdio1, mdio2, mdio3, qspi0, qspi_fbclk, qspi_ss, spi0, spi1, spi0_ss,
    spi1_ss, sdio0, sdio0_pc, sdio0_wp, sdio0_cd, sdio1, sdio1_pc, sdio1_wp,
-   sdio1_cd, nand0, can0, can1, uart0, uart1, i2c0, i2c1, ttc0_clk, ttc0_wav,
-   ttc1_clk, ttc1_wav, ttc2_clk, ttc2_wav, ttc3_clk, ttc3_wav, swdt0_clk,
-   swdt0_rst, swdt1_clk, swdt1_rst, gpio0, pmu0, pcie0, csu0, dpaux0, pjtag0,
-   trace0, trace0_clk, testscan0
+   sdio1_cd, nand0, nand0_ce, nand0_rb, nand0_dqs, can0, can1, uart0, uart1,
+   i2c0, i2c1, ttc0_clk, ttc0_wav, ttc1_clk, ttc1_wav, ttc2_clk, ttc2_wav,
+   ttc3_clk, ttc3_wav, swdt0_clk, swdt0_rst, swdt1_clk, swdt1_rst, gpio0, pmu0,
+   pcie0, csu0, dpaux0, pjtag0, trace0, trace0_clk, testscan0
 
 The following driver-specific properties as defined here are valid to specify in
 a pin configuration subnode:
@@ -112,7 +114,7 @@ Example:
 			conf-tx {
 				pins = "MIO19";
 				bias-disable;
-				schmitt-cmos = <PIN_INPUT_TYPE_CMOS>
+				schmitt-cmos = <PIN_INPUT_TYPE_CMOS>;
 			};
 		};
 	};

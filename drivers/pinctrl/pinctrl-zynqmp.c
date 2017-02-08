@@ -104,6 +104,9 @@ enum zynqmp_pinmux_functions {
 	ZYNQMP_PMUX_sdio1_cd,
 	ZYNQMP_PMUX_sdio1_wp,
 	ZYNQMP_PMUX_nand0,
+	ZYNQMP_PMUX_nand0_ce,
+	ZYNQMP_PMUX_nand0_rb,
+	ZYNQMP_PMUX_nand0_dqs,
 	ZYNQMP_PMUX_ttc0_clk,
 	ZYNQMP_PMUX_ttc0_wav,
 	ZYNQMP_PMUX_ttc1_clk,
@@ -310,9 +313,14 @@ static const unsigned int sdio1_1_pc_pins[] = {70};
 static const unsigned int sdio1_1_cd_pins[] = {77};
 static const unsigned int sdio1_1_wp_pins[] = {69};
 
-static const unsigned int nand0_0_pins[] = {9, 10, 11, 12, 13, 14, 15, 16, 17,
-						 18, 19, 20, 21, 22, 23, 24,
-						 25, 26, 27, 28, 32};
+static const unsigned int nand0_0_pins[] = {13, 14, 15, 16, 17, 18, 19, 20,
+						21, 22, 23, 24, 25};
+static const unsigned int nand0_0_ce_pins[] = {9};
+static const unsigned int nand0_0_rb_pins[] = {10, 11};
+static const unsigned int nand0_0_dqs_pins[] = {12};
+static const unsigned int nand0_1_ce_pins[] = {26};
+static const unsigned int nand0_1_rb_pins[] = {27, 28};
+static const unsigned int nand0_1_dqs_pins[] = {32};
 
 static const unsigned int can0_0_pins[] = {2, 3};
 static const unsigned int can0_1_pins[] = {6, 7};
@@ -787,6 +795,12 @@ static const struct zynqmp_pctrl_group zynqmp_pctrl_groups[] = {
 	DEFINE_ZYNQMP_PINCTRL_GRP(sdio1_1_cd),
 	DEFINE_ZYNQMP_PINCTRL_GRP(sdio1_1_wp),
 	DEFINE_ZYNQMP_PINCTRL_GRP(nand0_0),
+	DEFINE_ZYNQMP_PINCTRL_GRP(nand0_0_ce),
+	DEFINE_ZYNQMP_PINCTRL_GRP(nand0_0_rb),
+	DEFINE_ZYNQMP_PINCTRL_GRP(nand0_0_dqs),
+	DEFINE_ZYNQMP_PINCTRL_GRP(nand0_1_ce),
+	DEFINE_ZYNQMP_PINCTRL_GRP(nand0_1_rb),
+	DEFINE_ZYNQMP_PINCTRL_GRP(nand0_1_dqs),
 	DEFINE_ZYNQMP_PINCTRL_GRP(can0_0),
 	DEFINE_ZYNQMP_PINCTRL_GRP(can0_1),
 	DEFINE_ZYNQMP_PINCTRL_GRP(can0_2),
@@ -1206,6 +1220,12 @@ static const char * const sdio1_wp_groups[] = {"sdio1_0_wp_grp",
 		"sdio1_1_wp_grp"};
 
 static const char * const nand0_groups[] = {"nand0_0_grp"};
+static const char * const nand0_ce_groups[] = {"nand0_0_ce_grp",
+						"nand0_1_ce_grp"};
+static const char * const nand0_rb_groups[] = {"nand0_0_rb_grp",
+						"nand0_1_rb_grp"};
+static const char * const nand0_dqs_groups[] = {"nand0_0_dqs_grp",
+						"nand0_1_dqs_grp"};
 
 static const char * const can0_groups[] = {"can0_0_grp", "can0_1_grp",
 		"can0_2_grp", "can0_3_grp", "can0_4_grp", "can0_5_grp",
@@ -1401,6 +1421,9 @@ static const struct zynqmp_pinmux_function zynqmp_pmux_functions[] = {
 	DEFINE_ZYNQMP_PINMUX_FUNCTION(sdio1_wp, 0x08),
 	DEFINE_ZYNQMP_PINMUX_FUNCTION(sdio1_cd, 0x08),
 	DEFINE_ZYNQMP_PINMUX_FUNCTION(nand0, 0x02),
+	DEFINE_ZYNQMP_PINMUX_FUNCTION(nand0_ce, 0x02),
+	DEFINE_ZYNQMP_PINMUX_FUNCTION(nand0_rb, 0x02),
+	DEFINE_ZYNQMP_PINMUX_FUNCTION(nand0_dqs, 0x02),
 	DEFINE_ZYNQMP_PINMUX_FUNCTION(can0, 0x10),
 	DEFINE_ZYNQMP_PINMUX_FUNCTION(can1, 0x10),
 	DEFINE_ZYNQMP_PINMUX_FUNCTION(uart0, 0x60),
