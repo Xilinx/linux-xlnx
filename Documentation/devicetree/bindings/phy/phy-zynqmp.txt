@@ -14,7 +14,6 @@ Required properties (controller (parent) node):
 			- serdes: SERDES block register set
 			- siou: SIOU block register set
 			- lpd: Low power domain peripherals reset control
-			- fpd: Full power domain peripherals reset control
 
 Required nodes	:  A sub-node is required for each lane the controller
 		   provides.
@@ -62,8 +61,8 @@ Example:
 		compatible = "xlnx,zynqmp-psgtr";
 		status = "okay";
 		reg = <0x0 0xfd400000 0x0 0x40000>, <0x0 0xfd3d0000 0x0 0x1000>,
-			<0x0 0xfd1a0000 0x0 0x1000>, <0x0 0xff5e0000 0x0 0x1000>;
-		reg-names = "serdes", "siou", "fpd", "lpd";
+			<0x0 0xff5e0000 0x0 0x1000>;
+		reg-names = "serdes", "siou", "lpd";
 
 		lane0: lane@0 {
 			#phy-cells = <4>;
