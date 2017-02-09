@@ -767,16 +767,16 @@
 				      "usb0_hibrst", "usb1_hibrst", "usb0_apbrst",
 				      "usb1_apbrst", "dp_rst", "gem0_rst",
 				      "gem1_rst", "gem2_rst", "gem3_rst";
-			lane0: lane@0 {
+			lane0: lane0 {
 				#phy-cells = <4>;
 			};
-			lane1: lane@1 {
+			lane1: lane1 {
 				#phy-cells = <4>;
 			};
-			lane2: lane@2 {
+			lane2: lane2 {
 				#phy-cells = <4>;
 			};
-			lane3: lane@3 {
+			lane3: lane3 {
 				#phy-cells = <4>;
 			};
 		};
@@ -944,7 +944,7 @@
 			power-domains = <&pd_uart1>;
 		};
 
-		usb0: usb@fe200000 {
+		usb0: usb0 {
 			#address-cells = <2>;
 			#size-cells = <2>;
 			status = "disabled";
@@ -967,7 +967,7 @@
 			};
 		};
 
-		usb1: usb@fe300000 {
+		usb1: usb1 {
 			#address-cells = <2>;
 			#size-cells = <2>;
 			status = "disabled";
@@ -1115,22 +1115,22 @@
 			power-domains = <&pd_dp>;
 			dma-channels = <6>;
 			#dma-cells = <1>;
-			dma-video0channel@fd4c0000 {
+			dma-video0channel {
 				compatible = "xlnx,video0";
 			};
-			dma-video1channel@fd4c0000 {
+			dma-video1channel {
 				compatible = "xlnx,video1";
 			};
-			dma-video2channel@fd4c0000 {
+			dma-video2channel {
 				compatible = "xlnx,video2";
 			};
-			dma-graphicschannel@fd4c0000 {
+			dma-graphicschannel {
 				compatible = "xlnx,graphics";
 			};
-			dma-audio0channel@fd4c0000 {
+			dma-audio0channel {
 				compatible = "xlnx,audio0";
 			};
-			dma-audio1channel@fd4c0000 {
+			dma-audio1channel {
 				compatible = "xlnx,audio1";
 			};
 		};
