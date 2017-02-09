@@ -76,6 +76,7 @@
 	dcc: dcc {
 		compatible = "arm,dcc";
 		status = "disabled";
+		u-boot,dm-pre-reloc;
 	};
 
 	power-domains {
@@ -301,6 +302,7 @@
 
 	amba: amba {
 		compatible = "simple-bus";
+		u-boot,dm-pre-reloc;
 		#address-cells = <2>;
 		#size-cells = <2>;
 		ranges;
@@ -725,6 +727,7 @@
 		};
 
 		qspi: spi@ff0f0000 {
+			u-boot,dm-pre-reloc;
 			compatible = "xlnx,zynqmp-qspi-1.0";
 			status = "disabled";
 			clock-names = "ref_clk", "pclk";
@@ -791,6 +794,7 @@
 		};
 
 		sdhci0: sdhci@ff160000 {
+			u-boot,dm-pre-reloc;
 			compatible = "xlnx,zynqmp-8.9a", "arasan,sdhci-8.9a";
 			status = "disabled";
 			interrupt-parent = <&gic>;
@@ -804,6 +808,7 @@
 		};
 
 		sdhci1: sdhci@ff170000 {
+			u-boot,dm-pre-reloc;
 			compatible = "xlnx,zynqmp-8.9a", "arasan,sdhci-8.9a";
 			status = "disabled";
 			interrupt-parent = <&gic>;
@@ -925,6 +930,7 @@
 		};
 
 		uart0: serial@ff000000 {
+			u-boot,dm-pre-reloc;
 			compatible = "cdns,uart-r1p12", "xlnx,xuartps";
 			status = "disabled";
 			interrupt-parent = <&gic>;
@@ -935,6 +941,7 @@
 		};
 
 		uart1: serial@ff010000 {
+			u-boot,dm-pre-reloc;
 			compatible = "cdns,uart-r1p12", "xlnx,xuartps";
 			status = "disabled";
 			interrupt-parent = <&gic>;
