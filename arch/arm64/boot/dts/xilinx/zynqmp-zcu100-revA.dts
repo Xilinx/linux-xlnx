@@ -22,7 +22,7 @@
 
 / {
 	model = "ZynqMP ZCU100 RevA";
-	compatible = "xlnx,zynqmp-zcu100", "xlnx,zynqmp";
+	compatible = "xlnx,zynqmp-zcu100-revA", "xlnx,zynqmp-zcu100", "xlnx,zynqmp";
 
 	aliases {
 		gpio0 = &gpio;
@@ -34,6 +34,7 @@
 		serial2 = &dcc;
 		spi0 = &qspi;
 		spi1 = &spi0;
+		spi2 = &spi1;
 		usb0 = &usb0;
 		usb1 = &usb1;
 		mmc0 = &sdhci0;
@@ -124,13 +125,6 @@
 	sdio_pwrseq: sdio_pwrseq {
 		compatible = "mmc-pwrseq-simple";
 		reset-gpios = <&max3107 1 GPIO_ACTIVE_LOW>; /* WIFI_EN */
-	};
-
-	dp_clk_wiz: dp_clk_wiz {
-		compatible = "fixed-clock";
-		#clock-cells = <0x0>;
-		clock-frequency = <267439000>;
-		clock-accuracy = <0x64>;
 	};
 };
 
@@ -414,8 +408,8 @@
 	mmc-pwrseq = <&sdio_pwrseq>;
 	max-frequency = <16000000>;
 	vqmmc-supply = <&wmmcsdio_fixed>;
-	#address-cells = <0x1>;
-	#size-cells = <0x0>;
+	#address-cells = <1>;
+	#size-cells = <0>;
 	wlcore: wlcore@2 {
 		compatible = "ti,wl1831";
 		reg = <2>;
@@ -443,6 +437,10 @@
 	};
 };
 
+&spi1 { /* High Speed connector */
+	status = "okay";
+};
+
 &uart1 {
 	status = "okay";
 };
@@ -457,6 +455,7 @@
 	dr_mode = "peripheral";
 /*	phy-names = "usb3-phy";
 	phys = <&lane2 PHY_TYPE_USB3 0 0 26000000>; */
+	maximum-speed = "high-speed"; /* super-speed */
 };
 
 /* ULPI SMSC USB3320 */
@@ -469,6 +468,7 @@
 	dr_mode = "host";
 /*	phy-names = "usb3-phy";
 	phys = <&lane3 PHY_TYPE_USB3 1 0 26000000>; */
+	maximum-speed = "high-speed"; /* super-speed */
 };
 
 &xilinx_drm {
