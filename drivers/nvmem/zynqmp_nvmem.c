@@ -39,8 +39,8 @@ static int zynqmp_nvmem_read(void *context, unsigned int offset,
 static struct nvmem_config econfig = {
 	.name = "zynqmp-nvmem",
 	.owner = THIS_MODULE,
-	.word_size = 4,
-	.size = 4,
+	.word_size = 1,
+	.size = 1,
 	.read_only = true,
 };
 
