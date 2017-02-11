@@ -118,6 +118,7 @@ static int zynqmp_pm_ret_code(u32 ret_status)
 {
 	switch (ret_status) {
 	case XST_PM_SUCCESS:
+	case XST_PM_DOUBLE_REQ:
 		return 0;
 	case XST_PM_NO_ACCESS:
 		return -EACCES;
@@ -126,7 +127,6 @@ static int zynqmp_pm_ret_code(u32 ret_status)
 	case XST_PM_INTERNAL:
 	case XST_PM_CONFLICT:
 	case XST_PM_INVALID_NODE:
-	case XST_PM_DOUBLE_REQ:
 	default:
 		return -EINVAL;
 	}
