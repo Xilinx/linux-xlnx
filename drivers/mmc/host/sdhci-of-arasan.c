@@ -28,6 +28,7 @@
 #include <linux/phy/phy.h>
 #include <linux/mmc/mmc.h>
 #include <linux/soc/xilinx/zynqmp/tap_delays.h>
+#include <linux/pinctrl/consumer.h>
 #include <linux/regmap.h>
 #include "sdhci-pltfm.h"
 #include <linux/of.h>
@@ -107,6 +108,8 @@ struct sdhci_arasan_data {
 	struct clk      *sdcardclk;
 
 	struct regmap	*soc_ctl_base;
+	struct pinctrl *pinctrl;
+	struct pinctrl_state *pins_default;
 	const struct sdhci_arasan_soc_ctl_map *soc_ctl_map;
 	unsigned int	quirks; /* Arasan deviations from spec */
 
@@ -900,6 +903,20 @@ static int sdhci_arasan_probe(struct platform_device *pdev)
 			sdhci_arasan_ops.platform_execute_tuning =
 				arasan_zynqmp_execute_tuning;
 		}
+	}
+
+	sdhci_arasan->pinctrl = devm_pinctrl_get(&pdev->dev);
+	if (!IS_ERR(sdhci_arasan->pinctrl)) {
+		sdhci_arasan->pins_default = pinctrl_lookup_state(
+							sdhci_arasan->pinctrl,
+							PINCTRL_STATE_DEFAULT);
+		if (IS_ERR(sdhci_arasan->pins_default)) {
+			dev_err(&pdev->dev, "Missing default pinctrl config\n");
+			return IS_ERR(sdhci_arasan->pins_default);
+		}
+
+		pinctrl_select_state(sdhci_arasan->pinctrl,
+				     sdhci_arasan->pins_default);
 	}
 
 	sdhci_arasan->phy = ERR_PTR(-ENODEV);
