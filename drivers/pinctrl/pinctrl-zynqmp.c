@@ -288,27 +288,81 @@ static const unsigned int spi1_5_ss0_pins[] = {73};
 static const unsigned int spi1_5_ss1_pins[] = {72};
 static const unsigned int spi1_5_ss2_pins[] = {71};
 
+/* NOTE:
+ * sdio supports 1bit, 4bit or 8bit data lines.
+ * Hence the pins for this are classified into 3 groups:
+ * sdiox_x_pins:        8bit data lines
+ * sdiox_4bit_x_x_pins: 4bit data lines
+ * sdiox_1bit_x_x_pins: 1bit data lines
+ *
+ * As per the number of data lines to be used one of the groups from this
+ * has to be specified in device tree.
+ */
 static const unsigned int sdio0_0_pins[] = {13, 14, 15, 16, 17, 18, 19, 20,
 						 21, 22};
+static const unsigned int sdio0_4bit_0_0_pins[] = {13, 14, 15, 16, 21, 22};
+static const unsigned int sdio0_4bit_0_1_pins[] = {17, 18, 19, 20, 21, 22};
+static const unsigned int sdio0_1bit_0_0_pins[] = {13, 21, 22};
+static const unsigned int sdio0_1bit_0_1_pins[] = {14, 21, 22};
+static const unsigned int sdio0_1bit_0_2_pins[] = {15, 21, 22};
+static const unsigned int sdio0_1bit_0_3_pins[] = {16, 21, 22};
+static const unsigned int sdio0_1bit_0_4_pins[] = {17, 21, 22};
+static const unsigned int sdio0_1bit_0_5_pins[] = {18, 21, 22};
+static const unsigned int sdio0_1bit_0_6_pins[] = {19, 21, 22};
+static const unsigned int sdio0_1bit_0_7_pins[] = {20, 21, 22};
 static const unsigned int sdio0_0_pc_pins[] = {23};
 static const unsigned int sdio0_0_cd_pins[] = {24};
 static const unsigned int sdio0_0_wp_pins[] = {25};
 static const unsigned int sdio0_1_pins[] = {38, 40, 41, 42, 43, 44, 45, 46,
 						 47, 48};
+static const unsigned int sdio0_4bit_1_0_pins[] = {38, 40, 41, 42, 43, 44};
+static const unsigned int sdio0_4bit_1_1_pins[] = {38, 40, 45, 46, 47, 48};
+static const unsigned int sdio0_1bit_1_0_pins[] = {38, 40, 41};
+static const unsigned int sdio0_1bit_1_1_pins[] = {38, 40, 42};
+static const unsigned int sdio0_1bit_1_2_pins[] = {38, 40, 43};
+static const unsigned int sdio0_1bit_1_3_pins[] = {38, 40, 44};
+static const unsigned int sdio0_1bit_1_4_pins[] = {38, 40, 45};
+static const unsigned int sdio0_1bit_1_5_pins[] = {38, 40, 46};
+static const unsigned int sdio0_1bit_1_6_pins[] = {38, 40, 47};
+static const unsigned int sdio0_1bit_1_7_pins[] = {38, 40, 48};
 static const unsigned int sdio0_1_pc_pins[] = {49};
 static const unsigned int sdio0_1_cd_pins[] = {39};
 static const unsigned int sdio0_1_wp_pins[] = {50};
 static const unsigned int sdio0_2_pins[] = {64, 66, 67, 68, 69, 70, 71, 72,
 						 73, 74};
+static const unsigned int sdio0_4bit_2_0_pins[] = {64, 66, 67, 68, 69, 70};
+static const unsigned int sdio0_4bit_2_1_pins[] = {64, 66, 71, 72, 73, 74};
+static const unsigned int sdio0_1bit_2_0_pins[] = {64, 66, 67};
+static const unsigned int sdio0_1bit_2_1_pins[] = {64, 66, 68};
+static const unsigned int sdio0_1bit_2_2_pins[] = {64, 66, 69};
+static const unsigned int sdio0_1bit_2_3_pins[] = {64, 66, 70};
+static const unsigned int sdio0_1bit_2_4_pins[] = {64, 66, 71};
+static const unsigned int sdio0_1bit_2_5_pins[] = {64, 66, 72};
+static const unsigned int sdio0_1bit_2_6_pins[] = {64, 66, 73};
+static const unsigned int sdio0_1bit_2_7_pins[] = {64, 66, 74};
 static const unsigned int sdio0_2_pc_pins[] = {75};
 static const unsigned int sdio0_2_cd_pins[] = {65};
 static const unsigned int sdio0_2_wp_pins[] = {76};
 static const unsigned int sdio1_0_pins[] = {39, 40, 41, 42, 46, 47, 48, 49,
 						 50, 51};
+static const unsigned int sdio1_4bit_0_0_pins[] = {39, 40, 41, 42, 50, 51};
+static const unsigned int sdio1_4bit_0_1_pins[] = {46, 47, 48, 49, 50, 51};
+static const unsigned int sdio1_1bit_0_0_pins[] = {39, 50, 51};
+static const unsigned int sdio1_1bit_0_1_pins[] = {40, 50, 51};
+static const unsigned int sdio1_1bit_0_2_pins[] = {41, 50, 51};
+static const unsigned int sdio1_1bit_0_3_pins[] = {42, 50, 51};
+static const unsigned int sdio1_1bit_0_4_pins[] = {46, 50, 51};
+static const unsigned int sdio1_1bit_0_5_pins[] = {47, 50, 51};
+static const unsigned int sdio1_1bit_0_6_pins[] = {48, 50, 51};
+static const unsigned int sdio1_1bit_0_7_pins[] = {49, 50, 51};
 static const unsigned int sdio1_0_pc_pins[] = {43};
 static const unsigned int sdio1_0_cd_pins[] = {45};
 static const unsigned int sdio1_0_wp_pins[] = {44};
-static const unsigned int sdio1_1_pins[] = {71, 72, 73, 74, 75, 76};
+static const unsigned int sdio1_4bit_1_0_pins[] = {71, 72, 73, 74, 75, 76};
+static const unsigned int sdio1_1bit_1_0_pins[] = {71, 75, 76};
+static const unsigned int sdio1_1bit_1_1_pins[] = {72, 75, 76};
+static const unsigned int sdio1_1bit_1_2_pins[] = {73, 75, 76};
+static const unsigned int sdio1_1bit_1_3_pins[] = {74, 75, 76};
 static const unsigned int sdio1_1_pc_pins[] = {70};
 static const unsigned int sdio1_1_cd_pins[] = {77};
 static const unsigned int sdio1_1_wp_pins[] = {69};
@@ -775,22 +829,66 @@ static const struct zynqmp_pctrl_group zynqmp_pctrl_groups[] = {
 	DEFINE_ZYNQMP_PINCTRL_GRP(spi1_5_ss1),
 	DEFINE_ZYNQMP_PINCTRL_GRP(spi1_5_ss2),
 	DEFINE_ZYNQMP_PINCTRL_GRP(sdio0_0),
+	DEFINE_ZYNQMP_PINCTRL_GRP(sdio0_4bit_0_0),
+	DEFINE_ZYNQMP_PINCTRL_GRP(sdio0_4bit_0_1),
+	DEFINE_ZYNQMP_PINCTRL_GRP(sdio0_1bit_0_0),
+	DEFINE_ZYNQMP_PINCTRL_GRP(sdio0_1bit_0_1),
+	DEFINE_ZYNQMP_PINCTRL_GRP(sdio0_1bit_0_2),
+	DEFINE_ZYNQMP_PINCTRL_GRP(sdio0_1bit_0_3),
+	DEFINE_ZYNQMP_PINCTRL_GRP(sdio0_1bit_0_4),
+	DEFINE_ZYNQMP_PINCTRL_GRP(sdio0_1bit_0_5),
+	DEFINE_ZYNQMP_PINCTRL_GRP(sdio0_1bit_0_6),
+	DEFINE_ZYNQMP_PINCTRL_GRP(sdio0_1bit_0_7),
 	DEFINE_ZYNQMP_PINCTRL_GRP(sdio0_0_pc),
 	DEFINE_ZYNQMP_PINCTRL_GRP(sdio0_0_cd),
 	DEFINE_ZYNQMP_PINCTRL_GRP(sdio0_0_wp),
 	DEFINE_ZYNQMP_PINCTRL_GRP(sdio0_1),
+	DEFINE_ZYNQMP_PINCTRL_GRP(sdio0_4bit_1_0),
+	DEFINE_ZYNQMP_PINCTRL_GRP(sdio0_4bit_1_1),
+	DEFINE_ZYNQMP_PINCTRL_GRP(sdio0_1bit_1_0),
+	DEFINE_ZYNQMP_PINCTRL_GRP(sdio0_1bit_1_1),
+	DEFINE_ZYNQMP_PINCTRL_GRP(sdio0_1bit_1_2),
+	DEFINE_ZYNQMP_PINCTRL_GRP(sdio0_1bit_1_3),
+	DEFINE_ZYNQMP_PINCTRL_GRP(sdio0_1bit_1_4),
+	DEFINE_ZYNQMP_PINCTRL_GRP(sdio0_1bit_1_5),
+	DEFINE_ZYNQMP_PINCTRL_GRP(sdio0_1bit_1_6),
+	DEFINE_ZYNQMP_PINCTRL_GRP(sdio0_1bit_1_7),
 	DEFINE_ZYNQMP_PINCTRL_GRP(sdio0_1_pc),
 	DEFINE_ZYNQMP_PINCTRL_GRP(sdio0_1_cd),
 	DEFINE_ZYNQMP_PINCTRL_GRP(sdio0_1_wp),
 	DEFINE_ZYNQMP_PINCTRL_GRP(sdio0_2),
+	DEFINE_ZYNQMP_PINCTRL_GRP(sdio0_4bit_2_0),
+	DEFINE_ZYNQMP_PINCTRL_GRP(sdio0_4bit_2_1),
+	DEFINE_ZYNQMP_PINCTRL_GRP(sdio0_1bit_2_0),
+	DEFINE_ZYNQMP_PINCTRL_GRP(sdio0_1bit_2_1),
+	DEFINE_ZYNQMP_PINCTRL_GRP(sdio0_1bit_2_2),
+	DEFINE_ZYNQMP_PINCTRL_GRP(sdio0_1bit_2_3),
+	DEFINE_ZYNQMP_PINCTRL_GRP(sdio0_1bit_2_4),
+	DEFINE_ZYNQMP_PINCTRL_GRP(sdio0_1bit_2_5),
+	DEFINE_ZYNQMP_PINCTRL_GRP(sdio0_1bit_2_6),
+	DEFINE_ZYNQMP_PINCTRL_GRP(sdio0_1bit_2_7),
 	DEFINE_ZYNQMP_PINCTRL_GRP(sdio0_2_pc),
 	DEFINE_ZYNQMP_PINCTRL_GRP(sdio0_2_cd),
 	DEFINE_ZYNQMP_PINCTRL_GRP(sdio0_2_wp),
 	DEFINE_ZYNQMP_PINCTRL_GRP(sdio1_0),
+	DEFINE_ZYNQMP_PINCTRL_GRP(sdio1_4bit_0_0),
+	DEFINE_ZYNQMP_PINCTRL_GRP(sdio1_4bit_0_1),
+	DEFINE_ZYNQMP_PINCTRL_GRP(sdio1_1bit_0_0),
+	DEFINE_ZYNQMP_PINCTRL_GRP(sdio1_1bit_0_1),
+	DEFINE_ZYNQMP_PINCTRL_GRP(sdio1_1bit_0_2),
+	DEFINE_ZYNQMP_PINCTRL_GRP(sdio1_1bit_0_3),
+	DEFINE_ZYNQMP_PINCTRL_GRP(sdio1_1bit_0_4),
+	DEFINE_ZYNQMP_PINCTRL_GRP(sdio1_1bit_0_5),
+	DEFINE_ZYNQMP_PINCTRL_GRP(sdio1_1bit_0_6),
+	DEFINE_ZYNQMP_PINCTRL_GRP(sdio1_1bit_0_7),
 	DEFINE_ZYNQMP_PINCTRL_GRP(sdio1_0_pc),
 	DEFINE_ZYNQMP_PINCTRL_GRP(sdio1_0_cd),
 	DEFINE_ZYNQMP_PINCTRL_GRP(sdio1_0_wp),
-	DEFINE_ZYNQMP_PINCTRL_GRP(sdio1_1),
+	DEFINE_ZYNQMP_PINCTRL_GRP(sdio1_4bit_1_0),
+	DEFINE_ZYNQMP_PINCTRL_GRP(sdio1_1bit_1_0),
+	DEFINE_ZYNQMP_PINCTRL_GRP(sdio1_1bit_1_1),
+	DEFINE_ZYNQMP_PINCTRL_GRP(sdio1_1bit_1_2),
+	DEFINE_ZYNQMP_PINCTRL_GRP(sdio1_1bit_1_3),
 	DEFINE_ZYNQMP_PINCTRL_GRP(sdio1_1_pc),
 	DEFINE_ZYNQMP_PINCTRL_GRP(sdio1_1_cd),
 	DEFINE_ZYNQMP_PINCTRL_GRP(sdio1_1_wp),
@@ -1203,9 +1301,32 @@ static const char * const spi1_ss_groups[] = {"spi1_0_ss0_grp",
 		"spi1_4_ss1_grp", "spi1_4_ss2_grp", "spi1_5_ss0_grp",
 		"spi1_5_ss1_grp", "spi1_5_ss2_grp"};
 
-static const char * const sdio0_groups[] = {"sdio0_0_grp", "sdio0_1_grp",
-					    "sdio0_2_grp"};
-static const char * const sdio1_groups[] = {"sdio1_0_grp", "sdio1_1_grp"};
+static const char * const sdio0_groups[] = {"sdio0_0_grp",
+				"sdio0_1_grp", "sdio0_2_grp",
+				"sdio0_4bit_0_0_grp", "sdio0_4bit_0_1_grp",
+				"sdio0_4bit_1_0_grp", "sdio0_4bit_1_1_grp",
+				"sdio0_4bit_2_0_grp", "sdio0_4bit_2_1_grp",
+				"sdio0_1bit_0_0_grp", "sdio0_1bit_0_1_grp",
+				"sdio0_1bit_0_2_grp", "sdio0_1bit_0_3_grp",
+				"sdio0_1bit_0_4_grp", "sdio0_1bit_0_5_grp",
+				"sdio0_1bit_0_6_grp", "sdio0_1bit_0_7_grp",
+				"sdio0_1bit_1_0_grp", "sdio0_1bit_1_1_grp",
+				"sdio0_1bit_1_2_grp", "sdio0_1bit_1_3_grp",
+				"sdio0_1bit_1_4_grp", "sdio0_1bit_1_5_grp",
+				"sdio0_1bit_1_6_grp", "sdio0_1bit_1_7_grp",
+				"sdio0_1bit_2_0_grp", "sdio0_1bit_2_1_grp",
+				"sdio0_1bit_2_2_grp", "sdio0_1bit_2_3_grp",
+				"sdio0_1bit_2_4_grp", "sdio0_1bit_2_5_grp",
+				"sdio0_1bit_2_6_grp", "sdio0_1bit_2_7_grp"};
+static const char * const sdio1_groups[] = {"sdio1_0_grp",
+				"sdio1_4bit_0_0_grp", "sdio1_4bit_0_1_grp",
+				"sdio1_4bit_1_0_grp",
+				"sdio1_1bit_0_0_grp", "sdio1_1bit_0_1_grp",
+				"sdio1_1bit_0_2_grp", "sdio1_1bit_0_3_grp",
+				"sdio1_1bit_0_4_grp", "sdio1_1bit_0_5_grp",
+				"sdio1_1bit_0_6_grp", "sdio1_1bit_0_7_grp",
+				"sdio1_1bit_1_0_grp", "sdio1_1bit_1_1_grp",
+				"sdio1_1bit_1_2_grp", "sdio1_1bit_1_3_grp"};
 static const char * const sdio0_pc_groups[] = {"sdio0_0_pc_grp",
 		"sdio0_1_pc_grp", "sdio0_2_pc_grp"};
 static const char * const sdio1_pc_groups[] = {"sdio1_0_pc_grp",
