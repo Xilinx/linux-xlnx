@@ -44,6 +44,8 @@ Optional Properties:
   - xlnx,fails-without-test-cd: when present, the controller doesn't work when
     the CD line is not connected properly, and the line is not connected
     properly. Test mode can be used to force the controller to function.
+ - pinctrl-0: pin control group to be used for this controller.
+ - pinctrl-names: must contain a "default" entry.
 
 Example:
 	sdhci@e0100000 {
