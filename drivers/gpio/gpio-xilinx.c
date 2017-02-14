@@ -533,6 +533,23 @@ static const struct dev_pm_ops xgpio_dev_pm_ops = {
 };
 
 /**
+ * xgpio_remove - Remove method for the GPIO device.
+ * @pdev: pointer to the platform device
+ *
+ * This function remove gpiochips and frees all the allocated resources.
+ *
+ * Return: 0 always
+ */
+static int xgpio_remove(struct platform_device *pdev)
+{
+	struct xgpio_instance *chip = platform_get_drvdata(pdev);
+
+	of_mm_gpiochip_remove(&chip->mmchip);
+
+	return 0;
+}
+
+/**
  * xgpio_of_probe - Probe method for the GPIO device.
  * @np: pointer to device tree node
  *
@@ -713,6 +730,7 @@ MODULE_DEVICE_TABLE(of, xgpio_of_match);
 
 static struct platform_driver xilinx_gpio_driver = {
 	.probe = xgpio_of_probe,
+	.remove = xgpio_remove,
 	.driver = {
 		.name = "xilinx-gpio",
 		.of_match_table = xgpio_of_match,
@@ -727,7 +745,12 @@ static int __init xgpio_init(void)
 
 /* Make sure we get initialized before anyone else tries to use us */
 subsys_initcall(xgpio_init);
-/* No exit call at the moment as we cannot unregister of GPIO chips */
+
+static void __exit xgpio_exit(void)
+{
+	platform_driver_unregister(&xilinx_gpio_driver);
+}
+module_exit(xgpio_exit);
 
 MODULE_AUTHOR("Xilinx, Inc.");
 MODULE_DESCRIPTION("Xilinx GPIO driver");
