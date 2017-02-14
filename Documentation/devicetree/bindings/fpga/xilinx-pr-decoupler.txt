@@ -1,0 +1,29 @@
+Xilinx FPGA PR Decoupler
+
+The Partial Reconfiguration (PR) Decoupler IP provides logical isolation
+capabilities for PR designs. One or more PR Decoupler cores can be used to
+make the interface between a Reconfigurable Partition (RP) and the static logic
+safe from unpredictable activity while partial reconfiguration is occurring.
+When active, user-selected signals crossing between the RP and the static logic
+are driven to user configurable values. When inactive, signals are passed
+unaltered. PR Decoupler cores can be connected to the PR Controller IP or custom
+user controllers to create a complete Partial Reconfiguration management
+solution.
+
+Driver supports only MMIO handling. PR region can have multiple PR Decouplers
+which can be handled independently or chained via decouple/decouple_status
+signals.
+
+Required properties:
+- compatible:	should contain "xlnx,pr_decoupler"
+- reg:		base address and size for memory mapped IO
+- clocks:	input clock to IP
+- clock-names:	should contain "aclk"
+
+Example:
+	fpga_bridge0: fpga-bridge@83c00000 {
+		compatible = "xlnx,pr_decoupler";
+		reg = <0x83c00000 0x10000>;
+		clocks = <&clkc 15>;
+		clock-names = "aclk";
+	};
