@@ -45,6 +45,13 @@ config FPGA_BRIDGE
 	  Say Y here if you want to support bridges connected between host
 	  processors and FPGAs or between FPGAs.
 
+config XILINX_PR_DECOUPLER
+	tristate "Xilinx PR Decoupler"
+	depends on FPGA_BRIDGE
+	help
+	  Say Y to enable drivers for Xilinx PR Decoupler. For more information
+	  look at pg227.pdf.
+
 endif # FPGA
 
 endmenu
