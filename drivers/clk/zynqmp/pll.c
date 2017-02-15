@@ -233,8 +233,28 @@ static int zynqmp_pll_enable(struct clk_hw *hw)
 	return 0;
 }
 
+/**
+ * zynqmp_pll_disable - Disable clock
+ * @hw:		Handle between common and hardware-specific interfaces
+ *
+ */
+static void zynqmp_pll_disable(struct clk_hw *hw)
+{
+	struct zynqmp_pll *clk = to_zynqmp_pll(hw);
+
+	if (!zynqmp_pll_is_enabled(hw))
+		return;
+
+	pr_info("PLL: shutdown\n");
+
+	/* shut down PLL */
+	zynqmp_pm_mmio_write((u32)(ulong)clk->pll_ctrl, PLLCTRL_RESET_MASK,
+				PLLCTRL_RESET_VAL);
+}
+
 static const struct clk_ops zynqmp_pll_ops = {
 	.enable = zynqmp_pll_enable,
+	.disable = zynqmp_pll_disable,
 	.is_enabled = zynqmp_pll_is_enabled,
 	.round_rate = zynqmp_pll_round_rate,
 	.recalc_rate = zynqmp_pll_recalc_rate,
