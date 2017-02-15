@@ -347,7 +347,6 @@ static struct platform_driver btwilink_driver = {
 	.remove = bt_ti_remove,
 	.driver = {
 		.name = "btwilink",
-		.owner = THIS_MODULE,
 		.of_match_table = of_match_ptr(btwilink_of_match),
 	},
 };
