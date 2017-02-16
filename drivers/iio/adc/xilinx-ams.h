@@ -106,7 +106,7 @@
 
 #define AMS_TEMP_SCALE             509314
 #define AMS_TEMP_SCALE_DIV_BIT     16
-#define AMS_TEMP_OFFSET            -((280230 << 16) / 509314)
+#define AMS_TEMP_OFFSET            -((280230L << 16) / 509314)
 
 enum ams_alarm_bit {
 	AMS_ALARM_BIT_TEMP,
