@@ -143,14 +143,14 @@ static void iio_ams_update_alarm(struct ams *ams, unsigned long alarm_mask)
 	if (ams->pl_base) {
 		pl_alarm_mask = (alarm_mask >> AMS_PL_ALARM_START);
 		/* Configuring PL alarm enable */
-		cfg = ~((alarm_mask & AMS_ISR0_ALARM_2_TO_0_MASK) <<
+		cfg = ~((pl_alarm_mask & AMS_ISR0_ALARM_2_TO_0_MASK) <<
 			       AMS_CONF1_ALARM_2_TO_0_SHIFT);
-		cfg &= ~((alarm_mask & AMS_ISR0_ALARM_6_TO_3_MASK) <<
+		cfg &= ~((pl_alarm_mask & AMS_ISR0_ALARM_6_TO_3_MASK) <<
 				AMS_CONF1_ALARM_6_TO_3_SHIFT);
 		ams->pl_bus->update(ams, AMS_REG_CONFIG1,
 				AMS_REGCFG1_ALARM_MASK, cfg);
 
-		cfg = ~((alarm_mask >> AMS_CONF3_ALARM_12_TO_7_SHIFT) &
+		cfg = ~((pl_alarm_mask >> AMS_CONF3_ALARM_12_TO_7_SHIFT) &
 				AMS_ISR0_ALARM_12_TO_7_MASK);
 		ams->pl_bus->update(ams, AMS_REG_CONFIG3,
 				AMS_REGCFG3_ALARM_MASK, cfg);
@@ -495,10 +495,26 @@ static int ams_write_event_value(struct iio_dev *indio_dev,
 			 enum iio_event_info info, int val, int val2)
 {
 	struct ams *ams = iio_priv(indio_dev);
-	unsigned int offset = ams_get_alarm_offset(chan->scan_index, dir);
+	unsigned int offset;
 
 	mutex_lock(&ams->mutex);
 
+	/* Set temperature channel threshold to direct threshold */
+	if (chan->type == IIO_TEMP) {
+		offset = ams_get_alarm_offset(chan->scan_index,
+				IIO_EV_DIR_FALLING);
+
+		if (chan->scan_index >= PS_SEQ_MAX)
+			ams->pl_bus->update(ams, offset,
+					AMS_ALARM_THR_DIRECT_MASK,
+					AMS_ALARM_THR_DIRECT_MASK);
+		else
+			ams_ps_update_reg(ams, offset,
+					AMS_ALARM_THR_DIRECT_MASK,
+					AMS_ALARM_THR_DIRECT_MASK);
+	}
+
+	offset = ams_get_alarm_offset(chan->scan_index, dir);
 	if (chan->scan_index >= PS_SEQ_MAX)
 		ams->pl_bus->write(ams, offset, val);
 	else
@@ -565,6 +581,10 @@ static void ams_unmask_worker(struct work_struct *work)
 
 	/* Clear those bits which are not active anymore */
 	unmask = (ams->masked_alarm ^ status) & ams->masked_alarm;
+
+	/* clear status of disabled alarm */
+	unmask |= ams->intr_mask;
+
 	ams->masked_alarm &= status;
 
 	/* Also clear those which are masked out anyway */
@@ -623,8 +643,7 @@ static const struct iio_event_spec ams_temp_events[] = {
 		.type = IIO_EV_TYPE_THRESH,
 		.dir = IIO_EV_DIR_RISING,
 		.mask_separate = BIT(IIO_EV_INFO_ENABLE) |
-				BIT(IIO_EV_INFO_VALUE) |
-				BIT(IIO_EV_INFO_HYSTERESIS),
+				BIT(IIO_EV_INFO_VALUE),
 	},
 };
 
@@ -751,9 +770,10 @@ static int ams_init_module(struct iio_dev *indio_dev, struct device_node *np,
 
 static int ams_parse_dt(struct iio_dev *indio_dev, struct platform_device *pdev)
 {
+	struct ams *ams = iio_priv(indio_dev);
 	struct iio_chan_spec *ams_channels, *dev_channels;
 	struct device_node *child_node = NULL, *np = pdev->dev.of_node;
-	int ret, chan_vol = 0, chan_temp = 0, i;
+	int ret, chan_vol = 0, chan_temp = 0, i, rising_off, falling_off;
 	unsigned int num_channels = 0;
 
 	/* Initialize buffer for channel specification */
@@ -780,6 +800,19 @@ static int ams_parse_dt(struct iio_dev *indio_dev, struct platform_device *pdev)
 			ams_channels[i].channel = chan_vol++;
 		else
 			ams_channels[i].channel = chan_temp++;
+
+		/* set threshold to max and min for each channel */
+		falling_off = ams_get_alarm_offset(ams_channels[i].scan_index,
+				IIO_EV_DIR_FALLING);
+		rising_off = ams_get_alarm_offset(ams_channels[i].scan_index,
+				IIO_EV_DIR_RISING);
+		if (ams_channels[i].scan_index >= PS_SEQ_MAX) {
+			ams->pl_bus->write(ams, falling_off, AMS_ALARM_THR_MIN);
+			ams->pl_bus->write(ams, rising_off, AMS_ALARM_THR_MAX);
+		} else {
+			ams_ps_write_reg(ams, falling_off, AMS_ALARM_THR_MIN);
+			ams_ps_write_reg(ams, rising_off, AMS_ALARM_THR_MAX);
+		}
 	}
 
 	dev_channels = devm_kzalloc(&pdev->dev, sizeof(*dev_channels) *
