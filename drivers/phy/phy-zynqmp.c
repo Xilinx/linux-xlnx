@@ -37,6 +37,7 @@
 #include <linux/soc/xilinx/zynqmp/pm.h>
 #include <linux/reset.h>
 #include <linux/list.h>
+#include <linux/slab.h>
 
 #define MAX_LANES			4
 
@@ -1322,7 +1323,7 @@ static int xpsgtr_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "registering provider failed\n");
 			return PTR_ERR(provider);
 	}
-
+	kfree(soc_rev);
 	return 0;
 }
 
