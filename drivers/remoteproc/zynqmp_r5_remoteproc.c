@@ -90,10 +90,6 @@
 /* Maximum on chip memories used by the driver*/
 #define MAX_ON_CHIP_MEMS        32
 
-/* Module parameter */
-static char *firmware = "r5_0_firmware";
-static char *firmware1 = "r5_1_firmware";
-
 static bool autoboot __read_mostly;
 
 struct zynqmp_r5_rproc_pdata;
@@ -656,7 +652,7 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 	int i;
 
 	rproc = rproc_alloc(&pdev->dev, dev_name(&pdev->dev),
-		&zynqmp_r5_rproc_ops, firmware,
+		&zynqmp_r5_rproc_ops, NULL,
 		sizeof(struct zynqmp_r5_rproc_pdata));
 	if (!rproc) {
 		dev_err(&pdev->dev, "rproc allocation failed\n");
@@ -764,11 +760,6 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 	}
 	dev_dbg(&pdev->dev, "vring0 irq: %d\n", local->vring0);
 
-	/* change firmware if the remote is RPU1*/
-	if (local->rpu_id)
-		rproc->firmware = firmware1;
-	dev_dbg(&pdev->dev, "Using firmware: %s\n", rproc->firmware);
-
 	ret = zynqmp_r5_rproc_init(local->rproc);
 	if (ret) {
 		dev_err(&pdev->dev, "failed to init ZynqMP R5 rproc\n");
@@ -837,11 +828,7 @@ static struct platform_driver zynqmp_r5_remoteproc_driver = {
 };
 module_platform_driver(zynqmp_r5_remoteproc_driver);
 
-module_param(firmware, charp, 0);
-module_param(firmware1, charp, 0);
 module_param_named(autoboot,  autoboot, bool, 0444);
-MODULE_PARM_DESC(firmware, "Override the RPU-0 firmware image name.");
-MODULE_PARM_DESC(firmware1, "Override the RPU-1 firmware image name.");
 MODULE_PARM_DESC(autoboot,
 	"enable | disable autoboot. (default: true)");
 
