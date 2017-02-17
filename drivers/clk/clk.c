@@ -204,6 +204,34 @@ struct clk_hw *clk_hw_get_parent(const struct clk_hw *hw)
 }
 EXPORT_SYMBOL_GPL(clk_hw_get_parent);
 
+static unsigned int sibling;
+
+static void clk_show_subtree(struct clk_core *c,
+				     int level)
+{
+	struct clk_core *child;
+
+	if (!c)
+		return;
+
+	if (level == 1)
+		sibling++;
+
+	hlist_for_each_entry(child, &c->children, child_node)
+		clk_show_subtree(child, level + 1);
+}
+
+unsigned int clk_get_children(char *name)
+{
+	struct clk_core *core;
+	struct clk *pclk = __clk_lookup(name);
+	sibling = 0;
+
+	core = pclk->core;
+	clk_show_subtree(core, 0);
+	return sibling;
+}
+
 static struct clk_core *__clk_lookup_subtree(const char *name,
 					     struct clk_core *core)
 {
