@@ -94,7 +94,7 @@
 static char *firmware = "r5_0_firmware";
 static char *firmware1 = "r5_1_firmware";
 
-static bool autoboot __read_mostly = true;
+static bool autoboot __read_mostly;
 
 struct zynqmp_r5_rproc_pdata;
 
