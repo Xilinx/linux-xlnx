@@ -1126,3 +1126,20 @@ static int __init zynqmp_clock_init(void)
 	return 0;
 }
 arch_initcall(zynqmp_clock_init);
+
+static int __init warn_vpll_multiuser(void)
+{
+	unsigned int children;
+
+	children = clk_get_children("vpll");
+/*
+ * Account for vpll_to_lpd and dp_video_ref
+ *
+ */
+	if (children > 2) {
+		pr_err("Two devices are using vpll which is forbidden\n");
+		BUG();
+	}
+	return 0;
+}
+late_initcall_sync(warn_vpll_multiuser);
