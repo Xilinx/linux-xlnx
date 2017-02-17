@@ -34,6 +34,7 @@
 /* SMC SIP service Call Function Identifier Prefix */
 #define PM_SIP_SVC	0xC2000000
 #define GET_CALLBACK_DATA 0xa01
+#define SET_SUSPEND_MODE  0xa02
 
 /* Number of 32bits values in payload */
 #define PAYLOAD_ARG_CNT	5U
@@ -59,6 +60,20 @@ struct zynqmp_pm_work_struct {
 static struct zynqmp_pm_work_struct *zynqmp_pm_init_suspend_work;
 
 static u32 pm_api_version;
+
+enum pm_suspend_mode {
+	PM_SUSPEND_MODE_STD,
+	PM_SUSPEND_MODE_POWER_OFF,
+};
+
+#define PM_SUSPEND_MODE_FIRST	PM_SUSPEND_MODE_STD
+
+static const char *const suspend_modes[] = {
+	[PM_SUSPEND_MODE_STD] = "standard",
+	[PM_SUSPEND_MODE_POWER_OFF] = "power-off",
+};
+
+static enum pm_suspend_mode suspend_mode = PM_SUSPEND_MODE_STD;
 
 enum pm_api_id {
 	/* Miscellaneous API functions: */
@@ -1165,6 +1180,61 @@ static void zynqmp_pm_init_suspend_work_fn(struct work_struct *work)
 	pm_suspend(PM_SUSPEND_MEM);
 }
 
+static ssize_t suspend_mode_show(struct device *dev,
+				struct device_attribute *attr, char *buf)
+{
+	char *s = buf;
+	int md;
+
+	for (md = PM_SUSPEND_MODE_FIRST; md < ARRAY_SIZE(suspend_modes); md++)
+		if (suspend_modes[md]) {
+			if (md == suspend_mode)
+				s += sprintf(s, "[%s] ", suspend_modes[md]);
+			else
+				s += sprintf(s, "%s ", suspend_modes[md]);
+		}
+
+	/* Convert last space to newline */
+	if (s != buf)
+		*(s - 1) = '\n';
+	return (s - buf);
+}
+
+static ssize_t suspend_mode_store(struct device *dev,
+			struct device_attribute *attr,
+			const char *buf, size_t count)
+{
+	int md, ret = -EINVAL;
+
+	for (md = PM_SUSPEND_MODE_FIRST; md < ARRAY_SIZE(suspend_modes); md++)
+		if (suspend_modes[md] &&
+		    sysfs_streq(suspend_modes[md], buf)) {
+			ret = 0;
+			break;
+		}
+
+	if (!ret && (md != suspend_mode)) {
+		ret = invoke_pm_fn(SET_SUSPEND_MODE, md, 0, 0, 0, NULL);
+		if (likely(!ret))
+			suspend_mode = md;
+	}
+
+	return ret ? ret : count;
+}
+
+static DEVICE_ATTR_RW(suspend_mode);
+
+/**
+ * zynqmp_pm_sysfs_init - Initialize PM driver sysfs interface
+ * @dev:	Pointer to device structure
+ *
+ * Return:	0 on success, negative error code otherwise
+ */
+static int zynqmp_pm_sysfs_init(struct device *dev)
+{
+	return sysfs_create_file(&dev->kobj, &dev_attr_suspend_mode.attr);
+}
+
 /**
  * zynqmp_pm_probe - Probe existence of the PMU Firmware
  *			and initialize debugfs interface
@@ -1203,6 +1273,12 @@ static int zynqmp_pm_probe(struct platform_device *pdev)
 
 	INIT_WORK(&zynqmp_pm_init_suspend_work->callback_work,
 		zynqmp_pm_init_suspend_work_fn);
+
+	ret = zynqmp_pm_sysfs_init(&pdev->dev);
+	if (ret) {
+		dev_err(&pdev->dev, "unable to initialize sysfs interface\n");
+		goto error;
+	}
 
 	dev_info(&pdev->dev, "Power management API v%d.%d\n",
 		ZYNQMP_PM_VERSION_MAJOR, ZYNQMP_PM_VERSION_MINOR);
