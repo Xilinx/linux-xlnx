@@ -558,10 +558,17 @@ static int zynqmp_r5_rproc_add_mems(struct zynqmp_r5_rproc_pdata *pdata)
 		mem->va = va;
 		mem->len = mem_size;
 		mem->dma = dma;
-		if ((dma & 0xFFF00000) == 0xFFE00000)
+		/* TCM memory:
+		 *   TCM_0: da 0 <-> global addr 0xFFE00000
+		 *   TCM_1: da 0 <-> global addr 0xFFE90000
+		 */
+		if ((dma & 0xFFF00000) == 0xFFE00000) {
 			mem->da = (dma & 0x000FFFFF);
-		else
+			if ((dma & 0xFFF80000) == 0xFFE80000)
+				mem->da -= 0x90000;
+		} else {
 			mem->da = dma;
+		}
 		dev_dbg(dev, "%s: va = %p, da = 0x%x dma = 0x%llx\n",
 			__func__, va, mem->da, mem->dma);
 		list_add_tail(&mem->node, &pdata->mems);
