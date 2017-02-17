@@ -1196,8 +1196,10 @@ static int zynqmp_pm_probe(struct platform_device *pdev)
 
 	zynqmp_pm_init_suspend_work = devm_kzalloc(&pdev->dev,
 			sizeof(struct zynqmp_pm_work_struct), GFP_KERNEL);
-	if (!zynqmp_pm_init_suspend_work)
-		goto work_err;
+	if (!zynqmp_pm_init_suspend_work) {
+		ret = -ENOMEM;
+		goto error;
+	}
 
 	INIT_WORK(&zynqmp_pm_init_suspend_work->callback_work,
 		zynqmp_pm_init_suspend_work_fn);
@@ -1209,10 +1211,9 @@ static int zynqmp_pm_probe(struct platform_device *pdev)
 
 	return 0;
 
-work_err:
-	dev_err(&pdev->dev, "unable to allocate work struct for callbacks\n");
+error:
 	free_irq(irq, 0);
-	return -ENOMEM;
+	return ret;
 }
 
 static struct platform_driver zynqmp_pm_platform_driver = {
