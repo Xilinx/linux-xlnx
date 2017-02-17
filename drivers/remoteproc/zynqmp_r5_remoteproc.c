@@ -42,8 +42,9 @@
 
 /* Register offset definitions for RPU. */
 #define RPU_GLBL_CNTL_OFFSET	0x00000000 /* RPU control */
-#define RPU_0_CFG_OFFSET	0x00000100 /* RPU0 configuration */
-#define RPU_1_CFG_OFFSET	0x00000200 /* RPU1 Configuration */
+
+#define RPU_CFG_OFFSET	0x00000000 /* RPU configuration */
+
 /* Boot memory bit. high for OCM, low for TCM */
 #define VINITHI_BIT		BIT(2)
 /* CPU halt bit, high: processor is running. low: processor is halt */
@@ -133,6 +134,7 @@ struct zynqmp_r5_rproc_pdata {
 	const struct rproc_fw_ops *default_fw_ops;
 	struct work_struct workqueue;
 	void __iomem *rpu_base;
+	void __iomem *rpu_glbl_base;
 	void __iomem *crl_apb_base;
 	void __iomem *ipi_base;
 	enum rpu_core_conf rpu_mode;
@@ -154,12 +156,10 @@ struct zynqmp_r5_rproc_pdata {
 static void r5_boot_addr_config(struct zynqmp_r5_rproc_pdata *pdata)
 {
 	u32 tmp;
-	u32 offset = RPU_1_CFG_OFFSET;
+	u32 offset = RPU_CFG_OFFSET;
 
 	pr_debug("%s: R5 ID: %d, boot_dev %d\n",
 			 __func__, pdata->rpu_id, pdata->bootmem);
-	if (pdata->rpu_id == 0)
-		offset = RPU_0_CFG_OFFSET;
 
 	tmp = reg_read(pdata->rpu_base, offset);
 	if (pdata->bootmem == OCM)
@@ -213,13 +213,11 @@ static void r5_halt(struct zynqmp_r5_rproc_pdata *pdata,
 						bool do_halt)
 {
 	u32 tmp;
-	u32 offset = RPU_1_CFG_OFFSET;
+	u32 offset = RPU_CFG_OFFSET;
 
 	pr_debug("%s: R5 ID: %d, halt %d\n", __func__, pdata->rpu_id,
 			 do_halt);
 
-	if (pdata->rpu_id == 0)
-		offset = RPU_0_CFG_OFFSET;
 	tmp = reg_read(pdata->rpu_base, offset);
 	if (do_halt)
 		tmp &= ~nCPUHALT_BIT;
@@ -227,12 +225,13 @@ static void r5_halt(struct zynqmp_r5_rproc_pdata *pdata,
 		tmp |= nCPUHALT_BIT;
 	reg_write(pdata->rpu_base, offset, tmp);
 	if (pdata->rpu_mode != SPLIT) {
-		tmp = reg_read(pdata->rpu_base, RPU_1_CFG_OFFSET);
+		offset += 0x100;
+		tmp = reg_read(pdata->rpu_base, offset);
 		if (do_halt)
 			tmp &= ~nCPUHALT_BIT;
 		else
 			tmp |= nCPUHALT_BIT;
-		reg_write(pdata->rpu_base, RPU_1_CFG_OFFSET, tmp);
+		reg_write(pdata->rpu_base, 0x100, tmp);
 	}
 }
 
@@ -248,7 +247,7 @@ static void r5_mode_config(struct zynqmp_r5_rproc_pdata *pdata)
 	u32 tmp;
 
 	pr_debug("%s: mode: %d\n", __func__, pdata->rpu_mode);
-	tmp = reg_read(pdata->rpu_base, 0);
+	tmp = reg_read(pdata->rpu_glbl_base, 0);
 	if (pdata->rpu_mode == SPLIT) {
 		tmp |= SLSPLIT_BIT;
 		tmp &= ~TCM_COMB_BIT;
@@ -258,7 +257,7 @@ static void r5_mode_config(struct zynqmp_r5_rproc_pdata *pdata)
 		tmp |= TCM_COMB_BIT;
 		tmp |= SLCLAMP_BIT;
 	}
-	reg_write(pdata->rpu_base, 0, tmp);
+	reg_write(pdata->rpu_glbl_base, 0, tmp);
 }
 
 /**
@@ -304,19 +303,17 @@ static bool r5_is_running(struct zynqmp_r5_rproc_pdata *pdata)
 		return false;
 
 	if (pdata->rpu_mode == SPLIT) {
-		u32 offset = RPU_0_CFG_OFFSET;
-
-		if (pdata->rpu_id)
-			offset = RPU_1_CFG_OFFSET;
-
-		tmp = reg_read(pdata->rpu_base, offset);
+		tmp = reg_read(pdata->rpu_base, RPU_CFG_OFFSET);
 		if (tmp & nCPUHALT_BIT)
 			return true;
 	} else {
-		tmp = reg_read(pdata->rpu_base, RPU_0_CFG_OFFSET);
+		u32 offset = RPU_CFG_OFFSET;
+
+		tmp = reg_read(pdata->rpu_base, offset);
 		if (!(tmp & nCPUHALT_BIT))
 			return false;
-		tmp = reg_read(pdata->rpu_base, RPU_1_CFG_OFFSET);
+		offset += 0x100;
+		tmp = reg_read(pdata->rpu_base, offset);
 		if (tmp & nCPUHALT_BIT)
 			return true;
 	}
@@ -698,10 +695,21 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
 		"rpu_base");
-	local->rpu_base = devm_ioremap(&pdev->dev, res->start, resource_size(res));
+	local->rpu_base = devm_ioremap(&pdev->dev, res->start,
+					resource_size(res));
 	if (IS_ERR(local->rpu_base)) {
 		dev_err(&pdev->dev, "Unable to map RPU I/O memory\n");
 		ret = PTR_ERR(local->rpu_base);
+		goto rproc_fault;
+	}
+
+	res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
+		"rpu_glbl_base");
+	local->rpu_glbl_base = devm_ioremap(&pdev->dev, res->start,
+					resource_size(res));
+	if (IS_ERR(local->rpu_glbl_base)) {
+		dev_err(&pdev->dev, "Unable to map RPU Global I/O memory\n");
+		ret = PTR_ERR(local->rpu_glbl_base);
 		goto rproc_fault;
 	}
 
