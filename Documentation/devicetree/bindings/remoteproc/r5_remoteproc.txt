@@ -44,10 +44,11 @@ Example:
 
 	zynqmp-r5-remoteproc@0 {
 		compatible = "xlnx,zynqmp-r5-remoteproc";
-		reg = <0x0 0xff340000 0x0 0x100>,
-			<0x0 0xff9a0000 0x0 0x400>,
+		reg = <0x0 0xff9a0100 0x0 100>,
+			<0x0 0xff340000 0x0 0x100>,
+			<0x0 0xff9a0000 0x0 0x100>,
 			<0x0 0xff5e0000 0x0 0x400>;
-		reg-names = "ipi", "rpu_base", "apb_base";
+		reg-names = "rpu_base", "ipi", "rpu_glbl_base", "apb_base";
 		core_conf = "split0";
 		sram_0 = <&r5_0_tcm_a>;
 		sram_1 = <&r5_0_tcm_b>;
