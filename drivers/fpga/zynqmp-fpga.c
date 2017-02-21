@@ -32,13 +32,14 @@ struct zynqmp_fpga_priv {
 	u32 flags;
 };
 
-static int zynqmp_fpga_ops_write_init(struct fpga_manager *mgr, u32 flags,
-					const char *buf, size_t size)
+static int zynqmp_fpga_ops_write_init(struct fpga_manager *mgr,
+				      struct fpga_image_info *info,
+				      const char *buf, size_t size)
 {
 	struct zynqmp_fpga_priv *priv;
 
 	priv = mgr->priv;
-	priv->flags = flags;
+	priv->flags = info->flags;
 
 	return 0;
 }
@@ -96,7 +97,8 @@ static int zynqmp_fpga_ops_write(struct fpga_manager *mgr,
 	return ret;
 }
 
-static int zynqmp_fpga_ops_write_complete(struct fpga_manager *mgr, u32 flags)
+static int zynqmp_fpga_ops_write_complete(struct fpga_manager *mgr,
+					  struct fpga_image_info *info)
 {
 	return 0;
 }
