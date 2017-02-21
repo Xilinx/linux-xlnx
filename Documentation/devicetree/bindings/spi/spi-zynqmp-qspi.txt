@@ -15,6 +15,11 @@ Optional properties:
 - has-io-mode		: boolean property describes the controller operating
 			  mode. if exists controller will operate in IO mode
 			  else dma mode.
+- is-dual		: zynqmp qspi support for dual-parallel mode configuration
+			  value should be 1.
+- is-stacked		: zynqmp qspi support for stacked mode configuration.
+			  to enable this mode, is-dual should be 0 and is-stacked
+			  should be 1.
 
 Example:
 	qspi: spi@ff0f0000 {
