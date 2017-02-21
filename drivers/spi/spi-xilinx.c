@@ -21,6 +21,8 @@
 #include <linux/spi/xilinx_spi.h>
 #include <linux/io.h>
 #include <linux/delay.h>
+#include <linux/pm_runtime.h>
+#include <linux/clk.h>
 #define XILINX_SPI_MAX_CS	32
 
 #define XILINX_SPI_NAME "xilinx_spi"
@@ -76,10 +78,16 @@
 #define XSPI_RX_ONE_WIRE	1
 #define XSPI_RX_FOUR_WIRE	4
 
+/* Auto suspend timeout in milliseconds */
+#define SPI_AUTOSUSPEND_TIMEOUT		3000
+
 /**
  * struct xilinx_spi - This definition define spi driver instance
  * @regs:		virt. address of the control registers
  * @irq:		IRQ number
+ * @axi_clk:		Pointer to the AXI clock
+ * @axi4_clk:		Pointer to the AXI4 clock
+ * @spi_clk:		Pointer to the SPI clock
  * @rx_ptr:		Pointer to the RX buffer
  * @tx_ptr:		Pointer to the TX buffer
  * @bytes_per_word:	Number of bytes in a word
@@ -96,6 +104,9 @@
 struct xilinx_spi {
 	void __iomem *regs;
 	int irq;
+	struct clk *axi_clk;
+	struct clk *axi4_clk;
+	struct clk *spi_clk;
 	u8 *rx_ptr;
 	const u8 *tx_ptr;
 	u8 bytes_per_word;
@@ -363,10 +374,19 @@ static int xspi_setup_transfer(struct spi_device *qspi,
  */
 static int xspi_setup(struct spi_device *qspi)
 {
+	int ret;
+
 	if (qspi->master->busy)
 		return -EBUSY;
 
-	return xspi_setup_transfer(qspi, NULL);
+	ret = pm_runtime_get_sync(&qspi->dev);
+	if (ret < 0)
+		return ret;
+
+	ret = xspi_setup_transfer(qspi, NULL);
+	pm_runtime_put_sync(&qspi->dev);
+
+	return ret;
 }
 
 /**
@@ -433,6 +453,11 @@ static int xspi_prepare_transfer_hardware(struct spi_master *master)
 {
 	struct xilinx_spi *xqspi = spi_master_get_devdata(master);
 	u32 cr;
+	int ret;
+
+	ret = pm_runtime_get_sync(&master->dev);
+	if (ret < 0)
+		return ret;
 
 	cr = xqspi->read_fn(xqspi->regs + XSPI_CR_OFFSET);
 	cr |= XSPI_CR_ENABLE;
@@ -459,8 +484,135 @@ static int xspi_unprepare_transfer_hardware(struct spi_master *master)
 	cr &= ~XSPI_CR_ENABLE;
 	xqspi->write_fn(cr, xqspi->regs + XSPI_CR_OFFSET);
 
+	pm_runtime_put_sync(&master->dev);
+
 	return 0;
 }
+
+/**
+ * xilinx_spi_runtime_resume - Runtime resume method for the SPI driver
+ * @dev:	Address of the platform_device structure
+ *
+ * This function enables the clocks
+ *
+ * Return:	0 on success and error value on error
+ */
+static int __maybe_unused xilinx_spi_runtime_resume(struct device *dev)
+{
+	struct spi_master *master = dev_get_drvdata(dev);
+	struct xilinx_spi *xspi = spi_master_get_devdata(master);
+	int ret;
+
+	ret = clk_enable(xspi->axi_clk);
+	if (ret) {
+		dev_err(dev, "Can not enable AXI clock\n");
+		return ret;
+	}
+
+	ret = clk_enable(xspi->axi4_clk);
+	if (ret) {
+		dev_err(dev, "Can not enable AXI4 clock\n");
+		goto clk_disable_axi_clk;
+	}
+
+	ret = clk_enable(xspi->spi_clk);
+	if (ret) {
+		dev_err(dev, "Can not enable SPI clock\n");
+		goto clk_disable_axi4_clk;
+	}
+
+	return 0;
+
+clk_disable_axi4_clk:
+	clk_disable(xspi->axi4_clk);
+clk_disable_axi_clk:
+	clk_disable(xspi->axi_clk);
+
+	return ret;
+}
+
+/**
+ * xilinx_spi_runtime_suspend - Runtime suspend method for the SPI driver
+ * @dev:	Address of the platform_device structure
+ *
+ * This function disables the clocks
+ *
+ * Return:	Always 0
+ */
+static int __maybe_unused xilinx_spi_runtime_suspend(struct device *dev)
+{
+	struct spi_master *master = dev_get_drvdata(dev);
+	struct xilinx_spi *xspi = spi_master_get_devdata(master);
+
+	clk_disable(xspi->axi_clk);
+	clk_disable(xspi->axi4_clk);
+	clk_disable(xspi->spi_clk);
+
+	return 0;
+}
+
+/**
+ * xilinx_spi_resume - Resume method for the SPI driver
+ * @dev:	Address of the platform_device structure
+ *
+ * The function starts the SPI driver queue and initializes the SPI
+ * controller
+ *
+ * Return:	0 on success; error value otherwise
+ */
+static int __maybe_unused xilinx_spi_resume(struct device *dev)
+{
+	struct spi_master *master = dev_get_drvdata(dev);
+	struct xilinx_spi *xspi = spi_master_get_devdata(master);
+	int ret = 0;
+
+	if (!pm_runtime_suspended(dev)) {
+		ret = xilinx_spi_runtime_resume(dev);
+		if (ret < 0)
+			return ret;
+	}
+
+	ret = spi_master_resume(master);
+	if (ret < 0) {
+		clk_disable(xspi->axi_clk);
+		clk_disable(xspi->axi4_clk);
+		clk_disable(xspi->spi_clk);
+	}
+
+	return ret;
+}
+
+
+/**
+ * xilinx_spi_suspend - Suspend method for the SPI driver
+ * @dev:	Address of the platform_device structure
+ *
+ * This function stops the SPI driver queue and disables the SPI controller
+ *
+ * Return:	Always 0
+ */
+static int __maybe_unused xilinx_spi_suspend(struct device *dev)
+{
+	struct spi_master *master = dev_get_drvdata(dev);
+	int ret = 0;
+
+	ret = spi_master_suspend(master);
+	if (ret)
+		return ret;
+
+	if (!pm_runtime_suspended(dev))
+		xilinx_spi_runtime_suspend(dev);
+
+	xspi_unprepare_transfer_hardware(master);
+
+	return ret;
+}
+
+static const struct dev_pm_ops xilinx_spi_dev_pm_ops = {
+	SET_RUNTIME_PM_OPS(xilinx_spi_runtime_suspend,
+			   xilinx_spi_runtime_resume, NULL)
+	SET_SYSTEM_SLEEP_PM_OPS(xilinx_spi_suspend, xilinx_spi_resume)
+};
 
 /**
  * xilinx_spi_probe -	Probe method for the SPI driver
@@ -524,6 +676,74 @@ static int xilinx_spi_probe(struct platform_device *pdev)
 			break;
 		}
 	}
+
+	xspi->axi_clk = devm_clk_get(&pdev->dev, "axi_clk");
+	if (IS_ERR(xspi->axi_clk)) {
+		if (PTR_ERR(xspi->axi_clk) != -ENOENT) {
+			ret = PTR_ERR(xspi->axi_clk);
+			goto put_master;
+		}
+
+		/*
+		 * Clock framework support is optional, continue on,
+		 * anyways if we don't find a matching clock
+		 */
+		xspi->axi_clk = NULL;
+	}
+
+	ret = clk_prepare(xspi->axi_clk);
+	if (ret) {
+		dev_err(&pdev->dev, "Failed to prepare AXI clock\n");
+		goto put_master;
+	}
+
+	xspi->axi4_clk = devm_clk_get(&pdev->dev, "axi4_clk");
+	if (IS_ERR(xspi->axi4_clk)) {
+		if (PTR_ERR(xspi->axi4_clk) != -ENOENT) {
+			ret = PTR_ERR(xspi->axi4_clk);
+			goto clk_unprepare_axi_clk;
+		}
+
+		/*
+		 * Clock framework support is optional, continue on,
+		 * anyways if we don't find a matching clock
+		 */
+		xspi->axi4_clk = NULL;
+	}
+
+	ret = clk_prepare(xspi->axi4_clk);
+	if (ret) {
+		dev_err(&pdev->dev, "Failed to prepare AXI4 clock\n");
+		goto clk_unprepare_axi_clk;
+	}
+
+	xspi->spi_clk = devm_clk_get(&pdev->dev, "spi_clk");
+	if (IS_ERR(xspi->spi_clk)) {
+		if (PTR_ERR(xspi->spi_clk) != -ENOENT) {
+			ret = PTR_ERR(xspi->spi_clk);
+			goto clk_unprepare_axi4_clk;
+		}
+
+		/*
+		 * Clock framework support is optional, continue on,
+		 * anyways if we don't find a matching clock
+		 */
+		xspi->spi_clk = NULL;
+	}
+
+	ret = clk_prepare(xspi->spi_clk);
+	if (ret) {
+		dev_err(&pdev->dev, "Failed to prepare SPI clock\n");
+		goto clk_unprepare_axi4_clk;
+	}
+
+	pm_runtime_set_autosuspend_delay(&pdev->dev, SPI_AUTOSUSPEND_TIMEOUT);
+	pm_runtime_use_autosuspend(&pdev->dev);
+	pm_runtime_enable(&pdev->dev);
+	ret = pm_runtime_get_sync(&pdev->dev);
+	if (ret)
+		goto clk_unprepare_all;
+
 	xspi->read_fn = xspi_read32;
 	xspi->write_fn = xspi_write32;
 	/* Detect endianness on the IP via loop bit in CR register*/
@@ -539,17 +759,19 @@ static int xilinx_spi_probe(struct platform_device *pdev)
 	xspi->irq = platform_get_irq(pdev, 0);
 	if (xspi->irq < 0 && xspi->irq != -ENXIO) {
 		ret = xspi->irq;
-		goto put_master;
+		goto clk_unprepare_all;
 	} else if (xspi->irq >= 0) {
 		/* Register for SPI Interrupt */
 		ret = devm_request_irq(&pdev->dev, xspi->irq, xilinx_spi_irq,
 					0, dev_name(&pdev->dev), master);
 		if (ret)
-			goto put_master;
+			goto clk_unprepare_all;
 	}
 
 	/* SPI controller initializations */
 	xspi_init_hw(xspi);
+
+	pm_runtime_put(&pdev->dev);
 
 	master->bus_num = pdev->id;
 	master->num_chipselect = num_cs;
@@ -576,17 +798,25 @@ static int xilinx_spi_probe(struct platform_device *pdev)
 		master->mode_bits |= SPI_TX_QUAD | SPI_RX_QUAD;
 	} else {
 		dev_err(&pdev->dev, "Dual Mode not supported\n");
-		goto put_master;
+		goto clk_unprepare_all;
 	}
 	xspi->cs_inactive = 0xffffffff;
 	ret = spi_register_master(master);
 	if (ret) {
 		dev_err(&pdev->dev, "spi_register_master failed\n");
-		goto put_master;
+		goto clk_unprepare_all;
 	}
 
 	return ret;
 
+clk_unprepare_all:
+	pm_runtime_disable(&pdev->dev);
+	pm_runtime_set_suspended(&pdev->dev);
+	clk_unprepare(xspi->spi_clk);
+clk_unprepare_axi4_clk:
+	clk_unprepare(xspi->axi4_clk);
+clk_unprepare_axi_clk:
+	clk_unprepare(xspi->axi_clk);
 put_master:
 	spi_master_put(master);
 
@@ -614,6 +844,12 @@ static int xilinx_spi_remove(struct platform_device *pdev)
 	/* Disable the global IPIF interrupt */
 	xspi->write_fn(0, regs_base + XIPIF_V123B_DGIER_OFFSET);
 
+	pm_runtime_disable(&pdev->dev);
+
+	clk_disable_unprepare(xspi->axi_clk);
+	clk_disable_unprepare(xspi->axi4_clk);
+	clk_disable_unprepare(xspi->spi_clk);
+
 	spi_unregister_master(master);
 
 	return 0;
@@ -635,6 +871,7 @@ static struct platform_driver xilinx_spi_driver = {
 	.driver = {
 		.name = XILINX_SPI_NAME,
 		.of_match_table = xilinx_spi_of_match,
+		.pm = &xilinx_spi_dev_pm_ops,
 	},
 };
 module_platform_driver(xilinx_spi_driver);
