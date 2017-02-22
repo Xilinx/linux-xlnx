@@ -20,6 +20,7 @@
  */
 
 #include <linux/compiler.h>
+#include <linux/arm-smccc.h>
 #include <linux/of.h>
 #include <linux/init.h>
 #include <linux/module.h>
@@ -173,30 +174,19 @@ static int (*do_fw_call)(u64, u64, u64, u32 *ret_payload) = do_fw_call_fail;
 static noinline int do_fw_call_smc(u64 arg0, u64 arg1, u64 arg2,
 						u32 *ret_payload)
 {
-	/*
-	 * This firmware calling code may be moved to an assembly file
-	 * so as to compile it successfully with GCC 5, as per the
-	 * reference git commit f5e0a12ca2d939e47995f73428d9bf1ad372b289
-	 */
-	asm volatile(
-		__asmeq("%0", "x0")
-		__asmeq("%1", "x1")
-		__asmeq("%2", "x2")
-		"smc	#0\n"
-		: "+r" (arg0), "+r" (arg1), "+r" (arg2)
-		: /* no input only */
-		: "x3", "x4", "x5", "x6", "x7", "x8", "x9", "x10", "x11", "x12",
-		  "x13", "x14", "x15", "x16", "x17"
-		);
+	struct arm_smccc_res res;
+
+	arm_smccc_smc(arg0, arg1, arg2, 0, 0, 0, 0, 0, &res);
 
 	if (ret_payload != NULL) {
-		ret_payload[0] = (u32)arg0;
-		ret_payload[1] = (u32)(arg0 >> 32);
-		ret_payload[2] = (u32)arg1;
-		ret_payload[3] = (u32)(arg1 >> 32);
-		ret_payload[4] = (u32)arg2;
+		ret_payload[0] = (u32)res.a0;
+		ret_payload[1] = (u32)(res.a0 >> 32);
+		ret_payload[2] = (u32)res.a1;
+		ret_payload[3] = (u32)(res.a1 >> 32);
+		ret_payload[4] = (u32)res.a2;
 	}
-	return zynqmp_pm_ret_code((enum pm_ret_status)arg0);
+
+	return zynqmp_pm_ret_code((enum pm_ret_status)res.a0);
 }
 
 /**
@@ -215,31 +205,19 @@ static noinline int do_fw_call_smc(u64 arg0, u64 arg1, u64 arg2,
 static noinline int do_fw_call_hvc(u64 arg0, u64 arg1, u64 arg2,
 						u32 *ret_payload)
 {
-	/*
-	 * This firmware calling code may be moved to an assembly file
-	 * so as to compile it successfully with GCC 5, as per the
-	 * reference git commit f5e0a12ca2d939e47995f73428d9bf1ad372b289
-	 */
-	asm volatile(
-		__asmeq("%0", "x0")
-		__asmeq("%1", "x1")
-		__asmeq("%2", "x2")
-		"hvc	#0\n"
-		: "+r" (arg0), "+r" (arg1), "+r" (arg2)
-		: /* no input only */
-		: "x3", "x4", "x5", "x6", "x7", "x8", "x9", "x10", "x11", "x12",
-		  "x13", "x14", "x15", "x16", "x17"
-		);
+	struct arm_smccc_res res;
+
+	arm_smccc_hvc(arg0, arg1, arg2, 0, 0, 0, 0, 0, &res);
 
 	if (ret_payload != NULL) {
-		ret_payload[0] = (u32)arg0;
-		ret_payload[1] = (u32)(arg0 >> 32);
-		ret_payload[2] = (u32)arg1;
-		ret_payload[3] = (u32)(arg1 >> 32);
-		ret_payload[4] = (u32)arg2;
+		ret_payload[0] = (u32)res.a0;
+		ret_payload[1] = (u32)(res.a0 >> 32);
+		ret_payload[2] = (u32)res.a1;
+		ret_payload[3] = (u32)(res.a1 >> 32);
+		ret_payload[4] = (u32)res.a2;
 	}
 
-	return zynqmp_pm_ret_code((enum pm_ret_status)arg0);
+	return zynqmp_pm_ret_code((enum pm_ret_status)res.a0);
 }
 
 /**
