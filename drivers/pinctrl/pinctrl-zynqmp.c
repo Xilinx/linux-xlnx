@@ -36,6 +36,8 @@
 #define ZYNQMP_PINMUX_MUX_SHIFT    1
 #define ZYNQMP_PINMUX_MUX_MASK     0x7f
 
+#define ZYNQMP_IOSTD_BIT_MASK     0x01
+
 /**
  * struct zynqmp_pinctrl - driver data
  * @pctrl:              Pinctrl device
@@ -1833,7 +1835,7 @@ static int zynqmp_pinconf_cfg_get(struct pinctrl_dev *pctldev,
 			return -EIO;
 		}
 
-		arg = reg & (1 << ZYNQMP_PIN_OFFSET(pin));
+		arg = reg & ZYNQMP_IOSTD_BIT_MASK;
 		break;
 	case PIN_CONFIG_SCHMITTCMOS:
 		addr_offset = ZYNQMP_ADDR_OFFSET(pctrl->iouaddr,
@@ -1951,6 +1953,27 @@ static int zynqmp_pinconf_cfg_set(struct pinctrl_dev *pctldev,
 			}
 			break;
 		case PIN_CONFIG_IOSTANDARD:
+			/* This parameter is read only, so the requested IO
+			 * Standard is validated against the pre configured IO
+			 * Standard and warned if mismatched
+			 */
+			addr_offset = ZYNQMP_ADDR_OFFSET(pctrl->iouaddr,
+						ZYNQMP_IOSTAT_REG_OFF, pin);
+
+			ret = zynqmp_pctrl_readreg(&reg, addr_offset);
+			if (ret) {
+				dev_err(pctldev->dev, "read failed at 0x%x\n",
+								addr_offset);
+				break;
+			}
+
+			reg &= ZYNQMP_IOSTD_BIT_MASK;
+
+			if (arg != reg)
+				dev_warn(pctldev->dev,
+					 "Invalid IO Standard requested for pin %d\n",
+					 pin);
+			break;
 		case PIN_CONFIG_BIAS_HIGH_IMPEDANCE:
 		case PIN_CONFIG_LOW_POWER_MODE:
 			/*
