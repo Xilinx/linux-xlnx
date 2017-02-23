@@ -705,8 +705,18 @@ static const unsigned int usb0_0_pins[] = {52, 53, 54, 55, 56, 57, 58, 59, 60,
 static const unsigned int usb1_0_pins[] = {64, 65, 66, 67, 68, 69, 70, 71, 72,
 						73, 74, 75};
 
-static const unsigned int pmu0_0_pins[] = {26, 27, 28, 29, 30, 31, 32, 33, 34,
-						35, 36, 37};
+static const unsigned int pmu0_0_pins[] = {26};
+static const unsigned int pmu0_1_pins[] = {27};
+static const unsigned int pmu0_2_pins[] = {28};
+static const unsigned int pmu0_3_pins[] = {29};
+static const unsigned int pmu0_4_pins[] = {30};
+static const unsigned int pmu0_5_pins[] = {31};
+static const unsigned int pmu0_6_pins[] = {32};
+static const unsigned int pmu0_7_pins[] = {33};
+static const unsigned int pmu0_8_pins[] = {34};
+static const unsigned int pmu0_9_pins[] = {35};
+static const unsigned int pmu0_10_pins[] = {36};
+static const unsigned int pmu0_11_pins[] = {37};
 
 static const unsigned int pcie0_0_pins[] = {29};
 static const unsigned int pcie0_1_pins[] = {30};
@@ -1220,6 +1230,17 @@ static const struct zynqmp_pctrl_group zynqmp_pctrl_groups[] = {
 	DEFINE_ZYNQMP_PINCTRL_GRP(usb0_0),
 	DEFINE_ZYNQMP_PINCTRL_GRP(usb1_0),
 	DEFINE_ZYNQMP_PINCTRL_GRP(pmu0_0),
+	DEFINE_ZYNQMP_PINCTRL_GRP(pmu0_1),
+	DEFINE_ZYNQMP_PINCTRL_GRP(pmu0_2),
+	DEFINE_ZYNQMP_PINCTRL_GRP(pmu0_3),
+	DEFINE_ZYNQMP_PINCTRL_GRP(pmu0_4),
+	DEFINE_ZYNQMP_PINCTRL_GRP(pmu0_5),
+	DEFINE_ZYNQMP_PINCTRL_GRP(pmu0_6),
+	DEFINE_ZYNQMP_PINCTRL_GRP(pmu0_7),
+	DEFINE_ZYNQMP_PINCTRL_GRP(pmu0_8),
+	DEFINE_ZYNQMP_PINCTRL_GRP(pmu0_9),
+	DEFINE_ZYNQMP_PINCTRL_GRP(pmu0_10),
+	DEFINE_ZYNQMP_PINCTRL_GRP(pmu0_11),
 	DEFINE_ZYNQMP_PINCTRL_GRP(pcie0_0),
 	DEFINE_ZYNQMP_PINCTRL_GRP(pcie0_1),
 	DEFINE_ZYNQMP_PINCTRL_GRP(pcie0_2),
@@ -1477,7 +1498,12 @@ static const char * const gpio0_groups[] = {"gpio0_0_grp",
 		"gpio0_69_grp", "gpio0_71_grp", "gpio0_73_grp",
 		"gpio0_75_grp", "gpio0_77_grp"};
 
-static const char * const pmu0_groups[] = {"pmu0_0_grp"};
+static const char * const pmu0_groups[] = {"pmu0_0_grp", "pmu0_1_grp",
+						"pmu0_2_grp", "pmu0_3_grp",
+						"pmu0_4_grp", "pmu0_5_grp",
+						"pmu0_6_grp", "pmu0_7_grp",
+						"pmu0_8_grp", "pmu0_9_grp",
+						"pmu0_10_grp", "pmu0_11_grp"};
 
 static const char * const pcie0_groups[] = {"pcie0_0_grp", "pcie0_1_grp",
 						"pcie0_2_grp", "pcie0_3_grp",
