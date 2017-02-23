@@ -1879,8 +1879,12 @@ static int zynqmp_pinconf_cfg_set(struct pinctrl_dev *pctldev,
 			addr_offset = ZYNQMP_ADDR_OFFSET(pctrl->iouaddr,
 						ZYNQMP_SLEWCTRL_REG_OFF, pin);
 
-			if (arg != SLEW_RATE_SLOW && arg != SLEW_RATE_FAST)
-				return -EINVAL;
+			if (arg != SLEW_RATE_SLOW && arg != SLEW_RATE_FAST) {
+				dev_warn(pctldev->dev,
+				"Invalid Slew rate requested for pin %d\n",
+				 pin);
+				break;
+			}
 
 			if (arg == SLEW_RATE_SLOW)
 				reg = ENABLE_CONFIG_VAL(pin);
@@ -1891,7 +1895,6 @@ static int zynqmp_pinconf_cfg_set(struct pinctrl_dev *pctldev,
 			if (ret) {
 				dev_err(pctldev->dev, "write failed at 0x%x\n",
 								addr_offset);
-				return -EIO;
 			}
 			break;
 		case PIN_CONFIG_BIAS_PULL_UP:
@@ -1904,7 +1907,7 @@ static int zynqmp_pinconf_cfg_set(struct pinctrl_dev *pctldev,
 			if (ret) {
 				dev_err(pctldev->dev, "write failed at 0x%x\n",
 								addr_offset);
-				return -EIO;
+				break;
 			}
 
 			addr_offset = ZYNQMP_ADDR_OFFSET(pctrl->iouaddr,
@@ -1914,11 +1917,9 @@ static int zynqmp_pinconf_cfg_set(struct pinctrl_dev *pctldev,
 				reg = DISABLE_CONFIG_VAL(pin);
 
 			ret = zynqmp_pctrl_writereg(reg, addr_offset, mask);
-			if (ret) {
+			if (ret)
 				dev_err(pctldev->dev, "write failed at 0x%x\n",
 								addr_offset);
-				return -EIO;
-			}
 			break;
 		case PIN_CONFIG_BIAS_DISABLE:
 			addr_offset = ZYNQMP_ADDR_OFFSET(pctrl->iouaddr,
@@ -1926,19 +1927,21 @@ static int zynqmp_pinconf_cfg_set(struct pinctrl_dev *pctldev,
 
 			reg = DISABLE_CONFIG_VAL(pin);
 			ret = zynqmp_pctrl_writereg(reg, addr_offset, mask);
-			if (ret) {
+			if (ret)
 				dev_err(pctldev->dev, "write failed at 0x%x\n",
 								addr_offset);
-				return -EIO;
-			}
 			break;
 		case PIN_CONFIG_SCHMITTCMOS:
 			addr_offset = ZYNQMP_ADDR_OFFSET(pctrl->iouaddr,
 						ZYNQMP_SCHCMOS_REG_OFF, pin);
 
 			if (arg != PIN_INPUT_TYPE_CMOS &&
-					arg != PIN_INPUT_TYPE_SCHMITT)
-				return -EINVAL;
+					arg != PIN_INPUT_TYPE_SCHMITT) {
+				dev_warn(pctldev->dev,
+				"Invalid input type requested for pin %d\n",
+				pin);
+				break;
+			}
 
 			if (arg == PIN_INPUT_TYPE_SCHMITT)
 				reg = ENABLE_CONFIG_VAL(pin);
@@ -1946,11 +1949,9 @@ static int zynqmp_pinconf_cfg_set(struct pinctrl_dev *pctldev,
 				reg = DISABLE_CONFIG_VAL(pin);
 
 			ret = zynqmp_pctrl_writereg(reg, addr_offset, mask);
-			if (ret) {
+			if (ret)
 				dev_err(pctldev->dev, "write failed at 0x%x\n",
 								addr_offset);
-				return -EIO;
-			}
 			break;
 		case PIN_CONFIG_IOSTANDARD:
 			/* This parameter is read only, so the requested IO
@@ -1971,8 +1972,8 @@ static int zynqmp_pinconf_cfg_set(struct pinctrl_dev *pctldev,
 
 			if (arg != reg)
 				dev_warn(pctldev->dev,
-					 "Invalid IO Standard requested for pin %d\n",
-					 pin);
+				 "Invalid IO Standard requested for pin %d\n",
+				 pin);
 			break;
 		case PIN_CONFIG_BIAS_HIGH_IMPEDANCE:
 		case PIN_CONFIG_LOW_POWER_MODE:
@@ -1986,7 +1987,7 @@ static int zynqmp_pinconf_cfg_set(struct pinctrl_dev *pctldev,
 			dev_warn(pctldev->dev,
 				 "unsupported configuration parameter '%u'\n",
 				 param);
-			continue;
+			break;
 		}
 	}
 
