@@ -1710,6 +1710,8 @@ static const struct pinmux_ops zynqmp_pinmux_ops = {
 };
 
 /* pinconfig */
+#define ZYNQMP_DRVSTRN0_REG_OFF    0
+#define ZYNQMP_DRVSTRN1_REG_OFF    4
 #define ZYNQMP_SCHCMOS_REG_OFF     8
 #define ZYNQMP_PULLCTRL_REG_OFF    12
 #define ZYNQMP_PULLSTAT_REG_OFF    16
@@ -1757,7 +1759,7 @@ static int zynqmp_pinconf_cfg_get(struct pinctrl_dev *pctldev,
 					unsigned pin, unsigned long *config)
 {
 	int ret;
-	u32 reg, addr_offset;
+	u32 reg, bit0, bit1, addr_offset;
 	unsigned int arg = 0, param = pinconf_to_config_param(*config);
 	struct zynqmp_pinctrl *pctrl = pinctrl_dev_get_drvdata(pctldev);
 
@@ -1850,6 +1852,36 @@ static int zynqmp_pinconf_cfg_get(struct pinctrl_dev *pctldev,
 
 		arg = reg & (1 << ZYNQMP_PIN_OFFSET(pin));
 		break;
+	case PIN_CONFIG_DRIVE_STRENGTH:
+		/* Drive strength configurations are distributed in 2 registers
+		 * and requires to be merged
+		 */
+		addr_offset = ZYNQMP_ADDR_OFFSET(pctrl->iouaddr,
+						ZYNQMP_DRVSTRN0_REG_OFF, pin);
+		ret = zynqmp_pctrl_readreg(&reg, addr_offset);
+		if (ret) {
+			dev_err(pctldev->dev, "read failed at 0x%x\n",
+								addr_offset);
+			return -EIO;
+		}
+
+		bit1 = (reg & (1 << ZYNQMP_PIN_OFFSET(pin))) >>
+							ZYNQMP_PIN_OFFSET(pin);
+
+		addr_offset = ZYNQMP_ADDR_OFFSET(pctrl->iouaddr,
+						ZYNQMP_DRVSTRN1_REG_OFF, pin);
+		ret = zynqmp_pctrl_readreg(&reg, addr_offset);
+		if (ret) {
+			dev_err(pctldev->dev, "read failed at 0x%x\n",
+								addr_offset);
+			return -EIO;
+		}
+
+		bit0 = (reg & (1 << ZYNQMP_PIN_OFFSET(pin))) >>
+							ZYNQMP_PIN_OFFSET(pin);
+
+		arg = (bit1 << 1) | bit0;
+		break;
 	default:
 		return -ENOTSUPP;
 	}
@@ -1862,7 +1894,7 @@ static int zynqmp_pinconf_cfg_set(struct pinctrl_dev *pctldev,
 		unsigned pin, unsigned long *configs, unsigned num_configs)
 {
 	int i, ret;
-	u32 reg, addr_offset, mask;
+	u32 reg, reg2, addr_offset, mask;
 	struct zynqmp_pinctrl *pctrl = pinctrl_dev_get_drvdata(pctldev);
 
 	if (pin >= ZYNQMP_NUM_MIOS)
@@ -1952,6 +1984,49 @@ static int zynqmp_pinconf_cfg_set(struct pinctrl_dev *pctldev,
 			if (ret)
 				dev_err(pctldev->dev, "write failed at 0x%x\n",
 								addr_offset);
+			break;
+		case PIN_CONFIG_DRIVE_STRENGTH:
+			switch (arg) {
+			case DRIVE_STRENGTH_2MA:
+				reg = DISABLE_CONFIG_VAL(pin);
+				reg2 = DISABLE_CONFIG_VAL(pin);
+				break;
+			case DRIVE_STRENGTH_4MA:
+				reg = DISABLE_CONFIG_VAL(pin);
+				reg2 = ENABLE_CONFIG_VAL(pin);
+				break;
+			case DRIVE_STRENGTH_8MA:
+				reg = ENABLE_CONFIG_VAL(pin);
+				reg2 = DISABLE_CONFIG_VAL(pin);
+				break;
+			case  DRIVE_STRENGTH_12MA:
+				reg = ENABLE_CONFIG_VAL(pin);
+				reg2 = ENABLE_CONFIG_VAL(pin);
+				break;
+			default:
+				/* Invalid drive strength */
+				dev_warn(pctldev->dev,
+					 "Invalid drive strength for pin %d\n",
+					 pin);
+				return -EINVAL;
+			}
+
+			addr_offset = ZYNQMP_ADDR_OFFSET(pctrl->iouaddr,
+						ZYNQMP_DRVSTRN0_REG_OFF, pin);
+			ret = zynqmp_pctrl_writereg(reg, addr_offset, mask);
+			if (ret) {
+				dev_err(pctldev->dev, "write failed at 0x%x\n",
+								addr_offset);
+				break;
+			}
+
+			addr_offset = ZYNQMP_ADDR_OFFSET(pctrl->iouaddr,
+						ZYNQMP_DRVSTRN1_REG_OFF, pin);
+			ret = zynqmp_pctrl_writereg(reg2, addr_offset, mask);
+			if (ret) {
+				dev_err(pctldev->dev, "write failed at 0x%x\n",
+								addr_offset);
+			}
 			break;
 		case PIN_CONFIG_IOSTANDARD:
 			/* This parameter is read only, so the requested IO
