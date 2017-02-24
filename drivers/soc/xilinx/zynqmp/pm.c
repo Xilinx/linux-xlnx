@@ -27,6 +27,7 @@
 #include <linux/slab.h>
 #include <linux/interrupt.h>
 #include <linux/uaccess.h>
+#include <linux/pinctrl/consumer.h>
 #include <linux/platform_device.h>
 #include <linux/debugfs.h>
 #include <linux/suspend.h>
@@ -1225,6 +1226,8 @@ static int zynqmp_pm_sysfs_init(struct device *dev)
 static int zynqmp_pm_probe(struct platform_device *pdev)
 {
 	int ret, irq;
+	struct pinctrl *pinctrl;
+	struct pinctrl_state *pins_default;
 
 	/* Check PM API version number */
 	if (pm_api_version != ZYNQMP_PM_VERSION)
@@ -1262,6 +1265,18 @@ static int zynqmp_pm_probe(struct platform_device *pdev)
 		ZYNQMP_PM_VERSION_MAJOR, ZYNQMP_PM_VERSION_MINOR);
 
 	zynqmp_pm_api_debugfs_init(&pdev->dev);
+
+	pinctrl = devm_pinctrl_get(&pdev->dev);
+	if (!IS_ERR(pinctrl)) {
+		pins_default = pinctrl_lookup_state(pinctrl,
+						    PINCTRL_STATE_DEFAULT);
+		if (IS_ERR(pins_default)) {
+			dev_err(&pdev->dev, "Missing default pinctrl config\n");
+			return IS_ERR(pins_default);
+		}
+
+		pinctrl_select_state(pinctrl, pins_default);
+	}
 
 	return 0;
 
