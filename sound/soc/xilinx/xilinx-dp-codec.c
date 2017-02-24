@@ -30,6 +30,11 @@ struct xilinx_dp_codec {
 	struct clk *aud_clk;
 };
 
+struct xilinx_dp_codec_fmt {
+	unsigned long rate;
+	unsigned int snd_rate;
+};
+
 static struct snd_soc_dai_driver xilinx_dp_codec_dai = {
 	.name		= "xilinx-dp-snd-codec-dai",
 	.playback	= {
@@ -40,13 +45,26 @@ static struct snd_soc_dai_driver xilinx_dp_codec_dai = {
 	},
 };
 
+static const struct xilinx_dp_codec_fmt rates[] = {
+	{
+		.rate	= 48000 * 512,
+		.snd_rate = SNDRV_PCM_RATE_48000
+	},
+	{
+		.rate	= 44100 * 512,
+		.snd_rate = SNDRV_PCM_RATE_44100
+	}
+};
+
 static const struct snd_soc_codec_driver xilinx_dp_codec_codec_driver = {
 };
 
 static int xilinx_dp_codec_probe(struct platform_device *pdev)
 {
 	struct xilinx_dp_codec *codec;
-	int rate, ret;
+	unsigned int i;
+	unsigned long rate;
+	int ret;
 
 	codec = devm_kzalloc(&pdev->dev, sizeof(*codec), GFP_KERNEL);
 	if (!codec)
@@ -62,15 +80,24 @@ static int xilinx_dp_codec_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	rate = clk_get_rate(codec->aud_clk) / 512;
-	/* Ignore some offset */
-	rate = ALIGN(rate, 100);
-	if (rate == 44100) {
-		xilinx_dp_codec_dai.playback.rates = SNDRV_PCM_RATE_44100;
-	} else if (rate == 48000) {
-		xilinx_dp_codec_dai.playback.rates = SNDRV_PCM_RATE_48000;
-	} else {
+	for (i = 0; i < ARRAY_SIZE(rates); i++) {
+		clk_disable_unprepare(codec->aud_clk);
+		ret = clk_set_rate(codec->aud_clk, rates[i].rate);
+		clk_prepare_enable(codec->aud_clk);
+		if (ret)
+			continue;
+
+		rate = clk_get_rate(codec->aud_clk);
+		/* Ignore some offset +- 10 */
+		if (abs(rates[i].rate - rate) < 10) {
+			xilinx_dp_codec_dai.playback.rates = rates[i].snd_rate;
+			break;
+		}
 		ret = -EINVAL;
+	}
+
+	if (ret) {
+		dev_err(&pdev->dev, "Failed to get required clock freq\n");
 		goto error_clk;
 	}
 
