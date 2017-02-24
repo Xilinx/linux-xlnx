@@ -82,18 +82,16 @@ static int pr_decoupler_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	platform_set_drvdata(pdev, priv);
-
 	return fpga_bridge_register(dev, "pr_decoupler",
 				    &pr_decoupler_ops, priv);
 }
 
 static int pr_decoupler_remove(struct platform_device *pdev)
 {
-	struct pr_decoupler_priv *priv;
+	struct fpga_bridge *bridge = platform_get_drvdata(pdev);
+	struct pr_decoupler_priv *priv = bridge->priv;
 
-	priv = platform_get_drvdata(pdev);
-	fpga_bridge_unregister(priv->dev);
+	fpga_bridge_unregister(&pdev->dev);
 
 	clk_disable_unprepare(priv->clk);
 
