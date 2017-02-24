@@ -571,8 +571,6 @@ static void cdns_i2c_master_reset(struct i2c_adapter *adap)
 	/* Clear the status register */
 	regval = cdns_i2c_readreg(CDNS_I2C_SR_OFFSET);
 	cdns_i2c_writereg(regval, CDNS_I2C_SR_OFFSET);
-
-	i2c_recover_bus(adap);
 }
 
 static int cdns_i2c_process_msg(struct cdns_i2c *id, struct i2c_msg *msg,
@@ -608,6 +606,7 @@ static int cdns_i2c_process_msg(struct cdns_i2c *id, struct i2c_msg *msg,
 	/* Wait for the signal of completion */
 	time_left = wait_for_completion_timeout(&id->xfer_done, adap->timeout);
 	if (time_left == 0) {
+		i2c_recover_bus(adap);
 		cdns_i2c_master_reset(adap);
 		dev_err(id->adap.dev.parent,
 				"timeout waiting on completion\n");
