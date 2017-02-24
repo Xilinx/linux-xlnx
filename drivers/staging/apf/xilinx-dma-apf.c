@@ -24,7 +24,6 @@
 #include <linux/dmapool.h>
 #include <linux/slab.h>
 #include <linux/dma-mapping.h>
-#include <linux/dma-attrs.h>
 #include <linux/pagemap.h>
 #include <linux/device.h>
 #include <linux/types.h>
@@ -658,7 +657,8 @@ static int pin_user_pages(xlnk_intptr_type uaddr,
 		return -ENOMEM;
 
 	down_read(&mm->mmap_sem);
-	status = get_user_pages(uaddr, num_pages, write, 1,
+	status = get_user_pages(uaddr, num_pages,
+				(write ? FOLL_WRITE : 0) | FOLL_FORCE,
 				mapped_pages, NULL);
 	up_read(&mm->mmap_sem);
 
@@ -790,7 +790,7 @@ int xdma_submit(struct xdma_chan *chan,
 	unsigned int sgcnt, sgcnt_dma;
 	enum dma_data_direction dmadir;
 	int status;
-	DEFINE_DMA_ATTRS(attrs);
+	unsigned long attrs = 0;
 
 	dmahead = kzalloc(sizeof(struct xdma_head), GFP_KERNEL);
 	if (!dmahead)
@@ -805,7 +805,7 @@ int xdma_submit(struct xdma_chan *chan,
 	dmadir = chan->direction;
 
 	if (!(user_flags & CF_FLAG_CACHE_FLUSH_INVALIDATE))
-		dma_set_attr(DMA_ATTR_SKIP_CPU_SYNC, &attrs);
+		attrs |= DMA_ATTR_SKIP_CPU_SYNC;
 
 	if (dp) {
 		int i;
@@ -863,7 +863,7 @@ int xdma_submit(struct xdma_chan *chan,
 							sglist,
 							sgcnt,
 							dmadir,
-							&attrs);
+							attrs);
 
 		if (!status) {
 			pr_err("sg contiguous mapping failed\n");
@@ -879,7 +879,7 @@ int xdma_submit(struct xdma_chan *chan,
 		}
 
 		status = get_dma_ops(chan->dev)->map_sg(chan->dev, sglist,
-							sgcnt, dmadir, &attrs);
+							sgcnt, dmadir, attrs);
 		if (!status) {
 			pr_err("dma_map_sg failed\n");
 			unpin_user_pages(sglist, sgcnt);
@@ -891,7 +891,7 @@ int xdma_submit(struct xdma_chan *chan,
 		sgcnt_dma = sgl_merge(sglist, sgcnt, sglist_dma);
 		if (!sgcnt_dma) {
 			get_dma_ops(chan->dev)->unmap_sg(chan->dev, sglist,
-							 sgcnt, dmadir, &attrs);
+							 sgcnt, dmadir, attrs);
 			unpin_user_pages(sglist, sgcnt);
 			return -ENOMEM;
 		}
@@ -916,7 +916,7 @@ int xdma_submit(struct xdma_chan *chan,
 		pr_err("setup hw desc failed\n");
 		if (!(user_flags & CF_FLAG_PHYSICALLY_CONTIGUOUS)) {
 			get_dma_ops(chan->dev)->unmap_sg(chan->dev, sglist,
-							 sgcnt, dmadir, &attrs);
+							 sgcnt, dmadir, attrs);
 			unpin_user_pages(sglist, sgcnt);
 		}
 		return -ENOMEM;
@@ -932,7 +932,7 @@ int xdma_wait(struct xdma_head *dmahead,
 	      unsigned int *operating_flags)
 {
 	struct xdma_chan *chan = dmahead->chan;
-	DEFINE_DMA_ATTRS(attrs);
+	unsigned long attrs;
 
 	if (chan->poll_mode) {
 		xilinx_chan_desc_cleanup(chan);
@@ -957,13 +957,13 @@ int xdma_wait(struct xdma_head *dmahead,
 			       dmahead->dmabuf->dbuf_attach);
 	} else {
 		if (!(user_flags & CF_FLAG_CACHE_FLUSH_INVALIDATE))
-			dma_set_attr(DMA_ATTR_SKIP_CPU_SYNC, &attrs);
+			attrs |= DMA_ATTR_SKIP_CPU_SYNC;
 
 		get_dma_ops(chan->dev)->unmap_sg(chan->dev,
 						 dmahead->sglist,
 						 dmahead->sgcnt,
 						 dmahead->dmadir,
-						 &attrs);
+						 attrs);
 		if (!(user_flags & CF_FLAG_PHYSICALLY_CONTIGUOUS))
 			unpin_user_pages(dmahead->sglist, dmahead->sgcnt);
 	}

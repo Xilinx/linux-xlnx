@@ -1135,7 +1135,8 @@ static int xlnk_dmasubmit_ioctl(struct file *filp, unsigned int code,
 			down_read(&current->mm->mmap_sem);
 			locked_page_count =
 				get_user_pages(first_page * PAGE_SIZE,
-					       t->sg_list_size, 1, 1,
+					       t->sg_list_size,
+					       FOLL_FORCE | FOLL_WRITE,
 					       xlnk_page_store, NULL);
 			up_read(&current->mm->mmap_sem);
 			if (locked_page_count != t->sg_list_size) {
@@ -1540,7 +1541,7 @@ static int xlnk_memop_ioctl(struct file *filp, unsigned long arg_addr)
 	xlnk_intptr_type page_id;
 	unsigned int page_offset;
 	struct scatterlist sg;
-	DEFINE_DMA_ATTRS(attrs);
+	unsigned long attrs = 0;
 
 	status = copy_from_user(&args,
 				(void __user *)arg_addr,
@@ -1592,7 +1593,7 @@ static int xlnk_memop_ioctl(struct file *filp, unsigned long arg_addr)
 	dmadir = (enum dma_data_direction)args.memop.dir;
 
 	if (args.memop.flags & XLNK_FLAG_COHERENT || !cacheable) {
-		dma_set_attr(DMA_ATTR_SKIP_CPU_SYNC, &attrs);
+		attrs |= DMA_ATTR_SKIP_CPU_SYNC;
 	}
 
 	if (buf_id > 0) {
@@ -1612,7 +1613,7 @@ static int xlnk_memop_ioctl(struct file *filp, unsigned long arg_addr)
 							       &sg,
 							       1,
 							       dmadir,
-							       &attrs);
+							       attrs);
 			if (!status) {
 				pr_err("Failed to map address\n");
 				return -EINVAL;
@@ -1654,7 +1655,7 @@ static int xlnk_memop_ioctl(struct file *filp, unsigned long arg_addr)
 							&sg,
 							1,
 							dmadir,
-							&attrs);
+							attrs);
 		} else {
 			dma_buf_unmap_attachment(cp->dbuf_attach,
 						 cp->dbuf_sg_table,
