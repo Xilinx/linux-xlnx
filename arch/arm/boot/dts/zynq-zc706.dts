@@ -315,6 +315,7 @@
 };
 
 &qspi {
+	u-boot,dm-pre-reloc;
 	status = "okay";
 	is-dual = <1>;
 	num-cs = <1>;
@@ -350,12 +351,14 @@
 };
 
 &sdhci0 {
+	u-boot,dm-pre-reloc;
 	status = "okay";
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_sdhci0_default>;
 };
 
 &uart1 {
+	u-boot,dm-pre-reloc;
 	status = "okay";
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart1_default>;
