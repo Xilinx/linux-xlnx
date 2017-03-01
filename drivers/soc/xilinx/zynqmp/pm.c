@@ -1299,6 +1299,12 @@ static int __init zynqmp_plat_init(void)
 	struct device_node *np;
 	int ret = 0;
 
+	np = of_find_compatible_node(NULL, NULL, "xlnx,zynqmp");
+	if (!np)
+		return 0;
+	of_node_put(np);
+
+	/* We're running on a ZynqMP machine, the PM node is mandatory. */
 	np = of_find_compatible_node(NULL, NULL, "xlnx,zynqmp-pm");
 	if (!np)
 		panic("%s: pm node not found\n", __func__);
