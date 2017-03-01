@@ -1132,14 +1132,11 @@ static int __init warn_vpll_multiuser(void)
 	unsigned int children;
 
 	children = clk_get_children("vpll");
-/*
- * Account for vpll_to_lpd and dp_video_ref
- *
- */
-	if (children > 2) {
-		pr_err("Two devices are using vpll which is forbidden\n");
-		BUG();
-	}
+
+	/* Account for vpll_to_lpd and dp_video_ref */
+	if (children > 2)
+		WARN(1, "Two devices are using vpll which is forbidden\n");
+
 	return 0;
 }
 late_initcall_sync(warn_vpll_multiuser);
