@@ -562,8 +562,7 @@ static void axienet_device_reset(struct net_device *ndev)
 		lp->options &= (~XAE_OPTION_JUMBO);
 	}
 
-	if ((ndev->mtu > XAE_MTU) &&
-		(ndev->mtu <= XAE_JUMBO_MTU)) {
+	if ((ndev->mtu > XAE_MTU) && (ndev->mtu <= XAE_JUMBO_MTU)) {
 		lp->max_frm_size = ndev->mtu + VLAN_ETH_HLEN +
 					XAE_TRL_SIZE;
 		if (lp->max_frm_size <= lp->rxmem &&
@@ -720,7 +719,7 @@ static void axienet_tx_hwtstamp(struct axienet_local *lp,
 					len), 0, 1000000);
 	if (err)
 		netdev_err(lp->ndev, "%s: Didn't get the full timestamp packet",
-			    __func__);
+			   __func__);
 
 	nsec = axienet_txts_ior(lp, XAXIFIFO_TXTS_RXFD);
 	sec  = axienet_txts_ior(lp, XAXIFIFO_TXTS_RXFD);
@@ -1209,7 +1208,7 @@ static int axienet_recv(struct net_device *ndev, int budget)
 		packets++;
 
 		new_skb = netdev_alloc_skb(ndev, lp->max_frm_size);
-		if (new_skb == NULL) {
+		if (!new_skb) {
 			dev_err(lp->dev, "No memory for new_skb\n\r");
 			break;
 		}
@@ -1815,7 +1814,7 @@ static int axienet_ethtools_get_regs_len(struct net_device *ndev)
 static void axienet_ethtools_get_regs(struct net_device *ndev,
 				      struct ethtool_regs *regs, void *ret)
 {
-	u32 *data = (u32 *) ret;
+	u32 *data = (u32 *)ret;
 	size_t len = sizeof(u32) * AXIENET_REGS_N;
 	struct axienet_local *lp = netdev_priv(ndev);
 
@@ -2229,7 +2228,7 @@ MODULE_DEVICE_TABLE(of, axienet_of_match);
  */
 static int axienet_probe(struct platform_device *pdev)
 {
-	int ret;
+	int ret = 0;
 	struct device_node *np;
 	struct axienet_local *lp;
 	struct net_device *ndev;
