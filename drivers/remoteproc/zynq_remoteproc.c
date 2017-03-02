@@ -252,7 +252,6 @@ static int zynq_rproc_add_mems(struct zynq_rproc_pdata *pdata)
 
 static int zynq_remoteproc_probe(struct platform_device *pdev)
 {
-	const unsigned char *prop;
 	int ret = 0;
 	struct irq_list *tmp;
 	int count = 0;
@@ -354,14 +353,6 @@ static int zynq_remoteproc_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "unable to read property");
 		goto ipi_fault;
 	}
-
-	if (!prop) {
-		ret = -ENODEV;
-		dev_err(&pdev->dev, "No firmware\n");
-		goto ipi_fault;
-	}
-
-	dev_dbg(&pdev->dev, "Using firmware: %s\n", prop);
 
 	/* Find on-chip memory */
 	INIT_LIST_HEAD(&local->mem_pools);
