@@ -20,6 +20,7 @@
 #include <linux/of_irq.h>
 #include <linux/of_address.h>
 #include <linux/platform_device.h>
+#include <linux/pm_runtime.h>
 #include <linux/spi/spi.h>
 #include <linux/spinlock.h>
 #include <linux/workqueue.h>
@@ -155,6 +156,7 @@
 #define GQSPI_FREQ_150MHZ	150000000
 #define IOU_TAPDLY_BYPASS_MASK	0x7
 
+#define SPI_AUTOSUSPEND_TIMEOUT		3000
 enum mode_type {GQSPI_MODE_IO, GQSPI_MODE_DMA};
 
 /**
@@ -425,21 +427,9 @@ static void zynqmp_qspi_copy_read_data(struct zynqmp_qspi *xqspi,
 static int zynqmp_prepare_transfer_hardware(struct spi_master *master)
 {
 	struct zynqmp_qspi *xqspi = spi_master_get_devdata(master);
-	int ret;
-
-	ret = clk_enable(xqspi->refclk);
-	if (ret)
-		return ret;
-
-	ret = clk_enable(xqspi->pclk);
-	if (ret)
-		goto clk_err;
 
 	zynqmp_gqspi_write(xqspi, GQSPI_EN_OFST, GQSPI_EN_MASK);
 	return 0;
-clk_err:
-	clk_disable(xqspi->refclk);
-	return ret;
 }
 
 /**
@@ -456,8 +446,6 @@ static int zynqmp_unprepare_transfer_hardware(struct spi_master *master)
 	struct zynqmp_qspi *xqspi = spi_master_get_devdata(master);
 
 	zynqmp_gqspi_write(xqspi, GQSPI_EN_OFST, 0x0);
-	clk_disable(xqspi->refclk);
-	clk_disable(xqspi->pclk);
 	return 0;
 }
 
@@ -1098,8 +1086,62 @@ static int __maybe_unused zynqmp_qspi_resume(struct device *dev)
 	return 0;
 }
 
-static SIMPLE_DEV_PM_OPS(zynqmp_qspi_dev_pm_ops, zynqmp_qspi_suspend,
-			 zynqmp_qspi_resume);
+/**
+ * zynqmp_runtime_suspend - Runtime suspend method for the SPI driver
+ * @dev:	Address of the platform_device structure
+ *
+ * This function disables the clocks
+ *
+ * Return:	Always 0
+ */
+static int __maybe_unused zynqmp_runtime_suspend(struct device *dev)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct spi_master *master = platform_get_drvdata(pdev);
+	struct zynqmp_qspi *xqspi = spi_master_get_devdata(master);
+
+	clk_disable(xqspi->refclk);
+	clk_disable(xqspi->pclk);
+
+	return 0;
+}
+
+/**
+ * zynqmp_runtime_resume - Runtime resume method for the SPI driver
+ * @dev:	Address of the platform_device structure
+ *
+ * This function enables the clocks
+ *
+ * Return:	0 on success and error value on error
+ */
+static int __maybe_unused zynqmp_runtime_resume(struct device *dev)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct spi_master *master = platform_get_drvdata(pdev);
+	struct zynqmp_qspi *xqspi = spi_master_get_devdata(master);
+	int ret;
+
+	ret = clk_enable(xqspi->pclk);
+	if (ret) {
+		dev_err(dev, "Cannot enable APB clock.\n");
+		return ret;
+	}
+
+	ret = clk_enable(xqspi->refclk);
+	if (ret) {
+		dev_err(dev, "Cannot enable device clock.\n");
+		clk_disable(xqspi->pclk);
+		return ret;
+	}
+
+	return 0;
+}
+
+static const struct dev_pm_ops zynqmp_qspi_dev_pm_ops = {
+	SET_RUNTIME_PM_OPS(zynqmp_runtime_suspend,
+			   zynqmp_runtime_resume, NULL)
+	SET_SYSTEM_SLEEP_PM_OPS(zynqmp_qspi_suspend, zynqmp_qspi_resume)
+};
 
 /**
  * zynqmp_qspi_probe:	Probe method for the QSPI driver
@@ -1162,11 +1204,19 @@ static int zynqmp_qspi_probe(struct platform_device *pdev)
 		goto clk_dis_pclk;
 	}
 
+	pm_runtime_use_autosuspend(&pdev->dev);
+	pm_runtime_set_autosuspend_delay(&pdev->dev, SPI_AUTOSUSPEND_TIMEOUT);
+	pm_runtime_set_active(&pdev->dev);
+	pm_runtime_enable(&pdev->dev);
+
 	if (of_property_read_bool(pdev->dev.of_node, "has-io-mode"))
 		xqspi->io_mode = true;
 
 	/* QSPI controller initializations */
 	zynqmp_qspi_init_hw(xqspi);
+
+	pm_runtime_mark_last_busy(&pdev->dev);
+	pm_runtime_put_autosuspend(&pdev->dev);
 
 	xqspi->irq = platform_get_irq(pdev, 0);
 	if (xqspi->irq <= 0) {
@@ -1211,6 +1261,7 @@ static int zynqmp_qspi_probe(struct platform_device *pdev)
 	master->mode_bits = SPI_CPOL | SPI_CPHA | SPI_RX_DUAL | SPI_RX_QUAD |
 			    SPI_TX_DUAL | SPI_TX_QUAD;
 	xqspi->speed_hz = master->max_speed_hz;
+	master->auto_runtime_pm = true;
 
 	if (master->dev.parent == NULL)
 		master->dev.parent = &master->dev;
@@ -1224,6 +1275,8 @@ static int zynqmp_qspi_probe(struct platform_device *pdev)
 	return 0;
 
 clk_dis_all:
+	pm_runtime_set_suspended(&pdev->dev);
+	pm_runtime_disable(&pdev->dev);
 	clk_disable_unprepare(xqspi->refclk);
 clk_dis_pclk:
 	clk_disable_unprepare(xqspi->pclk);
@@ -1251,6 +1304,8 @@ static int zynqmp_qspi_remove(struct platform_device *pdev)
 	zynqmp_gqspi_write(xqspi, GQSPI_EN_OFST, 0x0);
 	clk_disable_unprepare(xqspi->refclk);
 	clk_disable_unprepare(xqspi->pclk);
+	pm_runtime_set_suspended(&pdev->dev);
+	pm_runtime_disable(&pdev->dev);
 
 	spi_unregister_master(master);
 
