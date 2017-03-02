@@ -21,6 +21,8 @@
 #include <linux/of_platform.h>
 #include <linux/pm_runtime.h>
 #include <linux/reset.h>
+#include <linux/soc/xilinx/zynqmp/fw.h>
+#include <linux/slab.h>
 
 struct dwc3_of_simple {
 	struct device		*dev;
@@ -93,6 +95,46 @@ static int dwc3_of_simple_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, simple);
 	simple->dev = dev;
+
+	if (of_device_is_compatible(pdev->dev.of_node,
+				    "xlnx,zynqmp-dwc3")) {
+
+		struct device_node	*child;
+		char			*soc_rev;
+
+		/* read Silicon version using nvmem driver */
+		soc_rev = zynqmp_nvmem_get_silicon_version(&pdev->dev,
+						   "soc_revision");
+
+		if (PTR_ERR(soc_rev) == -EPROBE_DEFER) {
+			/* Do a deferred probe */
+			return -EPROBE_DEFER;
+
+		} else if (!IS_ERR(soc_rev) &&
+					(*soc_rev < ZYNQMP_SILICON_V4)) {
+
+			for_each_child_of_node(np, child) {
+				/* Add snps,dis_u3_susphy_quirk
+				 * for SOC revison less than v4
+				 */
+				struct property *new_prop;
+
+				new_prop = kzalloc(sizeof(*new_prop),
+								GFP_KERNEL);
+				new_prop->name =
+					kstrdup("snps,dis_u3_susphy_quirk",
+								GFP_KERNEL);
+				new_prop->length =
+					sizeof("snps,dis_u3_susphy_quirk");
+				new_prop->value =
+					kstrdup("snps,dis_u3_susphy_quirk",
+								GFP_KERNEL);
+				of_add_property(child, new_prop);
+			}
+		}
+
+		kfree(soc_rev);
+	}
 
 	/*
 	 * Some controllers need to toggle the usb3-otg reset before trying to

@@ -13,6 +13,10 @@ Required child node:
 A child node must exist to represent the core DWC3 IP block. The name of
 the node is not important. The content of the node is defined in dwc3.txt.
 
+Optional properties for xlnx,zynqmp-dwc3:
+- nvmem-cells:       list of phandle to the nvmem data cells.
+- nvmem-cell-names:  Names for the each nvmem-cells specified.
+
 Example device node:
 
 		usb@0 {
@@ -22,6 +26,8 @@ Example device node:
 			clock-names = "bus_clk" "ref_clk";
 			clocks = <&clk125>, <&clk125>;
 			ranges;
+			nvmem-cells = <&soc_revision>;
+			nvmem-cell-names = "soc_revision";
 
 			dwc3@fe200000 {
 				compatible = "snps,dwc3";
