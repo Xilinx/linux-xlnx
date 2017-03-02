@@ -1221,6 +1221,7 @@ static int zynqmp_qspi_probe(struct platform_device *pdev)
 
 	pm_runtime_mark_last_busy(&pdev->dev);
 	pm_runtime_put_autosuspend(&pdev->dev);
+
 	xqspi->irq = platform_get_irq(pdev, 0);
 	if (xqspi->irq <= 0) {
 		ret = -ENXIO;
@@ -1264,6 +1265,7 @@ static int zynqmp_qspi_probe(struct platform_device *pdev)
 	master->mode_bits = SPI_CPOL | SPI_CPHA | SPI_RX_DUAL | SPI_RX_QUAD |
 			    SPI_TX_DUAL | SPI_TX_QUAD;
 	xqspi->speed_hz = master->max_speed_hz;
+	master->auto_runtime_pm = true;
 
 	if (master->dev.parent == NULL)
 		master->dev.parent = &master->dev;
