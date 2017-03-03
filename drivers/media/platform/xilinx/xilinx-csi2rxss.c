@@ -1177,6 +1177,7 @@ static int xcsi2rxss_set_format(struct v4l2_subdev *sd,
 {
 	struct v4l2_mbus_framefmt *__format;
 	struct xcsi2rxss_state *xcsi2rxss = to_xcsi2rxssstate(sd);
+	struct xcsi2rxss_core *core = &xcsi2rxss->core;
 	u32 code;
 
 	mutex_lock(&xcsi2rxss->lock);
@@ -1192,12 +1193,37 @@ static int xcsi2rxss_set_format(struct v4l2_subdev *sd,
 	/* Save the pad format code */
 	code = __format->code;
 
-	/* Copy over the format to be set */
-	*__format = fmt->format;
+	/* If the bayer pattern to be set is SXXXX8 then only 1x8 type
+	 * is supported and core's data type doesn't matter.
+	 * In case the bayer pattern being set is SXXX10 then only
+	 * 1x10 type are supported and core should be configured for RAW10.
+	 * In case the bayer pattern being set is SXXX12 then only
+	 * 1x12 type are supported and core should be configured for RAW12.
+	 *
+	 * Otherwise don't allow change.
+	 */
+	if (((fmt->format.code == MEDIA_BUS_FMT_SBGGR8_1X8) ||
+		(fmt->format.code == MEDIA_BUS_FMT_SGBRG8_1X8) ||
+		(fmt->format.code == MEDIA_BUS_FMT_SGRBG8_1X8) ||
+		(fmt->format.code == MEDIA_BUS_FMT_SRGGB8_1X8))
+	|| ((core->datatype == MIPI_CSI_DT_RAW_10) &&
+		((fmt->format.code == MEDIA_BUS_FMT_SBGGR10_1X10) ||
+		 (fmt->format.code == MEDIA_BUS_FMT_SGBRG10_1X10) ||
+		 (fmt->format.code == MEDIA_BUS_FMT_SGRBG10_1X10) ||
+		 (fmt->format.code == MEDIA_BUS_FMT_SRGGB10_1X10)))
+	|| ((core->datatype == MIPI_CSI_DT_RAW_12) &&
+		((fmt->format.code == MEDIA_BUS_FMT_SBGGR12_1X12) ||
+		 (fmt->format.code == MEDIA_BUS_FMT_SGBRG12_1X12) ||
+		 (fmt->format.code == MEDIA_BUS_FMT_SGRBG12_1X12) ||
+		 (fmt->format.code == MEDIA_BUS_FMT_SRGGB12_1X12))))
 
-	/* Restore the original pad format code */
-	fmt->format.code = code;
-	__format->code = code;
+		/* Copy over the format to be set */
+		*__format = fmt->format;
+	else {
+		/* Restore the original pad format code */
+		fmt->format.code = code;
+		__format->code = code;
+	}
 
 	mutex_unlock(&xcsi2rxss->lock);
 
