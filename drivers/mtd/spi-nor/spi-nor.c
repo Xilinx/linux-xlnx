@@ -102,7 +102,7 @@ static int read_sr(struct spi_nor *nor)
 			pr_err("error %d reading SR\n", (int) ret);
 			return ret;
 		}
-		val[0] &= val[1];
+		val[0] |= val[1];
 	} else {
 		ret = nor->read_reg(nor, SPINOR_OP_RDSR, &val[0], 1);
 		if (ret < 0) {
