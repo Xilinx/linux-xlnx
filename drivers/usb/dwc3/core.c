@@ -430,7 +430,7 @@ static int dwc3_alloc_scratch_buffers(struct dwc3 *dwc)
 	if (!dwc->nr_scratch)
 		return 0;
 
-	dwc->scratchbuf = kmalloc_array(dwc->nr_scratch,
+	dwc->scratchbuf = kcalloc(dwc->nr_scratch,
 			DWC3_SCRATCHBUF_SIZE, GFP_KERNEL);
 	if (!dwc->scratchbuf)
 		return -ENOMEM;
