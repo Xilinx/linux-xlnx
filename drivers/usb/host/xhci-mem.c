@@ -1481,19 +1481,22 @@ int xhci_endpoint_init(struct xhci_hcd *xhci,
 		mult = 0;
 
 	/* Set up the endpoint ring */
-	virt_dev->eps[ep_index].new_ring =
-		xhci_ring_alloc(xhci, 2, 1, ring_type, max_packet, mem_flags);
-	if (!virt_dev->eps[ep_index].new_ring) {
+	if (virt_dev->num_rings_cached > 0) {
 		/* Attempt to use the ring cache */
-		if (virt_dev->num_rings_cached == 0)
-			return -ENOMEM;
 		virt_dev->num_rings_cached--;
 		virt_dev->eps[ep_index].new_ring =
 			virt_dev->ring_cache[virt_dev->num_rings_cached];
 		virt_dev->ring_cache[virt_dev->num_rings_cached] = NULL;
 		xhci_reinit_cached_ring(xhci, virt_dev->eps[ep_index].new_ring,
 					1, ring_type);
+	} else {
+		virt_dev->eps[ep_index].new_ring =
+			xhci_ring_alloc(xhci, 2, 1, ring_type, max_packet,
+					mem_flags);
+		if (!virt_dev->eps[ep_index].new_ring)
+			return -ENOMEM;
 	}
+
 	virt_dev->eps[ep_index].skip = false;
 	ep_ring = virt_dev->eps[ep_index].new_ring;
 
