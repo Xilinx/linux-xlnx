@@ -1903,6 +1903,7 @@ int spi_nor_scan(struct spi_nor *nor, const char *name, enum read_mode mode)
 	if (info->flags & SPI_NOR_NO_ERASE)
 		mtd->flags |= MTD_NO_ERASE;
 
+	nor->jedec_id = info->id[0];
 	mtd->dev.parent = dev;
 	nor->page_size = info->page_size;
 	mtd->writebufsize = nor->page_size;
