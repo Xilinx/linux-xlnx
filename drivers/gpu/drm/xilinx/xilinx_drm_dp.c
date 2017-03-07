@@ -254,10 +254,12 @@ struct xilinx_drm_dp_link_config {
  * struct xilinx_drm_dp_mode - Configured mode of DisplayPort
  * @bw_code: code for bandwidth(link rate)
  * @lane_cnt: number of lanes
+ * @pclock: pixel clock frequency of current mode
  */
 struct xilinx_drm_dp_mode {
 	u8 bw_code;
 	u8 lane_cnt;
+	int pclock;
 };
 
 /**
@@ -443,6 +445,72 @@ static int xilinx_drm_dp_phy_ready(struct xilinx_drm_dp *dp)
 	}
 
 	return 0;
+}
+
+/**
+ * xilinx_drm_dp_max_rate - Calculate and return available max pixel clock
+ * @link_rate: link rate (Kilo-bytes / sec)
+ * @lane_num: number of lanes
+ * @bpp: bits per pixel
+ *
+ * Return: max pixel clock (KHz) supported by current link config.
+ */
+static inline int xilinx_drm_dp_max_rate(int link_rate, u8 lane_num, u8 bpp)
+{
+	return link_rate * lane_num * 8 / bpp;
+}
+
+/**
+ * xilinx_drm_dp_mode_configure - Configure the link values
+ * @dp: DisplayPort IP core structure
+ * @pclock: pixel clock for requested display mode
+ * @current_bw: current link rate
+ *
+ * Find the link configuration values, rate and lane count for requested pixel
+ * clock @pclock. The @pclock is stored in the mode to be used in other
+ * functions later. The returned rate is downshifted from the current rate
+ * @current_bw.
+ *
+ * Return: Current link rate code, or -EINVAL.
+ */
+static int xilinx_drm_dp_mode_configure(struct xilinx_drm_dp *dp, int pclock,
+					u8 current_bw)
+{
+	int max_rate = dp->link_config.max_rate;
+	u8 bws[3] = { DP_LINK_BW_1_62, DP_LINK_BW_2_7, DP_LINK_BW_5_4 };
+	u8 max_lanes = dp->link_config.max_lanes;
+	u8 max_link_rate_code = drm_dp_link_rate_to_bw_code(max_rate);
+	u8 bpp = dp->config.bpp;
+	u8 lane_cnt;
+	s8 clock, i;
+
+	for (i = ARRAY_SIZE(bws) - 1; i >= 0; i--) {
+		if (current_bw && bws[i] >= current_bw)
+			continue;
+
+		if (bws[i] <= max_link_rate_code)
+			break;
+	}
+
+	for (lane_cnt = 1; lane_cnt <= max_lanes; lane_cnt <<= 1) {
+		for (clock = i; clock >= 0; clock--) {
+			int bw;
+			u32 rate;
+
+			bw = drm_dp_bw_code_to_link_rate(bws[clock]);
+			rate = xilinx_drm_dp_max_rate(bw, lane_cnt, bpp);
+			if (pclock <= rate) {
+				dp->mode.bw_code = bws[clock];
+				dp->mode.lane_cnt = lane_cnt;
+				dp->mode.pclock = pclock;
+				return bws[clock];
+			}
+		}
+	}
+
+	DRM_ERROR("failed to configure link values\n");
+
+	return -EINVAL;
 }
 
 /**
@@ -757,6 +825,32 @@ static int xilinx_drm_dp_train(struct xilinx_drm_dp *dp)
 	return 0;
 }
 
+/**
+ * xilinx_drm_dp_train_loop - Downshift the link rate during training
+ * @dp: DisplayPort IP core structure
+ *
+ * Train the link by downshifting the link rate if training is not successful.
+ */
+static void xilinx_drm_dp_train_loop(struct xilinx_drm_dp *dp)
+{
+	struct xilinx_drm_dp_mode *mode = &dp->mode;
+	u8 bw = mode->bw_code;
+	int ret;
+
+	do {
+		ret = xilinx_drm_dp_train(dp);
+		if (!ret)
+			return;
+
+		ret = xilinx_drm_dp_mode_configure(dp, mode->pclock, bw);
+		if (ret < 0)
+			return;
+		bw = ret;
+	} while (bw >= DP_LINK_BW_1_62);
+
+	DRM_ERROR("failed to train the DP link\n");
+}
+
 static void xilinx_drm_dp_dpms(struct drm_encoder *encoder, int dpms)
 {
 	struct xilinx_drm_dp *dp = to_dp(encoder);
@@ -782,6 +876,7 @@ static void xilinx_drm_dp_dpms(struct drm_encoder *encoder, int dpms)
 				break;
 			usleep_range(300, 500);
 		}
+		xilinx_drm_dp_train_loop(dp);
 		xilinx_drm_writel(dp->iomem, XILINX_DP_TX_SW_RESET,
 				  XILINX_DP_TX_SW_RESET_ALL);
 		xilinx_drm_writel(iomem, XILINX_DP_TX_ENABLE_MAIN_STREAM, 1);
@@ -833,19 +928,6 @@ static bool xilinx_drm_dp_mode_fixup(struct drm_encoder *encoder,
 	}
 
 	return true;
-}
-
-/**
- * xilinx_drm_dp_max_rate - Calculate and return available max pixel clock
- * @link_rate: link rate (Kilo-bytes / sec)
- * @lane_num: number of lanes
- * @bpp: bits per pixel
- *
- * Return: max pixel clock (KHz) supported by current link config.
- */
-static inline int xilinx_drm_dp_max_rate(int link_rate, u8 lane_num, u8 bpp)
-{
-	return link_rate * lane_num * 8 / bpp;
 }
 
 static int xilinx_drm_dp_mode_valid(struct drm_encoder *encoder,
@@ -980,80 +1062,20 @@ static void xilinx_drm_dp_mode_set_stream(struct xilinx_drm_dp *dp,
 	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_USER_DATA_CNT_PER_LANE, reg);
 }
 
-/**
- * xilinx_drm_dp_mode_configure - Configure the link values
- * @dp: DisplayPort IP core structure
- * @pclock: pixel clock for requested display mode
- * @current_bw: current link rate
- *
- * Find the link configuration values, rate and lane count for requested pixel
- * clock @pclock.
- *
- * Return: Current link rate code, or -EINVAL.
- */
-static int xilinx_drm_dp_mode_configure(struct xilinx_drm_dp *dp, int pclock,
-					u8 current_bw)
-{
-	int max_rate = dp->link_config.max_rate;
-	u8 bws[3] = { DP_LINK_BW_1_62, DP_LINK_BW_2_7, DP_LINK_BW_5_4 };
-	u8 max_lanes = dp->link_config.max_lanes;
-	u8 max_link_rate_code = drm_dp_link_rate_to_bw_code(max_rate);
-	u8 bpp = dp->config.bpp;
-	u8 lane_cnt;
-	s8 clock, i;
-
-	for (i = ARRAY_SIZE(bws) - 1; i >= 0; i--) {
-		if (current_bw && bws[i] >= current_bw)
-			continue;
-
-		if (bws[i] <= max_link_rate_code)
-			break;
-	}
-
-	for (lane_cnt = 1; lane_cnt <= max_lanes; lane_cnt <<= 1)
-		for (clock = i; clock >= 0; clock--) {
-			int bw;
-			u32 rate;
-
-			bw = drm_dp_bw_code_to_link_rate(bws[clock]);
-			rate = xilinx_drm_dp_max_rate(bw, lane_cnt, bpp);
-			if (pclock <= rate) {
-				dp->mode.bw_code = bws[clock];
-				dp->mode.lane_cnt = lane_cnt;
-				return bws[clock];
-			}
-		}
-
-	DRM_ERROR("failed to configure link values\n");
-
-	return -EINVAL;
-}
 
 static void xilinx_drm_dp_mode_set(struct drm_encoder *encoder,
 				   struct drm_display_mode *mode,
 				   struct drm_display_mode *adjusted_mode)
 {
 	struct xilinx_drm_dp *dp = to_dp(encoder);
-	int bw = 0;
-	unsigned int ret;
+	int ret;
 
-	do {
-		bw = xilinx_drm_dp_mode_configure(dp, adjusted_mode->clock, bw);
-		if (bw < 0)
-			return;
+	ret = xilinx_drm_dp_mode_configure(dp, adjusted_mode->clock, 0);
+	if (ret < 0)
+		return;
 
-		xilinx_drm_dp_mode_set_stream(dp, adjusted_mode);
-		xilinx_drm_dp_mode_set_transfer_unit(dp, adjusted_mode);
-
-		xilinx_drm_writel(dp->iomem, XILINX_DP_TX_PHY_POWER_DOWN, 0);
-		ret = xilinx_drm_dp_train(dp);
-		xilinx_drm_writel(dp->iomem, XILINX_DP_TX_PHY_POWER_DOWN,
-				  XILINX_DP_TX_PHY_POWER_DOWN_ALL);
-		if (!ret)
-			return;
-	} while (bw >= DP_LINK_BW_1_62);
-
-	DRM_ERROR("failed to train the DP link\n");
+	xilinx_drm_dp_mode_set_stream(dp, adjusted_mode);
+	xilinx_drm_dp_mode_set_transfer_unit(dp, adjusted_mode);
 }
 
 static enum drm_connector_status
@@ -1196,7 +1218,7 @@ static irqreturn_t xilinx_drm_dp_irq_handler(int irq, void *data)
 		if (status[4] & DP_LINK_STATUS_UPDATED ||
 		    !drm_dp_clock_recovery_ok(&status[2], dp->mode.lane_cnt) ||
 		    !drm_dp_channel_eq_ok(&status[2], dp->mode.lane_cnt))
-			xilinx_drm_dp_train(dp);
+			xilinx_drm_dp_train_loop(dp);
 	}
 
 	return IRQ_HANDLED;
