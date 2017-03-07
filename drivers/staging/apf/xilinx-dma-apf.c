@@ -932,7 +932,7 @@ int xdma_wait(struct xdma_head *dmahead,
 	      unsigned int *operating_flags)
 {
 	struct xdma_chan *chan = dmahead->chan;
-	unsigned long attrs;
+	unsigned long attrs = 0;
 
 	if (chan->poll_mode) {
 		xilinx_chan_desc_cleanup(chan);

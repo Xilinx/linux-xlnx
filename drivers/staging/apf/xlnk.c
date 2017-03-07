@@ -130,7 +130,7 @@ static const struct file_operations xlnk_fops = {
 	.mmap = xlnk_mmap,
 };
 
-#define MAX_XLNK_DMAS 16
+#define MAX_XLNK_DMAS 128
 
 struct xlnk_device_pack {
 	char name[64];
@@ -1535,7 +1535,7 @@ static int xlnk_memop_ioctl(struct file *filp, unsigned long arg_addr)
 	int status = 0;
 	int buf_id;
 	struct xlnk_dmabuf_reg *cp;
-	int cacheable;
+	int cacheable = 1;
 	void *k_addr;
 	enum dma_data_direction dmadir;
 	xlnk_intptr_type page_id;
@@ -1714,7 +1714,6 @@ static long xlnk_ioctl(struct file *filp,
 	case XLNK_IOCMEMOP:
 		return xlnk_memop_ioctl(filp, args);
 	default:
-		pr_err("%s:Unrecognized ioctl code%u\n", __func__, code);
 		return -EINVAL;
 	}
 }
