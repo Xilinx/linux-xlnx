@@ -133,7 +133,11 @@ static int dwc3_of_simple_probe(struct platform_device *pdev)
 			}
 		}
 
-		kfree(soc_rev);
+		/* Clean soc_rev if got a valid pointer from nvmem driver
+		 * else we may end up in kernel panic
+		 */
+		if (!IS_ERR(soc_rev))
+			kfree(soc_rev);
 	}
 
 	/*
