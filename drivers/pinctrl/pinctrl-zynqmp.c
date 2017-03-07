@@ -1702,11 +1702,31 @@ static int zynqmp_pinmux_set_mux(struct pinctrl_dev *pctldev,
 	return 0;
 }
 
+static int zynqmp_pinmux_free_pin(struct pinctrl_dev *pctldev, unsigned pin)
+{
+	struct zynqmp_pinctrl *pctrl = pinctrl_dev_get_drvdata(pctldev);
+	u32 addr_offset, mask;
+	int ret;
+
+	addr_offset = pctrl->iouaddr + 4 * pin;
+	mask = ZYNQMP_PINMUX_MUX_MASK << ZYNQMP_PINMUX_MUX_SHIFT;
+
+	/* Reset MIO pin mux to release it from peripheral mapping */
+	ret = zynqmp_pctrl_writereg(0, addr_offset, mask);
+	if (ret) {
+		dev_err(pctldev->dev, "write failed at 0x%x\n", addr_offset);
+		return -EIO;
+	}
+
+	return 0;
+}
+
 static const struct pinmux_ops zynqmp_pinmux_ops = {
 	.get_functions_count = zynqmp_pmux_get_functions_count,
 	.get_function_name = zynqmp_pmux_get_function_name,
 	.get_function_groups = zynqmp_pmux_get_function_groups,
 	.set_mux = zynqmp_pinmux_set_mux,
+	.free = zynqmp_pinmux_free_pin,
 };
 
 /* pinconfig */
