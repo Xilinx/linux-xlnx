@@ -86,6 +86,15 @@
 #define MII_DP83867_CFG2_SPEEDOPT_INTLOW	0x2000
 #define MII_DP83867_CFG2_MASK			0x003F
 
+/* CFG4 bits */
+#define DP83867_CFG4_SGMII_AUTONEG_TIMER_MASK	0x60
+#define DP83867_CFG4_SGMII_AUTONEG_TIMER_16MS	0x00
+#define DP83867_CFG4_SGMII_AUTONEG_TIMER_2US	0x20
+#define DP83867_CFG4_SGMII_AUTONEG_TIMER_800US	0x40
+#define DP83867_CFG4_SGMII_AUTONEG_TIMER_11MS	0x60
+#define DP83867_CFG4_RESVDBIT7	BIT(7)
+#define DP83867_CFG4_RESVDBIT8	BIT(8)
+
 /* IO_MUX_CFG bits */
 #define DP83867_IO_MUX_CFG_IO_IMPEDANCE_CTRL	0x1f
 
@@ -265,11 +274,13 @@ static int dp83867_config_init(struct phy_device *phydev)
 		if (ret)
 			return ret;
 
-		/* RX_DV/RX_CTRL strapped in mode 1 or mode 2 workaround */
+		/* This is a SW workaround for link instability if
+		 * RX_CTRL is not strapped to mode 3 or 4 in HW.
+		 */
 		if (dp83867->rxctrl_strap_quirk) {
 			val = phy_read_mmd(phydev, DP83867_DEVADDR,
 					   DP83867_CFG4);
-			val &= ~BIT(7);
+			val &= ~DP83867_CFG4_RESVDBIT7;
 			phy_write_mmd(phydev, DP83867_DEVADDR, DP83867_CFG4,
 				      val);
 		}
@@ -294,6 +305,20 @@ static int dp83867_config_init(struct phy_device *phydev)
 			  (dp83867->fifo_depth << DP83867_PHYCTRL_RXFIFO_SHIFT) |
 			  (dp83867->fifo_depth  << DP83867_PHYCTRL_TXFIFO_SHIFT));
 		phy_write(phydev, MII_DP83867_BISCR, 0x0);
+
+		/* This is a SW workaround for link instability if
+		 * RX_CTRL is not strapped to mode 3 or 4 in HW.
+		 */
+		if (dp83867->rxctrl_strap_quirk) {
+			val = phy_read_mmd(phydev, DP83867_DEVADDR,
+					   DP83867_CFG4);
+			val &= ~DP83867_CFG4_RESVDBIT7;
+			val |= DP83867_CFG4_RESVDBIT8;
+			val &= ~DP83867_CFG4_SGMII_AUTONEG_TIMER_MASK;
+			val |= DP83867_CFG4_SGMII_AUTONEG_TIMER_11MS;
+			phy_write_mmd(phydev, DP83867_DEVADDR, DP83867_CFG4,
+				      val);
+		}
 	}
 
 	if ((phydev->interface >= PHY_INTERFACE_MODE_RGMII_ID) &&
