@@ -494,6 +494,8 @@ struct axidma_bd {
  * @rx_ts_regs:	  Base address for the rx axififo device address space.
  * @tstamp_config: Hardware timestamp config structure.
  * @tx_ptpheader: Stores the tx ptp header.
+ * @eth_clk: Clock resource for etherent mac.
+ * @dma_clk: Clock resource for dma controller.
  */
 struct axienet_local {
 	struct net_device *ndev;
@@ -557,6 +559,8 @@ struct axienet_local {
 	struct hwtstamp_config tstamp_config;
 	u8 *tx_ptpheader;
 #endif
+	struct clk *eth_clk;
+	struct clk *dma_clk;
 };
 
 /**
