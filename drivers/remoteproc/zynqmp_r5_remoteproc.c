@@ -57,13 +57,6 @@
 /* TCM mode. high: combine RPU TCMs. low: split TCM for RPU1 and RPU0 */
 #define TCM_COMB_BIT		BIT(6)
 
-/* Clock controller low power domain (CRL_APB) for RPU */
-#define CPU_R5_CTRL_OFFSET	0x00000090 /* RPU Global Control*/
-#define RST_LPD_TOP_OFFSET	0x0000023C /* LPD block */
-#define RPU0_RESET_BIT		BIT(0) /* RPU CPU0 reset bit */
-#define RPU_AMBA_RST_MASK	BIT(2) /* RPU AMBA reset bit */
-#define RPU_CLKACT_MASK		BIT(24) /* RPU clock active bit */
-
 /* IPI reg offsets */
 #define TRIG_OFFSET		0x00000000
 #define OBS_OFFSET		0x00000004
@@ -125,7 +118,6 @@ struct mem_pool_st {
  * @defaulta_fw_ops: default rproc firmware operations
  * @workqueue: workqueue for the RPU remoteproc
  * @rpu_base: virt ptr to RPU control address registers
- * @crl_apb_base: virt ptr to CRL_APB address registers for RPU
  * @ipi_base: virt ptr to IPI channel address registers for APU
  * @rpu_mode: RPU core configuration
  * @rpu_id: RPU CPU id
@@ -141,7 +133,6 @@ struct zynqmp_r5_rproc_pdata {
 	struct work_struct workqueue;
 	void __iomem *rpu_base;
 	void __iomem *rpu_glbl_base;
-	void __iomem *crl_apb_base;
 	void __iomem *ipi_base;
 	enum rpu_core_conf rpu_mode;
 	enum rpu_bootmem bootmem;
@@ -177,72 +168,6 @@ static void r5_boot_addr_config(struct zynqmp_r5_rproc_pdata *pdata)
 }
 
 /**
- * r5_reset - change the R5 reset bit
- * @pdata: platform data
- * @do_reset: 1 to reset, 0 to release reset
- *
- * If the do_reset is 1, the function to set the
- * R5 reset bit. It do_reset is 0, the function
- * will clear the reset bit.
- */
-static void r5_reset(struct zynqmp_r5_rproc_pdata *pdata,
-			bool do_reset)
-{
-	u32 tmp, mask;
-
-	pr_debug("%s: R5 ID: %d, reset %d\n", __func__, pdata->rpu_id,
-			 do_reset);
-	if (pdata->rpu_mode == SPLIT)
-		mask = RPU0_RESET_BIT << pdata->rpu_id;
-	else
-		mask = RPU0_RESET_BIT | (RPU0_RESET_BIT << 1);
-	if (!do_reset)
-		mask |= RPU_AMBA_RST_MASK;
-
-	tmp = reg_read(pdata->crl_apb_base, RST_LPD_TOP_OFFSET);
-	if (do_reset)
-		tmp |= mask;
-	else
-		tmp &= ~mask;
-	reg_write(pdata->crl_apb_base, RST_LPD_TOP_OFFSET, tmp);
-}
-
-/**
- * r5_halt - change the R5 halt bit
- * @pdata: platform data
- * @do_halt: 1 to halt, 0 to release halt
- *
- * If the do_halt is 1, the function to set the
- * R5 halt bit. It do_halt is 0, the function
- * will clear the halt bit.
- */
-static void r5_halt(struct zynqmp_r5_rproc_pdata *pdata,
-						bool do_halt)
-{
-	u32 tmp;
-	u32 offset = RPU_CFG_OFFSET;
-
-	pr_debug("%s: R5 ID: %d, halt %d\n", __func__, pdata->rpu_id,
-			 do_halt);
-
-	tmp = reg_read(pdata->rpu_base, offset);
-	if (do_halt)
-		tmp &= ~nCPUHALT_BIT;
-	else
-		tmp |= nCPUHALT_BIT;
-	reg_write(pdata->rpu_base, offset, tmp);
-	if (pdata->rpu_mode != SPLIT) {
-		offset += 0x100;
-		tmp = reg_read(pdata->rpu_base, offset);
-		if (do_halt)
-			tmp &= ~nCPUHALT_BIT;
-		else
-			tmp |= nCPUHALT_BIT;
-		reg_write(pdata->rpu_base, 0x100, tmp);
-	}
-}
-
-/**
  * r5_mode_config - configure R5 operation mode
  * @pdata: platform data
  *
@@ -265,26 +190,6 @@ static void r5_mode_config(struct zynqmp_r5_rproc_pdata *pdata)
 		tmp |= SLCLAMP_BIT;
 	}
 	reg_write(pdata->rpu_glbl_base, 0, tmp);
-}
-
-/**
- * r5_enable_clock - enable R5 clock
- * @pdata: platform data
- *
- * enable R5 clock if it is disabled.
- */
-static void r5_enable_clock(struct zynqmp_r5_rproc_pdata *pdata)
-{
-	u32 tmp;
-
-	pr_debug("%s: mode: %d\n", __func__, pdata->rpu_mode);
-	tmp = reg_read(pdata->crl_apb_base, CPU_R5_CTRL_OFFSET);
-	if (!(tmp & RPU_CLKACT_MASK)) {
-		tmp |= RPU_CLKACT_MASK;
-		reg_write(pdata->crl_apb_base, CPU_R5_CTRL_OFFSET, tmp);
-		/* Give some delay for clock to propogate */
-		udelay(500);
-	}
 }
 
 /*
@@ -728,15 +633,6 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 	if (IS_ERR(local->rpu_glbl_base)) {
 		dev_err(&pdev->dev, "Unable to map RPU Global I/O memory\n");
 		ret = PTR_ERR(local->rpu_glbl_base);
-		goto rproc_fault;
-	}
-
-	res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
-		"apb_base");
-	local->crl_apb_base = devm_ioremap(&pdev->dev, res->start, resource_size(res));
-	if (IS_ERR(local->crl_apb_base)) {
-		dev_err(&pdev->dev, "Unable to map CRL_APB I/O memory\n");
-		ret = PTR_ERR(local->crl_apb_base);
 		goto rproc_fault;
 	}
 
