@@ -81,6 +81,9 @@
 #define RPU_0_IPI_MASK		RPU_IPI_MASK(0)
 #define RPU_1_IPI_MASK		RPU_IPI_MASK(1)
 
+/* PM proc states */
+#define PM_PROC_STATE_ACTIVE 1u
+
 /* Register access macros */
 #define reg_read(base, reg) \
 	readl(((void __iomem *)(base)) + (reg))
@@ -293,34 +296,21 @@ static void r5_enable_clock(struct zynqmp_r5_rproc_pdata *pdata)
  */
 static bool r5_is_running(struct zynqmp_r5_rproc_pdata *pdata)
 {
-	u32 tmp, mask;
+	u32 status, requirements, usage;
 
 	pr_debug("%s: rpu id: %d\n", __func__, pdata->rpu_id);
-
-	tmp = reg_read(pdata->crl_apb_base, RST_LPD_TOP_OFFSET);
-	mask = RPU_AMBA_RST_MASK;
-	if (pdata->rpu_mode == SPLIT)
-		mask |= RPU0_RESET_BIT << pdata->rpu_id;
-	else
-		mask |= RPU0_RESET_BIT | (RPU0_RESET_BIT << 1);
-	if (tmp & mask)
+	if (zynqmp_pm_get_node_status(pdata->rpu_pd_id,
+		&status, &requirements, &usage)) {
+		pr_err("Failed to get RPU node status.\n");
 		return false;
-
-	if (pdata->rpu_mode == SPLIT) {
-		tmp = reg_read(pdata->rpu_base, RPU_CFG_OFFSET);
-		if (tmp & nCPUHALT_BIT)
-			return true;
+	} else if (status != PM_PROC_STATE_ACTIVE) {
+		pr_debug("RPU %d is not running.\n", pdata->rpu_id);
+		return false;
 	} else {
-		u32 offset = RPU_CFG_OFFSET;
-
-		tmp = reg_read(pdata->rpu_base, offset);
-		if (!(tmp & nCPUHALT_BIT))
-			return false;
-		offset += 0x100;
-		tmp = reg_read(pdata->rpu_base, offset);
-		if (tmp & nCPUHALT_BIT)
-			return true;
+		pr_debug("RPU %d is running.\n", pdata->rpu_id);
+		return true;
 	}
+
 	return false;
 }
 
