@@ -39,6 +39,8 @@ Optional properties:
 - xlnx,eth-hasnobuf	: Used when 1G MAC is configured in non processor mode.
 - xlnx,rxtsfifo 	: Configures the axi fifo for receive timestamping.
 - xlnx,include-dre	: Tells whether DMA h/w is configured with DRE or not.
+- clocks		: Input clock specifier. Refer to common clock bindings.
+- clock-names		: Input clock name, should be ethernet_clk and dma_clk.
 
 Example:
 
