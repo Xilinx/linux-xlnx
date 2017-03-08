@@ -37,6 +37,7 @@
 #include <linux/genalloc.h>
 #include <linux/pfn.h>
 #include <linux/idr.h>
+#include <linux/soc/xilinx/zynqmp/pm.h>
 
 #include "remoteproc_internal.h"
 
@@ -331,15 +332,15 @@ static bool r5_is_running(struct zynqmp_r5_rproc_pdata *pdata)
  */
 static int r5_request_tcm(struct zynqmp_r5_rproc_pdata *pdata)
 {
-	bool is_running = r5_is_running(pdata);
+	struct mem_pool_st *mem_node;
 
 	r5_mode_config(pdata);
 
-	if (!is_running) {
-		r5_reset(pdata, true);
-		r5_halt(pdata, true);
-		r5_enable_clock(pdata);
-		r5_reset(pdata, false);
+	list_for_each_entry(mem_node, &pdata->mem_pools, node) {
+		if (mem_node->pd_id)
+			zynqmp_pm_request_node(mem_node->pd_id,
+				ZYNQMP_PM_CAPABILITY_ACCESS,
+				0, ZYNQMP_PM_REQUEST_ACK_BLOCKING);
 	}
 
 	return 0;
@@ -354,7 +355,12 @@ static int r5_request_tcm(struct zynqmp_r5_rproc_pdata *pdata)
 
 static void r5_release_tcm(struct zynqmp_r5_rproc_pdata *pdata)
 {
-	r5_reset(pdata, true);
+	struct mem_pool_st *mem_node;
+
+	list_for_each_entry(mem_node, &pdata->mem_pools, node) {
+		if (mem_node->pd_id)
+			zynqmp_pm_release_node(mem_node->pd_id);
+	}
 }
 
 /**
@@ -429,13 +435,14 @@ static int zynqmp_r5_rproc_start(struct rproc *rproc)
 		local->bootmem == OCM ? "OCM" : "TCM");
 
 	r5_mode_config(local);
-	r5_halt(local, true);
-	r5_reset(local, true);
+	zynqmp_pm_force_powerdown(local->rpu_pd_id,
+		ZYNQMP_PM_REQUEST_ACK_BLOCKING);
 	r5_boot_addr_config(local);
 	/* Add delay before release from halt and reset */
 	udelay(500);
-	r5_reset(local, false);
-	r5_halt(local, false);
+	zynqmp_pm_request_wakeup(local->rpu_pd_id,
+		1, local->bootmem,
+		ZYNQMP_PM_REQUEST_ACK_NO);
 
 	/* Make sure IPI is enabled */
 	enable_ipi(local);
@@ -472,11 +479,9 @@ static int zynqmp_r5_rproc_stop(struct rproc *rproc)
 
 	dev_dbg(dev, "%s\n", __func__);
 
-	r5_reset(local, true);
-	r5_halt(local, true);
-	r5_request_tcm(local);
-
 	disable_ipi(local);
+	zynqmp_pm_force_powerdown(local->rpu_pd_id,
+		ZYNQMP_PM_REQUEST_ACK_BLOCKING);
 
 	/* After it reset was once asserted, TCM will be initialized
 	 * before it can be read. E.g. remoteproc virtio will access
