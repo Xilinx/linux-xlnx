@@ -111,6 +111,7 @@ enum rpu_core_conf {
 struct mem_pool_st {
 	struct list_head node;
 	struct gen_pool *pool;
+	u32 pd_id;
 };
 
 /**
@@ -124,6 +125,7 @@ struct mem_pool_st {
  * @ipi_base: virt ptr to IPI channel address registers for APU
  * @rpu_mode: RPU core configuration
  * @rpu_id: RPU CPU id
+ * @rpu_pd_id: RPU CPU power domain id
  * @bootmem: RPU boot memory device used
  * @vring0: IRQ number used for vring0
  * @ipi_dest_mask: IPI destination mask for the IPI channel
@@ -143,6 +145,7 @@ struct zynqmp_r5_rproc_pdata {
 	struct list_head mems;
 	u32 ipi_dest_mask;
 	u32 rpu_id;
+	u32 rpu_pd_id;
 	u32 vring0;
 };
 
@@ -654,6 +657,7 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 	struct mem_pool_st *mem_node = NULL;
 	char mem_name[16];
 	int i;
+	struct device_node *tmp_node;
 
 	rproc = rproc_alloc(&pdev->dev, dev_name(&pdev->dev),
 		&zynqmp_r5_rproc_ops, NULL,
@@ -673,6 +677,18 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "dma_set_coherent_mask: %d\n", ret);
 		goto rproc_fault;
 	}
+
+	/* Get the RPU power domain id */
+	tmp_node = of_parse_phandle(pdev->dev.of_node, "pd-handle", 0);
+	if (tmp_node) {
+		of_property_read_u32(tmp_node, "pd-id", &local->rpu_pd_id);
+	} else {
+		dev_err(&pdev->dev, "No power domain ID is specified.\n");
+		ret = -EINVAL;
+		goto rproc_fault;
+	}
+	dev_dbg(&pdev->dev, "RPU[%d] pd_id = %d.\n",
+		local->rpu_id, local->rpu_pd_id);
 
 	prop = of_get_property(pdev->dev.of_node, "core_conf", NULL);
 	if (!prop) {
@@ -751,6 +767,20 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 			if (!mem_node)
 				goto rproc_fault;
 			mem_node->pool = mem_pool;
+			/* Get the memory node power domain id */
+			tmp_node = of_parse_phandle(pdev->dev.of_node,
+						mem_name, 0);
+			if (tmp_node) {
+				struct device_node *pd_node;
+
+				pd_node = of_parse_phandle(tmp_node,
+						"pd-handle", 0);
+				if (pd_node)
+					of_property_read_u32(pd_node,
+						"pd-id", &mem_node->pd_id);
+			}
+			dev_dbg(&pdev->dev, "mem[%d] pd_id = %d.\n",
+				i, mem_node->pd_id);
 			list_add_tail(&mem_node->node, &local->mem_pools);
 		}
 	}
@@ -758,6 +788,7 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 	/* Disable IPI before requesting IPI IRQ */
 	disable_ipi(local);
 	INIT_WORK(&local->workqueue, handle_event_notified);
+
 	/* IPI IRQ */
 	local->vring0 = platform_get_irq(pdev, 0);
 	if (local->vring0 < 0) {
