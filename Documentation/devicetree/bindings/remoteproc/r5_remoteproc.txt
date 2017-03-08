@@ -43,7 +43,7 @@ Example:
 	};
 
 	zynqmp-r5-remoteproc@0 {
-		compatible = "xlnx,zynqmp-r5-remoteproc";
+		compatible = "xlnx,zynqmp-r5-remoteproc-1.0";
 		reg = <0x0 0xff9a0100 0x0 100>,
 			<0x0 0xff340000 0x0 0x100>,
 			<0x0 0xff9a0000 0x0 0x100>,
