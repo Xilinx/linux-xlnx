@@ -1,0 +1,9 @@
+#
+# Xilinx PL clk enabler
+#
+
+config XILINX_FCLK
+	tristate "Xilinx PL clock enabler"
+	depends on COMMON_CLK && OF
+	---help---
+	  Support for the Xilinx fclk clock enabler.
