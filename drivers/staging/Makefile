@@ -36,6 +36,7 @@ obj-$(CONFIG_UNISYSSPAR)	+= unisys/
 obj-$(CONFIG_XILINX_VIDEO_IP)	+= video/axivdma/
 obj-$(CONFIG_XILINX_APF)	+= apf/
 obj-$(CONFIG_COMMON_CLK_XLNX_CLKWZRD)	+= clocking-wizard/
+obj-$(CONFIG_XILINX_FCLK)	+= fclk/
 obj-$(CONFIG_FB_TFT)		+= fbtft/
 obj-$(CONFIG_FSL_MC_BUS)	+= fsl-mc/
 obj-$(CONFIG_WILC1000)		+= wilc1000/
