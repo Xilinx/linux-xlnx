@@ -41,6 +41,7 @@
 #include <linux/random.h>
 #include <net/sock.h>
 #include <linux/xilinx_phy.h>
+#include <linux/clk.h>
 
 #include "xilinx_axienet.h"
 
@@ -2423,11 +2424,49 @@ static int axienet_probe(struct platform_device *pdev)
 	spin_lock_init(&lp->tx_lock);
 	spin_lock_init(&lp->rx_lock);
 
+	lp->dma_clk = devm_clk_get(&pdev->dev, "dma_clk");
+	if (IS_ERR(lp->dma_clk)) {
+		if (PTR_ERR(lp->dma_clk) != -ENOENT) {
+			ret = PTR_ERR(lp->dma_clk);
+			goto free_netdev;
+		}
+
+		/* Clock framework support is optional, continue on
+		 * anyways if we don't find a matching clock.
+		 */
+		 lp->dma_clk = NULL;
+	}
+
+	ret = clk_prepare_enable(lp->dma_clk);
+	if (ret) {
+		dev_err(&pdev->dev, "Unable to enable dma clock.\n");
+		goto free_netdev;
+	}
+
+	lp->eth_clk = devm_clk_get(&pdev->dev, "ethernet_clk");
+	if (IS_ERR(lp->eth_clk)) {
+		if (PTR_ERR(lp->eth_clk) != -ENOENT) {
+			ret = PTR_ERR(lp->eth_clk);
+			goto err_disable_dmaclk;
+		}
+
+		/* Clock framework support is optional, continue on
+		 * anyways if we don't find a matching clock.
+		 */
+		 lp->eth_clk = NULL;
+	}
+
+	ret = clk_prepare_enable(lp->eth_clk);
+	if (ret) {
+		dev_err(&pdev->dev, "Unable to enable eth clock.\n");
+		goto err_disable_dmaclk;
+	}
+
 	/* Retrieve the MAC address */
 	mac_addr = of_get_mac_address(pdev->dev.of_node);
 	if (!mac_addr) {
 		dev_err(&pdev->dev, "could not find MAC address\n");
-		goto free_netdev;
+		goto err_disable_ethclk;
 	}
 	axienet_set_mac_address(ndev, mac_addr);
 
@@ -2454,11 +2493,15 @@ static int axienet_probe(struct platform_device *pdev)
 	if (ret) {
 		dev_err(lp->dev, "register_netdev() error (%i)\n", ret);
 		axienet_mdio_teardown(lp);
-		goto free_netdev;
+		goto err_disable_ethclk;
 	}
 
 	return 0;
 
+err_disable_dmaclk:
+	clk_disable_unprepare(lp->dma_clk);
+err_disable_ethclk:
+	clk_disable_unprepare(lp->eth_clk);
 free_netdev:
 	free_netdev(ndev);
 
@@ -2473,6 +2516,8 @@ static int axienet_remove(struct platform_device *pdev)
 	axienet_mdio_teardown(lp);
 	netif_napi_del(&lp->napi);
 	unregister_netdev(ndev);
+	clk_disable_unprepare(lp->eth_clk);
+	clk_disable_unprepare(lp->dma_clk);
 
 	of_node_put(lp->phy_node);
 	lp->phy_node = NULL;
