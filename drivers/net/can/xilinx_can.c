@@ -1323,8 +1323,13 @@ static const struct net_device_ops xcan_netdev_ops = {
  */
 static int __maybe_unused xcan_suspend(struct device *dev)
 {
-	if (!device_may_wakeup(dev))
+	struct net_device *netdev = dev_get_drvdata(dev);
+
+	if (!device_may_wakeup(dev)) {
+		if (netif_running(netdev))
+			xcan_close(netdev);
 		return pm_runtime_force_suspend(dev);
+	}
 
 	return 0;
 }
@@ -1338,11 +1343,17 @@ static int __maybe_unused xcan_suspend(struct device *dev)
  */
 static int __maybe_unused xcan_resume(struct device *dev)
 {
-	if (!device_may_wakeup(dev))
-		return pm_runtime_force_resume(dev);
+	int ret;
+	struct net_device *netdev = dev_get_drvdata(dev);
+
+	if (!device_may_wakeup(dev)) {
+		ret = pm_runtime_force_resume(dev);
+		if (netif_running(netdev))
+			xcan_open(netdev);
+		return ret;
+	}
 
 	return 0;
-
 }
 
 /**
