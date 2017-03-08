@@ -3666,8 +3666,8 @@ static int __maybe_unused macb_suspend(struct device *dev)
 	struct net_device *netdev = platform_get_drvdata(pdev);
 	struct macb *bp = netdev_priv(netdev);
 
-	netif_carrier_off(netdev);
-	netif_device_detach(netdev);
+	if (netif_running(netdev))
+		macb_close(netdev);
 
 	clk_disable_unprepare(bp->tx_clk);
 	clk_disable_unprepare(bp->hclk);
@@ -3688,7 +3688,8 @@ static int __maybe_unused macb_resume(struct device *dev)
 	clk_prepare_enable(bp->tx_clk);
 	clk_prepare_enable(bp->rx_clk);
 
-	netif_device_attach(netdev);
+	if (netif_running(netdev))
+		macb_open(netdev);
 
 	return 0;
 }
