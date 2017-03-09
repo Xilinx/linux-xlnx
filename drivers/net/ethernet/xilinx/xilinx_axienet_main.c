@@ -1308,8 +1308,8 @@ static irqreturn_t axienet_err_irq(int irq, void *_ndev)
 	}
 
 	if (status & XAE_INT_RXRJECT_MASK) {
+		ndev->stats.rx_dropped++;
 		axienet_iow(lp, XAE_IS_OFFSET, XAE_INT_RXRJECT_MASK);
-		axienet_device_reset(ndev);
 	}
 
 	return IRQ_HANDLED;
