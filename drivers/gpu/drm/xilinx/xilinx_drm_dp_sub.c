@@ -234,6 +234,8 @@
 #define XILINX_DP_SUB_AUD_CH_B_DATA3				0x44
 #define XILINX_DP_SUB_AUD_CH_B_DATA4				0x48
 #define XILINX_DP_SUB_AUD_CH_B_DATA5				0x4c
+#define XILINX_DP_SUB_AUD_SOFT_RESET				0xc00
+#define XILINX_DP_SUB_AUD_SOFT_RESET_AUD_SRST			BIT(0)
 
 #define XILINX_DP_SUB_AV_BUF_NUM_VID_GFX_BUFFERS		4
 #define XILINX_DP_SUB_AV_BUF_NUM_BUFFERS			6
@@ -1098,12 +1100,27 @@ xilinx_drm_dp_sub_av_buf_init_sf(struct xilinx_drm_dp_sub_av_buf *av_buf,
  * xilinx_drm_dp_sub_aud_init - Initialize the audio
  * @aud: audio
  *
- * Initialize the audio with default mixer volume.
+ * Initialize the audio with default mixer volume. The de-assertion will
+ * initialize the audio states.
  */
 static void xilinx_drm_dp_sub_aud_init(struct xilinx_drm_dp_sub_aud *aud)
 {
-	xilinx_drm_set(aud->base, XILINX_DP_SUB_AUD_MIXER_VOLUME,
-		       XILINX_DP_SUB_AUD_MIXER_VOLUME_NO_SCALE);
+	xilinx_drm_clr(aud->base, XILINX_DP_SUB_AUD_SOFT_RESET,
+		       XILINX_DP_SUB_AUD_SOFT_RESET_AUD_SRST);
+	xilinx_drm_writel(aud->base, XILINX_DP_SUB_AUD_MIXER_VOLUME,
+			  XILINX_DP_SUB_AUD_MIXER_VOLUME_NO_SCALE);
+}
+
+/**
+ * xilinx_drm_dp_sub_aud_deinit - De-initialize the audio
+ * @aud: audio
+ *
+ * Put the audio in reset.
+ */
+static void xilinx_drm_dp_sub_aud_deinit(struct xilinx_drm_dp_sub_aud *aud)
+{
+	xilinx_drm_set(aud->base, XILINX_DP_SUB_AUD_SOFT_RESET,
+		       XILINX_DP_SUB_AUD_SOFT_RESET_AUD_SRST);
 }
 
 /* DP subsystem layer functions */
@@ -1504,6 +1521,7 @@ EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_enable);
  */
 void xilinx_drm_dp_sub_disable(struct xilinx_drm_dp_sub *dp_sub)
 {
+	xilinx_drm_dp_sub_aud_deinit(&dp_sub->aud);
 	xilinx_drm_dp_sub_av_buf_disable_aud(&dp_sub->av_buf);
 	xilinx_drm_dp_sub_av_buf_disable_buf(&dp_sub->av_buf);
 	xilinx_drm_dp_sub_av_buf_disable(&dp_sub->av_buf);
