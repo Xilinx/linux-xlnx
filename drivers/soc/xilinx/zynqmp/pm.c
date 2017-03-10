@@ -795,7 +795,7 @@ static struct dentry *zynqmp_pm_debugfs_api_version;
 static ssize_t zynqmp_pm_debugfs_api_write(struct file *file,
 		    const char __user *ptr, size_t len, loff_t *off)
 {
-	char *kern_buff;
+	char *kern_buff, *tmp_buff;
 	char *pm_api_req;
 	u32 pm_id = 0;
 	u64 pm_api_arg[4];
@@ -810,6 +810,7 @@ static ssize_t zynqmp_pm_debugfs_api_write(struct file *file,
 	kern_buff = kzalloc(len, GFP_KERNEL);
 	if (!kern_buff)
 		return -ENOMEM;
+	tmp_buff = kern_buff;
 
 	while (i < ARRAY_SIZE(pm_api_arg))
 		pm_api_arg[i++] = 0;
@@ -996,7 +997,7 @@ static ssize_t zynqmp_pm_debugfs_api_write(struct file *file,
 	}
 
  err:
-	kfree(kern_buff);
+	kfree(tmp_buff);
 	if (ret)
 		return ret;
 
