@@ -333,10 +333,8 @@ static int xvcu_set_vcu_pll_info(struct xvcu_device *xvcu)
 
 	clk_disable_unprepare(xvcu->pll_ref);
 	ret = clk_set_rate(xvcu->pll_ref, refclk);
-	if (ret) {
-		dev_err(xvcu->dev, "failed to set logicoreIP refclk rate\n");
-		return ret;
-	}
+	if (ret)
+		dev_warn(xvcu->dev, "failed to set logicoreIP refclk rate\n");
 
 	ret = clk_prepare_enable(xvcu->pll_ref);
 	if (ret) {
