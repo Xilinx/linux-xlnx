@@ -1199,18 +1199,15 @@ int xilinx_drm_dp_sub_layer_set_fmt(struct xilinx_drm_dp_sub *dp_sub,
 	const struct xilinx_drm_dp_sub_fmt *table;
 	const struct xilinx_drm_dp_sub_fmt *fmt;
 	u32 size, fmts, mask;
-	bool vid;
 
 	if (layer->id == XILINX_DRM_DP_SUB_LAYER_VID) {
 		table = av_buf_vid_fmts;
 		size = ARRAY_SIZE(av_buf_vid_fmts);
 		mask = ~XILINX_DP_SUB_AV_BUF_FMT_NL_VID_MASK;
-		vid = true;
 	} else {
 		table = av_buf_gfx_fmts;
 		size = ARRAY_SIZE(av_buf_gfx_fmts);
 		mask = ~XILINX_DP_SUB_AV_BUF_FMT_NL_GFX_MASK;
-		vid = false;
 	}
 
 	fmt = xilinx_drm_dp_sub_map_fmt(table, size, drm_fmt);
