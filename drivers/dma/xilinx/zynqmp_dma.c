@@ -526,14 +526,12 @@ static void zynqmp_dma_start(struct zynqmp_dma_chan *chan)
  */
 static void zynqmp_dma_handle_ovfl_int(struct zynqmp_dma_chan *chan, u32 status)
 {
-	u32 val;
-
 	if (status & ZYNQMP_DMA_BYTE_CNT_OVRFL)
 		writel(0, chan->regs + ZYNQMP_DMA_TOTAL_BYTE);
 	if (status & ZYNQMP_DMA_IRQ_DST_ACCT_ERR)
-		val = readl(chan->regs + ZYNQMP_DMA_IRQ_DST_ACCT);
+		readl(chan->regs + ZYNQMP_DMA_IRQ_DST_ACCT);
 	if (status & ZYNQMP_DMA_IRQ_SRC_ACCT_ERR)
-		val = readl(chan->regs + ZYNQMP_DMA_IRQ_SRC_ACCT);
+		readl(chan->regs + ZYNQMP_DMA_IRQ_SRC_ACCT);
 }
 
 static void zynqmp_dma_config(struct zynqmp_dma_chan *chan)
