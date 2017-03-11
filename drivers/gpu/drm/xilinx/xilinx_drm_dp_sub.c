@@ -1105,8 +1105,8 @@ xilinx_drm_dp_sub_av_buf_init_sf(struct xilinx_drm_dp_sub_av_buf *av_buf,
  */
 static void xilinx_drm_dp_sub_aud_init(struct xilinx_drm_dp_sub_aud *aud)
 {
-	xilinx_drm_clr(aud->base, XILINX_DP_SUB_AUD_SOFT_RESET,
-		       XILINX_DP_SUB_AUD_SOFT_RESET_AUD_SRST);
+	/* Clear the audio soft reset register as it's an non-reset flop */
+	xilinx_drm_writel(aud->base, XILINX_DP_SUB_AUD_SOFT_RESET, 0);
 	xilinx_drm_writel(aud->base, XILINX_DP_SUB_AUD_MIXER_VOLUME,
 			  XILINX_DP_SUB_AUD_MIXER_VOLUME_NO_SCALE);
 }
