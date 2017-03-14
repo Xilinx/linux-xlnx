@@ -3641,16 +3641,13 @@ static int macb_remove(struct platform_device *pdev)
 			gpiod_set_value(bp->reset_gpio, 0);
 
 		unregister_netdev(dev);
-		clk_disable_unprepare(bp->tx_clk);
-		clk_disable_unprepare(bp->hclk);
-		clk_disable_unprepare(bp->pclk);
-		clk_disable_unprepare(bp->rx_clk);
 		pm_runtime_disable(&pdev->dev);
 		pm_runtime_dont_use_autosuspend(&pdev->dev);
 		if (!pm_runtime_suspended(&pdev->dev)) {
 			clk_disable_unprepare(bp->tx_clk);
 			clk_disable_unprepare(bp->hclk);
 			clk_disable_unprepare(bp->pclk);
+			clk_disable_unprepare(bp->rx_clk);
 			pm_runtime_set_suspended(&pdev->dev);
 		}
 		of_node_put(bp->phy_node);
