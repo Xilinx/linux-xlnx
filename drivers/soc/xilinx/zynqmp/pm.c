@@ -1664,3 +1664,17 @@ static int __init zynqmp_plat_init(void)
 }
 
 early_initcall(zynqmp_plat_init);
+
+#ifdef CONFIG_PM
+/**
+ * zynqmp_pm_init_finalize - Notify PM firmware that initialization is completed
+ *
+ * Return:	Status returned from the PM firmware
+ */
+static int __init zynqmp_pm_init_finalize(void)
+{
+	return invoke_pm_fn(PM_INIT_FINALIZE, 0, 0, 0, 0, NULL);
+}
+
+late_initcall_sync(zynqmp_pm_init_finalize);
+#endif
