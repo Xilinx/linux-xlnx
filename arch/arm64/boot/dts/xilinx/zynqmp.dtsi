@@ -814,6 +814,7 @@
 			interrupt-parent = <&gic>;
 			interrupts = <0 133 4>;
 			power-domains = <&pd_sata>;
+			/* dma-coherent; */
 		};
 
 		sdhci0: sdhci@ff160000 {
