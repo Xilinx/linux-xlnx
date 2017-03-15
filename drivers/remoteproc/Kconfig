@@ -141,6 +141,7 @@ config ZYNQMP_R5_REMOTEPROC
 	depends on ARM64
 	select REMOTEPROC
 	select RPMSG_VIRTIO
+	select SRAM
 	help
 	  Say y here to support ZynqMP R5 remote processors via the remote
 	  processor framework.
