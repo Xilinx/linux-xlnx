@@ -38,6 +38,8 @@ Required properties:
 
 Optional properties:
   - ceva,broken-gen2: limit to gen1 speed instead of gen2.
+  - dma-coherent:     Enable this flag if CCI is enabled in design.
+		      Adding this flag configures AXI cache control register.
 
 Examples:
 	ahci@fd0c0000 {
@@ -56,4 +58,5 @@ Examples:
 		ceva,p1-burst-params = /bits/ 8 <0x0A 0x08 0x4A 0x06>;
 		ceva,p1-retry-params = /bits/ 16 <0x0216 0x7F06>;
 		ceva,broken-gen2;
+		dma-coherent;
 	};
