@@ -442,6 +442,7 @@ struct axidma_bd {
 #define DESC_DMA_MAP_SINGLE 0
 #define DESC_DMA_MAP_PAGE 1
 
+#define XAE_MAX_QUEUES   1
 /**
  * struct axienet_local - axienet private per device data
  * @ndev:	Pointer for net_device to which it will be attached.
@@ -449,33 +450,15 @@ struct axidma_bd {
  * @phy_node:	Pointer to device node structure
  * @mii_bus:	Pointer to MII bus structure
  * @regs:	Base address for the axienet_local device address space
- * @dma_regs:	Base address for the axidma device address space
+ * @napi:	Napi Structure array for all dma queues
+ * @num_queues: Total number of DMA queues
+ * @dq:		DMA queues data
  * @dma_err_tasklet: Tasklet structure to process Axi DMA errors
- * @tx_lock:	Spin lock for tx path
- * @tx_irq:	Axidma TX IRQ number
- * @rx_irq:	Axidma RX IRQ number
  * @eth_irq:	Axi Ethernet IRQ number
  * @phy_type:	Phy type to identify between MII/GMII/RGMII/SGMII/1000 Base-X
  * @options:	AxiEthernet option word
  * @last_link:	Phy link state in which the PHY was negotiated earlier
  * @features:	Stores the extended features supported by the axienet hw
- * @tx_bd_v:	Virtual address of the TX buffer descriptor ring
- * @tx_bd_p:	Physical address(start address) of the TX buffer descr. ring
- * @rx_bd_v:	Virtual address of the RX buffer descriptor ring
- * @rx_bd_p:	Physical address(start address) of the RX buffer descr. ring
- * @tx_buf:	Virtual address of the Tx buffer pool used by the driver when
- *		DMA h/w is configured without DRE.
- * @tx_bufs:	Virutal address of the Tx buffer address.
- * @tx_bufs_dma: Physical address of the Tx buffer address used by the driver
- *		 when DMA h/w is configured without DRE.
- * @eth_hasdre: Tells whether DMA h/w is configured with dre or not.
- * @tx_bd_ci:	Stores the index of the Tx buffer descriptor in the ring being
- *		accessed currently. Used while alloc. BDs before a TX starts
- * @tx_bd_tail:	Stores the index of the Tx buffer descriptor in the ring being
- *		accessed currently. Used while processing BDs after the TX
- *		completed.
- * @rx_bd_ci:	Stores the index of the Rx buffer descriptor in the ring being
- *		accessed currently.
  * @max_frm_size: Stores the maximum size of the frame that can be that
  *		  Txed/Rxed in the existing hardware. If jumbo option is
  *		  supported, the maximum frame size would be 9k. Else it is
@@ -508,36 +491,18 @@ struct axienet_local {
 
 	/* IO registers, dma functions and IRQs */
 	void __iomem *regs;
-	void __iomem *dma_regs;
 
-	struct tasklet_struct dma_err_tasklet;
-	spinlock_t tx_lock;
-	spinlock_t rx_lock;		/* Spin lock */
-	struct napi_struct napi;	/* NAPI Structure */
+	struct tasklet_struct dma_err_tasklet[XAE_MAX_QUEUES];
+	struct napi_struct napi[XAE_MAX_QUEUES];	/* NAPI Structure */
 
-	int tx_irq;
-	int rx_irq;
+	u16    num_queues;	/* Number of DMA queues */
+	struct axienet_dma_q *dq[XAE_MAX_QUEUES];	/* DAM queue data*/
 	int eth_irq;
 	u32 phy_type;
 
 	u32 options;			/* Current options word */
 	u32 last_link;
 	u32 features;
-
-	/* Buffer descriptors */
-	struct axidma_bd *tx_bd_v;
-	dma_addr_t tx_bd_p;
-	struct axidma_bd *rx_bd_v;
-	dma_addr_t rx_bd_p;
-
-	unsigned char *tx_buf[XAE_TX_BUFFERS];
-	unsigned char *tx_bufs;
-	dma_addr_t tx_bufs_dma;
-	bool eth_hasdre;
-
-	u32 tx_bd_ci;
-	u32 tx_bd_tail;
-	u32 rx_bd_ci;
 
 	u32 max_frm_size;
 	u32 rxmem;
@@ -560,6 +525,59 @@ struct axienet_local {
 #endif
 	struct clk *eth_clk;
 	struct clk *dma_clk;
+};
+
+/**
+ * struct axienet_dma_q - axienet private per dma queue data
+ * @lp:		Parent pointer
+ * @dma_regs:	Base address for the axidma device address space
+ * @tx_irq:	Axidma TX IRQ number
+ * @rx_irq:	Axidma RX IRQ number
+ * @tx_lock:	Spin lock for tx path
+ * @rx_lock:	Spin lock for tx path
+ * @tx_bd_v:	Virtual address of the TX buffer descriptor ring
+ * @tx_bd_p:	Physical address(start address) of the TX buffer descr. ring
+ * @rx_bd_v:	Virtual address of the RX buffer descriptor ring
+ * @rx_bd_p:	Physical address(start address) of the RX buffer descr. ring
+ * @tx_buf:	Virtual address of the Tx buffer pool used by the driver when
+ *		DMA h/w is configured without DRE.
+ * @tx_bufs:	Virutal address of the Tx buffer address.
+ * @tx_bufs_dma: Physical address of the Tx buffer address used by the driver
+ *		 when DMA h/w is configured without DRE.
+ * @eth_hasdre: Tells whether DMA h/w is configured with dre or not.
+ * @tx_bd_ci:	Stores the index of the Tx buffer descriptor in the ring being
+ *		accessed currently. Used while alloc. BDs before a TX starts
+ * @tx_bd_tail:	Stores the index of the Tx buffer descriptor in the ring being
+ *		accessed currently. Used while processing BDs after the TX
+ *		completed.
+ * @rx_bd_ci:	Stores the index of the Rx buffer descriptor in the ring being
+ *		accessed currently.
+ */
+struct axienet_dma_q {
+	struct axienet_local	*lp; /* parent */
+	void __iomem *dma_regs;
+
+	int tx_irq;
+	int rx_irq;
+
+	spinlock_t tx_lock;		/* tx lock */
+	spinlock_t rx_lock;		/* rx lock */
+
+	/* Buffer descriptors */
+	struct axidma_bd *tx_bd_v;
+	struct axidma_bd *rx_bd_v;
+	dma_addr_t rx_bd_p;
+	dma_addr_t tx_bd_p;
+
+	unsigned char *tx_buf[XAE_TX_BUFFERS];
+	unsigned char *tx_bufs;
+	dma_addr_t tx_bufs_dma;
+	bool eth_hasdre;
+
+	u32 tx_bd_ci;
+	u32 rx_bd_ci;
+	u32 tx_bd_tail;
+
 };
 
 /**
