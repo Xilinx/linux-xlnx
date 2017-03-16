@@ -62,5 +62,41 @@ config XILINX_PS_EMAC_HWTSTAMP
 	---help---
 	  Generate hardare packet timestamps. This is to facilitate IEE 1588.
 
+config XILINX_TSN
+	bool "Enable Xilinx's TSN IP"
+	default n
+	---help---
+	  Enable Xilinx's TSN IP.
+
+config XILINX_TSN_PTP
+	bool "Generate hardware packet timestamps using Xilinx's TSN IP"
+	depends on XILINX_AXI_EMAC_HWTSTAMP
+	depends on XILINX_TSN
+	select PTP_1588_CLOCK
+	default y
+	---help---
+	  Generate hardare packet timestamps. This is to facilitate IEE 1588.
+
+config XILINX_TSN_QBV
+	bool "Support Qbv protocol in TSN"
+	depends on XILINX_TSN_PTP
+	select PTP_1588_CLOCK
+	default y
+	---help---
+	  Enables TSN Qbv protocol.
+
+config XILINX_TSN_SWITCH
+	bool "Support TSN switch"
+	depends on XILINX_TSN
+	default y
+	---help---
+	  Enable Xilinx's TSN Switch support.
+
+config XILINX_TSN_QCI
+	bool "Support Qci protocol in TSN"
+	depends on XILINX_TSN_SWITCH
+	default y
+	---help---
+	  Enable TSN QCI protocol.
 
 endif # NET_VENDOR_XILINX
