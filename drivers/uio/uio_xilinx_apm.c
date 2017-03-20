@@ -28,6 +28,7 @@
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
+#include <linux/pm_runtime.h>
 #include <linux/slab.h>
 #include <linux/uio_driver.h>
 
@@ -232,6 +233,8 @@ static int xapm_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "Unable to enable clock.\n");
 		return ret;
 	}
+	pm_runtime_set_active(&pdev->dev);
+	pm_runtime_enable(&pdev->dev);
 	/* Initialize mode as Advanced so that if no mode in dts, default
 	 * is Advanced
 	 */
@@ -281,6 +284,8 @@ static int xapm_probe(struct platform_device *pdev)
 
 err_clk_dis:
 	clk_disable_unprepare(xapm->param.clk);
+	pm_runtime_disable(&pdev->dev);
+	pm_runtime_set_suspended(&pdev->dev);
 	return ret;
 }
 
@@ -296,9 +301,40 @@ static int xapm_remove(struct platform_device *pdev)
 
 	uio_unregister_device(&xapm->info);
 	clk_disable_unprepare(xapm->param.clk);
+	pm_runtime_disable(&pdev->dev);
+	pm_runtime_set_suspended(&pdev->dev);
 
 	return 0;
 }
+
+static int __maybe_unused xapm_runtime_suspend(struct device *dev)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct xapm_dev *xapm = platform_get_drvdata(pdev);
+
+	clk_disable_unprepare(xapm->param.clk);
+	return 0;
+};
+
+static int __maybe_unused xapm_runtime_resume(struct device *dev)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct xapm_dev *xapm = platform_get_drvdata(pdev);
+	int ret;
+
+	ret = clk_prepare_enable(xapm->param.clk);
+	if (ret) {
+		dev_err(&pdev->dev, "Unable to enable clock.\n");
+		return ret;
+	}
+	return 0;
+};
+
+static const struct dev_pm_ops xapm_dev_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(xapm_runtime_suspend, xapm_runtime_resume)
+	SET_RUNTIME_PM_OPS(xapm_runtime_suspend,
+			   xapm_runtime_resume, NULL)
+};
 
 static struct of_device_id xapm_of_match[] = {
 	{ .compatible = "xlnx,axi-perf-monitor", },
@@ -311,6 +347,7 @@ static struct platform_driver xapm_driver = {
 	.driver = {
 		.name = "xilinx-axipmon",
 		.of_match_table = xapm_of_match,
+		.pm = &xapm_dev_pm_ops,
 	},
 	.probe = xapm_probe,
 	.remove = xapm_remove,
