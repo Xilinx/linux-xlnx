@@ -177,7 +177,7 @@ static void iio_ams_init_device(struct ams *ams)
 	iio_ams_disable_all_alarm(ams);
 
 	/* Disable interrupt */
-	ams_update_intrmask(ams, 0, ~0);
+	ams_update_intrmask(ams, ~0, ~0);
 
 	/* Clear any pending interrupt */
 	ams_write_reg(ams, AMS_ISR_0, AMS_ISR0_ALARM_MASK);
