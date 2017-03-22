@@ -42,9 +42,10 @@
  * struct zynqmp_pinctrl - driver data
  * @pctrl:              Pinctrl device
  * @groups:             Pingroups
- * @ngroupos:           Number of @groups
+ * @ngroups:            Number of @groups
  * @funcs:              Pinmux functions
  * @nfuncs:             Number of @funcs
+ * @iouaddr:            Base address of IOU SLCR
  */
 struct zynqmp_pinctrl {
 	struct pinctrl_dev *pctrl;
@@ -58,7 +59,7 @@ struct zynqmp_pinctrl {
 struct zynqmp_pctrl_group {
 	const char *name;
 	const unsigned int *pins;
-	const unsigned npins;
+	const unsigned int npins;
 };
 
 /**
@@ -1611,7 +1612,7 @@ static int zynqmp_pctrl_get_groups_count(struct pinctrl_dev *pctldev)
 }
 
 static const char *zynqmp_pctrl_get_group_name(struct pinctrl_dev *pctldev,
-							unsigned selector)
+							unsigned int selector)
 {
 	struct zynqmp_pinctrl *pctrl = pinctrl_dev_get_drvdata(pctldev);
 
@@ -1619,7 +1620,8 @@ static const char *zynqmp_pctrl_get_group_name(struct pinctrl_dev *pctldev,
 }
 
 static int zynqmp_pctrl_get_group_pins(struct pinctrl_dev *pctldev,
-		unsigned selector, const unsigned **pins, unsigned *num_pins)
+			unsigned int selector, const unsigned int **pins,
+			unsigned int *num_pins)
 {
 	struct zynqmp_pinctrl *pctrl = pinctrl_dev_get_drvdata(pctldev);
 
@@ -1657,7 +1659,7 @@ static int zynqmp_pmux_get_functions_count(struct pinctrl_dev *pctldev)
 }
 
 static const char *zynqmp_pmux_get_function_name(struct pinctrl_dev *pctldev,
-							 unsigned selector)
+							 unsigned int selector)
 {
 	struct zynqmp_pinctrl *pctrl = pinctrl_dev_get_drvdata(pctldev);
 
@@ -1665,7 +1667,7 @@ static const char *zynqmp_pmux_get_function_name(struct pinctrl_dev *pctldev,
 }
 
 static int zynqmp_pmux_get_function_groups(struct pinctrl_dev *pctldev,
-			unsigned selector, const char * const **groups,
+			unsigned int selector, const char * const **groups,
 						unsigned * const num_groups)
 {
 	struct zynqmp_pinctrl *pctrl = pinctrl_dev_get_drvdata(pctldev);
@@ -1676,7 +1678,7 @@ static int zynqmp_pmux_get_function_groups(struct pinctrl_dev *pctldev,
 }
 
 static int zynqmp_pinmux_set_mux(struct pinctrl_dev *pctldev,
-					unsigned function, unsigned group)
+				unsigned int function, unsigned int group)
 {
 	int i, ret;
 	struct zynqmp_pinctrl *pctrl = pinctrl_dev_get_drvdata(pctldev);
@@ -1702,7 +1704,7 @@ static int zynqmp_pinmux_set_mux(struct pinctrl_dev *pctldev,
 	return 0;
 }
 
-static int zynqmp_pinmux_free_pin(struct pinctrl_dev *pctldev, unsigned pin)
+static int zynqmp_pinmux_free_pin(struct pinctrl_dev *pctldev, unsigned int pin)
 {
 	struct zynqmp_pinctrl *pctrl = pinctrl_dev_get_drvdata(pctldev);
 	u32 addr_offset, mask;
@@ -1776,7 +1778,7 @@ pin_config_item zynqmp_conf_items[ARRAY_SIZE(zynqmp_dt_params)] = {
 #endif
 
 static int zynqmp_pinconf_cfg_get(struct pinctrl_dev *pctldev,
-					unsigned pin, unsigned long *config)
+					unsigned int pin, unsigned long *config)
 {
 	int ret;
 	u32 reg, bit0, bit1, addr_offset;
@@ -1911,7 +1913,8 @@ static int zynqmp_pinconf_cfg_get(struct pinctrl_dev *pctldev,
 }
 
 static int zynqmp_pinconf_cfg_set(struct pinctrl_dev *pctldev,
-		unsigned pin, unsigned long *configs, unsigned num_configs)
+				unsigned int pin, unsigned long *configs,
+				unsigned int num_configs)
 {
 	int i, ret;
 	u32 reg, reg2, addr_offset, mask;
@@ -2090,7 +2093,8 @@ static int zynqmp_pinconf_cfg_set(struct pinctrl_dev *pctldev,
 }
 
 static int zynqmp_pinconf_group_set(struct pinctrl_dev *pctldev,
-		unsigned selector, unsigned long *configs, unsigned num_configs)
+				unsigned int selector, unsigned long *configs,
+				unsigned int num_configs)
 {
 	int i, ret;
 	struct zynqmp_pinctrl *pctrl = pinctrl_dev_get_drvdata(pctldev);
