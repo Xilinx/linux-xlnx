@@ -252,6 +252,7 @@ static void xdma_err_tasklet(unsigned long data)
 			    "DMA channel reset failed, please reset system\n");
 	}
 
+	/* Barrier to assert descriptor init is reaches memory */
 	rmb();
 	xilinx_chan_desc_cleanup(chan);
 
@@ -262,7 +263,6 @@ static void xdma_tasklet(unsigned long data)
 {
 	struct xdma_chan *chan = (struct xdma_chan *)data;
 
-	rmb();
 	xilinx_chan_desc_cleanup(chan);
 }
 
@@ -289,9 +289,8 @@ static irqreturn_t xdma_rx_intr_handler(int irq, void *data)
 
 	stat = DMA_IN(&chan->regs->sr);
 
-	if (!(stat & XDMA_XR_IRQ_ALL_MASK)) {
+	if (!(stat & XDMA_XR_IRQ_ALL_MASK))
 		return IRQ_NONE;
-	}
 
 	/* Ack the interrupts */
 	DMA_OUT(&chan->regs->sr, (stat & XDMA_XR_IRQ_ALL_MASK));
@@ -322,9 +321,8 @@ static irqreturn_t xdma_tx_intr_handler(int irq, void *data)
 
 	stat = DMA_IN(&chan->regs->sr);
 
-	if (!(stat & XDMA_XR_IRQ_ALL_MASK)) {
+	if (!(stat & XDMA_XR_IRQ_ALL_MASK))
 		return IRQ_NONE;
-	}
 
 	/* Ack the interrupts */
 	DMA_OUT(&chan->regs->sr, (stat & XDMA_XR_IRQ_ALL_MASK));
@@ -416,6 +414,7 @@ static int xdma_setup_hw_desc(struct xdma_chan *chan,
 	int status;
 	unsigned long flags;
 	unsigned int bd_used_saved;
+
 	if (!chan) {
 		pr_err("Requested transfer on invalid channel\n");
 		return -ENODEV;
@@ -443,7 +442,8 @@ static int xdma_setup_hw_desc(struct xdma_chan *chan,
 				status = -ENOMEM;
 				/* If first was not set, then we failed to
 				 * allocate the very first descriptor,
-				 * and we're done */
+				 * and we're done
+				 */
 				if (start_index == -1)
 					goto out_unlock;
 				else
@@ -504,6 +504,7 @@ static int xdma_setup_hw_desc(struct xdma_chan *chan,
 	if (direction == DMA_TO_DEVICE)
 		bd->control |= XDMA_BD_EOP;
 
+	/* Barrier to assert control word write commits */
 	wmb();
 
 	xdma_start_transfer(chan, start_index, end_index2);
@@ -703,14 +704,12 @@ static int pin_user_pages(xlnk_intptr_type uaddr,
 
 		vfree(mapped_pages);
 		return 0;
-	} else {
-		pr_err("Failed to pin user pages\n");
-		for (pgidx = 0; pgidx < status; pgidx++) {
-			put_page(mapped_pages[pgidx]);
-		}
-		vfree(mapped_pages);
-		return -ENOMEM;
 	}
+	pr_err("Failed to pin user pages\n");
+	for (pgidx = 0; pgidx < status; pgidx++)
+		put_page(mapped_pages[pgidx]);
+	vfree(mapped_pages);
+	return -ENOMEM;
 }
 static int unpin_user_pages(struct scatterlist *sglist, unsigned int cnt)
 {
@@ -722,9 +721,8 @@ static int unpin_user_pages(struct scatterlist *sglist, unsigned int cnt)
 
 	for (i = 0; i < cnt; i++) {
 		pg = sg_page(sglist + i);
-		if (pg) {
+		if (pg)
 			put_page(pg);
-		}
 	}
 
 	kfree(sglist);
@@ -738,9 +736,8 @@ struct xdma_chan *xdma_request_channel(char *name)
 
 	list_for_each_entry_safe(device, tmp, &dma_device_list, node) {
 		for (i = 0; i < device->channel_count; i++) {
-			if (!strcmp(device->chan[i]->name, name)) {
+			if (!strcmp(device->chan[i]->name, name))
 				return device->chan[i];
-			}
 		}
 	}
 	return NULL;
@@ -1002,7 +999,7 @@ int xdma_setconfig(struct xdma_chan *chan,
 }
 EXPORT_SYMBOL(xdma_setconfig);
 
-static struct of_device_id gic_match[] = {
+static const struct of_device_id gic_match[] = {
 	{ .compatible = "arm,cortex-a9-gic", },
 	{ .compatible = "arm,cortex-a15-gic", },
 	{ },
@@ -1056,10 +1053,8 @@ static int xdma_probe(struct platform_device *pdev)
 		&pdev->dev, pdev->num_resources, pdev->id);
 
 	xdev = devm_kzalloc(&pdev->dev, sizeof(struct xdma_device), GFP_KERNEL);
-	if (!xdev) {
-		dev_err(&pdev->dev, "Not enough memory for device\n");
+	if (!xdev)
 		return -ENOMEM;
-	}
 	xdev->dev = &(pdev->dev);
 
 	dma_config = (struct xdma_device_config *)xdev->dev->platform_data;
@@ -1084,10 +1079,8 @@ static int xdma_probe(struct platform_device *pdev)
 	dev_info(&pdev->dev, "has %d channel(s)\n", dma_config->channel_count);
 	for (i = 0; i < dma_config->channel_count; i++) {
 		chan = devm_kzalloc(&pdev->dev, sizeof(*chan), GFP_KERNEL);
-		if (!chan) {
-			dev_err(&pdev->dev, "no free memory for DMA channel\n");
+		if (!chan)
 			return -ENOMEM;
-		}
 
 		dma_chan_dir = strcmp(dma_config->channel_config[i].type,
 					"axi-dma-mm2s-channel") ?
