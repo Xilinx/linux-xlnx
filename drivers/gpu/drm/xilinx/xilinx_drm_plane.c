@@ -610,6 +610,7 @@ void xilinx_drm_plane_restore(struct xilinx_drm_plane_manager *manager)
 uint32_t xilinx_drm_plane_get_format(struct drm_plane *base_plane)
 {
 	struct xilinx_drm_plane *plane = to_xilinx_plane(base_plane);
+
 	return plane->format;
 }
 
