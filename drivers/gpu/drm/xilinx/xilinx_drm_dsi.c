@@ -59,14 +59,15 @@
 #define XDSI_VIDEO_MODE_SYNC_EVENT	0x1
 #define XDSI_VIDEO_MODE_BURST		0x2
 
-/**
- * used as a multiplication factor for HACT based on used
+/*
+ * Used as a multiplication factor for HACT based on used
  * DSI data type and pixels per beat.
  * e.g. for RGB666_L with 2 pixels per beat, (6+6+6)*2 = 36.
  * To make it multiples of 8, 36+4 = 40.
  * So, multiplication factor is = 40/8 which gives 5
  */
-int xdsi_mul_factor[XDSI_NUM_DATA_TYPES][XDSI_NUM_PIXELS_PER_BEAT] = {
+static const int
+xdsi_mul_factor[XDSI_NUM_DATA_TYPES][XDSI_NUM_PIXELS_PER_BEAT] = {
 	{ 3, 6, 12 }, /* RGB888 = {1ppb, 2ppb, 4ppb} */
 	{ 3, 5, 9 }, /* RGB666_L = {1ppb, 2ppb, 4ppb} */
 	{ 3, 5, 9 }, /* RGB666_P = {1ppb, 2ppb, 4ppb} */
