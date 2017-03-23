@@ -639,7 +639,8 @@ static int xilinx_drm_dp_link_train_cr(struct xilinx_drm_dp *dp)
 			  DP_TRAINING_PATTERN_1);
 
 	/* 256 loops should be maximum iterations for 4 lanes and 4 values.
-	 * So, This loop should exit before 512 iterations */
+	 * So, This loop should exit before 512 iterations
+	 */
 	for (max_tries = 0; max_tries < 512; max_tries++) {
 		ret = xilinx_drm_dp_update_vs_emph(dp);
 		if (ret)
