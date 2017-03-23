@@ -119,7 +119,7 @@ void xilinx_drm_connector_destroy(struct drm_connector *base_connector)
 	drm_connector_cleanup(base_connector);
 }
 
-static struct drm_connector_funcs xilinx_drm_connector_funcs = {
+static const struct drm_connector_funcs xilinx_drm_connector_funcs = {
 	.dpms		= drm_helper_connector_dpms,
 	.fill_modes	= drm_helper_probe_single_connector_modes,
 	.detect		= xilinx_drm_connector_detect,
