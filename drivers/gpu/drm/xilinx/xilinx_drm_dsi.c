@@ -451,7 +451,7 @@ static void xilinx_dsi_connector_destroy(struct drm_connector *connector)
 	connector->dev = NULL;
 }
 
-static struct drm_connector_funcs xilinx_dsi_connector_funcs = {
+static const struct drm_connector_funcs xilinx_dsi_connector_funcs = {
 	.dpms = xilinx_dsi_connector_dpms,
 	.detect = xilinx_dsi_detect,
 	.fill_modes = drm_helper_probe_single_connector_modes,
@@ -619,7 +619,7 @@ static void xilinx_dsi_commit(struct drm_encoder *encoder)
 	xilinx_dsi_encoder_dpms(encoder, DRM_MODE_DPMS_ON);
 }
 
-static struct drm_encoder_helper_funcs xilinx_dsi_encoder_helper_funcs = {
+static const struct drm_encoder_helper_funcs xilinx_dsi_encoder_helper_funcs = {
 	.dpms = xilinx_dsi_encoder_dpms,
 	.mode_fixup = xilinx_dsi_mode_fixup,
 	.mode_set = xilinx_dsi_mode_set,
@@ -627,7 +627,7 @@ static struct drm_encoder_helper_funcs xilinx_dsi_encoder_helper_funcs = {
 	.commit = xilinx_dsi_commit,
 };
 
-static struct drm_encoder_funcs xilinx_dsi_encoder_funcs = {
+static const struct drm_encoder_funcs xilinx_dsi_encoder_funcs = {
 	.destroy = drm_encoder_cleanup,
 };
 
