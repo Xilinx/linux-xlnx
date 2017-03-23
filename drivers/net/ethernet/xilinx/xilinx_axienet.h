@@ -417,6 +417,7 @@
  * @ptp_tx_ts_tag: Tag value of 2 step timestamping if timestamping is enabled
  *		   Otherwise reserved.
  * @tx_skb:	  Transmit skb address
+ * @tx_desc_mapping: Tx Descriptor DMA mapping type.
  */
 struct axidma_bd {
 	u32 next;	/* Physical address of next buffer descriptor */
