@@ -463,11 +463,6 @@ static void xilinx_drm_lastclose(struct drm_device *drm)
 	xilinx_drm_fb_restore_mode(private->fb);
 }
 
-static int xilinx_drm_set_busid(struct drm_device *dev, struct drm_master *master)
-{
-	return 0;
-}
-
 static const struct file_operations xilinx_drm_fops = {
 	.owner		= THIS_MODULE,
 	.open		= drm_open,
@@ -490,7 +485,6 @@ static struct drm_driver xilinx_drm_driver = {
 	.open				= xilinx_drm_open,
 	.preclose			= xilinx_drm_preclose,
 	.lastclose			= xilinx_drm_lastclose,
-	.set_busid			= xilinx_drm_set_busid,
 
 	.get_vblank_counter		= drm_vblank_no_hw_counter,
 	.enable_vblank			= xilinx_drm_enable_vblank,
