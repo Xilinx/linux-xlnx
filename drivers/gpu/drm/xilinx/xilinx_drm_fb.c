@@ -189,7 +189,7 @@ void xilinx_drm_fb_set_config(struct drm_fb_helper *fb_helper,
 			}
 			drm_mode_copy(fb_helper->crtc_info[0].mode_set.mode,
 					set->mode);
-	       }
+		}
 	}
 }
 
