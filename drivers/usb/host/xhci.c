@@ -180,7 +180,7 @@ int xhci_reset(struct xhci_hcd *xhci)
 
 	xhci_dbg_trace(xhci, trace_xhci_dbg_init, "// Reset the HC");
 	command = readl(&xhci->op_regs->command);
-#ifdef CONFIG_USB_DWC3_DUAL_ROLE
+#ifdef CONFIG_USB_DWC3_OTG
 	command |= CMD_LRESET;
 #else
 	command |= CMD_RESET;
@@ -198,7 +198,7 @@ int xhci_reset(struct xhci_hcd *xhci)
 		udelay(1000);
 
 	ret = xhci_handshake(&xhci->op_regs->command,
-#ifdef CONFIG_USB_DWC3_DUAL_ROLE
+#ifdef CONFIG_USB_DWC3_OTG
 			CMD_LRESET,
 #else
 			CMD_RESET,
