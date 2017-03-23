@@ -736,8 +736,8 @@ static void axienet_adjust_link(struct net_device *ndev)
 				emmc_reg |= XAE_EMMC_LINKSPD_10;
 				break;
 			default:
-				dev_err(&ndev->dev, "Speed other than 10, 100 "
-					"or 1Gbps is not supported\n");
+				dev_err(&ndev->dev, "Speed other than 10, 100 ");
+				dev_err(&ndev->dev, "or 1Gbps is not supported\n");
 				break;
 			}
 
@@ -1125,10 +1125,12 @@ static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 				if (lp->tstamp_config.tx_type ==
 					HWTSTAMP_TX_ONESTEP_SYNC) {
 					axienet_create_tsheader(tmp,
-								TX_TS_OP_ONESTEP, q);
+								TX_TS_OP_ONESTEP
+								, q);
 				} else {
 					axienet_create_tsheader(tmp,
-								TX_TS_OP_TWOSTEP, q);
+								TX_TS_OP_TWOSTEP
+								, q);
 					skb_shinfo(skb)->tx_flags
 							|= SKBTX_IN_PROGRESS;
 					cur_p->ptp_tx_skb =
@@ -1351,7 +1353,7 @@ static int axienet_recv(struct net_device *ndev, int budget,
 					     DMA_FROM_DEVICE);
 		cur_p->cntrl = lp->max_frm_size;
 		cur_p->status = 0;
-		cur_p->sw_id_offset = (phys_addr_t) new_skb;
+		cur_p->sw_id_offset = (phys_addr_t)new_skb;
 
 		++q->rx_bd_ci;
 		q->rx_bd_ci %= RX_BD_NUM;
@@ -1655,7 +1657,8 @@ static int axienet_open(struct net_device *ndev)
 		} else if ((lp->axienet_config->mactype == XAXIENET_1G) ||
 			     (lp->axienet_config->mactype == XAXIENET_2_5G)) {
 			phydev = of_phy_connect(lp->ndev, lp->phy_node,
-						axienet_adjust_link, lp->phy_flags,
+						axienet_adjust_link,
+						lp->phy_flags,
 						lp->phy_interface);
 		}
 
@@ -2400,7 +2403,7 @@ static void axienet_dma_err_handler(unsigned long data)
 					  XAXIDMA_BD_CTRL_LENGTH_MASK),
 					 DMA_TO_DEVICE);
 		if (cur_p->tx_skb)
-			dev_kfree_skb_irq((struct sk_buff *) cur_p->tx_skb);
+			dev_kfree_skb_irq((struct sk_buff *)cur_p->tx_skb);
 		cur_p->phys = 0;
 		cur_p->cntrl = 0;
 		cur_p->status = 0;
