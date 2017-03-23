@@ -783,7 +783,7 @@ static int xemaclite_mdio_read(struct mii_bus *bus, int phy_id, int reg)
  * This function waits till the device is ready to accept a new MDIO
  * request and then writes the val to the MDIO Write Data register.
  *
- * Return:      0 upon success or a negative error upon failure
+ * Return:	0 upon success or a negative error upon failure
  */
 static int xemaclite_mdio_write(struct mii_bus *bus, int phy_id, int reg,
 				u16 val)
