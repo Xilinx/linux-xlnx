@@ -177,6 +177,18 @@ static int zynqmp_pll_set_rate(struct clk_hw *hw, unsigned long rate,
 	long rate_div, frac, m, f;
 
 	if (pll_frac_get_mode(hw) == PLL_MODE_FRAC) {
+		unsigned int children;
+
+		/*
+		 * We're running on a ZynqMP compatible machine, make sure the
+		 * VPLL only has one child.
+		 */
+		children = clk_get_children("vpll");
+
+		/* Account for vpll_to_lpd and dp_video_ref */
+		if (children > 2)
+			WARN(1, "Two devices are using vpll which is forbidden\n");
+
 		rate_div = ((rate * FRAC_DIV) / parent_rate);
 		m = rate_div / FRAC_DIV;
 		f = rate_div % FRAC_DIV;

@@ -1126,27 +1126,3 @@ static int __init zynqmp_clock_init(void)
 	return 0;
 }
 arch_initcall(zynqmp_clock_init);
-
-static int __init warn_vpll_multiuser(void)
-{
-	struct device_node *np;
-	unsigned int children;
-
-	np = of_find_compatible_node(NULL, NULL, "xlnx,zynqmp-clkc");
-	if (!np)
-		return 0;
-	of_node_put(np);
-
-	/*
-	 * We're running on a ZynqMP compatible machine, make sure the
-	 * VPLL only has one child.
-	 */
-	children = clk_get_children("vpll");
-
-	/* Account for vpll_to_lpd and dp_video_ref */
-	if (children > 2)
-		WARN(1, "Two devices are using vpll which is forbidden\n");
-
-	return 0;
-}
-late_initcall_sync(warn_vpll_multiuser);
