@@ -1,0 +1,12 @@
+* Xilinx fclk clock enable
+Temporary solution for enabling the PS_PL clocks.
+
+Required properties:
+- compatible: "xlnx,fclk"
+
+Example:
+++++++++
+fclk0: fclk0 {
+	compatible = "xlnx,fclk";
+	clocks = <&clkc 71>;
+};
