@@ -1,0 +1,28 @@
+* Xilinx JESD204B core
+
+Description:
+The LogiCORE™ IP JESD204 core implements a JESD204B core
+
+Required properties:
+- compatible = Should be one of
+		"xlnx,jesd204-5.1";
+		"xlnx,jesd204-5.2";
+		"xlnx,jesd204-6.1";
+- reg = Should contain JESD204B registers location and length
+- xlnx,frames-per-multiframe = No of frames per multiframe
+- xlnx,bytes-per-frame = No of bytes per frame
+- xlnx,lanes = No of Lanes
+- xlnx,subclass = subclass
+- xlnx,node-is-transmit = should be present only for transmit nodes
+
+Example:
+++++++++
+jesd_Tx_axi_0: jesd_Tx@44a20000 {
+	compatible = "xlnx,jesd204-5.1";
+	reg = <0x44a20000 0x10000>;
+	xlnx,frames-per-multiframe = <30>;
+	xlnx,bytes-per-frame = <2>;
+	xlnx,subclass = <1>;
+	xlnx,lanes = <0x2>;
+	xlnx,node-is-transmit;
+};
