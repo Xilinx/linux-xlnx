@@ -41,7 +41,7 @@ static int xilinxphy_read_status(struct phy_device *phydev)
 	if (err)
 		return err;
 
-	if (AUTONEG_ENABLE == phydev->autoneg) {
+	if (phydev->autoneg == AUTONEG_ENABLE) {
 		status = phy_read(phydev, MII_LPA);
 
 		if (status & MII_PHY_STATUS_FULLDUPLEX)
