@@ -138,8 +138,8 @@ xilinx_drm_fb_get_gem_obj(struct drm_framebuffer *base_fb, unsigned int plane)
 	return fb->obj[plane];
 }
 
-int xilinx_drm_fb_helper_pan_display(struct fb_var_screeninfo *var,
-			      struct fb_info *info)
+static int xilinx_drm_fb_helper_pan_display(struct fb_var_screeninfo *var,
+					    struct fb_info *info)
 {
 	struct drm_fb_helper *fb_helper = info->par;
 	struct drm_device *dev = fb_helper->dev;
@@ -193,7 +193,7 @@ void xilinx_drm_fb_set_config(struct drm_fb_helper *fb_helper,
 	}
 }
 
-int
+static int
 xilinx_drm_fb_ioctl(struct fb_info *info, unsigned int cmd, unsigned long arg)
 {
 	struct drm_fb_helper *fb_helper = info->par;
