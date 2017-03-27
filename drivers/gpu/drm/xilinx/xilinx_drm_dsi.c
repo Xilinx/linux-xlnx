@@ -214,8 +214,8 @@ static void xilinx_dsi_set_display_mode(struct xilinx_dsi *dsi)
 				XDSI_PCR_VIDEOMODE_SHIFT);
 
 	/* configure the HSA value only if non_burst_sync_pluse video mode */
-	if ((!video_mode) &
-		(dsi->mode_flags & MIPI_DSI_MODE_VIDEO_SYNC_PULSE)) {
+	if ((!video_mode) &&
+	    (dsi->mode_flags & MIPI_DSI_MODE_VIDEO_SYNC_PULSE)) {
 		reg = XDSI_TIME1_HSA(vm->hsync_len);
 		xilinx_dsi_writel(dsi->iomem, XDSI_TIME1, reg);
 	}
@@ -397,7 +397,6 @@ static int xilinx_dsi_connector_dpms(struct drm_connector *connector,
 {
 	struct xilinx_dsi *dsi = connector_to_dsi(connector);
 	int ret;
-	bool panel_on = 0;
 
 	dev_dbg(dsi->dev, "connector dpms state: %d\n", mode);
 
@@ -788,7 +787,7 @@ static const struct of_device_id xilinx_dsi_of_match[] = {
 };
 MODULE_DEVICE_TABLE(of, xilinx_dsi_of_match);
 
-struct platform_driver dsi_driver = {
+static struct platform_driver dsi_driver = {
 	.probe = xilinx_dsi_probe,
 	.remove = xilinx_dsi_remove,
 	.driver = {
