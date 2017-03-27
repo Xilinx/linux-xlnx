@@ -427,7 +427,7 @@ static int xilinx_drm_unload(struct drm_device *drm)
 	return 0;
 }
 
-int xilinx_drm_open(struct drm_device *dev, struct drm_file *file)
+static int xilinx_drm_open(struct drm_device *dev, struct drm_file *file)
 {
 	struct xilinx_drm_private *private = dev->dev_private;
 
