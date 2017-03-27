@@ -287,7 +287,7 @@ void xilinx_drm_crtc_destroy(struct drm_crtc *base_crtc)
 }
 
 /* crtc set config helper */
-int xilinx_drm_crtc_helper_set_config(struct drm_mode_set *set)
+static int xilinx_drm_crtc_helper_set_config(struct drm_mode_set *set)
 {
 	struct drm_device *drm = set->crtc->dev;
 
