@@ -890,6 +890,11 @@ static int ams_probe(struct platform_device *pdev)
 
 	INIT_DELAYED_WORK(&ams->ams_unmask_work, ams_unmask_worker);
 
+	ams->clk = devm_clk_get(&pdev->dev, NULL);
+	if (IS_ERR(ams->clk))
+		return PTR_ERR(ams->clk);
+	clk_prepare_enable(ams->clk);
+
 	ret = ams_parse_dt(indio_dev, pdev);
 	if (ret)
 		return ret;
@@ -903,11 +908,6 @@ static int ams_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "failed to register interrupt\n");
 		return ret;
 	}
-
-	ams->clk = devm_clk_get(&pdev->dev, NULL);
-	if (IS_ERR(ams->clk))
-		return PTR_ERR(ams->clk);
-	clk_prepare_enable(ams->clk);
 
 	platform_set_drvdata(pdev, indio_dev);
 
