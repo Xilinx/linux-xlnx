@@ -225,6 +225,7 @@ unsigned int clk_get_children(char *name)
 {
 	struct clk_core *core;
 	struct clk *pclk = __clk_lookup(name);
+	sibling = 0;
 
 	core = pclk->core;
 	clk_show_subtree(core, 0);
