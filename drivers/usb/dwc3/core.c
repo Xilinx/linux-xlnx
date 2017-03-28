@@ -25,6 +25,7 @@
 #include <linux/of.h>
 #include <linux/acpi.h>
 #include <linux/pinctrl/consumer.h>
+#include <linux/of_address.h>
 #include <linux/reset.h>
 
 #include <linux/usb/ch9.h>
@@ -528,6 +529,33 @@ static void dwc3_cache_hwparams(struct dwc3 *dwc)
 	parms->hwparams8 = dwc3_readl(dwc->regs, DWC3_GHWPARAMS8);
 }
 
+static int dwc3_config_soc_bus(struct dwc3 *dwc)
+{
+	int ret;
+
+	/*
+	 * Check if CCI is enabled for USB. Returns true
+	 * if the node has property 'dma-coherent'. Otherwise
+	 * returns false.
+	 */
+	if (of_dma_is_coherent(dwc->dev->of_node)) {
+		u32 reg;
+
+		reg = dwc3_readl(dwc->regs, DWC3_GSBUSCFG0);
+		reg |= DWC3_GSBUSCFG0_DATRDREQINFO |
+			DWC3_GSBUSCFG0_DESRDREQINFO |
+			DWC3_GSBUSCFG0_DATWRREQINFO |
+			DWC3_GSBUSCFG0_DESWRREQINFO;
+		dwc3_writel(dwc->regs, DWC3_GSBUSCFG0, reg);
+
+		ret = dwc3_enable_hw_coherency(dwc->dev);
+		if (ret)
+			return ret;
+	}
+
+	return 0;
+}
+
 static int dwc3_core_ulpi_init(struct dwc3 *dwc)
 {
 	int intf;
@@ -918,6 +946,14 @@ static int dwc3_core_init(struct dwc3 *dwc)
 			goto err0;
 		dwc->ulpi_ready = true;
 	}
+
+	ret = dwc3_config_soc_bus(dwc);
+	if (ret)
+		goto err0;
+
+	ret = dwc3_phy_setup(dwc);
+	if (ret)
+		goto err0a;
 
 	if (!dwc->phys_ready) {
 		ret = dwc3_core_get_phy(dwc);
