@@ -909,6 +909,8 @@ static int ams_probe(struct platform_device *pdev)
 		return PTR_ERR(ams->clk);
 	clk_prepare_enable(ams->clk);
 
+	platform_set_drvdata(pdev, indio_dev);
+
 	return iio_device_register(indio_dev);
 }
 
