@@ -31,11 +31,54 @@
 #include <linux/soc/xilinx/zynqmp/fw.h>
 #include <linux/slab.h>
 
+#include <linux/of_address.h>
+
+#include "core.h"
+
+/* Xilinx USB 3.0 IP Register */
+#define XLNX_USB_COHERENCY		0x005C
+#define XLNX_USB_COHERENCY_ENABLE	0x1
+
 struct dwc3_of_simple {
 	struct device		*dev;
 	struct clk		**clks;
 	int			num_clocks;
 };
+
+int dwc3_enable_hw_coherency(struct device *dev)
+{
+	struct device_node *node = of_get_parent(dev->of_node);
+
+	if (of_device_is_compatible(node, "xlnx,zynqmp-dwc3")) {
+		struct platform_device *pdev_parent;
+		struct resource *res;
+		void __iomem *regs;
+		u32 reg;
+		int ret;
+
+		pdev_parent = of_find_device_by_node(node);
+		res = platform_get_resource(pdev_parent,
+					    IORESOURCE_MEM, 0);
+		if (!res) {
+			dev_err(dev, "missing memory resource\n");
+			return -ENODEV;
+		}
+
+		regs = devm_ioremap_resource(&pdev_parent->dev, res);
+		if (IS_ERR(regs)) {
+			ret = PTR_ERR(regs);
+			return ret;
+		}
+
+		reg = readl(regs + XLNX_USB_COHERENCY);
+		reg |= XLNX_USB_COHERENCY_ENABLE;
+		writel(reg, regs + XLNX_USB_COHERENCY);
+
+		devm_ioremap_release(&pdev_parent->dev, res);
+	}
+
+	return 0;
+}
 
 static int dwc3_of_simple_clk_init(struct dwc3_of_simple *simple, int count)
 {
