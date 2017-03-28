@@ -741,7 +741,7 @@ static int xilinx_spi_probe(struct platform_device *pdev)
 	pm_runtime_use_autosuspend(&pdev->dev);
 	pm_runtime_enable(&pdev->dev);
 	ret = pm_runtime_get_sync(&pdev->dev);
-	if (ret)
+	if (ret < 0)
 		goto clk_unprepare_all;
 
 	xspi->read_fn = xspi_read32;
