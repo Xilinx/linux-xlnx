@@ -560,7 +560,7 @@ static void ams_handle_events(struct iio_dev *indio_dev, unsigned long events)
 }
 
 /**
- * ams_unmask_worker() - ams alarm interrupt unmask worker
+ * ams_unmask_worker - ams alarm interrupt unmask worker
  * @work :		work to be done
  *
  * The ZynqMP threshold interrupts are level sensitive. Since we can't make the
