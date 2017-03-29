@@ -34,6 +34,11 @@
 #include "xilinx_drm_dp_sub.h"
 #include "xilinx_drm_drv.h"
 
+static uint xilinx_drm_dp_aux_timeout_ms = 50;
+module_param_named(aux_timeout_ms, xilinx_drm_dp_aux_timeout_ms, uint, 0444);
+MODULE_PARM_DESC(aux_timeout_ms,
+		 "DP aux timeout value in msec (default: 50)");
+
 /* Link configuration registers */
 #define XILINX_DP_TX_LINK_BW_SET			0x0
 #define XILINX_DP_TX_LANE_CNT_SET			0x4
@@ -1229,14 +1234,20 @@ xilinx_drm_dp_aux_transfer(struct drm_dp_aux *aux, struct drm_dp_aux_msg *msg)
 {
 	struct xilinx_drm_dp *dp = container_of(aux, struct xilinx_drm_dp, aux);
 	int ret;
-	unsigned int i;
+	unsigned int i, iter;
 
-	for (i = 0; i < 128; i++) {
+	/* Number of loops = timeout in msec / aux delay (400 usec) */
+	iter = xilinx_drm_dp_aux_timeout_ms * 1000 / 400;
+	iter = iter ? iter : 1;
+
+	for (i = 0; i < iter; i++) {
 		ret = xilinx_drm_dp_aux_cmd_submit(dp, msg->request,
 						   msg->address, msg->buffer,
 						   msg->size, &msg->reply);
-		if (!ret)
+		if (!ret) {
+			dev_dbg(dp->dev, "aux %d retries\n", i);
 			return msg->size;
+		}
 
 		usleep_range(400, 500);
 	}
