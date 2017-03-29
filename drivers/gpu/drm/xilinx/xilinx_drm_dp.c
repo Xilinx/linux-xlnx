@@ -1229,13 +1229,21 @@ xilinx_drm_dp_aux_transfer(struct drm_dp_aux *aux, struct drm_dp_aux_msg *msg)
 {
 	struct xilinx_drm_dp *dp = container_of(aux, struct xilinx_drm_dp, aux);
 	int ret;
+	unsigned int i;
 
-	ret = xilinx_drm_dp_aux_cmd_submit(dp, msg->request, msg->address,
-					   msg->buffer, msg->size, &msg->reply);
-	if (ret < 0)
-		return ret;
+	for (i = 0; i < 128; i++) {
+		ret = xilinx_drm_dp_aux_cmd_submit(dp, msg->request,
+						   msg->address, msg->buffer,
+						   msg->size, &msg->reply);
+		if (!ret)
+			return msg->size;
 
-	return msg->size;
+		usleep_range(400, 500);
+	}
+
+	dev_dbg(dp->dev, "failed to do aux transfer (%d)\n", ret);
+
+	return ret;
 }
 
 static int xilinx_drm_dp_parse_of(struct xilinx_drm_dp *dp)
