@@ -279,10 +279,18 @@ static int zynqmp_pll_enable(struct clk_hw *hw)
  */
 static void zynqmp_pll_disable(struct clk_hw *hw)
 {
+        u32 reg;
 	struct zynqmp_pll *clk = to_zynqmp_pll(hw);
 
 	if (!zynqmp_pll_is_enabled(hw))
 		return;
+
+        /* Must assert BYPASS before asserting Reset - UG1087 (v1.2) */
+	reg = zynqmp_pm_mmio_readl(clk->pll_ctrl);
+        if (!(reg & PLLCTRL_BP_MASK)) {
+           reg |= PLLCTRL_BP_MASK;
+           zynqmp_pm_mmio_writel(reg, clk->pll_ctrl);
+        }
 
 	pr_info("PLL: shutdown\n");
 
