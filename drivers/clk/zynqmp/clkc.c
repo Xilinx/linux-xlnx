@@ -196,7 +196,6 @@ static void __init zynqmp_clk_register_pl_clk(enum zynqmp_clk pl_clk,
 		const char *clk_name, resource_size_t *pl_clk_ctrl_reg,
 		const char **parents)
 {
-	struct clk *clk;
 	char *mux_name;
 	char *div0_name;
 	char *div1_name;
@@ -211,14 +210,14 @@ static void __init zynqmp_clk_register_pl_clk(enum zynqmp_clk pl_clk,
 	if (!div1_name)
 		goto err_div1_name;
 
-	clk = zynqmp_clk_register_mux(NULL, mux_name, parents, 4,
+	zynqmp_clk_register_mux(NULL, mux_name, parents, 4,
 			CLK_SET_RATE_NO_REPARENT, pl_clk_ctrl_reg, 0, 3, 0);
 
-	clk = zynqmp_clk_register_divider(NULL, div0_name, mux_name, 0,
+	zynqmp_clk_register_divider(NULL, div0_name, mux_name, 0,
 			pl_clk_ctrl_reg, 8, 6,
 			CLK_DIVIDER_ONE_BASED | CLK_DIVIDER_ALLOW_ZERO);
 
-	clk = zynqmp_clk_register_divider(NULL, div1_name, div0_name,
+	zynqmp_clk_register_divider(NULL, div1_name, div0_name,
 			CLK_SET_RATE_PARENT, pl_clk_ctrl_reg, 16, 6,
 			CLK_DIVIDER_ONE_BASED | CLK_DIVIDER_ALLOW_ZERO);
 
@@ -255,7 +254,6 @@ static int __init zynqmp_clk_register_pll_clk(enum zynqmp_clk pll_clk,
 			resource_size_t *clk_ctrl_reg,
 			resource_size_t *status_reg, u8 lock_index)
 {
-	struct clk *clk;
 	char *clk_int_name;
 	char *pre_src_mux_name;
 	char *post_src_mux_name;
@@ -299,20 +297,20 @@ static int __init zynqmp_clk_register_pll_clk(enum zynqmp_clk pll_clk,
 			flags | CLK_SET_RATE_NO_REPARENT,
 			clk_ctrl_reg, status_reg, lock_index);
 
-	clk = zynqmp_clk_register_mux(NULL, pre_src_mux_name,
+	zynqmp_clk_register_mux(NULL, pre_src_mux_name,
 			pll_src_mux_parents, 8,	0, clk_ctrl_reg, 20, 3, 0);
 
-	clk = clk_register_fixed_factor(NULL, int_half_name, clk_int_name,
+	clk_register_fixed_factor(NULL, int_half_name, clk_int_name,
 			CLK_SET_RATE_NO_REPARENT | CLK_SET_RATE_PARENT, 1, 2);
 
-	clk = zynqmp_clk_register_mux(NULL, int_mux_name, int_mux_parents, 2,
+	zynqmp_clk_register_mux(NULL, int_mux_name, int_mux_parents, 2,
 			CLK_SET_RATE_NO_REPARENT | CLK_SET_RATE_PARENT,
 			clk_ctrl_reg, 16, 1, 0);
 
-	clk = zynqmp_clk_register_mux(NULL, post_src_mux_name,
+	zynqmp_clk_register_mux(NULL, post_src_mux_name,
 			pll_src_mux_parents, 8,	0, clk_ctrl_reg, 24, 3, 0);
 
-	clk = zynqmp_clk_register_mux(NULL, clk_name, bypass_parents,
+	zynqmp_clk_register_mux(NULL, clk_name, bypass_parents,
 			2, CLK_SET_RATE_NO_REPARENT | CLK_SET_RATE_PARENT,
 			clk_ctrl_reg, 3, 1, 0);
 
@@ -453,7 +451,6 @@ static void __init zynqmp_clk_setup(struct device_node *np)
 {
 	int i;
 	u32 tmp;
-	struct clk *clk;
 	char *clk_name;
 	int idx;
 
@@ -555,11 +552,11 @@ static void __init zynqmp_clk_setup(struct device_node *np)
 			(resource_size_t *)CRL_APB_RPLL_TO_FPD_CTRL, 8,
 			6, CLK_DIVIDER_ONE_BASED | CLK_DIVIDER_ALLOW_ZERO);
 
-	clk = zynqmp_clk_register_mux(NULL, "acpu_mux", acpu_parents, 4,
+	zynqmp_clk_register_mux(NULL, "acpu_mux", acpu_parents, 4,
 			CLK_SET_RATE_NO_REPARENT,
 			(resource_size_t *)CRF_APB_ACPU_CTRL, 0, 3, 0);
 
-	clk = zynqmp_clk_register_divider(NULL, "acpu_div0", "acpu_mux", 0,
+	zynqmp_clk_register_divider(NULL, "acpu_div0", "acpu_mux", 0,
 			(resource_size_t *)CRF_APB_ACPU_CTRL, 8, 6,
 			CLK_DIVIDER_ONE_BASED | CLK_DIVIDER_ALLOW_ZERO);
 
@@ -569,7 +566,7 @@ static void __init zynqmp_clk_setup(struct device_node *np)
 
 	clk_prepare_enable(clks[acpu]);
 
-	clk = clk_register_fixed_factor(NULL, "acpu_half_div", "acpu_div0", 0,
+	clk_register_fixed_factor(NULL, "acpu_half_div", "acpu_div0", 0,
 			1, 2);
 
 	clks[acpu_half] = zynqmp_clk_register_gate(NULL,
@@ -601,7 +598,7 @@ static void __init zynqmp_clk_setup(struct device_node *np)
 	ddr_parents[0] = clk_output_name[dpll];
 	ddr_parents[1] = clk_output_name[vpll];
 
-	clk = zynqmp_clk_register_mux(NULL, "ddr_mux", ddr_parents, 2,
+	zynqmp_clk_register_mux(NULL, "ddr_mux", ddr_parents, 2,
 			CLK_SET_RATE_NO_REPARENT,
 			(resource_size_t *)CRF_APB_DDR_CTRL, 0, 3, 0);
 
@@ -830,18 +827,18 @@ static void __init zynqmp_clk_setup(struct device_node *np)
 			gem0_tx_mux_parents[i + 1] = of_clk_get_parent_name(np,
 					idx);
 	}
-	clk = zynqmp_clk_register_mux(NULL, "gem0_ref_mux",
+	zynqmp_clk_register_mux(NULL, "gem0_ref_mux",
 			periph_parents[gem0_ref], 4, CLK_SET_RATE_NO_REPARENT,
 			(resource_size_t *)CRL_APB_GEM0_REF_CTRL, 0, 3, 0);
-	clk = zynqmp_clk_register_divider(NULL, "gem0_ref_div0", "gem0_ref_mux",
+	zynqmp_clk_register_divider(NULL, "gem0_ref_div0", "gem0_ref_mux",
 			0, (resource_size_t *)CRL_APB_GEM0_REF_CTRL, 8, 6,
 			CLK_DIVIDER_ONE_BASED | CLK_DIVIDER_ALLOW_ZERO);
-	clk = zynqmp_clk_register_divider(NULL, "gem0_ref_div1",
+	zynqmp_clk_register_divider(NULL, "gem0_ref_div1",
 			"gem0_ref_div0", 0,
 			(resource_size_t *)CRL_APB_GEM0_REF_CTRL, 16, 6,
 			CLK_DIVIDER_ONE_BASED | CLK_DIVIDER_ALLOW_ZERO);
 
-	clk = zynqmp_clk_register_mux(NULL, "gem0_tx_mux", gem0_tx_mux_parents,
+	zynqmp_clk_register_mux(NULL, "gem0_tx_mux", gem0_tx_mux_parents,
 			2, CLK_SET_RATE_NO_REPARENT,
 			(resource_size_t *)IOU_SLCR_GEM_CLK_CTRL, 1, 1, 0);
 	clks[gem0_rx] = zynqmp_clk_register_gate(NULL, clk_output_name[gem0_rx],
@@ -862,18 +859,18 @@ static void __init zynqmp_clk_setup(struct device_node *np)
 					idx);
 	}
 
-	clk = zynqmp_clk_register_mux(NULL, "gem1_ref_mux",
+	zynqmp_clk_register_mux(NULL, "gem1_ref_mux",
 			periph_parents[gem1_ref],
 			4, CLK_SET_RATE_NO_REPARENT,
 			(resource_size_t *)CRL_APB_GEM1_REF_CTRL, 0, 3, 0);
-	clk = zynqmp_clk_register_divider(NULL, "gem1_ref_div0", "gem1_ref_mux",
+	zynqmp_clk_register_divider(NULL, "gem1_ref_div0", "gem1_ref_mux",
 			0, (resource_size_t *)CRL_APB_GEM1_REF_CTRL, 8, 6,
 			CLK_DIVIDER_ONE_BASED | CLK_DIVIDER_ALLOW_ZERO);
-	clk = zynqmp_clk_register_divider(NULL, "gem1_ref_div1",
+	zynqmp_clk_register_divider(NULL, "gem1_ref_div1",
 			"gem1_ref_div0", 0,
 			(resource_size_t *)CRL_APB_GEM1_REF_CTRL, 16, 6,
 			CLK_DIVIDER_ONE_BASED | CLK_DIVIDER_ALLOW_ZERO);
-	clk = zynqmp_clk_register_mux(NULL, "gem1_tx_mux", gem1_tx_mux_parents,
+	zynqmp_clk_register_mux(NULL, "gem1_tx_mux", gem1_tx_mux_parents,
 			2, CLK_SET_RATE_NO_REPARENT,
 			(resource_size_t *)IOU_SLCR_GEM_CLK_CTRL, 6, 1,	0);
 	clks[gem1_rx] = zynqmp_clk_register_gate(NULL, clk_output_name[gem1_rx],
@@ -892,18 +889,18 @@ static void __init zynqmp_clk_setup(struct device_node *np)
 			gem2_tx_mux_parents[i + 1] = of_clk_get_parent_name(np,
 					idx);
 	}
-	clk = zynqmp_clk_register_mux(NULL, "gem2_ref_mux",
+	zynqmp_clk_register_mux(NULL, "gem2_ref_mux",
 			periph_parents[gem2_ref], 4, CLK_SET_RATE_NO_REPARENT,
 			(resource_size_t *)CRL_APB_GEM2_REF_CTRL, 0, 3, 0);
-	clk = zynqmp_clk_register_divider(NULL, "gem2_ref_div0",
+	zynqmp_clk_register_divider(NULL, "gem2_ref_div0",
 			"gem2_ref_mux", 0,
 			(resource_size_t *)CRL_APB_GEM2_REF_CTRL, 8, 6,
 			CLK_DIVIDER_ONE_BASED | CLK_DIVIDER_ALLOW_ZERO);
-	clk = zynqmp_clk_register_divider(NULL, "gem2_ref_div1",
+	zynqmp_clk_register_divider(NULL, "gem2_ref_div1",
 			"gem2_ref_div0", 0,
 			(resource_size_t *)CRL_APB_GEM2_REF_CTRL, 16, 6,
 			CLK_DIVIDER_ONE_BASED | CLK_DIVIDER_ALLOW_ZERO);
-	clk = zynqmp_clk_register_mux(NULL, "gem2_tx_mux", gem2_tx_mux_parents,
+	zynqmp_clk_register_mux(NULL, "gem2_tx_mux", gem2_tx_mux_parents,
 			2, CLK_SET_RATE_NO_REPARENT,
 			(resource_size_t *)IOU_SLCR_GEM_CLK_CTRL, 11, 1, 0);
 	clks[gem2_rx] = zynqmp_clk_register_gate(NULL, clk_output_name[gem2_rx],
@@ -923,19 +920,19 @@ static void __init zynqmp_clk_setup(struct device_node *np)
 					idx);
 	}
 
-	clk = zynqmp_clk_register_mux(NULL, "gem3_ref_mux",
+	zynqmp_clk_register_mux(NULL, "gem3_ref_mux",
 			periph_parents[gem3_ref], 4, CLK_SET_RATE_NO_REPARENT,
 			(resource_size_t *)CRL_APB_GEM3_REF_CTRL, 0,
 			3, 0);
-	clk = zynqmp_clk_register_divider(NULL, "gem3_ref_div0",
+	zynqmp_clk_register_divider(NULL, "gem3_ref_div0",
 			"gem3_ref_mux", 0,
 			(resource_size_t *)CRL_APB_GEM3_REF_CTRL, 8, 6,
 			CLK_DIVIDER_ONE_BASED | CLK_DIVIDER_ALLOW_ZERO);
-	clk = zynqmp_clk_register_divider(NULL, "gem3_ref_div1",
+	zynqmp_clk_register_divider(NULL, "gem3_ref_div1",
 			"gem3_ref_div0", CLK_SET_RATE_PARENT,
 			(resource_size_t *)CRL_APB_GEM3_REF_CTRL, 16, 6,
 			CLK_DIVIDER_ONE_BASED | CLK_DIVIDER_ALLOW_ZERO);
-	clk = zynqmp_clk_register_mux(NULL, "gem3_tx_mux", gem3_tx_mux_parents,
+	zynqmp_clk_register_mux(NULL, "gem3_tx_mux", gem3_tx_mux_parents,
 			2, CLK_SET_RATE_NO_REPARENT,
 			(resource_size_t *)IOU_SLCR_GEM_CLK_CTRL, 16, 1, 0);
 	clks[gem3_rx] = zynqmp_clk_register_gate(NULL, clk_output_name[gem3_rx],
@@ -1005,7 +1002,7 @@ static void __init zynqmp_clk_setup(struct device_node *np)
 	zynqmp_clk_register_periph_clk(0, can0_ref, clk_output_name[can0_ref],
 			CRL_APB_CAN0_REF_CTRL, periph_parents[can0_ref], 1, 1,
 			24);
-	clk = zynqmp_clk_register_mux(NULL, "can0_mio_mux",
+	zynqmp_clk_register_mux(NULL, "can0_mio_mux",
 			can_mio_mux_parents, NUM_MIO_PINS,
 			CLK_SET_RATE_PARENT | CLK_SET_RATE_NO_REPARENT,
 			(resource_size_t *)IOU_SLCR_CAN_MIO_CTRL, 0, 7, 0);
@@ -1017,7 +1014,7 @@ static void __init zynqmp_clk_setup(struct device_node *np)
 	zynqmp_clk_register_periph_clk(0, can1_ref, clk_output_name[can1_ref],
 			CRL_APB_CAN1_REF_CTRL, periph_parents[can1_ref], 1, 1,
 			24);
-	clk = zynqmp_clk_register_mux(NULL, "can1_mio_mux",
+	zynqmp_clk_register_mux(NULL, "can1_mio_mux",
 			can_mio_mux_parents, NUM_MIO_PINS,
 			CLK_SET_RATE_PARENT | CLK_SET_RATE_NO_REPARENT,
 			(resource_size_t *)IOU_SLCR_CAN_MIO_CTRL, 15, 7, 0);
@@ -1029,7 +1026,7 @@ static void __init zynqmp_clk_setup(struct device_node *np)
 	zynqmp_clk_register_periph_clk(0, cpu_r5, clk_output_name[cpu_r5],
 			CRL_APB_CPU_R5_CTRL, periph_parents[cpu_r5],
 			CLK_IGNORE_UNUSED, 0, 24);
-	clk = zynqmp_clk_register_gate(NULL, "cpu_r5_core_gate", "cpu_r5_div0",
+	zynqmp_clk_register_gate(NULL, "cpu_r5_core_gate", "cpu_r5_div0",
 			CLK_IGNORE_UNUSED,
 			(resource_size_t *)CRL_APB_CPU_R5_CTRL, 25, 0);
 
@@ -1088,10 +1085,10 @@ static void __init zynqmp_clk_setup(struct device_node *np)
 	timestamp_ref_parents[5] = input_clks[0];
 	timestamp_ref_parents[6] = input_clks[0];
 	timestamp_ref_parents[7] = input_clks[0];
-	clk = zynqmp_clk_register_mux(NULL, "timestamp_ref_mux",
+	zynqmp_clk_register_mux(NULL, "timestamp_ref_mux",
 			timestamp_ref_parents, 8, CLK_SET_RATE_NO_REPARENT,
 			(resource_size_t *)CRL_APB_TIMESTAMP_REF_CTRL, 0, 3, 0);
-	clk = zynqmp_clk_register_divider(NULL, "timestamp_ref_div0",
+	zynqmp_clk_register_divider(NULL, "timestamp_ref_div0",
 			"timestamp_ref_mux", 0,
 			(resource_size_t *)CRL_APB_TIMESTAMP_REF_CTRL,
 			8, 6, CLK_DIVIDER_ONE_BASED | CLK_DIVIDER_ALLOW_ZERO);
