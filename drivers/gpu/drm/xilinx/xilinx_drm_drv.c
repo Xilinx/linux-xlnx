@@ -557,6 +557,8 @@ static int xilinx_drm_pm_resume(struct device *dev)
 	drm_kms_helper_poll_enable_locked(drm);
 	drm_modeset_unlock_all(drm);
 
+	drm_helper_resume_force_mode(drm);
+
 	return 0;
 }
 #endif
