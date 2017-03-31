@@ -105,6 +105,8 @@ extern "C" {
 #define DRM_FORMAT_VYUY		fourcc_code('V', 'Y', 'U', 'Y') /* [31:0] Y1:Cb0:Y0:Cr0 8:8:8:8 little endian */
 
 #define DRM_FORMAT_AYUV		fourcc_code('A', 'Y', 'U', 'V') /* [31:0] A:Y:Cb:Cr 8:8:8:8 little endian */
+#define DRM_FORMAT_VUY888	fourcc_code('V', 'U', '2', '4') /* [23:0] V:U:Y little endian */
+#define DRM_FORMAT_XVUY8888	fourcc_code('X', 'V', '2', '4') /* [31:0] x:V:U:Y 8:8:8:8 little endian */
 
 /*
  * 2 plane YCbCr
