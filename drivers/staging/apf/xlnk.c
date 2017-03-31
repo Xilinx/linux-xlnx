@@ -423,7 +423,6 @@ static int xlnk_allocbuf(unsigned int len, unsigned int cacheable)
 	spin_unlock(&xlnk_buf_lock);
 
 	if (id <= 0 || id >= XLNK_BUF_POOL_SIZE) {
-		pr_err("No id could be found in range\n");
 		return -ENOMEM;
 	}
 
@@ -1729,7 +1728,7 @@ static int xlnk_mmap(struct file *filp, struct vm_area_struct *vma)
 	int bufid;
 	int status;
 
-	bufid = vma->vm_pgoff >> (24 - PAGE_SHIFT);
+	bufid = vma->vm_pgoff >> (16 - PAGE_SHIFT);
 
 	if (bufid == 0)
 		status = remap_pfn_range(vma, vma->vm_start,
