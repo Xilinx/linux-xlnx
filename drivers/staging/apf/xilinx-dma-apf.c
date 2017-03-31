@@ -211,7 +211,6 @@ static void xilinx_chan_desc_cleanup(struct xdma_chan *chan)
 			}
 		}
 		if (desc->dmahead) {
-
 			if ((desc->sw_flag & XDMA_BD_SF_POLL_MODE_MASK))
 				if (!(desc->sw_flag & XDMA_BD_SF_SW_DONE_MASK))
 					break;
@@ -220,7 +219,7 @@ static void xilinx_chan_desc_cleanup(struct xdma_chan *chan)
 			cmp = (struct completion *)&dmahead->cmp;
 			if (dmahead->nappwords_o)
 				memcpy(dmahead->appwords_o, desc->app,
-					dmahead->nappwords_o * sizeof(u32));
+				       dmahead->nappwords_o * sizeof(u32));
 
 			if (chan->poll_mode)
 				cmp->done = 1;
@@ -248,8 +247,7 @@ static void xdma_err_tasklet(unsigned long data)
 		if (!dma_init(chan))
 			chan->err = 0;
 		else
-			dev_err(chan->dev,
-			    "DMA channel reset failed, please reset system\n");
+			dev_err(chan->dev, "DMA channel reset failed, please reset system\n");
 	}
 
 	/* Barrier to assert descriptor init is reaches memory */
@@ -308,7 +306,7 @@ static irqreturn_t xdma_rx_intr_handler(int irq, void *data)
 	}
 
 	if (!(chan->poll_mode) && ((stat & XDMA_XR_IRQ_DELAY_MASK) ||
-			(stat & XDMA_XR_IRQ_IOC_MASK)))
+				   (stat & XDMA_XR_IRQ_IOC_MASK)))
 		tasklet_schedule(&chan->tasklet);
 
 	return IRQ_HANDLED;
@@ -340,7 +338,7 @@ static irqreturn_t xdma_tx_intr_handler(int irq, void *data)
 	}
 
 	if (!(chan->poll_mode) && ((stat & XDMA_XR_IRQ_DELAY_MASK) ||
-			(stat & XDMA_XR_IRQ_IOC_MASK)))
+				   (stat & XDMA_XR_IRQ_IOC_MASK)))
 		tasklet_schedule(&chan->tasklet);
 
 	return IRQ_HANDLED;
@@ -398,12 +396,12 @@ static void xdma_start_transfer(struct xdma_chan *chan,
 }
 
 static int xdma_setup_hw_desc(struct xdma_chan *chan,
-				struct xdma_head *dmahead,
-				struct scatterlist *sgl,
-				unsigned int sg_len,
-				enum dma_data_direction direction,
-				unsigned int nappwords_i,
-				u32 *appwords_i)
+			      struct xdma_head *dmahead,
+			      struct scatterlist *sgl,
+			      unsigned int sg_len,
+			      enum dma_data_direction direction,
+			      unsigned int nappwords_i,
+			      u32 *appwords_i)
 {
 	struct xdma_desc_hw *bd = NULL;
 	size_t copy;
@@ -475,7 +473,7 @@ static int xdma_setup_hw_desc(struct xdma_chan *chan,
 
 				if (nappwords_i)
 					memcpy(bd->app, appwords_i,
-						nappwords_i * sizeof(u32));
+					       nappwords_i * sizeof(u32));
 
 				if (direction == DMA_TO_DEVICE)
 					bd->control |= XDMA_BD_SOP;
@@ -497,7 +495,7 @@ static int xdma_setup_hw_desc(struct xdma_chan *chan,
 		goto out_unlock;
 	}
 
-	bd->dmahead = (xlnk_intptr_type) dmahead;
+	bd->dmahead = (xlnk_intptr_type)dmahead;
 	bd->sw_flag = chan->poll_mode ? XDMA_BD_SF_POLL_MODE_MASK : 0;
 	dmahead->last_bd_index = end_index2;
 
@@ -576,14 +574,15 @@ static unsigned int phy_buf_to_sgl(xlnk_intptr_type phy_buf,
 
 		phy_buf += dma_len;
 		phy_buf_len -= dma_len;
-
 	}
+
 	return sgl_cnt;
 }
 
 /*  merge sg list, sgl, with length sgl_len, to sgl_merged, to save dma bds */
-static unsigned int sgl_merge(struct scatterlist *sgl, unsigned int sgl_len,
-			struct scatterlist *sgl_merged)
+static unsigned int sgl_merge(struct scatterlist *sgl,
+			      unsigned int sgl_len,
+			      struct scatterlist *sgl_merged)
 {
 	struct scatterlist *sghead, *sgend, *sgnext, *sg_merged_head;
 	unsigned int sg_visited_cnt = 0, sg_merged_num = 0;
@@ -593,14 +592,12 @@ static unsigned int sgl_merge(struct scatterlist *sgl, unsigned int sgl_len,
 	sghead = sgl;
 
 	while (sghead && (sg_visited_cnt < sgl_len)) {
-
 		dma_len = sg_dma_len(sghead);
 		sgend = sghead;
 		sg_visited_cnt++;
 		sgnext = sg_next(sgend);
 
 		while (sgnext && (sg_visited_cnt < sgl_len)) {
-
 			if ((sg_dma_address(sgend) + sg_dma_len(sgend)) !=
 				sg_dma_address(sgnext))
 				break;
@@ -612,7 +609,6 @@ static unsigned int sgl_merge(struct scatterlist *sgl, unsigned int sgl_len,
 			dma_len += sg_dma_len(sgend);
 			sg_visited_cnt++;
 			sgnext = sg_next(sgnext);
-
 		}
 
 		sg_merged_num++;
@@ -667,7 +663,7 @@ static int pin_user_pages(xlnk_intptr_type uaddr,
 		sglist = kcalloc(num_pages,
 				 sizeof(struct scatterlist),
 				 GFP_KERNEL);
-		if (sglist == NULL) {
+		if (!sglist) {
 			pr_err("%s: kcalloc failed to create sg list\n",
 			       __func__);
 			vfree(mapped_pages);
@@ -711,6 +707,7 @@ static int pin_user_pages(xlnk_intptr_type uaddr,
 	vfree(mapped_pages);
 	return -ENOMEM;
 }
+
 static int unpin_user_pages(struct scatterlist *sglist, unsigned int cnt)
 {
 	struct page *pg;
@@ -759,8 +756,8 @@ void xdma_release_all_channels(void)
 				dma_halt(device->chan[i]);
 				xilinx_chan_desc_reinit(device->chan[i]);
 				pr_info("%s: chan %s freed\n",
-						__func__,
-						device->chan[i]->name);
+					__func__,
+					device->chan[i]->name);
 			}
 		}
 	}
@@ -772,15 +769,15 @@ static void xdma_release(struct device *dev)
 }
 
 int xdma_submit(struct xdma_chan *chan,
-			xlnk_intptr_type userbuf,
-			void *kaddr,
-			unsigned int size,
-			unsigned int nappwords_i,
-			u32 *appwords_i,
-			unsigned int nappwords_o,
-			unsigned int user_flags,
-			struct xdma_head **dmaheadpp,
-			struct xlnk_dmabuf_reg *dp)
+		xlnk_intptr_type userbuf,
+		void *kaddr,
+		unsigned int size,
+		unsigned int nappwords_i,
+		u32 *appwords_i,
+		unsigned int nappwords_o,
+		unsigned int user_flags,
+		struct xdma_head **dmaheadpp,
+		struct xlnk_dmabuf_reg *dp)
 {
 	struct xdma_head *dmahead;
 	struct scatterlist *sglist, *sglist_dma;
@@ -789,7 +786,7 @@ int xdma_submit(struct xdma_chan *chan,
 	int status;
 	unsigned long attrs = 0;
 
-	dmahead = kzalloc(sizeof(struct xdma_head), GFP_KERNEL);
+	dmahead = kzalloc(sizeof(*dmahead), GFP_KERNEL);
 	if (!dmahead)
 		return -ENOMEM;
 
@@ -970,8 +967,8 @@ int xdma_wait(struct xdma_head *dmahead,
 EXPORT_SYMBOL(xdma_wait);
 
 int xdma_getconfig(struct xdma_chan *chan,
-				unsigned char *irq_thresh,
-				unsigned char *irq_delay)
+		   unsigned char *irq_thresh,
+		   unsigned char *irq_delay)
 {
 	*irq_thresh = (DMA_IN(&chan->regs->cr) >> XDMA_COALESCE_SHIFT) & 0xff;
 	*irq_delay = (DMA_IN(&chan->regs->cr) >> XDMA_DELAY_SHIFT) & 0xff;
@@ -980,8 +977,8 @@ int xdma_getconfig(struct xdma_chan *chan,
 EXPORT_SYMBOL(xdma_getconfig);
 
 int xdma_setconfig(struct xdma_chan *chan,
-				unsigned char irq_thresh,
-				unsigned char irq_delay)
+		   unsigned char irq_thresh,
+		   unsigned char irq_delay)
 {
 	unsigned long val;
 
@@ -1055,7 +1052,7 @@ static int xdma_probe(struct platform_device *pdev)
 	xdev = devm_kzalloc(&pdev->dev, sizeof(struct xdma_device), GFP_KERNEL);
 	if (!xdev)
 		return -ENOMEM;
-	xdev->dev = &(pdev->dev);
+	xdev->dev = &pdev->dev;
 
 	dma_config = (struct xdma_device_config *)xdev->dev->platform_data;
 	if (dma_config->channel_count < 1 || dma_config->channel_count > 2)
@@ -1083,9 +1080,12 @@ static int xdma_probe(struct platform_device *pdev)
 			return -ENOMEM;
 
 		dma_chan_dir = strcmp(dma_config->channel_config[i].type,
-					"axi-dma-mm2s-channel") ?
-				DMA_FROM_DEVICE : DMA_TO_DEVICE;
-		dma_chan_reg_offset = dma_chan_dir == DMA_TO_DEVICE ? 0 : 0x30;
+				      "axi-dma-mm2s-channel") ?
+					DMA_FROM_DEVICE :
+					DMA_TO_DEVICE;
+		dma_chan_reg_offset = (dma_chan_dir == DMA_TO_DEVICE) ?
+					0 :
+					0x30;
 
 		/* Initialize channel parameters */
 		chan->id = i;
@@ -1101,9 +1101,12 @@ static int xdma_probe(struct platform_device *pdev)
 				"FROM_DEVICE" : "TO_DEVICE");
 
 		spin_lock_init(&chan->lock);
-		tasklet_init(&chan->tasklet, xdma_tasklet, (unsigned long)chan);
-		tasklet_init(&chan->dma_err_tasklet, xdma_err_tasklet,
-						(unsigned long)chan);
+		tasklet_init(&chan->tasklet,
+			     xdma_tasklet,
+			     (unsigned long)chan);
+		tasklet_init(&chan->dma_err_tasklet,
+			     xdma_err_tasklet,
+			     (unsigned long)chan);
 
 		xdev->chan[chan->id] = chan;
 
@@ -1111,17 +1114,18 @@ static int xdma_probe(struct platform_device *pdev)
 		chan->irq = xlate_irq(dma_config->channel_config[i].irq);
 		if (chan->irq <= 0) {
 			pr_err("get_resource for IRQ for dev %d failed\n",
-				pdev->id);
+			       pdev->id);
 			return -ENODEV;
 		}
 
 		err = devm_request_irq(&pdev->dev,
-			chan->irq,
-			dma_chan_dir == DMA_TO_DEVICE ?
-				xdma_tx_intr_handler : xdma_rx_intr_handler,
-			IRQF_SHARED,
-			pdev->name,
-			chan);
+				       chan->irq,
+				       dma_chan_dir == DMA_TO_DEVICE ?
+					xdma_tx_intr_handler :
+					xdma_rx_intr_handler,
+				       IRQF_SHARED,
+				       pdev->name,
+				       chan);
 		if (err) {
 			dev_err(&pdev->dev, "unable to request IRQ\n");
 			return err;
@@ -1129,8 +1133,9 @@ static int xdma_probe(struct platform_device *pdev)
 		pr_info("  chan%d irq: %d\n", chan->id, chan->irq);
 
 		chan->poll_mode = dma_config->channel_config[i].poll_mode;
-		pr_info("  chan%d poll mode: %s\n", chan->id,
-				chan->poll_mode ? "on" : "off");
+		pr_info("  chan%d poll mode: %s\n",
+			chan->id,
+			chan->poll_mode ? "on" : "off");
 
 		/* Allocate channel BD's */
 		err = xdma_alloc_chan_descriptors(xdev->chan[chan->id]);
@@ -1139,8 +1144,9 @@ static int xdma_probe(struct platform_device *pdev)
 			return -ENOMEM;
 		}
 		pr_info("  chan%d bd ring @ 0x%08x (size: 0x%08x bytes)\n",
-				chan->id, chan->bd_phys_addr,
-				chan->bd_chain_size);
+			chan->id,
+			chan->bd_phys_addr,
+			chan->bd_chain_size);
 
 		err = dma_init(xdev->chan[chan->id]);
 		if (err) {
