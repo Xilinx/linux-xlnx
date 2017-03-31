@@ -37,6 +37,8 @@ static const struct color_fmt_tbl color_table[] = {
 	{"bgr888",    XVIDC_CSF_BGR,         DRM_FORMAT_BGR888},
 	{"rgb888",    XVIDC_CSF_RGB,         DRM_FORMAT_RGB888},
 	{"bgr565",    XVIDC_CSF_BGR565,      DRM_FORMAT_BGR565},
+	{"vuy888",    XVIDC_CSF_YCBCR_444,   DRM_FORMAT_VUY888},
+	{"xvuy8888",  XVIDC_CSF_XYCBCR_444,  DRM_FORMAT_XVUY8888},
 	{"yuv422",    XVIDC_CSF_YCBCR_422,   DRM_FORMAT_YUYV},
 	{"ayuv",      XVIDC_CSF_AYCBCR_444,  DRM_FORMAT_AYUV},
 	{"nv12",      XVIDC_CSF_Y_CBCR8_420, DRM_FORMAT_NV12},
