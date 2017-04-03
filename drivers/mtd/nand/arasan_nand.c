@@ -19,9 +19,11 @@
 #include <linux/mtd/partitions.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
+#include <linux/pm_runtime.h>
+
 #define DRIVER_NAME			"arasan_nand"
 #define EVNT_TIMEOUT_MSEC		1000
-
+#define ANFC_PM_TIMEOUT		1000	/* ms */
 
 #define PKT_OFST			0x00
 #define MEM_ADDR1_OFST			0x04
@@ -810,13 +812,22 @@ static void anfc_cmd_function(struct mtd_info *mtd,
 static void anfc_select_chip(struct mtd_info *mtd, int num)
 {
 	u32 val;
+	int ret;
 	struct nand_chip *chip = mtd_to_nand(mtd);
 	struct anfc_nand_chip *achip = to_anfc_nand(chip);
 	struct anfc *nfc = to_anfc(chip->controller);
 
-	if (num == -1)
+	if (num == -1) {
+		pm_runtime_mark_last_busy(nfc->dev);
+		pm_runtime_put_autosuspend(nfc->dev);
 		return;
+	}
 
+	ret = pm_runtime_get_sync(nfc->dev);
+	if (ret < 0) {
+		dev_err(nfc->dev, "runtime_get_sync failed\n");
+		return;
+	}
 	val = readl(nfc->base + MEM_ADDR2_OFST);
 	val &= (val & ~(CS_MASK | BCH_MODE_MASK));
 	val |= (achip->csnum << CS_SHIFT) | (achip->bchmode << BCH_MODE_SHIFT);
@@ -1053,6 +1064,11 @@ static int anfc_probe(struct platform_device *pdev)
 		goto clk_dis_sys;
 	}
 
+	pm_runtime_set_autosuspend_delay(nfc->dev, ANFC_PM_TIMEOUT);
+	pm_runtime_use_autosuspend(nfc->dev);
+	pm_runtime_set_active(nfc->dev);
+	pm_runtime_enable(nfc->dev);
+
 	for_each_available_child_of_node(np, child) {
 		anand_chip = devm_kzalloc(&pdev->dev, sizeof(*anand_chip),
 					  GFP_KERNEL);
@@ -1071,11 +1087,16 @@ static int anfc_probe(struct platform_device *pdev)
 		list_add_tail(&anand_chip->node, &nfc->chips);
 	}
 
+	pm_runtime_mark_last_busy(nfc->dev);
+	pm_runtime_put_autosuspend(nfc->dev);
+
 	return 0;
 
 nandchip_clean_up:
 	list_for_each_entry(anand_chip, &nfc->chips, node)
 		nand_release(nand_to_mtd(&anand_chip->chip));
+	pm_runtime_disable(&pdev->dev);
+	pm_runtime_set_suspended(&pdev->dev);
 	clk_disable_unprepare(nfc->clk_flash);
 clk_dis_sys:
 	clk_disable_unprepare(nfc->clk_sys);
@@ -1091,6 +1112,10 @@ static int anfc_remove(struct platform_device *pdev)
 	list_for_each_entry(anand_chip, &nfc->chips, node)
 		nand_release(nand_to_mtd(&anand_chip->chip));
 
+	pm_runtime_disable(&pdev->dev);
+	pm_runtime_set_suspended(&pdev->dev);
+	pm_runtime_dont_use_autosuspend(&pdev->dev);
+
 	clk_disable_unprepare(nfc->clk_sys);
 	clk_disable_unprepare(nfc->clk_flash);
 
@@ -1103,10 +1128,60 @@ static const struct of_device_id anfc_ids[] = {
 };
 MODULE_DEVICE_TABLE(of, anfc_ids);
 
+static int anfc_suspend(struct device *dev)
+{
+	return pm_runtime_put_sync(dev);
+}
+
+static int anfc_resume(struct device *dev)
+{
+	return pm_runtime_get_sync(dev);
+}
+
+static int __maybe_unused anfc_runtime_suspend(struct device *dev)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct anfc *nfc = platform_get_drvdata(pdev);
+
+	clk_disable(nfc->clk_sys);
+	clk_disable(nfc->clk_flash);
+
+	return 0;
+}
+
+static int __maybe_unused anfc_runtime_resume(struct device *dev)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct anfc *nfc = platform_get_drvdata(pdev);
+	int ret;
+
+	ret = clk_enable(nfc->clk_sys);
+	if (ret) {
+		dev_err(dev, "Cannot enable sys clock.\n");
+		return ret;
+	}
+	ret = clk_enable(nfc->clk_flash);
+	if (ret) {
+		dev_err(dev, "Cannot enable flash clock.\n");
+		clk_disable(nfc->clk_sys);
+		return ret;
+	}
+
+	return 0;
+}
+
+static const struct dev_pm_ops anfc_pm_ops = {
+	.resume = anfc_resume,
+	.suspend = anfc_suspend,
+	.runtime_resume = anfc_runtime_resume,
+	.runtime_suspend = anfc_runtime_suspend,
+};
+
 static struct platform_driver anfc_driver = {
 	.driver = {
 		.name = DRIVER_NAME,
 		.of_match_table = anfc_ids,
+		.pm = &anfc_pm_ops,
 	},
 	.probe = anfc_probe,
 	.remove = anfc_remove,
