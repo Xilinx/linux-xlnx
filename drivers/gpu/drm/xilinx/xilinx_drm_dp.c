@@ -907,6 +907,70 @@ static int xilinx_drm_dp_init_aux(struct xilinx_drm_dp *dp)
 	return 0;
 }
 
+/**
+ * xilinx_drm_dp_init_phy - Initialize the phy
+ * @dp: DisplayPort IP core structure
+ *
+ * Initialize the phy.
+ *
+ * Return: 0 if the phy instances are initialized correctly, or the error code
+ * returned from the callee functions.
+ */
+static int xilinx_drm_dp_init_phy(struct xilinx_drm_dp *dp)
+{
+	unsigned int i;
+	int ret;
+
+	for (i = 0; i < dp->config.max_lanes; i++) {
+		ret = phy_init(dp->phy[i]);
+		if (ret) {
+			dev_err(dp->dev, "failed to init phy lane %d\n", i);
+			return ret;
+		}
+	}
+
+	if (dp->dp_sub)
+		xilinx_drm_writel(dp->iomem, XILINX_DP_SUB_TX_INTR_DS,
+				  XILINX_DP_TX_INTR_ALL);
+	else
+		xilinx_drm_writel(dp->iomem, XILINX_DP_TX_INTR_MASK,
+				  XILINX_DP_TX_INTR_ALL);
+
+	xilinx_drm_clr(dp->iomem, XILINX_DP_TX_PHY_CONFIG,
+		       XILINX_DP_TX_PHY_CONFIG_ALL_RESET);
+
+	/* Wait for PLL to be locked for the primary (1st) */
+	if (dp->phy[0]) {
+		ret = xpsgtr_wait_pll_lock(dp->phy[0]);
+		if (ret) {
+			dev_err(dp->dev, "failed to lock pll\n");
+			return ret;
+		}
+	}
+
+	return 0;
+}
+
+/**
+ * xilinx_drm_dp_exit_phy - Exit the phy
+ * @dp: DisplayPort IP core structure
+ *
+ * Exit the phy.
+ */
+static void xilinx_drm_dp_exit_phy(struct xilinx_drm_dp *dp)
+{
+	unsigned int i;
+	int ret;
+
+	for (i = 0; i < dp->config.max_lanes; i++) {
+		ret = phy_exit(dp->phy[i]);
+		if (ret) {
+			dev_err(dp->dev,
+				"failed to exit phy (%d) %d\n", i, ret);
+		}
+	}
+}
+
 static void xilinx_drm_dp_dpms(struct drm_encoder *encoder, int dpms)
 {
 	struct xilinx_drm_dp *dp = to_dp(encoder);
@@ -924,14 +988,15 @@ static void xilinx_drm_dp_dpms(struct drm_encoder *encoder, int dpms)
 		pm_runtime_get_sync(dp->dev);
 
 		if (dp->suspend) {
+			xilinx_drm_dp_init_phy(dp);
 			xilinx_drm_dp_init_aux(dp);
 			dp->suspend = false;
 		}
 
 		if (dp->aud_clk)
 			xilinx_drm_writel(iomem, XILINX_DP_TX_AUDIO_CONTROL, 1);
-
 		xilinx_drm_writel(iomem, XILINX_DP_TX_PHY_POWER_DOWN, 0);
+
 		for (i = 0; i < 3; i++) {
 			ret = drm_dp_dpcd_writeb(&dp->aux, DP_SET_POWER,
 						 DP_SET_POWER_D0);
@@ -947,6 +1012,7 @@ static void xilinx_drm_dp_dpms(struct drm_encoder *encoder, int dpms)
 		return;
 	case DRM_MODE_DPMS_SUSPEND:
 		dp->suspend = true;
+		xilinx_drm_dp_exit_phy(dp);
 	default:
 		xilinx_drm_writel(iomem, XILINX_DP_TX_ENABLE_MAIN_STREAM, 0);
 		drm_dp_dpcd_writeb(&dp->aux, DP_SET_POWER, DP_SET_POWER_D3);
@@ -1494,36 +1560,12 @@ static int xilinx_drm_dp_probe(struct platform_device *pdev)
 				dp->phy[i] = NULL;
 				goto error_dp_sub;
 			}
-
-			ret = phy_init(dp->phy[i]);
-			if (ret) {
-				dev_err(dp->dev,
-					"failed to init phy lane %d\n", i);
-				goto error_dp_sub;
-			}
 		}
-
-		xilinx_drm_writel(dp->iomem, XILINX_DP_SUB_TX_INTR_DS,
-				  XILINX_DP_TX_INTR_ALL);
-		xilinx_drm_clr(dp->iomem, XILINX_DP_TX_PHY_CONFIG,
-			       XILINX_DP_TX_PHY_CONFIG_ALL_RESET);
-		xilinx_drm_writel(dp->iomem, XILINX_DP_TX_PHY_POWER_DOWN, 0);
-
-		/* Wait for PLL to be locked for the primary (1st) */
-		if (dp->phy[0]) {
-			ret = xpsgtr_wait_pll_lock(dp->phy[0]);
-			if (ret) {
-				dev_err(dp->dev, "failed to lock pll\n");
-				goto error_dp_sub;
-			}
-		}
-	} else {
-		xilinx_drm_writel(dp->iomem, XILINX_DP_TX_INTR_MASK,
-				  XILINX_DP_TX_INTR_ALL);
-		xilinx_drm_clr(dp->iomem, XILINX_DP_TX_PHY_CONFIG,
-				XILINX_DP_TX_PHY_CONFIG_ALL_RESET);
-		xilinx_drm_writel(dp->iomem, XILINX_DP_TX_PHY_POWER_DOWN, 0);
 	}
+
+	ret = xilinx_drm_dp_init_phy(dp);
+	if (ret)
+		goto error_phy;
 
 	dp->aux.name = "Xilinx DP AUX";
 	dp->aux.dev = dp->dev;
@@ -1531,7 +1573,7 @@ static int xilinx_drm_dp_probe(struct platform_device *pdev)
 	ret = drm_dp_aux_register(&dp->aux);
 	if (ret < 0) {
 		dev_err(dp->dev, "failed to initialize DP aux\n");
-		return ret;
+		goto error;
 	}
 
 	irq = platform_get_irq(pdev, 0);
@@ -1578,15 +1620,9 @@ static int xilinx_drm_dp_probe(struct platform_device *pdev)
 error:
 	drm_dp_aux_unregister(&dp->aux);
 error_dp_sub:
-	if (dp->dp_sub) {
-		for (i = 0; i < dp->config.max_lanes; i++) {
-			if (dp->phy[i]) {
-				phy_exit(dp->phy[i]);
-				dp->phy[i] = NULL;
-			}
-		}
-	}
 	xilinx_drm_dp_sub_put(dp->dp_sub);
+error_phy:
+	xilinx_drm_dp_exit_phy(dp);
 error_aud_clk:
 	if (dp->aud_clk)
 		clk_disable_unprepare(dp->aud_clk);
@@ -1598,22 +1634,12 @@ error_aclk:
 static int xilinx_drm_dp_remove(struct platform_device *pdev)
 {
 	struct xilinx_drm_dp *dp = platform_get_drvdata(pdev);
-	unsigned int i;
 
 	pm_runtime_disable(dp->dev);
 	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_ENABLE, 0);
 
 	drm_dp_aux_unregister(&dp->aux);
-
-	if (dp->dp_sub) {
-		for (i = 0; i < dp->config.max_lanes; i++) {
-			if (dp->phy[i]) {
-				phy_exit(dp->phy[i]);
-				dp->phy[i] = NULL;
-			}
-		}
-	}
-
+	xilinx_drm_dp_exit_phy(dp);
 	xilinx_drm_dp_sub_put(dp->dp_sub);
 
 	if (dp->aud_clk)
