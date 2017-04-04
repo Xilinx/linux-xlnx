@@ -57,6 +57,7 @@ struct xilinx_drm_crtc {
 static void xilinx_drm_crtc_dpms(struct drm_crtc *base_crtc, int dpms)
 {
 	struct xilinx_drm_crtc *crtc = to_xilinx_crtc(base_crtc);
+	int ret;
 
 	DRM_DEBUG_KMS("dpms: %d -> %d\n", crtc->dpms, dpms);
 
@@ -67,6 +68,15 @@ static void xilinx_drm_crtc_dpms(struct drm_crtc *base_crtc, int dpms)
 
 	switch (dpms) {
 	case DRM_MODE_DPMS_ON:
+		if (!crtc->pixel_clock_enabled) {
+			ret = clk_prepare_enable(crtc->pixel_clock);
+			if (ret) {
+				DRM_ERROR("failed to enable a pixel clock\n");
+				crtc->pixel_clock_enabled = false;
+			}
+		}
+		crtc->pixel_clock_enabled = true;
+
 		xilinx_drm_plane_manager_dpms(crtc->plane_manager, dpms);
 		xilinx_drm_plane_dpms(base_crtc->primary, dpms);
 		if (crtc->rgb2yuv)
@@ -91,6 +101,10 @@ static void xilinx_drm_crtc_dpms(struct drm_crtc *base_crtc, int dpms)
 		}
 		xilinx_drm_plane_dpms(base_crtc->primary, dpms);
 		xilinx_drm_plane_manager_dpms(crtc->plane_manager, dpms);
+		if (crtc->pixel_clock_enabled) {
+			clk_disable_unprepare(crtc->pixel_clock);
+			crtc->pixel_clock_enabled = false;
+		}
 		break;
 	}
 }
@@ -145,16 +159,6 @@ static int xilinx_drm_crtc_mode_set(struct drm_crtc *base_crtc,
 	if (abs(diff) > (adjusted_mode->clock * 1000) / 20)
 		DRM_DEBUG_KMS("actual pixel clock rate(%d) is off by %ld\n",
 				adjusted_mode->clock, diff);
-
-	if (!crtc->pixel_clock_enabled) {
-		ret = clk_prepare_enable(crtc->pixel_clock);
-		if (ret) {
-			DRM_ERROR("failed to enable a pixel clock\n");
-			crtc->pixel_clock_enabled = false;
-			return ret;
-		}
-	}
-	crtc->pixel_clock_enabled = true;
 
 	if (crtc->vtc) {
 		/* set video timing */
