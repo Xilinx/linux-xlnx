@@ -562,10 +562,13 @@ static int xilinx_drm_pm_resume(struct device *dev)
 			connector->funcs->dpms(connector, dpms);
 		}
 	}
-	drm_kms_helper_poll_enable_locked(drm);
 	drm_modeset_unlock_all(drm);
 
 	drm_helper_resume_force_mode(drm);
+
+	drm_modeset_lock_all(drm);
+	drm_kms_helper_poll_enable_locked(drm);
+	drm_modeset_unlock_all(drm);
 
 	return 0;
 }
