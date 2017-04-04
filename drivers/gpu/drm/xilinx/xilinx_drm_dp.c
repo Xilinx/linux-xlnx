@@ -310,6 +310,7 @@ struct xilinx_drm_dp_config {
  * @link_config: common link configuration between IP core and sink device
  * @mode: current mode between IP core and sink device
  * @train_set: set of training data
+ * @suspend: flag to set when going in suspend mode
  */
 struct xilinx_drm_dp {
 	struct drm_encoder *encoder;
@@ -328,6 +329,7 @@ struct xilinx_drm_dp {
 	struct xilinx_drm_dp_link_config link_config;
 	struct xilinx_drm_dp_mode mode;
 	u8 train_set[DP_MAX_LANES];
+	bool suspend;
 };
 
 static inline struct xilinx_drm_dp *to_dp(struct drm_encoder *encoder)
@@ -856,6 +858,55 @@ static void xilinx_drm_dp_train_loop(struct xilinx_drm_dp *dp)
 	DRM_ERROR("failed to train the DP link\n");
 }
 
+/**
+ * xilinx_drm_dp_init_aux - Initialize the DP aux
+ * @dp: DisplayPort IP core structure
+ *
+ * Initialize the DP aux. The aux clock is derived from the axi clock, so
+ * this function gets the axi clock frequency and calculates the filter
+ * value. Additionally, the interrupts and transmitter are enabled.
+ *
+ * Return: 0 on success, error value otherwise
+ */
+static int xilinx_drm_dp_init_aux(struct xilinx_drm_dp *dp)
+{
+	int clock_rate;
+	u32 reg, w;
+
+	clock_rate = clk_get_rate(dp->aclk);
+	if (clock_rate < XILINX_DP_TX_CLK_DIVIDER_MHZ) {
+		DRM_ERROR("aclk should be higher than 1MHz\n");
+		return -EINVAL;
+	}
+
+	/* Allowable values for this register are: 8, 16, 24, 32, 40, 48 */
+	for (w = 8; w <= 48; w += 8) {
+		/* AUX pulse width should be between 0.4 to 0.6 usec */
+		if (w >= (4 * clock_rate / 10000000) &&
+		    w <= (6 * clock_rate / 10000000))
+			break;
+	}
+
+	if (w > 48) {
+		DRM_ERROR("aclk frequency too high\n");
+		return -EINVAL;
+	}
+	reg = w << XILINX_DP_TX_CLK_DIVIDER_AUX_FILTER_SHIFT;
+
+	reg |= clock_rate / XILINX_DP_TX_CLK_DIVIDER_MHZ;
+	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_CLK_DIVIDER, reg);
+
+	if (dp->dp_sub)
+		xilinx_drm_writel(dp->iomem, XILINX_DP_SUB_TX_INTR_EN,
+				  XILINX_DP_TX_INTR_ALL);
+	else
+		xilinx_drm_writel(dp->iomem, XILINX_DP_TX_INTR_MASK,
+				  ~XILINX_DP_TX_INTR_ALL);
+	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_ENABLE, 1);
+
+	return 0;
+}
+
 static void xilinx_drm_dp_dpms(struct drm_encoder *encoder, int dpms)
 {
 	struct xilinx_drm_dp *dp = to_dp(encoder);
@@ -871,6 +922,11 @@ static void xilinx_drm_dp_dpms(struct drm_encoder *encoder, int dpms)
 	switch (dpms) {
 	case DRM_MODE_DPMS_ON:
 		pm_runtime_get_sync(dp->dev);
+
+		if (dp->suspend) {
+			xilinx_drm_dp_init_aux(dp);
+			dp->suspend = false;
+		}
 
 		if (dp->aud_clk)
 			xilinx_drm_writel(iomem, XILINX_DP_TX_AUDIO_CONTROL, 1);
@@ -889,6 +945,8 @@ static void xilinx_drm_dp_dpms(struct drm_encoder *encoder, int dpms)
 		xilinx_drm_writel(iomem, XILINX_DP_TX_ENABLE_MAIN_STREAM, 1);
 
 		return;
+	case DRM_MODE_DPMS_SUSPEND:
+		dp->suspend = true;
 	default:
 		xilinx_drm_writel(iomem, XILINX_DP_TX_ENABLE_MAIN_STREAM, 0);
 		drm_dp_dpcd_writeb(&dp->aux, DP_SET_POWER, DP_SET_POWER_D3);
@@ -1151,47 +1209,13 @@ static int xilinx_drm_dp_encoder_init(struct platform_device *pdev,
 				      struct drm_encoder_slave *encoder)
 {
 	struct xilinx_drm_dp *dp = platform_get_drvdata(pdev);
-	int clock_rate;
-	u32 reg, w;
 
 	encoder->slave_priv = dp;
 	encoder->slave_funcs = &xilinx_drm_dp_encoder_funcs;
 
 	dp->encoder = &encoder->base;
 
-	/* Get aclk rate */
-	clock_rate = clk_get_rate(dp->aclk);
-	if (clock_rate < XILINX_DP_TX_CLK_DIVIDER_MHZ) {
-		DRM_ERROR("aclk should be higher than 1MHz\n");
-		return -EINVAL;
-	}
-
-	/* Allowable values for this register are: 8, 16, 24, 32, 40, 48 */
-	for (w = 8; w <= 48; w += 8) {
-		/* AUX pulse width should be between 0.4 to 0.6 usec */
-		if (w >= (4 * clock_rate / 10000000) &&
-		    w <= (6 * clock_rate / 10000000))
-			break;
-	}
-
-	if (w > 48) {
-		DRM_ERROR("aclk frequency too high\n");
-		return -EINVAL;
-	}
-	reg = w << XILINX_DP_TX_CLK_DIVIDER_AUX_FILTER_SHIFT;
-
-	reg |= clock_rate / XILINX_DP_TX_CLK_DIVIDER_MHZ;
-	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_CLK_DIVIDER, reg);
-
-	if (dp->dp_sub)
-		xilinx_drm_writel(dp->iomem, XILINX_DP_SUB_TX_INTR_EN,
-				  XILINX_DP_TX_INTR_ALL);
-	else
-		xilinx_drm_writel(dp->iomem, XILINX_DP_TX_INTR_MASK,
-				  ~XILINX_DP_TX_INTR_ALL);
-	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_ENABLE, 1);
-
-	return 0;
+	return xilinx_drm_dp_init_aux(dp);
 }
 
 static irqreturn_t xilinx_drm_dp_irq_handler(int irq, void *data)
