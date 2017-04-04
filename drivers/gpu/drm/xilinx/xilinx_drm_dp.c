@@ -29,7 +29,7 @@
 #include <linux/phy/phy.h>
 #include <linux/phy/phy-zynqmp.h>
 #include <linux/platform_device.h>
-#include <linux/pm.h>
+#include <linux/pm_runtime.h>
 
 #include "xilinx_drm_dp_sub.h"
 #include "xilinx_drm_drv.h"
@@ -870,6 +870,8 @@ static void xilinx_drm_dp_dpms(struct drm_encoder *encoder, int dpms)
 
 	switch (dpms) {
 	case DRM_MODE_DPMS_ON:
+		pm_runtime_get_sync(dp->dev);
+
 		if (dp->aud_clk)
 			xilinx_drm_writel(iomem, XILINX_DP_TX_AUDIO_CONTROL, 1);
 
@@ -894,6 +896,8 @@ static void xilinx_drm_dp_dpms(struct drm_encoder *encoder, int dpms)
 				  XILINX_DP_TX_PHY_POWER_DOWN_ALL);
 		if (dp->aud_clk)
 			xilinx_drm_writel(iomem, XILINX_DP_TX_AUDIO_CONTROL, 0);
+
+		pm_runtime_put_sync(dp->dev);
 
 		return;
 	}
@@ -1543,6 +1547,8 @@ static int xilinx_drm_dp_probe(struct platform_device *pdev)
 		 ((version & XILINX_DP_TX_CORE_ID_REVISION_MASK) >>
 		  XILINX_DP_TX_CORE_ID_REVISION_SHIFT));
 
+	pm_runtime_enable(dp->dev);
+
 	return 0;
 
 error:
@@ -1570,6 +1576,7 @@ static int xilinx_drm_dp_remove(struct platform_device *pdev)
 	struct xilinx_drm_dp *dp = platform_get_drvdata(pdev);
 	unsigned int i;
 
+	pm_runtime_disable(dp->dev);
 	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_ENABLE, 0);
 
 	drm_dp_aux_unregister(&dp->aux);
