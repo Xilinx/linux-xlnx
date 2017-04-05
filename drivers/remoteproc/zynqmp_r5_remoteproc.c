@@ -645,7 +645,8 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 	}
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "ipi");
-	local->ipi_base = devm_ioremap(&pdev->dev, res->start, resource_size(res));
+	local->ipi_base = devm_ioremap(&pdev->dev, res->start,
+				resource_size(res));
 	if (IS_ERR(local->ipi_base)) {
 		pr_err("%s: Unable to map IPI\n", __func__);
 		ret = PTR_ERR(local->ipi_base);
