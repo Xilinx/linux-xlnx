@@ -1083,6 +1083,7 @@ static int __maybe_unused zynqmp_qspi_resume(struct device *dev)
 
 	clk_disable(xqspi->refclk);
 	clk_disable(xqspi->pclk);
+
 	return 0;
 }
 
