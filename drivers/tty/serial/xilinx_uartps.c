@@ -36,7 +36,7 @@
 #define CDNS_UART_NAME		"xuartps"
 #define CDNS_UART_MAJOR		0	/* use dynamic node allocation */
 #define CDNS_UART_MINOR		0	/* works best with devtmpfs */
-#define CDNS_UART_NR_PORTS	2
+#define CDNS_UART_NR_PORTS	CONFIG_SERIAL_XILINX_NR_UARTS
 #define CDNS_UART_FIFO_SIZE	64	/* FIFO size */
 #define CDNS_UART_REGISTER_SPACE	0x1000
 
