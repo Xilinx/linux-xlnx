@@ -217,12 +217,10 @@ static bool r5_is_running(struct zynqmp_r5_rproc_pdata *pdata)
 	} else if (status != PM_PROC_STATE_ACTIVE) {
 		pr_debug("RPU %d is not running.\n", pdata->rpu_id);
 		return false;
-	} else {
-		pr_debug("RPU %d is running.\n", pdata->rpu_id);
-		return true;
 	}
 
-	return false;
+	pr_debug("RPU %d is running.\n", pdata->rpu_id);
+	return true;
 }
 
 /**
