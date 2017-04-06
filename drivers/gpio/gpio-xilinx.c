@@ -487,9 +487,16 @@ static void xgpio_free(struct gpio_chip *chip, unsigned int offset)
 static int __maybe_unused xgpio_suspend(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
-	int irq = platform_get_irq(pdev, 0);
-	struct irq_data *data = irq_get_irq_data(irq);
+	int irq;
+	struct irq_data *data;
 
+	irq = platform_get_irq(pdev, 0);
+	if (irq <= 0) {
+		dev_dbg(dev, "failed to get IRQ\n");
+		return 0;
+	}
+
+	data = irq_get_irq_data(irq);
 	if (!irqd_is_wakeup_set(data))
 		return pm_runtime_force_suspend(dev);
 
@@ -499,9 +506,17 @@ static int __maybe_unused xgpio_suspend(struct device *dev)
 static int __maybe_unused xgpio_resume(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
-	int irq = platform_get_irq(pdev, 0);
-	struct irq_data *data = irq_get_irq_data(irq);
+	int irq;
+	struct irq_data *data;
 
+
+	irq = platform_get_irq(pdev, 0);
+	if (irq <= 0) {
+		dev_dbg(dev, "failed to get IRQ\n");
+		return 0;
+	}
+
+	data = irq_get_irq_data(irq);
 	if (!irqd_is_wakeup_set(data))
 		return pm_runtime_force_resume(dev);
 
