@@ -868,6 +868,9 @@ static void rproc_resource_cleanup(struct rproc *rproc)
 	/* clean up remote vdev entries */
 	list_for_each_entry_safe(rvdev, rvtmp, &rproc->rvdevs, node)
 		rproc_remove_virtio_dev(rvdev);
+
+	/* Release DMA declared memory */
+	dma_release_declared_memory(dev->parent);
 }
 
 /*
@@ -1038,14 +1041,14 @@ static int rproc_fw_boot(struct rproc *rproc, const struct firmware *fw)
 	if (ret) {
 		dev_err(dev, "Failed to declare rproc memory resource: %d\n",
 			ret);
-		goto clean_up;
+		goto clean_up_resources;
 	}
 
 	/* look for virtio devices and register them */
 	ret = rproc_handle_resources(rproc, tablesz, rproc_vdev_handler);
 	if (ret) {
 		dev_err(dev, "Failed to handle vdev resources: %d\n", ret);
-		goto clean_up;
+		goto clean_up_resources;
 	}
 
 	/* handle fw resources which are required to boot rproc */
@@ -1370,8 +1373,6 @@ void rproc_shutdown(struct rproc *rproc)
 		complete_all(&rproc->crash_comp);
 
 	dev_info(dev, "stopped remote processor %s\n", rproc->name);
-
-	dma_release_declared_memory(dev->parent);
 
 out:
 	mutex_unlock(&rproc->lock);
