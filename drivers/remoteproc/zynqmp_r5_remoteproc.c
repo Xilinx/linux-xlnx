@@ -422,7 +422,7 @@ static bool zynqmp_r5_rproc_is_running(struct rproc *rproc)
 static void *zynqmp_r5_rproc_da_to_va(struct rproc *rproc, u64 da, int len)
 {
 	struct rproc_mem_entry *mem;
-	void *va = 0;
+	void *va = NULL;
 	struct zynqmp_r5_rproc_pdata *local = rproc->priv;
 
 	list_for_each_entry(mem, &local->mems, node) {
