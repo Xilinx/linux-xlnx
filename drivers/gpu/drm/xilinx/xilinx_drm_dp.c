@@ -310,7 +310,6 @@ struct xilinx_drm_dp_config {
  * @link_config: common link configuration between IP core and sink device
  * @mode: current mode between IP core and sink device
  * @train_set: set of training data
- * @suspend: flag to set when going in suspend mode
  */
 struct xilinx_drm_dp {
 	struct drm_encoder *encoder;
@@ -329,7 +328,6 @@ struct xilinx_drm_dp {
 	struct xilinx_drm_dp_link_config link_config;
 	struct xilinx_drm_dp_mode mode;
 	u8 train_set[DP_MAX_LANES];
-	bool suspend;
 };
 
 static inline struct xilinx_drm_dp *to_dp(struct drm_encoder *encoder)
@@ -988,12 +986,6 @@ static void xilinx_drm_dp_dpms(struct drm_encoder *encoder, int dpms)
 	case DRM_MODE_DPMS_ON:
 		pm_runtime_get_sync(dp->dev);
 
-		if (dp->suspend) {
-			xilinx_drm_dp_init_phy(dp);
-			xilinx_drm_dp_init_aux(dp);
-			dp->suspend = false;
-		}
-
 		if (dp->aud_clk)
 			xilinx_drm_writel(iomem, XILINX_DP_TX_AUDIO_CONTROL, 1);
 		xilinx_drm_writel(iomem, XILINX_DP_TX_PHY_POWER_DOWN, 0);
@@ -1005,15 +997,16 @@ static void xilinx_drm_dp_dpms(struct drm_encoder *encoder, int dpms)
 				break;
 			usleep_range(300, 500);
 		}
-		xilinx_drm_dp_train_loop(dp);
+
+		if (ret != 1)
+			dev_dbg(dp->dev, "DP aux failed\n");
+		else
+			xilinx_drm_dp_train_loop(dp);
 		xilinx_drm_writel(dp->iomem, XILINX_DP_TX_SW_RESET,
 				  XILINX_DP_TX_SW_RESET_ALL);
 		xilinx_drm_writel(iomem, XILINX_DP_TX_ENABLE_MAIN_STREAM, 1);
 
 		return;
-	case DRM_MODE_DPMS_SUSPEND:
-		dp->suspend = true;
-		xilinx_drm_dp_exit_phy(dp);
 	default:
 		xilinx_drm_writel(iomem, XILINX_DP_TX_ENABLE_MAIN_STREAM, 0);
 		drm_dp_dpcd_writeb(&dp->aux, DP_SET_POWER, DP_SET_POWER_D3);
@@ -1484,6 +1477,31 @@ static int xilinx_drm_dp_parse_of(struct xilinx_drm_dp *dp)
 	return 0;
 }
 
+static int __maybe_unused xilinx_drm_dp_pm_suspend(struct device *dev)
+{
+	struct xilinx_drm_dp *dp = dev_get_drvdata(dev);
+
+	xilinx_drm_dp_exit_phy(dp);
+
+	return 0;
+}
+
+static int __maybe_unused xilinx_drm_dp_pm_resume(struct device *dev)
+{
+	struct xilinx_drm_dp *dp = dev_get_drvdata(dev);
+
+	xilinx_drm_dp_init_phy(dp);
+	xilinx_drm_dp_init_aux(dp);
+	drm_helper_hpd_irq_event(dp->encoder->dev);
+
+	return 0;
+}
+
+static const struct dev_pm_ops xilinx_drm_dp_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(xilinx_drm_dp_pm_suspend,
+				xilinx_drm_dp_pm_resume)
+};
+
 static int xilinx_drm_dp_probe(struct platform_device *pdev)
 {
 	struct xilinx_drm_dp *dp;
@@ -1664,6 +1682,7 @@ static struct drm_platform_encoder_driver xilinx_drm_dp_driver = {
 			.owner		= THIS_MODULE,
 			.name		= "xilinx-drm-dp",
 			.of_match_table	= xilinx_drm_dp_of_match,
+			.pm		= &xilinx_drm_dp_pm_ops,
 		},
 	},
 
