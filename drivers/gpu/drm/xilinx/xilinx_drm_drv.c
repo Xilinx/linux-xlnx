@@ -20,7 +20,6 @@
 #include <drm/drm_gem_cma_helper.h>
 
 #include <linux/component.h>
-#include <linux/console.h>
 #include <linux/device.h>
 #include <linux/module.h>
 #include <linux/of_graph.h>
@@ -524,10 +523,6 @@ static int xilinx_drm_pm_suspend(struct device *dev)
 	struct drm_connector *connector;
 
 	drm_kms_helper_poll_disable(drm);
-
-	if (!console_suspend_enabled)
-		return 0;
-
 	drm_modeset_lock_all(drm);
 	list_for_each_entry(connector, &drm->mode_config.connector_list, head) {
 		int old_dpms = connector->dpms;
@@ -549,9 +544,6 @@ static int xilinx_drm_pm_resume(struct device *dev)
 	struct xilinx_drm_private *private = dev_get_drvdata(dev);
 	struct drm_device *drm = private->drm;
 	struct drm_connector *connector;
-
-	if (!console_suspend_enabled)
-		return 0;
 
 	drm_modeset_lock_all(drm);
 	list_for_each_entry(connector, &drm->mode_config.connector_list, head) {
