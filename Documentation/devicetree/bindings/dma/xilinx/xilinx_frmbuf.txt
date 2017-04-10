@@ -1,0 +1,45 @@
+The Xilinx framebuffer DMA engine supports two soft IP blocks: one IP
+block is used for reading video frame data from memory (FB Read) to the device
+and the other IP block is used for writing video frame data from the device
+to memory (FB Write).  Both the FB Read/Write IP blocks are aware of the
+format of the data being written to or read from memory including RGB and
+YUV in packed, planar, and semi-planar formats.  Because the FB Read/Write
+is format aware, only one buffer pointer is needed by the IP blocks even
+when planar or semi-planar format are used.
+
+FB Read Required propertie(s):
+- compatible		: Should be "xlnx,axi-frmbuf-rd-1.00.a"
+
+FB Write Required propertie(s):
+- compatible		: Should be "xlnx,axi-frmbuf-wr-1.00.a"
+
+Required Properties Common to both FB Read and FB Write:
+- #dma-cells		: should be 1
+- interrupt-parent	: Interrupt controller the interrupt is routed through
+- interrupts		: Should contain DMA channel interrupt
+- reset-gpios		: Should contain GPIO reset phandle
+- reg			: Memory map for module access
+
+Examples
+
+FB Read Example:
+++++++++
+v_frmbuf_rd_0: v_frmbuf_rd@80000000 {
+        #dma-cells = <1>;
+        compatible = "xlnx,axi-frmbuf-rd-1.00.a";
+        interrupt-parent = <&gic>;
+        interrupts = <0 92 4>;
+        reset-gpios = <&gpio 80 1>;
+        reg = <0x0 0x80000000 0x0 0x10000>;
+};
+
+FB Write Example:
+++++++++
+v_frmbuf_wr_0: v_frmbuf_wr@80000000 {
+        #dma-cells = <1>;
+        compatible = "xlnx,axi-frmbuf-wr-1.00.a";
+        interrupt-parent = <&gic>;
+        interrupts = <0 92 4>;
+        reset-gpios = <&gpio 80 1>;
+        reg = <0x0 0x80000000 0x0 0x10000>;
+};
