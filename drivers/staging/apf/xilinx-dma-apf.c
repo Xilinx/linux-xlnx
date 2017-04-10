@@ -1054,6 +1054,9 @@ static int xdma_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	xdev->dev = &pdev->dev;
 
+	/* Set this as configurable once HPC works */
+	arch_setup_dma_ops(&pdev->dev, 0, 0, NULL, false);
+
 	dma_config = (struct xdma_device_config *)xdev->dev->platform_data;
 	if (dma_config->channel_count < 1 || dma_config->channel_count > 2)
 		return -EFAULT;
