@@ -416,7 +416,8 @@ static int xtpg_enum_frame_size(struct v4l2_subdev *subdev,
 
 	/* Min / max values for pad 0 is always fixed in both one and two pads
 	 * modes. In two pads mode, the source pad(= 1) size is identical to
-	 * the sink pad size */
+	 * the sink pad size.
+	 */
 	if (fse->pad == 0) {
 		fse->min_width = XVIP_MIN_WIDTH;
 		fse->max_width = XVIP_MAX_WIDTH;
