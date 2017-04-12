@@ -582,7 +582,7 @@ static void __init zynqmp_clk_setup(struct device_node *np)
 	 * Currently, using the acpu clock as the parent based on the
 	 * assumption that it comes from APB.
 	 */
-	wdt_ext_clk_mux_parents[0] = clk_output_name[acpu];
+	wdt_ext_clk_mux_parents[0] = clk_output_name[topsw_lsbus];
 	for (i = 0; i < ARRAY_SIZE(swdt_ext_clk_input_names); i++) {
 		int idx = of_property_match_string(np, "clock-names",
 				swdt_ext_clk_input_names[i]);
