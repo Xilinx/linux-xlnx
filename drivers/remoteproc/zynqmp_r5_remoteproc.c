@@ -104,11 +104,17 @@ enum rpu_core_conf {
 	SPLIT,
 };
 
+/* Power domain id list element */
+struct pd_id_st {
+	struct list_head node;
+	u32 id;
+};
+
 /* On-chip memory pool element */
 struct mem_pool_st {
 	struct list_head node;
 	struct gen_pool *pool;
-	u32 pd_id;
+	struct list_head pd_ids;
 };
 
 /**
@@ -232,8 +238,10 @@ static int r5_request_tcm(struct zynqmp_r5_rproc_pdata *pdata)
 	r5_mode_config(pdata);
 
 	list_for_each_entry(mem_node, &pdata->mem_pools, node) {
-		if (mem_node->pd_id)
-			zynqmp_pm_request_node(mem_node->pd_id,
+		struct pd_id_st *pd_id;
+
+		list_for_each_entry(pd_id, &mem_node->pd_ids, node)
+			zynqmp_pm_request_node(pd_id->id,
 				ZYNQMP_PM_CAPABILITY_ACCESS,
 				0, ZYNQMP_PM_REQUEST_ACK_BLOCKING);
 	}
@@ -253,8 +261,10 @@ static void r5_release_tcm(struct zynqmp_r5_rproc_pdata *pdata)
 	struct mem_pool_st *mem_node;
 
 	list_for_each_entry(mem_node, &pdata->mem_pools, node) {
-		if (mem_node->pd_id)
-			zynqmp_pm_release_node(mem_node->pd_id);
+		struct pd_id_st *pd_id;
+
+		list_for_each_entry(pd_id, &mem_node->pd_ids, node)
+			zynqmp_pm_release_node(pd_id->id);
 	}
 }
 
@@ -663,15 +673,31 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 						mem_name, 0);
 			if (tmp_node) {
 				struct device_node *pd_node;
+				struct pd_id_st *pd_id;
+				int j;
 
-				pd_node = of_parse_phandle(tmp_node,
-						"pd-handle", 0);
-				if (pd_node)
+				INIT_LIST_HEAD(&mem_node->pd_ids);
+				for (j = 0; ; j++) {
+					pd_node = of_parse_phandle(tmp_node,
+						"pd-handle", j);
+					if (!pd_node)
+						break;
+					pd_id = devm_kzalloc(&pdev->dev,
+							sizeof(*pd_id),
+							GFP_KERNEL);
+					if (!pd_id) {
+						ret = -ENOMEM;
+						goto rproc_fault;
+					}
 					of_property_read_u32(pd_node,
-						"pd-id", &mem_node->pd_id);
+						"pd-id", &pd_id->id);
+					list_add_tail(&pd_id->node,
+						&mem_node->pd_ids);
+					dev_dbg(&pdev->dev,
+						"mem[%d] pd_id = %d.\n",
+						i, pd_id->id);
+				}
 			}
-			dev_dbg(&pdev->dev, "mem[%d] pd_id = %d.\n",
-				i, mem_node->pd_id);
 			list_add_tail(&mem_node->node, &local->mem_pools);
 		}
 	}
