@@ -147,7 +147,7 @@ struct zynqmp_r5_rproc_pdata {
 	u32 ipi_dest_mask;
 	u32 rpu_id;
 	u32 rpu_pd_id;
-	u32 vring0;
+	int vring0;
 };
 
 /**
@@ -707,12 +707,12 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 	INIT_WORK(&local->workqueue, handle_event_notified);
 
 	/* IPI IRQ */
-	local->vring0 = platform_get_irq(pdev, 0);
-	if (local->vring0 < 0) {
-		ret = local->vring0;
+	ret = platform_get_irq(pdev, 0);
+	if (ret < 0) {
 		dev_err(&pdev->dev, "unable to find IPI IRQ\n");
 		goto rproc_fault;
 	}
+	local->vring0 = ret;
 	ret = devm_request_irq(&pdev->dev, local->vring0,
 		r5_remoteproc_interrupt, IRQF_SHARED, dev_name(&pdev->dev),
 		&pdev->dev);
