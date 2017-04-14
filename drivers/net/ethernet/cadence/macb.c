@@ -3661,7 +3661,6 @@ static int __maybe_unused macb_suspend(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct net_device *netdev = platform_get_drvdata(pdev);
-	struct macb *bp = netdev_priv(netdev);
 
 	if (netif_running(netdev))
 		macb_close(netdev);
@@ -3673,7 +3672,6 @@ static int __maybe_unused macb_resume(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct net_device *netdev = platform_get_drvdata(pdev);
-	struct macb *bp = netdev_priv(netdev);
 
 	if (netif_running(netdev))
 		macb_open(netdev);
