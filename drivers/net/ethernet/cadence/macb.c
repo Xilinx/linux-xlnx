@@ -230,6 +230,7 @@ static int macb_mdio_read(struct mii_bus *bus, int mii_id, int regnum)
 	struct macb *bp = bus->priv;
 	int value;
 	int err;
+	ulong timeout;
 
 	err = pm_runtime_get_sync(&bp->pdev->dev);
 	if (err < 0)
@@ -241,9 +242,21 @@ static int macb_mdio_read(struct mii_bus *bus, int mii_id, int regnum)
 			      | MACB_BF(REGA, regnum)
 			      | MACB_BF(CODE, MACB_MAN_CODE)));
 
+	timeout = jiffies + msecs_to_jiffies(1000);
 	/* wait for end of transfer */
-	while (!MACB_BFEXT(IDLE, macb_readl(bp, NSR)))
+	do {
+		if (MACB_BFEXT(IDLE, macb_readl(bp, NSR)))
+			break;
+
 		cpu_relax();
+	} while (!time_after_eq(jiffies, timeout));
+
+	if (time_after_eq(jiffies, timeout)) {
+		netdev_err(bp->dev, "wait for end of transfer timed out\n");
+		pm_runtime_mark_last_busy(&bp->pdev->dev);
+		pm_runtime_put_autosuspend(&bp->pdev->dev);
+		return -ETIMEDOUT;
+	}
 
 	value = MACB_BFEXT(DATA, macb_readl(bp, MAN));
 
@@ -257,6 +270,7 @@ static int macb_mdio_write(struct mii_bus *bus, int mii_id, int regnum,
 {
 	struct macb *bp = bus->priv;
 	int err;
+	ulong timeout;
 
 	err = pm_runtime_get_sync(&bp->pdev->dev);
 	if (err < 0)
@@ -270,9 +284,21 @@ static int macb_mdio_write(struct mii_bus *bus, int mii_id, int regnum,
 			      | MACB_BF(CODE, MACB_MAN_CODE)
 			      | MACB_BF(DATA, value)));
 
+	timeout = jiffies + msecs_to_jiffies(1000);
 	/* wait for end of transfer */
-	while (!MACB_BFEXT(IDLE, macb_readl(bp, NSR)))
+	do {
+		if (MACB_BFEXT(IDLE, macb_readl(bp, NSR)))
+			break;
+
 		cpu_relax();
+	} while (!time_after_eq(jiffies, timeout));
+
+	if (time_after_eq(jiffies, timeout)) {
+		netdev_err(bp->dev, "wait for end of transfer timed out\n");
+		pm_runtime_mark_last_busy(&bp->pdev->dev);
+		pm_runtime_put_autosuspend(&bp->pdev->dev);
+		return -ETIMEDOUT;
+	}
 
 	pm_runtime_mark_last_busy(&bp->pdev->dev);
 	pm_runtime_put_autosuspend(&bp->pdev->dev);
