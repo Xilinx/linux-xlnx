@@ -2417,8 +2417,7 @@ static int macb_close(struct net_device *dev)
 
 	macb_free_consistent(bp);
 
-	pm_runtime_mark_last_busy(&bp->pdev->dev);
-	pm_runtime_put_autosuspend(&bp->pdev->dev);
+	pm_runtime_put(&bp->pdev->dev);
 	return 0;
 }
 
