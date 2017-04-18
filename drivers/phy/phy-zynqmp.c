@@ -179,6 +179,13 @@
 #define GEM_SGMII_MODE			0x4
 #define GEM_FIFO_CLK_PL			0x8
 
+#define PIPE_CLK_OFFSET			0x7c
+#define PIPE_CLK_ON			1
+#define PIPE_CLK_OFF			0
+#define PIPE_POWER_OFFSET		0x80
+#define PIPE_POWER_ON			1
+#define PIPE_POWER_OFF			0
+
 #define XPSGTR_TYPE_USB0	0 /* USB controller 0 */
 #define XPSGTR_TYPE_USB1	1 /* USB controller 1 */
 #define XPSGTR_TYPE_SATA_0	2 /* SATA controller lane 0 */
@@ -289,6 +296,7 @@ static struct xpsgtr_ssc ssc_lookup[] = {
  * @gtr_mutex: mutex for locking
  * @phys: pointer to all the lanes
  * @lpd: base address for low power domain devices reset control
+ * @regs: address that phy needs to configure during configuring lane protocol
  * @tx_term_fix: fix for GT issue
  */
 struct xpsgtr_dev {
@@ -298,6 +306,7 @@ struct xpsgtr_dev {
 	struct mutex gtr_mutex;
 	struct xpsgtr_phy **phys;
 	void __iomem *lpd;
+	void __iomem *regs;
 	bool tx_term_fix;
 	struct reset_control *sata_rst;
 	struct reset_control *dp_rst;
@@ -312,6 +321,23 @@ struct xpsgtr_dev {
 	struct reset_control *gem2_rst;
 	struct reset_control *gem3_rst;
 };
+
+/**
+ * xpsgtr_set_protregs - Called by the lane protocol to set phy related control
+ *			 regs into gtr_dev, so that these address can be used
+ *			 by phy while configuring lane.(Currently USB does this)
+ *
+ * @gtr_phy: pointer to lane
+ * @regs:    pointer to protocol control register address
+ */
+int xpsgtr_set_protregs(struct phy *phy, void *regs)
+{
+	struct xpsgtr_phy *gtr_phy = phy_get_drvdata(phy);
+	struct xpsgtr_dev *gtr_dev = gtr_phy->data;
+
+	gtr_dev->regs = regs;
+	return 0;
+}
 
 int xpsgtr_override_deemph(struct phy *phy, u8 plvl, u8 vlvl)
 {
@@ -536,6 +562,20 @@ static int xpsgtr_configure_lane(struct xpsgtr_phy *gtr_phy)
 }
 
 /**
+ * xpsgtr_config_usbpipe - configures the PIPE3 signals for USB
+ * @xpsgtr_dev: pointer to gtr device
+ */
+static void xpsgtr_config_usbpipe(struct xpsgtr_dev *gtr_dev)
+{
+	if (gtr_dev->regs != NULL) {
+		/* Set PIPE power present signal */
+		writel(PIPE_POWER_ON, gtr_dev->regs + PIPE_POWER_OFFSET);
+		/* Clear PIPE CLK signal */
+		writel(PIPE_CLK_OFF, gtr_dev->regs + PIPE_CLK_OFFSET);
+	}
+}
+
+/**
  * xpsgtr_reset_assert - asserts reset using reset framework
  * @gtr_phy: pointer to reset_control
  *
@@ -649,14 +689,22 @@ static int xpsgtr_controller_release_reset(struct xpsgtr_phy *gtr_phy)
 
 	switch (gtr_phy->type) {
 	case XPSGTR_TYPE_USB0:
+		xpsgtr_reset_release(gtr_dev->usb0_apbrst);
+
+		/* Config PIPE3 signals after releasing APB reset */
+		xpsgtr_config_usbpipe(gtr_dev);
+
 		ret = xpsgtr_reset_release(gtr_dev->usb0_crst);
 		ret = xpsgtr_reset_release(gtr_dev->usb0_hibrst);
-		ret = xpsgtr_reset_release(gtr_dev->usb0_apbrst);
 		break;
 	case XPSGTR_TYPE_USB1:
+		xpsgtr_reset_release(gtr_dev->usb1_apbrst);
+
+		/* Config PIPE3 signals after releasing APB reset */
+		xpsgtr_config_usbpipe(gtr_dev);
+
 		ret = xpsgtr_reset_release(gtr_dev->usb1_crst);
 		ret = xpsgtr_reset_release(gtr_dev->usb1_hibrst);
-		ret = xpsgtr_reset_release(gtr_dev->usb1_apbrst);
 		break;
 	case XPSGTR_TYPE_SATA_0:
 	case XPSGTR_TYPE_SATA_1:
