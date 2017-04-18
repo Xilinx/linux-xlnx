@@ -24,6 +24,7 @@
 #include <linux/soc/xilinx/zynqmp/fw.h>
 #include <linux/slab.h>
 
+#include <linux/phy/phy-zynqmp.h>
 #include <linux/of_address.h>
 
 #include "core.h"
@@ -59,6 +60,33 @@ int dwc3_enable_hw_coherency(struct device *dev)
 		reg = readl(regs + XLNX_USB_COHERENCY);
 		reg |= XLNX_USB_COHERENCY_ENABLE;
 		writel(reg, regs + XLNX_USB_COHERENCY);
+	}
+
+	return 0;
+}
+
+static int dwc3_simple_set_phydata(struct dwc3_of_simple *simple)
+{
+	struct device		*dev = simple->dev;
+	struct device_node	*np = dev->of_node;
+	struct phy		*phy;
+
+	np = of_get_next_child(np, NULL);
+
+	if (np) {
+		phy = of_phy_get(np, "usb3-phy");
+		if (IS_ERR(phy)) {
+			dev_err(dev, "%s: Can't find usb3-phy\n", __func__);
+			return PTR_ERR(phy);
+		}
+
+		/* assign USB vendor regs addr to phy platform_data */
+		phy->dev.platform_data = simple->regs;
+
+		phy_put(phy);
+	} else {
+		dev_err(dev, "%s: Can't find child node\n", __func__);
+		return -EINVAL;
 	}
 
 	return 0;
@@ -182,6 +210,11 @@ static int dwc3_of_simple_probe(struct platform_device *pdev)
 		if (!IS_ERR(soc_rev))
 			kfree(soc_rev);
 	}
+
+	/* Set phy data for future use */
+	ret = dwc3_simple_set_phydata(simple);
+	if (ret)
+		return ret;
 
 	/*
 	 * Some controllers need to toggle the usb3-otg reset before trying to
