@@ -76,7 +76,7 @@ struct flash_info {
 					 * bit. Must be used with
 					 * SPI_NOR_HAS_LOCK.
 						*/
-#define	SST_GLOBAL_PROT_UNLK	0x100	/* Unlock the Global protection for
+#define	SST_GLOBAL_PROT_UNLK	BIT(10)	/* Unlock the Global protection for
 					 * sst flashes
 					 */
 
@@ -1209,7 +1209,7 @@ static const struct flash_info spi_nor_ids[] = {
 	{ "n25q064a",    INFO(0x20bb17, 0, 64 * 1024,  128, SECT_4K | SPI_NOR_QUAD_READ) },
 	{ "n25q128a11",  INFO(0x20bb18, 0, 64 * 1024,  256, SECT_4K | SPI_NOR_QUAD_READ | USE_FSR | SPI_NOR_HAS_LOCK) },
 	{ "n25q128a13",  INFO(0x20ba18, 0, 64 * 1024,  256, SECT_4K | SPI_NOR_QUAD_READ | USE_FSR | SPI_NOR_HAS_LOCK) },
-	{ "n25q256a",    INFO(0x20ba19, 0, 64 * 1024,  512, SECT_4K | SPI_NOR_QUAD_READ | USE_FSR| SPI_NOR_HAS_LOCK) },
+	{ "n25q256a",    INFO(0x20bb19, 0, 64 * 1024,  512, SECT_4K | SPI_NOR_QUAD_READ | USE_FSR| SPI_NOR_HAS_LOCK) },
 	{ "n25q256a13",  INFO(0x20ba19, 0, 64 * 1024,  512, SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ | USE_FSR | SPI_NOR_HAS_LOCK) },
 	{ "n25q512a",    INFO(0x20bb20, 0, 64 * 1024, 1024, SECT_4K | USE_FSR | SPI_NOR_QUAD_READ | SPI_NOR_HAS_LOCK) },
 	{ "n25q512a13",  INFO(0x20ba20, 0, 64 * 1024, 1024, SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ | USE_FSR | SPI_NOR_HAS_LOCK) },
