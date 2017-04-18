@@ -31,6 +31,7 @@
 #include <linux/soc/xilinx/zynqmp/fw.h>
 #include <linux/slab.h>
 
+#include <linux/phy/phy-zynqmp.h>
 #include <linux/of_address.h>
 
 #include "core.h"
@@ -45,6 +46,28 @@ struct dwc3_of_simple {
 	int			num_clocks;
 	void __iomem		*regs;
 };
+
+void dwc3_set_phydata(struct device *dev, struct phy *phy)
+{
+	struct device_node *node = of_get_parent(dev->of_node);
+	int ret;
+
+	if ((node != NULL) &&
+		of_device_is_compatible(node, "xlnx,zynqmp-dwc3")) {
+		struct platform_device *pdev_parent;
+		struct dwc3_of_simple   *simple;
+
+		pdev_parent = of_find_device_by_node(node);
+		simple = platform_get_drvdata(pdev_parent);
+
+		/* assign USB vendor regs to phy lane */
+		ret = xpsgtr_set_protregs(phy, simple->regs);
+		if (ret) {
+			dev_err(&pdev_parent->dev,
+				"Not able to set PHY data\n");
+		}
+	}
+}
 
 int dwc3_enable_hw_coherency(struct device *dev)
 {
