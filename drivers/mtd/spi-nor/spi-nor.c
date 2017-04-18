@@ -3482,12 +3482,24 @@ int spi_nor_scan(struct spi_nor *nor, const char *name,
 			if (JEDEC_MFR(info) == SNOR_MFR_SPANSION ||
 			    info->flags & SPI_NOR_4B_OPCODES)
 				spi_nor_set_4byte_opcodes(nor, info);
-			else
-				if (nor->isstacked) {
-					nor->spi->master->flags |= SPI_MASTER_U_PAGE;
+			else {
+				np_spi = of_get_next_parent(np);
+				if (of_property_match_string(np_spi,
+						"compatible",
+						"xlnx,xps-spi-2.00.a") >= 0) {
+					nor->addr_width = 3;
+					set_4byte(nor, info, 0);
+				} else {
 					set_4byte(nor, info, 1);
-					nor->spi->master->flags &= ~SPI_MASTER_U_PAGE;
+					if (nor->isstacked) {
+						nor->spi->master->flags |=
+							SPI_MASTER_U_PAGE;
+						set_4byte(nor, info, 1);
+						nor->spi->master->flags &=
+							~SPI_MASTER_U_PAGE;
+					}
 				}
+			}
 #ifdef CONFIG_OF
 		}
 #endif
