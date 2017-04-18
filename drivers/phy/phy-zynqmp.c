@@ -46,6 +46,7 @@
 #define RST_ULPI_LOW			0x02
 
 #define RST_ULPI_TIMEOUT		10
+#define RST_TIMEOUT			1000
 
 #define ICM_CFG0			0x10010
 #define ICM_CFG1			0x10014
@@ -535,91 +536,154 @@ static int xpsgtr_configure_lane(struct xpsgtr_phy *gtr_phy)
 }
 
 /**
+ * xpsgtr_reset_assert - asserts reset using reset framework
+ * @gtr_phy: pointer to reset_control
+ *
+ * Return: 0 on success or error on failure
+ */
+static int xpsgtr_reset_assert(struct reset_control *rstc)
+{
+	unsigned long loop_time = msecs_to_jiffies(RST_TIMEOUT);
+	unsigned long timeout;
+
+	reset_control_assert(rstc);
+
+	/* wait until reset is asserted or timeout */
+	timeout = jiffies + loop_time;
+
+	while (!time_after_eq(jiffies, timeout)) {
+		if (reset_control_status(rstc) > 0)
+			return 0;
+
+		cpu_relax();
+	}
+
+	return -ETIMEDOUT;
+}
+
+/**
+ * xpsgtr_reset_release - de-asserts reset using reset framework
+ * @gtr_phy: pointer to reset_control
+ *
+ * Return: 0 on success or error on failure
+ */
+static int xpsgtr_reset_release(struct reset_control *rstc)
+{
+	unsigned long loop_time = msecs_to_jiffies(RST_TIMEOUT);
+	unsigned long timeout;
+
+	reset_control_deassert(rstc);
+
+	/* wait until reset is de-asserted or timeout */
+	timeout = jiffies + loop_time;
+	while (!time_after_eq(jiffies, timeout)) {
+		if (!reset_control_status(rstc))
+			return 0;
+
+		cpu_relax();
+	}
+
+	return -ETIMEDOUT;
+}
+
+/**
  * xpsgtr_controller_reset - puts controller in reset
  * @gtr_phy: pointer to lane
+ *
+ * Return: 0 on success or error on failure
  */
-static void xpsgtr_controller_reset(struct xpsgtr_phy *gtr_phy)
+static int xpsgtr_controller_reset(struct xpsgtr_phy *gtr_phy)
 {
 	struct xpsgtr_dev *gtr_dev = gtr_phy->data;
+	int ret;
 
 	switch (gtr_phy->type) {
 	case XPSGTR_TYPE_USB0:
-		reset_control_assert(gtr_dev->usb0_crst);
-		reset_control_assert(gtr_dev->usb0_hibrst);
-		reset_control_assert(gtr_dev->usb0_apbrst);
+		ret = xpsgtr_reset_assert(gtr_dev->usb0_crst);
+		ret = xpsgtr_reset_assert(gtr_dev->usb0_hibrst);
+		ret = xpsgtr_reset_assert(gtr_dev->usb0_apbrst);
 		break;
 	case XPSGTR_TYPE_USB1:
-		reset_control_assert(gtr_dev->usb1_crst);
-		reset_control_assert(gtr_dev->usb1_hibrst);
-		reset_control_assert(gtr_dev->usb1_apbrst);
+		ret = xpsgtr_reset_assert(gtr_dev->usb1_crst);
+		ret = xpsgtr_reset_assert(gtr_dev->usb1_hibrst);
+		ret = xpsgtr_reset_assert(gtr_dev->usb1_apbrst);
 		break;
 	case XPSGTR_TYPE_SATA_0:
 	case XPSGTR_TYPE_SATA_1:
-		reset_control_assert(gtr_dev->sata_rst);
+		ret = xpsgtr_reset_assert(gtr_dev->sata_rst);
 		break;
 	case XPSGTR_TYPE_DP_0:
 	case XPSGTR_TYPE_DP_1:
-		reset_control_assert(gtr_dev->dp_rst);
+		ret = xpsgtr_reset_assert(gtr_dev->dp_rst);
 		break;
 	case XPSGTR_TYPE_SGMII0:
-		reset_control_assert(gtr_dev->gem0_rst);
+		ret = xpsgtr_reset_assert(gtr_dev->gem0_rst);
 		break;
 	case XPSGTR_TYPE_SGMII1:
-		reset_control_assert(gtr_dev->gem1_rst);
+		ret = xpsgtr_reset_assert(gtr_dev->gem1_rst);
 		break;
 	case XPSGTR_TYPE_SGMII2:
-		reset_control_assert(gtr_dev->gem2_rst);
+		ret = xpsgtr_reset_assert(gtr_dev->gem2_rst);
 		break;
 	case XPSGTR_TYPE_SGMII3:
-		reset_control_assert(gtr_dev->gem3_rst);
+		ret = xpsgtr_reset_assert(gtr_dev->gem3_rst);
 		break;
 	default:
+		ret = -EINVAL;
 		break;
 	}
+
+	return ret;
 }
 
 /**
  * xpsgtr_controller_release_reset - releases controller from reset
  * @gtr_phy: pointer to lane
+ *
+ * Return: 0 on success or error on failure
  */
-static void xpsgtr_controller_release_reset(struct xpsgtr_phy *gtr_phy)
+static int xpsgtr_controller_release_reset(struct xpsgtr_phy *gtr_phy)
 {
 	struct xpsgtr_dev *gtr_dev = gtr_phy->data;
+	int ret;
 
 	switch (gtr_phy->type) {
 	case XPSGTR_TYPE_USB0:
-		reset_control_deassert(gtr_dev->usb0_crst);
-		reset_control_deassert(gtr_dev->usb0_hibrst);
-		reset_control_deassert(gtr_dev->usb0_apbrst);
+		ret = xpsgtr_reset_release(gtr_dev->usb0_crst);
+		ret = xpsgtr_reset_release(gtr_dev->usb0_hibrst);
+		ret = xpsgtr_reset_release(gtr_dev->usb0_apbrst);
 		break;
 	case XPSGTR_TYPE_USB1:
-		reset_control_deassert(gtr_dev->usb1_crst);
-		reset_control_deassert(gtr_dev->usb1_hibrst);
-		reset_control_deassert(gtr_dev->usb1_apbrst);
+		ret = xpsgtr_reset_release(gtr_dev->usb1_crst);
+		ret = xpsgtr_reset_release(gtr_dev->usb1_hibrst);
+		ret = xpsgtr_reset_release(gtr_dev->usb1_apbrst);
 		break;
 	case XPSGTR_TYPE_SATA_0:
 	case XPSGTR_TYPE_SATA_1:
-		reset_control_deassert(gtr_dev->sata_rst);
+		ret = xpsgtr_reset_release(gtr_dev->sata_rst);
 		break;
 	case XPSGTR_TYPE_DP_0:
 	case XPSGTR_TYPE_DP_1:
-		reset_control_deassert(gtr_dev->dp_rst);
+		ret = xpsgtr_reset_release(gtr_dev->dp_rst);
 		break;
 	case XPSGTR_TYPE_SGMII0:
-		reset_control_deassert(gtr_dev->gem0_rst);
+		ret = xpsgtr_reset_release(gtr_dev->gem0_rst);
 		break;
 	case XPSGTR_TYPE_SGMII1:
-		reset_control_deassert(gtr_dev->gem1_rst);
+		ret = xpsgtr_reset_release(gtr_dev->gem1_rst);
 		break;
 	case XPSGTR_TYPE_SGMII2:
-		reset_control_deassert(gtr_dev->gem2_rst);
+		ret = xpsgtr_reset_release(gtr_dev->gem2_rst);
 		break;
 	case XPSGTR_TYPE_SGMII3:
-		reset_control_deassert(gtr_dev->gem3_rst);
+		ret = xpsgtr_reset_release(gtr_dev->gem3_rst);
 		break;
 	default:
+		ret = -EINVAL;
 		break;
 	}
+
+	return ret;
 }
 
 int xpsgtr_wait_pll_lock(struct phy *phy)
@@ -850,7 +914,11 @@ static int xpsgtr_phy_init(struct phy *phy)
 	mutex_lock(&gtr_dev->gtr_mutex);
 
 	/* Put controller in reset */
-	xpsgtr_controller_reset(gtr_phy);
+	ret = xpsgtr_controller_reset(gtr_phy);
+	if (ret != 0) {
+		dev_err(gtr_dev->dev, "Failed to assert reset\n");
+		goto out;
+	}
 
 	/*
 	 * There is a functional issue in the GT. The TX termination resistance
@@ -941,7 +1009,11 @@ static int xpsgtr_phy_init(struct phy *phy)
 		xpsgtr_misc_sgmii(gtr_phy);
 
 	/* Bring controller out of reset */
-	xpsgtr_controller_release_reset(gtr_phy);
+	ret = xpsgtr_controller_release_reset(gtr_phy);
+	if (ret != 0) {
+		dev_err(gtr_dev->dev, "Failed to release reset\n");
+		goto out;
+	}
 
 	/* Wait till pll is locked for all protocols except DP. For DP
 	 * pll locking function will be called from driver.
