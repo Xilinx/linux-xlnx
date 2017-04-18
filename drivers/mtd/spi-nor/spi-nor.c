@@ -1996,13 +1996,23 @@ int spi_nor_scan(struct spi_nor *nor, const char *name, enum read_mode mode)
 			/* No small sector erase for 4-byte command set */
 			nor->erase_opcode = SPINOR_OP_SE_4B;
 			mtd->erasesize = info->sector_size;
-		} else
-			set_4byte(nor, info, 1);
-			if (nor->isstacked) {
-				nor->spi->master->flags |= SPI_MASTER_U_PAGE;
+		} else {
+			np_spi = of_get_next_parent(np);
+			if (of_property_match_string(np_spi, "compatible",
+						"xlnx,xps-spi-2.00.a") >= 0) {
+				nor->addr_width = 3;
+				set_4byte(nor, info, 0);
+			} else {
 				set_4byte(nor, info, 1);
-				nor->spi->master->flags &= ~SPI_MASTER_U_PAGE;
+				if (nor->isstacked) {
+					nor->spi->master->flags |=
+							SPI_MASTER_U_PAGE;
+					set_4byte(nor, info, 1);
+					nor->spi->master->flags &=
+							~SPI_MASTER_U_PAGE;
+				}
 			}
+		}
 #ifdef CONFIG_OF
 		}
 #endif
