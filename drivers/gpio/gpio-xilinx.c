@@ -387,7 +387,6 @@ static int xgpio_to_irq(struct gpio_chip *gc, unsigned offset)
 
 /**
  * xgpio_irqhandler - Gpio interrupt service routine
- * @irq: gpio irq number
  * @desc: Pointer to interrupt description
  */
 static void xgpio_irqhandler(struct irq_desc *desc)
@@ -566,7 +565,7 @@ static int xgpio_remove(struct platform_device *pdev)
 
 /**
  * xgpio_of_probe - Probe method for the GPIO device.
- * @np: pointer to device tree node
+ * @pdev:       platform device instance
  *
  * This function probes the GPIO device in the device tree. It initializes the
  * driver data structure.
