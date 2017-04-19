@@ -882,6 +882,7 @@ static ssize_t reset_static_transferdone_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
 	ssize_t rdval = xtg_sysfs_ioctl(dev, buf, XTG_GET_STATIC_TRANSFERDONE);
+
 	if (rdval == XTG_STATIC_CNTL_RESET_MASK)
 		rdval = 1;
 	else
@@ -1020,7 +1021,7 @@ static ssize_t xtg_pram_mmap(struct file *filp, struct kobject *kobj,
 static struct bin_attribute xtg_pram_attr = {
 	.attr =	{
 		.name = "parameter_ram",
-		.mode = S_IRUGO | S_IWUSR,
+		.mode = 0644,
 	},
 	.size = XTG_PARAM_RAM_SIZE,
 	.read = xtg_pram_read,
@@ -1118,7 +1119,7 @@ static ssize_t xtg_cram_mmap(struct file *filp, struct kobject *kobj,
 static struct bin_attribute xtg_cram_attr = {
 	.attr =	{
 		.name = "command_ram",
-		.mode = S_IRUGO | S_IWUSR,
+		.mode = 0644,
 	},
 	.size = XTG_COMMAND_RAM_SIZE,
 	.read = xtg_cram_read,
@@ -1178,7 +1179,7 @@ static ssize_t xtg_mram_mmap(struct file *filp, struct kobject *kobj,
 static struct bin_attribute xtg_mram_attr = {
 	.attr =	{
 		.name = "master_ram",
-		.mode = S_IRUGO | S_IWUSR,
+		.mode = 0644,
 	},
 	.size = XTG_MASTER_RAM_SIZE,
 	.read = xtg_mram_read,
@@ -1380,7 +1381,7 @@ static int xtg_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static struct of_device_id xtg_of_match[] = {
+static const struct of_device_id xtg_of_match[] = {
 	{ .compatible = "xlnx,axi-traffic-gen", },
 	{ /* end of table */ }
 };
