@@ -53,6 +53,7 @@
  * @globalcntwidth: Global Clock counter width
  * @scalefactor: Scaling factor
  * @isr: Interrupts info shared to userspace
+ * @is_32bit_filter: Flags for 32bit filter
  * @clk: Clock handle
  */
 struct xapm_param {
@@ -87,6 +88,8 @@ struct xapm_dev {
  * xapm_handler - Interrupt handler for APM
  * @irq: IRQ number
  * @info: Pointer to uio_info structure
+ *
+ * Return: Always returns IRQ_HANDLED
  */
 static irqreturn_t xapm_handler(int irq, struct uio_info *info)
 {
@@ -106,6 +109,8 @@ static irqreturn_t xapm_handler(int irq, struct uio_info *info)
  * xapm_getprop - Retrieves dts properties to param structure
  * @pdev: Pointer to platform device
  * @param: Pointer to param structure
+ *
+ * Returns: '0' on success and failure value on error
  */
 static int xapm_getprop(struct platform_device *pdev, struct xapm_param *param)
 {
@@ -200,7 +205,7 @@ static int xapm_getprop(struct platform_device *pdev, struct xapm_param *param)
  * xapm_probe - Driver probe function
  * @pdev: Pointer to the platform_device structure
  *
- * Returns '0' on success and failure value on error
+ * Returns: '0' on success and failure value on error
  */
 
 static int xapm_probe(struct platform_device *pdev)
@@ -293,7 +298,7 @@ err_clk_dis:
  * xapm_remove - Driver remove function
  * @pdev: Pointer to the platform_device structure
  *
- * Always returns '0'
+ * Return: Always returns '0'
  */
 static int xapm_remove(struct platform_device *pdev)
 {
