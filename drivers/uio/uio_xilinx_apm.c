@@ -196,7 +196,8 @@ static int xapm_getprop(struct platform_device *pdev, struct xapm_param *param)
 		return ret;
 	}
 
-	param->is_32bit_filter = of_property_read_bool(node, "xlnx,id-filter-32bit");
+	param->is_32bit_filter = of_property_read_bool(node,
+						"xlnx,id-filter-32bit");
 
 	return 0;
 }
@@ -229,8 +230,8 @@ static int xapm_probe(struct platform_device *pdev)
 
 	xapm->param.clk = devm_clk_get(&pdev->dev, NULL);
 	if (IS_ERR(xapm->param.clk)) {
-			dev_err(&pdev->dev, "axi clock error\n");
-			return PTR_ERR(xapm->param.clk);
+		dev_err(&pdev->dev, "axi clock error\n");
+		return PTR_ERR(xapm->param.clk);
 	}
 
 	ret = clk_prepare_enable(xapm->param.clk);
@@ -341,7 +342,7 @@ static const struct dev_pm_ops xapm_dev_pm_ops = {
 			   xapm_runtime_resume, NULL)
 };
 
-static struct of_device_id xapm_of_match[] = {
+static const struct of_device_id xapm_of_match[] = {
 	{ .compatible = "xlnx,axi-perf-monitor", },
 	{ /* end of table*/ }
 };
