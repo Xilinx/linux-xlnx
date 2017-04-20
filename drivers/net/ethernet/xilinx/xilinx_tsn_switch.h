@@ -141,11 +141,11 @@
 /* FRER Statistics Counters */
 #define TOTAL_FRER_FRAMES_OFFSET		0x4000
 #define FRER_DISCARD_INGS_FLTR_OFFSET		0x4800
-#define FRER_PASS_FRAMES_SEQ_OFFSET		0x5000
-#define FRER_DISCARD_FRAMES_SEQ_OFFSET		0x5800
-#define FRER_ROGUE_FRAMES_SEQ_OFFSET		0x6000
-#define FRER_PASS_FRAMES_INDV_OFFSET		0x6800
-#define FRER_DISCARD_FRAMES_INDV_OFFSET		0x7000
+#define FRER_PASS_FRAMES_INDV_OFFSET		0x5000
+#define FRER_DISCARD_FRAMES_INDV_OFFSET		0x5800
+#define FRER_PASS_FRAMES_SEQ_OFFSET		0x6000
+#define FRER_DISCARD_FRAMES_SEQ_OFFSET		0x6800
+#define FRER_ROGUE_FRAMES_SEQ_OFFSET		0x7000
 #define SEQ_RECV_RESETS_OFFSET			0x7800
 
 /* 64 bit counter*/
@@ -216,8 +216,7 @@ struct in_fltr {
 
 struct frer_memb_config {
 	u8 seq_rec_hist_len;
-	bool split_strm_valid;
-	u8 split_strm_inport_id;
+	u8 split_strm_egport_id;
 	u16 split_strm_vlan_id;
 	u32 rem_ticks;
 };
