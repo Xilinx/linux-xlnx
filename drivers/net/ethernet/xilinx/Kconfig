@@ -99,4 +99,11 @@ config XILINX_TSN_QCI
 	---help---
 	  Enable TSN QCI protocol.
 
+config XILINX_TSN_CB
+	bool "Support CB protocol in TSN"
+	depends on XILINX_TSN_SWITCH
+	default y
+	---help---
+	  Enable TSN CB protocol support.
+
 endif # NET_VENDOR_XILINX
