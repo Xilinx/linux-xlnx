@@ -487,7 +487,7 @@ static const struct pixel_format pixel_formats[] = {
 	{ MIPI_CSI_DT_RAW_14, "RAW14 "}
 };
 
-static const struct xcsi2rxss_event xcsi2rxss_events[] = {
+static struct xcsi2rxss_event xcsi2rxss_events[] = {
 	{ XCSI_ISR_FR_MASK, "Frame Received", 0 },
 	{ XCSI_ISR_ILC_MASK, "Invalid Lane Count Error", 0 },
 	{ XCSI_ISR_SPFIFOF_MASK, "Short Packet FIFO OverFlow Error", 0 },
