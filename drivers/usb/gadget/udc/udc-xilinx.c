@@ -194,7 +194,7 @@ struct xusb_udc {
 	spinlock_t lock;
 	bool dma_enabled;
 
-	unsigned int (*read_fn)(void __iomem *);
+	unsigned int (*read_fn)(void __iomem *reg);
 	void (*write_fn)(void __iomem *, u32, u32);
 };
 
