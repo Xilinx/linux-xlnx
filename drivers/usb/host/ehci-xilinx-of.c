@@ -46,6 +46,8 @@
  * There are cases when the host controller fails to enable the port due to,
  * for example, insufficient power that can be supplied to the device from
  * the USB bus. In those cases, the messages printed here are not helpful.
+ *
+ * Return: Always return 0
  */
 static int ehci_xilinx_port_handed_over(struct usb_hcd *hcd, int portnum)
 {
@@ -124,6 +126,8 @@ static const struct hc_driver ehci_xilinx_of_hc_driver = {
  * host controller. Because the Xilinx USB host controller can be configured
  * as HS only or HS/FS only, it checks the configuration in the device tree
  * entry, and sets an appropriate value for hcd->has_tt.
+ *
+ * Return: zero on success, 'rv' value on failure
  */
 static int ehci_hcd_xilinx_of_probe(struct platform_device *op)
 {
@@ -208,6 +212,8 @@ err_irq:
  *
  * Remove the hcd structure, and release resources that has been requested
  * during probe.
+ *
+ * Return: Always return 0
  */
 static int ehci_hcd_xilinx_of_remove(struct platform_device *op)
 {
