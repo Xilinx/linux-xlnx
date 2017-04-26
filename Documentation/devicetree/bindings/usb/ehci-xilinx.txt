@@ -1,0 +1,21 @@
+Xilinx USB EHCI controller
+
+Required properties:
+- compatible: must be "xlnx,xps-usb-host-1.00.a"
+- reg: physical base address of the controller and length of memory mapped
+  region.
+- interrupts: The EHCI interrupt
+
+Optional properties:
+- xlnx,ext-vbus-valid: Use external VBUS
+- xlnx,support-usb-fs: Support for Full Speed USB
+- xlnx,use-phy-bus-pwr: Use phy bus power in USB
+
+Example:
+
+	xps_usb_host_0: usb@82400000 {
+		compatible = "xlnx,xps-usb-host-1.00.a";
+		interrupt-parent = <&xps_intc_0>;
+		interrupts = < 0 2 >;
+		reg = < 0x82400000 0x200 >;
+	} ;
