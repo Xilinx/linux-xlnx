@@ -908,7 +908,7 @@ static void __init zynqmp_clk_setup(struct device_node *np)
 			(resource_size_t *)CRL_APB_GEM2_REF_CTRL, 26, 0);
 	clks[gem2_ref] = zynqmp_clk_register_gate(NULL,
 			clk_output_name[gem2_ref], "gem2_ref_div1",
-			CLK_SET_RATE_PARENT,
+			0,
 			(resource_size_t *)CRL_APB_GEM2_REF_CTRL, 25, 0);
 
 
@@ -929,7 +929,7 @@ static void __init zynqmp_clk_setup(struct device_node *np)
 			(resource_size_t *)CRL_APB_GEM3_REF_CTRL, 8, 6,
 			CLK_DIVIDER_ONE_BASED | CLK_DIVIDER_ALLOW_ZERO);
 	zynqmp_clk_register_divider(NULL, "gem3_ref_div1",
-			"gem3_ref_div0", CLK_SET_RATE_PARENT,
+			"gem3_ref_div0", 0,
 			(resource_size_t *)CRL_APB_GEM3_REF_CTRL, 16, 6,
 			CLK_DIVIDER_ONE_BASED | CLK_DIVIDER_ALLOW_ZERO);
 	zynqmp_clk_register_mux(NULL, "gem3_tx_mux", gem3_tx_mux_parents,
