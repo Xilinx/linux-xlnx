@@ -706,6 +706,18 @@ config XILINX_FRMBUF
 	help
 	 Enable support for Xilinx Framebuffer DMA.
 
+config XILINX_PS_PCIE_DMA
+	tristate "Xilinx PS PCIe DMA support"
+	depends on (PCI && X86_64 || ARM64)
+	select DMA_ENGINE
+	help
+	  Enable support for the Xilinx PS PCIe DMA engine present
+	  in recent Xilinx ZynqMP chipsets.
+
+	  Say Y here if you have such a chipset.
+
+	  If unsure, say N.
+
 config ZX_DMA
 	tristate "ZTE ZX DMA support"
 	depends on ARCH_ZX || COMPILE_TEST
