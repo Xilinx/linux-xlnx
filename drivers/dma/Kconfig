@@ -745,6 +745,17 @@ config XILINX_PS_PCIE_DMA
 
 	  If unsure, say N.
 
+config XILINX_PS_PCIE_DMA_TEST
+	tristate "Xilinx PS PCIe DMA test client"
+	depends on XILINX_PS_PCIE_DMA
+	help
+	  Enable support for the test client of Xilinx PS PCIe DMA engine
+	  in recent Xilinx ZynqMP chipsets.
+
+	  Say Y here if you have such a chipset.
+
+	  If unsure, say N.
+
 # driver files
 source "drivers/dma/bestcomm/Kconfig"
 
