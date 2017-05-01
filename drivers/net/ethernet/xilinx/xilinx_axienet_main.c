@@ -2492,18 +2492,26 @@ static int axienet_dma_probe(struct platform_device *pdev,
 	}
 
 #ifdef CONFIG_XILINX_TSN
-	for_each_dma_queue(lp, i) {
-		sprintf(dma_name, "dma%d_tx", i);
-		lp->dq[i]->tx_irq = platform_get_irq_byname(pdev, dma_name);
-		sprintf(dma_name, "dma%d_rx", i);
-		lp->dq[i]->rx_irq = platform_get_irq_byname(pdev, dma_name);
-		pr_info("lp->dq[%d]->tx_irq  %d\n", i, lp->dq[i]->tx_irq);
-		pr_info("lp->dq[%d]->rx_irq  %d\n", i, lp->dq[i]->rx_irq);
-	}
-#else /* This should remove when axienet idevice tree irq comply to dma name */
-	for_each_dma_queue(lp, i) {
-		lp->dq[i]->tx_irq = irq_of_parse_and_map(np, 0);
-		lp->dq[i]->rx_irq = irq_of_parse_and_map(np, 1);
+	if (lp->is_tsn) {
+		for_each_dma_queue(lp, i) {
+			sprintf(dma_name, "dma%d_tx", i);
+			lp->dq[i]->tx_irq = platform_get_irq_byname(pdev,
+								    dma_name);
+			sprintf(dma_name, "dma%d_rx", i);
+			lp->dq[i]->rx_irq = platform_get_irq_byname(pdev,
+								    dma_name);
+			pr_info("lp->dq[%d]->tx_irq  %d\n", i,
+				lp->dq[i]->tx_irq);
+			pr_info("lp->dq[%d]->rx_irq  %d\n", i,
+				lp->dq[i]->rx_irq);
+		}
+	} else {
+#endif /* This should remove when axienet device tree irq comply to dma name */
+		for_each_dma_queue(lp, i) {
+			lp->dq[i]->tx_irq = irq_of_parse_and_map(np, 0);
+			lp->dq[i]->rx_irq = irq_of_parse_and_map(np, 1);
+		}
+#ifdef CONFIG_XILINX_TSN
 	}
 #endif
 
