@@ -76,7 +76,7 @@ struct xadc_ops {
 	int (*setup)(struct platform_device *pdev, struct iio_dev *indio_dev,
 			int irq);
 	void (*update_alarm)(struct xadc *, unsigned int);
-	unsigned long (*get_dclk_rate)(struct xadc *);
+	unsigned long (*get_dclk_rate)(struct xadc *xadc);
 	irqreturn_t (*interrupt_handler)(int, void *);
 
 	unsigned int flags;
