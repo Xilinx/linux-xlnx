@@ -1,0 +1,100 @@
+Xilinx VPHY (Staging)
+
+The Xilinx Video PHY is a high-level video-specific wrapper around
+different versions of the GT PHY. Its driver is phy/phy-xilinx-vphy.c
+
+It offers the PHY driver interface as well as higher-level video
+specific support functions.
+
+Its current users are Xilinx HDMI RX/TX SS.
+(See xlnx,v-hdmi-rx-ss.txt and xlnx,v-hdmi-tx-ss.txt)
+
+
+Required Properties:
+ - compatible: Should be "xlnx,vid-phy-controller-2.0".
+ - reg: Base address and size of the IP core.
+ - interrupts: Interrupt number.
+ - interrupts-parent: phandle for interrupt controller.
+ 
+ - clocks: phandle for axi-lite clock and dru clock
+ - clock-names: The identification string, "axi-lite", is always required
+          and "dru-clk" is required for NI DRU clock for phy
+		  
+ - phys: phandle for phy lanes registered for hdmi protocol. HDMI always 
+         require 3 lanes
+ - phy-names: The identification string, "hdmi-phy0" and so on
+
+ - xlnx,input-pixels-per-clock: IP configuration for samples/clk (1, 2, 4)
+         Note: Only 2 is supported at this time
+
+ - xlnx,nidru: flag to indicate if DRU is present
+ - xlnx,nidru-refclk-sel: DRU clock selector
+ - xlnx,rx-no-of-channels: Required Rx channels for registered protocol
+ - xlnx,rx-pll-selection: Rx pll selector
+ - xlnx,rx-protocol: 1=HDMI, 0=DP (Note: Only HDMI is supported at this time)
+ - xlnx,rx-refclk-sel: Reference Rx clock selector
+ - xlnx,tx-no-of-channels: Required Rx channels for registered protocol
+ - xlnx,tx-pll-selection = Tx pll selector
+ - xlnx,tx-protocol: 1=HDMI, 0=DP (Note: Only HDMI is supported at this time)
+ - xlnx,tx-refclk-sel: Reference Rx clock selector
+ - xlnx,hdmi-fast-switch: Flag to indicate fast switching logic availability
+ - xlnx,transceiver-type: GT type. Must be set per GT device used
+ - xlnx,tx-buffer-bypass: Flag to indicate buffer bypass logic availability
+ - xlnx,transceiver-width: Defines 4 Byte or 2 Byte mode
+                      (Note: Only 4 byte is supported at this time) 
+
+ - lane<n>: (port (child) nodes)
+	lane0:
+		- #phy-cells	: Should be 4
+			Cell after port phandle is device type from:
+			- <controller_type controller_instance is_shared direction_tx>
+
+			controller_type = 0 for HDMI
+            controller_instance = [0, ...] indexes the instance of the protocol
+                                  controller	
+            is_shared = 1 if the RX and TX can be shared across the same 
+			            protocol/controller
+            direction_tx = 0 for RX and 1 for TX
+
+(These properties are intended for future steering of multiple protocols 
+sharing VPHYs, and are therefore subject to change.)
+
+An example is, with comments for work-in-progress (TODO):
+
+	vid_phy_controller_0: vid_phy_controller@a0090000 {
+		compatible = "xlnx,vid-phy-controller-2.0";
+		reg = <0x0 0xa0090000 0x0 0x10000>;
+		interrupts = <0 92 4>;
+		interrupt-parent = <&gic>;
+		clocks = <&vid_s_axi_clk>, <&si570_2>;
+		clock-names = "axi-lite", "dru-clk";
+
+		xlnx,input-pixels-per-clock = <0x2>;
+		xlnx,nidru = <0x1>;
+		xlnx,nidru-refclk-sel = <0x4>;
+		xlnx,rx-no-of-channels = <0x3>;
+		xlnx,rx-pll-selection = <0x0>;
+		xlnx,rx-protocol = <0x1>;
+		xlnx,rx-refclk-sel = <0x1>;
+		xlnx,tx-no-of-channels = <0x3>;
+		xlnx,tx-pll-selection = <0x6>;
+		xlnx,tx-protocol = <0x1>;
+		xlnx,tx-refclk-sel = <0x0>;
+		xlnx,hdmi-fast-switch = <0x1>;
+		xlnx,transceiver-type = <0x5>;
+		xlnx,tx-buffer-bypass = <0x1>;
+		xlnx,transceiver-width = <4>;
+
+		vphy_lane0: vphy_lane@0 {
+			#phy-cells = <4>;
+		};
+		vphy_lane1: vphy_lane@1 {
+			#phy-cells = <4>;
+		};
+		vphy_lane2: vphy_lane@2 {
+			#phy-cells = <4>;
+		};
+		vphy_lane3: vphy_lane@3 {
+			#phy-cells = <4>;
+		};
+	};
