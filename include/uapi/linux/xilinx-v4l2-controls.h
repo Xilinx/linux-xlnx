@@ -160,4 +160,17 @@
 /* Adjust Blue Gain */
 #define V4L2_CID_XILINX_CSC_BLUE_GAIN		(V4L2_CID_XILINX_CSC + 5)
 
+/*
+ * Xilinx Gamma Correction HLS IP
+ */
+
+/* Base ID */
+#define V4L2_CID_XILINX_GAMMA_CORR		(V4L2_CID_USER_BASE + 0xc0c0)
+/* Adjust Red Gamma */
+#define V4L2_CID_XILINX_GAMMA_CORR_RED_GAMMA	(V4L2_CID_XILINX_GAMMA_CORR + 1)
+/* Adjust Blue Gamma */
+#define V4L2_CID_XILINX_GAMMA_CORR_BLUE_GAMMA	(V4L2_CID_XILINX_GAMMA_CORR + 2)
+/* Adjust Green Gamma */
+#define V4L2_CID_XILINX_GAMMA_CORR_GREEN_GAMMA	(V4L2_CID_XILINX_GAMMA_CORR + 3)
+
 #endif /* __UAPI_XILINX_V4L2_CONTROLS_H__ */
