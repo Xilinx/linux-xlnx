@@ -19,6 +19,16 @@ config VIDEO_XILINX_CRESAMPLE
 	---help---
 	   Driver for the Xilinx Chroma Resampler
 
+config VIDEO_XILINX_GAMMA
+	tristate "Xilinx Gamma Correction LUT"
+	depends on VIDEO_XILINX
+	---help---
+	Driver for Xilinx Gamma Correction LUT IP. This is V4L sub-device
+	based driver that exposes V4L controls to adjust Red, Blue and Green
+	Gamma Correction to Video. Gamma values range from 0.1(min) to 4.0(max)
+	with Gamma value of 1.0 being the default resulting in no correction.
+	Say N if unsure.
+
 config VIDEO_XILINX_HLS
 	tristate "Xilinx Video HLS Core"
 	depends on VIDEO_XILINX

@@ -3,6 +3,7 @@ xilinx-video-objs += xilinx-dma.o xilinx-vip.o xilinx-vipp.o
 obj-$(CONFIG_VIDEO_XILINX) += xilinx-video.o
 obj-$(CONFIG_VIDEO_XILINX_CFA) += xilinx-cfa.o
 obj-$(CONFIG_VIDEO_XILINX_CRESAMPLE) += xilinx-cresample.o
+obj-$(CONFIG_VIDEO_XILINX_GAMMA) += xilinx-gamma.o
 obj-$(CONFIG_VIDEO_XILINX_HLS) += xilinx-hls.o
 obj-$(CONFIG_VIDEO_XILINX_RGB2YUV) += xilinx-rgb2yuv.o
 obj-$(CONFIG_VIDEO_XILINX_SCALER) += xilinx-scaler.o
