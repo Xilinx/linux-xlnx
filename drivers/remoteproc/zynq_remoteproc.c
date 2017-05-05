@@ -33,6 +33,7 @@
 #include <linux/slab.h>
 #include <linux/cpu.h>
 #include <linux/genalloc.h>
+#include <../../arch/arm/mach-zynq/common.h>
 
 #include "remoteproc_internal.h"
 
@@ -40,8 +41,6 @@
 #define NOTIFYID_ANY (-1)
 /* Maximum on chip memories used by the driver*/
 #define MAX_ON_CHIP_MEMS        32
-
-extern int zynq_cpun_start(u32 address, int cpu);
 
 /* Structure for storing IRQs */
 struct irq_list {
