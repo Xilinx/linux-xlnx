@@ -43,9 +43,6 @@
 
 extern int zynq_cpun_start(u32 address, int cpu);
 
-/* Module parameter */
-static char *firmware = "firmware";
-
 /* Structure for storing IRQs */
 struct irq_list {
 	int irq;
@@ -302,7 +299,7 @@ static int zynq_remoteproc_probe(struct platform_device *pdev)
 	int i;
 
 	rproc = rproc_alloc(&pdev->dev, dev_name(&pdev->dev),
-		&zynq_rproc_ops, firmware,
+		&zynq_rproc_ops, NULL,
 		sizeof(struct zynq_rproc_pdata));
 	if (!rproc) {
 		dev_err(&pdev->dev, "rproc allocation failed\n");
@@ -483,9 +480,6 @@ static struct platform_driver zynq_remoteproc_driver = {
 	},
 };
 module_platform_driver(zynq_remoteproc_driver);
-
-module_param(firmware, charp, 0);
-MODULE_PARM_DESC(firmware, "Override the firmware image name. Default value in DTS.");
 
 MODULE_AUTHOR("Michal Simek <monstr@monstr.eu");
 MODULE_LICENSE("GPL v2");
