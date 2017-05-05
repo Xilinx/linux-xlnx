@@ -1,0 +1,20 @@
+config VIDEO_XILINX_HDMI_RX
+	tristate "Xilinx HDMI RX V4L2"
+	depends on VIDEO_XILINX
+	select PHY_XILINX_VPHY 
+	---help---
+	   V4L2 driver for the Xilinx HDMI RX Subsystem IP.
+
+config DRM_XILINX_HDMI
+	tristate "Xilinx DRM HDMI Driver"
+	depends on DRM_XILINX
+	select PHY_XILINX_VPHY
+	help
+	  DRM driver for the Xilinx HDMI TX Subsystem IP.
+
+config PHY_XILINX_VPHY
+	tristate "Xilinx Video PHY driver"
+	depends on ARCH_ZYNQMP
+	select GENERIC_PHY
+	help
+	  Enable this to support the Video PHY for HDMI.
