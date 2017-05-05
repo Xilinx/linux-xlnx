@@ -1,0 +1,87 @@
+ Xilinx VPSS Scaler
+--------------------
+
+Required properties:
+
+- compatible: Must be "xlnx,v-vpss-scaler".
+
+- reg: Physical base address and length of the registers set for the device.
+
+- clocks: Reference to the video core clock.
+
+- xlnx,num-hori-taps, xlnx,num-vert-taps: The number of horizontal and vertical
+  taps for scaling filter(range: 6,8,10,12).
+
+- xlnx,max-num-phases: The maximum number of phases for scaling filter
+  (Only allowed is 64).
+
+- xlnx,max-num-lines : The maxiumum number of lines for the scaler
+ (The only supported value is 2160)
+
+- xlnx,max-pixels : The maximum number of pixes on a line
+ (The only supported value is 3840)
+
+- xlnx,pix-per-clk : The pixels per clock property of the IP
+ (Currently only 1 pixel per clock and 2 pixel per clock is supported)
+
+- reset-gpios: Specifier for a GPIO that assert for VPSS Scaler reset.
+  This property is mandatory for the Scaler
+
+- ports: Video ports, using the DT bindings defined in ../video-interfaces.txt.
+  The scaler has an input port (0) and an output port (1).
+
+Required port properties:
+
+- xlnx,video-format: Must be one of RBG or YUV_444 for
+  input port (0) and must be YUV_422 or YUV_420 for the output port (1).
+
+- reg: This value represents the media pad of the V4L2 sub-device.
+  A Sink Pad is represented by reg = <0>
+  A Source Pad is represented by reg = <1>
+
+- xlnx,video-width: Video width as defined in video.txt
+
+Example:
+
+	scalar_1:scalar@a0000000 {
+		compatible = "xlnx,v-vpss-scaler";
+		reg = <0x0 0xa0000000 0x0 0x40000>;
+		clocks = <&vid_stream_clk>;
+		xlnx,num-hori-taps = <8>;
+		xlnx,num-vert-taps = <8>;
+		xlnx,max-num-phases = <64>;
+		xlnx,max-lines = <2160>;
+		xlnx,max-pixels = <3840>;
+		xlnx,pix-per-clk = <2>;
+		reset-gpios = <&gpio 87 1>;
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			port@0 {
+				/* Sink Pad */
+				reg = <0>;
+
+				xlnx,video-format = <XVIP_VF_RBG>;
+				xlnx,video-width = <8>;
+
+				scalar_in: endpoint {
+					remote-endpoint = <&csc_out>;
+				};
+			};
+
+			port@1 {
+				/* Source Pad */
+				reg = <1>;
+
+				xlnx,video-format = <XVIP_VF_YUV_422>;
+				xlnx,video-width = <8>;
+
+				scalar_out: endpoint {
+					remote-endpoint = <&vcap_tpg_in>;
+				};
+			};
+		};
+
+	};
