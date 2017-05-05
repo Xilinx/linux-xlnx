@@ -19,6 +19,15 @@ config VIDEO_XILINX_CRESAMPLE
 	---help---
 	   Driver for the Xilinx Chroma Resampler
 
+config VIDEO_XILINX_DEMOSAIC
+	tristate "Xilinx Video Demosaic IP"
+	depends on VIDEO_XILINX
+	---help---
+	Driver for Xilinx Video Demosaic IP. This is a V4L sub-device
+	based driver for the Demosaic IP that takes in a video stream
+	Bayer format as input and generates RGB video output.
+	Say N if unsure
+
 config VIDEO_XILINX_GAMMA
 	tristate "Xilinx Gamma Correction LUT"
 	depends on VIDEO_XILINX
