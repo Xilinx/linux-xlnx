@@ -1,0 +1,8 @@
+config RETIMER_DP159
+        tristate "Texas Instruments DP159 Redriver/retimer"
+        depends on COMMON_CLK && I2C
+        ---help---
+         Support for the Texas Instruments DP159 Redriver/retimer.
+
+         To compile this driver as a module, choose M here: the
+         module will be called dp159.
