@@ -1,0 +1,65 @@
+Xilinx HDMI TX Subsystem (Staging)
+
+The Xilinx HDMI TX Subsystem contains several subcores to implement
+a HDMI receiver. staging/xilinx/hdmi/xilinx_drm_hdmi.c implements a
+DRM/KMS driver that slaves to xilinx_drm_drv.c in the output pipeline.
+
+If xlnx,vtc-offset is given it specifies the offset of the built-in
+VTC IP block. This is required.
+
+Refer to xlnx,vphy.txt for the phy specifics.
+
+retimer-clk is optional. If specified, the corresponding driver
+should offer a CCF clock that supports .set_rate(). Through this,
+the device can retime/redrive the HDMI TX signal on the connector
+depending on the TX clock line rate.
+
+Required properties:
+ - compatible: Should be "xlnx,v-hdmi-tx-ss-2.0".
+ - reg: Base address and size of the IP core.
+ - interrupts: Interrupt number.
+ - interrupts-parent: phandle for interrupt controller.
+ - tx_refclk_rdy_en-gpios: Specifier for a GPIO that is used to over-ride PHY
+   tx_refclk_rdy signal from si5324. Polarity should be set to ACTIVE_HIGH (0)
+
+ - clocks: phandle for axi-lite, video stream and retimer clock
+ - clock-names: The identification string, "axi-lite", is always required for
+                the axi-lite clock, "video" is always required for video stream
+				clock and "retimer-clk" is required only when retimer is being 
+				used 
+   
+ - phys: phandle for phy lanes registered for hdmi protocol. HDMI always 
+         require 3 lanes
+ - phy-names: The identification string, "hdmi-phy0" and so on
+ - xlnx,input-pixels-per-clock: IP configuration for samples/clk (1, 2, 4)
+         Note: Only 2 is supported at this time
+ - xlnx,max-bits-per-component: The data width per video component (8,10,12,16)
+         Note: Only 8 is supported at this time
+ - xlnx,output-fmt: Output Streaming format. Valid strings are "rgb", 
+         "yuv444", "yuv422" and "yuv420"
+ - xlnx,hdmi-tx-offset: Relative offset of tx core within the subsystem
+ - xlnx,vtc-offset: Relative offset of vtc core within the subsystem
+ 
+The "retimer-clk" is optional. If present, it is notified of TX link
+clock changes through set_rate(). Tested with dp159.c driver.
+
+	hdmi_output_v_hdmi_tx_ss_0: v_hdmi_tx_ss@a0020000 {
+		compatible = "xlnx,v-hdmi-tx-ss-2.0";
+		reg = <0x0 0xa0020000 0x0 0x20000>;
+		interrupts = <0 93 4>;
+		interrupt-parent = <&gic>;
+		reset-gpios = <&gpio 83 0>;
+
+		clocks = <&vid_s_axi_clk>, <&vid_stream_clk>, <&dp159>;
+		clock-names = "axi-lite", "video", "retimer-clk";
+		
+		phy-names = "hdmi-phy0", "hdmi-phy1", "hdmi-phy2";
+		phys = <&vphy_lane0 0 1 1 1>, <&vphy_lane1 0 1 1 1>, <&vphy_lane2 0 1 1 1>;
+
+		xlnx,input-pixels-per-clock = <0x2>;
+		xlnx,max-bits-per-component = <0x8>;
+		xlnx,pixel-format = "yuv422";
+		xlnx,hdmi-tx-offset = <0x00000>;
+		xlnx,vtc-offset = <0x10000>;
+	};
+
