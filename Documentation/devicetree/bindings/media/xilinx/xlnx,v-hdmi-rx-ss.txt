@@ -1,0 +1,63 @@
+Xilinx HDMI RX Subsystem (Staging)
+
+The Xilinx HDMI RX Subsystem contains several subcores to implement
+a HDMI receiver. media/platform/xilinx/xilinx-hdmi-rx.c implements a
+V4L2 video-capture sub-device for the Xilinx Video IP Pipeline device
+(xilinx-vipp).
+
+Refer to xlnx,vphy.txt for the phy specifics.
+
+Required Properties:
+ - compatible: Should be "xlnx,v-hdmi-rx-ss-2.0".
+ - reg: Base address and size of the IP core.
+ - interrupts: Interrupt number.
+ - interrupts-parent: phandle for interrupt controller.
+ 
+ - clocks: phandle for axi-lite, video stream
+ - clock-names: The identification string, "axi-lite", is always required for
+                the axi-lite clock, "video" is always required for video stream
+				clock
+   
+ - phys: phandle for phy lanes registered for hdmi protocol. HDMI always 
+         require 3 lanes
+ - phy-names: The identification string, "hdmi-phy0" and so on
+ 
+ - xlnx,input-pixels-per-clock: IP configuration for samples/clk (1, 2, 4)
+         Note: Only 2 is supported at this time
+ - xlnx,max-bits-per-component: The data width per video component (8,10,12,16)
+         Note: Only 8 is supported at this time
+ - xlnx,edid-ram-size: Denotes amount of BRAM allocated for EDID in IP 
+ - xlnx,hdmi-rx-offset: Relative offset of rx core within the subsystem
+ - ports: Video ports, using the DT bindings defined in ../video-interfaces.txt.
+          The Rx only has an output port (0).
+ 
+	hdmi_input_v_hdmi_rx_ss_0: v_hdmi_rx_ss@a0000000 {
+		compatible = "xlnx,v-hdmi-rx-ss-2.0";
+		reg = <0x0 0xa0000000 0x0 0x10000>;
+		interrupts = <0 91 4>;
+		interrupt-parent = <&gic>;
+
+		clocks = <&vid_s_axi_clk>, <&vid_stream_clk>;
+		clock-names = "axi-lite", "video";
+
+		phy-names = "hdmi-phy0", "hdmi-phy1", "hdmi-phy2";
+		phys = <&vphy_lane0 0 1 1 0>, <&vphy_lane1 0 1 1 0>, <&vphy_lane2 0 1 1 0>;
+
+		xlnx,input-pixels-per-clock = <0x2>;
+		xlnx,max-bits-per-component = <0x8>;
+		xlnx,edid-ram-size = <0x100>;
+		xlnx,hdmi-rx-offset = <0x00000>;
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			port@0 {
+				reg = <0>;
+	
+				/* HDMI RX SS -> FB-WR */
+				hdmi_rxss_out: endpoint {
+					remote-endpoint = <&vcap_hdmi_in>;
+				};
+			};
+		};			
+	};
