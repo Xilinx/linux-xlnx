@@ -342,7 +342,8 @@ static int zynq_remoteproc_probe(struct platform_device *pdev)
 		dev_dbg(&pdev->dev, "%d: Alloc irq: %d\n", count, tmp->irq);
 
 		/* Allocating shared IRQs will ensure that any module will
-		 * use these IRQs */
+		 * use these IRQs
+		 */
 		ret = request_irq(tmp->irq, zynq_remoteproc_interrupt, 0,
 					dev_name(&pdev->dev), &pdev->dev);
 		if (ret) {
