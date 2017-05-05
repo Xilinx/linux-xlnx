@@ -1,0 +1,69 @@
+Xilinx VPSS Color Space Converter (CSC)
+-----------------------------------------
+The Xilinx VPSS Color Space Converter (CSC) is a Video IP that currently supports
+color space conversion from RGB input to RGB or YUV 444 output. No other input or
+output formats are supported.
+
+The V4L2 subdevice driver exposes a control interface to manipulate
+user controls like brightness, contrast, red gain, blue gain and green gain.
+Generally, a control value of 50 represents the default value, and it can be
+varied from 0 to 100.
+
+Currently, only BT 709 standard is supported on the output side of the VPSS CSC.
+
+Required properties:
+
+- compatible: Must be "xlnx,v-vpss-csc".
+
+- reg: Physical base address and length of the registers set for the device.
+
+- clocks: Reference to the video core clock.
+
+- reset-gpios: Specifier for a GPIO that assert VPSS CSC (AP_RST_N) reset.
+
+- ports: Video ports, using the DT bindings defined in ../video-interfaces.txt.
+  The scaler has an input port (0) and an output port (1).
+
+
+Required port properties:
+
+- xlnx,video-format: Must be RBG only for
+  input port (0) and RBG or YUV444 for output port (1).
+
+- xlnx,video-width: Video width as defined in video.txt
+
+Example:
+	csc_1:csc@0xa0040000 {
+		compatible = "xlnx,v-vpss-csc";
+		reg = <0x0 0xa0040000 0x0 0x10000>;
+		clocks = <&vid_stream_clk>;
+		reset-gpios = <&gpio 84 1>;
+
+		ports {
+                        #address-cells = <1>;
+                        #size-cells = <0>;
+			/* Sink Pad */
+                        port@0 {
+                                reg = <0>;
+
+                                xlnx,video-format = <XVIP_VF_RBG>;
+                                xlnx,video-width = <8>;
+
+                                csc_in: endpoint {
+                                        remote-endpoint = <&gamma_out>;
+                                };
+                        };
+                        /* Source Pad */
+                        port@1 {
+                                reg = <1>;
+
+                                xlnx,video-format = <XVIP_VF_RBG>;
+                                xlnx,video-width = <8>;
+
+                                csc_out: endpoint {
+                                        remote-endpoint = <&scalar_in>;
+                                };
+                        };
+                };
+
+	};
