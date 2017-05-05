@@ -1,0 +1,8 @@
+config COMMON_CLK_SI5324
+	tristate "Clock driver for SiLabs 5324"
+	depends on I2C && COMMON_CLK
+	select REGMAP_I2C
+	select RATIONAL
+	---help---
+	  This driver supports the Silicon Labs 5324 jitter attenuating clock
+	  multiplier.
