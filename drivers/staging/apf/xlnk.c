@@ -1645,6 +1645,13 @@ static int xlnk_memop_ioctl(struct file *filp, unsigned long arg_addr)
 			args.memop.phys_addr = (xlnk_intptr_type)
 				sg_dma_address(cp->dbuf_sg_table->sgl);
 			args.memop.token = 0;
+			status = copy_to_user((void __user *)arg_addr,
+					      &args,
+					      sizeof(union xlnk_args));
+			if (status)
+				pr_err("Error in copy_to_user.  status = %d\n",
+				       status);
+
 		}
 	} else {
 		if (buf_id > 0) {
