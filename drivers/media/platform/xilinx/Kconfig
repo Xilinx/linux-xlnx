@@ -56,6 +56,16 @@ config VIDEO_XILINX_TPG
 	---help---
 	   Driver for the Xilinx Video Test Pattern Generator
 
+config VIDEO_XILINX_VPSS_CSC
+	tristate "Xilinx VPSS CSC"
+	depends on VIDEO_XILINX
+	---help---
+	Driver for the Xilinx Video Processing Sub-System (VPSS)
+	Color Space Conversion. The driver provides RGB to YUV444
+	conversion and provides video controls like Brightness,
+	Contrast, Color Gains that can be applied to video.
+	Say N if unsure.
+
 config VIDEO_XILINX_VPSS_SCALER
 	tristate "Xilinx Video VPSS Scaler"
 	depends on VIDEO_XILINX
