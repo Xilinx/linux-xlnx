@@ -1165,15 +1165,14 @@ static void xilinx_drm_dp_mode_set_stream(struct xilinx_drm_dp *dp,
 		xilinx_drm_writel(dp->iomem, XILINX_DP_TX_N_VID, reg);
 		xilinx_drm_writel(dp->iomem, XILINX_DP_TX_M_VID, mode->clock);
 		if (dp->aud_clk) {
-			int aud_rate = clk_get_rate(dp->aud_clk) / 512;
+			int aud_rate = clk_get_rate(dp->aud_clk);
 
-			if (aud_rate != 44100 && aud_rate != 48000)
-				dev_dbg(dp->dev, "Audio rate: %d\n", aud_rate);
+			dev_dbg(dp->dev, "Audio rate: %d\n", aud_rate / 512);
 
 			xilinx_drm_writel(dp->iomem, XILINX_DP_TX_AUDIO_N_AUD,
 					  reg);
 			xilinx_drm_writel(dp->iomem, XILINX_DP_TX_AUDIO_M_AUD,
-					  aud_rate);
+					  aud_rate / 1000);
 		}
 	}
 
