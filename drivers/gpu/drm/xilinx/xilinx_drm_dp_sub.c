@@ -1085,13 +1085,19 @@ xilinx_drm_dp_sub_av_buf_init_sf(struct xilinx_drm_dp_sub_av_buf *av_buf,
 	unsigned int i;
 	int offset;
 
-	offset = XILINX_DP_SUB_AV_BUF_GFX_COMP0_SF;
-	for (i = 0; i < XILINX_DP_SUB_AV_BUF_NUM_SF; i++)
-		xilinx_drm_writel(av_buf->base, offset + i * 4, gfx_fmt->sf[i]);
+	if (gfx_fmt) {
+		offset = XILINX_DP_SUB_AV_BUF_GFX_COMP0_SF;
+		for (i = 0; i < XILINX_DP_SUB_AV_BUF_NUM_SF; i++)
+			xilinx_drm_writel(av_buf->base, offset + i * 4,
+					  gfx_fmt->sf[i]);
+	}
 
-	offset = XILINX_DP_SUB_AV_BUF_VID_COMP0_SF;
-	for (i = 0; i < XILINX_DP_SUB_AV_BUF_NUM_SF; i++)
-		xilinx_drm_writel(av_buf->base, offset + i * 4, vid_fmt->sf[i]);
+	if (vid_fmt) {
+		offset = XILINX_DP_SUB_AV_BUF_VID_COMP0_SF;
+		for (i = 0; i < XILINX_DP_SUB_AV_BUF_NUM_SF; i++)
+			xilinx_drm_writel(av_buf->base, offset + i * 4,
+					  vid_fmt->sf[i]);
+	}
 }
 
 /* Audio functions */
@@ -1196,21 +1202,22 @@ int xilinx_drm_dp_sub_layer_set_fmt(struct xilinx_drm_dp_sub *dp_sub,
 				    struct xilinx_drm_dp_sub_layer *layer,
 				    uint32_t drm_fmt)
 {
-	const struct xilinx_drm_dp_sub_fmt *table;
 	const struct xilinx_drm_dp_sub_fmt *fmt;
+	const struct xilinx_drm_dp_sub_fmt *vid_fmt = NULL, *gfx_fmt = NULL;
 	u32 size, fmts, mask;
 
 	if (layer->id == XILINX_DRM_DP_SUB_LAYER_VID) {
-		table = av_buf_vid_fmts;
 		size = ARRAY_SIZE(av_buf_vid_fmts);
 		mask = ~XILINX_DP_SUB_AV_BUF_FMT_NL_VID_MASK;
+		fmt = xilinx_drm_dp_sub_map_fmt(av_buf_vid_fmts, size, drm_fmt);
+		vid_fmt = fmt;
 	} else {
-		table = av_buf_gfx_fmts;
 		size = ARRAY_SIZE(av_buf_gfx_fmts);
 		mask = ~XILINX_DP_SUB_AV_BUF_FMT_NL_GFX_MASK;
+		fmt = xilinx_drm_dp_sub_map_fmt(av_buf_gfx_fmts, size, drm_fmt);
+		gfx_fmt = fmt;
 	}
 
-	fmt = xilinx_drm_dp_sub_map_fmt(table, size, drm_fmt);
 	if (!fmt)
 		return -EINVAL;
 
@@ -1218,6 +1225,7 @@ int xilinx_drm_dp_sub_layer_set_fmt(struct xilinx_drm_dp_sub *dp_sub,
 	fmts &= mask;
 	fmts |= fmt->dp_sub_fmt;
 	xilinx_drm_dp_sub_av_buf_set_fmt(&dp_sub->av_buf, fmts);
+	xilinx_drm_dp_sub_av_buf_init_sf(&dp_sub->av_buf, vid_fmt, gfx_fmt);
 
 	layer->fmt = fmt;
 
