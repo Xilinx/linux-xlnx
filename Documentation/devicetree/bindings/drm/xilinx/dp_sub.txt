@@ -25,6 +25,8 @@ Optional properties:
 	"rgb888"
 	"xbgr8888"
 	"xrgb8888"
+	"xbgr2101010"
+	"xrgb2101010"
 	"nv12"
 	"nv21".
    If nothing is specified, "vyuy" will be selected.
