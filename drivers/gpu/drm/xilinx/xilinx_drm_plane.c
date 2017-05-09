@@ -23,6 +23,7 @@
 
 #include <linux/device.h>
 #include <linux/dmaengine.h>
+#include <linux/dma/xilinx_dma.h>
 #include <linux/of_dma.h>
 #include <linux/platform_device.h>
 
@@ -142,12 +143,24 @@ void xilinx_drm_plane_commit(struct drm_plane *base_plane)
 	enum dma_ctrl_flags flags;
 	unsigned int i;
 
+#ifdef CONFIG_XILINX_FRMBUF
+	/* for xilinx video framebuffer dma, if used */
+	struct xilinx_xdma_config dma_config;
+
+	dma_config.fourcc = plane->format;
+	dma_config.type = XDMA_DRM;
+#endif
+
 	DRM_DEBUG_KMS("plane->id: %d\n", plane->id);
 
 	for (i = 0; i < MAX_NUM_SUB_PLANES; i++) {
 		struct xilinx_drm_plane_dma *dma = &plane->dma[i];
 
 		if (dma->chan && dma->is_active) {
+#ifdef CONFIG_XILINX_FRMBUF
+			/* set first channel private data */
+			dma->chan->private = &dma_config;
+#endif
 			flags = DMA_CTRL_ACK | DMA_PREP_INTERRUPT;
 			desc = dmaengine_prep_interleaved_dma(dma->chan,
 							      &dma->xt,
