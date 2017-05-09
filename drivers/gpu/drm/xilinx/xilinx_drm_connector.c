@@ -107,7 +107,7 @@ xilinx_drm_connector_detect(struct drm_connector *base_connector, bool force)
 	if (force && (status != connector_status_connected))
 		status = encoder_sfuncs->detect(encoder, base_connector);
 
-	DRM_DEBUG_KMS("status: %d\n", status);
+	DRM_DEBUG_KMS("encoder_sfuncs->detect call status: %d\n", status);
 
 	return status;
 }
