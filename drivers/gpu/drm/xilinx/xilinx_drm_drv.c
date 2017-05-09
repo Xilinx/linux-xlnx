@@ -197,7 +197,21 @@ static void xilinx_drm_mode_config_init(struct drm_device *drm)
 
 	drm->mode_config.max_width =
 		xilinx_drm_crtc_get_max_width(private->crtc);
-	drm->mode_config.max_height = 4096;
+
+	drm->mode_config.max_height =
+		xilinx_drm_crtc_get_max_height(private->crtc);
+
+	if (drm->mode_config.max_height <= 0)
+		drm->mode_config.max_height = 4096;
+
+	if (drm->mode_config.max_width <= 0)
+		drm->mode_config.max_width = 4096;
+
+	drm->mode_config.cursor_width =
+		xilinx_drm_crtc_get_max_cursor_width(private->crtc);
+
+	drm->mode_config.cursor_height =
+		xilinx_drm_crtc_get_max_cursor_height(private->crtc);
 
 	drm->mode_config.funcs = &xilinx_drm_mode_config_funcs;
 }

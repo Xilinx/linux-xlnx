@@ -107,7 +107,7 @@ xilinx_drm_connector_detect(struct drm_connector *base_connector, bool force)
 	if (force && (status != connector_status_connected))
 		status = encoder_sfuncs->detect(encoder, base_connector);
 
-	DRM_DEBUG_KMS("status: %d\n", status);
+	DRM_DEBUG_KMS("encoder_sfuncs->detect call status: %d\n", status);
 
 	return status;
 }
@@ -119,7 +119,7 @@ void xilinx_drm_connector_destroy(struct drm_connector *base_connector)
 	drm_connector_cleanup(base_connector);
 }
 
-static struct drm_connector_funcs xilinx_drm_connector_funcs = {
+static const struct drm_connector_funcs xilinx_drm_connector_funcs = {
 	.dpms		= drm_helper_connector_dpms,
 	.fill_modes	= drm_helper_probe_single_connector_modes,
 	.detect		= xilinx_drm_connector_detect,
