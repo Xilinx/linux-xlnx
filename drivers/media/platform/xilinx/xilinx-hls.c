@@ -34,6 +34,7 @@
  * @formats: active V4L2 media bus formats at the sink and source pads
  * @default_formats: default V4L2 media bus formats
  * @vip_formats: format information corresponding to the pads active formats
+ * @model: additional description of IP implementation if available
  * @ctrl_handler: control handler
  * @user_mem: user portion of the register space
  * @user_mem_size: size of the user portion of the register space
