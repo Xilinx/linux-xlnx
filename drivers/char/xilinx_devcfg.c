@@ -29,8 +29,7 @@
 #include <linux/types.h>
 #include <linux/uaccess.h>
 
-extern void zynq_slcr_init_preload_fpga(void);
-extern void zynq_slcr_init_postload_fpga(void);
+#include "xilinx_devcfg.h"
 
 #define DRIVER_NAME "xdevcfg"
 #define XDEVCFG_DEVICES 1
@@ -53,20 +52,25 @@ static DEFINE_MUTEX(xdevcfg_mutex);
 
 /* Control Register Bit definitions */
 #define XDCFG_CTRL_PCFG_PROG_B_MASK	0x40000000 /* Program signal to
-						    *  Reset FPGA */
+						    * Reset FPGA
+						    */
 #define XDCFG_CTRL_PCAP_PR_MASK		0x08000000 /* Enable PCAP for PR */
 #define XDCFG_CTRL_PCAP_MODE_MASK	0x04000000 /* Enable PCAP */
 #define XDCFG_CTRL_PCAP_RATE_EN_MASK  0x02000000 /* Enable PCAP Quad Rate */
 #define XDCFG_CTRL_PCFG_AES_EN_MASK	0x00000E00 /* AES Enable Mask */
 #define XDCFG_CTRL_SEU_EN_MASK		0x00000100 /* SEU Enable Mask */
 #define XDCFG_CTRL_SPNIDEN_MASK		0x00000040 /* Secure Non Invasive
-						    *  Debug Enable */
+						    *  Debug Enable
+						    */
 #define XDCFG_CTRL_SPIDEN_MASK		0x00000020 /* Secure Invasive
-						    *  Debug Enable */
+						    *  Debug Enable
+						    */
 #define XDCFG_CTRL_NIDEN_MASK		0x00000010 /* Non-Invasive Debug
-						    *  Enable */
+						    *  Enable
+						    */
 #define XDCFG_CTRL_DBGEN_MASK		0x00000008 /* Invasive Debug
-						    *  Enable */
+						    *  Enable
+						    */
 #define XDCFG_CTRL_DAP_EN_MASK		0x00000007 /* DAP Enable Mask */
 
 /* Lock register bit definitions */
@@ -76,7 +80,8 @@ static DEFINE_MUTEX(xdevcfg_mutex);
 #define XDCFG_LOCK_DBG_MASK		0x00000001 /* This bit locks
 						    *  security config
 						    *  including: DAP_En,
-						    *  DBGEN,NIDEN, SPNIEN */
+						    *  DBGEN,NIDEN, SPNIEN
+						    */
 
 /* Miscellaneous Control Register bit definitions */
 #define XDCFG_MCTRL_PCAP_LPBK_MASK	0x00000010 /* Internal PCAP loopback */
@@ -135,8 +140,8 @@ struct xdevcfg_drvdata {
 	struct clk *clk;
 	struct clk *fclk[NUMFCLKS];
 	u8 fclk_exported[NUMFCLKS];
-	volatile bool dma_done;
-	volatile int error_status;
+	bool dma_done;
+	int error_status;
 	bool is_open;
 	struct mutex sem;
 	spinlock_t lock;
@@ -191,7 +196,7 @@ static void xdevcfg_reset_pl(void __iomem *base_address)
 			XDCFG_STATUS_PCFG_INIT_MASK)
 		;
 
-	msleep(5);
+	usleep_range(5000, 5100);
 	xdevcfg_writereg(base_address + XDCFG_CTRL_OFFSET,
 			(xdevcfg_readreg(base_address + XDCFG_CTRL_OFFSET) |
 			 XDCFG_CTRL_PCFG_PROG_B_MASK));
@@ -354,8 +359,8 @@ xdevcfg_write(struct file *file, const char __user *buf, size_t count,
 
 	while (!drvdata->dma_done) {
 		if (time_after(jiffies, timeout)) {
-				status = -ETIMEDOUT;
-				goto error;
+			status = -ETIMEDOUT;
+			goto error;
 		}
 	}
 
@@ -528,7 +533,7 @@ static int xdevcfg_open(struct inode *inode, struct file *file)
 	file->private_data = drvdata;
 	drvdata->is_open = 1;
 	drvdata->endian_swap = 0;
-	drvdata->residue_len= 0;
+	drvdata->residue_len = 0;
 
 	/*
 	 * If is_partial_bitstream is set, then PROG_B is not asserted
@@ -575,10 +580,9 @@ static int xdevcfg_release(struct inode *inode, struct file *file)
 	else
 		zynq_slcr_init_postload_fpga();
 
-
 	if (drvdata->residue_len)
-		printk("Did not transfer last %d bytes\n",
-			drvdata->residue_len);
+		dev_info(drvdata->dev, "Did not transfer last %d bytes\n",
+			 drvdata->residue_len);
 
 	drvdata->is_open = 0;
 
@@ -1900,7 +1904,6 @@ static void xdevcfg_fclk_remove(struct device *dev)
 	class_destroy(drvdata->fclk_class);
 	sysfs_remove_group(&dev->kobj, &fclk_exp_attr_grp);
 
-	return;
 }
 
 /**
@@ -2025,8 +2028,8 @@ static int xdevcfg_drv_probe(struct platform_device *pdev)
 	dev = device_create(drvdata->class, &pdev->dev, devt, drvdata,
 			DRIVER_NAME);
 	if (IS_ERR(dev)) {
-			dev_err(&pdev->dev, "unable to create device\n");
-			goto failed7;
+		dev_err(&pdev->dev, "unable to create device\n");
+		goto failed7;
 	}
 
 	/* create sysfs files for the device */
@@ -2087,7 +2090,7 @@ static int xdevcfg_drv_remove(struct platform_device *pdev)
 	return 0;		/* Success */
 }
 
-static struct of_device_id xdevcfg_of_match[] = {
+static const struct of_device_id xdevcfg_of_match[] = {
 	{ .compatible = "xlnx,zynq-devcfg-1.0", },
 	{ /* end of table */}
 };
