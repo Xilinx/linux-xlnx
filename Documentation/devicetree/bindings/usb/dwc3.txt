@@ -82,6 +82,9 @@ Optional properties:
 	thus enabling the workaround in HW to fix the issue where the controller
 	was not able to generate correct CRC checksum on the very first transfer
 	packet after sending resume signal.
+ - snps,enable_guctl1_ipd_quirk: Adding this flag sets bit 9 of GUCTL1
+	enabling the workaround in HW to reduce the Inter Packet Delay (IPD)
+	and making controller enumerate FS/LS devices connected behind VIA-LAB.
  - snps,rx-thr-num-pkt-prd: periodic ESS RX packet threshold count - host mode
 			only. Set this and rx-max-burst-prd to a valid,
 			non-zero value 1-16 (DWC_usb31 programming guide
