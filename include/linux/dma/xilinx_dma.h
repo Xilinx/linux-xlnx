@@ -16,6 +16,29 @@
 #include <linux/dmaengine.h>
 
 /**
+ * enum xdma_ip_type: DMA IP type.
+ *
+ * XDMA_TYPE_AXIDMA: Axi dma ip.
+ * XDMA_TYPE_CDMA: Axi cdma ip.
+ * XDMA_TYPE_VDMA: Axi vdma ip.
+ *
+ */
+enum xdma_ip_type {
+	XDMA_TYPE_AXIDMA = 0,
+	XDMA_TYPE_CDMA,
+	XDMA_TYPE_VDMA,
+	XDMA_TYPE_FRMBUF,
+};
+
+/**
+ * @enum vid_frmwork_type: Linux video framework type
+ */
+enum vid_frmwork_type {
+	XDMA_DRM = 0,
+	XDMA_V4L2,
+};
+
+/**
  * struct xilinx_vdma_config - VDMA Configuration structure
  * @frm_dly: Frame delay
  * @gen_lock: Whether in gen-lock mode
@@ -42,20 +65,15 @@ struct xilinx_vdma_config {
 };
 
 /**
- * enum xdma_ip_type: DMA IP type.
- *
- * XDMA_TYPE_AXIDMA: Axi dma ip.
- * XDMA_TYPE_CDMA: Axi cdma ip.
- * XDMA_TYPE_VDMA: Axi vdma ip.
- *
+ * @struct xilinx_xdma_config: Configuration data for video-aware DMA IP
+ * @fourcc: Video code indicating memory format of video data
+ * @type: From which Linux video framework (V4L2 or DRM) is the fourcc code
  */
-enum xdma_ip_type {
-	XDMA_TYPE_AXIDMA = 0,
-	XDMA_TYPE_CDMA,
-	XDMA_TYPE_VDMA,
+struct xilinx_xdma_config {
+	u32 fourcc;
+	enum vid_frmwork_type type;
 };
 
 int xilinx_vdma_channel_set_config(struct dma_chan *dchan,
-					struct xilinx_vdma_config *cfg);
-
+				   struct xilinx_vdma_config *cfg);
 #endif
