@@ -908,7 +908,7 @@ static void __init zynqmp_clk_setup(struct device_node *np)
 			(resource_size_t *)CRL_APB_GEM2_REF_CTRL, 26, 0);
 	clks[gem2_ref] = zynqmp_clk_register_gate(NULL,
 			clk_output_name[gem2_ref], "gem2_ref_div1",
-			0,
+			CLK_SET_RATE_PARENT,
 			(resource_size_t *)CRL_APB_GEM2_REF_CTRL, 25, 0);
 
 
