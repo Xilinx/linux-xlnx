@@ -1129,7 +1129,7 @@ static int xadc_parse_dt(struct iio_dev *indio_dev, struct device_node *np,
 {
 	struct device *dev = indio_dev->dev.parent;
 	struct xadc *xadc = iio_priv(indio_dev);
-	struct iio_chan_spec *channels;
+	struct iio_chan_spec *iio_xadc_channels;
 	struct device_node *chan_node, *child;
 	unsigned int num_channels;
 	const char *external_mux;
@@ -1172,9 +1172,9 @@ static int xadc_parse_dt(struct iio_dev *indio_dev, struct device_node *np,
 		*conf |= XADC_CONF0_MUX | XADC_CONF0_CHAN(ext_mux_chan);
 	}
 
-	channels = devm_kmemdup(dev, xadc_channels,
+	iio_xadc_channels = devm_kmemdup(dev, xadc_channels,
 				sizeof(xadc_channels), GFP_KERNEL);
-	if (!channels)
+	if (!iio_xadc_channels)
 		return -ENOMEM;
 
 	num_channels = 9;
@@ -1191,11 +1191,11 @@ static int xadc_parse_dt(struct iio_dev *indio_dev, struct device_node *np,
 			if (ret || reg > 16)
 				continue;
 
-			channels[num_channels] = xadc_channels[reg + 9];
-			channels[num_channels].channel = num_channels - 1;
+			iio_xadc_channels[num_channels] = xadc_channels[reg + 9];
+			iio_xadc_channels[num_channels].channel = num_channels - 1;
 
 			if (of_property_read_bool(child, "xlnx,bipolar"))
-				channels[num_channels].scan_type.sign = 's';
+				iio_xadc_channels[num_channels].scan_type.sign = 's';
 
 			num_channels++;
 		}
@@ -1203,12 +1203,12 @@ static int xadc_parse_dt(struct iio_dev *indio_dev, struct device_node *np,
 	of_node_put(chan_node);
 
 	indio_dev->num_channels = num_channels;
-	indio_dev->channels = devm_krealloc(dev, channels,
-					    sizeof(*channels) * num_channels,
+	indio_dev->channels = devm_krealloc(dev, iio_xadc_channels,
+					    sizeof(*iio_xadc_channels) * num_channels,
 					    GFP_KERNEL);
 	/* If we can't resize the channels array, just use the original */
 	if (!indio_dev->channels)
-		indio_dev->channels = channels;
+		indio_dev->channels = iio_xadc_channels;
 
 	return 0;
 }
