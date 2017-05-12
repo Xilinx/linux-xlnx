@@ -233,12 +233,6 @@ enum CHANNEL_STATE {
 	CHANNEL_ERROR                     /*  Channel encountered errors */
 };
 
-enum PS_PCIE_INTR_TYPE {
-	INTR_LEGACY = 0,       /* DMA device uses Legacy interrupt */
-	INTR_MSI,              /* DMA device uses MSI interrupt */
-	INTR_MSIX              /* DMA device uses multiple MSI X interrupts */
-};
-
 enum BUFFER_LOCATION {
 	BUFFER_LOC_PCI = 0,
 	BUFFER_LOC_AXI,
@@ -450,10 +444,8 @@ struct xlnx_pcie_dma_device {
 	struct ps_pcie_dma_chan *channels;
 	struct dma_device common;
 	int num_channels;
-	enum PS_PCIE_INTR_TYPE intr_type;
-	struct msix_entry *entry;
+	int irq_vecs;
 	void __iomem *reg_base;
-	int irq_num;
 	struct pci_dev *pci_dev;
 	struct BAR_PARAMS bar_info[MAX_BARS];
 };
@@ -473,16 +465,13 @@ static void ps_pcie_dma_clr_mask(struct ps_pcie_dma_chan *chan, u32 reg,
 				 u32 mask);
 static void ps_pcie_dma_set_mask(struct ps_pcie_dma_chan *chan, u32 reg,
 				 u32 mask);
-static int msix_free(struct xlnx_pcie_dma_device *xdev);
-static int msi_free(struct xlnx_pcie_dma_device *xdev);
-static int legacy_intr_free(struct xlnx_pcie_dma_device *xdev);
-static int msix_setup(struct xlnx_pcie_dma_device *xdev);
-static int msi_setup(struct xlnx_pcie_dma_device *xdev);
-static int legacy_intr_setup(struct xlnx_pcie_dma_device *xdev);
 static int irq_setup(struct xlnx_pcie_dma_device *xdev);
+static int chan_intr_setup(struct xlnx_pcie_dma_device *xdev);
+static int device_intr_setup(struct xlnx_pcie_dma_device *xdev);
+static int chan_intr_free(struct xlnx_pcie_dma_device *xdev);
+static int device_intr_free(struct xlnx_pcie_dma_device *xdev);
 static int irq_free(struct xlnx_pcie_dma_device *xdev);
-static int msi_msix_capable(struct pci_dev *dev, int type);
-static void irq_probe(struct xlnx_pcie_dma_device *xdev);
+static int irq_probe(struct xlnx_pcie_dma_device *xdev);
 static int ps_pcie_check_intr_status(struct ps_pcie_dma_chan *chan);
 static irqreturn_t ps_pcie_dma_dev_intr_handler(int irq, void *data);
 static irqreturn_t ps_pcie_dma_chan_intr_handler(int irq, void *data);
@@ -506,7 +495,7 @@ static void dst_cleanup_work(struct work_struct *work);
 static void src_cleanup_work(struct work_struct *work);
 static void ps_pcie_chan_primary_work(struct work_struct *work);
 static int probe_channel_properties(struct platform_device *platform_dev,
-				    struct xlnx_pcie_dma_device **pxdev,
+				    struct xlnx_pcie_dma_device *xdev,
 				    u16 channel_number);
 static void xlnx_ps_pcie_destroy_mempool(struct ps_pcie_dma_chan *chan);
 static void xlnx_ps_pcie_free_worker_queues(struct ps_pcie_dma_chan *chan);
@@ -614,71 +603,55 @@ static irqreturn_t ps_pcie_dma_chan_intr_handler(int irq, void *data)
 }
 
 /**
- * msix_free - Releases MSI-X interrupt resources
+ * chan_intr_free - Releases Interrupts for individual channels
  *
  * @xdev: Driver specific data for device
  *
  * Return: Always 0
  */
-static int msix_free(struct xlnx_pcie_dma_device *xdev)
+static int chan_intr_free(struct xlnx_pcie_dma_device *xdev)
 {
 	struct ps_pcie_dma_chan *chan;
 	int i;
 
 	for (i = 0; i < xdev->num_channels; i++) {
 		chan = &xdev->channels[i];
-		devm_free_irq(xdev->dev, xdev->entry[i].vector, chan);
+		devm_free_irq(xdev->dev, pci_irq_vector(xdev->pci_dev, i),
+			      chan);
 		dev_info(xdev->dev,
-			 "MSIX irq %d for channel %d freed\n",
-			 xdev->entry[i].vector,
+			 "Irq %d for channel %d freed\n",
+			 pci_irq_vector(xdev->pci_dev, i),
 			 chan->channel_number);
 	}
-	pci_disable_msix(xdev->pci_dev);
 
 	return 0;
 }
 
 /**
- * msi_free - Releases MSI interrupt resources
+ * device_intr_free - Releases Interrupt for DMA Device
  *
  * @xdev: Driver specific data for device
  *
  * Return: Always 0
  */
-static int msi_free(struct xlnx_pcie_dma_device *xdev)
+static int device_intr_free(struct xlnx_pcie_dma_device *xdev)
 {
-	devm_free_irq(xdev->dev, xdev->irq_num, xdev);
-	pci_disable_msi(xdev->pci_dev);
+	devm_free_irq(xdev->dev, pci_irq_vector(xdev->pci_dev, 0), xdev);
 
-	dev_info(xdev->dev, "MSI irq %d freed\n", xdev->irq_num);
+	dev_info(xdev->dev, "Irq %d freed\n",
+		 pci_irq_vector(xdev->pci_dev, 0));
 
 	return 0;
 }
 
 /**
- * legacy_intr_free - Releases legacy interrupt resources
- *
- * @xdev: Driver specific data for device
- *
- * Return: Always 0
- */
-static int legacy_intr_free(struct xlnx_pcie_dma_device *xdev)
-{
-	devm_free_irq(xdev->dev, xdev->irq_num, xdev);
-
-	dev_info(xdev->dev, "Legacy Interrupt irq %d freed\n", xdev->irq_num);
-
-	return 0;
-}
-
-/**
- * msix_setup - Requests MSI X interrupt and registers handlers
+ * chan_intr_setup - Requests Interrupt handler for individual channels
  *
  * @xdev: Driver specific data for device
  *
  * Return: 0 on success and non zero value on failure.
  */
-static int msix_setup(struct xlnx_pcie_dma_device *xdev)
+static int chan_intr_setup(struct xlnx_pcie_dma_device *xdev)
 {
 	struct ps_pcie_dma_chan *chan;
 	int i;
@@ -686,15 +659,16 @@ static int msix_setup(struct xlnx_pcie_dma_device *xdev)
 
 	for (i = 0; i < xdev->num_channels; i++) {
 		chan = &xdev->channels[i];
-		err = devm_request_irq(xdev->dev, xdev->entry[i].vector,
+		err = devm_request_irq(xdev->dev,
+				       pci_irq_vector(xdev->pci_dev, i),
 				       ps_pcie_dma_chan_intr_handler,
 				       PS_PCIE_DMA_IRQ_NOSHARE,
-				       "PS PCIe DMA MSI-X handler", chan);
+				       "PS PCIe DMA Chan Intr handler", chan);
 		if (err) {
 			dev_err(xdev->dev,
-				"MSIX irq %d for chan %d error %d\n",
-				xdev->entry[i].vector, chan->channel_number,
-				err);
+				"Irq %d for chan %d error %d\n",
+				pci_irq_vector(xdev->pci_dev, i),
+				chan->channel_number, err);
 			break;
 		}
 	}
@@ -702,7 +676,8 @@ static int msix_setup(struct xlnx_pcie_dma_device *xdev)
 	if (err) {
 		while (--i >= 0) {
 			chan = &xdev->channels[i];
-			devm_free_irq(xdev->dev, xdev->entry[i].vector, chan);
+			devm_free_irq(xdev->dev,
+				      pci_irq_vector(xdev->pci_dev, i), chan);
 		}
 	}
 
@@ -710,45 +685,28 @@ static int msix_setup(struct xlnx_pcie_dma_device *xdev)
 }
 
 /**
- * msi_setup - Requests MSI interrupt and registers handler
+ * device_intr_setup - Requests interrupt handler for DMA device
  *
  * @xdev: Driver specific data for device
  *
  * Return: 0 on success and non zero value on failure.
  */
-static int msi_setup(struct xlnx_pcie_dma_device *xdev)
+static int device_intr_setup(struct xlnx_pcie_dma_device *xdev)
 {
 	int err;
+	unsigned long intr_flags = IRQF_SHARED;
 
-	err = devm_request_irq(xdev->dev, xdev->irq_num,
+	if (xdev->pci_dev->msix_enabled || xdev->pci_dev->msi_enabled)
+		intr_flags = PS_PCIE_DMA_IRQ_NOSHARE;
+
+	err = devm_request_irq(xdev->dev,
+			       pci_irq_vector(xdev->pci_dev, 0),
 			       ps_pcie_dma_dev_intr_handler,
-			       PS_PCIE_DMA_IRQ_NOSHARE,
-			       "PS PCIe DMA MSI Handler", xdev);
+			       intr_flags,
+			       "PS PCIe DMA Intr Handler", xdev);
 	if (err)
-		dev_err(xdev->dev, "Couldn't request MSI irq %d\n",
-			xdev->irq_num);
-
-	return err;
-}
-
-/**
- * legacy_intr_setup - Requests Legacy interrupt and registers handler
- *
- * @xdev: Driver specific data for device
- *
- * Return: 0 on success and non zero value on failure.
- */
-static int legacy_intr_setup(struct xlnx_pcie_dma_device *xdev)
-{
-	int err;
-
-	err = devm_request_irq(xdev->dev, xdev->irq_num,
-			       ps_pcie_dma_dev_intr_handler,
-			       IRQF_SHARED, "PS PCIe DMA Legacy Handler",
-			       xdev);
-	if (err)
-		dev_err(xdev->dev, "Couldn't request Legacy irq %d\n",
-			xdev->irq_num);
+		dev_err(xdev->dev, "Couldn't request irq %d\n",
+			pci_irq_vector(xdev->pci_dev, 0));
 
 	return err;
 }
@@ -762,35 +720,12 @@ static int legacy_intr_setup(struct xlnx_pcie_dma_device *xdev)
  */
 static int irq_setup(struct xlnx_pcie_dma_device *xdev)
 {
-	int err = 0;
+	int err;
 
-	switch (xdev->intr_type) {
-	case INTR_MSIX:
-		err = msix_setup(xdev);
-		if (err) {
-			dev_err(xdev->dev,
-				"Couldn't setup MSI-X mode: err = %d\n", err);
-			}
-		break;
-	case INTR_MSI:
-		err = msi_setup(xdev);
-		if (err) {
-			dev_err(xdev->dev,
-				"Couldn't setup MSI mode: err = %d\n", err);
-			}
-		break;
-	case INTR_LEGACY:
-		err = legacy_intr_setup(xdev);
-		if (err) {
-			dev_err(xdev->dev,
-				"Couldn't setup Legacy interrupt: err = %d\n",
-				err);
-			}
-		break;
-	default:
-		dev_err(xdev->dev, "Invalid interrupt type!\n");
-		err = PTR_ERR(xdev);
-	}
+	if (xdev->irq_vecs == xdev->num_channels)
+		err = chan_intr_setup(xdev);
+	else
+		err = device_intr_setup(xdev);
 
 	return err;
 }
@@ -804,61 +739,16 @@ static int irq_setup(struct xlnx_pcie_dma_device *xdev)
  */
 static int irq_free(struct xlnx_pcie_dma_device *xdev)
 {
-	int err = 0;
+	int err;
 
-	switch (xdev->intr_type) {
-	case INTR_MSIX:
-		err = msix_free(xdev);
-		if (err) {
-			dev_err(xdev->dev,
-				"Couldn't free MSI-X mode: err = %d\n", err);
-		}
-		break;
-	case INTR_MSI:
-		err = msi_free(xdev);
-		if (err) {
-			dev_err(xdev->dev,
-				"Couldn't free MSI mode: err = %d\n", err);
-		}
-		break;
-	case INTR_LEGACY:
-		err = legacy_intr_free(xdev);
-		if (err) {
-			dev_err(xdev->dev,
-				"Couldn't free Legacy interrupt: err = %d\n",
-				err);
-		}
-		break;
-	default:
-		dev_err(xdev->dev, "Invalid interrupt type!\n");
-		err = PTR_ERR(xdev);
-	}
+	if (xdev->irq_vecs == xdev->num_channels)
+		err = chan_intr_free(xdev);
+	else
+		err = device_intr_free(xdev);
+
+	pci_free_irq_vectors(xdev->pci_dev);
 
 	return err;
-}
-
-/**
- * msi_msix_capable - Checks MSI/MSIX capability of pci dev
- *
- * @dev: Pci device
- * @type: PCI_CAP_ID_MSI or PCI_CAP_ID_MSIX
- * Return: 1 on success and 0 on failure
- */
-static int msi_msix_capable(struct pci_dev *dev, int type)
-{
-	struct pci_bus *bus;
-
-	if (!dev || dev->no_msi)
-		return 0;
-
-	for (bus = dev->bus; bus; bus = bus->parent)
-		if (bus->bus_flags & PCI_BUS_FLAGS_NO_MSI)
-			return 0;
-
-	if (!pci_find_capability(dev, type))
-		return 0;
-
-	return 1;
 }
 
 /**
@@ -866,48 +756,17 @@ static int msi_msix_capable(struct pci_dev *dev, int type)
  *
  * @xdev: Driver specific data for device
  *
- * Return: Always 0
+ * Return: Number of interrupt vectors when successful or -ENOSPC on failure
  */
-static void irq_probe(struct xlnx_pcie_dma_device *xdev)
+static int irq_probe(struct xlnx_pcie_dma_device *xdev)
 {
-	int i;
-	int err = 0;
 	struct pci_dev *pdev;
 
 	pdev = xdev->pci_dev;
 
-	if (msi_msix_capable(pdev, PCI_CAP_ID_MSIX)) {
-		dev_info(&pdev->dev, "Enabling MSI-X\n");
-		for (i = 0; i < xdev->num_channels; i++)
-			xdev->entry[i].entry = i;
-
-		err = pci_enable_msix(pdev, xdev->entry, xdev->num_channels);
-		if (err < 0) {
-			dev_err(&pdev->dev,
-				"Couldn't enable MSI-X mode: err = %d\n", err);
-		} else {
-			xdev->intr_type = INTR_MSIX;
-			return;
-		}
-	}
-
-	if (msi_msix_capable(pdev, PCI_CAP_ID_MSI)) {
-		/* enable message signaled interrupts */
-		dev_info(&pdev->dev, "Enabling MSI\n");
-		err = pci_enable_msi(pdev);
-		if (err < 0) {
-			dev_err(&pdev->dev,
-				"Couldn't enable MSI mode: err = %d\n", err);
-		} else {
-			xdev->intr_type = INTR_MSI;
-			xdev->irq_num = xdev->pci_dev->irq;
-			return;
-		}
-	}
-
-	dev_info(&pdev->dev, "MSI/MSI-X not detected\n");
-	xdev->intr_type = INTR_LEGACY;
-	xdev->irq_num = xdev->pci_dev->irq;
+	xdev->irq_vecs = pci_alloc_irq_vectors(pdev, 1, xdev->num_channels,
+					       PCI_IRQ_ALL_TYPES);
+	return xdev->irq_vecs;
 }
 
 /**
@@ -1645,14 +1504,13 @@ static void ps_pcie_chan_primary_work(struct work_struct *work)
 }
 
 static int probe_channel_properties(struct platform_device *platform_dev,
-				    struct xlnx_pcie_dma_device **pxdev,
+				    struct xlnx_pcie_dma_device *xdev,
 				    u16 channel_number)
 {
 	int i;
 	char propertyname[CHANNEL_PROPERTY_LENGTH];
 	int numvals, ret;
 	u32 *val;
-	struct xlnx_pcie_dma_device *xdev = *pxdev;
 	struct ps_pcie_dma_chan *channel;
 	struct ps_pcie_dma_channel_match *xlnx_match;
 
@@ -2852,16 +2710,6 @@ static int xlnx_pcie_dma_driver_probe(struct platform_device *platform_dev)
 		goto platform_driver_probe_return;
 	}
 
-	xdev->entry =
-		devm_kzalloc(&platform_dev->dev,
-			     sizeof(struct msix_entry) * xdev->num_channels,
-			     GFP_KERNEL);
-
-	if (!xdev->entry) {
-		err = -ENOMEM;
-		goto platform_driver_probe_return;
-	}
-
 	for (i = 0; i < MAX_BARS; i++) {
 		if (pci_resource_len(pdev, i) == 0)
 			continue;
@@ -2896,15 +2744,6 @@ static int xlnx_pcie_dma_driver_probe(struct platform_device *platform_dev)
 	}
 	xdev->reg_base = pci_iomap[DMA_BAR_NUMBER];
 
-	irq_probe(xdev);
-
-	err = irq_setup(xdev);
-	if (err) {
-		dev_err(&pdev->dev, "Cannot request irq lines for device %d\n",
-			platform_dev->id);
-		goto platform_driver_probe_return;
-	}
-
 	xdev->board_number = platform_dev->id;
 
 	/* Initialize the DMA engine */
@@ -2934,13 +2773,27 @@ static int xlnx_pcie_dma_driver_probe(struct platform_device *platform_dev)
 	xdev->common.residue_granularity = DMA_RESIDUE_GRANULARITY_SEGMENT;
 
 	for (i = 0; i < xdev->num_channels; i++) {
-		err = probe_channel_properties(platform_dev, &xdev, i);
+		err = probe_channel_properties(platform_dev, xdev, i);
 
 		if (err != 0) {
 			dev_err(&pdev->dev,
 				"Unable to read channel properties\n");
 			goto platform_driver_probe_return;
 		}
+	}
+
+	err = irq_probe(xdev);
+	if (err < 0) {
+		dev_err(&pdev->dev, "Cannot probe irq lines for device %d\n",
+			platform_dev->id);
+		goto platform_driver_probe_return;
+	}
+
+	err = irq_setup(xdev);
+	if (err) {
+		dev_err(&pdev->dev, "Cannot request irq lines for device %d\n",
+			platform_dev->id);
+		goto platform_driver_probe_return;
 	}
 
 	err = dma_async_device_register(&xdev->common);
@@ -2969,7 +2822,6 @@ static int xlnx_pcie_dma_driver_remove(struct platform_device *platform_dev)
 	for (i = 0; i < xdev->num_channels; i++)
 		xlnx_ps_pcie_dma_free_chan_resources(&xdev->channels[i].common);
 
-	irq_free(xdev);
 	dma_async_device_unregister(&xdev->common);
 
 	return 0;
