@@ -434,6 +434,12 @@ static int anfc_read_page_hwecc(struct mtd_info *mtd,
 	u32 val;
 	struct anfc *nfc = to_anfc(chip->controller);
 	struct anfc_nand_chip *achip = to_anfc_nand(chip);
+	u8 *ecc_code = chip->buffers->ecccode;
+	u8 *p = buf;
+	int eccsize = chip->ecc.size;
+	int eccbytes = chip->ecc.bytes;
+	int eccsteps = chip->ecc.steps;
+	int stat = 0, i;
 
 	anfc_set_eccsparecmd(nfc, achip, NAND_CMD_RNDOUT, NAND_CMD_RNDOUTSTART);
 	anfc_config_ecc(nfc, 1);
@@ -445,8 +451,9 @@ static int anfc_read_page_hwecc(struct mtd_info *mtd,
 	chip->read_buf(mtd, buf, mtd->writesize);
 
 	val = readl(nfc->base + ECC_ERR_CNT_OFST);
+	val = ((val & PAGE_ERR_CNT_MASK) >> 8);
 	if (achip->bch) {
-		mtd->ecc_stats.corrected += val & PAGE_ERR_CNT_MASK;
+		mtd->ecc_stats.corrected += val;
 	} else {
 		val = readl(nfc->base + ECC_ERR_CNT_1BIT_OFST);
 		mtd->ecc_stats.corrected += val;
@@ -459,6 +466,25 @@ static int anfc_read_page_hwecc(struct mtd_info *mtd,
 
 	if (oob_required)
 		chip->ecc.read_oob(mtd, chip, page);
+
+	if (val) {
+		anfc_config_ecc(nfc, 0);
+		chip->cmdfunc(mtd, NAND_CMD_READOOB, 0, page);
+		chip->read_buf(mtd, chip->oob_poi, mtd->oobsize);
+		mtd_ooblayout_get_eccbytes(mtd, ecc_code, chip->oob_poi, 0,
+					   chip->ecc.total);
+		for (i = 0 ; eccsteps; eccsteps--, i += eccbytes,
+		     p += eccsize) {
+			stat = nand_check_erased_ecc_chunk(p,
+				chip->ecc.size, &ecc_code[i], eccbytes,
+				NULL, 0, chip->ecc.strength);
+		}
+		if (stat < 0)
+			stat = 0;
+		else
+			mtd->ecc_stats.corrected += stat;
+		return stat;
+	}
 
 	return 0;
 }
