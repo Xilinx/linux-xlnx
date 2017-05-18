@@ -100,6 +100,8 @@
 #define EVENT_MASK	(XFER_COMPLETE | READ_READY | WRITE_READY | MBIT_ERROR)
 
 #define SDR_MODE_DEFLT_FREQ		80000000
+#define ONDIE_ECC_FEATURE_ADDR	0x90
+#define ONFI_FEATURE_ON_DIE_ECC_EN	BIT(3)
 
 /**
  * struct anfc_nand_chip - Defines the nand chip related information
@@ -489,6 +491,28 @@ static int anfc_write_page_hwecc(struct mtd_info *mtd,
 	return 0;
 }
 
+static int anfc_read_page(struct mtd_info *mtd,
+			  struct nand_chip *chip, uint8_t *buf,
+			  int oob_required, int page)
+{
+	chip->read_buf(mtd, buf, mtd->writesize);
+	if (oob_required)
+		chip->ecc.read_oob(mtd, chip, page);
+
+	return 0;
+}
+
+static int anfc_write_page(struct mtd_info *mtd,
+			   struct nand_chip *chip, const uint8_t *buf,
+			   int oob_required, int page)
+{
+	chip->write_buf(mtd, buf, mtd->writesize);
+	if (oob_required)
+		chip->ecc.write_oob(mtd, chip, page);
+
+	return 0;
+}
+
 static u8 anfc_read_byte(struct mtd_info *mtd)
 {
 	struct nand_chip *chip = mtd_to_nand(mtd);
@@ -500,56 +524,160 @@ static u8 anfc_read_byte(struct mtd_info *mtd)
 		return nfc->buf[nfc->bufshift++];
 }
 
+static int anfc_ecc_ooblayout_ondie64_ecc(struct mtd_info *mtd, int section,
+					  struct mtd_oob_region *oobregion)
+{
+	if (section > 4)
+		return -ERANGE;
+
+	oobregion->offset = (section * 16) + 8;
+	oobregion->length = 8;
+
+	return 0;
+}
+
+static int anfc_ecc_ooblayout_ondie64_free(struct mtd_info *mtd, int section,
+					   struct mtd_oob_region *oobregion)
+{
+	if (section > 4)
+		return -ERANGE;
+
+	oobregion->offset = (section * 16) + 4;
+	oobregion->length = 4;
+
+	return 0;
+}
+
+static const struct mtd_ooblayout_ops anfc_ecc_ooblayout_ondie64_ops = {
+	.ecc = anfc_ecc_ooblayout_ondie64_ecc,
+	.free = anfc_ecc_ooblayout_ondie64_free,
+};
+
+/* Generic flash bbt decriptors */
+static u8 bbt_pattern[] = { 'B', 'b', 't', '0' };
+static u8 mirror_pattern[] = { '1', 't', 'b', 'B' };
+
+static struct nand_bbt_descr bbt_main_descr = {
+	.options = NAND_BBT_LASTBLOCK | NAND_BBT_CREATE | NAND_BBT_WRITE
+		| NAND_BBT_2BIT | NAND_BBT_VERSION | NAND_BBT_PERCHIP |
+		NAND_BBT_SCAN2NDPAGE,
+	.offs = 4,
+	.len = 4,
+	.veroffs = 20,
+	.maxblocks = 4,
+	.pattern = bbt_pattern
+};
+
+static struct nand_bbt_descr bbt_mirror_descr = {
+	.options = NAND_BBT_LASTBLOCK | NAND_BBT_CREATE | NAND_BBT_WRITE
+		| NAND_BBT_2BIT | NAND_BBT_VERSION | NAND_BBT_PERCHIP |
+		NAND_BBT_SCAN2NDPAGE,
+	.offs = 4,
+	.len = 4,
+	.veroffs = 20,
+	.maxblocks = 4,
+	.pattern = mirror_pattern
+};
+
+static int anfc_nand_on_die_ecc_setup(struct nand_chip *chip, bool enable)
+{
+	u8 feature[ONFI_SUBFEATURE_PARAM_LEN] = { 0, };
+
+	if (enable)
+	feature[0] |= ONFI_FEATURE_ON_DIE_ECC_EN;
+
+	return chip->onfi_set_features(nand_to_mtd(chip), chip,
+	      ONDIE_ECC_FEATURE_ADDR, feature);
+}
+
+static int anfc_nand_detect_on_die_ecc(struct nand_chip *chip)
+{
+	u8 feature[ONFI_SUBFEATURE_PARAM_LEN] = { 0, };
+	int ret;
+
+	if (chip->onfi_version == 0)
+		return 0;
+
+	if (chip->bits_per_cell != 1)
+		return 0;
+
+	ret = anfc_nand_on_die_ecc_setup(chip, true);
+	if (ret)
+		return 0;
+
+	chip->onfi_get_features(nand_to_mtd(chip), chip,
+		ONDIE_ECC_FEATURE_ADDR, feature);
+	if ((feature[0] & ONFI_FEATURE_ON_DIE_ECC_EN) == 0)
+		return 0;
+
+	return 1;
+}
+
 static int anfc_ecc_init(struct mtd_info *mtd,
-			 struct nand_ecc_ctrl *ecc)
+			 struct nand_ecc_ctrl *ecc, int ondie_ecc_state)
 {
 	u32 ecc_addr;
 	unsigned int bchmode, steps;
 	struct nand_chip *chip = mtd_to_nand(mtd);
+	struct anfc *nfc = to_anfc(chip->controller);
 	struct anfc_nand_chip *achip = to_anfc_nand(chip);
 
 	ecc->mode = NAND_ECC_HW;
-	ecc->read_page = anfc_read_page_hwecc;
-	ecc->write_page = anfc_write_page_hwecc;
 	ecc->write_oob = anfc_write_oob;
-	mtd_set_ooblayout(mtd, &anfc_ooblayout_ops);
 
-	steps = mtd->writesize / chip->ecc_step_ds;
+	if (ondie_ecc_state) {
+		/* bypass the controller ECC block */
+		anfc_config_ecc(nfc, 0);
+		ecc->strength = 1;
+		ecc->bytes = 0;
+		ecc->size = mtd->writesize;
+		ecc->read_page = anfc_read_page;
+		ecc->write_page = anfc_write_page;
+		mtd_set_ooblayout(mtd, &anfc_ecc_ooblayout_ondie64_ops);
+		chip->bbt_td = &bbt_main_descr;
+		chip->bbt_md = &bbt_mirror_descr;
+	} else {
+		ecc->read_page = anfc_read_page_hwecc;
+		ecc->write_page = anfc_write_page_hwecc;
+		mtd_set_ooblayout(mtd, &anfc_ooblayout_ops);
 
-	switch (chip->ecc_strength_ds) {
-	case 12:
-		bchmode = 0x1;
-		break;
-	case 8:
-		bchmode = 0x2;
-		break;
-	case 4:
-		bchmode = 0x3;
-		break;
-	case 24:
-		bchmode = 0x4;
-		break;
-	default:
-		bchmode = 0x0;
+		steps = mtd->writesize / chip->ecc_step_ds;
+
+		switch (chip->ecc_strength_ds) {
+		case 12:
+			bchmode = 0x1;
+			break;
+		case 8:
+			bchmode = 0x2;
+			break;
+		case 4:
+			bchmode = 0x3;
+			break;
+		case 24:
+			bchmode = 0x4;
+			break;
+		default:
+			bchmode = 0x0;
+		}
+
+		if (!bchmode)
+			ecc->total = 3 * steps;
+		else
+			ecc->total =
+			     DIV_ROUND_UP(fls(8 * chip->ecc_step_ds) *
+				 chip->ecc_strength_ds * steps, 8);
+
+		ecc->strength = chip->ecc_strength_ds;
+		ecc->size = chip->ecc_step_ds;
+		ecc->bytes = ecc->total / steps;
+		ecc->steps = steps;
+		achip->bchmode = bchmode;
+		achip->bch = achip->bchmode;
+		ecc_addr = mtd->writesize + (mtd->oobsize - ecc->total);
+
+		achip->eccval = ecc_addr | (ecc->total << ECC_SIZE_SHIFT) |
+				(achip->bch << BCH_EN_SHIFT);
 	}
-
-	if (!bchmode)
-		ecc->total = 3 * steps;
-	else
-		ecc->total =
-		     DIV_ROUND_UP(fls(8 * chip->ecc_step_ds) *
-			 chip->ecc_strength_ds * steps, 8);
-
-	ecc->strength = chip->ecc_strength_ds;
-	ecc->size = chip->ecc_step_ds;
-	ecc->bytes = ecc->total / steps;
-	ecc->steps = steps;
-	achip->bchmode = bchmode;
-	achip->bch = achip->bchmode;
-	ecc_addr = mtd->writesize + (mtd->oobsize - ecc->total);
-
-	achip->eccval = ecc_addr | (ecc->total << ECC_SIZE_SHIFT) |
-			(achip->bch << BCH_EN_SHIFT);
 
 	if (chip->ecc_step_ds >= 1024)
 		achip->pktsize = 1024;
@@ -777,6 +905,7 @@ static int anfc_nand_chip_init(struct anfc *nfc,
 	struct nand_chip *chip = &anand_chip->chip;
 	struct mtd_info *mtd = nand_to_mtd(chip);
 	int ret;
+	int ondie_ecc_state;
 
 	ret = of_property_read_u32(np, "reg", &anand_chip->csnum);
 	if (ret) {
@@ -816,13 +945,18 @@ static int anfc_nand_chip_init(struct anfc *nfc,
 		anand_chip->caddr_cycles = 2;
 	}
 
+	ondie_ecc_state = anfc_nand_detect_on_die_ecc(chip);
+	if (ondie_ecc_state)
+		dev_info(nfc->dev, "On-Die ECC selected");
+	else
+		dev_info(nfc->dev, "HW ECC selected");
 	ret = anfc_init_timing_mode(nfc, anand_chip);
 	if (ret) {
 		dev_err(nfc->dev, "timing mode init failed\n");
 		return ret;
 	}
 
-	ret = anfc_ecc_init(mtd, &chip->ecc);
+	ret = anfc_ecc_init(mtd, &chip->ecc, ondie_ecc_state);
 	if (ret)
 		return ret;
 
