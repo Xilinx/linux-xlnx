@@ -926,7 +926,7 @@ static int __init zynq_gpio_init(void)
 {
 	return platform_driver_register(&zynq_gpio_driver);
 }
-postcore_initcall(zynq_gpio_init);
+subsys_initcall(zynq_gpio_init);
 
 static void __exit zynq_gpio_exit(void)
 {
