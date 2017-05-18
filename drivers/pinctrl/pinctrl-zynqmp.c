@@ -21,7 +21,7 @@
  * You should have received a copy of the GNU General Public License
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
-#include <linux/module.h>
+#include <linux/init.h>
 #include <linux/platform_device.h>
 #include <linux/pinctrl/pinmux.h>
 #include <linux/pinctrl/pinconf-generic.h>
@@ -2178,7 +2178,6 @@ static const struct of_device_id zynqmp_pinctrl_of_match[] = {
 	{ .compatible = "xlnx,pinctrl-zynqmp" },
 	{ }
 };
-MODULE_DEVICE_TABLE(of, zynqmp_pinctrl_of_match);
 
 static struct platform_driver zynqmp_pinctrl_driver = {
 	.driver = {
@@ -2195,12 +2194,3 @@ static int __init zynqmp_pinctrl_init(void)
 }
 arch_initcall(zynqmp_pinctrl_init);
 
-static void __exit zynqmp_pinctrl_exit(void)
-{
-	platform_driver_unregister(&zynqmp_pinctrl_driver);
-}
-module_exit(zynqmp_pinctrl_exit);
-
-MODULE_AUTHOR("Chirag Parekh <chirag.parekh@xilinx.com>");
-MODULE_DESCRIPTION("Xilinx ZynqMP pinctrl driver");
-MODULE_LICENSE("GPL");
