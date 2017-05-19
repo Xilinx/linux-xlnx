@@ -28,8 +28,7 @@
 #include <linux/sysctl.h>
 #include <linux/types.h>
 #include <linux/uaccess.h>
-
-#include "xilinx_devcfg.h"
+#include <../../arch/arm/mach-zynq/common.h>
 
 #define DRIVER_NAME "xdevcfg"
 #define XDEVCFG_DEVICES 1
