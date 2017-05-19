@@ -47,6 +47,25 @@ config XILINX_LL_TEMAC
 	  This driver supports the Xilinx 10/100/1000 LocalLink TEMAC
 	  core used in Xilinx Spartan and Virtex FPGAs
 
+config XILINX_LL_TEMAC_OLD
+	tristate "Xilinx LLTEMAC 10/100/1000 Ethernet MAC driver (old version with FIFO)"
+	depends on MICROBLAZE
+	select XILINX_EDK
+	select NEED_XILINX_LLDMA
+	help
+	  This driver supports the 10/100/1000 LLTEMAC.
+
+config XILINX_LL_TEMAC_EXT
+       bool "Support for Extended Multicast Address Filtering Mode"
+       depends on XILINX_LL_TEMAC_OLD
+       help
+         This option activates promiscuous mode & adds 32k filtering addresses
+
+config XILINX_LLTEMAC_AUTO_NEG_GPIO
+	bool "Using internal GPIO to report autonegotiation status"
+	help 
+        Using internal GPIO to report autonegotiation status
+	  
 config XILINX_PS_EMAC
 	tristate "Xilinx Zynq tri-speed EMAC support"
 	depends on ARCH_ZYNQ

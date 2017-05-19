@@ -4,6 +4,7 @@
 
 ll_temac-objs := ll_temac_main.o ll_temac_mdio.o
 obj-$(CONFIG_XILINX_LL_TEMAC) += ll_temac.o
+obj-$(CONFIG_XILINX_LL_TEMAC_OLD) += xilinx_lltemac/
 obj-$(CONFIG_XILINX_EMACLITE) += xilinx_emaclite.o
 obj-$(CONFIG_XILINX_PS_EMAC) += xilinx_emacps.o
 obj-$(CONFIG_XILINX_TSN_PTP) += xilinx_tsn_ptp_xmit.o xilinx_tsn_ptp_clock.o

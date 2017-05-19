@@ -42,11 +42,15 @@
 
 /* FSLFIFO main object */
 
+typedef enum {
+  RX_EMPTY = 0x01,
+  TX_FULL  = 0x02
+} fslfifo_status_t;
+
 struct fsl_fifo {
   
-#define FSL_FIFO_BLOCK_LEN  sizeof(u32)
-#define FSL_FIFO_BUFSIZE    2048 * FSL_FIFO_BLOCK_LEN
-#define FSL_FIFO_DFLT_WIDTH FSL_FIFO_BLOCK_LEN
+#define FSL_FIFO_BUFSIZE    64
+#define FSL_FIFO_DFLT_WIDTH sizeof(u32)
   
   int id;     /* Which FSL port */
   int exists; /* Is there something on the end? */
@@ -56,135 +60,196 @@ struct fsl_fifo {
   int rwidth; /* Data READ  width in bytes (1,2,4) */
   int wwidth; /* Data WRITE width in bytes (1,2,4) */
 
-  /* I/O double buffering */
-  int rdata_i, wdata_i;
-  u8 rdata[FSL_FIFO_BLOCK_LEN];
-  u8 wdata[FSL_FIFO_BLOCK_LEN];
-
   /* FIFOs & waitqueues */
   struct kfifo to_user, from_user;
   wait_queue_head_t to_user_wq, from_user_wq;
 
+  /* state machine */
+  fslfifo_status_t status;
+  
   /* Stats */
   u32 tx_ok, tx_fail;
-  u32 rx_ok, rx_fail;
+  u32 rx_ok, rx_fail, rx_interrupt, rx_dump;
   
   /* miscdev */
   char name[5]; /* TODO : use constant */
 };
 
 /* Some globals... */
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
 #define FSLFIFO_MAX 8 /* Maximum number of FSL FIFOs */
 static struct fsl_fifo fslfifo_table[FSLFIFO_MAX];
 static spinlock_t fslfifo_lock;
 
-/* Private internals */
+#define fslfifo_lock(fifo, flags)				\
+  if((fifo)->irq != -1) spin_lock_irqsave(&fslfifo_lock, flags)
+#define fslfifo_unlock(fifo, flags)					\
+  if((fifo)->irq != -1) spin_unlock_irqrestore(&fslfifo_lock, flags);
 
-static ssize_t fslfifo_get_block(struct fsl_fifo *fifo) {
+/* Basic functions */
+
+static ssize_t fslfifo_read_value(struct fsl_fifo *fifo, u32 *retval) {
+
+  ssize_t ret = -1;
+  u32 value, status = 0;
   
-  ssize_t ret = 0;
-  unsigned long flags = 0;
-  
-  /* Atomic */
-  spin_lock_irqsave(&fslfifo_lock, flags);
-  
-  /* feed up kfifo until it's full */
-  while(kfifo_avail(&fifo->to_user) >= FSL_FIFO_BLOCK_LEN){
-    u32 value = 0, status = 0;
-    /* Get data from bus */
-    fsl_nget(fifo->id, value, status);
-    /* Get data */
-    if(!fsl_nodata(status)){
-      /* Copy data in buf */
-      ret += kfifo_in(&fifo->to_user, &value, FSL_FIFO_BLOCK_LEN);
-      fifo->rx_ok++;
-      
-      /*
-	pr_debug(fifo->id, "fslfifo: /dev/fsl%d -> 0x%08x\n",
-	fifo->id, value);
-      */
-      
-    }else{
-      /* Get stats */
-      if(fsl_error(status))
-	fifo->rx_fail++;
-      /* Jump out */
-      break;
-    }
+  fsl_nget(fifo->id, value, status);
+  /* Get data */
+  if(fsl_nodata(status)){
+    fifo->status |= RX_EMPTY;
+    /* Not used in FPGA
+    if(fsl_error(status))
+      fifo->rx_fail++;
+    */
+    /* Empty and/or error */
+    goto out;
   }
   
-  /* Wake up processes */
-  if(kfifo_len(&fifo->to_user))
-    wake_up_interruptible(&fifo->to_user_wq);
+  /* Status */
+  fifo->rx_ok++;
+  *retval = value;
+  ret = fifo->rwidth;
+  /* Signal if required */
+  fifo->status &= ~RX_EMPTY;
   
-  /* Atomic */
-  spin_unlock_irqrestore(&fslfifo_lock, flags);
-
+ out:
+  /* Ret */
   return ret;
 }
 
-static ssize_t fslfifo_put_block(struct fsl_fifo *fifo) {
-
-  ssize_t ret = 0;
+static ssize_t fslfifo_poll_read(struct fsl_fifo *fifo) {
+  
+  u32 value;
+  ssize_t ret;
   unsigned long flags;
 
   /* Atomic */
-  spin_lock_irqsave(&fslfifo_lock, flags);
+  fslfifo_lock(fifo, flags);
   
-  /* Check if there's enough data */
-  while(kfifo_len(&fifo->from_user) >= FSL_FIFO_BLOCK_LEN){
-    /* Get data. TODO : check values */
-    u32 value = 0, status = 0;
-    ssize_t read = kfifo_out_peek(&fifo->from_user, &value,
-				  FSL_FIFO_BLOCK_LEN);
+  if(!(ret = kfifo_len(&fifo->to_user)) &&
+     (ret = fslfifo_read_value(fifo, &value)) != -1)
+    /* Push value somewhere */
+    kfifo_in(&fifo->to_user, &value, ret);
 
-    /* Bad reading, try again later. This removes a warning */
-    if(read != FSL_FIFO_BLOCK_LEN)
-      break;
-    
-    fsl_nput(fifo->id, value, status);
-    /* Get stats */
-    if(fsl_error(status))
-      fifo->tx_fail++;
-    /* Put data */
-    if(!fsl_nodata(status)){
-      /* Only remove from kfifo here. TODO : check value */
-      ret += kfifo_out(&fifo->from_user, &value, FSL_FIFO_BLOCK_LEN);
-      fifo->tx_ok++;
-
-      /*
-	pr_debug(fifo->id, "fslfifo: 0x%08x -> /dev/fsl%d\n",
-	value, fifo->id);
-      */
-      
-    }else{
-      /* Jump out to avoid overflow spinning */
-      fifo->tx_fail++;
-      break;
-    }
-  }
-  
-  /* Wake up processes */
-  if(kfifo_avail(&fifo->from_user))
-    wake_up_interruptible(&fifo->from_user_wq);
-  
-  /* Atomic */
-  spin_unlock_irqrestore(&fslfifo_lock, flags);
-
+  /* !Atomic */
+  fslfifo_unlock(fifo, flags);
   return ret;
 }
+
+static ssize_t fslfifo_read_data(struct fsl_fifo *fifo,
+				 u32 *retval, size_t size) {
+
+  /* 3 cases */
+  u32 value;
+  ssize_t len, ret;
+  unsigned long flags;
+
+  /* Atomic */
+  fslfifo_lock(fifo, flags);
+  
+  /* 1) There's pending data in fifo */
+  if((len = kfifo_len(&fifo->to_user))){
+    ret = kfifo_out(&fifo->to_user, retval, MIN(len, size));
+    goto out;
+  }
+  
+  /* 2) There's no pending data in fifo ... */
+  if((ret = fslfifo_read_value(fifo, &value)) < 0)
+    goto out;
+  
+  /* but we want unaligned / incomplete set of data */
+  if(size < ret){
+    kfifo_in(&fifo->to_user, &value, ret);
+    ret = kfifo_out(&fifo->to_user, retval, size);
+    goto out;
+  }
+  
+  /* 3) Full data burst */
+  *retval = value;
+  
+ out:
+  /* !Atomic */
+  fslfifo_unlock(fifo, flags);
+  return ret;
+}
+
+static ssize_t fslfifo_write_value(struct fsl_fifo *fifo, u32 value) {
+
+  u32 status = 0;
+  ssize_t ret = -1;
+  
+  fsl_nput(fifo->id, value, status);
+  /* Get data */
+  if(fsl_nodata(status)){
+    /* Not used in FPGA 
+    if(fsl_error(status))
+      fifo->tx_fail++;
+    */
+    /* Full and/or error */
+    fifo->status |= TX_FULL;
+    goto out;
+  }
+  
+  /* Status */
+  fifo->tx_ok++;
+  ret = fifo->wwidth;
+  fifo->status &= ~TX_FULL;
+  
+ out:
+  /* ret */
+  return ret;
+}
+
+#if 0
+/*
+ * TODO : Add this to avoid FSL TX overloading
+ */
+static ssize_t fslfifo_wpoll_block(struct fsl_fifo *fifo, u32 value) {
+  
+  ssize_t ret = fslfifo_write_value(fifo, value);
+  if(ret < 0)
+    /* Push value somewhere */
+    kfifo_in(&fifo->from_user, &value, fifo->wwidth);
+  
+  return ret;
+}
+
+static ssize_t fslfifo_write_data(struct fsl_fifo *fifo,
+				  u32 value, size_t size) {
+
+  /* 3 cases */
+  /* 1) There's pending data to send */
+  while(!kfifo_is_empty(&fifo->from_user)){
+    kfifo_peek(&fifo->from_user, &value, size);
+    if((ret = fslfifo_write_value(fifo, value)) < 0)
+      return ret;
+    
+    /* Confirm only if we successfully sent it */
+    fifo_out(&fifo->from_user, &value, size);
+  }
+  
+  /* 2) There's no pending data in fifo but we want
+   * unaligned / incomplete set of data */
+  if(size < fifo->wwidth)
+    return kfifo_in(&fifo->from_user, &value, size);
+  
+  /* 3) Full data burst */
+  return fslfifo_write_value(fifo, value);
+}
+
+#endif
 
 /* IRQ management */
 
 static irqreturn_t fsl_fifo_interrupt(int irq, void *private) {
   
-  struct fsl_fifo *f = (struct fsl_fifo*)private;
+  struct fsl_fifo *fifo = (struct fsl_fifo*)private;
   
-  /* Just do it... */
-  if(fslfifo_get_block(f))
-    return IRQ_HANDLED;
-
-  return IRQ_NONE;
+  fifo->rx_interrupt++;
+  fifo->status &= ~RX_EMPTY;
+  wake_up_interruptible(&fifo->to_user_wq);
+  
+  return IRQ_HANDLED;
 }
 
 static int fsl_fifo_init_irq(struct fsl_fifo *f, int irq) {
@@ -195,7 +260,7 @@ static int fsl_fifo_init_irq(struct fsl_fifo *f, int irq) {
   if((res = irq_create_mapping(NULL, irq)) < 0)
     pr_warn("ERROR when mapping hw irq FSL got DATA\n");
   
-  if(request_irq(res, fsl_fifo_interrupt, IRQF_SHARED, "fslfifo", f) < 0){
+  if(request_irq(res, fsl_fifo_interrupt, IRQF_DISABLED, "fslfifo", f) < 0){
     pr_warn("Unable to install fslfifo interrupt handler!\n");
     return -1; /* force polling */
   }
@@ -212,12 +277,6 @@ int fsl_fifo_init(struct fsl_fifo *f, int id, int irq) {
   f->irq = -1;
   f->rwidth = FSL_FIFO_DFLT_WIDTH; /* Assume word-wide FSL channel */
   f->wwidth = FSL_FIFO_DFLT_WIDTH; /* Assume word-wide FSL channel */
-
-  /* Double buffering init */
-  f->rdata_i = FSL_FIFO_BLOCK_LEN;
-  f->wdata_i = 0;
-  memset(f->rdata, 0, sizeof f->rdata);
-  memset(f->wdata, 0, sizeof f->wdata);
 
   /* FIXME : ? */
   if(kfifo_alloc(&f->to_user, FSL_FIFO_BUFSIZE, GFP_KERNEL)){
@@ -238,11 +297,16 @@ int fsl_fifo_init(struct fsl_fifo *f, int id, int irq) {
   if(irq != -1)
     f->irq = fsl_fifo_init_irq(f, irq);
 
+  /* State machine */
+  f->status = 0;
+  
   /* Stats */
   f->tx_ok = 0;
   f->tx_fail = 0;
   f->rx_ok = 0;
   f->rx_fail = 0;
+  f->rx_interrupt = 0;
+  f->rx_dump = 0;
   
   /* miscdev */
   snprintf(f->name, sizeof f->name, "fsl%d", id);
@@ -276,19 +340,25 @@ void fsl_fifo_free(struct fsl_fifo *f) {
 
 void fsl_fifo_flush(struct fsl_fifo *f) {
 
+  u32 value, status;
   unsigned long flags;
   
   /* Atomic */
-  spin_lock_irqsave(&fslfifo_lock, flags);
+  fslfifo_lock(f, flags);
 
   kfifo_reset(&f->from_user);
   kfifo_reset(&f->to_user);
 
-  /* Double buffering re-init */
-  f->rdata_i = FSL_FIFO_BLOCK_LEN;
-  f->wdata_i = 0;
+  do{ 
+    fsl_nget(f->id, value, status);
+    f->rx_dump++;
+  } while(!fsl_nodata(status));
+  /* FIXME : what if fsl_error(status) ? */
   
-  spin_unlock_irqrestore(&fslfifo_lock, flags);
+  /* Set new status */
+  f->status |= RX_EMPTY;
+  /* !Atomic */
+  fslfifo_unlock(f, flags);
 }
 
 /* ** Driver ** */
@@ -390,126 +460,106 @@ static unsigned int fslfifo_poll(struct file *f, poll_table *wait) {
     return -ENODEV;
 
   /* pr("fslfifo: %d fslfifo_poll\n", fifo->id); */
+
+  /* Force state machine checkup */
+  fslfifo_poll_read(fifo);
   
   /* Simpler poll version */
   poll_wait(f, &fifo->to_user_wq, wait);
   poll_wait(f, &fifo->from_user_wq, wait);
   
-  if(!kfifo_is_empty(&fifo->to_user) ||
-     fifo->rdata_i < fifo->rwidth) /* Don't forget ouput buf */
+  if(!(fifo->status & RX_EMPTY))
     mask |= POLLIN | POLLRDNORM;
   
-  if(!kfifo_is_full(&fifo->from_user) ||
-     fifo->wdata_i < fifo->wwidth) /* Don't forget input buf */
+  if(!(fifo->status & TX_FULL))
     mask |= POLLOUT | POLLWRNORM;
-
+  
   /* pr_debug("fslfifo: %d fslfifo_poll [0x%04x]\n", fifo->id, mask); */
   return mask;
 }
 
 static ssize_t fslfifo_read(struct file *f, char *buf, size_t count,
 			    loff_t *pos) {
-
-  ssize_t ret;
-  unsigned long flags;
+  
+  u32 value;
+  int n = 0;
+  ssize_t ret, len;
   struct fsl_fifo *fifo = (struct fsl_fifo*)f->private_data;
   
   if(!fifo->exists)
     return -ENODEV;
 
+  /* Start by polling fifo in order to get correct state machine */
+  fslfifo_poll_read(fifo);
+  
   /* Manage nonblocking flag */
   if((f->f_flags & O_NONBLOCK) &&
-     kfifo_is_empty(&fifo->to_user) &&
-     fifo->rdata_i >= fifo->rwidth)
+     (fifo->status & RX_EMPTY))
     return -EAGAIN;
   
-  /* blocking IO */
-  ret = wait_event_interruptible(fifo->to_user_wq,
-				 kfifo_len(&fifo->to_user) != 0);
-  
-  /* If interrupted */
-  if(ret)
-    goto out;
-  
-  /* Lock */
-  spin_lock_irqsave(&fslfifo_lock, flags);
-  
-  /* Double buffering */
-  for(ret = 0; ret < count; ret++){
-    if(fifo->rdata_i >= fifo->rwidth){
-      if(!kfifo_out(&fifo->to_user, fifo->rdata, FSL_FIFO_BLOCK_LEN))
-	break;
-
-      fifo->rdata_i = 0;
-    }
+  do {
+    /* blocking IO */
+    ret = wait_event_interruptible(fifo->to_user_wq,
+				   !(fifo->status & RX_EMPTY));
     
-    if(put_user(fifo->rdata[fifo->rdata_i], buf + ret))
-      break;
+    /* If interrupted */
+    if(ret)
+      return ret;
 
-    fifo->rdata_i++;
-  }
-
-  /* Unlock */
-  spin_unlock_irqrestore(&fslfifo_lock, flags);
+    while(n < count){
+      size_t size = MIN(count, fifo->rwidth);
+      if((len = fslfifo_read_data(fifo, &value, size)) < 0)
+	break;
+      /* to userspace */
+      copy_to_user(buf + n, &value, len);
+      /* Inc */
+      n += len;
+    }
+    /* We go back to wait_event if there's data left and blocking mode */
+  } while((n < count) &&
+	  !(f->f_flags & O_NONBLOCK));
   
- out:
-  return ret;
+  /* Return bytes read */
+  return n;
 }
 
 static ssize_t fslfifo_write(struct file *f, const char *buf,
 			     size_t count, loff_t *pos) {
-  
+
+  int i;
+  u32 value;
   ssize_t ret;
-  unsigned long flags;
   struct fsl_fifo *fifo = (struct fsl_fifo*)f->private_data;
   
   if(!fifo->exists)
     return -ENODEV;
-
+  
+  /* TODO : make blocking write ! */
+  
   /* Manage nonblocking flag */
   if((f->f_flags & O_NONBLOCK) &&
-     kfifo_is_full(&fifo->from_user) &&
-     fifo->wdata_i >= fifo->wwidth)
+     (fifo->status & TX_FULL))
     return -EAGAIN;
   
+  /* do { */
   /* blocking io */
-  ret = wait_event_interruptible(fifo->from_user_wq,
-				 kfifo_avail(&fifo->from_user) != 0);
-
+  /*
+    ret = wait_event_interruptible(fifo->from_user_wq,
+    !(fifo->status & TX_FULL));
+  */
+  
   /* Interrupted */
-  if(ret)
-    goto out;
-
-  /* Lock */
-  spin_lock_irqsave(&fslfifo_lock, flags);
-
-  /* Double buffering */
-  for(ret = 0;; ret++){
-    if(fifo->wdata_i >= fifo->wwidth){
-      if(!kfifo_in(&fifo->from_user, fifo->wdata, FSL_FIFO_BLOCK_LEN))
-	break;
-
-      /* Reset buffer */
-      *(u32*)fifo->wdata = 0;
-      fifo->wdata_i = 0;
-    }
-
-    if(ret == count || /* Ensure 2nd pass */
-       get_user(fifo->wdata[fifo->wdata_i], buf + ret))
+  /* if(ret)
+     goto out; */
+  
+  for(i = 0; i < count; i += fifo->wwidth){
+    copy_from_user(&value, buf + i, fifo->wwidth);
+    if((ret = fslfifo_write_value(fifo, value)) < 0)
       break;
-    
-    fifo->wdata_i++;
   }
-
-  /* Unlock */
-  spin_unlock_irqrestore(&fslfifo_lock, flags);
+  // } while((i < count)/* && (fifo->status & TX_FULL)*/);
   
-  /* Speed-up things if possible (irq-driven) */
-  if(fifo->irq != -1)
-    fslfifo_put_block(fifo);
-  
- out:
-  return ret;
+  return i;
 }
 
 /* TODO : rewrite */
@@ -617,14 +667,14 @@ static struct file_operations fslfifo_fops = {
 };
 
 /* kthread */
-#define FSLFIFO_LOOP_DELAY_MS 10 /* ms */
+#define FSLFIFO_LOOP_DELAY_MS 100 /* ms */
 
 static int fslfifo_kthreadfn(void *data) {
 
+  int i;
+  
   /* Init thread */
   while(!kthread_should_stop()){
-
-    int i, nosleep = 0;
     /* Parse all devices */
     for(i = FSLFIFO_MAX; i--;){
       /* Use data ? */
@@ -633,18 +683,15 @@ static int fslfifo_kthreadfn(void *data) {
 	continue;
       
       /* Polling mode, anyway (irq or not) */
-      nosleep |= fslfifo_put_block(fifo) |
-	fslfifo_get_block(fifo);
-    }
-    
-    if(!nosleep){
-      /* Go to light sleep if no activity on buses */
+      fslfifo_poll_read(fifo);
+      /* TODO : poll tx too */
+      if(!(fifo->status & RX_EMPTY))
+	/* As it's polling, we gotta signal this */
+	wake_up_interruptible(&fifo->to_user_wq);
+      
+      /* Don't forget to sleep */
       msleep_interruptible(FSLFIFO_LOOP_DELAY_MS);
-      continue;
     }
-    
-    /* Take a deep breath & spin again */
-    schedule();
   }
   
   return 0;
@@ -672,7 +719,9 @@ static int fslfifo_proc_show(struct seq_file *m, void *v)
       seq_printf(m, "rx_total %u ", fifo->rx_ok + fifo->rx_fail);
       seq_printf(m, "tx_ok %u ", fifo->tx_ok);
       seq_printf(m, "tx_fail %u ", fifo->tx_fail);
-      seq_printf(m, "tx_total %u\n", fifo->tx_ok + fifo->tx_fail);
+      seq_printf(m, "tx_total %u ", fifo->tx_ok + fifo->tx_fail);
+      seq_printf(m, "interrupt %u ", fifo->rx_interrupt);
+      seq_printf(m, "dump %u\n", fifo->rx_dump);
     }
     
   }else{
@@ -682,9 +731,11 @@ static int fslfifo_proc_show(struct seq_file *m, void *v)
       if(!fifo->exists)
 	continue;
       
-      seq_printf(m, "%d %u %u %u %u ", fifo->id,
+      seq_printf(m, "%d %u %u %u %u %u %u", fifo->id,
 		 fifo->rx_fail, fifo->rx_ok,
-		 fifo->tx_fail, fifo->tx_ok);
+		 fifo->tx_fail, fifo->tx_ok,
+		 fifo->rx_interrupt,
+		 fifo->rx_dump);
     }
     
     seq_printf(m, "\n");
