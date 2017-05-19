@@ -784,6 +784,101 @@ config XILINX_VCU
        help
           Driver for the Xilinx VCU Init based on the logicoreIP.
 
+menuconfig MICROBLAZE_FSL
+        bool "Microblaze FSL"
+        depends on MICROBLAZE
+        default n
+        ---help---
+        Enables FSL driver
+
+if MICROBLAZE_FSL
+
+config MICROBLAZE_FSLFIFO0
+        bool "FSL0"
+        default y
+        ---help---
+        FSL0
+
+config MICROBLAZE_FSLFIFO0_IRQ
+       int
+       depends on MICROBLAZE_FSLFIFO0
+       prompt "/dev/fsl0 irq"
+       default -1
+       ---help---
+       IRQ for /dev/fsl0
+       -1 if not available
+
+config MICROBLAZE_FSLFIFO1
+        bool "FSL1"
+        default n
+        ---help---
+        FSL1
+
+config MICROBLAZE_FSLFIFO1_IRQ
+       int
+       depends on MICROBLAZE_FSLFIFO1
+       prompt "/dev/fsl1 irq"
+       default -1
+       ---help---
+       IRQ for /dev/fsl1
+       -1 if not available
+
+config MICROBLAZE_FSLFIFO2
+        bool "FSL2"
+        default n
+        ---help---
+        FSL2
+
+config MICROBLAZE_FSLFIFO2_IRQ
+       int
+       depends on MICROBLAZE_FSLFIFO2
+       prompt "/dev/fsl2 irq"
+       default -1
+       ---help---
+       IRQ for /dev/fsl2
+       -1 if not available
+
+config MICROBLAZE_FSLFIFO3
+        bool "FSL3"
+        default n
+        ---help---
+        FSL3
+
+config MICROBLAZE_FSLFIFO3_IRQ
+       int
+       depends on MICROBLAZE_FSLFIFO3
+       prompt "/dev/fsl3 irq"
+       default -1
+       ---help---
+       IRQ for /dev/fsl3
+       -1 if not available
+
+config MICROBLAZE_FSLFIFO4
+        bool "FSL4"
+        default n
+        ---help---
+        FSL4
+
+config MICROBLAZE_FSLFIFO5
+        bool "FSL5"
+        default n
+        ---help---
+        FSL5
+
+config MICROBLAZE_FSLFIFO6
+        bool "FSL6"
+        default n
+        ---help---
+        FSL6
+
+config MICROBLAZE_FSLFIFO7
+        bool "FSL7"
+        default n
+        ---help---
+        FSL7
+
+endif #Microblaze_Fsl
+
 source "drivers/misc/jesd204b/Kconfig"
 source "drivers/misc/c2port/Kconfig"
 source "drivers/misc/eeprom/Kconfig"
