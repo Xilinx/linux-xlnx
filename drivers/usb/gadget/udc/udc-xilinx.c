@@ -968,10 +968,8 @@ static struct usb_request *xudc_ep_alloc_request(struct usb_ep *_ep,
 						 gfp_t gfp_flags)
 {
 	struct xusb_ep *ep = to_xusb_ep(_ep);
-	struct xusb_udc *udc;
 	struct xusb_req *req;
 
-	udc = ep->udc;
 	req = kzalloc(sizeof(*req), gfp_flags);
 	if (!req)
 		return NULL;
@@ -1739,7 +1737,7 @@ static void xudc_set_clear_feature(struct xusb_udc *udc)
  *
  * Process setup packet and delegate to gadget layer.
  */
-static void xudc_handle_setup(struct xusb_udc *udc)
+static void xudc_handle_setup(struct xusb_udc *udc) __must_hold(&udc->lock)
 {
 	struct xusb_ep *ep0 = &udc->ep[0];
 	struct usb_ctrlrequest setup;
