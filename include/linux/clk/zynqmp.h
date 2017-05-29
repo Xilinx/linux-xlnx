@@ -19,6 +19,8 @@
 #include <linux/spinlock.h>
 #include <linux/soc/xilinx/zynqmp/pm.h>
 
+#define CLK_FRAC	BIT(13) /* has a fractional parent */
+
 struct device;
 
 static inline u32 zynqmp_pm_mmio_readl(void __iomem *reg)

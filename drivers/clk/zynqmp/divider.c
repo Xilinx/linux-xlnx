@@ -95,7 +95,8 @@ static long zynqmp_clk_divider_round_rate(struct clk_hw *hw,
 	bestdiv = divider_get_val(rate, *prate, divider->table, divider->width,
 			divider->flags);
 
-	if ((clk_hw_get_flags(hw) & CLK_SET_RATE_PARENT))
+	if ((clk_hw_get_flags(hw) & CLK_SET_RATE_PARENT) &&
+	    ((clk_hw_get_flags(hw) & CLK_FRAC)))
 		bestdiv = rate % *prate ? 1 : bestdiv;
 	*prate = rate * bestdiv;
 
