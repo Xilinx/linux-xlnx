@@ -191,7 +191,7 @@ static void zynq_qspi_init_hw(struct zynq_qspi *xqspi)
 			      ZYNQ_QSPI_IXR_RXNEMTY_MASK)
 		zynq_qspi_read(xqspi, ZYNQ_QSPI_RXD_OFFSET);
 
-	zynq_qspi_write(xqspi, ZYNQ_QSPI_STATUS_OFFSET , 0x7F);
+	zynq_qspi_write(xqspi, ZYNQ_QSPI_STATUS_OFFSET, 0x7F);
 	config_reg = zynq_qspi_read(xqspi, ZYNQ_QSPI_CONFIG_OFFSET);
 	config_reg &= ~(ZYNQ_QSPI_CONFIG_MSTREN_MASK |
 			ZYNQ_QSPI_CONFIG_CPOL_MASK |
@@ -238,9 +238,9 @@ static void zynq_qspi_init_hw(struct zynq_qspi *xqspi)
  * when odd bytes are requested to avoid transfer of a nibble to each flash.
  * The receive buffer though, is populated with the number of bytes requested.
  */
-static void zynq_qspi_read_rx_fifo(struct zynq_qspi *xqspi, unsigned size)
+static void zynq_qspi_read_rx_fifo(struct zynq_qspi *xqspi, unsigned int size)
 {
-	unsigned xsize;
+	unsigned int xsize;
 	u32 data;
 
 	data = zynq_qspi_read(xqspi, ZYNQ_QSPI_RXD_OFFSET);
@@ -269,12 +269,12 @@ static void zynq_qspi_read_rx_fifo(struct zynq_qspi *xqspi, unsigned size)
  * going to individual flash devices, where a byte is expected.
  * This check is only for data and will not apply for commands.
  */
-static void zynq_qspi_write_tx_fifo(struct zynq_qspi *xqspi, unsigned size)
+static void zynq_qspi_write_tx_fifo(struct zynq_qspi *xqspi, unsigned int size)
 {
 	static const unsigned offset[4] = {
 		ZYNQ_QSPI_TXD_00_01_OFFSET, ZYNQ_QSPI_TXD_00_10_OFFSET,
 		ZYNQ_QSPI_TXD_00_11_OFFSET, ZYNQ_QSPI_TXD_00_00_OFFSET };
-	unsigned xsize;
+	unsigned int xsize;
 	u32 data;
 
 	if (xqspi->txbuf) {
@@ -532,7 +532,7 @@ static irqreturn_t zynq_qspi_irq(int irq, void *dev_id)
 	bool txempty;
 
 	intr_status = zynq_qspi_read(xqspi, ZYNQ_QSPI_STATUS_OFFSET);
-	zynq_qspi_write(xqspi, ZYNQ_QSPI_STATUS_OFFSET , intr_status);
+	zynq_qspi_write(xqspi, ZYNQ_QSPI_STATUS_OFFSET, intr_status);
 
 	if ((intr_status & ZYNQ_QSPI_IXR_TXNFULL_MASK) ||
 	    (intr_status & ZYNQ_QSPI_IXR_RXNEMTY_MASK)) {
@@ -693,8 +693,8 @@ static int zynq_qspi_probe(struct platform_device *pdev)
 	}
 
 	if (of_property_read_u32(pdev->dev.of_node, "is-dual", &xqspi->is_dual))
-		dev_warn(&pdev->dev, "couldn't determine configuration info "
-			 "about dual memories. defaulting to single memory\n");
+		dev_warn(&pdev->dev, "couldn't determine configuration info");
+		dev_warn(&pdev->dev, "about dual memories. defaulting to single memory\n");
 
 	xqspi->pclk = devm_clk_get(&pdev->dev, "pclk");
 	if (IS_ERR(xqspi->pclk)) {
