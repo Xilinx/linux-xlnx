@@ -69,8 +69,8 @@ enum xcan_reg {
 					   * ID
 					   */
 	XCANFD_TXFIFO_DLC_OFFSET = 0x0104, /* Tx Message Buffer Element
-					   * DLC
-					   */
+					    * DLC
+					    */
 	XCANFD_TXFIFO_DW_OFFSET	= 0x0108, /* Tx Message Buffer Element
 					   * DW
 					   */
@@ -78,8 +78,8 @@ enum xcan_reg {
 					   * ID
 					   */
 	XCANFD_RXFIFO_DLC_OFFSET = 0x1104, /* Rx Message Buffer Element
-					   * DLC
-					   */
+					    * DLC
+					    */
 	XCANFD_RXFIFO_DW_OFFSET	= 0x1108, /* Rx Message Buffer Element
 					   * DW
 					   */
@@ -207,18 +207,18 @@ enum xcan_reg {
 #define CANFD_SUPPORT	BIT(0)
 
 /* CANFD Tx and Rx Ram offsets */
-#define XCANFD_TXDW_OFFSET(n)		(XCANFD_TXFIFO_DW_OFFSET + (n * \
-					 XCANFD_MAX_FRAME_LEN))
-#define XCANFD_TXID_OFFSET(n)		(XCANFD_TXFIFO_ID_OFFSET + (n * \
-					 XCANFD_MAX_FRAME_LEN))
-#define XCANFD_TXDLC_OFFSET(n)		(XCANFD_TXFIFO_DLC_OFFSET + (n *\
-					 XCANFD_MAX_FRAME_LEN))
-#define XCANFD_RXDLC_OFFSET(readindex)  (XCANFD_RXFIFO_DLC_OFFSET + (readindex \
-					 * XCANFD_MAX_FRAME_LEN))
-#define XCANFD_RXID_OFFSET(readindex)	(XCANFD_RXFIFO_ID_OFFSET + (readindex \
-					 * XCANFD_MAX_FRAME_LEN))
-#define XCANFD_RXDW_OFFSET(readindex)	(XCANFD_RXFIFO_DW_OFFSET + (readindex \
-					 * XCANFD_MAX_FRAME_LEN))
+#define XCANFD_TXDW_OFFSET(n)		(XCANFD_TXFIFO_DW_OFFSET + ((n) * \
+					XCANFD_MAX_FRAME_LEN))
+#define XCANFD_TXID_OFFSET(n)		(XCANFD_TXFIFO_ID_OFFSET + ((n) * \
+					XCANFD_MAX_FRAME_LEN))
+#define XCANFD_TXDLC_OFFSET(n)		(XCANFD_TXFIFO_DLC_OFFSET + ((n) *\
+					XCANFD_MAX_FRAME_LEN))
+#define XCANFD_RXDLC_OFFSET(readindex)	(XCANFD_RXFIFO_DLC_OFFSET + \
+					((readindex) * XCANFD_MAX_FRAME_LEN))
+#define XCANFD_RXID_OFFSET(readindex)	(XCANFD_RXFIFO_ID_OFFSET + \
+					((readindex) * XCANFD_MAX_FRAME_LEN))
+#define XCANFD_RXDW_OFFSET(readindex)	(XCANFD_RXFIFO_DW_OFFSET + \
+					((readindex) * XCANFD_MAX_FRAME_LEN))
 
 /**
  * struct xcan_priv - This definition define CAN driver instance
