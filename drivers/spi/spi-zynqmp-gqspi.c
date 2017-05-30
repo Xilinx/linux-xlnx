@@ -547,8 +547,7 @@ static void zynqmp_qspi_chipselect(struct spi_device *qspi, bool is_high)
 		if ((statusreg & GQSPI_ISR_GENFIFOEMPTY_MASK) &&
 			(statusreg & GQSPI_ISR_TXEMPTY_MASK))
 			break;
-		else
-			cpu_relax();
+		cpu_relax();
 	} while (!time_after_eq(jiffies, timeout));
 
 	if (time_after_eq(jiffies, timeout))
