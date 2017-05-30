@@ -112,8 +112,8 @@ struct xilinx_spi {
 	u8 bytes_per_word;
 	int buffer_size;
 	u32 cs_inactive;
-	unsigned int (*read_fn)(void __iomem *);
-	void (*write_fn)(u32, void __iomem *);
+	unsigned int (*read_fn)(void __iomem *addr);
+	void (*write_fn)(u32, void __iomem *addr);
 	u32 bytes_to_transfer;
 	u32 bytes_to_receive;
 	u32 rx_bus_width;
@@ -256,7 +256,8 @@ static void xspi_init_hw(struct xilinx_spi *xspi)
 	xspi->write_fn(0xffff, regs_base + XSPI_SSR_OFFSET);
 	/*
 	 * Disable the transmitter, enable Manual Slave Select Assertion,
-	 * put SPI controller into master mode, and enable it */
+	 * put SPI controller into master mode, and enable it
+	 */
 	xspi->write_fn(XSPI_CR_MANUAL_SSELECT |	XSPI_CR_MASTER_MODE |
 		XSPI_CR_ENABLE | XSPI_CR_TXFIFO_RESET |	XSPI_CR_RXFIFO_RESET,
 		regs_base + XSPI_CR_OFFSET);
