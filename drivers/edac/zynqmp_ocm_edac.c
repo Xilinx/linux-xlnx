@@ -497,28 +497,28 @@ static struct edac_dev_sysfs_attribute zynqmp_ocm_edac_sysfs_attributes[] = {
 	{
 		.attr = {
 			.name = "inject_cebitpos",
-			.mode = (S_IRUGO | S_IWUSR)
+			.mode = (0644)
 		},
 		.show = zynqmp_ocm_edac_inject_cebitpos_show,
 		.store = zynqmp_ocm_edac_inject_cebitpos_store},
 	{
 		.attr = {
 			.name = "inject_uebitpos0",
-			.mode = (S_IRUGO | S_IWUSR)
+			.mode = (0644)
 		},
 		.show = zynqmp_ocm_edac_inject_uebitpos0_show,
 		.store = zynqmp_ocm_edac_inject_uebitpos0_store},
 	{
 		.attr = {
 			.name = "inject_uebitpos1",
-			.mode = (S_IRUGO | S_IWUSR)
+			.mode = (0644)
 		},
 		.show = zynqmp_ocm_edac_inject_uebitpos1_show,
 		.store = zynqmp_ocm_edac_inject_uebitpos1_store},
 	{
 		.attr = {
 			.name = "inject_fault_count",
-			.mode = (S_IRUGO | S_IWUSR)
+			.mode = (0644)
 		},
 		.show = zynqmp_ocm_edac_inject_fault_count_show,
 		.store = zynqmp_ocm_edac_inject_fault_count_store},
