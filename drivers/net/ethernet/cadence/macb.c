@@ -2962,7 +2962,8 @@ static void macb_reset_phy(struct platform_device *pdev)
 		return;
 
 	err = devm_gpio_request_one(&pdev->dev, phy_reset,
-				    (!active_low | GPIOF_DIR_OUT), "phy-reset");
+				    active_low ? GPIOF_OUT_INIT_LOW :
+				    GPIOF_OUT_INIT_HIGH, "phy-reset");
 	if (err) {
 		dev_err(&pdev->dev, "failed to get phy-reset-gpio: %d\n", err);
 		return;
