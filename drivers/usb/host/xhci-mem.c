@@ -455,6 +455,14 @@ static void xhci_reinit_cached_ring(struct xhci_hcd *xhci,
 	} while (seg != ring->first_seg);
 	ring->type = type;
 	xhci_initialize_ring_info(ring, cycle_state);
+
+	/* Only event ring does not use link TRB */
+	if (type != TYPE_EVENT) {
+		/* See xhci spec section 4.9.2.1 and 6.4.4.1 */
+		ring->last_seg->trbs[TRBS_PER_SEGMENT - 1].link.control |=
+			cpu_to_le32(LINK_TOGGLE);
+	}
+
 	/* td list should be empty since all URBs have been cancelled,
 	 * but just in case...
 	 */
