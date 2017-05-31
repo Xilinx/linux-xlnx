@@ -49,7 +49,7 @@ enum hw_port {
 };
 
 			     /* EP */ /* TEMAC1 */ /* TEMAC2*/
-static u32 qbv_reg_map[3] = { 0x16000,   0x14000,     0x14000 };
+static u32 qbv_reg_map[3] = { 0x0,   0x14000,     0x14000 };
 
 /* 0x14000	0x14FFC	Time Schedule Registers (Control & Status)
  * 0x15000	0x15FFF	Time Schedule Control List Entries
