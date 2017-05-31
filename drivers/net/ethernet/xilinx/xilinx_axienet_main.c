@@ -1073,8 +1073,10 @@ static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 		if (eth->h_proto == htons(ETH_P_1588))
 			return axienet_ptp_xmit(skb, ndev);
 #endif
-		if (lp->temac_no == XAE_TEMAC2)
-			return NETDEV_TX_BUSY;
+		if (lp->temac_no == XAE_TEMAC2) {
+			dev_kfree_skb_any(skb);
+			return NETDEV_TX_OK;
+		}
 	}
 #endif
 	num_frag = skb_shinfo(skb)->nr_frags;
