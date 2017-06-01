@@ -344,7 +344,7 @@ struct xpsgtr_dev {
  *
  * Return: 0 on success
  */
-int xpsgtr_set_protregs(struct phy *phy, void *regs)
+int xpsgtr_set_protregs(struct phy *phy, void __iomem *regs)
 {
 	struct xpsgtr_phy *gtr_phy = phy_get_drvdata(phy);
 	struct xpsgtr_dev *gtr_dev = gtr_phy->data;
@@ -914,7 +914,7 @@ static void xpsgtr_ulpi_reset(struct xpsgtr_phy *gtr_phy)
 static int xpsgtr_set_sgmii_pcs(struct xpsgtr_phy *gtr_phy)
 {
 	u32 shift, mask, value;
-	u32 ret = 0;
+	int ret = 0;
 	struct xpsgtr_dev *gtr_dev = gtr_phy->data;
 
 	/* Set the PCS signal detect to 1 */
