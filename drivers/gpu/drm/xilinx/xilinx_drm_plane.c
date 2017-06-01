@@ -123,6 +123,35 @@ struct xilinx_drm_plane_manager {
 
 #define to_xilinx_plane(x)	container_of(x, struct xilinx_drm_plane, base)
 
+void xilinx_drm_plane_commit(struct drm_plane *base_plane)
+{
+	struct xilinx_drm_plane *plane = to_xilinx_plane(base_plane);
+	struct dma_async_tx_descriptor *desc;
+	enum dma_ctrl_flags flags;
+	unsigned int i;
+
+	DRM_DEBUG_KMS("plane->id: %d\n", plane->id);
+
+	for (i = 0; i < MAX_NUM_SUB_PLANES; i++) {
+		struct xilinx_drm_plane_dma *dma = &plane->dma[i];
+
+		if (dma->chan && dma->is_active) {
+			flags = DMA_CTRL_ACK | DMA_PREP_INTERRUPT;
+			desc = dmaengine_prep_interleaved_dma(dma->chan,
+							      &dma->xt,
+							      flags);
+			if (!desc) {
+				DRM_ERROR("failed to prepare DMA descriptor\n");
+				return;
+			}
+
+			dmaengine_submit(desc);
+
+			dma_async_issue_pending(dma->chan);
+		}
+	}
+}
+
 /* set plane dpms */
 void xilinx_drm_plane_dpms(struct drm_plane *base_plane, int dpms)
 {
@@ -150,11 +179,6 @@ void xilinx_drm_plane_dpms(struct drm_plane *base_plane, int dpms)
 						       plane->dp_layer);
 		}
 
-		/* start dma engine */
-		for (i = 0; i < MAX_NUM_SUB_PLANES; i++)
-			if (plane->dma[i].chan && plane->dma[i].is_active)
-				dma_async_issue_pending(plane->dma[i].chan);
-
 		if (plane->rgb2yuv)
 			xilinx_rgb2yuv_enable(plane->rgb2yuv);
 
@@ -176,6 +200,7 @@ void xilinx_drm_plane_dpms(struct drm_plane *base_plane, int dpms)
 			xilinx_osd_enable_rue(manager->osd);
 		}
 
+		xilinx_drm_plane_commit(base_plane);
 		break;
 	default:
 		/* disable/reset osd */
@@ -201,10 +226,8 @@ void xilinx_drm_plane_dpms(struct drm_plane *base_plane, int dpms)
 
 		/* stop dma engine and release descriptors */
 		for (i = 0; i < MAX_NUM_SUB_PLANES; i++) {
-			if (plane->dma[i].chan && plane->dma[i].is_active) {
+			if (plane->dma[i].chan && plane->dma[i].is_active)
 				dmaengine_terminate_all(plane->dma[i].chan);
-				plane->dma[i].is_active = false;
-			}
 		}
 
 		if (manager->dp_sub)
@@ -212,36 +235,6 @@ void xilinx_drm_plane_dpms(struct drm_plane *base_plane, int dpms)
 							plane->dp_layer);
 
 		break;
-	}
-}
-
-/* apply mode to plane pipe */
-void xilinx_drm_plane_commit(struct drm_plane *base_plane)
-{
-	struct xilinx_drm_plane *plane = to_xilinx_plane(base_plane);
-	struct dma_async_tx_descriptor *desc;
-	enum dma_ctrl_flags flags;
-	unsigned int i;
-
-	DRM_DEBUG_KMS("plane->id: %d\n", plane->id);
-
-	for (i = 0; i < MAX_NUM_SUB_PLANES; i++) {
-		struct xilinx_drm_plane_dma *dma = &plane->dma[i];
-
-		if (dma->chan && dma->is_active) {
-			flags = DMA_CTRL_ACK | DMA_PREP_INTERRUPT;
-			desc = dmaengine_prep_interleaved_dma(dma->chan,
-							      &dma->xt,
-							      flags);
-			if (!desc) {
-				DRM_ERROR("failed to prepare DMA descriptor\n");
-				return;
-			}
-
-			dmaengine_submit(desc);
-
-			dma_async_issue_pending(dma->chan);
-		}
 	}
 }
 
@@ -359,8 +352,6 @@ static int xilinx_drm_plane_update(struct drm_plane *base_plane,
 
 	/* make sure a plane is on */
 	xilinx_drm_plane_dpms(base_plane, DRM_MODE_DPMS_ON);
-	/* apply the new fb addr */
-	xilinx_drm_plane_commit(base_plane);
 
 	return 0;
 }
