@@ -298,6 +298,18 @@ static struct xpsgtr_ssc ssc_lookup[] = {
  * @lpd: base address for low power domain devices reset control
  * @regs: address that phy needs to configure during configuring lane protocol
  * @tx_term_fix: fix for GT issue
+ * @sata_rst: a reset control for SATA
+ * @dp_rst: a reset control for DP
+ * @usb0_crst: a reset control for usb0 core
+ * @usb1_crst: a reset control for usb1 core
+ * @usb0_hibrst: a reset control for usb0 hibernation module
+ * @usb1_hibrst: a reset control for usb1 hibernation module
+ * @usb0_apbrst: a reset control for usb0 apb bus
+ * @usb1_apbrst: a reset control for usb1 apb bus
+ * @gem0_rst: a reset control for gem0
+ * @gem1_rst: a reset control for gem1
+ * @gem2_rst: a reset control for gem2
+ * @gem3_rst: a reset control for gem3
  */
 struct xpsgtr_dev {
 	struct device *dev;
@@ -327,8 +339,10 @@ struct xpsgtr_dev {
  *			 regs into gtr_dev, so that these address can be used
  *			 by phy while configuring lane.(Currently USB does this)
  *
- * @gtr_phy: pointer to lane
+ * @phy: pointer to lane
  * @regs:    pointer to protocol control register address
+ *
+ * Return: 0 on success
  */
 int xpsgtr_set_protregs(struct phy *phy, void *regs)
 {
@@ -563,7 +577,7 @@ static int xpsgtr_configure_lane(struct xpsgtr_phy *gtr_phy)
 
 /**
  * xpsgtr_config_usbpipe - configures the PIPE3 signals for USB
- * @xpsgtr_dev: pointer to gtr device
+ * @gtr_dev: pointer to gtr device
  */
 static void xpsgtr_config_usbpipe(struct xpsgtr_dev *gtr_dev)
 {
@@ -577,7 +591,7 @@ static void xpsgtr_config_usbpipe(struct xpsgtr_dev *gtr_dev)
 
 /**
  * xpsgtr_reset_assert - asserts reset using reset framework
- * @gtr_phy: pointer to reset_control
+ * @rstc: pointer to reset_control
  *
  * Return: 0 on success or error on failure
  */
@@ -603,7 +617,7 @@ static int xpsgtr_reset_assert(struct reset_control *rstc)
 
 /**
  * xpsgtr_reset_release - de-asserts reset using reset framework
- * @gtr_phy: pointer to reset_control
+ * @rstc: pointer to reset_control
  *
  * Return: 0 on success or error on failure
  */
