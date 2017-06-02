@@ -59,7 +59,7 @@ struct axienet_local lp;
 
 /* Match table for of_platform binding */
 static const struct of_device_id tsnswitch_of_match[] = {
-	{ .compatible = "xlnx,tsn-eth-switch-1.00.a", },
+	{ .compatible = "xlnx,tsn-switch", },
 	{},
 };
 
