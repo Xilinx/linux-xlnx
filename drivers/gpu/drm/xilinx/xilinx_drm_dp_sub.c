@@ -1712,7 +1712,7 @@ static int xilinx_drm_dp_sub_parse_of(struct xilinx_drm_dp_sub *dp_sub)
 	struct xilinx_drm_dp_sub_layer *layer;
 	const char *string;
 	u32 fmt, i, size;
-	bool ret;
+	int ret;
 
 	ret = of_property_read_string(node, "xlnx,output-fmt", &string);
 	if (ret < 0) {
@@ -1756,8 +1756,7 @@ static int xilinx_drm_dp_sub_parse_of(struct xilinx_drm_dp_sub *dp_sub)
 					  full_range_offsets[i]);
 	}
 
-	ret = of_property_read_bool(node, "xlnx,vid-primary");
-	if (ret)
+	if (of_property_read_bool(node, "xlnx,vid-primary"))
 		dp_sub->layers[XILINX_DRM_DP_SUB_LAYER_VID].primary = true;
 	else
 		dp_sub->layers[XILINX_DRM_DP_SUB_LAYER_GFX].primary = true;
