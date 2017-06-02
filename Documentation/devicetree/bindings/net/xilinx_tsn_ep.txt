@@ -1,0 +1,14 @@
+Xilinx TSN (time sensitive networking) EndPoint controller Device Tree Bindings
+-------------------------------------------------------------------------------
+
+Required properties:
+- compatible		: Should be "xlnx,tsn-ep"
+- reg			: Physical base address and size of the TSN Endpoint
+				registers map
+
+Example:
+
+	tsn_ep: tsn_ep@80056000 {
+		compatible = "xlnx,tsn-ep";
+		reg = <0x0 0x80056000 0x0 0xA000>;
+	};
