@@ -619,23 +619,20 @@ static ssize_t xtg_sysfs_ioctl(struct device *dev, const char *buf,
 		break;
 
 	case XTG_CLEAR_MRAM:
-		if (wrval)
-			xtg_access_rams(tg, tg->xtg_mram_offset,
-				XTG_MASTER_RAM_SIZE, XTG_WRITE_RAM |
+		xtg_access_rams(tg, tg->xtg_mram_offset,
+				XTG_MASTER_RAM_SIZE,
 				XTG_WRITE_RAM_ZERO, NULL);
 		break;
 
 	case XTG_CLEAR_CRAM:
-		if (wrval)
-			xtg_access_rams(tg, XTG_COMMAND_RAM_OFFSET,
-				XTG_COMMAND_RAM_SIZE, XTG_WRITE_RAM |
+		xtg_access_rams(tg, XTG_COMMAND_RAM_OFFSET,
+				XTG_COMMAND_RAM_SIZE,
 				XTG_WRITE_RAM_ZERO, NULL);
 		break;
 
 	case XTG_CLEAR_PRAM:
-		if (wrval)
-			xtg_access_rams(tg, XTG_PARAM_RAM_OFFSET,
-				XTG_PARAM_RAM_SIZE, XTG_WRITE_RAM |
+		xtg_access_rams(tg, XTG_PARAM_RAM_OFFSET,
+				XTG_PARAM_RAM_SIZE,
 				XTG_WRITE_RAM_ZERO, NULL);
 		break;
 
