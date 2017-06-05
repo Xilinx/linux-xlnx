@@ -132,18 +132,21 @@ struct xilinx_spi {
 #define XSPI_FIFO_READ(size, type)					\
 static void xspi_read_rx_fifo_##size(struct xilinx_spi *xqspi)		\
 {									\
-	int i;								\
-	int count = (xqspi->bytes_to_receive > xqspi->buffer_size) ?	\
-			xqspi->buffer_size : xqspi->bytes_to_receive;	\
-	u32 data;							\
-	for (i = 0; i < count; i += (size/8)) {				\
-		data = readl_relaxed(xqspi->regs + XSPI_RXD_OFFSET);	\
-		if (xqspi->rx_ptr)					\
-			((type *)xqspi->rx_ptr)[i] = (type)data;	\
-	}								\
-	xqspi->bytes_to_receive -= count;				\
-	if (xqspi->rx_ptr)						\
-		xqspi->rx_ptr += count;					\
+  int i;								\
+  int count = (xqspi->bytes_to_receive > xqspi->buffer_size) ?		\
+      xqspi->buffer_size : xqspi->bytes_to_receive;			\
+  u32 data;								\
+  for (i = 0; i < count; i += (size/8)) {				\
+    /* WARNING : this is the only kinda flow control we have... */	\
+    if(readl(xqspi->regs + XSPI_SR_OFFSET) & XSPI_SR_RX_EMPTY_MASK)	\
+      break;								\
+    data = readl_relaxed(xqspi->regs + XSPI_RXD_OFFSET);		\
+    if (xqspi->rx_ptr)							\
+      ((type *)xqspi->rx_ptr)[i] = (type)data;				\
+  }									\
+  xqspi->bytes_to_receive -= i;						\
+  if (xqspi->rx_ptr)							\
+    xqspi->rx_ptr += i;							\
 }
 
 /**
@@ -157,18 +160,21 @@ static void xspi_read_rx_fifo_##size(struct xilinx_spi *xqspi)		\
 #define XSPI_FIFO_WRITE(size, type)					\
 static void xspi_fill_tx_fifo_##size(struct xilinx_spi *xqspi)		\
 {									\
-	int i;								\
-	int count = (xqspi->bytes_to_transfer > xqspi->buffer_size) ?	\
-			xqspi->buffer_size : xqspi->bytes_to_transfer;	\
-	u32 data = 0;							\
-	for (i = 0; i < count; i += (size/8)) {				\
-		if (xqspi->tx_ptr)					\
-			data = (type)((u8 *)xqspi->tx_ptr)[i];		\
-		writel_relaxed(data, (xqspi->regs + XSPI_TXD_OFFSET));	\
-	}								\
-	xqspi->bytes_to_transfer -= count;				\
-	if (xqspi->tx_ptr)						\
-		xqspi->tx_ptr += count;					\
+  int i;								\
+  int count = (xqspi->bytes_to_transfer > xqspi->buffer_size) ?		\
+    xqspi->buffer_size : xqspi->bytes_to_transfer;			\
+  u32 data = 0;								\
+  for (i = 0; i < count; i += (size/8)) {				\
+    /* Another kinda flow control for Tx */				\
+    if(readl(xqspi->regs + XSPI_SR_OFFSET) & XSPI_SR_TX_FULL_MASK)	\
+      break;								\
+    if (xqspi->tx_ptr)							\
+      data = (type)((u8 *)xqspi->tx_ptr)[i];				\
+    writel_relaxed(data, (xqspi->regs + XSPI_TXD_OFFSET));		\
+  }									\
+  xqspi->bytes_to_transfer -= i;					\
+  if (xqspi->tx_ptr)							\
+    xqspi->tx_ptr += i;							\
 }
 
 XSPI_FIFO_READ(8, u8)
