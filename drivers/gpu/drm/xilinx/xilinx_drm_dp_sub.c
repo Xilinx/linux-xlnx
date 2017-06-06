@@ -20,6 +20,7 @@
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_fourcc.h>
 
+#include <linux/debugfs.h>
 #include <linux/device.h>
 #include <linux/interrupt.h>
 #include <linux/irqreturn.h>
@@ -28,6 +29,7 @@
 #include <linux/mutex.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
+#include <linux/uaccess.h>
 
 #include "xilinx_drm_dp_sub.h"
 #include "xilinx_drm_drv.h"
@@ -352,6 +354,343 @@ struct xilinx_drm_dp_sub_fmt {
 
 static LIST_HEAD(xilinx_drm_dp_sub_list);
 static DEFINE_MUTEX(xilinx_drm_dp_sub_lock);
+
+#ifdef CONFIG_DRM_XILINX_DP_SUB_DEBUG_FS
+#define XILINX_DP_SUB_DEBUGFS_READ_MAX_SIZE	32UL
+#define XILINX_DP_SUB_DEBUGFS_MAX_BG_COLOR_VAL	0xFFF
+#define IN_RANGE(x, min, max) ((x) >= (min) && (x) <= (max))
+
+/* Match xilinx_dp_testcases vs dp_debugfs_reqs[] entry */
+enum xilinx_dp_sub_testcases {
+	DP_SUB_TC_BG_COLOR,
+	DP_SUB_TC_OUTPUT_FMT,
+	DP_SUB_TC_NONE
+};
+
+struct xilinx_dp_sub_debugfs {
+	enum xilinx_dp_sub_testcases testcase;
+	u16 r_value;
+	u16 g_value;
+	u16 b_value;
+	u32 output_fmt;
+	struct xilinx_drm_dp_sub *xilinx_dp_sub;
+};
+
+struct xilinx_dp_sub_debugfs dp_sub_debugfs;
+struct xilinx_dp_sub_debugfs_request {
+	const char *req;
+	enum xilinx_dp_sub_testcases tc;
+	ssize_t (*read_handler)(char **kern_buff);
+	ssize_t (*write_handler)(char **cmd);
+};
+
+static s64 xilinx_dp_sub_debugfs_argument_value(char *arg)
+{
+	s64 value;
+
+	if (!arg)
+		return -1;
+
+	if (!kstrtos64(arg, 0, &value))
+		return value;
+
+	return -1;
+}
+
+static void
+xilinx_dp_sub_debugfs_update_v_blend(u16 *sdtv_coeffs, u32 *full_range_offsets)
+{
+	struct xilinx_drm_dp_sub *dp_sub = dp_sub_debugfs.xilinx_dp_sub;
+	u32 offset, i;
+
+	/* Hardcode SDTV coefficients. Can be runtime configurable */
+	offset = XILINX_DP_SUB_V_BLEND_RGB2YCBCR_COEFF0;
+	for (i = 0; i < XILINX_DP_SUB_V_BLEND_NUM_COEFF; i++)
+		xilinx_drm_writel(dp_sub->blend.base, offset + i * 4,
+				  sdtv_coeffs[i]);
+
+	offset = XILINX_DP_SUB_V_BLEND_LUMA_OUTCSC_OFFSET;
+	for (i = 0; i < XILINX_DP_SUB_V_BLEND_NUM_OFFSET; i++)
+		xilinx_drm_writel(dp_sub->blend.base, offset + i * 4,
+				  full_range_offsets[i]);
+}
+
+static void xilinx_dp_sub_debugfs_output_format(u32 fmt)
+{
+	struct xilinx_drm_dp_sub *dp_sub = dp_sub_debugfs.xilinx_dp_sub;
+
+	xilinx_drm_writel(dp_sub->blend.base,
+			  XILINX_DP_SUB_V_BLEND_OUTPUT_VID_FMT, fmt);
+
+	if (fmt != XILINX_DP_SUB_V_BLEND_OUTPUT_VID_FMT_RGB) {
+		u16 sdtv_coeffs[] = { 0x4c9, 0x864, 0x1d3,
+				      0x7d4d, 0x7ab3, 0x800,
+				      0x800, 0x794d, 0x7eb3 };
+		u32 full_range_offsets[] = { 0x0, 0x8000000, 0x8000000 };
+
+		xilinx_dp_sub_debugfs_update_v_blend(sdtv_coeffs,
+						     full_range_offsets);
+	} else {
+		/* In case of RGB set the reset values*/
+		u16 sdtv_coeffs[] = { 0x1000, 0x0, 0x0,
+				      0x0, 0x1000, 0x0,
+				      0x0, 0x0, 0x1000 };
+		u32 full_range_offsets[] = { 0x0, 0x0, 0x0 };
+
+		xilinx_dp_sub_debugfs_update_v_blend(sdtv_coeffs,
+						     full_range_offsets);
+	}
+}
+
+static ssize_t
+xilinx_dp_sub_debugfs_background_color_write(char **dp_sub_test_arg)
+{
+	char *r_color, *g_color, *b_color;
+	s64 r_val, g_val, b_val;
+
+	r_color = strsep(dp_sub_test_arg, " ");
+	g_color = strsep(dp_sub_test_arg, " ");
+	b_color = strsep(dp_sub_test_arg, " ");
+
+	/* char * to int conversion */
+	r_val = xilinx_dp_sub_debugfs_argument_value(r_color);
+	g_val = xilinx_dp_sub_debugfs_argument_value(g_color);
+	b_val = xilinx_dp_sub_debugfs_argument_value(b_color);
+
+	if (!(IN_RANGE(r_val, 0, XILINX_DP_SUB_DEBUGFS_MAX_BG_COLOR_VAL) &&
+	      IN_RANGE(g_val, 0, XILINX_DP_SUB_DEBUGFS_MAX_BG_COLOR_VAL) &&
+	      IN_RANGE(b_val, 0, XILINX_DP_SUB_DEBUGFS_MAX_BG_COLOR_VAL)))
+		return -EINVAL;
+
+	dp_sub_debugfs.r_value = r_val;
+	dp_sub_debugfs.g_value = g_val;
+	dp_sub_debugfs.b_value = b_val;
+
+	dp_sub_debugfs.testcase = DP_SUB_TC_BG_COLOR;
+
+	return 0;
+}
+
+static ssize_t
+xilinx_dp_sub_debugfs_output_display_format_write(char **dp_sub_test_arg)
+{
+	char *output_format;
+	struct xilinx_drm_dp_sub *dp_sub = dp_sub_debugfs.xilinx_dp_sub;
+	u32 fmt;
+
+	/* Read the value from an user value */
+	output_format = strsep(dp_sub_test_arg, " ");
+	if (strncmp(output_format, "rgb", 3) == 0) {
+		fmt = XILINX_DP_SUB_V_BLEND_OUTPUT_VID_FMT_RGB;
+	} else if (strncmp(output_format, "ycbcr444", 8) == 0) {
+		fmt = XILINX_DP_SUB_V_BLEND_OUTPUT_VID_FMT_YCBCR444;
+	} else if (strncmp(output_format, "ycbcr422", 8) == 0) {
+		fmt = XILINX_DP_SUB_V_BLEND_OUTPUT_VID_FMT_YCBCR422;
+		fmt |= XILINX_DP_SUB_V_BLEND_OUTPUT_EN_DOWNSAMPLE;
+	} else if (strncmp(output_format, "yonly", 5) == 0) {
+		fmt = XILINX_DP_SUB_V_BLEND_OUTPUT_VID_FMT_YONLY;
+	} else {
+		dev_err(dp_sub->dev, "Invalid output format\n");
+		return -EINVAL;
+	}
+
+	dp_sub_debugfs.output_fmt =
+			xilinx_drm_readl(dp_sub->blend.base,
+					 XILINX_DP_SUB_V_BLEND_OUTPUT_VID_FMT);
+
+	xilinx_dp_sub_debugfs_output_format(fmt);
+	dp_sub_debugfs.testcase = DP_SUB_TC_OUTPUT_FMT;
+
+	return 0;
+}
+
+static ssize_t
+xilinx_dp_sub_debugfs_output_display_format_read(char **kern_buff)
+{
+	size_t out_str_len;
+
+	dp_sub_debugfs.testcase = DP_SUB_TC_NONE;
+	xilinx_dp_sub_debugfs_output_format(dp_sub_debugfs.output_fmt);
+
+	out_str_len = strlen("Success");
+	out_str_len = min(XILINX_DP_SUB_DEBUGFS_READ_MAX_SIZE, out_str_len);
+	snprintf(*kern_buff, out_str_len, "%s", "Success");
+
+	return 0;
+}
+
+static ssize_t
+xilinx_dp_sub_debugfs_background_color_read(char **kern_buff)
+{
+	size_t out_str_len;
+
+	dp_sub_debugfs.testcase = DP_SUB_TC_NONE;
+	dp_sub_debugfs.r_value = 0;
+	dp_sub_debugfs.g_value = 0;
+	dp_sub_debugfs.b_value = 0;
+
+	out_str_len = strlen("Success");
+	out_str_len = min(XILINX_DP_SUB_DEBUGFS_READ_MAX_SIZE, out_str_len);
+	snprintf(*kern_buff, out_str_len, "%s", "Success");
+
+	return 0;
+}
+
+/* Match xilinx_dp_testcases vs dp_debugfs_reqs[] entry */
+struct xilinx_dp_sub_debugfs_request dp_sub_debugfs_reqs[] = {
+	{"BACKGROUND_COLOR", DP_SUB_TC_BG_COLOR,
+		xilinx_dp_sub_debugfs_background_color_read,
+		xilinx_dp_sub_debugfs_background_color_write},
+	{"OUTPUT_DISPLAY_FORMAT", DP_SUB_TC_OUTPUT_FMT,
+		xilinx_dp_sub_debugfs_output_display_format_read,
+		xilinx_dp_sub_debugfs_output_display_format_write},
+};
+
+static ssize_t
+xilinx_dp_sub_debugfs_write(struct file *f, const char __user *buf,
+			    size_t size, loff_t *pos)
+{
+	char *kern_buff, *dp_sub_test_req;
+	int ret;
+	unsigned int i;
+
+	if (*pos != 0 || size <= 0)
+		return -EINVAL;
+
+	if (dp_sub_debugfs.testcase != DP_SUB_TC_NONE)
+		return -EBUSY;
+
+	kern_buff = kzalloc(size, GFP_KERNEL);
+	if (!kern_buff)
+		return -ENOMEM;
+
+	ret = strncpy_from_user(kern_buff, buf, size);
+	if (ret < 0) {
+		kfree(kern_buff);
+		return ret;
+	}
+
+	/* Read the testcase name and argument from an user request */
+	dp_sub_test_req = strsep(&kern_buff, " ");
+
+	for (i = 0; i < ARRAY_SIZE(dp_sub_debugfs_reqs); i++) {
+		if (!strcasecmp(dp_sub_test_req, dp_sub_debugfs_reqs[i].req))
+			if (!dp_sub_debugfs_reqs[i].write_handler(&kern_buff)) {
+				kfree(kern_buff);
+				return size;
+			}
+	}
+	kfree(kern_buff);
+	return -EINVAL;
+}
+
+static ssize_t xilinx_dp_sub_debugfs_read(struct file *f, char __user *buf,
+					  size_t size, loff_t *pos)
+{
+	char *kern_buff = NULL;
+	size_t kern_buff_len, out_str_len;
+	int ret;
+
+	if (size <= 0)
+		return -EINVAL;
+
+	if (*pos != 0)
+		return 0;
+
+	kern_buff = kzalloc(XILINX_DP_SUB_DEBUGFS_READ_MAX_SIZE, GFP_KERNEL);
+	if (!kern_buff) {
+		dp_sub_debugfs.testcase = DP_SUB_TC_NONE;
+		return -ENOMEM;
+	}
+
+	if (dp_sub_debugfs.testcase == DP_SUB_TC_NONE) {
+		out_str_len = strlen("No testcase executed");
+		out_str_len = min(XILINX_DP_SUB_DEBUGFS_READ_MAX_SIZE,
+				  out_str_len);
+		snprintf(kern_buff, out_str_len, "%s", "No testcase executed");
+	} else {
+		ret = dp_sub_debugfs_reqs[dp_sub_debugfs.testcase].read_handler(
+				&kern_buff);
+		if (ret) {
+			kfree(kern_buff);
+			return ret;
+		}
+	}
+
+	kern_buff_len = strlen(kern_buff);
+	size = min(size, kern_buff_len);
+
+	ret = copy_to_user(buf, kern_buff, size);
+
+	kfree(kern_buff);
+	if (ret)
+		return ret;
+
+	*pos = size + 1;
+	return size;
+}
+
+static const struct file_operations fops_xilinx_dp_sub_dbgfs = {
+	.owner = THIS_MODULE,
+	.read = xilinx_dp_sub_debugfs_read,
+	.write = xilinx_dp_sub_debugfs_write,
+};
+
+static int xilinx_dp_sub_debugfs_init(struct xilinx_drm_dp_sub *dp_sub)
+{
+	int err;
+	struct dentry *xilinx_dp_sub_debugfs_dir, *xilinx_dp_sub_debugfs_file;
+
+	dp_sub_debugfs.testcase = DP_SUB_TC_NONE;
+	dp_sub_debugfs.xilinx_dp_sub = dp_sub;
+
+	xilinx_dp_sub_debugfs_dir = debugfs_create_dir("dp_sub", NULL);
+	if (!xilinx_dp_sub_debugfs_dir) {
+		dev_err(dp_sub->dev, "debugfs_create_dir failed\n");
+		return -ENODEV;
+	}
+
+	xilinx_dp_sub_debugfs_file =
+		debugfs_create_file("testcase", 0444,
+				    xilinx_dp_sub_debugfs_dir, NULL,
+				    &fops_xilinx_dp_sub_dbgfs);
+	if (!xilinx_dp_sub_debugfs_file) {
+		dev_err(dp_sub->dev, "debugfs_create_file testcase failed\n");
+		err = -ENODEV;
+		goto err_dbgfs;
+	}
+	return 0;
+
+err_dbgfs:
+	debugfs_remove_recursive(xilinx_dp_sub_debugfs_dir);
+	xilinx_dp_sub_debugfs_dir = NULL;
+	return err;
+}
+
+static void xilinx_drm_dp_sub_debugfs_bg_color(struct xilinx_drm_dp_sub *dp_sub)
+{
+	if (dp_sub_debugfs.testcase == DP_SUB_TC_BG_COLOR) {
+		xilinx_drm_writel(dp_sub->blend.base,
+				  XILINX_DP_SUB_V_BLEND_BG_CLR_0,
+				  dp_sub_debugfs.r_value);
+		xilinx_drm_writel(dp_sub->blend.base,
+				  XILINX_DP_SUB_V_BLEND_BG_CLR_1,
+				  dp_sub_debugfs.g_value);
+		xilinx_drm_writel(dp_sub->blend.base,
+				  XILINX_DP_SUB_V_BLEND_BG_CLR_2,
+				  dp_sub_debugfs.b_value);
+	}
+}
+#else
+static int xilinx_dp_sub_debugfs_init(struct xilinx_drm_dp_sub *dp_sub)
+{
+	return 0;
+}
+
+static void xilinx_drm_dp_sub_debugfs_bg_color(struct xilinx_drm_dp_sub *dp_sub)
+{
+}
+#endif /* CONFIG_DP_DEBUG_FS */
 
 /* Blender functions */
 
@@ -1491,6 +1830,7 @@ void xilinx_drm_dp_sub_set_bg_color(struct xilinx_drm_dp_sub *dp_sub,
 				    u32 c0, u32 c1, u32 c2)
 {
 	xilinx_drm_dp_sub_blend_set_bg_color(&dp_sub->blend, c0, c1, c2);
+	xilinx_drm_dp_sub_debugfs_bg_color(dp_sub);
 }
 EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_set_bg_color);
 
@@ -1864,6 +2204,8 @@ static int xilinx_drm_dp_sub_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, dp_sub);
 
 	xilinx_drm_dp_sub_register_device(dp_sub);
+
+	xilinx_dp_sub_debugfs_init(dp_sub);
 
 	dev_info(dp_sub->dev, "Xilinx DisplayPort Subsystem is probed\n");
 
