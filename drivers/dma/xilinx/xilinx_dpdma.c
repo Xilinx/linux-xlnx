@@ -17,6 +17,7 @@
 
 #include <linux/bitops.h>
 #include <linux/clk.h>
+#include <linux/debugfs.h>
 #include <linux/delay.h>
 #include <linux/device.h>
 #include <linux/dmaengine.h>
@@ -32,6 +33,7 @@
 #include <linux/slab.h>
 #include <linux/spinlock.h>
 #include <linux/types.h>
+#include <linux/uaccess.h>
 #include <linux/wait.h>
 
 #include "../dmaengine.h"
@@ -334,6 +336,229 @@ struct xilinx_dpdma_device {
 			  struct xilinx_dpdma_sw_desc *prev,
 			  dma_addr_t dma_addr[], unsigned int num_src_addr);
 };
+
+#ifdef CONFIG_XILINX_DPDMA_DEBUG_FS
+#define XILINX_DPDMA_DEBUGFS_READ_MAX_SIZE	32UL
+#define XILINX_DPDMA_DEBUGFS_UINT16_MAX_STR	"65535"
+#define IN_RANGE(x, min, max) ((x) >= (min) && (x) <= (max))
+
+/* Match xilinx_dpdma_testcases vs dpdma_debugfs_reqs[] entry */
+enum xilinx_dpdma_testcases {
+	DPDMA_TC_INTR_DONE,
+	DPDMA_TC_NONE
+};
+
+struct xilinx_dpdma_debugfs {
+	enum xilinx_dpdma_testcases testcase;
+	u16 xilinx_dpdma_intr_done_count;
+	enum xilinx_dpdma_chan_id chan_id;
+};
+
+static struct xilinx_dpdma_debugfs dpdma_debugfs;
+struct xilinx_dpdma_debugfs_request {
+	const char *req;
+	enum xilinx_dpdma_testcases tc;
+	ssize_t (*read_handler)(char **kern_buff);
+	ssize_t (*write_handler)(char **cmd);
+};
+
+static void xilinx_dpdma_debugfs_intr_done_count_incr(int chan_id)
+{
+	if (chan_id == dpdma_debugfs.chan_id)
+		dpdma_debugfs.xilinx_dpdma_intr_done_count++;
+}
+
+static s64 xilinx_dpdma_debugfs_argument_value(char *arg)
+{
+	s64 value;
+
+	if (!arg)
+		return -1;
+
+	if (!kstrtos64(arg, 0, &value))
+		return value;
+
+	return -1;
+}
+
+static ssize_t
+xilinx_dpdma_debugfs_desc_done_intr_write(char **dpdma_test_arg)
+{
+	char *arg;
+	char *arg_chan_id;
+	s64 id;
+
+	arg = strsep(dpdma_test_arg, " ");
+	if (strncasecmp(arg, "start", 5) != 0)
+		return -EINVAL;
+
+	arg_chan_id = strsep(dpdma_test_arg, " ");
+	id = xilinx_dpdma_debugfs_argument_value(arg_chan_id);
+
+	if (id < 0 || !IN_RANGE(id, VIDEO0, AUDIO1))
+		return -EINVAL;
+
+	dpdma_debugfs.testcase = DPDMA_TC_INTR_DONE;
+	dpdma_debugfs.xilinx_dpdma_intr_done_count = 0;
+	dpdma_debugfs.chan_id = id;
+
+	return 0;
+}
+
+static ssize_t xilinx_dpdma_debugfs_desc_done_intr_read(char **kern_buff)
+{
+	size_t out_str_len;
+
+	dpdma_debugfs.testcase = DPDMA_TC_NONE;
+
+	out_str_len = strlen(XILINX_DPDMA_DEBUGFS_UINT16_MAX_STR);
+	out_str_len = min(XILINX_DPDMA_DEBUGFS_READ_MAX_SIZE, out_str_len);
+	snprintf(*kern_buff, out_str_len, "%d",
+		 dpdma_debugfs.xilinx_dpdma_intr_done_count);
+
+	return 0;
+}
+
+/* Match xilinx_dpdma_testcases vs dpdma_debugfs_reqs[] entry */
+struct xilinx_dpdma_debugfs_request dpdma_debugfs_reqs[] = {
+	{"DESCRIPTOR_DONE_INTR", DPDMA_TC_INTR_DONE,
+			xilinx_dpdma_debugfs_desc_done_intr_read,
+			xilinx_dpdma_debugfs_desc_done_intr_write},
+};
+
+static ssize_t xilinx_dpdma_debugfs_write(struct file *f, const char __user
+					       *buf, size_t size, loff_t *pos)
+{
+	char *kern_buff;
+	char *dpdma_test_req;
+	int ret;
+	int i;
+
+	if (*pos != 0 || size <= 0)
+		return -EINVAL;
+
+	/* Supporting single instance of test as of now*/
+	if (dpdma_debugfs.testcase != DPDMA_TC_NONE)
+		return -EBUSY;
+
+	kern_buff = kzalloc(size, GFP_KERNEL);
+	if (!kern_buff)
+		return -ENOMEM;
+
+	ret = strncpy_from_user(kern_buff, buf, size);
+	if (ret < 0) {
+		kfree(kern_buff);
+		return ret;
+	}
+
+	/* Read the testcase name from an user request */
+	dpdma_test_req = strsep(&kern_buff, " ");
+
+	for (i = 0; i < ARRAY_SIZE(dpdma_debugfs_reqs); i++) {
+		if (!strcasecmp(dpdma_test_req, dpdma_debugfs_reqs[i].req)) {
+			if (!dpdma_debugfs_reqs[i].write_handler(&kern_buff)) {
+				kfree(kern_buff);
+				return size;
+			}
+			break;
+		}
+	}
+	kfree(kern_buff);
+	return -EINVAL;
+}
+
+static ssize_t xilinx_dpdma_debugfs_read(struct file *f, char __user *buf,
+					 size_t size, loff_t *pos)
+{
+	char *kern_buff = NULL;
+	size_t kern_buff_len, out_str_len;
+	int ret;
+
+	if (size <= 0)
+		return -EINVAL;
+
+	if (*pos != 0)
+		return 0;
+
+	kern_buff = kzalloc(XILINX_DPDMA_DEBUGFS_READ_MAX_SIZE, GFP_KERNEL);
+	if (!kern_buff) {
+		dpdma_debugfs.testcase = DPDMA_TC_NONE;
+		return -ENOMEM;
+	}
+
+	if (dpdma_debugfs.testcase == DPDMA_TC_NONE) {
+		out_str_len = strlen("No testcase executed");
+		out_str_len = min(XILINX_DPDMA_DEBUGFS_READ_MAX_SIZE,
+				  out_str_len);
+		snprintf(kern_buff, out_str_len, "%s", "No testcase executed");
+	} else {
+		ret = dpdma_debugfs_reqs[dpdma_debugfs.testcase].read_handler(
+				&kern_buff);
+		if (ret) {
+			kfree(kern_buff);
+			return ret;
+		}
+	}
+
+	kern_buff_len = strlen(kern_buff);
+	size = min(size, kern_buff_len);
+
+	ret = copy_to_user(buf, kern_buff, size);
+
+	kfree(kern_buff);
+	if (ret)
+		return ret;
+
+	*pos = size + 1;
+	return size;
+}
+
+static const struct file_operations fops_xilinx_dpdma_dbgfs = {
+	.owner = THIS_MODULE,
+	.read = xilinx_dpdma_debugfs_read,
+	.write = xilinx_dpdma_debugfs_write,
+};
+
+static int xilinx_dpdma_debugfs_init(struct device *dev)
+{
+	int err;
+	struct dentry *xilinx_dpdma_debugfs_dir, *xilinx_dpdma_debugfs_file;
+
+	dpdma_debugfs.testcase = DPDMA_TC_NONE;
+
+	xilinx_dpdma_debugfs_dir = debugfs_create_dir("dpdma", NULL);
+	if (!xilinx_dpdma_debugfs_dir) {
+		dev_err(dev, "debugfs_create_dir failed\n");
+		return -ENODEV;
+	}
+
+	xilinx_dpdma_debugfs_file =
+		debugfs_create_file("testcase", 0444,
+				    xilinx_dpdma_debugfs_dir, NULL,
+				    &fops_xilinx_dpdma_dbgfs);
+	if (!xilinx_dpdma_debugfs_file) {
+		dev_err(dev, "debugfs_create_file testcase failed\n");
+		err = -ENODEV;
+		goto err_dbgfs;
+	}
+	return 0;
+
+err_dbgfs:
+	debugfs_remove_recursive(xilinx_dpdma_debugfs_dir);
+	xilinx_dpdma_debugfs_dir = NULL;
+	return err;
+}
+
+#else
+static int xilinx_dpdma_debugfs_init(struct device *dev)
+{
+	return 0;
+}
+
+static void xilinx_dpdma_debugfs_intr_done_count_incr(int chan_id)
+{
+}
+#endif /* CONFIG_XILINX_DPDMA_DEBUG_FS */
 
 #define to_dpdma_tx_desc(tx) \
 	container_of(tx, struct xilinx_dpdma_tx_desc, async_tx)
@@ -785,6 +1010,8 @@ static void xilinx_dpdma_chan_desc_done_intr(struct xilinx_dpdma_chan *chan)
 	unsigned long flags;
 
 	spin_lock_irqsave(&chan->lock, flags);
+
+	xilinx_dpdma_debugfs_intr_done_count_incr(chan->id);
 
 	if (!chan->active_desc) {
 		dev_dbg(chan->xdev->dev, "done intr with no active desc\n");
@@ -1979,6 +2206,8 @@ static int xilinx_dpdma_probe(struct platform_device *pdev)
 	}
 
 	xilinx_dpdma_enable_intr(xdev);
+
+	xilinx_dpdma_debugfs_init(&pdev->dev);
 
 	dev_info(&pdev->dev, "Xilinx DPDMA engine is probed\n");
 
