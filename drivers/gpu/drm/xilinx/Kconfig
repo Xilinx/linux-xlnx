@@ -22,6 +22,17 @@ config DRM_XILINX_DP_SUB
 	help
 	  DRM driver for Xilinx Display Port Subsystem.
 
+config DRM_XILINX_DP_SUB_DEBUG_FS
+	bool "Xilinx DRM DPSUB debugfs"
+	depends on DEBUG_FS && DRM_XILINX_DP_SUB
+	select DRM_XILINX_DP_DEBUG_FS
+	help
+	  Enable the debugfs code for DP Sub driver. The debugfs code
+	  enables debugging or testing related features. It exposes some
+	  low level controls to the user space to help testing automation,
+	  as well as can enable additional diagnostic or statistical
+	  information.
+
 config DRM_XILINX_MIPI_DSI
 	tristate "Xilinx DRM MIPI DSI Driver"
 	depends on DRM_XILINX
