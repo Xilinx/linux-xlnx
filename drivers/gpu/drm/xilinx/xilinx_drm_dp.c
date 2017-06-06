@@ -508,7 +508,7 @@ static int xilinx_drm_dp_mode_configure(struct xilinx_drm_dp *dp, int pclock,
 				dp->mode.bw_code = bws[clock];
 				dp->mode.lane_cnt = lane_cnt;
 				dp->mode.pclock = pclock;
-				return bws[clock];
+				return dp->mode.bw_code;
 			}
 		}
 	}
