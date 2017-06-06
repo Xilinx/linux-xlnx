@@ -255,6 +255,7 @@ static int ams_read_raw(struct iio_dev *indio_dev,
 			case AMS_SUPPLY7:
 			case AMS_SUPPLY8:
 				*val = AMS_SUPPLY_SCALE_6VOLT;
+				break;
 			case AMS_SUPPLY9:
 			case AMS_SUPPLY10:
 				if (chan->scan_index < PS_SEQ_MAX)
