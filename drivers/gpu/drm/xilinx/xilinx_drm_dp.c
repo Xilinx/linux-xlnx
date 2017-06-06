@@ -893,7 +893,7 @@ static int xilinx_drm_dp_mode_configure(struct xilinx_drm_dp *dp, int pclock,
 	u8 max_link_rate_code = drm_dp_link_rate_to_bw_code(max_rate);
 	u8 bpp = dp->config.bpp;
 	u8 lane_cnt;
-	s8 clock, i;
+	s8 i;
 
 	for (i = ARRAY_SIZE(bws) - 1; i >= 0; i--) {
 		if (current_bw && bws[i] >= current_bw)
@@ -904,19 +904,17 @@ static int xilinx_drm_dp_mode_configure(struct xilinx_drm_dp *dp, int pclock,
 	}
 
 	for (lane_cnt = 1; lane_cnt <= max_lanes; lane_cnt <<= 1) {
-		for (clock = i; clock >= 0; clock--) {
-			int bw;
-			u32 rate;
+		int bw;
+		u32 rate;
 
-			bw = drm_dp_bw_code_to_link_rate(bws[clock]);
-			rate = xilinx_drm_dp_max_rate(bw, lane_cnt, bpp);
-			if (pclock <= rate) {
-				dp->mode.bw_code = bws[clock];
-				dp->mode.lane_cnt = lane_cnt;
-				dp->mode.pclock = pclock;
-				xilinx_dp_debugfs_mode_config(dp);
-				return dp->mode.bw_code;
-			}
+		bw = drm_dp_bw_code_to_link_rate(bws[i]);
+		rate = xilinx_drm_dp_max_rate(bw, lane_cnt, bpp);
+		if (pclock <= rate) {
+			dp->mode.bw_code = bws[i];
+			dp->mode.lane_cnt = lane_cnt;
+			dp->mode.pclock = pclock;
+			xilinx_dp_debugfs_mode_config(dp);
+			return dp->mode.bw_code;
 		}
 	}
 
