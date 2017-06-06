@@ -227,11 +227,13 @@ MODULE_PARM_DESC(aux_timeout_ms,
 #define XILINX_DP_MISC0_RGB				(0)
 #define XILINX_DP_MISC0_YCRCB_422			(5 << 1)
 #define XILINX_DP_MISC0_YCRCB_444			(6 << 1)
+#define XILINX_DP_MISC0_FORMAT_MASK			0xe
 #define XILINX_DP_MISC0_BPC_6				(0 << 5)
 #define XILINX_DP_MISC0_BPC_8				(1 << 5)
 #define XILINX_DP_MISC0_BPC_10				(2 << 5)
 #define XILINX_DP_MISC0_BPC_12				(3 << 5)
 #define XILINX_DP_MISC0_BPC_16				(4 << 5)
+#define XILINX_DP_MISC0_BPC_MASK			0xe0
 #define XILINX_DP_MISC1_Y_ONLY				(1 << 7)
 
 #define DP_REDUCED_BIT_RATE				162000
