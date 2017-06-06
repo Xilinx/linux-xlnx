@@ -22,6 +22,7 @@
 #include <drm/drm_encoder_slave.h>
 
 #include <linux/clk.h>
+#include <linux/debugfs.h>
 #include <linux/delay.h>
 #include <linux/device.h>
 #include <linux/module.h>
@@ -30,6 +31,7 @@
 #include <linux/phy/phy-zynqmp.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
+#include <linux/uaccess.h>
 
 #include "xilinx_drm_dp_sub.h"
 #include "xilinx_drm_drv.h"
@@ -339,6 +341,408 @@ static inline struct xilinx_drm_dp *to_dp(struct drm_encoder *encoder)
 
 #define AUX_READ_BIT	0x1
 
+#ifdef CONFIG_DRM_XILINX_DP_DEBUG_FS
+#define XILINX_DP_DEBUGFS_READ_MAX_SIZE	32UL
+#define XILINX_DP_DEBUGFS_UINT8_MAX_STR	"255"
+#define IN_RANGE(x, min, max) ((x) >= (min) && (x) <= (max))
+
+/* Match xilinx_dp_testcases vs dp_debugfs_reqs[] entry */
+enum xilinx_dp_testcases {
+	DP_TC_LINK_RATE,
+	DP_TC_LANE_COUNT,
+	DP_TC_OUTPUT_FMT,
+	DP_TC_NONE
+};
+
+struct xilinx_dp_debugfs {
+	enum xilinx_dp_testcases testcase;
+	u8 link_rate;
+	u8 lane_cnt;
+	u8 old_output_fmt;
+	struct xilinx_drm_dp *dp;
+};
+
+struct xilinx_dp_debugfs dp_debugfs;
+struct xilinx_dp_debugfs_request {
+	const char *req;
+	enum xilinx_dp_testcases tc;
+	ssize_t (*read_handler)(char **kern_buff);
+	ssize_t (*write_handler)(char **cmd);
+};
+
+static s64 xilinx_dp_debugfs_argument_value(char *arg)
+{
+	s64 value;
+
+	if (!arg)
+		return -1;
+
+	if (!kstrtos64(arg, 0, &value))
+		return value;
+
+	return -1;
+}
+
+static int xilinx_dp_update_output_format(u8 output_fmt, u32 num_colors)
+{
+	struct xilinx_drm_dp *dp = dp_debugfs.dp;
+	struct xilinx_drm_dp_config *config = &dp->config;
+	u32 bpc;
+	u8 bpc_bits = (config->misc0 & XILINX_DP_MISC0_BPC_MASK);
+	bool misc1 = output_fmt & XILINX_DP_MISC1_Y_ONLY ? true : false;
+
+	switch (bpc_bits) {
+	case XILINX_DP_MISC0_BPC_6:
+		bpc = 6;
+		break;
+	case XILINX_DP_MISC0_BPC_8:
+		bpc = 8;
+		break;
+	case XILINX_DP_MISC0_BPC_10:
+		bpc = 10;
+		break;
+	case XILINX_DP_MISC0_BPC_12:
+		bpc = 12;
+		break;
+	case XILINX_DP_MISC0_BPC_16:
+		bpc = 16;
+		break;
+	default:
+		dev_err(dp->dev, "Invalid bpc count for misc0\n");
+		return -EINVAL;
+	}
+
+	/* clear old format */
+	config->misc0 &= ~XILINX_DP_MISC0_FORMAT_MASK;
+	config->misc1 &= ~XILINX_DP_MISC1_Y_ONLY;
+
+	if (misc1) {
+		config->misc1 |= output_fmt;
+		xilinx_drm_writel(dp->iomem, XILINX_DP_TX_MAIN_STREAM_MISC1,
+				  config->misc1);
+	} else {
+		config->misc0 |= output_fmt;
+		xilinx_drm_writel(dp->iomem, XILINX_DP_TX_MAIN_STREAM_MISC0,
+				  config->misc0);
+	}
+	config->bpp = num_colors * bpc;
+
+	return 0;
+}
+
+static ssize_t xilinx_dp_debugfs_max_linkrate_write(char **dp_test_arg)
+{
+	char *link_rate_arg;
+	s64 link_rate;
+
+	link_rate_arg = strsep(dp_test_arg, " ");
+	link_rate = xilinx_dp_debugfs_argument_value(link_rate_arg);
+	if (link_rate < 0 || (link_rate != DP_HIGH_BIT_RATE2 &&
+			      link_rate != DP_HIGH_BIT_RATE &&
+			      link_rate != DP_REDUCED_BIT_RATE))
+		return -EINVAL;
+
+	dp_debugfs.link_rate = drm_dp_link_rate_to_bw_code(link_rate);
+	dp_debugfs.testcase = DP_TC_LINK_RATE;
+
+	return 0;
+}
+
+static ssize_t xilinx_dp_debugfs_max_lanecnt_write(char **dp_test_arg)
+{
+	char *lane_cnt_arg;
+	s64 lane_count;
+
+	lane_cnt_arg = strsep(dp_test_arg, " ");
+	lane_count = xilinx_dp_debugfs_argument_value(lane_cnt_arg);
+	if (lane_count < 0 || !IN_RANGE(lane_count, 1,
+					dp_debugfs.dp->config.max_lanes))
+		return -EINVAL;
+
+	dp_debugfs.lane_cnt = lane_count;
+	dp_debugfs.testcase = DP_TC_LANE_COUNT;
+
+	return 0;
+}
+
+static ssize_t xilinx_dp_debugfs_output_display_format_write(char **dp_test_arg)
+{
+	int ret;
+	struct xilinx_drm_dp *dp = dp_debugfs.dp;
+	char *output_format;
+	u8 output_fmt;
+	u32 num_colors;
+
+	/* Read the value from an user value */
+	output_format = strsep(dp_test_arg, " ");
+
+	if (strncmp(output_format, "rgb", 3) == 0) {
+		output_fmt = XILINX_DP_MISC0_RGB;
+		num_colors = 3;
+	} else if (strncmp(output_format, "ycbcr422", 8) == 0) {
+		output_fmt = XILINX_DP_MISC0_YCRCB_422;
+		num_colors = 2;
+	} else if (strncmp(output_format, "ycbcr444", 8) == 0) {
+		output_fmt = XILINX_DP_MISC0_YCRCB_444;
+		num_colors = 3;
+	} else if (strncmp(output_format, "yonly", 5) == 0) {
+		output_fmt = XILINX_DP_MISC1_Y_ONLY;
+		num_colors = 1;
+	} else {
+		dev_err(dp->dev, "Invalid output format\n");
+		return -EINVAL;
+	}
+
+	if (dp->config.misc1 & XILINX_DP_MISC1_Y_ONLY)
+		dp_debugfs.old_output_fmt = XILINX_DP_MISC1_Y_ONLY;
+	else
+		dp_debugfs.old_output_fmt = dp->config.misc0 &
+					    XILINX_DP_MISC0_FORMAT_MASK;
+
+	ret = xilinx_dp_update_output_format(output_fmt, num_colors);
+	if (!ret)
+		dp_debugfs.testcase = DP_TC_OUTPUT_FMT;
+	return ret;
+}
+
+static ssize_t xilinx_dp_debugfs_max_linkrate_read(char **kern_buff)
+{
+	struct xilinx_drm_dp *dp = dp_debugfs.dp;
+	size_t output_str_len;
+	u8 dpcd_link_bw;
+	int ret;
+
+	dp_debugfs.testcase = DP_TC_NONE;
+	dp_debugfs.link_rate = 0;
+
+	/* Getting Sink Side Link Rate */
+	ret = drm_dp_dpcd_readb(&dp->aux, DP_LINK_BW_SET, &dpcd_link_bw);
+	if (ret < 0) {
+		dev_err(dp->dev, "Failed to read link rate via AUX.\n");
+		kfree(*kern_buff);
+		return ret;
+	}
+
+	output_str_len = strlen(XILINX_DP_DEBUGFS_UINT8_MAX_STR);
+	output_str_len = min(XILINX_DP_DEBUGFS_READ_MAX_SIZE, output_str_len);
+	snprintf(*kern_buff, output_str_len, "%u", dpcd_link_bw);
+
+	return 0;
+}
+
+static ssize_t xilinx_dp_debugfs_max_lanecnt_read(char **kern_buff)
+{
+	struct xilinx_drm_dp *dp = dp_debugfs.dp;
+	size_t output_str_len;
+	u8 dpcd_lane_cnt;
+	int ret;
+
+	dp_debugfs.testcase = DP_TC_NONE;
+	dp_debugfs.lane_cnt = 0;
+
+	/* Getting Sink Side Lane Count */
+	ret = drm_dp_dpcd_readb(&dp->aux, DP_LANE_COUNT_SET, &dpcd_lane_cnt);
+	if (ret < 0) {
+		dev_err(dp->dev, "Failed to read link rate via AUX.\n");
+		kfree(*kern_buff);
+		return ret;
+	}
+
+	dpcd_lane_cnt &= DP_LANE_COUNT_MASK;
+	output_str_len = strlen(XILINX_DP_DEBUGFS_UINT8_MAX_STR);
+	output_str_len = min(XILINX_DP_DEBUGFS_READ_MAX_SIZE, output_str_len);
+	snprintf(*kern_buff, output_str_len, "%u", dpcd_lane_cnt);
+
+	return 0;
+}
+
+static ssize_t
+xilinx_dp_debugfs_output_display_format_read(char **kern_buff)
+{
+	int ret;
+	struct xilinx_drm_dp *dp = dp_debugfs.dp;
+	u8 old_output_fmt = dp_debugfs.old_output_fmt;
+	size_t output_str_len;
+	u32 num_colors;
+
+	dp_debugfs.testcase = DP_TC_NONE;
+
+	if (old_output_fmt == XILINX_DP_MISC0_RGB) {
+		num_colors = 3;
+	} else if (old_output_fmt == XILINX_DP_MISC0_YCRCB_422) {
+		num_colors = 2;
+	} else if (old_output_fmt == XILINX_DP_MISC0_YCRCB_444) {
+		num_colors = 3;
+	} else if (old_output_fmt == XILINX_DP_MISC1_Y_ONLY) {
+		num_colors = 1;
+	} else {
+		dev_err(dp->dev, "Invalid output format in misc0\n");
+		return -EINVAL;
+	}
+
+	ret = xilinx_dp_update_output_format(old_output_fmt, num_colors);
+	if (ret)
+		return ret;
+
+	output_str_len = strlen("Success");
+	output_str_len = min(XILINX_DP_DEBUGFS_READ_MAX_SIZE, output_str_len);
+	snprintf(*kern_buff, output_str_len, "%s", "Success");
+
+	return 0;
+}
+
+/* Match xilinx_dp_testcases vs dp_debugfs_reqs[] entry */
+struct xilinx_dp_debugfs_request dp_debugfs_reqs[] = {
+	{"LINK_RATE", DP_TC_LINK_RATE,
+			xilinx_dp_debugfs_max_linkrate_read,
+			xilinx_dp_debugfs_max_linkrate_write},
+	{"LANE_COUNT", DP_TC_LANE_COUNT,
+			xilinx_dp_debugfs_max_lanecnt_read,
+			xilinx_dp_debugfs_max_lanecnt_write},
+	{"OUTPUT_DISPLAY_FORMAT", DP_TC_OUTPUT_FMT,
+			xilinx_dp_debugfs_output_display_format_read,
+			xilinx_dp_debugfs_output_display_format_write},
+};
+
+static ssize_t xilinx_dp_debugfs_read(struct file *f, char __user *buf,
+				      size_t size, loff_t *pos)
+{
+	char *kern_buff = NULL;
+	size_t kern_buff_len, out_str_len;
+	int ret;
+
+	if (size <= 0)
+		return -EINVAL;
+
+	if (*pos != 0)
+		return 0;
+
+	kern_buff = kzalloc(XILINX_DP_DEBUGFS_READ_MAX_SIZE, GFP_KERNEL);
+	if (!kern_buff) {
+		dp_debugfs.testcase = DP_TC_NONE;
+		return -ENOMEM;
+	}
+
+	if (dp_debugfs.testcase == DP_TC_NONE) {
+		out_str_len = strlen("No testcase executed");
+		out_str_len = min(XILINX_DP_DEBUGFS_READ_MAX_SIZE, out_str_len);
+		snprintf(kern_buff, out_str_len, "%s", "No testcase executed");
+	} else {
+		ret = dp_debugfs_reqs[dp_debugfs.testcase].read_handler(
+				&kern_buff);
+		if (ret) {
+			kfree(kern_buff);
+			return ret;
+		}
+	}
+
+	kern_buff_len = strlen(kern_buff);
+	size = min(size, kern_buff_len);
+
+	ret = copy_to_user(buf, kern_buff, size);
+
+	kfree(kern_buff);
+	if (ret)
+		return ret;
+
+	*pos = size + 1;
+	return size;
+}
+
+static ssize_t
+xilinx_dp_debugfs_write(struct file *f, const char __user *buf,
+			size_t size, loff_t *pos)
+{
+	char *kern_buff;
+	char *dp_test_req;
+	int ret;
+	int i;
+
+	if (*pos != 0 || size <= 0)
+		return -EINVAL;
+
+	if (dp_debugfs.testcase != DP_TC_NONE)
+		return -EBUSY;
+
+	kern_buff = kzalloc(size, GFP_KERNEL);
+	if (!kern_buff)
+		return -ENOMEM;
+
+	ret = strncpy_from_user(kern_buff, buf, size);
+	if (ret < 0) {
+		kfree(kern_buff);
+		return ret;
+	}
+
+	/* Read the testcase name and argument from an user request */
+	dp_test_req = strsep(&kern_buff, " ");
+
+	for (i = 0; i < ARRAY_SIZE(dp_debugfs_reqs); i++) {
+		if (!strcasecmp(dp_test_req, dp_debugfs_reqs[i].req))
+			if (!dp_debugfs_reqs[i].write_handler(&kern_buff)) {
+				kfree(kern_buff);
+				return size;
+			}
+	}
+
+	kfree(kern_buff);
+	return -EINVAL;
+}
+
+static const struct file_operations fops_xilinx_dp_dbgfs = {
+	.owner = THIS_MODULE,
+	.read = xilinx_dp_debugfs_read,
+	.write = xilinx_dp_debugfs_write,
+};
+
+static int xilinx_dp_debugfs_init(struct xilinx_drm_dp *dp)
+{
+	int err;
+	struct dentry *xilinx_dp_debugfs_dir, *xilinx_dp_debugfs_file;
+
+	dp_debugfs.testcase = DP_TC_NONE;
+	dp_debugfs.dp = dp;
+
+	xilinx_dp_debugfs_dir = debugfs_create_dir("dp", NULL);
+	if (!xilinx_dp_debugfs_dir) {
+		dev_err(dp->dev, "debugfs_create_dir failed\n");
+		return -ENODEV;
+	}
+
+	xilinx_dp_debugfs_file =
+		debugfs_create_file("testcase", 0444, xilinx_dp_debugfs_dir,
+				    NULL, &fops_xilinx_dp_dbgfs);
+	if (!xilinx_dp_debugfs_file) {
+		dev_err(dp->dev, "debugfs_create_file testcase failed\n");
+		err = -ENODEV;
+		goto err_dbgfs;
+	}
+	return 0;
+
+err_dbgfs:
+	debugfs_remove_recursive(xilinx_dp_debugfs_dir);
+	xilinx_dp_debugfs_dir = NULL;
+	return err;
+}
+
+static void xilinx_dp_debugfs_mode_config(struct xilinx_drm_dp *dp)
+{
+	dp->mode.bw_code =
+		dp_debugfs.link_rate ? dp_debugfs.link_rate : dp->mode.bw_code;
+	dp->mode.lane_cnt =
+		dp_debugfs.lane_cnt ? dp_debugfs.lane_cnt : dp->mode.lane_cnt;
+}
+#else
+static int xilinx_dp_debugfs_init(struct xilinx_drm_dp *dp)
+{
+	return 0;
+}
+
+static void xilinx_dp_debugfs_mode_config(struct xilinx_drm_dp *dp)
+{
+}
+#endif /* DRM_XILINX_DP_DEBUG_FS */
+
 /**
  * xilinx_drm_dp_aux_cmd_submit - Submit aux command
  * @dp: DisplayPort IP core structure
@@ -510,6 +914,7 @@ static int xilinx_drm_dp_mode_configure(struct xilinx_drm_dp *dp, int pclock,
 				dp->mode.bw_code = bws[clock];
 				dp->mode.lane_cnt = lane_cnt;
 				dp->mode.pclock = pclock;
+				xilinx_dp_debugfs_mode_config(dp);
 				return dp->mode.bw_code;
 			}
 		}
@@ -1634,6 +2039,8 @@ static int xilinx_drm_dp_probe(struct platform_device *pdev)
 		  XILINX_DP_TX_CORE_ID_REVISION_SHIFT));
 
 	pm_runtime_enable(dp->dev);
+
+	xilinx_dp_debugfs_init(dp);
 
 	return 0;
 
