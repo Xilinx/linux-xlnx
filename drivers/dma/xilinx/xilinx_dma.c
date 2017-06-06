@@ -177,6 +177,10 @@
 #define XILINX_DMA_BD_TDEST_MASK	GENMASK(4, 0)
 #define XILINX_DMA_BD_STRIDE_SHIFT	0
 #define XILINX_DMA_BD_VSIZE_SHIFT	19
+#define XILINX_DMA_BD_AXCACHE_SHIFT    24
+#define XILINX_DMA_BD_AXCACHE_MASK     GENMASK(27, 24)
+
+#define COHERENT_DMA_AXCACHE 0xF
 
 /* AXI CDMA Specific Registers/Offsets */
 #define XILINX_CDMA_REG_SRCADDR		0x18
@@ -325,6 +329,7 @@ struct xilinx_dma_tx_descriptor {
  * @err: Channel has errors
  * @idle: Check for channel idle
  * @has_fstoreen: Check for frame store configuration
+ * @is_dmacoherent: Tells whether dma operations are coherent or not
  * @tasklet: Cleanup work after irq
  * @config: Device configuration info
  * @flush_on_fsync: Flush on Frame sync
@@ -360,6 +365,7 @@ struct xilinx_dma_chan {
 	bool err;
 	bool idle;
 	bool has_fstoreen;
+	bool is_dmacoherent;
 	struct tasklet_struct tasklet;
 	struct xilinx_vdma_config config;
 	bool flush_on_fsync;
@@ -1969,6 +1975,7 @@ xilinx_dma_prep_interleaved(struct dma_chan *dchan,
 	struct xilinx_dma_tx_descriptor *desc;
 	struct xilinx_axidma_tx_segment *segment;
 	struct xilinx_axidma_desc_hw *hw;
+	u32 val;
 
 	if (!is_slave_direction(xt->dir))
 		return NULL;
@@ -2001,7 +2008,12 @@ xilinx_dma_prep_interleaved(struct dma_chan *dchan,
 	else
 		hw->buf_addr = xt->src_start;
 
-	hw->mcdma_control = chan->tdest & XILINX_DMA_BD_TDEST_MASK;
+	val = chan->tdest & XILINX_DMA_BD_TDEST_MASK;
+	if(chan->is_dmacoherent) {
+	   val = (val & ~XILINX_DMA_BD_AXCACHE_MASK) |
+	   (COHERENT_DMA_AXCACHE << XILINX_DMA_BD_AXCACHE_SHIFT);
+	}
+	hw->mcdma_control = val;
 	hw->vsize_stride = (xt->numf << XILINX_DMA_BD_VSIZE_SHIFT) &
 			    XILINX_DMA_BD_VSIZE_MASK;
 	hw->vsize_stride |= (xt->sgl[0].icg + xt->sgl[0].size) &
@@ -2379,6 +2391,8 @@ static int xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 	INIT_LIST_HEAD(&chan->done_list);
 	INIT_LIST_HEAD(&chan->active_list);
 	INIT_LIST_HEAD(&chan->free_seg_list);
+
+	chan->is_dmacoherent =  of_property_read_bool(node, "dma-coherent");
 
 	/* Retrieve the channel properties from the device tree */
 	has_dre = of_property_read_bool(node, "xlnx,include-dre");
