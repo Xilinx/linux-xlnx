@@ -280,7 +280,7 @@ static void zynqmp_gqspi_selectslave(struct zynqmp_qspi *instanceptr,
  * @xqspi:		Pointer to the zynqmp_qspi structure
  * @baudrateval:	Buadrate to configure
  */
-void zynqmp_qspi_set_tapdelay(struct zynqmp_qspi *xqspi, u32 baudrateval)
+static void zynqmp_qspi_set_tapdelay(struct zynqmp_qspi *xqspi, u32 baudrateval)
 {
 	u32 lpbkdlyadj = 0, datadlyadj = 0, clk_rate;
 	u32 reqhz = 0;
