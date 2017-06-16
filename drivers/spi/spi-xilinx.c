@@ -626,14 +626,12 @@ static const struct dev_pm_ops xilinx_spi_dev_pm_ops = {
 static int xilinx_spi_probe(struct platform_device *pdev)
 {
 	struct xilinx_spi *xspi;
-	struct xspi_platform_data *pdata;
 	struct resource *res;
 	int ret, num_cs = 0, bits_per_word = 8;
 	struct spi_master *master;
 	struct device_node *nc;
 	u32 tmp, rx_bus_width, fifo_size;
 
-	pdata = dev_get_platdata(&pdev->dev);
 	of_property_read_u32(pdev->dev.of_node, "num-cs",
 				&num_cs);
 	if (!num_cs)
