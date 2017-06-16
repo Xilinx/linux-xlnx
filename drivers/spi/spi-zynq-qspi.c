@@ -692,9 +692,11 @@ static int zynq_qspi_probe(struct platform_device *pdev)
 		goto remove_master;
 	}
 
-	if (of_property_read_u32(pdev->dev.of_node, "is-dual", &xqspi->is_dual))
+	if (of_property_read_u32(pdev->dev.of_node, "is-dual",
+				 &xqspi->is_dual)) {
 		dev_warn(&pdev->dev, "couldn't determine configuration info");
 		dev_warn(&pdev->dev, "about dual memories. defaulting to single memory\n");
+	}
 
 	xqspi->pclk = devm_clk_get(&pdev->dev, "pclk");
 	if (IS_ERR(xqspi->pclk)) {
