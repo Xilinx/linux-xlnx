@@ -302,7 +302,7 @@ static ssize_t zynqmp_ocm_edac_inject_cebitpos_show(struct edac_device_ctl_info
 {
 	struct zynqmp_ocm_edac_priv *priv = dci->pvt_info;
 
-	if (priv->ce_bitpos >= 0 && priv->ce_bitpos <= 31)
+	if (priv->ce_bitpos <= 31)
 		return sprintf(data, "Fault Injection Data Reg: [0x%x]\n\r",
 			((readl(priv->baseaddr + OCM_FID0_OFST))));
 
@@ -331,7 +331,7 @@ static ssize_t zynqmp_ocm_edac_inject_cebitpos_store(
 	if (kstrtou8(data, 0, &priv->ce_bitpos))
 		return -EINVAL;
 
-	if (priv->ce_bitpos >= 0 && priv->ce_bitpos <= 31) {
+	if (priv->ce_bitpos <= 31) {
 		writel(1 << priv->ce_bitpos, priv->baseaddr + OCM_FID0_OFST);
 		writel(0, priv->baseaddr + OCM_FID1_OFST);
 	} else if (priv->ce_bitpos >= 32 && priv->ce_bitpos <= 63) {
@@ -359,7 +359,7 @@ static ssize_t zynqmp_ocm_edac_inject_uebitpos0_show(
 {
 	struct zynqmp_ocm_edac_priv *priv = dci->pvt_info;
 
-	if (priv->ue_bitpos0 >= 0 && priv->ue_bitpos0 <= 31)
+	if (priv->ue_bitpos0 <= 31)
 		return sprintf(data, "Fault Injection Data Reg: [0x%x]\n\r",
 			((readl(priv->baseaddr + OCM_FID0_OFST))));
 
@@ -389,7 +389,7 @@ static ssize_t zynqmp_ocm_edac_inject_uebitpos0_store(
 	if (kstrtou8(data, 0, &priv->ue_bitpos0))
 		return -EINVAL;
 
-	if (priv->ue_bitpos0 >= 0 && priv->ue_bitpos0 <= 31)
+	if (priv->ue_bitpos0 <= 31)
 		writel(1 << priv->ue_bitpos0, priv->baseaddr + OCM_FID0_OFST);
 	else if (priv->ue_bitpos0 >= 32 && priv->ue_bitpos0 <= 63)
 		writel(1 << (priv->ue_bitpos0 - 32),
@@ -415,7 +415,7 @@ static ssize_t zynqmp_ocm_edac_inject_uebitpos1_show(
 {
 	struct zynqmp_ocm_edac_priv *priv = dci->pvt_info;
 
-	if (priv->ue_bitpos1 >= 0 && priv->ue_bitpos1 <= 31)
+	if (priv->ue_bitpos1 <= 31)
 		return sprintf(data, "Fault Injection Data Reg: [0x%x]\n\r",
 			((readl(priv->baseaddr + OCM_FID0_OFST))));
 
@@ -457,8 +457,8 @@ static ssize_t zynqmp_ocm_edac_inject_uebitpos1_store(
 	 * only FID0 register or if it is 64 bit data, then configure only
 	 * FID1 register.
 	 */
-	if ((priv->ue_bitpos0 >= 0 && priv->ue_bitpos0 <= 31) &&
-			(priv->ue_bitpos1 >= 0 && priv->ue_bitpos1 <= 31)) {
+	if (priv->ue_bitpos0 <= 31 &&
+	    priv->ue_bitpos1 <= 31) {
 		mask = (1 << priv->ue_bitpos0);
 		mask |= (1 << priv->ue_bitpos1);
 		writel(mask, priv->baseaddr + OCM_FID0_OFST);
@@ -474,12 +474,12 @@ static ssize_t zynqmp_ocm_edac_inject_uebitpos1_store(
 	/* If one bit position is referring a bit in 32 bit data and other in
 	 * 64 bit data, just configure FID0/FID1 based on uebitpos1.
 	 */
-	if ((priv->ue_bitpos0 >= 0 && priv->ue_bitpos0 <= 31) &&
-			(priv->ue_bitpos1 >= 32 && priv->ue_bitpos1 <= 63)) {
+	if ((priv->ue_bitpos0 <= 31) &&
+	    (priv->ue_bitpos1 >= 32 && priv->ue_bitpos1 <= 63)) {
 		writel(1 << (priv->ue_bitpos1 - 32),
 				priv->baseaddr + OCM_FID1_OFST);
 	} else if ((priv->ue_bitpos0 >= 32 && priv->ue_bitpos0 <= 63) &&
-			(priv->ue_bitpos1 >= 0 && priv->ue_bitpos1 <= 31)) {
+			(priv->ue_bitpos1 <= 31)) {
 		writel(1 << priv->ue_bitpos1,
 				priv->baseaddr + OCM_FID0_OFST);
 	} else {
