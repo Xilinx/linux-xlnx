@@ -545,7 +545,7 @@ static int xcan_do_set_mode(struct net_device *ndev, enum can_mode mode)
  *
  * Return: Free Buffer on success and -1 if no buffer available
  */
-int xcan_get_freebuffer(struct xcan_priv *priv)
+static int xcan_get_freebuffer(struct xcan_priv *priv)
 {
 	u32 bufindex = 0, trrregval = 0;
 
