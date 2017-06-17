@@ -1729,6 +1729,7 @@ static int axienet_open(struct net_device *ndev)
 			goto err_eth_irq;
 	}
 
+	netif_tx_start_all_queues(ndev);
 	return 0;
 
 err_eth_irq:
