@@ -1161,11 +1161,22 @@ static int zynqmp_dma_probe(struct platform_device *pdev)
 		return PTR_ERR(zdev->clk_apb);
 	}
 
+	ret = clk_prepare_enable(zdev->clk_main);
+	if (ret) {
+		dev_err(&pdev->dev, "Unable to enable main clock.\n");
+		return ret;
+	}
+
+	ret = clk_prepare_enable(zdev->clk_apb);
+	if (ret) {
+		dev_err(&pdev->dev, "Unable to enable apb clock.\n");
+		goto err_disable_clk;
+	}
+
 	platform_set_drvdata(pdev, zdev);
 	pm_runtime_set_autosuspend_delay(zdev->dev, ZDMA_PM_TIMEOUT);
 	pm_runtime_use_autosuspend(zdev->dev);
 	pm_runtime_enable(zdev->dev);
-	pm_runtime_get_sync(zdev->dev);
 
 	ret = zynqmp_dma_chan_probe(zdev, pdev);
 	if (ret) {
@@ -1193,8 +1204,10 @@ static int zynqmp_dma_probe(struct platform_device *pdev)
 
 	return 0;
 
+err_disable_clk:
+	clk_disable_unprepare(zdev->clk_main);
 err_disable_pm:
-	pm_runtime_put_sync_suspend(zdev->dev);
+	clk_disable_unprepare(zdev->clk_apb);
 	pm_runtime_disable(zdev->dev);
 free_chan_resources:
 	zynqmp_dma_chan_remove(zdev->chan);
@@ -1216,6 +1229,8 @@ static int zynqmp_dma_remove(struct platform_device *pdev)
 
 	zynqmp_dma_chan_remove(zdev->chan);
 	pm_runtime_disable(zdev->dev);
+	clk_disable_unprepare(zdev->clk_apb);
+	clk_disable_unprepare(zdev->clk_main);
 
 	return 0;
 }
