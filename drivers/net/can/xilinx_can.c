@@ -1550,13 +1550,20 @@ static int xcan_probe(struct platform_device *pdev)
 	priv->write_reg = xcan_write_reg_le;
 	priv->read_reg = xcan_read_reg_le;
 
-	pm_runtime_enable(&pdev->dev);
-	ret = pm_runtime_get_sync(&pdev->dev);
-	if (ret < 0) {
-		netdev_err(ndev, "%s: pm_runtime_get failed(%d)\n",
-			__func__, ret);
-		goto err_pmdisable;
+	ret = clk_prepare_enable(priv->bus_clk);
+	if (ret) {
+		dev_err(&pdev->dev, "Cannot enable clock.\n");
+		goto err_free;
 	}
+
+	ret = clk_prepare_enable(priv->can_clk);
+	if (ret) {
+		dev_err(&pdev->dev, "Cannot enable clock.\n");
+		goto err_clk;
+	}
+
+	pm_runtime_set_active(&pdev->dev);
+	pm_runtime_enable(&pdev->dev);
 
 	if (priv->read_reg(priv, XCAN_SR_OFFSET) != XCAN_SR_CONFIG_MASK) {
 		priv->write_reg = xcan_write_reg_be;
@@ -1584,9 +1591,11 @@ static int xcan_probe(struct platform_device *pdev)
 	return 0;
 
 err_disableclks:
-	pm_runtime_put(priv->dev);
-err_pmdisable:
 	pm_runtime_disable(&pdev->dev);
+	pm_runtime_set_suspended(&pdev->dev);
+	clk_disable_unprepare(priv->can_clk);
+err_clk:
+	clk_disable_unprepare(priv->bus_clk);
 err_free:
 	free_candev(ndev);
 err:
@@ -1606,6 +1615,12 @@ static int xcan_remove(struct platform_device *pdev)
 	struct xcan_priv *priv = netdev_priv(ndev);
 
 	unregister_candev(ndev);
+
+	if (!pm_runtime_suspended(&pdev->dev)) {
+		clk_disable_unprepare(priv->bus_clk);
+		clk_disable_unprepare(priv->can_clk);
+	}
+
 	pm_runtime_disable(&pdev->dev);
 	netif_napi_del(&priv->napi);
 	free_candev(ndev);
