@@ -1021,6 +1021,7 @@ static int dwc3_probe(struct platform_device *pdev)
 	u8			lpm_nyet_threshold;
 	u8			tx_de_emphasis;
 	u8			hird_threshold;
+	u32			mdwidth;
 
 	int			ret;
 
@@ -1152,8 +1153,12 @@ static int dwc3_probe(struct platform_device *pdev)
 	if (!dev->dma_mask) {
 		dev->dma_mask = dev->parent->dma_mask;
 		dev->dma_parms = dev->parent->dma_parms;
-		dma_set_coherent_mask(dev, dev->parent->coherent_dma_mask);
 	}
+
+	/* Set dma coherent mask to DMA BUS data width */
+	mdwidth = DWC3_GHWPARAMS0_MDWIDTH(dwc->hwparams.hwparams0);
+	dev_dbg(dev, "Enabling %d-bit DMA addresses.\n", mdwidth);
+	dma_set_coherent_mask(dev, DMA_BIT_MASK(mdwidth));
 
 	pm_runtime_set_active(dev);
 	pm_runtime_use_autosuspend(dev);
