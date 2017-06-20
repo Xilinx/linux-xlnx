@@ -1056,6 +1056,7 @@ static int xdma_probe(struct platform_device *pdev)
 
 	/* Set this as configurable once HPC works */
 	arch_setup_dma_ops(&pdev->dev, 0, 0, NULL, false);
+	dma_set_mask(&pdev->dev, 0xFFFFFFFFFFFFFFFFull);
 
 	dma_config = (struct xdma_device_config *)xdev->dev->platform_data;
 	if (dma_config->channel_count < 1 || dma_config->channel_count > 2)
