@@ -247,9 +247,9 @@ static void zynq_qspi_read_rx_fifo(struct zynq_qspi *xqspi, unsigned int size)
 
 	if (xqspi->rxbuf) {
 		xsize = size;
-		if (xqspi->is_dual && !xqspi->is_instr && (size%2))
+		if (xqspi->is_dual && !xqspi->is_instr && (size % 2))
 			xsize++;
-		memcpy(xqspi->rxbuf, ((u8 *) &data) + 4 - xsize, size);
+		memcpy(xqspi->rxbuf, ((u8 *)&data) + 4 - xsize, size);
 		xqspi->rxbuf += size;
 	}
 
@@ -271,7 +271,7 @@ static void zynq_qspi_read_rx_fifo(struct zynq_qspi *xqspi, unsigned int size)
  */
 static void zynq_qspi_write_tx_fifo(struct zynq_qspi *xqspi, unsigned int size)
 {
-	static const unsigned offset[4] = {
+	static const unsigned int offset[4] = {
 		ZYNQ_QSPI_TXD_00_01_OFFSET, ZYNQ_QSPI_TXD_00_10_OFFSET,
 		ZYNQ_QSPI_TXD_00_11_OFFSET, ZYNQ_QSPI_TXD_00_00_OFFSET };
 	unsigned int xsize;
@@ -288,9 +288,9 @@ static void zynq_qspi_write_tx_fifo(struct zynq_qspi *xqspi, unsigned int size)
 	xqspi->bytes_to_transfer -= size;
 
 	xsize = size;
-	if (xqspi->is_dual && !xqspi->is_instr && (size%2))
+	if (xqspi->is_dual && !xqspi->is_instr && (size % 2))
 		xsize++;
-	zynq_qspi_write(xqspi, offset[xsize-1], data);
+	zynq_qspi_write(xqspi, offset[xsize - 1], data);
 }
 
 /**
@@ -468,20 +468,20 @@ static void zynq_qspi_fill_tx_fifo(struct zynq_qspi *xqspi, int txcount,
 		return;
 	}
 
-	count = len/4;
+	count = len / 4;
 	if (count > txcount)
 		count = txcount;
 
 	if (xqspi->txbuf) {
 		writesl(xqspi->regs + ZYNQ_QSPI_TXD_00_00_OFFSET,
 			xqspi->txbuf, count);
-		xqspi->txbuf += count*4;
+		xqspi->txbuf += count * 4;
 	} else {
 		for (k = 0; k < count; k++)
 			writel_relaxed(0, xqspi->regs +
 					  ZYNQ_QSPI_TXD_00_00_OFFSET);
 	}
-	xqspi->bytes_to_transfer -= count*4;
+	xqspi->bytes_to_transfer -= count * 4;
 }
 
 /**
@@ -494,20 +494,20 @@ static void zynq_qspi_drain_rx_fifo(struct zynq_qspi *xqspi, int rxcount)
 	int count, len, k;
 
 	len = xqspi->bytes_to_receive - xqspi->bytes_to_transfer;
-	count = len/4;
+	count = len / 4;
 	if (count > rxcount)
 		count = rxcount;
 
 	if (xqspi->rxbuf) {
 		readsl(xqspi->regs + ZYNQ_QSPI_RXD_OFFSET,
 		       xqspi->rxbuf, count);
-		xqspi->rxbuf += count*4;
+		xqspi->rxbuf += count * 4;
 	} else {
 		for (k = 0; k < count; k++)
 			readl_relaxed(xqspi->regs + ZYNQ_QSPI_RXD_OFFSET);
 	}
-	xqspi->bytes_to_receive -= count*4;
-	len -= count*4;
+	xqspi->bytes_to_receive -= count * 4;
+	len -= count * 4;
 
 	if (len && len < 4 && count < rxcount)
 		zynq_qspi_read_rx_fifo(xqspi, len);
@@ -678,7 +678,7 @@ static int zynq_qspi_probe(struct platform_device *pdev)
 	u32 num_cs;
 
 	master = spi_alloc_master(&pdev->dev, sizeof(*xqspi));
-	if (master == NULL)
+	if (!master)
 		return -ENOMEM;
 
 	xqspi = spi_master_get_devdata(master);
