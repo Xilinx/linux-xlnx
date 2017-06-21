@@ -212,7 +212,7 @@ static void zynq_qspi_init_hw(struct zynq_qspi *xqspi)
 			ZYNQ_QSPI_TX_THRESHOLD);
 
 	if (xqspi->is_dual)
-		/* Enable two memories on seperate buses */
+		/* Enable two memories on separate buses */
 		zynq_qspi_write(xqspi, ZYNQ_QSPI_LINEAR_CFG_OFFSET,
 				(ZYNQ_QSPI_LCFG_TWO_MEM_MASK |
 				ZYNQ_QSPI_LCFG_SEP_BUS_MASK |
