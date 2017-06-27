@@ -2632,6 +2632,9 @@ static int axienet_probe(struct platform_device *pdev)
 	}
 
 #ifdef CONFIG_XILINX_TSN
+	of_property_read_u32(pdev->dev.of_node, "xlnx,num-queue", &lp->num_q);
+	pr_info("Number of TSN priority queues: %d\n", lp->num_q);
+
 	slave = of_property_read_bool(pdev->dev.of_node,
 				      "xlnx,tsn-slave");
 	if (slave)
