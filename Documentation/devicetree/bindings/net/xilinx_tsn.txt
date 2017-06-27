@@ -18,6 +18,7 @@ Optional properties:
 - xlnx,rxcsum		: Check for rx checksum.
 - xlnx,phy-type		: Phy device type.
 - xlnx,eth-hasnobuf	: Used when 1G MAC is configured in non processor mode.
+- xlnx,num-queue	: Number of queue supported in current design
 
 Example:
 
@@ -36,4 +37,5 @@ Example:
 		xlnx,tsn-slave;
 		xlnx,eth-hasnobuf;
 		xlnx,bus2core-clk-ratio = <0x1>;
+		xlnx,num-queue = <0x2>;
 	};
