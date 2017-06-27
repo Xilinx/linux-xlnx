@@ -22,6 +22,7 @@ static int __axienet_set_schedule(struct net_device *ndev, struct qbv_info *qbv)
 {
 	struct axienet_local *lp = netdev_priv(ndev);
 	int i;
+	unsigned int acl_bit_map = 0;
 	u32 u_config_change = 0;
 	u8 port = qbv->port;
 
@@ -51,8 +52,11 @@ static int __axienet_set_schedule(struct net_device *ndev, struct qbv_info *qbv)
 
 	/* program each list */
 	for (i = 0; i < qbv->list_length; i++) {
+		acl_bit_map = qbv->acl_gate_state[i];
+		if ((lp->num_q == 2) && (acl_bit_map == 4)) /* for 2 quese ST */
+			acl_bit_map = 2;
 		axienet_iow(lp,  ADMIN_CTRL_LIST(port, i),
-			    (qbv->acl_gate_state[i] & (ACL_GATE_STATE_MASK)) <<
+			    (acl_bit_map & (ACL_GATE_STATE_MASK)) <<
 			    ACL_GATE_STATE_SHIFT);
 
 	    /* set the time for each entry */
