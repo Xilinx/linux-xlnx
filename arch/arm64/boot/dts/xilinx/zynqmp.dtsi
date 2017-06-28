@@ -958,7 +958,7 @@
 			power-domains = <&pd_uart1>;
 		};
 
-		usb0: usb0 {
+		usb0: usb0@ff9d0000 {
 			#address-cells = <2>;
 			#size-cells = <2>;
 			status = "disabled";
@@ -986,7 +986,7 @@
 			};
 		};
 
-		usb1: usb1 {
+		usb1: usb1@ff9e0000 {
 			#address-cells = <2>;
 			#size-cells = <2>;
 			status = "disabled";
