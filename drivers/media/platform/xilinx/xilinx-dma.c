@@ -418,6 +418,7 @@ error_stop:
 	video_device_pipeline_stop(&dma->video);
 
 error:
+	dmaengine_terminate_all(dma->dma);
 	/* Give back all queued buffers to videobuf2. */
 	spin_lock_irq(&dma->queued_lock);
 	list_for_each_entry_safe(buf, nbuf, &dma->queued_bufs, queue) {
