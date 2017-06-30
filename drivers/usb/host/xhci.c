@@ -1560,6 +1560,11 @@ int xhci_urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status)
 		goto done;
 	}
 
+	/* Delete the stream timer */
+	if ((xhci->quirks & XHCI_STREAM_QUIRK) && (urb->stream_id > 0))
+		del_timer(&ep_ring->stream_timer);
+
+
 	urb_priv = urb->hcpriv;
 	i = urb_priv->td_cnt;
 	if (i < urb_priv->length)
