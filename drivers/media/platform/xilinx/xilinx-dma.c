@@ -415,6 +415,7 @@ static int xvip_dma_start_streaming(struct vb2_queue *vq, unsigned int count)
 	return 0;
 
 error_stop:
+	dmaengine_terminate_all(dma->dma);
 	video_device_pipeline_stop(&dma->video);
 
 error:
