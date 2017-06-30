@@ -80,6 +80,8 @@ static int uas_try_complete(struct scsi_cmnd *cmnd, const char *caller);
 static void uas_free_streams(struct uas_dev_info *devinfo);
 static void uas_log_cmd_state(struct scsi_cmnd *cmnd, const char *prefix,
 				int status);
+static struct urb *uas_alloc_cmd_urb(struct uas_dev_info *devinfo, gfp_t gfp,
+					struct scsi_cmnd *cmnd);
 
 static void uas_do_work(struct work_struct *work)
 {
@@ -269,18 +271,284 @@ static bool uas_evaluate_response_iu(struct response_iu *riu, struct scsi_cmnd *
 	return response_code == RC_TMF_SUCCEEDED;
 }
 
+static void dummy_scsi_done(struct scsi_cmnd *cmnd)
+{
+	struct uas_cmd_info *cmdinfo = (void *)&cmnd->SCp;
+	struct uas_dev_info *devinfo = (void *)cmnd->device->hostdata;
+
+	devinfo->cmnd[cmdinfo->uas_tag - 1] = NULL;
+	kfree(cmnd->request);
+	kfree(cmnd);
+}
+
+static void uas_workaround_cmplt(struct urb *urb)
+{
+	struct scsi_cmnd *cmnd;
+	struct uas_cmd_info *cmdinfo;
+	unsigned long flags;
+
+	if ((urb->context != NULL) && (urb->status == 0)) {
+		cmnd = urb->context;
+		cmdinfo = (struct uas_cmd_info *)&cmnd->SCp;
+
+		if (cmdinfo->data_in_urb != urb)
+			cmnd->scsi_done(cmnd);
+	}
+
+	usb_free_urb(urb);
+}
+
+static struct urb *uas_workaround_cmnd(struct uas_dev_info *devinfo, gfp_t gfp,
+				       struct scsi_cmnd *cmnd) {
+	struct scsi_device *sdev = cmnd->device;
+	struct urb *urb;
+	int err;
+
+	urb = uas_alloc_cmd_urb(devinfo, gfp, cmnd);
+	if (!urb) {
+		shost_printk(KERN_INFO, sdev->host,
+			"%s: Failed to allocate cmnd URB\n", __func__);
+		return NULL;
+	}
+
+	err = usb_submit_urb(urb, gfp);
+	if (err) {
+		shost_printk(KERN_INFO, sdev->host,
+			"%s: Failed to submit cmd, err=%d\n", __func__, err);
+		goto free;
+	}
+	usb_anchor_urb(urb, &devinfo->cmd_urbs);
+	return urb;
+
+free:
+	usb_free_urb(urb);
+	return NULL;
+
+}
+
+static struct urb *uas_workaround_data(struct uas_dev_info *devinfo, gfp_t gfp,
+				       struct scsi_cmnd *cmnd) {
+	struct scsi_device *sdev = cmnd->device;
+	struct usb_device *udev = devinfo->udev;
+	struct uas_cmd_info *cmdinfo = (void *)&cmnd->SCp;
+	struct urb *urb = usb_alloc_urb(0, gfp);
+	struct scsi_data_buffer *sdb = NULL;
+	void *temp_buf;
+	unsigned int pipe;
+	int err;
+
+	if (!urb) {
+		shost_printk(KERN_INFO, sdev->host,
+			"%s: Failed to allocate URB\n", __func__);
+		return NULL;
+	}
+
+	cmdinfo->data_in_urb = urb;
+	sdb = &cmnd->sdb;
+	pipe = devinfo->data_in_pipe;
+	temp_buf = kzalloc(sdb->length, GFP_ATOMIC);
+	if (!temp_buf) {
+		shost_printk(KERN_INFO, sdev->host,
+			"%s: Failed to allocate memory\n", __func__);
+		goto free;
+	}
+
+	usb_fill_bulk_urb(urb, udev, pipe, temp_buf, sdb->length,
+			  uas_workaround_cmplt, cmnd);
+	if (devinfo->use_streams)
+		urb->stream_id = cmdinfo->uas_tag;
+	urb->transfer_flags |= URB_FREE_BUFFER;
+	err = usb_submit_urb(urb, GFP_ATOMIC);
+	if (err) {
+		shost_printk(KERN_INFO, sdev->host,
+			"%s: Failed to submit Data In urb, err = %d\n",
+			__func__, err);
+		goto free;
+	}
+
+	usb_anchor_urb(urb, &devinfo->data_urbs);
+	return urb;
+
+free:
+	usb_free_urb(urb);
+	return NULL;
+}
+
+static struct urb *uas_workaround_sense(struct uas_dev_info *devinfo, gfp_t gfp,
+				       struct scsi_cmnd *cmnd) {
+	struct scsi_device *sdev = cmnd->device;
+	struct usb_device *udev = devinfo->udev;
+	struct uas_cmd_info *cmdinfo = (void *)&cmnd->SCp;
+	struct urb *urb = usb_alloc_urb(0, gfp);
+	struct sense_iu *iu;
+	int err;
+
+	if (!urb) {
+		shost_printk(KERN_INFO, sdev->host,
+			"%s: Failed to allocate URB\n", __func__);
+		return NULL;
+	}
+
+	iu = kzalloc(sizeof(*iu), gfp);
+	if (!iu) {
+		shost_printk(KERN_INFO, sdev->host,
+			"%s: Failed to allocate memory for sense_iu\n",
+			__func__);
+		goto free;
+	}
+
+	usb_fill_bulk_urb(urb, udev, devinfo->status_pipe, iu, sizeof(*iu),
+			  uas_workaround_cmplt, cmnd);
+	if (devinfo->use_streams)
+		urb->stream_id = cmdinfo->uas_tag;
+	urb->transfer_flags |= URB_FREE_BUFFER;
+	err = usb_submit_urb(urb, GFP_ATOMIC);
+	if (err) {
+		shost_printk(KERN_INFO, sdev->host,
+			"%s: Failed to submit Sense urb, err = %d\n",
+			__func__, err);
+		goto free;
+	}
+	usb_anchor_urb(urb, &devinfo->sense_urbs);
+	return urb;
+
+free:
+	usb_free_urb(urb);
+	return NULL;
+}
+
+/*
+ * This function is called only if the DATA IN stream timer expired, which
+ * means xhci host controller has failed to process the TRB's present in the
+ * stream ring. As a part of recovery sequence, this function re-submits the
+ * previous stopped urb on which xhci failed to process data and along with
+ * that urb it prepares & submits sense, data and cmnd urb with scsi command
+ * set to standard inquiry request containing the next free stream id tag.
+ * Doing so will make the xhci start processing the previous stopped urb
+ * along with the urb that has standard inquiry scsi command.
+ */
+static int uas_workaround(struct urb *urb)
+{
+	struct scsi_cmnd *cmnd = urb->context;
+	struct scsi_device *sdev = cmnd->device;
+	struct uas_dev_info *devinfo = (void *)cmnd->device->hostdata;
+	struct scsi_cmnd *temp_cmnd;
+	struct uas_cmd_info *temp_cmdinfo;
+	struct urb *sense_urb, *data_urb, *cmnd_urb;
+	struct request *temp_request;
+	unsigned int idx;
+	int err;
+	char inquiry[16] = { 0x12, 0x0, 0x0, 0x0, 0x10, 0x0, 0x0, 0x0,
+				0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0, 0x0 };
+
+
+	/* Find a free uas-tag */
+	for (idx = 0; idx < devinfo->qdepth; idx++) {
+		if (!devinfo->cmnd[idx])
+			break;
+	}
+
+	if (idx == devinfo->qdepth) {
+		shost_printk(KERN_INFO, sdev->host,
+			"%s: Failed to find free tag\n", __func__);
+		err = -EINVAL;
+		goto free;
+	}
+
+	/* Create a scsi_cmnd and send dummy inquiry data on the next
+	 * available tag
+	 */
+	temp_cmnd = kzalloc(sizeof(struct scsi_cmnd), GFP_ATOMIC);
+	if (!temp_cmnd) {
+		shost_printk(KERN_INFO, sdev->host,
+			"%s: Failed to allocate memory for scsi_cmnd\n",
+			__func__);
+		err = -ENOMEM;
+		goto free;
+	}
+
+	temp_request = kzalloc(sizeof(struct request), GFP_ATOMIC);
+	if (!temp_cmnd) {
+		shost_printk(KERN_INFO, sdev->host,
+			"%s: Failed to allocate memory for request\n",
+			__func__);
+		err = -ENOMEM;
+		goto free;
+	}
+
+	temp_cmnd->device = cmnd->device;
+	temp_cmnd->cmnd = inquiry;
+	temp_cmnd->cmd_len = 16;
+	temp_cmnd->sdb.length = 0x10;
+	temp_cmnd->scsi_done = dummy_scsi_done;
+	temp_request->tag = idx;
+	temp_cmnd->request = temp_request;
+
+	temp_cmdinfo = (struct uas_cmd_info *)&temp_cmnd->SCp;
+	memset(temp_cmdinfo, 0, sizeof(struct uas_cmd_info));
+
+	temp_cmdinfo->uas_tag = idx + 1;
+	devinfo->cmnd[idx] = temp_cmnd;
+
+	/* Submit previously stopped URB first */
+	err = usb_submit_urb(urb, GFP_ATOMIC);
+	if (err) {
+		shost_printk(KERN_INFO, sdev->host,
+			"%s: submit err %d\n", __func__, err);
+		kfree(temp_cmnd);
+		kfree(temp_request);
+		goto free;
+	}
+	usb_anchor_urb(urb, &devinfo->data_urbs);
+
+	/* Allocate and submit SENSE urb for next available tag */
+	sense_urb = uas_workaround_sense(devinfo, GFP_ATOMIC, temp_cmnd);
+	if (!sense_urb) {
+		kfree(temp_request);
+		kfree(temp_cmnd);
+		goto free;
+	}
+
+	/* Allocate and submit DATA IN urb for next available tag */
+	data_urb = uas_workaround_data(devinfo, GFP_ATOMIC, temp_cmnd);
+	if (!data_urb) {
+		/* Kill previously allocated sense urb */
+		sense_urb->context = NULL;
+		usb_kill_urb(sense_urb);
+		usb_put_urb(sense_urb);
+		kfree(temp_request);
+		kfree(temp_cmnd);
+		goto free;
+	}
+
+	/* Allocate and submit CMND urb with dummy inquiry data */
+	cmnd_urb = uas_workaround_cmnd(devinfo, GFP_ATOMIC, temp_cmnd);
+	if (!cmnd_urb) {
+		/* Kill previously allocated data urb */
+		data_urb->context = NULL;
+		usb_kill_urb(data_urb);
+		usb_put_urb(data_urb);
+		kfree(temp_request);
+		kfree(temp_cmnd);
+	}
+
+free:
+	return err;
+}
+
 static void uas_stat_cmplt(struct urb *urb)
 {
 	struct iu *iu = urb->transfer_buffer;
-	struct Scsi_Host *shost = urb->context;
-	struct uas_dev_info *devinfo = (struct uas_dev_info *)shost->hostdata;
+	struct scsi_cmnd *cmnd = (struct scsi_cmnd *)urb->context;
+	struct uas_dev_info *devinfo =
+				(struct uas_dev_info *)cmnd->device->hostdata;
 	struct urb *data_in_urb = NULL;
 	struct urb *data_out_urb = NULL;
-	struct scsi_cmnd *cmnd;
 	struct uas_cmd_info *cmdinfo;
 	unsigned long flags;
 	unsigned int idx;
 	int status = urb->status;
+	int err;
 	bool success;
 
 	spin_lock_irqsave(&devinfo->lock, flags);
@@ -289,6 +557,21 @@ static void uas_stat_cmplt(struct urb *urb)
 		goto out;
 
 	if (status) {
+		if (status  == -EAGAIN) {
+			/* We get here only if the xhci stream timer expires,
+			 * call uas_workaround() with this urb as argument.
+			 */
+			err = uas_workaround(urb);
+			if (err != 0) {
+				dev_err(&urb->dev->dev,
+					"%s: uas_workaround() failed, err=%d\n",
+					__func__, err);
+				goto out;
+			}
+			spin_unlock_irqrestore(&devinfo->lock, flags);
+			return;
+		}
+
 		if (status != -ENOENT && status != -ECONNRESET && status != -ESHUTDOWN)
 			dev_err(&urb->dev->dev, "stat urb: status %d\n", status);
 		goto out;
@@ -371,9 +654,26 @@ static void uas_data_cmplt(struct urb *urb)
 	struct uas_dev_info *devinfo = (void *)cmnd->device->hostdata;
 	struct scsi_data_buffer *sdb = NULL;
 	unsigned long flags;
+	int err;
 	int status = urb->status;
 
 	spin_lock_irqsave(&devinfo->lock, flags);
+
+	if ((status  == -EAGAIN) && (!devinfo->resetting) &&
+					(cmdinfo->data_in_urb == urb)) {
+		/* We get here only if the xhci stream timer expires,
+		 * call uas_workaround() with this urb as argument.
+		 */
+		err = uas_workaround(urb);
+		if (err != 0) {
+			dev_err(&urb->dev->dev,
+				"%s: uas_workaround() failed, err=%d\n",
+				__func__, err);
+			goto out;
+		}
+		spin_unlock_irqrestore(&devinfo->lock, flags);
+		return;
+	}
 
 	if (cmdinfo->data_in_urb == urb) {
 		sdb = scsi_in(cmnd);
@@ -460,7 +760,7 @@ static struct urb *uas_alloc_sense_urb(struct uas_dev_info *devinfo, gfp_t gfp,
 		goto free;
 
 	usb_fill_bulk_urb(urb, udev, devinfo->status_pipe, iu, sizeof(*iu),
-			  uas_stat_cmplt, cmnd->device->host);
+			  uas_stat_cmplt, cmnd);
 	if (devinfo->use_streams)
 		urb->stream_id = cmdinfo->uas_tag;
 	urb->transfer_flags |= URB_FREE_BUFFER;
