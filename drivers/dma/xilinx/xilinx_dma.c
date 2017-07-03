@@ -2361,6 +2361,7 @@ static int xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 		chan->direction = DMA_MEM_TO_DEV;
 		chan->id = chan_id;
 		chan->tdest = chan_id;
+		xdev->common.directions = BIT(DMA_MEM_TO_DEV);
 
 		chan->ctrl_offset = XILINX_DMA_MM2S_CTRL_OFFSET;
 		if (xdev->dma_config->dmatype == XDMA_TYPE_VDMA) {
@@ -2377,6 +2378,7 @@ static int xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 		chan->direction = DMA_DEV_TO_MEM;
 		chan->id = chan_id;
 		chan->tdest = chan_id - xdev->nr_channels;
+		xdev->common.directions |= BIT(DMA_DEV_TO_MEM);
 
 		chan->ctrl_offset = XILINX_DMA_S2MM_CTRL_OFFSET;
 		if (xdev->dma_config->dmatype == XDMA_TYPE_VDMA) {
@@ -2589,6 +2591,8 @@ static int xilinx_dma_probe(struct platform_device *pdev)
 		dma_cap_set(DMA_PRIVATE, xdev->common.cap_mask);
 	}
 
+	xdev->common.dst_addr_widths = BIT(addr_width / 8);
+	xdev->common.src_addr_widths = BIT(addr_width / 8);
 	xdev->common.device_alloc_chan_resources =
 				xilinx_dma_alloc_chan_resources;
 	xdev->common.device_free_chan_resources =
