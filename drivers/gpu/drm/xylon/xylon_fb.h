@@ -19,7 +19,7 @@
 
 struct drm_gem_object *xylon_drm_fb_get_gem_obj(struct drm_framebuffer *fb);
 struct drm_framebuffer *xylon_drm_fb_init(struct drm_device *dev,
-					  struct drm_mode_fb_cmd2 *mode_cmd,
+					  const struct drm_mode_fb_cmd2 *mode_cmd,
 					  struct drm_gem_object *obj);
 void xylon_drm_mode_config_init(struct drm_device *dev);
 
