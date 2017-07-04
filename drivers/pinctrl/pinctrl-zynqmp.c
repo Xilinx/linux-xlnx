@@ -2022,7 +2022,7 @@ static int zynqmp_pinconf_cfg_set(struct pinctrl_dev *pctldev,
 				reg = ENABLE_CONFIG_VAL(pin);
 				reg2 = DISABLE_CONFIG_VAL(pin);
 				break;
-			case  DRIVE_STRENGTH_12MA:
+			case DRIVE_STRENGTH_12MA:
 				reg = ENABLE_CONFIG_VAL(pin);
 				reg2 = ENABLE_CONFIG_VAL(pin);
 				break;
