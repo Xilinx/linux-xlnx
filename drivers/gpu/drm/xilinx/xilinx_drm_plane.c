@@ -722,7 +722,7 @@ xilinx_drm_plane_create(struct xilinx_drm_plane_manager *manager,
 {
 	struct xilinx_drm_plane *plane;
 	struct device *dev = manager->drm->dev;
-	char name[16];
+	char plane_name[16];
 	struct device_node *plane_node;
 	struct device_node *sub_node;
 	struct property *prop;
@@ -745,8 +745,8 @@ xilinx_drm_plane_create(struct xilinx_drm_plane_manager *manager,
 		return ERR_PTR(-ENODEV);
 	}
 
-	snprintf(name, sizeof(name), "plane%d", i);
-	plane_node = of_get_child_by_name(manager->node, name);
+	snprintf(plane_name, sizeof(plane_name), "plane%d", i);
+	plane_node = of_get_child_by_name(manager->node, plane_name);
 	if (!plane_node) {
 		DRM_ERROR("failed to find a plane node\n");
 		return ERR_PTR(-ENODEV);
