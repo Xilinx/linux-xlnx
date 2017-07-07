@@ -725,6 +725,8 @@ xilinx_drm_plane_create(struct xilinx_drm_plane_manager *manager,
 	char name[16];
 	struct device_node *plane_node;
 	struct device_node *sub_node;
+	struct property *prop;
+	const char *dma_name;
 	enum drm_plane_type type;
 	uint32_t fmt_in = -1;
 	uint32_t fmt_out = -1;
@@ -765,21 +767,31 @@ xilinx_drm_plane_create(struct xilinx_drm_plane_manager *manager,
 	plane->format = -1;
 	DRM_DEBUG_KMS("plane->id: %d\n", plane->id);
 
-	for (i = 0; i < MAX_NUM_SUB_PLANES; i++) {
-		snprintf(name, sizeof(name), "dma%d", i);
-		plane->dma[i].chan = of_dma_request_slave_channel(plane_node,
-								  name);
-		if (PTR_ERR(plane->dma[i].chan) == -ENODEV) {
-			plane->dma[i].chan = NULL;
-			continue;
+	i = 0;
+	of_property_for_each_string(plane_node, "dma-names", prop, dma_name) {
+		if (i >= MAX_NUM_SUB_PLANES) {
+			DRM_WARN("%s contains too many sub-planes (dma-names), indexes %d and above ignored\n",
+				 of_node_full_name(plane_node),
+				 MAX_NUM_SUB_PLANES);
+			break;
 		}
-
+		plane->dma[i].chan = of_dma_request_slave_channel(plane_node,
+								  dma_name);
 		if (IS_ERR(plane->dma[i].chan)) {
-			DRM_ERROR("failed to request dma channel\n");
 			ret = PTR_ERR(plane->dma[i].chan);
+			DRM_ERROR("failed to request dma channel \"%s\" for plane %s (err:%d)\n",
+				  dma_name, of_node_full_name(plane_node), ret);
 			plane->dma[i].chan = NULL;
 			goto err_dma;
 		}
+		++i;
+	}
+
+	if (i == 0) {
+		DRM_ERROR("plane \"%s\" doesn't have any dma channels (dma-names)\n",
+			  of_node_full_name(plane_node));
+		ret = -EINVAL;
+		goto err_out;
 	}
 
 	/* probe color space converter */
