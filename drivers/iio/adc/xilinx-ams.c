@@ -928,11 +928,33 @@ static int ams_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static int __maybe_unused ams_suspend(struct device *dev)
+{
+	struct iio_dev *indio_dev = dev_get_drvdata(dev);
+	struct ams *ams = iio_priv(indio_dev);
+
+	clk_disable_unprepare(ams->clk);
+
+	return 0;
+}
+
+static int __maybe_unused ams_resume(struct device *dev)
+{
+	struct iio_dev *indio_dev = dev_get_drvdata(dev);
+	struct ams *ams = iio_priv(indio_dev);
+
+	clk_prepare_enable(ams->clk);
+	return 0;
+}
+
+static SIMPLE_DEV_PM_OPS(ams_pm_ops, ams_suspend, ams_resume);
+
 static struct platform_driver ams_driver = {
 	.probe = ams_probe,
 	.remove = ams_remove,
 	.driver = {
 		.name = "ams",
+		.pm	= &ams_pm_ops,
 		.of_match_table = ams_of_match_table,
 	},
 };
