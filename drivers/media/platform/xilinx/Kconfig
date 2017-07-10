@@ -79,6 +79,15 @@ config VIDEO_XILINX_TPG
 	help
 	   Driver for the Xilinx Video Test Pattern Generator
 
+config VIDEO_XILINX_VPSS_SCALER
+	tristate "Xilinx Video VPSS Scaler"
+	depends on VIDEO_XILINX
+	help
+	  Driver for Xilinx Video Processing Sub-System(VPSS) Scaler.
+	  It allows upscaling and downscaling of video. It also supports
+	  limited Color Space Conversion.
+	  Say N if unsure.
+
 config VIDEO_XILINX_VTC
 	tristate "Xilinx Video Timing Controller"
 	depends on VIDEO_XILINX
