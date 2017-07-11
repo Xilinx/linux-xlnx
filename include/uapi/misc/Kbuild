@@ -1,2 +1,3 @@
 # misc Header export list
 header-y += cxl.h
+header-y += xilinx_sdfec.h
