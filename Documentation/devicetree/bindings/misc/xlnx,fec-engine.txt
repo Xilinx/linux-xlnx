@@ -1,0 +1,29 @@
+* Xilinx SDFEC(16nm) IP *
+
+The Soft Decision Forward Error Correction (SDFEC) Engine is a Hard IP block
+which provides high-throughput LDPC and Turbo Code implementations.
+The LDPC decode & encode functionality is capable of covering a range of
+customer specified Quasi-cyclic (QC) codes. The Turbo decode functionality
+principally covers codes used by LTE. The FEC Engine offers significant
+power and area savings versus implementations done in the FPGA fabric.
+
+Required properties:
+- compatible: Must be "xlnx,fec-engine"
+- reg: Should contain Xilinx SDFEC 16nm Hardened IP block registers
+  location and length.
+- interrupt-parent: Must be core interrupt controller
+- interrupts: should contain SDFEC interrupt number
+- xlnx,sdfec-code : Should contain "ldpc" or "turbo" to describe the codes
+  being used.
+- xlnx,sdfec-op-mode : Should contain "encode" or "decode"
+
+Example
+---------------------------------------
+	fec_engine_0: fec_engine@a0040000 {
+		compatible = "xlnx,fec-engine";
+		reg = <0x0 0xa0040000 0x0 0x40000>;
+		interrupt-parent = <&gic>;
+		interrupts = <0 89 4>;
+		xlnx,sdfec-op-mode = "decode";
+		xlnx,sdfec-code = "ldpc";
+	};
