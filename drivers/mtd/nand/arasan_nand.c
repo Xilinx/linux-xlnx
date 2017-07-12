@@ -351,7 +351,8 @@ static void anfc_rw_buf_dma(struct mtd_info *mtd, uint8_t *buf, int len,
 		dev_err(nfc->dev, "Read buffer mapping error");
 		return;
 	}
-	lo_hi_writeq(paddr, nfc->base + DMA_ADDR0_OFST);
+	writel(paddr, nfc->base + DMA_ADDR0_OFST);
+	writel((paddr >> 32), nfc->base + DMA_ADDR1_OFST);
 	anfc_enable_intrs(nfc, (XFER_COMPLETE | eccintr));
 	writel(prog, nfc->base + PROG_OFST);
 	anfc_wait_for_event(nfc);
@@ -1036,6 +1037,7 @@ static int anfc_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "platform_get_irq failed\n");
 		return -ENXIO;
 	}
+	dma_set_mask(&pdev->dev, DMA_BIT_MASK(64));
 	err = devm_request_irq(&pdev->dev, nfc->irq, anfc_irq_handler,
 			       0, "arasannfc", nfc);
 	if (err)
