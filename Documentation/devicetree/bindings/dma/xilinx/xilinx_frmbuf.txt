@@ -1,0 +1,121 @@
+The Xilinx framebuffer DMA engine supports two soft IP blocks: one IP
+block is used for reading video frame data from memory (FB Read) to the device
+and the other IP block is used for writing video frame data from the device
+to memory (FB Write).  Both the FB Read/Write IP blocks are aware of the
+format of the data being written to or read from memory including RGB and
+YUV in packed, planar, and semi-planar formats.  Because the FB Read/Write
+is format aware, only one buffer pointer is needed by the IP blocks even
+when planar or semi-planar format are used.
+
+FB Read Required propertie(s):
+- compatible		: Should be "xlnx,axi-frmbuf-rd-v2.1". Older string
+			  "xlnx,axi-frmbuf-rd-v2" is now deprecated.
+
+Note: Compatible string "xlnx,axi-frmbuf-rd" and the hardware it
+represented is no longer supported.
+
+FB Write Required propertie(s):
+- compatible		: Should be "xlnx,axi-frmbuf-wr-v2.1". Older string
+			  "xlnx,axi-frmbuf-wr-v2" is now deprecated.
+
+Note: Compatible string "xlnx,axi-frmbuf-wr" and the hardware it
+represented is no longer supported.
+
+Required Properties Common to both FB Read and FB Write:
+- #dma-cells		: should be 1
+- interrupt-parent	: Interrupt controller the interrupt is routed through
+- interrupts		: Should contain DMA channel interrupt
+- reset-gpios		: Should contain GPIO reset phandle
+- reg			: Memory map for module access
+- xlnx,dma-addr-width	: Size of dma address pointer in IP (either 32 or 64)
+- xlnx,vid-formats	: A list of strings indicating what video memory
+			  formats the IP has been configured to support.
+			  See VIDEO FORMATS table below and examples.
+
+Required Properties Common to both FB Read and FB Write for v2.1:
+- xlnx,pixels-per-clock	: Pixels per clock set in IP (1, 2 or 4)
+- clocks: Reference to the AXI Streaming clock feeding the AP_CLK
+- clock-names: Must have "ap_clk"
+
+Optional Properties Common to both FB Read and FB Write for v2.1:
+- xlnx,dma-align	: DMA alignment required in bytes.
+			  If absent then dma alignment is calculated as
+			  pixels per clock * 8.
+			  If present it should be power of 2 and at least
+			  pixels per clock * 8.
+			  Minimum is 8, 16, 32 when pixels-per-clock is
+			  1, 2 or 4.
+- xlnx,fid		: Field ID enabled for interlaced video support.
+			  Can be absent for progressive video.
+
+Optional properties:
+- xlnx,max-height	: Maximum number of lines.
+- xlnx,max-width	: Maximum number of pixels in a line.
+
+VIDEO FORMATS
+The following table describes the legal string values to be used for
+the xlnx,vid-formats property.  To the left is the string value and the
+two columns to the right describe how this is mapped to an equivalent V4L2
+and DRM fourcc code---respectively---by the driver.
+
+IP FORMAT	DTS String	V4L2 Fourcc		DRM Fourcc
+-------------|----------------|----------------------|---------------------
+RGB8		bgr888		V4L2_PIX_FMT_RGB24	DRM_FORMAT_BGR888
+BGR8		rgb888		V4L2_PIX_FMT_BGR24	DRM_FORMAT_RGB888
+RGBX8		xbgr8888	V4L2_PIX_FMT_BGRX32	DRM_FORMAT_XBGR8888
+RGBA8		abgr8888	<not supported>		DRM_FORMAT_ABGR8888
+BGRA8		argb8888	<not supported>		DRM_FORMAT_ARGB8888
+BGRX8		xrgb8888	V4L2_PIX_FMT_XBGR32	DRM_FORMAT_XRGB8888
+RGBX10		xbgr2101010	V4L2_PIX_FMT_XBGR30	DRM_FORMAT_XBGR2101010
+YUV8		vuy888		V4L2_PIX_FMT_VUY24	DRM_FORMAT_VUY888
+YUVX8		xvuy8888	V4L2_PIX_FMT_XVUY32	DRM_FORMAT_XVUY8888
+YUYV8		yuyv		V4L2_PIX_FMT_YUYV	DRM_FORMAT_YUYV
+UYVY8		uyvy		V4L2_PIX_FMT_UYVY	DRM_FORMAT_UYVY
+YUVA8		avuy8888	<not supported>		DRM_FORMAT_AVUY
+YUVX10		yuvx2101010	V4L2_PIX_FMT_XVUY10	DRM_FORMAT_XVUY2101010
+Y8		y8		V4L2_PIX_FMT_GREY	DRM_FORMAT_Y8
+Y10		y10		V4L2_PIX_FMT_Y10	DRM_FORMAT_Y10
+Y_UV8		nv16		V4L2_PIX_FMT_NV16	DRM_FORMAT_NV16
+Y_UV8		nv16		V4L2_PIX_FMT_NV16M	DRM_FORMAT_NV16
+Y_UV8_420	nv12		V4L2_PIX_FMT_NV12	DRM_FORMAT_NV12
+Y_UV8_420	nv12		V4L2_PIX_FMT_NV12M	DRM_FORMAT_NV12
+Y_UV10		xv20		V4L2_PIX_FMT_XV20M	DRM_FORMAT_XV20
+Y_UV10		xv20		V4L2_PIX_FMT_XV20	<not supported>
+Y_UV10_420	xv15		V4L2_PIX_FMT_XV15M	DRM_FORMAT_XV15
+Y_UV10_420	xv15		V4L2_PIX_FMT_XV20	<not supported>
+
+Examples:
+
+FB Read Example:
+++++++++
+v_frmbuf_rd_0: v_frmbuf_rd@80000000 {
+	#dma-cells = <1>;
+	compatible = "xlnx,axi-frmbuf-rd-v2.1";
+	interrupt-parent = <&gic>;
+	interrupts = <0 92 4>;
+	reset-gpios = <&gpio 80 1>;
+	reg = <0x0 0x80000000 0x0 0x10000>;
+	xlnx,dma-addr-width = <32>;
+	xlnx,vid-formats = "bgr888","xbgr8888";
+	xlnx,pixels-per-clock = <1>;
+	xlnx,dma-align = <8>;
+	clocks = <&vid_stream_clk>;
+	clock-names = "ap_clk"
+};
+
+FB Write Example:
+++++++++
+v_frmbuf_wr_0: v_frmbuf_wr@80000000 {
+	#dma-cells = <1>;
+	compatible = "xlnx,axi-frmbuf-wr-v2.1";
+	interrupt-parent = <&gic>;
+	interrupts = <0 92 4>;
+	reset-gpios = <&gpio 80 1>;
+	reg = <0x0 0x80000000 0x0 0x10000>;
+	xlnx,dma-addr-width = <64>;
+	xlnx,vid-formats = "bgr888","yuyv","nv16","nv12";
+	xlnx,pixels-per-clock = <2>;
+	xlnx,dma-align = <16>;
+	clocks = <&vid_stream_clk>;
+	clock-names = "ap_clk"
+};
