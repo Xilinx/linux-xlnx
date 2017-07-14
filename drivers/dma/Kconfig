@@ -700,6 +700,12 @@ config XILINX_ZYNQMP_DPDMA
 	  driver provides the dmaengine required by the DisplayPort subsystem
 	  display driver.
 
+config XILINX_FRMBUF
+	tristate "Xilinx Framebuffer"
+	select DMA_ENGINE
+	help
+	 Enable support for Xilinx Framebuffer DMA.
+
 config ZX_DMA
 	tristate "ZTE ZX DMA support"
 	depends on ARCH_ZX || COMPILE_TEST
