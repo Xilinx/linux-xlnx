@@ -8960,6 +8960,14 @@ F:	include/uapi/linux/fb.h
 F:	include/uapi/video/
 F:	include/video/
 
+XILINX FRMBUF DRIVER
+M:	Kunal Rane <kunal.rane@amd.com>
+R:	Vishal Sagar <vishal.sagar@amd.com>
+L:	git@amd.com
+S:	Maintained
+F:	Documentation/devicetree/bindings/dma/xilinx/xlnx,axi-frmbuf.yaml
+F:	drivers/dma/xilinx/xilinx_frmbuf.c
+
 FREESCALE CAAM (Cryptographic Acceleration and Assurance Module) DRIVER
 M:	Horia Geantă <horia.geanta@nxp.com>
 M:	Pankaj Gupta <pankaj.gupta@nxp.com>
