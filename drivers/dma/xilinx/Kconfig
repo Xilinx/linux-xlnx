@@ -28,3 +28,9 @@ config XILINX_DPDMA_DEBUG_FS
 	  information.
 
 endif # XILINX_DMA_ENGINES
+
+config XILINX_FRMBUF
+	tristate "Xilinx Framebuffer"
+	select DMA_ENGINE
+	help
+	 Enable support for Xilinx Framebuffer DMA.
