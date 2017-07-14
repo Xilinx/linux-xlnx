@@ -733,6 +733,12 @@ config XILINX_ZYNQMP_DPDMA
 	  driver provides the dmaengine required by the DisplayPort subsystem
 	  display driver.
 
+config XILINX_FRMBUF
+	tristate "Xilinx Framebuffer"
+	select DMA_ENGINE
+	help
+	 Enable support for Xilinx Framebuffer DMA.
+
 config XILINX_PS_PCIE_DMA
 	tristate "Xilinx PS PCIe DMA support"
 	depends on (PCI && X86_64 || ARM64)
