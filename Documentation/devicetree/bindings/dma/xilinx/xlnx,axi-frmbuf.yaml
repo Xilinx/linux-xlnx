@@ -1,0 +1,169 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/dma/xilinx/xlnx,axi-frmbuf.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Xilinx framebuffer read and write IP
+
+maintainers:
+  - Kunal Rane <kunal.rane@amd.com>
+
+description:
+  The Xilinx framebuffer DMA engine supports two soft IP blocks, one IP
+  block is used for reading video frame data from memory (FB Read) to the device
+  and the other IP block is used for writing video frame data from the device
+  to memory (FB Write). Both the FB Read/Write IP blocks are aware of the
+  format of the data being written to or read from memory including RGB and
+  YUV in packed, planar, and semi-planar formats.  Because the FB Read/Write
+  is format aware, only one buffer pointer is needed by the IP blocks even
+  when planar or semi-planar format are used.
+
+properties:
+  compatible:
+    enum:
+      - xlnx,axi-frmbuf-wr-v2.1
+      - xlnx,axi-frmbuf-wr-v2.2
+      - xlnx,axi-frmbuf-rd-v2.1
+      - xlnx,axi-frmbuf-rd-v2.2
+
+  reg:
+    maxItems: 1
+
+  clocks:
+    description: Reference to the AXI Streaming clock.
+    maxItems: 1
+
+  clock-names:
+    deprecated: true
+    maxItems: 1
+
+  interrupts:
+    maxItems: 1
+
+  reset-gpios:
+    description: Should contain GPIO reset phandle
+    maxItems: 1
+
+  xlnx,dma-addr-width:
+    description: Size of dma address pointer in IP (either 32 or 64)
+    $ref: /schemas/types.yaml#/definitions/uint32
+    enum: [ 32, 64 ]
+
+  xlnx,vid-formats:
+    description: |
+      A list of strings indicating what video memory
+      formats the IP has been configured to support.
+      The following table describes the legal string values to be used for
+      the xlnx,vid-formats property.  To the left is the string value and the
+      two columns to the right describe how this is mapped to an equivalent V4L2
+      and DRM fourcc code respectively by the driver.
+      IP FORMAT	    DTS String	     V4L2 Fourcc	    DRM Fourcc
+      -------------|----------------|----------------------|-------------------
+      RGB8		bgr888		V4L2_PIX_FMT_RGB24	DRM_FORMAT_BGR888
+      BGR8		rgb888		V4L2_PIX_FMT_BGR24	DRM_FORMAT_RGB888
+      RGBX8		xbgr8888	V4L2_PIX_FMT_BGRX32	DRM_FORMAT_XBGR8888
+      RGBA8		abgr8888	<not supported>		DRM_FORMAT_ABGR8888
+      BGRA8		argb8888	<not supported>		DRM_FORMAT_ARGB8888
+      BGRX8		xrgb8888	V4L2_PIX_FMT_XBGR32	DRM_FORMAT_XRGB8888
+      RGBX10		xbgr2101010	V4L2_PIX_FMT_XBGR30	DRM_FORMAT_XBGR2101010
+      RGBX12		xbgr2121212	V4L2_PIX_FMT_XBGR40	<not supported>
+      RGBX16		rgb16		V4L2_PIX_FMT_BGR40	<not supported>
+      YUV8		vuy888		V4L2_PIX_FMT_VUY24	DRM_FORMAT_VUY888
+      YUVX8		xvuy8888	V4L2_PIX_FMT_XVUY32	DRM_FORMAT_XVUY8888
+      Y_U_V8		y_u_v8		V4L2_PIX_FMT_YUV444P	DRM_FORMAT_YUV444
+      Y_U_V8		y_u_v8		V4L2_PIX_FMT_YUV444M	DRM_FORMAT_YUV444
+      Y_U_V10		y_u_v10		V4L2_PIX_FMT_X403	DRM_FORMAT_X403
+      YUYV8		yuyv		V4L2_PIX_FMT_YUYV	DRM_FORMAT_YUYV
+      UYVY8		uyvy		V4L2_PIX_FMT_UYVY	DRM_FORMAT_UYVY
+      YUVA8		avuy8888	<not supported>		DRM_FORMAT_AVUY
+      YUVX10		yuvx2101010	V4L2_PIX_FMT_XVUY10	DRM_FORMAT_XVUY2101010
+      Y8		y8		V4L2_PIX_FMT_GREY	DRM_FORMAT_Y8
+      Y10		y10		V4L2_PIX_FMT_XY10	DRM_FORMAT_Y10
+      Y_UV8		nv16		V4L2_PIX_FMT_NV16	DRM_FORMAT_NV16
+      Y_UV8		nv16		V4L2_PIX_FMT_NV16M	DRM_FORMAT_NV16
+      Y_UV8_420	        nv12		V4L2_PIX_FMT_NV12	DRM_FORMAT_NV12
+      Y_UV8_420	        nv12		V4L2_PIX_FMT_NV12M	DRM_FORMAT_NV12
+      Y_UV10		xv20		V4L2_PIX_FMT_XV20M	DRM_FORMAT_XV20
+      Y_UV10		xv20		V4L2_PIX_FMT_XV20	<not supported>
+      Y_UV10_420	xv15		V4L2_PIX_FMT_XV15M	DRM_FORMAT_XV15
+      Y_UV10_420	xv15		V4L2_PIX_FMT_XV20	<not supported>
+    $ref: /schemas/types.yaml#/definitions/string
+    minItems: 1
+    maxItems: 27
+
+  xlnx,pixels-per-clock:
+    description: Pixels per clock set in IP
+    $ref: /schemas/types.yaml#/definitions/uint32
+    enum: [1, 2, 4, 8]
+
+  xlnx,dma-align:
+    description:
+      DMA alignment required in bytes.
+      If absent then dma alignment is calculated as
+      pixels per clock * 8.
+      If present it should be power of 2 and at least
+      pixels per clock * 8.
+      Minimum is 8, 16, 32 when pixels-per-clock is
+      1, 2 or 4.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    enum: [8, 16, 32]
+
+  xlnx,max-height:
+    description: Maximum number pixels in a line.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    minimum: 64
+    maximum: 8640
+
+  xlnx,max-width:
+    description: Maximum number pixels in a line.
+    $ref: /schemas/types.yaml#/definitions/uint32
+    minimum: 64
+    maximum: 15360
+
+required:
+  - reg
+  - clocks
+  - clock-names
+  - interrupts
+  - reset-gpios
+  - xlnx,dma-addr-width
+  - xlnx,vid-formats
+  - xlnx,pixels-per-clock
+  - xlnx,dma-align
+  - xlnx,max-height
+  - xlnx,max-width
+
+additionalProperties: false
+
+examples:
+  - |
+    v-frmbuf-rd@a0060000 {
+        compatible = "xlnx,axi-frmbuf-rd-v2.2";
+        reg = <0xa0060000 0x10000>;
+        clocks = <&misc_clk_2>;
+        clock-names = "ap_clk";
+        interrupts = <0 106 4>;
+        reset-gpios = <&gpio 5 1>;
+        xlnx,dma-addr-width = <32>;
+        xlnx,vid-formats = "bgr888";
+        xlnx,pixels-per-clock = <2>;
+        xlnx,dma-align = <16>;
+        xlnx,max-height = <2160>;
+        xlnx,max-width = <3840>;
+    };
+
+    v-frmbuf-wr@a0070000 {
+        compatible = "xlnx,axi-frmbuf-wr-v2.2";
+        reg = <0xa0070000 0x10000>;
+        clocks = <&misc_clk_2>;
+        clock-names = "ap_clk";
+        interrupts = <0 107 4>;
+        reset-gpios = <&gpio 4 1>;
+        xlnx,dma-addr-width = <32>;
+        xlnx,vid-formats = "bgr888";
+        xlnx,pixels-per-clock = <2>;
+        xlnx,dma-align = <16>;
+        xlnx,max-height = <2160>;
+        xlnx,max-width = <3840>;
+    };
