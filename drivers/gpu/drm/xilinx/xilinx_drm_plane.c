@@ -22,6 +22,8 @@
 
 #include <linux/device.h>
 #include <linux/dmaengine.h>
+#include <linux/dma/xilinx_dma.h>
+#include <linux/dma/xilinx_frmbuf.h>
 #include <linux/of_dma.h>
 #include <linux/platform_device.h>
 
@@ -129,6 +131,9 @@ void xilinx_drm_plane_commit(struct drm_plane *base_plane)
 	struct dma_async_tx_descriptor *desc;
 	enum dma_ctrl_flags flags;
 	unsigned int i;
+
+	/* for xilinx video framebuffer dma, if used */
+	xilinx_xdma_drm_config(plane->dma[0].chan, plane->format);
 
 	DRM_DEBUG_KMS("plane->id: %d\n", plane->id);
 
