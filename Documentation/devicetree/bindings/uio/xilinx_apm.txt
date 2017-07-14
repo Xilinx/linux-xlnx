@@ -15,6 +15,7 @@ Required properties:
 - xlnx,metric-count-width: Metric Counter width (32/64)
 - xlnx,metrics-sample-count-width: Sampled metric counter width
 - xlnx,global-count-width: Global Clock counter width
+- xlnx,id-filter-32bit: APM is in 32-bit mode
 - clocks: Input clock specifier.
 
 Example:
@@ -37,4 +38,5 @@ apm: apm@44a00000 {
     xlnx,metrics-sample-count-width = <32>;
     xlnx,global-count-width = <32>;
     xlnx,metric-count-scale = <1>;
+    xlnx,id-filter-32bit;
 };
