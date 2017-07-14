@@ -10,6 +10,7 @@
  */
 
 #include <linux/dma/xilinx_dma.h>
+#include <linux/dma/xilinx_frmbuf.h>
 #include <linux/lcm.h>
 #include <linux/list.h>
 #include <linux/module.h>
@@ -348,6 +349,8 @@ static void xvip_dma_buffer_queue(struct vb2_buffer *vb)
 	struct dma_async_tx_descriptor *desc;
 	dma_addr_t addr = vb2_dma_contig_plane_dma_addr(vb, 0);
 	u32 flags;
+
+	xilinx_xdma_v4l2_config(dma->dma, dma->format.pixelformat);
 
 	if (dma->queue.type == V4L2_BUF_TYPE_VIDEO_CAPTURE) {
 		flags = DMA_PREP_INTERRUPT | DMA_CTRL_ACK;
