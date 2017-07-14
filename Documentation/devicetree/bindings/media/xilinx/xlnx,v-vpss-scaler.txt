@@ -10,7 +10,10 @@ Required properties:
 - clocks: Reference to the AXI Streaming clock feeding the VPSS Scaler AP_CLK
 
 - xlnx,num-hori-taps, xlnx,num-vert-taps: The number of horizontal and vertical
-  taps for scaling filter(range: 6,8,10,12).
+  taps for scaling filter(range: 2,4,6,8,10,12).
+
+  A value of 2 represents bilinear filters. A value of 4 represents bicubic.
+  Values 6,8,10,12 represent polyphase filters.
 
 - xlnx,pix-per-clk : The pixels per clock property of the IP
 
