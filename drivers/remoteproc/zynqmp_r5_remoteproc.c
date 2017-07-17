@@ -281,7 +281,8 @@ static void r5_release_tcm(struct zynqmp_r5_rproc_pdata *pdata)
 static inline void disable_ipi(struct zynqmp_r5_rproc_pdata *pdata)
 {
 	/* Disable R5 IPI interrupt */
-	reg_write(pdata->ipi_base, IDR_OFFSET, pdata->ipi_dest_mask);
+	if (pdata->ipi_base)
+		reg_write(pdata->ipi_base, IDR_OFFSET, pdata->ipi_dest_mask);
 }
 
 /**
@@ -293,7 +294,8 @@ static inline void disable_ipi(struct zynqmp_r5_rproc_pdata *pdata)
 static inline void enable_ipi(struct zynqmp_r5_rproc_pdata *pdata)
 {
 	/* Enable R5 IPI interrupt */
-	reg_write(pdata->ipi_base, IER_OFFSET, pdata->ipi_dest_mask);
+	if (pdata->ipi_base)
+		reg_write(pdata->ipi_base, IER_OFFSET, pdata->ipi_dest_mask);
 }
 
 /**
@@ -379,7 +381,8 @@ static void zynqmp_r5_rproc_kick(struct rproc *rproc, int vqid)
 	 * send irq to R5 firmware
 	 * Currently vqid is not used because we only got one.
 	 */
-	reg_write(local->ipi_base, TRIG_OFFSET, local->ipi_dest_mask);
+	if (local->ipi_base)
+		reg_write(local->ipi_base, TRIG_OFFSET, local->ipi_dest_mask);
 }
 
 /* power off the remote processor */
@@ -654,12 +657,16 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 	}
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "ipi");
-	local->ipi_base = devm_ioremap(&pdev->dev, res->start,
+	if (res) {
+		local->ipi_base = devm_ioremap(&pdev->dev, res->start,
 				resource_size(res));
-	if (IS_ERR(local->ipi_base)) {
-		pr_err("%s: Unable to map IPI\n", __func__);
-		ret = PTR_ERR(local->ipi_base);
-		goto rproc_fault;
+		if (IS_ERR(local->ipi_base)) {
+			pr_err("%s: Unable to map IPI\n", __func__);
+			ret = PTR_ERR(local->ipi_base);
+			goto rproc_fault;
+		}
+	} else {
+		dev_info(&pdev->dev, "IPI resource is not specified.\n");
 	}
 
 	/* Find on-chip memory */
@@ -715,21 +722,23 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 	INIT_WORK(&local->workqueue, handle_event_notified);
 
 	/* IPI IRQ */
-	ret = platform_get_irq(pdev, 0);
-	if (ret < 0) {
-		dev_err(&pdev->dev, "unable to find IPI IRQ\n");
-		goto rproc_fault;
+	if (local->ipi_base) {
+		ret = platform_get_irq(pdev, 0);
+		if (ret < 0) {
+			dev_err(&pdev->dev, "unable to find IPI IRQ\n");
+			goto rproc_fault;
+		}
+		local->vring0 = ret;
+		ret = devm_request_irq(&pdev->dev, local->vring0,
+				       r5_remoteproc_interrupt, IRQF_SHARED,
+				       dev_name(&pdev->dev), &pdev->dev);
+		if (ret) {
+			dev_err(&pdev->dev, "IRQ %d already allocated\n",
+				local->vring0);
+			goto rproc_fault;
+		}
+		dev_dbg(&pdev->dev, "vring0 irq: %d\n", local->vring0);
 	}
-	local->vring0 = ret;
-	ret = devm_request_irq(&pdev->dev, local->vring0,
-		r5_remoteproc_interrupt, IRQF_SHARED, dev_name(&pdev->dev),
-		&pdev->dev);
-	if (ret) {
-		dev_err(&pdev->dev, "IRQ %d already allocated\n",
-			local->vring0);
-		goto rproc_fault;
-	}
-	dev_dbg(&pdev->dev, "vring0 irq: %d\n", local->vring0);
 
 	ret = zynqmp_r5_rproc_init(local->rproc);
 	if (ret) {
