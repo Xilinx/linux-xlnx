@@ -85,9 +85,6 @@
 
 #define DEFAULT_FIRMWARE_NAME	"rproc-rpu-fw"
 
-/* Maximum on chip memories used by the driver*/
-#define MAX_ON_CHIP_MEMS        32
-
 static bool autoboot __read_mostly;
 
 struct zynqmp_r5_rproc_pdata;
@@ -575,7 +572,6 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 	struct rproc *rproc;
 	struct gen_pool *mem_pool = NULL;
 	struct mem_pool_st *mem_node = NULL;
-	char mem_name[16];
 	int i;
 	struct device_node *tmp_node;
 
@@ -672,10 +668,11 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 	/* Find on-chip memory */
 	INIT_LIST_HEAD(&local->mem_pools);
 	INIT_LIST_HEAD(&local->mems);
-	for (i = 0; i < MAX_ON_CHIP_MEMS; i++) {
-		sprintf(mem_name, "sram_%d", i);
+	for (i = 0; ; i++) {
+		char *srams_name = "srams";
+
 		mem_pool = of_gen_pool_get(pdev->dev.of_node,
-					mem_name, 0);
+					srams_name, i);
 		if (mem_pool) {
 			mem_node = devm_kzalloc(&pdev->dev,
 					sizeof(struct mem_pool_st),
@@ -685,7 +682,7 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 			mem_node->pool = mem_pool;
 			/* Get the memory node power domain id */
 			tmp_node = of_parse_phandle(pdev->dev.of_node,
-						mem_name, 0);
+						srams_name, 0);
 			if (tmp_node) {
 				struct device_node *pd_node;
 				struct pd_id_st *pd_id;
@@ -714,6 +711,8 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 				}
 			}
 			list_add_tail(&mem_node->node, &local->mem_pools);
+		} else {
+			break;
 		}
 	}
 
