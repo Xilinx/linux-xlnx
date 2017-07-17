@@ -20,7 +20,7 @@ Required properties:
               ipi, rpu_base must be provided
  - interrupts : Interrupt mapping for remoteproc IPI
  - interrupt-parent : Phandle for the interrupt controller
- - sram_N: firmware memory
+ - srams : firmware memories
  - pd-handle : power domain handle, as remoteproc is not hooked into
                Linux runtime power management, we will not use
                "power-domains" for the power domain handler. We use
@@ -71,9 +71,7 @@ Example:
 			<0x0 0xff9a0000 0x0 0x100>,
 		reg-names = "rpu_base", "ipi", "rpu_glbl_base";
 		core_conf = "split0";
-		sram_0 = <&r5_0_tcm_a>;
-		sram_1 = <&r5_0_tcm_b>;
-		sram_2 = <&elf_ddr_0>;
+		srams = <&r5_0_tcm_a &r5_0_tcm_b &elf_ddr_0>;
 		interrupt-parent = <&gic>;
 		interrupts = <0 29 4>;
 		pd-handle = <&pd_r5_0>;
