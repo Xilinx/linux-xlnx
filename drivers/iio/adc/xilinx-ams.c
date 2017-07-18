@@ -193,8 +193,13 @@ static void iio_ams_init_device(struct ams *ams)
 		scan_mask |= BIT(indio_dev->channels[i].scan_index);
 
 	if (ams->ps_base) {
+		/* put sysmon in a soft reset to change the sequence */
+		ams_ps_update_reg(ams, AMS_REG_CONFIG1, AMS_CONF1_SEQ_MASK,
+				  AMS_CONF1_SEQ_DEFAULT);
+
+		/* configure basic channels */
 		ams_ps_write_reg(ams, AMS_REG_SEQ_CH0,
-				scan_mask & AMS_REG_SEQ0_MASK);
+				 scan_mask & AMS_REG_SEQ0_MASK);
 		ams_ps_write_reg(ams, AMS_REG_SEQ_CH2, AMS_REG_SEQ2_MASK &
 				(scan_mask >> AMS_REG_SEQ2_MASK_SHIFT));
 
@@ -204,6 +209,11 @@ static void iio_ams_init_device(struct ams *ams)
 	}
 
 	if (ams->pl_base) {
+		/* put sysmon in a soft reset to change the sequence */
+		ams->pl_bus->update(ams, AMS_REG_CONFIG1, AMS_CONF1_SEQ_MASK,
+				    AMS_CONF1_SEQ_DEFAULT);
+
+		/* configure basic channels */
 		scan_mask = (scan_mask >> PS_SEQ_MAX);
 		ams->pl_bus->write(ams, AMS_REG_SEQ_CH0,
 				scan_mask & AMS_REG_SEQ0_MASK);
