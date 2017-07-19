@@ -47,6 +47,10 @@ Optional Properties:
  - pinctrl-0: pin control group to be used for this controller.
  - pinctrl-names: must contain a "default" entry.
 
+Optional Properties for "xlnx,zynqmp-8.9a":
+ - nvmem-cells: list of phandle to the nvmem data cells.
+ - nvmem-cell-names: Names for the each nvmem-cells specified.
+
 Example:
 	sdhci@e0100000 {
 		compatible = "arasan,sdhci-8.9a";
