@@ -34,7 +34,7 @@ static inline void ams_write_reg(struct ams *ams, unsigned int offset, u32 data)
 }
 
 static inline void ams_update_reg(struct ams *ams, unsigned int offset,
-		u32 mask, u32 data)
+				  u32 mask, u32 data)
 {
 	u32 val;
 
@@ -43,19 +43,19 @@ static inline void ams_update_reg(struct ams *ams, unsigned int offset,
 }
 
 static inline void ams_ps_read_reg(struct ams *ams, unsigned int offset,
-		u32 *data)
+				   u32 *data)
 {
 	*data = readl(ams->ps_base + offset);
 }
 
 static inline void ams_ps_write_reg(struct ams *ams, unsigned int offset,
-		u32 data)
+				    u32 data)
 {
 	writel(data, ams->ps_base + offset);
 }
 
 static inline void ams_ps_update_reg(struct ams *ams, unsigned int offset,
-		u32 mask, u32 data)
+				     u32 mask, u32 data)
 {
 	u32 val;
 
@@ -64,19 +64,19 @@ static inline void ams_ps_update_reg(struct ams *ams, unsigned int offset,
 }
 
 static inline void ams_apb_pl_read_reg(struct ams *ams, unsigned int offset,
-		u32 *data)
+				       u32 *data)
 {
 	*data = readl(ams->pl_base + offset);
 }
 
 static inline void ams_apb_pl_write_reg(struct ams *ams, unsigned int offset,
-		u32 data)
+					u32 data)
 {
 	writel(data, ams->pl_base + offset);
 }
 
 static inline void ams_apb_pl_update_reg(struct ams *ams, unsigned int offset,
-		u32 mask, u32 data)
+					 u32 mask, u32 data)
 {
 	u32 val;
 
@@ -94,10 +94,10 @@ static void ams_update_intrmask(struct ams *ams, u64 mask, u64 val)
 
 	ams_write_reg(ams, AMS_IER_0, ~(ams->intr_mask | ams->masked_alarm));
 	ams_write_reg(ams, AMS_IER_1,
-			~(ams->intr_mask >> AMS_ISR1_INTR_MASK_SHIFT));
+		      ~(ams->intr_mask >> AMS_ISR1_INTR_MASK_SHIFT));
 	ams_write_reg(ams, AMS_IDR_0, ams->intr_mask | ams->masked_alarm);
 	ams_write_reg(ams, AMS_IDR_1,
-			ams->intr_mask >> AMS_ISR1_INTR_MASK_SHIFT);
+		      ams->intr_mask >> AMS_ISR1_INTR_MASK_SHIFT);
 }
 
 static void iio_ams_disable_all_alarm(struct ams *ams)
@@ -105,17 +105,19 @@ static void iio_ams_disable_all_alarm(struct ams *ams)
 	/* disable PS module alarm */
 	if (ams->ps_base) {
 		ams_ps_update_reg(ams, AMS_REG_CONFIG1, AMS_REGCFG1_ALARM_MASK,
-				AMS_REGCFG1_ALARM_MASK);
+				  AMS_REGCFG1_ALARM_MASK);
 		ams_ps_update_reg(ams, AMS_REG_CONFIG3, AMS_REGCFG3_ALARM_MASK,
-				AMS_REGCFG3_ALARM_MASK);
+				  AMS_REGCFG3_ALARM_MASK);
 	}
 
 	/* disable PL module alarm */
 	if (ams->pl_base) {
 		ams->pl_bus->update(ams, AMS_REG_CONFIG1,
-				AMS_REGCFG1_ALARM_MASK, AMS_REGCFG1_ALARM_MASK);
+				    AMS_REGCFG1_ALARM_MASK,
+				    AMS_REGCFG1_ALARM_MASK);
 		ams->pl_bus->update(ams, AMS_REG_CONFIG3,
-				AMS_REGCFG3_ALARM_MASK, AMS_REGCFG3_ALARM_MASK);
+				    AMS_REGCFG3_ALARM_MASK,
+				    AMS_REGCFG3_ALARM_MASK);
 	}
 }
 
@@ -132,12 +134,12 @@ static void iio_ams_update_alarm(struct ams *ams, unsigned long alarm_mask)
 		cfg &= ~((alarm_mask & AMS_ISR0_ALARM_6_TO_3_MASK) <<
 				AMS_CONF1_ALARM_6_TO_3_SHIFT);
 		ams_ps_update_reg(ams, AMS_REG_CONFIG1, AMS_REGCFG1_ALARM_MASK,
-				cfg);
+				  cfg);
 
 		cfg = ~((alarm_mask >> AMS_CONF3_ALARM_12_TO_7_SHIFT) &
 				AMS_ISR0_ALARM_12_TO_7_MASK);
 		ams_ps_update_reg(ams, AMS_REG_CONFIG3, AMS_REGCFG3_ALARM_MASK,
-				cfg);
+				  cfg);
 	}
 
 	if (ams->pl_base) {
@@ -205,7 +207,7 @@ static void iio_ams_init_device(struct ams *ams)
 
 		/* set continuous sequence mode */
 		ams_ps_update_reg(ams, AMS_REG_CONFIG1, AMS_CONF1_SEQ_MASK,
-				AMS_CONF1_SEQ_CONTINUOUS);
+				  AMS_CONF1_SEQ_CONTINUOUS);
 	}
 
 	if (ams->pl_base) {
@@ -229,8 +231,8 @@ static void iio_ams_init_device(struct ams *ams)
 }
 
 static int ams_read_raw(struct iio_dev *indio_dev,
-		struct iio_chan_spec const *chan,
-		int *val, int *val2, long mask)
+			struct iio_chan_spec const *chan,
+			int *val, int *val2, long mask)
 {
 	struct ams *ams = iio_priv(indio_dev);
 
@@ -443,9 +445,9 @@ static int ams_get_alarm_mask(int scan_index)
 }
 
 static int ams_read_event_config(struct iio_dev *indio_dev,
-			 const struct iio_chan_spec *chan,
-			 enum iio_event_type type,
-			 enum iio_event_direction dir)
+				 const struct iio_chan_spec *chan,
+				 enum iio_event_type type,
+				 enum iio_event_direction dir)
 {
 	struct ams *ams = iio_priv(indio_dev);
 
@@ -453,10 +455,10 @@ static int ams_read_event_config(struct iio_dev *indio_dev,
 }
 
 static int ams_write_event_config(struct iio_dev *indio_dev,
-			  const struct iio_chan_spec *chan,
-			  enum iio_event_type type,
-			  enum iio_event_direction dir,
-			  int state)
+				  const struct iio_chan_spec *chan,
+				  enum iio_event_type type,
+				  enum iio_event_direction dir,
+				  int state)
 {
 	struct ams *ams = iio_priv(indio_dev);
 	unsigned int alarm;
@@ -478,10 +480,10 @@ static int ams_write_event_config(struct iio_dev *indio_dev,
 }
 
 static int ams_read_event_value(struct iio_dev *indio_dev,
-			const struct iio_chan_spec *chan,
-			enum iio_event_type type,
-			enum iio_event_direction dir,
-			enum iio_event_info info, int *val, int *val2)
+				const struct iio_chan_spec *chan,
+				enum iio_event_type type,
+				enum iio_event_direction dir,
+				enum iio_event_info info, int *val, int *val2)
 {
 	struct ams *ams = iio_priv(indio_dev);
 	unsigned int offset = ams_get_alarm_offset(chan->scan_index, dir);
@@ -500,10 +502,10 @@ static int ams_read_event_value(struct iio_dev *indio_dev,
 }
 
 static int ams_write_event_value(struct iio_dev *indio_dev,
-			 const struct iio_chan_spec *chan,
-			 enum iio_event_type type,
-			 enum iio_event_direction dir,
-			 enum iio_event_info info, int val, int val2)
+				 const struct iio_chan_spec *chan,
+				 enum iio_event_type type,
+				 enum iio_event_direction dir,
+				 enum iio_event_info info, int val, int val2)
 {
 	struct ams *ams = iio_priv(indio_dev);
 	unsigned int offset;
@@ -513,16 +515,16 @@ static int ams_write_event_value(struct iio_dev *indio_dev,
 	/* Set temperature channel threshold to direct threshold */
 	if (chan->type == IIO_TEMP) {
 		offset = ams_get_alarm_offset(chan->scan_index,
-				IIO_EV_DIR_FALLING);
+					      IIO_EV_DIR_FALLING);
 
 		if (chan->scan_index >= PS_SEQ_MAX)
 			ams->pl_bus->update(ams, offset,
-					AMS_ALARM_THR_DIRECT_MASK,
-					AMS_ALARM_THR_DIRECT_MASK);
+					    AMS_ALARM_THR_DIRECT_MASK,
+					    AMS_ALARM_THR_DIRECT_MASK);
 		else
 			ams_ps_update_reg(ams, offset,
-					AMS_ALARM_THR_DIRECT_MASK,
-					AMS_ALARM_THR_DIRECT_MASK);
+					  AMS_ALARM_THR_DIRECT_MASK,
+					  AMS_ALARM_THR_DIRECT_MASK);
 	}
 
 	offset = ams_get_alarm_offset(chan->scan_index, dir);
@@ -547,8 +549,9 @@ static void ams_handle_event(struct iio_dev *indio_dev, u32 event)
 		 * events
 		 */
 		iio_push_event(indio_dev,
-			IIO_UNMOD_EVENT_CODE(chan->type, chan->channel,
-				IIO_EV_TYPE_THRESH, IIO_EV_DIR_RISING),
+			       IIO_UNMOD_EVENT_CODE(chan->type, chan->channel,
+						    IIO_EV_TYPE_THRESH,
+						    IIO_EV_DIR_RISING),
 			iio_get_time_ns(indio_dev));
 	} else {
 		/* For other channels we don't know whether it is a upper or
@@ -556,8 +559,9 @@ static void ams_handle_event(struct iio_dev *indio_dev, u32 event)
 		 * channel value if it wants to know.
 		 */
 		iio_push_event(indio_dev,
-			IIO_UNMOD_EVENT_CODE(chan->type, chan->channel,
-				IIO_EV_TYPE_THRESH, IIO_EV_DIR_EITHER),
+			       IIO_UNMOD_EVENT_CODE(chan->type, chan->channel,
+						    IIO_EV_TYPE_THRESH,
+						    IIO_EV_DIR_EITHER),
 			iio_get_time_ns(indio_dev));
 	}
 }
@@ -611,7 +615,7 @@ static void ams_unmask_worker(struct work_struct *work)
 	/* if still pending some alarm re-trigger the timer */
 	if (ams->masked_alarm)
 		schedule_delayed_work(&ams->ams_unmask_work,
-				msecs_to_jiffies(AMS_UNMASK_TIMEOUT));
+				      msecs_to_jiffies(AMS_UNMASK_TIMEOUT));
 }
 
 static irqreturn_t ams_iio_irq(int irq, void *data)
@@ -641,7 +645,7 @@ static irqreturn_t ams_iio_irq(int irq, void *data)
 		ams_handle_events(indio_dev, isr0);
 
 		schedule_delayed_work(&ams->ams_unmask_work,
-				msecs_to_jiffies(AMS_UNMASK_TIMEOUT));
+				      msecs_to_jiffies(AMS_UNMASK_TIMEOUT));
 	}
 
 	spin_unlock(&ams->lock);
@@ -725,7 +729,7 @@ static const struct iio_chan_spec ams_pl_channels[] = {
 };
 
 static int ams_init_module(struct iio_dev *indio_dev, struct device_node *np,
-		struct iio_chan_spec *channels)
+			   struct iio_chan_spec *channels)
 {
 	struct ams *ams = iio_priv(indio_dev);
 	struct device_node *chan_node, *child;
@@ -739,7 +743,7 @@ static int ams_init_module(struct iio_dev *indio_dev, struct device_node *np,
 
 		/* add PS channels to iio device channels */
 		memcpy(channels + num_channels, ams_ps_channels,
-				sizeof(ams_ps_channels));
+		       sizeof(ams_ps_channels));
 		num_channels += ARRAY_SIZE(ams_ps_channels);
 	} else if (of_device_is_compatible(np, "xlnx,zynqmp-ams-pl")) {
 		ams->pl_base = of_iomap(np, 0);
@@ -748,7 +752,7 @@ static int ams_init_module(struct iio_dev *indio_dev, struct device_node *np,
 
 		/* Copy only first 10 fix channels */
 		memcpy(channels + num_channels, ams_pl_channels,
-				AMS_PL_MAX_FIXED_CHANNEL * sizeof(*channels));
+		       AMS_PL_MAX_FIXED_CHANNEL * sizeof(*channels));
 		num_channels += AMS_PL_MAX_FIXED_CHANNEL;
 
 		chan_node = of_get_child_by_name(np, "xlnx,ext-channels");
@@ -759,12 +763,12 @@ static int ams_init_module(struct iio_dev *indio_dev, struct device_node *np,
 					continue;
 
 				memcpy(&channels[num_channels],
-						&ams_pl_channels[reg +
-						AMS_PL_MAX_FIXED_CHANNEL],
-						sizeof(*channels));
+				       &ams_pl_channels[reg +
+				       AMS_PL_MAX_FIXED_CHANNEL],
+				       sizeof(*channels));
 
 				if (of_property_read_bool(child,
-							"xlnx,bipolar"))
+							  "xlnx,bipolar"))
 					channels[num_channels].
 						scan_type.sign = 's';
 
@@ -789,14 +793,14 @@ static int ams_parse_dt(struct iio_dev *indio_dev, struct platform_device *pdev)
 
 	/* Initialize buffer for channel specification */
 	ams_channels = kzalloc(sizeof(ams_ps_channels) +
-			sizeof(ams_pl_channels), GFP_KERNEL);
+			       sizeof(ams_pl_channels), GFP_KERNEL);
 	if (!ams_channels)
 		return -ENOMEM;
 
 	for_each_child_of_node(np, child_node) {
 		if (of_device_is_available(child_node)) {
 			ret = ams_init_module(indio_dev, child_node,
-					ams_channels + num_channels);
+					      ams_channels + num_channels);
 			if (ret < 0) {
 				kfree(ams_channels);
 				return ret;
@@ -814,9 +818,9 @@ static int ams_parse_dt(struct iio_dev *indio_dev, struct platform_device *pdev)
 
 		/* set threshold to max and min for each channel */
 		falling_off = ams_get_alarm_offset(ams_channels[i].scan_index,
-				IIO_EV_DIR_FALLING);
+						   IIO_EV_DIR_FALLING);
 		rising_off = ams_get_alarm_offset(ams_channels[i].scan_index,
-				IIO_EV_DIR_RISING);
+						  IIO_EV_DIR_RISING);
 		if (ams_channels[i].scan_index >= PS_SEQ_MAX) {
 			ams->pl_bus->write(ams, falling_off, AMS_ALARM_THR_MIN);
 			ams->pl_bus->write(ams, rising_off, AMS_ALARM_THR_MAX);
@@ -827,14 +831,14 @@ static int ams_parse_dt(struct iio_dev *indio_dev, struct platform_device *pdev)
 	}
 
 	dev_channels = devm_kzalloc(&pdev->dev, sizeof(*dev_channels) *
-			num_channels, GFP_KERNEL);
+				    num_channels, GFP_KERNEL);
 	if (!dev_channels) {
 		kfree(ams_channels);
 		return -ENOMEM;
 	}
 
 	memcpy(dev_channels, ams_channels,
-			sizeof(*ams_channels) * num_channels);
+	       sizeof(*ams_channels) * num_channels);
 	kfree(ams_channels);
 	indio_dev->channels = dev_channels;
 	indio_dev->num_channels = num_channels;
@@ -914,7 +918,7 @@ static int ams_probe(struct platform_device *pdev)
 
 	ams->irq = platform_get_irq_byname(pdev, "ams-irq");
 	ret = devm_request_irq(&pdev->dev, ams->irq, &ams_iio_irq, 0, "ams-irq",
-			indio_dev);
+			       indio_dev);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "failed to register interrupt\n");
 		return ret;
