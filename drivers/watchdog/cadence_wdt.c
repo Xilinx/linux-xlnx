@@ -49,13 +49,11 @@
 /* Counter maximum value */
 #define CDNS_WDT_COUNTER_MAX 0xFFF
 
-static int wdt_timeout = CDNS_WDT_DEFAULT_TIMEOUT;
+static unsigned int wdt_timeout;
 static int nowayout = WATCHDOG_NOWAYOUT;
 
 module_param(wdt_timeout, int, 0);
-MODULE_PARM_DESC(wdt_timeout,
-		 "Watchdog time in seconds. (default="
-		 __MODULE_STRING(CDNS_WDT_DEFAULT_TIMEOUT) ")");
+MODULE_PARM_DESC(wdt_timeout, "initial watchdog timeout (in seconds)");
 
 module_param(nowayout, int, 0);
 MODULE_PARM_DESC(nowayout,
