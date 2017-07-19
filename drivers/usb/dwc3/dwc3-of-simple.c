@@ -46,6 +46,7 @@ struct dwc3_of_simple {
 	struct clk		**clks;
 	int			num_clocks;
 	void __iomem		*regs;
+	bool			wakeup_capable;
 };
 
 void dwc3_set_phydata(struct device *dev, struct phy *phy)
@@ -90,6 +91,23 @@ int dwc3_enable_hw_coherency(struct device *dev)
 	}
 
 	return 0;
+}
+
+void dwc3_simple_wakeup_capable(struct device *dev, bool wakeup)
+{
+	struct device_node *node =
+		of_find_compatible_node(NULL, NULL, "xlnx,zynqmp-dwc3");
+
+	if (node)  {
+		struct platform_device *pdev_parent;
+		struct dwc3_of_simple   *simple;
+
+		pdev_parent = of_find_device_by_node(node);
+		simple = platform_get_drvdata(pdev_parent);
+
+		/* Set wakeup capable as true or false */
+		simple->wakeup_capable = wakeup;
+	}
 }
 
 static int dwc3_of_simple_clk_init(struct dwc3_of_simple *simple, int count)
@@ -251,6 +269,40 @@ static int dwc3_of_simple_remove(struct platform_device *pdev)
 }
 
 #ifdef CONFIG_PM
+static int dwc3_of_simple_suspend(struct device *dev)
+{
+	struct dwc3_of_simple	*simple = dev_get_drvdata(dev);
+	int			i;
+
+	if (!simple->wakeup_capable) {
+		for (i = 0; i < simple->num_clocks; i++)
+			clk_disable(simple->clks[i]);
+	}
+
+	return 0;
+}
+
+static int dwc3_of_simple_resume(struct device *dev)
+{
+	struct dwc3_of_simple	*simple = dev_get_drvdata(dev);
+	int			ret;
+	int			i;
+
+	if (simple->wakeup_capable)
+		return 0;
+
+	for (i = 0; i < simple->num_clocks; i++) {
+		ret = clk_enable(simple->clks[i]);
+		if (ret < 0) {
+			while (--i >= 0)
+				clk_disable(simple->clks[i]);
+			return ret;
+		}
+	}
+
+	return 0;
+}
+
 static int dwc3_of_simple_runtime_suspend(struct device *dev)
 {
 	struct dwc3_of_simple	*simple = dev_get_drvdata(dev);
@@ -282,6 +334,8 @@ static int dwc3_of_simple_runtime_resume(struct device *dev)
 #endif
 
 static const struct dev_pm_ops dwc3_of_simple_dev_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(dwc3_of_simple_suspend,
+				dwc3_of_simple_resume)
 	SET_RUNTIME_PM_OPS(dwc3_of_simple_runtime_suspend,
 			dwc3_of_simple_runtime_resume, NULL)
 };
@@ -301,6 +355,7 @@ static struct platform_driver dwc3_of_simple_driver = {
 	.driver		= {
 		.name	= "dwc3-of-simple",
 		.of_match_table = of_dwc3_simple_match,
+		.pm = &dwc3_of_simple_dev_pm_ops,
 	},
 };
 
