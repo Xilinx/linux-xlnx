@@ -989,6 +989,23 @@ static int mmc_sd_init_card(struct mmc_host *host, u32 ocr,
 	if (err)
 		goto free_card;
 
+	/*
+	 * If the card is already in 1.8V and the system doesn't have
+	 * mechanism to power cycle the SD card, it will respond with no 1.8V
+	 * supported in OCR response. Below check will confirm if the above
+	 * condition has occurred and set the rocr flag accordingly.
+	 *
+	 * If the host is supporting UHS modes and the card is supporting SD
+	 * specification 3.0 and above, it can operate at UHS modes.
+	 */
+	if (mmc_host_uhs(host) && card->scr.sda_spec3 &&
+	    card->sw_caps.sd3_bus_mode >= SD_MODE_UHS_SDR50) {
+		rocr |= SD_ROCR_S18A;
+		err = mmc_set_signal_voltage(host, MMC_SIGNAL_VOLTAGE_180);
+		if (err)
+			goto free_card;
+	}
+
 	/* Initialization sequence for UHS-I cards */
 	if (rocr & SD_ROCR_S18A) {
 		err = mmc_sd_init_uhs_card(card);
