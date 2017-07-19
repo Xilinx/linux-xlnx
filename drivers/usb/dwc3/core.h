@@ -1166,10 +1166,13 @@ static inline bool dwc3_is_usb31(struct dwc3 *dwc)
 #if IS_ENABLED(CONFIG_USB_DWC3_OF_SIMPLE)
 int dwc3_enable_hw_coherency(struct device *dev);
 void dwc3_set_phydata(struct device *dev, struct phy *phy);
+void dwc3_simple_wakeup_capable(struct device *dev, bool wakeup);
 #else
 static inline int dwc3_enable_hw_coherency(struct device *dev)
 { return 1; }
 static inline void dwc3_set_phydata(struct device *dev, struct phy *phy)
+{ ; }
+void dwc3_simple_wakeup_capable(struct device *dev, bool wakeup)
 { ; }
 #endif
 

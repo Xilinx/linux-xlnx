@@ -17,8 +17,14 @@
 
 #include <linux/platform_device.h>
 #include <linux/of_device.h>
+#include <linux/usb/xhci_pdriver.h>
 
 #include "core.h"
+
+void dwc3_host_wakeup_capable(struct device *dev, bool wakeup)
+{
+	dwc3_simple_wakeup_capable(dev, wakeup);
+}
 
 int dwc3_host_init(struct dwc3 *dwc)
 {

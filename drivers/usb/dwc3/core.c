@@ -1404,6 +1404,16 @@ static int dwc3_suspend(struct device *dev)
 	struct dwc3	*dwc = dev_get_drvdata(dev);
 	int		ret;
 
+	/* Inform dwc3-of-simple about wakeup capability when dr_mode is set
+	 * to peripheral mode only. xhci-plat.c takes care of host mode.
+	 */
+	if (dwc->dr_mode != USB_DR_MODE_HOST) {
+		if (dwc->remote_wakeup)
+			dwc3_simple_wakeup_capable(dev, true);
+		else
+			dwc3_simple_wakeup_capable(dev, false);
+	}
+
 	ret = dwc3_suspend_common(dwc);
 	if (ret)
 		return ret;
