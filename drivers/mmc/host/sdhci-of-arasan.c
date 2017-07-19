@@ -25,10 +25,12 @@
 #include <linux/of_device.h>
 #include <linux/phy/phy.h>
 #include <linux/soc/xilinx/zynqmp/tap_delays.h>
+#include <linux/soc/xilinx/zynqmp/fw.h>
 #include <linux/pinctrl/consumer.h>
 #include <linux/regmap.h>
 #include "sdhci-pltfm.h"
 #include <linux/of.h>
+#include <linux/slab.h>
 
 #define SDHCI_ARASAN_VENDOR_REGISTER	0x78
 
@@ -601,6 +603,26 @@ static int sdhci_arasan_probe(struct platform_device *pdev)
 
 	match = of_match_node(sdhci_arasan_of_match, pdev->dev.of_node);
 	sdhci_arasan->soc_ctl_map = match->data;
+
+	if (of_device_is_compatible(pdev->dev.of_node, "xlnx,zynqmp-8.9a")) {
+		char *soc_rev;
+
+		/* read Silicon version using nvmem driver */
+		soc_rev = zynqmp_nvmem_get_silicon_version(&pdev->dev,
+							   "soc_revision");
+		if (PTR_ERR(soc_rev) == -EPROBE_DEFER)
+			/* Do a deferred probe */
+			return -EPROBE_DEFER;
+
+		if (!IS_ERR(soc_rev) && (*soc_rev == ZYNQMP_SILICON_V1))
+			host->quirks2 |= SDHCI_QUIRK2_NO_1_8_V;
+
+		/* Clean soc_rev if got a valid pointer from nvmem driver
+		 * else we may end up in kernel panic
+		 */
+		if (!IS_ERR(soc_rev))
+			kfree(soc_rev);
+	}
 
 	node = of_parse_phandle(pdev->dev.of_node, "arasan,soc-ctl-syscon", 0);
 	if (node) {
