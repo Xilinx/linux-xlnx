@@ -93,10 +93,14 @@ enum xscaler_vid_reg_fmts {
 #define XV_VSCALER_MAX_V_TAPS           (12)
 #define XV_VSCALER_MAX_V_PHASES         (64)
 
+#define XV_HSCALER_TAPS_2		(2)
+#define XV_HSCALER_TAPS_4		(4)
 #define XV_HSCALER_TAPS_6		(6)
 #define XV_HSCALER_TAPS_8		(8)
 #define XV_HSCALER_TAPS_10		(10)
 #define XV_HSCALER_TAPS_12		(12)
+#define XV_VSCALER_TAPS_2		(2)
+#define XV_VSCALER_TAPS_4		(4)
 #define XV_VSCALER_TAPS_6		(6)
 #define XV_VSCALER_TAPS_8		(8)
 #define XV_VSCALER_TAPS_10		(10)
@@ -725,6 +729,7 @@ xvsc_coeff_taps12[XV_VSCALER_MAX_V_PHASES][XV_VSCALER_TAPS_12] = {
  * @H_phases: The phases needed to program the H-scaler for different taps
  * @hscaler_coeff: The complete array of H-scaler coefficients
  * @vscaler_coeff: The complete array of V-scaler coefficients
+ * @is_polyphase: Track if scaling algorithm is polyphase or not
  * @rst_gpio: GPIO reset line to bring VPSS Scaler out of reset
  */
 struct xscaler_device {
@@ -744,6 +749,7 @@ struct xscaler_device {
 	u32 H_phases[XV_HSCALER_MAX_LINE_WIDTH];
 	short hscaler_coeff[XV_HSCALER_MAX_H_PHASES][XV_HSCALER_MAX_H_TAPS];
 	short vscaler_coeff[XV_VSCALER_MAX_V_PHASES][XV_VSCALER_MAX_V_TAPS];
+	bool is_polyphase;
 
 	struct gpio_desc *rst_gpio;
 };
@@ -1344,10 +1350,12 @@ static int xscaler_s_stream(struct v4l2_subdev *subdev, int enable)
 	 */
 	line_rate = (height_in * STEP_PRECISION) / height_out;
 
-	ret = xv_vscaler_select_coeff(xscaler, height_in, height_out);
-	if (ret < 0)
-		return ret;
-	xv_vscaler_set_coeff(xscaler);
+	if (xscaler->is_polyphase) {
+		ret = xv_vscaler_select_coeff(xscaler, height_in, height_out);
+		if (ret < 0)
+			return ret;
+		xv_vscaler_set_coeff(xscaler);
+	}
 
 	xvip_write(&xscaler->xvip, V_VSCALER_OFF +
 		   XV_VSCALER_CTRL_ADDR_HWREG_HEIGHTIN_DATA, height_in);
@@ -1376,14 +1384,13 @@ static int xscaler_s_stream(struct v4l2_subdev *subdev, int enable)
 	if (ret < 0)
 		return ret;
 
-	/* Set Polyphase coeff */
-	ret = xv_hscaler_select_coeff(xscaler, width_in, width_out);
-	if (ret < 0)
-		return ret;
-	/* Program generated coefficients into the IP register bank */
-	xv_hscaler_set_coeff(xscaler);
+	if (xscaler->is_polyphase) {
+		ret = xv_hscaler_select_coeff(xscaler, width_in, width_out);
+		if (ret < 0)
+			return ret;
+		xv_hscaler_set_coeff(xscaler);
+	}
 
-	/* Set HPHASE coeff */
 	xv_hscaler_calculate_phases(xscaler, width_in, width_out, pixel_rate);
 	xv_hscaler_set_phases(xscaler);
 
@@ -1567,13 +1574,15 @@ static int xscaler_parse_of(struct xscaler_device *xscaler)
 		return ret;
 
 	switch (xscaler->num_hori_taps) {
+	case XV_HSCALER_TAPS_2:
+	case XV_HSCALER_TAPS_4:
+		xscaler->is_polyphase = false;
+		break;
 	case XV_HSCALER_TAPS_6:
-		break;
 	case XV_HSCALER_TAPS_8:
-		break;
 	case XV_HSCALER_TAPS_10:
-		break;
 	case XV_HSCALER_TAPS_12:
+		xscaler->is_polyphase = true;
 		break;
 	default:
 		dev_err(dev, "Unsupported num-hori-taps %d",
@@ -1586,14 +1595,26 @@ static int xscaler_parse_of(struct xscaler_device *xscaler)
 	if (ret < 0)
 		return ret;
 
+	/*
+	 * For Bilinear and Bicubic case
+	 * number of vertical and horizontal taps must match
+	 */
 	switch (xscaler->num_vert_taps) {
+	case XV_HSCALER_TAPS_2:
+	case XV_VSCALER_TAPS_4:
+		if (xscaler->num_vert_taps != xscaler->num_hori_taps) {
+			dev_err(dev,
+				"H-scaler taps %d mismatches V-scaler taps %d",
+				 xscaler->num_hori_taps,
+				 xscaler->num_vert_taps);
+			return -EINVAL;
+		}
+		break;
 	case XV_VSCALER_TAPS_6:
-		break;
 	case XV_VSCALER_TAPS_8:
-		break;
 	case XV_VSCALER_TAPS_10:
-		break;
 	case XV_VSCALER_TAPS_12:
+		xscaler->is_polyphase = true;
 		break;
 	default:
 		dev_err(dev, "Unsupported num-vert-taps %d",
