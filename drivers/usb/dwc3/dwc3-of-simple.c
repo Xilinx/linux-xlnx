@@ -38,6 +38,7 @@ struct dwc3_of_simple {
 	struct clk		**clks;
 	int			num_clocks;
 	void __iomem		*regs;
+	bool			wakeup_capable;
 	struct reset_control	*resets;
 	bool			pulse_resets;
 	bool			need_reset;
@@ -90,6 +91,23 @@ static int dwc3_simple_set_phydata(struct dwc3_of_simple *simple)
 	}
 
 	return 0;
+}
+
+void dwc3_simple_wakeup_capable(struct device *dev, bool wakeup)
+{
+	struct device_node *node =
+		of_find_compatible_node(NULL, NULL, "xlnx,zynqmp-dwc3");
+
+	if (node)  {
+		struct platform_device *pdev_parent;
+		struct dwc3_of_simple   *simple;
+
+		pdev_parent = of_find_device_by_node(node);
+		simple = platform_get_drvdata(pdev_parent);
+
+		/* Set wakeup capable as true or false */
+		simple->wakeup_capable = wakeup;
+	}
 }
 
 static int dwc3_of_simple_clk_init(struct dwc3_of_simple *simple, int count)
@@ -336,6 +354,12 @@ static int __maybe_unused dwc3_of_simple_runtime_resume(struct device *dev)
 static int __maybe_unused dwc3_of_simple_suspend(struct device *dev)
 {
 	struct dwc3_of_simple *simple = dev_get_drvdata(dev);
+	int			i;
+
+	if (!simple->wakeup_capable) {
+		for (i = 0; i < simple->num_clocks; i++)
+			clk_disable(simple->clks[i]);
+	}
 
 	if (simple->need_reset)
 		reset_control_assert(simple->resets);
@@ -346,6 +370,17 @@ static int __maybe_unused dwc3_of_simple_suspend(struct device *dev)
 static int __maybe_unused dwc3_of_simple_resume(struct device *dev)
 {
 	struct dwc3_of_simple *simple = dev_get_drvdata(dev);
+	int			ret;
+	int			i;
+
+	for (i = 0; i < simple->num_clocks; i++) {
+		ret = clk_enable(simple->clks[i]);
+		if (ret < 0) {
+			while (--i >= 0)
+				clk_disable(simple->clks[i]);
+			return ret;
+		}
+	}
 
 	if (simple->need_reset)
 		reset_control_deassert(simple->resets);
