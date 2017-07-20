@@ -176,12 +176,19 @@ static int format_check(const struct drm_mode_fb_cmd2 *r)
 	case DRM_FORMAT_UYVY:
 	case DRM_FORMAT_VYUY:
 	case DRM_FORMAT_AYUV:
+	case DRM_FORMAT_VUY888:
+	case DRM_FORMAT_XVUY8888:
+	case DRM_FORMAT_XVUY2101010:
+	case DRM_FORMAT_Y8:
+	case DRM_FORMAT_Y10:
 	case DRM_FORMAT_NV12:
 	case DRM_FORMAT_NV21:
 	case DRM_FORMAT_NV16:
 	case DRM_FORMAT_NV61:
 	case DRM_FORMAT_NV24:
 	case DRM_FORMAT_NV42:
+	case DRM_FORMAT_XV15:
+	case DRM_FORMAT_XV20:
 	case DRM_FORMAT_YUV410:
 	case DRM_FORMAT_YVU410:
 	case DRM_FORMAT_YUV411:
