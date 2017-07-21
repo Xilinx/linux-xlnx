@@ -1215,7 +1215,12 @@ static void axienet_start_xmit_done(struct net_device *ndev,
 
 	ndev->stats.tx_packets += packets;
 	ndev->stats.tx_bytes += size;
-	netif_wake_queue(ndev);
+	/* Fixme: With the existing multiqueue implementation
+	 * in the driver it is difficult to get the exact queue info.
+	 * We should wake only the particular queue
+	 * instead of waking all ndev queues.
+	 */
+	netif_tx_wake_all_queues(ndev);
 }
 
 /**
@@ -1392,8 +1397,8 @@ static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 
 	spin_lock_irqsave(&q->tx_lock, flags);
 	if (axienet_check_tx_bd_space(q, num_frag)) {
-		if (!netif_queue_stopped(ndev))
-			netif_stop_queue(ndev);
+		if (!__netif_subqueue_stopped(ndev, map))
+			netif_stop_subqueue(ndev, map);
 		spin_unlock_irqrestore(&q->tx_lock, flags);
 		return NETDEV_TX_BUSY;
 	}
