@@ -1400,9 +1400,10 @@ static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 
 #ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
 	if (!lp->is_tsn) {
-		if (((lp->tstamp_config.tx_type == HWTSTAMP_TX_ONESTEP_SYNC) ||
-		     (lp->tstamp_config.tx_type == HWTSTAMP_TX_ON)) &&
-		    (lp->axienet_config->mactype != XAXIENET_10G_25G)) {
+		if ((((lp->tstamp_config.tx_type == HWTSTAMP_TX_ONESTEP_SYNC) ||
+		      (lp->tstamp_config.tx_type == HWTSTAMP_TX_ON)) ||
+		       lp->eth_hasptp) && (lp->axienet_config->mactype !=
+		       XAXIENET_10G_25G)) {
 			u8 *tmp;
 			struct sk_buff *new_skb;
 
@@ -1624,8 +1625,9 @@ static int axienet_recv(struct net_device *ndev, int budget,
 		skb_put(skb, length);
 #ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
 	if (!lp->is_tsn) {
-		if (lp->tstamp_config.rx_filter == HWTSTAMP_FILTER_ALL &&
-		    (lp->axienet_config->mactype != XAXIENET_10G_25G)) {
+		if ((lp->tstamp_config.rx_filter == HWTSTAMP_FILTER_ALL ||
+		     lp->eth_hasptp) && (lp->axienet_config->mactype !=
+		     XAXIENET_10G_25G)) {
 			u32 sec, nsec;
 			u64 time64;
 			struct skb_shared_hwtstamps *shhwtstamps;
@@ -3830,6 +3832,8 @@ static int axienet_probe(struct platform_device *pdev)
 
 	lp->eth_hasnobuf = of_property_read_bool(pdev->dev.of_node,
 						 "xlnx,eth-hasnobuf");
+	lp->eth_hasptp = of_property_read_bool(pdev->dev.of_node,
+					       "xlnx,eth-hasptp");
 
 	if ((lp->axienet_config->mactype == XAXIENET_1G) && !lp->eth_hasnobuf)
 		lp->eth_irq = platform_get_irq(pdev, 0);
