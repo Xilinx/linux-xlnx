@@ -29,6 +29,9 @@ Required properties:
 		  See ethernet.txt file in the same directory.
 - local-mac-address	: See ethernet.txt file in the same directory.
 - phy-mode		: see ethernet.txt file in the same directory.
+Required properties (When AxiEthernet is configured with MCDMA):
+- xlnx,channel-ids	: Queue Identifier associated with the MCDMA Channel.
+- interrupt-names	: Should contain the interrupt names.
 
 Optional properties:
 - xlnx,rxmem		: Max Rx Memory size.
@@ -41,6 +44,8 @@ Optional properties:
 - xlnx,include-dre	: Tells whether DMA h/w is configured with DRE or not.
 - clocks		: Input clock specifier. Refer to common clock bindings.
 - clock-names		: Input clock name, should be ethernet_clk and dma_clk.
+Optional properties (When AxiEthernet is configured with MCDMA):
+- xlnx,num-queues	: Number of queues h/w configured for.
 
 Example:
 
