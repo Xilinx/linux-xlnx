@@ -39,6 +39,13 @@ config XILINX_AXI_EMAC_HWTSTAMP
 	---help---
 	  Generate hardare packet timestamps. This is to facilitate IEE 1588.
 
+config  AXIENET_HAS_MCDMA
+	bool "AxiEthernet is configured with MCDMA"
+	depends on XILINX_AXI_EMAC
+	default n
+	---help---
+	  When hardware is generated with Axi Ethernet with MCDMA select this option.
+
 config XILINX_LL_TEMAC
 	tristate "Xilinx LL TEMAC (LocalLink Tri-mode Ethernet MAC) driver"
 	depends on (PPC || MICROBLAZE)
