@@ -70,12 +70,11 @@ static void xilinx_drm_crtc_dpms(struct drm_crtc *base_crtc, int dpms)
 	case DRM_MODE_DPMS_ON:
 		if (!crtc->pixel_clock_enabled) {
 			ret = clk_prepare_enable(crtc->pixel_clock);
-			if (ret) {
+			if (ret)
 				DRM_ERROR("failed to enable a pixel clock\n");
-				crtc->pixel_clock_enabled = false;
-			}
+			else
+				crtc->pixel_clock_enabled = true;
 		}
-		crtc->pixel_clock_enabled = true;
 
 		xilinx_drm_plane_manager_dpms(crtc->plane_manager, dpms);
 		xilinx_drm_plane_dpms(base_crtc->primary, dpms);
@@ -539,7 +538,7 @@ struct drm_crtc *xilinx_drm_crtc_create(struct drm_device *drm)
 		crtc->pixel_clock_enabled = false;
 		goto err_plane;
 	}
-	crtc->pixel_clock_enabled = true;
+	clk_disable_unprepare(crtc->pixel_clock);
 
 	sub_node = of_parse_phandle(drm->dev->of_node, "xlnx,vtc", 0);
 	if (sub_node) {
