@@ -309,6 +309,7 @@ struct xilinx_drm_dp_config {
  * @phy: PHY handles for DP lanes
  * @aclk: clock source device for internal axi4-lite clock
  * @aud_clk: clock source device for audio clock
+ * @aud_clk_enabled: if audio clock is enabled
  * @dpms: current dpms state
  * @dpcd: DP configuration data from currently connected sink device
  * @link_config: common link configuration between IP core and sink device
@@ -326,6 +327,7 @@ struct xilinx_drm_dp {
 	struct phy *phy[DP_MAX_LANES];
 	struct clk *aclk;
 	struct clk *aud_clk;
+	bool aud_clk_enabled;
 
 	int dpms;
 	u8 dpcd[DP_RECEIVER_CAP_SIZE];
@@ -1391,8 +1393,17 @@ static void xilinx_drm_dp_dpms(struct drm_encoder *encoder, int dpms)
 	case DRM_MODE_DPMS_ON:
 		pm_runtime_get_sync(dp->dev);
 
-		if (dp->aud_clk)
-			xilinx_drm_writel(iomem, XILINX_DP_TX_AUDIO_CONTROL, 1);
+		if (dp->aud_clk && !dp->aud_clk_enabled) {
+			ret = clk_prepare_enable(dp->aud_clk);
+			if (ret) {
+				dev_err(dp->dev, "failed to enable aud_clk\n");
+			} else {
+				xilinx_drm_writel(iomem,
+						  XILINX_DP_TX_AUDIO_CONTROL,
+						  1);
+				dp->aud_clk_enabled = true;
+			}
+		}
 		xilinx_drm_writel(iomem, XILINX_DP_TX_PHY_POWER_DOWN, 0);
 
 		for (i = 0; i < 3; i++) {
@@ -1417,9 +1428,11 @@ static void xilinx_drm_dp_dpms(struct drm_encoder *encoder, int dpms)
 		drm_dp_dpcd_writeb(&dp->aux, DP_SET_POWER, DP_SET_POWER_D3);
 		xilinx_drm_writel(iomem, XILINX_DP_TX_PHY_POWER_DOWN,
 				  XILINX_DP_TX_PHY_POWER_DOWN_ALL);
-		if (dp->aud_clk)
+		if (dp->aud_clk && dp->aud_clk_enabled) {
 			xilinx_drm_writel(iomem, XILINX_DP_TX_AUDIO_CONTROL, 0);
-
+			clk_disable_unprepare(dp->aud_clk);
+			dp->aud_clk_enabled = false;
+		}
 		pm_runtime_put_sync(dp->dev);
 
 		return;
@@ -1941,18 +1954,12 @@ static int xilinx_drm_dp_probe(struct platform_device *pdev)
 			goto error_aclk;
 		dp->aud_clk = NULL;
 		dev_dbg(dp->dev, "failed to get the aud_clk:\n");
-	} else {
-		ret = clk_prepare_enable(dp->aud_clk);
-		if (ret) {
-			dev_err(dp->dev, "failed to enable aud_clk\n");
-			goto error_aclk;
-		}
 	}
 
 	dp->dp_sub = xilinx_drm_dp_sub_of_get(pdev->dev.of_node);
 	if (IS_ERR(dp->dp_sub)) {
 		ret = PTR_ERR(dp->dp_sub);
-		goto error_aud_clk;
+		goto error_aclk;
 	}
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
@@ -2048,9 +2055,6 @@ error_dp_sub:
 	xilinx_drm_dp_sub_put(dp->dp_sub);
 error_phy:
 	xilinx_drm_dp_exit_phy(dp);
-error_aud_clk:
-	if (dp->aud_clk)
-		clk_disable_unprepare(dp->aud_clk);
 error_aclk:
 	clk_disable_unprepare(dp->aclk);
 	return ret;
@@ -2067,7 +2071,7 @@ static int xilinx_drm_dp_remove(struct platform_device *pdev)
 	xilinx_drm_dp_exit_phy(dp);
 	xilinx_drm_dp_sub_put(dp->dp_sub);
 
-	if (dp->aud_clk)
+	if (dp->aud_clk && dp->aud_clk_enabled)
 		clk_disable_unprepare(dp->aud_clk);
 	clk_disable_unprepare(dp->aclk);
 
