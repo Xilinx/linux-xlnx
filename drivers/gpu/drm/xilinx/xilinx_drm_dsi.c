@@ -673,8 +673,7 @@ static int xilinx_dsi_parse_dt(struct xilinx_dsi *dsi)
 
 	dsi->format = datatype;
 
-	if ((datatype > MIPI_DSI_FMT_RGB565) ||
-		(datatype < MIPI_DSI_FMT_RGB888)) {
+	if (datatype > MIPI_DSI_FMT_RGB565) {
 		dev_err(dsi->dev, "Invalid xlnx,dsi-data-type string\n");
 		return -EINVAL;
 	}
