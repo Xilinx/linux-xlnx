@@ -139,7 +139,7 @@ config MB_REMOTEPROC
 
 config ZYNQMP_R5_REMOTEPROC
 	tristate "ZynqMP_r5 remoteproc support"
-	depends on ARM64
+	depends on ARM64 && PM
 	select REMOTEPROC
 	select RPMSG_VIRTIO
 	select SRAM
