@@ -66,6 +66,12 @@ config VIDEO_XILINX_SCALER
 	help
 	  Driver for the Xilinx Video Scaler
 
+config VIDEO_XILINX_SDIRXSS
+	tristate "Xilinx SDI Rx Subsystem"
+	depends on VIDEO_XILINX
+	help
+	  Driver for Xilinx SDI Rx Subsystem
+
 config VIDEO_XILINX_SWITCH
 	tristate "Xilinx Video Switch"
 	depends on VIDEO_XILINX
