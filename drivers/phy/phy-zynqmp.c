@@ -34,7 +34,7 @@
 #include <linux/delay.h>
 #include <dt-bindings/phy/phy.h>
 #include <linux/soc/xilinx/zynqmp/fw.h>
-#include <linux/soc/xilinx/zynqmp/pm.h>
+#include <linux/soc/xilinx/zynqmp/firmware.h>
 #include <linux/reset.h>
 #include <linux/list.h>
 #include <linux/slab.h>

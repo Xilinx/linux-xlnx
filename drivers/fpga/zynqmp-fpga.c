@@ -20,7 +20,7 @@
 #include <linux/module.h>
 #include <linux/of_address.h>
 #include <linux/string.h>
-#include <linux/soc/xilinx/zynqmp/pm.h>
+#include <linux/soc/xilinx/zynqmp/firmware.h>
 
 /* Constant Definitions */
 #define IXR_FPGA_DONE_MASK	0X00000008U

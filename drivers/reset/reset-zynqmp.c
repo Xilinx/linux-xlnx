@@ -16,7 +16,7 @@
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/reset-controller.h>
-#include <linux/soc/xilinx/zynqmp/pm.h>
+#include <linux/soc/xilinx/zynqmp/firmware.h>
 
 #define ZYNQMP_NR_RESETS (ZYNQMP_PM_RESET_END - ZYNQMP_PM_RESET_START - 2)
 #define ZYNQMP_RESET_ID (ZYNQMP_PM_RESET_START + 1)

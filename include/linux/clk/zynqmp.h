@@ -17,7 +17,7 @@
 #define __LINUX_CLK_ZYNQMP_H_
 
 #include <linux/spinlock.h>
-#include <linux/soc/xilinx/zynqmp/pm.h>
+#include <linux/soc/xilinx/zynqmp/firmware.h>
 
 #define CLK_FRAC	BIT(13) /* has a fractional parent */
 

@@ -25,7 +25,7 @@
 #include <linux/platform_device.h>
 #include <linux/pinctrl/pinmux.h>
 #include <linux/pinctrl/pinconf-generic.h>
-#include <linux/soc/xilinx/zynqmp/pm.h>
+#include <linux/soc/xilinx/zynqmp/firmware.h>
 #include <linux/of_address.h>
 #include <dt-bindings/pinctrl/pinctrl-zynqmp.h>
 #include "pinctrl-utils.h"
