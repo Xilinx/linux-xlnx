@@ -24,7 +24,7 @@ enum vid_frmwork_type {
 	XDMA_V4L2,
 };
 
-#ifdef CONFIG_XILINX_FRMBUF
+#if IS_ENABLED(CONFIG_XILINX_FRMBUF)
 /**
  * xilinx_xdma_drm_config - configure video format in video aware DMA
  * @chan: dma channel instance
