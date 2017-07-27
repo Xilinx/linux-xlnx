@@ -1606,7 +1606,6 @@ static void xilinx_drm_dp_mode_set_stream(struct xilinx_drm_dp *dp,
 	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_USER_DATA_CNT_PER_LANE, reg);
 }
 
-
 static void xilinx_drm_dp_mode_set(struct drm_encoder *encoder,
 				   struct drm_display_mode *mode,
 				   struct drm_display_mode *adjusted_mode)

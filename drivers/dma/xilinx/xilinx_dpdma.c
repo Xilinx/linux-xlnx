@@ -1645,7 +1645,6 @@ static int xilinx_dpdma_chan_terminate_all(struct xilinx_dpdma_chan *chan)
 static bool
 xilinx_dpdma_chan_err(struct xilinx_dpdma_chan *chan, u32 isr, u32 eisr)
 {
-
 	if (!chan)
 		return false;
 
