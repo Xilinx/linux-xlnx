@@ -143,4 +143,28 @@
 /* Reset all event counters */
 #define V4L2_CID_XILINX_MIPICSISS_RESET_COUNTERS (V4L2_CID_XILINX_MIPICSISS + 3)
 
+/*
+ * Xilinx SDI Rx Subsystem
+ */
+
+/* Base ID */
+#define V4L2_CID_XILINX_SDIRX			(V4L2_CID_USER_BASE + 0xc100)
+
+/* Framer Control */
+#define V4L2_CID_XILINX_SDIRX_FRAMER		(V4L2_CID_XILINX_SDIRX + 1)
+/* Video Lock Window Control */
+#define V4L2_CID_XILINX_SDIRX_VIDLOCK_WINDOW	(V4L2_CID_XILINX_SDIRX + 2)
+/* EDH Error Mask Control */
+#define V4L2_CID_XILINX_SDIRX_EDH_ERRCNT_ENABLE	(V4L2_CID_XILINX_SDIRX + 3)
+/* Mode search Control */
+#define V4L2_CID_XILINX_SDIRX_SEARCH_MODES	(V4L2_CID_XILINX_SDIRX + 4)
+/* Get Detected Mode control */
+#define V4L2_CID_XILINX_SDIRX_MODE_DETECT	(V4L2_CID_XILINX_SDIRX + 5)
+/* Get CRC error status */
+#define V4L2_CID_XILINX_SDIRX_CRC		(V4L2_CID_XILINX_SDIRX + 6)
+/* Get EDH error count control */
+#define V4L2_CID_XILINX_SDIRX_EDH_ERRCNT	(V4L2_CID_XILINX_SDIRX + 7)
+/* Get EDH status control */
+#define V4L2_CID_XILINX_SDIRX_EDH_STATUS	(V4L2_CID_XILINX_SDIRX + 8)
+
 #endif /* __UAPI_XILINX_V4L2_CONTROLS_H__ */
