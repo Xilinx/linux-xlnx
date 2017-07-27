@@ -473,6 +473,11 @@ static int dwc3_config_soc_bus(struct dwc3 *dwc)
 			return ret;
 	}
 
+	/* Send struct dwc3 to dwc3-of-simple for configuring VBUS
+	 * during suspend/resume
+	 */
+	dwc3_set_simple_data(dwc);
+
 	return 0;
 }
 

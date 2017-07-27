@@ -36,16 +36,23 @@
 #include <linux/of_address.h>
 
 #include "core.h"
+#include "io.h"
 
 /* Xilinx USB 3.0 IP Register */
 #define XLNX_USB_COHERENCY		0x005C
 #define XLNX_USB_COHERENCY_ENABLE	0x1
+
+/* ULPI control registers */
+#define ULPI_OTG_CTRL_SET		0xB
+#define ULPI_OTG_CTRL_CLEAR		0XC
+#define OTG_CTRL_DRVVBUS_OFFSET		5
 
 struct dwc3_of_simple {
 	struct device		*dev;
 	struct clk		**clks;
 	int			num_clocks;
 	void __iomem		*regs;
+	struct dwc3		*dwc;
 	bool			wakeup_capable;
 };
 
@@ -91,6 +98,23 @@ int dwc3_enable_hw_coherency(struct device *dev)
 	}
 
 	return 0;
+}
+
+void dwc3_set_simple_data(struct dwc3 *dwc)
+{
+	struct device_node *node =
+		of_find_compatible_node(NULL, NULL, "xlnx,zynqmp-dwc3");
+
+	if (node) {
+		struct platform_device *pdev_parent;
+		struct dwc3_of_simple   *simple;
+
+		pdev_parent = of_find_device_by_node(node);
+		simple = platform_get_drvdata(pdev_parent);
+
+		/* Set (struct dwc3 *) to simple->dwc for future use */
+		simple->dwc =  dwc;
+	}
 }
 
 void dwc3_simple_wakeup_capable(struct device *dev, bool wakeup)
@@ -269,12 +293,34 @@ static int dwc3_of_simple_remove(struct platform_device *pdev)
 }
 
 #ifdef CONFIG_PM
+
+static void dwc3_simple_vbus(struct dwc3 *dwc, bool vbus_off)
+{
+	u32 reg, addr;
+	u8  val;
+
+	if (vbus_off)
+		addr = ULPI_OTG_CTRL_CLEAR;
+	else
+		addr = ULPI_OTG_CTRL_SET;
+
+	val = (1 << OTG_CTRL_DRVVBUS_OFFSET);
+
+	reg = DWC3_GUSB2PHYACC_NEWREGREQ | DWC3_GUSB2PHYACC_ADDR(addr);
+	reg |= DWC3_GUSB2PHYACC_WRITE | val;
+	dwc3_writel(dwc->regs, DWC3_GUSB2PHYACC(0), reg);
+}
+
 static int dwc3_of_simple_suspend(struct device *dev)
 {
 	struct dwc3_of_simple	*simple = dev_get_drvdata(dev);
 	int			i;
 
 	if (!simple->wakeup_capable) {
+		/* Ask ULPI to turn OFF Vbus */
+		dwc3_simple_vbus(simple->dwc, true);
+
+		/* Disable the clocks */
 		for (i = 0; i < simple->num_clocks; i++)
 			clk_disable(simple->clks[i]);
 	}
@@ -298,6 +344,9 @@ static int dwc3_of_simple_resume(struct device *dev)
 				clk_disable(simple->clks[i]);
 			return ret;
 		}
+
+		/* Ask ULPI to turn ON Vbus */
+		dwc3_simple_vbus(simple->dwc, false);
 	}
 
 	return 0;
