@@ -3744,7 +3744,7 @@ static int axienet_probe(struct platform_device *pdev)
 	lp->ndev = ndev;
 	lp->dev = &pdev->dev;
 	lp->options = XAE_OPTION_DEFAULTS;
-	lp->num_queues = XAE_MAX_QUEUES;
+	lp->num_queues = num_queues;
 	lp->is_tsn = of_property_read_bool(pdev->dev.of_node, "xlnx,tsn");
 	/* Map device registers */
 	ethres = platform_get_resource(pdev, IORESOURCE_MEM, 0);
