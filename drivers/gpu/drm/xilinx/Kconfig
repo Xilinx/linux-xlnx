@@ -6,6 +6,7 @@ config DRM_XILINX
 	select DRM_GEM_CMA_HELPER
 	select DMA_ENGINE
 	select DRM_XILINX_DP_SUB
+	select XILINX_FRMBUF
 	help
 	  DRM display driver for Xilinx IP based pipelines.
 
