@@ -682,7 +682,7 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 			mem_node->pool = mem_pool;
 			/* Get the memory node power domain id */
 			tmp_node = of_parse_phandle(pdev->dev.of_node,
-						srams_name, 0);
+						srams_name, i);
 			if (tmp_node) {
 				struct device_node *pd_node;
 				struct pd_id_st *pd_id;
