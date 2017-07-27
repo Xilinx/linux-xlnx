@@ -376,7 +376,7 @@ struct xilinx_dp_sub_debugfs {
 	struct xilinx_drm_dp_sub *xilinx_dp_sub;
 };
 
-struct xilinx_dp_sub_debugfs dp_sub_debugfs;
+static struct xilinx_dp_sub_debugfs dp_sub_debugfs;
 struct xilinx_dp_sub_debugfs_request {
 	const char *req;
 	enum xilinx_dp_sub_testcases tc;
@@ -539,7 +539,7 @@ xilinx_dp_sub_debugfs_background_color_read(char **kern_buff)
 }
 
 /* Match xilinx_dp_testcases vs dp_debugfs_reqs[] entry */
-struct xilinx_dp_sub_debugfs_request dp_sub_debugfs_reqs[] = {
+static struct xilinx_dp_sub_debugfs_request dp_sub_debugfs_reqs[] = {
 	{"BACKGROUND_COLOR", DP_SUB_TC_BG_COLOR,
 		xilinx_dp_sub_debugfs_background_color_read,
 		xilinx_dp_sub_debugfs_background_color_write},
