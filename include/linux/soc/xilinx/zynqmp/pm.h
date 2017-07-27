@@ -22,6 +22,8 @@
 #ifndef __SOC_ZYNQMP_PM_H__
 #define __SOC_ZYNQMP_PM_H__
 
+#include <linux/soc/xilinx/zynqmp/firmware.h>
+
 #define ZYNQMP_PM_VERSION_MAJOR	0
 #define ZYNQMP_PM_VERSION_MINOR	3
 
