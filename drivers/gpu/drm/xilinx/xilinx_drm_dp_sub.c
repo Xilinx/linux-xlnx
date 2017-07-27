@@ -356,7 +356,7 @@ static LIST_HEAD(xilinx_drm_dp_sub_list);
 static DEFINE_MUTEX(xilinx_drm_dp_sub_lock);
 
 #ifdef CONFIG_DRM_XILINX_DP_SUB_DEBUG_FS
-#define XILINX_DP_SUB_DEBUGFS_READ_MAX_SIZE	32UL
+#define XILINX_DP_SUB_DEBUGFS_READ_MAX_SIZE	32
 #define XILINX_DP_SUB_DEBUGFS_MAX_BG_COLOR_VAL	0xFFF
 #define IN_RANGE(x, min, max) ((x) >= (min) && (x) <= (max))
 
@@ -513,7 +513,8 @@ xilinx_dp_sub_debugfs_output_display_format_read(char **kern_buff)
 	xilinx_dp_sub_debugfs_output_format(dp_sub_debugfs.output_fmt);
 
 	out_str_len = strlen("Success");
-	out_str_len = min(XILINX_DP_SUB_DEBUGFS_READ_MAX_SIZE, out_str_len);
+	out_str_len = min_t(size_t, XILINX_DP_SUB_DEBUGFS_READ_MAX_SIZE,
+			    out_str_len);
 	snprintf(*kern_buff, out_str_len, "%s", "Success");
 
 	return 0;
@@ -530,7 +531,8 @@ xilinx_dp_sub_debugfs_background_color_read(char **kern_buff)
 	dp_sub_debugfs.b_value = 0;
 
 	out_str_len = strlen("Success");
-	out_str_len = min(XILINX_DP_SUB_DEBUGFS_READ_MAX_SIZE, out_str_len);
+	out_str_len = min_t(size_t, XILINX_DP_SUB_DEBUGFS_READ_MAX_SIZE,
+			    out_str_len);
 	snprintf(*kern_buff, out_str_len, "%s", "Success");
 
 	return 0;
@@ -605,8 +607,8 @@ static ssize_t xilinx_dp_sub_debugfs_read(struct file *f, char __user *buf,
 
 	if (dp_sub_debugfs.testcase == DP_SUB_TC_NONE) {
 		out_str_len = strlen("No testcase executed");
-		out_str_len = min(XILINX_DP_SUB_DEBUGFS_READ_MAX_SIZE,
-				  out_str_len);
+		out_str_len = min_t(size_t, XILINX_DP_SUB_DEBUGFS_READ_MAX_SIZE,
+				    out_str_len);
 		snprintf(kern_buff, out_str_len, "%s", "No testcase executed");
 	} else {
 		ret = dp_sub_debugfs_reqs[dp_sub_debugfs.testcase].read_handler(

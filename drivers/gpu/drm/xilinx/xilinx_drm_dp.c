@@ -344,7 +344,7 @@ static inline struct xilinx_drm_dp *to_dp(struct drm_encoder *encoder)
 #define AUX_READ_BIT	0x1
 
 #ifdef CONFIG_DRM_XILINX_DP_DEBUG_FS
-#define XILINX_DP_DEBUGFS_READ_MAX_SIZE	32UL
+#define XILINX_DP_DEBUGFS_READ_MAX_SIZE	32
 #define XILINX_DP_DEBUGFS_UINT8_MAX_STR	"255"
 #define IN_RANGE(x, min, max) ((x) >= (min) && (x) <= (max))
 
@@ -526,7 +526,8 @@ static ssize_t xilinx_dp_debugfs_max_linkrate_read(char **kern_buff)
 	}
 
 	output_str_len = strlen(XILINX_DP_DEBUGFS_UINT8_MAX_STR);
-	output_str_len = min(XILINX_DP_DEBUGFS_READ_MAX_SIZE, output_str_len);
+	output_str_len = min_t(size_t, XILINX_DP_DEBUGFS_READ_MAX_SIZE,
+			       output_str_len);
 	snprintf(*kern_buff, output_str_len, "%u", dpcd_link_bw);
 
 	return 0;
@@ -552,7 +553,8 @@ static ssize_t xilinx_dp_debugfs_max_lanecnt_read(char **kern_buff)
 
 	dpcd_lane_cnt &= DP_LANE_COUNT_MASK;
 	output_str_len = strlen(XILINX_DP_DEBUGFS_UINT8_MAX_STR);
-	output_str_len = min(XILINX_DP_DEBUGFS_READ_MAX_SIZE, output_str_len);
+	output_str_len = min_t(size_t, XILINX_DP_DEBUGFS_READ_MAX_SIZE,
+			       output_str_len);
 	snprintf(*kern_buff, output_str_len, "%u", dpcd_lane_cnt);
 
 	return 0;
@@ -587,7 +589,8 @@ xilinx_dp_debugfs_output_display_format_read(char **kern_buff)
 		return ret;
 
 	output_str_len = strlen("Success");
-	output_str_len = min(XILINX_DP_DEBUGFS_READ_MAX_SIZE, output_str_len);
+	output_str_len = min_t(size_t, XILINX_DP_DEBUGFS_READ_MAX_SIZE,
+			       output_str_len);
 	snprintf(*kern_buff, output_str_len, "%s", "Success");
 
 	return 0;
@@ -627,7 +630,8 @@ static ssize_t xilinx_dp_debugfs_read(struct file *f, char __user *buf,
 
 	if (dp_debugfs.testcase == DP_TC_NONE) {
 		out_str_len = strlen("No testcase executed");
-		out_str_len = min(XILINX_DP_DEBUGFS_READ_MAX_SIZE, out_str_len);
+		out_str_len = min_t(size_t, XILINX_DP_DEBUGFS_READ_MAX_SIZE,
+				    out_str_len);
 		snprintf(kern_buff, out_str_len, "%s", "No testcase executed");
 	} else {
 		ret = dp_debugfs_reqs[dp_debugfs.testcase].read_handler(
