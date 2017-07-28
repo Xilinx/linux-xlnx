@@ -61,7 +61,7 @@
 #define XILINX_DPDMA_INTR_GLOBAL_ERR			0x7000000
 #define XILINX_DPDMA_INTR_ERR_ALL			0x7fff000
 #define XILINX_DPDMA_INTR_CHAN_MASK			0x41041
-#define XILINX_DPDMA_INTR_GLOBAL_MASK			0xf00000
+#define XILINX_DPDMA_INTR_GLOBAL_MASK			0xf000000
 #define XILINX_DPDMA_INTR_ALL				0xfffffff
 #define XILINX_DPDMA_EISR				0x14
 #define XILINX_DPDMA_EIMR				0x18
@@ -1268,10 +1268,10 @@ static inline void xilinx_dpdma_chan_enable(struct xilinx_dpdma_chan *chan)
 
 	reg = XILINX_DPDMA_INTR_CHAN_MASK << chan->id;
 	reg |= XILINX_DPDMA_INTR_GLOBAL_MASK;
-	dpdma_set(chan->xdev->reg, XILINX_DPDMA_IEN, reg);
+	dpdma_write(chan->xdev->reg, XILINX_DPDMA_IEN, reg);
 	reg = XILINX_DPDMA_EINTR_CHAN_ERR_MASK << chan->id;
 	reg |= XILINX_DPDMA_INTR_GLOBAL_ERR;
-	dpdma_set(chan->xdev->reg, XILINX_DPDMA_EIEN, reg);
+	dpdma_write(chan->xdev->reg, XILINX_DPDMA_EIEN, reg);
 
 	reg = XILINX_DPDMA_CH_CNTL_ENABLE;
 	reg |= XILINX_DPDMA_CH_CNTL_QOS_VID_CLASS <<
@@ -1294,9 +1294,9 @@ static inline void xilinx_dpdma_chan_disable(struct xilinx_dpdma_chan *chan)
 	u32 reg;
 
 	reg = XILINX_DPDMA_INTR_CHAN_MASK << chan->id;
-	dpdma_clr(chan->xdev->reg, XILINX_DPDMA_IEN, reg);
+	dpdma_write(chan->xdev->reg, XILINX_DPDMA_IEN, reg);
 	reg = XILINX_DPDMA_EINTR_CHAN_ERR_MASK << chan->id;
-	dpdma_clr(chan->xdev->reg, XILINX_DPDMA_EIEN, reg);
+	dpdma_write(chan->xdev->reg, XILINX_DPDMA_EIEN, reg);
 
 	dpdma_clr(chan->reg, XILINX_DPDMA_CH_CNTL, XILINX_DPDMA_CH_CNTL_ENABLE);
 }
