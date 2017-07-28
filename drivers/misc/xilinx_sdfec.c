@@ -1014,6 +1014,7 @@ xsdfec_probe(struct platform_device *pdev)
 	struct device *dev_create;
 	struct resource *res;
 	int err;
+	bool irq_enabled = true;
 
 	xsdfec = devm_kzalloc(&pdev->dev, sizeof(*xsdfec), GFP_KERNEL);
 	if (!xsdfec)
@@ -1040,9 +1041,8 @@ xsdfec_probe(struct platform_device *pdev)
 
 	xsdfec->irq = platform_get_irq(pdev, 0);
 	if (xsdfec->irq < 0) {
-		dev_err(dev, "platform_get_irq failed");
-		err = xsdfec->irq;
-		goto err_xsdfec_dev;
+		dev_dbg(dev, "platform_get_irq failed");
+		irq_enabled = false;
 	}
 
 	err = xsdfec_parse_of(xsdfec);
@@ -1052,15 +1052,18 @@ xsdfec_probe(struct platform_device *pdev)
 	/* Save driver private data */
 	platform_set_drvdata(pdev, xsdfec);
 
-	init_waitqueue_head(&xsdfec->waitq);
-
-	/* Register IRQ thread */
-	err = devm_request_threaded_irq(dev, xsdfec->irq, NULL,
-					xsdfec_irq_thread, IRQF_ONESHOT,
-					"xilinx-sdfec16", xsdfec);
-	if (err < 0) {
-		dev_err(dev, "unable to request IRQ%d", xsdfec->irq);
-		goto err_xsdfec_dev;
+	if (irq_enabled) {
+		init_waitqueue_head(&xsdfec->waitq);
+		/* Register IRQ thread */
+		err = devm_request_threaded_irq(dev, xsdfec->irq, NULL,
+						xsdfec_irq_thread,
+						IRQF_ONESHOT,
+						"xilinx-sdfec16",
+						xsdfec);
+		if (err < 0) {
+			dev_err(dev, "unable to request IRQ%d", xsdfec->irq);
+			goto err_xsdfec_dev;
+		}
 	}
 
 	cdev_init(&xsdfec->xsdfec_cdev, &xsdfec_fops);
