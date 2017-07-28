@@ -131,6 +131,14 @@ config PCIE_XILINX
 	  Say 'Y' here if you want kernel to support the Xilinx AXI PCIe
 	  Host Bridge driver.
 
+config PCIE_XDMA_PL
+	bool "Xilinx XDMA PL PCIe host bridge support"
+	depends on ARCH_ZYNQMP
+	depends on PCI_MSI_IRQ_DOMAIN
+	help
+	  Say 'Y' here if you want kernel to enable support the
+	  Xilinx XDMA PL PCIe Host Bridge driver.
+
 config PCI_XGENE
 	bool "X-Gene PCIe controller"
 	depends on ARCH_XGENE
