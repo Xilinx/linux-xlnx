@@ -1,0 +1,57 @@
+Xilinx Video Gamma Correction IP
+-----------------------------------
+The Xilinx Video Gamma Correction IP is used to provide RGB gamma correction.
+The IP provides a look up table for each R,G and B components.
+
+Required properties:
+
+- compatible: Must be "xlnx,v-gamma-lut".
+
+- reg: Physical base address and length of the registers set for the device.
+
+- clocks: Reference to the clock that drives the ap_clk
+	  signal of Video Gamma Lookup.
+
+- reset-gpios: Specifier for a GPIO that asserts Gamma IP (AP_RST_N) reset
+
+- ports: Video ports, using the DT bindings defined in ../video-interfaces.txt.
+  The scaler has an input port (0) and an output port (1).
+
+
+Required port properties:
+- reg: This value represents the media pad of the V4L2 sub-device.
+  A Sink Pad is represented by reg = <0>
+  A Source Pad is represented by reg = <1>
+
+- xlnx,video-width: Video width as defined in video.txt
+
+Example :
+
+	gamma_lut_1: gamma_lut_1@0xa0080000 {
+		compatible = "xlnx,v-gamma-lut";
+		reg = <0x0 0xa0080000 0x0 0x10000>;
+		clocks = <&vid_stream_clk>;
+		reset-gpios = <&gpio 83 1>;
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+
+			port@0 {
+				reg = <0>;
+				xlnx,video-width = <8>;
+
+				gamma_in: endpoint {
+					remote-endpoint = <&demosaic_out>;
+				};
+			};
+
+			port@1 {
+				reg = <1>;
+				xlnx,video-width = <8>;
+
+				gamma_out: endpoint {
+					remote-endpoint = <&csc_in>;
+				};
+			};
+		};
+	};
