@@ -239,6 +239,7 @@ source "drivers/clk/samsung/Kconfig"
 source "drivers/clk/sunxi-ng/Kconfig"
 source "drivers/clk/tegra/Kconfig"
 source "drivers/clk/ti/Kconfig"
+source "drivers/clk/zynqmp/Kconfig"
 source "drivers/clk/uniphier/Kconfig"
 
 endmenu
