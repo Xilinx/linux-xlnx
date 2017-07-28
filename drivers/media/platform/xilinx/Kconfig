@@ -33,6 +33,16 @@ config VIDEO_XILINX_DEMOSAIC
 	stream format as input and generates an RGB video output.
 	Say M to modularize. Say N if unsure.
 
+config VIDEO_XILINX_GAMMA
+	tristate "Xilinx Gamma Correction LUT"
+	depends on VIDEO_XILINX
+	---help---
+	Driver for Xilinx Gamma Correction LUT IP. This is a V4L sub-device
+	based driver that exposes V4L controls to adjust Red, Blue and Green
+	Gamma Correction.
+
+	Say M to modularize. Say N if unsure.
+
 config VIDEO_XILINX_HLS
 	tristate "Xilinx Video HLS Core"
 	depends on VIDEO_XILINX
