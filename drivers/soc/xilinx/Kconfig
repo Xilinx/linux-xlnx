@@ -1,0 +1,7 @@
+#
+# Xilinx ZYNQ MPSoC configuration
+#
+menuconfig SOC_XILINX_ZYNQMP
+	bool "Xilinx Zynq MPSoC driver support"
+	depends on ARCH_ZYNQMP
+
