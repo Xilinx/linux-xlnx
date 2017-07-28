@@ -51,3 +51,9 @@ config DRM_XILINX_MIPI_DSI
 	select DRM_MIPI_DSI
 	help
 	  DRM driver for Xilinx MIPI DSI IP.
+
+config DRM_XILINX_SDI
+	tristate "Xilinx DRM SDI Subsystem Driver"
+	depends on DRM_XILINX
+	help
+	  DRM driver for Xilinx Display Port Subsystem.
