@@ -352,6 +352,7 @@ int xpsgtr_set_protregs(struct phy *phy, void __iomem *regs)
 	gtr_dev->regs = regs;
 	return 0;
 }
+EXPORT_SYMBOL_GPL(xpsgtr_set_protregs);
 
 int xpsgtr_override_deemph(struct phy *phy, u8 plvl, u8 vlvl)
 {
