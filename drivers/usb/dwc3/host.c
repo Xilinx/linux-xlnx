@@ -25,6 +25,7 @@ void dwc3_host_wakeup_capable(struct device *dev, bool wakeup)
 {
 	dwc3_simple_wakeup_capable(dev, wakeup);
 }
+EXPORT_SYMBOL(dwc3_host_wakeup_capable);
 
 int dwc3_host_init(struct dwc3 *dwc)
 {
