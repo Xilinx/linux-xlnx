@@ -1183,6 +1183,9 @@ static void dwc3_get_properties(struct dwc3 *dwc)
 	dwc->hird_threshold = hird_threshold
 		| (dwc->is_utmi_l1_suspend << 4);
 
+	/* Check if extra quirks to be added */
+	dwc3_simple_check_quirks(dwc);
+
 	dwc->imod_interval = 0;
 }
 
