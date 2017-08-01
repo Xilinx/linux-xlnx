@@ -147,14 +147,6 @@ unsigned int xilinx_drm_get_align(struct drm_device *drm)
 	return xilinx_drm_crtc_get_align(private->crtc);
 }
 
-void xilinx_drm_set_config(struct drm_device *drm, struct drm_mode_set *set)
-{
-	struct xilinx_drm_private *private = drm->dev_private;
-
-	if (private && private->fb)
-		xilinx_drm_fb_set_config(private->fb, set);
-}
-
 /* poll changed handler */
 static void xilinx_drm_output_poll_changed(struct drm_device *drm)
 {

@@ -57,11 +57,9 @@ static inline void xilinx_drm_set(void __iomem *base, int offset, u32 set)
 }
 
 struct drm_device;
-struct drm_mode_set;
 
 bool xilinx_drm_check_format(struct drm_device *drm, uint32_t fourcc);
 uint32_t xilinx_drm_get_format(struct drm_device *drm);
 unsigned int xilinx_drm_get_align(struct drm_device *drm);
-void xilinx_drm_set_config(struct drm_device *drm, struct drm_mode_set *set);
 
 #endif /* _XILINX_DRM_H_ */
