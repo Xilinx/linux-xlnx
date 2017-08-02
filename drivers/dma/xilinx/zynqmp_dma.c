@@ -887,13 +887,13 @@ static struct dma_async_tx_descriptor *zynqmp_dma_prep_sg(
 
 	/* Run until we are out of scatterlist entries */
 	while (true) {
-		/* Allocate and populate the descriptor */
-		new = zynqmp_dma_get_descriptor(chan);
-		desc = (struct zynqmp_dma_desc_ll *)new->src_v;
 		len = min_t(size_t, src_avail, dst_avail);
 		len = min_t(size_t, len, ZYNQMP_DMA_MAX_TRANS_LEN);
 		if (len == 0)
 			goto fetch;
+		/* Allocate and populate the descriptor */
+		new = zynqmp_dma_get_descriptor(chan);
+		desc = (struct zynqmp_dma_desc_ll *)new->src_v;
 		dma_dst = sg_dma_address(dst_sg) + sg_dma_len(dst_sg) -
 			dst_avail;
 		dma_src = sg_dma_address(src_sg) + sg_dma_len(src_sg) -
