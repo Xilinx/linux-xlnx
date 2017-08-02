@@ -357,6 +357,7 @@ static int xilinx_drm_plane_update(struct drm_plane *base_plane,
 
 	/* make sure a plane is on */
 	xilinx_drm_plane_dpms(base_plane, DRM_MODE_DPMS_ON);
+	xilinx_drm_plane_commit(base_plane);
 
 	return 0;
 }
