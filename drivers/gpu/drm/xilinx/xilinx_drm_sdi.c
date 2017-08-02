@@ -511,7 +511,7 @@ static void xilinx_sdi_payload_config(struct xilinx_sdi *sdi, u32 mode)
 
 	switch (mode) {
 	case XSDI_MODE_SD:
-		payload_1 = PAYLD_LN2_SDPAL;
+		payload_1 = PAYLD_LN1_SDPAL;
 		payload_2 = PAYLD_LN2_SDPAL;
 		break;
 	case XSDI_MODE_HD:
