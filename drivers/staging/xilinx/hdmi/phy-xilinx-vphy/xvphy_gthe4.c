@@ -194,10 +194,10 @@ u32 XVphy_Gthe4CfgSetCdr(XVphy *InstancePtr, u8 QuadId, XVphy_ChannelId ChId)
 		PllClkInFreqHz = XVphy_GetQuadRefClkFreq(InstancePtr, QuadId,
 				ChPtr->CpllRefClkSel);
 		if (PllClkInFreqHz == 270000000) {
-			ChPtr->PllParams.Cdr[2] = 0x01B4;
+			ChPtr->PllParams.Cdr[2] = 0x01C4;
 		}
 		else if (PllClkInFreqHz == 135000000) {
-			ChPtr->PllParams.Cdr[2] = 0x01C4;
+			ChPtr->PllParams.Cdr[2] = 0x01B4;
 		}
 		/* RBR does not use DP159 forwarded clock and expects 162MHz. */
 		else {
@@ -398,6 +398,12 @@ u32 XVphy_Gthe4ClkChReconfig(XVphy *InstancePtr, u8 QuadId,
 	}
 	/* Write new DRP register value for CPLL_CFG2. */
 	XVphy_DrpWrite(InstancePtr, QuadId, ChId, 0xBC, DrpVal);
+
+	/* Configure CPLL Calibration Registers */
+	XVphy_CfgCpllCalPeriodandTol(InstancePtr, QuadId, ChId,
+			(XVphy_IsTxUsingCpll(InstancePtr, QuadId, ChId) ?
+								XVPHY_DIR_TX : XVPHY_DIR_RX),
+			InstancePtr->Config.DrpClkFreq);
 
 	return XST_SUCCESS;
 }
@@ -669,29 +675,32 @@ u32 XVphy_Gthe4RxChReconfig(XVphy *InstancePtr, u8 QuadId, XVphy_ChannelId ChId)
 		XVphy_DrpWrite(InstancePtr, QuadId, ChId, 0xFB, DrpVal);
 
 		/* RXPI_CFG0 */
-		if (PllxClkOutMHz >= 8500) {
+		if (PllxClkOutMHz > 7000) {
 			DrpVal = 0x0004;
 		}
-		else if (PllxClkOutMHz >= 7500) {
+		else if (PllxClkOutMHz >= 6500) {
 			DrpVal = 0x0104;
 		}
-		else if (PllxClkOutMHz >= 6500) {
-			DrpVal = 0x0204;
-		}
 		else if (PllxClkOutMHz >= 5500) {
-			DrpVal = 0x2304;
+			DrpVal = 0x2004;
+		}
+		else if (PllxClkOutMHz >= 5156) {
+			DrpVal = 0x0002;
 		}
 		else if (PllxClkOutMHz >= 4500) {
-			DrpVal = 0x0002;
+			DrpVal = 0x0102;
+		}
+		else if (PllxClkOutMHz >= 4000) {
+			DrpVal = 0x2102;
 		}
 		else if (PllxClkOutMHz >= 3500) {
 			DrpVal = 0x2202;
 		}
 		else if (PllxClkOutMHz >= 3000) {
-			DrpVal = 0x0000;
+			DrpVal = 0x0200;
 		}
 		else if (PllxClkOutMHz >= 2500) {
-			DrpVal = 0x1200;
+			DrpVal = 0x1300;
 		}
 		else {
 			DrpVal = 0x3300;
@@ -1273,5 +1282,66 @@ static u16 XVphy_DrpEncodeClk25(u32 RefClkFreqHz)
 			(((RefClkFreqMHz % 25) > 0) ? 1 : 0)) - 1;
 
 	return (DrpEncode & 0x1F);
+}
+
+/*****************************************************************************/
+/**
+* This function configures the CPLL Calibration period and the count tolerance
+* registers.
+*
+* CpllCalPeriod    = ((fPLLClkin * N1 * N2) / (20 * M)) /
+* 						(16000 / (4 * fFreeRunClk))
+* CpllCalTolerance = CpllCalPeriod * 0.10
+*
+* @param	InstancePtr is a pointer to the XVphy core instance.
+* @param	QuadId is the GT quad ID to operate on.
+* @param	Dir is an indicator for TX or RX.
+* @param    FreeRunClkFreq is the freerunning clock freq in Hz
+*            driving the GT Wiz instance
+*
+* @return   XST_SUCCESS / XST_FAILURE
+*
+* @note		None.
+*
+******************************************************************************/
+u32 XVphy_CfgCpllCalPeriodandTol(XVphy *InstancePtr, u8 QuadId,
+		XVphy_ChannelId ChId, XVphy_DirectionType Dir, u32 FreeRunClkFreq)
+{
+	u64 CpllCalPeriod;
+	u64 CpllCalTolerance;
+	u64 PllVcoFreqHz;
+	u32 RegVal;
+
+	/* Check if ChID is not a GT Channel */
+	if (!XVPHY_ISCH(ChId)) {
+		return XST_FAILURE;
+	}
+
+	PllVcoFreqHz = XVphy_GetPllVcoFreqHz(InstancePtr, QuadId, ChId, Dir);
+	CpllCalPeriod = PllVcoFreqHz * 200 / (u64)FreeRunClkFreq;
+	if (CpllCalPeriod % 10) {
+		CpllCalTolerance = (CpllCalPeriod / 10) + 1;
+	}
+	else {
+		CpllCalTolerance = CpllCalPeriod / 10;
+	}
+
+	/* Read CPLL Calibration Period Value */
+	RegVal = XVphy_ReadReg(InstancePtr->Config.BaseAddr,
+				XVPHY_CPLL_CAL_PERIOD_REG) & ~XVPHY_CPLL_CAL_PERIOD_MASK;
+    RegVal |= CpllCalPeriod & XVPHY_CPLL_CAL_PERIOD_MASK;
+	/* Write new CPLL Calibration Period Value */
+	XVphy_WriteReg(InstancePtr->Config.BaseAddr,
+					XVPHY_CPLL_CAL_PERIOD_REG, RegVal);
+
+	/* Read CPLL Calibration Tolerance Value */
+	RegVal = XVphy_ReadReg(InstancePtr->Config.BaseAddr,
+				XVPHY_CPLL_CAL_TOL_REG) & ~XVPHY_CPLL_CAL_TOL_MASK;
+    RegVal |= CpllCalTolerance & XVPHY_CPLL_CAL_TOL_MASK;
+	/* Write new CPLL Calibration Tolerance Value */
+	XVphy_WriteReg(InstancePtr->Config.BaseAddr,
+                    XVPHY_CPLL_CAL_TOL_REG, RegVal);
+
+	return XST_SUCCESS;
 }
 #endif

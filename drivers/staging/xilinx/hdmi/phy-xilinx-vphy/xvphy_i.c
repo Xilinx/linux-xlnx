@@ -934,14 +934,15 @@ u32 XVphy_DirReconfig(XVphy *InstancePtr, u8 QuadId, XVphy_ChannelId ChId,
 	XVphy_Ch2Ids(InstancePtr, ChId, &Id0, &Id1);
 	for (Id = Id0; Id <= Id1; Id++) {
 		if (Dir == XVPHY_DIR_TX) {
-			Status = XVphy_TxChReconfig(InstancePtr, QuadId,
+			Status |= XVphy_TxChReconfig(InstancePtr, QuadId,
 											(XVphy_ChannelId)Id);
 		}
 		else {
-			Status = XVphy_RxChReconfig(InstancePtr, QuadId,
+			Status |= XVphy_RxChReconfig(InstancePtr, QuadId,
 											(XVphy_ChannelId)Id);
 		}
 		if (Status != XST_SUCCESS) {
+			Status = XST_FAILURE;
 			break;
 		}
 	}
@@ -970,7 +971,7 @@ u32 XVphy_DirReconfig(XVphy *InstancePtr, u8 QuadId, XVphy_ChannelId ChId,
 ******************************************************************************/
 u32 XVphy_ClkReconfig(XVphy *InstancePtr, u8 QuadId, XVphy_ChannelId ChId)
 {
-	u32 Status;
+	u32 Status = XST_SUCCESS;
 	u8 Id;
 	u8 Id0;
 	u8 Id1;
@@ -978,14 +979,15 @@ u32 XVphy_ClkReconfig(XVphy *InstancePtr, u8 QuadId, XVphy_ChannelId ChId)
 	XVphy_Ch2Ids(InstancePtr, ChId, &Id0, &Id1);
 	for (Id = Id0; Id <= Id1; Id++) {
 		if (XVPHY_ISCH(Id)) {
-			Status = XVphy_ClkChReconfig(InstancePtr, QuadId,
+			Status |= XVphy_ClkChReconfig(InstancePtr, QuadId,
 											(XVphy_ChannelId)Id);
 		}
 		else if (XVPHY_ISCMN(ChId)) {
-			Status = XVphy_ClkCmnReconfig(InstancePtr, QuadId,
+			Status |= XVphy_ClkCmnReconfig(InstancePtr, QuadId,
 											(XVphy_ChannelId)Id);
 		}
 		if (Status != XST_SUCCESS) {
+			Status = XST_FAILURE;
 			return Status;
 		}
 	}

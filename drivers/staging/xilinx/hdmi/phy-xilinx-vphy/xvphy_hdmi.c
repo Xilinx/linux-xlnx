@@ -1081,6 +1081,7 @@ u32 XVphy_HdmiCfgCalcMmcmParam(XVphy *InstancePtr, u8 QuadId,
 	u32 RefClk;
 	u8 Div;
 	u8 Mult;
+	u8 MultDiv;
 	u8 Valid;
 	u64 LineRate = 0;
 	XVphy_Mmcm *MmcmPtr;
@@ -1089,23 +1090,9 @@ u32 XVphy_HdmiCfgCalcMmcmParam(XVphy *InstancePtr, u8 QuadId,
 	/* Suppress Warning Messages */
 	ChId = ChId;
 
-	if (Dir == XVPHY_DIR_RX) {
-		RefClk = InstancePtr->HdmiRxRefClkHz;
-		MmcmPtr= &InstancePtr->Quads[QuadId].RxMmcm;
-
-		RefClk = RefClk / (GetGtHdmiPtr(InstancePtr))->RxMmcmScale;
-		Mult = (GetGtHdmiPtr(InstancePtr))->RxMmcmFvcoMax / RefClk;
-	}
-	else {
-		RefClk = InstancePtr->HdmiTxRefClkHz;
-		MmcmPtr= &InstancePtr->Quads[QuadId].TxMmcm;
-
-		RefClk = RefClk / (GetGtHdmiPtr(InstancePtr))->TxMmcmScale;
-		Mult = (GetGtHdmiPtr(InstancePtr))->TxMmcmFvcoMax / RefClk;
-
-		/* Get line rate. */
-		PllType = XVphy_GetPllType(InstancePtr, 0, XVPHY_DIR_TX,
-				XVPHY_CHANNEL_ID_CH1);
+	/* Get line rate. */
+	PllType = XVphy_GetPllType(InstancePtr, 0, Dir,
+			XVPHY_CHANNEL_ID_CH1);
 
 		switch (PllType) {
 			case XVPHY_PLL_TYPE_QPLL:
@@ -1120,10 +1107,7 @@ u32 XVphy_HdmiCfgCalcMmcmParam(XVphy *InstancePtr, u8 QuadId,
 			default:
 				LineRate = InstancePtr->Quads[QuadId].Ch1.LineRateHz;
 				break;
-		}
 	}
-
-	Div = 1;
 
 	if (((LineRate / 1000000) > 2970) && (Ppc == XVIDC_PPC_1)) {
 		XVphy_LogWrite(InstancePtr, XVPHY_LOG_EVT_1PPC_ERR, 1);
@@ -1131,163 +1115,191 @@ u32 XVphy_HdmiCfgCalcMmcmParam(XVphy *InstancePtr, u8 QuadId,
 		return (XST_FAILURE);
 	}
 
-	/* In case of 4 pixels per clock, the M must be a multiple of four. */
-	if (Ppc == XVIDC_PPC_4) {
-		Mult = Mult / 4;
-		Mult = Mult * 4;
-	}
-	/* Else the M must be a multiple of two. */
-	else if (Ppc == XVIDC_PPC_2) {
-		Mult = Mult / 2;
-		Mult = Mult * 2;
-	}
+	Div = 1;
 
-	if (!((Mult >= 1) && (Mult < 65))) {
-		XVphy_LogWrite(InstancePtr, XVPHY_LOG_EVT_MMCM_ERR, 1);
-		XVphy_CfgErrIntr(InstancePtr, XVPHY_ERRIRQ_MMCM_CFG, 1);
-		return (XST_FAILURE); /* Mult is out of range. */
-	}
-
-	Valid = (FALSE);
 	do {
-		MmcmPtr->ClkFbOutMult = Mult;
-		MmcmPtr->DivClkDivide = Div;
+		if (Dir == XVPHY_DIR_RX) {
+			RefClk = InstancePtr->HdmiRxRefClkHz;
+			MmcmPtr= &InstancePtr->Quads[QuadId].RxMmcm;
 
-		if (InstancePtr->Config.TransceiverWidth == 4) {
-			/* Link clock: TMDS clock ratio 1/40. */
-			if ((LineRate / 1000000) >= 3400) {
-				MmcmPtr->ClkOut0Div = Mult;
-			}
-			/* Link clock: TMDS clock ratio 1/10. */
-			else {
-				MmcmPtr->ClkOut0Div = Mult * 4;
-			}
+			RefClk = RefClk / (GetGtHdmiPtr(InstancePtr))->RxMmcmScale;
+			Mult = (GetGtHdmiPtr(InstancePtr))->RxMmcmFvcoMax * Div / RefClk;
 		}
-		else {//2 Byte Mode
-			/* Link clock: TMDS clock ratio 1/40. */
-			if ((LineRate / 1000000) >= 3400) {
-				MmcmPtr->ClkOut0Div = Mult / 2;
-			}
-			/* Link clock: TMDS clock ratio 1/10. */
-			else {
-				MmcmPtr->ClkOut0Div = Mult * 2;
-			}
+		else {
+			RefClk = InstancePtr->HdmiTxRefClkHz;
+			MmcmPtr= &InstancePtr->Quads[QuadId].TxMmcm;
+
+			RefClk = RefClk / (GetGtHdmiPtr(InstancePtr))->TxMmcmScale;
+			Mult = (GetGtHdmiPtr(InstancePtr))->TxMmcmFvcoMax * Div / RefClk;
 		}
 
-		/* TMDS Clock */
-		MmcmPtr->ClkOut1Div = Mult * ((Dir == XVPHY_DIR_TX) ?
-				(InstancePtr->HdmiTxSampleRate) : 1);
 
-		/* Video clock. */
-		MmcmPtr->ClkOut2Div = 0;
+		/* In case of 4 pixels per clock, the M must be a multiple of four. */
+		if (Ppc == XVIDC_PPC_4) {
+			Mult = Mult / 4;
+			Mult = Mult * 4;
+		}
+		/* Else the M must be a multiple of two. */
+		else if (Ppc == XVIDC_PPC_2) {
+			Mult = Mult / 2;
+			Mult = Mult * 2;
+		}
 
-		switch (Bpc) {
-		case XVIDC_BPC_10:
-			/* Quad pixel. */
-			if (Ppc == (XVIDC_PPC_4)) {
-				MmcmPtr->ClkOut2Div = (Mult * 5 *
-					((Dir == XVPHY_DIR_TX) ?
-					(InstancePtr->HdmiTxSampleRate) : 1));
-			}
-			/* Dual pixel. */
-			else if (Ppc == (XVIDC_PPC_2)) {
-				/* The clock ratio is 2.5 */
-				/* The PLL only supports integer values */
-				/* The mult must be dividable by two (2 * 2.5 = 5)
-					to get an integer number */
-				if ((Mult % 2) == 0) {
-					MmcmPtr->ClkOut2Div = (Mult * 5 / 2 *
-						((Dir == XVPHY_DIR_TX)?
-						(InstancePtr->HdmiTxSampleRate) : 1));
+
+		Valid = (FALSE);
+		do {
+            MultDiv = Mult / Div;
+			MmcmPtr->ClkFbOutMult = Mult;
+			MmcmPtr->DivClkDivide = Div;
+
+			if (InstancePtr->Config.TransceiverWidth == 4) {
+				/* Link clock: TMDS clock ratio 1/40. */
+				if ((LineRate / 1000000) >= 3400) {
+					MmcmPtr->ClkOut0Div = MultDiv;
+				}
+				/* Link clock: TMDS clock ratio 1/10. */
+				else {
+					MmcmPtr->ClkOut0Div = MultDiv * 4;
 				}
 			}
-			/* Single pixel. */
-			else {
-				/* The clock ratio is 1.25 */
-				/* The PLL only supports integer values */
-				/* The mult must be dividable by four (4 * 1.25 = 5)
-					to get an integer number */
-				if ((Mult % 4) == 0) {
-					MmcmPtr->ClkOut2Div = (Mult * 5 / 4 *
+			else {//2 Byte Mode
+				/* Link clock: TMDS clock ratio 1/40. */
+				if ((LineRate / 1000000) >= 3400) {
+					MmcmPtr->ClkOut0Div = MultDiv / 2;
+				}
+				/* Link clock: TMDS clock ratio 1/10. */
+				else {
+					MmcmPtr->ClkOut0Div = MultDiv * 2;
+				}
+			}
+
+			/* TMDS Clock */
+			MmcmPtr->ClkOut1Div = MultDiv * ((Dir == XVPHY_DIR_TX) ?
+					(InstancePtr->HdmiTxSampleRate) : 1);
+
+			/* Video clock. */
+			MmcmPtr->ClkOut2Div = 0;
+
+			switch (Bpc) {
+			case XVIDC_BPC_10:
+				/* Quad pixel. */
+				if (Ppc == (XVIDC_PPC_4)) {
+					MmcmPtr->ClkOut2Div = (MultDiv * 5 *
 						((Dir == XVPHY_DIR_TX) ?
 						(InstancePtr->HdmiTxSampleRate) : 1));
 				}
-			}
-			break;
-		case XVIDC_BPC_12:
-			/* Quad pixel. */
-			if (Ppc == (XVIDC_PPC_4)) {
-				MmcmPtr->ClkOut2Div = (Mult * 6 *
-					((Dir == XVPHY_DIR_TX) ?
-					(InstancePtr->HdmiTxSampleRate) : 1));
-			}
-			/* Dual pixel. */
-			else if (Ppc == (XVIDC_PPC_2)) {
-				MmcmPtr->ClkOut2Div = (Mult * 3 *
-					((Dir == XVPHY_DIR_TX) ?
-					(InstancePtr->HdmiTxSampleRate) : 1));
-			}
-			/* Single pixel. */
-			else {
-				/* The clock ratio is 1.5 */
-				/* The PLL only supports integer values */
-				/* The mult must be dividable by two (2 * 1.5 = 3)
-					to get an integer number */
-				if ((Mult % 2) == 0) {
-					MmcmPtr->ClkOut2Div = (Mult * 3 / 2 *
+				/* Dual pixel. */
+				else if (Ppc == (XVIDC_PPC_2)) {
+					/* The clock ratio is 2.5 */
+					/* The PLL only supports integer values */
+					/* The MultDiv must be dividable by two (2 * 2.5 = 5)
+						to get an integer number */
+					if ((MultDiv % 2) == 0) {
+						MmcmPtr->ClkOut2Div = (MultDiv * 5 / 2 *
+							((Dir == XVPHY_DIR_TX)?
+							(InstancePtr->HdmiTxSampleRate) : 1));
+					}
+				}
+				/* Single pixel. */
+				else {
+					/* The clock ratio is 1.25 */
+					/* The PLL only supports integer values */
+					/* The MultDiv must be dividable by four (4 * 1.25 = 5)
+						to get an integer number */
+					if ((MultDiv % 4) == 0) {
+						MmcmPtr->ClkOut2Div = (MultDiv * 5 / 4 *
+							((Dir == XVPHY_DIR_TX) ?
+							(InstancePtr->HdmiTxSampleRate) : 1));
+					}
+				}
+				break;
+			case XVIDC_BPC_12:
+				/* Quad pixel. */
+				if (Ppc == (XVIDC_PPC_4)) {
+					MmcmPtr->ClkOut2Div = (MultDiv * 6 *
 						((Dir == XVPHY_DIR_TX) ?
 						(InstancePtr->HdmiTxSampleRate) : 1));
 				}
+				/* Dual pixel. */
+				else if (Ppc == (XVIDC_PPC_2)) {
+					MmcmPtr->ClkOut2Div = (MultDiv * 3 *
+						((Dir == XVPHY_DIR_TX) ?
+						(InstancePtr->HdmiTxSampleRate) : 1));
+				}
+				/* Single pixel. */
+				else {
+					/* The clock ratio is 1.5 */
+					/* The PLL only supports integer values */
+					/* The MultDiv must be dividable by two (2 * 1.5 = 3)
+						to get an integer number */
+					if ((MultDiv % 2) == 0) {
+						MmcmPtr->ClkOut2Div = (MultDiv * 3 / 2 *
+							((Dir == XVPHY_DIR_TX) ?
+							(InstancePtr->HdmiTxSampleRate) : 1));
+					}
+				}
+				break;
+			case XVIDC_BPC_16 :
+				/* Quad pixel. */
+				if (Ppc == (XVIDC_PPC_4)) {
+					MmcmPtr->ClkOut2Div = (MultDiv * 8 *
+						((Dir == XVPHY_DIR_TX) ?
+						(InstancePtr->HdmiTxSampleRate) : 1));
+				}
+				/* Dual pixel. */
+				else if (Ppc == (XVIDC_PPC_2)) {
+					MmcmPtr->ClkOut2Div = (MultDiv * 4 *
+						((Dir == XVPHY_DIR_TX) ?
+						(InstancePtr->HdmiTxSampleRate) : 1));
+				}
+				/* Single pixel. */
+				else {
+					MmcmPtr->ClkOut2Div = (MultDiv * 2 *
+						((Dir == XVPHY_DIR_TX) ?
+						(InstancePtr->HdmiTxSampleRate) : 1));
+				}
+				break;
+			case XVIDC_BPC_8:
+			default:
+				/* Quad pixel. */
+				if (Ppc == (XVIDC_PPC_4)) {
+					MmcmPtr->ClkOut2Div = (MultDiv * 4 *
+						((Dir == XVPHY_DIR_TX) ?
+						(InstancePtr->HdmiTxSampleRate) : 1));
+				}
+				/* Dual pixel. */
+				else if (Ppc == (XVIDC_PPC_2)) {
+					MmcmPtr->ClkOut2Div = (MultDiv * 2 *
+						((Dir == XVPHY_DIR_TX) ?
+						(InstancePtr->HdmiTxSampleRate) : 1));
+				}
+				/* Single pixel. */
+				else {
+					MmcmPtr->ClkOut2Div = (MultDiv *
+						((Dir == XVPHY_DIR_TX) ?
+						(InstancePtr->HdmiTxSampleRate) : 1));
+				}
+				break;
 			}
-			break;
-		case XVIDC_BPC_16 :
-			/* Quad pixel. */
-			if (Ppc == (XVIDC_PPC_4)) {
-				MmcmPtr->ClkOut2Div = (Mult * 8 *
-					((Dir == XVPHY_DIR_TX) ?
-					(InstancePtr->HdmiTxSampleRate) : 1));
-			}
-			/* Dual pixel. */
-			else if (Ppc == (XVIDC_PPC_2)) {
-				MmcmPtr->ClkOut2Div = (Mult * 4 *
-					((Dir == XVPHY_DIR_TX) ?
-					(InstancePtr->HdmiTxSampleRate) : 1));
-			}
-			/* Single pixel. */
-			else {
-				MmcmPtr->ClkOut2Div = (Mult * 2 *
-					((Dir == XVPHY_DIR_TX) ?
-					(InstancePtr->HdmiTxSampleRate) : 1));
-			}
-			break;
-		case XVIDC_BPC_8:
-		default:
-			/* Quad pixel. */
-			if (Ppc == (XVIDC_PPC_4)) {
-				MmcmPtr->ClkOut2Div = (Mult * 4 *
-					((Dir == XVPHY_DIR_TX) ?
-					(InstancePtr->HdmiTxSampleRate) : 1));
-			}
-			/* Dual pixel. */
-			else if (Ppc == (XVIDC_PPC_2)) {
-				MmcmPtr->ClkOut2Div = (Mult * 2 *
-					((Dir == XVPHY_DIR_TX) ?
-					(InstancePtr->HdmiTxSampleRate) : 1));
-			}
-			/* Single pixel. */
-			else {
-				MmcmPtr->ClkOut2Div = (Mult *
-					((Dir == XVPHY_DIR_TX) ?
-					(InstancePtr->HdmiTxSampleRate) : 1));
-			}
-			break;
-		}
 
-		/* Only do this when the ClkOut2Div has been set */
-		if (MmcmPtr->ClkOut2Div) {
-			if (Dir == XVPHY_DIR_RX) {
-				/* Correct divider value if TMDS clock ratio is 1/40. */
-				if (InstancePtr->HdmiRxTmdsClockRatio) {
+			/* Only do this when the ClkOut2Div has been set */
+			if (MmcmPtr->ClkOut2Div) {
+				if (Dir == XVPHY_DIR_RX) {
+					/* Correct divider value if TMDS clock ratio is 1/40. */
+					if (InstancePtr->HdmiRxTmdsClockRatio) {
+						if ((MmcmPtr->ClkOut2Div % 4) == 0) {
+							MmcmPtr->ClkOut2Div =
+								MmcmPtr->ClkOut2Div / 4;
+						}
+						/* Not divisible by 4: repeat loop with a lower
+						 * multiply value. */
+						else {
+							MmcmPtr->ClkOut2Div = 255;
+						}
+					}
+				}
+				/* TX. */
+				else if ((LineRate / 1000000) >= 3400) {
 					if ((MmcmPtr->ClkOut2Div % 4) == 0) {
 						MmcmPtr->ClkOut2Div =
 							MmcmPtr->ClkOut2Div / 4;
@@ -1299,45 +1311,35 @@ u32 XVphy_HdmiCfgCalcMmcmParam(XVphy *InstancePtr, u8 QuadId,
 					}
 				}
 			}
-			/* TX. */
-			else if ((LineRate / 1000000) >= 3400) {
-				if ((MmcmPtr->ClkOut2Div % 4) == 0) {
-					MmcmPtr->ClkOut2Div =
-						MmcmPtr->ClkOut2Div / 4;
-				}
-				/* Not divisible by 4: repeat loop with a lower
-				 * multiply value. */
-				else {
-					MmcmPtr->ClkOut2Div = 255;
-				}
-			}
-		}
 
-		/* Check values. */
-		if ((MmcmPtr->ClkOut0Div <= 128) &&
-				(MmcmPtr->ClkOut1Div <= 128) &&
-				(MmcmPtr->ClkOut2Div <= 128) &&
-				(MmcmPtr->ClkOut2Div > 0)) {
-			Valid = (TRUE);
-		}
-		else {
-			/* 4 pixels per clock. */
-			if (Ppc == (XVIDC_PPC_4)) {
-				/* Decrease Mult value. */
-				Mult -= 4;
+			/* Check values. */
+			if ((MmcmPtr->ClkOut0Div > 0) && (MmcmPtr->ClkOut0Div <= 128) &&
+				(MmcmPtr->ClkOut1Div > 0) && (MmcmPtr->ClkOut1Div <= 128) &&
+				(MmcmPtr->ClkOut2Div > 0) && (MmcmPtr->ClkOut2Div <= 128)) {
+				Valid = (TRUE);
 			}
-			/* 2 pixels per clock. */
-			else if (Ppc == (XVIDC_PPC_2)) {
-				/* Decrease M value. */
-				Mult -= 2;
-			}
-			/* 1 pixel per clock */
 			else {
-				/* Decrease M value */
-				Mult -= 1;
+				/* 4 pixels per clock. */
+				if (Ppc == (XVIDC_PPC_4)) {
+					/* Decrease Mult value. */
+					Mult -= 4;
+				}
+				/* 2 pixels per clock. */
+				else if (Ppc == (XVIDC_PPC_2)) {
+					/* Decrease M value. */
+					Mult -= 2;
+				}
+				/* 1 pixel per clock */
+				else {
+					/* Decrease M value */
+					Mult -= 1;
+				}
 			}
-		}
-	} while (!Valid);
+		} while (!Valid && (Mult > 0) && (Mult < 65));
+
+		/* Increment divider */
+		Div++;
+	} while (!Valid && (Div > 0) && (Div < 20));
 
 	if ((InstancePtr->Config.XcvrType == XVPHY_GT_TYPE_GTPE2) &&
 			(((RefClk/1000)*(Mult/MmcmPtr->ClkOut2Div)) > 148500)) {

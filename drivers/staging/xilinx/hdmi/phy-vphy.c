@@ -216,7 +216,7 @@ static irqreturn_t xvphy_irq_thread(int irq, void *dev_id)
 	hdmi_mutex_lock(&vphydev->xvphy_mutex);
 
 	IntrStatus = XVphy_ReadReg(vphydev->xvphy.Config.BaseAddr, XVPHY_INTR_STS_REG);
-	printk(KERN_DEBUG "XVphy IntrStatus = 0x%08x\n", IntrStatus);
+	hdmi_dbg("XVphy IntrStatus = 0x%08x\n", IntrStatus);
 
 	/* handle pending interrupts */
 	XVphy_InterruptHandler(&vphydev->xvphy);
@@ -435,7 +435,7 @@ static int xvphy_probe(struct platform_device *pdev)
 	u32 Data;
 	u16 DrpVal;
 
-	hdmi_dbg("xvphy probed\n");
+	dev_info(&pdev->dev, "xlnx-hdmi-vphy: probed\n");
 	vphydev = devm_kzalloc(&pdev->dev, sizeof(*vphydev), GFP_KERNEL);
 	if (!vphydev)
 		return -ENOMEM;
@@ -479,7 +479,7 @@ static int xvphy_probe(struct platform_device *pdev)
 		if (IS_ERR(phy)) {
 			ret = PTR_ERR(phy);
 			if (ret == -EPROBE_DEFER)
-				hdmi_dbg("xvphy probe deferred\n");
+				dev_info(&pdev->dev, "xvphy probe deferred\n");
 			if (ret != -EPROBE_DEFER)
 				dev_err(&pdev->dev, "failed to create PHY\n");
 			return ret;
@@ -514,7 +514,7 @@ static int xvphy_probe(struct platform_device *pdev)
 		ret = PTR_ERR(vphydev->axi_lite_clk);
 		vphydev->axi_lite_clk = NULL;
 		if (ret == -EPROBE_DEFER)
-			hdmi_dbg("axi-lite-clk not ready -EPROBE_DEFER\n");
+			dev_info(&pdev->dev, "axi-lite-clk not ready -EPROBE_DEFER\n");
 		if (ret != -EPROBE_DEFER)
 			dev_err(&pdev->dev, "failed to get the axi lite clk.\n");
 		return ret;
@@ -530,6 +530,7 @@ static int xvphy_probe(struct platform_device *pdev)
 
 	/* set axi-lite clk in configuration data */
 	XVphy_ConfigTable[instance].AxiLiteClkFreq = axi_lite_rate;
+	XVphy_ConfigTable[instance].DrpClkFreq = axi_lite_rate;
 
 	/* dru-clk is used for the nidru block for low res support */
 	vphydev->clkp = devm_clk_get(&pdev->dev, "dru-clk");
@@ -537,7 +538,7 @@ static int xvphy_probe(struct platform_device *pdev)
 		ret = PTR_ERR(vphydev->clkp);
 		vphydev->clkp = NULL;
 		if (ret == -EPROBE_DEFER)
-			hdmi_dbg("dru-clk not ready -EPROBE_DEFER\n");
+			dev_info(&pdev->dev, "dru-clk not ready -EPROBE_DEFER\n");
 		if (ret != -EPROBE_DEFER)
 			dev_err(&pdev->dev, "failed to get the nidru clk.\n");
 		return ret;
@@ -571,8 +572,8 @@ static int xvphy_probe(struct platform_device *pdev)
 	Status = XVphy_HdmiInitialize(&vphydev->xvphy, 0/*QuadID*/,
 		&XVphy_ConfigTable[instance], axi_lite_rate);
 	if (Status != XST_SUCCESS) {
-		printk(KERN_INFO "HDMI VPHY initialization error\n");
-		return XST_FAILURE;
+		dev_err(&pdev->dev, "HDMI VPHY initialization error\n");
+		return ENODEV;
 	}
 
 	Data = XVphy_GetVersion(&vphydev->xvphy);
@@ -594,7 +595,7 @@ static int xvphy_probe(struct platform_device *pdev)
 		hdmi_dbg("DRU reference clock frequency %0d Hz\n\r",
 						XVphy_DruGetRefClkFreqHz(&vphydev->xvphy));
 	}
-	hdmi_dbg("HDMI VPHY initialization completed\n");
+	dev_info(&pdev->dev, "xlnx-hdmi-vphy: initialization completed\n");
 	/* probe has succeeded for this instance, increment instance index */
 	instance++;
 	return 0;
