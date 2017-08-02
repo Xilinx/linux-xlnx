@@ -453,7 +453,7 @@ void HdmiRx_AuxIntrHandler(XV_HdmiRx *InstancePtr);
 void HdmiRx_AudIntrHandler(XV_HdmiRx *InstancePtr);
 void HdmiRx_LinkStatusIntrHandler(XV_HdmiRx *InstancePtr);
 
-void XV_HdmiRxSs_IntrEnable(XV_HdmiRxSs *HdmiRxSsPtr)
+static void XV_HdmiRxSs_IntrEnable(XV_HdmiRxSs *HdmiRxSsPtr)
 {
 	XV_HdmiRx_PioIntrEnable(HdmiRxSsPtr->HdmiRxPtr);
 	XV_HdmiRx_TmrIntrEnable(HdmiRxSsPtr->HdmiRxPtr);
@@ -463,7 +463,7 @@ void XV_HdmiRxSs_IntrEnable(XV_HdmiRxSs *HdmiRxSsPtr)
 	XV_HdmiRx_AudioIntrEnable(HdmiRxSsPtr->HdmiRxPtr);
 }
 
-void XV_HdmiRxSs_IntrDisable(XV_HdmiRxSs *HdmiRxSsPtr)
+static void XV_HdmiRxSs_IntrDisable(XV_HdmiRxSs *HdmiRxSsPtr)
 {
 	XV_HdmiRx_PioIntrDisable(HdmiRxSsPtr->HdmiRxPtr);
 	XV_HdmiRx_TmrIntrDisable(HdmiRxSsPtr->HdmiRxPtr);
@@ -825,34 +825,13 @@ static void VphyHdmiRxReadyCallback(void *CallbackRef)
 	hdmi_mutex_unlock(&xhdmi->xhdmi_mutex);
 }
 
-static XV_HdmiRxSs_Config config = {
-	.DeviceId = 0,
-	.BaseAddress = 0,
-	.HighAddress = 0,
-	.Ppc = 2,
-	.MaxBitsPerPixel = 8,
-
-	.HdcpTimer = {
-		.IsPresent = 0,
-		.DeviceId = 255,
-		.AbsAddr = 0
-	},
-	.Hdcp14 = {
-		.IsPresent = 0,
-		.DeviceId = 255,
-		.AbsAddr = 0
-	},
-	.Hdcp22 = {
-		.IsPresent = 0,
-		.DeviceId  = 255,
-		.AbsAddr = 0
-	},
-	.HdmiRx = {
-		.IsPresent = 1,
-		.DeviceId = 0,
-		.AbsAddr = 0
-	}
-};
+/* -----------------------------------------------------------------------------
+ * Platform Device Driver
+ */
+static int instance = 0;
+/* TX uses [1, 127] and RX uses [128, 254] */
+/* The HDCP22 timer uses an additional offset of +64 */
+#define RX_DEVICE_ID_BASE 128
 
 /* Local Global table for sub-core instance(s) configuration settings */
 XV_HdmiRx_Config XV_HdmiRx_ConfigTable[XPAR_XV_HDMIRX_NUM_INSTANCES];
@@ -881,31 +860,22 @@ static int xhdmi_subcore_AbsAddr(uintptr_t SubSys_BaseAddr,
 
 /* Each sub-core within the subsystem has defined offset read from
    device-tree. */
-static int xhdmi_compute_subcore_AbsAddr(uintptr_t SubSys_BaseAddr, 
-                                         uintptr_t SubSys_HighAddr )
+static int xhdmi_compute_subcore_AbsAddr(XV_HdmiRxSs_Config *config)
 {
 	int ret;
 	
 	/* Subcore: Rx */
-	ret = xhdmi_subcore_AbsAddr(SubSys_BaseAddr,
-							    SubSys_HighAddr,
-							    config.HdmiRx.AbsAddr,
-							    &config.HdmiRx.AbsAddr);
+	ret = xhdmi_subcore_AbsAddr(config->BaseAddress,
+							    config->HighAddress,
+							    config->HdmiRx.AbsAddr,
+							    &(config->HdmiRx.AbsAddr));
 	if (ret != XST_SUCCESS) {
 	   hdmi_dbg("hdmirx sub-core address out-of range\n");
 	   return -EFAULT;
 	}
-
+	XV_HdmiRx_ConfigTable[instance].BaseAddress = config->HdmiRx.AbsAddr;
 	return (ret);
 }
-
-/* -----------------------------------------------------------------------------
- * Platform Device Driver
- */
-static int instance = 0;
-/* TX uses [1, 127] and RX uses [128, 254] */
-/* The HDCP22 timer uses an additional offset of +64 */
-#define RX_DEVICE_ID_BASE 128
 
 static int xhdmi_parse_of(struct xhdmi_device *xhdmi, XV_HdmiRxSs_Config *config)
 {
@@ -925,14 +895,14 @@ static int xhdmi_parse_of(struct xhdmi_device *xhdmi, XV_HdmiRxSs_Config *config
 	config->MaxBitsPerPixel = val;
 	
 	rc = of_property_read_u32(node, "xlnx,hdmi-rx-offset", &val);	 
- 	if (rc == 0) { 
+	if (rc < 0) {
+		goto error_dt;
+ 	} else if (rc == 0) { 
 		config->HdmiRx.DeviceId = RX_DEVICE_ID_BASE + instance;
  		config->HdmiRx.IsPresent = 1; 
 		config->HdmiRx.AbsAddr = val;
 		XV_HdmiRx_ConfigTable[instance].DeviceId = RX_DEVICE_ID_BASE + instance;
 		XV_HdmiRx_ConfigTable[instance].BaseAddress = val;
- 	} else { 
- 		goto error_dt; 
  	} 
 
 	rc = of_property_read_u32(node, "xlnx,edid-ram-size", &val);
@@ -965,7 +935,7 @@ static int xhdmi_probe(struct platform_device *pdev)
 	XV_HdmiRxSs *HdmiRxSsPtr;
 	u32 Status;
 
-	hdmi_dbg("hdmi-rx probed\n");
+	dev_info(&pdev->dev, "xlnx-hdmi-rx probed\n");
 	/* allocate zeroed HDMI RX device structure */
 	xhdmi = devm_kzalloc(&pdev->dev, sizeof(*xhdmi), GFP_KERNEL);
 	if (!xhdmi)
@@ -990,7 +960,7 @@ static int xhdmi_probe(struct platform_device *pdev)
 
 	hdmi_dbg("xhdmi_probe DT parse start\n");
 	/* parse open firmware device tree data */
-	ret = xhdmi_parse_of(xhdmi, &config);
+	ret = xhdmi_parse_of(xhdmi, &xhdmi->config);
 	if (ret < 0)
 		return ret;
 	hdmi_dbg("xhdmi_probe DT parse done\n");
@@ -1003,12 +973,12 @@ static int xhdmi_probe(struct platform_device *pdev)
 		ret = PTR_ERR(xhdmi->iomem);
 		goto error_resource;
 	}
-	config.BaseAddress = (uintptr_t)xhdmi->iomem;
-	config.HighAddress = config.BaseAddress + resource_size(res) - 1;
+	xhdmi->config.DeviceId = instance;
+	xhdmi->config.BaseAddress = (uintptr_t)xhdmi->iomem;
+	xhdmi->config.HighAddress = xhdmi->config.BaseAddress + resource_size(res) - 1;
 
 	/* Compute AbsAddress for sub-cores */
-	ret = xhdmi_compute_subcore_AbsAddr(config.BaseAddress,
-									    config.HighAddress);
+	ret = xhdmi_compute_subcore_AbsAddr(&xhdmi->config);	
 	if (ret == -EFAULT) {
 	   dev_err(xhdmi->dev, "hdmi-rx sub-core address out-of range\n");
 	   return ret;
@@ -1083,7 +1053,7 @@ static int xhdmi_probe(struct platform_device *pdev)
 	XV_HdmiRxSs_SetEdidParam(HdmiRxSsPtr, (u8 *)&xilinx_edid[0], sizeof(xilinx_edid));
 
 	/* Initialize top level and all included sub-cores */
-	Status = XV_HdmiRxSs_CfgInitialize(HdmiRxSsPtr, &config, (uintptr_t)xhdmi->iomem);
+	Status = XV_HdmiRxSs_CfgInitialize(HdmiRxSsPtr, &xhdmi->config, (uintptr_t)xhdmi->iomem);
 	if (Status != XST_SUCCESS)
 	{
 		dev_err(xhdmi->dev, "initialization failed with error %d\n", Status);
@@ -1208,7 +1178,7 @@ static int xhdmi_probe(struct platform_device *pdev)
 	spin_lock_irqsave(&xhdmi->irq_lock, flags);
 	XV_HdmiRxSs_IntrEnable(HdmiRxSsPtr);
 	spin_unlock_irqrestore(&xhdmi->irq_lock, flags);
-    hdmi_dbg("hdmi-rx probe successful\n");
+    dev_info(xhdmi->dev, "hdmi-rx probe successful\n");
 	/* probe has succeeded for this instance, increment instance index */
 	instance++;
 	/* return success */

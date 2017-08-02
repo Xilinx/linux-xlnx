@@ -599,42 +599,54 @@ static void XV_HdmiRxSs_DdcHdcpCallback(void *RefPtr, int Type)
     // HDCP 2.2. write message event
     case XV_HDMIRX_DDC_STA_HDCP_WMSG_NEW_EVT_MASK:
 #ifdef XPAR_XHDCP22_RX_NUM_INSTANCES
-      XHdcp22Rx_SetWriteMessageAvailable(HdmiRxSsPtr->Hdcp22Ptr);
+      if (HdmiRxSsPtr->Hdcp22Ptr) {
+        XHdcp22Rx_SetWriteMessageAvailable(HdmiRxSsPtr->Hdcp22Ptr);
+      }
 #endif
       break;
 
     // HDCP 2.2 read message event
     case XV_HDMIRX_DDC_STA_HDCP_RMSG_END_EVT_MASK:
 #ifdef XPAR_XHDCP22_RX_NUM_INSTANCES
-      XHdcp22Rx_SetReadMessageComplete(HdmiRxSsPtr->Hdcp22Ptr);
+      if (HdmiRxSsPtr->Hdcp22Ptr) {
+        XHdcp22Rx_SetReadMessageComplete(HdmiRxSsPtr->Hdcp22Ptr);
+      }
 #endif
       break;
 
     // HDCP 2.2 read not complete event
     case XV_HDMIRX_DDC_STA_HDCP_RMSG_NC_EVT_MASK:
 #ifdef XPAR_XHDCP22_RX_NUM_INSTANCES
-      XHdcp22Rx_SetDdcError(HdmiRxSsPtr->Hdcp22Ptr);
+      if (HdmiRxSsPtr->Hdcp22Ptr) {
+        XHdcp22Rx_SetDdcError(HdmiRxSsPtr->Hdcp22Ptr);
+      }
 #endif
       break;
 
     // HDCP 1.4 Aksv event
     case XV_HDMIRX_DDC_STA_HDCP_AKSV_EVT_MASK:
 #ifdef XPAR_XHDCP_NUM_INSTANCES
-      XHdcp1x_ProcessAKsv(HdmiRxSsPtr->Hdcp14Ptr);
+      if (HdmiRxSsPtr->Hdcp14Ptr) {
+        XHdcp1x_ProcessAKsv(HdmiRxSsPtr->Hdcp14Ptr);
+      }
 #endif
       break;
 
     // HDCP 1.4 protocol event
     case XV_HDMIRX_DDC_STA_HDCP_1_PROT_EVT_MASK:
-#ifdef USE_HDCP_RX
-      XV_HdmiRxSs_HdcpPushEvent(HdmiRxSsPtr, XV_HDMIRXSS_HDCP_1_PROT_EVT);
+#if defined(XPAR_XHDCP_NUM_INSTANCES) && defined(XPAR_XHDCP22_RX_NUM_INSTANCES)
+      if (HdmiRxSsPtr->Hdcp14Ptr && HdmiRxSsPtr->Hdcp22Ptr) {
+        XV_HdmiRxSs_HdcpPushEvent(HdmiRxSsPtr, XV_HDMIRXSS_HDCP_1_PROT_EVT);
+      }
 #endif
       break;
 
     // HDCP 2.2 protocol event
     case XV_HDMIRX_DDC_STA_HDCP_2_PROT_EVT_MASK:
-#ifdef USE_HDCP_RX
-      XV_HdmiRxSs_HdcpPushEvent(HdmiRxSsPtr, XV_HDMIRXSS_HDCP_2_PROT_EVT);
+#if defined(XPAR_XHDCP_NUM_INSTANCES) && defined(XPAR_XHDCP22_RX_NUM_INSTANCES)
+      if (HdmiRxSsPtr->Hdcp14Ptr && HdmiRxSsPtr->Hdcp22Ptr) {
+        XV_HdmiRxSs_HdcpPushEvent(HdmiRxSsPtr, XV_HDMIRXSS_HDCP_2_PROT_EVT);
+      }
 #endif
       break;
 
@@ -661,8 +673,10 @@ static void XV_HdmiRxSs_LinkErrorCallback(void *RefPtr)
   HdmiRxSsPtr = (XV_HdmiRxSs*) RefPtr;
 
   // HDCP 2.2
+  if (HdmiRxSsPtr->Hdcp22Ptr) {
   if (HdmiRxSsPtr->HdcpProtocol == XV_HDMIRXSS_HDCP_22) {
     XHdcp22Rx_SetLinkError(HdmiRxSsPtr->Hdcp22Ptr);
+    }
   }
 }
 #endif

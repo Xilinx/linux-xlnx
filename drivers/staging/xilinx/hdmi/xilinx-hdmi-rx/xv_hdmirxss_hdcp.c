@@ -508,15 +508,25 @@ static int XV_HdmiRxSs_HdcpProcessEvents(XV_HdmiRxSs *InstancePtr)
     // HDCP 1.4 protocol event
     // Enable HDCP 1.4
     case XV_HDMIRXSS_HDCP_1_PROT_EVT :
-      if(XV_HdmiRxSs_HdcpSetProtocol(InstancePtr, XV_HDMIRXSS_HDCP_14) != XST_SUCCESS)
-        XV_HdmiRxSs_HdcpSetProtocol(InstancePtr, XV_HDMIRXSS_HDCP_22);
+#if defined(XPAR_XHDCP_NUM_INSTANCES) && defined(XPAR_XHDCP22_RX_NUM_INSTANCES)
+      if (InstancePtr->Hdcp14Ptr && InstancePtr->Hdcp22Ptr) {
+        if(XV_HdmiRxSs_HdcpSetProtocol(InstancePtr, XV_HDMIRXSS_HDCP_14) != XST_SUCCESS) {
+          XV_HdmiRxSs_HdcpSetProtocol(InstancePtr, XV_HDMIRXSS_HDCP_22);
+        }
+      }
+#endif
       break;
 
     // HDCP 2.2 protocol event
     // Enable HDCP 2.2
     case XV_HDMIRXSS_HDCP_2_PROT_EVT :
-      if(XV_HdmiRxSs_HdcpSetProtocol(InstancePtr, XV_HDMIRXSS_HDCP_22) != XST_SUCCESS)
-        XV_HdmiRxSs_HdcpSetProtocol(InstancePtr, XV_HDMIRXSS_HDCP_14);
+#if defined(XPAR_XHDCP_NUM_INSTANCES) && defined(XPAR_XHDCP22_RX_NUM_INSTANCES)
+      if (InstancePtr->Hdcp14Ptr && InstancePtr->Hdcp22Ptr) {
+        if(XV_HdmiRxSs_HdcpSetProtocol(InstancePtr, XV_HDMIRXSS_HDCP_22) != XST_SUCCESS) {
+          XV_HdmiRxSs_HdcpSetProtocol(InstancePtr, XV_HDMIRXSS_HDCP_14);
+        }
+      }
+#endif
       break;
 
     // DVI mode event
