@@ -1134,12 +1134,7 @@ int XV_HdmiTxSs_HdcpDisableBlank(XV_HdmiTxSs *InstancePtr)
 /*****************************************************************************/
 /**
 *
-* This function determines if the connected HDMI sink has HDCP 1.4 capabilities.
-* The sink is determined to be HDCP 1.4 capable the BKSV indicates 20 ones and
-* 20 zeros. If the sink is capable of HDCP 1.4, then this function checks if
-* the Bcaps register indicates that the connected device a DVI or HDMI receiver.
-* If the receiver is determined to be HDMI, then the function will return FALSE
-* until the receiver has set the HDMI_MODE in the Bstatus register.
+* This function determines if the connected HDMI sink is HDCP 1.4 capable
 *
 * @param InstancePtr is a pointer to the XV_HdmiTxSs instance.
 *
@@ -1154,52 +1149,12 @@ u8 XV_HdmiTxSs_IsSinkHdcp14Capable(XV_HdmiTxSs *InstancePtr)
   Xil_AssertNonvoid(InstancePtr != NULL);
 
 #ifdef XPAR_XHDCP_NUM_INSTANCES
-  int status;
-  u8 buffer[5];
-  u8 temp = 0;
-  int zero_count = 0;
-  int one_count = 0;
-  int i,j;
-
   if (InstancePtr->Hdcp14Ptr) {
-    buffer[0] = 0x0; // XHDCP14_BKSV_REG
-    status = XV_HdmiTx_DdcWrite(InstancePtr->HdmiTxPtr,
-                                0x3A,
-                                1,
-                                (u8*)&buffer,
-                                FALSE);
-    if (status != XST_SUCCESS)
-      return FALSE;
-
-    /* Read the receiver KSV and count the number of ones and zeros.
-       A valid KSV has 20 ones and 20 zeros. */
-    status = XV_HdmiTx_DdcRead(InstancePtr->HdmiTxPtr,
-                               0x3A,
-                               5,
-                               (u8*)&buffer,
-                               TRUE);
-    if (status != XST_SUCCESS)
-      return FALSE;
-
-    for(i = 0; i < 5; i++) {
-      temp = buffer[i];
-
-      for(j = 0; j < 8; j++) {
-        if(temp & 0x1)
-          one_count++;
-        else
-          zero_count++;
-
-        temp = temp >> 1;
-      }
-    }
-
-    if (one_count != 20 || zero_count != 20)
-      return FALSE;
-
-    /* Check if the sink device is ready to authenticate */
     if (XHdcp1x_IsDwnstrmCapable(InstancePtr->Hdcp14Ptr)) {
       return TRUE;
+    }
+    else {
+      return FALSE;
     }
   }
   else {
@@ -1228,25 +1183,13 @@ u8 XV_HdmiTxSs_IsSinkHdcp22Capable(XV_HdmiTxSs *InstancePtr)
   Xil_AssertNonvoid(InstancePtr != NULL);
 
 #ifdef XPAR_XHDCP22_TX_NUM_INSTANCES
-  int status;
-  u8 data = 0x50; // XHDCP2_VERSION_REG
-
   if (InstancePtr->Hdcp22Ptr) {
-    /* Write the register offset */
-    status = XV_HdmiTx_DdcWrite(InstancePtr->HdmiTxPtr, 0x3A, 1, (u8*)&data, FALSE);
-    if (status != XST_SUCCESS)
-      return FALSE;
-
-    /* Read the HDCP2 version */
-    status = XV_HdmiTx_DdcRead(InstancePtr->HdmiTxPtr, 0x3A, 1, (u8*)&data, TRUE);
-    if (status != XST_SUCCESS)
-      return FALSE;
-
-    /* Check the HDCP2.2 version */
-    if(data & 0x4)
+    if (XHdcp22Tx_IsDwnstrmCapable(InstancePtr->Hdcp22Ptr)) {
       return TRUE;
-    else
+    }
+    else {
       return FALSE;
+    }
   }
   else {
     return FALSE;

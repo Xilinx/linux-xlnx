@@ -852,6 +852,135 @@ typedef struct {
     (XV_HDMITX_PIO_IN_OFFSET) ) ) >> (XV_HDMITX_PIO_IN_PPP_SHIFT)) \
     & (XV_HDMITX_PIO_IN_PPP_MASK))
 
+/*****************************************************************************/
+/**
+*
+* This macro disables video mask in HDMI TX core.
+*
+* @param    InstancePtr is a pointer to the XV_HdmiTx core instance.
+*
+* @return   None.
+*
+* @note     C-style signature:
+*       void XV_HdmiTx_MaskDisable(XV_HdmiTx *InstancePtr)
+*
+******************************************************************************/
+#define XV_HdmiTx_MaskDisable(InstancePtr) \
+{ \
+        XV_HdmiTx_WriteReg((InstancePtr)->Config.BaseAddress, \
+        (XV_HDMITX_MASK_CTRL_CLR_OFFSET), (XV_HDMITX_MASK_CTRL_RUN_MASK)); \
+}
+
+/*****************************************************************************/
+/**
+*
+* This macro enables video mask in HDMI TX core.
+*
+* @param    InstancePtr is a pointer to the XV_HdmiTx core instance.
+*
+* @return   None.
+*
+* @note     C-style signature:
+*       void XV_HdmiTx_MaskEnable(XV_HdmiTx *InstancePtr)
+*
+******************************************************************************/
+#define XV_HdmiTx_MaskEnable(InstancePtr) \
+{ \
+        XV_HdmiTx_WriteReg((InstancePtr)->Config.BaseAddress, \
+        (XV_HDMITX_MASK_CTRL_SET_OFFSET), (XV_HDMITX_MASK_CTRL_RUN_MASK)); \
+}
+
+/*****************************************************************************/
+/**
+*
+* This macro enables or disables the noise in the video mask.
+*
+* @param	InstancePtr is a pointer to the XHdmi_Tx core instance.
+* @param	SetClr specifies TRUE/FALSE value to either enable or disable the
+*		Noise.
+*
+* @return	None.
+*
+* @note		C-style signature:
+*		void XV_HdmiTx_MaskNoise(XV_HdmiTx *InstancePtr, u8 SetClr)
+*
+******************************************************************************/
+#define XV_HdmiTx_MaskNoise(InstancePtr, SetClr) \
+{ \
+	if (SetClr) { \
+		XV_HdmiTx_WriteReg((InstancePtr)->Config.BaseAddress, \
+		                   (XV_HDMITX_MASK_CTRL_SET_OFFSET), \
+						   (XV_HDMITX_MASK_CTRL_NOISE_MASK)); \
+	} \
+	else { \
+		XV_HdmiTx_WriteReg((InstancePtr)->Config.BaseAddress, \
+		                   (XV_HDMITX_MASK_CTRL_CLR_OFFSET), \
+						   (XV_HDMITX_MASK_CTRL_NOISE_MASK)); \
+	} \
+}
+
+/*****************************************************************************/
+/**
+*
+* This macro sets the red component value in the video mask.
+*
+* @param	InstancePtr is a pointer to the XHdmi_Tx core instance.
+* @param	Value
+*
+* @return	None.
+*
+* @note		C-style signature:
+*		void XV_HdmiTx_MaskSetRed(XV_HdmiTx *InstancePtr, u16 Value)
+*
+******************************************************************************/
+#define XV_HdmiTx_MaskSetRed(InstancePtr, Value) \
+{ \
+		XV_HdmiTx_WriteReg((InstancePtr)->Config.BaseAddress, \
+		                   (XV_HDMITX_MASK_RED_OFFSET), \
+						   (Value)); \
+}
+
+/*****************************************************************************/
+/**
+*
+* This macro sets the green component value in the video mask.
+*
+* @param	InstancePtr is a pointer to the XHdmi_Tx core instance.
+* @param	Value
+*
+* @return	None.
+*
+* @note		C-style signature:
+*		void XV_HdmiTx_MaskSetGreen(XV_HdmiTx *InstancePtr, u16 Value)
+*
+******************************************************************************/
+#define XV_HdmiTx_MaskSetGreen(InstancePtr, Value) \
+{ \
+		XV_HdmiTx_WriteReg((InstancePtr)->Config.BaseAddress, \
+		                   (XV_HDMITX_MASK_GREEN_OFFSET), \
+						   (Value)); \
+}
+
+/*****************************************************************************/
+/**
+*
+* This macro sets the blue component value in the video mask.
+*
+* @param	InstancePtr is a pointer to the XHdmi_Tx core instance.
+* @param	Value
+*
+* @return	None.
+*
+* @note		C-style signature:
+*		void XV_HdmiTx_MaskSetBlue(XV_HdmiTx *InstancePtr, u16 Value)
+*
+******************************************************************************/
+#define XV_HdmiTx_MaskSetBlue(InstancePtr, Value) \
+{ \
+		XV_HdmiTx_WriteReg((InstancePtr)->Config.BaseAddress, \
+		                   (XV_HDMITX_MASK_BLUE_OFFSET), \
+						   (Value)); \
+}
 /************************** Function Prototypes ******************************/
 
 /* Initialization function in xv_hdmitx_sinit.c */

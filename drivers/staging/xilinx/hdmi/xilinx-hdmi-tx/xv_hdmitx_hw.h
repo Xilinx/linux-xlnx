@@ -253,6 +253,30 @@ extern "C" {
 // Audio peripheral Status register masks
 #define XV_HDMITX_AUD_STA_IRQ_MASK      (1<<0) /**< AUD Status Interrupt mask */
 
+// Video Mask (MASK) peripheral register offsets
+// The mask is the fifth peripheral on the local bus
+#define XV_HDMITX_MASK_BASE              (5*64)
+#define XV_HDMITX_MASK_ID_OFFSET         ((XV_HDMITX_MASK_BASE)+(0*4)) /**< MASK
+                                * Identification *  Register offset */
+#define XV_HDMITX_MASK_CTRL_OFFSET       ((XV_HDMITX_MASK_BASE)+(1*4)) /**< MASK
+                                * Control Register *  offset */
+#define XV_HDMITX_MASK_CTRL_SET_OFFSET   ((XV_HDMITX_MASK_BASE)+(2*4)) /**< MASK
+                                * Control Register Set *  offset */
+#define XV_HDMITX_MASK_CTRL_CLR_OFFSET   ((XV_HDMITX_MASK_BASE)+(3*4)) /**< MASK
+                                * Control Register Clear *  offset */
+#define XV_HDMITX_MASK_STA_OFFSET        ((XV_HDMITX_MASK_BASE)+(4*4)) /**< MASK
+                                * Status Register *  offset */
+#define XV_HDMITX_MASK_RED_OFFSET        ((XV_HDMITX_MASK_BASE)+(5*4)) /**< MASK
+                                * Red Component Register *  offset */
+#define XV_HDMITX_MASK_GREEN_OFFSET        ((XV_HDMITX_MASK_BASE)+(6*4)) /**< MASK
+                                * Green Component Register *  offset */
+#define XV_HDMITX_MASK_BLUE_OFFSET        ((XV_HDMITX_MASK_BASE)+(7*4)) /**< MASK
+                                * Blue Component Register *  offset */
+
+// Video mask peripheral Control register masks
+#define XV_HDMITX_MASK_CTRL_RUN_MASK     (1<<0)  /**< MASK Control Run mask */
+#define XV_HDMITX_MASK_CTRL_NOISE_MASK   (1<<2)  /**< MASK Control Noise */
+
 // Peripheral ID and General shift values.
 #define XV_HDMITX_SHIFT_16  16  /**< 16 shift value */
 #define XV_HDMITX_MASK_16   0xFFFF  /**< 16 bit mask value */

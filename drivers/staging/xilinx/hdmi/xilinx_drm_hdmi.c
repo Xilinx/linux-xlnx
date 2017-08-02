@@ -160,13 +160,13 @@ void HdmiTx_PioIntrHandler(XV_HdmiTx *InstancePtr);
 void HdmiTx_DdcIntrHandler(XV_HdmiTx *InstancePtr);
 void HdmiTx_AuxIntrHandler(XV_HdmiTx *InstancePtr);
 
-void XV_HdmiTxSs_IntrEnable(XV_HdmiTxSs *HdmiTxSsPtr)
+static void XV_HdmiTxSs_IntrEnable(XV_HdmiTxSs *HdmiTxSsPtr)
 {
 	XV_HdmiTx_PioIntrEnable(HdmiTxSsPtr->HdmiTxPtr);
 	XV_HdmiTx_DdcIntrEnable(HdmiTxSsPtr->HdmiTxPtr);
 }
 
-void XV_HdmiTxSs_IntrDisable(XV_HdmiTxSs *HdmiTxSsPtr)
+static void XV_HdmiTxSs_IntrDisable(XV_HdmiTxSs *HdmiTxSsPtr)
 {
 	XV_HdmiTx_PioIntrDisable(HdmiTxSsPtr->HdmiTxPtr);
 	XV_HdmiTx_DdcIntrDisable(HdmiTxSsPtr->HdmiTxPtr);
@@ -241,6 +241,17 @@ static irqreturn_t hdmitx_irq_thread(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
+static void TxToggleCallback(void *CallbackRef)
+{
+	struct xilinx_drm_hdmi *xhdmi = (struct xilinx_drm_hdmi *)CallbackRef;
+	BUG_ON(!xhdmi);
+
+	XV_HdmiTxSs *HdmiTxSsPtr = &xhdmi->xv_hdmitxss;
+	BUG_ON(!HdmiTxSsPtr);
+	hdmi_dbg("TxToggleCallback()\n");
+
+	XV_HdmiTxSs_StreamStart(HdmiTxSsPtr);
+}
 
 static void TxConnectCallback(void *CallbackRef)
 {
@@ -263,6 +274,7 @@ static void TxConnectCallback(void *CallbackRef)
 			(xst_hdmi20 == XST_SUCCESS)? "2.0": "1.4");
 		xhdmi->is_hdmi_20_sink = (xst_hdmi20 == XST_SUCCESS);
 		XVphy_IBufDsEnable(VphyPtr, 0, XVPHY_DIR_TX, (TRUE));
+		XV_HdmiTxSs_StreamStart(HdmiTxSsPtr);
 	}
 	else {
 		hdmi_dbg("TxConnectCallback(): TX disconnected\n");
@@ -281,7 +293,9 @@ static void TxStreamUpCallback(void *CallbackRef)
 	struct xilinx_drm_hdmi *xhdmi = (struct xilinx_drm_hdmi *)CallbackRef;
 	XVphy *VphyPtr;
 	XV_HdmiTxSs *HdmiTxSsPtr;
+#ifdef DEBUG	
 	XVidC_VideoStream *HdmiTxSsVidStreamPtr;
+#endif	
 	XVphy_PllType TxPllType;
 	u64 TxLineRate;
 
@@ -329,6 +343,7 @@ static void TxStreamUpCallback(void *CallbackRef)
 	HdmiTxSsVidStreamPtr = XV_HdmiTxSs_GetVideoStream(HdmiTxSsPtr);
 	XVidC_ReportStreamInfo(HdmiTxSsVidStreamPtr);
 #endif
+	hdmi_dbg("TxStreamUpCallback(): done\n");
 }
 
 static void TxStreamDownCallback(void *CallbackRef)
@@ -647,10 +662,10 @@ static void xilinx_drm_hdmi_mode_set(struct drm_encoder *encoder,
 		return;
 	}
 
-	/* Enable si5324 LOL signal (disable gpio override) */
-	hdmi_dbg("force phy freq change event: TxRefClkRdy = High\n");
-	gpiod_set_value_cansleep(xhdmi->freqchg_gpio, (is_gpio_active_low) ?
-				XVPHY_TXREFCLK_RDY_LOW : XVPHY_TXREFCLK_RDY_HIGH);
+		/* Enable si5324 LOL signal (disable gpio override) */
+		hdmi_dbg("force phy freq change event: TxRefClkRdy = High\n");
+		gpiod_set_value_cansleep(xhdmi->freqchg_gpio, (is_gpio_active_low) ?
+					XVPHY_TXREFCLK_RDY_LOW : XVPHY_TXREFCLK_RDY_HIGH);
 
 	adjusted_mode->clock = VphyPtr->HdmiTxRefClkHz / 1000;
 	hdmi_dbg("adjusted_mode->clock = %u Hz\n", adjusted_mode->clock);
@@ -791,9 +806,6 @@ static struct drm_encoder_slave_funcs xilinx_drm_hdmi_encoder_funcs = {
 	.get_modes		= xilinx_drm_hdmi_get_modes,
 };
 
-/* forward declaration */
-static XV_HdmiTxSs_Config config;
-
 static int xilinx_drm_hdmi_encoder_init(struct platform_device *pdev,
 				      struct drm_device *dev,
 				      struct drm_encoder_slave *encoder)
@@ -820,7 +832,7 @@ static int xilinx_drm_hdmi_encoder_init(struct platform_device *pdev,
 
 	BUG_ON(!HdmiTxSsPtr);
 
-	Status = XV_HdmiTxSs_CfgInitialize(HdmiTxSsPtr, &config, (uintptr_t)xhdmi->iomem);
+	Status = XV_HdmiTxSs_CfgInitialize(HdmiTxSsPtr, &xhdmi->config, (uintptr_t)xhdmi->iomem);
 	if (Status != XST_SUCCESS)
 	{
 		dev_err(xhdmi->dev, "initialization failed with error %d\n", Status);
@@ -834,6 +846,8 @@ static int xilinx_drm_hdmi_encoder_init(struct platform_device *pdev,
 	/* TX SS callback setup */
 	XV_HdmiTxSs_SetCallback(HdmiTxSsPtr, XV_HDMITXSS_HANDLER_CONNECT,
 		TxConnectCallback, (void *)xhdmi);
+	XV_HdmiTxSs_SetCallback(HdmiTxSsPtr, XV_HDMITXSS_HANDLER_TOGGLE,
+		TxToggleCallback, (void *)xhdmi);
 	XV_HdmiTxSs_SetCallback(HdmiTxSsPtr, XV_HDMITXSS_HANDLER_VS,
 		TxVsCallback, (void *)xhdmi);
 	XV_HdmiTxSs_SetCallback(HdmiTxSsPtr, XV_HDMITXSS_HANDLER_STREAM_UP,
@@ -873,40 +887,14 @@ static int xilinx_drm_hdmi_encoder_init(struct platform_device *pdev,
 	return 0;
 }
 
-static XV_HdmiTxSs_Config config =
-{
-	.DeviceId = 0,
-	.BaseAddress = 0,
-	.HighAddress = 0,
-	.Ppc = 2,
-	.MaxBitsPerPixel = 8,
-	.AxiLiteClkFreq = 50000000,
-	.HdcpTimer = {
-		.IsPresent = 0,
-		.DeviceId = 255,
-		.AbsAddr = 0
-	},
-	.Hdcp14 = {
-		.IsPresent = 0,
-		.DeviceId = 255,
-		.AbsAddr = 0
-	},
-	.Hdcp22 = {
-		.IsPresent = 0,
-		.DeviceId = 255,
-		.AbsAddr = 0
-	},
-	.HdmiTx = {
-		.IsPresent = 1,
-		.DeviceId = 0,
-		.AbsAddr = 0
-	},
-	.Vtc = {
-		.IsPresent = 1,
-		.DeviceId = 0,
-		.AbsAddr = 0,
-	},
-};
+/* -----------------------------------------------------------------------------
+ * Platform Device Driver
+ */
+
+static int instance = 0;
+/* TX uses [1, 127] and RX uses [128, 254] */
+/* The HDCP22 timer uses an additional offset of +64 */
+#define TX_DEVICE_ID_BASE 1
 
 /* Local Global table for all sub-core instance(s) configuration settings */
 XVtc_Config XVtc_ConfigTable[XPAR_XVTC_NUM_INSTANCES];
@@ -936,42 +924,33 @@ static int xhdmi_drm_subcore_AbsAddr(uintptr_t SubSys_BaseAddr,
 
 /* Each sub-core within the subsystem has defined offset read from
    device-tree. */
-static int xhdmi_drm_compute_subcore_AbsAddr(uintptr_t SubSys_BaseAddr, 
-                                             uintptr_t SubSys_HighAddr )
+static int xhdmi_drm_compute_subcore_AbsAddr(XV_HdmiTxSs_Config *config)
 {
 	int ret;
 	
 	/* Subcore: Tx */
-	ret = xhdmi_drm_subcore_AbsAddr(SubSys_BaseAddr,
-									SubSys_HighAddr,
-									config.HdmiTx.AbsAddr,
-									&config.HdmiTx.AbsAddr);
+	ret = xhdmi_drm_subcore_AbsAddr(config->BaseAddress,
+									config->HighAddress,
+									config->HdmiTx.AbsAddr,
+									&(config->HdmiTx.AbsAddr));
 	if (ret != XST_SUCCESS) {
 	   hdmi_dbg("hdmitx sub-core address out-of range\n");
 	   return -EFAULT;
 	}
+	XV_HdmiTx_ConfigTable[instance].BaseAddress = config->HdmiTx.AbsAddr;
 	
 	/* Subcore: Vtc */
-	ret = xhdmi_drm_subcore_AbsAddr(SubSys_BaseAddr,
-									SubSys_HighAddr,
-									config.Vtc.AbsAddr,
-									&config.Vtc.AbsAddr);
+	ret = xhdmi_drm_subcore_AbsAddr(config->BaseAddress,
+									config->HighAddress,
+									config->Vtc.AbsAddr,
+									&(config->Vtc.AbsAddr));
 	if (ret != XST_SUCCESS) {
 	   hdmi_dbg("vtc sub-core address out-of range\n");
 	   return -EFAULT;
 	}
-	
+	XVtc_ConfigTable[instance].BaseAddress = config->Vtc.AbsAddr;
 	return (ret);
 }
-
-/* -----------------------------------------------------------------------------
- * Platform Device Driver
- */
-
-static int instance = 0;
-/* TX uses [1, 127] and RX uses [128, 254] */
-/* The HDCP22 timer uses an additional offset of +64 */
-#define TX_DEVICE_ID_BASE 1
 
 static int xilinx_drm_hdmi_parse_of(struct xilinx_drm_hdmi *xhdmi, XV_HdmiTxSs_Config *config)
 {
@@ -992,7 +971,9 @@ static int xilinx_drm_hdmi_parse_of(struct xilinx_drm_hdmi *xhdmi, XV_HdmiTxSs_C
 	config->MaxBitsPerPixel = val;
 
 	rc = of_property_read_u32(node, "xlnx,hdmi-tx-offset", &val);
-	if (rc == 0) {
+	if (rc < 0) {
+		goto error_dt;
+	} else if (rc == 0) {
 		config->HdmiTx.DeviceId = TX_DEVICE_ID_BASE + instance;
 		config->HdmiTx.IsPresent = 1; 
  		config->HdmiTx.AbsAddr = val; 
@@ -1002,8 +983,7 @@ static int xilinx_drm_hdmi_parse_of(struct xilinx_drm_hdmi *xhdmi, XV_HdmiTxSs_C
 	
 	rc = of_property_read_u32(node, "xlnx,vtc-offset", &val);
 	if (rc < 0) {
-		hdmi_dbg("Not using an internal VTC.");
-		config->Vtc.IsPresent = 0;
+		goto error_dt;
 	} else if (rc == 0) {
 		config->Vtc.IsPresent = 1;
 		config->Vtc.DeviceId = TX_DEVICE_ID_BASE + instance;
@@ -1046,7 +1026,7 @@ static int xilinx_drm_hdmi_probe(struct platform_device *pdev)
 	struct resource *res;
 	unsigned long axi_clk_rate;
 
-	hdmi_dbg("hdmi-tx probed\n");
+	dev_info(&pdev->dev, "xlnx-hdmi-tx probed\n");
 	/* allocate zeroed HDMI TX device structure */
 	xhdmi = devm_kzalloc(&pdev->dev, sizeof(*xhdmi), GFP_KERNEL);
 	if (!xhdmi)
@@ -1066,7 +1046,7 @@ static int xilinx_drm_hdmi_probe(struct platform_device *pdev)
 
 	hdmi_dbg("xilinx_drm_hdmi DT parse start\n");
 	/* parse open firmware device tree data */
-	ret = xilinx_drm_hdmi_parse_of(xhdmi, &config);
+	ret = xilinx_drm_hdmi_parse_of(xhdmi, &xhdmi->config);
 	if (ret < 0)
 		return ret;
 	hdmi_dbg("xilinx_drm_hdmi DT parse done\n");
@@ -1080,7 +1060,7 @@ static int xilinx_drm_hdmi_probe(struct platform_device *pdev)
 			ret = PTR_ERR(xhdmi->phy[index]);
 			xhdmi->phy[index] = NULL;
 			if (ret == -EPROBE_DEFER) {
-				hdmi_dbg("xvphy not ready -EPROBE_DEFER\n");
+				dev_info(xhdmi->dev, "xvphy not ready -EPROBE_DEFER\n");
 				return ret;
 			}
 			if (ret != -EPROBE_DEFER)
@@ -1102,12 +1082,12 @@ static int xilinx_drm_hdmi_probe(struct platform_device *pdev)
 	if (IS_ERR(xhdmi->iomem))
 		return PTR_ERR(xhdmi->iomem);
 
-	config.BaseAddress = (uintptr_t)xhdmi->iomem;
-	config.HighAddress = config.BaseAddress + resource_size(res) - 1;
+	xhdmi->config.DeviceId = instance;
+	xhdmi->config.BaseAddress = (uintptr_t)xhdmi->iomem;
+	xhdmi->config.HighAddress = xhdmi->config.BaseAddress + resource_size(res) - 1;
 	
 	/* Compute sub-core AbsAddres */
-	ret = xhdmi_drm_compute_subcore_AbsAddr(config.BaseAddress,
-										    config.HighAddress);
+	ret = xhdmi_drm_compute_subcore_AbsAddr(&xhdmi->config);
 	if (ret == -EFAULT) {
 	   dev_err(xhdmi->dev, "hdmi-tx sub-core address out-of range\n");
 	   return ret;
@@ -1118,7 +1098,7 @@ static int xilinx_drm_hdmi_probe(struct platform_device *pdev)
 	if (IS_ERR(xhdmi->clk)) {
 		ret = PTR_ERR(xhdmi->clk);
 		if (ret == -EPROBE_DEFER)
-			hdmi_dbg("video-clk not ready -EPROBE_DEFER\n");		
+			dev_info(xhdmi->dev, "video-clk not ready -EPROBE_DEFER\n");		
 		if (ret != -EPROBE_DEFER)
 			dev_err(xhdmi->dev, "failed to get video clk\n");
 		return ret;
@@ -1131,7 +1111,7 @@ static int xilinx_drm_hdmi_probe(struct platform_device *pdev)
 	if (IS_ERR(xhdmi->axi_lite_clk)) {
 		ret = PTR_ERR(xhdmi->clk);
 		if (ret == -EPROBE_DEFER)
-			hdmi_dbg("axi-lite-clk not ready -EPROBE_DEFER\n");
+			dev_info(xhdmi->dev, "axi-lite-clk not ready -EPROBE_DEFER\n");
 		if (ret != -EPROBE_DEFER)
 			dev_err(xhdmi->dev, "failed to get axi-lite clk\n");
 		return ret;
@@ -1140,7 +1120,7 @@ static int xilinx_drm_hdmi_probe(struct platform_device *pdev)
 	clk_prepare_enable(xhdmi->axi_lite_clk);
 	axi_clk_rate = clk_get_rate(xhdmi->axi_lite_clk);
 	hdmi_dbg("axi_clk_rate = %lu Hz\n", axi_clk_rate);
-	config.AxiLiteClkFreq = axi_clk_rate;
+	xhdmi->config.AxiLiteClkFreq = axi_clk_rate;
 
 	/* get irq */
 	xhdmi->irq = platform_get_irq(pdev, 0);
@@ -1156,15 +1136,15 @@ static int xilinx_drm_hdmi_probe(struct platform_device *pdev)
 		ret = PTR_ERR(xhdmi->retimer_clk);
 		xhdmi->retimer_clk = NULL;
 		if (ret == -EPROBE_DEFER)
-			hdmi_dbg("retimer-clk not ready -EPROBE_DEFER\n");
+			dev_info(xhdmi->dev, "retimer-clk not ready -EPROBE_DEFER\n");
 		if (ret != -EPROBE_DEFER)
-			hdmi_dbg("Did not find a retimer-clk, not driving an external retimer device driver.\n");
+			dev_err(xhdmi->dev, "Did not find a retimer-clk, not driving an external retimer device driver.\n");
 		return ret;
 	} else if (xhdmi->retimer_clk) {
 		hdmi_dbg("got retimer-clk\n");
 		ret = clk_prepare_enable(xhdmi->retimer_clk);
 		if (ret) {
-			dev_err(&pdev->dev, "failed to enable retimer-clk\n");
+			dev_err(xhdmi->dev, "failed to enable retimer-clk\n");
 			return ret;
 		}
 		hdmi_dbg("prepared and enabled retimer-clk\n");
@@ -1178,9 +1158,9 @@ static int xilinx_drm_hdmi_probe(struct platform_device *pdev)
 	if (IS_ERR(xhdmi->freqchg_gpio)) {
 		ret = (IS_ERR(xhdmi->freqchg_gpio));
 		if (ret == -EPROBE_DEFER)
-			hdmi_dbg("gpio tx_refclk_rdy_en not ready -EPROBE_DEFER\n");
+			dev_info(xhdmi->dev, "gpio tx_refclk_rdy_en not ready -EPROBE_DEFER\n");
 		if (ret != EPROBE_DEFER)
-			dev_err(&pdev->dev, "ERROR failed to locate gpio tx_refclk_rdy_en in dt\n");
+			dev_err(xhdmi->dev, "ERROR failed to locate gpio tx_refclk_rdy_en in dt\n");
 		return ret;
 	}
 
@@ -1191,11 +1171,21 @@ static int xilinx_drm_hdmi_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, xhdmi);
 
 	/* remainder of initialization is in encoder_init() */
-	hdmi_dbg("hdmi-tx probe successful\n");
+	dev_info(xhdmi->dev, "xlnx-hdmi-txss probe successful\n");
 	/* probe has succeeded for this instance, increment instance index */
 	instance++;
 	return 0;
+	
 error_phy:
+	printk(KERN_INFO "xhdmitx_probe() error_phy:\n");
+	index = 0;
+	/* release the lanes that we did get, if we did not get all lanes */
+	if (xhdmi->phy[index]) {
+		printk(KERN_INFO "phy_exit() xhdmi->phy[%d] = %p\n", index, xhdmi->phy[index]);
+		phy_exit(xhdmi->phy[index]);
+		xhdmi->phy[index] = NULL;
+	}
+
 	return ret;
 }
 

@@ -180,6 +180,11 @@ static void XV_HdmiTxSs_ConfigBridgeMode(XV_HdmiTxSs *InstancePtr);
 void XV_HdmiTxSS_SetHdmiMode(XV_HdmiTxSs *InstancePtr)
 {
     XV_HdmiTx_SetHdmiMode(InstancePtr->HdmiTxPtr);
+#ifdef XPAR_XHDCP_NUM_INSTANCES
+    if (InstancePtr->Hdcp14Ptr) {
+        XHdcp1x_SetHdmiMode(InstancePtr->Hdcp14Ptr, TRUE);
+    }
+#endif
 }
 
 /*****************************************************************************/
@@ -192,6 +197,12 @@ void XV_HdmiTxSS_SetHdmiMode(XV_HdmiTxSs *InstancePtr)
 void XV_HdmiTxSS_SetDviMode(XV_HdmiTxSs *InstancePtr)
 {
     XV_HdmiTx_SetDviMode(InstancePtr->HdmiTxPtr);
+
+#ifdef XPAR_XHDCP_NUM_INSTANCES
+    if (InstancePtr->Hdcp14Ptr) {
+        XHdcp1x_SetHdmiMode(InstancePtr->Hdcp14Ptr, FALSE);
+    }
+#endif
 }
 
 /*****************************************************************************/

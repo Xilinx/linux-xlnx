@@ -103,6 +103,8 @@ int XV_HdmiTxSs_SubcoreInitHdmiTx(XV_HdmiTxSs *HdmiTxSsPtr)
                   "HDMITXSS ERR:: HDMI TX Initialization failed\r\n");
       return(XST_FAILURE);
     }
+    /* Set default transmitter mode to HDMI */
+    XV_HdmiTxSS_SetHdmiMode(HdmiTxSsPtr);
   }
   return(XST_SUCCESS);
 }
