@@ -105,10 +105,9 @@ EXPORT_SYMBOL(dwc3_enable_hw_coherency);
 
 void dwc3_set_simple_data(struct dwc3 *dwc)
 {
-	struct device_node *node =
-		of_find_compatible_node(NULL, NULL, "xlnx,zynqmp-dwc3");
+	struct device_node *node = of_get_parent(dwc->dev->of_node);
 
-	if (node) {
+	if (node && of_device_is_compatible(node, "xlnx,zynqmp-dwc3")) {
 		struct platform_device *pdev_parent;
 		struct dwc3_of_simple   *simple;
 
@@ -123,10 +122,9 @@ EXPORT_SYMBOL(dwc3_set_simple_data);
 
 void dwc3_simple_check_quirks(struct dwc3 *dwc)
 {
-	struct device_node *node =
-		of_find_compatible_node(NULL, NULL, "xlnx,zynqmp-dwc3");
+	struct device_node *node = of_get_parent(dwc->dev->of_node);
 
-	if (node)  {
+	if (node && of_device_is_compatible(node, "xlnx,zynqmp-dwc3")) {
 		struct platform_device *pdev_parent;
 		struct dwc3_of_simple   *simple;
 
@@ -142,7 +140,7 @@ EXPORT_SYMBOL(dwc3_simple_check_quirks);
 void dwc3_simple_wakeup_capable(struct device *dev, bool wakeup)
 {
 	struct device_node *node =
-		of_find_compatible_node(NULL, NULL, "xlnx,zynqmp-dwc3");
+		of_find_compatible_node(dev->of_node, NULL, "xlnx,zynqmp-dwc3");
 
 	if (node)  {
 		struct platform_device *pdev_parent;
