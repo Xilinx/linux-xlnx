@@ -52,10 +52,10 @@
 static unsigned int wdt_timeout;
 static int nowayout = WATCHDOG_NOWAYOUT;
 
-module_param(wdt_timeout, int, 0);
+module_param(wdt_timeout, int, 0644);
 MODULE_PARM_DESC(wdt_timeout, "initial watchdog timeout (in seconds)");
 
-module_param(nowayout, int, 0);
+module_param(nowayout, int, 0644);
 MODULE_PARM_DESC(nowayout,
 		 "Watchdog cannot be stopped once started (default="
 		 __MODULE_STRING(WATCHDOG_NOWAYOUT) ")");
