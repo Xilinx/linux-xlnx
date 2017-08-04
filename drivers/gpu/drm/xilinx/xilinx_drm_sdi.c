@@ -21,25 +21,18 @@
 #include "xilinx_vtc.h"
 
 /* SDI register offsets */
-#define XSDI_TX_MDL_CTRL				0x00
-#define XSDI_TX_ST_RST					0x04
-#define XSDI_TX_INT_STS					0x08
-#define XSDI_TX_INT_MSK					0x0C
-#define XSDI_TX_INT_CLR					0x10
-
-#define XSDI_TX_ST352_LINE				0x14
-#define XSDI_TX_ST352_DATA_CH0				0x18
-
-#define XSDI_TX_ERR					0x38
+#define XSDI_TX_RST_CTRL				0x00
+#define XSDI_TX_MDL_CTRL				0x04
+#define XSDI_TX_GLBL_IER				0x0C
+#define XSDI_TX_ISR_STAT				0x10
+#define XSDI_TX_IER_STAT				0x14
+#define XSDI_TX_ST352_LINE				0x18
+#define XSDI_TX_ST352_DATA_CH0				0x1C
 #define XSDI_TX_VER					0x3C
 #define XSDI_TX_SYS_CFG					0x40
-#define XSDI_TX_STS_SB_TDATA				0x44
-#define XSDI_TX_GT_CTRL					0x48
-#define XSDI_TX_BRIDGE_CTRL				0x4C
-#define XSDI_TX_BRIDGE_STS				0x50
-#define XSDI_TX_AXI4S_VID_OUT_CTRL			0x54
-#define XSDI_TX_AXI4S_STS1				0x58
-#define XSDI_TX_AXI4S_STS2				0x5C
+#define XSDI_TX_STS_SB_TDATA				0x60
+#define XSDI_TX_AXI4S_STS1				0x68
+#define XSDI_TX_AXI4S_STS2				0x6C
 
 /* MODULE_CTRL register masks */
 #define XSDI_TX_CTRL_MDL_EN_MASK			BIT(0)
@@ -72,13 +65,21 @@
 #define XSDI_TX_ST352_LINE_MASK				GENMASK(10, 0)
 #define XSDI_TX_ST352_LINE_F2_SHIFT			16
 
-/* STAT RESET register masks */
-#define XSDI_TX_ST_RST_CLR_ERR_MASK			BIT(0)
+/* ISR STAT register masks */
+#define XSDI_GTTX_RSTDONE_INTR_MASK			BIT(0)
+#define XSDI_TX_CE_ALIGN_ERR_INTR_MASK			BIT(1)
+#define XSDI_AXI4S_VID_LOCK_INTR_MASK			BIT(8)
+#define XSDI_OVERFLOW_INTR_MASK				BIT(9)
+#define XSDI_UNDERFLOW_INTR_MASK			BIT(10)
+#define XSDI_IER_EN_MASK		(XSDI_GTTX_RSTDONE_INTR_MASK | \
+					XSDI_TX_CE_ALIGN_ERR_INTR_MASK | \
+					XSDI_OVERFLOW_INTR_MASK | \
+					XSDI_UNDERFLOW_INTR_MASK)
 
-/* BRIDGE_CTRL_OFFSET masks */
-#define XSDI_TX_BRIDGE_CTRL_MDL_EN_MASK			BIT(0)
-#define XSDI_TX_BRIDGE_CTRL_MODE_MASK			GENMASK(6, 4)
-#define XSDI_TX_BRIDGE_CTRL_MODE_SHIFT			4
+/* RST_CTRL_OFFSET masks */
+#define XSDI_TX_BRIDGE_CTRL_EN_MASK			BIT(8)
+#define XSDI_TX_AXI4S_CTRL_EN_MASK			BIT(9)
+#define XSDI_TX_CTRL_EN_MASK				BIT(0)
 
 /* STS_SB_TX_TDATA masks */
 #define XSDI_TX_TDATA_DONE_MASK				BIT(0)
@@ -349,51 +350,33 @@ static inline u32 xilinx_sdi_readl(void __iomem *base, int offset)
 }
 
 /**
- * xilinx_sdi_clear_err - Clear SDI Tx stat error
+ * xilinx_en_axi4s - Enable SDI Tx AXI4S-to-Video core
  * @sdi:	Pointer to SDI Tx structure
  *
- * This function clears the SDI Tx stat counters.
+ * This function enables the SDI Tx AXI4S-to-Video core.
  */
-static void xilinx_sdi_clear_err(struct xilinx_sdi *sdi)
+static void xilinx_en_axi4s(struct xilinx_sdi *sdi)
 {
 	u32 data;
 
-	data = XSDI_TX_ST_RST_CLR_ERR_MASK;
-	xilinx_sdi_writel(sdi->base, XSDI_TX_ST_RST, data);
-
-	data = data & ~XSDI_TX_ST_RST_CLR_ERR_MASK;
-	xilinx_sdi_writel(sdi->base, XSDI_TX_ST_RST, data);
-}
-
-/**
- * xilinx_set_bridge_mode - Set display mode in SDI Tx bridge
- * @sdi:	Pointer to SDI Tx structure
- * @mode:	display mode need to be set
- *
- * This function set the given mode for SDI Tx bridge.
- */
-static void xilinx_set_bridge_mode(struct xilinx_sdi *sdi, u8 mode)
-{
-	u32 data;
-
-	data = xilinx_sdi_readl(sdi->base, XSDI_TX_BRIDGE_CTRL);
-	data |= (mode << XSDI_TX_BRIDGE_CTRL_MODE_SHIFT);
-	xilinx_sdi_writel(sdi->base, XSDI_TX_BRIDGE_CTRL, data);
+	data = xilinx_sdi_readl(sdi->base, XSDI_TX_RST_CTRL);
+	data |= XSDI_TX_AXI4S_CTRL_EN_MASK;
+	xilinx_sdi_writel(sdi->base, XSDI_TX_RST_CTRL, data);
 }
 
 /**
  * xilinx_en_bridge - Enable SDI Tx bridge
  * @sdi:	Pointer to SDI Tx structure
  *
- * This function enabales the SDI Tx bridge.
+ * This function enables the SDI Tx bridge.
  */
 static void xilinx_en_bridge(struct xilinx_sdi *sdi)
 {
 	u32 data;
 
-	data = xilinx_sdi_readl(sdi->base, XSDI_TX_BRIDGE_CTRL);
-	data |= XSDI_TX_BRIDGE_CTRL_MDL_EN_MASK;
-	xilinx_sdi_writel(sdi->base, XSDI_TX_BRIDGE_CTRL, data);
+	data = xilinx_sdi_readl(sdi->base, XSDI_TX_RST_CTRL);
+	data |= XSDI_TX_BRIDGE_CTRL_EN_MASK;
+	xilinx_sdi_writel(sdi->base, XSDI_TX_RST_CTRL, data);
 }
 
 /**
@@ -413,7 +396,7 @@ xilinx_sdi_set_default_drm_properties(struct xilinx_sdi *sdi)
 }
 
 /**
- * xilinx_sdi_irq_handler - GT ready interrupt
+ * xilinx_sdi_irq_handler - SDI Tx interrupt
  * @irq:	irq number
  * @data:	irq data
  *
@@ -426,9 +409,18 @@ static irqreturn_t xilinx_sdi_irq_handler(int irq, void *data)
 	struct xilinx_sdi *sdi = (struct xilinx_sdi *)data;
 	u32 reg;
 
-	dev_dbg(sdi->dev, "GT interrupt received\n");
-	xilinx_sdi_writel(sdi->base, XSDI_TX_INT_CLR, 1);
-	xilinx_sdi_writel(sdi->base, XSDI_TX_INT_CLR, 0);
+	reg = xilinx_sdi_readl(sdi->base, XSDI_TX_ISR_STAT);
+
+	if (reg & XSDI_GTTX_RSTDONE_INTR_MASK)
+		dev_dbg(sdi->dev, "GT reset interrupt received\n");
+	if (reg & XSDI_TX_CE_ALIGN_ERR_INTR_MASK)
+		dev_err_ratelimited(sdi->dev, "SDI SD CE align error\n");
+	if (reg & XSDI_OVERFLOW_INTR_MASK)
+		dev_err_ratelimited(sdi->dev, "AXI-4 Stream Overflow error\n");
+	if (reg & XSDI_UNDERFLOW_INTR_MASK)
+		dev_err_ratelimited(sdi->dev, "AXI-4 Stream Underflow error\n");
+	xilinx_sdi_writel(sdi->base, XSDI_TX_ISR_STAT,
+			  reg & ~(XSDI_AXI4S_VID_LOCK_INTR_MASK));
 
 	reg = xilinx_sdi_readl(sdi->base, XSDI_TX_STS_SB_TDATA);
 	if (reg & XSDI_TX_TDATA_GT_RESETDONE_MASK) {
@@ -493,9 +485,8 @@ static void xilinx_sdi_set_display_disable(struct xilinx_sdi *sdi)
 	for (i = 0; i < SDI_MAX_DATASTREAM; i++)
 		xilinx_sdi_set_payload_data(sdi, i, 0);
 
-	xilinx_sdi_writel(sdi->base, XSDI_TX_MDL_CTRL, 0);
-	xilinx_sdi_writel(sdi->base, XSDI_TX_AXI4S_VID_OUT_CTRL, 0);
-	xilinx_sdi_writel(sdi->base, XSDI_TX_BRIDGE_CTRL, 0);
+	xilinx_sdi_writel(sdi->base, XSDI_TX_GLBL_IER, 0);
+	xilinx_sdi_writel(sdi->base, XSDI_TX_RST_CTRL, 0);
 }
 
 /**
@@ -542,12 +533,7 @@ static void xilinx_sdi_payload_config(struct xilinx_sdi *sdi, u32 mode)
 static void xilinx_set_sdi_mode(struct xilinx_sdi *sdi, u32 mode,
 				bool is_frac, u32 mux_ptrn)
 {
-	u32 data, tx_mode;
-
-	if (sdi->sdi_mod_prop_val == XSDI_MODE_3GB)
-		tx_mode = XSDI_MODE_3GA;
-	else
-		tx_mode = mode;
+	u32 data;
 
 	xilinx_sdi_payload_config(sdi, mode);
 
@@ -556,14 +542,12 @@ static void xilinx_set_sdi_mode(struct xilinx_sdi *sdi, u32 mode,
 		(XSDI_TX_CTRL_M_MASK) | (XSDI_TX_CTRL_MUX_MASK
 		<< XSDI_TX_CTRL_MUX_SHIFT));
 
-	data |= (((tx_mode & XSDI_TX_CTRL_MODE_MASK)
+	data |= (((mode & XSDI_TX_CTRL_MODE_MASK)
 		<< XSDI_TX_CTRL_MODE_SHIFT) |
 		(is_frac  << XSDI_TX_CTRL_M_SHIFT) |
 		((mux_ptrn & XSDI_TX_CTRL_MUX_MASK) << XSDI_TX_CTRL_MUX_SHIFT));
 
 	xilinx_sdi_writel(sdi->base, XSDI_TX_MDL_CTRL, data);
-
-	xilinx_set_bridge_mode(sdi, mode);
 }
 
 /**
@@ -818,12 +802,10 @@ static void xilinx_sdi_set_display_enable(struct xilinx_sdi *sdi)
 {
 	u32 data;
 
-	data = xilinx_sdi_readl(sdi->base, XSDI_TX_MDL_CTRL);
-	data |= XSDI_TX_CTRL_MDL_EN_MASK | XSDI_TX_CTRL_OUT_EN_MASK;
-
-	dev_dbg(sdi->dev, "starting stream with value = %0x\n", data);
+	data = xilinx_sdi_readl(sdi->base, XSDI_TX_RST_CTRL);
+	data |= XSDI_TX_CTRL_EN_MASK;
 	/* start sdi stream */
-	xilinx_sdi_writel(sdi->base, XSDI_TX_MDL_CTRL, data);
+	xilinx_sdi_writel(sdi->base, XSDI_TX_RST_CTRL, data);
 }
 
 static void xilinx_sdi_encoder_dpms(struct drm_encoder *encoder,
@@ -932,6 +914,8 @@ static void xilinx_sdi_prepare(struct drm_encoder *encoder)
 		XSDI_TX_CTRL_OVR_ST352_MASK | XSDI_TX_CTRL_INS_SYNC_BIT_MASK |
 		XSDI_TX_CTRL_INS_EDH_MASK;
 	xilinx_sdi_writel(sdi->base, XSDI_TX_MDL_CTRL, reg);
+	xilinx_sdi_writel(sdi->base, XSDI_TX_IER_STAT, XSDI_IER_EN_MASK);
+	xilinx_sdi_writel(sdi->base, XSDI_TX_GLBL_IER, 1);
 	xilinx_vtc_reset(sdi->vtc);
 }
 
@@ -942,9 +926,6 @@ static void xilinx_sdi_commit(struct drm_encoder *encoder)
 
 	dev_dbg(sdi->dev, "%s\n", __func__);
 	xilinx_sdi_encoder_dpms(encoder, DRM_MODE_DPMS_ON);
-
-	/* stat reset */
-	xilinx_sdi_clear_err(sdi);
 
 	ret = wait_event_interruptible_timeout(sdi->wait_event,
 					       sdi->event_received,
@@ -957,7 +938,7 @@ static void xilinx_sdi_commit(struct drm_encoder *encoder)
 	/* enable sdi bridge, vtc and Axi4s_vid_out_ctrl */
 	xilinx_en_bridge(sdi);
 	xilinx_vtc_enable(sdi->vtc);
-	xilinx_sdi_writel(sdi->base, XSDI_TX_AXI4S_VID_OUT_CTRL, 1);
+	xilinx_en_axi4s(sdi);
 }
 
 static const struct drm_encoder_helper_funcs xilinx_sdi_encoder_helper_funcs = {
@@ -1049,6 +1030,8 @@ static int xilinx_sdi_probe(struct platform_device *pdev)
 		return PTR_ERR(sdi->vtc);
 	}
 
+	/* disable interrupt */
+	xilinx_sdi_writel(sdi->base, XSDI_TX_GLBL_IER, 0);
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0)
 		return irq;
