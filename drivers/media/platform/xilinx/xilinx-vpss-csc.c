@@ -61,13 +61,9 @@
 
 enum xcsc_color_fmt {
 	XVIDC_CSF_RGB = 0,
-	XVIDC_CSF_YCRCB_444
-};
-
-enum xcsc_color_std {
-	XVIDC_BT_2020 = 1,
-	XVIDC_BT_709,
-	XVIDC_BT_601
+	XVIDC_CSF_YCRCB_444,
+	XVIDC_CSF_YCRCB_422,
+	XVIDC_CSF_YCRCB_420,
 };
 
 enum xcsc_output_range {
@@ -90,8 +86,6 @@ struct xcsc_dev {
 
 	enum xcsc_color_fmt cft_in;
 	enum xcsc_color_fmt cft_out;
-	enum xcsc_color_std std_in;
-	enum xcsc_color_std std_out;
 	enum xcsc_output_range output_range;
 	enum xcsc_color_depth color_depth;
 	s32 brightness;
@@ -229,9 +223,9 @@ static void xcsc_write_coeff(struct xcsc_dev *xcsc)
 	xcsc_write_rgb_offset(xcsc);
 }
 
-static void xcsc_rgb_to_ycrcb(struct xcsc_dev *xcsc, s32 *clip_max)
+static void xcsc_ycrcb_to_rgb(struct xcsc_dev *xcsc, s32 *clip_max)
 {
-	s32 bpc_scale = (1 << (xcsc->color_depth - 8));
+	u16 bpc_scale = (1 << (xcsc->color_depth - 8));
 
 	/*
 	 * See http://graficaobscura.com/matrix/index.html for
@@ -241,37 +235,52 @@ static void xcsc_rgb_to_ycrcb(struct xcsc_dev *xcsc, s32 *clip_max)
 	 *
 	 * XV_CSC_DIVISOR is used to help with floating constants
 	 * while performing multiplicative operations
+	 *
+	 * Coefficients valid only for BT 709
 	 */
-	switch (xcsc->std_out) {
-	case XVIDC_BT_709:
-		dev_dbg(xcsc->xvip.dev, "Performing RGB to YCrCb BT 709");
-		xcsc->k_hw[0][0] =
-			1826 * XV_CSC_SCALE_FACTOR / XV_CSC_DIVISOR;
-		xcsc->k_hw[0][1] =
-			6142 * XV_CSC_SCALE_FACTOR / XV_CSC_DIVISOR;
-		xcsc->k_hw[0][2] =
-			620 * XV_CSC_SCALE_FACTOR / XV_CSC_DIVISOR;
-		xcsc->k_hw[1][0] =
-			-1006 * XV_CSC_SCALE_FACTOR / XV_CSC_DIVISOR;
-		xcsc->k_hw[1][1] =
-			-3386 * XV_CSC_SCALE_FACTOR / XV_CSC_DIVISOR;
-		xcsc->k_hw[1][2] =
-			4392 * XV_CSC_SCALE_FACTOR / XV_CSC_DIVISOR;
-		xcsc->k_hw[2][0] =
-			4392 * XV_CSC_SCALE_FACTOR / XV_CSC_DIVISOR;
-		xcsc->k_hw[2][1] =
-			-3989 * XV_CSC_SCALE_FACTOR / XV_CSC_DIVISOR;
-		xcsc->k_hw[2][2] =
-			-403 * XV_CSC_SCALE_FACTOR / XV_CSC_DIVISOR;
-		xcsc->k_hw[0][3] = 16 * bpc_scale;
-		xcsc->k_hw[1][3] = 128 * bpc_scale;
-		xcsc->k_hw[2][3] = 128 * bpc_scale;
-		break;
-	default:
-		dev_dbg(xcsc->xvip.dev,
-			"%s : Unsupported Output Standard", __func__);
-	}
+	xcsc->k_hw[0][0] = 11644 * XV_CSC_SCALE_FACTOR / XV_CSC_DIVISOR;
+	xcsc->k_hw[0][1] = 0;
+	xcsc->k_hw[0][2] = 17927 * XV_CSC_SCALE_FACTOR / XV_CSC_DIVISOR;
+	xcsc->k_hw[1][0] = 11644 * XV_CSC_SCALE_FACTOR / XV_CSC_DIVISOR;
+	xcsc->k_hw[1][1] = -2132 * XV_CSC_SCALE_FACTOR / XV_CSC_DIVISOR;
+	xcsc->k_hw[1][2] = -5329 * XV_CSC_SCALE_FACTOR / XV_CSC_DIVISOR;
+	xcsc->k_hw[2][0] = 11644 * XV_CSC_SCALE_FACTOR / XV_CSC_DIVISOR;
+	xcsc->k_hw[2][1] = 21124 * XV_CSC_SCALE_FACTOR / XV_CSC_DIVISOR;
+	xcsc->k_hw[2][2] = 0;
+	xcsc->k_hw[0][3] = -248 * bpc_scale;
+	xcsc->k_hw[1][3] = 77 * bpc_scale;
+	xcsc->k_hw[2][3] = -289 * bpc_scale;
+	*clip_max = ((1 <<  xcsc->color_depth) - 1);
+}
 
+static void xcsc_rgb_to_ycrcb(struct xcsc_dev *xcsc, s32 *clip_max)
+{
+	u16 bpc_scale = (1 << (xcsc->color_depth - 8));
+
+	/*
+	 * See http://graficaobscura.com/matrix/index.html for
+	 * how these numbers are derived. The VPSS CSC IP is
+	 * derived from this Matrix style algorithm. And the
+	 * 'magic' numbers here are derived from the algorithm.
+	 *
+	 * XV_CSC_DIVISOR is used to help with floating constants
+	 * while performing multiplicative operations
+	 *
+	 * Coefficients valid only for BT 709
+	 */
+	dev_dbg(xcsc->xvip.dev, "Performing RGB to YCrCb BT 709");
+	xcsc->k_hw[0][0] = 1826 * XV_CSC_SCALE_FACTOR / XV_CSC_DIVISOR;
+	xcsc->k_hw[0][1] = 6142 * XV_CSC_SCALE_FACTOR / XV_CSC_DIVISOR;
+	xcsc->k_hw[0][2] = 620 * XV_CSC_SCALE_FACTOR / XV_CSC_DIVISOR;
+	xcsc->k_hw[1][0] = -1006 * XV_CSC_SCALE_FACTOR / XV_CSC_DIVISOR;
+	xcsc->k_hw[1][1] = -3386 * XV_CSC_SCALE_FACTOR / XV_CSC_DIVISOR;
+	xcsc->k_hw[1][2] = 4392 * XV_CSC_SCALE_FACTOR / XV_CSC_DIVISOR;
+	xcsc->k_hw[2][0] = 4392 * XV_CSC_SCALE_FACTOR / XV_CSC_DIVISOR;
+	xcsc->k_hw[2][1] = -3989 * XV_CSC_SCALE_FACTOR / XV_CSC_DIVISOR;
+	xcsc->k_hw[2][2] = -403 * XV_CSC_SCALE_FACTOR / XV_CSC_DIVISOR;
+	xcsc->k_hw[0][3] = 16 * bpc_scale;
+	xcsc->k_hw[1][3] = 128 * bpc_scale;
+	xcsc->k_hw[2][3] = 128 * bpc_scale;
 	*clip_max = ((1 <<  xcsc->color_depth) - 1);
 }
 
@@ -282,18 +291,41 @@ static int xcsc_set_coeff(struct xcsc_dev *xcsc)
 	/* Write In and Out Video Formats */
 	color_in = xcsc->formats[XVIP_PAD_SINK].code;
 	color_out = xcsc->formats[XVIP_PAD_SOURCE].code;
-	if (color_in != MEDIA_BUS_FMT_RBG888_1X24 &&
-	    xcsc->cft_in != XVIDC_CSF_RGB) {
-		dev_dbg(xcsc->xvip.dev, "Unsupported sink pad media code");
+
+	switch (color_in) {
+	case MEDIA_BUS_FMT_RBG888_1X24:
+		dev_dbg(xcsc->xvip.dev, "Media Format In : RGB");
 		xcsc->cft_in = XVIDC_CSF_RGB;
-		xcsc->formats[XVIP_PAD_SINK].code = MEDIA_BUS_FMT_RBG888_1X24;
+		break;
+	case MEDIA_BUS_FMT_VUY8_1X24:
+		dev_dbg(xcsc->xvip.dev, "Media Format In : YUV 444");
+		xcsc->cft_in = XVIDC_CSF_YCRCB_444;
+		break;
+	case MEDIA_BUS_FMT_UYVY8_1X16:
+		dev_dbg(xcsc->xvip.dev, "Media Format In : YUV 422");
+		xcsc->cft_in = XVIDC_CSF_YCRCB_422;
+		break;
 	}
 
-	if (color_out == MEDIA_BUS_FMT_RBG888_1X24) {
+	switch (color_out) {
+	case MEDIA_BUS_FMT_RBG888_1X24:
 		xcsc->cft_out = XVIDC_CSF_RGB;
-	} else {
+		dev_dbg(xcsc->xvip.dev, "Media Format Out : RGB");
+		if (color_in != MEDIA_BUS_FMT_RBG888_1X24)
+			xcsc_ycrcb_to_rgb(xcsc, &xcsc->clip_max);
+		break;
+	case MEDIA_BUS_FMT_VUY8_1X24:
 		xcsc->cft_out = XVIDC_CSF_YCRCB_444;
-		xcsc_rgb_to_ycrcb(xcsc, &xcsc->clip_max);
+		dev_dbg(xcsc->xvip.dev, "Media Format Out : YUV 444");
+		if (color_in == MEDIA_BUS_FMT_RBG888_1X24)
+			xcsc_rgb_to_ycrcb(xcsc, &xcsc->clip_max);
+		break;
+	case MEDIA_BUS_FMT_UYVY8_1X16:
+		xcsc->cft_out = XVIDC_CSF_YCRCB_422;
+		dev_dbg(xcsc->xvip.dev, "Media Format Out : YUV 422");
+		if (color_in == MEDIA_BUS_FMT_RBG888_1X24)
+			xcsc_rgb_to_ycrcb(xcsc, &xcsc->clip_max);
+		break;
 	}
 
 	xcsc_write(xcsc, XV_CSC_INVIDEOFORMAT, xcsc->cft_in);
@@ -333,8 +365,6 @@ static void xcsc_set_default_state(struct xcsc_dev *xcsc)
 {
 	xcsc->cft_in = XVIDC_CSF_RGB;
 	xcsc->cft_out = XVIDC_CSF_RGB;
-	xcsc->std_in = XVIDC_BT_709;
-	xcsc->std_out = XVIDC_BT_709;
 	xcsc->output_range = XVIDC_CR_0_255;
 	/* Needed to add 10,12 and 16 bit color depth support */
 	xcsc->color_depth = XVIDC_BPC_8;
@@ -499,11 +529,6 @@ static int xcsc_s_stream(struct v4l2_subdev *subdev, int enable)
 		/* Reset the Global IP Reset through PS GPIO */
 		gpiod_set_value_cansleep(xcsc->rst_gpio, XCSC_RESET_ASSERT);
 		gpiod_set_value_cansleep(xcsc->rst_gpio, XCSC_RESET_DEASSERT);
-#ifdef DEBUG
-		/* Restore hw state */
-		xcsc_set_coeff(xcsc);
-		xcsc_set_size(xcsc);
-#endif
 		return 0;
 	}
 	xcsc_set_size(xcsc);
@@ -542,23 +567,14 @@ static int xcsc_set_format(struct v4l2_subdev *subdev,
 					    XVIP_PAD_SOURCE, fmt->which);
 	*__format = fmt->format;
 
-	if (fmt->pad == XVIP_PAD_SINK) {
+	switch (__format->code) {
+	case MEDIA_BUS_FMT_VUY8_1X24:
+	case MEDIA_BUS_FMT_RBG888_1X24:
+	case MEDIA_BUS_FMT_UYVY8_1X16:
+		break;
+	default:
+		/* Unsupported Format. Default to RGB */
 		__format->code = MEDIA_BUS_FMT_RBG888_1X24;
-	} else if (fmt->pad == XVIP_PAD_SOURCE) {
-		if ((fmt->format.code != MEDIA_BUS_FMT_VUY8_1X24) &&
-		    (fmt->format.code != MEDIA_BUS_FMT_RBG888_1X24)) {
-			dev_dbg(xcsc->xvip.dev, "Not supported Source Format");
-			xcsc->cft_out = XVIDC_CSF_RGB;
-			__format->code = MEDIA_BUS_FMT_RBG888_1X24;
-		} else {
-			if (fmt->format.code == MEDIA_BUS_FMT_RBG888_1X24)
-				xcsc->cft_out = XVIDC_CSF_RGB;
-			else
-				xcsc->cft_out = XVIDC_CSF_YCRCB_444;
-		}
-	} else {
-		/* Should never get here */
-		WARN_ON(1);
 		return -EINVAL;
 	}
 
@@ -794,22 +810,15 @@ static int xcsc_probe(struct platform_device *pdev)
 	/* Default Formats Initialization */
 	def_fmt = &xcsc->default_formats[XVIP_PAD_SINK];
 	def_fmt->code = xcsc->vip_formats[XVIP_PAD_SINK]->code;
-	/* Sink only supports RGB888 */
-	if (xcsc->vip_formats[XVIP_PAD_SINK]->code !=
-				MEDIA_BUS_FMT_RBG888_1X24)
-		def_fmt->code = MEDIA_BUS_FMT_RBG888_1X24;
 	def_fmt->field = V4L2_FIELD_NONE;
 	def_fmt->colorspace = V4L2_COLORSPACE_REC709;
 	def_fmt->width = XV_CSC_DEFAULT_WIDTH;
 	def_fmt->height = XV_CSC_DEFAULT_HEIGHT;
 	xcsc->formats[XVIP_PAD_SINK] = *def_fmt;
-	/* Source supports only YUV 444 or RGB 888 */
+	/* Source supports only YUV 444, YUV 422, and RGB */
 	def_fmt = &xcsc->default_formats[XVIP_PAD_SOURCE];
 	*def_fmt = xcsc->default_formats[XVIP_PAD_SINK];
 	def_fmt->code = xcsc->vip_formats[XVIP_PAD_SOURCE]->code;
-	if (def_fmt->code != MEDIA_BUS_FMT_VUY8_1X24 &&
-	    def_fmt->code != MEDIA_BUS_FMT_RBG888_1X24)
-		def_fmt->code = MEDIA_BUS_FMT_RBG888_1X24;
 	def_fmt->width = XV_CSC_DEFAULT_WIDTH;
 	def_fmt->height = XV_CSC_DEFAULT_HEIGHT;
 	xcsc->formats[XVIP_PAD_SOURCE] = *def_fmt;
