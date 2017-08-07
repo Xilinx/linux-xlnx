@@ -715,6 +715,13 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 			break;
 		}
 	}
+	if (!i) {
+		/* No srams specified */
+		dev_err(&pdev->dev,
+			"no 'srams' firmware mmio-sram memories specified in DTB.");
+		ret = -EINVAL;
+		goto rproc_fault;
+	}
 
 	/* Disable IPI before requesting IPI IRQ */
 	disable_ipi(local);
