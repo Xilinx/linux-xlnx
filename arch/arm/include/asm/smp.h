@@ -124,4 +124,7 @@ struct of_cpu_method {
  */
 extern void smp_set_ops(const struct smp_operations *);
 
+extern int set_ipi_handler(int ipinr, void *handler, char *desc);
+extern void clear_ipi_handler(int ipinr);
+
 #endif /* ifndef __ASM_ARM_SMP_H */
