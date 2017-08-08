@@ -70,7 +70,7 @@
 
 /* RPU IPI mask */
 #define RPU_IPI_INIT_MASK	0x00000100
-#define RPU_IPI_MASK(n)		(RPU_IPI_INIT_MASK << n)
+#define RPU_IPI_MASK(n)		(RPU_IPI_INIT_MASK << (n))
 #define RPU_0_IPI_MASK		RPU_IPI_MASK(0)
 #define RPU_1_IPI_MASK		RPU_IPI_MASK(1)
 
