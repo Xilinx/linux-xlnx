@@ -1211,7 +1211,7 @@ static void dst_cleanup_work(struct work_struct *work)
 		}
 
 		chan->idx_ctx_dstq_tail = psta_bd->user_handle;
-		ppkt_ctx = chan->ppkt_ctx_dstq + psta_bd->user_handle;
+		ppkt_ctx = chan->ppkt_ctx_dstq + chan->idx_ctx_dstq_tail;
 		completed_bytes = (psta_bd->status_flag_byte_count &
 					STA_BD_BYTE_COUNT_MASK) >>
 						STA_BD_BYTE_COUNT_SHIFT;
@@ -1331,7 +1331,7 @@ static void src_cleanup_work(struct work_struct *work)
 			break;
 		}
 		chan->idx_ctx_srcq_tail = psta_bd->user_handle;
-		ppkt_ctx = chan->ppkt_ctx_srcq + psta_bd->user_handle;
+		ppkt_ctx = chan->ppkt_ctx_srcq + chan->idx_ctx_srcq_tail;
 		completed_bytes = (psta_bd->status_flag_byte_count
 					& STA_BD_BYTE_COUNT_MASK) >>
 						STA_BD_BYTE_COUNT_SHIFT;
