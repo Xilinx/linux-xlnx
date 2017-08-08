@@ -689,7 +689,8 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 				INIT_LIST_HEAD(&mem_node->pd_ids);
 				for (j = 0; ; j++) {
 					pd_node = of_parse_phandle(tmp_node,
-								   "pd-handle", j);
+								   "pd-handle",
+								   j);
 					if (!pd_node)
 						break;
 					pd_id = devm_kzalloc(&pdev->dev,
@@ -700,7 +701,8 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 						goto rproc_fault;
 					}
 					of_property_read_u32(pd_node,
-							     "pd-id", &pd_id->id);
+							     "pd-id",
+							     &pd_id->id);
 					list_add_tail(&pd_id->node,
 						      &mem_node->pd_ids);
 					dev_dbg(&pdev->dev,
