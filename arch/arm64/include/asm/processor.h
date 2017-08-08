@@ -146,7 +146,6 @@ unsigned long get_wchan(struct task_struct *p);
 
 static inline void cpu_relax(void)
 {
-	barrier();
 	asm volatile("yield" ::: "memory");
 }
 
