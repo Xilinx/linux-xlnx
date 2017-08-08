@@ -35,17 +35,20 @@ static u32 channel_properties_axi_pcie[] = {
 	(u32)(CHANNEL_POLL_TIMER_FREQUENCY) };
 
 static struct property_entry generic_pcie_ep_property[] = {
-	PROPERTY_ENTRY_U32("xlnx,numchannels", (u32)MAX_NUMBER_OF_CHANNELS),
-	PROPERTY_ENTRY_U32_ARRAY("channel0", channel_properties_pcie_axi),
-	PROPERTY_ENTRY_U32_ARRAY("channel1", channel_properties_axi_pcie),
-	PROPERTY_ENTRY_U32_ARRAY("channel2", channel_properties_pcie_axi),
-	PROPERTY_ENTRY_U32_ARRAY("channel3", channel_properties_axi_pcie),
+	PROPERTY_ENTRY_U32("numchannels", (u32)MAX_NUMBER_OF_CHANNELS),
+	PROPERTY_ENTRY_U32_ARRAY("ps_pcie_channel0",
+				 channel_properties_pcie_axi),
+	PROPERTY_ENTRY_U32_ARRAY("ps_pcie_channel1",
+				 channel_properties_axi_pcie),
+	PROPERTY_ENTRY_U32_ARRAY("ps_pcie_channel2",
+				 channel_properties_pcie_axi),
+	PROPERTY_ENTRY_U32_ARRAY("ps_pcie_channel3",
+				 channel_properties_axi_pcie),
 	{ },
 };
 
 static const struct platform_device_info xlnx_std_platform_dev_info = {
 	.name           = XLNX_PLATFORM_DRIVER_NAME,
-	.id             = -1,
 	.properties     = generic_pcie_ep_property,
 };
 
@@ -62,8 +65,6 @@ static int ps_pcie_dma_probe(struct pci_dev *pdev,
 	int err;
 	struct platform_device *platform_dev;
 	struct platform_device_info platform_dev_info;
-
-	static int pcie_board_num;
 
 	dev_info(&pdev->dev, "PS PCIe DMA Driver probe\n");
 
@@ -95,10 +96,20 @@ static int ps_pcie_dma_probe(struct pci_dev *pdev,
 
 	pci_set_master(pdev);
 
+	/* For Root DMA platform device will be created through device tree */
+	if (pdev->vendor == PCI_VENDOR_ID_XILINX &&
+	    pdev->device == ZYNQMP_RC_DMA_DEVID)
+		return 0;
+
 	memcpy(&platform_dev_info, &xlnx_std_platform_dev_info,
 	       sizeof(xlnx_std_platform_dev_info));
 
-	platform_dev_info.id = pcie_board_num;
+	/* Do device specific channel configuration changes to
+	 * platform_dev_info.properties if required
+	 * More information on channel properties can be found
+	 * at Documentation/devicetree/bindings/dma/xilinx/ps-pcie-dma.txt
+	 */
+
 	platform_dev_info.parent = &pdev->dev;
 	platform_dev_info.data = &pdev;
 	platform_dev_info.size_data = sizeof(struct pci_dev **);
@@ -112,8 +123,6 @@ static int ps_pcie_dma_probe(struct pci_dev *pdev,
 
 	pci_set_drvdata(pdev, platform_dev);
 
-	pcie_board_num++;
-
 	dev_info(&pdev->dev, "PS PCIe DMA driver successfully probed\n");
 
 	return 0;
@@ -121,6 +130,7 @@ static int ps_pcie_dma_probe(struct pci_dev *pdev,
 
 static struct pci_device_id ps_pcie_dma_tbl[] = {
 	{ PCI_DEVICE(PCI_VENDOR_ID_XILINX, ZYNQMP_DMA_DEVID) },
+	{ PCI_DEVICE(PCI_VENDOR_ID_XILINX, ZYNQMP_RC_DMA_DEVID) },
 	{ }
 };
 
@@ -165,9 +175,8 @@ static void ps_pcie_dma_remove(struct pci_dev *pdev)
 
 	platform_dev = (struct platform_device *)pci_get_drvdata(pdev);
 
-	WARN_ON(!platform_dev);
-
-	platform_device_unregister(platform_dev);
+	if (platform_dev)
+		platform_device_unregister(platform_dev);
 }
 
 /**
