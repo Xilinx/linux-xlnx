@@ -79,7 +79,7 @@
 #define DMA_SW_INTR_ASSRT_BIT           BIT(3)
 
 #define SOURCE_CONTROL_BD_BYTE_COUNT_MASK       GENMASK(23, 0)
-#define SOURCE_CONTROL_BD_HOST_MEMORY_BIT       BIT(24)
+#define SOURCE_CONTROL_BD_LOC_AXI		BIT(24)
 #define SOURCE_CONTROL_BD_EOP_BIT               BIT(25)
 #define SOURCE_CONTROL_BD_INTR_BIT              BIT(26)
 #define SOURCE_CONTROL_BACK_TO_BACK_PACK_BIT    BIT(25)
@@ -999,7 +999,7 @@ static void xlnx_ps_pcie_update_srcq(struct ps_pcie_dma_chan *chan,
 		read_attribute = PCI_ATTRIBUTE << SRC_CTL_ATTRIB_BIT_SHIFT;
 	} else
 		read_attribute = (AXI_ATTRIBUTE << SRC_CTL_ATTRIB_BIT_SHIFT) |
-				 SOURCE_CONTROL_BD_HOST_MEMORY_BIT;
+				 SOURCE_CONTROL_BD_LOC_AXI;
 
 	/*  Get the address of the next available DMA Descriptor */
 	pdesc = chan->psrc_sgl_bd + chan->src_sgl_freeidx;
@@ -1074,7 +1074,7 @@ static void xlnx_ps_pcie_update_dstq(struct ps_pcie_dma_chan *chan,
 					SOURCE_CONTROL_BACK_TO_BACK_PACK_BIT;
 	} else
 		write_attribute = (AXI_ATTRIBUTE << SRC_CTL_ATTRIB_BIT_SHIFT) |
-					SOURCE_CONTROL_BD_HOST_MEMORY_BIT |
+					SOURCE_CONTROL_BD_LOC_AXI |
 					SOURCE_CONTROL_BACK_TO_BACK_PACK_BIT;
 
 	pdesc = chan->pdst_sgl_bd + chan->dst_sgl_freeidx;
