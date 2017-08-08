@@ -1137,16 +1137,11 @@ static void rproc_fw_config_virtio(const struct firmware *fw, void *context)
 		rproc_boot(rproc);
 
 	release_firmware(fw);
-	/* allow rproc_del() contexts, if any, to proceed */
-	complete_all(&rproc->firmware_loading_complete);
 }
 
 static int rproc_add_virtio_devices(struct rproc *rproc)
 {
 	int ret;
-
-	/* rproc_del() calls must wait until async loader completes */
-	init_completion(&rproc->firmware_loading_complete);
 
 	/*
 	 * We must retrieve early virtio configuration info from
@@ -1159,10 +1154,8 @@ static int rproc_add_virtio_devices(struct rproc *rproc)
 	ret = request_firmware_nowait(THIS_MODULE, FW_ACTION_HOTPLUG,
 				      rproc->firmware, &rproc->dev, GFP_KERNEL,
 				      rproc, rproc_fw_config_virtio);
-	if (ret < 0) {
+	if (ret < 0)
 		dev_err(&rproc->dev, "request_firmware_nowait err: %d\n", ret);
-		complete_all(&rproc->firmware_loading_complete);
-	}
 
 	return ret;
 }
@@ -1257,6 +1250,12 @@ static int __rproc_boot(struct rproc *rproc)
 	if (ret) {
 		dev_err(dev, "can't lock rproc %s: %d\n", rproc->name, ret);
 		return ret;
+	}
+
+	if (rproc->state == RPROC_DELETED) {
+		ret = -ENODEV;
+		dev_err(dev, "can't boot deleted rproc %s\n", rproc->name);
+		goto unlock_mutex;
 	}
 
 	/* skip the boot process if rproc is already powered up */
@@ -1646,9 +1645,6 @@ int rproc_del(struct rproc *rproc)
 	if (!rproc)
 		return -EINVAL;
 
-	/* if rproc is just being registered, wait */
-	wait_for_completion(&rproc->firmware_loading_complete);
-
 	/* if rproc is marked always-on, rproc_add() booted it */
 	/* TODO: make sure this works with rproc->power > 1 */
 	if (rproc->auto_boot)
@@ -1657,6 +1653,10 @@ int rproc_del(struct rproc *rproc)
 	/* clean up remote vdev entries */
 	list_for_each_entry_safe(rvdev, tmp, &rproc->rvdevs, node)
 		rproc_remove_virtio_dev(rvdev);
+
+	mutex_lock(&rproc->lock);
+	rproc->state = RPROC_DELETED;
+	mutex_unlock(&rproc->lock);
 
 	/* the rproc is downref'ed as soon as it's removed from the klist */
 	mutex_lock(&rproc_list_mutex);
