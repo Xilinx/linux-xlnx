@@ -349,7 +349,7 @@ static int zynqmp_r5_rproc_start(struct rproc *rproc)
 				  ZYNQMP_PM_REQUEST_ACK_BLOCKING);
 	r5_boot_addr_config(local);
 	/* Add delay before release from halt and reset */
-	udelay(500);
+	usleep_range(400, 500);
 	zynqmp_pm_request_wakeup(local->rpu_pd_id,
 				 1, local->bootmem,
 		ZYNQMP_PM_REQUEST_ACK_NO);
