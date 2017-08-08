@@ -9,7 +9,12 @@
 #ifndef _ASM_MICROBLAZE_IRQ_H
 #define _ASM_MICROBLAZE_IRQ_H
 
+/*
+ * Linux IRQ# is currently offset by one to map to the hardware
+ * irq number. So hardware IRQ0 maps to Linux irq 1.
+ */
 #define NR_IRQS		(32 + 1)
+
 #include <asm-generic/irq.h>
 
 struct pt_regs;
