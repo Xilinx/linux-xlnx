@@ -20,18 +20,4 @@ config RPMSG_VIRTIO
 	select VIRTIO
 	select VIRTUALIZATION
 
-config RPMSG_SERVER_SAMPLE
-	tristate "An rpmsg server sample"
-	depends on RPMSG
-	---help---
-	  This is just a sample server driver for the rpmsg bus.
-	  Say either Y or M. You know you want to.
-
-config RPMSG_FREERTOS_STAT
-	tristate "An FreeRTOS statistic"
-	depends on RPMSG && NET
-	---help---
-	  This is just a sample to get statistic from FreeRTOS.
-	  Say either Y or M. You know you want to.
-
 endmenu
