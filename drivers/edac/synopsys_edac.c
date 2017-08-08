@@ -997,10 +997,10 @@ static ssize_t synps_edac_mc_inject_data_poison_store(struct device *dev,
 	return count;
 }
 
-static DEVICE_ATTR(inject_data_error, S_IRUGO | S_IWUSR,
+static DEVICE_ATTR(inject_data_error, 0644,
 	    synps_edac_mc_inject_data_error_show,
 	    synps_edac_mc_inject_data_error_store);
-static DEVICE_ATTR(inject_data_poison, S_IRUGO | S_IWUSR,
+static DEVICE_ATTR(inject_data_poison, 0644,
 	    synps_edac_mc_inject_data_poison_show,
 	    synps_edac_mc_inject_data_poison_store);
 
