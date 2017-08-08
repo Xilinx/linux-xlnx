@@ -1166,13 +1166,13 @@ static void dst_cleanup_work(struct work_struct *work)
 	struct STATUS_DMA_DESCRIPTOR *psta_bd;
 	struct DEST_DMA_DESCRIPTOR *pdst_bd;
 	struct PACKET_TRANSFER_PARAMS *ppkt_ctx;
+	struct dmaengine_result rslt;
+	u32 completed_bytes;
 	u32 dstq_desc_idx;
 
 	psta_bd = chan->pdst_sta_bd + chan->dst_staprobe_idx;
 
 	while (psta_bd->status_flag_byte_count & STA_BD_COMPLETED_BIT) {
-		u32 completed_bytes = 0;
-
 		if (psta_bd->status_flag_byte_count &
 				STA_BD_DESTINATION_ERROR_BIT) {
 			dev_err(chan->dev,
@@ -1255,8 +1255,6 @@ static void dst_cleanup_work(struct work_struct *work)
 
 		/* Invoking callback */
 		if (ppkt_ctx->seg) {
-			struct dmaengine_result rslt;
-
 			spin_lock(&chan->cookie_lock);
 			dma_cookie_complete(&ppkt_ctx->seg->async_tx);
 			spin_unlock(&chan->cookie_lock);
@@ -1290,13 +1288,13 @@ static void src_cleanup_work(struct work_struct *work)
 	struct STATUS_DMA_DESCRIPTOR *psta_bd;
 	struct SOURCE_DMA_DESCRIPTOR *psrc_bd;
 	struct PACKET_TRANSFER_PARAMS *ppkt_ctx;
+	struct dmaengine_result rslt;
+	u32 completed_bytes;
 	u32 srcq_desc_idx;
 
 	psta_bd = chan->psrc_sta_bd + chan->src_staprobe_idx;
 
 	while (psta_bd->status_flag_byte_count & STA_BD_COMPLETED_BIT) {
-		u32 completed_bytes = 0;
-
 		if (psta_bd->status_flag_byte_count &
 				STA_BD_DESTINATION_ERROR_BIT) {
 			dev_err(chan->dev,
@@ -1376,8 +1374,6 @@ static void src_cleanup_work(struct work_struct *work)
 
 		/* Invoking callback */
 		if (ppkt_ctx->seg) {
-			struct dmaengine_result rslt;
-
 			spin_lock(&chan->cookie_lock);
 			dma_cookie_complete(&ppkt_ctx->seg->async_tx);
 			spin_unlock(&chan->cookie_lock);
