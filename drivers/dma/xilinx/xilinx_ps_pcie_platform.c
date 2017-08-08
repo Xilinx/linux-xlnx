@@ -28,7 +28,7 @@
 
 #define PS_PCIE_DMA_IRQ_NOSHARE    0
 
-#define MAX_COAELSE_COUNT     255
+#define MAX_COALESCE_COUNT     255
 
 #define DMA_CHANNEL_REGS_SIZE 0x80
 
@@ -262,9 +262,9 @@ enum dev_channel_properties {
  * @state: Indicates channel state
  * @channel_lock: Spin lock to be used before changing channel state
  * @cookie_lock: Spin lock to be used before assigning cookie for a transaction
- * @coaelseCount: Indicates number of packet transfers before interrupts
+ * @coalesce_count: Indicates number of packet transfers before interrupts
  * @poll_timer_freq:Indicates frequency of polling for completed transactions
- * @poll_timer: Timer to poll dma buffer descriptors if coaelse count is > 0
+ * @poll_timer: Timer to poll dma buffer descriptors if coalesce count is > 0
  * @src_avail_descriptors: Available sgl source descriptors
  * @src_desc_lock: Lock for synchronizing src_avail_descriptors
  * @dst_avail_descriptors: Available sgl destination descriptors
@@ -345,7 +345,7 @@ struct ps_pcie_dma_chan {
 
 	spinlock_t cookie_lock;  /* For acquiring cookie from dma framework*/
 
-	u32 coaelse_count;
+	u32 coalesce_count;
 	u32 poll_timer_freq;
 
 	struct timer_list poll_timer;
@@ -1393,7 +1393,7 @@ static void src_cleanup_work(struct work_struct *work)
 /**
  * ps_pcie_chan_primary_work - Masks out interrupts, invokes source Q and
  * destination Q processing. Waits for source Q and destination Q processing
- * and re enables interrupts. Same work is invoked by timer if coaelse count
+ * and re enables interrupts. Same work is invoked by timer if coalesce count
  * is greater than zero and interrupts are not invoked before the timeout period
  *
  * @work: Work associated with the task
@@ -1438,7 +1438,7 @@ static void ps_pcie_chan_primary_work(struct work_struct *work)
 			   &chan->handle_chan_programming);
 	}
 
-	if (chan->coaelse_count > 0 && chan->poll_timer.function)
+	if (chan->coalesce_count > 0 && chan->poll_timer.function)
 		mod_timer(&chan->poll_timer, jiffies + chan->poll_timer_freq);
 }
 
@@ -1536,14 +1536,14 @@ static int probe_channel_properties(struct platform_device *platform_dev,
 				}
 				break;
 			case COALESE_COUNT:
-				channel->coaelse_count = val[COALESE_COUNT];
+				channel->coalesce_count = val[COALESE_COUNT];
 
-				if (channel->coaelse_count >
-					MAX_COAELSE_COUNT) {
+				if (channel->coalesce_count >
+					MAX_COALESCE_COUNT) {
 					dev_info(&platform_dev->dev,
-						 "Invalid Coaelse Count\n");
-					channel->coaelse_count =
-						MAX_COAELSE_COUNT;
+						 "Invalid coalesce Count\n");
+					channel->coalesce_count =
+						MAX_COALESCE_COUNT;
 				}
 				break;
 			case POLL_TIMER_FREQUENCY:
@@ -1686,7 +1686,7 @@ static void xlnx_ps_pcie_free_descriptors(struct ps_pcie_dma_chan *chan)
 
 static int xlnx_ps_pcie_channel_activate(struct ps_pcie_dma_chan *chan)
 {
-	u32 reg = chan->coaelse_count;
+	u32 reg = chan->coalesce_count;
 
 	reg = reg << DMA_INTCNTRL_SGCOLSCCNT_BIT_SHIFT;
 
@@ -1706,7 +1706,7 @@ static int xlnx_ps_pcie_channel_activate(struct ps_pcie_dma_chan *chan)
 	spin_unlock(&chan->channel_lock);
 
 	/* Activate timer if required */
-	if ((chan->coaelse_count > 0) && !chan->poll_timer.function)
+	if ((chan->coalesce_count > 0) && !chan->poll_timer.function)
 		xlnx_ps_pcie_alloc_poll_timer(chan);
 
 	return 0;
@@ -1719,7 +1719,7 @@ static void xlnx_ps_pcie_channel_quiesce(struct ps_pcie_dma_chan *chan)
 			     DMA_INTCNTRL_ENABLINTR_BIT);
 
 	/* Delete timer if it is created */
-	if ((chan->coaelse_count > 0) && (!chan->poll_timer.function))
+	if ((chan->coalesce_count > 0) && (!chan->poll_timer.function))
 		xlnx_ps_pcie_free_poll_timer(chan);
 
 	/* Flush descriptor cleaning work queues */
