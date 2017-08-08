@@ -142,7 +142,7 @@
 #define ECC_POISON0_OFST	0xB8
 #define ECC_POISON1_OFST	0xBC
 
-/* Control regsiter bitfield definitions */
+/* Control register bitfield definitions */
 #define ECC_CTRL_BUSWIDTH_MASK	0x3000
 #define ECC_CTRL_BUSWIDTH_SHIFT	12
 #define ECC_CTRL_CLR_CE_ERRCNT	BIT(2)
@@ -153,14 +153,14 @@
 #define DDRCTL_EWDTH_32		1
 #define DDRCTL_EWDTH_64		0
 
-/* ECC status regsiter definitions */
+/* ECC status register definitions */
 #define ECC_STAT_UECNT_MASK	0xF0000
 #define ECC_STAT_UECNT_SHIFT	16
 #define ECC_STAT_CECNT_MASK	0xF00
 #define ECC_STAT_CECNT_SHIFT	8
 #define ECC_STAT_BITNUM_MASK	0x7F
 
-/* DDR QOS Interrupt regsiter definitions */
+/* DDR QOS Interrupt register definitions */
 #define DDR_QOS_IRQ_STAT_OFST	0x20200
 #define DDR_QOSUE_MASK		0x4
 #define	DDR_QOSCE_MASK		0x2
