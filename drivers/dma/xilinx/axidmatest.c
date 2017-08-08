@@ -588,13 +588,13 @@ static int xilinx_axidmatest_probe(struct platform_device *pdev)
 	int err;
 
 	chan = dma_request_slave_channel(&pdev->dev, "axidma0");
-	if (IS_ERR(chan)) {
+	if (chan == NULL) {
 		pr_err("xilinx_dmatest: No Tx channel\n");
 		return PTR_ERR(chan);
 	}
 
 	rx_chan = dma_request_slave_channel(&pdev->dev, "axidma1");
-	if (IS_ERR(rx_chan)) {
+	if (rx_chan == NULL) {
 		err = PTR_ERR(rx_chan);
 		pr_err("xilinx_dmatest: No Rx channel\n");
 		goto free_tx;
