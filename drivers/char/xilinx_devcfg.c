@@ -182,13 +182,6 @@ static void xdevcfg_reset_pl(void __iomem *base_address)
 	 * the rising edge happens.
 	 */
 	xdevcfg_writereg(base_address + XDCFG_CTRL_OFFSET,
-			(xdevcfg_readreg(base_address + XDCFG_CTRL_OFFSET) |
-			 XDCFG_CTRL_PCFG_PROG_B_MASK));
-	while (!(xdevcfg_readreg(base_address + XDCFG_STATUS_OFFSET) &
-				XDCFG_STATUS_PCFG_INIT_MASK))
-		;
-
-	xdevcfg_writereg(base_address + XDCFG_CTRL_OFFSET,
 			(xdevcfg_readreg(base_address + XDCFG_CTRL_OFFSET) &
 			 ~XDCFG_CTRL_PCFG_PROG_B_MASK));
 	while (xdevcfg_readreg(base_address + XDCFG_STATUS_OFFSET) &
