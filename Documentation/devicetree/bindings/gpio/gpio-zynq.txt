@@ -9,7 +9,6 @@ Required properties:
 - compatible		: Should be "xlnx,zynq-gpio-1.0" or "xlnx,zynqmp-gpio-1.0"
 - clocks		: Clock specifier (see clock bindings for details)
 - gpio-controller	: Marks the device node as a GPIO controller.
-- interrupt-controller	: Marks the device as a Interrupt controller
 - interrupts		: Interrupt specifier (see interrupt bindings for
 			  details)
 - interrupt-parent	: Must be core interrupt controller
