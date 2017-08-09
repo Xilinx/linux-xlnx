@@ -1552,10 +1552,7 @@ static int spi_nor_write(struct mtd_info *mtd, loff_t to, size_t len,
 	size_t page_offset, page_remain, i;
 	ssize_t ret;
 	u32 offset, stack_shift=0;
-	u8 bank = 0;
-	u32 rem_bank_len = 0;
 
-#define OFFSET_16_MB 0x1000000
 
 	dev_dbg(nor->dev, "to 0x%08x, len %zd\n", (u32)to, len);
 	ret = spi_nor_lock_and_prep(nor, SPI_NOR_OPS_WRITE);
@@ -1564,15 +1561,9 @@ static int spi_nor_write(struct mtd_info *mtd, loff_t to, size_t len,
 	for (i = 0; i < len; ) {
 		ssize_t written;
 
-		if (nor->addr_width == 3) {
-			bank = (u32)to / (OFFSET_16_MB << nor->shift);
-			rem_bank_len = ((OFFSET_16_MB << nor->shift) *
-							(bank + 1)) - to;
-		}
+		offset = to + i;
 
-		page_offset = ((to + i)) & (nor->page_size - 1);
-
-		offset = (to + i);
+		page_offset = offset & (nor->page_size - 1);
 
 		if (nor->isparallel == 1)
 			offset /= 2;
@@ -1587,27 +1578,19 @@ static int spi_nor_write(struct mtd_info *mtd, loff_t to, size_t len,
 			}
 		}
 
-		/* Die cross over issue is not handled */
-		if (nor->addr_width == 4)
-			rem_bank_len = (mtd->size >> stack_shift) - offset;
 		if (nor->addr_width == 3)
 			write_ear(nor, (offset >> nor->shift));
-		if (len < rem_bank_len) {
-			page_remain = min_t(size_t,
-				    nor->page_size - page_offset, len - i);
 
-		}
-		else {
-		/* the size of data remaining on the first page */
-			page_remain = rem_bank_len;
-		}
+		page_remain = min_t(size_t, nor->page_size - page_offset,
+				    len - i);
+
 		ret = spi_nor_wait_till_ready(nor);
 		if (ret)
 			goto write_err;
 
 		write_enable(nor);
 
-		ret = nor->write(nor, (offset), page_remain, buf + i);
+		ret = nor->write(nor, offset, page_remain, buf + i);
 		if (ret < 0)
 			goto write_err;
 		written = ret;
