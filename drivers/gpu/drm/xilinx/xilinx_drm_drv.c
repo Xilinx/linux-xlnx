@@ -295,8 +295,8 @@ static int xilinx_drm_load(struct drm_device *drm, unsigned long flags)
 	struct device_node *encoder_node, *ep = NULL, *remote;
 	struct platform_device *pdev = drm->platformdev;
 	struct component_match *match = NULL;
-	unsigned int bpp, align, i = 0;
-	int ret;
+	unsigned int align, depth, i = 0;
+	int bpp, ret;
 
 	private = devm_kzalloc(drm->dev, sizeof(*private), GFP_KERNEL);
 	if (!private)
@@ -368,15 +368,19 @@ static int xilinx_drm_load(struct drm_device *drm, unsigned long flags)
 	xilinx_drm_mode_config_init(drm);
 
 	/* initialize xilinx framebuffer */
-	bpp = xilinx_drm_format_bpp(xilinx_drm_crtc_get_format(private->crtc));
-	align = xilinx_drm_crtc_get_align(private->crtc);
-	private->fb = xilinx_drm_fb_init(drm, bpp, 1, 1, align,
-					 xilinx_drm_fbdev_vres);
-	if (IS_ERR(private->fb)) {
-		DRM_ERROR("failed to initialize drm cma fb\n");
-		ret = PTR_ERR(private->fb);
-		goto err_fb;
+	drm_fb_get_bpp_depth(xilinx_drm_crtc_get_format(private->crtc),
+			     &depth, &bpp);
+	if (bpp) {
+		align = xilinx_drm_crtc_get_align(private->crtc);
+		private->fb = xilinx_drm_fb_init(drm, bpp, 1, 1, align,
+						 xilinx_drm_fbdev_vres);
+		if (IS_ERR(private->fb)) {
+			DRM_ERROR("failed to initialize drm fb\n");
+			private->fb = NULL;
+		}
 	}
+	if (!private->fb)
+		dev_info(&pdev->dev, "fbdev is not initialized\n");
 
 	drm_kms_helper_poll_init(drm);
 

@@ -24,7 +24,7 @@ struct drm_gem_cma_object *
 xilinx_drm_fb_get_gem_obj(struct drm_framebuffer *base_fb, unsigned int plane);
 
 struct drm_fb_helper *
-xilinx_drm_fb_init(struct drm_device *drm, unsigned int preferred_bpp,
+xilinx_drm_fb_init(struct drm_device *drm, int preferred_bpp,
 		   unsigned int num_crtc, unsigned int max_conn_count,
 		   unsigned int align, unsigned int vres_mult);
 void xilinx_drm_fb_fini(struct drm_fb_helper *fb_helper);
