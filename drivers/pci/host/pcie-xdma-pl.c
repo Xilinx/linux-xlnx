@@ -298,8 +298,8 @@ static irqreturn_t xilinx_pcie_intr_handler(int irq, void *data)
 
 	if (status & XILINX_PCIE_INTR_INTX) {
 		/* Handle INTx Interrupt */
-		val =  pcie_read(port, XILINX_PCIE_REG_IDRN);
-		val = val >> XILINX_PCIE_IDRN_SHIFT;
+		intr_val = pcie_read(port, XILINX_PCIE_REG_IDRN);
+		intr_val = intr_val >> XILINX_PCIE_IDRN_SHIFT;
 
 		for_each_set_bit(bit, &intr_val, INTX_NUM)
 			generic_handle_irq(irq_find_mapping(port->leg_domain,
