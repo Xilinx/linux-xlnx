@@ -582,7 +582,7 @@ static int pl35x_nand_write_page_swecc(struct mtd_info *mtd,
 	u32 ret;
 
 	for (i = 0; eccsteps; eccsteps--, i += eccbytes, p += eccsize)
-		chip->ecc.calculate(mtd, p, &ecc_calc[0]);
+		chip->ecc.calculate(mtd, p, &ecc_calc[i]);
 
 	ret = mtd_ooblayout_set_eccbytes(mtd, ecc_calc, chip->oob_poi,
 						0, chip->ecc.total);
