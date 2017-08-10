@@ -88,8 +88,6 @@ source "drivers/staging/skein/Kconfig"
 
 source "drivers/staging/unisys/Kconfig"
 
-source "drivers/staging/video/axivdma/Kconfig"
-
 source "drivers/staging/apf/Kconfig"
 
 source "drivers/staging/clocking-wizard/Kconfig"
