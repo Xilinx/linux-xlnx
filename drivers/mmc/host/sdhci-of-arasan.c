@@ -782,6 +782,30 @@ static int sdhci_arasan_probe(struct platform_device *pdev)
 	struct sdhci_pltfm_host *pltfm_host;
 	struct sdhci_arasan_data *sdhci_arasan;
 	struct device_node *np = pdev->dev.of_node;
+	unsigned int host_quirks2 = 0;
+
+	if (of_device_is_compatible(pdev->dev.of_node, "xlnx,zynqmp-8.9a")) {
+		char *soc_rev;
+
+		/* read Silicon version using nvmem driver */
+		soc_rev = zynqmp_nvmem_get_silicon_version(&pdev->dev,
+							   "soc_revision");
+		if (PTR_ERR(soc_rev) == -EPROBE_DEFER)
+			/* Do a deferred probe */
+			return -EPROBE_DEFER;
+		else if (IS_ERR(soc_rev))
+			dev_dbg(&pdev->dev, "Error getting silicon version\n");
+
+		/* Set host quirk if the silicon version is v1.0 */
+		if (!IS_ERR(soc_rev) && (*soc_rev == ZYNQMP_SILICON_V1))
+			host_quirks2 |= SDHCI_QUIRK2_NO_1_8_V;
+
+		/* Clean soc_rev if got a valid pointer from nvmem driver
+		 * else we may end up in kernel panic
+		 */
+		if (!IS_ERR(soc_rev))
+			kfree(soc_rev);
+	}
 
 	host = sdhci_pltfm_init(pdev, &sdhci_arasan_pdata,
 				sizeof(*sdhci_arasan));
@@ -795,25 +819,7 @@ static int sdhci_arasan_probe(struct platform_device *pdev)
 	match = of_match_node(sdhci_arasan_of_match, pdev->dev.of_node);
 	sdhci_arasan->soc_ctl_map = match->data;
 
-	if (of_device_is_compatible(pdev->dev.of_node, "xlnx,zynqmp-8.9a")) {
-		char *soc_rev;
-
-		/* read Silicon version using nvmem driver */
-		soc_rev = zynqmp_nvmem_get_silicon_version(&pdev->dev,
-							   "soc_revision");
-		if (PTR_ERR(soc_rev) == -EPROBE_DEFER)
-			/* Do a deferred probe */
-			return -EPROBE_DEFER;
-
-		if (!IS_ERR(soc_rev) && (*soc_rev == ZYNQMP_SILICON_V1))
-			host->quirks2 |= SDHCI_QUIRK2_NO_1_8_V;
-
-		/* Clean soc_rev if got a valid pointer from nvmem driver
-		 * else we may end up in kernel panic
-		 */
-		if (!IS_ERR(soc_rev))
-			kfree(soc_rev);
-	}
+	host->quirks2 |= host_quirks2;
 
 	node = of_parse_phandle(pdev->dev.of_node, "arasan,soc-ctl-syscon", 0);
 	if (node) {
