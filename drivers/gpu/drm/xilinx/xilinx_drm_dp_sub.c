@@ -273,10 +273,10 @@ struct xilinx_drm_dp_sub_layer {
 	bool primary;
 	bool enabled;
 	const struct xilinx_drm_dp_sub_fmt *fmt;
-	uint32_t *drm_fmts;
+	u32 *drm_fmts;
 	unsigned int num_fmts;
-	uint32_t w;
-	uint32_t h;
+	u32 w;
+	u32 h;
 	struct xilinx_drm_dp_sub_layer *other;
 };
 
@@ -343,7 +343,7 @@ struct xilinx_drm_dp_sub {
  * @name: format name
  */
 struct xilinx_drm_dp_sub_fmt {
-	uint32_t drm_fmt;
+	u32 drm_fmt;
 	u32 dp_sub_fmt;
 	bool rgb;
 	bool swap;
@@ -358,7 +358,9 @@ static DEFINE_MUTEX(xilinx_drm_dp_sub_lock);
 #ifdef CONFIG_DRM_XILINX_DP_SUB_DEBUG_FS
 #define XILINX_DP_SUB_DEBUGFS_READ_MAX_SIZE	32
 #define XILINX_DP_SUB_DEBUGFS_MAX_BG_COLOR_VAL	0xFFF
-#define IN_RANGE(x, min, max) ((x) >= (min) && (x) <= (max))
+#define IN_RANGE(x, min, max) ({	\
+		typeof(x) _x = (x);	\
+		_x >= (min) && _x <= (max); })
 
 /* Match xilinx_dp_testcases vs dp_debugfs_reqs[] entry */
 enum xilinx_dp_sub_testcases {
@@ -1566,7 +1568,7 @@ static void xilinx_drm_dp_sub_aud_deinit(struct xilinx_drm_dp_sub_aud *aud)
  */
 int xilinx_drm_dp_sub_layer_check_size(struct xilinx_drm_dp_sub *dp_sub,
 				       struct xilinx_drm_dp_sub_layer *layer,
-				       uint32_t width, uint32_t height)
+				       u32 width, u32 height)
 {
 	struct xilinx_drm_dp_sub_layer *other = layer->other;
 
@@ -1597,7 +1599,7 @@ EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_layer_check_size);
  */
 static const struct xilinx_drm_dp_sub_fmt *
 xilinx_drm_dp_sub_map_fmt(const struct xilinx_drm_dp_sub_fmt fmts[],
-			  unsigned int size, uint32_t drm_fmt)
+			  unsigned int size, u32 drm_fmt)
 {
 	unsigned int i;
 
@@ -1620,7 +1622,7 @@ xilinx_drm_dp_sub_map_fmt(const struct xilinx_drm_dp_sub_fmt fmts[],
  */
 int xilinx_drm_dp_sub_layer_set_fmt(struct xilinx_drm_dp_sub *dp_sub,
 				    struct xilinx_drm_dp_sub_layer *layer,
-				    uint32_t drm_fmt)
+				    u32 drm_fmt)
 {
 	const struct xilinx_drm_dp_sub_fmt *fmt;
 	const struct xilinx_drm_dp_sub_fmt *vid_fmt = NULL, *gfx_fmt = NULL;
@@ -1662,8 +1664,8 @@ EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_layer_set_fmt);
  *
  * Return: DRM format of the layer
  */
-uint32_t xilinx_drm_dp_sub_layer_get_fmt(struct xilinx_drm_dp_sub *dp_sub,
-					 struct xilinx_drm_dp_sub_layer *layer)
+u32 xilinx_drm_dp_sub_layer_get_fmt(struct xilinx_drm_dp_sub *dp_sub,
+				    struct xilinx_drm_dp_sub_layer *layer)
 {
 	return layer->fmt->drm_fmt;
 }
@@ -1680,7 +1682,7 @@ EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_layer_get_fmt);
  */
 void xilinx_drm_dp_sub_layer_get_fmts(struct xilinx_drm_dp_sub *dp_sub,
 				      struct xilinx_drm_dp_sub_layer *layer,
-				      uint32_t **drm_fmts,
+				      u32 **drm_fmts,
 				      unsigned int *num_fmts)
 {
 	*drm_fmts = layer->drm_fmts;
@@ -1802,7 +1804,7 @@ EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_layer_put);
  * Return: 0 on success, or -EINVAL if @drm_fmt is not supported for output.
  */
 int xilinx_drm_dp_sub_set_output_fmt(struct xilinx_drm_dp_sub *dp_sub,
-				     uint32_t drm_fmt)
+				     u32 drm_fmt)
 {
 	const struct xilinx_drm_dp_sub_fmt *fmt;
 
@@ -1978,7 +1980,7 @@ struct xilinx_drm_dp_sub *xilinx_drm_dp_sub_of_get(struct device_node *np)
 		return NULL;
 
 	xilinx_drm_dp_sub_node = of_parse_phandle(np, "xlnx,dp-sub", 0);
-	if (xilinx_drm_dp_sub_node == NULL)
+	if (!xilinx_drm_dp_sub_node)
 		return ERR_PTR(-EINVAL);
 
 	mutex_lock(&xilinx_drm_dp_sub_lock);

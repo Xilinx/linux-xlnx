@@ -28,15 +28,15 @@ struct xilinx_drm_dp_sub_layer;
 
 int xilinx_drm_dp_sub_layer_check_size(struct xilinx_drm_dp_sub *dp_sub,
 				       struct xilinx_drm_dp_sub_layer *layer,
-				       uint32_t width, uint32_t height);
+				       u32 width, u32 height);
 int xilinx_drm_dp_sub_layer_set_fmt(struct xilinx_drm_dp_sub *dp_sub,
 				    struct xilinx_drm_dp_sub_layer *layer,
-				    uint32_t drm_fmt);
-uint32_t xilinx_drm_dp_sub_layer_get_fmt(struct xilinx_drm_dp_sub *dp_sub,
-					 struct xilinx_drm_dp_sub_layer *layer);
+				    u32 drm_fmt);
+u32 xilinx_drm_dp_sub_layer_get_fmt(struct xilinx_drm_dp_sub *dp_sub,
+				    struct xilinx_drm_dp_sub_layer *layer);
 void xilinx_drm_dp_sub_layer_get_fmts(struct xilinx_drm_dp_sub *dp_sub,
 				      struct xilinx_drm_dp_sub_layer *layer,
-				      uint32_t **drm_fmts,
+				      u32 **drm_fmts,
 				      unsigned int *num_fmts);
 void xilinx_drm_dp_sub_layer_enable(struct xilinx_drm_dp_sub *dp_sub,
 				    struct xilinx_drm_dp_sub_layer *layer);
@@ -48,7 +48,7 @@ void xilinx_drm_dp_sub_layer_put(struct xilinx_drm_dp_sub *dp_sub,
 				 struct xilinx_drm_dp_sub_layer *layer);
 
 int xilinx_drm_dp_sub_set_output_fmt(struct xilinx_drm_dp_sub *dp_sub,
-				     uint32_t drm_fmt);
+				     u32 drm_fmt);
 void xilinx_drm_dp_sub_set_bg_color(struct xilinx_drm_dp_sub *dp_sub,
 				    u32 c0, u32 c1, u32 c2);
 void xilinx_drm_dp_sub_set_alpha(struct xilinx_drm_dp_sub *dp_sub, u32 alpha);
