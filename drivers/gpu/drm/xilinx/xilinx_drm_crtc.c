@@ -157,7 +157,7 @@ static int xilinx_drm_crtc_mode_set(struct drm_crtc *base_crtc,
 	diff = clk_get_rate(crtc->pixel_clock) - adjusted_mode->clock * 1000;
 	if (abs(diff) > (adjusted_mode->clock * 1000) / 20)
 		DRM_DEBUG_KMS("actual pixel clock rate(%d) is off by %ld\n",
-				adjusted_mode->clock, diff);
+			      adjusted_mode->clock, diff);
 
 	if (crtc->vtc) {
 		/* set video timing */
@@ -334,7 +334,7 @@ static int xilinx_drm_crtc_page_flip(struct drm_crtc *base_crtc,
 	int ret;
 
 	spin_lock_irqsave(&drm->event_lock, flags);
-	if (crtc->event != NULL) {
+	if (crtc->event) {
 		spin_unlock_irqrestore(&drm->event_lock, flags);
 		return -EBUSY;
 	}
@@ -519,7 +519,6 @@ struct drm_crtc *xilinx_drm_crtc_create(struct drm_device *drm)
 			DRM_DEBUG_KMS("failed to get pixel clock\n");
 			crtc->pixel_clock = NULL;
 		}
-
 	}
 
 	ret = clk_prepare_enable(crtc->pixel_clock);
