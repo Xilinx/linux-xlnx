@@ -28,10 +28,10 @@ int xilinx_drm_plane_mode_set(struct drm_plane *base_plane,
 			      struct drm_framebuffer *fb,
 			      int crtc_x, int crtc_y,
 			      unsigned int crtc_w, unsigned int crtc_h,
-			      uint32_t src_x, uint32_t src_y,
-			      uint32_t src_w, uint32_t src_h);
+			      u32 src_x, u32 src_y,
+			      u32 src_w, u32 src_h);
 int xilinx_drm_plane_get_max_width(struct drm_plane *base_plane);
-uint32_t xilinx_drm_plane_get_format(struct drm_plane *base_plane);
+u32 xilinx_drm_plane_get_format(struct drm_plane *base_plane);
 unsigned int xilinx_drm_plane_get_align(struct drm_plane *base_plane);
 
 /* plane manager operations */
@@ -49,7 +49,7 @@ int xilinx_drm_plane_create_planes(struct xilinx_drm_plane_manager *manager,
 				   unsigned int possible_crtcs);
 
 bool xilinx_drm_plane_check_format(struct xilinx_drm_plane_manager *manager,
-				   uint32_t format);
+				   u32 format);
 int xilinx_drm_plane_get_num_planes(struct xilinx_drm_plane_manager *manager);
 
 void xilinx_drm_plane_restore(struct xilinx_drm_plane_manager *manager);
