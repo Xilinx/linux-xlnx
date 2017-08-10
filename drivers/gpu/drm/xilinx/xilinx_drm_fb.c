@@ -233,8 +233,8 @@ static int xilinx_drm_fbdev_create(struct drm_fb_helper *fb_helper,
 	int ret;
 
 	DRM_DEBUG_KMS("surface width(%d), height(%d) and bpp(%d)\n",
-			sizes->surface_width, sizes->surface_height,
-			sizes->surface_bpp);
+		      sizes->surface_width, sizes->surface_height,
+		      sizes->surface_bpp);
 
 	bytes_per_pixel = DIV_ROUND_UP(sizes->surface_bpp, 8);
 
@@ -351,7 +351,6 @@ xilinx_drm_fb_init(struct drm_device *drm, int preferred_bpp,
 	if (ret < 0) {
 		DRM_ERROR("Failed to add connectors.\n");
 		goto err_drm_fb_helper_fini;
-
 	}
 
 	drm_helper_disable_unused_functions(drm);
@@ -496,7 +495,6 @@ err_gem_object_unreference:
 		drm_gem_object_unreference_unlocked(&objs[i]->base);
 	return ERR_PTR(ret);
 }
-
 
 /**
  * xilinx_drm_fb_hotplug_event - Poll for hotpulug events
