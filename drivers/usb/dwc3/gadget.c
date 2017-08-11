@@ -2411,8 +2411,14 @@ static int dwc3_cleanup_done_reqs(struct dwc3 *dwc, struct dwc3_ep *dep,
 
 		req->request.actual = length - req->remaining;
 
-		if ((req->request.actual < length) && req->num_pending_sgs)
-			return __dwc3_gadget_kick_transfer(dep, 0);
+		if ((req->request.actual < length) || req->num_pending_sgs) {
+			/* There could be cases where the whole req can't be
+			 * mapped into TRB's available. In that case, we need
+			 * to kick transfer again if (req->num_pending_sgs > 0)
+			 */
+			if (req->num_pending_sgs)
+				return __dwc3_gadget_kick_transfer(dep, 0);
+		}
 
 		dwc3_gadget_giveback(dep, req, status);
 
