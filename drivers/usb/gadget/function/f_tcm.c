@@ -1790,9 +1790,11 @@ static ssize_t tcm_usbg_tpg_nexus_store(struct config_item *item,
 CONFIGFS_ATTR(tcm_usbg_tpg_, enable);
 CONFIGFS_ATTR(tcm_usbg_tpg_, nexus);
 
+static struct configfs_attribute tcm_usbg_tpg_attr_maxburst;
 static struct configfs_attribute *usbg_base_attrs[] = {
 	&tcm_usbg_tpg_attr_enable,
 	&tcm_usbg_tpg_attr_nexus,
+	&tcm_usbg_tpg_attr_maxburst,
 	NULL,
 };
 
@@ -2101,6 +2103,32 @@ static struct usb_gadget_strings *tcm_strings[] = {
 	&tcm_stringtab,
 	NULL,
 };
+
+static ssize_t tcm_usbg_tpg_maxburst_show(struct config_item *item, char *page)
+{
+	return snprintf(page, PAGE_SIZE, "%u\n", uasp_cmd_comp_desc.bMaxBurst);
+}
+
+static ssize_t tcm_usbg_tpg_maxburst_store(struct config_item *item,
+					   const char *page, size_t count)
+{
+	int value;
+	int ret;
+
+	ret = kstrtouint(page, 10, &value);
+	if (ret)
+		return ret;
+
+	uasp_bi_ep_comp_desc.bMaxBurst = value;
+	uasp_bo_ep_comp_desc.bMaxBurst = value;
+	uasp_status_in_ep_comp_desc.bMaxBurst = value;
+	uasp_cmd_comp_desc.bMaxBurst = value;
+	bot_bi_ep_comp_desc.bMaxBurst = value;
+	bot_bo_ep_comp_desc.bMaxBurst = value;
+
+	return count;
+}
+CONFIGFS_ATTR(tcm_usbg_tpg_, maxburst);
 
 static int tcm_bind(struct usb_configuration *c, struct usb_function *f)
 {
