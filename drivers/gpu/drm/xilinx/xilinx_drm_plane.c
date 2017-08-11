@@ -344,6 +344,7 @@ static int xilinx_drm_plane_update(struct drm_plane *base_plane,
 				   u32 src_x, u32 src_y,
 				   u32 src_w, u32 src_h)
 {
+	struct xilinx_drm_plane *plane = to_xilinx_plane(base_plane);
 	int ret;
 
 	ret = xilinx_drm_plane_mode_set(base_plane, fb,
@@ -356,8 +357,10 @@ static int xilinx_drm_plane_update(struct drm_plane *base_plane,
 	}
 
 	/* make sure a plane is on */
-	xilinx_drm_plane_dpms(base_plane, DRM_MODE_DPMS_ON);
-	xilinx_drm_plane_commit(base_plane);
+	if (plane->dpms != DRM_MODE_DPMS_ON)
+		xilinx_drm_plane_dpms(base_plane, DRM_MODE_DPMS_ON);
+	else
+		xilinx_drm_plane_commit(base_plane);
 
 	return 0;
 }
