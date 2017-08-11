@@ -731,8 +731,10 @@ struct dwc3_request {
 	struct list_head	list;
 	struct dwc3_ep		*dep;
 	struct scatterlist	*sg;
+	struct scatterlist	*sg_to_start;
 
 	unsigned		num_pending_sgs;
+	unsigned int		num_queued_sgs;
 	u8			first_trb_index;
 	u8			epnum;
 	struct dwc3_trb		*trb;
