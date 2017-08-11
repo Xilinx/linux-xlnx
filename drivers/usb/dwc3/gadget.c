@@ -2062,6 +2062,9 @@ static int dwc3_cleanup_done_reqs(struct dwc3 *dwc, struct dwc3_ep *dep,
 					event, status, chain);
 		}
 
+		if (ret && chain && req->num_pending_sgs)
+			return __dwc3_gadget_kick_transfer(dep, 0);
+
 		/*
 		 * We assume here we will always receive the entire data block
 		 * which we should receive. Meaning, if we program RX to
@@ -2071,9 +2074,6 @@ static int dwc3_cleanup_done_reqs(struct dwc3 *dwc, struct dwc3_ep *dep,
 		 */
 		actual = length - req->request.actual;
 		req->request.actual = actual;
-
-		if (ret && chain && (actual < length) && req->num_pending_sgs)
-			return __dwc3_gadget_kick_transfer(dep, 0);
 
 		dwc3_gadget_giveback(dep, req, status);
 
