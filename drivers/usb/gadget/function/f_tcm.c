@@ -821,16 +821,28 @@ err_cleanup:
 	return ret;
 }
 
+#define SS_BOT_INTERFACE_DESC_NO	5
 static void uasp_set_alt(struct f_uas *fu)
 {
 	struct usb_function *f = &fu->function;
 	struct usb_gadget *gadget = f->config->cdev->gadget;
+	struct usb_descriptor_header    **ss_uasp_backup = f->ss_descriptors;
 	int ret;
 
 	fu->flags = USBG_IS_UAS;
 
-	if (gadget->speed == USB_SPEED_SUPER)
+	if (gadget->speed == USB_SPEED_SUPER) {
 		fu->flags |= USBG_USE_STREAMS;
+		/* If device connect in SS then comp_descriptor with stream
+		 * should be attached to descriptor. Since BOT and UAS using
+		 * same endpoint, config_ep_by_speed will returns first match
+		 * with comp_descriptor without stream. This is just workaround
+		 * proper fix need to be introduced. Here advancing descritor
+		 * header ss_descriptors with number of descriptor present in
+		 * BOT mode.
+		 */
+		f->ss_descriptors += SS_BOT_INTERFACE_DESC_NO;
+	}
 
 	config_ep_by_speed(gadget, f, fu->ep_in);
 	ret = usb_ep_enable(fu->ep_in);
@@ -856,6 +868,10 @@ static void uasp_set_alt(struct f_uas *fu)
 		goto err_wq;
 	fu->flags |= USBG_ENABLED;
 
+	/* restore ss_descriptors */
+	if (gadget->speed == USB_SPEED_SUPER)
+		f->ss_descriptors = ss_uasp_backup;
+
 	pr_info("Using the UAS protocol\n");
 	return;
 err_wq:
@@ -867,6 +883,9 @@ err_cmd:
 err_b_out:
 	usb_ep_disable(fu->ep_in);
 err_b_in:
+	/* restore ss_descriptors */
+	if (gadget->speed == USB_SPEED_SUPER)
+		f->ss_descriptors = ss_uasp_backup;
 	fu->flags = 0;
 }
 
