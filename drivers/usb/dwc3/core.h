@@ -580,6 +580,8 @@ struct dwc3_ep {
 
 	unsigned		direction:1;
 	unsigned		stream_capable:1;
+#define STREAM_TIMEOUT		50
+	struct timer_list	stream_timeout_timer;
 };
 
 enum dwc3_phy {
