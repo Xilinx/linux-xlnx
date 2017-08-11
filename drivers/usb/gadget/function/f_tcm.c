@@ -43,14 +43,17 @@ static inline struct f_uas *to_f_uas(struct usb_function *f)
 
 /* Start bot.c code */
 
+static struct usbg_cdb *acquire_cmd_request(struct f_uas *fu);
+static void release_cmd_request(struct f_uas *fu, struct usb_request *req);
 static int bot_enqueue_cmd_cbw(struct f_uas *fu)
 {
 	int ret;
+	struct usbg_cdb *cmd = acquire_cmd_request(fu);
 
 	if (fu->flags & USBG_BOT_CMD_PEND)
 		return 0;
 
-	ret = usb_ep_queue(fu->ep_out, fu->cmd.req, GFP_ATOMIC);
+	ret = usb_ep_queue(fu->ep_out, cmd->req, GFP_ATOMIC);
 	if (!ret)
 		fu->flags |= USBG_BOT_CMD_PEND;
 	return ret;
@@ -61,6 +64,7 @@ static void bot_status_complete(struct usb_ep *ep, struct usb_request *req)
 	struct usbg_cmd *cmd = req->context;
 	struct f_uas *fu = cmd->fu;
 
+	release_cmd_request(fu, req);
 	transport_generic_free_cmd(&cmd->se_cmd, 0);
 	if (req->status < 0) {
 		pr_err("ERR %s(%d)\n", __func__, __LINE__);
@@ -136,7 +140,7 @@ static void bot_send_bad_status(struct usbg_cmd *cmd)
 		}
 		req->complete = bot_err_compl;
 		req->context = cmd;
-		req->buf = fu->cmd.buf;
+		req->buf = fu->cmd[0]->buf;
 		usb_ep_queue(ep, req, GFP_KERNEL);
 	} else {
 		bot_enqueue_sense_code(fu, cmd);
@@ -280,9 +284,82 @@ static void bot_cmd_complete(struct usb_ep *ep, struct usb_request *req)
 	if (req->status < 0)
 		return;
 
+	release_cmd_request(fu, req);
 	ret = bot_submit_command(fu, req->buf, req->actual);
 	if (ret)
 		pr_err("%s(%d): %d\n", __func__, __LINE__, ret);
+}
+
+static struct usbg_cdb *acquire_cmd_request(struct f_uas *fu)
+{
+	int i;
+
+	for (i = 0; i < fu->ncmd; i++) {
+		if (!fu->cmd[i]->claimed) {
+			fu->cmd[i]->claimed = true;
+			return fu->cmd[i];
+		}
+	}
+	return NULL;
+}
+
+static void release_cmd_request(struct f_uas *fu, struct usb_request *req)
+{
+	int i;
+
+	for (i = 0; i < fu->ncmd; i++) {
+		if (fu->cmd[i]->req == req)
+			fu->cmd[i]->claimed = false;
+	}
+}
+
+static void free_cmd_resource(struct f_uas *fu, struct usb_ep *ep)
+{
+	int i;
+
+	for (i = 0; i < fu->ncmd; i++) {
+		if (fu->cmd[i]->req)
+			usb_ep_free_request(ep, fu->cmd[i]->req);
+
+		kfree(fu->cmd[i]->buf);
+		fu->cmd[i]->buf = NULL;
+
+		kfree(fu->cmd[i]);
+		fu->cmd[i] = NULL;
+	}
+}
+
+static int alloc_cmd_resource(struct f_uas *fu, int num, struct usb_ep *ep,
+			      void  (*complete)(struct usb_ep *ep,
+						struct usb_request *req))
+{
+	int i;
+
+	fu->ncmd = num;
+	for (i = 0; i < fu->ncmd; i++) {
+		fu->cmd[i] = kcalloc(fu->ncmd, sizeof(struct usbg_cdb),
+				GFP_KERNEL);
+		if (!fu->cmd)
+			goto err_cmd;
+
+		fu->cmd[i]->req = usb_ep_alloc_request(ep, GFP_KERNEL);
+		if (!fu->cmd[i]->req)
+			goto err_cmd;
+
+		fu->cmd[i]->buf = kmalloc(fu->ep_out->maxpacket, GFP_KERNEL);
+		if (!fu->cmd[i]->buf)
+			goto err_cmd;
+
+		fu->cmd[i]->req->complete = complete;
+		fu->cmd[i]->req->buf = fu->cmd[i]->buf;
+		fu->cmd[i]->req->length = fu->ep_out->maxpacket;
+		fu->cmd[i]->req->context = fu;
+	}
+
+	return 0;
+err_cmd:
+	free_cmd_resource(fu, ep);
+	return -ENOMEM;
 }
 
 static int bot_prepare_reqs(struct f_uas *fu)
@@ -297,10 +374,6 @@ static int bot_prepare_reqs(struct f_uas *fu)
 	if (!fu->bot_req_out)
 		goto err_out;
 
-	fu->cmd.req = usb_ep_alloc_request(fu->ep_out, GFP_KERNEL);
-	if (!fu->cmd.req)
-		goto err_cmd;
-
 	fu->bot_status.req = usb_ep_alloc_request(fu->ep_in, GFP_KERNEL);
 	if (!fu->bot_status.req)
 		goto err_sts;
@@ -310,28 +383,20 @@ static int bot_prepare_reqs(struct f_uas *fu)
 	fu->bot_status.req->complete = bot_status_complete;
 	fu->bot_status.csw.Signature = cpu_to_le32(US_BULK_CS_SIGN);
 
-	fu->cmd.buf = kmalloc(fu->ep_out->maxpacket, GFP_KERNEL);
-	if (!fu->cmd.buf)
-		goto err_buf;
-
-	fu->cmd.req->complete = bot_cmd_complete;
-	fu->cmd.req->buf = fu->cmd.buf;
-	fu->cmd.req->length = fu->ep_out->maxpacket;
-	fu->cmd.req->context = fu;
+	ret = alloc_cmd_resource(fu, BOT_MAX_COMMANDS, fu->ep_out,
+				 bot_cmd_complete);
+	if (ret)
+		goto err_cmd;
 
 	ret = bot_enqueue_cmd_cbw(fu);
 	if (ret)
 		goto err_queue;
 	return 0;
 err_queue:
-	kfree(fu->cmd.buf);
-	fu->cmd.buf = NULL;
-err_buf:
+	free_cmd_resource(fu, fu->ep_out);
+err_cmd:
 	usb_ep_free_request(fu->ep_in, fu->bot_status.req);
 err_sts:
-	usb_ep_free_request(fu->ep_out, fu->cmd.req);
-	fu->cmd.req = NULL;
-err_cmd:
 	usb_ep_free_request(fu->ep_out, fu->bot_req_out);
 	fu->bot_req_out = NULL;
 err_out:
@@ -355,16 +420,13 @@ static void bot_cleanup_old_alt(struct f_uas *fu)
 
 	usb_ep_free_request(fu->ep_in, fu->bot_req_in);
 	usb_ep_free_request(fu->ep_out, fu->bot_req_out);
-	usb_ep_free_request(fu->ep_out, fu->cmd.req);
-	usb_ep_free_request(fu->ep_in, fu->bot_status.req);
+	usb_ep_free_request(fu->ep_out, fu->bot_status.req);
 
-	kfree(fu->cmd.buf);
+	free_cmd_resource(fu, fu->ep_out);
 
 	fu->bot_req_in = NULL;
 	fu->bot_req_out = NULL;
-	fu->cmd.req = NULL;
 	fu->bot_status.req = NULL;
-	fu->cmd.buf = NULL;
 }
 
 static void bot_set_alt(struct f_uas *fu)
@@ -463,14 +525,6 @@ static void uasp_cleanup_one_stream(struct f_uas *fu, struct uas_stream *stream)
 	stream->req_status = NULL;
 }
 
-static void uasp_free_cmdreq(struct f_uas *fu)
-{
-	usb_ep_free_request(fu->ep_cmd, fu->cmd.req);
-	kfree(fu->cmd.buf);
-	fu->cmd.req = NULL;
-	fu->cmd.buf = NULL;
-}
-
 static void uasp_cleanup_old_alt(struct f_uas *fu)
 {
 	int i;
@@ -485,7 +539,7 @@ static void uasp_cleanup_old_alt(struct f_uas *fu)
 
 	for (i = 0; i < UASP_SS_EP_COMP_NUM_STREAMS; i++)
 		uasp_cleanup_one_stream(fu, &fu->stream[i]);
-	uasp_free_cmdreq(fu);
+	free_cmd_resource(fu, fu->ep_cmd);
 }
 
 static void uasp_status_data_cmpl(struct usb_ep *ep, struct usb_request *req);
@@ -548,6 +602,7 @@ static void uasp_status_data_cmpl(struct usb_ep *ep, struct usb_request *req)
 	struct usbg_cmd *cmd = req->context;
 	struct uas_stream *stream = cmd->stream;
 	struct f_uas *fu = cmd->fu;
+	struct usbg_cdb *cmd_cdb;
 	int ret;
 
 	if (req->status < 0)
@@ -582,7 +637,8 @@ static void uasp_status_data_cmpl(struct usb_ep *ep, struct usb_request *req)
 
 	case UASP_QUEUE_COMMAND:
 		transport_generic_free_cmd(&cmd->se_cmd, 0);
-		usb_ep_queue(fu->ep_cmd, fu->cmd.req, GFP_ATOMIC);
+		cmd_cdb = acquire_cmd_request(fu);
+		usb_ep_queue(fu->ep_cmd, cmd_cdb->req, GFP_ATOMIC);
 		break;
 
 	default:
@@ -702,11 +758,13 @@ static int usbg_submit_command(struct f_uas *, void *, unsigned int);
 static void uasp_cmd_complete(struct usb_ep *ep, struct usb_request *req)
 {
 	struct f_uas *fu = req->context;
+	struct usbg_cdb *cmd;
 	int ret;
 
 	if (req->status < 0)
 		return;
 
+	release_cmd_request(fu, req);
 	ret = usbg_submit_command(fu, req->buf, req->actual);
 	/*
 	 * Once we tune for performance enqueue the command req here again so
@@ -716,7 +774,8 @@ static void uasp_cmd_complete(struct usb_ep *ep, struct usb_request *req)
 	 */
 	if (!ret)
 		return;
-	usb_ep_queue(fu->ep_cmd, fu->cmd.req, GFP_ATOMIC);
+	cmd = acquire_cmd_request(fu);
+	usb_ep_queue(fu->ep_cmd, cmd->req, GFP_ATOMIC);
 }
 
 static int uasp_alloc_stream_res(struct f_uas *fu, struct uas_stream *stream)
@@ -744,28 +803,6 @@ out:
 	return -ENOMEM;
 }
 
-static int uasp_alloc_cmd(struct f_uas *fu)
-{
-	fu->cmd.req = usb_ep_alloc_request(fu->ep_cmd, GFP_KERNEL);
-	if (!fu->cmd.req)
-		goto err;
-
-	fu->cmd.buf = kmalloc(fu->ep_cmd->maxpacket, GFP_KERNEL);
-	if (!fu->cmd.buf)
-		goto err_buf;
-
-	fu->cmd.req->complete = uasp_cmd_complete;
-	fu->cmd.req->buf = fu->cmd.buf;
-	fu->cmd.req->length = fu->ep_cmd->maxpacket;
-	fu->cmd.req->context = fu;
-	return 0;
-
-err_buf:
-	usb_ep_free_request(fu->ep_cmd, fu->cmd.req);
-err:
-	return -ENOMEM;
-}
-
 static void uasp_setup_stream_res(struct f_uas *fu, int max_streams)
 {
 	int i;
@@ -783,12 +820,15 @@ static int uasp_prepare_reqs(struct f_uas *fu)
 {
 	int ret;
 	int i;
-	int max_streams;
+	int max_streams, max_commands;
 
-	if (fu->flags & USBG_USE_STREAMS)
+	if (fu->flags & USBG_USE_STREAMS) {
+		max_commands = UASP_MAX_COMMANDS;
 		max_streams = UASP_SS_EP_COMP_NUM_STREAMS;
-	else
+	} else {
+		max_commands = 1;
 		max_streams = 1;
+	}
 
 	for (i = 0; i < max_streams; i++) {
 		ret = uasp_alloc_stream_res(fu, &fu->stream[i]);
@@ -796,19 +836,25 @@ static int uasp_prepare_reqs(struct f_uas *fu)
 			goto err_cleanup;
 	}
 
-	ret = uasp_alloc_cmd(fu);
+	ret = alloc_cmd_resource(fu, max_commands, fu->ep_cmd,
+				 uasp_cmd_complete);
 	if (ret)
 		goto err_free_stream;
 	uasp_setup_stream_res(fu, max_streams);
 
-	ret = usb_ep_queue(fu->ep_cmd, fu->cmd.req, GFP_ATOMIC);
-	if (ret)
-		goto err_free_stream;
+	/* queue number of commands */
+	for (i = 0; i < fu->ncmd; i++) {
+		struct usbg_cdb *cmd = acquire_cmd_request(fu);
+
+		ret = usb_ep_queue(fu->ep_cmd, cmd->req, GFP_ATOMIC);
+		if (ret)
+			goto err_free_stream;
+	}
 
 	return 0;
 
 err_free_stream:
-	uasp_free_cmdreq(fu);
+	free_cmd_resource(fu, fu->ep_cmd);
 
 err_cleanup:
 	if (i) {
