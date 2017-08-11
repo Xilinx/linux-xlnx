@@ -916,13 +916,15 @@ static u32 dwc3_calc_trbs_left(struct dwc3_ep *dep)
 static void dwc3_prepare_one_trb_sg(struct dwc3_ep *dep,
 		struct dwc3_request *req)
 {
-	struct scatterlist *sg = req->sg;
+	struct scatterlist *sg = req->sg_to_start;
 	struct scatterlist *s;
 	unsigned int	length;
 	dma_addr_t	dma;
 	int		i;
+	unsigned int remaining = req->request.num_mapped_sgs
+		- req->num_queued_sgs;
 
-	for_each_sg(sg, s, req->num_pending_sgs, i) {
+	for_each_sg(sg, s, remaining, i) {
 		unsigned chain = true;
 
 		length = sg_dma_len(s);
@@ -931,6 +933,13 @@ static void dwc3_prepare_one_trb_sg(struct dwc3_ep *dep,
 		if (sg_is_last(s))
 			chain = false;
 
+		/* In the case where not able to queue trbs for all sgs in
+		 * request because of trb not available, update sg_to_start
+		 * to next sg from which we can start queing trbs once trbs
+		 * availbale
+		 */
+		req->sg_to_start = sg_next(s);
+		req->num_queued_sgs++;
 		dwc3_prepare_one_trb(dep, req, dma, length,
 				chain, i);
 
@@ -1124,6 +1133,8 @@ static int __dwc3_gadget_ep_queue(struct dwc3_ep *dep, struct dwc3_request *req)
 		return ret;
 
 	req->sg			= req->request.sg;
+	req->sg_to_start	= req->sg;
+	req->num_queued_sgs	= 0;
 	req->num_pending_sgs	= req->request.num_mapped_sgs;
 
 	list_add_tail(&req->list, &dep->pending_list);
