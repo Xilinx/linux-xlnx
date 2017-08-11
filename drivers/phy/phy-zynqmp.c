@@ -154,8 +154,6 @@
 #define PROT_BUS_WIDTH_20		0x1
 #define PROT_BUS_WIDTH_40		0x2
 
-#define TX_TERM_FIX_VAL			0x11
-
 #define LANE_CLK_SHARE_MASK		0x8F
 
 #define SATA_CONTROL_OFFSET		0x0100
@@ -1008,7 +1006,7 @@ static int xpsgtr_phy_init(struct phy *phy)
 		 * we need to configure any lane ICM_CFG to valid protocol. This
 		 * will deassert the CMN_Resetn signal.
 		 */
-		writel(TX_TERM_FIX_VAL, gtr_dev->serdes + ICM_CFG1);
+		xpsgtr_lane_setprotocol(gtr_phy);
 
 		/* Clear Test Mode reset */
 		reg = readl(gtr_dev->serdes + TM_CMN_RST);
