@@ -104,6 +104,7 @@
 #define	XSDI_TX_MUX_16STREAM_12G		4
 
 #define PIXELS_PER_CLK				2
+#define XSDI_CH_SHIFT				29
 #define XST352_PROG_SHIFT			6
 #define ST352_BYTE3				0x00
 #define ST352_BYTE4				0x01
@@ -952,7 +953,8 @@ static void xilinx_sdi_mode_set(struct drm_encoder *encoder,
 	dev_dbg(sdi->dev, "payload : %0x\n", payload);
 
 	for (i = 0; i < SDI_MAX_DATASTREAM; i++)
-		xilinx_sdi_set_payload_data(sdi, i, payload);
+		xilinx_sdi_set_payload_data(sdi, i, payload |
+					    (i << XSDI_CH_SHIFT));
 
 	/* UHDSDI is fixed 2 pixels per clock, horizontal timings div by 2 */
 	vm.hactive = adjusted_mode->hdisplay / PIXELS_PER_CLK;
