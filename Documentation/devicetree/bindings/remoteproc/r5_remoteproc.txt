@@ -16,10 +16,13 @@ Required properties:
  - compatible : Should be "xlnx,zynqmp-r5-remoteproc-1.0"
  - reg : Address and length of the register set for the device. It
         contains in the same order as described reg-names
- - reg-names: Contain the register set names. For direct control method,
-              ipi, rpu_base must be provided
- - interrupts : Interrupt mapping for remoteproc IPI
- - interrupt-parent : Phandle for the interrupt controller
+ - reg-names: Contain the register set names.
+              "rpu_base" for RPU config register and "rpu_glbl_base" for RPU
+               global control register must be provided. If the user uses the
+               remoteproc driver with the RPMsg kernel driver, "ipi" for the IPI
+               register used to communicate with RPU is also required.
+               Otherwise, if user only uses the remoteproc driver to boot RPU
+               firmware, "ipi" is not required.
  - srams : firmware memories
  - pd-handle : power domain handle, as remoteproc is not hooked into
                Linux runtime power management, we will not use
@@ -31,6 +34,11 @@ Optional properties:
 --------------------
  - core_conf : R5 core configuration (valid string - split0 or split1 or
                lock-step), default is lock-step.
+ - interrupts : Interrupt mapping for remoteproc IPI. It is required if the
+                user uses the remoteproc driver with the RPMsg kernel driver.
+ - interrupt-parent : Phandle for the interrupt controller. It is required if
+                      the user uses the remoteproc driver with the RPMsg kernel
+                      kernel driver.
 
 Example:
 --------
