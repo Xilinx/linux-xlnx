@@ -179,23 +179,6 @@
 #define XSDIRX_MODE_12GI_MASK	0x5
 #define XSDIRX_MODE_12GF_MASK	0x6
 
-enum {
-	XSDIRX_MODE_SD_OFFSET = 0,
-	XSDIRX_MODE_HD_OFFSET,
-	XSDIRX_MODE_3G_OFFSET,
-	XSDIRX_MODE_6G_OFFSET,
-	XSDIRX_MODE_12GI_OFFSET,
-	XSDIRX_MODE_12GF_OFFSET,
-	XSDIRX_MODE_NUM_SUPPORTED,
-};
-
-#define XSDIRX_DETECT_ALL_MODES		((1 << XSDIRX_MODE_SD_OFFSET) | \
-					(1 << XSDIRX_MODE_HD_OFFSET) | \
-					(1 << XSDIRX_MODE_3G_OFFSET) | \
-					(1 << XSDIRX_MODE_6G_OFFSET) | \
-					(1 << XSDIRX_MODE_12GI_OFFSET) | \
-					(1 << XSDIRX_MODE_12GF_OFFSET)) \
-
 /**
  * struct xsdirxss_core - Core configuration SDI Rx Subsystem device structure
  * @dev: Platform structure
@@ -284,7 +267,7 @@ static int xsdirx_set_modedetect(struct xsdirxss_core *core, u16 mask)
 {
 	u32 i, val;
 
-	mask = mask & XSDIRX_DETECT_ALL_MODES;
+	mask &= XSDIRX_DETECT_ALL_MODES;
 	if (!mask) {
 		dev_err(core->dev, "Invalid bit mask = 0x%08x\n", mask);
 		return -EINVAL;
@@ -318,8 +301,6 @@ static int xsdirx_set_modedetect(struct xsdirxss_core *core, u16 mask)
 			case BIT(XSDIRX_MODE_12GF_OFFSET):
 				val |= XSDIRX_MDL_CTRL_MODE_12GF_EN_MASK;
 				break;
-			default:
-				return -EINVAL;
 			}
 		}
 		val |= XSDIRX_MDL_CTRL_MODE_DET_EN_MASK;
@@ -349,8 +330,6 @@ static int xsdirx_set_modedetect(struct xsdirxss_core *core, u16 mask)
 		case XSDIRX_MODE_12GF_OFFSET:
 			forced_mode_mask = XSDIRX_MODE_12GF_MASK;
 			break;
-		default:
-			return -EINVAL;
 		}
 		dev_dbg(core->dev, "Forced Mode Mask : 0x%x\n",
 			forced_mode_mask);
@@ -444,11 +423,7 @@ static void xsdirx_streamflow_control(struct xsdirxss_core *core, bool enable)
 
 static void xsdirx_streamdowncb(struct xsdirxss_core *core)
 {
-	xsdirx_core_disable(core);
 	xsdirx_streamflow_control(core, false);
-	xsdirx_framer(core, true);
-	xsdirx_set_modedetect(core, XSDIRX_DETECT_ALL_MODES);
-	xsdirx_core_enable(core);
 }
 
 /**
@@ -549,6 +524,14 @@ static int xsdirxss_s_ctrl(struct v4l2_ctrl *ctrl)
 		break;
 	case V4L2_CID_XILINX_SDIRX_EDH_ERRCNT_ENABLE:
 		xsdirx_setedherrcnttrigger(core, ctrl->val);
+		break;
+	case V4L2_CID_XILINX_SDIRX_SEARCH_MODES:
+		if (ctrl->val) {
+			xsdirx_set_modedetect(core, ctrl->val);
+		} else {
+			dev_err(core->dev, "Select at least one mode!\n");
+			return -EINVAL;
+		}
 		break;
 	default:
 		xsdirxss_set(core, XSDIRX_MDL_CTRL_REG,
@@ -805,6 +788,14 @@ static struct v4l2_ctrl_config xsdirxss_ctrls[] = {
 		.min	= 0,
 		.max	= XSDIRX_EDH_ALLERR_MASK,
 		.def	= 0,
+	}, {
+		.ops	= &xsdirxss_ctrl_ops,
+		.id	= V4L2_CID_XILINX_SDIRX_SEARCH_MODES,
+		.name	= "SDI Rx : Modes search Mask",
+		.type	= V4L2_CTRL_TYPE_BITMASK,
+		.min	= 0,
+		.max	= XSDIRX_DETECT_ALL_MODES,
+		.def	= XSDIRX_DETECT_ALL_MODES,
 	},
 };
 
@@ -1032,8 +1023,6 @@ static int xsdirxss_probe(struct platform_device *pdev)
 
 	dev_info(xsdirxss->core.dev, "Xilinx SDI Rx Subsystem device found!\n");
 
-	/* Enable all stream detection by default */
-	xsdirx_set_modedetect(core, XSDIRX_DETECT_ALL_MODES);
 	xsdirx_core_enable(core);
 
 	return 0;

@@ -2,6 +2,27 @@
 #define __UAPI_XILINX_SDIRXSS_H__
 
 /*
+ * This enum is used to prepare the bitmask
+ * of modes to be detected
+ */
+enum {
+	XSDIRX_MODE_SD_OFFSET = 0,
+	XSDIRX_MODE_HD_OFFSET,
+	XSDIRX_MODE_3G_OFFSET,
+	XSDIRX_MODE_6G_OFFSET,
+	XSDIRX_MODE_12GI_OFFSET,
+	XSDIRX_MODE_12GF_OFFSET,
+	XSDIRX_MODE_NUM_SUPPORTED,
+};
+
+#define XSDIRX_DETECT_ALL_MODES		(BIT(XSDIRX_MODE_SD_OFFSET) | \
+					BIT(XSDIRX_MODE_HD_OFFSET) | \
+					BIT(XSDIRX_MODE_3G_OFFSET) | \
+					BIT(XSDIRX_MODE_6G_OFFSET) | \
+					BIT(XSDIRX_MODE_12GI_OFFSET) | \
+					BIT(XSDIRX_MODE_12GF_OFFSET))
+
+/*
  * EDH Error Types
  * ANC - Ancillary Data Packet Errors
  * FF - Full Field Errors
