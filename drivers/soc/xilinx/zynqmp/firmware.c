@@ -88,11 +88,11 @@ static noinline int do_fw_call_smc(u64 arg0, u64 arg1, u64 arg2,
 	arm_smccc_smc(arg0, arg1, arg2, 0, 0, 0, 0, 0, &res);
 
 	if (ret_payload != NULL) {
-		ret_payload[0] = (u32)res.a0;
-		ret_payload[1] = (u32)(res.a0 >> 32);
-		ret_payload[2] = (u32)res.a1;
-		ret_payload[3] = (u32)(res.a1 >> 32);
-		ret_payload[4] = (u32)res.a2;
+		ret_payload[0] = lower_32_bits(res.a0);
+		ret_payload[1] = upper_32_bits(res.a0);
+		ret_payload[2] = lower_32_bits(res.a1);
+		ret_payload[3] = upper_32_bits(res.a1);
+		ret_payload[4] = lower_32_bits(res.a2);
 	}
 
 	return zynqmp_pm_ret_code((enum pm_ret_status)res.a0);
@@ -119,11 +119,11 @@ static noinline int do_fw_call_hvc(u64 arg0, u64 arg1, u64 arg2,
 	arm_smccc_hvc(arg0, arg1, arg2, 0, 0, 0, 0, 0, &res);
 
 	if (ret_payload != NULL) {
-		ret_payload[0] = (u32)res.a0;
-		ret_payload[1] = (u32)(res.a0 >> 32);
-		ret_payload[2] = (u32)res.a1;
-		ret_payload[3] = (u32)(res.a1 >> 32);
-		ret_payload[4] = (u32)res.a2;
+		ret_payload[0] = lower_32_bits(res.a0);
+		ret_payload[1] = upper_32_bits(res.a0);
+		ret_payload[2] = lower_32_bits(res.a1);
+		ret_payload[3] = upper_32_bits(res.a1);
+		ret_payload[4] = lower_32_bits(res.a2);
 	}
 
 	return zynqmp_pm_ret_code((enum pm_ret_status)res.a0);
