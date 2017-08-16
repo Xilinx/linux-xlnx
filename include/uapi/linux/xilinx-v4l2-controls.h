@@ -172,4 +172,14 @@
 /* Adjust Blue Gain */
 #define V4L2_CID_XILINX_CSC_BLUE_GAIN		(V4L2_CID_XILINX_CSC + 5)
 
+/*
+ * Xilinx SDI Rx Subsystem
+ */
+
+/* Base ID */
+#define V4L2_CID_XILINX_SDIRX			(V4L2_CID_USER_BASE + 0xc100)
+
+/* Framer Control */
+#define V4L2_CID_XILINX_SDIRX_FRAMER		(V4L2_CID_XILINX_SDIRX + 1)
+
 #endif /* __UAPI_XILINX_V4L2_CONTROLS_H__ */

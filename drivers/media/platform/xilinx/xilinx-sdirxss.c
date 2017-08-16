@@ -33,6 +33,7 @@
 #include <linux/spinlock_types.h>
 #include <linux/types.h>
 #include <linux/v4l2-subdev.h>
+#include <linux/xilinx-v4l2-controls.h>
 #include <media/media-entity.h>
 #include <media/v4l2-common.h>
 #include <media/v4l2-ctrls.h>
@@ -214,6 +215,7 @@ struct xsdirxss_core {
  * struct xsdirxss_state - SDI Rx Subsystem device structure
  * @core: Core structure for MIPI SDI Rx Subsystem
  * @subdev: The v4l2 subdev structure
+ * @ctrl_handler: control handler
  * @formats: Active V4L2 formats on each pad
  * @default_format: default V4L2 media bus format
  * @vip_format: format information corresponding to the active format
@@ -226,6 +228,7 @@ struct xsdirxss_core {
 struct xsdirxss_state {
 	struct xsdirxss_core core;
 	struct v4l2_subdev subdev;
+	struct v4l2_ctrl_handler ctrl_handler;
 	struct v4l2_mbus_framefmt formats[XSDIRX_MEDIA_PADS];
 	struct v4l2_mbus_framefmt default_format;
 	const struct xvip_video_format *vip_format;
@@ -512,6 +515,67 @@ static irqreturn_t xsdirxss_irq_handler(int irq, void *dev_id)
 }
 
 /**
+ * xsdirxss_s_ctrl - This is used to set the Xilinx SDI Rx V4L2 controls
+ * @ctrl: V4L2 control to be set
+ *
+ * This function is used to set the V4L2 controls for the Xilinx SDI Rx
+ * Subsystem.
+ *
+ * Return: 0 on success, errors otherwise
+ */
+static int xsdirxss_s_ctrl(struct v4l2_ctrl *ctrl)
+{
+	struct xsdirxss_state *xsdirxss =
+		container_of(ctrl->handler,
+			     struct xsdirxss_state, ctrl_handler);
+	struct xsdirxss_core *core = &xsdirxss->core;
+
+	dev_dbg(core->dev, "set ctrl id = 0x%08x val = 0x%08x\n",
+		ctrl->id, ctrl->val);
+
+	if (xsdirxss->streaming) {
+		dev_err(core->dev, "Cannot set controls while streaming\n");
+		return -EINVAL;
+	}
+
+	switch (ctrl->id) {
+	case V4L2_CID_XILINX_SDIRX_FRAMER:
+		xsdirxss_clr(core, XSDIRX_MDL_CTRL_REG,
+			     XSDIRX_MDL_CTRL_MDL_EN_MASK);
+		xsdirx_framer(core, ctrl->val);
+		xsdirxss_set(core, XSDIRX_MDL_CTRL_REG,
+			     XSDIRX_MDL_CTRL_MDL_EN_MASK);
+		break;
+	default:
+		return -EINVAL;
+	}
+	return 0;
+}
+
+/**
+ * xsdirxss_g_volatile_ctrl - get the Xilinx SDI Rx controls
+ * @ctrl: Pointer to V4L2 control
+ *
+ * Return: 0 on success, errors otherwise
+ */
+static int xsdirxss_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
+{
+	struct xsdirxss_state *xsdirxss =
+		container_of(ctrl->handler,
+			     struct xsdirxss_state, ctrl_handler);
+	struct xsdirxss_core *core = &xsdirxss->core;
+
+	switch (ctrl->id) {
+	default:
+		dev_err(core->dev, "Get Invalid control id 0x%0x\n", ctrl->id);
+		return -EINVAL;
+	}
+	dev_dbg(core->dev, "Get ctrl id = 0x%08x val = 0x%08x\n",
+		ctrl->val, ctrl->id);
+	return 0;
+}
+
+/**
  * xsdirxss_log_status - Logs the status of the SDI Rx Subsystem
  * @sd: Pointer to V4L2 subdevice structure
  *
@@ -702,6 +766,24 @@ static const struct media_entity_operations xsdirxss_media_ops = {
 	.link_validate = v4l2_subdev_link_validate
 };
 
+static const struct v4l2_ctrl_ops xsdirxss_ctrl_ops = {
+	.g_volatile_ctrl = xsdirxss_g_volatile_ctrl,
+	.s_ctrl	= xsdirxss_s_ctrl
+};
+
+static struct v4l2_ctrl_config xsdirxss_ctrls[] = {
+	{
+		.ops	= &xsdirxss_ctrl_ops,
+		.id	= V4L2_CID_XILINX_SDIRX_FRAMER,
+		.name	= "SDI Rx : Enable Framer",
+		.type	= V4L2_CTRL_TYPE_BOOLEAN,
+		.min	= false,
+		.max	= true,
+		.step	= 1,
+		.def	= true,
+	},
+};
+
 static const struct v4l2_subdev_core_ops xsdirxss_core_ops = {
 	.log_status = xsdirxss_log_status,
 };
@@ -826,6 +908,7 @@ static int xsdirxss_probe(struct platform_device *pdev)
 	struct xsdirxss_core *core;
 	struct resource *res;
 	int ret;
+	unsigned int num_ctrls, i;
 
 	xsdirxss = devm_kzalloc(&pdev->dev, sizeof(*xsdirxss), GFP_KERNEL);
 	if (!xsdirxss)
@@ -873,6 +956,36 @@ static int xsdirxss_probe(struct platform_device *pdev)
 	if (ret < 0)
 		goto error;
 
+	/* Initialise and register the controls */
+	num_ctrls = ARRAY_SIZE(xsdirxss_ctrls);
+	v4l2_ctrl_handler_init(&xsdirxss->ctrl_handler, num_ctrls);
+	for (i = 0; i < num_ctrls; i++) {
+		struct v4l2_ctrl *ctrl;
+
+		dev_dbg(xsdirxss->core.dev, "%d %s ctrl = 0x%x\n",
+			i, xsdirxss_ctrls[i].name, xsdirxss_ctrls[i].id);
+		ctrl = v4l2_ctrl_new_custom(&xsdirxss->ctrl_handler,
+					    &xsdirxss_ctrls[i], NULL);
+		if (!ctrl)
+			goto error;
+	}
+
+	dev_dbg(xsdirxss->core.dev, "# v4l2 ctrls registered = %d\n", i - 1);
+
+	if (xsdirxss->ctrl_handler.error) {
+		dev_err(&pdev->dev, "failed to add controls\n");
+		ret = xsdirxss->ctrl_handler.error;
+		goto error;
+	}
+
+	subdev->ctrl_handler = &xsdirxss->ctrl_handler;
+
+	ret = v4l2_ctrl_handler_setup(&xsdirxss->ctrl_handler);
+	if (ret < 0) {
+		dev_err(&pdev->dev, "failed to set controls\n");
+		goto error;
+	}
+
 	platform_set_drvdata(pdev, xsdirxss);
 
 	ret = v4l2_async_register_subdev(subdev);
@@ -899,6 +1012,7 @@ static int xsdirxss_probe(struct platform_device *pdev)
 
 	return 0;
 error:
+	v4l2_ctrl_handler_free(&xsdirxss->ctrl_handler);
 	media_entity_cleanup(&subdev->entity);
 
 	return ret;
@@ -910,6 +1024,7 @@ static int xsdirxss_remove(struct platform_device *pdev)
 	struct v4l2_subdev *subdev = &xsdirxss->subdev;
 
 	v4l2_async_unregister_subdev(subdev);
+	v4l2_ctrl_handler_free(&xsdirxss->ctrl_handler);
 	media_entity_cleanup(&subdev->entity);
 
 	return 0;
