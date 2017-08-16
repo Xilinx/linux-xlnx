@@ -33,6 +33,7 @@
 #include <linux/spinlock_types.h>
 #include <linux/types.h>
 #include <linux/v4l2-subdev.h>
+#include <linux/xilinx-sdirxss.h>
 #include <linux/xilinx-v4l2-controls.h>
 #include <media/media-entity.h>
 #include <media/v4l2-common.h>
@@ -377,7 +378,7 @@ static void xsdirx_setedherrcnttrigger(struct xsdirxss_core *core, u32 enable)
 {
 	u32 val = xsdirxss_read(core, XSDIRX_EDH_ERRCNT_EN_REG);
 
-	val |= enable & 0xFFFF;
+	val = enable & XSDIRX_EDH_ALLERR_MASK;
 
 	xsdirxss_write(core, XSDIRX_EDH_ERRCNT_EN_REG, val);
 }
@@ -545,6 +546,9 @@ static int xsdirxss_s_ctrl(struct v4l2_ctrl *ctrl)
 		break;
 	case V4L2_CID_XILINX_SDIRX_VIDLOCK_WINDOW:
 		xsdirx_setvidlockwindow(core, ctrl->val);
+		break;
+	case V4L2_CID_XILINX_SDIRX_EDH_ERRCNT_ENABLE:
+		xsdirx_setedherrcnttrigger(core, ctrl->val);
 		break;
 	default:
 		xsdirxss_set(core, XSDIRX_MDL_CTRL_REG,
@@ -793,6 +797,14 @@ static struct v4l2_ctrl_config xsdirxss_ctrls[] = {
 		.max	= 0xFFFF,
 		.step	= 1,
 		.def	= XSDIRX_DEFAULT_VIDEO_LOCK_WINDOW,
+	}, {
+		.ops	= &xsdirxss_ctrl_ops,
+		.id	= V4L2_CID_XILINX_SDIRX_EDH_ERRCNT_ENABLE,
+		.name	= "SDI Rx : EDH Error Count Enable",
+		.type	= V4L2_CTRL_TYPE_BITMASK,
+		.min	= 0,
+		.max	= XSDIRX_EDH_ALLERR_MASK,
+		.def	= 0,
 	},
 };
 
@@ -985,8 +997,11 @@ static int xsdirxss_probe(struct platform_device *pdev)
 			i, xsdirxss_ctrls[i].name, xsdirxss_ctrls[i].id);
 		ctrl = v4l2_ctrl_new_custom(&xsdirxss->ctrl_handler,
 					    &xsdirxss_ctrls[i], NULL);
-		if (!ctrl)
+		if (!ctrl) {
+			dev_dbg(xsdirxss->core.dev, "Failed to add %s ctrl\n",
+				xsdirxss_ctrls[i].name);
 			goto error;
+		}
 	}
 
 	dev_dbg(xsdirxss->core.dev, "# v4l2 ctrls registered = %d\n", i - 1);
@@ -1018,7 +1033,6 @@ static int xsdirxss_probe(struct platform_device *pdev)
 	dev_info(xsdirxss->core.dev, "Xilinx SDI Rx Subsystem device found!\n");
 
 	/* Enable all stream detection by default */
-	xsdirx_setedherrcnttrigger(core, XSDIRX_DEFAULT_EDH_ERRCNT);
 	xsdirx_set_modedetect(core, XSDIRX_DETECT_ALL_MODES);
 	xsdirx_core_enable(core);
 
