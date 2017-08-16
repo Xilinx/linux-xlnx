@@ -784,9 +784,65 @@ static int xsdirxss_get_format(struct v4l2_subdev *sd,
 					struct v4l2_subdev_format *fmt)
 {
 	struct xsdirxss_state *xsdirxss = to_xsdirxssstate(sd);
+	struct xsdirxss_core *core = &xsdirxss->core;
+	u32 mode, payload;
+
+	if (!xsdirxss->vidlocked) {
+		dev_err(core->dev, "Video not locked!\n");
+		return -EINVAL;
+	}
 
 	fmt->format = *__xsdirxss_get_pad_format(xsdirxss, cfg,
-							fmt->pad, fmt->which);
+						 fmt->pad, fmt->which);
+
+	mode = xsdirxss_read(core, XSDIRX_MODE_DET_STAT_REG);
+	mode &= XSDIRX_MODE_DET_STAT_RX_MODE_MASK;
+
+	payload = xsdirxss_read(core, XSDIRX_ST352_DS0_REG);
+
+	/* TODO : Add more checks to get width and height */
+	switch (mode) {
+	case XSDIRX_MODE_HD_MASK:
+		switch (payload & 0xFF) {
+		case 0x84:
+			fmt->format.width = 1280;
+			fmt->format.height = 720;
+			break;
+		default:
+			dev_dbg(core->dev, "Unknown SMPTE standard\n");
+		}
+
+		break;
+	case XSDIRX_MODE_SD_MASK:
+		break;
+	case XSDIRX_MODE_3G_MASK:
+		switch (payload & 0xFF) {
+		case 0x85:
+		case 0x8A:
+			fmt->format.width = 1920;
+			fmt->format.height = 1080;
+			break;
+		default:
+			dev_dbg(core->dev, "Unknown SMPTE standard\n");
+		}
+
+		break;
+	case XSDIRX_MODE_6G_MASK:
+		break;
+	case XSDIRX_MODE_12GI_MASK:
+		break;
+	case XSDIRX_MODE_12GF_MASK:
+		break;
+	}
+
+	if (payload & 0x4000)
+		fmt->format.field = V4L2_FIELD_NONE;
+	else
+		fmt->format.field = V4L2_FIELD_INTERLACED;
+
+	dev_dbg(core->dev, "Stream width = %d height = %d Field = %d\n",
+		fmt->format.width, fmt->format.height, fmt->format.field);
+
 	return 0;
 }
 
