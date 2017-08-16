@@ -271,7 +271,7 @@ static inline void xsdirxss_set(struct xsdirxss_core *xsdirxss, u32 addr,
 
 static void xsdirx_core_disable(struct xsdirxss_core *core)
 {
-	xsdirxss_write(core, XSDIRX_MDL_CTRL_REG, 0);
+	xsdirxss_clr(core, XSDIRX_MDL_CTRL_REG, XSDIRX_MDL_CTRL_MDL_EN_MASK);
 }
 
 static void xsdirx_core_enable(struct xsdirxss_core *core)
@@ -538,17 +538,20 @@ static int xsdirxss_s_ctrl(struct v4l2_ctrl *ctrl)
 		return -EINVAL;
 	}
 
+	xsdirx_core_disable(core);
 	switch (ctrl->id) {
 	case V4L2_CID_XILINX_SDIRX_FRAMER:
-		xsdirxss_clr(core, XSDIRX_MDL_CTRL_REG,
-			     XSDIRX_MDL_CTRL_MDL_EN_MASK);
 		xsdirx_framer(core, ctrl->val);
-		xsdirxss_set(core, XSDIRX_MDL_CTRL_REG,
-			     XSDIRX_MDL_CTRL_MDL_EN_MASK);
+		break;
+	case V4L2_CID_XILINX_SDIRX_VIDLOCK_WINDOW:
+		xsdirx_setvidlockwindow(core, ctrl->val);
 		break;
 	default:
+		xsdirxss_set(core, XSDIRX_MDL_CTRL_REG,
+			     XSDIRX_MDL_CTRL_MDL_EN_MASK);
 		return -EINVAL;
 	}
+	xsdirx_core_enable(core);
 	return 0;
 }
 
@@ -781,6 +784,15 @@ static struct v4l2_ctrl_config xsdirxss_ctrls[] = {
 		.max	= true,
 		.step	= 1,
 		.def	= true,
+	}, {
+		.ops	= &xsdirxss_ctrl_ops,
+		.id	= V4L2_CID_XILINX_SDIRX_VIDLOCK_WINDOW,
+		.name	= "SDI Rx : Video Lock Window",
+		.type	= V4L2_CTRL_TYPE_INTEGER,
+		.min	= 0,
+		.max	= 0xFFFF,
+		.step	= 1,
+		.def	= XSDIRX_DEFAULT_VIDEO_LOCK_WINDOW,
 	},
 };
 
@@ -926,6 +938,13 @@ static int xsdirxss_probe(struct platform_device *pdev)
 	if (IS_ERR(xsdirxss->core.iomem))
 		return PTR_ERR(xsdirxss->core.iomem);
 
+	/* Reset the core */
+	xsdirx_streamflow_control(core, false);
+	xsdirx_core_disable(core);
+	xsdirx_clearintr(core, XSDIRX_INTR_ALL_MASK);
+	xsdirx_disableintr(core, XSDIRX_INTR_ALL_MASK);
+	xsdirx_enableintr(core, XSDIRX_INTR_ALL_MASK);
+
 	/* Initialize V4L2 subdevice and media entity */
 	xsdirxss->pads[0].flags = MEDIA_PAD_FL_SOURCE;
 
@@ -999,14 +1018,7 @@ static int xsdirxss_probe(struct platform_device *pdev)
 	dev_info(xsdirxss->core.dev, "Xilinx SDI Rx Subsystem device found!\n");
 
 	/* Enable all stream detection by default */
-	xsdirx_core_disable(core);
-	xsdirx_streamflow_control(core, false);
-	xsdirx_framer(core, true);
 	xsdirx_setedherrcnttrigger(core, XSDIRX_DEFAULT_EDH_ERRCNT);
-	xsdirx_setvidlockwindow(core, XSDIRX_DEFAULT_VIDEO_LOCK_WINDOW);
-	xsdirx_clearintr(core, XSDIRX_INTR_ALL_MASK);
-	xsdirx_disableintr(core, XSDIRX_INTR_ALL_MASK);
-	xsdirx_enableintr(core, XSDIRX_INTR_ALL_MASK);
 	xsdirx_set_modedetect(core, XSDIRX_DETECT_ALL_MODES);
 	xsdirx_core_enable(core);
 

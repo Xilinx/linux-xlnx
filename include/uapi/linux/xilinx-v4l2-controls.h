@@ -181,5 +181,7 @@
 
 /* Framer Control */
 #define V4L2_CID_XILINX_SDIRX_FRAMER		(V4L2_CID_XILINX_SDIRX + 1)
+/* Video Lock Window Control */
+#define V4L2_CID_XILINX_SDIRX_VIDLOCK_WINDOW	(V4L2_CID_XILINX_SDIRX + 2)
 
 #endif /* __UAPI_XILINX_V4L2_CONTROLS_H__ */
