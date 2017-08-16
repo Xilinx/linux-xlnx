@@ -38,6 +38,7 @@
 #include <media/media-entity.h>
 #include <media/v4l2-common.h>
 #include <media/v4l2-ctrls.h>
+#include <media/v4l2-event.h>
 #include <media/v4l2-of.h>
 #include <media/v4l2-subdev.h>
 #include "xilinx-vip.h"
@@ -178,6 +179,11 @@
 #define XSDIRX_MODE_12GI_MASK	0x5
 #define XSDIRX_MODE_12GF_MASK	0x6
 
+/*
+ * Maximum number of events per file handle.
+ */
+#define XSDIRX_MAX_EVENTS	(128)
+
 /**
  * struct xsdirxss_core - Core configuration SDI Rx Subsystem device structure
  * @dev: Platform structure
@@ -199,6 +205,7 @@ struct xsdirxss_core {
  * @core: Core structure for MIPI SDI Rx Subsystem
  * @subdev: The v4l2 subdev structure
  * @ctrl_handler: control handler
+ * @event: Holds the video unlock event
  * @formats: Active V4L2 formats on each pad
  * @default_format: default V4L2 media bus format
  * @vip_format: format information corresponding to the active format
@@ -212,6 +219,7 @@ struct xsdirxss_state {
 	struct xsdirxss_core core;
 	struct v4l2_subdev subdev;
 	struct v4l2_ctrl_handler ctrl_handler;
+	struct v4l2_event event;
 	struct v4l2_mbus_framefmt formats[XSDIRX_MEDIA_PADS];
 	struct v4l2_mbus_framefmt default_format;
 	const struct xvip_video_format *vip_format;
@@ -483,10 +491,62 @@ static irqreturn_t xsdirxss_irq_handler(int irq, void *dev_id)
 		dev_dbg(core->dev, "video unlock interrupt\n");
 		xsdirx_clearintr(core, XSDIRX_INTR_VIDUNLOCK_MASK);
 		xsdirx_streamdowncb(core);
+
+		memset(&state->event, 0, sizeof(state->event));
+		state->event.type = V4L2_EVENT_XLNXSDIRX_VIDUNLOCK;
+		v4l2_subdev_notify_event(&state->subdev, &state->event);
+
 		state->vidlocked = false;
 	}
 
 	return IRQ_HANDLED;
+}
+
+/**
+ * xsdirxss_subscribe_event - Subscribe to video lock and unlock event
+ * @sd: V4L2 Sub device
+ * @fh: V4L2 File Handle
+ * @sub: Subcribe event structure
+ *
+ * Return: 0 on success, errors otherwise
+ */
+static int xsdirxss_subscribe_event(struct v4l2_subdev *sd,
+				    struct v4l2_fh *fh,
+				    struct v4l2_event_subscription *sub)
+{
+	int ret;
+	struct xsdirxss_state *xsdirxss = to_xsdirxssstate(sd);
+	struct xsdirxss_core *core = &xsdirxss->core;
+
+	switch (sub->type) {
+	case V4L2_EVENT_XLNXSDIRX_VIDUNLOCK:
+		ret = v4l2_event_subscribe(fh, sub, XSDIRX_MAX_EVENTS, NULL);
+		dev_dbg(core->dev, "Event subscribed : 0x%08x\n", sub->type);
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return ret;
+}
+
+/**
+ * xsdirxss_unsubscribe_event - Unsubscribe from all events registered
+ * @sd: V4L2 Sub device
+ * @fh: V4L2 file handle
+ * @sub: pointer to Event unsubscription structure
+ *
+ * Return: zero on success, else a negative error code.
+ */
+static int xsdirxss_unsubscribe_event(struct v4l2_subdev *sd,
+				      struct v4l2_fh *fh,
+				      struct v4l2_event_subscription *sub)
+{
+	struct xsdirxss_state *xsdirxss = to_xsdirxssstate(sd);
+	struct xsdirxss_core *core = &xsdirxss->core;
+
+	dev_dbg(core->dev, "Event unsubscribe : 0x%08x\n", sub->type);
+	return v4l2_event_unsubscribe(fh, sub);
 }
 
 /**
@@ -903,6 +963,8 @@ static struct v4l2_ctrl_config xsdirxss_ctrls[] = {
 
 static const struct v4l2_subdev_core_ops xsdirxss_core_ops = {
 	.log_status = xsdirxss_log_status,
+	.subscribe_event = xsdirxss_subscribe_event,
+	.unsubscribe_event = xsdirxss_unsubscribe_event
 };
 
 static struct v4l2_subdev_video_ops xsdirxss_video_ops = {

@@ -1,6 +1,17 @@
 #ifndef __UAPI_XILINX_SDIRXSS_H__
 #define __UAPI_XILINX_SDIRXSS_H__
 
+#include <linux/types.h>
+#include <linux/videodev2.h>
+
+/*
+ * Events
+ *
+ * V4L2_EVENT_XLNXSDIRX_VIDUNLOCK: Video unlock event
+ */
+#define V4L2_EVENT_XLNXSDIRX_CLASS	(V4L2_EVENT_PRIVATE_START | 0x200)
+#define V4L2_EVENT_XLNXSDIRX_VIDUNLOCK	(V4L2_EVENT_XLNXSDIRX_CLASS | 0x1)
+
 /*
  * This enum is used to prepare the bitmask
  * of modes to be detected
