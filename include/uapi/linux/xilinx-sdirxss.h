@@ -23,6 +23,14 @@ enum {
 					BIT(XSDIRX_MODE_12GF_OFFSET))
 
 /*
+ * AXIS4 Bridge Status
+ */
+
+#define	XSDIRX_AXIS4_STATUS_OK		0x0
+#define	XSDIRX_AXIS4_STATUS_OVERFLOW	0x1
+#define	XSDIRX_AXIS4_STATUS_UNDERFLOW	0x2
+
+/*
  * EDH Error Types
  * ANC - Ancillary Data Packet Errors
  * FF - Full Field Errors

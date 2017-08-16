@@ -170,7 +170,6 @@
 #define XSDIRXSS_SDI_STD_12G_8DS	2
 
 #define XSDIRX_DEFAULT_VIDEO_LOCK_WINDOW	0x3000
-#define XSDIRX_DEFAULT_EDH_ERRCNT		0x420
 
 #define XSDIRX_MODE_HD_MASK	0x0
 #define XSDIRX_MODE_SD_MASK	0x1
@@ -550,18 +549,72 @@ static int xsdirxss_s_ctrl(struct v4l2_ctrl *ctrl)
  */
 static int xsdirxss_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
 {
+	u32 val;
 	struct xsdirxss_state *xsdirxss =
 		container_of(ctrl->handler,
 			     struct xsdirxss_state, ctrl_handler);
 	struct xsdirxss_core *core = &xsdirxss->core;
 
 	switch (ctrl->id) {
+	case V4L2_CID_XILINX_SDIRX_MODE_DETECT:
+		if (!xsdirxss->vidlocked) {
+			dev_err(core->dev, "Can't get values when video not locked!\n");
+			return -EINVAL;
+		}
+		val = xsdirxss_read(core, XSDIRX_MODE_DET_STAT_REG);
+		val &= XSDIRX_MODE_DET_STAT_RX_MODE_MASK;
+
+		switch (val) {
+		case XSDIRX_MODE_SD_MASK:
+			ctrl->val = XSDIRX_MODE_SD_OFFSET;
+			break;
+		case XSDIRX_MODE_HD_MASK:
+			ctrl->val = XSDIRX_MODE_HD_OFFSET;
+			break;
+		case XSDIRX_MODE_3G_MASK:
+			ctrl->val = XSDIRX_MODE_3G_OFFSET;
+			break;
+		case XSDIRX_MODE_6G_MASK:
+			ctrl->val = XSDIRX_MODE_6G_OFFSET;
+			break;
+		case XSDIRX_MODE_12GI_MASK:
+			ctrl->val = XSDIRX_MODE_12GI_OFFSET;
+			break;
+		case XSDIRX_MODE_12GF_MASK:
+			ctrl->val = XSDIRX_MODE_12GF_OFFSET;
+			break;
+		}
+		break;
+	case V4L2_CID_XILINX_SDIRX_CRC:
+		ctrl->val = xsdirxss_read(core, XSDIRX_CRC_ERRCNT_REG);
+		break;
+	case V4L2_CID_XILINX_SDIRX_EDH_ERRCNT:
+		ctrl->val = xsdirxss_read(core, XSDIRX_EDH_ERRCNT_REG);
+		break;
+	case V4L2_CID_XILINX_SDIRX_EDH_STATUS:
+		ctrl->val = xsdirxss_read(core, XSDIRX_EDH_STAT_REG);
+		break;
+	case V4L2_CID_XILINX_SDIRX_AXIS4_STATUS:
+		val = xsdirxss_read(core, XSDIRX_VID_IN_AXIS4_CTRL_REG);
+		if (val & (XSDIRX_VID_IN_AXIS4_CTRL_ALL_MASK)) {
+			val = xsdirxss_read(core, XSDIRX_VID_IN_AXIS4_STAT_REG);
+			if (val & XSDIRX_VID_IN_AXIS4_STAT_OVERFLOW_MASK)
+				ctrl->val = XSDIRX_AXIS4_STATUS_OVERFLOW;
+			else if (val & XSDIRX_VID_IN_AXIS4_STAT_UNDERFLOW_MASK)
+				ctrl->val = XSDIRX_AXIS4_STATUS_UNDERFLOW;
+			else
+				ctrl->val = XSDIRX_AXIS4_STATUS_OK;
+		} else {
+			dev_err(core->dev, "Video Bridge not enabled!\n");
+			return -EINVAL;
+		}
+		break;
 	default:
 		dev_err(core->dev, "Get Invalid control id 0x%0x\n", ctrl->id);
 		return -EINVAL;
 	}
 	dev_dbg(core->dev, "Get ctrl id = 0x%08x val = 0x%08x\n",
-		ctrl->val, ctrl->id);
+		ctrl->id, ctrl->val);
 	return 0;
 }
 
@@ -796,7 +849,56 @@ static struct v4l2_ctrl_config xsdirxss_ctrls[] = {
 		.min	= 0,
 		.max	= XSDIRX_DETECT_ALL_MODES,
 		.def	= XSDIRX_DETECT_ALL_MODES,
-	},
+	}, {
+		.ops	= &xsdirxss_ctrl_ops,
+		.id	= V4L2_CID_XILINX_SDIRX_MODE_DETECT,
+		.name	= "SDI Rx : Mode Detect Status",
+		.type	= V4L2_CTRL_TYPE_INTEGER,
+		.min	= XSDIRX_MODE_SD_OFFSET,
+		.max	= XSDIRX_MODE_12GF_OFFSET,
+		.step	= 1,
+		.flags  = V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_READ_ONLY,
+	}, {
+		.ops	= &xsdirxss_ctrl_ops,
+		.id	= V4L2_CID_XILINX_SDIRX_CRC,
+		.name	= "SDI Rx : CRC Error status",
+		.type	= V4L2_CTRL_TYPE_INTEGER,
+		.min	= 0,
+		.max	= 0xFFFFFFFF,
+		.step	= 1,
+		.def	= 0,
+		.flags  = V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_READ_ONLY,
+	},  {
+		.ops	= &xsdirxss_ctrl_ops,
+		.id	= V4L2_CID_XILINX_SDIRX_EDH_ERRCNT,
+		.name	= "SDI Rx : EDH Error Count",
+		.type	= V4L2_CTRL_TYPE_INTEGER,
+		.min	= 0,
+		.max	= 0xFFFF,
+		.step	= 1,
+		.def	= 0,
+		.flags  = V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_READ_ONLY,
+	}, {
+		.ops	= &xsdirxss_ctrl_ops,
+		.id	= V4L2_CID_XILINX_SDIRX_EDH_STATUS,
+		.name	= "SDI Rx : EDH Status",
+		.type	= V4L2_CTRL_TYPE_INTEGER,
+		.min	= 0,
+		.max	= 0xFFFFFFFF,
+		.step	= 1,
+		.def	= 0,
+		.flags  = V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_READ_ONLY,
+	}, {
+		.ops	= &xsdirxss_ctrl_ops,
+		.id	= V4L2_CID_XILINX_SDIRX_AXIS4_STATUS,
+		.name	= "SDI Rx : AXIS4 Status",
+		.type	= V4L2_CTRL_TYPE_INTEGER,
+		.min	= XSDIRX_AXIS4_STATUS_OK,
+		.max	= XSDIRX_AXIS4_STATUS_UNDERFLOW,
+		.step	= 1,
+		.def	= XSDIRX_AXIS4_STATUS_OK,
+		.flags  = V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_READ_ONLY,
+	}
 };
 
 static const struct v4l2_subdev_core_ops xsdirxss_core_ops = {
