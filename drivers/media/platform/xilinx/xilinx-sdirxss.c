@@ -106,10 +106,12 @@
 #define XSDIRX_ACTIVE_STREAMS_8		0x3
 #define XSDIRX_ACTIVE_STREAMS_16	0x4
 
-#define XSDIRX_TS_DET_STAT_LOCKED_MASK	BIT(0)
-#define XSDIRX_TS_DET_STAT_SCAN_MASK	BIT(1)
-#define XSDIRX_TS_DET_STAT_FAMILY_MASK	GENMASK(7, 4)
-#define XSDIRX_TS_DET_STAT_RATE_MASK	GENMASK(11, 8)
+#define XSDIRX_TS_DET_STAT_LOCKED_MASK		BIT(0)
+#define XSDIRX_TS_DET_STAT_SCAN_MASK		BIT(1)
+#define XSDIRX_TS_DET_STAT_FAMILY_MASK		GENMASK(7, 4)
+#define XSDIRX_TS_DET_STAT_FAMILY_OFFSET	(4)
+#define XSDIRX_TS_DET_STAT_RATE_MASK		GENMASK(11, 8)
+#define XSDIRX_TS_DET_STAT_RATE_OFFSET		(8)
 
 #define XSDIRX_EDH_STAT_EDH_AP_MASK	BIT(0)
 #define XSDIRX_EDH_STAT_EDH_FF_MASK	BIT(1)
@@ -139,7 +141,7 @@
 
 #define XSDIRX_VID_LOCK_WINDOW_VAL_MASK		GENMASK(15, 0)
 
-#define XSDIRX_BRIDGE_CTRL_MDL_ENB_MASK	BIT(0)
+#define XSDIRX_BRIDGE_CTRL_MDL_ENB_MASK		BIT(0)
 
 #define XSDIRX_BRIDGE_STAT_SEL_MASK		BIT(0)
 #define XSDIRX_BRIDGE_STAT_MODE_LOCKED_MASK	BIT(1)
@@ -171,9 +173,26 @@
 #define XSDIRX_MODE_HD_MASK	0x0
 #define XSDIRX_MODE_SD_MASK	0x1
 #define XSDIRX_MODE_3G_MASK	0x2
-#define XSDIRX_MODE_6D_MASK	0x4
+#define XSDIRX_MODE_6G_MASK	0x4
 #define XSDIRX_MODE_12GI_MASK	0x5
 #define XSDIRX_MODE_12GF_MASK	0x6
+
+enum {
+	XSDIRX_MODE_SD_OFFSET = 0,
+	XSDIRX_MODE_HD_OFFSET,
+	XSDIRX_MODE_3G_OFFSET,
+	XSDIRX_MODE_6G_OFFSET,
+	XSDIRX_MODE_12GI_OFFSET,
+	XSDIRX_MODE_12GF_OFFSET,
+	XSDIRX_MODE_NUM_SUPPORTED,
+};
+
+#define XSDIRX_DETECT_ALL_MODES		((1 << XSDIRX_MODE_SD_OFFSET) | \
+					(1 << XSDIRX_MODE_HD_OFFSET) | \
+					(1 << XSDIRX_MODE_3G_OFFSET) | \
+					(1 << XSDIRX_MODE_6G_OFFSET) | \
+					(1 << XSDIRX_MODE_12GI_OFFSET) | \
+					(1 << XSDIRX_MODE_12GF_OFFSET)) \
 
 /**
  * struct xsdirxss_core - Core configuration SDI Rx Subsystem device structure
@@ -200,6 +219,7 @@ struct xsdirxss_core {
  * @vip_format: format information corresponding to the active format
  * @pads: media pads
  * @streaming: Flag for storing streaming state
+ * @vidlocked: Flag indicating SDI Rx has locked onto video stream
  *
  * This structure contains the device driver related parameters
  */
@@ -211,6 +231,7 @@ struct xsdirxss_state {
 	const struct xvip_video_format *vip_format;
 	struct media_pad pads[XSDIRX_MEDIA_PADS];
 	bool streaming;
+	bool vidlocked;
 };
 
 static inline struct xsdirxss_state *
@@ -245,19 +266,98 @@ static inline void xsdirxss_set(struct xsdirxss_core *xsdirxss, u32 addr,
 	xsdirxss_write(xsdirxss, addr, xsdirxss_read(xsdirxss, addr) | set);
 }
 
-static void xsdirx_stop(struct xsdirxss_core *core)
+static void xsdirx_core_disable(struct xsdirxss_core *core)
 {
 	xsdirxss_write(core, XSDIRX_MDL_CTRL_REG, 0);
 }
 
-static void xsdirx_start(struct xsdirxss_core *core)
+static void xsdirx_core_enable(struct xsdirxss_core *core)
 {
-	u32 val = (XSDIRX_MDL_CTRL_MDL_EN_MASK |
-			XSDIRX_MDL_CTRL_FRM_EN_MASK |
-			XSDIRX_MDL_CTRL_MODE_DET_EN_MASK |
-			XSDIRX_MDL_CTRL_MODE_AUTO_DET_MASK);
+	xsdirxss_set(core, XSDIRX_MDL_CTRL_REG, XSDIRX_MDL_CTRL_MDL_EN_MASK);
+}
 
+static int xsdirx_set_modedetect(struct xsdirxss_core *core, u16 mask)
+{
+	u32 i, val;
+
+	mask = mask & XSDIRX_DETECT_ALL_MODES;
+	if (!mask) {
+		dev_err(core->dev, "Invalid bit mask = 0x%08x\n", mask);
+		return -EINVAL;
+	}
+
+	val = xsdirxss_read(core, XSDIRX_MDL_CTRL_REG);
+	val &= ~(XSDIRX_MDL_CTRL_MODE_DET_EN_MASK);
+	val &= ~(XSDIRX_MDL_CTRL_MODE_AUTO_DET_MASK);
+	val &= ~(XSDIRX_MDL_CTRL_FORCED_MODE_MASK);
+
+	if (hweight16(mask) > 1) {
+		/* Multi mode detection as more than 1 bit set in mask */
+		dev_dbg(core->dev, "Detect multiple modes\n");
+		for (i = 0; i < XSDIRX_MODE_NUM_SUPPORTED; i++) {
+			switch (mask & (1 << i)) {
+			case BIT(XSDIRX_MODE_SD_OFFSET):
+				val |= XSDIRX_MDL_CTRL_MODE_SD_EN_MASK;
+				break;
+			case BIT(XSDIRX_MODE_HD_OFFSET):
+				val |= XSDIRX_MDL_CTRL_MODE_HD_EN_MASK;
+				break;
+			case BIT(XSDIRX_MODE_3G_OFFSET):
+				val |= XSDIRX_MDL_CTRL_MODE_3G_EN_MASK;
+				break;
+			case BIT(XSDIRX_MODE_6G_OFFSET):
+				val |= XSDIRX_MDL_CTRL_MODE_6G_EN_MASK;
+				break;
+			case BIT(XSDIRX_MODE_12GI_OFFSET):
+				val |= XSDIRX_MDL_CTRL_MODE_12GI_EN_MASK;
+				break;
+			case BIT(XSDIRX_MODE_12GF_OFFSET):
+				val |= XSDIRX_MDL_CTRL_MODE_12GF_EN_MASK;
+				break;
+			default:
+				return -EINVAL;
+			}
+		}
+		val |= XSDIRX_MDL_CTRL_MODE_DET_EN_MASK;
+	} else {
+		/* Fixed Mode */
+		u32 forced_mode_mask;
+
+		dev_dbg(core->dev, "Detect fixed mode\n");
+
+		/* Find offset of first bit set */
+		switch (__ffs(mask)) {
+		case XSDIRX_MODE_SD_OFFSET:
+			forced_mode_mask = XSDIRX_MODE_SD_MASK;
+			break;
+		case XSDIRX_MODE_HD_OFFSET:
+			forced_mode_mask = XSDIRX_MODE_HD_MASK;
+			break;
+		case XSDIRX_MODE_3G_OFFSET:
+			forced_mode_mask = XSDIRX_MODE_3G_MASK;
+			break;
+		case XSDIRX_MODE_6G_OFFSET:
+			forced_mode_mask = XSDIRX_MODE_6G_MASK;
+			break;
+		case XSDIRX_MODE_12GI_OFFSET:
+			forced_mode_mask = XSDIRX_MODE_12GI_MASK;
+			break;
+		case XSDIRX_MODE_12GF_OFFSET:
+			forced_mode_mask = XSDIRX_MODE_12GF_MASK;
+			break;
+		default:
+			return -EINVAL;
+		}
+		dev_dbg(core->dev, "Forced Mode Mask : 0x%x\n",
+			forced_mode_mask);
+		val |= forced_mode_mask << XSDIRX_MDL_CTRL_FORCED_MODE_OFFSET;
+	}
+
+	dev_dbg(core->dev, "Modes to be detected : sdi ctrl reg = 0x%08x\n",
+		val);
 	xsdirxss_write(core, XSDIRX_MDL_CTRL_REG, val);
+
+	return 0;
 }
 
 static void xsdirx_framer(struct xsdirxss_core *core, bool flag)
@@ -340,14 +440,11 @@ static void xsdirx_streamflow_control(struct xsdirxss_core *core, bool enable)
 
 static void xsdirx_streamdowncb(struct xsdirxss_core *core)
 {
-	xsdirx_stop(core);
+	xsdirx_core_disable(core);
 	xsdirx_streamflow_control(core, false);
-	xsdirx_start(core);
-}
-
-static void xsdirx_streamupcb(struct xsdirxss_core *core)
-{
-	xsdirx_streamflow_control(core, true);
+	xsdirx_framer(core, true);
+	xsdirx_set_modedetect(core, XSDIRX_DETECT_ALL_MODES);
+	xsdirx_core_enable(core);
 }
 
 /**
@@ -384,7 +481,7 @@ static irqreturn_t xsdirxss_irq_handler(int irq, void *dev_id)
 		if ((val1 & XSDIRX_MODE_DET_STAT_MODE_LOCK_MASK) &&
 		    (val2 & XSDIRX_TS_DET_STAT_LOCKED_MASK)) {
 			u32 mask = XSDIRX_STAT_RESET_CRC_ERRCNT_MASK |
-					XSDIRX_STAT_RESET_EDH_ERRCNT_MASK;
+				   XSDIRX_STAT_RESET_EDH_ERRCNT_MASK;
 
 			dev_dbg(core->dev, "mode & ts lock occurred\n");
 
@@ -397,9 +494,10 @@ static irqreturn_t xsdirxss_irq_handler(int irq, void *dev_id)
 			dev_dbg(core->dev, "valid st352 mask = 0x%08x\n", val1);
 			dev_dbg(core->dev, "st352 payload = 0x%08x\n", val2);
 
-			xsdirx_streamupcb(core);
+			state->vidlocked = true;
 		} else {
 			dev_dbg(core->dev, "video unlock before video lock!\n");
+			state->vidlocked = false;
 		}
 	}
 
@@ -407,6 +505,7 @@ static irqreturn_t xsdirxss_irq_handler(int irq, void *dev_id)
 		dev_dbg(core->dev, "video unlock interrupt\n");
 		xsdirx_clearintr(core, XSDIRX_INTR_VIDUNLOCK_MASK);
 		xsdirx_streamdowncb(core);
+		state->vidlocked = false;
 	}
 
 	return IRQ_HANDLED;
@@ -438,22 +537,11 @@ static int xsdirxss_log_status(struct v4l2_subdev *sd)
 
 static void xsdirxss_start_stream(struct xsdirxss_state *xsdirxss)
 {
-	struct xsdirxss_core *core = &xsdirxss->core;
-
-	xsdirx_streamflow_control(core, true);
-	xsdirx_stop(core);
-	xsdirx_framer(core, true);
-	xsdirx_setedherrcnttrigger(core, XSDIRX_DEFAULT_EDH_ERRCNT);
-	xsdirx_setvidlockwindow(core, XSDIRX_DEFAULT_VIDEO_LOCK_WINDOW);
-	xsdirx_clearintr(core, XSDIRX_INTR_ALL_MASK);
-	xsdirx_disableintr(core, XSDIRX_INTR_ALL_MASK);
-	xsdirx_enableintr(core, XSDIRX_INTR_ALL_MASK);
-	xsdirx_start(core);
+	xsdirx_streamflow_control(&xsdirxss->core, true);
 }
 
 static void xsdirxss_stop_stream(struct xsdirxss_state *xsdirxss)
 {
-	xsdirx_stop(&xsdirxss->core);
 	xsdirx_streamflow_control(&xsdirxss->core, false);
 }
 
@@ -469,21 +557,34 @@ static void xsdirxss_stop_stream(struct xsdirxss_state *xsdirxss)
  */
 static int xsdirxss_s_stream(struct v4l2_subdev *sd, int enable)
 {
-	int ret = 0;
 	struct xsdirxss_state *xsdirxss = to_xsdirxssstate(sd);
+	struct xsdirxss_core *core = &xsdirxss->core;
 
 	if (enable) {
-		if (!xsdirxss->streaming) {
-			xsdirxss_start_stream(xsdirxss);
-			xsdirxss->streaming = true;
+		if (!xsdirxss->vidlocked) {
+			dev_dbg(core->dev, "Video is not locked\n");
+			return -EINVAL;
 		}
-	} else {
 		if (xsdirxss->streaming) {
-			xsdirxss_stop_stream(xsdirxss);
-			xsdirxss->streaming = false;
+			dev_dbg(core->dev, "Already streaming\n");
+			return -EINVAL;
 		}
+
+		xsdirxss_start_stream(xsdirxss);
+		xsdirxss->streaming = true;
+		dev_dbg(core->dev, "Streaming started\n");
+	} else {
+		if (!xsdirxss->streaming) {
+			dev_dbg(core->dev, "Stopped streaming already\n");
+			return -EINVAL;
+		}
+
+		xsdirxss_stop_stream(xsdirxss);
+		xsdirxss->streaming = false;
+		dev_dbg(core->dev, "Streaming stopped\n");
 	}
-	return ret;
+
+	return 0;
 }
 
 static struct v4l2_mbus_framefmt *
@@ -722,6 +823,7 @@ static int xsdirxss_probe(struct platform_device *pdev)
 {
 	struct v4l2_subdev *subdev;
 	struct xsdirxss_state *xsdirxss;
+	struct xsdirxss_core *core;
 	struct resource *res;
 	int ret;
 
@@ -730,6 +832,7 @@ static int xsdirxss_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	xsdirxss->core.dev = &pdev->dev;
+	core = &xsdirxss->core;
 
 	ret = xsdirxss_parse_of(xsdirxss);
 	if (ret < 0)
@@ -781,6 +884,18 @@ static int xsdirxss_probe(struct platform_device *pdev)
 	xsdirxss->streaming = false;
 
 	dev_info(xsdirxss->core.dev, "Xilinx SDI Rx Subsystem device found!\n");
+
+	/* Enable all stream detection by default */
+	xsdirx_core_disable(core);
+	xsdirx_streamflow_control(core, false);
+	xsdirx_framer(core, true);
+	xsdirx_setedherrcnttrigger(core, XSDIRX_DEFAULT_EDH_ERRCNT);
+	xsdirx_setvidlockwindow(core, XSDIRX_DEFAULT_VIDEO_LOCK_WINDOW);
+	xsdirx_clearintr(core, XSDIRX_INTR_ALL_MASK);
+	xsdirx_disableintr(core, XSDIRX_INTR_ALL_MASK);
+	xsdirx_enableintr(core, XSDIRX_INTR_ALL_MASK);
+	xsdirx_set_modedetect(core, XSDIRX_DETECT_ALL_MODES);
+	xsdirx_core_enable(core);
 
 	return 0;
 error:
