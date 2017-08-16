@@ -175,12 +175,13 @@
 #define XSDIRX_MODE_12GI_MASK	0x5
 #define XSDIRX_MODE_12GF_MASK	0x6
 
-/*
+/**
  * struct xsdirxss_core - Core configuration SDI Rx Subsystem device structure
  * @dev: Platform structure
  * @iomem: Base address of subsystem
  * @irq: requested irq number
  * @include_edh: EDH processor presence
+ * @mode: 3G/6G/12G mode
  */
 struct xsdirxss_core {
 	struct device *dev;
