@@ -44,6 +44,7 @@
 #define XDSI_TIME2			0x54
 #define XDSI_TIME2_VACT(x)		(((x) & 0xffff) << 0)
 #define XDSI_TIME2_HACT(x)		(((x) & 0xffff) << 16)
+#define XDSI_HACT_MULTIPLIER		GENMASK(1, 0)
 #define XDSI_TIME3			0x58
 #define XDSI_TIME3_HFP(x)		(((x) & 0xffff) << 0)
 #define XDSI_TIME3_HBP(x)		(((x) & 0xffff) << 16)
@@ -53,26 +54,33 @@
 #define XDSI_TIME4_VSA(x)		(((x) & 0xff) << 16)
 #define XDSI_LTIME			0x60
 #define XDSI_BLLP_TIME			0x64
-#define XDSI_NUM_DATA_TYPES		5
-#define XDSI_NUM_PIXELS_PER_BEAT	3
+#define XDSI_NUM_DATA_TYPES		4
 #define XDSI_VIDEO_MODE_SYNC_PULSE	0x0
 #define XDSI_VIDEO_MODE_SYNC_EVENT	0x1
 #define XDSI_VIDEO_MODE_BURST		0x2
 
 /*
  * Used as a multiplication factor for HACT based on used
- * DSI data type and pixels per beat.
- * e.g. for RGB666_L with 2 pixels per beat, (6+6+6)*2 = 36.
- * To make it multiples of 8, 36+4 = 40.
- * So, multiplication factor is = 40/8 which gives 5
+ * DSI data type.
+ *
+ * e.g. for RGB666_L datatype and 1920x1080 resolution,
+ * the Hact (WC) would be as follows -
+ * 1920 pixels * 18 bits per pixel / 8 bits per byte
+ * = 1920 pixels * 2.25 bytes per pixel = 4320 bytes.
+ *
+ * Data Type - Multiplication factor
+ * RGB888    - 3
+ * RGB666_L  - 2.25
+ * RGB666_P  - 2.25
+ * RGB565    - 2
+ *
+ * Since the multiplication factor maybe a floating number,
+ * a 100x multiplication factor is used.
+ *
+ * XDSI_NUM_DATA_TYPES represents number of data types in the
+ * enum mipi_dsi_pixel_format in the MIPI DSI part of DRM framework.
  */
-static const int
-xdsi_mul_factor[XDSI_NUM_DATA_TYPES][XDSI_NUM_PIXELS_PER_BEAT] = {
-	{ 3, 6, 12 }, /* RGB888 = {1ppb, 2ppb, 4ppb} */
-	{ 3, 5, 9 }, /* RGB666_L = {1ppb, 2ppb, 4ppb} */
-	{ 3, 5, 9 }, /* RGB666_P = {1ppb, 2ppb, 4ppb} */
-	{ 2, 4, 8 }  /* RGB565 = {1ppb, 2ppb, 4ppb} */
-};
+static const int xdsi_mul_factor[XDSI_NUM_DATA_TYPES] = {300, 225, 225, 200};
 
 /*
  * struct xilinx_dsi - Core configuration DSI Tx subsystem device structure
@@ -230,9 +238,22 @@ static void xilinx_dsi_set_display_mode(struct xilinx_dsi *dsi)
 	xilinx_dsi_writel(dsi->iomem, XDSI_TIME3, reg);
 
 	dev_dbg(dsi->dev, "mul factor for parsed datatype is = %d\n",
-		dsi->mul_factor);
+		(dsi->mul_factor) / 100);
 
-	reg = XDSI_TIME2_HACT((vm->hactive) * dsi->mul_factor) |
+	/* The HACT parameter received from panel timing values should be
+	 * divisible by 4. The reason for this is, the word count given as
+	 * input to DSI controller is HACT * mul_factor. The mul_factor is
+	 * 3, 2.25, 2.25, 2 respectively for RGB888, RGB666_L, RGB666_P and
+	 * RGB565.
+	 * e.g. for RGB666_L color format and 1080p, the word count is
+	 * 1920*2.25 = 4320 which is divisible by 4 and it is a valid input
+	 * to DSI controller. Based on this 2.25 mul factor, we come up with
+	 * the division factor of (XDSI_HACT_MULTIPLIER) as 4 for checking
+	 */
+	if (((vm->hactive) & XDSI_HACT_MULTIPLIER) != 0)
+		dev_alert(dsi->dev, "Incorrect HACT will be programmed\n");
+
+	reg = XDSI_TIME2_HACT((vm->hactive) * (dsi->mul_factor) / 100) |
 		XDSI_TIME2_VACT(vm->vactive);
 	xilinx_dsi_writel(dsi->iomem, XDSI_TIME2, reg);
 
@@ -634,7 +655,7 @@ static int xilinx_dsi_parse_dt(struct xilinx_dsi *dsi)
 	struct device *dev = dsi->dev;
 	struct device_node *node = dev->of_node;
 	int ret;
-	u32 pixels_per_beat, datatype;
+	u32 datatype;
 
 	ret = of_property_read_u32(node, "xlnx,dsi-num-lanes",
 				   &dsi->lanes);
@@ -646,20 +667,6 @@ static int xilinx_dsi_parse_dt(struct xilinx_dsi *dsi)
 	if ((dsi->lanes > 4) || (dsi->lanes < 1)) {
 		dev_err(dsi->dev, "%d lanes : invalid xlnx,dsi-num-lanes\n",
 			dsi->lanes);
-		return -EINVAL;
-	}
-
-	ret = of_property_read_u32(node, "xlnx,dsi-pixels-perbeat",
-				   &pixels_per_beat);
-	if (ret < 0) {
-		dev_err(dsi->dev, "missing xlnx,dsi-pixels-perbeat property\n");
-		return ret;
-	}
-
-	if ((pixels_per_beat != 1) &&
-	    (pixels_per_beat != 2) &&
-	    (pixels_per_beat != 4)) {
-		dev_err(dsi->dev, "Wrong dts val xlnx,dsi-pixels-perbeat\n");
 		return -EINVAL;
 	}
 
@@ -677,10 +684,9 @@ static int xilinx_dsi_parse_dt(struct xilinx_dsi *dsi)
 		return -EINVAL;
 	}
 
-	dsi->mul_factor = xdsi_mul_factor[datatype][pixels_per_beat >> 1];
+	dsi->mul_factor = xdsi_mul_factor[datatype];
 
-	dev_dbg(dsi->dev, "DSI controller num lanes = %d,pixels per beat = %d",
-		dsi->lanes, pixels_per_beat);
+	dev_dbg(dsi->dev, "DSI controller num lanes = %d", dsi->lanes);
 
 	dev_dbg(dsi->dev, "DSI controller datatype = %d\n", datatype);
 
