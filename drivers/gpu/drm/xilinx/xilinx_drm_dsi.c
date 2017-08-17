@@ -152,15 +152,15 @@ xilinx_dsi_set_default_drm_properties(struct xilinx_dsi *dsi)
 {
 	drm_object_property_set_value(&dsi->connector.base, dsi->eotp_prop, 1);
 	drm_object_property_set_value(&dsi->connector.base,
-			dsi->bllp_mode_prop, 0);
+				      dsi->bllp_mode_prop, 0);
 	drm_object_property_set_value(&dsi->connector.base,
-			dsi->bllp_type_prop, 0);
+				      dsi->bllp_type_prop, 0);
 	drm_object_property_set_value(&dsi->connector.base,
-			dsi->video_mode_prop, 0);
+				      dsi->video_mode_prop, 0);
 	drm_object_property_set_value(&dsi->connector.base,
-			dsi->bllp_burst_time_prop, 0);
+				      dsi->bllp_burst_time_prop, 0);
 	drm_object_property_set_value(&dsi->connector.base,
-			dsi->cmd_queue_prop, 0);
+				      dsi->cmd_queue_prop, 0);
 }
 
 /**
@@ -194,7 +194,7 @@ static void xilinx_dsi_set_config_parameters(struct xilinx_dsi *dsi)
 	xilinx_dsi_writel(dsi->iomem, XDSI_CMD, reg);
 
 	dev_dbg(dsi->dev, "PCR register value is = %x\n",
-			xilinx_dsi_readl(dsi->iomem, XDSI_PCR));
+		xilinx_dsi_readl(dsi->iomem, XDSI_PCR));
 }
 
 /**
@@ -230,7 +230,7 @@ static void xilinx_dsi_set_display_mode(struct xilinx_dsi *dsi)
 	xilinx_dsi_writel(dsi->iomem, XDSI_TIME3, reg);
 
 	dev_dbg(dsi->dev, "mul factor for parsed datatype is = %d\n",
-			dsi->mul_factor);
+		dsi->mul_factor);
 
 	reg = XDSI_TIME2_HACT((vm->hactive) * dsi->mul_factor) |
 		XDSI_TIME2_VACT(vm->vactive);
@@ -277,9 +277,8 @@ static void xilinx_dsi_set_display_disable(struct xilinx_dsi *dsi)
 	dev_dbg(dsi->dev, "DSI Tx is disabled. reset regs to default values\n");
 }
 
-
 static void xilinx_dsi_encoder_dpms(struct drm_encoder *encoder,
-					int mode)
+				    int mode)
 {
 	struct xilinx_dsi *dsi = encoder_to_dsi(encoder);
 
@@ -312,13 +311,13 @@ static void xilinx_dsi_encoder_dpms(struct drm_encoder *encoder,
  */
 static int
 xilinx_dsi_connector_set_property(struct drm_connector *base_connector,
-					struct drm_property *property,
+				  struct drm_property *property,
 					u64 value)
 {
 	struct xilinx_dsi *dsi = connector_to_dsi(base_connector);
 
 	dev_dbg(dsi->dev, "property name = %s, value = %lld\n",
-			property->name, value);
+		property->name, value);
 
 	if (property == dsi->eotp_prop)
 		dsi->eotp_prop_val = !!value;
@@ -341,7 +340,7 @@ xilinx_dsi_connector_set_property(struct drm_connector *base_connector,
 }
 
 static int xilinx_dsi_host_attach(struct mipi_dsi_host *host,
-					struct mipi_dsi_device *device)
+				  struct mipi_dsi_device *device)
 {
 	u32 panel_lanes;
 	struct xilinx_dsi *dsi = host_to_dsi(host);
@@ -358,13 +357,13 @@ static int xilinx_dsi_host_attach(struct mipi_dsi_host *host,
 
 	if ((dsi->lanes > 4) || (dsi->lanes < 1)) {
 		dev_err(dsi->dev, "%d lanes : invalid xlnx,dsi-num-lanes\n",
-				dsi->lanes);
+			dsi->lanes);
 		return -EINVAL;
 	}
 
 	if (device->format != dsi->format) {
 		dev_err(dsi->dev, "Mismatch of format. panel = %d, DSI = %d\n",
-				device->format, dsi->format);
+			device->format, dsi->format);
 		return -EINVAL;
 	}
 
@@ -375,7 +374,7 @@ static int xilinx_dsi_host_attach(struct mipi_dsi_host *host,
 }
 
 static int xilinx_dsi_host_detach(struct mipi_dsi_host *host,
-					struct mipi_dsi_device *device)
+				  struct mipi_dsi_device *device)
 {
 	struct xilinx_dsi *dsi = host_to_dsi(host);
 
@@ -393,7 +392,7 @@ static const struct mipi_dsi_host_ops xilinx_dsi_ops = {
 };
 
 static int xilinx_dsi_connector_dpms(struct drm_connector *connector,
-					int mode)
+				     int mode)
 {
 	struct xilinx_dsi *dsi = connector_to_dsi(connector);
 	int ret;
@@ -524,19 +523,19 @@ xilinx_drm_dsi_connector_attach_property(struct drm_connector *base_connector)
 
 	if (dsi->bllp_burst_time_prop)
 		drm_object_attach_property(&base_connector->base,
-					dsi->bllp_burst_time_prop, 0);
+					   dsi->bllp_burst_time_prop, 0);
 
 	if (dsi->bllp_mode_prop)
 		drm_object_attach_property(&base_connector->base,
-					dsi->bllp_mode_prop, 0);
+					   dsi->bllp_mode_prop, 0);
 
 	if (dsi->bllp_type_prop)
 		drm_object_attach_property(&base_connector->base,
-					dsi->bllp_type_prop, 0);
+					   dsi->bllp_type_prop, 0);
 
 	if (dsi->cmd_queue_prop)
 		drm_object_attach_property(&base_connector->base,
-				dsi->cmd_queue_prop, 0);
+					   dsi->cmd_queue_prop, 0);
 }
 
 static int xilinx_dsi_create_connector(struct drm_encoder *encoder)
@@ -565,7 +564,7 @@ static int xilinx_dsi_create_connector(struct drm_encoder *encoder)
 }
 
 static bool xilinx_dsi_mode_fixup(struct drm_encoder *encoder,
-					const struct drm_display_mode *mode,
+				  const struct drm_display_mode *mode,
 					struct drm_display_mode *adjusted_mode)
 {
 	return true;
@@ -613,7 +612,7 @@ static void xilinx_dsi_commit(struct drm_encoder *encoder)
 	struct xilinx_dsi *dsi = encoder_to_dsi(encoder);
 
 	dev_dbg(dsi->dev, "config and enable the DSI: %s %d\n",
-			 __func__, __LINE__);
+		__func__, __LINE__);
 
 	xilinx_dsi_encoder_dpms(encoder, DRM_MODE_DPMS_ON);
 }
@@ -638,7 +637,7 @@ static int xilinx_dsi_parse_dt(struct xilinx_dsi *dsi)
 	u32 pixels_per_beat, datatype;
 
 	ret = of_property_read_u32(node, "xlnx,dsi-num-lanes",
-				&dsi->lanes);
+				   &dsi->lanes);
 	if (ret < 0) {
 		dev_err(dsi->dev, "missing xlnx,dsi-num-lanes property\n");
 		return ret;
@@ -651,15 +650,15 @@ static int xilinx_dsi_parse_dt(struct xilinx_dsi *dsi)
 	}
 
 	ret = of_property_read_u32(node, "xlnx,dsi-pixels-perbeat",
-					&pixels_per_beat);
+				   &pixels_per_beat);
 	if (ret < 0) {
 		dev_err(dsi->dev, "missing xlnx,dsi-pixels-perbeat property\n");
 		return ret;
 	}
 
 	if ((pixels_per_beat != 1) &&
-		(pixels_per_beat != 2) &&
-		(pixels_per_beat != 4)) {
+	    (pixels_per_beat != 2) &&
+	    (pixels_per_beat != 4)) {
 		dev_err(dsi->dev, "Wrong dts val xlnx,dsi-pixels-perbeat\n");
 		return -EINVAL;
 	}
@@ -681,7 +680,7 @@ static int xilinx_dsi_parse_dt(struct xilinx_dsi *dsi)
 	dsi->mul_factor = xdsi_mul_factor[datatype][pixels_per_beat >> 1];
 
 	dev_dbg(dsi->dev, "DSI controller num lanes = %d,pixels per beat = %d",
-				dsi->lanes, pixels_per_beat);
+		dsi->lanes, pixels_per_beat);
 
 	dev_dbg(dsi->dev, "DSI controller datatype = %d\n", datatype);
 
@@ -689,7 +688,7 @@ static int xilinx_dsi_parse_dt(struct xilinx_dsi *dsi)
 }
 
 static int xilinx_dsi_bind(struct device *dev, struct device *master,
-				void *data)
+			   void *data)
 {
 	struct xilinx_dsi *dsi = dev_get_drvdata(dev);
 	struct drm_encoder *encoder = &dsi->encoder;
@@ -726,7 +725,7 @@ static int xilinx_dsi_bind(struct device *dev, struct device *master,
 }
 
 static void xilinx_dsi_unbind(struct device *dev, struct device *master,
-				void *data)
+			      void *data)
 {
 	struct xilinx_dsi *dsi = dev_get_drvdata(dev);
 
@@ -761,7 +760,7 @@ static int xilinx_dsi_probe(struct platform_device *pdev)
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	dsi->iomem = devm_ioremap_resource(dev, res);
 	dev_dbg(dsi->dev, "dsi virtual address = %p %s %d\n",
-			dsi->iomem, __func__, __LINE__);
+		dsi->iomem, __func__, __LINE__);
 
 	if (IS_ERR(dsi->iomem)) {
 		dev_err(dev, "failed to remap io region\n");
