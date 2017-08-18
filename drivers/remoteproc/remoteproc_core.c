@@ -1132,21 +1132,14 @@ static void rproc_fw_config_virtio(const struct firmware *fw, void *context)
 {
 	struct rproc *rproc = context;
 
-	/* if rproc is marked always-on, request it to boot */
-	if (rproc->auto_boot)
-		rproc_boot_nowait(rproc);
+	rproc_boot(rproc);
 
 	release_firmware(fw);
-	/* allow rproc_del() contexts, if any, to proceed */
-	complete_all(&rproc->firmware_loading_complete);
 }
 
 static int rproc_add_virtio_devices(struct rproc *rproc)
 {
 	int ret;
-
-	/* rproc_del() calls must wait until async loader completes */
-	init_completion(&rproc->firmware_loading_complete);
 
 	/*
 	 * We must retrieve early virtio configuration info from
@@ -1159,10 +1152,8 @@ static int rproc_add_virtio_devices(struct rproc *rproc)
 	ret = request_firmware_nowait(THIS_MODULE, FW_ACTION_HOTPLUG,
 				      rproc->firmware, &rproc->dev, GFP_KERNEL,
 				      rproc, rproc_fw_config_virtio);
-	if (ret < 0) {
+	if (ret < 0)
 		dev_err(&rproc->dev, "request_firmware_nowait err: %d\n", ret);
-		complete_all(&rproc->firmware_loading_complete);
-	}
 
 	return ret;
 }
@@ -1232,7 +1223,6 @@ static void rproc_crash_handler_work(struct work_struct *work)
 /**
  * __rproc_boot() - boot a remote processor
  * @rproc: handle of a remote processor
- * @wait: wait for rproc registration completion
  *
  * Boot a remote processor (i.e. load its firmware, power it on, ...).
  *
@@ -1241,7 +1231,7 @@ static void rproc_crash_handler_work(struct work_struct *work)
  *
  * Returns 0 on success, and an appropriate error value otherwise.
  */
-static int __rproc_boot(struct rproc *rproc, bool wait)
+static int __rproc_boot(struct rproc *rproc)
 {
 	const struct firmware *firmware_p;
 	struct device *dev;
@@ -1260,6 +1250,12 @@ static int __rproc_boot(struct rproc *rproc, bool wait)
 		return ret;
 	}
 
+	if (rproc->state == RPROC_DELETED) {
+		ret = -ENODEV;
+		dev_err(dev, "can't boot deleted rproc %s\n", rproc->name);
+		goto unlock_mutex;
+	}
+
 	/* skip the boot process if rproc is already powered up */
 	if (atomic_inc_return(&rproc->power) > 1) {
 		ret = 0;
@@ -1274,10 +1270,6 @@ static int __rproc_boot(struct rproc *rproc, bool wait)
 		dev_err(dev, "request_firmware failed: %d\n", ret);
 		goto downref_rproc;
 	}
-
-	/* if rproc virtio is not yet configured, wait */
-	if (wait)
-		wait_for_completion(&rproc->firmware_loading_complete);
 
 	ret = rproc_fw_boot(rproc, firmware_p);
 
@@ -1297,20 +1289,9 @@ unlock_mutex:
  */
 int rproc_boot(struct rproc *rproc)
 {
-	return __rproc_boot(rproc, true);
+	return __rproc_boot(rproc);
 }
 EXPORT_SYMBOL(rproc_boot);
-
-/**
- * rproc_boot_nowait() - boot a remote processor
- * @rproc: handle of a remote processor
- *
- * Same as rproc_boot() but don't wait for rproc registration completion
- */
-int rproc_boot_nowait(struct rproc *rproc)
-{
-	return __rproc_boot(rproc, false);
-}
 
 /**
  * rproc_shutdown() - power off the remote processor
@@ -1465,9 +1446,13 @@ int rproc_add(struct rproc *rproc)
 
 	/* create debugfs entries */
 	rproc_create_debug_dir(rproc);
-	ret = rproc_add_virtio_devices(rproc);
-	if (ret < 0)
-		return ret;
+
+	/* if rproc is marked always-on, request it to boot */
+	if (rproc->auto_boot) {
+		ret = rproc_add_virtio_devices(rproc);
+		if (ret < 0)
+			return ret;
+	}
 
 	/* expose to rproc_get_by_phandle users */
 	mutex_lock(&rproc_list_mutex);
@@ -1662,9 +1647,6 @@ int rproc_del(struct rproc *rproc)
 	if (!rproc)
 		return -EINVAL;
 
-	/* if rproc is just being registered, wait */
-	wait_for_completion(&rproc->firmware_loading_complete);
-
 	/* if rproc is marked always-on, rproc_add() booted it */
 	/* TODO: make sure this works with rproc->power > 1 */
 	if (rproc->auto_boot)
@@ -1673,6 +1655,10 @@ int rproc_del(struct rproc *rproc)
 	/* clean up remote vdev entries */
 	list_for_each_entry_safe(rvdev, tmp, &rproc->rvdevs, node)
 		rproc_remove_virtio_dev(rvdev);
+
+	mutex_lock(&rproc->lock);
+	rproc->state = RPROC_DELETED;
+	mutex_unlock(&rproc->lock);
 
 	/* the rproc is downref'ed as soon as it's removed from the klist */
 	mutex_lock(&rproc_list_mutex);

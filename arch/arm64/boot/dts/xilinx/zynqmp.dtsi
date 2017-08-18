@@ -65,7 +65,7 @@
 				local-timer-stop;
 				entry-latency-us = <300>;
 				exit-latency-us = <600>;
-				min-residency-us = <100000>;
+				min-residency-us = <10000>;
 			};
 		};
 	};
@@ -284,6 +284,13 @@
 		compatible = "arm,cortex-a53-edac";
 	};
 
+	fpga_full: fpga-full {
+		compatible = "fpga-region";
+		fpga-mgr = <&pcap>;
+		#address-cells = <2>;
+		#size-cells = <2>;
+	};
+
 	nvmem_firmware {
 		compatible = "xlnx,zynqmp-nvmem-fw";
 		#address-cells = <1>;
@@ -294,13 +301,61 @@
 		};
 	};
 
-	pcap {
+	pcap: pcap {
 		compatible = "xlnx,zynqmp-pcap-fpga";
 	};
 
 	rst: reset-controller {
 		compatible = "xlnx,zynqmp-reset";
 		#reset-cells = <1>;
+	};
+
+	xlnx_dp_snd_card: dp_snd_card {
+		compatible = "xlnx,dp-snd-card";
+		status = "disabled";
+		xlnx,dp-snd-pcm = <&xlnx_dp_snd_pcm0>, <&xlnx_dp_snd_pcm1>;
+		xlnx,dp-snd-codec = <&xlnx_dp_snd_codec0>;
+	};
+
+	xlnx_dp_snd_codec0: dp_snd_codec0 {
+		compatible = "xlnx,dp-snd-codec";
+		status = "disabled";
+		clock-names = "aud_clk";
+	};
+
+	xlnx_dp_snd_pcm0: dp_snd_pcm0 {
+		compatible = "xlnx,dp-snd-pcm";
+		status = "disabled";
+		dmas = <&xlnx_dpdma 4>;
+		dma-names = "tx";
+	};
+
+	xlnx_dp_snd_pcm1: dp_snd_pcm1 {
+		compatible = "xlnx,dp-snd-pcm";
+		status = "disabled";
+		dmas = <&xlnx_dpdma 5>;
+		dma-names = "tx";
+	};
+
+	xilinx_drm: xilinx_drm {
+		compatible = "xlnx,drm";
+		status = "disabled";
+		xlnx,encoder-slave = <&xlnx_dp>;
+		xlnx,connector-type = "DisplayPort";
+		xlnx,dp-sub = <&xlnx_dp_sub>;
+		planes {
+			xlnx,pixel-format = "rgb565";
+			plane0 {
+				dmas = <&xlnx_dpdma 3>;
+				dma-names = "dma0";
+			};
+			plane1 {
+				dmas = <&xlnx_dpdma 0>,
+					<&xlnx_dpdma 1>,
+					<&xlnx_dpdma 2>;
+				dma-names = "dma0", "dma1", "dma2";
+			};
+		};
 	};
 
 	amba_apu: amba_apu@0 {
@@ -500,8 +555,8 @@
 			interrupt-parent = <&gic>;
 			interrupts = <0 77 4>;
 			xlnx,bus-width = <64>;
-			#stream-id-cells = <1>;
-			iommus = <&smmu 0x868>;
+			/* #stream-id-cells = <1>; */
+			/* iommus = <&smmu 0x868>; */
 			power-domains = <&pd_adma>;
 		};
 
@@ -513,8 +568,8 @@
 			interrupt-parent = <&gic>;
 			interrupts = <0 78 4>;
 			xlnx,bus-width = <64>;
-			#stream-id-cells = <1>;
-			iommus = <&smmu 0x869>;
+			/* #stream-id-cells = <1>; */
+			/* iommus = <&smmu 0x869>; */
 			power-domains = <&pd_adma>;
 		};
 
@@ -526,8 +581,8 @@
 			interrupt-parent = <&gic>;
 			interrupts = <0 79 4>;
 			xlnx,bus-width = <64>;
-			#stream-id-cells = <1>;
-			iommus = <&smmu 0x86a>;
+			/* #stream-id-cells = <1>; */
+			/* iommus = <&smmu 0x86a>; */
 			power-domains = <&pd_adma>;
 		};
 
@@ -539,8 +594,8 @@
 			interrupt-parent = <&gic>;
 			interrupts = <0 80 4>;
 			xlnx,bus-width = <64>;
-			#stream-id-cells = <1>;
-			iommus = <&smmu 0x86b>;
+			/* #stream-id-cells = <1>; */
+			/* iommus = <&smmu 0x86b>; */
 			power-domains = <&pd_adma>;
 		};
 
@@ -552,8 +607,8 @@
 			interrupt-parent = <&gic>;
 			interrupts = <0 81 4>;
 			xlnx,bus-width = <64>;
-			#stream-id-cells = <1>;
-			iommus = <&smmu 0x86c>;
+			/* #stream-id-cells = <1>; */
+			/* iommus = <&smmu 0x86c>; */
 			power-domains = <&pd_adma>;
 		};
 
@@ -565,8 +620,8 @@
 			interrupt-parent = <&gic>;
 			interrupts = <0 82 4>;
 			xlnx,bus-width = <64>;
-			#stream-id-cells = <1>;
-			iommus = <&smmu 0x86d>;
+			/* #stream-id-cells = <1>; */
+			/* iommus = <&smmu 0x86d>; */
 			power-domains = <&pd_adma>;
 		};
 
@@ -578,8 +633,8 @@
 			interrupt-parent = <&gic>;
 			interrupts = <0 83 4>;
 			xlnx,bus-width = <64>;
-			#stream-id-cells = <1>;
-			iommus = <&smmu 0x86e>;
+			/* #stream-id-cells = <1>; */
+			/* iommus = <&smmu 0x86e>; */
 			power-domains = <&pd_adma>;
 		};
 
@@ -591,8 +646,8 @@
 			interrupt-parent = <&gic>;
 			interrupts = <0 84 4>;
 			xlnx,bus-width = <64>;
-			#stream-id-cells = <1>;
-			iommus = <&smmu 0x86f>;
+			/* #stream-id-cells = <1>; */
+			/* iommus = <&smmu 0x86f>; */
 			power-domains = <&pd_adma>;
 		};
 
@@ -736,6 +791,7 @@
 			reg-names = "breg", "pcireg", "cfg";
 			ranges = <0x02000000 0x00000000 0xe0000000 0x00000000 0xe0000000 0x00000000 0x10000000	/* non-prefetchable memory */
 				  0x43000000 0x00000006 0x00000000 0x00000006 0x00000000 0x00000002 0x00000000>;/* prefetchable memory */
+			bus-range = <0x00 0xff>;
 			interrupt-map-mask = <0x0 0x0 0x0 0x7>;
 			interrupt-map = <0x0 0x0 0x0 0x1 &pcie_intc 0x1>,
 					<0x0 0x0 0x0 0x2 &pcie_intc 0x2>,
@@ -814,6 +870,9 @@
 			interrupt-parent = <&gic>;
 			interrupts = <0 133 4>;
 			power-domains = <&pd_sata>;
+			#stream-id-cells = <4>;
+			iommus = <&smmu 0x4c0>, <&smmu 0x4c1>,
+				 <&smmu 0x4c2>, <&smmu 0x4c3>;
 			/* dma-coherent; */
 		};
 
@@ -829,6 +888,8 @@
 			#stream-id-cells = <1>;
 			iommus = <&smmu 0x870>;
 			power-domains = <&pd_sd0>;
+			nvmem-cells = <&soc_revision>;
+			nvmem-cell-names = "soc_revision";
 		};
 
 		sdhci1: sdhci@ff170000 {
@@ -843,6 +904,8 @@
 			#stream-id-cells = <1>;
 			iommus = <&smmu 0x871>;
 			power-domains = <&pd_sd1>;
+			nvmem-cells = <&soc_revision>;
+			nvmem-cell-names = "soc_revision";
 		};
 
 		pinctrl0: pinctrl@ff180000 {
@@ -951,15 +1014,13 @@
 			power-domains = <&pd_uart1>;
 		};
 
-		usb0: usb0 {
+		usb0: usb0@ff9d0000 {
 			#address-cells = <2>;
 			#size-cells = <2>;
 			status = "disabled";
 			compatible = "xlnx,zynqmp-dwc3";
 			reg = <0x0 0xff9d0000 0x0 0x100>;
 			clock-names = "bus_clk", "ref_clk";
-			#stream-id-cells = <1>;
-			iommus = <&smmu 0x860>;
 			power-domains = <&pd_usb0>;
 			ranges;
 			nvmem-cells = <&soc_revision>;
@@ -971,21 +1032,24 @@
 				reg = <0x0 0xfe200000 0x0 0x40000>;
 				interrupt-parent = <&gic>;
 				interrupts = <0 65 4>, <0 69 4>;
+				#stream-id-cells = <1>;
+				iommus = <&smmu 0x860>;
 				snps,quirk-frame-length-adjustment = <0x20>;
 				snps,refclk_fladj;
+				snps,enable_guctl1_resume_quirk;
+				snps,enable_guctl1_ipd_quirk;
+				snps,xhci-stream-quirk;
 				/* dma-coherent; */
 			};
 		};
 
-		usb1: usb1 {
+		usb1: usb1@ff9e0000 {
 			#address-cells = <2>;
 			#size-cells = <2>;
 			status = "disabled";
 			compatible = "xlnx,zynqmp-dwc3";
 			reg = <0x0 0xff9e0000 0x0 0x100>;
 			clock-names = "bus_clk", "ref_clk";
-			#stream-id-cells = <1>;
-			iommus = <&smmu 0x861>;
 			power-domains = <&pd_usb1>;
 			ranges;
 			nvmem-cells = <&soc_revision>;
@@ -997,8 +1061,13 @@
 				reg = <0x0 0xfe300000 0x0 0x40000>;
 				interrupt-parent = <&gic>;
 				interrupts = <0 70 4>, <0 74 4>;
+				#stream-id-cells = <1>;
+				iommus = <&smmu 0x861>;
 				snps,quirk-frame-length-adjustment = <0x20>;
 				snps,refclk_fladj;
+				snps,enable_guctl1_resume_quirk;
+				snps,enable_guctl1_ipd_quirk;
+				snps,xhci-stream-quirk;
 				/* dma-coherent; */
 			};
 		};
@@ -1022,6 +1091,7 @@
 			reg-names = "ams-base";
 			#address-cells = <2>;
 			#size-cells = <2>;
+			#io-channel-cells = <1>;
 			ranges;
 
 			ams_ps: ams_ps@ffa50800 {
@@ -1034,27 +1104,6 @@
 				compatible = "xlnx,zynqmp-ams-pl";
 				status = "disabled";
 				reg = <0x0 0xffa50c00 0x0 0x400>;
-			};
-		};
-
-		xilinx_drm: xilinx_drm {
-			compatible = "xlnx,drm";
-			status = "disabled";
-			xlnx,encoder-slave = <&xlnx_dp>;
-			xlnx,connector-type = "DisplayPort";
-			xlnx,dp-sub = <&xlnx_dp_sub>;
-			planes {
-				xlnx,pixel-format = "rgb565";
-				plane0 {
-					dmas = <&xlnx_dpdma 3>;
-					dma-names = "dma0";
-				};
-				plane1 {
-					dmas = <&xlnx_dpdma 0>,
-					       <&xlnx_dpdma 1>,
-					       <&xlnx_dpdma 2>;
-					dma-names = "dma0", "dma1", "dma2";
-				};
 			};
 		};
 
@@ -1076,33 +1125,6 @@
 			xlnx,audio-chan = <2>;
 			xlnx,dp-sub = <&xlnx_dp_sub>;
 			xlnx,max-pclock-frequency = <300000>;
-		};
-
-		xlnx_dp_snd_card: dp_snd_card {
-			compatible = "xlnx,dp-snd-card";
-			status = "disabled";
-			xlnx,dp-snd-pcm = <&xlnx_dp_snd_pcm0>, <&xlnx_dp_snd_pcm1>;
-			xlnx,dp-snd-codec = <&xlnx_dp_snd_codec0>;
-		};
-
-		xlnx_dp_snd_codec0: dp_snd_codec0 {
-			compatible = "xlnx,dp-snd-codec";
-			status = "disabled";
-			clock-names = "aud_clk";
-		};
-
-		xlnx_dp_snd_pcm0: dp_snd_pcm0 {
-			compatible = "xlnx,dp-snd-pcm";
-			status = "disabled";
-			dmas = <&xlnx_dpdma 4>;
-			dma-names = "tx";
-		};
-
-		xlnx_dp_snd_pcm1: dp_snd_pcm1 {
-			compatible = "xlnx,dp-snd-pcm";
-			status = "disabled";
-			dmas = <&xlnx_dpdma 5>;
-			dma-names = "tx";
 		};
 
 		xlnx_dp_sub: dp_sub@fd4aa000 {

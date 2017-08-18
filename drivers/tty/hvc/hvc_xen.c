@@ -127,7 +127,7 @@ static int domU_write_console(uint32_t vtermno, const char *data, int len)
 	 */
 	while (len) {
 		int sent = __write_console(cons, data, len);
-
+		
 		data += sent;
 		len -= sent;
 
@@ -665,21 +665,6 @@ struct console xenboot_console = {
 	.index		= -1,
 };
 #endif	/* CONFIG_EARLY_PRINTK */
-
-static void xenboot_write_console_earlycon(struct console *console,
-					   const char *string, unsigned len)
-{
-	dom0_write_console(0, string, len);
-}
-
-static int __init xen_early_console_setup(struct earlycon_device *device,
-					   const char *opt)
-{
-	device->con->write = xenboot_write_console_earlycon;
-
-	return 0;
-}
-EARLYCON_DECLARE(xen, xen_early_console_setup);
 
 void xen_raw_console_write(const char *str)
 {

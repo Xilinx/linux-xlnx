@@ -59,7 +59,7 @@ void __iomem *zynq_scu_base;
 static void __init zynq_memory_init(void)
 {
 	if (!__pa(PAGE_OFFSET))
-		memblock_reserve(__pa(PAGE_OFFSET), __pa(swapper_pg_dir));
+		memblock_reserve(__pa(PAGE_OFFSET), 0x80000);
 }
 
 static struct platform_device zynq_cpuidle_device = {
@@ -194,15 +194,10 @@ static const char * const zynq_dt_match[] = {
 };
 
 DT_MACHINE_START(XILINX_EP107, "Xilinx Zynq Platform")
-#ifndef CONFIG_XILINX_APF
 	/* 64KB way size, 8-way associativity, parity disabled */
-# ifdef CONFIG_XILINX_PREFETCH
+#ifdef CONFIG_XILINX_PREFETCH
 	.l2c_aux_val	= 0x30400000,
 	.l2c_aux_mask	= 0xcfbfffff,
-# else
-	.l2c_aux_val	= 0x00400000,
-	.l2c_aux_mask	= 0xffbfffff,
-# endif
 #else
 	.l2c_aux_val	= 0x00400000,
 	.l2c_aux_mask	= 0xffbfffff,

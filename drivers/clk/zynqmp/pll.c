@@ -53,7 +53,7 @@ struct zynqmp_pll {
 #define PLL_FBDIV_MAX	125
 
 #define PS_PLL_VCO_MIN 1500000000
-#define PS_PLL_VCO_MAX 3000000000
+#define PS_PLL_VCO_MAX 3000000000UL
 
 enum pll_mode {
 	PLL_MODE_FRAC,

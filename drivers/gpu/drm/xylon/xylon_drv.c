@@ -165,7 +165,7 @@ static void xylon_drm_lastclose(struct drm_device *dev)
 	xylon_drm_fbdev_restore_mode(xdev->fbdev);
 }
 
-static int xylon_drm_vblank_enable(struct drm_device *dev, int crtc)
+static int xylon_drm_vblank_enable(struct drm_device *dev, unsigned int crtc)
 {
 	struct xylon_drm_device *xdev = dev->dev_private;
 
@@ -174,7 +174,7 @@ static int xylon_drm_vblank_enable(struct drm_device *dev, int crtc)
 	return 0;
 }
 
-static void xylon_drm_vblank_disable(struct drm_device *dev, int crtc)
+static void xylon_drm_vblank_disable(struct drm_device *dev, unsigned int crtc)
 {
 	struct xylon_drm_device *xdev = dev->dev_private;
 

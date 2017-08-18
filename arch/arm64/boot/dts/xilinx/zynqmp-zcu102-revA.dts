@@ -1,5 +1,5 @@
 /*
- * dts file for Xilinx ZynqMP ZCU102
+ * dts file for Xilinx ZynqMP ZCU102 RevA
  *
  * (C) Copyright 2015, Xilinx, Inc.
  *
@@ -21,7 +21,7 @@
 
 / {
 	model = "ZynqMP ZCU102 RevA";
-	compatible = "xlnx,zynqmp-zcu102", "xlnx,zynqmp";
+	compatible = "xlnx,zynqmp-zcu102-revA", "xlnx,zynqmp-zcu102", "xlnx,zynqmp";
 
 	aliases {
 		ethernet0 = &gem3;
@@ -442,7 +442,7 @@ drivers/hwmon/pmbus/Makefile:11:obj-$(CONFIG_SENSORS_MAX20751)  += max20751.o
 			 * 512B - 768B address 0x56
 			 * 768B - 1024B address 0x57
 			 */
-			eeprom@54 { /* u23 */
+			eeprom: eeprom@54 { /* u23 */
 				compatible = "at,24c08";
 				reg = <0x54>;
 			};
@@ -898,7 +898,6 @@ drivers/hwmon/pmbus/Makefile:11:obj-$(CONFIG_SENSORS_MAX20751)  += max20751.o
 	status = "okay";
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_sdhci1_default>;
-	no-1-8-v;	/* for 1.0 silicon */
 	xlnx,mio_bank = <1>;
 };
 
@@ -931,6 +930,11 @@ drivers/hwmon/pmbus/Makefile:11:obj-$(CONFIG_SENSORS_MAX20751)  += max20751.o
 	snps,usb3_lpm_capable;
 	phy-names = "usb3-phy";
 	phys = <&lane2 PHY_TYPE_USB3 0 2 26000000>;
+	maximum-speed = "super-speed";
+};
+
+&watchdog0 {
+	status = "okay";
 };
 
 &xilinx_ams {
@@ -951,7 +955,7 @@ drivers/hwmon/pmbus/Makefile:11:obj-$(CONFIG_SENSORS_MAX20751)  += max20751.o
 
 &xlnx_dp {
 	status = "okay";
-	phy-names = "dp-phy0", "dp-phy1";
+	phy-names = "dp-phy0";
 	phys = <&lane1 PHY_TYPE_DP 0 3 27000000>;
 	xlnx,max-lanes = <1>;
 };

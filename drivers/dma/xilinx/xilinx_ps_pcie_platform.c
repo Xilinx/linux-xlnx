@@ -84,7 +84,7 @@
 #define SOURCE_CONTROL_BD_INTR_BIT              BIT(26)
 #define SOURCE_CONTROL_BACK_TO_BACK_PACK_BIT    BIT(25)
 #define SOURCE_CONTROL_ATTRIBUTES_MASK          GENMASK(31, 28)
-#define SOURCE_CONTROL_ATTRIBUTES_BIT_SHIFT     (29)
+#define SRC_CTL_ATTRIB_BIT_SHIFT                (29)
 
 #define STA_BD_COMPLETED_BIT            BIT(0)
 #define STA_BD_SOURCE_ERROR_BIT         BIT(1)
@@ -224,6 +224,7 @@ struct PACKET_TRANSFER_PARAMS {
 	u16 idx_eop;
 	struct scatterlist *sgl;
 	struct ps_pcie_tx_segment *seg;
+	u32 requested_bytes;
 };
 
 enum CHANNEL_STATE {
@@ -231,12 +232,6 @@ enum CHANNEL_STATE {
 	CHANNEL_UNAVIALBLE,               /*  Channel inactive */
 	CHANNEL_AVAILABLE,                /*  Channel available for transfers */
 	CHANNEL_ERROR                     /*  Channel encountered errors */
-};
-
-enum PS_PCIE_INTR_TYPE {
-	INTR_LEGACY = 0,       /* DMA device uses Legacy interrupt */
-	INTR_MSI,              /* DMA device uses MSI interrupt */
-	INTR_MSIX              /* DMA device uses multiple MSI X interrupts */
 };
 
 enum BUFFER_LOCATION {
@@ -315,7 +310,7 @@ enum dev_channel_properties {
  * @handle_chan_reset: Work that invokes channel reset function
  * @handle_chan_shutdown: Work that invokes channel shutdown function
  * @handle_chan_terminate: Work that invokes channel transactions termination
- * @chan_shutdown_complete: Completion variable which says shutdown is done
+ * @chan_shutdown_complt: Completion variable which says shutdown is done
  * @chan_terminate_complete: Completion variable which says terminate is done
  * @primary_desc_cleanup: Work Q which performs work related to sgl handling
  * @handle_primary_desc_cleanup: Work that invokes src Q, dst Q cleanup
@@ -408,7 +403,7 @@ struct ps_pcie_dma_chan {
 	struct work_struct handle_chan_shutdown;
 	struct work_struct handle_chan_terminate;
 
-	struct completion chan_shutdown_complete;
+	struct completion chan_shutdown_complt;
 	struct completion chan_terminate_complete;
 
 	struct workqueue_struct *primary_desc_cleanup;
@@ -435,10 +430,8 @@ struct ps_pcie_dma_chan {
  * @channels: Pointer to device DMA channels structure
  * @common: DMA device structure
  * @num_channels: Number of channels active for the device
- * @intr_type: Type of interrupts supported by device
- * @entry: MSIX entry table for supported pcie devices
  * @reg_base: Base address of first DMA channel of the device
- * @irq_num: Irq line number being used for MSI/Legacy interrupts
+ * @irq_vecs: Number of irq vectors allocated to pci device
  * @pci_dev: Parent pci device which created this platform device
  * @bar_info: PCIe bar related information
  */
@@ -450,10 +443,8 @@ struct xlnx_pcie_dma_device {
 	struct ps_pcie_dma_chan *channels;
 	struct dma_device common;
 	int num_channels;
-	enum PS_PCIE_INTR_TYPE intr_type;
-	struct msix_entry *entry;
+	int irq_vecs;
 	void __iomem *reg_base;
-	int irq_num;
 	struct pci_dev *pci_dev;
 	struct BAR_PARAMS bar_info[MAX_BARS];
 };
@@ -473,16 +464,10 @@ static void ps_pcie_dma_clr_mask(struct ps_pcie_dma_chan *chan, u32 reg,
 				 u32 mask);
 static void ps_pcie_dma_set_mask(struct ps_pcie_dma_chan *chan, u32 reg,
 				 u32 mask);
-static int msix_free(struct xlnx_pcie_dma_device *xdev);
-static int msi_free(struct xlnx_pcie_dma_device *xdev);
-static int legacy_intr_free(struct xlnx_pcie_dma_device *xdev);
-static int msix_setup(struct xlnx_pcie_dma_device *xdev);
-static int msi_setup(struct xlnx_pcie_dma_device *xdev);
-static int legacy_intr_setup(struct xlnx_pcie_dma_device *xdev);
 static int irq_setup(struct xlnx_pcie_dma_device *xdev);
-static int irq_free(struct xlnx_pcie_dma_device *xdev);
-static int msi_msix_capable(struct pci_dev *dev, int type);
-static void irq_probe(struct xlnx_pcie_dma_device *xdev);
+static int chan_intr_setup(struct xlnx_pcie_dma_device *xdev);
+static int device_intr_setup(struct xlnx_pcie_dma_device *xdev);
+static int irq_probe(struct xlnx_pcie_dma_device *xdev);
 static int ps_pcie_check_intr_status(struct ps_pcie_dma_chan *chan);
 static irqreturn_t ps_pcie_dma_dev_intr_handler(int irq, void *data);
 static irqreturn_t ps_pcie_dma_chan_intr_handler(int irq, void *data);
@@ -506,7 +491,7 @@ static void dst_cleanup_work(struct work_struct *work);
 static void src_cleanup_work(struct work_struct *work);
 static void ps_pcie_chan_primary_work(struct work_struct *work);
 static int probe_channel_properties(struct platform_device *platform_dev,
-				    struct xlnx_pcie_dma_device **pxdev,
+				    struct xlnx_pcie_dma_device *xdev,
 				    u16 channel_number);
 static void xlnx_ps_pcie_destroy_mempool(struct ps_pcie_dma_chan *chan);
 static void xlnx_ps_pcie_free_worker_queues(struct ps_pcie_dma_chan *chan);
@@ -614,71 +599,13 @@ static irqreturn_t ps_pcie_dma_chan_intr_handler(int irq, void *data)
 }
 
 /**
- * msix_free - Releases MSI-X interrupt resources
- *
- * @xdev: Driver specific data for device
- *
- * Return: Always 0
- */
-static int msix_free(struct xlnx_pcie_dma_device *xdev)
-{
-	struct ps_pcie_dma_chan *chan;
-	int i;
-
-	for (i = 0; i < xdev->num_channels; i++) {
-		chan = &xdev->channels[i];
-		devm_free_irq(xdev->dev, xdev->entry[i].vector, chan);
-		dev_info(xdev->dev,
-			 "MSIX irq %d for channel %d freed\n",
-			 xdev->entry[i].vector,
-			 chan->channel_number);
-	}
-	pci_disable_msix(xdev->pci_dev);
-
-	return 0;
-}
-
-/**
- * msi_free - Releases MSI interrupt resources
- *
- * @xdev: Driver specific data for device
- *
- * Return: Always 0
- */
-static int msi_free(struct xlnx_pcie_dma_device *xdev)
-{
-	devm_free_irq(xdev->dev, xdev->irq_num, xdev);
-	pci_disable_msi(xdev->pci_dev);
-
-	dev_info(xdev->dev, "MSI irq %d freed\n", xdev->irq_num);
-
-	return 0;
-}
-
-/**
- * legacy_intr_free - Releases legacy interrupt resources
- *
- * @xdev: Driver specific data for device
- *
- * Return: Always 0
- */
-static int legacy_intr_free(struct xlnx_pcie_dma_device *xdev)
-{
-	devm_free_irq(xdev->dev, xdev->irq_num, xdev);
-
-	dev_info(xdev->dev, "Legacy Interrupt irq %d freed\n", xdev->irq_num);
-
-	return 0;
-}
-
-/**
- * msix_setup - Requests MSI X interrupt and registers handlers
+ * chan_intr_setup - Requests Interrupt handler for individual channels
  *
  * @xdev: Driver specific data for device
  *
  * Return: 0 on success and non zero value on failure.
  */
-static int msix_setup(struct xlnx_pcie_dma_device *xdev)
+static int chan_intr_setup(struct xlnx_pcie_dma_device *xdev)
 {
 	struct ps_pcie_dma_chan *chan;
 	int i;
@@ -686,15 +613,16 @@ static int msix_setup(struct xlnx_pcie_dma_device *xdev)
 
 	for (i = 0; i < xdev->num_channels; i++) {
 		chan = &xdev->channels[i];
-		err = devm_request_irq(xdev->dev, xdev->entry[i].vector,
+		err = devm_request_irq(xdev->dev,
+				       pci_irq_vector(xdev->pci_dev, i),
 				       ps_pcie_dma_chan_intr_handler,
 				       PS_PCIE_DMA_IRQ_NOSHARE,
-				       "PS PCIe DMA MSI-X handler", chan);
+				       "PS PCIe DMA Chan Intr handler", chan);
 		if (err) {
 			dev_err(xdev->dev,
-				"MSIX irq %d for chan %d error %d\n",
-				xdev->entry[i].vector, chan->channel_number,
-				err);
+				"Irq %d for chan %d error %d\n",
+				pci_irq_vector(xdev->pci_dev, i),
+				chan->channel_number, err);
 			break;
 		}
 	}
@@ -702,7 +630,8 @@ static int msix_setup(struct xlnx_pcie_dma_device *xdev)
 	if (err) {
 		while (--i >= 0) {
 			chan = &xdev->channels[i];
-			devm_free_irq(xdev->dev, xdev->entry[i].vector, chan);
+			devm_free_irq(xdev->dev,
+				      pci_irq_vector(xdev->pci_dev, i), chan);
 		}
 	}
 
@@ -710,45 +639,28 @@ static int msix_setup(struct xlnx_pcie_dma_device *xdev)
 }
 
 /**
- * msi_setup - Requests MSI interrupt and registers handler
+ * device_intr_setup - Requests interrupt handler for DMA device
  *
  * @xdev: Driver specific data for device
  *
  * Return: 0 on success and non zero value on failure.
  */
-static int msi_setup(struct xlnx_pcie_dma_device *xdev)
+static int device_intr_setup(struct xlnx_pcie_dma_device *xdev)
 {
 	int err;
+	unsigned long intr_flags = IRQF_SHARED;
 
-	err = devm_request_irq(xdev->dev, xdev->irq_num,
+	if (xdev->pci_dev->msix_enabled || xdev->pci_dev->msi_enabled)
+		intr_flags = PS_PCIE_DMA_IRQ_NOSHARE;
+
+	err = devm_request_irq(xdev->dev,
+			       pci_irq_vector(xdev->pci_dev, 0),
 			       ps_pcie_dma_dev_intr_handler,
-			       PS_PCIE_DMA_IRQ_NOSHARE,
-			       "PS PCIe DMA MSI Handler", xdev);
+			       intr_flags,
+			       "PS PCIe DMA Intr Handler", xdev);
 	if (err)
-		dev_err(xdev->dev, "Couldn't request MSI irq %d\n",
-			xdev->irq_num);
-
-	return err;
-}
-
-/**
- * legacy_intr_setup - Requests Legacy interrupt and registers handler
- *
- * @xdev: Driver specific data for device
- *
- * Return: 0 on success and non zero value on failure.
- */
-static int legacy_intr_setup(struct xlnx_pcie_dma_device *xdev)
-{
-	int err;
-
-	err = devm_request_irq(xdev->dev, xdev->irq_num,
-			       ps_pcie_dma_dev_intr_handler,
-			       IRQF_SHARED, "PS PCIe DMA Legacy Handler",
-			       xdev);
-	if (err)
-		dev_err(xdev->dev, "Couldn't request Legacy irq %d\n",
-			xdev->irq_num);
+		dev_err(xdev->dev, "Couldn't request irq %d\n",
+			pci_irq_vector(xdev->pci_dev, 0));
 
 	return err;
 }
@@ -762,103 +674,14 @@ static int legacy_intr_setup(struct xlnx_pcie_dma_device *xdev)
  */
 static int irq_setup(struct xlnx_pcie_dma_device *xdev)
 {
-	int err = 0;
+	int err;
 
-	switch (xdev->intr_type) {
-	case INTR_MSIX:
-		err = msix_setup(xdev);
-		if (err) {
-			dev_err(xdev->dev,
-				"Couldn't setup MSI-X mode: err = %d\n", err);
-			}
-		break;
-	case INTR_MSI:
-		err = msi_setup(xdev);
-		if (err) {
-			dev_err(xdev->dev,
-				"Couldn't setup MSI mode: err = %d\n", err);
-			}
-		break;
-	case INTR_LEGACY:
-		err = legacy_intr_setup(xdev);
-		if (err) {
-			dev_err(xdev->dev,
-				"Couldn't setup Legacy interrupt: err = %d\n",
-				err);
-			}
-		break;
-	default:
-		dev_err(xdev->dev, "Invalid interrupt type!\n");
-		err = PTR_ERR(xdev);
-	}
+	if (xdev->irq_vecs == xdev->num_channels)
+		err = chan_intr_setup(xdev);
+	else
+		err = device_intr_setup(xdev);
 
 	return err;
-}
-
-/**
- * irq_free - Release interrupt resources
- *
- * @xdev: Driver specific data for device
- *
- * Return: 0 on success and non zero value on failure.
- */
-static int irq_free(struct xlnx_pcie_dma_device *xdev)
-{
-	int err = 0;
-
-	switch (xdev->intr_type) {
-	case INTR_MSIX:
-		err = msix_free(xdev);
-		if (err) {
-			dev_err(xdev->dev,
-				"Couldn't free MSI-X mode: err = %d\n", err);
-		}
-		break;
-	case INTR_MSI:
-		err = msi_free(xdev);
-		if (err) {
-			dev_err(xdev->dev,
-				"Couldn't free MSI mode: err = %d\n", err);
-		}
-		break;
-	case INTR_LEGACY:
-		err = legacy_intr_free(xdev);
-		if (err) {
-			dev_err(xdev->dev,
-				"Couldn't free Legacy interrupt: err = %d\n",
-				err);
-		}
-		break;
-	default:
-		dev_err(xdev->dev, "Invalid interrupt type!\n");
-		err = PTR_ERR(xdev);
-	}
-
-	return err;
-}
-
-/**
- * msi_msix_capable - Checks MSI/MSIX capability of pci dev
- *
- * @dev: Pci device
- * @type: PCI_CAP_ID_MSI or PCI_CAP_ID_MSIX
- * Return: 1 on success and 0 on failure
- */
-static int msi_msix_capable(struct pci_dev *dev, int type)
-{
-	struct pci_bus *bus;
-
-	if (!dev || dev->no_msi)
-		return 0;
-
-	for (bus = dev->bus; bus; bus = bus->parent)
-		if (bus->bus_flags & PCI_BUS_FLAGS_NO_MSI)
-			return 0;
-
-	if (!pci_find_capability(dev, type))
-		return 0;
-
-	return 1;
 }
 
 /**
@@ -866,48 +689,17 @@ static int msi_msix_capable(struct pci_dev *dev, int type)
  *
  * @xdev: Driver specific data for device
  *
- * Return: Always 0
+ * Return: Number of interrupt vectors when successful or -ENOSPC on failure
  */
-static void irq_probe(struct xlnx_pcie_dma_device *xdev)
+static int irq_probe(struct xlnx_pcie_dma_device *xdev)
 {
-	int i;
-	int err = 0;
 	struct pci_dev *pdev;
 
 	pdev = xdev->pci_dev;
 
-	if (msi_msix_capable(pdev, PCI_CAP_ID_MSIX)) {
-		dev_info(&pdev->dev, "Enabling MSI-X\n");
-		for (i = 0; i < xdev->num_channels; i++)
-			xdev->entry[i].entry = i;
-
-		err = pci_enable_msix(pdev, xdev->entry, xdev->num_channels);
-		if (err < 0) {
-			dev_err(&pdev->dev,
-				"Couldn't enable MSI-X mode: err = %d\n", err);
-		} else {
-			xdev->intr_type = INTR_MSIX;
-			return;
-		}
-	}
-
-	if (msi_msix_capable(pdev, PCI_CAP_ID_MSI)) {
-		/* enable message signaled interrupts */
-		dev_info(&pdev->dev, "Enabling MSI\n");
-		err = pci_enable_msi(pdev);
-		if (err < 0) {
-			dev_err(&pdev->dev,
-				"Couldn't enable MSI mode: err = %d\n", err);
-		} else {
-			xdev->intr_type = INTR_MSI;
-			xdev->irq_num = xdev->pci_dev->irq;
-			return;
-		}
-	}
-
-	dev_info(&pdev->dev, "MSI/MSI-X not detected\n");
-	xdev->intr_type = INTR_LEGACY;
-	xdev->irq_num = xdev->pci_dev->irq;
+	xdev->irq_vecs = pci_alloc_irq_vectors(pdev, 1, xdev->num_channels,
+					       PCI_IRQ_ALL_TYPES);
+	return xdev->irq_vecs;
 }
 
 /**
@@ -1202,6 +994,13 @@ static void xlnx_ps_pcie_update_srcq(struct ps_pcie_dma_chan *chan,
 	pkt_ctx->availability_status = IN_USE;
 	pkt_ctx->sgl = seg->tx_elements.src_sgl;
 
+	if (chan->srcq_buffer_location == BUFFER_LOC_PCI) {
+		pkt_ctx->seg = seg;
+		read_attribute = PCI_ATTRIBUTE << SRC_CTL_ATTRIB_BIT_SHIFT;
+	} else
+		read_attribute = (AXI_ATTRIBUTE << SRC_CTL_ATTRIB_BIT_SHIFT) |
+				 SOURCE_CONTROL_BD_HOST_MEMORY_BIT;
+
 	/*  Get the address of the next available DMA Descriptor */
 	pdesc = chan->psrc_sgl_bd + chan->src_sgl_freeidx;
 	pkt_ctx->idx_sop = chan->src_sgl_freeidx;
@@ -1217,22 +1016,12 @@ static void xlnx_ps_pcie_update_srcq(struct ps_pcie_dma_chan *chan,
 				(u32)sg_dma_address(sgl_ptr);
 		}
 
-		pdesc->control_byte_count = sg_dma_len(sgl_ptr) &
-					    SOURCE_CONTROL_BD_BYTE_COUNT_MASK;
-		if (chan->srcq_buffer_location == BUFFER_LOC_PCI) {
-			pkt_ctx->seg = seg;
-			read_attribute = PCI_ATTRIBUTE <<
-					 SOURCE_CONTROL_ATTRIBUTES_BIT_SHIFT;
-			pdesc->control_byte_count = pdesc->control_byte_count
-						    | read_attribute;
-		} else if (chan->srcq_buffer_location == BUFFER_LOC_AXI) {
-			read_attribute = AXI_ATTRIBUTE <<
-					 SOURCE_CONTROL_ATTRIBUTES_BIT_SHIFT;
-			pdesc->control_byte_count =
-					pdesc->control_byte_count |
-					read_attribute |
-					SOURCE_CONTROL_BD_HOST_MEMORY_BIT;
-		}
+		pdesc->control_byte_count = (sg_dma_len(sgl_ptr) &
+					    SOURCE_CONTROL_BD_BYTE_COUNT_MASK) |
+					    read_attribute;
+		if (pkt_ctx->seg)
+			pkt_ctx->requested_bytes += sg_dma_len(sgl_ptr);
+
 		pdesc->user_handle = chan->idx_ctx_srcq_head;
 		pdesc->user_id = DEFAULT_UID;
 		/* Check if this is last descriptor */
@@ -1279,6 +1068,15 @@ static void xlnx_ps_pcie_update_dstq(struct ps_pcie_dma_chan *chan,
 	pkt_ctx->availability_status = IN_USE;
 	pkt_ctx->sgl = seg->tx_elements.dst_sgl;
 
+	if (chan->dstq_buffer_location == BUFFER_LOC_PCI) {
+		pkt_ctx->seg = seg;
+		write_attribute = (PCI_ATTRIBUTE << SRC_CTL_ATTRIB_BIT_SHIFT) |
+					SOURCE_CONTROL_BACK_TO_BACK_PACK_BIT;
+	} else
+		write_attribute = (AXI_ATTRIBUTE << SRC_CTL_ATTRIB_BIT_SHIFT) |
+					SOURCE_CONTROL_BD_HOST_MEMORY_BIT |
+					SOURCE_CONTROL_BACK_TO_BACK_PACK_BIT;
+
 	pdesc = chan->pdst_sgl_bd + chan->dst_sgl_freeidx;
 	pkt_ctx->idx_sop = chan->dst_sgl_freeidx;
 
@@ -1293,27 +1091,13 @@ static void xlnx_ps_pcie_update_dstq(struct ps_pcie_dma_chan *chan,
 				(u32)sg_dma_address(sgl_ptr);
 		}
 
-		pdesc->control_byte_count = sg_dma_len(sgl_ptr) &
-					SOURCE_CONTROL_BD_BYTE_COUNT_MASK;
+		pdesc->control_byte_count = (sg_dma_len(sgl_ptr) &
+					SOURCE_CONTROL_BD_BYTE_COUNT_MASK) |
+						write_attribute;
 
-		if (chan->dstq_buffer_location == BUFFER_LOC_PCI) {
-			pkt_ctx->seg = seg;
-			write_attribute = PCI_ATTRIBUTE <<
-					SOURCE_CONTROL_ATTRIBUTES_BIT_SHIFT;
-			pdesc->control_byte_count = pdesc->control_byte_count
-							| write_attribute;
-		} else if (chan->dstq_buffer_location == BUFFER_LOC_AXI) {
-			write_attribute = AXI_ATTRIBUTE <<
-					SOURCE_CONTROL_ATTRIBUTES_BIT_SHIFT;
-			pdesc->control_byte_count =
-				pdesc->control_byte_count
-				| write_attribute
-				| SOURCE_CONTROL_BD_HOST_MEMORY_BIT;
-		}
+		if (pkt_ctx->seg)
+			pkt_ctx->requested_bytes += sg_dma_len(sgl_ptr);
 
-		/*  Not Enabling Back to Back Packing */
-		pdesc->control_byte_count = pdesc->control_byte_count |
-			SOURCE_CONTROL_BACK_TO_BACK_PACK_BIT;
 		pdesc->user_handle = chan->idx_ctx_dstq_head;
 		/* Check if this is last descriptor */
 		if (i == (seg->tx_elements.dstq_num_elemets - 1))
@@ -1387,6 +1171,8 @@ static void dst_cleanup_work(struct work_struct *work)
 	psta_bd = chan->pdst_sta_bd + chan->dst_staprobe_idx;
 
 	while (psta_bd->status_flag_byte_count & STA_BD_COMPLETED_BIT) {
+		u32 completed_bytes = 0;
+
 		if (psta_bd->status_flag_byte_count &
 				STA_BD_DESTINATION_ERROR_BIT) {
 			dev_err(chan->dev,
@@ -1426,6 +1212,9 @@ static void dst_cleanup_work(struct work_struct *work)
 
 		chan->idx_ctx_dstq_tail = psta_bd->user_handle;
 		ppkt_ctx = chan->ppkt_ctx_dstq + psta_bd->user_handle;
+		completed_bytes = (psta_bd->status_flag_byte_count &
+					STA_BD_BYTE_COUNT_MASK) >>
+						STA_BD_BYTE_COUNT_SHIFT;
 
 		memset(psta_bd, 0, sizeof(struct STATUS_DMA_DESCRIPTOR));
 
@@ -1466,13 +1255,16 @@ static void dst_cleanup_work(struct work_struct *work)
 
 		/* Invoking callback */
 		if (ppkt_ctx->seg) {
+			struct dmaengine_result rslt;
+
 			spin_lock(&chan->cookie_lock);
 			dma_cookie_complete(&ppkt_ctx->seg->async_tx);
 			spin_unlock(&chan->cookie_lock);
-			if (ppkt_ctx->seg->async_tx.callback) {
-				ppkt_ctx->seg->async_tx.callback(
-					ppkt_ctx->seg->async_tx.callback_param);
-			}
+			rslt.result = DMA_TRANS_NOERROR;
+			rslt.residue = ppkt_ctx->requested_bytes -
+					completed_bytes;
+			dmaengine_desc_get_callback_invoke(&ppkt_ctx->seg->async_tx,
+							   &rslt);
 			mempool_free(ppkt_ctx->seg, chan->transactions_pool);
 		}
 		memset(ppkt_ctx, 0, sizeof(struct PACKET_TRANSFER_PARAMS));
@@ -1503,6 +1295,8 @@ static void src_cleanup_work(struct work_struct *work)
 	psta_bd = chan->psrc_sta_bd + chan->src_staprobe_idx;
 
 	while (psta_bd->status_flag_byte_count & STA_BD_COMPLETED_BIT) {
+		u32 completed_bytes = 0;
+
 		if (psta_bd->status_flag_byte_count &
 				STA_BD_DESTINATION_ERROR_BIT) {
 			dev_err(chan->dev,
@@ -1540,6 +1334,9 @@ static void src_cleanup_work(struct work_struct *work)
 		}
 		chan->idx_ctx_srcq_tail = psta_bd->user_handle;
 		ppkt_ctx = chan->ppkt_ctx_srcq + psta_bd->user_handle;
+		completed_bytes = (psta_bd->status_flag_byte_count
+					& STA_BD_BYTE_COUNT_MASK) >>
+						STA_BD_BYTE_COUNT_SHIFT;
 
 		memset(psta_bd, 0, sizeof(struct STATUS_DMA_DESCRIPTOR));
 
@@ -1576,14 +1373,19 @@ static void src_cleanup_work(struct work_struct *work)
 				srcq_desc_idx = 0;
 
 		} while (1);
+
+		/* Invoking callback */
 		if (ppkt_ctx->seg) {
+			struct dmaengine_result rslt;
+
 			spin_lock(&chan->cookie_lock);
 			dma_cookie_complete(&ppkt_ctx->seg->async_tx);
 			spin_unlock(&chan->cookie_lock);
-			if (ppkt_ctx->seg->async_tx.callback) {
-				ppkt_ctx->seg->async_tx.callback(
-					ppkt_ctx->seg->async_tx.callback_param);
-			}
+			rslt.result = DMA_TRANS_NOERROR;
+			rslt.residue = ppkt_ctx->requested_bytes -
+					completed_bytes;
+			dmaengine_desc_get_callback_invoke(&ppkt_ctx->seg->async_tx,
+							   &rslt);
 			mempool_free(ppkt_ctx->seg, chan->transactions_pool);
 		}
 		memset(ppkt_ctx, 0, sizeof(struct PACKET_TRANSFER_PARAMS));
@@ -1645,14 +1447,13 @@ static void ps_pcie_chan_primary_work(struct work_struct *work)
 }
 
 static int probe_channel_properties(struct platform_device *platform_dev,
-				    struct xlnx_pcie_dma_device **pxdev,
+				    struct xlnx_pcie_dma_device *xdev,
 				    u16 channel_number)
 {
 	int i;
 	char propertyname[CHANNEL_PROPERTY_LENGTH];
 	int numvals, ret;
 	u32 *val;
-	struct xlnx_pcie_dma_device *xdev = *pxdev;
 	struct ps_pcie_dma_chan *channel;
 	struct ps_pcie_dma_channel_match *xlnx_match;
 
@@ -1681,7 +1482,7 @@ static int probe_channel_properties(struct platform_device *platform_dev,
 
 	init_completion(&channel->srcq_work_complete);
 	init_completion(&channel->dstq_work_complete);
-	init_completion(&channel->chan_shutdown_complete);
+	init_completion(&channel->chan_shutdown_complt);
 	init_completion(&channel->chan_terminate_complete);
 
 	if (device_property_present(&platform_dev->dev, propertyname)) {
@@ -1947,34 +1748,72 @@ static void xlnx_ps_pcie_channel_quiesce(struct ps_pcie_dma_chan *chan)
 	spin_unlock(&chan->channel_lock);
 }
 
-static void ivk_cbk_intr_seg(struct ps_pcie_intr_segment *intr_seg,
-			     struct ps_pcie_dma_chan *chan)
+static u32 total_bytes_in_sgl(struct scatterlist *sgl,
+			      unsigned int num_entries)
 {
+	u32 total_bytes = 0;
+	struct scatterlist *sgl_ptr;
+	unsigned int i;
+
+	for_each_sg(sgl, sgl_ptr, num_entries, i)
+		total_bytes += sg_dma_len(sgl_ptr);
+
+	return total_bytes;
+}
+
+static void ivk_cbk_intr_seg(struct ps_pcie_intr_segment *intr_seg,
+			     struct ps_pcie_dma_chan *chan,
+			     enum dmaengine_tx_result result)
+{
+	struct dmaengine_result rslt;
+
+	rslt.result = result;
+	rslt.residue = 0;
+
 	spin_lock(&chan->cookie_lock);
 	dma_cookie_complete(&intr_seg->async_intr_tx);
 	spin_unlock(&chan->cookie_lock);
-	if (intr_seg->async_intr_tx.callback) {
-		intr_seg->async_intr_tx.callback(
-			intr_seg->async_intr_tx.callback_param);
-	}
+
+	dmaengine_desc_get_callback_invoke(&intr_seg->async_intr_tx, &rslt);
 }
 
 static void ivk_cbk_seg(struct ps_pcie_tx_segment *seg,
-			struct ps_pcie_dma_chan *chan)
+			struct ps_pcie_dma_chan *chan,
+			enum dmaengine_tx_result result)
 {
+	struct dmaengine_result rslt, *prslt;
+
 	spin_lock(&chan->cookie_lock);
 	dma_cookie_complete(&seg->async_tx);
 	spin_unlock(&chan->cookie_lock);
-	if (seg->async_tx.callback)
-		seg->async_tx.callback(seg->async_tx.callback_param);
+
+	rslt.result = result;
+	if (seg->tx_elements.src_sgl &&
+	    chan->srcq_buffer_location == BUFFER_LOC_PCI) {
+		rslt.residue =
+			total_bytes_in_sgl(seg->tx_elements.src_sgl,
+					   seg->tx_elements.srcq_num_elemets);
+		prslt = &rslt;
+	} else if (seg->tx_elements.dst_sgl &&
+		   chan->dstq_buffer_location == BUFFER_LOC_PCI) {
+		rslt.residue =
+			total_bytes_in_sgl(seg->tx_elements.dst_sgl,
+					   seg->tx_elements.dstq_num_elemets);
+		prslt = &rslt;
+	} else {
+		prslt = NULL;
+	}
+
+	dmaengine_desc_get_callback_invoke(&seg->async_tx, prslt);
 }
 
 static void ivk_cbk_ctx(struct PACKET_TRANSFER_PARAMS *ppkt_ctxt,
-			struct ps_pcie_dma_chan *chan)
+			struct ps_pcie_dma_chan *chan,
+			enum dmaengine_tx_result result)
 {
 	if (ppkt_ctxt->availability_status == IN_USE) {
 		if (ppkt_ctxt->seg) {
-			ivk_cbk_seg(ppkt_ctxt->seg, chan);
+			ivk_cbk_seg(ppkt_ctxt->seg, chan, result);
 			mempool_free(ppkt_ctxt->seg,
 				     chan->transactions_pool);
 		}
@@ -1993,7 +1832,8 @@ static void ivk_cbk_for_pending(struct ps_pcie_dma_chan *chan)
 			i = chan->idx_ctx_srcq_tail;
 			while (i != chan->idx_ctx_srcq_head) {
 				ppkt_ctxt = chan->ppkt_ctx_srcq + i;
-				ivk_cbk_ctx(ppkt_ctxt, chan);
+				ivk_cbk_ctx(ppkt_ctxt, chan,
+					    DMA_TRANS_READ_FAILED);
 				memset(ppkt_ctxt, 0,
 				       sizeof(struct PACKET_TRANSFER_PARAMS));
 				i++;
@@ -2008,7 +1848,8 @@ static void ivk_cbk_for_pending(struct ps_pcie_dma_chan *chan)
 			i = chan->idx_ctx_dstq_tail;
 			while (i != chan->idx_ctx_dstq_head) {
 				ppkt_ctxt = chan->ppkt_ctx_dstq + i;
-				ivk_cbk_ctx(ppkt_ctxt, chan);
+				ivk_cbk_ctx(ppkt_ctxt, chan,
+					    DMA_TRANS_WRITE_FAILED);
 				memset(ppkt_ctxt, 0,
 				       sizeof(struct PACKET_TRANSFER_PARAMS));
 				i++;
@@ -2019,7 +1860,7 @@ static void ivk_cbk_for_pending(struct ps_pcie_dma_chan *chan)
 	}
 
 	list_for_each_entry_safe(seg, seg_nxt, &chan->active_list, node) {
-		ivk_cbk_seg(seg, chan);
+		ivk_cbk_seg(seg, chan, DMA_TRANS_ABORTED);
 		spin_lock(&chan->active_list_lock);
 		list_del(&seg->node);
 		spin_unlock(&chan->active_list_lock);
@@ -2027,7 +1868,7 @@ static void ivk_cbk_for_pending(struct ps_pcie_dma_chan *chan)
 	}
 
 	list_for_each_entry_safe(seg, seg_nxt, &chan->pending_list, node) {
-		ivk_cbk_seg(seg, chan);
+		ivk_cbk_seg(seg, chan, DMA_TRANS_ABORTED);
 		spin_lock(&chan->pending_list_lock);
 		list_del(&seg->node);
 		spin_unlock(&chan->pending_list_lock);
@@ -2036,7 +1877,7 @@ static void ivk_cbk_for_pending(struct ps_pcie_dma_chan *chan)
 
 	list_for_each_entry_safe(intr_seg, intr_seg_next,
 				 &chan->active_interrupts_list, node) {
-		ivk_cbk_intr_seg(intr_seg, chan);
+		ivk_cbk_intr_seg(intr_seg, chan, DMA_TRANS_ABORTED);
 		spin_lock(&chan->active_interrupts_lock);
 		list_del(&intr_seg->node);
 		spin_unlock(&chan->active_interrupts_lock);
@@ -2045,7 +1886,7 @@ static void ivk_cbk_for_pending(struct ps_pcie_dma_chan *chan)
 
 	list_for_each_entry_safe(intr_seg, intr_seg_next,
 				 &chan->pending_interrupts_list, node) {
-		ivk_cbk_intr_seg(intr_seg, chan);
+		ivk_cbk_intr_seg(intr_seg, chan, DMA_TRANS_ABORTED);
 		spin_lock(&chan->pending_interrupts_lock);
 		list_del(&intr_seg->node);
 		spin_unlock(&chan->pending_interrupts_lock);
@@ -2108,7 +1949,7 @@ static void chan_shutdown_work(struct work_struct *work)
 
 	xlnx_ps_pcie_channel_quiesce(chan);
 
-	complete(&chan->chan_shutdown_complete);
+	complete(&chan->chan_shutdown_complt);
 }
 
 static void chan_reset_work(struct work_struct *work)
@@ -2132,10 +1973,8 @@ static void sw_intr_work(struct work_struct *work)
 		spin_lock(&chan->cookie_lock);
 		dma_cookie_complete(&intr_seg->async_intr_tx);
 		spin_unlock(&chan->cookie_lock);
-		if (intr_seg->async_intr_tx.callback) {
-			intr_seg->async_intr_tx.callback(
-			intr_seg->async_intr_tx.callback_param);
-		}
+		dmaengine_desc_get_callback_invoke(&intr_seg->async_intr_tx,
+						   NULL);
 		spin_lock(&chan->active_interrupts_lock);
 		list_del(&intr_seg->node);
 		spin_unlock(&chan->active_interrupts_lock);
@@ -2496,12 +2335,11 @@ static void xlnx_ps_pcie_dma_free_chan_resources(struct dma_chan *dchan)
 		return;
 
 	if (chan->maintenance_workq) {
-		if (completion_done(&chan->chan_shutdown_complete))
-			reinit_completion(&chan->chan_shutdown_complete);
+		if (completion_done(&chan->chan_shutdown_complt))
+			reinit_completion(&chan->chan_shutdown_complt);
 		queue_work(chan->maintenance_workq,
 			   &chan->handle_chan_shutdown);
-		wait_for_completion_interruptible(
-				&chan->chan_shutdown_complete);
+		wait_for_completion_interruptible(&chan->chan_shutdown_complt);
 
 		xlnx_ps_pcie_free_worker_queues(chan);
 		xlnx_ps_pcie_free_pkt_ctxts(chan);
@@ -2654,6 +2492,8 @@ static struct dma_async_tx_descriptor *xlnx_ps_pcie_dma_prep_dma_sg(
 		return NULL;
 	}
 
+	memset(seg, 0, sizeof(*seg));
+
 	seg->tx_elements.dst_sgl = dst_sg;
 	seg->tx_elements.dstq_num_elemets = dst_nents;
 	seg->tx_elements.src_sgl = src_sg;
@@ -2696,6 +2536,8 @@ static struct dma_async_tx_descriptor *xlnx_ps_pcie_dma_prep_slave_sg(
 			chan->channel_number);
 		return NULL;
 	}
+
+	memset(seg, 0, sizeof(*seg));
 
 	if (chan->direction == DMA_TO_DEVICE) {
 		seg->tx_elements.src_sgl = sgl;
@@ -2789,6 +2631,8 @@ static struct dma_async_tx_descriptor *xlnx_ps_pcie_dma_prep_interrupt(
 
 	intr_segment = mempool_alloc(chan->intr_transactions_pool, GFP_ATOMIC);
 
+	memset(intr_segment, 0, sizeof(*intr_segment));
+
 	dma_async_tx_descriptor_init(&intr_segment->async_intr_tx,
 				     &chan->common);
 	intr_segment->async_intr_tx.flags = flags;
@@ -2852,16 +2696,6 @@ static int xlnx_pcie_dma_driver_probe(struct platform_device *platform_dev)
 		goto platform_driver_probe_return;
 	}
 
-	xdev->entry =
-		devm_kzalloc(&platform_dev->dev,
-			     sizeof(struct msix_entry) * xdev->num_channels,
-			     GFP_KERNEL);
-
-	if (!xdev->entry) {
-		err = -ENOMEM;
-		goto platform_driver_probe_return;
-	}
-
 	for (i = 0; i < MAX_BARS; i++) {
 		if (pci_resource_len(pdev, i) == 0)
 			continue;
@@ -2896,15 +2730,6 @@ static int xlnx_pcie_dma_driver_probe(struct platform_device *platform_dev)
 	}
 	xdev->reg_base = pci_iomap[DMA_BAR_NUMBER];
 
-	irq_probe(xdev);
-
-	err = irq_setup(xdev);
-	if (err) {
-		dev_err(&pdev->dev, "Cannot request irq lines for device %d\n",
-			platform_dev->id);
-		goto platform_driver_probe_return;
-	}
-
 	xdev->board_number = platform_dev->id;
 
 	/* Initialize the DMA engine */
@@ -2934,7 +2759,7 @@ static int xlnx_pcie_dma_driver_probe(struct platform_device *platform_dev)
 	xdev->common.residue_granularity = DMA_RESIDUE_GRANULARITY_SEGMENT;
 
 	for (i = 0; i < xdev->num_channels; i++) {
-		err = probe_channel_properties(platform_dev, &xdev, i);
+		err = probe_channel_properties(platform_dev, xdev, i);
 
 		if (err != 0) {
 			dev_err(&pdev->dev,
@@ -2943,12 +2768,25 @@ static int xlnx_pcie_dma_driver_probe(struct platform_device *platform_dev)
 		}
 	}
 
+	err = irq_probe(xdev);
+	if (err < 0) {
+		dev_err(&pdev->dev, "Cannot probe irq lines for device %d\n",
+			platform_dev->id);
+		goto platform_driver_probe_return;
+	}
+
+	err = irq_setup(xdev);
+	if (err) {
+		dev_err(&pdev->dev, "Cannot request irq lines for device %d\n",
+			platform_dev->id);
+		goto platform_driver_probe_return;
+	}
+
 	err = dma_async_device_register(&xdev->common);
 	if (err) {
 		dev_err(&pdev->dev,
 			"Unable to register board %d with dma framework\n",
 			platform_dev->id);
-		irq_free(xdev);
 		goto platform_driver_probe_return;
 	}
 
@@ -2969,7 +2807,6 @@ static int xlnx_pcie_dma_driver_remove(struct platform_device *platform_dev)
 	for (i = 0; i < xdev->num_channels; i++)
 		xlnx_ps_pcie_dma_free_chan_resources(&xdev->channels[i].common);
 
-	irq_free(xdev);
 	dma_async_device_unregister(&xdev->common);
 
 	return 0;

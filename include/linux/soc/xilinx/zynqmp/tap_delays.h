@@ -17,7 +17,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <linux/soc/xilinx/zynqmp/pm.h>
+#include <linux/soc/xilinx/zynqmp/firmware.h>
 
 #ifdef CONFIG_SOC_XILINX_ZYNQMP
 /* API for programming the tap delays */

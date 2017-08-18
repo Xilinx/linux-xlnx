@@ -19,9 +19,11 @@
 #include <linux/mtd/partitions.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
+#include <linux/pm_runtime.h>
+
 #define DRIVER_NAME			"arasan_nand"
 #define EVNT_TIMEOUT_MSEC		1000
-
+#define ANFC_PM_TIMEOUT		1000	/* ms */
 
 #define PKT_OFST			0x00
 #define MEM_ADDR1_OFST			0x04
@@ -100,6 +102,8 @@
 #define EVENT_MASK	(XFER_COMPLETE | READ_READY | WRITE_READY | MBIT_ERROR)
 
 #define SDR_MODE_DEFLT_FREQ		80000000
+#define ONDIE_ECC_FEATURE_ADDR	0x90
+#define ONFI_FEATURE_ON_DIE_ECC_EN	BIT(3)
 
 /**
  * struct anfc_nand_chip - Defines the nand chip related information
@@ -347,7 +351,8 @@ static void anfc_rw_buf_dma(struct mtd_info *mtd, uint8_t *buf, int len,
 		dev_err(nfc->dev, "Read buffer mapping error");
 		return;
 	}
-	lo_hi_writeq(paddr, nfc->base + DMA_ADDR0_OFST);
+	writel(paddr, nfc->base + DMA_ADDR0_OFST);
+	writel((paddr >> 32), nfc->base + DMA_ADDR1_OFST);
 	anfc_enable_intrs(nfc, (XFER_COMPLETE | eccintr));
 	writel(prog, nfc->base + PROG_OFST);
 	anfc_wait_for_event(nfc);
@@ -432,6 +437,12 @@ static int anfc_read_page_hwecc(struct mtd_info *mtd,
 	u32 val;
 	struct anfc *nfc = to_anfc(chip->controller);
 	struct anfc_nand_chip *achip = to_anfc_nand(chip);
+	u8 *ecc_code = chip->buffers->ecccode;
+	u8 *p = buf;
+	int eccsize = chip->ecc.size;
+	int eccbytes = chip->ecc.bytes;
+	int eccsteps = chip->ecc.steps;
+	int stat = 0, i;
 
 	anfc_set_eccsparecmd(nfc, achip, NAND_CMD_RNDOUT, NAND_CMD_RNDOUTSTART);
 	anfc_config_ecc(nfc, 1);
@@ -443,8 +454,9 @@ static int anfc_read_page_hwecc(struct mtd_info *mtd,
 	chip->read_buf(mtd, buf, mtd->writesize);
 
 	val = readl(nfc->base + ECC_ERR_CNT_OFST);
+	val = ((val & PAGE_ERR_CNT_MASK) >> 8);
 	if (achip->bch) {
-		mtd->ecc_stats.corrected += val & PAGE_ERR_CNT_MASK;
+		mtd->ecc_stats.corrected += val;
 	} else {
 		val = readl(nfc->base + ECC_ERR_CNT_1BIT_OFST);
 		mtd->ecc_stats.corrected += val;
@@ -457,6 +469,25 @@ static int anfc_read_page_hwecc(struct mtd_info *mtd,
 
 	if (oob_required)
 		chip->ecc.read_oob(mtd, chip, page);
+
+	if (val) {
+		anfc_config_ecc(nfc, 0);
+		chip->cmdfunc(mtd, NAND_CMD_READOOB, 0, page);
+		chip->read_buf(mtd, chip->oob_poi, mtd->oobsize);
+		mtd_ooblayout_get_eccbytes(mtd, ecc_code, chip->oob_poi, 0,
+					   chip->ecc.total);
+		for (i = 0 ; eccsteps; eccsteps--, i += eccbytes,
+		     p += eccsize) {
+			stat = nand_check_erased_ecc_chunk(p,
+				chip->ecc.size, &ecc_code[i], eccbytes,
+				NULL, 0, chip->ecc.strength);
+		}
+		if (stat < 0)
+			stat = 0;
+		else
+			mtd->ecc_stats.corrected += stat;
+		return stat;
+	}
 
 	return 0;
 }
@@ -489,6 +520,28 @@ static int anfc_write_page_hwecc(struct mtd_info *mtd,
 	return 0;
 }
 
+static int anfc_read_page(struct mtd_info *mtd,
+			  struct nand_chip *chip, uint8_t *buf,
+			  int oob_required, int page)
+{
+	chip->read_buf(mtd, buf, mtd->writesize);
+	if (oob_required)
+		chip->ecc.read_oob(mtd, chip, page);
+
+	return 0;
+}
+
+static int anfc_write_page(struct mtd_info *mtd,
+			   struct nand_chip *chip, const uint8_t *buf,
+			   int oob_required, int page)
+{
+	chip->write_buf(mtd, buf, mtd->writesize);
+	if (oob_required)
+		chip->ecc.write_oob(mtd, chip, page);
+
+	return 0;
+}
+
 static u8 anfc_read_byte(struct mtd_info *mtd)
 {
 	struct nand_chip *chip = mtd_to_nand(mtd);
@@ -500,56 +553,160 @@ static u8 anfc_read_byte(struct mtd_info *mtd)
 		return nfc->buf[nfc->bufshift++];
 }
 
+static int anfc_ecc_ooblayout_ondie64_ecc(struct mtd_info *mtd, int section,
+					  struct mtd_oob_region *oobregion)
+{
+	if (section > 4)
+		return -ERANGE;
+
+	oobregion->offset = (section * 16) + 8;
+	oobregion->length = 8;
+
+	return 0;
+}
+
+static int anfc_ecc_ooblayout_ondie64_free(struct mtd_info *mtd, int section,
+					   struct mtd_oob_region *oobregion)
+{
+	if (section > 4)
+		return -ERANGE;
+
+	oobregion->offset = (section * 16) + 4;
+	oobregion->length = 4;
+
+	return 0;
+}
+
+static const struct mtd_ooblayout_ops anfc_ecc_ooblayout_ondie64_ops = {
+	.ecc = anfc_ecc_ooblayout_ondie64_ecc,
+	.free = anfc_ecc_ooblayout_ondie64_free,
+};
+
+/* Generic flash bbt decriptors */
+static u8 bbt_pattern[] = { 'B', 'b', 't', '0' };
+static u8 mirror_pattern[] = { '1', 't', 'b', 'B' };
+
+static struct nand_bbt_descr bbt_main_descr = {
+	.options = NAND_BBT_LASTBLOCK | NAND_BBT_CREATE | NAND_BBT_WRITE
+		| NAND_BBT_2BIT | NAND_BBT_VERSION | NAND_BBT_PERCHIP |
+		NAND_BBT_SCAN2NDPAGE,
+	.offs = 4,
+	.len = 4,
+	.veroffs = 20,
+	.maxblocks = 4,
+	.pattern = bbt_pattern
+};
+
+static struct nand_bbt_descr bbt_mirror_descr = {
+	.options = NAND_BBT_LASTBLOCK | NAND_BBT_CREATE | NAND_BBT_WRITE
+		| NAND_BBT_2BIT | NAND_BBT_VERSION | NAND_BBT_PERCHIP |
+		NAND_BBT_SCAN2NDPAGE,
+	.offs = 4,
+	.len = 4,
+	.veroffs = 20,
+	.maxblocks = 4,
+	.pattern = mirror_pattern
+};
+
+static int anfc_nand_on_die_ecc_setup(struct nand_chip *chip, bool enable)
+{
+	u8 feature[ONFI_SUBFEATURE_PARAM_LEN] = { 0, };
+
+	if (enable)
+	feature[0] |= ONFI_FEATURE_ON_DIE_ECC_EN;
+
+	return chip->onfi_set_features(nand_to_mtd(chip), chip,
+	      ONDIE_ECC_FEATURE_ADDR, feature);
+}
+
+static int anfc_nand_detect_on_die_ecc(struct nand_chip *chip)
+{
+	u8 feature[ONFI_SUBFEATURE_PARAM_LEN] = { 0, };
+	int ret;
+
+	if (chip->onfi_version == 0)
+		return 0;
+
+	if (chip->bits_per_cell != 1)
+		return 0;
+
+	ret = anfc_nand_on_die_ecc_setup(chip, true);
+	if (ret)
+		return 0;
+
+	chip->onfi_get_features(nand_to_mtd(chip), chip,
+		ONDIE_ECC_FEATURE_ADDR, feature);
+	if ((feature[0] & ONFI_FEATURE_ON_DIE_ECC_EN) == 0)
+		return 0;
+
+	return 1;
+}
+
 static int anfc_ecc_init(struct mtd_info *mtd,
-			 struct nand_ecc_ctrl *ecc)
+			 struct nand_ecc_ctrl *ecc, int ondie_ecc_state)
 {
 	u32 ecc_addr;
 	unsigned int bchmode, steps;
 	struct nand_chip *chip = mtd_to_nand(mtd);
+	struct anfc *nfc = to_anfc(chip->controller);
 	struct anfc_nand_chip *achip = to_anfc_nand(chip);
 
 	ecc->mode = NAND_ECC_HW;
-	ecc->read_page = anfc_read_page_hwecc;
-	ecc->write_page = anfc_write_page_hwecc;
 	ecc->write_oob = anfc_write_oob;
-	mtd_set_ooblayout(mtd, &anfc_ooblayout_ops);
 
-	steps = mtd->writesize / chip->ecc_step_ds;
+	if (ondie_ecc_state) {
+		/* bypass the controller ECC block */
+		anfc_config_ecc(nfc, 0);
+		ecc->strength = 1;
+		ecc->bytes = 0;
+		ecc->size = mtd->writesize;
+		ecc->read_page = anfc_read_page;
+		ecc->write_page = anfc_write_page;
+		mtd_set_ooblayout(mtd, &anfc_ecc_ooblayout_ondie64_ops);
+		chip->bbt_td = &bbt_main_descr;
+		chip->bbt_md = &bbt_mirror_descr;
+	} else {
+		ecc->read_page = anfc_read_page_hwecc;
+		ecc->write_page = anfc_write_page_hwecc;
+		mtd_set_ooblayout(mtd, &anfc_ooblayout_ops);
 
-	switch (chip->ecc_strength_ds) {
-	case 12:
-		bchmode = 0x1;
-		break;
-	case 8:
-		bchmode = 0x2;
-		break;
-	case 4:
-		bchmode = 0x3;
-		break;
-	case 24:
-		bchmode = 0x4;
-		break;
-	default:
-		bchmode = 0x0;
+		steps = mtd->writesize / chip->ecc_step_ds;
+
+		switch (chip->ecc_strength_ds) {
+		case 12:
+			bchmode = 0x1;
+			break;
+		case 8:
+			bchmode = 0x2;
+			break;
+		case 4:
+			bchmode = 0x3;
+			break;
+		case 24:
+			bchmode = 0x4;
+			break;
+		default:
+			bchmode = 0x0;
+		}
+
+		if (!bchmode)
+			ecc->total = 3 * steps;
+		else
+			ecc->total =
+			     DIV_ROUND_UP(fls(8 * chip->ecc_step_ds) *
+				 chip->ecc_strength_ds * steps, 8);
+
+		ecc->strength = chip->ecc_strength_ds;
+		ecc->size = chip->ecc_step_ds;
+		ecc->bytes = ecc->total / steps;
+		ecc->steps = steps;
+		achip->bchmode = bchmode;
+		achip->bch = achip->bchmode;
+		ecc_addr = mtd->writesize + (mtd->oobsize - ecc->total);
+
+		achip->eccval = ecc_addr | (ecc->total << ECC_SIZE_SHIFT) |
+				(achip->bch << BCH_EN_SHIFT);
 	}
-
-	if (!bchmode)
-		ecc->total = 3 * steps;
-	else
-		ecc->total =
-		     DIV_ROUND_UP(fls(8 * chip->ecc_step_ds) *
-			 chip->ecc_strength_ds * steps, 8);
-
-	ecc->strength = chip->ecc_strength_ds;
-	ecc->size = chip->ecc_step_ds;
-	ecc->bytes = ecc->total / steps;
-	ecc->steps = steps;
-	achip->bchmode = bchmode;
-	achip->bch = achip->bchmode;
-	ecc_addr = mtd->writesize + (mtd->oobsize - ecc->total);
-
-	achip->eccval = ecc_addr | (ecc->total << ECC_SIZE_SHIFT) |
-			(achip->bch << BCH_EN_SHIFT);
 
 	if (chip->ecc_step_ds >= 1024)
 		achip->pktsize = 1024;
@@ -656,13 +813,22 @@ static void anfc_cmd_function(struct mtd_info *mtd,
 static void anfc_select_chip(struct mtd_info *mtd, int num)
 {
 	u32 val;
+	int ret;
 	struct nand_chip *chip = mtd_to_nand(mtd);
 	struct anfc_nand_chip *achip = to_anfc_nand(chip);
 	struct anfc *nfc = to_anfc(chip->controller);
 
-	if (num == -1)
+	if (num == -1) {
+		pm_runtime_mark_last_busy(nfc->dev);
+		pm_runtime_put_autosuspend(nfc->dev);
 		return;
+	}
 
+	ret = pm_runtime_get_sync(nfc->dev);
+	if (ret < 0) {
+		dev_err(nfc->dev, "runtime_get_sync failed\n");
+		return;
+	}
 	val = readl(nfc->base + MEM_ADDR2_OFST);
 	val &= (val & ~(CS_MASK | BCH_MODE_MASK));
 	val |= (achip->csnum << CS_SHIFT) | (achip->bchmode << BCH_MODE_SHIFT);
@@ -777,6 +943,7 @@ static int anfc_nand_chip_init(struct anfc *nfc,
 	struct nand_chip *chip = &anand_chip->chip;
 	struct mtd_info *mtd = nand_to_mtd(chip);
 	int ret;
+	int ondie_ecc_state;
 
 	ret = of_property_read_u32(np, "reg", &anand_chip->csnum);
 	if (ret) {
@@ -816,13 +983,18 @@ static int anfc_nand_chip_init(struct anfc *nfc,
 		anand_chip->caddr_cycles = 2;
 	}
 
+	ondie_ecc_state = anfc_nand_detect_on_die_ecc(chip);
+	if (ondie_ecc_state)
+		dev_info(nfc->dev, "On-Die ECC selected");
+	else
+		dev_info(nfc->dev, "HW ECC selected");
 	ret = anfc_init_timing_mode(nfc, anand_chip);
 	if (ret) {
 		dev_err(nfc->dev, "timing mode init failed\n");
 		return ret;
 	}
 
-	ret = anfc_ecc_init(mtd, &chip->ecc);
+	ret = anfc_ecc_init(mtd, &chip->ecc, ondie_ecc_state);
 	if (ret)
 		return ret;
 
@@ -865,6 +1037,7 @@ static int anfc_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "platform_get_irq failed\n");
 		return -ENXIO;
 	}
+	dma_set_mask(&pdev->dev, DMA_BIT_MASK(64));
 	err = devm_request_irq(&pdev->dev, nfc->irq, anfc_irq_handler,
 			       0, "arasannfc", nfc);
 	if (err)
@@ -893,6 +1066,11 @@ static int anfc_probe(struct platform_device *pdev)
 		goto clk_dis_sys;
 	}
 
+	pm_runtime_set_autosuspend_delay(nfc->dev, ANFC_PM_TIMEOUT);
+	pm_runtime_use_autosuspend(nfc->dev);
+	pm_runtime_set_active(nfc->dev);
+	pm_runtime_enable(nfc->dev);
+
 	for_each_available_child_of_node(np, child) {
 		anand_chip = devm_kzalloc(&pdev->dev, sizeof(*anand_chip),
 					  GFP_KERNEL);
@@ -911,11 +1089,16 @@ static int anfc_probe(struct platform_device *pdev)
 		list_add_tail(&anand_chip->node, &nfc->chips);
 	}
 
+	pm_runtime_mark_last_busy(nfc->dev);
+	pm_runtime_put_autosuspend(nfc->dev);
+
 	return 0;
 
 nandchip_clean_up:
 	list_for_each_entry(anand_chip, &nfc->chips, node)
 		nand_release(nand_to_mtd(&anand_chip->chip));
+	pm_runtime_disable(&pdev->dev);
+	pm_runtime_set_suspended(&pdev->dev);
 	clk_disable_unprepare(nfc->clk_flash);
 clk_dis_sys:
 	clk_disable_unprepare(nfc->clk_sys);
@@ -931,6 +1114,10 @@ static int anfc_remove(struct platform_device *pdev)
 	list_for_each_entry(anand_chip, &nfc->chips, node)
 		nand_release(nand_to_mtd(&anand_chip->chip));
 
+	pm_runtime_disable(&pdev->dev);
+	pm_runtime_set_suspended(&pdev->dev);
+	pm_runtime_dont_use_autosuspend(&pdev->dev);
+
 	clk_disable_unprepare(nfc->clk_sys);
 	clk_disable_unprepare(nfc->clk_flash);
 
@@ -943,10 +1130,60 @@ static const struct of_device_id anfc_ids[] = {
 };
 MODULE_DEVICE_TABLE(of, anfc_ids);
 
+static int anfc_suspend(struct device *dev)
+{
+	return pm_runtime_put_sync(dev);
+}
+
+static int anfc_resume(struct device *dev)
+{
+	return pm_runtime_get_sync(dev);
+}
+
+static int __maybe_unused anfc_runtime_suspend(struct device *dev)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct anfc *nfc = platform_get_drvdata(pdev);
+
+	clk_disable(nfc->clk_sys);
+	clk_disable(nfc->clk_flash);
+
+	return 0;
+}
+
+static int __maybe_unused anfc_runtime_resume(struct device *dev)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct anfc *nfc = platform_get_drvdata(pdev);
+	int ret;
+
+	ret = clk_enable(nfc->clk_sys);
+	if (ret) {
+		dev_err(dev, "Cannot enable sys clock.\n");
+		return ret;
+	}
+	ret = clk_enable(nfc->clk_flash);
+	if (ret) {
+		dev_err(dev, "Cannot enable flash clock.\n");
+		clk_disable(nfc->clk_sys);
+		return ret;
+	}
+
+	return 0;
+}
+
+static const struct dev_pm_ops anfc_pm_ops = {
+	.resume = anfc_resume,
+	.suspend = anfc_suspend,
+	.runtime_resume = anfc_runtime_resume,
+	.runtime_suspend = anfc_runtime_suspend,
+};
+
 static struct platform_driver anfc_driver = {
 	.driver = {
 		.name = DRIVER_NAME,
 		.of_match_table = anfc_ids,
+		.pm = &anfc_pm_ops,
 	},
 	.probe = anfc_probe,
 	.remove = anfc_remove,

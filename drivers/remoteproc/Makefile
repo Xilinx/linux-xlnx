@@ -18,5 +18,4 @@ obj-$(CONFIG_QCOM_WCNSS_IRIS)		+= qcom_wcnss_iris.o
 obj-$(CONFIG_QCOM_WCNSS_PIL)		+= qcom_wcnss.o
 obj-$(CONFIG_ST_REMOTEPROC)		+= st_remoteproc.o
 obj-$(CONFIG_ZYNQ_REMOTEPROC)		+= zynq_remoteproc.o
-obj-$(CONFIG_MB_REMOTEPROC)		+= mb_remoteproc.o
 obj-$(CONFIG_ZYNQMP_R5_REMOTEPROC)	+= zynqmp_r5_remoteproc.o

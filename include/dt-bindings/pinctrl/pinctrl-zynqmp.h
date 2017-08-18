@@ -28,9 +28,9 @@
 #define PIN_INPUT_TYPE_SCHMITT    1
 
 /* Bit values for drive control*/
-#define DRIVE_STRENGTH_2MA        0
-#define DRIVE_STRENGTH_4MA        1
-#define DRIVE_STRENGTH_8MA        2
-#define DRIVE_STRENGTH_12MA       3
+#define DRIVE_STRENGTH_2MA        2
+#define DRIVE_STRENGTH_4MA        4
+#define DRIVE_STRENGTH_8MA        8
+#define DRIVE_STRENGTH_12MA       12
 
 #endif /* _DT_BINDINGS_PINCTRL_ZYNQMP_H */

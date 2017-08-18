@@ -16,7 +16,7 @@ Required properties:
  - compatible : should be "xlnx,zynq_remoteproc"
  - vring0: soft interrupt for kicking from firmware
  - vring1: soft interrupt for kicking from Linux kernel
- - sram0: memory for the firmware
+ - srams: firmware memories
 
 Example:
 --------
@@ -32,5 +32,5 @@ Example:
 		compatible = "xlnx,zynq_remoteproc";
 		vring0 = <15>;
 		vring1 = <14>;
-		sram_0 =  <&elf_ddr_0>;
+		srams =  <&elf_ddr_0>;
 	};

@@ -194,7 +194,7 @@ struct xusb_udc {
 	spinlock_t lock;
 	bool dma_enabled;
 
-	unsigned int (*read_fn)(void __iomem *);
+	unsigned int (*read_fn)(void __iomem *reg);
 	void (*write_fn)(void __iomem *, u32, u32);
 };
 
@@ -968,10 +968,8 @@ static struct usb_request *xudc_ep_alloc_request(struct usb_ep *_ep,
 						 gfp_t gfp_flags)
 {
 	struct xusb_ep *ep = to_xusb_ep(_ep);
-	struct xusb_udc *udc;
 	struct xusb_req *req;
 
-	udc = ep->udc;
 	req = kzalloc(sizeof(*req), gfp_flags);
 	if (!req)
 		return NULL;
@@ -1406,7 +1404,6 @@ err:
 /**
  * xudc_stop - stops the device.
  * @gadget: pointer to the usb gadget structure
- * @driver: pointer to usb gadget driver structure
  *
  * Return: zero always
  */
@@ -1739,7 +1736,7 @@ static void xudc_set_clear_feature(struct xusb_udc *udc)
  *
  * Process setup packet and delegate to gadget layer.
  */
-static void xudc_handle_setup(struct xusb_udc *udc)
+static void xudc_handle_setup(struct xusb_udc *udc) __must_hold(&udc->lock)
 {
 	struct xusb_ep *ep0 = &udc->ep[0];
 	struct usb_ctrlrequest setup;

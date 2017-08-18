@@ -24,7 +24,6 @@
 
 /* register offsets */
 #define SLCR_UNLOCK_OFFSET		0x8   /* SCLR unlock register */
-
 #define SLCR_PS_RST_CTRL_OFFSET		0x200 /* PS Software Reset Control */
 #define SLCR_FPGA_RST_CTRL_OFFSET	0x240 /* FPGA Software Reset Control */
 #define SLCR_A9_CPU_RST_CTRL_OFFSET	0x244 /* CPU Software Reset Control */

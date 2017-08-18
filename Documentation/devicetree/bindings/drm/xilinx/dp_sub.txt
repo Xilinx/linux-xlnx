@@ -19,12 +19,20 @@ Optional properties:
 	"uyvy"
 	"yuyv"
 	"yvyu"
+	"yuv422"
+	"yvu422"
+	"yuv444"
+	"yvu444"
 	"nv16"
 	"nv61
 	"bgr888"
 	"rgb888"
 	"xbgr8888"
 	"xrgb8888"
+	"xbgr2101010"
+	"xrgb2101010"
+	"yuv420"
+	"yvu420"
 	"nv12"
 	"nv21".
    If nothing is specified, "vyuy" will be selected.

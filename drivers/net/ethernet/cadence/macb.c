@@ -35,6 +35,7 @@
 #include <linux/net_tstamp.h>
 #include <linux/pm_runtime.h>
 #include <linux/ptp_clock_kernel.h>
+#include <linux/crc32.h>
 
 #include "macb.h"
 
@@ -972,6 +973,15 @@ static inline void macb_handle_rxtstamp(struct macb *bp, struct sk_buff *skb,
 }
 #endif
 
+static int macb_validate_hw_csum(struct sk_buff *skb)
+{
+	u32 pkt_csum = *((u32 *)&skb->data[skb->len - ETH_FCS_LEN]);
+	u32 csum  = ~crc32_le(~0, skb_mac_header(skb),
+			skb->len + ETH_HLEN - ETH_FCS_LEN);
+
+	return (pkt_csum != csum);
+}
+
 static int gem_rx(struct macb *bp, int budget)
 {
 	unsigned int		len;
@@ -1033,6 +1043,15 @@ static int gem_rx(struct macb *bp, int budget)
 		if (addr & GEM_RX_TS_MASK)
 			macb_handle_rxtstamp(bp, skb, desc);
 #endif
+
+		/* Validate MAC fcs if RX checsum offload disabled */
+		if (!(bp->dev->features & NETIF_F_RXCSUM)) {
+			if (macb_validate_hw_csum(skb)) {
+				netdev_err(bp->dev, "incorrect FCS\n");
+				bp->stats.rx_dropped++;
+				break;
+			}
+		}
 
 		skb_checksum_none_assert(skb);
 		if (bp->dev->features & NETIF_F_RXCSUM &&
@@ -1109,7 +1128,10 @@ static int macb_rx_frame(struct macb *bp, unsigned int first_frag,
 		unsigned int frag_len = bp->rx_buffer_size;
 
 		if (offset + frag_len > len) {
-			BUG_ON(frag != last_frag);
+			if (unlikely(frag != last_frag)) {
+				dev_kfree_skb_any(skb);
+				return -1;
+			}
 			frag_len = len - offset;
 		}
 		skb_copy_to_linear_data_offset(skb, offset,
@@ -1121,6 +1143,19 @@ static int macb_rx_frame(struct macb *bp, unsigned int first_frag,
 
 		if (frag == last_frag)
 			break;
+	}
+
+	/* Validate MAC fcs if RX checsum offload disabled */
+	if (!(bp->dev->features & NETIF_F_RXCSUM)) {
+		if (macb_validate_hw_csum(skb)) {
+			netdev_err(bp->dev, "incorrect FCS\n");
+			bp->stats.rx_dropped++;
+
+			/* Make descriptor updates visible to hardware */
+			wmb();
+
+			return 1;
+		}
 	}
 
 	/* Make descriptor updates visible to hardware */
@@ -1155,6 +1190,7 @@ static inline void macb_init_rx_ring(struct macb *bp)
 
 static int macb_rx(struct macb *bp, int budget)
 {
+	bool reset_rx_queue = false;
 	int received = 0;
 	unsigned int tail;
 	int first_frag = -1;
@@ -1180,15 +1216,43 @@ static int macb_rx(struct macb *bp, int budget)
 
 		if (ctrl & MACB_BIT(RX_EOF)) {
 			int dropped;
-			BUG_ON(first_frag == -1);
+
+			if (unlikely(first_frag == -1)) {
+				reset_rx_queue = true;
+				continue;
+			}
 
 			dropped = macb_rx_frame(bp, first_frag, tail);
 			first_frag = -1;
+			if (unlikely(dropped < 0)) {
+				reset_rx_queue = true;
+				continue;
+			}
 			if (!dropped) {
 				received++;
 				budget--;
 			}
 		}
+	}
+
+	if (unlikely(reset_rx_queue)) {
+		unsigned long flags;
+		u32 ctrl;
+
+		netdev_err(bp->dev, "RX queue corruption: reset it\n");
+
+		spin_lock_irqsave(&bp->lock, flags);
+
+		ctrl = macb_readl(bp, NCR);
+		macb_writel(bp, NCR, ctrl & ~MACB_BIT(RE));
+
+		macb_init_rx_ring(bp);
+		macb_writel(bp, RBQP, bp->rx_ring_dma);
+
+		macb_writel(bp, NCR, ctrl | MACB_BIT(RE));
+
+		spin_unlock_irqrestore(&bp->lock, flags);
+		return received;
 	}
 
 	if (first_frag != -1)
@@ -1360,7 +1424,7 @@ static irqreturn_t macb_interrupt(int irq, void *dev_id)
 			macb_writel(bp, NCR, ctrl | MACB_BIT(RE));
 
 			if (bp->caps & MACB_CAPS_ISR_CLEAR_ON_WRITE)
-				macb_writel(bp, ISR, MACB_BIT(RXUBR));
+				queue_writel(queue, ISR, MACB_BIT(RXUBR));
 		}
 
 		if (status & MACB_BIT(ISR_ROVR)) {
@@ -1837,15 +1901,8 @@ static void gem_init_rings(struct macb *bp)
 static void macb_init_rings(struct macb *bp)
 {
 	int i;
-	dma_addr_t addr;
 
-	addr = bp->rx_buffers_dma;
-	for (i = 0; i < RX_RING_SIZE; i++) {
-		bp->rx_ring[i].addr = addr;
-		bp->rx_ring[i].ctrl = 0;
-		addr += bp->rx_buffer_size;
-	}
-	bp->rx_ring[RX_RING_SIZE - 1].addr |= MACB_BIT(RX_WRAP);
+	macb_init_rx_ring(bp);
 
 	for (i = 0; i < TX_RING_SIZE; i++) {
 		bp->queues[0].tx_ring[i].addr = 0;
@@ -1875,6 +1932,10 @@ static void macb_reset_hw(struct macb *bp)
 	/* Clear all status flags */
 	macb_writel(bp, TSR, -1);
 	macb_writel(bp, RSR, -1);
+
+	/* Disable RX partial store and forward and reset watermark value */
+	if (bp->caps & MACB_CAPS_PARTIAL_STORE_FORWARD)
+		gem_writel(bp, PBUFRXCUT, 0xFFF);
 
 	/* Disable all interrupts */
 	for (q = 0, queue = bp->queues; q < bp->num_queues; ++q, ++queue) {
@@ -2193,7 +2254,11 @@ static void macb_init_hw(struct macb *bp)
 	config |= macb_readl(bp, NCFGR) & (3 << GEM_DBW_OFFSET);
 	config |= MACB_BF(RBOF, NET_IP_ALIGN);	/* Make eth data aligned */
 	config |= MACB_BIT(PAE);		/* PAuse Enable */
-	config |= MACB_BIT(DRFCS);		/* Discard Rx FCS */
+
+	/* Do not discard Rx FCS if RX checsum offload disabled */
+	if (bp->dev->features & NETIF_F_RXCSUM)
+		config |= MACB_BIT(DRFCS);		/* Discard Rx FCS */
+
 	if (bp->caps & MACB_CAPS_JUMBO)
 		config |= MACB_BIT(JFRAME);	/* Enable jumbo frames */
 	else
@@ -2209,7 +2274,10 @@ static void macb_init_hw(struct macb *bp)
 	if ((bp->caps & MACB_CAPS_JUMBO) && bp->jumbo_max_len)
 		gem_writel(bp, JML, bp->jumbo_max_len);
 	bp->speed = SPEED_10;
-	bp->duplex = DUPLEX_HALF;
+	if (bp->caps & MACB_CAPS_PARTIAL_STORE_FORWARD)
+		bp->duplex = DUPLEX_FULL;
+	else
+		bp->duplex = DUPLEX_HALF;
 	bp->rx_frm_len_mask = MACB_RX_FRMLEN_MASK;
 	if (bp->caps & MACB_CAPS_JUMBO)
 		bp->rx_frm_len_mask = MACB_RX_JFRMLEN_MASK;
@@ -2230,6 +2298,14 @@ static void macb_init_hw(struct macb *bp)
 	}
 
 	macb_configure_dma(bp);
+
+	/* Enable RX partial store and forward and set watermark */
+	if (bp->caps & MACB_CAPS_PARTIAL_STORE_FORWARD) {
+		gem_writel(bp, PBUFRXCUT,
+			   (gem_readl(bp, PBUFRXCUT) &
+			   GEM_BF(WTRMRK, bp->rx_watermark)) |
+			   GEM_BIT(ENCUTTHRU));
+	}
 
 	/* Initialize TX and RX buffers */
 	macb_writel(bp, RBQP, (u32)(bp->rx_ring_dma));
@@ -2831,9 +2907,28 @@ static void macb_configure_caps(struct macb *bp,
 				const struct macb_config *dt_conf)
 {
 	u32 dcfg;
+	int retval;
 
 	if (dt_conf)
 		bp->caps = dt_conf->caps;
+
+	/* By default we set to partial store and forward mode for zynqmp.
+	 * Disable if not set in devicetree.
+	 */
+	if (bp->caps & MACB_CAPS_PARTIAL_STORE_FORWARD) {
+		retval = of_property_read_u16(bp->pdev->dev.of_node,
+					      "rx-watermark",
+					      &bp->rx_watermark);
+
+		/* Disable partial store and forward in case of error or
+		 * invalid watermark value
+		 */
+		if (retval || bp->rx_watermark > 0xFFF) {
+			dev_info(&bp->pdev->dev,
+				 "Not enabling partial store and forward\n");
+			bp->caps &= ~MACB_CAPS_PARTIAL_STORE_FORWARD;
+		}
+	}
 
 	if (hw_is_gem(bp->regs, bp->native_io)) {
 		bp->caps |= MACB_CAPS_MACB_IS_GEM;
@@ -2867,7 +2962,8 @@ static void macb_reset_phy(struct platform_device *pdev)
 		return;
 
 	err = devm_gpio_request_one(&pdev->dev, phy_reset,
-				    (!active_low | GPIOF_DIR_OUT), "phy-reset");
+				    active_low ? GPIOF_OUT_INIT_LOW :
+				    GPIOF_OUT_INIT_HIGH, "phy-reset");
 	if (err) {
 		dev_err(&pdev->dev, "failed to get phy-reset-gpio: %d\n", err);
 		return;
@@ -3062,6 +3158,8 @@ static int macb_init(struct platform_device *pdev)
 	/* Checksum offload is only available on gem with packet buffer */
 	if (macb_is_gem(bp) && !(bp->caps & MACB_CAPS_FIFO_MODE))
 		dev->hw_features |= NETIF_F_HW_CSUM | NETIF_F_RXCSUM;
+	if (bp->caps & MACB_CAPS_PARTIAL_STORE_FORWARD)
+		dev->hw_features &= ~NETIF_F_RXCSUM;
 	if (bp->caps & MACB_CAPS_SG_DISABLED)
 		dev->hw_features &= ~NETIF_F_SG;
 	dev->features = dev->hw_features;
@@ -3071,9 +3169,9 @@ static int macb_init(struct platform_device *pdev)
 		if (bp->phy_interface == PHY_INTERFACE_MODE_RGMII)
 			val = GEM_BIT(RGMII);
 		else if (bp->phy_interface == PHY_INTERFACE_MODE_RMII &&
-			 (bp->caps & MACB_CAPS_USRIO_DEFAULT_IS_MII))
+			 (bp->caps & MACB_CAPS_USRIO_DEFAULT_IS_MII_GMII))
 			val = MACB_BIT(RMII);
-		else if (!(bp->caps & MACB_CAPS_USRIO_DEFAULT_IS_MII))
+		else if (!(bp->caps & MACB_CAPS_USRIO_DEFAULT_IS_MII_GMII))
 			val = MACB_BIT(MII);
 
 		if (bp->caps & MACB_CAPS_USRIO_HAS_CLKEN)
@@ -3419,7 +3517,7 @@ static int at91ether_init(struct platform_device *pdev)
 }
 
 static const struct macb_config at91sam9260_config = {
-	.caps = MACB_CAPS_USRIO_HAS_CLKEN | MACB_CAPS_USRIO_DEFAULT_IS_MII,
+	.caps = MACB_CAPS_USRIO_HAS_CLKEN | MACB_CAPS_USRIO_DEFAULT_IS_MII_GMII,
 	.clk_init = macb_clk_init,
 	.init = macb_init,
 };
@@ -3432,21 +3530,22 @@ static const struct macb_config pc302gem_config = {
 };
 
 static const struct macb_config sama5d2_config = {
-	.caps = 0,
+	.caps = MACB_CAPS_USRIO_DEFAULT_IS_MII_GMII,
 	.dma_burst_length = 16,
 	.clk_init = macb_clk_init,
 	.init = macb_init,
 };
 
 static const struct macb_config sama5d3_config = {
-	.caps = MACB_CAPS_SG_DISABLED | MACB_CAPS_GIGABIT_MODE_AVAILABLE,
+	.caps = MACB_CAPS_SG_DISABLED | MACB_CAPS_GIGABIT_MODE_AVAILABLE
+	      | MACB_CAPS_USRIO_DEFAULT_IS_MII_GMII,
 	.dma_burst_length = 16,
 	.clk_init = macb_clk_init,
 	.init = macb_init,
 };
 
 static const struct macb_config sama5d4_config = {
-	.caps = 0,
+	.caps = MACB_CAPS_USRIO_DEFAULT_IS_MII_GMII,
 	.dma_burst_length = 4,
 	.clk_init = macb_clk_init,
 	.init = macb_init,
@@ -3464,7 +3563,8 @@ static const struct macb_config np4_config = {
 };
 
 static const struct macb_config zynqmp_config = {
-	.caps = MACB_CAPS_GIGABIT_MODE_AVAILABLE | MACB_CAPS_JUMBO | MACB_CAPS_TSU | MACB_CAPS_PCS,
+	.caps = MACB_CAPS_GIGABIT_MODE_AVAILABLE | MACB_CAPS_JUMBO |
+		MACB_CAPS_TSU | MACB_CAPS_PCS | MACB_CAPS_PARTIAL_STORE_FORWARD,
 	.dma_burst_length = 16,
 	.clk_init = macb_clk_init,
 	.init = macb_init,

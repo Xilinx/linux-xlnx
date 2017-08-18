@@ -117,7 +117,7 @@ xilinx_drm_encoder_get_crtc(struct drm_encoder *base_encoder)
 	return base_encoder->crtc;
 }
 
-static struct drm_encoder_helper_funcs xilinx_drm_encoder_helper_funcs = {
+static const struct drm_encoder_helper_funcs xilinx_drm_encoder_helper_funcs = {
 	.dpms		= xilinx_drm_encoder_dpms,
 	.mode_fixup	= xilinx_drm_encoder_mode_fixup,
 	.mode_set	= xilinx_drm_encoder_mode_set,
@@ -142,7 +142,7 @@ void xilinx_drm_encoder_destroy(struct drm_encoder *base_encoder)
 	put_device(encoder->dev);
 }
 
-static struct drm_encoder_funcs xilinx_drm_encoder_funcs = {
+static const struct drm_encoder_funcs xilinx_drm_encoder_funcs = {
 	.destroy	= xilinx_drm_encoder_destroy,
 };
 

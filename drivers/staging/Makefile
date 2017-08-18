@@ -33,7 +33,6 @@ obj-$(CONFIG_MTD_SPINAND_MT29F)	+= mt29f_spinand/
 obj-$(CONFIG_GS_FPGABOOT)	+= gs_fpgaboot/
 obj-$(CONFIG_CRYPTO_SKEIN)	+= skein/
 obj-$(CONFIG_UNISYSSPAR)	+= unisys/
-obj-$(CONFIG_XILINX_VIDEO_IP)	+= video/axivdma/
 obj-$(CONFIG_XILINX_APF)	+= apf/
 obj-$(CONFIG_COMMON_CLK_XLNX_CLKWZRD)	+= clocking-wizard/
 obj-$(CONFIG_XILINX_FCLK)	+= fclk/

@@ -134,7 +134,7 @@ static s16 lanczos(s16 x, s16 a)
 	temp = fixp_sin16(temp >> FRAC_N);
 
 	/* a * sin(pi * x) */
-	numerator = fixp_mult(temp , a);
+	numerator = fixp_mult(temp, a);
 
 	/* sin(pi * x / a) */
 	temp = (fixp_mult(fixp_new(180), x) << FRAC_N) / a;

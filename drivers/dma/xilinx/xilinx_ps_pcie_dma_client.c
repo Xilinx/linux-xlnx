@@ -141,9 +141,7 @@ static struct list_head g_ps_pcie_dma_client_list;
 
 /*
  * Keep adding to this list to interact with multiple DMA devices
- * Change g_num_dma_dev_properties variable along with addition
  */
-static u16 g_num_dma_dev_properties = 1;
 static struct dma_deviceproperties g_dma_deviceproperties_list[] = {
 		{
 			.pci_vendorid = PCI_VENDOR_ID_XILINX,
@@ -1095,7 +1093,6 @@ static bool ps_pcie_dma_filter(struct dma_chan *chan, void *param)
 		if ((client_match->pci_vendorid != 0) && (dma_channel_match->pci_vendorid != 0)) {
 			if ((client_match->pci_vendorid) == (dma_channel_match->pci_vendorid)) {
 				if (((client_match->pci_deviceid) == (dma_channel_match->pci_deviceid)) &&
-				    (client_match->board_number == dma_channel_match->board_number) &&
 				    (client_match->channel_number == dma_channel_match->channel_number) &&
 				    (client_match->direction == dma_channel_match->direction)) {
 					return true;
@@ -1338,6 +1335,7 @@ static int __init ps_pcie_dma_client_init(void)
 {
 	int err;
 	int i;
+	size_t num_dma_dev_properties;
 
 	INIT_LIST_HEAD(&g_ps_pcie_dma_client_list);
 
@@ -1347,7 +1345,8 @@ static int __init ps_pcie_dma_client_init(void)
 		return PTR_ERR(g_ps_pcie_dma_client_class);
 	}
 
-	for (i = 0; i < g_num_dma_dev_properties; i++) {
+	num_dma_dev_properties = ARRAY_SIZE(g_dma_deviceproperties_list);
+	for (i = 0; i < num_dma_dev_properties; i++) {
 		err = setup_char_devices(i);
 		if (err) {
 			pr_err("Error creating char devices for %d\n", i);
@@ -1355,6 +1354,7 @@ static int __init ps_pcie_dma_client_init(void)
 		}
 	}
 
+	pr_info("PS PCIe DMA Client Driver Init successful\n");
 	return 0;
 
 err_no_char_devices:

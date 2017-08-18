@@ -59,14 +59,15 @@
 #define XDSI_VIDEO_MODE_SYNC_EVENT	0x1
 #define XDSI_VIDEO_MODE_BURST		0x2
 
-/**
- * used as a multiplication factor for HACT based on used
+/*
+ * Used as a multiplication factor for HACT based on used
  * DSI data type and pixels per beat.
  * e.g. for RGB666_L with 2 pixels per beat, (6+6+6)*2 = 36.
  * To make it multiples of 8, 36+4 = 40.
  * So, multiplication factor is = 40/8 which gives 5
  */
-int xdsi_mul_factor[XDSI_NUM_DATA_TYPES][XDSI_NUM_PIXELS_PER_BEAT] = {
+static const int
+xdsi_mul_factor[XDSI_NUM_DATA_TYPES][XDSI_NUM_PIXELS_PER_BEAT] = {
 	{ 3, 6, 12 }, /* RGB888 = {1ppb, 2ppb, 4ppb} */
 	{ 3, 5, 9 }, /* RGB666_L = {1ppb, 2ppb, 4ppb} */
 	{ 3, 5, 9 }, /* RGB666_P = {1ppb, 2ppb, 4ppb} */
@@ -213,8 +214,8 @@ static void xilinx_dsi_set_display_mode(struct xilinx_dsi *dsi)
 				XDSI_PCR_VIDEOMODE_SHIFT);
 
 	/* configure the HSA value only if non_burst_sync_pluse video mode */
-	if ((!video_mode) &
-		(dsi->mode_flags & MIPI_DSI_MODE_VIDEO_SYNC_PULSE)) {
+	if ((!video_mode) &&
+	    (dsi->mode_flags & MIPI_DSI_MODE_VIDEO_SYNC_PULSE)) {
 		reg = XDSI_TIME1_HSA(vm->hsync_len);
 		xilinx_dsi_writel(dsi->iomem, XDSI_TIME1, reg);
 	}
@@ -396,7 +397,6 @@ static int xilinx_dsi_connector_dpms(struct drm_connector *connector,
 {
 	struct xilinx_dsi *dsi = connector_to_dsi(connector);
 	int ret;
-	bool panel_on = 0;
 
 	dev_dbg(dsi->dev, "connector dpms state: %d\n", mode);
 
@@ -450,7 +450,7 @@ static void xilinx_dsi_connector_destroy(struct drm_connector *connector)
 	connector->dev = NULL;
 }
 
-static struct drm_connector_funcs xilinx_dsi_connector_funcs = {
+static const struct drm_connector_funcs xilinx_dsi_connector_funcs = {
 	.dpms = xilinx_dsi_connector_dpms,
 	.detect = xilinx_dsi_detect,
 	.fill_modes = drm_helper_probe_single_connector_modes,
@@ -618,7 +618,7 @@ static void xilinx_dsi_commit(struct drm_encoder *encoder)
 	xilinx_dsi_encoder_dpms(encoder, DRM_MODE_DPMS_ON);
 }
 
-static struct drm_encoder_helper_funcs xilinx_dsi_encoder_helper_funcs = {
+static const struct drm_encoder_helper_funcs xilinx_dsi_encoder_helper_funcs = {
 	.dpms = xilinx_dsi_encoder_dpms,
 	.mode_fixup = xilinx_dsi_mode_fixup,
 	.mode_set = xilinx_dsi_mode_set,
@@ -626,7 +626,7 @@ static struct drm_encoder_helper_funcs xilinx_dsi_encoder_helper_funcs = {
 	.commit = xilinx_dsi_commit,
 };
 
-static struct drm_encoder_funcs xilinx_dsi_encoder_funcs = {
+static const struct drm_encoder_funcs xilinx_dsi_encoder_funcs = {
 	.destroy = drm_encoder_cleanup,
 };
 
@@ -673,8 +673,7 @@ static int xilinx_dsi_parse_dt(struct xilinx_dsi *dsi)
 
 	dsi->format = datatype;
 
-	if ((datatype > MIPI_DSI_FMT_RGB565) ||
-		(datatype < MIPI_DSI_FMT_RGB888)) {
+	if (datatype > MIPI_DSI_FMT_RGB565) {
 		dev_err(dsi->dev, "Invalid xlnx,dsi-data-type string\n");
 		return -EINVAL;
 	}
@@ -787,7 +786,7 @@ static const struct of_device_id xilinx_dsi_of_match[] = {
 };
 MODULE_DEVICE_TABLE(of, xilinx_dsi_of_match);
 
-struct platform_driver dsi_driver = {
+static struct platform_driver dsi_driver = {
 	.probe = xilinx_dsi_probe,
 	.remove = xilinx_dsi_remove,
 	.driver = {

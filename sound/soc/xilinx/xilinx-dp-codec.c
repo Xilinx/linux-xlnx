@@ -127,6 +127,32 @@ static int xilinx_dp_codec_dev_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static int __maybe_unused xilinx_dp_codec_pm_suspend(struct device *dev)
+{
+	struct xilinx_dp_codec *codec = dev_get_drvdata(dev);
+
+	clk_disable_unprepare(codec->aud_clk);
+
+	return 0;
+}
+
+static int __maybe_unused xilinx_dp_codec_pm_resume(struct device *dev)
+{
+	struct xilinx_dp_codec *codec = dev_get_drvdata(dev);
+	int ret;
+
+	ret = clk_prepare_enable(codec->aud_clk);
+	if (ret)
+		dev_err(dev, "failed to enable the aud_clk\n");
+
+	return ret;
+}
+
+static const struct dev_pm_ops xilinx_dp_codec_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(xilinx_dp_codec_pm_suspend,
+				xilinx_dp_codec_pm_resume)
+};
+
 static const struct of_device_id xilinx_dp_codec_of_match[] = {
 	{ .compatible = "xlnx,dp-snd-codec", },
 	{ /* end of table */ },
@@ -137,6 +163,7 @@ static struct platform_driver xilinx_dp_codec_driver = {
 	.driver	= {
 		.name		= "xilinx-dp-snd-codec",
 		.of_match_table	= xilinx_dp_codec_of_match,
+		.pm		= &xilinx_dp_codec_pm_ops,
 	},
 	.probe	= xilinx_dp_codec_probe,
 	.remove	= xilinx_dp_codec_dev_remove,

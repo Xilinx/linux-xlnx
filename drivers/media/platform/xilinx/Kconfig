@@ -2,6 +2,7 @@ config VIDEO_XILINX
 	tristate "Xilinx Video IP (EXPERIMENTAL)"
 	depends on VIDEO_V4L2 && VIDEO_V4L2_SUBDEV_API && OF && HAS_DMA
 	select VIDEOBUF2_DMA_CONTIG
+	select XILINX_FRMBUF
 	---help---
 	  Driver for Xilinx Video IP Pipelines
 
@@ -18,6 +19,25 @@ config VIDEO_XILINX_CRESAMPLE
 	depends on VIDEO_XILINX
 	---help---
 	   Driver for the Xilinx Chroma Resampler
+
+config VIDEO_XILINX_DEMOSAIC
+	tristate "Xilinx Video Demosaic IP"
+	depends on VIDEO_XILINX
+	---help---
+	Driver for Xilinx Video Demosaic IP. This is a V4L sub-device
+	based driver for the Demosaic IP that takes input a Bayer video
+	stream format as input and generates an RGB video output.
+	Say M to modularize. Say N if unsure.
+
+config VIDEO_XILINX_GAMMA
+	tristate "Xilinx Gamma Correction LUT"
+	depends on VIDEO_XILINX
+	---help---
+	Driver for Xilinx Gamma Correction LUT IP. This is a V4L sub-device
+	based driver that exposes V4L controls to adjust Red, Blue and Green
+	Gamma Correction.
+
+	Say M to modularize. Say N if unsure.
 
 config VIDEO_XILINX_HLS
 	tristate "Xilinx Video HLS Core"
@@ -43,6 +63,12 @@ config VIDEO_XILINX_SCALER
 	---help---
 	   Driver for the Xilinx Video Scaler
 
+config VIDEO_XILINX_SDIRXSS
+	tristate "Xilinx SDI Rx Subsystem"
+	depends on VIDEO_XILINX
+	---help---
+	Driver for Xilinx SDI Rx Subsystem
+
 config VIDEO_XILINX_SWITCH
 	tristate "Xilinx Video Switch"
 	depends on VIDEO_XILINX
@@ -55,6 +81,25 @@ config VIDEO_XILINX_TPG
 	select VIDEO_XILINX_VTC
 	---help---
 	   Driver for the Xilinx Video Test Pattern Generator
+
+config VIDEO_XILINX_VPSS_CSC
+	tristate "Xilinx VPSS CSC"
+	depends on VIDEO_XILINX
+	---help---
+	Driver for the Xilinx Video Processing Sub-System (VPSS)
+	Color Space Conversion. The driver provides RGB to YUV444
+	conversion and provides video controls like Brightness,
+	Contrast, Color Gains that can be applied to video.
+	Say N if unsure. Say M to modularize.
+
+config VIDEO_XILINX_VPSS_SCALER
+	tristate "Xilinx Video VPSS Scaler"
+	depends on VIDEO_XILINX
+	---help---
+	Driver for Xilinx Video Processing Sub-System(VPSS) Scaler.
+	It allows upscaling and downscaling of video. It also supports
+	limited Color Space Conversion.
+	Say N if unsure.
 
 config VIDEO_XILINX_VTC
 	tristate "Xilinx Video Timing Controller"

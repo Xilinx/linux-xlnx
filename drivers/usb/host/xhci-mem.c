@@ -455,6 +455,14 @@ static void xhci_reinit_cached_ring(struct xhci_hcd *xhci,
 	} while (seg != ring->first_seg);
 	ring->type = type;
 	xhci_initialize_ring_info(ring, cycle_state);
+
+	/* Only event ring does not use link TRB */
+	if (type != TYPE_EVENT) {
+		/* See xhci spec section 4.9.2.1 and 6.4.4.1 */
+		ring->last_seg->trbs[TRBS_PER_SEGMENT - 1].link.control |=
+			cpu_to_le32(LINK_TOGGLE);
+	}
+
 	/* td list should be empty since all URBs have been cancelled,
 	 * but just in case...
 	 */
@@ -738,6 +746,16 @@ struct xhci_stream_info *xhci_alloc_stream_info(struct xhci_hcd *xhci,
 		xhci_dbg(xhci, "Setting stream %d ring ptr to 0x%08llx\n",
 				cur_stream, (unsigned long long) addr);
 
+		if (xhci->quirks & XHCI_STREAM_QUIRK) {
+			/* dwc3 host controller has an issue where it doesn't
+			 * process BULK IN stream rings even after ringing
+			 * DoorBell, so setup a timer to aviod hang condition.
+			 */
+			setup_timer(&cur_ring->stream_timer,
+				xhci_stream_timeout, (unsigned long)cur_ring);
+			cur_ring->xhci = xhci;
+		}
+
 		ret = xhci_update_stream_mapping(cur_ring, mem_flags);
 		if (ret) {
 			xhci_ring_free(xhci, cur_ring);
@@ -824,6 +842,10 @@ void xhci_free_stream_info(struct xhci_hcd *xhci,
 	for (cur_stream = 1; cur_stream < stream_info->num_streams;
 			cur_stream++) {
 		cur_ring = stream_info->stream_rings[cur_stream];
+
+		if (xhci->quirks & XHCI_STREAM_QUIRK)
+			del_timer_sync(&cur_ring->stream_timer);
+
 		if (cur_ring) {
 			xhci_ring_free(xhci, cur_ring);
 			stream_info->stream_rings[cur_stream] = NULL;

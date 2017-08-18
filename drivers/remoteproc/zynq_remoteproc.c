@@ -33,6 +33,7 @@
 #include <linux/slab.h>
 #include <linux/cpu.h>
 #include <linux/genalloc.h>
+#include <../../arch/arm/mach-zynq/common.h>
 
 #include "remoteproc_internal.h"
 
@@ -40,11 +41,6 @@
 #define NOTIFYID_ANY (-1)
 /* Maximum on chip memories used by the driver*/
 #define MAX_ON_CHIP_MEMS        32
-
-extern int zynq_cpun_start(u32 address, int cpu);
-
-/* Module parameter */
-static char *firmware = "firmware";
 
 /* Structure for storing IRQs */
 struct irq_list {
@@ -63,7 +59,6 @@ struct ipi_info {
 struct mem_pool_st {
 	struct list_head node;
 	struct gen_pool *pool;
-	u32 pd_id;
 };
 
 /* Private data */
@@ -295,14 +290,13 @@ static int zynq_remoteproc_probe(struct platform_device *pdev)
 	struct irq_list *tmp;
 	int count = 0;
 	struct zynq_rproc_pdata *local;
-	struct device_node *tmp_node;
 	struct gen_pool *mem_pool = NULL;
 	struct mem_pool_st *mem_node = NULL;
 	char mem_name[16];
 	int i;
 
 	rproc = rproc_alloc(&pdev->dev, dev_name(&pdev->dev),
-		&zynq_rproc_ops, firmware,
+		&zynq_rproc_ops, NULL,
 		sizeof(struct zynq_rproc_pdata));
 	if (!rproc) {
 		dev_err(&pdev->dev, "rproc allocation failed\n");
@@ -333,7 +327,6 @@ static int zynq_remoteproc_probe(struct platform_device *pdev)
 
 		tmp = kzalloc(sizeof(struct irq_list), GFP_KERNEL);
 		if (!tmp) {
-			dev_err(&pdev->dev, "Unable to alloc irq list\n");
 			ret = -ENOMEM;
 			goto irq_fault;
 		}
@@ -343,7 +336,8 @@ static int zynq_remoteproc_probe(struct platform_device *pdev)
 		dev_dbg(&pdev->dev, "%d: Alloc irq: %d\n", count, tmp->irq);
 
 		/* Allocating shared IRQs will ensure that any module will
-		 * use these IRQs */
+		 * use these IRQs
+		 */
 		ret = request_irq(tmp->irq, zynq_remoteproc_interrupt, 0,
 					dev_name(&pdev->dev), &pdev->dev);
 		if (ret) {
@@ -389,10 +383,11 @@ static int zynq_remoteproc_probe(struct platform_device *pdev)
 	/* Find on-chip memory */
 	INIT_LIST_HEAD(&local->mem_pools);
 	INIT_LIST_HEAD(&local->mems);
-	for (i = 0; i < MAX_ON_CHIP_MEMS; i++) {
-		sprintf(mem_name, "sram_%d", i);
+	for (i = 0; ; i++) {
+		char *srams_name = "srams";
+
 		mem_pool = of_gen_pool_get(pdev->dev.of_node,
-					mem_name, 0);
+					   srams_name, i);
 		if (mem_pool) {
 			mem_node = devm_kzalloc(&pdev->dev,
 					sizeof(struct mem_pool_st),
@@ -400,21 +395,9 @@ static int zynq_remoteproc_probe(struct platform_device *pdev)
 			if (!mem_node)
 				goto ipi_fault;
 			mem_node->pool = mem_pool;
-			/* Get the memory node power domain id */
-			tmp_node = of_parse_phandle(pdev->dev.of_node,
-						mem_name, 0);
-			if (tmp_node) {
-				struct device_node *pd_node;
-
-				pd_node = of_parse_phandle(tmp_node,
-						"pd-handle", 0);
-				if (pd_node)
-					of_property_read_u32(pd_node,
-						"pd-id", &mem_node->pd_id);
-			}
-			dev_dbg(&pdev->dev, "mem[%d] pd_id = %d.\n",
-				i, mem_node->pd_id);
 			list_add_tail(&mem_node->node, &local->mem_pools);
+		} else {
+			break;
 		}
 	}
 	ret = zynq_rproc_add_mems(local);
@@ -483,9 +466,6 @@ static struct platform_driver zynq_remoteproc_driver = {
 	},
 };
 module_platform_driver(zynq_remoteproc_driver);
-
-module_param(firmware, charp, 0);
-MODULE_PARM_DESC(firmware, "Override the firmware image name. Default value in DTS.");
 
 MODULE_AUTHOR("Michal Simek <monstr@monstr.eu");
 MODULE_LICENSE("GPL v2");

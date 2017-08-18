@@ -13,6 +13,7 @@
  */
 
 #include <linux/dma/xilinx_dma.h>
+#include <linux/dma/xilinx_frmbuf.h>
 #include <linux/lcm.h>
 #include <linux/list.h>
 #include <linux/module.h>
@@ -385,6 +386,8 @@ static void xvip_dma_buffer_queue(struct vb2_buffer *vb)
 	dma_addr_t addr = vb2_dma_contig_plane_dma_addr(vb, 0);
 	u32 flags;
 
+	xilinx_xdma_v4l2_config(dma->dma, dma->format.pixelformat);
+
 	if (dma->queue.type == V4L2_BUF_TYPE_VIDEO_CAPTURE) {
 		flags = DMA_PREP_INTERRUPT | DMA_CTRL_ACK;
 		dma->xt.dir = DMA_DEV_TO_MEM;
@@ -468,6 +471,7 @@ static int xvip_dma_start_streaming(struct vb2_queue *vq, unsigned int count)
 	return 0;
 
 error_stop:
+	dmaengine_terminate_all(dma->dma);
 	media_entity_pipeline_stop(&dma->video.entity);
 
 error:
@@ -763,10 +767,12 @@ int xvip_dma_init(struct xvip_composite_device *xdev, struct xvip_dma *dma,
 
 	/* ... and the DMA channel. */
 	snprintf(name, sizeof(name), "port%u", port);
-	dma->dma = dma_request_slave_channel(dma->xdev->dev, name);
-	if (dma->dma == NULL) {
-		dev_err(dma->xdev->dev, "no VDMA channel found\n");
-		ret = -ENODEV;
+	dma->dma = dma_request_chan(dma->xdev->dev, name);
+	if (IS_ERR(dma->dma)) {
+		ret = PTR_ERR(dma->dma);
+		if (ret != -EPROBE_DEFER)
+			dev_err(dma->xdev->dev,
+				"No Video DMA channel found");
 		goto error;
 	}
 
@@ -790,7 +796,7 @@ void xvip_dma_cleanup(struct xvip_dma *dma)
 	if (video_is_registered(&dma->video))
 		video_unregister_device(&dma->video);
 
-	if (dma->dma)
+	if (!IS_ERR(dma->dma))
 		dma_release_channel(dma->dma);
 
 	media_entity_cleanup(&dma->video.entity);

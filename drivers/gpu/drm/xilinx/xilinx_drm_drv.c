@@ -20,7 +20,6 @@
 #include <drm/drm_gem_cma_helper.h>
 
 #include <linux/component.h>
-#include <linux/console.h>
 #include <linux/device.h>
 #include <linux/module.h>
 #include <linux/of_graph.h>
@@ -146,14 +145,6 @@ unsigned int xilinx_drm_get_align(struct drm_device *drm)
 	struct xilinx_drm_private *private = drm->dev_private;
 
 	return xilinx_drm_crtc_get_align(private->crtc);
-}
-
-void xilinx_drm_set_config(struct drm_device *drm, struct drm_mode_set *set)
-{
-	struct xilinx_drm_private *private = drm->dev_private;
-
-	if (private && private->fb)
-		xilinx_drm_fb_set_config(private->fb, set);
 }
 
 /* poll changed handler */
@@ -427,7 +418,7 @@ static int xilinx_drm_unload(struct drm_device *drm)
 	return 0;
 }
 
-int xilinx_drm_open(struct drm_device *dev, struct drm_file *file)
+static int xilinx_drm_open(struct drm_device *dev, struct drm_file *file)
 {
 	struct xilinx_drm_private *private = dev->dev_private;
 
@@ -524,10 +515,6 @@ static int xilinx_drm_pm_suspend(struct device *dev)
 	struct drm_connector *connector;
 
 	drm_kms_helper_poll_disable(drm);
-
-	if (!console_suspend_enabled)
-		return 0;
-
 	drm_modeset_lock_all(drm);
 	list_for_each_entry(connector, &drm->mode_config.connector_list, head) {
 		int old_dpms = connector->dpms;
@@ -549,9 +536,6 @@ static int xilinx_drm_pm_resume(struct device *dev)
 	struct xilinx_drm_private *private = dev_get_drvdata(dev);
 	struct drm_device *drm = private->drm;
 	struct drm_connector *connector;
-
-	if (!console_suspend_enabled)
-		return 0;
 
 	drm_modeset_lock_all(drm);
 	list_for_each_entry(connector, &drm->mode_config.connector_list, head) {

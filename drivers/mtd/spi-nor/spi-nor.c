@@ -1183,6 +1183,7 @@ static const struct flash_info spi_nor_ids[] = {
 	{ "640s33b",  INFO(0x898913, 0, 64 * 1024, 128, 0) },
 
 	/* ISSI */
+	{ "is25lp256d", INFO(0x9d6019, 0, 64 * 1024, 512, SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ | USE_FSR | SPI_NOR_HAS_LOCK) },
 	{ "is25cd512", INFO(0x7f9d20, 0, 32 * 1024,   2, SECT_4K) },
 
 	/* Macronix */
@@ -1233,7 +1234,7 @@ static const struct flash_info spi_nor_ids[] = {
 	{ "s70fl01gs",  INFO(0x010221, 0x4d00, 256 * 1024, 256, SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ) },
 	{ "s25sl12800", INFO(0x012018, 0x0300, 256 * 1024,  64, SPI_NOR_HAS_LOCK) },
 	{ "s25sl12801", INFO(0x012018, 0x0301,  64 * 1024, 256, SPI_NOR_HAS_LOCK) },
-	{ "s25fl128s",	INFO6(0x012018, 0x4d0180, 64 * 1024, 256, SECT_4K | SPI_NOR_QUAD_READ) },
+	{ "s25fl128s",	INFO6(0x012018, 0x4d0180, 64 * 1024, 256, SPI_NOR_QUAD_READ) },
 	{ "s25fl129p0", INFO(0x012018, 0x4d00, 256 * 1024,  64, SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ | SPI_NOR_HAS_LOCK) },
 	{ "s25fl129p1", INFO(0x012018, 0x4d01,  64 * 1024, 256, SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ | SPI_NOR_HAS_LOCK) },
 	{ "s25sl004a",  INFO(0x010212,      0,  64 * 1024,   8, 0) },
@@ -1568,9 +1569,6 @@ static int spi_nor_write(struct mtd_info *mtd, loff_t to, size_t len,
 		}
 
 		page_offset = ((to + i)) & (nor->page_size - 1);
-		WARN_ONCE(page_offset,
-			  "Writing at offset %zu into a NOR page. Writing partial pages may decrease reliability and increase wear of NOR flash.",
-			  page_offset);
 
 		offset = (to + i);
 
@@ -1687,6 +1685,7 @@ static int set_quad_mode(struct spi_nor *nor, const struct flash_info *info)
 
 	switch (JEDEC_MFR(info)) {
 	case SNOR_MFR_MACRONIX:
+	case SNOR_MFR_ISSI:
 		status = macronix_quad_enable(nor);
 		if (status) {
 			dev_err(nor->dev, "Macronix quad-read not enabled\n");

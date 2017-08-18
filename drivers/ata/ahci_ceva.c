@@ -38,8 +38,10 @@
 
 /* Vendor Specific Register bit definitions */
 #define PAXIC_ADBW_BW64 0x1
-#define PAXIC_MAWIDD	(1 << 8)
-#define PAXIC_MARIDD	(1 << 16)
+#define PAXIC_MAWID(i)	(((i) * 2) << 4)
+#define PAXIC_MARID(i)	(((i) * 2) << 12)
+#define PAXIC_MARIDD(i)	((((i) * 2) + 1) << 16)
+#define PAXIC_MAWIDD(i)	((((i) * 2) + 1) << 8)
 #define PAXIC_OTL	(0x4 << 20)
 
 /* Register bit definitions for cache control */
@@ -147,9 +149,11 @@ static void ahci_ceva_setup(struct ahci_host_priv *hpriv)
 		/*
 		 * AXI Data bus width to 64
 		 * Set Mem Addr Read, Write ID for data transfers
+		 * Set Mem Addr Read ID, Write ID for non-data transfers
 		 * Transfer limit to 72 DWord
 		 */
-		tmp = PAXIC_ADBW_BW64 | PAXIC_MAWIDD | PAXIC_MARIDD | PAXIC_OTL;
+		tmp = PAXIC_ADBW_BW64 | PAXIC_MAWIDD(i) | PAXIC_MARIDD(i) |
+			PAXIC_MAWID(i) | PAXIC_MARID(i) | PAXIC_OTL;
 		writel(tmp, mmio + AHCI_VEND_PAXIC);
 
 		/* Set AXI cache control register if CCi is enabled */
@@ -298,12 +302,37 @@ disable_resources:
 
 static int __maybe_unused ceva_ahci_suspend(struct device *dev)
 {
-	return ahci_platform_suspend_host(dev);
+	return ahci_platform_suspend(dev);
 }
 
 static int __maybe_unused ceva_ahci_resume(struct device *dev)
 {
-	return ahci_platform_resume_host(dev);
+	struct ata_host *host = dev_get_drvdata(dev);
+	struct ahci_host_priv *hpriv = host->private_data;
+	int rc;
+
+	rc = ahci_platform_enable_resources(hpriv);
+	if (rc)
+		return rc;
+
+	/* Configure CEVA specific config before resuming HBA */
+	ahci_ceva_setup(hpriv);
+
+	rc = ahci_platform_resume_host(dev);
+	if (rc)
+		goto disable_resources;
+
+	/* We resumed so update PM runtime state */
+	pm_runtime_disable(dev);
+	pm_runtime_set_active(dev);
+	pm_runtime_enable(dev);
+
+	return 0;
+
+disable_resources:
+	ahci_platform_disable_resources(hpriv);
+
+	return rc;
 }
 
 static SIMPLE_DEV_PM_OPS(ahci_ceva_pm_ops, ceva_ahci_suspend, ceva_ahci_resume);
