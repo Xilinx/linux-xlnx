@@ -802,7 +802,7 @@ xv_hscaler_calculate_phases(struct xscaler_device *xscaler,
 			}
 
 			/* Needs updates for 4 PPC */
-			xscaler->H_phases[x] = (phaseH <<
+			xscaler->H_phases[x] |= (phaseH <<
 						(s * XHSC_HPHASE_MULTIPLIER));
 			xscaler->H_phases[x] |= (array_idx <<
 						(XHSC_HPHASE_SHIFT_BY_6 +
