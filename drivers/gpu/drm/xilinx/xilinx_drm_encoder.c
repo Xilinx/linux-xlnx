@@ -185,8 +185,8 @@ struct drm_encoder *xilinx_drm_encoder_create(struct drm_device *drm,
 	if (i2c_slv && i2c_slv->dev.driver) {
 		i2c_driver = to_i2c_driver(i2c_slv->dev.driver);
 		drm_i2c_driver = to_drm_i2c_encoder_driver(i2c_driver);
-		if (!drm_i2c_driver) {
-			DRM_ERROR("failed to initialize i2c slave\n");
+		if (!drm_i2c_driver || !drm_i2c_driver->encoder_init) {
+			DRM_DEBUG_KMS("failed to initialize i2c slave\n");
 			ret = -EPROBE_DEFER;
 			goto err_out;
 		}
@@ -210,8 +210,9 @@ struct drm_encoder *xilinx_drm_encoder_create(struct drm_device *drm,
 		platform_driver = to_platform_driver(device_driver);
 		drm_platform_driver =
 			to_drm_platform_encoder_driver(platform_driver);
-		if (!drm_platform_driver) {
-			DRM_ERROR("failed to initialize platform slave\n");
+		if (!drm_platform_driver ||
+		    !drm_platform_driver->encoder_init) {
+			DRM_DEBUG_KMS("failed to initialize platform slave\n");
 			ret = -EPROBE_DEFER;
 			goto err_out;
 		}
