@@ -106,6 +106,7 @@
 #define PIXELS_PER_CLK				2
 #define XSDI_CH_SHIFT				29
 #define XST352_PROG_SHIFT			6
+#define XST352_TRANS_SHIFT			7
 #define XST352_2048_SHIFT			BIT(6)
 #define ST352_BYTE3				0x00
 #define ST352_BYTE4				0x01
@@ -926,6 +927,8 @@ static u32 xilinx_sdi_calc_st352_payld(struct xilinx_sdi *sdi,
 	is_p = !(mode->flags & DRM_MODE_FLAG_INTERLACE);
 	smpl_r = xlnx_sdi_modes[id].st352_byt2[is_frac];
 	byt2 = (is_p << XST352_PROG_SHIFT) | smpl_r;
+	if (mode->vtotal >= 1125)
+		byt2 |= (is_p << XST352_TRANS_SHIFT);
 	/* byte 1 calculation */
 	byt1 = xlnx_sdi_modes[id].st352_byt1[sdi_mode];
 
