@@ -1196,7 +1196,7 @@ config RTC_DRV_OPAL
 	  will be called rtc-opal.
 
 config RTC_DRV_ZYNQMP
-	bool "Xilinx Zynq Ultrascale+ MPSoC RTC"
+	tristate "Xilinx Zynq Ultrascale+ MPSoC RTC"
 	depends on OF
 	help
 	  If you say yes here you get support for the RTC controller found on
