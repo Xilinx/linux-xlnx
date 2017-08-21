@@ -221,7 +221,7 @@ static const struct xlnx_sdi_display_config xlnx_sdi_modes[] = {
 	{ },
 	/* SD: 720x576i@50Hz */
 	{{ DRM_MODE("720x576i", DRM_MODE_TYPE_DRIVER, 13500, 720, 732,
-		   795, 864, 0, 576, 580, 586, 625, 0,
+		   795, 864, 0, 288, 290, 293, 312, 0,
 		   DRM_MODE_FLAG_NHSYNC | DRM_MODE_FLAG_NVSYNC |
 		   DRM_MODE_FLAG_INTERLACE | DRM_MODE_FLAG_DBLCLK),
 		   .vrefresh = 50, }, {0x9, 0x9},
@@ -276,14 +276,14 @@ static const struct xlnx_sdi_display_config xlnx_sdi_modes[] = {
 		   {0x85, 0x85, 0x89, 0x8A, 0xC1, 0xC1} },
 	/* HD: 1920x1080i@50Hz */
 	{{ DRM_MODE("1920x1080i", DRM_MODE_TYPE_DRIVER, 74250, 1920, 2448,
-		   2492, 2640, 0, 1080, 1084, 1094, 1125, 0,
+		   2492, 2640, 0, 540, 542, 547, 562, 0,
 		   DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC |
 		   DRM_MODE_FLAG_INTERLACE),
 		   .vrefresh = 50, }, {0x9, 0x9},
 		   {0x85, 0x85, 0x89, 0x8A, 0xC1, 0xC1} },
 	/* HD: 1920x1080i@60Hz */
 	{{ DRM_MODE("1920x1080i", DRM_MODE_TYPE_DRIVER, 74250, 1920, 2008,
-		   2052, 2200, 0, 1080, 1084, 1094, 1125, 0,
+		   2052, 2200, 0, 540, 542, 547, 562, 0,
 		   DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC |
 		   DRM_MODE_FLAG_INTERLACE),
 		   .vrefresh = 60, }, {0x7, 0x6},
