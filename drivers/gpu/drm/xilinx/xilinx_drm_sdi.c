@@ -106,6 +106,7 @@
 #define PIXELS_PER_CLK				2
 #define XSDI_CH_SHIFT				29
 #define XST352_PROG_SHIFT			6
+#define XST352_2048_SHIFT			BIT(6)
 #define ST352_BYTE3				0x00
 #define ST352_BYTE4				0x01
 #define INVALID_VALUE				-1
@@ -915,9 +916,12 @@ static u32 xilinx_sdi_calc_st352_payld(struct xilinx_sdi *sdi,
 	u16 is_p, smpl_r;
 	u32 id, sdi_mode = sdi->sdi_mod_prop_val;
 	bool is_frac = sdi->is_frac_prop_val;
+	u32 byt3 = ST352_BYTE3;
 
 	id = xilinx_sdi_get_mode_id(mode);
 	dev_dbg(sdi->dev, "mode id: %d\n", id);
+	if (mode->hdisplay == 2048)
+		byt3 |= XST352_2048_SHIFT;
 	/* byte 2 calculation */
 	is_p = !(mode->flags & DRM_MODE_FLAG_INTERLACE);
 	smpl_r = xlnx_sdi_modes[id].st352_byt2[is_frac];
@@ -925,7 +929,7 @@ static u32 xilinx_sdi_calc_st352_payld(struct xilinx_sdi *sdi,
 	/* byte 1 calculation */
 	byt1 = xlnx_sdi_modes[id].st352_byt1[sdi_mode];
 
-	return (ST352_BYTE4 << 24 | ST352_BYTE3 << 16 | byt2 << 8 | byt1);
+	return (ST352_BYTE4 << 24 | byt3 << 16 | byt2 << 8 | byt1);
 }
 
 /**
