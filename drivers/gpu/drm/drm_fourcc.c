@@ -103,6 +103,59 @@ char *drm_get_format_name(uint32_t format)
 EXPORT_SYMBOL(drm_get_format_name);
 
 /**
+ * drm_format_plane_cpp_scaling_factor - get the plane's scaling factor bpp
+ * @format: pixel format (DRM_FORMAT_*)
+ *
+ * Returns:
+ * scaling factor of bpp for specified pixel format
+ */
+void drm_format_cpp_scaling_factor(uint32_t format,
+				   uint32_t *numerator, uint32_t *denominator)
+{
+	switch (format) {
+	case DRM_FORMAT_XV15:
+	case DRM_FORMAT_XV20:
+	case DRM_FORMAT_Y10:
+		*numerator = 10;
+		*denominator = 8;
+		break;
+	default:
+		*numerator   = 1;
+		*denominator = 1;
+		break;
+	}
+}
+EXPORT_SYMBOL(drm_format_cpp_scaling_factor);
+
+/**
+ * drm_format_width_padding_factor - get the plane's width padding factor
+ * @format: pixel format (DRM_FORMAT_*)
+ *
+ * Returns:
+ * padding width factor for specified pixel format which will
+ * take padding bits into consideration to calculate width
+ */
+void drm_format_width_padding_factor(uint32_t format,
+				     uint32_t *numerator,
+				     uint32_t *denominator)
+{
+	switch (format) {
+	case DRM_FORMAT_XV15:
+	case DRM_FORMAT_XV20:
+	case DRM_FORMAT_Y10:
+		/* 32 bits are required per 30 bits of data */
+		*numerator   = 32;
+		*denominator = 30;
+		break;
+	default:
+		*numerator   = 1;
+		*denominator = 1;
+		break;
+	}
+}
+EXPORT_SYMBOL(drm_format_width_padding_factor);
+
+/**
  * drm_fb_get_bpp_depth - get the bpp/depth values for format
  * @format: pixel format (DRM_FORMAT_*)
  * @depth: storage for the depth value
