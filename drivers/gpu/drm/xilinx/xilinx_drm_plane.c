@@ -255,6 +255,7 @@ int xilinx_drm_plane_mode_set(struct drm_plane *base_plane,
 	struct drm_gem_cma_object *obj;
 	size_t offset;
 	unsigned int hsub, vsub, fb_plane_cnt, i;
+	uint32_t padding_factor_nume, padding_factor_deno, cpp_nume, cpp_deno;
 
 	/* default setting */
 	plane->format = fb->pixel_format;
@@ -276,6 +277,9 @@ int xilinx_drm_plane_mode_set(struct drm_plane *base_plane,
 	hsub = drm_format_horz_chroma_subsampling(fb->pixel_format);
 	vsub = drm_format_vert_chroma_subsampling(fb->pixel_format);
 	fb_plane_cnt = drm_format_num_planes(fb->pixel_format);
+	drm_format_width_padding_factor(fb->pixel_format, &padding_factor_nume,
+					&padding_factor_deno);
+	drm_format_cpp_scaling_factor(fb->pixel_format, &cpp_nume, &cpp_deno);
 
 	for (i = 0; i < fb_plane_cnt; i++) {
 		unsigned int width = src_w / (i ? hsub : 1);
@@ -292,7 +296,9 @@ int xilinx_drm_plane_mode_set(struct drm_plane *base_plane,
 		}
 
 		plane->dma[i].xt.numf = height;
-		plane->dma[i].sgl[0].size = width * cpp;
+		plane->dma[i].sgl[0].size =
+				(width * cpp * cpp_nume * padding_factor_nume)/
+				(cpp_deno * padding_factor_deno);
 		plane->dma[i].sgl[0].icg = fb->pitches[i] -
 					   plane->dma[i].sgl[0].size;
 		offset = src_x * cpp + src_y * fb->pitches[i];
