@@ -959,7 +959,7 @@ static void xilinx_sdi_mode_set(struct drm_encoder *encoder,
 	payload = xilinx_sdi_calc_st352_payld(sdi, adjusted_mode);
 	dev_dbg(sdi->dev, "payload : %0x\n", payload);
 
-	for (i = 0; i < SDI_MAX_DATASTREAM; i++)
+	for (i = 0; i < sdi->sdi_data_strm_prop_val / 2; i++)
 		xilinx_sdi_set_payload_data(sdi, i, payload |
 					    (i << XSDI_CH_SHIFT));
 
