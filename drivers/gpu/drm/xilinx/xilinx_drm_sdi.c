@@ -921,7 +921,7 @@ static u32 xilinx_sdi_calc_st352_payld(struct xilinx_sdi *sdi,
 
 	id = xilinx_sdi_get_mode_id(mode);
 	dev_dbg(sdi->dev, "mode id: %d\n", id);
-	if (mode->hdisplay == 2048)
+	if (mode->hdisplay == 2048 || mode->hdisplay == 4096)
 		byt3 |= XST352_2048_SHIFT;
 	/* byte 2 calculation */
 	is_p = !(mode->flags & DRM_MODE_FLAG_INTERLACE);
