@@ -25,6 +25,7 @@
 #include <linux/platform_device.h>
 #include <linux/pm_domain.h>
 #include <linux/slab.h>
+#include <linux/list.h>
 #include <linux/soc/xilinx/zynqmp/pm.h>
 
 #define DRIVER_NAME "zynqmp_gpd"
@@ -35,16 +36,50 @@
 /**
  * struct zynqmp_pm_domain - Wrapper around struct generic_pm_domain
  * @gpd:		Generic power domain
+ * @dev_list:		List of devices belong to power domain
  * @node_ids:		PM node IDs corresponding to device(s) inside PM domain
  * @node_id_num:	Number of PM node IDs
  * @flags:		ZynqMP PM domain flags
  */
 struct zynqmp_pm_domain {
 	struct generic_pm_domain gpd;
+	struct list_head dev_list;
 	u32 *node_ids;
 	int node_id_num;
 	u8 flags;
 };
+
+/*
+ * struct zynqmp_domain_device - Device node present in power domain
+ * @dev: Device
+ * &list: List member for the devices in domain list
+ */
+struct zynqmp_domain_device {
+	struct device *dev;
+	struct list_head list;
+};
+
+/**
+ * zynqmp_gpd_is_active_wakeup_path - Check if device is in wakeup source path
+ * @dev: Device to check for wakeup source path
+ * @not_used: Data member (not required)
+ *
+ * This function is checks device's child hierarchy and checks if any device is
+ * set as wakeup source.
+ *
+ * Return:	1 if device is in wakeup source path else 0.
+ */
+static int zynqmp_gpd_is_active_wakeup_path(struct device *dev, void *not_used)
+{
+	int may_wakeup;
+
+	may_wakeup = device_may_wakeup(dev);
+	if (may_wakeup)
+		return may_wakeup;
+
+	return device_for_each_child(dev, NULL,
+			zynqmp_gpd_is_active_wakeup_path);
+}
 
 /**
  * zynqmp_gpd_power_on - Power on PM domain
@@ -85,6 +120,9 @@ static int zynqmp_gpd_power_off(struct generic_pm_domain *domain)
 {
 	int i, status = 0;
 	struct zynqmp_pm_domain *pd;
+	struct zynqmp_domain_device *zdev, *tmp;
+	u32 capabilities = 0;
+	bool may_wakeup = 0;
 
 	pd = container_of(domain, struct zynqmp_pm_domain, gpd);
 
@@ -92,9 +130,21 @@ static int zynqmp_gpd_power_off(struct generic_pm_domain *domain)
 	if (!(pd->flags & ZYNQMP_PM_DOMAIN_REQUESTED))
 		return 0;
 
+	list_for_each_entry_safe(zdev, tmp, &pd->dev_list, list) {
+		/* If device is in wakeup path, set capability to WAKEUP */
+		may_wakeup = zynqmp_gpd_is_active_wakeup_path(zdev->dev, NULL);
+		if (may_wakeup) {
+			dev_dbg(zdev->dev, "device is in wakeup path in %s\n",
+				domain->name);
+			capabilities = ZYNQMP_PM_CAPABILITY_WAKEUP;
+			break;
+		}
+	}
+
 	for (i = pd->node_id_num - 1; i >= 0; i--) {
-		status = zynqmp_pm_set_requirement(pd->node_ids[i], 0, 0,
-						ZYNQMP_PM_REQUEST_ACK_NO);
+		status = zynqmp_pm_set_requirement(pd->node_ids[i],
+						   capabilities, 0,
+						   ZYNQMP_PM_REQUEST_ACK_NO);
 		/**
 		 * If powering down of any node inside this domain fails,
 		 * report and return the error
@@ -121,19 +171,31 @@ static int zynqmp_gpd_attach_dev(struct generic_pm_domain *domain,
 {
 	int i, status;
 	struct zynqmp_pm_domain *pd;
+	struct zynqmp_domain_device *zdev;
+
+	pd = container_of(domain, struct zynqmp_pm_domain, gpd);
+
+	zdev = devm_kzalloc(dev, sizeof(*zdev), GFP_KERNEL);
+	if (!zdev)
+		return -ENOMEM;
+
+	zdev->dev = dev;
+	list_add(&zdev->list, &pd->dev_list);
 
 	/* If this is not the first device to attach there is nothing to do */
 	if (domain->device_count)
 		return 0;
 
-	pd = container_of(domain, struct zynqmp_pm_domain, gpd);
 	for (i = 0; i < pd->node_id_num; i++) {
 		status = zynqmp_pm_request_node(pd->node_ids[i], 0, 0,
 						ZYNQMP_PM_REQUEST_ACK_BLOCKING);
 		/* If requesting a node fails print and return the error */
 		if (status) {
 			pr_err("%s error %d, node %u\n", __func__, status,
-				pd->node_ids[i]);
+					pd->node_ids[i]);
+			list_del(&zdev->list);
+			zdev->dev = NULL;
+			devm_kfree(dev, zdev);
 			return status;
 		}
 	}
@@ -153,12 +215,21 @@ static void zynqmp_gpd_detach_dev(struct generic_pm_domain *domain,
 {
 	int i, status;
 	struct zynqmp_pm_domain *pd;
+	struct zynqmp_domain_device *zdev, *tmp;
+
+	pd = container_of(domain, struct zynqmp_pm_domain, gpd);
+
+	list_for_each_entry_safe(zdev, tmp, &pd->dev_list, list)
+		if (zdev->dev == dev) {
+			list_del(&zdev->list);
+			zdev->dev = NULL;
+			devm_kfree(dev, zdev);
+		}
 
 	/* If this is not the last device to detach there is nothing to do */
 	if (domain->device_count)
 		return;
 
-	pd = container_of(domain, struct zynqmp_pm_domain, gpd);
 	for (i = 0; i < pd->node_id_num; i++) {
 		status = zynqmp_pm_release_node(pd->node_ids[i]);
 		/* If releasing a node fails print the error and return */
@@ -225,6 +296,8 @@ static int __init zynqmp_gpd_probe(struct platform_device *pdev)
 		ret = of_genpd_add_provider_simple(child, &pd->gpd);
 		if (ret)
 			goto err_cleanup;
+
+		INIT_LIST_HEAD(&pd->dev_list);
 	}
 
 	return 0;
