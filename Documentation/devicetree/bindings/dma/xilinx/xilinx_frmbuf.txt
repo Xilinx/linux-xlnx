@@ -25,21 +25,21 @@ Examples
 FB Read Example:
 ++++++++
 v_frmbuf_rd_0: v_frmbuf_rd@80000000 {
-        #dma-cells = <1>;
-        compatible = "xlnx,axi-frmbuf-rd";
-        interrupt-parent = <&gic>;
-        interrupts = <0 92 4>;
-        reset-gpios = <&gpio 80 1>;
-        reg = <0x0 0x80000000 0x0 0x10000>;
+	#dma-cells = <1>;
+	compatible = "xlnx,axi-frmbuf-rd";
+	interrupt-parent = <&gic>;
+	interrupts = <0 92 4>;
+	reset-gpios = <&gpio 80 1>;
+	reg = <0x0 0x80000000 0x0 0x10000>;
 };
 
 FB Write Example:
 ++++++++
 v_frmbuf_wr_0: v_frmbuf_wr@80000000 {
-        #dma-cells = <1>;
-        compatible = "xlnx,axi-frmbuf-wr";
-        interrupt-parent = <&gic>;
-        interrupts = <0 92 4>;
-        reset-gpios = <&gpio 80 1>;
-        reg = <0x0 0x80000000 0x0 0x10000>;
+	#dma-cells = <1>;
+	compatible = "xlnx,axi-frmbuf-wr";
+	interrupt-parent = <&gic>;
+	interrupts = <0 92 4>;
+	reset-gpios = <&gpio 80 1>;
+	reg = <0x0 0x80000000 0x0 0x10000>;
 };
