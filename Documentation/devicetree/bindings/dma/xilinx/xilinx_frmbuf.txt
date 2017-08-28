@@ -26,6 +26,26 @@ Required Properties Common to both FB Read and FB Write:
 - reset-gpios		: Should contain GPIO reset phandle
 - reg			: Memory map for module access
 - xlnx,dma-addr-width	: Size of dma address pointer in IP (either 32 or 64)
+- xlnx,vid-formats	: A list of strings indicating what video memory
+			  formats the IP has been configured to support.
+			  See VIDEO FORMATS table below and examples.
+
+VIDEO FORMATS
+The following table describes the legal string values to be used for
+the xlnx,vid-formats property.  To the left is the string value and the
+two columns to the right describe how this is mapped to an equivalent V4L2
+and DRM fourcc code---respectively---by the driver.
+
+IP FORMAT	DTS String	V4L2 Fourcc		DRM Fourcc
+-------------|----------------|----------------------|---------------------
+RGB8		bgr888		V4L2_PIX_FMT_RGB24	DRM_FORMAT_BGR888
+RGBX8		xbgr8888	<not supported>		DRM_FORMAT_XBGR8888
+YUYV8		yuyv		V4L2_PIX_FMT_YUYV	DRM_FORMAT_YUYV
+Y_UV8		nv16		V4L2_PIX_FMT_NV16	DRM_FORMAT_NV16
+Y_UV8_420	nv12		V4L2_PIX_FMT_NV12	DRM_FORMAT_NV12
+YUVX8		<none>		<not supported>		<not supported>
+YUV8		<none>		<not supported>		<not supported>
+Y8		y8		V4L2_PIX_FMT_GREY	<not supported>
 
 Examples
 
@@ -39,6 +59,7 @@ v_frmbuf_rd_0: v_frmbuf_rd@80000000 {
 	reset-gpios = <&gpio 80 1>;
 	reg = <0x0 0x80000000 0x0 0x10000>;
 	xlnx,dma-addr-width = <32>;
+	xlnx,vid-formats = "bgr888","xbgr8888";
 };
 
 FB Write Example:
@@ -51,4 +72,5 @@ v_frmbuf_wr_0: v_frmbuf_wr@80000000 {
 	reset-gpios = <&gpio 80 1>;
 	reg = <0x0 0x80000000 0x0 0x10000>;
 	xlnx,dma-addr-width = <64>;
+	xlnx,vid-formats = "bgr888","yuyv","nv16","nv12";
 };
