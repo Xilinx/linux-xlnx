@@ -176,6 +176,26 @@
 #define XSDIRX_MAX_EVENTS	(128)
 
 /**
+ * enum sdi_family_enc - SDI Transport Video Format Detected with Active Pixels
+ * @XSDIRX_SMPTE_ST_274: SMPTE ST 274 detected with AP 1920x1080
+ * @XSDIRX_SMPTE_ST_296: SMPTE ST 296 detected with AP 1280x720
+ * @XSDIRX_SMPTE_ST_2048_2: SMPTE ST 2048-2 detected with AP 2048x1080
+ * @XSDIRX_SMPTE_ST_295: SMPTE ST 295 detected with AP 1920x1080
+ * @XSDIRX_NTSC: NTSC encoding detected with AP 720x480
+ * @XSDIRX_PAL: PAL encoding detected with AP 720x576
+ * @XSDIRX_TS_UNKNOWN: Unknown SMPTE Transport family type
+ */
+enum sdi_family_enc {
+	XSDIRX_SMPTE_ST_274	= 0,
+	XSDIRX_SMPTE_ST_296	= 1,
+	XSDIRX_SMPTE_ST_2048_2	= 2,
+	XSDIRX_SMPTE_ST_295	= 3,
+	XSDIRX_NTSC		= 8,
+	XSDIRX_PAL		= 9,
+	XSDIRX_TS_UNKNOWN	= 15
+};
+
+/**
  * struct xsdirxss_core - Core configuration SDI Rx Subsystem device structure
  * @dev: Platform structure
  * @iomem: Base address of subsystem
@@ -820,7 +840,7 @@ static int xsdirxss_get_format(struct v4l2_subdev *sd,
 {
 	struct xsdirxss_state *xsdirxss = to_xsdirxssstate(sd);
 	struct xsdirxss_core *core = &xsdirxss->core;
-	u32 mode, payload;
+	u32 mode, payload, val, family;
 
 	if (!xsdirxss->vidlocked) {
 		dev_err(core->dev, "Video not locked!\n");
@@ -834,6 +854,11 @@ static int xsdirxss_get_format(struct v4l2_subdev *sd,
 	mode &= XSDIRX_MODE_DET_STAT_RX_MODE_MASK;
 
 	payload = xsdirxss_read(core, XSDIRX_ST352_DS1_REG);
+
+	val = xsdirxss_read(core, XSDIRX_TS_DET_STAT_REG);
+
+	family = (val & XSDIRX_TS_DET_STAT_FAMILY_MASK) >>
+		  XSDIRX_TS_DET_STAT_FAMILY_OFFSET;
 
 	/* TODO : Add more checks to get width and height */
 	switch (mode) {
@@ -849,6 +874,20 @@ static int xsdirxss_get_format(struct v4l2_subdev *sd,
 
 		break;
 	case XSDIRX_MODE_SD_MASK:
+		fmt->format.field = V4L2_FIELD_INTERLACED;
+
+		switch (family) {
+		case XSDIRX_NTSC:
+			fmt->format.width = 720;
+			fmt->format.height = 480;
+			break;
+		case XSDIRX_PAL:
+			fmt->format.width = 720;
+			fmt->format.height = 576;
+			break;
+		default:
+			dev_dbg(core->dev, "Unknown SD Mode SMPTE standard\n");
+		}
 		break;
 	case XSDIRX_MODE_3G_MASK:
 		switch (payload & 0xFF) {
