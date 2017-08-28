@@ -863,6 +863,24 @@ static int xsdirxss_get_format(struct v4l2_subdev *sd,
 
 		break;
 	case XSDIRX_MODE_6G_MASK:
+		switch (payload & 0xFF) {
+		case 0xC2:
+			/* Dual link 6G */
+		case 0xC0:
+			/* Table 3 SMPTE ST 2081-10 */
+			fmt->format.height = 2160;
+			if (payload & 0x00400000)
+				/*
+				 * bit 6 of byte 3 indicates whether
+				 * 4096 (1) or 3840 (0)
+				 */
+				fmt->format.width = 4096;
+			else
+				fmt->format.width = 3840;
+			break;
+		default:
+			dev_dbg(core->dev, "Unknown 6G Mode SMPTE standard\n");
+		}
 		break;
 	case XSDIRX_MODE_12GI_MASK:
 	case XSDIRX_MODE_12GF_MASK:
