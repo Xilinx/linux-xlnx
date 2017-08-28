@@ -865,13 +865,25 @@ static int xsdirxss_get_format(struct v4l2_subdev *sd,
 	case XSDIRX_MODE_HD_MASK:
 		switch (payload & 0xFF) {
 		case 0x84:
+			/* SMPTE ST 292-1 for 720 line payloads */
 			fmt->format.width = 1280;
 			fmt->format.height = 720;
 			break;
+		case 0x85:
+			/* SMPTE ST 292-1 for 1080 line payloads */
+			fmt->format.height = 1080;
+			if (payload & 0x00400000)
+				/*
+				 * bit 6 of byte 3 indicates whether
+				 * 2048 (1) or 1920 (0)
+				 */
+				fmt->format.width = 2048;
+			else
+				fmt->format.width = 1920;
+			break;
 		default:
-			dev_dbg(core->dev, "Unknown SMPTE standard\n");
+			dev_dbg(core->dev, "Unknown HD Mode SMPTE standard\n");
 		}
-
 		break;
 	case XSDIRX_MODE_SD_MASK:
 		fmt->format.field = V4L2_FIELD_INTERLACED;
