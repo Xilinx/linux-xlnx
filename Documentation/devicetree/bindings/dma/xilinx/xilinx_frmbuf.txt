@@ -8,10 +8,16 @@ is format aware, only one buffer pointer is needed by the IP blocks even
 when planar or semi-planar format are used.
 
 FB Read Required propertie(s):
-- compatible		: Should be "xlnx,axi-frmbuf-rd"
+- compatible		: Should be "xlnx,axi-frmbuf-rd-v2"
+
+Note: Compatible string "xlnx,axi-frmbuf-rd" and the hardware it
+represented is no longer supported.
 
 FB Write Required propertie(s):
-- compatible		: Should be "xlnx,axi-frmbuf-wr"
+- compatible		: Should be "xlnx,axi-frmbuf-wr-v2"
+
+Note: Compatible string "xlnx,axi-frmbuf-wr" and the hardware it
+represented is no longer supported.
 
 Required Properties Common to both FB Read and FB Write:
 - #dma-cells		: should be 1
@@ -19,6 +25,7 @@ Required Properties Common to both FB Read and FB Write:
 - interrupts		: Should contain DMA channel interrupt
 - reset-gpios		: Should contain GPIO reset phandle
 - reg			: Memory map for module access
+- xlnx,dma-addr-width	: Size of dma address pointer in IP (either 32 or 64)
 
 Examples
 
@@ -26,20 +33,22 @@ FB Read Example:
 ++++++++
 v_frmbuf_rd_0: v_frmbuf_rd@80000000 {
 	#dma-cells = <1>;
-	compatible = "xlnx,axi-frmbuf-rd";
+	compatible = "xlnx,axi-frmbuf-rd-v2";
 	interrupt-parent = <&gic>;
 	interrupts = <0 92 4>;
 	reset-gpios = <&gpio 80 1>;
 	reg = <0x0 0x80000000 0x0 0x10000>;
+	xlnx,dma-addr-width = <32>;
 };
 
 FB Write Example:
 ++++++++
 v_frmbuf_wr_0: v_frmbuf_wr@80000000 {
 	#dma-cells = <1>;
-	compatible = "xlnx,axi-frmbuf-wr";
+	compatible = "xlnx,axi-frmbuf-wr-v2";
 	interrupt-parent = <&gic>;
 	interrupts = <0 92 4>;
 	reset-gpios = <&gpio 80 1>;
 	reg = <0x0 0x80000000 0x0 0x10000>;
+	xlnx,dma-addr-width = <64>;
 };
