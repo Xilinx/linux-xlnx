@@ -865,9 +865,27 @@ static int xsdirxss_get_format(struct v4l2_subdev *sd,
 	case XSDIRX_MODE_6G_MASK:
 		break;
 	case XSDIRX_MODE_12GI_MASK:
-		break;
 	case XSDIRX_MODE_12GF_MASK:
+		switch (payload & 0xFF) {
+		case 0xCE:
+			/* Section 4.3.1 SMPTE ST 2082-10 */
+			fmt->format.height = 2160;
+			if (payload & 0x00400000)
+				/*
+				 * bit 6 of byte 3 indicates whether
+				 * 4096 (1) or 3840 (0)
+				 */
+				fmt->format.width = 4096;
+			else
+				fmt->format.width = 3840;
+			break;
+		default:
+			dev_dbg(core->dev, "Unknown 12G Mode SMPTE standard\n");
+		};
 		break;
+	default:
+		dev_dbg(core->dev, "Invalid Mode\n");
+		return -EINVAL;
 	}
 
 	if (payload & 0x4000)
