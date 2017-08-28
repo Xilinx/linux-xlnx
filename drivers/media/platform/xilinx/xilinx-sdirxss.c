@@ -685,10 +685,24 @@ static int xsdirxss_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
 		xsdirxss_write(core, XSDIRX_CRC_ERRCNT_REG, 0xFFFF);
 		break;
 	case V4L2_CID_XILINX_SDIRX_EDH_ERRCNT:
-		ctrl->val = xsdirxss_read(core, XSDIRX_EDH_ERRCNT_REG);
+		val = xsdirxss_read(core, XSDIRX_MODE_DET_STAT_REG);
+		val &= XSDIRX_MODE_DET_STAT_RX_MODE_MASK;
+		if (val == XSDIRX_MODE_SD_MASK) {
+			ctrl->val = xsdirxss_read(core, XSDIRX_EDH_ERRCNT_REG);
+		} else {
+			dev_dbg(core->dev, "%d - not in SD mode\n", ctrl->id);
+			return -EINVAL;
+		}
 		break;
 	case V4L2_CID_XILINX_SDIRX_EDH_STATUS:
-		ctrl->val = xsdirxss_read(core, XSDIRX_EDH_STAT_REG);
+		val = xsdirxss_read(core, XSDIRX_MODE_DET_STAT_REG);
+		val &= XSDIRX_MODE_DET_STAT_RX_MODE_MASK;
+		if (val == XSDIRX_MODE_SD_MASK) {
+			ctrl->val = xsdirxss_read(core, XSDIRX_EDH_STAT_REG);
+		} else {
+			dev_dbg(core->dev, "%d - not in SD mode\n", ctrl->id);
+			return -EINVAL;
+		}
 		break;
 	default:
 		dev_err(core->dev, "Get Invalid control id 0x%0x\n", ctrl->id);
