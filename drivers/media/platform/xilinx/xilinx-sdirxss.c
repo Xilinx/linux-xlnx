@@ -46,38 +46,39 @@
 /*
  * SDI Rx register map, bitmask and offsets
  */
-#define XSDIRX_MDL_CTRL_REG		0x00
-#define XSDIRX_STAT_RESET_REG		0x04
-#define XSDIRX_INTR_STAT_REG		0x08
-#define XSDIRX_INTR_MASK_REG		0x0C
-#define XSDIRX_INTR_CLEAR_REG		0x10
-#define XSDIRX_MODE_DET_STAT_REG	0x14
-#define XSDIRX_TS_DET_STAT_REG		0x18
-#define XSDIRX_EDH_STAT_REG		0x1C
-#define XSDIRX_EDH_ERRCNT_REG		0x20
-#define XSDIRX_CRC_ERRCNT_REG		0x24
-#define XSDIRX_ST352_VALID_REG		0x28
-#define XSDIRX_ST352_DS0_REG		0x2C
-#define XSDIRX_ST352_DS1_REG		0x30
-#define XSDIRX_ST352_DS2_REG		0x34
-#define XSDIRX_ST352_DS3_REG		0x38
-#define XSDIRX_ST352_DS4_REG		0x3C
-#define XSDIRX_ST352_DS5_REG		0x40
-#define XSDIRX_ST352_DS6_REG		0x44
-#define XSDIRX_ST352_DS7_REG		0x48
-#define XSDIRX_VERSION_REG		0x4C
-#define XSDIRX_SYSCONFIG_REG		0x50
-#define XSDIRX_EDH_ERRCNT_EN_REG	0x54
-#define XSDIRX_STAT_SB_RX_TDATA_REG	0x58
+#define XSDIRX_RST_CTRL_REG		0x00
+#define XSDIRX_MDL_CTRL_REG		0x04
+#define XSDIRX_GLBL_IER_REG		0x0C
+#define XSDIRX_ISR_REG			0x10
+#define XSDIRX_IER_REG			0x14
+#define XSDIRX_ST352_VALID_REG		0x18
+#define XSDIRX_ST352_DS1_REG		0x1C
+#define XSDIRX_ST352_DS3_REG		0x20
+#define XSDIRX_ST352_DS5_REG		0x24
+#define XSDIRX_ST352_DS7_REG		0x28
+#define XSDIRX_ST352_DS9_REG		0x2C
+#define XSDIRX_ST352_DS11_REG		0x30
+#define XSDIRX_ST352_DS13_REG		0x34
+#define XSDIRX_ST352_DS15_REG		0x38
+#define XSDIRX_VERSION_REG		0x3C
+#define XSDIRX_SS_CONFIG_REG		0x40
+#define XSDIRX_MODE_DET_STAT_REG	0x44
+#define XSDIRX_TS_DET_STAT_REG		0x48
+#define XSDIRX_EDH_STAT_REG		0x4C
+#define XSDIRX_EDH_ERRCNT_EN_REG	0x50
+#define XSDIRX_EDH_ERRCNT_REG		0x54
+#define XSDIRX_CRC_ERRCNT_REG		0x58
 #define XSDIRX_VID_LOCK_WINDOW_REG	0x5C
-#define XSDIRX_BRIDGE_CTRL_REG		0x60
-#define XSDIRX_BRIDGE_STAT_REG		0x64
-#define XSDIRX_VID_IN_AXIS4_CTRL_REG	0x68
-#define XSDIRX_VID_IN_AXIS4_STAT_REG	0x6C
+#define XSDIRX_SB_RX_STS_REG		0x60
 
-#define XSDIRX_MDL_CTRL_MDL_EN_MASK	BIT(0)
-#define XSDIRX_MDL_CTRL_FRM_EN_MASK	BIT(4)
+#define XSDIRX_RST_CTRL_SS_EN_MASK			BIT(0)
+#define XSDIRX_RST_CTRL_SRST_MASK			BIT(1)
+#define XSDIRX_RST_CTRL_RST_CRC_ERRCNT_MASK		BIT(2)
+#define XSDIRX_RST_CTRL_RST_EDH_ERRCNT_MASK		BIT(3)
+#define XSDIRX_RST_CTRL_SDIRX_BRIDGE_ENB_MASK		BIT(8)
+#define XSDIRX_RST_CTRL_VIDIN_AXI4S_MOD_ENB_MASK	BIT(9)
 
+#define XSDIRX_MDL_CTRL_FRM_EN_MASK		BIT(4)
 #define XSDIRX_MDL_CTRL_MODE_DET_EN_MASK	BIT(5)
 #define XSDIRX_MDL_CTRL_MODE_HD_EN_MASK		BIT(8)
 #define XSDIRX_MDL_CTRL_MODE_SD_EN_MASK		BIT(9)
@@ -90,13 +91,17 @@
 #define XSDIRX_MDL_CTRL_FORCED_MODE_OFFSET	16
 #define XSDIRX_MDL_CTRL_FORCED_MODE_MASK	GENMASK(18, 16)
 
-#define XSDIRX_STAT_RESET_CRC_ERRCNT_MASK	BIT(0)
-#define XSDIRX_STAT_RESET_EDH_ERRCNT_MASK	BIT(1)
+#define XSDIRX_GLBL_INTR_EN_MASK	BIT(0)
 
 #define XSDIRX_INTR_VIDLOCK_MASK	BIT(0)
 #define XSDIRX_INTR_VIDUNLOCK_MASK	BIT(1)
+#define XSDIRX_INTR_OVERFLOW_MASK	BIT(9)
+#define XSDIRX_INTR_UNDERFLOW_MASK	BIT(10)
+
 #define XSDIRX_INTR_ALL_MASK	(XSDIRX_INTR_VIDLOCK_MASK |\
-				XSDIRX_INTR_VIDUNLOCK_MASK)
+				XSDIRX_INTR_VIDUNLOCK_MASK |\
+				XSDIRX_INTR_OVERFLOW_MASK |\
+				XSDIRX_INTR_UNDERFLOW_MASK)
 
 #define XSDIRX_MODE_DET_STAT_RX_MODE_MASK	GENMASK(2, 0)
 #define XSDIRX_MODE_DET_STAT_MODE_LOCK_MASK	BIT(3)
@@ -126,8 +131,8 @@
 
 #define XSDIRX_EDH_ERRCNT_COUNT_MASK	GENMASK(15, 0)
 
-#define XSDIRX_CRC_ERRCNT_COUNT_MASK	GENMASK(15, 0)
-#define XSDIRX_CRC_ERRCNT_DS_CRC_MASK	GENMASK(31, 16)
+#define XSDIRX_CRC_ERRCNT_COUNT_MASK	GENMASK(31, 16)
+#define XSDIRX_CRC_ERRCNT_DS_CRC_MASK	GENMASK(15, 0)
 
 #define XSDIRX_VERSION_REV_MASK		GENMASK(7, 0)
 #define XSDIRX_VERSION_PATCHID_MASK	GENMASK(11, 8)
@@ -135,28 +140,14 @@
 #define XSDIRX_VERSION_VER_MIN_MASK	GENMASK(23, 16)
 #define XSDIRX_VERSION_VER_MAJ_MASK	GENMASK(31, 24)
 
-#define XSDIRX_SYSCONFIG_EDH_INCLUDED_MASK	BIT(1)
+#define XSDIRX_SS_CONFIG_EDH_INCLUDED_MASK		BIT(1)
 
 #define XSDIRX_STAT_SB_RX_TDATA_CHANGE_DONE_MASK	BIT(0)
 #define XSDIRX_STAT_SB_RX_TDATA_CHANGE_FAIL_MASK	BIT(1)
 #define XSDIRX_STAT_SB_RX_TDATA_GT_RESETDONE		BIT(2)
 #define XSDIRX_STAT_SB_RX_TDATA_GT_BITRATE		BIT(3)
 
-#define XSDIRX_VID_LOCK_WINDOW_VAL_MASK		GENMASK(15, 0)
-
-#define XSDIRX_BRIDGE_CTRL_MDL_ENB_MASK		BIT(0)
-
-#define XSDIRX_BRIDGE_STAT_SEL_MASK		BIT(0)
-#define XSDIRX_BRIDGE_STAT_MODE_LOCKED_MASK	BIT(1)
-#define XSDIRX_BRIDGE_STAT_MODE_MASK		GENMASK(6, 4)
-#define XSDIRX_BRIDGE_STAT_LVLB_MASK		BIT(7)
-
-#define XSDIRX_VID_IN_AXIS4_CTRL_MDL_ENB_MASK	BIT(0)
-#define XSDIRX_VID_IN_AXIS4_CTRL_AXIS_ENB_MASK	BIT(1)
-#define XSDIRX_VID_IN_AXIS4_CTRL_ALL_MASK	GENMASK(1, 0)
-
-#define XSDIRX_VID_IN_AXIS4_STAT_OVERFLOW_MASK	BIT(0)
-#define XSDIRX_VID_IN_AXIS4_STAT_UNDERFLOW_MASK	BIT(1)
+#define XSDIRX_VID_LOCK_WINDOW_VAL_MASK			GENMASK(15, 0)
 
 /* Number of media pads */
 #define XSDIRX_MEDIA_PADS	(1)
@@ -262,12 +253,12 @@ static inline void xsdirxss_set(struct xsdirxss_core *xsdirxss, u32 addr,
 
 static void xsdirx_core_disable(struct xsdirxss_core *core)
 {
-	xsdirxss_clr(core, XSDIRX_MDL_CTRL_REG, XSDIRX_MDL_CTRL_MDL_EN_MASK);
+	xsdirxss_clr(core, XSDIRX_RST_CTRL_REG, XSDIRX_RST_CTRL_SS_EN_MASK);
 }
 
 static void xsdirx_core_enable(struct xsdirxss_core *core)
 {
-	xsdirxss_set(core, XSDIRX_MDL_CTRL_REG, XSDIRX_MDL_CTRL_MDL_EN_MASK);
+	xsdirxss_set(core, XSDIRX_RST_CTRL_REG, XSDIRX_RST_CTRL_SS_EN_MASK);
 }
 
 static int xsdirx_set_modedetect(struct xsdirxss_core *core, u16 mask)
@@ -380,40 +371,49 @@ static void xsdirx_setvidlockwindow(struct xsdirxss_core *core, u32 val)
 		       val & XSDIRX_VID_LOCK_WINDOW_VAL_MASK);
 }
 
-static void xsdirx_disableintr(struct xsdirxss_core *core, u8 mask)
+static void xsdirx_disableintr(struct xsdirxss_core *core, u32 mask)
 {
-	xsdirxss_set(core, XSDIRX_INTR_MASK_REG, mask);
+	xsdirxss_clr(core, XSDIRX_IER_REG, mask);
 }
 
-static void xsdirx_enableintr(struct xsdirxss_core *core, u8 mask)
+static void xsdirx_enableintr(struct xsdirxss_core *core, u32 mask)
 {
-	xsdirxss_clr(core, XSDIRX_INTR_MASK_REG, mask);
+	xsdirxss_set(core, XSDIRX_IER_REG, mask);
 }
 
-static void xsdirx_clearintr(struct xsdirxss_core *core, u8 mask)
+static void xsdirx_globalintr(struct xsdirxss_core *core, bool flag)
 {
-	xsdirxss_set(core, XSDIRX_INTR_CLEAR_REG, mask);
-	xsdirxss_clr(core, XSDIRX_INTR_CLEAR_REG, mask);
+	if (flag)
+		xsdirxss_set(core, XSDIRX_GLBL_IER_REG,
+			     XSDIRX_GLBL_INTR_EN_MASK);
+	else
+		xsdirxss_clr(core, XSDIRX_GLBL_IER_REG,
+			     XSDIRX_GLBL_INTR_EN_MASK);
+}
+
+static void xsdirx_clearintr(struct xsdirxss_core *core, u32 mask)
+{
+	xsdirxss_set(core, XSDIRX_ISR_REG, mask);
 }
 
 static void xsdirx_vid_bridge_control(struct xsdirxss_core *core, bool enable)
 {
 	if (enable)
-		xsdirxss_set(core, XSDIRX_BRIDGE_CTRL_REG,
-			     XSDIRX_BRIDGE_CTRL_MDL_ENB_MASK);
+		xsdirxss_set(core, XSDIRX_RST_CTRL_REG,
+			     XSDIRX_RST_CTRL_SDIRX_BRIDGE_ENB_MASK);
 	else
-		xsdirxss_clr(core, XSDIRX_BRIDGE_CTRL_REG,
-			     XSDIRX_BRIDGE_CTRL_MDL_ENB_MASK);
+		xsdirxss_clr(core, XSDIRX_RST_CTRL_REG,
+			     XSDIRX_RST_CTRL_SDIRX_BRIDGE_ENB_MASK);
 }
 
 static void xsdirx_axis4_bridge_control(struct xsdirxss_core *core, bool enable)
 {
 	if (enable)
-		xsdirxss_set(core, XSDIRX_VID_IN_AXIS4_CTRL_REG,
-			     XSDIRX_VID_IN_AXIS4_CTRL_ALL_MASK);
+		xsdirxss_set(core, XSDIRX_RST_CTRL_REG,
+			     XSDIRX_RST_CTRL_VIDIN_AXI4S_MOD_ENB_MASK);
 	else
-		xsdirxss_clr(core, XSDIRX_VID_IN_AXIS4_CTRL_REG,
-			     XSDIRX_VID_IN_AXIS4_CTRL_ALL_MASK);
+		xsdirxss_clr(core, XSDIRX_RST_CTRL_REG,
+			     XSDIRX_RST_CTRL_VIDIN_AXI4S_MOD_ENB_MASK);
 }
 
 static void xsdirx_streamflow_control(struct xsdirxss_core *core, bool enable)
@@ -449,7 +449,7 @@ static irqreturn_t xsdirxss_irq_handler(int irq, void *dev_id)
 	struct xsdirxss_core *core = &state->core;
 	u32 status;
 
-	status = xsdirxss_read(core, XSDIRX_INTR_STAT_REG);
+	status = xsdirxss_read(core, XSDIRX_ISR_REG);
 	dev_dbg(core->dev, "interrupt status = 0x%08x\n", status);
 
 	if (!status)
@@ -466,16 +466,16 @@ static irqreturn_t xsdirxss_irq_handler(int irq, void *dev_id)
 
 		if ((val1 & XSDIRX_MODE_DET_STAT_MODE_LOCK_MASK) &&
 		    (val2 & XSDIRX_TS_DET_STAT_LOCKED_MASK)) {
-			u32 mask = XSDIRX_STAT_RESET_CRC_ERRCNT_MASK |
-				   XSDIRX_STAT_RESET_EDH_ERRCNT_MASK;
+			u32 mask = XSDIRX_RST_CTRL_RST_CRC_ERRCNT_MASK |
+				   XSDIRX_RST_CTRL_RST_EDH_ERRCNT_MASK;
 
 			dev_dbg(core->dev, "mode & ts lock occurred\n");
 
-			xsdirxss_set(core, XSDIRX_STAT_RESET_REG, mask);
-			xsdirxss_clr(core, XSDIRX_STAT_RESET_REG, mask);
+			xsdirxss_set(core, XSDIRX_RST_CTRL_REG, mask);
+			xsdirxss_clr(core, XSDIRX_RST_CTRL_REG, mask);
 
 			val1 = xsdirxss_read(core, XSDIRX_ST352_VALID_REG);
-			val2 = xsdirxss_read(core, XSDIRX_ST352_DS0_REG);
+			val2 = xsdirxss_read(core, XSDIRX_ST352_DS1_REG);
 
 			dev_dbg(core->dev, "valid st352 mask = 0x%08x\n", val1);
 			dev_dbg(core->dev, "st352 payload = 0x%08x\n", val2);
@@ -499,6 +499,23 @@ static irqreturn_t xsdirxss_irq_handler(int irq, void *dev_id)
 		state->vidlocked = false;
 	}
 
+	if (status & XSDIRX_INTR_UNDERFLOW_MASK) {
+		dev_dbg(core->dev, "Video in to AXI4 Stream core underflow interrupt\n");
+		xsdirx_clearintr(core, XSDIRX_INTR_UNDERFLOW_MASK);
+
+		memset(&state->event, 0, sizeof(state->event));
+		state->event.type = V4L2_EVENT_XLNXSDIRX_UNDERFLOW;
+		v4l2_subdev_notify_event(&state->subdev, &state->event);
+	}
+
+	if (status & XSDIRX_INTR_OVERFLOW_MASK) {
+		dev_dbg(core->dev, "Video in to AXI4 Stream core overflow interrupt\n");
+		xsdirx_clearintr(core, XSDIRX_INTR_OVERFLOW_MASK);
+
+		memset(&state->event, 0, sizeof(state->event));
+		state->event.type = V4L2_EVENT_XLNXSDIRX_OVERFLOW;
+		v4l2_subdev_notify_event(&state->subdev, &state->event);
+	}
 	return IRQ_HANDLED;
 }
 
@@ -520,6 +537,8 @@ static int xsdirxss_subscribe_event(struct v4l2_subdev *sd,
 
 	switch (sub->type) {
 	case V4L2_EVENT_XLNXSDIRX_VIDUNLOCK:
+	case V4L2_EVENT_XLNXSDIRX_UNDERFLOW:
+	case V4L2_EVENT_XLNXSDIRX_OVERFLOW:
 		ret = v4l2_event_subscribe(fh, sub, XSDIRX_MAX_EVENTS, NULL);
 		dev_dbg(core->dev, "Event subscribed : 0x%08x\n", sub->type);
 		break;
@@ -593,8 +612,8 @@ static int xsdirxss_s_ctrl(struct v4l2_ctrl *ctrl)
 		}
 		break;
 	default:
-		xsdirxss_set(core, XSDIRX_MDL_CTRL_REG,
-			     XSDIRX_MDL_CTRL_MDL_EN_MASK);
+		xsdirxss_set(core, XSDIRX_RST_CTRL_REG,
+			     XSDIRX_RST_CTRL_SS_EN_MASK);
 		return -EINVAL;
 	}
 	xsdirx_core_enable(core);
@@ -647,27 +666,13 @@ static int xsdirxss_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
 		break;
 	case V4L2_CID_XILINX_SDIRX_CRC:
 		ctrl->val = xsdirxss_read(core, XSDIRX_CRC_ERRCNT_REG);
+		xsdirxss_write(core, XSDIRX_CRC_ERRCNT_REG, 0xFFFF);
 		break;
 	case V4L2_CID_XILINX_SDIRX_EDH_ERRCNT:
 		ctrl->val = xsdirxss_read(core, XSDIRX_EDH_ERRCNT_REG);
 		break;
 	case V4L2_CID_XILINX_SDIRX_EDH_STATUS:
 		ctrl->val = xsdirxss_read(core, XSDIRX_EDH_STAT_REG);
-		break;
-	case V4L2_CID_XILINX_SDIRX_AXIS4_STATUS:
-		val = xsdirxss_read(core, XSDIRX_VID_IN_AXIS4_CTRL_REG);
-		if (val & (XSDIRX_VID_IN_AXIS4_CTRL_ALL_MASK)) {
-			val = xsdirxss_read(core, XSDIRX_VID_IN_AXIS4_STAT_REG);
-			if (val & XSDIRX_VID_IN_AXIS4_STAT_OVERFLOW_MASK)
-				ctrl->val = XSDIRX_AXIS4_STATUS_OVERFLOW;
-			else if (val & XSDIRX_VID_IN_AXIS4_STAT_UNDERFLOW_MASK)
-				ctrl->val = XSDIRX_AXIS4_STATUS_UNDERFLOW;
-			else
-				ctrl->val = XSDIRX_AXIS4_STATUS_OK;
-		} else {
-			dev_err(core->dev, "Video Bridge not enabled!\n");
-			return -EINVAL;
-		}
 		break;
 	default:
 		dev_err(core->dev, "Get Invalid control id 0x%0x\n", ctrl->id);
@@ -798,7 +803,7 @@ static int xsdirxss_get_format(struct v4l2_subdev *sd,
 	mode = xsdirxss_read(core, XSDIRX_MODE_DET_STAT_REG);
 	mode &= XSDIRX_MODE_DET_STAT_RX_MODE_MASK;
 
-	payload = xsdirxss_read(core, XSDIRX_ST352_DS0_REG);
+	payload = xsdirxss_read(core, XSDIRX_ST352_DS1_REG);
 
 	/* TODO : Add more checks to get width and height */
 	switch (mode) {
@@ -1004,16 +1009,6 @@ static struct v4l2_ctrl_config xsdirxss_ctrls[] = {
 		.step	= 1,
 		.def	= 0,
 		.flags  = V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_READ_ONLY,
-	}, {
-		.ops	= &xsdirxss_ctrl_ops,
-		.id	= V4L2_CID_XILINX_SDIRX_AXIS4_STATUS,
-		.name	= "SDI Rx : AXIS4 Status",
-		.type	= V4L2_CTRL_TYPE_INTEGER,
-		.min	= XSDIRX_AXIS4_STATUS_OK,
-		.max	= XSDIRX_AXIS4_STATUS_UNDERFLOW,
-		.step	= 1,
-		.def	= XSDIRX_AXIS4_STATUS_OK,
-		.flags  = V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_READ_ONLY,
 	}
 };
 
@@ -1167,6 +1162,8 @@ static int xsdirxss_probe(struct platform_device *pdev)
 	xsdirx_clearintr(core, XSDIRX_INTR_ALL_MASK);
 	xsdirx_disableintr(core, XSDIRX_INTR_ALL_MASK);
 	xsdirx_enableintr(core, XSDIRX_INTR_ALL_MASK);
+	xsdirx_globalintr(core, true);
+	xsdirxss_write(core, XSDIRX_CRC_ERRCNT_REG, 0xFFFF);
 
 	/* Initialize V4L2 subdevice and media entity */
 	xsdirxss->pads[0].flags = MEDIA_PAD_FL_SOURCE;
