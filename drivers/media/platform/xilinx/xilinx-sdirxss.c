@@ -116,10 +116,23 @@
 
 #define XSDIRX_TS_DET_STAT_LOCKED_MASK		BIT(0)
 #define XSDIRX_TS_DET_STAT_SCAN_MASK		BIT(1)
+#define XSDIRX_TS_DET_STAT_SCAN_OFFSET		(1)
 #define XSDIRX_TS_DET_STAT_FAMILY_MASK		GENMASK(7, 4)
 #define XSDIRX_TS_DET_STAT_FAMILY_OFFSET	(4)
 #define XSDIRX_TS_DET_STAT_RATE_MASK		GENMASK(11, 8)
 #define XSDIRX_TS_DET_STAT_RATE_OFFSET		(8)
+
+#define XSDIRX_TS_DET_STAT_RATE_NONE		0x0
+#define XSDIRX_TS_DET_STAT_RATE_23_98HZ		0x2
+#define XSDIRX_TS_DET_STAT_RATE_24HZ		0x3
+#define XSDIRX_TS_DET_STAT_RATE_47_95HZ		0x4
+#define XSDIRX_TS_DET_STAT_RATE_25HZ		0x5
+#define XSDIRX_TS_DET_STAT_RATE_29_97HZ		0x6
+#define XSDIRX_TS_DET_STAT_RATE_30HZ		0x7
+#define XSDIRX_TS_DET_STAT_RATE_48HZ		0x8
+#define XSDIRX_TS_DET_STAT_RATE_50HZ		0x9
+#define XSDIRX_TS_DET_STAT_RATE_59_94HZ		0xA
+#define XSDIRX_TS_DET_STAT_RATE_60HZ		0xB
 
 #define XSDIRX_EDH_STAT_EDH_AP_MASK	BIT(0)
 #define XSDIRX_EDH_STAT_EDH_FF_MASK	BIT(1)
@@ -144,8 +157,8 @@
 
 #define XSDIRX_STAT_SB_RX_TDATA_CHANGE_DONE_MASK	BIT(0)
 #define XSDIRX_STAT_SB_RX_TDATA_CHANGE_FAIL_MASK	BIT(1)
-#define XSDIRX_STAT_SB_RX_TDATA_GT_RESETDONE		BIT(2)
-#define XSDIRX_STAT_SB_RX_TDATA_GT_BITRATE		BIT(3)
+#define XSDIRX_STAT_SB_RX_TDATA_GT_RESETDONE_MASK	BIT(2)
+#define XSDIRX_STAT_SB_RX_TDATA_GT_BITRATE_MASK		BIT(3)
 
 #define XSDIRX_VID_LOCK_WINDOW_VAL_MASK			GENMASK(15, 0)
 
@@ -840,7 +853,7 @@ static int xsdirxss_get_format(struct v4l2_subdev *sd,
 {
 	struct xsdirxss_state *xsdirxss = to_xsdirxssstate(sd);
 	struct xsdirxss_core *core = &xsdirxss->core;
-	u32 mode, payload, val, family;
+	u32 mode, payload = 0, val, family, valid, trate, tscan;
 
 	if (!xsdirxss->vidlocked) {
 		dev_err(core->dev, "Video not locked!\n");
@@ -853,36 +866,111 @@ static int xsdirxss_get_format(struct v4l2_subdev *sd,
 	mode = xsdirxss_read(core, XSDIRX_MODE_DET_STAT_REG);
 	mode &= XSDIRX_MODE_DET_STAT_RX_MODE_MASK;
 
-	payload = xsdirxss_read(core, XSDIRX_ST352_DS1_REG);
+	valid = xsdirxss_read(core, XSDIRX_ST352_VALID_REG);
+
+	if ((mode >= XSDIRX_MODE_3G_MASK) && (!valid)) {
+		dev_dbg(core->dev, "No valid ST352 payload present even for 3G mode and above\n");
+		return -EINVAL;
+	}
+
+	if (valid & 0x1) {
+		payload = xsdirxss_read(core, XSDIRX_ST352_DS1_REG);
+	} else {
+		dev_dbg(core->dev, "No ST352 payload available : Mode = %d\n",
+			mode);
+	}
 
 	val = xsdirxss_read(core, XSDIRX_TS_DET_STAT_REG);
-
 	family = (val & XSDIRX_TS_DET_STAT_FAMILY_MASK) >>
 		  XSDIRX_TS_DET_STAT_FAMILY_OFFSET;
+	trate = (val & XSDIRX_TS_DET_STAT_RATE_MASK) >>
+		 XSDIRX_TS_DET_STAT_RATE_OFFSET;
+	tscan = (val & XSDIRX_TS_DET_STAT_SCAN_MASK) >>
+		 XSDIRX_TS_DET_STAT_SCAN_OFFSET;
 
-	/* TODO : Add more checks to get width and height */
 	switch (mode) {
 	case XSDIRX_MODE_HD_MASK:
-		switch (payload & 0xFF) {
-		case 0x84:
-			/* SMPTE ST 292-1 for 720 line payloads */
-			fmt->format.width = 1280;
-			fmt->format.height = 720;
-			break;
-		case 0x85:
-			/* SMPTE ST 292-1 for 1080 line payloads */
-			fmt->format.height = 1080;
-			if (payload & 0x00400000)
-				/*
-				 * bit 6 of byte 3 indicates whether
-				 * 2048 (1) or 1920 (0)
-				 */
-				fmt->format.width = 2048;
-			else
+		if (!valid) {
+			/* No payload obtained */
+			dev_dbg(core->dev, "frame rate : %d, tscan = %d\n",
+				trate, tscan);
+			/*
+			 * NOTE : A progressive segmented frame pSF will be
+			 * reported incorrectly as Interlaced as we rely on IP's
+			 * transport scan locked bit.
+			 */
+			dev_warn(core->dev, "pSF will be incorrectly reported as Interlaced\n");
+
+			switch (trate) {
+			case XSDIRX_TS_DET_STAT_RATE_23_98HZ:
+			case XSDIRX_TS_DET_STAT_RATE_24HZ:
+			case XSDIRX_TS_DET_STAT_RATE_25HZ:
+			case XSDIRX_TS_DET_STAT_RATE_29_97HZ:
+			case XSDIRX_TS_DET_STAT_RATE_30HZ:
+				if (family == XSDIRX_SMPTE_ST_296) {
+					fmt->format.width = 1280;
+					fmt->format.height = 720;
+					fmt->format.field = V4L2_FIELD_NONE;
+				} else if (family == XSDIRX_SMPTE_ST_2048_2) {
+					fmt->format.width = 2048;
+					fmt->format.height = 1080;
+					if (tscan)
+						fmt->format.field =
+							V4L2_FIELD_NONE;
+					else
+						fmt->format.field =
+							V4L2_FIELD_INTERLACED;
+				} else {
+					fmt->format.width = 1920;
+					fmt->format.height = 1080;
+					if (tscan)
+						fmt->format.field =
+							V4L2_FIELD_NONE;
+					else
+						fmt->format.field =
+							V4L2_FIELD_INTERLACED;
+				}
+				break;
+			case XSDIRX_TS_DET_STAT_RATE_50HZ:
+			case XSDIRX_TS_DET_STAT_RATE_59_94HZ:
+			case XSDIRX_TS_DET_STAT_RATE_60HZ:
+				if (family == XSDIRX_SMPTE_ST_274) {
+					fmt->format.width = 1920;
+					fmt->format.height = 1080;
+				} else {
+					fmt->format.width = 1280;
+					fmt->format.height = 720;
+				}
+				fmt->format.field = V4L2_FIELD_NONE;
+				break;
+			default:
 				fmt->format.width = 1920;
-			break;
-		default:
-			dev_dbg(core->dev, "Unknown HD Mode SMPTE standard\n");
+				fmt->format.height = 1080;
+				fmt->format.field = V4L2_FIELD_NONE;
+			}
+		} else {
+			dev_dbg(core->dev, "Got the payload\n");
+			switch (payload & 0xFF) {
+			case 0x84:
+				/* SMPTE ST 292-1 for 720 line payloads */
+				fmt->format.width = 1280;
+				fmt->format.height = 720;
+				break;
+			case 0x85:
+				/* SMPTE ST 292-1 for 1080 line payloads */
+				fmt->format.height = 1080;
+				if (payload & 0x00400000)
+					/*
+					 * bit 6 of byte 3 indicates whether
+					 * 2048 (1) or 1920 (0)
+					 */
+					fmt->format.width = 2048;
+				else
+					fmt->format.width = 1920;
+				break;
+			default:
+				dev_dbg(core->dev, "Unknown HD Mode SMPTE standard\n");
+			}
 		}
 		break;
 	case XSDIRX_MODE_SD_MASK:
@@ -974,13 +1062,16 @@ static int xsdirxss_get_format(struct v4l2_subdev *sd,
 		return -EINVAL;
 	}
 
-	if (payload & 0x4000)
-		fmt->format.field = V4L2_FIELD_NONE;
-	else
-		fmt->format.field = V4L2_FIELD_INTERLACED;
+	if (valid) {
+		if (payload & 0x4000)
+			fmt->format.field = V4L2_FIELD_NONE;
+		else
+			fmt->format.field = V4L2_FIELD_INTERLACED;
+	}
 
-	dev_dbg(core->dev, "Stream width = %d height = %d Field = %d\n",
-		fmt->format.width, fmt->format.height, fmt->format.field);
+	dev_dbg(core->dev, "Stream width = %d height = %d Field = %d payload = 0x%08x ts = 0x%08x\n",
+		fmt->format.width, fmt->format.height, fmt->format.field,
+		payload, val);
 
 	return 0;
 }
