@@ -852,15 +852,32 @@ static int xsdirxss_get_format(struct v4l2_subdev *sd,
 		break;
 	case XSDIRX_MODE_3G_MASK:
 		switch (payload & 0xFF) {
-		case 0x85:
+		case 0x88:
+			/* Sec 4.1.6.1 SMPTE 425-2008 */
+		case 0x8B:
+			/* Table 13 SMPTE 425-2008 */
+			fmt->format.width = 1280;
+			fmt->format.height = 720;
+			break;
+		case 0x89:
+			/* ST352 Table SMPTE 425-1 */
 		case 0x8A:
-			fmt->format.width = 1920;
+			/* Table 13 SMPTE 425-2008 */
+		case 0x8C:
+			/* Table 13 SMPTE 425-2008 */
 			fmt->format.height = 1080;
+			if (payload & 0x00400000)
+				/*
+				 * bit 6 of byte 3 indicates whether
+				 * 2048 (1) or 1920 (0)
+				 */
+				fmt->format.width = 2048;
+			else
+				fmt->format.width = 1920;
 			break;
 		default:
-			dev_dbg(core->dev, "Unknown SMPTE standard\n");
+			dev_dbg(core->dev, "Unknown 3G Mode SMPTE standard\n");
 		}
-
 		break;
 	case XSDIRX_MODE_6G_MASK:
 		switch (payload & 0xFF) {
