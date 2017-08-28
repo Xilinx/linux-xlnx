@@ -951,6 +951,38 @@ static const struct v4l2_ctrl_ops xsdirxss_ctrl_ops = {
 	.s_ctrl	= xsdirxss_s_ctrl
 };
 
+static struct v4l2_ctrl_config xsdirxss_edh_ctrls[] = {
+	{
+		.ops	= &xsdirxss_ctrl_ops,
+		.id	= V4L2_CID_XILINX_SDIRX_EDH_ERRCNT_ENABLE,
+		.name	= "SDI Rx : EDH Error Count Enable",
+		.type	= V4L2_CTRL_TYPE_BITMASK,
+		.min	= 0,
+		.max	= XSDIRX_EDH_ALLERR_MASK,
+		.def	= 0,
+	}, {
+		.ops	= &xsdirxss_ctrl_ops,
+		.id	= V4L2_CID_XILINX_SDIRX_EDH_ERRCNT,
+		.name	= "SDI Rx : EDH Error Count",
+		.type	= V4L2_CTRL_TYPE_INTEGER,
+		.min	= 0,
+		.max	= 0xFFFF,
+		.step	= 1,
+		.def	= 0,
+		.flags  = V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_READ_ONLY,
+	}, {
+		.ops	= &xsdirxss_ctrl_ops,
+		.id	= V4L2_CID_XILINX_SDIRX_EDH_STATUS,
+		.name	= "SDI Rx : EDH Status",
+		.type	= V4L2_CTRL_TYPE_INTEGER,
+		.min	= 0,
+		.max	= 0xFFFFFFFF,
+		.step	= 1,
+		.def	= 0,
+		.flags  = V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_READ_ONLY,
+	}
+};
+
 static struct v4l2_ctrl_config xsdirxss_ctrls[] = {
 	{
 		.ops	= &xsdirxss_ctrl_ops,
@@ -972,14 +1004,6 @@ static struct v4l2_ctrl_config xsdirxss_ctrls[] = {
 		.def	= XSDIRX_DEFAULT_VIDEO_LOCK_WINDOW,
 	}, {
 		.ops	= &xsdirxss_ctrl_ops,
-		.id	= V4L2_CID_XILINX_SDIRX_EDH_ERRCNT_ENABLE,
-		.name	= "SDI Rx : EDH Error Count Enable",
-		.type	= V4L2_CTRL_TYPE_BITMASK,
-		.min	= 0,
-		.max	= XSDIRX_EDH_ALLERR_MASK,
-		.def	= 0,
-	}, {
-		.ops	= &xsdirxss_ctrl_ops,
 		.id	= V4L2_CID_XILINX_SDIRX_SEARCH_MODES,
 		.name	= "SDI Rx : Modes search Mask",
 		.type	= V4L2_CTRL_TYPE_BITMASK,
@@ -999,26 +1023,6 @@ static struct v4l2_ctrl_config xsdirxss_ctrls[] = {
 		.ops	= &xsdirxss_ctrl_ops,
 		.id	= V4L2_CID_XILINX_SDIRX_CRC,
 		.name	= "SDI Rx : CRC Error status",
-		.type	= V4L2_CTRL_TYPE_INTEGER,
-		.min	= 0,
-		.max	= 0xFFFFFFFF,
-		.step	= 1,
-		.def	= 0,
-		.flags  = V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_READ_ONLY,
-	},  {
-		.ops	= &xsdirxss_ctrl_ops,
-		.id	= V4L2_CID_XILINX_SDIRX_EDH_ERRCNT,
-		.name	= "SDI Rx : EDH Error Count",
-		.type	= V4L2_CTRL_TYPE_INTEGER,
-		.min	= 0,
-		.max	= 0xFFFF,
-		.step	= 1,
-		.def	= 0,
-		.flags  = V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_READ_ONLY,
-	}, {
-		.ops	= &xsdirxss_ctrl_ops,
-		.id	= V4L2_CID_XILINX_SDIRX_EDH_STATUS,
-		.name	= "SDI Rx : EDH Status",
 		.type	= V4L2_CTRL_TYPE_INTEGER,
 		.min	= 0,
 		.max	= 0xFFFFFFFF,
@@ -1154,7 +1158,7 @@ static int xsdirxss_probe(struct platform_device *pdev)
 	struct xsdirxss_core *core;
 	struct resource *res;
 	int ret;
-	unsigned int num_ctrls, i;
+	unsigned int num_ctrls, num_edh_ctrls = 0, i;
 
 	xsdirxss = devm_kzalloc(&pdev->dev, sizeof(*xsdirxss), GFP_KERNEL);
 	if (!xsdirxss)
@@ -1213,12 +1217,19 @@ static int xsdirxss_probe(struct platform_device *pdev)
 
 	/* Initialise and register the controls */
 	num_ctrls = ARRAY_SIZE(xsdirxss_ctrls);
-	v4l2_ctrl_handler_init(&xsdirxss->ctrl_handler, num_ctrls);
+
+	if (xsdirxss->core.include_edh)
+		num_edh_ctrls = ARRAY_SIZE(xsdirxss_edh_ctrls);
+
+	v4l2_ctrl_handler_init(&xsdirxss->ctrl_handler,
+			       (num_ctrls + num_edh_ctrls));
+
 	for (i = 0; i < num_ctrls; i++) {
 		struct v4l2_ctrl *ctrl;
 
 		dev_dbg(xsdirxss->core.dev, "%d %s ctrl = 0x%x\n",
 			i, xsdirxss_ctrls[i].name, xsdirxss_ctrls[i].id);
+
 		ctrl = v4l2_ctrl_new_custom(&xsdirxss->ctrl_handler,
 					    &xsdirxss_ctrls[i], NULL);
 		if (!ctrl) {
@@ -1228,7 +1239,26 @@ static int xsdirxss_probe(struct platform_device *pdev)
 		}
 	}
 
-	dev_dbg(xsdirxss->core.dev, "# v4l2 ctrls registered = %d\n", i - 1);
+	if (xsdirxss->core.include_edh) {
+		for (i = 0; i < num_edh_ctrls; i++) {
+			struct v4l2_ctrl *ctrl;
+
+			dev_dbg(xsdirxss->core.dev, "%d %s ctrl = 0x%x\n",
+				i, xsdirxss_edh_ctrls[i].name,
+				xsdirxss_edh_ctrls[i].id);
+
+			ctrl = v4l2_ctrl_new_custom(&xsdirxss->ctrl_handler,
+						    &xsdirxss_edh_ctrls[i],
+						    NULL);
+			if (!ctrl) {
+				dev_dbg(xsdirxss->core.dev, "Failed to add %s ctrl\n",
+					xsdirxss_edh_ctrls[i].name);
+				goto error;
+			}
+		}
+	} else {
+		dev_dbg(xsdirxss->core.dev, "Not registering the EDH controls as EDH is disabled in IP\n");
+	}
 
 	if (xsdirxss->ctrl_handler.error) {
 		dev_err(&pdev->dev, "failed to add controls\n");
