@@ -140,8 +140,15 @@ EXPORT_SYMBOL(dwc3_simple_check_quirks);
 
 void dwc3_simple_wakeup_capable(struct device *dev, bool wakeup)
 {
-	struct device_node *node =
-		of_find_compatible_node(dev->of_node, NULL, "xlnx,zynqmp-dwc3");
+	struct device_node *node = of_node_get(dev->parent->of_node);
+
+	/* check for valid parent node */
+	while (node) {
+		if (!of_device_is_compatible(node, "xlnx,zynqmp-dwc3"))
+			node = of_get_next_parent(node);
+		else
+			break;
+	}
 
 	if (node)  {
 		struct platform_device *pdev_parent;
