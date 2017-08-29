@@ -650,7 +650,10 @@ static void xilinx_frmbuf_issue_pending(struct dma_chan *dchan)
  */
 static void xilinx_frmbuf_reset(struct xilinx_frmbuf_chan *chan)
 {
-	frmbuf_write(chan, XILINX_FRMBUF_CTRL_OFFSET, 0);
+	/* reset ip */
+	gpiod_set_value(chan->xdev->rst_gpio, 1);
+	udelay(1);
+	gpiod_set_value(chan->xdev->rst_gpio, 0);
 }
 
 /**
@@ -660,9 +663,8 @@ static void xilinx_frmbuf_reset(struct xilinx_frmbuf_chan *chan)
 static void xilinx_frmbuf_chan_reset(struct xilinx_frmbuf_chan *chan)
 {
 	xilinx_frmbuf_reset(chan);
-
-	frmbuf_set(chan, XILINX_FRMBUF_IE_OFFSET,
-		   XILINX_FRMBUF_ISR_ALL_IRQ_MASK);
+	frmbuf_write(chan, XILINX_FRMBUF_IE_OFFSET, XILINX_FRMBUF_IE_AP_READY);
+	frmbuf_write(chan, XILINX_FRMBUF_GIE_OFFSET, XILINX_FRMBUF_GIE_EN);
 }
 
 /**
@@ -792,6 +794,9 @@ static int xilinx_frmbuf_terminate_all(struct dma_chan *dchan)
 
 	xilinx_frmbuf_halt(chan);
 	xilinx_frmbuf_free_descriptors(chan);
+	/* worst case frame-to-frame boundary; ensure frame output complete */
+	msleep(50);
+	xilinx_frmbuf_chan_reset(chan);
 
 	return 0;
 }
@@ -893,9 +898,6 @@ static int xilinx_frmbuf_chan_probe(struct xilinx_frmbuf_device *xdev,
 	mutex_unlock(&frmbuf_chan_list_lock);
 
 	xilinx_frmbuf_chan_reset(chan);
-
-	frmbuf_write(chan, XILINX_FRMBUF_IE_OFFSET, XILINX_FRMBUF_IE_AP_READY);
-	frmbuf_write(chan, XILINX_FRMBUF_GIE_OFFSET, XILINX_FRMBUF_GIE_EN);
 
 	return 0;
 }
