@@ -978,9 +978,11 @@ static void xilinx_sdi_mode_set(struct drm_encoder *encoder,
 	payload = xilinx_sdi_calc_st352_payld(sdi, adjusted_mode);
 	dev_dbg(sdi->dev, "payload : %0x\n", payload);
 
-	for (i = 0; i < sdi->sdi_data_strm_prop_val / 2; i++)
-		xilinx_sdi_set_payload_data(sdi, i, payload |
-					    (i << XSDI_CH_SHIFT));
+	for (i = 0; i < sdi->sdi_data_strm_prop_val / 2; i++) {
+		if (sdi->sdi_mod_prop_val == XSDI_MODE_3GB)
+			payload |= (i << 1) << XSDI_CH_SHIFT;
+		xilinx_sdi_set_payload_data(sdi, i, payload);
+	}
 
 	/* UHDSDI is fixed 2 pixels per clock, horizontal timings div by 2 */
 	vm.hactive = adjusted_mode->hdisplay / PIXELS_PER_CLK;
