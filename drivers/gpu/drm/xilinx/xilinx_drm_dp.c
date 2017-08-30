@@ -1040,14 +1040,13 @@ static int xilinx_drm_dp_link_train_cr(struct xilinx_drm_dp *dp)
 	bool cr_done;
 	int ret;
 
+	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_TRAINING_PATTERN_SET,
+			  DP_TRAINING_PATTERN_1);
 	ret = drm_dp_dpcd_writeb(&dp->aux, DP_TRAINING_PATTERN_SET,
 				 DP_TRAINING_PATTERN_1 |
 				 DP_LINK_SCRAMBLING_DISABLE);
 	if (ret < 0)
 		return ret;
-
-	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_TRAINING_PATTERN_SET,
-			  DP_TRAINING_PATTERN_1);
 
 	/* 256 loops should be maximum iterations for 4 lanes and 4 values.
 	 * So, This loop should exit before 512 iterations
@@ -1114,13 +1113,11 @@ static int xilinx_drm_dp_link_train_ce(struct xilinx_drm_dp *dp)
 		pat = DP_TRAINING_PATTERN_3;
 	else
 		pat = DP_TRAINING_PATTERN_2;
-
+	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_TRAINING_PATTERN_SET, pat);
 	ret = drm_dp_dpcd_writeb(&dp->aux, DP_TRAINING_PATTERN_SET,
 				 pat | DP_LINK_SCRAMBLING_DISABLE);
 	if (ret < 0)
 		return ret;
-
-	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_TRAINING_PATTERN_SET, pat);
 
 	for (tries = 0; tries < DP_MAX_TRAINING_TRIES; tries++) {
 		ret = xilinx_drm_dp_update_vs_emph(dp);
@@ -1230,14 +1227,14 @@ static int xilinx_drm_dp_train(struct xilinx_drm_dp *dp)
 	if (ret)
 		return ret;
 
-	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_TRAINING_PATTERN_SET,
-			  DP_TRAINING_PATTERN_DISABLE);
 	ret = drm_dp_dpcd_writeb(&dp->aux, DP_TRAINING_PATTERN_SET,
 				 DP_TRAINING_PATTERN_DISABLE);
 	if (ret < 0) {
 		DRM_ERROR("failed to disable training pattern\n");
 		return ret;
 	}
+	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_TRAINING_PATTERN_SET,
+			  DP_TRAINING_PATTERN_DISABLE);
 
 	xilinx_drm_writel(dp->iomem, XILINX_DP_TX_SCRAMBLING_DISABLE, 0);
 
