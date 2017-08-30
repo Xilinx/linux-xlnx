@@ -380,12 +380,7 @@ static int xspi_setup(struct spi_device *qspi)
 	if (qspi->master->busy)
 		return -EBUSY;
 
-	ret = pm_runtime_get_sync(&qspi->dev);
-	if (ret < 0)
-		return ret;
-
 	ret = xspi_setup_transfer(qspi, NULL);
-	pm_runtime_put_sync(&qspi->dev);
 
 	return ret;
 }
@@ -456,10 +451,6 @@ static int xspi_prepare_transfer_hardware(struct spi_master *master)
 	u32 cr;
 	int ret;
 
-	ret = pm_runtime_get_sync(&master->dev);
-	if (ret < 0)
-		return ret;
-
 	cr = xqspi->read_fn(xqspi->regs + XSPI_CR_OFFSET);
 	cr |= XSPI_CR_ENABLE;
 	xqspi->write_fn(cr, xqspi->regs + XSPI_CR_OFFSET);
@@ -485,7 +476,6 @@ static int xspi_unprepare_transfer_hardware(struct spi_master *master)
 	cr &= ~XSPI_CR_ENABLE;
 	xqspi->write_fn(cr, xqspi->regs + XSPI_CR_OFFSET);
 
-	pm_runtime_put_sync(&master->dev);
 
 	return 0;
 }
@@ -800,11 +790,15 @@ static int xilinx_spi_probe(struct platform_device *pdev)
 		goto clk_unprepare_all;
 	}
 	xspi->cs_inactive = 0xffffffff;
+	ret = pm_runtime_get_sync(&pdev->dev);
+	if (ret < 0)
+		goto clk_unprepare_all;
 	ret = spi_register_master(master);
 	if (ret) {
 		dev_err(&pdev->dev, "spi_register_master failed\n");
 		goto clk_unprepare_all;
 	}
+	pm_runtime_put(&pdev->dev);
 
 	return ret;
 
