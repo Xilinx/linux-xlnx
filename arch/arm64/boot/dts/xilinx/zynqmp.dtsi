@@ -555,7 +555,7 @@
 			interrupt-parent = <&gic>;
 			interrupts = <0 77 4>;
 			xlnx,bus-width = <64>;
-			/* #stream-id-cells = <1>; */
+			#stream-id-cells = <1>;
 			/* iommus = <&smmu 0x868>; */
 			power-domains = <&pd_adma>;
 		};
@@ -568,7 +568,7 @@
 			interrupt-parent = <&gic>;
 			interrupts = <0 78 4>;
 			xlnx,bus-width = <64>;
-			/* #stream-id-cells = <1>; */
+			#stream-id-cells = <1>;
 			/* iommus = <&smmu 0x869>; */
 			power-domains = <&pd_adma>;
 		};
@@ -581,7 +581,7 @@
 			interrupt-parent = <&gic>;
 			interrupts = <0 79 4>;
 			xlnx,bus-width = <64>;
-			/* #stream-id-cells = <1>; */
+			#stream-id-cells = <1>;
 			/* iommus = <&smmu 0x86a>; */
 			power-domains = <&pd_adma>;
 		};
@@ -594,7 +594,7 @@
 			interrupt-parent = <&gic>;
 			interrupts = <0 80 4>;
 			xlnx,bus-width = <64>;
-			/* #stream-id-cells = <1>; */
+			#stream-id-cells = <1>;
 			/* iommus = <&smmu 0x86b>; */
 			power-domains = <&pd_adma>;
 		};
@@ -607,7 +607,7 @@
 			interrupt-parent = <&gic>;
 			interrupts = <0 81 4>;
 			xlnx,bus-width = <64>;
-			/* #stream-id-cells = <1>; */
+			#stream-id-cells = <1>;
 			/* iommus = <&smmu 0x86c>; */
 			power-domains = <&pd_adma>;
 		};
@@ -620,7 +620,7 @@
 			interrupt-parent = <&gic>;
 			interrupts = <0 82 4>;
 			xlnx,bus-width = <64>;
-			/* #stream-id-cells = <1>; */
+			#stream-id-cells = <1>;
 			/* iommus = <&smmu 0x86d>; */
 			power-domains = <&pd_adma>;
 		};
@@ -633,7 +633,7 @@
 			interrupt-parent = <&gic>;
 			interrupts = <0 83 4>;
 			xlnx,bus-width = <64>;
-			/* #stream-id-cells = <1>; */
+			#stream-id-cells = <1>;
 			/* iommus = <&smmu 0x86e>; */
 			power-domains = <&pd_adma>;
 		};
@@ -646,7 +646,7 @@
 			interrupt-parent = <&gic>;
 			interrupts = <0 84 4>;
 			xlnx,bus-width = <64>;
-			/* #stream-id-cells = <1>; */
+			#stream-id-cells = <1>;
 			/* iommus = <&smmu 0x86f>; */
 			power-domains = <&pd_adma>;
 		};
