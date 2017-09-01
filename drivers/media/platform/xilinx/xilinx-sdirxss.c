@@ -515,6 +515,12 @@ static irqreturn_t xsdirxss_irq_handler(int irq, void *dev_id)
 			dev_dbg(core->dev, "valid st352 mask = 0x%08x\n", val1);
 			dev_dbg(core->dev, "st352 payload = 0x%08x\n", val2);
 
+			memset(&state->event, 0, sizeof(state->event));
+			state->event.type = V4L2_EVENT_SOURCE_CHANGE;
+			state->event.u.src_change.changes =
+				V4L2_EVENT_SRC_CH_RESOLUTION;
+			v4l2_subdev_notify_event(&state->subdev, &state->event);
+
 			state->vidlocked = true;
 		} else {
 			dev_dbg(core->dev, "video unlock before video lock!\n");
@@ -575,12 +581,14 @@ static int xsdirxss_subscribe_event(struct v4l2_subdev *sd,
 	case V4L2_EVENT_XLNXSDIRX_UNDERFLOW:
 	case V4L2_EVENT_XLNXSDIRX_OVERFLOW:
 		ret = v4l2_event_subscribe(fh, sub, XSDIRX_MAX_EVENTS, NULL);
-		dev_dbg(core->dev, "Event subscribed : 0x%08x\n", sub->type);
+		break;
+	case V4L2_EVENT_SOURCE_CHANGE:
+		ret = v4l2_src_change_event_subscribe(fh, sub);
 		break;
 	default:
 		return -EINVAL;
 	}
-
+	dev_dbg(core->dev, "Event subscribed : 0x%08x\n", sub->type);
 	return ret;
 }
 
