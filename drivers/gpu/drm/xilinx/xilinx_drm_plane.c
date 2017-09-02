@@ -453,9 +453,6 @@ static void xilinx_drm_plane_set_zpos(struct drm_plane *base_plane,
 	bool update = false;
 	int i;
 
-	if (plane->zpos == zpos)
-		return;
-
 	for (i = 0; i < manager->num_planes; i++) {
 		if (manager->planes[i] != plane &&
 		    manager->planes[i]->prio == zpos) {
@@ -480,9 +477,6 @@ static void xilinx_drm_plane_set_alpha(struct drm_plane *base_plane,
 	struct xilinx_drm_plane *plane = to_xilinx_plane(base_plane);
 	struct xilinx_drm_plane_manager *manager = plane->manager;
 
-	if (plane->alpha == alpha)
-		return;
-
 	plane->alpha = alpha;
 
 	if (plane->osd_layer)
@@ -496,9 +490,6 @@ static void xilinx_drm_plane_enable_alpha(struct drm_plane *base_plane,
 {
 	struct xilinx_drm_plane *plane = to_xilinx_plane(base_plane);
 	struct xilinx_drm_plane_manager *manager = plane->manager;
-
-	if (plane->alpha_enable == enable)
-		return;
 
 	plane->alpha_enable = enable;
 
