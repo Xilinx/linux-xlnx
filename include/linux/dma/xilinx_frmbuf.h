@@ -48,6 +48,30 @@ void xilinx_xdma_drm_config(struct dma_chan *chan, u32 drm_fourcc);
  * data memory format within the hardware DMA.
  */
 void xilinx_xdma_v4l2_config(struct dma_chan *chan, u32 v4l2_fourcc);
+
+/**
+ * xilinx_xdma_get_drm_vid_fmts - obtain list of supported DRM mem formats
+ * @chan: dma channel instance
+ * @fmt_cnt: Output param - total count of supported DRM fourcc codes
+ * @fmts: Output param - pointer to array of DRM fourcc codes (not a copy)
+ *
+ * Return: a reference to an array of DRM fourcc codes supported by this
+ * instance of the Video Framebuffer Driver
+ */
+int xilinx_xdma_get_drm_vid_fmts(struct dma_chan *chan, u32 *fmt_cnt,
+				 u32 **fmts);
+
+/**
+ * xilinx_xdma_get_v4l2_vid_fmts - obtain list of supported V4L2 mem formats
+ * @chan: dma channel instance
+ * @fmt_cnt: Output param - total count of supported V4L2 fourcc codes
+ * @fmts: Output param - pointer to array of V4L2 fourcc codes (not a copy)
+ *
+ * Return: a reference to an array of V4L2 fourcc codes supported by this
+ * instance of the Video Framebuffer Driver
+ */
+int xilinx_xdma_get_v4l2_vid_fmts(struct dma_chan *chan, u32 *fmt_cnt,
+				  u32 **fmts);
 #else
 static inline void xilinx_xdma_drm_config(struct dma_chan *chan, u32 drm_fourcc)
 { }
@@ -55,6 +79,18 @@ static inline void xilinx_xdma_drm_config(struct dma_chan *chan, u32 drm_fourcc)
 static inline void xilinx_xdma_v4l2_config(struct dma_chan *chan,
 					   u32 v4l2_fourcc)
 { }
+
+int xilinx_xdma_get_drm_vid_fmts(struct dma_chan *chan, u32 *fmt_cnt,
+				 u32 **fmts);
+{
+	return -ENODEV;
+}
+
+int xilinx_xdma_get_v4l2_vid_fmts(struct dma_chan *chan, u32 *fmt_cnt,
+				  u32 **fmts);
+{
+	return -ENODEV;
+}
 #endif
 
 #endif /*__XILINX_FRMBUF_DMA_H*/

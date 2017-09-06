@@ -149,24 +149,6 @@ struct xilinx_frmbuf_chan {
 };
 
 /**
- * struct xilinx_frmbuf_device - dma device structure
- * @regs: I/O mapped base address
- * @dev: Device Structure
- * @common: DMA device structure
- * @chan: Driver specific dma channel
- * @rst_gpio: GPIO reset
- * @enabled_vid_fmts: Bitmask of video formats enabled in hardware
- */
-struct xilinx_frmbuf_device {
-	void __iomem *regs;
-	struct device *dev;
-	struct dma_device common;
-	struct xilinx_frmbuf_chan chan;
-	struct gpio_desc *rst_gpio;
-	u32 enabled_vid_fmts;
-};
-
-/**
  * struct xilinx_frmbuf_format_desc - lookup table to match fourcc to format
  * @dts_name: Device tree name for this entry.
  * @id: Format ID
@@ -265,6 +247,32 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 	},
 };
 
+/**
+ * struct xilinx_frmbuf_device - dma device structure
+ * @regs: I/O mapped base address
+ * @dev: Device Structure
+ * @common: DMA device structure
+ * @chan: Driver specific dma channel
+ * @rst_gpio: GPIO reset
+ * @enabled_vid_fmts: Bitmask of video formats enabled in hardware
+ * @drm_memory_fmts: Array of supported DRM fourcc codes
+ * @drm_fmt_cnt: Count of supported DRM fourcc codes
+ * @v4l2_memory_fmts: Array of supported V4L2 fourcc codes
+ * @v4l2_fmt_cnt: Count of supported V4L2 fourcc codes
+ */
+struct xilinx_frmbuf_device {
+	void __iomem *regs;
+	struct device *dev;
+	struct dma_device common;
+	struct xilinx_frmbuf_chan chan;
+	struct gpio_desc *rst_gpio;
+	u32 enabled_vid_fmts;
+	u32 drm_memory_fmts[ARRAY_SIZE(xilinx_frmbuf_formats)];
+	u32 drm_fmt_cnt;
+	u32 v4l2_memory_fmts[ARRAY_SIZE(xilinx_frmbuf_formats)];
+	u32 v4l2_fmt_cnt;
+};
+
 static const struct of_device_id xilinx_frmbuf_of_ids[] = {
 	{ .compatible = "xlnx,axi-frmbuf-wr-v2",
 		.data = (void *)DMA_DEV_TO_MEM},
@@ -319,6 +327,49 @@ static inline void frmbuf_set(struct xilinx_frmbuf_chan *chan, u32 reg,
 			      u32 set)
 {
 	frmbuf_write(chan, reg, frmbuf_read(chan, reg) | set);
+}
+
+static void frmbuf_init_format_array(struct xilinx_frmbuf_device *xdev)
+{
+	u32 i, cnt;
+
+	for (i = 0; i < ARRAY_SIZE(xilinx_frmbuf_formats); i++) {
+		if (!(xdev->enabled_vid_fmts &
+		      xilinx_frmbuf_formats[i].fmt_bitmask))
+			continue;
+
+		if (xilinx_frmbuf_formats[i].drm_fmt) {
+			cnt = xdev->drm_fmt_cnt++;
+			xdev->drm_memory_fmts[cnt] =
+				xilinx_frmbuf_formats[i].drm_fmt;
+		}
+
+		if (xilinx_frmbuf_formats[i].v4l2_fmt) {
+			cnt = xdev->v4l2_fmt_cnt++;
+			xdev->v4l2_memory_fmts[cnt] =
+				xilinx_frmbuf_formats[i].v4l2_fmt;
+		}
+	}
+}
+
+static struct xilinx_frmbuf_device *frmbuf_find_dev(struct dma_chan *chan)
+{
+	struct xilinx_frmbuf_chan *xchan, *temp;
+	struct xilinx_frmbuf_device *xdev;
+	bool is_frmbuf_chan = false;
+
+	list_for_each_entry_safe(xchan, temp, &frmbuf_chan_list, chan_node) {
+		if (chan == &xchan->common)
+			is_frmbuf_chan = true;
+	}
+
+	if (!is_frmbuf_chan)
+		return ERR_PTR(-ENODEV);
+
+	xchan = to_xilinx_chan(chan);
+	xdev = container_of(xchan, struct xilinx_frmbuf_device, chan);
+
+	return xdev;
 }
 
 static int frmbuf_verify_format(struct dma_chan *chan, u32 fourcc, u32 type)
@@ -384,6 +435,40 @@ void xilinx_xdma_v4l2_config(struct dma_chan *chan, u32 v4l2_fourcc)
 	xilinx_xdma_set_config(chan, v4l2_fourcc, XDMA_V4L2);
 
 } EXPORT_SYMBOL_GPL(xilinx_xdma_v4l2_config);
+
+int xilinx_xdma_get_drm_vid_fmts(struct dma_chan *chan, u32 *fmt_cnt,
+				 u32 **fmts)
+{
+	struct xilinx_frmbuf_device *xdev;
+
+	xdev = frmbuf_find_dev(chan);
+
+	if (IS_ERR(xdev))
+		return PTR_ERR(xdev);
+
+	*fmt_cnt = xdev->drm_fmt_cnt;
+	*fmts = xdev->drm_memory_fmts;
+
+	return 0;
+}
+EXPORT_SYMBOL(xilinx_xdma_get_drm_vid_fmts);
+
+int xilinx_xdma_get_v4l2_vid_fmts(struct dma_chan *chan, u32 *fmt_cnt,
+				  u32 **fmts)
+{
+	struct xilinx_frmbuf_device *xdev;
+
+	xdev = frmbuf_find_dev(chan);
+
+	if (IS_ERR(xdev))
+		return PTR_ERR(xdev);
+
+	*fmt_cnt = xdev->v4l2_fmt_cnt;
+	*fmts = xdev->v4l2_memory_fmts;
+
+	return 0;
+}
+EXPORT_SYMBOL(xilinx_xdma_get_v4l2_vid_fmts);
 
 /**
  * of_dma_xilinx_xlate - Translation function
@@ -1002,6 +1087,9 @@ static int xilinx_frmbuf_probe(struct platform_device *pdev)
 				xilinx_frmbuf_formats[j].fmt_bitmask;
 		}
 	}
+
+	/* Determine supported vid framework formats */
+	frmbuf_init_format_array(xdev);
 
 	xdev->common.device_alloc_chan_resources =
 				xilinx_frmbuf_alloc_chan_resources;
