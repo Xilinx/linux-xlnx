@@ -41,6 +41,12 @@ module_param_named(aux_timeout_ms, xilinx_drm_dp_aux_timeout_ms, uint, 0444);
 MODULE_PARM_DESC(aux_timeout_ms,
 		 "DP aux timeout value in msec (default: 50)");
 
+static uint xilinx_drm_dp_power_on_delay_ms = 4;
+module_param_named(power_on_delay_ms, xilinx_drm_dp_power_on_delay_ms, uint,
+		   0644);
+MODULE_PARM_DESC(power_on_delay,
+		 "Delay after power on request in msec (default: 4)");
+
 /* Link configuration registers */
 #define XILINX_DP_TX_LINK_BW_SET			0x0
 #define XILINX_DP_TX_LANE_CNT_SET			0x4
@@ -1416,7 +1422,8 @@ static void xilinx_drm_dp_dpms(struct drm_encoder *encoder, int dpms)
 				break;
 			usleep_range(300, 500);
 		}
-
+		/* Some monitors take time to wake up properly */
+		msleep(xilinx_drm_dp_power_on_delay_ms);
 		if (ret != 1)
 			dev_dbg(dp->dev, "DP aux failed\n");
 		else
