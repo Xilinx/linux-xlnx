@@ -22,7 +22,6 @@
 #include "xilinx-gamma-coeff.h"
 #include "xilinx-vip.h"
 
-#define XGAMMA_LUT_LENGTH	(GAMMA_TABLE_LENGTH / 2)
 #define XGAMMA_MIN_HEIGHT	(32)
 #define XGAMMA_MAX_HEIGHT	(2160)
 #define XGAMMA_DEF_HEIGHT	(720)
@@ -58,10 +57,11 @@ struct xgamma_dev {
 	struct v4l2_mbus_framefmt default_formats[2];
 	struct v4l2_ctrl_handler ctrl_handler;
 
-	const u8 *red_lut;
-	const u8 *green_lut;
-	const u8 *blue_lut;
-
+	const u16 *red_lut;
+	const u16 *green_lut;
+	const u16 *blue_lut;
+	u32 color_depth;
+	const u16 **gamma_table;
 	struct gpio_desc *rst_gpio;
 };
 
@@ -110,14 +110,14 @@ __xg_get_pad_format(struct xgamma_dev *xg,
 }
 
 static void xg_set_lut_entries(struct xgamma_dev *xg,
-			       const u8 *lut, const u32 lut_base)
+			       const u16 *lut, const u32 lut_base)
 {
 	int itr;
 	u32 lut_offset, lut_data;
 
 	lut_offset = lut_base;
 	/* Write LUT Entries */
-	for (itr = 0; itr < XGAMMA_LUT_LENGTH; itr++) {
+	for (itr = 0; itr < BIT(xg->color_depth - 1); itr++) {
 		lut_data = (lut[2 * itr + 1] << 16) | lut[2 * itr];
 		xg_write(xg, lut_offset, lut_data);
 		lut_offset += 4;
@@ -230,7 +230,7 @@ static const struct v4l2_subdev_ops xg_ops = {
 };
 
 static int
-select_gamma(s32 value, const uint8_t **coeff)
+select_gamma(s32 value, const u16 **coeff, const u16 **xgamma_curves)
 {
 	if (!coeff)
 		return -EINVAL;
@@ -250,7 +250,7 @@ static int xg_s_ctrl(struct v4l2_ctrl *ctrl)
 	dev_dbg(xg->xvip.dev, "%s called", __func__);
 	switch (ctrl->id) {
 	case V4L2_CID_XILINX_GAMMA_CORR_RED_GAMMA:
-		rval = select_gamma(ctrl->val, &xg->red_lut);
+		rval = select_gamma(ctrl->val, &xg->red_lut, xg->gamma_table);
 		if (rval < 0) {
 			dev_err(xg->xvip.dev, "Invalid Red Gamma");
 			return rval;
@@ -260,7 +260,7 @@ static int xg_s_ctrl(struct v4l2_ctrl *ctrl)
 		xg_set_lut_entries(xg, xg->red_lut, XGAMMA_GAMMA_LUT_0_BASE);
 		break;
 	case V4L2_CID_XILINX_GAMMA_CORR_BLUE_GAMMA:
-		rval = select_gamma(ctrl->val, &xg->blue_lut);
+		rval = select_gamma(ctrl->val, &xg->blue_lut, xg->gamma_table);
 		if (rval < 0) {
 			dev_err(xg->xvip.dev, "Invalid Blue Gamma");
 			return rval;
@@ -270,7 +270,7 @@ static int xg_s_ctrl(struct v4l2_ctrl *ctrl)
 		xg_set_lut_entries(xg, xg->blue_lut, XGAMMA_GAMMA_LUT_1_BASE);
 		break;
 	case V4L2_CID_XILINX_GAMMA_CORR_GREEN_GAMMA:
-		rval = select_gamma(ctrl->val, &xg->green_lut);
+		rval = select_gamma(ctrl->val, &xg->green_lut, xg->gamma_table);
 		if (rval < 0) {
 			dev_err(xg->xvip.dev, "Invalid Green Gamma");
 			return -EINVAL;
@@ -353,6 +353,25 @@ static int xg_parse_of(struct xgamma_dev *xg)
 			}
 			if (port_id != 0 && port_id != 1) {
 				dev_err(dev, "Invalid reg in DT");
+				return -EINVAL;
+			}
+
+			rval = of_property_read_u32(port, "xlnx,video-width",
+						    &xg->color_depth);
+			if (rval < 0) {
+				dev_err(dev, "Missing xlnx-video-width in DT");
+				return rval;
+			}
+			switch (xg->color_depth) {
+			case GAMMA_BPC_8:
+				xg->gamma_table = xgamma8_curves;
+				break;
+			case GAMMA_BPC_10:
+				xg->gamma_table = xgamma10_curves;
+				break;
+			default:
+				dev_err(dev, "Unsupported color depth %d",
+					xg->color_depth);
 				return -EINVAL;
 			}
 		}
@@ -442,7 +461,9 @@ static int xg_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "failed to register subdev");
 		goto v4l2_subdev_error;
 	}
-	dev_info(&pdev->dev, "Xilinx Video Gamma Correction LUT registered");
+	dev_info(&pdev->dev,
+		 "Xilinx %d-bit Video Gamma Correction LUT registered",
+		 xg->color_depth);
 	return 0;
 ctrl_error:
 	v4l2_ctrl_handler_free(&xg->ctrl_handler);
