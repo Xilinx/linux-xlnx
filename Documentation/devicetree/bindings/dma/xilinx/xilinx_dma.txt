@@ -66,8 +66,6 @@ Optional child node properties:
 Optional child node properties for VDMA:
 - xlnx,genlock-mode: Tells Genlock synchronization is
 	enabled/disabled in hardware.
-- xlnx,fstore-enable: boolean; if defined, it indicates that controller
-	supports frame store configuration.
 Optional child node properties for AXI DMA:
 -dma-channels: Number of dma channels in child node.
 
