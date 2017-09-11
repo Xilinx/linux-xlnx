@@ -1,0 +1,31 @@
+* Xilinx AXI CDMA Test client
+
+Required properties:
+- compatible: Should be "xlnx,axi-cdma-test-1.00.a"
+- dmas: a list of <[CDMA device phandle] [Channel ID]> pairs,
+	where Channel ID is '0' for write/tx and '1' for read/rx
+	channel.
+- dma-names: a list of CDMA channel names, one per "dmas" entry
+
+Example:
+++++++++
+
+cdmatest_0: cdmatest@0 {
+       compatible ="xlnx,axi-cdma-test-1.00.a";
+       dmas = <&axi_cdma_0 0>;
+       dma-names = "cdma";
+} ;
+
+Xilinx AXI CDMA Device Node Example
+++++++++++++++++++++++++++++++++++++
+
+axi_cdma_0: axicdma@7e200000 {
+       compatible = "xlnx,axi-cdma-1.00.a";
+       #dma-cells = <1>;
+       reg = < 0x7e200000 0x10000 >;
+       dma-channel@7e200000 {
+               compatible = "xlnx,axi-cdma-channel";
+               interrupts = < 0 55 4 >;
+               xlnx,datawidth = <0x40>;
+       } ;
+} ;
