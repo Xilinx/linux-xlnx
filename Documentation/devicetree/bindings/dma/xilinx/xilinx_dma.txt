@@ -15,7 +15,7 @@ Required properties:
 - compatible: Should be "xlnx,axi-vdma-1.00.a" or "xlnx,axi-dma-1.00.a" or
 	      "xlnx,axi-cdma-1.00.a""
 - #dma-cells: Should be <1>, see "dmas" property below
-- reg: Should contain VDMA registers location and length.
+- reg: Should contain DMA registers location and length.
 - xlnx,addrwidth: Should be the vdma addressing size in bits(ex: 32 bits).
 - dma-ranges: Should be as the following <dma_addr cpu_addr max_len>.
 - dma-channel child node: Should have at least one channel and can have up to
