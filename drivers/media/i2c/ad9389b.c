@@ -66,11 +66,6 @@ MODULE_LICENSE("GPL");
 **********************************************************************
 */
 
-struct i2c_reg_value {
-	u8 reg;
-	u8 value;
-};
-
 struct ad9389b_state_edid {
 	/* total number of blocks */
 	u32 blocks;
@@ -142,7 +137,7 @@ static int ad9389b_wr(struct v4l2_subdev *sd, u8 reg, u8 val)
 		if (ret == 0)
 			return 0;
 	}
-	v4l2_err(sd, "I2C Write Problem\n");
+	v4l2_err(sd, "%s: failed reg 0x%x, val 0x%x\n", __func__, reg, val);
 	return ret;
 }
 
@@ -391,13 +386,11 @@ static int ad9389b_log_status(struct v4l2_subdev *sd)
 		  (ad9389b_rd(sd, 0x42) & MASK_AD9389B_MSEN_DETECT) ?
 		  "detected" : "no",
 		  edid->segments ? "found" : "no", edid->blocks);
-	if (state->have_monitor) {
-		v4l2_info(sd, "%s output %s\n",
-			  (ad9389b_rd(sd, 0xaf) & 0x02) ?
-			  "HDMI" : "DVI-D",
-			  (ad9389b_rd(sd, 0xa1) & 0x3c) ?
-			  "disabled" : "enabled");
-	}
+	v4l2_info(sd, "%s output %s\n",
+		  (ad9389b_rd(sd, 0xaf) & 0x02) ?
+		  "HDMI" : "DVI-D",
+		  (ad9389b_rd(sd, 0xa1) & 0x3c) ?
+		  "disabled" : "enabled");
 	v4l2_info(sd, "ad9389b: %s\n", (ad9389b_rd(sd, 0xb8) & 0x40) ?
 		  "encrypted" : "no encryption");
 	v4l2_info(sd, "state: %s, error: %s, detect count: %u, msk/irq: %02x/%02x\n",
@@ -412,35 +405,33 @@ static int ad9389b_log_status(struct v4l2_subdev *sd)
 		  manual_gear ? "manual" : "automatic",
 		  manual_gear ? ((ad9389b_rd(sd, 0x98) & 0x70) >> 4) :
 		  ((ad9389b_rd(sd, 0x9e) & 0x0e) >> 1));
-	if (state->have_monitor) {
-		if (ad9389b_rd(sd, 0xaf) & 0x02) {
-			/* HDMI only */
-			u8 manual_cts = ad9389b_rd(sd, 0x0a) & 0x80;
-			u32 N = (ad9389b_rd(sd, 0x01) & 0xf) << 16 |
-				ad9389b_rd(sd, 0x02) << 8 |
-				ad9389b_rd(sd, 0x03);
-			u8 vic_detect = ad9389b_rd(sd, 0x3e) >> 2;
-			u8 vic_sent = ad9389b_rd(sd, 0x3d) & 0x3f;
-			u32 CTS;
+	if (ad9389b_rd(sd, 0xaf) & 0x02) {
+		/* HDMI only */
+		u8 manual_cts = ad9389b_rd(sd, 0x0a) & 0x80;
+		u32 N = (ad9389b_rd(sd, 0x01) & 0xf) << 16 |
+			ad9389b_rd(sd, 0x02) << 8 |
+			ad9389b_rd(sd, 0x03);
+		u8 vic_detect = ad9389b_rd(sd, 0x3e) >> 2;
+		u8 vic_sent = ad9389b_rd(sd, 0x3d) & 0x3f;
+		u32 CTS;
 
-			if (manual_cts)
-				CTS = (ad9389b_rd(sd, 0x07) & 0xf) << 16 |
-				      ad9389b_rd(sd, 0x08) << 8 |
-				      ad9389b_rd(sd, 0x09);
-			else
-				CTS = (ad9389b_rd(sd, 0x04) & 0xf) << 16 |
-				      ad9389b_rd(sd, 0x05) << 8 |
-				      ad9389b_rd(sd, 0x06);
-			N = (ad9389b_rd(sd, 0x01) & 0xf) << 16 |
-			    ad9389b_rd(sd, 0x02) << 8 |
-			    ad9389b_rd(sd, 0x03);
+		if (manual_cts)
+			CTS = (ad9389b_rd(sd, 0x07) & 0xf) << 16 |
+			      ad9389b_rd(sd, 0x08) << 8 |
+			      ad9389b_rd(sd, 0x09);
+		else
+			CTS = (ad9389b_rd(sd, 0x04) & 0xf) << 16 |
+			      ad9389b_rd(sd, 0x05) << 8 |
+			      ad9389b_rd(sd, 0x06);
+		N = (ad9389b_rd(sd, 0x01) & 0xf) << 16 |
+		    ad9389b_rd(sd, 0x02) << 8 |
+		    ad9389b_rd(sd, 0x03);
 
-			v4l2_info(sd, "ad9389b: CTS %s mode: N %d, CTS %d\n",
-				  manual_cts ? "manual" : "automatic", N, CTS);
+		v4l2_info(sd, "ad9389b: CTS %s mode: N %d, CTS %d\n",
+			  manual_cts ? "manual" : "automatic", N, CTS);
 
-			v4l2_info(sd, "ad9389b: VIC: detected %d, sent %d\n",
-				  vic_detect, vic_sent);
-		}
+		v4l2_info(sd, "ad9389b: VIC: detected %d, sent %d\n",
+			  vic_detect, vic_sent);
 	}
 	if (state->dv_timings.type == V4L2_DV_BT_656_1120)
 		v4l2_print_dv_timings(sd->name, "timings: ",
@@ -555,14 +546,16 @@ static int ad9389b_isr(struct v4l2_subdev *sd, u32 status, bool *handled)
 	irq_status = ad9389b_rd(sd, 0x96);
 	/* clear detected interrupts */
 	ad9389b_wr(sd, 0x96, irq_status);
+	/* enable interrupts */
+	ad9389b_set_isr(sd, true);
 
-	if (irq_status & (MASK_AD9389B_HPD_INT | MASK_AD9389B_MSEN_INT))
+	v4l2_dbg(1, debug, sd, "%s: irq_status 0x%x\n", __func__, irq_status);
+
+	if (irq_status & (MASK_AD9389B_HPD_INT))
 		ad9389b_check_monitor_present_status(sd);
 	if (irq_status & MASK_AD9389B_EDID_RDY_INT)
 		ad9389b_check_edid_status(sd);
 
-	/* enable interrupts */
-	ad9389b_set_isr(sd, true);
 	*handled = true;
 	return 0;
 }
@@ -582,8 +575,6 @@ static const struct v4l2_subdev_core_ops ad9389b_core_ops = {
 /* Enable/disable ad9389b output */
 static int ad9389b_s_stream(struct v4l2_subdev *sd, int enable)
 {
-	struct ad9389b_state *state = get_ad9389b_state(sd);
-
 	v4l2_dbg(1, debug, sd, "%s: %sable\n", __func__, (enable ? "en" : "dis"));
 
 	ad9389b_wr_and_or(sd, 0xa1, ~0x3c, (enable ? 0 : 0x3c));
@@ -591,7 +582,6 @@ static int ad9389b_s_stream(struct v4l2_subdev *sd, int enable)
 		ad9389b_check_monitor_present_status(sd);
 	} else {
 		ad9389b_s_power(sd, 0);
-		state->have_monitor = false;
 	}
 	return 0;
 }
@@ -850,7 +840,6 @@ static void ad9389b_edid_handler(struct work_struct *work)
 		if (state->edid.read_retries) {
 			state->edid.read_retries--;
 			v4l2_dbg(1, debug, sd, "%s: edid read failed\n", __func__);
-			state->have_monitor = false;
 			ad9389b_s_power(sd, false);
 			ad9389b_s_power(sd, true);
 			schedule_delayed_work(&state->edid_handler, EDID_DELAY);
@@ -919,7 +908,7 @@ static void ad9389b_notify_monitor_detect(struct v4l2_subdev *sd)
 	v4l2_subdev_notify(sd, AD9389B_MONITOR_DETECT, (void *)&mdt);
 }
 
-static void ad9389b_check_monitor_present_status(struct v4l2_subdev *sd)
+static void ad9389b_update_monitor_present_status(struct v4l2_subdev *sd)
 {
 	struct ad9389b_state *state = get_ad9389b_state(sd);
 	/* read hotplug and rx-sense state */
@@ -931,36 +920,22 @@ static void ad9389b_check_monitor_present_status(struct v4l2_subdev *sd)
 		 status & MASK_AD9389B_HPD_DETECT ? ", hotplug" : "",
 		 status & MASK_AD9389B_MSEN_DETECT ? ", rx-sense" : "");
 
-	if ((status & MASK_AD9389B_HPD_DETECT) &&
-	    ((status & MASK_AD9389B_MSEN_DETECT) || state->edid.segments)) {
-		v4l2_dbg(1, debug, sd,
-				"%s: hotplug and (rx-sense or edid)\n", __func__);
-		if (!state->have_monitor) {
-			v4l2_dbg(1, debug, sd, "%s: monitor detected\n", __func__);
-			state->have_monitor = true;
-			ad9389b_set_isr(sd, true);
-			if (!ad9389b_s_power(sd, true)) {
-				v4l2_dbg(1, debug, sd,
-					"%s: monitor detected, powerup failed\n", __func__);
-				return;
-			}
-			ad9389b_setup(sd);
-			ad9389b_notify_monitor_detect(sd);
-			state->edid.read_retries = EDID_MAX_RETRIES;
-			queue_delayed_work(state->work_queue,
-					&state->edid_handler, EDID_DELAY);
-		}
-	} else if (status & MASK_AD9389B_HPD_DETECT) {
+	if (status & MASK_AD9389B_HPD_DETECT) {
 		v4l2_dbg(1, debug, sd, "%s: hotplug detected\n", __func__);
+		state->have_monitor = true;
+		if (!ad9389b_s_power(sd, true)) {
+			v4l2_dbg(1, debug, sd,
+				 "%s: monitor detected, powerup failed\n", __func__);
+			return;
+		}
+		ad9389b_setup(sd);
+		ad9389b_notify_monitor_detect(sd);
 		state->edid.read_retries = EDID_MAX_RETRIES;
 		schedule_delayed_work(&state->edid_handler, EDID_DELAY);
 	} else if (!(status & MASK_AD9389B_HPD_DETECT)) {
 		v4l2_dbg(1, debug, sd, "%s: hotplug not detected\n", __func__);
-		if (state->have_monitor) {
-			v4l2_dbg(1, debug, sd, "%s: monitor not detected\n", __func__);
-			state->have_monitor = false;
-			ad9389b_notify_monitor_detect(sd);
-		}
+		state->have_monitor = false;
+		ad9389b_notify_monitor_detect(sd);
 		ad9389b_s_power(sd, false);
 		memset(&state->edid, 0, sizeof(struct ad9389b_state_edid));
 	}
@@ -969,6 +944,35 @@ static void ad9389b_check_monitor_present_status(struct v4l2_subdev *sd)
 	v4l2_ctrl_s_ctrl(state->hotplug_ctrl, ad9389b_have_hotplug(sd) ? 0x1 : 0x0);
 	v4l2_ctrl_s_ctrl(state->rx_sense_ctrl, ad9389b_have_rx_sense(sd) ? 0x1 : 0x0);
 	v4l2_ctrl_s_ctrl(state->have_edid0_ctrl, state->edid.segments ? 0x1 : 0x0);
+
+	/* update with setting from ctrls */
+	ad9389b_s_ctrl(state->rgb_quantization_range_ctrl);
+	ad9389b_s_ctrl(state->hdmi_mode_ctrl);
+}
+
+static void ad9389b_check_monitor_present_status(struct v4l2_subdev *sd)
+{
+	struct ad9389b_state *state = get_ad9389b_state(sd);
+	int retry = 0;
+
+	ad9389b_update_monitor_present_status(sd);
+
+	/*
+	 * Rapid toggling of the hotplug may leave the chip powered off,
+	 * even if we think it is on. In that case reset and power up again.
+	 */
+	while (state->power_on && (ad9389b_rd(sd, 0x41) & 0x40)) {
+		if (++retry > 5) {
+			v4l2_err(sd, "retried %d times, give up\n", retry);
+			return;
+		}
+		v4l2_dbg(1, debug, sd, "%s: reset and re-check status (%d)\n", __func__, retry);
+		ad9389b_notify_monitor_detect(sd);
+		cancel_delayed_work_sync(&state->edid_handler);
+		memset(&state->edid, 0, sizeof(struct ad9389b_state_edid));
+		ad9389b_s_power(sd, false);
+		ad9389b_update_monitor_present_status(sd);
+	}
 }
 
 static bool edid_block_verify_crc(u8 *edid_block)
@@ -981,7 +985,7 @@ static bool edid_block_verify_crc(u8 *edid_block)
 	return sum == 0;
 }
 
-static bool edid_segment_verify_crc(struct v4l2_subdev *sd, u32 segment)
+static bool edid_verify_crc(struct v4l2_subdev *sd, u32 segment)
 {
 	struct ad9389b_state *state = get_ad9389b_state(sd);
 	u32 blocks = state->edid.blocks;
@@ -993,6 +997,25 @@ static bool edid_segment_verify_crc(struct v4l2_subdev *sd, u32 segment)
 		return true;
 	}
 	return false;
+}
+
+static bool edid_verify_header(struct v4l2_subdev *sd, u32 segment)
+{
+	static const u8 hdmi_header[] = {
+		0x00, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x00
+	};
+	struct ad9389b_state *state = get_ad9389b_state(sd);
+	u8 *data = state->edid.data;
+	int i;
+
+	if (segment)
+		return true;
+
+	for (i = 0; i < ARRAY_SIZE(hdmi_header); i++)
+		if (data[i] != hdmi_header[i])
+			return false;
+
+	return true;
 }
 
 static bool ad9389b_check_edid_status(struct v4l2_subdev *sd)
@@ -1022,10 +1045,10 @@ static bool ad9389b_check_edid_status(struct v4l2_subdev *sd)
 		v4l2_dbg(1, debug, sd, "%s: %d blocks in total\n",
 			 __func__, state->edid.blocks);
 	}
-	if (!edid_segment_verify_crc(sd, segment)) {
+	if (!edid_verify_crc(sd, segment) ||
+	    !edid_verify_header(sd, segment)) {
 		/* edid crc error, force reread of edid segment */
-		v4l2_err(sd, "%s: edid crc error\n", __func__);
-		state->have_monitor = false;
+		v4l2_err(sd, "%s: edid crc or header error\n", __func__);
 		ad9389b_s_power(sd, false);
 		ad9389b_s_power(sd, true);
 		return false;
