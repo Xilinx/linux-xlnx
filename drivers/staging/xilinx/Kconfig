@@ -6,4 +6,6 @@ source "drivers/staging/xilinx/clk/Kconfig"
 
 source "drivers/staging/xilinx/misc/Kconfig"
 
+source "drivers/staging/xilinx/xvmixer/Kconfig"
+
 endif # STAGING
