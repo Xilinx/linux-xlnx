@@ -254,7 +254,10 @@ int xilinx_drm_plane_mode_set(struct drm_plane *base_plane,
 	struct xilinx_drm_plane *plane = to_xilinx_plane(base_plane);
 	struct drm_gem_cma_object *obj;
 	size_t offset;
-	unsigned int hsub, vsub, i;
+	unsigned int hsub, vsub, fb_plane_cnt, i;
+
+	/* default setting */
+	plane->format = fb->pixel_format;
 
 	DRM_DEBUG_KMS("plane->id: %d\n", plane->id);
 
@@ -272,8 +275,9 @@ int xilinx_drm_plane_mode_set(struct drm_plane *base_plane,
 
 	hsub = drm_format_horz_chroma_subsampling(fb->pixel_format);
 	vsub = drm_format_vert_chroma_subsampling(fb->pixel_format);
+	fb_plane_cnt = drm_format_num_planes(fb->pixel_format);
 
-	for (i = 0; i < drm_format_num_planes(fb->pixel_format); i++) {
+	for (i = 0; i < fb_plane_cnt; i++) {
 		unsigned int width = src_w / (i ? hsub : 1);
 		unsigned int height = src_h / (i ? vsub : 1);
 		unsigned int cpp = drm_format_plane_cpp(fb->pixel_format, i);
@@ -303,6 +307,23 @@ int xilinx_drm_plane_mode_set(struct drm_plane *base_plane,
 
 	for (; i < MAX_NUM_SUB_PLANES; i++)
 		plane->dma[i].is_active = false;
+
+	/* Do we have a video format aware dma channel?
+	 * so, modify descriptor accordingly. Hueristic test:
+	 * we have a multi-plane format but only one dma channel
+	 */
+	if (plane->dma[0].chan && !plane->dma[1].chan &&
+	    fb_plane_cnt > 1) {
+		u32 stride = plane->dma[0].sgl[0].size +
+			     plane->dma[0].sgl[0].icg;
+
+		plane->dma[0].sgl[0].src_icg =
+			plane->dma[1].xt.src_start -
+			plane->dma[0].xt.src_start -
+			(plane->dma[0].xt.numf * stride);
+
+		plane->dma[0].xt.frame_size = fb_plane_cnt;
+	}
 
 	/* set OSD dimensions */
 	if (plane->manager->osd) {
@@ -897,9 +918,16 @@ xilinx_drm_plane_create(struct xilinx_drm_plane_manager *manager,
 						 &num_fmts);
 	}
 
-	/* If there's no IP other than VDMA, pick the manager's format */
-	if (plane->format == 0)
-		plane->format = manager->format;
+	if (plane->format == 0) {
+		ret = xilinx_xdma_get_drm_vid_fmts(plane->dma[0].chan,
+						   &num_fmts, &fmts);
+
+		/* If there's no IP other than VDMA pick the manager's format */
+		if (ret)
+			plane->format = manager->format;
+		else
+			plane->format = fmts[0];
+	}
 
 	/* initialize drm plane */
 	type = primary ? DRM_PLANE_TYPE_PRIMARY : DRM_PLANE_TYPE_OVERLAY;
