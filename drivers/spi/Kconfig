@@ -743,6 +743,21 @@ config SPI_XTENSA_XTFPGA
 	  16 bit words in SPI mode 0, automatically asserting CS on transfer
 	  start and deasserting on end.
 
+config SPI_ZYNQ_QSPI
+	tristate "Xilinx Zynq QSPI controller"
+	depends on ARCH_ZYNQ
+	depends on SPI_MASTER
+	help
+	  This selects the Xilinx ZYNQ Quad SPI controller master driver.
+
+config SPI_ZYNQ_QSPI_DUAL_STACKED
+	bool "Xilinx Zynq QSPI Dual stacked configuration"
+	depends on SPI_ZYNQ_QSPI
+	help
+	  This selects the Xilinx ZYNQ Quad SPI controller in dual stacked mode.
+	  Enable this option if your hw design is using dual stacked
+	  configuration.
+
 config SPI_ZYNQMP_GQSPI
 	tristate "Xilinx ZynqMP GQSPI controller"
 	depends on SPI_MASTER && HAS_DMA
