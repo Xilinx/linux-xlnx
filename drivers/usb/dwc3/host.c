@@ -22,9 +22,10 @@
 
 int dwc3_host_init(struct dwc3 *dwc)
 {
-	struct property_entry	props[2];
+	struct property_entry	props[3];
 	struct platform_device	*xhci;
 	int			ret, irq;
+	unsigned int		index = 0;
 	struct resource		*res;
 	struct platform_device	*dwc3_pdev = to_platform_device(dwc->dev);
 
@@ -97,8 +98,14 @@ int dwc3_host_init(struct dwc3 *dwc)
 
 	memset(props, 0, sizeof(struct property_entry) * ARRAY_SIZE(props));
 
-	if (dwc->usb3_lpm_capable) {
-		props[0].name = "usb3-lpm-capable";
+	if (dwc->usb3_lpm_capable)
+		props[index++].name = "usb3-lpm-capable";
+
+	if (device_property_read_bool(&dwc3_pdev->dev,
+					"snps,xhci-stream-quirk"))
+		props[index++].name = "xhci-stream-quirk";
+
+	if (index > 0) {
 		ret = platform_device_add_properties(xhci, props);
 		if (ret) {
 			dev_err(dwc->dev, "failed to add properties to xHCI\n");

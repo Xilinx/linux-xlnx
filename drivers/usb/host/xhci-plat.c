@@ -252,6 +252,8 @@ static int xhci_plat_probe(struct platform_device *pdev)
 	if (device_property_read_bool(&pdev->dev, "usb3-lpm-capable"))
 		xhci->quirks |= XHCI_LPM_SUPPORT;
 
+	if (device_property_read_bool(&pdev->dev, "xhci-stream-quirk"))
+		xhci->quirks |= XHCI_STREAM_QUIRK;
 
 	hcd->usb_phy = devm_usb_get_phy_by_phandle(&pdev->dev, "usb-phy", 0);
 	if (IS_ERR(hcd->usb_phy)) {
