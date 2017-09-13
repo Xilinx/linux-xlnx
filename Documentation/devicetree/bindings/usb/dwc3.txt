@@ -85,6 +85,11 @@ Optional properties:
  - snps,enable_guctl1_ipd_quirk: Adding this flag sets bit 9 of GUCTL1
 	enabling the workaround in HW to reduce the Inter Packet Delay (IPD)
 	and making controller enumerate FS/LS devices connected behind VIA-LAB.
+ - snps,xhci-stream-quirk: Dwc3 host controller has a bug where it sometimes
+	fails to process the traansfer descriptors present in the BULK IN
+	stream ring. Since the controller is not processing any TD, no transfer
+	events will be triggered, resulting in a hang condition. Enabling this
+	flag in dts fixes the above said issue.
  - snps,rx-thr-num-pkt-prd: periodic ESS RX packet threshold count - host mode
 			only. Set this and rx-max-burst-prd to a valid,
 			non-zero value 1-16 (DWC_usb31 programming guide

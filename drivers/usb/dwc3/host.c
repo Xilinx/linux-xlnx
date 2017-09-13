@@ -47,7 +47,7 @@ out:
 
 int dwc3_host_init(struct dwc3 *dwc)
 {
-	struct property_entry	props[3];
+	struct property_entry	props[4];
 	struct platform_device	*xhci;
 	int			ret, irq;
 	struct resource		*res;
@@ -93,6 +93,10 @@ int dwc3_host_init(struct dwc3 *dwc)
 
 	if (dwc->usb3_lpm_capable)
 		props[prop_idx++].name = "usb3-lpm-capable";
+
+	if (device_property_read_bool(&dwc3_pdev->dev,
+					"snps,xhci-stream-quirk"))
+		props[prop_idx++].name = "xhci-stream-quirk";
 
 	/**
 	 * WORKAROUND: dwc3 revisions <=3.00a have a limitation
