@@ -980,6 +980,7 @@ static int zynqmp_qspi_probe(struct platform_device *pdev)
 	struct zynqmp_qspi *xqspi;
 	struct resource *res;
 	struct device *dev = &pdev->dev;
+	u32 num_cs;
 
 	master = spi_alloc_master(&pdev->dev, sizeof(*xqspi));
 	if (!master)
@@ -1040,7 +1041,11 @@ static int zynqmp_qspi_probe(struct platform_device *pdev)
 		goto clk_dis_all;
 	}
 
-	master->num_chipselect = GQSPI_DEFAULT_NUM_CS;
+	ret = of_property_read_u32(pdev->dev.of_node, "num-cs", &num_cs);
+	if (ret < 0)
+		master->num_chipselect = GQSPI_DEFAULT_NUM_CS;
+	else
+		master->num_chipselect = num_cs;
 
 	master->setup = zynqmp_qspi_setup;
 	master->set_cs = zynqmp_qspi_chipselect;
