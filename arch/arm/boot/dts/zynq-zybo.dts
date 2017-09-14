@@ -1,15 +1,10 @@
 /*
- *  Copyright (C) 2011 - 2014 Xilinx
+ * Digilent ZYBO board DTS
+ *
+ *  Copyright (C) 2011 - 2015 Xilinx
  *  Copyright (C) 2012 National Instruments Corp.
  *
- * This software is licensed under the terms of the GNU General Public
- * License version 2, as published by the Free Software Foundation, and
- * may be copied, distributed, and modified under those terms.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier:	GPL-2.0+
  */
 /dts-v1/;
 #include "zynq-7000.dtsi"
@@ -21,6 +16,8 @@
 	aliases {
 		ethernet0 = &gem0;
 		serial0 = &uart1;
+		spi0 = &qspi;
+		mmc0 = &sdhci0;
 	};
 
 	memory@0 {
@@ -55,11 +52,18 @@
 	};
 };
 
+&qspi {
+	u-boot,dm-pre-reloc;
+	status = "okay";
+};
+
 &sdhci0 {
+	u-boot,dm-pre-reloc;
 	status = "okay";
 };
 
 &uart1 {
+	u-boot,dm-pre-reloc;
 	status = "okay";
 };
 
