@@ -24,11 +24,9 @@ Required properties:
 Example:
 	gpio@e000a000 {
 		#gpio-cells = <2>;
-		#interrupt-cells = <2>;
 		compatible = "xlnx,zynq-gpio-1.0";
 		clocks = <&clkc 42>;
 		gpio-controller;
-		interrupt-controller;
 		interrupt-parent = <&intc>;
 		interrupts = <0 20 4>;
 		interrupt-controller;
