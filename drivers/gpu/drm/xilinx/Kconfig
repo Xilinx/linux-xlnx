@@ -56,4 +56,4 @@ config DRM_XILINX_SDI
 	tristate "Xilinx DRM SDI Subsystem Driver"
 	depends on DRM_XILINX
 	help
-	  DRM driver for Xilinx Display Port Subsystem.
+	  DRM driver for Xilinx SDI Tx Subsystem.
