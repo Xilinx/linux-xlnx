@@ -34,8 +34,6 @@ Required Properties for "xlnx,zynqmp-8.9a":
 Optional Properties:
   - broken-mmc-highspeed: Indicates to force
 				the controller to use in standard speed.
-  - broken-adma2: Indicates ADMA2 is broken and force the controller to
-		  use SDMA mode.
   - arasan,soc-ctl-syscon: A phandle to a syscon device (see ../mfd/syscon.txt)
     used to access core corecfg registers.  Offsets of registers in this
     syscon are determined based on the main compatible string for the device.
