@@ -252,6 +252,10 @@
 #define GEM_RXBS_SIZE		8
 #define GEM_DDRP_OFFSET		24 /* disc_when_no_ahb */
 #define GEM_DDRP_SIZE		1
+#define GEM_RXBDEXT_OFFSET	28 /* Extended RX BD */
+#define GEM_RXBDEXT_SIZE	1
+#define GEM_TXBDEXT_OFFSET	29 /* Extended TX BD */
+#define GEM_TXBDEXT_SIZE	1
 #define GEM_ADDR64_OFFSET	30 /* Address bus width - 64b or 32b */
 #define GEM_ADDR64_SIZE		1
 
@@ -480,6 +484,10 @@ struct macb_dma_desc {
 #ifdef CONFIG_ARCH_DMA_ADDR_T_64BIT
 	u32     addrh;
 	u32     resvd;
+#endif
+#ifdef CONFIG_MACB_EXT_BD
+	u32	tsl;
+	u32	tsh;
 #endif
 };
 

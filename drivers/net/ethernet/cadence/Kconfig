@@ -31,4 +31,12 @@ config MACB
 	  To compile this driver as a module, choose M here: the module
 	  will be called macb.
 
+config MACB_EXT_BD
+	tristate "Cadence MACB/GEM extended buffer descriptor"
+	depends on HAS_DMA && MACB
+	---help---
+	  The Cadence MACB host supports use of extended buffer descriptor.
+	  This option enables additon of two extra words to TX BD and RX BD.
+	  These two extra words are currently used to obtain PTP timestamp.
+
 endif # NET_CADENCE
