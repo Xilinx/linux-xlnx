@@ -25,8 +25,7 @@
 /* Constant Definitions */
 #define IXR_FPGA_DONE_MASK	0X00000008U
 #define IXR_FPGA_AUTHENTICATIN	0x00000004U
-#define IXR_FPGA_ENCRYPTION_USRKEY_EN	0x00000008U
-#define IXR_FPGA_ENCRYPTION_DEVKEY_EN	0x00000010U
+#define IXR_FPGA_ENCRYPTION_EN	0x00000008U
 
 struct zynqmp_fpga_priv {
 	struct device *dev;
@@ -59,9 +58,7 @@ static int zynqmp_fpga_ops_write(struct fpga_manager *mgr,
 
 	if (mgr->flags & IXR_FPGA_AUTHENTICATIN)
 		dma_size = dma_size + SIGNATURE_LEN + PUBLIC_KEY_LEN;
-	if (mgr->flags & IXR_FPGA_ENCRYPTION_DEVKEY_EN)
-		dma_size = dma_size + ENCRYPTED_IV_LEN;
-	else if (mgr->flags & IXR_FPGA_ENCRYPTION_USRKEY_EN)
+	if (mgr->flags & IXR_FPGA_ENCRYPTION_EN)
 		dma_size = dma_size + ENCRYPTED_KEY_LEN + ENCRYPTED_IV_LEN;
 
 	kbuf = dma_alloc_coherent(priv->dev, dma_size, &dma_addr, GFP_KERNEL);
@@ -75,9 +72,7 @@ static int zynqmp_fpga_ops_write(struct fpga_manager *mgr,
 		memcpy(kbuf + size + SIGNATURE_LEN, mgr->pubkey,
 						PUBLIC_KEY_LEN);
 	}
-	if (mgr->flags & IXR_FPGA_ENCRYPTION_DEVKEY_EN)
-		memcpy(kbuf + size, mgr->iv, ENCRYPTED_IV_LEN);
-	else if (mgr->flags & IXR_FPGA_ENCRYPTION_USRKEY_EN) {
+	if (mgr->flags & IXR_FPGA_ENCRYPTION_EN) {
 		memcpy(kbuf + size, mgr->key, ENCRYPTED_KEY_LEN);
 		memcpy(kbuf + size + ENCRYPTED_KEY_LEN, mgr->iv,
 						ENCRYPTED_IV_LEN);
