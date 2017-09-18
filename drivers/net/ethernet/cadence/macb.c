@@ -3560,21 +3560,17 @@ static int macb_probe(struct platform_device *pdev)
 	if (err)
 		goto err_out_free_netdev;
 
-	err = macb_mii_init(bp);
-	if (err)
-		goto err_out_free_netdev;
-
-	phydev = dev->phydev;
-
-	netif_carrier_off(dev);
-
 	err = register_netdev(dev);
 	if (err) {
 		dev_err(&pdev->dev, "Cannot register net device, aborting.\n");
-		goto err_out_unregister_mdio;
+		goto err_out_unregister_netdev;
 	}
 
-	phy_attached_info(phydev);
+	err = macb_mii_init(bp);
+	if (err)
+		goto err_out_unregister_netdev;
+
+	netif_carrier_off(dev);
 
 	tasklet_init(&bp->hresp_err_tasklet, macb_hresp_error_task,
 		     (unsigned long)bp);
@@ -3584,17 +3580,12 @@ static int macb_probe(struct platform_device *pdev)
 		    dev->base_addr, dev->irq, dev->dev_addr);
 
 	phydev = bp->phy_dev;
+	phy_attached_info(phydev);
 
 	return 0;
 
-err_out_unregister_mdio:
-	phy_disconnect(dev->phydev);
-	mdiobus_unregister(bp->mii_bus);
-	mdiobus_free(bp->mii_bus);
-
-	/* Shutdown the PHY if there is a GPIO reset */
-	if (bp->reset_gpio)
-		gpiod_set_value(bp->reset_gpio, 0);
+err_out_unregister_netdev:
+	unregister_netdev(dev);
 
 err_out_free_netdev:
 	free_netdev(dev);
