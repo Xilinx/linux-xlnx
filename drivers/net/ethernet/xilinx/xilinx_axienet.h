@@ -424,6 +424,7 @@ struct axidma_bd {
  * @coalesce_count_rx:	Store the irq coalesce on RX side.
  * @coalesce_count_tx:	Store the irq coalesce on TX side.
  * @phy_interface: Phy interface type.
+ * @phy_flags:	Phy interface flags.
  */
 struct axienet_local {
 	struct net_device *ndev;
@@ -469,6 +470,7 @@ struct axienet_local {
 	u32 coalesce_count_rx;
 	u32 coalesce_count_tx;
 	u32 phy_interface;
+	u32 phy_flags;
 };
 
 /**
