@@ -1738,6 +1738,51 @@ static const struct net_device_ops axienet_netdev_ops = {
 };
 
 /**
+ * axienet_ethtools_get_settings - Get Axi Ethernet settings related to PHY.
+ * @ndev:	Pointer to net_device structure
+ * @ecmd:	Pointer to ethtool_cmd structure
+ *
+ * This implements ethtool command for getting PHY settings. If PHY could
+ * not be found, the function returns -ENODEV. This function calls the
+ * relevant PHY ethtool API to get the PHY settings.
+ * Issue "ethtool ethX" under linux prompt to execute this function.
+ *
+ * Return: 0 on success, -ENODEV if PHY doesn't exist
+ */
+static int axienet_ethtools_get_settings(struct net_device *ndev,
+					 struct ethtool_cmd *ecmd)
+{
+	struct phy_device *phydev = ndev->phydev;
+
+	if (!phydev)
+		return -ENODEV;
+	return phy_ethtool_gset(phydev, ecmd);
+}
+
+/**
+ * axienet_ethtools_set_settings - Set PHY settings as passed in the argument.
+ * @ndev:	Pointer to net_device structure
+ * @ecmd:	Pointer to ethtool_cmd structure
+ *
+ * This implements ethtool command for setting various PHY settings. If PHY
+ * could not be found, the function returns -ENODEV. This function calls the
+ * relevant PHY ethtool API to set the PHY.
+ * Issue e.g. "ethtool -s ethX speed 1000" under linux prompt to execute this
+ * function.
+ *
+ * Return: 0 on success, -ENODEV if PHY doesn't exist
+ */
+static int axienet_ethtools_set_settings(struct net_device *ndev,
+					 struct ethtool_cmd *ecmd)
+{
+	struct phy_device *phydev = ndev->phydev;
+
+	if (!phydev)
+		return -ENODEV;
+	return phy_ethtool_sset(phydev, ecmd);
+}
+
+/**
  * axienet_ethtools_get_drvinfo - Get various Axi Ethernet driver information.
  * @ndev:	Pointer to net_device structure
  * @ed:		Pointer to ethtool_drvinfo structure
@@ -1982,6 +2027,8 @@ static int axienet_ethtools_get_ts_info(struct net_device *ndev,
 #endif
 
 static const struct ethtool_ops axienet_ethtool_ops = {
+	.get_settings   = axienet_ethtools_get_settings,
+	.set_settings   = axienet_ethtools_set_settings,
 	.get_drvinfo    = axienet_ethtools_get_drvinfo,
 	.get_regs_len   = axienet_ethtools_get_regs_len,
 	.get_regs       = axienet_ethtools_get_regs,
