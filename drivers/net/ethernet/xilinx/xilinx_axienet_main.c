@@ -2281,6 +2281,12 @@ static int axienet_probe(struct platform_device *pdev)
 	 * the device-tree and accordingly set flags.
 	 */
 	of_property_read_u32(pdev->dev.of_node, "xlnx,rxmem", &lp->rxmem);
+
+	/* The phy_type is optional but when it is not specified it should not
+	 *  be a value that alters the driver behavior so set it to an invalid
+	 *  value as the default.
+	 */
+	lp->phy_type = ~0;
 	of_property_read_u32(pdev->dev.of_node, "xlnx,phy-type", &lp->phy_type);
 
 	lp->eth_hasnobuf = of_property_read_bool(pdev->dev.of_node,
