@@ -164,6 +164,25 @@ static inline void axienet_dma_out32(struct axienet_local *lp,
 }
 
 /**
+ * axienet_dma_bdout - Memory mapped Axi DMA register Buffer Descriptor write.
+ * @lp:		Pointer to axienet local structure
+ * @reg:	Address offset from the base address of the Axi DMA core
+ * @value:	Value to be written into the Axi DMA register
+ *
+ * This function writes the desired value into the corresponding Axi DMA
+ * register.
+ */
+static inline void axienet_dma_bdout(struct axienet_local *lp,
+				     off_t reg, dma_addr_t value)
+{
+#if defined(CONFIG_PHYS_ADDR_T_64BIT)
+	writeq(value, (lp->dma_regs + reg));
+#else
+	writel(value, (lp->dma_regs + reg));
+#endif
+}
+
+/**
  * axienet_dma_bd_release - Release buffer descriptor rings
  * @ndev:	Pointer to the net_device structure
  *
@@ -252,7 +271,7 @@ static int axienet_dma_bd_init(struct net_device *ndev)
 		 */
 		wmb();
 
-		lp->rx_bd_v[i].sw_id_offset = (u32) skb;
+		lp->rx_bd_v[i].sw_id_offset = (phys_addr_t) skb;
 		lp->rx_bd_v[i].phys = dma_map_single(ndev->dev.parent,
 						     skb->data,
 						     lp->max_frm_size,
@@ -289,18 +308,18 @@ static int axienet_dma_bd_init(struct net_device *ndev)
 	/* Populate the tail pointer and bring the Rx Axi DMA engine out of
 	 * halted state. This will make the Rx side ready for reception.
 	 */
-	axienet_dma_out32(lp, XAXIDMA_RX_CDESC_OFFSET, lp->rx_bd_p);
+	axienet_dma_bdout(lp, XAXIDMA_RX_CDESC_OFFSET, lp->rx_bd_p);
 	cr = axienet_dma_in32(lp, XAXIDMA_RX_CR_OFFSET);
 	axienet_dma_out32(lp, XAXIDMA_RX_CR_OFFSET,
 			  cr | XAXIDMA_CR_RUNSTOP_MASK);
-	axienet_dma_out32(lp, XAXIDMA_RX_TDESC_OFFSET, lp->rx_bd_p +
+	axienet_dma_bdout(lp, XAXIDMA_RX_TDESC_OFFSET, lp->rx_bd_p +
 			  (sizeof(*lp->rx_bd_v) * (RX_BD_NUM - 1)));
 
 	/* Write to the RS (Run-stop) bit in the Tx channel control register.
 	 * Tx channel is now ready to run. But only after we write to the
 	 * tail pointer register that the Tx channel will start transmitting.
 	 */
-	axienet_dma_out32(lp, XAXIDMA_TX_CDESC_OFFSET, lp->tx_bd_p);
+	axienet_dma_bdout(lp, XAXIDMA_TX_CDESC_OFFSET, lp->tx_bd_p);
 	cr = axienet_dma_in32(lp, XAXIDMA_TX_CR_OFFSET);
 	axienet_dma_out32(lp, XAXIDMA_TX_CR_OFFSET,
 			  cr | XAXIDMA_CR_RUNSTOP_MASK);
@@ -1035,7 +1054,7 @@ static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	wmb();
 
 	/* Start the transfer */
-	axienet_dma_out32(lp, XAXIDMA_TX_TDESC_OFFSET, tail_p);
+	axienet_dma_bdout(lp, XAXIDMA_TX_TDESC_OFFSET, tail_p);
 	++lp->tx_bd_tail;
 	lp->tx_bd_tail %= TX_BD_NUM;
 
@@ -1160,7 +1179,7 @@ static int axienet_recv(struct net_device *ndev, int budget)
 					     DMA_FROM_DEVICE);
 		cur_p->cntrl = lp->max_frm_size;
 		cur_p->status = 0;
-		cur_p->sw_id_offset = (u32) new_skb;
+		cur_p->sw_id_offset = (phys_addr_t) new_skb;
 
 		++lp->rx_bd_ci;
 		lp->rx_bd_ci %= RX_BD_NUM;
@@ -1175,7 +1194,7 @@ static int axienet_recv(struct net_device *ndev, int budget)
 	ndev->stats.rx_bytes += size;
 
 	if (tail_p)
-		axienet_dma_out32(lp, XAXIDMA_RX_TDESC_OFFSET, tail_p);
+		axienet_dma_bdout(lp, XAXIDMA_RX_TDESC_OFFSET, tail_p);
 
 	return numbdfree;
 }
@@ -2024,18 +2043,18 @@ static void axienet_dma_err_handler(unsigned long data)
 	/* Populate the tail pointer and bring the Rx Axi DMA engine out of
 	 * halted state. This will make the Rx side ready for reception.
 	 */
-	axienet_dma_out32(lp, XAXIDMA_RX_CDESC_OFFSET, lp->rx_bd_p);
+	axienet_dma_bdout(lp, XAXIDMA_RX_CDESC_OFFSET, lp->rx_bd_p);
 	cr = axienet_dma_in32(lp, XAXIDMA_RX_CR_OFFSET);
 	axienet_dma_out32(lp, XAXIDMA_RX_CR_OFFSET,
 			  cr | XAXIDMA_CR_RUNSTOP_MASK);
-	axienet_dma_out32(lp, XAXIDMA_RX_TDESC_OFFSET, lp->rx_bd_p +
+	axienet_dma_bdout(lp, XAXIDMA_RX_TDESC_OFFSET, lp->rx_bd_p +
 			  (sizeof(*lp->rx_bd_v) * (RX_BD_NUM - 1)));
 
 	/* Write to the RS (Run-stop) bit in the Tx channel control register.
 	 * Tx channel is now ready to run. But only after we write to the
 	 * tail pointer register that the Tx channel will start transmitting
 	 */
-	axienet_dma_out32(lp, XAXIDMA_TX_CDESC_OFFSET, lp->tx_bd_p);
+	axienet_dma_bdout(lp, XAXIDMA_TX_CDESC_OFFSET, lp->tx_bd_p);
 	cr = axienet_dma_in32(lp, XAXIDMA_TX_CR_OFFSET);
 	axienet_dma_out32(lp, XAXIDMA_TX_CR_OFFSET,
 			  cr | XAXIDMA_CR_RUNSTOP_MASK);
