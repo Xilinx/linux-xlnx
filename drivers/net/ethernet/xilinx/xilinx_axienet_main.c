@@ -343,7 +343,7 @@ static void axienet_set_mac_address(struct net_device *ndev, void *address)
 	struct axienet_local *lp = netdev_priv(ndev);
 
 	if (address)
-		memcpy(ndev->dev_addr, address, ETH_ALEN);
+		ether_addr_copy(ndev->dev_addr, address);
 	if (!is_valid_ether_addr(ndev->dev_addr))
 		eth_random_addr(ndev->dev_addr);
 
