@@ -23,8 +23,6 @@
 
 #define ENCRYPTED_KEY_LEN	64 /* Bytes */
 #define ENCRYPTED_IV_LEN	24 /* Bytes */
-#define SIGNATURE_LEN		512 /* Bytes */
-#define PUBLIC_KEY_LEN		516 /* Bytes */
 
 struct fpga_manager;
 
@@ -124,8 +122,6 @@ struct fpga_manager {
 	long int flags;
 	char key[ENCRYPTED_KEY_LEN];
 	char iv[ENCRYPTED_IV_LEN];
-	char signature[SIGNATURE_LEN];
-	char pubkey[PUBLIC_KEY_LEN];
 	struct device dev;
 	struct mutex ref_mutex;
 	enum fpga_mgr_states state;

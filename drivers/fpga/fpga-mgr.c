@@ -133,50 +133,6 @@ int fpga_mgr_firmware_load(struct fpga_manager *mgr,
 }
 EXPORT_SYMBOL_GPL(fpga_mgr_firmware_load);
 
-int fpga_mgr_signature_load(struct fpga_manager *mgr,
-				const char *image_name)
-{
-	struct device *dev = &mgr->dev;
-	const struct firmware *fw;
-	int ret;
-
-	dev_info(dev, "Loading %s to %s\n", image_name, mgr->name);
-
-	ret = request_firmware(&fw, image_name, dev);
-	if (ret) {
-		dev_err(dev, "Error requesting firmware %s\n", image_name);
-		return ret;
-	}
-
-	memcpy(mgr->signature, fw->data, fw->size);
-
-	release_firmware(fw);
-
-	return ret;
-}
-
-int fpga_mgr_pubkey_load(struct fpga_manager *mgr,
-				const char *image_name)
-{
-	struct device *dev = &mgr->dev;
-	const struct firmware *fw;
-	int ret;
-
-	dev_info(dev, "Loading %s to %s\n", image_name, mgr->name);
-
-	ret = request_firmware(&fw, image_name, dev);
-	if (ret) {
-		dev_err(dev, "Error requesting firmware %s\n", image_name);
-		return ret;
-	}
-
-	memcpy(mgr->pubkey, fw->data, fw->size);
-
-	release_firmware(fw);
-
-	return ret;
-}
-
 static const char * const state_str[] = {
 	[FPGA_MGR_STATE_UNKNOWN] =		"unknown",
 	[FPGA_MGR_STATE_POWER_OFF] =		"power off",
@@ -247,50 +203,6 @@ static ssize_t firmware_store(struct device *dev,
 	return count;
 }
 
-static ssize_t signature_store(struct device *dev,
-				struct device_attribute *attr,
-				const char *buf, size_t count)
-{
-	struct fpga_manager *mgr = to_fpga_manager(dev);
-	unsigned int len;
-	char image_name[NAME_MAX];
-	int ret;
-
-	/* lose terminating \n */
-	strcpy(image_name, buf);
-	len = strlen(image_name);
-	if (image_name[len - 1] == '\n')
-		image_name[len - 1] = 0;
-
-	ret = fpga_mgr_signature_load(mgr, image_name);
-	if (ret)
-		return ret;
-
-	return count;
-}
-
-static ssize_t pubkey_store(struct device *dev,
-				struct device_attribute *attr,
-				const char *buf, size_t count)
-{
-	struct fpga_manager *mgr = to_fpga_manager(dev);
-	unsigned int len;
-	char image_name[NAME_MAX];
-	int ret;
-
-	/* lose terminating \n */
-	strcpy(image_name, buf);
-	len = strlen(image_name);
-	if (image_name[len - 1] == '\n')
-		image_name[len - 1] = 0;
-
-	ret = fpga_mgr_pubkey_load(mgr, image_name);
-	if (ret)
-		return ret;
-
-	return count;
-}
-
 static ssize_t key_show(struct device *dev,
 			struct device_attribute *attr, char *buf)
 {
@@ -354,8 +266,6 @@ static ssize_t flags_store(struct device *dev,
 static DEVICE_ATTR_RO(name);
 static DEVICE_ATTR_RO(state);
 static DEVICE_ATTR_WO(firmware);
-static DEVICE_ATTR_WO(signature);
-static DEVICE_ATTR_WO(pubkey);
 static DEVICE_ATTR_RW(flags);
 static DEVICE_ATTR_RW(key);
 static DEVICE_ATTR_RW(iv);
@@ -364,8 +274,6 @@ static struct attribute *fpga_mgr_attrs[] = {
 	&dev_attr_name.attr,
 	&dev_attr_state.attr,
 	&dev_attr_firmware.attr,
-	&dev_attr_signature.attr,
-	&dev_attr_pubkey.attr,
 	&dev_attr_flags.attr,
 	&dev_attr_key.attr,
 	&dev_attr_iv.attr,
