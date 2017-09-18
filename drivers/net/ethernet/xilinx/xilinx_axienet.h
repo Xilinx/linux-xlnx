@@ -456,6 +456,7 @@ struct axidma_bd {
  * @tx_irq:	Axidma TX IRQ number
  * @rx_irq:	Axidma RX IRQ number
  * @phy_mode:	Phy type to identify between MII/GMII/RGMII/SGMII/1000 Base-X
+ * @eth_irq:	Axi Ethernet IRQ number
  * @options:	AxiEthernet option word
  * @last_link:	Phy link state in which the PHY was negotiated earlier
  * @features:	Stores the extended features supported by the axienet hw
@@ -510,6 +511,7 @@ struct axienet_local {
 	int tx_irq;
 	int rx_irq;
 	phy_interface_t phy_mode;
+	int eth_irq;
 
 	u32 options;			/* Current options word */
 	u32 last_link;

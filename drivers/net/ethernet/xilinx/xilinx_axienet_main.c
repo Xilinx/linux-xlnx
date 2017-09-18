@@ -595,6 +595,9 @@ static void axienet_device_reset(struct net_device *ndev)
 		axienet_status = axienet_ior(lp, XAE_IP_OFFSET);
 		if (axienet_status & XAE_INT_RXRJECT_MASK)
 			axienet_iow(lp, XAE_IS_OFFSET, XAE_INT_RXRJECT_MASK);
+
+		/* Enable Receive errors */
+		axienet_iow(lp, XAE_IE_OFFSET, XAE_INT_RECV_ERROR_MASK);
 	}
 
 	if (lp->axienet_config->mactype == XAXIENET_10G_25G) {
@@ -1242,6 +1245,35 @@ static int xaxienet_rx_poll(struct napi_struct *napi, int quota)
 }
 
 /**
+ * axienet_err_irq - Axi Ethernet error irq.
+ * @irq:	irq number
+ * @_ndev:	net_device pointer
+ *
+ * Return: IRQ_HANDLED for all cases.
+ *
+ * This is the Axi DMA error ISR. It updates the rx memory over run condition.
+ */
+static irqreturn_t axienet_err_irq(int irq, void *_ndev)
+{
+	unsigned int status;
+	struct net_device *ndev = _ndev;
+	struct axienet_local *lp = netdev_priv(ndev);
+
+	status = axienet_ior(lp, XAE_IS_OFFSET);
+	if (status & XAE_INT_RXFIFOOVR_MASK) {
+		ndev->stats.rx_fifo_errors++;
+		axienet_iow(lp, XAE_IS_OFFSET, XAE_INT_RXFIFOOVR_MASK);
+	}
+
+	if (status & XAE_INT_RXRJECT_MASK) {
+		axienet_iow(lp, XAE_IS_OFFSET, XAE_INT_RXRJECT_MASK);
+		axienet_device_reset(ndev);
+	}
+
+	return IRQ_HANDLED;
+}
+
+/**
  * axienet_tx_irq - Tx Done Isr.
  * @irq:	irq number
  * @_ndev:	net_device pointer
@@ -1440,8 +1472,18 @@ static int axienet_open(struct net_device *ndev)
 	if (ret)
 		goto err_rx_irq;
 
+	if (!lp->eth_hasnobuf && (lp->axienet_config->mactype == XAXIENET_1G)) {
+		/* Enable interrupts for Axi Ethernet */
+		ret = request_irq(lp->eth_irq, axienet_err_irq, 0, ndev->name,
+				  ndev);
+		if (ret)
+			goto err_eth_irq;
+	}
+
 	return 0;
 
+err_eth_irq:
+	free_irq(lp->rx_irq, ndev);
 err_rx_irq:
 	free_irq(lp->tx_irq, ndev);
 err_tx_irq:
@@ -1484,6 +1526,9 @@ static int axienet_stop(struct net_device *ndev)
 
 	free_irq(lp->tx_irq, ndev);
 	free_irq(lp->rx_irq, ndev);
+
+	if ((lp->axienet_config->mactype == XAXIENET_1G) && !lp->eth_hasnobuf)
+		free_irq(lp->eth_irq, ndev);
 
 	if (ndev->phydev)
 		phy_disconnect(ndev->phydev);
@@ -2262,6 +2307,9 @@ static int axienet_probe(struct platform_device *pdev)
 
 	lp->eth_hasnobuf = of_property_read_bool(pdev->dev.of_node,
 						 "xlnx,eth-hasnobuf");
+
+	if ((lp->axienet_config->mactype == XAXIENET_1G) && !lp->eth_hasnobuf)
+		lp->eth_irq = platform_get_irq(pdev, 0);
 
 #ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
 	struct resource txtsres, rxtsres;
