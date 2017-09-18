@@ -74,6 +74,7 @@
 
 /* Number of data lines used to receive */
 #define XSPI_RX_ONE_WIRE	1
+#define XSPI_RX_FOUR_WIRE	4
 
 /**
  * struct xilinx_spi - This definition define spi driver instance
@@ -391,8 +392,18 @@ static int xspi_start_transfer(struct spi_master *master,
 
 	xqspi->tx_ptr = transfer->tx_buf;
 	xqspi->rx_ptr = transfer->rx_buf;
-	xqspi->bytes_to_transfer = transfer->len;
-	xqspi->bytes_to_receive = transfer->len;
+
+	if (transfer->dummy) {
+		xqspi->bytes_to_transfer = (transfer->len - (transfer->dummy/8))
+							+ ((transfer->dummy/8) *
+							xqspi->rx_bus_width);
+		xqspi->bytes_to_receive = (transfer->len - (transfer->dummy/8))
+							+ ((transfer->dummy/8) *
+							xqspi->rx_bus_width);
+	} else {
+		xqspi->bytes_to_transfer = transfer->len;
+		xqspi->bytes_to_receive = transfer->len;
+	}
 
 	xspi_setup_transfer(qspi, transfer);
 	cr = xqspi->read_fn(xqspi->regs + XSPI_CR_OFFSET);
@@ -561,8 +572,10 @@ static int xilinx_spi_probe(struct platform_device *pdev)
 			xspi->tx_fifo = xspi_fill_tx_fifo_32;
 			xspi->rx_fifo = xspi_read_rx_fifo_32;
 		}
+	} else if (xspi->rx_bus_width == XSPI_RX_FOUR_WIRE) {
+		master->mode_bits |= SPI_TX_QUAD | SPI_RX_QUAD;
 	} else {
-		dev_err(&pdev->dev, "Dual/Quad Modes are not supported\n");
+		dev_err(&pdev->dev, "Dual Mode not supported\n");
 		goto put_master;
 	}
 	xspi->cs_inactive = 0xffffffff;
