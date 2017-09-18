@@ -667,12 +667,13 @@ static void axienet_adjust_link(struct net_device *ndev)
 			}
 
 			axienet_iow(lp, XAE_EMMC_OFFSET, emmc_reg);
-			lp->last_link = link_state;
 			phy_print_status(phy);
 		} else {
 			netdev_err(ndev,
 				   "Error setting Axi Ethernet mac speed\n");
 		}
+
+		lp->last_link = link_state;
 	}
 }
 
