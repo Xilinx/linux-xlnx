@@ -427,6 +427,7 @@ struct axidma_bd {
  * @coalesce_count_tx:	Store the irq coalesce on TX side.
  * @phy_interface: Phy interface type.
  * @phy_flags:	Phy interface flags.
+ * @eth_hasnobuf: Ethernet is configured in Non buf mode.
  */
 struct axienet_local {
 	struct net_device *ndev;
@@ -474,6 +475,7 @@ struct axienet_local {
 	u32 coalesce_count_tx;
 	u32 phy_interface;
 	u32 phy_flags;
+	bool eth_hasnobuf;
 };
 
 /**
