@@ -669,13 +669,16 @@ static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	dma_addr_t tail_p;
 	struct axienet_local *lp = netdev_priv(ndev);
 	struct axidma_bd *cur_p;
+	unsigned long flags;
 
 	num_frag = skb_shinfo(skb)->nr_frags;
 	cur_p = &lp->tx_bd_v[lp->tx_bd_tail];
 
+	spin_lock_irqsave(&lp->tx_lock, flags);
 	if (axienet_check_tx_bd_space(lp, num_frag)) {
 		if (!netif_queue_stopped(ndev))
 			netif_stop_queue(ndev);
+		spin_unlock_irqrestore(&lp->tx_lock, flags);
 		return NETDEV_TX_BUSY;
 	}
 
@@ -721,6 +724,8 @@ static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	axienet_dma_out32(lp, XAXIDMA_TX_TDESC_OFFSET, tail_p);
 	++lp->tx_bd_tail;
 	lp->tx_bd_tail %= TX_BD_NUM;
+
+	spin_unlock_irqrestore(&lp->tx_lock, flags);
 
 	return NETDEV_TX_OK;
 }
@@ -1684,6 +1689,7 @@ static int axienet_probe(struct platform_device *pdev)
 		goto free_netdev;
 	}
 
+	spin_lock_init(&lp->tx_lock);
 	spin_lock_init(&lp->rx_lock);
 
 	/* Retrieve the MAC address */
