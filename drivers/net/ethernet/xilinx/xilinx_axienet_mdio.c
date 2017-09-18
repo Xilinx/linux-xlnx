@@ -133,6 +133,8 @@ int axienet_mdio_setup(struct axienet_local *lp, struct device_node *np)
 	struct mii_bus *bus;
 	struct resource res;
 	struct device_node *np1;
+	/* the ethernet controller device node */
+	struct device_node *npp = NULL;
 
 	/* clk_div can be calculated by deriving it from the equation:
 	 * fMDIO = fHOST / ((1 + clk_div) * 2)
@@ -158,42 +160,45 @@ int axienet_mdio_setup(struct axienet_local *lp, struct device_node *np)
 	 * fHOST can be read from the flattened device tree as property
 	 * "clock-frequency" from the CPU
 	 */
-
-	np1 = of_find_node_by_name(NULL, "cpu");
-	if (!np1) {
-		netdev_warn(lp->ndev, "Could not find CPU device node.\n");
-		netdev_warn(lp->ndev,
-			    "Setting MDIO clock divisor to default %d\n",
-			    DEFAULT_CLOCK_DIVISOR);
-		clk_div = DEFAULT_CLOCK_DIVISOR;
-		goto issue;
-	}
-	if (of_property_read_u32(np1, "clock-frequency", &host_clock)) {
-		netdev_warn(lp->ndev, "clock-frequency property not found.\n");
-		netdev_warn(lp->ndev,
-			    "Setting MDIO clock divisor to default %d\n",
-			    DEFAULT_CLOCK_DIVISOR);
-		clk_div = DEFAULT_CLOCK_DIVISOR;
+	np1 = of_get_parent(lp->phy_node);
+	if (np1) {
+		npp = of_get_parent(np1);
 		of_node_put(np1);
-		goto issue;
+	}
+	if (!npp) {
+		dev_warn(lp->dev,
+			"Could not find ethernet controller device node.");
+		dev_warn(lp->dev, "Setting MDIO clock divisor to default %d\n",
+		       DEFAULT_CLOCK_DIVISOR);
+		clk_div = DEFAULT_CLOCK_DIVISOR;
+	} else {
+		if (of_property_read_u32(npp, "clock-frequency", &host_clock)) {
+			netdev_warn(lp->ndev,
+				    "clock-frequency property not found.\n");
+			netdev_warn(lp->ndev,
+				    "Setting MDIO clock divisor to default %d\n",
+				    DEFAULT_CLOCK_DIVISOR);
+			clk_div = DEFAULT_CLOCK_DIVISOR;
+		} else {
+			clk_div = (host_clock / (MAX_MDIO_FREQ * 2)) - 1;
+
+			/* If there is any remainder from the division of
+			 * fHOST / (MAX_MDIO_FREQ * 2), then we need to add 1
+			 * to the clock divisor or we will surely be
+			 * above 2.5 MHz
+			 */
+			if (host_clock % (MAX_MDIO_FREQ * 2))
+				clk_div++;
+			dev_dbg(lp->dev,
+				"Setting MDIO clock divisor to %u "
+				"based on %u Hz host clock.\n",
+				clk_div, host_clock);
+		}
+		of_node_put(npp);
 	}
 
-	clk_div = (host_clock / (MAX_MDIO_FREQ * 2)) - 1;
-	/* If there is any remainder from the division of
-	 * fHOST / (MAX_MDIO_FREQ * 2), then we need to add
-	 * 1 to the clock divisor or we will surely be above 2.5 MHz
-	 */
-	if (host_clock % (MAX_MDIO_FREQ * 2))
-		clk_div++;
-
-	netdev_dbg(lp->ndev,
-		   "Setting MDIO clock divisor to %u/%u Hz host clock.\n",
-		   clk_div, host_clock);
-
-	of_node_put(np1);
-issue:
 	axienet_iow(lp, XAE_MDIO_MC_OFFSET,
-		    (((u32) clk_div) | XAE_MDIO_MC_MDIOEN_MASK));
+		    (((u32)clk_div) | XAE_MDIO_MC_MDIOEN_MASK));
 
 	ret = axienet_mdio_wait_until_ready(lp);
 	if (ret < 0)
@@ -203,8 +208,7 @@ issue:
 	if (!bus)
 		return -ENOMEM;
 
-	np1 = of_get_parent(lp->phy_node);
-	of_address_to_resource(np1, 0, &res);
+	of_address_to_resource(npp, 0, &res);
 	snprintf(bus->id, MII_BUS_ID_SIZE, "%.8llx",
 		 (unsigned long long) res.start);
 
