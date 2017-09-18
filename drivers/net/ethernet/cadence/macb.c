@@ -338,10 +338,10 @@ static int macb_mdio_write(struct mii_bus *bus, int mii_id, int regnum,
 }
 
 /**
- * macb_set_tx_clk() - Set a clock to a new frequency
- * @clk		Pointer to the clock to change
- * @rate	New frequency in Hz
- * @dev		Pointer to the struct net_device
+ * macb_set_tx_clk - Set a clock to a new frequency
+ * @clk:	Pointer to the clock to change
+ * @speed:	New frequency in Hz
+ * @dev:	Pointer to the struct net_device
  */
 static void macb_set_tx_clk(struct clk *clk, int speed, struct net_device *dev)
 {
@@ -2747,7 +2747,6 @@ static void macb_get_regs(struct net_device *dev, struct ethtool_regs *regs,
 		regs_buff[13] = gem_readl(bp, DMACFG);
 }
 
-
 static int macb_get_ts_info(struct net_device *dev,
 			    struct ethtool_ts_info *info)
 {
@@ -3717,7 +3716,6 @@ static int macb_probe(struct platform_device *pdev)
 		bp->phy_node = phy_node;
 	} else {
 		int gpio = of_get_named_gpio(phy_node, "reset-gpios", 0);
-
 		if (gpio_is_valid(gpio)) {
 			bp->reset_gpio = gpio_to_desc(gpio);
 			gpiod_direction_output(bp->reset_gpio, 1);
