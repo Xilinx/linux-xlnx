@@ -20,6 +20,7 @@
 int axienet_mdio_wait_until_ready(struct axienet_local *lp)
 {
 	unsigned long end = jiffies + 2;
+
 	while (!(axienet_ior(lp, XAE_MDIO_MCR_OFFSET) &
 		 XAE_MDIO_MCR_READY_MASK)) {
 		if (time_before_eq(end, jiffies)) {
@@ -129,6 +130,7 @@ int axienet_mdio_setup(struct axienet_local *lp, struct device_node *np)
 {
 	int ret;
 	u32 clk_div, host_clock;
+
 	struct mii_bus *bus;
 	struct resource res;
 	struct device_node *np1;
