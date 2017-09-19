@@ -1,0 +1,58 @@
+/*
+ * dts file for Xilinx ZynqMP ZCU100 revB
+ *
+ * (C) Copyright 2017, Xilinx, Inc.
+ *
+ * Michal Simek <michal.simek@xilinx.com>
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License as
+ * published by the Free Software Foundation; either version 2 of
+ * the License, or (at your option) any later version.
+ */
+
+#include "zynqmp-zcu100-revB.dts"
+
+/* loopback */
+&i2csw_0 {
+	eeprom0: eeprom@54 { /* u1 */
+		compatible = "at,24c02";
+		reg = <0x54>;
+	};
+};
+
+&i2csw_1 {
+	eeprom1: eeprom@54 { /* u2 */
+		compatible = "at,24c02";
+		reg = <0x54>;
+	};
+};
+
+&i2csw_2 {
+	eeprom2: eeprom@54 { /* u3 */
+		compatible = "at,24c02";
+		reg = <0x54>;
+	};
+};
+
+&i2csw_3 {
+	eeprom3: eeprom@54 { /* u4 */
+		compatible = "at,24c02";
+		reg = <0x54>;
+	};
+};
+
+&spi1 { /* High Speed connector */
+	flash: at45db041@0 { /* u5 */
+		#address-cells = <1>;
+		#size-cells = <1>;
+		compatible = "atmel,at45db041e", "atmel,at45", "atmel,dataflash";
+		spi-max-frequency = <85000000>;
+		reg = <0>;
+
+		partition@0 {
+			label = "test";
+			reg = <0x0 0x84000>;
+		};
+	};
+};
