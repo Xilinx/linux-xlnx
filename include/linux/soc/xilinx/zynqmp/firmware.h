@@ -80,6 +80,10 @@ enum pm_api_id {
 	FPGA_LOAD,
 	FPGA_GET_STATUS,
 	GET_CHIPID,
+	/* ID 25 is been used by U-boot to process secure boot images */
+	/* Secure library generic API functions */
+	SECURE_SHA = 26,
+	SECURE_RSA,
 };
 
 /* PMU-FW return status codes */
@@ -242,5 +246,7 @@ int zynqmp_pm_mmio_write(const u32 address,
 int zynqmp_pm_mmio_read(const u32 address, u32 *value);
 int zynqmp_pm_fpga_load(const u64 address, const u32 size, const u32 flags);
 int zynqmp_pm_fpga_get_status(u32 *value);
+int zynqmp_pm_sha_hash(const u64 address, const u32 size, const u32 flags);
+int zynqmp_pm_rsa(const u64 address, const u32 size, const u32 flags);
 
 #endif /* __SOC_ZYNQMP_FIRMWARE_H__ */
