@@ -663,6 +663,15 @@ config CRYPTO_DEV_ZYNQMP_SHA3
 	  Select this if you want to use the ZynqMP module for
 	  Keccak-SHA384 algorithms.
 
+config CRYPTO_DEV_XILINX_RSA
+	tristate "Support for Xilinx ZynqMP RSA hw accelerator"
+	depends on ARCH_ZYNQMP || COMPILE_TEST
+	select CRYPTO_AES
+	select CRYPTO_BLKCIPHER
+	help
+	  Xilinx processors have RSA module accelerator. Select this if you
+	  want to use the ZynqMP module for RSA algorithms.
+
 config CRYPTO_DEV_MEDIATEK
 	tristate "MediaTek's EIP97 Cryptographic Engine driver"
 	depends on HAS_DMA
