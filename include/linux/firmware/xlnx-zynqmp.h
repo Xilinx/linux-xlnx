@@ -59,8 +59,12 @@ enum pm_api_id {
 	PM_RESET_GET_STATUS,
 	PM_PM_INIT_FINALIZE = 21,
 	PM_GET_CHIPID = 24,
+	/* ID 25 is been used by U-boot to process secure boot images */
+	/* Secure library generic API functions */
+	PM_SECURE_SHA = 26,
+	PM_SECURE_RSA,
 	/* Pin control API functions */
-	PM_PINCTRL_REQUEST = 28,
+	PM_PINCTRL_REQUEST,
 	PM_PINCTRL_RELEASE,
 	PM_PINCTRL_GET_FUNCTION,
 	PM_PINCTRL_SET_FUNCTION,
@@ -431,6 +435,8 @@ struct zynqmp_eemi_ops {
 			       const u32 capabilities,
 			       const u32 qos,
 			       const enum zynqmp_pm_request_ack ack);
+	int (*sha_hash)(const u64 address, const u32 size, const u32 flags);
+	int (*rsa)(const u64 address, const u32 size, const u32 flags);
 	int (*pinctrl_request)(const u32 pin);
 	int (*pinctrl_release)(const u32 pin);
 	int (*pinctrl_get_function)(const u32 pin, u32 *id);
