@@ -7,9 +7,11 @@ Required properties:
 - interrupts		: Property with a value describing the interrupt
 			  number.
 - interrupt-parent	: Must be core interrupt controller
+- fifo-size		: Depth of TX/RX Fifos
 
 Optional properties:
-- xlnx,num-ss-bits	: Number of chip selects used.
+- num-cs		: Number of chip selects used.
+- bits-per-word		: Number of bits per word.
 
 Example:
 	axi_quad_spi@41e00000 {
@@ -17,6 +19,8 @@ Example:
 			interrupt-parent = <&intc>;
 			interrupts = <0 31 1>;
 			reg = <0x41e00000 0x10000>;
-			xlnx,num-ss-bits = <0x1>;
+			num-cs = <0x1>;
+			fifo-size = <256>;
+			bits-per-word = <8>;
 	};
 
