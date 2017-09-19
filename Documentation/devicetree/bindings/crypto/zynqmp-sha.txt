@@ -1,0 +1,12 @@
+Xilinx ZynqMP SHA3(keccak-384) hw acceleration support.
+
+The ZynqMp PS-SHA hw accelerator is used to calculate the
+SHA3(keccak-384) hash value on the given user data.
+
+Required properties:
+- compatible:	should contain "xlnx,zynqmp-keccak-384"
+
+Example:
+	xlnx_keccak_384: sha384 {
+		compatible = "xlnx,zynqmp-keccak-384";
+	};
