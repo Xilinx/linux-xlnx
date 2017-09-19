@@ -54,6 +54,8 @@
 #define SPINOR_OP_RDID		0x9f	/* Read JEDEC ID */
 #define SPINOR_OP_RDCR		0x35	/* Read configuration register */
 #define SPINOR_OP_RDFSR		0x70	/* Read flag status register */
+#define SPINOR_OP_WREAR		0xc5	/* Write Extended Address Register */
+#define SPINOR_OP_RDEAR		0xc8	/* Read Extended Address Register */
 
 /* 4-byte address opcodes - used on Spansion and some Macronix flashes. */
 #define SPINOR_OP_READ4		0x13	/* Read data bytes (low frequency) */
@@ -68,12 +70,15 @@
 #define SPINOR_OP_WRDI		0x04	/* Write disable */
 #define SPINOR_OP_AAI_WP	0xad	/* Auto address increment word program */
 
+#define GLOBAL_BLKPROT_UNLK	0x98	/* Clear global write protection bits */
+
 /* Used for Macronix and Winbond flashes. */
 #define SPINOR_OP_EN4B		0xb7	/* Enter 4-byte mode */
 #define SPINOR_OP_EX4B		0xe9	/* Exit 4-byte mode */
 
 /* Used for Spansion flashes only. */
 #define SPINOR_OP_BRWR		0x17	/* Bank register write */
+#define	SPINOR_OP_BRRD		0x16	/* Bank register read */
 
 /* Used for Micron flashes only. */
 #define SPINOR_OP_RD_EVCR      0x65    /* Read EVCR register */
@@ -86,8 +91,16 @@
 #define SR_BP0			BIT(2)	/* Block protect 0 */
 #define SR_BP1			BIT(3)	/* Block protect 1 */
 #define SR_BP2			BIT(4)	/* Block protect 2 */
+#define	SR_BP_BIT_OFFSET	2	/* Offset to Block protect 0 */
+#define	SR_BP_BIT_MASK		(SR_BP2 | SR_BP1 | SR_BP0)
+
 #define SR_TB			BIT(5)	/* Top/Bottom protect */
 #define SR_SRWD			BIT(7)	/* SR write protect */
+#define SR_BP3			0x40
+/* Bit to determine whether protection starts from top or bottom */
+#define SR_BP_TB		0x20
+#define BP_BITS_FROM_SR(sr)	(((sr) & SR_BP_BIT_MASK) >> SR_BP_BIT_OFFSET)
+#define M25P_MAX_LOCKABLE_SECTORS	64
 
 #define SR_QUAD_EN_MX		BIT(6)	/* Macronix Quad I/O */
 
@@ -99,6 +112,9 @@
 
 /* Configuration Register bits. */
 #define CR_QUAD_EN_SPAN		BIT(1)	/* Spansion Quad I/O */
+
+/* Extended/Bank Address Register bits */
+#define EAR_SEGMENT_MASK	0x7 /* 128 Mb segment mask */
 
 enum read_mode {
 	SPI_NOR_NORMAL = 0,
@@ -157,6 +173,7 @@ struct spi_nor {
 	struct mtd_info		mtd;
 	struct mutex		lock;
 	struct device		*dev;
+	struct spi_device       *spi;
 	u32			page_size;
 	u8			addr_width;
 	u8			erase_opcode;
@@ -164,7 +181,14 @@ struct spi_nor {
 	u8			read_dummy;
 	u8			program_opcode;
 	enum read_mode		flash_read;
+	u32			jedec_id;
+	u16			curbank;
+	u16			n_sectors;
+	u32			sector_size;
 	bool			sst_write_second;
+	bool			shift;
+	bool			isparallel;
+	bool                    isstacked;
 	u32			flags;
 	u8			cmd_buf[SPI_NOR_MAX_CMD_SIZE];
 
