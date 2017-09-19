@@ -2838,6 +2838,14 @@ static int __spi_validate(struct spi_device *spi, struct spi_message *message)
 	if (list_empty(&message->transfers))
 		return -EINVAL;
 
+	/*
+	 *  Data stripe option is selected if and only if when
+	 *  two chips are enabled
+	 */
+	if ((ctlr->flags & SPI_MASTER_DATA_STRIPE)
+			&& !(ctlr->flags & SPI_MASTER_BOTH_CS))
+			return -EINVAL;
+
 	/* Half-duplex links include original MicroWire, and ones with
 	 * only one data pin like SPI_3WIRE (switches direction) or where
 	 * either MOSI or MISO is missing.  They can also be caused by
