@@ -2195,8 +2195,7 @@ static void macb_ptp_init(struct macb *bp)
 	bp->phc_index = ptp_clock_index(bp->ptp_clock);
 }
 
-/*
- * Configure the receive DMA engine
+/* Configure the receive DMA engine
  * - use the correct receive buffer size
  * - set best burst length for DMA operations
  *   (if not supported by FIFO, it will fallback to default)
@@ -3686,11 +3685,6 @@ static int macb_probe(struct platform_device *pdev)
 		dma_set_mask(&pdev->dev, DMA_BIT_MASK(44));
 #endif
 
-#ifdef CONFIG_ARCH_DMA_ADDR_T_64BIT
-	if (GEM_BFEXT(DBWDEF, gem_readl(bp, DCFG1)) > GEM_DBW32)
-		dma_set_mask(&pdev->dev, DMA_BIT_MASK(44));
-#endif
-
 	spin_lock_init(&bp->lock);
 
 	/* setup capabilities */
@@ -3759,7 +3753,7 @@ static int macb_probe(struct platform_device *pdev)
 	netif_carrier_off(dev);
 
 	tasklet_init(&bp->hresp_err_tasklet, macb_hresp_error_task,
-		     (unsigned long) bp);
+		     (unsigned long)bp);
 
 	netdev_info(dev, "Cadence %s rev 0x%08x at 0x%08lx irq %d (%pM)\n",
 		    macb_is_gem(bp) ? "GEM" : "MACB", macb_readl(bp, MID),
