@@ -44,6 +44,7 @@
 #define XTG_COMMAND_RAM_MSB_OFFSET 0xa000	/**< Command RAM MSB Offset */
 #define XTG_MASTER_RAM_INIT_OFFSET 0x10000 /* Master RAM initial offset(v1.0) */
 #define XTG_MASTER_RAM_OFFSET	   0xc000  /* Master RAM offset */
+#define XTG_WRITE_COMMAND_RAM_OFFSET	0x9000  /* Write Command RAM offset */
 
 /* Register Offsets */
 #define XTG_MCNTL_OFFSET	0x00	/* Master control */
@@ -389,7 +390,24 @@ static void xtg_access_rams(struct xtg_dev_info *tg, int where,
 		for (index = 0; count > 0; index++, count -= 4)
 			writel(data[index], tg->regs + where + index * 4);
 #ifdef CONFIG_PHYS_ADDR_T_64BIT
-		writel(data[MSB_INDEX],	tg->regs + where +
+	/*
+	 * This additional logic is required only for command ram.
+	 * when writing to READ Command RAM write higher address to READ addr
+	 * RAM
+	 */
+	if ((where >= XTG_COMMAND_RAM_OFFSET) &&
+	    (where < XTG_WRITE_COMMAND_RAM_OFFSET))
+		writel(data[MSB_INDEX],	tg->regs + XTG_COMMAND_RAM_OFFSET +
+			(where - XTG_COMMAND_RAM_OFFSET) / 4 +
+			(XTG_COMMAND_RAM_MSB_OFFSET - XTG_COMMAND_RAM_OFFSET));
+	/*
+	 * Writing to WRITE Command RAM write higher address to WRITE addr RAM
+	 */
+	if ((where >=  XTG_WRITE_COMMAND_RAM_OFFSET) &&
+	    (where < XTG_COMMAND_RAM_MSB_OFFSET))
+		writel(data[MSB_INDEX],	tg->regs +
+			XTG_WRITE_COMMAND_RAM_OFFSET +
+			(where - XTG_WRITE_COMMAND_RAM_OFFSET) / 4 +
 			(XTG_COMMAND_RAM_MSB_OFFSET - XTG_COMMAND_RAM_OFFSET) +
 			XTG_EXTCMD_RAM_BLOCK_SIZE - XTG_CMD_RAM_BLOCK_SIZE);
 #endif
@@ -398,8 +416,19 @@ static void xtg_access_rams(struct xtg_dev_info *tg, int where,
 		for (index = 0; count > 0; index++, count -= 4)
 			data[index] = readl(tg->regs + where + index * 4);
 #ifdef CONFIG_PHYS_ADDR_T_64BIT
-		data[MSB_INDEX] = readl(tg->regs + where +
+	if ((where >= XTG_COMMAND_RAM_OFFSET) &&
+	    (where < XTG_WRITE_COMMAND_RAM_OFFSET))
+		data[MSB_INDEX] = readl(tg->regs + XTG_COMMAND_RAM_OFFSET +
+			(where - XTG_COMMAND_RAM_OFFSET) / 4 +
 			(XTG_COMMAND_RAM_MSB_OFFSET - XTG_COMMAND_RAM_OFFSET));
+
+	if ((where >=  XTG_WRITE_COMMAND_RAM_OFFSET) &&
+	    (where < XTG_COMMAND_RAM_MSB_OFFSET))
+		data[MSB_INDEX] = readl(tg->regs +
+			XTG_WRITE_COMMAND_RAM_OFFSET +
+			(where - XTG_WRITE_COMMAND_RAM_OFFSET) / 4 +
+			(XTG_COMMAND_RAM_MSB_OFFSET - XTG_COMMAND_RAM_OFFSET) +
+			XTG_EXTCMD_RAM_BLOCK_SIZE - XTG_CMD_RAM_BLOCK_SIZE);
 #endif
 		break;
 	}
