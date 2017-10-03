@@ -152,10 +152,6 @@ static const char *can0_mio_mux2_parents[] __initconst = {"can0_ref",
 							"can0_mio_mux"};
 static const char *can1_mio_mux2_parents[] __initconst = {"can1_ref",
 							"can1_mio_mux"};
-static const char *usb0_mio_mux_parents[] __initconst = {"usb0_bus_ref",
-							"usb0_mio_ulpi_clk"};
-static const char *usb1_mio_mux_parents[] __initconst = {"usb1_bus_ref",
-							"usb1_mio_ulpi_clk"};
 static const char *swdt_ext_clk_input_names[] __initconst = {"swdt0_ext_clk",
 							"swdt1_ext_clk"};
 static const char *gem0_tx_mux_parents[] __initconst = {"gem0_ref_div1",
