@@ -1,14 +1,10 @@
 /*
- *  Copyright (C) 2011 - 2014 Xilinx
+ * Xilinx Zynq 7000 DTSI
+ * Describes the hardware common to all Zynq 7000-based boards.
  *
- * This software is licensed under the terms of the GNU General Public
- * License version 2, as published by the Free Software Foundation, and
- * may be copied, distributed, and modified under those terms.
+ *  Copyright (C) 2011 - 2015 Xilinx
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * SPDX-License-Identifier:	GPL-2.0+
  */
 
 / {
