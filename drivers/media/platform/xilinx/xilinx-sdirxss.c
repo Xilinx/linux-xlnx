@@ -292,6 +292,7 @@ struct xsdirxss_core {
  * @pads: media pads
  * @streaming: Flag for storing streaming state
  * @vidlocked: Flag indicating SDI Rx has locked onto video stream
+ * @ts_is_interlaced: Flag indicating Transport Stream is interlaced.
  *
  * This structure contains the device driver related parameters
  */
@@ -307,6 +308,7 @@ struct xsdirxss_state {
 	struct media_pad pads[XSDIRX_MEDIA_PADS];
 	bool streaming;
 	bool vidlocked;
+	bool ts_is_interlaced;
 };
 
 static inline struct xsdirxss_state *
@@ -613,17 +615,23 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 				XST352_BYTE2_PIC_TYPE_OFFSET;
 		framerate = (payload >> XST352_BYTE2_FPS_SHIFT) &
 				XST352_BYTE2_FPS_MASK;
+		tscan = (payload & XST352_BYTE2_TS_TYPE_MASK) >>
+				XST352_BYTE2_TS_TYPE_OFFSET;
 	} else {
 		dev_dbg(core->dev, "No ST352 payload available : Mode = %d\n",
 			mode);
 		framerate = (val & XSDIRX_TS_DET_STAT_RATE_MASK) >>
 				XSDIRX_TS_DET_STAT_RATE_OFFSET;
+		tscan = (val & XSDIRX_TS_DET_STAT_SCAN_MASK) >>
+				XSDIRX_TS_DET_STAT_SCAN_OFFSET;
 	}
 
 	family = (val & XSDIRX_TS_DET_STAT_FAMILY_MASK) >>
 		  XSDIRX_TS_DET_STAT_FAMILY_OFFSET;
-	tscan = (val & XSDIRX_TS_DET_STAT_SCAN_MASK) >>
-		 XSDIRX_TS_DET_STAT_SCAN_OFFSET;
+	state->ts_is_interlaced = tscan ? false : true;
+
+	dev_dbg(core->dev, "ts_is_interlaced = %d, family = %d\n",
+		state->ts_is_interlaced, family);
 
 	switch (mode) {
 	case XSDIRX_MODE_HD_MASK:
@@ -1086,6 +1094,13 @@ static int xsdirxss_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
 			return -EINVAL;
 		}
 		break;
+	case V4L2_CID_XILINX_SDIRX_TS_IS_INTERLACED:
+		if (!xsdirxss->vidlocked) {
+			dev_err(core->dev, "Can't get values when video not locked!\n");
+			return -EINVAL;
+		}
+		ctrl->val = xsdirxss->ts_is_interlaced;
+		break;
 	default:
 		dev_err(core->dev, "Get Invalid control id 0x%0x\n", ctrl->id);
 		return -EINVAL;
@@ -1409,6 +1424,16 @@ static struct v4l2_ctrl_config xsdirxss_ctrls[] = {
 		.max	= 0xFFFFFFFF,
 		.step	= 1,
 		.def	= 0,
+		.flags  = V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_READ_ONLY,
+	}, {
+		.ops	= &xsdirxss_ctrl_ops,
+		.id	= V4L2_CID_XILINX_SDIRX_TS_IS_INTERLACED,
+		.name	= "SDI Rx : TS is Interlaced",
+		.type	= V4L2_CTRL_TYPE_BOOLEAN,
+		.min	= false,
+		.max	= true,
+		.def	= false,
+		.step	= 1,
 		.flags  = V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_READ_ONLY,
 	}
 };
