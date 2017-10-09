@@ -287,6 +287,7 @@ struct xsdirxss_core {
  * @event: Holds the video unlock event
  * @formats: Active V4L2 formats on each pad
  * @default_format: default V4L2 media bus format
+ * @frame_interval: Captures the frame rate
  * @vip_format: format information corresponding to the active format
  * @pads: media pads
  * @streaming: Flag for storing streaming state
@@ -301,6 +302,7 @@ struct xsdirxss_state {
 	struct v4l2_event event;
 	struct v4l2_mbus_framefmt formats[XSDIRX_MEDIA_PADS];
 	struct v4l2_mbus_framefmt default_format;
+	struct v4l2_fract frame_interval;
 	const struct xvip_video_format *vip_format;
 	struct media_pad pads[XSDIRX_MEDIA_PADS];
 	bool streaming;
@@ -523,6 +525,56 @@ static void xsdirx_streamdowncb(struct xsdirxss_core *core)
 	xsdirx_streamflow_control(core, false);
 }
 
+static void xsdirxss_get_framerate(struct v4l2_fract *frame_interval,
+				   u32 framerate)
+{
+	switch (framerate) {
+	case XSDIRX_TS_DET_STAT_RATE_23_98HZ:
+		frame_interval->numerator = 1001;
+		frame_interval->denominator = 24000;
+		break;
+	case XSDIRX_TS_DET_STAT_RATE_24HZ:
+		frame_interval->numerator = 1000;
+		frame_interval->denominator = 24000;
+		break;
+	case XSDIRX_TS_DET_STAT_RATE_25HZ:
+		frame_interval->numerator = 1000;
+		frame_interval->denominator = 25000;
+		break;
+	case XSDIRX_TS_DET_STAT_RATE_29_97HZ:
+		frame_interval->numerator = 1001;
+		frame_interval->denominator = 30000;
+		break;
+	case XSDIRX_TS_DET_STAT_RATE_30HZ:
+		frame_interval->numerator = 1000;
+		frame_interval->denominator = 30000;
+		break;
+	case XSDIRX_TS_DET_STAT_RATE_47_95HZ:
+		frame_interval->numerator = 1001;
+		frame_interval->denominator = 48000;
+		break;
+	case XSDIRX_TS_DET_STAT_RATE_48HZ:
+		frame_interval->numerator = 1000;
+		frame_interval->denominator = 48000;
+		break;
+	case XSDIRX_TS_DET_STAT_RATE_50HZ:
+		frame_interval->numerator = 1000;
+		frame_interval->denominator = 50000;
+		break;
+	case XSDIRX_TS_DET_STAT_RATE_59_94HZ:
+		frame_interval->numerator = 1001;
+		frame_interval->denominator = 60000;
+		break;
+	case XSDIRX_TS_DET_STAT_RATE_60HZ:
+		frame_interval->numerator = 1000;
+		frame_interval->denominator = 60000;
+		break;
+	default:
+		frame_interval->numerator = 1;
+		frame_interval->denominator = 1;
+	}
+}
+
 /**
  * xsdirx_get_stream_properties - Get SDI Rx stream properties
  * @state: pointer to driver state
@@ -536,8 +588,8 @@ static void xsdirx_streamdowncb(struct xsdirxss_core *core)
 static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 {
 	struct xsdirxss_core *core = &state->core;
-	u32 mode, payload = 0, val, family, valid, trate, tscan;
-	u8 byte1 = 0, active_luma = 0, pic_type = 0;
+	u32 mode, payload = 0, val, family, valid, tscan;
+	u8 byte1 = 0, active_luma = 0, pic_type = 0, framerate = 0;
 	struct v4l2_mbus_framefmt *format = &state->formats[0];
 
 	mode = xsdirxss_read(core, XSDIRX_MODE_DET_STAT_REG);
@@ -550,6 +602,7 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 		return -EINVAL;
 	}
 
+	val = xsdirxss_read(core, XSDIRX_TS_DET_STAT_REG);
 	if (valid & XSDIRX_ST352_VALID_DS1_MASK) {
 		payload = xsdirxss_read(core, XSDIRX_ST352_DS1_REG);
 		byte1 = (payload >> XST352_PAYLOAD_BYTE1_SHIFT) &
@@ -558,16 +611,17 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 				XST352_BYTE3_ACT_LUMA_COUNT_OFFSET;
 		pic_type = (payload & XST352_BYTE2_PIC_TYPE_MASK) >>
 				XST352_BYTE2_PIC_TYPE_OFFSET;
+		framerate = (payload >> XST352_BYTE2_FPS_SHIFT) &
+				XST352_BYTE2_FPS_MASK;
 	} else {
 		dev_dbg(core->dev, "No ST352 payload available : Mode = %d\n",
 			mode);
+		framerate = (val & XSDIRX_TS_DET_STAT_RATE_MASK) >>
+				XSDIRX_TS_DET_STAT_RATE_OFFSET;
 	}
 
-	val = xsdirxss_read(core, XSDIRX_TS_DET_STAT_REG);
 	family = (val & XSDIRX_TS_DET_STAT_FAMILY_MASK) >>
 		  XSDIRX_TS_DET_STAT_FAMILY_OFFSET;
-	trate = (val & XSDIRX_TS_DET_STAT_RATE_MASK) >>
-		 XSDIRX_TS_DET_STAT_RATE_OFFSET;
 	tscan = (val & XSDIRX_TS_DET_STAT_SCAN_MASK) >>
 		 XSDIRX_TS_DET_STAT_SCAN_OFFSET;
 
@@ -576,7 +630,7 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 		if (!valid) {
 			/* No payload obtained */
 			dev_dbg(core->dev, "frame rate : %d, tscan = %d\n",
-				trate, tscan);
+				framerate, tscan);
 			/*
 			 * NOTE : A progressive segmented frame pSF will be
 			 * reported incorrectly as Interlaced as we rely on IP's
@@ -584,7 +638,7 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 			 */
 			dev_warn(core->dev, "pSF will be incorrectly reported as Interlaced\n");
 
-			switch (trate) {
+			switch (framerate) {
 			case XSDIRX_TS_DET_STAT_RATE_23_98HZ:
 			case XSDIRX_TS_DET_STAT_RATE_24HZ:
 			case XSDIRX_TS_DET_STAT_RATE_25HZ:
@@ -739,9 +793,13 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 			format->field = V4L2_FIELD_INTERLACED;
 	}
 
+	xsdirxss_get_framerate(&state->frame_interval, framerate);
+
 	dev_dbg(core->dev, "Stream width = %d height = %d Field = %d payload = 0x%08x ts = 0x%08x\n",
 		format->width, format->height, format->field, payload, val);
-
+	dev_dbg(core->dev, "frame rate numerator = %d denominator = %d\n",
+		state->frame_interval.numerator,
+		state->frame_interval.denominator);
 	return 0;
 }
 
@@ -1072,6 +1130,37 @@ static void xsdirxss_stop_stream(struct xsdirxss_state *xsdirxss)
 }
 
 /**
+ * xsdirxss_g_frame_interval - Get the frame interval
+ * @sd: V4L2 Sub device
+ * @fi: Pointer to V4l2 Sub device frame interval structure
+ *
+ * This function is used to get the frame interval.
+ * The frame rate can be integral or fractional.
+ * Integral frame rate e.g. numerator = 1000, denominator = 24000 => 24 fps
+ * Fractional frame rate e.g. numerator = 1001, denominator = 24000 => 23.97 fps
+ *
+ * Return: 0 on success
+ */
+static int xsdirxss_g_frame_interval(struct v4l2_subdev *sd,
+				     struct v4l2_subdev_frame_interval *fi)
+{
+	struct xsdirxss_state *xsdirxss = to_xsdirxssstate(sd);
+	struct xsdirxss_core *core = &xsdirxss->core;
+
+	if (!xsdirxss->vidlocked) {
+		dev_err(core->dev, "Video not locked!\n");
+		return -EINVAL;
+	}
+
+	fi->interval = xsdirxss->frame_interval;
+
+	dev_dbg(core->dev, "frame rate numerator = %d denominator = %d\n",
+		xsdirxss->frame_interval.numerator,
+		xsdirxss->frame_interval.denominator);
+	return 0;
+}
+
+/**
  * xsdirxss_s_stream - It is used to start/stop the streaming.
  * @sd: V4L2 Sub device
  * @enable: Flag (True / False)
@@ -1331,6 +1420,7 @@ static const struct v4l2_subdev_core_ops xsdirxss_core_ops = {
 };
 
 static struct v4l2_subdev_video_ops xsdirxss_video_ops = {
+	.g_frame_interval = xsdirxss_g_frame_interval,
 	.s_stream = xsdirxss_s_stream
 };
 
