@@ -197,6 +197,52 @@
  */
 #define XSDIRX_MAX_EVENTS	(128)
 
+/* ST352 related macros */
+#define XST352_PAYLOAD_BYTE_MASK	0xFF
+#define XST352_PAYLOAD_BYTE1_SHIFT	0
+#define XST352_PAYLOAD_BYTE2_SHIFT	8
+#define XST352_PAYLOAD_BYTE3_SHIFT	16
+#define XST352_PAYLOAD_BYTE4_SHIFT	24
+
+#define XST352_BYTE1_ST292_1x720L_1_5G		0x84
+#define XST352_BYTE1_ST292_1x1080L_1_5G		0x85
+#define XST352_BYTE1_ST425_2008_750L_3GB	0x88
+#define XST352_BYTE1_ST425_2008_1125L_3GA	0x89
+#define XST352_BYTE1_ST372_DL_3GB		0x8A
+#define XST352_BYTE1_ST372_2x720L_3GB		0x8B
+#define XST352_BYTE1_ST372_2x1080L_3GB		0x8C
+#define XST352_BYTE1_ST2081_10_2160L_6G		0xC0
+#define XST352_BYTE1_ST2081_10_DL_2160L_6G	0xC2
+#define XST352_BYTE1_ST2082_10_2160L_12G	0xCE
+
+#define XST352_BYTE2_TS_TYPE_MASK		BIT(15)
+#define XST352_BYTE2_TS_TYPE_OFFSET		15
+#define XST352_BYTE2_PIC_TYPE_MASK		BIT(14)
+#define XST352_BYTE2_PIC_TYPE_OFFSET		14
+#define XST352_BYTE2_TS_PIC_TYPE_INTERLACED	0
+#define XST352_BYTE2_TS_PIC_TYPE_PROGRESSIVE	1
+
+#define XST352_BYTE2_FPS_MASK			0xF
+#define XST352_BYTE2_FPS_SHIFT			8
+#define XST352_BYTE2_FPS_24F			0x2
+#define XST352_BYTE2_FPS_24			0x3
+#define XST352_BYTE2_FPS_48F			0x4
+#define XST352_BYTE2_FPS_25			0x5
+#define XST352_BYTE2_FPS_30F			0x6
+#define XST352_BYTE2_FPS_30			0x7
+#define XST352_BYTE2_FPS_48			0x8
+#define XST352_BYTE2_FPS_50			0x9
+#define XST352_BYTE2_FPS_60F			0xA
+#define XST352_BYTE2_FPS_60			0xB
+/* Table 4 ST 2081-10:2015 */
+#define XST352_BYTE2_FPS_96			0xC
+#define XST352_BYTE2_FPS_100			0xD
+#define XST352_BYTE2_FPS_120			0xE
+#define XST352_BYTE2_FPS_120F			0xF
+
+#define XST352_BYTE3_ACT_LUMA_COUNT_MASK	BIT(22)
+#define XST352_BYTE3_ACT_LUMA_COUNT_OFFSET	22
+
 /**
  * enum sdi_family_enc - SDI Transport Video Format Detected with Active Pixels
  * @XSDIRX_SMPTE_ST_274: SMPTE ST 274 detected with AP 1920x1080
@@ -491,6 +537,7 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 {
 	struct xsdirxss_core *core = &state->core;
 	u32 mode, payload = 0, val, family, valid, trate, tscan;
+	u8 byte1 = 0, active_luma = 0, pic_type = 0;
 	struct v4l2_mbus_framefmt *format = &state->formats[0];
 
 	mode = xsdirxss_read(core, XSDIRX_MODE_DET_STAT_REG);
@@ -505,6 +552,12 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 
 	if (valid & XSDIRX_ST352_VALID_DS1_MASK) {
 		payload = xsdirxss_read(core, XSDIRX_ST352_DS1_REG);
+		byte1 = (payload >> XST352_PAYLOAD_BYTE1_SHIFT) &
+				XST352_PAYLOAD_BYTE_MASK;
+		active_luma = (payload & XST352_BYTE3_ACT_LUMA_COUNT_MASK) >>
+				XST352_BYTE3_ACT_LUMA_COUNT_OFFSET;
+		pic_type = (payload & XST352_BYTE2_PIC_TYPE_MASK) >>
+				XST352_BYTE2_PIC_TYPE_OFFSET;
 	} else {
 		dev_dbg(core->dev, "No ST352 payload available : Mode = %d\n",
 			mode);
@@ -578,16 +631,16 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 			}
 		} else {
 			dev_dbg(core->dev, "Got the payload\n");
-			switch (payload & 0xFF) {
-			case 0x84:
+			switch (byte1) {
+			case XST352_BYTE1_ST292_1x720L_1_5G:
 				/* SMPTE ST 292-1 for 720 line payloads */
 				format->width = 1280;
 				format->height = 720;
 				break;
-			case 0x85:
+			case XST352_BYTE1_ST292_1x1080L_1_5G:
 				/* SMPTE ST 292-1 for 1080 line payloads */
 				format->height = 1080;
-				if (payload & 0x00400000)
+				if (active_luma)
 					format->width = 2048;
 				else
 					format->width = 1920;
@@ -616,22 +669,22 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 		}
 		break;
 	case XSDIRX_MODE_3G_MASK:
-		switch (payload & 0xFF) {
-		case 0x88:
+		switch (byte1) {
+		case XST352_BYTE1_ST425_2008_750L_3GB:
 			/* Sec 4.1.6.1 SMPTE 425-2008 */
-		case 0x8B:
+		case XST352_BYTE1_ST372_2x720L_3GB:
 			/* Table 13 SMPTE 425-2008 */
 			format->width = 1280;
 			format->height = 720;
 			break;
-		case 0x89:
+		case XST352_BYTE1_ST425_2008_1125L_3GA:
 			/* ST352 Table SMPTE 425-1 */
-		case 0x8A:
+		case XST352_BYTE1_ST372_DL_3GB:
 			/* Table 13 SMPTE 425-2008 */
-		case 0x8C:
+		case XST352_BYTE1_ST372_2x1080L_3GB:
 			/* Table 13 SMPTE 425-2008 */
 			format->height = 1080;
-			if (payload & 0x00400000)
+			if (active_luma)
 				format->width = 2048;
 			else
 				format->width = 1920;
@@ -642,13 +695,13 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 		}
 		break;
 	case XSDIRX_MODE_6G_MASK:
-		switch (payload & 0xFF) {
-		case 0xC2:
+		switch (byte1) {
+		case XST352_BYTE1_ST2081_10_DL_2160L_6G:
 			/* Dual link 6G */
-		case 0xC0:
+		case XST352_BYTE1_ST2081_10_2160L_6G:
 			/* Table 3 SMPTE ST 2081-10 */
 			format->height = 2160;
-			if (payload & 0x00400000)
+			if (active_luma)
 				format->width = 4096;
 			else
 				format->width = 3840;
@@ -660,11 +713,11 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 		break;
 	case XSDIRX_MODE_12GI_MASK:
 	case XSDIRX_MODE_12GF_MASK:
-		switch (payload & 0xFF) {
-		case 0xCE:
+		switch (byte1) {
+		case XST352_BYTE1_ST2082_10_2160L_12G:
 			/* Section 4.3.1 SMPTE ST 2082-10 */
 			format->height = 2160;
-			if (payload & 0x00400000)
+			if (active_luma)
 				format->width = 4096;
 			else
 				format->width = 3840;
@@ -680,7 +733,7 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 	}
 
 	if (valid) {
-		if (payload & 0x4000)
+		if (pic_type)
 			format->field = V4L2_FIELD_NONE;
 		else
 			format->field = V4L2_FIELD_INTERLACED;
