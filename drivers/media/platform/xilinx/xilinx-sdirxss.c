@@ -103,6 +103,15 @@
 				XSDIRX_INTR_OVERFLOW_MASK |\
 				XSDIRX_INTR_UNDERFLOW_MASK)
 
+#define XSDIRX_ST352_VALID_DS1_MASK	BIT(0)
+#define XSDIRX_ST352_VALID_DS3_MASK	BIT(1)
+#define XSDIRX_ST352_VALID_DS5_MASK	BIT(2)
+#define XSDIRX_ST352_VALID_DS7_MASK	BIT(3)
+#define XSDIRX_ST352_VALID_DS9_MASK	BIT(4)
+#define XSDIRX_ST352_VALID_DS11_MASK	BIT(5)
+#define XSDIRX_ST352_VALID_DS13_MASK	BIT(6)
+#define XSDIRX_ST352_VALID_DS15_MASK	BIT(7)
+
 #define XSDIRX_MODE_DET_STAT_RX_MODE_MASK	GENMASK(2, 0)
 #define XSDIRX_MODE_DET_STAT_MODE_LOCK_MASK	BIT(3)
 #define XSDIRX_MODE_DET_STAT_ACT_STREAM_MASK	GENMASK(6, 4)
@@ -469,6 +478,221 @@ static void xsdirx_streamdowncb(struct xsdirxss_core *core)
 }
 
 /**
+ * xsdirx_get_stream_properties - Get SDI Rx stream properties
+ * @state: pointer to driver state
+ *
+ * This function decodes the stream's ST352 payload (if available) to get
+ * stream properties like width, height, picture type (interlaced/progressive),
+ * etc.
+ *
+ * Return: 0 for success else errors
+ */
+static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
+{
+	struct xsdirxss_core *core = &state->core;
+	u32 mode, payload = 0, val, family, valid, trate, tscan;
+	struct v4l2_mbus_framefmt *format = &state->formats[0];
+
+	mode = xsdirxss_read(core, XSDIRX_MODE_DET_STAT_REG);
+	mode &= XSDIRX_MODE_DET_STAT_RX_MODE_MASK;
+
+	valid = xsdirxss_read(core, XSDIRX_ST352_VALID_REG);
+
+	if ((mode >= XSDIRX_MODE_3G_MASK) && !valid) {
+		dev_err(core->dev, "No valid ST352 payload present even for 3G mode and above\n");
+		return -EINVAL;
+	}
+
+	if (valid & XSDIRX_ST352_VALID_DS1_MASK) {
+		payload = xsdirxss_read(core, XSDIRX_ST352_DS1_REG);
+	} else {
+		dev_dbg(core->dev, "No ST352 payload available : Mode = %d\n",
+			mode);
+	}
+
+	val = xsdirxss_read(core, XSDIRX_TS_DET_STAT_REG);
+	family = (val & XSDIRX_TS_DET_STAT_FAMILY_MASK) >>
+		  XSDIRX_TS_DET_STAT_FAMILY_OFFSET;
+	trate = (val & XSDIRX_TS_DET_STAT_RATE_MASK) >>
+		 XSDIRX_TS_DET_STAT_RATE_OFFSET;
+	tscan = (val & XSDIRX_TS_DET_STAT_SCAN_MASK) >>
+		 XSDIRX_TS_DET_STAT_SCAN_OFFSET;
+
+	switch (mode) {
+	case XSDIRX_MODE_HD_MASK:
+		if (!valid) {
+			/* No payload obtained */
+			dev_dbg(core->dev, "frame rate : %d, tscan = %d\n",
+				trate, tscan);
+			/*
+			 * NOTE : A progressive segmented frame pSF will be
+			 * reported incorrectly as Interlaced as we rely on IP's
+			 * transport scan locked bit.
+			 */
+			dev_warn(core->dev, "pSF will be incorrectly reported as Interlaced\n");
+
+			switch (trate) {
+			case XSDIRX_TS_DET_STAT_RATE_23_98HZ:
+			case XSDIRX_TS_DET_STAT_RATE_24HZ:
+			case XSDIRX_TS_DET_STAT_RATE_25HZ:
+			case XSDIRX_TS_DET_STAT_RATE_29_97HZ:
+			case XSDIRX_TS_DET_STAT_RATE_30HZ:
+				if (family == XSDIRX_SMPTE_ST_296) {
+					format->width = 1280;
+					format->height = 720;
+					format->field = V4L2_FIELD_NONE;
+				} else if (family == XSDIRX_SMPTE_ST_2048_2) {
+					format->width = 2048;
+					format->height = 1080;
+					if (tscan)
+						format->field = V4L2_FIELD_NONE;
+					else
+						format->field =
+							V4L2_FIELD_INTERLACED;
+				} else {
+					format->width = 1920;
+					format->height = 1080;
+					if (tscan)
+						format->field = V4L2_FIELD_NONE;
+					else
+						format->field =
+							V4L2_FIELD_INTERLACED;
+				}
+				break;
+			case XSDIRX_TS_DET_STAT_RATE_50HZ:
+			case XSDIRX_TS_DET_STAT_RATE_59_94HZ:
+			case XSDIRX_TS_DET_STAT_RATE_60HZ:
+				if (family == XSDIRX_SMPTE_ST_274) {
+					format->width = 1920;
+					format->height = 1080;
+				} else {
+					format->width = 1280;
+					format->height = 720;
+				}
+				format->field = V4L2_FIELD_NONE;
+				break;
+			default:
+				format->width = 1920;
+				format->height = 1080;
+				format->field = V4L2_FIELD_NONE;
+			}
+		} else {
+			dev_dbg(core->dev, "Got the payload\n");
+			switch (payload & 0xFF) {
+			case 0x84:
+				/* SMPTE ST 292-1 for 720 line payloads */
+				format->width = 1280;
+				format->height = 720;
+				break;
+			case 0x85:
+				/* SMPTE ST 292-1 for 1080 line payloads */
+				format->height = 1080;
+				if (payload & 0x00400000)
+					format->width = 2048;
+				else
+					format->width = 1920;
+				break;
+			default:
+				dev_dbg(core->dev, "Unknown HD Mode SMPTE standard\n");
+				return -EINVAL;
+			}
+		}
+		break;
+	case XSDIRX_MODE_SD_MASK:
+		format->field = V4L2_FIELD_INTERLACED;
+
+		switch (family) {
+		case XSDIRX_NTSC:
+			format->width = 720;
+			format->height = 480;
+			break;
+		case XSDIRX_PAL:
+			format->width = 720;
+			format->height = 576;
+			break;
+		default:
+			dev_dbg(core->dev, "Unknown SD Mode SMPTE standard\n");
+			return -EINVAL;
+		}
+		break;
+	case XSDIRX_MODE_3G_MASK:
+		switch (payload & 0xFF) {
+		case 0x88:
+			/* Sec 4.1.6.1 SMPTE 425-2008 */
+		case 0x8B:
+			/* Table 13 SMPTE 425-2008 */
+			format->width = 1280;
+			format->height = 720;
+			break;
+		case 0x89:
+			/* ST352 Table SMPTE 425-1 */
+		case 0x8A:
+			/* Table 13 SMPTE 425-2008 */
+		case 0x8C:
+			/* Table 13 SMPTE 425-2008 */
+			format->height = 1080;
+			if (payload & 0x00400000)
+				format->width = 2048;
+			else
+				format->width = 1920;
+			break;
+		default:
+			dev_dbg(core->dev, "Unknown 3G Mode SMPTE standard\n");
+			return -EINVAL;
+		}
+		break;
+	case XSDIRX_MODE_6G_MASK:
+		switch (payload & 0xFF) {
+		case 0xC2:
+			/* Dual link 6G */
+		case 0xC0:
+			/* Table 3 SMPTE ST 2081-10 */
+			format->height = 2160;
+			if (payload & 0x00400000)
+				format->width = 4096;
+			else
+				format->width = 3840;
+			break;
+		default:
+			dev_dbg(core->dev, "Unknown 6G Mode SMPTE standard\n");
+			return -EINVAL;
+		}
+		break;
+	case XSDIRX_MODE_12GI_MASK:
+	case XSDIRX_MODE_12GF_MASK:
+		switch (payload & 0xFF) {
+		case 0xCE:
+			/* Section 4.3.1 SMPTE ST 2082-10 */
+			format->height = 2160;
+			if (payload & 0x00400000)
+				format->width = 4096;
+			else
+				format->width = 3840;
+			break;
+		default:
+			dev_dbg(core->dev, "Unknown 12G Mode SMPTE standard\n");
+			return -EINVAL;
+		};
+		break;
+	default:
+		dev_err(core->dev, "Invalid Mode\n");
+		return -EINVAL;
+	}
+
+	if (valid) {
+		if (payload & 0x4000)
+			format->field = V4L2_FIELD_NONE;
+		else
+			format->field = V4L2_FIELD_INTERLACED;
+	}
+
+	dev_dbg(core->dev, "Stream width = %d height = %d Field = %d payload = 0x%08x ts = 0x%08x\n",
+		format->width, format->height, format->field, payload, val);
+
+	return 0;
+}
+
+/**
  * xsdirxss_irq_handler - Interrupt handler for SDI Rx
  * @irq: IRQ number
  * @dev_id: Pointer to device state
@@ -515,13 +739,19 @@ static irqreturn_t xsdirxss_irq_handler(int irq, void *dev_id)
 			dev_dbg(core->dev, "valid st352 mask = 0x%08x\n", val1);
 			dev_dbg(core->dev, "st352 payload = 0x%08x\n", val2);
 
-			memset(&state->event, 0, sizeof(state->event));
-			state->event.type = V4L2_EVENT_SOURCE_CHANGE;
-			state->event.u.src_change.changes =
-				V4L2_EVENT_SRC_CH_RESOLUTION;
-			v4l2_subdev_notify_event(&state->subdev, &state->event);
+			if (!xsdirx_get_stream_properties(state)) {
+				memset(&state->event, 0, sizeof(state->event));
+				state->event.type = V4L2_EVENT_SOURCE_CHANGE;
+				state->event.u.src_change.changes =
+					V4L2_EVENT_SRC_CH_RESOLUTION;
+				v4l2_subdev_notify_event(&state->subdev,
+							 &state->event);
 
-			state->vidlocked = true;
+				state->vidlocked = true;
+			} else {
+				dev_err(core->dev, "Unable to get stream properties!\n");
+				state->vidlocked = false;
+			}
 		} else {
 			dev_dbg(core->dev, "video unlock before video lock!\n");
 			state->vidlocked = false;
@@ -861,7 +1091,6 @@ static int xsdirxss_get_format(struct v4l2_subdev *sd,
 {
 	struct xsdirxss_state *xsdirxss = to_xsdirxssstate(sd);
 	struct xsdirxss_core *core = &xsdirxss->core;
-	u32 mode, payload = 0, val, family, valid, trate, tscan;
 
 	if (!xsdirxss->vidlocked) {
 		dev_err(core->dev, "Video not locked!\n");
@@ -871,215 +1100,8 @@ static int xsdirxss_get_format(struct v4l2_subdev *sd,
 	fmt->format = *__xsdirxss_get_pad_format(xsdirxss, cfg,
 						 fmt->pad, fmt->which);
 
-	mode = xsdirxss_read(core, XSDIRX_MODE_DET_STAT_REG);
-	mode &= XSDIRX_MODE_DET_STAT_RX_MODE_MASK;
-
-	valid = xsdirxss_read(core, XSDIRX_ST352_VALID_REG);
-
-	if ((mode >= XSDIRX_MODE_3G_MASK) && (!valid)) {
-		dev_dbg(core->dev, "No valid ST352 payload present even for 3G mode and above\n");
-		return -EINVAL;
-	}
-
-	if (valid & 0x1) {
-		payload = xsdirxss_read(core, XSDIRX_ST352_DS1_REG);
-	} else {
-		dev_dbg(core->dev, "No ST352 payload available : Mode = %d\n",
-			mode);
-	}
-
-	val = xsdirxss_read(core, XSDIRX_TS_DET_STAT_REG);
-	family = (val & XSDIRX_TS_DET_STAT_FAMILY_MASK) >>
-		  XSDIRX_TS_DET_STAT_FAMILY_OFFSET;
-	trate = (val & XSDIRX_TS_DET_STAT_RATE_MASK) >>
-		 XSDIRX_TS_DET_STAT_RATE_OFFSET;
-	tscan = (val & XSDIRX_TS_DET_STAT_SCAN_MASK) >>
-		 XSDIRX_TS_DET_STAT_SCAN_OFFSET;
-
-	switch (mode) {
-	case XSDIRX_MODE_HD_MASK:
-		if (!valid) {
-			/* No payload obtained */
-			dev_dbg(core->dev, "frame rate : %d, tscan = %d\n",
-				trate, tscan);
-			/*
-			 * NOTE : A progressive segmented frame pSF will be
-			 * reported incorrectly as Interlaced as we rely on IP's
-			 * transport scan locked bit.
-			 */
-			dev_warn(core->dev, "pSF will be incorrectly reported as Interlaced\n");
-
-			switch (trate) {
-			case XSDIRX_TS_DET_STAT_RATE_23_98HZ:
-			case XSDIRX_TS_DET_STAT_RATE_24HZ:
-			case XSDIRX_TS_DET_STAT_RATE_25HZ:
-			case XSDIRX_TS_DET_STAT_RATE_29_97HZ:
-			case XSDIRX_TS_DET_STAT_RATE_30HZ:
-				if (family == XSDIRX_SMPTE_ST_296) {
-					fmt->format.width = 1280;
-					fmt->format.height = 720;
-					fmt->format.field = V4L2_FIELD_NONE;
-				} else if (family == XSDIRX_SMPTE_ST_2048_2) {
-					fmt->format.width = 2048;
-					fmt->format.height = 1080;
-					if (tscan)
-						fmt->format.field =
-							V4L2_FIELD_NONE;
-					else
-						fmt->format.field =
-							V4L2_FIELD_INTERLACED;
-				} else {
-					fmt->format.width = 1920;
-					fmt->format.height = 1080;
-					if (tscan)
-						fmt->format.field =
-							V4L2_FIELD_NONE;
-					else
-						fmt->format.field =
-							V4L2_FIELD_INTERLACED;
-				}
-				break;
-			case XSDIRX_TS_DET_STAT_RATE_50HZ:
-			case XSDIRX_TS_DET_STAT_RATE_59_94HZ:
-			case XSDIRX_TS_DET_STAT_RATE_60HZ:
-				if (family == XSDIRX_SMPTE_ST_274) {
-					fmt->format.width = 1920;
-					fmt->format.height = 1080;
-				} else {
-					fmt->format.width = 1280;
-					fmt->format.height = 720;
-				}
-				fmt->format.field = V4L2_FIELD_NONE;
-				break;
-			default:
-				fmt->format.width = 1920;
-				fmt->format.height = 1080;
-				fmt->format.field = V4L2_FIELD_NONE;
-			}
-		} else {
-			dev_dbg(core->dev, "Got the payload\n");
-			switch (payload & 0xFF) {
-			case 0x84:
-				/* SMPTE ST 292-1 for 720 line payloads */
-				fmt->format.width = 1280;
-				fmt->format.height = 720;
-				break;
-			case 0x85:
-				/* SMPTE ST 292-1 for 1080 line payloads */
-				fmt->format.height = 1080;
-				if (payload & 0x00400000)
-					/*
-					 * bit 6 of byte 3 indicates whether
-					 * 2048 (1) or 1920 (0)
-					 */
-					fmt->format.width = 2048;
-				else
-					fmt->format.width = 1920;
-				break;
-			default:
-				dev_dbg(core->dev, "Unknown HD Mode SMPTE standard\n");
-			}
-		}
-		break;
-	case XSDIRX_MODE_SD_MASK:
-		fmt->format.field = V4L2_FIELD_INTERLACED;
-
-		switch (family) {
-		case XSDIRX_NTSC:
-			fmt->format.width = 720;
-			fmt->format.height = 480;
-			break;
-		case XSDIRX_PAL:
-			fmt->format.width = 720;
-			fmt->format.height = 576;
-			break;
-		default:
-			dev_dbg(core->dev, "Unknown SD Mode SMPTE standard\n");
-		}
-		break;
-	case XSDIRX_MODE_3G_MASK:
-		switch (payload & 0xFF) {
-		case 0x88:
-			/* Sec 4.1.6.1 SMPTE 425-2008 */
-		case 0x8B:
-			/* Table 13 SMPTE 425-2008 */
-			fmt->format.width = 1280;
-			fmt->format.height = 720;
-			break;
-		case 0x89:
-			/* ST352 Table SMPTE 425-1 */
-		case 0x8A:
-			/* Table 13 SMPTE 425-2008 */
-		case 0x8C:
-			/* Table 13 SMPTE 425-2008 */
-			fmt->format.height = 1080;
-			if (payload & 0x00400000)
-				/*
-				 * bit 6 of byte 3 indicates whether
-				 * 2048 (1) or 1920 (0)
-				 */
-				fmt->format.width = 2048;
-			else
-				fmt->format.width = 1920;
-			break;
-		default:
-			dev_dbg(core->dev, "Unknown 3G Mode SMPTE standard\n");
-		}
-		break;
-	case XSDIRX_MODE_6G_MASK:
-		switch (payload & 0xFF) {
-		case 0xC2:
-			/* Dual link 6G */
-		case 0xC0:
-			/* Table 3 SMPTE ST 2081-10 */
-			fmt->format.height = 2160;
-			if (payload & 0x00400000)
-				/*
-				 * bit 6 of byte 3 indicates whether
-				 * 4096 (1) or 3840 (0)
-				 */
-				fmt->format.width = 4096;
-			else
-				fmt->format.width = 3840;
-			break;
-		default:
-			dev_dbg(core->dev, "Unknown 6G Mode SMPTE standard\n");
-		}
-		break;
-	case XSDIRX_MODE_12GI_MASK:
-	case XSDIRX_MODE_12GF_MASK:
-		switch (payload & 0xFF) {
-		case 0xCE:
-			/* Section 4.3.1 SMPTE ST 2082-10 */
-			fmt->format.height = 2160;
-			if (payload & 0x00400000)
-				/*
-				 * bit 6 of byte 3 indicates whether
-				 * 4096 (1) or 3840 (0)
-				 */
-				fmt->format.width = 4096;
-			else
-				fmt->format.width = 3840;
-			break;
-		default:
-			dev_dbg(core->dev, "Unknown 12G Mode SMPTE standard\n");
-		};
-		break;
-	default:
-		dev_dbg(core->dev, "Invalid Mode\n");
-		return -EINVAL;
-	}
-
-	if (valid) {
-		if (payload & 0x4000)
-			fmt->format.field = V4L2_FIELD_NONE;
-		else
-			fmt->format.field = V4L2_FIELD_INTERLACED;
-	}
-
-	dev_dbg(core->dev, "Stream width = %d height = %d Field = %d payload = 0x%08x ts = 0x%08x\n",
-		fmt->format.width, fmt->format.height, fmt->format.field,
-		payload, val);
+	dev_dbg(core->dev, "Stream width = %d height = %d Field = %d\n",
+		fmt->format.width, fmt->format.height, fmt->format.field);
 
 	return 0;
 }
