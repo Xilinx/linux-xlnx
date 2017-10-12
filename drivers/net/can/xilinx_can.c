@@ -502,6 +502,9 @@ static int xcan_chip_start(struct net_device *ndev)
 		   priv->read_reg(priv, XCAN_SR_OFFSET));
 
 	priv->can.state = CAN_STATE_ERROR_ACTIVE;
+	priv->tx_head = 0;
+	priv->tx_tail = 0;
+
 	return 0;
 }
 
@@ -1512,6 +1515,8 @@ static int xcan_probe(struct platform_device *pdev)
 	}
 	priv->reg_base = addr;
 	priv->tx_max = tx_max;
+	priv->tx_head = 0;
+	priv->tx_tail = 0;
 
 	/* Get IRQ for the device */
 	ndev->irq = platform_get_irq(pdev, 0);
