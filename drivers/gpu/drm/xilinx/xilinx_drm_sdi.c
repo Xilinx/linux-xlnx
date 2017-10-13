@@ -1047,6 +1047,13 @@ static void xilinx_sdi_mode_set(struct drm_encoder *encoder,
 			 adjusted_mode->vsync_end;
 	vm.vsync_len = adjusted_mode->vsync_end -
 		       adjusted_mode->vsync_start;
+	vm.flags = 0;
+	if (adjusted_mode->flags & DRM_MODE_FLAG_INTERLACE)
+		vm.flags |= DISPLAY_FLAGS_INTERLACED;
+	if (adjusted_mode->flags & DRM_MODE_FLAG_PHSYNC)
+		vm.flags |= DISPLAY_FLAGS_HSYNC_LOW;
+	if (adjusted_mode->flags & DRM_MODE_FLAG_PVSYNC)
+		vm.flags |= DISPLAY_FLAGS_VSYNC_LOW;
 
 	xilinx_vtc_config_sig(sdi->vtc, &vm);
 }
