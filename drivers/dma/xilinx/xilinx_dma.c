@@ -1179,6 +1179,12 @@ static void xilinx_cdma_start_transfer(struct xilinx_dma_chan *chan)
 	}
 
 	if (chan->has_sg) {
+		dma_ctrl_clr(chan, XILINX_DMA_REG_DMACR,
+			     XILINX_CDMA_CR_SGMODE);
+
+		dma_ctrl_set(chan, XILINX_DMA_REG_DMACR,
+			     XILINX_CDMA_CR_SGMODE);
+
 		xilinx_write(chan, XILINX_DMA_REG_CURDESC,
 			     head_desc->async_tx.phys);
 
@@ -2128,8 +2134,10 @@ static int xilinx_dma_terminate_all(struct dma_chan *dchan)
 	if (chan->cyclic)
 		xilinx_dma_chan_reset(chan);
 
-	/* Halt the DMA engine */
-	xilinx_dma_halt(chan);
+	if (!(chan->xdev->dma_config->dmatype == XDMA_TYPE_CDMA)) {
+		/* Halt the DMA engine */
+		xilinx_dma_halt(chan);
+	}
 
 	/* Remove and free all of the descriptors in the lists */
 	xilinx_dma_free_descriptors(chan);
@@ -2140,6 +2148,10 @@ static int xilinx_dma_terminate_all(struct dma_chan *dchan)
 		dma_ctrl_write(chan, XILINX_DMA_REG_DMACR, reg);
 		chan->cyclic = false;
 	}
+
+	if ((chan->xdev->dma_config->dmatype == XDMA_TYPE_CDMA) && chan->has_sg)
+		dma_ctrl_clr(chan, XILINX_DMA_REG_DMACR,
+			     XILINX_CDMA_CR_SGMODE);
 
 	return 0;
 }
