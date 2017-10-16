@@ -11,7 +11,6 @@
 
 #include <linux/bitops.h>
 #include <linux/clk.h>
-#include <linux/gpio.h>
 #include <linux/gpio/driver.h>
 #include <linux/init.h>
 #include <linux/interrupt.h>
@@ -20,8 +19,6 @@
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 #include <linux/of.h>
-
-#include "gpiolib.h"
 
 #define DRIVER_NAME "zynq-gpio"
 
@@ -535,38 +532,6 @@ static int zynq_gpio_set_wake(struct irq_data *data, unsigned int on)
 	return 0;
 }
 
-static int zynq_gpio_irq_request_resources(struct irq_data *d)
-{
-	struct gpio_chip *chip = irq_data_get_irq_chip_data(d);
-	int ret;
-
-	if (!try_module_get(chip->gpiodev->owner))
-		return -ENODEV;
-
-	ret = pm_runtime_get_sync(chip->parent);
-	if (ret < 0) {
-		module_put(chip->gpiodev->owner);
-		return ret;
-	}
-
-	if (gpiochip_lock_as_irq(chip, d->hwirq)) {
-		chip_err(chip, "unable to lock HW IRQ %lu for IRQ\n", d->hwirq);
-		pm_runtime_put(chip->parent);
-		module_put(chip->gpiodev->owner);
-		return -EINVAL;
-	}
-	return 0;
-}
-
-static void zynq_gpio_irq_release_resources(struct irq_data *d)
-{
-	struct gpio_chip *chip = irq_data_get_irq_chip_data(d);
-
-	gpiochip_unlock_as_irq(chip, d->hwirq);
-	pm_runtime_put(chip->parent);
-	module_put(chip->gpiodev->owner);
-}
-
 /* irq chip descriptor */
 static struct irq_chip zynq_gpio_level_irqchip = {
 	.name		= DRIVER_NAME,
@@ -576,8 +541,6 @@ static struct irq_chip zynq_gpio_level_irqchip = {
 	.irq_unmask	= zynq_gpio_irq_unmask,
 	.irq_set_type	= zynq_gpio_set_irq_type,
 	.irq_set_wake	= zynq_gpio_set_wake,
-	.irq_request_resources = zynq_gpio_irq_request_resources,
-	.irq_release_resources = zynq_gpio_irq_release_resources,
 	.flags		= IRQCHIP_EOI_THREADED | IRQCHIP_EOI_IF_HANDLED |
 			  IRQCHIP_MASK_ON_SUSPEND,
 };
@@ -590,8 +553,6 @@ static struct irq_chip zynq_gpio_edge_irqchip = {
 	.irq_unmask	= zynq_gpio_irq_unmask,
 	.irq_set_type	= zynq_gpio_set_irq_type,
 	.irq_set_wake	= zynq_gpio_set_wake,
-	.irq_request_resources = zynq_gpio_irq_request_resources,
-	.irq_release_resources = zynq_gpio_irq_release_resources,
 	.flags		= IRQCHIP_MASK_ON_SUSPEND,
 };
 
