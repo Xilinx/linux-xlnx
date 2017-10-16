@@ -639,7 +639,7 @@ static int xgpio_of_probe(struct platform_device *pdev)
 
 	status = clk_prepare(chip->clk);
 	if (status < 0) {
-		dev_err(&pdev->dev, "Failed to preapre clk\n");
+		dev_err(&pdev->dev, "Failed to prepare clk\n");
 		return status;
 	}
 
