@@ -284,16 +284,44 @@ static const struct xlnx_sdi_display_config xlnx_sdi_modes[] = {
 		   DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC),
 		   .vrefresh = 30, }, {0x7, 0x6},
 		   {0x85, 0x85, 0x89, 0x8A, 0xC1, 0xC1} },
+	/* HD: 1920x1080i@48Hz */
+	{{ DRM_MODE("1920x1080i", DRM_MODE_TYPE_DRIVER, 74250, 1920, 2291,
+		   2379, 2750, 0, 540, 542, 547, 562, 0,
+		   DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC |
+		   DRM_MODE_FLAG_INTERLACE),
+		   .vrefresh = 48, }, {0x3, 0x2},
+		   {0x85, 0x85, 0x89, 0x8A, 0xC1, 0xC1} },
 	/* HD: 1920x1080i@50Hz */
 	{{ DRM_MODE("1920x1080i", DRM_MODE_TYPE_DRIVER, 74250, 1920, 2448,
 		   2492, 2640, 0, 540, 542, 547, 562, 0,
 		   DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC |
 		   DRM_MODE_FLAG_INTERLACE),
-		   .vrefresh = 50, }, {0x9, 0x9},
+		   .vrefresh = 50, }, {0x5, 0x5},
 		   {0x85, 0x85, 0x89, 0x8A, 0xC1, 0xC1} },
 	/* HD: 1920x1080i@60Hz */
 	{{ DRM_MODE("1920x1080i", DRM_MODE_TYPE_DRIVER, 74250, 1920, 2008,
 		   2052, 2200, 0, 540, 542, 547, 562, 0,
+		   DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC |
+		   DRM_MODE_FLAG_INTERLACE),
+		   .vrefresh = 60, }, {0x7, 0x6},
+		   {0x85, 0x85, 0x89, 0x8A, 0xC1, 0xC1} },
+	/* HD: 2048x1080i@48Hz */
+	{{ DRM_MODE("2048x1080i", DRM_MODE_TYPE_DRIVER, 74250, 2048, 2377,
+		   2421, 2750, 0, 540, 542, 547, 562, 0,
+		   DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC |
+		   DRM_MODE_FLAG_INTERLACE),
+		   .vrefresh = 48, }, {0x3, 0x2},
+		   {0x85, 0x85, 0x89, 0x8A, 0xC1, 0xC1} },
+	/* HD: 2048x1080i@50Hz */
+	{{ DRM_MODE("2048x1080i", DRM_MODE_TYPE_DRIVER, 74250, 2048, 2322,
+		   2366, 2640, 0, 540, 542, 547, 562, 0,
+		   DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC |
+		   DRM_MODE_FLAG_INTERLACE),
+		   .vrefresh = 50, }, {0x5, 0x5},
+		   {0x85, 0x85, 0x89, 0x8A, 0xC1, 0xC1} },
+	/* HD: 2048x1080i@60Hz */
+	{{ DRM_MODE("2048x1080i", DRM_MODE_TYPE_DRIVER, 74250, 2048, 2114,
+		   2134, 2200, 0, 540, 542, 547, 562, 0,
 		   DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC |
 		   DRM_MODE_FLAG_INTERLACE),
 		   .vrefresh = 60, }, {0x7, 0x6},
@@ -315,6 +343,12 @@ static const struct xlnx_sdi_display_config xlnx_sdi_modes[] = {
 		   2602, 2750, 0, 1080, 1084, 1089, 1125, 0,
 		   DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC),
 		   .vrefresh = 24, }, {0x3, 0x2},
+		   {0x85, 0x85, 0x89, 0x8A, 0xC1, 0xC1} },
+	/* 3G: 1920x1080@48Hz */
+	{{ DRM_MODE("1920x1080", DRM_MODE_TYPE_DRIVER, 148500, 1920, 2558,
+		   2602, 2750, 0, 1080, 1084, 1089, 1125, 0,
+		   DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC),
+		   .vrefresh = 48, }, {0x8, 0x4},
 		   {0x85, 0x85, 0x89, 0x8A, 0xC1, 0xC1} },
 	/* 3G: 1920x1080@50Hz */
 	{{ DRM_MODE("1920x1080", DRM_MODE_TYPE_DRIVER, 148500, 1920, 2448,
@@ -348,7 +382,7 @@ static const struct xlnx_sdi_display_config xlnx_sdi_modes[] = {
 		   {0x85, 0x85, 0x89, 0x8A, 0xC1, 0xC1} },
 	/* 3G-B: 1920x1080i@96Hz */
 	{{ DRM_MODE("1920x1080i", DRM_MODE_TYPE_DRIVER, 148500, 1920, 2291,
-		   2383, 2754, 0, 1080, 1084, 1094, 1124, 0,
+		   2379, 2750, 0, 1080, 1084, 1094, 1124, 0,
 		   DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC |
 		   DRM_MODE_FLAG_INTERLACE),
 		   .vrefresh = 96, }, {0x8, 0x4},
@@ -424,6 +458,12 @@ static const struct xlnx_sdi_display_config xlnx_sdi_modes[] = {
 		   DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC),
 		   .vrefresh = 30, }, {0x7, 0x6},
 		   {0x98, 0x98, 0x97, 0x98, 0xC0, 0xCE} },
+	/* 12G: 3840x2160@48Hz */
+	{{ DRM_MODE("3840x2160", DRM_MODE_TYPE_DRIVER, 594000, 3840, 5116,
+		   5204, 5500, 0, 2160, 2168, 2178, 2250, 0,
+		   DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC),
+		   .vrefresh = 48, }, {0x8, 0x4},
+		   {0x98, 0x98, 0x97, 0x98, 0xC0, 0xCE} },
 	/* 12G: 3840x2160@50Hz */
 	{{ DRM_MODE("3840x2160", DRM_MODE_TYPE_DRIVER, 594000, 3840, 4896,
 		   4984, 5280, 0, 2160, 2168, 2178, 2250, 0,
@@ -438,7 +478,7 @@ static const struct xlnx_sdi_display_config xlnx_sdi_modes[] = {
 		   {0x98, 0x98, 0x97, 0x98, 0xC0, 0xCE} },
 	/* 12G: 4096x2160@48Hz */
 	{{ DRM_MODE("4096x2160", DRM_MODE_TYPE_DRIVER, 594000, 4096, 5116,
-		   5204, 5500, 0, 1080, 1084, 1089, 1125, 0,
+		   5204, 5500, 0, 2160, 2168, 2178, 2250, 0,
 		   DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC),
 		   .vrefresh = 48, }, {0x8, 0x4},
 		   {0x98, 0x98, 0x97, 0x98, 0xC0, 0xCE} },
