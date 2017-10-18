@@ -2231,6 +2231,7 @@ static int axienet_open(struct net_device *ndev)
 	 * will be processed as only the NAPI function re-enables them!
 	 */
 			napi_enable(&lp->napi[i]);
+			netif_start_queue(ndev);
 		}
 		for_each_dma_queue(lp, i) {
 			struct axienet_dma_q *q = lp->dq[i];
