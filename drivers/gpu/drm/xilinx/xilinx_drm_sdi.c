@@ -105,10 +105,9 @@
 
 #define PIXELS_PER_CLK				2
 #define XSDI_CH_SHIFT				29
-#define XST352_PROG_SHIFT			6
-#define XST352_TRANS_SHIFT			7
+#define XST352_PROG_PIC_MASK			BIT(6)
+#define XST352_PROG_TRANS_MASK			BIT(7)
 #define XST352_2048_SHIFT			BIT(6)
-#define XST352_PSF_MODE				BIT(6)
 #define ST352_BYTE3				0x00
 #define ST352_BYTE4				0x01
 #define INVALID_VALUE				-1
@@ -305,6 +304,27 @@ static const struct xlnx_sdi_display_config xlnx_sdi_modes[] = {
 		   DRM_MODE_FLAG_INTERLACE),
 		   .vrefresh = 60, }, {0x7, 0x6},
 		   {0x85, 0x85, 0x89, 0x8A, 0xC1, 0xC1} },
+	/* HD: 1920x1080sf@24Hz */
+	{{ DRM_MODE("1920x1080sf", DRM_MODE_TYPE_DRIVER, 74250, 1920, 2291,
+		   2379, 2750, 0, 540, 542, 547, 562, 0,
+		   DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC |
+		   DRM_MODE_FLAG_INTERLACE | DRM_MODE_FLAG_DBLSCAN),
+		   .vrefresh = 48, }, {0x3, 0x2},
+		   {0x85, 0x85, 0x89, 0x8A, 0xC1, 0xC1} },
+	/* HD: 1920x1080sf@25Hz */
+	{{ DRM_MODE("1920x1080sf", DRM_MODE_TYPE_DRIVER, 74250, 1920, 2448,
+		   2492, 2640, 0, 540, 542, 547, 562, 0,
+		   DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC |
+		   DRM_MODE_FLAG_INTERLACE | DRM_MODE_FLAG_DBLSCAN),
+		   .vrefresh = 50, }, {0x5, 0x5},
+		   {0x85, 0x85, 0x89, 0x8A, 0xC1, 0xC1} },
+	/* HD: 1920x1080sf@30Hz */
+	{{ DRM_MODE("1920x1080sf", DRM_MODE_TYPE_DRIVER, 74250, 1920, 2008,
+		   2052, 2200, 0, 540, 542, 547, 562, 0,
+		   DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC |
+		   DRM_MODE_FLAG_INTERLACE | DRM_MODE_FLAG_DBLSCAN),
+		   .vrefresh = 60, }, {0x7, 0x6},
+		   {0x85, 0x85, 0x89, 0x8A, 0xC1, 0xC1} },
 	/* HD: 2048x1080i@48Hz */
 	{{ DRM_MODE("2048x1080i", DRM_MODE_TYPE_DRIVER, 74250, 2048, 2377,
 		   2421, 2750, 0, 540, 542, 547, 562, 0,
@@ -324,6 +344,27 @@ static const struct xlnx_sdi_display_config xlnx_sdi_modes[] = {
 		   2134, 2200, 0, 540, 542, 547, 562, 0,
 		   DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC |
 		   DRM_MODE_FLAG_INTERLACE),
+		   .vrefresh = 60, }, {0x7, 0x6},
+		   {0x85, 0x85, 0x89, 0x8A, 0xC1, 0xC1} },
+	/* HD: 2048x1080sf@24Hz */
+	{{ DRM_MODE("2048x1080sf", DRM_MODE_TYPE_DRIVER, 74250, 2048, 2377,
+		   2421, 2750, 0, 540, 542, 547, 562, 0,
+		   DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC |
+		   DRM_MODE_FLAG_INTERLACE | DRM_MODE_FLAG_DBLSCAN),
+		   .vrefresh = 48, }, {0x3, 0x2},
+		   {0x85, 0x85, 0x89, 0x8A, 0xC1, 0xC1} },
+	/* HD: 2048x1080sf@25Hz */
+	{{ DRM_MODE("2048x1080sf", DRM_MODE_TYPE_DRIVER, 74250, 2048, 2322,
+		   2366, 2640, 0, 540, 542, 547, 562, 0,
+		   DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC |
+		   DRM_MODE_FLAG_INTERLACE | DRM_MODE_FLAG_DBLSCAN),
+		   .vrefresh = 50, }, {0x5, 0x5},
+		   {0x85, 0x85, 0x89, 0x8A, 0xC1, 0xC1} },
+	/* HD: 2048x1080sf@30Hz */
+	{{ DRM_MODE("2048x1080sf", DRM_MODE_TYPE_DRIVER, 74250, 2048, 2114,
+		   2134, 2200, 0, 540, 542, 547, 562, 0,
+		   DRM_MODE_FLAG_PHSYNC | DRM_MODE_FLAG_PVSYNC |
+		   DRM_MODE_FLAG_INTERLACE | DRM_MODE_FLAG_DBLSCAN),
 		   .vrefresh = 60, }, {0x7, 0x6},
 		   {0x85, 0x85, 0x89, 0x8A, 0xC1, 0xC1} },
 	/* HD: 2048x1080@30Hz */
@@ -942,6 +983,7 @@ static int xilinx_sdi_create_connector(struct drm_encoder *encoder)
 
 	connector->polled = DRM_CONNECTOR_POLL_HPD;
 	connector->interlace_allowed = true;
+	connector->doublescan_allowed = true;
 
 	ret = drm_connector_init(encoder->dev, connector,
 				 &xilinx_sdi_connector_funcs,
@@ -1016,7 +1058,7 @@ static u32 xilinx_sdi_calc_st352_payld(struct xilinx_sdi *sdi,
 				       struct drm_display_mode *mode)
 {
 	u8 byt1, byt2;
-	u16 is_p, smpl_r;
+	u16 is_p;
 	u32 id, sdi_mode = sdi->sdi_mod_prop_val;
 	bool is_frac = sdi->is_frac_prop_val;
 	u32 byt3 = ST352_BYTE3;
@@ -1027,14 +1069,13 @@ static u32 xilinx_sdi_calc_st352_payld(struct xilinx_sdi *sdi,
 		byt3 |= XST352_2048_SHIFT;
 	/* byte 2 calculation */
 	is_p = !(mode->flags & DRM_MODE_FLAG_INTERLACE);
-	smpl_r = xlnx_sdi_modes[id].st352_byt2[is_frac];
-	if (sdi_mode == XSDI_MODE_3GB) {
-		byt2 = XST352_PSF_MODE | smpl_r;
-	} else {
-		byt2 = (is_p << XST352_PROG_SHIFT) | smpl_r;
-		if (mode->vtotal >= 1125)
-			byt2 |= (is_p << XST352_TRANS_SHIFT);
-	}
+	byt2 = xlnx_sdi_modes[id].st352_byt2[is_frac];
+	if ((sdi_mode == XSDI_MODE_3GB) ||
+	    (mode->flags & DRM_MODE_FLAG_DBLSCAN) || is_p)
+		byt2 |= XST352_PROG_PIC_MASK;
+	if (is_p && (mode->vtotal >= 1125))
+		byt2 |= XST352_PROG_TRANS_MASK;
+
 	/* byte 1 calculation */
 	byt1 = xlnx_sdi_modes[id].st352_byt1[sdi_mode];
 
