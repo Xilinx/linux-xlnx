@@ -2013,8 +2013,10 @@ static inline void macb_ptp_read(struct macb *bp, struct timespec64 *ts)
 	ts->tv_sec = gem_readl(bp, 1588S);
 	ts->tv_nsec = gem_readl(bp, 1588NS);
 
-	if (ts->tv_sec < gem_readl(bp, 1588S))
+	if (ts->tv_sec < gem_readl(bp, 1588S)) {
+		ts->tv_sec++;
 		ts->tv_nsec = gem_readl(bp, 1588NS);
+	}
 }
 
 static inline void macb_ptp_write(struct macb *bp, const struct timespec64 *ts)
