@@ -349,14 +349,14 @@ xdevcfg_write(struct file *file, const char __user *buf, size_t count,
 
 	timeout = jiffies + msecs_to_jiffies(1000);
 
-	while (!drvdata->dma_done) {
+	while (!READ_ONCE(drvdata->dma_done)) {
 		if (time_after(jiffies, timeout)) {
 			status = -ETIMEDOUT;
 			goto error;
 		}
 	}
 
-	if (drvdata->error_status)
+	if (READ_ONCE(drvdata->error_status))
 		status = drvdata->error_status;
 
 	/* Disable the DMA and error interrupts */
