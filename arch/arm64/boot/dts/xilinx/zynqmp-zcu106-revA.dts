@@ -84,16 +84,10 @@
 /* fpd_dma clk 667MHz, lpd_dma 500MHz */
 &fpd_dma_chan1 {
 	status = "okay";
-	xlnx,include-sg; /* for testing purpose */
-	xlnx,overfetch; /* for testing purpose */
-	xlnx,ratectrl = <0>; /* for testing purpose */
-	xlnx,src-issue = <31>;
 };
 
 &fpd_dma_chan2 {
 	status = "okay";
-	xlnx,ratectrl = <100>; /* for testing purpose */
-	xlnx,src-issue = <4>; /* for testing purpose */
 };
 
 &fpd_dma_chan3 {
@@ -102,7 +96,6 @@
 
 &fpd_dma_chan4 {
 	status = "okay";
-	xlnx,include-sg; /* for testing purpose */
 };
 
 &fpd_dma_chan5 {
@@ -111,7 +104,6 @@
 
 &fpd_dma_chan6 {
 	status = "okay";
-	xlnx,include-sg; /* for testing purpose */
 };
 
 &fpd_dma_chan7 {
@@ -120,7 +112,6 @@
 
 &fpd_dma_chan8 {
 	status = "okay";
-	xlnx,include-sg; /* for testing purpose */
 };
 
 &gem3 {
