@@ -36,6 +36,7 @@
 #include "xilinx_cresample.h"
 #include "xilinx_rgb2yuv.h"
 #include "xilinx_vtc.h"
+#include "xilinx_drm_sdi.h"
 
 struct xilinx_drm_crtc {
 	struct drm_crtc base;
@@ -49,6 +50,7 @@ struct xilinx_drm_crtc {
 	unsigned int alpha;
 	struct drm_pending_vblank_event *event;
 	struct xilinx_drm_dp_sub *dp_sub;
+	struct xilinx_sdi *sdi;
 };
 
 #define to_xilinx_crtc(x)	container_of(x, struct xilinx_drm_crtc, base)
@@ -397,6 +399,10 @@ void xilinx_drm_crtc_enable_vblank(struct drm_crtc *base_crtc)
 		xilinx_drm_dp_sub_enable_vblank(crtc->dp_sub,
 						xilinx_drm_crtc_vblank_handler,
 						base_crtc);
+	if (crtc->sdi)
+		xilinx_drm_sdi_enable_vblank(crtc->sdi,
+					     xilinx_drm_crtc_vblank_handler,
+					     base_crtc);
 }
 
 /* disable vblank interrupt */
@@ -408,6 +414,8 @@ void xilinx_drm_crtc_disable_vblank(struct drm_crtc *base_crtc)
 		xilinx_drm_dp_sub_disable_vblank(crtc->dp_sub);
 	if (crtc->vtc)
 		xilinx_vtc_disable_vblank_intr(crtc->vtc);
+	if (crtc->sdi)
+		xilinx_drm_sdi_disable_vblank(crtc->sdi);
 }
 
 /**
@@ -556,6 +564,13 @@ struct drm_crtc *xilinx_drm_crtc_create(struct drm_device *drm)
 		goto err_pixel_clk;
 	}
 
+	crtc->sdi = xilinx_drm_sdi_of_get(drm->dev->of_node);
+	if (IS_ERR(crtc->sdi)) {
+		ret = PTR_ERR(crtc->sdi);
+		if (ret != -EPROBE_DEFER)
+			DRM_ERROR("failed to get a sdi\n");
+		goto err_pixel_clk;
+	}
 	crtc->dpms = DRM_MODE_DPMS_OFF;
 
 	/* initialize drm crtc */
