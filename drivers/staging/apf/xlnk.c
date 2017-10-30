@@ -498,12 +498,10 @@ static u64 dma_mask = 0xFFFFFFFFUL;
  */
 static int xlnk_open(struct inode *ip, struct file *filp)
 {
-	int status = 0;
-
 	if ((filp->f_flags & O_ACCMODE) == O_WRONLY)
 		xlnk_dev_size = 0;
 
-	return status;
+	return 0;
 }
 
 static ssize_t xlnk_read(struct file *filp, char __user *buf,
