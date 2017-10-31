@@ -1143,9 +1143,9 @@ static int xdma_probe(struct platform_device *pdev)
 			dev_err(&pdev->dev, "unable to allocate BD's\n");
 			return -ENOMEM;
 		}
-		pr_info("  chan%d bd ring @ 0x%08x (size: 0x%08x bytes)\n",
+		pr_info("  chan%d bd ring @ 0x%p (size: 0x%x bytes)\n",
 			chan->id,
-			chan->bd_phys_addr,
+			(void *)chan->bd_phys_addr,
 			chan->bd_chain_size);
 
 		err = dma_init(xdev->chan[chan->id]);
