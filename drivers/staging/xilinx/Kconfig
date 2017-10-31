@@ -1,0 +1,9 @@
+if STAGING
+
+source "drivers/staging/xilinx/hdmi/Kconfig"
+
+source "drivers/staging/xilinx/clk/Kconfig"
+
+source "drivers/staging/xilinx/misc/Kconfig"
+
+endif # STAGING
