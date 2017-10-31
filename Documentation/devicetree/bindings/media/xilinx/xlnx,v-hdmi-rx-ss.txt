@@ -1,0 +1,95 @@
+Xilinx HDMI RX Subsystem
+
+The Xilinx HDMI RX Subsystem contains several subcores to implement
+a HDMI receiver. /hdmi/xilinx-hdmi-rx.c implements a
+V4L2 video-capture sub-device for the Xilinx Video IP Pipeline device
+(xilinx-vipp).
+
+There are 2 optional HDCP cores that can be included in the IP configuration.
+Below provided sample device tree depicts the configuration when both cores are 
+included. If an optional core is included then corresponding entries for the 
+core parameters (interrupts, key-management block address) must be included in
+the device tree
+
+Note: If HDCP cores are included in the design, the user must provide valid
+	  HDCP keys for the encryption to work. 
+
+Refer to xlnx,vphy.txt for the phy specifics.
+
+Required Properties:
+ - compatible: Should be "xlnx,v-hdmi-rx-ss-3.0".
+ - reg: Base address and size of the IP core and hdcp1x key management block
+ - reg-names: Identification string for included register blocks
+		"hdmi-rxss": Identification string for hdmirx subsystem. Always present
+		"hdcp1x-keymngmt": Identification string for Key management block for
+			hdcp1x. [Optional]
+ - interrupts-parent: phandle for interrupt controller.
+ - interrupts: Interrupt numbers for mandatory and optional blocks
+ - interrupt-names: Identification string that binds irq number to block 
+		generating the interrupt
+		"hdmirx": interrupt for rx subcore [always present]
+		"hdcp1x": interrupt for hdcp1.4 core [optional]
+		"hdcp1x-timer": interrupt for hdcp1.4 timer [present if hdcp1x is 
+			included]
+		"hdcp22": interrupt for hdcp22 core [optional]
+		"hdcp22-timer": interrupt for hdcp2.2 timer [present if hdcp22 is
+			included]
+		
+ - clocks: phandle for axi-lite, video stream
+ - clock-names: The identification string, "axi-lite", is always required for
+                the axi-lite clock, "video" is always required for video stream
+				clock
+   
+ - phys: phandle for phy lanes registered for hdmi protocol. HDMI always 
+         require 3 lanes
+ - phy-names: The identification string, "hdmi-phy0" and so on
+ 
+ - xlnx,input-pixels-per-clock: IP configuration for samples/clk (2, 4)
+         Note: Only 2 is supported at this time
+ - xlnx,edid-ram-size: Denotes amount of BRAM allocated for EDID in IP 
+ - xlnx,include-hdcp-1-4: Boolean parameter that denotes if hdcp14 is included.
+		If present indicates inclusion of the optional core
+ - xlnx,include-hdcp-2-2: Boolean parameter that denotes if hdcp22 is included.
+		If present indicates inclusion of the optional core
+ - ports: Video ports, using the DT bindings defined in ../video-interfaces.txt.
+          The Rx only has an output port (0).
+ 
+==Example==
+If hdcp1.4 is included in the design then key management block node should be
+added to the device tree
+
+	hdmi_input_hdcp_keymngmt_blk_top_1: hdcp_keymngmt_blk_top@a0270000 {
+		compatible = "xlnx,hdcp-keymngmt-blk-top-1.0";
+		reg = <0x0 0xa0270000 0x0 0x10000>;
+	};
+
+	hdmi_input_v_hdmi_rx_ss_0: v_hdmi_rx_ss@a0000000 {
+		compatible = "xlnx,v-hdmi-rx-ss-3.0";
+		reg = <0x0 0xa0000000 0x0 0x100000>, <0x0 0xa0270000 0x0 0x10000>;
+		reg-names = "hdmi-rxss", "hdcp1x-keymngmt";	
+		interrupt-parent = <&gic>;
+		interrupts = <0 91 4>, <0 108 4>, <0 109 4>, <0 110 4>, <0 111 4>;
+		interrupt-names = "hdmirx", "hdcp1x", "hdcp1x-timer", "hdcp22", "hdcp22-timer";
+		clocks = <&vid_s_axi_clk>, <&vid_stream_clk>;
+		clock-names = "axi-lite", "video";
+		phy-names = "hdmi-phy0", "hdmi-phy1", "hdmi-phy2";
+		phys = <&vphy_lane0 0 1 1 0>, <&vphy_lane1 0 1 1 0>, <&vphy_lane2 0 1 1 0>;
+	
+		xlnx,input-pixels-per-clock = <0x2>;
+		xlnx,edid-ram-size = <0x100>;
+		xlnx,include-hdcp-1-4;
+		xlnx,include-hdcp-2-2;
+
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			port@0 {
+				reg = <0>;
+	
+				/* HDMI RX SS -> FB-WR */
+				hdmi_rxss_out: endpoint {
+					remote-endpoint = <&vcap_hdmi_in>;
+				};
+			};
+		};			
+	};
