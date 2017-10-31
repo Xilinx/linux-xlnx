@@ -2963,10 +2963,10 @@ static int nand_do_write_oob(struct mtd_info *mtd, loff_t to,
 	 * interface mode. This will be the problem for devices configured for
 	 * NVDDR modes. So, limiting the reset operation to Toshiba devices.
 	 */
-	if (chip->onfi_params.jedec_id == NAND_MFR_TOSHIBA)
+	if (chip->onfi_params.jedec_id == NAND_MFR_TOSHIBA) {
 		chip->cmdfunc(mtd, NAND_CMD_RESET, -1, -1);
-
-	nand_reset(chip, chipnr);
+		nand_reset(chip, chipnr);
+	}
 
 	chip->select_chip(mtd, chipnr);
 
