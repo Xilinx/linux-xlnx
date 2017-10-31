@@ -1,0 +1,31 @@
+Binding for TI DP159 programmable i2c retimer
+
+Reference
+[1] DP159 Data Sheet
+	http://www.ti.com/lit/ds/symlink/sn65dp159.pdf
+
+The SNx5DP159 device is a dual mode DisplayPort to transition-minimized
+differential signal (TMDS) retimer supporting digital video interface
+(DVI) 1.0 and high-definition multimedia interface (HDMI) 1.4b and 2.0
+output signals. The internal structure of the retimer can be found in [1].
+
+==I2C device node==
+
+Required properties:
+- compatible: shall be "ti,dp159".
+- status: shall be "okay"
+- reg: i2c device address, shall be 0x5e.
+- #clock-cells: from common clock binding; shall be set to 0.
+- #address-cells: shall be set to 1.
+- #size-cells: shall be set to 0.
+
+==Example==
+
+	dp159: hdmi-retimer@5e {
+		status = "okay";
+		compatible = "ti,dp159";
+		reg = <0x5e>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		#clock-cells = <0>;
+	};			
