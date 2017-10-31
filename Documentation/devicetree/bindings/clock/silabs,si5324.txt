@@ -1,0 +1,61 @@
+Binding for Silicon Labs Si5324 programmable i2c clock generator.
+
+Reference
+[1] Si5324 Data Sheet
+    http://www.silabs.com/Support%20Documents/TechnicalDocs/Si5324.pdf
+
+The Si5324 is programmable i2c low-bandwidth, jitter-attenuating, precision
+clock multiplier with up to 2 output clocks. The internal structure of the 
+clock multiplier can be found in [1].
+
+==I2C device node==
+
+Required properties:
+- compatible: shall be "silabs,si5324".
+- reg: i2c device address, shall be 0x68.
+- #clock-cells: from common clock binding; shall be set to 1.
+- clocks: from common clock binding; list of parent clock
+  handles, shall be xtal reference clock or xtal. Corresponding clock
+  input names is "xtal"
+- #address-cells: shall be set to 1.
+- #size-cells: shall be set to 0.
+
+==Child nodes==
+
+Each of the clock outputs can be overwritten individually by
+using a child node to the I2C device node. If a child node for a clock
+output is not set, the eeprom configuration is not overwritten.
+
+Required child node properties:
+- reg: number of clock output.
+- clock-frequency: default output frequency at power on
+
+==Example==
+
+	/* 114.285MHz reference crystal */
+	refhdmi: refhdmi {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <114285000>;
+	};
+
+	/* Si5324 i2c clock generator */
+	si5324: clock-generator@68 {
+		status = "okay";
+		compatible = "silabs,si5324";
+		reg = <0x68>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		#clock-cells = <1>;
+	
+		/* input clock(s); the XTAL is hard-wired on the ZCU102 board */
+		clocks = <&refhdmi>;
+		clock-names = "xtal";
+	
+		/* output clocks */
+		clk0 {
+			reg = <0>;
+			/* Reference clock output frequency */
+			clock-frequency = <27000000>;
+		};
+	};
