@@ -109,8 +109,13 @@ struct xvip_device {
  * @width: AXI4 format width in bits per component
  * @pattern: CFA pattern for Mono/Sensor formats
  * @code: media bus format code
- * @bpp: bytes per pixel (when stored in memory)
+ * @bpl_factor: Bytes per line factor
+ * @bpp: bits per pixel
  * @fourcc: V4L2 pixel format FCC identifier
+ * @num_planes: number of planes w.r.t. color format
+ * @buffers: number of buffers per format
+ * @hsub: Horizontal sampling factor of Chroma
+ * @vsub: Vertical sampling factor of Chroma
  * @description: format description, suitable for userspace
  */
 struct xvip_video_format {
@@ -118,14 +123,21 @@ struct xvip_video_format {
 	unsigned int width;
 	const char *pattern;
 	unsigned int code;
+	unsigned int bpl_factor;
 	unsigned int bpp;
 	u32 fourcc;
+	u8 num_planes;
+	u8 buffers;
+	u8 hsub;
+	u8 vsub;
 	const char *description;
 };
 
 const struct xvip_video_format *xvip_get_format_by_code(unsigned int code);
 const struct xvip_video_format *xvip_get_format_by_fourcc(u32 fourcc);
 const struct xvip_video_format *xvip_of_get_format(struct device_node *node);
+void xvip_bpl_scaling_factor(u32 fourcc, u32 *numerator, u32 *denominator);
+void xvip_width_padding_factor(u32 fourcc, u32 *numerator, u32 *denominator);
 void xvip_set_format_size(struct v4l2_mbus_framefmt *format,
 			  const struct v4l2_subdev_format *fmt);
 int xvip_enum_mbus_code(struct v4l2_subdev *subdev,
