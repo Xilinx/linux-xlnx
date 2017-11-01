@@ -28,6 +28,11 @@ struct dma_chan;
 struct xvip_composite_device;
 struct xvip_video_format;
 
+/*
+ * Maximum number of planes for a color space
+ */
+#define MAX_NUM_PLANES		4
+
 /**
  * struct xvip_pipeline - Xilinx Video IP pipeline structure
  * @pipe: media pipeline
@@ -77,14 +82,17 @@ struct xvip_dma {
 	struct list_head list;
 	struct video_device video;
 	struct media_pad pad;
+	u32 remote_subdev_med_bus;
 
 	struct xvip_composite_device *xdev;
 	struct xvip_pipeline pipe;
 	unsigned int port;
 
 	struct mutex lock;
-	struct v4l2_pix_format format;
+	struct v4l2_format format;
 	const struct xvip_video_format *fmtinfo;
+	u32 *poss_v4l2_fmts;
+	u32 poss_v4l2_fmt_cnt;
 
 	struct vb2_queue queue;
 	unsigned int sequence;
