@@ -57,7 +57,7 @@ static void clk_gate_endisable(struct clk_hw *hw, int enable)
 	} else {
 		ret = zynqmp_pm_mmio_read((u32)(ulong)gate->reg, &reg);
 		if (ret)
-			pr_warn_once("Read fail gate address: %x\n",
+			pr_debug("Read fail gate address: %x\n",
 					(u32)(ulong)gate->reg);
 
 		if (!set)
@@ -68,7 +68,8 @@ static void clk_gate_endisable(struct clk_hw *hw, int enable)
 		reg |= BIT(gate->bit_idx);
 	ret = zynqmp_pm_mmio_writel(reg, gate->reg);
 	if (ret)
-		pr_warn_once("Write failed gate address:%x\n", (u32)(ulong)reg);
+		pr_debug("Write failed gate address:%x\n",
+				(u32)(ulong)gate->reg);
 }
 
 static int zynqmp_clk_gate_enable(struct clk_hw *hw)
