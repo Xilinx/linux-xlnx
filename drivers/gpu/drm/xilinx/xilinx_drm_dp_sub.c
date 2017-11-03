@@ -554,7 +554,7 @@ static ssize_t
 xilinx_dp_sub_debugfs_write(struct file *f, const char __user *buf,
 			    size_t size, loff_t *pos)
 {
-	char *kern_buff, *dp_sub_test_req;
+	char *kern_buff, *dp_sub_test_req, *kern_buff_start;
 	int ret;
 	unsigned int i;
 
@@ -567,10 +567,11 @@ xilinx_dp_sub_debugfs_write(struct file *f, const char __user *buf,
 	kern_buff = kzalloc(size, GFP_KERNEL);
 	if (!kern_buff)
 		return -ENOMEM;
+	kern_buff_start = kern_buff;
 
 	ret = strncpy_from_user(kern_buff, buf, size);
 	if (ret < 0) {
-		kfree(kern_buff);
+		kfree(kern_buff_start);
 		return ret;
 	}
 
@@ -580,11 +581,11 @@ xilinx_dp_sub_debugfs_write(struct file *f, const char __user *buf,
 	for (i = 0; i < ARRAY_SIZE(dp_sub_debugfs_reqs); i++) {
 		if (!strcasecmp(dp_sub_test_req, dp_sub_debugfs_reqs[i].req))
 			if (!dp_sub_debugfs_reqs[i].write_handler(&kern_buff)) {
-				kfree(kern_buff);
+				kfree(kern_buff_start);
 				return size;
 			}
 	}
-	kfree(kern_buff);
+	kfree(kern_buff_start);
 	return -EINVAL;
 }
 
