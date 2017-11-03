@@ -430,7 +430,7 @@ struct xilinx_dpdma_debugfs_request dpdma_debugfs_reqs[] = {
 static ssize_t xilinx_dpdma_debugfs_write(struct file *f, const char __user
 					       *buf, size_t size, loff_t *pos)
 {
-	char *kern_buff;
+	char *kern_buff, *kern_buff_start;
 	char *dpdma_test_req;
 	int ret;
 	int i;
@@ -445,10 +445,11 @@ static ssize_t xilinx_dpdma_debugfs_write(struct file *f, const char __user
 	kern_buff = kzalloc(size, GFP_KERNEL);
 	if (!kern_buff)
 		return -ENOMEM;
+	kern_buff_start = kern_buff;
 
 	ret = strncpy_from_user(kern_buff, buf, size);
 	if (ret < 0) {
-		kfree(kern_buff);
+		kfree(kern_buff_start);
 		return ret;
 	}
 
@@ -458,13 +459,13 @@ static ssize_t xilinx_dpdma_debugfs_write(struct file *f, const char __user
 	for (i = 0; i < ARRAY_SIZE(dpdma_debugfs_reqs); i++) {
 		if (!strcasecmp(dpdma_test_req, dpdma_debugfs_reqs[i].req)) {
 			if (!dpdma_debugfs_reqs[i].write_handler(&kern_buff)) {
-				kfree(kern_buff);
+				kfree(kern_buff_start);
 				return size;
 			}
 			break;
 		}
 	}
-	kfree(kern_buff);
+	kfree(kern_buff_start);
 	return -EINVAL;
 }
 
