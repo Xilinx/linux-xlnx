@@ -618,9 +618,9 @@ static int xvip_dma_start_streaming(struct vb2_queue *vq, unsigned int count)
 	/* Verify that the configured format matches the output of the
 	 * connected subdev.
 	 */
-	ret = xvip_dma_verify_format(dma);
-	if (ret < 0)
-		goto error_stop;
+	/// ret = xvip_dma_verify_format(dma);
+	/// if (ret < 0)
+	/// 	goto error_stop;
 
 	ret = xvip_pipeline_prepare(pipe, dma);
 	if (ret < 0)
