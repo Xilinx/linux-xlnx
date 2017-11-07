@@ -692,10 +692,14 @@ xvip_dma_enum_format(struct file *file, void *fh, struct v4l2_fmtdesc *f)
 {
 	struct v4l2_fh *vfh = file->private_data;
 	struct xvip_dma *dma = to_xvip_dma(vfh->vdev);
-	u32 pad_value = 0;
+	struct v4l2_subdev *subdev;
+	struct v4l2_subdev_format v4l_fmt;
+	int err, ret;
+	const struct xvip_video_format *fmt;
+
 
 	if (dma->format.type == V4L2_BUF_TYPE_VIDEO_CAPTURE ||
-	    dma->format.type == V4L2_BUF_TYPE_VIDEO_OUTPUT) {
+		dma->format.type == V4L2_BUF_TYPE_VIDEO_OUTPUT) {
 		if (f->index > 0)
 			return -EINVAL;
 
@@ -706,45 +710,55 @@ xvip_dma_enum_format(struct file *file, void *fh, struct v4l2_fmtdesc *f)
 	}
 
 	if (V4L2_TYPE_IS_MULTIPLANAR(dma->format.type)) {
-		void *ret = NULL;
-		int err;
-		const struct xvip_video_format *fmt;
-
 		/* establish media pad format */
-		ret = xvip_dma_remote_subdev(&dma->pad, &pad_value);
-		if (!ret)
-			return -EINVAL;
+		subdev = xvip_dma_remote_subdev(&dma->pad, &v4l_fmt.pad);
+		if (!subdev)
+			return -EPIPE;
+
+		v4l_fmt.which = V4L2_SUBDEV_FORMAT_ACTIVE;
+		ret = v4l2_subdev_call(subdev, pad, get_fmt, NULL, &v4l_fmt);
+		if (ret < 0)
+			return ret == -ENOIOCTLCMD ? -EINVAL : ret;
 
 		/* has media pad value changed? */
-		if (pad_value != dma->remote_subdev_med_bus) {
+		if (v4l_fmt.format.code != dma->remote_subdev_med_bus ||
+		    !dma->remote_subdev_med_bus) {
 			u32 i, fmt_cnt, *fmts;
 			/* re-generate legal list of fourcc codes */
-			dma->remote_subdev_med_bus = pad_value;
+			dma->poss_v4l2_fmt_cnt = 0;
+			dma->remote_subdev_med_bus = v4l_fmt.format.code;
 			err = xilinx_xdma_get_v4l2_vid_fmts(dma->dma, &fmt_cnt,
 							    &fmts);
 			if (err)
 				return err;
-
+			if (!dma->poss_v4l2_fmts) {
+				dma->poss_v4l2_fmts =
+					devm_kzalloc(&dma->video.dev,
+						     sizeof(u32) * fmt_cnt,
+						     GFP_KERNEL);
+				if (!dma->poss_v4l2_fmts)
+					return -ENOMEM;
+			}
 			for (i = 0; i < fmt_cnt; i++) {
 				fmt = xvip_get_format_by_fourcc(fmts[i]);
-				if (fmt->code != dma->remote_subdev_med_bus ||
-				    fmt->fourcc != fmts[i])
+				if (IS_ERR(fmt))
+					return PTR_ERR(fmt);
+
+				if (fmt->code != dma->remote_subdev_med_bus)
 					continue;
 
-				dma->poss_v4l2_fmts[dma->poss_v4l2_fmt_cnt] =
+				dma->poss_v4l2_fmts[dma->poss_v4l2_fmt_cnt++] =
 									fmts[i];
-				dma->poss_v4l2_fmt_cnt++;
 			}
 		}
 
 		/* is index > count of legal values?  return -EINVAL */
 		if (f->index >= dma->poss_v4l2_fmt_cnt)
 			return -EINVAL;
-
 		/* else return pix format in table */
 		fmt = xvip_get_format_by_fourcc(dma->poss_v4l2_fmts[f->index]);
-		if (!fmt)
-			return -EINVAL;
+		if (IS_ERR(fmt))
+			return PTR_ERR(fmt);
 
 		f->pixelformat = fmt->fourcc;
 		strlcpy(f->description, fmt->description,
