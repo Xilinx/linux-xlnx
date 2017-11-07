@@ -1112,6 +1112,15 @@ static int xsdirxss_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
 		val >>= XSDIRX_MODE_DET_STAT_ACT_STREAM_OFFSET;
 		ctrl->val = 1 << val;
 		break;
+	case V4L2_CID_XILINX_SDIRX_IS_3GB:
+		if (!xsdirxss->vidlocked) {
+			dev_err(core->dev, "Can't get values when video not locked!\n");
+			return -EINVAL;
+		}
+		val = xsdirxss_read(core, XSDIRX_MODE_DET_STAT_REG);
+		val &= XSDIRX_MODE_DET_STAT_LVLB_3G_MASK;
+		ctrl->val = val ? true : false;
+		break;
 	default:
 		dev_err(core->dev, "Get Invalid control id 0x%0x\n", ctrl->id);
 		return -EINVAL;
@@ -1454,6 +1463,16 @@ static struct v4l2_ctrl_config xsdirxss_ctrls[] = {
 		.min	= 1,
 		.max	= 16,
 		.def	= 1,
+		.step	= 1,
+		.flags  = V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_READ_ONLY,
+	}, {
+		.ops	= &xsdirxss_ctrl_ops,
+		.id	= V4L2_CID_XILINX_SDIRX_IS_3GB,
+		.name	= "SDI Rx : Is 3GB",
+		.type	= V4L2_CTRL_TYPE_BOOLEAN,
+		.min	= false,
+		.max	= true,
+		.def	= false,
 		.step	= 1,
 		.flags  = V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_READ_ONLY,
 	}
