@@ -788,7 +788,7 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 		default:
 			dev_dbg(core->dev, "Unknown 12G Mode SMPTE standard\n");
 			return -EINVAL;
-		};
+		}
 		break;
 	default:
 		dev_err(core->dev, "Invalid Mode\n");
