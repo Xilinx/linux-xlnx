@@ -2211,6 +2211,9 @@ static int axienet_open(struct net_device *ndev)
 			phy_start(phydev);
 	}
 
+	/* Apply configuration from DTS: 'phy-mode' */
+	ndev->phydev->interface = lp->phy_interface;
+
 	if (!lp->is_tsn || lp->temac_no == XAE_TEMAC1) {
 		/* Enable tasklets for Axi DMA error handling */
 		for_each_dma_queue(lp, i) {
