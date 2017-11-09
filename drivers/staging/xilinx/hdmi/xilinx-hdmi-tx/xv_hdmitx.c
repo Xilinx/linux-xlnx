@@ -46,12 +46,16 @@
 #include "xv_hdmitx.h"
 #include "xil_printf.h"
 #include <linux/string.h>
+#include <linux/delay.h>
 
 /************************** Constant Definitions *****************************/
 
 
 /***************** Macros (Inline Functions) Definitions *********************/
-
+static int XV_HdmiTx_DdcGetAck(XV_HdmiTx *InstancePtr);
+static int XV_HdmiTx_DdcWaitForDone(XV_HdmiTx *InstancePtr);
+static u32 XV_HdmiTx_DdcWriteCommand(XV_HdmiTx *InstancePtr, u32 Cmd);
+static u8 XV_HdmiTx_DdcReadData(XV_HdmiTx *InstancePtr);
 
 /**************************** Type Definitions *******************************/
 
@@ -408,9 +412,6 @@ int XV_HdmiTx_Scrambler(XV_HdmiTx *InstancePtr) {
     // Only when it is a HDMI 2.0 sink device
     if (InstancePtr->Stream.IsHdmi20) {
 
-		//Reset DDC Peripheral before starting new transaction
-		XV_HdmiTx_DdcDisable(InstancePtr);
-
         DdcBuf[0] = 0x20;   // Offset scrambler status
         Status = XV_HdmiTx_DdcWrite(InstancePtr, 0x54, 1,
         (u8*)&DdcBuf, (FALSE));
@@ -475,9 +476,6 @@ int XV_HdmiTx_ClockRatio(XV_HdmiTx *InstancePtr) {
     // Only when it is a HDMI 2.0 sink device
     if (InstancePtr->Stream.IsHdmi20) {
 
-		//Reset DDC Peripheral before starting new transaction
-		XV_HdmiTx_DdcDisable(InstancePtr);
-
         DdcBuf[0] = 0x20;   // Offset scrambler status
         Status = XV_HdmiTx_DdcWrite(InstancePtr, 0x54, 1, (u8*)&DdcBuf, (FALSE));
 
@@ -508,7 +506,7 @@ int XV_HdmiTx_ClockRatio(XV_HdmiTx *InstancePtr) {
             Status = XV_HdmiTx_DdcWrite(InstancePtr, 0x54, 2,
                 (u8*)&DdcBuf, (TRUE));
         }
-	    return XST_SUCCESS;
+    	return XST_SUCCESS;
     }
     return XST_FAILURE;
 }
@@ -535,9 +533,6 @@ int XV_HdmiTx_DetectHdmi20(XV_HdmiTx *InstancePtr)
 
     /* Verify argument. */
     Xil_AssertNonvoid(InstancePtr != NULL);
-
-	//Reset DDC Peripheral before starting new transaction
-	XV_HdmiTx_DdcDisable(InstancePtr);
 
     /* Write source version. Offset (Source version) */
     DdcBuf[0] = 0x02;
@@ -1015,7 +1010,7 @@ void XV_HdmiTx_DdcInit(XV_HdmiTx *InstancePtr, u32 Frequency)
 * @note     None.
 *
 ******************************************************************************/
-int XV_HdmiTx_DdcGetAck(XV_HdmiTx *InstancePtr)
+static int XV_HdmiTx_DdcGetAck(XV_HdmiTx *InstancePtr)
 {
     u32 Status;
 
@@ -1035,7 +1030,7 @@ int XV_HdmiTx_DdcGetAck(XV_HdmiTx *InstancePtr)
 * @note     None.
 *
 ******************************************************************************/
-int XV_HdmiTx_DdcWaitForDone(XV_HdmiTx *InstancePtr)
+static int XV_HdmiTx_DdcWaitForDone(XV_HdmiTx *InstancePtr)
 {
     u32 Data;
     u32 Status;
@@ -1095,22 +1090,23 @@ int XV_HdmiTx_DdcWaitForDone(XV_HdmiTx *InstancePtr)
 * @note     None.
 *
 ******************************************************************************/
-void XV_HdmiTx_DdcWriteCommand(XV_HdmiTx *InstancePtr, u32 Cmd)
+static u32 XV_HdmiTx_DdcWriteCommand(XV_HdmiTx *InstancePtr, u32 Cmd)
 {
     u32 Status;
     u32 Exit;
-
+	int Tries = 0;
+	
     Exit = (FALSE);
 
     do {
         // Read control register
         Status = XV_HdmiTx_ReadReg(InstancePtr->Config.BaseAddress,
-            (XV_HDMITX_DDC_CTRL_OFFSET));
+					(XV_HDMITX_DDC_CTRL_OFFSET));
 
         if (Status & (XV_HDMITX_DDC_CTRL_RUN_MASK)) {
             // Read status register
             Status = XV_HdmiTx_ReadReg(InstancePtr->Config.BaseAddress,
-                (XV_HDMITX_DDC_STA_OFFSET));
+						(XV_HDMITX_DDC_STA_OFFSET));
 
             // Mask command fifo full flag
             Status &= XV_HDMITX_DDC_STA_CMD_FULL;
@@ -1119,14 +1115,26 @@ void XV_HdmiTx_DdcWriteCommand(XV_HdmiTx *InstancePtr, u32 Cmd)
             if (!Status) {
                 XV_HdmiTx_WriteReg(InstancePtr->Config.BaseAddress,
                     (XV_HDMITX_DDC_CMD_OFFSET), (Cmd));
+				Status = XST_SUCCESS;
                 Exit = (TRUE);
-            }
+            } else {
+			  /* FIFO Full Case */
+			  usleep_range(100, 200);
+			  /* FIFO remained full for 1 millisecond (10 iterations of at least 100 microseconds). */
+			  if (Tries++ > 10) {
+				// Disable DDC peripheral
+				XV_HdmiTx_DdcDisable(InstancePtr);
+			    Status = XST_FAILURE;
+				Exit = (TRUE);
+			  }
+			}
         }
         else {
             Status = (XST_FAILURE);
             Exit = (TRUE);
         }
     } while (!Exit);
+	return(Status);
 }
 
 /*****************************************************************************/
@@ -1139,11 +1147,12 @@ void XV_HdmiTx_DdcWriteCommand(XV_HdmiTx *InstancePtr, u32 Cmd)
 * @note     None.
 *
 ******************************************************************************/
-u8 XV_HdmiTx_DdcReadData(XV_HdmiTx *InstancePtr)
+static u8 XV_HdmiTx_DdcReadData(XV_HdmiTx *InstancePtr)
 {
     u32 Status;
     u32 Exit;
     u32 Data;
+	int Tries = 0;
 
     Exit = (FALSE);
 
@@ -1165,7 +1174,17 @@ u8 XV_HdmiTx_DdcReadData(XV_HdmiTx *InstancePtr)
                 Data = XV_HdmiTx_ReadReg(InstancePtr->Config.BaseAddress,
                     (XV_HDMITX_DDC_DAT_OFFSET));
                 Exit = (TRUE);
-            }
+            } else {
+			  /* FIFO Full Case - allow time for slave clock stretching */
+			  usleep_range(1000, 1100);
+			  /* FIFO remained full for 10 millisecond (10 iterations of at least 1msec). */
+			  if (Tries++ > 10) {
+				// Disable DDC peripheral
+				XV_HdmiTx_DdcDisable(InstancePtr);
+				Exit = (TRUE);
+				Data = 0;				
+			  }
+			}
         }
         else {
             Exit = (TRUE);
@@ -1221,17 +1240,21 @@ int XV_HdmiTx_DdcWrite(XV_HdmiTx *InstancePtr, u8 Slave,
     XV_HdmiTx_DdcIntrDisable(InstancePtr);
 
     // Write start token
-    XV_HdmiTx_DdcWriteCommand(InstancePtr, (XV_HDMITX_DDC_CMD_STR_TOKEN));
-
+    Status = XV_HdmiTx_DdcWriteCommand(InstancePtr, (XV_HDMITX_DDC_CMD_STR_TOKEN));
+	if (Status == XST_FAILURE) return(Status);
+	
     // First check if the slave can be addressed
     // Write write token
-    XV_HdmiTx_DdcWriteCommand(InstancePtr, (XV_HDMITX_DDC_CMD_WR_TOKEN));
+    Status = XV_HdmiTx_DdcWriteCommand(InstancePtr, (XV_HDMITX_DDC_CMD_WR_TOKEN));
+	if (Status == XST_FAILURE) return(Status);
 
     // Write length (high)
-    XV_HdmiTx_DdcWriteCommand(InstancePtr, 0);
+    Status = XV_HdmiTx_DdcWriteCommand(InstancePtr, 0);
+	if (Status == XST_FAILURE) return(Status);
 
     // Write length (low)
-    XV_HdmiTx_DdcWriteCommand(InstancePtr, 1);
+    Status = XV_HdmiTx_DdcWriteCommand(InstancePtr, 1);
+	if (Status == XST_FAILURE) return(Status);
 
     // Slave address
     Data = Slave << 1;
@@ -1240,7 +1263,8 @@ int XV_HdmiTx_DdcWrite(XV_HdmiTx *InstancePtr, u8 Slave,
     Data &= 0xFE;
 
     // Write slave address
-    XV_HdmiTx_DdcWriteCommand(InstancePtr, (Data));
+    Status = XV_HdmiTx_DdcWriteCommand(InstancePtr, (Data));
+	if (Status == XST_FAILURE) return(Status);
 
     // Wait for done flag
     if (XV_HdmiTx_DdcWaitForDone(InstancePtr) == XST_SUCCESS) {
@@ -1250,20 +1274,24 @@ int XV_HdmiTx_DdcWrite(XV_HdmiTx *InstancePtr, u8 Slave,
 
             // Now write the data
             // Write write token
-            XV_HdmiTx_DdcWriteCommand(InstancePtr,
-                (XV_HDMITX_DDC_CMD_WR_TOKEN));
+            Status = XV_HdmiTx_DdcWriteCommand(InstancePtr,
+						(XV_HDMITX_DDC_CMD_WR_TOKEN));
+			if (Status == XST_FAILURE) return(Status);
 
             // Write length (high)
             Data = ((Length >> 8) & 0xFF);
-            XV_HdmiTx_DdcWriteCommand(InstancePtr, Data);
+            Status = XV_HdmiTx_DdcWriteCommand(InstancePtr, Data);
+			if (Status == XST_FAILURE) return(Status);
 
             // Write length (low)
             Data = (Length & 0xFF);
-            XV_HdmiTx_DdcWriteCommand(InstancePtr, Data);
+            Status = XV_HdmiTx_DdcWriteCommand(InstancePtr, Data);
+			if (Status == XST_FAILURE) return(Status);
 
             // Write Data
             for (Index = 0; Index < Length; Index++) {
-                XV_HdmiTx_DdcWriteCommand(InstancePtr, *Buffer++);
+                Status = XV_HdmiTx_DdcWriteCommand(InstancePtr, *Buffer++);
+				if (Status == XST_FAILURE) return(Status);				
             }
 
             // Wait for done flag
@@ -1276,16 +1304,16 @@ int XV_HdmiTx_DdcWrite(XV_HdmiTx *InstancePtr, u8 Slave,
                     // Stop condition
                     if (Stop) {
                         // Write stop token
-                        XV_HdmiTx_DdcWriteCommand(InstancePtr,
-                            (XV_HDMITX_DDC_CMD_STP_TOKEN));
+                        Status = XV_HdmiTx_DdcWriteCommand(InstancePtr,
+									(XV_HDMITX_DDC_CMD_STP_TOKEN));
+						if (Status == XST_FAILURE) return(Status);
 
                         // Wait for done flag
                         XV_HdmiTx_DdcWaitForDone(InstancePtr);
-
                     }
 
-                // Update status flag
-                Status = XST_SUCCESS;
+					// Update status flag
+					Status = XST_SUCCESS;
                 }
             }
         }
@@ -1342,18 +1370,22 @@ int XV_HdmiTx_DdcRead(XV_HdmiTx *InstancePtr, u8 Slave, u16 Length,
     XV_HdmiTx_DdcIntrDisable(InstancePtr);
 
     // Write start token
-    XV_HdmiTx_DdcWriteCommand(InstancePtr, (XV_HDMITX_DDC_CMD_STR_TOKEN));
-
+    Status = XV_HdmiTx_DdcWriteCommand(InstancePtr, (XV_HDMITX_DDC_CMD_STR_TOKEN));
+	if (Status == XST_FAILURE) return(Status);
+	
     // First check if the slave can be addressed
     // Write write token
-    XV_HdmiTx_DdcWriteCommand(InstancePtr, (XV_HDMITX_DDC_CMD_WR_TOKEN));
-
+    Status = XV_HdmiTx_DdcWriteCommand(InstancePtr, (XV_HDMITX_DDC_CMD_WR_TOKEN));
+	if (Status == XST_FAILURE) return(Status);
+	
     // Write length (high)
-    XV_HdmiTx_DdcWriteCommand(InstancePtr, 0);
-
+    Status = XV_HdmiTx_DdcWriteCommand(InstancePtr, 0);
+	if (Status == XST_FAILURE) return(Status);
+	
     // Write length (low)
-    XV_HdmiTx_DdcWriteCommand(InstancePtr, 1);
-
+    Status = XV_HdmiTx_DdcWriteCommand(InstancePtr, 1);
+	if (Status == XST_FAILURE) return(Status);
+	
     // Slave address
     Data = Slave << 1;
 
@@ -1361,8 +1393,9 @@ int XV_HdmiTx_DdcRead(XV_HdmiTx *InstancePtr, u8 Slave, u16 Length,
     Data |= 0x01;
 
     // Write slave address
-    XV_HdmiTx_DdcWriteCommand(InstancePtr, (Data));
-
+    Status = XV_HdmiTx_DdcWriteCommand(InstancePtr, (Data));
+	if (Status == XST_FAILURE) return(Status);
+	
     // Wait for done flag
     if (XV_HdmiTx_DdcWaitForDone(InstancePtr) == XST_SUCCESS) {
 
@@ -1370,17 +1403,20 @@ int XV_HdmiTx_DdcRead(XV_HdmiTx *InstancePtr, u8 Slave, u16 Length,
         if (XV_HdmiTx_DdcGetAck(InstancePtr)) {
 
             // Write read token
-            XV_HdmiTx_DdcWriteCommand(InstancePtr,
-                (XV_HDMITX_DDC_CMD_RD_TOKEN));
-
+            Status = XV_HdmiTx_DdcWriteCommand(InstancePtr,
+						(XV_HDMITX_DDC_CMD_RD_TOKEN));
+			if (Status == XST_FAILURE) return(Status);
+			
             // Write read length (high)
             Data = (Length >> 8) & 0xFF;
-            XV_HdmiTx_DdcWriteCommand(InstancePtr, (Data));
-
+            Status = XV_HdmiTx_DdcWriteCommand(InstancePtr, (Data));
+			if (Status == XST_FAILURE) return(Status);
+			
             // Write read length (low)
             Data = Length & 0xFF;
-            XV_HdmiTx_DdcWriteCommand(InstancePtr, (Data));
-
+            Status = XV_HdmiTx_DdcWriteCommand(InstancePtr, (Data));
+			if (Status == XST_FAILURE) return(Status);
+			
             // Read Data
             for (Index = 0; Index < Length; Index++) {
                 *Buffer++ = XV_HdmiTx_DdcReadData(InstancePtr);
@@ -1392,12 +1428,12 @@ int XV_HdmiTx_DdcRead(XV_HdmiTx *InstancePtr, u8 Slave, u16 Length,
                 // Stop condition
                 if (Stop) {
                     // Write stop token
-                    XV_HdmiTx_DdcWriteCommand(InstancePtr,
-                        (XV_HDMITX_DDC_CMD_STP_TOKEN));
-
+                    Status = XV_HdmiTx_DdcWriteCommand(InstancePtr,
+								(XV_HDMITX_DDC_CMD_STP_TOKEN));
+					if (Status == XST_FAILURE) return(Status);
+					
                     // Wait for done flag
                     XV_HdmiTx_DdcWaitForDone(InstancePtr);
-
                 }
 
                 // Update status

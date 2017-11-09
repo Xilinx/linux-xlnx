@@ -261,9 +261,13 @@ static irqreturn_t hdmitx_irq_thread(int irq, void *dev_id)
 
 	BUG_ON(!HdmiTxSsPtr->HdmiTxPtr);
 
+	hdmi_mutex_lock(&xhdmi->hdmi_mutex);
+
 	/* call baremetal interrupt handler, this in turn will
 	 * call the registed callbacks functions */
 	if (xhdmi->IntrStatus) HdmiTx_PioIntrHandler(HdmiTxSsPtr->HdmiTxPtr);
+
+	hdmi_mutex_unlock(&xhdmi->hdmi_mutex);
 
 	spin_lock_irqsave(&xhdmi->irq_lock, flags);
 	/* unmask interrupt request */
@@ -325,17 +329,17 @@ static irqreturn_t hdmitx_hdcp_irq_thread(int irq, void *dev_id)
 
 	BUG_ON(!HdmiTxSsPtr->HdmiTxPtr);
 
-	/* invoke bare-metal hdcp timer interrupt handlers without mutex-lock */
-	if (irq == xhdmi->hdcp1x_timer_irq) {
+	/* invoke the bare-metal interrupt handler under mutex lock */
+	hdmi_mutex_lock(&xhdmi->hdmi_mutex);
+	if (irq == xhdmi->hdcp1x_irq) {
+		XV_HdmiTxSS_HdcpIntrHandler(HdmiTxSsPtr);
+	} else if (irq == xhdmi->hdcp1x_timer_irq) {
 		XV_HdmiTxSS_HdcpTimerIntrHandler(HdmiTxSsPtr);
 	} else if (irq == xhdmi->hdcp22_timer_irq) {
 		XV_HdmiTxSS_Hdcp22TimerIntrHandler(HdmiTxSsPtr);
-	} else if (irq == xhdmi->hdcp1x_irq) {
-		/* invoke the bare-metal hdcp1.4 interrupt handler with mutex lock */
-		hdmi_mutex_lock(&xhdmi->hdmi_mutex);
-		XV_HdmiTxSS_HdcpIntrHandler(HdmiTxSsPtr);
-		hdmi_mutex_unlock(&xhdmi->hdmi_mutex);
 	}
+	hdmi_mutex_unlock(&xhdmi->hdmi_mutex);
+
 	/* re-enable interrupt requests */
 	spin_lock_irqsave(&xhdmi->irq_lock, flags);
 	if (irq == xhdmi->hdcp1x_irq) {
@@ -604,6 +608,7 @@ static void VphyHdmiTxReadyCallback(void *CallbackRef)
 
 	VphyPtr = xhdmi->xvphy;
 	BUG_ON(!VphyPtr);
+
 
 	hdmi_dbg("VphyHdmiTxReadyCallback(NOP) done\n");
 }
