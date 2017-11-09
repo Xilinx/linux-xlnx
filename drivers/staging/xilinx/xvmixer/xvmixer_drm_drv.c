@@ -22,9 +22,11 @@
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_gem_cma_helper.h>
 
+#include <linux/component.h>
 #include <linux/console.h>
 #include <linux/device.h>
 #include <linux/module.h>
+#include <linux/of_graph.h>
 #include <linux/of_graph.h>
 #include <linux/platform_device.h>
 
@@ -191,14 +193,40 @@ unsigned int xvmixer_drm_format_bpp(uint32_t drm_format)
 	return tot_bpp;
 }
 
+static int xilinx_drm_bind(struct device *dev)
+{
+	struct xilinx_drm_private *private = dev_get_drvdata(dev);
+	struct drm_device *drm = private->drm;
+
+	return component_bind_all(dev, drm);
+}
+
+static void xilinx_drm_unbind(struct device *dev)
+{
+	dev_set_drvdata(dev, NULL);
+}
+
+static const struct component_master_ops xilinx_drm_ops = {
+	.bind	= xilinx_drm_bind,
+	.unbind	= xilinx_drm_unbind,
+};
+
+static int compare_of(struct device *dev, void *data)
+{
+	struct device_node *np = data;
+
+	return dev->of_node == np;
+}
+
 /* load xilinx drm */
 static int xilinx_drm_load(struct drm_device *drm, unsigned long flags)
 {
 	struct xilinx_drm_private *private;
 	struct drm_encoder *encoder;
 	struct drm_connector *connector;
-	struct device_node *encoder_node;
+	struct device_node *encoder_node, *ep = NULL, *remote;
 	struct platform_device *pdev = drm->platformdev;
+	struct component_match *match = NULL;
 	unsigned int bpp, align, i = 0;
 	int ret;
 
@@ -236,6 +264,23 @@ static int xilinx_drm_load(struct drm_device *drm, unsigned long flags)
 		i++;
 	}
 
+	while (1) {
+		ep = of_graph_get_next_endpoint(drm->dev->of_node, ep);
+		if (!ep)
+			break;
+
+		of_node_put(ep);
+		remote = of_graph_get_remote_port_parent(ep);
+		if (!remote || !of_device_is_available(remote)) {
+			of_node_put(remote);
+			continue;
+		}
+
+		component_match_add(drm->dev, &match, compare_of, remote);
+		of_node_put(remote);
+		i++;
+	}
+
 	if (i == 0) {
 		DRM_ERROR("failed to get an encoder slave node\n");
 		return -ENODEV;
@@ -244,7 +289,7 @@ static int xilinx_drm_load(struct drm_device *drm, unsigned long flags)
 	ret = drm_vblank_init(drm, 1);
 	if (ret) {
 		dev_err(&pdev->dev, "failed to initialize vblank\n");
-		goto err_fb;
+		goto err_master;
 	}
 
 	/* enable irq to enable vblank feature */
@@ -271,10 +316,19 @@ static int xilinx_drm_load(struct drm_device *drm, unsigned long flags)
 
 	platform_set_drvdata(pdev, private);
 
+	if (match) {
+		ret = component_master_add_with_match(drm->dev,
+						      &xilinx_drm_ops, match);
+		if (ret)
+			goto err_fb;
+	}
+
 	return 0;
 
 err_fb:
 	drm_vblank_cleanup(drm);
+err_master:
+	component_master_del(drm->dev, &xilinx_drm_ops);
 err_out:
 	drm_mode_config_cleanup(drm);
 	if (ret == -EPROBE_DEFER)
@@ -288,6 +342,7 @@ static int xilinx_drm_unload(struct drm_device *drm)
 	struct xilinx_drm_private *private = drm->dev_private;
 
 	drm_vblank_cleanup(drm);
+	component_master_del(drm->dev, &xilinx_drm_ops);
 	drm_kms_helper_poll_fini(drm);
 	xvmixer_drm_fb_fini(private->fb);
 	drm_mode_config_cleanup(drm);
