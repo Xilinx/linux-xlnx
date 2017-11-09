@@ -1,0 +1,286 @@
+Device Tree Bindings for Xilinx Video Mixer IP core
+
+Required properties for Core IP Node:
+
+    Required General Properties:
+    - compatible: "xlnx,drm,video-mixer"
+
+    - reg: MMIO base address and size of the Xilinx Video Mixer IP core address
+           space
+
+    - interrupts-parent: Phandle for interrupt controller
+
+    - interrupts: Interrupt number
+
+    - clocks: Phandle reference to pixel clock used for modesetting
+
+    - reset-gpios: Should include a phandle reference to the gpio controller
+	with the proper gpio id and level (mixer reset default should be set to
+	"low")
+
+    Required Mixer IP Core Properties
+    - xlnx,bpc [number]: The data width per video component (8,10,12,16) Note:
+	only 8 is supported at this time
+
+    - xlnx,num-layers [number]: Number of active layers supported (1-8)
+	(count does NOT include logo layer but does include base layer)
+
+    - xlnx,ppc [number]: Required if any overlay layers will be utilizing
+	a memory-based interface.  The value should represent the number of
+	pixels-per-clock being processed by the mixer.
+
+     - xlnx,dma-addr-width [number]: Either 32 or 64.  Indicates with of
+	internal DMA address registers.
+
+     - xlnx,encoder-slave [phandle]: Reference to dts node describing an
+	encoder which implements the DRM encoder slave interface
+
+     - xlnx,connector-type: Should be set to "HDMIA"
+
+    Optional Mixer IP Core Properties:
+    - xlnx,logo-layer: Boolean indicating that logo layer is enabled
+
+Layer Sub Node Properties:
+    The device tree will need to include a sub node for each enabled layer
+    in the IP core that is to be utilized by the driver (including layer 0).
+    The properties described in this section apply to the base layer (aka layer
+    0) as well as each overlay layer (but not the logo layer; see Logo Layer
+    Properties below).
+
+    Each layer node should be named using "layer_#" format (e.g.
+	layer_0 { }; layer_1 {}; ...)
+
+    Required Properties:
+    - xlnx,layer-id [number]: Mixer layer number; should correspond to layer
+	number in the IP (e.g.  layer_1 should use xlnx,layer_id = <1).  Node
+	Layer_0 is the only required node (exception: if xlnx,logo-layer
+	property exists, then a logo {}; node must be present).  Layer_0 will
+	be interpreted as the background layer and must use layer-id = <0>.
+
+    - xlnx,vformat [string]: Describes the DMA memory format for a layer.
+
+	The proper choice will depend on how each mixer hardware layer is
+	configured in the Xilinx Vivado IP Integrator (IPI) tool and, if
+	a streaming layer, what format is produced on the bus by the
+	connected DMA.
+
+	Layers in the mixer can receive data either as a video stream
+	or can use the mixer's built-in dma capabilities.  The choice
+	is fixed to use either streaming or dma in the hardware design
+	and must be known to choose the correct video format string in
+	the device tree for a given layer node.  The list of possible
+	choices, depending on the hardware configuration, are listed in
+	the table below:
+
+	Interface Type	| IPI Video Format |  xlnx,vformat value
+	-------------------------------------------------------------
+	  Streaming	|  RGB		   | various (see note below)
+	  Streaming	|  YUV 4:4:4	   | various (see note below)
+	  Streaming	|  YUV 4:2:2	   | various (see note below)
+	  Streaming	|  YUV 4:2:0	   | various (see note below)
+			|		   |
+	  Memory	|  RGB8		   | bgr888
+	  Memory	|  BGRX8	   | xrgb8888
+	  Memory	|  RGBA8	   | abgr8888
+	  Memory	|  BGRA8	   | argb8888
+	  Memory	|  RGBX8	   | xbgr8888
+	  Memory	|  RGBX10	   | xbgr2101010 **
+	  Memory	|  Y8		   | y8
+	  Memory	|  Y10		   | y10 **
+	  Memory	|  YUVX10	   | xvuy2101010 **
+	  Memory	|  YUVX8	   | xvuy8888
+	  Memory	|  YUV8		   | vuy888
+	  Memory	|  YUYV8	   | yuyv
+	  Memory	|  UYVY8	   | uyvy
+	  Memory	|  YUVA8	   | avuy **
+	  Memory	|  Y_UV8_420	   | nv12
+	  Memory	|  Y_UV8	   | nv16
+	  Memory	|  Y_UV10_420	   | XV15 **
+	  Memory	|  Y_UV10	   | XV20 **
+
+	Each video format string in the device tree will map to a DRM fourcc code.
+	This is how user space will be instructed to format the memory buffer for
+	a given mixer layer.  It is important to ensure that the correct value
+	for video format be chosen for a given layer depending on its interface
+	type.  For "memory" type layers, the xlnx,vformat value indicated in the
+	table above is required (e.g. Y_UV8 in your mixer IP design must use "nv16"
+	as the value of the layer xlnx,vformat property).  For "streaming"
+	layers, however, what is important to know is how the data will be
+	provided on the media bus to the mixer by the connected DMA. A streaming
+	layer specified as "RGB" expects any dma to provide data on the media
+	bus in that format.  You are free to indicate any of the driver
+	understood xlnx,vformat values listed in the table below for a
+	streaming layer if, and only if, the dma IP connected to the streaming
+	layer is capable of reading video data in that memory format and
+	providing it to the mixer layer according to its media bus setting.
+
+	The table below indicates the mapping between the device tree
+	xlnx,vformat codes and the corresponding code which will be communicated
+	to user space applications that interact with the DRM driver.
+
+	xlnx,vformat value | Corresponding DRM fourcc code
+	--------------------------------------------------
+	  "bgr888"	   |  DRM_FORMAT_BGR888
+	  "rgb888"	   |  DRM_FORMAT_RGB888 *
+	  "xbgr2101010"	   |  DRM_FORMAT_XBGR2101010 **
+	  "xrgb8888"	   |  DRM_FORMAT_XRGB8888
+	  "rgba8888"	   |  DRM_FORMAT_RGBA8888 *
+	  "abgr8888"	   |  DRM_FORMAT_ABGR8888
+	  "argb8888"	   |  DRM_FORMAT_ARGB8888
+	  "xbgr8888"	   |  DRM_FORMAT_XBGR8888
+	  "y8"		   |  DRM_FORMAT_Y8
+	  "y10"		   |  DRM_FORMAT_Y10 **
+	  "xvuy2101010"	   |  DRM_FORMAT_XVUY2101010 **
+	  "vuy888"	   |  DRM_FORMAT_VUY888
+	  "xvuy888"	   |  DRM_FORMAT_XVUY888
+	  "yuyv"	   |  DRM_FORMAT_YUYV
+	  "uyvy"	   |  DRM_FORMAT_UYVY
+	  "ayuv"	   |  DRM_FORMAT_AYUV **
+	  "nv12"	   |  DRM_FORMAT_NV12
+	  "nv16"	   |  DRM_FORMAT_NV16
+	  "xv15"	   |  DRM_FORMAT_XV15 **
+	  "xv20"	   |  DRM_FORMAT_XV20 **
+
+	* native formats for mixer logo layer (depending on whether per-pixel
+	   transparency is enabled)
+	** not supported in this version of driver
+
+    - xlnx,layer-height [number]: Only required for layer_0 node (master layer).
+	Indicates maximum vertical size of active screen display in pixels
+
+    Optional Properties:
+    - xlnx,layer-alpha: Indicates that this layer supports global alpha blending
+
+    - xlnx,layer-scale: Indicates that this layer supports mixer scaling. Not
+	applicable to layer_0 (i.e. master) node.
+
+    - xlnx,layer-width [number]: Required if xlnx,layer-scale property exists
+	for layer.  Indicates maximum number of columns (before scaling) for
+	this layer (i.e. horizontal pixels)
+
+    - xlnx,layer-streaming: Layer obtains data as video stream. If omitted,
+	layer is presumed to be memory mapped if it is an overlay layer.  If
+	omitted for layer_0 (background layer), then the background layer will
+	be disabled and generate only a solid background color (typically blue).
+
+    - xlnx,layer-primary: Boolean property indicating this this overlay layer
+	will serve as the effective DRM primary layer.  This option, if used,
+	can only be applied to one layer.   This layer will now serve as
+	the crtc modesetting layer and all userspace applications will see
+	the video format of this layer as the base output format for this crtc
+	object.  Layer 0 will be initialized as a DRM "overlay" layer instead
+	of as a primary layer.
+
+     Conditionally Required Properties:
+
+    - dmas [phandle index]: If the layer has the xlnx,layer-streaming property,
+	this "dmas" property will be required.  This is a phandle reference to
+	the DMA channel node streaming video data to this layer.
+
+    - dma-names [string] : Should be of the form "dma<#>" (e.g. dma0) for each
+	phandle reference enumerated in the dmas property.
+
+
+Logo Layer Sub Node Properties:
+    This node is only required if the core IP node contains the
+    'xlnx,logo-layer' property indicating the the core supports a logo layer.
+    This subnode should be labled "logo" (e.g. logo { }; ).
+
+    Required Properties:
+    - xlnx,layer-id [number]: This should be set to <8>.
+
+    - xlnx,logo-height [number]: Maximum number of vertical pixels for the logo
+	layer
+
+    - xlnx,logo-width [number]: Maximum number of horizontal pixels for the logo
+	layer
+
+    Optional Properties:
+    - xlnx,logo-transp: Logo support color key transparency feature (note:
+	not supported at this time)
+
+    - xlnx,logo-pixel-alpha: Logo supports per pixel alpha data (e.g. RGBA).
+
+Example:
+
+This sample is of a mixer IP core that has three overlay layers enabled in
+addition to the logo layer.  One of the layers is fed by an external DMA
+and the remaining use the Mixer's internal DMA.
+Additionally, the mixer's reset line is on gpio #79, is configured for 8 bits
+per component, one pixel per clock, and is configured with internal DMA
+address registers 32-bits wide.
+
+The mixer's layer_0 is configured to expect "RGB" on the media bus.  The DMA
+device streaming to layer_0 is capable of delivering RGB data on the bus
+provided memory is formatted as RBG type data.  As such, we've chosen "bgr888"
+as our intended memory format for layer_0.  Additionally, layer 0 has a
+width and height property which server as the global maximum resolution
+supported by this IP.
+
+Layer 1 uses the Mixer's internal DMA. The layer is configured for Y_UV8 in
+IP Integrator so we represent this in the device tree with the "nv16" string
+as that is the manner in which memory should be formatted by the DRM clients.
+
+Layer 2 is fed by an external DMA configured for NV12 video data.
+
+Layer 3 uses internal DMA and is configured in IP integrator as Y_UV8_420. This
+should be represented in the device tree as "nv12". The layer is configured for
+layer alpha and scaling in the IP so we represent that with the properties
+indicating that to the driver.
+
+Lastly, we have our logo layer which is configured in hardware with a
+maximum size of 64x64 pixels.
+
+
+v_mix_0: v_mix@80040000 {
+	compatible = "xlnx,drm,video-mixer";
+	interrupt-parent = <&gic>;
+	interrupts = <0 90 4>;
+	reg = <0x0 0x80040000 0x0 0x40000>;
+	reset-gpios = <&gpio 79 1>;
+	clocks = <&si5324 0>;
+
+        xlnx,encoder-slave = <&hdmi_output_v_hdmi_tx_ss_0>;
+        xlnx,connector-type = "HDMIA";
+        xlnx,dma-addr-width=<32>;
+	xlnx,bpc = <8>;
+	xlnx,ppc = <1>;
+	xlnx,num-layers = <4>;
+	xlnx,logo-layer;
+
+	mixer_master_layer: layer_0 {
+		xlnx,layer-id = <0>;
+		xlnx,vformat = "bgr888";
+		xlnx,layer-streaming;
+                dmas = <&hdmi_output_v_frmbuf_rd_0 0>;
+                dma-names = "dma0";
+		xlnx,layer-width = <1920>;
+		xlnx,layer-height = <1080>;
+	};
+
+	mixer_overlay_1: layer_1 {
+		xlnx,layer-id = <1>;
+		xlnx,vformat = "nv16";
+	};
+
+	mixer_overlay_2: layer_2 {
+		xlnx,layer-id = <2>;
+		xlnx,vformat = "nv12";
+		xlnx,layer-streaming;
+                dmas = <&hdmi_output_v_frmbuf_rd_1 0>;
+                dma-names = "dma0";
+	};
+
+	mixer_overlay_3: layer_3 {
+		xlnx,layer-id = <3>;
+		xlnx,vformat = "nv12";
+		xlnx,layer-alpha;
+		xlnx,layer-scale;
+	};
+
+	mixer_logo: logo {
+		xlnx,layer-id = <8>;
+		xlnx,logo-width = <64>;
+		xlnx,logo-height = <64>;
+	};
+};
