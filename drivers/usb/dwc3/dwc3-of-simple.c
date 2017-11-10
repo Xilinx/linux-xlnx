@@ -76,29 +76,6 @@ struct dwc3_of_simple {
 	char			soc_rev;
 };
 
-void dwc3_set_phydata(struct device *dev, struct phy *phy)
-{
-	struct device_node *node = of_get_parent(dev->of_node);
-	int ret;
-
-	if ((node != NULL) &&
-		of_device_is_compatible(node, "xlnx,zynqmp-dwc3")) {
-		struct platform_device *pdev_parent;
-		struct dwc3_of_simple   *simple;
-
-		pdev_parent = of_find_device_by_node(node);
-		simple = platform_get_drvdata(pdev_parent);
-
-		/* assign USB vendor regs to phy lane */
-		ret = xpsgtr_set_protregs(phy, simple->regs);
-		if (ret) {
-			dev_err(&pdev_parent->dev,
-				"Not able to set PHY data\n");
-		}
-	}
-}
-EXPORT_SYMBOL(dwc3_set_phydata);
-
 int dwc3_enable_hw_coherency(struct device *dev)
 {
 	struct device_node *node = of_get_parent(dev->of_node);
@@ -183,6 +160,33 @@ void dwc3_simple_wakeup_capable(struct device *dev, bool wakeup)
 	}
 }
 EXPORT_SYMBOL(dwc3_simple_wakeup_capable);
+
+static int dwc3_simple_set_phydata(struct dwc3_of_simple *simple)
+{
+	struct device		*dev = simple->dev;
+	struct device_node	*np = dev->of_node;
+	struct phy		*phy;
+
+	np = of_get_next_child(np, NULL);
+
+	if (np) {
+		phy = of_phy_get(np, "usb3-phy");
+		if (IS_ERR(phy)) {
+			dev_err(dev, "%s: Can't find usb3-phy\n", __func__);
+			return PTR_ERR(phy);
+		}
+
+		/* assign USB vendor regs addr to phy platform_data */
+		phy->dev.platform_data = simple->regs;
+
+		phy_put(phy);
+	} else {
+		dev_err(dev, "%s: Can't find child node\n", __func__);
+		return -EINVAL;
+	}
+
+	return 0;
+}
 
 static int dwc3_of_simple_clk_init(struct dwc3_of_simple *simple, int count)
 {
@@ -286,6 +290,11 @@ static int dwc3_of_simple_probe(struct platform_device *pdev)
 		if (!IS_ERR(soc_rev))
 			kfree(soc_rev);
 	}
+
+	/* Set phy data for future use */
+	ret = dwc3_simple_set_phydata(simple);
+	if (ret)
+		return ret;
 
 	ret = dwc3_of_simple_clk_init(simple, of_clk_get_parent_count(np));
 	if (ret)
