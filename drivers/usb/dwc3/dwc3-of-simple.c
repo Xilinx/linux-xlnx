@@ -62,6 +62,7 @@ struct dwc3_of_simple {
 	int			num_clocks;
 	void __iomem		*regs;
 	struct dwc3		*dwc;
+	struct phy		*phy;
 	bool			wakeup_capable;
 	bool			dis_u3_susphy_quirk;
 	bool			enable_d3_suspend;
@@ -170,6 +171,9 @@ static int dwc3_simple_set_phydata(struct dwc3_of_simple *simple)
 			dev_err(dev, "%s: Can't find usb3-phy\n", __func__);
 			return PTR_ERR(phy);
 		}
+
+		/* Store phy for future usage */
+		simple->phy = phy;
 
 		/* assign USB vendor regs addr to phy platform_data */
 		phy->dev.platform_data = simple->regs;
@@ -424,6 +428,9 @@ int dwc3_set_usb_core_power(struct dwc3 *dwc, bool on)
 	if (on) {
 		dev_dbg(dwc->dev, "trying to set power state to D0....\n");
 
+		/* Release USB core reset , which was assert during D3 entry */
+		xpsgtr_usb_crst_release(simple->phy);
+
 		/* change power state to D0 */
 		writel(XLNX_REQ_PWR_STATE_D0,
 		       reg_base + XLNX_USB_REQ_PWR_STATE);
@@ -464,8 +471,13 @@ int dwc3_set_usb_core_power(struct dwc3 *dwc, bool on)
 			usleep_range(DWC3_PWR_TIMEOUT, DWC3_PWR_TIMEOUT * 2);
 		} while (--retries);
 
-		if (!retries)
+		if (!retries) {
 			dev_err(dwc->dev, "Failed to set power state to D3\n");
+			return -EIO;
+		}
+
+		/* Assert USB core reset after entering D3 state */
+		xpsgtr_usb_crst_assert(simple->phy);
 	}
 
 	return 0;
