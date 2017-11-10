@@ -732,6 +732,62 @@ static int xpsgtr_controller_release_reset(struct xpsgtr_phy *gtr_phy)
 	return ret;
 }
 
+/**
+ * xpsgtr_usb_rst_assert - assert USB core reset
+ * @phy: pointer to phy
+ *
+ * Return: 0 on success or error on failure
+ */
+int xpsgtr_usb_crst_assert(struct phy *phy)
+{
+	struct xpsgtr_phy *gtr_phy = phy_get_drvdata(phy);
+	struct xpsgtr_dev *gtr_dev = gtr_phy->data;
+	int ret;
+
+	switch (gtr_phy->type) {
+	case XPSGTR_TYPE_USB0:
+		ret = xpsgtr_reset_assert(gtr_dev->usb0_crst);
+		break;
+	case XPSGTR_TYPE_USB1:
+		ret = xpsgtr_reset_assert(gtr_dev->usb1_crst);
+		break;
+	default:
+		ret = -EINVAL;
+		break;
+	}
+
+	return ret;
+}
+EXPORT_SYMBOL(xpsgtr_usb_crst_assert);
+
+/**
+ * xpsgtr_usb_rst_release - release USB core reset
+ * @phy: pointer to phy
+ *
+ * Return: 0 on success or error on failure
+ */
+int xpsgtr_usb_crst_release(struct phy *phy)
+{
+	struct xpsgtr_phy *gtr_phy = phy_get_drvdata(phy);
+	struct xpsgtr_dev *gtr_dev = gtr_phy->data;
+	int ret;
+
+	switch (gtr_phy->type) {
+	case XPSGTR_TYPE_USB0:
+		ret = xpsgtr_reset_release(gtr_dev->usb0_crst);
+		break;
+	case XPSGTR_TYPE_USB1:
+		ret = xpsgtr_reset_release(gtr_dev->usb1_crst);
+		break;
+	default:
+		ret = -EINVAL;
+		break;
+	}
+
+	return ret;
+}
+EXPORT_SYMBOL(xpsgtr_usb_crst_release);
+
 int xpsgtr_wait_pll_lock(struct phy *phy)
 {
 	struct xpsgtr_phy *gtr_phy = phy_get_drvdata(phy);
