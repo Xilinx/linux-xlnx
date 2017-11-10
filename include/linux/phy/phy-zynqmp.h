@@ -26,8 +26,6 @@ struct phy;
 extern int xpsgtr_override_deemph(struct phy *phy, u8 plvl, u8 vlvl);
 extern int xpsgtr_margining_factor(struct phy *phy, u8 plvl, u8 vlvl);
 extern int xpsgtr_wait_pll_lock(struct phy *phy);
-extern int xpsgtr_set_protregs(struct phy *phy, void __iomem *regs);
-
 #else
 
 static inline int xpsgtr_override_deemph(struct phy *base, u8 plvl, u8 vlvl)
@@ -41,11 +39,6 @@ static inline int xpsgtr_margining_factor(struct phy *base, u8 plvl, u8 vlvl)
 }
 
 extern inline int xpsgtr_wait_pll_lock(struct phy *phy)
-{
-	return -ENODEV;
-}
-
-extern inline int xpsgtr_set_protregs(struct phy *phy, void *regs)
 {
 	return -ENODEV;
 }
