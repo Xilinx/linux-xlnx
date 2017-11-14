@@ -574,9 +574,16 @@ enum XAE_QUEUE {
 #define XAE_MAX_QUEUES   1
 #endif
 
-#ifdef CONFIG_XILINX_TSN_PTP
-#define SIOCCHIOCTL SIOCDEVPRIVATE
-#endif
+enum axienet_tsn_ioctl {
+	SIOCCHIOCTL = SIOCDEVPRIVATE,
+	SIOC_PREEMPTION_CFG,
+	SIOC_PREEMPTION_CTRL,
+	SIOC_PREEMPTION_STS,
+	SIOC_PREEMPTION_COUNTER,
+	SIOC_QBU_USER_OVERRIDE,
+	SIOC_QBU_STS,
+};
+
 /**
  * struct axienet_local - axienet private per device data
  * @ndev:	Pointer for net_device to which it will be attached.
