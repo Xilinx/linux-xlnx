@@ -927,12 +927,24 @@ xilinx_drm_plane_create(struct xilinx_drm_plane_manager *manager,
 	if (plane->format == 0) {
 		ret = xilinx_xdma_get_drm_vid_fmts(plane->dma[0].chan,
 						   &num_fmts, &fmts);
+		if (!ret) {
+			int i;
 
-		/* If there's no IP other than VDMA pick the manager's format */
-		if (ret)
-			plane->format = manager->format;
-		else
-			plane->format = fmts[0];
+			for (i = 0; i < num_fmts; i++) {
+				if (fmts[i] != manager->format)
+					continue;
+
+				break;
+			}
+
+			if (i < num_fmts) {
+				plane->format = manager->format;
+			} else {
+				DRM_ERROR("No dma support for drm mgr fmt %x\n",
+					  manager->format);
+				return ERR_PTR(-EINVAL);
+			}
+		}
 	}
 
 	/* initialize drm plane */
