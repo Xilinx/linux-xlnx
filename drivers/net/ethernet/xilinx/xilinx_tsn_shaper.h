@@ -118,6 +118,17 @@ static u32 qbv_reg_map[3] = { 0x0,   0x14000,     0x14000 };
 #define RES_XMIT_OVERRUN_COUNT(port)		(TIME_SCHED_BASE(port) + 0x74)
 #define ST_XMIT_OVERRUN_COUNT(port)		(TIME_SCHED_BASE(port) + 0x7c)
 
+/* internally hw deals with queues only,
+ * in 3q system ST acl bitmap would be would 1 << 2
+ * in 2q system ST acl bitmap would be 1 << 1
+ * But this is confusing to users.
+ * so use the following fixed gate state and internally
+ * map them to hw
+ */
+#define GS_BE_OPEN   BIT(0)
+#define GS_RE_OPEN   BIT(1)
+#define GS_ST_OPEN   BIT(2)
+
 struct qbv_info {
 	u8 port;
 	u32 cycle_time;
