@@ -14,6 +14,7 @@
 
 struct xvcu_device;
 
+u32 xvcu_get_color_depth(struct xvcu_device *xvcu);
 u32 xvcu_get_memory_depth(struct xvcu_device *xvcu);
 
 #endif  /* _XILINX_VCU_H_ */

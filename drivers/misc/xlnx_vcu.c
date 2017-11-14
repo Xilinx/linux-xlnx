@@ -280,6 +280,19 @@ static void xvcu_write_field_reg(void __iomem *iomem, int offset,
 }
 
 /**
+ * xvcu_get_color_depth - read the color depth register
+ * @xvcu:	Pointer to the xvcu_device structure
+ *
+ * Return:	Returns 32bit value
+ *
+ */
+u32 xvcu_get_color_depth(struct xvcu_device *xvcu)
+{
+	return xvcu_read(xvcu->logicore_reg_ba, VCU_ENC_COLOR_DEPTH);
+}
+EXPORT_SYMBOL_GPL(xvcu_get_color_depth);
+
+/**
  * xvcu_get_memory_depth - read the memory depth register
  * @xvcu:	Pointer to the xvcu_device structure
  *
