@@ -1482,6 +1482,12 @@ static ssize_t hdcp_key_store(struct device *sysfs_dev, struct device_attribute 
 			RxHdcpEncryptionUpdateCallback, (void *)xhdmi);
 
 		if (HdmiRxSsPtr->Config.Hdcp14.IsPresent || HdmiRxSsPtr->Config.Hdcp22.IsPresent) {
+			if (xhdmi->cable_is_connected) {
+				// Push connect event to HDCP event queue
+				XV_HdmiRxSs_HdcpPushEvent(HdmiRxSsPtr, XV_HDMIRXSS_HDCP_CONNECT_EVT);
+				/* Force HPD toggle */
+				XV_HdmiRxSs_ToggleHpd(HdmiRxSsPtr);
+			}
 			/* call into hdcp_poll_work, which will reschedule itself */
 			hdcp_poll_work(&xhdmi->delayed_work_hdcp_poll.work);
 		}
