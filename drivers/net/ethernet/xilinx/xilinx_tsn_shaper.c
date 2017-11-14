@@ -18,6 +18,26 @@
 #include "xilinx_axienet.h"
 #include "xilinx_tsn_shaper.h"
 
+static inline int axienet_map_gs_to_hw(struct axienet_local *lp, u32 gs)
+{
+	u8 be_queue = 0;
+	u8 re_queue = 1;
+	u8 st_queue = 2;
+	unsigned int acl_bit_map = 0;
+
+	if (lp->num_q == 2)
+		st_queue = 1;
+
+	if (gs & GS_BE_OPEN)
+		acl_bit_map |= (1 << be_queue);
+	if (gs & GS_ST_OPEN)
+		acl_bit_map |= (1 << st_queue);
+	if ((lp->num_q == 3) && (gs & GS_RE_OPEN))
+		acl_bit_map |= (1 << re_queue);
+
+	return acl_bit_map;
+}
+
 static int __axienet_set_schedule(struct net_device *ndev, struct qbv_info *qbv)
 {
 	struct axienet_local *lp = netdev_priv(ndev);
@@ -52,9 +72,7 @@ static int __axienet_set_schedule(struct net_device *ndev, struct qbv_info *qbv)
 
 	/* program each list */
 	for (i = 0; i < qbv->list_length; i++) {
-		acl_bit_map = qbv->acl_gate_state[i];
-		if ((lp->num_q == 2) && (acl_bit_map == 4)) /* for 2 quese ST */
-			acl_bit_map = 2;
+		acl_bit_map = axienet_map_gs_to_hw(lp, qbv->acl_gate_state[i]);
 		axienet_iow(lp,  ADMIN_CTRL_LIST(port, i),
 			    (acl_bit_map & (ACL_GATE_STATE_MASK)) <<
 			    ACL_GATE_STATE_SHIFT);
