@@ -253,9 +253,7 @@ static int __init xilinx_intc_of_init(struct device_node *node,
 	if (irq > 0) {
 		pr_info("%s: chained intc connected to irq %d\n",
 			 node->full_name, irq);
-		irq_set_handler(irq, intc_handler);
-		irq_set_handler_data(irq, intc);
-		enable_irq(irq);
+		irq_set_chained_handler_and_data(irq, intc_handler, intc);
 	};
 
 	return 0;
