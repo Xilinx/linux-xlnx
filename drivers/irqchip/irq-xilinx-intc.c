@@ -29,6 +29,7 @@
  */
 struct intc {
 	void __iomem *baseaddr;
+	struct irq_chip *intc_dev;
 	u32 nr_irq;
 	u32 intr_mask;
 	struct irq_domain *domain;
@@ -113,14 +114,6 @@ static void intc_mask_ack(struct irq_data *d)
 	local_intc->write_fn(mask, local_intc->baseaddr + IAR);
 }
 
-static struct irq_chip intc_dev = {
-	.name = "Xilinx INTC",
-	.irq_unmask = intc_enable_or_unmask,
-	.irq_mask = intc_disable_or_mask,
-	.irq_ack = intc_ack,
-	.irq_mask_ack = intc_mask_ack,
-};
-
 static unsigned int get_irq(struct intc *local_intc)
 {
 	int hwirq, irq = -1;
@@ -139,11 +132,11 @@ static int xintc_map(struct irq_domain *d, unsigned int irq, irq_hw_number_t hw)
 	struct intc *local_intc = d->host_data;
 
 	if (local_intc->intr_mask & (1 << hw)) {
-		irq_set_chip_and_handler_name(irq, &intc_dev,
+		irq_set_chip_and_handler_name(irq, local_intc->intc_dev,
 					      handle_edge_irq, NULL);
 		irq_clear_status_flags(irq, IRQ_LEVEL);
 	} else {
-		irq_set_chip_and_handler_name(irq, &intc_dev,
+		irq_set_chip_and_handler_name(irq, local_intc->intc_dev,
 					      handle_level_irq, NULL);
 		irq_set_status_flags(irq, IRQ_LEVEL);
 	}
@@ -186,6 +179,7 @@ static int __init xilinx_intc_of_init(struct device_node *node,
 	u32 irq;
 	int ret;
 	struct intc *intc;
+	struct irq_chip *intc_dev;
 
 	intc = kzalloc(sizeof(struct intc), GFP_KERNEL);
 	if (!intc)
@@ -217,6 +211,19 @@ static int __init xilinx_intc_of_init(struct device_node *node,
 
 	pr_info("%s: num_irq=%d, edge=0x%x\n",
 		node->full_name, intc->nr_irq, intc->intr_mask);
+
+	intc_dev = kzalloc(sizeof(*intc_dev), GFP_KERNEL);
+	if (!intc_dev) {
+		ret = -ENOMEM;
+		goto error2;
+	}
+
+	intc_dev->name = node->full_name;
+	intc_dev->irq_unmask = intc_enable_or_unmask,
+	intc_dev->irq_mask = intc_disable_or_mask,
+	intc_dev->irq_ack = intc_ack,
+	intc_dev->irq_mask_ack = intc_mask_ack,
+	intc->intc_dev = intc_dev;
 
 	intc->write_fn = intc_write32;
 	intc->read_fn = intc_read32;
