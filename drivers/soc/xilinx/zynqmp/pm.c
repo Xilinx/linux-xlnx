@@ -365,6 +365,9 @@ static irqreturn_t zynqmp_pm_isr(int irq, void *data)
 
 	zynqmp_pm_get_callback_data(payload);
 
+	if (!payload[0])
+		return IRQ_NONE;
+
 	/* First element is callback API ID, others are callback arguments */
 	if (payload[0] == PM_INIT_SUSPEND_CB) {
 
@@ -1165,7 +1168,7 @@ static int zynqmp_pm_probe(struct platform_device *pdev)
 		return -ENXIO;
 	}
 
-	ret = request_irq(irq, zynqmp_pm_isr, 0, DRIVER_NAME, pdev);
+	ret = request_irq(irq, zynqmp_pm_isr, IRQF_SHARED, DRIVER_NAME, pdev);
 	if (ret) {
 		dev_err(&pdev->dev, "request_irq '%d' failed with %d\n",
 			irq, ret);
