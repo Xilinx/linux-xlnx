@@ -500,7 +500,7 @@ static void xvip_dma_buffer_queue(struct vb2_buffer *vb)
 
 		/* Handling contiguous data with mplanes */
 		if (dma->fmtinfo->buffers == 1) {
-		    dma->sgl[0].dst_icg = dma->sgl[0].size;
+			dma->sgl[0].dst_icg = 0;
 		} else {
 		    /* Handling non-contiguous data with mplanes */
 		    if (vb->num_planes == 2) {
