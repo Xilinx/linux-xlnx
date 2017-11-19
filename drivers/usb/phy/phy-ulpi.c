@@ -334,9 +334,9 @@ static int ulpi_phy_probe(struct platform_device *pdev)
 		return PTR_ERR(uphy->regs);
 
 	ret = of_property_read_u32(np, "view-port", &uphy->vp_offset);
-	if (IS_ERR(uphy->regs)) {
+	if (ret) {
 		dev_err(&pdev->dev, "view-port register not specified\n");
-		return PTR_ERR(uphy->regs);
+		return -ENOENT;
 	}
 
 	flag = of_property_read_bool(np, "drv-vbus");
