@@ -1882,15 +1882,21 @@ static int spi_nor_write(struct mtd_info *mtd, loff_t to, size_t len,
 		if (nor->addr_width == 4)
 			rem_bank_len = (mtd->size >> stack_shift) - offset;
 		if (nor->addr_width == 3)
-			write_ear(nor, (offset >> nor->shift));
-		if (len < rem_bank_len) {
+			write_ear(nor, offset);
+		if (nor->isstacked == 1) {
+			if (len <= rem_bank_len) {
+				page_remain = min_t(size_t,
+					 nor->page_size - page_offset, len - i);
+			} else {
+				/*
+				 * the size of data remaining
+				 * on the first page
+				 */
+				page_remain = rem_bank_len;
+			}
+		} else {
 			page_remain = min_t(size_t,
-				    nor->page_size - page_offset, len - i);
-
-		}
-		else {
-		/* the size of data remaining on the first page */
-			page_remain = rem_bank_len;
+					 nor->page_size - page_offset, len - i);
 		}
 		ret = spi_nor_wait_till_ready(nor);
 		if (ret)
