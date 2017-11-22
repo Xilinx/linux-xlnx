@@ -32,7 +32,8 @@
 #define to_xv_mixer_hw(p) (&((p)->mixer->mixer_hw))
 
 #define get_xilinx_mixer_mem_align(m)  \
-	sizeof((m)->mixer_hw.layer_data[0].layer_regs.buff_addr1)
+	sizeof((m)->mixer_hw.layer_data[0].layer_regs.buff_addr1) *\
+	(m)->mixer_hw.ppc
 
 /**
  * xilinx_drm_mixer_probe - Parse device tree and init mixer node
