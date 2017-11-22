@@ -140,11 +140,11 @@ static int xintc_map(struct irq_domain *d, unsigned int irq, irq_hw_number_t hw)
 
 	if (local_intc->intr_mask & (1 << hw)) {
 		irq_set_chip_and_handler_name(irq, &intc_dev,
-						handle_edge_irq, "edge");
+					      handle_edge_irq, NULL);
 		irq_clear_status_flags(irq, IRQ_LEVEL);
 	} else {
 		irq_set_chip_and_handler_name(irq, &intc_dev,
-						handle_level_irq, "level");
+					      handle_level_irq, NULL);
 		irq_set_status_flags(irq, IRQ_LEVEL);
 	}
 
