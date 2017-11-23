@@ -650,8 +650,8 @@ static inline void
 xilinx_dpdma_sw_desc_next_64(struct xilinx_dpdma_sw_desc *sw_desc,
 			     struct xilinx_dpdma_sw_desc *next)
 {
-	sw_desc->hw.next_desc = (u32)next->phys;
-	sw_desc->hw.addr_ext |= ((u64)next->phys >> 32) &
+	sw_desc->hw.next_desc = lower_32_bits(next->phys);
+	sw_desc->hw.addr_ext |= upper_32_bits(next->phys) &
 				XILINX_DPDMA_DESC_ADDR_EXT_ADDR_MASK;
 }
 
@@ -671,10 +671,13 @@ static void xilinx_dpdma_sw_desc_addr_64(struct xilinx_dpdma_sw_desc *sw_desc,
 {
 	struct xilinx_dpdma_hw_desc *hw_desc = &sw_desc->hw;
 	unsigned int i;
+	u32 src_addr_extn;
 
-	hw_desc->src_addr = (u32)dma_addr[0];
-	hw_desc->addr_ext |=
-		((u64)dma_addr[0] >> 32) & XILINX_DPDMA_DESC_ADDR_EXT_ADDR_MASK;
+	hw_desc->src_addr = lower_32_bits(dma_addr[0]);
+	src_addr_extn = upper_32_bits(dma_addr[0]) &
+			XILINX_DPDMA_DESC_ADDR_EXT_ADDR_MASK;
+	hw_desc->addr_ext |= (src_addr_extn <<
+			      XILINX_DPDMA_DESC_ADDR_EXT_ADDR_SHIFT);
 
 	if (prev)
 		xilinx_dpdma_sw_desc_next_64(prev, sw_desc);
