@@ -438,6 +438,15 @@ int spi_nor_scan(struct spi_nor *nor, const char *name,
 		 const struct spi_nor_hwcaps *hwcaps);
 
 /**
+ * spi_nor_shutdown() - prepare for reboot
+ * @nor:	the spi_nor structure
+ *
+ * The drivers can use this fuction to get the address back to
+ * 0 as will be required for a ROM boot.
+ */
+void spi_nor_shutdown(struct spi_nor *nor);
+
+/**
  * spi_nor_restore_addr_mode() - restore the status of SPI NOR
  * @nor:	the spi_nor structure
  */
