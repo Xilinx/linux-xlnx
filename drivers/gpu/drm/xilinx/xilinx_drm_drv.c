@@ -395,6 +395,13 @@ static int xilinx_drm_load(struct drm_device *drm, unsigned long flags)
 			goto err_fb;
 	}
 
+	ret = dma_set_coherent_mask(&pdev->dev,
+				    DMA_BIT_MASK(sizeof(dma_addr_t) * 8));
+	if (ret) {
+		dev_info(&pdev->dev, "failed to set coherent mask (%lu)\n",
+			 sizeof(dma_addr_t));
+	}
+
 	return 0;
 
 err_fb:
