@@ -1215,6 +1215,8 @@ static void axienet_start_xmit_done(struct net_device *ndev,
 
 	ndev->stats.tx_packets += packets;
 	ndev->stats.tx_bytes += size;
+	q->tx_packets += packets;
+	q->tx_bytes += size;
 	/* Fixme: With the existing multiqueue implementation
 	 * in the driver it is difficult to get the exact queue info.
 	 * We should wake only the particular queue
