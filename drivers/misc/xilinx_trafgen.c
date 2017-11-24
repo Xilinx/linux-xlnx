@@ -25,6 +25,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <linux/clk.h>
 #include <linux/dma-mapping.h>
 #include <linux/init.h>
 #include <linux/interrupt.h>
@@ -289,6 +290,7 @@ struct xtg_pram {
  * @last_wr_valid_idx: Last Write Valid Command Index
  * @id: Device instance id
  * @xtg_mram_offset: MasterRam offset
+ * @clk: Input clock
  */
 struct xtg_dev_info {
 	void __iomem *regs;
@@ -298,6 +300,7 @@ struct xtg_dev_info {
 	s16 last_wr_valid_idx;
 	u32 id;
 	u32 xtg_mram_offset;
+	struct clk *clk;
 };
 
 /**
@@ -1357,12 +1360,29 @@ static int xtg_probe(struct platform_device *pdev)
 		}
 	}
 
+	tg->clk = devm_clk_get(&pdev->dev, NULL);
+	if (IS_ERR(tg->clk)) {
+		if (PTR_ERR(tg->clk) != -ENOENT) {
+			if (PTR_ERR(tg->clk) != -EPROBE_DEFER)
+				dev_err(&pdev->dev, "input clock not found\n");
+			return PTR_ERR(tg->clk);
+		}
+		tg->clk = NULL;
+	}
+
+	err = clk_prepare_enable(tg->clk);
+	if (err) {
+		dev_err(&pdev->dev, "Unable to enable clock.\n");
+		return err;
+	}
+
 	/*
 	 * Create sysfs file entries for the device
 	 */
 	err = sysfs_create_group(&dev->kobj, &xtg_attributes);
 	if (err < 0) {
 		dev_err(tg->dev, "unable to create sysfs entries\n");
+		clk_disable_unprepare(tg->clk);
 		return err;
 	}
 
@@ -1402,7 +1422,7 @@ static int xtg_remove(struct platform_device *pdev)
 	tg = dev_get_drvdata(&pdev->dev);
 	dev = tg->dev;
 	sysfs_remove_group(&dev->kobj, &xtg_attributes);
-
+	clk_disable_unprepare(tg->clk);
 
 	return 0;
 }
