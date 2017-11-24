@@ -584,12 +584,6 @@ static int xvcu_probe(struct platform_device *pdev)
 		goto error_aclk;
 	}
 
-	/* TODO : Right now, reset specifier for the VCU is not provided
-	 * so once we get this value then we need to use the reset controller
-	 * framework to make the VCU out of reset.
-	 * Right now, We are directly right value to the VCU_GASKET_INIT reg
-	 * bit 1 to 1 to put VCU out of reset.
-	 */
 	/* Do the Gasket isolation and put the VCU out of reset
 	 * Bit 0 : Gasket isolation
 	 * Bit 1 : put VCU out of reset
@@ -634,10 +628,6 @@ static int xvcu_remove(struct platform_device *pdev)
 	struct xvcu_device *xvcu = platform_get_drvdata(pdev);
 
 	of_platform_depopulate(&pdev->dev);
-
-	/* TODO : Once we get the reset specifier for VCU then
-	 * use the reset controller framework.
-	 */
 
 	/* Add the the Gasket isolation and put the VCU in reset.
 	 */
