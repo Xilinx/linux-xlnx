@@ -625,7 +625,11 @@ error_aclk:
  */
 static int xvcu_remove(struct platform_device *pdev)
 {
-	struct xvcu_device *xvcu = platform_get_drvdata(pdev);
+	struct xvcu_device *xvcu;
+
+	xvcu = platform_get_drvdata(pdev);
+	if (!xvcu)
+		return -ENODEV;
 
 	of_platform_depopulate(&pdev->dev);
 
