@@ -66,7 +66,8 @@ static int __axienet_set_schedule(struct net_device *ndev, struct qbv_info *qbv)
 
 	u_config_change = axienet_ior(lp, CONFIG_CHANGE(port));
 
-	/* write control list length */
+	u_config_change &= ~(CC_ADMIN_CTRL_LIST_LENGTH_MASK <<
+		CC_ADMIN_CTRL_LIST_LENGTH_SHIFT);
 	u_config_change |= (qbv->list_length & CC_ADMIN_CTRL_LIST_LENGTH_MASK)
 					<< CC_ADMIN_CTRL_LIST_LENGTH_SHIFT;
 
