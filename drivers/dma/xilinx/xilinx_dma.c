@@ -790,6 +790,11 @@ static void xilinx_dma_chan_desc_cleanup(struct xilinx_dma_chan *chan)
 	struct xilinx_dma_tx_descriptor *desc, *next;
 	unsigned long flags;
 
+        struct xilinx_axidma_tx_segment *segment;
+        struct xilinx_axidma_desc_hw *hw;
+        struct dmaengine_result rslt;
+        u32 residue = 0;
+
 	spin_lock_irqsave(&chan->lock, flags);
 
 	list_for_each_entry_safe(desc, next, &chan->done_list, node) {
@@ -800,6 +805,15 @@ static void xilinx_dma_chan_desc_cleanup(struct xilinx_dma_chan *chan)
 			break;
 		}
 
+                if (chan->has_sg) {
+                        list_for_each_entry(segment, &desc->segments, node) {
+                                hw = &segment->hw;
+                                residue += (hw->control - hw->status) &
+                                           XILINX_DMA_MAX_TRANS_LEN;
+                        }
+                }
+
+
 		/* Remove from the list of running transactions */
 		list_del(&desc->node);
 
@@ -807,7 +821,9 @@ static void xilinx_dma_chan_desc_cleanup(struct xilinx_dma_chan *chan)
 		dmaengine_desc_get_callback(&desc->async_tx, &cb);
 		if (dmaengine_desc_callback_valid(&cb)) {
 			spin_unlock_irqrestore(&chan->lock, flags);
-			dmaengine_desc_callback_invoke(&cb, NULL);
+                        rslt.result = DMA_TRANS_NOERROR;
+                        rslt.residue = residue;
+                        dmaengine_desc_callback_invoke(&cb, &rslt);
 			spin_lock_irqsave(&chan->lock, flags);
 		}
 
