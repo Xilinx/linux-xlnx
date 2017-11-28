@@ -3734,10 +3734,11 @@ static int axienet_probe(struct platform_device *pdev)
 	struct net_device *ndev;
 	const void *mac_addr;
 	struct resource *ethres;
-	u32 value, num_queues;
+	u32 value;
+	u16 num_queues;
 	bool slave = false;
 
-	ret = of_property_read_u32(pdev->dev.of_node, "xlnx,num-queues",
+	ret = of_property_read_u16(pdev->dev.of_node, "xlnx,num-queues",
 				   &num_queues);
 	if (ret)
 		num_queues = XAE_MAX_QUEUES;
@@ -3774,9 +3775,6 @@ static int axienet_probe(struct platform_device *pdev)
 	}
 
 #ifdef CONFIG_XILINX_TSN
-	of_property_read_u32(pdev->dev.of_node, "xlnx,num-queue", &lp->num_q);
-	pr_info("Number of TSN priority queues: %d\n", lp->num_q);
-
 	slave = of_property_read_bool(pdev->dev.of_node,
 				      "xlnx,tsn-slave");
 	if (slave)
