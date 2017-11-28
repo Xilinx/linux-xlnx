@@ -561,17 +561,10 @@ struct aximcdma_bd {
 #define DESC_DMA_MAP_SINGLE 0
 #define DESC_DMA_MAP_PAGE 1
 
-#ifdef CONFIG_XILINX_TSN
-enum XAE_QUEUE {
-	XAE_BE = 0, /* best effort */
-	XAE_RE,	   /* reserved(cbs) */
-	XAE_ST,    /* Scheduled */
-	XAE_MAX_QUEUES,
-};
-#elif defined(CONFIG_AXIENET_HAS_MCDMA)
+#if defined(CONFIG_AXIENET_HAS_MCDMA)
 #define XAE_MAX_QUEUES   16
 #else
-#define XAE_MAX_QUEUES   1
+#define XAE_MAX_QUEUES   3
 #endif
 
 enum axienet_tsn_ioctl {
