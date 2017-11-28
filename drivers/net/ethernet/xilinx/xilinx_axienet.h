@@ -569,6 +569,7 @@ struct aximcdma_bd {
 
 enum axienet_tsn_ioctl {
 	SIOCCHIOCTL = SIOCDEVPRIVATE,
+	SIOC_GET_SCHED,
 	SIOC_PREEMPTION_CFG,
 	SIOC_PREEMPTION_CTRL,
 	SIOC_PREEMPTION_STS,
@@ -917,6 +918,7 @@ void axienet_tx_tstamp(struct work_struct *work);
 int axienet_qbv_init(struct net_device *ndev);
 void axienet_qbv_remove(struct net_device *ndev);
 int axienet_set_schedule(struct net_device *ndev, void __user *useraddr);
+int axienet_get_schedule(struct net_device *ndev, void __user *useraddr);
 #endif
 
 #ifdef CONFIG_XILINX_TSN_QBR

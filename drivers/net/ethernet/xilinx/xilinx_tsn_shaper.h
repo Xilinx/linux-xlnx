@@ -70,6 +70,9 @@ static u32 qbv_reg_map[3] = { 0x0,   0x14000,     0x14000 };
 #define ACL_GATE_STATE_MASK	0x7
 #define ADMIN_CTRL_LIST_TIME(port, n)  (ADMIN_CTRL_LIST((port), n) + 4)
 
+#define OPER_CTRL_LIST(port, n)	(CTRL_LIST_BASE(port) + 0x100 + ((n) * 8))
+#define OPER_CTRL_LIST_TIME(port, n)  (OPER_CTRL_LIST(port, n) + 4)
+
 #define CONFIG_CHANGE(port)    (TIME_SCHED_BASE(port) + 0x0)
 #define CC_ADMIN_GATE_STATE_SHIFT            0x7
 #define CC_ADMIN_GATE_STATE_MASK             (7)
@@ -109,10 +112,13 @@ static u32 qbv_reg_map[3] = { 0x0,   0x14000,     0x14000 };
 
 #define OPER_CONTROL_LIST_LENGTH(port)		(TIME_SCHED_BASE(port) + 0x50)
 #define OPER_CYCLE_TIME_DENOMINATOR(port)	(TIME_SCHED_BASE(port) + 0x58)
+#define OPER_CYCLE_TIME_DENOMINATOR_MASK	(0xFFFFFF)
 
 #define OPER_BASE_TIME_NS(port)			(TIME_SCHED_BASE(port) + 0x60)
+#define OPER_BASE_TIME_NS_MASK			(0x3FFFFFFF)
 #define OPER_BASE_TIME_SEC(port)		(TIME_SCHED_BASE(port) + 0x64)
 #define OPER_BASE_TIME_SECS(port)		(TIME_SCHED_BASE(port) + 0x68)
+#define BASE_TIME_SECS_MASK			(0xFFFF)
 
 #define BE_XMIT_OVERRUN_COUNT(port)		(TIME_SCHED_BASE(port) + 0x6c)
 #define RES_XMIT_OVERRUN_COUNT(port)		(TIME_SCHED_BASE(port) + 0x74)
@@ -131,8 +137,9 @@ static u32 qbv_reg_map[3] = { 0x0,   0x14000,     0x14000 };
 
 struct qbv_info {
 	u8 port;
+	u8 force;
 	u32 cycle_time;
-	u32 ptp_time_sec;
+	u64 ptp_time_sec;
 	u32 ptp_time_ns;
 	u32 list_length;
 	u32 acl_gate_state[32];
