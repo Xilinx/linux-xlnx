@@ -1309,9 +1309,28 @@ static void axienet_create_tsheader(u8 *buf, u8 msg_type,
 #endif
 
 #ifdef CONFIG_XILINX_TSN
-static inline u16 tsn_queue_mapping(const struct sk_buff *skb)
+static inline u16 get_tsn_queue(u8 pcp, u16 num_queues)
 {
-	int queue = XAE_BE;
+	u16 queue = 0;
+
+	/* For 3 queue system, RE queue is 1 and ST queue is 2
+	 * For 2 queue system, ST queue is 1. BE queue is always 0
+	 */
+	if (pcp == 4) {
+		if (num_queues == 2)
+			queue = 1;
+		else
+			queue = 2;
+	} else if ((num_queues == 3) && (pcp == 2 || pcp == 3)) {
+		queue = 1;
+	}
+
+	return queue;
+}
+
+static inline u16 tsn_queue_mapping(const struct sk_buff *skb, u16 num_queues)
+{
+	int queue = 0;
 	u16 vlan_tci;
 	u8 pcp;
 
@@ -1329,10 +1348,7 @@ static inline u16 tsn_queue_mapping(const struct sk_buff *skb)
 		pr_debug("vlan_tci: %x\n", vlan_tci);
 		pr_debug("pcp: %d\n", pcp);
 
-		if (pcp == 4)
-			queue = XAE_ST;
-		else if (pcp == 2 || pcp == 3)
-			queue = XAE_RE;
+		queue = get_tsn_queue(pcp, num_queues);
 	}
 	pr_debug("selected queue: %d\n", queue);
 	return queue;
@@ -1371,8 +1387,8 @@ static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	u16 map = skb_get_queue_mapping(skb); /* Single dma queue default*/
 
 #ifdef CONFIG_XILINX_TSN
-	if (lp->is_tsn) {
-		map = tsn_queue_mapping(skb);
+	if (unlikely(lp->is_tsn)) {
+		map = tsn_queue_mapping(skb, lp->num_queues);
 #ifdef CONFIG_XILINX_TSN_PTP
 		const struct ethhdr *eth;
 
@@ -3735,12 +3751,21 @@ static int axienet_probe(struct platform_device *pdev)
 	const void *mac_addr;
 	struct resource *ethres;
 	u32 value;
-	u16 num_queues;
+	u16 num_queues = XAE_MAX_QUEUES;
 	bool slave = false;
+	bool is_tsn = false;
 
+	is_tsn = of_property_read_bool(pdev->dev.of_node, "xlnx,tsn");
 	ret = of_property_read_u16(pdev->dev.of_node, "xlnx,num-queues",
 				   &num_queues);
-	if (ret)
+	if (ret) {
+		if (!is_tsn) {
+#ifndef CONFIG_AXIENET_HAS_MCDMA
+			num_queues = 1;
+#endif
+		}
+	}
+	if (is_tsn && ((num_queues != 2) && (num_queues != 3)))
 		num_queues = XAE_MAX_QUEUES;
 
 	ndev = alloc_etherdev_mq(sizeof(*lp), num_queues);
@@ -3764,7 +3789,7 @@ static int axienet_probe(struct platform_device *pdev)
 	lp->dev = &pdev->dev;
 	lp->options = XAE_OPTION_DEFAULTS;
 	lp->num_queues = num_queues;
-	lp->is_tsn = of_property_read_bool(pdev->dev.of_node, "xlnx,tsn");
+	lp->is_tsn = is_tsn;
 	/* Map device registers */
 	ethres = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	lp->regs = devm_ioremap_resource(&pdev->dev, ethres);
