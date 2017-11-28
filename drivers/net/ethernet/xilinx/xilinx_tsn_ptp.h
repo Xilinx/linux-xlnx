@@ -23,6 +23,7 @@
 #define PTP_RX_FRAME_SIZE   252
 #define PTP_HW_TSTAMP_OFFSET (PTP_RX_HWBUF_SIZE - PTP_HW_TSTAMP_SIZE)
 
+#define PTP_MSG_TYPE_MASK				BIT(3)
 #define PTP_TYPE_SYNC                                   0x0
 #define PTP_TYPE_FOLLOW_UP                              0x8
 #define PTP_TYPE_PDELAYREQ                              0x2

@@ -142,12 +142,13 @@ int axienet_ptp_xmit(struct sk_buff *skb, struct net_device *ndev)
 
 	spin_lock_irqsave(&lp->ptp_tx_lock, flags);
 	skb->cb[0] = free_index;
-	skb_queue_tail(&lp->ptp_txq, skb_get(skb));
-	skb_shinfo(skb)->tx_flags |= SKBTX_IN_PROGRESS;
+	skb_queue_tail(&lp->ptp_txq, skb);
+
+	if (skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP)
+		skb_shinfo(skb)->tx_flags |= SKBTX_IN_PROGRESS;
+
 	skb_tx_timestamp(skb);
 	spin_unlock_irqrestore(&lp->ptp_tx_lock, flags);
-
-	dev_kfree_skb_any(skb);
 
 	return NETDEV_TX_OK;
 }
@@ -221,9 +222,12 @@ static void axienet_ptp_recv(struct net_device *ndev)
 		pr_debug("  -->RECV: protocol: %x message: %s frame_len: %d\n",
 			 skb->protocol, msg_type_string(msg_type & 0xf),
 			 skb->len);
-		axienet_set_timestamp(lp, skb_hwtstamps(skb),
-				      (ptp_frame_base_addr
-				      + PTP_HW_TSTAMP_OFFSET));
+		/* timestamp only event messages */
+		if (!(msg_type & PTP_MSG_TYPE_MASK)) {
+			axienet_set_timestamp(lp, skb_hwtstamps(skb),
+					      (ptp_frame_base_addr +
+					      PTP_HW_TSTAMP_OFFSET));
+		}
 
 		netif_rx(skb);
 	}
@@ -288,9 +292,10 @@ void axienet_tx_tstamp(struct work_struct *work)
 		ts_reg_offset = PTP_TX_BUFFER_OFFSET(index) +
 					PTP_HW_TSTAMP_OFFSET;
 
-		axienet_set_timestamp(lp, &hwtstamps, ts_reg_offset);
-
-		skb_tstamp_tx(skb, &hwtstamps);
+		if (skb_shinfo(skb)->tx_flags & SKBTX_IN_PROGRESS) {
+			axienet_set_timestamp(lp, &hwtstamps, ts_reg_offset);
+			skb_tstamp_tx(skb, &hwtstamps);
+		}
 
 		dev_kfree_skb_any(skb);
 	}
