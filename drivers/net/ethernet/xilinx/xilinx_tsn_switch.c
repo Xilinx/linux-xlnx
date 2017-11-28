@@ -717,7 +717,7 @@ static int tsn_switch_init(void)
 	return 0;
 }
 
-static int tsn_switch_cam_init(int num_q)
+static int tsn_switch_cam_init(u16 num_q)
 {
 	u32 pmap;
 	u32 timeout = 20000;
@@ -760,7 +760,7 @@ static int tsnswitch_probe(struct platform_device *pdev)
 {
 	struct resource *swt;
 	int ret;
-	int num_q;
+	u16 num_q;
 
 	pr_info("TSN Switch probe\n");
 	/* Map device registers */
@@ -769,7 +769,8 @@ static int tsnswitch_probe(struct platform_device *pdev)
 	if (IS_ERR(lp.regs))
 		return PTR_ERR(lp.regs);
 
-	ret = of_property_read_u32(pdev->dev.of_node, "xlnx,num-queue", &num_q);
+	ret = of_property_read_u16(pdev->dev.of_node, "xlnx,num-queues",
+				   &num_q);
 	if (ret || ((num_q != 2) && (num_q != 3)))
 		num_q = XAE_MAX_QUEUES;
 

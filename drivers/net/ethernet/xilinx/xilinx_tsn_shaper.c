@@ -25,14 +25,14 @@ static inline int axienet_map_gs_to_hw(struct axienet_local *lp, u32 gs)
 	u8 st_queue = 2;
 	unsigned int acl_bit_map = 0;
 
-	if (lp->num_q == 2)
+	if (lp->num_queues == 2)
 		st_queue = 1;
 
 	if (gs & GS_BE_OPEN)
 		acl_bit_map |= (1 << be_queue);
 	if (gs & GS_ST_OPEN)
 		acl_bit_map |= (1 << st_queue);
-	if ((lp->num_q == 3) && (gs & GS_RE_OPEN))
+	if ((lp->num_queues == 3) && (gs & GS_RE_OPEN))
 		acl_bit_map |= (1 << re_queue);
 
 	return acl_bit_map;
