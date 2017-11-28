@@ -41,7 +41,7 @@ static inline int axienet_map_gs_to_hw(struct axienet_local *lp, u32 gs)
 static int __axienet_set_schedule(struct net_device *ndev, struct qbv_info *qbv)
 {
 	struct axienet_local *lp = netdev_priv(ndev);
-	int i;
+	u8 i;
 	unsigned int acl_bit_map = 0;
 	u32 u_config_change = 0;
 	u8 port = qbv->port;
@@ -57,12 +57,23 @@ static int __axienet_set_schedule(struct net_device *ndev, struct qbv_info *qbv)
 		return 0;
 	}
 
+	if (axienet_ior(lp, PORT_STATUS(port)) & 1) {
+		if (qbv->force) {
+			u_config_change &= ~CC_ADMIN_GATE_ENABLE_BIT;
+			axienet_iow(lp, CONFIG_CHANGE(port), u_config_change);
+		} else {
+			return -EALREADY;
+		}
+	}
 	/* write admin time */
 	axienet_iow(lp, ADMIN_CYCLE_TIME_DENOMINATOR(port), qbv->cycle_time);
 
 	axienet_iow(lp, ADMIN_BASE_TIME_NS(port), qbv->ptp_time_ns);
 
-	axienet_iow(lp, ADMIN_BASE_TIME_SEC(port), qbv->ptp_time_sec);
+	axienet_iow(lp, ADMIN_BASE_TIME_SEC(port),
+		    qbv->ptp_time_sec & 0xFFFFFFFF);
+	axienet_iow(lp, ADMIN_BASE_TIME_SECS(port),
+		    (qbv->ptp_time_sec >> 32) & BASE_TIME_SECS_MASK);
 
 	u_config_change = axienet_ior(lp, CONFIG_CHANGE(port));
 
@@ -110,8 +121,49 @@ int axienet_set_schedule(struct net_device *ndev, void __user *useraddr)
 	return __axienet_set_schedule(ndev, &config);
 }
 
-int axienet_get_schedule(struct net_device *ndev, u8 port, struct qbv_info *qbv)
+static int __axienet_get_schedule(struct net_device *ndev, struct qbv_info *qbv)
 {
+	struct axienet_local *lp = netdev_priv(ndev);
+	u8 i = 0;
+	u32 u_value = 0;
+	u8 port = qbv->port;
+
+	u_value = axienet_ior(lp, GATE_STATE(port));
+	qbv->list_length = (u_value >> CC_ADMIN_CTRL_LIST_LENGTH_SHIFT) &
+				CC_ADMIN_CTRL_LIST_LENGTH_MASK;
+
+	u_value = axienet_ior(lp, OPER_CYCLE_TIME_DENOMINATOR(port));
+	qbv->cycle_time = u_value & OPER_CYCLE_TIME_DENOMINATOR_MASK;
+
+	u_value = axienet_ior(lp, OPER_BASE_TIME_NS(port));
+	qbv->ptp_time_ns = u_value & OPER_BASE_TIME_NS_MASK;
+
+	qbv->ptp_time_sec = axienet_ior(lp, OPER_BASE_TIME_SEC(port));
+	u_value = axienet_ior(lp, OPER_BASE_TIME_SECS(port));
+	qbv->ptp_time_sec |= (u64)(u_value & BASE_TIME_SECS_MASK) << 32;
+
+	for (i = 0; i < qbv->list_length; i++) {
+		u_value = axienet_ior(lp, OPER_CTRL_LIST(port, i));
+		qbv->acl_gate_state[i] = (u_value >> ACL_GATE_STATE_SHIFT) &
+					ACL_GATE_STATE_MASK;
+		u_value = axienet_ior(lp, OPER_CTRL_LIST_TIME(port, i));
+		qbv->acl_gate_time[i] = u_value & BASE_TIME_SECS_MASK;
+	}
+	return 0;
+}
+
+int axienet_get_schedule(struct net_device *ndev, void __user *useraddr)
+{
+	struct qbv_info qbv;
+
+	if (copy_from_user(&qbv, useraddr, sizeof(struct qbv_info)))
+		return -EFAULT;
+
+	__axienet_get_schedule(ndev, &qbv);
+
+	if (copy_to_user(useraddr, &qbv, sizeof(struct qbv_info)))
+		return -EFAULT;
+
 	return 0;
 }
 
