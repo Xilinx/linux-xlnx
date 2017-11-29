@@ -912,6 +912,9 @@ static int xilinx_drm_dp_mode_configure(struct xilinx_drm_dp *dp, int pclock,
 	u8 lane_cnt;
 	s8 i;
 
+	if (current_bw == DP_LINK_BW_1_62)
+		return -EINVAL;
+
 	for (i = ARRAY_SIZE(bws) - 1; i >= 0; i--) {
 		if (current_bw && bws[i] >= current_bw)
 			continue;
