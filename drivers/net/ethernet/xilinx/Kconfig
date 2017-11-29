@@ -54,21 +54,6 @@ config XILINX_LL_TEMAC
 	  This driver supports the Xilinx 10/100/1000 LocalLink TEMAC
 	  core used in Xilinx Spartan and Virtex FPGAs
 
-config XILINX_PS_EMAC
-	tristate "Xilinx Zynq tri-speed EMAC support"
-	depends on ARCH_ZYNQ
-	select PHYLIB
-	---help---
-	  This driver supports tri-speed EMAC.
-
-config XILINX_PS_EMAC_HWTSTAMP
-	bool "Generate hardware packet timestamps"
-	depends on XILINX_PS_EMAC
-	select PTP_1588_CLOCK
-	default n
-	---help---
-	  Generate hardare packet timestamps. This is to facilitate IEE 1588.
-
 config XILINX_TSN
 	bool "Enable Xilinx's TSN IP"
 	default n
