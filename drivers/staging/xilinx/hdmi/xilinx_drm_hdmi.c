@@ -1632,25 +1632,51 @@ static ssize_t hdcp_encrypted_show(struct device *sysfs_dev, struct device_attri
 /* Note that the bare-metal implementation deciphers in-place in the cipherbuffer, then after that copies to the plaintext buffer,
  * thus trashing the source.
  *
- * In this implementation, the cipher is first copied to the plain buffer, where it is then decrypted in-place. This leaves the
- * source buffer intact.
+ * In this implementation, a local buffer is created (aligned to 16Byte boundary), the cipher is first copied to the local buffer,
+ * where it is then decrypted in-place and then copied over to target Plain Buffer. This leaves the source buffer intact.
  */
 static void Decrypt(const u8 *CipherBufferPtr/*src*/, u8 *PlainBufferPtr/*dst*/, u8 *Key, u16 Length)
 {
 	u8 i;
 	u8 *AesBufferPtr;
+	u8 *LocalBuf; //16Byte aligned
 	u16 AesLength;
 	aes256_context ctx;
-	memcpy(PlainBufferPtr, CipherBufferPtr, Length);
-	AesBufferPtr = PlainBufferPtr;
-	aes256_init(&ctx, Key);
-	AesLength = (Length + 15) / 16;
-	for (i=0; i < AesLength; i++)
-	{
-		aes256_decrypt_ecb(&ctx, AesBufferPtr);
-		AesBufferPtr += 16;
+
+	AesLength = Length/16; // The aes always encrypts 16 bytes
+	if (Length % 16) {
+		AesLength++;
 	}
+
+	//Allocate local buffer that is 16Byte aligned
+	LocalBuf = kzalloc((size_t)(AesLength*16), GFP_KERNEL);
+
+	// Copy cipher into local buffer
+	memcpy(LocalBuf, CipherBufferPtr, (AesLength*16));
+
+	// Assign local Pointer // @NOTE: Changed
+	AesBufferPtr = LocalBuf;
+
+	// Initialize AES256
+	aes256_init(&ctx, Key);
+
+	for (i=0; i<AesLength; i++)
+	{
+		// Decrypt
+		aes256_decrypt_ecb(&ctx, AesBufferPtr);
+
+		// Increment pointer
+		AesBufferPtr += 16;	// The aes always encrypts 16 bytes
+	}
+
+	// Done
 	aes256_done(&ctx);
+
+	//copy decrypted key into Plainbuffer
+	memcpy(PlainBufferPtr, LocalBuf, Length);
+
+	//free local buffer
+	kfree(LocalBuf);
 }
 
 #define SIGNATURE_OFFSET			0
