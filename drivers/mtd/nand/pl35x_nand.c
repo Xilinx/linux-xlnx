@@ -485,6 +485,7 @@ static int pl35x_nand_read_page_raw(struct mtd_info *mtd,
  * @chip:		Pointer to the NAND chip info structure
  * @buf:		Pointer to the data buffer
  * @oob_required:	Caller requires OOB data read to chip->oob_poi
+ * @page:		Page number to write
  *
  * Return:	Always return zero
  */
@@ -524,6 +525,7 @@ static int pl35x_nand_write_page_raw(struct mtd_info *mtd,
  * @chip:		Pointer to the NAND chip info structure
  * @buf:		Pointer to the data buffer
  * @oob_required:	Caller requires OOB data read to chip->oob_poi
+ * @page:		Page number to write
  *
  * This functions writes data and hardware generated ECC values in to the page.
  *
@@ -597,6 +599,7 @@ static int pl35x_nand_write_page_hwecc(struct mtd_info *mtd,
  * @chip:		Pointer to the NAND chip info structure
  * @buf:		Pointer to the data buffer
  * @oob_required:	Caller requires OOB data read to chip->oob_poi
+ * @page:		Page number to write
  *
  * Return:	Always return zero
  */
@@ -1035,6 +1038,7 @@ static int pl35x_nand_detect_ondie_ecc(struct mtd_info *mtd)
 /**
  * pl35x_nand_ecc_init - Initialize the ecc information as per the ecc mode
  * @mtd:	Pointer to the mtd_info structure
+ * @ecc:	Pointer to ECC control structure
  * @ondie_ecc_state:	ondie ecc status
  *
  * This function initializes the ecc block and functional pointers as per the
