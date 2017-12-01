@@ -652,10 +652,14 @@ static int xcan_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 		if (buffnr == -1)
 			netif_stop_queue(ndev);
 	} else {
-		if (cf->len > 0)
-			data[0] = be32_to_cpup((__be32 *)(cf->data + 0));
-		if (cf->len > 4)
-			data[1] = be32_to_cpup((__be32 *)(cf->data + 4));
+		if (!(cf->can_id & CAN_RTR_FLAG)) {
+			if (cf->len > 0)
+				data[0] =
+				be32_to_cpup((__be32 *)(cf->data + 0));
+			if (cf->len > 4)
+				data[1] =
+				be32_to_cpup((__be32 *)(cf->data + 4));
+		}
 
 		can_put_echo_skb(skb, ndev, priv->tx_head % priv->tx_max);
 		priv->tx_head++;
