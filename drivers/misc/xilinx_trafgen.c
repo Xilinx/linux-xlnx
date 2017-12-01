@@ -74,7 +74,7 @@
 /* Master complete done status */
 #define XTG_ERR_STS_MSTDONE_MASK	0x80000000
 /* Error mask for error status/enable registers */
-#define XTG_ERR_ALL_ERRS_MASK		0x001F0003
+#define XTG_ERR_ALL_ERRS_MASK		0x801F0003
 /* Core Revision shift */
 #define XTG_MCNTL_REV_SHIFT		24
 
