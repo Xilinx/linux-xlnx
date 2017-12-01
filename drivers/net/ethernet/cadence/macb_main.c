@@ -2093,7 +2093,7 @@ static int macb_ptp_adjtime(struct ptp_clock_info *ptp, s64 delta)
 static int macb_ptp_adjfreq(struct ptp_clock_info *ptp, s32 ppb)
 {
 	struct macb *bp = container_of(ptp, struct macb, ptp_caps);
-	unsigned long rate = bp->tsu_clk;
+	unsigned long rate = bp->tsu_rate;
 	u64 adjsub;
 	u32 addend, diff;
 	u32 diffsub, addendsub;
@@ -2161,7 +2161,7 @@ static void macb_ptp_init(struct macb *bp)
 	bp->ptp_caps.enable = macb_ptp_enable;
 	bp->ptp_caps.adjfreq = macb_ptp_adjfreq;
 
-	rate = bp->tsu_clk;
+	rate = bp->tsu_rate;
 
 	getnstimeofday(&now);
 	gem_writel(bp, 1588SMSB, 0);
@@ -2985,7 +2985,7 @@ static void macb_probe_queues(void __iomem *mem,
 
 static int macb_clk_init(struct platform_device *pdev, struct clk **pclk,
 			 struct clk **hclk, struct clk **tx_clk,
-			 struct clk **rx_clk)
+			 struct clk **rx_clk, struct clk **tsu_clk)
 {
 	int err;
 
@@ -3011,6 +3011,10 @@ static int macb_clk_init(struct platform_device *pdev, struct clk **pclk,
 	if (IS_ERR(*rx_clk))
 		*rx_clk = NULL;
 
+	*tsu_clk = devm_clk_get(&pdev->dev, "tsu_clk");
+	if (IS_ERR(*tsu_clk))
+		*tsu_clk = NULL;
+
 	err = clk_prepare_enable(*pclk);
 	if (err) {
 		dev_err(&pdev->dev, "failed to enable pclk (%u)\n", err);
@@ -3035,7 +3039,16 @@ static int macb_clk_init(struct platform_device *pdev, struct clk **pclk,
 		goto err_disable_txclk;
 	}
 
+	err = clk_prepare_enable(*tsu_clk);
+	if (err) {
+		dev_err(&pdev->dev, "failed to enable tsu_clk (%u)\n", err);
+		goto err_disable_rxclk;
+	}
+
 	return 0;
+
+err_disable_rxclk:
+	clk_disable_unprepare(*rx_clk);
 
 err_disable_txclk:
 	clk_disable_unprepare(*tx_clk);
@@ -3446,13 +3459,14 @@ static const struct net_device_ops at91ether_netdev_ops = {
 
 static int at91ether_clk_init(struct platform_device *pdev, struct clk **pclk,
 			      struct clk **hclk, struct clk **tx_clk,
-			      struct clk **rx_clk)
+			      struct clk **rx_clk, struct clk **tsu_clk)
 {
 	int err;
 
 	*hclk = NULL;
 	*tx_clk = NULL;
 	*rx_clk = NULL;
+	*tsu_clk = NULL;
 
 	*pclk = devm_clk_get(&pdev->dev, "ether_clk");
 	if (IS_ERR(*pclk))
@@ -3577,13 +3591,14 @@ MODULE_DEVICE_TABLE(of, macb_dt_ids);
 static int macb_probe(struct platform_device *pdev)
 {
 	int (*clk_init)(struct platform_device *, struct clk **,
-			struct clk **, struct clk **,  struct clk **)
-					      = macb_clk_init;
+			struct clk **, struct clk **,  struct clk **,
+			struct clk **) = macb_clk_init;
 	int (*init)(struct platform_device *) = macb_init;
 	struct device_node *np = pdev->dev.of_node;
 	struct device_node *phy_node;
 	const struct macb_config *macb_config = NULL;
 	struct clk *pclk, *hclk = NULL, *tx_clk = NULL, *rx_clk = NULL;
+	struct clk *tsu_clk = NULL;
 	unsigned int queue_mask, num_queues;
 	struct macb_platform_data *pdata;
 	bool native_io;
@@ -3611,7 +3626,7 @@ static int macb_probe(struct platform_device *pdev)
 		}
 	}
 
-	err = clk_init(pdev, &pclk, &hclk, &tx_clk, &rx_clk);
+	err = clk_init(pdev, &pclk, &hclk, &tx_clk, &rx_clk, &tsu_clk);
 	if (err)
 		return err;
 
@@ -3653,10 +3668,12 @@ static int macb_probe(struct platform_device *pdev)
 	bp->hclk = hclk;
 	bp->tx_clk = tx_clk;
 	bp->rx_clk = rx_clk;
+	bp->tsu_clk = tsu_clk;
+	if (tsu_clk)
+		bp->tsu_rate = clk_get_rate(tsu_clk);
+
 	if (macb_config)
 		bp->jumbo_max_len = macb_config->jumbo_max_len;
-
-	of_property_read_u32(pdev->dev.of_node, "tsu-clk", &bp->tsu_clk);
 
 #ifdef CONFIG_ARCH_DMA_ADDR_T_64BIT
 	if (GEM_BFEXT(DBWDEF, gem_readl(bp, DCFG1)) > GEM_DBW32)
@@ -3758,6 +3775,7 @@ err_disable_clocks:
 	clk_disable_unprepare(hclk);
 	clk_disable_unprepare(pclk);
 	clk_disable_unprepare(rx_clk);
+	clk_disable_unprepare(tsu_clk);
 	pm_runtime_disable(&pdev->dev);
 	pm_runtime_set_suspended(&pdev->dev);
 	pm_runtime_dont_use_autosuspend(&pdev->dev);
@@ -3792,6 +3810,7 @@ static int macb_remove(struct platform_device *pdev)
 			clk_disable_unprepare(bp->hclk);
 			clk_disable_unprepare(bp->pclk);
 			clk_disable_unprepare(bp->rx_clk);
+			clk_disable_unprepare(bp->tsu_clk);
 			pm_runtime_set_suspended(&pdev->dev);
 		}
 		of_node_put(bp->phy_node);
@@ -3857,6 +3876,7 @@ static int __maybe_unused macb_runtime_suspend(struct device *dev)
 	clk_disable_unprepare(bp->hclk);
 	clk_disable_unprepare(bp->pclk);
 	clk_disable_unprepare(bp->rx_clk);
+	clk_disable_unprepare(bp->tsu_clk);
 
 	return 0;
 }
@@ -3871,6 +3891,7 @@ static int __maybe_unused macb_runtime_resume(struct device *dev)
 	clk_prepare_enable(bp->hclk);
 	clk_prepare_enable(bp->tx_clk);
 	clk_prepare_enable(bp->rx_clk);
+	clk_prepare_enable(bp->tsu_clk);
 
 	return 0;
 }

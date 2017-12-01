@@ -850,7 +850,7 @@ struct macb_config {
 	unsigned int		dma_burst_length;
 	int	(*clk_init)(struct platform_device *pdev, struct clk **pclk,
 			    struct clk **hclk, struct clk **tx_clk,
-			    struct clk **rx_clk);
+			    struct clk **rx_clk, struct clk **tsu_clk);
 	int	(*init)(struct platform_device *pdev);
 	int	jumbo_max_len;
 };
@@ -900,6 +900,7 @@ struct macb {
 	struct clk		*hclk;
 	struct clk		*tx_clk;
 	struct clk		*rx_clk;
+	struct clk		*tsu_clk;
 	struct net_device	*dev;
 	struct napi_struct	napi;
 	struct net_device_stats	stats;
@@ -938,7 +939,7 @@ struct macb {
 	unsigned int		rx_frm_len_mask;
 	unsigned int		jumbo_max_len;
 
-	unsigned int		tsu_clk;
+	unsigned int		tsu_rate;
 	struct ptp_clock	*ptp_clock;
 	struct ptp_clock_info	ptp_caps;
 	int			rx_hwtstamp_filter;
