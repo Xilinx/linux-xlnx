@@ -641,8 +641,7 @@ static ssize_t xtg_sysfs_ioctl(struct device *dev, const char *buf,
 
 	case XTG_ENABLE_ERRORS:
 		wrval &= XTG_ERR_ALL_ERRS_MASK;
-		writel(readl(tg->regs + XTG_ERR_EN_OFFSET) | wrval,
-			tg->regs + XTG_ERR_EN_OFFSET);
+		writel(wrval, tg->regs + XTG_ERR_EN_OFFSET);
 		break;
 
 	case XTG_CLEAR_ERRORS:
