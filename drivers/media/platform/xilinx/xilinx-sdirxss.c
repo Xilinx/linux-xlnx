@@ -212,6 +212,7 @@
 #define XST352_BYTE1_ST372_DL_3GB		0x8A
 #define XST352_BYTE1_ST372_2x720L_3GB		0x8B
 #define XST352_BYTE1_ST372_2x1080L_3GB		0x8C
+#define XST352_BYTE1_ST435_1_6G		0x90
 #define XST352_BYTE1_ST2081_10_2160L_6G		0xC0
 #define XST352_BYTE1_ST2081_10_DL_2160L_6G	0xC2
 #define XST352_BYTE1_ST2082_10_2160L_12G	0xCE
@@ -759,6 +760,8 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 		break;
 	case XSDIRX_MODE_6G_MASK:
 		switch (byte1) {
+		case XST352_BYTE1_ST435_1_6G:
+			/* SMPTE ST 435-1 */
 		case XST352_BYTE1_ST2081_10_DL_2160L_6G:
 			/* Dual link 6G */
 		case XST352_BYTE1_ST2081_10_2160L_6G:
