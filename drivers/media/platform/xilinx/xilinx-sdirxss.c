@@ -709,7 +709,7 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 					format->width = 1920;
 				break;
 			default:
-				dev_dbg(core->dev, "Unknown HD Mode SMPTE standard\n");
+				dev_err(core->dev, "Unknown HD Mode SMPTE standard %d\n", byte1);
 				return -EINVAL;
 			}
 		}
@@ -727,7 +727,7 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 			format->height = 576;
 			break;
 		default:
-			dev_dbg(core->dev, "Unknown SD Mode SMPTE standard\n");
+			dev_err(core->dev, "Unknown SD Mode SMPTE standard %d\n", family);
 			return -EINVAL;
 		}
 		break;
@@ -753,7 +753,7 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 				format->width = 1920;
 			break;
 		default:
-			dev_dbg(core->dev, "Unknown 3G Mode SMPTE standard\n");
+			dev_err(core->dev, "Unknown 3G Mode SMPTE standard %d\n", byte1);
 			return -EINVAL;
 		}
 		break;
@@ -770,7 +770,7 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 				format->width = 3840;
 			break;
 		default:
-			dev_dbg(core->dev, "Unknown 6G Mode SMPTE standard\n");
+			dev_err(core->dev, "Unknown 6G Mode SMPTE standard %d\n", byte1);
 			return -EINVAL;
 		}
 		break;
@@ -786,12 +786,12 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 				format->width = 3840;
 			break;
 		default:
-			dev_dbg(core->dev, "Unknown 12G Mode SMPTE standard\n");
+			dev_err(core->dev, "Unknown 12G Mode SMPTE standard %d\n", byte1);
 			return -EINVAL;
 		};
 		break;
 	default:
-		dev_err(core->dev, "Invalid Mode\n");
+		dev_err(core->dev, "Invalid Mode %d\n", mode);
 		return -EINVAL;
 	}
 
@@ -1212,11 +1212,11 @@ static int xsdirxss_s_stream(struct v4l2_subdev *sd, int enable)
 
 	if (enable) {
 		if (!xsdirxss->vidlocked) {
-			dev_dbg(core->dev, "Video is not locked\n");
+			dev_err(core->dev, "Video is not locked\n");
 			return -EINVAL;
 		}
 		if (xsdirxss->streaming) {
-			dev_dbg(core->dev, "Already streaming\n");
+			dev_err(core->dev, "Already streaming\n");
 			return -EINVAL;
 		}
 
@@ -1225,7 +1225,7 @@ static int xsdirxss_s_stream(struct v4l2_subdev *sd, int enable)
 		dev_dbg(core->dev, "Streaming started\n");
 	} else {
 		if (!xsdirxss->streaming) {
-			dev_dbg(core->dev, "Stopped streaming already\n");
+			dev_err(core->dev, "Stopped streaming already\n");
 			return -EINVAL;
 		}
 
