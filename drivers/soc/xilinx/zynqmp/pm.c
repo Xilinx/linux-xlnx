@@ -30,6 +30,7 @@
 #include <linux/pinctrl/consumer.h>
 #include <linux/platform_device.h>
 #include <linux/debugfs.h>
+#include <linux/reboot.h>
 #include <linux/suspend.h>
 #include <linux/soc/xilinx/zynqmp/pm.h>
 
@@ -754,7 +755,18 @@ MODULE_DEVICE_TABLE(of, pm_of_match);
  */
 static void zynqmp_pm_init_suspend_work_fn(struct work_struct *work)
 {
-	pm_suspend(PM_SUSPEND_MEM);
+	struct zynqmp_pm_work_struct *pm_work =
+		container_of(work, struct zynqmp_pm_work_struct, callback_work);
+
+	if (pm_work->args[0] == ZYNQMP_PM_SUSPEND_REASON_SYSTEM_SHUTDOWN) {
+		orderly_poweroff(true);
+	} else if (pm_work->args[0] ==
+			ZYNQMP_PM_SUSPEND_REASON_POWER_UNIT_REQUEST) {
+		pm_suspend(PM_SUSPEND_MEM);
+	} else {
+		pr_err("%s Unsupported InitSuspendCb reason code %d.\n"
+				, __func__, pm_work->args[0]);
+	}
 }
 
 static ssize_t suspend_mode_show(struct device *dev,
