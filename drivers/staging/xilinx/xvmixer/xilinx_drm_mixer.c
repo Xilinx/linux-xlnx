@@ -342,6 +342,7 @@ int xilinx_drm_mixer_set_plane(struct xilinx_drm_plane *plane,
 	u32 luma_stride = fb->pitches[0];
 	u32 chroma_stride = fb->pitches[1];
 	u32 luma_offset, chroma_offset;
+	u32 padding_factor_nume, padding_factor_deno, cpp_nume, cpp_deno, cpp;
 	u64 luma_start_addr, chroma_start_addr;
 
 	u32 active_area_width;
@@ -361,11 +362,28 @@ int xilinx_drm_mixer_set_plane(struct xilinx_drm_plane *plane,
 	luma_buffer = xvmixer_drm_fb_get_gem_obj(fb, 0);
 	chroma_buffer = xvmixer_drm_fb_get_gem_obj(fb, 1);
 
-	/* JPM fix for 10-bit formats */
-	luma_offset = src_x * drm_format_plane_cpp(fb->pixel_format, 0) +
-						   src_y * luma_stride;
-	chroma_offset = src_x * drm_format_plane_cpp(fb->pixel_format, 1) +
-						     src_y * chroma_stride;
+	/* compute buffer read offsets */
+	drm_format_width_padding_factor(fb->pixel_format, &padding_factor_nume,
+					&padding_factor_deno);
+
+	drm_format_cpp_scaling_factor(fb->pixel_format, &cpp_nume, &cpp_deno);
+
+	cpp = drm_format_plane_cpp(fb->pixel_format, 0);
+
+	luma_offset = DIV_ROUND_UP((src_x * cpp * cpp_nume *
+				   padding_factor_nume) /
+				   padding_factor_deno, cpp_nume > 1 ? 8 : 1);
+
+	luma_offset += src_y * luma_stride;
+
+	cpp = drm_format_plane_cpp(fb->pixel_format, 1);
+
+	chroma_offset = DIV_ROUND_UP((src_x * cpp * cpp_nume *
+				     padding_factor_nume) /
+				     padding_factor_deno, cpp_nume > 1 ? 8 : 1);
+
+	chroma_offset += src_y * chroma_stride;
+
 	luma_offset += fb->offsets[0];
 	chroma_offset += fb->offsets[1];
 

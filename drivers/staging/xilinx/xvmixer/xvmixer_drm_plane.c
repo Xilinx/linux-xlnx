@@ -156,7 +156,11 @@ int xvmixer_drm_plane_mode_set(struct drm_plane *base_plane,
 		plane->dma[i].sgl[0].size =
 				(width * cpp * cpp_nume * padding_factor_nume) /
 				(cpp_deno * padding_factor_deno);
-		offset = src_x * cpp + src_y * fb->pitches[i]; /* JPM fix */
+		offset = DIV_ROUND_UP((src_x * cpp * cpp_nume *
+				      padding_factor_nume) /
+				      padding_factor_deno,
+				      cpp_nume > 1 ? 8 : 1);
+		offset += src_y * fb->pitches[i];
 		offset += fb->offsets[i];
 		plane->dma[i].xt.src_start = obj->paddr + offset;
 		plane->dma[i].xt.frame_size = 1;
