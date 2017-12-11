@@ -358,6 +358,7 @@ static inline struct xilinx_drm_dp *to_dp(struct drm_encoder *encoder)
 		typeof(x) _x = (x);	\
 		_x >= (min) && _x <= (max); })
 
+static inline int xilinx_drm_dp_max_rate(int link_rate, u8 lane_num, u8 bpp);
 /* Match xilinx_dp_testcases vs dp_debugfs_reqs[] entry */
 enum xilinx_dp_testcases {
 	DP_TC_LINK_RATE,
@@ -742,12 +743,41 @@ err_dbgfs:
 	return err;
 }
 
-static void xilinx_dp_debugfs_mode_config(struct xilinx_drm_dp *dp)
+static void xilinx_dp_debugfs_mode_config(struct xilinx_drm_dp *dp, u8 *lanes,
+					  u8 *rate_code, int pclock)
 {
-	dp->mode.bw_code =
-		dp_debugfs.link_rate ? dp_debugfs.link_rate : dp->mode.bw_code;
-	dp->mode.lane_cnt =
-		dp_debugfs.lane_cnt ? dp_debugfs.lane_cnt : dp->mode.lane_cnt;
+	int debugfs_rate = 0;
+	u8 bpp = dp->config.bpp;
+
+	if (!dp_debugfs.link_rate && !dp_debugfs.lane_cnt)
+		return;
+
+	if (dp_debugfs.link_rate) {
+		debugfs_rate = min(dp_debugfs.link_rate, *rate_code);
+		debugfs_rate =
+			drm_dp_bw_code_to_link_rate(debugfs_rate);
+		debugfs_rate =
+			xilinx_drm_dp_max_rate(debugfs_rate, *lanes, bpp);
+	}
+
+	if (dp_debugfs.lane_cnt) {
+		u8 lane;
+
+		lane = min(dp_debugfs.lane_cnt, *lanes);
+		debugfs_rate =
+			xilinx_drm_dp_max_rate(debugfs_rate, lane, bpp);
+	}
+
+	if (pclock > debugfs_rate) {
+		dev_dbg(dp->dev, "debugfs could't configure link values\n");
+		return;
+	}
+
+	if (dp_debugfs.link_rate)
+		*rate_code = dp_debugfs.link_rate;
+	if (dp_debugfs.lane_cnt)
+		*lanes = dp_debugfs.lane_cnt;
+
 }
 #else
 static int xilinx_dp_debugfs_init(struct xilinx_drm_dp *dp)
@@ -755,7 +785,8 @@ static int xilinx_dp_debugfs_init(struct xilinx_drm_dp *dp)
 	return 0;
 }
 
-static void xilinx_dp_debugfs_mode_config(struct xilinx_drm_dp *dp)
+static void xilinx_dp_debugfs_mode_config(struct xilinx_drm_dp *dp, u8 *lanes,
+					  u8 *rate_code, int pclock)
 {
 }
 #endif /* DRM_XILINX_DP_DEBUG_FS */
@@ -915,6 +946,9 @@ static int xilinx_drm_dp_mode_configure(struct xilinx_drm_dp *dp, int pclock,
 	if (current_bw == DP_LINK_BW_1_62)
 		return -EINVAL;
 
+	xilinx_dp_debugfs_mode_config(dp, &max_lanes, &max_link_rate_code,
+				      pclock);
+
 	for (i = ARRAY_SIZE(bws) - 1; i >= 0; i--) {
 		if (current_bw && bws[i] >= current_bw)
 			continue;
@@ -933,7 +967,6 @@ static int xilinx_drm_dp_mode_configure(struct xilinx_drm_dp *dp, int pclock,
 			dp->mode.bw_code = bws[i];
 			dp->mode.lane_cnt = lane_cnt;
 			dp->mode.pclock = pclock;
-			xilinx_dp_debugfs_mode_config(dp);
 			return dp->mode.bw_code;
 		}
 	}
