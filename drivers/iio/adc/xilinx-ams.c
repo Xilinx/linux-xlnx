@@ -20,6 +20,7 @@
 #include <linux/io.h>
 
 #include "xilinx-ams.h"
+#include <linux/delay.h>
 
 static const unsigned int AMS_UNMASK_TIMEOUT = 500;
 
@@ -163,27 +164,11 @@ static void iio_ams_update_alarm(struct ams *ams, unsigned long alarm_mask)
 	spin_unlock_irqrestore(&ams->lock, flags);
 }
 
-static void iio_ams_init_device(struct ams *ams)
+static void ams_enable_channel_sequence(struct ams *ams)
 {
 	int i;
 	unsigned long long scan_mask;
 	struct iio_dev *indio_dev = iio_priv_to_dev(ams);
-
-	/* reset AMS */
-	if (ams->ps_base)
-		ams_ps_write_reg(ams, AMS_VP_VN, AMS_PS_RESET_VALUE);
-
-	if (ams->pl_base)
-		ams->pl_bus->write(ams, AMS_VP_VN, AMS_PL_RESET_VALUE);
-
-	iio_ams_disable_all_alarm(ams);
-
-	/* Disable interrupt */
-	ams_update_intrmask(ams, ~0, ~0);
-
-	/* Clear any pending interrupt */
-	ams_write_reg(ams, AMS_ISR_0, AMS_ISR0_ALARM_MASK);
-	ams_write_reg(ams, AMS_ISR_1, AMS_ISR1_ALARM_MASK);
 
 	/* Enable channel sequence. First 22 bit of scan_mask represent
 	 * PS channels, and  next remaining bit represents PL channels.
@@ -230,6 +215,75 @@ static void iio_ams_init_device(struct ams *ams)
 	}
 }
 
+static void iio_ams_init_device(struct ams *ams)
+{
+
+	/* reset AMS */
+	if (ams->ps_base)
+		ams_ps_write_reg(ams, AMS_VP_VN, AMS_PS_RESET_VALUE);
+
+	if (ams->pl_base)
+		ams->pl_bus->write(ams, AMS_VP_VN, AMS_PL_RESET_VALUE);
+
+	iio_ams_disable_all_alarm(ams);
+
+	/* Disable interrupt */
+	ams_update_intrmask(ams, ~0, ~0);
+
+	/* Clear any pending interrupt */
+	ams_write_reg(ams, AMS_ISR_0, AMS_ISR0_ALARM_MASK);
+	ams_write_reg(ams, AMS_ISR_1, AMS_ISR1_ALARM_MASK);
+
+	ams_enable_channel_sequence(ams);
+}
+
+static void ams_enable_single_channel(struct ams *ams, unsigned int offset)
+{
+	u8 channel_num = 0;
+
+	switch (offset) {
+	case AMS_VCC_PSPLL0:
+		channel_num = AMS_VCC_PSPLL0_CH;
+		break;
+	case AMS_VCC_PSPLL3:
+		channel_num = AMS_VCC_PSPLL3_CH;
+		break;
+	case AMS_VCCINT:
+		channel_num = AMS_VCCINT_CH;
+		break;
+	case AMS_VCCBRAM:
+		channel_num = AMS_VCCBRAM_CH;
+		break;
+	case AMS_VCCAUX:
+		channel_num = AMS_VCCAUX_CH;
+		break;
+	case AMS_PSDDRPLL:
+		channel_num = AMS_PSDDRPLL_CH;
+		break;
+	case AMS_PSINTFPDDR:
+		channel_num = AMS_PSINTFPDDR_CH;
+		break;
+	default:
+		break;
+	}
+
+	/* set single channel, sequencer off mode */
+	ams_ps_update_reg(ams, AMS_REG_CONFIG1, AMS_CONF1_SEQ_MASK,
+			AMS_CONF1_SEQ_SINGLE_CHANNEL);
+
+	/* write the channel number */
+	ams_ps_update_reg(ams, AMS_REG_CONFIG0, AMS_CONF0_CHANNEL_NUM_MASK,
+			channel_num);
+	mdelay(1);
+}
+
+static void ams_read_vcc_reg(struct ams *ams, unsigned int offset, u32 *data)
+{
+	ams_enable_single_channel(ams, offset);
+	ams_read_reg(ams, offset, data);
+	ams_enable_channel_sequence(ams);
+}
+
 static int ams_read_raw(struct iio_dev *indio_dev,
 			struct iio_chan_spec const *chan,
 			int *val, int *val2, long mask)
@@ -239,7 +293,9 @@ static int ams_read_raw(struct iio_dev *indio_dev,
 	switch (mask) {
 	case IIO_CHAN_INFO_RAW:
 		mutex_lock(&ams->mutex);
-		if (chan->scan_index >= PS_SEQ_MAX)
+		if (chan->scan_index >= (PS_SEQ_MAX * 3))
+			ams_read_vcc_reg(ams, chan->address, val);
+		else if (chan->scan_index >= PS_SEQ_MAX)
 			ams->pl_bus->read(ams, chan->address, val);
 		else
 			ams_ps_read_reg(ams, chan->address, val);
@@ -274,6 +330,15 @@ static int ams_read_raw(struct iio_dev *indio_dev,
 					*val = AMS_SUPPLY_SCALE_3VOLT;
 				else
 					*val = AMS_SUPPLY_SCALE_6VOLT;
+				break;
+			case AMS_VCC_PSPLL0:
+			case AMS_VCC_PSPLL3:
+			case AMS_VCCINT:
+			case AMS_VCCBRAM:
+			case AMS_VCCAUX:
+			case AMS_PSDDRPLL:
+			case AMS_PSINTFPDDR:
+				*val = AMS_SUPPLY_SCALE_3VOLT;
 				break;
 			default:
 				*val = AMS_SUPPLY_SCALE_1VOLT;
@@ -728,6 +793,16 @@ static const struct iio_chan_spec ams_pl_channels[] = {
 	AMS_PL_AUX_CHAN_VOLTAGE(15, "vccaux15"),
 };
 
+static const struct iio_chan_spec ams_ctrl_channels[] = {
+	AMS_CTRL_CHAN_VOLTAGE(AMS_SEQ_VCC_PSPLL, AMS_VCC_PSPLL0, "vcc_pspll0"),
+	AMS_CTRL_CHAN_VOLTAGE(AMS_SEQ_VCC_PSBATT, AMS_VCC_PSPLL3, "vcc_psbatt"),
+	AMS_CTRL_CHAN_VOLTAGE(AMS_SEQ_VCCINT, AMS_VCCINT, "vccint"),
+	AMS_CTRL_CHAN_VOLTAGE(AMS_SEQ_VCCBRAM, AMS_VCCBRAM, "vccbram"),
+	AMS_CTRL_CHAN_VOLTAGE(AMS_SEQ_VCCAUX, AMS_VCCAUX, "vccaux"),
+	AMS_CTRL_CHAN_VOLTAGE(AMS_SEQ_PSDDRPLL, AMS_PSDDRPLL, "vcc_psddrpll"),
+	AMS_CTRL_CHAN_VOLTAGE(AMS_SEQ_INTDDR, AMS_PSINTFPDDR, "vccpsintfpddr"),
+};
+
 static int ams_init_module(struct iio_dev *indio_dev, struct device_node *np,
 			   struct iio_chan_spec *channels)
 {
@@ -776,6 +851,11 @@ static int ams_init_module(struct iio_dev *indio_dev, struct device_node *np,
 			}
 		}
 		of_node_put(chan_node);
+	} else if (of_device_is_compatible(np, "xlnx,zynqmp-ams")) {
+		/* add AMS channels to iio device channels */
+		memcpy(channels + num_channels, ams_ctrl_channels,
+				sizeof(ams_ctrl_channels));
+		num_channels += ARRAY_SIZE(ams_ctrl_channels);
 	} else {
 		return -EINVAL;
 	}
@@ -793,9 +873,20 @@ static int ams_parse_dt(struct iio_dev *indio_dev, struct platform_device *pdev)
 
 	/* Initialize buffer for channel specification */
 	ams_channels = kzalloc(sizeof(ams_ps_channels) +
-			       sizeof(ams_pl_channels), GFP_KERNEL);
+			       sizeof(ams_pl_channels) +
+			       sizeof(ams_ctrl_channels), GFP_KERNEL);
 	if (!ams_channels)
 		return -ENOMEM;
+
+	if (of_device_is_available(np)) {
+		ret = ams_init_module(indio_dev, np, ams_channels);
+		if (ret < 0) {
+			kfree(ams_channels);
+			return ret;
+		}
+
+		num_channels += ret;
+	}
 
 	for_each_child_of_node(np, child_node) {
 		if (of_device_is_available(child_node)) {
@@ -816,17 +907,25 @@ static int ams_parse_dt(struct iio_dev *indio_dev, struct platform_device *pdev)
 		else
 			ams_channels[i].channel = chan_temp++;
 
-		/* set threshold to max and min for each channel */
-		falling_off = ams_get_alarm_offset(ams_channels[i].scan_index,
-						   IIO_EV_DIR_FALLING);
-		rising_off = ams_get_alarm_offset(ams_channels[i].scan_index,
-						  IIO_EV_DIR_RISING);
-		if (ams_channels[i].scan_index >= PS_SEQ_MAX) {
-			ams->pl_bus->write(ams, falling_off, AMS_ALARM_THR_MIN);
-			ams->pl_bus->write(ams, rising_off, AMS_ALARM_THR_MAX);
-		} else {
-			ams_ps_write_reg(ams, falling_off, AMS_ALARM_THR_MIN);
-			ams_ps_write_reg(ams, rising_off, AMS_ALARM_THR_MAX);
+		if (ams_channels[i].scan_index < (PS_SEQ_MAX * 3)) {
+			/* set threshold to max and min for each channel */
+			falling_off = ams_get_alarm_offset(
+					ams_channels[i].scan_index,
+					IIO_EV_DIR_FALLING);
+			rising_off = ams_get_alarm_offset(
+					ams_channels[i].scan_index,
+					IIO_EV_DIR_RISING);
+			if (ams_channels[i].scan_index >= PS_SEQ_MAX) {
+				ams->pl_bus->write(ams, falling_off,
+						AMS_ALARM_THR_MIN);
+				ams->pl_bus->write(ams, rising_off,
+						AMS_ALARM_THR_MAX);
+			} else {
+				ams_ps_write_reg(ams, falling_off,
+						AMS_ALARM_THR_MIN);
+				ams_ps_write_reg(ams, rising_off,
+						AMS_ALARM_THR_MAX);
+			}
 		}
 	}
 
