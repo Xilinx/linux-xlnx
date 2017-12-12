@@ -713,11 +713,10 @@ xilinx_dpdma_chan_alloc_sw_desc(struct xilinx_dpdma_chan *chan)
 	struct xilinx_dpdma_sw_desc *sw_desc;
 	dma_addr_t phys;
 
-	sw_desc = dma_pool_alloc(chan->desc_pool, GFP_ATOMIC, &phys);
+	sw_desc = dma_pool_zalloc(chan->desc_pool, GFP_ATOMIC, &phys);
 	if (!sw_desc)
 		return NULL;
 
-	memset(sw_desc, 0, sizeof(*sw_desc));
 	sw_desc->phys = phys;
 
 	return sw_desc;
