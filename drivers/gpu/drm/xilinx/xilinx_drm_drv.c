@@ -290,8 +290,9 @@ static int xilinx_drm_open(struct drm_device *dev, struct drm_file *file)
 {
 	struct xilinx_drm_private *private = dev->dev_private;
 
+	/* This is a hack way to allow the root user to run as a master */
 	if (!(drm_is_primary_client(file) && !dev->master) &&
-	    capable(CAP_SYS_ADMIN)) {
+	    !file->is_master && capable(CAP_SYS_ADMIN)) {
 		file->is_master = 1;
 		private->is_master = true;
 	}
@@ -299,18 +300,19 @@ static int xilinx_drm_open(struct drm_device *dev, struct drm_file *file)
 	return 0;
 }
 
-/* preclose */
-static void xilinx_drm_preclose(struct drm_device *drm, struct drm_file *file)
+static int xilinx_drm_release(struct inode *inode, struct file *filp)
 {
+	struct drm_file *file = filp->private_data;
+	struct drm_minor *minor = file->minor;
+	struct drm_device *drm = minor->dev;
 	struct xilinx_drm_private *private = drm->dev_private;
-
-	/* cancel pending page flip request */
-	xilinx_drm_crtc_cancel_page_flip(private->crtc, file);
 
 	if (private->is_master) {
 		private->is_master = false;
 		file->is_master = 0;
 	}
+
+	return drm_release(inode, filp);
 }
 
 /* restore the default mode when xilinx drm is released */
@@ -326,7 +328,7 @@ static void xilinx_drm_lastclose(struct drm_device *drm)
 static const struct file_operations xilinx_drm_fops = {
 	.owner		= THIS_MODULE,
 	.open		= drm_open,
-	.release	= drm_release,
+	.release	= xilinx_drm_release,
 	.unlocked_ioctl	= drm_ioctl,
 	.mmap		= drm_gem_cma_mmap,
 	.poll		= drm_poll,
@@ -339,9 +341,8 @@ static const struct file_operations xilinx_drm_fops = {
 
 static struct drm_driver xilinx_drm_driver = {
 	.driver_features		= DRIVER_MODESET | DRIVER_GEM |
-					  DRIVER_PRIME,
+					  DRIVER_PRIME | DRIVER_LEGACY,
 	.open				= xilinx_drm_open,
-	.preclose			= xilinx_drm_preclose,
 	.lastclose			= xilinx_drm_lastclose,
 
 	.enable_vblank			= xilinx_drm_enable_vblank,
