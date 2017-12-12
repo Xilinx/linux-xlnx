@@ -12,6 +12,23 @@
 #define AMS_IDR_1         0x02c
 #define AMS_PS_CSTS       0x040
 #define AMS_PL_CSTS       0x044
+#define AMS_MON_CSTS      0x050
+
+#define AMS_VCC_PSPLL0    0x060
+#define AMS_VCC_PSPLL3    0x06C
+#define AMS_VCCINT        0x078
+#define AMS_VCCBRAM       0x07C
+#define AMS_VCCAUX        0x080
+#define AMS_PSDDRPLL      0x084
+#define AMS_PSINTFPDDR    0x09C
+
+#define AMS_VCC_PSPLL0_CH 48
+#define AMS_VCC_PSPLL3_CH 51
+#define AMS_VCCINT_CH     54
+#define AMS_VCCBRAM_CH    55
+#define AMS_VCCAUX_CH     56
+#define AMS_PSDDRPLL_CH   57
+#define AMS_PSINTFPDDR_CH 63
 
 #define AMS_REG_CONFIG0   0x100
 #define AMS_REG_CONFIG1   0x104
@@ -44,6 +61,8 @@
 
 #define AMS_PS_RESET_VALUE   0xFFFFU
 #define AMS_PL_RESET_VALUE   0xFFFFU
+
+#define AMS_CONF0_CHANNEL_NUM_MASK      (0x3f << 0)
 
 #define AMS_CONF1_SEQ_MASK              (0xf << 12)
 #define AMS_CONF1_SEQ_DEFAULT           (0 << 12)
@@ -130,6 +149,16 @@ enum ams_alarm_bit {
 };
 
 enum ams_seq {
+	AMS_SEQ_VCC_PSPLL,
+	AMS_SEQ_VCC_PSBATT,
+	AMS_SEQ_VCCINT,
+	AMS_SEQ_VCCBRAM,
+	AMS_SEQ_VCCAUX,
+	AMS_SEQ_PSDDRPLL,
+	AMS_SEQ_INTDDR
+};
+
+enum ams_ps_pl_seq {
 	AMS_SEQ_CALIB,
 	AMS_SEQ_RSVD_1,
 	AMS_SEQ_RSVD_2,
@@ -155,6 +184,7 @@ enum ams_seq {
 	AMS_SEQ_MAX
 };
 
+#define AMS_SEQ(x)          (AMS_SEQ_MAX + (x))
 #define AMS_VAUX_SEQ(x)     (AMS_SEQ_MAX + (x))
 
 #define PS_SEQ_MAX          AMS_SEQ_MAX
@@ -213,6 +243,9 @@ enum ams_seq {
 #define AMS_PL_AUX_CHAN_VOLTAGE(_auxno, _ext) \
 	AMS_CHAN_VOLTAGE(PL_SEQ(AMS_VAUX_SEQ(_auxno)), \
 			AMS_REG_VAUX(_auxno), _ext, false)
+#define AMS_CTRL_CHAN_VOLTAGE(_scan_index, _addr, _ext) \
+	AMS_CHAN_VOLTAGE(PL_SEQ(AMS_VAUX_SEQ(AMS_SEQ(_scan_index))), \
+			_addr, _ext, false)
 
 struct ams {
 	void __iomem *base;
