@@ -28,11 +28,8 @@ static inline struct tegra_bo *host1x_to_tegra_bo(struct host1x_bo *bo)
 static void tegra_bo_put(struct host1x_bo *bo)
 {
 	struct tegra_bo *obj = host1x_to_tegra_bo(bo);
-	struct drm_device *drm = obj->gem.dev;
 
-	mutex_lock(&drm->struct_mutex);
-	drm_gem_object_unreference(&obj->gem);
-	mutex_unlock(&drm->struct_mutex);
+	drm_gem_object_unreference_unlocked(&obj->gem);
 }
 
 static dma_addr_t tegra_bo_pin(struct host1x_bo *bo, struct sg_table **sgt)
@@ -72,11 +69,8 @@ static void tegra_bo_kunmap(struct host1x_bo *bo, unsigned int page,
 static struct host1x_bo *tegra_bo_get(struct host1x_bo *bo)
 {
 	struct tegra_bo *obj = host1x_to_tegra_bo(bo);
-	struct drm_device *drm = obj->gem.dev;
 
-	mutex_lock(&drm->struct_mutex);
 	drm_gem_object_reference(&obj->gem);
-	mutex_unlock(&drm->struct_mutex);
 
 	return bo;
 }
@@ -181,15 +175,13 @@ static void tegra_bo_free(struct drm_device *drm, struct tegra_bo *bo)
 		sg_free_table(bo->sgt);
 		kfree(bo->sgt);
 	} else if (bo->vaddr) {
-		dma_free_writecombine(drm->dev, bo->gem.size, bo->vaddr,
-				      bo->paddr);
+		dma_free_wc(drm->dev, bo->gem.size, bo->vaddr, bo->paddr);
 	}
 }
 
 static int tegra_bo_get_pages(struct drm_device *drm, struct tegra_bo *bo)
 {
 	struct scatterlist *s;
-	struct sg_table *sgt;
 	unsigned int i;
 
 	bo->pages = drm_gem_get_pages(&bo->gem);
@@ -198,36 +190,28 @@ static int tegra_bo_get_pages(struct drm_device *drm, struct tegra_bo *bo)
 
 	bo->num_pages = bo->gem.size >> PAGE_SHIFT;
 
-	sgt = drm_prime_pages_to_sg(bo->pages, bo->num_pages);
-	if (IS_ERR(sgt))
+	bo->sgt = drm_prime_pages_to_sg(bo->pages, bo->num_pages);
+	if (IS_ERR(bo->sgt))
 		goto put_pages;
 
 	/*
-	 * Fake up the SG table so that dma_map_sg() can be used to flush the
-	 * pages associated with it. Note that this relies on the fact that
-	 * the DMA API doesn't hook into IOMMU on Tegra, therefore mapping is
-	 * only cache maintenance.
+	 * Fake up the SG table so that dma_sync_sg_for_device() can be used
+	 * to flush the pages associated with it.
 	 *
 	 * TODO: Replace this by drm_clflash_sg() once it can be implemented
 	 * without relying on symbols that are not exported.
 	 */
-	for_each_sg(sgt->sgl, s, sgt->nents, i)
+	for_each_sg(bo->sgt->sgl, s, bo->sgt->nents, i)
 		sg_dma_address(s) = sg_phys(s);
 
-	if (dma_map_sg(drm->dev, sgt->sgl, sgt->nents, DMA_TO_DEVICE) == 0)
-		goto release_sgt;
-
-	bo->sgt = sgt;
+	dma_sync_sg_for_device(drm->dev, bo->sgt->sgl, bo->sgt->nents,
+			       DMA_TO_DEVICE);
 
 	return 0;
 
-release_sgt:
-	sg_free_table(sgt);
-	kfree(sgt);
-	sgt = ERR_PTR(-ENOMEM);
 put_pages:
 	drm_gem_put_pages(&bo->gem, bo->pages, false, false);
-	return PTR_ERR(sgt);
+	return PTR_ERR(bo->sgt);
 }
 
 static int tegra_bo_alloc(struct drm_device *drm, struct tegra_bo *bo)
@@ -248,8 +232,8 @@ static int tegra_bo_alloc(struct drm_device *drm, struct tegra_bo *bo)
 	} else {
 		size_t size = bo->gem.size;
 
-		bo->vaddr = dma_alloc_writecombine(drm->dev, size, &bo->paddr,
-						   GFP_KERNEL | __GFP_NOWARN);
+		bo->vaddr = dma_alloc_wc(drm->dev, size, &bo->paddr,
+					 GFP_KERNEL | __GFP_NOWARN);
 		if (!bo->vaddr) {
 			dev_err(drm->dev,
 				"failed to allocate buffer of size %zu\n",
@@ -417,12 +401,9 @@ int tegra_bo_dumb_map_offset(struct drm_file *file, struct drm_device *drm,
 	struct drm_gem_object *gem;
 	struct tegra_bo *bo;
 
-	mutex_lock(&drm->struct_mutex);
-
-	gem = drm_gem_object_lookup(drm, file, handle);
+	gem = drm_gem_object_lookup(file, handle);
 	if (!gem) {
 		dev_err(drm->dev, "failed to lookup GEM object\n");
-		mutex_unlock(&drm->struct_mutex);
 		return -EINVAL;
 	}
 
@@ -430,9 +411,7 @@ int tegra_bo_dumb_map_offset(struct drm_file *file, struct drm_device *drm,
 
 	*offset = drm_vma_node_offset_addr(&bo->gem.vma_node);
 
-	drm_gem_object_unreference(gem);
-
-	mutex_unlock(&drm->struct_mutex);
+	drm_gem_object_unreference_unlocked(gem);
 
 	return 0;
 }
@@ -492,8 +471,8 @@ int tegra_drm_mmap(struct file *file, struct vm_area_struct *vma)
 		vma->vm_flags &= ~VM_PFNMAP;
 		vma->vm_pgoff = 0;
 
-		ret = dma_mmap_writecombine(gem->dev->dev, vma, bo->vaddr,
-					    bo->paddr, gem->size);
+		ret = dma_mmap_wc(gem->dev->dev, vma, bo->vaddr, bo->paddr,
+				  gem->size);
 		if (ret) {
 			drm_gem_vm_close(vma);
 			return ret;
@@ -627,8 +606,14 @@ struct dma_buf *tegra_gem_prime_export(struct drm_device *drm,
 				       struct drm_gem_object *gem,
 				       int flags)
 {
-	return dma_buf_export(gem, &tegra_gem_prime_dmabuf_ops, gem->size,
-			      flags, NULL);
+	DEFINE_DMA_BUF_EXPORT_INFO(exp_info);
+
+	exp_info.ops = &tegra_gem_prime_dmabuf_ops;
+	exp_info.size = gem->size;
+	exp_info.flags = flags;
+	exp_info.priv = gem;
+
+	return drm_gem_dmabuf_export(drm, &exp_info);
 }
 
 struct drm_gem_object *tegra_gem_prime_import(struct drm_device *drm,

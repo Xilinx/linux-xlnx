@@ -191,7 +191,7 @@ static void zynq_qspi_init_hw(struct zynq_qspi *xqspi)
 			      ZYNQ_QSPI_IXR_RXNEMTY_MASK)
 		zynq_qspi_read(xqspi, ZYNQ_QSPI_RXD_OFFSET);
 
-	zynq_qspi_write(xqspi, ZYNQ_QSPI_STATUS_OFFSET , 0x7F);
+	zynq_qspi_write(xqspi, ZYNQ_QSPI_STATUS_OFFSET, 0x7F);
 	config_reg = zynq_qspi_read(xqspi, ZYNQ_QSPI_CONFIG_OFFSET);
 	config_reg &= ~(ZYNQ_QSPI_CONFIG_MSTREN_MASK |
 			ZYNQ_QSPI_CONFIG_CPOL_MASK |
@@ -212,7 +212,7 @@ static void zynq_qspi_init_hw(struct zynq_qspi *xqspi)
 			ZYNQ_QSPI_TX_THRESHOLD);
 
 	if (xqspi->is_dual)
-		/* Enable two memories on seperate buses */
+		/* Enable two memories on separate buses */
 		zynq_qspi_write(xqspi, ZYNQ_QSPI_LINEAR_CFG_OFFSET,
 				(ZYNQ_QSPI_LCFG_TWO_MEM_MASK |
 				ZYNQ_QSPI_LCFG_SEP_BUS_MASK |
@@ -238,18 +238,18 @@ static void zynq_qspi_init_hw(struct zynq_qspi *xqspi)
  * when odd bytes are requested to avoid transfer of a nibble to each flash.
  * The receive buffer though, is populated with the number of bytes requested.
  */
-static void zynq_qspi_read_rx_fifo(struct zynq_qspi *xqspi, unsigned size)
+static void zynq_qspi_read_rx_fifo(struct zynq_qspi *xqspi, unsigned int size)
 {
-	unsigned xsize;
+	unsigned int xsize;
 	u32 data;
 
 	data = zynq_qspi_read(xqspi, ZYNQ_QSPI_RXD_OFFSET);
 
 	if (xqspi->rxbuf) {
 		xsize = size;
-		if (xqspi->is_dual && !xqspi->is_instr && (size%2))
+		if (xqspi->is_dual && !xqspi->is_instr && (size % 2))
 			xsize++;
-		memcpy(xqspi->rxbuf, ((u8 *) &data) + 4 - xsize, size);
+		memcpy(xqspi->rxbuf, ((u8 *)&data) + 4 - xsize, size);
 		xqspi->rxbuf += size;
 	}
 
@@ -269,12 +269,12 @@ static void zynq_qspi_read_rx_fifo(struct zynq_qspi *xqspi, unsigned size)
  * going to individual flash devices, where a byte is expected.
  * This check is only for data and will not apply for commands.
  */
-static void zynq_qspi_write_tx_fifo(struct zynq_qspi *xqspi, unsigned size)
+static void zynq_qspi_write_tx_fifo(struct zynq_qspi *xqspi, unsigned int size)
 {
-	static const unsigned offset[4] = {
+	static const unsigned int offset[4] = {
 		ZYNQ_QSPI_TXD_00_01_OFFSET, ZYNQ_QSPI_TXD_00_10_OFFSET,
 		ZYNQ_QSPI_TXD_00_11_OFFSET, ZYNQ_QSPI_TXD_00_00_OFFSET };
-	unsigned xsize;
+	unsigned int xsize;
 	u32 data;
 
 	if (xqspi->txbuf) {
@@ -288,9 +288,9 @@ static void zynq_qspi_write_tx_fifo(struct zynq_qspi *xqspi, unsigned size)
 	xqspi->bytes_to_transfer -= size;
 
 	xsize = size;
-	if (xqspi->is_dual && !xqspi->is_instr && (size%2))
+	if (xqspi->is_dual && !xqspi->is_instr && (size % 2))
 		xsize++;
-	zynq_qspi_write(xqspi, offset[xsize-1], data);
+	zynq_qspi_write(xqspi, offset[xsize - 1], data);
 }
 
 /**
@@ -468,20 +468,20 @@ static void zynq_qspi_fill_tx_fifo(struct zynq_qspi *xqspi, int txcount,
 		return;
 	}
 
-	count = len/4;
+	count = len / 4;
 	if (count > txcount)
 		count = txcount;
 
 	if (xqspi->txbuf) {
 		writesl(xqspi->regs + ZYNQ_QSPI_TXD_00_00_OFFSET,
 			xqspi->txbuf, count);
-		xqspi->txbuf += count*4;
+		xqspi->txbuf += count * 4;
 	} else {
 		for (k = 0; k < count; k++)
 			writel_relaxed(0, xqspi->regs +
 					  ZYNQ_QSPI_TXD_00_00_OFFSET);
 	}
-	xqspi->bytes_to_transfer -= count*4;
+	xqspi->bytes_to_transfer -= count * 4;
 }
 
 /**
@@ -494,20 +494,20 @@ static void zynq_qspi_drain_rx_fifo(struct zynq_qspi *xqspi, int rxcount)
 	int count, len, k;
 
 	len = xqspi->bytes_to_receive - xqspi->bytes_to_transfer;
-	count = len/4;
+	count = len / 4;
 	if (count > rxcount)
 		count = rxcount;
 
 	if (xqspi->rxbuf) {
 		readsl(xqspi->regs + ZYNQ_QSPI_RXD_OFFSET,
 		       xqspi->rxbuf, count);
-		xqspi->rxbuf += count*4;
+		xqspi->rxbuf += count * 4;
 	} else {
 		for (k = 0; k < count; k++)
 			readl_relaxed(xqspi->regs + ZYNQ_QSPI_RXD_OFFSET);
 	}
-	xqspi->bytes_to_receive -= count*4;
-	len -= count*4;
+	xqspi->bytes_to_receive -= count * 4;
+	len -= count * 4;
 
 	if (len && len < 4 && count < rxcount)
 		zynq_qspi_read_rx_fifo(xqspi, len);
@@ -532,7 +532,7 @@ static irqreturn_t zynq_qspi_irq(int irq, void *dev_id)
 	bool txempty;
 
 	intr_status = zynq_qspi_read(xqspi, ZYNQ_QSPI_STATUS_OFFSET);
-	zynq_qspi_write(xqspi, ZYNQ_QSPI_STATUS_OFFSET , intr_status);
+	zynq_qspi_write(xqspi, ZYNQ_QSPI_STATUS_OFFSET, intr_status);
 
 	if ((intr_status & ZYNQ_QSPI_IXR_TXNFULL_MASK) ||
 	    (intr_status & ZYNQ_QSPI_IXR_RXNEMTY_MASK)) {
@@ -678,7 +678,7 @@ static int zynq_qspi_probe(struct platform_device *pdev)
 	u32 num_cs;
 
 	master = spi_alloc_master(&pdev->dev, sizeof(*xqspi));
-	if (master == NULL)
+	if (!master)
 		return -ENOMEM;
 
 	xqspi = spi_master_get_devdata(master);
@@ -692,9 +692,11 @@ static int zynq_qspi_probe(struct platform_device *pdev)
 		goto remove_master;
 	}
 
-	if (of_property_read_u32(pdev->dev.of_node, "is-dual", &xqspi->is_dual))
-		dev_warn(&pdev->dev, "couldn't determine configuration info "
-			 "about dual memories. defaulting to single memory\n");
+	if (of_property_read_u32(pdev->dev.of_node, "is-dual",
+				 &xqspi->is_dual)) {
+		dev_warn(&pdev->dev, "couldn't determine configuration info");
+		dev_warn(&pdev->dev, "about dual memories. defaulting to single memory\n");
+	}
 
 	xqspi->pclk = devm_clk_get(&pdev->dev, "pclk");
 	if (IS_ERR(xqspi->pclk)) {

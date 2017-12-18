@@ -50,6 +50,35 @@ struct exception_table_entry
 extern int fixup_exception(struct pt_regs *regs);
 
 /*
+ * These two functions allow hooking accesses to userspace to increase
+ * system integrity by ensuring that the kernel can not inadvertantly
+ * perform such accesses (eg, via list poison values) which could then
+ * be exploited for priviledge escalation.
+ */
+static inline unsigned int uaccess_save_and_enable(void)
+{
+#ifdef CONFIG_CPU_SW_DOMAIN_PAN
+	unsigned int old_domain = get_domain();
+
+	/* Set the current domain access to permit user accesses */
+	set_domain((old_domain & ~domain_mask(DOMAIN_USER)) |
+		   domain_val(DOMAIN_USER, DOMAIN_CLIENT));
+
+	return old_domain;
+#else
+	return 0;
+#endif
+}
+
+static inline void uaccess_restore(unsigned int flags)
+{
+#ifdef CONFIG_CPU_SW_DOMAIN_PAN
+	/* Restore the user access mask */
+	set_domain(flags);
+#endif
+}
+
+/*
  * These two are intentionally not defined anywhere - if the kernel
  * code generates any references to them, that's a bug.
  */
@@ -74,14 +103,6 @@ static inline void set_fs(mm_segment_t fs)
 }
 
 #define segment_eq(a, b)	((a) == (b))
-
-#define __addr_ok(addr) ({ \
-	unsigned long flag; \
-	__asm__("cmp %2, %0; movlo %0, #0" \
-		: "=&r" (flag) \
-		: "0" (current_thread_info()->addr_limit), "r" (addr) \
-		: "cc"); \
-	(flag == 0); })
 
 /* We use 33-bit arithmetic here... */
 #define __range_ok(addr, size) ({ \
@@ -165,6 +186,7 @@ extern int __get_user_64t_4(void *);
 		register typeof(x) __r2 asm("r2");			\
 		register unsigned long __l asm("r1") = __limit;		\
 		register int __e asm("r0");				\
+		unsigned int __ua_flags = uaccess_save_and_enable();	\
 		switch (sizeof(*(__p))) {				\
 		case 1:							\
 			if (sizeof((x)) >= 8)				\
@@ -192,6 +214,7 @@ extern int __get_user_64t_4(void *);
 			break;						\
 		default: __e = __get_user_bad(); break;			\
 		}							\
+		uaccess_restore(__ua_flags);				\
 		x = (typeof(*(p))) __r2;				\
 		__e;							\
 	})
@@ -207,46 +230,22 @@ extern int __put_user_2(void *, unsigned int);
 extern int __put_user_4(void *, unsigned int);
 extern int __put_user_8(void *, unsigned long long);
 
-#define __put_user_x(__r2, __p, __e, __l, __s)				\
-	   __asm__ __volatile__ (					\
-		__asmeq("%0", "r0") __asmeq("%2", "r2")			\
-		__asmeq("%3", "r1")					\
-		"bl	__put_user_" #__s				\
-		: "=&r" (__e)						\
-		: "0" (__p), "r" (__r2), "r" (__l)			\
-		: "ip", "lr", "cc")
-
-#define __put_user_check(x, p)						\
+#define __put_user_check(__pu_val, __ptr, __err, __s)			\
 	({								\
 		unsigned long __limit = current_thread_info()->addr_limit - 1; \
-		const typeof(*(p)) __user *__tmp_p = (p);		\
-		register const typeof(*(p)) __r2 asm("r2") = (x);	\
-		register const typeof(*(p)) __user *__p asm("r0") = __tmp_p; \
+		register typeof(__pu_val) __r2 asm("r2") = __pu_val;	\
+		register const void __user *__p asm("r0") = __ptr;	\
 		register unsigned long __l asm("r1") = __limit;		\
 		register int __e asm("r0");				\
-		switch (sizeof(*(__p))) {				\
-		case 1:							\
-			__put_user_x(__r2, __p, __e, __l, 1);		\
-			break;						\
-		case 2:							\
-			__put_user_x(__r2, __p, __e, __l, 2);		\
-			break;						\
-		case 4:							\
-			__put_user_x(__r2, __p, __e, __l, 4);		\
-			break;						\
-		case 8:							\
-			__put_user_x(__r2, __p, __e, __l, 8);		\
-			break;						\
-		default: __e = __put_user_bad(); break;			\
-		}							\
-		__e;							\
+		__asm__ __volatile__ (					\
+			__asmeq("%0", "r0") __asmeq("%2", "r2")		\
+			__asmeq("%3", "r1")				\
+			"bl	__put_user_" #__s			\
+			: "=&r" (__e)					\
+			: "0" (__p), "r" (__r2), "r" (__l)		\
+			: "ip", "lr", "cc");				\
+		__err = __e;						\
 	})
-
-#define put_user(x, p)							\
-	({								\
-		might_fault();						\
-		__put_user_check(x, p);					\
-	 })
 
 #else /* CONFIG_MMU */
 
@@ -265,7 +264,7 @@ static inline void set_fs(mm_segment_t fs)
 }
 
 #define get_user(x, p)	__get_user(x, p)
-#define put_user(x, p)	__put_user(x, p)
+#define __put_user_check __put_user_nocheck
 
 #endif /* CONFIG_MMU */
 
@@ -300,22 +299,25 @@ static inline void set_fs(mm_segment_t fs)
 do {									\
 	unsigned long __gu_addr = (unsigned long)(ptr);			\
 	unsigned long __gu_val;						\
+	unsigned int __ua_flags;					\
 	__chk_user_ptr(ptr);						\
 	might_fault();							\
+	__ua_flags = uaccess_save_and_enable();				\
 	switch (sizeof(*(ptr))) {					\
 	case 1:	__get_user_asm_byte(__gu_val, __gu_addr, err);	break;	\
 	case 2:	__get_user_asm_half(__gu_val, __gu_addr, err);	break;	\
 	case 4:	__get_user_asm_word(__gu_val, __gu_addr, err);	break;	\
 	default: (__gu_val) = __get_user_bad();				\
 	}								\
+	uaccess_restore(__ua_flags);					\
 	(x) = (__typeof__(*(ptr)))__gu_val;				\
 } while (0)
 
-#define __get_user_asm_byte(x, addr, err)			\
+#define __get_user_asm(x, addr, err, instr)			\
 	__asm__ __volatile__(					\
-	"1:	" TUSER(ldrb) "	%1,[%2],#0\n"			\
+	"1:	" TUSER(instr) " %1, [%2], #0\n"		\
 	"2:\n"							\
-	"	.pushsection .fixup,\"ax\"\n"			\
+	"	.pushsection .text.fixup,\"ax\"\n"		\
 	"	.align	2\n"					\
 	"3:	mov	%0, %3\n"				\
 	"	mov	%1, #0\n"				\
@@ -328,6 +330,9 @@ do {									\
 	: "+r" (err), "=&r" (x)					\
 	: "r" (addr), "i" (-EFAULT)				\
 	: "cc")
+
+#define __get_user_asm_byte(x, addr, err)			\
+	__get_user_asm(x, addr, err, ldrb)
 
 #ifndef __ARMEB__
 #define __get_user_asm_half(x, __gu_addr, err)			\
@@ -348,56 +353,62 @@ do {									\
 #endif
 
 #define __get_user_asm_word(x, addr, err)			\
-	__asm__ __volatile__(					\
-	"1:	" TUSER(ldr) "	%1,[%2],#0\n"			\
-	"2:\n"							\
-	"	.pushsection .fixup,\"ax\"\n"			\
-	"	.align	2\n"					\
-	"3:	mov	%0, %3\n"				\
-	"	mov	%1, #0\n"				\
-	"	b	2b\n"					\
-	"	.popsection\n"					\
-	"	.pushsection __ex_table,\"a\"\n"		\
-	"	.align	3\n"					\
-	"	.long	1b, 3b\n"				\
-	"	.popsection"					\
-	: "+r" (err), "=&r" (x)					\
-	: "r" (addr), "i" (-EFAULT)				\
-	: "cc")
+	__get_user_asm(x, addr, err, ldr)
+
+
+#define __put_user_switch(x, ptr, __err, __fn)				\
+	do {								\
+		const __typeof__(*(ptr)) __user *__pu_ptr = (ptr);	\
+		__typeof__(*(ptr)) __pu_val = (x);			\
+		unsigned int __ua_flags;				\
+		might_fault();						\
+		__ua_flags = uaccess_save_and_enable();			\
+		switch (sizeof(*(ptr))) {				\
+		case 1: __fn(__pu_val, __pu_ptr, __err, 1); break;	\
+		case 2:	__fn(__pu_val, __pu_ptr, __err, 2); break;	\
+		case 4:	__fn(__pu_val, __pu_ptr, __err, 4); break;	\
+		case 8:	__fn(__pu_val, __pu_ptr, __err, 8); break;	\
+		default: __err = __put_user_bad(); break;		\
+		}							\
+		uaccess_restore(__ua_flags);				\
+	} while (0)
+
+#define put_user(x, ptr)						\
+({									\
+	int __pu_err = 0;						\
+	__put_user_switch((x), (ptr), __pu_err, __put_user_check);	\
+	__pu_err;							\
+})
 
 #define __put_user(x, ptr)						\
 ({									\
 	long __pu_err = 0;						\
-	__put_user_err((x), (ptr), __pu_err);				\
+	__put_user_switch((x), (ptr), __pu_err, __put_user_nocheck);	\
 	__pu_err;							\
 })
 
 #define __put_user_error(x, ptr, err)					\
 ({									\
-	__put_user_err((x), (ptr), err);				\
+	__put_user_switch((x), (ptr), (err), __put_user_nocheck);	\
 	(void) 0;							\
 })
 
-#define __put_user_err(x, ptr, err)					\
-do {									\
-	unsigned long __pu_addr = (unsigned long)(ptr);			\
-	__typeof__(*(ptr)) __pu_val = (x);				\
-	__chk_user_ptr(ptr);						\
-	might_fault();							\
-	switch (sizeof(*(ptr))) {					\
-	case 1: __put_user_asm_byte(__pu_val, __pu_addr, err);	break;	\
-	case 2: __put_user_asm_half(__pu_val, __pu_addr, err);	break;	\
-	case 4: __put_user_asm_word(__pu_val, __pu_addr, err);	break;	\
-	case 8:	__put_user_asm_dword(__pu_val, __pu_addr, err);	break;	\
-	default: __put_user_bad();					\
-	}								\
-} while (0)
+#define __put_user_nocheck(x, __pu_ptr, __err, __size)			\
+	do {								\
+		unsigned long __pu_addr = (unsigned long)__pu_ptr;	\
+		__put_user_nocheck_##__size(x, __pu_addr, __err);	\
+	} while (0)
 
-#define __put_user_asm_byte(x, __pu_addr, err)			\
+#define __put_user_nocheck_1 __put_user_asm_byte
+#define __put_user_nocheck_2 __put_user_asm_half
+#define __put_user_nocheck_4 __put_user_asm_word
+#define __put_user_nocheck_8 __put_user_asm_dword
+
+#define __put_user_asm(x, __pu_addr, err, instr)		\
 	__asm__ __volatile__(					\
-	"1:	" TUSER(strb) "	%1,[%2],#0\n"			\
+	"1:	" TUSER(instr) " %1, [%2], #0\n"		\
 	"2:\n"							\
-	"	.pushsection .fixup,\"ax\"\n"			\
+	"	.pushsection .text.fixup,\"ax\"\n"		\
 	"	.align	2\n"					\
 	"3:	mov	%0, %3\n"				\
 	"	b	2b\n"					\
@@ -409,6 +420,9 @@ do {									\
 	: "+r" (err)						\
 	: "r" (x), "r" (__pu_addr), "i" (-EFAULT)		\
 	: "cc")
+
+#define __put_user_asm_byte(x, __pu_addr, err)			\
+	__put_user_asm(x, __pu_addr, err, strb)
 
 #ifndef __ARMEB__
 #define __put_user_asm_half(x, __pu_addr, err)			\
@@ -427,21 +441,7 @@ do {									\
 #endif
 
 #define __put_user_asm_word(x, __pu_addr, err)			\
-	__asm__ __volatile__(					\
-	"1:	" TUSER(str) "	%1,[%2],#0\n"			\
-	"2:\n"							\
-	"	.pushsection .fixup,\"ax\"\n"			\
-	"	.align	2\n"					\
-	"3:	mov	%0, %3\n"				\
-	"	b	2b\n"					\
-	"	.popsection\n"					\
-	"	.pushsection __ex_table,\"a\"\n"		\
-	"	.align	3\n"					\
-	"	.long	1b, 3b\n"				\
-	"	.popsection"					\
-	: "+r" (err)						\
-	: "r" (x), "r" (__pu_addr), "i" (-EFAULT)		\
-	: "cc")
+	__put_user_asm(x, __pu_addr, err, str)
 
 #ifndef __ARMEB__
 #define	__reg_oper0	"%R2"
@@ -458,7 +458,7 @@ do {									\
  THUMB(	"1:	" TUSER(str) "	" __reg_oper1 ", [%1]\n"	) \
  THUMB(	"2:	" TUSER(str) "	" __reg_oper0 ", [%1, #4]\n"	) \
 	"3:\n"							\
-	"	.pushsection .fixup,\"ax\"\n"			\
+	"	.pushsection .text.fixup,\"ax\"\n"		\
 	"	.align	2\n"					\
 	"4:	mov	%0, %3\n"				\
 	"	b	3b\n"					\
@@ -474,11 +474,57 @@ do {									\
 
 
 #ifdef CONFIG_MMU
-extern unsigned long __must_check __copy_from_user(void *to, const void __user *from, unsigned long n);
-extern unsigned long __must_check __copy_to_user(void __user *to, const void *from, unsigned long n);
-extern unsigned long __must_check __copy_to_user_std(void __user *to, const void *from, unsigned long n);
-extern unsigned long __must_check __clear_user(void __user *addr, unsigned long n);
-extern unsigned long __must_check __clear_user_std(void __user *addr, unsigned long n);
+extern unsigned long __must_check
+arm_copy_from_user(void *to, const void __user *from, unsigned long n);
+
+static inline unsigned long __must_check
+__copy_from_user(void *to, const void __user *from, unsigned long n)
+{
+	unsigned int __ua_flags;
+
+	check_object_size(to, n, false);
+	__ua_flags = uaccess_save_and_enable();
+	n = arm_copy_from_user(to, from, n);
+	uaccess_restore(__ua_flags);
+	return n;
+}
+
+extern unsigned long __must_check
+arm_copy_to_user(void __user *to, const void *from, unsigned long n);
+extern unsigned long __must_check
+__copy_to_user_std(void __user *to, const void *from, unsigned long n);
+
+static inline unsigned long __must_check
+__copy_to_user(void __user *to, const void *from, unsigned long n)
+{
+#ifndef CONFIG_UACCESS_WITH_MEMCPY
+	unsigned int __ua_flags;
+
+	check_object_size(from, n, true);
+	__ua_flags = uaccess_save_and_enable();
+	n = arm_copy_to_user(to, from, n);
+	uaccess_restore(__ua_flags);
+	return n;
+#else
+	check_object_size(from, n, true);
+	return arm_copy_to_user(to, from, n);
+#endif
+}
+
+extern unsigned long __must_check
+arm_clear_user(void __user *addr, unsigned long n);
+extern unsigned long __must_check
+__clear_user_std(void __user *addr, unsigned long n);
+
+static inline unsigned long __must_check
+__clear_user(void __user *addr, unsigned long n)
+{
+	unsigned int __ua_flags = uaccess_save_and_enable();
+	n = arm_clear_user(addr, n);
+	uaccess_restore(__ua_flags);
+	return n;
+}
+
 #else
 #define __copy_from_user(to, from, n)	(memcpy(to, (void __force *)from, n), 0)
 #define __copy_to_user(to, from, n)	(memcpy((void __force *)to, from, n), 0)
@@ -487,11 +533,12 @@ extern unsigned long __must_check __clear_user_std(void __user *addr, unsigned l
 
 static inline unsigned long __must_check copy_from_user(void *to, const void __user *from, unsigned long n)
 {
-	if (access_ok(VERIFY_READ, from, n))
-		n = __copy_from_user(to, from, n);
-	else /* security hole - plug it */
-		memset(to, 0, n);
-	return n;
+	unsigned long res = n;
+	if (likely(access_ok(VERIFY_READ, from, n)))
+		res = __copy_from_user(to, from, n);
+	if (unlikely(res))
+		memset(to + (n - res), 0, res);
+	return res;
 }
 
 static inline unsigned long __must_check copy_to_user(void __user *to, const void *from, unsigned long n)
@@ -511,6 +558,7 @@ static inline unsigned long __must_check clear_user(void __user *to, unsigned lo
 	return n;
 }
 
+/* These are from lib/ code, and use __get_user() and friends */
 extern long strncpy_from_user(char *dest, const char __user *src, long count);
 
 extern __must_check long strlen_user(const char __user *str);

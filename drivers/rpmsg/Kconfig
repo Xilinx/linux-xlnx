@@ -3,21 +3,21 @@ menu "Rpmsg drivers"
 # RPMSG always gets selected by whoever wants it
 config RPMSG
 	tristate
+
+config RPMSG_QCOM_SMD
+	tristate "Qualcomm Shared Memory Driver (SMD)"
+	depends on QCOM_SMEM
+	depends on QCOM_SMD=n
+	select RPMSG
+	help
+	  Say y here to enable support for the Qualcomm Shared Memory Driver
+	  providing communication channels to remote processors in Qualcomm
+	  platforms.
+
+config RPMSG_VIRTIO
+	tristate
+	select RPMSG
 	select VIRTIO
 	select VIRTUALIZATION
-
-config RPMSG_SERVER_SAMPLE
-	tristate "An rpmsg server sample"
-	depends on RPMSG
-	---help---
-	  This is just a sample server driver for the rpmsg bus.
-	  Say either Y or M. You know you want to.
-
-config RPMSG_FREERTOS_STAT
-	tristate "An FreeRTOS statistic"
-	depends on RPMSG && NET
-	---help---
-	  This is just a sample to get statistic from FreeRTOS.
-	  Say either Y or M. You know you want to.
 
 endmenu

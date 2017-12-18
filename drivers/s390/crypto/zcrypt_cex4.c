@@ -39,7 +39,7 @@
  * But the maximum time limit managed by the stomper code is set to 60sec.
  * Hence we have to wait at least that time period.
  */
-#define CEX4_CLEANUP_TIME	(61*HZ)
+#define CEX4_CLEANUP_TIME	(900*HZ)
 
 static struct ap_device_id zcrypt_cex4_ids[] = {
 	{ AP_DEVICE(AP_DEVICE_TYPE_CEX4)  },
@@ -147,7 +147,7 @@ static int zcrypt_cex4_probe(struct ap_device *ap_dev)
 		return -ENODEV;
 	zdev->ap_dev = ap_dev;
 	zdev->online = 1;
-	ap_dev->reply = &zdev->reply;
+	ap_device_init_reply(ap_dev, &zdev->reply);
 	ap_dev->private = zdev;
 	rc = zcrypt_device_register(zdev);
 	if (rc) {

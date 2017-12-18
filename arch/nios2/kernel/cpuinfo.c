@@ -41,11 +41,6 @@ static inline u32 fcpu(struct device_node *cpu, const char *n)
 	return val;
 }
 
-static inline u32 fcpu_has(struct device_node *cpu, const char *n)
-{
-	return of_get_property(cpu, n, NULL) ? 1 : 0;
-}
-
 void __init setup_cpuinfo(void)
 {
 	struct device_node *cpu;
@@ -56,7 +51,7 @@ void __init setup_cpuinfo(void)
 	if (!cpu)
 		panic("%s: No CPU found in devicetree!\n", __func__);
 
-	if (!fcpu_has(cpu, "altr,has-initda"))
+	if (!of_property_read_bool(cpu, "altr,has-initda"))
 		panic("initda instruction is unimplemented. Please update your "
 			"hardware system to have more than 4-byte line data "
 			"cache\n");
@@ -69,10 +64,10 @@ void __init setup_cpuinfo(void)
 	else
 		strcpy(cpuinfo.cpu_impl, "<unknown>");
 
-	cpuinfo.has_div = fcpu_has(cpu, "altr,has-div");
-	cpuinfo.has_mul = fcpu_has(cpu, "altr,has-mul");
-	cpuinfo.has_mulx = fcpu_has(cpu, "altr,has-mulx");
-	cpuinfo.mmu = fcpu_has(cpu, "altr,has-mmu");
+	cpuinfo.has_div = of_property_read_bool(cpu, "altr,has-div");
+	cpuinfo.has_mul = of_property_read_bool(cpu, "altr,has-mul");
+	cpuinfo.has_mulx = of_property_read_bool(cpu, "altr,has-mulx");
+	cpuinfo.mmu = of_property_read_bool(cpu, "altr,has-mmu");
 
 	if (IS_ENABLED(CONFIG_NIOS2_HW_DIV_SUPPORT) && !cpuinfo.has_div)
 		err_cpu("DIV");
@@ -126,47 +121,46 @@ void __init setup_cpuinfo(void)
  */
 static int show_cpuinfo(struct seq_file *m, void *v)
 {
-	int count = 0;
 	const u32 clockfreq = cpuinfo.cpu_clock_freq;
 
-	count = seq_printf(m,
-			"CPU:\t\tNios II/%s\n"
-			"MMU:\t\t%s\n"
-			"FPU:\t\tnone\n"
-			"Clocking:\t%u.%02u MHz\n"
-			"BogoMips:\t%lu.%02lu\n"
-			"Calibration:\t%lu loops\n",
-			cpuinfo.cpu_impl,
-			cpuinfo.mmu ? "present" : "none",
-			clockfreq / 1000000, (clockfreq / 100000) % 10,
-			(loops_per_jiffy * HZ) / 500000,
-			((loops_per_jiffy * HZ) / 5000) % 100,
-			(loops_per_jiffy * HZ));
+	seq_printf(m,
+		   "CPU:\t\tNios II/%s\n"
+		   "MMU:\t\t%s\n"
+		   "FPU:\t\tnone\n"
+		   "Clocking:\t%u.%02u MHz\n"
+		   "BogoMips:\t%lu.%02lu\n"
+		   "Calibration:\t%lu loops\n",
+		   cpuinfo.cpu_impl,
+		   cpuinfo.mmu ? "present" : "none",
+		   clockfreq / 1000000, (clockfreq / 100000) % 10,
+		   (loops_per_jiffy * HZ) / 500000,
+		   ((loops_per_jiffy * HZ) / 5000) % 100,
+		   (loops_per_jiffy * HZ));
 
-	count += seq_printf(m,
-			"HW:\n"
-			" MUL:\t\t%s\n"
-			" MULX:\t\t%s\n"
-			" DIV:\t\t%s\n",
-			cpuinfo.has_mul ? "yes" : "no",
-			cpuinfo.has_mulx ? "yes" : "no",
-			cpuinfo.has_div ? "yes" : "no");
+	seq_printf(m,
+		   "HW:\n"
+		   " MUL:\t\t%s\n"
+		   " MULX:\t\t%s\n"
+		   " DIV:\t\t%s\n",
+		   cpuinfo.has_mul ? "yes" : "no",
+		   cpuinfo.has_mulx ? "yes" : "no",
+		   cpuinfo.has_div ? "yes" : "no");
 
-	count += seq_printf(m,
-			"Icache:\t\t%ukB, line length: %u\n",
-			cpuinfo.icache_size >> 10,
-			cpuinfo.icache_line_size);
+	seq_printf(m,
+		   "Icache:\t\t%ukB, line length: %u\n",
+		   cpuinfo.icache_size >> 10,
+		   cpuinfo.icache_line_size);
 
-	count += seq_printf(m,
-			"Dcache:\t\t%ukB, line length: %u\n",
-			cpuinfo.dcache_size >> 10,
-			cpuinfo.dcache_line_size);
+	seq_printf(m,
+		   "Dcache:\t\t%ukB, line length: %u\n",
+		   cpuinfo.dcache_size >> 10,
+		   cpuinfo.dcache_line_size);
 
-	count += seq_printf(m,
-			"TLB:\t\t%u ways, %u entries, %u PID bits\n",
-			cpuinfo.tlb_num_ways,
-			cpuinfo.tlb_num_entries,
-			cpuinfo.tlb_pid_num_bits);
+	seq_printf(m,
+		   "TLB:\t\t%u ways, %u entries, %u PID bits\n",
+		   cpuinfo.tlb_num_ways,
+		   cpuinfo.tlb_num_entries,
+		   cpuinfo.tlb_pid_num_bits);
 
 	return 0;
 }

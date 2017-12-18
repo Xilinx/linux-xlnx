@@ -21,14 +21,15 @@
  *
  */
 
-#include <linux/module.h>
+#include <linux/init.h>
+#include <linux/export.h>
 #include <asm/processor.h>
 #include <asm/hypervisor.h>
 
 static const __initconst struct hypervisor_x86 * const hypervisors[] =
 {
-#ifdef CONFIG_XEN_PVHVM
-	&x86_hyper_xen_hvm,
+#ifdef CONFIG_XEN
+	&x86_hyper_xen,
 #endif
 	&x86_hyper_vmware,
 	&x86_hyper_ms_hyperv,
@@ -56,7 +57,7 @@ detect_hypervisor_vendor(void)
 	}
 
 	if (max_pri)
-		printk(KERN_INFO "Hypervisor detected: %s\n", x86_hyper->name);
+		pr_info("Hypervisor detected: %s\n", x86_hyper->name);
 }
 
 void init_hypervisor(struct cpuinfo_x86 *c)
@@ -84,4 +85,15 @@ bool __init hypervisor_x2apic_available(void)
 	return x86_hyper                   &&
 	       x86_hyper->x2apic_available &&
 	       x86_hyper->x2apic_available();
+}
+
+void hypervisor_pin_vcpu(int cpu)
+{
+	if (!x86_hyper)
+		return;
+
+	if (x86_hyper->pin_vcpu)
+		x86_hyper->pin_vcpu(cpu);
+	else
+		WARN_ONCE(1, "vcpu pinning requested but not supported!\n");
 }

@@ -563,7 +563,7 @@ static snd_pcm_uframes_t snd_als300_pointer(struct snd_pcm_substream *substream)
 	return bytes_to_frames(substream->runtime, current_ptr);
 }
 
-static struct snd_pcm_ops snd_als300_playback_ops = {
+static const struct snd_pcm_ops snd_als300_playback_ops = {
 	.open =		snd_als300_playback_open,
 	.close =	snd_als300_playback_close,
 	.ioctl =	snd_pcm_lib_ioctl,
@@ -574,7 +574,7 @@ static struct snd_pcm_ops snd_als300_playback_ops = {
 	.pointer =	snd_als300_pointer,
 };
 
-static struct snd_pcm_ops snd_als300_capture_ops = {
+static const struct snd_pcm_ops snd_als300_capture_ops = {
 	.open =		snd_als300_capture_open,
 	.close =	snd_als300_capture_close,
 	.ioctl =	snd_pcm_lib_ioctl,
@@ -658,8 +658,8 @@ static int snd_als300_create(struct snd_card *card,
 	if ((err = pci_enable_device(pci)) < 0)
 		return err;
 
-	if (pci_set_dma_mask(pci, DMA_BIT_MASK(28)) < 0 ||
-		pci_set_consistent_dma_mask(pci, DMA_BIT_MASK(28)) < 0) {
+	if (dma_set_mask(&pci->dev, DMA_BIT_MASK(28)) < 0 ||
+		dma_set_coherent_mask(&pci->dev, DMA_BIT_MASK(28)) < 0) {
 		dev_err(card->dev, "error setting 28bit DMA mask\n");
 		pci_disable_device(pci);
 		return -ENXIO;

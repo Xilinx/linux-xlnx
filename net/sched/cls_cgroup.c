@@ -30,35 +30,16 @@ static int cls_cgroup_classify(struct sk_buff *skb, const struct tcf_proto *tp,
 			       struct tcf_result *res)
 {
 	struct cls_cgroup_head *head = rcu_dereference_bh(tp->root);
-	u32 classid;
-
-	classid = task_cls_state(current)->classid;
-
-	/*
-	 * Due to the nature of the classifier it is required to ignore all
-	 * packets originating from softirq context as accessing `current'
-	 * would lead to false results.
-	 *
-	 * This test assumes that all callers of dev_queue_xmit() explicitely
-	 * disable bh. Knowing this, it is possible to detect softirq based
-	 * calls by looking at the number of nested bh disable calls because
-	 * softirqs always disables bh.
-	 */
-	if (in_serving_softirq()) {
-		/* If there is an sk_classid we'll use that. */
-		if (!skb->sk)
-			return -1;
-		classid = skb->sk->sk_classid;
-	}
+	u32 classid = task_get_classid(skb);
 
 	if (!classid)
 		return -1;
-
 	if (!tcf_em_tree_match(skb, &head->ematches, NULL))
 		return -1;
 
 	res->classid = classid;
 	res->class = 0;
+
 	return tcf_exts_exec(skb, &head->exts, res);
 }
 
@@ -112,7 +93,9 @@ static int cls_cgroup_change(struct net *net, struct sk_buff *in_skb,
 	if (!new)
 		return -ENOBUFS;
 
-	tcf_exts_init(&new->exts, TCA_CGROUP_ACT, TCA_CGROUP_POLICE);
+	err = tcf_exts_init(&new->exts, TCA_CGROUP_ACT, TCA_CGROUP_POLICE);
+	if (err < 0)
+		goto errout;
 	new->handle = handle;
 	new->tp = tp;
 	err = nla_parse_nested(tb, TCA_CGROUP_MAX, tca[TCA_OPTIONS],
@@ -120,10 +103,14 @@ static int cls_cgroup_change(struct net *net, struct sk_buff *in_skb,
 	if (err < 0)
 		goto errout;
 
-	tcf_exts_init(&e, TCA_CGROUP_ACT, TCA_CGROUP_POLICE);
-	err = tcf_exts_validate(net, tp, tb, tca[TCA_RATE], &e, ovr);
+	err = tcf_exts_init(&e, TCA_CGROUP_ACT, TCA_CGROUP_POLICE);
 	if (err < 0)
 		goto errout;
+	err = tcf_exts_validate(net, tp, tb, tca[TCA_RATE], &e, ovr);
+	if (err < 0) {
+		tcf_exts_destroy(&e);
+		goto errout;
+	}
 
 	err = tcf_em_tree_validate(tp, tb[TCA_CGROUP_EMATCHES], &t);
 	if (err < 0) {
@@ -139,18 +126,22 @@ static int cls_cgroup_change(struct net *net, struct sk_buff *in_skb,
 		call_rcu(&head->rcu, cls_cgroup_destroy_rcu);
 	return 0;
 errout:
+	tcf_exts_destroy(&new->exts);
 	kfree(new);
 	return err;
 }
 
-static void cls_cgroup_destroy(struct tcf_proto *tp)
+static bool cls_cgroup_destroy(struct tcf_proto *tp, bool force)
 {
 	struct cls_cgroup_head *head = rtnl_dereference(tp->root);
 
-	if (head) {
-		RCU_INIT_POINTER(tp->root, NULL);
+	if (!force)
+		return false;
+	/* Head can still be NULL due to cls_cgroup_init(). */
+	if (head)
 		call_rcu(&head->rcu, cls_cgroup_destroy_rcu);
-	}
+
+	return true;
 }
 
 static int cls_cgroup_delete(struct tcf_proto *tp, unsigned long arg)

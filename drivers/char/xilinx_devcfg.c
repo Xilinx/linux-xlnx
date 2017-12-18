@@ -28,9 +28,7 @@
 #include <linux/sysctl.h>
 #include <linux/types.h>
 #include <linux/uaccess.h>
-
-extern void zynq_slcr_init_preload_fpga(void);
-extern void zynq_slcr_init_postload_fpga(void);
+#include <../../arch/arm/mach-zynq/common.h>
 
 #define DRIVER_NAME "xdevcfg"
 #define XDEVCFG_DEVICES 1
@@ -53,20 +51,25 @@ static DEFINE_MUTEX(xdevcfg_mutex);
 
 /* Control Register Bit definitions */
 #define XDCFG_CTRL_PCFG_PROG_B_MASK	0x40000000 /* Program signal to
-						    *  Reset FPGA */
+						    * Reset FPGA
+						    */
 #define XDCFG_CTRL_PCAP_PR_MASK		0x08000000 /* Enable PCAP for PR */
 #define XDCFG_CTRL_PCAP_MODE_MASK	0x04000000 /* Enable PCAP */
 #define XDCFG_CTRL_PCAP_RATE_EN_MASK  0x02000000 /* Enable PCAP Quad Rate */
 #define XDCFG_CTRL_PCFG_AES_EN_MASK	0x00000E00 /* AES Enable Mask */
 #define XDCFG_CTRL_SEU_EN_MASK		0x00000100 /* SEU Enable Mask */
 #define XDCFG_CTRL_SPNIDEN_MASK		0x00000040 /* Secure Non Invasive
-						    *  Debug Enable */
+						    *  Debug Enable
+						    */
 #define XDCFG_CTRL_SPIDEN_MASK		0x00000020 /* Secure Invasive
-						    *  Debug Enable */
+						    *  Debug Enable
+						    */
 #define XDCFG_CTRL_NIDEN_MASK		0x00000010 /* Non-Invasive Debug
-						    *  Enable */
+						    *  Enable
+						    */
 #define XDCFG_CTRL_DBGEN_MASK		0x00000008 /* Invasive Debug
-						    *  Enable */
+						    *  Enable
+						    */
 #define XDCFG_CTRL_DAP_EN_MASK		0x00000007 /* DAP Enable Mask */
 
 /* Lock register bit definitions */
@@ -76,7 +79,8 @@ static DEFINE_MUTEX(xdevcfg_mutex);
 #define XDCFG_LOCK_DBG_MASK		0x00000001 /* This bit locks
 						    *  security config
 						    *  including: DAP_En,
-						    *  DBGEN,NIDEN, SPNIEN */
+						    *  DBGEN,NIDEN, SPNIEN
+						    */
 
 /* Miscellaneous Control Register bit definitions */
 #define XDCFG_MCTRL_PCAP_LPBK_MASK	0x00000010 /* Internal PCAP loopback */
@@ -119,6 +123,10 @@ static const char * const fclk_name[] = {
  * @sem: Instance for the mutex
  * @lock: Instance of spinlock
  * @base_address: The virtual device base address of the device registers
+ * @ep107: Flags is used to identify the platform
+ * @endian_swap: Flags is used to identify the endianness format
+ * @residue_buf: Array holding stragglers from last time (0 to 3 bytes)
+ * @residue_len: stragglers length in bytes
  * @is_partial_bitstream: Status bit to indicate partial/full bitstream
  */
 struct xdevcfg_drvdata {
@@ -131,8 +139,8 @@ struct xdevcfg_drvdata {
 	struct clk *clk;
 	struct clk *fclk[NUMFCLKS];
 	u8 fclk_exported[NUMFCLKS];
-	volatile bool dma_done;
-	volatile int error_status;
+	bool dma_done;
+	int error_status;
 	bool is_open;
 	struct mutex sem;
 	spinlock_t lock;
@@ -147,7 +155,7 @@ struct xdevcfg_drvdata {
 /**
  * struct fclk_data - FPGA clock data
  * @clk: Pointer to clock
- * @enable: Flag indicating enable status of the clock
+ * @enabled: Flag indicating enable status of the clock
  * @rate_rnd: Rate to be rounded for round rate operation
  */
 struct fclk_data {
@@ -161,7 +169,7 @@ struct fclk_data {
 #define xdevcfg_readreg(offset)		__raw_readl(offset)
 
 /**
- * xdevcfg_reset_pl() - Reset the programmable logic.
+ * xdevcfg_reset_pl - Reset the programmable logic.
  * @base_address:	The base address of the device.
  *
  * Must be called with PCAP clock enabled
@@ -174,20 +182,13 @@ static void xdevcfg_reset_pl(void __iomem *base_address)
 	 * the rising edge happens.
 	 */
 	xdevcfg_writereg(base_address + XDCFG_CTRL_OFFSET,
-			(xdevcfg_readreg(base_address + XDCFG_CTRL_OFFSET) |
-			 XDCFG_CTRL_PCFG_PROG_B_MASK));
-	while (!(xdevcfg_readreg(base_address + XDCFG_STATUS_OFFSET) &
-				XDCFG_STATUS_PCFG_INIT_MASK))
-		;
-
-	xdevcfg_writereg(base_address + XDCFG_CTRL_OFFSET,
 			(xdevcfg_readreg(base_address + XDCFG_CTRL_OFFSET) &
 			 ~XDCFG_CTRL_PCFG_PROG_B_MASK));
 	while (xdevcfg_readreg(base_address + XDCFG_STATUS_OFFSET) &
 			XDCFG_STATUS_PCFG_INIT_MASK)
 		;
 
-	msleep(5);
+	usleep_range(5000, 5100);
 	xdevcfg_writereg(base_address + XDCFG_CTRL_OFFSET,
 			(xdevcfg_readreg(base_address + XDCFG_CTRL_OFFSET) |
 			 XDCFG_CTRL_PCFG_PROG_B_MASK));
@@ -197,7 +198,7 @@ static void xdevcfg_reset_pl(void __iomem *base_address)
 }
 
 /**
- * xdevcfg_irq() - The main interrupt handler.
+ * xdevcfg_irq - The main interrupt handler.
  * @irq:	The interrupt number.
  * @data:	Pointer to the driver data structure.
  * returns: IRQ_HANDLED after the interrupt is handled.
@@ -230,7 +231,7 @@ static irqreturn_t xdevcfg_irq(int irq, void *data)
 }
 
 /**
- * xdevcfg_write() - The is the driver write function.
+ * xdevcfg_write - The is the driver write function.
  *
  * @file:	Pointer to the file structure.
  * @buf:	Pointer to the bitstream location.
@@ -348,14 +349,14 @@ xdevcfg_write(struct file *file, const char __user *buf, size_t count,
 
 	timeout = jiffies + msecs_to_jiffies(1000);
 
-	while (!drvdata->dma_done) {
+	while (!READ_ONCE(drvdata->dma_done)) {
 		if (time_after(jiffies, timeout)) {
-				status = -ETIMEDOUT;
-				goto error;
+			status = -ETIMEDOUT;
+			goto error;
 		}
 	}
 
-	if (drvdata->error_status)
+	if (READ_ONCE(drvdata->error_status))
 		status = drvdata->error_status;
 
 	/* Disable the DMA and error interrupts */
@@ -385,7 +386,7 @@ err_clk:
 
 
 /**
- * xdevcfg_read() - The is the driver read function.
+ * xdevcfg_read - The is the driver read function.
  * @file:	Pointer to the file structure.
  * @buf:	Pointer to the bitstream location.
  * @count:	The number of bytes read.
@@ -479,8 +480,24 @@ err_clk:
 	return status;
 }
 
+static void xdevcfg_enable_partial(struct xdevcfg_drvdata *drvdata)
+{
+	u32 reg = xdevcfg_readreg(drvdata->base_address + XDCFG_CTRL_OFFSET);
+
+	xdevcfg_writereg(drvdata->base_address + XDCFG_CTRL_OFFSET,
+			 reg | XDCFG_CTRL_PCAP_PR_MASK);
+}
+
+static void xdevcfg_disable_partial(struct xdevcfg_drvdata *drvdata)
+{
+	u32 reg = xdevcfg_readreg(drvdata->base_address + XDCFG_CTRL_OFFSET);
+
+	xdevcfg_writereg(drvdata->base_address + XDCFG_CTRL_OFFSET,
+			 reg & ~XDCFG_CTRL_PCAP_PR_MASK);
+}
+
 /**
- * xdevcfg_open() - The is the driver open function.
+ * xdevcfg_open - The is the driver open function.
  * @inode:	Pointer to the inode structure of this device.
  * @file:	Pointer to the file structure.
  * returns:	Success or error status.
@@ -508,14 +525,16 @@ static int xdevcfg_open(struct inode *inode, struct file *file)
 	file->private_data = drvdata;
 	drvdata->is_open = 1;
 	drvdata->endian_swap = 0;
-	drvdata->residue_len= 0;
+	drvdata->residue_len = 0;
 
 	/*
 	 * If is_partial_bitstream is set, then PROG_B is not asserted
 	 * (xdevcfg_reset_pl function) and also zynq_slcr_init_preload_fpga and
 	 * zynq_slcr_init_postload_fpga functions are not invoked.
 	 */
-	if (!drvdata->is_partial_bitstream)
+	if (drvdata->is_partial_bitstream)
+		xdevcfg_enable_partial(drvdata);
+	else
 		zynq_slcr_init_preload_fpga();
 
 	/*
@@ -539,7 +558,7 @@ err_clk:
 }
 
 /**
- * xdevcfg_release() - The is the driver release function.
+ * xdevcfg_release - The is the driver release function.
  * @inode:	Pointer to the inode structure of this device.
  * @file:	Pointer to the file structure.
  * returns:	Success.
@@ -548,12 +567,14 @@ static int xdevcfg_release(struct inode *inode, struct file *file)
 {
 	struct xdevcfg_drvdata *drvdata = file->private_data;
 
-	if (!drvdata->is_partial_bitstream)
+	if (drvdata->is_partial_bitstream)
+		xdevcfg_disable_partial(drvdata);
+	else
 		zynq_slcr_init_postload_fpga();
 
 	if (drvdata->residue_len)
-		printk("Did not transfer last %d bytes\n",
-			drvdata->residue_len);
+		dev_info(drvdata->dev, "Did not transfer last %d bytes\n",
+			 drvdata->residue_len);
 
 	drvdata->is_open = 0;
 
@@ -574,7 +595,7 @@ static const struct file_operations xdevcfg_fops = {
  */
 
 /**
- * xdevcfg_set_dap_en() - This function sets the DAP bits in the
+ * xdevcfg_set_dap_en - This function sets the DAP bits in the
  * control register with the given value.
  * @dev:	Pointer to the device structure.
  * @attr:	Pointer to the device attribute structure.
@@ -629,7 +650,7 @@ err_unlock:
 }
 
 /**
- * xdevcfg_show_dap_en_status() - The function returns the DAP_EN bits status in
+ * xdevcfg_show_dap_en_status - The function returns the DAP_EN bits status in
  * the control register.
  * @dev:	Pointer to the device structure.
  * @attr:	Pointer to the device attribute structure.
@@ -662,7 +683,7 @@ static DEVICE_ATTR(enable_dap, 0644, xdevcfg_show_dap_en_status,
 				xdevcfg_set_dap_en);
 
 /**
- * xdevcfg_set_dbgen() - This function sets the DBGEN bit in the
+ * xdevcfg_set_dbgen - This function sets the DBGEN bit in the
  * control register with the given value.
  * @dev:	Pointer to the device structure.
  * @attr:	Pointer to the device attribute structure.
@@ -719,7 +740,7 @@ err_clk:
 }
 
 /**
- * xdevcfg_show_dbgen_status() - The function returns the DBGEN bit status in
+ * xdevcfg_show_dbgen_status - The function returns the DBGEN bit status in
  * the control register.
  * @dev:	Pointer to the device structure.
  * @attr:	Pointer to the device attribute structure.
@@ -752,7 +773,7 @@ static DEVICE_ATTR(enable_dbg_in, 0644, xdevcfg_show_dbgen_status,
 				xdevcfg_set_dbgen);
 
 /**
- * xdevcfg_set_niden() - This function sets the NIDEN bit in the
+ * xdevcfg_set_niden - This function sets the NIDEN bit in the
  * control register with the given value.
  * @dev:	Pointer to the device structure.
  * @attr:	Pointer to the device attribute structure.
@@ -809,7 +830,7 @@ err_clk:
 }
 
 /**
- * xdevcfg_show_niden_status() - The function returns the NIDEN bit status in
+ * xdevcfg_show_niden_status - The function returns the NIDEN bit status in
  * the control register.
  * @dev:	Pointer to the device structure.
  * @attr:	Pointer to the device attribute structure.
@@ -842,7 +863,7 @@ static DEVICE_ATTR(enable_dbg_nonin, 0644, xdevcfg_show_niden_status,
 			xdevcfg_set_niden);
 
 /**
- * xdevcfg_set_spiden() - This function sets the SPIDEN bit in the
+ * xdevcfg_set_spiden - This function sets the SPIDEN bit in the
  * control register with the given value.
  * @dev:	Pointer to the device structure.
  * @attr:	Pointer to the device attribute structure.
@@ -900,7 +921,7 @@ err_clk:
 }
 
 /**
- * xdevcfg_show_spiden_status() - The function returns the SPIDEN bit status in
+ * xdevcfg_show_spiden_status - The function returns the SPIDEN bit status in
  * the control register.
  * @dev:	Pointer to the device structure.
  * @attr:	Pointer to the device attribute structure.
@@ -933,7 +954,7 @@ static DEVICE_ATTR(enable_sec_dbg_in, 0644, xdevcfg_show_spiden_status,
 				xdevcfg_set_spiden);
 
 /**
- * xdevcfg_set_spniden() - This function sets the SPNIDEN bit in the
+ * xdevcfg_set_spniden - This function sets the SPNIDEN bit in the
  * control register with the given value.
  * @dev:	Pointer to the device structure.
  * @attr:	Pointer to the device attribute structure.
@@ -989,7 +1010,7 @@ err_clk:
 }
 
 /**
- * xdevcfg_show_spniden_status() - The function returns the SPNIDEN bit status
+ * xdevcfg_show_spniden_status - The function returns the SPNIDEN bit status
  * in the control register.
  * @dev:	Pointer to the device structure.
  * @attr:	Pointer to the device attribute structure.
@@ -1022,7 +1043,7 @@ static DEVICE_ATTR(enable_sec_dbg_nonin, 0644, xdevcfg_show_spniden_status,
 					xdevcfg_set_spniden);
 
 /**
- * xdevcfg_set_seu() - This function sets the SEU_EN bit in the
+ * xdevcfg_set_seu - This function sets the SEU_EN bit in the
  * control register with the given value
  * @dev:	Pointer to the device structure.
  * @attr:	Pointer to the device attribute structure.
@@ -1079,7 +1100,7 @@ err_clk:
 }
 
 /**
- * xdevcfg_show_seu_status() - The function returns the SEU_EN bit status
+ * xdevcfg_show_seu_status - The function returns the SEU_EN bit status
  * in the control register.
  * @dev:	Pointer to the device structure.
  * @attr:	Pointer to the device attribute structure.
@@ -1111,7 +1132,7 @@ static ssize_t xdevcfg_show_seu_status(struct device *dev,
 static DEVICE_ATTR(enable_seu, 0644, xdevcfg_show_seu_status, xdevcfg_set_seu);
 
 /**
- * xdevcfg_set_aes() - This function sets the AES_EN bits in the
+ * xdevcfg_set_aes - This function sets the AES_EN bits in the
  * control register with either all 1s or all 0s.
  * @dev:	Pointer to the device structure.
  * @attr:	Pointer to the device attribute structure.
@@ -1176,7 +1197,7 @@ err_clk:
 }
 
 /**
- * xdevcfg_show_aes_status() - The function returns the AES_EN bit status
+ * xdevcfg_show_aes_status - The function returns the AES_EN bit status
  * in the control register.
  * @dev:	Pointer to the device structure.
  * @attr:	Pointer to the device attribute structure.
@@ -1208,7 +1229,7 @@ static ssize_t xdevcfg_show_aes_status(struct device *dev,
 static DEVICE_ATTR(enable_aes, 0644, xdevcfg_show_aes_status, xdevcfg_set_aes);
 
 /**
- * xdevcfg_set_aes_en_lock() - This function sets the LOCK_AES_EN bit in the
+ * xdevcfg_set_aes_en_lock - This function sets the LOCK_AES_EN bit in the
  * lock register.
  * @dev:	Pointer to the device structure.
  * @attr:	Pointer to the device attribute structure.
@@ -1266,7 +1287,7 @@ err_clk:
 }
 
 /**
- * xdevcfg_show_aes_en_lock_status() - The function returns the LOCK_AES_EN bit
+ * xdevcfg_show_aes_en_lock_status - The function returns the LOCK_AES_EN bit
  * status in the lock register.
  * @dev:	Pointer to the device structure.
  * @attr:	Pointer to the device attribute structure.
@@ -1299,7 +1320,7 @@ static DEVICE_ATTR(aes_en_lock, 0644, xdevcfg_show_aes_en_lock_status,
 				xdevcfg_set_aes_en_lock);
 
 /**
- * xdevcfg_set_seu_lock() - This function sets the LOCK_SEU bit in the
+ * xdevcfg_set_seu_lock - This function sets the LOCK_SEU bit in the
  * lock register.
  * @dev:	Pointer to the device structure.
  * @attr:	Pointer to the device attribute structure.
@@ -1356,7 +1377,7 @@ err_clk:
 }
 
 /**
- * xdevcfg_show_seu_lock_status() - The function returns the LOCK_SEU bit
+ * xdevcfg_show_seu_lock_status - The function returns the LOCK_SEU bit
  * status in the lock register.
  * @dev:	Pointer to the device structure.
  * @attr:	Pointer to the device attribute structure.
@@ -1389,7 +1410,7 @@ static DEVICE_ATTR(seu_lock, 0644, xdevcfg_show_seu_lock_status,
 					xdevcfg_set_seu_lock);
 
 /**
- * xdevcfg_set_dbg_lock() - This function sets the LOCK_DBG bit in the
+ * xdevcfg_set_dbg_lock - This function sets the LOCK_DBG bit in the
  * lock register.
  * @dev:	Pointer to the device structure.
  * @attr:	Pointer to the device attribute structure.
@@ -1445,7 +1466,7 @@ err_clk:
 }
 
 /**
- * xdevcfg_show_dbg_lock_status() - The function returns the LOCK_DBG bit
+ * xdevcfg_show_dbg_lock_status - The function returns the LOCK_DBG bit
  * status in the lock register.
  * @dev:	Pointer to the device structure.
  * @attr:	Pointer to the device attribute structure.
@@ -1478,7 +1499,7 @@ static DEVICE_ATTR(dbg_lock, 0644, xdevcfg_show_dbg_lock_status,
 				xdevcfg_set_dbg_lock);
 
 /**
- * xdevcfg_show_prog_done_status() - The function returns the PROG_DONE bit
+ * xdevcfg_show_prog_done_status - The function returns the PROG_DONE bit
  * status in the interrupt status register.
  * @dev:	Pointer to the device structure.
  * @attr:	Pointer to the device attribute structure.
@@ -1511,7 +1532,7 @@ static DEVICE_ATTR(prog_done, 0644, xdevcfg_show_prog_done_status,
 				NULL);
 
 /**
- * xdevcfg_set_is_partial_bitstream() - This function sets the
+ * xdevcfg_set_is_partial_bitstream - This function sets the
  * is_partial_bitstream variable. If is_partial_bitstream is set,
  * then PROG_B is not asserted (xdevcfg_reset_pl) and also
  * zynq_slcr_init_preload_fpga and zynq_slcr_init_postload_fpga functions
@@ -1547,7 +1568,7 @@ static ssize_t xdevcfg_set_is_partial_bitstream(struct device *dev,
 }
 
 /**
- * xdevcfg_show_is_partial_bitstream_status() - The function returns the
+ * xdevcfg_show_is_partial_bitstream_status - The function returns the
  * value of is_partial_bitstream variable.
  * @dev:	Pointer to the device structure.
  * @attr:	Pointer to the device attribute structure.
@@ -1875,14 +1896,14 @@ static void xdevcfg_fclk_remove(struct device *dev)
 	class_destroy(drvdata->fclk_class);
 	sysfs_remove_group(&dev->kobj, &fclk_exp_attr_grp);
 
-	return;
 }
 
 /**
  * xdevcfg_drv_probe -  Probe call for the device.
  *
  * @pdev:	handle to the platform device structure.
- * Returns 0 on success, negative error otherwise.
+ *
+ * Returns: 0 on success, negative error otherwise.
  *
  * It does all the memory allocation and registration for the device.
  */
@@ -1960,17 +1981,14 @@ static int xdevcfg_drv_probe(struct platform_device *pdev)
 	/*
 	 * Set the configuration register with the following options
 	 *  - Reset FPGA
-	 *  - Enable PCAP interface for Partial reconfiguration
 	 *  - Enable the PCAP interface
 	 *  - Set the throughput rate for maximum speed
-	 *  - Se the CPU in user mode
+	 *  - Set the CPU in user mode
 	 */
 	ctrlreg = xdevcfg_readreg(drvdata->base_address + XDCFG_CTRL_OFFSET);
-	xdevcfg_writereg(drvdata->base_address + XDCFG_CTRL_OFFSET,
-				(XDCFG_CTRL_PCFG_PROG_B_MASK |
-				XDCFG_CTRL_PCAP_PR_MASK |
-				XDCFG_CTRL_PCAP_MODE_MASK |
-				ctrlreg));
+	ctrlreg &= ~XDCFG_CTRL_PCAP_PR_MASK;
+	ctrlreg |= XDCFG_CTRL_PCFG_PROG_B_MASK | XDCFG_CTRL_PCAP_MODE_MASK;
+	xdevcfg_writereg(drvdata->base_address + XDCFG_CTRL_OFFSET, ctrlreg);
 
 	/* Ensure internal PCAP loopback is disabled */
 	ctrlreg = xdevcfg_readreg(drvdata->base_address + XDCFG_MCTRL_OFFSET);
@@ -2002,8 +2020,8 @@ static int xdevcfg_drv_probe(struct platform_device *pdev)
 	dev = device_create(drvdata->class, &pdev->dev, devt, drvdata,
 			DRIVER_NAME);
 	if (IS_ERR(dev)) {
-			dev_err(&pdev->dev, "unable to create device\n");
-			goto failed7;
+		dev_err(&pdev->dev, "unable to create device\n");
+		goto failed7;
 	}
 
 	/* create sysfs files for the device */
@@ -2037,7 +2055,8 @@ failed5:
  * xdevcfg_drv_remove -  Remove call for the device.
  *
  * @pdev:	handle to the platform device structure.
- * Returns 0 or error status.
+ *
+ * Returns: 0 or error status.
  *
  * Unregister the device after releasing the resources.
  */
@@ -2063,7 +2082,7 @@ static int xdevcfg_drv_remove(struct platform_device *pdev)
 	return 0;		/* Success */
 }
 
-static struct of_device_id xdevcfg_of_match[] = {
+static const struct of_device_id xdevcfg_of_match[] = {
 	{ .compatible = "xlnx,zynq-devcfg-1.0", },
 	{ /* end of table */}
 };

@@ -65,8 +65,9 @@ struct scsi_disk {
 	struct device	dev;
 	struct gendisk	*disk;
 	atomic_t	openers;
-	sector_t	capacity;	/* size in 512-byte sectors */
+	sector_t	capacity;	/* size in logical blocks */
 	u32		max_xfer_blocks;
+	u32		opt_xfer_blocks;
 	u32		max_ws_blocks;
 	u32		max_unmap_blocks;
 	u32		unmap_granularity;
@@ -145,26 +146,15 @@ static inline int scsi_medium_access_command(struct scsi_cmnd *scmd)
 	return 0;
 }
 
-/*
- * A DIF-capable target device can be formatted with different
- * protection schemes.  Currently 0 through 3 are defined:
- *
- * Type 0 is regular (unprotected) I/O
- *
- * Type 1 defines the contents of the guard and reference tags
- *
- * Type 2 defines the contents of the guard and reference tags and
- * uses 32-byte commands to seed the latter
- *
- * Type 3 defines the contents of the guard tag only
- */
+static inline sector_t logical_to_sectors(struct scsi_device *sdev, sector_t blocks)
+{
+	return blocks << (ilog2(sdev->sector_size) - 9);
+}
 
-enum sd_dif_target_protection_types {
-	SD_DIF_TYPE0_PROTECTION = 0x0,
-	SD_DIF_TYPE1_PROTECTION = 0x1,
-	SD_DIF_TYPE2_PROTECTION = 0x2,
-	SD_DIF_TYPE3_PROTECTION = 0x3,
-};
+static inline unsigned int logical_to_bytes(struct scsi_device *sdev, sector_t blocks)
+{
+	return blocks * sdev->sector_size;
+}
 
 /*
  * Look up the DIX operation based on whether the command is read or
@@ -227,15 +217,6 @@ static inline unsigned int sd_prot_flag_mask(unsigned int prot_op)
 
 	return flag_mask[prot_op];
 }
-
-/*
- * Data Integrity Field tuple.
- */
-struct sd_dif_tuple {
-       __be16 guard_tag;	/* Checksum */
-       __be16 app_tag;		/* Opaque storage */
-       __be32 ref_tag;		/* Target LBA or indirect LBA */
-};
 
 #ifdef CONFIG_BLK_DEV_INTEGRITY
 

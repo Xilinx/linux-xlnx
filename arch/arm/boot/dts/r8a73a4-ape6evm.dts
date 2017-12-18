@@ -22,8 +22,8 @@
 	};
 
 	chosen {
-		bootargs = "console=ttySC0,115200 ignore_loglevel root=/dev/nfs ip=dhcp rw";
-		stdout-path = &scifa0;
+		bootargs = "ignore_loglevel root=/dev/nfs ip=dhcp rw";
+		stdout-path = "serial0:115200n8";
 	};
 
 	memory@40000000 {
@@ -36,7 +36,7 @@
 		reg = <2 0x00000000 0 0x40000000>;
 	};
 
-	vcc_mmc0: regulator@0 {
+	vcc_mmc0: regulator-mmc0 {
 		compatible = "regulator-fixed";
 		regulator-name = "MMC0 Vcc";
 		regulator-min-microvolt = <2800000>;
@@ -44,7 +44,7 @@
 		regulator-always-on;
 	};
 
-	vcc_sdhi0: regulator@1 {
+	vcc_sdhi0: regulator-sdhi0 {
 		compatible = "regulator-fixed";
 
 		regulator-name = "SDHI0 Vcc";
@@ -56,7 +56,7 @@
 	};
 
 	/* Common 1.8V and 3.3V rails, used by several devices on APE6EVM */
-	ape6evm_fixed_1v8: regulator@2 {
+	ape6evm_fixed_1v8: regulator-1v8 {
 		compatible = "regulator-fixed";
 		regulator-name = "1V8";
 		regulator-min-microvolt = <1800000>;
@@ -64,7 +64,7 @@
 		regulator-always-on;
 	};
 
-	ape6evm_fixed_3v3: regulator@3 {
+	ape6evm_fixed_3v3: regulator-3v3 {
 		compatible = "regulator-fixed";
 		regulator-name = "3V3";
 		regulator-min-microvolt = <3300000>;
@@ -72,50 +72,30 @@
 		regulator-always-on;
 	};
 
-	lbsc {
-		compatible = "simple-bus";
-		#address-cells = <1>;
-		#size-cells = <1>;
-		ranges = <0 0 0 0x20000000>;
-
-		ethernet@8000000 {
-			compatible = "smsc,lan9220", "smsc,lan9115";
-			reg = <0x08000000 0x1000>;
-			interrupt-parent = <&irqc1>;
-			interrupts = <8 IRQ_TYPE_LEVEL_HIGH>;
-			phy-mode = "mii";
-			reg-io-width = <4>;
-			smsc,irq-active-high;
-			smsc,irq-push-pull;
-			vdd33a-supply = <&ape6evm_fixed_3v3>;
-			vddvario-supply = <&ape6evm_fixed_1v8>;
-		};
-	};
-
 	leds {
 		compatible = "gpio-leds";
 		led1 {
-			gpios = <&pfc 28 GPIO_ACTIVE_LOW>;
+			gpios = <&pfc 28 GPIO_ACTIVE_HIGH>;
 			label = "GNSS_EN";
 		};
 		led2 {
-			gpios = <&pfc 126 GPIO_ACTIVE_LOW>;
+			gpios = <&pfc 126 GPIO_ACTIVE_HIGH>;
 			label = "NFC_NRST";
 		};
 		led3 {
-			gpios = <&pfc 132 GPIO_ACTIVE_LOW>;
+			gpios = <&pfc 132 GPIO_ACTIVE_HIGH>;
 			label = "GNSS_NRST";
 		};
 		led4 {
-			gpios = <&pfc 232 GPIO_ACTIVE_LOW>;
+			gpios = <&pfc 232 GPIO_ACTIVE_HIGH>;
 			label = "BT_WAKEUP";
 		};
 		led5 {
-			gpios = <&pfc 250 GPIO_ACTIVE_LOW>;
+			gpios = <&pfc 250 GPIO_ACTIVE_HIGH>;
 			label = "STROBE";
 		};
 		led6 {
-			gpios = <&pfc 288 GPIO_ACTIVE_LOW>;
+			gpios = <&pfc 288 GPIO_ACTIVE_HIGH>;
 			label = "BBRESETOUT";
 		};
 	};
@@ -123,10 +103,14 @@
 	keyboard {
 		compatible = "gpio-keys";
 
+		pinctrl-names = "default";
+		pinctrl-0 = <&keyboard_pins>;
+
 		zero-key {
 			gpios = <&pfc 324 GPIO_ACTIVE_LOW>;
 			linux,code = <KEY_0>;
 			label = "S16";
+			wakeup-source;
 		};
 
 		menu-key {
@@ -163,7 +147,7 @@
 
 &i2c5 {
 	status = "okay";
-	vdd_dvfs: max8973@1b {
+	vdd_dvfs: regulator@1b {
 		compatible = "maxim,max8973";
 		reg = <0x1b>;
 
@@ -184,29 +168,50 @@
 	voltage-tolerance = <1>; /* 1% */
 };
 
+&bsc {
+	ethernet@8000000 {
+		compatible = "smsc,lan9220", "smsc,lan9115";
+		reg = <0x08000000 0x1000>;
+		interrupt-parent = <&irqc1>;
+		interrupts = <8 IRQ_TYPE_LEVEL_HIGH>;
+		phy-mode = "mii";
+		reg-io-width = <4>;
+		smsc,irq-active-high;
+		smsc,irq-push-pull;
+		vdd33a-supply = <&ape6evm_fixed_3v3>;
+		vddvario-supply = <&ape6evm_fixed_1v8>;
+	};
+};
+
 &cmt1 {
 	status = "okay";
 };
 
 &pfc {
-	scifa0_pins: serial0 {
-		renesas,groups = "scifa0_data";
-		renesas,function = "scifa0";
+	scifa0_pins: scifa0 {
+		groups = "scifa0_data";
+		function = "scifa0";
 	};
 
-	mmc0_pins: mmc {
-		renesas,groups = "mmc0_data8", "mmc0_ctrl";
-		renesas,function = "mmc0";
+	mmc0_pins: mmc0 {
+		groups = "mmc0_data8", "mmc0_ctrl";
+		function = "mmc0";
 	};
 
 	sdhi0_pins: sd0 {
-		renesas,groups = "sdhi0_data4", "sdhi0_ctrl", "sdhi0_cd";
-		renesas,function = "sdhi0";
+		groups = "sdhi0_data4", "sdhi0_ctrl", "sdhi0_cd";
+		function = "sdhi0";
 	};
 
 	sdhi1_pins: sd1 {
-		renesas,groups = "sdhi1_data4", "sdhi1_ctrl";
-		renesas,function = "sdhi1";
+		groups = "sdhi1_data4", "sdhi1_ctrl";
+		function = "sdhi1";
+	};
+
+	keyboard_pins: keyboard {
+		pins = "PORT324", "PORT325", "PORT326", "PORT327", "PORT328",
+		       "PORT329";
+		bias-pull-up;
 	};
 };
 

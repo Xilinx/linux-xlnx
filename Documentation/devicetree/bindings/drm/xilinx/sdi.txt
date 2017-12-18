@@ -1,0 +1,34 @@
+Device-Tree bindings for Xilinx SDI Tx IP core
+
+The IP core supports transmission of video data in SDI Tx: protocol.
+
+Required properties:
+ - compatible: Should be "xlnx,v-smpte-uhdsdi-tx-ss".
+ - interrupts: Interrupt number.
+ - interrupts-parent: phandle for interrupt controller.
+ - reg: Base address and size of the IP core.
+ - ports: Connects to the drm device node through device graph binding.
+   The port should contain a 'remote-endpoint' subnode that points to the
+   endpoint in the port of the drm device node. Refer to
+   Documentation/devicetree/bindings/graph.txt.
+ - xlnx,vtc: vtc phandle
+
+Example:
+
+		v_smpte_uhdsdi_tx_ss: v_smpte_uhdsdi_tx_ss@80020000 {
+			compatible = "xlnx,v-smpte-uhdsdi-tx-ss";
+			interrupt-parent = <&gic>;
+			interrupts = <0 90 4>;
+			reg = <0x0 0x80020000 0x0 0x10000>;
+			xlnx,vtc = <&v_tc_0>;
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+				port@0 {
+					reg = <0>;
+					sdi_port: endpoint {
+						remote-endpoint = <&drm_port>;
+					};
+				};
+		        };
+		};

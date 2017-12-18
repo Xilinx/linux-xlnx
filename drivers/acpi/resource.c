@@ -15,10 +15,6 @@
  *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  *  General Public License for more details.
  *
- *  You should have received a copy of the GNU General Public License along
- *  with this program; if not, write to the Free Software Foundation, Inc.,
- *  59 Temple Place, Suite 330, Boston, MA 02111-1307 USA.
- *
  * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  */
 
@@ -27,11 +23,24 @@
 #include <linux/export.h>
 #include <linux/ioport.h>
 #include <linux/slab.h>
+#include <linux/irq.h>
 
 #ifdef CONFIG_X86
 #define valid_IRQ(i) (((i) != 0) && ((i) != 2))
+static inline bool acpi_iospace_resource_valid(struct resource *res)
+{
+	/* On X86 IO space is limited to the [0 - 64K] IO port range */
+	return res->end < 0x10003;
+}
 #else
 #define valid_IRQ(i) (true)
+/*
+ * ACPI IO descriptors on arches other than X86 contain MMIO CPU physical
+ * addresses mapping IO space in CPU physical address space, IO space
+ * resources can be placed anywhere in the 64-bit physical address space.
+ */
+static inline bool
+acpi_iospace_resource_valid(struct resource *res) { return true; }
 #endif
 
 static bool acpi_dev_resource_len_valid(u64 start, u64 end, u64 len, bool io)
@@ -123,18 +132,20 @@ bool acpi_dev_resource_memory(struct acpi_resource *ares, struct resource *res)
 EXPORT_SYMBOL_GPL(acpi_dev_resource_memory);
 
 static void acpi_dev_ioresource_flags(struct resource *res, u64 len,
-				      u8 io_decode)
+				      u8 io_decode, u8 translation_type)
 {
 	res->flags = IORESOURCE_IO;
 
 	if (!acpi_dev_resource_len_valid(res->start, res->end, len, true))
 		res->flags |= IORESOURCE_DISABLED | IORESOURCE_UNSET;
 
-	if (res->end >= 0x10003)
+	if (!acpi_iospace_resource_valid(res))
 		res->flags |= IORESOURCE_DISABLED | IORESOURCE_UNSET;
 
 	if (io_decode == ACPI_DECODE_16)
 		res->flags |= IORESOURCE_IO_16BIT_ADDR;
+	if (translation_type == ACPI_SPARSE_TRANSLATION)
+		res->flags |= IORESOURCE_IO_SPARSE;
 }
 
 static void acpi_dev_get_ioresource(struct resource *res, u64 start, u64 len,
@@ -142,7 +153,7 @@ static void acpi_dev_get_ioresource(struct resource *res, u64 start, u64 len,
 {
 	res->start = start;
 	res->end = start + len - 1;
-	acpi_dev_ioresource_flags(res, len, io_decode);
+	acpi_dev_ioresource_flags(res, len, io_decode, 0);
 }
 
 /**
@@ -193,6 +204,7 @@ static bool acpi_decode_space(struct resource_win *win,
 	u8 iodec = attr->granularity == 0xfff ? ACPI_DECODE_10 : ACPI_DECODE_16;
 	bool wp = addr->info.mem.write_protect;
 	u64 len = attr->address_length;
+	u64 start, end, offset = 0;
 	struct resource *res = &win->res;
 
 	/*
@@ -204,9 +216,6 @@ static bool acpi_decode_space(struct resource_win *win,
 		pr_debug("ACPI: Invalid address space min_addr_fix %d, max_addr_fix %d, len %llx\n",
 			 addr->min_address_fixed, addr->max_address_fixed, len);
 
-	res->start = attr->minimum;
-	res->end = attr->maximum;
-
 	/*
 	 * For bridges that translate addresses across the bridge,
 	 * translation_offset is the offset that must be added to the
@@ -214,12 +223,22 @@ static bool acpi_decode_space(struct resource_win *win,
 	 * primary side. Non-bridge devices must list 0 for all Address
 	 * Translation offset bits.
 	 */
-	if (addr->producer_consumer == ACPI_PRODUCER) {
-		res->start += attr->translation_offset;
-		res->end += attr->translation_offset;
-	} else if (attr->translation_offset) {
+	if (addr->producer_consumer == ACPI_PRODUCER)
+		offset = attr->translation_offset;
+	else if (attr->translation_offset)
 		pr_debug("ACPI: translation_offset(%lld) is invalid for non-bridge device.\n",
 			 attr->translation_offset);
+	start = attr->minimum + offset;
+	end = attr->maximum + offset;
+
+	win->offset = offset;
+	res->start = start;
+	res->end = end;
+	if (sizeof(resource_size_t) < sizeof(u64) &&
+	    (offset != win->offset || start != res->start || end != res->end)) {
+		pr_warn("acpi resource window ([%#llx-%#llx] ignored, not CPU addressable)\n",
+			attr->minimum, attr->maximum);
+		return false;
 	}
 
 	switch (addr->resource_type) {
@@ -227,7 +246,8 @@ static bool acpi_decode_space(struct resource_win *win,
 		acpi_dev_memresource_flags(res, len, wp);
 		break;
 	case ACPI_IO_RANGE:
-		acpi_dev_ioresource_flags(res, len, iodec);
+		acpi_dev_ioresource_flags(res, len, iodec,
+					  addr->info.io.translation_type);
 		break;
 	case ACPI_BUS_NUMBER_RANGE:
 		res->flags = IORESOURCE_BUS;
@@ -235,8 +255,6 @@ static bool acpi_decode_space(struct resource_win *win,
 	default:
 		return false;
 	}
-
-	win->offset = attr->translation_offset;
 
 	if (addr->producer_consumer == ACPI_PRODUCER)
 		res->flags |= IORESOURCE_WINDOW;
@@ -330,6 +348,31 @@ unsigned long acpi_dev_irq_flags(u8 triggering, u8 polarity, u8 shareable)
 	return flags | IORESOURCE_IRQ;
 }
 EXPORT_SYMBOL_GPL(acpi_dev_irq_flags);
+
+/**
+ * acpi_dev_get_irq_type - Determine irq type.
+ * @triggering: Triggering type as provided by ACPI.
+ * @polarity: Interrupt polarity as provided by ACPI.
+ */
+unsigned int acpi_dev_get_irq_type(int triggering, int polarity)
+{
+	switch (polarity) {
+	case ACPI_ACTIVE_LOW:
+		return triggering == ACPI_EDGE_SENSITIVE ?
+		       IRQ_TYPE_EDGE_FALLING :
+		       IRQ_TYPE_LEVEL_LOW;
+	case ACPI_ACTIVE_HIGH:
+		return triggering == ACPI_EDGE_SENSITIVE ?
+		       IRQ_TYPE_EDGE_RISING :
+		       IRQ_TYPE_LEVEL_HIGH;
+	case ACPI_ACTIVE_BOTH:
+		if (triggering == ACPI_EDGE_SENSITIVE)
+			return IRQ_TYPE_EDGE_BOTH;
+	default:
+		return IRQ_TYPE_NONE;
+	}
+}
+EXPORT_SYMBOL_GPL(acpi_dev_get_irq_type);
 
 static void acpi_dev_irqresource_disabled(struct resource *res, u32 gsi)
 {
@@ -573,7 +616,7 @@ EXPORT_SYMBOL_GPL(acpi_dev_get_resources);
  * @ares: Input ACPI resource object.
  * @types: Valid resource types of IORESOURCE_XXX
  *
- * This is a hepler function to support acpi_dev_get_resources(), which filters
+ * This is a helper function to support acpi_dev_get_resources(), which filters
  * ACPI resource objects according to resource types.
  */
 int acpi_dev_filter_resource_type(struct acpi_resource *ares,

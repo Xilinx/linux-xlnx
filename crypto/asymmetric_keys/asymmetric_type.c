@@ -12,6 +12,7 @@
  */
 #include <keys/asymmetric-subtype.h>
 #include <keys/asymmetric-parser.h>
+#include <crypto/public_key.h>
 #include <linux/seq_file.h>
 #include <linux/module.h>
 #include <linux/slab.h>
@@ -20,8 +21,107 @@
 
 MODULE_LICENSE("GPL");
 
+const char *const key_being_used_for[NR__KEY_BEING_USED_FOR] = {
+	[VERIFYING_MODULE_SIGNATURE]		= "mod sig",
+	[VERIFYING_FIRMWARE_SIGNATURE]		= "firmware sig",
+	[VERIFYING_KEXEC_PE_SIGNATURE]		= "kexec PE sig",
+	[VERIFYING_KEY_SIGNATURE]		= "key sig",
+	[VERIFYING_KEY_SELF_SIGNATURE]		= "key self sig",
+	[VERIFYING_UNSPECIFIED_SIGNATURE]	= "unspec sig",
+};
+EXPORT_SYMBOL_GPL(key_being_used_for);
+
 static LIST_HEAD(asymmetric_key_parsers);
 static DECLARE_RWSEM(asymmetric_key_parsers_sem);
+
+/**
+ * find_asymmetric_key - Find a key by ID.
+ * @keyring: The keys to search.
+ * @id_0: The first ID to look for or NULL.
+ * @id_1: The second ID to look for or NULL.
+ * @partial: Use partial match if true, exact if false.
+ *
+ * Find a key in the given keyring by identifier.  The preferred identifier is
+ * the id_0 and the fallback identifier is the id_1.  If both are given, the
+ * lookup is by the former, but the latter must also match.
+ */
+struct key *find_asymmetric_key(struct key *keyring,
+				const struct asymmetric_key_id *id_0,
+				const struct asymmetric_key_id *id_1,
+				bool partial)
+{
+	struct key *key;
+	key_ref_t ref;
+	const char *lookup;
+	char *req, *p;
+	int len;
+
+	if (id_0) {
+		lookup = id_0->data;
+		len = id_0->len;
+	} else {
+		lookup = id_1->data;
+		len = id_1->len;
+	}
+
+	/* Construct an identifier "id:<keyid>". */
+	p = req = kmalloc(2 + 1 + len * 2 + 1, GFP_KERNEL);
+	if (!req)
+		return ERR_PTR(-ENOMEM);
+
+	if (partial) {
+		*p++ = 'i';
+		*p++ = 'd';
+	} else {
+		*p++ = 'e';
+		*p++ = 'x';
+	}
+	*p++ = ':';
+	p = bin2hex(p, lookup, len);
+	*p = 0;
+
+	pr_debug("Look up: \"%s\"\n", req);
+
+	ref = keyring_search(make_key_ref(keyring, 1),
+			     &key_type_asymmetric, req);
+	if (IS_ERR(ref))
+		pr_debug("Request for key '%s' err %ld\n", req, PTR_ERR(ref));
+	kfree(req);
+
+	if (IS_ERR(ref)) {
+		switch (PTR_ERR(ref)) {
+			/* Hide some search errors */
+		case -EACCES:
+		case -ENOTDIR:
+		case -EAGAIN:
+			return ERR_PTR(-ENOKEY);
+		default:
+			return ERR_CAST(ref);
+		}
+	}
+
+	key = key_ref_to_ptr(ref);
+	if (id_0 && id_1) {
+		const struct asymmetric_key_ids *kids = asymmetric_key_ids(key);
+
+		if (!kids->id[0]) {
+			pr_debug("First ID matches, but second is missing\n");
+			goto reject;
+		}
+		if (!asymmetric_key_id_same(id_1, kids->id[1])) {
+			pr_debug("First ID matches, but second does not\n");
+			goto reject;
+		}
+	}
+
+	pr_devel("<==%s() = 0 [%x]\n", __func__, key_serial(key));
+	return key;
+
+reject:
+	key_put(key);
+	return ERR_PTR(-EKEYREJECTED);
+}
+EXPORT_SYMBOL_GPL(find_asymmetric_key);
 
 /**
  * asymmetric_key_generate_id: Construct an asymmetric key ID
@@ -104,6 +204,15 @@ static bool asymmetric_match_key_ids(
 	return false;
 }
 
+/* helper function can be called directly with pre-allocated memory */
+inline int __asymmetric_key_hex_to_key_id(const char *id,
+				   struct asymmetric_key_id *match_id,
+				   size_t hexlen)
+{
+	match_id->len = hexlen;
+	return hex2bin(match_id->data, id, hexlen);
+}
+
 /**
  * asymmetric_key_hex_to_key_id - Convert a hex string into a key ID.
  * @id: The ID as a hex string.
@@ -111,21 +220,20 @@ static bool asymmetric_match_key_ids(
 struct asymmetric_key_id *asymmetric_key_hex_to_key_id(const char *id)
 {
 	struct asymmetric_key_id *match_id;
-	size_t hexlen;
+	size_t asciihexlen;
 	int ret;
 
 	if (!*id)
 		return ERR_PTR(-EINVAL);
-	hexlen = strlen(id);
-	if (hexlen & 1)
+	asciihexlen = strlen(id);
+	if (asciihexlen & 1)
 		return ERR_PTR(-EINVAL);
 
-	match_id = kmalloc(sizeof(struct asymmetric_key_id) + hexlen / 2,
+	match_id = kmalloc(sizeof(struct asymmetric_key_id) + asciihexlen / 2,
 			   GFP_KERNEL);
 	if (!match_id)
 		return ERR_PTR(-ENOMEM);
-	match_id->len = hexlen / 2;
-	ret = hex2bin(match_id->data, id, hexlen / 2);
+	ret = __asymmetric_key_hex_to_key_id(id, match_id, asciihexlen / 2);
 	if (ret < 0) {
 		kfree(match_id);
 		return ERR_PTR(-EINVAL);
@@ -288,25 +396,35 @@ static int asymmetric_key_preparse(struct key_preparsed_payload *prep)
 }
 
 /*
- * Clean up the preparse data
+ * Clean up the key ID list
  */
-static void asymmetric_key_free_preparse(struct key_preparsed_payload *prep)
+static void asymmetric_key_free_kids(struct asymmetric_key_ids *kids)
 {
-	struct asymmetric_key_subtype *subtype = prep->type_data[0];
-	struct asymmetric_key_ids *kids = prep->type_data[1];
 	int i;
 
-	pr_devel("==>%s()\n", __func__);
-
-	if (subtype) {
-		subtype->destroy(prep->payload[0]);
-		module_put(subtype->owner);
-	}
 	if (kids) {
 		for (i = 0; i < ARRAY_SIZE(kids->id); i++)
 			kfree(kids->id[i]);
 		kfree(kids);
 	}
+}
+
+/*
+ * Clean up the preparse data
+ */
+static void asymmetric_key_free_preparse(struct key_preparsed_payload *prep)
+{
+	struct asymmetric_key_subtype *subtype = prep->payload.data[asym_subtype];
+	struct asymmetric_key_ids *kids = prep->payload.data[asym_key_ids];
+
+	pr_devel("==>%s()\n", __func__);
+
+	if (subtype) {
+		subtype->destroy(prep->payload.data[asym_crypto],
+				 prep->payload.data[asym_auth]);
+		module_put(subtype->owner);
+	}
+	asymmetric_key_free_kids(kids);
 	kfree(prep->description);
 }
 
@@ -316,20 +434,21 @@ static void asymmetric_key_free_preparse(struct key_preparsed_payload *prep)
 static void asymmetric_key_destroy(struct key *key)
 {
 	struct asymmetric_key_subtype *subtype = asymmetric_key_subtype(key);
-	struct asymmetric_key_ids *kids = key->type_data.p[1];
+	struct asymmetric_key_ids *kids = key->payload.data[asym_key_ids];
+	void *data = key->payload.data[asym_crypto];
+	void *auth = key->payload.data[asym_auth];
+
+	key->payload.data[asym_crypto] = NULL;
+	key->payload.data[asym_subtype] = NULL;
+	key->payload.data[asym_key_ids] = NULL;
+	key->payload.data[asym_auth] = NULL;
 
 	if (subtype) {
-		subtype->destroy(key->payload.data);
+		subtype->destroy(data, auth);
 		module_put(subtype->owner);
-		key->type_data.p[0] = NULL;
 	}
 
-	if (kids) {
-		kfree(kids->id[0]);
-		kfree(kids->id[1]);
-		kfree(kids);
-		key->type_data.p[1] = NULL;
-	}
+	asymmetric_key_free_kids(kids);
 }
 
 struct key_type key_type_asymmetric = {

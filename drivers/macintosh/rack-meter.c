@@ -154,8 +154,8 @@ static void rackmeter_do_pause(struct rackmeter *rm, int pause)
 		DBDMA_DO_STOP(rm->dma_regs);
 		return;
 	}
-	memset(rdma->buf1, 0, SAMPLE_COUNT & sizeof(u32));
-	memset(rdma->buf2, 0, SAMPLE_COUNT & sizeof(u32));
+	memset(rdma->buf1, 0, ARRAY_SIZE(rdma->buf1));
+	memset(rdma->buf2, 0, ARRAY_SIZE(rdma->buf2));
 
 	rm->dma_buf_v->mark = 0;
 
@@ -182,31 +182,31 @@ static void rackmeter_setup_dbdma(struct rackmeter *rm)
 
 	/* Prepare 4 dbdma commands for the 2 buffers */
 	memset(cmd, 0, 4 * sizeof(struct dbdma_cmd));
-	st_le16(&cmd->req_count, 4);
-	st_le16(&cmd->command, STORE_WORD | INTR_ALWAYS | KEY_SYSTEM);
-	st_le32(&cmd->phy_addr, rm->dma_buf_p +
+	cmd->req_count = cpu_to_le16(4);
+	cmd->command = cpu_to_le16(STORE_WORD | INTR_ALWAYS | KEY_SYSTEM);
+	cmd->phy_addr = cpu_to_le32(rm->dma_buf_p +
 		offsetof(struct rackmeter_dma, mark));
-	st_le32(&cmd->cmd_dep, 0x02000000);
+	cmd->cmd_dep = cpu_to_le32(0x02000000);
 	cmd++;
 
-	st_le16(&cmd->req_count, SAMPLE_COUNT * 4);
-	st_le16(&cmd->command, OUTPUT_MORE);
-	st_le32(&cmd->phy_addr, rm->dma_buf_p +
+	cmd->req_count = cpu_to_le16(SAMPLE_COUNT * 4);
+	cmd->command = cpu_to_le16(OUTPUT_MORE);
+	cmd->phy_addr = cpu_to_le32(rm->dma_buf_p +
 		offsetof(struct rackmeter_dma, buf1));
 	cmd++;
 
-	st_le16(&cmd->req_count, 4);
-	st_le16(&cmd->command, STORE_WORD | INTR_ALWAYS | KEY_SYSTEM);
-	st_le32(&cmd->phy_addr, rm->dma_buf_p +
+	cmd->req_count = cpu_to_le16(4);
+	cmd->command = cpu_to_le16(STORE_WORD | INTR_ALWAYS | KEY_SYSTEM);
+	cmd->phy_addr = cpu_to_le32(rm->dma_buf_p +
 		offsetof(struct rackmeter_dma, mark));
-	st_le32(&cmd->cmd_dep, 0x01000000);
+	cmd->cmd_dep = cpu_to_le32(0x01000000);
 	cmd++;
 
-	st_le16(&cmd->req_count, SAMPLE_COUNT * 4);
-	st_le16(&cmd->command, OUTPUT_MORE | BR_ALWAYS);
-	st_le32(&cmd->phy_addr, rm->dma_buf_p +
+	cmd->req_count = cpu_to_le16(SAMPLE_COUNT * 4);
+	cmd->command = cpu_to_le16(OUTPUT_MORE | BR_ALWAYS);
+	cmd->phy_addr = cpu_to_le32(rm->dma_buf_p +
 		offsetof(struct rackmeter_dma, buf2));
-	st_le32(&cmd->cmd_dep, rm->dma_buf_p);
+	cmd->cmd_dep = cpu_to_le32(rm->dma_buf_p);
 
 	rackmeter_do_pause(rm, 0);
 }
@@ -227,6 +227,7 @@ static void rackmeter_do_timer(struct work_struct *work)
 
 	total_idle_ticks = get_cpu_idle_time(cpu);
 	idle_ticks = (unsigned int) (total_idle_ticks - rcpu->prev_idle);
+	idle_ticks = min(idle_ticks, total_ticks);
 	rcpu->prev_idle = total_idle_ticks;
 
 	/* We do a very dumb calculation to update the LEDs for now,
@@ -426,7 +427,7 @@ static int rackmeter_probe(struct macio_dev* mdev,
 	rm->irq = macio_irq(mdev, 1);
 #else
 	rm->irq = irq_of_parse_and_map(i2s, 1);
-	if (rm->irq == NO_IRQ ||
+	if (!rm->irq ||
 	    of_address_to_resource(i2s, 0, &ri2s) ||
 	    of_address_to_resource(i2s, 1, &rdma)) {
 		printk(KERN_ERR
@@ -582,6 +583,7 @@ static struct of_device_id rackmeter_match[] = {
 	{ .name = "i2s" },
 	{ }
 };
+MODULE_DEVICE_TABLE(of, rackmeter_match);
 
 static struct macio_driver rackmeter_driver = {
 	.driver = {

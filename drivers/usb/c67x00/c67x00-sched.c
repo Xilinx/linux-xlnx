@@ -1024,15 +1024,6 @@ static inline void c67x00_check_td_list(struct c67x00_hcd *c67x00)
 		    !td_acked(td))
 			goto cont;
 
-		/*
-		 * at this point, there are no errors, but it's still possible
-		 * that the td wasn't executed by the c67x00. Confirm it was
-		 * executed or force a retry
-		 */
-		if ((td->retry_cnt & TD_RETRYCNTMASK_ACT_FLG) &&
-		    td->status == 0)
-			goto cont;
-
 		/* Sequence ok and acked, don't need to fix toggle */
 		ack_ok = 1;
 

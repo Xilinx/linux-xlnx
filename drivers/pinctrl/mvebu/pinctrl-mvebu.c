@@ -663,27 +663,22 @@ int mvebu_pinctrl_probe(struct platform_device *pdev)
 	/* assign mpp modes to groups */
 	for (n = 0; n < soc->nmodes; n++) {
 		struct mvebu_mpp_mode *mode = &soc->modes[n];
-		struct mvebu_pinctrl_group *grp =
-			mvebu_pinctrl_find_group_by_pid(pctl, mode->pid);
+		struct mvebu_mpp_ctrl_setting *set = &mode->settings[0];
+		struct mvebu_pinctrl_group *grp;
 		unsigned num_settings;
+		unsigned supp_settings;
 
-		if (!grp) {
-			dev_warn(&pdev->dev, "unknown pinctrl group %d\n",
-				mode->pid);
-			continue;
-		}
-
-		for (num_settings = 0; ;) {
-			struct mvebu_mpp_ctrl_setting *set =
-				&mode->settings[num_settings];
-
+		for (num_settings = 0, supp_settings = 0; ; set++) {
 			if (!set->name)
 				break;
+
 			num_settings++;
 
 			/* skip unsupported settings for this variant */
 			if (pctl->variant && !(pctl->variant & set->variant))
 				continue;
+
+			supp_settings++;
 
 			/* find gpio/gpo/gpi settings */
 			if (strcmp(set->name, "gpio") == 0)
@@ -693,6 +688,17 @@ int mvebu_pinctrl_probe(struct platform_device *pdev)
 				set->flags = MVEBU_SETTING_GPO;
 			else if (strcmp(set->name, "gpi") == 0)
 				set->flags = MVEBU_SETTING_GPI;
+		}
+
+		/* skip modes with no settings for this variant */
+		if (!supp_settings)
+			continue;
+
+		grp = mvebu_pinctrl_find_group_by_pid(pctl, mode->pid);
+		if (!grp) {
+			dev_warn(&pdev->dev, "unknown pinctrl group %d\n",
+				mode->pid);
+			continue;
 		}
 
 		grp->settings = mode->settings;
@@ -705,10 +711,10 @@ int mvebu_pinctrl_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	pctl->pctldev = pinctrl_register(&pctl->desc, &pdev->dev, pctl);
-	if (!pctl->pctldev) {
+	pctl->pctldev = devm_pinctrl_register(&pdev->dev, &pctl->desc, pctl);
+	if (IS_ERR(pctl->pctldev)) {
 		dev_err(&pdev->dev, "unable to register pinctrl driver\n");
-		return -EINVAL;
+		return PTR_ERR(pctl->pctldev);
 	}
 
 	dev_info(&pdev->dev, "registered pinctrl driver\n");
@@ -717,12 +723,5 @@ int mvebu_pinctrl_probe(struct platform_device *pdev)
 	for (n = 0; n < soc->ngpioranges; n++)
 		pinctrl_add_gpio_range(pctl->pctldev, &soc->gpioranges[n]);
 
-	return 0;
-}
-
-int mvebu_pinctrl_remove(struct platform_device *pdev)
-{
-	struct mvebu_pinctrl *pctl = platform_get_drvdata(pdev);
-	pinctrl_unregister(pctl->pctldev);
 	return 0;
 }

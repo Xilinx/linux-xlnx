@@ -37,8 +37,6 @@
 #define X86_EFLAGS_VM		_BITUL(X86_EFLAGS_VM_BIT)
 #define X86_EFLAGS_AC_BIT	18 /* Alignment Check/Access Control */
 #define X86_EFLAGS_AC		_BITUL(X86_EFLAGS_AC_BIT)
-#define X86_EFLAGS_AC_BIT	18 /* Alignment Check/Access Control */
-#define X86_EFLAGS_AC		_BITUL(X86_EFLAGS_AC_BIT)
 #define X86_EFLAGS_VIF_BIT	19 /* Virtual Interrupt Flag */
 #define X86_EFLAGS_VIF		_BITUL(X86_EFLAGS_VIF_BIT)
 #define X86_EFLAGS_VIP_BIT	20 /* Virtual Interrupt Pending */
@@ -120,6 +118,8 @@
 #define X86_CR4_SMEP		_BITUL(X86_CR4_SMEP_BIT)
 #define X86_CR4_SMAP_BIT	21 /* enable SMAP support */
 #define X86_CR4_SMAP		_BITUL(X86_CR4_SMAP_BIT)
+#define X86_CR4_PKE_BIT		22 /* enable Protection Keys support */
+#define X86_CR4_PKE		_BITUL(X86_CR4_PKE_BIT)
 
 /*
  * x86-64 Task Priority Register, CR8

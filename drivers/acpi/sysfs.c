@@ -69,6 +69,8 @@ static const struct acpi_dlevel acpi_debug_levels[] = {
 	ACPI_DEBUG_INIT(ACPI_LV_INIT),
 	ACPI_DEBUG_INIT(ACPI_LV_DEBUG_OBJECT),
 	ACPI_DEBUG_INIT(ACPI_LV_INFO),
+	ACPI_DEBUG_INIT(ACPI_LV_REPAIR),
+	ACPI_DEBUG_INIT(ACPI_LV_TRACE_POINT),
 
 	ACPI_DEBUG_INIT(ACPI_LV_INIT_NAMES),
 	ACPI_DEBUG_INIT(ACPI_LV_PARSE),
@@ -162,55 +164,116 @@ static const struct kernel_param_ops param_ops_debug_level = {
 module_param_cb(debug_layer, &param_ops_debug_layer, &acpi_dbg_layer, 0644);
 module_param_cb(debug_level, &param_ops_debug_level, &acpi_dbg_level, 0644);
 
-static char trace_method_name[6];
-module_param_string(trace_method_name, trace_method_name, 6, 0644);
-static unsigned int trace_debug_layer;
-module_param(trace_debug_layer, uint, 0644);
-static unsigned int trace_debug_level;
-module_param(trace_debug_level, uint, 0644);
+static char trace_method_name[1024];
+
+int param_set_trace_method_name(const char *val, const struct kernel_param *kp)
+{
+	u32 saved_flags = 0;
+	bool is_abs_path = true;
+
+	if (*val != '\\')
+		is_abs_path = false;
+
+	if ((is_abs_path && strlen(val) > 1023) ||
+	    (!is_abs_path && strlen(val) > 1022)) {
+		pr_err("%s: string parameter too long\n", kp->name);
+		return -ENOSPC;
+	}
+
+	/*
+	 * It's not safe to update acpi_gbl_trace_method_name without
+	 * having the tracer stopped, so we save the original tracer
+	 * state and disable it.
+	 */
+	saved_flags = acpi_gbl_trace_flags;
+	(void)acpi_debug_trace(NULL,
+			       acpi_gbl_trace_dbg_level,
+			       acpi_gbl_trace_dbg_layer,
+			       0);
+
+	/* This is a hack.  We can't kmalloc in early boot. */
+	if (is_abs_path)
+		strcpy(trace_method_name, val);
+	else {
+		trace_method_name[0] = '\\';
+		strcpy(trace_method_name+1, val);
+	}
+
+	/* Restore the original tracer state */
+	(void)acpi_debug_trace(trace_method_name,
+			       acpi_gbl_trace_dbg_level,
+			       acpi_gbl_trace_dbg_layer,
+			       saved_flags);
+
+	return 0;
+}
+
+static int param_get_trace_method_name(char *buffer, const struct kernel_param *kp)
+{
+	return scnprintf(buffer, PAGE_SIZE, "%s", acpi_gbl_trace_method_name);
+}
+
+static const struct kernel_param_ops param_ops_trace_method = {
+	.set = param_set_trace_method_name,
+	.get = param_get_trace_method_name,
+};
+
+static const struct kernel_param_ops param_ops_trace_attrib = {
+	.set = param_set_uint,
+	.get = param_get_uint,
+};
+
+module_param_cb(trace_method_name, &param_ops_trace_method, &trace_method_name, 0644);
+module_param_cb(trace_debug_layer, &param_ops_trace_attrib, &acpi_gbl_trace_dbg_layer, 0644);
+module_param_cb(trace_debug_level, &param_ops_trace_attrib, &acpi_gbl_trace_dbg_level, 0644);
 
 static int param_set_trace_state(const char *val, struct kernel_param *kp)
 {
-	int result = 0;
+	acpi_status status;
+	const char *method = trace_method_name;
+	u32 flags = 0;
 
-	if (!strncmp(val, "enable", sizeof("enable") - 1)) {
-		result = acpi_debug_trace(trace_method_name, trace_debug_level,
-					  trace_debug_layer, 0);
-		if (result)
-			result = -EBUSY;
-		goto exit;
-	}
+/* So "xxx-once" comparison should go prior than "xxx" comparison */
+#define acpi_compare_param(val, key)	\
+	strncmp((val), (key), sizeof(key) - 1)
 
-	if (!strncmp(val, "disable", sizeof("disable") - 1)) {
-		int name = 0;
-		result = acpi_debug_trace((char *)&name, trace_debug_level,
-					  trace_debug_layer, 0);
-		if (result)
-			result = -EBUSY;
-		goto exit;
-	}
+	if (!acpi_compare_param(val, "enable")) {
+		method = NULL;
+		flags = ACPI_TRACE_ENABLED;
+	} else if (!acpi_compare_param(val, "disable"))
+		method = NULL;
+	else if (!acpi_compare_param(val, "method-once"))
+		flags = ACPI_TRACE_ENABLED | ACPI_TRACE_ONESHOT;
+	else if (!acpi_compare_param(val, "method"))
+		flags = ACPI_TRACE_ENABLED;
+	else if (!acpi_compare_param(val, "opcode-once"))
+		flags = ACPI_TRACE_ENABLED | ACPI_TRACE_ONESHOT | ACPI_TRACE_OPCODE;
+	else if (!acpi_compare_param(val, "opcode"))
+		flags = ACPI_TRACE_ENABLED | ACPI_TRACE_OPCODE;
+	else
+		return -EINVAL;
 
-	if (!strncmp(val, "1", 1)) {
-		result = acpi_debug_trace(trace_method_name, trace_debug_level,
-					  trace_debug_layer, 1);
-		if (result)
-			result = -EBUSY;
-		goto exit;
-	}
+	status = acpi_debug_trace(method,
+				  acpi_gbl_trace_dbg_level,
+				  acpi_gbl_trace_dbg_layer,
+				  flags);
+	if (ACPI_FAILURE(status))
+		return -EBUSY;
 
-	result = -EINVAL;
-exit:
-	return result;
+	return 0;
 }
 
 static int param_get_trace_state(char *buffer, struct kernel_param *kp)
 {
-	if (!acpi_gbl_trace_method_name)
+	if (!(acpi_gbl_trace_flags & ACPI_TRACE_ENABLED))
 		return sprintf(buffer, "disable");
 	else {
-		if (acpi_gbl_trace_flags & 1)
-			return sprintf(buffer, "1");
-		else
+		if (acpi_gbl_trace_method_name) {
+			if (acpi_gbl_trace_flags & ACPI_TRACE_ONESHOT)
+				return sprintf(buffer, "method-once");
+			else
+				return sprintf(buffer, "method");
+		} else
 			return sprintf(buffer, "enable");
 	}
 	return 0;
@@ -251,10 +314,14 @@ static struct kobject *tables_kobj;
 static struct kobject *dynamic_tables_kobj;
 static struct kobject *hotplug_kobj;
 
+#define ACPI_MAX_TABLE_INSTANCES	999
+#define ACPI_INST_SIZE			4 /* including trailing 0 */
+
 struct acpi_table_attr {
 	struct bin_attribute attr;
-	char name[8];
+	char name[ACPI_NAME_SIZE];
 	int instance;
+	char filename[ACPI_NAME_SIZE+ACPI_INST_SIZE];
 	struct list_head node;
 };
 
@@ -266,14 +333,9 @@ static ssize_t acpi_table_show(struct file *filp, struct kobject *kobj,
 	    container_of(bin_attr, struct acpi_table_attr, attr);
 	struct acpi_table_header *table_header = NULL;
 	acpi_status status;
-	char name[ACPI_NAME_SIZE];
 
-	if (strncmp(table_attr->name, "NULL", 4))
-		memcpy(name, table_attr->name, ACPI_NAME_SIZE);
-	else
-		memcpy(name, "\0\0\0\0", 4);
-
-	status = acpi_get_table(name, table_attr->instance, &table_header);
+	status = acpi_get_table(table_attr->name, table_attr->instance,
+				&table_header);
 	if (ACPI_FAILURE(status))
 		return -ENODEV;
 
@@ -281,61 +343,68 @@ static ssize_t acpi_table_show(struct file *filp, struct kobject *kobj,
 				       table_header, table_header->length);
 }
 
-static void acpi_table_attr_init(struct acpi_table_attr *table_attr,
-				 struct acpi_table_header *table_header)
+static int acpi_table_attr_init(struct kobject *tables_obj,
+				struct acpi_table_attr *table_attr,
+				struct acpi_table_header *table_header)
 {
 	struct acpi_table_header *header = NULL;
 	struct acpi_table_attr *attr = NULL;
+	char instance_str[ACPI_INST_SIZE];
 
 	sysfs_attr_init(&table_attr->attr.attr);
-	if (table_header->signature[0] != '\0')
-		memcpy(table_attr->name, table_header->signature,
-		       ACPI_NAME_SIZE);
-	else
-		memcpy(table_attr->name, "NULL", 4);
+	ACPI_MOVE_NAME(table_attr->name, table_header->signature);
 
 	list_for_each_entry(attr, &acpi_table_attr_list, node) {
-		if (!memcmp(table_attr->name, attr->name, ACPI_NAME_SIZE))
+		if (ACPI_COMPARE_NAME(table_attr->name, attr->name))
 			if (table_attr->instance < attr->instance)
 				table_attr->instance = attr->instance;
 	}
 	table_attr->instance++;
+	if (table_attr->instance > ACPI_MAX_TABLE_INSTANCES) {
+		pr_warn("%4.4s: too many table instances\n",
+			table_attr->name);
+		return -ERANGE;
+	}
 
+	ACPI_MOVE_NAME(table_attr->filename, table_header->signature);
+	table_attr->filename[ACPI_NAME_SIZE] = '\0';
 	if (table_attr->instance > 1 || (table_attr->instance == 1 &&
 					 !acpi_get_table
-					 (table_header->signature, 2, &header)))
-		sprintf(table_attr->name + ACPI_NAME_SIZE, "%d",
-			table_attr->instance);
+					 (table_header->signature, 2, &header))) {
+		snprintf(instance_str, sizeof(instance_str), "%u",
+			 table_attr->instance);
+		strcat(table_attr->filename, instance_str);
+	}
 
 	table_attr->attr.size = table_header->length;
 	table_attr->attr.read = acpi_table_show;
-	table_attr->attr.attr.name = table_attr->name;
+	table_attr->attr.attr.name = table_attr->filename;
 	table_attr->attr.attr.mode = 0400;
 
-	return;
+	return sysfs_create_bin_file(tables_obj, &table_attr->attr);
 }
 
-static acpi_status
-acpi_sysfs_table_handler(u32 event, void *table, void *context)
+acpi_status acpi_sysfs_table_handler(u32 event, void *table, void *context)
 {
 	struct acpi_table_attr *table_attr;
 
 	switch (event) {
-	case ACPI_TABLE_EVENT_LOAD:
+	case ACPI_TABLE_EVENT_INSTALL:
 		table_attr =
 		    kzalloc(sizeof(struct acpi_table_attr), GFP_KERNEL);
 		if (!table_attr)
 			return AE_NO_MEMORY;
 
-		acpi_table_attr_init(table_attr, table);
-		if (sysfs_create_bin_file(dynamic_tables_kobj,
-					  &table_attr->attr)) {
+		if (acpi_table_attr_init(dynamic_tables_kobj,
+					 table_attr, table)) {
 			kfree(table_attr);
 			return AE_ERROR;
-		} else
-			list_add_tail(&table_attr->node, &acpi_table_attr_list);
+		}
+		list_add_tail(&table_attr->node, &acpi_table_attr_list);
 		break;
+	case ACPI_TABLE_EVENT_LOAD:
 	case ACPI_TABLE_EVENT_UNLOAD:
+	case ACPI_TABLE_EVENT_UNINSTALL:
 		/*
 		 * we do not need to do anything right now
 		 * because the table is not deleted from the
@@ -373,13 +442,12 @@ static int acpi_tables_sysfs_init(void)
 		if (ACPI_FAILURE(status))
 			continue;
 
-		table_attr = NULL;
 		table_attr = kzalloc(sizeof(*table_attr), GFP_KERNEL);
 		if (!table_attr)
 			return -ENOMEM;
 
-		acpi_table_attr_init(table_attr, table_header);
-		ret = sysfs_create_bin_file(tables_kobj, &table_attr->attr);
+		ret = acpi_table_attr_init(tables_kobj,
+					   table_attr, table_header);
 		if (ret) {
 			kfree(table_attr);
 			return ret;
@@ -389,9 +457,8 @@ static int acpi_tables_sysfs_init(void)
 
 	kobject_uevent(tables_kobj, KOBJ_ADD);
 	kobject_uevent(dynamic_tables_kobj, KOBJ_ADD);
-	status = acpi_install_table_handler(acpi_sysfs_table_handler, NULL);
 
-	return ACPI_FAILURE(status) ? -EINVAL : 0;
+	return 0;
 err_dynamic_tables:
 	kobject_put(tables_kobj);
 err:
@@ -492,23 +559,22 @@ static void acpi_global_event_handler(u32 event_type, acpi_handle device,
 static int get_status(u32 index, acpi_event_status *status,
 		      acpi_handle *handle)
 {
-	int result = 0;
+	int result;
 
 	if (index >= num_gpes + ACPI_NUM_FIXED_EVENTS)
-		goto end;
+		return -EINVAL;
 
 	if (index < num_gpes) {
 		result = acpi_get_gpe_device(index, handle);
 		if (result) {
 			ACPI_EXCEPTION((AE_INFO, AE_NOT_FOUND,
 					"Invalid GPE 0x%x", index));
-			goto end;
+			return result;
 		}
 		result = acpi_get_gpe_status(*handle, index, status);
 	} else if (index < (num_gpes + ACPI_NUM_FIXED_EVENTS))
 		result = acpi_get_event_status(index - num_gpes, status);
 
-end:
 	return result;
 }
 
@@ -527,7 +593,7 @@ static ssize_t counter_show(struct kobject *kobj,
 	    acpi_irq_not_handled;
 	all_counters[num_gpes + ACPI_NUM_FIXED_EVENTS + COUNT_GPE].count =
 	    acpi_gpe_count;
-	size = sprintf(buf, "%8d", all_counters[index].count);
+	size = sprintf(buf, "%8u", all_counters[index].count);
 
 	/* "gpe_all" or "sci" */
 	if (index >= num_gpes + ACPI_NUM_FIXED_EVENTS)
@@ -537,14 +603,27 @@ static ssize_t counter_show(struct kobject *kobj,
 	if (result)
 		goto end;
 
-	if (!(status & ACPI_EVENT_FLAG_HAS_HANDLER))
-		size += sprintf(buf + size, "   invalid");
-	else if (status & ACPI_EVENT_FLAG_ENABLED)
-		size += sprintf(buf + size, "   enabled");
-	else if (status & ACPI_EVENT_FLAG_WAKE_ENABLED)
-		size += sprintf(buf + size, "   wake_enabled");
+	if (status & ACPI_EVENT_FLAG_ENABLE_SET)
+		size += sprintf(buf + size, "  EN");
 	else
-		size += sprintf(buf + size, "   disabled");
+		size += sprintf(buf + size, "    ");
+	if (status & ACPI_EVENT_FLAG_STATUS_SET)
+		size += sprintf(buf + size, " STS");
+	else
+		size += sprintf(buf + size, "    ");
+
+	if (!(status & ACPI_EVENT_FLAG_HAS_HANDLER))
+		size += sprintf(buf + size, " invalid     ");
+	else if (status & ACPI_EVENT_FLAG_ENABLED)
+		size += sprintf(buf + size, " enabled     ");
+	else if (status & ACPI_EVENT_FLAG_WAKE_ENABLED)
+		size += sprintf(buf + size, " wake_enabled");
+	else
+		size += sprintf(buf + size, " disabled    ");
+	if (status & ACPI_EVENT_FLAG_MASKED)
+		size += sprintf(buf + size, " masked  ");
+	else
+		size += sprintf(buf + size, " unmasked");
 
 end:
 	size += sprintf(buf + size, "\n");
@@ -595,8 +674,12 @@ static ssize_t counter_set(struct kobject *kobj,
 			 !(status & ACPI_EVENT_FLAG_ENABLED))
 			result = acpi_enable_gpe(handle, index);
 		else if (!strcmp(buf, "clear\n") &&
-			 (status & ACPI_EVENT_FLAG_SET))
+			 (status & ACPI_EVENT_FLAG_STATUS_SET))
 			result = acpi_clear_gpe(handle, index);
+		else if (!strcmp(buf, "mask\n"))
+			result = acpi_mask_gpe(handle, index, TRUE);
+		else if (!strcmp(buf, "unmask\n"))
+			result = acpi_mask_gpe(handle, index, FALSE);
 		else if (!kstrtoul(buf, 0, &tmp))
 			all_counters[index].count = tmp;
 		else
@@ -604,13 +687,13 @@ static ssize_t counter_set(struct kobject *kobj,
 	} else if (index < num_gpes + ACPI_NUM_FIXED_EVENTS) {
 		int event = index - num_gpes;
 		if (!strcmp(buf, "disable\n") &&
-		    (status & ACPI_EVENT_FLAG_ENABLED))
+		    (status & ACPI_EVENT_FLAG_ENABLE_SET))
 			result = acpi_disable_event(event, ACPI_NOT_ISR);
 		else if (!strcmp(buf, "enable\n") &&
-			 !(status & ACPI_EVENT_FLAG_ENABLED))
+			 !(status & ACPI_EVENT_FLAG_ENABLE_SET))
 			result = acpi_enable_event(event, ACPI_NOT_ISR);
 		else if (!strcmp(buf, "clear\n") &&
-			 (status & ACPI_EVENT_FLAG_SET))
+			 (status & ACPI_EVENT_FLAG_STATUS_SET))
 			result = acpi_clear_event(event);
 		else if (!kstrtoul(buf, 0, &tmp))
 			all_counters[index].count = tmp;
@@ -815,6 +898,9 @@ int __init acpi_sysfs_init(void)
 		return result;
 
 	hotplug_kobj = kobject_create_and_add("hotplug", acpi_kobj);
+	if (!hotplug_kobj)
+		return -ENOMEM;
+
 	result = sysfs_create_file(hotplug_kobj, &force_remove_attr.attr);
 	if (result)
 		return result;

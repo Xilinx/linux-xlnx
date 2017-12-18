@@ -112,19 +112,20 @@ OPTIONS
 --debug-mode::
         Do various checks like samples ordering and lost events.
 
--f::
+-F::
 --fields::
         Comma separated list of fields to print. Options are:
-        comm, tid, pid, time, cpu, event, trace, ip, sym, dso, addr, symoff, srcline, period.
-        Field list can be prepended with the type, trace, sw or hw,
+        comm, tid, pid, time, cpu, event, trace, ip, sym, dso, addr, symoff,
+        srcline, period, iregs, brstack, brstacksym, flags, bpf-output,
+        callindent. Field list can be prepended with the type, trace, sw or hw,
         to indicate to which event type the field list applies.
-        e.g., -f sw:comm,tid,time,ip,sym  and -f trace:time,cpu,trace
+        e.g., -F sw:comm,tid,time,ip,sym  and -F trace:time,cpu,trace
 
-		perf script -f <fields>
+		perf script -F <fields>
 
 	is equivalent to:
 
-		perf script -f trace:<fields> -f sw:<fields> -f hw:<fields>
+		perf script -F trace:<fields> -F sw:<fields> -F hw:<fields>
 
 	i.e., the specified fields apply to all event types if the type string
 	is not given.
@@ -132,9 +133,9 @@ OPTIONS
 	The arguments are processed in the order received. A later usage can
 	reset a prior request. e.g.:
 
-		-f trace: -f comm,tid,time,ip,sym
+		-F trace: -F comm,tid,time,ip,sym
 
-	The first -f suppresses trace events (field list is ""), but then the
+	The first -F suppresses trace events (field list is ""), but then the
 	second invocation sets the fields to comm,tid,time,ip,sym. In this case a
 	warning is given to the user:
 
@@ -142,9 +143,9 @@ OPTIONS
 
 	Alternatively, consider the order:
 
-		-f comm,tid,time,ip,sym -f trace:
+		-F comm,tid,time,ip,sym -F trace:
 
-	The first -f sets the fields for all events and the second -f
+	The first -F sets the fields for all events and the second -F
 	suppresses trace events. The user is given a warning message about
 	the override, and the result of the above is that only S/W and H/W
 	events are displayed with the given fields.
@@ -153,20 +154,45 @@ OPTIONS
 	event type, a message is displayed to the user that the option is
 	ignored for that type. For example:
 
-		$ perf script -f comm,tid,trace
+		$ perf script -F comm,tid,trace
 		'trace' not valid for hardware events. Ignoring.
 		'trace' not valid for software events. Ignoring.
 
 	Alternatively, if the type is given an invalid field is specified it
 	is an error. For example:
 
-        perf script -v -f sw:comm,tid,trace
+        perf script -v -F sw:comm,tid,trace
         'trace' not valid for software events.
 
 	At this point usage is displayed, and perf-script exits.
 
+	The flags field is synthesized and may have a value when Instruction
+	Trace decoding. The flags are "bcrosyiABEx" which stand for branch,
+	call, return, conditional, system, asynchronous, interrupt,
+	transaction abort, trace begin, trace end, and in transaction,
+	respectively. Known combinations of flags are printed more nicely e.g.
+	"call" for "bc", "return" for "br", "jcc" for "bo", "jmp" for "b",
+	"int" for "bci", "iret" for "bri", "syscall" for "bcs", "sysret" for "brs",
+	"async" for "by", "hw int" for "bcyi", "tx abrt" for "bA", "tr strt" for "bB",
+	"tr end" for "bE". However the "x" flag will be display separately in those
+	cases e.g. "jcc     (x)" for a condition branch within a transaction.
+
+	The callindent field is synthesized and may have a value when
+	Instruction Trace decoding. For calls and returns, it will display the
+	name of the symbol indented with spaces to reflect the stack depth.
+
 	Finally, a user may not set fields to none for all event types.
-	i.e., -f "" is not allowed.
+	i.e., -F "" is not allowed.
+
+	The brstack output includes branch related information with raw addresses using the
+	/v/v/v/v/ syntax in the following order:
+	FROM: branch source instruction
+	TO  : branch target instruction
+        M/P/-: M=branch target mispredicted or branch direction was mispredicted, P=target predicted or direction predicted, -=not supported
+	X/- : X=branch inside a transactional region, -=not in transaction region or not supported
+	A/- : A=TSX abort entry, -=not aborted region or not supported
+
+	The brstacksym is identical to brstack, except that the FROM and TO addresses are printed in a symbolic form if possible.
 
 -k::
 --vmlinux=<file>::
@@ -193,6 +219,12 @@ OPTIONS
 	Only display events for these comms. CSV that understands
 	file://filename entries.
 
+--pid=::
+	Only show events for given process ID (comma separated list).
+
+--tid=::
+	Only show events for given thread ID (comma separated list).
+
 -I::
 --show-info::
 	Display extended information about the perf.data file. This adds
@@ -209,11 +241,49 @@ OPTIONS
 --show-mmap-events
 	Display mmap related events (e.g. MMAP, MMAP2).
 
+--show-switch-events
+	Display context switch events i.e. events of type PERF_RECORD_SWITCH or
+	PERF_RECORD_SWITCH_CPU_WIDE.
+
+--demangle::
+	Demangle symbol names to human readable form. It's enabled by default,
+	disable with --no-demangle.
+
+--demangle-kernel::
+	Demangle kernel symbol names to human readable form (for C++ kernels).
+
 --header
 	Show perf.data header.
 
 --header-only
 	Show only perf.data header.
+
+--itrace::
+	Options for decoding instruction tracing data. The options are:
+
+include::itrace.txt[]
+
+	To disable decoding entirely, use --no-itrace.
+
+--full-source-path::
+	Show the full path for source files for srcline output.
+
+--max-stack::
+        Set the stack depth limit when parsing the callchain, anything
+        beyond the specified depth will be ignored. This is a trade-off
+        between information loss and faster processing especially for
+        workloads that can have a very long callchain stack.
+        Note that when using the --itrace option the synthesized callchain size
+        will override this value if the synthesized callchain size is bigger.
+
+        Default: 127
+
+--ns::
+	Use 9 decimal places when displaying time (i.e. show the nanoseconds)
+
+-f::
+--force::
+	Don't do ownership validation.
 
 SEE ALSO
 --------

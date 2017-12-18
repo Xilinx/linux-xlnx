@@ -25,7 +25,7 @@
 		#size-cells = <0>;
 
 		cpu {
-			compatible = "arm,arm1136";
+			compatible = "arm,arm1136jf-s";
 			device_type = "cpu";
 		};
 	};
@@ -66,6 +66,14 @@
 				interrupts = <32>;
 				clocks = <&clks 10>, <&clks 31>;
 				clock-names = "ipg", "per";
+				status = "disabled";
+			};
+
+			kpp: kpp@43fa8000 {
+				compatible = "fsl,imx31-kpp", "fsl,imx21-kpp";
+				reg = <0x43fa8000 0x4000>;
+				interrupts = <24>;
+				clocks = <&clks 46>;
 				status = "disabled";
 			};
 

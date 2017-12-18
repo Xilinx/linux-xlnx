@@ -101,7 +101,7 @@ static void cxl_ack_ae(struct cxl_context *ctx)
 {
 	unsigned long flags;
 
-	cxl_ack_irq(ctx, CXL_PSL_TFC_An_AE, 0);
+	cxl_ops->ack_irq(ctx, CXL_PSL_TFC_An_AE, 0);
 
 	spin_lock_irqsave(&ctx->lock, flags);
 	ctx->pending_fault = true;
@@ -125,7 +125,7 @@ static int cxl_handle_segment_miss(struct cxl_context *ctx,
 	else {
 
 		mb(); /* Order seg table write to TFC MMIO write */
-		cxl_ack_irq(ctx, CXL_PSL_TFC_An_R, 0);
+		cxl_ops->ack_irq(ctx, CXL_PSL_TFC_An_R, 0);
 	}
 
 	return IRQ_HANDLED;
@@ -149,11 +149,13 @@ static void cxl_handle_page_fault(struct cxl_context *ctx,
 	 * update_mmu_cache() will not have loaded the hash since current->trap
 	 * is not a 0x400 or 0x300, so just call hash_page_mm() here.
 	 */
-	access = _PAGE_PRESENT;
+	access = _PAGE_PRESENT | _PAGE_READ;
 	if (dsisr & CXL_PSL_DSISR_An_S)
-		access |= _PAGE_RW;
-	if ((!ctx->kernel) || ~(dar & (1ULL << 63)))
-		access |= _PAGE_USER;
+		access |= _PAGE_WRITE;
+
+	access |= _PAGE_PRIVILEGED;
+	if ((!ctx->kernel) || (REGION_ID(dar) == USER_REGION_ID))
+		access &= ~_PAGE_PRIVILEGED;
 
 	if (dsisr & DSISR_NOHPTE)
 		inv_flags |= HPTE_NOHPTE_UPDATE;
@@ -163,8 +165,88 @@ static void cxl_handle_page_fault(struct cxl_context *ctx,
 	local_irq_restore(flags);
 
 	pr_devel("Page fault successfully handled for pe: %i!\n", ctx->pe);
-	cxl_ack_irq(ctx, CXL_PSL_TFC_An_R, 0);
+	cxl_ops->ack_irq(ctx, CXL_PSL_TFC_An_R, 0);
 }
+
+/*
+ * Returns the mm_struct corresponding to the context ctx via ctx->pid
+ * In case the task has exited we use the task group leader accessible
+ * via ctx->glpid to find the next task in the thread group that has a
+ * valid  mm_struct associated with it. If a task with valid mm_struct
+ * is found the ctx->pid is updated to use the task struct for subsequent
+ * translations. In case no valid mm_struct is found in the task group to
+ * service the fault a NULL is returned.
+ */
+static struct mm_struct *get_mem_context(struct cxl_context *ctx)
+{
+	struct task_struct *task = NULL;
+	struct mm_struct *mm = NULL;
+	struct pid *old_pid = ctx->pid;
+
+	if (old_pid == NULL) {
+		pr_warn("%s: Invalid context for pe=%d\n",
+			 __func__, ctx->pe);
+		return NULL;
+	}
+
+	task = get_pid_task(old_pid, PIDTYPE_PID);
+
+	/*
+	 * pid_alive may look racy but this saves us from costly
+	 * get_task_mm when the task is a zombie. In worst case
+	 * we may think a task is alive, which is about to die
+	 * but get_task_mm will return NULL.
+	 */
+	if (task != NULL && pid_alive(task))
+		mm = get_task_mm(task);
+
+	/* release the task struct that was taken earlier */
+	if (task)
+		put_task_struct(task);
+	else
+		pr_devel("%s: Context owning pid=%i for pe=%i dead\n",
+			__func__, pid_nr(old_pid), ctx->pe);
+
+	/*
+	 * If we couldn't find the mm context then use the group
+	 * leader to iterate over the task group and find a task
+	 * that gives us mm_struct.
+	 */
+	if (unlikely(mm == NULL && ctx->glpid != NULL)) {
+
+		rcu_read_lock();
+		task = pid_task(ctx->glpid, PIDTYPE_PID);
+		if (task)
+			do {
+				mm = get_task_mm(task);
+				if (mm) {
+					ctx->pid = get_task_pid(task,
+								PIDTYPE_PID);
+					break;
+				}
+				task = next_thread(task);
+			} while (task && !thread_group_leader(task));
+		rcu_read_unlock();
+
+		/* check if we switched pid */
+		if (ctx->pid != old_pid) {
+			if (mm)
+				pr_devel("%s:pe=%i switch pid %i->%i\n",
+					 __func__, ctx->pe, pid_nr(old_pid),
+					 pid_nr(ctx->pid));
+			else
+				pr_devel("%s:Cannot find mm for pid=%i\n",
+					 __func__, pid_nr(old_pid));
+
+			/* drop the reference to older pid */
+			put_pid(old_pid);
+		}
+	}
+
+	return mm;
+}
+
+
 
 void cxl_handle_fault(struct work_struct *fault_work)
 {
@@ -172,17 +254,19 @@ void cxl_handle_fault(struct work_struct *fault_work)
 		container_of(fault_work, struct cxl_context, fault_work);
 	u64 dsisr = ctx->dsisr;
 	u64 dar = ctx->dar;
-	struct task_struct *task;
-	struct mm_struct *mm;
+	struct mm_struct *mm = NULL;
 
-	if (cxl_p2n_read(ctx->afu, CXL_PSL_DSISR_An) != dsisr ||
-	    cxl_p2n_read(ctx->afu, CXL_PSL_DAR_An) != dar ||
-	    cxl_p2n_read(ctx->afu, CXL_PSL_PEHandle_An) != ctx->pe) {
-		/* Most likely explanation is harmless - a dedicated process
-		 * has detached and these were cleared by the PSL purge, but
-		 * warn about it just in case */
-		dev_notice(&ctx->afu->dev, "cxl_handle_fault: Translation fault regs changed\n");
-		return;
+	if (cpu_has_feature(CPU_FTR_HVMODE)) {
+		if (cxl_p2n_read(ctx->afu, CXL_PSL_DSISR_An) != dsisr ||
+		    cxl_p2n_read(ctx->afu, CXL_PSL_DAR_An) != dar ||
+		    cxl_p2n_read(ctx->afu, CXL_PSL_PEHandle_An) != ctx->pe) {
+			/* Most likely explanation is harmless - a dedicated
+			 * process has detached and these were cleared by the
+			 * PSL purge, but warn about it just in case
+			 */
+			dev_notice(&ctx->afu->dev, "cxl_handle_fault: Translation fault regs changed\n");
+			return;
+		}
 	}
 
 	/* Early return if the context is being / has been detached */
@@ -194,17 +278,19 @@ void cxl_handle_fault(struct work_struct *fault_work)
 	pr_devel("CXL BOTTOM HALF handling fault for afu pe: %i. "
 		"DSISR: %#llx DAR: %#llx\n", ctx->pe, dsisr, dar);
 
-	if (!(task = get_pid_task(ctx->pid, PIDTYPE_PID))) {
-		pr_devel("cxl_handle_fault unable to get task %i\n",
-			 pid_nr(ctx->pid));
-		cxl_ack_ae(ctx);
-		return;
-	}
-	if (!(mm = get_task_mm(task))) {
-		pr_devel("cxl_handle_fault unable to get mm %i\n",
-			 pid_nr(ctx->pid));
-		cxl_ack_ae(ctx);
-		goto out;
+	if (!ctx->kernel) {
+
+		mm = get_mem_context(ctx);
+		/* indicates all the thread in task group have exited */
+		if (mm == NULL) {
+			pr_devel("%s: unable to get mm for pe=%d pid=%i\n",
+				 __func__, ctx->pe, pid_nr(ctx->pid));
+			cxl_ack_ae(ctx);
+			return;
+		} else {
+			pr_devel("Handling page fault for pe=%d pid=%i\n",
+				 ctx->pe, pid_nr(ctx->pid));
+		}
 	}
 
 	if (dsisr & CXL_PSL_DSISR_An_DS)
@@ -214,33 +300,24 @@ void cxl_handle_fault(struct work_struct *fault_work)
 	else
 		WARN(1, "cxl_handle_fault has nothing to handle\n");
 
-	mmput(mm);
-out:
-	put_task_struct(task);
+	if (mm)
+		mmput(mm);
 }
 
 static void cxl_prefault_one(struct cxl_context *ctx, u64 ea)
 {
-	int rc;
-	struct task_struct *task;
 	struct mm_struct *mm;
 
-	if (!(task = get_pid_task(ctx->pid, PIDTYPE_PID))) {
-		pr_devel("cxl_prefault_one unable to get task %i\n",
-			 pid_nr(ctx->pid));
-		return;
-	}
-	if (!(mm = get_task_mm(task))) {
+	mm = get_mem_context(ctx);
+	if (mm == NULL) {
 		pr_devel("cxl_prefault_one unable to get mm %i\n",
 			 pid_nr(ctx->pid));
-		put_task_struct(task);
 		return;
 	}
 
-	rc = cxl_fault_segment(ctx, mm, ea);
+	cxl_fault_segment(ctx, mm, ea);
 
 	mmput(mm);
-	put_task_struct(task);
 }
 
 static u64 next_segment(u64 ea, u64 vsid)
@@ -259,18 +336,13 @@ static void cxl_prefault_vma(struct cxl_context *ctx)
 	struct copro_slb slb;
 	struct vm_area_struct *vma;
 	int rc;
-	struct task_struct *task;
 	struct mm_struct *mm;
 
-	if (!(task = get_pid_task(ctx->pid, PIDTYPE_PID))) {
-		pr_devel("cxl_prefault_vma unable to get task %i\n",
-			 pid_nr(ctx->pid));
-		return;
-	}
-	if (!(mm = get_task_mm(task))) {
+	mm = get_mem_context(ctx);
+	if (mm == NULL) {
 		pr_devel("cxl_prefault_vm unable to get mm %i\n",
 			 pid_nr(ctx->pid));
-		goto out1;
+		return;
 	}
 
 	down_read(&mm->mmap_sem);
@@ -291,8 +363,6 @@ static void cxl_prefault_vma(struct cxl_context *ctx)
 	up_read(&mm->mmap_sem);
 
 	mmput(mm);
-out1:
-	put_task_struct(task);
 }
 
 void cxl_prefault(struct cxl_context *ctx, u64 wed)

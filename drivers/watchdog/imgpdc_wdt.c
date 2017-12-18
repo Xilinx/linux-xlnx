@@ -9,6 +9,35 @@
  *
  * Based on drivers/watchdog/sunxi_wdt.c Copyright (c) 2013 Carlo Caione
  *                                                     2012 Henrik Nordstrom
+ *
+ * Notes
+ * -----
+ * The timeout value is rounded to the next power of two clock cycles.
+ * This is configured using the PDC_WDT_CONFIG register, according to this
+ * formula:
+ *
+ *     timeout = 2^(delay + 1) clock cycles
+ *
+ * Where 'delay' is the value written in PDC_WDT_CONFIG register.
+ *
+ * Therefore, the hardware only allows to program watchdog timeouts, expressed
+ * as a power of two number of watchdog clock cycles. The current implementation
+ * guarantees that the actual watchdog timeout will be _at least_ the value
+ * programmed in the imgpdg_wdt driver.
+ *
+ * The following table shows how the user-configured timeout relates
+ * to the actual hardware timeout (watchdog clock @ 40000 Hz):
+ *
+ * input timeout | WD_DELAY | actual timeout
+ * -----------------------------------
+ *      10       |   18     |  13 seconds
+ *      20       |   19     |  26 seconds
+ *      30       |   20     |  52 seconds
+ *      60       |   21     |  104 seconds
+ *
+ * Albeit coarse, this granularity would suffice most watchdog uses.
+ * If the platform allows it, the user should be able to change the watchdog
+ * clock rate and achieve a finer timeout granularity.
  */
 
 #include <linux/clk.h>
@@ -42,7 +71,7 @@
 #define PDC_WDT_MIN_TIMEOUT		1
 #define PDC_WDT_DEF_TIMEOUT		64
 
-static int heartbeat = PDC_WDT_DEF_TIMEOUT;
+static int heartbeat;
 module_param(heartbeat, int, 0);
 MODULE_PARM_DESC(heartbeat, "Watchdog heartbeats in seconds "
 	"(default=" __MODULE_STRING(PDC_WDT_DEF_TIMEOUT) ")");
@@ -84,18 +113,24 @@ static int pdc_wdt_stop(struct watchdog_device *wdt_dev)
 	return 0;
 }
 
+static void __pdc_wdt_set_timeout(struct pdc_wdt_dev *wdt)
+{
+	unsigned long clk_rate = clk_get_rate(wdt->wdt_clk);
+	unsigned int val;
+
+	val = readl(wdt->base + PDC_WDT_CONFIG) & ~PDC_WDT_CONFIG_DELAY_MASK;
+	val |= order_base_2(wdt->wdt_dev.timeout * clk_rate) - 1;
+	writel(val, wdt->base + PDC_WDT_CONFIG);
+}
+
 static int pdc_wdt_set_timeout(struct watchdog_device *wdt_dev,
 			       unsigned int new_timeout)
 {
-	unsigned int val;
 	struct pdc_wdt_dev *wdt = watchdog_get_drvdata(wdt_dev);
-	unsigned long clk_rate = clk_get_rate(wdt->wdt_clk);
 
 	wdt->wdt_dev.timeout = new_timeout;
 
-	val = readl(wdt->base + PDC_WDT_CONFIG) & ~PDC_WDT_CONFIG_DELAY_MASK;
-	val |= order_base_2(new_timeout * clk_rate) - 1;
-	writel(val, wdt->base + PDC_WDT_CONFIG);
+	__pdc_wdt_set_timeout(wdt);
 
 	return 0;
 }
@@ -106,9 +141,22 @@ static int pdc_wdt_start(struct watchdog_device *wdt_dev)
 	unsigned int val;
 	struct pdc_wdt_dev *wdt = watchdog_get_drvdata(wdt_dev);
 
+	__pdc_wdt_set_timeout(wdt);
+
 	val = readl(wdt->base + PDC_WDT_CONFIG);
 	val |= PDC_WDT_CONFIG_ENABLE;
 	writel(val, wdt->base + PDC_WDT_CONFIG);
+
+	return 0;
+}
+
+static int pdc_wdt_restart(struct watchdog_device *wdt_dev,
+			   unsigned long action, void *data)
+{
+	struct pdc_wdt_dev *wdt = watchdog_get_drvdata(wdt_dev);
+
+	/* Assert SOFT_RESET */
+	writel(0x1, wdt->base + PDC_WDT_SOFT_RESET);
 
 	return 0;
 }
@@ -126,10 +174,12 @@ static const struct watchdog_ops pdc_wdt_ops = {
 	.stop		= pdc_wdt_stop,
 	.ping		= pdc_wdt_keepalive,
 	.set_timeout	= pdc_wdt_set_timeout,
+	.restart        = pdc_wdt_restart,
 };
 
 static int pdc_wdt_probe(struct platform_device *pdev)
 {
+	u64 div;
 	int ret, val;
 	unsigned long clk_rate;
 	struct resource *res;
@@ -189,16 +239,15 @@ static int pdc_wdt_probe(struct platform_device *pdev)
 
 	pdc_wdt->wdt_dev.info = &pdc_wdt_info;
 	pdc_wdt->wdt_dev.ops = &pdc_wdt_ops;
-	pdc_wdt->wdt_dev.max_timeout = 1 << PDC_WDT_CONFIG_DELAY_MASK;
+
+	div = 1ULL << (PDC_WDT_CONFIG_DELAY_MASK + 1);
+	do_div(div, clk_rate);
+	pdc_wdt->wdt_dev.max_timeout = div;
+	pdc_wdt->wdt_dev.timeout = PDC_WDT_DEF_TIMEOUT;
 	pdc_wdt->wdt_dev.parent = &pdev->dev;
 	watchdog_set_drvdata(&pdc_wdt->wdt_dev, pdc_wdt);
 
-	ret = watchdog_init_timeout(&pdc_wdt->wdt_dev, heartbeat, &pdev->dev);
-	if (ret < 0) {
-		pdc_wdt->wdt_dev.timeout = pdc_wdt->wdt_dev.max_timeout;
-		dev_warn(&pdev->dev,
-			 "Initial timeout out of range! setting max timeout\n");
-	}
+	watchdog_init_timeout(&pdc_wdt->wdt_dev, heartbeat, &pdev->dev);
 
 	pdc_wdt_stop(&pdc_wdt->wdt_dev);
 
@@ -231,6 +280,7 @@ static int pdc_wdt_probe(struct platform_device *pdev)
 	}
 
 	watchdog_set_nowayout(&pdc_wdt->wdt_dev, nowayout);
+	watchdog_set_restart_priority(&pdc_wdt->wdt_dev, 128);
 
 	platform_set_drvdata(pdev, pdc_wdt);
 

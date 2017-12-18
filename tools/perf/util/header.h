@@ -7,7 +7,7 @@
 #include <linux/bitmap.h>
 #include <linux/types.h>
 #include "event.h"
-
+#include "env.h"
 
 enum {
 	HEADER_RESERVED		= 0,	/* always cleared */
@@ -30,6 +30,9 @@ enum {
 	HEADER_BRANCH_STACK,
 	HEADER_PMU_MAPPINGS,
 	HEADER_GROUP_DESC,
+	HEADER_AUXTRACE,
+	HEADER_STAT,
+	HEADER_CACHE,
 	HEADER_LAST_FEATURE,
 	HEADER_FEAT_BITS	= 256,
 };
@@ -65,30 +68,6 @@ struct perf_header;
 int perf_file_header__read(struct perf_file_header *header,
 			   struct perf_header *ph, int fd);
 
-struct perf_session_env {
-	char			*hostname;
-	char			*os_release;
-	char			*version;
-	char			*arch;
-	int			nr_cpus_online;
-	int			nr_cpus_avail;
-	char			*cpu_desc;
-	char			*cpuid;
-	unsigned long long	total_mem;
-
-	int			nr_cmdline;
-	int			nr_sibling_cores;
-	int			nr_sibling_threads;
-	int			nr_numa_nodes;
-	int			nr_pmu_mappings;
-	int			nr_groups;
-	char			*cmdline;
-	char			*sibling_cores;
-	char			*sibling_threads;
-	char			*numa_nodes;
-	char			*pmu_mappings;
-};
-
 struct perf_header {
 	enum perf_header_version	version;
 	bool				needs_swap;
@@ -96,7 +75,7 @@ struct perf_header {
 	u64				data_size;
 	u64				feat_offset;
 	DECLARE_BITMAP(adds_features, HEADER_FEAT_BITS);
-	struct perf_session_env 	env;
+	struct perf_env 	env;
 };
 
 struct perf_evlist;
@@ -128,8 +107,24 @@ int perf_event__synthesize_attr(struct perf_tool *tool,
 int perf_event__synthesize_attrs(struct perf_tool *tool,
 				 struct perf_session *session,
 				 perf_event__handler_t process);
+int perf_event__synthesize_event_update_unit(struct perf_tool *tool,
+					     struct perf_evsel *evsel,
+					     perf_event__handler_t process);
+int perf_event__synthesize_event_update_scale(struct perf_tool *tool,
+					      struct perf_evsel *evsel,
+					      perf_event__handler_t process);
+int perf_event__synthesize_event_update_name(struct perf_tool *tool,
+					     struct perf_evsel *evsel,
+					     perf_event__handler_t process);
+int perf_event__synthesize_event_update_cpus(struct perf_tool *tool,
+					     struct perf_evsel *evsel,
+					     perf_event__handler_t process);
 int perf_event__process_attr(struct perf_tool *tool, union perf_event *event,
 			     struct perf_evlist **pevlist);
+int perf_event__process_event_update(struct perf_tool *tool,
+				     union perf_event *event,
+				     struct perf_evlist **pevlist);
+size_t perf_event__fprintf_event_update(union perf_event *event, FILE *fp);
 
 int perf_event__synthesize_tracing_data(struct perf_tool *tool,
 					int fd, struct perf_evlist *evlist,
@@ -156,4 +151,5 @@ int write_padded(int fd, const void *bf, size_t count, size_t count_aligned);
  */
 int get_cpuid(char *buffer, size_t sz);
 
+char *get_cpuid_str(void);
 #endif /* __PERF_HEADER_H */

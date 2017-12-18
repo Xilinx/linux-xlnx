@@ -389,11 +389,6 @@ static void sa11x0_dma_tasklet(unsigned long arg)
 }
 
 
-static int sa11x0_dma_alloc_chan_resources(struct dma_chan *chan)
-{
-	return 0;
-}
-
 static void sa11x0_dma_free_chan_resources(struct dma_chan *chan)
 {
 	struct sa11x0_dma_chan *c = to_sa11x0_dma_chan(chan);
@@ -468,7 +463,7 @@ static enum dma_status sa11x0_dma_tx_status(struct dma_chan *chan,
 			dma_addr_t addr = sa11x0_dma_pos(p);
 			unsigned i;
 
-			dev_vdbg(d->slave.dev, "tx_status: addr:%x\n", addr);
+			dev_vdbg(d->slave.dev, "tx_status: addr:%pad\n", &addr);
 
 			for (i = 0; i < txd->sglen; i++) {
 				dev_vdbg(d->slave.dev, "tx_status: [%u] %x+%x\n",
@@ -496,7 +491,7 @@ static enum dma_status sa11x0_dma_tx_status(struct dma_chan *chan,
 	}
 	spin_unlock_irqrestore(&c->vc.lock, flags);
 
-	dev_vdbg(d->slave.dev, "tx_status: bytes 0x%zx\n", state->residue);
+	dev_vdbg(d->slave.dev, "tx_status: bytes 0x%x\n", state->residue);
 
 	return ret;
 }
@@ -556,8 +551,8 @@ static struct dma_async_tx_descriptor *sa11x0_dma_prep_slave_sg(
 		if (len > DMA_MAX_SIZE)
 			j += DIV_ROUND_UP(len, DMA_MAX_SIZE & ~DMA_ALIGN) - 1;
 		if (addr & DMA_ALIGN) {
-			dev_dbg(chan->device->dev, "vchan %p: bad buffer alignment: %08x\n",
-				&c->vc, addr);
+			dev_dbg(chan->device->dev, "vchan %p: bad buffer alignment: %pad\n",
+				&c->vc, &addr);
 			return NULL;
 		}
 	}
@@ -604,7 +599,7 @@ static struct dma_async_tx_descriptor *sa11x0_dma_prep_slave_sg(
 	txd->size = size;
 	txd->sglen = j;
 
-	dev_dbg(chan->device->dev, "vchan %p: txd %p: size %u nr %u\n",
+	dev_dbg(chan->device->dev, "vchan %p: txd %p: size %zu nr %u\n",
 		&c->vc, &txd->vd, txd->size, txd->sglen);
 
 	return vchan_tx_prep(&c->vc, &txd->vd, flags);
@@ -698,8 +693,8 @@ static int sa11x0_dma_device_config(struct dma_chan *chan,
 	if (maxburst == 8)
 		ddar |= DDAR_BS;
 
-	dev_dbg(c->vc.chan.device->dev, "vchan %p: dma_slave_config addr %x width %u burst %u\n",
-		&c->vc, addr, width, maxburst);
+	dev_dbg(c->vc.chan.device->dev, "vchan %p: dma_slave_config addr %pad width %u burst %u\n",
+		&c->vc, &addr, width, maxburst);
 
 	c->ddar = ddar | (addr & 0xf0000000) | (addr & 0x003ffffc) << 6;
 
@@ -835,7 +830,6 @@ static int sa11x0_dma_init_dmadev(struct dma_device *dmadev,
 
 	INIT_LIST_HEAD(&dmadev->channels);
 	dmadev->dev = dev;
-	dmadev->device_alloc_chan_resources = sa11x0_dma_alloc_chan_resources;
 	dmadev->device_free_chan_resources = sa11x0_dma_free_chan_resources;
 	dmadev->device_config = sa11x0_dma_device_config;
 	dmadev->device_pause = sa11x0_dma_device_pause;
@@ -948,6 +942,12 @@ static int sa11x0_dma_probe(struct platform_device *pdev)
 	dma_cap_set(DMA_CYCLIC, d->slave.cap_mask);
 	d->slave.device_prep_slave_sg = sa11x0_dma_prep_slave_sg;
 	d->slave.device_prep_dma_cyclic = sa11x0_dma_prep_dma_cyclic;
+	d->slave.directions = BIT(DMA_DEV_TO_MEM) | BIT(DMA_MEM_TO_DEV);
+	d->slave.residue_granularity = DMA_RESIDUE_GRANULARITY_BURST;
+	d->slave.src_addr_widths = BIT(DMA_SLAVE_BUSWIDTH_1_BYTE) |
+				   BIT(DMA_SLAVE_BUSWIDTH_2_BYTES);
+	d->slave.dst_addr_widths = BIT(DMA_SLAVE_BUSWIDTH_1_BYTE) |
+				   BIT(DMA_SLAVE_BUSWIDTH_2_BYTES);
 	ret = sa11x0_dma_init_dmadev(&d->slave, &pdev->dev);
 	if (ret) {
 		dev_warn(d->slave.dev, "failed to register slave async device: %d\n",

@@ -29,7 +29,6 @@ zImage.*lds
 zImage.miboot
 zImage.pmac
 zImage.pseries
-zImage.virtex
 zconf.h
 zlib.h
 zutil.h

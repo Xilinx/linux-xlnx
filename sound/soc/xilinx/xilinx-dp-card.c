@@ -21,14 +21,29 @@
 
 #include <sound/soc.h>
 
+static int xilinx_dp_startup(struct snd_pcm_substream *substream)
+{
+	struct snd_pcm_runtime *runtime = substream->runtime;
+
+	snd_pcm_hw_constraint_step(runtime, 0,
+				   SNDRV_PCM_HW_PARAM_PERIOD_BYTES, 256);
+	return 0;
+}
+
+static const struct snd_soc_ops xilinx_dp_ops = {
+	.startup	= xilinx_dp_startup,
+};
+
 static struct snd_soc_dai_link xilinx_dp_dai_links[] = {
 	{
 		.name		= "xilinx-dp0",
 		.codec_dai_name	= "xilinx-dp-snd-codec-dai",
+		.ops		= &xilinx_dp_ops,
 	},
 	{
 		.name		= "xilinx-dp1",
 		.codec_dai_name	= "xilinx-dp-snd-codec-dai",
+		.ops		= &xilinx_dp_ops,
 	},
 
 };

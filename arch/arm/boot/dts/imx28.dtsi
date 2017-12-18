@@ -165,6 +165,7 @@
 
 				gpio0: gpio@0 {
 					compatible = "fsl,imx28-gpio", "fsl,mxs-gpio";
+					reg = <0>;
 					interrupts = <127>;
 					gpio-controller;
 					#gpio-cells = <2>;
@@ -174,6 +175,7 @@
 
 				gpio1: gpio@1 {
 					compatible = "fsl,imx28-gpio", "fsl,mxs-gpio";
+					reg = <1>;
 					interrupts = <126>;
 					gpio-controller;
 					#gpio-cells = <2>;
@@ -183,6 +185,7 @@
 
 				gpio2: gpio@2 {
 					compatible = "fsl,imx28-gpio", "fsl,mxs-gpio";
+					reg = <2>;
 					interrupts = <125>;
 					gpio-controller;
 					#gpio-cells = <2>;
@@ -192,6 +195,7 @@
 
 				gpio3: gpio@3 {
 					compatible = "fsl,imx28-gpio", "fsl,mxs-gpio";
+					reg = <3>;
 					interrupts = <124>;
 					gpio-controller;
 					#gpio-cells = <2>;
@@ -201,6 +205,7 @@
 
 				gpio4: gpio@4 {
 					compatible = "fsl,imx28-gpio", "fsl,mxs-gpio";
+					reg = <4>;
 					interrupts = <123>;
 					gpio-controller;
 					#gpio-cells = <2>;
@@ -405,6 +410,17 @@
 					fsl,pull-up = <MXS_PULL_DISABLE>;
 				};
 
+				auart4_2pins_b: auart4@1 {
+					reg = <1>;
+					fsl,pinmux-ids = <
+						MX28_PAD_AUART0_CTS__AUART4_RX
+						MX28_PAD_AUART0_RTS__AUART4_TX
+					>;
+					fsl,drive-strength = <MXS_DRIVE_4mA>;
+					fsl,voltage = <MXS_VOLTAGE_HIGH>;
+					fsl,pull-up = <MXS_PULL_DISABLE>;
+				};
+
 				mac0_pins_a: mac0@0 {
 					reg = <0>;
 					fsl,pinmux-ids = <
@@ -418,6 +434,32 @@
 						MX28_PAD_ENET0_TXD1__ENET0_TXD1
 						MX28_PAD_ENET_CLK__CLKCTRL_ENET
 					>;
+					fsl,drive-strength = <MXS_DRIVE_8mA>;
+					fsl,voltage = <MXS_VOLTAGE_HIGH>;
+					fsl,pull-up = <MXS_PULL_ENABLE>;
+				};
+
+				mac0_pins_b: mac0@1 {
+					reg = <1>;
+					fsl,pinmux-ids = <
+						MX28_PAD_ENET0_MDC__ENET0_MDC
+						MX28_PAD_ENET0_MDIO__ENET0_MDIO
+						MX28_PAD_ENET0_RX_EN__ENET0_RX_EN
+						MX28_PAD_ENET0_RXD0__ENET0_RXD0
+						MX28_PAD_ENET0_RXD1__ENET0_RXD1
+						MX28_PAD_ENET0_RXD2__ENET0_RXD2
+						MX28_PAD_ENET0_RXD3__ENET0_RXD3
+						MX28_PAD_ENET0_TX_EN__ENET0_TX_EN
+						MX28_PAD_ENET0_TXD0__ENET0_TXD0
+						MX28_PAD_ENET0_TXD1__ENET0_TXD1
+						MX28_PAD_ENET0_TXD2__ENET0_TXD2
+						MX28_PAD_ENET0_TXD3__ENET0_TXD3
+						MX28_PAD_ENET_CLK__CLKCTRL_ENET
+						MX28_PAD_ENET0_COL__ENET0_COL
+						MX28_PAD_ENET0_CRS__ENET0_CRS
+						MX28_PAD_ENET0_TX_CLK__ENET0_TX_CLK
+						MX28_PAD_ENET0_RX_CLK__ENET0_RX_CLK
+						>;
 					fsl,drive-strength = <MXS_DRIVE_8mA>;
 					fsl,voltage = <MXS_VOLTAGE_HIGH>;
 					fsl,pull-up = <MXS_PULL_ENABLE>;
@@ -829,6 +871,19 @@
 					fsl,pull-up = <MXS_PULL_DISABLE>;
 				};
 
+				spi3_pins_b: spi3@1 {
+					reg = <1>;
+					fsl,pinmux-ids = <
+						MX28_PAD_SSP3_SCK__SSP3_SCK
+						MX28_PAD_SSP3_MOSI__SSP3_CMD
+						MX28_PAD_SSP3_MISO__SSP3_D0
+						MX28_PAD_SSP3_SS0__SSP3_D3
+					>;
+					fsl,drive-strength = <MXS_DRIVE_8mA>;
+					fsl,voltage = <MXS_VOLTAGE_HIGH>;
+					fsl,pull-up = <MXS_PULL_ENABLE>;
+				};
+
 				usb0_pins_a: usb0@0 {
 					reg = <0>;
 					fsl,pinmux-ids = <
@@ -900,7 +955,7 @@
 					      80 81 68 69
 					      70 71 72 73
 					      74 75 76 77>;
-				interrupt-names = "auart4-rx", "aurat4-tx", "spdif-tx", "empty",
+				interrupt-names = "auart4-rx", "auart4-tx", "spdif-tx", "empty",
 						  "saif0", "saif1", "i2c0", "i2c1",
 						  "auart0-rx", "auart0-tx", "auart1-rx", "auart1-tx",
 						  "auart2-rx", "auart2-tx", "auart3-rx", "auart3-tx";
@@ -923,9 +978,11 @@
 			};
 
 			ocotp: ocotp@8002c000 {
-				compatible = "fsl,ocotp";
+				compatible = "fsl,imx28-ocotp", "fsl,ocotp";
+				#address-cells = <1>;
+				#size-cells = <1>;
 				reg = <0x8002c000 0x2000>;
-				status = "disabled";
+				clocks = <&clks 25>;
 			};
 
 			axi-ahb@8002e000 {
@@ -1197,6 +1254,7 @@
 			interrupts = <92>;
 			clocks = <&clks 61>;
 			fsl,usbphy = <&usbphy1>;
+			dr_mode = "host";
 			status = "disabled";
 		};
 
@@ -1229,7 +1287,7 @@
 		};
 	};
 
-	iio_hwmon {
+	iio-hwmon {
 		compatible = "iio-hwmon";
 		io-channels = <&lradc 8>;
 	};

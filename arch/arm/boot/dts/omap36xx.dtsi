@@ -8,6 +8,8 @@
  * kind, whether express or implied.
  */
 
+#include <dt-bindings/media/omap3-isp.h>
+
 #include "omap3.dtsi"
 
 / {
@@ -28,7 +30,7 @@
 		};
 	};
 
-	ocp {
+	ocp@68000000 {
 		uart4: serial@49042000 {
 			compatible = "ti,omap3-uart";
 			reg = <0x49042000 0x400>;
@@ -42,7 +44,7 @@
 		abb_mpu_iva: regulator-abb-mpu {
 			compatible = "ti,abb-v1";
 			regulator-name = "abb_mpu_iva";
-			#address-cell = <0>;
+			#address-cells = <0>;
 			#size-cells = <0>;
 			reg = <0x483072f0 0x8>, <0x48306818 0x4>;
 			reg-names = "base-address", "int-address";
@@ -68,6 +70,27 @@
 			interrupt-controller;
 			pinctrl-single,register-width = <16>;
 			pinctrl-single,function-mask = <0xff1f>;
+		};
+
+		isp: isp@480bc000 {
+			compatible = "ti,omap3-isp";
+			reg = <0x480bc000 0x12fc
+			       0x480bd800 0x0600>;
+			interrupts = <24>;
+			iommus = <&mmu_isp>;
+			syscon = <&scm_conf 0x2f0>;
+			ti,phy-type = <OMAP3ISP_PHY_TYPE_CSIPHY>;
+			#clock-cells = <1>;
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+			};
+		};
+
+		bandgap@48002524 {
+			reg = <0x48002524 0x4>;
+			compatible = "ti,omap36xx-bandgap";
+			#thermal-sensor-cells = <0>;
 		};
 	};
 };

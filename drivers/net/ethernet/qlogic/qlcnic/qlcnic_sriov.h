@@ -8,9 +8,10 @@
 #ifndef _QLCNIC_83XX_SRIOV_H_
 #define _QLCNIC_83XX_SRIOV_H_
 
-#include "qlcnic.h"
 #include <linux/types.h>
 #include <linux/pci.h>
+
+#include "qlcnic.h"
 
 extern const u32 qlcnic_83xx_reg_tbl[];
 extern const u32 qlcnic_83xx_ext_reg_tbl[];
@@ -155,10 +156,8 @@ struct qlcnic_vf_info {
 	spinlock_t			vlan_list_lock;	/* Lock for VLAN list */
 };
 
-struct qlcnic_async_work_list {
+struct qlcnic_async_cmd {
 	struct list_head	list;
-	struct work_struct	work;
-	void			*ptr;
 	struct qlcnic_cmd_args	*cmd;
 };
 
@@ -167,7 +166,10 @@ struct qlcnic_back_channel {
 	struct workqueue_struct *bc_trans_wq;
 	struct workqueue_struct *bc_async_wq;
 	struct workqueue_struct *bc_flr_wq;
-	struct list_head	async_list;
+	struct qlcnic_adapter	*adapter;
+	struct list_head	async_cmd_list;
+	struct work_struct	vf_async_work;
+	spinlock_t		queue_lock; /* async_cmd_list queue lock */
 };
 
 struct qlcnic_sriov {
@@ -236,7 +238,7 @@ int qlcnic_sriov_set_vf_mac(struct net_device *, int, u8 *);
 int qlcnic_sriov_set_vf_tx_rate(struct net_device *, int, int, int);
 int qlcnic_sriov_get_vf_config(struct net_device *, int ,
 			       struct ifla_vf_info *);
-int qlcnic_sriov_set_vf_vlan(struct net_device *, int, u16, u8);
+int qlcnic_sriov_set_vf_vlan(struct net_device *, int, u16, u8, __be16);
 int qlcnic_sriov_set_vf_spoofchk(struct net_device *, int, bool);
 #else
 static inline void qlcnic_sriov_pf_disable(struct qlcnic_adapter *adapter) {}

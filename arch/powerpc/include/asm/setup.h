@@ -7,7 +7,6 @@
 extern void ppc_printk_progress(char *s, unsigned short hex);
 
 extern unsigned int rtas_data;
-extern int mem_init_done;	/* set on boot once kmalloc can be called */
 extern unsigned long long memory_limit;
 extern unsigned long klimit;
 extern void *zalloc_maybe_bootmem(size_t size, gfp_t mask);
@@ -26,6 +25,18 @@ void check_for_initrd(void);
 void initmem_init(void);
 void setup_panic(void);
 #define ARCH_PANIC_TIMEOUT 180
+
+#ifdef CONFIG_PPC_PSERIES
+extern void pseries_enable_reloc_on_exc(void);
+extern void pseries_disable_reloc_on_exc(void);
+extern void pseries_big_endian_exceptions(void);
+extern void pseries_little_endian_exceptions(void);
+#else
+static inline void pseries_enable_reloc_on_exc(void) {}
+static inline void pseries_disable_reloc_on_exc(void) {}
+static inline void pseries_big_endian_exceptions(void) {}
+static inline void pseries_little_endian_exceptions(void) {}
+#endif /* CONFIG_PPC_PSERIES */
 
 #endif /* !__ASSEMBLY__ */
 

@@ -60,7 +60,7 @@ struct fence_cb;
  * implementer of the fence for its own purposes. Can be used in different
  * ways by different fence implementers, so do not rely on this.
  *
- * *) Since atomic bitops are used, this is not guaranteed to be the case.
+ * Since atomic bitops are used, this is not guaranteed to be the case.
  * Particularly, if the bit was set, but fence_signal was called right
  * before this bit was set, it would have been able to set the
  * FENCE_FLAG_SIGNALED_BIT, before enable_signaling was called.
@@ -75,7 +75,8 @@ struct fence {
 	struct rcu_head rcu;
 	struct list_head cb_list;
 	spinlock_t *lock;
-	unsigned context, seqno;
+	u64 context;
+	unsigned seqno;
 	unsigned long flags;
 	ktime_t timestamp;
 	int status;
@@ -176,7 +177,7 @@ struct fence_ops {
 };
 
 void fence_init(struct fence *fence, const struct fence_ops *ops,
-		spinlock_t *lock, unsigned context, unsigned seqno);
+		spinlock_t *lock, u64 context, unsigned seqno);
 
 void fence_release(struct kref *kref);
 void fence_free(struct fence *fence);
@@ -280,6 +281,22 @@ fence_is_signaled(struct fence *fence)
 }
 
 /**
+ * fence_is_later - return if f1 is chronologically later than f2
+ * @f1:	[in]	the first fence from the same context
+ * @f2:	[in]	the second fence from the same context
+ *
+ * Returns true if f1 is chronologically later than f2. Both fences must be
+ * from the same context, since a seqno is not re-used across contexts.
+ */
+static inline bool fence_is_later(struct fence *f1, struct fence *f2)
+{
+	if (WARN_ON(f1->context != f2->context))
+		return false;
+
+	return (int)(f1->seqno - f2->seqno) > 0;
+}
+
+/**
  * fence_later - return the chronologically later fence
  * @f1:	[in]	the first fence from the same context
  * @f2:	[in]	the second fence from the same context
@@ -298,14 +315,15 @@ static inline struct fence *fence_later(struct fence *f1, struct fence *f2)
 	 * set if enable_signaling wasn't called, and enabling that here is
 	 * overkill.
 	 */
-	if (f2->seqno - f1->seqno <= INT_MAX)
-		return fence_is_signaled(f2) ? NULL : f2;
-	else
+	if (fence_is_later(f1, f2))
 		return fence_is_signaled(f1) ? NULL : f1;
+	else
+		return fence_is_signaled(f2) ? NULL : f2;
 }
 
 signed long fence_wait_timeout(struct fence *, bool intr, signed long timeout);
-
+signed long fence_wait_any_timeout(struct fence **fences, uint32_t count,
+				   bool intr, signed long timeout);
 
 /**
  * fence_wait - sleep until the fence gets signaled
@@ -333,27 +351,27 @@ static inline signed long fence_wait(struct fence *fence, bool intr)
 	return ret < 0 ? ret : 0;
 }
 
-unsigned fence_context_alloc(unsigned num);
+u64 fence_context_alloc(unsigned num);
 
 #define FENCE_TRACE(f, fmt, args...) \
 	do {								\
 		struct fence *__ff = (f);				\
-		if (config_enabled(CONFIG_FENCE_TRACE))			\
-			pr_info("f %u#%u: " fmt,			\
+		if (IS_ENABLED(CONFIG_FENCE_TRACE))			\
+			pr_info("f %llu#%u: " fmt,			\
 				__ff->context, __ff->seqno, ##args);	\
 	} while (0)
 
 #define FENCE_WARN(f, fmt, args...) \
 	do {								\
 		struct fence *__ff = (f);				\
-		pr_warn("f %u#%u: " fmt, __ff->context, __ff->seqno,	\
+		pr_warn("f %llu#%u: " fmt, __ff->context, __ff->seqno,	\
 			 ##args);					\
 	} while (0)
 
 #define FENCE_ERR(f, fmt, args...) \
 	do {								\
 		struct fence *__ff = (f);				\
-		pr_err("f %u#%u: " fmt, __ff->context, __ff->seqno,	\
+		pr_err("f %llu#%u: " fmt, __ff->context, __ff->seqno,	\
 			##args);					\
 	} while (0)
 

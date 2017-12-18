@@ -37,8 +37,9 @@ enum klp_state {
  * struct klp_func - function structure for live patching
  * @old_name:	name of the function to be patched
  * @new_func:	pointer to the patched function code
- * @old_addr:	a hint conveying at what address the old function
- *		can be found (optional, vmlinux patches only)
+ * @old_sympos: a hint indicating which symbol position the old function
+ *		can be found (optional)
+ * @old_addr:	the address of the function being patched
  * @kobj:	kobject for sysfs resources
  * @state:	tracks function-level patch application state
  * @stack_node:	list node for klp_ops func_stack list
@@ -48,44 +49,24 @@ struct klp_func {
 	const char *old_name;
 	void *new_func;
 	/*
-	 * The old_addr field is optional and can be used to resolve
-	 * duplicate symbol names in the vmlinux object.  If this
-	 * information is not present, the symbol is located by name
-	 * with kallsyms. If the name is not unique and old_addr is
-	 * not provided, the patch application fails as there is no
-	 * way to resolve the ambiguity.
+	 * The old_sympos field is optional and can be used to resolve
+	 * duplicate symbol names in livepatch objects. If this field is zero,
+	 * it is expected the symbol is unique, otherwise patching fails. If
+	 * this value is greater than zero then that occurrence of the symbol
+	 * in kallsyms for the given object is used.
 	 */
-	unsigned long old_addr;
+	unsigned long old_sympos;
 
 	/* internal */
+	unsigned long old_addr;
 	struct kobject kobj;
 	enum klp_state state;
 	struct list_head stack_node;
 };
 
 /**
- * struct klp_reloc - relocation structure for live patching
- * @loc:	address where the relocation will be written
- * @val:	address of the referenced symbol (optional,
- *		vmlinux	patches only)
- * @type:	ELF relocation type
- * @name:	name of the referenced symbol (for lookup/verification)
- * @addend:	offset from the referenced symbol
- * @external:	symbol is either exported or within the live patch module itself
- */
-struct klp_reloc {
-	unsigned long loc;
-	unsigned long val;
-	unsigned long type;
-	const char *name;
-	int addend;
-	int external;
-};
-
-/**
  * struct klp_object - kernel object structure for live patching
  * @name:	module name (or NULL for vmlinux)
- * @relocs:	relocation entries to be applied at load time
  * @funcs:	function entries for functions to be patched in the object
  * @kobj:	kobject for sysfs resources
  * @mod:	kernel module associated with the patched object
@@ -95,11 +76,10 @@ struct klp_reloc {
 struct klp_object {
 	/* external */
 	const char *name;
-	struct klp_reloc *relocs;
 	struct klp_func *funcs;
 
 	/* internal */
-	struct kobject *kobj;
+	struct kobject kobj;
 	struct module *mod;
 	enum klp_state state;
 };
@@ -123,10 +103,30 @@ struct klp_patch {
 	enum klp_state state;
 };
 
-extern int klp_register_patch(struct klp_patch *);
-extern int klp_unregister_patch(struct klp_patch *);
-extern int klp_enable_patch(struct klp_patch *);
-extern int klp_disable_patch(struct klp_patch *);
+#define klp_for_each_object(patch, obj) \
+	for (obj = patch->objs; obj->funcs || obj->name; obj++)
+
+#define klp_for_each_func(obj, func) \
+	for (func = obj->funcs; \
+	     func->old_name || func->new_func || func->old_sympos; \
+	     func++)
+
+int klp_register_patch(struct klp_patch *);
+int klp_unregister_patch(struct klp_patch *);
+int klp_enable_patch(struct klp_patch *);
+int klp_disable_patch(struct klp_patch *);
+
+void arch_klp_init_object_loaded(struct klp_patch *patch,
+				 struct klp_object *obj);
+
+/* Called from the module loader during module coming/going states */
+int klp_module_coming(struct module *mod);
+void klp_module_going(struct module *mod);
+
+#else /* !CONFIG_LIVEPATCH */
+
+static inline int klp_module_coming(struct module *mod) { return 0; }
+static inline void klp_module_going(struct module *mod) { }
 
 #endif /* CONFIG_LIVEPATCH */
 

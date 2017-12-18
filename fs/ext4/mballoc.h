@@ -23,32 +23,19 @@
 #include "ext4.h"
 
 /*
- * with AGGRESSIVE_CHECK allocator runs consistency checks over
- * structures. these checks slow things down a lot
- */
-#define AGGRESSIVE_CHECK__
-
-/*
- * with DOUBLE_CHECK defined mballoc creates persistent in-core
- * bitmaps, maintains and uses them to check for double allocations
- */
-#define DOUBLE_CHECK__
-
-/*
  */
 #ifdef CONFIG_EXT4_DEBUG
 extern ushort ext4_mballoc_debug;
 
-#define mb_debug(n, fmt, a...)	                                        \
-	do {								\
-		if ((n) <= ext4_mballoc_debug) {		        \
-			printk(KERN_DEBUG "(%s, %d): %s: ",		\
-			       __FILE__, __LINE__, __func__);		\
-			printk(fmt, ## a);				\
-		}							\
-	} while (0)
+#define mb_debug(n, fmt, ...)	                                        \
+do {									\
+	if ((n) <= ext4_mballoc_debug) {				\
+		printk(KERN_DEBUG "(%s, %d): %s: " fmt,			\
+		       __FILE__, __LINE__, __func__, ##__VA_ARGS__);	\
+	}								\
+} while (0)
 #else
-#define mb_debug(n, fmt, a...)		no_printk(fmt, ## a)
+#define mb_debug(n, fmt, ...)	no_printk(fmt, ##__VA_ARGS__)
 #endif
 
 #define EXT4_MB_HISTORY_ALLOC		1	/* allocation */

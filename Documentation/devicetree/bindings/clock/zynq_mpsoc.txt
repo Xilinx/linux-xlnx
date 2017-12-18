@@ -1,0 +1,147 @@
+Device Tree Clock bindings for the Zynq Ultrascale+ MPSoC
+
+The Zynq Ultrascale+ MPSoC has several different clk providers,
+each with there own bindings.
+The purpose of this document is to document their usage.
+
+See clock_bindings.txt for more information on the generic clock bindings.
+
+== Clock Controller ==
+The clock controller is a logical abstraction of Zynq Ultrascale+ MPSoC clock
+tree. It reads required input clock frequencies from the devicetree and acts
+as clock provider for all clock consumers of PS clocks.
+
+Required properties:
+ - #clock-cells : Must be 1
+ - compatible : "xlnx,zynqmp-clkc"
+ - clock-output-names : List of strings used to name the clock outputs. Shall
+			be a list of the outputs given below.
+ - clocks : list of clock specifiers which are external input clocks to the
+	    given clock controller. Please refer the next section to find
+	    the input clocks for a given controller.
+ - clock-names : list of names of clocks which are exteral input clocks to the
+		 given clock controller. Please refer to the clock bindings
+		 for more details
+
+Input clocks for zynqmp Ultrascale+ clock controller:
+The Zynq UltraScale+ MPSoC has one primary and four alternative reference clock
+inputs.
+These required clock inputs are the
+ - pss_ref_clk (PS reference clock)
+ - video_clk (reference clock for video system )
+ - pss_alt_ref_clk (alternative PS reference clock)
+ - aux_ref_clk
+ - gt_crx_ref_clk (transceiver reference clock)
+
+The following strings are optional parameters to the 'clock-names' property in
+order to provide an optional (E)MIO clock source.
+ - swdt0_ext_clk
+ - swdt1_ext_clk
+ - gem0_emio_clk
+ - gem1_emio_clk
+ - gem2_emio_clk
+ - gem3_emio_clk
+ - mio_clk_XX		# with XX = 00..77
+ - mio_clk_50_or_51	#for the mux clock to gem tsu from 50 or 51
+...
+
+Clock outputs:
+0:  iopll
+1:  rpll
+2:  apll
+3:  dpll
+4:  vpll
+5:  iopll_to_fpd
+6:  rpll_to_fpd
+7:  apll_to_lpd
+8:  dpll_to_lpd
+9:  vpll_to_lpd
+10: acpu
+11: acpu_half
+12: dbf_fpd
+13: dbg_lpd
+14: dbg_trace
+15: dbg_tstmp
+16: dp_video_ref
+17: dp_audio_ref
+18: dp_stc_ref
+19: gdma_ref
+20: dpdma_ref
+21: ddr_ref
+22: sata_ref
+23: pcie_ref
+24: gpu_ref
+25: gpu_pp0_ref
+26: gpu_pp1_ref
+27: topsw_main
+28: topsw_lsbus
+29: gtgref0_ref
+30: lpd_switch
+31: lpd_lsbus
+32: usb0_bus_ref
+33: usb1_bus_ref
+34: usb3_dual_ref
+35: usb0
+36: usb1
+37: cpu_r5
+38: cpu_r5_core
+39: csu_spb
+40: csu_pll
+41: pcap
+42: iou_switch
+43: gem_tsu_ref
+44: gem_tsu
+45: gem0_ref
+46: gem1_ref
+47: gem2_ref
+48: gem3_ref
+49: gem0_rx
+50: gem1_rx
+51: gem2_rx
+52: gem3_rx
+53: qspi_ref
+54: sdio0_ref
+55: sdio1_ref
+56: uart0_ref
+57: uart1_ref
+58: spi0_ref
+59: spi1_ref
+60: nand_ref
+61: i2c0_ref
+62: i2c1_ref
+63: can0_ref
+64: can1_ref
+65: can0
+66: can1
+67: dll_ref
+68: adma_ref
+69: timestamp_ref
+70: ams_ref
+71: pl0
+72: pl1
+73: pl2
+74: pl3
+75: wdt
+
+Example:
+
+clkc: clkc@ff5e0020 {
+	#clock-cells = <1>;
+	compatible = "xlnx,zynqmp-clkc";
+	clocks = <&pss_ref_clk>, <&video_clk>, <&pss_alt_ref_clk>, <&aux_ref_clk>, <&gt_crx_ref_clk>;
+	clock-names = "pss_ref_clk", "video_clk", "pss_alt_ref_clk","aux_ref_clk", "gt_crx_ref_clk"
+	clock-output-names = "iopll", "rpll", "apll", "dpll",
+			"vpll", "iopll_to_fpd", "rpll_to_fpd", "apll_to_lpd", "dpll_to_lpd",
+			"vpll_to_lpd", "acpu", "acpu_half", "dbf_fpd", "dbf_lpd", "dbg_trace",
+			"dbg_tstmp","dp_video_ref","dp_audio_ref","dp_stc_ref","gdma_ref",
+			"dpdma_ref","ddr_ref","sata_ref","pcie_ref","gpu_ref",
+			"gpu_pp0_ref","gpu_pp1_ref","topsw_main","topsw_lsbus",
+			"gtgref0_ref","lpd_switch","lpd_lsbus","usb0_bus_ref",
+			"usb1_bus_ref","usb3_dual_ref","usb0","usb1","cpu_r5",
+			"cpu_r5_core","csu_spb","csu_pll","pcap","iou_switch",
+			"gem_tsu_ref","gem_tsu","gem0_ref","gem1_ref","gem2_ref","gem3_ref",
+			"gem0_tx","gem1_tx","gem2_tx","gem3_tx","qspi_ref","sdio0_ref","sdio1_ref",
+			"uart0_ref","uart1_ref","spi0_ref","spi1_ref",
+			"nand_ref","i2c0_ref","i2c1_ref","can0_ref","can1_ref","can0","can1","dll_ref",
+			"adma_ref","timestamp_ref","ams_ref","pl0","pl1","pl2","pl3","wdt";
+};

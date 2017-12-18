@@ -258,11 +258,17 @@ static unsigned long route4_get(struct tcf_proto *tp, u32 handle)
 
 static int route4_init(struct tcf_proto *tp)
 {
+	struct route4_head *head;
+
+	head = kzalloc(sizeof(struct route4_head), GFP_KERNEL);
+	if (head == NULL)
+		return -ENOBUFS;
+
+	rcu_assign_pointer(tp->root, head);
 	return 0;
 }
 
-static void
-route4_delete_filter(struct rcu_head *head)
+static void route4_delete_filter(struct rcu_head *head)
 {
 	struct route4_filter *f = container_of(head, struct route4_filter, rcu);
 
@@ -270,13 +276,20 @@ route4_delete_filter(struct rcu_head *head)
 	kfree(f);
 }
 
-static void route4_destroy(struct tcf_proto *tp)
+static bool route4_destroy(struct tcf_proto *tp, bool force)
 {
 	struct route4_head *head = rtnl_dereference(tp->root);
 	int h1, h2;
 
 	if (head == NULL)
-		return;
+		return true;
+
+	if (!force) {
+		for (h1 = 0; h1 <= 256; h1++) {
+			if (rcu_access_pointer(head->table[h1]))
+				return false;
+		}
+	}
 
 	for (h1 = 0; h1 <= 256; h1++) {
 		struct route4_bucket *b;
@@ -301,6 +314,7 @@ static void route4_destroy(struct tcf_proto *tp)
 	}
 	RCU_INIT_POINTER(tp->root, NULL);
 	kfree_rcu(head, rcu);
+	return true;
 }
 
 static int route4_delete(struct tcf_proto *tp, unsigned long arg)
@@ -368,17 +382,19 @@ static int route4_set_parms(struct net *net, struct tcf_proto *tp,
 			    struct nlattr **tb, struct nlattr *est, int new,
 			    bool ovr)
 {
-	int err;
 	u32 id = 0, to = 0, nhandle = 0x8000;
 	struct route4_filter *fp;
 	unsigned int h1;
 	struct route4_bucket *b;
 	struct tcf_exts e;
+	int err;
 
-	tcf_exts_init(&e, TCA_ROUTE4_ACT, TCA_ROUTE4_POLICE);
-	err = tcf_exts_validate(net, tp, tb, est, &e, ovr);
+	err = tcf_exts_init(&e, TCA_ROUTE4_ACT, TCA_ROUTE4_POLICE);
 	if (err < 0)
 		return err;
+	err = tcf_exts_validate(net, tp, tb, est, &e, ovr);
+	if (err < 0)
+		goto errout;
 
 	err = -EINVAL;
 	if (tb[TCA_ROUTE4_TO]) {
@@ -457,10 +473,8 @@ errout:
 }
 
 static int route4_change(struct net *net, struct sk_buff *in_skb,
-		       struct tcf_proto *tp, unsigned long base,
-		       u32 handle,
-		       struct nlattr **tca,
-		       unsigned long *arg, bool ovr)
+			 struct tcf_proto *tp, unsigned long base, u32 handle,
+			 struct nlattr **tca, unsigned long *arg, bool ovr)
 {
 	struct route4_head *head = rtnl_dereference(tp->root);
 	struct route4_filter __rcu **fp;
@@ -484,18 +498,14 @@ static int route4_change(struct net *net, struct sk_buff *in_skb,
 			return -EINVAL;
 
 	err = -ENOBUFS;
-	if (head == NULL) {
-		head = kzalloc(sizeof(struct route4_head), GFP_KERNEL);
-		if (head == NULL)
-			goto errout;
-		rcu_assign_pointer(tp->root, head);
-	}
-
 	f = kzalloc(sizeof(struct route4_filter), GFP_KERNEL);
 	if (!f)
 		goto errout;
 
-	tcf_exts_init(&f->exts, TCA_ROUTE4_ACT, TCA_ROUTE4_POLICE);
+	err = tcf_exts_init(&f->exts, TCA_ROUTE4_ACT, TCA_ROUTE4_POLICE);
+	if (err < 0)
+		goto errout;
+
 	if (fold) {
 		f->id = fold->id;
 		f->iif = fold->iif;
@@ -549,6 +559,8 @@ static int route4_change(struct net *net, struct sk_buff *in_skb,
 	return 0;
 
 errout:
+	if (f)
+		tcf_exts_destroy(&f->exts);
 	kfree(f);
 	return err;
 }

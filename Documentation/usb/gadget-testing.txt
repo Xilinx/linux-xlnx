@@ -19,6 +19,7 @@ provided by gadgets.
 16. UAC1 function
 17. UAC2 function
 18. UVC function
+19. PRINTER function
 
 
 1. ACM function
@@ -236,9 +237,7 @@ Testing the LOOPBACK function
 -----------------------------
 
 device: run the gadget
-host: test-usb
-
-http://www.linux-usb.org/usbtest/testusb.c
+host: test-usb (tools/usb/testusb.c)
 
 8. MASS STORAGE function
 ========================
@@ -435,7 +434,7 @@ On host: serialc -v <vendorID> -p <productID> -i<interface#> -a1 -s1024 \
 
 where seriald and serialc are Felipe's utilities found here:
 
-https://git.gitorious.org/usb/usb-tools.git master
+https://github.com/felipebalbi/usb-tools.git master
 
 12. PHONET function
 ===================
@@ -525,8 +524,6 @@ Except for ifname they can be written to until the function is linked to a
 configuration. The ifname is read-only and contains the name of the interface
 which was assigned by the net core, e. g. usb0.
 
-By default there can be only 1 RNDIS interface in the system.
-
 Testing the RNDIS function
 --------------------------
 
@@ -582,14 +579,15 @@ The SOURCESINK function provides these attributes in its function directory:
 	isoc_mult	- 0..2 (hs/ss only)
 	isoc_maxburst	- 0..15 (ss only)
 	bulk_buflen	- buffer length
+	bulk_qlen	- depth of queue for bulk
+	iso_qlen	- depth of queue for iso
 
 Testing the SOURCESINK function
 -------------------------------
 
 device: run the gadget
-host: test-usb
+host: test-usb (tools/usb/testusb.c)
 
-http://www.linux-usb.org/usbtest/testusb.c
 
 16. UAC1 function
 =================
@@ -628,7 +626,7 @@ Function-specific configfs interface
 The function name to use when creating the function directory is "uac2".
 The uac2 function provides these attributes in its function directory:
 
-	chmask - capture channel mask
+	c_chmask - capture channel mask
 	c_srate - capture sampling rate
 	c_ssize - capture sample size (bytes)
 	p_chmask - playback channel mask
@@ -726,3 +724,49 @@ with these patches:
 http://www.spinics.net/lists/linux-usb/msg99220.html
 
 host: luvcview -f yuv
+
+19. PRINTER function
+====================
+
+The function is provided by usb_f_printer.ko module.
+
+Function-specific configfs interface
+------------------------------------
+
+The function name to use when creating the function directory is "printer".
+The printer function provides these attributes in its function directory:
+
+	pnp_string	- Data to be passed to the host in pnp string
+	q_len		- Number of requests per endpoint
+
+Testing the PRINTER function
+----------------------------
+
+The most basic testing:
+
+device: run the gadget
+# ls -l /devices/virtual/usb_printer_gadget/
+
+should show g_printer<number>.
+
+If udev is active, then /dev/g_printer<number> should appear automatically.
+
+host:
+
+If udev is active, then e.g. /dev/usb/lp0 should appear.
+
+host->device transmission:
+
+device:
+# cat /dev/g_printer<number>
+host:
+# cat > /dev/usb/lp0
+
+device->host transmission:
+
+# cat > /dev/g_printer<number>
+host:
+# cat /dev/usb/lp0
+
+More advanced testing can be done with the prn_example
+described in Documentation/usb/gadget-printer.txt.

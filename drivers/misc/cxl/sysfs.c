@@ -57,6 +57,15 @@ static ssize_t image_loaded_show(struct device *device,
 	return scnprintf(buf, PAGE_SIZE, "factory\n");
 }
 
+static ssize_t psl_timebase_synced_show(struct device *device,
+					struct device_attribute *attr,
+					char *buf)
+{
+	struct cxl *adapter = to_cxl_adapter(device);
+
+	return scnprintf(buf, PAGE_SIZE, "%i\n", adapter->psl_timebase_synced);
+}
+
 static ssize_t reset_adapter_store(struct device *device,
 				   struct device_attribute *attr,
 				   const char *buf, size_t count)
@@ -66,12 +75,31 @@ static ssize_t reset_adapter_store(struct device *device,
 	int val;
 
 	rc = sscanf(buf, "%i", &val);
-	if ((rc != 1) || (val != 1))
+	if ((rc != 1) || (val != 1 && val != -1))
 		return -EINVAL;
 
-	if ((rc = cxl_reset(adapter)))
-		return rc;
-	return count;
+	/*
+	 * See if we can lock the context mapping that's only allowed
+	 * when there are no contexts attached to the adapter. Once
+	 * taken this will also prevent any context from getting activated.
+	 */
+	if (val == 1) {
+		rc =  cxl_adapter_context_lock(adapter);
+		if (rc)
+			goto out;
+
+		rc = cxl_ops->adapter_reset(adapter);
+		/* In case reset failed release context lock */
+		if (rc)
+			cxl_adapter_context_unlock(adapter);
+
+	} else if (val == -1) {
+		/* Perform a forced adapter reset */
+		rc = cxl_ops->adapter_reset(adapter);
+	}
+
+out:
+	return rc ? rc : count;
 }
 
 static ssize_t load_image_on_perst_show(struct device *device,
@@ -112,12 +140,39 @@ static ssize_t load_image_on_perst_store(struct device *device,
 	return count;
 }
 
+static ssize_t perst_reloads_same_image_show(struct device *device,
+				 struct device_attribute *attr,
+				 char *buf)
+{
+	struct cxl *adapter = to_cxl_adapter(device);
+
+	return scnprintf(buf, PAGE_SIZE, "%i\n", adapter->perst_same_image);
+}
+
+static ssize_t perst_reloads_same_image_store(struct device *device,
+				 struct device_attribute *attr,
+				 const char *buf, size_t count)
+{
+	struct cxl *adapter = to_cxl_adapter(device);
+	int rc;
+	int val;
+
+	rc = sscanf(buf, "%i", &val);
+	if ((rc != 1) || !(val == 1 || val == 0))
+		return -EINVAL;
+
+	adapter->perst_same_image = (val == 1 ? true : false);
+	return count;
+}
+
 static struct device_attribute adapter_attrs[] = {
 	__ATTR_RO(caia_version),
 	__ATTR_RO(psl_revision),
 	__ATTR_RO(base_image),
 	__ATTR_RO(image_loaded),
+	__ATTR_RO(psl_timebase_synced),
 	__ATTR_RW(load_image_on_perst),
+	__ATTR_RW(perst_reloads_same_image),
 	__ATTR(reset, S_IWUSR, NULL, reset_adapter_store),
 };
 
@@ -139,7 +194,7 @@ static ssize_t pp_mmio_off_show(struct device *device,
 {
 	struct cxl_afu *afu = to_afu_chardev_m(device);
 
-	return scnprintf(buf, PAGE_SIZE, "%llu\n", afu->pp_offset);
+	return scnprintf(buf, PAGE_SIZE, "%llu\n", afu->native->pp_offset);
 }
 
 static ssize_t pp_mmio_len_show(struct device *device,
@@ -185,7 +240,7 @@ static ssize_t reset_store_afu(struct device *device,
 		goto err;
 	}
 
-	if ((rc = cxl_afu_reset(afu)))
+	if ((rc = cxl_ops->afu_reset(afu)))
 		goto err;
 
 	rc = count;
@@ -227,8 +282,14 @@ static ssize_t irqs_max_store(struct device *device,
 	if (irqs_max < afu->pp_irqs)
 		return -EINVAL;
 
-	if (irqs_max > afu->adapter->user_irqs)
-		return -EINVAL;
+	if (cpu_has_feature(CPU_FTR_HVMODE)) {
+		if (irqs_max > afu->adapter->user_irqs)
+			return -EINVAL;
+	} else {
+		/* pHyp sets a per-AFU limit */
+		if (irqs_max > afu->guest->max_ints)
+			return -EINVAL;
+	}
 
 	afu->irqs_max = irqs_max;
 	return count;
@@ -322,7 +383,7 @@ static ssize_t mode_store(struct device *device, struct device_attribute *attr,
 	}
 
 	/*
-	 * cxl_afu_deactivate_mode needs to be done outside the lock, prevent
+	 * afu_deactivate_mode needs to be done outside the lock, prevent
 	 * other contexts coming in before we are ready:
 	 */
 	old_mode = afu->current_mode;
@@ -331,9 +392,9 @@ static ssize_t mode_store(struct device *device, struct device_attribute *attr,
 
 	mutex_unlock(&afu->contexts_lock);
 
-	if ((rc = _cxl_afu_deactivate_mode(afu, old_mode)))
+	if ((rc = cxl_ops->afu_deactivate_mode(afu, old_mode)))
 		return rc;
-	if ((rc = cxl_afu_activate_mode(afu, mode)))
+	if ((rc = cxl_ops->afu_activate_mode(afu, mode)))
 		return rc;
 
 	return count;
@@ -356,6 +417,15 @@ static ssize_t api_version_compatible_show(struct device *device,
 	return scnprintf(buf, PAGE_SIZE, "%i\n", CXL_API_VERSION_COMPATIBLE);
 }
 
+static ssize_t afu_eb_read(struct file *filp, struct kobject *kobj,
+			       struct bin_attribute *bin_attr, char *buf,
+			       loff_t off, size_t count)
+{
+	struct cxl_afu *afu = to_cxl_afu(kobj_to_dev(kobj));
+
+	return cxl_ops->afu_read_err_buffer(afu, buf, off, count);
+}
+
 static struct device_attribute afu_attrs[] = {
 	__ATTR_RO(mmio_size),
 	__ATTR_RO(irqs_min),
@@ -370,24 +440,39 @@ static struct device_attribute afu_attrs[] = {
 
 int cxl_sysfs_adapter_add(struct cxl *adapter)
 {
+	struct device_attribute *dev_attr;
 	int i, rc;
 
 	for (i = 0; i < ARRAY_SIZE(adapter_attrs); i++) {
-		if ((rc = device_create_file(&adapter->dev, &adapter_attrs[i])))
-			goto err;
+		dev_attr = &adapter_attrs[i];
+		if (cxl_ops->support_attributes(dev_attr->attr.name,
+						CXL_ADAPTER_ATTRS)) {
+			if ((rc = device_create_file(&adapter->dev, dev_attr)))
+				goto err;
+		}
 	}
 	return 0;
 err:
-	for (i--; i >= 0; i--)
-		device_remove_file(&adapter->dev, &adapter_attrs[i]);
+	for (i--; i >= 0; i--) {
+		dev_attr = &adapter_attrs[i];
+		if (cxl_ops->support_attributes(dev_attr->attr.name,
+						CXL_ADAPTER_ATTRS))
+			device_remove_file(&adapter->dev, dev_attr);
+	}
 	return rc;
 }
+
 void cxl_sysfs_adapter_remove(struct cxl *adapter)
 {
+	struct device_attribute *dev_attr;
 	int i;
 
-	for (i = 0; i < ARRAY_SIZE(adapter_attrs); i++)
-		device_remove_file(&adapter->dev, &adapter_attrs[i]);
+	for (i = 0; i < ARRAY_SIZE(adapter_attrs); i++) {
+		dev_attr = &adapter_attrs[i];
+		if (cxl_ops->support_attributes(dev_attr->attr.name,
+						CXL_ADAPTER_ATTRS))
+			device_remove_file(&adapter->dev, dev_attr);
+	}
 }
 
 struct afu_config_record {
@@ -431,17 +516,14 @@ static ssize_t afu_read_config(struct file *filp, struct kobject *kobj,
 			       loff_t off, size_t count)
 {
 	struct afu_config_record *cr = to_cr(kobj);
-	struct cxl_afu *afu = to_cxl_afu(container_of(kobj->parent, struct device, kobj));
+	struct cxl_afu *afu = to_cxl_afu(kobj_to_dev(kobj->parent));
 
-	u64 i, j, val, size = afu->crs_len;
-
-	if (off > size)
-		return 0;
-	if (off + count > size)
-		count = size - off;
+	u64 i, j, val, rc;
 
 	for (i = 0; i < count;) {
-		val = cxl_afu_cr_read64(afu, cr->cr, off & ~0x7);
+		rc = cxl_ops->afu_cr_read64(afu, cr->cr, off & ~0x7, &val);
+		if (rc)
+			val = ~0ULL;
 		for (j = off & 0x7; j < 8 && i < count; i++, j++, off++)
 			buf[i] = (val >> (j * 8)) & 0xff;
 	}
@@ -486,14 +568,22 @@ static struct afu_config_record *cxl_sysfs_afu_new_cr(struct cxl_afu *afu, int c
 		return ERR_PTR(-ENOMEM);
 
 	cr->cr = cr_idx;
-	cr->device = cxl_afu_cr_read16(afu, cr_idx, PCI_DEVICE_ID);
-	cr->vendor = cxl_afu_cr_read16(afu, cr_idx, PCI_VENDOR_ID);
-	cr->class = cxl_afu_cr_read32(afu, cr_idx, PCI_CLASS_REVISION) >> 8;
+
+	rc = cxl_ops->afu_cr_read16(afu, cr_idx, PCI_DEVICE_ID, &cr->device);
+	if (rc)
+		goto err;
+	rc = cxl_ops->afu_cr_read16(afu, cr_idx, PCI_VENDOR_ID, &cr->vendor);
+	if (rc)
+		goto err;
+	rc = cxl_ops->afu_cr_read32(afu, cr_idx, PCI_CLASS_REVISION, &cr->class);
+	if (rc)
+		goto err;
+	cr->class >>= 8;
 
 	/*
 	 * Export raw AFU PCIe like config record. For now this is read only by
 	 * root - we can expand that later to be readable by non-root and maybe
-	 * even writable provided we have a good use-case. Once we suport
+	 * even writable provided we have a good use-case. Once we support
 	 * exposing AFUs through a virtual PHB they will get that for free from
 	 * Linux' PCI infrastructure, but until then it's not clear that we
 	 * need it for anything since the main use case is just identifying
@@ -531,11 +621,20 @@ err:
 
 void cxl_sysfs_afu_remove(struct cxl_afu *afu)
 {
+	struct device_attribute *dev_attr;
 	struct afu_config_record *cr, *tmp;
 	int i;
 
-	for (i = 0; i < ARRAY_SIZE(afu_attrs); i++)
-		device_remove_file(&afu->dev, &afu_attrs[i]);
+	/* remove the err buffer bin attribute */
+	if (afu->eb_len)
+		device_remove_bin_file(&afu->dev, &afu->attr_eb);
+
+	for (i = 0; i < ARRAY_SIZE(afu_attrs); i++) {
+		dev_attr = &afu_attrs[i];
+		if (cxl_ops->support_attributes(dev_attr->attr.name,
+						CXL_AFU_ATTRS))
+			device_remove_file(&afu->dev, &afu_attrs[i]);
+	}
 
 	list_for_each_entry_safe(cr, tmp, &afu->crs, list) {
 		sysfs_remove_bin_file(&cr->kobj, &cr->config_attr);
@@ -545,14 +644,37 @@ void cxl_sysfs_afu_remove(struct cxl_afu *afu)
 
 int cxl_sysfs_afu_add(struct cxl_afu *afu)
 {
+	struct device_attribute *dev_attr;
 	struct afu_config_record *cr;
 	int i, rc;
 
 	INIT_LIST_HEAD(&afu->crs);
 
 	for (i = 0; i < ARRAY_SIZE(afu_attrs); i++) {
-		if ((rc = device_create_file(&afu->dev, &afu_attrs[i])))
+		dev_attr = &afu_attrs[i];
+		if (cxl_ops->support_attributes(dev_attr->attr.name,
+						CXL_AFU_ATTRS)) {
+			if ((rc = device_create_file(&afu->dev, &afu_attrs[i])))
+				goto err;
+		}
+	}
+
+	/* conditionally create the add the binary file for error info buffer */
+	if (afu->eb_len) {
+		sysfs_attr_init(&afu->attr_eb.attr);
+
+		afu->attr_eb.attr.name = "afu_err_buff";
+		afu->attr_eb.attr.mode = S_IRUGO;
+		afu->attr_eb.size = afu->eb_len;
+		afu->attr_eb.read = afu_eb_read;
+
+		rc = device_create_bin_file(&afu->dev, &afu->attr_eb);
+		if (rc) {
+			dev_err(&afu->dev,
+				"Unable to create eb attr for the afu. Err(%d)\n",
+				rc);
 			goto err;
+		}
 	}
 
 	for (i = 0; i < afu->crs_num; i++) {
@@ -570,32 +692,53 @@ err1:
 	cxl_sysfs_afu_remove(afu);
 	return rc;
 err:
-	for (i--; i >= 0; i--)
+	/* reset the eb_len as we havent created the bin attr */
+	afu->eb_len = 0;
+
+	for (i--; i >= 0; i--) {
+		dev_attr = &afu_attrs[i];
+		if (cxl_ops->support_attributes(dev_attr->attr.name,
+						CXL_AFU_ATTRS))
 		device_remove_file(&afu->dev, &afu_attrs[i]);
+	}
 	return rc;
 }
 
 int cxl_sysfs_afu_m_add(struct cxl_afu *afu)
 {
+	struct device_attribute *dev_attr;
 	int i, rc;
 
 	for (i = 0; i < ARRAY_SIZE(afu_master_attrs); i++) {
-		if ((rc = device_create_file(afu->chardev_m, &afu_master_attrs[i])))
-			goto err;
+		dev_attr = &afu_master_attrs[i];
+		if (cxl_ops->support_attributes(dev_attr->attr.name,
+						CXL_AFU_MASTER_ATTRS)) {
+			if ((rc = device_create_file(afu->chardev_m, &afu_master_attrs[i])))
+				goto err;
+		}
 	}
 
 	return 0;
 
 err:
-	for (i--; i >= 0; i--)
-		device_remove_file(afu->chardev_m, &afu_master_attrs[i]);
+	for (i--; i >= 0; i--) {
+		dev_attr = &afu_master_attrs[i];
+		if (cxl_ops->support_attributes(dev_attr->attr.name,
+						CXL_AFU_MASTER_ATTRS))
+			device_remove_file(afu->chardev_m, &afu_master_attrs[i]);
+	}
 	return rc;
 }
 
 void cxl_sysfs_afu_m_remove(struct cxl_afu *afu)
 {
+	struct device_attribute *dev_attr;
 	int i;
 
-	for (i = 0; i < ARRAY_SIZE(afu_master_attrs); i++)
-		device_remove_file(afu->chardev_m, &afu_master_attrs[i]);
+	for (i = 0; i < ARRAY_SIZE(afu_master_attrs); i++) {
+		dev_attr = &afu_master_attrs[i];
+		if (cxl_ops->support_attributes(dev_attr->attr.name,
+						CXL_AFU_MASTER_ATTRS))
+			device_remove_file(afu->chardev_m, &afu_master_attrs[i]);
+	}
 }

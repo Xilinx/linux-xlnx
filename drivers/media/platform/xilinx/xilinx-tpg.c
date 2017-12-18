@@ -259,7 +259,7 @@ static int xtpg_s_stream(struct v4l2_subdev *subdev, int enable)
 	}
 
 	if (xtpg->is_hls) {
-		u32 fmt;
+		u32 fmt = 0;
 
 		switch (xtpg->vip_format->code) {
 		case MEDIA_BUS_FMT_UYVY8_1X16:
@@ -336,12 +336,13 @@ static int xtpg_s_stream(struct v4l2_subdev *subdev, int enable)
  */
 
 static struct v4l2_mbus_framefmt *
-__xtpg_get_pad_format(struct xtpg_device *xtpg, struct v4l2_subdev_fh *fh,
+__xtpg_get_pad_format(struct xtpg_device *xtpg,
+		      struct v4l2_subdev_pad_config *cfg,
 		      unsigned int pad, u32 which)
 {
 	switch (which) {
 	case V4L2_SUBDEV_FORMAT_TRY:
-		return v4l2_subdev_get_try_format(fh, pad);
+		return v4l2_subdev_get_try_format(&xtpg->xvip.subdev, cfg, pad);
 	case V4L2_SUBDEV_FORMAT_ACTIVE:
 		return &xtpg->formats[pad];
 	default:
@@ -350,25 +351,25 @@ __xtpg_get_pad_format(struct xtpg_device *xtpg, struct v4l2_subdev_fh *fh,
 }
 
 static int xtpg_get_format(struct v4l2_subdev *subdev,
-			   struct v4l2_subdev_fh *fh,
+			   struct v4l2_subdev_pad_config *cfg,
 			   struct v4l2_subdev_format *fmt)
 {
 	struct xtpg_device *xtpg = to_tpg(subdev);
 
-	fmt->format = *__xtpg_get_pad_format(xtpg, fh, fmt->pad, fmt->which);
+	fmt->format = *__xtpg_get_pad_format(xtpg, cfg, fmt->pad, fmt->which);
 
 	return 0;
 }
 
 static int xtpg_set_format(struct v4l2_subdev *subdev,
-			   struct v4l2_subdev_fh *fh,
+			   struct v4l2_subdev_pad_config *cfg,
 			   struct v4l2_subdev_format *fmt)
 {
 	struct xtpg_device *xtpg = to_tpg(subdev);
 	struct v4l2_mbus_framefmt *__format;
 	u32 bayer_phase;
 
-	__format = __xtpg_get_pad_format(xtpg, fh, fmt->pad, fmt->which);
+	__format = __xtpg_get_pad_format(xtpg, cfg, fmt->pad, fmt->which);
 
 	/* In two pads mode the source pad format is always identical to the
 	 * sink pad format.
@@ -391,7 +392,7 @@ static int xtpg_set_format(struct v4l2_subdev *subdev,
 
 	/* Propagate the format to the source pad. */
 	if (xtpg->npads == 2) {
-		__format = __xtpg_get_pad_format(xtpg, fh, 1, fmt->which);
+		__format = __xtpg_get_pad_format(xtpg, cfg, 1, fmt->which);
 		*__format = fmt->format;
 	}
 
@@ -403,19 +404,20 @@ static int xtpg_set_format(struct v4l2_subdev *subdev,
  */
 
 static int xtpg_enum_frame_size(struct v4l2_subdev *subdev,
-				struct v4l2_subdev_fh *fh,
+				struct v4l2_subdev_pad_config *cfg,
 				struct v4l2_subdev_frame_size_enum *fse)
 {
 	struct v4l2_mbus_framefmt *format;
 
-	format = v4l2_subdev_get_try_format(fh, fse->pad);
+	format = v4l2_subdev_get_try_format(subdev, cfg, fse->pad);
 
 	if (fse->index || fse->code != format->code)
 		return -EINVAL;
 
 	/* Min / max values for pad 0 is always fixed in both one and two pads
 	 * modes. In two pads mode, the source pad(= 1) size is identical to
-	 * the sink pad size */
+	 * the sink pad size.
+	 */
 	if (fse->pad == 0) {
 		fse->min_width = XVIP_MIN_WIDTH;
 		fse->max_width = XVIP_MAX_WIDTH;
@@ -434,11 +436,15 @@ static int xtpg_enum_frame_size(struct v4l2_subdev *subdev,
 static int xtpg_open(struct v4l2_subdev *subdev, struct v4l2_subdev_fh *fh)
 {
 	struct xtpg_device *xtpg = to_tpg(subdev);
+	struct v4l2_mbus_framefmt *format;
 
-	*v4l2_subdev_get_try_format(fh, 0) = xtpg->default_format;
+	format = v4l2_subdev_get_try_format(subdev, fh->pad, 0);
+	*format = xtpg->default_format;
 
-	if (xtpg->npads == 2)
-		*v4l2_subdev_get_try_format(fh, 1) = xtpg->default_format;
+	if (xtpg->npads == 2) {
+		format = v4l2_subdev_get_try_format(subdev, fh->pad, 1);
+		*format = xtpg->default_format;
+	}
 
 	return 0;
 }
@@ -904,6 +910,7 @@ static int xtpg_parse_of(struct xtpg_device *xtpg)
 		format = xvip_of_get_format(port);
 		if (IS_ERR(format)) {
 			dev_err(dev, "invalid format in DT");
+			of_node_put(port);
 			return PTR_ERR(format);
 		}
 
@@ -912,6 +919,7 @@ static int xtpg_parse_of(struct xtpg_device *xtpg)
 			xtpg->vip_format = format;
 		} else if (xtpg->vip_format != format) {
 			dev_err(dev, "in/out format mismatch in DT");
+			of_node_put(port);
 			return -EINVAL;
 		}
 
@@ -1037,7 +1045,7 @@ static int xtpg_probe(struct platform_device *pdev)
 	subdev->flags |= V4L2_SUBDEV_FL_HAS_DEVNODE;
 	subdev->entity.ops = &xtpg_media_ops;
 
-	ret = media_entity_init(&subdev->entity, xtpg->npads, xtpg->pads, 0);
+	ret = media_entity_pads_init(&subdev->entity, xtpg->npads, xtpg->pads);
 	if (ret < 0)
 		goto error;
 

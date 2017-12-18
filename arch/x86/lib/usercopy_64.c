@@ -5,8 +5,8 @@
  * Copyright 1997 Linus Torvalds
  * Copyright 2002 Andi Kleen <ak@suse.de>
  */
-#include <linux/module.h>
-#include <asm/uaccess.h>
+#include <linux/export.h>
+#include <linux/uaccess.h>
 
 /*
  * Zero Userspace
@@ -82,7 +82,7 @@ copy_user_handle_tail(char *to, char *from, unsigned len)
 	clac();
 
 	/* If the destination is a kernel buffer, we always clear the end */
-	if ((unsigned long)to >= TASK_SIZE_MAX)
+	if (!__addr_ok(to))
 		memset(to, 0, len);
 	return len;
 }

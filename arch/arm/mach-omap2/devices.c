@@ -18,7 +18,6 @@
 #include <linux/slab.h>
 #include <linux/of.h>
 #include <linux/pinctrl/machine.h>
-#include <linux/platform_data/mailbox-omap.h>
 
 #include <asm/mach-types.h>
 #include <asm/mach/map.h>
@@ -33,7 +32,6 @@
 #include "common.h"
 #include "mux.h"
 #include "control.h"
-#include "devices.h"
 #include "display.h"
 
 #define L3_MODULES_MAX_LEN 12
@@ -63,177 +61,13 @@ static int __init omap3_l3_init(void)
 
 	WARN(IS_ERR(pdev), "could not build omap_device for %s\n", oh_name);
 
-	return PTR_RET(pdev);
+	return PTR_ERR_OR_ZERO(pdev);
 }
 omap_postcore_initcall(omap3_l3_init);
 
-#if defined(CONFIG_IOMMU_API)
-
-#include <linux/platform_data/iommu-omap.h>
-
-static struct resource omap3isp_resources[] = {
-	{
-		.start		= OMAP3430_ISP_BASE,
-		.end		= OMAP3430_ISP_END,
-		.flags		= IORESOURCE_MEM,
-	},
-	{
-		.start		= OMAP3430_ISP_CCP2_BASE,
-		.end		= OMAP3430_ISP_CCP2_END,
-		.flags		= IORESOURCE_MEM,
-	},
-	{
-		.start		= OMAP3430_ISP_CCDC_BASE,
-		.end		= OMAP3430_ISP_CCDC_END,
-		.flags		= IORESOURCE_MEM,
-	},
-	{
-		.start		= OMAP3430_ISP_HIST_BASE,
-		.end		= OMAP3430_ISP_HIST_END,
-		.flags		= IORESOURCE_MEM,
-	},
-	{
-		.start		= OMAP3430_ISP_H3A_BASE,
-		.end		= OMAP3430_ISP_H3A_END,
-		.flags		= IORESOURCE_MEM,
-	},
-	{
-		.start		= OMAP3430_ISP_PREV_BASE,
-		.end		= OMAP3430_ISP_PREV_END,
-		.flags		= IORESOURCE_MEM,
-	},
-	{
-		.start		= OMAP3430_ISP_RESZ_BASE,
-		.end		= OMAP3430_ISP_RESZ_END,
-		.flags		= IORESOURCE_MEM,
-	},
-	{
-		.start		= OMAP3430_ISP_SBL_BASE,
-		.end		= OMAP3430_ISP_SBL_END,
-		.flags		= IORESOURCE_MEM,
-	},
-	{
-		.start		= OMAP3430_ISP_CSI2A_REGS1_BASE,
-		.end		= OMAP3430_ISP_CSI2A_REGS1_END,
-		.flags		= IORESOURCE_MEM,
-	},
-	{
-		.start		= OMAP3430_ISP_CSIPHY2_BASE,
-		.end		= OMAP3430_ISP_CSIPHY2_END,
-		.flags		= IORESOURCE_MEM,
-	},
-	{
-		.start		= OMAP3630_ISP_CSI2A_REGS2_BASE,
-		.end		= OMAP3630_ISP_CSI2A_REGS2_END,
-		.flags		= IORESOURCE_MEM,
-	},
-	{
-		.start		= OMAP3630_ISP_CSI2C_REGS1_BASE,
-		.end		= OMAP3630_ISP_CSI2C_REGS1_END,
-		.flags		= IORESOURCE_MEM,
-	},
-	{
-		.start		= OMAP3630_ISP_CSIPHY1_BASE,
-		.end		= OMAP3630_ISP_CSIPHY1_END,
-		.flags		= IORESOURCE_MEM,
-	},
-	{
-		.start		= OMAP3630_ISP_CSI2C_REGS2_BASE,
-		.end		= OMAP3630_ISP_CSI2C_REGS2_END,
-		.flags		= IORESOURCE_MEM,
-	},
-	{
-		.start		= OMAP343X_CTRL_BASE + OMAP343X_CONTROL_CSIRXFE,
-		.end		= OMAP343X_CTRL_BASE + OMAP343X_CONTROL_CSIRXFE + 3,
-		.flags		= IORESOURCE_MEM,
-	},
-	{
-		.start		= OMAP343X_CTRL_BASE + OMAP3630_CONTROL_CAMERA_PHY_CTRL,
-		.end		= OMAP343X_CTRL_BASE + OMAP3630_CONTROL_CAMERA_PHY_CTRL + 3,
-		.flags		= IORESOURCE_MEM,
-	},
-	{
-		.start		= 24 + OMAP_INTC_START,
-		.flags		= IORESOURCE_IRQ,
-	}
-};
-
-static struct platform_device omap3isp_device = {
-	.name		= "omap3isp",
-	.id		= -1,
-	.num_resources	= ARRAY_SIZE(omap3isp_resources),
-	.resource	= omap3isp_resources,
-};
-
-static struct omap_iommu_arch_data omap3_isp_iommu = {
-	.name = "mmu_isp",
-};
-
-int omap3_init_camera(struct isp_platform_data *pdata)
-{
-	if (of_have_populated_dt())
-		omap3_isp_iommu.name = "480bd400.mmu";
-
-	omap3isp_device.dev.platform_data = pdata;
-	omap3isp_device.dev.archdata.iommu = &omap3_isp_iommu;
-
-	return platform_device_register(&omap3isp_device);
-}
-
-#else /* !CONFIG_IOMMU_API */
-
-int omap3_init_camera(struct isp_platform_data *pdata)
-{
-	return 0;
-}
-
-#endif
-
-#if defined(CONFIG_OMAP2PLUS_MBOX) || defined(CONFIG_OMAP2PLUS_MBOX_MODULE)
-static inline void __init omap_init_mbox(void)
-{
-	struct omap_hwmod *oh;
-	struct platform_device *pdev;
-	struct omap_mbox_pdata *pdata;
-
-	oh = omap_hwmod_lookup("mailbox");
-	if (!oh) {
-		pr_err("%s: unable to find hwmod\n", __func__);
-		return;
-	}
-	if (!oh->dev_attr) {
-		pr_err("%s: hwmod doesn't have valid attrs\n", __func__);
-		return;
-	}
-
-	pdata = (struct omap_mbox_pdata *)oh->dev_attr;
-	pdev = omap_device_build("omap-mailbox", -1, oh, pdata, sizeof(*pdata));
-	WARN(IS_ERR(pdev), "%s: could not build device, err %ld\n",
-						__func__, PTR_ERR(pdev));
-}
-#else
-static inline void omap_init_mbox(void) { }
-#endif /* CONFIG_OMAP2PLUS_MBOX */
-
 static inline void omap_init_sti(void) {}
 
-#if defined(CONFIG_SND_SOC) || defined(CONFIG_SND_SOC_MODULE)
-
-static struct platform_device omap_pcm = {
-	.name	= "omap-pcm-audio",
-	.id	= -1,
-};
-
-static void omap_init_audio(void)
-{
-	platform_device_register(&omap_pcm);
-}
-
-#else
-static inline void omap_init_audio(void) {}
-#endif
-
-#if defined(CONFIG_SPI_OMAP24XX) || defined(CONFIG_SPI_OMAP24XX_MODULE)
+#if IS_ENABLED(CONFIG_SPI_OMAP24XX)
 
 #include <linux/platform_data/spi-omap2-mcspi.h>
 
@@ -329,9 +163,8 @@ static void __init omap_init_aes(void)
 
 /*-------------------------------------------------------------------------*/
 
-#if defined(CONFIG_VIDEO_OMAP2_VOUT) || \
-	defined(CONFIG_VIDEO_OMAP2_VOUT_MODULE)
-#if defined(CONFIG_FB_OMAP2) || defined(CONFIG_FB_OMAP2_MODULE)
+#if IS_ENABLED(CONFIG_VIDEO_OMAP2_VOUT)
+#if IS_ENABLED(CONFIG_FB_OMAP2)
 static struct resource omap_vout_resource[3 - CONFIG_FB_OMAP2_NUM_FBS] = {
 };
 #else
@@ -362,14 +195,12 @@ static int __init omap2_init_devices(void)
 	if (!of_have_populated_dt())
 		pinctrl_provide_dummies();
 
-	/*
-	 * please keep these calls, and their implementations above,
-	 * in alphabetical order so they're easier to sort through.
-	 */
-	omap_init_audio();
 	/* If dtb is there, the devices will be created dynamically */
 	if (!of_have_populated_dt()) {
-		omap_init_mbox();
+		/*
+		 * please keep these calls, and their implementations above,
+		 * in alphabetical order so they're easier to sort through.
+		 */
 		omap_init_mcspi();
 		omap_init_sham();
 		omap_init_aes();
@@ -403,6 +234,6 @@ static int __init omap_gpmc_init(void)
 	pdev = omap_device_build("omap-gpmc", -1, oh, NULL, 0);
 	WARN(IS_ERR(pdev), "could not build omap_device for %s\n", oh_name);
 
-	return PTR_RET(pdev);
+	return PTR_ERR_OR_ZERO(pdev);
 }
 omap_postcore_initcall(omap_gpmc_init);

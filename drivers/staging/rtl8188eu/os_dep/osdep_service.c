@@ -11,11 +11,6 @@
  * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
  * more details.
  *
- * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110, USA
- *
- *
  ******************************************************************************/
 
 
@@ -41,10 +36,7 @@ inline int RTW_STATUS_CODE(int error_code)
 
 u8 *_rtw_malloc(u32 sz)
 {
-	u8	*pbuf = NULL;
-
-	pbuf = kmalloc(sz, in_interrupt() ? GFP_ATOMIC : GFP_KERNEL);
-	return pbuf;
+	return kmalloc(sz, in_interrupt() ? GFP_ATOMIC : GFP_KERNEL);
 }
 
 void *rtw_malloc2d(int h, int w, int size)
@@ -52,7 +44,7 @@ void *rtw_malloc2d(int h, int w, int size)
 	int j;
 
 	void **a = kzalloc(h*sizeof(void *) + h*w*size, GFP_KERNEL);
-	if (a == NULL) {
+	if (!a) {
 		pr_info("%s: alloc memory fail!\n", __func__);
 		return NULL;
 	}
@@ -63,28 +55,13 @@ void *rtw_malloc2d(int h, int w, int size)
 	return a;
 }
 
-u32 _rtw_down_sema(struct semaphore *sema)
-{
-	if (down_interruptible(sema))
-		return _FAIL;
-	else
-		return _SUCCESS;
-}
-
 void	_rtw_init_queue(struct __queue *pqueue)
 {
 	INIT_LIST_HEAD(&(pqueue->queue));
 	spin_lock_init(&(pqueue->lock));
 }
 
-/*  the input parameter start must be in jiffies */
-inline s32 rtw_get_passing_time_ms(u32 start)
-{
-	return jiffies_to_msecs(jiffies-start);
-}
-
-struct net_device *rtw_alloc_etherdev_with_old_priv(int sizeof_priv,
-						    void *old_priv)
+struct net_device *rtw_alloc_etherdev_with_old_priv(void *old_priv)
 {
 	struct net_device *pnetdev;
 	struct rtw_netdev_priv_indicator *pnpi;
@@ -95,7 +72,6 @@ struct net_device *rtw_alloc_etherdev_with_old_priv(int sizeof_priv,
 
 	pnpi = netdev_priv(pnetdev);
 	pnpi->priv = old_priv;
-	pnpi->sizeof_priv = sizeof_priv;
 
 RETURN:
 	return pnetdev;
@@ -134,7 +110,7 @@ void rtw_buf_free(u8 **buf, u32 *buf_len)
 
 void rtw_buf_update(u8 **buf, u32 *buf_len, u8 *src, u32 src_len)
 {
-	u32 ori_len = 0, dup_len = 0;
+	u32 dup_len = 0;
 	u8 *ori = NULL;
 	u8 *dup = NULL;
 
@@ -153,7 +129,6 @@ void rtw_buf_update(u8 **buf, u32 *buf_len, u8 *src, u32 src_len)
 
 keep_ori:
 	ori = *buf;
-	ori_len = *buf_len;
 
 	/* replace buf with dup */
 	*buf_len = 0;

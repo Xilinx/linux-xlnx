@@ -29,12 +29,11 @@
 #define KFD_DRIVER_AUTHOR	"AMD Inc. and others"
 
 #define KFD_DRIVER_DESC		"Standalone HSA driver for AMD's GPUs"
-#define KFD_DRIVER_DATE		"20150122"
+#define KFD_DRIVER_DATE		"20150421"
 #define KFD_DRIVER_MAJOR	0
 #define KFD_DRIVER_MINOR	7
-#define KFD_DRIVER_PATCHLEVEL	1
+#define KFD_DRIVER_PATCHLEVEL	2
 
-const struct kfd2kgd_calls *kfd2kgd;
 static const struct kgd2kfd_calls kgd2kfd = {
 	.exit		= kgd2kfd_exit,
 	.probe		= kgd2kfd_probe,
@@ -55,25 +54,28 @@ module_param(max_num_of_queues_per_device, int, 0444);
 MODULE_PARM_DESC(max_num_of_queues_per_device,
 	"Maximum number of supported queues per device (1 = Minimum, 4096 = default)");
 
-bool kgd2kfd_init(unsigned interface_version,
-		  const struct kfd2kgd_calls *f2g,
-		  const struct kgd2kfd_calls **g2f)
+int send_sigterm;
+module_param(send_sigterm, int, 0444);
+MODULE_PARM_DESC(send_sigterm,
+	"Send sigterm to HSA process on unhandled exception (0 = disable, 1 = enable)");
+
+static int amdkfd_init_completed;
+
+int kgd2kfd_init(unsigned interface_version, const struct kgd2kfd_calls **g2f)
 {
+	if (!amdkfd_init_completed)
+		return -EPROBE_DEFER;
+
 	/*
 	 * Only one interface version is supported,
 	 * no kfd/kgd version skew allowed.
 	 */
 	if (interface_version != KFD_INTERFACE_VERSION)
-		return false;
+		return -EINVAL;
 
-	/* Protection against multiple amd kgd loads */
-	if (kfd2kgd)
-		return true;
-
-	kfd2kgd = f2g;
 	*g2f = &kgd2kfd;
 
-	return true;
+	return 0;
 }
 EXPORT_SYMBOL(kgd2kfd_init);
 
@@ -84,8 +86,6 @@ void kgd2kfd_exit(void)
 static int __init kfd_module_init(void)
 {
 	int err;
-
-	kfd2kgd = NULL;
 
 	/* Verify module parameters */
 	if ((sched_policy < KFD_SCHED_POLICY_HWS) ||
@@ -116,6 +116,8 @@ static int __init kfd_module_init(void)
 
 	kfd_process_create_wq();
 
+	amdkfd_init_completed = 1;
+
 	dev_info(kfd_device, "Initialized module\n");
 
 	return 0;
@@ -130,6 +132,8 @@ err_pasid:
 
 static void __exit kfd_module_exit(void)
 {
+	amdkfd_init_completed = 0;
+
 	kfd_process_destroy_wq();
 	kfd_topology_shutdown();
 	kfd_chardev_exit();

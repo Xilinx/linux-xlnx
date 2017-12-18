@@ -8,6 +8,8 @@
  *      Venkatesh Pallipadi <venkatesh.pallipadi@intel.com>
  */
 
+#define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
+
 #include <linux/kernel.h>
 #include <linux/slab.h>
 #include <linux/module.h>
@@ -29,7 +31,6 @@ MODULE_LICENSE("GPL");
 
 struct cpufreq_acpi_io {
 	struct acpi_processor_performance	acpi_data;
-	struct cpufreq_frequency_table		*freq_table;
 	unsigned int				resume;
 };
 
@@ -119,8 +120,7 @@ processor_get_freq (
 
 	if (ret) {
 		set_cpus_allowed_ptr(current, &saved_mask);
-		printk(KERN_WARNING "get performance failed with error %d\n",
-		       ret);
+		pr_warn("get performance failed with error %d\n", ret);
 		ret = 0;
 		goto migrate_end;
 	}
@@ -178,7 +178,7 @@ processor_set_freq (
 
 	ret = processor_set_pstate(value);
 	if (ret) {
-		printk(KERN_WARNING "Transition failed with error %d\n", ret);
+		pr_warn("Transition failed with error %d\n", ret);
 		retval = -ENODEV;
 		goto migrate_end;
 	}
@@ -221,6 +221,7 @@ acpi_cpufreq_cpu_init (
 	unsigned int		cpu = policy->cpu;
 	struct cpufreq_acpi_io	*data;
 	unsigned int		result = 0;
+	struct cpufreq_frequency_table *freq_table;
 
 	pr_debug("acpi_cpufreq_cpu_init\n");
 
@@ -254,10 +255,10 @@ acpi_cpufreq_cpu_init (
 	}
 
 	/* alloc freq_table */
-	data->freq_table = kzalloc(sizeof(*data->freq_table) *
+	freq_table = kzalloc(sizeof(*freq_table) *
 	                           (data->acpi_data.state_count + 1),
 	                           GFP_KERNEL);
-	if (!data->freq_table) {
+	if (!freq_table) {
 		result = -ENOMEM;
 		goto err_unreg;
 	}
@@ -276,14 +277,14 @@ acpi_cpufreq_cpu_init (
 	for (i = 0; i <= data->acpi_data.state_count; i++)
 	{
 		if (i < data->acpi_data.state_count) {
-			data->freq_table[i].frequency =
+			freq_table[i].frequency =
 			      data->acpi_data.states[i].core_frequency * 1000;
 		} else {
-			data->freq_table[i].frequency = CPUFREQ_TABLE_END;
+			freq_table[i].frequency = CPUFREQ_TABLE_END;
 		}
 	}
 
-	result = cpufreq_table_validate_and_show(policy, data->freq_table);
+	result = cpufreq_table_validate_and_show(policy, freq_table);
 	if (result) {
 		goto err_freqfree;
 	}
@@ -291,8 +292,7 @@ acpi_cpufreq_cpu_init (
 	/* notify BIOS that we exist */
 	acpi_processor_notify_smm(THIS_MODULE);
 
-	printk(KERN_INFO "acpi-cpufreq: CPU%u - ACPI performance management "
-	       "activated.\n", cpu);
+	pr_info("CPU%u - ACPI performance management activated\n", cpu);
 
 	for (i = 0; i < data->acpi_data.state_count; i++)
 		pr_debug("     %cP%d: %d MHz, %d mW, %d uS, %d uS, 0x%x 0x%x\n",
@@ -311,9 +311,9 @@ acpi_cpufreq_cpu_init (
 	return (result);
 
  err_freqfree:
-	kfree(data->freq_table);
+	kfree(freq_table);
  err_unreg:
-	acpi_processor_unregister_performance(&data->acpi_data, cpu);
+	acpi_processor_unregister_performance(cpu);
  err_free:
 	kfree(data);
 	acpi_io_data[cpu] = NULL;
@@ -332,8 +332,8 @@ acpi_cpufreq_cpu_exit (
 
 	if (data) {
 		acpi_io_data[policy->cpu] = NULL;
-		acpi_processor_unregister_performance(&data->acpi_data,
-		                                      policy->cpu);
+		acpi_processor_unregister_performance(policy->cpu);
+		kfree(policy->freq_table);
 		kfree(data);
 	}
 

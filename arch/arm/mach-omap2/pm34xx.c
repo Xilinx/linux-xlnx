@@ -137,9 +137,8 @@ static irqreturn_t _prcm_int_handle_io(int irq, void *unused)
 {
 	int c;
 
-	c = omap3xxx_prm_clear_mod_irqs(WKUP_MOD, 1,
-					~(OMAP3430_ST_IO_MASK |
-					  OMAP3430_ST_IO_CHAIN_MASK));
+	c = omap_prm_clear_mod_irqs(WKUP_MOD, 1, OMAP3430_ST_IO_MASK |
+				    OMAP3430_ST_IO_CHAIN_MASK);
 
 	return c ? IRQ_HANDLED : IRQ_NONE;
 }
@@ -153,14 +152,13 @@ static irqreturn_t _prcm_int_handle_wakeup(int irq, void *unused)
 	 * these are handled in a separate handler to avoid acking
 	 * IO events before parsing in mux code
 	 */
-	c = omap3xxx_prm_clear_mod_irqs(WKUP_MOD, 1,
-					OMAP3430_ST_IO_MASK |
-					OMAP3430_ST_IO_CHAIN_MASK);
-	c += omap3xxx_prm_clear_mod_irqs(CORE_MOD, 1, 0);
-	c += omap3xxx_prm_clear_mod_irqs(OMAP3430_PER_MOD, 1, 0);
+	c = omap_prm_clear_mod_irqs(WKUP_MOD, 1, ~(OMAP3430_ST_IO_MASK |
+						   OMAP3430_ST_IO_CHAIN_MASK));
+	c += omap_prm_clear_mod_irqs(CORE_MOD, 1, ~0);
+	c += omap_prm_clear_mod_irqs(OMAP3430_PER_MOD, 1, ~0);
 	if (omap_rev() > OMAP3430_REV_ES1_0) {
-		c += omap3xxx_prm_clear_mod_irqs(CORE_MOD, 3, 0);
-		c += omap3xxx_prm_clear_mod_irqs(OMAP3430ES2_USBHOST_MOD, 1, 0);
+		c += omap_prm_clear_mod_irqs(CORE_MOD, 3, ~0);
+		c += omap_prm_clear_mod_irqs(OMAP3430ES2_USBHOST_MOD, 1, ~0);
 	}
 
 	return c ? IRQ_HANDLED : IRQ_NONE;
@@ -200,7 +198,6 @@ void omap_sram_idle(void)
 	int per_next_state = PWRDM_POWER_ON;
 	int core_next_state = PWRDM_POWER_ON;
 	int per_going_off;
-	int core_prev_state;
 	u32 sdrc_pwr = 0;
 
 	mpu_next_state = pwrdm_read_next_pwrst(mpu_pwrdm);
@@ -280,16 +277,20 @@ void omap_sram_idle(void)
 		sdrc_write_reg(sdrc_pwr, SDRC_POWER);
 
 	/* CORE */
-	if (core_next_state < PWRDM_POWER_ON) {
-		core_prev_state = pwrdm_read_prev_pwrst(core_pwrdm);
-		if (core_prev_state == PWRDM_POWER_OFF) {
-			omap3_core_restore_context();
-			omap3_cm_restore_context();
-			omap3_sram_restore_context();
-			omap2_sms_restore_context();
-		}
+	if (core_next_state < PWRDM_POWER_ON &&
+	    pwrdm_read_prev_pwrst(core_pwrdm) == PWRDM_POWER_OFF) {
+		omap3_core_restore_context();
+		omap3_cm_restore_context();
+		omap3_sram_restore_context();
+		omap2_sms_restore_context();
+	} else {
+		/*
+		 * In off-mode resume path above, omap3_core_restore_context
+		 * also handles the INTC autoidle restore done here so limit
+		 * this to non-off mode resume paths so we don't do it twice.
+		 */
+		omap3_intc_resume_idle();
 	}
-	omap3_intc_resume_idle();
 
 	pwrdm_post_transition(NULL);
 
@@ -303,11 +304,11 @@ static void omap3_pm_idle(void)
 	if (omap_irq_pending())
 		return;
 
-	trace_cpu_idle(1, smp_processor_id());
+	trace_cpu_idle_rcuidle(1, smp_processor_id());
 
 	omap_sram_idle();
 
-	trace_cpu_idle(PWR_EVENT_EXIT, smp_processor_id());
+	trace_cpu_idle_rcuidle(PWR_EVENT_EXIT, smp_processor_id());
 }
 
 #ifdef CONFIG_SUSPEND

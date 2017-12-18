@@ -28,6 +28,7 @@
 #include "transport.h"
 #include "protocol.h"
 #include "debug.h"
+#include "scsiglue.h"
 
 #define SD_INIT1_FIRMWARE "ene-ub6250/sd_init1.bin"
 #define SD_INIT2_FIRMWARE "ene-ub6250/sd_init2.bin"
@@ -35,6 +36,8 @@
 #define MS_INIT_FIRMWARE "ene-ub6250/ms_init.bin"
 #define MSP_RW_FIRMWARE "ene-ub6250/msp_rdwr.bin"
 #define MS_RW_FIRMWARE "ene-ub6250/ms_rdwr.bin"
+
+#define DRV_NAME "ums_eneub6250"
 
 MODULE_DESCRIPTION("Driver for ENE UB6250 reader");
 MODULE_LICENSE("GPL");
@@ -557,8 +560,10 @@ static int ene_send_scsi_cmd(struct us_data *us, u8 fDir, void *buf, int use_sg)
 	/* check bulk status */
 	residue = le32_to_cpu(bcs->Residue);
 
-	/* try to compute the actual residue, based on how much data
-	 * was really transferred and what the device tells us */
+	/*
+	 * try to compute the actual residue, based on how much data
+	 * was really transferred and what the device tells us
+	 */
 	if (residue && !(us->fflags & US_FL_IGNORE_RESIDUE)) {
 		residue = min(residue, transfer_length);
 		if (us->srb != NULL)
@@ -859,9 +864,6 @@ static int ms_read_readpage(struct us_data *us, u32 PhyBlockAddr,
 	u8 ExtBuf[4];
 	u32 bn = PhyBlockAddr * 0x20 + PageNum;
 
-	/* printk(KERN_INFO "MS --- MS_ReaderReadPage,
-	PhyBlockAddr = %x, PageNum = %x\n", PhyBlockAddr, PageNum); */
-
 	result = ene_load_bincode(us, MS_RW_PATTERN);
 	if (result != USB_STOR_XFER_GOOD)
 		return USB_STOR_TRANSPORT_ERROR;
@@ -1064,12 +1066,12 @@ static void ms_lib_free_writebuf(struct us_data *us)
 	ms_lib_clear_pagemap(info); /* (pdx)->MS_Lib.pagemap memset 0 in ms.h */
 
 	if (info->MS_Lib.blkpag) {
-		kfree((u8 *)(info->MS_Lib.blkpag));  /* Arnold test ... */
+		kfree(info->MS_Lib.blkpag);  /* Arnold test ... */
 		info->MS_Lib.blkpag = NULL;
 	}
 
 	if (info->MS_Lib.blkext) {
-		kfree((u8 *)(info->MS_Lib.blkext));  /* Arnold test ... */
+		kfree(info->MS_Lib.blkext);  /* Arnold test ... */
 		info->MS_Lib.blkext = NULL;
 	}
 }
@@ -1138,8 +1140,6 @@ static int ms_read_copyblock(struct us_data *us, u16 oldphy, u16 newphy,
 	struct bulk_cb_wrap *bcb = (struct bulk_cb_wrap *) us->iobuf;
 	int result;
 
-	/* printk(KERN_INFO "MS_ReaderCopyBlock --- PhyBlockAddr = %x,
-		PageNum = %x\n", PhyBlockAddr, PageNum); */
 	result = ene_load_bincode(us, MS_RW_PATTERN);
 	if (result != USB_STOR_XFER_GOOD)
 		return USB_STOR_TRANSPORT_ERROR;
@@ -1173,8 +1173,6 @@ static int ms_read_eraseblock(struct us_data *us, u32 PhyBlockAddr)
 	int result;
 	u32 bn = PhyBlockAddr;
 
-	/* printk(KERN_INFO "MS --- ms_read_eraseblock,
-			PhyBlockAddr = %x\n", PhyBlockAddr); */
 	result = ene_load_bincode(us, MS_RW_PATTERN);
 	if (result != USB_STOR_XFER_GOOD)
 		return USB_STOR_TRANSPORT_ERROR;
@@ -1252,8 +1250,6 @@ static int ms_lib_overwrite_extra(struct us_data *us, u32 PhyBlockAddr,
 	struct bulk_cb_wrap *bcb = (struct bulk_cb_wrap *) us->iobuf;
 	int result;
 
-	/* printk("MS --- MS_LibOverwriteExtra,
-		PhyBlockAddr = %x, PageNum = %x\n", PhyBlockAddr, PageNum); */
 	result = ene_load_bincode(us, MS_RW_PATTERN);
 	if (result != USB_STOR_XFER_GOOD)
 		return USB_STOR_TRANSPORT_ERROR;
@@ -1339,7 +1335,6 @@ static int ms_lib_read_extra(struct us_data *us, u32 PhyBlock,
 	int result;
 	u8 ExtBuf[4];
 
-	/* printk("MS_LibReadExtra --- PhyBlock = %x, PageNum = %x\n", PhyBlock, PageNum); */
 	memset(bcb, 0, sizeof(struct bulk_cb_wrap));
 	bcb->Signature = cpu_to_le32(US_BULK_CB_SIGN);
 	bcb->DataTransferLength = 0x4;
@@ -1537,9 +1532,6 @@ static int ms_lib_read_extrablock(struct us_data *us, u32 PhyBlock,
 {
 	struct bulk_cb_wrap *bcb = (struct bulk_cb_wrap *) us->iobuf;
 	int     result;
-
-	/* printk("MS_LibReadExtraBlock --- PhyBlock = %x,
-		PageNum = %x, blen = %x\n", PhyBlock, PageNum, blen); */
 
 	/* Read Extra Data */
 	memset(bcb, 0, sizeof(struct bulk_cb_wrap));
@@ -2307,6 +2299,7 @@ static int ene_transport(struct scsi_cmnd *srb, struct us_data *us)
 	return 0;
 }
 
+static struct scsi_host_template ene_ub6250_host_template;
 
 static int ene_ub6250_probe(struct usb_interface *intf,
 			 const struct usb_device_id *id)
@@ -2316,7 +2309,8 @@ static int ene_ub6250_probe(struct usb_interface *intf,
 	struct us_data *us;
 
 	result = usb_stor_probe1(&us, intf, id,
-		   (id - ene_ub6250_usb_ids) + ene_ub6250_unusual_dev_list);
+		   (id - ene_ub6250_usb_ids) + ene_ub6250_unusual_dev_list,
+		   &ene_ub6250_host_template);
 	if (result)
 		return result;
 
@@ -2385,8 +2379,10 @@ static int ene_ub6250_reset_resume(struct usb_interface *iface)
 	/* Report the reset to the SCSI core */
 	usb_stor_reset_resume(iface);
 
-	/* FIXME: Notify the subdrivers that they need to reinitialize
-	 * the device */
+	/*
+	 * FIXME: Notify the subdrivers that they need to reinitialize
+	 * the device
+	 */
 	info->Power_IsResum = true;
 	/*info->SD_Status.Ready = 0; */
 	info->SD_Status = *(struct SD_STATUS *)&tmp;
@@ -2404,7 +2400,7 @@ static int ene_ub6250_reset_resume(struct usb_interface *iface)
 #endif
 
 static struct usb_driver ene_ub6250_driver = {
-	.name =		"ums_eneub6250",
+	.name =		DRV_NAME,
 	.probe =	ene_ub6250_probe,
 	.disconnect =	usb_stor_disconnect,
 	.suspend =	usb_stor_suspend,
@@ -2417,4 +2413,4 @@ static struct usb_driver ene_ub6250_driver = {
 	.no_dynamic_id = 1,
 };
 
-module_usb_driver(ene_ub6250_driver);
+module_usb_stor_driver(ene_ub6250_driver, ene_ub6250_host_template, DRV_NAME);

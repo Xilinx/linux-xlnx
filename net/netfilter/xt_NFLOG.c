@@ -26,12 +26,16 @@ nflog_tg(struct sk_buff *skb, const struct xt_action_param *par)
 {
 	const struct xt_nflog_info *info = par->targinfo;
 	struct nf_loginfo li;
-	struct net *net = dev_net(par->in ? par->in : par->out);
+	struct net *net = par->net;
 
 	li.type		     = NF_LOG_TYPE_ULOG;
 	li.u.ulog.copy_len   = info->len;
 	li.u.ulog.group	     = info->group;
 	li.u.ulog.qthreshold = info->threshold;
+	li.u.ulog.flags	     = 0;
+
+	if (info->flags & XT_NFLOG_F_COPY_LEN)
+		li.u.ulog.flags |= NF_LOG_F_COPY_LEN;
 
 	nfulnl_log_packet(net, par->family, par->hooknum, skb, par->in,
 			  par->out, &li, info->prefix);

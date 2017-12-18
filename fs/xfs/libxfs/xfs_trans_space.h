@@ -21,6 +21,8 @@
 /*
  * Components of space reservations.
  */
+#define XFS_MAX_CONTIG_RMAPS_PER_BLOCK(mp)    \
+		(((mp)->m_rmap_mxr[0]) - ((mp)->m_rmap_mnr[0]))
 #define XFS_MAX_CONTIG_EXTENTS_PER_BLOCK(mp)    \
 		(((mp)->m_alloc_mxr[0]) - ((mp)->m_alloc_mnr[0]))
 #define	XFS_EXTENTADD_SPACE_RES(mp,w)	(XFS_BM_MAXLEVELS(mp,w) - 1)
@@ -28,6 +30,13 @@
 	(((b + XFS_MAX_CONTIG_EXTENTS_PER_BLOCK(mp) - 1) / \
 	  XFS_MAX_CONTIG_EXTENTS_PER_BLOCK(mp)) * \
 	  XFS_EXTENTADD_SPACE_RES(mp,w))
+#define XFS_SWAP_RMAP_SPACE_RES(mp,b,w)\
+	(((b + XFS_MAX_CONTIG_EXTENTS_PER_BLOCK(mp) - 1) / \
+	  XFS_MAX_CONTIG_EXTENTS_PER_BLOCK(mp)) * \
+	  XFS_EXTENTADD_SPACE_RES(mp,w) + \
+	 ((b + XFS_MAX_CONTIG_RMAPS_PER_BLOCK(mp) - 1) / \
+	  XFS_MAX_CONTIG_RMAPS_PER_BLOCK(mp)) * \
+	  (mp)->m_rmap_maxlevels)
 #define	XFS_DAENTER_1B(mp,w)	\
 	((w) == XFS_DATA_FORK ? (mp)->m_dir_geo->fsbcount : 1)
 #define	XFS_DAENTER_DBS(mp,w)	\
@@ -67,7 +76,7 @@
 #define	XFS_DIOSTRAT_SPACE_RES(mp, v)	\
 	(XFS_EXTENTADD_SPACE_RES(mp, XFS_DATA_FORK) + (v))
 #define	XFS_GROWFS_SPACE_RES(mp)	\
-	(2 * XFS_AG_MAXLEVELS(mp))
+	(2 * (mp)->m_ag_maxlevels)
 #define	XFS_GROWFSRT_SPACE_RES(mp,b)	\
 	((b) + XFS_EXTENTADD_SPACE_RES(mp, XFS_DATA_FORK))
 #define	XFS_LINK_SPACE_RES(mp,nl)	\

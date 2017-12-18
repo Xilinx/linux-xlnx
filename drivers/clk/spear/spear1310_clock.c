@@ -4,14 +4,13 @@
  * SPEAr1310 machine clock framework source file
  *
  * Copyright (C) 2012 ST Microelectronics
- * Viresh Kumar <viresh.linux@gmail.com>
+ * Viresh Kumar <vireshk@kernel.org>
  *
  * This file is licensed under the terms of the GNU General Public
  * License version 2. This program is licensed "as is" without any
  * warranty of any kind, whether express or implied.
  */
 
-#include <linux/clk.h>
 #include <linux/clkdev.h>
 #include <linux/err.h>
 #include <linux/io.h>
@@ -387,24 +386,20 @@ void __init spear1310_clk_init(void __iomem *misc_base, void __iomem *ras_base)
 {
 	struct clk *clk, *clk1;
 
-	clk = clk_register_fixed_rate(NULL, "osc_32k_clk", NULL, CLK_IS_ROOT,
-			32000);
+	clk = clk_register_fixed_rate(NULL, "osc_32k_clk", NULL, 0, 32000);
 	clk_register_clkdev(clk, "osc_32k_clk", NULL);
 
-	clk = clk_register_fixed_rate(NULL, "osc_24m_clk", NULL, CLK_IS_ROOT,
-			24000000);
+	clk = clk_register_fixed_rate(NULL, "osc_24m_clk", NULL, 0, 24000000);
 	clk_register_clkdev(clk, "osc_24m_clk", NULL);
 
-	clk = clk_register_fixed_rate(NULL, "osc_25m_clk", NULL, CLK_IS_ROOT,
-			25000000);
+	clk = clk_register_fixed_rate(NULL, "osc_25m_clk", NULL, 0, 25000000);
 	clk_register_clkdev(clk, "osc_25m_clk", NULL);
 
-	clk = clk_register_fixed_rate(NULL, "gmii_pad_clk", NULL, CLK_IS_ROOT,
-			125000000);
+	clk = clk_register_fixed_rate(NULL, "gmii_pad_clk", NULL, 0, 125000000);
 	clk_register_clkdev(clk, "gmii_pad_clk", NULL);
 
-	clk = clk_register_fixed_rate(NULL, "i2s_src_pad_clk", NULL,
-			CLK_IS_ROOT, 12288000);
+	clk = clk_register_fixed_rate(NULL, "i2s_src_pad_clk", NULL, 0,
+				      12288000);
 	clk_register_clkdev(clk, "i2s_src_pad_clk", NULL);
 
 	/* clock derived from 32 KHz osc clk */
@@ -898,11 +893,10 @@ void __init spear1310_clk_init(void __iomem *misc_base, void __iomem *ras_base)
 			&_lock);
 	clk_register_clkdev(clk, "ras_apb_clk", NULL);
 
-	clk = clk_register_fixed_rate(NULL, "ras_plclk0_clk", NULL, CLK_IS_ROOT,
+	clk = clk_register_fixed_rate(NULL, "ras_plclk0_clk", NULL, 0,
 			50000000);
 
-	clk = clk_register_fixed_rate(NULL, "ras_tx50_clk", NULL, CLK_IS_ROOT,
-			50000000);
+	clk = clk_register_fixed_rate(NULL, "ras_tx50_clk", NULL, 0, 50000000);
 
 	clk = clk_register_gate(NULL, "can0_clk", "apb_clk", 0,
 			SPEAR1310_RAS_SW_CLK_CTRL, SPEAR1310_CAN0_CLK_ENB, 0,

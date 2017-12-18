@@ -7,6 +7,7 @@
 #define KMSG_COMPONENT "sclp_early"
 #define pr_fmt(fmt) KMSG_COMPONENT ": " fmt
 
+#include <linux/errno.h>
 #include <asm/ctl_reg.h>
 #include <asm/sclp.h>
 #include <asm/ipl.h>
@@ -39,32 +40,26 @@ struct read_info_sccb {
 	u8	fac85;			/* 85 */
 	u8	_pad_86[91 - 86];	/* 86-90 */
 	u8	flags;			/* 91 */
-	u8	_pad_92[100 - 92];	/* 92-99 */
+	u8	_pad_92[99 - 92];	/* 92-98 */
+	u8	hamaxpow;		/* 99 */
 	u32	rnsize2;		/* 100-103 */
 	u64	rnmax2;			/* 104-111 */
-	u8	_pad_112[120 - 112];	/* 112-119 */
+	u8	_pad_112[116 - 112];	/* 112-115 */
+	u8	fac116;			/* 116 */
+	u8	fac117;			/* 117 */
+	u8	_pad_118;		/* 118 */
+	u8	fac119;			/* 119 */
 	u16	hcpua;			/* 120-121 */
-	u8	_pad_122[4096 - 122];	/* 122-4095 */
+	u8	_pad_122[124 - 122];	/* 122-123 */
+	u32	hmfai;			/* 124-127 */
+	u8	_pad_128[4096 - 128];	/* 128-4095 */
 } __packed __aligned(PAGE_SIZE);
 
 static char sccb_early[PAGE_SIZE] __aligned(PAGE_SIZE) __initdata;
-static unsigned int sclp_con_has_vt220 __initdata;
-static unsigned int sclp_con_has_linemode __initdata;
-static unsigned long sclp_hsa_size;
-static unsigned int sclp_max_cpu;
 static struct sclp_ipl_info sclp_ipl_info;
-static unsigned char sclp_siif;
-static unsigned char sclp_sigpif;
-static u32 sclp_ibc;
-static unsigned int sclp_mtid;
-static unsigned int sclp_mtid_cp;
-static unsigned int sclp_mtid_max;
-static unsigned int sclp_mtid_prev;
 
-u64 sclp_facilities;
-u8 sclp_fac84;
-unsigned long long sclp_rzm;
-unsigned long long sclp_rnmax;
+struct sclp_info sclp;
+EXPORT_SYMBOL(sclp);
 
 static int __init sclp_cmd_sync_early(sclp_cmdw_t cmd, void *sccb)
 {
@@ -111,28 +106,41 @@ static int __init sclp_read_info_early(struct read_info_sccb *sccb)
 
 static void __init sclp_facilities_detect(struct read_info_sccb *sccb)
 {
-	struct sclp_cpu_entry *cpue;
+	struct sclp_core_entry *cpue;
 	u16 boot_cpu_address, cpu;
 
 	if (sclp_read_info_early(sccb))
 		return;
 
-	sclp_facilities = sccb->facilities;
-	sclp_fac84 = sccb->fac84;
+	sclp.facilities = sccb->facilities;
+	sclp.has_sprp = !!(sccb->fac84 & 0x02);
+	sclp.has_core_type = !!(sccb->fac84 & 0x01);
+	sclp.has_gsls = !!(sccb->fac85 & 0x80);
+	sclp.has_64bscao = !!(sccb->fac116 & 0x80);
+	sclp.has_cmma = !!(sccb->fac116 & 0x40);
+	sclp.has_esca = !!(sccb->fac116 & 0x08);
+	sclp.has_pfmfi = !!(sccb->fac117 & 0x40);
+	sclp.has_ibs = !!(sccb->fac117 & 0x20);
+	sclp.has_hvs = !!(sccb->fac119 & 0x80);
 	if (sccb->fac85 & 0x02)
 		S390_lowcore.machine_flags |= MACHINE_FLAG_ESOP;
-	sclp_rnmax = sccb->rnmax ? sccb->rnmax : sccb->rnmax2;
-	sclp_rzm = sccb->rnsize ? sccb->rnsize : sccb->rnsize2;
-	sclp_rzm <<= 20;
-	sclp_ibc = sccb->ibc;
+	sclp.rnmax = sccb->rnmax ? sccb->rnmax : sccb->rnmax2;
+	sclp.rzm = sccb->rnsize ? sccb->rnsize : sccb->rnsize2;
+	sclp.rzm <<= 20;
+	sclp.ibc = sccb->ibc;
+
+	if (sccb->hamaxpow && sccb->hamaxpow < 64)
+		sclp.hamax = (1UL << sccb->hamaxpow) - 1;
+	else
+		sclp.hamax = U64_MAX;
 
 	if (!sccb->hcpua) {
 		if (MACHINE_IS_VM)
-			sclp_max_cpu = 64;
+			sclp.max_cores = 64;
 		else
-			sclp_max_cpu = sccb->ncpurl;
+			sclp.max_cores = sccb->ncpurl;
 	} else {
-		sclp_max_cpu = sccb->hcpua + 1;
+		sclp.max_cores = sccb->hcpua + 1;
 	}
 
 	boot_cpu_address = stap();
@@ -140,8 +148,13 @@ static void __init sclp_facilities_detect(struct read_info_sccb *sccb)
 	for (cpu = 0; cpu < sccb->ncpurl; cpue++, cpu++) {
 		if (boot_cpu_address != cpue->core_id)
 			continue;
-		sclp_siif = cpue->siif;
-		sclp_sigpif = cpue->sigpif;
+		sclp.has_siif = cpue->siif;
+		sclp.has_sigpif = cpue->sigpif;
+		sclp.has_sief2 = cpue->sief2;
+		sclp.has_gpere = cpue->gpere;
+		sclp.has_ib = cpue->ib;
+		sclp.has_cei = cpue->cei;
+		sclp.has_skey = cpue->skey;
 		break;
 	}
 
@@ -151,68 +164,11 @@ static void __init sclp_facilities_detect(struct read_info_sccb *sccb)
 		sclp_ipl_info.has_dump = 1;
 	memcpy(&sclp_ipl_info.loadparm, &sccb->loadparm, LOADPARM_LEN);
 
-	sclp_mtid = (sccb->fac42 & 0x80) ? (sccb->fac42 & 31) : 0;
-	sclp_mtid_cp = (sccb->fac42 & 0x80) ? (sccb->fac43 & 31) : 0;
-	sclp_mtid_max = max(sclp_mtid, sclp_mtid_cp);
-	sclp_mtid_prev = (sccb->fac42 & 0x80) ? (sccb->fac66 & 31) : 0;
-}
+	sclp.mtid = (sccb->fac42 & 0x80) ? (sccb->fac42 & 31) : 0;
+	sclp.mtid_cp = (sccb->fac42 & 0x80) ? (sccb->fac43 & 31) : 0;
+	sclp.mtid_prev = (sccb->fac42 & 0x80) ? (sccb->fac66 & 31) : 0;
 
-bool __init sclp_has_linemode(void)
-{
-	return !!sclp_con_has_linemode;
-}
-
-bool __init sclp_has_vt220(void)
-{
-	return !!sclp_con_has_vt220;
-}
-
-unsigned long long sclp_get_rnmax(void)
-{
-	return sclp_rnmax;
-}
-
-unsigned long long sclp_get_rzm(void)
-{
-	return sclp_rzm;
-}
-
-unsigned int sclp_get_max_cpu(void)
-{
-	return sclp_max_cpu;
-}
-
-int sclp_has_siif(void)
-{
-	return sclp_siif;
-}
-EXPORT_SYMBOL(sclp_has_siif);
-
-int sclp_has_sigpif(void)
-{
-	return sclp_sigpif;
-}
-EXPORT_SYMBOL(sclp_has_sigpif);
-
-unsigned int sclp_get_ibc(void)
-{
-	return sclp_ibc;
-}
-EXPORT_SYMBOL(sclp_get_ibc);
-
-unsigned int sclp_get_mtid(u8 cpu_type)
-{
-	return cpu_type ? sclp_mtid : sclp_mtid_cp;
-}
-
-unsigned int sclp_get_mtid_max(void)
-{
-	return sclp_mtid_max;
-}
-
-unsigned int sclp_get_mtid_prev(void)
-{
-	return sclp_mtid_prev;
+	sclp.hmfai = sccb->hmfai;
 }
 
 /*
@@ -286,11 +242,6 @@ static long __init sclp_hsa_copy_wait(struct sccb_header *sccb)
 	return (((struct sdias_sccb *) sccb)->evbuf.blk_cnt - 1) * PAGE_SIZE;
 }
 
-unsigned long sclp_get_hsa_size(void)
-{
-	return sclp_hsa_size;
-}
-
 static void __init sclp_hsa_size_detect(void *sccb)
 {
 	long size;
@@ -313,7 +264,7 @@ static void __init sclp_hsa_size_detect(void *sccb)
 	if (size < 0)
 		return;
 out:
-	sclp_hsa_size = size;
+	sclp.hsa_size = size;
 }
 
 static unsigned int __init sclp_con_check_linemode(struct init_sccb *sccb)
@@ -331,10 +282,10 @@ static void __init sclp_console_detect(struct init_sccb *sccb)
 		return;
 
 	if (sccb->sclp_send_mask & EVTYP_VT220MSG_MASK)
-		sclp_con_has_vt220 = 1;
+		sclp.has_vt220 = 1;
 
 	if (sclp_con_check_linemode(sccb))
-		sclp_con_has_linemode = 1;
+		sclp.has_linemode = 1;
 }
 
 void __init sclp_early_detect(void)

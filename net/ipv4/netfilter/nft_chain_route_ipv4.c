@@ -21,11 +21,9 @@
 #include <net/route.h>
 #include <net/ip.h>
 
-static unsigned int nf_route_table_hook(const struct nf_hook_ops *ops,
+static unsigned int nf_route_table_hook(void *priv,
 					struct sk_buff *skb,
-					const struct net_device *in,
-					const struct net_device *out,
-					int (*okfn)(struct sk_buff *))
+					const struct nf_hook_state *state)
 {
 	unsigned int ret;
 	struct nft_pktinfo pkt;
@@ -33,13 +31,14 @@ static unsigned int nf_route_table_hook(const struct nf_hook_ops *ops,
 	__be32 saddr, daddr;
 	u_int8_t tos;
 	const struct iphdr *iph;
+	int err;
 
 	/* root is playing with raw sockets. */
 	if (skb->len < sizeof(struct iphdr) ||
 	    ip_hdrlen(skb) < sizeof(struct iphdr))
 		return NF_ACCEPT;
 
-	nft_set_pktinfo_ipv4(&pkt, ops, skb, in, out);
+	nft_set_pktinfo_ipv4(&pkt, skb, state);
 
 	mark = skb->mark;
 	iph = ip_hdr(skb);
@@ -47,16 +46,18 @@ static unsigned int nf_route_table_hook(const struct nf_hook_ops *ops,
 	daddr = iph->daddr;
 	tos = iph->tos;
 
-	ret = nft_do_chain(&pkt, ops);
-	if (ret != NF_DROP && ret != NF_QUEUE) {
+	ret = nft_do_chain(&pkt, priv);
+	if (ret != NF_DROP && ret != NF_STOLEN) {
 		iph = ip_hdr(skb);
 
 		if (iph->saddr != saddr ||
 		    iph->daddr != daddr ||
 		    skb->mark != mark ||
-		    iph->tos != tos)
-			if (ip_route_me_harder(skb, RTN_UNSPEC))
-				ret = NF_DROP;
+		    iph->tos != tos) {
+			err = ip_route_me_harder(state->net, skb, RTN_UNSPEC);
+			if (err < 0)
+				ret = NF_DROP_ERR(err);
+		}
 	}
 	return ret;
 }

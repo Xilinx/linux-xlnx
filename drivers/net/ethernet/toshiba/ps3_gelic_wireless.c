@@ -1167,7 +1167,7 @@ static int gelic_wl_set_ap(struct net_device *netdev,
 	} else {
 		pr_debug("%s: clear bssid\n", __func__);
 		clear_bit(GELIC_WL_STAT_BSSID_SET, &wl->stat);
-		memset(wl->bssid, 0, ETH_ALEN);
+		eth_zero_addr(wl->bssid);
 	}
 	spin_unlock_irqrestore(&wl->lock, irqflag);
 	pr_debug("%s: ->\n", __func__);
@@ -1189,7 +1189,7 @@ static int gelic_wl_get_ap(struct net_device *netdev,
 		memcpy(data->ap_addr.sa_data, wl->active_bssid,
 		       ETH_ALEN);
 	} else
-		memset(data->ap_addr.sa_data, 0, ETH_ALEN);
+		eth_zero_addr(data->ap_addr.sa_data);
 
 	spin_unlock_irqrestore(&wl->lock, irqflag);
 	mutex_unlock(&wl->assoc_stat_lock);
@@ -1616,13 +1616,13 @@ static void gelic_wl_scan_complete_event(struct gelic_wl_info *wl)
 		target->valid = 1;
 		target->eurus_index = i;
 		kfree(target->hwinfo);
-		target->hwinfo = kzalloc(be16_to_cpu(scan_info->size),
+		target->hwinfo = kmemdup(scan_info,
+					 be16_to_cpu(scan_info->size),
 					 GFP_KERNEL);
 		if (!target->hwinfo)
 			continue;
 
 		/* copy hw scan info */
-		memcpy(target->hwinfo, scan_info, scan_info->size);
 		target->essid_len = strnlen(scan_info->essid,
 					    sizeof(scan_info->essid));
 		target->rate_len = 0;
@@ -1694,7 +1694,7 @@ struct gelic_wl_scan_info *gelic_wl_find_best_bss(struct gelic_wl_info *wl)
 				pr_debug("%s: bssid matched\n", __func__);
 				break;
 			} else {
-				pr_debug("%s: bssid unmached\n", __func__);
+				pr_debug("%s: bssid unmatched\n", __func__);
 				continue;
 			}
 		}

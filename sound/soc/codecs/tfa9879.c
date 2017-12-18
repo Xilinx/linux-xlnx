@@ -160,7 +160,7 @@ static int tfa9879_set_fmt(struct snd_soc_dai *dai, unsigned int fmt)
 	return 0;
 }
 
-static struct reg_default tfa9879_regs[] = {
+static const struct reg_default tfa9879_regs[] = {
 	{ TFA9879_DEVICE_CONTROL,	0x0000 }, /* 0x00 */
 	{ TFA9879_SERIAL_INTERFACE_1,	0x0a18 }, /* 0x01 */
 	{ TFA9879_PCM_IOM2_FORMAT_1,	0x0007 }, /* 0x02 */
@@ -231,13 +231,14 @@ static const struct snd_soc_dapm_route tfa9879_dapm_routes[] = {
 };
 
 static const struct snd_soc_codec_driver tfa9879_codec = {
-	.controls = tfa9879_controls,
-	.num_controls = ARRAY_SIZE(tfa9879_controls),
-
-	.dapm_widgets = tfa9879_dapm_widgets,
-	.num_dapm_widgets = ARRAY_SIZE(tfa9879_dapm_widgets),
-	.dapm_routes = tfa9879_dapm_routes,
-	.num_dapm_routes = ARRAY_SIZE(tfa9879_dapm_routes),
+	.component_driver = {
+		.controls		= tfa9879_controls,
+		.num_controls		= ARRAY_SIZE(tfa9879_controls),
+		.dapm_widgets		= tfa9879_dapm_widgets,
+		.num_dapm_widgets	= ARRAY_SIZE(tfa9879_dapm_widgets),
+		.dapm_routes		= tfa9879_dapm_routes,
+		.num_dapm_routes	= ARRAY_SIZE(tfa9879_dapm_routes),
+	},
 };
 
 static const struct regmap_config tfa9879_regmap = {
@@ -280,8 +281,8 @@ static int tfa9879_i2c_probe(struct i2c_client *i2c,
 	int i;
 
 	tfa9879 = devm_kzalloc(&i2c->dev, sizeof(*tfa9879), GFP_KERNEL);
-	if (IS_ERR(tfa9879))
-		return PTR_ERR(tfa9879);
+	if (!tfa9879)
+		return -ENOMEM;
 
 	i2c_set_clientdata(i2c, tfa9879);
 
@@ -314,7 +315,6 @@ MODULE_DEVICE_TABLE(i2c, tfa9879_i2c_id);
 static struct i2c_driver tfa9879_i2c_driver = {
 	.driver = {
 		.name = "tfa9879",
-		.owner = THIS_MODULE,
 	},
 	.probe = tfa9879_i2c_probe,
 	.remove = tfa9879_i2c_remove,

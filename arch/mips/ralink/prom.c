@@ -5,7 +5,7 @@
  *
  *  Copyright (C) 2009 Gabor Juhos <juhosg@openwrt.org>
  *  Copyright (C) 2010 Joonas Lahtinen <joonas.lahtinen@gmail.com>
- *  Copyright (C) 2013 John Crispin <blogic@openwrt.org>
+ *  Copyright (C) 2013 John Crispin <john@phrozen.org>
  */
 
 #include <linux/string.h>
@@ -15,10 +15,15 @@
 #include <asm/bootinfo.h>
 #include <asm/addrspace.h>
 
+#include <asm/mach-ralink/ralink_regs.h>
+
 #include "common.h"
 
 struct ralink_soc_info soc_info;
 struct rt2880_pmx_group *rt2880_pinmux_data = NULL;
+
+enum ralink_soc_type ralink_soc;
+EXPORT_SYMBOL_GPL(ralink_soc);
 
 const char *get_system_type(void)
 {

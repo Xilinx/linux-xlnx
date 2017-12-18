@@ -404,7 +404,7 @@ static void altera_uart_poll_put_char(struct uart_port *port, unsigned char c)
 /*
  *	Define the basic serial functions we support.
  */
-static struct uart_ops altera_uart_ops = {
+static const struct uart_ops altera_uart_ops = {
 	.tx_empty	= altera_uart_tx_empty,
 	.get_mctrl	= altera_uart_get_mctrl,
 	.set_mctrl	= altera_uart_set_mctrl,
@@ -493,7 +493,7 @@ console_initcall(altera_uart_console_init);
 
 #define	ALTERA_UART_CONSOLE	NULL
 
-#endif /* CONFIG_ALTERA_UART_CONSOLE */
+#endif /* CONFIG_SERIAL_ALTERA_UART_CONSOLE */
 
 /*
  *	Define the altera_uart UART driver structure.
@@ -507,29 +507,6 @@ static struct uart_driver altera_uart_driver = {
 	.nr		= CONFIG_SERIAL_ALTERA_UART_MAXPORTS,
 	.cons		= ALTERA_UART_CONSOLE,
 };
-
-#ifdef CONFIG_OF
-static int altera_uart_get_of_uartclk(struct platform_device *pdev,
-				      struct uart_port *port)
-{
-	int len;
-	const __be32 *clk;
-
-	clk = of_get_property(pdev->dev.of_node, "clock-frequency", &len);
-	if (!clk || len < sizeof(__be32))
-		return -ENODEV;
-
-	port->uartclk = be32_to_cpup(clk);
-
-	return 0;
-}
-#else
-static int altera_uart_get_of_uartclk(struct platform_device *pdev,
-				      struct uart_port *port)
-{
-	return -ENODEV;
-}
-#endif /* CONFIG_OF */
 
 static int altera_uart_probe(struct platform_device *pdev)
 {
@@ -570,7 +547,8 @@ static int altera_uart_probe(struct platform_device *pdev)
 	if (platp)
 		port->uartclk = platp->uartclk;
 	else {
-		ret = altera_uart_get_of_uartclk(pdev, port);
+		ret = of_property_read_u32(pdev->dev.of_node, "clock-frequency",
+					   &port->uartclk);
 		if (ret)
 			return ret;
 	}

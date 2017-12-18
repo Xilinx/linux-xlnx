@@ -476,7 +476,7 @@ cs46xx_dsp_lookup_symbol (struct snd_cs46xx * chip, char * symbol_name, int symb
 }
 
 
-#ifdef CONFIG_PROC_FS
+#ifdef CONFIG_SND_PROC_FS
 static struct dsp_symbol_entry *
 cs46xx_dsp_lookup_symbol_addr (struct snd_cs46xx * chip, u32 address, int symbol_type)
 {
@@ -929,7 +929,7 @@ int cs46xx_dsp_proc_done (struct snd_cs46xx *chip)
 
 	return 0;
 }
-#endif /* CONFIG_PROC_FS */
+#endif /* CONFIG_SND_PROC_FS */
 
 static void _dsp_create_task_tree (struct snd_cs46xx *chip, u32 * task_data,
 				   u32  dest, int size)
@@ -1441,7 +1441,7 @@ int cs46xx_dsp_scb_and_task_init (struct snd_cs46xx *chip)
 	
 	if (chip->nr_ac97_codecs == 2) {
 		/* create CODEC tasklet for rear Center/LFE output 
-		   slot 6 and 9 on seconadry CODEC */
+		   slot 6 and 9 on secondary CODEC */
 		clfe_codec_out_scb = cs46xx_dsp_create_codec_out_scb(chip,"CodecOutSCB_CLFE",0x0030,0x0030,
 								     CLFE_MIXER_SCB_ADDR,
 								     CLFE_CODEC_SCB_ADDR,

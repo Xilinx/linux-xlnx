@@ -77,6 +77,9 @@ static unsigned long mmap_upper_limit(void)
 	if (stack_base > STACK_SIZE_MAX)
 		stack_base = STACK_SIZE_MAX;
 
+	/* Add space for stack randomization. */
+	stack_base += (STACK_RND_MASK << PAGE_SHIFT);
+
 	return PAGE_ALIGN(STACK_TOP - stack_base);
 }
 
@@ -363,16 +366,6 @@ asmlinkage long parisc_fallocate(int fd, int mode, u32 offhi, u32 offlo,
 {
         return sys_fallocate(fd, mode, ((u64)offhi << 32) | offlo,
                              ((u64)lenhi << 32) | lenlo);
-}
-
-asmlinkage unsigned long sys_alloc_hugepages(int key, unsigned long addr, unsigned long len, int prot, int flag)
-{
-	return -ENOMEM;
-}
-
-asmlinkage int sys_free_hugepages(unsigned long addr)
-{
-	return -EINVAL;
 }
 
 long parisc_personality(unsigned long personality)

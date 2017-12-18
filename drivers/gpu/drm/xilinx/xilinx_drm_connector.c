@@ -45,7 +45,7 @@ static int xilinx_drm_connector_get_modes(struct drm_connector *base_connector)
 		to_xilinx_connector(base_connector);
 	struct drm_encoder *encoder = connector->encoder;
 	struct drm_encoder_slave *encoder_slave = to_encoder_slave(encoder);
-	struct drm_encoder_slave_funcs *encoder_sfuncs =
+	const struct drm_encoder_slave_funcs *encoder_sfuncs =
 		encoder_slave->slave_funcs;
 	int count = 0;
 
@@ -63,7 +63,7 @@ static int xilinx_drm_connector_mode_valid(struct drm_connector *base_connector,
 		to_xilinx_connector(base_connector);
 	struct drm_encoder *encoder = connector->encoder;
 	struct drm_encoder_slave *encoder_slave = to_encoder_slave(encoder);
-	struct drm_encoder_slave_funcs *encoder_sfuncs =
+	const struct drm_encoder_slave_funcs *encoder_sfuncs =
 		encoder_slave->slave_funcs;
 	int ret = MODE_OK;
 
@@ -97,7 +97,7 @@ xilinx_drm_connector_detect(struct drm_connector *base_connector, bool force)
 	enum drm_connector_status status = connector_status_unknown;
 	struct drm_encoder *encoder = connector->encoder;
 	struct drm_encoder_slave *encoder_slave = to_encoder_slave(encoder);
-	struct drm_encoder_slave_funcs *encoder_sfuncs =
+	const struct drm_encoder_slave_funcs *encoder_sfuncs =
 		encoder_slave->slave_funcs;
 
 	if (encoder_sfuncs->detect)
@@ -119,7 +119,7 @@ void xilinx_drm_connector_destroy(struct drm_connector *base_connector)
 	drm_connector_cleanup(base_connector);
 }
 
-static struct drm_connector_funcs xilinx_drm_connector_funcs = {
+static const struct drm_connector_funcs xilinx_drm_connector_funcs = {
 	.dpms		= drm_helper_connector_dpms,
 	.fill_modes	= drm_helper_probe_single_connector_modes,
 	.detect		= xilinx_drm_connector_detect,
@@ -185,13 +185,13 @@ xilinx_drm_connector_create(struct drm_device *drm,
 	}
 
 	/* connect connector and encoder */
-	connector->base.encoder = base_encoder;
 	ret = drm_mode_connector_attach_encoder(&connector->base, base_encoder);
 	if (ret) {
 		DRM_ERROR("failed to attach connector to encoder\n");
 		goto err_attach;
 	}
 	connector->encoder = base_encoder;
+	connector->base.dpms = DRM_MODE_DPMS_OFF;
 
 	return &connector->base;
 

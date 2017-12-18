@@ -22,7 +22,8 @@
 /*
  * TLB hazards
  */
-#if defined(CONFIG_CPU_MIPSR2) || defined(CONFIG_CPU_MIPSR6) && !defined(CONFIG_CPU_CAVIUM_OCTEON)
+#if (defined(CONFIG_CPU_MIPSR2) || defined(CONFIG_CPU_MIPSR6)) && \
+	!defined(CONFIG_CPU_CAVIUM_OCTEON) && !defined(CONFIG_LOONGSON3_ENHANCEMENT)
 
 /*
  * MIPSR2 defines ehb for hazard avoidance
@@ -31,7 +32,13 @@
 #define __mtc0_tlbw_hazard						\
 	___ehb
 
+#define __mtc0_tlbr_hazard						\
+	___ehb
+
 #define __tlbw_use_hazard						\
+	___ehb
+
+#define __tlb_read_hazard						\
 	___ehb
 
 #define __tlb_probe_hazard						\
@@ -51,8 +58,8 @@
  * address of a label as argument to inline assembler.	Gas otoh has the
  * annoying difference between la and dla which are only usable for 32-bit
  * rsp. 64-bit code, so can't be used without conditional compilation.
- * The alterantive is switching the assembler to 64-bit code which happens
- * to work right even for 32-bit code ...
+ * The alternative is switching the assembler to 64-bit code which happens
+ * to work right even for 32-bit code...
  */
 #define instruction_hazard()						\
 do {									\
@@ -80,7 +87,18 @@ do {									\
 	___ssnop;							\
 	___ehb
 
+#define __mtc0_tlbr_hazard						\
+	___ssnop;							\
+	___ssnop;							\
+	___ehb
+
 #define __tlbw_use_hazard						\
+	___ssnop;							\
+	___ssnop;							\
+	___ssnop;							\
+	___ehb
+
+#define __tlb_read_hazard						\
 	___ssnop;							\
 	___ssnop;							\
 	___ssnop;							\
@@ -115,8 +133,8 @@ do {									\
  * address of a label as argument to inline assembler.	Gas otoh has the
  * annoying difference between la and dla which are only usable for 32-bit
  * rsp. 64-bit code, so can't be used without conditional compilation.
- * The alterantive is switching the assembler to 64-bit code which happens
- * to work right even for 32-bit code ...
+ * The alternative is switching the assembler to 64-bit code which happens
+ * to work right even for 32-bit code...
  */
 #define __instruction_hazard()						\
 do {									\
@@ -138,8 +156,8 @@ do {									\
 } while (0)
 
 #elif defined(CONFIG_MIPS_ALCHEMY) || defined(CONFIG_CPU_CAVIUM_OCTEON) || \
-	defined(CONFIG_CPU_LOONGSON2) || defined(CONFIG_CPU_R10000) || \
-	defined(CONFIG_CPU_R5500) || defined(CONFIG_CPU_XLR)
+	defined(CONFIG_CPU_LOONGSON2) || defined(CONFIG_LOONGSON3_ENHANCEMENT) || \
+	defined(CONFIG_CPU_R10000) || defined(CONFIG_CPU_R5500) || defined(CONFIG_CPU_XLR)
 
 /*
  * R10000 rocks - all hazards handled in hardware, so this becomes a nobrainer.
@@ -147,7 +165,11 @@ do {									\
 
 #define __mtc0_tlbw_hazard
 
+#define __mtc0_tlbr_hazard
+
 #define __tlbw_use_hazard
+
+#define __tlb_read_hazard
 
 #define __tlb_probe_hazard
 
@@ -166,7 +188,11 @@ do {									\
  */
 #define __mtc0_tlbw_hazard
 
+#define __mtc0_tlbr_hazard
+
 #define __tlbw_use_hazard
+
+#define __tlb_read_hazard
 
 #define __tlb_probe_hazard
 
@@ -196,7 +222,16 @@ do {									\
 	nop;								\
 	nop
 
+#define __mtc0_tlbr_hazard						\
+	nop;								\
+	nop
+
 #define __tlbw_use_hazard						\
+	nop;								\
+	nop;								\
+	nop
+
+#define __tlb_read_hazard						\
 	nop;								\
 	nop;								\
 	nop
@@ -267,7 +302,9 @@ do {									\
 #define _ssnop ___ssnop
 #define	_ehb ___ehb
 #define mtc0_tlbw_hazard __mtc0_tlbw_hazard
+#define mtc0_tlbr_hazard __mtc0_tlbr_hazard
 #define tlbw_use_hazard __tlbw_use_hazard
+#define tlb_read_hazard __tlb_read_hazard
 #define tlb_probe_hazard __tlb_probe_hazard
 #define irq_enable_hazard __irq_enable_hazard
 #define irq_disable_hazard __irq_disable_hazard
@@ -300,10 +337,26 @@ do {									\
 } while (0)
 
 
+#define mtc0_tlbr_hazard()						\
+do {									\
+	__asm__ __volatile__(						\
+	__stringify(__mtc0_tlbr_hazard)					\
+	);								\
+} while (0)
+
+
 #define tlbw_use_hazard()						\
 do {									\
 	__asm__ __volatile__(						\
 	__stringify(__tlbw_use_hazard)					\
+	);								\
+} while (0)
+
+
+#define tlb_read_hazard()						\
+do {									\
+	__asm__ __volatile__(						\
+	__stringify(__tlb_read_hazard)					\
 	);								\
 } while (0)
 

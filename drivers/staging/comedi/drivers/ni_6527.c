@@ -28,12 +28,9 @@
  */
 
 #include <linux/module.h>
-#include <linux/pci.h>
 #include <linux/interrupt.h>
 
-#include "../comedidev.h"
-
-#include "comedi_fc.h"
+#include "../comedi_pci.h"
 
 /*
  * PCI BAR1 - Register memory map
@@ -45,24 +42,24 @@
 #define NI6527_DO_REG(x)		(0x03 + (x))
 #define NI6527_ID_REG			0x06
 #define NI6527_CLR_REG			0x07
-#define NI6527_CLR_EDGE			(1 << 3)
-#define NI6527_CLR_OVERFLOW		(1 << 2)
-#define NI6527_CLR_FILT			(1 << 1)
-#define NI6527_CLR_INTERVAL		(1 << 0)
+#define NI6527_CLR_EDGE			BIT(3)
+#define NI6527_CLR_OVERFLOW		BIT(2)
+#define NI6527_CLR_FILT			BIT(1)
+#define NI6527_CLR_INTERVAL		BIT(0)
 #define NI6527_CLR_IRQS			(NI6527_CLR_EDGE | NI6527_CLR_OVERFLOW)
 #define NI6527_CLR_RESET_FILT		(NI6527_CLR_FILT | NI6527_CLR_INTERVAL)
 #define NI6527_FILT_INTERVAL_REG(x)	(0x08 + (x))
 #define NI6527_FILT_ENA_REG(x)		(0x0c + (x))
 #define NI6527_STATUS_REG		0x14
-#define NI6527_STATUS_IRQ		(1 << 2)
-#define NI6527_STATUS_OVERFLOW		(1 << 1)
-#define NI6527_STATUS_EDGE		(1 << 0)
+#define NI6527_STATUS_IRQ		BIT(2)
+#define NI6527_STATUS_OVERFLOW		BIT(1)
+#define NI6527_STATUS_EDGE		BIT(0)
 #define NI6527_CTRL_REG			0x15
-#define NI6527_CTRL_FALLING		(1 << 4)
-#define NI6527_CTRL_RISING		(1 << 3)
-#define NI6527_CTRL_IRQ			(1 << 2)
-#define NI6527_CTRL_OVERFLOW		(1 << 1)
-#define NI6527_CTRL_EDGE		(1 << 0)
+#define NI6527_CTRL_FALLING		BIT(4)
+#define NI6527_CTRL_RISING		BIT(3)
+#define NI6527_CTRL_IRQ			BIT(2)
+#define NI6527_CTRL_OVERFLOW		BIT(1)
+#define NI6527_CTRL_EDGE		BIT(0)
 #define NI6527_CTRL_DISABLE_IRQS	0
 #define NI6527_CTRL_ENABLE_IRQS		(NI6527_CTRL_FALLING | \
 					 NI6527_CTRL_RISING | \
@@ -224,11 +221,11 @@ static int ni6527_intr_cmdtest(struct comedi_device *dev,
 
 	/* Step 1 : check if triggers are trivially valid */
 
-	err |= cfc_check_trigger_src(&cmd->start_src, TRIG_NOW);
-	err |= cfc_check_trigger_src(&cmd->scan_begin_src, TRIG_OTHER);
-	err |= cfc_check_trigger_src(&cmd->convert_src, TRIG_FOLLOW);
-	err |= cfc_check_trigger_src(&cmd->scan_end_src, TRIG_COUNT);
-	err |= cfc_check_trigger_src(&cmd->stop_src, TRIG_COUNT);
+	err |= comedi_check_trigger_src(&cmd->start_src, TRIG_NOW);
+	err |= comedi_check_trigger_src(&cmd->scan_begin_src, TRIG_OTHER);
+	err |= comedi_check_trigger_src(&cmd->convert_src, TRIG_FOLLOW);
+	err |= comedi_check_trigger_src(&cmd->scan_end_src, TRIG_COUNT);
+	err |= comedi_check_trigger_src(&cmd->stop_src, TRIG_COUNT);
 
 	if (err)
 		return 1;
@@ -238,11 +235,12 @@ static int ni6527_intr_cmdtest(struct comedi_device *dev,
 
 	/* Step 3: check if arguments are trivially valid */
 
-	err |= cfc_check_trigger_arg_is(&cmd->start_arg, 0);
-	err |= cfc_check_trigger_arg_is(&cmd->scan_begin_arg, 0);
-	err |= cfc_check_trigger_arg_is(&cmd->convert_arg, 0);
-	err |= cfc_check_trigger_arg_is(&cmd->scan_end_arg, cmd->chanlist_len);
-	err |= cfc_check_trigger_arg_is(&cmd->stop_arg, 0);
+	err |= comedi_check_trigger_arg_is(&cmd->start_arg, 0);
+	err |= comedi_check_trigger_arg_is(&cmd->scan_begin_arg, 0);
+	err |= comedi_check_trigger_arg_is(&cmd->convert_arg, 0);
+	err |= comedi_check_trigger_arg_is(&cmd->scan_end_arg,
+					   cmd->chanlist_len);
+	err |= comedi_check_trigger_arg_is(&cmd->stop_arg, 0);
 
 	if (err)
 		return 3;

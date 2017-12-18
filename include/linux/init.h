@@ -39,22 +39,11 @@
 
 /* These are for everybody (although not all archs will actually
    discard it in modules) */
-#define __init		__section(.init.text) __cold notrace
+#define __init		__section(.init.text) __cold notrace __latent_entropy
 #define __initdata	__section(.init.data)
-#define __initconst	__constsection(.init.rodata)
+#define __initconst	__section(.init.rodata)
 #define __exitdata	__section(.exit.data)
 #define __exit_call	__used __section(.exitcall.exit)
-
-/*
- * Some architecture have tool chains which do not handle rodata attributes
- * correctly. For those disable special sections for const, so that other
- * architectures can annotate correctly.
- */
-#ifdef CONFIG_BROKEN_RODATA
-#define __constsection(x)
-#else
-#define __constsection(x) __section(x)
-#endif
 
 /*
  * modpost check for section mismatches during the kernel build.
@@ -75,13 +64,7 @@
  */
 #define __ref            __section(.ref.text) noinline
 #define __refdata        __section(.ref.data)
-#define __refconst       __constsection(.ref.rodata)
-
-/* compatibility defines */
-#define __init_refok     __ref
-#define __initdata_refok __refdata
-#define __exit_refok     __ref
-
+#define __refconst       __section(.ref.rodata)
 
 #ifdef MODULE
 #define __exitused
@@ -91,21 +74,14 @@
 
 #define __exit          __section(.exit.text) __exitused __cold notrace
 
-/* temporary, until all users are removed */
-#define __cpuinit
-#define __cpuinitdata
-#define __cpuinitconst
-#define __cpuexit
-#define __cpuexitdata
-#define __cpuexitconst
-
 /* Used for MEMORY_HOTPLUG */
-#define __meminit        __section(.meminit.text) __cold notrace
+#define __meminit        __section(.meminit.text) __cold notrace \
+						  __latent_entropy
 #define __meminitdata    __section(.meminit.data)
-#define __meminitconst   __constsection(.meminit.rodata)
+#define __meminitconst   __section(.meminit.rodata)
 #define __memexit        __section(.memexit.text) __exitused __cold notrace
 #define __memexitdata    __section(.memexit.data)
-#define __memexitconst   __constsection(.memexit.rodata)
+#define __memexitconst   __section(.memexit.rodata)
 
 /* For assembly routines */
 #define __HEAD		.section	".head.text","ax"
@@ -115,9 +91,6 @@
 #define __INITDATA	.section	".init.data","aw",%progbits
 #define __INITRODATA	.section	".init.rodata","a",%progbits
 #define __FINITDATA	.previous
-
-/* temporary, until all users are removed */
-#define __CPUINIT
 
 #define __MEMINIT        .section	".meminit.text", "ax"
 #define __MEMINITDATA    .section	".meminit.data", "aw"
@@ -153,6 +126,10 @@ void prepare_namespace(void);
 void __init load_default_modules(void);
 int __init init_rootfs(void);
 
+#ifdef CONFIG_DEBUG_RODATA
+void mark_rodata_ro(void);
+#endif
+
 extern void (*late_time_init)(void);
 
 extern bool initcall_debug;
@@ -163,24 +140,8 @@ extern bool initcall_debug;
 
 #ifndef __ASSEMBLY__
 
-#ifdef CONFIG_LTO
-/* Work around a LTO gcc problem: when there is no reference to a variable
- * in a module it will be moved to the end of the program. This causes
- * reordering of initcalls which the kernel does not like.
- * Add a dummy reference function to avoid this. The function is
- * deleted by the linker.
- */
-#define LTO_REFERENCE_INITCALL(x) \
-	; /* yes this is needed */			\
-	static __used __exit void *reference_##x(void)	\
-	{						\
-		return &x;				\
-	}
-#else
-#define LTO_REFERENCE_INITCALL(x)
-#endif
-
-/* initcalls are now grouped by functionality into separate 
+/*
+ * initcalls are now grouped by functionality into separate
  * subsections. Ordering inside the subsections is determined
  * by link order. 
  * For backwards compatibility, initcall() puts the call in 
@@ -188,12 +149,16 @@ extern bool initcall_debug;
  *
  * The `id' arg to __define_initcall() is needed so that multiple initcalls
  * can point at the same handler without causing duplicate-symbol build errors.
+ *
+ * Initcalls are run by placing pointers in initcall sections that the
+ * kernel iterates at runtime. The linker can do dead code / data elimination
+ * and remove that completely, so the initcall sections have to be marked
+ * as KEEP() in the linker script.
  */
 
 #define __define_initcall(fn, id) \
 	static initcall_t __initcall_##fn##id __used \
-	__attribute__((__section__(".initcall" #id ".init"))) = fn; \
-	LTO_REFERENCE_INITCALL(__initcall_##fn##id)
+	__attribute__((__section__(".initcall" #id ".init"))) = fn;
 
 /*
  * Early initcalls run before initializing SMP.
@@ -229,15 +194,15 @@ extern bool initcall_debug;
 
 #define __initcall(fn) device_initcall(fn)
 
-#define __exitcall(fn) \
+#define __exitcall(fn)						\
 	static exitcall_t __exitcall_##fn __exit_call = fn
 
-#define console_initcall(fn) \
-	static initcall_t __initcall_##fn \
+#define console_initcall(fn)					\
+	static initcall_t __initcall_##fn			\
 	__used __section(.con_initcall.init) = fn
 
-#define security_initcall(fn) \
-	static initcall_t __initcall_##fn \
+#define security_initcall(fn)					\
+	static initcall_t __initcall_##fn			\
 	__used __section(.security_initcall.init) = fn
 
 struct obs_kernel_param {
@@ -253,87 +218,47 @@ struct obs_kernel_param {
  * obs_kernel_param "array" too far apart in .init.setup.
  */
 #define __setup_param(str, unique_id, fn, early)			\
-	static const char __setup_str_##unique_id[] __initconst	\
-		__aligned(1) = str; \
-	static struct obs_kernel_param __setup_##unique_id	\
-		__used __section(.init.setup)			\
-		__attribute__((aligned((sizeof(long)))))	\
+	static const char __setup_str_##unique_id[] __initconst		\
+		__aligned(1) = str; 					\
+	static struct obs_kernel_param __setup_##unique_id		\
+		__used __section(.init.setup)				\
+		__attribute__((aligned((sizeof(long)))))		\
 		= { __setup_str_##unique_id, fn, early }
 
-#define __setup(str, fn)					\
+#define __setup(str, fn)						\
 	__setup_param(str, fn, fn, 0)
 
-/* NOTE: fn is as per module_param, not __setup!  Emits warning if fn
- * returns non-zero. */
-#define early_param(str, fn)					\
+/*
+ * NOTE: fn is as per module_param, not __setup!
+ * Emits warning if fn returns non-zero.
+ */
+#define early_param(str, fn)						\
 	__setup_param(str, fn, fn, 1)
+
+#define early_param_on_off(str_on, str_off, var, config)		\
+									\
+	int var = IS_ENABLED(config);					\
+									\
+	static int __init parse_##var##_on(char *arg)			\
+	{								\
+		var = 1;						\
+		return 0;						\
+	}								\
+	__setup_param(str_on, parse_##var##_on, parse_##var##_on, 1);	\
+									\
+	static int __init parse_##var##_off(char *arg)			\
+	{								\
+		var = 0;						\
+		return 0;						\
+	}								\
+	__setup_param(str_off, parse_##var##_off, parse_##var##_off, 1)
 
 /* Relies on boot_command_line being set */
 void __init parse_early_param(void);
 void __init parse_early_options(char *cmdline);
 #endif /* __ASSEMBLY__ */
 
-/**
- * module_init() - driver initialization entry point
- * @x: function to be run at kernel boot time or module insertion
- * 
- * module_init() will either be called during do_initcalls() (if
- * builtin) or at module insertion time (if a module).  There can only
- * be one per module.
- */
-#define module_init(x)	__initcall(x);
-
-/**
- * module_exit() - driver exit entry point
- * @x: function to be run when driver is removed
- * 
- * module_exit() will wrap the driver clean-up code
- * with cleanup_module() when used with rmmod when
- * the driver is a module.  If the driver is statically
- * compiled into the kernel, module_exit() has no effect.
- * There can only be one per module.
- */
-#define module_exit(x)	__exitcall(x);
-
 #else /* MODULE */
-
-/*
- * In most cases loadable modules do not need custom
- * initcall levels. There are still some valid cases where
- * a driver may be needed early if built in, and does not
- * matter when built as a loadable module. Like bus
- * snooping debug drivers.
- */
-#define early_initcall(fn)		module_init(fn)
-#define core_initcall(fn)		module_init(fn)
-#define core_initcall_sync(fn)		module_init(fn)
-#define postcore_initcall(fn)		module_init(fn)
-#define postcore_initcall_sync(fn)	module_init(fn)
-#define arch_initcall(fn)		module_init(fn)
-#define subsys_initcall(fn)		module_init(fn)
-#define subsys_initcall_sync(fn)	module_init(fn)
-#define fs_initcall(fn)			module_init(fn)
-#define fs_initcall_sync(fn)		module_init(fn)
-#define rootfs_initcall(fn)		module_init(fn)
-#define device_initcall(fn)		module_init(fn)
-#define device_initcall_sync(fn)	module_init(fn)
-#define late_initcall(fn)		module_init(fn)
-#define late_initcall_sync(fn)		module_init(fn)
-
-#define console_initcall(fn)		module_init(fn)
-#define security_initcall(fn)		module_init(fn)
-
-/* Each module must use one module_init(). */
-#define module_init(initfn)					\
-	static inline initcall_t __inittest(void)		\
-	{ return initfn; }					\
-	int init_module(void) __attribute__((alias(#initfn)));
-
-/* This is only required if you want to be unloadable. */
-#define module_exit(exitfn)					\
-	static inline exitcall_t __exittest(void)		\
-	{ return exitfn; }					\
-	void cleanup_module(void) __attribute__((alias(#exitfn)));
 
 #define __setup_param(str, unique_id, fn)	/* nothing */
 #define __setup(str, func) 			/* nothing */
@@ -341,24 +266,6 @@ void __init parse_early_options(char *cmdline);
 
 /* Data marked not to be saved by software suspend */
 #define __nosavedata __section(.data..nosave)
-
-/* This means "can be init if no module support, otherwise module load
-   may call it." */
-#ifdef CONFIG_MODULES
-#define __init_or_module
-#define __initdata_or_module
-#define __initconst_or_module
-#define __INIT_OR_MODULE	.text
-#define __INITDATA_OR_MODULE	.data
-#define __INITRODATA_OR_MODULE	.section ".rodata","a",%progbits
-#else
-#define __init_or_module __init
-#define __initdata_or_module __initdata
-#define __initconst_or_module __initconst
-#define __INIT_OR_MODULE __INIT
-#define __INITDATA_OR_MODULE __INITDATA
-#define __INITRODATA_OR_MODULE __INITRODATA
-#endif /*CONFIG_MODULES*/
 
 #ifdef MODULE
 #define __exit_p(x) x

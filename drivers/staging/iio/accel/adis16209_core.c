@@ -134,14 +134,14 @@ static const struct iio_chan_spec adis16209_channels[] = {
 	ADIS_SUPPLY_CHAN(ADIS16209_SUPPLY_OUT, ADIS16209_SCAN_SUPPLY, 0, 14),
 	ADIS_TEMP_CHAN(ADIS16209_TEMP_OUT, ADIS16209_SCAN_TEMP, 0, 12),
 	ADIS_ACCEL_CHAN(X, ADIS16209_XACCL_OUT, ADIS16209_SCAN_ACC_X,
-		BIT(IIO_CHAN_INFO_CALIBBIAS), 0, 14),
+			BIT(IIO_CHAN_INFO_CALIBBIAS), 0, 14),
 	ADIS_ACCEL_CHAN(Y, ADIS16209_YACCL_OUT, ADIS16209_SCAN_ACC_Y,
-		BIT(IIO_CHAN_INFO_CALIBBIAS), 0, 14),
+			BIT(IIO_CHAN_INFO_CALIBBIAS), 0, 14),
 	ADIS_AUX_ADC_CHAN(ADIS16209_AUX_ADC, ADIS16209_SCAN_AUX_ADC, 0, 12),
 	ADIS_INCLI_CHAN(X, ADIS16209_XINCL_OUT, ADIS16209_SCAN_INCLI_X,
-		0, 0, 14),
+			0, 0, 14),
 	ADIS_INCLI_CHAN(Y, ADIS16209_YINCL_OUT, ADIS16209_SCAN_INCLI_Y,
-		0, 0, 14),
+			0, 0, 14),
 	ADIS_ROT_CHAN(X, ADIS16209_ROT_OUT, ADIS16209_SCAN_ROT, 0, 0, 14),
 	IIO_CHAN_SOFT_TIMESTAMP(8)
 };
@@ -168,6 +168,7 @@ static const struct adis_data adis16209_data = {
 	.diag_stat_reg = ADIS16209_DIAG_STAT,
 
 	.self_test_mask = ADIS16209_MSC_CTRL_SELF_TEST_EN,
+	.self_test_no_autoclear = true,
 	.startup_delay = ADIS16209_STARTUP_DELAY,
 
 	.status_error_msgs = adis16209_status_error_msgs,
@@ -177,7 +178,6 @@ static const struct adis_data adis16209_data = {
 		BIT(ADIS16209_DIAG_STAT_POWER_HIGH_BIT) |
 		BIT(ADIS16209_DIAG_STAT_POWER_LOW_BIT),
 };
-
 
 static int adis16209_probe(struct spi_device *spi)
 {
@@ -236,7 +236,6 @@ static int adis16209_remove(struct spi_device *spi)
 static struct spi_driver adis16209_driver = {
 	.driver = {
 		.name = "adis16209",
-		.owner = THIS_MODULE,
 	},
 	.probe = adis16209_probe,
 	.remove = adis16209_remove,

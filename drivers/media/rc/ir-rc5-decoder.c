@@ -29,7 +29,7 @@
 #define RC5_BIT_START		(1 * RC5_UNIT)
 #define RC5_BIT_END		(1 * RC5_UNIT)
 #define RC5X_SPACE		(4 * RC5_UNIT)
-#define RC5_TRAILER		(10 * RC5_UNIT) /* In reality, approx 100 */
+#define RC5_TRAILER		(6 * RC5_UNIT) /* In reality, approx 100 */
 
 enum rc5_state {
 	STATE_INACTIVE,
@@ -52,9 +52,6 @@ static int ir_rc5_decode(struct rc_dev *dev, struct ir_raw_event ev)
 	u8 toggle;
 	u32 scancode;
 	enum rc_type protocol;
-
-	if (!(dev->enabled_protocols & (RC_BIT_RC5 | RC_BIT_RC5X | RC_BIT_RC5_SZ)))
-		return 0;
 
 	if (!is_timing_event(ev)) {
 		if (ev.reset)

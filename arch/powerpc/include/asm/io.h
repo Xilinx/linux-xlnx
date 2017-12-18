@@ -241,6 +241,35 @@ static inline void out_be64(volatile u64 __iomem *addr, u64 val)
 #endif
 #endif /* __powerpc64__ */
 
+
+/*
+ * Simple Cache inhibited accessors
+ * Unlike the DEF_MMIO_* macros, these don't include any h/w memory
+ * barriers, callers need to manage memory barriers on their own.
+ * These can only be used in hypervisor real mode.
+ */
+
+static inline u32 _lwzcix(unsigned long addr)
+{
+	u32 ret;
+
+	__asm__ __volatile__("lwzcix %0,0, %1"
+			     : "=r" (ret) : "r" (addr) : "memory");
+	return ret;
+}
+
+static inline void _stbcix(u64 addr, u8 val)
+{
+	__asm__ __volatile__("stbcix %0,0,%1"
+		: : "r" (val), "r" (addr) : "memory");
+}
+
+static inline void _stwcix(u64 addr, u32 val)
+{
+	__asm__ __volatile__("stwcix %0,0,%1"
+		: : "r" (val), "r" (addr) : "memory");
+}
+
 /*
  * Low level IO stream instructions are defined out of line for now
  */
@@ -300,7 +329,7 @@ extern void _memcpy_toio(volatile void __iomem *dest, const void *src,
  * When CONFIG_PPC_INDIRECT_MMIO is set, the platform can provide hooks
  * on all MMIOs. (Note that this is all 64 bits only for now)
  *
- * To help platforms who may need to differenciate MMIO addresses in
+ * To help platforms who may need to differentiate MMIO addresses in
  * their hooks, a bitfield is reserved for use by the platform near the
  * top of MMIO addresses (not PIO, those have to cope the hard way).
  *
@@ -385,6 +414,17 @@ static inline void __raw_writeq(unsigned long v, volatile void __iomem *addr)
 {
 	*(volatile unsigned long __force *)PCI_FIX_ADDR(addr) = v;
 }
+
+/*
+ * Real mode version of the above. stdcix is only supposed to be used
+ * in hypervisor real mode as per the architecture spec.
+ */
+static inline void __raw_rm_writeq(u64 val, volatile void __iomem *paddr)
+{
+	__asm__ __volatile__("stdcix %0,0,%1"
+		: : "r" (val), "r" (paddr) : "memory");
+}
+
 #endif /* __powerpc64__ */
 
 /*
@@ -721,6 +761,7 @@ extern void __iomem *ioremap_prot(phys_addr_t address, unsigned long size,
 				  unsigned long flags);
 extern void __iomem *ioremap_wc(phys_addr_t address, unsigned long size);
 #define ioremap_nocache(addr, size)	ioremap((addr), (size))
+#define ioremap_uc(addr, size)		ioremap((addr), (size))
 
 extern void iounmap(volatile void __iomem *addr);
 

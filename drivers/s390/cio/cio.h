@@ -45,6 +45,18 @@ struct pmcw {
 				/*  ... in an operand exception.       */
 } __attribute__ ((packed));
 
+/* I/O-Interruption Code as stored by TEST PENDING INTERRUPTION (TPI). */
+struct tpi_info {
+	struct subchannel_id schid;
+	u32 intparm;
+	u32 adapter_IO:1;
+	u32 :1;
+	u32 isc:3;
+	u32 :27;
+	u32 type:3;
+	u32 :12;
+} __packed __aligned(4);
+
 /* Target SCHIB configuration. */
 struct schib_config {
 	u64 mba;
@@ -115,7 +127,6 @@ extern int cio_resume (struct subchannel *);
 extern int cio_halt (struct subchannel *);
 extern int cio_start (struct subchannel *, struct ccw1 *, __u8);
 extern int cio_start_key (struct subchannel *, struct ccw1 *, __u8, __u8);
-extern int cio_cancel (struct subchannel *);
 extern int cio_set_options (struct subchannel *, int);
 extern int cio_update_schib(struct subchannel *sch);
 extern int cio_commit_config(struct subchannel *sch);

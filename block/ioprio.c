@@ -123,7 +123,8 @@ SYSCALL_DEFINE3(ioprio_set, int, which, int, who, int, ioprio)
 				break;
 
 			do_each_thread(g, p) {
-				if (!uid_eq(task_uid(p), uid))
+				if (!uid_eq(task_uid(p), uid) ||
+				    !task_pid_vnr(p))
 					continue;
 				ret = set_task_ioprio(p, ioprio);
 				if (ret)
@@ -149,8 +150,10 @@ static int get_task_ioprio(struct task_struct *p)
 	if (ret)
 		goto out;
 	ret = IOPRIO_PRIO_VALUE(IOPRIO_CLASS_NONE, IOPRIO_NORM);
+	task_lock(p);
 	if (p->io_context)
 		ret = p->io_context->ioprio;
+	task_unlock(p);
 out:
 	return ret;
 }
@@ -220,7 +223,8 @@ SYSCALL_DEFINE2(ioprio_get, int, which, int, who)
 				break;
 
 			do_each_thread(g, p) {
-				if (!uid_eq(task_uid(p), user->uid))
+				if (!uid_eq(task_uid(p), user->uid) ||
+				    !task_pid_vnr(p))
 					continue;
 				tmpio = get_task_ioprio(p);
 				if (tmpio < 0)

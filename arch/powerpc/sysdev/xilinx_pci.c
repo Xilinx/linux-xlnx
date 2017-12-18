@@ -115,9 +115,9 @@ void __init xilinx_pci_init(void)
 	/* Set the max latency timer to 255 */
 	early_write_config_byte(hose, 0, 0, PCI_LATENCY_TIMER, 0xff);
 
-	/* Set the max bus number to 255, and bus/subbus no's to 0 */
+	/* Set the max bus number to 255 */
 	pci_reg = of_iomap(pci_node, 0);
-	out_be32(pci_reg + XPLB_PCI_BUS, 0x000000ff);
+	out_8(pci_reg + XPLB_PCI_BUS, 0xff);
 	iounmap(pci_reg);
 
 	/* Nothing past the root bridge is working right now.  By default

@@ -704,52 +704,58 @@ static int ov9740_s_fmt(struct v4l2_subdev *sd,
 	return ret;
 }
 
-static int ov9740_try_fmt(struct v4l2_subdev *sd,
-			  struct v4l2_mbus_framefmt *mf)
+static int ov9740_set_fmt(struct v4l2_subdev *sd,
+		struct v4l2_subdev_pad_config *cfg,
+		struct v4l2_subdev_format *format)
 {
+	struct v4l2_mbus_framefmt *mf = &format->format;
+
+	if (format->pad)
+		return -EINVAL;
+
 	ov9740_res_roundup(&mf->width, &mf->height);
 
 	mf->field = V4L2_FIELD_NONE;
 	mf->code = MEDIA_BUS_FMT_YUYV8_2X8;
 	mf->colorspace = V4L2_COLORSPACE_SRGB;
 
+	if (format->which == V4L2_SUBDEV_FORMAT_ACTIVE)
+		return ov9740_s_fmt(sd, mf);
+	cfg->try_fmt = *mf;
 	return 0;
 }
 
-static int ov9740_enum_fmt(struct v4l2_subdev *sd, unsigned int index,
-			   u32 *code)
+static int ov9740_enum_mbus_code(struct v4l2_subdev *sd,
+		struct v4l2_subdev_pad_config *cfg,
+		struct v4l2_subdev_mbus_code_enum *code)
 {
-	if (index >= ARRAY_SIZE(ov9740_codes))
+	if (code->pad || code->index >= ARRAY_SIZE(ov9740_codes))
 		return -EINVAL;
 
-	*code = ov9740_codes[index];
+	code->code = ov9740_codes[code->index];
 
 	return 0;
 }
 
-static int ov9740_cropcap(struct v4l2_subdev *sd, struct v4l2_cropcap *a)
+static int ov9740_get_selection(struct v4l2_subdev *sd,
+		struct v4l2_subdev_pad_config *cfg,
+		struct v4l2_subdev_selection *sel)
 {
-	a->bounds.left		= 0;
-	a->bounds.top		= 0;
-	a->bounds.width		= OV9740_MAX_WIDTH;
-	a->bounds.height	= OV9740_MAX_HEIGHT;
-	a->defrect		= a->bounds;
-	a->type			= V4L2_BUF_TYPE_VIDEO_CAPTURE;
-	a->pixelaspect.numerator	= 1;
-	a->pixelaspect.denominator	= 1;
+	if (sel->which != V4L2_SUBDEV_FORMAT_ACTIVE)
+		return -EINVAL;
 
-	return 0;
-}
-
-static int ov9740_g_crop(struct v4l2_subdev *sd, struct v4l2_crop *a)
-{
-	a->c.left		= 0;
-	a->c.top		= 0;
-	a->c.width		= OV9740_MAX_WIDTH;
-	a->c.height		= OV9740_MAX_HEIGHT;
-	a->type			= V4L2_BUF_TYPE_VIDEO_CAPTURE;
-
-	return 0;
+	switch (sel->target) {
+	case V4L2_SEL_TGT_CROP_BOUNDS:
+	case V4L2_SEL_TGT_CROP_DEFAULT:
+	case V4L2_SEL_TGT_CROP:
+		sel->r.left = 0;
+		sel->r.top = 0;
+		sel->r.width = OV9740_MAX_WIDTH;
+		sel->r.height = OV9740_MAX_HEIGHT;
+		return 0;
+	default:
+		return -EINVAL;
+	}
 }
 
 /* Set status of additional camera capabilities */
@@ -904,11 +910,6 @@ static int ov9740_g_mbus_config(struct v4l2_subdev *sd,
 
 static struct v4l2_subdev_video_ops ov9740_video_ops = {
 	.s_stream	= ov9740_s_stream,
-	.s_mbus_fmt	= ov9740_s_fmt,
-	.try_mbus_fmt	= ov9740_try_fmt,
-	.enum_mbus_fmt	= ov9740_enum_fmt,
-	.cropcap	= ov9740_cropcap,
-	.g_crop		= ov9740_g_crop,
 	.g_mbus_config	= ov9740_g_mbus_config,
 };
 
@@ -920,9 +921,16 @@ static struct v4l2_subdev_core_ops ov9740_core_ops = {
 #endif
 };
 
+static const struct v4l2_subdev_pad_ops ov9740_pad_ops = {
+	.enum_mbus_code = ov9740_enum_mbus_code,
+	.get_selection	= ov9740_get_selection,
+	.set_fmt	= ov9740_set_fmt,
+};
+
 static struct v4l2_subdev_ops ov9740_subdev_ops = {
-	.core			= &ov9740_core_ops,
-	.video			= &ov9740_video_ops,
+	.core	= &ov9740_core_ops,
+	.video	= &ov9740_video_ops,
+	.pad	= &ov9740_pad_ops,
 };
 
 static const struct v4l2_ctrl_ops ov9740_ctrl_ops = {

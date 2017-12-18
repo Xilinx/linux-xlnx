@@ -2,6 +2,7 @@
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/delay.h>
+#include <linux/ioport.h>
 #include <linux/mtd/mtd.h>
 #include <linux/platform_device.h>
 #include <linux/bcma/bcma.h>
@@ -109,8 +110,7 @@ static int bcm47xxsflash_read(struct mtd_info *mtd, loff_t from, size_t len,
 	if ((from + len) > mtd->size)
 		return -EINVAL;
 
-	memcpy_fromio(buf, (void __iomem *)KSEG0ADDR(b47s->window + from),
-		      len);
+	memcpy_fromio(buf, b47s->window + from, len);
 	*retlen = len;
 
 	return len;
@@ -237,13 +237,14 @@ static int bcm47xxsflash_write(struct mtd_info *mtd, loff_t to, size_t len,
 	return 0;
 }
 
-static void bcm47xxsflash_fill_mtd(struct bcm47xxsflash *b47s)
+static void bcm47xxsflash_fill_mtd(struct bcm47xxsflash *b47s,
+				   struct device *dev)
 {
 	struct mtd_info *mtd = &b47s->mtd;
 
 	mtd->priv = b47s;
+	mtd->dev.parent = dev;
 	mtd->name = "bcm47xxsflash";
-	mtd->owner = THIS_MODULE;
 
 	mtd->type = MTD_NORFLASH;
 	mtd->flags = MTD_CAP_NORFLASH;
@@ -274,14 +275,32 @@ static void bcm47xxsflash_bcma_cc_write(struct bcm47xxsflash *b47s, u16 offset,
 
 static int bcm47xxsflash_bcma_probe(struct platform_device *pdev)
 {
-	struct bcma_sflash *sflash = dev_get_platdata(&pdev->dev);
+	struct device *dev = &pdev->dev;
+	struct bcma_sflash *sflash = dev_get_platdata(dev);
 	struct bcm47xxsflash *b47s;
+	struct resource *res;
 	int err;
 
-	b47s = devm_kzalloc(&pdev->dev, sizeof(*b47s), GFP_KERNEL);
+	b47s = devm_kzalloc(dev, sizeof(*b47s), GFP_KERNEL);
 	if (!b47s)
 		return -ENOMEM;
 	sflash->priv = b47s;
+
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	if (!res) {
+		dev_err(dev, "invalid resource\n");
+		return -EINVAL;
+	}
+	if (!devm_request_mem_region(dev, res->start, resource_size(res),
+				     res->name)) {
+		dev_err(dev, "can't request region for resource %pR\n", res);
+		return -EBUSY;
+	}
+	b47s->window = ioremap_cache(res->start, resource_size(res));
+	if (!b47s->window) {
+		dev_err(dev, "ioremap failed for resource %pR\n", res);
+		return -ENOMEM;
+	}
 
 	b47s->bcma_cc = container_of(sflash, struct bcma_drv_cc, sflash);
 	b47s->cc_read = bcm47xxsflash_bcma_cc_read;
@@ -296,15 +315,15 @@ static int bcm47xxsflash_bcma_probe(struct platform_device *pdev)
 		break;
 	}
 
-	b47s->window = sflash->window;
 	b47s->blocksize = sflash->blocksize;
 	b47s->numblocks = sflash->numblocks;
 	b47s->size = sflash->size;
-	bcm47xxsflash_fill_mtd(b47s);
+	bcm47xxsflash_fill_mtd(b47s, &pdev->dev);
 
 	err = mtd_device_parse_register(&b47s->mtd, probes, NULL, NULL, 0);
 	if (err) {
 		pr_err("Failed to register MTD device: %d\n", err);
+		iounmap(b47s->window);
 		return err;
 	}
 
@@ -320,6 +339,7 @@ static int bcm47xxsflash_bcma_remove(struct platform_device *pdev)
 	struct bcm47xxsflash *b47s = sflash->priv;
 
 	mtd_device_unregister(&b47s->mtd);
+	iounmap(b47s->window);
 
 	return 0;
 }

@@ -3,7 +3,7 @@
  *
  *  Copyright (C) 2014 Xilinx
  *
- *  SÃ¶ren Brinkmann <soren.brinkmann@xilinx.com>
+ *  Sören Brinkmann <soren.brinkmann@xilinx.com>
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -20,7 +20,7 @@
  */
 #include <linux/io.h>
 #include <linux/mfd/syscon.h>
-#include <linux/module.h>
+#include <linux/init.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/pinctrl/pinctrl.h>
@@ -45,7 +45,7 @@
  * @syscon:		Syscon regmap
  * @pctrl_offset:	Offset for pinctrl into the @syscon space
  * @groups:		Pingroups
- * @ngroupos:		Number of @groups
+ * @ngroups:		Number of @groups
  * @funcs:		Pinmux functions
  * @nfuncs:		Number of @funcs
  */
@@ -62,7 +62,7 @@ struct zynq_pinctrl {
 struct zynq_pctrl_group {
 	const char *name;
 	const unsigned int *pins;
-	const unsigned npins;
+	const unsigned int npins;
 };
 
 /**
@@ -101,6 +101,8 @@ enum zynq_pinmux_functions {
 	ZYNQ_PMUX_qspi_cs1,
 	ZYNQ_PMUX_spi0,
 	ZYNQ_PMUX_spi1,
+	ZYNQ_PMUX_spi0_ss,
+	ZYNQ_PMUX_spi1_ss,
 	ZYNQ_PMUX_sdio0,
 	ZYNQ_PMUX_sdio0_pc,
 	ZYNQ_PMUX_sdio0_cd,
@@ -123,7 +125,7 @@ enum zynq_pinmux_functions {
 	ZYNQ_PMUX_MAX_FUNC
 };
 
-const struct pinctrl_pin_desc zynq_pins[] = {
+static const struct pinctrl_pin_desc zynq_pins[] = {
 	PINCTRL_PIN(0,  "MIO0"),
 	PINCTRL_PIN(1,  "MIO1"),
 	PINCTRL_PIN(2,  "MIO2"),
@@ -196,20 +198,42 @@ static const unsigned int qspi0_0_pins[] = {1, 2, 3, 4, 5, 6};
 static const unsigned int qspi1_0_pins[] = {9, 10, 11, 12, 13};
 static const unsigned int qspi_cs1_pins[] = {0};
 static const unsigned int qspi_fbclk_pins[] = {8};
-static const unsigned int spi0_0_pins[] = {16, 17, 18, 19, 20, 21};
-static const unsigned int spi0_1_pins[] = {28, 29, 30, 31, 32, 33};
-static const unsigned int spi0_2_pins[] = {40, 41, 42, 43, 44, 45};
-static const unsigned int spi1_0_pins[] = {10, 11, 12, 13, 14, 15};
-static const unsigned int spi1_1_pins[] = {22, 23, 24, 25, 26, 27};
-static const unsigned int spi1_2_pins[] = {34, 35, 36, 37, 38, 39};
-static const unsigned int spi1_3_pins[] = {46, 47, 48, 49, 40, 51};
+static const unsigned int spi0_0_pins[] = {16, 17, 21};
+static const unsigned int spi0_0_ss0_pins[] = {18};
+static const unsigned int spi0_0_ss1_pins[] = {19};
+static const unsigned int spi0_0_ss2_pins[] = {20,};
+static const unsigned int spi0_1_pins[] = {28, 29, 33};
+static const unsigned int spi0_1_ss0_pins[] = {30};
+static const unsigned int spi0_1_ss1_pins[] = {31};
+static const unsigned int spi0_1_ss2_pins[] = {32};
+static const unsigned int spi0_2_pins[] = {40, 41, 45};
+static const unsigned int spi0_2_ss0_pins[] = {42};
+static const unsigned int spi0_2_ss1_pins[] = {43};
+static const unsigned int spi0_2_ss2_pins[] = {44};
+static const unsigned int spi1_0_pins[] = {10, 11, 12};
+static const unsigned int spi1_0_ss0_pins[] = {13};
+static const unsigned int spi1_0_ss1_pins[] = {14};
+static const unsigned int spi1_0_ss2_pins[] = {15};
+static const unsigned int spi1_1_pins[] = {22, 23, 24};
+static const unsigned int spi1_1_ss0_pins[] = {25};
+static const unsigned int spi1_1_ss1_pins[] = {26};
+static const unsigned int spi1_1_ss2_pins[] = {27};
+static const unsigned int spi1_2_pins[] = {34, 35, 36};
+static const unsigned int spi1_2_ss0_pins[] = {37};
+static const unsigned int spi1_2_ss1_pins[] = {38};
+static const unsigned int spi1_2_ss2_pins[] = {39};
+static const unsigned int spi1_3_pins[] = {46, 47, 48, 49};
+static const unsigned int spi1_3_ss0_pins[] = {49};
+static const unsigned int spi1_3_ss1_pins[] = {50};
+static const unsigned int spi1_3_ss2_pins[] = {51};
+
 static const unsigned int sdio0_0_pins[] = {16, 17, 18, 19, 20, 21};
 static const unsigned int sdio0_1_pins[] = {28, 29, 30, 31, 32, 33};
 static const unsigned int sdio0_2_pins[] = {40, 41, 42, 43, 44, 45};
 static const unsigned int sdio1_0_pins[] = {10, 11, 12, 13, 14, 15};
 static const unsigned int sdio1_1_pins[] = {22, 23, 24, 25, 26, 27};
 static const unsigned int sdio1_2_pins[] = {34, 35, 36, 37, 38, 39};
-static const unsigned int sdio1_3_pins[] = {46, 47, 48, 49, 40, 51};
+static const unsigned int sdio1_3_pins[] = {46, 47, 48, 49, 50, 51};
 static const unsigned int sdio0_emio_wp_pins[] = {54};
 static const unsigned int sdio0_emio_cd_pins[] = {55};
 static const unsigned int sdio1_emio_wp_pins[] = {56};
@@ -369,7 +393,7 @@ static const unsigned int usb1_0_pins[] = {40, 41, 42, 43, 44, 45, 46, 47, 48,
 		.npins = ARRAY_SIZE(nm ## _pins), \
 	}
 
-struct zynq_pctrl_group zynq_pctrl_groups[] = {
+static const struct zynq_pctrl_group zynq_pctrl_groups[] = {
 	DEFINE_ZYNQ_PINCTRL_GRP(ethernet0_0),
 	DEFINE_ZYNQ_PINCTRL_GRP(ethernet1_0),
 	DEFINE_ZYNQ_PINCTRL_GRP(mdio0_0),
@@ -379,12 +403,33 @@ struct zynq_pctrl_group zynq_pctrl_groups[] = {
 	DEFINE_ZYNQ_PINCTRL_GRP(qspi_fbclk),
 	DEFINE_ZYNQ_PINCTRL_GRP(qspi_cs1),
 	DEFINE_ZYNQ_PINCTRL_GRP(spi0_0),
+	DEFINE_ZYNQ_PINCTRL_GRP(spi0_0_ss0),
+	DEFINE_ZYNQ_PINCTRL_GRP(spi0_0_ss1),
+	DEFINE_ZYNQ_PINCTRL_GRP(spi0_0_ss2),
 	DEFINE_ZYNQ_PINCTRL_GRP(spi0_1),
+	DEFINE_ZYNQ_PINCTRL_GRP(spi0_1_ss0),
+	DEFINE_ZYNQ_PINCTRL_GRP(spi0_1_ss1),
+	DEFINE_ZYNQ_PINCTRL_GRP(spi0_1_ss2),
 	DEFINE_ZYNQ_PINCTRL_GRP(spi0_2),
+	DEFINE_ZYNQ_PINCTRL_GRP(spi0_2_ss0),
+	DEFINE_ZYNQ_PINCTRL_GRP(spi0_2_ss1),
+	DEFINE_ZYNQ_PINCTRL_GRP(spi0_2_ss2),
 	DEFINE_ZYNQ_PINCTRL_GRP(spi1_0),
+	DEFINE_ZYNQ_PINCTRL_GRP(spi1_0_ss0),
+	DEFINE_ZYNQ_PINCTRL_GRP(spi1_0_ss1),
+	DEFINE_ZYNQ_PINCTRL_GRP(spi1_0_ss2),
 	DEFINE_ZYNQ_PINCTRL_GRP(spi1_1),
+	DEFINE_ZYNQ_PINCTRL_GRP(spi1_1_ss0),
+	DEFINE_ZYNQ_PINCTRL_GRP(spi1_1_ss1),
+	DEFINE_ZYNQ_PINCTRL_GRP(spi1_1_ss2),
 	DEFINE_ZYNQ_PINCTRL_GRP(spi1_2),
+	DEFINE_ZYNQ_PINCTRL_GRP(spi1_2_ss0),
+	DEFINE_ZYNQ_PINCTRL_GRP(spi1_2_ss1),
+	DEFINE_ZYNQ_PINCTRL_GRP(spi1_2_ss2),
 	DEFINE_ZYNQ_PINCTRL_GRP(spi1_3),
+	DEFINE_ZYNQ_PINCTRL_GRP(spi1_3_ss0),
+	DEFINE_ZYNQ_PINCTRL_GRP(spi1_3_ss1),
+	DEFINE_ZYNQ_PINCTRL_GRP(spi1_3_ss2),
 	DEFINE_ZYNQ_PINCTRL_GRP(sdio0_0),
 	DEFINE_ZYNQ_PINCTRL_GRP(sdio0_1),
 	DEFINE_ZYNQ_PINCTRL_GRP(sdio0_2),
@@ -545,13 +590,22 @@ static const char * const usb1_groups[] = {"usb1_0_grp"};
 static const char * const mdio0_groups[] = {"mdio0_0_grp"};
 static const char * const mdio1_groups[] = {"mdio1_0_grp"};
 static const char * const qspi0_groups[] = {"qspi0_0_grp"};
-static const char * const qspi1_groups[] = {"qspi0_1_grp"};
+static const char * const qspi1_groups[] = {"qspi1_0_grp"};
 static const char * const qspi_fbclk_groups[] = {"qspi_fbclk_grp"};
 static const char * const qspi_cs1_groups[] = {"qspi_cs1_grp"};
 static const char * const spi0_groups[] = {"spi0_0_grp", "spi0_1_grp",
 					   "spi0_2_grp"};
 static const char * const spi1_groups[] = {"spi1_0_grp", "spi1_1_grp",
 					   "spi1_2_grp", "spi1_3_grp"};
+static const char * const spi0_ss_groups[] = {"spi0_0_ss0_grp",
+		"spi0_0_ss1_grp", "spi0_0_ss2_grp", "spi0_1_ss0_grp",
+		"spi0_1_ss1_grp", "spi0_1_ss2_grp", "spi0_2_ss0_grp",
+		"spi0_2_ss1_grp", "spi0_2_ss2_grp"};
+static const char * const spi1_ss_groups[] = {"spi1_0_ss0_grp",
+		"spi1_0_ss1_grp", "spi1_0_ss2_grp", "spi1_1_ss0_grp",
+		"spi1_1_ss1_grp", "spi1_1_ss2_grp", "spi1_2_ss0_grp",
+		"spi1_2_ss1_grp", "spi1_2_ss2_grp", "spi1_3_ss0_grp",
+		"spi1_3_ss1_grp", "spi1_3_ss2_grp"};
 static const char * const sdio0_groups[] = {"sdio0_0_grp", "sdio0_1_grp",
 					    "sdio0_2_grp"};
 static const char * const sdio1_groups[] = {"sdio1_0_grp", "sdio1_1_grp",
@@ -743,6 +797,8 @@ static const struct zynq_pinmux_function zynq_pmux_functions[] = {
 	DEFINE_ZYNQ_PINMUX_FUNCTION(qspi_cs1, 1),
 	DEFINE_ZYNQ_PINMUX_FUNCTION(spi0, 0x50),
 	DEFINE_ZYNQ_PINMUX_FUNCTION(spi1, 0x50),
+	DEFINE_ZYNQ_PINMUX_FUNCTION(spi0_ss, 0x50),
+	DEFINE_ZYNQ_PINMUX_FUNCTION(spi1_ss, 0x50),
 	DEFINE_ZYNQ_PINMUX_FUNCTION(sdio0, 0x40),
 	DEFINE_ZYNQ_PINMUX_FUNCTION(sdio0_pc, 0xc),
 	DEFINE_ZYNQ_PINMUX_FUNCTION_MUX(sdio0_wp, 0, 0x130, ZYNQ_SDIO_WP_MASK,
@@ -781,7 +837,7 @@ static int zynq_pctrl_get_groups_count(struct pinctrl_dev *pctldev)
 }
 
 static const char *zynq_pctrl_get_group_name(struct pinctrl_dev *pctldev,
-					     unsigned selector)
+					     unsigned int selector)
 {
 	struct zynq_pinctrl *pctrl = pinctrl_dev_get_drvdata(pctldev);
 
@@ -789,9 +845,9 @@ static const char *zynq_pctrl_get_group_name(struct pinctrl_dev *pctldev,
 }
 
 static int zynq_pctrl_get_group_pins(struct pinctrl_dev *pctldev,
-				     unsigned selector,
-				     const unsigned **pins,
-				     unsigned *num_pins)
+				     unsigned int selector,
+				     const unsigned int **pins,
+				     unsigned int *num_pins)
 {
 	struct zynq_pinctrl *pctrl = pinctrl_dev_get_drvdata(pctldev);
 
@@ -806,7 +862,7 @@ static const struct pinctrl_ops zynq_pctrl_ops = {
 	.get_group_name = zynq_pctrl_get_group_name,
 	.get_group_pins = zynq_pctrl_get_group_pins,
 	.dt_node_to_map = pinconf_generic_dt_node_to_map_all,
-	.dt_free_map = pinctrl_utils_dt_free_map,
+	.dt_free_map = pinctrl_utils_free_map,
 };
 
 /* pinmux */
@@ -818,7 +874,7 @@ static int zynq_pmux_get_functions_count(struct pinctrl_dev *pctldev)
 }
 
 static const char *zynq_pmux_get_function_name(struct pinctrl_dev *pctldev,
-					       unsigned selector)
+					       unsigned int selector)
 {
 	struct zynq_pinctrl *pctrl = pinctrl_dev_get_drvdata(pctldev);
 
@@ -826,7 +882,7 @@ static const char *zynq_pmux_get_function_name(struct pinctrl_dev *pctldev,
 }
 
 static int zynq_pmux_get_function_groups(struct pinctrl_dev *pctldev,
-					 unsigned selector,
+					 unsigned int selector,
 					 const char * const **groups,
 					 unsigned * const num_groups)
 {
@@ -838,8 +894,8 @@ static int zynq_pmux_get_function_groups(struct pinctrl_dev *pctldev,
 }
 
 static int zynq_pinmux_set_mux(struct pinctrl_dev *pctldev,
-			       unsigned function,
-			       unsigned group)
+			       unsigned int function,
+			       unsigned int  group)
 {
 	int i, ret;
 	struct zynq_pinctrl *pctrl = pinctrl_dev_get_drvdata(pctldev);
@@ -926,8 +982,8 @@ static const struct pinconf_generic_params zynq_dt_params[] = {
 };
 
 #ifdef CONFIG_DEBUG_FS
-static const struct pin_config_item zynq_conf_items[ARRAY_SIZE(zynq_dt_params)] = {
-	PCONFDUMP(PIN_CONFIG_IOSTANDARD, "IO-standard", NULL, true),
+static const struct pin_config_item zynq_conf_items[ARRAY_SIZE(zynq_dt_params)]
+	= { PCONFDUMP(PIN_CONFIG_IOSTANDARD, "IO-standard", NULL, true),
 };
 #endif
 
@@ -937,7 +993,7 @@ static unsigned int zynq_pinconf_iostd_get(u32 reg)
 }
 
 static int zynq_pinconf_cfg_get(struct pinctrl_dev *pctldev,
-				unsigned pin,
+				unsigned int pin,
 				unsigned long *config)
 {
 	u32 reg;
@@ -994,9 +1050,9 @@ static int zynq_pinconf_cfg_get(struct pinctrl_dev *pctldev,
 }
 
 static int zynq_pinconf_cfg_set(struct pinctrl_dev *pctldev,
-				unsigned pin,
+				unsigned int pin,
 				unsigned long *configs,
-				unsigned num_configs)
+				unsigned int num_configs)
 {
 	int i, ret;
 	u32 reg;
@@ -1070,9 +1126,9 @@ static int zynq_pinconf_cfg_set(struct pinctrl_dev *pctldev,
 }
 
 static int zynq_pinconf_group_set(struct pinctrl_dev *pctldev,
-				  unsigned selector,
+				  unsigned int selector,
 				  unsigned long *configs,
-				  unsigned num_configs)
+				  unsigned int  num_configs)
 {
 	int i, ret;
 	struct zynq_pinctrl *pctrl = pinctrl_dev_get_drvdata(pctldev);
@@ -1139,9 +1195,9 @@ static int zynq_pinctrl_probe(struct platform_device *pdev)
 	pctrl->funcs = zynq_pmux_functions;
 	pctrl->nfuncs = ARRAY_SIZE(zynq_pmux_functions);
 
-	pctrl->pctrl = pinctrl_register(&zynq_desc, &pdev->dev, pctrl);
-	if (!pctrl->pctrl)
-		return -ENOMEM;
+	pctrl->pctrl = devm_pinctrl_register(&pdev->dev, &zynq_desc, pctrl);
+	if (IS_ERR(pctrl->pctrl))
+		return PTR_ERR(pctrl->pctrl);
 
 	platform_set_drvdata(pdev, pctrl);
 
@@ -1150,20 +1206,10 @@ static int zynq_pinctrl_probe(struct platform_device *pdev)
 	return 0;
 }
 
-int zynq_pinctrl_remove(struct platform_device *pdev)
-{
-	struct zynq_pinctrl *pctrl = platform_get_drvdata(pdev);
-
-	pinctrl_unregister(pctrl->pctrl);
-
-	return 0;
-}
-
 static const struct of_device_id zynq_pinctrl_of_match[] = {
 	{ .compatible = "xlnx,pinctrl-zynq" },
 	{ }
 };
-MODULE_DEVICE_TABLE(of, zynq_pinctrl_of_match);
 
 static struct platform_driver zynq_pinctrl_driver = {
 	.driver = {
@@ -1171,11 +1217,10 @@ static struct platform_driver zynq_pinctrl_driver = {
 		.of_match_table = zynq_pinctrl_of_match,
 	},
 	.probe = zynq_pinctrl_probe,
-	.remove = zynq_pinctrl_remove,
 };
 
-module_platform_driver(zynq_pinctrl_driver);
-
-MODULE_AUTHOR("SÃ¶ren Brinkmann <soren.brinkmann@xilinx.com>");
-MODULE_DESCRIPTION("Xilinx Zynq pinctrl driver");
-MODULE_LICENSE("GPL");
+static int __init zynq_pinctrl_init(void)
+{
+	return platform_driver_register(&zynq_pinctrl_driver);
+}
+arch_initcall(zynq_pinctrl_init);

@@ -56,7 +56,6 @@ static struct scsi_host_template mvs_sht = {
 	.change_queue_depth	= sas_change_queue_depth,
 	.bios_param		= sas_bios_param,
 	.can_queue		= 1,
-	.cmd_per_lun		= 1,
 	.this_id		= -1,
 	.sg_tablesize		= SG_ALL,
 	.max_sectors		= SCSI_DEFAULT_MAX_SECTORS,
@@ -66,7 +65,6 @@ static struct scsi_host_template mvs_sht = {
 	.target_destroy		= sas_target_destroy,
 	.ioctl			= sas_ioctl,
 	.shost_attrs		= mvst_host_attrs,
-	.use_blk_tags		= 1,
 	.track_queue_depth	= 1,
 };
 
@@ -85,6 +83,8 @@ static struct sas_domain_function_template mvs_transport_ops = {
 	.lldd_query_task	= mvs_query_task,
 	.lldd_port_formed	= mvs_port_formed,
 	.lldd_port_deformed     = mvs_port_deformed,
+
+	.lldd_write_gpio	= mvs_gpio_write,
 
 };
 
@@ -325,13 +325,9 @@ int mvs_ioremap(struct mvs_info *mvi, int bar, int bar_ex)
 			goto err_out;
 
 		res_flag_ex = pci_resource_flags(pdev, bar_ex);
-		if (res_flag_ex & IORESOURCE_MEM) {
-			if (res_flag_ex & IORESOURCE_CACHEABLE)
-				mvi->regs_ex = ioremap(res_start, res_len);
-			else
-				mvi->regs_ex = ioremap_nocache(res_start,
-						res_len);
-		} else
+		if (res_flag_ex & IORESOURCE_MEM)
+			mvi->regs_ex = ioremap(res_start, res_len);
+		else
 			mvi->regs_ex = (void *)res_start;
 		if (!mvi->regs_ex)
 			goto err_out;
@@ -339,14 +335,14 @@ int mvs_ioremap(struct mvs_info *mvi, int bar, int bar_ex)
 
 	res_start = pci_resource_start(pdev, bar);
 	res_len = pci_resource_len(pdev, bar);
-	if (!res_start || !res_len)
+	if (!res_start || !res_len) {
+		iounmap(mvi->regs_ex);
+		mvi->regs_ex = NULL;
 		goto err_out;
+	}
 
 	res_flag = pci_resource_flags(pdev, bar);
-	if (res_flag & IORESOURCE_CACHEABLE)
-		mvi->regs = ioremap(res_start, res_len);
-	else
-		mvi->regs = ioremap_nocache(res_start, res_len);
+	mvi->regs = ioremap(res_start, res_len);
 
 	if (!mvi->regs) {
 		if (mvi->regs_ex && (res_flag_ex & IORESOURCE_MEM))
@@ -646,9 +642,9 @@ static void mvs_pci_remove(struct pci_dev *pdev)
 	tasklet_kill(&((struct mvs_prv_info *)sha->lldd_ha)->mv_tasklet);
 #endif
 
+	scsi_remove_host(mvi->shost);
 	sas_unregister_ha(sha);
 	sas_remove_host(mvi->shost);
-	scsi_remove_host(mvi->shost);
 
 	MVS_CHIP_DISP->interrupt_disable(mvi);
 	free_irq(mvi->pdev->irq, sha);
@@ -708,24 +704,7 @@ static struct pci_device_id mvs_pci_table[] = {
 		.class_mask	= 0,
 		.driver_data	= chip_9445,
 	},
-	{
-		.vendor		= PCI_VENDOR_ID_MARVELL_EXT,
-		.device		= 0x9485,
-		.subvendor	= PCI_ANY_ID,
-		.subdevice	= 0x9480,
-		.class		= 0,
-		.class_mask	= 0,
-		.driver_data	= chip_9485,
-	},
-	{
-		.vendor		= PCI_VENDOR_ID_MARVELL_EXT,
-		.device		= 0x9485,
-		.subvendor	= PCI_ANY_ID,
-		.subdevice	= 0x9485,
-		.class		= 0,
-		.class_mask	= 0,
-		.driver_data	= chip_9485,
-	},
+	{ PCI_VDEVICE(MARVELL_EXT, 0x9485), chip_9485 }, /* Marvell 9480/9485 (any vendor/model) */
 	{ PCI_VDEVICE(OCZ, 0x1021), chip_9485}, /* OCZ RevoDrive3 */
 	{ PCI_VDEVICE(OCZ, 0x1022), chip_9485}, /* OCZ RevoDrive3/zDriveR4 (exact model unknown) */
 	{ PCI_VDEVICE(OCZ, 0x1040), chip_9485}, /* OCZ RevoDrive3/zDriveR4 (exact model unknown) */
@@ -764,7 +743,7 @@ mvs_store_interrupt_coalescing(struct device *cdev,
 			struct device_attribute *attr,
 			const char *buffer, size_t size)
 {
-	int val = 0;
+	unsigned int val = 0;
 	struct mvs_info *mvi = NULL;
 	struct Scsi_Host *shost = class_to_shost(cdev);
 	struct sas_ha_struct *sha = SHOST_TO_SAS_HA(shost);
@@ -772,7 +751,7 @@ mvs_store_interrupt_coalescing(struct device *cdev,
 	if (buffer == NULL)
 		return size;
 
-	if (sscanf(buffer, "%d", &val) != 1)
+	if (sscanf(buffer, "%u", &val) != 1)
 		return -EINVAL;
 
 	if (val >= 0x10000) {

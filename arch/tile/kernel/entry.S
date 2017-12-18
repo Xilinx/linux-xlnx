@@ -27,13 +27,6 @@ STD_ENTRY(current_text_addr)
 	{ move r0, lr; jrp lr }
 	STD_ENDPROC(current_text_addr)
 
-STD_ENTRY(dump_stack)
-	{ move r2, lr; lnk r1 }
-	{ move r4, r52; addli r1, r1, dump_stack - . }
-	{ move r3, sp; j _dump_stack }
-	jrp lr   /* keep backtracer happy */
-	STD_ENDPROC(dump_stack)
-
 STD_ENTRY(KBacktraceIterator_init_current)
 	{ move r2, lr; lnk r1 }
 	{ move r4, r52; addli r1, r1, KBacktraceIterator_init_current - . }
@@ -57,7 +50,7 @@ STD_ENTRY(smp_nap)
  * When interrupted at _cpu_idle_nap, we bump the PC forward 8, and
  * as a result return to the function that called _cpu_idle().
  */
-STD_ENTRY(_cpu_idle)
+STD_ENTRY_SECTION(_cpu_idle, .cpuidle.text)
 	movei r1, 1
 	IRQ_ENABLE_LOAD(r2, r3)
 	mtspr INTERRUPT_CRITICAL_SECTION, r1

@@ -59,7 +59,7 @@ static struct drm_framebuffer_funcs xylon_fb_funcs = {
 };
 
 struct drm_framebuffer *xylon_drm_fb_init(struct drm_device *dev,
-					  struct drm_mode_fb_cmd2 *mode_cmd,
+					  const struct drm_mode_fb_cmd2 *mode_cmd,
 					  struct drm_gem_object *obj)
 {
 	struct drm_framebuffer *fb;
@@ -101,7 +101,7 @@ struct drm_gem_object *xylon_drm_fb_get_gem_obj(struct drm_framebuffer *fb)
 
 static struct drm_framebuffer *
 xylon_drm_fb_create(struct drm_device *dev, struct drm_file *file_priv,
-		    struct drm_mode_fb_cmd2 *mode_cmd)
+		    const struct drm_mode_fb_cmd2 *mode_cmd)
 {
 	struct drm_gem_object *obj;
 	struct xylon_drm_device *xdev = dev->dev_private;
@@ -114,7 +114,7 @@ xylon_drm_fb_create(struct drm_device *dev, struct drm_file *file_priv,
 		return ERR_PTR(-EINVAL);
 	}
 
-	obj = drm_gem_object_lookup(dev, file_priv, mode_cmd->handles[0]);
+	obj = drm_gem_object_lookup(file_priv, mode_cmd->handles[0]);
 	if (!obj)
 		return ERR_PTR(-EINVAL);
 

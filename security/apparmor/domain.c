@@ -346,10 +346,8 @@ int apparmor_bprm_set_creds(struct linux_binprm *bprm)
 		file_inode(bprm->file)->i_uid,
 		file_inode(bprm->file)->i_mode
 	};
-	const char *name = NULL, *target = NULL, *info = NULL;
-	int error = cap_bprm_set_creds(bprm);
-	if (error)
-		return error;
+	const char *name = NULL, *info = NULL;
+	int error = 0;
 
 	if (bprm->cred_prepared)
 		return 0;
@@ -401,6 +399,7 @@ int apparmor_bprm_set_creds(struct linux_binprm *bprm)
 	if (cxt->onexec) {
 		struct file_perms cp;
 		info = "change_profile onexec";
+		new_profile = aa_get_newest_profile(cxt->onexec);
 		if (!(perms.allow & AA_MAY_ONEXEC))
 			goto audit;
 
@@ -415,7 +414,6 @@ int apparmor_bprm_set_creds(struct linux_binprm *bprm)
 
 		if (!(cp.allow & AA_MAY_ONEXEC))
 			goto audit;
-		new_profile = aa_get_newest_profile(cxt->onexec);
 		goto apply;
 	}
 
@@ -435,7 +433,7 @@ int apparmor_bprm_set_creds(struct linux_binprm *bprm)
 				new_profile = aa_get_newest_profile(ns->unconfined);
 				info = "ux fallback";
 			} else {
-				error = -ENOENT;
+				error = -EACCES;
 				info = "profile not found";
 				/* remove MAY_EXEC to audit as failure */
 				perms.allow &= ~MAY_EXEC;
@@ -447,10 +445,8 @@ int apparmor_bprm_set_creds(struct linux_binprm *bprm)
 		if (!new_profile) {
 			error = -ENOMEM;
 			info = "could not create null profile";
-		} else {
+		} else
 			error = -EACCES;
-			target = new_profile->base.hname;
-		}
 		perms.xindex |= AA_X_UNSAFE;
 	} else
 		/* fail exec */
@@ -461,7 +457,6 @@ int apparmor_bprm_set_creds(struct linux_binprm *bprm)
 	 * fail the exec.
 	 */
 	if (bprm->unsafe & LSM_UNSAFE_NO_NEW_PRIVS) {
-		aa_put_profile(new_profile);
 		error = -EPERM;
 		goto cleanup;
 	}
@@ -476,10 +471,8 @@ int apparmor_bprm_set_creds(struct linux_binprm *bprm)
 
 	if (bprm->unsafe & (LSM_UNSAFE_PTRACE | LSM_UNSAFE_PTRACE_CAP)) {
 		error = may_change_ptraced_domain(new_profile);
-		if (error) {
-			aa_put_profile(new_profile);
+		if (error)
 			goto audit;
-		}
 	}
 
 	/* Determine if secure exec is needed.
@@ -500,7 +493,6 @@ int apparmor_bprm_set_creds(struct linux_binprm *bprm)
 		bprm->unsafe |= AA_SECURE_X_NEEDED;
 	}
 apply:
-	target = new_profile->base.hname;
 	/* when transitioning profiles clear unsafe personality bits */
 	bprm->per_clear |= PER_CLEAR_ON_SETID;
 
@@ -508,15 +500,19 @@ x_clear:
 	aa_put_profile(cxt->profile);
 	/* transfer new profile reference will be released when cxt is freed */
 	cxt->profile = new_profile;
+	new_profile = NULL;
 
 	/* clear out all temporary/transitional state from the context */
 	aa_clear_task_cxt_trans(cxt);
 
 audit:
 	error = aa_audit_file(profile, &perms, GFP_KERNEL, OP_EXEC, MAY_EXEC,
-			      name, target, cond.uid, info, error);
+			      name,
+			      new_profile ? new_profile->base.hname : NULL,
+			      cond.uid, info, error);
 
 cleanup:
+	aa_put_profile(new_profile);
 	aa_put_profile(profile);
 	kfree(buffer);
 
@@ -531,15 +527,13 @@ cleanup:
  */
 int apparmor_bprm_secureexec(struct linux_binprm *bprm)
 {
-	int ret = cap_bprm_secureexec(bprm);
-
 	/* the decision to use secure exec is computed in set_creds
 	 * and stored in bprm->unsafe.
 	 */
-	if (!ret && (bprm->unsafe & AA_SECURE_X_NEEDED))
-		ret = 1;
+	if (bprm->unsafe & AA_SECURE_X_NEEDED)
+		return 1;
 
-	return ret;
+	return 0;
 }
 
 /**
@@ -627,8 +621,8 @@ int aa_change_hat(const char *hats[], int count, u64 token, bool permtest)
 	/* released below */
 	cred = get_current_cred();
 	cxt = cred_cxt(cred);
-	profile = aa_cred_profile(cred);
-	previous_profile = cxt->previous;
+	profile = aa_get_newest_profile(aa_cred_profile(cred));
+	previous_profile = aa_get_newest_profile(cxt->previous);
 
 	if (unconfined(profile)) {
 		info = "unconfined";
@@ -724,6 +718,8 @@ audit:
 out:
 	aa_put_profile(hat);
 	kfree(name);
+	aa_put_profile(profile);
+	aa_put_profile(previous_profile);
 	put_cred(cred);
 
 	return error;

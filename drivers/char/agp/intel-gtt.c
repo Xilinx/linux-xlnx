@@ -555,8 +555,10 @@ static unsigned int intel_gtt_mappable_entries(void)
 static void intel_gtt_teardown_scratch_page(void)
 {
 	set_pages_wb(intel_private.scratch_page, 1);
-	pci_unmap_page(intel_private.pcidev, intel_private.scratch_page_dma,
-		       PAGE_SIZE, PCI_DMA_BIDIRECTIONAL);
+	if (intel_private.needs_dmar)
+		pci_unmap_page(intel_private.pcidev,
+			       intel_private.scratch_page_dma,
+			       PAGE_SIZE, PCI_DMA_BIDIRECTIONAL);
 	__free_page(intel_private.scratch_page);
 }
 
@@ -581,7 +583,7 @@ static inline int needs_ilk_vtd_wa(void)
 	/* Query intel_iommu to see if we need the workaround. Presumably that
 	 * was loaded first.
 	 */
-	if ((gpu_devid == PCI_DEVICE_ID_INTEL_IRONLAKE_M_HB ||
+	if ((gpu_devid == PCI_DEVICE_ID_INTEL_IRONLAKE_D_IG ||
 	     gpu_devid == PCI_DEVICE_ID_INTEL_IRONLAKE_M_IG) &&
 	     intel_iommu_gfx_mapped)
 		return 1;
@@ -837,6 +839,16 @@ static bool i830_check_flags(unsigned int flags)
 
 	return false;
 }
+
+void intel_gtt_insert_page(dma_addr_t addr,
+			   unsigned int pg,
+			   unsigned int flags)
+{
+	intel_private.driver->write_entry(addr, pg, flags);
+	if (intel_private.driver->chipset_flush)
+		intel_private.driver->chipset_flush();
+}
+EXPORT_SYMBOL(intel_gtt_insert_page);
 
 void intel_gtt_insert_sg_entries(struct sg_table *st,
 				 unsigned int pg_start,
@@ -1346,16 +1358,6 @@ int intel_gmch_probe(struct pci_dev *bridge_pdev, struct pci_dev *gpu_pdev,
 {
 	int i, mask;
 
-	/*
-	 * Can be called from the fake agp driver but also directly from
-	 * drm/i915.ko. Hence we need to check whether everything is set up
-	 * already.
-	 */
-	if (intel_private.driver) {
-		intel_private.refcount++;
-		return 1;
-	}
-
 	for (i = 0; intel_gtt_chipsets[i].name != NULL; i++) {
 		if (gpu_pdev) {
 			if (gpu_pdev->device ==
@@ -1376,15 +1378,25 @@ int intel_gmch_probe(struct pci_dev *bridge_pdev, struct pci_dev *gpu_pdev,
 	if (!intel_private.driver)
 		return 0;
 
-	intel_private.refcount++;
-
 #if IS_ENABLED(CONFIG_AGP_INTEL)
 	if (bridge) {
+		if (INTEL_GTT_GEN > 1)
+			return 0;
+
 		bridge->driver = &intel_fake_agp_driver;
 		bridge->dev_private_data = &intel_private;
 		bridge->dev = bridge_pdev;
 	}
 #endif
+
+
+	/*
+	 * Can be called from the fake agp driver but also directly from
+	 * drm/i915.ko. Hence we need to check whether everything is set up
+	 * already.
+	 */
+	if (intel_private.refcount++)
+		return 1;
 
 	intel_private.bridge_dev = pci_dev_get(bridge_pdev);
 
@@ -1408,8 +1420,8 @@ int intel_gmch_probe(struct pci_dev *bridge_pdev, struct pci_dev *gpu_pdev,
 }
 EXPORT_SYMBOL(intel_gmch_probe);
 
-void intel_gtt_get(size_t *gtt_total, size_t *stolen_size,
-		   phys_addr_t *mappable_base, unsigned long *mappable_end)
+void intel_gtt_get(u64 *gtt_total, size_t *stolen_size,
+		   phys_addr_t *mappable_base, u64 *mappable_end)
 {
 	*gtt_total = intel_private.gtt_total_entries << PAGE_SHIFT;
 	*stolen_size = intel_private.stolen_size;
@@ -1430,6 +1442,8 @@ void intel_gmch_remove(void)
 	if (--intel_private.refcount)
 		return;
 
+	if (intel_private.scratch_page)
+		intel_gtt_teardown_scratch_page();
 	if (intel_private.pcidev)
 		pci_dev_put(intel_private.pcidev);
 	if (intel_private.bridge_dev)

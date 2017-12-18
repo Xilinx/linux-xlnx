@@ -25,6 +25,9 @@
 #include "sysfs.h"
 #include "core.h"
 
+/* name for sysfs, %d is appended */
+#define PHY_NAME "phy"
+
 /* RCU-protected (and RTNL for writers) */
 LIST_HEAD(cfg802154_rdev_list);
 int cfg802154_rdev_list_generation;
@@ -92,6 +95,18 @@ cfg802154_rdev_by_wpan_phy_idx(int wpan_phy_idx)
 	return result;
 }
 
+struct wpan_phy *wpan_phy_idx_to_wpan_phy(int wpan_phy_idx)
+{
+	struct cfg802154_registered_device *rdev;
+
+	ASSERT_RTNL();
+
+	rdev = cfg802154_rdev_by_wpan_phy_idx(wpan_phy_idx);
+	if (!rdev)
+		return NULL;
+	return &rdev->wpan_phy;
+}
+
 struct wpan_phy *
 wpan_phy_new(const struct cfg802154_ops *ops, size_t priv_size)
 {
@@ -118,14 +133,14 @@ wpan_phy_new(const struct cfg802154_ops *ops, size_t priv_size)
 	/* atomic_inc_return makes it start at 1, make it start at 0 */
 	rdev->wpan_phy_idx--;
 
-	mutex_init(&rdev->wpan_phy.pib_lock);
-
 	INIT_LIST_HEAD(&rdev->wpan_dev_list);
 	device_initialize(&rdev->wpan_phy.dev);
-	dev_set_name(&rdev->wpan_phy.dev, "wpan-phy%d", rdev->wpan_phy_idx);
+	dev_set_name(&rdev->wpan_phy.dev, PHY_NAME "%d", rdev->wpan_phy_idx);
 
 	rdev->wpan_phy.dev.class = &wpan_phy_class;
 	rdev->wpan_phy.dev.platform_data = rdev;
+
+	wpan_phy_net_set(&rdev->wpan_phy, &init_net);
 
 	init_waitqueue_head(&rdev->dev_wait);
 
@@ -194,6 +209,49 @@ void wpan_phy_free(struct wpan_phy *phy)
 }
 EXPORT_SYMBOL(wpan_phy_free);
 
+int cfg802154_switch_netns(struct cfg802154_registered_device *rdev,
+			   struct net *net)
+{
+	struct wpan_dev *wpan_dev;
+	int err = 0;
+
+	list_for_each_entry(wpan_dev, &rdev->wpan_dev_list, list) {
+		if (!wpan_dev->netdev)
+			continue;
+		wpan_dev->netdev->features &= ~NETIF_F_NETNS_LOCAL;
+		err = dev_change_net_namespace(wpan_dev->netdev, net, "wpan%d");
+		if (err)
+			break;
+		wpan_dev->netdev->features |= NETIF_F_NETNS_LOCAL;
+	}
+
+	if (err) {
+		/* failed -- clean up to old netns */
+		net = wpan_phy_net(&rdev->wpan_phy);
+
+		list_for_each_entry_continue_reverse(wpan_dev,
+						     &rdev->wpan_dev_list,
+						     list) {
+			if (!wpan_dev->netdev)
+				continue;
+			wpan_dev->netdev->features &= ~NETIF_F_NETNS_LOCAL;
+			err = dev_change_net_namespace(wpan_dev->netdev, net,
+						       "wpan%d");
+			WARN_ON(err);
+			wpan_dev->netdev->features |= NETIF_F_NETNS_LOCAL;
+		}
+
+		return err;
+	}
+
+	wpan_phy_net_set(&rdev->wpan_phy, net);
+
+	err = device_rename(&rdev->wpan_phy.dev, dev_name(&rdev->wpan_phy.dev));
+	WARN_ON(err);
+
+	return 0;
+}
+
 void cfg802154_dev_free(struct cfg802154_registered_device *rdev)
 {
 	kfree(rdev);
@@ -225,6 +283,7 @@ static int cfg802154_netdev_notifier_call(struct notifier_block *nb,
 	switch (state) {
 		/* TODO NETDEV_DEVTYPE */
 	case NETDEV_REGISTER:
+		dev->features |= NETIF_F_NETNS_LOCAL;
 		wpan_dev->identifier = ++rdev->wpan_dev_id;
 		list_add_rcu(&wpan_dev->list, &rdev->wpan_dev_list);
 		rdev->devlist_generation++;
@@ -272,13 +331,33 @@ static struct notifier_block cfg802154_netdev_notifier = {
 	.notifier_call = cfg802154_netdev_notifier_call,
 };
 
+static void __net_exit cfg802154_pernet_exit(struct net *net)
+{
+	struct cfg802154_registered_device *rdev;
+
+	rtnl_lock();
+	list_for_each_entry(rdev, &cfg802154_rdev_list, list) {
+		if (net_eq(wpan_phy_net(&rdev->wpan_phy), net))
+			WARN_ON(cfg802154_switch_netns(rdev, &init_net));
+	}
+	rtnl_unlock();
+}
+
+static struct pernet_operations cfg802154_pernet_ops = {
+	.exit = cfg802154_pernet_exit,
+};
+
 static int __init wpan_phy_class_init(void)
 {
 	int rc;
 
-	rc = wpan_phy_sysfs_init();
+	rc = register_pernet_device(&cfg802154_pernet_ops);
 	if (rc)
 		goto err;
+
+	rc = wpan_phy_sysfs_init();
+	if (rc)
+		goto err_sysfs;
 
 	rc = register_netdevice_notifier(&cfg802154_netdev_notifier);
 	if (rc)
@@ -301,6 +380,8 @@ err_notifier:
 	unregister_netdevice_notifier(&cfg802154_netdev_notifier);
 err_nl:
 	wpan_phy_sysfs_exit();
+err_sysfs:
+	unregister_pernet_device(&cfg802154_pernet_ops);
 err:
 	return rc;
 }
@@ -312,6 +393,7 @@ static void __exit wpan_phy_class_exit(void)
 	ieee802154_nl_exit();
 	unregister_netdevice_notifier(&cfg802154_netdev_notifier);
 	wpan_phy_sysfs_exit();
+	unregister_pernet_device(&cfg802154_pernet_ops);
 }
 module_exit(wpan_phy_class_exit);
 

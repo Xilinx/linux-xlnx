@@ -39,11 +39,41 @@
 char *xstrdup(const char *s)
 {
 	int len = strlen(s) + 1;
-	char *dup = xmalloc(len);
+	char *d = xmalloc(len);
 
-	memcpy(dup, s, len);
+	memcpy(d, s, len);
 
-	return dup;
+	return d;
+}
+
+/* based in part from (3) vsnprintf */
+int xasprintf(char **strp, const char *fmt, ...)
+{
+	int n, size = 128;	/* start with 128 bytes */
+	char *p;
+	va_list ap;
+
+	/* initial pointer is NULL making the fist realloc to be malloc */
+	p = NULL;
+	while (1) {
+		p = xrealloc(p, size);
+
+		/* Try to print in the allocated space. */
+		va_start(ap, fmt);
+		n = vsnprintf(p, size, fmt, ap);
+		va_end(ap);
+
+		/* If that worked, return the string. */
+		if (n > -1 && n < size)
+			break;
+		/* Else try again with more space. */
+		if (n > -1)	/* glibc 2.1 */
+			size = n + 1; /* precisely what is needed */
+		else		/* glibc 2.0 */
+			size *= 2; /* twice the old size */
+	}
+	*strp = p;
+	return strlen(p);
 }
 
 char *join_path(const char *path, const char *name)
@@ -70,7 +100,7 @@ char *join_path(const char *path, const char *name)
 	return str;
 }
 
-int util_is_printable_string(const void *data, int len)
+bool util_is_printable_string(const void *data, int len)
 {
 	const char *s = data;
 	const char *ss, *se;
@@ -87,7 +117,7 @@ int util_is_printable_string(const void *data, int len)
 
 	while (s < se) {
 		ss = s;
-		while (s < se && *s && isprint(*s))
+		while (s < se && *s && isprint((unsigned char)*s))
 			s++;
 
 		/* not zero, or not done yet */
@@ -152,7 +182,6 @@ char get_escape_char(const char *s, int *i)
 	int	j = *i + 1;
 	char	val;
 
-	assert(c);
 	switch (c) {
 	case 'a':
 		val = '\a';
@@ -219,10 +248,6 @@ int utilfdt_read_err_len(const char *filename, char **buffp, off_t *len)
 		if (offset == bufsize) {
 			bufsize *= 2;
 			buf = xrealloc(buf, bufsize);
-			if (!buf) {
-				ret = ENOMEM;
-				break;
-			}
 		}
 
 		ret = read(fd, &buf[offset], bufsize - offset);
@@ -353,7 +378,6 @@ int utilfdt_decode_type(const char *fmt, int *type, int *size)
 void utilfdt_print_data(const char *data, int len)
 {
 	int i;
-	const char *p = data;
 	const char *s;
 
 	/* no data, don't print */
@@ -372,14 +396,15 @@ void utilfdt_print_data(const char *data, int len)
 		} while (s < data + len);
 
 	} else if ((len % 4) == 0) {
-		const uint32_t *cell = (const uint32_t *)data;
+		const fdt32_t *cell = (const fdt32_t *)data;
 
 		printf(" = <");
-		for (i = 0; i < len; i += 4)
+		for (i = 0, len /= 4; i < len; i++)
 			printf("0x%08x%s", fdt32_to_cpu(cell[i]),
-			       i < (len - 4) ? " " : "");
+			       i < (len - 1) ? " " : "");
 		printf(">");
 	} else {
+		const unsigned char *p = (const unsigned char *)data;
 		printf(" = [");
 		for (i = 0; i < len; i++)
 			printf("%02x%s", *p++, i < len - 1 ? " " : "");
@@ -387,15 +412,16 @@ void utilfdt_print_data(const char *data, int len)
 	}
 }
 
-void util_version(void)
+void NORETURN util_version(void)
 {
 	printf("Version: %s\n", DTC_VERSION);
 	exit(0);
 }
 
-void util_usage(const char *errmsg, const char *synopsis,
-		const char *short_opts, struct option const long_opts[],
-		const char * const opts_help[])
+void NORETURN util_usage(const char *errmsg, const char *synopsis,
+			 const char *short_opts,
+			 struct option const long_opts[],
+			 const char * const opts_help[])
 {
 	FILE *fp = errmsg ? stderr : stdout;
 	const char a_arg[] = "<arg>";

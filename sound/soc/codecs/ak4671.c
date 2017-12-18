@@ -577,7 +577,6 @@ static int ak4671_set_bias_level(struct snd_soc_codec *codec,
 		snd_soc_write(codec, AK4671_AD_DA_POWER_MANAGEMENT, 0x00);
 		break;
 	}
-	codec->dapm.bias_level = level;
 	return 0;
 }
 
@@ -613,12 +612,14 @@ static struct snd_soc_dai_driver ak4671_dai = {
 
 static struct snd_soc_codec_driver soc_codec_dev_ak4671 = {
 	.set_bias_level = ak4671_set_bias_level,
-	.controls = ak4671_snd_controls,
-	.num_controls = ARRAY_SIZE(ak4671_snd_controls),
-	.dapm_widgets = ak4671_dapm_widgets,
-	.num_dapm_widgets = ARRAY_SIZE(ak4671_dapm_widgets),
-	.dapm_routes = ak4671_intercon,
-	.num_dapm_routes = ARRAY_SIZE(ak4671_intercon),
+	.component_driver = {
+		.controls		= ak4671_snd_controls,
+		.num_controls		= ARRAY_SIZE(ak4671_snd_controls),
+		.dapm_widgets		= ak4671_dapm_widgets,
+		.num_dapm_widgets	= ARRAY_SIZE(ak4671_dapm_widgets),
+		.dapm_routes		= ak4671_intercon,
+		.num_dapm_routes	= ARRAY_SIZE(ak4671_intercon),
+	},
 };
 
 static const struct regmap_config ak4671_regmap = {
@@ -664,7 +665,6 @@ MODULE_DEVICE_TABLE(i2c, ak4671_i2c_id);
 static struct i2c_driver ak4671_i2c_driver = {
 	.driver = {
 		.name = "ak4671-codec",
-		.owner = THIS_MODULE,
 	},
 	.probe = ak4671_i2c_probe,
 	.remove = ak4671_i2c_remove,

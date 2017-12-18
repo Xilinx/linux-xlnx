@@ -615,11 +615,9 @@ struct mtd_info *cfi_cmdset_0002(struct map_info *map, int primary)
 
 				for (i=0; i<cfi->cfiq->NumEraseRegions / 2; i++) {
 					int j = (cfi->cfiq->NumEraseRegions-1)-i;
-					__u32 swap;
 
-					swap = cfi->cfiq->EraseRegionInfo[i];
-					cfi->cfiq->EraseRegionInfo[i] = cfi->cfiq->EraseRegionInfo[j];
-					cfi->cfiq->EraseRegionInfo[j] = swap;
+					swap(cfi->cfiq->EraseRegionInfo[i],
+					     cfi->cfiq->EraseRegionInfo[j]);
 				}
 			}
 			/* Set the default CFI lock/unlock addresses */
@@ -1295,7 +1293,7 @@ static int do_otp_write(struct map_info *map, struct flchip *chip, loff_t adr,
 		unsigned long bus_ofs = adr & ~(map_bankwidth(map)-1);
 		int gap = adr - bus_ofs;
 		int n = min_t(int, len, map_bankwidth(map) - gap);
-		map_word datum;
+		map_word datum = map_word_ff(map);
 
 		if (n != map_bankwidth(map)) {
 			/* partial write of a word, load old contents */

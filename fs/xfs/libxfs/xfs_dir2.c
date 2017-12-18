@@ -21,6 +21,7 @@
 #include "xfs_log_format.h"
 #include "xfs_trans_resv.h"
 #include "xfs_mount.h"
+#include "xfs_defer.h"
 #include "xfs_da_format.h"
 #include "xfs_da_btree.h"
 #include "xfs_inode.h"
@@ -176,7 +177,7 @@ xfs_dir_isempty(
 {
 	xfs_dir2_sf_hdr_t	*sfp;
 
-	ASSERT(S_ISDIR(dp->i_d.di_mode));
+	ASSERT(S_ISDIR(VFS_I(dp)->i_mode));
 	if (dp->i_d.di_size == 0)	/* might happen during shutdown. */
 		return 1;
 	if (dp->i_d.di_size > XFS_IFORK_DSIZE(dp))
@@ -231,7 +232,7 @@ xfs_dir_init(
 	struct xfs_da_args *args;
 	int		error;
 
-	ASSERT(S_ISDIR(dp->i_d.di_mode));
+	ASSERT(S_ISDIR(VFS_I(dp)->i_mode));
 	error = xfs_dir_ino_validate(tp->t_mountp, pdp->i_ino);
 	if (error)
 		return error;
@@ -259,19 +260,19 @@ xfs_dir_createname(
 	struct xfs_name		*name,
 	xfs_ino_t		inum,		/* new entry inode number */
 	xfs_fsblock_t		*first,		/* bmap's firstblock */
-	xfs_bmap_free_t		*flist,		/* bmap's freeblock list */
+	struct xfs_defer_ops	*dfops,		/* bmap's freeblock list */
 	xfs_extlen_t		total)		/* bmap's total block count */
 {
 	struct xfs_da_args	*args;
 	int			rval;
 	int			v;		/* type-checking value */
 
-	ASSERT(S_ISDIR(dp->i_d.di_mode));
+	ASSERT(S_ISDIR(VFS_I(dp)->i_mode));
 	if (inum) {
 		rval = xfs_dir_ino_validate(tp->t_mountp, inum);
 		if (rval)
 			return rval;
-		XFS_STATS_INC(xs_dir_create);
+		XFS_STATS_INC(dp->i_mount, xs_dir_create);
 	}
 
 	args = kmem_zalloc(sizeof(*args), KM_SLEEP | KM_NOFS);
@@ -286,7 +287,7 @@ xfs_dir_createname(
 	args->inumber = inum;
 	args->dp = dp;
 	args->firstblock = first;
-	args->flist = flist;
+	args->dfops = dfops;
 	args->total = total;
 	args->whichfork = XFS_DATA_FORK;
 	args->trans = tp;
@@ -362,9 +363,10 @@ xfs_dir_lookup(
 	struct xfs_da_args *args;
 	int		rval;
 	int		v;		/* type-checking value */
+	int		lock_mode;
 
-	ASSERT(S_ISDIR(dp->i_d.di_mode));
-	XFS_STATS_INC(xs_dir_lookup);
+	ASSERT(S_ISDIR(VFS_I(dp)->i_mode));
+	XFS_STATS_INC(dp->i_mount, xs_dir_lookup);
 
 	/*
 	 * We need to use KM_NOFS here so that lockdep will not throw false
@@ -387,6 +389,7 @@ xfs_dir_lookup(
 	if (ci_name)
 		args->op_flags |= XFS_DA_OP_CILOOKUP;
 
+	lock_mode = xfs_ilock_data_map_shared(dp);
 	if (dp->i_d.di_format == XFS_DINODE_FMT_LOCAL) {
 		rval = xfs_dir2_sf_lookup(args);
 		goto out_check_rval;
@@ -419,6 +422,7 @@ out_check_rval:
 		}
 	}
 out_free:
+	xfs_iunlock(dp, lock_mode);
 	kmem_free(args);
 	return rval;
 }
@@ -433,15 +437,15 @@ xfs_dir_removename(
 	struct xfs_name	*name,
 	xfs_ino_t	ino,
 	xfs_fsblock_t	*first,		/* bmap's firstblock */
-	xfs_bmap_free_t	*flist,		/* bmap's freeblock list */
+	struct xfs_defer_ops	*dfops,		/* bmap's freeblock list */
 	xfs_extlen_t	total)		/* bmap's total block count */
 {
 	struct xfs_da_args *args;
 	int		rval;
 	int		v;		/* type-checking value */
 
-	ASSERT(S_ISDIR(dp->i_d.di_mode));
-	XFS_STATS_INC(xs_dir_remove);
+	ASSERT(S_ISDIR(VFS_I(dp)->i_mode));
+	XFS_STATS_INC(dp->i_mount, xs_dir_remove);
 
 	args = kmem_zalloc(sizeof(*args), KM_SLEEP | KM_NOFS);
 	if (!args)
@@ -455,7 +459,7 @@ xfs_dir_removename(
 	args->inumber = ino;
 	args->dp = dp;
 	args->firstblock = first;
-	args->flist = flist;
+	args->dfops = dfops;
 	args->total = total;
 	args->whichfork = XFS_DATA_FORK;
 	args->trans = tp;
@@ -495,14 +499,14 @@ xfs_dir_replace(
 	struct xfs_name	*name,		/* name of entry to replace */
 	xfs_ino_t	inum,		/* new inode number */
 	xfs_fsblock_t	*first,		/* bmap's firstblock */
-	xfs_bmap_free_t	*flist,		/* bmap's freeblock list */
+	struct xfs_defer_ops	*dfops,		/* bmap's freeblock list */
 	xfs_extlen_t	total)		/* bmap's total block count */
 {
 	struct xfs_da_args *args;
 	int		rval;
 	int		v;		/* type-checking value */
 
-	ASSERT(S_ISDIR(dp->i_d.di_mode));
+	ASSERT(S_ISDIR(VFS_I(dp)->i_mode));
 
 	rval = xfs_dir_ino_validate(tp->t_mountp, inum);
 	if (rval)
@@ -520,7 +524,7 @@ xfs_dir_replace(
 	args->inumber = inum;
 	args->dp = dp;
 	args->firstblock = first;
-	args->flist = flist;
+	args->dfops = dfops;
 	args->total = total;
 	args->whichfork = XFS_DATA_FORK;
 	args->trans = tp;
@@ -674,25 +678,22 @@ xfs_dir2_shrink_inode(
 	mp = dp->i_mount;
 	tp = args->trans;
 	da = xfs_dir2_db_to_da(args->geo, db);
-	/*
-	 * Unmap the fsblock(s).
-	 */
-	if ((error = xfs_bunmapi(tp, dp, da, args->geo->fsbcount,
-			XFS_BMAPI_METADATA, 0, args->firstblock, args->flist,
-			&done))) {
+
+	/* Unmap the fsblock(s). */
+	error = xfs_bunmapi(tp, dp, da, args->geo->fsbcount, 0, 0,
+			    args->firstblock, args->dfops, &done);
+	if (error) {
 		/*
-		 * ENOSPC actually can happen if we're in a removename with
-		 * no space reservation, and the resulting block removal
-		 * would cause a bmap btree split or conversion from extents
-		 * to btree.  This can only happen for un-fragmented
-		 * directory blocks, since you need to be punching out
-		 * the middle of an extent.
-		 * In this case we need to leave the block in the file,
-		 * and not binval it.
-		 * So the block has to be in a consistent empty state
-		 * and appropriately logged.
-		 * We don't free up the buffer, the caller can tell it
-		 * hasn't happened since it got an error back.
+		 * ENOSPC actually can happen if we're in a removename with no
+		 * space reservation, and the resulting block removal would
+		 * cause a bmap btree split or conversion from extents to btree.
+		 * This can only happen for un-fragmented directory blocks,
+		 * since you need to be punching out the middle of an extent.
+		 * In this case we need to leave the block in the file, and not
+		 * binval it.  So the block has to be in a consistent empty
+		 * state and appropriately logged.  We don't free up the buffer,
+		 * the caller can tell it hasn't happened since it got an error
+		 * back.
 		 */
 		return error;
 	}

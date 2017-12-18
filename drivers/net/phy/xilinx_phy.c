@@ -41,7 +41,7 @@ static int xilinxphy_read_status(struct phy_device *phydev)
 	if (err)
 		return err;
 
-	if (AUTONEG_ENABLE == phydev->autoneg) {
+	if (phydev->autoneg == AUTONEG_ENABLE) {
 		status = phy_read(phydev, MII_LPA);
 
 		if (status & MII_PHY_STATUS_FULLDUPLEX)
@@ -89,12 +89,20 @@ static int xilinxphy_read_status(struct phy_device *phydev)
 		phydev->speed = SPEED_1000;
 	}
 
+	/* For 2500BASE-X Phy Mode the speed/duplex will always be
+	 * 2500Mbps/fullduplex
+	 */
+	if (phydev->dev_flags == XAE_PHY_TYPE_2500) {
+		phydev->duplex = DUPLEX_FULL;
+		phydev->speed = SPEED_2500;
+	}
+
 	return 0;
 }
 
 static int xilinxphy_of_init(struct phy_device *phydev)
 {
-	struct device *dev = &phydev->dev;
+	struct device *dev = &phydev->mdio.dev;
 	struct device_node *of_node = dev->of_node;
 	u32 phytype;
 
@@ -104,9 +112,12 @@ static int xilinxphy_of_init(struct phy_device *phydev)
 	if (!of_node)
 		return -ENODEV;
 
-	if (!of_property_read_u32(of_node, "xlnx,phy-type", &phytype))
+	if (!of_property_read_u32(of_node, "xlnx,phy-type", &phytype)) {
 		if (phytype == XAE_PHY_TYPE_1000BASE_X)
 			phydev->dev_flags |= XAE_PHY_TYPE_1000BASE_X;
+		if (phytype == XAE_PHY_TYPE_2500)
+			phydev->dev_flags |= XAE_PHY_TYPE_2500;
+	}
 
 	return 0;
 }
@@ -134,7 +145,6 @@ static struct phy_driver xilinx_drivers[] = {
 		.read_status = &xilinxphy_read_status,
 		.resume = &genphy_resume,
 		.suspend = &genphy_suspend,
-		.driver = { .owner = THIS_MODULE },
 	},
 };
 

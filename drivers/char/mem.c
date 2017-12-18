@@ -22,11 +22,12 @@
 #include <linux/device.h>
 #include <linux/highmem.h>
 #include <linux/backing-dev.h>
+#include <linux/shmem_fs.h>
 #include <linux/splice.h>
 #include <linux/pfn.h>
 #include <linux/export.h>
 #include <linux/io.h>
-#include <linux/aio.h>
+#include <linux/uio.h>
 
 #include <linux/uaccess.h>
 
@@ -66,12 +67,8 @@ static inline int range_is_allowed(unsigned long pfn, unsigned long size)
 	u64 cursor = from;
 
 	while (cursor < to) {
-		if (!devmem_is_allowed(pfn)) {
-			printk(KERN_INFO
-		"Program %s tried to access /dev/mem between %Lx->%Lx.\n",
-				current->comm, from, to);
+		if (!devmem_is_allowed(pfn))
 			return 0;
-		}
 		cursor += PAGE_SIZE;
 		pfn++;
 	}
@@ -384,6 +381,9 @@ static ssize_t read_kmem(struct file *file, char __user *buf,
 	char *kbuf; /* k-addr because vread() takes vmlist_lock rwlock */
 	int err = 0;
 
+	if (!pfn_valid(PFN_DOWN(p)))
+		return -EIO;
+
 	read = 0;
 	if (p < (unsigned long) high_memory) {
 		low_count = count;
@@ -512,6 +512,9 @@ static ssize_t write_kmem(struct file *file, const char __user *buf,
 	char *kbuf; /* k-addr because vwrite() takes vmlist_lock rwlock */
 	int err = 0;
 
+	if (!pfn_valid(PFN_DOWN(p)))
+		return -EIO;
+
 	if (p < (unsigned long) high_memory) {
 		unsigned long to_write = min_t(unsigned long, count,
 					       (unsigned long)high_memory - p);
@@ -607,16 +610,16 @@ static ssize_t write_null(struct file *file, const char __user *buf,
 	return count;
 }
 
-static ssize_t aio_read_null(struct kiocb *iocb, const struct iovec *iov,
-			     unsigned long nr_segs, loff_t pos)
+static ssize_t read_iter_null(struct kiocb *iocb, struct iov_iter *to)
 {
 	return 0;
 }
 
-static ssize_t aio_write_null(struct kiocb *iocb, const struct iovec *iov,
-			      unsigned long nr_segs, loff_t pos)
+static ssize_t write_iter_null(struct kiocb *iocb, struct iov_iter *from)
 {
-	return iov_length(iov, nr_segs);
+	size_t count = iov_iter_count(from);
+	iov_iter_advance(from, count);
+	return count;
 }
 
 static int pipe_to_null(struct pipe_inode_info *info, struct pipe_buffer *buf,
@@ -661,6 +664,28 @@ static int mmap_zero(struct file *file, struct vm_area_struct *vma)
 	return 0;
 }
 
+static unsigned long get_unmapped_area_zero(struct file *file,
+				unsigned long addr, unsigned long len,
+				unsigned long pgoff, unsigned long flags)
+{
+#ifdef CONFIG_MMU
+	if (flags & MAP_SHARED) {
+		/*
+		 * mmap_zero() will call shmem_zero_setup() to create a file,
+		 * so use shmem's get_unmapped_area in case it can be huge;
+		 * and pass NULL for file as in mmap.c's get_unmapped_area(),
+		 * so as not to confuse shmem with our handle on "/dev/zero".
+		 */
+		return shmem_get_unmapped_area(NULL, addr, len, pgoff, flags);
+	}
+
+	/* Otherwise flags & MAP_PRIVATE: with no shmem object beneath it */
+	return current->mm->get_unmapped_area(file, addr, len, pgoff, flags);
+#else
+	return -ENOSYS;
+#endif
+}
+
 static ssize_t write_full(struct file *file, const char __user *buf,
 			  size_t count, loff_t *ppos)
 {
@@ -689,13 +714,13 @@ static loff_t memory_lseek(struct file *file, loff_t offset, int orig)
 {
 	loff_t ret;
 
-	mutex_lock(&file_inode(file)->i_mutex);
+	inode_lock(file_inode(file));
 	switch (orig) {
 	case SEEK_CUR:
 		offset += file->f_pos;
 	case SEEK_SET:
 		/* to avoid userland mistaking f_pos=-9 as -EBADF=-9 */
-		if (IS_ERR_VALUE((unsigned long long)offset)) {
+		if ((unsigned long long)offset >= -MAX_ERRNO) {
 			ret = -EOVERFLOW;
 			break;
 		}
@@ -706,7 +731,7 @@ static loff_t memory_lseek(struct file *file, loff_t offset, int orig)
 	default:
 		ret = -EINVAL;
 	}
-	mutex_unlock(&file_inode(file)->i_mutex);
+	inode_unlock(file_inode(file));
 	return ret;
 }
 
@@ -718,7 +743,7 @@ static int open_port(struct inode *inode, struct file *filp)
 #define zero_lseek	null_lseek
 #define full_lseek      null_lseek
 #define write_zero	write_null
-#define aio_write_zero	aio_write_null
+#define write_iter_zero	write_iter_null
 #define open_mem	open_port
 #define open_kmem	open_mem
 
@@ -750,8 +775,8 @@ static const struct file_operations null_fops = {
 	.llseek		= null_lseek,
 	.read		= read_null,
 	.write		= write_null,
-	.aio_read	= aio_read_null,
-	.aio_write	= aio_write_null,
+	.read_iter	= read_iter_null,
+	.write_iter	= write_iter_null,
 	.splice_write	= splice_write_null,
 };
 
@@ -764,11 +789,11 @@ static const struct file_operations __maybe_unused port_fops = {
 
 static const struct file_operations zero_fops = {
 	.llseek		= zero_lseek,
-	.read		= new_sync_read,
 	.write		= write_zero,
 	.read_iter	= read_iter_zero,
-	.aio_write	= aio_write_zero,
+	.write_iter	= write_iter_zero,
 	.mmap		= mmap_zero,
+	.get_unmapped_area = get_unmapped_area_zero,
 #ifndef CONFIG_MMU
 	.mmap_capabilities = zero_mmap_capabilities,
 #endif
@@ -776,7 +801,6 @@ static const struct file_operations zero_fops = {
 
 static const struct file_operations full_fops = {
 	.llseek		= full_lseek,
-	.read		= new_sync_read,
 	.read_iter	= read_iter_zero,
 	.write		= write_full,
 };

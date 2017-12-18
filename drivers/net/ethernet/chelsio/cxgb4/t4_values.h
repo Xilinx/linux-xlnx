@@ -53,6 +53,9 @@
 
 #define INGPADBOUNDARY_SHIFT_X		5
 
+#define T6_INGPADBOUNDARY_SHIFT_X	3
+#define T6_INGPADBOUNDARY_32B_X		2
+
 /* CONTROL2 register */
 #define INGPACKBOUNDARY_SHIFT_X		5
 #define INGPACKBOUNDARY_16B_X		0
@@ -60,6 +63,31 @@
 /* GTS register */
 #define SGE_TIMERREGS			6
 #define TIMERREG_COUNTER0_X		0
+
+#define FETCHBURSTMIN_64B_X		2
+#define FETCHBURSTMIN_128B_X		3
+
+#define FETCHBURSTMAX_256B_X		2
+#define FETCHBURSTMAX_512B_X		3
+
+#define HOSTFCMODE_STATUS_PAGE_X	2
+
+#define CIDXFLUSHTHRESH_32_X		5
+
+#define UPDATEDELIVERY_INTERRUPT_X	1
+
+#define RSPD_TYPE_FLBUF_X		0
+#define RSPD_TYPE_CPL_X			1
+#define RSPD_TYPE_INTR_X		2
+
+/* Congestion Manager Definitions.
+ */
+#define CONMCTXT_CNGTPMODE_S		19
+#define CONMCTXT_CNGTPMODE_V(x)		((x) << CONMCTXT_CNGTPMODE_S)
+#define CONMCTXT_CNGCHMAP_S		0
+#define CONMCTXT_CNGCHMAP_V(x)		((x) << CONMCTXT_CNGCHMAP_S)
+#define CONMCTXT_CNGTPMODE_CHANNEL_X	2
+#define CONMCTXT_CNGTPMODE_QUEUE_X	1
 
 /* T5 and later support a new BAR2-based doorbell mechanism for Egress Queues.
  * The User Doorbells are each 128 bytes in length with a Simple Doorbell at

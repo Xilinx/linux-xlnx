@@ -258,7 +258,7 @@ static u32 cx23885_functionality(struct i2c_adapter *adap)
 	return I2C_FUNC_SMBUS_EMUL | I2C_FUNC_I2C;
 }
 
-static struct i2c_algorithm cx23885_i2c_algo_template = {
+static const struct i2c_algorithm cx23885_i2c_algo_template = {
 	.master_xfer	= i2c_xfer,
 	.functionality	= cx23885_functionality,
 };
@@ -279,6 +279,8 @@ static char *i2c_devs[128] = {
 	[0x10 >> 1] = "tda10048",
 	[0x12 >> 1] = "dib7000pc",
 	[0x1c >> 1] = "lgdt3303",
+	[0x80 >> 1] = "cs3308",
+	[0x82 >> 1] = "cs3308",
 	[0x86 >> 1] = "tda9887",
 	[0x32 >> 1] = "cx24227",
 	[0x88 >> 1] = "cx25837",

@@ -26,6 +26,7 @@
 
 #ifdef CONFIG_SMP
 	.macro  get_fault_ip t1 t2
+	loadgp
 	addil LT%__per_cpu_offset,%r27
 	LDREG RT%__per_cpu_offset(%r1),\t1
 	/* t2 = smp_processor_id() */
@@ -40,14 +41,19 @@
 	LDREG RT%exception_data(%r1),\t1
 	/* t1 = this_cpu_ptr(&exception_data) */
 	add,l \t1,\t2,\t1
+	/* %r27 = t1->fault_gp - restore gp */
+	LDREG EXCDATA_GP(\t1), %r27
 	/* t1 = t1->fault_ip */
 	LDREG EXCDATA_IP(\t1), \t1
 	.endm
 #else
 	.macro  get_fault_ip t1 t2
+	loadgp
 	/* t1 = this_cpu_ptr(&exception_data) */
 	addil LT%exception_data,%r27
 	LDREG RT%exception_data(%r1),\t2
+	/* %r27 = t2->fault_gp - restore gp */
+	LDREG EXCDATA_GP(\t2), %r27
 	/* t1 = t2->fault_ip */
 	LDREG EXCDATA_IP(\t2), \t1
 	.endm
@@ -59,34 +65,34 @@
 	.section .fixup, "ax"
 
 	/* get_user() fixups, store -EFAULT in r8, and 0 in r9 */
-ENTRY(fixup_get_user_skip_1)
+ENTRY_CFI(fixup_get_user_skip_1)
 	get_fault_ip %r1,%r8
 	ldo 4(%r1), %r1
 	ldi -EFAULT, %r8
 	bv %r0(%r1)
 	copy %r0, %r9
-ENDPROC(fixup_get_user_skip_1)
+ENDPROC_CFI(fixup_get_user_skip_1)
 
-ENTRY(fixup_get_user_skip_2)
+ENTRY_CFI(fixup_get_user_skip_2)
 	get_fault_ip %r1,%r8
 	ldo 8(%r1), %r1
 	ldi -EFAULT, %r8
 	bv %r0(%r1)
 	copy %r0, %r9
-ENDPROC(fixup_get_user_skip_2)
+ENDPROC_CFI(fixup_get_user_skip_2)
 
 	/* put_user() fixups, store -EFAULT in r8 */
-ENTRY(fixup_put_user_skip_1)
+ENTRY_CFI(fixup_put_user_skip_1)
 	get_fault_ip %r1,%r8
 	ldo 4(%r1), %r1
 	bv %r0(%r1)
 	ldi -EFAULT, %r8
-ENDPROC(fixup_put_user_skip_1)
+ENDPROC_CFI(fixup_put_user_skip_1)
 
-ENTRY(fixup_put_user_skip_2)
+ENTRY_CFI(fixup_put_user_skip_2)
 	get_fault_ip %r1,%r8
 	ldo 8(%r1), %r1
 	bv %r0(%r1)
 	ldi -EFAULT, %r8
-ENDPROC(fixup_put_user_skip_2)
+ENDPROC_CFI(fixup_put_user_skip_2)
 

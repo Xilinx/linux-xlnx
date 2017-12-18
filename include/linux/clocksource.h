@@ -15,6 +15,7 @@
 #include <linux/cache.h>
 #include <linux/timer.h>
 #include <linux/init.h>
+#include <linux/of.h>
 #include <asm/div64.h>
 #include <asm/io.h>
 
@@ -56,17 +57,24 @@ struct module;
  * @shift:		cycle to nanosecond divisor (power of two)
  * @max_idle_ns:	max idle time permitted by the clocksource (nsecs)
  * @maxadj:		maximum adjustment value to mult (~11%)
+ * @max_cycles:		maximum safe cycle value which won't overflow on multiplication
  * @flags:		flags describing special properties
  * @archdata:		arch-specific data
  * @suspend:		suspend function for the clocksource, if necessary
  * @resume:		resume function for the clocksource, if necessary
  * @owner:		module reference, must be set by clocksource in modules
+ *
+ * Note: This struct is not used in hotpathes of the timekeeping code
+ * because the timekeeper caches the hot path fields in its own data
+ * structure, so no line cache alignment is required,
+ *
+ * The pointer to the clocksource itself is handed to the read
+ * callback. If you need extra information there you can wrap struct
+ * clocksource into your own struct. Depending on the amount of
+ * information you need you should consider to cache line align that
+ * structure.
  */
 struct clocksource {
-	/*
-	 * Hotpath data, fits in a single cache line when the
-	 * clocksource itself is cacheline aligned.
-	 */
 	cycle_t (*read)(struct clocksource *cs);
 	cycle_t mask;
 	u32 mult;
@@ -76,7 +84,7 @@ struct clocksource {
 #ifdef CONFIG_ARCH_CLOCKSOURCE_DATA
 	struct arch_clocksource_data archdata;
 #endif
-
+	u64 max_cycles;
 	const char *name;
 	struct list_head list;
 	int rating;
@@ -94,7 +102,7 @@ struct clocksource {
 	cycle_t wd_last;
 #endif
 	struct module *owner;
-} ____cacheline_aligned;
+};
 
 /*
  * Clock source flags bits::
@@ -111,6 +119,23 @@ struct clocksource {
 /* simplify initialization of mask field */
 #define CLOCKSOURCE_MASK(bits) (cycle_t)((bits) < 64 ? ((1ULL<<(bits))-1) : -1)
 
+static inline u32 clocksource_freq2mult(u32 freq, u32 shift_constant, u64 from)
+{
+	/*  freq = cyc/from
+	 *  mult/2^shift  = ns/cyc
+	 *  mult = ns/cyc * 2^shift
+	 *  mult = from/freq * 2^shift
+	 *  mult = from * 2^shift / freq
+	 *  mult = (from<<shift) / freq
+	 */
+	u64 tmp = ((u64)from) << shift_constant;
+
+	tmp += freq/2; /* round for do_div */
+	do_div(tmp, freq);
+
+	return (u32)tmp;
+}
+
 /**
  * clocksource_khz2mult - calculates mult from khz and shift
  * @khz:		Clocksource frequency in KHz
@@ -121,19 +146,7 @@ struct clocksource {
  */
 static inline u32 clocksource_khz2mult(u32 khz, u32 shift_constant)
 {
-	/*  khz = cyc/(Million ns)
-	 *  mult/2^shift  = ns/cyc
-	 *  mult = ns/cyc * 2^shift
-	 *  mult = 1Million/khz * 2^shift
-	 *  mult = 1000000 * 2^shift / khz
-	 *  mult = (1000000<<shift) / khz
-	 */
-	u64 tmp = ((u64)1000000) << shift_constant;
-
-	tmp += khz/2; /* round for do_div */
-	do_div(tmp, khz);
-
-	return (u32)tmp;
+	return clocksource_freq2mult(khz, shift_constant, NSEC_PER_MSEC);
 }
 
 /**
@@ -147,19 +160,7 @@ static inline u32 clocksource_khz2mult(u32 khz, u32 shift_constant)
  */
 static inline u32 clocksource_hz2mult(u32 hz, u32 shift_constant)
 {
-	/*  hz = cyc/(Billion ns)
-	 *  mult/2^shift  = ns/cyc
-	 *  mult = ns/cyc * 2^shift
-	 *  mult = 1Billion/hz * 2^shift
-	 *  mult = 1000000000 * 2^shift / hz
-	 *  mult = (1000000000<<shift) / hz
-	 */
-	u64 tmp = ((u64)1000000000) << shift_constant;
-
-	tmp += hz/2; /* round for do_div */
-	do_div(tmp, hz);
-
-	return (u32)tmp;
+	return clocksource_freq2mult(hz, shift_constant, NSEC_PER_SEC);
 }
 
 /**
@@ -178,10 +179,8 @@ static inline s64 clocksource_cyc2ns(cycle_t cycles, u32 mult, u32 shift)
 }
 
 
-extern int clocksource_register(struct clocksource*);
 extern int clocksource_unregister(struct clocksource*);
 extern void clocksource_touch_watchdog(void);
-extern struct clocksource* clocksource_get_next(void);
 extern void clocksource_change_rating(struct clocksource *cs, int rating);
 extern void clocksource_suspend(void);
 extern void clocksource_resume(void);
@@ -189,7 +188,7 @@ extern struct clocksource * __init clocksource_default_clock(void);
 extern void clocksource_mark_unstable(struct clocksource *cs);
 
 extern u64
-clocks_calc_max_nsecs(u32 mult, u32 shift, u32 maxadj, u64 mask);
+clocks_calc_max_nsecs(u32 mult, u32 shift, u32 maxadj, u64 mask, u64 *max_cycles);
 extern void
 clocks_calc_mult_shift(u32 *mult, u32 *shift, u32 from, u32 to, u32 minsec);
 
@@ -200,7 +199,16 @@ clocks_calc_mult_shift(u32 *mult, u32 *shift, u32 from, u32 to, u32 minsec);
 extern int
 __clocksource_register_scale(struct clocksource *cs, u32 scale, u32 freq);
 extern void
-__clocksource_updatefreq_scale(struct clocksource *cs, u32 scale, u32 freq);
+__clocksource_update_freq_scale(struct clocksource *cs, u32 scale, u32 freq);
+
+/*
+ * Don't call this unless you are a default clocksource
+ * (AKA: jiffies) and absolutely have to.
+ */
+static inline int __clocksource_register(struct clocksource *cs)
+{
+	return __clocksource_register_scale(cs, 1, 0);
+}
 
 static inline int clocksource_register_hz(struct clocksource *cs, u32 hz)
 {
@@ -212,14 +220,14 @@ static inline int clocksource_register_khz(struct clocksource *cs, u32 khz)
 	return __clocksource_register_scale(cs, 1000, khz);
 }
 
-static inline void __clocksource_updatefreq_hz(struct clocksource *cs, u32 hz)
+static inline void __clocksource_update_freq_hz(struct clocksource *cs, u32 hz)
 {
-	__clocksource_updatefreq_scale(cs, 1, hz);
+	__clocksource_update_freq_scale(cs, 1, hz);
 }
 
-static inline void __clocksource_updatefreq_khz(struct clocksource *cs, u32 khz)
+static inline void __clocksource_update_freq_khz(struct clocksource *cs, u32 khz)
 {
-	__clocksource_updatefreq_scale(cs, 1000, khz);
+	__clocksource_update_freq_scale(cs, 1000, khz);
 }
 
 
@@ -236,12 +244,15 @@ extern int clocksource_mmio_init(void __iomem *, const char *,
 extern int clocksource_i8253_init(void);
 
 #define CLOCKSOURCE_OF_DECLARE(name, compat, fn) \
-	OF_DECLARE_1(clksrc, name, compat, fn)
+	OF_DECLARE_1_RET(clksrc, name, compat, fn)
 
-#ifdef CONFIG_CLKSRC_OF
-extern void clocksource_of_init(void);
+#ifdef CONFIG_CLKSRC_PROBE
+extern void clocksource_probe(void);
 #else
-static inline void clocksource_of_init(void) {}
+static inline void clocksource_probe(void) {}
 #endif
+
+#define CLOCKSOURCE_ACPI_DECLARE(name, table_id, fn)		\
+	ACPI_DECLARE_PROBE_ENTRY(clksrc, name, table_id, 0, NULL, 0, fn)
 
 #endif /* _LINUX_CLOCKSOURCE_H */

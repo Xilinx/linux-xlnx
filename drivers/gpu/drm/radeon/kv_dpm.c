@@ -2164,7 +2164,7 @@ static void kv_apply_state_adjust_rules(struct radeon_device *rdev,
 	if (pi->caps_stable_p_state) {
 		stable_p_state_sclk = (max_limits->sclk * 75) / 100;
 
-		for (i = table->count - 1; i >= 0; i++) {
+		for (i = table->count - 1; i >= 0; i--) {
 			if (stable_p_state_sclk >= table->entries[i].clk) {
 				stable_p_state_sclk = table->entries[i].clk;
 				break;
@@ -2640,7 +2640,7 @@ static int kv_parse_power_table(struct radeon_device *rdev)
 	struct _NonClockInfoArray *non_clock_info_array;
 	union power_info *power_info;
 	int index = GetIndexIntoMasterTable(DATA, PowerPlayInfo);
-        u16 data_offset;
+	u16 data_offset;
 	u8 frev, crev;
 	u8 *power_state_offset;
 	struct kv_ps *ps;
@@ -2738,7 +2738,7 @@ int kv_dpm_init(struct radeon_device *rdev)
 	for (i = 0; i < SUMO_MAX_HARDWARE_POWERLEVELS; i++)
 		pi->at[i] = TRINITY_AT_DFLT;
 
-        pi->sram_end = SMC_RAM_END;
+	pi->sram_end = SMC_RAM_END;
 
 	/* Enabling nb dpm on an asrock system prevents dpm from working */
 	if (rdev->pdev->subsystem_vendor == 0x1849)
@@ -2818,6 +2818,29 @@ void kv_dpm_debugfs_print_current_performance_level(struct radeon_device *rdev,
 		seq_printf(m, "power level %d    sclk: %u vddc: %u\n",
 			   current_index, sclk, vddc);
 	}
+}
+
+u32 kv_dpm_get_current_sclk(struct radeon_device *rdev)
+{
+	struct kv_power_info *pi = kv_get_pi(rdev);
+	u32 current_index =
+		(RREG32_SMC(TARGET_AND_CURRENT_PROFILE_INDEX) & CURR_SCLK_INDEX_MASK) >>
+		CURR_SCLK_INDEX_SHIFT;
+	u32 sclk;
+
+	if (current_index >= SMU__NUM_SCLK_DPM_STATE) {
+		return 0;
+	} else {
+		sclk = be32_to_cpu(pi->graphics_level[current_index].SclkFrequency);
+		return sclk;
+	}
+}
+
+u32 kv_dpm_get_current_mclk(struct radeon_device *rdev)
+{
+	struct kv_power_info *pi = kv_get_pi(rdev);
+
+	return pi->sys_info.bootup_uma_clk;
 }
 
 void kv_dpm_print_power_state(struct radeon_device *rdev,

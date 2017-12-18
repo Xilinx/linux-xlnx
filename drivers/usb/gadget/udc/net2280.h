@@ -47,6 +47,7 @@ set_idx_reg(struct net2280_regs __iomem *regs, u32 index, u32 value)
 #define PLX_LEGACY		BIT(0)
 #define PLX_2280		BIT(1)
 #define PLX_SUPERSPEED		BIT(2)
+#define PLX_PCIE		BIT(3)
 
 #define REG_DIAG		0x0
 #define     RETRY_COUNTER                                       16
@@ -96,7 +97,6 @@ struct net2280_ep {
 	struct net2280_ep_regs			__iomem *regs;
 	struct net2280_dma_regs			__iomem *dma;
 	struct net2280_dma			*dummy;
-	struct usb338x_fifo_regs __iomem *fiforegs;
 	dma_addr_t				td_dma;	/* of dummy */
 	struct net2280				*dev;
 	unsigned long				irqs;
@@ -181,7 +181,6 @@ struct net2280 {
 	struct net2280_dma_regs		__iomem *dma;
 	struct net2280_dep_regs		__iomem *dep;
 	struct net2280_ep_regs		__iomem *epregs;
-	struct usb338x_fifo_regs	__iomem *fiforegs;
 	struct usb338x_ll_regs		__iomem *llregs;
 	struct usb338x_ll_lfps_regs	__iomem *ll_lfps_regs;
 	struct usb338x_ll_tsn_regs	__iomem *ll_tsn_regs;
@@ -371,9 +370,20 @@ static inline void set_max_speed(struct net2280_ep *ep, u32 max)
 	static const u32 ep_enhanced[9] = { 0x10, 0x60, 0x30, 0x80,
 					  0x50, 0x20, 0x70, 0x40, 0x90 };
 
-	if (ep->dev->enhanced_mode)
+	if (ep->dev->enhanced_mode) {
 		reg = ep_enhanced[ep->num];
-	else{
+		switch (ep->dev->gadget.speed) {
+		case USB_SPEED_SUPER:
+			reg += 2;
+			break;
+		case USB_SPEED_FULL:
+			reg += 1;
+			break;
+		case USB_SPEED_HIGH:
+		default:
+			break;
+		}
+	} else {
 		reg = (ep->num + 1) * 0x10;
 		if (ep->dev->gadget.speed != USB_SPEED_HIGH)
 			reg += 1;

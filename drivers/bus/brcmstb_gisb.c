@@ -30,6 +30,10 @@
 #include <asm/signal.h>
 #endif
 
+#ifdef CONFIG_MIPS
+#include <asm/traps.h>
+#endif
+
 #define  ARB_ERR_CAP_CLEAR		(1 << 0)
 #define  ARB_ERR_CAP_STATUS_TIMEOUT	(1 << 12)
 #define  ARB_ERR_CAP_STATUS_TEA		(1 << 11)
@@ -91,6 +95,7 @@ static const int gisb_offsets_bcm7445[] = {
 struct brcmstb_gisb_arb_device {
 	void __iomem	*base;
 	const int	*gisb_offsets;
+	bool		big_endian;
 	struct mutex	lock;
 	struct list_head next;
 	u32 valid_mask;
@@ -108,7 +113,10 @@ static u32 gisb_read(struct brcmstb_gisb_arb_device *gdev, int reg)
 	if (offset == -1)
 		return 1;
 
-	return ioread32(gdev->base + offset);
+	if (gdev->big_endian)
+		return ioread32be(gdev->base + offset);
+	else
+		return ioread32(gdev->base + offset);
 }
 
 static void gisb_write(struct brcmstb_gisb_arb_device *gdev, u32 val, int reg)
@@ -117,7 +125,11 @@ static void gisb_write(struct brcmstb_gisb_arb_device *gdev, u32 val, int reg)
 
 	if (offset == -1)
 		return;
-	iowrite32(val, gdev->base + reg);
+
+	if (gdev->big_endian)
+		iowrite32be(val, gdev->base + reg);
+	else
+		iowrite32(val, gdev->base + reg);
 }
 
 static ssize_t gisb_arb_get_timeout(struct device *dev,
@@ -230,6 +242,29 @@ static int brcmstb_bus_error_handler(unsigned long addr, unsigned int fsr,
 }
 #endif
 
+#ifdef CONFIG_MIPS
+static int brcmstb_bus_error_handler(struct pt_regs *regs, int is_fixup)
+{
+	int ret = 0;
+	struct brcmstb_gisb_arb_device *gdev;
+	u32 cap_status;
+
+	list_for_each_entry(gdev, &brcmstb_gisb_arb_device_list, next) {
+		cap_status = gisb_read(gdev, ARB_ERR_CAP_STATUS);
+
+		/* Invalid captured address, bail out */
+		if (!(cap_status & ARB_ERR_CAP_STATUS_VALID)) {
+			is_fixup = 1;
+			goto out;
+		}
+
+		ret |= brcmstb_gisb_arb_decode_addr(gdev, "bus error");
+	}
+out:
+	return is_fixup ? MIPS_BE_FIXUP : MIPS_BE_FATAL;
+}
+#endif
+
 static irqreturn_t brcmstb_gisb_timeout_handler(int irq, void *dev_id)
 {
 	brcmstb_gisb_arb_decode_addr(dev_id, "timeout");
@@ -296,6 +331,7 @@ static int __init brcmstb_gisb_arb_probe(struct platform_device *pdev)
 		return -EINVAL;
 	}
 	gdev->gisb_offsets = of_id->data;
+	gdev->big_endian = of_device_is_big_endian(dn);
 
 	err = devm_request_irq(&pdev->dev, timeout_irq,
 				brcmstb_gisb_timeout_handler, 0, pdev->name,
@@ -345,6 +381,9 @@ static int __init brcmstb_gisb_arb_probe(struct platform_device *pdev)
 #ifdef CONFIG_ARM
 	hook_fault_code(22, brcmstb_bus_error_handler, SIGBUS, 0,
 			"imprecise external abort");
+#endif
+#ifdef CONFIG_MIPS
+	board_be_handler = brcmstb_bus_error_handler;
 #endif
 
 	dev_info(&pdev->dev, "registered mem: %p, irqs: %d, %d\n",

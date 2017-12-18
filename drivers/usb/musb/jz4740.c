@@ -83,9 +83,9 @@ static int jz4740_musb_init(struct musb *musb)
 {
 	usb_phy_generic_register();
 	musb->xceiv = usb_get_phy(USB_PHY_TYPE_USB2);
-	if (!musb->xceiv) {
+	if (IS_ERR(musb->xceiv)) {
 		pr_err("HS UDC: no transceiver configured\n");
-		return -ENODEV;
+		return PTR_ERR(musb->xceiv);
 	}
 
 	/* Silicon does not implement ConfigData register.
@@ -105,8 +105,12 @@ static int jz4740_musb_exit(struct musb *musb)
 	return 0;
 }
 
+/*
+ * DMA has not been confirmed to work with CONFIG_USB_INVENTRA_DMA,
+ * so let's not set up the dma function pointers yet.
+ */
 static const struct musb_platform_ops jz4740_musb_ops = {
-	.quirks		= MUSB_INDEXED_EP,
+	.quirks		= MUSB_DMA_INVENTRA | MUSB_INDEXED_EP,
 	.fifo_mode	= 2,
 	.init		= jz4740_musb_init,
 	.exit		= jz4740_musb_exit,

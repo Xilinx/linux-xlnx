@@ -132,8 +132,7 @@ unsigned int comedi_isadma_poll(struct comedi_isadma *dma)
 		result = result1;
 	if (result >= desc->size || result == 0)
 		return 0;
-	else
-		return desc->size - result;
+	return desc->size - result;
 }
 EXPORT_SYMBOL_GPL(comedi_isadma_poll);
 
@@ -235,7 +234,8 @@ void comedi_isadma_free(struct comedi_isadma *dma)
 			desc = &dma->desc[i];
 			if (desc->virt_addr)
 				dma_free_coherent(NULL, desc->maxsize,
-						desc->virt_addr, desc->hw_addr);
+						  desc->virt_addr,
+						  desc->hw_addr);
 		}
 		kfree(dma->desc);
 	}

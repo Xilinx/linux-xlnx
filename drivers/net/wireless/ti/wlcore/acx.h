@@ -105,6 +105,7 @@ enum wl12xx_role {
 	WL1271_ROLE_DEVICE,
 	WL1271_ROLE_P2P_CL,
 	WL1271_ROLE_P2P_GO,
+	WL1271_ROLE_MESH_POINT,
 
 	WL12XX_INVALID_ROLE_TYPE = 0xff
 };
@@ -300,7 +301,7 @@ struct acx_bt_wlan_coex {
 struct acx_bt_wlan_coex_param {
 	struct acx_header header;
 
-	__le32 params[CONF_SG_PARAMS_MAX];
+	__le32 params[WLCORE_CONF_SG_PARAMS_MAX];
 	u8 param_idx;
 	u8 padding[3];
 } __packed;

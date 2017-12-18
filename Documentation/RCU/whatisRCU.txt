@@ -5,6 +5,9 @@ to start learning about RCU:
 2.	What is RCU? Part 2: Usage   http://lwn.net/Articles/263130/
 3.	RCU part 3: the RCU API      http://lwn.net/Articles/264090/
 4.	The RCU API, 2010 Edition    http://lwn.net/Articles/418853/
+	2010 Big API Table           http://lwn.net/Articles/419086/
+5.	The RCU API, 2014 Edition    http://lwn.net/Articles/609904/
+	2014 Big API Table           http://lwn.net/Articles/609973/
 
 
 What is RCU?
@@ -256,7 +259,9 @@ rcu_dereference()
 	If you are going to be fetching multiple fields from the
 	RCU-protected structure, using the local variable is of
 	course preferred.  Repeated rcu_dereference() calls look
-	ugly and incur unnecessary overhead on Alpha CPUs.
+	ugly, do not guarantee that the same pointer will be returned
+	if an update happened while in the critical section, and incur
+	unnecessary overhead on Alpha CPUs.
 
 	Note that the value returned by rcu_dereference() is valid
 	only within the enclosing RCU read-side critical section.
@@ -362,7 +367,7 @@ uses of RCU may be found in listRCU.txt, arrayRCU.txt, and NMI-RCU.txt.
 	};
 	DEFINE_SPINLOCK(foo_mutex);
 
-	struct foo *gbl_foo;
+	struct foo __rcu *gbl_foo;
 
 	/*
 	 * Create a new struct foo that is the same as the one currently
@@ -384,7 +389,7 @@ uses of RCU may be found in listRCU.txt, arrayRCU.txt, and NMI-RCU.txt.
 
 		new_fp = kmalloc(sizeof(*new_fp), GFP_KERNEL);
 		spin_lock(&foo_mutex);
-		old_fp = gbl_foo;
+		old_fp = rcu_dereference_protected(gbl_foo, lockdep_is_held(&foo_mutex));
 		*new_fp = *old_fp;
 		new_fp->a = new_a;
 		rcu_assign_pointer(gbl_foo, new_fp);
@@ -485,7 +490,7 @@ The foo_update_a() function might then be written as follows:
 
 		new_fp = kmalloc(sizeof(*new_fp), GFP_KERNEL);
 		spin_lock(&foo_mutex);
-		old_fp = gbl_foo;
+		old_fp = rcu_dereference_protected(gbl_foo, lockdep_is_held(&foo_mutex));
 		*new_fp = *old_fp;
 		new_fp->a = new_a;
 		rcu_assign_pointer(gbl_foo, new_fp);
@@ -679,22 +684,30 @@ Although RCU can be used in many different ways, a very common use of
 RCU is analogous to reader-writer locking.  The following unified
 diff shows how closely related RCU and reader-writer locking can be.
 
+	@@ -5,5 +5,5 @@ struct el {
+	 	int data;
+	 	/* Other data fields */
+	 };
+	-rwlock_t listmutex;
+	+spinlock_t listmutex;
+	 struct el head;
+
 	@@ -13,15 +14,15 @@
 		struct list_head *lp;
 		struct el *p;
 
-	-	read_lock();
+	-	read_lock(&listmutex);
 	-	list_for_each_entry(p, head, lp) {
 	+	rcu_read_lock();
 	+	list_for_each_entry_rcu(p, head, lp) {
 			if (p->key == key) {
 				*result = p->data;
-	-			read_unlock();
+	-			read_unlock(&listmutex);
 	+			rcu_read_unlock();
 				return 1;
 			}
 		}
-	-	read_unlock();
+	-	read_unlock(&listmutex);
 	+	rcu_read_unlock();
 		return 0;
 	 }
@@ -730,7 +743,7 @@ Or, for those who prefer a side-by-side listing:
  5   int data;                          5   int data;
  6   /* Other data fields */            6   /* Other data fields */
  7 };                                   7 };
- 8 spinlock_t listmutex;                8 spinlock_t listmutex;
+ 8 rwlock_t listmutex;                  8 spinlock_t listmutex;
  9 struct el head;                      9 struct el head;
 
  1 int search(long key, int *result)    1 int search(long key, int *result)
@@ -738,15 +751,15 @@ Or, for those who prefer a side-by-side listing:
  3   struct list_head *lp;              3   struct list_head *lp;
  4   struct el *p;                      4   struct el *p;
  5                                      5
- 6   read_lock();                       6   rcu_read_lock();
+ 6   read_lock(&listmutex);             6   rcu_read_lock();
  7   list_for_each_entry(p, head, lp) { 7   list_for_each_entry_rcu(p, head, lp) {
  8     if (p->key == key) {             8     if (p->key == key) {
  9       *result = p->data;             9       *result = p->data;
-10       read_unlock();                10       rcu_read_unlock();
+10       read_unlock(&listmutex);      10       rcu_read_unlock();
 11       return 1;                     11       return 1;
 12     }                               12     }
 13   }                                 13   }
-14   read_unlock();                    14   rcu_read_unlock();
+14   read_unlock(&listmutex);          14   rcu_read_unlock();
 15   return 0;                         15   return 0;
 16 }                                   16 }
 
@@ -879,11 +892,9 @@ SRCU:	Initialization/cleanup
 
 All:  lockdep-checked RCU-protected pointer access
 
-	rcu_access_index
 	rcu_access_pointer
-	rcu_dereference_index_check
 	rcu_dereference_raw
-	rcu_lockdep_assert
+	RCU_LOCKDEP_WARN
 	rcu_sleep_check
 	RCU_NONIDLE
 

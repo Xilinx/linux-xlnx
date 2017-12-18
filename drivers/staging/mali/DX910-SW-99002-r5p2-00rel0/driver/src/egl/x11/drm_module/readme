@@ -1,8 +1,0 @@
-How to build:
-KDIR=/work/kernel-2.6.35.7 make
-
-How to install:
-insmod drm/drm.ko
-insmod mali_drm/mali_drm.ko
-insmod trunk/src/devicedrv/mali/mali.ko
-

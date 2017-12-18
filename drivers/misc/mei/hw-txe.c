@@ -16,9 +16,11 @@
 
 #include <linux/pci.h>
 #include <linux/jiffies.h>
+#include <linux/ktime.h>
 #include <linux/delay.h>
 #include <linux/kthread.h>
 #include <linux/irqreturn.h>
+#include <linux/pm_runtime.h>
 
 #include <linux/mei.h>
 
@@ -26,6 +28,9 @@
 #include "hw-txe.h"
 #include "client.h"
 #include "hbm.h"
+
+#include "mei-trace.h"
+
 
 /**
  * mei_txe_reg_read - Reads 32bit data from the txe device
@@ -218,26 +223,25 @@ static u32 mei_txe_aliveness_get(struct mei_device *dev)
  *
  * Polls for HICR_HOST_ALIVENESS_RESP.ALIVENESS_RESP to be set
  *
- * Return: > 0 if the expected value was received, -ETIME otherwise
+ * Return: 0 if the expected value was received, -ETIME otherwise
  */
 static int mei_txe_aliveness_poll(struct mei_device *dev, u32 expected)
 {
 	struct mei_txe_hw *hw = to_txe_hw(dev);
-	int t = 0;
+	ktime_t stop, start;
 
+	start = ktime_get();
+	stop = ktime_add(start, ms_to_ktime(SEC_ALIVENESS_WAIT_TIMEOUT));
 	do {
 		hw->aliveness = mei_txe_aliveness_get(dev);
 		if (hw->aliveness == expected) {
 			dev->pg_event = MEI_PG_EVENT_IDLE;
-			dev_dbg(dev->dev,
-				"aliveness settled after %d msecs\n", t);
-			return t;
+			dev_dbg(dev->dev, "aliveness settled after %lld usecs\n",
+				ktime_to_us(ktime_sub(ktime_get(), start)));
+			return 0;
 		}
-		mutex_unlock(&dev->device_lock);
-		msleep(MSEC_PER_SEC / 5);
-		mutex_lock(&dev->device_lock);
-		t += MSEC_PER_SEC / 5;
-	} while (t < SEC_ALIVENESS_WAIT_TIMEOUT);
+		usleep_range(20, 50);
+	} while (ktime_before(ktime_get(), stop));
 
 	dev->pg_event = MEI_PG_EVENT_IDLE;
 	dev_err(dev->dev, "aliveness timed out\n");
@@ -299,6 +303,18 @@ int mei_txe_aliveness_set_sync(struct mei_device *dev, u32 req)
 	if (mei_txe_aliveness_set(dev, req))
 		return mei_txe_aliveness_wait(dev, req);
 	return 0;
+}
+
+/**
+ * mei_txe_pg_in_transition - is device now in pg transition
+ *
+ * @dev: the device structure
+ *
+ * Return: true if in pg transition, false otherwise
+ */
+static bool mei_txe_pg_in_transition(struct mei_device *dev)
+{
+	return dev->pg_event == MEI_PG_EVENT_WAIT;
 }
 
 /**
@@ -412,7 +428,7 @@ static void mei_txe_intr_disable(struct mei_device *dev)
 	mei_txe_br_reg_write(hw, HIER_REG, 0);
 }
 /**
- * mei_txe_intr_disable - enable all interrupts
+ * mei_txe_intr_enable - enable all interrupts
  *
  * @dev: the device structure
  */
@@ -628,8 +644,11 @@ static int mei_txe_fw_status(struct mei_device *dev,
 
 	fw_status->count = fw_src->count;
 	for (i = 0; i < fw_src->count && i < MEI_FW_STATUS_MAX; i++) {
-		ret = pci_read_config_dword(pdev,
-			fw_src->status[i], &fw_status->status[i]);
+		ret = pci_read_config_dword(pdev, fw_src->status[i],
+					    &fw_status->status[i]);
+		trace_mei_pci_cfg_read(dev->dev, "PCI_CFG_HSF_X",
+				       fw_src->status[i],
+				       fw_status->status[i]);
 		if (ret)
 			return ret;
 	}
@@ -917,6 +936,8 @@ static int mei_txe_hw_start(struct mei_device *dev)
 		return ret;
 	}
 
+	pm_runtime_set_active(dev->dev);
+
 	/* enable input ready interrupts:
 	 * SEC_IPC_HOST_INT_MASK.IPC_INPUT_READY_INT_MASK
 	 */
@@ -960,11 +981,13 @@ static bool mei_txe_check_and_ack_intrs(struct mei_device *dev, bool do_ack)
 	hisr = mei_txe_br_reg_read(hw, HISR_REG);
 
 	aliveness = mei_txe_aliveness_get(dev);
-	if (hhisr & IPC_HHIER_SEC && aliveness)
+	if (hhisr & IPC_HHIER_SEC && aliveness) {
 		ipc_isr = mei_txe_sec_reg_read_silent(hw,
 				SEC_IPC_HOST_INT_STATUS_REG);
-	else
+	} else {
 		ipc_isr = 0;
+		hhisr &= ~IPC_HHIER_SEC;
+	}
 
 	generated = generated ||
 		(hisr & HISR_INT_STS_MSK) ||
@@ -1138,6 +1161,7 @@ static const struct mei_hw_ops mei_txe_hw_ops = {
 	.hw_config = mei_txe_hw_config,
 	.hw_start = mei_txe_hw_start,
 
+	.pg_in_transition = mei_txe_pg_in_transition,
 	.pg_is_enabled = mei_txe_pg_is_enabled,
 
 	.intr_clear = mei_txe_intr_clear,

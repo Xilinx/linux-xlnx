@@ -15,13 +15,10 @@
 
 #define DSA_HLEN	4
 
-static netdev_tx_t dsa_xmit(struct sk_buff *skb, struct net_device *dev)
+static struct sk_buff *dsa_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	struct dsa_slave_priv *p = netdev_priv(dev);
 	u8 *dsa_header;
-
-	dev->stats.tx_packets++;
-	dev->stats.tx_bytes += skb->len;
 
 	/*
 	 * Convert the outermost 802.1q tag to a DSA tag for tagged
@@ -63,14 +60,11 @@ static netdev_tx_t dsa_xmit(struct sk_buff *skb, struct net_device *dev)
 		dsa_header[3] = 0x00;
 	}
 
-	skb->dev = p->parent->dst->master_netdev;
-	dev_queue_xmit(skb);
-
-	return NETDEV_TX_OK;
+	return skb;
 
 out_free:
 	kfree_skb(skb);
-	return NETDEV_TX_OK;
+	return NULL;
 }
 
 static int dsa_rcv(struct sk_buff *skb, struct net_device *dev,
@@ -113,10 +107,14 @@ static int dsa_rcv(struct sk_buff *skb, struct net_device *dev,
 	 * Check that the source device exists and that the source
 	 * port is a registered DSA port.
 	 */
-	if (source_device >= dst->pd->nr_chips)
+	if (source_device >= DSA_MAX_SWITCHES)
 		goto out_drop;
+
 	ds = dst->ds[source_device];
-	if (source_port >= DSA_MAX_PORTS || ds->ports[source_port] == NULL)
+	if (!ds)
+		goto out_drop;
+
+	if (source_port >= DSA_MAX_PORTS || !ds->ports[source_port].netdev)
 		goto out_drop;
 
 	/*
@@ -165,7 +163,7 @@ static int dsa_rcv(struct sk_buff *skb, struct net_device *dev,
 			2 * ETH_ALEN);
 	}
 
-	skb->dev = ds->ports[source_port];
+	skb->dev = ds->ports[source_port].netdev;
 	skb_push(skb, ETH_HLEN);
 	skb->pkt_type = PACKET_HOST;
 	skb->protocol = eth_type_trans(skb, skb->dev);

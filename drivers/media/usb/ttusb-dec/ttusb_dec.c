@@ -206,7 +206,7 @@ static void ttusb_dec_set_model(struct ttusb_dec *dec,
 
 static void ttusb_dec_handle_irq( struct urb *urb)
 {
-	struct ttusb_dec * dec = urb->context;
+	struct ttusb_dec *dec = urb->context;
 	char *buffer = dec->irq_buffer;
 	int retval;
 
@@ -227,25 +227,31 @@ static void ttusb_dec_handle_irq( struct urb *urb)
 			goto exit;
 	}
 
-	if( (buffer[0] == 0x1) && (buffer[2] == 0x15) )  {
-		/* IR - Event */
-		/* this is an fact a bit too simple implementation;
+	if ((buffer[0] == 0x1) && (buffer[2] == 0x15))  {
+		/*
+		 * IR - Event
+		 *
+		 * this is an fact a bit too simple implementation;
 		 * the box also reports a keyrepeat signal
 		 * (with buffer[3] == 0x40) in an intervall of ~100ms.
 		 * But to handle this correctly we had to imlemenent some
 		 * kind of timer which signals a 'key up' event if no
 		 * keyrepeat signal is received for lets say 200ms.
 		 * this should/could be added later ...
-		 * for now lets report each signal as a key down and up*/
-		dprintk("%s:rc signal:%d\n", __func__, buffer[4]);
-		input_report_key(dec->rc_input_dev, rc_keys[buffer[4] - 1], 1);
-		input_sync(dec->rc_input_dev);
-		input_report_key(dec->rc_input_dev, rc_keys[buffer[4] - 1], 0);
-		input_sync(dec->rc_input_dev);
+		 * for now lets report each signal as a key down and up
+		 */
+		if (buffer[4] - 1 < ARRAY_SIZE(rc_keys)) {
+			dprintk("%s:rc signal:%d\n", __func__, buffer[4]);
+			input_report_key(dec->rc_input_dev, rc_keys[buffer[4] - 1], 1);
+			input_sync(dec->rc_input_dev);
+			input_report_key(dec->rc_input_dev, rc_keys[buffer[4] - 1], 0);
+			input_sync(dec->rc_input_dev);
+		}
 	}
 
-exit:	retval = usb_submit_urb(urb, GFP_ATOMIC);
-	if(retval)
+exit:
+	retval = usb_submit_urb(urb, GFP_ATOMIC);
+	if (retval)
 		printk("%s - usb_commit_urb failed with result: %d\n",
 			__func__, retval);
 }
@@ -375,8 +381,7 @@ static int ttusb_dec_audio_pes2ts_cb(void *priv, unsigned char *data)
 	struct ttusb_dec *dec = priv;
 
 	dec->audio_filter->feed->cb.ts(data, 188, NULL, 0,
-				       &dec->audio_filter->feed->feed.ts,
-				       DMX_OK);
+				       &dec->audio_filter->feed->feed.ts);
 
 	return 0;
 }
@@ -386,8 +391,7 @@ static int ttusb_dec_video_pes2ts_cb(void *priv, unsigned char *data)
 	struct ttusb_dec *dec = priv;
 
 	dec->video_filter->feed->cb.ts(data, 188, NULL, 0,
-				       &dec->video_filter->feed->feed.ts,
-				       DMX_OK);
+				       &dec->video_filter->feed->feed.ts);
 
 	return 0;
 }
@@ -439,7 +443,7 @@ static void ttusb_dec_process_pva(struct ttusb_dec *dec, u8 *pva, int length)
 
 		if (output_pva) {
 			dec->video_filter->feed->cb.ts(pva, length, NULL, 0,
-				&dec->video_filter->feed->feed.ts, DMX_OK);
+				&dec->video_filter->feed->feed.ts);
 			return;
 		}
 
@@ -500,7 +504,7 @@ static void ttusb_dec_process_pva(struct ttusb_dec *dec, u8 *pva, int length)
 	case 0x02:		/* MainAudioStream */
 		if (output_pva) {
 			dec->audio_filter->feed->cb.ts(pva, length, NULL, 0,
-				&dec->audio_filter->feed->feed.ts, DMX_OK);
+				&dec->audio_filter->feed->feed.ts);
 			return;
 		}
 
@@ -538,7 +542,7 @@ static void ttusb_dec_process_filter(struct ttusb_dec *dec, u8 *packet,
 
 	if (filter)
 		filter->feed->cb.sec(&packet[2], length - 2, NULL, 0,
-				     &filter->filter, DMX_OK);
+				     &filter->filter);
 }
 
 static void ttusb_dec_process_packet(struct ttusb_dec *dec)
@@ -593,14 +597,9 @@ static void ttusb_dec_process_packet(struct ttusb_dec *dec)
 
 static void swap_bytes(u8 *b, int length)
 {
-	u8 c;
-
 	length -= length % 2;
-	for (; length; b += 2, length -= 2) {
-		c = *b;
-		*b = *(b + 1);
-		*(b + 1) = c;
-	}
+	for (; length; b += 2, length -= 2)
+		swap(*b, *(b + 1));
 }
 
 static void ttusb_dec_process_urb_frame(struct ttusb_dec *dec, u8 *b,
@@ -1431,8 +1430,8 @@ static int ttusb_dec_init_stb(struct ttusb_dec *dec)
 			       __func__, model);
 			return -ENOENT;
 		}
-			if (version >= 0x01770000)
-				dec->can_playback = 1;
+		if (version >= 0x01770000)
+			dec->can_playback = 1;
 	}
 	return 0;
 }
@@ -1613,7 +1612,7 @@ static int fe_send_command(struct dvb_frontend* fe, const u8 command,
 	return ttusb_dec_send_command(dec, command, param_length, params, result_length, cmd_result);
 }
 
-static struct ttusbdecfe_config fe_config = {
+static const struct ttusbdecfe_config fe_config = {
 	.send_command = fe_send_command
 };
 

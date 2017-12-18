@@ -28,7 +28,6 @@ static void of_get_regulation_constraints(struct device_node *np,
 					struct regulator_init_data **init_data,
 					const struct regulator_desc *desc)
 {
-	const __be32 *min_uV, *max_uV;
 	struct regulation_constraints *constraints = &(*init_data)->constraints;
 	struct regulator_state *suspend_state;
 	struct device_node *suspend_np;
@@ -37,18 +36,18 @@ static void of_get_regulation_constraints(struct device_node *np,
 
 	constraints->name = of_get_property(np, "regulator-name", NULL);
 
-	min_uV = of_get_property(np, "regulator-min-microvolt", NULL);
-	if (min_uV)
-		constraints->min_uV = be32_to_cpu(*min_uV);
-	max_uV = of_get_property(np, "regulator-max-microvolt", NULL);
-	if (max_uV)
-		constraints->max_uV = be32_to_cpu(*max_uV);
+	if (!of_property_read_u32(np, "regulator-min-microvolt", &pval))
+		constraints->min_uV = pval;
+
+	if (!of_property_read_u32(np, "regulator-max-microvolt", &pval))
+		constraints->max_uV = pval;
 
 	/* Voltage change possible? */
 	if (constraints->min_uV != constraints->max_uV)
 		constraints->valid_ops_mask |= REGULATOR_CHANGE_VOLTAGE;
-	/* Only one voltage?  Then make sure it's set. */
-	if (min_uV && max_uV && constraints->min_uV == constraints->max_uV)
+
+	/* Do we have a voltage range, if so try to apply it? */
+	if (constraints->min_uV && constraints->max_uV)
 		constraints->apply_uV = true;
 
 	if (!of_property_read_u32(np, "regulator-microvolt-offset", &pval))
@@ -57,6 +56,10 @@ static void of_get_regulation_constraints(struct device_node *np,
 		constraints->min_uA = pval;
 	if (!of_property_read_u32(np, "regulator-max-microamp", &pval))
 		constraints->max_uA = pval;
+
+	if (!of_property_read_u32(np, "regulator-input-current-limit-microamp",
+				  &pval))
+		constraints->ilim_uA = pval;
 
 	/* Current change possible? */
 	if (constraints->min_uA != constraints->max_uA)
@@ -67,8 +70,13 @@ static void of_get_regulation_constraints(struct device_node *np,
 	if (!constraints->always_on) /* status change should be possible. */
 		constraints->valid_ops_mask |= REGULATOR_CHANGE_STATUS;
 
+	constraints->pull_down = of_property_read_bool(np, "regulator-pull-down");
+
 	if (of_property_read_bool(np, "regulator-allow-bypass"))
 		constraints->valid_ops_mask |= REGULATOR_CHANGE_BYPASS;
+
+	if (of_property_read_bool(np, "regulator-allow-set-load"))
+		constraints->valid_ops_mask |= REGULATOR_CHANGE_DRMS;
 
 	ret = of_property_read_u32(np, "regulator-ramp-delay", &pval);
 	if (!ret) {
@@ -81,6 +89,15 @@ static void of_get_regulation_constraints(struct device_node *np,
 	ret = of_property_read_u32(np, "regulator-enable-ramp-delay", &pval);
 	if (!ret)
 		constraints->enable_time = pval;
+
+	constraints->soft_start = of_property_read_bool(np,
+					"regulator-soft-start");
+	ret = of_property_read_u32(np, "regulator-active-discharge", &pval);
+	if (!ret) {
+		constraints->active_discharge =
+				(pval) ? REGULATOR_ACTIVE_DISCHARGE_ENABLE :
+					REGULATOR_ACTIVE_DISCHARGE_DISABLE;
+	}
 
 	if (!of_property_read_u32(np, "regulator-initial-mode", &pval)) {
 		if (desc && desc->of_map_mode) {
@@ -95,6 +112,12 @@ static void of_get_regulation_constraints(struct device_node *np,
 		}
 	}
 
+	if (!of_property_read_u32(np, "regulator-system-load", &pval))
+		constraints->system_load = pval;
+
+	constraints->over_current_protection = of_property_read_bool(np,
+					"regulator-over-current-protection");
+
 	for (i = 0; i < ARRAY_SIZE(regulator_states); i++) {
 		switch (i) {
 		case PM_SUSPEND_MEM:
@@ -108,7 +131,7 @@ static void of_get_regulation_constraints(struct device_node *np,
 		case PM_SUSPEND_STANDBY:
 		default:
 			continue;
-		};
+		}
 
 		suspend_np = of_get_child_by_name(np, regulator_states[i]);
 		if (!suspend_np || !suspend_state)
@@ -139,6 +162,9 @@ static void of_get_regulation_constraints(struct device_node *np,
 		if (!of_property_read_u32(suspend_np,
 					"regulator-suspend-microvolt", &pval))
 			suspend_state->uV = pval;
+
+		if (i == PM_SUSPEND_MEM)
+			constraints->initial_state = PM_SUSPEND_MEM;
 
 		of_node_put(suspend_np);
 		suspend_state = NULL;
@@ -292,7 +318,7 @@ struct regulator_init_data *regulator_of_get_init_data(struct device *dev,
 		return NULL;
 	}
 
-	for_each_child_of_node(search, child) {
+	for_each_available_child_of_node(search, child) {
 		name = of_get_property(child, "regulator-compatible", NULL);
 		if (!name)
 			name = child->name;

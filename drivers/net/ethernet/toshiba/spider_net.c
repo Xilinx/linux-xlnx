@@ -48,7 +48,6 @@
 #include <linux/wait.h>
 #include <linux/workqueue.h>
 #include <linux/bitops.h>
-#include <asm/pci-bridge.h>
 #include <net/checksum.h>
 
 #include "spider_net.h"
@@ -604,8 +603,7 @@ spider_net_set_multi(struct net_device *netdev)
 	int i;
 	u32 reg;
 	struct spider_net_card *card = netdev_priv(netdev);
-	unsigned long bitmask[SPIDER_NET_MULTICAST_HASHES / BITS_PER_LONG] =
-		{0, };
+	DECLARE_BITMAP(bitmask, SPIDER_NET_MULTICAST_HASHES) = {};
 
 	spider_net_set_promisc(card);
 
@@ -707,7 +705,7 @@ spider_net_prepare_tx_descr(struct spider_net_card *card,
 	wmb();
 	descr->prev->hwdescr->next_descr_addr = descr->bus_addr;
 
-	card->netdev->trans_start = jiffies; /* set netdev watchdog timer */
+	netif_trans_update(card->netdev); /* set netdev watchdog timer */
 	return 0;
 }
 

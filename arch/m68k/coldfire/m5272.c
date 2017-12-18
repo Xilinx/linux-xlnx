@@ -111,7 +111,7 @@ void __init config_BSP(char *commandp, int size)
 /***************************************************************************/
 
 /*
- * Some 5272 based boards have the FEC ethernet diectly connected to
+ * Some 5272 based boards have the FEC ethernet directly connected to
  * an ethernet switch. In this case we need to use the fixed phy type,
  * and we need to declare it early in boot.
  */
@@ -126,7 +126,7 @@ static struct fixed_phy_status nettel_fixed_phy_status __initdata = {
 static int __init init_BSP(void)
 {
 	m5272_uarts_init();
-	fixed_phy_add(PHY_POLL, 0, &nettel_fixed_phy_status);
+	fixed_phy_add(PHY_POLL, 0, &nettel_fixed_phy_status, -1);
 	return 0;
 }
 

@@ -27,6 +27,8 @@
 #include <linux/irqdomain.h>
 #include <linux/gpio.h>
 #include <linux/slab.h>
+#include <linux/pm_runtime.h>
+#include <linux/clk.h>
 
 /* Register Offset Definitions */
 #define XGPIO_DATA_OFFSET	0x0 /* Data register */
@@ -40,7 +42,7 @@
 #define XGPIO_CHANNEL_OFFSET	0x8
 
 /* Read/Write access to the GPIO registers */
-#ifdef CONFIG_ARCH_ZYNQ
+#if defined(CONFIG_ARCH_ZYNQ) || defined(CONFIG_ARM64)
 # define xgpio_readreg(offset)		readl(offset)
 # define xgpio_writereg(offset, val)	writel(val, offset)
 #else
@@ -58,6 +60,7 @@
  * @irq_enable: GPIO irq enable/disable bitfield
  * @gpio_lock: Lock used for synchronization
  * @irq_domain: irq_domain of the controller
+ * @clk: clock resource for this driver
  */
 struct xgpio_instance {
 	struct of_mm_gpio_chip mmchip;
@@ -68,6 +71,7 @@ struct xgpio_instance {
 	u32 irq_enable;
 	spinlock_t gpio_lock;
 	struct irq_domain *irq_domain;
+	struct clk *clk;
 };
 
 /**
@@ -119,6 +123,45 @@ static void xgpio_set(struct gpio_chip *gc, unsigned int gpio, int val)
 
 	xgpio_writereg(regs + chip->offset + XGPIO_DATA_OFFSET,
 							 chip->gpio_state);
+
+	spin_unlock_irqrestore(&chip->gpio_lock, flags);
+}
+
+/**
+ * xgpio_set_multiple - Write the specified signals of the GPIO device.
+ * @gc:     Pointer to gpio_chip device structure.
+ * @mask:   Mask of the GPIOS to modify.
+ * @bits:   Value to be wrote on each GPIO
+ *
+ * This function writes the specified values into the specified signals of the
+ * GPIO devices.
+ */
+static void xgpio_set_multiple(struct gpio_chip *gc, unsigned long *mask,
+			       unsigned long *bits)
+{
+	unsigned long flags;
+	struct of_mm_gpio_chip *mm_gc = to_of_mm_gpio_chip(gc);
+	struct xgpio_instance *chip =
+	    container_of(mm_gc, struct xgpio_instance, mmchip);
+	void __iomem *regs = mm_gc->regs;
+	int i;
+
+	spin_lock_irqsave(&chip->gpio_lock, flags);
+
+	/* Write to GPIO signals */
+	for (i = 0; i < gc->ngpio; i++) {
+		if (*mask == 0)
+			break;
+		if (__test_and_clear_bit(i, mask)) {
+			if (test_bit(i, bits))
+				chip->gpio_state |= BIT(i);
+			else
+				chip->gpio_state &= ~BIT(i);
+		}
+	}
+
+	xgpio_writereg(regs + chip->offset + XGPIO_DATA_OFFSET,
+		       chip->gpio_state);
 
 	spin_unlock_irqrestore(&chip->gpio_lock, flags);
 }
@@ -208,7 +251,7 @@ static void xgpio_save_regs(struct of_mm_gpio_chip *mm_gc)
 }
 
 /**
- * xgpio_xlate - Set initial values of GPIO pins
+ * xgpio_xlate - Translate gpio_spec to the GPIO number and flags
  * @gc: Pointer to gpio_chip device structure.
  * @gpiospec:  gpio specifier as found in the device tree
  * @flags: A flags pointer based on binding
@@ -333,7 +376,7 @@ static struct irq_chip xgpio_irqchip = {
  * Return:
  * irq number otherwise -EINVAL
  */
-static int xgpio_to_irq(struct gpio_chip *gc, unsigned offset)
+static int xgpio_to_irq(struct gpio_chip *gc, unsigned int offset)
 {
 	struct of_mm_gpio_chip *mm_gc = to_of_mm_gpio_chip(gc);
 	struct xgpio_instance *chip = container_of(mm_gc, struct xgpio_instance,
@@ -344,11 +387,12 @@ static int xgpio_to_irq(struct gpio_chip *gc, unsigned offset)
 
 /**
  * xgpio_irqhandler - Gpio interrupt service routine
- * @irq: gpio irq number
  * @desc: Pointer to interrupt description
  */
-static void xgpio_irqhandler(unsigned int irq, struct irq_desc *desc)
+static void xgpio_irqhandler(struct irq_desc *desc)
 {
+	unsigned int irq = irq_desc_get_irq(desc);
+
 	struct xgpio_instance *chip = (struct xgpio_instance *)
 						irq_get_handler_data(irq);
 	struct of_mm_gpio_chip *mm_gc = &chip->mmchip;
@@ -388,13 +432,12 @@ static int xgpio_irq_setup(struct device_node *np, struct xgpio_instance *chip)
 	struct resource res;
 
 	int ret = of_irq_to_resource(np, 0, &res);
+
 	if (!ret) {
 		pr_info("GPIO IRQ not connected\n");
 		return 0;
 	}
 
-	chip->mmchip.gc.of_xlate = xgpio_xlate;
-	chip->mmchip.gc.of_gpio_n_cells = 2;
 	chip->mmchip.gc.to_irq = xgpio_to_irq;
 
 	chip->irq_base = irq_alloc_descs(-1, 0, chip->mmchip.gc.ngpio, 0);
@@ -412,15 +455,13 @@ static int xgpio_irq_setup(struct device_node *np, struct xgpio_instance *chip)
 	 */
 	for (pin_num = 0; pin_num < chip->mmchip.gc.ngpio; pin_num++) {
 		u32 gpio_irq = irq_find_mapping(chip->irq_domain, pin_num);
+
 		irq_set_lockdep_class(gpio_irq, &gpio_lock_class);
 		pr_debug("IRQ Base: %d, Pin %d = IRQ %d\n",
 			chip->irq_base,	pin_num, gpio_irq);
 		irq_set_chip_and_handler(gpio_irq, &xgpio_irqchip,
 					 handle_simple_irq);
 		irq_set_chip_data(gpio_irq, (void *)chip);
-#ifdef CONFIG_ARCH_ZYNQ
-		set_irq_flags(gpio_irq, IRQF_VALID);
-#endif
 	}
 	irq_set_handler_data(res.start, (void *)chip);
 	irq_set_chained_handler(res.start, xgpio_irqhandler);
@@ -428,9 +469,105 @@ static int xgpio_irq_setup(struct device_node *np, struct xgpio_instance *chip)
 	return 0;
 }
 
+static int xgpio_request(struct gpio_chip *chip, unsigned int offset)
+{
+	int ret = pm_runtime_get_sync(chip->parent);
+
+	/*
+	 * If the device is already active pm_runtime_get() will return 1 on
+	 * success, but gpio_request still needs to return 0.
+	 */
+	return ret < 0 ? ret : 0;
+}
+
+static void xgpio_free(struct gpio_chip *chip, unsigned int offset)
+{
+	pm_runtime_put(chip->parent);
+}
+
+static int __maybe_unused xgpio_suspend(struct device *dev)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	int irq;
+	struct irq_data *data;
+
+	irq = platform_get_irq(pdev, 0);
+	if (irq <= 0) {
+		dev_dbg(dev, "failed to get IRQ\n");
+		return 0;
+	}
+
+	data = irq_get_irq_data(irq);
+	if (!irqd_is_wakeup_set(data))
+		return pm_runtime_force_suspend(dev);
+
+	return 0;
+}
+
+static int __maybe_unused xgpio_resume(struct device *dev)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	int irq;
+	struct irq_data *data;
+
+
+	irq = platform_get_irq(pdev, 0);
+	if (irq <= 0) {
+		dev_dbg(dev, "failed to get IRQ\n");
+		return 0;
+	}
+
+	data = irq_get_irq_data(irq);
+	if (!irqd_is_wakeup_set(data))
+		return pm_runtime_force_resume(dev);
+
+	return 0;
+}
+
+static int __maybe_unused xgpio_runtime_suspend(struct device *dev)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct xgpio_instance *gpio = platform_get_drvdata(pdev);
+
+	clk_disable(gpio->clk);
+
+	return 0;
+}
+
+static int __maybe_unused xgpio_runtime_resume(struct device *dev)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct xgpio_instance *gpio = platform_get_drvdata(pdev);
+
+	return clk_enable(gpio->clk);
+}
+
+static const struct dev_pm_ops xgpio_dev_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(xgpio_suspend, xgpio_resume)
+	SET_RUNTIME_PM_OPS(xgpio_runtime_suspend,
+			xgpio_runtime_resume, NULL)
+};
+
+/**
+ * xgpio_remove - Remove method for the GPIO device.
+ * @pdev: pointer to the platform device
+ *
+ * This function remove gpiochips and frees all the allocated resources.
+ *
+ * Return: 0 always
+ */
+static int xgpio_remove(struct platform_device *pdev)
+{
+	struct xgpio_instance *chip = platform_get_drvdata(pdev);
+
+	of_mm_gpiochip_remove(&chip->mmchip);
+
+	return 0;
+}
+
 /**
  * xgpio_of_probe - Probe method for the GPIO device.
- * @np: pointer to device tree node
+ * @pdev:       platform device instance
  *
  * This function probes the GPIO device in the device tree. It initializes the
  * driver data structure.
@@ -470,26 +607,60 @@ static int xgpio_of_probe(struct platform_device *pdev)
 
 	spin_lock_init(&chip->gpio_lock);
 
+	chip->mmchip.gc.parent = &pdev->dev;
+	chip->mmchip.gc.owner = THIS_MODULE;
+	chip->mmchip.gc.of_xlate = xgpio_xlate;
+	chip->mmchip.gc.of_gpio_n_cells = 2;
 	chip->mmchip.gc.direction_input = xgpio_dir_in;
 	chip->mmchip.gc.direction_output = xgpio_dir_out;
 	chip->mmchip.gc.get = xgpio_get;
 	chip->mmchip.gc.set = xgpio_set;
+	chip->mmchip.gc.request = xgpio_request;
+	chip->mmchip.gc.free = xgpio_free;
+	chip->mmchip.gc.set_multiple = xgpio_set_multiple;
 
 	chip->mmchip.save_regs = xgpio_save_regs;
+
+	platform_set_drvdata(pdev, chip);
+
+	chip->clk = devm_clk_get(&pdev->dev, "axi_clk");
+	if (IS_ERR(chip->clk)) {
+		if (PTR_ERR(chip->clk) != -ENOENT) {
+			dev_err(&pdev->dev, "Input clock not found\n");
+			return PTR_ERR(chip->clk);
+		}
+
+		/*
+		 * Clock framework support is optional, continue on
+		 * anyways if we don't find a matching clock.
+		 */
+		chip->clk = NULL;
+	}
+
+	status = clk_prepare(chip->clk);
+	if (status < 0) {
+		dev_err(&pdev->dev, "Failed to prepare clk\n");
+		return status;
+	}
+
+	pm_runtime_enable(&pdev->dev);
+	status = pm_runtime_get_sync(&pdev->dev);
+	if (status < 0)
+		goto err_unprepare_clk;
 
 	/* Call the OF gpio helper to setup and register the GPIO device */
 	status = of_mm_gpiochip_add(np, &chip->mmchip);
 	if (status) {
 		pr_err("%s: error in probe function with status %d\n",
 		       np->full_name, status);
-		return status;
+		goto err_pm_put;
 	}
 
 	status = xgpio_irq_setup(np, chip);
 	if (status) {
 		pr_err("%s: GPIO IRQ initialization failed %d\n",
 		       np->full_name, status);
-		return status;
+		goto err_pm_put;
 	}
 
 	pr_info("XGpio: %s: registered, base is %d\n", np->full_name,
@@ -524,10 +695,17 @@ static int xgpio_of_probe(struct platform_device *pdev)
 
 		spin_lock_init(&chip->gpio_lock);
 
+		chip->mmchip.gc.parent = &pdev->dev;
+		chip->mmchip.gc.owner = THIS_MODULE;
+		chip->mmchip.gc.of_xlate = xgpio_xlate;
+		chip->mmchip.gc.of_gpio_n_cells = 2;
 		chip->mmchip.gc.direction_input = xgpio_dir_in;
 		chip->mmchip.gc.direction_output = xgpio_dir_out;
 		chip->mmchip.gc.get = xgpio_get;
 		chip->mmchip.gc.set = xgpio_set;
+		chip->mmchip.gc.request = xgpio_request;
+		chip->mmchip.gc.free = xgpio_free;
+		chip->mmchip.gc.set_multiple = xgpio_set_multiple;
 
 		chip->mmchip.save_regs = xgpio_save_regs;
 
@@ -535,7 +713,7 @@ static int xgpio_of_probe(struct platform_device *pdev)
 		if (status) {
 			pr_err("%s: GPIO IRQ initialization failed %d\n",
 			      np->full_name, status);
-			return status;
+			goto err_pm_put;
 		}
 
 		/* Call the OF gpio helper to setup and register the GPIO dev */
@@ -543,13 +721,21 @@ static int xgpio_of_probe(struct platform_device *pdev)
 		if (status) {
 			pr_err("%s: error in probe function with status %d\n",
 			       np->full_name, status);
-			return status;
+			goto err_pm_put;
 		}
 		pr_info("XGpio: %s: dual channel registered, base is %d\n",
 					np->full_name, chip->mmchip.gc.base);
 	}
 
+	pm_runtime_put(&pdev->dev);
 	return 0;
+
+err_pm_put:
+	pm_runtime_put(&pdev->dev);
+err_unprepare_clk:
+	pm_runtime_disable(&pdev->dev);
+	clk_unprepare(chip->clk);
+	return status;
 }
 
 static const struct of_device_id xgpio_of_match[] = {
@@ -560,9 +746,11 @@ MODULE_DEVICE_TABLE(of, xgpio_of_match);
 
 static struct platform_driver xilinx_gpio_driver = {
 	.probe = xgpio_of_probe,
+	.remove = xgpio_remove,
 	.driver = {
 		.name = "xilinx-gpio",
 		.of_match_table = xgpio_of_match,
+		.pm = &xgpio_dev_pm_ops,
 	},
 };
 
@@ -573,7 +761,12 @@ static int __init xgpio_init(void)
 
 /* Make sure we get initialized before anyone else tries to use us */
 subsys_initcall(xgpio_init);
-/* No exit call at the moment as we cannot unregister of GPIO chips */
+
+static void __exit xgpio_exit(void)
+{
+	platform_driver_unregister(&xilinx_gpio_driver);
+}
+module_exit(xgpio_exit);
 
 MODULE_AUTHOR("Xilinx, Inc.");
 MODULE_DESCRIPTION("Xilinx GPIO driver");

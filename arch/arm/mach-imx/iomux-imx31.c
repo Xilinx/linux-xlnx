@@ -40,7 +40,7 @@ static DEFINE_SPINLOCK(gpio_mux_lock);
 
 #define IOMUX_REG_MASK (IOMUX_PADNUM_MASK & ~0x3)
 
-static unsigned long mxc_pin_alloc_map[NB_PORTS * 32 / BITS_PER_LONG];
+static DECLARE_BITMAP(mxc_pin_alloc_map, NB_PORTS * 32);
 /*
  * set the mode for a IOMUX pin.
  */
@@ -57,10 +57,10 @@ void mxc_iomux_mode(unsigned int pin_mode)
 
 	spin_lock(&gpio_mux_lock);
 
-	l = __raw_readl(reg);
+	l = imx_readl(reg);
 	l &= ~(0xff << (field * 8));
 	l |= mode << (field * 8);
-	__raw_writel(l, reg);
+	imx_writel(l, reg);
 
 	spin_unlock(&gpio_mux_lock);
 }
@@ -82,10 +82,10 @@ void mxc_iomux_set_pad(enum iomux_pins pin, u32 config)
 
 	spin_lock(&gpio_mux_lock);
 
-	l = __raw_readl(reg);
+	l = imx_readl(reg);
 	l &= ~(0x1ff << (field * 10));
 	l |= config << (field * 10);
-	__raw_writel(l, reg);
+	imx_writel(l, reg);
 
 	spin_unlock(&gpio_mux_lock);
 }
@@ -100,7 +100,7 @@ int mxc_iomux_alloc_pin(unsigned int pin, const char *label)
 	unsigned pad = pin & IOMUX_PADNUM_MASK;
 
 	if (pad >= (PIN_MAX + 1)) {
-		printk(KERN_ERR "mxc_iomux: Attempt to request nonexistant pin %u for \"%s\"\n",
+		printk(KERN_ERR "mxc_iomux: Attempt to request nonexistent pin %u for \"%s\"\n",
 			pad, label ? label : "?");
 		return -EINVAL;
 	}
@@ -163,12 +163,12 @@ void mxc_iomux_set_gpr(enum iomux_gp_func gp, bool en)
 	u32 l;
 
 	spin_lock(&gpio_mux_lock);
-	l = __raw_readl(IOMUXGPR);
+	l = imx_readl(IOMUXGPR);
 	if (en)
 		l |= gp;
 	else
 		l &= ~gp;
 
-	__raw_writel(l, IOMUXGPR);
+	imx_writel(l, IOMUXGPR);
 	spin_unlock(&gpio_mux_lock);
 }

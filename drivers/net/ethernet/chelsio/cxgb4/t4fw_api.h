@@ -1,7 +1,7 @@
 /*
  * This file is part of the Chelsio T4 Ethernet driver for Linux.
  *
- * Copyright (c) 2009-2014 Chelsio Communications, Inc. All rights reserved.
+ * Copyright (c) 2009-2016 Chelsio Communications, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -36,7 +36,7 @@
 #define _T4FW_INTERFACE_H_
 
 enum fw_retval {
-	FW_SUCCESS		= 0,	/* completed sucessfully */
+	FW_SUCCESS		= 0,	/* completed successfully */
 	FW_EPERM		= 1,	/* operation not permitted */
 	FW_ENOENT		= 2,	/* no such file or directory */
 	FW_EIO			= 5,	/* input/output error; hw bad */
@@ -100,7 +100,10 @@ enum fw_wr_opcodes {
 	FW_RI_RECV_WR                  = 0x17,
 	FW_RI_BIND_MW_WR               = 0x18,
 	FW_RI_FR_NSMR_WR               = 0x19,
+	FW_RI_FR_NSMR_TPTE_WR	       = 0x20,
 	FW_RI_INV_LSTAG_WR             = 0x1a,
+	FW_ISCSI_TX_DATA_WR	       = 0x45,
+	FW_CRYPTO_LOOKASIDE_WR         = 0X6d,
 	FW_LASTC2E_WR                  = 0x70
 };
 
@@ -561,6 +564,12 @@ enum fw_flowc_mnem {
 	FW_FLOWC_MNEM_SNDBUF,
 	FW_FLOWC_MNEM_MSS,
 	FW_FLOWC_MNEM_TXDATAPLEN_MAX,
+	FW_FLOWC_MNEM_TCPSTATE,
+	FW_FLOWC_MNEM_EOSTATE,
+	FW_FLOWC_MNEM_SCHEDCLASS,
+	FW_FLOWC_MNEM_DCBPRIO,
+	FW_FLOWC_MNEM_SND_SCALE,
+	FW_FLOWC_MNEM_RCV_SCALE,
 };
 
 struct fw_flowc_mnemval {
@@ -673,6 +682,7 @@ enum fw_cmd_opcodes {
 	FW_RSS_IND_TBL_CMD             = 0x20,
 	FW_RSS_GLB_CONFIG_CMD          = 0x22,
 	FW_RSS_VI_CONFIG_CMD           = 0x23,
+	FW_SCHED_CMD                   = 0x24,
 	FW_DEVLOG_CMD                  = 0x25,
 	FW_CLIP_CMD                    = 0x28,
 	FW_LASTC2E_CMD                 = 0x40,
@@ -762,8 +772,6 @@ enum fw_ldst_func_mod_index {
 
 struct fw_ldst_cmd {
 	__be32 op_to_addrspace;
-#define FW_LDST_CMD_ADDRSPACE_S		0
-#define FW_LDST_CMD_ADDRSPACE_V(x)	((x) << FW_LDST_CMD_ADDRSPACE_S)
 	__be32 cycles_to_len16;
 	union fw_ldst {
 		struct fw_ldst_addrval {
@@ -772,7 +780,7 @@ struct fw_ldst_cmd {
 		} addrval;
 		struct fw_ldst_idctxt {
 			__be32 physid;
-			__be32 msg_pkd;
+			__be32 msg_ctxtflush;
 			__be32 ctxt_data7;
 			__be32 ctxt_data6;
 			__be32 ctxt_data5;
@@ -788,15 +796,34 @@ struct fw_ldst_cmd {
 			__be16 vctl;
 			__be16 rval;
 		} mdio;
-		struct fw_ldst_mps {
-			__be16 fid_ctl;
-			__be16 rplcpf_pkd;
-			__be32 rplc127_96;
-			__be32 rplc95_64;
-			__be32 rplc63_32;
-			__be32 rplc31_0;
-			__be32 atrb;
-			__be16 vlan[16];
+		struct fw_ldst_cim_rq {
+			u8 req_first64[8];
+			u8 req_second64[8];
+			u8 resp_first64[8];
+			u8 resp_second64[8];
+			__be32 r3[2];
+		} cim_rq;
+		union fw_ldst_mps {
+			struct fw_ldst_mps_rplc {
+				__be16 fid_idx;
+				__be16 rplcpf_pkd;
+				__be32 rplc255_224;
+				__be32 rplc223_192;
+				__be32 rplc191_160;
+				__be32 rplc159_128;
+				__be32 rplc127_96;
+				__be32 rplc95_64;
+				__be32 rplc63_32;
+				__be32 rplc31_0;
+			} rplc;
+			struct fw_ldst_mps_atrb {
+				__be16 fid_mpsid;
+				__be16 r2[3];
+				__be32 r3[2];
+				__be32 r4;
+				__be32 atrb;
+				__be16 vlan[16];
+			} atrb;
 		} mps;
 		struct fw_ldst_func {
 			u8 access_ctl;
@@ -816,11 +843,39 @@ struct fw_ldst_cmd {
 			__be16 nset_pkd;
 			__be32 data[12];
 		} pcie;
+		struct fw_ldst_i2c_deprecated {
+			u8 pid_pkd;
+			u8 base;
+			u8 boffset;
+			u8 data;
+			__be32 r9;
+		} i2c_deprecated;
+		struct fw_ldst_i2c {
+			u8 pid;
+			u8 did;
+			u8 boffset;
+			u8 blen;
+			__be32 r9;
+			__u8   data[48];
+		} i2c;
+		struct fw_ldst_le {
+			__be32 index;
+			__be32 r9;
+			u8 val[33];
+			u8 r11[7];
+		} le;
 	} u;
 };
 
+#define FW_LDST_CMD_ADDRSPACE_S		0
+#define FW_LDST_CMD_ADDRSPACE_V(x)	((x) << FW_LDST_CMD_ADDRSPACE_S)
+
 #define FW_LDST_CMD_MSG_S       31
 #define FW_LDST_CMD_MSG_V(x)	((x) << FW_LDST_CMD_MSG_S)
+
+#define FW_LDST_CMD_CTXTFLUSH_S		30
+#define FW_LDST_CMD_CTXTFLUSH_V(x)	((x) << FW_LDST_CMD_CTXTFLUSH_S)
+#define FW_LDST_CMD_CTXTFLUSH_F		FW_LDST_CMD_CTXTFLUSH_V(1U)
 
 #define FW_LDST_CMD_PADDR_S     8
 #define FW_LDST_CMD_PADDR_V(x)	((x) << FW_LDST_CMD_PADDR_S)
@@ -831,8 +886,8 @@ struct fw_ldst_cmd {
 #define FW_LDST_CMD_FID_S       15
 #define FW_LDST_CMD_FID_V(x)	((x) << FW_LDST_CMD_FID_S)
 
-#define FW_LDST_CMD_CTL_S       0
-#define FW_LDST_CMD_CTL_V(x)	((x) << FW_LDST_CMD_CTL_S)
+#define FW_LDST_CMD_IDX_S	0
+#define FW_LDST_CMD_IDX_V(x)	((x) << FW_LDST_CMD_IDX_S)
 
 #define FW_LDST_CMD_RPLCPF_S    0
 #define FW_LDST_CMD_RPLCPF_V(x)	((x) << FW_LDST_CMD_RPLCPF_S)
@@ -1008,7 +1063,7 @@ struct fw_caps_config_cmd {
 	__be16 niccaps;
 	__be16 ofldcaps;
 	__be16 rdmacaps;
-	__be16 r4;
+	__be16 cryptocaps;
 	__be16 iscsicaps;
 	__be16 fcoecaps;
 	__be32 cfcsum;
@@ -1061,11 +1116,13 @@ enum fw_params_param_dev {
 	FW_PARAMS_PARAM_DEV_FWREV = 0x0B,
 	FW_PARAMS_PARAM_DEV_TPREV = 0x0C,
 	FW_PARAMS_PARAM_DEV_CF = 0x0D,
+	FW_PARAMS_PARAM_DEV_PHYFW = 0x0F,
 	FW_PARAMS_PARAM_DEV_DIAG = 0x11,
 	FW_PARAMS_PARAM_DEV_MAXORDIRD_QP = 0x13, /* max supported QP IRD/ORD */
 	FW_PARAMS_PARAM_DEV_MAXIRD_ADAPTER = 0x14, /* max supported adap IRD */
 	FW_PARAMS_PARAM_DEV_ULPTX_MEMWRITE_DSGL = 0x17,
 	FW_PARAMS_PARAM_DEV_FWCACHE = 0x18,
+	FW_PARAMS_PARAM_DEV_RI_FR_NSMR_TPTE_WR	= 0x1C,
 };
 
 /*
@@ -1123,6 +1180,12 @@ enum fw_params_param_dmaq {
 	FW_PARAMS_PARAM_DMAQ_EQ_CMPLIQID_CTRL = 0x11,
 	FW_PARAMS_PARAM_DMAQ_EQ_SCHEDCLASS_ETH = 0x12,
 	FW_PARAMS_PARAM_DMAQ_EQ_DCBPRIO_ETH = 0x13,
+	FW_PARAMS_PARAM_DMAQ_CONM_CTXT = 0x20,
+};
+
+enum fw_params_param_dev_phyfw {
+	FW_PARAMS_PARAM_DEV_PHYFW_DOWNLOAD = 0x00,
+	FW_PARAMS_PARAM_DEV_PHYFW_VERSION = 0x01,
 };
 
 enum fw_params_param_dev_diag {
@@ -1377,6 +1440,7 @@ struct fw_iq_cmd {
 
 #define FW_IQ_CMD_IQFLINTCONGEN_S	27
 #define FW_IQ_CMD_IQFLINTCONGEN_V(x)	((x) << FW_IQ_CMD_IQFLINTCONGEN_S)
+#define FW_IQ_CMD_IQFLINTCONGEN_F	FW_IQ_CMD_IQFLINTCONGEN_V(1U)
 
 #define FW_IQ_CMD_IQFLINTISCSIC_S	26
 #define FW_IQ_CMD_IQFLINTISCSIC_V(x)	((x) << FW_IQ_CMD_IQFLINTISCSIC_S)
@@ -1399,6 +1463,7 @@ struct fw_iq_cmd {
 
 #define FW_IQ_CMD_FL0CONGCIF_S		11
 #define FW_IQ_CMD_FL0CONGCIF_V(x)	((x) << FW_IQ_CMD_FL0CONGCIF_S)
+#define FW_IQ_CMD_FL0CONGCIF_F		FW_IQ_CMD_FL0CONGCIF_V(1U)
 
 #define FW_IQ_CMD_FL0ONCHIP_S		10
 #define FW_IQ_CMD_FL0ONCHIP_V(x)	((x) << FW_IQ_CMD_FL0ONCHIP_S)
@@ -1589,6 +1654,7 @@ struct fw_eq_eth_cmd {
 
 #define FW_EQ_ETH_CMD_FETCHRO_S		22
 #define FW_EQ_ETH_CMD_FETCHRO_V(x)	((x) << FW_EQ_ETH_CMD_FETCHRO_S)
+#define FW_EQ_ETH_CMD_FETCHRO_F		FW_EQ_ETH_CMD_FETCHRO_V(1U)
 
 #define FW_EQ_ETH_CMD_HOSTFCMODE_S	20
 #define FW_EQ_ETH_CMD_HOSTFCMODE_V(x)	((x) << FW_EQ_ETH_CMD_HOSTFCMODE_S)
@@ -2187,21 +2253,27 @@ struct fw_acl_vlan_cmd {
 enum fw_port_cap {
 	FW_PORT_CAP_SPEED_100M		= 0x0001,
 	FW_PORT_CAP_SPEED_1G		= 0x0002,
-	FW_PORT_CAP_SPEED_2_5G		= 0x0004,
+	FW_PORT_CAP_SPEED_25G		= 0x0004,
 	FW_PORT_CAP_SPEED_10G		= 0x0008,
 	FW_PORT_CAP_SPEED_40G		= 0x0010,
 	FW_PORT_CAP_SPEED_100G		= 0x0020,
 	FW_PORT_CAP_FC_RX		= 0x0040,
 	FW_PORT_CAP_FC_TX		= 0x0080,
 	FW_PORT_CAP_ANEG		= 0x0100,
-	FW_PORT_CAP_MDI_0		= 0x0200,
-	FW_PORT_CAP_MDI_1		= 0x0400,
-	FW_PORT_CAP_BEAN		= 0x0800,
-	FW_PORT_CAP_PMA_LPBK		= 0x1000,
-	FW_PORT_CAP_PCS_LPBK		= 0x2000,
-	FW_PORT_CAP_PHYXS_LPBK		= 0x4000,
-	FW_PORT_CAP_FAR_END_LPBK	= 0x8000,
+	FW_PORT_CAP_MDIX		= 0x0200,
+	FW_PORT_CAP_MDIAUTO		= 0x0400,
+	FW_PORT_CAP_FEC			= 0x0800,
+	FW_PORT_CAP_TECHKR		= 0x1000,
+	FW_PORT_CAP_TECHKX4		= 0x2000,
+	FW_PORT_CAP_802_3_PAUSE		= 0x4000,
+	FW_PORT_CAP_802_3_ASM_DIR	= 0x8000,
 };
+
+#define FW_PORT_CAP_SPEED_S     0
+#define FW_PORT_CAP_SPEED_M     0x3f
+#define FW_PORT_CAP_SPEED_V(x)  ((x) << FW_PORT_CAP_SPEED_S)
+#define FW_PORT_CAP_SPEED_G(x) \
+	(((x) >> FW_PORT_CAP_SPEED_S) & FW_PORT_CAP_SPEED_M)
 
 enum fw_port_mdi {
 	FW_PORT_CAP_MDI_UNCHANGED,
@@ -2314,7 +2386,8 @@ struct fw_port_cmd {
 			__u8   cbllen;
 			__u8   auxlinfo;
 			__u8   dcbxdis_pkd;
-			__u8   r8_lo[3];
+			__u8   r8_lo;
+			__be16 lpacap;
 			__be64 r9;
 		} info;
 		struct fw_port_diags {
@@ -2448,6 +2521,11 @@ struct fw_port_cmd {
 #define FW_PORT_CMD_PTYPE_G(x)	\
 	(((x) >> FW_PORT_CMD_PTYPE_S) & FW_PORT_CMD_PTYPE_M)
 
+#define FW_PORT_CMD_LINKDNRC_S		5
+#define FW_PORT_CMD_LINKDNRC_M		0x7
+#define FW_PORT_CMD_LINKDNRC_G(x)	\
+	(((x) >> FW_PORT_CMD_LINKDNRC_S) & FW_PORT_CMD_LINKDNRC_M)
+
 #define FW_PORT_CMD_MODTYPE_S		0
 #define FW_PORT_CMD_MODTYPE_M		0x1f
 #define FW_PORT_CMD_MODTYPE_V(x)	((x) << FW_PORT_CMD_MODTYPE_S)
@@ -2488,6 +2566,11 @@ enum fw_port_type {
 	FW_PORT_TYPE_QSA,
 	FW_PORT_TYPE_QSFP,
 	FW_PORT_TYPE_BP40_BA,
+	FW_PORT_TYPE_KR4_100G,
+	FW_PORT_TYPE_CR4_QSFP,
+	FW_PORT_TYPE_CR_QSFP,
+	FW_PORT_TYPE_CR2_QSFP,
+	FW_PORT_TYPE_SFP28,
 
 	FW_PORT_TYPE_NONE = FW_PORT_CMD_PTYPE_M
 };
@@ -2526,13 +2609,8 @@ enum fw_port_mod_sub_type {
 	FW_PORT_MOD_SUB_TYPE_TWINAX_7 = 0xC,
 };
 
-/* port stats */
-#define FW_NUM_PORT_STATS 50
-#define FW_NUM_PORT_TX_STATS 23
-#define FW_NUM_PORT_RX_STATS 27
-
 enum fw_port_stats_tx_index {
-	FW_STAT_TX_PORT_BYTES_IX,
+	FW_STAT_TX_PORT_BYTES_IX = 0,
 	FW_STAT_TX_PORT_FRAMES_IX,
 	FW_STAT_TX_PORT_BCAST_IX,
 	FW_STAT_TX_PORT_MCAST_IX,
@@ -2554,11 +2632,12 @@ enum fw_port_stats_tx_index {
 	FW_STAT_TX_PORT_PPP4_IX,
 	FW_STAT_TX_PORT_PPP5_IX,
 	FW_STAT_TX_PORT_PPP6_IX,
-	FW_STAT_TX_PORT_PPP7_IX
+	FW_STAT_TX_PORT_PPP7_IX,
+	FW_NUM_PORT_TX_STATS
 };
 
 enum fw_port_stat_rx_index {
-	FW_STAT_RX_PORT_BYTES_IX,
+	FW_STAT_RX_PORT_BYTES_IX = 0,
 	FW_STAT_RX_PORT_FRAMES_IX,
 	FW_STAT_RX_PORT_BCAST_IX,
 	FW_STAT_RX_PORT_MCAST_IX,
@@ -2584,8 +2663,13 @@ enum fw_port_stat_rx_index {
 	FW_STAT_RX_PORT_PPP5_IX,
 	FW_STAT_RX_PORT_PPP6_IX,
 	FW_STAT_RX_PORT_PPP7_IX,
-	FW_STAT_RX_PORT_LESS_64B_IX
+	FW_STAT_RX_PORT_LESS_64B_IX,
+	FW_STAT_RX_PORT_MAC_ERROR_IX,
+	FW_NUM_PORT_RX_STATS
 };
+
+/* port stats */
+#define FW_NUM_PORT_STATS (FW_NUM_PORT_TX_STATS + FW_NUM_PORT_RX_STATS)
 
 struct fw_port_stats_cmd {
 	__be32 op_to_portid;
@@ -2887,6 +2971,41 @@ struct fw_rss_vi_config_cmd {
 #define FW_RSS_VI_CONFIG_CMD_UDPEN_V(x)	((x) << FW_RSS_VI_CONFIG_CMD_UDPEN_S)
 #define FW_RSS_VI_CONFIG_CMD_UDPEN_F	FW_RSS_VI_CONFIG_CMD_UDPEN_V(1U)
 
+enum fw_sched_sc {
+	FW_SCHED_SC_PARAMS		= 1,
+};
+
+struct fw_sched_cmd {
+	__be32 op_to_write;
+	__be32 retval_len16;
+	union fw_sched {
+		struct fw_sched_config {
+			__u8   sc;
+			__u8   type;
+			__u8   minmaxen;
+			__u8   r3[5];
+			__u8   nclasses[4];
+			__be32 r4;
+		} config;
+		struct fw_sched_params {
+			__u8   sc;
+			__u8   type;
+			__u8   level;
+			__u8   mode;
+			__u8   unit;
+			__u8   rate;
+			__u8   ch;
+			__u8   cl;
+			__be32 min;
+			__be32 max;
+			__be16 weight;
+			__be16 pktsize;
+			__be16 burstsize;
+			__be16 r4;
+		} params;
+	} u;
+};
+
 struct fw_clip_cmd {
 	__be32 op_to_write;
 	__be32 alloc_to_len16;
@@ -3015,7 +3134,8 @@ struct fw_hdr {
 
 enum fw_hdr_chip {
 	FW_HDR_CHIP_T4,
-	FW_HDR_CHIP_T5
+	FW_HDR_CHIP_T5,
+	FW_HDR_CHIP_T6
 };
 
 #define FW_HDR_FW_VER_MAJOR_S	24
@@ -3173,5 +3293,128 @@ struct fw_devlog_cmd {
 #define PCIE_FW_PF_DEVLOG_MEMTYPE_V(x)	((x) << PCIE_FW_PF_DEVLOG_MEMTYPE_S)
 #define PCIE_FW_PF_DEVLOG_MEMTYPE_G(x) \
 	(((x) >> PCIE_FW_PF_DEVLOG_MEMTYPE_S) & PCIE_FW_PF_DEVLOG_MEMTYPE_M)
+
+#define MAX_IMM_OFLD_TX_DATA_WR_LEN (0xff + sizeof(struct fw_ofld_tx_data_wr))
+
+struct fw_crypto_lookaside_wr {
+	__be32 op_to_cctx_size;
+	__be32 len16_pkd;
+	__be32 session_id;
+	__be32 rx_chid_to_rx_q_id;
+	__be32 key_addr;
+	__be32 pld_size_hash_size;
+	__be64 cookie;
+};
+
+#define FW_CRYPTO_LOOKASIDE_WR_OPCODE_S 24
+#define FW_CRYPTO_LOOKASIDE_WR_OPCODE_M 0xff
+#define FW_CRYPTO_LOOKASIDE_WR_OPCODE_V(x) \
+	((x) << FW_CRYPTO_LOOKASIDE_WR_OPCODE_S)
+#define FW_CRYPTO_LOOKASIDE_WR_OPCODE_G(x) \
+	(((x) >> FW_CRYPTO_LOOKASIDE_WR_OPCODE_S) & \
+	 FW_CRYPTO_LOOKASIDE_WR_OPCODE_M)
+
+#define FW_CRYPTO_LOOKASIDE_WR_COMPL_S 23
+#define FW_CRYPTO_LOOKASIDE_WR_COMPL_M 0x1
+#define FW_CRYPTO_LOOKASIDE_WR_COMPL_V(x) \
+	((x) << FW_CRYPTO_LOOKASIDE_WR_COMPL_S)
+#define FW_CRYPTO_LOOKASIDE_WR_COMPL_G(x) \
+	(((x) >> FW_CRYPTO_LOOKASIDE_WR_COMPL_S) & \
+	 FW_CRYPTO_LOOKASIDE_WR_COMPL_M)
+#define FW_CRYPTO_LOOKASIDE_WR_COMPL_F FW_CRYPTO_LOOKASIDE_WR_COMPL_V(1U)
+
+#define FW_CRYPTO_LOOKASIDE_WR_IMM_LEN_S 15
+#define FW_CRYPTO_LOOKASIDE_WR_IMM_LEN_M 0xff
+#define FW_CRYPTO_LOOKASIDE_WR_IMM_LEN_V(x) \
+	((x) << FW_CRYPTO_LOOKASIDE_WR_IMM_LEN_S)
+#define FW_CRYPTO_LOOKASIDE_WR_IMM_LEN_G(x) \
+	(((x) >> FW_CRYPTO_LOOKASIDE_WR_IMM_LEN_S) & \
+	 FW_CRYPTO_LOOKASIDE_WR_IMM_LEN_M)
+
+#define FW_CRYPTO_LOOKASIDE_WR_CCTX_LOC_S 5
+#define FW_CRYPTO_LOOKASIDE_WR_CCTX_LOC_M 0x3
+#define FW_CRYPTO_LOOKASIDE_WR_CCTX_LOC_V(x) \
+	((x) << FW_CRYPTO_LOOKASIDE_WR_CCTX_LOC_S)
+#define FW_CRYPTO_LOOKASIDE_WR_CCTX_LOC_G(x) \
+	(((x) >> FW_CRYPTO_LOOKASIDE_WR_CCTX_LOC_S) & \
+	 FW_CRYPTO_LOOKASIDE_WR_CCTX_LOC_M)
+
+#define FW_CRYPTO_LOOKASIDE_WR_CCTX_SIZE_S 0
+#define FW_CRYPTO_LOOKASIDE_WR_CCTX_SIZE_M 0x1f
+#define FW_CRYPTO_LOOKASIDE_WR_CCTX_SIZE_V(x) \
+	((x) << FW_CRYPTO_LOOKASIDE_WR_CCTX_SIZE_S)
+#define FW_CRYPTO_LOOKASIDE_WR_CCTX_SIZE_G(x) \
+	(((x) >> FW_CRYPTO_LOOKASIDE_WR_CCTX_SIZE_S) & \
+	 FW_CRYPTO_LOOKASIDE_WR_CCTX_SIZE_M)
+
+#define FW_CRYPTO_LOOKASIDE_WR_LEN16_S 0
+#define FW_CRYPTO_LOOKASIDE_WR_LEN16_M 0xff
+#define FW_CRYPTO_LOOKASIDE_WR_LEN16_V(x) \
+	((x) << FW_CRYPTO_LOOKASIDE_WR_LEN16_S)
+#define FW_CRYPTO_LOOKASIDE_WR_LEN16_G(x) \
+	(((x) >> FW_CRYPTO_LOOKASIDE_WR_LEN16_S) & \
+	 FW_CRYPTO_LOOKASIDE_WR_LEN16_M)
+
+#define FW_CRYPTO_LOOKASIDE_WR_RX_CHID_S 29
+#define FW_CRYPTO_LOOKASIDE_WR_RX_CHID_M 0x3
+#define FW_CRYPTO_LOOKASIDE_WR_RX_CHID_V(x) \
+	((x) << FW_CRYPTO_LOOKASIDE_WR_RX_CHID_S)
+#define FW_CRYPTO_LOOKASIDE_WR_RX_CHID_G(x) \
+	(((x) >> FW_CRYPTO_LOOKASIDE_WR_RX_CHID_S) & \
+	 FW_CRYPTO_LOOKASIDE_WR_RX_CHID_M)
+
+#define FW_CRYPTO_LOOKASIDE_WR_LCB_S  27
+#define FW_CRYPTO_LOOKASIDE_WR_LCB_M  0x3
+#define FW_CRYPTO_LOOKASIDE_WR_LCB_V(x) \
+	((x) << FW_CRYPTO_LOOKASIDE_WR_LCB_S)
+#define FW_CRYPTO_LOOKASIDE_WR_LCB_G(x) \
+	(((x) >> FW_CRYPTO_LOOKASIDE_WR_LCB_S) & FW_CRYPTO_LOOKASIDE_WR_LCB_M)
+
+#define FW_CRYPTO_LOOKASIDE_WR_PHASH_S 25
+#define FW_CRYPTO_LOOKASIDE_WR_PHASH_M 0x3
+#define FW_CRYPTO_LOOKASIDE_WR_PHASH_V(x) \
+	((x) << FW_CRYPTO_LOOKASIDE_WR_PHASH_S)
+#define FW_CRYPTO_LOOKASIDE_WR_PHASH_G(x) \
+	(((x) >> FW_CRYPTO_LOOKASIDE_WR_PHASH_S) & \
+	 FW_CRYPTO_LOOKASIDE_WR_PHASH_M)
+
+#define FW_CRYPTO_LOOKASIDE_WR_IV_S   23
+#define FW_CRYPTO_LOOKASIDE_WR_IV_M   0x3
+#define FW_CRYPTO_LOOKASIDE_WR_IV_V(x) \
+	((x) << FW_CRYPTO_LOOKASIDE_WR_IV_S)
+#define FW_CRYPTO_LOOKASIDE_WR_IV_G(x) \
+	(((x) >> FW_CRYPTO_LOOKASIDE_WR_IV_S) & FW_CRYPTO_LOOKASIDE_WR_IV_M)
+
+#define FW_CRYPTO_LOOKASIDE_WR_TX_CH_S 10
+#define FW_CRYPTO_LOOKASIDE_WR_TX_CH_M 0x3
+#define FW_CRYPTO_LOOKASIDE_WR_TX_CH_V(x) \
+	((x) << FW_CRYPTO_LOOKASIDE_WR_TX_CH_S)
+#define FW_CRYPTO_LOOKASIDE_WR_TX_CH_G(x) \
+	(((x) >> FW_CRYPTO_LOOKASIDE_WR_TX_CH_S) & \
+	 FW_CRYPTO_LOOKASIDE_WR_TX_CH_M)
+
+#define FW_CRYPTO_LOOKASIDE_WR_RX_Q_ID_S 0
+#define FW_CRYPTO_LOOKASIDE_WR_RX_Q_ID_M 0x3ff
+#define FW_CRYPTO_LOOKASIDE_WR_RX_Q_ID_V(x) \
+	((x) << FW_CRYPTO_LOOKASIDE_WR_RX_Q_ID_S)
+#define FW_CRYPTO_LOOKASIDE_WR_RX_Q_ID_G(x) \
+	(((x) >> FW_CRYPTO_LOOKASIDE_WR_RX_Q_ID_S) & \
+	 FW_CRYPTO_LOOKASIDE_WR_RX_Q_ID_M)
+
+#define FW_CRYPTO_LOOKASIDE_WR_PLD_SIZE_S 24
+#define FW_CRYPTO_LOOKASIDE_WR_PLD_SIZE_M 0xff
+#define FW_CRYPTO_LOOKASIDE_WR_PLD_SIZE_V(x) \
+	((x) << FW_CRYPTO_LOOKASIDE_WR_PLD_SIZE_S)
+#define FW_CRYPTO_LOOKASIDE_WR_PLD_SIZE_G(x) \
+	(((x) >> FW_CRYPTO_LOOKASIDE_WR_PLD_SIZE_S) & \
+	 FW_CRYPTO_LOOKASIDE_WR_PLD_SIZE_M)
+
+#define FW_CRYPTO_LOOKASIDE_WR_HASH_SIZE_S 17
+#define FW_CRYPTO_LOOKASIDE_WR_HASH_SIZE_M 0x7f
+#define FW_CRYPTO_LOOKASIDE_WR_HASH_SIZE_V(x) \
+	((x) << FW_CRYPTO_LOOKASIDE_WR_HASH_SIZE_S)
+#define FW_CRYPTO_LOOKASIDE_WR_HASH_SIZE_G(x) \
+	(((x) >> FW_CRYPTO_LOOKASIDE_WR_HASH_SIZE_S) & \
+	 FW_CRYPTO_LOOKASIDE_WR_HASH_SIZE_M)
 
 #endif /* _T4FW_INTERFACE_H_ */

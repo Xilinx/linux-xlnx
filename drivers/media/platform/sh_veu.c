@@ -118,7 +118,6 @@ struct sh_veu_dev {
 	struct sh_veu_file *output;
 	struct mutex fop_lock;
 	void __iomem *base;
-	struct vb2_alloc_ctx *alloc_ctx;
 	spinlock_t lock;
 	bool is_2h;
 	unsigned int xaction;
@@ -211,7 +210,7 @@ static enum v4l2_colorspace sh_veu_4cc2cspace(u32 fourcc)
 	case V4L2_PIX_FMT_NV12:
 	case V4L2_PIX_FMT_NV16:
 	case V4L2_PIX_FMT_NV24:
-		return V4L2_COLORSPACE_JPEG;
+		return V4L2_COLORSPACE_SMPTE170M;
 	case V4L2_PIX_FMT_RGB332:
 	case V4L2_PIX_FMT_RGB444:
 	case V4L2_PIX_FMT_RGB565:
@@ -865,31 +864,14 @@ static const struct v4l2_ioctl_ops sh_veu_ioctl_ops = {
 		/* ========== Queue operations ========== */
 
 static int sh_veu_queue_setup(struct vb2_queue *vq,
-			      const struct v4l2_format *f,
 			      unsigned int *nbuffers, unsigned int *nplanes,
-			      unsigned int sizes[], void *alloc_ctxs[])
+			      unsigned int sizes[], struct device *alloc_devs[])
 {
 	struct sh_veu_dev *veu = vb2_get_drv_priv(vq);
-	struct sh_veu_vfmt *vfmt;
-	unsigned int size, count = *nbuffers;
-
-	if (f) {
-		const struct v4l2_pix_format *pix = &f->fmt.pix;
-		const struct sh_veu_format *fmt = sh_veu_find_fmt(f);
-		struct v4l2_format ftmp = *f;
-
-		if (fmt->fourcc != pix->pixelformat)
-			return -EINVAL;
-		sh_veu_try_fmt(&ftmp, fmt);
-		if (ftmp.fmt.pix.width != pix->width ||
-		    ftmp.fmt.pix.height != pix->height)
-			return -EINVAL;
-		size = pix->bytesperline ? pix->bytesperline * pix->height * fmt->depth / fmt->ydepth :
-			pix->width * pix->height * fmt->depth / fmt->ydepth;
-	} else {
-		vfmt = sh_veu_get_vfmt(veu, vq->type);
-		size = vfmt->bytesperline * vfmt->frame.height * vfmt->fmt->depth / vfmt->fmt->ydepth;
-	}
+	struct sh_veu_vfmt *vfmt = sh_veu_get_vfmt(veu, vq->type);
+	unsigned int count = *nbuffers;
+	unsigned int size = vfmt->bytesperline * vfmt->frame.height *
+		vfmt->fmt->depth / vfmt->fmt->ydepth;
 
 	if (count < 2)
 		*nbuffers = count = 2;
@@ -899,9 +881,11 @@ static int sh_veu_queue_setup(struct vb2_queue *vq,
 		*nbuffers = count;
 	}
 
+	if (*nplanes)
+		return sizes[0] < size ? -EINVAL : 0;
+
 	*nplanes = 1;
 	sizes[0] = size;
-	alloc_ctxs[0] = veu->alloc_ctx;
 
 	dev_dbg(veu->dev, "get %d buffer(s) of size %d each.\n", count, size);
 
@@ -931,9 +915,10 @@ static int sh_veu_buf_prepare(struct vb2_buffer *vb)
 
 static void sh_veu_buf_queue(struct vb2_buffer *vb)
 {
+	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(vb);
 	struct sh_veu_dev *veu = vb2_get_drv_priv(vb->vb2_queue);
-	dev_dbg(veu->dev, "%s(%d)\n", __func__, vb->v4l2_buf.type);
-	v4l2_m2m_buf_queue(veu->m2m_ctx, vb);
+	dev_dbg(veu->dev, "%s(%d)\n", __func__, vb->type);
+	v4l2_m2m_buf_queue(veu->m2m_ctx, vbuf);
 }
 
 static const struct vb2_ops sh_veu_qops = {
@@ -958,6 +943,8 @@ static int sh_veu_queue_init(void *priv, struct vb2_queue *src_vq,
 	src_vq->ops = &sh_veu_qops;
 	src_vq->mem_ops = &vb2_dma_contig_memops;
 	src_vq->lock = &veu->fop_lock;
+	src_vq->timestamp_flags = V4L2_BUF_FLAG_TIMESTAMP_COPY;
+	src_vq->dev = veu->v4l2_dev.dev;
 
 	ret = vb2_queue_init(src_vq);
 	if (ret < 0)
@@ -971,6 +958,8 @@ static int sh_veu_queue_init(void *priv, struct vb2_queue *src_vq,
 	dst_vq->ops = &sh_veu_qops;
 	dst_vq->mem_ops = &vb2_dma_contig_memops;
 	dst_vq->lock = &veu->fop_lock;
+	dst_vq->timestamp_flags = V4L2_BUF_FLAG_TIMESTAMP_COPY;
+	dst_vq->dev = veu->v4l2_dev.dev;
 
 	return vb2_queue_init(dst_vq);
 }
@@ -1082,8 +1071,8 @@ static irqreturn_t sh_veu_bh(int irq, void *dev_id)
 static irqreturn_t sh_veu_isr(int irq, void *dev_id)
 {
 	struct sh_veu_dev *veu = dev_id;
-	struct vb2_buffer *dst;
-	struct vb2_buffer *src;
+	struct vb2_v4l2_buffer *dst;
+	struct vb2_v4l2_buffer *src;
 	u32 status = sh_veu_reg_read(veu, VEU_EVTR);
 
 	/* bundle read mode not used */
@@ -1102,6 +1091,12 @@ static irqreturn_t sh_veu_isr(int irq, void *dev_id)
 	src = v4l2_m2m_src_buf_remove(veu->m2m_ctx);
 	if (!src || !dst)
 		return IRQ_NONE;
+
+	dst->vb2_buf.timestamp = src->vb2_buf.timestamp;
+	dst->flags &= ~V4L2_BUF_FLAG_TSTAMP_SRC_MASK;
+	dst->flags |=
+		src->flags & V4L2_BUF_FLAG_TSTAMP_SRC_MASK;
+	dst->timecode = src->timecode;
 
 	spin_lock(&veu->lock);
 	v4l2_m2m_buf_done(src, VB2_BUF_STATE_DONE);
@@ -1151,12 +1146,6 @@ static int sh_veu_probe(struct platform_device *pdev)
 
 	vdev = &veu->vdev;
 
-	veu->alloc_ctx = vb2_dma_contig_init_ctx(&pdev->dev);
-	if (IS_ERR(veu->alloc_ctx)) {
-		ret = PTR_ERR(veu->alloc_ctx);
-		goto einitctx;
-	}
-
 	*vdev = sh_veu_videodev;
 	vdev->v4l2_dev = &veu->v4l2_dev;
 	spin_lock_init(&veu->lock);
@@ -1190,8 +1179,6 @@ evidreg:
 	pm_runtime_disable(&pdev->dev);
 	v4l2_m2m_release(veu->m2m_dev);
 em2minit:
-	vb2_dma_contig_cleanup_ctx(veu->alloc_ctx);
-einitctx:
 	v4l2_device_unregister(&veu->v4l2_dev);
 	return ret;
 }
@@ -1205,7 +1192,6 @@ static int sh_veu_remove(struct platform_device *pdev)
 	video_unregister_device(&veu->vdev);
 	pm_runtime_disable(&pdev->dev);
 	v4l2_m2m_release(veu->m2m_dev);
-	vb2_dma_contig_cleanup_ctx(veu->alloc_ctx);
 	v4l2_device_unregister(&veu->v4l2_dev);
 
 	return 0;

@@ -32,7 +32,7 @@
 #define __kernel_ok		(segment_eq(get_fs(), KERNEL_DS))
 
 /*
- * Algorthmically, for __user_ok() we want do:
+ * Algorithmically, for __user_ok() we want do:
  * 	(start < TASK_SIZE) && (start+len < TASK_SIZE)
  * where TASK_SIZE could either be retrieved from thread_info->addr_limit or
  * emitted directly in code.
@@ -83,7 +83,10 @@
 	"2:	;nop\n"				\
 	"	.section .fixup, \"ax\"\n"	\
 	"	.align 4\n"			\
-	"3:	mov %0, %3\n"			\
+	"3:	# return -EFAULT\n"		\
+	"	mov %0, %3\n"			\
+	"	# zero out dst ptr\n"		\
+	"	mov %1,  0\n"			\
 	"	j   2b\n"			\
 	"	.previous\n"			\
 	"	.section __ex_table, \"a\"\n"	\
@@ -101,7 +104,11 @@
 	"2:	;nop\n"				\
 	"	.section .fixup, \"ax\"\n"	\
 	"	.align 4\n"			\
-	"3:	mov %0, %3\n"			\
+	"3:	# return -EFAULT\n"		\
+	"	mov %0, %3\n"			\
+	"	# zero out dst ptr\n"		\
+	"	mov %1,  0\n"			\
+	"	mov %R1, 0\n"			\
 	"	j   2b\n"			\
 	"	.previous\n"			\
 	"	.section __ex_table, \"a\"\n"	\
@@ -659,31 +666,30 @@ static inline unsigned long __arc_clear_user(void __user *to, unsigned long n)
 static inline long
 __arc_strncpy_from_user(char *dst, const char __user *src, long count)
 {
-	long res = count;
+	long res = 0;
 	char val;
-	unsigned int hw_count;
 
 	if (count == 0)
 		return 0;
 
 	__asm__ __volatile__(
-	"	lp 2f		\n"
+	"	lp	3f			\n"
 	"1:	ldb.ab  %3, [%2, 1]		\n"
-	"	breq.d  %3, 0, 2f		\n"
+	"	breq.d	%3, 0, 3f               \n"
 	"	stb.ab  %3, [%1, 1]		\n"
-	"2:	sub %0, %6, %4			\n"
-	"3:	;nop				\n"
+	"	add	%0, %0, 1	# Num of NON NULL bytes copied	\n"
+	"3:								\n"
 	"	.section .fixup, \"ax\"		\n"
 	"	.align 4			\n"
-	"4:	mov %0, %5			\n"
+	"4:	mov %0, %4		# sets @res as -EFAULT	\n"
 	"	j   3b				\n"
 	"	.previous			\n"
 	"	.section __ex_table, \"a\"	\n"
 	"	.align 4			\n"
 	"	.word   1b, 4b			\n"
 	"	.previous			\n"
-	: "=r"(res), "+r"(dst), "+r"(src), "=&r"(val), "=l"(hw_count)
-	: "g"(-EFAULT), "ir"(count), "4"(count)	/* this "4" seeds lp_count */
+	: "+r"(res), "+r"(dst), "+r"(src), "=r"(val)
+	: "g"(-EFAULT), "l"(count)
 	: "memory");
 
 	return res;

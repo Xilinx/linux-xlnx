@@ -42,7 +42,7 @@ static unsigned long iospace;
 
 /*
  * We need to be carefull probing on bus 0 (directly connected to host
- * bridge). We should only acccess the well defined possible devices in
+ * bridge). We should only access the well defined possible devices in
  * use, ignore aliases and the like.
  */
 static unsigned char mcf_host_slot2sid[32] = {
@@ -313,12 +313,16 @@ static int __init mcf_pci_init(void)
 	schedule_timeout(msecs_to_jiffies(200));
 
 	rootbus = pci_scan_bus(0, &mcf_pci_ops, NULL);
+	if (!rootbus)
+		return -ENODEV;
+
 	rootbus->resource[0] = &mcf_pci_io;
 	rootbus->resource[1] = &mcf_pci_mem;
 
 	pci_fixup_irqs(pci_common_swizzle, mcf_pci_map_irq);
 	pci_bus_size_bridges(rootbus);
 	pci_bus_assign_resources(rootbus);
+	pci_bus_add_devices(rootbus);
 	return 0;
 }
 

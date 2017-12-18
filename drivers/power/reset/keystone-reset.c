@@ -70,7 +70,7 @@ static struct notifier_block rsctrl_restart_nb = {
 	.priority = 128,
 };
 
-static struct of_device_id rsctrl_of_match[] = {
+static const struct of_device_id rsctrl_of_match[] = {
 	{.compatible = "ti,keystone-reset", },
 	{},
 };
@@ -139,7 +139,7 @@ static int rsctrl_probe(struct platform_device *pdev)
 		}
 
 		if (val >= WDT_MUX_NUMBER) {
-			dev_err(dev, "ti,wdt-list property can contain"
+			dev_err(dev, "ti,wdt-list property can contain "
 				"only numbers < 4\n");
 			return -EINVAL;
 		}

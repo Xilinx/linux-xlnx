@@ -91,7 +91,7 @@ struct devfreq_event_desc {
 	const char *name;
 	void *driver_data;
 
-	struct devfreq_event_ops *ops;
+	const struct devfreq_event_ops *ops;
 };
 
 #if defined(CONFIG_PM_DEVFREQ_EVENT)
@@ -146,11 +146,6 @@ static inline int devfreq_event_get_event(struct devfreq_event_dev *edev,
 static inline int devfreq_event_reset_event(struct devfreq_event_dev *edev)
 {
 	return -EINVAL;
-}
-
-static inline void *devfreq_event_get_drvdata(struct devfreq_event_dev *edev)
-{
-	return ERR_PTR(-EINVAL);
 }
 
 static inline struct devfreq_event_dev *devfreq_event_get_edev_by_phandle(

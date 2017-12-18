@@ -11,11 +11,6 @@
  * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
  * more details.
  *
- * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110, USA
- *
- *
  ******************************************************************************/
 #ifndef _RTW_RECV_H_
 #define _RTW_RECV_H_
@@ -68,13 +63,6 @@ struct	stainfo_rxcache	{
 	unsigned short	tid14_rxseq;
 	unsigned short	tid15_rxseq;
 */
-};
-
-struct smooth_rssi_data {
-	u32	elements[100];	/* array to store values */
-	u32	index;			/* index to current array to store */
-	u32	total_num;		/* num of valid elements */
-	u32	total_val;		/* sum of valid elements */
 };
 
 struct signal_stat {
@@ -216,8 +204,8 @@ struct recv_priv {
 };
 
 #define rtw_set_signal_stat_timer(recvpriv)			\
-	_set_timer(&(recvpriv)->signal_stat_timer,		\
-		   (recvpriv)->signal_stat_sampling_interval)
+	mod_timer(&(recvpriv)->signal_stat_timer, jiffies +	\
+		  msecs_to_jiffies((recvpriv)->signal_stat_sampling_interval))
 
 struct sta_recv_priv {
 	spinlock_t lock;
@@ -251,7 +239,6 @@ struct recv_buf {
 struct recv_frame {
 	struct list_head list;
 	struct sk_buff	 *pkt;
-	struct sk_buff	 *pkt_newalloc;
 	struct adapter  *adapter;
 	struct rx_pkt_attrib attrib;
 	uint  len;
@@ -278,7 +265,7 @@ void rtw_free_recvframe_queue(struct __queue *pframequeue,
 			      struct __queue *pfree_recv_queue);
 u32 rtw_free_uc_swdec_pending_queue(struct adapter *adapter);
 
-void rtw_reordering_ctrl_timeout_handler(void *pcontext);
+void rtw_reordering_ctrl_timeout_handler(unsigned long data);
 
 static inline u8 *get_rxmem(struct recv_frame *precvframe)
 {

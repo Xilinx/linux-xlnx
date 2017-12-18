@@ -378,7 +378,7 @@ static bool ltc3589_volatile_reg(struct device *dev, unsigned int reg)
 	return false;
 }
 
-static struct reg_default ltc3589_reg_defaults[] = {
+static const struct reg_default ltc3589_reg_defaults[] = {
 	{ LTC3589_SCR1,   0x00 },
 	{ LTC3589_OVEN,   0x00 },
 	{ LTC3589_SCR2,   0x00 },
@@ -520,12 +520,15 @@ static int ltc3589_probe(struct i2c_client *client,
 		}
 	}
 
-	ret = devm_request_threaded_irq(dev, client->irq, NULL, ltc3589_isr,
-					IRQF_TRIGGER_LOW | IRQF_ONESHOT,
-					client->name, ltc3589);
-	if (ret) {
-		dev_err(dev, "Failed to request IRQ: %d\n", ret);
-		return ret;
+	if (client->irq) {
+		ret = devm_request_threaded_irq(dev, client->irq, NULL,
+						ltc3589_isr,
+						IRQF_TRIGGER_LOW | IRQF_ONESHOT,
+						client->name, ltc3589);
+		if (ret) {
+			dev_err(dev, "Failed to request IRQ: %d\n", ret);
+			return ret;
+		}
 	}
 
 	return 0;
@@ -542,7 +545,6 @@ MODULE_DEVICE_TABLE(i2c, ltc3589_i2c_id);
 static struct i2c_driver ltc3589_driver = {
 	.driver = {
 		.name = DRIVER_NAME,
-		.owner = THIS_MODULE,
 	},
 	.probe = ltc3589_probe,
 	.id_table = ltc3589_i2c_id,
@@ -552,4 +554,3 @@ module_i2c_driver(ltc3589_driver);
 MODULE_AUTHOR("Philipp Zabel <p.zabel@pengutronix.de>");
 MODULE_DESCRIPTION("Regulator driver for Linear Technology LTC3589(-1,2)");
 MODULE_LICENSE("GPL v2");
-MODULE_ALIAS("i2c:ltc3589");

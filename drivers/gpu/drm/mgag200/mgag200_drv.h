@@ -180,6 +180,7 @@ enum mga_type {
 	G200_EV,
 	G200_EH,
 	G200_ER,
+	G200_EW3,
 };
 
 #define IS_G200_SE(mdev) (mdev->type == G200_SE_A || mdev->type == G200_SE_B)
@@ -251,7 +252,7 @@ void mgag200_fbdev_fini(struct mga_device *mdev);
 				/* mgag200_main.c */
 int mgag200_framebuffer_init(struct drm_device *dev,
 			     struct mga_framebuffer *mfb,
-			     struct drm_mode_fb_cmd2 *mode_cmd,
+			     const struct drm_mode_fb_cmd2 *mode_cmd,
 			     struct drm_gem_object *obj);
 
 
@@ -280,7 +281,7 @@ static inline int mgag200_bo_reserve(struct mgag200_bo *bo, bool no_wait)
 {
 	int ret;
 
-	ret = ttm_bo_reserve(&bo->bo, true, no_wait, false, NULL);
+	ret = ttm_bo_reserve(&bo->bo, true, no_wait, NULL);
 	if (ret) {
 		if (ret != -ERESTARTSYS && ret != -EBUSY)
 			DRM_ERROR("reserve failed %p\n", bo);

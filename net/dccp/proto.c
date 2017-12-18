@@ -339,8 +339,7 @@ unsigned int dccp_poll(struct file *file, struct socket *sock,
 			if (sk_stream_is_writeable(sk)) {
 				mask |= POLLOUT | POLLWRNORM;
 			} else {  /* send SIGIO later */
-				set_bit(SOCK_ASYNC_NOSPACE,
-					&sk->sk_socket->flags);
+				sk_set_bit(SOCKWQ_ASYNC_NOSPACE, sk);
 				set_bit(SOCK_NOSPACE, &sk->sk_socket->flags);
 
 				/* Race breaker. If space is freed after
@@ -741,8 +740,7 @@ static int dccp_msghdr_parse(struct msghdr *msg, struct sk_buff *skb)
 	return 0;
 }
 
-int dccp_sendmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
-		 size_t len)
+int dccp_sendmsg(struct sock *sk, struct msghdr *msg, size_t len)
 {
 	const struct dccp_sock *dp = dccp_sk(sk);
 	const int flags = msg->msg_flags;
@@ -806,8 +804,8 @@ out_discard:
 
 EXPORT_SYMBOL_GPL(dccp_sendmsg);
 
-int dccp_recvmsg(struct kiocb *iocb, struct sock *sk, struct msghdr *msg,
-		 size_t len, int nonblock, int flags, int *addr_len)
+int dccp_recvmsg(struct sock *sk, struct msghdr *msg, size_t len, int nonblock,
+		 int flags, int *addr_len)
 {
 	const struct dccp_hdr *dh;
 	long timeo;
@@ -887,7 +885,7 @@ verify_sock_status:
 			break;
 		}
 
-		sk_wait_data(sk, &timeo);
+		sk_wait_data(sk, &timeo, NULL);
 		continue;
 	found_ok_skb:
 		if (len > skb->len)
@@ -1010,6 +1008,10 @@ void dccp_close(struct sock *sk, long timeout)
 		data_was_unread += skb->len;
 		__kfree_skb(skb);
 	}
+
+	/* If socket has been already reset kill it. */
+	if (sk->sk_state == DCCP_CLOSED)
+		goto adjudge_to_death;
 
 	if (data_was_unread) {
 		/* Unread data was tossed, send an appropriate Reset Code */

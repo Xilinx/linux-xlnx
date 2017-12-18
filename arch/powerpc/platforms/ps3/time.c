@@ -20,9 +20,9 @@
 
 #include <linux/kernel.h>
 #include <linux/platform_device.h>
+#include <linux/rtc.h>
 
 #include <asm/firmware.h>
-#include <asm/rtc.h>
 #include <asm/lv1call.h>
 #include <asm/ps3.h>
 
@@ -92,5 +92,4 @@ static int __init ps3_rtc_init(void)
 
 	return PTR_ERR_OR_ZERO(pdev);
 }
-
-module_init(ps3_rtc_init);
+device_initcall(ps3_rtc_init);

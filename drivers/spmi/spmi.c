@@ -1,4 +1,5 @@
-/* Copyright (c) 2012-2013, The Linux Foundation. All rights reserved.
+/*
+ * Copyright (c) 2012-2015, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -21,7 +22,10 @@
 #include <linux/pm_runtime.h>
 
 #include <dt-bindings/spmi/spmi.h>
+#define CREATE_TRACE_POINTS
+#include <trace/events/spmi.h>
 
+static bool is_registered;
 static DEFINE_IDA(ctrl_ida);
 
 static void spmi_dev_release(struct device *dev)
@@ -95,28 +99,42 @@ EXPORT_SYMBOL_GPL(spmi_device_remove);
 static inline int
 spmi_cmd(struct spmi_controller *ctrl, u8 opcode, u8 sid)
 {
+	int ret;
+
 	if (!ctrl || !ctrl->cmd || ctrl->dev.type != &spmi_ctrl_type)
 		return -EINVAL;
 
-	return ctrl->cmd(ctrl, opcode, sid);
+	ret = ctrl->cmd(ctrl, opcode, sid);
+	trace_spmi_cmd(opcode, sid, ret);
+	return ret;
 }
 
 static inline int spmi_read_cmd(struct spmi_controller *ctrl, u8 opcode,
 				u8 sid, u16 addr, u8 *buf, size_t len)
 {
+	int ret;
+
 	if (!ctrl || !ctrl->read_cmd || ctrl->dev.type != &spmi_ctrl_type)
 		return -EINVAL;
 
-	return ctrl->read_cmd(ctrl, opcode, sid, addr, buf, len);
+	trace_spmi_read_begin(opcode, sid, addr);
+	ret = ctrl->read_cmd(ctrl, opcode, sid, addr, buf, len);
+	trace_spmi_read_end(opcode, sid, addr, ret, len, buf);
+	return ret;
 }
 
 static inline int spmi_write_cmd(struct spmi_controller *ctrl, u8 opcode,
 				 u8 sid, u16 addr, const u8 *buf, size_t len)
 {
+	int ret;
+
 	if (!ctrl || !ctrl->write_cmd || ctrl->dev.type != &spmi_ctrl_type)
 		return -EINVAL;
 
-	return ctrl->write_cmd(ctrl, opcode, sid, addr, buf, len);
+	trace_spmi_write_begin(opcode, sid, addr, len, buf);
+	ret = ctrl->write_cmd(ctrl, opcode, sid, addr, buf, len);
+	trace_spmi_write_end(opcode, sid, addr, ret);
+	return ret;
 }
 
 /**
@@ -316,11 +334,6 @@ static int spmi_drv_probe(struct device *dev)
 	struct spmi_device *sdev = to_spmi_device(dev);
 	int err;
 
-	/* Ensure the slave is in ACTIVE state */
-	err = spmi_command_wakeup(sdev);
-	if (err)
-		goto fail_wakeup;
-
 	pm_runtime_get_noresume(dev);
 	pm_runtime_set_active(dev);
 	pm_runtime_enable(dev);
@@ -335,7 +348,6 @@ fail_probe:
 	pm_runtime_disable(dev);
 	pm_runtime_set_suspended(dev);
 	pm_runtime_put_noidle(dev);
-fail_wakeup:
 	return err;
 }
 
@@ -496,7 +508,7 @@ int spmi_controller_add(struct spmi_controller *ctrl)
 	int ret;
 
 	/* Can't register until after driver model init */
-	if (WARN_ON(!spmi_bus_type.p))
+	if (WARN_ON(!is_registered))
 		return -EAGAIN;
 
 	ret = device_add(&ctrl->dev);
@@ -549,12 +561,13 @@ EXPORT_SYMBOL_GPL(spmi_controller_remove);
  * This API will register the client driver with the SPMI framework.
  * It is typically called from the driver's module-init function.
  */
-int spmi_driver_register(struct spmi_driver *sdrv)
+int __spmi_driver_register(struct spmi_driver *sdrv, struct module *owner)
 {
 	sdrv->driver.bus = &spmi_bus_type;
+	sdrv->driver.owner = owner;
 	return driver_register(&sdrv->driver);
 }
-EXPORT_SYMBOL_GPL(spmi_driver_register);
+EXPORT_SYMBOL_GPL(__spmi_driver_register);
 
 static void __exit spmi_exit(void)
 {
@@ -564,7 +577,14 @@ module_exit(spmi_exit);
 
 static int __init spmi_init(void)
 {
-	return bus_register(&spmi_bus_type);
+	int ret;
+
+	ret = bus_register(&spmi_bus_type);
+	if (ret)
+		return ret;
+
+	is_registered = true;
+	return 0;
 }
 postcore_initcall(spmi_init);
 

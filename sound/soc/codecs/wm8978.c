@@ -868,7 +868,7 @@ static int wm8978_set_bias_level(struct snd_soc_codec *codec,
 		/* bit 3: enable bias, bit 2: enable I/O tie off buffer */
 		power1 |= 0xc;
 
-		if (codec->dapm.bias_level == SND_SOC_BIAS_OFF) {
+		if (snd_soc_codec_get_bias_level(codec) == SND_SOC_BIAS_OFF) {
 			/* Initial cap charge at VMID 5k */
 			snd_soc_write(codec, WM8978_POWER_MANAGEMENT_1,
 				      power1 | 0x3);
@@ -888,7 +888,6 @@ static int wm8978_set_bias_level(struct snd_soc_codec *codec,
 
 	dev_dbg(codec->dev, "%s: %d, %x\n", __func__, level, power1);
 
-	codec->dapm.bias_level = level;
 	return 0;
 }
 
@@ -928,7 +927,7 @@ static int wm8978_suspend(struct snd_soc_codec *codec)
 {
 	struct wm8978_priv *wm8978 = snd_soc_codec_get_drvdata(codec);
 
-	wm8978_set_bias_level(codec, SND_SOC_BIAS_OFF);
+	snd_soc_codec_force_bias_level(codec, SND_SOC_BIAS_OFF);
 	/* Also switch PLL off */
 	snd_soc_write(codec, WM8978_POWER_MANAGEMENT_1, 0);
 
@@ -944,7 +943,7 @@ static int wm8978_resume(struct snd_soc_codec *codec)
 	/* Sync reg_cache with the hardware */
 	regcache_sync(wm8978->regmap);
 
-	wm8978_set_bias_level(codec, SND_SOC_BIAS_STANDBY);
+	snd_soc_codec_force_bias_level(codec, SND_SOC_BIAS_STANDBY);
 
 	if (wm8978->f_pllout)
 		/* Switch PLL on */
@@ -994,18 +993,20 @@ static int wm8978_probe(struct snd_soc_codec *codec)
 	return 0;
 }
 
-static struct snd_soc_codec_driver soc_codec_dev_wm8978 = {
+static const struct snd_soc_codec_driver soc_codec_dev_wm8978 = {
 	.probe =	wm8978_probe,
 	.suspend =	wm8978_suspend,
 	.resume =	wm8978_resume,
 	.set_bias_level = wm8978_set_bias_level,
 
-	.controls = wm8978_snd_controls,
-	.num_controls = ARRAY_SIZE(wm8978_snd_controls),
-	.dapm_widgets = wm8978_dapm_widgets,
-	.num_dapm_widgets = ARRAY_SIZE(wm8978_dapm_widgets),
-	.dapm_routes = wm8978_dapm_routes,
-	.num_dapm_routes = ARRAY_SIZE(wm8978_dapm_routes),
+	.component_driver = {
+		.controls		= wm8978_snd_controls,
+		.num_controls		= ARRAY_SIZE(wm8978_snd_controls),
+		.dapm_widgets		= wm8978_dapm_widgets,
+		.num_dapm_widgets	= ARRAY_SIZE(wm8978_dapm_widgets),
+		.dapm_routes		= wm8978_dapm_routes,
+		.num_dapm_routes	= ARRAY_SIZE(wm8978_dapm_routes),
+	},
 };
 
 static const struct regmap_config wm8978_regmap_config = {
@@ -1073,7 +1074,6 @@ MODULE_DEVICE_TABLE(i2c, wm8978_i2c_id);
 static struct i2c_driver wm8978_i2c_driver = {
 	.driver = {
 		.name = "wm8978",
-		.owner = THIS_MODULE,
 	},
 	.probe =    wm8978_i2c_probe,
 	.remove =   wm8978_i2c_remove,

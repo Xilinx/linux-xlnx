@@ -17,6 +17,7 @@
 
 #include <linux/bitops.h>
 #include <linux/clk.h>
+#include <linux/debugfs.h>
 #include <linux/delay.h>
 #include <linux/device.h>
 #include <linux/dmaengine.h>
@@ -32,6 +33,7 @@
 #include <linux/slab.h>
 #include <linux/spinlock.h>
 #include <linux/types.h>
+#include <linux/uaccess.h>
 #include <linux/wait.h>
 
 #include "../dmaengine.h"
@@ -58,6 +60,8 @@
 #define XILINX_DPDMA_INTR_CHAN_ERR			0xfff000
 #define XILINX_DPDMA_INTR_GLOBAL_ERR			0x7000000
 #define XILINX_DPDMA_INTR_ERR_ALL			0x7fff000
+#define XILINX_DPDMA_INTR_CHAN_MASK			0x41041
+#define XILINX_DPDMA_INTR_GLOBAL_MASK			0xf000000
 #define XILINX_DPDMA_INTR_ALL				0xfffffff
 #define XILINX_DPDMA_EISR				0x14
 #define XILINX_DPDMA_EIMR				0x18
@@ -254,12 +258,13 @@ enum xilinx_dpdma_chan_status {
  * --------------------------
  * DPDMA descritpor life time is described with following placements:
  *
- * pending_list -> pending_desc -> active_desc -> done_list
+ * allocated_desc -> submitted_desc -> pending_desc -> active_desc -> done_list
  *
  * Transition is triggered as following:
  *
- * -> pending_list : a descriptor submission to the channel
- * pending_list -> pending_desc: request to issue pending a descriptor
+ * -> allocated_desc : a descriptor allocation
+ * allocated_desc -> submitted_desc: a descriptorsubmission
+ * submitted_desc -> pending_desc: request to issue pending a descriptor
  * pending_desc -> active_desc: VSYNC intr when a desc is scheduled to DPDMA
  * active_desc -> done_list: VSYNC intr when DPDMA switches to a new desc
  */
@@ -272,11 +277,13 @@ enum xilinx_dpdma_chan_status {
  * @wait_to_stop: queue to wait for outstanding transacitons before stopping
  * @status: channel status
  * @first_frame: flag for the first frame of stream
+ * @video_group: flag if multi-channel operation is needed for video channels
  * @lock: lock to access struct xilinx_dpdma_chan
  * @desc_pool: descriptor allocation pool
  * @done_task: done IRQ bottom half handler
  * @err_task: error IRQ bottom half handler
- * @pending_list: pending descriptor list
+ * @allocated_desc: allocated descriptor
+ * @submitted_desc: submitted descriptor
  * @pending_desc: pending descriptor to be scheduled in next period
  * @active_desc: descriptor that the DPDMA channel is active on
  * @done_list: done descriptor list
@@ -290,13 +297,15 @@ struct xilinx_dpdma_chan {
 	wait_queue_head_t wait_to_stop;
 	enum xilinx_dpdma_chan_status status;
 	bool first_frame;
+	bool video_group;
 
 	spinlock_t lock;
 	struct dma_pool *desc_pool;
 	struct tasklet_struct done_task;
 	struct tasklet_struct err_task;
 
-	struct list_head pending_list;
+	struct xilinx_dpdma_tx_desc *allocated_desc;
+	struct xilinx_dpdma_tx_desc *submitted_desc;
 	struct xilinx_dpdma_tx_desc *pending_desc;
 	struct xilinx_dpdma_tx_desc *active_desc;
 	struct list_head done_list;
@@ -327,6 +336,231 @@ struct xilinx_dpdma_device {
 			  struct xilinx_dpdma_sw_desc *prev,
 			  dma_addr_t dma_addr[], unsigned int num_src_addr);
 };
+
+#ifdef CONFIG_XILINX_DPDMA_DEBUG_FS
+#define XILINX_DPDMA_DEBUGFS_READ_MAX_SIZE	32
+#define XILINX_DPDMA_DEBUGFS_UINT16_MAX_STR	"65535"
+#define IN_RANGE(x, min, max) ((x) >= (min) && (x) <= (max))
+
+/* Match xilinx_dpdma_testcases vs dpdma_debugfs_reqs[] entry */
+enum xilinx_dpdma_testcases {
+	DPDMA_TC_INTR_DONE,
+	DPDMA_TC_NONE
+};
+
+struct xilinx_dpdma_debugfs {
+	enum xilinx_dpdma_testcases testcase;
+	u16 xilinx_dpdma_intr_done_count;
+	enum xilinx_dpdma_chan_id chan_id;
+};
+
+static struct xilinx_dpdma_debugfs dpdma_debugfs;
+struct xilinx_dpdma_debugfs_request {
+	const char *req;
+	enum xilinx_dpdma_testcases tc;
+	ssize_t (*read_handler)(char **kern_buff);
+	ssize_t (*write_handler)(char **cmd);
+};
+
+static void xilinx_dpdma_debugfs_intr_done_count_incr(int chan_id)
+{
+	if (chan_id == dpdma_debugfs.chan_id)
+		dpdma_debugfs.xilinx_dpdma_intr_done_count++;
+}
+
+static s64 xilinx_dpdma_debugfs_argument_value(char *arg)
+{
+	s64 value;
+
+	if (!arg)
+		return -1;
+
+	if (!kstrtos64(arg, 0, &value))
+		return value;
+
+	return -1;
+}
+
+static ssize_t
+xilinx_dpdma_debugfs_desc_done_intr_write(char **dpdma_test_arg)
+{
+	char *arg;
+	char *arg_chan_id;
+	s64 id;
+
+	arg = strsep(dpdma_test_arg, " ");
+	if (strncasecmp(arg, "start", 5) != 0)
+		return -EINVAL;
+
+	arg_chan_id = strsep(dpdma_test_arg, " ");
+	id = xilinx_dpdma_debugfs_argument_value(arg_chan_id);
+
+	if (id < 0 || !IN_RANGE(id, VIDEO0, AUDIO1))
+		return -EINVAL;
+
+	dpdma_debugfs.testcase = DPDMA_TC_INTR_DONE;
+	dpdma_debugfs.xilinx_dpdma_intr_done_count = 0;
+	dpdma_debugfs.chan_id = id;
+
+	return 0;
+}
+
+static ssize_t xilinx_dpdma_debugfs_desc_done_intr_read(char **kern_buff)
+{
+	size_t out_str_len;
+
+	dpdma_debugfs.testcase = DPDMA_TC_NONE;
+
+	out_str_len = strlen(XILINX_DPDMA_DEBUGFS_UINT16_MAX_STR);
+	out_str_len = min_t(size_t, XILINX_DPDMA_DEBUGFS_READ_MAX_SIZE,
+			    out_str_len);
+	snprintf(*kern_buff, out_str_len, "%d",
+		 dpdma_debugfs.xilinx_dpdma_intr_done_count);
+
+	return 0;
+}
+
+/* Match xilinx_dpdma_testcases vs dpdma_debugfs_reqs[] entry */
+struct xilinx_dpdma_debugfs_request dpdma_debugfs_reqs[] = {
+	{"DESCRIPTOR_DONE_INTR", DPDMA_TC_INTR_DONE,
+			xilinx_dpdma_debugfs_desc_done_intr_read,
+			xilinx_dpdma_debugfs_desc_done_intr_write},
+};
+
+static ssize_t xilinx_dpdma_debugfs_write(struct file *f, const char __user
+					       *buf, size_t size, loff_t *pos)
+{
+	char *kern_buff, *kern_buff_start;
+	char *dpdma_test_req;
+	int ret;
+	int i;
+
+	if (*pos != 0 || size <= 0)
+		return -EINVAL;
+
+	/* Supporting single instance of test as of now*/
+	if (dpdma_debugfs.testcase != DPDMA_TC_NONE)
+		return -EBUSY;
+
+	kern_buff = kzalloc(size, GFP_KERNEL);
+	if (!kern_buff)
+		return -ENOMEM;
+	kern_buff_start = kern_buff;
+
+	ret = strncpy_from_user(kern_buff, buf, size);
+	if (ret < 0) {
+		kfree(kern_buff_start);
+		return ret;
+	}
+
+	/* Read the testcase name from an user request */
+	dpdma_test_req = strsep(&kern_buff, " ");
+
+	for (i = 0; i < ARRAY_SIZE(dpdma_debugfs_reqs); i++) {
+		if (!strcasecmp(dpdma_test_req, dpdma_debugfs_reqs[i].req)) {
+			if (!dpdma_debugfs_reqs[i].write_handler(&kern_buff)) {
+				kfree(kern_buff_start);
+				return size;
+			}
+			break;
+		}
+	}
+	kfree(kern_buff_start);
+	return -EINVAL;
+}
+
+static ssize_t xilinx_dpdma_debugfs_read(struct file *f, char __user *buf,
+					 size_t size, loff_t *pos)
+{
+	char *kern_buff = NULL;
+	size_t kern_buff_len, out_str_len;
+	int ret;
+
+	if (size <= 0)
+		return -EINVAL;
+
+	if (*pos != 0)
+		return 0;
+
+	kern_buff = kzalloc(XILINX_DPDMA_DEBUGFS_READ_MAX_SIZE, GFP_KERNEL);
+	if (!kern_buff) {
+		dpdma_debugfs.testcase = DPDMA_TC_NONE;
+		return -ENOMEM;
+	}
+
+	if (dpdma_debugfs.testcase == DPDMA_TC_NONE) {
+		out_str_len = strlen("No testcase executed");
+		out_str_len = min_t(size_t, XILINX_DPDMA_DEBUGFS_READ_MAX_SIZE,
+				    out_str_len);
+		snprintf(kern_buff, out_str_len, "%s", "No testcase executed");
+	} else {
+		ret = dpdma_debugfs_reqs[dpdma_debugfs.testcase].read_handler(
+				&kern_buff);
+		if (ret) {
+			kfree(kern_buff);
+			return ret;
+		}
+	}
+
+	kern_buff_len = strlen(kern_buff);
+	size = min(size, kern_buff_len);
+
+	ret = copy_to_user(buf, kern_buff, size);
+
+	kfree(kern_buff);
+	if (ret)
+		return ret;
+
+	*pos = size + 1;
+	return size;
+}
+
+static const struct file_operations fops_xilinx_dpdma_dbgfs = {
+	.owner = THIS_MODULE,
+	.read = xilinx_dpdma_debugfs_read,
+	.write = xilinx_dpdma_debugfs_write,
+};
+
+static int xilinx_dpdma_debugfs_init(struct device *dev)
+{
+	int err;
+	struct dentry *xilinx_dpdma_debugfs_dir, *xilinx_dpdma_debugfs_file;
+
+	dpdma_debugfs.testcase = DPDMA_TC_NONE;
+
+	xilinx_dpdma_debugfs_dir = debugfs_create_dir("dpdma", NULL);
+	if (!xilinx_dpdma_debugfs_dir) {
+		dev_err(dev, "debugfs_create_dir failed\n");
+		return -ENODEV;
+	}
+
+	xilinx_dpdma_debugfs_file =
+		debugfs_create_file("testcase", 0444,
+				    xilinx_dpdma_debugfs_dir, NULL,
+				    &fops_xilinx_dpdma_dbgfs);
+	if (!xilinx_dpdma_debugfs_file) {
+		dev_err(dev, "debugfs_create_file testcase failed\n");
+		err = -ENODEV;
+		goto err_dbgfs;
+	}
+	return 0;
+
+err_dbgfs:
+	debugfs_remove_recursive(xilinx_dpdma_debugfs_dir);
+	xilinx_dpdma_debugfs_dir = NULL;
+	return err;
+}
+
+#else
+static int xilinx_dpdma_debugfs_init(struct device *dev)
+{
+	return 0;
+}
+
+static void xilinx_dpdma_debugfs_intr_done_count_incr(int chan_id)
+{
+}
+#endif /* CONFIG_XILINX_DPDMA_DEBUG_FS */
 
 #define to_dpdma_tx_desc(tx) \
 	container_of(tx, struct xilinx_dpdma_tx_desc, async_tx)
@@ -416,8 +650,8 @@ static inline void
 xilinx_dpdma_sw_desc_next_64(struct xilinx_dpdma_sw_desc *sw_desc,
 			     struct xilinx_dpdma_sw_desc *next)
 {
-	sw_desc->hw.next_desc = (u32)next->phys;
-	sw_desc->hw.addr_ext |= ((u64)next->phys >> 32) &
+	sw_desc->hw.next_desc = lower_32_bits(next->phys);
+	sw_desc->hw.addr_ext |= upper_32_bits(next->phys) &
 				XILINX_DPDMA_DESC_ADDR_EXT_ADDR_MASK;
 }
 
@@ -437,10 +671,13 @@ static void xilinx_dpdma_sw_desc_addr_64(struct xilinx_dpdma_sw_desc *sw_desc,
 {
 	struct xilinx_dpdma_hw_desc *hw_desc = &sw_desc->hw;
 	unsigned int i;
+	u32 src_addr_extn;
 
-	hw_desc->src_addr = (u32)dma_addr[0];
-	hw_desc->addr_ext |=
-		((u64)dma_addr[0] >> 32) & XILINX_DPDMA_DESC_ADDR_EXT_ADDR_MASK;
+	hw_desc->src_addr = lower_32_bits(dma_addr[0]);
+	src_addr_extn = upper_32_bits(dma_addr[0]) &
+			XILINX_DPDMA_DESC_ADDR_EXT_ADDR_MASK;
+	hw_desc->addr_ext |= (src_addr_extn <<
+			      XILINX_DPDMA_DESC_ADDR_EXT_ADDR_SHIFT);
 
 	if (prev)
 		xilinx_dpdma_sw_desc_next_64(prev, sw_desc);
@@ -608,6 +845,12 @@ xilinx_dpdma_chan_submit_tx_desc(struct xilinx_dpdma_chan *chan,
 	unsigned long flags;
 
 	spin_lock_irqsave(&chan->lock, flags);
+
+	if (chan->submitted_desc) {
+		cookie = chan->submitted_desc->async_tx.cookie;
+		goto out_unlock;
+	}
+
 	cookie = dma_cookie_assign(&tx_desc->async_tx);
 
 	/* Assign the cookie to descriptors in this transaction */
@@ -615,7 +858,18 @@ xilinx_dpdma_chan_submit_tx_desc(struct xilinx_dpdma_chan *chan,
 	list_for_each_entry(sw_desc, &tx_desc->descriptors, node)
 		sw_desc->hw.desc_id = cookie;
 
-	list_add_tail(&tx_desc->node, &chan->pending_list);
+	if (tx_desc != chan->allocated_desc)
+		dev_err(chan->xdev->dev, "desc != allocated_desc\n");
+	else
+		chan->allocated_desc = NULL;
+	chan->submitted_desc = tx_desc;
+
+	if (chan->id == VIDEO1 || chan->id == VIDEO2) {
+		chan->video_group = true;
+		chan->xdev->chan[VIDEO0]->video_group = true;
+	}
+
+out_unlock:
 	spin_unlock_irqrestore(&chan->lock, flags);
 
 	return cookie;
@@ -657,7 +911,10 @@ static void xilinx_dpdma_chan_free_all_desc(struct xilinx_dpdma_chan *chan)
 	dev_dbg(chan->xdev->dev, "chan->status = %s\n",
 		chan->status == STREAMING ? "STREAMING" : "IDLE");
 
-	xilinx_dpdma_chan_free_desc_list(chan, &chan->pending_list);
+	xilinx_dpdma_chan_free_tx_desc(chan, chan->allocated_desc);
+	chan->allocated_desc = NULL;
+	xilinx_dpdma_chan_free_tx_desc(chan, chan->submitted_desc);
+	chan->submitted_desc = NULL;
 	xilinx_dpdma_chan_free_tx_desc(chan, chan->pending_desc);
 	chan->pending_desc = NULL;
 	xilinx_dpdma_chan_free_tx_desc(chan, chan->active_desc);
@@ -759,6 +1016,8 @@ static void xilinx_dpdma_chan_desc_done_intr(struct xilinx_dpdma_chan *chan)
 
 	spin_lock_irqsave(&chan->lock, flags);
 
+	xilinx_dpdma_debugfs_intr_done_count_incr(chan->id);
+
 	if (!chan->active_desc) {
 		dev_dbg(chan->xdev->dev, "done intr with no active desc\n");
 		goto out_unlock;
@@ -793,6 +1052,9 @@ xilinx_dpdma_chan_prep_slave_sg(struct xilinx_dpdma_chan *chan,
 	struct xilinx_dpdma_sw_desc *sw_desc, *last = NULL;
 	struct scatterlist *iter = sgl;
 	u32 line_size = 0;
+
+	if (chan->allocated_desc)
+		return &chan->allocated_desc->async_tx;
 
 	tx_desc = xilinx_dpdma_chan_alloc_tx_desc(chan);
 	if (!tx_desc)
@@ -846,6 +1108,8 @@ xilinx_dpdma_chan_prep_slave_sg(struct xilinx_dpdma_chan *chan,
 	last->hw.control |= XILINX_DPDMA_DESC_CONTROL_COMPLETE_INTR;
 	last->hw.control |= XILINX_DPDMA_DESC_CONTROL_LAST_OF_FRAME;
 
+	chan->allocated_desc = tx_desc;
+
 	return &tx_desc->async_tx;
 
 error:
@@ -875,6 +1139,9 @@ xilinx_dpdma_chan_prep_cyclic(struct xilinx_dpdma_chan *chan,
 	struct xilinx_dpdma_sw_desc *sw_desc, *last = NULL;
 	unsigned int periods = buf_len / period_len;
 	unsigned int i;
+
+	if (chan->allocated_desc)
+		return &chan->allocated_desc->async_tx;
 
 	tx_desc = xilinx_dpdma_chan_alloc_tx_desc(chan);
 	if (!tx_desc)
@@ -921,6 +1188,8 @@ xilinx_dpdma_chan_prep_cyclic(struct xilinx_dpdma_chan *chan,
 		xilinx_dpdma_sw_desc_next_32(last, sw_desc);
 	last->hw.control |= XILINX_DPDMA_DESC_CONTROL_LAST_OF_FRAME;
 
+	chan->allocated_desc = tx_desc;
+
 	return &tx_desc->async_tx;
 
 error:
@@ -955,6 +1224,9 @@ xilinx_dpdma_chan_prep_interleaved(struct xilinx_dpdma_chan *chan,
 		return NULL;
 	}
 
+	if (chan->allocated_desc)
+		return &chan->allocated_desc->async_tx;
+
 	tx_desc = xilinx_dpdma_chan_alloc_tx_desc(chan);
 	if (!tx_desc)
 		return NULL;
@@ -976,6 +1248,7 @@ xilinx_dpdma_chan_prep_interleaved(struct xilinx_dpdma_chan *chan,
 	hw_desc->control |= XILINX_DPDMA_DESC_CONTROL_LAST_OF_FRAME;
 
 	list_add_tail(&sw_desc->node, &tx_desc->descriptors);
+	chan->allocated_desc = tx_desc;
 
 	return &tx_desc->async_tx;
 
@@ -991,11 +1264,18 @@ error:
  * xilinx_dpdma_chan_enable - Enable the channel
  * @chan: DPDMA channel
  *
- * Enable the channel. Set the QoS values for video class.
+ * Enable the channel and its interrupts. Set the QoS values for video class.
  */
 static inline void xilinx_dpdma_chan_enable(struct xilinx_dpdma_chan *chan)
 {
 	u32 reg;
+
+	reg = XILINX_DPDMA_INTR_CHAN_MASK << chan->id;
+	reg |= XILINX_DPDMA_INTR_GLOBAL_MASK;
+	dpdma_write(chan->xdev->reg, XILINX_DPDMA_IEN, reg);
+	reg = XILINX_DPDMA_EINTR_CHAN_ERR_MASK << chan->id;
+	reg |= XILINX_DPDMA_INTR_GLOBAL_ERR;
+	dpdma_write(chan->xdev->reg, XILINX_DPDMA_EIEN, reg);
 
 	reg = XILINX_DPDMA_CH_CNTL_ENABLE;
 	reg |= XILINX_DPDMA_CH_CNTL_QOS_VID_CLASS <<
@@ -1011,10 +1291,17 @@ static inline void xilinx_dpdma_chan_enable(struct xilinx_dpdma_chan *chan)
  * xilinx_dpdma_chan_disable - Disable the channel
  * @chan: DPDMA channel
  *
- * Disable the channel.
+ * Disable the channel and its interrupts.
  */
 static inline void xilinx_dpdma_chan_disable(struct xilinx_dpdma_chan *chan)
 {
+	u32 reg;
+
+	reg = XILINX_DPDMA_INTR_CHAN_MASK << chan->id;
+	dpdma_write(chan->xdev->reg, XILINX_DPDMA_IEN, reg);
+	reg = XILINX_DPDMA_EINTR_CHAN_ERR_MASK << chan->id;
+	dpdma_write(chan->xdev->reg, XILINX_DPDMA_EIEN, reg);
+
 	dpdma_clr(chan->reg, XILINX_DPDMA_CH_CNTL, XILINX_DPDMA_CH_CNTL_ENABLE);
 }
 
@@ -1040,32 +1327,48 @@ static inline void xilinx_dpdma_chan_unpause(struct xilinx_dpdma_chan *chan)
 	dpdma_clr(chan->reg, XILINX_DPDMA_CH_CNTL, XILINX_DPDMA_CH_CNTL_PAUSE);
 }
 
+static u32
+xilinx_dpdma_chan_video_group_ready(struct xilinx_dpdma_chan *chan)
+{
+	struct xilinx_dpdma_device *xdev = chan->xdev;
+	u32 i = 0, ret = 0;
+
+	for (i = VIDEO0; i < GRAPHICS; i++) {
+		if (xdev->chan[i]->video_group &&
+		    xdev->chan[i]->status != STREAMING)
+			return 0;
+
+		if (xdev->chan[i]->video_group)
+			ret |= BIT(i);
+	}
+
+	return ret;
+}
+
 /**
  * xilinx_dpdma_chan_issue_pending - Issue the pending descriptor
  * @chan: DPDMA channel
  *
- * Issue the first pending descriptor from @chan->pending_list. If the channel
+ * Issue the first pending descriptor from @chan->submitted_desc. If the channel
  * is already streaming, the channel is re-triggered with the pending
  * descriptor.
  */
 static void xilinx_dpdma_chan_issue_pending(struct xilinx_dpdma_chan *chan)
 {
 	struct xilinx_dpdma_device *xdev = chan->xdev;
-	struct xilinx_dpdma_tx_desc *tx_desc;
 	struct xilinx_dpdma_sw_desc *sw_desc;
 	unsigned long flags;
+	u32 reg, channels;
 
 	spin_lock_irqsave(&chan->lock, flags);
 
-	if (list_empty(&chan->pending_list) || chan->pending_desc)
+	if (!chan->submitted_desc || chan->pending_desc)
 		goto out_unlock;
 
-	tx_desc = list_first_entry(&chan->pending_list,
-				   struct xilinx_dpdma_tx_desc, node);
-	list_del(&tx_desc->node);
-	chan->pending_desc = tx_desc;
+	chan->pending_desc = chan->submitted_desc;
+	chan->submitted_desc = NULL;
 
-	sw_desc = list_first_entry(&tx_desc->descriptors,
+	sw_desc = list_first_entry(&chan->pending_desc->descriptors,
 				   struct xilinx_dpdma_sw_desc, node);
 	dpdma_write(chan->reg, XILINX_DPDMA_CH_DESC_START_ADDR,
 		    (u32)sw_desc->phys);
@@ -1076,12 +1379,26 @@ static void xilinx_dpdma_chan_issue_pending(struct xilinx_dpdma_chan *chan)
 
 	if (chan->first_frame) {
 		chan->first_frame = false;
-		dpdma_write(xdev->reg, XILINX_DPDMA_GBL,
-			    1 << (XILINX_DPDMA_GBL_TRIG_SHIFT + chan->id));
+		if (chan->video_group) {
+			channels = xilinx_dpdma_chan_video_group_ready(chan);
+			if (!channels)
+				goto out_unlock;
+			reg = channels << XILINX_DPDMA_GBL_TRIG_SHIFT;
+		} else {
+			reg = 1 << (XILINX_DPDMA_GBL_TRIG_SHIFT + chan->id);
+		}
 	} else {
-		dpdma_write(xdev->reg, XILINX_DPDMA_GBL,
-			    1 << (XILINX_DPDMA_GBL_RETRIG_SHIFT + chan->id));
+		if (chan->video_group) {
+			channels = xilinx_dpdma_chan_video_group_ready(chan);
+			if (!channels)
+				goto out_unlock;
+			reg = channels << XILINX_DPDMA_GBL_RETRIG_SHIFT;
+		} else {
+			reg = 1 << (XILINX_DPDMA_GBL_RETRIG_SHIFT + chan->id);
+		}
 	}
+
+	dpdma_write(xdev->reg, XILINX_DPDMA_GBL, reg);
 
 out_unlock:
 	spin_unlock_irqrestore(&chan->lock, flags);
@@ -1101,7 +1418,7 @@ static void xilinx_dpdma_chan_start(struct xilinx_dpdma_chan *chan)
 
 	spin_lock_irqsave(&chan->lock, flags);
 
-	if (list_empty(&chan->pending_list) || chan->status == STREAMING)
+	if (!chan->submitted_desc || chan->status == STREAMING)
 		goto out_unlock;
 
 	xilinx_dpdma_chan_unpause(chan);
@@ -1299,7 +1616,19 @@ static void xilinx_dpdma_chan_free_resources(struct xilinx_dpdma_chan *chan)
  */
 static int xilinx_dpdma_chan_terminate_all(struct xilinx_dpdma_chan *chan)
 {
+	struct xilinx_dpdma_device *xdev = chan->xdev;
 	int ret;
+	unsigned int i;
+
+	if (chan->video_group) {
+		for (i = VIDEO0; i < GRAPHICS; i++) {
+			if (xdev->chan[i]->video_group &&
+			    xdev->chan[i]->status == STREAMING) {
+				xilinx_dpdma_chan_pause(xdev->chan[i]);
+				xdev->chan[i]->video_group = false;
+			}
+		}
+	}
 
 	ret = xilinx_dpdma_chan_stop(chan);
 	if (ret)
@@ -1321,7 +1650,6 @@ static int xilinx_dpdma_chan_terminate_all(struct xilinx_dpdma_chan *chan)
 static bool
 xilinx_dpdma_chan_err(struct xilinx_dpdma_chan *chan, u32 isr, u32 eisr)
 {
-
 	if (!chan)
 		return false;
 
@@ -1365,13 +1693,14 @@ static void xilinx_dpdma_chan_handle_err(struct xilinx_dpdma_chan *chan)
 		switch (chan->active_desc->status) {
 		case ACTIVE:
 		case PREPARED:
-			if (chan->pending_desc) {
-				list_add(&chan->pending_desc->node,
-					 &chan->pending_list);
-				chan->pending_desc = NULL;
-			}
+			xilinx_dpdma_chan_free_tx_desc(chan,
+						       chan->submitted_desc);
+			chan->submitted_desc = NULL;
+			xilinx_dpdma_chan_free_tx_desc(chan,
+						       chan->pending_desc);
+			chan->pending_desc = NULL;
 			chan->active_desc->status = ERRORED;
-			list_add(&chan->active_desc->node, &chan->pending_list);
+			chan->submitted_desc = chan->active_desc;
 			break;
 		case ERRORED:
 			dev_err(dev, "desc is dropped by unrecoverable err\n");
@@ -1744,7 +2073,6 @@ xilinx_dpdma_chan_probe(struct device_node *node,
 	chan->status = IDLE;
 
 	spin_lock_init(&chan->lock);
-	INIT_LIST_HEAD(&chan->pending_list);
 	INIT_LIST_HEAD(&chan->done_list);
 	init_waitqueue_head(&chan->wait_to_stop);
 
@@ -1791,7 +2119,7 @@ static int xilinx_dpdma_probe(struct platform_device *pdev)
 	struct dma_device *ddev;
 	struct resource *res;
 	struct device_node *node, *child;
-	u32 i, freq;
+	u32 i;
 	int irq, ret;
 
 	xdev = devm_kzalloc(&pdev->dev, sizeof(*xdev), GFP_KERNEL);
@@ -1868,21 +2196,6 @@ static int xilinx_dpdma_probe(struct platform_device *pdev)
 		goto error;
 	}
 
-	ret = of_property_read_u32(node, "xlnx,axi-clock-freq", &freq);
-	if (ret < 0) {
-		dev_dbg(xdev->dev, "No axi clock freq in DT. Set to 533Mhz\n");
-		freq = 533000000;
-	}
-
-	ret = clk_set_rate(xdev->axi_clk, freq);
-	if (ret) {
-		dev_err(xdev->dev, "failed to set the axi clock\n");
-		return ret;
-	}
-
-	dev_dbg(xdev->dev, "axi clock freq: req = %u act = %lu\n", freq,
-		clk_get_rate(xdev->axi_clk));
-
 	ret = dma_async_device_register(ddev);
 	if (ret) {
 		dev_err(xdev->dev, "failed to enable the axi clock\n");
@@ -1897,6 +2210,8 @@ static int xilinx_dpdma_probe(struct platform_device *pdev)
 	}
 
 	xilinx_dpdma_enable_intr(xdev);
+
+	xilinx_dpdma_debugfs_init(&pdev->dev);
 
 	dev_info(&pdev->dev, "Xilinx DPDMA engine is probed\n");
 
@@ -1944,7 +2259,6 @@ static struct platform_driver xilinx_dpdma_driver = {
 	.remove			= xilinx_dpdma_remove,
 	.driver			= {
 		.name		= "xilinx-dpdma",
-		.owner		= THIS_MODULE,
 		.of_match_table	= xilinx_dpdma_of_match,
 	},
 };

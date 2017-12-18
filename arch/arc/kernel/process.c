@@ -41,15 +41,56 @@ SYSCALL_DEFINE0(arc_gettls)
 	return task_thread_info(current)->thr_ptr;
 }
 
+SYSCALL_DEFINE3(arc_usr_cmpxchg, int *, uaddr, int, expected, int, new)
+{
+	struct pt_regs *regs = current_pt_regs();
+	int uval = -EFAULT;
+
+	/*
+	 * This is only for old cores lacking LLOCK/SCOND, which by defintion
+	 * can't possibly be SMP. Thus doesn't need to be SMP safe.
+	 * And this also helps reduce the overhead for serializing in
+	 * the UP case
+	 */
+	WARN_ON_ONCE(IS_ENABLED(CONFIG_SMP));
+
+	/* Z indicates to userspace if operation succeded */
+	regs->status32 &= ~STATUS_Z_MASK;
+
+	if (!access_ok(VERIFY_WRITE, uaddr, sizeof(int)))
+		return -EFAULT;
+
+	preempt_disable();
+
+	if (__get_user(uval, uaddr))
+		goto done;
+
+	if (uval == expected) {
+		if (!__put_user(new, uaddr))
+			regs->status32 |= STATUS_Z_MASK;
+	}
+
+done:
+	preempt_enable();
+
+	return uval;
+}
+
 void arch_cpu_idle(void)
 {
 	/* sleep, but enable all interrupts before committing */
-	__asm__("sleep 0x3");
+	__asm__ __volatile__(
+		"sleep %0	\n"
+		:
+		:"I"(ISA_SLEEP_ARG)); /* can't be "r" has to be embedded const */
 }
 
 asmlinkage void ret_from_fork(void);
 
-/* Layout of Child kernel mode stack as setup at the end of this function is
+/*
+ * Copy architecture-specific thread state
+ *
+ * Layout of Child kernel mode stack as setup at the end of this function is
  *
  * |     ...        |
  * |     ...        |
@@ -58,7 +99,7 @@ asmlinkage void ret_from_fork(void);
  * ------------------
  * |     r25        |   <==== top of Stack (thread.ksp)
  * ~                ~
- * |    --to--      |   (CALLEE Regs of user mode)
+ * |    --to--      |   (CALLEE Regs of kernel mode)
  * |     r13        |
  * ------------------
  * |     fp         |
@@ -81,7 +122,7 @@ asmlinkage void ret_from_fork(void);
  * ------------------  <===== END of PAGE
  */
 int copy_thread(unsigned long clone_flags,
-		unsigned long usp, unsigned long arg,
+		unsigned long usp, unsigned long kthread_arg,
 		struct task_struct *p)
 {
 	struct pt_regs *c_regs;        /* child's pt_regs */
@@ -112,7 +153,7 @@ int copy_thread(unsigned long clone_flags,
 	if (unlikely(p->flags & PF_KTHREAD)) {
 		memset(c_regs, 0, sizeof(struct pt_regs));
 
-		c_callee->r13 = arg; /* argument to kernel thread */
+		c_callee->r13 = kthread_arg;
 		c_callee->r14 = usp;  /* function */
 
 		return 0;
@@ -155,8 +196,6 @@ int copy_thread(unsigned long clone_flags,
  */
 void start_thread(struct pt_regs * regs, unsigned long pc, unsigned long usp)
 {
-	set_fs(USER_DS); /* user space */
-
 	regs->sp = usp;
 	regs->ret = pc;
 
@@ -165,8 +204,7 @@ void start_thread(struct pt_regs * regs, unsigned long pc, unsigned long usp)
 	 * [L] ZOL loop inhibited to begin with - cleared by a LP insn
 	 * Interrupts enabled
 	 */
-	regs->status32 = STATUS_U_MASK | STATUS_L_MASK |
-			 STATUS_E1_MASK | STATUS_E2_MASK;
+	regs->status32 = STATUS_U_MASK | STATUS_L_MASK | ISA_INIT_STATUS_BITS;
 
 	/* bogus seed values for debugging */
 	regs->lp_start = 0x10;
@@ -180,13 +218,6 @@ void flush_thread(void)
 {
 }
 
-/*
- * Free any architecture-specific thread data structures, etc.
- */
-void exit_thread(void)
-{
-}
-
 int dump_fpu(struct pt_regs *regs, elf_fpregset_t *fpu)
 {
 	return 0;
@@ -196,11 +227,14 @@ int elf_check_arch(const struct elf32_hdr *x)
 {
 	unsigned int eflags;
 
-	if (x->e_machine != EM_ARCOMPACT)
+	if (x->e_machine != EM_ARC_INUSE) {
+		pr_err("ELF not built for %s ISA\n",
+			is_isa_arcompact() ? "ARCompact":"ARCv2");
 		return 0;
+	}
 
 	eflags = x->e_flags;
-	if ((eflags & EF_ARC_OSABI_MSK) < EF_ARC_OSABI_CURRENT) {
+	if ((eflags & EF_ARC_OSABI_MSK) != EF_ARC_OSABI_CURRENT) {
 		pr_err("ABI mismatch - you need newer toolchain\n");
 		force_sigsegv(SIGSEGV, current);
 		return 0;

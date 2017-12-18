@@ -34,6 +34,7 @@
 #include <linux/slab.h>
 #include <linux/export.h>
 #include <linux/errno.h>
+#include <net/devlink.h>
 
 #include "mlx4.h"
 
@@ -63,8 +64,11 @@ static void mlx4_add_device(struct mlx4_interface *intf, struct mlx4_priv *priv)
 		spin_lock_irq(&priv->ctx_lock);
 		list_add_tail(&dev_ctx->list, &priv->ctx_list);
 		spin_unlock_irq(&priv->ctx_lock);
+		if (intf->activate)
+			intf->activate(&priv->dev, dev_ctx->context);
 	} else
 		kfree(dev_ctx);
+
 }
 
 static void mlx4_remove_device(struct mlx4_interface *intf, struct mlx4_priv *priv)
@@ -93,8 +97,14 @@ int mlx4_register_interface(struct mlx4_interface *intf)
 	mutex_lock(&intf_mutex);
 
 	list_add_tail(&intf->list, &intf_list);
-	list_for_each_entry(priv, &dev_list, dev_list)
+	list_for_each_entry(priv, &dev_list, dev_list) {
+		if (mlx4_is_mfunc(&priv->dev) && (intf->flags & MLX4_INTFF_BONDING)) {
+			mlx4_dbg(&priv->dev,
+				 "SRIOV, disabling HA mode for intf proto %d\n", intf->protocol);
+			intf->flags &= ~MLX4_INTFF_BONDING;
+		}
 		mlx4_add_device(intf, priv);
+	}
 
 	mutex_unlock(&intf_mutex);
 
@@ -137,7 +147,7 @@ int mlx4_do_bond(struct mlx4_dev *dev, bool enable)
 	if (enable) {
 		dev->flags |= MLX4_FLAG_BONDED;
 	} else {
-		 ret = mlx4_virt2phy_port_map(dev, 1, 2);
+		ret = mlx4_virt2phy_port_map(dev, 1, 2);
 		if (ret) {
 			mlx4_err(dev, "Fail to reset port map\n");
 			return ret;
@@ -208,6 +218,9 @@ void mlx4_unregister_device(struct mlx4_dev *dev)
 	struct mlx4_priv *priv = mlx4_priv(dev);
 	struct mlx4_interface *intf;
 
+	if (!(dev->persist->interface_state & MLX4_INTERFACE_STATE_UP))
+		return;
+
 	mlx4_stop_catas_poll(dev);
 	mutex_lock(&intf_mutex);
 
@@ -240,3 +253,11 @@ void *mlx4_get_protocol_dev(struct mlx4_dev *dev, enum mlx4_protocol proto, int 
 	return result;
 }
 EXPORT_SYMBOL_GPL(mlx4_get_protocol_dev);
+
+struct devlink_port *mlx4_get_devlink_port(struct mlx4_dev *dev, int port)
+{
+	struct mlx4_port_info *info = &mlx4_priv(dev)->port[port];
+
+	return &info->devlink_port;
+}
+EXPORT_SYMBOL_GPL(mlx4_get_devlink_port);

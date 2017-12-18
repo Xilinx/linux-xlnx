@@ -47,7 +47,7 @@ static void ics_rtas_unmask_irq(struct irq_data *d)
 	if (hw_irq == XICS_IPI || hw_irq == XICS_IRQ_SPURIOUS)
 		return;
 
-	server = xics_get_irq_server(d->irq, d->affinity, 0);
+	server = xics_get_irq_server(d->irq, irq_data_get_affinity_mask(d), 0);
 
 	call_status = rtas_call(ibm_set_xive, 3, 1, NULL, hw_irq, server,
 				DEFAULT_PRIORITY);
@@ -75,7 +75,7 @@ static unsigned int ics_rtas_startup(struct irq_data *d)
 	 * card, using the MSI mask bits. Firmware doesn't appear to unmask
 	 * at that level, so we do it here by hand.
 	 */
-	if (d->msi_desc)
+	if (irq_data_get_msi_desc(d))
 		pci_msi_unmask_irq(d);
 #endif
 	/* unmask it */
@@ -163,7 +163,9 @@ static struct irq_chip ics_rtas_irq_chip = {
 	.irq_mask = ics_rtas_mask_irq,
 	.irq_unmask = ics_rtas_unmask_irq,
 	.irq_eoi = NULL, /* Patched at init time */
-	.irq_set_affinity = ics_rtas_set_affinity
+	.irq_set_affinity = ics_rtas_set_affinity,
+	.irq_set_type = xics_set_irq_type,
+	.irq_retrigger = xics_retrigger,
 };
 
 static int ics_rtas_map(struct ics *ics, unsigned int virq)

@@ -12,7 +12,6 @@
 #include <linux/err.h>
 #include <linux/init.h>
 #include <linux/io.h>
-#include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/pinctrl/machine.h>
@@ -474,7 +473,7 @@ static int mxs_pinctrl_probe_dt(struct platform_device *pdev,
 			f->name = fn = child->name;
 		}
 		f->ngroups++;
-	};
+	}
 
 	/* Get groups for each function */
 	idxf = 0;
@@ -540,9 +539,9 @@ int mxs_pinctrl_probe(struct platform_device *pdev,
 	}
 
 	d->pctl = pinctrl_register(&mxs_pinctrl_desc, &pdev->dev, d);
-	if (!d->pctl) {
+	if (IS_ERR(d->pctl)) {
 		dev_err(&pdev->dev, "Couldn't register MXS pinctrl driver\n");
-		ret = -EINVAL;
+		ret = PTR_ERR(d->pctl);
 		goto err;
 	}
 
@@ -553,14 +552,3 @@ err:
 	return ret;
 }
 EXPORT_SYMBOL_GPL(mxs_pinctrl_probe);
-
-int mxs_pinctrl_remove(struct platform_device *pdev)
-{
-	struct mxs_pinctrl_data *d = platform_get_drvdata(pdev);
-
-	pinctrl_unregister(d->pctl);
-	iounmap(d->base);
-
-	return 0;
-}
-EXPORT_SYMBOL_GPL(mxs_pinctrl_remove);

@@ -32,6 +32,10 @@
 #define SH_ETH_TSU_CAM_ENTRIES	32
 
 enum {
+	/* IMPORTANT: To keep ethtool register dump working, add new
+	 * register names immediately before SH_ETH_MAX_REGISTER_OFFSET.
+	 */
+
 	/* E-DMAC registers */
 	EDSR = 0,
 	EDMR,
@@ -131,9 +135,7 @@ enum {
 	TSU_POST3,
 	TSU_POST4,
 	TSU_ADRH0,
-	TSU_ADRL0,
-	TSU_ADRH31,
-	TSU_ADRL31,
+	/* TSU_ADR{H,L}{0..31} are assumed to be contiguous */
 
 	TXNLCR0,
 	TXALCR0,
@@ -281,9 +283,9 @@ enum DMAC_IM_BIT {
 	DMAC_M_RINT1 = 0x00000001,
 };
 
-/* Receive descriptor bit */
+/* Receive descriptor 0 bits */
 enum RD_STS_BIT {
-	RD_RACT = 0x80000000, RD_RDEL = 0x40000000,
+	RD_RACT = 0x80000000, RD_RDLE = 0x40000000,
 	RD_RFP1 = 0x20000000, RD_RFP0 = 0x10000000,
 	RD_RFE = 0x08000000, RD_RFS10 = 0x00000200,
 	RD_RFS9 = 0x00000100, RD_RFS8 = 0x00000080,
@@ -296,6 +298,12 @@ enum RD_STS_BIT {
 #define RDFEND	RD_RFP0
 #define RD_RFP	(RD_RFP1|RD_RFP0)
 
+/* Receive descriptor 1 bits */
+enum RD_LEN_BIT {
+	RD_RFL	= 0x0000ffff,	/* receive frame  length */
+	RD_RBL	= 0xffff0000,	/* receive buffer length */
+};
+
 /* FCFTR */
 enum FCFTR_BIT {
 	FCFTR_RFF2 = 0x00040000, FCFTR_RFF1 = 0x00020000,
@@ -305,7 +313,7 @@ enum FCFTR_BIT {
 #define DEFAULT_FIFO_F_D_RFF	(FCFTR_RFF2 | FCFTR_RFF1 | FCFTR_RFF0)
 #define DEFAULT_FIFO_F_D_RFD	(FCFTR_RFD2 | FCFTR_RFD1 | FCFTR_RFD0)
 
-/* Transmit descriptor bit */
+/* Transmit descriptor 0 bits */
 enum TD_STS_BIT {
 	TD_TACT = 0x80000000, TD_TDLE = 0x40000000,
 	TD_TFP1 = 0x20000000, TD_TFP0 = 0x10000000,
@@ -314,6 +322,11 @@ enum TD_STS_BIT {
 #define TDF1ST	TD_TFP1
 #define TDFEND	TD_TFP0
 #define TD_TFP	(TD_TFP1|TD_TFP0)
+
+/* Transmit descriptor 1 bits */
+enum TD_LEN_BIT {
+	TD_TBL	= 0xffff0000,	/* transmit buffer length */
+};
 
 /* RMCR */
 enum RMCR_BIT {
@@ -381,7 +394,7 @@ enum RPADIR_BIT {
 #define DEFAULT_FDR_INIT	0x00000707
 
 /* ARSTR */
-enum ARSTR_BIT { ARSTR_ARSTR = 0x00000001, };
+enum ARSTR_BIT { ARSTR_ARST = 0x00000001, };
 
 /* TSU_FWEN0 */
 enum TSU_FWEN0_BIT {
@@ -423,15 +436,9 @@ enum TSU_FWSLC_BIT {
  */
 struct sh_eth_txdesc {
 	u32 status;		/* TD0 */
-#if defined(__LITTLE_ENDIAN)
-	u16 pad0;		/* TD1 */
-	u16 buffer_length;	/* TD1 */
-#else
-	u16 buffer_length;	/* TD1 */
-	u16 pad0;		/* TD1 */
-#endif
+	u32 len;		/* TD1 */
 	u32 addr;		/* TD2 */
-	u32 pad1;		/* padding data */
+	u32 pad0;		/* padding data */
 } __aligned(2) __packed;
 
 /* The sh ether Rx buffer descriptors.
@@ -439,13 +446,7 @@ struct sh_eth_txdesc {
  */
 struct sh_eth_rxdesc {
 	u32 status;		/* RD0 */
-#if defined(__LITTLE_ENDIAN)
-	u16 frame_length;	/* RD1 */
-	u16 buffer_length;	/* RD1 */
-#else
-	u16 buffer_length;	/* RD1 */
-	u16 frame_length;	/* RD1 */
-#endif
+	u32 len;		/* RD1 */
 	u32 addr;		/* RD2 */
 	u32 pad0;		/* padding data */
 } __aligned(2) __packed;
@@ -491,6 +492,7 @@ struct sh_eth_cpu_data {
 	unsigned select_mii:1;	/* EtherC have RMII_MII (MII select register) */
 	unsigned shift_rd0:1;	/* shift Rx descriptor word 0 right by 16 */
 	unsigned rmiimode:1;	/* EtherC has RMIIMODE register */
+	unsigned rtrate:1;	/* EtherC has RTRATE register */
 };
 
 struct sh_eth_private {
@@ -511,13 +513,11 @@ struct sh_eth_private {
 	u32 cur_rx, dirty_rx;		/* Producer/consumer ring indices */
 	u32 cur_tx, dirty_tx;
 	u32 rx_buf_sz;			/* Based on MTU+slack. */
-	int edmac_endian;
 	struct napi_struct napi;
 	bool irq_enabled;
 	/* MII transceiver section. */
 	u32 phy_id;			/* PHY ID */
 	struct mii_bus *mii_bus;	/* MDIO bus control */
-	struct phy_device *phydev;	/* PHY device control */
 	int link;
 	phy_interface_t phy_interface;
 	int msg_enable;
@@ -541,21 +541,6 @@ static inline void sh_eth_soft_swap(char *src, int len)
 	for (; p < maxp; p++)
 		*p = swab32(*p);
 #endif
-}
-
-static inline void sh_eth_write(struct net_device *ndev, u32 data,
-				int enum_index)
-{
-	struct sh_eth_private *mdp = netdev_priv(ndev);
-
-	iowrite32(data, mdp->addr + mdp->reg_offset[enum_index]);
-}
-
-static inline u32 sh_eth_read(struct net_device *ndev, int enum_index)
-{
-	struct sh_eth_private *mdp = netdev_priv(ndev);
-
-	return ioread32(mdp->addr + mdp->reg_offset[enum_index]);
 }
 
 static inline void *sh_eth_tsu_get_offset(struct sh_eth_private *mdp,

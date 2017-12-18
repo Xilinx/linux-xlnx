@@ -78,4 +78,10 @@ void tile_irq_activate(unsigned int irq, int tile_irq_type);
 
 void setup_irq_regs(void);
 
+#ifdef __tilegx__
+void arch_trigger_cpumask_backtrace(const struct cpumask *mask,
+				    bool exclude_self);
+#define arch_trigger_cpumask_backtrace arch_trigger_cpumask_backtrace
+#endif
+
 #endif /* _ASM_TILE_IRQ_H */

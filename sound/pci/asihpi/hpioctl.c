@@ -32,6 +32,7 @@
 #include <linux/pci.h>
 #include <linux/stringify.h>
 #include <linux/module.h>
+#include <linux/vmalloc.h>
 
 #ifdef MODULE_FIRMWARE
 MODULE_FIRMWARE("asihpi/dsp5000.bin");
@@ -110,7 +111,7 @@ long asihpi_hpi_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		return -EINVAL;
 
 	hm = kmalloc(sizeof(*hm), GFP_KERNEL);
-	hr = kmalloc(sizeof(*hr), GFP_KERNEL);
+	hr = kzalloc(sizeof(*hr), GFP_KERNEL);
 	if (!hm || !hr) {
 		err = -ENOMEM;
 		goto out;

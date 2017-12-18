@@ -1,7 +1,6 @@
 #ifndef _ASM_X86_PLATFORM_H
 #define _ASM_X86_PLATFORM_H
 
-#include <asm/pgtable_types.h>
 #include <asm/bootparam.h>
 
 struct mpc_bus;
@@ -83,13 +82,11 @@ struct x86_init_paging {
  * struct x86_init_timers - platform specific timer setup
  * @setup_perpcu_clockev:	set up the per cpu clock event device for the
  *				boot cpu
- * @tsc_pre_init:		platform function called before TSC init
  * @timer_init:			initialize the platform timer (default PIT/HPET)
  * @wallclock_init:		init the wallclock device
  */
 struct x86_init_timers {
 	void (*setup_percpu_clockev)(void);
-	void (*tsc_pre_init)(void);
 	void (*timer_init)(void);
 	void (*wallclock_init)(void);
 };
@@ -145,8 +142,48 @@ struct x86_cpuinit_ops {
 struct timespec;
 
 /**
+ * struct x86_legacy_devices - legacy x86 devices
+ *
+ * @pnpbios: this platform can have a PNPBIOS. If this is disabled the platform
+ * 	is known to never have a PNPBIOS.
+ *
+ * These are devices known to require LPC or ISA bus. The definition of legacy
+ * devices adheres to the ACPI 5.2.9.3 IA-PC Boot Architecture flag
+ * ACPI_FADT_LEGACY_DEVICES. These devices consist of user visible devices on
+ * the LPC or ISA bus. User visible devices are devices that have end-user
+ * accessible connectors (for example, LPT parallel port). Legacy devices on
+ * the LPC bus consist for example of serial and parallel ports, PS/2 keyboard
+ * / mouse, and the floppy disk controller. A system that lacks all known
+ * legacy devices can assume all devices can be detected exclusively via
+ * standard device enumeration mechanisms including the ACPI namespace.
+ *
+ * A system which has does not have ACPI_FADT_LEGACY_DEVICES enabled must not
+ * have any of the legacy devices enumerated below present.
+ */
+struct x86_legacy_devices {
+	int pnpbios;
+};
+
+/**
+ * struct x86_legacy_features - legacy x86 features
+ *
+ * @rtc: this device has a CMOS real-time clock present
+ * @reserve_bios_regions: boot code will search for the EBDA address and the
+ * 	start of the 640k - 1M BIOS region.  If false, the platform must
+ * 	ensure that its memory map correctly reserves sub-1MB regions as needed.
+ * @devices: legacy x86 devices, refer to struct x86_legacy_devices
+ * 	documentation for further details.
+ */
+struct x86_legacy_features {
+	int rtc;
+	int reserve_bios_regions;
+	struct x86_legacy_devices devices;
+};
+
+/**
  * struct x86_platform_ops - platform specific runtime functions
- * @calibrate_tsc:		calibrate TSC
+ * @calibrate_cpu:		calibrate CPU
+ * @calibrate_tsc:		calibrate TSC, if different from CPU
  * @get_wallclock:		get time from HW clock like RTC etc.
  * @set_wallclock:		set time back to HW clock
  * @is_untracked_pat_range	exclude from PAT logic
@@ -155,8 +192,17 @@ struct timespec;
  * @save_sched_clock_state:	save state for sched_clock() on suspend
  * @restore_sched_clock_state:	restore state for sched_clock() on resume
  * @apic_post_init:		adjust apic if neeeded
+ * @legacy:			legacy features
+ * @set_legacy_features:	override legacy features. Use of this callback
+ * 				is highly discouraged. You should only need
+ * 				this if your hardware platform requires further
+ * 				custom fine tuning far beyong what may be
+ * 				possible in x86_early_init_platform_quirks() by
+ * 				only using the current x86_hardware_subarch
+ * 				semantics.
  */
 struct x86_platform_ops {
+	unsigned long (*calibrate_cpu)(void);
 	unsigned long (*calibrate_tsc)(void);
 	void (*get_wallclock)(struct timespec *ts);
 	int (*set_wallclock)(const struct timespec *ts);
@@ -168,41 +214,22 @@ struct x86_platform_ops {
 	void (*save_sched_clock_state)(void);
 	void (*restore_sched_clock_state)(void);
 	void (*apic_post_init)(void);
+	struct x86_legacy_features legacy;
+	void (*set_legacy_features)(void);
 };
 
 struct pci_dev;
-struct msi_msg;
 
 struct x86_msi_ops {
 	int (*setup_msi_irqs)(struct pci_dev *dev, int nvec, int type);
-	void (*compose_msi_msg)(struct pci_dev *dev, unsigned int irq,
-				unsigned int dest, struct msi_msg *msg,
-			       u8 hpet_id);
 	void (*teardown_msi_irq)(unsigned int irq);
 	void (*teardown_msi_irqs)(struct pci_dev *dev);
 	void (*restore_msi_irqs)(struct pci_dev *dev);
-	int  (*setup_hpet_msi)(unsigned int irq, unsigned int id);
 };
 
-struct IO_APIC_route_entry;
-struct io_apic_irq_attr;
-struct irq_data;
-struct cpumask;
-
 struct x86_io_apic_ops {
-	void		(*init)   (void);
 	unsigned int	(*read)   (unsigned int apic, unsigned int reg);
-	void		(*write)  (unsigned int apic, unsigned int reg, unsigned int value);
-	void		(*modify) (unsigned int apic, unsigned int reg, unsigned int value);
 	void		(*disable)(void);
-	void		(*print_entries)(unsigned int apic, unsigned int nr_entries);
-	int		(*set_affinity)(struct irq_data *data,
-					const struct cpumask *mask,
-					bool force);
-	int		(*setup_entry)(int irq, struct IO_APIC_route_entry *entry,
-				       unsigned int destination, int vector,
-				       struct io_apic_irq_attr *attr);
-	void		(*eoi_ioapic_pin)(int apic, int pin, int vector);
 };
 
 extern struct x86_init_ops x86_init;
@@ -210,6 +237,8 @@ extern struct x86_cpuinit_ops x86_cpuinit;
 extern struct x86_platform_ops x86_platform;
 extern struct x86_msi_ops x86_msi;
 extern struct x86_io_apic_ops x86_io_apic_ops;
+
+extern void x86_early_init_platform_quirks(void);
 extern void x86_init_noop(void);
 extern void x86_init_uint_noop(unsigned int unused);
 

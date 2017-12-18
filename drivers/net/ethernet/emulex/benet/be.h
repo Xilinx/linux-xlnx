@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2005 - 2014 Emulex
+ * Copyright (C) 2005 - 2016 Broadcom
  * All rights reserved.
  *
  * This program is free software; you can redistribute it and/or
@@ -30,11 +30,14 @@
 #include <linux/firmware.h>
 #include <linux/slab.h>
 #include <linux/u64_stats_sync.h>
+#include <linux/cpumask.h>
+#include <linux/hwmon.h>
+#include <linux/hwmon-sysfs.h>
 
 #include "be_hw.h"
 #include "be_roce.h"
 
-#define DRV_VER			"10.4u"
+#define DRV_VER			"11.1.0.0"
 #define DRV_NAME		"be2net"
 #define BE_NAME			"Emulex BladeEngine2"
 #define BE3_NAME		"Emulex BladeEngine3"
@@ -69,6 +72,9 @@
 #define BE_MAX_MTU              (BE_MAX_JUMBO_FRAME_SIZE -	\
 				 (ETH_HLEN + ETH_FCS_LEN))
 
+/* Accommodate for QnQ configurations where VLAN insertion is enabled in HW */
+#define BE_MAX_GSO_SIZE		(65535 - 2 * VLAN_HLEN)
+
 #define BE_NUM_VLANS_SUPPORTED	64
 #define BE_MAX_EQD		128u
 #define	BE_MAX_TX_FRAG_COUNT	30
@@ -86,7 +92,13 @@
 #define BE3_MAX_TX_QS		16
 #define BE3_MAX_EVT_QS		16
 #define BE3_SRIOV_MAX_EVT_QS	8
+#define SH_VF_MAX_NIC_EQS	3	/* Skyhawk VFs can have a max of 4 EQs
+					 * and at least 1 is granted to either
+					 * SURF/DPDK
+					 */
 
+#define MAX_PORT_RSS_TABLES	15
+#define MAX_NIC_FUNCS		16
 #define MAX_RX_QS		32
 #define MAX_EVT_QS		32
 #define MAX_TX_QS		32
@@ -97,12 +109,17 @@
 #define BE_NAPI_WEIGHT		64
 #define MAX_RX_POST		BE_NAPI_WEIGHT /* Frags posted at a time */
 #define RX_FRAGS_REFILL_WM	(RX_Q_LEN - MAX_RX_POST)
+#define MAX_NUM_POST_ERX_DB	255u
 
 #define MAX_VFS			30 /* Max VFs supported by BE3 FW */
 #define FW_VER_LEN		32
+#define	CNTL_SERIAL_NUM_WORDS	8  /* Controller serial number words */
+#define	CNTL_SERIAL_NUM_WORD_SZ	(sizeof(u16)) /* Byte-sz of serial num word */
 
 #define	RSS_INDIR_TABLE_LEN	128
 #define RSS_HASH_KEY_LEN	40
+
+#define BE_UNKNOWN_PHY_STATE	0xFF
 
 struct be_dma_mem {
 	void *va;
@@ -111,27 +128,27 @@ struct be_dma_mem {
 };
 
 struct be_queue_info {
-	struct be_dma_mem dma_mem;
-	u16 len;
-	u16 entry_size;	/* Size of an element in the queue */
-	u16 id;
-	u16 tail, head;
-	bool created;
+	u32 len;
+	u32 entry_size;	/* Size of an element in the queue */
+	u32 tail, head;
 	atomic_t used;	/* Number of valid elements in the queue */
+	u32 id;
+	struct be_dma_mem dma_mem;
+	bool created;
 };
 
-static inline u32 MODULO(u16 val, u16 limit)
+static inline u32 MODULO(u32 val, u32 limit)
 {
 	BUG_ON(limit & (limit - 1));
 	return val & (limit - 1);
 }
 
-static inline void index_adv(u16 *index, u16 val, u16 limit)
+static inline void index_adv(u32 *index, u32 val, u32 limit)
 {
 	*index = MODULO((*index + val), limit);
 }
 
-static inline void index_inc(u16 *index, u16 limit)
+static inline void index_inc(u32 *index, u32 limit)
 {
 	*index = MODULO((*index + 1), limit);
 }
@@ -156,7 +173,7 @@ static inline void queue_head_inc(struct be_queue_info *q)
 	index_inc(&q->head, q->len);
 }
 
-static inline void index_dec(u16 *index, u16 limit)
+static inline void index_dec(u32 *index, u32 limit)
 {
 	*index = MODULO((*index - 1), limit);
 }
@@ -182,6 +199,7 @@ struct be_eq_obj {
 	u16 spurious_intr;
 	struct napi_struct napi;
 	struct be_adapter *adapter;
+	cpumask_var_t  affinity_mask;
 
 #ifdef CONFIG_NET_RX_BUSY_POLL
 #define BE_EQ_IDLE		0
@@ -222,6 +240,7 @@ struct be_mcc_obj {
 struct be_tx_stats {
 	u64 tx_bytes;
 	u64 tx_pkts;
+	u64 tx_vxlan_offload_pkts;
 	u64 tx_reqs;
 	u64 tx_compl;
 	ulong tx_jiffies;
@@ -238,10 +257,17 @@ struct be_tx_stats {
 	struct u64_stats_sync sync_compl;
 };
 
+/* Structure to hold some data of interest obtained from a TX CQE */
+struct be_tx_compl_info {
+	u8 status;		/* Completion status */
+	u16 end_index;		/* Completed TXQ Index */
+};
+
 struct be_tx_obj {
 	u32 db_offset;
 	struct be_queue_info q;
 	struct be_queue_info cq;
+	struct be_tx_compl_info txcp;
 	/* Remember the skbs that were transmitted */
 	struct sk_buff *sent_skb_list[TX_Q_LEN];
 	struct be_tx_stats stats;
@@ -262,6 +288,7 @@ struct be_rx_page_info {
 struct be_rx_stats {
 	u64 rx_bytes;
 	u64 rx_pkts;
+	u64 rx_vxlan_offload_pkts;
 	u32 rx_drops_no_skbs;	/* skb allocation errors */
 	u32 rx_drops_no_frags;	/* HW has no fetched frags */
 	u32 rx_post_fail;	/* page post alloc failures */
@@ -303,7 +330,6 @@ struct be_rx_obj {
 } ____cacheline_aligned_in_smp;
 
 struct be_drv_stats {
-	u32 be_on_die_temperature;
 	u32 eth_red_drops;
 	u32 dma_map_errors;
 	u32 rx_drops_no_pbuf;
@@ -355,6 +381,7 @@ struct be_vf_cfg {
 	u32 tx_rate;
 	u32 plink_tracking;
 	u32 privileges;
+	bool spoofchk;
 };
 
 enum vf_state {
@@ -369,10 +396,16 @@ enum vf_state {
 #define BE_FLAGS_QNQ_ASYNC_EVT_RCVD		BIT(7)
 #define BE_FLAGS_VXLAN_OFFLOADS			BIT(8)
 #define BE_FLAGS_SETUP_DONE			BIT(9)
-#define BE_FLAGS_EVT_INCOMPATIBLE_SFP		BIT(10)
+#define BE_FLAGS_PHY_MISCONFIGURED		BIT(10)
+#define BE_FLAGS_ERR_DETECTION_SCHEDULED	BIT(11)
+#define BE_FLAGS_OS2BMC				BIT(12)
+#define BE_FLAGS_TRY_RECOVERY			BIT(13)
 
 #define BE_UC_PMAC_COUNT			30
 #define BE_VF_UC_PMAC_COUNT			2
+
+#define MAX_ERR_RECOVERY_RETRY_COUNT		3
+#define ERR_DETECTION_DELAY			1000
 
 /* Ethtool set_dump flags */
 #define LANCER_INITIATE_FW_DUMP			0x1
@@ -404,12 +437,29 @@ struct be_resources {
 	u16 max_tx_qs;
 	u16 max_rss_qs;
 	u16 max_rx_qs;
+	u16 max_cq_count;
 	u16 max_uc_mac;		/* Max UC MACs programmable */
 	u16 max_vlans;		/* Number of vlans supported */
+	u16 max_iface_count;
+	u16 max_mcc_count;
 	u16 max_evt_qs;
+	u16 max_nic_evt_qs;	/* NIC's share of evt qs */
 	u32 if_cap_flags;
 	u32 vf_if_cap_flags;	/* VF if capability flags */
+	u32 flags;
+	/* Calculated PF Pool's share of RSS Tables. This is not enforced by
+	 * the FW, but is a self-imposed driver limitation.
+	 */
+	u16 max_rss_tables;
 };
+
+/* These are port-wide values */
+struct be_port_resources {
+	u16 max_vfs;
+	u16 nic_pfs;
+};
+
+#define be_is_os2bmc_enabled(adapter) (adapter->flags & BE_FLAGS_OS2BMC)
 
 struct rss_info {
 	u64 rss_flags;
@@ -417,6 +467,110 @@ struct rss_info {
 	u8 rss_queue[RSS_INDIR_TABLE_LEN];
 	u8 rss_hkey[RSS_HASH_KEY_LEN];
 };
+
+#define BE_INVALID_DIE_TEMP	0xFF
+struct be_hwmon {
+	struct device *hwmon_dev;
+	u8 be_on_die_temp;  /* Unit: millidegree Celsius */
+};
+
+/* Macros to read/write the 'features' word of be_wrb_params structure.
+ */
+#define	BE_WRB_F_BIT(name)			BE_WRB_F_##name##_BIT
+#define	BE_WRB_F_MASK(name)			BIT_MASK(BE_WRB_F_##name##_BIT)
+
+#define	BE_WRB_F_GET(word, name)	\
+	(((word) & (BE_WRB_F_MASK(name))) >> BE_WRB_F_BIT(name))
+
+#define	BE_WRB_F_SET(word, name, val)	\
+	((word) |= (((val) << BE_WRB_F_BIT(name)) & BE_WRB_F_MASK(name)))
+
+/* Feature/offload bits */
+enum {
+	BE_WRB_F_CRC_BIT,		/* Ethernet CRC */
+	BE_WRB_F_IPCS_BIT,		/* IP csum */
+	BE_WRB_F_TCPCS_BIT,		/* TCP csum */
+	BE_WRB_F_UDPCS_BIT,		/* UDP csum */
+	BE_WRB_F_LSO_BIT,		/* LSO */
+	BE_WRB_F_LSO6_BIT,		/* LSO6 */
+	BE_WRB_F_VLAN_BIT,		/* VLAN */
+	BE_WRB_F_VLAN_SKIP_HW_BIT,	/* Skip VLAN tag (workaround) */
+	BE_WRB_F_OS2BMC_BIT		/* Send packet to the management ring */
+};
+
+/* The structure below provides a HW-agnostic abstraction of WRB params
+ * retrieved from a TX skb. This is in turn passed to chip specific routines
+ * during transmit, to set the corresponding params in the WRB.
+ */
+struct be_wrb_params {
+	u32 features;	/* Feature bits */
+	u16 vlan_tag;	/* VLAN tag */
+	u16 lso_mss;	/* MSS for LSO */
+};
+
+struct be_eth_addr {
+	unsigned char mac[ETH_ALEN];
+};
+
+#define BE_SEC	1000			/* in msec */
+#define BE_MIN	(60 * BE_SEC)		/* in msec */
+#define BE_HOUR	(60 * BE_MIN)		/* in msec */
+
+#define ERR_RECOVERY_MAX_RETRY_COUNT		3
+#define ERR_RECOVERY_DETECTION_DELAY		BE_SEC
+#define ERR_RECOVERY_RETRY_DELAY		(30 * BE_SEC)
+
+/* UE-detection-duration in BEx/Skyhawk:
+ * All PFs must wait for this duration after they detect UE before reading
+ * SLIPORT_SEMAPHORE register. At the end of this duration, the Firmware
+ * guarantees that the SLIPORT_SEMAPHORE register is updated to indicate
+ * if the UE is recoverable.
+ */
+#define ERR_RECOVERY_UE_DETECT_DURATION			BE_SEC
+
+/* Initial idle time (in msec) to elapse after driver load,
+ * before UE recovery is allowed.
+ */
+#define ERR_IDLE_HR			24
+#define ERR_RECOVERY_IDLE_TIME		(ERR_IDLE_HR * BE_HOUR)
+
+/* Time interval (in msec) after which UE recovery can be repeated */
+#define ERR_INTERVAL_HR			72
+#define ERR_RECOVERY_INTERVAL		(ERR_INTERVAL_HR * BE_HOUR)
+
+/* BEx/SH UE recovery state machine */
+enum {
+	ERR_RECOVERY_ST_NONE = 0,		/* No Recovery */
+	ERR_RECOVERY_ST_DETECT = 1,		/* UE detection duration */
+	ERR_RECOVERY_ST_RESET = 2,		/* Reset Phase (PF0 only) */
+	ERR_RECOVERY_ST_PRE_POLL = 3,		/* Pre-Poll Phase (all PFs) */
+	ERR_RECOVERY_ST_REINIT = 4		/* Re-initialize Phase */
+};
+
+struct be_error_recovery {
+	/* Lancer error recovery variables */
+	u8 recovery_retries;
+
+	/* BEx/Skyhawk error recovery variables */
+	u8 recovery_state;
+	u16 ue_to_reset_time;		/* Time after UE, to soft reset
+					 * the chip - PF0 only
+					 */
+	u16 ue_to_poll_time;		/* Time after UE, to Restart Polling
+					 * of SLIPORT_SEMAPHORE reg
+					 */
+	u16 last_err_code;
+	bool recovery_supported;
+	unsigned long probe_time;
+	unsigned long last_recovery_time;
+
+	/* Common to both Lancer & BEx/SH error recovery */
+	u32 resched_delay;
+	struct delayed_work err_detection_work;
+};
+
+/* Ethtool priv_flags */
+#define	BE_DISABLE_TPE_RECOVERY	0x1
 
 struct be_adapter {
 	struct pci_dev *pdev;
@@ -433,10 +587,11 @@ struct be_adapter {
 	struct be_dma_mem mbox_mem_alloced;
 
 	struct be_mcc_obj mcc_obj;
-	spinlock_t mcc_lock;	/* For serializing mcc cmds to BE card */
+	struct mutex mcc_lock;	/* For serializing mcc cmds to BE card */
 	spinlock_t mcc_cq_lock;
 
-	u16 cfg_num_qs;		/* configured via set-channels */
+	u16 cfg_num_rx_irqs;		/* configured via set-channels */
+	u16 cfg_num_tx_irqs;		/* configured via set-channels */
 	u16 num_evt_qs;
 	u16 num_msix_vec;
 	struct be_eq_obj eq_obj[MAX_EVT_QS];
@@ -449,13 +604,15 @@ struct be_adapter {
 
 	/* Rx rings */
 	u16 num_rx_qs;
+	u16 num_rss_qs;
+	u16 need_def_rxq;
 	struct be_rx_obj rx_obj[MAX_RX_QS];
 	u32 big_page_size;	/* Compounded page size shared by rx wrbs */
 
 	struct be_drv_stats drv_stats;
 	struct be_aic_obj aic_obj[MAX_EVT_QS];
 	u8 vlan_prio_bmap;	/* Available Priority BitMap */
-	u16 recommended_prio;	/* Recommended Priority */
+	u16 recommended_prio_bits;/* Recommended Priority bits in vlan tag */
 	struct be_dma_mem rx_filter; /* Cmd DMA mem for rx-filter */
 
 	struct be_dma_mem stats_cmd;
@@ -463,7 +620,9 @@ struct be_adapter {
 	struct delayed_work work;
 	u16 work_counter;
 
-	struct delayed_work func_recovery_work;
+	u8 recovery_retries;
+	u8 err_flags;
+	bool pcicfg_mapped;	/* pcicfg obtained via pci_iomap() */
 	u32 flags;
 	u32 cmd_privileges;
 	/* Ethtool knobs and info */
@@ -474,15 +633,17 @@ struct be_adapter {
 	int if_handle;		/* Used to configure filtering */
 	u32 if_flags;		/* Interface filtering flags */
 	u32 *pmac_id;		/* MAC addr handle used by BE card */
+	struct be_eth_addr *uc_list;/* list of uc-addrs programmed (not perm) */
 	u32 uc_macs;		/* Count of secondary UC MAC programmed */
+	struct be_eth_addr *mc_list;/* list of mcast addrs programmed */
+	u32 mc_count;
 	unsigned long vids[BITS_TO_LONGS(VLAN_N_VID)];
 	u16 vlans_added;
+	bool update_uc_list;
+	bool update_mc_list;
+	struct mutex rx_filter_lock;/* For protecting vids[] & mc/uc_list[] */
 
 	u32 beacon_state;	/* for set_phys_id */
-
-	bool eeh_error;
-	bool fw_timeout;
-	bool hw_error;
 
 	u32 port_num;
 	char port_name;
@@ -507,6 +668,8 @@ struct be_adapter {
 	struct be_resources pool_res;	/* resources available for the port */
 	struct be_resources res;	/* resources available for the func */
 	u16 num_vfs;			/* Number of VFs provisioned by PF */
+	u8 pf_num;			/* Numbering used by FW, starts at 0 */
+	u8 vf_num;			/* Numbering used by FW, starts at 1 */
 	u8 virtfn;
 	struct be_vf_cfg *vf_cfg;
 	bool be3_native;
@@ -515,6 +678,7 @@ struct be_adapter {
 	u16 pvid;
 	__be16 vxlan_port;
 	int vxlan_port_count;
+	int vxlan_port_aliases;
 	struct phy_info phy;
 	u8 wol_cap;
 	bool wol_en;
@@ -522,8 +686,25 @@ struct be_adapter {
 	u16 qnq_vid;
 	u32 msg_enable;
 	int be_get_temp_freq;
-	u8 pf_number;
+	struct be_hwmon hwmon_info;
 	struct rss_info rss_info;
+	/* Filters for packets that need to be sent to BMC */
+	u32 bmc_filt_mask;
+	u32 fat_dump_len;
+	u16 serial_num[CNTL_SERIAL_NUM_WORDS];
+	u8 phy_state; /* state of sfp optics (functional, faulted, etc.,) */
+	u8 dev_mac[ETH_ALEN];
+	u32 priv_flags; /* ethtool get/set_priv_flags() */
+	struct be_error_recovery error_recovery;
+};
+
+/* Used for defered FW config cmds. Add fields to this struct as reqd */
+struct be_cmd_work {
+	struct work_struct work;
+	struct be_adapter *adapter;
+	union {
+		__be16 vxlan_port;
+	} info;
 };
 
 #define be_physfn(adapter)		(!adapter->virtfn)
@@ -546,16 +727,42 @@ struct be_adapter {
 #define be_max_txqs(adapter)		(adapter->res.max_tx_qs)
 #define be_max_prio_txqs(adapter)	(adapter->res.max_prio_tx_qs)
 #define be_max_rxqs(adapter)		(adapter->res.max_rx_qs)
-#define be_max_eqs(adapter)		(adapter->res.max_evt_qs)
+/* Max number of EQs available for the function (NIC + RoCE (if enabled)) */
+#define be_max_func_eqs(adapter)	(adapter->res.max_evt_qs)
+/* Max number of EQs available avaialble only for NIC */
+#define be_max_nic_eqs(adapter)		(adapter->res.max_nic_evt_qs)
 #define be_if_cap_flags(adapter)	(adapter->res.if_cap_flags)
+#define be_max_pf_pool_rss_tables(adapter)	\
+				(adapter->pool_res.max_rss_tables)
+/* Max irqs avaialble for NIC */
+#define be_max_irqs(adapter)		\
+			(min_t(u16, be_max_nic_eqs(adapter), num_online_cpus()))
 
-static inline u16 be_max_qs(struct be_adapter *adapter)
+/* Max irqs *needed* for RX queues */
+static inline u16 be_max_rx_irqs(struct be_adapter *adapter)
 {
-	/* If no RSS, need atleast the one def RXQ */
+	/* If no RSS, need atleast one irq for def-RXQ */
 	u16 num = max_t(u16, be_max_rss(adapter), 1);
 
-	num = min(num, be_max_eqs(adapter));
-	return min_t(u16, num, num_online_cpus());
+	return min_t(u16, num, be_max_irqs(adapter));
+}
+
+/* Max irqs *needed* for TX queues */
+static inline u16 be_max_tx_irqs(struct be_adapter *adapter)
+{
+	return min_t(u16, be_max_txqs(adapter), be_max_irqs(adapter));
+}
+
+/* Max irqs *needed* for combined queues */
+static inline u16 be_max_qp_irqs(struct be_adapter *adapter)
+{
+	return min(be_max_tx_irqs(adapter), be_max_rx_irqs(adapter));
+}
+
+/* Max irqs *needed* for RX and TX queues together */
+static inline u16 be_max_any_irqs(struct be_adapter *adapter)
+{
+	return max(be_max_tx_irqs(adapter), be_max_rx_irqs(adapter));
 }
 
 /* Is BE in pvid_tagging mode */
@@ -596,9 +803,8 @@ extern const struct ethtool_ops be_ethtool_ops;
 	for (i = 0, rxo = &adapter->rx_obj[i]; i < adapter->num_rx_qs;	\
 		i++, rxo++)
 
-/* Skip the default non-rss queue (last one)*/
 #define for_all_rss_queues(adapter, rxo, i)				\
-	for (i = 0, rxo = &adapter->rx_obj[i]; i < (adapter->num_rx_qs - 1);\
+	for (i = 0, rxo = &adapter->rx_obj[i]; i < adapter->num_rss_qs;	\
 		i++, rxo++)
 
 #define for_all_tx_queues(adapter, txo, i)				\
@@ -723,26 +929,39 @@ static inline bool is_ipv4_pkt(struct sk_buff *skb)
 	return skb->protocol == htons(ETH_P_IP) && ip_hdr(skb)->version == 4;
 }
 
+#define be_error_recovering(adapter)	\
+		(adapter->flags & BE_FLAGS_TRY_RECOVERY)
+
+#define BE_ERROR_EEH		1
+#define BE_ERROR_UE		BIT(1)
+#define BE_ERROR_FW		BIT(2)
+#define BE_ERROR_HW		(BE_ERROR_EEH | BE_ERROR_UE)
+#define BE_ERROR_ANY		(BE_ERROR_EEH | BE_ERROR_UE | BE_ERROR_FW)
+#define BE_CLEAR_ALL		0xFF
+
+static inline u8 be_check_error(struct be_adapter *adapter, u32 err_type)
+{
+	return (adapter->err_flags & err_type);
+}
+
+static inline void be_set_error(struct be_adapter *adapter, int err_type)
+{
+	struct net_device *netdev = adapter->netdev;
+
+	adapter->err_flags |= err_type;
+	netif_carrier_off(netdev);
+
+	dev_info(&adapter->pdev->dev, "%s: Link down\n", netdev->name);
+}
+
+static inline void  be_clear_error(struct be_adapter *adapter, int err_type)
+{
+	adapter->err_flags &= ~err_type;
+}
+
 static inline bool be_multi_rxq(const struct be_adapter *adapter)
 {
 	return adapter->num_rx_qs > 1;
-}
-
-static inline bool be_error(struct be_adapter *adapter)
-{
-	return adapter->eeh_error || adapter->hw_error || adapter->fw_timeout;
-}
-
-static inline bool be_hw_error(struct be_adapter *adapter)
-{
-	return adapter->eeh_error || adapter->hw_error;
-}
-
-static inline void  be_clear_all_error(struct be_adapter *adapter)
-{
-	adapter->eeh_error = false;
-	adapter->hw_error = false;
-	adapter->fw_timeout = false;
 }
 
 void be_cq_notify(struct be_adapter *adapter, u16 qid, bool arm,
@@ -755,6 +974,7 @@ bool be_pause_supported(struct be_adapter *adapter);
 u32 be_get_fw_log_level(struct be_adapter *adapter);
 int be_update_queues(struct be_adapter *adapter);
 int be_poll(struct napi_struct *napi, int budget);
+void be_eqd_update(struct be_adapter *adapter, bool force_update);
 
 /*
  * internal function to initialize-cleanup roce device.
@@ -765,8 +985,6 @@ void be_roce_dev_remove(struct be_adapter *);
 /*
  * internal function to open-close roce device during ifup-ifdown.
  */
-void be_roce_dev_open(struct be_adapter *);
-void be_roce_dev_close(struct be_adapter *);
 void be_roce_dev_shutdown(struct be_adapter *);
 
 #endif				/* BE_H */

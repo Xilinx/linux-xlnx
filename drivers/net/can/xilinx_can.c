@@ -33,6 +33,7 @@
 #include <linux/can/error.h>
 #include <linux/can/led.h>
 #include <linux/pm_runtime.h>
+#include <linux/of_device.h>
 
 #define DRIVER_NAME	"xilinx_can"
 
@@ -56,6 +57,37 @@ enum xcan_reg {
 	XCAN_RXFIFO_DLC_OFFSET	= 0x54, /* RX FIFO DLC */
 	XCAN_RXFIFO_DW1_OFFSET	= 0x58, /* RX FIFO Data Word 1 */
 	XCAN_RXFIFO_DW2_OFFSET	= 0x5C, /* RX FIFO Data Word 2 */
+	XCAN_F_BRPR_OFFSET	= 0x088, /* Data Phase Buad Rate
+					  * Prescalar
+					  */
+	XCAN_F_BTR_OFFSET	= 0x08C, /* Data Phase Bit Timing */
+	XCAN_TRR_OFFSET		= 0x090, /* Tx Buffer Ready Request */
+	XCAN_IETRS_OFFSET	= 0x094, /* TRR Served Interrupt
+					  * Enable
+					  */
+	XCANFD_TXFIFO_ID_OFFSET	= 0x0100, /* Tx Message Buffer Element
+					   * ID
+					   */
+	XCANFD_TXFIFO_DLC_OFFSET = 0x0104, /* Tx Message Buffer Element
+					    * DLC
+					    */
+	XCANFD_TXFIFO_DW_OFFSET	= 0x0108, /* Tx Message Buffer Element
+					   * DW
+					   */
+	XCANFD_RXFIFO_ID_OFFSET	= 0x1100, /* Rx Message Buffer Element
+					   * ID
+					   */
+	XCANFD_RXFIFO_DLC_OFFSET = 0x1104, /* Rx Message Buffer Element
+					    * DLC
+					    */
+	XCANFD_RXFIFO_DW_OFFSET	= 0x1108, /* Rx Message Buffer Element
+					   * DW
+					   */
+	XCAN_AFMR_BASE_OFFSET	= 0x1A00, /* Acceptance Filter */
+	XCAN_AFIDR_BASE_OFFSET	= 0x1A04, /* Acceptance Filter ID */
+	XCAN_AFR_OFFSET		= 0x0E0, /* Acceptance Filter */
+	XCAN_FSR_OFFSET		= 0x0E8, /* Receive FIFO Status */
+	XCAN_TIMESTAMPR_OFFSET	= 0x0028, /* Time Stamp */
 };
 
 /* CAN register bit masks - XCAN_<REG>_<BIT>_MASK */
@@ -67,6 +99,9 @@ enum xcan_reg {
 #define XCAN_BTR_SJW_MASK		0x00000180 /* Synchronous jump width */
 #define XCAN_BTR_TS2_MASK		0x00000070 /* Time segment 2 */
 #define XCAN_BTR_TS1_MASK		0x0000000F /* Time segment 1 */
+#define XCANFD_BTR_SJW_MASK		0x000F0000 /* Sync Jump Width */
+#define XCANFD_BTR_TS2_MASK		0x00000F00 /* Time Segment 2 */
+#define XCANFD_BTR_TS1_MASK		0x0000003F /* Time Segment 1 */
 #define XCAN_ECR_REC_MASK		0x0000FF00 /* Receive error counter */
 #define XCAN_ECR_TEC_MASK		0x000000FF /* Transmit error counter */
 #define XCAN_ESR_ACKER_MASK		0x00000010 /* ACK error */
@@ -97,24 +132,93 @@ enum xcan_reg {
 #define XCAN_IDR_ID2_MASK		0x0007FFFE /* Extended message ident */
 #define XCAN_IDR_RTR_MASK		0x00000001 /* Remote TX request */
 #define XCAN_DLCR_DLC_MASK		0xF0000000 /* Data length code */
+#define XCAN_MSR_BRSD_MASK		0x00000008 /* Bit Rate Switch Select */
+#define XCAN_MSR_SNOOP_MASK		0x00000004 /* Snoop Mode Select */
+#define XCAN_MSR_DPEE_MASK		0x00000020 /* Protocol Exception
+						    * Event
+						    */
+#define XCAN_MSR_SBR_MASK		0x00000040 /* Start Bus-Off Recovery */
+#define XCAN_MSR_ABR_MASK		0x00000080 /* Auto Bus-Off Recovery */
+#define XCAN_MSR_CONFIG_MASK		0x000000F8 /* Configuration Mode */
+#define XCAN_F_BRPR_TDCMASK		0x00001F00 /* TDC Value */
+#define XCAN_F_BTR_SJW_MASK		0x00070000 /* Sync Jump Width */
+#define XCAN_F_BTR_TS2_MASK		0x00000700 /* Time Segment 2 */
+#define XCAN_F_BTR_TS1_MASK		0x0000000F /* Time Segment 1 */
+#define XCAN_ESR_F_BERR_MASK		0x00000800 /* F_Bit Error */
+#define XCAN_ESR_F_STER_MASK		0x00000400 /* F_Stuff Error */
+#define XCAN_ESR_F_FMER_MASK		0x00000200 /* F_Form Error */
+#define XCAN_ESR_F_CRCER_MASK		0x00000100 /* F_CRC Error */
+#define XCAN_SR_SNOOP_MASK		0x00001000 /* Snoop Mode */
+#define XCAN_SR_BBSY_MASK		0x00000020 /* Bus Busy */
+#define XCAN_SR_BIDLE_MASK		0x00000010 /* Bus Idle */
+#define XCAN_SR_SLEEP_MASK		0x00000004 /* Sleep Mode */
+#define XCAN_SR_PEE_CONFIG_MASK		0x00000200 /* Protocol Exception
+						    * Mode Indicator
+						    */
+#define XCAN_SR_BSFR_CONFIG_MASK	0x00000400 /* Bus-Off recovery
+						    * Mode Indicator
+						    */
+#define XCAN_SR_NISO_MASK	0x00000800 /* Non-ISO Core */
+#define XCAN_FSR_FL_MASK	0x00003F00 /* Fill Level */
+#define XCAN_FSR_RI_MASK	0x0000001F /* Read Index */
+#define XCAN_FSR_IRI_MASK	0x00000080 /* Increment Read Index */
+#define XCAN_IXR_RXMNF_MASK	0x00020000 /* Rx Match Not Finished Intr */
+#define XCAN_IXR_TXRRS_MASK	0x00002000 /* Tx Buffer Ready Request Served
+					    * Intr
+					    */
+#define XCAN_IXR_PEE_MASK	0x00000004 /* Protocol Exception Intr */
+#define XCAN_IXR_BSRD_MASK	0x00000008 /* Bus-Off recovery done Intr */
+#define XCAN_AFR_ENABLE_ALL	0xFFFFFFFF /* All filter Enable */
+#define XCAN_DLCR_EDL_MASK	0x08000000 /* EDL Mask in DLC */
+#define XCAN_DLCR_BRS_MASK	0x04000000 /* BRS Mask in DLC */
+#define XCAN_DLCR_DLC_SHIFT	28 /* BRS Mask in DLC */
+#define XCAN_DLCR_EDL_SHIFT	27 /* EDL Mask in DLC */
+#define XCAN_DLCR_BRS_SHIFT	26
 
-#define XCAN_INTR_ALL		(XCAN_IXR_TXOK_MASK | XCAN_IXR_BSOFF_MASK |\
-				 XCAN_IXR_WKUP_MASK | XCAN_IXR_SLP_MASK | \
-				 XCAN_IXR_RXNEMP_MASK | XCAN_IXR_ERROR_MASK | \
-				 XCAN_IXR_RXOFLW_MASK | \
-				 XCAN_IXR_ARBLST_MASK)
+#define XCAN_INTR_ALL	(XCAN_IXR_TXOK_MASK | XCAN_IXR_BSOFF_MASK |\
+			 XCAN_IXR_WKUP_MASK | XCAN_IXR_SLP_MASK | \
+			 XCAN_IXR_ERROR_MASK | XCAN_IXR_RXOFLW_MASK | \
+			 XCAN_IXR_ARBLST_MASK)
 
 /* CAN register bit shift - XCAN_<REG>_<BIT>_SHIFT */
-#define XCAN_BTR_SJW_SHIFT		7  /* Synchronous jump width */
-#define XCAN_BTR_TS2_SHIFT		4  /* Time segment 2 */
-#define XCAN_IDR_ID1_SHIFT		21 /* Standard Messg Identifier */
-#define XCAN_IDR_ID2_SHIFT		1  /* Extended Message Identifier */
-#define XCAN_DLCR_DLC_SHIFT		28 /* Data length code */
-#define XCAN_ESR_REC_SHIFT		8  /* Rx Error Count */
+#define XCAN_BTR_SJW_SHIFT	7 /* Synchronous jump width */
+#define XCAN_BTR_TS2_SHIFT	4 /* Time segment 2 */
+#define XCANFD_BTR_SJW_SHIFT	16 /* Sync Jump Width Shift */
+#define XCANFD_BTR_TS2_SHIFT	8 /* Time Segment 2 Shift */
+#define XCAN_SR_ESTAT_SHIFT	7 /* Error Status Shift */
+#define XCAN_RXLRM_BI_SHIFT	18 /* Rx Buffer Index Shift Value */
+#define XCAN_CSB_SHIFT		16 /* Core Status Bit Shift Value */
+#define XCAN_IDR_SRR_SHIFT	20 /* Soft Reset Shift */
+#define XCAN_IDR_IDE_SHIFT	19 /* Identifier Extension Shift */
+#define XCAN_IDR_ID1_SHIFT	21 /* Standard Messg Identifier */
+#define XCAN_IDR_ID2_SHIFT	1 /* Extended Message Identifier */
+#define XCAN_DLCR_DLC_SHIFT	28 /* Data length code */
+#define XCAN_ESR_REC_SHIFT	8 /* Rx Error Count */
 
 /* CAN frame length constants */
 #define XCAN_FRAME_MAX_DATA_LEN		8
 #define XCAN_TIMEOUT			(1 * HZ)
+#define XCANFD_MAX_FRAME_LEN		72
+#define XCANFD_FRAME_MAX_DATA_LEN	64
+#define XCANFD_DW_BYTES			4
+#define XCANFD_CTRLREG_WIDTH		4
+
+/* Quirks */
+#define CANFD_SUPPORT	BIT(0)
+
+/* CANFD Tx and Rx Ram offsets */
+#define XCANFD_TXDW_OFFSET(n)		(XCANFD_TXFIFO_DW_OFFSET + ((n) * \
+					XCANFD_MAX_FRAME_LEN))
+#define XCANFD_TXID_OFFSET(n)		(XCANFD_TXFIFO_ID_OFFSET + ((n) * \
+					XCANFD_MAX_FRAME_LEN))
+#define XCANFD_TXDLC_OFFSET(n)		(XCANFD_TXFIFO_DLC_OFFSET + ((n) *\
+					XCANFD_MAX_FRAME_LEN))
+#define XCANFD_RXDLC_OFFSET(readindex)	(XCANFD_RXFIFO_DLC_OFFSET + \
+					((readindex) * XCANFD_MAX_FRAME_LEN))
+#define XCANFD_RXID_OFFSET(readindex)	(XCANFD_RXFIFO_ID_OFFSET + \
+					((readindex) * XCANFD_MAX_FRAME_LEN))
+#define XCANFD_RXDW_OFFSET(readindex)	(XCANFD_RXFIFO_DW_OFFSET + \
+					((readindex) * XCANFD_MAX_FRAME_LEN))
 
 /**
  * struct xcan_priv - This definition define CAN driver instance
@@ -130,6 +234,7 @@ enum xcan_reg {
  * @irq_flags:			For request_irq()
  * @bus_clk:			Pointer to struct clk
  * @can_clk:			Pointer to struct clk
+ * @quirks:			Needed for different IP cores
  */
 struct xcan_priv {
 	struct can_priv can;
@@ -139,22 +244,40 @@ struct xcan_priv {
 	struct napi_struct napi;
 	u32 (*read_reg)(const struct xcan_priv *priv, enum xcan_reg reg);
 	void (*write_reg)(const struct xcan_priv *priv, enum xcan_reg reg,
-			u32 val);
+			  u32 val);
 	struct device *dev;
 	void __iomem *reg_base;
 	unsigned long irq_flags;
 	struct clk *bus_clk;
 	struct clk *can_clk;
+	u32 quirks;
+};
+
+struct xcan_platform_data {
+	u32 quirks;
 };
 
 /* CAN Bittiming constants as per Xilinx CAN specs */
-static const struct can_bittiming_const xcan_bittiming_const = {
+static struct can_bittiming_const xcan_bittiming_const = {
 	.name = DRIVER_NAME,
 	.tseg1_min = 1,
 	.tseg1_max = 16,
 	.tseg2_min = 1,
 	.tseg2_max = 8,
 	.sjw_max = 4,
+	.brp_min = 1,
+	.brp_max = 256,
+	.brp_inc = 1,
+};
+
+/* CAN Data Bittiming constants as per Xilinx CAN specs */
+static struct can_bittiming_const xcan_data_bittiming_const = {
+	.name = DRIVER_NAME,
+	.tseg1_min = 1,
+	.tseg1_max = 16,
+	.tseg2_min = 1,
+	.tseg2_max = 8,
+	.sjw_max = 8,
 	.brp_min = 1,
 	.brp_max = 256,
 	.brp_inc = 1,
@@ -169,7 +292,7 @@ static const struct can_bittiming_const xcan_bittiming_const = {
  * Write data to the paricular CAN register
  */
 static void xcan_write_reg_le(const struct xcan_priv *priv, enum xcan_reg reg,
-			u32 val)
+			      u32 val)
 {
 	iowrite32(val, priv->reg_base + reg);
 }
@@ -196,7 +319,7 @@ static u32 xcan_read_reg_le(const struct xcan_priv *priv, enum xcan_reg reg)
  * Write data to the paricular CAN register
  */
 static void xcan_write_reg_be(const struct xcan_priv *priv, enum xcan_reg reg,
-			u32 val)
+			      u32 val)
 {
 	iowrite32be(val, priv->reg_base + reg);
 }
@@ -253,6 +376,7 @@ static int xcan_set_bittiming(struct net_device *ndev)
 {
 	struct xcan_priv *priv = netdev_priv(ndev);
 	struct can_bittiming *bt = &priv->can.bittiming;
+	struct can_bittiming *dbt = &priv->can.data_bittiming;
 	u32 btr0, btr1;
 	u32 is_config_mode;
 
@@ -263,7 +387,7 @@ static int xcan_set_bittiming(struct net_device *ndev)
 				XCAN_SR_CONFIG_MASK;
 	if (!is_config_mode) {
 		netdev_alert(ndev,
-		     "BUG! Cannot set bittiming - CAN is not in config mode\n");
+			     "BUG! Cannot set bittiming - CAN is not in config mode\n");
 		return -EPERM;
 	}
 
@@ -274,17 +398,39 @@ static int xcan_set_bittiming(struct net_device *ndev)
 	btr1 = (bt->prop_seg + bt->phase_seg1 - 1);
 
 	/* Setting Time Segment 2 in BTR Register */
-	btr1 |= (bt->phase_seg2 - 1) << XCAN_BTR_TS2_SHIFT;
+	btr1 |= (bt->phase_seg2 - 1) << ((priv->quirks & CANFD_SUPPORT) ?
+			XCANFD_BTR_TS2_SHIFT : XCAN_BTR_TS2_SHIFT);
 
 	/* Setting Synchronous jump width in BTR Register */
-	btr1 |= (bt->sjw - 1) << XCAN_BTR_SJW_SHIFT;
+	btr1 |= (bt->sjw - 1) << ((priv->quirks & CANFD_SUPPORT) ?
+			XCANFD_BTR_SJW_SHIFT : XCAN_BTR_SJW_SHIFT);
 
 	priv->write_reg(priv, XCAN_BRPR_OFFSET, btr0);
 	priv->write_reg(priv, XCAN_BTR_OFFSET, btr1);
 
 	netdev_dbg(ndev, "BRPR=0x%08x, BTR=0x%08x\n",
-			priv->read_reg(priv, XCAN_BRPR_OFFSET),
-			priv->read_reg(priv, XCAN_BTR_OFFSET));
+		   priv->read_reg(priv, XCAN_BRPR_OFFSET),
+		   priv->read_reg(priv, XCAN_BTR_OFFSET));
+
+	if (priv->quirks & CANFD_SUPPORT) {
+		/* Setting Baud Rate prescalar value in F_BRPR Register */
+		btr0 = dbt->brp - 1;
+
+		/* Setting Time Segment 1 in BTR Register */
+		btr1 = dbt->prop_seg + bt->phase_seg1 - 1;
+
+		/* Setting Time Segment 2 in BTR Register */
+		btr1 |= (dbt->phase_seg2 - 1) << XCAN_BTR_TS2_SHIFT;
+
+		/* Setting Synchronous jump width in BTR Register */
+		btr1 |= (dbt->sjw - 1) << XCAN_BTR_SJW_SHIFT;
+
+		priv->write_reg(priv, XCAN_F_BRPR_OFFSET, btr0);
+		priv->write_reg(priv, XCAN_F_BTR_OFFSET, btr1);
+	}
+	netdev_dbg(ndev, "F_BRPR=0x%08x, F_BTR=0x%08x\n",
+		   priv->read_reg(priv, XCAN_F_BRPR_OFFSET),
+		   priv->read_reg(priv, XCAN_F_BTR_OFFSET));
 
 	return 0;
 }
@@ -302,7 +448,7 @@ static int xcan_set_bittiming(struct net_device *ndev)
 static int xcan_chip_start(struct net_device *ndev)
 {
 	struct xcan_priv *priv = netdev_priv(ndev);
-	u32 reg_msr, reg_sr_mask;
+	u32 reg_msr, reg_sr_mask, intr_all = 0;
 	int err;
 	unsigned long timeout;
 
@@ -316,7 +462,15 @@ static int xcan_chip_start(struct net_device *ndev)
 		return err;
 
 	/* Enable interrupts */
-	priv->write_reg(priv, XCAN_IER_OFFSET, XCAN_INTR_ALL);
+	if (priv->quirks & CANFD_SUPPORT) {
+		intr_all = XCAN_INTR_ALL | XCAN_IXR_PEE_MASK |
+				XCAN_IXR_BSRD_MASK | XCAN_IXR_RXMNF_MASK |
+				XCAN_IXR_TXRRS_MASK | XCAN_IXR_RXOK_MASK;
+	} else {
+		intr_all = XCAN_INTR_ALL | XCAN_IXR_RXNEMP_MASK;
+	}
+
+	priv->write_reg(priv, XCAN_IER_OFFSET, intr_all);
 
 	/* Check whether it is loopback mode or normal mode  */
 	if (priv->can.ctrlmode & CAN_CTRLMODE_LOOPBACK) {
@@ -327,6 +481,12 @@ static int xcan_chip_start(struct net_device *ndev)
 		reg_sr_mask = XCAN_SR_NORMAL_MASK;
 	}
 
+	if (priv->quirks & CANFD_SUPPORT) {
+		/* As per Xilinx canfd spec, default filter enabling is
+		 * required
+		 */
+		priv->write_reg(priv, XCAN_AFR_OFFSET, XCAN_AFR_ENABLE_ALL);
+	}
 	priv->write_reg(priv, XCAN_MSR_OFFSET, reg_msr);
 	priv->write_reg(priv, XCAN_SRR_OFFSET, XCAN_SRR_CEN_MASK);
 
@@ -334,14 +494,17 @@ static int xcan_chip_start(struct net_device *ndev)
 	while (!(priv->read_reg(priv, XCAN_SR_OFFSET) & reg_sr_mask)) {
 		if (time_after(jiffies, timeout)) {
 			netdev_warn(ndev,
-				"timed out for correct mode\n");
+				    "timed out for correct mode\n");
 			return -ETIMEDOUT;
 		}
 	}
 	netdev_dbg(ndev, "status:#x%08x\n",
-			priv->read_reg(priv, XCAN_SR_OFFSET));
+		   priv->read_reg(priv, XCAN_SR_OFFSET));
 
 	priv->can.state = CAN_STATE_ERROR_ACTIVE;
+	priv->tx_head = 0;
+	priv->tx_tail = 0;
+
 	return 0;
 }
 
@@ -377,6 +540,28 @@ static int xcan_do_set_mode(struct net_device *ndev, enum can_mode mode)
 }
 
 /**
+ * xcan_get_freebuffer - Checks free buffer in the configured buffers
+ * @priv:	Driver private data structure
+ *
+ * While sending data, need to find free buffer from the tx
+ * buffers avialable and then write data to that buffer.
+ *
+ * Return: Free Buffer on success and -1 if no buffer available
+ */
+static int xcan_get_freebuffer(struct xcan_priv *priv)
+{
+	u32 bufindex = 0, trrregval = 0;
+
+	trrregval = priv->read_reg(priv, XCAN_TRR_OFFSET);
+	for (bufindex = 0; bufindex < priv->tx_max; bufindex++) {
+		if (trrregval & (1 << bufindex))
+			continue;
+		return bufindex;
+	}
+	return -1;
+}
+
+/**
  * xcan_start_xmit - Starts the transmission
  * @skb:	sk_buff pointer that contains data to be Txed
  * @ndev:	Pointer to net_device structure
@@ -391,18 +576,21 @@ static int xcan_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 {
 	struct xcan_priv *priv = netdev_priv(ndev);
 	struct net_device_stats *stats = &ndev->stats;
-	struct can_frame *cf = (struct can_frame *)skb->data;
+	struct canfd_frame *cf = (struct canfd_frame *)skb->data;
 	u32 id, dlc, data[2] = {0, 0};
+	u32 buffnr, ramoff, dwindex = 0, i, trrval;
 
 	if (can_dropped_invalid_skb(ndev, skb))
 		return NETDEV_TX_OK;
 
-	/* Check if the TX buffer is full */
-	if (unlikely(priv->read_reg(priv, XCAN_SR_OFFSET) &
-			XCAN_SR_TXFLL_MASK)) {
-		netif_stop_queue(ndev);
-		netdev_err(ndev, "BUG!, TX FIFO full when queue awake!\n");
-		return NETDEV_TX_BUSY;
+	if (!(priv->quirks & CANFD_SUPPORT)) {
+		/* Check if the TX buffer is full */
+		if (unlikely(priv->read_reg(priv, XCAN_SR_OFFSET) &
+				XCAN_SR_TXFLL_MASK)) {
+			netif_stop_queue(ndev);
+			netdev_err(ndev, "BUG!, TX FIFO full when queue awake!\n");
+			return NETDEV_TX_BUSY;
+		}
 	}
 
 	/* Watch carefully on the bit sequence */
@@ -411,7 +599,7 @@ static int xcan_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 		id = ((cf->can_id & CAN_EFF_MASK) << XCAN_IDR_ID2_SHIFT) &
 			XCAN_IDR_ID2_MASK;
 		id |= (((cf->can_id & CAN_EFF_MASK) >>
-			(CAN_EFF_ID_BITS-CAN_SFF_ID_BITS)) <<
+			(CAN_EFF_ID_BITS - CAN_SFF_ID_BITS)) <<
 			XCAN_IDR_ID1_SHIFT) & XCAN_IDR_ID1_MASK;
 
 		/* The substibute remote TX request bit should be "1"
@@ -432,29 +620,61 @@ static int xcan_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 			id |= XCAN_IDR_SRR_MASK;
 	}
 
-	dlc = cf->can_dlc << XCAN_DLCR_DLC_SHIFT;
+	dlc = can_len2dlc(cf->len) << XCAN_DLCR_DLC_SHIFT;
+	if (priv->quirks & CANFD_SUPPORT) {
+		if (can_is_canfd_skb(skb)) {
+			if (cf->flags & CANFD_BRS)
+				dlc |= XCAN_DLCR_BRS_MASK;
+			dlc |= XCAN_DLCR_EDL_MASK;
+		}
 
-	if (cf->can_dlc > 0)
-		data[0] = be32_to_cpup((__be32 *)(cf->data + 0));
-	if (cf->can_dlc > 4)
-		data[1] = be32_to_cpup((__be32 *)(cf->data + 4));
+		can_put_echo_skb(skb, ndev, priv->tx_head % priv->tx_max);
+		priv->tx_head++;
+		buffnr = xcan_get_freebuffer(priv);
+		if (buffnr == -1)
+			netif_stop_queue(ndev);
 
-	can_put_echo_skb(skb, ndev, priv->tx_head % priv->tx_max);
-	priv->tx_head++;
+		priv->write_reg(priv, XCANFD_TXID_OFFSET(buffnr), id);
+		priv->write_reg(priv, XCANFD_TXDLC_OFFSET(buffnr), dlc);
 
-	/* Write the Frame to Xilinx CAN TX FIFO */
-	priv->write_reg(priv, XCAN_TXFIFO_ID_OFFSET, id);
-	/* If the CAN frame is RTR frame this write triggers tranmission */
-	priv->write_reg(priv, XCAN_TXFIFO_DLC_OFFSET, dlc);
-	if (!(cf->can_id & CAN_RTR_FLAG)) {
-		priv->write_reg(priv, XCAN_TXFIFO_DW1_OFFSET, data[0]);
-		/* If the CAN frame is Standard/Extended frame this
-		 * write triggers tranmission
+		for (i = 0; i < cf->len; i += 4) {
+			ramoff = XCANFD_TXDW_OFFSET(buffnr) + (dwindex *
+					XCANFD_DW_BYTES);
+			priv->write_reg(priv, ramoff,
+					be32_to_cpup((__be32 *)(cf->data + i)));
+			dwindex++;
+		}
+
+		trrval = priv->read_reg(priv, XCAN_TRR_OFFSET);
+		trrval |= 1 << buffnr;
+		priv->write_reg(priv, XCAN_TRR_OFFSET, trrval);
+		stats->tx_bytes += cf->len;
+		if (buffnr == -1)
+			netif_stop_queue(ndev);
+	} else {
+		if (cf->len > 0)
+			data[0] = be32_to_cpup((__be32 *)(cf->data + 0));
+		if (cf->len > 4)
+			data[1] = be32_to_cpup((__be32 *)(cf->data + 4));
+
+		can_put_echo_skb(skb, ndev, priv->tx_head % priv->tx_max);
+		priv->tx_head++;
+
+		/* Write the Frame to Xilinx CAN TX FIFO */
+		priv->write_reg(priv, XCAN_TXFIFO_ID_OFFSET, id);
+		/* If the CAN frame is RTR frame this write triggers
+		 * tranmission
 		 */
-		priv->write_reg(priv, XCAN_TXFIFO_DW2_OFFSET, data[1]);
-		stats->tx_bytes += cf->can_dlc;
+		priv->write_reg(priv, XCAN_TXFIFO_DLC_OFFSET, dlc);
+		if (!(cf->can_id & CAN_RTR_FLAG)) {
+			priv->write_reg(priv, XCAN_TXFIFO_DW1_OFFSET, data[0]);
+			/* If the CAN frame is Standard/Extended frame this
+			 * write triggers tranmission
+			 */
+			priv->write_reg(priv, XCAN_TXFIFO_DW2_OFFSET, data[1]);
+			stats->tx_bytes += cf->len;
+		}
 	}
-
 	/* Check if the TX buffer is full */
 	if ((priv->tx_head - priv->tx_tail) == priv->tx_max)
 		netif_stop_queue(ndev);
@@ -480,16 +700,15 @@ static int xcan_rx(struct net_device *ndev)
 	struct sk_buff *skb;
 	u32 id_xcan, dlc, data[2] = {0, 0};
 
+	/* Read a frame from Xilinx zynq CANPS */
+	id_xcan = priv->read_reg(priv, XCAN_RXFIFO_ID_OFFSET);
+	dlc = priv->read_reg(priv, XCAN_RXFIFO_DLC_OFFSET) >>
+				XCAN_DLCR_DLC_SHIFT;
 	skb = alloc_can_skb(ndev, &cf);
 	if (unlikely(!skb)) {
 		stats->rx_dropped++;
 		return 0;
 	}
-
-	/* Read a frame from Xilinx zynq CANPS */
-	id_xcan = priv->read_reg(priv, XCAN_RXFIFO_ID_OFFSET);
-	dlc = priv->read_reg(priv, XCAN_RXFIFO_DLC_OFFSET) >>
-				XCAN_DLCR_DLC_SHIFT;
 
 	/* Change Xilinx CAN data length format to socketCAN data format */
 	cf->can_dlc = get_can_dlc(dlc);
@@ -528,6 +747,102 @@ static int xcan_rx(struct net_device *ndev)
 	netif_receive_skb(skb);
 
 	return 1;
+}
+
+/**
+ * xcanfd_rx -  Is called from CAN isr to complete the received
+ *		frame  processing
+ * @ndev:	Pointer to net_device structure
+ *
+ * This function is invoked from the CAN isr(poll) to process the Rx frames. It
+ * does minimal processing and invokes "netif_receive_skb" to complete further
+ * processing.
+ * Return: 1 on success and 0 on failure.
+ */
+static int xcanfd_rx(struct net_device *ndev)
+{
+	struct xcan_priv *priv = netdev_priv(ndev);
+	struct net_device_stats *stats = &ndev->stats;
+	struct canfd_frame *cf;
+	struct sk_buff *skb;
+	u32 id_xcan, dlc, data[2] = {0, 0}, dwindex = 0, i, fsr, readindex;
+
+	fsr = priv->read_reg(priv, XCAN_FSR_OFFSET);
+	if (fsr & XCAN_FSR_FL_MASK) {
+		readindex = fsr & XCAN_FSR_RI_MASK;
+		id_xcan = priv->read_reg(priv, XCANFD_RXID_OFFSET(readindex));
+		dlc = priv->read_reg(priv, XCANFD_RXDLC_OFFSET(readindex));
+		if (dlc & XCAN_DLCR_EDL_MASK)
+			skb = alloc_canfd_skb(ndev, &cf);
+		else
+			skb = alloc_can_skb(ndev, (struct can_frame **)&cf);
+
+		if (unlikely(!skb)) {
+			stats->rx_dropped++;
+			return 0;
+		}
+
+		/* Change Xilinx CANFD data length format to socketCAN data
+		 * format
+		 */
+		if (dlc & XCAN_DLCR_EDL_MASK)
+			cf->len = can_dlc2len((dlc & XCAN_DLCR_DLC_MASK) >>
+					  XCAN_DLCR_DLC_SHIFT);
+		else
+			cf->len = get_can_dlc((dlc & XCAN_DLCR_DLC_MASK) >>
+						  XCAN_DLCR_DLC_SHIFT);
+
+		/* Change Xilinx CAN ID format to socketCAN ID format */
+		if (id_xcan & XCAN_IDR_IDE_MASK) {
+			/* The received frame is an Extended format frame */
+			cf->can_id = (id_xcan & XCAN_IDR_ID1_MASK) >> 3;
+			cf->can_id |= (id_xcan & XCAN_IDR_ID2_MASK) >>
+					XCAN_IDR_ID2_SHIFT;
+			cf->can_id |= CAN_EFF_FLAG;
+			if (id_xcan & XCAN_IDR_RTR_MASK)
+				cf->can_id |= CAN_RTR_FLAG;
+		} else {
+			/* The received frame is a standard format frame */
+			cf->can_id = (id_xcan & XCAN_IDR_ID1_MASK) >>
+					XCAN_IDR_ID1_SHIFT;
+			if (!(dlc & XCAN_DLCR_EDL_MASK) && (id_xcan &
+						XCAN_IDR_SRR_MASK))
+				cf->can_id |= CAN_RTR_FLAG;
+		}
+
+		/* Check the frame received is FD or not*/
+		if (dlc & XCAN_DLCR_EDL_MASK) {
+			for (i = 0; i < cf->len; i += 4) {
+				data[0] = priv->read_reg(priv,
+						(XCANFD_RXDW_OFFSET(readindex) +
+						(dwindex * XCANFD_DW_BYTES)));
+				*(__be32 *)(cf->data + i) = cpu_to_be32(
+								data[0]);
+				dwindex++;
+			}
+		} else {
+			for (i = 0; i < cf->len; i += 4) {
+				data[0] = priv->read_reg(priv,
+					XCANFD_RXDW_OFFSET(readindex) + i);
+				*(__be32 *)(cf->data + i) = cpu_to_be32(
+							data[0]);
+			}
+		}
+		/* Update FSR Register so that next packet will save to
+		 * buffer
+		 */
+		fsr = priv->read_reg(priv, XCAN_FSR_OFFSET);
+		fsr |= XCAN_FSR_IRI_MASK;
+		priv->write_reg(priv, XCAN_FSR_OFFSET, fsr);
+		fsr = priv->read_reg(priv, XCAN_FSR_OFFSET);
+		stats->rx_bytes += cf->len;
+		stats->rx_packets++;
+		netif_receive_skb(skb);
+
+		return 1;
+	}
+	/* If FSR Register is not updated with fill level */
+	return 0;
 }
 
 static void xcan_chip_stop(struct net_device *ndev);
@@ -612,17 +927,15 @@ static void xcan_err_interrupt(struct net_device *ndev, u32 isr)
 
 	/* Check for error interrupt */
 	if (isr & XCAN_IXR_ERROR_MASK) {
-		if (skb) {
+		if (skb)
 			cf->can_id |= CAN_ERR_PROT | CAN_ERR_BUSERROR;
-			cf->data[2] |= CAN_ERR_PROT_UNSPEC;
-		}
 
 		/* Check for Ack error interrupt */
 		if (err_status & XCAN_ESR_ACKER_MASK) {
 			stats->tx_errors++;
 			if (skb) {
 				cf->can_id |= CAN_ERR_ACK;
-				cf->data[3] |= CAN_ERR_PROT_LOC_ACK;
+				cf->data[3] = CAN_ERR_PROT_LOC_ACK;
 			}
 		}
 
@@ -658,11 +971,43 @@ static void xcan_err_interrupt(struct net_device *ndev, u32 isr)
 			stats->rx_errors++;
 			if (skb) {
 				cf->can_id |= CAN_ERR_PROT;
-				cf->data[3] = CAN_ERR_PROT_LOC_CRC_SEQ |
-						CAN_ERR_PROT_LOC_CRC_DEL;
+				cf->data[3] = CAN_ERR_PROT_LOC_CRC_SEQ;
 			}
 		}
-			priv->can.can_stats.bus_error++;
+		if (priv->quirks & CANFD_SUPPORT) {
+			/* Check for Fast Bit error interrupt */
+			if (err_status & XCAN_ESR_F_BERR_MASK) {
+				stats->tx_errors++;
+				if (skb) {
+					cf->can_id |= CAN_ERR_PROT;
+					cf->data[2] = CAN_ERR_PROT_BIT;
+				}
+			}
+			/* Check for Stuff error interrupt */
+			if (err_status & XCAN_ESR_F_STER_MASK) {
+				stats->rx_errors++;
+				if (skb) {
+					cf->can_id |= CAN_ERR_PROT;
+					cf->data[2] = CAN_ERR_PROT_STUFF;
+				}
+			}
+			/* Check for Fast Form error interrupt */
+			if (err_status & XCAN_ESR_F_FMER_MASK) {
+				stats->rx_errors++;
+				if (skb) {
+					cf->can_id |= CAN_ERR_PROT;
+					cf->data[2] = CAN_ERR_PROT_FORM;
+				}
+			}
+			if (err_status & XCAN_ESR_F_CRCER_MASK) {
+				stats->rx_errors++;
+				if (skb) {
+					cf->can_id |= CAN_ERR_PROT;
+					priv->can.can_stats.bus_error++;
+				}
+			}
+		}
+		priv->can.can_stats.bus_error++;
 	}
 
 	if (skb) {
@@ -672,7 +1017,7 @@ static void xcan_err_interrupt(struct net_device *ndev, u32 isr)
 	}
 
 	netdev_dbg(ndev, "%s: error status register:0x%x\n",
-			__func__, priv->read_reg(priv, XCAN_ESR_OFFSET));
+		   __func__, priv->read_reg(priv, XCAN_ESR_OFFSET));
 }
 
 /**
@@ -711,12 +1056,17 @@ static int xcan_rx_poll(struct napi_struct *napi, int quota)
 	struct net_device *ndev = napi->dev;
 	struct xcan_priv *priv = netdev_priv(ndev);
 	u32 isr, ier;
-	int work_done = 0;
+	int work_done = 0, rx_bit_mask;
 
 	isr = priv->read_reg(priv, XCAN_ISR_OFFSET);
-	while ((isr & XCAN_IXR_RXNEMP_MASK) && (work_done < quota)) {
-		work_done += xcan_rx(ndev);
-		priv->write_reg(priv, XCAN_ICR_OFFSET, XCAN_IXR_RXNEMP_MASK);
+	rx_bit_mask = ((priv->quirks & CANFD_SUPPORT) ?
+			XCAN_IXR_RXOK_MASK : XCAN_IXR_RXNEMP_MASK);
+	while ((isr & rx_bit_mask) && (work_done < quota)) {
+		if (rx_bit_mask & XCAN_IXR_RXOK_MASK)
+			work_done += xcanfd_rx(ndev);
+		else
+			work_done += xcan_rx(ndev);
+		priv->write_reg(priv, XCAN_ICR_OFFSET, rx_bit_mask);
 		isr = priv->read_reg(priv, XCAN_ISR_OFFSET);
 	}
 
@@ -726,7 +1076,7 @@ static int xcan_rx_poll(struct napi_struct *napi, int quota)
 	if (work_done < quota) {
 		napi_complete(napi);
 		ier = priv->read_reg(priv, XCAN_IER_OFFSET);
-		ier |= XCAN_IXR_RXNEMP_MASK;
+		ier |= rx_bit_mask;
 		priv->write_reg(priv, XCAN_IER_OFFSET, ier);
 	}
 	return work_done;
@@ -743,7 +1093,7 @@ static void xcan_tx_interrupt(struct net_device *ndev, u32 isr)
 	struct net_device_stats *stats = &ndev->stats;
 
 	while ((priv->tx_head - priv->tx_tail > 0) &&
-			(isr & XCAN_IXR_TXOK_MASK)) {
+	       (isr & XCAN_IXR_TXOK_MASK)) {
 		priv->write_reg(priv, XCAN_ICR_OFFSET, XCAN_IXR_TXOK_MASK);
 		can_get_echo_skb(ndev, priv->tx_tail %
 					priv->tx_max);
@@ -770,7 +1120,7 @@ static irqreturn_t xcan_interrupt(int irq, void *dev_id)
 {
 	struct net_device *ndev = (struct net_device *)dev_id;
 	struct xcan_priv *priv = netdev_priv(ndev);
-	u32 isr, ier;
+	u32 isr, ier, rx_bit_mask;
 
 	/* Get the interrupt status from Xilinx CAN */
 	isr = priv->read_reg(priv, XCAN_ISR_OFFSET);
@@ -779,8 +1129,10 @@ static irqreturn_t xcan_interrupt(int irq, void *dev_id)
 
 	/* Check for the type of interrupt and Processing it */
 	if (isr & (XCAN_IXR_SLP_MASK | XCAN_IXR_WKUP_MASK)) {
-		priv->write_reg(priv, XCAN_ICR_OFFSET, (XCAN_IXR_SLP_MASK |
-				XCAN_IXR_WKUP_MASK));
+		if (isr & XCAN_IXR_SLP_MASK)
+			priv->write_reg(priv, XCAN_ICR_OFFSET, XCAN_IXR_SLP_MASK);
+		if (isr & XCAN_IXR_WKUP_MASK)
+			priv->write_reg(priv, XCAN_ICR_OFFSET, XCAN_IXR_WKUP_MASK);
 		xcan_state_interrupt(ndev, isr);
 	}
 
@@ -791,16 +1143,34 @@ static irqreturn_t xcan_interrupt(int irq, void *dev_id)
 	/* Check for the type of error interrupt and Processing it */
 	if (isr & (XCAN_IXR_ERROR_MASK | XCAN_IXR_RXOFLW_MASK |
 			XCAN_IXR_BSOFF_MASK | XCAN_IXR_ARBLST_MASK)) {
-		priv->write_reg(priv, XCAN_ICR_OFFSET, (XCAN_IXR_ERROR_MASK |
-				XCAN_IXR_RXOFLW_MASK | XCAN_IXR_BSOFF_MASK |
-				XCAN_IXR_ARBLST_MASK));
+		if (isr & XCAN_IXR_ERROR_MASK)
+			priv->write_reg(priv, XCAN_ICR_OFFSET, XCAN_IXR_ERROR_MASK);
+		if (isr & XCAN_IXR_RXOFLW_MASK)
+			priv->write_reg(priv, XCAN_ICR_OFFSET, XCAN_IXR_RXOFLW_MASK);
+		if (isr & XCAN_IXR_BSOFF_MASK)
+			priv->write_reg(priv, XCAN_ICR_OFFSET, XCAN_IXR_BSOFF_MASK);
+		if (isr & XCAN_IXR_ARBLST_MASK)
+			priv->write_reg(priv, XCAN_ICR_OFFSET, XCAN_IXR_ARBLST_MASK);
+
 		xcan_err_interrupt(ndev, isr);
 	}
-
+	if (priv->quirks & CANFD_SUPPORT) {
+		if (isr & (XCAN_IXR_RXMNF_MASK | XCAN_IXR_TXRRS_MASK |
+			XCAN_IXR_PEE_MASK | XCAN_IXR_BSRD_MASK)) {
+			priv->write_reg(priv, XCAN_ICR_OFFSET,
+					(XCAN_IXR_RXMNF_MASK |
+					 XCAN_IXR_TXRRS_MASK |
+					XCAN_IXR_PEE_MASK |
+					XCAN_IXR_BSRD_MASK));
+			xcan_err_interrupt(ndev, isr);
+		}
+	}
 	/* Check for the type of receive interrupt and Processing it */
-	if (isr & XCAN_IXR_RXNEMP_MASK) {
+	rx_bit_mask = ((priv->quirks & CANFD_SUPPORT) ?
+			XCAN_IXR_RXOK_MASK : XCAN_IXR_RXNEMP_MASK);
+	if (isr & rx_bit_mask) {
 		ier = priv->read_reg(priv, XCAN_IER_OFFSET);
-		ier &= ~XCAN_IXR_RXNEMP_MASK;
+		ier &= ~(rx_bit_mask);
 		priv->write_reg(priv, XCAN_IER_OFFSET, ier);
 		napi_schedule(&priv->napi);
 	}
@@ -817,11 +1187,19 @@ static irqreturn_t xcan_interrupt(int irq, void *dev_id)
 static void xcan_chip_stop(struct net_device *ndev)
 {
 	struct xcan_priv *priv = netdev_priv(ndev);
-	u32 ier;
+	u32 ier, intr_all = 0;
 
 	/* Disable interrupts and leave the can in configuration mode */
 	ier = priv->read_reg(priv, XCAN_IER_OFFSET);
-	ier &= ~XCAN_INTR_ALL;
+	if (priv->quirks & CANFD_SUPPORT) {
+		intr_all = XCAN_INTR_ALL | XCAN_IXR_PEE_MASK |
+				XCAN_IXR_BSRD_MASK | XCAN_IXR_RXMNF_MASK |
+				XCAN_IXR_TXRRS_MASK | XCAN_IXR_RXOK_MASK;
+	} else {
+		intr_all = XCAN_INTR_ALL | XCAN_IXR_RXNEMP_MASK;
+	}
+
+	ier &= ~intr_all;
 	priv->write_reg(priv, XCAN_IER_OFFSET, ier);
 	priv->write_reg(priv, XCAN_SRR_OFFSET, XCAN_SRR_RESET_MASK);
 	priv->can.state = CAN_STATE_STOPPED;
@@ -842,12 +1220,12 @@ static int xcan_open(struct net_device *ndev)
 	ret = pm_runtime_get_sync(priv->dev);
 	if (ret < 0) {
 		netdev_err(ndev, "%s: pm_runtime_get failed(%d)\n",
-				__func__, ret);
+			   __func__, ret);
 		return ret;
 	}
 
 	ret = request_irq(ndev->irq, xcan_interrupt, priv->irq_flags,
-			ndev->name, ndev);
+			  ndev->name, ndev);
 	if (ret < 0) {
 		netdev_err(ndev, "irq allocation for CAN failed\n");
 		goto err;
@@ -918,7 +1296,7 @@ static int xcan_close(struct net_device *ndev)
  * Return: 0 on success and failure value on error
  */
 static int xcan_get_berr_counter(const struct net_device *ndev,
-					struct can_berr_counter *bec)
+				 struct can_berr_counter *bec)
 {
 	struct xcan_priv *priv = netdev_priv(ndev);
 	int ret;
@@ -926,7 +1304,7 @@ static int xcan_get_berr_counter(const struct net_device *ndev,
 	ret = pm_runtime_get_sync(priv->dev);
 	if (ret < 0) {
 		netdev_err(ndev, "%s: pm_runtime_get failed(%d)\n",
-				__func__, ret);
+			   __func__, ret);
 		return ret;
 	}
 
@@ -938,7 +1316,6 @@ static int xcan_get_berr_counter(const struct net_device *ndev,
 
 	return 0;
 }
-
 
 static const struct net_device_ops xcan_netdev_ops = {
 	.ndo_open	= xcan_open,
@@ -956,8 +1333,13 @@ static const struct net_device_ops xcan_netdev_ops = {
  */
 static int __maybe_unused xcan_suspend(struct device *dev)
 {
-	if (!device_may_wakeup(dev))
+	struct net_device *netdev = dev_get_drvdata(dev);
+
+	if (!device_may_wakeup(dev)) {
+		if (netif_running(netdev))
+			xcan_close(netdev);
 		return pm_runtime_force_suspend(dev);
+	}
 
 	return 0;
 }
@@ -971,11 +1353,17 @@ static int __maybe_unused xcan_suspend(struct device *dev)
  */
 static int __maybe_unused xcan_resume(struct device *dev)
 {
-	if (!device_may_wakeup(dev))
-		return pm_runtime_force_resume(dev);
+	int ret;
+	struct net_device *netdev = dev_get_drvdata(dev);
+
+	if (!device_may_wakeup(dev)) {
+		ret = pm_runtime_force_resume(dev);
+		if (netif_running(netdev))
+			xcan_open(netdev);
+		return ret;
+	}
 
 	return 0;
-
 }
 
 /**
@@ -1059,6 +1447,19 @@ static const struct dev_pm_ops xcan_dev_pm_ops = {
 	SET_RUNTIME_PM_OPS(xcan_runtime_suspend, xcan_runtime_resume, NULL)
 };
 
+static const struct xcan_platform_data xcan_def = {
+	.quirks = CANFD_SUPPORT,
+};
+
+/* Match table for OF platform binding */
+static const struct of_device_id xcan_of_match[] = {
+	{ .compatible = "xlnx,zynq-can-1.0", },
+	{ .compatible = "xlnx,axi-can-1.00.a", },
+	{ .compatible = "xlnx,canfd-1.0", .data = &xcan_def },
+	{ /* end of list */ },
+};
+MODULE_DEVICE_TABLE(of, xcan_of_match);
+
 /**
  * xcan_probe - Platform registration call
  * @pdev:	Handle to the platform device structure
@@ -1073,6 +1474,7 @@ static int xcan_probe(struct platform_device *pdev)
 	struct resource *res; /* IO mem resources */
 	struct net_device *ndev;
 	struct xcan_priv *priv;
+	const struct of_device_id *match;
 	void __iomem *addr;
 	int ret, rx_max, tx_max;
 
@@ -1098,14 +1500,31 @@ static int xcan_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	priv = netdev_priv(ndev);
+
+	match = of_match_node(xcan_of_match, pdev->dev.of_node);
+	if (match && match->data) {
+		const struct xcan_platform_data *data = match->data;
+
+		priv->quirks = data->quirks;
+	}
+
 	priv->dev = &pdev->dev;
 	priv->can.bittiming_const = &xcan_bittiming_const;
 	priv->can.do_set_mode = xcan_do_set_mode;
 	priv->can.do_get_berr_counter = xcan_get_berr_counter;
 	priv->can.ctrlmode_supported = CAN_CTRLMODE_LOOPBACK |
 					CAN_CTRLMODE_BERR_REPORTING;
+	if (priv->quirks & CANFD_SUPPORT) {
+		priv->can.data_bittiming_const = &xcan_data_bittiming_const;
+		priv->can.ctrlmode_supported |= CAN_CTRLMODE_FD;
+		xcan_bittiming_const.tseg1_max = 64;
+		xcan_bittiming_const.tseg2_max = 16;
+		xcan_bittiming_const.sjw_max = 16;
+	}
 	priv->reg_base = addr;
 	priv->tx_max = tx_max;
+	priv->tx_head = 0;
+	priv->tx_tail = 0;
 
 	/* Get IRQ for the device */
 	ndev->irq = platform_get_irq(pdev, 0);
@@ -1143,13 +1562,21 @@ static int xcan_probe(struct platform_device *pdev)
 	priv->write_reg = xcan_write_reg_le;
 	priv->read_reg = xcan_read_reg_le;
 
-	pm_runtime_enable(&pdev->dev);
-	ret = pm_runtime_get_sync(&pdev->dev);
-	if (ret < 0) {
-		netdev_err(ndev, "%s: pm_runtime_get failed(%d)\n",
-			__func__, ret);
-		goto err_pmdisable;
+	ret = clk_prepare_enable(priv->bus_clk);
+	if (ret) {
+		dev_err(&pdev->dev, "Cannot enable clock.\n");
+		goto err_free;
 	}
+
+	ret = clk_prepare_enable(priv->can_clk);
+	if (ret) {
+		dev_err(&pdev->dev, "Cannot enable clock.\n");
+		goto err_clk;
+	}
+
+	pm_runtime_set_active(&pdev->dev);
+	pm_runtime_enable(&pdev->dev);
+	pm_runtime_get_sync(&pdev->dev);
 
 	if (priv->read_reg(priv, XCAN_SR_OFFSET) != XCAN_SR_CONFIG_MASK) {
 		priv->write_reg = xcan_write_reg_be;
@@ -1171,15 +1598,17 @@ static int xcan_probe(struct platform_device *pdev)
 	pm_runtime_put(&pdev->dev);
 
 	netdev_dbg(ndev, "reg_base=0x%p irq=%d clock=%d, tx fifo depth:%d\n",
-			priv->reg_base, ndev->irq, priv->can.clock.freq,
-			priv->tx_max);
+		   priv->reg_base, ndev->irq, priv->can.clock.freq,
+		   priv->tx_max);
 
 	return 0;
 
 err_disableclks:
-	pm_runtime_put(priv->dev);
-err_pmdisable:
 	pm_runtime_disable(&pdev->dev);
+	pm_runtime_set_suspended(&pdev->dev);
+	clk_disable_unprepare(priv->can_clk);
+err_clk:
+	clk_disable_unprepare(priv->bus_clk);
 err_free:
 	free_candev(ndev);
 err:
@@ -1199,20 +1628,18 @@ static int xcan_remove(struct platform_device *pdev)
 	struct xcan_priv *priv = netdev_priv(ndev);
 
 	unregister_candev(ndev);
+
+	if (!pm_runtime_suspended(&pdev->dev)) {
+		clk_disable_unprepare(priv->bus_clk);
+		clk_disable_unprepare(priv->can_clk);
+	}
+
 	pm_runtime_disable(&pdev->dev);
 	netif_napi_del(&priv->napi);
 	free_candev(ndev);
 
 	return 0;
 }
-
-/* Match table for OF platform binding */
-static struct of_device_id xcan_of_match[] = {
-	{ .compatible = "xlnx,zynq-can-1.0", },
-	{ .compatible = "xlnx,axi-can-1.00.a", },
-	{ /* end of list */ },
-};
-MODULE_DEVICE_TABLE(of, xcan_of_match);
 
 static struct platform_driver xcan_driver = {
 	.probe = xcan_probe,

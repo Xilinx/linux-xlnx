@@ -16,16 +16,11 @@
 #include <linux/of_platform.h>
 #include <linux/irqdomain.h>
 
+#include <asm/setup.h>
 #include <asm/mach/arch.h>
+#include <asm/system_info.h>
 
 #include "common.h"
-
-#if !(defined(CONFIG_ARCH_OMAP2) || defined(CONFIG_ARCH_OMAP3))
-#define intc_of_init	NULL
-#endif
-#ifndef CONFIG_ARCH_OMAP4
-#define gic_of_init		NULL
-#endif
 
 static const struct of_device_id omap_dt_match_table[] __initconst = {
 	{ .compatible = "simple-bus", },
@@ -53,7 +48,7 @@ DT_MACHINE_START(OMAP242X_DT, "Generic OMAP2420 (Flattened Device Tree)")
 	.map_io		= omap242x_map_io,
 	.init_early	= omap2420_init_early,
 	.init_machine	= omap_generic_init,
-	.init_time	= omap2_sync32k_timer_init,
+	.init_time	= omap_init_time,
 	.dt_compat	= omap242x_boards_compat,
 	.restart	= omap2xxx_restart,
 MACHINE_END
@@ -70,7 +65,7 @@ DT_MACHINE_START(OMAP243X_DT, "Generic OMAP2430 (Flattened Device Tree)")
 	.map_io		= omap243x_map_io,
 	.init_early	= omap2430_init_early,
 	.init_machine	= omap_generic_init,
-	.init_time	= omap2_sync32k_timer_init,
+	.init_time	= omap_init_time,
 	.dt_compat	= omap243x_boards_compat,
 	.restart	= omap2xxx_restart,
 MACHINE_END
@@ -83,13 +78,41 @@ static const char *const n900_boards_compat[] __initconst = {
 	NULL,
 };
 
+/* Set system_rev from atags */
+static void __init rx51_set_system_rev(const struct tag *tags)
+{
+	const struct tag *tag;
+
+	if (tags->hdr.tag != ATAG_CORE)
+		return;
+
+	for_each_tag(tag, tags) {
+		if (tag->hdr.tag == ATAG_REVISION) {
+			system_rev = tag->u.revision.rev;
+			break;
+		}
+	}
+}
+
+/* Legacy userspace on Nokia N900 needs ATAGS exported in /proc/atags,
+ * save them while the data is still not overwritten
+ */
+static void __init rx51_reserve(void)
+{
+	const struct tag *tags = (const struct tag *)(PAGE_OFFSET + 0x100);
+
+	save_atags(tags);
+	rx51_set_system_rev(tags);
+	omap_reserve();
+}
+
 DT_MACHINE_START(OMAP3_N900_DT, "Nokia RX-51 board")
-	.reserve	= omap_reserve,
+	.reserve	= rx51_reserve,
 	.map_io		= omap3_map_io,
 	.init_early	= omap3430_init_early,
 	.init_machine	= omap_generic_init,
 	.init_late	= omap3_init_late,
-	.init_time	= omap3_sync32k_timer_init,
+	.init_time	= omap_init_time,
 	.dt_compat	= n900_boards_compat,
 	.restart	= omap3xxx_restart,
 MACHINE_END
@@ -107,12 +130,13 @@ DT_MACHINE_START(OMAP3_DT, "Generic OMAP3 (Flattened Device Tree)")
 	.init_early	= omap3430_init_early,
 	.init_machine	= omap_generic_init,
 	.init_late	= omap3_init_late,
-	.init_time	= omap3_sync32k_timer_init,
+	.init_time	= omap_init_time,
 	.dt_compat	= omap3_boards_compat,
 	.restart	= omap3xxx_restart,
 MACHINE_END
 
 static const char *const omap36xx_boards_compat[] __initconst = {
+	"ti,omap3630",
 	"ti,omap36xx",
 	NULL,
 };
@@ -123,7 +147,7 @@ DT_MACHINE_START(OMAP36XX_DT, "Generic OMAP36xx (Flattened Device Tree)")
 	.init_early	= omap3630_init_early,
 	.init_machine	= omap_generic_init,
 	.init_late	= omap3_init_late,
-	.init_time	= omap3_sync32k_timer_init,
+	.init_time	= omap_init_time,
 	.dt_compat	= omap36xx_boards_compat,
 	.restart	= omap3xxx_restart,
 MACHINE_END
@@ -169,7 +193,7 @@ static const char *const ti814x_boards_compat[] __initconst = {
 	NULL,
 };
 
-DT_MACHINE_START(TI81XX_DT, "Generic ti814x (Flattened Device Tree)")
+DT_MACHINE_START(TI814X_DT, "Generic ti814x (Flattened Device Tree)")
 	.reserve	= omap_reserve,
 	.map_io		= ti81xx_map_io,
 	.init_early	= ti814x_init_early,
@@ -250,6 +274,9 @@ static const char *const omap5_boards_compat[] __initconst = {
 };
 
 DT_MACHINE_START(OMAP5_DT, "Generic OMAP5 (Flattened Device Tree)")
+#if defined(CONFIG_ZONE_DMA) && defined(CONFIG_ARM_LPAE)
+	.dma_zone_size	= SZ_2G,
+#endif
 	.reserve	= omap_reserve,
 	.smp		= smp_ops(omap4_smp_ops),
 	.map_io		= omap5_map_io,
@@ -279,7 +306,7 @@ DT_MACHINE_START(AM43_DT, "Generic AM43 (Flattened Device Tree)")
 	.init_late	= am43xx_init_late,
 	.init_irq	= omap_gic_of_init,
 	.init_machine	= omap_generic_init,
-	.init_time	= omap3_gptimer_timer_init,
+	.init_time	= omap4_local_timer_init,
 	.dt_compat	= am43_boards_compat,
 	.restart	= omap44xx_restart,
 MACHINE_END
@@ -295,9 +322,12 @@ static const char *const dra74x_boards_compat[] __initconst = {
 };
 
 DT_MACHINE_START(DRA74X_DT, "Generic DRA74X (Flattened Device Tree)")
+#if defined(CONFIG_ZONE_DMA) && defined(CONFIG_ARM_LPAE)
+	.dma_zone_size	= SZ_2G,
+#endif
 	.reserve	= omap_reserve,
 	.smp		= smp_ops(omap4_smp_ops),
-	.map_io		= omap5_map_io,
+	.map_io		= dra7xx_map_io,
 	.init_early	= dra7xx_init_early,
 	.init_late	= dra7xx_init_late,
 	.init_irq	= omap_gic_of_init,
@@ -315,8 +345,11 @@ static const char *const dra72x_boards_compat[] __initconst = {
 };
 
 DT_MACHINE_START(DRA72X_DT, "Generic DRA72X (Flattened Device Tree)")
+#if defined(CONFIG_ZONE_DMA) && defined(CONFIG_ARM_LPAE)
+	.dma_zone_size	= SZ_2G,
+#endif
 	.reserve	= omap_reserve,
-	.map_io		= omap5_map_io,
+	.map_io		= dra7xx_map_io,
 	.init_early	= dra7xx_init_early,
 	.init_late	= dra7xx_init_late,
 	.init_irq	= omap_gic_of_init,

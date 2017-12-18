@@ -3,7 +3,7 @@
  * Copyright 2012 Dialog Semiconductor Ltd.
  * Copyright 2013 Philipp Zabel, Pengutronix
  *
- * Author: Michal Hajduk <michal.hajduk@diasemi.com>
+ * Author: Michal Hajduk, Dialog Semiconductor
  *
  *  This program is free software; you can redistribute  it and/or modify it
  *  under  the terms of  the GNU General  Public License as published by the
@@ -25,16 +25,8 @@
 #define	DA9063_REG_EVENT_B_OFFSET	1
 #define	DA9063_REG_EVENT_C_OFFSET	2
 #define	DA9063_REG_EVENT_D_OFFSET	3
-#define EVENTS_BUF_LEN			4
 
-static const u8 mask_events_buf[] = { [0 ... (EVENTS_BUF_LEN - 1)] = ~0 };
-
-struct da9063_irq_data {
-	u16 reg;
-	u8 mask;
-};
-
-static struct regmap_irq da9063_irqs[] = {
+static const struct regmap_irq da9063_irqs[] = {
 	/* DA9063 event A register */
 	[DA9063_IRQ_ONKEY] = {
 		.reg_offset = DA9063_REG_EVENT_A_OFFSET,
@@ -76,6 +68,10 @@ static struct regmap_irq da9063_irqs[] = {
 	[DA9063_IRQ_REG_UVOV] = {
 		.reg_offset = DA9063_REG_EVENT_B_OFFSET,
 		.mask = DA9063_M_UVOV,
+	},
+	[DA9063_IRQ_DVC_RDY] = {
+		.reg_offset = DA9063_REG_EVENT_B_OFFSET,
+		.mask = DA9063_M_DVC_RDY,
 	},
 	[DA9063_IRQ_VDD_MON] = {
 		.reg_offset = DA9063_REG_EVENT_B_OFFSET,
@@ -153,7 +149,7 @@ static struct regmap_irq da9063_irqs[] = {
 	},
 };
 
-static struct regmap_irq_chip da9063_irq_chip = {
+static const struct regmap_irq_chip da9063_irq_chip = {
 	.name = "da9063-irq",
 	.irqs = da9063_irqs,
 	.num_irqs = DA9063_NUM_IRQ,

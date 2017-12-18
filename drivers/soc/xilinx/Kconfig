@@ -7,18 +7,20 @@ menuconfig SOC_XILINX_ZYNQMP
 
 if SOC_XILINX_ZYNQMP
 
-config ZYNQMP_PM_API
-	bool "Enable Xilinx Zynq MPSoC Power Management API platform driver"
-	help
-	  Say yes to enable power domain management through API
-	  In doubt, say N
-
 config ZYNQMP_PM_API_DEBUGFS
 	bool "Enable Xilinx Zynq MPSoC Power Management API debugfs functionality"
-	depends on ZYNQMP_PM_API
-	depends on DEBUG_FS
+	depends on DEBUG_FS && PM
 	help
 	  Say yes to enable power domain management API requests through debugfs
+	  In doubt, say N
+
+config ZYNQMP_PM_DOMAINS
+	bool "Enable Zynq MPSoC generic PM domains"
+	default y
+	depends on PM
+	select PM_GENERIC_DOMAINS
+	help
+	  Say yes to enable device power management through PM domains
 	  In doubt, say N
 
 endif #SOC_XILINX_ZYNQMP

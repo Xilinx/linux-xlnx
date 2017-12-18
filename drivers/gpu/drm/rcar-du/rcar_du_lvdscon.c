@@ -12,6 +12,7 @@
  */
 
 #include <drm/drmP.h>
+#include <drm/drm_atomic_helper.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_crtc_helper.h>
 
@@ -58,14 +59,7 @@ static int rcar_du_lvds_connector_get_modes(struct drm_connector *connector)
 
 static const struct drm_connector_helper_funcs connector_helper_funcs = {
 	.get_modes = rcar_du_lvds_connector_get_modes,
-	.best_encoder = rcar_du_connector_best_encoder,
 };
-
-static void rcar_du_lvds_connector_destroy(struct drm_connector *connector)
-{
-	drm_connector_unregister(connector);
-	drm_connector_cleanup(connector);
-}
 
 static enum drm_connector_status
 rcar_du_lvds_connector_detect(struct drm_connector *connector, bool force)
@@ -74,10 +68,13 @@ rcar_du_lvds_connector_detect(struct drm_connector *connector, bool force)
 }
 
 static const struct drm_connector_funcs connector_funcs = {
-	.dpms = drm_helper_connector_dpms,
+	.dpms = drm_atomic_helper_connector_dpms,
+	.reset = drm_atomic_helper_connector_reset,
 	.detect = rcar_du_lvds_connector_detect,
 	.fill_modes = drm_helper_probe_single_connector_modes,
-	.destroy = rcar_du_lvds_connector_destroy,
+	.destroy = drm_connector_cleanup,
+	.atomic_duplicate_state = drm_atomic_helper_connector_duplicate_state,
+	.atomic_destroy_state = drm_atomic_helper_connector_destroy_state,
 };
 
 int rcar_du_lvds_connector_init(struct rcar_du_device *rcdu,
@@ -113,11 +110,8 @@ int rcar_du_lvds_connector_init(struct rcar_du_device *rcdu,
 		return ret;
 
 	drm_connector_helper_add(connector, &connector_helper_funcs);
-	ret = drm_connector_register(connector);
-	if (ret < 0)
-		return ret;
 
-	drm_helper_connector_dpms(connector, DRM_MODE_DPMS_OFF);
+	connector->dpms = DRM_MODE_DPMS_OFF;
 	drm_object_property_set_value(&connector->base,
 		rcdu->ddev->mode_config.dpms_property, DRM_MODE_DPMS_OFF);
 
@@ -125,7 +119,6 @@ int rcar_du_lvds_connector_init(struct rcar_du_device *rcdu,
 	if (ret < 0)
 		return ret;
 
-	connector->encoder = encoder;
 	lvdscon->connector.encoder = renc;
 
 	return 0;

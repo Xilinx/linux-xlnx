@@ -38,7 +38,6 @@
 #define get_ds()	(KERNEL_DS)
 #define get_fs()	(current_thread_info()->addr_limit)
 #define set_fs(x)	(current_thread_info()->addr_limit = (x))
-#define __kernel_ds_p() (current_thread_info()->addr_limit.seg == 0x9FFFFFFF)
 
 #define segment_eq(a, b) ((a).seg == (b).seg)
 
@@ -72,12 +71,6 @@ static inline int ___range_ok(unsigned long addr, unsigned int size)
 #define access_ok(type, addr, size) (__range_ok((addr), (size)) == 0)
 #define __access_ok(addr, size)     (__range_ok((addr), (size)) == 0)
 
-static inline int verify_area(int type, const void *addr, unsigned long size)
-{
-	return access_ok(type, addr, size) ? 0 : -EFAULT;
-}
-
-
 /*
  * The exception table consists of pairs of addresses: the first is the
  * address of an instruction that is allowed to fault, and the second is
@@ -109,21 +102,6 @@ extern int fixup_exception(struct pt_regs *regs);
  */
 #define __put_user(x, ptr) __put_user_nocheck((x), (ptr), sizeof(*(ptr)))
 #define __get_user(x, ptr) __get_user_nocheck((x), (ptr), sizeof(*(ptr)))
-
-/*
- * The "xxx_ret" versions return constant specified in third argument, if
- * something bad happens. These macros can be optimized for the
- * case of just returning from the function xxx_ret is used.
- */
-
-#define put_user_ret(x, ptr, ret) \
-	({ if (put_user((x), (ptr)))	return (ret); })
-#define get_user_ret(x, ptr, ret) \
-	({ if (get_user((x), (ptr)))	return (ret); })
-#define __put_user_ret(x, ptr, ret) \
-	({ if (__put_user((x), (ptr)))	return (ret); })
-#define __get_user_ret(x, ptr, ret) \
-	({ if (__get_user((x), (ptr)))	return (ret); })
 
 struct __large_struct { unsigned long buf[100]; };
 #define __m(x) (*(struct __large_struct *)(x))
@@ -181,6 +159,7 @@ struct __large_struct { unsigned long buf[100]; };
 		"2:\n"						\
 		"	.section	.fixup,\"ax\"\n"	\
 		"3:\n\t"					\
+		"	mov		0,%1\n"			\
 		"	mov		%3,%0\n"		\
 		"	jmp		2b\n"			\
 		"	.previous\n"				\

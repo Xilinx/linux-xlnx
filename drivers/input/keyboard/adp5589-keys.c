@@ -180,7 +180,7 @@
 #define LOGIC2_STAT	(1 << 7)	/* ADP5589 only */
 #define LOGIC1_STAT	(1 << 6)
 #define LOCK_STAT	(1 << 5)	/* ADP5589 only */
-#define KEC		0xF
+#define KEC		0x1F
 
 /* PIN_CONFIG_D Register */
 #define C4_EXTEND_CFG	(1 << 6)	/* RESET2 */
@@ -235,7 +235,7 @@ struct adp5589_kpad {
 	unsigned short gpimapsize;
 	unsigned extend_cfg;
 	bool is_adp5585;
-	bool adp5585_support_row5;
+	bool support_row5;
 #ifdef CONFIG_GPIOLIB
 	unsigned char gpiomap[ADP5589_MAXGPIO];
 	bool export_gpio;
@@ -387,7 +387,7 @@ static int adp5589_write(struct i2c_client *client, u8 reg, u8 val)
 #ifdef CONFIG_GPIOLIB
 static int adp5589_gpio_get_value(struct gpio_chip *chip, unsigned off)
 {
-	struct adp5589_kpad *kpad = container_of(chip, struct adp5589_kpad, gc);
+	struct adp5589_kpad *kpad = gpiochip_get_data(chip);
 	unsigned int bank = kpad->var->bank(kpad->gpiomap[off]);
 	unsigned int bit = kpad->var->bit(kpad->gpiomap[off]);
 
@@ -399,7 +399,7 @@ static int adp5589_gpio_get_value(struct gpio_chip *chip, unsigned off)
 static void adp5589_gpio_set_value(struct gpio_chip *chip,
 				   unsigned off, int val)
 {
-	struct adp5589_kpad *kpad = container_of(chip, struct adp5589_kpad, gc);
+	struct adp5589_kpad *kpad = gpiochip_get_data(chip);
 	unsigned int bank = kpad->var->bank(kpad->gpiomap[off]);
 	unsigned int bit = kpad->var->bit(kpad->gpiomap[off]);
 
@@ -418,7 +418,7 @@ static void adp5589_gpio_set_value(struct gpio_chip *chip,
 
 static int adp5589_gpio_direction_input(struct gpio_chip *chip, unsigned off)
 {
-	struct adp5589_kpad *kpad = container_of(chip, struct adp5589_kpad, gc);
+	struct adp5589_kpad *kpad = gpiochip_get_data(chip);
 	unsigned int bank = kpad->var->bank(kpad->gpiomap[off]);
 	unsigned int bit = kpad->var->bit(kpad->gpiomap[off]);
 	int ret;
@@ -438,7 +438,7 @@ static int adp5589_gpio_direction_input(struct gpio_chip *chip, unsigned off)
 static int adp5589_gpio_direction_output(struct gpio_chip *chip,
 					 unsigned off, int val)
 {
-	struct adp5589_kpad *kpad = container_of(chip, struct adp5589_kpad, gc);
+	struct adp5589_kpad *kpad = gpiochip_get_data(chip);
 	unsigned int bank = kpad->var->bank(kpad->gpiomap[off]);
 	unsigned int bit = kpad->var->bit(kpad->gpiomap[off]);
 	int ret;
@@ -485,7 +485,7 @@ static int adp5589_build_gpiomap(struct adp5589_kpad *kpad,
 	if (kpad->extend_cfg & C4_EXTEND_CFG)
 		pin_used[kpad->var->c4_extend_cfg] = true;
 
-	if (!kpad->adp5585_support_row5)
+	if (!kpad->support_row5)
 		pin_used[5] = true;
 
 	for (i = 0; i < kpad->var->maxgpio; i++)
@@ -525,9 +525,9 @@ static int adp5589_gpio_add(struct adp5589_kpad *kpad)
 
 	mutex_init(&kpad->gpio_lock);
 
-	error = gpiochip_add(&kpad->gc);
+	error = gpiochip_add_data(&kpad->gc, kpad);
 	if (error) {
-		dev_err(dev, "gpiochip_add failed, err: %d\n", error);
+		dev_err(dev, "gpiochip_add_data() failed, err: %d\n", error);
 		return error;
 	}
 
@@ -726,7 +726,7 @@ static int adp5589_setup(struct adp5589_kpad *kpad)
 
 		pull_mask |= val << (2 * (i & 0x3));
 
-		if (i == 3 || i == kpad->var->max_row_num) {
+		if (i % 4 == 3 || i == kpad->var->max_row_num) {
 			ret |= adp5589_write(client, reg(ADP5585_RPULL_CONFIG_A)
 					     + (i >> 2), pull_mask);
 			pull_mask = 0;
@@ -746,7 +746,7 @@ static int adp5589_setup(struct adp5589_kpad *kpad)
 
 		pull_mask |= val << (2 * (i & 0x3));
 
-		if (i == 3 || i == kpad->var->max_col_num) {
+		if (i % 4 == 3 || i == kpad->var->max_col_num) {
 			ret |= adp5589_write(client,
 					     reg(ADP5585_RPULL_CONFIG_C) +
 					     (i >> 2), pull_mask);
@@ -884,12 +884,13 @@ static int adp5589_probe(struct i2c_client *client,
 
 	switch (id->driver_data) {
 	case ADP5585_02:
-		kpad->adp5585_support_row5 = true;
+		kpad->support_row5 = true;
 	case ADP5585_01:
 		kpad->is_adp5585 = true;
 		kpad->var = &const_adp5585;
 		break;
 	case ADP5589:
+		kpad->support_row5 = true;
 		kpad->var = &const_adp5589;
 		break;
 	}
@@ -1097,7 +1098,6 @@ MODULE_DEVICE_TABLE(i2c, adp5589_id);
 static struct i2c_driver adp5589_driver = {
 	.driver = {
 		.name = KBUILD_MODNAME,
-		.owner = THIS_MODULE,
 		.pm = &adp5589_dev_pm_ops,
 	},
 	.probe = adp5589_probe,

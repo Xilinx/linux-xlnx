@@ -71,7 +71,8 @@ int ablk_encrypt(struct ablkcipher_request *req)
 	struct crypto_ablkcipher *tfm = crypto_ablkcipher_reqtfm(req);
 	struct async_helper_ctx *ctx = crypto_ablkcipher_ctx(tfm);
 
-	if (!may_use_simd()) {
+	if (!may_use_simd() ||
+	    (in_atomic() && cryptd_ablkcipher_queued(ctx->cryptd_tfm))) {
 		struct ablkcipher_request *cryptd_req =
 			ablkcipher_request_ctx(req);
 
@@ -90,7 +91,8 @@ int ablk_decrypt(struct ablkcipher_request *req)
 	struct crypto_ablkcipher *tfm = crypto_ablkcipher_reqtfm(req);
 	struct async_helper_ctx *ctx = crypto_ablkcipher_ctx(tfm);
 
-	if (!may_use_simd()) {
+	if (!may_use_simd() ||
+	    (in_atomic() && cryptd_ablkcipher_queued(ctx->cryptd_tfm))) {
 		struct ablkcipher_request *cryptd_req =
 			ablkcipher_request_ctx(req);
 
@@ -124,7 +126,8 @@ int ablk_init_common(struct crypto_tfm *tfm, const char *drv_name)
 	struct async_helper_ctx *ctx = crypto_tfm_ctx(tfm);
 	struct cryptd_ablkcipher *cryptd_tfm;
 
-	cryptd_tfm = cryptd_alloc_ablkcipher(drv_name, 0, 0);
+	cryptd_tfm = cryptd_alloc_ablkcipher(drv_name, CRYPTO_ALG_INTERNAL,
+					     CRYPTO_ALG_INTERNAL);
 	if (IS_ERR(cryptd_tfm))
 		return PTR_ERR(cryptd_tfm);
 

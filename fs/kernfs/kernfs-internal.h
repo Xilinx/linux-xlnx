@@ -76,17 +76,12 @@ extern struct kmem_cache *kernfs_node_cache;
 /*
  * inode.c
  */
-struct inode *kernfs_get_inode(struct super_block *sb, struct kernfs_node *kn);
+extern const struct xattr_handler *kernfs_xattr_handlers[];
 void kernfs_evict_inode(struct inode *inode);
 int kernfs_iop_permission(struct inode *inode, int mask);
 int kernfs_iop_setattr(struct dentry *dentry, struct iattr *iattr);
 int kernfs_iop_getattr(struct vfsmount *mnt, struct dentry *dentry,
 		       struct kstat *stat);
-int kernfs_iop_setxattr(struct dentry *dentry, const char *name, const void *value,
-			size_t size, int flags);
-int kernfs_iop_removexattr(struct dentry *dentry, const char *name);
-ssize_t kernfs_iop_getxattr(struct dentry *dentry, const char *name, void *buf,
-			    size_t size);
 ssize_t kernfs_iop_listxattr(struct dentry *dentry, char *buf, size_t size);
 
 /*

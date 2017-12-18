@@ -36,5 +36,9 @@ struct device_node;
 
 struct xilinx_vtc *xilinx_vtc_probe(struct device *dev,
 				    struct device_node *node);
+void xilinx_vtc_vblank_enable(struct xilinx_vtc *vtc);
+void xilinx_vtc_vblank_disable(struct xilinx_vtc *vtc);
+u32 xilinx_vtc_intr_get(struct xilinx_vtc *vtc);
+void xilinx_vtc_intr_clear(struct xilinx_vtc *vtc, u32 intr);
 
 #endif /* _XILINX_VTC_H_ */

@@ -220,8 +220,8 @@ void xylon_drm_crtc_cancel_page_flip(struct drm_crtc *base_crtc,
 	event = crtc->event;
 	if (event && (event->base.file_priv == file)) {
 		crtc->event = NULL;
-		event->base.destroy(&event->base);
-		drm_vblank_put(dev, 0);
+		kfree(&event->base);
+		drm_crtc_vblank_put(base_crtc);
 	}
 	spin_unlock_irqrestore(&dev->event_lock, flags);
 }
@@ -261,7 +261,7 @@ static int xylon_drm_crtc_page_flip(struct drm_crtc *base_crtc,
 
 	if (event) {
 		event->pipe = 0;
-		drm_vblank_get(dev, 0);
+		drm_crtc_vblank_get(0);
 		spin_lock_irqsave(&dev->event_lock, flags);
 		crtc->event = event;
 		spin_unlock_irqrestore(&dev->event_lock, flags);
@@ -323,12 +323,19 @@ static struct drm_crtc_funcs xylon_drm_crtc_funcs = {
 	.set_property = xylon_drm_crtc_set_property,
 };
 
-static void xylon_drm_crtc_vblank_handler(struct drm_crtc *base_crtc)
+static void xylon_drm_crtc_vblank_handler(void *data)
 {
-	struct drm_device *dev = base_crtc->dev;
+	struct drm_crtc *base_crtc = data;
+	struct drm_device *dev;
+	struct xylon_drm_crtc *crtc;
 	struct drm_pending_vblank_event *event;
-	struct xylon_drm_crtc *crtc = to_xylon_crtc(base_crtc);
 	unsigned long flags;
+
+	if (!base_crtc)
+		return;
+
+	dev = base_crtc->dev;
+	crtc = to_xylon_crtc(base_crtc);
 
 	drm_handle_vblank(dev, 0);
 
@@ -336,8 +343,8 @@ static void xylon_drm_crtc_vblank_handler(struct drm_crtc *base_crtc)
 	event = crtc->event;
 	crtc->event = NULL;
 	if (event) {
-		drm_send_vblank_event(dev, 0, event);
-		drm_vblank_put(dev, 0);
+		drm_crtc_send_vblank_event(base_crtc, event);
+		drm_crtc_vblank_put(base_crtc);
 	}
 	spin_unlock_irqrestore(&dev->event_lock, flags);
 }
@@ -556,7 +563,7 @@ struct drm_crtc *xylon_drm_crtc_create(struct drm_device *dev)
 
 	primary = xylon_drm_plane_get_base(crtc->manager, crtc->primary_id);
 	ret = drm_crtc_init_with_planes(dev, &crtc->base, primary, NULL,
-					&xylon_drm_crtc_funcs);
+					&xylon_drm_crtc_funcs, NULL);
 	if (ret) {
 		DRM_ERROR("failed initialize crtc\n");
 		goto err_out;

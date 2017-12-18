@@ -385,5 +385,12 @@
 #define __NR_memfd_create	360
 #define __NR_bpf		361
 #define __NR_execveat		362
+#define __NR_switch_endian	363
+#define __NR_userfaultfd	364
+#define __NR_membarrier		365
+#define __NR_mlock2		378
+#define __NR_copy_file_range	379
+#define __NR_preadv2		380
+#define __NR_pwritev2		381
 
 #endif /* _UAPI_ASM_POWERPC_UNISTD_H_ */

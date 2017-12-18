@@ -23,22 +23,6 @@ static void __flush_dcache(unsigned long start, unsigned long end)
 	end += (cpuinfo.dcache_line_size - 1);
 	end &= ~(cpuinfo.dcache_line_size - 1);
 
-	for (addr = start; addr < end; addr += cpuinfo.dcache_line_size) {
-		__asm__ __volatile__ ("   flushda 0(%0)\n"
-					: /* Outputs */
-					: /* Inputs  */ "r"(addr)
-					/* : No clobber */);
-	}
-}
-
-static void __flush_dcache_all(unsigned long start, unsigned long end)
-{
-	unsigned long addr;
-
-	start &= ~(cpuinfo.dcache_line_size - 1);
-	end += (cpuinfo.dcache_line_size - 1);
-	end &= ~(cpuinfo.dcache_line_size - 1);
-
 	if (end > start + cpuinfo.dcache_size)
 		end = start + cpuinfo.dcache_size;
 
@@ -57,9 +41,6 @@ static void __invalidate_dcache(unsigned long start, unsigned long end)
 	start &= ~(cpuinfo.dcache_line_size - 1);
 	end += (cpuinfo.dcache_line_size - 1);
 	end &= ~(cpuinfo.dcache_line_size - 1);
-
-	if (end > start + cpuinfo.dcache_size)
-		end = start + cpuinfo.dcache_size;
 
 	for (addr = start; addr < end; addr += cpuinfo.dcache_line_size) {
 		__asm__ __volatile__ ("   initda 0(%0)\n"
@@ -115,7 +96,7 @@ static void flush_aliases(struct address_space *mapping, struct page *page)
 
 void flush_cache_all(void)
 {
-	__flush_dcache_all(0, cpuinfo.dcache_size);
+	__flush_dcache(0, cpuinfo.dcache_size);
 	__flush_icache(0, cpuinfo.icache_size);
 }
 
@@ -131,12 +112,14 @@ void flush_cache_dup_mm(struct mm_struct *mm)
 
 void flush_icache_range(unsigned long start, unsigned long end)
 {
+	__flush_dcache(start, end);
 	__flush_icache(start, end);
 }
 
 void flush_dcache_range(unsigned long start, unsigned long end)
 {
 	__flush_dcache(start, end);
+	__flush_icache(start, end);
 }
 EXPORT_SYMBOL(flush_dcache_range);
 
@@ -159,6 +142,7 @@ void flush_icache_page(struct vm_area_struct *vma, struct page *page)
 	unsigned long start = (unsigned long) page_address(page);
 	unsigned long end = start + PAGE_SIZE;
 
+	__flush_dcache(start, end);
 	__flush_icache(start, end);
 }
 
@@ -171,6 +155,18 @@ void flush_cache_page(struct vm_area_struct *vma, unsigned long vmaddr,
 	__flush_dcache(start, end);
 	if (vma->vm_flags & VM_EXEC)
 		__flush_icache(start, end);
+}
+
+void __flush_dcache_page(struct address_space *mapping, struct page *page)
+{
+	/*
+	 * Writeback any data associated with the kernel mapping of this
+	 * page.  This ensures that data in the physical page is mutually
+	 * coherent with the kernels mapping.
+	 */
+	unsigned long start = (unsigned long)page_address(page);
+
+	__flush_dcache(start, start + PAGE_SIZE);
 }
 
 void flush_dcache_page(struct page *page)
@@ -190,11 +186,12 @@ void flush_dcache_page(struct page *page)
 	if (mapping && !mapping_mapped(mapping)) {
 		clear_bit(PG_dcache_clean, &page->flags);
 	} else {
-		unsigned long start = (unsigned long)page_address(page);
-
-		__flush_dcache_all(start, start + PAGE_SIZE);
-		if (mapping)
+		__flush_dcache_page(mapping, page);
+		if (mapping) {
+			unsigned long start = (unsigned long)page_address(page);
 			flush_aliases(mapping,  page);
+			flush_icache_range(start, start + PAGE_SIZE);
+		}
 		set_bit(PG_dcache_clean, &page->flags);
 	}
 }
@@ -205,6 +202,7 @@ void update_mmu_cache(struct vm_area_struct *vma,
 {
 	unsigned long pfn = pte_pfn(*pte);
 	struct page *page;
+	struct address_space *mapping;
 
 	if (!pfn_valid(pfn))
 		return;
@@ -217,16 +215,15 @@ void update_mmu_cache(struct vm_area_struct *vma,
 	if (page == ZERO_PAGE(0))
 		return;
 
-	if (!PageReserved(page) &&
-	     !test_and_set_bit(PG_dcache_clean, &page->flags)) {
-		unsigned long start = page_to_virt(page);
-		struct address_space *mapping;
+	mapping = page_mapping(page);
+	if (!test_and_set_bit(PG_dcache_clean, &page->flags))
+		__flush_dcache_page(mapping, page);
 
-		__flush_dcache(start, start + PAGE_SIZE);
-
-		mapping = page_mapping(page);
-		if (mapping)
-			flush_aliases(mapping, page);
+	if(mapping)
+	{
+		flush_aliases(mapping, page);
+		if (vma->vm_flags & VM_EXEC)
+			flush_icache_page(vma, page);
 	}
 }
 
@@ -234,15 +231,19 @@ void copy_user_page(void *vto, void *vfrom, unsigned long vaddr,
 		    struct page *to)
 {
 	__flush_dcache(vaddr, vaddr + PAGE_SIZE);
+	__flush_icache(vaddr, vaddr + PAGE_SIZE);
 	copy_page(vto, vfrom);
 	__flush_dcache((unsigned long)vto, (unsigned long)vto + PAGE_SIZE);
+	__flush_icache((unsigned long)vto, (unsigned long)vto + PAGE_SIZE);
 }
 
 void clear_user_page(void *addr, unsigned long vaddr, struct page *page)
 {
 	__flush_dcache(vaddr, vaddr + PAGE_SIZE);
+	__flush_icache(vaddr, vaddr + PAGE_SIZE);
 	clear_page(addr);
 	__flush_dcache((unsigned long)addr, (unsigned long)addr + PAGE_SIZE);
+	__flush_icache((unsigned long)addr, (unsigned long)addr + PAGE_SIZE);
 }
 
 void copy_from_user_page(struct vm_area_struct *vma, struct page *page,

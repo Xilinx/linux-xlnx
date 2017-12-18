@@ -16,10 +16,14 @@ Optional properties:
   See ../clocks/clock-bindings.txt for details.
 - clock-names : Must include the following entry:
   "ext_clock" (External clock provided to the card).
+- post-power-on-delay-ms : Delay in ms after powering the card and
+	de-asserting the reset-gpios (if any)
 
 Example:
 
 	sdhci0_pwrseq {
 		compatible = "mmc-pwrseq-simple";
-		reset-gpios = <&gpio1 12 0>;
+		reset-gpios = <&gpio1 12 GPIO_ACTIVE_LOW>;
+		clocks = <&clk_32768_ck>;
+		clock-names = "ext_clock";
 	}

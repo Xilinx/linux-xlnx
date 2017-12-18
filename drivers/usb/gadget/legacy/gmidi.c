@@ -21,21 +21,12 @@
 /* #define VERBOSE_DEBUG */
 
 #include <linux/kernel.h>
-#include <linux/slab.h>
 #include <linux/module.h>
-#include <linux/device.h>
 
-#include <sound/core.h>
 #include <sound/initval.h>
-#include <sound/rawmidi.h>
 
-#include <linux/usb/ch9.h>
 #include <linux/usb/composite.h>
 #include <linux/usb/gadget.h>
-#include <linux/usb/audio.h>
-#include <linux/usb/midi.h>
-
-#include "gadget_chips.h"
 
 #include "u_midi.h"
 
@@ -44,7 +35,6 @@
 MODULE_AUTHOR("Ben Williamson");
 MODULE_LICENSE("GPL v2");
 
-static const char shortname[] = "g_midi";
 static const char longname[] = "MIDI Gadget";
 
 USB_GADGET_COMPOSITE_OPTIONS();
@@ -57,13 +47,13 @@ static char *id = SNDRV_DEFAULT_STR1;
 module_param(id, charp, S_IRUGO);
 MODULE_PARM_DESC(id, "ID string for the USB MIDI Gadget adapter.");
 
-static unsigned int buflen = 256;
+static unsigned int buflen = 512;
 module_param(buflen, uint, S_IRUGO);
 MODULE_PARM_DESC(buflen, "MIDI buffer length");
 
 static unsigned int qlen = 32;
 module_param(qlen, uint, S_IRUGO);
-MODULE_PARM_DESC(qlen, "USB read request queue length");
+MODULE_PARM_DESC(qlen, "USB read and write request queue length");
 
 static unsigned int in_ports = 1;
 module_param(in_ports, uint, S_IRUGO);
@@ -88,10 +78,10 @@ MODULE_PARM_DESC(out_ports, "Number of MIDI output ports");
 static struct usb_device_descriptor device_desc = {
 	.bLength =		USB_DT_DEVICE_SIZE,
 	.bDescriptorType =	USB_DT_DEVICE,
-	.bcdUSB =		__constant_cpu_to_le16(0x0200),
+	/* .bcdUSB = DYNAMIC */
 	.bDeviceClass =		USB_CLASS_PER_INTERFACE,
-	.idVendor =		__constant_cpu_to_le16(DRIVER_VENDOR_NUM),
-	.idProduct =		__constant_cpu_to_le16(DRIVER_PRODUCT_NUM),
+	.idVendor =		cpu_to_le16(DRIVER_VENDOR_NUM),
+	.idProduct =		cpu_to_le16(DRIVER_PRODUCT_NUM),
 	/* .iManufacturer =	DYNAMIC */
 	/* .iProduct =		DYNAMIC */
 	.bNumConfigurations =	1,
@@ -118,7 +108,7 @@ static struct usb_gadget_strings *dev_strings[] = {
 static struct usb_function_instance *fi_midi;
 static struct usb_function *f_midi;
 
-static int __exit midi_unbind(struct usb_composite_dev *dev)
+static int midi_unbind(struct usb_composite_dev *dev)
 {
 	usb_put_function(f_midi);
 	usb_put_function_instance(fi_midi);
@@ -133,7 +123,7 @@ static struct usb_configuration midi_config = {
 	.MaxPower	= CONFIG_USB_GADGET_VBUS_DRAW,
 };
 
-static int __init midi_bind_config(struct usb_configuration *c)
+static int midi_bind_config(struct usb_configuration *c)
 {
 	int status;
 
@@ -150,7 +140,7 @@ static int __init midi_bind_config(struct usb_configuration *c)
 	return 0;
 }
 
-static int __init midi_bind(struct usb_composite_dev *cdev)
+static int midi_bind(struct usb_composite_dev *cdev)
 {
 	struct f_midi_opts *midi_opts;
 	int status;
@@ -185,13 +175,13 @@ put:
 	return status;
 }
 
-static __refdata struct usb_composite_driver midi_driver = {
+static struct usb_composite_driver midi_driver = {
 	.name		= (char *) longname,
 	.dev		= &device_desc,
 	.strings	= dev_strings,
 	.max_speed	= USB_SPEED_HIGH,
 	.bind		= midi_bind,
-	.unbind		= __exit_p(midi_unbind),
+	.unbind		= midi_unbind,
 };
 
 module_usb_composite_driver(midi_driver);

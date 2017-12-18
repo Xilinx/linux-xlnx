@@ -187,7 +187,7 @@ static int orion_mdio_probe(struct platform_device *pdev)
 	struct resource *r;
 	struct mii_bus *bus;
 	struct orion_mdio_dev *dev;
-	int i, ret;
+	int ret;
 
 	r = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!r) {
@@ -207,20 +207,11 @@ static int orion_mdio_probe(struct platform_device *pdev)
 		 dev_name(&pdev->dev));
 	bus->parent = &pdev->dev;
 
-	bus->irq = devm_kmalloc_array(&pdev->dev, PHY_MAX_ADDR, sizeof(int),
-				      GFP_KERNEL);
-	if (!bus->irq)
-		return -ENOMEM;
-
-	for (i = 0; i < PHY_MAX_ADDR; i++)
-		bus->irq[i] = PHY_POLL;
-
 	dev = bus->priv;
 	dev->regs = devm_ioremap(&pdev->dev, r->start, resource_size(r));
 	if (!dev->regs) {
 		dev_err(&pdev->dev, "Unable to remap SMI register\n");
-		ret = -ENODEV;
-		goto out_mdio;
+		return -ENODEV;
 	}
 
 	init_waitqueue_head(&dev->smi_busy_wait);

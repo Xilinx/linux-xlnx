@@ -140,8 +140,8 @@ static int debug;
 #define R_FCR		0x0000	/* Flow Control Register */
 #define R_IER		0x0004	/* Interrupt Enable Register */
 
-#define CONFIG_MAGIC	0xEFEFFEFE
-#define TOGGLE_VALID	0x0000
+#define NOZOMI_CONFIG_MAGIC	0xEFEFFEFE
+#define TOGGLE_VALID		0x0000
 
 /* Definition of interrupt tokens */
 #define MDM_DL1		0x0001
@@ -660,9 +660,9 @@ static int nozomi_read_config_table(struct nozomi *dc)
 	read_mem32((u32 *) &dc->config_table, dc->base_addr + 0,
 						sizeof(struct config_table));
 
-	if (dc->config_table.signature != CONFIG_MAGIC) {
+	if (dc->config_table.signature != NOZOMI_CONFIG_MAGIC) {
 		dev_err(&dc->pdev->dev, "ConfigTable Bad! 0x%08X != 0x%08X\n",
-			dc->config_table.signature, CONFIG_MAGIC);
+			dc->config_table.signature, NOZOMI_CONFIG_MAGIC);
 		return 0;
 	}
 
@@ -823,10 +823,10 @@ static int receive_data(enum port_type index, struct nozomi *dc)
 	struct tty_struct *tty = tty_port_tty_get(&port->port);
 	int i, ret;
 
-	read_mem32((u32 *) &size, addr, 4);
+	size = __le32_to_cpu(readl(addr));
 	/*  DBG1( "%d bytes port: %d", size, index); */
 
-	if (tty && test_bit(TTY_THROTTLED, &tty->flags)) {
+	if (tty && tty_throttled(tty)) {
 		DBG1("No room in tty, don't read data, don't ack interrupt, "
 			"disable interrupt");
 

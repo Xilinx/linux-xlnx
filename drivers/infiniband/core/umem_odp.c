@@ -232,7 +232,7 @@ static void ib_umem_notifier_invalidate_range_end(struct mmu_notifier *mn,
 	ib_ucontext_notifier_end_account(context);
 }
 
-static struct mmu_notifier_ops ib_umem_notifiers = {
+static const struct mmu_notifier_ops ib_umem_notifiers = {
 	.release                    = ib_umem_notifier_release,
 	.invalidate_page            = ib_umem_notifier_invalidate_page,
 	.invalidate_range_start     = ib_umem_notifier_invalidate_range_start,
@@ -446,7 +446,6 @@ static int ib_umem_odp_map_dma_single_page(
 	int remove_existing_mapping = 0;
 	int ret = 0;
 
-	mutex_lock(&umem->odp_data->umem_mutex);
 	/*
 	 * Note: we avoid writing if seq is different from the initial seq, to
 	 * handle case of a racing notifier. This check also allows us to bail
@@ -479,8 +478,6 @@ static int ib_umem_odp_map_dma_single_page(
 	}
 
 out:
-	mutex_unlock(&umem->odp_data->umem_mutex);
-
 	/* On Demand Paging - avoid pinning the page */
 	if (umem->context->invalidate_range || !stored_page)
 		put_page(page);
@@ -530,6 +527,7 @@ int ib_umem_odp_map_dma_pages(struct ib_umem *umem, u64 user_virt, u64 bcnt,
 	u64 off;
 	int j, k, ret = 0, start_idx, npages = 0;
 	u64 base_virt_addr;
+	unsigned int flags = 0;
 
 	if (access_mask == 0)
 		return -EINVAL;
@@ -559,6 +557,9 @@ int ib_umem_odp_map_dma_pages(struct ib_umem *umem, u64 user_virt, u64 bcnt,
 		goto out_put_task;
 	}
 
+	if (access_mask & ODP_WRITE_ALLOWED_BIT)
+		flags |= FOLL_WRITE;
+
 	start_idx = (user_virt - ib_umem_start(umem)) >> PAGE_SHIFT;
 	k = start_idx;
 
@@ -575,10 +576,9 @@ int ib_umem_odp_map_dma_pages(struct ib_umem *umem, u64 user_virt, u64 bcnt,
 		 * complex (and doesn't gain us much performance in most use
 		 * cases).
 		 */
-		npages = get_user_pages(owning_process, owning_mm, user_virt,
-					gup_num_pages,
-					access_mask & ODP_WRITE_ALLOWED_BIT, 0,
-					local_page_list, NULL);
+		npages = get_user_pages_remote(owning_process, owning_mm,
+				user_virt, gup_num_pages,
+				flags, local_page_list, NULL);
 		up_read(&owning_mm->mmap_sem);
 
 		if (npages < 0)
@@ -586,6 +586,7 @@ int ib_umem_odp_map_dma_pages(struct ib_umem *umem, u64 user_virt, u64 bcnt,
 
 		bcnt -= min_t(size_t, npages << PAGE_SHIFT, bcnt);
 		user_virt += npages << PAGE_SHIFT;
+		mutex_lock(&umem->odp_data->umem_mutex);
 		for (j = 0; j < npages; ++j) {
 			ret = ib_umem_odp_map_dma_single_page(
 				umem, k, base_virt_addr, local_page_list[j],
@@ -594,6 +595,7 @@ int ib_umem_odp_map_dma_pages(struct ib_umem *umem, u64 user_virt, u64 bcnt,
 				break;
 			k++;
 		}
+		mutex_unlock(&umem->odp_data->umem_mutex);
 
 		if (ret < 0) {
 			/* Release left over pages when handling errors. */
@@ -633,12 +635,11 @@ void ib_umem_odp_unmap_dma_pages(struct ib_umem *umem, u64 virt,
 	 * faults from completion. We might be racing with other
 	 * invalidations, so we must make sure we free each page only
 	 * once. */
+	mutex_lock(&umem->odp_data->umem_mutex);
 	for (addr = virt; addr < bound; addr += (u64)umem->page_size) {
 		idx = (addr - ib_umem_start(umem)) / PAGE_SIZE;
-		mutex_lock(&umem->odp_data->umem_mutex);
 		if (umem->odp_data->page_list[idx]) {
 			struct page *page = umem->odp_data->page_list[idx];
-			struct page *head_page = compound_head(page);
 			dma_addr_t dma = umem->odp_data->dma_list[idx];
 			dma_addr_t dma_addr = dma & ODP_DMA_ADDR_MASK;
 
@@ -646,7 +647,8 @@ void ib_umem_odp_unmap_dma_pages(struct ib_umem *umem, u64 virt,
 
 			ib_dma_unmap_page(dev, dma_addr, PAGE_SIZE,
 					  DMA_BIDIRECTIONAL);
-			if (dma & ODP_WRITE_ALLOWED_BIT)
+			if (dma & ODP_WRITE_ALLOWED_BIT) {
+				struct page *head_page = compound_head(page);
 				/*
 				 * set_page_dirty prefers being called with
 				 * the page lock. However, MMU notifiers are
@@ -657,13 +659,14 @@ void ib_umem_odp_unmap_dma_pages(struct ib_umem *umem, u64 virt,
 				 * be removed.
 				 */
 				set_page_dirty(head_page);
+			}
 			/* on demand pinning support */
 			if (!umem->context->invalidate_range)
 				put_page(page);
 			umem->odp_data->page_list[idx] = NULL;
 			umem->odp_data->dma_list[idx] = 0;
 		}
-		mutex_unlock(&umem->odp_data->umem_mutex);
 	}
+	mutex_unlock(&umem->odp_data->umem_mutex);
 }
 EXPORT_SYMBOL(ib_umem_odp_unmap_dma_pages);

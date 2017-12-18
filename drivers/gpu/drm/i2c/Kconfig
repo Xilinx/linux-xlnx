@@ -1,8 +1,9 @@
 menu "I2C encoder or helper chips"
      depends on DRM && DRM_KMS_HELPER && I2C
 
-config DRM_I2C_ADV7511
+config DRM_I2C_ADV7511_LEGACY
 	tristate "AV7511 encoder"
+	depends on OF && !DRM_I2C_ADV7511
 	select REGMAP_I2C
 	help
 	  Support for the Analog Device ADV7511(W) and ADV7513 HDMI encoders.
@@ -28,6 +29,7 @@ config DRM_I2C_SIL164
 config DRM_I2C_NXP_TDA998X
 	tristate "NXP Semiconductors TDA998X HDMI encoder"
 	default m if DRM_TILCDC
+	select SND_SOC_HDMI_CODEC if SND_SOC
 	help
 	  Support for NXP Semiconductors TDA998X HDMI encoders.
 

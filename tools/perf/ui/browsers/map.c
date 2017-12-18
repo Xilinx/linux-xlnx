@@ -1,4 +1,3 @@
-#include "../libslang.h"
 #include <elf.h>
 #include <inttypes.h>
 #include <sys/ttydefaults.h>
@@ -26,13 +25,13 @@ static void map_browser__write(struct ui_browser *browser, void *nd, int row)
 	int width;
 
 	ui_browser__set_percent_color(browser, 0, current_entry);
-	slsmg_printf("%*" PRIx64 " %*" PRIx64 " %c ",
-		     mb->addrlen, sym->start, mb->addrlen, sym->end,
-		     sym->binding == STB_GLOBAL ? 'g' :
-		     sym->binding == STB_LOCAL  ? 'l' : 'w');
+	ui_browser__printf(browser, "%*" PRIx64 " %*" PRIx64 " %c ",
+			   mb->addrlen, sym->start, mb->addrlen, sym->end,
+			   sym->binding == STB_GLOBAL ? 'g' :
+				sym->binding == STB_LOCAL  ? 'l' : 'w');
 	width = browser->width - ((mb->addrlen * 2) + 4);
 	if (width > 0)
-		slsmg_write_nstring(sym->name, width);
+		ui_browser__write_nstring(browser, sym->name, width);
 }
 
 /* FIXME uber-kludgy, see comment on cmd_report... */
@@ -53,9 +52,9 @@ static int map_browser__search(struct map_browser *browser)
 
 	if (target[0] == '0' && tolower(target[1]) == 'x') {
 		u64 addr = strtoull(target, NULL, 16);
-		sym = map__find_symbol(browser->map, addr, NULL);
+		sym = map__find_symbol(browser->map, addr);
 	} else
-		sym = map__find_symbol_by_name(browser->map, target, NULL);
+		sym = map__find_symbol_by_name(browser->map, target);
 
 	if (sym != NULL) {
 		u32 *idx = symbol__browser_index(sym);
@@ -73,7 +72,7 @@ static int map_browser__run(struct map_browser *browser)
 	int key;
 
 	if (ui_browser__show(&browser->b, browser->map->dso->long_name,
-			     "Press <- or ESC to exit, %s / to search",
+			     "Press ESC to exit, %s / to search",
 			     verbose ? "" : "restart with -v to use") < 0)
 		return -1;
 

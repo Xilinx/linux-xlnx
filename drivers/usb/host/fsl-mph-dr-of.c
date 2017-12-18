@@ -17,6 +17,7 @@
 #include <linux/of_platform.h>
 #include <linux/clk.h>
 #include <linux/module.h>
+#include <linux/dma-mapping.h>
 
 struct fsl_usb2_dev_data {
 	char *dr_mode;		/* controller mode */
@@ -69,6 +70,8 @@ static enum fsl_usb2_phy_modes determine_usb_phy(const char *phy_type)
 		return FSL_USB2_PHY_UTMI;
 	if (!strcasecmp(phy_type, "utmi_wide"))
 		return FSL_USB2_PHY_UTMI_WIDE;
+	if (!strcasecmp(phy_type, "utmi_dual"))
+		return FSL_USB2_PHY_UTMI_DUAL;
 	if (!strcasecmp(phy_type, "serial"))
 		return FSL_USB2_PHY_SERIAL;
 
@@ -94,7 +97,11 @@ static struct platform_device *fsl_usb2_device_register(
 	pdev->dev.parent = &ofdev->dev;
 
 	pdev->dev.coherent_dma_mask = ofdev->dev.coherent_dma_mask;
-	*pdev->dev.dma_mask = *ofdev->dev.dma_mask;
+
+	if (!pdev->dev.dma_mask)
+		pdev->dev.dma_mask = &ofdev->dev.coherent_dma_mask;
+	else
+		dma_set_mask(&pdev->dev, DMA_BIT_MASK(32));
 
 	retval = platform_device_add_data(pdev, pdata, sizeof(*pdata));
 	if (retval)
@@ -119,13 +126,15 @@ error:
 
 static const struct of_device_id fsl_usb2_mph_dr_of_match[];
 
-static int usb_get_ver_info(struct device_node *np)
+static enum fsl_usb2_controller_ver usb_get_ver_info(struct device_node *np)
 {
-	int ver = -1;
+	enum fsl_usb2_controller_ver ver = FSL_USB_VER_NONE;
 
 	/*
 	 * returns 1 for usb controller version 1.6
 	 * returns 2 for usb controller version 2.2
+	 * returns 3 for usb controller version 2.4
+	 * returns 4 for usb controller version 2.5
 	 * returns 0 otherwise
 	 */
 	if (of_device_is_compatible(np, "fsl-usb2-dr")) {
@@ -135,10 +144,12 @@ static int usb_get_ver_info(struct device_node *np)
 			ver = FSL_USB_VER_2_2;
 		else if (of_device_is_compatible(np, "fsl-usb2-dr-v2.4"))
 			ver = FSL_USB_VER_2_4;
+		else if (of_device_is_compatible(np, "fsl-usb2-dr-v2.5"))
+			ver = FSL_USB_VER_2_5;
 		else /* for previous controller versions */
 			ver = FSL_USB_VER_OLD;
 
-		if (ver > -1)
+		if (ver > FSL_USB_VER_NONE)
 			return ver;
 	}
 
@@ -150,6 +161,10 @@ static int usb_get_ver_info(struct device_node *np)
 			ver = FSL_USB_VER_1_6;
 		else if (of_device_is_compatible(np, "fsl-usb2-mph-v2.2"))
 			ver = FSL_USB_VER_2_2;
+		else if (of_device_is_compatible(np, "fsl-usb2-mph-v2.4"))
+			ver = FSL_USB_VER_2_4;
+		else if (of_device_is_compatible(np, "fsl-usb2-mph-v2.5"))
+			ver = FSL_USB_VER_2_5;
 		else /* for previous controller versions */
 			ver = FSL_USB_VER_OLD;
 	}
@@ -206,8 +221,21 @@ static int fsl_usb2_mph_dr_of_probe(struct platform_device *ofdev)
 	pdata->phy_mode = determine_usb_phy(prop);
 	pdata->controller_ver = usb_get_ver_info(np);
 
+	/* Activate Erratum by reading property in device tree */
+	pdata->has_fsl_erratum_a007792 =
+		of_property_read_bool(np, "fsl,usb-erratum-a007792");
+	pdata->has_fsl_erratum_a005275 =
+		of_property_read_bool(np, "fsl,usb-erratum-a005275");
+
+	/*
+	 * Determine whether phy_clk_valid needs to be checked
+	 * by reading property in device tree
+	 */
+	pdata->check_phy_clk_valid =
+		of_property_read_bool(np, "phy-clk-valid");
+
 	if (pdata->have_sysif_regs) {
-		if (pdata->controller_ver < 0) {
+		if (pdata->controller_ver == FSL_USB_VER_NONE) {
 			dev_warn(&ofdev->dev, "Could not get controller version\n");
 			return -ENODEV;
 		}
@@ -322,6 +350,7 @@ static const struct of_device_id fsl_usb2_mph_dr_of_match[] = {
 #endif
 	{},
 };
+MODULE_DEVICE_TABLE(of, fsl_usb2_mph_dr_of_match);
 
 static struct platform_driver fsl_usb2_mph_dr_driver = {
 	.driver = {

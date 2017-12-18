@@ -221,7 +221,8 @@ void omap_mcbsp_config(struct omap_mcbsp *mcbsp,
 
 	/* Enable TX/RX sync error interrupts by default */
 	if (mcbsp->irq)
-		MCBSP_WRITE(mcbsp, IRQEN, RSYNCERREN | XSYNCERREN);
+		MCBSP_WRITE(mcbsp, IRQEN, RSYNCERREN | XSYNCERREN |
+			    RUNDFLEN | ROVFLEN | XUNDFLEN | XOVFLEN);
 }
 
 /**
@@ -257,8 +258,12 @@ static void omap_st_on(struct omap_mcbsp *mcbsp)
 {
 	unsigned int w;
 
-	if (mcbsp->pdata->enable_st_clock)
-		mcbsp->pdata->enable_st_clock(mcbsp->id, 1);
+	if (mcbsp->pdata->force_ick_on)
+		mcbsp->pdata->force_ick_on(mcbsp->st_data->mcbsp_iclk, true);
+
+	/* Disable Sidetone clock auto-gating for normal operation */
+	w = MCBSP_ST_READ(mcbsp, SYSCONFIG);
+	MCBSP_ST_WRITE(mcbsp, SYSCONFIG, w & ~(ST_AUTOIDLE));
 
 	/* Enable McBSP Sidetone */
 	w = MCBSP_READ(mcbsp, SSELCR);
@@ -279,8 +284,12 @@ static void omap_st_off(struct omap_mcbsp *mcbsp)
 	w = MCBSP_READ(mcbsp, SSELCR);
 	MCBSP_WRITE(mcbsp, SSELCR, w & ~(SIDETONEEN));
 
-	if (mcbsp->pdata->enable_st_clock)
-		mcbsp->pdata->enable_st_clock(mcbsp->id, 0);
+	/* Enable Sidetone clock auto-gating to reduce power consumption */
+	w = MCBSP_ST_READ(mcbsp, SYSCONFIG);
+	MCBSP_ST_WRITE(mcbsp, SYSCONFIG, w | ST_AUTOIDLE);
+
+	if (mcbsp->pdata->force_ick_on)
+		mcbsp->pdata->force_ick_on(mcbsp->st_data->mcbsp_iclk, false);
 }
 
 static void omap_st_fir_write(struct omap_mcbsp *mcbsp, s16 *fir)
@@ -938,6 +947,13 @@ static int omap_st_add(struct omap_mcbsp *mcbsp, struct resource *res)
 	if (!st_data)
 		return -ENOMEM;
 
+	st_data->mcbsp_iclk = clk_get(mcbsp->dev, "ick");
+	if (IS_ERR(st_data->mcbsp_iclk)) {
+		dev_warn(mcbsp->dev,
+			 "Failed to get ick, sidetone might be broken\n");
+		st_data->mcbsp_iclk = NULL;
+	}
+
 	st_data->io_base_st = devm_ioremap(mcbsp->dev, res->start,
 					   resource_size(res));
 	if (!st_data->io_base_st)
@@ -965,25 +981,15 @@ int omap_mcbsp_init(struct platform_device *pdev)
 	mcbsp->free = true;
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "mpu");
-	if (!res) {
+	if (!res)
 		res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-		if (!res) {
-			dev_err(mcbsp->dev, "invalid memory resource\n");
-			return -ENOMEM;
-		}
-	}
-	if (!devm_request_mem_region(&pdev->dev, res->start, resource_size(res),
-				     dev_name(&pdev->dev))) {
-		dev_err(mcbsp->dev, "memory region already claimed\n");
-		return -ENODEV;
-	}
+
+	mcbsp->io_base = devm_ioremap_resource(&pdev->dev, res);
+	if (IS_ERR(mcbsp->io_base))
+		return PTR_ERR(mcbsp->io_base);
 
 	mcbsp->phys_base = res->start;
 	mcbsp->reg_cache_size = resource_size(res);
-	mcbsp->io_base = devm_ioremap(&pdev->dev, res->start,
-				      resource_size(res));
-	if (!mcbsp->io_base)
-		return -ENOMEM;
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "dma");
 	if (!res)
@@ -1090,11 +1096,13 @@ err_thres:
 	return ret;
 }
 
-void omap_mcbsp_sysfs_remove(struct omap_mcbsp *mcbsp)
+void omap_mcbsp_cleanup(struct omap_mcbsp *mcbsp)
 {
 	if (mcbsp->pdata->buffer_size)
 		sysfs_remove_group(&mcbsp->dev->kobj, &additional_attr_group);
 
-	if (mcbsp->st_data)
+	if (mcbsp->st_data) {
 		sysfs_remove_group(&mcbsp->dev->kobj, &sidetone_attr_group);
+		clk_put(mcbsp->st_data->mcbsp_iclk);
+	}
 }

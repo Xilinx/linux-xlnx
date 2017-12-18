@@ -1,15 +1,17 @@
-/* bnx2x_sp.c: Broadcom Everest network driver.
+/* bnx2x_sp.c: Qlogic Everest network driver.
  *
- * Copyright (c) 2011-2013 Broadcom Corporation
+ * Copyright 2011-2013 Broadcom Corporation
+ * Copyright (c) 2014 QLogic Corporation
+ * All rights reserved
  *
- * Unless you and Broadcom execute a separate written software license
+ * Unless you and Qlogic execute a separate written software license
  * agreement governing use of this software, this software is licensed to you
  * under the terms of the GNU General Public License version 2, available
- * at http://www.gnu.org/licenses/old-licenses/gpl-2.0.html (the "GPL").
+ * at http://www.gnu.org/licenses/gpl-2.0.html (the "GPL").
  *
  * Notwithstanding the above, under no circumstances may you combine this
- * software in any way with any other Broadcom software provided under a
- * license other than the GPL, without Broadcom's express prior written
+ * software in any way with any other Qlogic software provided under a
+ * license other than the GPL, without Qlogic's express prior written
  * consent.
  *
  * Maintained by: Ariel Elior <ariel.elior@qlogic.com>
@@ -355,6 +357,23 @@ static bool bnx2x_get_credit_vlan(struct bnx2x_vlan_mac_obj *o)
 
 	return vp->get(vp, 1);
 }
+
+static bool bnx2x_get_credit_vlan_mac(struct bnx2x_vlan_mac_obj *o)
+{
+	struct bnx2x_credit_pool_obj *mp = o->macs_pool;
+	struct bnx2x_credit_pool_obj *vp = o->vlans_pool;
+
+	if (!mp->get(mp, 1))
+		return false;
+
+	if (!vp->get(vp, 1)) {
+		mp->put(mp, 1);
+		return false;
+	}
+
+	return true;
+}
+
 static bool bnx2x_put_cam_offset_mac(struct bnx2x_vlan_mac_obj *o, int offset)
 {
 	struct bnx2x_credit_pool_obj *mp = o->macs_pool;
@@ -381,6 +400,22 @@ static bool bnx2x_put_credit_vlan(struct bnx2x_vlan_mac_obj *o)
 	struct bnx2x_credit_pool_obj *vp = o->vlans_pool;
 
 	return vp->put(vp, 1);
+}
+
+static bool bnx2x_put_credit_vlan_mac(struct bnx2x_vlan_mac_obj *o)
+{
+	struct bnx2x_credit_pool_obj *mp = o->macs_pool;
+	struct bnx2x_credit_pool_obj *vp = o->vlans_pool;
+
+	if (!mp->put(mp, 1))
+		return false;
+
+	if (!vp->put(vp, 1)) {
+		mp->get(mp, 1);
+		return false;
+	}
+
+	return true;
 }
 
 /**
@@ -424,7 +459,7 @@ static void __bnx2x_vlan_mac_h_exec_pending(struct bnx2x *bp,
 	o->head_exe_request = false;
 	o->saved_ramrod_flags = 0;
 	rc = bnx2x_exe_queue_step(bp, &o->exe_queue, &ramrod_flags);
-	if (rc != 0) {
+	if ((rc != 0) && (rc != 1)) {
 		BNX2X_ERR("execution of pending commands failed with rc %d\n",
 			  rc);
 #ifdef BNX2X_STOP_ON_ERROR
@@ -636,6 +671,26 @@ static int bnx2x_check_vlan_add(struct bnx2x *bp,
 	return 0;
 }
 
+static int bnx2x_check_vlan_mac_add(struct bnx2x *bp,
+				    struct bnx2x_vlan_mac_obj *o,
+				   union bnx2x_classification_ramrod_data *data)
+{
+	struct bnx2x_vlan_mac_registry_elem *pos;
+
+	DP(BNX2X_MSG_SP, "Checking VLAN_MAC (%pM, %d) for ADD command\n",
+	   data->vlan_mac.mac, data->vlan_mac.vlan);
+
+	list_for_each_entry(pos, &o->head, link)
+		if ((data->vlan_mac.vlan == pos->u.vlan_mac.vlan) &&
+		    (!memcmp(data->vlan_mac.mac, pos->u.vlan_mac.mac,
+				  ETH_ALEN)) &&
+		    (data->vlan_mac.is_inner_mac ==
+		     pos->u.vlan_mac.is_inner_mac))
+			return -EEXIST;
+
+	return 0;
+}
+
 /* check_del() callbacks */
 static struct bnx2x_vlan_mac_registry_elem *
 	bnx2x_check_mac_del(struct bnx2x *bp,
@@ -665,6 +720,27 @@ static struct bnx2x_vlan_mac_registry_elem *
 
 	list_for_each_entry(pos, &o->head, link)
 		if (data->vlan.vlan == pos->u.vlan.vlan)
+			return pos;
+
+	return NULL;
+}
+
+static struct bnx2x_vlan_mac_registry_elem *
+	bnx2x_check_vlan_mac_del(struct bnx2x *bp,
+				 struct bnx2x_vlan_mac_obj *o,
+				 union bnx2x_classification_ramrod_data *data)
+{
+	struct bnx2x_vlan_mac_registry_elem *pos;
+
+	DP(BNX2X_MSG_SP, "Checking VLAN_MAC (%pM, %d) for DEL command\n",
+	   data->vlan_mac.mac, data->vlan_mac.vlan);
+
+	list_for_each_entry(pos, &o->head, link)
+		if ((data->vlan_mac.vlan == pos->u.vlan_mac.vlan) &&
+		    (!memcmp(data->vlan_mac.mac, pos->u.vlan_mac.mac,
+			     ETH_ALEN)) &&
+		    (data->vlan_mac.is_inner_mac ==
+		     pos->u.vlan_mac.is_inner_mac))
 			return pos;
 
 	return NULL;
@@ -1036,6 +1112,96 @@ static void bnx2x_set_one_vlan_e2(struct bnx2x *bp,
 					rule_cnt);
 }
 
+static void bnx2x_set_one_vlan_mac_e2(struct bnx2x *bp,
+				      struct bnx2x_vlan_mac_obj *o,
+				      struct bnx2x_exeq_elem *elem,
+				      int rule_idx, int cam_offset)
+{
+	struct bnx2x_raw_obj *raw = &o->raw;
+	struct eth_classify_rules_ramrod_data *data =
+		(struct eth_classify_rules_ramrod_data *)(raw->rdata);
+	int rule_cnt = rule_idx + 1;
+	union eth_classify_rule_cmd *rule_entry = &data->rules[rule_idx];
+	enum bnx2x_vlan_mac_cmd cmd = elem->cmd_data.vlan_mac.cmd;
+	bool add = (cmd == BNX2X_VLAN_MAC_ADD) ? true : false;
+	u16 vlan = elem->cmd_data.vlan_mac.u.vlan_mac.vlan;
+	u8 *mac = elem->cmd_data.vlan_mac.u.vlan_mac.mac;
+	u16 inner_mac;
+
+	/* Reset the ramrod data buffer for the first rule */
+	if (rule_idx == 0)
+		memset(data, 0, sizeof(*data));
+
+	/* Set a rule header */
+	bnx2x_vlan_mac_set_cmd_hdr_e2(bp, o, add, CLASSIFY_RULE_OPCODE_PAIR,
+				      &rule_entry->pair.header);
+
+	/* Set VLAN and MAC themselves */
+	rule_entry->pair.vlan = cpu_to_le16(vlan);
+	bnx2x_set_fw_mac_addr(&rule_entry->pair.mac_msb,
+			      &rule_entry->pair.mac_mid,
+			      &rule_entry->pair.mac_lsb, mac);
+	inner_mac = elem->cmd_data.vlan_mac.u.vlan_mac.is_inner_mac;
+	rule_entry->pair.inner_mac = cpu_to_le16(inner_mac);
+	/* MOVE: Add a rule that will add this MAC/VLAN to the target Queue */
+	if (cmd == BNX2X_VLAN_MAC_MOVE) {
+		struct bnx2x_vlan_mac_obj *target_obj;
+
+		rule_entry++;
+		rule_cnt++;
+
+		/* Setup ramrod data */
+		target_obj = elem->cmd_data.vlan_mac.target_obj;
+		bnx2x_vlan_mac_set_cmd_hdr_e2(bp, target_obj,
+					      true, CLASSIFY_RULE_OPCODE_PAIR,
+					      &rule_entry->pair.header);
+
+		/* Set a VLAN itself */
+		rule_entry->pair.vlan = cpu_to_le16(vlan);
+		bnx2x_set_fw_mac_addr(&rule_entry->pair.mac_msb,
+				      &rule_entry->pair.mac_mid,
+				      &rule_entry->pair.mac_lsb, mac);
+		rule_entry->pair.inner_mac = cpu_to_le16(inner_mac);
+	}
+
+	/* Set the ramrod data header */
+	bnx2x_vlan_mac_set_rdata_hdr_e2(raw->cid, raw->state, &data->header,
+					rule_cnt);
+}
+
+/**
+ * bnx2x_set_one_vlan_mac_e1h -
+ *
+ * @bp:		device handle
+ * @o:		bnx2x_vlan_mac_obj
+ * @elem:	bnx2x_exeq_elem
+ * @rule_idx:	rule_idx
+ * @cam_offset:	cam_offset
+ */
+static void bnx2x_set_one_vlan_mac_e1h(struct bnx2x *bp,
+				       struct bnx2x_vlan_mac_obj *o,
+				       struct bnx2x_exeq_elem *elem,
+				       int rule_idx, int cam_offset)
+{
+	struct bnx2x_raw_obj *raw = &o->raw;
+	struct mac_configuration_cmd *config =
+		(struct mac_configuration_cmd *)(raw->rdata);
+	/* 57710 and 57711 do not support MOVE command,
+	 * so it's either ADD or DEL
+	 */
+	bool add = (elem->cmd_data.vlan_mac.cmd == BNX2X_VLAN_MAC_ADD) ?
+		true : false;
+
+	/* Reset the ramrod data buffer */
+	memset(config, 0, sizeof(*config));
+
+	bnx2x_vlan_mac_set_rdata_e1x(bp, o, BNX2X_FILTER_VLAN_MAC_PENDING,
+				     cam_offset, add,
+				     elem->cmd_data.vlan_mac.u.vlan_mac.mac,
+				     elem->cmd_data.vlan_mac.u.vlan_mac.vlan,
+				     ETH_VLAN_FILTER_CLASSIFY, config);
+}
+
 /**
  * bnx2x_vlan_mac_restore - reconfigure next MAC/VLAN/VLAN-MAC element
  *
@@ -1130,6 +1296,25 @@ static struct bnx2x_exeq_elem *bnx2x_exeq_get_vlan(
 		if (!memcmp(&pos->cmd_data.vlan_mac.u.vlan, data,
 			      sizeof(*data)) &&
 		    (pos->cmd_data.vlan_mac.cmd == elem->cmd_data.vlan_mac.cmd))
+			return pos;
+
+	return NULL;
+}
+
+static struct bnx2x_exeq_elem *bnx2x_exeq_get_vlan_mac(
+	struct bnx2x_exe_queue_obj *o,
+	struct bnx2x_exeq_elem *elem)
+{
+	struct bnx2x_exeq_elem *pos;
+	struct bnx2x_vlan_mac_ramrod_data *data =
+		&elem->cmd_data.vlan_mac.u.vlan_mac;
+
+	/* Check pending for execution commands */
+	list_for_each_entry(pos, &o->exe_queue, link)
+		if (!memcmp(&pos->cmd_data.vlan_mac.u.vlan_mac, data,
+			    sizeof(*data)) &&
+		    (pos->cmd_data.vlan_mac.cmd ==
+		     elem->cmd_data.vlan_mac.cmd))
 			return pos;
 
 	return NULL;
@@ -2042,6 +2227,68 @@ void bnx2x_init_vlan_obj(struct bnx2x *bp,
 	}
 }
 
+void bnx2x_init_vlan_mac_obj(struct bnx2x *bp,
+			     struct bnx2x_vlan_mac_obj *vlan_mac_obj,
+			     u8 cl_id, u32 cid, u8 func_id, void *rdata,
+			     dma_addr_t rdata_mapping, int state,
+			     unsigned long *pstate, bnx2x_obj_type type,
+			     struct bnx2x_credit_pool_obj *macs_pool,
+			     struct bnx2x_credit_pool_obj *vlans_pool)
+{
+	union bnx2x_qable_obj *qable_obj =
+		(union bnx2x_qable_obj *)vlan_mac_obj;
+
+	bnx2x_init_vlan_mac_common(vlan_mac_obj, cl_id, cid, func_id, rdata,
+				   rdata_mapping, state, pstate, type,
+				   macs_pool, vlans_pool);
+
+	/* CAM pool handling */
+	vlan_mac_obj->get_credit = bnx2x_get_credit_vlan_mac;
+	vlan_mac_obj->put_credit = bnx2x_put_credit_vlan_mac;
+	/* CAM offset is relevant for 57710 and 57711 chips only which have a
+	 * single CAM for both MACs and VLAN-MAC pairs. So the offset
+	 * will be taken from MACs' pool object only.
+	 */
+	vlan_mac_obj->get_cam_offset = bnx2x_get_cam_offset_mac;
+	vlan_mac_obj->put_cam_offset = bnx2x_put_cam_offset_mac;
+
+	if (CHIP_IS_E1(bp)) {
+		BNX2X_ERR("Do not support chips others than E2\n");
+		BUG();
+	} else if (CHIP_IS_E1H(bp)) {
+		vlan_mac_obj->set_one_rule      = bnx2x_set_one_vlan_mac_e1h;
+		vlan_mac_obj->check_del         = bnx2x_check_vlan_mac_del;
+		vlan_mac_obj->check_add         = bnx2x_check_vlan_mac_add;
+		vlan_mac_obj->check_move        = bnx2x_check_move_always_err;
+		vlan_mac_obj->ramrod_cmd        = RAMROD_CMD_ID_ETH_SET_MAC;
+
+		/* Exe Queue */
+		bnx2x_exe_queue_init(bp,
+				     &vlan_mac_obj->exe_queue, 1, qable_obj,
+				     bnx2x_validate_vlan_mac,
+				     bnx2x_remove_vlan_mac,
+				     bnx2x_optimize_vlan_mac,
+				     bnx2x_execute_vlan_mac,
+				     bnx2x_exeq_get_vlan_mac);
+	} else {
+		vlan_mac_obj->set_one_rule      = bnx2x_set_one_vlan_mac_e2;
+		vlan_mac_obj->check_del         = bnx2x_check_vlan_mac_del;
+		vlan_mac_obj->check_add         = bnx2x_check_vlan_mac_add;
+		vlan_mac_obj->check_move        = bnx2x_check_move;
+		vlan_mac_obj->ramrod_cmd        =
+			RAMROD_CMD_ID_ETH_CLASSIFICATION_RULES;
+
+		/* Exe Queue */
+		bnx2x_exe_queue_init(bp,
+				     &vlan_mac_obj->exe_queue,
+				     CLASSIFY_RULES_COUNT,
+				     qable_obj, bnx2x_validate_vlan_mac,
+				     bnx2x_remove_vlan_mac,
+				     bnx2x_optimize_vlan_mac,
+				     bnx2x_execute_vlan_mac,
+				     bnx2x_exeq_get_vlan_mac);
+	}
+}
 /* RX_MODE verbs: DROP_ALL/ACCEPT_ALL/ACCEPT_ALL_MULTI/ACCEPT_ALL_VLAN/NORMAL */
 static inline void __storm_memset_mac_filters(struct bnx2x *bp,
 			struct tstorm_eth_mac_filter_config *mac_filters,
@@ -2353,14 +2600,40 @@ struct bnx2x_mcast_mac_elem {
 	u8 pad[2]; /* For a natural alignment of the following buffer */
 };
 
+struct bnx2x_mcast_bin_elem {
+	struct list_head link;
+	int bin;
+	int type; /* BNX2X_MCAST_CMD_SET_{ADD, DEL} */
+};
+
+union bnx2x_mcast_elem {
+	struct bnx2x_mcast_bin_elem bin_elem;
+	struct bnx2x_mcast_mac_elem mac_elem;
+};
+
+struct bnx2x_mcast_elem_group {
+	struct list_head mcast_group_link;
+	union bnx2x_mcast_elem mcast_elems[];
+};
+
+#define MCAST_MAC_ELEMS_PER_PG \
+	((PAGE_SIZE - sizeof(struct bnx2x_mcast_elem_group)) / \
+	sizeof(union bnx2x_mcast_elem))
+
 struct bnx2x_pending_mcast_cmd {
 	struct list_head link;
+	struct list_head group_head;
 	int type; /* BNX2X_MCAST_CMD_X */
 	union {
 		struct list_head macs_head;
 		u32 macs_num; /* Needed for DEL command */
 		int next_bin; /* Needed for RESTORE flow with aprox match */
 	} data;
+
+	bool set_convert; /* in case type == BNX2X_MCAST_CMD_SET, this is set
+			   * when macs_head had been converted to a list of
+			   * bnx2x_mcast_bin_elem.
+			   */
 
 	bool done; /* set to true, when the command has been handled,
 		    * practically used in 57712 handling only, where one pending
@@ -2380,53 +2653,93 @@ static int bnx2x_mcast_wait(struct bnx2x *bp,
 	return 0;
 }
 
+static void bnx2x_free_groups(struct list_head *mcast_group_list)
+{
+	struct bnx2x_mcast_elem_group *current_mcast_group;
+
+	while (!list_empty(mcast_group_list)) {
+		current_mcast_group = list_first_entry(mcast_group_list,
+				      struct bnx2x_mcast_elem_group,
+				      mcast_group_link);
+		list_del(&current_mcast_group->mcast_group_link);
+		free_page((unsigned long)current_mcast_group);
+	}
+}
+
 static int bnx2x_mcast_enqueue_cmd(struct bnx2x *bp,
 				   struct bnx2x_mcast_obj *o,
 				   struct bnx2x_mcast_ramrod_params *p,
 				   enum bnx2x_mcast_cmd cmd)
 {
-	int total_sz;
 	struct bnx2x_pending_mcast_cmd *new_cmd;
-	struct bnx2x_mcast_mac_elem *cur_mac = NULL;
 	struct bnx2x_mcast_list_elem *pos;
-	int macs_list_len = ((cmd == BNX2X_MCAST_CMD_ADD) ?
-			     p->mcast_list_len : 0);
+	struct bnx2x_mcast_elem_group *elem_group;
+	struct bnx2x_mcast_mac_elem *mac_elem;
+	int total_elems = 0, macs_list_len = 0, offset = 0;
+
+	/* When adding MACs we'll need to store their values */
+	if (cmd == BNX2X_MCAST_CMD_ADD || cmd == BNX2X_MCAST_CMD_SET)
+		macs_list_len = p->mcast_list_len;
 
 	/* If the command is empty ("handle pending commands only"), break */
 	if (!p->mcast_list_len)
 		return 0;
 
-	total_sz = sizeof(*new_cmd) +
-		macs_list_len * sizeof(struct bnx2x_mcast_mac_elem);
-
 	/* Add mcast is called under spin_lock, thus calling with GFP_ATOMIC */
-	new_cmd = kzalloc(total_sz, GFP_ATOMIC);
-
+	new_cmd = kzalloc(sizeof(*new_cmd), GFP_ATOMIC);
 	if (!new_cmd)
 		return -ENOMEM;
+
+	INIT_LIST_HEAD(&new_cmd->data.macs_head);
+	INIT_LIST_HEAD(&new_cmd->group_head);
+	new_cmd->type = cmd;
+	new_cmd->done = false;
 
 	DP(BNX2X_MSG_SP, "About to enqueue a new %d command. macs_list_len=%d\n",
 	   cmd, macs_list_len);
 
-	INIT_LIST_HEAD(&new_cmd->data.macs_head);
-
-	new_cmd->type = cmd;
-	new_cmd->done = false;
-
 	switch (cmd) {
 	case BNX2X_MCAST_CMD_ADD:
-		cur_mac = (struct bnx2x_mcast_mac_elem *)
-			  ((u8 *)new_cmd + sizeof(*new_cmd));
-
-		/* Push the MACs of the current command into the pending command
-		 * MACs list: FIFO
+	case BNX2X_MCAST_CMD_SET:
+		/* For a set command, we need to allocate sufficient memory for
+		 * all the bins, since we can't analyze at this point how much
+		 * memory would be required.
 		 */
-		list_for_each_entry(pos, &p->mcast_list, link) {
-			memcpy(cur_mac->mac, pos->mac, ETH_ALEN);
-			list_add_tail(&cur_mac->link, &new_cmd->data.macs_head);
-			cur_mac++;
+		total_elems = macs_list_len;
+		if (cmd == BNX2X_MCAST_CMD_SET) {
+			if (total_elems < BNX2X_MCAST_BINS_NUM)
+				total_elems = BNX2X_MCAST_BINS_NUM;
 		}
-
+		while (total_elems > 0) {
+			elem_group = (struct bnx2x_mcast_elem_group *)
+				     __get_free_page(GFP_ATOMIC | __GFP_ZERO);
+			if (!elem_group) {
+				bnx2x_free_groups(&new_cmd->group_head);
+				kfree(new_cmd);
+				return -ENOMEM;
+			}
+			total_elems -= MCAST_MAC_ELEMS_PER_PG;
+			list_add_tail(&elem_group->mcast_group_link,
+				      &new_cmd->group_head);
+		}
+		elem_group = list_first_entry(&new_cmd->group_head,
+					      struct bnx2x_mcast_elem_group,
+					      mcast_group_link);
+		list_for_each_entry(pos, &p->mcast_list, link) {
+			mac_elem = &elem_group->mcast_elems[offset].mac_elem;
+			memcpy(mac_elem->mac, pos->mac, ETH_ALEN);
+			/* Push the MACs of the current command into the pending
+			 * command MACs list: FIFO
+			 */
+			list_add_tail(&mac_elem->link,
+				      &new_cmd->data.macs_head);
+			offset++;
+			if (offset == MCAST_MAC_ELEMS_PER_PG) {
+				offset = 0;
+				elem_group = list_next_entry(elem_group,
+							     mcast_group_link);
+			}
+		}
 		break;
 
 	case BNX2X_MCAST_CMD_DEL:
@@ -2524,7 +2837,8 @@ static void bnx2x_mcast_set_one_rule_e2(struct bnx2x *bp,
 	u8 rx_tx_add_flag = bnx2x_mcast_get_rx_tx_flag(o);
 	int bin;
 
-	if ((cmd == BNX2X_MCAST_CMD_ADD) || (cmd == BNX2X_MCAST_CMD_RESTORE))
+	if ((cmd == BNX2X_MCAST_CMD_ADD) || (cmd == BNX2X_MCAST_CMD_RESTORE) ||
+	    (cmd == BNX2X_MCAST_CMD_SET_ADD))
 		rx_tx_add_flag |= ETH_MULTICAST_RULES_CMD_IS_ADD;
 
 	data->rules[idx].cmd_general_data |= rx_tx_add_flag;
@@ -2548,6 +2862,16 @@ static void bnx2x_mcast_set_one_rule_e2(struct bnx2x *bp,
 
 	case BNX2X_MCAST_CMD_RESTORE:
 		bin = cfg_data->bin;
+		break;
+
+	case BNX2X_MCAST_CMD_SET_ADD:
+		bin = cfg_data->bin;
+		BIT_VEC64_SET_BIT(o->registry.aprox_match.vec, bin);
+		break;
+
+	case BNX2X_MCAST_CMD_SET_DEL:
+		bin = cfg_data->bin;
+		BIT_VEC64_CLEAR_BIT(o->registry.aprox_match.vec, bin);
 		break;
 
 	default:
@@ -2685,6 +3009,110 @@ static inline void bnx2x_mcast_hdl_pending_restore_e2(struct bnx2x *bp,
 		cmd_pos->data.next_bin++;
 }
 
+static void
+bnx2x_mcast_hdl_pending_set_e2_convert(struct bnx2x *bp,
+				       struct bnx2x_mcast_obj *o,
+				       struct bnx2x_pending_mcast_cmd *cmd_pos)
+{
+	u64 cur[BNX2X_MCAST_VEC_SZ], req[BNX2X_MCAST_VEC_SZ];
+	struct bnx2x_mcast_mac_elem *pmac_pos, *pmac_pos_n;
+	struct bnx2x_mcast_bin_elem *p_item;
+	struct bnx2x_mcast_elem_group *elem_group;
+	int cnt = 0, mac_cnt = 0, offset = 0, i;
+
+	memset(req, 0, sizeof(u64) * BNX2X_MCAST_VEC_SZ);
+	memcpy(cur, o->registry.aprox_match.vec,
+	       sizeof(u64) * BNX2X_MCAST_VEC_SZ);
+
+	/* Fill `current' with the required set of bins to configure */
+	list_for_each_entry_safe(pmac_pos, pmac_pos_n, &cmd_pos->data.macs_head,
+				 link) {
+		int bin = bnx2x_mcast_bin_from_mac(pmac_pos->mac);
+
+		DP(BNX2X_MSG_SP, "Set contains %pM mcast MAC\n",
+		   pmac_pos->mac);
+
+		BIT_VEC64_SET_BIT(req, bin);
+		list_del(&pmac_pos->link);
+		mac_cnt++;
+	}
+
+	/* We no longer have use for the MACs; Need to re-use memory for
+	 * a list that will be used to configure bins.
+	 */
+	cmd_pos->set_convert = true;
+	INIT_LIST_HEAD(&cmd_pos->data.macs_head);
+	elem_group = list_first_entry(&cmd_pos->group_head,
+				      struct bnx2x_mcast_elem_group,
+				      mcast_group_link);
+	for (i = 0; i < BNX2X_MCAST_BINS_NUM; i++) {
+		bool b_current = !!BIT_VEC64_TEST_BIT(cur, i);
+		bool b_required = !!BIT_VEC64_TEST_BIT(req, i);
+
+		if (b_current == b_required)
+			continue;
+
+		p_item = &elem_group->mcast_elems[offset].bin_elem;
+		p_item->bin = i;
+		p_item->type = b_required ? BNX2X_MCAST_CMD_SET_ADD
+					  : BNX2X_MCAST_CMD_SET_DEL;
+		list_add_tail(&p_item->link , &cmd_pos->data.macs_head);
+		cnt++;
+		offset++;
+		if (offset == MCAST_MAC_ELEMS_PER_PG) {
+			offset = 0;
+			elem_group = list_next_entry(elem_group,
+						     mcast_group_link);
+		}
+	}
+
+	/* We now definitely know how many commands are hiding here.
+	 * Also need to correct the disruption we've added to guarantee this
+	 * would be enqueued.
+	 */
+	o->total_pending_num -= (o->max_cmd_len + mac_cnt);
+	o->total_pending_num += cnt;
+
+	DP(BNX2X_MSG_SP, "o->total_pending_num=%d\n", o->total_pending_num);
+}
+
+static void
+bnx2x_mcast_hdl_pending_set_e2(struct bnx2x *bp,
+			       struct bnx2x_mcast_obj *o,
+			       struct bnx2x_pending_mcast_cmd *cmd_pos,
+			       int *cnt)
+{
+	union bnx2x_mcast_config_data cfg_data = {NULL};
+	struct bnx2x_mcast_bin_elem *p_item, *p_item_n;
+
+	/* This is actually a 2-part scheme - it starts by converting the MACs
+	 * into a list of bins to be added/removed, and correcting the numbers
+	 * on the object. this is now allowed, as we're now sure that all
+	 * previous configured requests have already applied.
+	 * The second part is actually adding rules for the newly introduced
+	 * entries [like all the rest of the hdl_pending functions].
+	 */
+	if (!cmd_pos->set_convert)
+		bnx2x_mcast_hdl_pending_set_e2_convert(bp, o, cmd_pos);
+
+	list_for_each_entry_safe(p_item, p_item_n, &cmd_pos->data.macs_head,
+				 link) {
+		cfg_data.bin = (u8)p_item->bin;
+		o->set_one_rule(bp, o, *cnt, &cfg_data, p_item->type);
+		(*cnt)++;
+
+		list_del(&p_item->link);
+
+		/* Break if we reached the maximum number of rules. */
+		if (*cnt >= o->max_cmd_len)
+			break;
+	}
+
+	/* if no more MACs to configure - we are done */
+	if (list_empty(&cmd_pos->data.macs_head))
+		cmd_pos->done = true;
+}
+
 static inline int bnx2x_mcast_handle_pending_cmds_e2(struct bnx2x *bp,
 				struct bnx2x_mcast_ramrod_params *p)
 {
@@ -2708,6 +3136,10 @@ static inline int bnx2x_mcast_handle_pending_cmds_e2(struct bnx2x *bp,
 							   &cnt);
 			break;
 
+		case BNX2X_MCAST_CMD_SET:
+			bnx2x_mcast_hdl_pending_set_e2(bp, o, cmd_pos, &cnt);
+			break;
+
 		default:
 			BNX2X_ERR("Unknown command: %d\n", cmd_pos->type);
 			return -EINVAL;
@@ -2718,6 +3150,7 @@ static inline int bnx2x_mcast_handle_pending_cmds_e2(struct bnx2x *bp,
 		 */
 		if (cmd_pos->done) {
 			list_del(&cmd_pos->link);
+			bnx2x_free_groups(&cmd_pos->group_head);
 			kfree(cmd_pos);
 		}
 
@@ -2848,6 +3281,19 @@ static int bnx2x_mcast_validate_e2(struct bnx2x *bp,
 		o->set_registry_size(o, reg_sz + p->mcast_list_len);
 		break;
 
+	case BNX2X_MCAST_CMD_SET:
+		/* We can only learn how many commands would actually be used
+		 * when this is being configured. So for now, simply guarantee
+		 * the command will be enqueued [to refrain from adding logic
+		 * that handles this and THEN learns it needs several ramrods].
+		 * Just like for ADD/Cont, the mcast_list_len might be an over
+		 * estimation; or even more so, since we don't take into
+		 * account the possibility of removal of existing bins.
+		 */
+		o->set_registry_size(o, reg_sz + p->mcast_list_len);
+		o->total_pending_num += o->max_cmd_len;
+		break;
+
 	default:
 		BNX2X_ERR("Unknown command: %d\n", cmd);
 		return -EINVAL;
@@ -2861,12 +3307,16 @@ static int bnx2x_mcast_validate_e2(struct bnx2x *bp,
 
 static void bnx2x_mcast_revert_e2(struct bnx2x *bp,
 				      struct bnx2x_mcast_ramrod_params *p,
-				      int old_num_bins)
+				  int old_num_bins,
+				  enum bnx2x_mcast_cmd cmd)
 {
 	struct bnx2x_mcast_obj *o = p->mcast_obj;
 
 	o->set_registry_size(o, old_num_bins);
 	o->total_pending_num -= p->mcast_list_len;
+
+	if (cmd == BNX2X_MCAST_CMD_SET)
+		o->total_pending_num -= o->max_cmd_len;
 }
 
 /**
@@ -2976,9 +3426,11 @@ static int bnx2x_mcast_setup_e2(struct bnx2x *bp,
 		bnx2x_mcast_refresh_registry_e2(bp, o);
 
 	/* If CLEAR_ONLY was requested - don't send a ramrod and clear
-	 * RAMROD_PENDING status immediately.
+	 * RAMROD_PENDING status immediately. due to the SET option, it's also
+	 * possible that after evaluating the differences there's no need for
+	 * a ramrod. In that case, we can skip it as well.
 	 */
-	if (test_bit(RAMROD_DRV_CLR_ONLY, &p->ramrod_flags)) {
+	if (test_bit(RAMROD_DRV_CLR_ONLY, &p->ramrod_flags) || !cnt) {
 		raw->clear_pending(raw);
 		return 0;
 	} else {
@@ -3006,6 +3458,11 @@ static int bnx2x_mcast_validate_e1h(struct bnx2x *bp,
 				    struct bnx2x_mcast_ramrod_params *p,
 				    enum bnx2x_mcast_cmd cmd)
 {
+	if (cmd == BNX2X_MCAST_CMD_SET) {
+		BNX2X_ERR("Can't use `set' command on e1h!\n");
+		return -EINVAL;
+	}
+
 	/* Mark, that there is a work to do */
 	if ((cmd == BNX2X_MCAST_CMD_DEL) || (cmd == BNX2X_MCAST_CMD_RESTORE))
 		p->mcast_list_len = 1;
@@ -3015,7 +3472,8 @@ static int bnx2x_mcast_validate_e1h(struct bnx2x *bp,
 
 static void bnx2x_mcast_revert_e1h(struct bnx2x *bp,
 				       struct bnx2x_mcast_ramrod_params *p,
-				       int old_num_bins)
+				       int old_num_bins,
+				       enum bnx2x_mcast_cmd cmd)
 {
 	/* Do nothing */
 }
@@ -3125,6 +3583,11 @@ static int bnx2x_mcast_validate_e1(struct bnx2x *bp,
 	struct bnx2x_mcast_obj *o = p->mcast_obj;
 	int reg_sz = o->get_registry_size(o);
 
+	if (cmd == BNX2X_MCAST_CMD_SET) {
+		BNX2X_ERR("Can't use `set' command on e1!\n");
+		return -EINVAL;
+	}
+
 	switch (cmd) {
 	/* DEL command deletes all currently configured MACs */
 	case BNX2X_MCAST_CMD_DEL:
@@ -3175,7 +3638,8 @@ static int bnx2x_mcast_validate_e1(struct bnx2x *bp,
 
 static void bnx2x_mcast_revert_e1(struct bnx2x *bp,
 				      struct bnx2x_mcast_ramrod_params *p,
-				      int old_num_macs)
+				   int old_num_macs,
+				   enum bnx2x_mcast_cmd cmd)
 {
 	struct bnx2x_mcast_obj *o = p->mcast_obj;
 
@@ -3325,6 +3789,7 @@ static inline int bnx2x_mcast_handle_pending_cmds_e1(
 	}
 
 	list_del(&cmd_pos->link);
+	bnx2x_free_groups(&cmd_pos->group_head);
 	kfree(cmd_pos);
 
 	return cnt;
@@ -3569,7 +4034,7 @@ error_exit2:
 	r->clear_pending(r);
 
 error_exit1:
-	o->revert(bp, p, old_reg_size);
+	o->revert(bp, p, old_reg_size, cmd);
 
 	return rc;
 }
@@ -3854,8 +4319,8 @@ static bool bnx2x_credit_pool_get_entry_always_true(
  * If credit is negative pool operations will always succeed (unlimited pool).
  *
  */
-static inline void bnx2x_init_credit_pool(struct bnx2x_credit_pool_obj *p,
-					  int base, int credit)
+void bnx2x_init_credit_pool(struct bnx2x_credit_pool_obj *p,
+			    int base, int credit)
 {
 	/* Zero the object first */
 	memset(p, 0, sizeof(*p));
@@ -3934,9 +4399,9 @@ void bnx2x_init_mac_credit_pool(struct bnx2x *bp,
 		/* CAM credit is equaly divided between all active functions
 		 * on the PATH.
 		 */
-		if ((func_num > 0)) {
+		if (func_num > 0) {
 			if (!CHIP_REV_IS_SLOW(bp))
-				cam_sz = (MAX_MAC_CREDIT_E2 / func_num);
+				cam_sz = PF_MAC_CREDIT_E2(bp, func_num);
 			else
 				cam_sz = BNX2X_CAM_SIZE_EMUL;
 
@@ -3966,8 +4431,9 @@ void bnx2x_init_vlan_credit_pool(struct bnx2x *bp,
 		 * on the PATH.
 		 */
 		if (func_num > 0) {
-			int credit = MAX_VLAN_CREDIT_E2 / func_num;
-			bnx2x_init_credit_pool(p, func_id * credit, credit);
+			int credit = PF_VLAN_CREDIT_E2(bp, func_num);
+
+			bnx2x_init_credit_pool(p, -1/*unused for E2*/, credit);
 		} else
 			/* this should never happen! Block VLAN operations. */
 			bnx2x_init_credit_pool(p, 0, 0);
@@ -4060,13 +4526,27 @@ static int bnx2x_setup_rss(struct bnx2x *bp,
 	if (test_bit(BNX2X_RSS_IPV6_UDP, &p->rss_flags))
 		caps |= ETH_RSS_UPDATE_RAMROD_DATA_IPV6_UDP_CAPABILITY;
 
-	if (test_bit(BNX2X_RSS_GRE_INNER_HDRS, &p->rss_flags))
-		caps |= ETH_RSS_UPDATE_RAMROD_DATA_GRE_INNER_HDRS_CAPABILITY;
+	if (test_bit(BNX2X_RSS_IPV4_VXLAN, &p->rss_flags))
+		caps |= ETH_RSS_UPDATE_RAMROD_DATA_IPV4_VXLAN_CAPABILITY;
+
+	if (test_bit(BNX2X_RSS_IPV6_VXLAN, &p->rss_flags))
+		caps |= ETH_RSS_UPDATE_RAMROD_DATA_IPV6_VXLAN_CAPABILITY;
+
+	if (test_bit(BNX2X_RSS_TUNN_INNER_HDRS, &p->rss_flags))
+		caps |= ETH_RSS_UPDATE_RAMROD_DATA_TUNN_INNER_HDRS_CAPABILITY;
 
 	/* RSS keys */
 	if (test_bit(BNX2X_RSS_SET_SRCH, &p->rss_flags)) {
-		memcpy(&data->rss_key[0], &p->rss_key[0],
-		       sizeof(data->rss_key));
+		u8 *dst = (u8 *)(data->rss_key) + sizeof(data->rss_key);
+		const u8 *src = (const u8 *)p->rss_key;
+		int i;
+
+		/* Apparently, bnx2x reads this array in reverse order
+		 * We need to byte swap rss_key to comply with Toeplitz specs.
+		 */
+		for (i = 0; i < sizeof(data->rss_key); i++)
+			*--dst = *src++;
+
 		caps |= ETH_RSS_UPDATE_RAMROD_DATA_UPDATE_RSS_KEY;
 	}
 
@@ -5669,10 +6149,14 @@ static inline int bnx2x_func_send_start(struct bnx2x *bp,
 	rdata->sd_vlan_tag	= cpu_to_le16(start_params->sd_vlan_tag);
 	rdata->path_id		= BP_PATH(bp);
 	rdata->network_cos_mode	= start_params->network_cos_mode;
-	rdata->tunnel_mode	= start_params->tunnel_mode;
-	rdata->gre_tunnel_type	= start_params->gre_tunnel_type;
-	rdata->inner_gre_rss_en = start_params->inner_gre_rss_en;
-	rdata->vxlan_dst_port	= cpu_to_le16(4789);
+
+	rdata->vxlan_dst_port	= cpu_to_le16(start_params->vxlan_dst_port);
+	rdata->geneve_dst_port	= cpu_to_le16(start_params->geneve_dst_port);
+	rdata->inner_clss_l2gre	= start_params->inner_clss_l2gre;
+	rdata->inner_clss_l2geneve = start_params->inner_clss_l2geneve;
+	rdata->inner_clss_vxlan	= start_params->inner_clss_vxlan;
+	rdata->inner_rss	= start_params->inner_rss;
+
 	rdata->sd_accept_mf_clss_fail = start_params->class_fail;
 	if (start_params->class_fail_ethtype) {
 		rdata->sd_accept_mf_clss_fail_match_ethtype = 1;
@@ -5690,6 +6174,14 @@ static inline int bnx2x_func_send_start(struct bnx2x *bp,
 			cpu_to_le16(0x8100);
 
 	rdata->no_added_tags = start_params->no_added_tags;
+
+	rdata->c2s_pri_tt_valid = start_params->c2s_pri_valid;
+	if (rdata->c2s_pri_tt_valid) {
+		memcpy(rdata->c2s_pri_trans_table.val,
+		       start_params->c2s_pri,
+		       MAX_VLAN_PRIORITIES);
+		rdata->c2s_pri_default = start_params->c2s_pri_default;
+	}
 	/* No need for an explicit memory barrier here as long we would
 	 * need to ensure the ordering of writing to the SPQ element
 	 * and updating of the SPQ producer which involves a memory
@@ -5750,15 +6242,22 @@ static inline int bnx2x_func_send_switch_update(struct bnx2x *bp,
 	if (test_bit(BNX2X_F_UPDATE_TUNNEL_CFG_CHNG,
 		     &switch_update_params->changes)) {
 		rdata->update_tunn_cfg_flg = 1;
-		if (test_bit(BNX2X_F_UPDATE_TUNNEL_CLSS_EN,
+		if (test_bit(BNX2X_F_UPDATE_TUNNEL_INNER_CLSS_L2GRE,
 			     &switch_update_params->changes))
-			rdata->tunn_clss_en = 1;
-		if (test_bit(BNX2X_F_UPDATE_TUNNEL_INNER_GRE_RSS_EN,
+			rdata->inner_clss_l2gre = 1;
+		if (test_bit(BNX2X_F_UPDATE_TUNNEL_INNER_CLSS_VXLAN,
 			     &switch_update_params->changes))
-			rdata->inner_gre_rss_en = 1;
-		rdata->tunnel_mode = switch_update_params->tunnel_mode;
-		rdata->gre_tunnel_type = switch_update_params->gre_tunnel_type;
-		rdata->vxlan_dst_port = cpu_to_le16(4789);
+			rdata->inner_clss_vxlan = 1;
+		if (test_bit(BNX2X_F_UPDATE_TUNNEL_INNER_CLSS_L2GENEVE,
+			     &switch_update_params->changes))
+			rdata->inner_clss_l2geneve = 1;
+		if (test_bit(BNX2X_F_UPDATE_TUNNEL_INNER_RSS,
+			     &switch_update_params->changes))
+			rdata->inner_rss = 1;
+		rdata->vxlan_dst_port =
+			cpu_to_le16(switch_update_params->vxlan_dst_port);
+		rdata->geneve_dst_port =
+			cpu_to_le16(switch_update_params->geneve_dst_port);
 	}
 
 	rdata->echo = SWITCH_UPDATE;
@@ -5885,6 +6384,8 @@ static inline int bnx2x_func_send_tx_start(struct bnx2x *bp,
 		rdata->traffic_type_to_priority_cos[i] =
 			tx_start_params->traffic_type_to_priority_cos[i];
 
+	for (i = 0; i < MAX_TRAFFIC_TYPES; i++)
+		rdata->dcb_outer_pri[i] = tx_start_params->dcb_outer_pri[i];
 	/* No need for an explicit memory barrier here as long as we
 	 * ensure the ordering of writing to the SPQ element
 	 * and updating of the SPQ producer which involves a memory

@@ -18,7 +18,7 @@ struct call_single_data {
 	struct llist_node llist;
 	smp_call_func_t func;
 	void *info;
-	u16 flags;
+	unsigned int flags;
 };
 
 /* total number of cpus in this system (may exceed NR_CPUS) */
@@ -195,5 +195,13 @@ extern void arch_enable_nonboot_cpus_begin(void);
 extern void arch_enable_nonboot_cpus_end(void);
 
 void smp_setup_processor_id(void);
+
+int smp_call_on_cpu(unsigned int cpu, int (*func)(void *), void *par,
+		    bool phys);
+
+/* SMP core functions */
+int smpcfd_prepare_cpu(unsigned int cpu);
+int smpcfd_dead_cpu(unsigned int cpu);
+int smpcfd_dying_cpu(unsigned int cpu);
 
 #endif /* __LINUX_SMP_H */

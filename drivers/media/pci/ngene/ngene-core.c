@@ -1513,7 +1513,7 @@ static int init_channel(struct ngene_channel *chan)
 		set_transfer(&chan->dev->channel[2], 1);
 		dvb_register_device(adapter, &chan->ci_dev,
 				    &ngene_dvbdev_ci, (void *) chan,
-				    DVB_DEVICE_SEC);
+				    DVB_DEVICE_SEC, 0);
 		if (!chan->ci_dev)
 			goto err;
 	}
@@ -1526,10 +1526,12 @@ static int init_channel(struct ngene_channel *chan)
 	if (chan->fe2) {
 		if (dvb_register_frontend(adapter, chan->fe2) < 0)
 			goto err;
-		chan->fe2->tuner_priv = chan->fe->tuner_priv;
-		memcpy(&chan->fe2->ops.tuner_ops,
-		       &chan->fe->ops.tuner_ops,
-		       sizeof(struct dvb_tuner_ops));
+		if (chan->fe) {
+			chan->fe2->tuner_priv = chan->fe->tuner_priv;
+			memcpy(&chan->fe2->ops.tuner_ops,
+			       &chan->fe->ops.tuner_ops,
+			       sizeof(struct dvb_tuner_ops));
+		}
 	}
 
 	if (chan->has_demux) {

@@ -5,7 +5,7 @@
  ******************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2016, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -53,7 +53,7 @@ ACPI_MODULE_NAME("rsxface")
 
 /* Local macros for 16,32-bit to 64-bit conversion */
 #define ACPI_COPY_FIELD(out, in, field)  ((out)->field = (in)->field)
-#define ACPI_COPY_ADDRESS(out, in)                      \
+#define ACPI_COPY_ADDRESS(out, in)                       \
 	ACPI_COPY_FIELD(out, in, resource_type);             \
 	ACPI_COPY_FIELD(out, in, producer_consumer);         \
 	ACPI_COPY_FIELD(out, in, decode);                    \
@@ -220,7 +220,7 @@ acpi_get_current_resources(acpi_handle device_handle,
 }
 
 ACPI_EXPORT_SYMBOL(acpi_get_current_resources)
-#ifdef ACPI_FUTURE_USAGE
+
 /*******************************************************************************
  *
  * FUNCTION:    acpi_get_possible_resources
@@ -262,7 +262,7 @@ acpi_get_possible_resources(acpi_handle device_handle,
 }
 
 ACPI_EXPORT_SYMBOL(acpi_get_possible_resources)
-#endif				/*  ACPI_FUTURE_USAGE  */
+
 /*******************************************************************************
  *
  * FUNCTION:    acpi_set_current_resources
@@ -398,8 +398,8 @@ acpi_resource_to_address64(struct acpi_resource *resource,
 
 		/* Simple copy for 64 bit source */
 
-		ACPI_MEMCPY(out, &resource->data,
-			    sizeof(struct acpi_resource_address64));
+		memcpy(out, &resource->data,
+		       sizeof(struct acpi_resource_address64));
 		break;
 
 	default:
@@ -433,8 +433,8 @@ ACPI_EXPORT_SYMBOL(acpi_resource_to_address64)
 acpi_status
 acpi_get_vendor_resource(acpi_handle device_handle,
 			 char *name,
-			 struct acpi_vendor_uuid * uuid,
-			 struct acpi_buffer * ret_buffer)
+			 struct acpi_vendor_uuid *uuid,
+			 struct acpi_buffer *ret_buffer)
 {
 	struct acpi_vendor_walk_info info;
 	acpi_status status;
@@ -499,7 +499,7 @@ acpi_rs_match_vendor_resource(struct acpi_resource *resource, void *context)
 	 */
 	if ((vendor->byte_length < (ACPI_UUID_LENGTH + 1)) ||
 	    (vendor->uuid_subtype != info->uuid->subtype) ||
-	    (ACPI_MEMCMP(vendor->uuid, info->uuid->data, ACPI_UUID_LENGTH))) {
+	    (memcmp(vendor->uuid, info->uuid->data, ACPI_UUID_LENGTH))) {
 		return (AE_OK);
 	}
 
@@ -513,7 +513,7 @@ acpi_rs_match_vendor_resource(struct acpi_resource *resource, void *context)
 
 	/* Found the correct resource, copy and return it */
 
-	ACPI_MEMCPY(buffer->pointer, resource, resource->length);
+	memcpy(buffer->pointer, resource, resource->length);
 	buffer->length = resource->length;
 
 	/* Found the desired descriptor, terminate resource walk */
@@ -539,7 +539,7 @@ acpi_rs_match_vendor_resource(struct acpi_resource *resource, void *context)
  ******************************************************************************/
 
 acpi_status
-acpi_walk_resource_buffer(struct acpi_buffer * buffer,
+acpi_walk_resource_buffer(struct acpi_buffer *buffer,
 			  acpi_walk_resource_callback user_function,
 			  void *context)
 {

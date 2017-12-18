@@ -36,7 +36,7 @@
 #include <media/v4l2-common.h>
 #include <media/v4l2-ioctl.h>
 #include <media/v4l2-event.h>
-#include <media/cx2341x.h>
+#include <media/drv-intf/cx2341x.h>
 
 #include "cx88.h"
 
@@ -637,9 +637,9 @@ static int blackbird_stop_codec(struct cx8802_dev *dev)
 
 /* ------------------------------------------------------------------ */
 
-static int queue_setup(struct vb2_queue *q, const struct v4l2_format *fmt,
+static int queue_setup(struct vb2_queue *q,
 			   unsigned int *num_buffers, unsigned int *num_planes,
-			   unsigned int sizes[], void *alloc_ctxs[])
+			   unsigned int sizes[], struct device *alloc_devs[])
 {
 	struct cx8802_dev *dev = q->drv_priv;
 
@@ -647,22 +647,23 @@ static int queue_setup(struct vb2_queue *q, const struct v4l2_format *fmt,
 	dev->ts_packet_size  = 188 * 4;
 	dev->ts_packet_count  = 32;
 	sizes[0] = dev->ts_packet_size * dev->ts_packet_count;
-	alloc_ctxs[0] = dev->alloc_ctx;
 	return 0;
 }
 
 static int buffer_prepare(struct vb2_buffer *vb)
 {
+	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(vb);
 	struct cx8802_dev *dev = vb->vb2_queue->drv_priv;
-	struct cx88_buffer *buf = container_of(vb, struct cx88_buffer, vb);
+	struct cx88_buffer *buf = container_of(vbuf, struct cx88_buffer, vb);
 
 	return cx8802_buf_prepare(vb->vb2_queue, dev, buf);
 }
 
 static void buffer_finish(struct vb2_buffer *vb)
 {
+	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(vb);
 	struct cx8802_dev *dev = vb->vb2_queue->drv_priv;
-	struct cx88_buffer *buf = container_of(vb, struct cx88_buffer, vb);
+	struct cx88_buffer *buf = container_of(vbuf, struct cx88_buffer, vb);
 	struct cx88_riscmem *risc = &buf->risc;
 
 	if (risc->cpu)
@@ -672,8 +673,9 @@ static void buffer_finish(struct vb2_buffer *vb)
 
 static void buffer_queue(struct vb2_buffer *vb)
 {
+	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(vb);
 	struct cx8802_dev *dev = vb->vb2_queue->drv_priv;
-	struct cx88_buffer    *buf = container_of(vb, struct cx88_buffer, vb);
+	struct cx88_buffer    *buf = container_of(vbuf, struct cx88_buffer, vb);
 
 	cx8802_buf_queue(dev, buf);
 }
@@ -721,7 +723,7 @@ fail:
 			struct cx88_buffer, list);
 
 		list_del(&buf->list);
-		vb2_buffer_done(&buf->vb, VB2_BUF_STATE_QUEUED);
+		vb2_buffer_done(&buf->vb.vb2_buf, VB2_BUF_STATE_QUEUED);
 	}
 	spin_unlock_irqrestore(&dev->slock, flags);
 	return err;
@@ -749,12 +751,12 @@ static void stop_streaming(struct vb2_queue *q)
 			struct cx88_buffer, list);
 
 		list_del(&buf->list);
-		vb2_buffer_done(&buf->vb, VB2_BUF_STATE_ERROR);
+		vb2_buffer_done(&buf->vb.vb2_buf, VB2_BUF_STATE_ERROR);
 	}
 	spin_unlock_irqrestore(&dev->slock, flags);
 }
 
-static struct vb2_ops blackbird_qops = {
+static const struct vb2_ops blackbird_qops = {
 	.queue_setup    = queue_setup,
 	.buf_prepare  = buffer_prepare,
 	.buf_finish = buffer_finish,
@@ -1102,32 +1104,26 @@ static int cx8802_blackbird_advise_release(struct cx8802_driver *drv)
 
 static void blackbird_unregister_video(struct cx8802_dev *dev)
 {
-	if (dev->mpeg_dev) {
-		if (video_is_registered(dev->mpeg_dev))
-			video_unregister_device(dev->mpeg_dev);
-		else
-			video_device_release(dev->mpeg_dev);
-		dev->mpeg_dev = NULL;
-	}
+	video_unregister_device(&dev->mpeg_dev);
 }
 
 static int blackbird_register_video(struct cx8802_dev *dev)
 {
 	int err;
 
-	dev->mpeg_dev = cx88_vdev_init(dev->core, dev->pci,
-				       &cx8802_mpeg_template, "mpeg");
-	dev->mpeg_dev->ctrl_handler = &dev->cxhdl.hdl;
-	video_set_drvdata(dev->mpeg_dev, dev);
-	dev->mpeg_dev->queue = &dev->vb2_mpegq;
-	err = video_register_device(dev->mpeg_dev, VFL_TYPE_GRABBER, -1);
+	cx88_vdev_init(dev->core, dev->pci, &dev->mpeg_dev,
+		       &cx8802_mpeg_template, "mpeg");
+	dev->mpeg_dev.ctrl_handler = &dev->cxhdl.hdl;
+	video_set_drvdata(&dev->mpeg_dev, dev);
+	dev->mpeg_dev.queue = &dev->vb2_mpegq;
+	err = video_register_device(&dev->mpeg_dev, VFL_TYPE_GRABBER, -1);
 	if (err < 0) {
 		printk(KERN_INFO "%s/2: can't register mpeg device\n",
 		       dev->core->name);
 		return err;
 	}
 	printk(KERN_INFO "%s/2: registered device %s [mpeg]\n",
-	       dev->core->name, video_device_node_name(dev->mpeg_dev));
+	       dev->core->name, video_device_node_name(&dev->mpeg_dev));
 	return 0;
 }
 
@@ -1186,6 +1182,7 @@ static int cx8802_blackbird_probe(struct cx8802_driver *drv)
 	q->mem_ops = &vb2_dma_sg_memops;
 	q->timestamp_flags = V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC;
 	q->lock = &core->lock;
+	q->dev = &dev->pci->dev;
 
 	err = vb2_queue_init(q);
 	if (err < 0)

@@ -4,6 +4,7 @@
 #include <linux/pci.h>
 #include <linux/mod_devicetable.h>
 
+#include <linux/bcma/bcma_driver_arm_c9.h>
 #include <linux/bcma/bcma_driver_chipcommon.h>
 #include <linux/bcma/bcma_driver_pci.h>
 #include <linux/bcma/bcma_driver_pcie2.h>
@@ -151,9 +152,14 @@ struct bcma_host_ops {
 #define BCMA_CORE_PCIE2			0x83C	/* PCI Express Gen2 */
 #define BCMA_CORE_USB30_DEV		0x83D
 #define BCMA_CORE_ARM_CR4		0x83E
+#define BCMA_CORE_GCI			0x840
+#define BCMA_CORE_CMEM			0x846	/* CNDS DDR2/3 memory controller */
+#define BCMA_CORE_ARM_CA7		0x847
+#define BCMA_CORE_SYS_MEM		0x849
 #define BCMA_CORE_DEFAULT		0xFFF
 
 #define BCMA_MAX_NR_CORES		16
+#define BCMA_CORE_SIZE			0x1000
 
 /* Chip IDs of PCIe devices */
 #define BCMA_CHIP_ID_BCM4313	0x4313
@@ -197,7 +203,11 @@ struct bcma_host_ops {
 #define  BCMA_PKG_ID_BCM4707	1
 #define  BCMA_PKG_ID_BCM4708	2
 #define  BCMA_PKG_ID_BCM4709	0
+#define BCMA_CHIP_ID_BCM47094	53030
 #define BCMA_CHIP_ID_BCM53018	53018
+#define BCMA_CHIP_ID_BCM53573	53573
+#define  BCMA_PKG_ID_BCM53573	0
+#define  BCMA_PKG_ID_BCM47189	1
 
 /* Board types (on PCI usually equals to the subsystem dev id) */
 /* BCM4313 */
@@ -304,6 +314,15 @@ int __bcma_driver_register(struct bcma_driver *drv, struct module *owner);
 	__bcma_driver_register(drv, THIS_MODULE)
 
 extern void bcma_driver_unregister(struct bcma_driver *drv);
+
+/* module_bcma_driver() - Helper macro for drivers that don't do
+ * anything special in module init/exit.  This eliminates a lot of
+ * boilerplate.  Each module may only use this macro once, and
+ * calling it replaces module_init() and module_exit()
+ */
+#define module_bcma_driver(__bcma_driver) \
+	module_driver(__bcma_driver, bcma_driver_register, \
+			bcma_driver_unregister)
 
 /* Set a fallback SPROM.
  * See kdoc at the function definition for complete documentation. */
@@ -433,6 +452,27 @@ static inline struct bcma_device *bcma_find_core(struct bcma_bus *bus,
 {
 	return bcma_find_core_unit(bus, coreid, 0);
 }
+
+#ifdef CONFIG_BCMA_HOST_PCI
+extern void bcma_host_pci_up(struct bcma_bus *bus);
+extern void bcma_host_pci_down(struct bcma_bus *bus);
+extern int bcma_host_pci_irq_ctl(struct bcma_bus *bus,
+				 struct bcma_device *core, bool enable);
+#else
+static inline void bcma_host_pci_up(struct bcma_bus *bus)
+{
+}
+static inline void bcma_host_pci_down(struct bcma_bus *bus)
+{
+}
+static inline int bcma_host_pci_irq_ctl(struct bcma_bus *bus,
+					struct bcma_device *core, bool enable)
+{
+	if (bus->hosttype == BCMA_HOSTTYPE_PCI)
+		return -ENOTSUPP;
+	return 0;
+}
+#endif
 
 extern bool bcma_core_is_enabled(struct bcma_device *core);
 extern void bcma_core_disable(struct bcma_device *core, u32 flags);

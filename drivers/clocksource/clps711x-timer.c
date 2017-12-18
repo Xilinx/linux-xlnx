@@ -61,11 +61,6 @@ static irqreturn_t clps711x_timer_interrupt(int irq, void *dev_id)
 	return IRQ_HANDLED;
 }
 
-static void clps711x_clockevent_set_mode(enum clock_event_mode mode,
-					 struct clock_event_device *evt)
-{
-}
-
 static int __init _clps711x_clkevt_init(struct clk *clock, void __iomem *base,
 					unsigned int irq)
 {
@@ -91,7 +86,6 @@ static int __init _clps711x_clkevt_init(struct clk *clock, void __iomem *base,
 	clkevt->name = "clps711x-clockevent";
 	clkevt->rating = 300;
 	clkevt->features = CLOCK_EVT_FEAT_PERIODIC | CLOCK_EVT_FEAT_C3STOP;
-	clkevt->set_mode = clps711x_clockevent_set_mode;
 	clkevt->cpumask = cpumask_of(0);
 	clockevents_config_and_register(clkevt, HZ, 0, 0);
 
@@ -110,7 +104,7 @@ void __init clps711x_clksrc_init(void __iomem *tc1_base, void __iomem *tc2_base,
 }
 
 #ifdef CONFIG_CLKSRC_OF
-static void __init clps711x_timer_init(struct device_node *np)
+static int __init clps711x_timer_init(struct device_node *np)
 {
 	unsigned int irq = irq_of_parse_and_map(np, 0);
 	struct clk *clock = of_clk_get(np, 0);
@@ -118,14 +112,12 @@ static void __init clps711x_timer_init(struct device_node *np)
 
 	switch (of_alias_get_id(np, "timer")) {
 	case CLPS711X_CLKSRC_CLOCKSOURCE:
-		BUG_ON(_clps711x_clksrc_init(clock, base));
-		break;
+		return _clps711x_clksrc_init(clock, base);
 	case CLPS711X_CLKSRC_CLOCKEVENT:
-		BUG_ON(_clps711x_clkevt_init(clock, base, irq));
-		break;
+		return _clps711x_clkevt_init(clock, base, irq);
 	default:
-		break;
+		return -EINVAL;
 	}
 }
-CLOCKSOURCE_OF_DECLARE(clps711x, "cirrus,clps711x-timer", clps711x_timer_init);
+CLOCKSOURCE_OF_DECLARE(clps711x, "cirrus,ep7209-timer", clps711x_timer_init);
 #endif

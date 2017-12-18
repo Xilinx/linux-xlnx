@@ -1,7 +1,7 @@
 /*******************************************************************
  * This file is part of the Emulex Linux Device Driver for         *
  * Fibre Channel Host Bus Adapters.                                *
- * Copyright (C) 2004-2014 Emulex.  All rights reserved.           *
+ * Copyright (C) 2004-2016 Emulex.  All rights reserved.           *
  * EMULEX and SLI are trademarks of Emulex.                        *
  * www.emulex.com                                                  *
  *                                                                 *
@@ -51,6 +51,7 @@ struct lpfc_device_data {
 	struct list_head listentry;
 	struct lpfc_rport_data *rport_data;
 	struct lpfc_device_id device_id;
+	uint8_t priority;
 	bool oas_enabled;
 	bool available;
 };
@@ -184,3 +185,6 @@ struct lpfc_scsi_buf {
 #define FIND_FIRST_OAS_LUN		 0
 #define NO_MORE_OAS_LUN			-1
 #define NOT_OAS_ENABLED_LUN		NO_MORE_OAS_LUN
+
+int lpfc_sli4_scmd_to_wqidx_distr(struct lpfc_hba *phba,
+				  struct lpfc_scsi_buf *lpfc_cmd);

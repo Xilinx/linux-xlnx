@@ -12,6 +12,8 @@ Required properties:
 - compatible:
 	- "ti,dm6441-spi" for SPI used similar to that on DM644x SoC family
 	- "ti,da830-spi" for SPI used similar to that on DA8xx SoC family
+	- "ti,keystone-spi" for SPI used similar to that on Keystone2 SoC
+		family
 - reg: Offset and length of SPI controller register space
 - num-cs: Number of chip selects. This includes internal as well as
 	GPIO chip selects.
@@ -19,7 +21,7 @@ Required properties:
 	IP to the interrupt controller within the SoC. Possible values
 	are 0 and 1. Manual says one of the two possible interrupt
 	lines can be tied to the interrupt controller. Set this
-	based on a specifc SoC configuration.
+	based on a specific SoC configuration.
 - interrupts: interrupt number mapped to CPU.
 - clocks: spi clk phandle
 

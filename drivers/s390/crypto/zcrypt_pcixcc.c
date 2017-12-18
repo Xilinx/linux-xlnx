@@ -182,7 +182,7 @@ static int zcrypt_pcixcc_mcl(struct ap_device *ap_dev)
 
 	/* Wait for the test message to complete. */
 	for (i = 0; i < 6; i++) {
-		mdelay(300);
+		msleep(300);
 		rc = ap_recv(ap_dev->qid, &psmid, reply, 4096);
 		if (rc == 0 && psmid == 0x0102030405060708ULL)
 			break;
@@ -327,7 +327,7 @@ static int zcrypt_pcixcc_probe(struct ap_device *ap_dev)
 	else
 		zdev->ops = zcrypt_msgtype_request(MSGTYPE06_NAME,
 						   MSGTYPE06_VARIANT_NORNG);
-	ap_dev->reply = &zdev->reply;
+	ap_device_init_reply(ap_dev, &zdev->reply);
 	ap_dev->private = zdev;
 	rc = zcrypt_device_register(zdev);
 	if (rc)

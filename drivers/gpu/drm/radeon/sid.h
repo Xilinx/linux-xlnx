@@ -915,6 +915,11 @@
 #define DCCG_AUDIO_DTO1_PHASE                           0x05c0
 #define DCCG_AUDIO_DTO1_MODULE                          0x05c4
 
+#define DENTIST_DISPCLK_CNTL				0x0490
+#	define DENTIST_DPREFCLK_WDIVIDER(x)		(((x) & 0x7f) << 24)
+#	define DENTIST_DPREFCLK_WDIVIDER_MASK		(0x7f << 24)
+#	define DENTIST_DPREFCLK_WDIVIDER_SHIFT		24
+
 #define AFMT_AUDIO_SRC_CONTROL                          0x713c
 #define		AFMT_AUDIO_SRC_SELECT(x)		(((x) & 7) << 0)
 /* AFMT_AUDIO_SRC_SELECT
@@ -1140,6 +1145,7 @@
 #define	SPI_LB_CU_MASK					0x9354
 
 #define	TA_CNTL_AUX					0x9508
+#define	TA_CS_BC_BASE_ADDR				0x950C
 
 #define CC_RB_BACKEND_DISABLE				0x98F4
 #define		BACKEND_DISABLE(x)     			((x) << 16)
@@ -1554,8 +1560,10 @@
 #define UVD_UDEC_ADDR_CONFIG				0xEF4C
 #define UVD_UDEC_DB_ADDR_CONFIG				0xEF50
 #define UVD_UDEC_DBW_ADDR_CONFIG			0xEF54
+#define UVD_NO_OP					0xEFFC
 #define UVD_RBC_RB_RPTR					0xF690
 #define UVD_RBC_RB_WPTR					0xF694
+#define UVD_STATUS					0xf6bc
 
 #define	UVD_CGC_CTRL					0xF4B0
 #	define DCM					(1 << 0)
@@ -1878,6 +1886,7 @@
 #define VCE_VCPU_CACHE_SIZE1				0x20030
 #define VCE_VCPU_CACHE_OFFSET2				0x20034
 #define VCE_VCPU_CACHE_SIZE2				0x20038
+#define VCE_VCPU_SCRATCH7				0x200dc
 #define VCE_SOFT_RESET					0x20120
 #define 	VCE_ECPU_SOFT_RESET			(1 << 0)
 #define 	VCE_FME_SOFT_RESET			(1 << 2)
@@ -1892,6 +1901,7 @@
 #define VCE_RB_RPTR					0x2018c
 #define VCE_RB_WPTR					0x20190
 #define VCE_CLOCK_GATING_A				0x202f8
+#	define CGC_DYN_CLOCK_MODE			(1 << 16)
 #define VCE_CLOCK_GATING_B				0x202fc
 #define VCE_UENC_CLOCK_GATING				0x205bc
 #define VCE_UENC_REG_CLOCK_GATING			0x205c0
@@ -1915,5 +1925,32 @@
 #define VCE_CMD_TRAP					0x00000004
 #define VCE_CMD_IB_AUTO					0x00000005
 #define VCE_CMD_SEMAPHORE				0x00000006
+
+/* discrete vce clocks */
+#define	CG_VCEPLL_FUNC_CNTL				0xc0030600
+#	define VCEPLL_RESET_MASK			0x00000001
+#	define VCEPLL_SLEEP_MASK			0x00000002
+#	define VCEPLL_BYPASS_EN_MASK			0x00000004
+#	define VCEPLL_CTLREQ_MASK			0x00000008
+#	define VCEPLL_VCO_MODE_MASK			0x00000600
+#	define VCEPLL_REF_DIV_MASK			0x003F0000
+#	define VCEPLL_CTLACK_MASK			0x40000000
+#	define VCEPLL_CTLACK2_MASK			0x80000000
+#define	CG_VCEPLL_FUNC_CNTL_2				0xc0030601
+#	define VCEPLL_PDIV_A(x)				((x) << 0)
+#	define VCEPLL_PDIV_A_MASK			0x0000007F
+#	define VCEPLL_PDIV_B(x)				((x) << 8)
+#	define VCEPLL_PDIV_B_MASK			0x00007F00
+#	define EVCLK_SRC_SEL(x)				((x) << 20)
+#	define EVCLK_SRC_SEL_MASK			0x01F00000
+#	define ECCLK_SRC_SEL(x)				((x) << 25)
+#	define ECCLK_SRC_SEL_MASK			0x3E000000
+#define	CG_VCEPLL_FUNC_CNTL_3				0xc0030602
+#	define VCEPLL_FB_DIV(x)				((x) << 0)
+#	define VCEPLL_FB_DIV_MASK			0x01FFFFFF
+#define	CG_VCEPLL_FUNC_CNTL_4				0xc0030603
+#define	CG_VCEPLL_FUNC_CNTL_5				0xc0030604
+#define	CG_VCEPLL_SPREAD_SPECTRUM			0xc0030606
+#	define VCEPLL_SSEN_MASK				0x00000001
 
 #endif

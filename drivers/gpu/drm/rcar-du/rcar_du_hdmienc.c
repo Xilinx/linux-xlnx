@@ -16,7 +16,6 @@
 #include <drm/drmP.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_crtc_helper.h>
-#include <drm/drm_encoder_slave.h>
 
 #include "rcar_du_drv.h"
 #include "rcar_du_encoder.h"
@@ -25,95 +24,72 @@
 
 struct rcar_du_hdmienc {
 	struct rcar_du_encoder *renc;
-	struct device *dev;
-	int dpms;
+	bool enabled;
 };
 
 #define to_rcar_hdmienc(e)	(to_rcar_encoder(e)->hdmi)
-#define to_slave_funcs(e)	(to_rcar_encoder(e)->slave.slave_funcs)
 
-static void rcar_du_hdmienc_dpms(struct drm_encoder *encoder, int mode)
+static void rcar_du_hdmienc_disable(struct drm_encoder *encoder)
 {
 	struct rcar_du_hdmienc *hdmienc = to_rcar_hdmienc(encoder);
-	struct drm_encoder_slave_funcs *sfuncs = to_slave_funcs(encoder);
 
-	if (mode != DRM_MODE_DPMS_ON)
-		mode = DRM_MODE_DPMS_OFF;
-
-	if (hdmienc->dpms == mode)
-		return;
-
-	if (mode == DRM_MODE_DPMS_ON && hdmienc->renc->lvds)
-		rcar_du_lvdsenc_dpms(hdmienc->renc->lvds, encoder->crtc, mode);
-
-	if (sfuncs->dpms)
-		sfuncs->dpms(encoder, mode);
-
-	if (mode != DRM_MODE_DPMS_ON && hdmienc->renc->lvds)
-		rcar_du_lvdsenc_dpms(hdmienc->renc->lvds, encoder->crtc, mode);
-
-	hdmienc->dpms = mode;
-}
-
-static bool rcar_du_hdmienc_mode_fixup(struct drm_encoder *encoder,
-				       const struct drm_display_mode *mode,
-				       struct drm_display_mode *adjusted_mode)
-{
-	struct rcar_du_hdmienc *hdmienc = to_rcar_hdmienc(encoder);
-	struct drm_encoder_slave_funcs *sfuncs = to_slave_funcs(encoder);
-
-	/* The internal LVDS encoder has a clock frequency operating range of
-	 * 30MHz to 150MHz. Clamp the clock accordingly.
-	 */
 	if (hdmienc->renc->lvds)
-		adjusted_mode->clock = clamp(adjusted_mode->clock,
-					     30000, 150000);
+		rcar_du_lvdsenc_enable(hdmienc->renc->lvds, encoder->crtc,
+				       false);
 
-	if (sfuncs->mode_fixup == NULL)
-		return true;
-
-	return sfuncs->mode_fixup(encoder, mode, adjusted_mode);
+	hdmienc->enabled = false;
 }
 
-static void rcar_du_hdmienc_mode_prepare(struct drm_encoder *encoder)
+static void rcar_du_hdmienc_enable(struct drm_encoder *encoder)
 {
-	rcar_du_hdmienc_dpms(encoder, DRM_MODE_DPMS_OFF);
+	struct rcar_du_hdmienc *hdmienc = to_rcar_hdmienc(encoder);
+
+	if (hdmienc->renc->lvds)
+		rcar_du_lvdsenc_enable(hdmienc->renc->lvds, encoder->crtc,
+				       true);
+
+	hdmienc->enabled = true;
 }
 
-static void rcar_du_hdmienc_mode_commit(struct drm_encoder *encoder)
+static int rcar_du_hdmienc_atomic_check(struct drm_encoder *encoder,
+					struct drm_crtc_state *crtc_state,
+					struct drm_connector_state *conn_state)
 {
-	rcar_du_hdmienc_dpms(encoder, DRM_MODE_DPMS_ON);
+	struct rcar_du_hdmienc *hdmienc = to_rcar_hdmienc(encoder);
+	struct drm_display_mode *adjusted_mode = &crtc_state->adjusted_mode;
+
+	if (hdmienc->renc->lvds)
+		rcar_du_lvdsenc_atomic_check(hdmienc->renc->lvds,
+					     adjusted_mode);
+
+	return 0;
 }
+
 
 static void rcar_du_hdmienc_mode_set(struct drm_encoder *encoder,
 				     struct drm_display_mode *mode,
 				     struct drm_display_mode *adjusted_mode)
 {
 	struct rcar_du_hdmienc *hdmienc = to_rcar_hdmienc(encoder);
-	struct drm_encoder_slave_funcs *sfuncs = to_slave_funcs(encoder);
-
-	if (sfuncs->mode_set)
-		sfuncs->mode_set(encoder, mode, adjusted_mode);
 
 	rcar_du_crtc_route_output(encoder->crtc, hdmienc->renc->output);
 }
 
 static const struct drm_encoder_helper_funcs encoder_helper_funcs = {
-	.dpms = rcar_du_hdmienc_dpms,
-	.mode_fixup = rcar_du_hdmienc_mode_fixup,
-	.prepare = rcar_du_hdmienc_mode_prepare,
-	.commit = rcar_du_hdmienc_mode_commit,
 	.mode_set = rcar_du_hdmienc_mode_set,
+	.disable = rcar_du_hdmienc_disable,
+	.enable = rcar_du_hdmienc_enable,
+	.atomic_check = rcar_du_hdmienc_atomic_check,
 };
 
 static void rcar_du_hdmienc_cleanup(struct drm_encoder *encoder)
 {
 	struct rcar_du_hdmienc *hdmienc = to_rcar_hdmienc(encoder);
 
-	rcar_du_hdmienc_dpms(encoder, DRM_MODE_DPMS_OFF);
+	if (hdmienc->enabled)
+		rcar_du_hdmienc_disable(encoder);
 
 	drm_encoder_cleanup(encoder);
-	put_device(hdmienc->dev);
 }
 
 static const struct drm_encoder_funcs encoder_funcs = {
@@ -124,8 +100,7 @@ int rcar_du_hdmienc_init(struct rcar_du_device *rcdu,
 			 struct rcar_du_encoder *renc, struct device_node *np)
 {
 	struct drm_encoder *encoder = rcar_encoder_to_drm_encoder(renc);
-	struct drm_i2c_encoder_driver *driver;
-	struct i2c_client *i2c_slave;
+	struct drm_bridge *bridge;
 	struct rcar_du_hdmienc *hdmienc;
 	int ret;
 
@@ -133,37 +108,30 @@ int rcar_du_hdmienc_init(struct rcar_du_device *rcdu,
 	if (hdmienc == NULL)
 		return -ENOMEM;
 
-	/* Locate the slave I2C device and driver. */
-	i2c_slave = of_find_i2c_device_by_node(np);
-	if (!i2c_slave || !i2c_get_clientdata(i2c_slave))
+	/* Locate drm bridge from the hdmi encoder DT node */
+	bridge = of_drm_find_bridge(np);
+	if (!bridge)
 		return -EPROBE_DEFER;
 
-	hdmienc->dev = &i2c_slave->dev;
-
-	if (hdmienc->dev->driver == NULL) {
-		ret = -EPROBE_DEFER;
-		goto error;
-	}
-
-	/* Initialize the slave encoder. */
-	driver = to_drm_i2c_encoder_driver(to_i2c_driver(hdmienc->dev->driver));
-	ret = driver->encoder_init(i2c_slave, rcdu->ddev, &renc->slave);
-	if (ret < 0)
-		goto error;
-
 	ret = drm_encoder_init(rcdu->ddev, encoder, &encoder_funcs,
-			       DRM_MODE_ENCODER_TMDS);
+			       DRM_MODE_ENCODER_TMDS, NULL);
 	if (ret < 0)
-		goto error;
+		return ret;
 
 	drm_encoder_helper_add(encoder, &encoder_helper_funcs);
 
 	renc->hdmi = hdmienc;
 	hdmienc->renc = renc;
 
-	return 0;
+	/* Link drm_bridge to encoder */
+	bridge->encoder = encoder;
+	encoder->bridge = bridge;
 
-error:
-	put_device(hdmienc->dev);
-	return ret;
+	ret = drm_bridge_attach(rcdu->ddev, bridge);
+	if (ret) {
+		drm_encoder_cleanup(encoder);
+		return ret;
+	}
+
+	return 0;
 }

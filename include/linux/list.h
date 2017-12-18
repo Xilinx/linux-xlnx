@@ -24,7 +24,7 @@
 
 static inline void INIT_LIST_HEAD(struct list_head *list)
 {
-	list->next = list;
+	WRITE_ONCE(list->next, list);
 	list->prev = list;
 }
 
@@ -42,7 +42,7 @@ static inline void __list_add(struct list_head *new,
 	next->prev = new;
 	new->next = next;
 	new->prev = prev;
-	prev->next = new;
+	WRITE_ONCE(prev->next, new);
 }
 #else
 extern void __list_add(struct list_head *new,
@@ -87,7 +87,7 @@ static inline void list_add_tail(struct list_head *new, struct list_head *head)
 static inline void __list_del(struct list_head * prev, struct list_head * next)
 {
 	next->prev = prev;
-	prev->next = next;
+	WRITE_ONCE(prev->next, next);
 }
 
 /**
@@ -186,7 +186,7 @@ static inline int list_is_last(const struct list_head *list,
  */
 static inline int list_empty(const struct list_head *head)
 {
-	return head->next == head;
+	return READ_ONCE(head->next) == head;
 }
 
 /**
@@ -381,8 +381,11 @@ static inline void list_splice_tail_init(struct list_head *list,
  *
  * Note that if the list is empty, it returns NULL.
  */
-#define list_first_entry_or_null(ptr, type, member) \
-	(!list_empty(ptr) ? list_first_entry(ptr, type, member) : NULL)
+#define list_first_entry_or_null(ptr, type, member) ({ \
+	struct list_head *head__ = (ptr); \
+	struct list_head *pos__ = READ_ONCE(head__->next); \
+	pos__ != head__ ? list_entry(pos__, type, member) : NULL; \
+})
 
 /**
  * list_next_entry - get the next element in list
@@ -608,14 +611,15 @@ static inline int hlist_unhashed(const struct hlist_node *h)
 
 static inline int hlist_empty(const struct hlist_head *h)
 {
-	return !h->first;
+	return !READ_ONCE(h->first);
 }
 
 static inline void __hlist_del(struct hlist_node *n)
 {
 	struct hlist_node *next = n->next;
 	struct hlist_node **pprev = n->pprev;
-	*pprev = next;
+
+	WRITE_ONCE(*pprev, next);
 	if (next)
 		next->pprev = pprev;
 }
@@ -641,7 +645,7 @@ static inline void hlist_add_head(struct hlist_node *n, struct hlist_head *h)
 	n->next = first;
 	if (first)
 		first->pprev = &n->next;
-	h->first = n;
+	WRITE_ONCE(h->first, n);
 	n->pprev = &h->first;
 }
 
@@ -652,14 +656,14 @@ static inline void hlist_add_before(struct hlist_node *n,
 	n->pprev = next->pprev;
 	n->next = next;
 	next->pprev = &n->next;
-	*(n->pprev) = n;
+	WRITE_ONCE(*(n->pprev), n);
 }
 
 static inline void hlist_add_behind(struct hlist_node *n,
 				    struct hlist_node *prev)
 {
 	n->next = prev->next;
-	prev->next = n;
+	WRITE_ONCE(prev->next, n);
 	n->pprev = &prev->next;
 
 	if (n->next)
@@ -670,6 +674,21 @@ static inline void hlist_add_behind(struct hlist_node *n,
 static inline void hlist_add_fake(struct hlist_node *n)
 {
 	n->pprev = &n->next;
+}
+
+static inline bool hlist_fake(struct hlist_node *h)
+{
+	return h->pprev == &h->next;
+}
+
+/*
+ * Check whether the node is the only node of the head without
+ * accessing head:
+ */
+static inline bool
+hlist_is_singular_node(struct hlist_node *n, struct hlist_head *h)
+{
+	return !n->next && n->pprev == &h->first;
 }
 
 /*

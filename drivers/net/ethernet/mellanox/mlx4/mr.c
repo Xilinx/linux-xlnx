@@ -248,7 +248,7 @@ static void mlx4_free_mtt_range(struct mlx4_dev *dev, u32 offset, int order)
 				  offset, order);
 		return;
 	}
-	 __mlx4_free_mtt_range(dev, offset, order);
+	__mlx4_free_mtt_range(dev, offset, order);
 }
 
 void mlx4_mtt_cleanup(struct mlx4_dev *dev, struct mlx4_mtt *mtt)
@@ -318,7 +318,7 @@ int mlx4_mr_hw_get_mpt(struct mlx4_dev *dev, struct mlx4_mr *mmr,
 				key, NULL);
 	} else {
 		mailbox = mlx4_alloc_cmd_mailbox(dev);
-		if (IS_ERR_OR_NULL(mailbox))
+		if (IS_ERR(mailbox))
 			return PTR_ERR(mailbox);
 
 		err = mlx4_cmd_box(dev, 0, mailbox->dma, key,

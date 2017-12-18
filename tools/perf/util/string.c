@@ -342,18 +342,41 @@ char *rtrim(char *s)
 	return s;
 }
 
-/**
- * memdup - duplicate region of memory
- * @src: memory region to duplicate
- * @len: memory region length
- */
-void *memdup(const void *src, size_t len)
+char *asprintf_expr_inout_ints(const char *var, bool in, size_t nints, int *ints)
 {
-	void *p;
+	/*
+	 * FIXME: replace this with an expression using log10() when we
+	 * find a suitable implementation, maybe the one in the dvb drivers...
+	 *
+	 * "%s == %d || " = log10(MAXINT) * 2 + 8 chars for the operators
+	 */
+	size_t size = nints * 28 + 1; /* \0 */
+	size_t i, printed = 0;
+	char *expr = malloc(size);
 
-	p = malloc(len);
-	if (p)
-		memcpy(p, src, len);
+	if (expr) {
+		const char *or_and = "||", *eq_neq = "==";
+		char *e = expr;
 
-	return p;
+		if (!in) {
+			or_and = "&&";
+			eq_neq = "!=";
+		}
+
+		for (i = 0; i < nints; ++i) {
+			if (printed == size)
+				goto out_err_overflow;
+
+			if (i > 0)
+				printed += snprintf(e + printed, size - printed, " %s ", or_and);
+			printed += scnprintf(e + printed, size - printed,
+					     "%s %s %d", var, eq_neq, ints[i]);
+		}
+	}
+
+	return expr;
+
+out_err_overflow:
+	free(expr);
+	return NULL;
 }

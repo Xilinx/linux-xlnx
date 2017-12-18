@@ -1341,8 +1341,7 @@ static int close(struct inode *node, struct file *filep)
 	struct IR *ir = filep->private_data;
 
 	if (ir == NULL) {
-		dev_err(ir->l.dev,
-			"close: no private_data attached to the file!\n");
+		pr_err("ir: close: no private_data attached to the file!\n");
 		return -ENODEV;
 	}
 
@@ -1365,10 +1364,10 @@ static const struct i2c_device_id ir_transceiver_id[] = {
 	{ "ir_rx_z8f0811_hdpvr", ID_FLAG_HDPVR              },
 	{ }
 };
+MODULE_DEVICE_TABLE(i2c, ir_transceiver_id);
 
 static struct i2c_driver driver = {
 	.driver = {
-		.owner	= THIS_MODULE,
 		.name	= "Zilog/Hauppauge i2c IR",
 	},
 	.probe		= ir_probe,
@@ -1681,9 +1680,7 @@ module_init(zilog_init);
 module_exit(zilog_exit);
 
 MODULE_DESCRIPTION("Zilog/Hauppauge infrared transmitter driver (i2c stack)");
-MODULE_AUTHOR("Gerd Knorr, Michal Kochanowicz, Christoph Bartelmus, "
-	      "Ulrich Mueller, Stefan Jahn, Jerome Brock, Mark Weaver, "
-	      "Andy Walls");
+MODULE_AUTHOR("Gerd Knorr, Michal Kochanowicz, Christoph Bartelmus, Ulrich Mueller, Stefan Jahn, Jerome Brock, Mark Weaver, Andy Walls");
 MODULE_LICENSE("GPL");
 /* for compat with old name, which isn't all that accurate anymore */
 MODULE_ALIAS("lirc_pvr150");

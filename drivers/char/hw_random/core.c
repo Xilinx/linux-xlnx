@@ -84,14 +84,14 @@ static size_t rng_buffer_size(void)
 
 static void add_early_randomness(struct hwrng *rng)
 {
-	unsigned char bytes[16];
 	int bytes_read;
+	size_t size = min_t(size_t, 16, rng_buffer_size());
 
 	mutex_lock(&reading_mutex);
-	bytes_read = rng_get_data(rng, bytes, sizeof(bytes), 1);
+	bytes_read = rng_get_data(rng, rng_buffer, size, 1);
 	mutex_unlock(&reading_mutex);
 	if (bytes_read > 0)
-		add_device_randomness(bytes, bytes_read);
+		add_device_randomness(rng_buffer, bytes_read);
 }
 
 static inline void cleanup_rng(struct kref *kref)
@@ -179,7 +179,8 @@ skip_init:
 	add_early_randomness(rng);
 
 	current_quality = rng->quality ? : default_quality;
-	current_quality &= 1023;
+	if (current_quality > 1024)
+		current_quality = 1024;
 
 	if (current_quality == 0 && hwrng_fill)
 		kthread_stop(hwrng_fill);
@@ -237,7 +238,10 @@ static ssize_t rng_dev_read(struct file *filp, char __user *buf,
 			goto out;
 		}
 
-		mutex_lock(&reading_mutex);
+		if (mutex_lock_interruptible(&reading_mutex)) {
+			err = -ERESTARTSYS;
+			goto out_put;
+		}
 		if (!data_avail) {
 			bytes_read = rng_get_data(rng, rng_buffer,
 				rng_buffer_size(),
@@ -287,6 +291,7 @@ out:
 
 out_unlock_reading:
 	mutex_unlock(&reading_mutex);
+out_put:
 	put_rng(rng);
 	goto out;
 }
@@ -299,11 +304,14 @@ static const struct file_operations rng_chrdev_ops = {
 	.llseek		= noop_llseek,
 };
 
+static const struct attribute_group *rng_dev_groups[];
+
 static struct miscdevice rng_miscdev = {
 	.minor		= RNG_MISCDEV_MINOR,
 	.name		= RNG_MODULE_NAME,
 	.nodename	= "hwrng",
 	.fops		= &rng_chrdev_ops,
+	.groups		= rng_dev_groups,
 };
 
 
@@ -319,7 +327,7 @@ static ssize_t hwrng_attr_current_store(struct device *dev,
 		return -ERESTARTSYS;
 	err = -ENODEV;
 	list_for_each_entry(rng, &rng_list, list) {
-		if (strcmp(rng->name, buf) == 0) {
+		if (sysfs_streq(rng->name, buf)) {
 			err = 0;
 			if (rng != current_rng)
 				err = set_current_rng(rng);
@@ -376,37 +384,22 @@ static DEVICE_ATTR(rng_available, S_IRUGO,
 		   hwrng_attr_available_show,
 		   NULL);
 
+static struct attribute *rng_dev_attrs[] = {
+	&dev_attr_rng_current.attr,
+	&dev_attr_rng_available.attr,
+	NULL
+};
+
+ATTRIBUTE_GROUPS(rng_dev);
 
 static void __exit unregister_miscdev(void)
 {
-	device_remove_file(rng_miscdev.this_device, &dev_attr_rng_available);
-	device_remove_file(rng_miscdev.this_device, &dev_attr_rng_current);
 	misc_deregister(&rng_miscdev);
 }
 
 static int __init register_miscdev(void)
 {
-	int err;
-
-	err = misc_register(&rng_miscdev);
-	if (err)
-		goto out;
-	err = device_create_file(rng_miscdev.this_device,
-				 &dev_attr_rng_current);
-	if (err)
-		goto err_misc_dereg;
-	err = device_create_file(rng_miscdev.this_device,
-				 &dev_attr_rng_available);
-	if (err)
-		goto err_remove_current;
-out:
-	return err;
-
-err_remove_current:
-	device_remove_file(rng_miscdev.this_device, &dev_attr_rng_current);
-err_misc_dereg:
-	misc_deregister(&rng_miscdev);
-	goto out;
+	return misc_register(&rng_miscdev);
 }
 
 static int hwrng_fillfn(void *unused)
@@ -440,7 +433,7 @@ static int hwrng_fillfn(void *unused)
 static void start_khwrngd(void)
 {
 	hwrng_fill = kthread_run(hwrng_fillfn, NULL, "hwrng");
-	if (hwrng_fill == ERR_PTR(-ENOMEM)) {
+	if (IS_ERR(hwrng_fill)) {
 		pr_err("hwrng_fill thread creation failed");
 		hwrng_fill = NULL;
 	}
@@ -456,22 +449,6 @@ int hwrng_register(struct hwrng *rng)
 		goto out;
 
 	mutex_lock(&rng_mutex);
-
-	/* kmalloc makes this safe for virt_to_page() in virtio_rng.c */
-	err = -ENOMEM;
-	if (!rng_buffer) {
-		rng_buffer = kmalloc(rng_buffer_size(), GFP_KERNEL);
-		if (!rng_buffer)
-			goto out_unlock;
-	}
-	if (!rng_fillbuf) {
-		rng_fillbuf = kmalloc(rng_buffer_size(), GFP_KERNEL);
-		if (!rng_fillbuf) {
-			kfree(rng_buffer);
-			goto out_unlock;
-		}
-	}
-
 	/* Must not register two RNGs with the same name. */
 	err = -EEXIST;
 	list_for_each_entry(tmp, &rng_list, list) {
@@ -536,9 +513,70 @@ void hwrng_unregister(struct hwrng *rng)
 }
 EXPORT_SYMBOL_GPL(hwrng_unregister);
 
+static void devm_hwrng_release(struct device *dev, void *res)
+{
+	hwrng_unregister(*(struct hwrng **)res);
+}
+
+static int devm_hwrng_match(struct device *dev, void *res, void *data)
+{
+	struct hwrng **r = res;
+
+	if (WARN_ON(!r || !*r))
+		return 0;
+
+	return *r == data;
+}
+
+int devm_hwrng_register(struct device *dev, struct hwrng *rng)
+{
+	struct hwrng **ptr;
+	int error;
+
+	ptr = devres_alloc(devm_hwrng_release, sizeof(*ptr), GFP_KERNEL);
+	if (!ptr)
+		return -ENOMEM;
+
+	error = hwrng_register(rng);
+	if (error) {
+		devres_free(ptr);
+		return error;
+	}
+
+	*ptr = rng;
+	devres_add(dev, ptr);
+	return 0;
+}
+EXPORT_SYMBOL_GPL(devm_hwrng_register);
+
+void devm_hwrng_unregister(struct device *dev, struct hwrng *rng)
+{
+	devres_release(dev, devm_hwrng_release, devm_hwrng_match, rng);
+}
+EXPORT_SYMBOL_GPL(devm_hwrng_unregister);
+
 static int __init hwrng_modinit(void)
 {
-	return register_miscdev();
+	int ret = -ENOMEM;
+
+	/* kmalloc makes this safe for virt_to_page() in virtio_rng.c */
+	rng_buffer = kmalloc(rng_buffer_size(), GFP_KERNEL);
+	if (!rng_buffer)
+		return -ENOMEM;
+
+	rng_fillbuf = kmalloc(rng_buffer_size(), GFP_KERNEL);
+	if (!rng_fillbuf) {
+		kfree(rng_buffer);
+		return -ENOMEM;
+	}
+
+	ret = register_miscdev();
+	if (ret) {
+		kfree(rng_fillbuf);
+		kfree(rng_buffer);
+	}
+
+	return ret;
 }
 
 static void __exit hwrng_modexit(void)

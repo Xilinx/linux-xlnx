@@ -19,6 +19,7 @@
 #include <linux/bitmap.h>
 #include <linux/types.h>
 #include <linux/irq.h>
+#include <linux/irqchip.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
@@ -31,7 +32,6 @@
 #include <asm/mach/irq.h>
 
 #include "irq-atmel-aic-common.h"
-#include "irqchip.h"
 
 /* Number of irq lines managed by AIC */
 #define NR_AIC_IRQS	32
@@ -176,6 +176,7 @@ static int aic_irq_domain_xlate(struct irq_domain *d,
 {
 	struct irq_domain_chip_generic *dgc = d->gc;
 	struct irq_chip_generic *gc;
+	unsigned long flags;
 	unsigned smr;
 	int idx;
 	int ret;
@@ -194,12 +195,11 @@ static int aic_irq_domain_xlate(struct irq_domain *d,
 
 	gc = dgc->gc[idx];
 
-	irq_gc_lock(gc);
+	irq_gc_lock_irqsave(gc, flags);
 	smr = irq_reg_readl(gc, AT91_AIC_SMR(*out_hwirq));
-	ret = aic_common_set_priority(intspec[2], &smr);
-	if (!ret)
-		irq_reg_writel(gc, smr, AT91_AIC_SMR(*out_hwirq));
-	irq_gc_unlock(gc);
+	aic_common_set_priority(intspec[2], &smr);
+	irq_reg_writel(gc, smr, AT91_AIC_SMR(*out_hwirq));
+	irq_gc_unlock_irqrestore(gc, flags);
 
 	return ret;
 }
@@ -225,7 +225,7 @@ static void __init at91sam9g45_aic_irq_fixup(struct device_node *root)
 	aic_common_rtt_irq_fixup(root);
 }
 
-static const struct of_device_id __initdata aic_irq_fixups[] = {
+static const struct of_device_id aic_irq_fixups[] __initconst = {
 	{ .compatible = "atmel,at91rm9200", .data = at91rm9200_aic_irq_fixup },
 	{ .compatible = "atmel,at91sam9g45", .data = at91sam9g45_aic_irq_fixup },
 	{ .compatible = "atmel,at91sam9n12", .data = at91rm9200_aic_irq_fixup },
@@ -248,11 +248,9 @@ static int __init aic_of_init(struct device_node *node,
 		return -EEXIST;
 
 	domain = aic_common_of_init(node, &aic_irq_ops, "atmel-aic",
-				    NR_AIC_IRQS);
+				    NR_AIC_IRQS, aic_irq_fixups);
 	if (IS_ERR(domain))
 		return PTR_ERR(domain);
-
-	aic_common_irq_fixup(aic_irq_fixups);
 
 	aic_domain = domain;
 	gc = irq_get_domain_generic_chip(domain, 0);

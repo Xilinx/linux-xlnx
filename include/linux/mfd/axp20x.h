@@ -11,16 +11,41 @@
 #ifndef __LINUX_MFD_AXP20X_H
 #define __LINUX_MFD_AXP20X_H
 
+#include <linux/regmap.h>
+
 enum {
-	AXP202_ID = 0,
+	AXP152_ID = 0,
+	AXP202_ID,
 	AXP209_ID,
+	AXP221_ID,
+	AXP223_ID,
 	AXP288_ID,
+	AXP806_ID,
+	AXP809_ID,
 	NR_AXP20X_VARIANTS,
 };
 
 #define AXP20X_DATACACHE(m)		(0x04 + (m))
 
 /* Power supply */
+#define AXP152_PWR_OP_MODE		0x01
+#define AXP152_LDO3456_DC1234_CTRL	0x12
+#define AXP152_ALDO_OP_MODE		0x13
+#define AXP152_LDO0_CTRL		0x15
+#define AXP152_DCDC2_V_OUT		0x23
+#define AXP152_DCDC2_V_SCAL		0x25
+#define AXP152_DCDC1_V_OUT		0x26
+#define AXP152_DCDC3_V_OUT		0x27
+#define AXP152_ALDO12_V_OUT		0x28
+#define AXP152_DLDO1_V_OUT		0x29
+#define AXP152_DLDO2_V_OUT		0x2a
+#define AXP152_DCDC4_V_OUT		0x2b
+#define AXP152_V_OFF			0x31
+#define AXP152_OFF_CTRL			0x32
+#define AXP152_PEK_KEY			0x36
+#define AXP152_DCDC_FREQ		0x37
+#define AXP152_DCDC_MODE		0x80
+
 #define AXP20X_PWR_INPUT_STATUS		0x00
 #define AXP20X_PWR_OP_MODE		0x01
 #define AXP20X_USB_OTG_STATUS		0x02
@@ -45,7 +70,60 @@ enum {
 #define AXP20X_V_LTF_DISCHRG		0x3c
 #define AXP20X_V_HTF_DISCHRG		0x3d
 
+#define AXP22X_PWR_OUT_CTRL1		0x10
+#define AXP22X_PWR_OUT_CTRL2		0x12
+#define AXP22X_PWR_OUT_CTRL3		0x13
+#define AXP22X_DLDO1_V_OUT		0x15
+#define AXP22X_DLDO2_V_OUT		0x16
+#define AXP22X_DLDO3_V_OUT		0x17
+#define AXP22X_DLDO4_V_OUT		0x18
+#define AXP22X_ELDO1_V_OUT		0x19
+#define AXP22X_ELDO2_V_OUT		0x1a
+#define AXP22X_ELDO3_V_OUT		0x1b
+#define AXP22X_DC5LDO_V_OUT		0x1c
+#define AXP22X_DCDC1_V_OUT		0x21
+#define AXP22X_DCDC2_V_OUT		0x22
+#define AXP22X_DCDC3_V_OUT		0x23
+#define AXP22X_DCDC4_V_OUT		0x24
+#define AXP22X_DCDC5_V_OUT		0x25
+#define AXP22X_DCDC23_V_RAMP_CTRL	0x27
+#define AXP22X_ALDO1_V_OUT		0x28
+#define AXP22X_ALDO2_V_OUT		0x29
+#define AXP22X_ALDO3_V_OUT		0x2a
+#define AXP22X_CHRG_CTRL3		0x35
+
+#define AXP806_STARTUP_SRC		0x00
+#define AXP806_CHIP_ID			0x03
+#define AXP806_PWR_OUT_CTRL1		0x10
+#define AXP806_PWR_OUT_CTRL2		0x11
+#define AXP806_DCDCA_V_CTRL		0x12
+#define AXP806_DCDCB_V_CTRL		0x13
+#define AXP806_DCDCC_V_CTRL		0x14
+#define AXP806_DCDCD_V_CTRL		0x15
+#define AXP806_DCDCE_V_CTRL		0x16
+#define AXP806_ALDO1_V_CTRL		0x17
+#define AXP806_ALDO2_V_CTRL		0x18
+#define AXP806_ALDO3_V_CTRL		0x19
+#define AXP806_DCDC_MODE_CTRL1		0x1a
+#define AXP806_DCDC_MODE_CTRL2		0x1b
+#define AXP806_DCDC_FREQ_CTRL		0x1c
+#define AXP806_BLDO1_V_CTRL		0x20
+#define AXP806_BLDO2_V_CTRL		0x21
+#define AXP806_BLDO3_V_CTRL		0x22
+#define AXP806_BLDO4_V_CTRL		0x23
+#define AXP806_CLDO1_V_CTRL		0x24
+#define AXP806_CLDO2_V_CTRL		0x25
+#define AXP806_CLDO3_V_CTRL		0x26
+#define AXP806_VREF_TEMP_WARN_L		0xf3
+
 /* Interrupt */
+#define AXP152_IRQ1_EN			0x40
+#define AXP152_IRQ2_EN			0x41
+#define AXP152_IRQ3_EN			0x42
+#define AXP152_IRQ1_STATE		0x48
+#define AXP152_IRQ2_STATE		0x49
+#define AXP152_IRQ3_STATE		0x4a
+
 #define AXP20X_IRQ1_EN			0x40
 #define AXP20X_IRQ2_EN			0x41
 #define AXP20X_IRQ3_EN			0x42
@@ -100,13 +178,34 @@ enum {
 #define AXP20X_VBUS_MON			0x8b
 #define AXP20X_OVER_TMP			0x8f
 
+#define AXP22X_PWREN_CTRL1		0x8c
+#define AXP22X_PWREN_CTRL2		0x8d
+
 /* GPIO */
+#define AXP152_GPIO0_CTRL		0x90
+#define AXP152_GPIO1_CTRL		0x91
+#define AXP152_GPIO2_CTRL		0x92
+#define AXP152_GPIO3_CTRL		0x93
+#define AXP152_LDOGPIO2_V_OUT		0x96
+#define AXP152_GPIO_INPUT		0x97
+#define AXP152_PWM0_FREQ_X		0x98
+#define AXP152_PWM0_FREQ_Y		0x99
+#define AXP152_PWM0_DUTY_CYCLE		0x9a
+#define AXP152_PWM1_FREQ_X		0x9b
+#define AXP152_PWM1_FREQ_Y		0x9c
+#define AXP152_PWM1_DUTY_CYCLE		0x9d
+
 #define AXP20X_GPIO0_CTRL		0x90
 #define AXP20X_LDO5_V_OUT		0x91
 #define AXP20X_GPIO1_CTRL		0x92
 #define AXP20X_GPIO2_CTRL		0x93
 #define AXP20X_GPIO20_SS		0x94
 #define AXP20X_GPIO3_CTRL		0x95
+
+#define AXP22X_LDO_IO0_V_OUT		0x91
+#define AXP22X_LDO_IO1_V_OUT		0x93
+#define AXP22X_GPIO_STATE		0x94
+#define AXP22X_GPIO_PULL_DOWN		0x95
 
 /* Battery */
 #define AXP20X_CHRG_CC_31_24		0xb0
@@ -119,6 +218,15 @@ enum {
 #define AXP20X_DISCHRG_CC_7_0		0xb7
 #define AXP20X_CC_CTRL			0xb8
 #define AXP20X_FG_RES			0xb9
+
+/* OCV */
+#define AXP20X_RDC_H			0xba
+#define AXP20X_RDC_L			0xbb
+#define AXP20X_OCV(m)			(0xc0 + (m))
+#define AXP20X_OCV_MAX			0xf
+
+/* AXP22X specific registers */
+#define AXP22X_BATLOW_THRES1		0xe6
 
 /* AXP288 specific registers */
 #define AXP288_PMIC_ADC_H               0x56
@@ -158,7 +266,94 @@ enum {
 	AXP20X_REG_ID_MAX,
 };
 
+enum {
+	AXP22X_DCDC1 = 0,
+	AXP22X_DCDC2,
+	AXP22X_DCDC3,
+	AXP22X_DCDC4,
+	AXP22X_DCDC5,
+	AXP22X_DC1SW,
+	AXP22X_DC5LDO,
+	AXP22X_ALDO1,
+	AXP22X_ALDO2,
+	AXP22X_ALDO3,
+	AXP22X_ELDO1,
+	AXP22X_ELDO2,
+	AXP22X_ELDO3,
+	AXP22X_DLDO1,
+	AXP22X_DLDO2,
+	AXP22X_DLDO3,
+	AXP22X_DLDO4,
+	AXP22X_RTC_LDO,
+	AXP22X_LDO_IO0,
+	AXP22X_LDO_IO1,
+	AXP22X_REG_ID_MAX,
+};
+
+enum {
+	AXP806_DCDCA = 0,
+	AXP806_DCDCB,
+	AXP806_DCDCC,
+	AXP806_DCDCD,
+	AXP806_DCDCE,
+	AXP806_ALDO1,
+	AXP806_ALDO2,
+	AXP806_ALDO3,
+	AXP806_BLDO1,
+	AXP806_BLDO2,
+	AXP806_BLDO3,
+	AXP806_BLDO4,
+	AXP806_CLDO1,
+	AXP806_CLDO2,
+	AXP806_CLDO3,
+	AXP806_SW,
+	AXP806_REG_ID_MAX,
+};
+
+enum {
+	AXP809_DCDC1 = 0,
+	AXP809_DCDC2,
+	AXP809_DCDC3,
+	AXP809_DCDC4,
+	AXP809_DCDC5,
+	AXP809_DC1SW,
+	AXP809_DC5LDO,
+	AXP809_ALDO1,
+	AXP809_ALDO2,
+	AXP809_ALDO3,
+	AXP809_ELDO1,
+	AXP809_ELDO2,
+	AXP809_ELDO3,
+	AXP809_DLDO1,
+	AXP809_DLDO2,
+	AXP809_RTC_LDO,
+	AXP809_LDO_IO0,
+	AXP809_LDO_IO1,
+	AXP809_SW,
+	AXP809_REG_ID_MAX,
+};
+
 /* IRQs */
+enum {
+	AXP152_IRQ_LDO0IN_CONNECT = 1,
+	AXP152_IRQ_LDO0IN_REMOVAL,
+	AXP152_IRQ_ALDO0IN_CONNECT,
+	AXP152_IRQ_ALDO0IN_REMOVAL,
+	AXP152_IRQ_DCDC1_V_LOW,
+	AXP152_IRQ_DCDC2_V_LOW,
+	AXP152_IRQ_DCDC3_V_LOW,
+	AXP152_IRQ_DCDC4_V_LOW,
+	AXP152_IRQ_PEK_SHORT,
+	AXP152_IRQ_PEK_LONG,
+	AXP152_IRQ_TIMER,
+	AXP152_IRQ_PEK_RIS_EDGE,
+	AXP152_IRQ_PEK_FAL_EDGE,
+	AXP152_IRQ_GPIO3_INPUT,
+	AXP152_IRQ_GPIO2_INPUT,
+	AXP152_IRQ_GPIO1_INPUT,
+	AXP152_IRQ_GPIO0_INPUT,
+};
+
 enum {
 	AXP20X_IRQ_ACIN_OVER_V = 1,
 	AXP20X_IRQ_ACIN_PLUGIN,
@@ -199,6 +394,34 @@ enum {
 	AXP20X_IRQ_GPIO0_INPUT,
 };
 
+enum axp22x_irqs {
+	AXP22X_IRQ_ACIN_OVER_V = 1,
+	AXP22X_IRQ_ACIN_PLUGIN,
+	AXP22X_IRQ_ACIN_REMOVAL,
+	AXP22X_IRQ_VBUS_OVER_V,
+	AXP22X_IRQ_VBUS_PLUGIN,
+	AXP22X_IRQ_VBUS_REMOVAL,
+	AXP22X_IRQ_VBUS_V_LOW,
+	AXP22X_IRQ_BATT_PLUGIN,
+	AXP22X_IRQ_BATT_REMOVAL,
+	AXP22X_IRQ_BATT_ENT_ACT_MODE,
+	AXP22X_IRQ_BATT_EXIT_ACT_MODE,
+	AXP22X_IRQ_CHARG,
+	AXP22X_IRQ_CHARG_DONE,
+	AXP22X_IRQ_BATT_TEMP_HIGH,
+	AXP22X_IRQ_BATT_TEMP_LOW,
+	AXP22X_IRQ_DIE_TEMP_HIGH,
+	AXP22X_IRQ_PEK_SHORT,
+	AXP22X_IRQ_PEK_LONG,
+	AXP22X_IRQ_LOW_PWR_LVL1,
+	AXP22X_IRQ_LOW_PWR_LVL2,
+	AXP22X_IRQ_TIMER,
+	AXP22X_IRQ_PEK_RIS_EDGE,
+	AXP22X_IRQ_PEK_FAL_EDGE,
+	AXP22X_IRQ_GPIO1_INPUT,
+	AXP22X_IRQ_GPIO0_INPUT,
+};
+
 enum axp288_irqs {
 	AXP288_IRQ_VBUS_FALL     = 2,
 	AXP288_IRQ_VBUS_RISE,
@@ -236,6 +459,56 @@ enum axp288_irqs {
 	AXP288_IRQ_BC_USB_CHNG,
 };
 
+enum axp806_irqs {
+	AXP806_IRQ_DIE_TEMP_HIGH_LV1,
+	AXP806_IRQ_DIE_TEMP_HIGH_LV2,
+	AXP806_IRQ_DCDCA_V_LOW,
+	AXP806_IRQ_DCDCB_V_LOW,
+	AXP806_IRQ_DCDCC_V_LOW,
+	AXP806_IRQ_DCDCD_V_LOW,
+	AXP806_IRQ_DCDCE_V_LOW,
+	AXP806_IRQ_PWROK_LONG,
+	AXP806_IRQ_PWROK_SHORT,
+	AXP806_IRQ_WAKEUP,
+	AXP806_IRQ_PWROK_FALL,
+	AXP806_IRQ_PWROK_RISE,
+};
+
+enum axp809_irqs {
+	AXP809_IRQ_ACIN_OVER_V = 1,
+	AXP809_IRQ_ACIN_PLUGIN,
+	AXP809_IRQ_ACIN_REMOVAL,
+	AXP809_IRQ_VBUS_OVER_V,
+	AXP809_IRQ_VBUS_PLUGIN,
+	AXP809_IRQ_VBUS_REMOVAL,
+	AXP809_IRQ_VBUS_V_LOW,
+	AXP809_IRQ_BATT_PLUGIN,
+	AXP809_IRQ_BATT_REMOVAL,
+	AXP809_IRQ_BATT_ENT_ACT_MODE,
+	AXP809_IRQ_BATT_EXIT_ACT_MODE,
+	AXP809_IRQ_CHARG,
+	AXP809_IRQ_CHARG_DONE,
+	AXP809_IRQ_BATT_CHG_TEMP_HIGH,
+	AXP809_IRQ_BATT_CHG_TEMP_HIGH_END,
+	AXP809_IRQ_BATT_CHG_TEMP_LOW,
+	AXP809_IRQ_BATT_CHG_TEMP_LOW_END,
+	AXP809_IRQ_BATT_ACT_TEMP_HIGH,
+	AXP809_IRQ_BATT_ACT_TEMP_HIGH_END,
+	AXP809_IRQ_BATT_ACT_TEMP_LOW,
+	AXP809_IRQ_BATT_ACT_TEMP_LOW_END,
+	AXP809_IRQ_DIE_TEMP_HIGH,
+	AXP809_IRQ_LOW_PWR_LVL1,
+	AXP809_IRQ_LOW_PWR_LVL2,
+	AXP809_IRQ_TIMER,
+	AXP809_IRQ_PEK_RIS_EDGE,
+	AXP809_IRQ_PEK_FAL_EDGE,
+	AXP809_IRQ_PEK_SHORT,
+	AXP809_IRQ_PEK_LONG,
+	AXP809_IRQ_PEK_OVER_OFF,
+	AXP809_IRQ_GPIO1_INPUT,
+	AXP809_IRQ_GPIO0_INPUT,
+};
+
 #define AXP288_TS_ADC_H		0x58
 #define AXP288_TS_ADC_L		0x59
 #define AXP288_GP_ADC_H		0x5a
@@ -243,7 +516,7 @@ enum axp288_irqs {
 
 struct axp20x_dev {
 	struct device			*dev;
-	struct i2c_client		*i2c_client;
+	int				irq;
 	struct regmap			*regmap;
 	struct regmap_irq_chip_data	*regmap_irqc;
 	long				variant;
@@ -274,5 +547,70 @@ struct axp20x_fg_pdata {
 	int tcsz;
 	int thermistor_curve[MAX_THERM_CURVE_SIZE][2];
 };
+
+struct axp20x_chrg_pdata {
+	int max_cc;
+	int max_cv;
+	int def_cc;
+	int def_cv;
+};
+
+struct axp288_extcon_pdata {
+	/* GPIO pin control to switch D+/D- lines b/w PMIC and SOC */
+	struct gpio_desc *gpio_mux_cntl;
+};
+
+/* generic helper function for reading 9-16 bit wide regs */
+static inline int axp20x_read_variable_width(struct regmap *regmap,
+	unsigned int reg, unsigned int width)
+{
+	unsigned int reg_val, result;
+	int err;
+
+	err = regmap_read(regmap, reg, &reg_val);
+	if (err)
+		return err;
+
+	result = reg_val << (width - 8);
+
+	err = regmap_read(regmap, reg + 1, &reg_val);
+	if (err)
+		return err;
+
+	result |= reg_val;
+
+	return result;
+}
+
+/**
+ * axp20x_match_device(): Setup axp20x variant related fields
+ *
+ * @axp20x: axp20x device to setup (.dev field must be set)
+ * @dev: device associated with this axp20x device
+ *
+ * This lets the axp20x core configure the mfd cells and register maps
+ * for later use.
+ */
+int axp20x_match_device(struct axp20x_dev *axp20x);
+
+/**
+ * axp20x_device_probe(): Probe a configured axp20x device
+ *
+ * @axp20x: axp20x device to probe (must be configured)
+ *
+ * This function lets the axp20x core register the axp20x mfd devices
+ * and irqchip. The axp20x device passed in must be fully configured
+ * with axp20x_match_device, its irq set, and regmap created.
+ */
+int axp20x_device_probe(struct axp20x_dev *axp20x);
+
+/**
+ * axp20x_device_probe(): Remove a axp20x device
+ *
+ * @axp20x: axp20x device to remove
+ *
+ * This tells the axp20x core to remove the associated mfd devices
+ */
+int axp20x_device_remove(struct axp20x_dev *axp20x);
 
 #endif /* __LINUX_MFD_AXP20X_H */

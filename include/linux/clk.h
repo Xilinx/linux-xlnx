@@ -20,8 +20,6 @@ struct device;
 
 struct clk;
 
-#ifdef CONFIG_COMMON_CLK
-
 /**
  * DOC: clk notifier callback types
  *
@@ -77,6 +75,8 @@ struct clk_notifier_data {
 	unsigned long		old_rate;
 	unsigned long		new_rate;
 };
+
+#ifdef CONFIG_COMMON_CLK
 
 /**
  * clk_notifier_register: register a clock rate-change notifier callback
@@ -139,6 +139,18 @@ int clk_get_phase(struct clk *clk);
 bool clk_is_match(const struct clk *p, const struct clk *q);
 
 #else
+
+static inline int clk_notifier_register(struct clk *clk,
+					struct notifier_block *nb)
+{
+	return -ENOTSUPP;
+}
+
+static inline int clk_notifier_unregister(struct clk *clk,
+					  struct notifier_block *nb)
+{
+	return -ENOTSUPP;
+}
 
 static inline long clk_get_accuracy(struct clk *clk)
 {
@@ -306,6 +318,20 @@ void devm_clk_put(struct device *dev, struct clk *clk);
  * @clk: clock source
  * @rate: desired clock rate in Hz
  *
+ * This answers the question "if I were to pass @rate to clk_set_rate(),
+ * what clock rate would I end up with?" without changing the hardware
+ * in any way.  In other words:
+ *
+ *   rate = clk_round_rate(clk, r);
+ *
+ * and:
+ *
+ *   clk_set_rate(clk, r);
+ *   rate = clk_get_rate(clk);
+ *
+ * are equivalent except the former does not modify the clock hardware
+ * in any way.
+ *
  * Returns rounded clock rate in Hz, or negative errno.
  */
 long clk_round_rate(struct clk *clk, unsigned long rate);
@@ -447,6 +473,10 @@ static inline struct clk *clk_get_parent(struct clk *clk)
 	return NULL;
 }
 
+static inline struct clk *clk_get_sys(const char *dev_id, const char *con_id)
+{
+	return NULL;
+}
 #endif
 
 /* clk_prepare_enable helps cases using clk_enable in non-atomic context. */
@@ -470,19 +500,6 @@ static inline void clk_disable_unprepare(struct clk *clk)
 	clk_disable(clk);
 	clk_unprepare(clk);
 }
-
-/**
- * clk_add_alias - add a new clock alias
- * @alias: name for clock alias
- * @alias_dev_name: device name
- * @id: platform specific clock name
- * @dev: device
- *
- * Allows using generic clock names for drivers by adding a new alias.
- * Assumes clkdev, see clkdev.h for more info.
- */
-int clk_add_alias(const char *alias, const char *alias_dev_name, char *id,
-			struct device *dev);
 
 struct device_node;
 struct of_phandle_args;

@@ -50,7 +50,7 @@
 #include <linux/kthread.h>
 #include <drm/ttm/ttm_bo_driver.h>
 #include <drm/ttm/ttm_page_alloc.h>
-#ifdef TTM_HAS_AGP
+#if IS_ENABLED(CONFIG_AGP)
 #include <asm/agp.h>
 #endif
 
@@ -271,7 +271,7 @@ static struct kobj_type ttm_pool_kobj_type = {
 #ifndef CONFIG_X86
 static int set_pages_array_wb(struct page **pages, int addrinarray)
 {
-#ifdef TTM_HAS_AGP
+#if IS_ENABLED(CONFIG_AGP)
 	int i;
 
 	for (i = 0; i < addrinarray; i++)
@@ -282,7 +282,7 @@ static int set_pages_array_wb(struct page **pages, int addrinarray)
 
 static int set_pages_array_wc(struct page **pages, int addrinarray)
 {
-#ifdef TTM_HAS_AGP
+#if IS_ENABLED(CONFIG_AGP)
 	int i;
 
 	for (i = 0; i < addrinarray; i++)
@@ -293,7 +293,7 @@ static int set_pages_array_wc(struct page **pages, int addrinarray)
 
 static int set_pages_array_uc(struct page **pages, int addrinarray)
 {
-#ifdef TTM_HAS_AGP
+#if IS_ENABLED(CONFIG_AGP)
 	int i;
 
 	for (i = 0; i < addrinarray; i++)
@@ -342,9 +342,12 @@ static struct dma_page *__ttm_dma_alloc_page(struct dma_pool *pool)
 	d_page->vaddr = dma_alloc_coherent(pool->dev, pool->size,
 					   &d_page->dma,
 					   pool->gfp_flags);
-	if (d_page->vaddr)
-		d_page->p = virt_to_page(d_page->vaddr);
-	else {
+	if (d_page->vaddr) {
+		if (is_vmalloc_addr(d_page->vaddr))
+			d_page->p = vmalloc_to_page(d_page->vaddr);
+		else
+			d_page->p = virt_to_page(d_page->vaddr);
+	} else {
 		kfree(d_page);
 		d_page = NULL;
 	}
@@ -855,7 +858,6 @@ static int ttm_dma_pool_get_pages(struct dma_pool *pool,
 	if (count) {
 		d_page = list_first_entry(&pool->free_list, struct dma_page, page_list);
 		ttm->pages[index] = d_page->p;
-		ttm_dma->cpu_address[index] = d_page->vaddr;
 		ttm_dma->dma_address[index] = d_page->dma;
 		list_move_tail(&d_page->page_list, &ttm_dma->pages_list);
 		r = 0;
@@ -960,14 +962,13 @@ void ttm_dma_unpopulate(struct ttm_dma_tt *ttm_dma, struct device *dev)
 	} else {
 		pool->npages_free += count;
 		list_splice(&ttm_dma->pages_list, &pool->free_list);
-		npages = count;
-		if (pool->npages_free > _manager->options.max_size) {
+		/*
+		 * Wait to have at at least NUM_PAGES_TO_ALLOC number of pages
+		 * to free in order to minimize calls to set_memory_wb().
+		 */
+		if (pool->npages_free >= (_manager->options.max_size +
+					  NUM_PAGES_TO_ALLOC))
 			npages = pool->npages_free - _manager->options.max_size;
-			/* free at least NUM_PAGES_TO_ALLOC number of pages
-			 * to reduce calls to set_memory_wb */
-			if (npages < NUM_PAGES_TO_ALLOC)
-				npages = NUM_PAGES_TO_ALLOC;
-		}
 	}
 	spin_unlock_irqrestore(&pool->lock, irq_flags);
 
@@ -987,7 +988,6 @@ void ttm_dma_unpopulate(struct ttm_dma_tt *ttm_dma, struct device *dev)
 	INIT_LIST_HEAD(&ttm_dma->pages_list);
 	for (i = 0; i < ttm->num_pages; i++) {
 		ttm->pages[i] = NULL;
-		ttm_dma->cpu_address[i] = 0;
 		ttm_dma->dma_address[i] = 0;
 	}
 

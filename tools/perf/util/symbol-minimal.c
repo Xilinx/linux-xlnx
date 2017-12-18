@@ -246,13 +246,12 @@ out:
 	return ret;
 }
 
-int symsrc__init(struct symsrc *ss, struct dso *dso __maybe_unused,
-		 const char *name,
+int symsrc__init(struct symsrc *ss, struct dso *dso, const char *name,
 	         enum dso_binary_type type)
 {
 	int fd = open(name, O_RDONLY);
 	if (fd < 0)
-		return -1;
+		goto out_errno;
 
 	ss->name = strdup(name);
 	if (!ss->name)
@@ -264,6 +263,8 @@ int symsrc__init(struct symsrc *ss, struct dso *dso __maybe_unused,
 	return 0;
 out_close:
 	close(fd);
+out_errno:
+	dso->load_errno = errno;
 	return -1;
 }
 
@@ -286,8 +287,7 @@ void symsrc__destroy(struct symsrc *ss)
 
 int dso__synthesize_plt_symbols(struct dso *dso __maybe_unused,
 				struct symsrc *ss __maybe_unused,
-				struct map *map __maybe_unused,
-				symbol_filter_t filter __maybe_unused)
+				struct map *map __maybe_unused)
 {
 	return 0;
 }
@@ -333,10 +333,9 @@ enum dso_type dso__type_fd(int fd)
 int dso__load_sym(struct dso *dso, struct map *map __maybe_unused,
 		  struct symsrc *ss,
 		  struct symsrc *runtime_ss __maybe_unused,
-		  symbol_filter_t filter __maybe_unused,
 		  int kmodule __maybe_unused)
 {
-	unsigned char *build_id[BUILD_ID_SIZE];
+	unsigned char build_id[BUILD_ID_SIZE];
 	int ret;
 
 	ret = fd__is_64_bit(ss->fd);

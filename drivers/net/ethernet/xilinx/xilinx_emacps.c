@@ -777,7 +777,7 @@ static void xemacps_adjust_link(struct net_device *ndev)
 
 			if (gmii2rgmii_phydev != NULL) {
 				xemacps_mdio_write(lp->mii_bus,
-					gmii2rgmii_phydev->addr,
+					gmii2rgmii_phydev->mdio.addr,
 					XEMACPS_GMII2RGMII_REG_NUM,
 					gmii2rgmii_reg);
 			}
@@ -850,7 +850,7 @@ static int xemacps_mii_probe(struct net_device *ndev)
 
 	dev_dbg(&lp->pdev->dev,
 		"GEM: phydev %p, phydev->phy_id 0x%x, phydev->addr 0x%x\n",
-		phydev, phydev->phy_id, phydev->addr);
+		phydev, phydev->phy_id, phydev->mdio.addr);
 
 	phydev->supported &= (PHY_GBIT_FEATURES | SUPPORTED_Pause |
 							SUPPORTED_Asym_Pause);
@@ -864,7 +864,7 @@ static int xemacps_mii_probe(struct net_device *ndev)
 	phy_start(lp->phy_dev);
 
 	dev_dbg(&lp->pdev->dev, "phy_addr 0x%x, phy_id 0x%08x\n",
-			lp->phy_dev->addr, lp->phy_dev->phy_id);
+			lp->phy_dev->mdio.addr, lp->phy_dev->phy_id);
 
 	dev_dbg(&lp->pdev->dev, "attach [%s] phy driver\n",
 			lp->phy_dev->drv->name);
@@ -901,12 +901,6 @@ static int xemacps_mii_init(struct net_local *lp)
 	lp->mii_bus->priv = lp;
 	lp->mii_bus->parent = &lp->ndev->dev;
 
-	lp->mii_bus->irq = kmalloc(sizeof(int)*PHY_MAX_ADDR, GFP_KERNEL);
-	if (!lp->mii_bus->irq) {
-		rc = -ENOMEM;
-		goto err_out_free_mdiobus;
-	}
-
 	for (i = 0; i < PHY_MAX_ADDR; i++)
 		lp->mii_bus->irq[i] = PHY_POLL;
 	npp = of_get_parent(np);
@@ -916,13 +910,11 @@ static int xemacps_mii_init(struct net_local *lp)
 
 	if (lp->phy_node) {
 		if (of_mdiobus_register(lp->mii_bus, np))
-			goto err_out_free_mdio_irq;
+			goto err_out_free_mdiobus;
 	}
 
 	return 0;
 
-err_out_free_mdio_irq:
-	kfree(lp->mii_bus->irq);
 err_out_free_mdiobus:
 	mdiobus_free(lp->mii_bus);
 err_out:
@@ -1179,7 +1171,8 @@ static int xemacps_ptp_enable(struct ptp_clock_info *ptp,
  * @ts: Timespec structure to hold the current time value
  * Return: Always returns zero
  */
-static int xemacps_ptp_gettime(struct ptp_clock_info *ptp, struct timespec *ts)
+static int xemacps_ptp_gettime(struct ptp_clock_info *ptp,
+				struct timespec64 *ts)
 {
 	unsigned long flags;
 	struct net_local *lp = container_of(ptp, struct net_local, ptp_caps);
@@ -1202,7 +1195,7 @@ static int xemacps_ptp_gettime(struct ptp_clock_info *ptp, struct timespec *ts)
  * Return: Always returns zero
  */
 static int xemacps_ptp_settime(struct ptp_clock_info *ptp,
-			       const struct timespec *ts)
+			       const struct timespec64 *ts)
 {
 	unsigned long flags;
 	struct net_local *lp = container_of(ptp, struct net_local, ptp_caps);
@@ -1290,8 +1283,8 @@ static void xemacps_ptp_init(struct net_local *lp)
 	lp->ptp_caps.pps = 0;
 	lp->ptp_caps.adjfreq = xemacps_ptp_adjfreq;
 	lp->ptp_caps.adjtime = xemacps_ptp_adjtime;
-	lp->ptp_caps.gettime = xemacps_ptp_gettime;
-	lp->ptp_caps.settime = xemacps_ptp_settime;
+	lp->ptp_caps.gettime64 = xemacps_ptp_gettime;
+	lp->ptp_caps.settime64 = xemacps_ptp_settime;
 	lp->ptp_caps.enable = xemacps_ptp_enable;
 
 	rate = clk_get_rate(lp->aperclk);
@@ -2167,7 +2160,7 @@ static void xemacps_reinit_for_txtimeout(struct work_struct *data)
 
 	napi_enable(&lp->napi);
 	tasklet_enable(&lp->tx_bdreclaim_tasklet);
-	lp->ndev->trans_start = jiffies;
+	netif_trans_update(lp->ndev);
 	netif_wake_queue(lp->ndev);
 }
 
@@ -2321,7 +2314,7 @@ static int xemacps_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 			(regval | XEMACPS_NWCTRL_STARTTX_MASK));
 	spin_unlock_irqrestore(&lp->nwctrlreg_lock, flags);
 
-	ndev->trans_start = jiffies;
+	netif_trans_update(ndev);
 	return 0;
 
 dma_err:

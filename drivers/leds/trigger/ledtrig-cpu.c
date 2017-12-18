@@ -19,7 +19,6 @@
  *
  */
 
-#include <linux/module.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/slab.h>
@@ -93,29 +92,22 @@ static struct syscore_ops ledtrig_cpu_syscore_ops = {
 	.resume		= ledtrig_cpu_syscore_resume,
 };
 
-static int ledtrig_cpu_notify(struct notifier_block *self,
-					   unsigned long action, void *hcpu)
+static int ledtrig_online_cpu(unsigned int cpu)
 {
-	switch (action & ~CPU_TASKS_FROZEN) {
-	case CPU_STARTING:
-		ledtrig_cpu(CPU_LED_START);
-		break;
-	case CPU_DYING:
-		ledtrig_cpu(CPU_LED_STOP);
-		break;
-	}
-
-	return NOTIFY_OK;
+	ledtrig_cpu(CPU_LED_START);
+	return 0;
 }
 
-
-static struct notifier_block ledtrig_cpu_nb = {
-	.notifier_call = ledtrig_cpu_notify,
-};
+static int ledtrig_prepare_down_cpu(unsigned int cpu)
+{
+	ledtrig_cpu(CPU_LED_STOP);
+	return 0;
+}
 
 static int __init ledtrig_cpu_init(void)
 {
 	int cpu;
+	int ret;
 
 	/* Supports up to 9999 cpu cores */
 	BUILD_BUG_ON(CONFIG_NR_CPUS > 9999);
@@ -134,33 +126,15 @@ static int __init ledtrig_cpu_init(void)
 	}
 
 	register_syscore_ops(&ledtrig_cpu_syscore_ops);
-	register_cpu_notifier(&ledtrig_cpu_nb);
+
+	ret = cpuhp_setup_state(CPUHP_AP_ONLINE_DYN, "AP_LEDTRIG_STARTING",
+				ledtrig_online_cpu, ledtrig_prepare_down_cpu);
+	if (ret < 0)
+		pr_err("CPU hotplug notifier for ledtrig-cpu could not be registered: %d\n",
+		       ret);
 
 	pr_info("ledtrig-cpu: registered to indicate activity on CPUs\n");
 
 	return 0;
 }
-module_init(ledtrig_cpu_init);
-
-static void __exit ledtrig_cpu_exit(void)
-{
-	int cpu;
-
-	unregister_cpu_notifier(&ledtrig_cpu_nb);
-
-	for_each_possible_cpu(cpu) {
-		struct led_trigger_cpu *trig = &per_cpu(cpu_trig, cpu);
-
-		led_trigger_unregister_simple(trig->_trig);
-		trig->_trig = NULL;
-		memset(trig->name, 0, MAX_NAME_LEN);
-	}
-
-	unregister_syscore_ops(&ledtrig_cpu_syscore_ops);
-}
-module_exit(ledtrig_cpu_exit);
-
-MODULE_AUTHOR("Linus Walleij <linus.walleij@linaro.org>");
-MODULE_AUTHOR("Bryan Wu <bryan.wu@canonical.com>");
-MODULE_DESCRIPTION("CPU LED trigger");
-MODULE_LICENSE("GPL");
+device_initcall(ledtrig_cpu_init);

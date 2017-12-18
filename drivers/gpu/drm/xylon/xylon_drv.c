@@ -89,7 +89,6 @@ static int xylon_drm_load(struct drm_device *dev, unsigned long flags)
 		DRM_ERROR("failed initialize vblank\n");
 		goto err_out;
 	}
-	dev->vblank_disable_allowed = 1;
 
 	ret = xylon_drm_irq_install(dev);
 	if (ret < 0) {
@@ -166,7 +165,7 @@ static void xylon_drm_lastclose(struct drm_device *dev)
 	xylon_drm_fbdev_restore_mode(xdev->fbdev);
 }
 
-static int xylon_drm_vblank_enable(struct drm_device *dev, int crtc)
+static int xylon_drm_vblank_enable(struct drm_device *dev, unsigned int crtc)
 {
 	struct xylon_drm_device *xdev = dev->dev_private;
 
@@ -175,7 +174,7 @@ static int xylon_drm_vblank_enable(struct drm_device *dev, int crtc)
 	return 0;
 }
 
-static void xylon_drm_vblank_disable(struct drm_device *dev, int crtc)
+static void xylon_drm_vblank_disable(struct drm_device *dev, unsigned int crtc)
 {
 	struct xylon_drm_device *xdev = dev->dev_private;
 

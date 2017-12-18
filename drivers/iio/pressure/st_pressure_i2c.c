@@ -32,6 +32,10 @@ static const struct of_device_id st_press_of_match[] = {
 		.compatible = "st,lps331ap-press",
 		.data = LPS331AP_PRESS_DEV_NAME,
 	},
+	{
+		.compatible = "st,lps22hb-press",
+		.data = LPS22HB_PRESS_DEV_NAME,
+	},
 	{},
 };
 MODULE_DEVICE_TABLE(of, st_press_of_match);
@@ -79,7 +83,6 @@ MODULE_DEVICE_TABLE(i2c, st_press_id_table);
 
 static struct i2c_driver st_press_driver = {
 	.driver = {
-		.owner = THIS_MODULE,
 		.name = "st-press-i2c",
 		.of_match_table = of_match_ptr(st_press_of_match),
 	},

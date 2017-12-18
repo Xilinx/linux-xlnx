@@ -12,7 +12,7 @@
 #include "ql4_glbl.h"
 #include "ql4_inline.h"
 
-#include <asm-generic/io-64-nonatomic-lo-hi.h>
+#include <linux/io-64-nonatomic-lo-hi.h>
 
 #define TIMEOUT_100_MS	100
 #define MASK(n)		DMA_BIT_MASK(n)
@@ -1843,7 +1843,7 @@ static uint32_t ql4_84xx_poll_wait_for_ready(struct scsi_qla_host *ha,
 	return rval;
 }
 
-uint32_t ql4_84xx_ipmdio_rd_reg(struct scsi_qla_host *ha, uint32_t addr1,
+static uint32_t ql4_84xx_ipmdio_rd_reg(struct scsi_qla_host *ha, uint32_t addr1,
 				uint32_t addr3, uint32_t mask, uint32_t addr,
 				uint32_t *data_ptr)
 {

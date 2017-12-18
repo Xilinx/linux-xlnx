@@ -8,16 +8,18 @@ http://github.com/freedreno/envytools/
 git clone https://github.com/freedreno/envytools.git
 
 The rules-ng-ng source files this header was generated from are:
-- /home/robclark/src/freedreno/envytools/rnndb/adreno.xml               (    364 bytes, from 2013-11-30 14:47:15)
-- /home/robclark/src/freedreno/envytools/rnndb/freedreno_copyright.xml  (   1453 bytes, from 2013-03-31 16:51:27)
-- /home/robclark/src/freedreno/envytools/rnndb/adreno/a2xx.xml          (  32901 bytes, from 2014-06-02 15:21:30)
-- /home/robclark/src/freedreno/envytools/rnndb/adreno/adreno_common.xml (  10551 bytes, from 2014-11-13 22:44:30)
-- /home/robclark/src/freedreno/envytools/rnndb/adreno/adreno_pm4.xml    (  15085 bytes, from 2014-12-20 21:49:41)
-- /home/robclark/src/freedreno/envytools/rnndb/adreno/a3xx.xml          (  64344 bytes, from 2014-12-12 20:22:26)
-- /home/robclark/src/freedreno/envytools/rnndb/adreno/a4xx.xml          (  51069 bytes, from 2014-12-21 15:51:54)
+- /home/robclark/src/freedreno/envytools/rnndb/adreno.xml               (    398 bytes, from 2015-09-24 17:25:31)
+- /home/robclark/src/freedreno/envytools/rnndb/freedreno_copyright.xml  (   1572 bytes, from 2016-02-10 17:07:21)
+- /home/robclark/src/freedreno/envytools/rnndb/adreno/a2xx.xml          (  32901 bytes, from 2015-05-20 20:03:14)
+- /home/robclark/src/freedreno/envytools/rnndb/adreno/adreno_common.xml (  11518 bytes, from 2016-02-10 21:03:25)
+- /home/robclark/src/freedreno/envytools/rnndb/adreno/adreno_pm4.xml    (  16166 bytes, from 2016-02-11 21:20:31)
+- /home/robclark/src/freedreno/envytools/rnndb/adreno/a3xx.xml          (  83967 bytes, from 2016-02-10 17:07:21)
+- /home/robclark/src/freedreno/envytools/rnndb/adreno/a4xx.xml          ( 109916 bytes, from 2016-02-20 18:44:48)
+- /home/robclark/src/freedreno/envytools/rnndb/adreno/ocmem.xml         (   1773 bytes, from 2015-09-24 17:30:00)
 
-Copyright (C) 2013-2014 by the following authors:
+Copyright (C) 2013-2016 by the following authors:
 - Rob Clark <robdclark@gmail.com> (robclark)
+- Ilia Mirkin <imirkin@alum.mit.edu> (imirkin)
 
 Permission is hereby granted, free of charge, to any person obtaining
 a copy of this software and associated documentation files (the
@@ -67,7 +69,7 @@ enum vgt_event_type {
 
 enum pc_di_primtype {
 	DI_PT_NONE = 0,
-	DI_PT_POINTLIST_A2XX = 1,
+	DI_PT_POINTLIST_PSIZE = 1,
 	DI_PT_LINELIST = 2,
 	DI_PT_LINESTRIP = 3,
 	DI_PT_TRILIST = 4,
@@ -75,17 +77,12 @@ enum pc_di_primtype {
 	DI_PT_TRISTRIP = 6,
 	DI_PT_LINELOOP = 7,
 	DI_PT_RECTLIST = 8,
-	DI_PT_POINTLIST_A3XX = 9,
-	DI_PT_QUADLIST = 13,
-	DI_PT_QUADSTRIP = 14,
-	DI_PT_POLYGON = 15,
-	DI_PT_2D_COPY_RECT_LIST_V0 = 16,
-	DI_PT_2D_COPY_RECT_LIST_V1 = 17,
-	DI_PT_2D_COPY_RECT_LIST_V2 = 18,
-	DI_PT_2D_COPY_RECT_LIST_V3 = 19,
-	DI_PT_2D_FILL_RECT_LIST = 20,
-	DI_PT_2D_LINE_STRIP = 21,
-	DI_PT_2D_TRI_STRIP = 22,
+	DI_PT_POINTLIST = 9,
+	DI_PT_LINE_ADJ = 10,
+	DI_PT_LINESTRIP_ADJ = 11,
+	DI_PT_TRI_ADJ = 12,
+	DI_PT_TRISTRIP_ADJ = 13,
+	DI_PT_PATCHES = 34,
 };
 
 enum pc_di_src_sel {
@@ -176,6 +173,11 @@ enum adreno_pm4_type3_packets {
 	CP_UNKNOWN_1A = 26,
 	CP_UNKNOWN_4E = 78,
 	CP_WIDE_REG_WRITE = 116,
+	CP_SCRATCH_TO_REG = 77,
+	CP_REG_TO_SCRATCH = 74,
+	CP_WAIT_MEM_WRITES = 18,
+	CP_COND_REG_EXEC = 71,
+	CP_MEM_TO_REG = 66,
 	IN_IB_PREFETCH_END = 23,
 	IN_SUBBLK_PREFETCH = 31,
 	IN_INSTR_PREFETCH = 32,
@@ -192,6 +194,7 @@ enum adreno_state_block {
 	SB_FRAG_TEX = 2,
 	SB_FRAG_MIPADDR = 3,
 	SB_VERT_SHADER = 4,
+	SB_GEOM_SHADER = 5,
 	SB_FRAG_SHADER = 6,
 };
 
@@ -202,7 +205,11 @@ enum adreno_state_type {
 
 enum adreno_state_src {
 	SS_DIRECT = 0,
+	SS_INVALID_ALL_IC = 2,
+	SS_INVALID_PART_IC = 3,
 	SS_INDIRECT = 4,
+	SS_INDIRECT_TCM = 5,
+	SS_INDIRECT_STM = 6,
 };
 
 enum a4xx_index_size {
@@ -230,7 +237,7 @@ static inline uint32_t CP_LOAD_STATE_0_STATE_BLOCK(enum adreno_state_block val)
 {
 	return ((val) << CP_LOAD_STATE_0_STATE_BLOCK__SHIFT) & CP_LOAD_STATE_0_STATE_BLOCK__MASK;
 }
-#define CP_LOAD_STATE_0_NUM_UNIT__MASK				0x7fc00000
+#define CP_LOAD_STATE_0_NUM_UNIT__MASK				0xffc00000
 #define CP_LOAD_STATE_0_NUM_UNIT__SHIFT				22
 static inline uint32_t CP_LOAD_STATE_0_NUM_UNIT(uint32_t val)
 {
@@ -382,11 +389,18 @@ static inline uint32_t CP_DRAW_INDX_OFFSET_0_SOURCE_SELECT(enum pc_di_src_sel va
 {
 	return ((val) << CP_DRAW_INDX_OFFSET_0_SOURCE_SELECT__SHIFT) & CP_DRAW_INDX_OFFSET_0_SOURCE_SELECT__MASK;
 }
+#define CP_DRAW_INDX_OFFSET_0_TESSELLATE			0x00000100
 #define CP_DRAW_INDX_OFFSET_0_INDEX_SIZE__MASK			0x00000c00
 #define CP_DRAW_INDX_OFFSET_0_INDEX_SIZE__SHIFT			10
 static inline uint32_t CP_DRAW_INDX_OFFSET_0_INDEX_SIZE(enum a4xx_index_size val)
 {
 	return ((val) << CP_DRAW_INDX_OFFSET_0_INDEX_SIZE__SHIFT) & CP_DRAW_INDX_OFFSET_0_INDEX_SIZE__MASK;
+}
+#define CP_DRAW_INDX_OFFSET_0_TESS_MODE__MASK			0x01f00000
+#define CP_DRAW_INDX_OFFSET_0_TESS_MODE__SHIFT			20
+static inline uint32_t CP_DRAW_INDX_OFFSET_0_TESS_MODE(uint32_t val)
+{
+	return ((val) << CP_DRAW_INDX_OFFSET_0_TESS_MODE__SHIFT) & CP_DRAW_INDX_OFFSET_0_TESS_MODE__MASK;
 }
 
 #define REG_CP_DRAW_INDX_OFFSET_1				0x00000001
@@ -493,6 +507,30 @@ static inline uint32_t CP_SET_BIN_DATA_0_BIN_DATA_ADDR(uint32_t val)
 static inline uint32_t CP_SET_BIN_DATA_1_BIN_SIZE_ADDRESS(uint32_t val)
 {
 	return ((val) << CP_SET_BIN_DATA_1_BIN_SIZE_ADDRESS__SHIFT) & CP_SET_BIN_DATA_1_BIN_SIZE_ADDRESS__MASK;
+}
+
+#define REG_CP_REG_TO_MEM_0					0x00000000
+#define CP_REG_TO_MEM_0_REG__MASK				0x0000ffff
+#define CP_REG_TO_MEM_0_REG__SHIFT				0
+static inline uint32_t CP_REG_TO_MEM_0_REG(uint32_t val)
+{
+	return ((val) << CP_REG_TO_MEM_0_REG__SHIFT) & CP_REG_TO_MEM_0_REG__MASK;
+}
+#define CP_REG_TO_MEM_0_CNT__MASK				0x3ff80000
+#define CP_REG_TO_MEM_0_CNT__SHIFT				19
+static inline uint32_t CP_REG_TO_MEM_0_CNT(uint32_t val)
+{
+	return ((val) << CP_REG_TO_MEM_0_CNT__SHIFT) & CP_REG_TO_MEM_0_CNT__MASK;
+}
+#define CP_REG_TO_MEM_0_64B					0x40000000
+#define CP_REG_TO_MEM_0_ACCUMULATE				0x80000000
+
+#define REG_CP_REG_TO_MEM_1					0x00000001
+#define CP_REG_TO_MEM_1_DEST__MASK				0xffffffff
+#define CP_REG_TO_MEM_1_DEST__SHIFT				0
+static inline uint32_t CP_REG_TO_MEM_1_DEST(uint32_t val)
+{
+	return ((val) << CP_REG_TO_MEM_1_DEST__SHIFT) & CP_REG_TO_MEM_1_DEST__MASK;
 }
 
 

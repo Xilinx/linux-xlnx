@@ -22,8 +22,9 @@
 #include "perf.h"
 
 #include "util/annotate.h"
-#include "util/cache.h"
+#include "util/config.h"
 #include "util/color.h"
+#include "util/drv_configs.h"
 #include "util/evlist.h"
 #include "util/evsel.h"
 #include "util/machine.h"
@@ -34,12 +35,13 @@
 #include "util/top.h"
 #include "util/util.h"
 #include <linux/rbtree.h>
-#include "util/parse-options.h"
+#include <subcmd/parse-options.h>
 #include "util/parse-events.h"
 #include "util/cpumap.h"
 #include "util/xyarray.h"
 #include "util/sort.h"
 #include "util/intlist.h"
+#include "util/parse-branch-options.h"
 #include "arch/common.h"
 
 #include "util/debug.h"
@@ -66,6 +68,8 @@
 #include <sys/utsname.h>
 #include <sys/mman.h>
 
+#include <linux/stringify.h>
+#include <linux/time64.h>
 #include <linux/types.h>
 
 static volatile int done;
@@ -126,10 +130,14 @@ static int perf_top__parse_source(struct perf_top *top, struct hist_entry *he)
 		return err;
 	}
 
-	err = symbol__annotate(sym, map, 0);
+	err = symbol__disassemble(sym, map, 0);
 	if (err == 0) {
 out_assign:
 		top->sym_filter_entry = he;
+	} else {
+		char msg[BUFSIZ];
+		symbol__strerror_disassemble(sym, map, err, msg, sizeof(msg));
+		pr_err("Couldn't annotate %s: %s\n", sym->name, msg);
 	}
 
 	pthread_mutex_unlock(&notes->lock);
@@ -174,42 +182,40 @@ static void perf_top__record_precise_ip(struct perf_top *top,
 					int counter, u64 ip)
 {
 	struct annotation *notes;
-	struct symbol *sym;
+	struct symbol *sym = he->ms.sym;
 	int err = 0;
 
-	if (he == NULL || he->ms.sym == NULL ||
-	    ((top->sym_filter_entry == NULL ||
-	      top->sym_filter_entry->ms.sym != he->ms.sym) && use_browser != 1))
+	if (sym == NULL || (use_browser == 0 &&
+			    (top->sym_filter_entry == NULL ||
+			     top->sym_filter_entry->ms.sym != sym)))
 		return;
 
-	sym = he->ms.sym;
 	notes = symbol__annotation(sym);
 
 	if (pthread_mutex_trylock(&notes->lock))
 		return;
 
-	ip = he->ms.map->map_ip(he->ms.map, ip);
-
-	if (ui__has_annotation())
-		err = hist_entry__inc_addr_samples(he, counter, ip);
+	err = hist_entry__inc_addr_samples(he, counter, ip);
 
 	pthread_mutex_unlock(&notes->lock);
 
-	/*
-	 * This function is now called with he->hists->lock held.
-	 * Release it before going to sleep.
-	 */
-	pthread_mutex_unlock(&he->hists->lock);
+	if (unlikely(err)) {
+		/*
+		 * This function is now called with he->hists->lock held.
+		 * Release it before going to sleep.
+		 */
+		pthread_mutex_unlock(&he->hists->lock);
 
-	if (err == -ERANGE && !he->ms.map->erange_warned)
-		ui__warn_map_erange(he->ms.map, sym, ip);
-	else if (err == -ENOMEM) {
-		pr_err("Not enough memory for annotating '%s' symbol!\n",
-		       sym->name);
-		sleep(1);
+		if (err == -ERANGE && !he->ms.map->erange_warned)
+			ui__warn_map_erange(he->ms.map, sym, ip);
+		else if (err == -ENOMEM) {
+			pr_err("Not enough memory for annotating '%s' symbol!\n",
+			       sym->name);
+			sleep(1);
+		}
+
+		pthread_mutex_lock(&he->hists->lock);
 	}
-
-	pthread_mutex_lock(&he->hists->lock);
 }
 
 static void perf_top__show_details(struct perf_top *top)
@@ -235,10 +241,13 @@ static void perf_top__show_details(struct perf_top *top)
 
 	more = symbol__annotate_printf(symbol, he->ms.map, top->sym_evsel,
 				       0, top->sym_pcnt_filter, top->print_entries, 4);
-	if (top->zero)
-		symbol__annotate_zero_histogram(symbol, top->sym_evsel->idx);
-	else
-		symbol__annotate_decay_histogram(symbol, top->sym_evsel->idx);
+
+	if (top->evlist->enabled) {
+		if (top->zero)
+			symbol__annotate_zero_histogram(symbol, top->sym_evsel->idx);
+		else
+			symbol__annotate_decay_histogram(symbol, top->sym_evsel->idx);
+	}
 	if (more != 0)
 		printf("%d lines not displayed, maybe increase display entries [e]\n", more);
 out_unlock:
@@ -250,7 +259,8 @@ static void perf_top__print_sym_table(struct perf_top *top)
 	char bf[160];
 	int printed = 0;
 	const int win_width = top->winsize.ws_col - 1;
-	struct hists *hists = evsel__hists(top->sym_evsel);
+	struct perf_evsel *evsel = top->sym_evsel;
+	struct hists *hists = evsel__hists(evsel);
 
 	puts(CONSOLE_CLEAR);
 
@@ -276,20 +286,22 @@ static void perf_top__print_sym_table(struct perf_top *top)
 		return;
 	}
 
-	if (top->zero) {
-		hists__delete_entries(hists);
-	} else {
-		hists__decay_entries(hists, top->hide_user_symbols,
-				     top->hide_kernel_symbols);
+	if (top->evlist->enabled) {
+		if (top->zero) {
+			hists__delete_entries(hists);
+		} else {
+			hists__decay_entries(hists, top->hide_user_symbols,
+					     top->hide_kernel_symbols);
+		}
 	}
 
 	hists__collapse_resort(hists, NULL);
-	hists__output_resort(hists, NULL);
+	perf_evsel__output_resort(evsel, NULL);
 
 	hists__output_recalc_col_len(hists, top->print_entries - printed);
 	putchar('\n');
 	hists__fprintf(hists, false, top->print_entries - printed, win_width,
-		       top->min_percent, stdout);
+		       top->min_percent, stdout, symbol_conf.use_callchain);
 }
 
 static void prompt_integer(int *target, const char *msg)
@@ -473,7 +485,7 @@ static bool perf_top__handle_keypress(struct perf_top *top, int c)
 
 				fprintf(stderr, "\nAvailable events:");
 
-				evlist__for_each(top->evlist, top->sym_evsel)
+				evlist__for_each_entry(top->evlist, top->sym_evsel)
 					fprintf(stderr, "\n\t%d %s", top->sym_evsel->idx, perf_evsel__name(top->sym_evsel));
 
 				prompt_integer(&counter, "Enter details event counter");
@@ -484,7 +496,7 @@ static bool perf_top__handle_keypress(struct perf_top *top, int c)
 					sleep(1);
 					break;
 				}
-				evlist__for_each(top->evlist, top->sym_evsel)
+				evlist__for_each_entry(top->evlist, top->sym_evsel)
 					if (top->sym_evsel->idx == counter)
 						break;
 			} else
@@ -536,6 +548,7 @@ static bool perf_top__handle_keypress(struct perf_top *top, int c)
 static void perf_top__sort_new_samples(void *arg)
 {
 	struct perf_top *t = arg;
+	struct perf_evsel *evsel = t->sym_evsel;
 	struct hists *hists;
 
 	perf_top__reset_sample_counters(t);
@@ -543,17 +556,19 @@ static void perf_top__sort_new_samples(void *arg)
 	if (t->evlist->selected != NULL)
 		t->sym_evsel = t->evlist->selected;
 
-	hists = evsel__hists(t->sym_evsel);
+	hists = evsel__hists(evsel);
 
-	if (t->zero) {
-		hists__delete_entries(hists);
-	} else {
-		hists__decay_entries(hists, t->hide_user_symbols,
-				     t->hide_kernel_symbols);
+	if (t->evlist->enabled) {
+		if (t->zero) {
+			hists__delete_entries(hists);
+		} else {
+			hists__decay_entries(hists, t->hide_user_symbols,
+					     t->hide_kernel_symbols);
+		}
 	}
 
 	hists__collapse_resort(hists, NULL);
-	hists__output_resort(hists, NULL);
+	perf_evsel__output_resort(evsel, NULL);
 }
 
 static void *display_thread_tui(void *arg)
@@ -574,12 +589,13 @@ static void *display_thread_tui(void *arg)
 	 * Zooming in/out UIDs. For now juse use whatever the user passed
 	 * via --uid.
 	 */
-	evlist__for_each(top->evlist, pos) {
+	evlist__for_each_entry(top->evlist, pos) {
 		struct hists *hists = evsel__hists(pos);
 		hists->uid_filter_str = top->record_opts.target.uid_str;
 	}
 
-	perf_evlist__tui_browse_hists(top->evlist, help, &hbt, top->min_percent,
+	perf_evlist__tui_browse_hists(top->evlist, help, &hbt,
+				      top->min_percent,
 				      &top->session->header.env);
 
 	done = 1;
@@ -593,8 +609,8 @@ static void display_sig(int sig __maybe_unused)
 
 static void display_setup_sig(void)
 {
-	signal(SIGSEGV, display_sig);
-	signal(SIGFPE,  display_sig);
+	signal(SIGSEGV, sighandler_dump_stack);
+	signal(SIGFPE, sighandler_dump_stack);
 	signal(SIGINT,  display_sig);
 	signal(SIGQUIT, display_sig);
 	signal(SIGTERM, display_sig);
@@ -610,7 +626,7 @@ static void *display_thread(void *arg)
 	display_setup_sig();
 	pthread__unblock_sigwinch();
 repeat:
-	delay_msecs = top->delay_secs * 1000;
+	delay_msecs = top->delay_secs * MSEC_PER_SEC;
 	set_term_quiet_input(&save);
 	/* trash return*/
 	getc(stdin);
@@ -642,34 +658,6 @@ repeat:
 	return NULL;
 }
 
-static int symbol_filter(struct map *map, struct symbol *sym)
-{
-	const char *name = sym->name;
-
-	if (!map->dso->kernel)
-		return 0;
-	/*
-	 * ppc64 uses function descriptors and appends a '.' to the
-	 * start of every instruction address. Remove it.
-	 */
-	if (name[0] == '.')
-		name++;
-
-	if (!strcmp(name, "_text") ||
-	    !strcmp(name, "_etext") ||
-	    !strcmp(name, "_sinittext") ||
-	    !strncmp("init_module", name, 11) ||
-	    !strncmp("cleanup_module", name, 14) ||
-	    strstr(name, "_text_start") ||
-	    strstr(name, "_text_end"))
-		return 1;
-
-	if (symbol__is_idle(sym))
-		sym->ignore = true;
-
-	return 0;
-}
-
 static int hist_iter__top_callback(struct hist_entry_iter *iter,
 				   struct addr_location *al, bool single,
 				   void *arg)
@@ -678,15 +666,11 @@ static int hist_iter__top_callback(struct hist_entry_iter *iter,
 	struct hist_entry *he = iter->he;
 	struct perf_evsel *evsel = iter->evsel;
 
-	if (sort__has_sym && single) {
-		u64 ip = al->addr;
+	if (perf_hpp_list.sym && single)
+		perf_top__record_precise_ip(top, he, evsel->idx, al->addr);
 
-		if (al->map)
-			ip = al->map->unmap_ip(al->map, ip);
-
-		perf_top__record_precise_ip(top, he, evsel->idx, ip);
-	}
-
+	hist__account_cycles(iter->sample->branch_stack, al, iter->sample,
+		     !(top->record_opts.branch_stack & PERF_SAMPLE_BRANCH_ANY));
 	return 0;
 }
 
@@ -716,28 +700,28 @@ static void perf_event__process_sample(struct perf_tool *tool,
 
 	if (!machine) {
 		pr_err("%u unprocessable samples recorded.\r",
-		       top->session->stats.nr_unprocessable_samples++);
+		       top->session->evlist->stats.nr_unprocessable_samples++);
 		return;
 	}
 
 	if (event->header.misc & PERF_RECORD_MISC_EXACT_IP)
 		top->exact_samples++;
 
-	if (perf_event__preprocess_sample(event, machine, &al, sample) < 0)
+	if (machine__resolve(machine, &al, sample) < 0)
 		return;
 
-	if (!top->kptr_restrict_warned &&
+	if (!machine->kptr_restrict_warned &&
 	    symbol_conf.kptr_restrict &&
 	    al.cpumode == PERF_RECORD_MISC_KERNEL) {
 		ui__warning(
 "Kernel address maps (/proc/{kallsyms,modules}) are restricted.\n\n"
 "Check /proc/sys/kernel/kptr_restrict.\n\n"
 "Kernel%s samples will not be resolved.\n",
-			  !RB_EMPTY_ROOT(&al.map->dso->symbols[MAP__FUNCTION]) ?
+			  al.map && !RB_EMPTY_ROOT(&al.map->dso->symbols[MAP__FUNCTION]) ?
 			  " modules" : "");
 		if (use_browser <= 0)
 			sleep(5);
-		top->kptr_restrict_warned = true;
+		machine->kptr_restrict_warned = true;
 	}
 
 	if (al.sym == NULL) {
@@ -753,12 +737,14 @@ static void perf_event__process_sample(struct perf_tool *tool,
 		 * --hide-kernel-symbols, even if the user specifies an
 		 * invalid --vmlinux ;-)
 		 */
-		if (!top->kptr_restrict_warned && !top->vmlinux_warned &&
+		if (!machine->kptr_restrict_warned && !top->vmlinux_warned &&
 		    al.map == machine->vmlinux_maps[MAP__FUNCTION] &&
 		    RB_EMPTY_ROOT(&al.map->dso->symbols[MAP__FUNCTION])) {
 			if (symbol_conf.vmlinux_name) {
-				ui__warning("The %s file can't be used.\n%s",
-					    symbol_conf.vmlinux_name, msg);
+				char serr[256];
+				dso__strerror_load(al.map->dso, serr, sizeof(serr));
+				ui__warning("The %s file can't be used: %s\n%s",
+					    symbol_conf.vmlinux_name, serr, msg);
 			} else {
 				ui__warning("A vmlinux file was not found.\n%s",
 					    msg);
@@ -770,10 +756,12 @@ static void perf_event__process_sample(struct perf_tool *tool,
 		}
 	}
 
-	if (al.sym == NULL || !al.sym->ignore) {
+	if (al.sym == NULL || !al.sym->idle) {
 		struct hists *hists = evsel__hists(evsel);
 		struct hist_entry_iter iter = {
-			.add_entry_cb = hist_iter__top_callback,
+			.evsel		= evsel,
+			.sample 	= sample,
+			.add_entry_cb 	= hist_iter__top_callback,
 		};
 
 		if (symbol_conf.cumulate_callchain)
@@ -783,15 +771,14 @@ static void perf_event__process_sample(struct perf_tool *tool,
 
 		pthread_mutex_lock(&hists->lock);
 
-		err = hist_entry_iter__add(&iter, &al, evsel, sample,
-					   top->max_stack, top);
+		err = hist_entry_iter__add(&iter, &al, top->max_stack, top);
 		if (err < 0)
 			pr_err("Problem incrementing symbol period, skipping event\n");
 
 		pthread_mutex_unlock(&hists->lock);
 	}
 
-	return;
+	addr_location__put(&al);
 }
 
 static void perf_top__mmap_read_idx(struct perf_top *top, int idx)
@@ -801,7 +788,6 @@ static void perf_top__mmap_read_idx(struct perf_top *top, int idx)
 	struct perf_session *session = top->session;
 	union perf_event *event;
 	struct machine *machine;
-	u8 origin;
 	int ret;
 
 	while ((event = perf_evlist__mmap_read(top->evlist, idx)) != NULL) {
@@ -814,12 +800,10 @@ static void perf_top__mmap_read_idx(struct perf_top *top, int idx)
 		evsel = perf_evlist__id2evsel(session->evlist, sample.id);
 		assert(evsel != NULL);
 
-		origin = event->header.misc & PERF_RECORD_MISC_CPUMODE_MASK;
-
 		if (event->header.type == PERF_RECORD_SAMPLE)
 			++top->samples;
 
-		switch (origin) {
+		switch (sample.cpumode) {
 		case PERF_RECORD_MISC_USER:
 			++top->us_samples;
 			if (top->hide_user_symbols)
@@ -843,9 +827,12 @@ static void perf_top__mmap_read_idx(struct perf_top *top, int idx)
 			 * TODO: we don't process guest user from host side
 			 * except simple counting.
 			 */
-			/* Fall thru */
-		default:
 			goto next_event;
+		default:
+			if (event->header.type == PERF_RECORD_SAMPLE)
+				goto next_event;
+			machine = &session->machines.host;
+			break;
 		}
 
 
@@ -856,7 +843,7 @@ static void perf_top__mmap_read_idx(struct perf_top *top, int idx)
 			hists__inc_nr_events(evsel__hists(evsel), event->header.type);
 			machine__process_event(machine, event, &sample);
 		} else
-			++session->stats.nr_unknown_events;
+			++session->evlist->stats.nr_unknown_events;
 next_event:
 		perf_evlist__mmap_consume(top->evlist, idx);
 	}
@@ -877,9 +864,9 @@ static int perf_top__start_counters(struct perf_top *top)
 	struct perf_evlist *evlist = top->evlist;
 	struct record_opts *opts = &top->record_opts;
 
-	perf_evlist__config(evlist, opts);
+	perf_evlist__config(evlist, opts, &callchain_param);
 
-	evlist__for_each(evlist, counter) {
+	evlist__for_each_entry(evlist, counter) {
 try_again:
 		if (perf_evsel__open(counter, top->evlist->cpus,
 				     top->evlist->threads) < 0) {
@@ -898,7 +885,7 @@ try_again:
 
 	if (perf_evlist__mmap(evlist, opts->mmap_pages, false) < 0) {
 		ui__error("Failed to mmap with %d (%s)\n",
-			    errno, strerror_r(errno, msg, sizeof(msg)));
+			    errno, str_error_r(errno, msg, sizeof(msg)));
 		goto out_err;
 	}
 
@@ -908,15 +895,15 @@ out_err:
 	return -1;
 }
 
-static int perf_top__setup_sample_type(struct perf_top *top __maybe_unused)
+static int callchain_param__setup_sample_type(struct callchain_param *callchain)
 {
-	if (!sort__has_sym) {
-		if (symbol_conf.use_callchain) {
+	if (!perf_hpp_list.sym) {
+		if (callchain->enabled) {
 			ui__error("Selected -g but \"sym\" not present in --sort/-s.");
 			return -EINVAL;
 		}
-	} else if (callchain_param.mode != CHAIN_NONE) {
-		if (callchain_register_param(&callchain_param) < 0) {
+	} else if (callchain->mode != CHAIN_NONE) {
+		if (callchain_register_param(callchain) < 0) {
 			ui__error("Can't register callchain params.\n");
 			return -EINVAL;
 		}
@@ -927,6 +914,10 @@ static int perf_top__setup_sample_type(struct perf_top *top __maybe_unused)
 
 static int __cmd_top(struct perf_top *top)
 {
+	char msg[512];
+	struct perf_evsel *pos;
+	struct perf_evsel_config_term *err_term;
+	struct perf_evlist *evlist = top->evlist;
 	struct record_opts *opts = &top->record_opts;
 	pthread_t thread;
 	int ret;
@@ -935,23 +926,39 @@ static int __cmd_top(struct perf_top *top)
 	if (top->session == NULL)
 		return -1;
 
-	machines__set_symbol_filter(&top->session->machines, symbol_filter);
-
 	if (!objdump_path) {
-		ret = perf_session_env__lookup_objdump(&top->session->header.env);
+		ret = perf_env__lookup_objdump(&top->session->header.env);
 		if (ret)
 			goto out_delete;
 	}
 
-	ret = perf_top__setup_sample_type(top);
+	ret = callchain_param__setup_sample_type(&callchain_param);
 	if (ret)
 		goto out_delete;
 
+	if (perf_session__register_idle_thread(top->session) < 0)
+		goto out_delete;
+
 	machine__synthesize_threads(&top->session->machines.host, &opts->target,
-				    top->evlist->threads, false);
+				    top->evlist->threads, false, opts->proc_map_timeout);
+
+	if (perf_hpp_list.socket) {
+		ret = perf_env__read_cpu_topology_map(&perf_env);
+		if (ret < 0)
+			goto out_err_cpu_topo;
+	}
+
 	ret = perf_top__start_counters(top);
 	if (ret)
 		goto out_delete;
+
+	ret = perf_evlist__apply_drv_configs(evlist, &pos, &err_term);
+	if (ret) {
+		error("failed to set config \"%s\" on event %s with %d (%s)\n",
+			err_term->val.drv_cfg, perf_evsel__name(pos), errno,
+			str_error_r(errno, msg, sizeof(msg)));
+		goto out_delete;
+	}
 
 	top->session->evlist = top->evlist;
 	perf_session__set_id_hdr_size(top->session);
@@ -1006,6 +1013,14 @@ out_delete:
 	top->session = NULL;
 
 	return ret;
+
+out_err_cpu_topo: {
+	char errbuf[BUFSIZ];
+	const char *err = str_error_r(-ret, errbuf, sizeof(errbuf));
+
+	ui__error("Could not read the CPU topology map: %s\n", err);
+	goto out_delete;
+}
 }
 
 static int
@@ -1018,11 +1033,24 @@ callchain_opt(const struct option *opt, const char *arg, int unset)
 static int
 parse_callchain_opt(const struct option *opt, const char *arg, int unset)
 {
-	symbol_conf.use_callchain = true;
-	return record_parse_callchain_opt(opt, arg, unset);
+	struct callchain_param *callchain = opt->value;
+
+	callchain->enabled = !unset;
+	callchain->record_mode = CALLCHAIN_FP;
+
+	/*
+	 * --no-call-graph
+	 */
+	if (unset) {
+		symbol_conf.use_callchain = false;
+		callchain->record_mode = CALLCHAIN_NONE;
+		return 0;
+	}
+
+	return parse_callchain_top_opt(arg);
 }
 
-static int perf_top_config(const char *var, const char *value, void *cb)
+static int perf_top_config(const char *var, const char *value, void *cb __maybe_unused)
 {
 	if (!strcmp(var, "top.call-graph"))
 		var = "call-graph.record-mode"; /* fall-through */
@@ -1031,7 +1059,7 @@ static int perf_top_config(const char *var, const char *value, void *cb)
 		return 0;
 	}
 
-	return perf_default_config(var, value, cb);
+	return 0;
 }
 
 static int
@@ -1043,6 +1071,9 @@ parse_percent_limit(const struct option *opt, const char *arg,
 	top->min_percent = strtof(arg, NULL);
 	return 0;
 }
+
+const char top_callchain_help[] = CALLCHAIN_RECORD_HELP CALLCHAIN_REPORT_HELP
+	"\n\t\t\t\tDefault: fp,graph,0.5,caller,function";
 
 int cmd_top(int argc, const char **argv, const char *prefix __maybe_unused)
 {
@@ -1058,8 +1089,9 @@ int cmd_top(int argc, const char **argv, const char *prefix __maybe_unused)
 			.target		= {
 				.uses_mmap   = true,
 			},
+			.proc_map_timeout    = 500,
 		},
-		.max_stack	     = PERF_MAX_STACK_DEPTH,
+		.max_stack	     = sysctl_perf_event_max_stack,
 		.sym_pcnt_filter     = 5,
 	};
 	struct record_opts *opts = &top.record_opts;
@@ -1117,17 +1149,17 @@ int cmd_top(int argc, const char **argv, const char *prefix __maybe_unused)
 		   "output field(s): overhead, period, sample plus all of sort keys"),
 	OPT_BOOLEAN('n', "show-nr-samples", &symbol_conf.show_nr_samples,
 		    "Show a column with the number of samples"),
-	OPT_CALLBACK_NOOPT('g', NULL, &top.record_opts,
-			   NULL, "enables call-graph recording",
+	OPT_CALLBACK_NOOPT('g', NULL, &callchain_param,
+			   NULL, "enables call-graph recording and display",
 			   &callchain_opt),
-	OPT_CALLBACK(0, "call-graph", &top.record_opts,
-		     "mode[,dump_size]", record_callchain_help,
-		     &parse_callchain_opt),
+	OPT_CALLBACK(0, "call-graph", &callchain_param,
+		     "record_mode[,record_size],print_type,threshold[,print_limit],order,sort_key[,branch]",
+		     top_callchain_help, &parse_callchain_opt),
 	OPT_BOOLEAN(0, "children", &symbol_conf.cumulate_callchain,
 		    "Accumulate callchains of children and show total overhead as well"),
 	OPT_INTEGER(0, "max-stack", &top.max_stack,
 		    "Set the maximum stack depth when parsing the callchain. "
-		    "Default: " __stringify(PERF_MAX_STACK_DEPTH)),
+		    "Default: kernel.perf_event_max_stack or " __stringify(PERF_MAX_STACK_DEPTH)),
 	OPT_CALLBACK(0, "ignore-callees", NULL, "regex",
 		   "ignore callees of these functions in call graphs",
 		   report_parse_ignore_callees_opt),
@@ -1157,6 +1189,18 @@ int cmd_top(int argc, const char **argv, const char *prefix __maybe_unused)
 	OPT_STRING('w', "column-widths", &symbol_conf.col_width_list_str,
 		   "width[,width...]",
 		   "don't try to adjust column width, use these fixed values"),
+	OPT_UINTEGER(0, "proc-map-timeout", &opts->proc_map_timeout,
+			"per thread proc mmap processing timeout in ms"),
+	OPT_CALLBACK_NOOPT('b', "branch-any", &opts->branch_stack,
+		     "branch any", "sample any taken branches",
+		     parse_branch_stack),
+	OPT_CALLBACK('j', "branch-filter", &opts->branch_stack,
+		     "branch filter mask", "branch stack filter modes",
+		     parse_branch_stack),
+	OPT_BOOLEAN(0, "raw-trace", &symbol_conf.raw_trace,
+		    "Show raw trace event output (do not use print fmt or plugins)"),
+	OPT_BOOLEAN(0, "hierarchy", &symbol_conf.report_hierarchy,
+		    "Show entries in a hierarchy"),
 	OPT_END()
 	};
 	const char * const top_usage[] = {
@@ -1178,18 +1222,28 @@ int cmd_top(int argc, const char **argv, const char *prefix __maybe_unused)
 	if (argc)
 		usage_with_options(top_usage, options);
 
-	sort__mode = SORT_MODE__TOP;
-	/* display thread wants entries to be collapsed in a different tree */
-	sort__need_collapse = 1;
-
-	if (setup_sorting() < 0) {
-		if (sort_order)
-			parse_options_usage(top_usage, options, "s", 1);
-		if (field_order)
-			parse_options_usage(sort_order ? NULL : top_usage,
-					    options, "fields", 0);
+	if (!top.evlist->nr_entries &&
+	    perf_evlist__add_default(top.evlist) < 0) {
+		pr_err("Not enough memory for event selector list\n");
 		goto out_delete_evlist;
 	}
+
+	if (symbol_conf.report_hierarchy) {
+		/* disable incompatible options */
+		symbol_conf.event_group = false;
+		symbol_conf.cumulate_callchain = false;
+
+		if (field_order) {
+			pr_err("Error: --hierarchy and --fields options cannot be used together\n");
+			parse_options_usage(top_usage, options, "fields", 0);
+			parse_options_usage(NULL, options, "hierarchy", 0);
+			goto out_delete_evlist;
+		}
+	}
+
+	sort__mode = SORT_MODE__TOP;
+	/* display thread wants entries to be collapsed in a different tree */
+	perf_hpp_list.need_collapse = 1;
 
 	if (top.use_stdio)
 		use_browser = 0;
@@ -1197,6 +1251,15 @@ int cmd_top(int argc, const char **argv, const char *prefix __maybe_unused)
 		use_browser = 1;
 
 	setup_browser(false);
+
+	if (setup_sorting(top.evlist) < 0) {
+		if (sort_order)
+			parse_options_usage(top_usage, options, "s", 1);
+		if (field_order)
+			parse_options_usage(sort_order ? NULL : top_usage,
+					    options, "fields", 0);
+		goto out_delete_evlist;
+	}
 
 	status = target__validate(target);
 	if (status) {
@@ -1218,12 +1281,9 @@ int cmd_top(int argc, const char **argv, const char *prefix __maybe_unused)
 	if (target__none(target))
 		target->system_wide = true;
 
-	if (perf_evlist__create_maps(top.evlist, target) < 0)
-		usage_with_options(top_usage, options);
-
-	if (!top.evlist->nr_entries &&
-	    perf_evlist__add_default(top.evlist) < 0) {
-		ui__error("Not enough memory for event selector list\n");
+	if (perf_evlist__create_maps(top.evlist, target) < 0) {
+		ui__error("Couldn't create thread/CPU maps: %s\n",
+			  errno == ENOENT ? "No such process" : str_error_r(errno, errbuf, sizeof(errbuf)));
 		goto out_delete_evlist;
 	}
 
@@ -1239,12 +1299,17 @@ int cmd_top(int argc, const char **argv, const char *prefix __maybe_unused)
 
 	top.sym_evsel = perf_evlist__first(top.evlist);
 
-	if (!symbol_conf.use_callchain) {
+	if (!callchain_param.enabled) {
 		symbol_conf.cumulate_callchain = false;
 		perf_hpp__cancel_cumulate();
 	}
 
-	symbol_conf.priv_size = sizeof(struct annotation);
+	if (symbol_conf.cumulate_callchain && !callchain_param.order_set)
+		callchain_param.order = ORDER_CALLER;
+
+	status = symbol__annotation_init();
+	if (status < 0)
+		goto out_delete_evlist;
 
 	symbol_conf.try_vmlinux_path = (symbol_conf.vmlinux_name == NULL);
 	if (symbol__init(NULL) < 0)

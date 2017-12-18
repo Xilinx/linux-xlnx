@@ -7,10 +7,6 @@
  *  Free Software Foundation;  either version 2 of the License, or (at your
  *  option) any later version.
  *
- *  You should have received a copy of the GNU General Public License along
- *  with this program; if not, write to the Free Software Foundation, Inc.,
- *  675 Mass Ave, Cambridge, MA 02139, USA.
- *
  */
 
 #include <linux/dmaengine.h>
@@ -24,8 +20,6 @@
 #include <linux/spinlock.h>
 #include <linux/irq.h>
 #include <linux/clk.h>
-
-#include <asm/mach-jz4740/dma.h>
 
 #include "virt-dma.h"
 
@@ -343,7 +337,7 @@ static void jz4740_dma_chan_irq(struct jz4740_dmaengine_chan *chan)
 {
 	spin_lock(&chan->vchan.lock);
 	if (chan->desc) {
-		if (chan->desc && chan->desc->cyclic) {
+		if (chan->desc->cyclic) {
 			vchan_cyclic_callback(&chan->desc->vdesc);
 		} else {
 			if (chan->next_sg == chan->desc->num_sgs) {
@@ -496,11 +490,6 @@ static enum dma_status jz4740_dma_tx_status(struct dma_chan *c,
 	return status;
 }
 
-static int jz4740_dma_alloc_chan_resources(struct dma_chan *c)
-{
-	return 0;
-}
-
 static void jz4740_dma_free_chan_resources(struct dma_chan *c)
 {
 	vchan_free_chan_resources(to_virt_chan(c));
@@ -543,7 +532,6 @@ static int jz4740_dma_probe(struct platform_device *pdev)
 
 	dma_cap_set(DMA_SLAVE, dd->cap_mask);
 	dma_cap_set(DMA_CYCLIC, dd->cap_mask);
-	dd->device_alloc_chan_resources = jz4740_dma_alloc_chan_resources;
 	dd->device_free_chan_resources = jz4740_dma_free_chan_resources;
 	dd->device_tx_status = jz4740_dma_tx_status;
 	dd->device_issue_pending = jz4740_dma_issue_pending;
@@ -583,12 +571,26 @@ err_unregister:
 	return ret;
 }
 
+static void jz4740_cleanup_vchan(struct dma_device *dmadev)
+{
+	struct jz4740_dmaengine_chan *chan, *_chan;
+
+	list_for_each_entry_safe(chan, _chan,
+				&dmadev->channels, vchan.chan.device_node) {
+		list_del(&chan->vchan.chan.device_node);
+		tasklet_kill(&chan->vchan.task);
+	}
+}
+
+
 static int jz4740_dma_remove(struct platform_device *pdev)
 {
 	struct jz4740_dma_dev *dmadev = platform_get_drvdata(pdev);
 	int irq = platform_get_irq(pdev, 0);
 
 	free_irq(irq, dmadev);
+
+	jz4740_cleanup_vchan(&dmadev->ddev);
 	dma_async_device_unregister(&dmadev->ddev);
 	clk_disable_unprepare(dmadev->clk);
 

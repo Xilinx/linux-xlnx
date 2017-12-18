@@ -19,7 +19,6 @@
 #include <linux/err.h>
 #include <linux/init.h>
 #include <linux/io.h>
-#include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
 #include <linux/pinctrl/machine.h>
@@ -157,7 +156,7 @@ static int imx1_read_bit(struct imx1_pinctrl *ipctl, unsigned int pin_id,
 	return !!(readl(reg) & BIT(offset));
 }
 
-static const inline struct imx1_pin_group *imx1_pinctrl_find_group_by_name(
+static inline const struct imx1_pin_group *imx1_pinctrl_find_group_by_name(
 				const struct imx1_pinctrl_soc_info *info,
 				const char *name)
 {
@@ -403,14 +402,13 @@ static int imx1_pinconf_set(struct pinctrl_dev *pctldev,
 			     unsigned num_configs)
 {
 	struct imx1_pinctrl *ipctl = pinctrl_dev_get_drvdata(pctldev);
-	const struct imx1_pinctrl_soc_info *info = ipctl->info;
 	int i;
 
 	for (i = 0; i != num_configs; ++i) {
 		imx1_write_bit(ipctl, pin_id, configs[i] & 0x01, MX1_PUEN);
 
 		dev_dbg(ipctl->dev, "pinconf set pullup pin %s\n",
-			info->pins[pin_id].name);
+			pin_desc_get(pctldev, pin_id)->name);
 	}
 
 	return 0;
@@ -539,8 +537,10 @@ static int imx1_pinctrl_parse_functions(struct device_node *np,
 		func->groups[i] = child->name;
 		grp = &info->groups[grp_index++];
 		ret = imx1_pinctrl_parse_groups(child, grp, info, i++);
-		if (ret == -ENOMEM)
+		if (ret == -ENOMEM) {
+			of_node_put(child);
 			return ret;
+		}
 	}
 
 	return 0;
@@ -583,8 +583,10 @@ static int imx1_pinctrl_parse_dt(struct platform_device *pdev,
 
 	for_each_child_of_node(np, child) {
 		ret = imx1_pinctrl_parse_functions(child, info, ifunc++);
-		if (ret == -ENOMEM)
+		if (ret == -ENOMEM) {
+			of_node_put(child);
 			return -ENOMEM;
+		}
 	}
 
 	return 0;
@@ -632,10 +634,10 @@ int imx1_pinctrl_core_probe(struct platform_device *pdev,
 	ipctl->info = info;
 	ipctl->dev = info->dev;
 	platform_set_drvdata(pdev, ipctl);
-	ipctl->pctl = pinctrl_register(pctl_desc, &pdev->dev, ipctl);
-	if (!ipctl->pctl) {
+	ipctl->pctl = devm_pinctrl_register(&pdev->dev, pctl_desc, ipctl);
+	if (IS_ERR(ipctl->pctl)) {
 		dev_err(&pdev->dev, "could not register IMX pinctrl driver\n");
-		return -EINVAL;
+		return PTR_ERR(ipctl->pctl);
 	}
 
 	ret = of_platform_populate(pdev->dev.of_node, NULL, NULL, &pdev->dev);
@@ -646,15 +648,6 @@ int imx1_pinctrl_core_probe(struct platform_device *pdev,
 	}
 
 	dev_info(&pdev->dev, "initialized IMX pinctrl driver\n");
-
-	return 0;
-}
-
-int imx1_pinctrl_core_remove(struct platform_device *pdev)
-{
-	struct imx1_pinctrl *ipctl = platform_get_drvdata(pdev);
-
-	pinctrl_unregister(ipctl->pctl);
 
 	return 0;
 }

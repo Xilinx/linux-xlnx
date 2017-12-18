@@ -20,15 +20,22 @@
  * DEALINGS IN THE SOFTWARE.
  */
 #include "gk104.h"
+#include "changk104.h"
 
-struct nvkm_oclass *
-gk20a_fifo_oclass = &(struct gk104_fifo_impl) {
-	.base.handle = NV_ENGINE(FIFO, 0xea),
-	.base.ofuncs = &(struct nvkm_ofuncs) {
-		.ctor = gk104_fifo_ctor,
-		.dtor = gk104_fifo_dtor,
-		.init = gk104_fifo_init,
-		.fini = gk104_fifo_fini,
+static const struct gk104_fifo_func
+gk20a_fifo = {
+	.fault.engine = gk104_fifo_fault_engine,
+	.fault.reason = gk104_fifo_fault_reason,
+	.fault.hubclient = gk104_fifo_fault_hubclient,
+	.fault.gpcclient = gk104_fifo_fault_gpcclient,
+	.chan = {
+		&gk104_fifo_gpfifo_oclass,
+		NULL
 	},
-	.channels = 128,
-}.base;
+};
+
+int
+gk20a_fifo_new(struct nvkm_device *device, int index, struct nvkm_fifo **pfifo)
+{
+	return gk104_fifo_new_(&gk20a_fifo, device, index, 128, pfifo);
+}

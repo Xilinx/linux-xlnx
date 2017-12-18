@@ -1,3 +1,8 @@
+# define_trace.h needs to know how to find our header
+CFLAGS_trace.o			:= -I$(src)
+
+udc-core-y			:= core.o trace.o
+
 #
 # USB peripheral controller drivers
 #
@@ -19,6 +24,7 @@ fsl_usb2_udc-y			:= fsl_udc_core.o
 fsl_usb2_udc-$(CONFIG_ARCH_MXC)	+= fsl_mxc_udc.o
 obj-$(CONFIG_USB_M66592)	+= m66592-udc.o
 obj-$(CONFIG_USB_R8A66597)	+= r8a66597-udc.o
+obj-$(CONFIG_USB_RENESAS_USB3)	+= renesas_usb3.o
 obj-$(CONFIG_USB_FSL_QE)	+= fsl_qe_udc.o
 obj-$(CONFIG_USB_S3C_HSUDC)	+= s3c-hsudc.o
 obj-$(CONFIG_USB_LPC32XX)	+= lpc32xx_udc.o

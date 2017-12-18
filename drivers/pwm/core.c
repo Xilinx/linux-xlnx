@@ -75,6 +75,7 @@ static void free_pwms(struct pwm_chip *chip)
 
 	for (i = 0; i < chip->npwm; i++) {
 		struct pwm_device *pwm = &chip->pwms[i];
+
 		radix_tree_delete(&pwm_tree, pwm->pwm);
 	}
 
@@ -146,12 +147,12 @@ of_pwm_xlate_with_flags(struct pwm_chip *pc, const struct of_phandle_args *args)
 	if (IS_ERR(pwm))
 		return pwm;
 
-	pwm_set_period(pwm, args->args[1]);
+	pwm->args.period = args->args[1];
 
 	if (args->args[2] & PWM_POLARITY_INVERTED)
-		pwm_set_polarity(pwm, PWM_POLARITY_INVERSED);
+		pwm->args.polarity = PWM_POLARITY_INVERSED;
 	else
-		pwm_set_polarity(pwm, PWM_POLARITY_NORMAL);
+		pwm->args.polarity = PWM_POLARITY_NORMAL;
 
 	return pwm;
 }
@@ -172,7 +173,7 @@ of_pwm_simple_xlate(struct pwm_chip *pc, const struct of_phandle_args *args)
 	if (IS_ERR(pwm))
 		return pwm;
 
-	pwm_set_period(pwm, args->args[1]);
+	pwm->args.period = args->args[1];
 
 	return pwm;
 }
@@ -200,6 +201,8 @@ static void of_pwmchip_remove(struct pwm_chip *chip)
  * pwm_set_chip_data() - set private chip data for a PWM
  * @pwm: PWM device
  * @data: pointer to chip-specific data
+ *
+ * Returns: 0 on success or a negative error code on failure.
  */
 int pwm_set_chip_data(struct pwm_device *pwm, void *data)
 {
@@ -215,6 +218,8 @@ EXPORT_SYMBOL_GPL(pwm_set_chip_data);
 /**
  * pwm_get_chip_data() - get private chip data for a PWM
  * @pwm: PWM device
+ *
+ * Returns: A pointer to the chip-private data for the PWM device.
  */
 void *pwm_get_chip_data(struct pwm_device *pwm)
 {
@@ -222,21 +227,41 @@ void *pwm_get_chip_data(struct pwm_device *pwm)
 }
 EXPORT_SYMBOL_GPL(pwm_get_chip_data);
 
+static bool pwm_ops_check(const struct pwm_ops *ops)
+{
+	/* driver supports legacy, non-atomic operation */
+	if (ops->config && ops->enable && ops->disable)
+		return true;
+
+	/* driver supports atomic operation */
+	if (ops->apply)
+		return true;
+
+	return false;
+}
+
 /**
- * pwmchip_add() - register a new PWM chip
+ * pwmchip_add_with_polarity() - register a new PWM chip
  * @chip: the PWM chip to add
+ * @polarity: initial polarity of PWM channels
  *
  * Register a new PWM chip. If chip->base < 0 then a dynamically assigned base
- * will be used.
+ * will be used. The initial polarity for all channels is specified by the
+ * @polarity parameter.
+ *
+ * Returns: 0 on success or a negative error code on failure.
  */
-int pwmchip_add(struct pwm_chip *chip)
+int pwmchip_add_with_polarity(struct pwm_chip *chip,
+			      enum pwm_polarity polarity)
 {
 	struct pwm_device *pwm;
 	unsigned int i;
 	int ret;
 
-	if (!chip || !chip->dev || !chip->ops || !chip->ops->config ||
-	    !chip->ops->enable || !chip->ops->disable || !chip->npwm)
+	if (!chip || !chip->dev || !chip->ops || !chip->npwm)
+		return -EINVAL;
+
+	if (!pwm_ops_check(chip->ops))
 		return -EINVAL;
 
 	mutex_lock(&pwm_lock);
@@ -245,7 +270,7 @@ int pwmchip_add(struct pwm_chip *chip)
 	if (ret < 0)
 		goto out;
 
-	chip->pwms = kzalloc(chip->npwm * sizeof(*pwm), GFP_KERNEL);
+	chip->pwms = kcalloc(chip->npwm, sizeof(*pwm), GFP_KERNEL);
 	if (!chip->pwms) {
 		ret = -ENOMEM;
 		goto out;
@@ -259,6 +284,10 @@ int pwmchip_add(struct pwm_chip *chip)
 		pwm->chip = chip;
 		pwm->pwm = chip->base + i;
 		pwm->hwpwm = i;
+		pwm->state.polarity = polarity;
+
+		if (chip->ops->get_state)
+			chip->ops->get_state(chip, pwm, &pwm->state);
 
 		radix_tree_insert(&pwm_tree, pwm->pwm, pwm);
 	}
@@ -279,6 +308,21 @@ out:
 	mutex_unlock(&pwm_lock);
 	return ret;
 }
+EXPORT_SYMBOL_GPL(pwmchip_add_with_polarity);
+
+/**
+ * pwmchip_add() - register a new PWM chip
+ * @chip: the PWM chip to add
+ *
+ * Register a new PWM chip. If chip->base < 0 then a dynamically assigned base
+ * will be used. The initial polarity for all channels is normal.
+ *
+ * Returns: 0 on success or a negative error code on failure.
+ */
+int pwmchip_add(struct pwm_chip *chip)
+{
+	return pwmchip_add_with_polarity(chip, PWM_POLARITY_NORMAL);
+}
 EXPORT_SYMBOL_GPL(pwmchip_add);
 
 /**
@@ -287,11 +331,15 @@ EXPORT_SYMBOL_GPL(pwmchip_add);
  *
  * Removes a PWM chip. This function may return busy if the PWM chip provides
  * a PWM device that is still requested.
+ *
+ * Returns: 0 on success or a negative error code on failure.
  */
 int pwmchip_remove(struct pwm_chip *chip)
 {
 	unsigned int i;
 	int ret = 0;
+
+	pwmchip_sysfs_unexport_children(chip);
 
 	mutex_lock(&pwm_lock);
 
@@ -321,10 +369,13 @@ EXPORT_SYMBOL_GPL(pwmchip_remove);
 
 /**
  * pwm_request() - request a PWM device
- * @pwm_id: global PWM device index
+ * @pwm: global PWM device index
  * @label: PWM device label
  *
  * This function is deprecated, use pwm_get() instead.
+ *
+ * Returns: A pointer to a PWM device or an ERR_PTR()-encoded error code on
+ * failure.
  */
 struct pwm_device *pwm_request(int pwm, const char *label)
 {
@@ -359,9 +410,9 @@ EXPORT_SYMBOL_GPL(pwm_request);
  * @index: per-chip index of the PWM to request
  * @label: a literal description string of this PWM
  *
- * Returns the PWM at the given index of the given PWM chip. A negative error
- * code is returned if the index is not valid for the specified PWM chip or
- * if the PWM device cannot be requested.
+ * Returns: A pointer to the PWM device at the given index of the given PWM
+ * chip. A negative error code is returned if the index is not valid for the
+ * specified PWM chip or if the PWM device cannot be requested.
  */
 struct pwm_device *pwm_request_from_chip(struct pwm_chip *chip,
 					 unsigned int index,
@@ -398,82 +449,166 @@ void pwm_free(struct pwm_device *pwm)
 EXPORT_SYMBOL_GPL(pwm_free);
 
 /**
- * pwm_config() - change a PWM device configuration
+ * pwm_apply_state() - atomically apply a new state to a PWM device
  * @pwm: PWM device
- * @duty_ns: "on" time (in nanoseconds)
- * @period_ns: duration (in nanoseconds) of one cycle
+ * @state: new state to apply. This can be adjusted by the PWM driver
+ *	   if the requested config is not achievable, for example,
+ *	   ->duty_cycle and ->period might be approximated.
  */
-int pwm_config(struct pwm_device *pwm, int duty_ns, int period_ns)
+int pwm_apply_state(struct pwm_device *pwm, struct pwm_state *state)
 {
 	int err;
 
-	if (!pwm || duty_ns < 0 || period_ns <= 0 || duty_ns > period_ns)
+	if (!pwm || !state || !state->period ||
+	    state->duty_cycle > state->period)
 		return -EINVAL;
 
-	err = pwm->chip->ops->config(pwm->chip, pwm, duty_ns, period_ns);
-	if (err)
-		return err;
+	if (!memcmp(state, &pwm->state, sizeof(*state)))
+		return 0;
 
-	pwm->duty_cycle = duty_ns;
-	pwm->period = period_ns;
+	if (pwm->chip->ops->apply) {
+		err = pwm->chip->ops->apply(pwm->chip, pwm, state);
+		if (err)
+			return err;
+
+		pwm->state = *state;
+	} else {
+		/*
+		 * FIXME: restore the initial state in case of error.
+		 */
+		if (state->polarity != pwm->state.polarity) {
+			if (!pwm->chip->ops->set_polarity)
+				return -ENOTSUPP;
+
+			/*
+			 * Changing the polarity of a running PWM is
+			 * only allowed when the PWM driver implements
+			 * ->apply().
+			 */
+			if (pwm->state.enabled) {
+				pwm->chip->ops->disable(pwm->chip, pwm);
+				pwm->state.enabled = false;
+			}
+
+			err = pwm->chip->ops->set_polarity(pwm->chip, pwm,
+							   state->polarity);
+			if (err)
+				return err;
+
+			pwm->state.polarity = state->polarity;
+		}
+
+		if (state->period != pwm->state.period ||
+		    state->duty_cycle != pwm->state.duty_cycle) {
+			err = pwm->chip->ops->config(pwm->chip, pwm,
+						     state->duty_cycle,
+						     state->period);
+			if (err)
+				return err;
+
+			pwm->state.duty_cycle = state->duty_cycle;
+			pwm->state.period = state->period;
+		}
+
+		if (state->enabled != pwm->state.enabled) {
+			if (state->enabled) {
+				err = pwm->chip->ops->enable(pwm->chip, pwm);
+				if (err)
+					return err;
+			} else {
+				pwm->chip->ops->disable(pwm->chip, pwm);
+			}
+
+			pwm->state.enabled = state->enabled;
+		}
+	}
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(pwm_config);
+EXPORT_SYMBOL_GPL(pwm_apply_state);
 
 /**
- * pwm_set_polarity() - configure the polarity of a PWM signal
+ * pwm_capture() - capture and report a PWM signal
  * @pwm: PWM device
- * @polarity: new polarity of the PWM signal
+ * @result: structure to fill with capture result
+ * @timeout: time to wait, in milliseconds, before giving up on capture
  *
- * Note that the polarity cannot be configured while the PWM device is enabled
+ * Returns: 0 on success or a negative error code on failure.
  */
-int pwm_set_polarity(struct pwm_device *pwm, enum pwm_polarity polarity)
+int pwm_capture(struct pwm_device *pwm, struct pwm_capture *result,
+		unsigned long timeout)
 {
 	int err;
 
 	if (!pwm || !pwm->chip->ops)
 		return -EINVAL;
 
-	if (!pwm->chip->ops->set_polarity)
+	if (!pwm->chip->ops->capture)
 		return -ENOSYS;
 
-	if (test_bit(PWMF_ENABLED, &pwm->flags))
-		return -EBUSY;
+	mutex_lock(&pwm_lock);
+	err = pwm->chip->ops->capture(pwm->chip, pwm, result, timeout);
+	mutex_unlock(&pwm_lock);
 
-	err = pwm->chip->ops->set_polarity(pwm->chip, pwm, polarity);
-	if (err)
-		return err;
-
-	pwm->polarity = polarity;
-
-	return 0;
+	return err;
 }
-EXPORT_SYMBOL_GPL(pwm_set_polarity);
+EXPORT_SYMBOL_GPL(pwm_capture);
 
 /**
- * pwm_enable() - start a PWM output toggling
+ * pwm_adjust_config() - adjust the current PWM config to the PWM arguments
  * @pwm: PWM device
+ *
+ * This function will adjust the PWM config to the PWM arguments provided
+ * by the DT or PWM lookup table. This is particularly useful to adapt
+ * the bootloader config to the Linux one.
  */
-int pwm_enable(struct pwm_device *pwm)
+int pwm_adjust_config(struct pwm_device *pwm)
 {
-	if (pwm && !test_and_set_bit(PWMF_ENABLED, &pwm->flags))
-		return pwm->chip->ops->enable(pwm->chip, pwm);
+	struct pwm_state state;
+	struct pwm_args pargs;
 
-	return pwm ? 0 : -EINVAL;
-}
-EXPORT_SYMBOL_GPL(pwm_enable);
+	pwm_get_args(pwm, &pargs);
+	pwm_get_state(pwm, &state);
 
-/**
- * pwm_disable() - stop a PWM output toggling
- * @pwm: PWM device
- */
-void pwm_disable(struct pwm_device *pwm)
-{
-	if (pwm && test_and_clear_bit(PWMF_ENABLED, &pwm->flags))
-		pwm->chip->ops->disable(pwm->chip, pwm);
+	/*
+	 * If the current period is zero it means that either the PWM driver
+	 * does not support initial state retrieval or the PWM has not yet
+	 * been configured.
+	 *
+	 * In either case, we setup the new period and polarity, and assign a
+	 * duty cycle of 0.
+	 */
+	if (!state.period) {
+		state.duty_cycle = 0;
+		state.period = pargs.period;
+		state.polarity = pargs.polarity;
+
+		return pwm_apply_state(pwm, &state);
+	}
+
+	/*
+	 * Adjust the PWM duty cycle/period based on the period value provided
+	 * in PWM args.
+	 */
+	if (pargs.period != state.period) {
+		u64 dutycycle = (u64)state.duty_cycle * pargs.period;
+
+		do_div(dutycycle, state.period);
+		state.duty_cycle = dutycycle;
+		state.period = pargs.period;
+	}
+
+	/*
+	 * If the polarity changed, we should also change the duty cycle.
+	 */
+	if (pargs.polarity != state.polarity) {
+		state.polarity = pargs.polarity;
+		state.duty_cycle = state.period - state.duty_cycle;
+	}
+
+	return pwm_apply_state(pwm, &state);
 }
-EXPORT_SYMBOL_GPL(pwm_disable);
+EXPORT_SYMBOL_GPL(pwm_adjust_config);
 
 static struct pwm_chip *of_node_to_pwmchip(struct device_node *np)
 {
@@ -507,6 +642,9 @@ static struct pwm_chip *of_node_to_pwmchip(struct device_node *np)
  * lookup of the PWM index. This also means that the "pwm-names" property
  * becomes mandatory for devices that look up the PWM device via the con_id
  * parameter.
+ *
+ * Returns: A pointer to the requested PWM device or an ERR_PTR()-encoded
+ * error code on failure.
  */
 struct pwm_device *of_pwm_get(struct device_node *np, const char *con_id)
 {
@@ -573,12 +711,29 @@ EXPORT_SYMBOL_GPL(of_pwm_get);
  * @table: array of consumers to register
  * @num: number of consumers in table
  */
-void __init pwm_add_table(struct pwm_lookup *table, size_t num)
+void pwm_add_table(struct pwm_lookup *table, size_t num)
 {
 	mutex_lock(&pwm_lookup_lock);
 
 	while (num--) {
 		list_add_tail(&table->list, &pwm_lookup_list);
+		table++;
+	}
+
+	mutex_unlock(&pwm_lookup_lock);
+}
+
+/**
+ * pwm_remove_table() - unregister PWM device consumers
+ * @table: array of consumers to unregister
+ * @num: number of consumers in table
+ */
+void pwm_remove_table(struct pwm_lookup *table, size_t num)
+{
+	mutex_lock(&pwm_lookup_lock);
+
+	while (num--) {
+		list_del(&table->list);
 		table++;
 	}
 
@@ -596,6 +751,9 @@ void __init pwm_add_table(struct pwm_lookup *table, size_t num)
  *
  * Once a PWM chip has been found the specified PWM device will be requested
  * and is ready to be used.
+ *
+ * Returns: A pointer to the requested PWM device or an ERR_PTR()-encoded
+ * error code on failure.
  */
 struct pwm_device *pwm_get(struct device *dev, const char *con_id)
 {
@@ -659,8 +817,10 @@ struct pwm_device *pwm_get(struct device *dev, const char *con_id)
 		}
 	}
 
-	if (!chosen)
+	if (!chosen) {
+		pwm = ERR_PTR(-ENODEV);
 		goto out;
+	}
 
 	chip = pwmchip_find_by_name(chosen->provider);
 	if (!chip)
@@ -670,8 +830,8 @@ struct pwm_device *pwm_get(struct device *dev, const char *con_id)
 	if (IS_ERR(pwm))
 		goto out;
 
-	pwm_set_period(pwm, chosen->period);
-	pwm_set_polarity(pwm, chosen->polarity);
+	pwm->args.period = chosen->period;
+	pwm->args.polarity = chosen->polarity;
 
 out:
 	mutex_unlock(&pwm_lookup_lock);
@@ -718,6 +878,9 @@ static void devm_pwm_release(struct device *dev, void *res)
  *
  * This function performs like pwm_get() but the acquired PWM device will
  * automatically be released on driver detach.
+ *
+ * Returns: A pointer to the requested PWM device or an ERR_PTR()-encoded
+ * error code on failure.
  */
 struct pwm_device *devm_pwm_get(struct device *dev, const char *con_id)
 {
@@ -747,6 +910,9 @@ EXPORT_SYMBOL_GPL(devm_pwm_get);
  *
  * This function performs like of_pwm_get() but the acquired PWM device will
  * automatically be released on driver detach.
+ *
+ * Returns: A pointer to the requested PWM device or an ERR_PTR()-encoded
+ * error code on failure.
  */
 struct pwm_device *devm_of_pwm_get(struct device *dev, struct device_node *np,
 				   const char *con_id)
@@ -798,11 +964,11 @@ EXPORT_SYMBOL_GPL(devm_pwm_put);
   * pwm_can_sleep() - report whether PWM access will sleep
   * @pwm: PWM device
   *
-  * It returns true if accessing the PWM can sleep, false otherwise.
+  * Returns: True if accessing the PWM can sleep, false otherwise.
   */
 bool pwm_can_sleep(struct pwm_device *pwm)
 {
-	return pwm->chip->can_sleep;
+	return true;
 }
 EXPORT_SYMBOL_GPL(pwm_can_sleep);
 
@@ -813,14 +979,22 @@ static void pwm_dbg_show(struct pwm_chip *chip, struct seq_file *s)
 
 	for (i = 0; i < chip->npwm; i++) {
 		struct pwm_device *pwm = &chip->pwms[i];
+		struct pwm_state state;
+
+		pwm_get_state(pwm, &state);
 
 		seq_printf(s, " pwm-%-3d (%-20.20s):", i, pwm->label);
 
 		if (test_bit(PWMF_REQUESTED, &pwm->flags))
 			seq_puts(s, " requested");
 
-		if (test_bit(PWMF_ENABLED, &pwm->flags))
+		if (state.enabled)
 			seq_puts(s, " enabled");
+
+		seq_printf(s, " period: %u ns", state.period);
+		seq_printf(s, " duty: %u ns", state.duty_cycle);
+		seq_printf(s, " polarity: %s",
+			   state.polarity ? "inverse" : "normal");
 
 		seq_puts(s, "\n");
 	}
@@ -890,6 +1064,5 @@ static int __init pwm_debugfs_init(void)
 
 	return 0;
 }
-
 subsys_initcall(pwm_debugfs_init);
 #endif /* CONFIG_DEBUG_FS */

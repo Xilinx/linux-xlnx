@@ -31,8 +31,17 @@ void shmobile_smp_hook(unsigned int cpu, unsigned long fn, unsigned long arg)
 }
 
 #ifdef CONFIG_HOTPLUG_CPU
-int shmobile_smp_cpu_disable(unsigned int cpu)
+bool shmobile_smp_cpu_can_disable(unsigned int cpu)
 {
-	return 0; /* Hotplug of any CPU is supported */
+	return true; /* Hotplug of any CPU is supported */
 }
 #endif
+
+bool __init shmobile_smp_init_fallback_ops(void)
+{
+	/* fallback on PSCI/smp_ops if no other DT based method is detected */
+	if (!IS_ENABLED(CONFIG_SMP))
+		return false;
+
+	return platform_can_secondary_boot() ? true : false;
+}

@@ -156,19 +156,20 @@ u32 r600_dpm_get_vblank_time(struct radeon_device *rdev)
 	struct drm_device *dev = rdev->ddev;
 	struct drm_crtc *crtc;
 	struct radeon_crtc *radeon_crtc;
-	u32 line_time_us, vblank_lines;
+	u32 vblank_in_pixels;
 	u32 vblank_time_us = 0xffffffff; /* if the displays are off, vblank time is max */
 
 	if (rdev->num_crtc && rdev->mode_info.mode_config_initialized) {
 		list_for_each_entry(crtc, &dev->mode_config.crtc_list, head) {
 			radeon_crtc = to_radeon_crtc(crtc);
 			if (crtc->enabled && radeon_crtc->enabled && radeon_crtc->hw_mode.clock) {
-				line_time_us = (radeon_crtc->hw_mode.crtc_htotal * 1000) /
-					radeon_crtc->hw_mode.clock;
-				vblank_lines = radeon_crtc->hw_mode.crtc_vblank_end -
-					radeon_crtc->hw_mode.crtc_vdisplay +
-					(radeon_crtc->v_border * 2);
-				vblank_time_us = vblank_lines * line_time_us;
+				vblank_in_pixels =
+					radeon_crtc->hw_mode.crtc_htotal *
+					(radeon_crtc->hw_mode.crtc_vblank_end -
+					 radeon_crtc->hw_mode.crtc_vdisplay +
+					 (radeon_crtc->v_border * 2));
+
+				vblank_time_us = vblank_in_pixels * 1000 / radeon_crtc->hw_mode.clock;
 				break;
 			}
 		}
@@ -844,7 +845,7 @@ int r600_get_platform_caps(struct radeon_device *rdev)
 	struct radeon_mode_info *mode_info = &rdev->mode_info;
 	union power_info *power_info;
 	int index = GetIndexIntoMasterTable(DATA, PowerPlayInfo);
-        u16 data_offset;
+	u16 data_offset;
 	u8 frev, crev;
 
 	if (!atom_parse_data_header(mode_info->atom_context, index, NULL,
@@ -874,7 +875,7 @@ int r600_parse_extended_power_table(struct radeon_device *rdev)
 	union fan_info *fan_info;
 	ATOM_PPLIB_Clock_Voltage_Dependency_Table *dep_table;
 	int index = GetIndexIntoMasterTable(DATA, PowerPlayInfo);
-        u16 data_offset;
+	u16 data_offset;
 	u8 frev, crev;
 	int ret, i;
 
@@ -1070,7 +1071,7 @@ int r600_parse_extended_power_table(struct radeon_device *rdev)
 			ext_hdr->usVCETableOffset) {
 			VCEClockInfoArray *array = (VCEClockInfoArray *)
 				(mode_info->atom_context->bios + data_offset +
-                                 le16_to_cpu(ext_hdr->usVCETableOffset) + 1);
+				 le16_to_cpu(ext_hdr->usVCETableOffset) + 1);
 			ATOM_PPLIB_VCE_Clock_Voltage_Limit_Table *limits =
 				(ATOM_PPLIB_VCE_Clock_Voltage_Limit_Table *)
 				(mode_info->atom_context->bios + data_offset +

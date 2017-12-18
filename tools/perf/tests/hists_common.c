@@ -96,12 +96,15 @@ struct machine *setup_fake_machine(struct machines *machines)
 			goto out;
 
 		thread__set_comm(thread, fake_threads[i].comm, 0);
+		thread__put(thread);
 	}
 
 	for (i = 0; i < ARRAY_SIZE(fake_mmap_info); i++) {
+		struct perf_sample sample = {
+			.cpumode = PERF_RECORD_MISC_USER,
+		};
 		union perf_event fake_mmap_event = {
 			.mmap = {
-				.header = { .misc = PERF_RECORD_MISC_USER, },
 				.pid = fake_mmap_info[i].pid,
 				.tid = fake_mmap_info[i].pid,
 				.start = fake_mmap_info[i].start,
@@ -113,15 +116,14 @@ struct machine *setup_fake_machine(struct machines *machines)
 		strcpy(fake_mmap_event.mmap.filename,
 		       fake_mmap_info[i].filename);
 
-		machine__process_mmap_event(machine, &fake_mmap_event, NULL);
+		machine__process_mmap_event(machine, &fake_mmap_event, &sample);
 	}
 
 	for (i = 0; i < ARRAY_SIZE(fake_symbols); i++) {
 		size_t k;
 		struct dso *dso;
 
-		dso = __dsos__findnew(&machine->user_dsos,
-				      fake_symbols[i].dso_name);
+		dso = machine__findnew_dso(machine, fake_symbols[i].dso_name);
 		if (dso == NULL)
 			goto out;
 
@@ -134,11 +136,15 @@ struct machine *setup_fake_machine(struct machines *machines)
 
 			sym = symbol__new(fsym->start, fsym->length,
 					  STB_GLOBAL, fsym->name);
-			if (sym == NULL)
+			if (sym == NULL) {
+				dso__put(dso);
 				goto out;
+			}
 
 			symbols__insert(&dso->symbols[MAP__FUNCTION], sym);
 		}
+
+		dso__put(dso);
 	}
 
 	return machine;
@@ -146,7 +152,6 @@ struct machine *setup_fake_machine(struct machines *machines)
 out:
 	pr_debug("Not enough memory for machine setup\n");
 	machine__delete_threads(machine);
-	machine__delete(machine);
 	return NULL;
 }
 
@@ -156,7 +161,7 @@ void print_hists_in(struct hists *hists)
 	struct rb_root *root;
 	struct rb_node *node;
 
-	if (sort__need_collapse)
+	if (hists__has(hists, need_collapse))
 		root = &hists->entries_collapsed;
 	else
 		root = hists->entries_in;

@@ -22,6 +22,12 @@ struct blk_flush_queue {
 	struct list_head	flush_queue[2];
 	struct list_head	flush_data_in_flight;
 	struct request		*flush_rq;
+
+	/*
+	 * flush_rq shares tag with this rq, both can't be active
+	 * at the same time
+	 */
+	struct request		*orig_rq;
 	spinlock_t		mq_flush_lock;
 };
 
@@ -33,14 +39,9 @@ extern struct ida blk_queue_ida;
 static inline struct blk_flush_queue *blk_get_flush_queue(
 		struct request_queue *q, struct blk_mq_ctx *ctx)
 {
-	struct blk_mq_hw_ctx *hctx;
-
-	if (!q->mq_ops)
-		return q->fq;
-
-	hctx = q->mq_ops->map_queue(q, ctx->cpu);
-
-	return hctx->fq;
+	if (q->mq_ops)
+		return blk_mq_map_queue(q, ctx->cpu)->fq;
+	return q->fq;
 }
 
 static inline void __blk_get_queue(struct request_queue *q)
@@ -58,16 +59,34 @@ void blk_exit_rl(struct request_list *rl);
 void init_request_from_bio(struct request *req, struct bio *bio);
 void blk_rq_bio_prep(struct request_queue *q, struct request *rq,
 			struct bio *bio);
-int blk_rq_append_bio(struct request_queue *q, struct request *rq,
-		      struct bio *bio);
 void blk_queue_bypass_start(struct request_queue *q);
 void blk_queue_bypass_end(struct request_queue *q);
 void blk_dequeue_request(struct request *rq);
 void __blk_queue_free_tags(struct request_queue *q);
 bool __blk_end_bidi_request(struct request *rq, int error,
 			    unsigned int nr_bytes, unsigned int bidi_bytes);
+void blk_freeze_queue(struct request_queue *q);
 
-void blk_rq_timed_out_timer(unsigned long data);
+static inline void blk_queue_enter_live(struct request_queue *q)
+{
+	/*
+	 * Given that running in generic_make_request() context
+	 * guarantees that a live reference against q_usage_counter has
+	 * been established, further references under that same context
+	 * need not check that the queue has been frozen (marked dead).
+	 */
+	percpu_ref_get(&q->q_usage_counter);
+}
+
+#ifdef CONFIG_BLK_DEV_INTEGRITY
+void blk_flush_integrity(void);
+#else
+static inline void blk_flush_integrity(void)
+{
+}
+#endif
+
+void blk_timeout_work(struct work_struct *work);
 unsigned long blk_rq_timeout(unsigned long timeout);
 void blk_add_timer(struct request *req);
 void blk_delete_timer(struct request *);
@@ -78,7 +97,9 @@ bool bio_attempt_front_merge(struct request_queue *q, struct request *req,
 bool bio_attempt_back_merge(struct request_queue *q, struct request *req,
 			    struct bio *bio);
 bool blk_attempt_plug_merge(struct request_queue *q, struct bio *bio,
-			    unsigned int *request_count);
+			    unsigned int *request_count,
+			    struct request **same_queue_rq);
+unsigned int blk_plug_queued_count(struct request_queue *q);
 
 void blk_account_io_start(struct request *req, bool new_io);
 void blk_account_io_completion(struct request *req, unsigned int bytes);
@@ -193,8 +214,6 @@ int blk_try_merge(struct request *rq, struct bio *bio);
 
 void blk_queue_congestion_threshold(struct request_queue *q);
 
-void __blk_run_queue_uncond(struct request_queue *q);
-
 int blk_dev_init(void);
 
 
@@ -267,15 +286,10 @@ static inline struct io_context *create_io_context(gfp_t gfp_mask, int node)
  * Internal throttling interface
  */
 #ifdef CONFIG_BLK_DEV_THROTTLING
-extern bool blk_throtl_bio(struct request_queue *q, struct bio *bio);
 extern void blk_throtl_drain(struct request_queue *q);
 extern int blk_throtl_init(struct request_queue *q);
 extern void blk_throtl_exit(struct request_queue *q);
 #else /* CONFIG_BLK_DEV_THROTTLING */
-static inline bool blk_throtl_bio(struct request_queue *q, struct bio *bio)
-{
-	return false;
-}
 static inline void blk_throtl_drain(struct request_queue *q) { }
 static inline int blk_throtl_init(struct request_queue *q) { return 0; }
 static inline void blk_throtl_exit(struct request_queue *q) { }

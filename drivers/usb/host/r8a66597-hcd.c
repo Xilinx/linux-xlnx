@@ -2099,16 +2099,13 @@ static void r8a66597_check_detect_child(struct r8a66597 *r8a66597,
 
 	memset(now_map, 0, sizeof(now_map));
 
-	list_for_each_entry(bus, &usb_bus_list, bus_list) {
-		if (!bus->root_hub)
-			continue;
-
-		if (bus->busnum != hcd->self.busnum)
-			continue;
-
+	mutex_lock(&usb_bus_idr_lock);
+	bus = idr_find(&usb_bus_idr, hcd->self.busnum);
+	if (bus && bus->root_hub) {
 		collect_usb_address_map(bus->root_hub, now_map);
 		update_usb_address_map(r8a66597, bus->root_hub, now_map);
 	}
+	mutex_unlock(&usb_bus_idr_lock);
 }
 
 static int r8a66597_hub_status_data(struct usb_hcd *hcd, char *buf)
@@ -2136,7 +2133,7 @@ static int r8a66597_hub_status_data(struct usb_hcd *hcd, char *buf)
 static void r8a66597_hub_descriptor(struct r8a66597 *r8a66597,
 				    struct usb_hub_descriptor *desc)
 {
-	desc->bDescriptorType = 0x29;
+	desc->bDescriptorType = USB_DT_HUB;
 	desc->bHubContrCurrent = 0;
 	desc->bNbrPorts = r8a66597->max_root_hub;
 	desc->bDescLength = 9;
@@ -2301,7 +2298,7 @@ static int r8a66597_bus_resume(struct usb_hcd *hcd)
 		rh->port &= ~USB_PORT_STAT_SUSPEND;
 		rh->port |= USB_PORT_STAT_C_SUSPEND << 16;
 		r8a66597_mdfy(r8a66597, RESUME, RESUME | UACT, dvstctr_reg);
-		msleep(50);
+		msleep(USB_RESUME_TIMEOUT);
 		r8a66597_mdfy(r8a66597, UACT, RESUME | UACT, dvstctr_reg);
 	}
 

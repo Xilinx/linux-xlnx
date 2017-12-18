@@ -56,25 +56,6 @@ static int metag_timer_set_next_event(unsigned long delta,
 	return 0;
 }
 
-static void metag_timer_set_mode(enum clock_event_mode mode,
-				 struct clock_event_device *evt)
-{
-	switch (mode) {
-	case CLOCK_EVT_MODE_ONESHOT:
-	case CLOCK_EVT_MODE_RESUME:
-		break;
-
-	case CLOCK_EVT_MODE_SHUTDOWN:
-		/* We should disable the IRQ here */
-		break;
-
-	case CLOCK_EVT_MODE_PERIODIC:
-	case CLOCK_EVT_MODE_UNUSED:
-		WARN_ON(1);
-		break;
-	};
-}
-
 static cycle_t metag_clocksource_read(struct clocksource *cs)
 {
 	return __core_reg_get(TXTIMER);
@@ -109,7 +90,7 @@ unsigned long long sched_clock(void)
 	return ticks << HARDWARE_TO_NS_SHIFT;
 }
 
-static void arch_timer_setup(unsigned int cpu)
+static int arch_timer_starting_cpu(unsigned int cpu)
 {
 	unsigned int txdivtime;
 	struct clock_event_device *clk = &per_cpu(local_clockevent, cpu);
@@ -129,7 +110,6 @@ static void arch_timer_setup(unsigned int cpu)
 	clk->rating = 200,
 	clk->shift = 12,
 	clk->irq = tbisig_map(TBID_SIGNUM_TRT),
-	clk->set_mode = metag_timer_set_mode,
 	clk->set_next_event = metag_timer_set_next_event,
 
 	clk->mult = div_sc(hwtimer_freq, NSEC_PER_SEC, clk->shift);
@@ -152,26 +132,8 @@ static void arch_timer_setup(unsigned int cpu)
 		val = core_reg_read(TXUCT_ID, TXTIMER_REGNUM, thread0);
 		__core_reg_set(TXTIMER, val);
 	}
+	return 0;
 }
-
-static int arch_timer_cpu_notify(struct notifier_block *self,
-					   unsigned long action, void *hcpu)
-{
-	int cpu = (long)hcpu;
-
-	switch (action) {
-	case CPU_STARTING:
-	case CPU_STARTING_FROZEN:
-		arch_timer_setup(cpu);
-		break;
-	}
-
-	return NOTIFY_OK;
-}
-
-static struct notifier_block arch_timer_cpu_nb = {
-	.notifier_call = arch_timer_cpu_notify,
-};
 
 int __init metag_generic_timer_init(void)
 {
@@ -190,11 +152,8 @@ int __init metag_generic_timer_init(void)
 
 	setup_irq(tbisig_map(TBID_SIGNUM_TRT), &metag_timer_irq);
 
-	/* Configure timer on boot CPU */
-	arch_timer_setup(smp_processor_id());
-
-	/* Hook cpu boot to configure other CPU's timers */
-	register_cpu_notifier(&arch_timer_cpu_nb);
-
-	return 0;
+	/* Hook cpu boot to configure the CPU's timers */
+	return cpuhp_setup_state(CPUHP_AP_METAG_TIMER_STARTING,
+				 "AP_METAG_TIMER_STARTING",
+				 arch_timer_starting_cpu, NULL);
 }

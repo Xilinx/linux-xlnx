@@ -22,8 +22,8 @@
 #include <linux/buffer_head.h>
 #include <linux/pagemap.h>
 #include <linux/quotaops.h>
+#include <linux/uio.h>
 #include <linux/writeback.h>
-#include <linux/aio.h>
 #include "jfs_incore.h"
 #include "jfs_inode.h"
 #include "jfs_filsys.h"
@@ -60,14 +60,16 @@ struct inode *jfs_iget(struct super_block *sb, unsigned long ino)
 	} else if (S_ISLNK(inode->i_mode)) {
 		if (inode->i_size >= IDATASIZE) {
 			inode->i_op = &page_symlink_inode_operations;
+			inode_nohighmem(inode);
 			inode->i_mapping->a_ops = &jfs_aops;
 		} else {
 			inode->i_op = &jfs_fast_symlink_inode_operations;
+			inode->i_link = JFS_IP(inode)->i_inline;
 			/*
 			 * The inline data should be null-terminated, but
 			 * don't let on-disk corruption crash the kernel
 			 */
-			JFS_IP(inode)->i_inline[inode->i_size] = '\0';
+			inode->i_link[inode->i_size] = '\0';
 		}
 	} else {
 		inode->i_op = &jfs_file_inode_operations;
@@ -100,8 +102,8 @@ int jfs_commit_inode(struct inode *inode, int wait)
 		 * partitions and may think inode is dirty
 		 */
 		if (!special_file(inode->i_mode) && noisy) {
-			jfs_err("jfs_commit_inode(0x%p) called on "
-				   "read-only volume", inode);
+			jfs_err("jfs_commit_inode(0x%p) called on read-only volume",
+				inode);
 			jfs_err("Is remount racy?");
 			noisy--;
 		}
@@ -133,11 +135,11 @@ int jfs_write_inode(struct inode *inode, struct writeback_control *wbc)
 	 * It has been committed since the last change, but was still
 	 * on the dirty inode list.
 	 */
-	 if (!test_cflag(COMMIT_Dirty, inode)) {
+	if (!test_cflag(COMMIT_Dirty, inode)) {
 		/* Make sure committed changes hit the disk */
 		jfs_flush_journal(JFS_SBI(inode->i_sb)->log, wait);
 		return 0;
-	 }
+	}
 
 	if (jfs_commit_inode(inode, wait)) {
 		jfs_err("jfs_write_inode: jfs_commit_inode failed!");
@@ -330,8 +332,7 @@ static sector_t jfs_bmap(struct address_space *mapping, sector_t block)
 	return generic_block_bmap(mapping, block, jfs_get_block);
 }
 
-static ssize_t jfs_direct_IO(int rw, struct kiocb *iocb,
-	struct iov_iter *iter, loff_t offset)
+static ssize_t jfs_direct_IO(struct kiocb *iocb, struct iov_iter *iter)
 {
 	struct file *file = iocb->ki_filp;
 	struct address_space *mapping = file->f_mapping;
@@ -339,15 +340,15 @@ static ssize_t jfs_direct_IO(int rw, struct kiocb *iocb,
 	size_t count = iov_iter_count(iter);
 	ssize_t ret;
 
-	ret = blockdev_direct_IO(rw, iocb, inode, iter, offset, jfs_get_block);
+	ret = blockdev_direct_IO(iocb, inode, iter, jfs_get_block);
 
 	/*
 	 * In case of error extending write may have instantiated a few
 	 * blocks outside i_size. Trim these off again.
 	 */
-	if (unlikely((rw & WRITE) && ret < 0)) {
+	if (unlikely(iov_iter_rw(iter) == WRITE && ret < 0)) {
 		loff_t isize = i_size_read(inode);
-		loff_t end = offset + count;
+		loff_t end = iocb->ki_pos + count;
 
 		if (end > isize)
 			jfs_write_failed(mapping, end);
@@ -402,7 +403,7 @@ void jfs_truncate_nolock(struct inode *ip, loff_t length)
 			break;
 		}
 
-		ip->i_mtime = ip->i_ctime = CURRENT_TIME;
+		ip->i_mtime = ip->i_ctime = current_time(ip);
 		mark_inode_dirty(ip);
 
 		txCommit(tid, 1, &ip, 0);

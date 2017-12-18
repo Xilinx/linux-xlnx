@@ -1,1 +1,0 @@
-obj-$(CONFIG_XILINX_VDMA_WRAPPER) += xvdma.o

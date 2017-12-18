@@ -58,7 +58,7 @@ struct btrfs_ordered_sum {
 
 #define BTRFS_ORDERED_COMPRESSED 3 /* writing a zlib compressed extent */
 
-#define BTRFS_ORDERED_PREALLOC 4 /* set when writing to prealloced extent */
+#define BTRFS_ORDERED_PREALLOC 4 /* set when writing to preallocated extent */
 
 #define BTRFS_ORDERED_DIRECT 5 /* set when we're doing DIO with this extent */
 
@@ -73,6 +73,8 @@ struct btrfs_ordered_sum {
 
 #define BTRFS_ORDERED_LOGGED 10 /* Set when we've waited on this ordered extent
 				 * in the logging code. */
+#define BTRFS_ORDERED_PENDING 11 /* We are waiting for this ordered extent to
+				  * complete in the current transaction. */
 struct btrfs_ordered_extent {
 	/* logical offset in the file */
 	u64 file_offset;
@@ -88,9 +90,6 @@ struct btrfs_ordered_extent {
 
 	/* number of bytes that still need writing */
 	u64 bytes_left;
-
-	/* number of bytes that still need csumming */
-	u64 csum_bytes_left;
 
 	/*
 	 * the end of the ordered extent which is behind it but
@@ -191,12 +190,17 @@ btrfs_lookup_first_ordered_extent(struct inode * inode, u64 file_offset);
 struct btrfs_ordered_extent *btrfs_lookup_ordered_range(struct inode *inode,
 							u64 file_offset,
 							u64 len);
+bool btrfs_have_ordered_extents_in_range(struct inode *inode,
+					 u64 file_offset,
+					 u64 len);
 int btrfs_ordered_update_i_size(struct inode *inode, u64 offset,
 				struct btrfs_ordered_extent *ordered);
 int btrfs_find_ordered_sum(struct inode *inode, u64 offset, u64 disk_bytenr,
 			   u32 *sum, int len);
-int btrfs_wait_ordered_extents(struct btrfs_root *root, int nr);
-void btrfs_wait_ordered_roots(struct btrfs_fs_info *fs_info, int nr);
+int btrfs_wait_ordered_extents(struct btrfs_root *root, int nr,
+			       const u64 range_start, const u64 range_len);
+int btrfs_wait_ordered_roots(struct btrfs_fs_info *fs_info, int nr,
+			      const u64 range_start, const u64 range_len);
 void btrfs_get_logged_extents(struct inode *inode,
 			      struct list_head *logged_list,
 			      const loff_t start,

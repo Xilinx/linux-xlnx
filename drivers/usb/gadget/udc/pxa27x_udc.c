@@ -33,6 +33,7 @@
 #include <linux/usb.h>
 #include <linux/usb/ch9.h>
 #include <linux/usb/gadget.h>
+#include <linux/usb/phy.h>
 
 #include "pxa27x_udc.h"
 
@@ -93,50 +94,46 @@ static void handle_ep(struct pxa_ep *ep);
 static int state_dbg_show(struct seq_file *s, void *p)
 {
 	struct pxa_udc *udc = s->private;
-	int pos = 0, ret;
 	u32 tmp;
 
-	ret = -ENODEV;
 	if (!udc->driver)
-		goto out;
+		return -ENODEV;
 
 	/* basic device status */
-	pos += seq_printf(s, DRIVER_DESC "\n"
-			 "%s version: %s\nGadget driver: %s\n",
-			 driver_name, DRIVER_VERSION,
-			 udc->driver ? udc->driver->driver.name : "(none)");
+	seq_printf(s, DRIVER_DESC "\n"
+		   "%s version: %s\n"
+		   "Gadget driver: %s\n",
+		   driver_name, DRIVER_VERSION,
+		   udc->driver ? udc->driver->driver.name : "(none)");
 
 	tmp = udc_readl(udc, UDCCR);
-	pos += seq_printf(s,
-			 "udccr=0x%0x(%s%s%s%s%s%s%s%s%s%s), "
-			 "con=%d,inter=%d,altinter=%d\n", tmp,
-			 (tmp & UDCCR_OEN) ? " oen":"",
-			 (tmp & UDCCR_AALTHNP) ? " aalthnp":"",
-			 (tmp & UDCCR_AHNP) ? " rem" : "",
-			 (tmp & UDCCR_BHNP) ? " rstir" : "",
-			 (tmp & UDCCR_DWRE) ? " dwre" : "",
-			 (tmp & UDCCR_SMAC) ? " smac" : "",
-			 (tmp & UDCCR_EMCE) ? " emce" : "",
-			 (tmp & UDCCR_UDR) ? " udr" : "",
-			 (tmp & UDCCR_UDA) ? " uda" : "",
-			 (tmp & UDCCR_UDE) ? " ude" : "",
-			 (tmp & UDCCR_ACN) >> UDCCR_ACN_S,
-			 (tmp & UDCCR_AIN) >> UDCCR_AIN_S,
-			 (tmp & UDCCR_AAISN) >> UDCCR_AAISN_S);
+	seq_printf(s,
+		   "udccr=0x%0x(%s%s%s%s%s%s%s%s%s%s), con=%d,inter=%d,altinter=%d\n",
+		   tmp,
+		   (tmp & UDCCR_OEN) ? " oen":"",
+		   (tmp & UDCCR_AALTHNP) ? " aalthnp":"",
+		   (tmp & UDCCR_AHNP) ? " rem" : "",
+		   (tmp & UDCCR_BHNP) ? " rstir" : "",
+		   (tmp & UDCCR_DWRE) ? " dwre" : "",
+		   (tmp & UDCCR_SMAC) ? " smac" : "",
+		   (tmp & UDCCR_EMCE) ? " emce" : "",
+		   (tmp & UDCCR_UDR) ? " udr" : "",
+		   (tmp & UDCCR_UDA) ? " uda" : "",
+		   (tmp & UDCCR_UDE) ? " ude" : "",
+		   (tmp & UDCCR_ACN) >> UDCCR_ACN_S,
+		   (tmp & UDCCR_AIN) >> UDCCR_AIN_S,
+		   (tmp & UDCCR_AAISN) >> UDCCR_AAISN_S);
 	/* registers for device and ep0 */
-	pos += seq_printf(s, "udcicr0=0x%08x udcicr1=0x%08x\n",
-			udc_readl(udc, UDCICR0), udc_readl(udc, UDCICR1));
-	pos += seq_printf(s, "udcisr0=0x%08x udcisr1=0x%08x\n",
-			udc_readl(udc, UDCISR0), udc_readl(udc, UDCISR1));
-	pos += seq_printf(s, "udcfnr=%d\n", udc_readl(udc, UDCFNR));
-	pos += seq_printf(s, "irqs: reset=%lu, suspend=%lu, resume=%lu, "
-			"reconfig=%lu\n",
-			udc->stats.irqs_reset, udc->stats.irqs_suspend,
-			udc->stats.irqs_resume, udc->stats.irqs_reconfig);
+	seq_printf(s, "udcicr0=0x%08x udcicr1=0x%08x\n",
+		   udc_readl(udc, UDCICR0), udc_readl(udc, UDCICR1));
+	seq_printf(s, "udcisr0=0x%08x udcisr1=0x%08x\n",
+		   udc_readl(udc, UDCISR0), udc_readl(udc, UDCISR1));
+	seq_printf(s, "udcfnr=%d\n", udc_readl(udc, UDCFNR));
+	seq_printf(s, "irqs: reset=%lu, suspend=%lu, resume=%lu, reconfig=%lu\n",
+		   udc->stats.irqs_reset, udc->stats.irqs_suspend,
+		   udc->stats.irqs_resume, udc->stats.irqs_reconfig);
 
-	ret = 0;
-out:
-	return ret;
+	return 0;
 }
 
 static int queues_dbg_show(struct seq_file *s, void *p)
@@ -144,75 +141,67 @@ static int queues_dbg_show(struct seq_file *s, void *p)
 	struct pxa_udc *udc = s->private;
 	struct pxa_ep *ep;
 	struct pxa27x_request *req;
-	int pos = 0, i, maxpkt, ret;
+	int i, maxpkt;
 
-	ret = -ENODEV;
 	if (!udc->driver)
-		goto out;
+		return -ENODEV;
 
 	/* dump endpoint queues */
 	for (i = 0; i < NR_PXA_ENDPOINTS; i++) {
 		ep = &udc->pxa_ep[i];
 		maxpkt = ep->fifo_size;
-		pos += seq_printf(s,  "%-12s max_pkt=%d %s\n",
-				EPNAME(ep), maxpkt, "pio");
+		seq_printf(s,  "%-12s max_pkt=%d %s\n",
+			   EPNAME(ep), maxpkt, "pio");
 
 		if (list_empty(&ep->queue)) {
-			pos += seq_printf(s, "\t(nothing queued)\n");
+			seq_puts(s, "\t(nothing queued)\n");
 			continue;
 		}
 
 		list_for_each_entry(req, &ep->queue, queue) {
-			pos += seq_printf(s,  "\treq %p len %d/%d buf %p\n",
-					&req->req, req->req.actual,
-					req->req.length, req->req.buf);
+			seq_printf(s,  "\treq %p len %d/%d buf %p\n",
+				   &req->req, req->req.actual,
+				   req->req.length, req->req.buf);
 		}
 	}
 
-	ret = 0;
-out:
-	return ret;
+	return 0;
 }
 
 static int eps_dbg_show(struct seq_file *s, void *p)
 {
 	struct pxa_udc *udc = s->private;
 	struct pxa_ep *ep;
-	int pos = 0, i, ret;
+	int i;
 	u32 tmp;
 
-	ret = -ENODEV;
 	if (!udc->driver)
-		goto out;
+		return -ENODEV;
 
 	ep = &udc->pxa_ep[0];
 	tmp = udc_ep_readl(ep, UDCCSR);
-	pos += seq_printf(s, "udccsr0=0x%03x(%s%s%s%s%s%s%s)\n", tmp,
-			 (tmp & UDCCSR0_SA) ? " sa" : "",
-			 (tmp & UDCCSR0_RNE) ? " rne" : "",
-			 (tmp & UDCCSR0_FST) ? " fst" : "",
-			 (tmp & UDCCSR0_SST) ? " sst" : "",
-			 (tmp & UDCCSR0_DME) ? " dme" : "",
-			 (tmp & UDCCSR0_IPR) ? " ipr" : "",
-			 (tmp & UDCCSR0_OPC) ? " opc" : "");
+	seq_printf(s, "udccsr0=0x%03x(%s%s%s%s%s%s%s)\n",
+		   tmp,
+		   (tmp & UDCCSR0_SA) ? " sa" : "",
+		   (tmp & UDCCSR0_RNE) ? " rne" : "",
+		   (tmp & UDCCSR0_FST) ? " fst" : "",
+		   (tmp & UDCCSR0_SST) ? " sst" : "",
+		   (tmp & UDCCSR0_DME) ? " dme" : "",
+		   (tmp & UDCCSR0_IPR) ? " ipr" : "",
+		   (tmp & UDCCSR0_OPC) ? " opc" : "");
 	for (i = 0; i < NR_PXA_ENDPOINTS; i++) {
 		ep = &udc->pxa_ep[i];
 		tmp = i? udc_ep_readl(ep, UDCCR) : udc_readl(udc, UDCCR);
-		pos += seq_printf(s, "%-12s: "
-				"IN %lu(%lu reqs), OUT %lu(%lu reqs), "
-				"irqs=%lu, udccr=0x%08x, udccsr=0x%03x, "
-				"udcbcr=%d\n",
-				EPNAME(ep),
-				ep->stats.in_bytes, ep->stats.in_ops,
-				ep->stats.out_bytes, ep->stats.out_ops,
-				ep->stats.irqs,
-				tmp, udc_ep_readl(ep, UDCCSR),
-				udc_ep_readl(ep, UDCBCR));
+		seq_printf(s, "%-12s: IN %lu(%lu reqs), OUT %lu(%lu reqs), irqs=%lu, udccr=0x%08x, udccsr=0x%03x, udcbcr=%d\n",
+			   EPNAME(ep),
+			   ep->stats.in_bytes, ep->stats.in_ops,
+			   ep->stats.out_bytes, ep->stats.out_ops,
+			   ep->stats.irqs,
+			   tmp, udc_ep_readl(ep, UDCCSR),
+			   udc_ep_readl(ep, UDCBCR));
 	}
 
-	ret = 0;
-out:
-	return ret;
+	return 0;
 }
 
 static int eps_dbg_open(struct inode *inode, struct file *file)
@@ -1667,6 +1656,37 @@ static int pxa_udc_vbus_draw(struct usb_gadget *_gadget, unsigned mA)
 	return -EOPNOTSUPP;
 }
 
+/**
+ * pxa_udc_phy_event - Called by phy upon VBus event
+ * @nb: notifier block
+ * @action: phy action, is vbus connect or disconnect
+ * @data: the usb_gadget structure in pxa_udc
+ *
+ * Called by the USB Phy when a cable connect or disconnect is sensed.
+ *
+ * Returns 0
+ */
+static int pxa_udc_phy_event(struct notifier_block *nb, unsigned long action,
+			     void *data)
+{
+	struct usb_gadget *gadget = data;
+
+	switch (action) {
+	case USB_EVENT_VBUS:
+		usb_gadget_vbus_connect(gadget);
+		return NOTIFY_OK;
+	case USB_EVENT_NONE:
+		usb_gadget_vbus_disconnect(gadget);
+		return NOTIFY_OK;
+	default:
+		return NOTIFY_DONE;
+	}
+}
+
+static struct notifier_block pxa27x_udc_phy = {
+	.notifier_call = pxa_udc_phy_event,
+};
+
 static int pxa27x_udc_start(struct usb_gadget *g,
 		struct usb_gadget_driver *driver);
 static int pxa27x_udc_stop(struct usb_gadget *g);
@@ -1722,6 +1742,7 @@ static void udc_init_data(struct pxa_udc *dev)
 	INIT_LIST_HEAD(&dev->gadget.ep_list);
 	INIT_LIST_HEAD(&dev->gadget.ep0->ep_list);
 	dev->udc_usb_ep[0].pxa_ep = &dev->pxa_ep[0];
+	dev->gadget.quirk_altset_not_supp = 1;
 	ep0_idle(dev);
 
 	/* PXA endpoints init */
@@ -1836,13 +1857,10 @@ fail:
  * Disables all udc endpoints (even control endpoint), report disconnect to
  * the gadget user.
  */
-static void stop_activity(struct pxa_udc *udc, struct usb_gadget_driver *driver)
+static void stop_activity(struct pxa_udc *udc)
 {
 	int i;
 
-	/* don't disconnect drivers more than once */
-	if (udc->gadget.speed == USB_SPEED_UNKNOWN)
-		driver = NULL;
 	udc->gadget.speed = USB_SPEED_UNKNOWN;
 
 	for (i = 0; i < NR_USB_ENDPOINTS; i++)
@@ -1859,7 +1877,7 @@ static int pxa27x_udc_stop(struct usb_gadget *g)
 {
 	struct pxa_udc *udc = to_pxa(g);
 
-	stop_activity(udc, NULL);
+	stop_activity(udc);
 	udc_disable(udc);
 
 	udc->driver = NULL;
@@ -2307,7 +2325,7 @@ static void irq_udc_reset(struct pxa_udc *udc)
 
 	if ((udccr & UDCCR_UDA) == 0) {
 		dev_dbg(udc->dev, "USB reset start\n");
-		stop_activity(udc, udc->driver);
+		stop_activity(udc);
 	}
 	udc->gadget.speed = USB_SPEED_FULL;
 	memset(&udc->stats, 0, sizeof udc->stats);
@@ -2399,7 +2417,7 @@ static struct pxa_udc memory = {
 };
 
 #if defined(CONFIG_OF)
-static struct of_device_id udc_pxa_dt_ids[] = {
+static const struct of_device_id udc_pxa_dt_ids[] = {
 	{ .compatible = "marvell,pxa270-udc" },
 	{}
 };
@@ -2434,7 +2452,7 @@ static int pxa_udc_probe(struct platform_device *pdev)
 		}
 		udc->udc_command = mach->udc_command;
 	} else {
-		udc->gpiod = devm_gpiod_get(&pdev->dev, NULL);
+		udc->gpiod = devm_gpiod_get(&pdev->dev, NULL, GPIOD_ASIS);
 	}
 
 	regs = platform_get_resource(pdev, IORESOURCE_MEM, 0);
@@ -2446,7 +2464,14 @@ static int pxa_udc_probe(struct platform_device *pdev)
 		return udc->irq;
 
 	udc->dev = &pdev->dev;
-	udc->transceiver = usb_get_phy(USB_PHY_TYPE_USB2);
+	if (of_have_populated_dt()) {
+		udc->transceiver =
+			devm_usb_get_phy_by_phandle(udc->dev, "phys", 0);
+		if (IS_ERR(udc->transceiver))
+			return PTR_ERR(udc->transceiver);
+	} else {
+		udc->transceiver = usb_get_phy(USB_PHY_TYPE_USB2);
+	}
 
 	if (IS_ERR(udc->gpiod)) {
 		dev_err(&pdev->dev, "Couldn't find or request D+ gpio : %ld\n",
@@ -2479,14 +2504,20 @@ static int pxa_udc_probe(struct platform_device *pdev)
 		goto err;
 	}
 
+	if (!IS_ERR_OR_NULL(udc->transceiver))
+		usb_register_notifier(udc->transceiver, &pxa27x_udc_phy);
 	retval = usb_add_gadget_udc(&pdev->dev, &udc->gadget);
 	if (retval)
-		goto err;
+		goto err_add_gadget;
 
 	pxa_init_debugfs(udc);
 	if (should_enable_udc(udc))
 		udc_enable(udc);
 	return 0;
+
+err_add_gadget:
+	if (!IS_ERR_OR_NULL(udc->transceiver))
+		usb_unregister_notifier(udc->transceiver, &pxa27x_udc_phy);
 err:
 	clk_unprepare(udc->clk);
 	return retval;
@@ -2503,6 +2534,8 @@ static int pxa_udc_remove(struct platform_device *_dev)
 	usb_del_gadget_udc(&udc->gadget);
 	pxa_cleanup_debugfs(udc);
 
+	if (!IS_ERR_OR_NULL(udc->transceiver))
+		usb_unregister_notifier(udc->transceiver, &pxa27x_udc_phy);
 	usb_put_phy(udc->transceiver);
 
 	udc->transceiver = NULL;
@@ -2546,6 +2579,9 @@ static int pxa_udc_suspend(struct platform_device *_dev, pm_message_t state)
 	udc_disable(udc);
 	udc->pullup_resume = udc->pullup_on;
 	dplus_pullup(udc, 0);
+
+	if (udc->driver)
+		udc->driver->disconnect(&udc->gadget);
 
 	return 0;
 }

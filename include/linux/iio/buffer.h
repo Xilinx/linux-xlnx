@@ -18,17 +18,30 @@
 struct iio_buffer;
 
 /**
+ * INDIO_BUFFER_FLAG_FIXED_WATERMARK - Watermark level of the buffer can not be
+ *   configured. It has a fixed value which will be buffer specific.
+ */
+#define INDIO_BUFFER_FLAG_FIXED_WATERMARK BIT(0)
+
+/**
  * struct iio_buffer_access_funcs - access functions for buffers.
  * @store_to:		actually store stuff to the buffer
  * @read_first_n:	try to get a specified number of bytes (must exist)
- * @data_available:	indicates whether data for reading from the buffer is
- *			available.
+ * @data_available:	indicates how much data is available for reading from
+ *			the buffer.
  * @request_update:	if a parameter change has been marked, update underlying
  *			storage.
  * @set_bytes_per_datum:set number of bytes per datum
  * @set_length:		set number of datums in buffer
+ * @enable:             called if the buffer is attached to a device and the
+ *                      device starts sampling. Calls are balanced with
+ *                      @disable.
+ * @disable:            called if the buffer is attached to a device and the
+ *                      device stops sampling. Calles are balanced with @enable.
  * @release:		called when the last reference to the buffer is dropped,
  *			should free all resources allocated by the buffer.
+ * @modes:		Supported operating modes by this buffer type
+ * @flags:		A bitmask combination of INDIO_BUFFER_FLAG_*
  *
  * The purpose of this structure is to make the buffer element
  * modular as event for a given driver, different usecases may require
@@ -43,14 +56,20 @@ struct iio_buffer_access_funcs {
 	int (*read_first_n)(struct iio_buffer *buffer,
 			    size_t n,
 			    char __user *buf);
-	bool (*data_available)(struct iio_buffer *buffer);
+	size_t (*data_available)(struct iio_buffer *buffer);
 
 	int (*request_update)(struct iio_buffer *buffer);
 
 	int (*set_bytes_per_datum)(struct iio_buffer *buffer, size_t bpd);
 	int (*set_length)(struct iio_buffer *buffer, int length);
 
+	int (*enable)(struct iio_buffer *buffer, struct iio_dev *indio_dev);
+	int (*disable)(struct iio_buffer *buffer, struct iio_dev *indio_dev);
+
 	void (*release)(struct iio_buffer *buffer);
+
+	unsigned int modes;
+	unsigned int flags;
 };
 
 /**
@@ -64,14 +83,17 @@ struct iio_buffer_access_funcs {
  * @access:		[DRIVER] buffer access functions associated with the
  *			implementation.
  * @scan_el_dev_attr_list:[INTERN] list of scan element related attributes.
+ * @buffer_group:	[INTERN] attributes of the buffer group
  * @scan_el_group:	[DRIVER] attribute group for those attributes not
  *			created from the iio_chan_info array.
  * @pollq:		[INTERN] wait queue to allow for polling on the buffer.
  * @stufftoread:	[INTERN] flag to indicate new data.
+ * @attrs:		[INTERN] standard attributes of the buffer
  * @demux_list:		[INTERN] list of operations required to demux the scan.
  * @demux_bounce:	[INTERN] buffer for doing gather from incoming scan.
  * @buffer_list:	[INTERN] entry in the devices list of current buffers.
  * @ref:		[INTERN] reference count of the buffer.
+ * @watermark:		[INTERN] number of datums to wait for poll/read.
  */
 struct iio_buffer {
 	int					length;
@@ -90,6 +112,7 @@ struct iio_buffer {
 	void					*demux_bounce;
 	struct list_head			buffer_list;
 	struct kref				ref;
+	unsigned int				watermark;
 };
 
 /**

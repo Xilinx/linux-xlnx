@@ -651,6 +651,7 @@ int carl9170_exec_cmd(struct ar9170 *ar, const enum carl9170_cmd_oids cmd,
 	unsigned int plen, void *payload, unsigned int outlen, void *out)
 {
 	int err = -ENOMEM;
+	unsigned long time_left;
 
 	if (!IS_ACCEPTING_CMD(ar))
 		return -EIO;
@@ -669,11 +670,12 @@ int carl9170_exec_cmd(struct ar9170 *ar, const enum carl9170_cmd_oids cmd,
 	ar->readlen = outlen;
 	spin_unlock_bh(&ar->cmd_lock);
 
+	reinit_completion(&ar->cmd_wait);
 	err = __carl9170_exec_cmd(ar, &ar->cmd, false);
 
 	if (!(cmd & CARL9170_CMD_ASYNC_FLAG)) {
-		err = wait_for_completion_timeout(&ar->cmd_wait, HZ);
-		if (err == 0) {
+		time_left = wait_for_completion_timeout(&ar->cmd_wait, HZ);
+		if (time_left == 0) {
 			err = -ETIMEDOUT;
 			goto err_unbuf;
 		}
@@ -777,10 +779,7 @@ void carl9170_usb_stop(struct ar9170 *ar)
 	spin_lock_bh(&ar->cmd_lock);
 	ar->readlen = 0;
 	spin_unlock_bh(&ar->cmd_lock);
-	complete_all(&ar->cmd_wait);
-
-	/* This is required to prevent an early completion on _start */
-	reinit_completion(&ar->cmd_wait);
+	complete(&ar->cmd_wait);
 
 	/*
 	 * Note:

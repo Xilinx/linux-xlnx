@@ -179,27 +179,53 @@ DEFINE_EVENT(rpc_task_queued, rpc_task_wakeup,
 
 );
 
+/*
+ * First define the enums in the below macros to be exported to userspace
+ * via TRACE_DEFINE_ENUM().
+ */
+#undef EM
+#undef EMe
+#define EM(a, b)	TRACE_DEFINE_ENUM(a);
+#define EMe(a, b)	TRACE_DEFINE_ENUM(a);
+
+#define RPC_SHOW_SOCKET				\
+	EM( SS_FREE, "FREE" )			\
+	EM( SS_UNCONNECTED, "UNCONNECTED" )	\
+	EM( SS_CONNECTING, "CONNECTING," )	\
+	EM( SS_CONNECTED, "CONNECTED," )	\
+	EMe(SS_DISCONNECTING, "DISCONNECTING" )
+
 #define rpc_show_socket_state(state) \
-	__print_symbolic(state, \
-		{ SS_FREE, "FREE" }, \
-		{ SS_UNCONNECTED, "UNCONNECTED" }, \
-		{ SS_CONNECTING, "CONNECTING," }, \
-		{ SS_CONNECTED, "CONNECTED," }, \
-		{ SS_DISCONNECTING, "DISCONNECTING" })
+	__print_symbolic(state, RPC_SHOW_SOCKET)
+
+RPC_SHOW_SOCKET
+
+#define RPC_SHOW_SOCK				\
+	EM( TCP_ESTABLISHED, "ESTABLISHED" )	\
+	EM( TCP_SYN_SENT, "SYN_SENT" )		\
+	EM( TCP_SYN_RECV, "SYN_RECV" )		\
+	EM( TCP_FIN_WAIT1, "FIN_WAIT1" )	\
+	EM( TCP_FIN_WAIT2, "FIN_WAIT2" )	\
+	EM( TCP_TIME_WAIT, "TIME_WAIT" )	\
+	EM( TCP_CLOSE, "CLOSE" )		\
+	EM( TCP_CLOSE_WAIT, "CLOSE_WAIT" )	\
+	EM( TCP_LAST_ACK, "LAST_ACK" )		\
+	EM( TCP_LISTEN, "LISTEN" )		\
+	EMe( TCP_CLOSING, "CLOSING" )
 
 #define rpc_show_sock_state(state) \
-	__print_symbolic(state, \
-		{ TCP_ESTABLISHED, "ESTABLISHED" }, \
-		{ TCP_SYN_SENT, "SYN_SENT" }, \
-		{ TCP_SYN_RECV, "SYN_RECV" }, \
-		{ TCP_FIN_WAIT1, "FIN_WAIT1" }, \
-		{ TCP_FIN_WAIT2, "FIN_WAIT2" }, \
-		{ TCP_TIME_WAIT, "TIME_WAIT" }, \
-		{ TCP_CLOSE, "CLOSE" }, \
-		{ TCP_CLOSE_WAIT, "CLOSE_WAIT" }, \
-		{ TCP_LAST_ACK, "LAST_ACK" }, \
-		{ TCP_LISTEN, "LISTEN" }, \
-		{ TCP_CLOSING, "CLOSING" })
+	__print_symbolic(state, RPC_SHOW_SOCK)
+
+RPC_SHOW_SOCK
+
+/*
+ * Now redefine the EM() and EMe() macros to map the enums to the strings
+ * that will be printed in the output.
+ */
+#undef EM
+#undef EMe
+#define EM(a, b)	{a, b},
+#define EMe(a, b)	{a, b}
 
 DECLARE_EVENT_CLASS(xs_socket_event,
 
@@ -447,6 +473,39 @@ TRACE_EVENT(svc_recv,
 			show_rqstp_flags(__entry->flags))
 );
 
+DECLARE_EVENT_CLASS(svc_rqst_event,
+
+	TP_PROTO(struct svc_rqst *rqst),
+
+	TP_ARGS(rqst),
+
+	TP_STRUCT__entry(
+		__field(__be32, xid)
+		__field(unsigned long, flags)
+		__dynamic_array(unsigned char, addr, rqst->rq_addrlen)
+	),
+
+	TP_fast_assign(
+		__entry->xid = rqst->rq_xid;
+		__entry->flags = rqst->rq_flags;
+		memcpy(__get_dynamic_array(addr),
+			&rqst->rq_addr, rqst->rq_addrlen);
+	),
+
+	TP_printk("addr=%pIScp rq_xid=0x%x flags=%s",
+		(struct sockaddr *)__get_dynamic_array(addr),
+		be32_to_cpu(__entry->xid),
+		show_rqstp_flags(__entry->flags))
+);
+
+DEFINE_EVENT(svc_rqst_event, svc_defer,
+	TP_PROTO(struct svc_rqst *rqst),
+	TP_ARGS(rqst));
+
+DEFINE_EVENT(svc_rqst_event, svc_drop,
+	TP_PROTO(struct svc_rqst *rqst),
+	TP_ARGS(rqst));
+
 DECLARE_EVENT_CLASS(svc_rqst_status,
 
 	TP_PROTO(struct svc_rqst *rqst, int status),
@@ -503,41 +562,66 @@ TRACE_EVENT(svc_xprt_do_enqueue,
 
 	TP_STRUCT__entry(
 		__field(struct svc_xprt *, xprt)
-		__field(struct svc_rqst *, rqst)
+		__field(int, pid)
+		__field(unsigned long, flags)
+		__dynamic_array(unsigned char, addr, xprt != NULL ?
+			xprt->xpt_remotelen : 0)
 	),
 
 	TP_fast_assign(
 		__entry->xprt = xprt;
-		__entry->rqst = rqst;
+		__entry->pid = rqst? rqst->rq_task->pid : 0;
+		if (xprt) {
+			memcpy(__get_dynamic_array(addr),
+				&xprt->xpt_remote,
+				xprt->xpt_remotelen);
+			__entry->flags = xprt->xpt_flags;
+		} else
+			__entry->flags = 0;
 	),
 
 	TP_printk("xprt=0x%p addr=%pIScp pid=%d flags=%s", __entry->xprt,
-		(struct sockaddr *)&__entry->xprt->xpt_remote,
-		__entry->rqst ? __entry->rqst->rq_task->pid : 0,
-		show_svc_xprt_flags(__entry->xprt->xpt_flags))
+		__get_dynamic_array_len(addr) != 0 ?
+			(struct sockaddr *)__get_dynamic_array(addr) : NULL,
+		__entry->pid, show_svc_xprt_flags(__entry->flags))
 );
 
-TRACE_EVENT(svc_xprt_dequeue,
+DECLARE_EVENT_CLASS(svc_xprt_event,
 	TP_PROTO(struct svc_xprt *xprt),
 
 	TP_ARGS(xprt),
 
 	TP_STRUCT__entry(
 		__field(struct svc_xprt *, xprt)
-		__field_struct(struct sockaddr_storage, ss)
 		__field(unsigned long, flags)
+		__dynamic_array(unsigned char, addr, xprt != NULL ?
+			xprt->xpt_remotelen : 0)
 	),
 
 	TP_fast_assign(
-		__entry->xprt = xprt,
-		xprt ? memcpy(&__entry->ss, &xprt->xpt_remote, sizeof(__entry->ss)) : memset(&__entry->ss, 0, sizeof(__entry->ss));
-		__entry->flags = xprt ? xprt->xpt_flags : 0;
+		__entry->xprt = xprt;
+		if (xprt) {
+			memcpy(__get_dynamic_array(addr),
+					&xprt->xpt_remote,
+					xprt->xpt_remotelen);
+			__entry->flags = xprt->xpt_flags;
+		} else
+			__entry->flags = 0;
 	),
 
 	TP_printk("xprt=0x%p addr=%pIScp flags=%s", __entry->xprt,
-		(struct sockaddr *)&__entry->ss,
+		__get_dynamic_array_len(addr) != 0 ?
+			(struct sockaddr *)__get_dynamic_array(addr) : NULL,
 		show_svc_xprt_flags(__entry->flags))
 );
+
+DEFINE_EVENT(svc_xprt_event, svc_xprt_dequeue,
+	TP_PROTO(struct svc_xprt *xprt),
+	TP_ARGS(xprt));
+
+DEFINE_EVENT(svc_xprt_event, svc_xprt_no_write_space,
+	TP_PROTO(struct svc_xprt *xprt),
+	TP_ARGS(xprt));
 
 TRACE_EVENT(svc_wake_up,
 	TP_PROTO(int pid),
@@ -563,17 +647,56 @@ TRACE_EVENT(svc_handle_xprt,
 	TP_STRUCT__entry(
 		__field(struct svc_xprt *, xprt)
 		__field(int, len)
+		__field(unsigned long, flags)
+		__dynamic_array(unsigned char, addr, xprt != NULL ?
+			xprt->xpt_remotelen : 0)
 	),
 
 	TP_fast_assign(
 		__entry->xprt = xprt;
 		__entry->len = len;
+		if (xprt) {
+			memcpy(__get_dynamic_array(addr),
+					&xprt->xpt_remote,
+					xprt->xpt_remotelen);
+			__entry->flags = xprt->xpt_flags;
+		} else
+			__entry->flags = 0;
 	),
 
 	TP_printk("xprt=0x%p addr=%pIScp len=%d flags=%s", __entry->xprt,
-		(struct sockaddr *)&__entry->xprt->xpt_remote, __entry->len,
-		show_svc_xprt_flags(__entry->xprt->xpt_flags))
+		__get_dynamic_array_len(addr) != 0 ?
+			(struct sockaddr *)__get_dynamic_array(addr) : NULL,
+		__entry->len, show_svc_xprt_flags(__entry->flags))
 );
+
+
+DECLARE_EVENT_CLASS(svc_deferred_event,
+	TP_PROTO(struct svc_deferred_req *dr),
+
+	TP_ARGS(dr),
+
+	TP_STRUCT__entry(
+		__field(__be32, xid)
+		__dynamic_array(unsigned char, addr, dr->addrlen)
+	),
+
+	TP_fast_assign(
+		__entry->xid = *(__be32 *)(dr->args + (dr->xprt_hlen>>2));
+		memcpy(__get_dynamic_array(addr), &dr->addr, dr->addrlen);
+	),
+
+	TP_printk("addr=%pIScp xid=0x%x",
+		(struct sockaddr *)__get_dynamic_array(addr),
+		be32_to_cpu(__entry->xid))
+);
+
+DEFINE_EVENT(svc_deferred_event, svc_drop_deferred,
+	TP_PROTO(struct svc_deferred_req *dr),
+	TP_ARGS(dr));
+DEFINE_EVENT(svc_deferred_event, svc_revisit_deferred,
+	TP_PROTO(struct svc_deferred_req *dr),
+	TP_ARGS(dr));
 #endif /* _TRACE_SUNRPC_H */
 
 #include <trace/define_trace.h>

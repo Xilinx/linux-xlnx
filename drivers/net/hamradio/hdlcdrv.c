@@ -404,13 +404,18 @@ static netdev_tx_t hdlcdrv_send_packet(struct sk_buff *skb,
 {
 	struct hdlcdrv_state *sm = netdev_priv(dev);
 
+	if (skb->protocol == htons(ETH_P_IP))
+		return ax25_ip_xmit(skb);
+
 	if (skb->data[0] != 0) {
 		do_kiss_params(sm, skb->data, skb->len);
 		dev_kfree_skb(skb);
 		return NETDEV_TX_OK;
 	}
-	if (sm->skb)
-		return NETDEV_TX_LOCKED;
+	if (sm->skb) {
+		dev_kfree_skb(skb);
+		return NETDEV_TX_OK;
+	}
 	netif_stop_queue(dev);
 	sm->skb = skb;
 	return NETDEV_TX_OK;

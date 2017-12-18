@@ -12,6 +12,7 @@
 #include <linux/compiler.h>
 
 #include <asm/barrier.h>
+#include <asm/processor.h>
 #include <asm/compiler.h>
 #include <asm/war.h>
 
@@ -42,9 +43,28 @@ static inline int arch_spin_is_locked(arch_spinlock_t *lock)
 	return ((counters >> 16) ^ counters) & 0xffff;
 }
 
+static inline int arch_spin_value_unlocked(arch_spinlock_t lock)
+{
+	return lock.h.serving_now == lock.h.ticket;
+}
+
 #define arch_spin_lock_flags(lock, flags) arch_spin_lock(lock)
-#define arch_spin_unlock_wait(x) \
-	while (arch_spin_is_locked(x)) { cpu_relax(); }
+
+static inline void arch_spin_unlock_wait(arch_spinlock_t *lock)
+{
+	u16 owner = READ_ONCE(lock->h.serving_now);
+	smp_rmb();
+	for (;;) {
+		arch_spinlock_t tmp = READ_ONCE(*lock);
+
+		if (tmp.h.serving_now == tmp.h.ticket ||
+		    tmp.h.serving_now != owner)
+			break;
+
+		cpu_relax();
+	}
+	smp_acquire__after_ctrl_dep();
+}
 
 static inline int arch_spin_is_contended(arch_spinlock_t *lock)
 {
@@ -109,7 +129,7 @@ static inline void arch_spin_lock(arch_spinlock_t *lock)
 		"	 subu	%[ticket], %[my_ticket], %[ticket]	\n"
 		"2:							\n"
 		"	.subsection 2					\n"
-		"4:	andi	%[ticket], %[ticket], 0x1fff		\n"
+		"4:	andi	%[ticket], %[ticket], 0xffff		\n"
 		"	sll	%[ticket], 5				\n"
 		"							\n"
 		"6:	bnez	%[ticket], 6b				\n"
@@ -263,7 +283,7 @@ static inline void arch_read_unlock(arch_rwlock_t *rw)
 	if (R10000_LLSC_WAR) {
 		__asm__ __volatile__(
 		"1:	ll	%1, %2		# arch_read_unlock	\n"
-		"	addiu	%1, 1					\n"
+		"	addiu	%1, -1					\n"
 		"	sc	%1, %0					\n"
 		"	beqzl	%1, 1b					\n"
 		: "=" GCC_OFF_SMALL_ASM() (rw->lock), "=&r" (tmp)
@@ -317,7 +337,7 @@ static inline void arch_write_lock(arch_rwlock_t *rw)
 
 static inline void arch_write_unlock(arch_rwlock_t *rw)
 {
-	smp_mb();
+	smp_mb__before_llsc();
 
 	__asm__ __volatile__(
 	"				# arch_write_unlock	\n"

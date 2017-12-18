@@ -119,18 +119,14 @@ static int mv_u3d_process_ep_req(struct mv_u3d *u3d, int index,
 	struct mv_u3d_req *curr_req)
 {
 	struct mv_u3d_trb	*curr_trb;
-	dma_addr_t cur_deq_lo;
-	struct mv_u3d_ep_context	*curr_ep_context;
-	int trb_complete, actual, remaining_length = 0;
+	int actual, remaining_length = 0;
 	int direction, ep_num;
 	int retval = 0;
 	u32 tmp, status, length;
 
-	curr_ep_context = &u3d->ep_context[index];
 	direction = index % 2;
 	ep_num = index / 2;
 
-	trb_complete = 0;
 	actual = curr_req->req.length;
 
 	while (!list_empty(&curr_req->trb_list)) {
@@ -143,15 +139,10 @@ static int mv_u3d_process_ep_req(struct mv_u3d *u3d, int index,
 		}
 
 		curr_trb->trb_hw->ctrl.own = 0;
-		if (direction == MV_U3D_EP_DIR_OUT) {
+		if (direction == MV_U3D_EP_DIR_OUT)
 			tmp = ioread32(&u3d->vuc_regs->rxst[ep_num].statuslo);
-			cur_deq_lo =
-				ioread32(&u3d->vuc_regs->rxst[ep_num].curdeqlo);
-		} else {
+		else
 			tmp = ioread32(&u3d->vuc_regs->txst[ep_num].statuslo);
-			cur_deq_lo =
-				ioread32(&u3d->vuc_regs->txst[ep_num].curdeqlo);
-		}
 
 		status = tmp >> MV_U3D_XFERSTATUS_COMPLETE_SHIFT;
 		length = tmp & MV_U3D_XFERSTATUS_TRB_LENGTH_MASK;
@@ -527,7 +518,6 @@ static int mv_u3d_ep_enable(struct usb_ep *_ep,
 {
 	struct mv_u3d *u3d;
 	struct mv_u3d_ep *ep;
-	struct mv_u3d_ep_context *ep_context;
 	u16 max = 0;
 	unsigned maxburst = 0;
 	u32 epxcr, direction;
@@ -547,9 +537,6 @@ static int mv_u3d_ep_enable(struct usb_ep *_ep,
 	if (!_ep->maxburst)
 		_ep->maxburst = 1;
 	maxburst = _ep->maxburst;
-
-	/* Get the endpoint context address */
-	ep_context = (struct mv_u3d_ep_context *)ep->ep_context;
 
 	/* Set the max burst size */
 	switch (desc->bmAttributes & USB_ENDPOINT_XFERTYPE_MASK) {
@@ -633,7 +620,6 @@ static int  mv_u3d_ep_disable(struct usb_ep *_ep)
 {
 	struct mv_u3d *u3d;
 	struct mv_u3d_ep *ep;
-	struct mv_u3d_ep_context *ep_context;
 	u32 epxcr, direction;
 	unsigned long flags;
 
@@ -645,9 +631,6 @@ static int  mv_u3d_ep_disable(struct usb_ep *_ep)
 		return -EINVAL;
 
 	u3d = ep->u3d;
-
-	/* Get the endpoint context address */
-	ep_context = ep->ep_context;
 
 	direction = mv_u3d_ep_dir(ep);
 
@@ -1324,6 +1307,9 @@ static int mv_u3d_eps_init(struct mv_u3d *u3d)
 	ep->ep.ops = &mv_u3d_ep_ops;
 	ep->wedge = 0;
 	usb_ep_set_maxpacket_limit(&ep->ep, MV_U3D_EP0_MAX_PKT_SIZE);
+	ep->ep.caps.type_control = true;
+	ep->ep.caps.dir_in = true;
+	ep->ep.caps.dir_out = true;
 	ep->ep_num = 0;
 	ep->ep.desc = &mv_u3d_ep0_desc;
 	INIT_LIST_HEAD(&ep->queue);
@@ -1339,13 +1325,19 @@ static int mv_u3d_eps_init(struct mv_u3d *u3d)
 		if (i & 1) {
 			snprintf(name, sizeof(name), "ep%din", i >> 1);
 			ep->direction = MV_U3D_EP_DIR_IN;
+			ep->ep.caps.dir_in = true;
 		} else {
 			snprintf(name, sizeof(name), "ep%dout", i >> 1);
 			ep->direction = MV_U3D_EP_DIR_OUT;
+			ep->ep.caps.dir_out = true;
 		}
 		ep->u3d = u3d;
 		strncpy(ep->name, name, sizeof(ep->name));
 		ep->ep.name = ep->name;
+
+		ep->ep.caps.type_iso = true;
+		ep->ep.caps.type_bulk = true;
+		ep->ep.caps.type_int = true;
 
 		ep->ep.ops = &mv_u3d_ep_ops;
 		usb_ep_set_maxpacket_limit(&ep->ep, (unsigned short) ~0);
@@ -1758,8 +1750,7 @@ static int mv_u3d_remove(struct platform_device *dev)
 	usb_del_gadget_udc(&u3d->gadget);
 
 	/* free memory allocated in probe */
-	if (u3d->trb_pool)
-		dma_pool_destroy(u3d->trb_pool);
+	dma_pool_destroy(u3d->trb_pool);
 
 	if (u3d->ep_context)
 		dma_free_coherent(&dev->dev, u3d->ep_context_size,

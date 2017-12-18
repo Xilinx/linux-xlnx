@@ -28,8 +28,6 @@
 #undef pr_fmt
 #define pr_fmt(fmt) "%s: " fmt, __func__
 
-#define to_clk_divider(_hw) container_of(_hw, struct clk_divider, hw)
-
 static unsigned long ti_composite_recalc_rate(struct clk_hw *hw,
 					      unsigned long parent_rate)
 {
@@ -69,7 +67,7 @@ struct component_clk {
 	struct list_head link;
 };
 
-static const char * __initconst component_clk_types[] = {
+static const char * const component_clk_types[] __initconst = {
 	"gate", "divider", "mux"
 };
 
@@ -236,14 +234,14 @@ cleanup:
 
 static void __init of_ti_composite_clk_setup(struct device_node *node)
 {
-	int num_clks;
+	unsigned int num_clks;
 	int i;
 	struct clk_hw_omap_comp *cclk;
 
 	/* Number of component clocks to be put inside this clock */
 	num_clks = of_clk_get_parent_count(node);
 
-	if (num_clks < 1) {
+	if (!num_clks) {
 		pr_err("composite clk %s must have component(s)\n", node->name);
 		return;
 	}
@@ -273,14 +271,13 @@ CLK_OF_DECLARE(ti_composite_clock, "ti,composite-clock",
 int __init ti_clk_add_component(struct device_node *node, struct clk_hw *hw,
 				int type)
 {
-	int num_parents;
+	unsigned int num_parents;
 	const char **parent_names;
 	struct component_clk *clk;
-	int i;
 
 	num_parents = of_clk_get_parent_count(node);
 
-	if (num_parents < 1) {
+	if (!num_parents) {
 		pr_err("component-clock %s must have parent(s)\n", node->name);
 		return -EINVAL;
 	}
@@ -289,8 +286,7 @@ int __init ti_clk_add_component(struct device_node *node, struct clk_hw *hw,
 	if (!parent_names)
 		return -ENOMEM;
 
-	for (i = 0; i < num_parents; i++)
-		parent_names[i] = of_clk_get_parent_name(node, i);
+	of_clk_parent_fill(node, parent_names, num_parents);
 
 	clk = kzalloc(sizeof(*clk), GFP_KERNEL);
 	if (!clk) {

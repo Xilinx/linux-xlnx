@@ -41,9 +41,9 @@
 #include <xen/balloon.h>
 #include <xen/gntdev.h>
 #include <xen/events.h>
+#include <xen/page.h>
 #include <asm/xen/hypervisor.h>
 #include <asm/xen/hypercall.h>
-#include <asm/xen/page.h>
 
 MODULE_LICENSE("GPL");
 MODULE_AUTHOR("Derek G. Murray <Derek.Murray@cl.cam.ac.uk>, "
@@ -327,30 +327,10 @@ static int map_grant_pages(struct grant_map *map)
 	return err;
 }
 
-struct unmap_grant_pages_callback_data
-{
-	struct completion completion;
-	int result;
-};
-
-static void unmap_grant_callback(int result,
-				 struct gntab_unmap_queue_data *data)
-{
-	struct unmap_grant_pages_callback_data* d = data->data;
-
-	d->result = result;
-	complete(&d->completion);
-}
-
 static int __unmap_grant_pages(struct grant_map *map, int offset, int pages)
 {
 	int i, err = 0;
 	struct gntab_unmap_queue_data unmap_data;
-	struct unmap_grant_pages_callback_data data;
-
-	init_completion(&data.completion);
-	unmap_data.data = &data;
-	unmap_data.done= &unmap_grant_callback;
 
 	if (map->notify.flags & UNMAP_NOTIFY_CLEAR_BYTE) {
 		int pgno = (map->notify.addr >> PAGE_SHIFT);
@@ -367,11 +347,9 @@ static int __unmap_grant_pages(struct grant_map *map, int offset, int pages)
 	unmap_data.pages = map->pages + offset;
 	unmap_data.count = pages;
 
-	gnttab_unmap_refs_async(&unmap_data);
-
-	wait_for_completion(&data.completion);
-	if (data.result)
-		return data.result;
+	err = gnttab_unmap_refs_sync(&unmap_data);
+	if (err)
+		return err;
 
 	for (i = 0; i < pages; i++) {
 		if (map->unmap_ops[offset+i].status)
@@ -455,7 +433,7 @@ static struct page *gntdev_vma_find_special_page(struct vm_area_struct *vma,
 	return map->pages[(addr - map->pages_vm_start) >> PAGE_SHIFT];
 }
 
-static struct vm_operations_struct gntdev_vmops = {
+static const struct vm_operations_struct gntdev_vmops = {
 	.open = gntdev_vma_open,
 	.close = gntdev_vma_close,
 	.find_special_page = gntdev_vma_find_special_page,
@@ -540,7 +518,7 @@ static void mn_release(struct mmu_notifier *mn,
 	mutex_unlock(&priv->lock);
 }
 
-static struct mmu_notifier_ops gntdev_mmu_ops = {
+static const struct mmu_notifier_ops gntdev_mmu_ops = {
 	.release                = mn_release,
 	.invalidate_page        = mn_invl_page,
 	.invalidate_range_start = mn_invl_range_start,
@@ -590,12 +568,14 @@ static int gntdev_release(struct inode *inode, struct file *flip)
 
 	pr_debug("priv %p\n", priv);
 
+	mutex_lock(&priv->lock);
 	while (!list_empty(&priv->maps)) {
 		map = list_entry(priv->maps.next, struct grant_map, next);
 		list_del(&map->next);
 		gntdev_put_map(NULL /* already removed */, map);
 	}
 	WARN_ON(!list_empty(&priv->freeable_maps));
+	mutex_unlock(&priv->lock);
 
 	if (use_ptemod)
 		mmu_notifier_unregister(&priv->mn, priv->mm);
@@ -768,6 +748,206 @@ static long gntdev_ioctl_notify(struct gntdev_priv *priv, void __user *u)
 	return rc;
 }
 
+#define GNTDEV_COPY_BATCH 16
+
+struct gntdev_copy_batch {
+	struct gnttab_copy ops[GNTDEV_COPY_BATCH];
+	struct page *pages[GNTDEV_COPY_BATCH];
+	s16 __user *status[GNTDEV_COPY_BATCH];
+	unsigned int nr_ops;
+	unsigned int nr_pages;
+};
+
+static int gntdev_get_page(struct gntdev_copy_batch *batch, void __user *virt,
+			   bool writeable, unsigned long *gfn)
+{
+	unsigned long addr = (unsigned long)virt;
+	struct page *page;
+	unsigned long xen_pfn;
+	int ret;
+
+	ret = get_user_pages_fast(addr, 1, writeable, &page);
+	if (ret < 0)
+		return ret;
+
+	batch->pages[batch->nr_pages++] = page;
+
+	xen_pfn = page_to_xen_pfn(page) + XEN_PFN_DOWN(addr & ~PAGE_MASK);
+	*gfn = pfn_to_gfn(xen_pfn);
+
+	return 0;
+}
+
+static void gntdev_put_pages(struct gntdev_copy_batch *batch)
+{
+	unsigned int i;
+
+	for (i = 0; i < batch->nr_pages; i++)
+		put_page(batch->pages[i]);
+	batch->nr_pages = 0;
+}
+
+static int gntdev_copy(struct gntdev_copy_batch *batch)
+{
+	unsigned int i;
+
+	gnttab_batch_copy(batch->ops, batch->nr_ops);
+	gntdev_put_pages(batch);
+
+	/*
+	 * For each completed op, update the status if the op failed
+	 * and all previous ops for the segment were successful.
+	 */
+	for (i = 0; i < batch->nr_ops; i++) {
+		s16 status = batch->ops[i].status;
+		s16 old_status;
+
+		if (status == GNTST_okay)
+			continue;
+
+		if (__get_user(old_status, batch->status[i]))
+			return -EFAULT;
+
+		if (old_status != GNTST_okay)
+			continue;
+
+		if (__put_user(status, batch->status[i]))
+			return -EFAULT;
+	}
+
+	batch->nr_ops = 0;
+	return 0;
+}
+
+static int gntdev_grant_copy_seg(struct gntdev_copy_batch *batch,
+				 struct gntdev_grant_copy_segment *seg,
+				 s16 __user *status)
+{
+	uint16_t copied = 0;
+
+	/*
+	 * Disallow local -> local copies since there is only space in
+	 * batch->pages for one page per-op and this would be a very
+	 * expensive memcpy().
+	 */
+	if (!(seg->flags & (GNTCOPY_source_gref | GNTCOPY_dest_gref)))
+		return -EINVAL;
+
+	/* Can't cross page if source/dest is a grant ref. */
+	if (seg->flags & GNTCOPY_source_gref) {
+		if (seg->source.foreign.offset + seg->len > XEN_PAGE_SIZE)
+			return -EINVAL;
+	}
+	if (seg->flags & GNTCOPY_dest_gref) {
+		if (seg->dest.foreign.offset + seg->len > XEN_PAGE_SIZE)
+			return -EINVAL;
+	}
+
+	if (put_user(GNTST_okay, status))
+		return -EFAULT;
+
+	while (copied < seg->len) {
+		struct gnttab_copy *op;
+		void __user *virt;
+		size_t len, off;
+		unsigned long gfn;
+		int ret;
+
+		if (batch->nr_ops >= GNTDEV_COPY_BATCH) {
+			ret = gntdev_copy(batch);
+			if (ret < 0)
+				return ret;
+		}
+
+		len = seg->len - copied;
+
+		op = &batch->ops[batch->nr_ops];
+		op->flags = 0;
+
+		if (seg->flags & GNTCOPY_source_gref) {
+			op->source.u.ref = seg->source.foreign.ref;
+			op->source.domid = seg->source.foreign.domid;
+			op->source.offset = seg->source.foreign.offset + copied;
+			op->flags |= GNTCOPY_source_gref;
+		} else {
+			virt = seg->source.virt + copied;
+			off = (unsigned long)virt & ~XEN_PAGE_MASK;
+			len = min(len, (size_t)XEN_PAGE_SIZE - off);
+
+			ret = gntdev_get_page(batch, virt, false, &gfn);
+			if (ret < 0)
+				return ret;
+
+			op->source.u.gmfn = gfn;
+			op->source.domid = DOMID_SELF;
+			op->source.offset = off;
+		}
+
+		if (seg->flags & GNTCOPY_dest_gref) {
+			op->dest.u.ref = seg->dest.foreign.ref;
+			op->dest.domid = seg->dest.foreign.domid;
+			op->dest.offset = seg->dest.foreign.offset + copied;
+			op->flags |= GNTCOPY_dest_gref;
+		} else {
+			virt = seg->dest.virt + copied;
+			off = (unsigned long)virt & ~XEN_PAGE_MASK;
+			len = min(len, (size_t)XEN_PAGE_SIZE - off);
+
+			ret = gntdev_get_page(batch, virt, true, &gfn);
+			if (ret < 0)
+				return ret;
+
+			op->dest.u.gmfn = gfn;
+			op->dest.domid = DOMID_SELF;
+			op->dest.offset = off;
+		}
+
+		op->len = len;
+		copied += len;
+
+		batch->status[batch->nr_ops] = status;
+		batch->nr_ops++;
+	}
+
+	return 0;
+}
+
+static long gntdev_ioctl_grant_copy(struct gntdev_priv *priv, void __user *u)
+{
+	struct ioctl_gntdev_grant_copy copy;
+	struct gntdev_copy_batch batch;
+	unsigned int i;
+	int ret = 0;
+
+	if (copy_from_user(&copy, u, sizeof(copy)))
+		return -EFAULT;
+
+	batch.nr_ops = 0;
+	batch.nr_pages = 0;
+
+	for (i = 0; i < copy.count; i++) {
+		struct gntdev_grant_copy_segment seg;
+
+		if (copy_from_user(&seg, &copy.segments[i], sizeof(seg))) {
+			ret = -EFAULT;
+			goto out;
+		}
+
+		ret = gntdev_grant_copy_seg(&batch, &seg, &copy.segments[i].status);
+		if (ret < 0)
+			goto out;
+
+		cond_resched();
+	}
+	if (batch.nr_ops)
+		ret = gntdev_copy(&batch);
+	return ret;
+
+  out:
+	gntdev_put_pages(&batch);
+	return ret;
+}
+
 static long gntdev_ioctl(struct file *flip,
 			 unsigned int cmd, unsigned long arg)
 {
@@ -787,6 +967,9 @@ static long gntdev_ioctl(struct file *flip,
 	case IOCTL_GNTDEV_SET_UNMAP_NOTIFY:
 		return gntdev_ioctl_notify(priv, ptr);
 
+	case IOCTL_GNTDEV_GRANT_COPY:
+		return gntdev_ioctl_grant_copy(priv, ptr);
+
 	default:
 		pr_debug("priv %p, unknown cmd %x\n", priv, cmd);
 		return -ENOIOCTLCMD;
@@ -799,7 +982,7 @@ static int gntdev_mmap(struct file *flip, struct vm_area_struct *vma)
 {
 	struct gntdev_priv *priv = flip->private_data;
 	int index = vma->vm_pgoff;
-	int count = (vma->vm_end - vma->vm_start) >> PAGE_SHIFT;
+	int count = vma_pages(vma);
 	struct grant_map *map;
 	int i, err = -EINVAL;
 
@@ -824,7 +1007,7 @@ static int gntdev_mmap(struct file *flip, struct vm_area_struct *vma)
 
 	vma->vm_ops = &gntdev_vmops;
 
-	vma->vm_flags |= VM_DONTEXPAND | VM_DONTDUMP;
+	vma->vm_flags |= VM_DONTEXPAND | VM_DONTDUMP | VM_IO;
 
 	if (use_ptemod)
 		vma->vm_flags |= VM_DONTCOPY;

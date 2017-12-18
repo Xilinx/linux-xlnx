@@ -519,9 +519,15 @@ static int ov9640_s_fmt(struct v4l2_subdev *sd,
 	return ret;
 }
 
-static int ov9640_try_fmt(struct v4l2_subdev *sd,
-			  struct v4l2_mbus_framefmt *mf)
+static int ov9640_set_fmt(struct v4l2_subdev *sd,
+		struct v4l2_subdev_pad_config *cfg,
+		struct v4l2_subdev_format *format)
 {
+	struct v4l2_mbus_framefmt *mf = &format->format;
+
+	if (format->pad)
+		return -EINVAL;
+
 	ov9640_res_roundup(&mf->width, &mf->height);
 
 	mf->field = V4L2_FIELD_NONE;
@@ -537,42 +543,43 @@ static int ov9640_try_fmt(struct v4l2_subdev *sd,
 		mf->colorspace = V4L2_COLORSPACE_JPEG;
 	}
 
+	if (format->which == V4L2_SUBDEV_FORMAT_ACTIVE)
+		return ov9640_s_fmt(sd, mf);
+
+	cfg->try_fmt = *mf;
 	return 0;
 }
 
-static int ov9640_enum_fmt(struct v4l2_subdev *sd, unsigned int index,
-			   u32 *code)
+static int ov9640_enum_mbus_code(struct v4l2_subdev *sd,
+		struct v4l2_subdev_pad_config *cfg,
+		struct v4l2_subdev_mbus_code_enum *code)
 {
-	if (index >= ARRAY_SIZE(ov9640_codes))
+	if (code->pad || code->index >= ARRAY_SIZE(ov9640_codes))
 		return -EINVAL;
 
-	*code = ov9640_codes[index];
+	code->code = ov9640_codes[code->index];
 	return 0;
 }
 
-static int ov9640_g_crop(struct v4l2_subdev *sd, struct v4l2_crop *a)
+static int ov9640_get_selection(struct v4l2_subdev *sd,
+		struct v4l2_subdev_pad_config *cfg,
+		struct v4l2_subdev_selection *sel)
 {
-	a->c.left	= 0;
-	a->c.top	= 0;
-	a->c.width	= W_SXGA;
-	a->c.height	= H_SXGA;
-	a->type		= V4L2_BUF_TYPE_VIDEO_CAPTURE;
+	if (sel->which != V4L2_SUBDEV_FORMAT_ACTIVE)
+		return -EINVAL;
 
-	return 0;
-}
-
-static int ov9640_cropcap(struct v4l2_subdev *sd, struct v4l2_cropcap *a)
-{
-	a->bounds.left			= 0;
-	a->bounds.top			= 0;
-	a->bounds.width			= W_SXGA;
-	a->bounds.height		= H_SXGA;
-	a->defrect			= a->bounds;
-	a->type				= V4L2_BUF_TYPE_VIDEO_CAPTURE;
-	a->pixelaspect.numerator	= 1;
-	a->pixelaspect.denominator	= 1;
-
-	return 0;
+	sel->r.left = 0;
+	sel->r.top = 0;
+	switch (sel->target) {
+	case V4L2_SEL_TGT_CROP_BOUNDS:
+	case V4L2_SEL_TGT_CROP_DEFAULT:
+	case V4L2_SEL_TGT_CROP:
+		sel->r.width = W_SXGA;
+		sel->r.height = H_SXGA;
+		return 0;
+	default:
+		return -EINVAL;
+	}
 }
 
 static int ov9640_video_probe(struct i2c_client *client)
@@ -656,17 +663,19 @@ static int ov9640_g_mbus_config(struct v4l2_subdev *sd,
 
 static struct v4l2_subdev_video_ops ov9640_video_ops = {
 	.s_stream	= ov9640_s_stream,
-	.s_mbus_fmt	= ov9640_s_fmt,
-	.try_mbus_fmt	= ov9640_try_fmt,
-	.enum_mbus_fmt	= ov9640_enum_fmt,
-	.cropcap	= ov9640_cropcap,
-	.g_crop		= ov9640_g_crop,
 	.g_mbus_config	= ov9640_g_mbus_config,
+};
+
+static const struct v4l2_subdev_pad_ops ov9640_pad_ops = {
+	.enum_mbus_code = ov9640_enum_mbus_code,
+	.get_selection	= ov9640_get_selection,
+	.set_fmt	= ov9640_set_fmt,
 };
 
 static struct v4l2_subdev_ops ov9640_subdev_ops = {
 	.core	= &ov9640_core_ops,
 	.video	= &ov9640_video_ops,
+	.pad	= &ov9640_pad_ops,
 };
 
 /*

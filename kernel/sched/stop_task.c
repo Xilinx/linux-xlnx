@@ -24,7 +24,7 @@ check_preempt_curr_stop(struct rq *rq, struct task_struct *p, int flags)
 }
 
 static struct task_struct *
-pick_next_task_stop(struct rq *rq, struct task_struct *prev)
+pick_next_task_stop(struct rq *rq, struct task_struct *prev, struct pin_cookie cookie)
 {
 	struct task_struct *stop = rq->stop;
 
@@ -123,6 +123,7 @@ const struct sched_class stop_sched_class = {
 
 #ifdef CONFIG_SMP
 	.select_task_rq		= select_task_rq_stop,
+	.set_cpus_allowed	= set_cpus_allowed_common,
 #endif
 
 	.set_curr_task          = set_curr_task_stop,

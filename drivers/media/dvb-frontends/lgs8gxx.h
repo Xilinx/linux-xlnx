@@ -26,7 +26,6 @@
 #ifndef __LGS8GXX_H__
 #define __LGS8GXX_H__
 
-#include <linux/kconfig.h>
 #include <linux/dvb/frontend.h>
 #include <linux/i2c.h>
 
@@ -80,7 +79,7 @@ struct lgs8gxx_config {
 	u8 tuner_address;
 };
 
-#if IS_ENABLED(CONFIG_DVB_LGS8GXX)
+#if IS_REACHABLE(CONFIG_DVB_LGS8GXX)
 extern struct dvb_frontend *lgs8gxx_attach(const struct lgs8gxx_config *config,
 					   struct i2c_adapter *i2c);
 #else

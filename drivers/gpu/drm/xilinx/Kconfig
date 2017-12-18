@@ -6,6 +6,7 @@ config DRM_XILINX
 	select DRM_GEM_CMA_HELPER
 	select DMA_ENGINE
 	select DRM_XILINX_DP_SUB
+	select XILINX_FRMBUF
 	help
 	  DRM display driver for Xilinx IP based pipelines.
 
@@ -15,9 +16,44 @@ config DRM_XILINX_DP
 	help
 	  DRM driver for Xilinx Display Port IP.
 
+config DRM_XILINX_DP_DEBUG_FS
+	bool "Xilinx DRM DP debugfs"
+	depends on DEBUG_FS && DRM_XILINX_DP
+	help
+	  Enable the debugfs code for DPDMA driver. The debugfs code
+	  enables debugging or testing related features. It exposes some
+	  low level controls to the user space to help testing automation,
+	  as well as can enable additional diagnostic or statistical
+	  information.
+
 config DRM_XILINX_DP_SUB
 	tristate "Xilinx DRM Display Port Subsystem Driver"
 	depends on DRM_XILINX
 	select DRM_XILINX_DP
 	help
 	  DRM driver for Xilinx Display Port Subsystem.
+
+config DRM_XILINX_DP_SUB_DEBUG_FS
+	bool "Xilinx DRM DPSUB debugfs"
+	depends on DEBUG_FS && DRM_XILINX_DP_SUB
+	select DRM_XILINX_DP_DEBUG_FS
+	help
+	  Enable the debugfs code for DP Sub driver. The debugfs code
+	  enables debugging or testing related features. It exposes some
+	  low level controls to the user space to help testing automation,
+	  as well as can enable additional diagnostic or statistical
+	  information.
+
+config DRM_XILINX_MIPI_DSI
+	tristate "Xilinx DRM MIPI DSI Driver"
+	depends on DRM_XILINX
+	select DRM_PANEL
+	select DRM_MIPI_DSI
+	help
+	  DRM driver for Xilinx MIPI DSI IP.
+
+config DRM_XILINX_SDI
+	tristate "Xilinx DRM SDI Subsystem Driver"
+	depends on DRM_XILINX
+	help
+	  DRM driver for Xilinx SDI Tx Subsystem.

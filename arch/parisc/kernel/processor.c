@@ -44,10 +44,12 @@
 
 struct system_cpuinfo_parisc boot_cpu_data __read_mostly;
 EXPORT_SYMBOL(boot_cpu_data);
+#ifdef CONFIG_PA8X00
+int _parisc_requires_coherency __read_mostly;
+EXPORT_SYMBOL(_parisc_requires_coherency);
+#endif
 
 DEFINE_PER_CPU(struct cpuinfo_parisc, cpu_data);
-
-extern int update_cr16_clocksource(void);	/* from time.c */
 
 /*
 **  	PARISC CPU driver - claim "device" and initialize CPU data structures.
@@ -224,12 +226,6 @@ static int processor_probe(struct parisc_device *dev)
 	}
 #endif
 
-	/* If we've registered more than one cpu,
-	 * we'll use the jiffies clocksource since cr16
-	 * is not synchronized between CPUs.
-	 */
-	update_cr16_clocksource();
-
 	return 0;
 }
 
@@ -277,8 +273,12 @@ void __init collect_boot_cpu_data(void)
 	boot_cpu_data.cpu_type = parisc_get_cpu_type(boot_cpu_data.hversion);
 	boot_cpu_data.cpu_name = cpu_name_version[boot_cpu_data.cpu_type][0];
 	boot_cpu_data.family_name = cpu_name_version[boot_cpu_data.cpu_type][1];
-}
 
+#ifdef CONFIG_PA8X00
+	_parisc_requires_coherency = (boot_cpu_data.cpu_type == mako) ||
+				(boot_cpu_data.cpu_type == mako2);
+#endif
+}
 
 
 /**
@@ -316,8 +316,9 @@ int init_per_cpu(int cpunum)
 		per_cpu(cpu_data, cpunum).fp_rev = coproc_cfg.revision;
 		per_cpu(cpu_data, cpunum).fp_model = coproc_cfg.model;
 
-		printk(KERN_INFO  "FP[%d] enabled: Rev %ld Model %ld\n",
-			cpunum, coproc_cfg.revision, coproc_cfg.model);
+		if (cpunum == 0)
+			printk(KERN_INFO  "FP[%d] enabled: Rev %ld Model %ld\n",
+				cpunum, coproc_cfg.revision, coproc_cfg.model);
 
 		/*
 		** store status register to stack (hopefully aligned)

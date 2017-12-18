@@ -14,24 +14,23 @@ within Zynq SoC.
 Required properties:
 --------------------
  - compatible : should be "xlnx,zynq_remoteproc"
- - reg : address and length of the register set for the device
-         which defines the memory for the firmware and the shared memory
- - firmware: default firmware name
  - vring0: soft interrupt for kicking from firmware
  - vring1: soft interrupt for kicking from Linux kernel
-
-Optional properties:
---------------------
- - firmware : default firmware image name which can be loaded by remoteproc
-              framework - this value can be override by "firmware" module
-              parameter
+ - srams: firmware memories
 
 Example:
 --------
+
+	amba {
+		elf_ddr_0: ddr@3ed00000 {
+			compatible = "mmio-sram";
+			reg = <0x100000 0x80000>;
+		};
+	};
+
 	zynq_remoteproc@0 {
 		compatible = "xlnx,zynq_remoteproc";
-		reg = < 0x00000000 0x10000000 >;
-		firmware = "firmware";
 		vring0 = <15>;
 		vring1 = <14>;
+		srams =  <&elf_ddr_0>;
 	};

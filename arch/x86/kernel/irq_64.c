@@ -11,7 +11,6 @@
 #include <linux/kernel_stat.h>
 #include <linux/interrupt.h>
 #include <linux/seq_file.h>
-#include <linux/module.h>
 #include <linux/delay.h>
 #include <linux/ftrace.h>
 #include <linux/uaccess.h>
@@ -19,12 +18,6 @@
 #include <asm/io_apic.h>
 #include <asm/idle.h>
 #include <asm/apic.h>
-
-DEFINE_PER_CPU_SHARED_ALIGNED(irq_cpustat_t, irq_stat);
-EXPORT_PER_CPU_SYMBOL(irq_stat);
-
-DEFINE_PER_CPU(struct pt_regs *, irq_regs);
-EXPORT_PER_CPU_SYMBOL(irq_regs);
 
 int sysctl_panic_on_stackoverflow;
 
@@ -44,11 +37,10 @@ static inline void stack_overflow_check(struct pt_regs *regs)
 	u64 estack_top, estack_bottom;
 	u64 curbase = (u64)task_stack_page(current);
 
-	if (user_mode_vm(regs))
+	if (user_mode(regs))
 		return;
 
-	if (regs->sp >= curbase + sizeof(struct thread_info) +
-				  sizeof(struct pt_regs) + STACK_TOP_MARGIN &&
+	if (regs->sp >= curbase + sizeof(struct pt_regs) + STACK_TOP_MARGIN &&
 	    regs->sp <= curbase + THREAD_SIZE)
 		return;
 
@@ -74,16 +66,13 @@ static inline void stack_overflow_check(struct pt_regs *regs)
 #endif
 }
 
-bool handle_irq(unsigned irq, struct pt_regs *regs)
+bool handle_irq(struct irq_desc *desc, struct pt_regs *regs)
 {
-	struct irq_desc *desc;
-
 	stack_overflow_check(regs);
 
-	desc = irq_to_desc(irq);
-	if (unlikely(!desc))
+	if (IS_ERR_OR_NULL(desc))
 		return false;
 
-	generic_handle_irq_desc(irq, desc);
+	generic_handle_irq_desc(desc);
 	return true;
 }

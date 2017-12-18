@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2016, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -55,9 +55,9 @@ ACPI_MODULE_NAME("exdump")
  */
 #if defined(ACPI_DEBUG_OUTPUT) || defined(ACPI_DEBUGGER)
 /* Local prototypes */
-static void acpi_ex_out_string(char *title, char *value);
+static void acpi_ex_out_string(const char *title, const char *value);
 
-static void acpi_ex_out_pointer(char *title, void *value);
+static void acpi_ex_out_pointer(const char *title, const void *value);
 
 static void
 acpi_ex_dump_object(union acpi_operand_object *obj_desc,
@@ -224,7 +224,7 @@ static struct acpi_exdump_info acpi_ex_dump_index_field[5] = {
 	{ACPI_EXD_POINTER, ACPI_EXD_OFFSET(index_field.data_obj), "Data Object"}
 };
 
-static struct acpi_exdump_info acpi_ex_dump_reference[8] = {
+static struct acpi_exdump_info acpi_ex_dump_reference[9] = {
 	{ACPI_EXD_INIT, ACPI_EXD_TABLE_SIZE(acpi_ex_dump_reference), NULL},
 	{ACPI_EXD_UINT8, ACPI_EXD_OFFSET(reference.class), "Class"},
 	{ACPI_EXD_UINT8, ACPI_EXD_OFFSET(reference.target_type), "Target Type"},
@@ -232,6 +232,8 @@ static struct acpi_exdump_info acpi_ex_dump_reference[8] = {
 	{ACPI_EXD_POINTER, ACPI_EXD_OFFSET(reference.object), "Object Desc"},
 	{ACPI_EXD_NODE, ACPI_EXD_OFFSET(reference.node), "Node"},
 	{ACPI_EXD_POINTER, ACPI_EXD_OFFSET(reference.where), "Where"},
+	{ACPI_EXD_POINTER, ACPI_EXD_OFFSET(reference.index_pointer),
+	 "Index Pointer"},
 	{ACPI_EXD_REFERENCE, 0, NULL}
 };
 
@@ -363,8 +365,7 @@ acpi_ex_dump_object(union acpi_operand_object *obj_desc,
 		    struct acpi_exdump_info *info)
 {
 	u8 *target;
-	char *name;
-	const char *reference_name;
+	const char *name;
 	u8 count;
 	union acpi_operand_object *start;
 	union acpi_operand_object *data = NULL;
@@ -457,9 +458,9 @@ acpi_ex_dump_object(union acpi_operand_object *obj_desc,
 
 		case ACPI_EXD_REFERENCE:
 
-			reference_name = acpi_ut_get_reference_name(obj_desc);
 			acpi_ex_out_string("Class Name",
-					   ACPI_CAST_PTR(char, reference_name));
+					   acpi_ut_get_reference_name
+					   (obj_desc));
 			acpi_ex_dump_reference_obj(obj_desc);
 			break;
 
@@ -506,7 +507,8 @@ acpi_ex_dump_object(union acpi_operand_object *obj_desc,
 			if (next) {
 				acpi_os_printf("(%s %2.2X)",
 					       acpi_ut_get_object_type_name
-					       (next), next->common.type);
+					       (next),
+					       next->address_space.space_id);
 
 				while (next->address_space.next) {
 					if ((next->common.type ==
@@ -518,7 +520,8 @@ acpi_ex_dump_object(union acpi_operand_object *obj_desc,
 					acpi_os_printf("->%p(%s %2.2X)", next,
 						       acpi_ut_get_object_type_name
 						       (next),
-						       next->common.type);
+						       next->address_space.
+						       space_id);
 
 					if ((next == start) || (next == data)) {
 						acpi_os_printf
@@ -767,8 +770,8 @@ void acpi_ex_dump_operand(union acpi_operand_object *obj_desc, u32 depth)
 			acpi_os_printf("\n");
 		} else {
 			acpi_os_printf(" base %8.8X%8.8X Length %X\n",
-				       ACPI_FORMAT_NATIVE_UINT(obj_desc->region.
-							       address),
+				       ACPI_FORMAT_UINT64(obj_desc->region.
+							  address),
 				       obj_desc->region.length);
 		}
 		break;
@@ -930,12 +933,12 @@ acpi_ex_dump_operands(union acpi_operand_object **operands,
  *
  ******************************************************************************/
 
-static void acpi_ex_out_string(char *title, char *value)
+static void acpi_ex_out_string(const char *title, const char *value)
 {
 	acpi_os_printf("%20s : %s\n", title, value);
 }
 
-static void acpi_ex_out_pointer(char *title, void *value)
+static void acpi_ex_out_pointer(const char *title, const void *value)
 {
 	acpi_os_printf("%20s : %p\n", title, value);
 }
@@ -993,9 +996,8 @@ static void acpi_ex_dump_reference_obj(union acpi_operand_object *obj_desc)
 	if (obj_desc->reference.class == ACPI_REFCLASS_NAME) {
 		acpi_os_printf(" %p ", obj_desc->reference.node);
 
-		status =
-		    acpi_ns_handle_to_pathname(obj_desc->reference.node,
-					       &ret_buf);
+		status = acpi_ns_handle_to_pathname(obj_desc->reference.node,
+						    &ret_buf, TRUE);
 		if (ACPI_FAILURE(status)) {
 			acpi_os_printf(" Could not convert name to pathname\n");
 		} else {
@@ -1005,14 +1007,13 @@ static void acpi_ex_dump_reference_obj(union acpi_operand_object *obj_desc)
 	} else if (obj_desc->reference.object) {
 		if (ACPI_GET_DESCRIPTOR_TYPE(obj_desc) ==
 		    ACPI_DESC_TYPE_OPERAND) {
-			acpi_os_printf(" Target: %p",
+			acpi_os_printf("%22s %p", "Target :",
 				       obj_desc->reference.object);
 			if (obj_desc->reference.class == ACPI_REFCLASS_TABLE) {
 				acpi_os_printf(" Table Index: %X\n",
 					       obj_desc->reference.value);
 			} else {
-				acpi_os_printf(" Target: %p [%s]\n",
-					       obj_desc->reference.object,
+				acpi_os_printf(" [%s]\n",
 					       acpi_ut_get_type_name(((union
 								       acpi_operand_object
 								       *)

@@ -668,7 +668,7 @@ static int tz1090_pdc_pinconf_reg(struct pinctrl_dev *pctldev,
 		break;
 	default:
 		return -ENOTSUPP;
-	};
+	}
 
 	/* Only input bias parameters supported */
 	*reg = REG_GPIO_CONTROL2;
@@ -801,7 +801,7 @@ static int tz1090_pdc_pinconf_group_reg(struct pinctrl_dev *pctldev,
 		break;
 	default:
 		return -ENOTSUPP;
-	};
+	}
 
 	/* Calculate field information */
 	*mask = (BIT(*width) - 1) << *shift;
@@ -947,10 +947,11 @@ static int tz1090_pdc_pinctrl_probe(struct platform_device *pdev)
 	if (IS_ERR(pmx->regs))
 		return PTR_ERR(pmx->regs);
 
-	pmx->pctl = pinctrl_register(&tz1090_pdc_pinctrl_desc, &pdev->dev, pmx);
-	if (!pmx->pctl) {
+	pmx->pctl = devm_pinctrl_register(&pdev->dev, &tz1090_pdc_pinctrl_desc,
+					  pmx);
+	if (IS_ERR(pmx->pctl)) {
 		dev_err(&pdev->dev, "Couldn't register pinctrl driver\n");
-		return -ENODEV;
+		return PTR_ERR(pmx->pctl);
 	}
 
 	platform_set_drvdata(pdev, pmx);
@@ -960,16 +961,7 @@ static int tz1090_pdc_pinctrl_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int tz1090_pdc_pinctrl_remove(struct platform_device *pdev)
-{
-	struct tz1090_pdc_pmx *pmx = platform_get_drvdata(pdev);
-
-	pinctrl_unregister(pmx->pctl);
-
-	return 0;
-}
-
-static struct of_device_id tz1090_pdc_pinctrl_of_match[] = {
+static const struct of_device_id tz1090_pdc_pinctrl_of_match[] = {
 	{ .compatible = "img,tz1090-pdc-pinctrl", },
 	{ },
 };
@@ -980,7 +972,6 @@ static struct platform_driver tz1090_pdc_pinctrl_driver = {
 		.of_match_table	= tz1090_pdc_pinctrl_of_match,
 	},
 	.probe	= tz1090_pdc_pinctrl_probe,
-	.remove	= tz1090_pdc_pinctrl_remove,
 };
 
 static int __init tz1090_pdc_pinctrl_init(void)

@@ -5,7 +5,7 @@
  *****************************************************************************/
 
 /*
- * Copyright (C) 2000 - 2015, Intel Corp.
+ * Copyright (C) 2000 - 2016, Intel Corp.
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -136,10 +136,6 @@
 
 #define ACPI_ROOT_TABLE_SIZE_INCREMENT  4
 
-/* Maximum number of While() loop iterations before forced abort */
-
-#define ACPI_MAX_LOOP_ITERATIONS        0xFFFF
-
 /* Maximum sleep allowed via Sleep() operator */
 
 #define ACPI_MAX_SLEEP                  2000	/* 2000 millisec == two seconds */
@@ -147,6 +143,10 @@
 /* Address Range lists are per-space_id (Memory and I/O only) */
 
 #define ACPI_ADDRESS_RANGE_MAX          2
+
+/* Maximum number of While() loops before abort */
+
+#define ACPI_MAX_LOOP_COUNT             0xFFFF
 
 /******************************************************************************
  *

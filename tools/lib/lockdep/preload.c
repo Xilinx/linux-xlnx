@@ -5,7 +5,7 @@
 #include <stdlib.h>
 #include <sysexits.h>
 #include "include/liblockdep/mutex.h"
-#include "../../../include/linux/rbtree.h"
+#include "../../include/linux/rbtree.h"
 
 /**
  * struct lock_lookup - liblockdep's view of a single unique lock
@@ -438,8 +438,6 @@ __attribute__((constructor)) static void init_preload(void)
 	ll_pthread_rwlock_trywrlock = dlsym(RTLD_NEXT, "pthread_rwlock_trywrlock");
 	ll_pthread_rwlock_unlock = dlsym(RTLD_NEXT, "pthread_rwlock_unlock");
 #endif
-
-	lockdep_init();
 
 	__init_state = done;
 }

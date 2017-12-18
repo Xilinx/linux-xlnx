@@ -16,7 +16,6 @@
 #include <linux/export.h>
 #include <linux/user_namespace.h>
 #include <linux/net_namespace.h>
-#include <linux/rtnetlink.h>
 #include <net/sock.h>
 #include <net/netlink.h>
 #include <net/net_namespace.h>
@@ -37,6 +36,8 @@ struct net init_net = {
 	.dev_base_head = LIST_HEAD_INIT(init_net.dev_base_head),
 };
 EXPORT_SYMBOL(init_net);
+
+static bool init_net_initialized;
 
 #define INITIAL_NET_GEN_PTRS	13 /* +1 for len +2 for rcu_head */
 
@@ -148,18 +149,17 @@ static void ops_free_list(const struct pernet_operations *ops,
 	}
 }
 
+/* should be called with nsid_lock held */
 static int alloc_netid(struct net *net, struct net *peer, int reqid)
 {
 	int min = 0, max = 0;
-
-	ASSERT_RTNL();
 
 	if (reqid >= 0) {
 		min = reqid;
 		max = reqid + 1;
 	}
 
-	return idr_alloc(&net->netns_ids, peer, min, max, GFP_KERNEL);
+	return idr_alloc(&net->netns_ids, peer, min, max, GFP_ATOMIC);
 }
 
 /* This function is used by idr_for_each(). If net is equal to peer, the
@@ -175,11 +175,16 @@ static int net_eq_idr(int id, void *net, void *peer)
 	return 0;
 }
 
-static int __peernet2id(struct net *net, struct net *peer, bool alloc)
+/* Should be called with nsid_lock held. If a new id is assigned, the bool alloc
+ * is set to true, thus the caller knows that the new id must be notified via
+ * rtnl.
+ */
+static int __peernet2id_alloc(struct net *net, struct net *peer, bool *alloc)
 {
 	int id = idr_for_each(&net->netns_ids, net_eq_idr, peer);
+	bool alloc_it = *alloc;
 
-	ASSERT_RTNL();
+	*alloc = false;
 
 	/* Magic value for id 0. */
 	if (id == NET_ID_ZERO)
@@ -187,36 +192,79 @@ static int __peernet2id(struct net *net, struct net *peer, bool alloc)
 	if (id > 0)
 		return id;
 
-	if (alloc)
-		return alloc_netid(net, peer, -1);
+	if (alloc_it) {
+		id = alloc_netid(net, peer, -1);
+		*alloc = true;
+		return id >= 0 ? id : NETNSA_NSID_NOT_ASSIGNED;
+	}
 
-	return -ENOENT;
+	return NETNSA_NSID_NOT_ASSIGNED;
 }
 
+/* should be called with nsid_lock held */
+static int __peernet2id(struct net *net, struct net *peer)
+{
+	bool no = false;
+
+	return __peernet2id_alloc(net, peer, &no);
+}
+
+static void rtnl_net_notifyid(struct net *net, int cmd, int id);
 /* This function returns the id of a peer netns. If no id is assigned, one will
  * be allocated and returned.
  */
-int peernet2id(struct net *net, struct net *peer)
+int peernet2id_alloc(struct net *net, struct net *peer)
 {
-	bool alloc = atomic_read(&peer->count) == 0 ? false : true;
+	unsigned long flags;
+	bool alloc;
 	int id;
 
-	id = __peernet2id(net, peer, alloc);
-	return id >= 0 ? id : NETNSA_NSID_NOT_ASSIGNED;
+	if (atomic_read(&net->count) == 0)
+		return NETNSA_NSID_NOT_ASSIGNED;
+	spin_lock_irqsave(&net->nsid_lock, flags);
+	alloc = atomic_read(&peer->count) == 0 ? false : true;
+	id = __peernet2id_alloc(net, peer, &alloc);
+	spin_unlock_irqrestore(&net->nsid_lock, flags);
+	if (alloc && id >= 0)
+		rtnl_net_notifyid(net, RTM_NEWNSID, id);
+	return id;
+}
+
+/* This function returns, if assigned, the id of a peer netns. */
+int peernet2id(struct net *net, struct net *peer)
+{
+	unsigned long flags;
+	int id;
+
+	spin_lock_irqsave(&net->nsid_lock, flags);
+	id = __peernet2id(net, peer);
+	spin_unlock_irqrestore(&net->nsid_lock, flags);
+	return id;
 }
 EXPORT_SYMBOL(peernet2id);
 
+/* This function returns true is the peer netns has an id assigned into the
+ * current netns.
+ */
+bool peernet_has_id(struct net *net, struct net *peer)
+{
+	return peernet2id(net, peer) >= 0;
+}
+
 struct net *get_net_ns_by_id(struct net *net, int id)
 {
+	unsigned long flags;
 	struct net *peer;
 
 	if (id < 0)
 		return NULL;
 
 	rcu_read_lock();
+	spin_lock_irqsave(&net->nsid_lock, flags);
 	peer = idr_find(&net->netns_ids, id);
 	if (peer)
 		get_net(peer);
+	spin_unlock_irqrestore(&net->nsid_lock, flags);
 	rcu_read_unlock();
 
 	return peer;
@@ -237,10 +285,7 @@ static __net_init int setup_net(struct net *net, struct user_namespace *user_ns)
 	net->dev_base_seq = 1;
 	net->user_ns = user_ns;
 	idr_init(&net->netns_ids);
-
-#ifdef NETNS_REFCNT_DEBUG
-	atomic_set(&net->use_count, 0);
-#endif
+	spin_lock_init(&net->nsid_lock);
 
 	list_for_each_entry(ops, &pernet_list, list) {
 		error = ops_init(ops, net);
@@ -269,6 +314,16 @@ out_undo:
 
 
 #ifdef CONFIG_NET_NS
+static struct ucounts *inc_net_namespaces(struct user_namespace *ns)
+{
+	return inc_ucount(ns, current_euid(), UCOUNT_NET_NAMESPACES);
+}
+
+static void dec_net_namespaces(struct ucounts *ucounts)
+{
+	dec_ucount(ucounts, UCOUNT_NET_NAMESPACES);
+}
+
 static struct kmem_cache *net_cachep;
 static struct workqueue_struct *netns_wq;
 
@@ -296,13 +351,6 @@ out_free:
 
 static void net_free(struct net *net)
 {
-#ifdef NETNS_REFCNT_DEBUG
-	if (unlikely(atomic_read(&net->use_count) != 0)) {
-		pr_emerg("network namespace not free! Usage: %d\n",
-			 atomic_read(&net->use_count));
-		return;
-	}
-#endif
 	kfree(rcu_access_pointer(net->gen));
 	kmem_cache_free(net_cachep, net);
 }
@@ -317,19 +365,27 @@ void net_drop_ns(void *p)
 struct net *copy_net_ns(unsigned long flags,
 			struct user_namespace *user_ns, struct net *old_net)
 {
+	struct ucounts *ucounts;
 	struct net *net;
 	int rv;
 
 	if (!(flags & CLONE_NEWNET))
 		return get_net(old_net);
 
+	ucounts = inc_net_namespaces(user_ns);
+	if (!ucounts)
+		return ERR_PTR(-ENOSPC);
+
 	net = net_alloc();
-	if (!net)
+	if (!net) {
+		dec_net_namespaces(ucounts);
 		return ERR_PTR(-ENOMEM);
+	}
 
 	get_user_ns(user_ns);
 
 	mutex_lock(&net_mutex);
+	net->ucounts = ucounts;
 	rv = setup_net(net, user_ns);
 	if (rv == 0) {
 		rtnl_lock();
@@ -338,6 +394,7 @@ struct net *copy_net_ns(unsigned long flags,
 	}
 	mutex_unlock(&net_mutex);
 	if (rv < 0) {
+		dec_net_namespaces(ucounts);
 		put_user_ns(user_ns);
 		net_drop_ns(net);
 		return ERR_PTR(rv);
@@ -368,12 +425,19 @@ static void cleanup_net(struct work_struct *work)
 		list_del_rcu(&net->list);
 		list_add_tail(&net->exit_list, &net_exit_list);
 		for_each_net(tmp) {
-			int id = __peernet2id(tmp, net, false);
+			int id;
 
+			spin_lock_irq(&tmp->nsid_lock);
+			id = __peernet2id(tmp, net);
 			if (id >= 0)
 				idr_remove(&tmp->netns_ids, id);
+			spin_unlock_irq(&tmp->nsid_lock);
+			if (id >= 0)
+				rtnl_net_notifyid(tmp, RTM_DELNSID, id);
 		}
+		spin_lock_irq(&net->nsid_lock);
 		idr_destroy(&net->netns_ids);
+		spin_unlock_irq(&net->nsid_lock);
 
 	}
 	rtnl_unlock();
@@ -403,6 +467,7 @@ static void cleanup_net(struct work_struct *work)
 	/* Finally it is safe to free my network namespace structure */
 	list_for_each_entry_safe(net, tmp, &net_exit_list, exit_list) {
 		list_del_init(&net->exit_list);
+		dec_net_namespaces(net->ucounts);
 		put_user_ns(net->user_ns);
 		net_drop_ns(net);
 	}
@@ -490,7 +555,7 @@ static struct pernet_operations __net_initdata net_ns_ops = {
 	.exit = net_ns_net_exit,
 };
 
-static struct nla_policy rtnl_net_policy[NETNSA_MAX + 1] = {
+static const struct nla_policy rtnl_net_policy[NETNSA_MAX + 1] = {
 	[NETNSA_NONE]		= { .type = NLA_UNSPEC },
 	[NETNSA_NSID]		= { .type = NLA_S32 },
 	[NETNSA_PID]		= { .type = NLA_U32 },
@@ -501,6 +566,7 @@ static int rtnl_net_newid(struct sk_buff *skb, struct nlmsghdr *nlh)
 {
 	struct net *net = sock_net(skb->sk);
 	struct nlattr *tb[NETNSA_MAX + 1];
+	unsigned long flags;
 	struct net *peer;
 	int nsid, err;
 
@@ -521,14 +587,19 @@ static int rtnl_net_newid(struct sk_buff *skb, struct nlmsghdr *nlh)
 	if (IS_ERR(peer))
 		return PTR_ERR(peer);
 
-	if (__peernet2id(net, peer, false) >= 0) {
+	spin_lock_irqsave(&net->nsid_lock, flags);
+	if (__peernet2id(net, peer) >= 0) {
+		spin_unlock_irqrestore(&net->nsid_lock, flags);
 		err = -EEXIST;
 		goto out;
 	}
 
 	err = alloc_netid(net, peer, nsid);
-	if (err > 0)
+	spin_unlock_irqrestore(&net->nsid_lock, flags);
+	if (err >= 0) {
+		rtnl_net_notifyid(net, RTM_NEWNSID, err);
 		err = 0;
+	}
 out:
 	put_net(peer);
 	return err;
@@ -542,13 +613,10 @@ static int rtnl_net_get_size(void)
 }
 
 static int rtnl_net_fill(struct sk_buff *skb, u32 portid, u32 seq, int flags,
-			 int cmd, struct net *net, struct net *peer)
+			 int cmd, struct net *net, int nsid)
 {
 	struct nlmsghdr *nlh;
 	struct rtgenmsg *rth;
-	int id;
-
-	ASSERT_RTNL();
 
 	nlh = nlmsg_put(skb, portid, seq, cmd, sizeof(*rth), flags);
 	if (!nlh)
@@ -557,10 +625,7 @@ static int rtnl_net_fill(struct sk_buff *skb, u32 portid, u32 seq, int flags,
 	rth = nlmsg_data(nlh);
 	rth->rtgen_family = AF_UNSPEC;
 
-	id = __peernet2id(net, peer, false);
-	if  (id < 0)
-		id = NETNSA_NSID_NOT_ASSIGNED;
-	if (nla_put_s32(skb, NETNSA_NSID, id))
+	if (nla_put_s32(skb, NETNSA_NSID, nsid))
 		goto nla_put_failure;
 
 	nlmsg_end(skb, nlh);
@@ -576,8 +641,8 @@ static int rtnl_net_getid(struct sk_buff *skb, struct nlmsghdr *nlh)
 	struct net *net = sock_net(skb->sk);
 	struct nlattr *tb[NETNSA_MAX + 1];
 	struct sk_buff *msg;
-	int err = -ENOBUFS;
 	struct net *peer;
+	int err, id;
 
 	err = nlmsg_parse(nlh, sizeof(struct rtgenmsg), tb, NETNSA_MAX,
 			  rtnl_net_policy);
@@ -599,8 +664,9 @@ static int rtnl_net_getid(struct sk_buff *skb, struct nlmsghdr *nlh)
 		goto out;
 	}
 
+	id = peernet2id(net, peer);
 	err = rtnl_net_fill(msg, NETLINK_CB(skb).portid, nlh->nlmsg_seq, 0,
-			    RTM_GETNSID, net, peer);
+			    RTM_NEWNSID, net, id);
 	if (err < 0)
 		goto err_out;
 
@@ -612,6 +678,75 @@ err_out:
 out:
 	put_net(peer);
 	return err;
+}
+
+struct rtnl_net_dump_cb {
+	struct net *net;
+	struct sk_buff *skb;
+	struct netlink_callback *cb;
+	int idx;
+	int s_idx;
+};
+
+static int rtnl_net_dumpid_one(int id, void *peer, void *data)
+{
+	struct rtnl_net_dump_cb *net_cb = (struct rtnl_net_dump_cb *)data;
+	int ret;
+
+	if (net_cb->idx < net_cb->s_idx)
+		goto cont;
+
+	ret = rtnl_net_fill(net_cb->skb, NETLINK_CB(net_cb->cb->skb).portid,
+			    net_cb->cb->nlh->nlmsg_seq, NLM_F_MULTI,
+			    RTM_NEWNSID, net_cb->net, id);
+	if (ret < 0)
+		return ret;
+
+cont:
+	net_cb->idx++;
+	return 0;
+}
+
+static int rtnl_net_dumpid(struct sk_buff *skb, struct netlink_callback *cb)
+{
+	struct net *net = sock_net(skb->sk);
+	struct rtnl_net_dump_cb net_cb = {
+		.net = net,
+		.skb = skb,
+		.cb = cb,
+		.idx = 0,
+		.s_idx = cb->args[0],
+	};
+	unsigned long flags;
+
+	spin_lock_irqsave(&net->nsid_lock, flags);
+	idr_for_each(&net->netns_ids, rtnl_net_dumpid_one, &net_cb);
+	spin_unlock_irqrestore(&net->nsid_lock, flags);
+
+	cb->args[0] = net_cb.idx;
+	return skb->len;
+}
+
+static void rtnl_net_notifyid(struct net *net, int cmd, int id)
+{
+	struct sk_buff *msg;
+	int err = -ENOMEM;
+
+	msg = nlmsg_new(rtnl_net_get_size(), GFP_KERNEL);
+	if (!msg)
+		goto out;
+
+	err = rtnl_net_fill(msg, 0, 0, 0, cmd, net, id);
+	if (err < 0)
+		goto err_out;
+
+	rtnl_notify(msg, net, 0, RTNLGRP_NSID, NULL, 0);
+	return;
+
+err_out:
+	nlmsg_free(msg);
+out:
+	rtnl_set_sk_err(net, RTNLGRP_NSID, err);
 }
 
 static int __init net_ns_init(void)
@@ -639,6 +774,8 @@ static int __init net_ns_init(void)
 	if (setup_net(&init_net, &init_user_ns))
 		panic("Could not setup the initial network namespace");
 
+	init_net_initialized = true;
+
 	rtnl_lock();
 	list_add_tail_rcu(&init_net.list, &net_namespace_list);
 	rtnl_unlock();
@@ -648,7 +785,8 @@ static int __init net_ns_init(void)
 	register_pernet_subsys(&net_ns_ops);
 
 	rtnl_register(PF_UNSPEC, RTM_NEWNSID, rtnl_net_newid, NULL, NULL);
-	rtnl_register(PF_UNSPEC, RTM_GETNSID, rtnl_net_getid, NULL, NULL);
+	rtnl_register(PF_UNSPEC, RTM_GETNSID, rtnl_net_getid, rtnl_net_dumpid,
+		      NULL);
 
 	return 0;
 }
@@ -699,15 +837,24 @@ static void __unregister_pernet_operations(struct pernet_operations *ops)
 static int __register_pernet_operations(struct list_head *list,
 					struct pernet_operations *ops)
 {
+	if (!init_net_initialized) {
+		list_add_tail(&ops->list, list);
+		return 0;
+	}
+
 	return ops_init(ops, &init_net);
 }
 
 static void __unregister_pernet_operations(struct pernet_operations *ops)
 {
-	LIST_HEAD(net_exit_list);
-	list_add(&init_net.exit_list, &net_exit_list);
-	ops_exit_list(ops, &net_exit_list);
-	ops_free_list(ops, &net_exit_list);
+	if (!init_net_initialized) {
+		list_del(&ops->list);
+	} else {
+		LIST_HEAD(net_exit_list);
+		list_add(&init_net.exit_list, &net_exit_list);
+		ops_exit_list(ops, &net_exit_list);
+		ops_free_list(ops, &net_exit_list);
+	}
 }
 
 #endif /* CONFIG_NET_NS */
@@ -884,11 +1031,17 @@ static int netns_install(struct nsproxy *nsproxy, struct ns_common *ns)
 	return 0;
 }
 
+static struct user_namespace *netns_owner(struct ns_common *ns)
+{
+	return to_net_ns(ns)->user_ns;
+}
+
 const struct proc_ns_operations netns_operations = {
 	.name		= "net",
 	.type		= CLONE_NEWNET,
 	.get		= netns_get,
 	.put		= netns_put,
 	.install	= netns_install,
+	.owner		= netns_owner,
 };
 #endif

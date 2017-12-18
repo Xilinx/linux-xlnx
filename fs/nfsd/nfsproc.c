@@ -59,13 +59,59 @@ static __be32
 nfsd_proc_setattr(struct svc_rqst *rqstp, struct nfsd_sattrargs *argp,
 					  struct nfsd_attrstat  *resp)
 {
+	struct iattr *iap = &argp->attrs;
+	struct svc_fh *fhp;
 	__be32 nfserr;
+
 	dprintk("nfsd: SETATTR  %s, valid=%x, size=%ld\n",
 		SVCFH_fmt(&argp->fh),
 		argp->attrs.ia_valid, (long) argp->attrs.ia_size);
 
-	fh_copy(&resp->fh, &argp->fh);
-	nfserr = nfsd_setattr(rqstp, &resp->fh, &argp->attrs,0, (time_t)0);
+	fhp = fh_copy(&resp->fh, &argp->fh);
+
+	/*
+	 * NFSv2 does not differentiate between "set-[ac]time-to-now"
+	 * which only requires access, and "set-[ac]time-to-X" which
+	 * requires ownership.
+	 * So if it looks like it might be "set both to the same time which
+	 * is close to now", and if setattr_prepare fails, then we
+	 * convert to "set to now" instead of "set to explicit time"
+	 *
+	 * We only call setattr_prepare as the last test as technically
+	 * it is not an interface that we should be using.
+	 */
+#define BOTH_TIME_SET (ATTR_ATIME_SET | ATTR_MTIME_SET)
+#define	MAX_TOUCH_TIME_ERROR (30*60)
+	if ((iap->ia_valid & BOTH_TIME_SET) == BOTH_TIME_SET &&
+	    iap->ia_mtime.tv_sec == iap->ia_atime.tv_sec) {
+		/*
+		 * Looks probable.
+		 *
+		 * Now just make sure time is in the right ballpark.
+		 * Solaris, at least, doesn't seem to care what the time
+		 * request is.  We require it be within 30 minutes of now.
+		 */
+		time_t delta = iap->ia_atime.tv_sec - get_seconds();
+
+		nfserr = fh_verify(rqstp, fhp, 0, NFSD_MAY_NOP);
+		if (nfserr)
+			goto done;
+
+		if (delta < 0)
+			delta = -delta;
+		if (delta < MAX_TOUCH_TIME_ERROR &&
+		    setattr_prepare(fhp->fh_dentry, iap) != 0) {
+			/*
+			 * Turn off ATTR_[AM]TIME_SET but leave ATTR_[AM]TIME.
+			 * This will cause notify_change to set these times
+			 * to "now"
+			 */
+			iap->ia_valid &= ~BOTH_TIME_SET;
+		}
+	}
+
+	nfserr = nfsd_setattr(rqstp, fhp, iap, 0, (time_t)0);
+done:
 	return nfsd_return_attrs(nfserr, resp);
 }
 
@@ -203,9 +249,6 @@ nfsd_proc_create(struct svc_rqst *rqstp, struct nfsd_createargs *argp,
 
 	/* Check for NFSD_MAY_WRITE in nfsd_create if necessary */
 
-	nfserr = nfserr_acces;
-	if (!argp->len)
-		goto done;
 	nfserr = nfserr_exist;
 	if (isdotent(argp->name, argp->len))
 		goto done;
@@ -223,7 +266,7 @@ nfsd_proc_create(struct svc_rqst *rqstp, struct nfsd_createargs *argp,
 	}
 	fh_init(newfhp, NFS_FHSIZE);
 	nfserr = fh_compose(newfhp, dirfhp->fh_export, dchild, dirfhp);
-	if (!nfserr && !dchild->d_inode)
+	if (!nfserr && d_really_is_negative(dchild))
 		nfserr = nfserr_noent;
 	dput(dchild);
 	if (nfserr) {
@@ -241,7 +284,7 @@ nfsd_proc_create(struct svc_rqst *rqstp, struct nfsd_createargs *argp,
 		}
 	}
 
-	inode = newfhp->fh_dentry->d_inode;
+	inode = d_inode(newfhp->fh_dentry);
 
 	/* Unfudge the mode bits */
 	if (attr->ia_valid & ATTR_MODE) {
@@ -314,8 +357,8 @@ nfsd_proc_create(struct svc_rqst *rqstp, struct nfsd_createargs *argp,
 	nfserr = 0;
 	if (!inode) {
 		/* File doesn't exist. Create it and set attrs */
-		nfserr = nfsd_create(rqstp, dirfhp, argp->name, argp->len,
-					attr, type, rdev, newfhp);
+		nfserr = nfsd_create_locked(rqstp, dirfhp, argp->name,
+					argp->len, attr, type, rdev, newfhp);
 	} else if (type == S_IFREG) {
 		dprintk("nfsd:   existing %s, valid=%x, size=%ld\n",
 			argp->name, attr->ia_valid, (long) attr->ia_size);
@@ -746,6 +789,7 @@ nfserrno (int errno)
 		{ nfserr_toosmall, -ETOOSMALL },
 		{ nfserr_serverfault, -ESERVERFAULT },
 		{ nfserr_serverfault, -ENFILE },
+		{ nfserr_io, -EUCLEAN },
 	};
 	int	i;
 
@@ -753,7 +797,7 @@ nfserrno (int errno)
 		if (nfs_errtbl[i].syserr == errno)
 			return nfs_errtbl[i].nfserr;
 	}
-	WARN(1, "nfsd: non-standard errno: %d\n", errno);
+	WARN_ONCE(1, "nfsd: non-standard errno: %d\n", errno);
 	return nfserr_io;
 }
 

@@ -46,7 +46,7 @@ void apei_mce_report_mem_error(int severity, struct cper_sec_mem_err *mem_err)
 		return;
 
 	mce_setup(&m);
-	m.bank = 1;
+	m.bank = -1;
 	/* Fake a memory read error with unknown channel */
 	m.status = MCI_STATUS_VAL | MCI_STATUS_EN | MCI_STATUS_ADDRV | 0x9f;
 
@@ -57,7 +57,6 @@ void apei_mce_report_mem_error(int severity, struct cper_sec_mem_err *mem_err)
 
 	m.addr = mem_err->physical_addr;
 	mce_log(&m);
-	mce_notify_irq();
 }
 EXPORT_SYMBOL_GPL(apei_mce_report_mem_error);
 

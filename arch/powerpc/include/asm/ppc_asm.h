@@ -24,27 +24,27 @@
  */
 
 #ifndef CONFIG_VIRT_CPU_ACCOUNTING_NATIVE
-#define ACCOUNT_CPU_USER_ENTRY(ra, rb)
-#define ACCOUNT_CPU_USER_EXIT(ra, rb)
+#define ACCOUNT_CPU_USER_ENTRY(ptr, ra, rb)
+#define ACCOUNT_CPU_USER_EXIT(ptr, ra, rb)
 #define ACCOUNT_STOLEN_TIME
 #else
-#define ACCOUNT_CPU_USER_ENTRY(ra, rb)					\
+#define ACCOUNT_CPU_USER_ENTRY(ptr, ra, rb)				\
 	MFTB(ra);			/* get timebase */		\
-	ld	rb,PACA_STARTTIME_USER(r13);				\
-	std	ra,PACA_STARTTIME(r13);					\
+	PPC_LL	rb, ACCOUNT_STARTTIME_USER(ptr);			\
+	PPC_STL	ra, ACCOUNT_STARTTIME(ptr);				\
 	subf	rb,rb,ra;		/* subtract start value */	\
-	ld	ra,PACA_USER_TIME(r13);					\
+	PPC_LL	ra, ACCOUNT_USER_TIME(ptr);				\
 	add	ra,ra,rb;		/* add on to user time */	\
-	std	ra,PACA_USER_TIME(r13);					\
+	PPC_STL	ra, ACCOUNT_USER_TIME(ptr);				\
 
-#define ACCOUNT_CPU_USER_EXIT(ra, rb)					\
+#define ACCOUNT_CPU_USER_EXIT(ptr, ra, rb)				\
 	MFTB(ra);			/* get timebase */		\
-	ld	rb,PACA_STARTTIME(r13);					\
-	std	ra,PACA_STARTTIME_USER(r13);				\
+	PPC_LL	rb, ACCOUNT_STARTTIME(ptr);				\
+	PPC_STL	ra, ACCOUNT_STARTTIME_USER(ptr);			\
 	subf	rb,rb,ra;		/* subtract start value */	\
-	ld	ra,PACA_SYSTEM_TIME(r13);				\
+	PPC_LL	ra, ACCOUNT_SYSTEM_TIME(ptr);				\
 	add	ra,ra,rb;		/* add on to system time */	\
-	std	ra,PACA_SYSTEM_TIME(r13)
+	PPC_STL	ra, ACCOUNT_SYSTEM_TIME(ptr)
 
 #ifdef CONFIG_PPC_SPLPAR
 #define ACCOUNT_STOLEN_TIME						\
@@ -189,7 +189,7 @@ END_FW_FTR_SECTION_IFSET(FW_FEATURE_SPLPAR)
 #define __STK_REG(i)   (112 + ((i)-14)*8)
 #define STK_REG(i)     __STK_REG(__REG_##i)
 
-#if defined(_CALL_ELF) && _CALL_ELF == 2
+#ifdef PPC64_ELF_ABI_v2
 #define STK_GOT		24
 #define __STK_PARAM(i)	(32 + ((i)-3)*8)
 #else
@@ -198,17 +198,15 @@ END_FW_FTR_SECTION_IFSET(FW_FEATURE_SPLPAR)
 #endif
 #define STK_PARAM(i)	__STK_PARAM(__REG_##i)
 
-#if defined(_CALL_ELF) && _CALL_ELF == 2
+#ifdef PPC64_ELF_ABI_v2
 
 #define _GLOBAL(name) \
-	.section ".text"; \
 	.align 2 ; \
 	.type name,@function; \
 	.globl name; \
 name:
 
 #define _GLOBAL_TOC(name) \
-	.section ".text"; \
 	.align 2 ; \
 	.type name,@function; \
 	.globl name; \
@@ -216,13 +214,6 @@ name: \
 0:	addis r2,r12,(.TOC.-0b)@ha; \
 	addi r2,r2,(.TOC.-0b)@l; \
 	.localentry name,.-name
-
-#define _KPROBE(name) \
-	.section ".kprobes.text","a"; \
-	.align 2 ; \
-	.type name,@function; \
-	.globl name; \
-name:
 
 #define DOTSYM(a)	a
 
@@ -232,34 +223,19 @@ name:
 #define GLUE(a,b) XGLUE(a,b)
 
 #define _GLOBAL(name) \
-	.section ".text"; \
 	.align 2 ; \
 	.globl name; \
 	.globl GLUE(.,name); \
-	.section ".opd","aw"; \
+	.pushsection ".opd","aw"; \
 name: \
 	.quad GLUE(.,name); \
 	.quad .TOC.@tocbase; \
 	.quad 0; \
-	.previous; \
+	.popsection; \
 	.type GLUE(.,name),@function; \
 GLUE(.,name):
 
 #define _GLOBAL_TOC(name) _GLOBAL(name)
-
-#define _KPROBE(name) \
-	.section ".kprobes.text","a"; \
-	.align 2 ; \
-	.globl name; \
-	.globl GLUE(.,name); \
-	.section ".opd","aw"; \
-name: \
-	.quad GLUE(.,name); \
-	.quad .TOC.@tocbase; \
-	.quad 0; \
-	.previous; \
-	.type GLUE(.,name),@function; \
-GLUE(.,name):
 
 #define DOTSYM(a)	GLUE(.,a)
 
@@ -272,19 +248,30 @@ GLUE(.,name):
 n:
 
 #define _GLOBAL(n)	\
-	.text;		\
 	.stabs __stringify(n:F-1),N_FUN,0,0,n;\
 	.globl n;	\
 n:
 
 #define _GLOBAL_TOC(name) _GLOBAL(name)
 
-#define _KPROBE(n)	\
-	.section ".kprobes.text","a";	\
-	.globl	n;	\
-n:
-
 #endif
+
+/*
+ * __kprobes (the C annotation) puts the symbol into the .kprobes.text
+ * section, which gets emitted at the end of regular text.
+ *
+ * _ASM_NOKPROBE_SYMBOL and NOKPROBE_SYMBOL just adds the symbol to
+ * a blacklist. The former is for core kprobe functions/data, the
+ * latter is for those that incdentially must be excluded from probing
+ * and allows them to be linked at more optimal location within text.
+ */
+#define _ASM_NOKPROBE_SYMBOL(entry)			\
+	.pushsection "_kprobe_blacklist","aw";		\
+	PPC_LONG (entry) ;				\
+	.popsection
+
+#define FUNC_START(name)	_GLOBAL(name)
+#define FUNC_END(name)
 
 /* 
  * LOAD_REG_IMMEDIATE(rn, expr)
@@ -413,24 +400,6 @@ END_FTR_SECTION_IFCLR(CPU_FTR_601)
 	FTR_SECTION_ELSE_NESTED(848);	\
 	mtocrf (FXM), RS;		\
 	ALT_FTR_SECTION_END_NESTED_IFCLR(CPU_FTR_NOEXECUTE, 848)
-
-/*
- * PPR restore macros used in entry_64.S
- * Used for P7 or later processors
- */
-#define HMT_MEDIUM_LOW_HAS_PPR						\
-BEGIN_FTR_SECTION_NESTED(944)						\
-	HMT_MEDIUM_LOW;							\
-END_FTR_SECTION_NESTED(CPU_FTR_HAS_PPR,CPU_FTR_HAS_PPR,944)
-
-#define SET_DEFAULT_THREAD_PPR(ra, rb)					\
-BEGIN_FTR_SECTION_NESTED(945)						\
-	lis	ra,INIT_PPR@highest;	/* default ppr=3 */		\
-	ld	rb,PACACURRENT(r13);					\
-	sldi	ra,ra,32;	/* 11- 13 bits are used for ppr */	\
-	std	ra,TASKTHREADPPR(rb);					\
-END_FTR_SECTION_NESTED(CPU_FTR_HAS_PPR,CPU_FTR_HAS_PPR,945)
-
 #endif
 
 /*
@@ -445,7 +414,10 @@ END_FTR_SECTION_NESTED(CPU_FTR_HAS_PPR,CPU_FTR_HAS_PPR,945)
 	li	r4,1024;			\
 	mtctr	r4;				\
 	lis	r4,KERNELBASE@h;		\
+	.machine push;				\
+	.machine "power4";			\
 0:	tlbie	r4;				\
+	.machine pop;				\
 	addi	r4,r4,0x1000;			\
 	bdnz	0b
 #endif
@@ -539,7 +511,6 @@ END_FTR_SECTION_NESTED(CPU_FTR_HAS_PPR,CPU_FTR_HAS_PPR,945)
 #endif
 #define MTMSRD(r)	mtmsr	r
 #define MTMSR_EERI(reg)	mtmsr	reg
-#define CLR_TOP32(r)
 #endif
 
 #endif /* __KERNEL__ */
@@ -637,105 +608,105 @@ END_FTR_SECTION_NESTED(CPU_FTR_HAS_PPR,CPU_FTR_HAS_PPR,945)
 
 /* AltiVec Registers (VPRs) */
 
-#define	vr0	0
-#define	vr1	1
-#define	vr2	2
-#define	vr3	3
-#define	vr4	4
-#define	vr5	5
-#define	vr6	6
-#define	vr7	7
-#define	vr8	8
-#define	vr9	9
-#define	vr10	10
-#define	vr11	11
-#define	vr12	12
-#define	vr13	13
-#define	vr14	14
-#define	vr15	15
-#define	vr16	16
-#define	vr17	17
-#define	vr18	18
-#define	vr19	19
-#define	vr20	20
-#define	vr21	21
-#define	vr22	22
-#define	vr23	23
-#define	vr24	24
-#define	vr25	25
-#define	vr26	26
-#define	vr27	27
-#define	vr28	28
-#define	vr29	29
-#define	vr30	30
-#define	vr31	31
+#define	v0	0
+#define	v1	1
+#define	v2	2
+#define	v3	3
+#define	v4	4
+#define	v5	5
+#define	v6	6
+#define	v7	7
+#define	v8	8
+#define	v9	9
+#define	v10	10
+#define	v11	11
+#define	v12	12
+#define	v13	13
+#define	v14	14
+#define	v15	15
+#define	v16	16
+#define	v17	17
+#define	v18	18
+#define	v19	19
+#define	v20	20
+#define	v21	21
+#define	v22	22
+#define	v23	23
+#define	v24	24
+#define	v25	25
+#define	v26	26
+#define	v27	27
+#define	v28	28
+#define	v29	29
+#define	v30	30
+#define	v31	31
 
 /* VSX Registers (VSRs) */
 
-#define	vsr0	0
-#define	vsr1	1
-#define	vsr2	2
-#define	vsr3	3
-#define	vsr4	4
-#define	vsr5	5
-#define	vsr6	6
-#define	vsr7	7
-#define	vsr8	8
-#define	vsr9	9
-#define	vsr10	10
-#define	vsr11	11
-#define	vsr12	12
-#define	vsr13	13
-#define	vsr14	14
-#define	vsr15	15
-#define	vsr16	16
-#define	vsr17	17
-#define	vsr18	18
-#define	vsr19	19
-#define	vsr20	20
-#define	vsr21	21
-#define	vsr22	22
-#define	vsr23	23
-#define	vsr24	24
-#define	vsr25	25
-#define	vsr26	26
-#define	vsr27	27
-#define	vsr28	28
-#define	vsr29	29
-#define	vsr30	30
-#define	vsr31	31
-#define	vsr32	32
-#define	vsr33	33
-#define	vsr34	34
-#define	vsr35	35
-#define	vsr36	36
-#define	vsr37	37
-#define	vsr38	38
-#define	vsr39	39
-#define	vsr40	40
-#define	vsr41	41
-#define	vsr42	42
-#define	vsr43	43
-#define	vsr44	44
-#define	vsr45	45
-#define	vsr46	46
-#define	vsr47	47
-#define	vsr48	48
-#define	vsr49	49
-#define	vsr50	50
-#define	vsr51	51
-#define	vsr52	52
-#define	vsr53	53
-#define	vsr54	54
-#define	vsr55	55
-#define	vsr56	56
-#define	vsr57	57
-#define	vsr58	58
-#define	vsr59	59
-#define	vsr60	60
-#define	vsr61	61
-#define	vsr62	62
-#define	vsr63	63
+#define	vs0	0
+#define	vs1	1
+#define	vs2	2
+#define	vs3	3
+#define	vs4	4
+#define	vs5	5
+#define	vs6	6
+#define	vs7	7
+#define	vs8	8
+#define	vs9	9
+#define	vs10	10
+#define	vs11	11
+#define	vs12	12
+#define	vs13	13
+#define	vs14	14
+#define	vs15	15
+#define	vs16	16
+#define	vs17	17
+#define	vs18	18
+#define	vs19	19
+#define	vs20	20
+#define	vs21	21
+#define	vs22	22
+#define	vs23	23
+#define	vs24	24
+#define	vs25	25
+#define	vs26	26
+#define	vs27	27
+#define	vs28	28
+#define	vs29	29
+#define	vs30	30
+#define	vs31	31
+#define	vs32	32
+#define	vs33	33
+#define	vs34	34
+#define	vs35	35
+#define	vs36	36
+#define	vs37	37
+#define	vs38	38
+#define	vs39	39
+#define	vs40	40
+#define	vs41	41
+#define	vs42	42
+#define	vs43	43
+#define	vs44	44
+#define	vs45	45
+#define	vs46	46
+#define	vs47	47
+#define	vs48	48
+#define	vs49	49
+#define	vs50	50
+#define	vs51	51
+#define	vs52	52
+#define	vs53	53
+#define	vs54	54
+#define	vs55	55
+#define	vs56	56
+#define	vs57	57
+#define	vs58	58
+#define	vs59	59
+#define	vs60	60
+#define	vs61	61
+#define	vs62	62
+#define	vs63	63
 
 /* SPE Registers (EVPRs) */
 

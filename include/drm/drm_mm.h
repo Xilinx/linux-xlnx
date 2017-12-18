@@ -37,6 +37,7 @@
  * Generic range manager structs
  */
 #include <linux/bug.h>
+#include <linux/rbtree.h>
 #include <linux/kernel.h>
 #include <linux/list.h>
 #include <linux/spinlock.h>
@@ -61,6 +62,7 @@ enum drm_mm_allocator_flags {
 struct drm_mm_node {
 	struct list_head node_list;
 	struct list_head hole_stack;
+	struct rb_node rb;
 	unsigned hole_follows : 1;
 	unsigned scanned_block : 1;
 	unsigned scanned_prev_free : 1;
@@ -70,6 +72,7 @@ struct drm_mm_node {
 	unsigned long color;
 	u64 start;
 	u64 size;
+	u64 __subtree_last;
 	struct drm_mm *mm;
 };
 
@@ -79,6 +82,9 @@ struct drm_mm {
 	/* head_node.node_list is the list of all memory nodes, ordered
 	 * according to the (increasing) start address of the memory node. */
 	struct drm_mm_node head_node;
+	/* Keep an interval_tree for fast lookup of drm_mm_nodes by address. */
+	struct rb_root interval_tree;
+
 	unsigned int scan_check_range : 1;
 	unsigned scan_alignment;
 	unsigned long scan_color;
@@ -148,8 +154,7 @@ static inline u64 drm_mm_hole_node_start(struct drm_mm_node *hole_node)
 
 static inline u64 __drm_mm_hole_node_end(struct drm_mm_node *hole_node)
 {
-	return list_entry(hole_node->node_list.next,
-			  struct drm_mm_node, node_list)->start;
+	return list_next_entry(hole_node, node_list)->start;
 }
 
 /**
@@ -180,6 +185,14 @@ static inline u64 drm_mm_hole_node_end(struct drm_mm_node *hole_node)
 						&(mm)->head_node.node_list, \
 						node_list)
 
+#define __drm_mm_for_each_hole(entry, mm, hole_start, hole_end, backwards) \
+	for (entry = list_entry((backwards) ? (mm)->hole_stack.prev : (mm)->hole_stack.next, struct drm_mm_node, hole_stack); \
+	     &entry->hole_stack != &(mm)->hole_stack ? \
+	     hole_start = drm_mm_hole_node_start(entry), \
+	     hole_end = drm_mm_hole_node_end(entry), \
+	     1 : 0; \
+	     entry = list_entry((backwards) ? entry->hole_stack.prev : entry->hole_stack.next, struct drm_mm_node, hole_stack))
+
 /**
  * drm_mm_for_each_hole - iterator to walk over all holes
  * @entry: drm_mm_node used internally to track progress
@@ -200,20 +213,7 @@ static inline u64 drm_mm_hole_node_end(struct drm_mm_node *hole_node)
  * going backwards.
  */
 #define drm_mm_for_each_hole(entry, mm, hole_start, hole_end) \
-	for (entry = list_entry((mm)->hole_stack.next, struct drm_mm_node, hole_stack); \
-	     &entry->hole_stack != &(mm)->hole_stack ? \
-	     hole_start = drm_mm_hole_node_start(entry), \
-	     hole_end = drm_mm_hole_node_end(entry), \
-	     1 : 0; \
-	     entry = list_entry(entry->hole_stack.next, struct drm_mm_node, hole_stack))
-
-#define __drm_mm_for_each_hole(entry, mm, hole_start, hole_end, backwards) \
-	for (entry = list_entry((backwards) ? (mm)->hole_stack.prev : (mm)->hole_stack.next, struct drm_mm_node, hole_stack); \
-	     &entry->hole_stack != &(mm)->hole_stack ? \
-	     hole_start = drm_mm_hole_node_start(entry), \
-	     hole_end = drm_mm_hole_node_end(entry), \
-	     1 : 0; \
-	     entry = list_entry((backwards) ? entry->hole_stack.prev : entry->hole_stack.next, struct drm_mm_node, hole_stack))
+	__drm_mm_for_each_hole(entry, mm, hole_start, hole_end, 0)
 
 /*
  * Basic range manager support (drm_mm.c)
@@ -300,6 +300,12 @@ void drm_mm_init(struct drm_mm *mm,
 		 u64 size);
 void drm_mm_takedown(struct drm_mm *mm);
 bool drm_mm_clean(struct drm_mm *mm);
+
+struct drm_mm_node *
+drm_mm_interval_first(struct drm_mm *mm, u64 start, u64 last);
+
+struct drm_mm_node *
+drm_mm_interval_next(struct drm_mm_node *node, u64 start, u64 last);
 
 void drm_mm_init_scan(struct drm_mm *mm,
 		      u64 size,

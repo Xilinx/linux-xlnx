@@ -44,17 +44,6 @@
 #define BTRFS_INODE_IN_DELALLOC_LIST		9
 #define BTRFS_INODE_READDIO_NEED_LOCK		10
 #define BTRFS_INODE_HAS_PROPS		        11
-/*
- * The following 3 bits are meant only for the btree inode.
- * When any of them is set, it means an error happened while writing an
- * extent buffer belonging to:
- * 1) a non-log btree
- * 2) a log btree and first log sub-transaction
- * 3) a log btree and second log sub-transaction
- */
-#define BTRFS_INODE_BTREE_ERR		        12
-#define BTRFS_INODE_BTREE_LOG1_ERR		13
-#define BTRFS_INODE_BTREE_LOG2_ERR		14
 
 /* in memory btrfs inode */
 struct btrfs_inode {
@@ -66,7 +55,11 @@ struct btrfs_inode {
 	 */
 	struct btrfs_key location;
 
-	/* Lock for counters */
+	/*
+	 * Lock for counters and all fields used to determine if the inode is in
+	 * the log or not (last_trans, last_sub_trans, last_log_commit,
+	 * logged_trans).
+	 */
 	spinlock_t lock;
 
 	/* the extent_tree has caches of all the extent mappings to disk */
@@ -188,6 +181,20 @@ struct btrfs_inode {
 	/* File creation time. */
 	struct timespec i_otime;
 
+	/* Hook into fs_info->delayed_iputs */
+	struct list_head delayed_iput;
+	long delayed_iput_count;
+
+	/*
+	 * To avoid races between lockless (i_mutex not held) direct IO writes
+	 * and concurrent fsync requests. Direct IO writes must acquire read
+	 * access on this semaphore for creating an extent map and its
+	 * corresponding ordered extent. The fast fsync path must acquire write
+	 * access on this semaphore before it collects ordered extents and
+	 * extent maps.
+	 */
+	struct rw_semaphore dio_sem;
+
 	struct inode vfs_inode;
 };
 
@@ -250,6 +257,9 @@ static inline bool btrfs_is_free_space_inode(struct inode *inode)
 
 static inline int btrfs_inode_in_log(struct inode *inode, u64 generation)
 {
+	int ret = 0;
+
+	spin_lock(&BTRFS_I(inode)->lock);
 	if (BTRFS_I(inode)->logged_trans == generation &&
 	    BTRFS_I(inode)->last_sub_trans <=
 	    BTRFS_I(inode)->last_log_commit &&
@@ -263,9 +273,10 @@ static inline int btrfs_inode_in_log(struct inode *inode, u64 generation)
 		 */
 		smp_mb();
 		if (list_empty(&BTRFS_I(inode)->extent_tree.modified_extents))
-			return 1;
+			ret = 1;
 	}
-	return 0;
+	spin_unlock(&BTRFS_I(inode)->lock);
+	return ret;
 }
 
 #define BTRFS_DIO_ORIG_BIO_SUBMITTED	0x1
@@ -291,7 +302,7 @@ struct btrfs_dio_private {
 	struct bio *dio_bio;
 
 	/*
-	 * The original bio may be splited to several sub-bios, this is
+	 * The original bio may be split to several sub-bios, this is
 	 * done during endio of sub-bios
 	 */
 	int (*subio_endio)(struct inode *, struct btrfs_io_bio *, int);

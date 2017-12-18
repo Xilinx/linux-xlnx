@@ -280,7 +280,7 @@ static int altera_jtaguart_verify_port(struct uart_port *port,
 /*
  *	Define the basic serial functions we support.
  */
-static struct uart_ops altera_jtaguart_ops = {
+static const struct uart_ops altera_jtaguart_ops = {
 	.tx_empty	= altera_jtaguart_tx_empty,
 	.get_mctrl	= altera_jtaguart_get_mctrl,
 	.set_mctrl	= altera_jtaguart_set_mctrl,
@@ -387,7 +387,7 @@ console_initcall(altera_jtaguart_console_init);
 
 #define	ALTERA_JTAGUART_CONSOLE	NULL
 
-#endif /* CONFIG_ALTERA_JTAGUART_CONSOLE */
+#endif /* CONFIG_SERIAL_ALTERA_JTAGUART_CONSOLE */
 
 static struct uart_driver altera_jtaguart_driver = {
 	.owner		= THIS_MODULE,

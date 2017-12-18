@@ -159,6 +159,14 @@ struct x86_pmu_capability {
  */
 #define INTEL_PMC_IDX_FIXED_BTS				(INTEL_PMC_IDX_FIXED + 16)
 
+#define GLOBAL_STATUS_COND_CHG				BIT_ULL(63)
+#define GLOBAL_STATUS_BUFFER_OVF			BIT_ULL(62)
+#define GLOBAL_STATUS_UNC_OVF				BIT_ULL(61)
+#define GLOBAL_STATUS_ASIF				BIT_ULL(60)
+#define GLOBAL_STATUS_COUNTERS_FROZEN			BIT_ULL(59)
+#define GLOBAL_STATUS_LBRS_FROZEN			BIT_ULL(58)
+#define GLOBAL_STATUS_TRACE_TOPAPMI			BIT_ULL(55)
+
 /*
  * IBS cpuid feature detection
  */
@@ -275,6 +283,10 @@ static inline void perf_get_x86_pmu_capability(struct x86_pmu_capability *cap)
 
 static inline void perf_events_lapic_init(void)	{ }
 static inline void perf_check_microcode(void) { }
+#endif
+
+#ifdef CONFIG_CPU_SUP_INTEL
+ extern void intel_pt_handle_vmx(int on);
 #endif
 
 #if defined(CONFIG_PERF_EVENTS) && defined(CONFIG_CPU_SUP_AMD)

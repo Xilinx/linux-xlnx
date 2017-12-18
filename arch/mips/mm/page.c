@@ -12,7 +12,6 @@
 #include <linux/sched.h>
 #include <linux/smp.h>
 #include <linux/mm.h>
-#include <linux/module.h>
 #include <linux/proc_fs.h>
 
 #include <asm/bugs.h>
@@ -157,6 +156,7 @@ static void set_prefetch_parameters(void)
 		case CPU_R10000:
 		case CPU_R12000:
 		case CPU_R14000:
+		case CPU_R16000:
 			/*
 			 * Those values have been experimentally tuned for an
 			 * Origin 200.
@@ -185,6 +185,15 @@ static void set_prefetch_parameters(void)
 				pref_src_mode = Pref_LoadStreamed;
 				pref_dst_mode = Pref_StoreStreamed;
 			}
+			break;
+
+		case CPU_LOONGSON3:
+			/* Loongson-3 only support the Pref_Load/Pref_Store. */
+			pref_bias_clear_store = 128;
+			pref_bias_copy_load = 128;
+			pref_bias_copy_store = 128;
+			pref_src_mode = Pref_Load;
+			pref_dst_mode = Pref_Store;
 			break;
 
 		default:

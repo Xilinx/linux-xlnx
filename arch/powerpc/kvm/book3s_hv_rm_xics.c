@@ -10,6 +10,7 @@
 #include <linux/kernel.h>
 #include <linux/kvm_host.h>
 #include <linux/err.h>
+#include <linux/kernel_stat.h>
 
 #include <asm/kvm_book3s.h>
 #include <asm/kvm_ppc.h>
@@ -17,24 +18,128 @@
 #include <asm/xics.h>
 #include <asm/debug.h>
 #include <asm/synch.h>
+#include <asm/cputhreads.h>
+#include <asm/pgtable.h>
 #include <asm/ppc-opcode.h>
+#include <asm/pnv-pci.h>
+#include <asm/opal.h>
+#include <asm/smp.h>
 
 #include "book3s_xics.h"
 
 #define DEBUG_PASSUP
 
-static inline void rm_writeb(unsigned long paddr, u8 val)
+int h_ipi_redirect = 1;
+EXPORT_SYMBOL(h_ipi_redirect);
+int kvm_irq_bypass = 1;
+EXPORT_SYMBOL(kvm_irq_bypass);
+
+static void icp_rm_deliver_irq(struct kvmppc_xics *xics, struct kvmppc_icp *icp,
+			    u32 new_irq);
+static int xics_opal_rm_set_server(unsigned int hw_irq, int server_cpu);
+
+/* -- ICS routines -- */
+static void ics_rm_check_resend(struct kvmppc_xics *xics,
+				struct kvmppc_ics *ics, struct kvmppc_icp *icp)
 {
-	__asm__ __volatile__("sync; stbcix %0,0,%1"
-		: : "r" (val), "r" (paddr) : "memory");
+	int i;
+
+	arch_spin_lock(&ics->lock);
+
+	for (i = 0; i < KVMPPC_XICS_IRQ_PER_ICS; i++) {
+		struct ics_irq_state *state = &ics->irq_state[i];
+
+		if (!state->resend)
+			continue;
+
+		arch_spin_unlock(&ics->lock);
+		icp_rm_deliver_irq(xics, icp, state->number);
+		arch_spin_lock(&ics->lock);
+	}
+
+	arch_spin_unlock(&ics->lock);
+}
+
+/* -- ICP routines -- */
+
+#ifdef CONFIG_SMP
+static inline void icp_send_hcore_msg(int hcore, struct kvm_vcpu *vcpu)
+{
+	int hcpu;
+
+	hcpu = hcore << threads_shift;
+	kvmppc_host_rm_ops_hv->rm_core[hcore].rm_data = vcpu;
+	smp_muxed_ipi_set_message(hcpu, PPC_MSG_RM_HOST_ACTION);
+	icp_native_cause_ipi_rm(hcpu);
+}
+#else
+static inline void icp_send_hcore_msg(int hcore, struct kvm_vcpu *vcpu) { }
+#endif
+
+/*
+ * We start the search from our current CPU Id in the core map
+ * and go in a circle until we get back to our ID looking for a
+ * core that is running in host context and that hasn't already
+ * been targeted for another rm_host_ops.
+ *
+ * In the future, could consider using a fairer algorithm (one
+ * that distributes the IPIs better)
+ *
+ * Returns -1, if no CPU could be found in the host
+ * Else, returns a CPU Id which has been reserved for use
+ */
+static inline int grab_next_hostcore(int start,
+		struct kvmppc_host_rm_core *rm_core, int max, int action)
+{
+	bool success;
+	int core;
+	union kvmppc_rm_state old, new;
+
+	for (core = start + 1; core < max; core++)  {
+		old = new = READ_ONCE(rm_core[core].rm_state);
+
+		if (!old.in_host || old.rm_action)
+			continue;
+
+		/* Try to grab this host core if not taken already. */
+		new.rm_action = action;
+
+		success = cmpxchg64(&rm_core[core].rm_state.raw,
+						old.raw, new.raw) == old.raw;
+		if (success) {
+			/*
+			 * Make sure that the store to the rm_action is made
+			 * visible before we return to caller (and the
+			 * subsequent store to rm_data) to synchronize with
+			 * the IPI handler.
+			 */
+			smp_wmb();
+			return core;
+		}
+	}
+
+	return -1;
+}
+
+static inline int find_available_hostcore(int action)
+{
+	int core;
+	int my_core = smp_processor_id() >> threads_shift;
+	struct kvmppc_host_rm_core *rm_core = kvmppc_host_rm_ops_hv->rm_core;
+
+	core = grab_next_hostcore(my_core, rm_core, cpu_nr_cores(), action);
+	if (core == -1)
+		core = grab_next_hostcore(core, rm_core, my_core, action);
+
+	return core;
 }
 
 static void icp_rm_set_vcpu_irq(struct kvm_vcpu *vcpu,
 				struct kvm_vcpu *this_vcpu)
 {
 	struct kvmppc_icp *this_icp = this_vcpu->arch.icp;
-	unsigned long xics_phys;
 	int cpu;
+	int hcore;
 
 	/* Mark the target VCPU as having an interrupt pending */
 	vcpu->stat.queue_intr++;
@@ -46,19 +151,27 @@ static void icp_rm_set_vcpu_irq(struct kvm_vcpu *vcpu,
 		return;
 	}
 
-	/* Check if the core is loaded, if not, too hard */
-	cpu = vcpu->cpu;
+	/*
+	 * Check if the core is loaded,
+	 * if not, find an available host core to post to wake the VCPU,
+	 * if we can't find one, set up state to eventually return too hard.
+	 */
+	cpu = vcpu->arch.thread_cpu;
 	if (cpu < 0 || cpu >= nr_cpu_ids) {
-		this_icp->rm_action |= XICS_RM_KICK_VCPU;
-		this_icp->rm_kick_target = vcpu;
+		hcore = -1;
+		if (kvmppc_host_rm_ops_hv && h_ipi_redirect)
+			hcore = find_available_hostcore(XICS_RM_KICK_VCPU);
+		if (hcore != -1) {
+			icp_send_hcore_msg(hcore, vcpu);
+		} else {
+			this_icp->rm_action |= XICS_RM_KICK_VCPU;
+			this_icp->rm_kick_target = vcpu;
+		}
 		return;
 	}
-	/* In SMT cpu will always point to thread 0, we adjust it */
-	cpu += vcpu->arch.ptid;
 
-	/* Not too hard, then poke the target */
-	xics_phys = paca[cpu].kvm_hstate.xics_phys;
-	rm_writeb(xics_phys + XICS_MFRR, IPI_PRIORITY);
+	smp_mb();
+	kvmhv_rm_send_ipi(cpu);
 }
 
 static void icp_rm_clr_vcpu_irq(struct kvm_vcpu *vcpu)
@@ -114,6 +227,180 @@ static inline int check_too_hard(struct kvmppc_xics *xics,
 				 struct kvmppc_icp *icp)
 {
 	return (xics->real_mode_dbg || icp->rm_action) ? H_TOO_HARD : H_SUCCESS;
+}
+
+static void icp_rm_check_resend(struct kvmppc_xics *xics,
+			     struct kvmppc_icp *icp)
+{
+	u32 icsid;
+
+	/* Order this load with the test for need_resend in the caller */
+	smp_rmb();
+	for_each_set_bit(icsid, icp->resend_map, xics->max_icsid + 1) {
+		struct kvmppc_ics *ics = xics->ics[icsid];
+
+		if (!test_and_clear_bit(icsid, icp->resend_map))
+			continue;
+		if (!ics)
+			continue;
+		ics_rm_check_resend(xics, ics, icp);
+	}
+}
+
+static bool icp_rm_try_to_deliver(struct kvmppc_icp *icp, u32 irq, u8 priority,
+			       u32 *reject)
+{
+	union kvmppc_icp_state old_state, new_state;
+	bool success;
+
+	do {
+		old_state = new_state = READ_ONCE(icp->state);
+
+		*reject = 0;
+
+		/* See if we can deliver */
+		success = new_state.cppr > priority &&
+			new_state.mfrr > priority &&
+			new_state.pending_pri > priority;
+
+		/*
+		 * If we can, check for a rejection and perform the
+		 * delivery
+		 */
+		if (success) {
+			*reject = new_state.xisr;
+			new_state.xisr = irq;
+			new_state.pending_pri = priority;
+		} else {
+			/*
+			 * If we failed to deliver we set need_resend
+			 * so a subsequent CPPR state change causes us
+			 * to try a new delivery.
+			 */
+			new_state.need_resend = true;
+		}
+
+	} while (!icp_rm_try_update(icp, old_state, new_state));
+
+	return success;
+}
+
+static void icp_rm_deliver_irq(struct kvmppc_xics *xics, struct kvmppc_icp *icp,
+			    u32 new_irq)
+{
+	struct ics_irq_state *state;
+	struct kvmppc_ics *ics;
+	u32 reject;
+	u16 src;
+
+	/*
+	 * This is used both for initial delivery of an interrupt and
+	 * for subsequent rejection.
+	 *
+	 * Rejection can be racy vs. resends. We have evaluated the
+	 * rejection in an atomic ICP transaction which is now complete,
+	 * so potentially the ICP can already accept the interrupt again.
+	 *
+	 * So we need to retry the delivery. Essentially the reject path
+	 * boils down to a failed delivery. Always.
+	 *
+	 * Now the interrupt could also have moved to a different target,
+	 * thus we may need to re-do the ICP lookup as well
+	 */
+
+ again:
+	/* Get the ICS state and lock it */
+	ics = kvmppc_xics_find_ics(xics, new_irq, &src);
+	if (!ics) {
+		/* Unsafe increment, but this does not need to be accurate */
+		xics->err_noics++;
+		return;
+	}
+	state = &ics->irq_state[src];
+
+	/* Get a lock on the ICS */
+	arch_spin_lock(&ics->lock);
+
+	/* Get our server */
+	if (!icp || state->server != icp->server_num) {
+		icp = kvmppc_xics_find_server(xics->kvm, state->server);
+		if (!icp) {
+			/* Unsafe increment again*/
+			xics->err_noicp++;
+			goto out;
+		}
+	}
+
+	/* Clear the resend bit of that interrupt */
+	state->resend = 0;
+
+	/*
+	 * If masked, bail out
+	 *
+	 * Note: PAPR doesn't mention anything about masked pending
+	 * when doing a resend, only when doing a delivery.
+	 *
+	 * However that would have the effect of losing a masked
+	 * interrupt that was rejected and isn't consistent with
+	 * the whole masked_pending business which is about not
+	 * losing interrupts that occur while masked.
+	 *
+	 * I don't differentiate normal deliveries and resends, this
+	 * implementation will differ from PAPR and not lose such
+	 * interrupts.
+	 */
+	if (state->priority == MASKED) {
+		state->masked_pending = 1;
+		goto out;
+	}
+
+	/*
+	 * Try the delivery, this will set the need_resend flag
+	 * in the ICP as part of the atomic transaction if the
+	 * delivery is not possible.
+	 *
+	 * Note that if successful, the new delivery might have itself
+	 * rejected an interrupt that was "delivered" before we took the
+	 * ics spin lock.
+	 *
+	 * In this case we do the whole sequence all over again for the
+	 * new guy. We cannot assume that the rejected interrupt is less
+	 * favored than the new one, and thus doesn't need to be delivered,
+	 * because by the time we exit icp_rm_try_to_deliver() the target
+	 * processor may well have already consumed & completed it, and thus
+	 * the rejected interrupt might actually be already acceptable.
+	 */
+	if (icp_rm_try_to_deliver(icp, new_irq, state->priority, &reject)) {
+		/*
+		 * Delivery was successful, did we reject somebody else ?
+		 */
+		if (reject && reject != XICS_IPI) {
+			arch_spin_unlock(&ics->lock);
+			new_irq = reject;
+			goto again;
+		}
+	} else {
+		/*
+		 * We failed to deliver the interrupt we need to set the
+		 * resend map bit and mark the ICS state as needing a resend
+		 */
+		set_bit(ics->icsid, icp->resend_map);
+		state->resend = 1;
+
+		/*
+		 * If the need_resend flag got cleared in the ICP some time
+		 * between icp_rm_try_to_deliver() atomic update and now, then
+		 * we know it might have missed the resend_map bit. So we
+		 * retry
+		 */
+		smp_mb();
+		if (!icp->state.need_resend) {
+			arch_spin_unlock(&ics->lock);
+			goto again;
+		}
+	}
+ out:
+	arch_spin_unlock(&ics->lock);
 }
 
 static void icp_rm_down_cppr(struct kvmppc_xics *xics, struct kvmppc_icp *icp,
@@ -184,8 +471,8 @@ static void icp_rm_down_cppr(struct kvmppc_xics *xics, struct kvmppc_icp *icp,
 	 * separately here as well.
 	 */
 	if (resend) {
-		icp->rm_action |= XICS_RM_CHECK_RESEND;
-		icp->rm_resend_icp = icp;
+		icp->n_check_resend++;
+		icp_rm_check_resend(xics, icp);
 	}
 }
 
@@ -300,16 +587,16 @@ int kvmppc_rm_h_ipi(struct kvm_vcpu *vcpu, unsigned long server,
 		}
 	} while (!icp_rm_try_update(icp, old_state, new_state));
 
-	/* Pass rejects to virtual mode */
+	/* Handle reject in real mode */
 	if (reject && reject != XICS_IPI) {
-		this_icp->rm_action |= XICS_RM_REJECT;
-		this_icp->rm_reject = reject;
+		this_icp->n_reject++;
+		icp_rm_deliver_irq(xics, icp, reject);
 	}
 
-	/* Pass resends to virtual mode */
+	/* Handle resends in real mode */
 	if (resend) {
-		this_icp->rm_action |= XICS_RM_CHECK_RESEND;
-		this_icp->rm_resend_icp = icp;
+		this_icp->n_check_resend++;
+		icp_rm_check_resend(xics, icp);
 	}
 
 	return check_too_hard(xics, this_icp);
@@ -365,10 +652,13 @@ int kvmppc_rm_h_cppr(struct kvm_vcpu *vcpu, unsigned long cppr)
 
 	} while (!icp_rm_try_update(icp, old_state, new_state));
 
-	/* Pass rejects to virtual mode */
+	/*
+	 * Check for rejects. They are handled by doing a new delivery
+	 * attempt (see comments in icp_rm_deliver_irq).
+	 */
 	if (reject && reject != XICS_IPI) {
-		icp->rm_action |= XICS_RM_REJECT;
-		icp->rm_reject = reject;
+		icp->n_reject++;
+		icp_rm_deliver_irq(xics, icp, reject);
 	}
  bail:
 	return check_too_hard(xics, icp);
@@ -416,16 +706,166 @@ int kvmppc_rm_h_eoi(struct kvm_vcpu *vcpu, unsigned long xirr)
 		goto bail;
 	state = &ics->irq_state[src];
 
-	/* Still asserted, resend it, we make it look like a reject */
+	/* Still asserted, resend it */
 	if (state->asserted) {
-		icp->rm_action |= XICS_RM_REJECT;
-		icp->rm_reject = irq;
+		icp->n_reject++;
+		icp_rm_deliver_irq(xics, icp, irq);
 	}
 
 	if (!hlist_empty(&vcpu->kvm->irq_ack_notifier_list)) {
 		icp->rm_action |= XICS_RM_NOTIFY_EOI;
 		icp->rm_eoied_irq = irq;
 	}
+
+	if (state->host_irq) {
+		++vcpu->stat.pthru_all;
+		if (state->intr_cpu != -1) {
+			int pcpu = raw_smp_processor_id();
+
+			pcpu = cpu_first_thread_sibling(pcpu);
+			++vcpu->stat.pthru_host;
+			if (state->intr_cpu != pcpu) {
+				++vcpu->stat.pthru_bad_aff;
+				xics_opal_rm_set_server(state->host_irq, pcpu);
+			}
+			state->intr_cpu = -1;
+		}
+	}
  bail:
 	return check_too_hard(xics, icp);
+}
+
+unsigned long eoi_rc;
+
+static void icp_eoi(struct irq_chip *c, u32 hwirq, u32 xirr)
+{
+	unsigned long xics_phys;
+	int64_t rc;
+
+	rc = pnv_opal_pci_msi_eoi(c, hwirq);
+
+	if (rc)
+		eoi_rc = rc;
+
+	iosync();
+
+	/* EOI it */
+	xics_phys = local_paca->kvm_hstate.xics_phys;
+	_stwcix(xics_phys + XICS_XIRR, xirr);
+}
+
+static int xics_opal_rm_set_server(unsigned int hw_irq, int server_cpu)
+{
+	unsigned int mangle_cpu = get_hard_smp_processor_id(server_cpu) << 2;
+
+	return opal_rm_set_xive(hw_irq, mangle_cpu, DEFAULT_PRIORITY);
+}
+
+/*
+ * Increment a per-CPU 32-bit unsigned integer variable.
+ * Safe to call in real-mode. Handles vmalloc'ed addresses
+ *
+ * ToDo: Make this work for any integral type
+ */
+
+static inline void this_cpu_inc_rm(unsigned int __percpu *addr)
+{
+	unsigned long l;
+	unsigned int *raddr;
+	int cpu = smp_processor_id();
+
+	raddr = per_cpu_ptr(addr, cpu);
+	l = (unsigned long)raddr;
+
+	if (REGION_ID(l) == VMALLOC_REGION_ID) {
+		l = vmalloc_to_phys(raddr);
+		raddr = (unsigned int *)l;
+	}
+	++*raddr;
+}
+
+/*
+ * We don't try to update the flags in the irq_desc 'istate' field in
+ * here as would happen in the normal IRQ handling path for several reasons:
+ *  - state flags represent internal IRQ state and are not expected to be
+ *    updated outside the IRQ subsystem
+ *  - more importantly, these are useful for edge triggered interrupts,
+ *    IRQ probing, etc., but we are only handling MSI/MSIx interrupts here
+ *    and these states shouldn't apply to us.
+ *
+ * However, we do update irq_stats - we somewhat duplicate the code in
+ * kstat_incr_irqs_this_cpu() for this since this function is defined
+ * in irq/internal.h which we don't want to include here.
+ * The only difference is that desc->kstat_irqs is an allocated per CPU
+ * variable and could have been vmalloc'ed, so we can't directly
+ * call __this_cpu_inc() on it. The kstat structure is a static
+ * per CPU variable and it should be accessible by real-mode KVM.
+ *
+ */
+static void kvmppc_rm_handle_irq_desc(struct irq_desc *desc)
+{
+	this_cpu_inc_rm(desc->kstat_irqs);
+	__this_cpu_inc(kstat.irqs_sum);
+}
+
+long kvmppc_deliver_irq_passthru(struct kvm_vcpu *vcpu,
+				 u32 xirr,
+				 struct kvmppc_irq_map *irq_map,
+				 struct kvmppc_passthru_irqmap *pimap)
+{
+	struct kvmppc_xics *xics;
+	struct kvmppc_icp *icp;
+	u32 irq;
+
+	irq = irq_map->v_hwirq;
+	xics = vcpu->kvm->arch.xics;
+	icp = vcpu->arch.icp;
+
+	kvmppc_rm_handle_irq_desc(irq_map->desc);
+	icp_rm_deliver_irq(xics, icp, irq);
+
+	/* EOI the interrupt */
+	icp_eoi(irq_desc_get_chip(irq_map->desc), irq_map->r_hwirq, xirr);
+
+	if (check_too_hard(xics, icp) == H_TOO_HARD)
+		return 2;
+	else
+		return -2;
+}
+
+/*  --- Non-real mode XICS-related built-in routines ---  */
+
+/**
+ * Host Operations poked by RM KVM
+ */
+static void rm_host_ipi_action(int action, void *data)
+{
+	switch (action) {
+	case XICS_RM_KICK_VCPU:
+		kvmppc_host_rm_ops_hv->vcpu_kick(data);
+		break;
+	default:
+		WARN(1, "Unexpected rm_action=%d data=%p\n", action, data);
+		break;
+	}
+
+}
+
+void kvmppc_xics_ipi_action(void)
+{
+	int core;
+	unsigned int cpu = smp_processor_id();
+	struct kvmppc_host_rm_core *rm_corep;
+
+	core = cpu >> threads_shift;
+	rm_corep = &kvmppc_host_rm_ops_hv->rm_core[core];
+
+	if (rm_corep->rm_data) {
+		rm_host_ipi_action(rm_corep->rm_state.rm_action,
+							rm_corep->rm_data);
+		/* Order these stores against the real mode KVM */
+		rm_corep->rm_data = NULL;
+		smp_wmb();
+		rm_corep->rm_state.rm_action = 0;
+	}
 }

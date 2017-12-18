@@ -188,7 +188,7 @@ static int pt3_set_lna(struct dvb_frontend *fe)
 	return ret;
 }
 
-static int pt3_set_voltage(struct dvb_frontend *fe, fe_sec_voltage_t volt)
+static int pt3_set_voltage(struct dvb_frontend *fe, enum fe_sec_voltage volt)
 {
 	struct pt3_adapter *adap;
 	struct pt3_board *pt3;
@@ -395,7 +395,8 @@ static int pt3_attach_fe(struct pt3_board *pt3, int i)
 	if (!try_module_get(cl->dev.driver->owner))
 		goto err_demod_i2c_unregister_device;
 
-	if (!strncmp(cl->name, TC90522_I2C_DEV_SAT, sizeof(cl->name))) {
+	if (!strncmp(cl->name, TC90522_I2C_DEV_SAT,
+		     strlen(TC90522_I2C_DEV_SAT))) {
 		struct qm1d1c0042_config tcfg;
 
 		tcfg = adap_conf[i].tuner_cfg.qm1d1c0042;
@@ -797,10 +798,8 @@ static int pt3_probe(struct pci_dev *pdev, const struct pci_device_id *ent)
 	strlcpy(i2c->name, DRV_NAME, sizeof(i2c->name));
 	i2c_set_adapdata(i2c, pt3);
 	ret = i2c_add_adapter(i2c);
-	if (ret < 0) {
-		dev_err(&pdev->dev, "Failed to add i2c adapter\n");
+	if (ret < 0)
 		goto err_i2cbuf;
-	}
 
 	for (i = 0; i < PT3_NUM_FE; i++) {
 		ret = pt3_alloc_adapter(pt3, i);

@@ -57,13 +57,14 @@ static inline bool should_writeback(struct cached_dev *dc, struct bio *bio,
 	if (would_skip)
 		return false;
 
-	return bio->bi_rw & REQ_SYNC ||
+	return bio->bi_opf & REQ_SYNC ||
 		in_use <= CUTOFF_WRITEBACK;
 }
 
 static inline void bch_writeback_queue(struct cached_dev *dc)
 {
-	wake_up_process(dc->writeback_thread);
+	if (!IS_ERR_OR_NULL(dc->writeback_thread))
+		wake_up_process(dc->writeback_thread);
 }
 
 static inline void bch_writeback_add(struct cached_dev *dc)

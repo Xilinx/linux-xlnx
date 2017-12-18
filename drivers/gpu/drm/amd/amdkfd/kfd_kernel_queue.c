@@ -47,6 +47,9 @@ static bool initialize(struct kernel_queue *kq, struct kfd_dev *dev,
 	pr_debug("amdkfd: In func %s initializing queue type %d size %d\n",
 			__func__, KFD_QUEUE_TYPE_HIQ, queue_size);
 
+	memset(&prop, 0, sizeof(prop));
+	memset(&nop, 0, sizeof(nop));
+
 	nop.opcode = IT_NOP;
 	nop.type = PM4_TYPE_3;
 	nop.u32all |= PM4_COUNT_ZERO;
@@ -121,7 +124,7 @@ static bool initialize(struct kernel_queue *kq, struct kfd_dev *dev,
 	prop.eop_ring_buffer_address = kq->eop_gpu_addr;
 	prop.eop_ring_buffer_size = PAGE_SIZE;
 
-	if (init_queue(&kq->queue, prop) != 0)
+	if (init_queue(&kq->queue, &prop) != 0)
 		goto err_init_queue;
 
 	kq->queue->device = dev;
@@ -215,8 +218,9 @@ static int acquire_packet_buffer(struct kernel_queue *kq,
 	queue_address = (unsigned int *)kq->pq_kernel_addr;
 	queue_size_dwords = kq->queue->properties.queue_size / sizeof(uint32_t);
 
-	pr_debug("amdkfd: In func %s\nrptr: %d\nwptr: %d\nqueue_address 0x%p\n",
-			__func__, rptr, wptr, queue_address);
+	pr_debug("rptr: %d\n", rptr);
+	pr_debug("wptr: %d\n", wptr);
+	pr_debug("queue_address 0x%p\n", queue_address);
 
 	available_size = (rptr - 1 - wptr + queue_size_dwords) %
 							queue_size_dwords;
@@ -299,7 +303,7 @@ struct kernel_queue *kernel_queue_init(struct kfd_dev *dev,
 		break;
 	}
 
-	if (kq->ops.initialize(kq, dev, type, KFD_KERNEL_QUEUE_SIZE) == false) {
+	if (!kq->ops.initialize(kq, dev, type, KFD_KERNEL_QUEUE_SIZE)) {
 		pr_err("amdkfd: failed to init kernel queue\n");
 		kfree(kq);
 		return NULL;

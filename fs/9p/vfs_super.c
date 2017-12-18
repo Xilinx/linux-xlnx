@@ -87,7 +87,7 @@ v9fs_fill_super(struct super_block *sb, struct v9fs_session_info *v9ses,
 		sb->s_op = &v9fs_super_ops;
 	sb->s_bdi = &v9ses->bdi;
 	if (v9ses->cache)
-		sb->s_bdi->ra_pages = (VM_MAX_READAHEAD * 1024)/PAGE_CACHE_SIZE;
+		sb->s_bdi->ra_pages = (VM_MAX_READAHEAD * 1024)/PAGE_SIZE;
 
 	sb->s_flags |= MS_ACTIVE | MS_DIRSYNC | MS_NOATIME;
 	if (!v9ses->cache)
@@ -130,11 +130,7 @@ static struct dentry *v9fs_mount(struct file_system_type *fs_type, int flags,
 	fid = v9fs_session_init(v9ses, dev_name, data);
 	if (IS_ERR(fid)) {
 		retval = PTR_ERR(fid);
-		/*
-		 * we need to call session_close to tear down some
-		 * of the data structure setup by session_init
-		 */
-		goto close_session;
+		goto free_session;
 	}
 
 	sb = sget(fs_type, NULL, v9fs_set_super, flags, v9ses);
@@ -168,8 +164,8 @@ static struct dentry *v9fs_mount(struct file_system_type *fs_type, int flags,
 			retval = PTR_ERR(st);
 			goto release_sb;
 		}
-		root->d_inode->i_ino = v9fs_qid2ino(&st->qid);
-		v9fs_stat2inode_dotl(st, root->d_inode);
+		d_inode(root)->i_ino = v9fs_qid2ino(&st->qid);
+		v9fs_stat2inode_dotl(st, d_inode(root));
 		kfree(st);
 	} else {
 		struct p9_wstat *st = NULL;
@@ -179,8 +175,8 @@ static struct dentry *v9fs_mount(struct file_system_type *fs_type, int flags,
 			goto release_sb;
 		}
 
-		root->d_inode->i_ino = v9fs_qid2ino(&st->qid);
-		v9fs_stat2inode(st, root->d_inode, sb);
+		d_inode(root)->i_ino = v9fs_qid2ino(&st->qid);
+		v9fs_stat2inode(st, d_inode(root), sb);
 
 		p9stat_free(st);
 		kfree(st);
@@ -195,8 +191,8 @@ static struct dentry *v9fs_mount(struct file_system_type *fs_type, int flags,
 
 clunk_fid:
 	p9_client_clunk(fid);
-close_session:
 	v9fs_session_close(v9ses);
+free_session:
 	kfree(v9ses);
 	return ERR_PTR(retval);
 

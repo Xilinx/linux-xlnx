@@ -17,6 +17,7 @@ struct ring_buffer {
 #endif
 	int				nr_pages;	/* nr of data pages  */
 	int				overwrite;	/* can overwrite itself */
+	int				paused;		/* can write into ring buffer */
 
 	atomic_t			poll;		/* POLL_ for wakeups */
 
@@ -27,6 +28,7 @@ struct ring_buffer {
 	local_t				lost;		/* nr records lost   */
 
 	long				watermark;	/* wakeup watermark  */
+	long				aux_watermark;
 	/* poll crap */
 	spinlock_t			event_lock;
 	struct list_head		event_list;
@@ -35,23 +37,58 @@ struct ring_buffer {
 	unsigned long			mmap_locked;
 	struct user_struct		*mmap_user;
 
+	/* AUX area */
+	local_t				aux_head;
+	local_t				aux_nest;
+	local_t				aux_wakeup;
+	unsigned long			aux_pgoff;
+	int				aux_nr_pages;
+	int				aux_overwrite;
+	atomic_t			aux_mmap_count;
+	unsigned long			aux_mmap_locked;
+	void				(*free_aux)(void *);
+	atomic_t			aux_refcount;
+	void				**aux_pages;
+	void				*aux_priv;
+
 	struct perf_event_mmap_page	*user_page;
 	void				*data_pages[0];
 };
 
 extern void rb_free(struct ring_buffer *rb);
+
+static inline void rb_free_rcu(struct rcu_head *rcu_head)
+{
+	struct ring_buffer *rb;
+
+	rb = container_of(rcu_head, struct ring_buffer, rcu_head);
+	rb_free(rb);
+}
+
+static inline void rb_toggle_paused(struct ring_buffer *rb, bool pause)
+{
+	if (!pause && rb->nr_pages)
+		rb->paused = 0;
+	else
+		rb->paused = 1;
+}
+
 extern struct ring_buffer *
 rb_alloc(int nr_pages, long watermark, int cpu, int flags);
 extern void perf_event_wakeup(struct perf_event *event);
+extern int rb_alloc_aux(struct ring_buffer *rb, struct perf_event *event,
+			pgoff_t pgoff, int nr_pages, long watermark, int flags);
+extern void rb_free_aux(struct ring_buffer *rb);
+extern struct ring_buffer *ring_buffer_get(struct perf_event *event);
+extern void ring_buffer_put(struct ring_buffer *rb);
 
-extern void
-perf_event_header__init_id(struct perf_event_header *header,
-			   struct perf_sample_data *data,
-			   struct perf_event *event);
-extern void
-perf_event__output_id_sample(struct perf_event *event,
-			     struct perf_output_handle *handle,
-			     struct perf_sample_data *sample);
+static inline bool rb_has_aux(struct ring_buffer *rb)
+{
+	return !!rb->aux_nr_pages;
+}
+
+void perf_event_aux_event(struct perf_event *event, unsigned long head,
+			  unsigned long size, u64 flags);
 
 extern struct page *
 perf_mmap_to_page(struct ring_buffer *rb, unsigned long pgoff);
@@ -81,21 +118,24 @@ static inline unsigned long perf_data_size(struct ring_buffer *rb)
 	return rb->nr_pages << (PAGE_SHIFT + page_order(rb));
 }
 
-#define DEFINE_OUTPUT_COPY(func_name, memcpy_func)			\
-static inline unsigned long						\
-func_name(struct perf_output_handle *handle,				\
-	  const void *buf, unsigned long len)				\
+static inline unsigned long perf_aux_size(struct ring_buffer *rb)
+{
+	return rb->aux_nr_pages << PAGE_SHIFT;
+}
+
+#define __DEFINE_OUTPUT_COPY_BODY(advance_buf, memcpy_func, ...)	\
 {									\
 	unsigned long size, written;					\
 									\
 	do {								\
 		size    = min(handle->size, len);			\
-		written = memcpy_func(handle->addr, buf, size);		\
+		written = memcpy_func(__VA_ARGS__);			\
 		written = size - written;				\
 									\
 		len -= written;						\
 		handle->addr += written;				\
-		buf += written;						\
+		if (advance_buf)					\
+			buf += written;					\
 		handle->size -= written;				\
 		if (!handle->size) {					\
 			struct ring_buffer *rb = handle->rb;		\
@@ -108,6 +148,21 @@ func_name(struct perf_output_handle *handle,				\
 	} while (len && written == size);				\
 									\
 	return len;							\
+}
+
+#define DEFINE_OUTPUT_COPY(func_name, memcpy_func)			\
+static inline unsigned long						\
+func_name(struct perf_output_handle *handle,				\
+	  const void *buf, unsigned long len)				\
+__DEFINE_OUTPUT_COPY_BODY(true, memcpy_func, handle->addr, buf, size)
+
+static inline unsigned long
+__output_custom(struct perf_output_handle *handle, perf_copy_f copy_func,
+		const void *buf, unsigned long len)
+{
+	unsigned long orig_len = len;
+	__DEFINE_OUTPUT_COPY_BODY(false, copy_func, handle->addr, buf,
+				  orig_len - len, size)
 }
 
 static inline unsigned long
@@ -148,8 +203,6 @@ DEFINE_OUTPUT_COPY(__output_copy_user, arch_perf_out_copy_user)
 /* Callchain handling */
 extern struct perf_callchain_entry *
 perf_callchain(struct perf_event *event, struct pt_regs *regs);
-extern int get_callchain_buffers(void);
-extern void put_callchain_buffers(void);
 
 static inline int get_recursion_context(int *recursion)
 {

@@ -190,7 +190,7 @@ ieee80211_find_reservation_chanctx(struct ieee80211_local *local,
 	return NULL;
 }
 
-static enum nl80211_chan_width ieee80211_get_sta_bw(struct ieee80211_sta *sta)
+enum nl80211_chan_width ieee80211_get_sta_bw(struct ieee80211_sta *sta)
 {
 	switch (sta->bandwidth) {
 	case IEEE80211_STA_RX_BW_20:
@@ -231,7 +231,7 @@ ieee80211_get_max_required_bw(struct ieee80211_sub_if_data *sdata)
 		    !(sta->sdata->bss && sta->sdata->bss == sdata->bss))
 			continue;
 
-		if (!sta->uploaded)
+		if (!sta->uploaded || !test_sta_flag(sta, WLAN_STA_ASSOC))
 			continue;
 
 		max_bw = max(max_bw, ieee80211_get_sta_bw(&sta->sta));
@@ -264,9 +264,18 @@ ieee80211_get_chanctx_max_required_bw(struct ieee80211_local *local,
 		case NL80211_IFTYPE_AP_VLAN:
 			width = ieee80211_get_max_required_bw(sdata);
 			break;
-		case NL80211_IFTYPE_P2P_DEVICE:
-			continue;
 		case NL80211_IFTYPE_STATION:
+			/*
+			 * The ap's sta->bandwidth is not set yet at this
+			 * point, so take the width from the chandef, but
+			 * account also for TDLS peers
+			 */
+			width = max(vif->bss_conf.chandef.width,
+				    ieee80211_get_max_required_bw(sdata));
+			break;
+		case NL80211_IFTYPE_P2P_DEVICE:
+		case NL80211_IFTYPE_NAN:
+			continue;
 		case NL80211_IFTYPE_ADHOC:
 		case NL80211_IFTYPE_WDS:
 		case NL80211_IFTYPE_MESH_POINT:
@@ -335,8 +344,10 @@ static void ieee80211_change_chanctx(struct ieee80211_local *local,
 				     struct ieee80211_chanctx *ctx,
 				     const struct cfg80211_chan_def *chandef)
 {
-	if (cfg80211_chandef_identical(&ctx->conf.def, chandef))
+	if (cfg80211_chandef_identical(&ctx->conf.def, chandef)) {
+		ieee80211_recalc_chanctx_min_def(local, ctx);
 		return;
+	}
 
 	WARN_ON(!cfg80211_chandef_compatible(&ctx->conf.def, chandef));
 
@@ -554,12 +565,13 @@ static void ieee80211_free_chanctx(struct ieee80211_local *local,
 	kfree_rcu(ctx, rcu_head);
 }
 
-static void ieee80211_recalc_chanctx_chantype(struct ieee80211_local *local,
-					      struct ieee80211_chanctx *ctx)
+void ieee80211_recalc_chanctx_chantype(struct ieee80211_local *local,
+				       struct ieee80211_chanctx *ctx)
 {
 	struct ieee80211_chanctx_conf *conf = &ctx->conf;
 	struct ieee80211_sub_if_data *sdata;
 	const struct cfg80211_chan_def *compat = NULL;
+	struct sta_info *sta;
 
 	lockdep_assert_held(&local->chanctx_mtx);
 
@@ -578,6 +590,20 @@ static void ieee80211_recalc_chanctx_chantype(struct ieee80211_local *local,
 
 		compat = cfg80211_chandef_compatible(
 				&sdata->vif.bss_conf.chandef, compat);
+		if (WARN_ON_ONCE(!compat))
+			break;
+	}
+
+	/* TDLS peers can sometimes affect the chandef width */
+	list_for_each_entry_rcu(sta, &local->sta_list, list) {
+		if (!sta->uploaded ||
+		    !test_sta_flag(sta, WLAN_STA_TDLS_WIDER_BW) ||
+		    !test_sta_flag(sta, WLAN_STA_AUTHORIZED) ||
+		    !sta->tdls_chandef.chan)
+			continue;
+
+		compat = cfg80211_chandef_compatible(&sta->tdls_chandef,
+						     compat);
 		if (WARN_ON_ONCE(!compat))
 			break;
 	}
@@ -620,6 +646,9 @@ static int ieee80211_assign_vif_chanctx(struct ieee80211_sub_if_data *sdata,
 	struct ieee80211_chanctx_conf *conf;
 	struct ieee80211_chanctx *curr_ctx = NULL;
 	int ret = 0;
+
+	if (WARN_ON(sdata->vif.type == NL80211_IFTYPE_NAN))
+		return -ENOTSUPP;
 
 	conf = rcu_dereference_protected(sdata->vif.chanctx_conf,
 					 lockdep_is_held(&local->chanctx_mtx));
@@ -664,6 +693,8 @@ out:
 		ieee80211_bss_info_change_notify(sdata,
 						 BSS_CHANGED_IDLE);
 
+	ieee80211_check_fast_xmit_iface(sdata);
+
 	return ret;
 }
 
@@ -691,6 +722,7 @@ void ieee80211_recalc_smps_chanctx(struct ieee80211_local *local,
 
 		switch (sdata->vif.type) {
 		case NL80211_IFTYPE_P2P_DEVICE:
+		case NL80211_IFTYPE_NAN:
 			continue;
 		case NL80211_IFTYPE_STATION:
 			if (!sdata->u.mgd.associated)
@@ -953,6 +985,7 @@ ieee80211_vif_chanctx_reservation_complete(struct ieee80211_sub_if_data *sdata)
 	case NL80211_IFTYPE_P2P_CLIENT:
 	case NL80211_IFTYPE_P2P_GO:
 	case NL80211_IFTYPE_P2P_DEVICE:
+	case NL80211_IFTYPE_NAN:
 	case NUM_NL80211_IFTYPES:
 		WARN_ON(1);
 		break;
@@ -1008,6 +1041,8 @@ ieee80211_vif_use_reserved_reassign(struct ieee80211_sub_if_data *sdata)
 	if (WARN_ON(!chandef))
 		return -EINVAL;
 
+	ieee80211_change_chanctx(local, new_ctx, chandef);
+
 	vif_chsw[0].vif = &sdata->vif;
 	vif_chsw[0].old_ctx = &old_ctx->conf;
 	vif_chsw[0].new_ctx = &new_ctx->conf;
@@ -1029,6 +1064,8 @@ ieee80211_vif_use_reserved_reassign(struct ieee80211_sub_if_data *sdata)
 
 	if (sdata->vif.type == NL80211_IFTYPE_AP)
 		__ieee80211_vif_copy_chanctx_to_vlans(sdata, false);
+
+	ieee80211_check_fast_xmit_iface(sdata);
 
 	if (ieee80211_chanctx_refcount(local, old_ctx) == 0)
 		ieee80211_free_chanctx(local, old_ctx);
@@ -1078,6 +1115,8 @@ ieee80211_vif_use_reserved_assign(struct ieee80211_sub_if_data *sdata)
 				&sdata->reserved_chandef);
 	if (WARN_ON(!chandef))
 		return -EINVAL;
+
+	ieee80211_change_chanctx(local, new_ctx, chandef);
 
 	list_del(&sdata->reserved_chanctx_list);
 	sdata->reserved_chanctx = NULL;
@@ -1375,6 +1414,8 @@ static int ieee80211_vif_use_reserved_switch(struct ieee80211_local *local)
 			if (sdata->vif.type == NL80211_IFTYPE_AP)
 				__ieee80211_vif_copy_chanctx_to_vlans(sdata,
 								      false);
+
+			ieee80211_check_fast_xmit_iface(sdata);
 
 			sdata->radar_required = sdata->reserved_radar_required;
 

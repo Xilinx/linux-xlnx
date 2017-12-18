@@ -65,10 +65,12 @@ static struct snd_soc_dai_driver ak4554_dai = {
 };
 
 static struct snd_soc_codec_driver soc_codec_dev_ak4554 = {
-	.dapm_widgets = ak4554_dapm_widgets,
-	.num_dapm_widgets = ARRAY_SIZE(ak4554_dapm_widgets),
-	.dapm_routes = ak4554_dapm_routes,
-	.num_dapm_routes = ARRAY_SIZE(ak4554_dapm_routes),
+	.component_driver = {
+		.dapm_widgets		= ak4554_dapm_widgets,
+		.num_dapm_widgets	= ARRAY_SIZE(ak4554_dapm_widgets),
+		.dapm_routes		= ak4554_dapm_routes,
+		.num_dapm_routes	= ARRAY_SIZE(ak4554_dapm_routes),
+	},
 };
 
 static int ak4554_soc_probe(struct platform_device *pdev)
@@ -84,7 +86,7 @@ static int ak4554_soc_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static struct of_device_id ak4554_of_match[] = {
+static const struct of_device_id ak4554_of_match[] = {
 	{ .compatible = "asahi-kasei,ak4554" },
 	{},
 };

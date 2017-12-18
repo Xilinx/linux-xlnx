@@ -7,6 +7,10 @@
 #include <asm/asm-offsets.h>
 #include <asm/thread_info.h>
 
+#ifdef CONFIG_CPU_V7M
+#include <asm/v7m.h>
+#endif
+
 /*
  * vma_vm_mm - get mm pointer from vma pointer (vma->vm_mm)
  */
@@ -70,7 +74,13 @@
  * on ARMv7.
  */
 	.macro	dcache_line_size, reg, tmp
+#ifdef CONFIG_CPU_V7M
+	movw	\tmp, #:lower16:BASEADDR_V7M_SCB + V7M_SCB_CTR
+	movt	\tmp, #:upper16:BASEADDR_V7M_SCB + V7M_SCB_CTR
+	ldr     \tmp, [\tmp]
+#else
 	mrc	p15, 0, \tmp, c0, c0, 1		@ read ctr
+#endif
 	lsr	\tmp, \tmp, #16
 	and	\tmp, \tmp, #0xf		@ cache line size encoding
 	mov	\reg, #4			@ bytes per word
@@ -82,7 +92,13 @@
  * on ARMv7.
  */
 	.macro	icache_line_size, reg, tmp
+#ifdef CONFIG_CPU_V7M
+	movw	\tmp, #:lower16:BASEADDR_V7M_SCB + V7M_SCB_CTR
+	movt	\tmp, #:upper16:BASEADDR_V7M_SCB + V7M_SCB_CTR
+	ldr     \tmp, [\tmp]
+#else
 	mrc	p15, 0, \tmp, c0, c0, 1		@ read ctr
+#endif
 	and	\tmp, \tmp, #0xf		@ cache line size encoding
 	mov	\reg, #4			@ bytes per word
 	mov	\reg, \reg, lsl \tmp		@ actual cache line size
@@ -330,4 +346,32 @@ ENTRY(\name\()_tlb_fns)
 .macro globl_equ x, y
 	.globl	\x
 	.equ	\x, \y
+.endm
+
+.macro	initfn, func, base
+	.long	\func - \base
+.endm
+
+	/*
+	 * Macro to calculate the log2 size for the protection region
+	 * registers. This calculates rd = log2(size) - 1.  tmp must
+	 * not be the same register as rd.
+	 */
+.macro	pr_sz, rd, size, tmp
+	mov	\tmp, \size, lsr #12
+	mov	\rd, #11
+1:	movs	\tmp, \tmp, lsr #1
+	addne	\rd, \rd, #1
+	bne	1b
+.endm
+
+	/*
+	 * Macro to generate a protection region register value
+	 * given a pre-masked address, size, and enable bit.
+	 * Corrupts size.
+	 */
+.macro	pr_val, dest, addr, size, enable
+	pr_sz	\dest, \size, \size		@ calculate log2(size) - 1
+	orr	\dest, \addr, \dest, lsl #1	@ mask in the region size
+	orr	\dest, \dest, \enable
 .endm

@@ -20,6 +20,7 @@
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_fourcc.h>
 
+#include <linux/debugfs.h>
 #include <linux/device.h>
 #include <linux/interrupt.h>
 #include <linux/irqreturn.h>
@@ -28,6 +29,7 @@
 #include <linux/mutex.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
+#include <linux/uaccess.h>
 
 #include "xilinx_drm_dp_sub.h"
 #include "xilinx_drm_drv.h"
@@ -93,47 +95,47 @@
 #define XILINX_DP_SUB_V_BLEND_CHROMA_KEY_COMP3			0x1dc
 
 /* AV buffer manager registers */
-#define XILINX_DP_SUB_AV_BUF_FORMAT				0x0
-#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_SHIFT		0
-#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_MASK			(0x1f << 0)
-#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_UYVY			(0 << 0)
-#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_VYUY			(1 << 0)
-#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_YVYU			(2 << 0)
-#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_YUYV			(3 << 0)
-#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_YU16			(4 << 0)
-#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_YU24			(5 << 0)
-#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_YU16CI		(6 << 0)
-#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_MONO			(7 << 0)
-#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_YU16CI2		(8 << 0)
-#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_YUV444		(9 << 0)
-#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_RGB888		(10 << 0)
-#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_RGBA8880		(11 << 0)
-#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_RGB888_10		(12 << 0)
-#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_YUV444_10		(13 << 0)
-#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_YV16CI2_10		(14 << 0)
-#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_YV16CI_10		(15 << 0)
-#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_YV16_10		(16 << 0)
-#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_YV24_10		(17 << 0)
-#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_YONLY_10		(18 << 0)
-#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_YV16_420		(19 << 0)
-#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_YV16CI_420		(20 << 0)
-#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_YV16CI2_420		(21 << 0)
-#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_YV16_420_10		(22 << 0)
-#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_YV16CI_420_10	(23 << 0)
-#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_YV16CI2_420_10	(24 << 0)
-#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_GFX_SHIFT		8
-#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_GFX_MASK			(0xf << 8)
-#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_GFX_RGBA8888		(0 << 8)
-#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_GFX_ABGR8888		(1 << 8)
-#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_GFX_RGB888		(2 << 8)
-#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_GFX_BGR888		(3 << 8)
-#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_GFX_RGBA5551		(4 << 8)
-#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_GFX_RGBA4444		(5 << 8)
-#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_GFX_RGB565		(6 << 8)
-#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_GFX_8BPP			(7 << 8)
-#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_GFX_4BPP			(8 << 8)
-#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_GFX_2BPP			(9 << 8)
-#define XILINX_DP_SUB_AV_BUF_FORMAT_NL_GFX_1BPP			(10 << 8)
+#define XILINX_DP_SUB_AV_BUF_FMT				0x0
+#define XILINX_DP_SUB_AV_BUF_FMT_NL_VID_SHIFT			0
+#define XILINX_DP_SUB_AV_BUF_FMT_NL_VID_MASK			(0x1f << 0)
+#define XILINX_DP_SUB_AV_BUF_FMT_NL_VID_UYVY			(0 << 0)
+#define XILINX_DP_SUB_AV_BUF_FMT_NL_VID_VYUY			(1 << 0)
+#define XILINX_DP_SUB_AV_BUF_FMT_NL_VID_YVYU			(2 << 0)
+#define XILINX_DP_SUB_AV_BUF_FMT_NL_VID_YUYV			(3 << 0)
+#define XILINX_DP_SUB_AV_BUF_FMT_NL_VID_YV16			(4 << 0)
+#define XILINX_DP_SUB_AV_BUF_FMT_NL_VID_YV24			(5 << 0)
+#define XILINX_DP_SUB_AV_BUF_FMT_NL_VID_YV16CI			(6 << 0)
+#define XILINX_DP_SUB_AV_BUF_FMT_NL_VID_MONO			(7 << 0)
+#define XILINX_DP_SUB_AV_BUF_FMT_NL_VID_YV16CI2			(8 << 0)
+#define XILINX_DP_SUB_AV_BUF_FMT_NL_VID_YUV444			(9 << 0)
+#define XILINX_DP_SUB_AV_BUF_FMT_NL_VID_RGB888			(10 << 0)
+#define XILINX_DP_SUB_AV_BUF_FMT_NL_VID_RGBA8880		(11 << 0)
+#define XILINX_DP_SUB_AV_BUF_FMT_NL_VID_RGB888_10		(12 << 0)
+#define XILINX_DP_SUB_AV_BUF_FMT_NL_VID_YUV444_10		(13 << 0)
+#define XILINX_DP_SUB_AV_BUF_FMT_NL_VID_YV16CI2_10		(14 << 0)
+#define XILINX_DP_SUB_AV_BUF_FMT_NL_VID_YV16CI_10		(15 << 0)
+#define XILINX_DP_SUB_AV_BUF_FMT_NL_VID_YV16_10			(16 << 0)
+#define XILINX_DP_SUB_AV_BUF_FMT_NL_VID_YV24_10			(17 << 0)
+#define XILINX_DP_SUB_AV_BUF_FMT_NL_VID_YONLY_10		(18 << 0)
+#define XILINX_DP_SUB_AV_BUF_FMT_NL_VID_YV16_420		(19 << 0)
+#define XILINX_DP_SUB_AV_BUF_FMT_NL_VID_YV16CI_420		(20 << 0)
+#define XILINX_DP_SUB_AV_BUF_FMT_NL_VID_YV16CI2_420		(21 << 0)
+#define XILINX_DP_SUB_AV_BUF_FMT_NL_VID_YV16_420_10		(22 << 0)
+#define XILINX_DP_SUB_AV_BUF_FMT_NL_VID_YV16CI_420_10		(23 << 0)
+#define XILINX_DP_SUB_AV_BUF_FMT_NL_VID_YV16CI2_420_10		(24 << 0)
+#define XILINX_DP_SUB_AV_BUF_FMT_NL_GFX_SHIFT			8
+#define XILINX_DP_SUB_AV_BUF_FMT_NL_GFX_MASK			(0xf << 8)
+#define XILINX_DP_SUB_AV_BUF_FMT_NL_GFX_RGBA8888		(0 << 8)
+#define XILINX_DP_SUB_AV_BUF_FMT_NL_GFX_ABGR8888		(1 << 8)
+#define XILINX_DP_SUB_AV_BUF_FMT_NL_GFX_RGB888			(2 << 8)
+#define XILINX_DP_SUB_AV_BUF_FMT_NL_GFX_BGR888			(3 << 8)
+#define XILINX_DP_SUB_AV_BUF_FMT_NL_GFX_RGBA5551		(4 << 8)
+#define XILINX_DP_SUB_AV_BUF_FMT_NL_GFX_RGBA4444		(5 << 8)
+#define XILINX_DP_SUB_AV_BUF_FMT_NL_GFX_RGB565			(6 << 8)
+#define XILINX_DP_SUB_AV_BUF_FMT_NL_GFX_8BPP			(7 << 8)
+#define XILINX_DP_SUB_AV_BUF_FMT_NL_GFX_4BPP			(8 << 8)
+#define XILINX_DP_SUB_AV_BUF_FMT_NL_GFX_2BPP			(9 << 8)
+#define XILINX_DP_SUB_AV_BUF_FMT_NL_GFX_1BPP			(10 << 8)
 #define XILINX_DP_SUB_AV_BUF_NON_LIVE_LATENCY			0x8
 #define XILINX_DP_SUB_AV_BUF_CHBUF				0x10
 #define XILINX_DP_SUB_AV_BUF_CHBUF_EN				BIT(0)
@@ -234,6 +236,8 @@
 #define XILINX_DP_SUB_AUD_CH_B_DATA3				0x44
 #define XILINX_DP_SUB_AUD_CH_B_DATA4				0x48
 #define XILINX_DP_SUB_AUD_CH_B_DATA5				0x4c
+#define XILINX_DP_SUB_AUD_SOFT_RESET				0xc00
+#define XILINX_DP_SUB_AUD_SOFT_RESET_AUD_SRST			BIT(0)
 
 #define XILINX_DP_SUB_AV_BUF_NUM_VID_GFX_BUFFERS		4
 #define XILINX_DP_SUB_AV_BUF_NUM_BUFFERS			6
@@ -256,6 +260,8 @@ enum xilinx_drm_dp_sub_layer_type {
  * @primary: flag for primary plane
  * @enabled: flag if the layer is enabled
  * @fmt: format descriptor
+ * @drm_fmts: array of supported DRM formats
+ * @num_fmts: number of supported DRM formats
  * @w: width
  * @h: height
  * @other: other layer
@@ -267,8 +273,10 @@ struct xilinx_drm_dp_sub_layer {
 	bool primary;
 	bool enabled;
 	const struct xilinx_drm_dp_sub_fmt *fmt;
-	uint32_t w;
-	uint32_t h;
+	u32 *drm_fmts;
+	unsigned int num_fmts;
+	u32 w;
+	u32 h;
 	struct xilinx_drm_dp_sub_layer *other;
 };
 
@@ -306,6 +314,9 @@ struct xilinx_drm_dp_sub_aud {
  * @list: entry in the global DP subsystem list
  * @vblank_fn: vblank handler
  * @vblank_data: vblank data to be used in vblank_fn
+ * @vid_clk_pl: flag if the clock is from PL
+ * @alpha: stored global alpha value
+ * @alpha_en: flag if the global alpha is enabled
  */
 struct xilinx_drm_dp_sub {
 	struct device *dev;
@@ -317,6 +328,8 @@ struct xilinx_drm_dp_sub {
 	void (*vblank_fn)(void *);
 	void *vblank_data;
 	bool vid_clk_pl;
+	u32 alpha;
+	bool alpha_en;
 };
 
 /**
@@ -324,14 +337,16 @@ struct xilinx_drm_dp_sub {
  * @drm_fmt: drm format
  * @dp_sub_fmt: DP subsystem format
  * @rgb: flag for RGB formats
+ * @swap: flag to swap r & b for rgb formats, and u & v for yuv formats
  * @chroma_sub: flag for chroma subsampled formats
  * @sf: scaling factors for upto 3 color components
  * @name: format name
  */
 struct xilinx_drm_dp_sub_fmt {
-	uint32_t drm_fmt;
+	u32 drm_fmt;
 	u32 dp_sub_fmt;
 	bool rgb;
+	bool swap;
 	bool chroma_sub;
 	u32 sf[3];
 	const char *name;
@@ -339,6 +354,348 @@ struct xilinx_drm_dp_sub_fmt {
 
 static LIST_HEAD(xilinx_drm_dp_sub_list);
 static DEFINE_MUTEX(xilinx_drm_dp_sub_lock);
+
+#ifdef CONFIG_DRM_XILINX_DP_SUB_DEBUG_FS
+#define XILINX_DP_SUB_DEBUGFS_READ_MAX_SIZE	32
+#define XILINX_DP_SUB_DEBUGFS_MAX_BG_COLOR_VAL	0xFFF
+#define IN_RANGE(x, min, max) ({	\
+		typeof(x) _x = (x);	\
+		_x >= (min) && _x <= (max); })
+
+/* Match xilinx_dp_testcases vs dp_debugfs_reqs[] entry */
+enum xilinx_dp_sub_testcases {
+	DP_SUB_TC_BG_COLOR,
+	DP_SUB_TC_OUTPUT_FMT,
+	DP_SUB_TC_NONE
+};
+
+struct xilinx_dp_sub_debugfs {
+	enum xilinx_dp_sub_testcases testcase;
+	u16 r_value;
+	u16 g_value;
+	u16 b_value;
+	u32 output_fmt;
+	struct xilinx_drm_dp_sub *xilinx_dp_sub;
+};
+
+static struct xilinx_dp_sub_debugfs dp_sub_debugfs;
+struct xilinx_dp_sub_debugfs_request {
+	const char *req;
+	enum xilinx_dp_sub_testcases tc;
+	ssize_t (*read_handler)(char **kern_buff);
+	ssize_t (*write_handler)(char **cmd);
+};
+
+static s64 xilinx_dp_sub_debugfs_argument_value(char *arg)
+{
+	s64 value;
+
+	if (!arg)
+		return -1;
+
+	if (!kstrtos64(arg, 0, &value))
+		return value;
+
+	return -1;
+}
+
+static void
+xilinx_dp_sub_debugfs_update_v_blend(u16 *sdtv_coeffs, u32 *full_range_offsets)
+{
+	struct xilinx_drm_dp_sub *dp_sub = dp_sub_debugfs.xilinx_dp_sub;
+	u32 offset, i;
+
+	/* Hardcode SDTV coefficients. Can be runtime configurable */
+	offset = XILINX_DP_SUB_V_BLEND_RGB2YCBCR_COEFF0;
+	for (i = 0; i < XILINX_DP_SUB_V_BLEND_NUM_COEFF; i++)
+		xilinx_drm_writel(dp_sub->blend.base, offset + i * 4,
+				  sdtv_coeffs[i]);
+
+	offset = XILINX_DP_SUB_V_BLEND_LUMA_OUTCSC_OFFSET;
+	for (i = 0; i < XILINX_DP_SUB_V_BLEND_NUM_OFFSET; i++)
+		xilinx_drm_writel(dp_sub->blend.base, offset + i * 4,
+				  full_range_offsets[i]);
+}
+
+static void xilinx_dp_sub_debugfs_output_format(u32 fmt)
+{
+	struct xilinx_drm_dp_sub *dp_sub = dp_sub_debugfs.xilinx_dp_sub;
+
+	xilinx_drm_writel(dp_sub->blend.base,
+			  XILINX_DP_SUB_V_BLEND_OUTPUT_VID_FMT, fmt);
+
+	if (fmt != XILINX_DP_SUB_V_BLEND_OUTPUT_VID_FMT_RGB) {
+		u16 sdtv_coeffs[] = { 0x4c9, 0x864, 0x1d3,
+				      0x7d4d, 0x7ab3, 0x800,
+				      0x800, 0x794d, 0x7eb3 };
+		u32 full_range_offsets[] = { 0x0, 0x8000000, 0x8000000 };
+
+		xilinx_dp_sub_debugfs_update_v_blend(sdtv_coeffs,
+						     full_range_offsets);
+	} else {
+		/* In case of RGB set the reset values*/
+		u16 sdtv_coeffs[] = { 0x1000, 0x0, 0x0,
+				      0x0, 0x1000, 0x0,
+				      0x0, 0x0, 0x1000 };
+		u32 full_range_offsets[] = { 0x0, 0x0, 0x0 };
+
+		xilinx_dp_sub_debugfs_update_v_blend(sdtv_coeffs,
+						     full_range_offsets);
+	}
+}
+
+static ssize_t
+xilinx_dp_sub_debugfs_background_color_write(char **dp_sub_test_arg)
+{
+	char *r_color, *g_color, *b_color;
+	s64 r_val, g_val, b_val;
+
+	r_color = strsep(dp_sub_test_arg, " ");
+	g_color = strsep(dp_sub_test_arg, " ");
+	b_color = strsep(dp_sub_test_arg, " ");
+
+	/* char * to int conversion */
+	r_val = xilinx_dp_sub_debugfs_argument_value(r_color);
+	g_val = xilinx_dp_sub_debugfs_argument_value(g_color);
+	b_val = xilinx_dp_sub_debugfs_argument_value(b_color);
+
+	if (!(IN_RANGE(r_val, 0, XILINX_DP_SUB_DEBUGFS_MAX_BG_COLOR_VAL) &&
+	      IN_RANGE(g_val, 0, XILINX_DP_SUB_DEBUGFS_MAX_BG_COLOR_VAL) &&
+	      IN_RANGE(b_val, 0, XILINX_DP_SUB_DEBUGFS_MAX_BG_COLOR_VAL)))
+		return -EINVAL;
+
+	dp_sub_debugfs.r_value = r_val;
+	dp_sub_debugfs.g_value = g_val;
+	dp_sub_debugfs.b_value = b_val;
+
+	dp_sub_debugfs.testcase = DP_SUB_TC_BG_COLOR;
+
+	return 0;
+}
+
+static ssize_t
+xilinx_dp_sub_debugfs_output_display_format_write(char **dp_sub_test_arg)
+{
+	char *output_format;
+	struct xilinx_drm_dp_sub *dp_sub = dp_sub_debugfs.xilinx_dp_sub;
+	u32 fmt;
+
+	/* Read the value from an user value */
+	output_format = strsep(dp_sub_test_arg, " ");
+	if (strncmp(output_format, "rgb", 3) == 0) {
+		fmt = XILINX_DP_SUB_V_BLEND_OUTPUT_VID_FMT_RGB;
+	} else if (strncmp(output_format, "ycbcr444", 8) == 0) {
+		fmt = XILINX_DP_SUB_V_BLEND_OUTPUT_VID_FMT_YCBCR444;
+	} else if (strncmp(output_format, "ycbcr422", 8) == 0) {
+		fmt = XILINX_DP_SUB_V_BLEND_OUTPUT_VID_FMT_YCBCR422;
+		fmt |= XILINX_DP_SUB_V_BLEND_OUTPUT_EN_DOWNSAMPLE;
+	} else if (strncmp(output_format, "yonly", 5) == 0) {
+		fmt = XILINX_DP_SUB_V_BLEND_OUTPUT_VID_FMT_YONLY;
+	} else {
+		dev_err(dp_sub->dev, "Invalid output format\n");
+		return -EINVAL;
+	}
+
+	dp_sub_debugfs.output_fmt =
+			xilinx_drm_readl(dp_sub->blend.base,
+					 XILINX_DP_SUB_V_BLEND_OUTPUT_VID_FMT);
+
+	xilinx_dp_sub_debugfs_output_format(fmt);
+	dp_sub_debugfs.testcase = DP_SUB_TC_OUTPUT_FMT;
+
+	return 0;
+}
+
+static ssize_t
+xilinx_dp_sub_debugfs_output_display_format_read(char **kern_buff)
+{
+	size_t out_str_len;
+
+	dp_sub_debugfs.testcase = DP_SUB_TC_NONE;
+	xilinx_dp_sub_debugfs_output_format(dp_sub_debugfs.output_fmt);
+
+	out_str_len = strlen("Success");
+	out_str_len = min_t(size_t, XILINX_DP_SUB_DEBUGFS_READ_MAX_SIZE,
+			    out_str_len);
+	snprintf(*kern_buff, out_str_len, "%s", "Success");
+
+	return 0;
+}
+
+static ssize_t
+xilinx_dp_sub_debugfs_background_color_read(char **kern_buff)
+{
+	size_t out_str_len;
+
+	dp_sub_debugfs.testcase = DP_SUB_TC_NONE;
+	dp_sub_debugfs.r_value = 0;
+	dp_sub_debugfs.g_value = 0;
+	dp_sub_debugfs.b_value = 0;
+
+	out_str_len = strlen("Success");
+	out_str_len = min_t(size_t, XILINX_DP_SUB_DEBUGFS_READ_MAX_SIZE,
+			    out_str_len);
+	snprintf(*kern_buff, out_str_len, "%s", "Success");
+
+	return 0;
+}
+
+/* Match xilinx_dp_testcases vs dp_debugfs_reqs[] entry */
+static struct xilinx_dp_sub_debugfs_request dp_sub_debugfs_reqs[] = {
+	{"BACKGROUND_COLOR", DP_SUB_TC_BG_COLOR,
+		xilinx_dp_sub_debugfs_background_color_read,
+		xilinx_dp_sub_debugfs_background_color_write},
+	{"OUTPUT_DISPLAY_FORMAT", DP_SUB_TC_OUTPUT_FMT,
+		xilinx_dp_sub_debugfs_output_display_format_read,
+		xilinx_dp_sub_debugfs_output_display_format_write},
+};
+
+static ssize_t
+xilinx_dp_sub_debugfs_write(struct file *f, const char __user *buf,
+			    size_t size, loff_t *pos)
+{
+	char *kern_buff, *dp_sub_test_req, *kern_buff_start;
+	int ret;
+	unsigned int i;
+
+	if (*pos != 0 || size <= 0)
+		return -EINVAL;
+
+	if (dp_sub_debugfs.testcase != DP_SUB_TC_NONE)
+		return -EBUSY;
+
+	kern_buff = kzalloc(size, GFP_KERNEL);
+	if (!kern_buff)
+		return -ENOMEM;
+	kern_buff_start = kern_buff;
+
+	ret = strncpy_from_user(kern_buff, buf, size);
+	if (ret < 0) {
+		kfree(kern_buff_start);
+		return ret;
+	}
+
+	/* Read the testcase name and argument from an user request */
+	dp_sub_test_req = strsep(&kern_buff, " ");
+
+	for (i = 0; i < ARRAY_SIZE(dp_sub_debugfs_reqs); i++) {
+		if (!strcasecmp(dp_sub_test_req, dp_sub_debugfs_reqs[i].req))
+			if (!dp_sub_debugfs_reqs[i].write_handler(&kern_buff)) {
+				kfree(kern_buff_start);
+				return size;
+			}
+	}
+	kfree(kern_buff_start);
+	return -EINVAL;
+}
+
+static ssize_t xilinx_dp_sub_debugfs_read(struct file *f, char __user *buf,
+					  size_t size, loff_t *pos)
+{
+	char *kern_buff = NULL;
+	size_t kern_buff_len, out_str_len;
+	int ret;
+
+	if (size <= 0)
+		return -EINVAL;
+
+	if (*pos != 0)
+		return 0;
+
+	kern_buff = kzalloc(XILINX_DP_SUB_DEBUGFS_READ_MAX_SIZE, GFP_KERNEL);
+	if (!kern_buff) {
+		dp_sub_debugfs.testcase = DP_SUB_TC_NONE;
+		return -ENOMEM;
+	}
+
+	if (dp_sub_debugfs.testcase == DP_SUB_TC_NONE) {
+		out_str_len = strlen("No testcase executed");
+		out_str_len = min_t(size_t, XILINX_DP_SUB_DEBUGFS_READ_MAX_SIZE,
+				    out_str_len);
+		snprintf(kern_buff, out_str_len, "%s", "No testcase executed");
+	} else {
+		ret = dp_sub_debugfs_reqs[dp_sub_debugfs.testcase].read_handler(
+				&kern_buff);
+		if (ret) {
+			kfree(kern_buff);
+			return ret;
+		}
+	}
+
+	kern_buff_len = strlen(kern_buff);
+	size = min(size, kern_buff_len);
+
+	ret = copy_to_user(buf, kern_buff, size);
+
+	kfree(kern_buff);
+	if (ret)
+		return ret;
+
+	*pos = size + 1;
+	return size;
+}
+
+static const struct file_operations fops_xilinx_dp_sub_dbgfs = {
+	.owner = THIS_MODULE,
+	.read = xilinx_dp_sub_debugfs_read,
+	.write = xilinx_dp_sub_debugfs_write,
+};
+
+static int xilinx_dp_sub_debugfs_init(struct xilinx_drm_dp_sub *dp_sub)
+{
+	int err;
+	struct dentry *xilinx_dp_sub_debugfs_dir, *xilinx_dp_sub_debugfs_file;
+
+	dp_sub_debugfs.testcase = DP_SUB_TC_NONE;
+	dp_sub_debugfs.xilinx_dp_sub = dp_sub;
+
+	xilinx_dp_sub_debugfs_dir = debugfs_create_dir("dp_sub", NULL);
+	if (!xilinx_dp_sub_debugfs_dir) {
+		dev_err(dp_sub->dev, "debugfs_create_dir failed\n");
+		return -ENODEV;
+	}
+
+	xilinx_dp_sub_debugfs_file =
+		debugfs_create_file("testcase", 0444,
+				    xilinx_dp_sub_debugfs_dir, NULL,
+				    &fops_xilinx_dp_sub_dbgfs);
+	if (!xilinx_dp_sub_debugfs_file) {
+		dev_err(dp_sub->dev, "debugfs_create_file testcase failed\n");
+		err = -ENODEV;
+		goto err_dbgfs;
+	}
+	return 0;
+
+err_dbgfs:
+	debugfs_remove_recursive(xilinx_dp_sub_debugfs_dir);
+	xilinx_dp_sub_debugfs_dir = NULL;
+	return err;
+}
+
+static void xilinx_drm_dp_sub_debugfs_bg_color(struct xilinx_drm_dp_sub *dp_sub)
+{
+	if (dp_sub_debugfs.testcase == DP_SUB_TC_BG_COLOR) {
+		xilinx_drm_writel(dp_sub->blend.base,
+				  XILINX_DP_SUB_V_BLEND_BG_CLR_0,
+				  dp_sub_debugfs.r_value);
+		xilinx_drm_writel(dp_sub->blend.base,
+				  XILINX_DP_SUB_V_BLEND_BG_CLR_1,
+				  dp_sub_debugfs.g_value);
+		xilinx_drm_writel(dp_sub->blend.base,
+				  XILINX_DP_SUB_V_BLEND_BG_CLR_2,
+				  dp_sub_debugfs.b_value);
+	}
+}
+#else
+static int xilinx_dp_sub_debugfs_init(struct xilinx_drm_dp_sub *dp_sub)
+{
+	return 0;
+}
+
+static void xilinx_drm_dp_sub_debugfs_bg_color(struct xilinx_drm_dp_sub *dp_sub)
+{
+}
+#endif /* CONFIG_DP_DEBUG_FS */
 
 /* Blender functions */
 
@@ -353,11 +710,15 @@ static void
 xilinx_drm_dp_sub_blend_layer_enable(struct xilinx_drm_dp_sub_blend *blend,
 				     struct xilinx_drm_dp_sub_layer *layer)
 {
-	u32 reg, offset, i;
+	u32 reg, offset, i, s0, s1;
 	u16 sdtv_coeffs[] = { 0x1000, 0x166f, 0x0,
 			      0x1000, 0x7483, 0x7a7f,
 			      0x1000, 0x0, 0x1c5a };
-	u32 full_range_offsets[] = { 0x0, 0x1800, 0x1800 };
+	u16 swap_coeffs[] = { 0x1000, 0x0, 0x0,
+			      0x0, 0x1000, 0x0,
+			      0x0, 0x0, 0x1000 };
+	u16 *coeffs;
+	u32 offsets[] = { 0x0, 0x1800, 0x1800 };
 
 	reg = layer->fmt->rgb ? XILINX_DP_SUB_V_BLEND_LAYER_CONTROL_RGB : 0;
 	reg |= layer->fmt->chroma_sub ?
@@ -367,27 +728,45 @@ xilinx_drm_dp_sub_blend_layer_enable(struct xilinx_drm_dp_sub_blend *blend,
 			  XILINX_DP_SUB_V_BLEND_LAYER_CONTROL + layer->offset,
 			  reg);
 
-	if (layer->fmt->rgb)
-		return;
-
 	if (layer->id == XILINX_DRM_DP_SUB_LAYER_VID)
 		offset = XILINX_DP_SUB_V_BLEND_IN1CSC_COEFF0;
 	else
 		offset = XILINX_DP_SUB_V_BLEND_IN2CSC_COEFF0;
 
-	/* Hardcode SDTV coefficients. Can be runtime configurable */
+	if (!layer->fmt->rgb) {
+		coeffs = sdtv_coeffs;
+		s0 = 1;
+		s1 = 2;
+	} else {
+		coeffs = swap_coeffs;
+		s0 = 0;
+		s1 = 2;
+
+		/* No offset for RGB formats */
+		for (i = 0; i < XILINX_DP_SUB_V_BLEND_NUM_OFFSET; i++)
+			offsets[i] = 0;
+	}
+
+	if (layer->fmt->swap) {
+		for (i = 0; i < 3; i++) {
+			coeffs[i * 3 + s0] ^= coeffs[i * 3 + s1];
+			coeffs[i * 3 + s1] ^= coeffs[i * 3 + s0];
+			coeffs[i * 3 + s0] ^= coeffs[i * 3 + s1];
+		}
+	}
+
+	/* Program coefficients. Can be runtime configurable */
 	for (i = 0; i < XILINX_DP_SUB_V_BLEND_NUM_COEFF; i++)
-		xilinx_drm_writel(blend->base, offset + i * 4, sdtv_coeffs[i]);
+		xilinx_drm_writel(blend->base, offset + i * 4, coeffs[i]);
 
 	if (layer->id == XILINX_DRM_DP_SUB_LAYER_VID)
 		offset = XILINX_DP_SUB_V_BLEND_LUMA_IN1CSC_OFFSET;
 	else
 		offset = XILINX_DP_SUB_V_BLEND_LUMA_IN2CSC_OFFSET;
 
-	/* Hardcode full range coefficients. Can be runtime configurable */
+	/* Program offsets. Can be runtime configurable */
 	for (i = 0; i < XILINX_DP_SUB_V_BLEND_NUM_OFFSET; i++)
-		xilinx_drm_writel(blend->base, offset + i * 4,
-				  full_range_offsets[i]);
+		xilinx_drm_writel(blend->base, offset + i * 4, offsets[i]);
 }
 
 /**
@@ -469,6 +848,7 @@ static const struct xilinx_drm_dp_sub_fmt blend_output_fmts[] = {
 		.drm_fmt	= DRM_FORMAT_RGB888,
 		.dp_sub_fmt	= XILINX_DP_SUB_V_BLEND_OUTPUT_VID_FMT_RGB,
 		.rgb		= true,
+		.swap		= false,
 		.chroma_sub	= false,
 		.sf[0]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
 		.sf[1]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
@@ -478,6 +858,7 @@ static const struct xilinx_drm_dp_sub_fmt blend_output_fmts[] = {
 		.drm_fmt	= DRM_FORMAT_YUV444,
 		.dp_sub_fmt	= XILINX_DP_SUB_V_BLEND_OUTPUT_VID_FMT_YCBCR444,
 		.rgb		= false,
+		.swap		= false,
 		.chroma_sub	= false,
 		.sf[0]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
 		.sf[1]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
@@ -487,6 +868,7 @@ static const struct xilinx_drm_dp_sub_fmt blend_output_fmts[] = {
 		.drm_fmt	= DRM_FORMAT_YUV422,
 		.dp_sub_fmt	= XILINX_DP_SUB_V_BLEND_OUTPUT_VID_FMT_YCBCR422,
 		.rgb		= false,
+		.swap		= false,
 		.chroma_sub	= true,
 		.sf[0]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
 		.sf[1]		= XILINX_DP_SUB_AV_BUF_4BIT_SF,
@@ -516,66 +898,109 @@ xilinx_drm_dp_sub_blend_set_output_fmt(struct xilinx_drm_dp_sub_blend *blend,
 static const struct xilinx_drm_dp_sub_fmt av_buf_vid_fmts[] = {
 	{
 		.drm_fmt	= DRM_FORMAT_VYUY,
-		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_VYUY,
+		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FMT_NL_VID_VYUY,
 		.rgb		= false,
+		.swap		= true,
 		.chroma_sub	= true,
 		.sf[0]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
 		.sf[1]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
 		.sf[2]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
-		.name		= "vyuv",
+		.name		= "vyuy",
+	}, {
+		.drm_fmt	= DRM_FORMAT_UYVY,
+		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FMT_NL_VID_VYUY,
+		.rgb		= false,
+		.swap		= false,
+		.chroma_sub	= true,
+		.sf[0]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.sf[1]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.sf[2]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.name		= "uyvy",
 	}, {
 		.drm_fmt	= DRM_FORMAT_YUYV,
-		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_YUYV,
+		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FMT_NL_VID_YUYV,
 		.rgb		= false,
+		.swap		= false,
 		.chroma_sub	= true,
 		.sf[0]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
 		.sf[1]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
 		.sf[2]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
 		.name		= "yuyv",
 	}, {
+		.drm_fmt	= DRM_FORMAT_YVYU,
+		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FMT_NL_VID_YUYV,
+		.rgb		= false,
+		.swap		= true,
+		.chroma_sub	= true,
+		.sf[0]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.sf[1]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.sf[2]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.name		= "yvyu",
+	}, {
+		.drm_fmt	= DRM_FORMAT_YUV422,
+		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FMT_NL_VID_YV16,
+		.rgb		= false,
+		.swap		= false,
+		.chroma_sub	= true,
+		.sf[0]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.sf[1]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.sf[2]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.name		= "yuv422",
+	}, {
+		.drm_fmt	= DRM_FORMAT_YVU422,
+		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FMT_NL_VID_YV16,
+		.rgb		= false,
+		.swap		= true,
+		.chroma_sub	= true,
+		.sf[0]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.sf[1]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.sf[2]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.name		= "yvu422",
+	}, {
+		.drm_fmt	= DRM_FORMAT_YUV444,
+		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FMT_NL_VID_YV24,
+		.rgb		= false,
+		.swap		= false,
+		.chroma_sub	= false,
+		.sf[0]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.sf[1]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.sf[2]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.name		= "yuv444",
+	}, {
+		.drm_fmt	= DRM_FORMAT_YVU444,
+		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FMT_NL_VID_YV24,
+		.rgb		= false,
+		.swap		= true,
+		.chroma_sub	= false,
+		.sf[0]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.sf[1]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.sf[2]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.name		= "yvu444",
+	}, {
+		.drm_fmt	= DRM_FORMAT_NV16,
+		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FMT_NL_VID_YV16CI,
+		.rgb		= false,
+		.swap		= false,
+		.chroma_sub	= true,
+		.sf[0]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.sf[1]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.sf[2]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.name		= "nv16",
+	}, {
+		.drm_fmt	= DRM_FORMAT_NV61,
+		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FMT_NL_VID_YV16CI,
+		.rgb		= false,
+		.swap		= true,
+		.chroma_sub	= true,
+		.sf[0]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.sf[1]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.sf[2]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.name		= "nv61",
+	}, {
 		.drm_fmt	= DRM_FORMAT_BGR888,
-		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_RGB888,
+		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FMT_NL_VID_RGB888,
 		.rgb		= true,
-		.chroma_sub	= false,
-		.sf[0]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
-		.sf[1]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
-		.sf[2]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
-		.name		= "bgr888",
-	}, {
-		.drm_fmt	= DRM_FORMAT_XBGR8888,
-		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_RGBA8880,
-		.rgb		= true,
-		.chroma_sub	= false,
-		.sf[0]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
-		.sf[1]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
-		.sf[2]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
-		.name		= "xbgr8888",
-	}
-};
-
-static const struct xilinx_drm_dp_sub_fmt av_buf_gfx_fmts[] = {
-	{
-		.drm_fmt	= DRM_FORMAT_ABGR8888,
-		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FORMAT_NL_GFX_RGBA8888,
-		.rgb		= true,
-		.chroma_sub	= false,
-		.sf[0]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
-		.sf[1]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
-		.sf[2]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
-		.name		= "abgr8888",
-	}, {
-		.drm_fmt	= DRM_FORMAT_RGBA8888,
-		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FORMAT_NL_GFX_ABGR8888,
-		.rgb		= true,
-		.chroma_sub	= false,
-		.sf[0]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
-		.sf[1]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
-		.sf[2]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
-		.name		= "rgba8888",
-	}, {
-		.drm_fmt	= DRM_FORMAT_BGR888,
-		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FORMAT_NL_GFX_RGB888,
-		.rgb		= true,
+		.swap		= false,
 		.chroma_sub	= false,
 		.sf[0]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
 		.sf[1]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
@@ -583,40 +1008,218 @@ static const struct xilinx_drm_dp_sub_fmt av_buf_gfx_fmts[] = {
 		.name		= "bgr888",
 	}, {
 		.drm_fmt	= DRM_FORMAT_RGB888,
-		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FORMAT_NL_GFX_BGR888,
+		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FMT_NL_VID_RGB888,
 		.rgb		= true,
+		.swap		= true,
 		.chroma_sub	= false,
 		.sf[0]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
 		.sf[1]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
 		.sf[2]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
 		.name		= "rgb888",
 	}, {
-		.drm_fmt	= DRM_FORMAT_ABGR1555,
-		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FORMAT_NL_GFX_RGBA5551,
+		.drm_fmt	= DRM_FORMAT_XBGR8888,
+		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FMT_NL_VID_RGBA8880,
 		.rgb		= true,
+		.swap		= false,
+		.chroma_sub	= false,
+		.sf[0]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.sf[1]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.sf[2]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.name		= "xbgr8888",
+	}, {
+		.drm_fmt	= DRM_FORMAT_XRGB8888,
+		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FMT_NL_VID_RGBA8880,
+		.rgb		= true,
+		.swap		= true,
+		.chroma_sub	= false,
+		.sf[0]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.sf[1]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.sf[2]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.name		= "xrgb8888",
+	}, {
+		.drm_fmt	= DRM_FORMAT_XBGR2101010,
+		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FMT_NL_VID_RGB888_10,
+		.rgb		= true,
+		.swap		= false,
+		.chroma_sub	= false,
+		.sf[0]		= XILINX_DP_SUB_AV_BUF_10BIT_SF,
+		.sf[1]		= XILINX_DP_SUB_AV_BUF_10BIT_SF,
+		.sf[2]		= XILINX_DP_SUB_AV_BUF_10BIT_SF,
+		.name		= "xbgr2101010",
+	}, {
+		.drm_fmt	= DRM_FORMAT_XRGB2101010,
+		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FMT_NL_VID_RGB888_10,
+		.rgb		= true,
+		.swap		= true,
+		.chroma_sub	= false,
+		.sf[0]		= XILINX_DP_SUB_AV_BUF_10BIT_SF,
+		.sf[1]		= XILINX_DP_SUB_AV_BUF_10BIT_SF,
+		.sf[2]		= XILINX_DP_SUB_AV_BUF_10BIT_SF,
+		.name		= "xrgb2101010",
+	}, {
+		.drm_fmt	= DRM_FORMAT_YUV420,
+		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FMT_NL_VID_YV16_420,
+		.rgb		= false,
+		.swap		= false,
+		.chroma_sub	= true,
+		.sf[0]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.sf[1]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.sf[2]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.name		= "yuv420",
+	}, {
+		.drm_fmt	= DRM_FORMAT_YVU420,
+		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FMT_NL_VID_YV16_420,
+		.rgb		= false,
+		.swap		= true,
+		.chroma_sub	= true,
+		.sf[0]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.sf[1]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.sf[2]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.name		= "yvu420",
+	}, {
+		.drm_fmt	= DRM_FORMAT_NV12,
+		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FMT_NL_VID_YV16CI_420,
+		.rgb		= false,
+		.swap		= false,
+		.chroma_sub	= true,
+		.sf[0]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.sf[1]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.sf[2]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.name		= "nv12",
+	}, {
+		.drm_fmt	= DRM_FORMAT_NV21,
+		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FMT_NL_VID_YV16CI_420,
+		.rgb		= false,
+		.swap		= true,
+		.chroma_sub	= true,
+		.sf[0]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.sf[1]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.sf[2]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.name		= "nv21",
+	}
+};
+
+static const struct xilinx_drm_dp_sub_fmt av_buf_gfx_fmts[] = {
+	{
+		.drm_fmt	= DRM_FORMAT_ABGR8888,
+		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FMT_NL_GFX_RGBA8888,
+		.rgb		= true,
+		.swap		= false,
+		.chroma_sub	= false,
+		.sf[0]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.sf[1]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.sf[2]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.name		= "abgr8888",
+	}, {
+		.drm_fmt	= DRM_FORMAT_ARGB8888,
+		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FMT_NL_GFX_RGBA8888,
+		.rgb		= true,
+		.swap		= true,
+		.chroma_sub	= false,
+		.sf[0]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.sf[1]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.sf[2]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.name		= "argb8888",
+	}, {
+		.drm_fmt	= DRM_FORMAT_RGBA8888,
+		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FMT_NL_GFX_ABGR8888,
+		.rgb		= true,
+		.swap		= false,
+		.chroma_sub	= false,
+		.sf[0]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.sf[1]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.sf[2]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.name		= "rgba8888",
+	}, {
+		.drm_fmt	= DRM_FORMAT_BGRA8888,
+		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FMT_NL_GFX_ABGR8888,
+		.rgb		= true,
+		.swap		= true,
+		.chroma_sub	= false,
+		.sf[0]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.sf[1]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.sf[2]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.name		= "bgra8888",
+	}, {
+		.drm_fmt	= DRM_FORMAT_BGR888,
+		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FMT_NL_GFX_RGB888,
+		.rgb		= true,
+		.swap		= false,
+		.chroma_sub	= false,
+		.sf[0]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.sf[1]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.sf[2]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.name		= "bgr888",
+	}, {
+		.drm_fmt	= DRM_FORMAT_RGB888,
+		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FMT_NL_GFX_BGR888,
+		.rgb		= true,
+		.swap		= false,
+		.chroma_sub	= false,
+		.sf[0]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.sf[1]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.sf[2]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
+		.name		= "rgb888",
+	}, {
+		.drm_fmt	= DRM_FORMAT_RGBA5551,
+		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FMT_NL_GFX_RGBA5551,
+		.rgb		= true,
+		.swap		= false,
 		.chroma_sub	= false,
 		.sf[0]		= XILINX_DP_SUB_AV_BUF_5BIT_SF,
 		.sf[1]		= XILINX_DP_SUB_AV_BUF_5BIT_SF,
 		.sf[2]		= XILINX_DP_SUB_AV_BUF_5BIT_SF,
-		.name		= "abgr1555",
+		.name		= "rgba5551",
 	}, {
-		.drm_fmt	= DRM_FORMAT_ABGR4444,
-		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FORMAT_NL_GFX_RGBA4444,
+		.drm_fmt	= DRM_FORMAT_BGRA5551,
+		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FMT_NL_GFX_RGBA5551,
 		.rgb		= true,
+		.swap		= true,
+		.chroma_sub	= false,
+		.sf[0]		= XILINX_DP_SUB_AV_BUF_5BIT_SF,
+		.sf[1]		= XILINX_DP_SUB_AV_BUF_5BIT_SF,
+		.sf[2]		= XILINX_DP_SUB_AV_BUF_5BIT_SF,
+		.name		= "bgra5551",
+	}, {
+		.drm_fmt	= DRM_FORMAT_RGBA4444,
+		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FMT_NL_GFX_RGBA4444,
+		.rgb		= true,
+		.swap		= false,
 		.chroma_sub	= false,
 		.sf[0]		= XILINX_DP_SUB_AV_BUF_4BIT_SF,
 		.sf[1]		= XILINX_DP_SUB_AV_BUF_4BIT_SF,
 		.sf[2]		= XILINX_DP_SUB_AV_BUF_4BIT_SF,
-		.name		= "abgr4444",
+		.name		= "rgba4444",
+	}, {
+		.drm_fmt	= DRM_FORMAT_BGRA4444,
+		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FMT_NL_GFX_RGBA4444,
+		.rgb		= true,
+		.swap		= true,
+		.chroma_sub	= false,
+		.sf[0]		= XILINX_DP_SUB_AV_BUF_4BIT_SF,
+		.sf[1]		= XILINX_DP_SUB_AV_BUF_4BIT_SF,
+		.sf[2]		= XILINX_DP_SUB_AV_BUF_4BIT_SF,
+		.name		= "bgra4444",
 	}, {
 		.drm_fmt	= DRM_FORMAT_RGB565,
-		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FORMAT_NL_GFX_RGB565,
+		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FMT_NL_GFX_RGB565,
 		.rgb		= true,
+		.swap		= false,
 		.chroma_sub	= false,
 		.sf[0]		= XILINX_DP_SUB_AV_BUF_5BIT_SF,
 		.sf[1]		= XILINX_DP_SUB_AV_BUF_6BIT_SF,
 		.sf[2]		= XILINX_DP_SUB_AV_BUF_5BIT_SF,
 		.name		= "rgb565",
+	}, {
+		.drm_fmt	= DRM_FORMAT_BGR565,
+		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FMT_NL_GFX_RGB565,
+		.rgb		= true,
+		.swap		= true,
+		.chroma_sub	= false,
+		.sf[0]		= XILINX_DP_SUB_AV_BUF_5BIT_SF,
+		.sf[1]		= XILINX_DP_SUB_AV_BUF_6BIT_SF,
+		.sf[2]		= XILINX_DP_SUB_AV_BUF_5BIT_SF,
+		.name		= "bgr565",
 	}
 };
 
@@ -632,7 +1235,7 @@ static void
 xilinx_drm_dp_sub_av_buf_set_fmt(struct xilinx_drm_dp_sub_av_buf *av_buf,
 				 u32 fmt)
 {
-	xilinx_drm_writel(av_buf->base, XILINX_DP_SUB_AV_BUF_FORMAT, fmt);
+	xilinx_drm_writel(av_buf->base, XILINX_DP_SUB_AV_BUF_FMT, fmt);
 }
 
 /**
@@ -642,12 +1245,12 @@ xilinx_drm_dp_sub_av_buf_set_fmt(struct xilinx_drm_dp_sub_av_buf *av_buf,
  * Get the input formats (which include video and graphics) of
  * av buffer manager.
  *
- * Return: value of XILINX_DP_SUB_AV_BUF_FORMAT register.
+ * Return: value of XILINX_DP_SUB_AV_BUF_FMT register.
  */
 static u32
 xilinx_drm_dp_sub_av_buf_get_fmt(struct xilinx_drm_dp_sub_av_buf *av_buf)
 {
-	return xilinx_drm_readl(av_buf->base, XILINX_DP_SUB_AV_BUF_FORMAT);
+	return xilinx_drm_readl(av_buf->base, XILINX_DP_SUB_AV_BUF_FMT);
 }
 
 /**
@@ -886,7 +1489,7 @@ xilinx_drm_dp_sub_av_buf_init_fmts(struct xilinx_drm_dp_sub_av_buf *av_buf,
 
 	reg = vid_fmt->dp_sub_fmt;
 	reg |= gfx_fmt->dp_sub_fmt;
-	xilinx_drm_writel(av_buf->base, XILINX_DP_SUB_AV_BUF_FORMAT, reg);
+	xilinx_drm_writel(av_buf->base, XILINX_DP_SUB_AV_BUF_FMT, reg);
 }
 
 /**
@@ -905,13 +1508,19 @@ xilinx_drm_dp_sub_av_buf_init_sf(struct xilinx_drm_dp_sub_av_buf *av_buf,
 	unsigned int i;
 	int offset;
 
-	offset = XILINX_DP_SUB_AV_BUF_GFX_COMP0_SF;
-	for (i = 0; i < XILINX_DP_SUB_AV_BUF_NUM_SF; i++)
-		xilinx_drm_writel(av_buf->base, offset + i * 4, gfx_fmt->sf[i]);
+	if (gfx_fmt) {
+		offset = XILINX_DP_SUB_AV_BUF_GFX_COMP0_SF;
+		for (i = 0; i < XILINX_DP_SUB_AV_BUF_NUM_SF; i++)
+			xilinx_drm_writel(av_buf->base, offset + i * 4,
+					  gfx_fmt->sf[i]);
+	}
 
-	offset = XILINX_DP_SUB_AV_BUF_VID_COMP0_SF;
-	for (i = 0; i < XILINX_DP_SUB_AV_BUF_NUM_SF; i++)
-		xilinx_drm_writel(av_buf->base, offset + i * 4, vid_fmt->sf[i]);
+	if (vid_fmt) {
+		offset = XILINX_DP_SUB_AV_BUF_VID_COMP0_SF;
+		for (i = 0; i < XILINX_DP_SUB_AV_BUF_NUM_SF; i++)
+			xilinx_drm_writel(av_buf->base, offset + i * 4,
+					  vid_fmt->sf[i]);
+	}
 }
 
 /* Audio functions */
@@ -920,12 +1529,27 @@ xilinx_drm_dp_sub_av_buf_init_sf(struct xilinx_drm_dp_sub_av_buf *av_buf,
  * xilinx_drm_dp_sub_aud_init - Initialize the audio
  * @aud: audio
  *
- * Initialize the audio with default mixer volume.
+ * Initialize the audio with default mixer volume. The de-assertion will
+ * initialize the audio states.
  */
 static void xilinx_drm_dp_sub_aud_init(struct xilinx_drm_dp_sub_aud *aud)
 {
-	xilinx_drm_set(aud->base, XILINX_DP_SUB_AUD_MIXER_VOLUME,
-		       XILINX_DP_SUB_AUD_MIXER_VOLUME_NO_SCALE);
+	/* Clear the audio soft reset register as it's an non-reset flop */
+	xilinx_drm_writel(aud->base, XILINX_DP_SUB_AUD_SOFT_RESET, 0);
+	xilinx_drm_writel(aud->base, XILINX_DP_SUB_AUD_MIXER_VOLUME,
+			  XILINX_DP_SUB_AUD_MIXER_VOLUME_NO_SCALE);
+}
+
+/**
+ * xilinx_drm_dp_sub_aud_deinit - De-initialize the audio
+ * @aud: audio
+ *
+ * Put the audio in reset.
+ */
+static void xilinx_drm_dp_sub_aud_deinit(struct xilinx_drm_dp_sub_aud *aud)
+{
+	xilinx_drm_set(aud->base, XILINX_DP_SUB_AUD_SOFT_RESET,
+		       XILINX_DP_SUB_AUD_SOFT_RESET_AUD_SRST);
 }
 
 /* DP subsystem layer functions */
@@ -945,7 +1569,7 @@ static void xilinx_drm_dp_sub_aud_init(struct xilinx_drm_dp_sub_aud *aud)
  */
 int xilinx_drm_dp_sub_layer_check_size(struct xilinx_drm_dp_sub *dp_sub,
 				       struct xilinx_drm_dp_sub_layer *layer,
-				       uint32_t width, uint32_t height)
+				       u32 width, u32 height)
 {
 	struct xilinx_drm_dp_sub_layer *other = layer->other;
 
@@ -976,7 +1600,7 @@ EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_layer_check_size);
  */
 static const struct xilinx_drm_dp_sub_fmt *
 xilinx_drm_dp_sub_map_fmt(const struct xilinx_drm_dp_sub_fmt fmts[],
-			  unsigned int size, uint32_t drm_fmt)
+			  unsigned int size, u32 drm_fmt)
 {
 	unsigned int i;
 
@@ -999,26 +1623,24 @@ xilinx_drm_dp_sub_map_fmt(const struct xilinx_drm_dp_sub_fmt fmts[],
  */
 int xilinx_drm_dp_sub_layer_set_fmt(struct xilinx_drm_dp_sub *dp_sub,
 				    struct xilinx_drm_dp_sub_layer *layer,
-				    uint32_t drm_fmt)
+				    u32 drm_fmt)
 {
-	const struct xilinx_drm_dp_sub_fmt *table;
 	const struct xilinx_drm_dp_sub_fmt *fmt;
+	const struct xilinx_drm_dp_sub_fmt *vid_fmt = NULL, *gfx_fmt = NULL;
 	u32 size, fmts, mask;
-	bool vid;
 
 	if (layer->id == XILINX_DRM_DP_SUB_LAYER_VID) {
-		table = av_buf_vid_fmts;
 		size = ARRAY_SIZE(av_buf_vid_fmts);
-		mask = ~XILINX_DP_SUB_AV_BUF_FORMAT_NL_VID_MASK;
-		vid = true;
+		mask = ~XILINX_DP_SUB_AV_BUF_FMT_NL_VID_MASK;
+		fmt = xilinx_drm_dp_sub_map_fmt(av_buf_vid_fmts, size, drm_fmt);
+		vid_fmt = fmt;
 	} else {
-		table = av_buf_gfx_fmts;
 		size = ARRAY_SIZE(av_buf_gfx_fmts);
-		mask = ~XILINX_DP_SUB_AV_BUF_FORMAT_NL_GFX_MASK;
-		vid = false;
+		mask = ~XILINX_DP_SUB_AV_BUF_FMT_NL_GFX_MASK;
+		fmt = xilinx_drm_dp_sub_map_fmt(av_buf_gfx_fmts, size, drm_fmt);
+		gfx_fmt = fmt;
 	}
 
-	fmt = xilinx_drm_dp_sub_map_fmt(table, size, drm_fmt);
 	if (!fmt)
 		return -EINVAL;
 
@@ -1026,6 +1648,7 @@ int xilinx_drm_dp_sub_layer_set_fmt(struct xilinx_drm_dp_sub *dp_sub,
 	fmts &= mask;
 	fmts |= fmt->dp_sub_fmt;
 	xilinx_drm_dp_sub_av_buf_set_fmt(&dp_sub->av_buf, fmts);
+	xilinx_drm_dp_sub_av_buf_init_sf(&dp_sub->av_buf, vid_fmt, gfx_fmt);
 
 	layer->fmt = fmt;
 
@@ -1042,12 +1665,31 @@ EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_layer_set_fmt);
  *
  * Return: DRM format of the layer
  */
-uint32_t xilinx_drm_dp_sub_layer_get_fmt(struct xilinx_drm_dp_sub *dp_sub,
-					 struct xilinx_drm_dp_sub_layer *layer)
+u32 xilinx_drm_dp_sub_layer_get_fmt(struct xilinx_drm_dp_sub *dp_sub,
+				    struct xilinx_drm_dp_sub_layer *layer)
 {
 	return layer->fmt->drm_fmt;
 }
 EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_layer_get_fmt);
+
+/**
+ * xilinx_drm_dp_sub_get_fmt - Get the supported DRM formats of the layer
+ * @dp_sub: DP subsystem
+ * @layer: layer to get the formats
+ * @drm_fmts: pointer to array of DRM format strings
+ * @num_fmts: pointer to number of returned DRM formats
+ *
+ * Get the supported DRM formats of the given layer.
+ */
+void xilinx_drm_dp_sub_layer_get_fmts(struct xilinx_drm_dp_sub *dp_sub,
+				      struct xilinx_drm_dp_sub_layer *layer,
+				      u32 **drm_fmts,
+				      unsigned int *num_fmts)
+{
+	*drm_fmts = layer->drm_fmts;
+	*num_fmts = layer->num_fmts;
+}
+EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_layer_get_fmts);
 
 /**
  * xilinx_drm_dp_sub_layer_enable - Enable the layer
@@ -1062,6 +1704,21 @@ void xilinx_drm_dp_sub_layer_enable(struct xilinx_drm_dp_sub *dp_sub,
 	xilinx_drm_dp_sub_av_buf_enable_vid(&dp_sub->av_buf, layer);
 	xilinx_drm_dp_sub_blend_layer_enable(&dp_sub->blend, layer);
 	layer->enabled = true;
+	if (layer->other->enabled) {
+		xilinx_drm_dp_sub_blend_set_alpha(&dp_sub->blend,
+						  dp_sub->alpha);
+		xilinx_drm_dp_sub_blend_enable_alpha(&dp_sub->blend,
+						     dp_sub->alpha_en);
+	} else {
+		u32 alpha;
+
+		if (layer->id == XILINX_DRM_DP_SUB_LAYER_VID)
+			alpha = 0;
+		else
+			alpha = XILINX_DRM_DP_SUB_MAX_ALPHA;
+		xilinx_drm_dp_sub_blend_set_alpha(&dp_sub->blend, alpha);
+		xilinx_drm_dp_sub_blend_enable_alpha(&dp_sub->blend, true);
+	}
 }
 EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_layer_enable);
 
@@ -1078,6 +1735,16 @@ void xilinx_drm_dp_sub_layer_disable(struct xilinx_drm_dp_sub *dp_sub,
 	xilinx_drm_dp_sub_av_buf_disable_vid(&dp_sub->av_buf, layer);
 	xilinx_drm_dp_sub_blend_layer_disable(&dp_sub->blend, layer);
 	layer->enabled = false;
+	if (layer->other->enabled) {
+		u32 alpha;
+
+		if (layer->id == XILINX_DRM_DP_SUB_LAYER_VID)
+			alpha = XILINX_DRM_DP_SUB_MAX_ALPHA;
+		else
+			alpha = 0;
+		xilinx_drm_dp_sub_blend_set_alpha(&dp_sub->blend, alpha);
+		xilinx_drm_dp_sub_blend_enable_alpha(&dp_sub->blend, true);
+	}
 }
 EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_layer_disable);
 
@@ -1108,7 +1775,6 @@ xilinx_drm_dp_sub_layer_get(struct xilinx_drm_dp_sub *dp_sub, bool primary)
 		return ERR_PTR(-ENODEV);
 
 	return layer;
-
 }
 EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_layer_get);
 
@@ -1139,7 +1805,7 @@ EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_layer_put);
  * Return: 0 on success, or -EINVAL if @drm_fmt is not supported for output.
  */
 int xilinx_drm_dp_sub_set_output_fmt(struct xilinx_drm_dp_sub *dp_sub,
-				     uint32_t drm_fmt)
+				     u32 drm_fmt)
 {
 	const struct xilinx_drm_dp_sub_fmt *fmt;
 
@@ -1167,6 +1833,7 @@ void xilinx_drm_dp_sub_set_bg_color(struct xilinx_drm_dp_sub *dp_sub,
 				    u32 c0, u32 c1, u32 c2)
 {
 	xilinx_drm_dp_sub_blend_set_bg_color(&dp_sub->blend, c0, c1, c2);
+	xilinx_drm_dp_sub_debugfs_bg_color(dp_sub);
 }
 EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_set_bg_color);
 
@@ -1179,7 +1846,10 @@ EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_set_bg_color);
  */
 void xilinx_drm_dp_sub_set_alpha(struct xilinx_drm_dp_sub *dp_sub, u32 alpha)
 {
-	xilinx_drm_dp_sub_blend_set_alpha(&dp_sub->blend, alpha);
+	dp_sub->alpha = alpha;
+	if (dp_sub->layers[XILINX_DRM_DP_SUB_LAYER_VID].enabled &&
+	    dp_sub->layers[XILINX_DRM_DP_SUB_LAYER_GFX].enabled)
+		xilinx_drm_dp_sub_blend_set_alpha(&dp_sub->blend, alpha);
 }
 EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_set_alpha);
 
@@ -1193,7 +1863,10 @@ EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_set_alpha);
 void
 xilinx_drm_dp_sub_enable_alpha(struct xilinx_drm_dp_sub *dp_sub, bool enable)
 {
-	xilinx_drm_dp_sub_blend_enable_alpha(&dp_sub->blend, enable);
+	dp_sub->alpha_en = enable;
+	if (dp_sub->layers[XILINX_DRM_DP_SUB_LAYER_VID].enabled &&
+	    dp_sub->layers[XILINX_DRM_DP_SUB_LAYER_GFX].enabled)
+		xilinx_drm_dp_sub_blend_enable_alpha(&dp_sub->blend, enable);
 }
 EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_enable_alpha);
 
@@ -1276,6 +1949,7 @@ EXPORT_SYMBOL_GPL(xilinx_drm_dp_sub_enable);
  */
 void xilinx_drm_dp_sub_disable(struct xilinx_drm_dp_sub *dp_sub)
 {
+	xilinx_drm_dp_sub_aud_deinit(&dp_sub->aud);
 	xilinx_drm_dp_sub_av_buf_disable_aud(&dp_sub->av_buf);
 	xilinx_drm_dp_sub_av_buf_disable_buf(&dp_sub->av_buf);
 	xilinx_drm_dp_sub_av_buf_disable(&dp_sub->av_buf);
@@ -1307,7 +1981,7 @@ struct xilinx_drm_dp_sub *xilinx_drm_dp_sub_of_get(struct device_node *np)
 		return NULL;
 
 	xilinx_drm_dp_sub_node = of_parse_phandle(np, "xlnx,dp-sub", 0);
-	if (xilinx_drm_dp_sub_node == NULL)
+	if (!xilinx_drm_dp_sub_node)
 		return ERR_PTR(-EINVAL);
 
 	mutex_lock(&xilinx_drm_dp_sub_lock);
@@ -1378,9 +2052,10 @@ xilinx_drm_dp_sub_unregister_device(struct xilinx_drm_dp_sub *dp_sub)
 static int xilinx_drm_dp_sub_parse_of(struct xilinx_drm_dp_sub *dp_sub)
 {
 	struct device_node *node = dp_sub->dev->of_node;
+	struct xilinx_drm_dp_sub_layer *layer;
 	const char *string;
-	u32 fmt, i;
-	bool ret;
+	u32 fmt, i, size;
+	int ret;
 
 	ret = of_property_read_string(node, "xlnx,output-fmt", &string);
 	if (ret < 0) {
@@ -1424,50 +2099,63 @@ static int xilinx_drm_dp_sub_parse_of(struct xilinx_drm_dp_sub *dp_sub)
 					  full_range_offsets[i]);
 	}
 
-	ret = of_property_read_bool(node, "xlnx,vid-primary");
-	if (ret)
+	if (of_property_read_bool(node, "xlnx,vid-primary"))
 		dp_sub->layers[XILINX_DRM_DP_SUB_LAYER_VID].primary = true;
 	else
 		dp_sub->layers[XILINX_DRM_DP_SUB_LAYER_GFX].primary = true;
 
 	ret = of_property_read_string(node, "xlnx,vid-fmt", &string);
-	if (ret < 0) {
-		dev_err(dp_sub->dev, "No video format in DT\n");
-		return ret;
-	}
+	if (!ret) {
+		layer = &dp_sub->layers[XILINX_DRM_DP_SUB_LAYER_VID];
+		size = ARRAY_SIZE(av_buf_vid_fmts);
+		layer->num_fmts = size;
+		layer->drm_fmts = devm_kzalloc(dp_sub->dev,
+					       sizeof(*layer->drm_fmts) * size,
+					       GFP_KERNEL);
+		if (!layer->drm_fmts)
+			return -ENOMEM;
 
-	for (i = 0; i < ARRAY_SIZE(av_buf_vid_fmts); i++) {
-		const struct xilinx_drm_dp_sub_fmt *fmt = &av_buf_vid_fmts[i];
+		for (i = 0; i < layer->num_fmts; i++) {
+			const struct xilinx_drm_dp_sub_fmt *fmt =
+				&av_buf_vid_fmts[i];
 
-		if (strcmp(string, fmt->name) == 0) {
-			dp_sub->layers[XILINX_DRM_DP_SUB_LAYER_VID].fmt = fmt;
-			break;
+			if (strcmp(string, fmt->name) == 0)
+				layer->fmt = fmt;
+
+			layer->drm_fmts[i] = fmt->drm_fmt;
 		}
-	}
 
-	if (!dp_sub->layers[XILINX_DRM_DP_SUB_LAYER_VID].fmt) {
-		dev_err(dp_sub->dev, "Invalid vid-fmt in DT\n");
-		return -EINVAL;
+		if (!layer->fmt) {
+			dev_info(dp_sub->dev, "Invalid vid-fmt in DT\n");
+			layer->fmt = &av_buf_vid_fmts[0];
+		}
 	}
 
 	ret = of_property_read_string(node, "xlnx,gfx-fmt", &string);
-	if (ret < 0) {
-		dev_err(dp_sub->dev, "No gfx format in DT\n");
-		return ret;
-	}
+	if (!ret) {
+		layer = &dp_sub->layers[XILINX_DRM_DP_SUB_LAYER_GFX];
+		size = ARRAY_SIZE(av_buf_gfx_fmts);
+		layer->num_fmts = size;
+		layer->drm_fmts = devm_kzalloc(dp_sub->dev,
+					       sizeof(*layer->drm_fmts) * size,
+					       GFP_KERNEL);
+		if (!layer->drm_fmts)
+			return -ENOMEM;
 
-	for (i = 0; i < ARRAY_SIZE(av_buf_gfx_fmts); i++) {
-		const struct xilinx_drm_dp_sub_fmt *fmt = &av_buf_gfx_fmts[i];
+		for (i = 0; i < layer->num_fmts; i++) {
+			const struct xilinx_drm_dp_sub_fmt *fmt =
+				&av_buf_gfx_fmts[i];
 
-		if (strcmp(string, fmt->name) == 0) {
-			dp_sub->layers[XILINX_DRM_DP_SUB_LAYER_GFX].fmt = fmt;
-			break;
+			if (strcmp(string, fmt->name) == 0)
+				layer->fmt = fmt;
+
+			layer->drm_fmts[i] = fmt->drm_fmt;
 		}
-	}
 
-	if (!dp_sub->layers[XILINX_DRM_DP_SUB_LAYER_GFX].fmt) {
-		dev_err(dp_sub->dev, "Invalid gfx-fmt in DT\n");
-		return -EINVAL;
+		if (!layer->fmt) {
+			dev_info(dp_sub->dev, "Invalid vid-fmt in DT\n");
+			layer->fmt = &av_buf_gfx_fmts[0];
+		}
 	}
 
 	dp_sub->vid_clk_pl = of_property_read_bool(node, "xlnx,vid-clk-pl");
@@ -1519,6 +2207,8 @@ static int xilinx_drm_dp_sub_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, dp_sub);
 
 	xilinx_drm_dp_sub_register_device(dp_sub);
+
+	xilinx_dp_sub_debugfs_init(dp_sub);
 
 	dev_info(dp_sub->dev, "Xilinx DisplayPort Subsystem is probed\n");
 

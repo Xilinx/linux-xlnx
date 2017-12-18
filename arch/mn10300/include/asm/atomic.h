@@ -34,7 +34,7 @@
  *
  * Atomically reads the value of @v.  Note that the guaranteed
  */
-#define atomic_read(v)	(ACCESS_ONCE((v)->counter))
+#define atomic_read(v)	READ_ONCE((v)->counter)
 
 /**
  * atomic_set - set atomic variable
@@ -43,7 +43,7 @@
  *
  * Atomically sets the value of @v to @i.  Note that the guaranteed
  */
-#define atomic_set(v, i) (((v)->counter) = (i))
+#define atomic_set(v, i) WRITE_ONCE(((v)->counter), (i))
 
 #define ATOMIC_OP(op)							\
 static inline void atomic_##op(int i, atomic_t *v)			\
@@ -84,12 +84,41 @@ static inline int atomic_##op##_return(int i, atomic_t *v)		\
 	return retval;							\
 }
 
-#define ATOMIC_OPS(op) ATOMIC_OP(op) ATOMIC_OP_RETURN(op)
+#define ATOMIC_FETCH_OP(op)						\
+static inline int atomic_fetch_##op(int i, atomic_t *v)			\
+{									\
+	int retval, status;						\
+									\
+	asm volatile(							\
+		"1:	mov	%4,(_AAR,%3)	\n"			\
+		"	mov	(_ADR,%3),%1	\n"			\
+		"	mov	%1,%0		\n"			\
+		"	" #op "	%5,%0		\n"			\
+		"	mov	%0,(_ADR,%3)	\n"			\
+		"	mov	(_ADR,%3),%0	\n"	/* flush */	\
+		"	mov	(_ASR,%3),%0	\n"			\
+		"	or	%0,%0		\n"			\
+		"	bne	1b		\n"			\
+		: "=&r"(status), "=&r"(retval), "=m"(v->counter)	\
+		: "a"(ATOMIC_OPS_BASE_ADDR), "r"(&v->counter), "r"(i)	\
+		: "memory", "cc");					\
+	return retval;							\
+}
+
+#define ATOMIC_OPS(op) ATOMIC_OP(op) ATOMIC_OP_RETURN(op) ATOMIC_FETCH_OP(op)
 
 ATOMIC_OPS(add)
 ATOMIC_OPS(sub)
 
 #undef ATOMIC_OPS
+#define ATOMIC_OPS(op) ATOMIC_OP(op) ATOMIC_FETCH_OP(op)
+
+ATOMIC_OPS(and)
+ATOMIC_OPS(or)
+ATOMIC_OPS(xor)
+
+#undef ATOMIC_OPS
+#undef ATOMIC_FETCH_OP
 #undef ATOMIC_OP_RETURN
 #undef ATOMIC_OP
 
@@ -126,73 +155,6 @@ static inline void atomic_dec(atomic_t *v)
 
 #define atomic_xchg(ptr, v)		(xchg(&(ptr)->counter, (v)))
 #define atomic_cmpxchg(v, old, new)	(cmpxchg(&((v)->counter), (old), (new)))
-
-/**
- * atomic_clear_mask - Atomically clear bits in memory
- * @mask: Mask of the bits to be cleared
- * @v: pointer to word in memory
- *
- * Atomically clears the bits set in mask from the memory word specified.
- */
-static inline void atomic_clear_mask(unsigned long mask, unsigned long *addr)
-{
-#ifdef CONFIG_SMP
-	int status;
-
-	asm volatile(
-		"1:	mov	%3,(_AAR,%2)	\n"
-		"	mov	(_ADR,%2),%0	\n"
-		"	and	%4,%0		\n"
-		"	mov	%0,(_ADR,%2)	\n"
-		"	mov	(_ADR,%2),%0	\n"	/* flush */
-		"	mov	(_ASR,%2),%0	\n"
-		"	or	%0,%0		\n"
-		"	bne	1b		\n"
-		: "=&r"(status), "=m"(*addr)
-		: "a"(ATOMIC_OPS_BASE_ADDR), "r"(addr), "r"(~mask)
-		: "memory", "cc");
-#else
-	unsigned long flags;
-
-	mask = ~mask;
-	flags = arch_local_cli_save();
-	*addr &= mask;
-	arch_local_irq_restore(flags);
-#endif
-}
-
-/**
- * atomic_set_mask - Atomically set bits in memory
- * @mask: Mask of the bits to be set
- * @v: pointer to word in memory
- *
- * Atomically sets the bits set in mask from the memory word specified.
- */
-static inline void atomic_set_mask(unsigned long mask, unsigned long *addr)
-{
-#ifdef CONFIG_SMP
-	int status;
-
-	asm volatile(
-		"1:	mov	%3,(_AAR,%2)	\n"
-		"	mov	(_ADR,%2),%0	\n"
-		"	or	%4,%0		\n"
-		"	mov	%0,(_ADR,%2)	\n"
-		"	mov	(_ADR,%2),%0	\n"	/* flush */
-		"	mov	(_ASR,%2),%0	\n"
-		"	or	%0,%0		\n"
-		"	bne	1b		\n"
-		: "=&r"(status), "=m"(*addr)
-		: "a"(ATOMIC_OPS_BASE_ADDR), "r"(addr), "r"(mask)
-		: "memory", "cc");
-#else
-	unsigned long flags;
-
-	flags = arch_local_cli_save();
-	*addr |= mask;
-	arch_local_irq_restore(flags);
-#endif
-}
 
 #endif /* __KERNEL__ */
 #endif /* CONFIG_SMP */

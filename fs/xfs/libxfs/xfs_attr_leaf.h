@@ -50,10 +50,9 @@ int	xfs_attr_shortform_lookup(struct xfs_da_args *args);
 int	xfs_attr_shortform_getvalue(struct xfs_da_args *args);
 int	xfs_attr_shortform_to_leaf(struct xfs_da_args *args);
 int	xfs_attr_shortform_remove(struct xfs_da_args *args);
-int	xfs_attr_shortform_list(struct xfs_attr_list_context *context);
 int	xfs_attr_shortform_allfit(struct xfs_buf *bp, struct xfs_inode *dp);
 int	xfs_attr_shortform_bytesfit(xfs_inode_t *dp, int bytes);
-
+void	xfs_attr_fork_remove(struct xfs_inode *ip, struct xfs_trans *tp);
 
 /*
  * Internal routines when attribute fork size == XFS_LBSIZE(mp).
@@ -88,8 +87,6 @@ int	xfs_attr3_leaf_toosmall(struct xfs_da_state *state, int *retval);
 void	xfs_attr3_leaf_unbalance(struct xfs_da_state *state,
 				       struct xfs_da_state_blk *drop_blk,
 				       struct xfs_da_state_blk *save_blk);
-int	xfs_attr3_root_inactive(struct xfs_trans **trans, struct xfs_inode *dp);
-
 /*
  * Utility routines.
  */
@@ -100,9 +97,11 @@ int	xfs_attr_leaf_newentsize(struct xfs_da_args *args, int *local);
 int	xfs_attr3_leaf_read(struct xfs_trans *tp, struct xfs_inode *dp,
 			xfs_dablk_t bno, xfs_daddr_t mappedbno,
 			struct xfs_buf **bpp);
-void	xfs_attr3_leaf_hdr_from_disk(struct xfs_attr3_icleaf_hdr *to,
+void	xfs_attr3_leaf_hdr_from_disk(struct xfs_da_geometry *geo,
+				     struct xfs_attr3_icleaf_hdr *to,
 				     struct xfs_attr_leafblock *from);
-void	xfs_attr3_leaf_hdr_to_disk(struct xfs_attr_leafblock *to,
+void	xfs_attr3_leaf_hdr_to_disk(struct xfs_da_geometry *geo,
+				   struct xfs_attr_leafblock *to,
 				   struct xfs_attr3_icleaf_hdr *from);
 
 #endif	/* __XFS_ATTR_LEAF_H__ */

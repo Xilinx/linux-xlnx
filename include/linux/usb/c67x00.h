@@ -41,8 +41,8 @@
 #define C67X00_SIE2_PERIPHERAL_B	(C67X00_SIE_PERIPHERAL_B	<< 4)
 
 struct c67x00_platform_data {
-	u32 sie_config;			/* SIEs config (C67X00_SIEx_*) */
-	u32 hpi_regstep;	/* Step between HPI registers  */
+	int sie_config;			/* SIEs config (C67X00_SIEx_*) */
+	unsigned long hpi_regstep;	/* Step between HPI registers  */
 };
 
 #endif /* _LINUX_USB_C67X00_H */

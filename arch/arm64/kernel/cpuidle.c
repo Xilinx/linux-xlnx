@@ -9,24 +9,23 @@
  * published by the Free Software Foundation.
  */
 
+#include <linux/acpi.h>
+#include <linux/cpuidle.h>
+#include <linux/cpu_pm.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
 
 #include <asm/cpuidle.h>
 #include <asm/cpu_ops.h>
 
-int cpu_init_idle(unsigned int cpu)
+int arm_cpuidle_init(unsigned int cpu)
 {
 	int ret = -EOPNOTSUPP;
-	struct device_node *cpu_node = of_cpu_device_node_get(cpu);
 
-	if (!cpu_node)
-		return -ENODEV;
+	if (cpu_ops[cpu] && cpu_ops[cpu]->cpu_suspend &&
+			cpu_ops[cpu]->cpu_init_idle)
+		ret = cpu_ops[cpu]->cpu_init_idle(cpu);
 
-	if (cpu_ops[cpu] && cpu_ops[cpu]->cpu_init_idle)
-		ret = cpu_ops[cpu]->cpu_init_idle(cpu_node, cpu);
-
-	of_node_put(cpu_node);
 	return ret;
 }
 
@@ -37,15 +36,24 @@ int cpu_init_idle(unsigned int cpu)
  * Return: 0 on success, -EOPNOTSUPP if CPU suspend hook not initialized, CPU
  * operations back-end error code otherwise.
  */
-int cpu_suspend(unsigned long arg)
+int arm_cpuidle_suspend(int index)
 {
 	int cpu = smp_processor_id();
 
-	/*
-	 * If cpu_ops have not been registered or suspend
-	 * has not been initialized, cpu_suspend call fails early.
-	 */
-	if (!cpu_ops[cpu] || !cpu_ops[cpu]->cpu_suspend)
-		return -EOPNOTSUPP;
-	return cpu_ops[cpu]->cpu_suspend(arg);
+	return cpu_ops[cpu]->cpu_suspend(index);
 }
+
+#ifdef CONFIG_ACPI
+
+#include <acpi/processor.h>
+
+int acpi_processor_ffh_lpi_probe(unsigned int cpu)
+{
+	return arm_cpuidle_init(cpu);
+}
+
+int acpi_processor_ffh_lpi_enter(struct acpi_lpi_state *lpi)
+{
+	return CPU_PM_CPU_IDLE_ENTER(arm_cpuidle_suspend, lpi->index);
+}
+#endif

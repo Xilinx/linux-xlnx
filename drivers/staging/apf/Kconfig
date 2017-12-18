@@ -4,7 +4,7 @@
 
 menuconfig XILINX_APF
 	tristate "Xilinx APF Accelerator driver"
-	depends on ARCH_ZYNQ
+	depends on ARCH_ZYNQ || ARCH_ZYNQMP
 	default n
 	help
 	  Select if you want to include APF accelerator driver

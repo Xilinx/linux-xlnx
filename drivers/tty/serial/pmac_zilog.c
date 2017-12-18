@@ -1720,7 +1720,7 @@ static int __init pmz_init_port(struct uart_pmac_port *uap)
 
 	r_ports = platform_get_resource(uap->pdev, IORESOURCE_MEM, 0);
 	irq = platform_get_irq(uap->pdev, 0);
-	if (!r_ports || !irq)
+	if (!r_ports || irq <= 0)
 		return -ENODEV;
 
 	uap->port.mapbase  = r_ports->start;
@@ -1846,7 +1846,7 @@ static int __init pmz_register(void)
 
 #ifdef CONFIG_PPC_PMAC
 
-static struct of_device_id pmz_match[] = 
+static const struct of_device_id pmz_match[] =
 {
 	{
 	.name		= "ch-a",

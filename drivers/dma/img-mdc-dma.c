@@ -651,6 +651,48 @@ static enum dma_status mdc_tx_status(struct dma_chan *chan,
 	return ret;
 }
 
+static unsigned int mdc_get_new_events(struct mdc_chan *mchan)
+{
+	u32 val, processed, done1, done2;
+	unsigned int ret;
+
+	val = mdc_chan_readl(mchan, MDC_CMDS_PROCESSED);
+	processed = (val >> MDC_CMDS_PROCESSED_CMDS_PROCESSED_SHIFT) &
+				MDC_CMDS_PROCESSED_CMDS_PROCESSED_MASK;
+	/*
+	 * CMDS_DONE may have incremented between reading CMDS_PROCESSED
+	 * and clearing INT_ACTIVE.  Re-read CMDS_PROCESSED to ensure we
+	 * didn't miss a command completion.
+	 */
+	do {
+		val = mdc_chan_readl(mchan, MDC_CMDS_PROCESSED);
+
+		done1 = (val >> MDC_CMDS_PROCESSED_CMDS_DONE_SHIFT) &
+			MDC_CMDS_PROCESSED_CMDS_DONE_MASK;
+
+		val &= ~((MDC_CMDS_PROCESSED_CMDS_PROCESSED_MASK <<
+			  MDC_CMDS_PROCESSED_CMDS_PROCESSED_SHIFT) |
+			 MDC_CMDS_PROCESSED_INT_ACTIVE);
+
+		val |= done1 << MDC_CMDS_PROCESSED_CMDS_PROCESSED_SHIFT;
+
+		mdc_chan_writel(mchan, val, MDC_CMDS_PROCESSED);
+
+		val = mdc_chan_readl(mchan, MDC_CMDS_PROCESSED);
+
+		done2 = (val >> MDC_CMDS_PROCESSED_CMDS_DONE_SHIFT) &
+			MDC_CMDS_PROCESSED_CMDS_DONE_MASK;
+	} while (done1 != done2);
+
+	if (done1 >= processed)
+		ret = done1 - processed;
+	else
+		ret = ((MDC_CMDS_PROCESSED_CMDS_PROCESSED_MASK + 1) -
+			processed) + done1;
+
+	return ret;
+}
+
 static int mdc_terminate_all(struct dma_chan *chan)
 {
 	struct mdc_chan *mchan = to_mdc_chan(chan);
@@ -666,6 +708,8 @@ static int mdc_terminate_all(struct dma_chan *chan)
 	mdesc = mchan->desc;
 	mchan->desc = NULL;
 	vchan_get_all_descriptors(&mchan->vc, &head);
+
+	mdc_get_new_events(mchan);
 
 	spin_unlock_irqrestore(&mchan->vc.lock, flags);
 
@@ -689,11 +733,6 @@ static int mdc_slave_config(struct dma_chan *chan,
 	return 0;
 }
 
-static int mdc_alloc_chan_resources(struct dma_chan *chan)
-{
-	return 0;
-}
-
 static void mdc_free_chan_resources(struct dma_chan *chan)
 {
 	struct mdc_chan *mchan = to_mdc_chan(chan);
@@ -708,34 +747,16 @@ static irqreturn_t mdc_chan_irq(int irq, void *dev_id)
 {
 	struct mdc_chan *mchan = (struct mdc_chan *)dev_id;
 	struct mdc_tx_desc *mdesc;
-	u32 val, processed, done1, done2;
-	unsigned int i;
+	unsigned int i, new_events;
 
 	spin_lock(&mchan->vc.lock);
 
-	val = mdc_chan_readl(mchan, MDC_CMDS_PROCESSED);
-	processed = (val >> MDC_CMDS_PROCESSED_CMDS_PROCESSED_SHIFT) &
-		MDC_CMDS_PROCESSED_CMDS_PROCESSED_MASK;
-	/*
-	 * CMDS_DONE may have incremented between reading CMDS_PROCESSED
-	 * and clearing INT_ACTIVE.  Re-read CMDS_PROCESSED to ensure we
-	 * didn't miss a command completion.
-	 */
-	do {
-		val = mdc_chan_readl(mchan, MDC_CMDS_PROCESSED);
-		done1 = (val >> MDC_CMDS_PROCESSED_CMDS_DONE_SHIFT) &
-			MDC_CMDS_PROCESSED_CMDS_DONE_MASK;
-		val &= ~((MDC_CMDS_PROCESSED_CMDS_PROCESSED_MASK <<
-			  MDC_CMDS_PROCESSED_CMDS_PROCESSED_SHIFT) |
-			 MDC_CMDS_PROCESSED_INT_ACTIVE);
-		val |= done1 << MDC_CMDS_PROCESSED_CMDS_PROCESSED_SHIFT;
-		mdc_chan_writel(mchan, val, MDC_CMDS_PROCESSED);
-		val = mdc_chan_readl(mchan, MDC_CMDS_PROCESSED);
-		done2 = (val >> MDC_CMDS_PROCESSED_CMDS_DONE_SHIFT) &
-			MDC_CMDS_PROCESSED_CMDS_DONE_MASK;
-	} while (done1 != done2);
-
 	dev_dbg(mdma2dev(mchan->mdma), "IRQ on channel %d\n", mchan->chan_nr);
+
+	new_events = mdc_get_new_events(mchan);
+
+	if (!new_events)
+		goto out;
 
 	mdesc = mchan->desc;
 	if (!mdesc) {
@@ -745,8 +766,7 @@ static irqreturn_t mdc_chan_irq(int irq, void *dev_id)
 		goto out;
 	}
 
-	for (i = processed; i != done1;
-	     i = (i + 1) % (MDC_CMDS_PROCESSED_CMDS_PROCESSED_MASK + 1)) {
+	for (i = 0; i < new_events; i++) {
 		/*
 		 * The first interrupt in a transfer indicates that the
 		 * command list has been loaded, not that a command has
@@ -841,7 +861,6 @@ static int mdc_dma_probe(struct platform_device *pdev)
 {
 	struct mdc_dma *mdma;
 	struct resource *res;
-	const struct of_device_id *match;
 	unsigned int i;
 	u32 val;
 	int ret;
@@ -851,8 +870,7 @@ static int mdc_dma_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	platform_set_drvdata(pdev, mdma);
 
-	match = of_match_device(mdc_dma_of_match, &pdev->dev);
-	mdma->soc = match->data;
+	mdma->soc = of_device_get_match_data(&pdev->dev);
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	mdma->regs = devm_ioremap_resource(&pdev->dev, res);
@@ -910,7 +928,6 @@ static int mdc_dma_probe(struct platform_device *pdev)
 	mdma->dma_dev.device_prep_slave_sg = mdc_prep_slave_sg;
 	mdma->dma_dev.device_prep_dma_cyclic = mdc_prep_dma_cyclic;
 	mdma->dma_dev.device_prep_dma_memcpy = mdc_prep_dma_memcpy;
-	mdma->dma_dev.device_alloc_chan_resources = mdc_alloc_chan_resources;
 	mdma->dma_dev.device_free_chan_resources = mdc_free_chan_resources;
 	mdma->dma_dev.device_tx_status = mdc_tx_status;
 	mdma->dma_dev.device_issue_pending = mdc_issue_pending;
@@ -985,7 +1002,6 @@ static int mdc_dma_remove(struct platform_device *pdev)
 				 vc.chan.device_node) {
 		list_del(&mchan->vc.chan.device_node);
 
-		synchronize_irq(mchan->irq);
 		devm_free_irq(&pdev->dev, mchan->irq, mchan);
 
 		tasklet_kill(&mchan->vc.task);

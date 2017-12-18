@@ -15,7 +15,7 @@
 #include <linux/module.h>
 
 #include <media/soc_camera.h>
-#include <media/soc_mediabus.h>
+#include <media/drv-intf/soc_mediabus.h>
 #include <media/v4l2-clk.h>
 #include <media/v4l2-subdev.h>
 #include <media/v4l2-ctrls.h>
@@ -171,13 +171,19 @@ static int mt9m001_s_stream(struct v4l2_subdev *sd, int enable)
 	return 0;
 }
 
-static int mt9m001_s_crop(struct v4l2_subdev *sd, const struct v4l2_crop *a)
+static int mt9m001_set_selection(struct v4l2_subdev *sd,
+		struct v4l2_subdev_pad_config *cfg,
+		struct v4l2_subdev_selection *sel)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	struct mt9m001 *mt9m001 = to_mt9m001(client);
-	struct v4l2_rect rect = a->c;
-	int ret;
+	struct v4l2_rect rect = sel->r;
 	const u16 hblank = 9, vblank = 25;
+	int ret;
+
+	if (sel->which != V4L2_SUBDEV_FORMAT_ACTIVE ||
+	    sel->target != V4L2_SEL_TGT_CROP)
+		return -EINVAL;
 
 	if (mt9m001->fmts == mt9m001_colour_fmts)
 		/*
@@ -205,7 +211,7 @@ static int mt9m001_s_crop(struct v4l2_subdev *sd, const struct v4l2_crop *a)
 
 	/*
 	 * The caller provides a supported format, as verified per
-	 * call to .try_mbus_fmt()
+	 * call to .set_fmt(FORMAT_TRY).
 	 */
 	if (!ret)
 		ret = reg_write(client, MT9M001_COLUMN_START, rect.left);
@@ -225,36 +231,42 @@ static int mt9m001_s_crop(struct v4l2_subdev *sd, const struct v4l2_crop *a)
 	return ret;
 }
 
-static int mt9m001_g_crop(struct v4l2_subdev *sd, struct v4l2_crop *a)
+static int mt9m001_get_selection(struct v4l2_subdev *sd,
+		struct v4l2_subdev_pad_config *cfg,
+		struct v4l2_subdev_selection *sel)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	struct mt9m001 *mt9m001 = to_mt9m001(client);
 
-	a->c	= mt9m001->rect;
-	a->type	= V4L2_BUF_TYPE_VIDEO_CAPTURE;
+	if (sel->which != V4L2_SUBDEV_FORMAT_ACTIVE)
+		return -EINVAL;
 
-	return 0;
+	switch (sel->target) {
+	case V4L2_SEL_TGT_CROP_BOUNDS:
+	case V4L2_SEL_TGT_CROP_DEFAULT:
+		sel->r.left = MT9M001_COLUMN_SKIP;
+		sel->r.top = MT9M001_ROW_SKIP;
+		sel->r.width = MT9M001_MAX_WIDTH;
+		sel->r.height = MT9M001_MAX_HEIGHT;
+		return 0;
+	case V4L2_SEL_TGT_CROP:
+		sel->r = mt9m001->rect;
+		return 0;
+	default:
+		return -EINVAL;
+	}
 }
 
-static int mt9m001_cropcap(struct v4l2_subdev *sd, struct v4l2_cropcap *a)
-{
-	a->bounds.left			= MT9M001_COLUMN_SKIP;
-	a->bounds.top			= MT9M001_ROW_SKIP;
-	a->bounds.width			= MT9M001_MAX_WIDTH;
-	a->bounds.height		= MT9M001_MAX_HEIGHT;
-	a->defrect			= a->bounds;
-	a->type				= V4L2_BUF_TYPE_VIDEO_CAPTURE;
-	a->pixelaspect.numerator	= 1;
-	a->pixelaspect.denominator	= 1;
-
-	return 0;
-}
-
-static int mt9m001_g_fmt(struct v4l2_subdev *sd,
-			 struct v4l2_mbus_framefmt *mf)
+static int mt9m001_get_fmt(struct v4l2_subdev *sd,
+		struct v4l2_subdev_pad_config *cfg,
+		struct v4l2_subdev_format *format)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	struct mt9m001 *mt9m001 = to_mt9m001(client);
+	struct v4l2_mbus_framefmt *mf = &format->format;
+
+	if (format->pad)
+		return -EINVAL;
 
 	mf->width	= mt9m001->rect.width;
 	mf->height	= mt9m001->rect.height;
@@ -270,18 +282,18 @@ static int mt9m001_s_fmt(struct v4l2_subdev *sd,
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	struct mt9m001 *mt9m001 = to_mt9m001(client);
-	struct v4l2_crop a = {
-		.c = {
-			.left	= mt9m001->rect.left,
-			.top	= mt9m001->rect.top,
-			.width	= mf->width,
-			.height	= mf->height,
-		},
+	struct v4l2_subdev_selection sel = {
+		.which = V4L2_SUBDEV_FORMAT_ACTIVE,
+		.target = V4L2_SEL_TGT_CROP,
+		.r.left = mt9m001->rect.left,
+		.r.top = mt9m001->rect.top,
+		.r.width = mf->width,
+		.r.height = mf->height,
 	};
 	int ret;
 
 	/* No support for scaling so far, just crop. TODO: use skipping */
-	ret = mt9m001_s_crop(sd, &a);
+	ret = mt9m001_set_selection(sd, NULL, &sel);
 	if (!ret) {
 		mf->width	= mt9m001->rect.width;
 		mf->height	= mt9m001->rect.height;
@@ -293,12 +305,17 @@ static int mt9m001_s_fmt(struct v4l2_subdev *sd,
 	return ret;
 }
 
-static int mt9m001_try_fmt(struct v4l2_subdev *sd,
-			   struct v4l2_mbus_framefmt *mf)
+static int mt9m001_set_fmt(struct v4l2_subdev *sd,
+		struct v4l2_subdev_pad_config *cfg,
+		struct v4l2_subdev_format *format)
 {
+	struct v4l2_mbus_framefmt *mf = &format->format;
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	struct mt9m001 *mt9m001 = to_mt9m001(client);
 	const struct mt9m001_datafmt *fmt;
+
+	if (format->pad)
+		return -EINVAL;
 
 	v4l_bound_align_image(&mf->width, MT9M001_MIN_WIDTH,
 		MT9M001_MAX_WIDTH, 1,
@@ -317,6 +334,9 @@ static int mt9m001_try_fmt(struct v4l2_subdev *sd,
 
 	mf->colorspace	= fmt->colorspace;
 
+	if (format->which == V4L2_SUBDEV_FORMAT_ACTIVE)
+		return mt9m001_s_fmt(sd, mf);
+	cfg->try_fmt = *mf;
 	return 0;
 }
 
@@ -562,16 +582,17 @@ static struct v4l2_subdev_core_ops mt9m001_subdev_core_ops = {
 	.s_power	= mt9m001_s_power,
 };
 
-static int mt9m001_enum_fmt(struct v4l2_subdev *sd, unsigned int index,
-			    u32 *code)
+static int mt9m001_enum_mbus_code(struct v4l2_subdev *sd,
+		struct v4l2_subdev_pad_config *cfg,
+		struct v4l2_subdev_mbus_code_enum *code)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	struct mt9m001 *mt9m001 = to_mt9m001(client);
 
-	if (index >= mt9m001->num_fmts)
+	if (code->pad || code->index >= mt9m001->num_fmts)
 		return -EINVAL;
 
-	*code = mt9m001->fmts[index].code;
+	code->code = mt9m001->fmts[code->index].code;
 	return 0;
 }
 
@@ -611,25 +632,27 @@ static int mt9m001_s_mbus_config(struct v4l2_subdev *sd,
 
 static struct v4l2_subdev_video_ops mt9m001_subdev_video_ops = {
 	.s_stream	= mt9m001_s_stream,
-	.s_mbus_fmt	= mt9m001_s_fmt,
-	.g_mbus_fmt	= mt9m001_g_fmt,
-	.try_mbus_fmt	= mt9m001_try_fmt,
-	.s_crop		= mt9m001_s_crop,
-	.g_crop		= mt9m001_g_crop,
-	.cropcap	= mt9m001_cropcap,
-	.enum_mbus_fmt	= mt9m001_enum_fmt,
 	.g_mbus_config	= mt9m001_g_mbus_config,
 	.s_mbus_config	= mt9m001_s_mbus_config,
 };
 
-static struct v4l2_subdev_sensor_ops mt9m001_subdev_sensor_ops = {
+static const struct v4l2_subdev_sensor_ops mt9m001_subdev_sensor_ops = {
 	.g_skip_top_lines	= mt9m001_g_skip_top_lines,
+};
+
+static const struct v4l2_subdev_pad_ops mt9m001_subdev_pad_ops = {
+	.enum_mbus_code = mt9m001_enum_mbus_code,
+	.get_selection	= mt9m001_get_selection,
+	.set_selection	= mt9m001_set_selection,
+	.get_fmt	= mt9m001_get_fmt,
+	.set_fmt	= mt9m001_set_fmt,
 };
 
 static struct v4l2_subdev_ops mt9m001_subdev_ops = {
 	.core	= &mt9m001_subdev_core_ops,
 	.video	= &mt9m001_subdev_video_ops,
 	.sensor	= &mt9m001_subdev_sensor_ops,
+	.pad	= &mt9m001_subdev_pad_ops,
 };
 
 static int mt9m001_probe(struct i2c_client *client,

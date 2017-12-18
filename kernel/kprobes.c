@@ -49,7 +49,7 @@
 #include <linux/cpu.h>
 #include <linux/jump_label.h>
 
-#include <asm-generic/sections.h>
+#include <asm/sections.h>
 #include <asm/cacheflush.h>
 #include <asm/errno.h>
 #include <asm/uaccess.h>
@@ -1332,7 +1332,7 @@ bool __weak arch_within_kprobe_blacklist(unsigned long addr)
 	       addr < (unsigned long)__kprobes_text_end;
 }
 
-static bool within_kprobe_blacklist(unsigned long addr)
+bool within_kprobe_blacklist(unsigned long addr)
 {
 	struct kprobe_blacklist_entry *ent;
 

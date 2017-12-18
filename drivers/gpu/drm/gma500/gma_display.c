@@ -175,20 +175,21 @@ void gma_crtc_load_lut(struct drm_crtc *crtc)
 	}
 }
 
-void gma_crtc_gamma_set(struct drm_crtc *crtc, u16 *red, u16 *green, u16 *blue,
-			u32 start, u32 size)
+int gma_crtc_gamma_set(struct drm_crtc *crtc, u16 *red, u16 *green, u16 *blue,
+		       u32 size)
 {
 	struct gma_crtc *gma_crtc = to_gma_crtc(crtc);
 	int i;
-	int end = (start + size > 256) ? 256 : start + size;
 
-	for (i = start; i < end; i++) {
+	for (i = 0; i < size; i++) {
 		gma_crtc->lut_r[i] = red[i] >> 8;
 		gma_crtc->lut_g[i] = green[i] >> 8;
 		gma_crtc->lut_b[i] = blue[i] >> 8;
 	}
 
 	gma_crtc_load_lut(crtc);
+
+	return 0;
 }
 
 /**
@@ -281,7 +282,7 @@ void gma_crtc_dpms(struct drm_crtc *crtc, int mode)
 		REG_WRITE(VGACNTRL, VGA_DISP_DISABLE);
 
 		/* Turn off vblank interrupts */
-		drm_vblank_off(dev, pipe);
+		drm_crtc_vblank_off(crtc);
 
 		/* Wait for vblank for the disable to take effect */
 		gma_wait_for_vblank(dev);
@@ -349,8 +350,6 @@ int gma_crtc_cursor_set(struct drm_crtc *crtc,
 	/* If we didn't get a handle then turn the cursor off */
 	if (!handle) {
 		temp = CURSOR_MODE_DISABLE;
-		mutex_lock(&dev->struct_mutex);
-
 		if (gma_power_begin(dev, false)) {
 			REG_WRITE(control, temp);
 			REG_WRITE(base, 0);
@@ -362,11 +361,9 @@ int gma_crtc_cursor_set(struct drm_crtc *crtc,
 			gt = container_of(gma_crtc->cursor_obj,
 					  struct gtt_range, gem);
 			psb_gtt_unpin(gt);
-			drm_gem_object_unreference(gma_crtc->cursor_obj);
+			drm_gem_object_unreference_unlocked(gma_crtc->cursor_obj);
 			gma_crtc->cursor_obj = NULL;
 		}
-
-		mutex_unlock(&dev->struct_mutex);
 		return 0;
 	}
 
@@ -376,8 +373,7 @@ int gma_crtc_cursor_set(struct drm_crtc *crtc,
 		return -EINVAL;
 	}
 
-	mutex_lock(&dev->struct_mutex);
-	obj = drm_gem_object_lookup(dev, file_priv, handle);
+	obj = drm_gem_object_lookup(file_priv, handle);
 	if (!obj) {
 		ret = -ENOENT;
 		goto unlock;
@@ -441,17 +437,15 @@ int gma_crtc_cursor_set(struct drm_crtc *crtc,
 	if (gma_crtc->cursor_obj) {
 		gt = container_of(gma_crtc->cursor_obj, struct gtt_range, gem);
 		psb_gtt_unpin(gt);
-		drm_gem_object_unreference(gma_crtc->cursor_obj);
+		drm_gem_object_unreference_unlocked(gma_crtc->cursor_obj);
 	}
 
 	gma_crtc->cursor_obj = obj;
 unlock:
-	mutex_unlock(&dev->struct_mutex);
 	return ret;
 
 unref_cursor:
-	drm_gem_object_unreference(obj);
-	mutex_unlock(&dev->struct_mutex);
+	drm_gem_object_unreference_unlocked(obj);
 	return ret;
 }
 
@@ -485,36 +479,22 @@ int gma_crtc_cursor_move(struct drm_crtc *crtc, int x, int y)
 	return 0;
 }
 
-bool gma_encoder_mode_fixup(struct drm_encoder *encoder,
-			    const struct drm_display_mode *mode,
-			    struct drm_display_mode *adjusted_mode)
-{
-	return true;
-}
-
-bool gma_crtc_mode_fixup(struct drm_crtc *crtc,
-			 const struct drm_display_mode *mode,
-			 struct drm_display_mode *adjusted_mode)
-{
-	return true;
-}
-
 void gma_crtc_prepare(struct drm_crtc *crtc)
 {
-	struct drm_crtc_helper_funcs *crtc_funcs = crtc->helper_private;
+	const struct drm_crtc_helper_funcs *crtc_funcs = crtc->helper_private;
 	crtc_funcs->dpms(crtc, DRM_MODE_DPMS_OFF);
 }
 
 void gma_crtc_commit(struct drm_crtc *crtc)
 {
-	struct drm_crtc_helper_funcs *crtc_funcs = crtc->helper_private;
+	const struct drm_crtc_helper_funcs *crtc_funcs = crtc->helper_private;
 	crtc_funcs->dpms(crtc, DRM_MODE_DPMS_ON);
 }
 
 void gma_crtc_disable(struct drm_crtc *crtc)
 {
 	struct gtt_range *gt;
-	struct drm_crtc_helper_funcs *crtc_funcs = crtc->helper_private;
+	const struct drm_crtc_helper_funcs *crtc_funcs = crtc->helper_private;
 
 	crtc_funcs->dpms(crtc, DRM_MODE_DPMS_OFF);
 
@@ -656,7 +636,7 @@ void gma_crtc_restore(struct drm_crtc *crtc)
 
 void gma_encoder_prepare(struct drm_encoder *encoder)
 {
-	struct drm_encoder_helper_funcs *encoder_funcs =
+	const struct drm_encoder_helper_funcs *encoder_funcs =
 	    encoder->helper_private;
 	/* lvds has its own version of prepare see psb_intel_lvds_prepare */
 	encoder_funcs->dpms(encoder, DRM_MODE_DPMS_OFF);
@@ -664,7 +644,7 @@ void gma_encoder_prepare(struct drm_encoder *encoder)
 
 void gma_encoder_commit(struct drm_encoder *encoder)
 {
-	struct drm_encoder_helper_funcs *encoder_funcs =
+	const struct drm_encoder_helper_funcs *encoder_funcs =
 	    encoder->helper_private;
 	/* lvds has its own version of commit see psb_intel_lvds_commit */
 	encoder_funcs->dpms(encoder, DRM_MODE_DPMS_ON);

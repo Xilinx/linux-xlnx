@@ -29,13 +29,15 @@
 #include <asm/bitsperlong.h>
 
 #ifdef __KERNEL__
+struct device;
+int eth_platform_get_mac_address(struct device *dev, u8 *mac_addr);
+unsigned char *arch_get_platform_get_mac_address(void);
 u32 eth_get_headlen(void *data, unsigned int max_len);
 __be16 eth_type_trans(struct sk_buff *skb, struct net_device *dev);
 extern const struct header_ops eth_header_ops;
 
 int eth_header(struct sk_buff *skb, struct net_device *dev, unsigned short type,
 	       const void *daddr, const void *saddr, unsigned len);
-int eth_rebuild_header(struct sk_buff *skb);
 int eth_header_parse(const struct sk_buff *skb, unsigned char *haddr);
 int eth_header_cache(const struct neighbour *neigh, struct hh_cache *hh,
 		     __be16 type);
@@ -77,7 +79,7 @@ static inline bool is_link_local_ether_addr(const u8 *addr)
 
 #if defined(CONFIG_HAVE_EFFICIENT_UNALIGNED_ACCESS)
 	return (((*(const u32 *)addr) ^ (*(const u32 *)b)) |
-		((a[2] ^ b[2]) & m)) == 0;
+		(__force int)((a[2] ^ b[2]) & m)) == 0;
 #else
 	return ((a[0] ^ b[0]) | (a[1] ^ b[1]) | ((a[2] ^ b[2]) & m)) == 0;
 #endif
@@ -111,7 +113,29 @@ static inline bool is_zero_ether_addr(const u8 *addr)
  */
 static inline bool is_multicast_ether_addr(const u8 *addr)
 {
-	return 0x01 & addr[0];
+#if defined(CONFIG_HAVE_EFFICIENT_UNALIGNED_ACCESS)
+	u32 a = *(const u32 *)addr;
+#else
+	u16 a = *(const u16 *)addr;
+#endif
+#ifdef __BIG_ENDIAN
+	return 0x01 & (a >> ((sizeof(a) * 8) - 8));
+#else
+	return 0x01 & a;
+#endif
+}
+
+static inline bool is_multicast_ether_addr_64bits(const u8 addr[6+2])
+{
+#if defined(CONFIG_HAVE_EFFICIENT_UNALIGNED_ACCESS) && BITS_PER_LONG == 64
+#ifdef __BIG_ENDIAN
+	return 0x01 & ((*(const u64 *)addr) >> 56);
+#else
+	return 0x01 & (*(const u64 *)addr);
+#endif
+#else
+	return is_multicast_ether_addr(addr);
+#endif
 }
 
 /**
@@ -167,6 +191,24 @@ static inline bool is_valid_ether_addr(const u8 *addr)
 	/* FF:FF:FF:FF:FF:FF is a multicast address so we don't need to
 	 * explicitly check for it here. */
 	return !is_multicast_ether_addr(addr) && !is_zero_ether_addr(addr);
+}
+
+/**
+ * eth_proto_is_802_3 - Determine if a given Ethertype/length is a protocol
+ * @proto: Ethertype/length value to be tested
+ *
+ * Check that the value from the Ethertype/length field is a valid Ethertype.
+ *
+ * Return true if the valid is an 802.3 supported Ethertype.
+ */
+static inline bool eth_proto_is_802_3(__be16 proto)
+{
+#ifndef __BIG_ENDIAN
+	/* if CPU is little endian mask off bits representing LSB */
+	proto &= htons(0xFF00);
+#endif
+	/* cast both to u16 and compare since LSB can be ignored */
+	return (__force u16)proto >= (__force u16)htons(ETH_P_802_3_MIN);
 }
 
 /**
@@ -329,6 +371,29 @@ static inline bool ether_addr_equal_unaligned(const u8 *addr1, const u8 *addr2)
 #else
 	return memcmp(addr1, addr2, ETH_ALEN) == 0;
 #endif
+}
+
+/**
+ * ether_addr_equal_masked - Compare two Ethernet addresses with a mask
+ * @addr1: Pointer to a six-byte array containing the 1st Ethernet address
+ * @addr2: Pointer to a six-byte array containing the 2nd Ethernet address
+ * @mask: Pointer to a six-byte array containing the Ethernet address bitmask
+ *
+ * Compare two Ethernet addresses with a mask, returns true if for every bit
+ * set in the bitmask the equivalent bits in the ethernet addresses are equal.
+ * Using a mask with all bits set is a slower ether_addr_equal.
+ */
+static inline bool ether_addr_equal_masked(const u8 *addr1, const u8 *addr2,
+					   const u8 *mask)
+{
+	int i;
+
+	for (i = 0; i < ETH_ALEN; i++) {
+		if ((addr1[i] ^ addr2[i]) & mask[i])
+			return false;
+	}
+
+	return true;
 }
 
 /**

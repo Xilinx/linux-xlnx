@@ -57,13 +57,19 @@ struct task_struct;
  * A lot of busy-wait loops in SMP are based off of non-volatile data otherwise
  * get optimised away by gcc
  */
-#ifdef CONFIG_SMP
-#define cpu_relax()	__asm__ __volatile__ ("" : : : "memory")
-#else
-#define cpu_relax()	do { } while (0)
-#endif
+#ifndef CONFIG_EZNPS_MTM_EXT
 
-#define cpu_relax_lowlatency() cpu_relax()
+#define cpu_relax()		barrier()
+#define cpu_relax_lowlatency()	cpu_relax()
+
+#else
+
+#define cpu_relax()     \
+	__asm__ __volatile__ (".word %0" : : "i"(CTOP_INST_SCHD_RW) : "memory")
+
+#define cpu_relax_lowlatency()	barrier()
+
+#endif
 
 #define copy_segments(tsk, mm)      do { } while (0)
 #define release_segments(mm)        do { } while (0)
@@ -72,12 +78,12 @@ struct task_struct;
 #define KSTK_ESP(tsk)   (task_pt_regs(tsk)->sp)
 
 /*
- * Where abouts of Task's sp, fp, blink when it was last seen in kernel mode.
+ * Where about of Task's sp, fp, blink when it was last seen in kernel mode.
  * Look in process.c for details of kernel stack layout
  */
 #define TSK_K_ESP(tsk)		(tsk->thread.ksp)
 
-#define TSK_K_REG(tsk, off)	(*((unsigned int *)(TSK_K_ESP(tsk) + \
+#define TSK_K_REG(tsk, off)	(*((unsigned long *)(TSK_K_ESP(tsk) + \
 					sizeof(struct callee_regs) + off)))
 
 #define TSK_K_BLINK(tsk)	TSK_K_REG(tsk, 4)
@@ -100,31 +106,50 @@ extern unsigned int get_wchan(struct task_struct *p);
 
 #endif /* !__ASSEMBLY__ */
 
-/* Kernels Virtual memory area.
- * Unlike other architectures(MIPS, sh, cris ) ARC 700 does not have a
- * "kernel translated" region (like KSEG2 in MIPS). So we use a upper part
- * of the translated bottom 2GB for kernel virtual memory and protect
- * these pages from user accesses by disabling Ru, Eu and Wu.
+/*
+ * Default System Memory Map on ARC
+ *
+ * ---------------------------- (lower 2G, Translated) -------------------------
+ * 0x0000_0000		0x5FFF_FFFF	(user vaddr: TASK_SIZE)
+ * 0x6000_0000		0x6FFF_FFFF	(reserved gutter between U/K)
+ * 0x7000_0000		0x7FFF_FFFF	(kvaddr: vmalloc/modules/pkmap..)
+ *
+ * PAGE_OFFSET ---------------- (Upper 2G, Untranslated) -----------------------
+ * 0x8000_0000		0xBFFF_FFFF	(kernel direct mapped)
+ * 0xC000_0000		0xFFFF_FFFF	(peripheral uncached space)
+ * -----------------------------------------------------------------------------
  */
-#define VMALLOC_SIZE	(0x10000000)	/* 256M */
-#define VMALLOC_START	(PAGE_OFFSET - VMALLOC_SIZE)
-#define VMALLOC_END	(PAGE_OFFSET)
 
-/* Most of the architectures seem to be keeping some kind of padding between
- * userspace TASK_SIZE and PAGE_OFFSET. i.e TASK_SIZE != PAGE_OFFSET.
+#define TASK_SIZE	0x60000000
+
+#define VMALLOC_START	(PAGE_OFFSET - (CONFIG_ARC_KVADDR_SIZE << 20))
+
+/* 1 PGDIR_SIZE each for fixmap/pkmap, 2 PGDIR_SIZE gutter (see asm/highmem.h) */
+#define VMALLOC_SIZE	((CONFIG_ARC_KVADDR_SIZE << 20) - PGDIR_SIZE * 4)
+
+#define VMALLOC_END	(VMALLOC_START + VMALLOC_SIZE)
+
+#define USER_KERNEL_GUTTER    (VMALLOC_START - TASK_SIZE)
+
+#ifdef CONFIG_ARC_PLAT_EZNPS
+/* NPS architecture defines special window of 129M in user address space for
+ * special memory areas, when accessing this window the MMU do not use TLB.
+ * Instead MMU direct the access to:
+ * 0x57f00000:0x57ffffff -- 1M of closely coupled memory (aka CMEM)
+ * 0x58000000:0x5fffffff -- 16 huge pages, 8M each, with fixed map (aka FMTs)
+ *
+ * CMEM - is the fastest memory we got and its size is 16K.
+ * FMT  - is used to map either to internal/external memory.
+ * Internal memory is the second fast memory and its size is 16M
+ * External memory is the biggest memory (16G) and also the slowest.
+ *
+ * STACK_TOP need to be PMD align (21bit) that is why we supply 0x57e00000.
  */
-#define USER_KERNEL_GUTTER    0x10000000
-
-/* User address space:
- * On ARC700, CPU allows the entire lower half of 32 bit address space to be
- * translated. Thus potentially 2G (0:0x7FFF_FFFF) could be User vaddr space.
- * However we steal 256M for kernel addr (0x7000_0000:0x7FFF_FFFF) and another
- * 256M (0x6000_0000:0x6FFF_FFFF) is gutter between user/kernel spaces
- * Thus total User vaddr space is (0:0x5FFF_FFFF)
- */
-#define TASK_SIZE	(PAGE_OFFSET - VMALLOC_SIZE - USER_KERNEL_GUTTER)
-
+#define STACK_TOP       0x57e00000
+#else
 #define STACK_TOP       TASK_SIZE
+#endif
+
 #define STACK_TOP_MAX   STACK_TOP
 
 /* This decides where the kernel will search for a free chunk of vm

@@ -58,7 +58,7 @@
 
 			pio0: gpio@fe610000 {
 				gpio-controller;
-				#gpio-cells = <1>;
+				#gpio-cells	= <2>;
 				interrupt-controller;
 				#interrupt-cells = <2>;
 				reg		= <0 0x100>;
@@ -66,7 +66,7 @@
 			};
 			pio1: gpio@fe611000 {
 				gpio-controller;
-				#gpio-cells	= <1>;
+				#gpio-cells	= <2>;
 				interrupt-controller;
 				#interrupt-cells = <2>;
 				reg		= <0x1000 0x100>;
@@ -74,7 +74,7 @@
 			};
 			pio2: gpio@fe612000 {
 				gpio-controller;
-				#gpio-cells	= <1>;
+				#gpio-cells	= <2>;
 				interrupt-controller;
 				#interrupt-cells = <2>;
 				reg		= <0x2000 0x100>;
@@ -82,7 +82,7 @@
 			};
 			pio3: gpio@fe613000 {
 				gpio-controller;
-				#gpio-cells	= <1>;
+				#gpio-cells	= <2>;
 				interrupt-controller;
 				#interrupt-cells = <2>;
 				reg		= <0x3000 0x100>;
@@ -90,7 +90,7 @@
 			};
 			pio4: gpio@fe614000 {
 				gpio-controller;
-				#gpio-cells	= <1>;
+				#gpio-cells	= <2>;
 				interrupt-controller;
 				#interrupt-cells = <2>;
 				reg		= <0x4000 0x100>;
@@ -98,7 +98,7 @@
 			};
 			pio40: gpio@fe615000 {
 				gpio-controller;
-				#gpio-cells	= <1>;
+				#gpio-cells	= <2>;
 				interrupt-controller;
 				#interrupt-cells = <2>;
 				reg		= <0x5000 0x100>;
@@ -216,6 +216,32 @@
 					};
 				};
 			};
+
+			pwm1 {
+				pinctrl_pwm1_chan0_default: pwm1-0-default {
+					st,pins {
+						pwm-out    = <&pio3 0 ALT1 OUT>;
+						pwm-capturein = <&pio3 2 ALT1 IN>;
+
+					};
+				};
+				pinctrl_pwm1_chan1_default: pwm1-1-default {
+					st,pins {
+						pwm-out    = <&pio4 4 ALT1 OUT>;
+						pwm-capturein = <&pio4 3 ALT1 IN>;
+					};
+				};
+				pinctrl_pwm1_chan2_default: pwm1-2-default {
+					st,pins {
+						pwm-out    = <&pio4 6 ALT3 OUT>;
+					};
+				};
+				pinctrl_pwm1_chan3_default: pwm1-3-default {
+					st,pins {
+						pwm-out    = <&pio4 7 ALT3 OUT>;
+					};
+				};
+			};
 		};
 
 		pin-controller-front {
@@ -231,7 +257,7 @@
 
 			pio5: gpio@fee00000 {
 				gpio-controller;
-				#gpio-cells	= <1>;
+				#gpio-cells	= <2>;
 				interrupt-controller;
 				#interrupt-cells = <2>;
 				reg		= <0 0x100>;
@@ -239,7 +265,7 @@
 			};
 			pio6: gpio@fee01000 {
 				gpio-controller;
-				#gpio-cells	= <1>;
+				#gpio-cells	= <2>;
 				interrupt-controller;
 				#interrupt-cells = <2>;
 				reg		= <0x1000 0x100>;
@@ -247,7 +273,7 @@
 			};
 			pio7: gpio@fee02000 {
 				gpio-controller;
-				#gpio-cells	= <1>;
+				#gpio-cells	= <2>;
 				interrupt-controller;
 				#interrupt-cells = <2>;
 				reg		= <0x2000 0x100>;
@@ -255,7 +281,7 @@
 			};
 			pio8: gpio@fee03000 {
 				gpio-controller;
-				#gpio-cells	= <1>;
+				#gpio-cells	= <2>;
 				interrupt-controller;
 				#interrupt-cells = <2>;
 				reg		= <0x3000 0x100>;
@@ -263,7 +289,7 @@
 			};
 			pio9: gpio@fee04000 {
 				gpio-controller;
-				#gpio-cells	= <1>;
+				#gpio-cells	= <2>;
 				interrupt-controller;
 				#interrupt-cells = <2>;
 				reg		= <0x4000 0x100>;
@@ -271,7 +297,7 @@
 			};
 			pio10: gpio@fee05000 {
 				gpio-controller;
-				#gpio-cells	= <1>;
+				#gpio-cells	= <2>;
 				interrupt-controller;
 				#interrupt-cells = <2>;
 				reg		= <0x5000 0x100>;
@@ -279,7 +305,7 @@
 			};
 			pio11: gpio@fee06000 {
 				gpio-controller;
-				#gpio-cells	= <1>;
+				#gpio-cells	= <2>;
 				interrupt-controller;
 				#interrupt-cells = <2>;
 				reg		= <0x6000 0x100>;
@@ -287,7 +313,7 @@
 			};
 			pio12: gpio@fee07000 {
 				gpio-controller;
-				#gpio-cells	= <1>;
+				#gpio-cells	= <2>;
 				interrupt-controller;
 				#interrupt-cells = <2>;
 				reg		= <0x7000 0x100>;
@@ -295,7 +321,7 @@
 			};
 			pio30: gpio@fee08000 {
 				gpio-controller;
-				#gpio-cells	= <1>;
+				#gpio-cells	= <2>;
 				interrupt-controller;
 				#interrupt-cells = <2>;
 				reg		= <0x8000 0x100>;
@@ -303,11 +329,20 @@
 			};
 			pio31: gpio@fee09000 {
 				gpio-controller;
-				#gpio-cells	= <1>;
+				#gpio-cells	= <2>;
 				interrupt-controller;
 				#interrupt-cells = <2>;
 				reg		= <0x9000 0x100>;
 				st,bank-name	= "PIO31";
+			};
+
+			pwm0 {
+				pinctrl_pwm0_chan0_default: pwm0-0-default {
+					st,pins {
+						pwm-out    = <&pio9 7 ALT2 OUT>;
+						pwm-capturein = <&pio9 6 ALT2 IN>;
+					};
+				};
 			};
 
 			serial2-oe {
@@ -373,7 +408,7 @@
 
 			pio13: gpio@fe820000 {
 				gpio-controller;
-				#gpio-cells	= <1>;
+				#gpio-cells	= <2>;
 				interrupt-controller;
 				#interrupt-cells = <2>;
 				reg		= <0 0x100>;
@@ -381,7 +416,7 @@
 			};
 			pio14: gpio@fe821000 {
 				gpio-controller;
-				#gpio-cells	= <1>;
+				#gpio-cells	= <2>;
 				interrupt-controller;
 				#interrupt-cells = <2>;
 				reg		= <0x1000 0x100>;
@@ -389,7 +424,7 @@
 			};
 			pio15: gpio@fe822000 {
 				gpio-controller;
-				#gpio-cells	= <1>;
+				#gpio-cells	= <2>;
 				interrupt-controller;
 				#interrupt-cells = <2>;
 				reg		= <0x2000 0x100>;
@@ -397,7 +432,7 @@
 			};
 			pio16: gpio@fe823000 {
 				gpio-controller;
-				#gpio-cells	= <1>;
+				#gpio-cells	= <2>;
 				interrupt-controller;
 				#interrupt-cells = <2>;
 				reg		= <0x3000 0x100>;
@@ -405,7 +440,7 @@
 			};
 			pio17: gpio@fe824000 {
 				gpio-controller;
-				#gpio-cells	= <1>;
+				#gpio-cells	= <2>;
 				interrupt-controller;
 				#interrupt-cells = <2>;
 				reg		= <0x4000 0x100>;
@@ -413,7 +448,7 @@
 			};
 			pio18: gpio@fe825000 {
 				gpio-controller;
-				#gpio-cells	= <1>;
+				#gpio-cells	= <2>;
 				interrupt-controller;
 				#interrupt-cells = <2>;
 				reg		= <0x5000 0x100>;
@@ -540,6 +575,26 @@
 					};
 				};
 			};
+
+			pwm0 {
+				pinctrl_pwm0_chan1_default: pwm0-1-default {
+					st,pins {
+						pwm-out    = <&pio13 2 ALT2 OUT>;
+						pwm-capturein = <&pio13 1 ALT2 IN>;
+					};
+				};
+				pinctrl_pwm0_chan2_default: pwm0-2-default {
+					st,pins {
+						pwm-out    = <&pio15 2 ALT4 OUT>;
+					};
+				};
+				pinctrl_pwm0_chan3_default: pwm0-3-default {
+					st,pins {
+						pwm-out    = <&pio17 4 ALT1 OUT>;
+					};
+				};
+			};
+
 		};
 
 		pin-controller-fvdp-fe {
@@ -555,7 +610,7 @@
 
 			pio100: gpio@fd6b0000 {
 				gpio-controller;
-				#gpio-cells	= <1>;
+				#gpio-cells	= <2>;
 				interrupt-controller;
 				#interrupt-cells = <2>;
 				reg		= <0 0x100>;
@@ -563,7 +618,7 @@
 			};
 			pio101: gpio@fd6b1000 {
 				gpio-controller;
-				#gpio-cells	= <1>;
+				#gpio-cells	= <2>;
 				interrupt-controller;
 				#interrupt-cells = <2>;
 				reg		= <0x1000 0x100>;
@@ -571,7 +626,7 @@
 			};
 			pio102: gpio@fd6b2000 {
 				gpio-controller;
-				#gpio-cells	= <1>;
+				#gpio-cells	= <2>;
 				interrupt-controller;
 				#interrupt-cells = <2>;
 				reg		= <0x2000 0x100>;
@@ -592,7 +647,7 @@
 
 			pio103: gpio@fd330000 {
 				gpio-controller;
-				#gpio-cells	= <1>;
+				#gpio-cells	= <2>;
 				interrupt-controller;
 				#interrupt-cells = <2>;
 				reg		= <0 0x100>;
@@ -600,7 +655,7 @@
 			};
 			pio104: gpio@fd331000 {
 				gpio-controller;
-				#gpio-cells	= <1>;
+				#gpio-cells	= <2>;
 				interrupt-controller;
 				#interrupt-cells = <2>;
 				reg		= <0x1000 0x100>;
@@ -608,7 +663,7 @@
 			};
 			pio105: gpio@fd332000 {
 				gpio-controller;
-				#gpio-cells	= <1>;
+				#gpio-cells	= <2>;
 				interrupt-controller;
 				#interrupt-cells = <2>;
 				reg		= <0x2000 0x100>;
@@ -616,7 +671,7 @@
 			};
 			pio106: gpio@fd333000 {
 				gpio-controller;
-				#gpio-cells	= <1>;
+				#gpio-cells	= <2>;
 				interrupt-controller;
 				#interrupt-cells = <2>;
 				reg		= <0x3000 0x100>;
@@ -625,7 +680,7 @@
 
 			pio107: gpio@fd334000 {
 				gpio-controller;
-				#gpio-cells	= <1>;
+				#gpio-cells	= <2>;
 				interrupt-controller;
 				#interrupt-cells = <2>;
 				reg		= <0x4000 0x100>;

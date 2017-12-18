@@ -129,6 +129,7 @@ static inline void sbus_memcpy_toio(volatile void __iomem *dst,
 void __iomem *ioremap(unsigned long offset, unsigned long size);
 #define ioremap_nocache(X,Y)	ioremap((X),(Y))
 #define ioremap_wc(X,Y)		ioremap((X),(Y))
+#define ioremap_wt(X,Y)		ioremap((X),(Y))
 void iounmap(volatile void __iomem *addr);
 
 /* Create a virtual mapping cookie for an IO port range */
@@ -138,16 +139,6 @@ void ioport_unmap(void __iomem *);
 /* Create a virtual mapping cookie for a PCI BAR (memory or IO) */
 struct pci_dev;
 void pci_iounmap(struct pci_dev *dev, void __iomem *);
-
-
-
-/*
- * At the moment, we do not use CMOS_READ anywhere outside of rtc.c,
- * so rtc_port is static in it. This should not change unless a new
- * hardware pops up.
- */
-#define RTC_PORT(x)   (rtc_port + (x))
-#define RTC_ALWAYS_BCD  0
 
 static inline int sbus_can_dma_64bit(void)
 {

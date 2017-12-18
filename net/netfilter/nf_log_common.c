@@ -17,6 +17,7 @@
 #include <net/route.h>
 
 #include <linux/netfilter.h>
+#include <linux/netfilter_bridge.h>
 #include <linux/netfilter/xt_LOG.h>
 #include <net/netfilter/nf_log.h>
 
@@ -76,7 +77,7 @@ int nf_log_dump_tcp_header(struct nf_log_buf *m, const struct sk_buff *skb,
 	nf_log_buf_add(m, "SPT=%u DPT=%u ",
 		       ntohs(th->source), ntohs(th->dest));
 	/* Max length: 30 "SEQ=4294967295 ACK=4294967295 " */
-	if (logflags & XT_LOG_TCPSEQ) {
+	if (logflags & NF_LOG_TCPSEQ) {
 		nf_log_buf_add(m, "SEQ=%u ACK=%u ",
 			       ntohl(th->seq), ntohl(th->ack_seq));
 	}
@@ -106,7 +107,7 @@ int nf_log_dump_tcp_header(struct nf_log_buf *m, const struct sk_buff *skb,
 	/* Max length: 11 "URGP=65535 " */
 	nf_log_buf_add(m, "URGP=%u ", ntohs(th->urg_ptr));
 
-	if ((logflags & XT_LOG_TCPOPT) && th->doff*4 > sizeof(struct tcphdr)) {
+	if ((logflags & NF_LOG_TCPOPT) && th->doff*4 > sizeof(struct tcphdr)) {
 		u_int8_t _opt[60 - sizeof(struct tcphdr)];
 		const u_int8_t *op;
 		unsigned int i;
@@ -133,7 +134,7 @@ EXPORT_SYMBOL_GPL(nf_log_dump_tcp_header);
 
 void nf_log_dump_sk_uid_gid(struct nf_log_buf *m, struct sock *sk)
 {
-	if (!sk || sk->sk_state == TCP_TIME_WAIT)
+	if (!sk || !sk_fullsock(sk))
 		return;
 
 	read_lock_bh(&sk->sk_callback_lock);
@@ -163,10 +164,10 @@ nf_log_dump_packet_common(struct nf_log_buf *m, u_int8_t pf,
 		const struct net_device *physindev;
 		const struct net_device *physoutdev;
 
-		physindev = skb->nf_bridge->physindev;
+		physindev = nf_bridge_get_physindev(skb);
 		if (physindev && in != physindev)
 			nf_log_buf_add(m, "PHYSIN=%s ", physindev->name);
-		physoutdev = skb->nf_bridge->physoutdev;
+		physoutdev = nf_bridge_get_physoutdev(skb);
 		if (physoutdev && out != physoutdev)
 			nf_log_buf_add(m, "PHYSOUT=%s ", physoutdev->name);
 	}

@@ -63,7 +63,7 @@ static void __iomem *_cm_bases[OMAP4_MAX_PRCM_PARTITIONS];
  * Populates the base addresses of the _cm_bases
  * array used for read/write of cm module registers.
  */
-void omap_cm_base_init(void)
+static void omap_cm_base_init(void)
 {
 	_cm_bases[OMAP4430_PRM_PARTITION] = prm_base;
 	_cm_bases[OMAP4430_CM1_PARTITION] = cm_base;
@@ -278,9 +278,6 @@ static int omap4_cminst_wait_module_ready(u8 part, s16 inst, u16 clkctrl_offs,
 {
 	int i = 0;
 
-	if (!clkctrl_offs)
-		return 0;
-
 	omap_test_timeout(_is_module_ready(part, inst, clkctrl_offs),
 			  MAX_MODULE_READY_TIME, i);
 
@@ -303,9 +300,6 @@ static int omap4_cminst_wait_module_idle(u8 part, s16 inst, u16 clkctrl_offs,
 					 u8 bit_shift)
 {
 	int i = 0;
-
-	if (!clkctrl_offs)
-		return 0;
 
 	omap_test_timeout((_clkctrl_idlest(part, inst, clkctrl_offs) ==
 			   CLKCTRL_IDLEST_DISABLED),
@@ -514,8 +508,10 @@ static struct cm_ll_data omap4xxx_cm_ll_data = {
 	.module_disable		= &omap4_cminst_module_disable,
 };
 
-int __init omap4_cm_init(void)
+int __init omap4_cm_init(const struct omap_prcm_init_data *data)
 {
+	omap_cm_base_init();
+
 	return cm_register(&omap4xxx_cm_ll_data);
 }
 

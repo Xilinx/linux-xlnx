@@ -14,52 +14,29 @@
 #include <linux/init.h>
 #include <linux/irq.h>
 #include <linux/io.h>
-#include <linux/gpio.h>
 #include <linux/platform_device.h>
-#include <linux/module.h>
 #include <linux/of_address.h>
 #include <linux/of_gpio.h>
 #include <linux/pinctrl/consumer.h>
 #include <linux/delay.h>
 #include <linux/timer.h>
 #include <linux/bitops.h>
-#include <linux/basic_mmio_gpio.h>
+#include <linux/gpio/driver.h>
 
 #define GPIO_DATA_OUT		0x00
 #define GPIO_DATA_IN		0x04
 #define GPIO_PIN_DIRECTION	0x08
 
-static int moxart_gpio_request(struct gpio_chip *chip, unsigned offset)
-{
-	return pinctrl_request_gpio(offset);
-}
-
-static void moxart_gpio_free(struct gpio_chip *chip, unsigned offset)
-{
-	pinctrl_free_gpio(offset);
-}
-
-static int moxart_gpio_get(struct gpio_chip *chip, unsigned offset)
-{
-	struct bgpio_chip *bgc = to_bgpio_chip(chip);
-	u32 ret = bgc->read_reg(bgc->reg_dir);
-
-	if (ret & BIT(offset))
-		return !!(bgc->read_reg(bgc->reg_set) & BIT(offset));
-	else
-		return !!(bgc->read_reg(bgc->reg_dat) & BIT(offset));
-}
-
 static int moxart_gpio_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct resource *res;
-	struct bgpio_chip *bgc;
+	struct gpio_chip *gc;
 	void __iomem *base;
 	int ret;
 
-	bgc = devm_kzalloc(dev, sizeof(*bgc), GFP_KERNEL);
-	if (!bgc)
+	gc = devm_kzalloc(dev, sizeof(*gc), GFP_KERNEL);
+	if (!gc)
 		return -ENOMEM;
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
@@ -67,25 +44,22 @@ static int moxart_gpio_probe(struct platform_device *pdev)
 	if (IS_ERR(base))
 		return PTR_ERR(base);
 
-	ret = bgpio_init(bgc, dev, 4, base + GPIO_DATA_IN,
-		    base + GPIO_DATA_OUT, NULL,
-		    base + GPIO_PIN_DIRECTION, NULL, 0);
+	ret = bgpio_init(gc, dev, 4, base + GPIO_DATA_IN,
+			 base + GPIO_DATA_OUT, NULL,
+			 base + GPIO_PIN_DIRECTION, NULL,
+			 BGPIOF_READ_OUTPUT_REG_SET);
 	if (ret) {
 		dev_err(&pdev->dev, "bgpio_init failed\n");
 		return ret;
 	}
 
-	bgc->gc.label = "moxart-gpio";
-	bgc->gc.request = moxart_gpio_request;
-	bgc->gc.free = moxart_gpio_free;
-	bgc->gc.get = moxart_gpio_get;
-	bgc->data = bgc->read_reg(bgc->reg_set);
-	bgc->gc.base = 0;
-	bgc->gc.ngpio = 32;
-	bgc->gc.dev = dev;
-	bgc->gc.owner = THIS_MODULE;
+	gc->label = "moxart-gpio";
+	gc->request = gpiochip_generic_request;
+	gc->free = gpiochip_generic_free;
+	gc->base = 0;
+	gc->owner = THIS_MODULE;
 
-	ret = gpiochip_add(&bgc->gc);
+	ret = devm_gpiochip_add_data(dev, gc, NULL);
 	if (ret) {
 		dev_err(dev, "%s: gpiochip_add failed\n",
 			dev->of_node->full_name);
@@ -107,8 +81,4 @@ static struct platform_driver moxart_gpio_driver = {
 	},
 	.probe	= moxart_gpio_probe,
 };
-module_platform_driver(moxart_gpio_driver);
-
-MODULE_DESCRIPTION("MOXART GPIO chip driver");
-MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Jonas Jensen <jonas.jensen@gmail.com>");
+builtin_platform_driver(moxart_gpio_driver);

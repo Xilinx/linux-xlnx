@@ -80,9 +80,13 @@ static int c4iw_multicast_detach(struct ib_qp *ibqp, union ib_gid *gid, u16 lid)
 }
 
 static int c4iw_process_mad(struct ib_device *ibdev, int mad_flags,
-			    u8 port_num, struct ib_wc *in_wc,
-			    struct ib_grh *in_grh, struct ib_mad *in_mad,
-			    struct ib_mad *out_mad)
+			    u8 port_num, const struct ib_wc *in_wc,
+			    const struct ib_grh *in_grh,
+			    const struct ib_mad_hdr *in_mad,
+			    size_t in_mad_size,
+			    struct ib_mad_hdr *out_mad,
+			    size_t *out_mad_size,
+			    u16 *out_mad_pkey_index)
 {
 	return -ENOSYS;
 }
@@ -205,7 +209,7 @@ static int c4iw_mmap(struct ib_ucontext *context, struct vm_area_struct *vma)
 		if (addr >= rdev->oc_mw_pa)
 			vma->vm_page_prot = t4_pgprot_wc(vma->vm_page_prot);
 		else {
-			if (is_t5(rdev->lldi.adapter_type))
+			if (!is_t4(rdev->lldi.adapter_type))
 				vma->vm_page_prot =
 					t4_pgprot_wc(vma->vm_page_prot);
 			else
@@ -301,12 +305,16 @@ static int c4iw_query_gid(struct ib_device *ibdev, u8 port, int index,
 	return 0;
 }
 
-static int c4iw_query_device(struct ib_device *ibdev,
-			     struct ib_device_attr *props)
+static int c4iw_query_device(struct ib_device *ibdev, struct ib_device_attr *props,
+			     struct ib_udata *uhw)
 {
 
 	struct c4iw_dev *dev;
+
 	PDBG("%s ibdev %p\n", __func__, ibdev);
+
+	if (uhw->inlen || uhw->outlen)
+		return -EINVAL;
 
 	dev = to_c4iw_dev(ibdev);
 	memset(props, 0, sizeof *props);
@@ -331,7 +339,8 @@ static int c4iw_query_device(struct ib_device *ibdev,
 	props->max_mr = c4iw_num_stags(&dev->rdev);
 	props->max_pd = T4_MAX_NUM_PD;
 	props->local_ca_ack_delay = 0;
-	props->max_fast_reg_page_list_len = t4_max_fr_depth(use_dsgl);
+	props->max_fast_reg_page_list_len =
+		t4_max_fr_depth(dev->rdev.lldi.ulptx_memwrite_dsgl && use_dsgl);
 
 	return 0;
 }
@@ -400,20 +409,6 @@ static ssize_t show_rev(struct device *dev, struct device_attribute *attr,
 		       CHELSIO_CHIP_RELEASE(c4iw_dev->rdev.lldi.adapter_type));
 }
 
-static ssize_t show_fw_ver(struct device *dev, struct device_attribute *attr,
-			   char *buf)
-{
-	struct c4iw_dev *c4iw_dev = container_of(dev, struct c4iw_dev,
-						 ibdev.dev);
-	PDBG("%s dev 0x%p\n", __func__, dev);
-
-	return sprintf(buf, "%u.%u.%u.%u\n",
-			FW_HDR_FW_VER_MAJOR_G(c4iw_dev->rdev.lldi.fw_vers),
-			FW_HDR_FW_VER_MINOR_G(c4iw_dev->rdev.lldi.fw_vers),
-			FW_HDR_FW_VER_MICRO_G(c4iw_dev->rdev.lldi.fw_vers),
-			FW_HDR_FW_VER_BUILD_G(c4iw_dev->rdev.lldi.fw_vers));
-}
-
 static ssize_t show_hca(struct device *dev, struct device_attribute *attr,
 			char *buf)
 {
@@ -437,33 +432,101 @@ static ssize_t show_board(struct device *dev, struct device_attribute *attr,
 		       c4iw_dev->rdev.lldi.pdev->device);
 }
 
+enum counters {
+	IP4INSEGS,
+	IP4OUTSEGS,
+	IP4RETRANSSEGS,
+	IP4OUTRSTS,
+	IP6INSEGS,
+	IP6OUTSEGS,
+	IP6RETRANSSEGS,
+	IP6OUTRSTS,
+	NR_COUNTERS
+};
+
+static const char * const names[] = {
+	[IP4INSEGS] = "ip4InSegs",
+	[IP4OUTSEGS] = "ip4OutSegs",
+	[IP4RETRANSSEGS] = "ip4RetransSegs",
+	[IP4OUTRSTS] = "ip4OutRsts",
+	[IP6INSEGS] = "ip6InSegs",
+	[IP6OUTSEGS] = "ip6OutSegs",
+	[IP6RETRANSSEGS] = "ip6RetransSegs",
+	[IP6OUTRSTS] = "ip6OutRsts"
+};
+
+static struct rdma_hw_stats *c4iw_alloc_stats(struct ib_device *ibdev,
+					      u8 port_num)
+{
+	BUILD_BUG_ON(ARRAY_SIZE(names) != NR_COUNTERS);
+
+	if (port_num != 0)
+		return NULL;
+
+	return rdma_alloc_hw_stats_struct(names, NR_COUNTERS,
+					  RDMA_HW_STATS_DEFAULT_LIFESPAN);
+}
+
 static int c4iw_get_mib(struct ib_device *ibdev,
-			union rdma_protocol_stats *stats)
+			struct rdma_hw_stats *stats,
+			u8 port, int index)
 {
 	struct tp_tcp_stats v4, v6;
 	struct c4iw_dev *c4iw_dev = to_c4iw_dev(ibdev);
 
 	cxgb4_get_tcp_stats(c4iw_dev->rdev.lldi.pdev, &v4, &v6);
-	memset(stats, 0, sizeof *stats);
-	stats->iw.tcpInSegs = v4.tcpInSegs + v6.tcpInSegs;
-	stats->iw.tcpOutSegs = v4.tcpOutSegs + v6.tcpOutSegs;
-	stats->iw.tcpRetransSegs = v4.tcpRetransSegs + v6.tcpRetransSegs;
-	stats->iw.tcpOutRsts = v4.tcpOutRsts + v6.tcpOutSegs;
+	stats->value[IP4INSEGS] = v4.tcp_in_segs;
+	stats->value[IP4OUTSEGS] = v4.tcp_out_segs;
+	stats->value[IP4RETRANSSEGS] = v4.tcp_retrans_segs;
+	stats->value[IP4OUTRSTS] = v4.tcp_out_rsts;
+	stats->value[IP6INSEGS] = v6.tcp_in_segs;
+	stats->value[IP6OUTSEGS] = v6.tcp_out_segs;
+	stats->value[IP6RETRANSSEGS] = v6.tcp_retrans_segs;
+	stats->value[IP6OUTRSTS] = v6.tcp_out_rsts;
 
-	return 0;
+	return stats->num_counters;
 }
 
 static DEVICE_ATTR(hw_rev, S_IRUGO, show_rev, NULL);
-static DEVICE_ATTR(fw_ver, S_IRUGO, show_fw_ver, NULL);
 static DEVICE_ATTR(hca_type, S_IRUGO, show_hca, NULL);
 static DEVICE_ATTR(board_id, S_IRUGO, show_board, NULL);
 
 static struct device_attribute *c4iw_class_attributes[] = {
 	&dev_attr_hw_rev,
-	&dev_attr_fw_ver,
 	&dev_attr_hca_type,
 	&dev_attr_board_id,
 };
+
+static int c4iw_port_immutable(struct ib_device *ibdev, u8 port_num,
+			       struct ib_port_immutable *immutable)
+{
+	struct ib_port_attr attr;
+	int err;
+
+	err = c4iw_query_port(ibdev, port_num, &attr);
+	if (err)
+		return err;
+
+	immutable->pkey_tbl_len = attr.pkey_tbl_len;
+	immutable->gid_tbl_len = attr.gid_tbl_len;
+	immutable->core_cap_flags = RDMA_CORE_PORT_IWARP;
+
+	return 0;
+}
+
+static void get_dev_fw_str(struct ib_device *dev, char *str,
+			   size_t str_len)
+{
+	struct c4iw_dev *c4iw_dev = container_of(dev, struct c4iw_dev,
+						 ibdev);
+	PDBG("%s dev 0x%p\n", __func__, dev);
+
+	snprintf(str, str_len, "%u.%u.%u.%u",
+		 FW_HDR_FW_VER_MAJOR_G(c4iw_dev->rdev.lldi.fw_vers),
+		 FW_HDR_FW_VER_MINOR_G(c4iw_dev->rdev.lldi.fw_vers),
+		 FW_HDR_FW_VER_MICRO_G(c4iw_dev->rdev.lldi.fw_vers),
+		 FW_HDR_FW_VER_BUILD_G(c4iw_dev->rdev.lldi.fw_vers));
+}
 
 int c4iw_register_device(struct c4iw_dev *dev)
 {
@@ -500,6 +563,7 @@ int c4iw_register_device(struct c4iw_dev *dev)
 	    (1ull << IB_USER_VERBS_CMD_POST_SEND) |
 	    (1ull << IB_USER_VERBS_CMD_POST_RECV);
 	dev->ibdev.node_type = RDMA_NODE_RNIC;
+	BUILD_BUG_ON(sizeof(C4IW_NODE_DESC) > IB_DEVICE_NODE_DESC_MAX);
 	memcpy(dev->ibdev.node_desc, C4IW_NODE_DESC, sizeof(C4IW_NODE_DESC));
 	dev->ibdev.phys_port_cnt = dev->rdev.lldi.nports;
 	dev->ibdev.num_comp_vectors =  dev->rdev.lldi.nciq;
@@ -524,24 +588,25 @@ int c4iw_register_device(struct c4iw_dev *dev)
 	dev->ibdev.resize_cq = c4iw_resize_cq;
 	dev->ibdev.poll_cq = c4iw_poll_cq;
 	dev->ibdev.get_dma_mr = c4iw_get_dma_mr;
-	dev->ibdev.reg_phys_mr = c4iw_register_phys_mem;
-	dev->ibdev.rereg_phys_mr = c4iw_reregister_phys_mem;
 	dev->ibdev.reg_user_mr = c4iw_reg_user_mr;
 	dev->ibdev.dereg_mr = c4iw_dereg_mr;
 	dev->ibdev.alloc_mw = c4iw_alloc_mw;
-	dev->ibdev.bind_mw = c4iw_bind_mw;
 	dev->ibdev.dealloc_mw = c4iw_dealloc_mw;
-	dev->ibdev.alloc_fast_reg_mr = c4iw_alloc_fast_reg_mr;
-	dev->ibdev.alloc_fast_reg_page_list = c4iw_alloc_fastreg_pbl;
-	dev->ibdev.free_fast_reg_page_list = c4iw_free_fastreg_pbl;
+	dev->ibdev.alloc_mr = c4iw_alloc_mr;
+	dev->ibdev.map_mr_sg = c4iw_map_mr_sg;
 	dev->ibdev.attach_mcast = c4iw_multicast_attach;
 	dev->ibdev.detach_mcast = c4iw_multicast_detach;
 	dev->ibdev.process_mad = c4iw_process_mad;
 	dev->ibdev.req_notify_cq = c4iw_arm_cq;
 	dev->ibdev.post_send = c4iw_post_send;
 	dev->ibdev.post_recv = c4iw_post_receive;
-	dev->ibdev.get_protocol_stats = c4iw_get_mib;
+	dev->ibdev.alloc_hw_stats = c4iw_alloc_stats;
+	dev->ibdev.get_hw_stats = c4iw_get_mib;
 	dev->ibdev.uverbs_abi_ver = C4IW_UVERBS_ABI_VERSION;
+	dev->ibdev.get_port_immutable = c4iw_port_immutable;
+	dev->ibdev.get_dev_fw_str = get_dev_fw_str;
+	dev->ibdev.drain_sq = c4iw_drain_sq;
+	dev->ibdev.drain_rq = c4iw_drain_rq;
 
 	dev->ibdev.iwcm = kmalloc(sizeof(struct iw_cm_verbs), GFP_KERNEL);
 	if (!dev->ibdev.iwcm)
@@ -555,6 +620,8 @@ int c4iw_register_device(struct c4iw_dev *dev)
 	dev->ibdev.iwcm->add_ref = c4iw_qp_add_ref;
 	dev->ibdev.iwcm->rem_ref = c4iw_qp_rem_ref;
 	dev->ibdev.iwcm->get_qp = c4iw_get_qp;
+	memcpy(dev->ibdev.iwcm->ifname, dev->rdev.lldi.ports[0]->name,
+	       sizeof(dev->ibdev.iwcm->ifname));
 
 	ret = ib_register_device(&dev->ibdev, NULL);
 	if (ret)

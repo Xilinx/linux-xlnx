@@ -348,7 +348,7 @@ static int wl12xx_init_fwlog(struct wl1271 *wl)
 }
 
 /* generic sta initialization (non vif-specific) */
-static int wl1271_sta_hw_init(struct wl1271 *wl, struct wl12xx_vif *wlvif)
+int wl1271_sta_hw_init(struct wl1271 *wl, struct wl12xx_vif *wlvif)
 {
 	int ret;
 
@@ -557,6 +557,11 @@ static int wl12xx_init_ap_role(struct wl1271 *wl, struct wl12xx_vif *wlvif)
 	ret = wl1271_acx_tx_power(wl, wlvif, wlvif->power_level);
 	if (ret < 0)
 		return ret;
+
+	if (wl->radar_debug_mode)
+		wlcore_cmd_generic_cfg(wl, wlvif,
+				       WLCORE_CFG_FEATURE_RADAR_DEBUG,
+				       wl->radar_debug_mode, 0);
 
 	return 0;
 }

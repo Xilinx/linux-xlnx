@@ -41,7 +41,6 @@
 #include <linux/module.h>
 #include <linux/usb.h>
 #include <linux/usb/c67x00.h>
-#include <linux/of_platform.h>
 
 #include "c67x00.h"
 #include "c67x00-hcd.h"
@@ -121,35 +120,36 @@ static int c67x00_drv_probe(struct platform_device *pdev)
 {
 	struct c67x00_device *c67x00;
 	struct c67x00_platform_data *pdata;
-	struct resource *res;
-	int ret, i, irq;
+	struct resource *res, *res2;
+	int ret, i;
 
-	c67x00 = devm_kzalloc(&pdev->dev, sizeof(*c67x00), GFP_KERNEL);
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	if (!res)
+		return -ENODEV;
+
+	res2 = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
+	if (!res2)
+		return -ENODEV;
+
+	pdata = dev_get_platdata(&pdev->dev);
+	if (!pdata)
+		return -ENODEV;
+
+	c67x00 = kzalloc(sizeof(*c67x00), GFP_KERNEL);
 	if (!c67x00)
 		return -ENOMEM;
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	c67x00->hpi.base = devm_ioremap_resource(&pdev->dev, res);
-	if (IS_ERR(c67x00->hpi.base))
-		return PTR_ERR(c67x00->hpi.base);
-
-	pdata = dev_get_platdata(&pdev->dev);
-	if (!pdata) {
-		if (!pdev->dev.of_node)
-			return -ENODEV;
-		pdata = devm_kzalloc(&pdev->dev, sizeof(*pdata), GFP_KERNEL);
-		if (!pdata)
-			return -ENOMEM;
-
-		ret = of_property_read_u32(pdev->dev.of_node, "hpi-regstep",
-					   &pdata->hpi_regstep);
-		if (!ret)
-			return ret;
-
-		ret = of_property_read_u32(pdev->dev.of_node, "sie-config",
-					   &pdata->sie_config);
-		if (!ret)
-			return ret;
+	if (!request_mem_region(res->start, resource_size(res),
+				pdev->name)) {
+		dev_err(&pdev->dev, "Memory region busy\n");
+		ret = -EBUSY;
+		goto request_mem_failed;
+	}
+	c67x00->hpi.base = ioremap(res->start, resource_size(res));
+	if (!c67x00->hpi.base) {
+		dev_err(&pdev->dev, "Unable to map HPI registers\n");
+		ret = -EIO;
+		goto map_failed;
 	}
 
 	spin_lock_init(&c67x00->hpi.lock);
@@ -160,23 +160,16 @@ static int c67x00_drv_probe(struct platform_device *pdev)
 	c67x00_ll_init(c67x00);
 	c67x00_ll_hpi_reg_init(c67x00);
 
-	irq = platform_get_irq(pdev, 0);
-	if (irq < 0) {
-		dev_err(&pdev->dev, "irq resource not found\n");
-		return irq;
-	}
-
-	ret = devm_request_irq(&pdev->dev, irq, c67x00_irq, 0, pdev->name,
-			       c67x00);
+	ret = request_irq(res2->start, c67x00_irq, 0, pdev->name, c67x00);
 	if (ret) {
 		dev_err(&pdev->dev, "Cannot claim IRQ\n");
-		return ret;
+		goto request_irq_failed;
 	}
 
 	ret = c67x00_ll_reset(c67x00);
 	if (ret) {
 		dev_err(&pdev->dev, "Device reset failed\n");
-		return ret;
+		goto reset_failed;
 	}
 
 	for (i = 0; i < C67X00_SIES; i++)
@@ -185,11 +178,23 @@ static int c67x00_drv_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, c67x00);
 
 	return 0;
+
+ reset_failed:
+	free_irq(res2->start, c67x00);
+ request_irq_failed:
+	iounmap(c67x00->hpi.base);
+ map_failed:
+	release_mem_region(res->start, resource_size(res));
+ request_mem_failed:
+	kfree(c67x00);
+
+	return ret;
 }
 
 static int c67x00_drv_remove(struct platform_device *pdev)
 {
 	struct c67x00_device *c67x00 = platform_get_drvdata(pdev);
+	struct resource *res;
 	int i;
 
 	for (i = 0; i < C67X00_SIES; i++)
@@ -197,24 +202,26 @@ static int c67x00_drv_remove(struct platform_device *pdev)
 
 	c67x00_ll_release(c67x00);
 
+	res = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
+	if (res)
+		free_irq(res->start, c67x00);
+
+	iounmap(c67x00->hpi.base);
+
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	if (res)
+		release_mem_region(res->start, resource_size(res));
+
+	kfree(c67x00);
+
 	return 0;
 }
-
-#ifdef CONFIG_OF
-/* Match table for OF platform binding - from xilinx_emaclite */
-static struct of_device_id c67x00_of_match[] = {
-	{ .compatible = "cypress,c67x00", },
-	{ /* end of list */ },
-};
-MODULE_DEVICE_TABLE(of, c67x00_of_match);
-#endif
 
 static struct platform_driver c67x00_driver = {
 	.probe	= c67x00_drv_probe,
 	.remove	= c67x00_drv_remove,
 	.driver	= {
 		.name = "c67x00",
-		.of_match_table = of_match_ptr(c67x00_of_match),
 	},
 };
 

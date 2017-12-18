@@ -30,7 +30,7 @@
 #include <sound/wm9081.h>
 #include "wm9081.h"
 
-static struct reg_default wm9081_reg[] = {
+static const struct reg_default wm9081_reg[] = {
 	{  2, 0x00B9 },     /* R2  - Analogue Lineout */
 	{  3, 0x00B9 },     /* R3  - Analogue Speaker PGA */
 	{  4, 0x0001 },     /* R4  - VMID Control */
@@ -243,13 +243,12 @@ static int wm9081_reset(struct regmap *map)
 static const DECLARE_TLV_DB_SCALE(drc_in_tlv, -4500, 75, 0);
 static const DECLARE_TLV_DB_SCALE(drc_out_tlv, -2250, 75, 0);
 static const DECLARE_TLV_DB_SCALE(drc_min_tlv, -1800, 600, 0);
-static unsigned int drc_max_tlv[] = {
-	TLV_DB_RANGE_HEAD(4),
+static const DECLARE_TLV_DB_RANGE(drc_max_tlv,
 	0, 0, TLV_DB_SCALE_ITEM(1200, 0, 0),
 	1, 1, TLV_DB_SCALE_ITEM(1800, 0, 0),
 	2, 2, TLV_DB_SCALE_ITEM(2400, 0, 0),
-	3, 3, TLV_DB_SCALE_ITEM(3600, 0, 0),
-};
+	3, 3, TLV_DB_SCALE_ITEM(3600, 0, 0)
+);
 static const DECLARE_TLV_DB_SCALE(drc_qr_tlv, 1200, 600, 0);
 static const DECLARE_TLV_DB_SCALE(drc_startup_tlv, -300, 50, 0);
 
@@ -345,9 +344,9 @@ static int speaker_mode_get(struct snd_kcontrol *kcontrol,
 
 	reg = snd_soc_read(codec, WM9081_ANALOGUE_SPEAKER_2);
 	if (reg & WM9081_SPK_MODE)
-		ucontrol->value.integer.value[0] = 1;
+		ucontrol->value.enumerated.item[0] = 1;
 	else
-		ucontrol->value.integer.value[0] = 0;
+		ucontrol->value.enumerated.item[0] = 0;
 
 	return 0;
 }
@@ -366,7 +365,7 @@ static int speaker_mode_put(struct snd_kcontrol *kcontrol,
 	unsigned int reg2 = snd_soc_read(codec, WM9081_ANALOGUE_SPEAKER_2);
 
 	/* Are we changing anything? */
-	if (ucontrol->value.integer.value[0] ==
+	if (ucontrol->value.enumerated.item[0] ==
 	    ((reg2 & WM9081_SPK_MODE) != 0))
 		return 0;
 
@@ -374,7 +373,7 @@ static int speaker_mode_put(struct snd_kcontrol *kcontrol,
 	if (reg_pwr & WM9081_SPK_ENA)
 		return -EINVAL;
 
-	if (ucontrol->value.integer.value[0]) {
+	if (ucontrol->value.enumerated.item[0]) {
 		/* Class AB */
 		reg2 &= ~(WM9081_SPK_INV_MUTE | WM9081_OUT_SPK_CTRL);
 		reg2 |= WM9081_SPK_MODE;
@@ -838,7 +837,7 @@ static int wm9081_set_bias_level(struct snd_soc_codec *codec,
 
 	case SND_SOC_BIAS_STANDBY:
 		/* Initial cold start */
-		if (codec->dapm.bias_level == SND_SOC_BIAS_OFF) {
+		if (snd_soc_codec_get_bias_level(codec) == SND_SOC_BIAS_OFF) {
 			regcache_cache_only(wm9081->regmap, false);
 			regcache_sync(wm9081->regmap);
 
@@ -897,8 +896,6 @@ static int wm9081_set_bias_level(struct snd_soc_codec *codec,
 		regcache_cache_only(wm9081->regmap, true);
 		break;
 	}
-
-	codec->dapm.bias_level = level;
 
 	return 0;
 }
@@ -1277,7 +1274,7 @@ static int wm9081_probe(struct snd_soc_codec *codec)
 	return 0;
 }
 
-static struct snd_soc_codec_driver soc_codec_dev_wm9081 = {
+static const struct snd_soc_codec_driver soc_codec_dev_wm9081 = {
 	.probe = 	wm9081_probe,
 
 	.set_sysclk = wm9081_set_sysclk,
@@ -1285,12 +1282,14 @@ static struct snd_soc_codec_driver soc_codec_dev_wm9081 = {
 
 	.idle_bias_off = true,
 
-	.controls         = wm9081_snd_controls,
-	.num_controls     = ARRAY_SIZE(wm9081_snd_controls),
-	.dapm_widgets	  = wm9081_dapm_widgets,
-	.num_dapm_widgets = ARRAY_SIZE(wm9081_dapm_widgets),
-	.dapm_routes     = wm9081_audio_paths,
-	.num_dapm_routes = ARRAY_SIZE(wm9081_audio_paths),
+	.component_driver = {
+		.controls		= wm9081_snd_controls,
+		.num_controls		= ARRAY_SIZE(wm9081_snd_controls),
+		.dapm_widgets		= wm9081_dapm_widgets,
+		.num_dapm_widgets	= ARRAY_SIZE(wm9081_dapm_widgets),
+		.dapm_routes		= wm9081_audio_paths,
+		.num_dapm_routes	= ARRAY_SIZE(wm9081_audio_paths),
+	},
 };
 
 static const struct regmap_config wm9081_regmap = {
@@ -1380,7 +1379,6 @@ MODULE_DEVICE_TABLE(i2c, wm9081_i2c_id);
 static struct i2c_driver wm9081_i2c_driver = {
 	.driver = {
 		.name = "wm9081",
-		.owner = THIS_MODULE,
 	},
 	.probe =    wm9081_i2c_probe,
 	.remove =   wm9081_i2c_remove,

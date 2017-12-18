@@ -31,7 +31,7 @@ module_param(force, int, 0444);
 MODULE_PARM_DESC(force, "Force loading i2sbus even when"
 			" no layout-id property is present");
 
-static struct of_device_id i2sbus_match[] = {
+static const struct of_device_id i2sbus_match[] = {
 	{ .name = "i2s" },
 	{ }
 };
@@ -197,7 +197,7 @@ static int i2sbus_add_dev(struct macio_dev *macio,
 			 * so restrict to those we do handle for now.
 			 */
 			if (id && (*id == 22 || *id == 14 || *id == 35 ||
-				   *id == 44)) {
+				   *id == 31 || *id == 44)) {
 				snprintf(dev->sound.modalias, 32,
 					 "aoa-device-id-%d", *id);
 				ok = 1;

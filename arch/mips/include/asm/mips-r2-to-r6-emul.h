@@ -52,7 +52,7 @@ do {									\
 	__this_cpu_inc(mipsr2emustats.M);				\
 	err = __get_user(nir, (u32 __user *)regs->cp0_epc);		\
 	if (!err) {							\
-		if (nir == BREAK_MATH)					\
+		if (nir == BREAK_MATH(0))				\
 			__this_cpu_inc(mipsr2bdemustats.M);		\
 	}								\
 	preempt_enable();						\
@@ -79,16 +79,21 @@ struct r2_decoder_table {
 };
 
 
-extern void do_trap_or_bp(struct pt_regs *regs, unsigned int code,
+extern void do_trap_or_bp(struct pt_regs *regs, unsigned int code, int si_code,
 			  const char *str);
 
 #ifndef CONFIG_MIPSR2_TO_R6_EMULATOR
 static int mipsr2_emulation;
-static __maybe_unused int mipsr2_decoder(struct pt_regs *regs, u32 inst) { return 0; };
+static inline int mipsr2_decoder(struct pt_regs *regs, u32 inst,
+				 unsigned long *fcr31)
+{
+	return 0;
+};
 #else
 /* MIPS R2 Emulator ON/OFF */
 extern int mipsr2_emulation;
-extern int mipsr2_decoder(struct pt_regs *regs, u32 inst);
+extern int mipsr2_decoder(struct pt_regs *regs, u32 inst,
+			  unsigned long *fcr31);
 #endif /* CONFIG_MIPSR2_TO_R6_EMULATOR */
 
 #define NO_R6EMU	(cpu_has_mips_r6 && !mipsr2_emulation)

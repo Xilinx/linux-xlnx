@@ -33,7 +33,7 @@ static struct cb_id uvesafb_cn_id = {
 static char v86d_path[PATH_MAX] = "/sbin/v86d";
 static char v86d_started;	/* has v86d been started by uvesafb? */
 
-static struct fb_fix_screeninfo uvesafb_fix = {
+static const struct fb_fix_screeninfo uvesafb_fix = {
 	.id	= "VESA VGA",
 	.type	= FB_TYPE_PACKED_PIXELS,
 	.accel	= FB_ACCEL_NONE,
@@ -1977,7 +1977,7 @@ static int param_set_scroll(const char *val, const struct kernel_param *kp)
 
 	return 0;
 }
-static struct kernel_param_ops param_ops_scroll = {
+static const struct kernel_param_ops param_ops_scroll = {
 	.set = param_set_scroll,
 };
 #define param_check_scroll(name, p) __param_check(name, p, void)

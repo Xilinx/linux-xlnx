@@ -13,6 +13,14 @@ Required properties:
 
 Optional properties:
 - num-cs		: Number of chip selects used.
+- has-io-mode		: boolean property describes the controller operating
+			  mode. if exists controller will operate in IO mode
+			  else dma mode.
+- is-dual		: zynqmp qspi support for dual-parallel mode configuration
+			  value should be 1.
+- is-stacked		: zynqmp qspi support for stacked mode configuration.
+			  to enable this mode, is-dual should be 0 and is-stacked
+			  should be 1.
 
 Example:
 	qspi: spi@ff0f0000 {
@@ -22,5 +30,5 @@ Example:
 		interrupts = <0 15 4>;
 		interrupt-parent = <&gic>;
 		num-cs = <1>;
-		reg = <0x0 0xff0f0000 0x1000 0x0 0xc0000000 0x8000000>;
+		reg = <0x0 0xff0f0000 0x1000>,<0x0 0xc0000000 0x8000000>;
 	};

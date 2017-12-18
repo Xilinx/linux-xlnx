@@ -183,7 +183,8 @@ static bool twl4030_vibra_check_coexist(struct twl4030_vibra_data *pdata,
 	if (pdata && pdata->coexist)
 		return true;
 
-	if (of_find_node_by_name(node, "codec")) {
+	node = of_find_node_by_name(node, "codec");
+	if (node) {
 		of_node_put(node);
 		return true;
 	}
@@ -221,7 +222,6 @@ static int twl4030_vibra_probe(struct platform_device *pdev)
 
 	info->input_dev->name = "twl4030:vibrator";
 	info->input_dev->id.version = 1;
-	info->input_dev->dev.parent = pdev->dev.parent;
 	info->input_dev->close = twl4030_vibra_close;
 	__set_bit(FF_RUMBLE, info->input_dev->ffbit);
 

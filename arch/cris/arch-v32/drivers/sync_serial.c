@@ -1464,7 +1464,7 @@ static inline void handle_rx_packet(struct sync_port *port)
 		if (port->write_ts_idx == NBR_IN_DESCR)
 			port->write_ts_idx = 0;
 		idx = port->write_ts_idx++;
-		do_posix_clock_monotonic_gettime(&port->timestamp[idx]);
+		ktime_get_ts(&port->timestamp[idx]);
 		port->in_buffer_len += port->inbufchunk;
 	}
 	spin_unlock_irqrestore(&port->lock, flags);
@@ -1627,6 +1627,12 @@ static int __init etrax_sync_serial_init(void)
 
 	/* Create a sysfs class for syncser */
 	syncser_class = class_create(THIS_MODULE, "syncser_class");
+	if (IS_ERR(syncser_class)) {
+		pr_err("Failed to create a sysfs class for syncser\n");
+		unregister_chrdev_region(syncser_first, minor_count);
+		cdev_del(syncser_cdev);
+		return -1;
+	}
 
 	/* Initialize Ports */
 #if defined(CONFIG_ETRAX_SYNCHRONOUS_SERIAL_PORT0)

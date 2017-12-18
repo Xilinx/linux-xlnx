@@ -1,8 +1,12 @@
+/* For the CLR_() macros */
+#include <pthread.h>
+
 #include "evlist.h"
 #include "evsel.h"
 #include "thread_map.h"
 #include "cpumap.h"
 #include "tests.h"
+#include <linux/err.h>
 
 /*
  * This test will generate random numbers of calls to some getpid syscalls,
@@ -15,7 +19,7 @@
  * Then it checks if the number of syscalls reported as perf events by
  * the kernel corresponds to the number of syscalls made.
  */
-int test__basic_mmap(void)
+int test__basic_mmap(int subtest __maybe_unused)
 {
 	int err = -1;
 	union perf_event *event;
@@ -23,10 +27,8 @@ int test__basic_mmap(void)
 	struct cpu_map *cpus;
 	struct perf_evlist *evlist;
 	cpu_set_t cpu_set;
-	const char *syscall_names[] = { "getsid", "getppid", "getpgrp",
-					"getpgid", };
-	pid_t (*syscalls[])(void) = { (void *)getsid, getppid, getpgrp,
-				      (void*)getpgid };
+	const char *syscall_names[] = { "getsid", "getppid", "getpgid", };
+	pid_t (*syscalls[])(void) = { (void *)getsid, getppid, (void*)getpgid };
 #define nsyscalls ARRAY_SIZE(syscall_names)
 	unsigned int nr_events[nsyscalls],
 		     expected_nr_events[nsyscalls], i, j;
@@ -50,7 +52,7 @@ int test__basic_mmap(void)
 	sched_setaffinity(0, sizeof(cpu_set), &cpu_set);
 	if (sched_setaffinity(0, sizeof(cpu_set), &cpu_set) < 0) {
 		pr_debug("sched_setaffinity() failed on CPU %d: %s ",
-			 cpus->map[0], strerror_r(errno, sbuf, sizeof(sbuf)));
+			 cpus->map[0], str_error_r(errno, sbuf, sizeof(sbuf)));
 		goto out_free_cpus;
 	}
 
@@ -67,7 +69,7 @@ int test__basic_mmap(void)
 
 		snprintf(name, sizeof(name), "sys_enter_%s", syscall_names[i]);
 		evsels[i] = perf_evsel__newtp("syscalls", name);
-		if (evsels[i] == NULL) {
+		if (IS_ERR(evsels[i])) {
 			pr_debug("perf_evsel__new\n");
 			goto out_delete_evlist;
 		}
@@ -80,7 +82,7 @@ int test__basic_mmap(void)
 		if (perf_evsel__open(evsels[i], cpus, threads) < 0) {
 			pr_debug("failed to open counter: %s, "
 				 "tweak /proc/sys/kernel/perf_event_paranoid?\n",
-				 strerror_r(errno, sbuf, sizeof(sbuf)));
+				 str_error_r(errno, sbuf, sizeof(sbuf)));
 			goto out_delete_evlist;
 		}
 
@@ -90,7 +92,7 @@ int test__basic_mmap(void)
 
 	if (perf_evlist__mmap(evlist, 128, true) < 0) {
 		pr_debug("failed to mmap events: %d (%s)\n", errno,
-			 strerror_r(errno, sbuf, sizeof(sbuf)));
+			 str_error_r(errno, sbuf, sizeof(sbuf)));
 		goto out_delete_evlist;
 	}
 
@@ -127,7 +129,7 @@ int test__basic_mmap(void)
 	}
 
 	err = 0;
-	evlist__for_each(evlist, evsel) {
+	evlist__for_each_entry(evlist, evsel) {
 		if (nr_events[evsel->idx] != expected_nr_events[evsel->idx]) {
 			pr_debug("expected %d %s events, got %d\n",
 				 expected_nr_events[evsel->idx],
@@ -142,8 +144,8 @@ out_delete_evlist:
 	cpus	= NULL;
 	threads = NULL;
 out_free_cpus:
-	cpu_map__delete(cpus);
+	cpu_map__put(cpus);
 out_free_threads:
-	thread_map__delete(threads);
+	thread_map__put(threads);
 	return err;
 }

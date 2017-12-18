@@ -91,6 +91,10 @@ __register_chrdev_region(unsigned int major, unsigned int baseminor,
 				break;
 		}
 
+		if (i < CHRDEV_MAJOR_DYN_END)
+			pr_warn("CHRDEV \"%s\" major number %d goes below the dynamic allocation range\n",
+				name, i);
+
 		if (i == 0) {
 			ret = -EBUSY;
 			goto out;
@@ -274,7 +278,7 @@ out2:
 }
 
 /**
- * unregister_chrdev_region() - return a range of device numbers
+ * unregister_chrdev_region() - unregister a range of device numbers
  * @from: the first in the range of numbers to unregister
  * @count: the number of device numbers to unregister
  *
@@ -402,6 +406,7 @@ void cd_forget(struct inode *inode)
 	spin_lock(&cdev_lock);
 	list_del_init(&inode->i_devices);
 	inode->i_cdev = NULL;
+	inode->i_mapping = &inode->i_data;
 	spin_unlock(&cdev_lock);
 }
 

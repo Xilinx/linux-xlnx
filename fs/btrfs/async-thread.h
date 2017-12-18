@@ -21,6 +21,7 @@
 #define __BTRFS_ASYNC_THREAD_
 #include <linux/workqueue.h>
 
+struct btrfs_fs_info;
 struct btrfs_workqueue;
 /* Internal use only */
 struct __btrfs_workqueue;
@@ -64,10 +65,13 @@ BTRFS_WORK_HELPER_PROTO(extent_refs_helper);
 BTRFS_WORK_HELPER_PROTO(scrub_helper);
 BTRFS_WORK_HELPER_PROTO(scrubwrc_helper);
 BTRFS_WORK_HELPER_PROTO(scrubnc_helper);
+BTRFS_WORK_HELPER_PROTO(scrubparity_helper);
 
-struct btrfs_workqueue *btrfs_alloc_workqueue(const char *name,
-					      int flags,
-					      int max_active,
+
+struct btrfs_workqueue *btrfs_alloc_workqueue(struct btrfs_fs_info *fs_info,
+					      const char *name,
+					      unsigned int flags,
+					      int limit_active,
 					      int thresh);
 void btrfs_init_work(struct btrfs_work *work, btrfs_work_func_t helper,
 		     btrfs_func_t func,
@@ -78,4 +82,6 @@ void btrfs_queue_work(struct btrfs_workqueue *wq,
 void btrfs_destroy_workqueue(struct btrfs_workqueue *wq);
 void btrfs_workqueue_set_max(struct btrfs_workqueue *wq, int max);
 void btrfs_set_work_high_priority(struct btrfs_work *work);
+struct btrfs_fs_info *btrfs_work_owner(struct btrfs_work *work);
+struct btrfs_fs_info *btrfs_workqueue_owner(struct __btrfs_workqueue *wq);
 #endif

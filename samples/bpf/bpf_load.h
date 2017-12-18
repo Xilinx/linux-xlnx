@@ -6,6 +6,7 @@
 
 extern int map_fd[MAX_MAPS];
 extern int prog_fd[MAX_PROGS];
+extern int event_fd[MAX_PROGS];
 
 /* parses elf file compiled by llvm .c->.o
  * . parses 'maps' section and creates maps via BPF syscall
@@ -21,4 +22,12 @@ extern int prog_fd[MAX_PROGS];
  */
 int load_bpf_file(char *path);
 
+void read_trace_pipe(void);
+struct ksym {
+	long addr;
+	char *name;
+};
+
+int load_kallsyms(void);
+struct ksym *ksym_search(long key);
 #endif

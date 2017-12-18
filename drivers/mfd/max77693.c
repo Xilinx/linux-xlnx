@@ -2,7 +2,7 @@
  * max77693.c - mfd core driver for the MAX 77693
  *
  * Copyright (C) 2012 Samsung Electronics
- * SangYoung Son <hello.son@smasung.com>
+ * SangYoung Son <hello.son@samsung.com>
  *
  * This program is not provided / owned by Maxim Integrated Products.
  *
@@ -33,6 +33,7 @@
 #include <linux/mutex.h>
 #include <linux/mfd/core.h>
 #include <linux/mfd/max77693.h>
+#include <linux/mfd/max77693-common.h>
 #include <linux/mfd/max77693-private.h>
 #include <linux/regulator/machine.h>
 #include <linux/regmap.h>
@@ -53,8 +54,8 @@ static const struct mfd_cell max77693_devs[] = {
 		.of_compatible = "maxim,max77693-haptic",
 	},
 	{
-		.name = "max77693-flash",
-		.of_compatible = "maxim,max77693-flash",
+		.name = "max77693-led",
+		.of_compatible = "maxim,max77693-led",
 	},
 };
 
@@ -193,22 +194,22 @@ static int max77693_i2c_probe(struct i2c_client *i2c,
 	} else
 		dev_info(max77693->dev, "device ID: 0x%x\n", reg_data);
 
-	max77693->muic = i2c_new_dummy(i2c->adapter, I2C_ADDR_MUIC);
-	if (!max77693->muic) {
+	max77693->i2c_muic = i2c_new_dummy(i2c->adapter, I2C_ADDR_MUIC);
+	if (!max77693->i2c_muic) {
 		dev_err(max77693->dev, "Failed to allocate I2C device for MUIC\n");
 		return -ENODEV;
 	}
-	i2c_set_clientdata(max77693->muic, max77693);
+	i2c_set_clientdata(max77693->i2c_muic, max77693);
 
-	max77693->haptic = i2c_new_dummy(i2c->adapter, I2C_ADDR_HAPTIC);
-	if (!max77693->haptic) {
+	max77693->i2c_haptic = i2c_new_dummy(i2c->adapter, I2C_ADDR_HAPTIC);
+	if (!max77693->i2c_haptic) {
 		dev_err(max77693->dev, "Failed to allocate I2C device for Haptic\n");
 		ret = -ENODEV;
 		goto err_i2c_haptic;
 	}
-	i2c_set_clientdata(max77693->haptic, max77693);
+	i2c_set_clientdata(max77693->i2c_haptic, max77693);
 
-	max77693->regmap_haptic = devm_regmap_init_i2c(max77693->haptic,
+	max77693->regmap_haptic = devm_regmap_init_i2c(max77693->i2c_haptic,
 					&max77693_regmap_haptic_config);
 	if (IS_ERR(max77693->regmap_haptic)) {
 		ret = PTR_ERR(max77693->regmap_haptic);
@@ -222,7 +223,7 @@ static int max77693_i2c_probe(struct i2c_client *i2c,
 	 * instance of MUIC device when irq of max77693 is initialized
 	 * before call max77693-muic probe() function.
 	 */
-	max77693->regmap_muic = devm_regmap_init_i2c(max77693->muic,
+	max77693->regmap_muic = devm_regmap_init_i2c(max77693->i2c_muic,
 					 &max77693_regmap_muic_config);
 	if (IS_ERR(max77693->regmap_muic)) {
 		ret = PTR_ERR(max77693->regmap_muic);
@@ -255,7 +256,7 @@ static int max77693_i2c_probe(struct i2c_client *i2c,
 				IRQF_ONESHOT | IRQF_SHARED |
 				IRQF_TRIGGER_FALLING, 0,
 				&max77693_charger_irq_chip,
-				&max77693->irq_data_charger);
+				&max77693->irq_data_chg);
 	if (ret) {
 		dev_err(max77693->dev, "failed to add irq chip: %d\n", ret);
 		goto err_irq_charger;
@@ -296,15 +297,15 @@ err_mfd:
 err_intsrc:
 	regmap_del_irq_chip(max77693->irq, max77693->irq_data_muic);
 err_irq_muic:
-	regmap_del_irq_chip(max77693->irq, max77693->irq_data_charger);
+	regmap_del_irq_chip(max77693->irq, max77693->irq_data_chg);
 err_irq_charger:
 	regmap_del_irq_chip(max77693->irq, max77693->irq_data_topsys);
 err_irq_topsys:
 	regmap_del_irq_chip(max77693->irq, max77693->irq_data_led);
 err_regmap:
-	i2c_unregister_device(max77693->haptic);
+	i2c_unregister_device(max77693->i2c_haptic);
 err_i2c_haptic:
-	i2c_unregister_device(max77693->muic);
+	i2c_unregister_device(max77693->i2c_muic);
 	return ret;
 }
 
@@ -315,12 +316,12 @@ static int max77693_i2c_remove(struct i2c_client *i2c)
 	mfd_remove_devices(max77693->dev);
 
 	regmap_del_irq_chip(max77693->irq, max77693->irq_data_muic);
-	regmap_del_irq_chip(max77693->irq, max77693->irq_data_charger);
+	regmap_del_irq_chip(max77693->irq, max77693->irq_data_chg);
 	regmap_del_irq_chip(max77693->irq, max77693->irq_data_topsys);
 	regmap_del_irq_chip(max77693->irq, max77693->irq_data_led);
 
-	i2c_unregister_device(max77693->muic);
-	i2c_unregister_device(max77693->haptic);
+	i2c_unregister_device(max77693->i2c_muic);
+	i2c_unregister_device(max77693->i2c_haptic);
 
 	return 0;
 }
@@ -333,7 +334,7 @@ MODULE_DEVICE_TABLE(i2c, max77693_i2c_id);
 
 static int max77693_suspend(struct device *dev)
 {
-	struct i2c_client *i2c = container_of(dev, struct i2c_client, dev);
+	struct i2c_client *i2c = to_i2c_client(dev);
 	struct max77693_dev *max77693 = i2c_get_clientdata(i2c);
 
 	if (device_may_wakeup(dev)) {
@@ -346,7 +347,7 @@ static int max77693_suspend(struct device *dev)
 
 static int max77693_resume(struct device *dev)
 {
-	struct i2c_client *i2c = container_of(dev, struct i2c_client, dev);
+	struct i2c_client *i2c = to_i2c_client(dev);
 	struct max77693_dev *max77693 = i2c_get_clientdata(i2c);
 
 	if (device_may_wakeup(dev)) {
@@ -367,12 +368,12 @@ static const struct of_device_id max77693_dt_match[] = {
 	{ .compatible = "maxim,max77693" },
 	{},
 };
+MODULE_DEVICE_TABLE(of, max77693_dt_match);
 #endif
 
 static struct i2c_driver max77693_i2c_driver = {
 	.driver = {
 		   .name = "max77693",
-		   .owner = THIS_MODULE,
 		   .pm = &max77693_pm,
 		   .of_match_table = of_match_ptr(max77693_dt_match),
 	},
@@ -381,18 +382,7 @@ static struct i2c_driver max77693_i2c_driver = {
 	.id_table = max77693_i2c_id,
 };
 
-static int __init max77693_i2c_init(void)
-{
-	return i2c_add_driver(&max77693_i2c_driver);
-}
-/* init early so consumer devices can complete system boot */
-subsys_initcall(max77693_i2c_init);
-
-static void __exit max77693_i2c_exit(void)
-{
-	i2c_del_driver(&max77693_i2c_driver);
-}
-module_exit(max77693_i2c_exit);
+module_i2c_driver(max77693_i2c_driver);
 
 MODULE_DESCRIPTION("MAXIM 77693 multi-function core driver");
 MODULE_AUTHOR("SangYoung, Son <hello.son@samsung.com>");

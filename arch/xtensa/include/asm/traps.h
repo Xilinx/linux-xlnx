@@ -25,35 +25,61 @@ static inline void spill_registers(void)
 {
 #if XCHAL_NUM_AREGS > 16
 	__asm__ __volatile__ (
-		"	call12	1f\n"
+		"	call8	1f\n"
 		"	_j	2f\n"
 		"	retw\n"
 		"	.align	4\n"
 		"1:\n"
+#if XCHAL_NUM_AREGS == 32
+		"	_entry	a1, 32\n"
+		"	addi	a8, a0, 3\n"
+		"	_entry	a1, 16\n"
+		"	mov	a12, a12\n"
+		"	retw\n"
+#else
 		"	_entry	a1, 48\n"
-		"	addi	a12, a0, 3\n"
-#if XCHAL_NUM_AREGS > 32
-		"	.rept	(" __stringify(XCHAL_NUM_AREGS) " - 32) / 12\n"
+		"	call12	1f\n"
+		"	retw\n"
+		"	.align	4\n"
+		"1:\n"
+		"	.rept	(" __stringify(XCHAL_NUM_AREGS) " - 16) / 12\n"
 		"	_entry	a1, 48\n"
 		"	mov	a12, a0\n"
 		"	.endr\n"
-#endif
-		"	_entry	a1, 48\n"
+		"	_entry	a1, 16\n"
 #if XCHAL_NUM_AREGS % 12 == 0
-		"	mov	a8, a8\n"
-#elif XCHAL_NUM_AREGS % 12 == 4
 		"	mov	a12, a12\n"
-#elif XCHAL_NUM_AREGS % 12 == 8
+#elif XCHAL_NUM_AREGS % 12 == 4
 		"	mov	a4, a4\n"
+#elif XCHAL_NUM_AREGS % 12 == 8
+		"	mov	a8, a8\n"
 #endif
 		"	retw\n"
+#endif
 		"2:\n"
-		: : : "a12", "a13", "memory");
+		: : : "a8", "a9", "memory");
 #else
 	__asm__ __volatile__ (
 		"	mov	a12, a12\n"
 		: : : "memory");
 #endif
 }
+
+struct debug_table {
+	/* Pointer to debug exception handler */
+	void (*debug_exception)(void);
+	/* Temporary register save area */
+	unsigned long debug_save[1];
+#ifdef CONFIG_HAVE_HW_BREAKPOINT
+	/* Save area for DBREAKC registers */
+	unsigned long dbreakc_save[XCHAL_NUM_DBREAK];
+	/* Saved ICOUNT register */
+	unsigned long icount_save;
+	/* Saved ICOUNTLEVEL register */
+	unsigned long icount_level_save;
+#endif
+};
+
+void debug_exception(void);
 
 #endif /* _XTENSA_TRAPS_H */

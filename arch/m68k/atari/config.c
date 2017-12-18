@@ -211,7 +211,7 @@ void __init config_atari(void)
 	arch_gettimeoffset   = atari_gettimeoffset;
 	mach_reset           = atari_reset;
 	mach_max_dma_address = 0xffffff;
-#if defined(CONFIG_INPUT_M68K_BEEP) || defined(CONFIG_INPUT_M68K_BEEP_MODULE)
+#if IS_ENABLED(CONFIG_INPUT_M68K_BEEP)
 	mach_beep          = atari_mksound;
 #endif
 #ifdef CONFIG_HEARTBEAT
@@ -858,7 +858,7 @@ static struct platform_device *atari_netusbee_devices[] __initdata = {
 };
 #endif /* CONFIG_ATARI_ETHERNEC */
 
-#ifdef CONFIG_ATARI_SCSI
+#if IS_ENABLED(CONFIG_ATARI_SCSI)
 static const struct resource atari_scsi_st_rsrc[] __initconst = {
 	{
 		.flags = IORESOURCE_IRQ,
@@ -910,7 +910,7 @@ int __init atari_platform_init(void)
 	}
 #endif
 
-#ifdef CONFIG_ATARI_SCSI
+#if IS_ENABLED(CONFIG_ATARI_SCSI)
 	if (ATARIHW_PRESENT(ST_SCSI))
 		platform_device_register_simple("atari_scsi", -1,
 			atari_scsi_st_rsrc, ARRAY_SIZE(atari_scsi_st_rsrc));

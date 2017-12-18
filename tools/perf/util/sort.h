@@ -18,7 +18,7 @@
 #include "debug.h"
 #include "header.h"
 
-#include "parse-options.h"
+#include <subcmd/parse-options.h>
 #include "parse-events.h"
 #include "hist.h"
 #include "thread.h"
@@ -28,12 +28,9 @@ extern const char *sort_order;
 extern const char *field_order;
 extern const char default_parent_pattern[];
 extern const char *parent_pattern;
-extern const char default_sort_order[];
+extern const char *default_sort_order;
 extern regex_t ignore_callees_regex;
 extern int have_ignore_callees;
-extern int sort__need_collapse;
-extern int sort__has_parent;
-extern int sort__has_sym;
 extern enum sort_mode sort__mode;
 extern struct sort_entry sort_comm;
 extern struct sort_entry sort_dso;
@@ -43,7 +40,9 @@ extern struct sort_entry sort_dso_from;
 extern struct sort_entry sort_dso_to;
 extern struct sort_entry sort_sym_from;
 extern struct sort_entry sort_sym_to;
+extern struct sort_entry sort_srcline;
 extern enum sort_type sort__first_dimension;
+extern const char default_mem_sort_order[];
 
 struct he_stat {
 	u64			period;
@@ -57,15 +56,21 @@ struct he_stat {
 
 struct hist_entry_diff {
 	bool	computed;
+	union {
+		/* PERF_HPP__DELTA */
+		double	period_ratio_delta;
 
-	/* PERF_HPP__DELTA */
-	double	period_ratio_delta;
+		/* PERF_HPP__RATIO */
+		double	period_ratio;
 
-	/* PERF_HPP__RATIO */
-	double	period_ratio;
+		/* HISTC_WEIGHTED_DIFF */
+		s64	wdiff;
+	};
+};
 
-	/* HISTC_WEIGHTED_DIFF */
-	s64	wdiff;
+struct hist_entry_ops {
+	void	*(*new)(size_t size);
+	void	(*free)(void *ptr);
 };
 
 /**
@@ -88,29 +93,53 @@ struct hist_entry {
 	struct comm		*comm;
 	u64			ip;
 	u64			transaction;
+	s32			socket;
 	s32			cpu;
 	u8			cpumode;
-
-	struct hist_entry_diff	diff;
+	u8			depth;
 
 	/* We are added by hists__add_dummy_entry. */
 	bool			dummy;
+	bool			leaf;
 
-	/* XXX These two should move to some tree widget lib */
-	u16			row_offset;
-	u16			nr_rows;
-
-	bool			init_have_children;
 	char			level;
-	bool			used;
 	u8			filtered;
+	union {
+		/*
+		 * Since perf diff only supports the stdio output, TUI
+		 * fields are only accessed from perf report (or perf
+		 * top).  So make it an union to reduce memory usage.
+		 */
+		struct hist_entry_diff	diff;
+		struct /* for TUI */ {
+			u16	row_offset;
+			u16	nr_rows;
+			bool	init_have_children;
+			bool	unfolded;
+			bool	has_children;
+			bool	has_no_entry;
+		};
+	};
 	char			*srcline;
+	char			*srcfile;
 	struct symbol		*parent;
-	unsigned long		position;
-	struct rb_root		sorted_chain;
 	struct branch_info	*branch_info;
 	struct hists		*hists;
 	struct mem_info		*mem_info;
+	void			*raw_data;
+	u32			raw_size;
+	void			*trace_output;
+	struct perf_hpp_list	*hpp_list;
+	struct hist_entry	*parent_he;
+	struct hist_entry_ops	*ops;
+	union {
+		/* this is for hierarchical entry structure */
+		struct {
+			struct rb_root	hroot_in;
+			struct rb_root  hroot_out;
+		};				/* non-leaf entries */
+		struct rb_root	sorted_chain;	/* leaf entry has callchains */
+	};
 	struct callchain_root	callchain[0]; /* must be last member */
 };
 
@@ -146,6 +175,17 @@ static inline float hist_entry__get_percent_limit(struct hist_entry *he)
 	return period * 100.0 / total_period;
 }
 
+static inline u64 cl_address(u64 address)
+{
+	/* return the cacheline of the address */
+	return (address & ~(cacheline_size - 1));
+}
+
+static inline u64 cl_offset(u64 address)
+{
+	/* return the cacheline of the address */
+	return (address & (cacheline_size - 1));
+}
 
 enum sort_mode {
 	SORT_MODE__NORMAL,
@@ -153,6 +193,7 @@ enum sort_mode {
 	SORT_MODE__MEMORY,
 	SORT_MODE__TOP,
 	SORT_MODE__DIFF,
+	SORT_MODE__TRACEPOINT,
 };
 
 enum sort_type {
@@ -163,10 +204,13 @@ enum sort_type {
 	SORT_SYM,
 	SORT_PARENT,
 	SORT_CPU,
+	SORT_SOCKET,
 	SORT_SRCLINE,
+	SORT_SRCFILE,
 	SORT_LOCAL_WEIGHT,
 	SORT_GLOBAL_WEIGHT,
 	SORT_TRANSACTION,
+	SORT_TRACE,
 
 	/* branch stack specific sort keys */
 	__SORT_BRANCH_STACK,
@@ -177,6 +221,9 @@ enum sort_type {
 	SORT_MISPREDICT,
 	SORT_ABORT,
 	SORT_IN_TX,
+	SORT_CYCLES,
+	SORT_SRCLINE_FROM,
+	SORT_SRCLINE_TO,
 
 	/* memory mode specific sort keys */
 	__SORT_MEMORY_MODE,
@@ -187,6 +234,7 @@ enum sort_type {
 	SORT_MEM_LVL,
 	SORT_MEM_SNOOP,
 	SORT_MEM_DCACHELINE,
+	SORT_MEM_IADDR_SYMBOL,
 };
 
 /*
@@ -194,8 +242,6 @@ enum sort_type {
  */
 
 struct sort_entry {
-	struct list_head list;
-
 	const char *se_header;
 
 	int64_t (*se_cmp)(struct hist_entry *, struct hist_entry *);
@@ -203,20 +249,35 @@ struct sort_entry {
 	int64_t	(*se_sort)(struct hist_entry *, struct hist_entry *);
 	int	(*se_snprintf)(struct hist_entry *he, char *bf, size_t size,
 			       unsigned int width);
+	int	(*se_filter)(struct hist_entry *he, int type, const void *arg);
 	u8	se_width_idx;
 };
 
 extern struct sort_entry sort_thread;
 extern struct list_head hist_entry__sort_list;
 
-int setup_sorting(void);
+struct perf_evlist;
+struct pevent;
+int setup_sorting(struct perf_evlist *evlist);
 int setup_output_field(void);
 void reset_output_field(void);
-extern int sort_dimension__add(const char *);
 void sort__setup_elide(FILE *fp);
 void perf_hpp__set_elide(int idx, bool elide);
 
 int report_parse_ignore_callees_opt(const struct option *opt, const char *arg, int unset);
 
 bool is_strict_order(const char *order);
+
+int hpp_dimension__add_output(unsigned col);
+void reset_dimensions(void);
+int sort_dimension__add(struct perf_hpp_list *list, const char *tok,
+			struct perf_evlist *evlist,
+			int level);
+int output_field_add(struct perf_hpp_list *list, char *tok);
+int64_t
+sort__iaddr_cmp(struct hist_entry *left, struct hist_entry *right);
+int64_t
+sort__daddr_cmp(struct hist_entry *left, struct hist_entry *right);
+int64_t
+sort__dcacheline_cmp(struct hist_entry *left, struct hist_entry *right);
 #endif	/* __PERF_SORT_H */

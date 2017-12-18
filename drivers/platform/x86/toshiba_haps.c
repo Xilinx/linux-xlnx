@@ -59,7 +59,7 @@ static int toshiba_haps_protection_level(acpi_handle handle, int level)
 		return -EIO;
 	}
 
-	pr_info("HDD protection level set to: %d\n", level);
+	pr_debug("HDD protection level set to: %d\n", level);
 
 	return 0;
 }
@@ -78,15 +78,20 @@ static ssize_t protection_level_store(struct device *dev,
 				      const char *buf, size_t count)
 {
 	struct toshiba_haps_dev *haps = dev_get_drvdata(dev);
-	int level, ret;
+	int level;
+	int ret;
 
-	if (sscanf(buf, "%d", &level) != 1 || level < 0 || level > 3)
-		return -EINVAL;
-
-	/* Set the sensor level.
-	 * Acceptable levels are:
+	ret = kstrtoint(buf, 0, &level);
+	if (ret)
+		return ret;
+	/*
+	 * Check for supported levels, which can be:
 	 * 0 - Disabled | 1 - Low | 2 - Medium | 3 - High
 	 */
+	if (level < 0 || level > 3)
+		return -EINVAL;
+
+	/* Set the sensor level */
 	ret = toshiba_haps_protection_level(haps->acpi_dev->handle, level);
 	if (ret != 0)
 		return ret;
@@ -95,15 +100,21 @@ static ssize_t protection_level_store(struct device *dev,
 
 	return count;
 }
+static DEVICE_ATTR_RW(protection_level);
 
 static ssize_t reset_protection_store(struct device *dev,
 				      struct device_attribute *attr,
 				      const char *buf, size_t count)
 {
 	struct toshiba_haps_dev *haps = dev_get_drvdata(dev);
-	int reset, ret;
+	int reset;
+	int ret;
 
-	if (sscanf(buf, "%d", &reset) != 1 || reset != 1)
+	ret = kstrtoint(buf, 0, &reset);
+	if (ret)
+		return ret;
+	/* The only accepted value is 1 */
+	if (reset != 1)
 		return -EINVAL;
 
 	/* Reset the protection interface */
@@ -113,10 +124,7 @@ static ssize_t reset_protection_store(struct device *dev,
 
 	return count;
 }
-
-static DEVICE_ATTR(protection_level, S_IRUGO | S_IWUSR,
-		   protection_level_show, protection_level_store);
-static DEVICE_ATTR(reset_protection, S_IWUSR, NULL, reset_protection_store);
+static DEVICE_ATTR_WO(reset_protection);
 
 static struct attribute *haps_attributes[] = {
 	&dev_attr_protection_level.attr,
@@ -133,7 +141,7 @@ static struct attribute_group haps_attr_group = {
  */
 static void toshiba_haps_notify(struct acpi_device *device, u32 event)
 {
-	pr_info("Received event: 0x%x", event);
+	pr_debug("Received event: 0x%x", event);
 
 	acpi_bus_generate_netlink_event(device->pnp.device_class,
 					dev_name(&device->dev),
@@ -160,9 +168,13 @@ static int toshiba_haps_available(acpi_handle handle)
 	 * A non existent device as well as having (only)
 	 * Solid State Drives can cause the call to fail.
 	 */
-	status = acpi_evaluate_integer(handle, "_STA", NULL,
-				       &hdd_present);
-	if (ACPI_FAILURE(status) || !hdd_present) {
+	status = acpi_evaluate_integer(handle, "_STA", NULL, &hdd_present);
+	if (ACPI_FAILURE(status)) {
+		pr_err("ACPI call to query HDD protection failed\n");
+		return 0;
+	}
+
+	if (!hdd_present) {
 		pr_info("HDD protection not available or using SSD\n");
 		return 0;
 	}

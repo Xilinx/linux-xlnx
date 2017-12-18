@@ -1639,6 +1639,9 @@ static netdev_tx_t scc_net_tx(struct sk_buff *skb, struct net_device *dev)
 	unsigned long flags;
 	char kisscmd;
 
+	if (skb->protocol == htons(ETH_P_IP))
+		return ax25_ip_xmit(skb);
+
 	if (skb->len > scc->stat.bufsize || skb->len < 2) {
 		scc->dev_stat.tx_dropped++;	/* bogus frame */
 		dev_kfree_skb(skb);
@@ -1666,7 +1669,7 @@ static netdev_tx_t scc_net_tx(struct sk_buff *skb, struct net_device *dev)
 		dev_kfree_skb(skb_del);
 	}
 	skb_queue_tail(&scc->tx_queue, skb);
-	dev->trans_start = jiffies;
+	netif_trans_update(dev);
 	
 
 	/*

@@ -25,7 +25,7 @@
 #include <linux/mfd/syscon.h>
 #include <linux/regmap.h>
 
-#include <dt-bindings/phy/phy-miphy365x.h>
+#include <dt-bindings/phy/phy.h>
 
 #define HFC_TIMEOUT		100
 
@@ -177,7 +177,7 @@ static u8 rx_tx_spd[] = {
 static int miphy365x_set_path(struct miphy365x_phy *miphy_phy,
 			      struct miphy365x_dev *miphy_dev)
 {
-	bool sata = (miphy_phy->type == MIPHY_TYPE_SATA);
+	bool sata = (miphy_phy->type == PHY_TYPE_SATA);
 
 	return regmap_update_bits(miphy_dev->regmap,
 				  miphy_phy->ctrlreg,
@@ -431,7 +431,7 @@ static int miphy365x_init(struct phy *phy)
 	}
 
 	/* Initialise Miphy for PCIe or SATA */
-	if (miphy_phy->type == MIPHY_TYPE_PCIE)
+	if (miphy_phy->type == PHY_TYPE_PCIE)
 		ret = miphy365x_init_pcie_port(miphy_phy, miphy_dev);
 	else
 		ret = miphy365x_init_sata_port(miphy_phy, miphy_dev);
@@ -441,8 +441,8 @@ static int miphy365x_init(struct phy *phy)
 	return ret;
 }
 
-int miphy365x_get_addr(struct device *dev, struct miphy365x_phy *miphy_phy,
-		       int index)
+static int miphy365x_get_addr(struct device *dev,
+		struct miphy365x_phy *miphy_phy, int index)
 {
 	struct device_node *phynode = miphy_phy->phy->dev.of_node;
 	const char *name;
@@ -455,8 +455,8 @@ int miphy365x_get_addr(struct device *dev, struct miphy365x_phy *miphy_phy,
 		return ret;
 	}
 
-	if (!((!strncmp(name, "sata", 4) && type == MIPHY_TYPE_SATA) ||
-	      (!strncmp(name, "pcie", 4) && type == MIPHY_TYPE_PCIE)))
+	if (!((!strncmp(name, "sata", 4) && type == PHY_TYPE_SATA) ||
+	      (!strncmp(name, "pcie", 4) && type == PHY_TYPE_PCIE)))
 		return 0;
 
 	miphy_phy->base = of_iomap(phynode, index);
@@ -476,11 +476,6 @@ static struct phy *miphy365x_xlate(struct device *dev,
 	struct device_node *phynode = args->np;
 	int ret, index;
 
-	if (!of_device_is_available(phynode)) {
-		dev_warn(dev, "Requested PHY is disabled\n");
-		return ERR_PTR(-ENODEV);
-	}
-
 	if (args->args_count != 1) {
 		dev_err(dev, "Invalid number of cells in 'phy' property\n");
 		return ERR_PTR(-EINVAL);
@@ -499,8 +494,8 @@ static struct phy *miphy365x_xlate(struct device *dev,
 
 	miphy_phy->type = args->args[0];
 
-	if (!(miphy_phy->type == MIPHY_TYPE_SATA ||
-	      miphy_phy->type == MIPHY_TYPE_PCIE)) {
+	if (!(miphy_phy->type == PHY_TYPE_SATA ||
+	      miphy_phy->type == PHY_TYPE_PCIE)) {
 		dev_err(dev, "Unsupported device type: %d\n", miphy_phy->type);
 		return ERR_PTR(-EINVAL);
 	}
@@ -515,7 +510,7 @@ static struct phy *miphy365x_xlate(struct device *dev,
 	return miphy_phy->phy;
 }
 
-static struct phy_ops miphy365x_ops = {
+static const struct phy_ops miphy365x_ops = {
 	.init		= miphy365x_init,
 	.owner		= THIS_MODULE,
 };
@@ -571,22 +566,25 @@ static int miphy365x_probe(struct platform_device *pdev)
 
 		miphy_phy = devm_kzalloc(&pdev->dev, sizeof(*miphy_phy),
 					 GFP_KERNEL);
-		if (!miphy_phy)
-			return -ENOMEM;
+		if (!miphy_phy) {
+			ret = -ENOMEM;
+			goto put_child;
+		}
 
 		miphy_dev->phys[port] = miphy_phy;
 
 		phy = devm_phy_create(&pdev->dev, child, &miphy365x_ops);
 		if (IS_ERR(phy)) {
 			dev_err(&pdev->dev, "failed to create PHY\n");
-			return PTR_ERR(phy);
+			ret = PTR_ERR(phy);
+			goto put_child;
 		}
 
 		miphy_dev->phys[port]->phy = phy;
 
 		ret = miphy365x_of_probe(child, miphy_phy);
 		if (ret)
-			return ret;
+			goto put_child;
 
 		phy_set_drvdata(phy, miphy_dev->phys[port]);
 
@@ -596,12 +594,15 @@ static int miphy365x_probe(struct platform_device *pdev)
 					&miphy_phy->ctrlreg);
 		if (ret) {
 			dev_err(&pdev->dev, "No sysconfig offset found\n");
-			return ret;
+			goto put_child;
 		}
 	}
 
 	provider = devm_of_phy_provider_register(&pdev->dev, miphy365x_xlate);
 	return PTR_ERR_OR_ZERO(provider);
+put_child:
+	of_node_put(child);
+	return ret;
 }
 
 static const struct of_device_id miphy365x_of_match[] = {

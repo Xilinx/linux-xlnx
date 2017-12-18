@@ -2,15 +2,16 @@
 #	EDAC Kconfig
 #	Copyright (c) 2008 Doug Thompson www.softwarebitmaker.com
 #	Licensed and distributed under the GPL
-#
+
+config EDAC_ATOMIC_SCRUB
+	bool
 
 config EDAC_SUPPORT
 	bool
 
 menuconfig EDAC
 	bool "EDAC (Error Detection And Correction) reporting"
-	depends on HAS_IOMEM
-	depends on X86 || PPC || TILE || ARM || EDAC_SUPPORT
+	depends on HAS_IOMEM && EDAC_SUPPORT
 	help
 	  EDAC is designed to report errors in the core system.
 	  These are low-level errors that are reported in the CPU or
@@ -59,16 +60,6 @@ config EDAC_DECODE_MCE
 	  You should definitely say Y here in case you want to decode MCEs
 	  which occur really early upon boot, before the module infrastructure
 	  has been initialized.
-
-config EDAC_MCE_INJ
-	tristate "Simple MCE injection interface"
-	depends on EDAC_DECODE_MCE && DEBUG_FS
-	default n
-	help
-	  This is a simple debugfs interface to inject MCEs and test different
-	  aspects of the MCE handling code.
-
-	  WARNING: Do not even assume this interface is staying stable!
 
 config EDAC_MM_EDAC
 	tristate "Main Memory EDAC (Error Detection And Correction) reporting"
@@ -260,12 +251,27 @@ config EDAC_SBRIDGE
 	  Support for error detection and correction the Intel
 	  Sandy Bridge, Ivy Bridge and Haswell Integrated Memory Controllers.
 
+config EDAC_SKX
+	tristate "Intel Skylake server Integrated MC"
+	depends on EDAC_MM_EDAC && PCI && X86_64 && X86_MCE_INTEL
+	depends on PCI_MMCONFIG
+	help
+	  Support for error detection and correction the Intel
+	  Skylake server Integrated Memory Controllers.
+
 config EDAC_MPC85XX
 	tristate "Freescale MPC83xx / MPC85xx"
-	depends on EDAC_MM_EDAC && FSL_SOC && (PPC_83xx || PPC_85xx)
+	depends on EDAC_MM_EDAC && FSL_SOC
 	help
 	  Support for error detection and correction on the Freescale
-	  MPC8349, MPC8560, MPC8540, MPC8548
+	  MPC8349, MPC8560, MPC8540, MPC8548, T4240
+
+config EDAC_LAYERSCAPE
+	tristate "Freescale Layerscape DDR"
+	depends on EDAC_MM_EDAC && ARCH_LAYERSCAPE
+	help
+	  Support for error detection and correction on Freescale memory
+	  controllers on Layerscape SoCs.
 
 config EDAC_MV64X60
 	tristate "Marvell MV64x60"
@@ -341,13 +347,6 @@ config EDAC_PL310_L2
 	  Support for parity error detection on L2 cache controller
 	  data and tag ram memory
 
-config EDAC_ZYNQ
-	tristate "ZYNQ DDR Memory Controller"
-	depends on EDAC_MM_EDAC && ARCH_ZYNQ
-	help
-	  This enables support for EDAC on the ECC memory used
-	  with the ZYNQ DDR memory controller.
-
 config EDAC_HIGHBANK_MC
 	tristate "Highbank Memory Controller"
 	depends on EDAC_MM_EDAC && ARCH_HIGHBANK
@@ -390,20 +389,99 @@ config EDAC_OCTEON_PCI
 	  Support for error detection and correction on the
 	  Cavium Octeon family of SOCs.
 
-config EDAC_ALTERA_MC
-	tristate "Altera SDRAM Memory Controller EDAC"
-	depends on EDAC_MM_EDAC && ARCH_SOCFPGA
+config EDAC_ALTERA
+	bool "Altera SOCFPGA ECC"
+	depends on EDAC_MM_EDAC=y && ARCH_SOCFPGA
 	help
 	  Support for error detection and correction on the
-	  Altera SDRAM memory controller. Note that the
-	  preloader must initialize the SDRAM before loading
-	  the kernel.
+	  Altera SOCs. This must be selected for SDRAM ECC.
+	  Note that the preloader must initialize the SDRAM
+	  before loading the kernel.
+
+config EDAC_ALTERA_L2C
+	bool "Altera L2 Cache ECC"
+	depends on EDAC_ALTERA=y && CACHE_L2X0
+	help
+	  Support for error detection and correction on the
+	  Altera L2 cache Memory for Altera SoCs. This option
+	  requires L2 cache.
+
+config EDAC_ALTERA_OCRAM
+	bool "Altera On-Chip RAM ECC"
+	depends on EDAC_ALTERA=y && SRAM && GENERIC_ALLOCATOR
+	help
+	  Support for error detection and correction on the
+	  Altera On-Chip RAM Memory for Altera SoCs.
+
+config EDAC_ALTERA_ETHERNET
+	bool "Altera Ethernet FIFO ECC"
+	depends on EDAC_ALTERA=y
+	help
+	  Support for error detection and correction on the
+	  Altera Ethernet FIFO Memory for Altera SoCs.
+
+config EDAC_ALTERA_NAND
+	bool "Altera NAND FIFO ECC"
+	depends on EDAC_ALTERA=y && MTD_NAND_DENALI
+	help
+	  Support for error detection and correction on the
+	  Altera NAND FIFO Memory for Altera SoCs.
+
+config EDAC_ALTERA_DMA
+	bool "Altera DMA FIFO ECC"
+	depends on EDAC_ALTERA=y && PL330_DMA=y
+	help
+	  Support for error detection and correction on the
+	  Altera DMA FIFO Memory for Altera SoCs.
+
+config EDAC_ALTERA_USB
+	bool "Altera USB FIFO ECC"
+	depends on EDAC_ALTERA=y && USB_DWC2
+	help
+	  Support for error detection and correction on the
+	  Altera USB FIFO Memory for Altera SoCs.
+
+config EDAC_ALTERA_QSPI
+	bool "Altera QSPI FIFO ECC"
+	depends on EDAC_ALTERA=y && SPI_CADENCE_QUADSPI
+	help
+	  Support for error detection and correction on the
+	  Altera QSPI FIFO Memory for Altera SoCs.
+
+config EDAC_ALTERA_SDMMC
+	bool "Altera SDMMC FIFO ECC"
+	depends on EDAC_ALTERA=y && MMC_DW
+	help
+	  Support for error detection and correction on the
+	  Altera SDMMC FIFO Memory for Altera SoCs.
 
 config EDAC_SYNOPSYS
 	tristate "Synopsys DDR Memory Controller"
-	depends on EDAC_MM_EDAC && ARCH_ZYNQ
+	depends on EDAC_MM_EDAC && (ARCH_ZYNQ || ARM64)
 	help
 	  Support for error detection and correction on the Synopsys DDR
 	  memory controller.
+
+config EDAC_ZYNQMP_OCM
+	tristate "Xilinx ZynqMP OCM Controller"
+	depends on EDAC_MM_EDAC && ARM64
+	help
+	  Support for error detection and correction on the xilinx ZynqMP OCM
+	  controller.
+
+config EDAC_XGENE
+	tristate "APM X-Gene SoC"
+	depends on EDAC_MM_EDAC && (ARM64 || COMPILE_TEST)
+	help
+	  Support for error detection and correction on the
+	  APM X-Gene family of SOCs.
+
+config EDAC_CORTEX_ARM64
+	tristate "ARM Cortex A57/A53"
+	default y if !CPU_IDLE
+	depends on !CPU_IDLE && EDAC_MM_EDAC && ARM64
+	help
+	  Support for error detection and correction on the
+	  ARM Cortex A57 and A53.
 
 endif # EDAC

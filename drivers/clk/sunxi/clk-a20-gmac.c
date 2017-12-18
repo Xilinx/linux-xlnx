@@ -17,7 +17,6 @@
  */
 
 #include <linux/clk-provider.h>
-#include <linux/clkdev.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/slab.h>
@@ -80,9 +79,7 @@ static void __init sun7i_a20_gmac_clk_setup(struct device_node *node)
 		goto free_mux;
 
 	/* gmac clock requires exactly 2 parents */
-	parents[0] = of_clk_get_parent_name(node, 0);
-	parents[1] = of_clk_get_parent_name(node, 1);
-	if (!parents[0] || !parents[1])
+	if (of_clk_parent_fill(node, parents, 2) != 2)
 		goto free_gate;
 
 	reg = of_iomap(node, 0);
@@ -109,7 +106,6 @@ static void __init sun7i_a20_gmac_clk_setup(struct device_node *node)
 		goto iounmap_reg;
 
 	of_clk_add_provider(node, of_clk_src_simple_get, clk);
-	clk_register_clkdev(clk, clk_name, NULL);
 
 	return;
 

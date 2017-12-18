@@ -5,8 +5,10 @@
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
+
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
+#include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/spinlock.h>
 #include <linux/skbuff.h>
@@ -26,8 +28,8 @@ static struct nf_loginfo default_loginfo = {
 	.type	= NF_LOG_TYPE_LOG,
 	.u = {
 		.log = {
-			.level	  = 5,
-			.logflags = NF_LOG_MASK,
+			.level	  = LOGLEVEL_NOTICE,
+			.logflags = NF_LOG_DEFAULT_MASK,
 		},
 	},
 };
@@ -44,7 +46,7 @@ static void dump_ipv4_packet(struct nf_log_buf *m,
 	if (info->type == NF_LOG_TYPE_LOG)
 		logflags = info->u.log.logflags;
 	else
-		logflags = NF_LOG_MASK;
+		logflags = NF_LOG_DEFAULT_MASK;
 
 	ih = skb_header_pointer(skb, iphoff, sizeof(_iph), &_iph);
 	if (ih == NULL) {
@@ -74,7 +76,7 @@ static void dump_ipv4_packet(struct nf_log_buf *m,
 	if (ntohs(ih->frag_off) & IP_OFFSET)
 		nf_log_buf_add(m, "FRAG:%u ", ntohs(ih->frag_off) & IP_OFFSET);
 
-	if ((logflags & XT_LOG_IPOPT) &&
+	if ((logflags & NF_LOG_IPOPT) &&
 	    ih->ihl * 4 > sizeof(struct iphdr)) {
 		const unsigned char *op;
 		unsigned char _opt[4 * 15 - sizeof(struct iphdr)];
@@ -248,7 +250,7 @@ static void dump_ipv4_packet(struct nf_log_buf *m,
 	}
 
 	/* Max length: 15 "UID=4294967295 " */
-	if ((logflags & XT_LOG_UID) && !iphoff)
+	if ((logflags & NF_LOG_UID) && !iphoff)
 		nf_log_dump_sk_uid_gid(m, skb->sk);
 
 	/* Max length: 16 "MARK=0xFFFFFFFF " */
@@ -280,7 +282,7 @@ static void dump_ipv4_mac_header(struct nf_log_buf *m,
 	if (info->type == NF_LOG_TYPE_LOG)
 		logflags = info->u.log.logflags;
 
-	if (!(logflags & XT_LOG_MACDECODE))
+	if (!(logflags & NF_LOG_MACDECODE))
 		goto fallback;
 
 	switch (dev->type) {
@@ -345,8 +347,7 @@ static struct nf_logger nf_ip_logger __read_mostly = {
 
 static int __net_init nf_log_ipv4_net_init(struct net *net)
 {
-	nf_log_set(net, NFPROTO_IPV4, &nf_ip_logger);
-	return 0;
+	return nf_log_set(net, NFPROTO_IPV4, &nf_ip_logger);
 }
 
 static void __net_exit nf_log_ipv4_net_exit(struct net *net)

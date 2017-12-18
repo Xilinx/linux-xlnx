@@ -337,9 +337,11 @@ extern struct mutex pnp_res_mutex;
 
 #ifdef CONFIG_PNPBIOS
 extern struct pnp_protocol pnpbios_protocol;
+extern bool arch_pnpbios_disabled(void);
 #define pnp_device_is_pnpbios(dev) ((dev)->protocol == (&pnpbios_protocol))
 #else
 #define pnp_device_is_pnpbios(dev) 0
+#define arch_pnpbios_disabled()	false
 #endif
 
 #ifdef CONFIG_PNPACPI
@@ -509,5 +511,17 @@ static inline int pnp_register_driver(struct pnp_driver *drv) { return -ENODEV; 
 static inline void pnp_unregister_driver(struct pnp_driver *drv) { }
 
 #endif /* CONFIG_PNP */
+
+/**
+ * module_pnp_driver() - Helper macro for registering a PnP driver
+ * @__pnp_driver: pnp_driver struct
+ *
+ * Helper macro for PnP drivers which do not do anything special in module
+ * init/exit. This eliminates a lot of boilerplate. Each module may only
+ * use this macro once, and calling it replaces module_init() and module_exit()
+ */
+#define module_pnp_driver(__pnp_driver) \
+	module_driver(__pnp_driver, pnp_register_driver, \
+				    pnp_unregister_driver)
 
 #endif /* _LINUX_PNP_H */

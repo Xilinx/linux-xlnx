@@ -7,6 +7,7 @@ enum hv_perf_domains {
 #define DOMAIN(n, v, x, c) HV_PERF_DOMAIN_##n = v,
 #include "hv-24x7-domains.h"
 #undef DOMAIN
+	HV_PERF_DOMAIN_MAX,
 };
 
 struct hv_24x7_request {
@@ -50,7 +51,7 @@ struct hv_24x7_request_buffer {
 	__u8 interface_version;
 	__u8 num_requests;
 	__u8 reserved[0xE];
-	struct hv_24x7_request requests[];
+	struct hv_24x7_request requests[1];
 } __packed;
 
 struct hv_24x7_result_element {
@@ -65,8 +66,8 @@ struct hv_24x7_result_element {
 	/* -1 if @performance_domain does not refer to a virtual processor */
 	__be32 lpar_cfg_instance_id;
 
-	/* size = @result_element_data_size of cointaining result. */
-	__u8 element_data[];
+	/* size = @result_element_data_size of containing result. */
+	__u64 element_data[1];
 } __packed;
 
 struct hv_24x7_result {
@@ -80,14 +81,14 @@ struct hv_24x7_result {
 	__u8 results_complete;
 	__be16 num_elements_returned;
 
-	/* This is a copy of @data_size from the coresponding hv_24x7_request */
+	/* This is a copy of @data_size from the corresponding hv_24x7_request */
 	__be16 result_element_data_size;
 	__u8 reserved[0x2];
 
 	/* WARNING: only valid for first result element due to variable sizes
 	 *          of result elements */
 	/* struct hv_24x7_result_element[@num_elements_returned] */
-	struct hv_24x7_result_element elements[];
+	struct hv_24x7_result_element elements[1];
 } __packed;
 
 struct hv_24x7_data_result_buffer {
@@ -103,7 +104,7 @@ struct hv_24x7_data_result_buffer {
 	__u8 reserved2[0x8];
 	/* WARNING: only valid for the first result due to variable sizes of
 	 *	    results */
-	struct hv_24x7_result results[]; /* [@num_results] */
+	struct hv_24x7_result results[1]; /* [@num_results] */
 } __packed;
 
 #endif

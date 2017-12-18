@@ -47,19 +47,20 @@ union ieee754dp ieee754dp_mul(union ieee754dp x, union ieee754dp y)
 	FLUSHYDP;
 
 	switch (CLPAIR(xc, yc)) {
-	case CLPAIR(IEEE754_CLASS_SNAN, IEEE754_CLASS_QNAN):
 	case CLPAIR(IEEE754_CLASS_QNAN, IEEE754_CLASS_SNAN):
-	case CLPAIR(IEEE754_CLASS_SNAN, IEEE754_CLASS_SNAN):
 	case CLPAIR(IEEE754_CLASS_ZERO, IEEE754_CLASS_SNAN):
 	case CLPAIR(IEEE754_CLASS_NORM, IEEE754_CLASS_SNAN):
 	case CLPAIR(IEEE754_CLASS_DNORM, IEEE754_CLASS_SNAN):
 	case CLPAIR(IEEE754_CLASS_INF, IEEE754_CLASS_SNAN):
+		return ieee754dp_nanxcpt(y);
+
+	case CLPAIR(IEEE754_CLASS_SNAN, IEEE754_CLASS_SNAN):
+	case CLPAIR(IEEE754_CLASS_SNAN, IEEE754_CLASS_QNAN):
 	case CLPAIR(IEEE754_CLASS_SNAN, IEEE754_CLASS_ZERO):
 	case CLPAIR(IEEE754_CLASS_SNAN, IEEE754_CLASS_NORM):
 	case CLPAIR(IEEE754_CLASS_SNAN, IEEE754_CLASS_DNORM):
 	case CLPAIR(IEEE754_CLASS_SNAN, IEEE754_CLASS_INF):
-		ieee754_setcx(IEEE754_INVALID_OPERATION);
-		return ieee754dp_nanxcpt(ieee754dp_indef());
+		return ieee754dp_nanxcpt(x);
 
 	case CLPAIR(IEEE754_CLASS_ZERO, IEEE754_CLASS_QNAN):
 	case CLPAIR(IEEE754_CLASS_NORM, IEEE754_CLASS_QNAN):
@@ -124,7 +125,7 @@ union ieee754dp ieee754dp_mul(union ieee754dp x, union ieee754dp y)
 	ym <<= 64 - (DP_FBITS + 1);
 
 	/*
-	 * Multiply 32 bits xm, ym to give high 32 bits rm with stickness.
+	 * Multiply 64 bits xm, ym to give high 64 bits rm with stickness.
 	 */
 
 	/* 32 * 32 => 64 */
@@ -162,7 +163,7 @@ union ieee754dp ieee754dp_mul(union ieee754dp x, union ieee754dp y)
 	if ((s64) rm < 0) {
 		rm = (rm >> (64 - (DP_FBITS + 1 + 3))) |
 		     ((rm << (DP_FBITS + 1 + 3)) != 0);
-			re++;
+		re++;
 	} else {
 		rm = (rm >> (64 - (DP_FBITS + 1 + 3 + 1))) |
 		     ((rm << (DP_FBITS + 1 + 3 + 1)) != 0);

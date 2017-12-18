@@ -5,10 +5,10 @@
 menuconfig ACPI
 	bool "ACPI (Advanced Configuration and Power Interface) Support"
 	depends on !IA64_HP_SIM
-	depends on IA64 || X86
+	depends on IA64 || X86 || ARM64
 	depends on PCI
 	select PNP
-	default y
+	default y if (IA64 || X86)
 	help
 	  Advanced Configuration and Power Interface (ACPI) support for 
 	  Linux requires an ACPI-compliant platform (hardware/firmware),
@@ -48,14 +48,47 @@ config ACPI_LEGACY_TABLES_LOOKUP
 config ARCH_MIGHT_HAVE_ACPI_PDC
 	bool
 
+config ACPI_GENERIC_GSI
+	bool
+
+config ACPI_SYSTEM_POWER_STATES_SUPPORT
+	bool
+
+config ACPI_CCA_REQUIRED
+	bool
+
+config ACPI_DEBUGGER
+	bool "AML debugger interface"
+	select ACPI_DEBUG
+	help
+	  Enable in-kernel debugging of AML facilities: statistics,
+	  internal object dump, single step control method execution.
+	  This is still under development, currently enabling this only
+	  results in the compilation of the ACPICA debugger files.
+
+if ACPI_DEBUGGER
+
+config ACPI_DEBUGGER_USER
+	tristate "Userspace debugger accessiblity"
+	depends on DEBUG_FS
+	help
+	  Export /sys/kernel/debug/acpi/acpidbg for userspace utilities
+	  to access the debugger functionalities.
+
+endif
+
+config ACPI_SPCR_TABLE
+	bool
+
 config ACPI_SLEEP
 	bool
 	depends on SUSPEND || HIBERNATION
+	depends on ACPI_SYSTEM_POWER_STATES_SUPPORT
 	default y
 
 config ACPI_PROCFS_POWER
 	bool "Deprecated power /proc/acpi directories"
-	depends on PROC_FS
+	depends on X86 && PROC_FS
 	help
 	  For backwards compatibility, this option allows
           deprecated power /proc/acpi/ directories to exist, even when
@@ -69,6 +102,26 @@ config ACPI_PROCFS_POWER
 	  deleted in the future.
 
 	  Say N to delete power /proc/acpi/ directories that have moved to /sys/
+
+config ACPI_REV_OVERRIDE_POSSIBLE
+	bool "Allow supported ACPI revision to be overriden"
+	depends on X86
+	default y
+	help
+	  The platform firmware on some systems expects Linux to return "5" as
+	  the supported ACPI revision which makes it expose system configuration
+	  information in a special way.
+
+	  For example, based on what ACPI exports as the supported revision,
+	  Dell XPS 13 (2015) configures its audio device to either work in HDA
+	  mode or in I2S mode, where the former is supposed to be used on Linux
+	  until the latter is fully supported (in the kernel as well as in user
+	  space).
+
+	  This option enables a DMI-based quirk for the above Dell machine (so
+	  that HDA audio is exposed by the platform firmware to the kernel) and
+	  makes it possible to force the kernel to return "5" as the supported
+	  ACPI revision via the "acpi_rev_override" command line switch.
 
 config ACPI_EC_DEBUGFS
 	tristate "EC read/write access through /sys/kernel/debug/ec"
@@ -159,16 +212,44 @@ config ACPI_DOCK
 	  This driver supports ACPI-controlled docking stations and removable
 	  drive bays such as the IBM Ultrabay and the Dell Module Bay.
 
+config ACPI_CPU_FREQ_PSS
+	bool
+	select THERMAL
+
+config ACPI_PROCESSOR_CSTATE
+	def_bool y
+	depends on IA64 || X86
+
+config ACPI_PROCESSOR_IDLE
+	bool
+	select CPU_IDLE
+
+config ACPI_MCFG
+	bool
+
+config ACPI_CPPC_LIB
+	bool
+	depends on ACPI_PROCESSOR
+	select MAILBOX
+	select PCC
+	help
+	  If this option is enabled, this file implements common functionality
+	  to parse CPPC tables as described in the ACPI 5.1+ spec. The
+	  routines implemented are meant to be used by other
+	  drivers to control CPU performance using CPPC semantics.
+	  If your platform does not support CPPC in firmware,
+	  leave this option disabled.
+
 config ACPI_PROCESSOR
 	tristate "Processor"
-	select THERMAL
-	select CPU_IDLE
+	depends on X86 || IA64 || ARM64
+	select ACPI_PROCESSOR_IDLE
+	select ACPI_CPU_FREQ_PSS if X86 || IA64
 	default y
 	help
-	  This driver installs ACPI as the idle handler for Linux and uses
-	  ACPI C2 and C3 processor states to save power on systems that
-	  support it.  It is required by several flavors of cpufreq
-	  performance-state drivers.
+	  This driver adds support for the ACPI Processor package. It is required
+	  by several flavors of cpufreq performance-state, thermal, throttling and
+	  idle drivers.
 
 	  To compile this driver as a module, choose M here:
 	  the module will be called processor.
@@ -219,8 +300,8 @@ config ACPI_THERMAL
 config ACPI_NUMA
 	bool "NUMA support"
 	depends on NUMA
-	depends on (X86 || IA64)
-	default y if IA64_GENERIC || IA64_SGI_SN2
+	depends on (X86 || IA64 || ARM64)
+	default y if IA64_GENERIC || IA64_SGI_SN2 || ARM64
 
 config ACPI_CUSTOM_DSDT_FILE
 	string "Custom DSDT Table file to include"
@@ -239,12 +320,15 @@ config ACPI_CUSTOM_DSDT
 	bool
 	default ACPI_CUSTOM_DSDT_FILE != ""
 
-config ACPI_INITRD_TABLE_OVERRIDE
-	bool "ACPI tables override via initrd"
-	depends on BLK_DEV_INITRD && X86
-	default n
+config ARCH_HAS_ACPI_TABLE_UPGRADE
+	def_bool n
+
+config ACPI_TABLE_UPGRADE
+	bool "Allow upgrading ACPI tables via initrd"
+	depends on BLK_DEV_INITRD && ARCH_HAS_ACPI_TABLE_UPGRADE
+	default y
 	help
-	  This option provides functionality to override arbitrary ACPI tables
+	  This option provides functionality to upgrade arbitrary ACPI tables
 	  via initrd. No functional change if no ACPI tables are passed via
 	  initrd, therefore it's safe to say Y.
 	  See Documentation/acpi/initrd_table_override.txt for details
@@ -375,7 +459,13 @@ config ACPI_REDUCED_HARDWARE_ONLY
 
 	  If you are unsure what to do, do not enable this option.
 
+source "drivers/acpi/nfit/Kconfig"
+
 source "drivers/acpi/apei/Kconfig"
+source "drivers/acpi/dptf/Kconfig"
+
+config ACPI_WATCHDOG
+	bool
 
 config ACPI_EXTLOG
 	tristate "Extended Error Log support"
@@ -420,6 +510,24 @@ config XPOWER_PMIC_OPREGION
 	help
 	  This config adds ACPI operation region support for XPower AXP288 PMIC.
 
+config BXT_WC_PMIC_OPREGION
+	bool "ACPI operation region support for BXT WhiskeyCove PMIC"
+	depends on INTEL_SOC_PMIC
+	help
+	  This config adds ACPI operation region support for BXT WhiskeyCove PMIC.
+
+endif
+
+config ACPI_CONFIGFS
+	tristate "ACPI configfs support"
+	select CONFIGFS_FS
+	help
+	  Select this option to enable support for ACPI configuration from
+	  userspace. The configurable ACPI groups will be visible under
+	  /config/acpi, assuming configfs is mounted under /config.
+
+if ARM64
+source "drivers/acpi/arm64/Kconfig"
 endif
 
 endif	# ACPI

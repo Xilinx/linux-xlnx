@@ -101,7 +101,7 @@ static int clps711x_keypad_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	priv->syscon =
-		syscon_regmap_lookup_by_compatible("cirrus,clps711x-syscon1");
+		syscon_regmap_lookup_by_compatible("cirrus,ep7209-syscon1");
 	if (IS_ERR(priv->syscon))
 		return PTR_ERR(priv->syscon);
 
@@ -120,14 +120,9 @@ static int clps711x_keypad_probe(struct platform_device *pdev)
 	for (i = 0; i < priv->row_count; i++) {
 		struct clps711x_gpio_data *data = &priv->gpio_data[i];
 
-		data->desc = devm_gpiod_get_index(dev, "row", i);
-		if (!data->desc)
-			return -EINVAL;
-
+		data->desc = devm_gpiod_get_index(dev, "row", i, GPIOD_IN);
 		if (IS_ERR(data->desc))
 			return PTR_ERR(data->desc);
-
-		gpiod_direction_input(data->desc);
 	}
 
 	err = of_property_read_u32(np, "poll-interval", &poll_interval);
@@ -186,7 +181,7 @@ static int clps711x_keypad_remove(struct platform_device *pdev)
 }
 
 static const struct of_device_id clps711x_keypad_of_match[] = {
-	{ .compatible = "cirrus,clps711x-keypad", },
+	{ .compatible = "cirrus,ep7209-keypad", },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, clps711x_keypad_of_match);

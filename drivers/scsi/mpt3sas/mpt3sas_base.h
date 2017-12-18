@@ -63,6 +63,8 @@
 #include <scsi/scsi_transport_sas.h>
 #include <scsi/scsi_dbg.h>
 #include <scsi/scsi_eh.h>
+#include <linux/pci.h>
+#include <linux/poll.h>
 
 #include "mpt3sas_debug.h"
 #include "mpt3sas_trigger_diag.h"
@@ -71,23 +73,37 @@
 #define MPT3SAS_DRIVER_NAME		"mpt3sas"
 #define MPT3SAS_AUTHOR "Avago Technologies <MPT-FusionLinux.pdl@avagotech.com>"
 #define MPT3SAS_DESCRIPTION	"LSI MPT Fusion SAS 3.0 Device Driver"
-#define MPT3SAS_DRIVER_VERSION		"04.100.00.00"
-#define MPT3SAS_MAJOR_VERSION		4
+#define MPT3SAS_DRIVER_VERSION		"13.100.00.00"
+#define MPT3SAS_MAJOR_VERSION		13
 #define MPT3SAS_MINOR_VERSION		100
 #define MPT3SAS_BUILD_VERSION		0
 #define MPT3SAS_RELEASE_VERSION	00
 
+#define MPT2SAS_DRIVER_NAME		"mpt2sas"
+#define MPT2SAS_DESCRIPTION	"LSI MPT Fusion SAS 2.0 Device Driver"
+#define MPT2SAS_DRIVER_VERSION		"20.102.00.00"
+#define MPT2SAS_MAJOR_VERSION		20
+#define MPT2SAS_MINOR_VERSION		102
+#define MPT2SAS_BUILD_VERSION		0
+#define MPT2SAS_RELEASE_VERSION	00
+
 /*
  * Set MPT3SAS_SG_DEPTH value based on user input.
  */
-#define MPT3SAS_MAX_PHYS_SEGMENTS	SCSI_MAX_SG_SEGMENTS
-#define MPT3SAS_MIN_PHYS_SEGMENTS	16
+#define MPT_MAX_PHYS_SEGMENTS	SG_CHUNK_SIZE
+#define MPT_MIN_PHYS_SEGMENTS	16
+
 #ifdef CONFIG_SCSI_MPT3SAS_MAX_SGE
 #define MPT3SAS_SG_DEPTH		CONFIG_SCSI_MPT3SAS_MAX_SGE
 #else
-#define MPT3SAS_SG_DEPTH		MPT3SAS_MAX_PHYS_SEGMENTS
+#define MPT3SAS_SG_DEPTH		MPT_MAX_PHYS_SEGMENTS
 #endif
 
+#ifdef CONFIG_SCSI_MPT2SAS_MAX_SGE
+#define MPT2SAS_SG_DEPTH		CONFIG_SCSI_MPT2SAS_MAX_SGE
+#else
+#define MPT2SAS_SG_DEPTH		MPT_MAX_PHYS_SEGMENTS
+#endif
 
 /*
  * Generic Defines
@@ -96,20 +112,23 @@
 #define MPT3SAS_SAS_QUEUE_DEPTH		254
 #define MPT3SAS_RAID_QUEUE_DEPTH	128
 
+#define MPT3SAS_RAID_MAX_SECTORS	8192
+
 #define MPT_NAME_LENGTH			32	/* generic length of strings */
 #define MPT_STRING_LENGTH		64
 
 #define MPT_MAX_CALLBACKS		32
 
-
-#define	 CAN_SLEEP			1
-#define  NO_SLEEP			0
-
 #define INTERNAL_CMDS_COUNT		10	/* reserved cmds */
+/* reserved for issuing internally framed scsi io cmds */
+#define INTERNAL_SCSIIO_CMDS_COUNT	3
 
 #define MPI3_HIM_MASK			0xFFFFFFFF /* mask every bit*/
 
 #define MPT3SAS_INVALID_DEVICE_HANDLE	0xFFFF
+
+#define MAX_CHAIN_ELEMT_SZ		16
+#define DEFAULT_NUM_FWCHAIN_ELEMTS	8
 
 /*
  * reset phases
@@ -124,6 +143,16 @@
 #define MPT3SAS_FMT			"%s: "
 
 /*
+ *  WarpDrive Specific Log codes
+ */
+
+#define MPT2_WARPDRIVE_LOGENTRY		(0x8002)
+#define MPT2_WARPDRIVE_LC_SSDT			(0x41)
+#define MPT2_WARPDRIVE_LC_SSDLW		(0x43)
+#define MPT2_WARPDRIVE_LC_SSDLF		(0x44)
+#define MPT2_WARPDRIVE_LC_BRMF			(0x4D)
+
+/*
  * per target private data
  */
 #define MPT_TARGET_FLAGS_RAID_COMPONENT	0x01
@@ -131,9 +160,33 @@
 #define MPT_TARGET_FLAGS_DELETED	0x04
 #define MPT_TARGET_FASTPATH_IO		0x08
 
+#define SAS2_PCI_DEVICE_B0_REVISION	(0x01)
+#define SAS3_PCI_DEVICE_C0_REVISION	(0x02)
+
 /*
  * Intel HBA branding
  */
+#define MPT2SAS_INTEL_RMS25JB080_BRANDING    \
+	"Intel(R) Integrated RAID Module RMS25JB080"
+#define MPT2SAS_INTEL_RMS25JB040_BRANDING    \
+	"Intel(R) Integrated RAID Module RMS25JB040"
+#define MPT2SAS_INTEL_RMS25KB080_BRANDING    \
+	"Intel(R) Integrated RAID Module RMS25KB080"
+#define MPT2SAS_INTEL_RMS25KB040_BRANDING    \
+	"Intel(R) Integrated RAID Module RMS25KB040"
+#define MPT2SAS_INTEL_RMS25LB040_BRANDING	\
+	"Intel(R) Integrated RAID Module RMS25LB040"
+#define MPT2SAS_INTEL_RMS25LB080_BRANDING	\
+	"Intel(R) Integrated RAID Module RMS25LB080"
+#define MPT2SAS_INTEL_RMS2LL080_BRANDING	\
+	"Intel Integrated RAID Module RMS2LL080"
+#define MPT2SAS_INTEL_RMS2LL040_BRANDING	\
+	"Intel Integrated RAID Module RMS2LL040"
+#define MPT2SAS_INTEL_RS25GB008_BRANDING       \
+	"Intel(R) RAID Controller RS25GB008"
+#define MPT2SAS_INTEL_SSD910_BRANDING          \
+	"Intel(R) SSD 910 Series"
+
 #define MPT3SAS_INTEL_RMS3JC080_BRANDING       \
 	"Intel(R) Integrated RAID Module RMS3JC080"
 #define MPT3SAS_INTEL_RS3GC008_BRANDING       \
@@ -146,10 +199,69 @@
 /*
  * Intel HBA SSDIDs
  */
-#define MPT3SAS_INTEL_RMS3JC080_SSDID	0x3521
-#define MPT3SAS_INTEL_RS3GC008_SSDID	0x3522
-#define MPT3SAS_INTEL_RS3FC044_SSDID	0x3523
-#define MPT3SAS_INTEL_RS3UC080_SSDID    0x3524
+#define MPT2SAS_INTEL_RMS25JB080_SSDID		0x3516
+#define MPT2SAS_INTEL_RMS25JB040_SSDID		0x3517
+#define MPT2SAS_INTEL_RMS25KB080_SSDID		0x3518
+#define MPT2SAS_INTEL_RMS25KB040_SSDID		0x3519
+#define MPT2SAS_INTEL_RMS25LB040_SSDID		0x351A
+#define MPT2SAS_INTEL_RMS25LB080_SSDID		0x351B
+#define MPT2SAS_INTEL_RMS2LL080_SSDID		0x350E
+#define MPT2SAS_INTEL_RMS2LL040_SSDID		0x350F
+#define MPT2SAS_INTEL_RS25GB008_SSDID		0x3000
+#define MPT2SAS_INTEL_SSD910_SSDID		0x3700
+
+#define MPT3SAS_INTEL_RMS3JC080_SSDID		0x3521
+#define MPT3SAS_INTEL_RS3GC008_SSDID		0x3522
+#define MPT3SAS_INTEL_RS3FC044_SSDID		0x3523
+#define MPT3SAS_INTEL_RS3UC080_SSDID		0x3524
+
+/*
+ * Dell HBA branding
+ */
+#define MPT2SAS_DELL_BRANDING_SIZE                 32
+
+#define MPT2SAS_DELL_6GBPS_SAS_HBA_BRANDING        "Dell 6Gbps SAS HBA"
+#define MPT2SAS_DELL_PERC_H200_ADAPTER_BRANDING    "Dell PERC H200 Adapter"
+#define MPT2SAS_DELL_PERC_H200_INTEGRATED_BRANDING "Dell PERC H200 Integrated"
+#define MPT2SAS_DELL_PERC_H200_MODULAR_BRANDING    "Dell PERC H200 Modular"
+#define MPT2SAS_DELL_PERC_H200_EMBEDDED_BRANDING   "Dell PERC H200 Embedded"
+#define MPT2SAS_DELL_PERC_H200_BRANDING            "Dell PERC H200"
+#define MPT2SAS_DELL_6GBPS_SAS_BRANDING            "Dell 6Gbps SAS"
+
+#define MPT3SAS_DELL_12G_HBA_BRANDING       \
+	"Dell 12Gbps HBA"
+
+/*
+ * Dell HBA SSDIDs
+ */
+#define MPT2SAS_DELL_6GBPS_SAS_HBA_SSDID	0x1F1C
+#define MPT2SAS_DELL_PERC_H200_ADAPTER_SSDID	0x1F1D
+#define MPT2SAS_DELL_PERC_H200_INTEGRATED_SSDID	0x1F1E
+#define MPT2SAS_DELL_PERC_H200_MODULAR_SSDID	0x1F1F
+#define MPT2SAS_DELL_PERC_H200_EMBEDDED_SSDID	0x1F20
+#define MPT2SAS_DELL_PERC_H200_SSDID		0x1F21
+#define MPT2SAS_DELL_6GBPS_SAS_SSDID		0x1F22
+
+#define MPT3SAS_DELL_12G_HBA_SSDID		0x1F46
+
+/*
+ * Cisco HBA branding
+ */
+#define MPT3SAS_CISCO_12G_8E_HBA_BRANDING		\
+	"Cisco 9300-8E 12G SAS HBA"
+#define MPT3SAS_CISCO_12G_8I_HBA_BRANDING		\
+	"Cisco 9300-8i 12G SAS HBA"
+#define MPT3SAS_CISCO_12G_AVILA_HBA_BRANDING	\
+	"Cisco 12G Modular SAS Pass through Controller"
+#define MPT3SAS_CISCO_12G_COLUSA_MEZZANINE_HBA_BRANDING		\
+	"UCS C3X60 12G SAS Pass through Controller"
+/*
+ * Cisco HBA SSSDIDs
+ */
+#define MPT3SAS_CISCO_12G_8E_HBA_SSDID  0x14C
+#define MPT3SAS_CISCO_12G_8I_HBA_SSDID  0x154
+#define MPT3SAS_CISCO_12G_AVILA_HBA_SSDID  0x155
+#define MPT3SAS_CISCO_12G_COLUSA_MEZZANINE_HBA_SSDID  0x156
 
 /*
  * status bits for ioc->diag_buffer_status
@@ -158,6 +270,38 @@
 #define MPT3_DIAG_BUFFER_IS_RELEASED	(0x02)
 #define MPT3_DIAG_BUFFER_IS_DIAG_RESET	(0x04)
 
+/*
+ * HP HBA branding
+ */
+#define MPT2SAS_HP_3PAR_SSVID                0x1590
+
+#define MPT2SAS_HP_2_4_INTERNAL_BRANDING	\
+	"HP H220 Host Bus Adapter"
+#define MPT2SAS_HP_2_4_EXTERNAL_BRANDING	\
+	"HP H221 Host Bus Adapter"
+#define MPT2SAS_HP_1_4_INTERNAL_1_4_EXTERNAL_BRANDING	\
+	"HP H222 Host Bus Adapter"
+#define MPT2SAS_HP_EMBEDDED_2_4_INTERNAL_BRANDING	\
+	"HP H220i Host Bus Adapter"
+#define MPT2SAS_HP_DAUGHTER_2_4_INTERNAL_BRANDING	\
+	"HP H210i Host Bus Adapter"
+
+/*
+ * HO HBA SSDIDs
+ */
+#define MPT2SAS_HP_2_4_INTERNAL_SSDID			0x0041
+#define MPT2SAS_HP_2_4_EXTERNAL_SSDID			0x0042
+#define MPT2SAS_HP_1_4_INTERNAL_1_4_EXTERNAL_SSDID	0x0043
+#define MPT2SAS_HP_EMBEDDED_2_4_INTERNAL_SSDID		0x0044
+#define MPT2SAS_HP_DAUGHTER_2_4_INTERNAL_SSDID		0x0046
+
+/*
+ * Combined Reply Queue constants,
+ * There are twelve Supplemental Reply Post Host Index Registers
+ * and each register is at offset 0x10 bytes from the previous one.
+ */
+#define MPT3_SUP_REPLY_POST_HOST_INDEX_REG_COUNT 12
+#define MPT3_SUP_REPLY_POST_HOST_INDEX_REG_OFFSET (0x10)
 
 /* OEM Identifiers */
 #define MFG10_OEM_ID_INVALID                   (0x00000000)
@@ -172,6 +316,8 @@
 #define MFG10_GF0_R10_DISPLAY                  (0x00000004)
 #define MFG10_GF0_SSD_DATA_SCRUB_DISABLE       (0x00000008)
 #define MFG10_GF0_SINGLE_DRIVE_R0              (0x00000010)
+
+#define VIRTUAL_IO_FAILED_RETRY			(0x32010081)
 
 /* OEM Specific Flags will come from OEM specific header files */
 struct Mpi2ManufacturingPage10_t {
@@ -204,20 +350,24 @@ struct Mpi2ManufacturingPage11_t {
  * struct MPT3SAS_TARGET - starget private hostdata
  * @starget: starget object
  * @sas_address: target sas address
+ * @raid_device: raid_device pointer to access volume data
  * @handle: device handle
  * @num_luns: number luns
  * @flags: MPT_TARGET_FLAGS_XXX flags
  * @deleted: target flaged for deletion
  * @tm_busy: target is busy with TM request.
+ * @sdev: The sas_device associated with this target
  */
 struct MPT3SAS_TARGET {
 	struct scsi_target *starget;
 	u64	sas_address;
+	struct _raid_device *raid_device;
 	u16	handle;
 	int	num_luns;
 	u32	flags;
 	u8	deleted;
 	u8	tm_busy;
+	struct _sas_device *sdev;
 };
 
 
@@ -226,6 +376,11 @@ struct MPT3SAS_TARGET {
  */
 #define MPT_DEVICE_FLAGS_INIT		0x01
 #define MPT_DEVICE_TLR_ON		0x02
+
+#define MFG_PAGE10_HIDE_SSDS_MASK	(0x00000003)
+#define MFG_PAGE10_HIDE_ALL_DISKS	(0x00)
+#define MFG_PAGE10_EXPOSE_ALL_DISKS	(0x01)
+#define MFG_PAGE10_HIDE_IF_VOL_PRESENT	(0x02)
 
 /**
  * struct MPT3SAS_DEVICE - sdev private hostdata
@@ -246,6 +401,7 @@ struct MPT3SAS_DEVICE {
 	u8	configured_lun;
 	u8	block;
 	u8	tlr_snoop_check;
+	u8	ignore_delay_remove;
 };
 
 #define MPT3_CMD_NOT_USED	0x8000	/* free */
@@ -294,7 +450,8 @@ struct _internal_cmd {
  * @responding: used in _scsih_sas_device_mark_responding
  * @fast_path: fast path feature enable bit
  * @pfa_led_on: flag for PFA LED status
- *
+ * @pend_sas_rphy_add: flag to check if device is in sas_rphy_add()
+ *	addition routine.
  */
 struct _sas_device {
 	struct list_head list;
@@ -315,7 +472,26 @@ struct _sas_device {
 	u8	responding;
 	u8	fast_path;
 	u8	pfa_led_on;
+	u8	pend_sas_rphy_add;
+	u8	enclosure_level;
+	u8	connector_name[5];
+	struct kref refcount;
 };
+
+static inline void sas_device_get(struct _sas_device *s)
+{
+	kref_get(&s->refcount);
+}
+
+static inline void sas_device_free(struct kref *r)
+{
+	kfree(container_of(r, struct _sas_device, refcount));
+}
+
+static inline void sas_device_put(struct _sas_device *s)
+{
+	kref_put(&s->refcount, sas_device_free);
+}
 
 /**
  * struct _raid_device - raid volume link list
@@ -324,6 +500,7 @@ struct _sas_device {
  * @sdev: scsi device struct (volumes are single lun)
  * @wwid: unique identifier for the volume
  * @handle: device handle
+ * @block_size: Block size of the volume
  * @id: target id
  * @channel: target channel
  * @volume_type: the raid level
@@ -331,6 +508,13 @@ struct _sas_device {
  * @num_pds: number of hidden raid components
  * @responding: used in _scsih_raid_device_mark_responding
  * @percent_complete: resync percent complete
+ * @direct_io_enabled: Whether direct io to PDs are allowed or not
+ * @stripe_exponent: X where 2powX is the stripe sz in blocks
+ * @block_exponent: X where 2powX is the block sz in bytes
+ * @max_lba: Maximum number of LBA in the volume
+ * @stripe_sz: Stripe Size of the volume
+ * @device_info: Device info of the volume member disk
+ * @pd_handle: Array of handles of the physical drives for direct I/O in le16
  */
 #define MPT_MAX_WARPDRIVE_PDS		8
 struct _raid_device {
@@ -339,13 +523,20 @@ struct _raid_device {
 	struct scsi_device *sdev;
 	u64	wwid;
 	u16	handle;
+	u16	block_sz;
 	int	id;
 	int	channel;
 	u8	volume_type;
 	u8	num_pds;
 	u8	responding;
 	u8	percent_complete;
+	u8	direct_io_enabled;
+	u8	stripe_exponent;
+	u8	block_exponent;
+	u64	max_lba;
+	u32	stripe_sz;
 	u32	device_info;
+	u16	pd_handle[MPT_MAX_WARPDRIVE_PDS];
 };
 
 /**
@@ -454,14 +645,18 @@ struct chain_tracker {
  * @smid: system message id
  * @scmd: scsi request pointer
  * @cb_idx: callback index
+ * @direct_io: To indicate whether I/O is direct (WARPDRIVE)
  * @tracker_list: list of free request (ioc->free_list)
+ * @msix_io: IO's msix
  */
 struct scsiio_tracker {
 	u16	smid;
 	struct scsi_cmnd *scmd;
 	u8	cb_idx;
+	u8	direct_io;
 	struct list_head chain_list;
 	struct list_head tracker_list;
+	u16     msix_io;
 };
 
 /**
@@ -487,6 +682,25 @@ struct _tr_list {
 	u16	state;
 };
 
+/**
+ * struct _sc_list - delayed SAS_IO_UNIT_CONTROL message list
+ * @handle: device handle
+ */
+struct _sc_list {
+	struct list_head list;
+	u16     handle;
+};
+
+/**
+ * struct _event_ack_list - delayed event acknowledgment list
+ * @Event: Event ID
+ * @EventContext: used to track the event uniquely
+ */
+struct _event_ack_list {
+	struct list_head list;
+	u16     Event;
+	u32     EventContext;
+};
 
 /**
  * struct adapter_reply_queue - the reply queue struct
@@ -548,7 +762,7 @@ struct mpt3sas_facts {
 	u32			IOCCapabilities;
 	union mpi3_version_union	FWVersion;
 	u16			IOCRequestFrameSize;
-	u16			Reserved3;
+	u16			IOCMaxChainSegmentSize;
 	u16			MaxInitiators;
 	u16			MaxTargets;
 	u16			MaxSasExpanders;
@@ -574,16 +788,6 @@ struct mpt3sas_port_facts {
 struct reply_post_struct {
 	Mpi2ReplyDescriptorsUnion_t	*reply_post_free;
 	dma_addr_t			reply_post_free_dma;
-};
-
-/**
- * enum mutex_type - task management mutex type
- * @TM_MUTEX_OFF: mutex is not required becuase calling function is acquiring it
- * @TM_MUTEX_ON: mutex is required
- */
-enum mutex_type {
-	TM_MUTEX_OFF = 0,
-	TM_MUTEX_ON = 1,
 };
 
 typedef void (*MPT3SAS_FLUSH_RUNNING_CMDS)(struct MPT3SAS_ADAPTER *ioc);
@@ -695,6 +899,8 @@ typedef void (*MPT3SAS_FLUSH_RUNNING_CMDS)(struct MPT3SAS_ADAPTER *ioc);
  * @max_sges_in_chain_message: number sg elements per chain
  * @chains_needed_per_io: max chains per io
  * @chain_depth: total chains allocated
+ * @chain_segment_sz: gives the max number of
+ *			SGEs accommodate on single chain buffer
  * @hi_priority_smid:
  * @hi_priority:
  * @hi_priority_dma:
@@ -728,10 +934,19 @@ typedef void (*MPT3SAS_FLUSH_RUNNING_CMDS)(struct MPT3SAS_ADAPTER *ioc);
  *				is assigned only ones
  * @reply_queue_count: number of reply queue's
  * @reply_queue_list: link list contaning the reply queue info
- * @reply_post_host_index: head index in the pool where FW completes IO
+ * @msix96_vector: 96 MSI-X vector support
+ * @replyPostRegisterIndex: index of next position in Reply Desc Post Queue
  * @delayed_tr_list: target reset link list
  * @delayed_tr_volume_list: volume target reset link list
- * @@temp_sensors_count: flag to carry the number of temperature sensors
+ * @delayed_sc_list:
+ * @delayed_event_ack_list:
+ * @temp_sensors_count: flag to carry the number of temperature sensors
+ * @pci_access_mutex: Mutex to synchronize ioctl,sysfs show path and
+ *	pci resource handling. PCI resource freeing will lead to free
+ *	vital hardware/memory resource, which might be in use by cli/sysfs
+ *	path functions resulting in Null pointer reference followed by kernel
+ *	crash. To avoid the above race condition we use mutex syncrhonization
+ *	which ensures the syncrhonization between cli/sysfs_show path.
  */
 struct MPT3SAS_ADAPTER {
 	struct list_head list;
@@ -739,6 +954,7 @@ struct MPT3SAS_ADAPTER {
 	u8		id;
 	int		cpu_count;
 	char		name[MPT_NAME_LENGTH];
+	char		driver_name[MPT_NAME_LENGTH];
 	char		tmp_string[MPT_STRING_LENGTH];
 	struct pci_dev	*pdev;
 	Mpi2SystemInterfaceRegs_t __iomem *chip;
@@ -785,8 +1001,10 @@ struct MPT3SAS_ADAPTER {
 	u16		msix_vector_count;
 	u8		*cpu_msix_table;
 	u16		cpu_msix_table_sz;
+	resource_size_t __iomem **reply_post_host_index;
 	u32		ioc_reset_count;
 	MPT3SAS_FLUSH_RUNNING_CMDS schedule_dead_ioc_flush_running_cmds;
+	u32             non_operational_loop;
 
 	/* internal commands, callback index */
 	u8		scsi_io_cb_idx;
@@ -814,8 +1032,8 @@ struct MPT3SAS_ADAPTER {
 	MPT_BUILD_SG_SCMD build_sg_scmd;
 	MPT_BUILD_SG    build_sg;
 	MPT_BUILD_ZERO_LEN_SGE build_zero_len_sge;
-	u8              mpi25;
 	u16             sge_size_ieee;
+	u16		hba_mpi_version_belonged;
 
 	/* function ptr for MPI sg elements only */
 	MPT_BUILD_SG    build_sg_mpi;
@@ -890,6 +1108,7 @@ struct MPT3SAS_ADAPTER {
 	u16		max_sges_in_chain_message;
 	u16		chains_needed_per_io;
 	u32		chain_depth;
+	u16		chain_segment_sz;
 
 	/* hi-priority queue */
 	u16		hi_priority_smid;
@@ -937,9 +1156,16 @@ struct MPT3SAS_ADAPTER {
 	u8		reply_queue_count;
 	struct list_head reply_queue_list;
 
+	u8		msix96_vector;
+	/* reply post register index */
+	resource_size_t	**replyPostRegisterIndex;
+
 	struct list_head delayed_tr_list;
 	struct list_head delayed_tr_volume_list;
+	struct list_head delayed_sc_list;
+	struct list_head delayed_event_ack_list;
 	u8		temp_sensors_count;
+	struct mutex pci_access_mutex;
 
 	/* diag buffer support */
 	u8		*diag_buffer[MPI2_DIAG_BUF_TYPE_COUNT];
@@ -951,6 +1177,10 @@ struct MPT3SAS_ADAPTER {
 	u32		diagnostic_flags[MPI2_DIAG_BUF_TYPE_COUNT];
 	u32		ring_buffer_offset;
 	u32		ring_buffer_sz;
+	u8		is_warpdrive;
+	u8		hide_ir_msg;
+	u8		mfg_pg10_hide_flag;
+	u8		hide_drives;
 	spinlock_t	diag_trigger_lock;
 	u8		diag_trigger_active;
 	struct SL_WH_MASTER_TRIGGER_T diag_trigger_master;
@@ -965,6 +1195,19 @@ typedef u8 (*MPT_CALLBACK)(struct MPT3SAS_ADAPTER *ioc, u16 smid, u8 msix_index,
 
 /* base shared API */
 extern struct list_head mpt3sas_ioc_list;
+extern char    driver_name[MPT_NAME_LENGTH];
+/* spinlock on list operations over IOCs
+ * Case: when multiple warpdrive cards(IOCs) are in use
+ * Each IOC will added to the ioc list structure on initialization.
+ * Watchdog threads run at regular intervals to check IOC for any
+ * fault conditions which will trigger the dead_ioc thread to
+ * deallocate pci resource, resulting deleting the IOC netry from list,
+ * this deletion need to protected by spinlock to enusre that
+ * ioc removal is syncrhonized, if not synchronized it might lead to
+ * list_del corruption as the ioc list is traversed in cli path.
+ */
+extern spinlock_t gioc_lock;
+
 void mpt3sas_base_start_watchdog(struct MPT3SAS_ADAPTER *ioc);
 void mpt3sas_base_stop_watchdog(struct MPT3SAS_ADAPTER *ioc);
 
@@ -972,14 +1215,15 @@ int mpt3sas_base_attach(struct MPT3SAS_ADAPTER *ioc);
 void mpt3sas_base_detach(struct MPT3SAS_ADAPTER *ioc);
 int mpt3sas_base_map_resources(struct MPT3SAS_ADAPTER *ioc);
 void mpt3sas_base_free_resources(struct MPT3SAS_ADAPTER *ioc);
-int mpt3sas_base_hard_reset_handler(struct MPT3SAS_ADAPTER *ioc, int sleep_flag,
+int mpt3sas_base_hard_reset_handler(struct MPT3SAS_ADAPTER *ioc,
 	enum reset_type type);
 
 void *mpt3sas_base_get_msg_frame(struct MPT3SAS_ADAPTER *ioc, u16 smid);
 void *mpt3sas_base_get_sense_buffer(struct MPT3SAS_ADAPTER *ioc, u16 smid);
 __le32 mpt3sas_base_get_sense_buffer_dma(struct MPT3SAS_ADAPTER *ioc,
 	u16 smid);
-void mpt3sas_base_flush_reply_queues(struct MPT3SAS_ADAPTER *ioc);
+
+void mpt3sas_base_sync_reply_irqs(struct MPT3SAS_ADAPTER *ioc);
 
 /* hi-priority queue */
 u16 mpt3sas_base_get_smid_hpr(struct MPT3SAS_ADAPTER *ioc, u8 cb_idx);
@@ -992,7 +1236,8 @@ void mpt3sas_base_put_smid_scsi_io(struct MPT3SAS_ADAPTER *ioc, u16 smid,
 	u16 handle);
 void mpt3sas_base_put_smid_fast_path(struct MPT3SAS_ADAPTER *ioc, u16 smid,
 	u16 handle);
-void mpt3sas_base_put_smid_hi_priority(struct MPT3SAS_ADAPTER *ioc, u16 smid);
+void mpt3sas_base_put_smid_hi_priority(struct MPT3SAS_ADAPTER *ioc,
+	u16 smid, u16 msix_task);
 void mpt3sas_base_put_smid_default(struct MPT3SAS_ADAPTER *ioc, u16 smid);
 void mpt3sas_base_initialize_callback_handler(void);
 u8 mpt3sas_base_register_callback_handler(MPT_CALLBACK cb_func);
@@ -1032,21 +1277,31 @@ void mpt3sas_scsih_reset_handler(struct MPT3SAS_ADAPTER *ioc, int reset_phase);
 
 int mpt3sas_scsih_issue_tm(struct MPT3SAS_ADAPTER *ioc, u16 handle,
 	uint channel, uint id, uint lun, u8 type, u16 smid_task,
-	ulong timeout, enum mutex_type m_type);
+	ulong timeout);
+int mpt3sas_scsih_issue_locked_tm(struct MPT3SAS_ADAPTER *ioc, u16 handle,
+	uint channel, uint id, uint lun, u8 type, u16 smid_task,
+	ulong timeout);
+
 void mpt3sas_scsih_set_tm_flag(struct MPT3SAS_ADAPTER *ioc, u16 handle);
 void mpt3sas_scsih_clear_tm_flag(struct MPT3SAS_ADAPTER *ioc, u16 handle);
 void mpt3sas_expander_remove(struct MPT3SAS_ADAPTER *ioc, u64 sas_address);
 void mpt3sas_device_remove_by_sas_address(struct MPT3SAS_ADAPTER *ioc,
 	u64 sas_address);
+u8 mpt3sas_check_for_pending_internal_cmds(struct MPT3SAS_ADAPTER *ioc,
+	u16 smid);
 
 struct _sas_node *mpt3sas_scsih_expander_find_by_handle(
 	struct MPT3SAS_ADAPTER *ioc, u16 handle);
 struct _sas_node *mpt3sas_scsih_expander_find_by_sas_address(
 	struct MPT3SAS_ADAPTER *ioc, u64 sas_address);
-struct _sas_device *mpt3sas_scsih_sas_device_find_by_sas_address(
-	struct MPT3SAS_ADAPTER *ioc, u64 sas_address);
+struct _sas_device *mpt3sas_get_sdev_by_addr(
+	 struct MPT3SAS_ADAPTER *ioc, u64 sas_address);
+struct _sas_device *__mpt3sas_get_sdev_by_addr(
+	 struct MPT3SAS_ADAPTER *ioc, u64 sas_address);
 
 void mpt3sas_port_enable_complete(struct MPT3SAS_ADAPTER *ioc);
+struct _raid_device *
+mpt3sas_raid_device_find_by_handle(struct MPT3SAS_ADAPTER *ioc, u16 handle);
 
 /* config shared API */
 u8 mpt3sas_config_done(struct MPT3SAS_ADAPTER *ioc, u16 smid, u8 msix_index,
@@ -1086,6 +1341,8 @@ int mpt3sas_config_get_sas_iounit_pg0(struct MPT3SAS_ADAPTER *ioc,
 	u16 sz);
 int mpt3sas_config_get_iounit_pg1(struct MPT3SAS_ADAPTER *ioc, Mpi2ConfigReply_t
 	*mpi_reply, Mpi2IOUnitPage1_t *config_page);
+int mpt3sas_config_get_iounit_pg3(struct MPT3SAS_ADAPTER *ioc,
+	Mpi2ConfigReply_t *mpi_reply, Mpi2IOUnitPage3_t *config_page, u16 sz);
 int mpt3sas_config_set_iounit_pg1(struct MPT3SAS_ADAPTER *ioc, Mpi2ConfigReply_t
 	*mpi_reply, Mpi2IOUnitPage1_t *config_page);
 int mpt3sas_config_get_iounit_pg8(struct MPT3SAS_ADAPTER *ioc, Mpi2ConfigReply_t
@@ -1130,8 +1387,8 @@ int mpt3sas_config_get_volume_wwid(struct MPT3SAS_ADAPTER *ioc,
 /* ctl shared API */
 extern struct device_attribute *mpt3sas_host_attrs[];
 extern struct device_attribute *mpt3sas_dev_attrs[];
-void mpt3sas_ctl_init(void);
-void mpt3sas_ctl_exit(void);
+void mpt3sas_ctl_init(ushort hbas_to_enumerate);
+void mpt3sas_ctl_exit(ushort hbas_to_enumerate);
 u8 mpt3sas_ctl_done(struct MPT3SAS_ADAPTER *ioc, u16 smid, u8 msix_index,
 	u32 reply);
 void mpt3sas_ctl_reset_handler(struct MPT3SAS_ADAPTER *ioc, int reset_phase);
@@ -1146,6 +1403,7 @@ int mpt3sas_send_diag_release(struct MPT3SAS_ADAPTER *ioc, u8 buffer_type,
 	u8 *issue_reset);
 
 /* transport shared API */
+extern struct scsi_transport_template *mpt3sas_transport_template;
 u8 mpt3sas_transport_done(struct MPT3SAS_ADAPTER *ioc, u16 smid, u8 msix_index,
 	u32 reply);
 struct _sas_port *mpt3sas_transport_port_add(struct MPT3SAS_ADAPTER *ioc,
@@ -1177,4 +1435,18 @@ void mpt3sas_trigger_scsi(struct MPT3SAS_ADAPTER *ioc, u8 sense_key,
 	u8 asc, u8 ascq);
 void mpt3sas_trigger_mpi(struct MPT3SAS_ADAPTER *ioc, u16 ioc_status,
 	u32 loginfo);
+
+/* warpdrive APIs */
+u8 mpt3sas_get_num_volumes(struct MPT3SAS_ADAPTER *ioc);
+void mpt3sas_init_warpdrive_properties(struct MPT3SAS_ADAPTER *ioc,
+	struct _raid_device *raid_device);
+u8
+mpt3sas_scsi_direct_io_get(struct MPT3SAS_ADAPTER *ioc, u16 smid);
+void
+mpt3sas_scsi_direct_io_set(struct MPT3SAS_ADAPTER *ioc, u16 smid, u8 direct_io);
+void
+mpt3sas_setup_direct_io(struct MPT3SAS_ADAPTER *ioc, struct scsi_cmnd *scmd,
+	struct _raid_device *raid_device, Mpi2SCSIIORequest_t *mpi_request,
+	u16 smid);
+
 #endif /* MPT3SAS_BASE_H_INCLUDED */

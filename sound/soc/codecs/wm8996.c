@@ -17,6 +17,7 @@
 #include <linux/delay.h>
 #include <linux/pm.h>
 #include <linux/gcd.h>
+#include <linux/gpio/driver.h>
 #include <linux/gpio.h>
 #include <linux/i2c.h>
 #include <linux/regmap.h>
@@ -117,7 +118,7 @@ WM8996_REGULATOR_EVENT(0)
 WM8996_REGULATOR_EVENT(1)
 WM8996_REGULATOR_EVENT(2)
 
-static struct reg_default wm8996_reg[] = {
+static const struct reg_default wm8996_reg[] = {
 	{ WM8996_POWER_MANAGEMENT_1, 0x0 },
 	{ WM8996_POWER_MANAGEMENT_2, 0x0 },
 	{ WM8996_POWER_MANAGEMENT_3, 0x0 },
@@ -416,7 +417,7 @@ static int wm8996_put_retune_mobile_enum(struct snd_kcontrol *kcontrol,
 	struct wm8996_priv *wm8996 = snd_soc_codec_get_drvdata(codec);
 	struct wm8996_pdata *pdata = &wm8996->pdata;
 	int block = wm8996_get_retune_mobile_block(kcontrol->id.name);
-	int value = ucontrol->value.integer.value[0];
+	int value = ucontrol->value.enumerated.item[0];
 
 	if (block < 0)
 		return block;
@@ -1590,7 +1591,7 @@ static int wm8996_set_bias_level(struct snd_soc_codec *codec,
 		break;
 
 	case SND_SOC_BIAS_STANDBY:
-		if (codec->dapm.bias_level == SND_SOC_BIAS_OFF) {
+		if (snd_soc_codec_get_bias_level(codec) == SND_SOC_BIAS_OFF) {
 			ret = regulator_bulk_enable(ARRAY_SIZE(wm8996->supplies),
 						    wm8996->supplies);
 			if (ret != 0) {
@@ -1627,8 +1628,6 @@ static int wm8996_set_bias_level(struct snd_soc_codec *codec,
 				       wm8996->supplies);
 		break;
 	}
-
-	codec->dapm.bias_level = level;
 
 	return 0;
 }
@@ -1782,7 +1781,7 @@ static int wm8996_hw_params(struct snd_pcm_substream *substream,
 	wm8996->rx_rate[dai->id] = params_rate(params);
 
 	/* Needs looking at for TDM */
-	bits = snd_pcm_format_width(params_format(params));
+	bits = params_width(params);
 	if (bits < 0)
 		return bits;
 	aifdata |= (bits << WM8996_AIF1TX_WL_SHIFT) | bits;
@@ -2009,7 +2008,7 @@ static int wm8996_set_fll(struct snd_soc_codec *codec, int fll_id, int source,
 	struct wm8996_priv *wm8996 = snd_soc_codec_get_drvdata(codec);
 	struct i2c_client *i2c = to_i2c_client(codec->dev);
 	struct _fll_div fll_div;
-	unsigned long timeout;
+	unsigned long timeout, time_left;
 	int ret, reg, retry;
 
 	/* Any change? */
@@ -2110,13 +2109,15 @@ static int wm8996_set_fll(struct snd_soc_codec *codec, int fll_id, int source,
 	if (i2c->irq)
 		timeout *= 10;
 	else
-		timeout /= 2;
+		/* ensure timeout of atleast 1 jiffies */
+		timeout = timeout/2 ? : 1;
 
 	for (retry = 0; retry < 10; retry++) {
-		ret = wait_for_completion_timeout(&wm8996->fll_lock,
-						  timeout);
-		if (ret != 0) {
+		time_left = wait_for_completion_timeout(&wm8996->fll_lock,
+							timeout);
+		if (time_left != 0) {
 			WARN_ON(!i2c->irq);
+			ret = 1;
 			break;
 		}
 
@@ -2139,14 +2140,9 @@ static int wm8996_set_fll(struct snd_soc_codec *codec, int fll_id, int source,
 }
 
 #ifdef CONFIG_GPIOLIB
-static inline struct wm8996_priv *gpio_to_wm8996(struct gpio_chip *chip)
-{
-	return container_of(chip, struct wm8996_priv, gpio_chip);
-}
-
 static void wm8996_gpio_set(struct gpio_chip *chip, unsigned offset, int value)
 {
-	struct wm8996_priv *wm8996 = gpio_to_wm8996(chip);
+	struct wm8996_priv *wm8996 = gpiochip_get_data(chip);
 
 	regmap_update_bits(wm8996->regmap, WM8996_GPIO_1 + offset,
 			   WM8996_GP1_LVL, !!value << WM8996_GP1_LVL_SHIFT);
@@ -2155,7 +2151,7 @@ static void wm8996_gpio_set(struct gpio_chip *chip, unsigned offset, int value)
 static int wm8996_gpio_direction_out(struct gpio_chip *chip,
 				     unsigned offset, int value)
 {
-	struct wm8996_priv *wm8996 = gpio_to_wm8996(chip);
+	struct wm8996_priv *wm8996 = gpiochip_get_data(chip);
 	int val;
 
 	val = (1 << WM8996_GP1_FN_SHIFT) | (!!value << WM8996_GP1_LVL_SHIFT);
@@ -2167,7 +2163,7 @@ static int wm8996_gpio_direction_out(struct gpio_chip *chip,
 
 static int wm8996_gpio_get(struct gpio_chip *chip, unsigned offset)
 {
-	struct wm8996_priv *wm8996 = gpio_to_wm8996(chip);
+	struct wm8996_priv *wm8996 = gpiochip_get_data(chip);
 	unsigned int reg;
 	int ret;
 
@@ -2180,7 +2176,7 @@ static int wm8996_gpio_get(struct gpio_chip *chip, unsigned offset)
 
 static int wm8996_gpio_direction_in(struct gpio_chip *chip, unsigned offset)
 {
-	struct wm8996_priv *wm8996 = gpio_to_wm8996(chip);
+	struct wm8996_priv *wm8996 = gpiochip_get_data(chip);
 
 	return regmap_update_bits(wm8996->regmap, WM8996_GPIO_1 + offset,
 				  WM8996_GP1_FN_MASK | WM8996_GP1_DIR,
@@ -2188,7 +2184,7 @@ static int wm8996_gpio_direction_in(struct gpio_chip *chip, unsigned offset)
 				  (1 << WM8996_GP1_DIR_SHIFT));
 }
 
-static struct gpio_chip wm8996_template_chip = {
+static const struct gpio_chip wm8996_template_chip = {
 	.label			= "wm8996",
 	.owner			= THIS_MODULE,
 	.direction_output	= wm8996_gpio_direction_out,
@@ -2204,14 +2200,14 @@ static void wm8996_init_gpio(struct wm8996_priv *wm8996)
 
 	wm8996->gpio_chip = wm8996_template_chip;
 	wm8996->gpio_chip.ngpio = 5;
-	wm8996->gpio_chip.dev = wm8996->dev;
+	wm8996->gpio_chip.parent = wm8996->dev;
 
 	if (wm8996->pdata.gpio_base)
 		wm8996->gpio_chip.base = wm8996->pdata.gpio_base;
 	else
 		wm8996->gpio_chip.base = -1;
 
-	ret = gpiochip_add(&wm8996->gpio_chip);
+	ret = gpiochip_add_data(&wm8996->gpio_chip, wm8996);
 	if (ret != 0)
 		dev_err(wm8996->dev, "Failed to add GPIOs: %d\n", ret);
 }
@@ -2245,7 +2241,7 @@ int wm8996_detect(struct snd_soc_codec *codec, struct snd_soc_jack *jack,
 		  wm8996_polarity_fn polarity_cb)
 {
 	struct wm8996_priv *wm8996 = snd_soc_codec_get_drvdata(codec);
-	struct snd_soc_dapm_context *dapm = &codec->dapm;
+	struct snd_soc_dapm_context *dapm = snd_soc_codec_get_dapm(codec);
 
 	wm8996->jack = jack;
 	wm8996->detecting = true;
@@ -2290,6 +2286,7 @@ EXPORT_SYMBOL_GPL(wm8996_detect);
 
 static void wm8996_hpdet_irq(struct snd_soc_codec *codec)
 {
+	struct snd_soc_dapm_context *dapm = snd_soc_codec_get_dapm(codec);
 	struct wm8996_priv *wm8996 = snd_soc_codec_get_drvdata(codec);
 	int val, reg, report;
 
@@ -2343,12 +2340,14 @@ out:
 	snd_soc_update_bits(codec, WM8996_MIC_DETECT_1, WM8996_MICD_ENA,
 			    WM8996_MICD_ENA);
 
-	snd_soc_dapm_disable_pin(&codec->dapm, "Bandgap");
-	snd_soc_dapm_sync(&codec->dapm);
+	snd_soc_dapm_disable_pin(dapm, "Bandgap");
+	snd_soc_dapm_sync(dapm);
 }
 
 static void wm8996_hpdet_start(struct snd_soc_codec *codec)
 {
+	struct snd_soc_dapm_context *dapm = snd_soc_codec_get_dapm(codec);
+
 	/* Unclamp the output, we can't measure while we're shorting it */
 	snd_soc_update_bits(codec, WM8996_ANALOGUE_HP_1,
 			    WM8996_HPOUT1L_RMV_SHORT |
@@ -2357,8 +2356,8 @@ static void wm8996_hpdet_start(struct snd_soc_codec *codec)
 			    WM8996_HPOUT1R_RMV_SHORT);
 
 	/* We need bandgap for HPDET */
-	snd_soc_dapm_force_enable_pin(&codec->dapm, "Bandgap");
-	snd_soc_dapm_sync(&codec->dapm);
+	snd_soc_dapm_force_enable_pin(dapm, "Bandgap");
+	snd_soc_dapm_sync(dapm);
 
 	/* Go into headphone detect left mode */
 	snd_soc_update_bits(codec, WM8996_MIC_DETECT_1, WM8996_MICD_ENA, 0);
@@ -2685,18 +2684,20 @@ static int wm8996_remove(struct snd_soc_codec *codec)
 	return 0;
 }
 
-static struct snd_soc_codec_driver soc_codec_dev_wm8996 = {
+static const struct snd_soc_codec_driver soc_codec_dev_wm8996 = {
 	.probe =	wm8996_probe,
 	.remove =	wm8996_remove,
 	.set_bias_level = wm8996_set_bias_level,
 	.idle_bias_off	= true,
 	.seq_notifier = wm8996_seq_notifier,
-	.controls = wm8996_snd_controls,
-	.num_controls = ARRAY_SIZE(wm8996_snd_controls),
-	.dapm_widgets = wm8996_dapm_widgets,
-	.num_dapm_widgets = ARRAY_SIZE(wm8996_dapm_widgets),
-	.dapm_routes = wm8996_dapm_routes,
-	.num_dapm_routes = ARRAY_SIZE(wm8996_dapm_routes),
+	.component_driver = {
+		.controls		= wm8996_snd_controls,
+		.num_controls		= ARRAY_SIZE(wm8996_snd_controls),
+		.dapm_widgets		= wm8996_dapm_widgets,
+		.num_dapm_widgets	= ARRAY_SIZE(wm8996_dapm_widgets),
+		.dapm_routes		= wm8996_dapm_routes,
+		.num_dapm_routes	= ARRAY_SIZE(wm8996_dapm_routes),
+	},
 	.set_pll = wm8996_set_fll,
 };
 
@@ -3095,7 +3096,6 @@ MODULE_DEVICE_TABLE(i2c, wm8996_i2c_id);
 static struct i2c_driver wm8996_i2c_driver = {
 	.driver = {
 		.name = "wm8996",
-		.owner = THIS_MODULE,
 	},
 	.probe =    wm8996_i2c_probe,
 	.remove =   wm8996_i2c_remove,

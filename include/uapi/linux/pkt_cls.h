@@ -4,6 +4,7 @@
 #include <linux/types.h>
 #include <linux/pkt_sched.h>
 
+#ifdef __KERNEL__
 /* I think i could have done better macros ; for now this is stolen from
  * some arch/mips code - jhs
 */
@@ -35,20 +36,6 @@ bits 9,10,11: redirect counter -  redirect TTL. Loop avoidance
  *
  * */
 
-#define TC_MUNGED          _TC_MAKEMASK1(0)
-#define SET_TC_MUNGED(v)   ( TC_MUNGED | (v & ~TC_MUNGED))
-#define CLR_TC_MUNGED(v)   ( v & ~TC_MUNGED)
-
-#define TC_OK2MUNGE        _TC_MAKEMASK1(1)
-#define SET_TC_OK2MUNGE(v)   ( TC_OK2MUNGE | (v & ~TC_OK2MUNGE))
-#define CLR_TC_OK2MUNGE(v)   ( v & ~TC_OK2MUNGE)
-
-#define S_TC_VERD          _TC_MAKE32(2)
-#define M_TC_VERD          _TC_MAKEMASK(4,S_TC_VERD)
-#define G_TC_VERD(x)       _TC_GETVALUE(x,S_TC_VERD,M_TC_VERD)
-#define V_TC_VERD(x)       _TC_MAKEVALUE(x,S_TC_VERD)
-#define SET_TC_VERD(v,n)   ((V_TC_VERD(n)) | (v & ~M_TC_VERD))
-
 #define S_TC_FROM          _TC_MAKE32(6)
 #define M_TC_FROM          _TC_MAKEMASK(2,S_TC_FROM)
 #define G_TC_FROM(x)       _TC_GETVALUE(x,S_TC_FROM,M_TC_FROM)
@@ -62,17 +49,15 @@ bits 9,10,11: redirect counter -  redirect TTL. Loop avoidance
 #define SET_TC_NCLS(v)   ( TC_NCLS | (v & ~TC_NCLS))
 #define CLR_TC_NCLS(v)   ( v & ~TC_NCLS)
 
-#define S_TC_RTTL          _TC_MAKE32(9)
-#define M_TC_RTTL          _TC_MAKEMASK(3,S_TC_RTTL)
-#define G_TC_RTTL(x)       _TC_GETVALUE(x,S_TC_RTTL,M_TC_RTTL)
-#define V_TC_RTTL(x)       _TC_MAKEVALUE(x,S_TC_RTTL)
-#define SET_TC_RTTL(v,n)   ((V_TC_RTTL(n)) | (v & ~M_TC_RTTL))
-
 #define S_TC_AT          _TC_MAKE32(12)
 #define M_TC_AT          _TC_MAKEMASK(2,S_TC_AT)
 #define G_TC_AT(x)       _TC_GETVALUE(x,S_TC_AT,M_TC_AT)
 #define V_TC_AT(x)       _TC_MAKEVALUE(x,S_TC_AT)
 #define SET_TC_AT(v,n)   ((V_TC_AT(n)) | (v & ~M_TC_AT))
+
+#define MAX_REC_LOOP 4
+#define MAX_RED_LOOP 4
+#endif
 
 /* Action attributes */
 enum {
@@ -81,6 +66,7 @@ enum {
 	TCA_ACT_OPTIONS,
 	TCA_ACT_INDEX,
 	TCA_ACT_STATS,
+	TCA_ACT_PAD,
 	__TCA_ACT_MAX
 };
 
@@ -93,8 +79,6 @@ enum {
 #define TCA_ACT_NOUNBIND	0
 #define TCA_ACT_REPLACE		1
 #define TCA_ACT_NOREPLACE	0
-#define MAX_REC_LOOP 4
-#define MAX_RED_LOOP 4
 
 #define TC_ACT_UNSPEC	(-1)
 #define TC_ACT_OK		0
@@ -104,6 +88,7 @@ enum {
 #define TC_ACT_STOLEN		4
 #define TC_ACT_QUEUED		5
 #define TC_ACT_REPEAT		6
+#define TC_ACT_REDIRECT		7
 #define TC_ACT_JUMP		0x10000000
 
 /* Action type identifiers*/
@@ -130,8 +115,8 @@ struct tc_police {
 	__u32			mtu;
 	struct tc_ratespec	rate;
 	struct tc_ratespec	peakrate;
-	int 			refcnt;
-	int 			bindcnt;
+	int			refcnt;
+	int			bindcnt;
 	__u32			capab;
 };
 
@@ -139,10 +124,11 @@ struct tcf_t {
 	__u64   install;
 	__u64   lastuse;
 	__u64   expires;
+	__u64   firstuse;
 };
 
 struct tc_cnt {
-	int                   refcnt; 
+	int                   refcnt;
 	int                   bindcnt;
 };
 
@@ -160,11 +146,17 @@ enum {
 	TCA_POLICE_PEAKRATE,
 	TCA_POLICE_AVRATE,
 	TCA_POLICE_RESULT,
+	TCA_POLICE_TM,
+	TCA_POLICE_PAD,
 	__TCA_POLICE_MAX
 #define TCA_POLICE_RESULT TCA_POLICE_RESULT
 };
 
 #define TCA_POLICE_MAX (__TCA_POLICE_MAX - 1)
+
+/* tca flags definitions */
+#define TCA_CLS_FLAGS_SKIP_HW	(1 << 0)
+#define TCA_CLS_FLAGS_SKIP_SW	(1 << 1)
 
 /* U32 filters */
 
@@ -184,10 +176,12 @@ enum {
 	TCA_U32_DIVISOR,
 	TCA_U32_SEL,
 	TCA_U32_POLICE,
-	TCA_U32_ACT,   
+	TCA_U32_ACT,
 	TCA_U32_INDEV,
 	TCA_U32_PCNT,
 	TCA_U32_MARK,
+	TCA_U32_FLAGS,
+	TCA_U32_PAD,
 	__TCA_U32_MAX
 };
 
@@ -390,6 +384,8 @@ enum {
 
 /* BPF classifier */
 
+#define TCA_BPF_FLAG_ACT_DIRECT		(1 << 0)
+
 enum {
 	TCA_BPF_UNSPEC,
 	TCA_BPF_ACT,
@@ -397,10 +393,76 @@ enum {
 	TCA_BPF_CLASSID,
 	TCA_BPF_OPS_LEN,
 	TCA_BPF_OPS,
+	TCA_BPF_FD,
+	TCA_BPF_NAME,
+	TCA_BPF_FLAGS,
+	TCA_BPF_FLAGS_GEN,
 	__TCA_BPF_MAX,
 };
 
 #define TCA_BPF_MAX (__TCA_BPF_MAX - 1)
+
+/* Flower classifier */
+
+enum {
+	TCA_FLOWER_UNSPEC,
+	TCA_FLOWER_CLASSID,
+	TCA_FLOWER_INDEV,
+	TCA_FLOWER_ACT,
+	TCA_FLOWER_KEY_ETH_DST,		/* ETH_ALEN */
+	TCA_FLOWER_KEY_ETH_DST_MASK,	/* ETH_ALEN */
+	TCA_FLOWER_KEY_ETH_SRC,		/* ETH_ALEN */
+	TCA_FLOWER_KEY_ETH_SRC_MASK,	/* ETH_ALEN */
+	TCA_FLOWER_KEY_ETH_TYPE,	/* be16 */
+	TCA_FLOWER_KEY_IP_PROTO,	/* u8 */
+	TCA_FLOWER_KEY_IPV4_SRC,	/* be32 */
+	TCA_FLOWER_KEY_IPV4_SRC_MASK,	/* be32 */
+	TCA_FLOWER_KEY_IPV4_DST,	/* be32 */
+	TCA_FLOWER_KEY_IPV4_DST_MASK,	/* be32 */
+	TCA_FLOWER_KEY_IPV6_SRC,	/* struct in6_addr */
+	TCA_FLOWER_KEY_IPV6_SRC_MASK,	/* struct in6_addr */
+	TCA_FLOWER_KEY_IPV6_DST,	/* struct in6_addr */
+	TCA_FLOWER_KEY_IPV6_DST_MASK,	/* struct in6_addr */
+	TCA_FLOWER_KEY_TCP_SRC,		/* be16 */
+	TCA_FLOWER_KEY_TCP_DST,		/* be16 */
+	TCA_FLOWER_KEY_UDP_SRC,		/* be16 */
+	TCA_FLOWER_KEY_UDP_DST,		/* be16 */
+
+	TCA_FLOWER_FLAGS,
+	TCA_FLOWER_KEY_VLAN_ID,		/* be16 */
+	TCA_FLOWER_KEY_VLAN_PRIO,	/* u8   */
+	TCA_FLOWER_KEY_VLAN_ETH_TYPE,	/* be16 */
+
+	TCA_FLOWER_KEY_ENC_KEY_ID,	/* be32 */
+	TCA_FLOWER_KEY_ENC_IPV4_SRC,	/* be32 */
+	TCA_FLOWER_KEY_ENC_IPV4_SRC_MASK,/* be32 */
+	TCA_FLOWER_KEY_ENC_IPV4_DST,	/* be32 */
+	TCA_FLOWER_KEY_ENC_IPV4_DST_MASK,/* be32 */
+	TCA_FLOWER_KEY_ENC_IPV6_SRC,	/* struct in6_addr */
+	TCA_FLOWER_KEY_ENC_IPV6_SRC_MASK,/* struct in6_addr */
+	TCA_FLOWER_KEY_ENC_IPV6_DST,	/* struct in6_addr */
+	TCA_FLOWER_KEY_ENC_IPV6_DST_MASK,/* struct in6_addr */
+
+	TCA_FLOWER_KEY_TCP_SRC_MASK,	/* be16 */
+	TCA_FLOWER_KEY_TCP_DST_MASK,	/* be16 */
+	TCA_FLOWER_KEY_UDP_SRC_MASK,	/* be16 */
+	TCA_FLOWER_KEY_UDP_DST_MASK,	/* be16 */
+	__TCA_FLOWER_MAX,
+};
+
+#define TCA_FLOWER_MAX (__TCA_FLOWER_MAX - 1)
+
+/* Match-all classifier */
+
+enum {
+	TCA_MATCHALL_UNSPEC,
+	TCA_MATCHALL_CLASSID,
+	TCA_MATCHALL_ACT,
+	TCA_MATCHALL_FLAGS,
+	__TCA_MATCHALL_MAX,
+};
+
+#define TCA_MATCHALL_MAX (__TCA_MATCHALL_MAX - 1)
 
 /* Extended Matches */
 

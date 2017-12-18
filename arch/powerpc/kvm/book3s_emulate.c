@@ -23,6 +23,7 @@
 #include <asm/reg.h>
 #include <asm/switch_to.h>
 #include <asm/time.h>
+#include "book3s.h"
 
 #define OP_19_XOP_RFID		18
 #define OP_19_XOP_RFI		50
@@ -497,6 +498,7 @@ int kvmppc_core_emulate_mtspr_pr(struct kvm_vcpu *vcpu, int sprn, ulong spr_val)
 	case SPRN_MMCR0:
 	case SPRN_MMCR1:
 	case SPRN_MMCR2:
+	case SPRN_UMMCR2:
 #endif
 		break;
 unprivileged:
@@ -578,7 +580,7 @@ int kvmppc_core_emulate_mfspr_pr(struct kvm_vcpu *vcpu, int sprn, ulong *spr_val
 		*spr_val = vcpu->arch.spurr;
 		break;
 	case SPRN_VTB:
-		*spr_val = vcpu->arch.vtb;
+		*spr_val = to_book3s(vcpu)->vtb;
 		break;
 	case SPRN_IC:
 		*spr_val = vcpu->arch.ic;
@@ -639,6 +641,7 @@ int kvmppc_core_emulate_mfspr_pr(struct kvm_vcpu *vcpu, int sprn, ulong *spr_val
 	case SPRN_MMCR0:
 	case SPRN_MMCR1:
 	case SPRN_MMCR2:
+	case SPRN_UMMCR2:
 	case SPRN_TIR:
 #endif
 		*spr_val = 0;

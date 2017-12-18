@@ -96,7 +96,7 @@ A code snippet for an application communicating with Intel AMTHI client:
 IOCTL
 =====
 
-The Intel MEI Driver supports the following IOCTL command:
+The Intel MEI Driver supports the following IOCTL commands:
 	IOCTL_MEI_CONNECT_CLIENT	Connect to firmware Feature (client).
 
 	usage:
@@ -124,6 +124,49 @@ The Intel MEI Driver supports the following IOCTL command:
         max_msg_length (MTU) in client properties describes the maximum
         data that can be sent or received. (e.g. if MTU=2K, can send
         requests up to bytes 2k and received responses up to 2k bytes).
+
+	IOCTL_MEI_NOTIFY_SET: enable or disable event notifications
+
+	Usage:
+		uint32_t enable;
+		ioctl(fd, IOCTL_MEI_NOTIFY_SET, &enable);
+
+	Inputs:
+		uint32_t enable = 1;
+		or
+		uint32_t enable[disable] = 0;
+
+	Error returns:
+		EINVAL	Wrong IOCTL Number
+		ENODEV	Device  is not initialized or the client not connected
+		ENOMEM	Unable to allocate memory to client internal data.
+		EFAULT	Fatal Error (e.g. Unable to access user input data)
+		EOPNOTSUPP if the device doesn't support the feature
+
+	Notes:
+	The client must be connected in order to enable notification events
+
+
+	IOCTL_MEI_NOTIFY_GET : retrieve event
+
+	Usage:
+		uint32_t event;
+		ioctl(fd, IOCTL_MEI_NOTIFY_GET, &event);
+
+	Outputs:
+		1 - if an event is pending
+		0 - if there is no even pending
+
+	Error returns:
+		EINVAL	Wrong IOCTL Number
+		ENODEV	Device is not initialized or the client not connected
+		ENOMEM	Unable to allocate memory to client internal data.
+		EFAULT	Fatal Error (e.g. Unable to access user input data)
+		EOPNOTSUPP if the device doesn't support the feature
+
+	Notes:
+	The client must be connected and event notification has to be enabled
+	in order to receive an event
 
 
 Intel ME Applications
@@ -188,15 +231,15 @@ IT knows when a platform crashes even when there is a hard failure on the host.
 The Intel AMT Watchdog is composed of two parts:
 	1) Firmware feature - receives the heartbeats
 	   and sends an event when the heartbeats stop.
-	2) Intel MEI driver - connects to the watchdog feature, configures the
-	   watchdog and sends the heartbeats.
+	2) Intel MEI iAMT watchdog driver - connects to the watchdog feature,
+	   configures the watchdog and sends the heartbeats.
 
-The Intel MEI driver uses the kernel watchdog API to configure the Intel AMT
-Watchdog and to send heartbeats to it. The default timeout of the
+The Intel iAMT watchdog MEI driver uses the kernel watchdog API to configure
+the Intel AMT Watchdog and to send heartbeats to it. The default timeout of the
 watchdog is 120 seconds.
 
-If the Intel AMT Watchdog feature does not exist (i.e. the connection failed),
-the Intel MEI driver will disable the sending of heartbeats.
+If the Intel AMT is not enabled in the firmware then the watchdog client won't enumerate
+on the me client bus and watchdog devices won't be exposed.
 
 
 Supported Chipsets

@@ -51,19 +51,19 @@
 void mc13xxx_lock(struct mc13xxx *mc13xxx)
 {
 	if (!mutex_trylock(&mc13xxx->lock)) {
-		dev_dbg(mc13xxx->dev, "wait for %s from %pf\n",
+		dev_dbg(mc13xxx->dev, "wait for %s from %ps\n",
 				__func__, __builtin_return_address(0));
 
 		mutex_lock(&mc13xxx->lock);
 	}
-	dev_dbg(mc13xxx->dev, "%s from %pf\n",
+	dev_dbg(mc13xxx->dev, "%s from %ps\n",
 			__func__, __builtin_return_address(0));
 }
 EXPORT_SYMBOL(mc13xxx_lock);
 
 void mc13xxx_unlock(struct mc13xxx *mc13xxx)
 {
-	dev_dbg(mc13xxx->dev, "%s from %pf\n",
+	dev_dbg(mc13xxx->dev, "%s from %ps\n",
 			__func__, __builtin_return_address(0));
 	mutex_unlock(&mc13xxx->lock);
 }
@@ -163,7 +163,7 @@ int mc13xxx_irq_request(struct mc13xxx *mc13xxx, int irq,
 	int virq = regmap_irq_get_virq(mc13xxx->irq_data, irq);
 
 	return devm_request_threaded_irq(mc13xxx->dev, virq, NULL, handler,
-					 0, name, dev);
+					 IRQF_ONESHOT, name, dev);
 }
 EXPORT_SYMBOL(mc13xxx_irq_request);
 
@@ -383,16 +383,16 @@ static int mc13xxx_probe_flags_dt(struct mc13xxx *mc13xxx)
 	if (!np)
 		return -ENODEV;
 
-	if (of_get_property(np, "fsl,mc13xxx-uses-adc", NULL))
+	if (of_property_read_bool(np, "fsl,mc13xxx-uses-adc"))
 		mc13xxx->flags |= MC13XXX_USE_ADC;
 
-	if (of_get_property(np, "fsl,mc13xxx-uses-codec", NULL))
+	if (of_property_read_bool(np, "fsl,mc13xxx-uses-codec"))
 		mc13xxx->flags |= MC13XXX_USE_CODEC;
 
-	if (of_get_property(np, "fsl,mc13xxx-uses-rtc", NULL))
+	if (of_property_read_bool(np, "fsl,mc13xxx-uses-rtc"))
 		mc13xxx->flags |= MC13XXX_USE_RTC;
 
-	if (of_get_property(np, "fsl,mc13xxx-uses-touch", NULL))
+	if (of_property_read_bool(np, "fsl,mc13xxx-uses-touch"))
 		mc13xxx->flags |= MC13XXX_USE_TOUCHSCREEN;
 
 	return 0;

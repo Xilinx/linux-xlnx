@@ -61,12 +61,12 @@ static inline struct pit_data *clkevt_to_pit_data(struct clock_event_device *clk
 
 static inline unsigned int pit_read(void __iomem *base, unsigned int reg_offset)
 {
-	return __raw_readl(base + reg_offset);
+	return readl_relaxed(base + reg_offset);
 }
 
 static inline void pit_write(void __iomem *base, unsigned int reg_offset, unsigned long value)
 {
-	__raw_writel(value, base + reg_offset);
+	writel_relaxed(value, base + reg_offset);
 }
 
 /*
@@ -90,33 +90,27 @@ static cycle_t read_pit_clk(struct clocksource *cs)
 	return elapsed;
 }
 
-/*
- * Clockevent device:  interrupts every 1/HZ (== pit_cycles * MCK/16)
- */
-static void
-pit_clkevt_mode(enum clock_event_mode mode, struct clock_event_device *dev)
+static int pit_clkevt_shutdown(struct clock_event_device *dev)
 {
 	struct pit_data *data = clkevt_to_pit_data(dev);
 
-	switch (mode) {
-	case CLOCK_EVT_MODE_PERIODIC:
-		/* update clocksource counter */
-		data->cnt += data->cycle * PIT_PICNT(pit_read(data->base, AT91_PIT_PIVR));
-		pit_write(data->base, AT91_PIT_MR,
-			  (data->cycle - 1) | AT91_PIT_PITEN | AT91_PIT_PITIEN);
-		break;
-	case CLOCK_EVT_MODE_ONESHOT:
-		BUG();
-		/* FALLTHROUGH */
-	case CLOCK_EVT_MODE_SHUTDOWN:
-	case CLOCK_EVT_MODE_UNUSED:
-		/* disable irq, leaving the clocksource active */
-		pit_write(data->base, AT91_PIT_MR,
-			  (data->cycle - 1) | AT91_PIT_PITEN);
-		break;
-	case CLOCK_EVT_MODE_RESUME:
-		break;
-	}
+	/* disable irq, leaving the clocksource active */
+	pit_write(data->base, AT91_PIT_MR, (data->cycle - 1) | AT91_PIT_PITEN);
+	return 0;
+}
+
+/*
+ * Clockevent device:  interrupts every 1/HZ (== pit_cycles * MCK/16)
+ */
+static int pit_clkevt_set_periodic(struct clock_event_device *dev)
+{
+	struct pit_data *data = clkevt_to_pit_data(dev);
+
+	/* update clocksource counter */
+	data->cnt += data->cycle * PIT_PICNT(pit_read(data->base, AT91_PIT_PIVR));
+	pit_write(data->base, AT91_PIT_MR,
+		  (data->cycle - 1) | AT91_PIT_PITEN | AT91_PIT_PITIEN);
+	return 0;
 }
 
 static void at91sam926x_pit_suspend(struct clock_event_device *cedev)
@@ -155,24 +149,13 @@ static irqreturn_t at91sam926x_pit_interrupt(int irq, void *dev_id)
 {
 	struct pit_data *data = dev_id;
 
-	/*
-	 * irqs should be disabled here, but as the irq is shared they are only
-	 * guaranteed to be off if the timer irq is registered first.
-	 */
-	WARN_ON_ONCE(!irqs_disabled());
-
 	/* The PIT interrupt may be disabled, and is shared */
-	if ((data->clkevt.mode == CLOCK_EVT_MODE_PERIODIC) &&
+	if (clockevent_state_periodic(&data->clkevt) &&
 	    (pit_read(data->base, AT91_PIT_SR) & AT91_PIT_PITS)) {
-		unsigned nr_ticks;
-
 		/* Get number of ticks performed before irq, and ack it */
-		nr_ticks = PIT_PICNT(pit_read(data->base, AT91_PIT_PIVR));
-		do {
-			data->cnt += data->cycle;
-			data->clkevt.event_handler(&data->clkevt);
-			nr_ticks--;
-		} while (nr_ticks);
+		data->cnt += data->cycle * PIT_PICNT(pit_read(data->base,
+							      AT91_PIT_PIVR));
+		data->clkevt.event_handler(&data->clkevt);
 
 		return IRQ_HANDLED;
 	}
@@ -183,11 +166,41 @@ static irqreturn_t at91sam926x_pit_interrupt(int irq, void *dev_id)
 /*
  * Set up both clocksource and clockevent support.
  */
-static void __init at91sam926x_pit_common_init(struct pit_data *data)
+static int __init at91sam926x_pit_dt_init(struct device_node *node)
 {
-	unsigned long	pit_rate;
-	unsigned	bits;
-	int		ret;
+	unsigned long   pit_rate;
+	unsigned        bits;
+	int             ret;
+	struct pit_data *data;
+
+	data = kzalloc(sizeof(*data), GFP_KERNEL);
+	if (!data)
+		return -ENOMEM;
+
+	data->base = of_iomap(node, 0);
+	if (!data->base) {
+		pr_err("Could not map PIT address\n");
+		return -ENXIO;
+	}
+
+	data->mck = of_clk_get(node, 0);
+	if (IS_ERR(data->mck)) {
+		pr_err("Unable to get mck clk\n");
+		return PTR_ERR(data->mck);
+	}
+
+	ret = clk_prepare_enable(data->mck);
+	if (ret) {
+		pr_err("Unable to enable mck\n");
+		return ret;
+	}
+
+	/* Get the interrupts property */
+	data->irq = irq_of_parse_and_map(node, 0);
+	if (!data->irq) {
+		pr_err("Unable to get IRQ from DT\n");
+		return -EINVAL;
+	}
 
 	/*
 	 * Use our actual MCK to figure out how many MCK/16 ticks per
@@ -208,16 +221,23 @@ static void __init at91sam926x_pit_common_init(struct pit_data *data)
 	data->clksrc.mask = CLOCKSOURCE_MASK(bits);
 	data->clksrc.name = "pit";
 	data->clksrc.rating = 175;
-	data->clksrc.read = read_pit_clk,
-	data->clksrc.flags = CLOCK_SOURCE_IS_CONTINUOUS,
-	clocksource_register_hz(&data->clksrc, pit_rate);
+	data->clksrc.read = read_pit_clk;
+	data->clksrc.flags = CLOCK_SOURCE_IS_CONTINUOUS;
+	
+	ret = clocksource_register_hz(&data->clksrc, pit_rate);
+	if (ret) {
+		pr_err("Failed to register clocksource");
+		return ret;
+	}
 
 	/* Set up irq handler */
 	ret = request_irq(data->irq, at91sam926x_pit_interrupt,
 			  IRQF_SHARED | IRQF_TIMER | IRQF_IRQPOLL,
 			  "at91_tick", data);
-	if (ret)
-		panic(pr_fmt("Unable to setup IRQ\n"));
+	if (ret) {
+		pr_err("Unable to setup IRQ\n");
+		return ret;
+	}
 
 	/* Set up and register clockevents */
 	data->clkevt.name = "pit";
@@ -227,38 +247,13 @@ static void __init at91sam926x_pit_common_init(struct pit_data *data)
 	data->clkevt.rating = 100;
 	data->clkevt.cpumask = cpumask_of(0);
 
-	data->clkevt.set_mode = pit_clkevt_mode;
+	data->clkevt.set_state_shutdown = pit_clkevt_shutdown;
+	data->clkevt.set_state_periodic = pit_clkevt_set_periodic;
 	data->clkevt.resume = at91sam926x_pit_resume;
 	data->clkevt.suspend = at91sam926x_pit_suspend;
 	clockevents_register_device(&data->clkevt);
-}
 
-static void __init at91sam926x_pit_dt_init(struct device_node *node)
-{
-	struct pit_data *data;
-
-	data = kzalloc(sizeof(*data), GFP_KERNEL);
-	if (!data)
-		panic(pr_fmt("Unable to allocate memory\n"));
-
-	data->base = of_iomap(node, 0);
-	if (!data->base)
-		panic(pr_fmt("Could not map PIT address\n"));
-
-	data->mck = of_clk_get(node, 0);
-	if (IS_ERR(data->mck))
-		/* Fallback on clkdev for !CCF-based boards */
-		data->mck = clk_get(NULL, "mck");
-
-	if (IS_ERR(data->mck))
-		panic(pr_fmt("Unable to get mck clk\n"));
-
-	/* Get the interrupts property */
-	data->irq = irq_of_parse_and_map(node, 0);
-	if (!data->irq)
-		panic(pr_fmt("Unable to get IRQ from DT\n"));
-
-	at91sam926x_pit_common_init(data);
+	return 0;
 }
 CLOCKSOURCE_OF_DECLARE(at91sam926x_pit, "atmel,at91sam9260-pit",
 		       at91sam926x_pit_dt_init);

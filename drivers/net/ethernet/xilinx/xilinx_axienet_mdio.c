@@ -100,7 +100,7 @@ static int axienet_mdio_write(struct mii_bus *bus, int phy_id, int reg,
 	if (ret < 0)
 		return ret;
 
-	axienet_iow(lp, XAE_MDIO_MWD_OFFSET, (u32) val);
+	axienet_iow(lp, XAE_MDIO_MWD_OFFSET, (u32)val);
 	axienet_iow(lp, XAE_MDIO_MCR_OFFSET,
 		    (((phy_id << XAE_MDIO_MCR_PHYAD_SHIFT) &
 		      XAE_MDIO_MCR_PHYAD_MASK) |
@@ -129,7 +129,8 @@ static int axienet_mdio_write(struct mii_bus *bus, int phy_id, int reg,
 int axienet_mdio_setup(struct axienet_local *lp, struct device_node *np)
 {
 	int ret;
-	u32 clk_div;
+	u32 clk_div, host_clock;
+
 	struct mii_bus *bus;
 	struct resource res;
 	struct device_node *np1;
@@ -167,26 +168,19 @@ int axienet_mdio_setup(struct axienet_local *lp, struct device_node *np)
 	}
 	if (!npp) {
 		dev_warn(lp->dev,
-			"Could not find ethernet controller device node.");
+			 "Could not find ethernet controller device node.");
 		dev_warn(lp->dev, "Setting MDIO clock divisor to default %d\n",
-		       DEFAULT_CLOCK_DIVISOR);
+			 DEFAULT_CLOCK_DIVISOR);
 		clk_div = DEFAULT_CLOCK_DIVISOR;
 	} else {
-		u32 *property_p;
-
-		property_p = (uint32_t *)of_get_property(npp,
-						"clock-frequency", NULL);
-		if (!property_p) {
-			dev_warn(lp->dev,
-				"Could not find clock ethernet "
-				"controller property.");
-			dev_warn(lp->dev,
-				 "Setting MDIO clock divisor to default %d\n",
-							DEFAULT_CLOCK_DIVISOR);
+		if (of_property_read_u32(npp, "clock-frequency", &host_clock)) {
+			netdev_warn(lp->ndev,
+				    "clock-frequency property not found.\n");
+			netdev_warn(lp->ndev,
+				    "Setting MDIO clock divisor to default %d\n",
+				    DEFAULT_CLOCK_DIVISOR);
 			clk_div = DEFAULT_CLOCK_DIVISOR;
 		} else {
-			u32 host_clock = be32_to_cpup(property_p);
-
 			clk_div = (host_clock / (MAX_MDIO_FREQ * 2)) - 1;
 
 			/* If there is any remainder from the division of
@@ -196,16 +190,16 @@ int axienet_mdio_setup(struct axienet_local *lp, struct device_node *np)
 			 */
 			if (host_clock % (MAX_MDIO_FREQ * 2))
 				clk_div++;
-			dev_dbg(lp->dev,
-				"Setting MDIO clock divisor to %u "
-				"based on %u Hz host clock.\n",
-				clk_div, host_clock);
+			dev_dbg(lp->dev, "Setting MDIO clock divisor to %u ",
+				clk_div);
+			dev_dbg(lp->dev, "based on %u Hz host clock.\n",
+				host_clock);
 		}
 		of_node_put(npp);
 	}
 
-	axienet_iow(lp, XAE_MDIO_MC_OFFSET, (((u32)clk_div) |
-						XAE_MDIO_MC_MDIOEN_MASK));
+	axienet_iow(lp, XAE_MDIO_MC_OFFSET,
+		    (((u32)clk_div) | XAE_MDIO_MC_MDIOEN_MASK));
 
 	ret = axienet_mdio_wait_until_ready(lp);
 	if (ret < 0)
@@ -217,14 +211,13 @@ int axienet_mdio_setup(struct axienet_local *lp, struct device_node *np)
 
 	of_address_to_resource(npp, 0, &res);
 	snprintf(bus->id, MII_BUS_ID_SIZE, "%.8llx",
-		 (unsigned long long) res.start);
+		 (unsigned long long)res.start);
 
 	bus->priv = lp;
 	bus->name = "Xilinx Axi Ethernet MDIO";
 	bus->read = axienet_mdio_read;
 	bus->write = axienet_mdio_write;
 	bus->parent = lp->dev;
-	bus->irq = lp->mdio_irqs; /* preallocated IRQ table */
 	lp->mii_bus = bus;
 
 	ret = of_mdiobus_register(bus, np1);

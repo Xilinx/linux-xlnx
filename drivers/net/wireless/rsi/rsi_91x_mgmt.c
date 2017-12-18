@@ -210,7 +210,7 @@ static u16 mcs[] = {13, 26, 39, 52, 78, 104, 117, 130};
  */
 static void rsi_set_default_parameters(struct rsi_common *common)
 {
-	common->band = IEEE80211_BAND_2GHZ;
+	common->band = NL80211_BAND_2GHZ;
 	common->channel_width = BW_20MHZ;
 	common->rts_threshold = IEEE80211_MAX_RTS_THRESHOLD;
 	common->channel = 1;
@@ -398,7 +398,7 @@ static int rsi_mgmt_pkt_to_core(struct rsi_common *common,
 			return -ENOLINK;
 
 		msg_len -= pad_bytes;
-		if ((msg_len <= 0) || (!msg)) {
+		if (msg_len <= 0) {
 			rsi_dbg(MGMT_RX_ZONE,
 				"%s: Invalid rx msg of len = %d\n",
 				__func__, msg_len);
@@ -655,7 +655,7 @@ int rsi_set_vap_capabilities(struct rsi_common *common, enum opmode mode)
 	vap_caps->rts_threshold = cpu_to_le16(common->rts_threshold);
 	vap_caps->default_mgmt_rate = cpu_to_le32(RSI_RATE_6);
 
-	if (common->band == IEEE80211_BAND_5GHZ) {
+	if (common->band == NL80211_BAND_5GHZ) {
 		vap_caps->default_ctrl_rate = cpu_to_le32(RSI_RATE_6);
 		if (conf_is_ht40(&common->priv->hw->conf)) {
 			vap_caps->default_ctrl_rate |=
@@ -872,7 +872,7 @@ int rsi_band_check(struct rsi_common *common)
 	else
 		common->channel_width = BW_40MHZ;
 
-	if (common->band == IEEE80211_BAND_2GHZ) {
+	if (common->band == NL80211_BAND_2GHZ) {
 		if (common->channel_width)
 			common->endpoint = EP_2GHZ_40MHZ;
 		else
@@ -1023,7 +1023,7 @@ static int rsi_send_auto_rate_request(struct rsi_common *common)
 		return -ENOMEM;
 	}
 
-	selected_rates = kmalloc(2 * RSI_TBL_SZ, GFP_KERNEL);
+	selected_rates = kzalloc(2 * RSI_TBL_SZ, GFP_KERNEL);
 	if (!selected_rates) {
 		rsi_dbg(ERR_ZONE, "%s: Failed in allocation of mem\n",
 			__func__);
@@ -1032,7 +1032,6 @@ static int rsi_send_auto_rate_request(struct rsi_common *common)
 	}
 
 	memset(skb->data, 0, sizeof(struct rsi_auto_rate));
-	memset(selected_rates, 0, 2 * RSI_TBL_SZ);
 
 	auto_rate = (struct rsi_auto_rate *)skb->data;
 
@@ -1047,7 +1046,7 @@ static int rsi_send_auto_rate_request(struct rsi_common *common)
 	if (common->channel_width == BW_40MHZ)
 		auto_rate->desc_word[7] |= cpu_to_le16(1);
 
-	if (band == IEEE80211_BAND_2GHZ) {
+	if (band == NL80211_BAND_2GHZ) {
 		min_rate = RSI_RATE_1;
 		rate_table_offset = 0;
 	} else {
@@ -1227,7 +1226,7 @@ int rsi_send_block_unblock_frame(struct rsi_common *common, bool block_event)
 	mgmt_frame->desc_word[0] = cpu_to_le16(RSI_WIFI_MGMT_Q << 12);
 	mgmt_frame->desc_word[1] = cpu_to_le16(BLOCK_HW_QUEUE);
 
-	if (block_event == true) {
+	if (block_event) {
 		rsi_dbg(INFO_ZONE, "blocking the data qs\n");
 		mgmt_frame->desc_word[4] = cpu_to_le16(0xf);
 	} else {

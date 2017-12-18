@@ -249,7 +249,7 @@ static void exynos5_usbdrd_phy_isol(struct phy_usb_instance *inst,
 static unsigned int
 exynos5_usbdrd_pipe3_set_refclk(struct phy_usb_instance *inst)
 {
-	static u32 reg;
+	u32 reg;
 	struct exynos5_usbdrd_phy *phy_drd = to_usbdrd_phy(inst);
 
 	/* restore any previous reference clock settings */
@@ -295,7 +295,7 @@ exynos5_usbdrd_pipe3_set_refclk(struct phy_usb_instance *inst)
 static unsigned int
 exynos5_usbdrd_utmi_set_refclk(struct phy_usb_instance *inst)
 {
-	static u32 reg;
+	u32 reg;
 	struct exynos5_usbdrd_phy *phy_drd = to_usbdrd_phy(inst);
 
 	/* restore any previous reference clock settings */
@@ -537,7 +537,7 @@ static struct phy *exynos5_usbdrd_phy_xlate(struct device *dev,
 	return phy_drd->phys[args->args[0]].phy;
 }
 
-static struct phy_ops exynos5_usbdrd_phy_ops = {
+static const struct phy_ops exynos5_usbdrd_phy_ops = {
 	.init		= exynos5_usbdrd_phy_init,
 	.exit		= exynos5_usbdrd_phy_exit,
 	.power_on	= exynos5_usbdrd_phy_power_on,
@@ -624,6 +624,13 @@ static const struct exynos5_usbdrd_phy_drvdata exynos5250_usbdrd_phy = {
 	.has_common_clk_gate	= true,
 };
 
+static const struct exynos5_usbdrd_phy_drvdata exynos5433_usbdrd_phy = {
+	.phy_cfg		= phy_cfg_exynos5,
+	.pmu_offset_usbdrd0_phy	= EXYNOS5_USBDRD_PHY_CONTROL,
+	.pmu_offset_usbdrd1_phy	= EXYNOS5433_USBHOST30_PHY_CONTROL,
+	.has_common_clk_gate	= false,
+};
+
 static const struct exynos5_usbdrd_phy_drvdata exynos7_usbdrd_phy = {
 	.phy_cfg		= phy_cfg_exynos5,
 	.pmu_offset_usbdrd0_phy	= EXYNOS5_USBDRD_PHY_CONTROL,
@@ -637,6 +644,9 @@ static const struct of_device_id exynos5_usbdrd_phy_of_match[] = {
 	}, {
 		.compatible = "samsung,exynos5420-usbdrd-phy",
 		.data = &exynos5420_usbdrd_phy
+	}, {
+		.compatible = "samsung,exynos5433-usbdrd-phy",
+		.data = &exynos5433_usbdrd_phy
 	}, {
 		.compatible = "samsung,exynos7-usbdrd-phy",
 		.data = &exynos7_usbdrd_phy

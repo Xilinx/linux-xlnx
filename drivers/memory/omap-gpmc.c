@@ -12,8 +12,6 @@
  * it under the terms of the GNU General Public License version 2 as
  * published by the Free Software Foundation.
  */
-#undef DEBUG
-
 #include <linux/irq.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
@@ -22,15 +20,15 @@
 #include <linux/ioport.h>
 #include <linux/spinlock.h>
 #include <linux/io.h>
-#include <linux/module.h>
+#include <linux/gpio/driver.h>
 #include <linux/interrupt.h>
+#include <linux/irqdomain.h>
 #include <linux/platform_device.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
-#include <linux/of_mtd.h>
 #include <linux/of_device.h>
+#include <linux/of_platform.h>
 #include <linux/omap-gpmc.h>
-#include <linux/mtd/nand.h>
 #include <linux/pm_runtime.h>
 
 #include <linux/platform_data/mtd-nand-omap2.h>
@@ -82,6 +80,8 @@
 
 #define GPMC_CONFIG_LIMITEDADDRESS		BIT(1)
 
+#define GPMC_STATUS_EMPTYWRITEBUFFERSTATUS	BIT(0)
+
 #define	GPMC_CONFIG2_CSEXTRADELAY		BIT(7)
 #define	GPMC_CONFIG3_ADVEXTRADELAY		BIT(7)
 #define	GPMC_CONFIG4_OEEXTRADELAY		BIT(7)
@@ -93,6 +93,14 @@
 #define GPMC_CS_SIZE		0x30
 #define	GPMC_BCH_SIZE		0x10
 
+/*
+ * The first 1MB of GPMC address space is typically mapped to
+ * the internal ROM. Never allocate the first page, to
+ * facilitate bug detection; even if we didn't boot from ROM.
+ * As GPMC minimum partition size is 16MB we can only start from
+ * there.
+ */
+#define GPMC_MEM_START		0x1000000
 #define GPMC_MEM_END		0x3FFFFFFF
 
 #define GPMC_CHUNK_SHIFT	24		/* 16 MB */
@@ -126,7 +134,6 @@
 #define GPMC_CONFIG_RDY_BSY	0x00000001
 #define GPMC_CONFIG_DEV_SIZE	0x00000002
 #define GPMC_CONFIG_DEV_TYPE	0x00000003
-#define GPMC_SET_IRQ_STATUS	0x00000004
 
 #define GPMC_CONFIG1_WRAPBURST_SUPP     (1 << 31)
 #define GPMC_CONFIG1_READMULTIPLE_SUPP  (1 << 30)
@@ -136,13 +143,21 @@
 #define GPMC_CONFIG1_WRITETYPE_ASYNC    (0 << 27)
 #define GPMC_CONFIG1_WRITETYPE_SYNC     (1 << 27)
 #define GPMC_CONFIG1_CLKACTIVATIONTIME(val) ((val & 3) << 25)
+/** CLKACTIVATIONTIME Max Ticks */
+#define GPMC_CONFIG1_CLKACTIVATIONTIME_MAX 2
 #define GPMC_CONFIG1_PAGE_LEN(val)      ((val & 3) << 23)
+/** ATTACHEDDEVICEPAGELENGTH Max Value */
+#define GPMC_CONFIG1_ATTACHEDDEVICEPAGELENGTH_MAX 2
 #define GPMC_CONFIG1_WAIT_READ_MON      (1 << 22)
 #define GPMC_CONFIG1_WAIT_WRITE_MON     (1 << 21)
-#define GPMC_CONFIG1_WAIT_MON_IIME(val) ((val & 3) << 18)
+#define GPMC_CONFIG1_WAIT_MON_TIME(val) ((val & 3) << 18)
+/** WAITMONITORINGTIME Max Ticks */
+#define GPMC_CONFIG1_WAITMONITORINGTIME_MAX  2
 #define GPMC_CONFIG1_WAIT_PIN_SEL(val)  ((val & 3) << 16)
 #define GPMC_CONFIG1_DEVICESIZE(val)    ((val & 3) << 12)
 #define GPMC_CONFIG1_DEVICESIZE_16      GPMC_CONFIG1_DEVICESIZE(1)
+/** DEVICESIZE Max Value */
+#define GPMC_CONFIG1_DEVICESIZE_MAX     1
 #define GPMC_CONFIG1_DEVICETYPE(val)    ((val & 3) << 10)
 #define GPMC_CONFIG1_DEVICETYPE_NOR     GPMC_CONFIG1_DEVICETYPE(0)
 #define GPMC_CONFIG1_MUXTYPE(val)       ((val & 3) << 8)
@@ -153,21 +168,31 @@
 #define GPMC_CONFIG1_FCLK_DIV4          (GPMC_CONFIG1_FCLK_DIV(3))
 #define GPMC_CONFIG7_CSVALID		(1 << 6)
 
+#define GPMC_CONFIG7_BASEADDRESS_MASK	0x3f
+#define GPMC_CONFIG7_CSVALID_MASK	BIT(6)
+#define GPMC_CONFIG7_MASKADDRESS_OFFSET	8
+#define GPMC_CONFIG7_MASKADDRESS_MASK	(0xf << GPMC_CONFIG7_MASKADDRESS_OFFSET)
+/* All CONFIG7 bits except reserved bits */
+#define GPMC_CONFIG7_MASK		(GPMC_CONFIG7_BASEADDRESS_MASK | \
+					 GPMC_CONFIG7_CSVALID_MASK |     \
+					 GPMC_CONFIG7_MASKADDRESS_MASK)
+
 #define GPMC_DEVICETYPE_NOR		0
 #define GPMC_DEVICETYPE_NAND		2
 #define GPMC_CONFIG_WRITEPROTECT	0x00000010
 #define WR_RD_PIN_MONITORING		0x00600000
-
-#define GPMC_ENABLE_IRQ		0x0000000d
 
 /* ECC commands */
 #define GPMC_ECC_READ		0 /* Reset Hardware ECC for read */
 #define GPMC_ECC_WRITE		1 /* Reset Hardware ECC for write */
 #define GPMC_ECC_READSYN	2 /* Reset before syndrom is read back */
 
-/* XXX: Only NAND irq has been considered,currently these are the only ones used
- */
-#define	GPMC_NR_IRQ		2
+#define	GPMC_NR_NAND_IRQS	2 /* number of NAND specific IRQs */
+
+enum gpmc_clk_domain {
+	GPMC_CD_FCLK,
+	GPMC_CD_CLK
+};
 
 struct gpmc_cs_data {
 	const char *name;
@@ -176,11 +201,6 @@ struct gpmc_cs_data {
 	u32 flags;
 
 	struct resource mem;
-};
-
-struct gpmc_client_irq	{
-	unsigned		irq;
-	u32			bitmask;
 };
 
 /* Structure to save gpmc cs context */
@@ -210,9 +230,15 @@ struct omap3_gpmc_regs {
 	struct gpmc_cs_config cs_context[GPMC_CS_NUM];
 };
 
-static struct gpmc_client_irq gpmc_client_irq[GPMC_NR_IRQ];
-static struct irq_chip gpmc_irq_chip;
-static int gpmc_irq_start;
+struct gpmc_device {
+	struct device *dev;
+	int irq;
+	struct irq_chip irq_chip;
+	struct gpio_chip gpio_chip;
+	int nirqs;
+};
+
+static struct irq_domain *gpmc_irq_domain;
 
 static struct resource	gpmc_mem_root;
 static struct gpmc_cs_data gpmc_cs[GPMC_CS_NUM];
@@ -220,8 +246,6 @@ static DEFINE_SPINLOCK(gpmc_mem_lock);
 /* Define chip-selects as reserved by default until probe completes */
 static unsigned int gpmc_cs_num = GPMC_CS_NUM;
 static unsigned int gpmc_nr_waitpins;
-static struct device *gpmc_dev;
-static int gpmc_irq;
 static resource_size_t phys_base, mem_size;
 static unsigned gpmc_capability;
 static void __iomem *gpmc_base;
@@ -267,14 +291,53 @@ static unsigned long gpmc_get_fclk_period(void)
 	return rate;
 }
 
-static unsigned int gpmc_ns_to_ticks(unsigned int time_ns)
+/**
+ * gpmc_get_clk_period - get period of selected clock domain in ps
+ * @cs Chip Select Region.
+ * @cd Clock Domain.
+ *
+ * GPMC_CS_CONFIG1 GPMCFCLKDIVIDER for cs has to be setup
+ * prior to calling this function with GPMC_CD_CLK.
+ */
+static unsigned long gpmc_get_clk_period(int cs, enum gpmc_clk_domain cd)
+{
+
+	unsigned long tick_ps = gpmc_get_fclk_period();
+	u32 l;
+	int div;
+
+	switch (cd) {
+	case GPMC_CD_CLK:
+		/* get current clk divider */
+		l = gpmc_cs_read_reg(cs, GPMC_CS_CONFIG1);
+		div = (l & 0x03) + 1;
+		/* get GPMC_CLK period */
+		tick_ps *= div;
+		break;
+	case GPMC_CD_FCLK:
+		/* FALL-THROUGH */
+	default:
+		break;
+	}
+
+	return tick_ps;
+
+}
+
+static unsigned int gpmc_ns_to_clk_ticks(unsigned int time_ns, int cs,
+					 enum gpmc_clk_domain cd)
 {
 	unsigned long tick_ps;
 
 	/* Calculate in picosecs to yield more exact results */
-	tick_ps = gpmc_get_fclk_period();
+	tick_ps = gpmc_get_clk_period(cs, cd);
 
 	return (time_ns * 1000 + tick_ps - 1) / tick_ps;
+}
+
+static unsigned int gpmc_ns_to_ticks(unsigned int time_ns)
+{
+	return gpmc_ns_to_clk_ticks(time_ns, /* any CS */ 0, GPMC_CD_FCLK);
 }
 
 static unsigned int gpmc_ps_to_ticks(unsigned int time_ps)
@@ -287,9 +350,15 @@ static unsigned int gpmc_ps_to_ticks(unsigned int time_ps)
 	return (time_ps + tick_ps - 1) / tick_ps;
 }
 
+static unsigned int gpmc_clk_ticks_to_ns(unsigned int ticks, int cs,
+					 enum gpmc_clk_domain cd)
+{
+	return ticks * gpmc_get_clk_period(cs, cd) / 1000;
+}
+
 unsigned int gpmc_ticks_to_ns(unsigned int ticks)
 {
-	return ticks * gpmc_get_fclk_period() / 1000;
+	return gpmc_clk_ticks_to_ns(ticks, /* any CS */ 0, GPMC_CD_FCLK);
 }
 
 static unsigned int gpmc_ticks_to_ps(unsigned int ticks)
@@ -328,7 +397,7 @@ static void gpmc_cs_bool_timings(int cs, const struct gpmc_bool_timings *p)
 	gpmc_cs_modify_reg(cs, GPMC_CS_CONFIG4,
 			   GPMC_CONFIG4_OEEXTRADELAY, p->oe_extra_delay);
 	gpmc_cs_modify_reg(cs, GPMC_CS_CONFIG4,
-			   GPMC_CONFIG4_OEEXTRADELAY, p->we_extra_delay);
+			   GPMC_CONFIG4_WEEXTRADELAY, p->we_extra_delay);
 	gpmc_cs_modify_reg(cs, GPMC_CS_CONFIG6,
 			   GPMC_CONFIG6_CYCLE2CYCLESAMECSEN,
 			   p->cycle2cyclesamecsen);
@@ -337,34 +406,67 @@ static void gpmc_cs_bool_timings(int cs, const struct gpmc_bool_timings *p)
 			   p->cycle2cyclediffcsen);
 }
 
-#ifdef DEBUG
-static int get_gpmc_timing_reg(int cs, int reg, int st_bit, int end_bit,
-			       bool raw, bool noval, int shift,
-			       const char *name)
+#ifdef CONFIG_OMAP_GPMC_DEBUG
+/**
+ * get_gpmc_timing_reg - read a timing parameter and print DTS settings for it.
+ * @cs:      Chip Select Region
+ * @reg:     GPMC_CS_CONFIGn register offset.
+ * @st_bit:  Start Bit
+ * @end_bit: End Bit. Must be >= @st_bit.
+ * @ma:x     Maximum parameter value (before optional @shift).
+ *           If 0, maximum is as high as @st_bit and @end_bit allow.
+ * @name:    DTS node name, w/o "gpmc,"
+ * @cd:      Clock Domain of timing parameter.
+ * @shift:   Parameter value left shifts @shift, which is then printed instead of value.
+ * @raw:     Raw Format Option.
+ *           raw format:  gpmc,name = <value>
+ *           tick format: gpmc,name = <value> /&zwj;* x ns -- y ns; x ticks *&zwj;/
+ *           Where x ns -- y ns result in the same tick value.
+ *           When @max is exceeded, "invalid" is printed inside comment.
+ * @noval:   Parameter values equal to 0 are not printed.
+ * @return:  Specified timing parameter (after optional @shift).
+ *
+ */
+static int get_gpmc_timing_reg(
+	/* timing specifiers */
+	int cs, int reg, int st_bit, int end_bit, int max,
+	const char *name, const enum gpmc_clk_domain cd,
+	/* value transform */
+	int shift,
+	/* format specifiers */
+	bool raw, bool noval)
 {
 	u32 l;
-	int nr_bits, max_value, mask;
+	int nr_bits;
+	int mask;
+	bool invalid;
 
 	l = gpmc_cs_read_reg(cs, reg);
 	nr_bits = end_bit - st_bit + 1;
-	max_value = (1 << nr_bits) - 1;
-	mask = max_value << st_bit;
-	l = (l & mask) >> st_bit;
+	mask = (1 << nr_bits) - 1;
+	l = (l >> st_bit) & mask;
+	if (!max)
+		max = mask;
+	invalid = l > max;
 	if (shift)
 		l = (shift << l);
 	if (noval && (l == 0))
 		return 0;
 	if (!raw) {
-		unsigned int time_ns_min, time_ns, time_ns_max;
+		/* DTS tick format for timings in ns */
+		unsigned int time_ns;
+		unsigned int time_ns_min = 0;
 
-		time_ns_min = gpmc_ticks_to_ns(l ? l - 1 : 0);
-		time_ns = gpmc_ticks_to_ns(l);
-		time_ns_max = gpmc_ticks_to_ns(l + 1 > max_value ?
-					       max_value : l + 1);
-		pr_info("gpmc,%s = <%u> (%u - %u ns, %i ticks)\n",
-			name, time_ns, time_ns_min, time_ns_max, l);
+		if (l)
+			time_ns_min = gpmc_clk_ticks_to_ns(l - 1, cs, cd) + 1;
+		time_ns = gpmc_clk_ticks_to_ns(l, cs, cd);
+		pr_info("gpmc,%s = <%u> /* %u ns - %u ns; %i ticks%s*/\n",
+			name, time_ns, time_ns_min, time_ns, l,
+			invalid ? "; invalid " : " ");
 	} else {
-		pr_info("gpmc,%s = <%u>\n", name, l);
+		/* raw format */
+		pr_info("gpmc,%s = <%u>%s\n", name, l,
+			invalid ? " /* invalid */" : "");
 	}
 
 	return l;
@@ -374,13 +476,19 @@ static int get_gpmc_timing_reg(int cs, int reg, int st_bit, int end_bit,
 	pr_info("cs%i %s: 0x%08x\n", cs, #config, \
 		gpmc_cs_read_reg(cs, config))
 #define GPMC_GET_RAW(reg, st, end, field) \
-	get_gpmc_timing_reg(cs, (reg), (st), (end), 1, 0, 0, field)
+	get_gpmc_timing_reg(cs, (reg), (st), (end), 0, field, GPMC_CD_FCLK, 0, 1, 0)
+#define GPMC_GET_RAW_MAX(reg, st, end, max, field) \
+	get_gpmc_timing_reg(cs, (reg), (st), (end), (max), field, GPMC_CD_FCLK, 0, 1, 0)
 #define GPMC_GET_RAW_BOOL(reg, st, end, field) \
-	get_gpmc_timing_reg(cs, (reg), (st), (end), 1, 1, 0, field)
-#define GPMC_GET_RAW_SHIFT(reg, st, end, shift, field) \
-	get_gpmc_timing_reg(cs, (reg), (st), (end), 1, 1, (shift), field)
+	get_gpmc_timing_reg(cs, (reg), (st), (end), 0, field, GPMC_CD_FCLK, 0, 1, 1)
+#define GPMC_GET_RAW_SHIFT_MAX(reg, st, end, shift, max, field) \
+	get_gpmc_timing_reg(cs, (reg), (st), (end), (max), field, GPMC_CD_FCLK, (shift), 1, 1)
 #define GPMC_GET_TICKS(reg, st, end, field) \
-	get_gpmc_timing_reg(cs, (reg), (st), (end), 0, 0, 0, field)
+	get_gpmc_timing_reg(cs, (reg), (st), (end), 0, field, GPMC_CD_FCLK, 0, 0, 0)
+#define GPMC_GET_TICKS_CD(reg, st, end, field, cd) \
+	get_gpmc_timing_reg(cs, (reg), (st), (end), 0, field, (cd), 0, 0, 0)
+#define GPMC_GET_TICKS_CD_MAX(reg, st, end, max, field, cd) \
+	get_gpmc_timing_reg(cs, (reg), (st), (end), (max), field, (cd), 0, 0, 0)
 
 static void gpmc_show_regs(int cs, const char *desc)
 {
@@ -404,11 +512,14 @@ static void gpmc_cs_show_timings(int cs, const char *desc)
 	pr_info("gpmc cs%i access configuration:\n", cs);
 	GPMC_GET_RAW_BOOL(GPMC_CS_CONFIG1,  4,  4, "time-para-granularity");
 	GPMC_GET_RAW(GPMC_CS_CONFIG1,  8,  9, "mux-add-data");
-	GPMC_GET_RAW(GPMC_CS_CONFIG1, 12, 13, "device-width");
+	GPMC_GET_RAW_MAX(GPMC_CS_CONFIG1, 12, 13,
+			 GPMC_CONFIG1_DEVICESIZE_MAX, "device-width");
 	GPMC_GET_RAW(GPMC_CS_CONFIG1, 16, 17, "wait-pin");
 	GPMC_GET_RAW_BOOL(GPMC_CS_CONFIG1, 21, 21, "wait-on-write");
 	GPMC_GET_RAW_BOOL(GPMC_CS_CONFIG1, 22, 22, "wait-on-read");
-	GPMC_GET_RAW_SHIFT(GPMC_CS_CONFIG1, 23, 24, 4, "burst-length");
+	GPMC_GET_RAW_SHIFT_MAX(GPMC_CS_CONFIG1, 23, 24, 4,
+			       GPMC_CONFIG1_ATTACHEDDEVICEPAGELENGTH_MAX,
+			       "burst-length");
 	GPMC_GET_RAW_BOOL(GPMC_CS_CONFIG1, 27, 27, "sync-write");
 	GPMC_GET_RAW_BOOL(GPMC_CS_CONFIG1, 28, 28, "burst-write");
 	GPMC_GET_RAW_BOOL(GPMC_CS_CONFIG1, 29, 29, "gpmc,sync-read");
@@ -433,9 +544,20 @@ static void gpmc_cs_show_timings(int cs, const char *desc)
 	GPMC_GET_TICKS(GPMC_CS_CONFIG3,  0,  3, "adv-on-ns");
 	GPMC_GET_TICKS(GPMC_CS_CONFIG3,  8, 12, "adv-rd-off-ns");
 	GPMC_GET_TICKS(GPMC_CS_CONFIG3, 16, 20, "adv-wr-off-ns");
+	if (gpmc_capability & GPMC_HAS_MUX_AAD) {
+		GPMC_GET_TICKS(GPMC_CS_CONFIG3, 4, 6, "adv-aad-mux-on-ns");
+		GPMC_GET_TICKS(GPMC_CS_CONFIG3, 24, 26,
+				"adv-aad-mux-rd-off-ns");
+		GPMC_GET_TICKS(GPMC_CS_CONFIG3, 28, 30,
+				"adv-aad-mux-wr-off-ns");
+	}
 
 	GPMC_GET_TICKS(GPMC_CS_CONFIG4,  0,  3, "oe-on-ns");
 	GPMC_GET_TICKS(GPMC_CS_CONFIG4,  8, 12, "oe-off-ns");
+	if (gpmc_capability & GPMC_HAS_MUX_AAD) {
+		GPMC_GET_TICKS(GPMC_CS_CONFIG4,  4,  6, "oe-aad-mux-on-ns");
+		GPMC_GET_TICKS(GPMC_CS_CONFIG4, 13, 15, "oe-aad-mux-off-ns");
+	}
 	GPMC_GET_TICKS(GPMC_CS_CONFIG4, 16, 19, "we-on-ns");
 	GPMC_GET_TICKS(GPMC_CS_CONFIG4, 24, 28, "we-off-ns");
 
@@ -448,8 +570,12 @@ static void gpmc_cs_show_timings(int cs, const char *desc)
 	GPMC_GET_TICKS(GPMC_CS_CONFIG6, 0, 3, "bus-turnaround-ns");
 	GPMC_GET_TICKS(GPMC_CS_CONFIG6, 8, 11, "cycle2cycle-delay-ns");
 
-	GPMC_GET_TICKS(GPMC_CS_CONFIG1, 18, 19, "wait-monitoring-ns");
-	GPMC_GET_TICKS(GPMC_CS_CONFIG1, 25, 26, "clk-activation-ns");
+	GPMC_GET_TICKS_CD_MAX(GPMC_CS_CONFIG1, 18, 19,
+			      GPMC_CONFIG1_WAITMONITORINGTIME_MAX,
+			      "wait-monitoring-ns", GPMC_CD_CLK);
+	GPMC_GET_TICKS_CD_MAX(GPMC_CS_CONFIG1, 25, 26,
+			      GPMC_CONFIG1_CLKACTIVATIONTIME_MAX,
+			      "clk-activation-ns", GPMC_CD_FCLK);
 
 	GPMC_GET_TICKS(GPMC_CS_CONFIG6, 16, 19, "wr-data-mux-bus-ns");
 	GPMC_GET_TICKS(GPMC_CS_CONFIG6, 24, 28, "wr-access-ns");
@@ -460,8 +586,24 @@ static inline void gpmc_cs_show_timings(int cs, const char *desc)
 }
 #endif
 
-static int set_gpmc_timing_reg(int cs, int reg, int st_bit, int end_bit,
-			       int time, const char *name)
+/**
+ * set_gpmc_timing_reg - set a single timing parameter for Chip Select Region.
+ * Caller is expected to have initialized CONFIG1 GPMCFCLKDIVIDER
+ * prior to calling this function with @cd equal to GPMC_CD_CLK.
+ *
+ * @cs:      Chip Select Region.
+ * @reg:     GPMC_CS_CONFIGn register offset.
+ * @st_bit:  Start Bit
+ * @end_bit: End Bit. Must be >= @st_bit.
+ * @max:     Maximum parameter value.
+ *           If 0, maximum is as high as @st_bit and @end_bit allow.
+ * @time:    Timing parameter in ns.
+ * @cd:      Timing parameter clock domain.
+ * @name:    Timing parameter name.
+ * @return:  0 on success, -1 on error.
+ */
+static int set_gpmc_timing_reg(int cs, int reg, int st_bit, int end_bit, int max,
+			       int time, enum gpmc_clk_domain cd, const char *name)
 {
 	u32 l;
 	int ticks, mask, nr_bits;
@@ -469,22 +611,25 @@ static int set_gpmc_timing_reg(int cs, int reg, int st_bit, int end_bit,
 	if (time == 0)
 		ticks = 0;
 	else
-		ticks = gpmc_ns_to_ticks(time);
+		ticks = gpmc_ns_to_clk_ticks(time, cs, cd);
 	nr_bits = end_bit - st_bit + 1;
 	mask = (1 << nr_bits) - 1;
 
-	if (ticks > mask) {
-		pr_err("%s: GPMC error! CS%d: %s: %d ns, %d ticks > %d\n",
-		       __func__, cs, name, time, ticks, mask);
+	if (!max)
+		max = mask;
+
+	if (ticks > max) {
+		pr_err("%s: GPMC CS%d: %s %d ns, %d ticks > %d ticks\n",
+		       __func__, cs, name, time, ticks, max);
 
 		return -1;
 	}
 
 	l = gpmc_cs_read_reg(cs, reg);
-#ifdef DEBUG
-	printk(KERN_INFO
-		"GPMC CS%d: %-10s: %3d ticks, %3lu ns (was %3i ticks) %3d ns\n",
-	       cs, name, ticks, gpmc_get_fclk_period() * ticks / 1000,
+#ifdef CONFIG_OMAP_GPMC_DEBUG
+	pr_info(
+		"GPMC CS%d: %-17s: %3d ticks, %3lu ns (was %3i ticks) %3d ns\n",
+	       cs, name, ticks, gpmc_get_clk_period(cs, cd) * ticks / 1000,
 			(l >> st_bit) & mask, time);
 #endif
 	l &= ~(mask << st_bit);
@@ -494,18 +639,56 @@ static int set_gpmc_timing_reg(int cs, int reg, int st_bit, int end_bit,
 	return 0;
 }
 
-#define GPMC_SET_ONE(reg, st, end, field) \
-	if (set_gpmc_timing_reg(cs, (reg), (st), (end),		\
-			t->field, #field) < 0)			\
+#define GPMC_SET_ONE_CD_MAX(reg, st, end, max, field, cd)  \
+	if (set_gpmc_timing_reg(cs, (reg), (st), (end), (max), \
+	    t->field, (cd), #field) < 0)                       \
 		return -1
 
+#define GPMC_SET_ONE(reg, st, end, field) \
+	GPMC_SET_ONE_CD_MAX(reg, st, end, 0, field, GPMC_CD_FCLK)
+
+/**
+ * gpmc_calc_waitmonitoring_divider - calculate proper GPMCFCLKDIVIDER based on WAITMONITORINGTIME
+ * WAITMONITORINGTIME will be _at least_ as long as desired, i.e.
+ * read  --> don't sample bus too early
+ * write --> data is longer on bus
+ *
+ * Formula:
+ * gpmc_clk_div + 1 = ceil(ceil(waitmonitoringtime_ns / gpmc_fclk_ns)
+ *                    / waitmonitoring_ticks)
+ * WAITMONITORINGTIME resulting in 0 or 1 tick with div = 1 are caught by
+ * div <= 0 check.
+ *
+ * @wait_monitoring: WAITMONITORINGTIME in ns.
+ * @return:          -1 on failure to scale, else proper divider > 0.
+ */
+static int gpmc_calc_waitmonitoring_divider(unsigned int wait_monitoring)
+{
+
+	int div = gpmc_ns_to_ticks(wait_monitoring);
+
+	div += GPMC_CONFIG1_WAITMONITORINGTIME_MAX - 1;
+	div /= GPMC_CONFIG1_WAITMONITORINGTIME_MAX;
+
+	if (div > 4)
+		return -1;
+	if (div <= 0)
+		div = 1;
+
+	return div;
+
+}
+
+/**
+ * gpmc_calc_divider - calculate GPMC_FCLK divider for sync_clk GPMC_CLK period.
+ * @sync_clk: GPMC_CLK period in ps.
+ * @return:   Returns at least 1 if GPMC_FCLK can be divided to GPMC_CLK.
+ *            Else, returns -1.
+ */
 int gpmc_calc_divider(unsigned int sync_clk)
 {
-	int div;
-	u32 l;
+	int div = gpmc_ps_to_ticks(sync_clk);
 
-	l = sync_clk + (gpmc_get_fclk_period() - 1);
-	div = l / gpmc_get_fclk_period();
 	if (div > 4)
 		return -1;
 	if (div <= 0)
@@ -514,15 +697,49 @@ int gpmc_calc_divider(unsigned int sync_clk)
 	return div;
 }
 
-int gpmc_cs_set_timings(int cs, const struct gpmc_timings *t)
+/**
+ * gpmc_cs_set_timings - program timing parameters for Chip Select Region.
+ * @cs:     Chip Select Region.
+ * @t:      GPMC timing parameters.
+ * @s:      GPMC timing settings.
+ * @return: 0 on success, -1 on error.
+ */
+int gpmc_cs_set_timings(int cs, const struct gpmc_timings *t,
+			const struct gpmc_settings *s)
 {
 	int div;
 	u32 l;
 
-	gpmc_cs_show_timings(cs, "before gpmc_cs_set_timings");
 	div = gpmc_calc_divider(t->sync_clk);
 	if (div < 0)
 		return div;
+
+	/*
+	 * See if we need to change the divider for waitmonitoringtime.
+	 *
+	 * Calculate GPMCFCLKDIVIDER independent of gpmc,sync-clk-ps in DT for
+	 * pure asynchronous accesses, i.e. both read and write asynchronous.
+	 * However, only do so if WAITMONITORINGTIME is actually used, i.e.
+	 * either WAITREADMONITORING or WAITWRITEMONITORING is set.
+	 *
+	 * This statement must not change div to scale async WAITMONITORINGTIME
+	 * to protect mixed synchronous and asynchronous accesses.
+	 *
+	 * We raise an error later if WAITMONITORINGTIME does not fit.
+	 */
+	if (!s->sync_read && !s->sync_write &&
+	    (s->wait_on_read || s->wait_on_write)
+	   ) {
+
+		div = gpmc_calc_waitmonitoring_divider(t->wait_monitoring);
+		if (div < 0) {
+			pr_err("%s: waitmonitoringtime %3d ns too large for greatest gpmcfclkdivider.\n",
+			       __func__,
+			       t->wait_monitoring
+			       );
+			return -1;
+		}
+	}
 
 	GPMC_SET_ONE(GPMC_CS_CONFIG2,  0,  3, cs_on);
 	GPMC_SET_ONE(GPMC_CS_CONFIG2,  8, 12, cs_rd_off);
@@ -531,9 +748,18 @@ int gpmc_cs_set_timings(int cs, const struct gpmc_timings *t)
 	GPMC_SET_ONE(GPMC_CS_CONFIG3,  0,  3, adv_on);
 	GPMC_SET_ONE(GPMC_CS_CONFIG3,  8, 12, adv_rd_off);
 	GPMC_SET_ONE(GPMC_CS_CONFIG3, 16, 20, adv_wr_off);
+	if (gpmc_capability & GPMC_HAS_MUX_AAD) {
+		GPMC_SET_ONE(GPMC_CS_CONFIG3,  4,  6, adv_aad_mux_on);
+		GPMC_SET_ONE(GPMC_CS_CONFIG3, 24, 26, adv_aad_mux_rd_off);
+		GPMC_SET_ONE(GPMC_CS_CONFIG3, 28, 30, adv_aad_mux_wr_off);
+	}
 
 	GPMC_SET_ONE(GPMC_CS_CONFIG4,  0,  3, oe_on);
 	GPMC_SET_ONE(GPMC_CS_CONFIG4,  8, 12, oe_off);
+	if (gpmc_capability & GPMC_HAS_MUX_AAD) {
+		GPMC_SET_ONE(GPMC_CS_CONFIG4,  4,  6, oe_aad_mux_on);
+		GPMC_SET_ONE(GPMC_CS_CONFIG4, 13, 15, oe_aad_mux_off);
+	}
 	GPMC_SET_ONE(GPMC_CS_CONFIG4, 16, 19, we_on);
 	GPMC_SET_ONE(GPMC_CS_CONFIG4, 24, 28, we_off);
 
@@ -546,27 +772,27 @@ int gpmc_cs_set_timings(int cs, const struct gpmc_timings *t)
 	GPMC_SET_ONE(GPMC_CS_CONFIG6, 0, 3, bus_turnaround);
 	GPMC_SET_ONE(GPMC_CS_CONFIG6, 8, 11, cycle2cycle_delay);
 
-	GPMC_SET_ONE(GPMC_CS_CONFIG1, 18, 19, wait_monitoring);
-	GPMC_SET_ONE(GPMC_CS_CONFIG1, 25, 26, clk_activation);
-
 	if (gpmc_capability & GPMC_HAS_WR_DATA_MUX_BUS)
 		GPMC_SET_ONE(GPMC_CS_CONFIG6, 16, 19, wr_data_mux_bus);
 	if (gpmc_capability & GPMC_HAS_WR_ACCESS)
 		GPMC_SET_ONE(GPMC_CS_CONFIG6, 24, 28, wr_access);
 
-	/* caller is expected to have initialized CONFIG1 to cover
-	 * at least sync vs async
-	 */
 	l = gpmc_cs_read_reg(cs, GPMC_CS_CONFIG1);
-	if (l & (GPMC_CONFIG1_READTYPE_SYNC | GPMC_CONFIG1_WRITETYPE_SYNC)) {
-#ifdef DEBUG
-		printk(KERN_INFO "GPMC CS%d CLK period is %lu ns (div %d)\n",
-				cs, (div * gpmc_get_fclk_period()) / 1000, div);
+	l &= ~0x03;
+	l |= (div - 1);
+	gpmc_cs_write_reg(cs, GPMC_CS_CONFIG1, l);
+
+	GPMC_SET_ONE_CD_MAX(GPMC_CS_CONFIG1, 18, 19,
+			    GPMC_CONFIG1_WAITMONITORINGTIME_MAX,
+			    wait_monitoring, GPMC_CD_CLK);
+	GPMC_SET_ONE_CD_MAX(GPMC_CS_CONFIG1, 25, 26,
+			    GPMC_CONFIG1_CLKACTIVATIONTIME_MAX,
+			    clk_activation, GPMC_CD_FCLK);
+
+#ifdef CONFIG_OMAP_GPMC_DEBUG
+	pr_info("GPMC CS%d CLK period is %lu ns (div %d)\n",
+			cs, (div * gpmc_get_fclk_period()) / 1000, div);
 #endif
-		l &= ~0x03;
-		l |= (div - 1);
-		gpmc_cs_write_reg(cs, GPMC_CS_CONFIG1, l);
-	}
 
 	gpmc_cs_bool_timings(cs, &t->bool_timings);
 	gpmc_cs_show_timings(cs, "after gpmc_cs_set_timings");
@@ -586,12 +812,15 @@ static int gpmc_cs_set_memconf(int cs, u32 base, u32 size)
 	if (base & (size - 1))
 		return -EINVAL;
 
+	base >>= GPMC_CHUNK_SHIFT;
 	mask = (1 << GPMC_SECTION_SHIFT) - size;
+	mask >>= GPMC_CHUNK_SHIFT;
+	mask <<= GPMC_CONFIG7_MASKADDRESS_OFFSET;
+
 	l = gpmc_cs_read_reg(cs, GPMC_CS_CONFIG7);
-	l &= ~0x3f;
-	l = (base >> GPMC_CHUNK_SHIFT) & 0x3f;
-	l &= ~(0x0f << 8);
-	l |= ((mask >> GPMC_CHUNK_SHIFT) & 0x0f) << 8;
+	l &= ~GPMC_CONFIG7_MASK;
+	l |= base & GPMC_CONFIG7_BASEADDRESS_MASK;
+	l |= mask & GPMC_CONFIG7_MASKADDRESS_MASK;
 	l |= GPMC_CONFIG7_CSVALID;
 	gpmc_cs_write_reg(cs, GPMC_CS_CONFIG7, l);
 
@@ -656,7 +885,7 @@ static void gpmc_cs_set_name(int cs, const char *name)
 	gpmc->name = name;
 }
 
-const char *gpmc_cs_get_name(int cs)
+static const char *gpmc_cs_get_name(int cs)
 {
 	struct gpmc_cs_data *gpmc = &gpmc_cs[cs];
 
@@ -828,14 +1057,6 @@ int gpmc_configure(int cmd, int wval)
 	u32 regval;
 
 	switch (cmd) {
-	case GPMC_ENABLE_IRQ:
-		gpmc_write_reg(GPMC_IRQENABLE, wval);
-		break;
-
-	case GPMC_SET_IRQ_STATUS:
-		gpmc_write_reg(GPMC_IRQSTATUS, wval);
-		break;
-
 	case GPMC_CONFIG_WP:
 		regval = gpmc_read_reg(GPMC_CONFIG);
 		if (wval)
@@ -858,7 +1079,7 @@ void gpmc_update_nand_reg(struct gpmc_nand_regs *reg, int cs)
 {
 	int i;
 
-	reg->gpmc_status = gpmc_base + GPMC_STATUS;
+	reg->gpmc_status = NULL;	/* deprecated */
 	reg->gpmc_nand_command = gpmc_base + GPMC_CS0_OFFSET +
 				GPMC_CS_NAND_COMMAND + GPMC_CS_SIZE * cs;
 	reg->gpmc_nand_address = gpmc_base + GPMC_CS0_OFFSET +
@@ -892,86 +1113,200 @@ void gpmc_update_nand_reg(struct gpmc_nand_regs *reg, int cs)
 	}
 }
 
-int gpmc_get_client_irq(unsigned irq_config)
+static bool gpmc_nand_writebuffer_empty(void)
 {
-	int i;
+	if (gpmc_read_reg(GPMC_STATUS) & GPMC_STATUS_EMPTYWRITEBUFFERSTATUS)
+		return true;
 
-	if (hweight32(irq_config) > 1)
-		return 0;
-
-	for (i = 0; i < GPMC_NR_IRQ; i++)
-		if (gpmc_client_irq[i].bitmask & irq_config)
-			return gpmc_client_irq[i].irq;
-
-	return 0;
+	return false;
 }
 
-static int gpmc_irq_endis(unsigned irq, bool endis)
+static struct gpmc_nand_ops nand_ops = {
+	.nand_writebuffer_empty = gpmc_nand_writebuffer_empty,
+};
+
+/**
+ * gpmc_omap_get_nand_ops - Get the GPMC NAND interface
+ * @regs: the GPMC NAND register map exclusive for NAND use.
+ * @cs: GPMC chip select number on which the NAND sits. The
+ *      register map returned will be specific to this chip select.
+ *
+ * Returns NULL on error e.g. invalid cs.
+ */
+struct gpmc_nand_ops *gpmc_omap_get_nand_ops(struct gpmc_nand_regs *reg, int cs)
 {
-	int i;
+	if (cs >= gpmc_cs_num)
+		return NULL;
+
+	gpmc_update_nand_reg(reg, cs);
+
+	return &nand_ops;
+}
+EXPORT_SYMBOL_GPL(gpmc_omap_get_nand_ops);
+
+int gpmc_get_client_irq(unsigned irq_config)
+{
+	if (!gpmc_irq_domain) {
+		pr_warn("%s called before GPMC IRQ domain available\n",
+			__func__);
+		return 0;
+	}
+
+	/* we restrict this to NAND IRQs only */
+	if (irq_config >= GPMC_NR_NAND_IRQS)
+		return 0;
+
+	return irq_create_mapping(gpmc_irq_domain, irq_config);
+}
+
+static int gpmc_irq_endis(unsigned long hwirq, bool endis)
+{
 	u32 regval;
 
-	for (i = 0; i < GPMC_NR_IRQ; i++)
-		if (irq == gpmc_client_irq[i].irq) {
-			regval = gpmc_read_reg(GPMC_IRQENABLE);
-			if (endis)
-				regval |= gpmc_client_irq[i].bitmask;
-			else
-				regval &= ~gpmc_client_irq[i].bitmask;
-			gpmc_write_reg(GPMC_IRQENABLE, regval);
-			break;
-		}
+	/* bits GPMC_NR_NAND_IRQS to 8 are reserved */
+	if (hwirq >= GPMC_NR_NAND_IRQS)
+		hwirq += 8 - GPMC_NR_NAND_IRQS;
+
+	regval = gpmc_read_reg(GPMC_IRQENABLE);
+	if (endis)
+		regval |= BIT(hwirq);
+	else
+		regval &= ~BIT(hwirq);
+	gpmc_write_reg(GPMC_IRQENABLE, regval);
 
 	return 0;
 }
 
 static void gpmc_irq_disable(struct irq_data *p)
 {
-	gpmc_irq_endis(p->irq, false);
+	gpmc_irq_endis(p->hwirq, false);
 }
 
 static void gpmc_irq_enable(struct irq_data *p)
 {
-	gpmc_irq_endis(p->irq, true);
+	gpmc_irq_endis(p->hwirq, true);
 }
 
-static void gpmc_irq_noop(struct irq_data *data) { }
-
-static unsigned int gpmc_irq_noop_ret(struct irq_data *data) { return 0; }
-
-static int gpmc_setup_irq(void)
+static void gpmc_irq_mask(struct irq_data *d)
 {
-	int i;
+	gpmc_irq_endis(d->hwirq, false);
+}
+
+static void gpmc_irq_unmask(struct irq_data *d)
+{
+	gpmc_irq_endis(d->hwirq, true);
+}
+
+static void gpmc_irq_edge_config(unsigned long hwirq, bool rising_edge)
+{
 	u32 regval;
 
-	if (!gpmc_irq)
+	/* NAND IRQs polarity is not configurable */
+	if (hwirq < GPMC_NR_NAND_IRQS)
+		return;
+
+	/* WAITPIN starts at BIT 8 */
+	hwirq += 8 - GPMC_NR_NAND_IRQS;
+
+	regval = gpmc_read_reg(GPMC_CONFIG);
+	if (rising_edge)
+		regval &= ~BIT(hwirq);
+	else
+		regval |= BIT(hwirq);
+
+	gpmc_write_reg(GPMC_CONFIG, regval);
+}
+
+static void gpmc_irq_ack(struct irq_data *d)
+{
+	unsigned int hwirq = d->hwirq;
+
+	/* skip reserved bits */
+	if (hwirq >= GPMC_NR_NAND_IRQS)
+		hwirq += 8 - GPMC_NR_NAND_IRQS;
+
+	/* Setting bit to 1 clears (or Acks) the interrupt */
+	gpmc_write_reg(GPMC_IRQSTATUS, BIT(hwirq));
+}
+
+static int gpmc_irq_set_type(struct irq_data *d, unsigned int trigger)
+{
+	/* can't set type for NAND IRQs */
+	if (d->hwirq < GPMC_NR_NAND_IRQS)
 		return -EINVAL;
 
-	gpmc_irq_start = irq_alloc_descs(-1, 0, GPMC_NR_IRQ, 0);
-	if (gpmc_irq_start < 0) {
-		pr_err("irq_alloc_descs failed\n");
-		return gpmc_irq_start;
+	/* We can support either rising or falling edge at a time */
+	if (trigger == IRQ_TYPE_EDGE_FALLING)
+		gpmc_irq_edge_config(d->hwirq, false);
+	else if (trigger == IRQ_TYPE_EDGE_RISING)
+		gpmc_irq_edge_config(d->hwirq, true);
+	else
+		return -EINVAL;
+
+	return 0;
+}
+
+static int gpmc_irq_map(struct irq_domain *d, unsigned int virq,
+			irq_hw_number_t hw)
+{
+	struct gpmc_device *gpmc = d->host_data;
+
+	irq_set_chip_data(virq, gpmc);
+	if (hw < GPMC_NR_NAND_IRQS) {
+		irq_modify_status(virq, IRQ_NOREQUEST, IRQ_NOAUTOEN);
+		irq_set_chip_and_handler(virq, &gpmc->irq_chip,
+					 handle_simple_irq);
+	} else {
+		irq_set_chip_and_handler(virq, &gpmc->irq_chip,
+					 handle_edge_irq);
 	}
 
-	gpmc_irq_chip.name = "gpmc";
-	gpmc_irq_chip.irq_startup = gpmc_irq_noop_ret;
-	gpmc_irq_chip.irq_enable = gpmc_irq_enable;
-	gpmc_irq_chip.irq_disable = gpmc_irq_disable;
-	gpmc_irq_chip.irq_shutdown = gpmc_irq_noop;
-	gpmc_irq_chip.irq_ack = gpmc_irq_noop;
-	gpmc_irq_chip.irq_mask = gpmc_irq_noop;
-	gpmc_irq_chip.irq_unmask = gpmc_irq_noop;
+	return 0;
+}
 
-	gpmc_client_irq[0].bitmask = GPMC_IRQ_FIFOEVENTENABLE;
-	gpmc_client_irq[1].bitmask = GPMC_IRQ_COUNT_EVENT;
+static const struct irq_domain_ops gpmc_irq_domain_ops = {
+	.map    = gpmc_irq_map,
+	.xlate  = irq_domain_xlate_twocell,
+};
 
-	for (i = 0; i < GPMC_NR_IRQ; i++) {
-		gpmc_client_irq[i].irq = gpmc_irq_start + i;
-		irq_set_chip_and_handler(gpmc_client_irq[i].irq,
-					&gpmc_irq_chip, handle_simple_irq);
-		set_irq_flags(gpmc_client_irq[i].irq,
-				IRQF_VALID | IRQF_NOAUTOEN);
+static irqreturn_t gpmc_handle_irq(int irq, void *data)
+{
+	int hwirq, virq;
+	u32 regval, regvalx;
+	struct gpmc_device *gpmc = data;
+
+	regval = gpmc_read_reg(GPMC_IRQSTATUS);
+	regvalx = regval;
+
+	if (!regval)
+		return IRQ_NONE;
+
+	for (hwirq = 0; hwirq < gpmc->nirqs; hwirq++) {
+		/* skip reserved status bits */
+		if (hwirq == GPMC_NR_NAND_IRQS)
+			regvalx >>= 8 - GPMC_NR_NAND_IRQS;
+
+		if (regvalx & BIT(hwirq)) {
+			virq = irq_find_mapping(gpmc_irq_domain, hwirq);
+			if (!virq) {
+				dev_warn(gpmc->dev,
+					 "spurious irq detected hwirq %d, virq %d\n",
+					 hwirq, virq);
+			}
+
+			generic_handle_irq(virq);
+		}
 	}
+
+	gpmc_write_reg(GPMC_IRQSTATUS, regval);
+
+	return IRQ_HANDLED;
+}
+
+static int gpmc_setup_irq(struct gpmc_device *gpmc)
+{
+	u32 regval;
+	int rc;
 
 	/* Disable interrupts */
 	gpmc_write_reg(GPMC_IRQENABLE, 0);
@@ -980,23 +1315,45 @@ static int gpmc_setup_irq(void)
 	regval = gpmc_read_reg(GPMC_IRQSTATUS);
 	gpmc_write_reg(GPMC_IRQSTATUS, regval);
 
-	return request_irq(gpmc_irq, gpmc_handle_irq, 0, "gpmc", NULL);
-}
+	gpmc->irq_chip.name = "gpmc";
+	gpmc->irq_chip.irq_enable = gpmc_irq_enable;
+	gpmc->irq_chip.irq_disable = gpmc_irq_disable;
+	gpmc->irq_chip.irq_ack = gpmc_irq_ack;
+	gpmc->irq_chip.irq_mask = gpmc_irq_mask;
+	gpmc->irq_chip.irq_unmask = gpmc_irq_unmask;
+	gpmc->irq_chip.irq_set_type = gpmc_irq_set_type;
 
-static int gpmc_free_irq(void)
-{
-	int i;
-
-	if (gpmc_irq)
-		free_irq(gpmc_irq, NULL);
-
-	for (i = 0; i < GPMC_NR_IRQ; i++) {
-		irq_set_handler(gpmc_client_irq[i].irq, NULL);
-		irq_set_chip(gpmc_client_irq[i].irq, &no_irq_chip);
-		irq_modify_status(gpmc_client_irq[i].irq, 0, 0);
+	gpmc_irq_domain = irq_domain_add_linear(gpmc->dev->of_node,
+						gpmc->nirqs,
+						&gpmc_irq_domain_ops,
+						gpmc);
+	if (!gpmc_irq_domain) {
+		dev_err(gpmc->dev, "IRQ domain add failed\n");
+		return -ENODEV;
 	}
 
-	irq_free_descs(gpmc_irq_start, GPMC_NR_IRQ);
+	rc = request_irq(gpmc->irq, gpmc_handle_irq, 0, "gpmc", gpmc);
+	if (rc) {
+		dev_err(gpmc->dev, "failed to request irq %d: %d\n",
+			gpmc->irq, rc);
+		irq_domain_remove(gpmc_irq_domain);
+		gpmc_irq_domain = NULL;
+	}
+
+	return rc;
+}
+
+static int gpmc_free_irq(struct gpmc_device *gpmc)
+{
+	int hwirq;
+
+	free_irq(gpmc->irq, gpmc);
+
+	for (hwirq = 0; hwirq < gpmc->nirqs; hwirq++)
+		irq_dispose_mapping(irq_find_mapping(gpmc_irq_domain, hwirq));
+
+	irq_domain_remove(gpmc_irq_domain);
+	gpmc_irq_domain = NULL;
 
 	return 0;
 }
@@ -1017,12 +1374,7 @@ static void gpmc_mem_init(void)
 {
 	int cs;
 
-	/*
-	 * The first 1MB of GPMC address space is typically mapped to
-	 * the internal ROM. Never allocate the first page, to
-	 * facilitate bug detection; even if we didn't boot from ROM.
-	 */
-	gpmc_mem_root.start = SZ_1M;
+	gpmc_mem_root.start = GPMC_MEM_START;
 	gpmc_mem_root.end = GPMC_MEM_END;
 
 	/* Reserve all regions that has been set up by bootloader */
@@ -1454,7 +1806,6 @@ static const struct of_device_id gpmc_dt_ids[] = {
 	{ .compatible = "ti,am3352-gpmc" },	/* am335x devices */
 	{ }
 };
-MODULE_DEVICE_TABLE(of, gpmc_dt_ids);
 
 /**
  * gpmc_read_settings_dt - read gpmc settings from device-tree
@@ -1517,6 +1868,12 @@ static void __maybe_unused gpmc_read_timings_dt(struct device_node *np,
 	of_property_read_u32(np, "gpmc,adv-on-ns", &gpmc_t->adv_on);
 	of_property_read_u32(np, "gpmc,adv-rd-off-ns", &gpmc_t->adv_rd_off);
 	of_property_read_u32(np, "gpmc,adv-wr-off-ns", &gpmc_t->adv_wr_off);
+	of_property_read_u32(np, "gpmc,adv-aad-mux-on-ns",
+			     &gpmc_t->adv_aad_mux_on);
+	of_property_read_u32(np, "gpmc,adv-aad-mux-rd-off-ns",
+			     &gpmc_t->adv_aad_mux_rd_off);
+	of_property_read_u32(np, "gpmc,adv-aad-mux-wr-off-ns",
+			     &gpmc_t->adv_aad_mux_wr_off);
 
 	/* WE signal timings */
 	of_property_read_u32(np, "gpmc,we-on-ns", &gpmc_t->we_on);
@@ -1525,6 +1882,10 @@ static void __maybe_unused gpmc_read_timings_dt(struct device_node *np,
 	/* OE signal timings */
 	of_property_read_u32(np, "gpmc,oe-on-ns", &gpmc_t->oe_on);
 	of_property_read_u32(np, "gpmc,oe-off-ns", &gpmc_t->oe_off);
+	of_property_read_u32(np, "gpmc,oe-aad-mux-on-ns",
+			     &gpmc_t->oe_aad_mux_on);
+	of_property_read_u32(np, "gpmc,oe-aad-mux-off-ns",
+			     &gpmc_t->oe_aad_mux_off);
 
 	/* access and cycle timings */
 	of_property_read_u32(np, "gpmc,page-burst-access-ns",
@@ -1560,105 +1921,6 @@ static void __maybe_unused gpmc_read_timings_dt(struct device_node *np,
 	p->time_para_granularity =
 		of_property_read_bool(np, "gpmc,time-para-granularity");
 }
-
-#if IS_ENABLED(CONFIG_MTD_NAND)
-
-static const char * const nand_xfer_types[] = {
-	[NAND_OMAP_PREFETCH_POLLED]		= "prefetch-polled",
-	[NAND_OMAP_POLLED]			= "polled",
-	[NAND_OMAP_PREFETCH_DMA]		= "prefetch-dma",
-	[NAND_OMAP_PREFETCH_IRQ]		= "prefetch-irq",
-};
-
-static int gpmc_probe_nand_child(struct platform_device *pdev,
-				 struct device_node *child)
-{
-	u32 val;
-	const char *s;
-	struct gpmc_timings gpmc_t;
-	struct omap_nand_platform_data *gpmc_nand_data;
-
-	if (of_property_read_u32(child, "reg", &val) < 0) {
-		dev_err(&pdev->dev, "%s has no 'reg' property\n",
-			child->full_name);
-		return -ENODEV;
-	}
-
-	gpmc_nand_data = devm_kzalloc(&pdev->dev, sizeof(*gpmc_nand_data),
-				      GFP_KERNEL);
-	if (!gpmc_nand_data)
-		return -ENOMEM;
-
-	gpmc_nand_data->cs = val;
-	gpmc_nand_data->of_node = child;
-
-	/* Detect availability of ELM module */
-	gpmc_nand_data->elm_of_node = of_parse_phandle(child, "ti,elm-id", 0);
-	if (gpmc_nand_data->elm_of_node == NULL)
-		gpmc_nand_data->elm_of_node =
-					of_parse_phandle(child, "elm_id", 0);
-
-	/* select ecc-scheme for NAND */
-	if (of_property_read_string(child, "ti,nand-ecc-opt", &s)) {
-		pr_err("%s: ti,nand-ecc-opt not found\n", __func__);
-		return -ENODEV;
-	}
-
-	if (!strcmp(s, "sw"))
-		gpmc_nand_data->ecc_opt = OMAP_ECC_HAM1_CODE_SW;
-	else if (!strcmp(s, "ham1") ||
-		 !strcmp(s, "hw") || !strcmp(s, "hw-romcode"))
-		gpmc_nand_data->ecc_opt =
-				OMAP_ECC_HAM1_CODE_HW;
-	else if (!strcmp(s, "bch4"))
-		if (gpmc_nand_data->elm_of_node)
-			gpmc_nand_data->ecc_opt =
-				OMAP_ECC_BCH4_CODE_HW;
-		else
-			gpmc_nand_data->ecc_opt =
-				OMAP_ECC_BCH4_CODE_HW_DETECTION_SW;
-	else if (!strcmp(s, "bch8"))
-		if (gpmc_nand_data->elm_of_node)
-			gpmc_nand_data->ecc_opt =
-				OMAP_ECC_BCH8_CODE_HW;
-		else
-			gpmc_nand_data->ecc_opt =
-				OMAP_ECC_BCH8_CODE_HW_DETECTION_SW;
-	else if (!strcmp(s, "bch16"))
-		if (gpmc_nand_data->elm_of_node)
-			gpmc_nand_data->ecc_opt =
-				OMAP_ECC_BCH16_CODE_HW;
-		else
-			pr_err("%s: BCH16 requires ELM support\n", __func__);
-	else
-		pr_err("%s: ti,nand-ecc-opt invalid value\n", __func__);
-
-	/* select data transfer mode for NAND controller */
-	if (!of_property_read_string(child, "ti,nand-xfer-type", &s))
-		for (val = 0; val < ARRAY_SIZE(nand_xfer_types); val++)
-			if (!strcasecmp(s, nand_xfer_types[val])) {
-				gpmc_nand_data->xfer_type = val;
-				break;
-			}
-
-	gpmc_nand_data->flash_bbt = of_get_nand_on_flash_bbt(child);
-
-	val = of_get_nand_bus_width(child);
-	if (val == 16)
-		gpmc_nand_data->devsize = NAND_BUSWIDTH_16;
-
-	gpmc_read_timings_dt(child, &gpmc_t);
-	gpmc_nand_init(gpmc_nand_data, &gpmc_t);
-
-	return 0;
-}
-#else
-static int gpmc_probe_nand_child(struct platform_device *pdev,
-				 struct device_node *child)
-{
-	return 0;
-}
-#endif
 
 #if IS_ENABLED(CONFIG_MTD_ONENAND)
 static int gpmc_probe_onenand_child(struct platform_device *pdev,
@@ -1715,6 +1977,8 @@ static int gpmc_probe_generic_child(struct platform_device *pdev,
 	const char *name;
 	int ret, cs;
 	u32 val;
+	struct gpio_desc *waitpin_desc = NULL;
+	struct gpmc_device *gpmc = platform_get_drvdata(pdev);
 
 	if (of_property_read_u32(child, "reg", &cs) < 0) {
 		dev_err(&pdev->dev, "%s has no 'reg' property\n",
@@ -1775,22 +2039,80 @@ static int gpmc_probe_generic_child(struct platform_device *pdev,
 	if (ret < 0) {
 		dev_err(&pdev->dev, "cannot remap GPMC CS %d to %pa\n",
 			cs, &res.start);
+		if (res.start < GPMC_MEM_START) {
+			dev_info(&pdev->dev,
+				 "GPMC CS %d start cannot be lesser than 0x%x\n",
+				 cs, GPMC_MEM_START);
+		} else if (res.end > GPMC_MEM_END) {
+			dev_info(&pdev->dev,
+				 "GPMC CS %d end cannot be greater than 0x%x\n",
+				 cs, GPMC_MEM_END);
+		}
 		goto err;
 	}
 
-	ret = of_property_read_u32(child, "bank-width", &gpmc_s.device_width);
-	if (ret < 0)
-		goto err;
+	if (of_node_cmp(child->name, "nand") == 0) {
+		/* Warn about older DT blobs with no compatible property */
+		if (!of_property_read_bool(child, "compatible")) {
+			dev_warn(&pdev->dev,
+				 "Incompatible NAND node: missing compatible");
+			ret = -EINVAL;
+			goto err;
+		}
+	}
+
+	if (of_device_is_compatible(child, "ti,omap2-nand")) {
+		/* NAND specific setup */
+		val = 8;
+		of_property_read_u32(child, "nand-bus-width", &val);
+		switch (val) {
+		case 8:
+			gpmc_s.device_width = GPMC_DEVWIDTH_8BIT;
+			break;
+		case 16:
+			gpmc_s.device_width = GPMC_DEVWIDTH_16BIT;
+			break;
+		default:
+			dev_err(&pdev->dev, "%s: invalid 'nand-bus-width'\n",
+				child->name);
+			ret = -EINVAL;
+			goto err;
+		}
+
+		/* disable write protect */
+		gpmc_configure(GPMC_CONFIG_WP, 0);
+		gpmc_s.device_nand = true;
+	} else {
+		ret = of_property_read_u32(child, "bank-width",
+					   &gpmc_s.device_width);
+		if (ret < 0)
+			goto err;
+	}
+
+	/* Reserve wait pin if it is required and valid */
+	if (gpmc_s.wait_on_read || gpmc_s.wait_on_write) {
+		unsigned int wait_pin = gpmc_s.wait_pin;
+
+		waitpin_desc = gpiochip_request_own_desc(&gpmc->gpio_chip,
+							 wait_pin, "WAITPIN");
+		if (IS_ERR(waitpin_desc)) {
+			dev_err(&pdev->dev, "invalid wait-pin: %d\n", wait_pin);
+			ret = PTR_ERR(waitpin_desc);
+			goto err;
+		}
+	}
+
+	gpmc_cs_show_timings(cs, "before gpmc_cs_program_settings");
 
 	ret = gpmc_cs_program_settings(cs, &gpmc_s);
 	if (ret < 0)
-		goto err;
+		goto err_cs;
 
-	ret = gpmc_cs_set_timings(cs, &gpmc_t);
+	ret = gpmc_cs_set_timings(cs, &gpmc_t, &gpmc_s);
 	if (ret) {
 		dev_err(&pdev->dev, "failed to set gpmc timings for: %s\n",
 			child->name);
-		goto err;
+		goto err_cs;
 	}
 
 	/* Clear limited address i.e. enable A26-A11 */
@@ -1802,12 +2124,26 @@ static int gpmc_probe_generic_child(struct platform_device *pdev,
 	gpmc_cs_enable_mem(cs);
 
 no_timings:
-	if (of_platform_device_create(child, NULL, &pdev->dev))
-		return 0;
+
+	/* create platform device, NULL on error or when disabled */
+	if (!of_platform_device_create(child, NULL, &pdev->dev))
+		goto err_child_fail;
+
+	/* is child a common bus? */
+	if (of_match_node(of_default_bus_match_table, child))
+		/* create children and other common bus children */
+		if (of_platform_default_populate(child, NULL, &pdev->dev))
+			goto err_child_fail;
+
+	return 0;
+
+err_child_fail:
 
 	dev_err(&pdev->dev, "failed to create gpmc child %s\n", child->name);
 	ret = -ENODEV;
 
+err_cs:
+	gpiochip_free_own_desc(waitpin_desc);
 err:
 	gpmc_cs_free(cs);
 
@@ -1817,7 +2153,6 @@ err:
 static int gpmc_probe_dt(struct platform_device *pdev)
 {
 	int ret;
-	struct device_node *child;
 	const struct of_device_id *of_id =
 		of_match_device(gpmc_dt_ids, &pdev->dev);
 
@@ -1845,39 +2180,111 @@ static int gpmc_probe_dt(struct platform_device *pdev)
 		return ret;
 	}
 
+	return 0;
+}
+
+static void gpmc_probe_dt_children(struct platform_device *pdev)
+{
+	int ret;
+	struct device_node *child;
+
 	for_each_available_child_of_node(pdev->dev.of_node, child) {
 
 		if (!child->name)
 			continue;
 
-		if (of_node_cmp(child->name, "nand") == 0)
-			ret = gpmc_probe_nand_child(pdev, child);
-		else if (of_node_cmp(child->name, "onenand") == 0)
+		if (of_node_cmp(child->name, "onenand") == 0)
 			ret = gpmc_probe_onenand_child(pdev, child);
-		else if (of_node_cmp(child->name, "ethernet") == 0 ||
-			 of_node_cmp(child->name, "nor") == 0 ||
-			 of_node_cmp(child->name, "uart") == 0)
+		else
 			ret = gpmc_probe_generic_child(pdev, child);
 
-		if (WARN(ret < 0, "%s: probing gpmc child %s failed\n",
-			 __func__, child->full_name))
-			of_node_put(child);
+		if (ret) {
+			dev_err(&pdev->dev, "failed to probe DT child '%s': %d\n",
+				child->name, ret);
+		}
 	}
-
-	return 0;
 }
 #else
 static int gpmc_probe_dt(struct platform_device *pdev)
 {
 	return 0;
 }
-#endif
+
+static void gpmc_probe_dt_children(struct platform_device *pdev)
+{
+}
+#endif /* CONFIG_OF */
+
+static int gpmc_gpio_get_direction(struct gpio_chip *chip, unsigned int offset)
+{
+	return 1;	/* we're input only */
+}
+
+static int gpmc_gpio_direction_input(struct gpio_chip *chip,
+				     unsigned int offset)
+{
+	return 0;	/* we're input only */
+}
+
+static int gpmc_gpio_direction_output(struct gpio_chip *chip,
+				      unsigned int offset, int value)
+{
+	return -EINVAL;	/* we're input only */
+}
+
+static void gpmc_gpio_set(struct gpio_chip *chip, unsigned int offset,
+			  int value)
+{
+}
+
+static int gpmc_gpio_get(struct gpio_chip *chip, unsigned int offset)
+{
+	u32 reg;
+
+	offset += 8;
+
+	reg = gpmc_read_reg(GPMC_STATUS) & BIT(offset);
+
+	return !!reg;
+}
+
+static int gpmc_gpio_init(struct gpmc_device *gpmc)
+{
+	int ret;
+
+	gpmc->gpio_chip.parent = gpmc->dev;
+	gpmc->gpio_chip.owner = THIS_MODULE;
+	gpmc->gpio_chip.label = DEVICE_NAME;
+	gpmc->gpio_chip.ngpio = gpmc_nr_waitpins;
+	gpmc->gpio_chip.get_direction = gpmc_gpio_get_direction;
+	gpmc->gpio_chip.direction_input = gpmc_gpio_direction_input;
+	gpmc->gpio_chip.direction_output = gpmc_gpio_direction_output;
+	gpmc->gpio_chip.set = gpmc_gpio_set;
+	gpmc->gpio_chip.get = gpmc_gpio_get;
+	gpmc->gpio_chip.base = -1;
+
+	ret = devm_gpiochip_add_data(gpmc->dev, &gpmc->gpio_chip, NULL);
+	if (ret < 0) {
+		dev_err(gpmc->dev, "could not register gpio chip: %d\n", ret);
+		return ret;
+	}
+
+	return 0;
+}
 
 static int gpmc_probe(struct platform_device *pdev)
 {
 	int rc;
 	u32 l;
 	struct resource *res;
+	struct gpmc_device *gpmc;
+
+	gpmc = devm_kzalloc(&pdev->dev, sizeof(*gpmc), GFP_KERNEL);
+	if (!gpmc)
+		return -ENOMEM;
+
+	gpmc->dev = &pdev->dev;
+	platform_set_drvdata(pdev, gpmc);
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (res == NULL)
@@ -1891,15 +2298,16 @@ static int gpmc_probe(struct platform_device *pdev)
 		return PTR_ERR(gpmc_base);
 
 	res = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
-	if (res == NULL)
-		dev_warn(&pdev->dev, "Failed to get resource: irq\n");
-	else
-		gpmc_irq = res->start;
+	if (!res) {
+		dev_err(&pdev->dev, "Failed to get resource: irq\n");
+		return -ENOENT;
+	}
+
+	gpmc->irq = res->start;
 
 	gpmc_l3_clk = devm_clk_get(&pdev->dev, "fck");
 	if (IS_ERR(gpmc_l3_clk)) {
 		dev_err(&pdev->dev, "Failed to get GPMC fck\n");
-		gpmc_irq = 0;
 		return PTR_ERR(gpmc_l3_clk);
 	}
 
@@ -1908,10 +2316,17 @@ static int gpmc_probe(struct platform_device *pdev)
 		return -EINVAL;
 	}
 
+	if (pdev->dev.of_node) {
+		rc = gpmc_probe_dt(pdev);
+		if (rc)
+			return rc;
+	} else {
+		gpmc_cs_num = GPMC_CS_NUM;
+		gpmc_nr_waitpins = GPMC_NR_WAITPINS;
+	}
+
 	pm_runtime_enable(&pdev->dev);
 	pm_runtime_get_sync(&pdev->dev);
-
-	gpmc_dev = &pdev->dev;
 
 	l = gpmc_read_reg(GPMC_REVISION);
 
@@ -1931,36 +2346,42 @@ static int gpmc_probe(struct platform_device *pdev)
 		gpmc_capability = GPMC_HAS_WR_ACCESS | GPMC_HAS_WR_DATA_MUX_BUS;
 	if (GPMC_REVISION_MAJOR(l) > 0x5)
 		gpmc_capability |= GPMC_HAS_MUX_AAD;
-	dev_info(gpmc_dev, "GPMC revision %d.%d\n", GPMC_REVISION_MAJOR(l),
+	dev_info(gpmc->dev, "GPMC revision %d.%d\n", GPMC_REVISION_MAJOR(l),
 		 GPMC_REVISION_MINOR(l));
 
 	gpmc_mem_init();
+	rc = gpmc_gpio_init(gpmc);
+	if (rc)
+		goto gpio_init_failed;
 
-	if (gpmc_setup_irq() < 0)
-		dev_warn(gpmc_dev, "gpmc_setup_irq failed\n");
-
-	if (!pdev->dev.of_node) {
-		gpmc_cs_num	 = GPMC_CS_NUM;
-		gpmc_nr_waitpins = GPMC_NR_WAITPINS;
+	gpmc->nirqs = GPMC_NR_NAND_IRQS + gpmc_nr_waitpins;
+	rc = gpmc_setup_irq(gpmc);
+	if (rc) {
+		dev_err(gpmc->dev, "gpmc_setup_irq failed\n");
+		goto gpio_init_failed;
 	}
 
-	rc = gpmc_probe_dt(pdev);
-	if (rc < 0) {
-		pm_runtime_put_sync(&pdev->dev);
-		dev_err(gpmc_dev, "failed to probe DT parameters\n");
-		return rc;
-	}
+	gpmc_probe_dt_children(pdev);
 
 	return 0;
+
+gpio_init_failed:
+	gpmc_mem_exit();
+	pm_runtime_put_sync(&pdev->dev);
+	pm_runtime_disable(&pdev->dev);
+
+	return rc;
 }
 
 static int gpmc_remove(struct platform_device *pdev)
 {
-	gpmc_free_irq();
+	struct gpmc_device *gpmc = platform_get_drvdata(pdev);
+
+	gpmc_free_irq(gpmc);
 	gpmc_mem_exit();
 	pm_runtime_put_sync(&pdev->dev);
 	pm_runtime_disable(&pdev->dev);
-	gpmc_dev = NULL;
+
 	return 0;
 }
 
@@ -1996,40 +2417,16 @@ static __init int gpmc_init(void)
 {
 	return platform_driver_register(&gpmc_driver);
 }
-
-static __exit void gpmc_exit(void)
-{
-	platform_driver_unregister(&gpmc_driver);
-
-}
-
 postcore_initcall(gpmc_init);
-module_exit(gpmc_exit);
-
-static irqreturn_t gpmc_handle_irq(int irq, void *dev)
-{
-	int i;
-	u32 regval;
-
-	regval = gpmc_read_reg(GPMC_IRQSTATUS);
-
-	if (!regval)
-		return IRQ_NONE;
-
-	for (i = 0; i < GPMC_NR_IRQ; i++)
-		if (regval & gpmc_client_irq[i].bitmask)
-			generic_handle_irq(gpmc_client_irq[i].irq);
-
-	gpmc_write_reg(GPMC_IRQSTATUS, regval);
-
-	return IRQ_HANDLED;
-}
 
 static struct omap3_gpmc_regs gpmc_context;
 
 void omap3_gpmc_save_context(void)
 {
 	int i;
+
+	if (!gpmc_base)
+		return;
 
 	gpmc_context.sysconfig = gpmc_read_reg(GPMC_SYSCONFIG);
 	gpmc_context.irqenable = gpmc_read_reg(GPMC_IRQENABLE);
@@ -2062,6 +2459,9 @@ void omap3_gpmc_save_context(void)
 void omap3_gpmc_restore_context(void)
 {
 	int i;
+
+	if (!gpmc_base)
+		return;
 
 	gpmc_write_reg(GPMC_SYSCONFIG, gpmc_context.sysconfig);
 	gpmc_write_reg(GPMC_IRQENABLE, gpmc_context.irqenable);

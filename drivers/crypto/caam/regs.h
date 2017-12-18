@@ -8,6 +8,7 @@
 #define REGS_H
 
 #include <linux/types.h>
+#include <linux/bitops.h>
 #include <linux/io.h>
 
 /*
@@ -65,52 +66,142 @@
  *
  */
 
-#ifdef __BIG_ENDIAN
-#define wr_reg32(reg, data) out_be32(reg, data)
-#define rd_reg32(reg) in_be32(reg)
+extern bool caam_little_end;
+
+#define caam_to_cpu(len)				\
+static inline u##len caam##len ## _to_cpu(u##len val)	\
+{							\
+	if (caam_little_end)				\
+		return le##len ## _to_cpu(val);		\
+	else						\
+		return be##len ## _to_cpu(val);		\
+}
+
+#define cpu_to_caam(len)				\
+static inline u##len cpu_to_caam##len(u##len val)	\
+{							\
+	if (caam_little_end)				\
+		return cpu_to_le##len(val);		\
+	else						\
+		return cpu_to_be##len(val);		\
+}
+
+caam_to_cpu(16)
+caam_to_cpu(32)
+caam_to_cpu(64)
+cpu_to_caam(16)
+cpu_to_caam(32)
+cpu_to_caam(64)
+
+static inline void wr_reg32(void __iomem *reg, u32 data)
+{
+	if (caam_little_end)
+		iowrite32(data, reg);
+	else
+		iowrite32be(data, reg);
+}
+
+static inline u32 rd_reg32(void __iomem *reg)
+{
+	if (caam_little_end)
+		return ioread32(reg);
+
+	return ioread32be(reg);
+}
+
+static inline void clrsetbits_32(void __iomem *reg, u32 clear, u32 set)
+{
+	if (caam_little_end)
+		iowrite32((ioread32(reg) & ~clear) | set, reg);
+	else
+		iowrite32be((ioread32be(reg) & ~clear) | set, reg);
+}
+
+/*
+ * The only users of these wr/rd_reg64 functions is the Job Ring (JR).
+ * The DMA address registers in the JR are handled differently depending on
+ * platform:
+ *
+ * 1. All BE CAAM platforms and i.MX platforms (LE CAAM):
+ *
+ *    base + 0x0000 : most-significant 32 bits
+ *    base + 0x0004 : least-significant 32 bits
+ *
+ * The 32-bit version of this core therefore has to write to base + 0x0004
+ * to set the 32-bit wide DMA address.
+ *
+ * 2. All other LE CAAM platforms (LS1021A etc.)
+ *    base + 0x0000 : least-significant 32 bits
+ *    base + 0x0004 : most-significant 32 bits
+ */
 #ifdef CONFIG_64BIT
-#define wr_reg64(reg, data) out_be64(reg, data)
-#define rd_reg64(reg) in_be64(reg)
+static inline void wr_reg64(void __iomem *reg, u64 data)
+{
+	if (caam_little_end)
+		iowrite64(data, reg);
+	else
+		iowrite64be(data, reg);
+}
+
+static inline u64 rd_reg64(void __iomem *reg)
+{
+	if (caam_little_end)
+		return ioread64(reg);
+	else
+		return ioread64be(reg);
+}
+
+#else /* CONFIG_64BIT */
+static inline void wr_reg64(void __iomem *reg, u64 data)
+{
+#ifndef CONFIG_CRYPTO_DEV_FSL_CAAM_IMX
+	if (caam_little_end) {
+		wr_reg32((u32 __iomem *)(reg) + 1, data >> 32);
+		wr_reg32((u32 __iomem *)(reg), data);
+	} else
 #endif
+	{
+		wr_reg32((u32 __iomem *)(reg), data >> 32);
+		wr_reg32((u32 __iomem *)(reg) + 1, data);
+	}
+}
+
+static inline u64 rd_reg64(void __iomem *reg)
+{
+#ifndef CONFIG_CRYPTO_DEV_FSL_CAAM_IMX
+	if (caam_little_end)
+		return ((u64)rd_reg32((u32 __iomem *)(reg) + 1) << 32 |
+			(u64)rd_reg32((u32 __iomem *)(reg)));
+	else
+#endif
+		return ((u64)rd_reg32((u32 __iomem *)(reg)) << 32 |
+			(u64)rd_reg32((u32 __iomem *)(reg) + 1));
+}
+#endif /* CONFIG_64BIT  */
+
+#ifdef CONFIG_ARCH_DMA_ADDR_T_64BIT
+#ifdef CONFIG_SOC_IMX7D
+#define cpu_to_caam_dma(value) \
+		(((u64)cpu_to_caam32(lower_32_bits(value)) << 32) | \
+		  (u64)cpu_to_caam32(upper_32_bits(value)))
+#define caam_dma_to_cpu(value) \
+		(((u64)caam32_to_cpu(lower_32_bits(value)) << 32) | \
+		  (u64)caam32_to_cpu(upper_32_bits(value)))
 #else
-#ifdef __LITTLE_ENDIAN
-#define wr_reg32(reg, data) __raw_writel(data, reg)
-#define rd_reg32(reg) __raw_readl(reg)
-#ifdef CONFIG_64BIT
-#define wr_reg64(reg, data) __raw_writeq(data, reg)
-#define rd_reg64(reg) __raw_readq(reg)
-#endif
-#endif
-#endif
-
-#ifndef CONFIG_64BIT
-#ifdef __BIG_ENDIAN
-static inline void wr_reg64(u64 __iomem *reg, u64 data)
-{
-	wr_reg32((u32 __iomem *)reg, (data & 0xffffffff00000000ull) >> 32);
-	wr_reg32((u32 __iomem *)reg + 1, data & 0x00000000ffffffffull);
-}
-
-static inline u64 rd_reg64(u64 __iomem *reg)
-{
-	return (((u64)rd_reg32((u32 __iomem *)reg)) << 32) |
-		((u64)rd_reg32((u32 __iomem *)reg + 1));
-}
+#define cpu_to_caam_dma(value) cpu_to_caam64(value)
+#define caam_dma_to_cpu(value) caam64_to_cpu(value)
+#endif /* CONFIG_SOC_IMX7D */
 #else
-#ifdef __LITTLE_ENDIAN
-static inline void wr_reg64(u64 __iomem *reg, u64 data)
-{
-	wr_reg32((u32 __iomem *)reg + 1, (data & 0xffffffff00000000ull) >> 32);
-	wr_reg32((u32 __iomem *)reg, data & 0x00000000ffffffffull);
-}
+#define cpu_to_caam_dma(value) cpu_to_caam32(value)
+#define caam_dma_to_cpu(value) caam32_to_cpu(value)
+#endif /* CONFIG_ARCH_DMA_ADDR_T_64BIT  */
 
-static inline u64 rd_reg64(u64 __iomem *reg)
-{
-	return (((u64)rd_reg32((u32 __iomem *)reg + 1)) << 32) |
-		((u64)rd_reg32((u32 __iomem *)reg));
-}
-#endif
-#endif
+#ifdef CONFIG_CRYPTO_DEV_FSL_CAAM_IMX
+#define cpu_to_caam_dma64(value) \
+		(((u64)cpu_to_caam32(lower_32_bits(value)) << 32) | \
+		 (u64)cpu_to_caam32(upper_32_bits(value)))
+#else
+#define cpu_to_caam_dma64(value) cpu_to_caam64(value)
 #endif
 
 /*
@@ -133,18 +224,28 @@ struct jr_outentry {
 #define CHA_NUM_MS_DECONUM_SHIFT	24
 #define CHA_NUM_MS_DECONUM_MASK	(0xfull << CHA_NUM_MS_DECONUM_SHIFT)
 
-/* CHA Version IDs */
+/*
+ * CHA version IDs / instantiation bitfields
+ * Defined for use with the cha_id fields in perfmon, but the same shift/mask
+ * selectors can be used to pull out the number of instantiated blocks within
+ * cha_num fields in perfmon because the locations are the same.
+ */
 #define CHA_ID_LS_AES_SHIFT	0
-#define CHA_ID_LS_AES_MASK		(0xfull << CHA_ID_LS_AES_SHIFT)
+#define CHA_ID_LS_AES_MASK	(0xfull << CHA_ID_LS_AES_SHIFT)
+#define CHA_ID_LS_AES_LP	(0x3ull << CHA_ID_LS_AES_SHIFT)
+#define CHA_ID_LS_AES_HP	(0x4ull << CHA_ID_LS_AES_SHIFT)
 
 #define CHA_ID_LS_DES_SHIFT	4
-#define CHA_ID_LS_DES_MASK		(0xfull << CHA_ID_LS_DES_SHIFT)
+#define CHA_ID_LS_DES_MASK	(0xfull << CHA_ID_LS_DES_SHIFT)
 
 #define CHA_ID_LS_ARC4_SHIFT	8
 #define CHA_ID_LS_ARC4_MASK	(0xfull << CHA_ID_LS_ARC4_SHIFT)
 
 #define CHA_ID_LS_MD_SHIFT	12
 #define CHA_ID_LS_MD_MASK	(0xfull << CHA_ID_LS_MD_SHIFT)
+#define CHA_ID_LS_MD_LP256	(0x0ull << CHA_ID_LS_MD_SHIFT)
+#define CHA_ID_LS_MD_LP512	(0x1ull << CHA_ID_LS_MD_SHIFT)
+#define CHA_ID_LS_MD_HP		(0x2ull << CHA_ID_LS_MD_SHIFT)
 
 #define CHA_ID_LS_RNG_SHIFT	16
 #define CHA_ID_LS_RNG_MASK	(0xfull << CHA_ID_LS_RNG_SHIFT)
@@ -205,6 +306,8 @@ struct caam_perfmon {
 	u32 faultliodn;	/* FALR - Fault Address LIODN	*/
 	u32 faultdetail;	/* FADR - Fault Addr Detail	*/
 	u32 rsvd2;
+#define CSTA_PLEND		BIT(10)
+#define CSTA_ALT_PLEND		BIT(18)
 	u32 status;		/* CSTA - CAAM Status */
 	u64 rsvd3;
 
@@ -395,17 +498,24 @@ struct caam_ctrl {
 /* AXI read cache control */
 #define MCFGR_ARCACHE_SHIFT	12
 #define MCFGR_ARCACHE_MASK	(0xf << MCFGR_ARCACHE_SHIFT)
+#define MCFGR_ARCACHE_BUFF	(0x1 << MCFGR_ARCACHE_SHIFT)
+#define MCFGR_ARCACHE_CACH	(0x2 << MCFGR_ARCACHE_SHIFT)
+#define MCFGR_ARCACHE_RALL	(0x4 << MCFGR_ARCACHE_SHIFT)
 
 /* AXI write cache control */
 #define MCFGR_AWCACHE_SHIFT	8
 #define MCFGR_AWCACHE_MASK	(0xf << MCFGR_AWCACHE_SHIFT)
+#define MCFGR_AWCACHE_BUFF	(0x1 << MCFGR_AWCACHE_SHIFT)
+#define MCFGR_AWCACHE_CACH	(0x2 << MCFGR_AWCACHE_SHIFT)
+#define MCFGR_AWCACHE_WALL	(0x8 << MCFGR_AWCACHE_SHIFT)
 
 /* AXI pipeline depth */
 #define MCFGR_AXIPIPE_SHIFT	4
 #define MCFGR_AXIPIPE_MASK	(0xf << MCFGR_AXIPIPE_SHIFT)
 
 #define MCFGR_AXIPRI		0x00000008 /* Assert AXI priority sideband */
-#define MCFGR_BURST_64		0x00000001 /* Max burst size */
+#define MCFGR_LARGE_BURST	0x00000004 /* 128/256-byte burst size */
+#define MCFGR_BURST_64		0x00000001 /* 64-byte burst size */
 
 /* JRSTART register offsets */
 #define JRSTART_JR0_START       0x00000001 /* Start Job ring 0 */

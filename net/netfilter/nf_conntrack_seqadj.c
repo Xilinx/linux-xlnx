@@ -103,9 +103,9 @@ static void nf_ct_sack_block_adjust(struct sk_buff *skb,
 			 ntohl(sack->end_seq), ntohl(new_end_seq));
 
 		inet_proto_csum_replace4(&tcph->check, skb,
-					 sack->start_seq, new_start_seq, 0);
+					 sack->start_seq, new_start_seq, false);
 		inet_proto_csum_replace4(&tcph->check, skb,
-					 sack->end_seq, new_end_seq, 0);
+					 sack->end_seq, new_end_seq, false);
 		sack->start_seq = new_start_seq;
 		sack->end_seq = new_end_seq;
 		sackoff += sizeof(*sack);
@@ -169,7 +169,7 @@ int nf_ct_seq_adjust(struct sk_buff *skb,
 	s32 seqoff, ackoff;
 	struct nf_conn_seqadj *seqadj = nfct_seqadj(ct);
 	struct nf_ct_seqadj *this_way, *other_way;
-	int res;
+	int res = 1;
 
 	this_way  = &seqadj->seq[dir];
 	other_way = &seqadj->seq[!dir];
@@ -184,26 +184,31 @@ int nf_ct_seq_adjust(struct sk_buff *skb,
 	else
 		seqoff = this_way->offset_before;
 
+	newseq = htonl(ntohl(tcph->seq) + seqoff);
+	inet_proto_csum_replace4(&tcph->check, skb, tcph->seq, newseq, false);
+	pr_debug("Adjusting sequence number from %u->%u\n",
+		 ntohl(tcph->seq), ntohl(newseq));
+	tcph->seq = newseq;
+
+	if (!tcph->ack)
+		goto out;
+
 	if (after(ntohl(tcph->ack_seq) - other_way->offset_before,
 		  other_way->correction_pos))
 		ackoff = other_way->offset_after;
 	else
 		ackoff = other_way->offset_before;
 
-	newseq = htonl(ntohl(tcph->seq) + seqoff);
 	newack = htonl(ntohl(tcph->ack_seq) - ackoff);
-
-	inet_proto_csum_replace4(&tcph->check, skb, tcph->seq, newseq, 0);
-	inet_proto_csum_replace4(&tcph->check, skb, tcph->ack_seq, newack, 0);
-
-	pr_debug("Adjusting sequence number from %u->%u, ack from %u->%u\n",
+	inet_proto_csum_replace4(&tcph->check, skb, tcph->ack_seq, newack,
+				 false);
+	pr_debug("Adjusting ack number from %u->%u, ack from %u->%u\n",
 		 ntohl(tcph->seq), ntohl(newseq), ntohl(tcph->ack_seq),
 		 ntohl(newack));
-
-	tcph->seq = newseq;
 	tcph->ack_seq = newack;
 
 	res = nf_ct_sack_adjust(skb, protoff, tcph, ct, ctinfo);
+out:
 	spin_unlock_bh(&ct->lock);
 
 	return res;

@@ -1,0 +1,58 @@
+#
+# FPGA framework configuration
+#
+
+menu "FPGA Configuration Support"
+
+config FPGA
+	tristate "FPGA Configuration Framework"
+	help
+	  Say Y here if you want support for configuring FPGAs from the
+	  kernel.  The FPGA framework adds a FPGA manager class and FPGA
+	  manager drivers.
+
+if FPGA
+
+config FPGA_REGION
+	tristate "FPGA Region"
+	depends on OF && FPGA_BRIDGE
+	help
+	  FPGA Regions allow loading FPGA images under control of
+	  the Device Tree.
+
+config FPGA_MGR_SOCFPGA
+	tristate "Altera SOCFPGA FPGA Manager"
+	depends on ARCH_SOCFPGA
+	help
+	  FPGA manager driver support for Altera SOCFPGA.
+
+config FPGA_MGR_ZYNQ_FPGA
+	tristate "Xilinx Zynq FPGA"
+	depends on ARCH_ZYNQ || COMPILE_TEST
+	depends on HAS_DMA
+	help
+	  FPGA manager driver support for Xilinx Zynq FPGAs.
+
+config FPGA_MGR_ZYNQMP_FPGA
+	tristate "Xilinx Zynqmp FPGA"
+	depends on ARCH_ZYNQMP || COMPILE_TEST
+	help
+	  FPGA manager driver support for Xilinx ZynqMp FPGAs.
+
+config FPGA_BRIDGE
+	tristate "FPGA Bridge Framework"
+	depends on OF
+	help
+	  Say Y here if you want to support bridges connected between host
+	  processors and FPGAs or between FPGAs.
+
+config XILINX_PR_DECOUPLER
+	tristate "Xilinx PR Decoupler"
+	depends on FPGA_BRIDGE
+	help
+	  Say Y to enable drivers for Xilinx PR Decoupler. For more information
+	  look at pg227.pdf.
+
+endif # FPGA
+
+endmenu

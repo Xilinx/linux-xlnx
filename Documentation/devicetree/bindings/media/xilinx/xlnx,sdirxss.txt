@@ -1,0 +1,59 @@
+
+Xilinx SDI Receiver Subsystem
+------------------------------
+
+The Xilinx SDI Rx Subsystem is used to capture SDI Video in upto 12G mode.
+It outputs the video as an AXI4 Stream video data in YUV 422 10bpc mode.
+The subsystem consists of the SDI Rx IP whose SDI native output is connected
+to a SDI to Native conversion Bridge. The output of the Native bridge is
+connected to a Native to AXI4S Bridge which generates the AXI4 Stream of
+YUV422 10 bpc in dual pixel per clock. This output is fixed.
+
+Required properties:
+
+- compatible: Must contain "xlnx,v-smpte-uhdsdi-rx-ss"
+
+- reg: Physical base address and length of the registers set for the device.
+
+- interrupts: Contains the interrupt line number.
+
+- interrupt-parent: phandle to interrupt controller.
+
+- xlnx,include-edh: Whether the EDH processor is enabled in design or not.
+
+- xlnx,line-rate: The maximum mode supported by the design.
+
+- port: Video port, using the DT bindings defined in ../video-interfaces.txt.
+  The SDI Rx subsystem has one port configured as output port.
+
+- xlnx,video-format, xlnx,video-width: Video format and width, as defined in
+  video.txt. Please note that the video format is fixed to YUV422 and the
+  video-width is 10.
+
+Example:
+		v_smpte_uhdsdi_rx_ss: v_smpte_uhdsdi_rx_ss@80000000 {
+			compatible = "xlnx,v-smpte-uhdsdi-rx-ss";
+			interrupt-parent = <&gic>;
+			interrupts = <0 89 4>;
+			reg = <0x0 0x80000000 0x0 0x10000>;
+			xlnx,include-axilite = "true";
+			xlnx,include-edh = "true";
+			xlnx,include-vid-over-axi = "true";
+			xlnx,line-rate = "12G_SDI_8DS";
+
+			ports {
+				#address-cells = <1>;
+				#size-cells = <0>;
+
+				port@0 {
+					reg = <0>;
+
+					xlnx,video-format = <XVIP_VF_YUV_422>;
+					xlnx,video-width = <10>;
+
+					sdirx_out: endpoint {
+						remote-endpoint = <&vcap_sdirx_in>;
+					};
+				};
+			};
+		};

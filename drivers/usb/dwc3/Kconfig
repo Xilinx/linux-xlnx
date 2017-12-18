@@ -1,7 +1,7 @@
 config USB_DWC3
 	tristate "DesignWare USB3 DRD Core Support"
 	depends on (USB || USB_GADGET) && HAS_DMA
-	select USB_XHCI_PLATFORM if USB_SUPPORT && USB_XHCI_HCD
+	select USB_XHCI_PLATFORM if USB_XHCI_HCD
 	help
 	  Say Y or M here if your system has a Dual Role SuperSpeed
 	  USB controller based on the DesignWare USB3 IP Core.
@@ -11,8 +11,16 @@ config USB_DWC3
 
 if USB_DWC3
 
+config USB_DWC3_ULPI
+	bool "Register ULPI PHY Interface"
+	depends on USB_ULPI_BUS=y || USB_ULPI_BUS=USB_DWC3
+	help
+	  Select this if you have ULPI type PHY attached to your DWC3
+	  controller.
+
 choice
 	bool "DWC3 Mode Selection"
+	default USB_DWC3_OTG if (USB && USB_GADGET && USB_OTG && USB_OTG_FSM)
 	default USB_DWC3_DUAL_ROLE if (USB && USB_GADGET)
 	default USB_DWC3_HOST if (USB && !USB_GADGET)
 	default USB_DWC3_GADGET if (!USB && USB_GADGET)
@@ -37,6 +45,13 @@ config USB_DWC3_DUAL_ROLE
 	help
 	  This is the default mode of working of DWC3 controller where
 	  both host and gadget features are enabled.
+
+config USB_DWC3_OTG
+	bool "Dual Role mode + OTG"
+	depends on ((USB=y || USB=USB_DWC3) && (USB_GADGET=y || USB_GADGET=USB_DWC3) && USB_OTG && USB_OTG_FSM && PM)
+	help
+	  This is the default mode of working of DWC3 controller where
+	  both host and gadget features are enabled with OTG support.
 
 endchoice
 
@@ -80,6 +95,15 @@ config USB_DWC3_KEYSTONE
 	  Support of USB2/3 functionality in TI Keystone2 platforms.
 	  Say 'Y' or 'M' here if you have one such device
 
+config USB_DWC3_OF_SIMPLE
+       tristate "Generic OF Simple Glue Layer"
+       depends on OF && COMMON_CLK
+       default USB_DWC3
+       help
+         Support USB2/3 functionality in simple SoC integrations.
+	 Currently supports Xilinx and Qualcomm DWC USB3 IP.
+	 Say 'Y' or 'M' if you have one such device.
+
 config USB_DWC3_ST
 	tristate "STMicroelectronics Platforms"
 	depends on ARCH_STI && OF
@@ -88,27 +112,5 @@ config USB_DWC3_ST
 	  STMicroelectronics SoCs with one DesignWare Core USB3 IP
 	  inside (i.e. STiH407).
 	  Say 'Y' or 'M' if you have one such device.
-
-config USB_DWC3_QCOM
-	tristate "Qualcomm Platforms"
-	depends on ARCH_QCOM || COMPILE_TEST
-	default USB_DWC3
-	help
-	  Recent Qualcomm SoCs ship with one DesignWare Core USB3 IP inside,
-	  say 'Y' or 'M' if you have one such device.
-
-comment "Debugging features"
-
-config USB_DWC3_DEBUG
-	bool "Enable Debugging Messages"
-	help
-	  Say Y here to enable debugging messages on DWC3 Driver.
-
-config DWC3_HOST_USB3_LPM_ENABLE
-	bool "Enable USB3 LPM Capability"
-	depends on USB_DWC3_HOST=y || USB_DWC3_DUAL_ROLE=y
-	default n
-	help
-	  Select this when you want to enable USB3 LPM with dwc3 xhci host.
 
 endif

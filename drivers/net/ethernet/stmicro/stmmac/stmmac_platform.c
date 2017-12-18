@@ -23,32 +23,15 @@
 *******************************************************************************/
 
 #include <linux/platform_device.h>
+#include <linux/module.h>
 #include <linux/io.h>
 #include <linux/of.h>
 #include <linux/of_net.h>
 #include <linux/of_device.h>
+#include <linux/of_mdio.h>
 
 #include "stmmac.h"
 #include "stmmac_platform.h"
-
-static const struct of_device_id stmmac_dt_ids[] = {
-	/* SoC specific glue layers should come before generic bindings */
-	{ .compatible = "rockchip,rk3288-gmac", .data = &rk3288_gmac_data},
-	{ .compatible = "amlogic,meson6-dwmac", .data = &meson6_dwmac_data},
-	{ .compatible = "allwinner,sun7i-a20-gmac", .data = &sun7i_gmac_data},
-	{ .compatible = "st,stih415-dwmac", .data = &stih4xx_dwmac_data},
-	{ .compatible = "st,stih416-dwmac", .data = &stih4xx_dwmac_data},
-	{ .compatible = "st,stid127-dwmac", .data = &stid127_dwmac_data},
-	{ .compatible = "st,stih407-dwmac", .data = &stih4xx_dwmac_data},
-	{ .compatible = "altr,socfpga-stmmac", .data = &socfpga_gmac_data },
-	{ .compatible = "st,spear600-gmac"},
-	{ .compatible = "snps,dwmac-3.610"},
-	{ .compatible = "snps,dwmac-3.70a"},
-	{ .compatible = "snps,dwmac-3.710"},
-	{ .compatible = "snps,dwmac"},
-	{ /* sentinel */ }
-};
-MODULE_DEVICE_TABLE(of, stmmac_dt_ids);
 
 #ifdef CONFIG_OF
 
@@ -113,45 +96,127 @@ static int dwmac1000_validate_ucast_entries(int ucast_entries)
 }
 
 /**
+ * stmmac_axi_setup - parse DT parameters for programming the AXI register
+ * @pdev: platform device
+ * @priv: driver private struct.
+ * Description:
+ * if required, from device-tree the AXI internal register can be tuned
+ * by using platform parameters.
+ */
+static struct stmmac_axi *stmmac_axi_setup(struct platform_device *pdev)
+{
+	struct device_node *np;
+	struct stmmac_axi *axi;
+
+	np = of_parse_phandle(pdev->dev.of_node, "snps,axi-config", 0);
+	if (!np)
+		return NULL;
+
+	axi = kzalloc(sizeof(*axi), GFP_KERNEL);
+	if (!axi) {
+		of_node_put(np);
+		return ERR_PTR(-ENOMEM);
+	}
+
+	axi->axi_lpi_en = of_property_read_bool(np, "snps,lpi_en");
+	axi->axi_xit_frm = of_property_read_bool(np, "snps,xit_frm");
+	axi->axi_kbbe = of_property_read_bool(np, "snps,axi_kbbe");
+	axi->axi_axi_all = of_property_read_bool(np, "snps,axi_all");
+	axi->axi_fb = of_property_read_bool(np, "snps,axi_fb");
+	axi->axi_mb = of_property_read_bool(np, "snps,axi_mb");
+	axi->axi_rb =  of_property_read_bool(np, "snps,axi_rb");
+
+	if (of_property_read_u32(np, "snps,wr_osr_lmt", &axi->axi_wr_osr_lmt))
+		axi->axi_wr_osr_lmt = 1;
+	if (of_property_read_u32(np, "snps,rd_osr_lmt", &axi->axi_rd_osr_lmt))
+		axi->axi_rd_osr_lmt = 1;
+	of_property_read_u32_array(np, "snps,blen", axi->axi_blen, AXI_BLEN);
+	of_node_put(np);
+
+	return axi;
+}
+
+/**
+ * stmmac_dt_phy - parse device-tree driver parameters to allocate PHY resources
+ * @plat: driver data platform structure
+ * @np: device tree node
+ * @dev: device pointer
+ * Description:
+ * The mdio bus will be allocated in case of a phy transceiver is on board;
+ * it will be NULL if the fixed-link is configured.
+ * If there is the "snps,dwmac-mdio" sub-node the mdio will be allocated
+ * in any case (for DSA, mdio must be registered even if fixed-link).
+ * The table below sums the supported configurations:
+ *	-------------------------------
+ *	snps,phy-addr	|     Y
+ *	-------------------------------
+ *	phy-handle	|     Y
+ *	-------------------------------
+ *	fixed-link	|     N
+ *	-------------------------------
+ *	snps,dwmac-mdio	|
+ *	  even if	|     Y
+ *	fixed-link	|
+ *	-------------------------------
+ *
+ * It returns 0 in case of success otherwise -ENODEV.
+ */
+static int stmmac_dt_phy(struct plat_stmmacenet_data *plat,
+			 struct device_node *np, struct device *dev)
+{
+	bool mdio = true;
+
+	/* If phy-handle property is passed from DT, use it as the PHY */
+	plat->phy_node = of_parse_phandle(np, "phy-handle", 0);
+	if (plat->phy_node)
+		dev_dbg(dev, "Found phy-handle subnode\n");
+
+	/* If phy-handle is not specified, check if we have a fixed-phy */
+	if (!plat->phy_node && of_phy_is_fixed_link(np)) {
+		if ((of_phy_register_fixed_link(np) < 0))
+			return -ENODEV;
+
+		dev_dbg(dev, "Found fixed-link subnode\n");
+		plat->phy_node = of_node_get(np);
+		mdio = false;
+	}
+
+	/* If snps,dwmac-mdio is passed from DT, always register the MDIO */
+	for_each_child_of_node(np, plat->mdio_node) {
+		if (of_device_is_compatible(plat->mdio_node, "snps,dwmac-mdio"))
+			break;
+	}
+
+	if (plat->mdio_node) {
+		dev_dbg(dev, "Found MDIO subnode\n");
+		mdio = true;
+	}
+
+	if (mdio)
+		plat->mdio_bus_data =
+			devm_kzalloc(dev, sizeof(struct stmmac_mdio_bus_data),
+				     GFP_KERNEL);
+	return 0;
+}
+
+/**
  * stmmac_probe_config_dt - parse device-tree driver parameters
  * @pdev: platform_device structure
- * @plat: driver data platform structure
  * @mac: MAC address to use
  * Description:
  * this function is to read the driver parameters from device-tree and
  * set some private fields that will be used by the main at runtime.
  */
-static int stmmac_probe_config_dt(struct platform_device *pdev,
-				  struct plat_stmmacenet_data *plat,
-				  const char **mac)
+struct plat_stmmacenet_data *
+stmmac_probe_config_dt(struct platform_device *pdev, const char **mac)
 {
 	struct device_node *np = pdev->dev.of_node;
+	struct plat_stmmacenet_data *plat;
 	struct stmmac_dma_cfg *dma_cfg;
-	const struct of_device_id *device;
 
-	if (!np)
-		return -ENODEV;
-
-	device = of_match_device(stmmac_dt_ids, &pdev->dev);
-	if (!device)
-		return -ENODEV;
-
-	if (device->data) {
-		const struct stmmac_of_data *data = device->data;
-		plat->has_gmac = data->has_gmac;
-		plat->enh_desc = data->enh_desc;
-		plat->tx_coe = data->tx_coe;
-		plat->rx_coe = data->rx_coe;
-		plat->bugged_jumbo = data->bugged_jumbo;
-		plat->pmt = data->pmt;
-		plat->riwt_off = data->riwt_off;
-		plat->fix_mac_speed = data->fix_mac_speed;
-		plat->bus_setup = data->bus_setup;
-		plat->setup = data->setup;
-		plat->free = data->free;
-		plat->init = data->init;
-		plat->exit = data->exit;
-	}
+	plat = devm_kzalloc(&pdev->dev, sizeof(*plat), GFP_KERNEL);
+	if (!plat)
+		return ERR_PTR(-ENOMEM);
 
 	*mac = of_get_mac_address(np);
 	plat->interface = of_get_phy_mode(np);
@@ -173,13 +238,13 @@ static int stmmac_probe_config_dt(struct platform_device *pdev,
 	if (of_property_read_u32(np, "snps,phy-addr", &plat->phy_addr) == 0)
 		dev_warn(&pdev->dev, "snps,phy-addr property is deprecated\n");
 
-	if (plat->phy_bus_name)
-		plat->mdio_bus_data = NULL;
-	else
-		plat->mdio_bus_data =
-			devm_kzalloc(&pdev->dev,
-				     sizeof(struct stmmac_mdio_bus_data),
-				     GFP_KERNEL);
+	/* To Configure PHY by using all device-tree supported properties */
+	if (stmmac_dt_phy(plat, np, &pdev->dev))
+		return ERR_PTR(-ENODEV);
+
+	of_property_read_u32(np, "tx-fifo-depth", &plat->tx_fifo_size);
+
+	of_property_read_u32(np, "rx-fifo-depth", &plat->rx_fifo_size);
 
 	plat->force_sf_dma_mode =
 		of_property_read_bool(np, "snps,force_sf_dma_mode");
@@ -189,12 +254,19 @@ static int stmmac_probe_config_dt(struct platform_device *pdev,
 	 */
 	plat->maxmtu = JUMBO_LEN;
 
+	/* Set default value for multicast hash bins */
+	plat->multicast_filter_bins = HASH_TABLE_SIZE;
+
+	/* Set default value for unicast filter entries */
+	plat->unicast_filter_entries = 1;
+
 	/*
 	 * Currently only the properties needed on SPEAr600
 	 * are provided. All other properties should be added
 	 * once needed on other platforms.
 	 */
 	if (of_device_is_compatible(np, "st,spear600-gmac") ||
+		of_device_is_compatible(np, "snps,dwmac-3.50a") ||
 		of_device_is_compatible(np, "snps,dwmac-3.70a") ||
 		of_device_is_compatible(np, "snps,dwmac")) {
 		/* Note that the max-frame-size parameter as defined in the
@@ -217,6 +289,13 @@ static int stmmac_probe_config_dt(struct platform_device *pdev,
 		plat->pmt = 1;
 	}
 
+	if (of_device_is_compatible(np, "snps,dwmac-4.00") ||
+	    of_device_is_compatible(np, "snps,dwmac-4.10a")) {
+		plat->has_gmac4 = 1;
+		plat->pmt = 1;
+		plat->tso_en = of_property_read_bool(np, "snps,tso");
+	}
+
 	if (of_device_is_compatible(np, "snps,dwmac-3.610") ||
 		of_device_is_compatible(np, "snps,dwmac-3.710")) {
 		plat->enh_desc = 1;
@@ -227,17 +306,17 @@ static int stmmac_probe_config_dt(struct platform_device *pdev,
 	if (of_find_property(np, "snps,pbl", NULL)) {
 		dma_cfg = devm_kzalloc(&pdev->dev, sizeof(*dma_cfg),
 				       GFP_KERNEL);
-		if (!dma_cfg)
-			return -ENOMEM;
+		if (!dma_cfg) {
+			stmmac_remove_config_dt(pdev, plat);
+			return ERR_PTR(-ENOMEM);
+		}
 		plat->dma_cfg = dma_cfg;
 		of_property_read_u32(np, "snps,pbl", &dma_cfg->pbl);
+		dma_cfg->aal = of_property_read_bool(np, "snps,aal");
 		dma_cfg->fixed_burst =
 			of_property_read_bool(np, "snps,fixed-burst");
 		dma_cfg->mixed_burst =
 			of_property_read_bool(np, "snps,mixed-burst");
-		of_property_read_u32(np, "snps,burst_len", &dma_cfg->burst_len);
-		if (dma_cfg->burst_len < 0 || dma_cfg->burst_len > 256)
-			dma_cfg->burst_len = 0;
 	}
 	plat->force_thresh_dma_mode = of_property_read_bool(np, "snps,force_thresh_dma_mode");
 	if (plat->force_thresh_dma_mode) {
@@ -245,45 +324,61 @@ static int stmmac_probe_config_dt(struct platform_device *pdev,
 		pr_warn("force_sf_dma_mode is ignored if force_thresh_dma_mode is set.");
 	}
 
-	return 0;
+	of_property_read_u32(np, "snps,ps-speed", &plat->mac_port_sel_speed);
+
+	plat->axi = stmmac_axi_setup(pdev);
+
+	return plat;
 }
-#else
-static int stmmac_probe_config_dt(struct platform_device *pdev,
-				  struct plat_stmmacenet_data *plat,
-				  const char **mac)
-{
-	return -ENOSYS;
-}
-#endif /* CONFIG_OF */
 
 /**
- * stmmac_pltfr_probe - platform driver probe.
- * @pdev: platform device pointer
- * Description: platform_device probe function. It is to allocate
- * the necessary platform resources, invoke custom helper (if required) and
- * invoke the main probe function.
+ * stmmac_remove_config_dt - undo the effects of stmmac_probe_config_dt()
+ * @pdev: platform_device structure
+ * @plat: driver data platform structure
+ *
+ * Release resources claimed by stmmac_probe_config_dt().
  */
-static int stmmac_pltfr_probe(struct platform_device *pdev)
+void stmmac_remove_config_dt(struct platform_device *pdev,
+			     struct plat_stmmacenet_data *plat)
 {
-	int ret = 0;
+	struct device_node *np = pdev->dev.of_node;
+
+	if (of_phy_is_fixed_link(np))
+		of_phy_deregister_fixed_link(np);
+	of_node_put(plat->phy_node);
+}
+#else
+struct plat_stmmacenet_data *
+stmmac_probe_config_dt(struct platform_device *pdev, const char **mac)
+{
+	return ERR_PTR(-ENOSYS);
+}
+
+void stmmac_remove_config_dt(struct platform_device *pdev,
+			     struct plat_stmmacenet_data *plat)
+{
+}
+#endif /* CONFIG_OF */
+EXPORT_SYMBOL_GPL(stmmac_probe_config_dt);
+EXPORT_SYMBOL_GPL(stmmac_remove_config_dt);
+
+int stmmac_get_platform_resources(struct platform_device *pdev,
+				  struct stmmac_resources *stmmac_res)
+{
 	struct resource *res;
-	struct device *dev = &pdev->dev;
-	void __iomem *addr = NULL;
-	struct stmmac_priv *priv = NULL;
-	struct plat_stmmacenet_data *plat_dat = NULL;
-	const char *mac = NULL;
-	int irq, wol_irq, lpi_irq;
+
+	memset(stmmac_res, 0, sizeof(*stmmac_res));
 
 	/* Get IRQ information early to have an ability to ask for deferred
 	 * probe if needed before we went too far with resource allocation.
 	 */
-	irq = platform_get_irq_byname(pdev, "macirq");
-	if (irq < 0) {
-		if (irq != -EPROBE_DEFER) {
-			dev_err(dev,
+	stmmac_res->irq = platform_get_irq_byname(pdev, "macirq");
+	if (stmmac_res->irq < 0) {
+		if (stmmac_res->irq != -EPROBE_DEFER) {
+			dev_err(&pdev->dev,
 				"MAC IRQ configuration information not found\n");
 		}
-		return irq;
+		return stmmac_res->irq;
 	}
 
 	/* On some platforms e.g. SPEAr the wake up irq differs from the mac irq
@@ -293,82 +388,23 @@ static int stmmac_pltfr_probe(struct platform_device *pdev)
 	 * In case the wake up interrupt is not passed from the platform
 	 * so the driver will continue to use the mac irq (ndev->irq)
 	 */
-	wol_irq = platform_get_irq_byname(pdev, "eth_wake_irq");
-	if (wol_irq < 0) {
-		if (wol_irq == -EPROBE_DEFER)
+	stmmac_res->wol_irq = platform_get_irq_byname(pdev, "eth_wake_irq");
+	if (stmmac_res->wol_irq < 0) {
+		if (stmmac_res->wol_irq == -EPROBE_DEFER)
 			return -EPROBE_DEFER;
-		wol_irq = irq;
+		stmmac_res->wol_irq = stmmac_res->irq;
 	}
 
-	lpi_irq = platform_get_irq_byname(pdev, "eth_lpi");
-	if (lpi_irq == -EPROBE_DEFER)
+	stmmac_res->lpi_irq = platform_get_irq_byname(pdev, "eth_lpi");
+	if (stmmac_res->lpi_irq == -EPROBE_DEFER)
 		return -EPROBE_DEFER;
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	addr = devm_ioremap_resource(dev, res);
-	if (IS_ERR(addr))
-		return PTR_ERR(addr);
+	stmmac_res->addr = devm_ioremap_resource(&pdev->dev, res);
 
-	plat_dat = dev_get_platdata(&pdev->dev);
-
-	if (!plat_dat)
-		plat_dat = devm_kzalloc(&pdev->dev,
-					sizeof(struct plat_stmmacenet_data),
-					GFP_KERNEL);
-	if (!plat_dat) {
-		pr_err("%s: ERROR: no memory", __func__);
-		return  -ENOMEM;
-	}
-
-	/* Set default value for multicast hash bins */
-	plat_dat->multicast_filter_bins = HASH_TABLE_SIZE;
-
-	/* Set default value for unicast filter entries */
-	plat_dat->unicast_filter_entries = 1;
-
-	if (pdev->dev.of_node) {
-		ret = stmmac_probe_config_dt(pdev, plat_dat, &mac);
-		if (ret) {
-			pr_err("%s: main dt probe failed", __func__);
-			return ret;
-		}
-	}
-
-	/* Custom setup (if needed) */
-	if (plat_dat->setup) {
-		plat_dat->bsp_priv = plat_dat->setup(pdev);
-		if (IS_ERR(plat_dat->bsp_priv))
-			return PTR_ERR(plat_dat->bsp_priv);
-	}
-
-	/* Custom initialisation (if needed)*/
-	if (plat_dat->init) {
-		ret = plat_dat->init(pdev, plat_dat->bsp_priv);
-		if (unlikely(ret))
-			return ret;
-	}
-
-	priv = stmmac_dvr_probe(&(pdev->dev), plat_dat, addr);
-	if (IS_ERR(priv)) {
-		pr_err("%s: main driver probe failed", __func__);
-		return PTR_ERR(priv);
-	}
-
-	/* Copy IRQ values to priv structure which is now avaialble */
-	priv->dev->irq = irq;
-	priv->wol_irq = wol_irq;
-	priv->lpi_irq = lpi_irq;
-
-	/* Get MAC address if available (DT) */
-	if (mac)
-		memcpy(priv->dev->dev_addr, mac, ETH_ALEN);
-
-	platform_set_drvdata(pdev, priv->dev);
-
-	pr_debug("STMMAC platform driver registration completed");
-
-	return 0;
+	return PTR_ERR_OR_ZERO(stmmac_res->addr);
 }
+EXPORT_SYMBOL_GPL(stmmac_get_platform_resources);
 
 /**
  * stmmac_pltfr_remove
@@ -376,20 +412,21 @@ static int stmmac_pltfr_probe(struct platform_device *pdev)
  * Description: this function calls the main to free the net resources
  * and calls the platforms hook and release the resources (e.g. mem).
  */
-static int stmmac_pltfr_remove(struct platform_device *pdev)
+int stmmac_pltfr_remove(struct platform_device *pdev)
 {
 	struct net_device *ndev = platform_get_drvdata(pdev);
 	struct stmmac_priv *priv = netdev_priv(ndev);
-	int ret = stmmac_dvr_remove(ndev);
+	struct plat_stmmacenet_data *plat = priv->plat;
+	int ret = stmmac_dvr_remove(&pdev->dev);
 
-	if (priv->plat->exit)
-		priv->plat->exit(pdev, priv->plat->bsp_priv);
+	if (plat->exit)
+		plat->exit(pdev, plat->bsp_priv);
 
-	if (priv->plat->free)
-		priv->plat->free(pdev, priv->plat->bsp_priv);
+	stmmac_remove_config_dt(pdev, plat);
 
 	return ret;
 }
+EXPORT_SYMBOL_GPL(stmmac_pltfr_remove);
 
 #ifdef CONFIG_PM_SLEEP
 /**
@@ -406,8 +443,10 @@ static int stmmac_pltfr_suspend(struct device *dev)
 	struct stmmac_priv *priv = netdev_priv(ndev);
 	struct platform_device *pdev = to_platform_device(dev);
 
-	ret = stmmac_suspend(ndev);
-	if (priv->plat->exit)
+	ret = stmmac_suspend(dev);
+	if (priv->plat->suspend)
+		priv->plat->suspend(pdev, priv->plat->bsp_priv);
+	else if (priv->plat->exit)
 		priv->plat->exit(pdev, priv->plat->bsp_priv);
 
 	return ret;
@@ -426,28 +465,19 @@ static int stmmac_pltfr_resume(struct device *dev)
 	struct stmmac_priv *priv = netdev_priv(ndev);
 	struct platform_device *pdev = to_platform_device(dev);
 
-	if (priv->plat->init)
+	if (priv->plat->resume)
+		priv->plat->resume(pdev, priv->plat->bsp_priv);
+	else if (priv->plat->init)
 		priv->plat->init(pdev, priv->plat->bsp_priv);
 
-	return stmmac_resume(ndev);
+	return stmmac_resume(dev);
 }
 #endif /* CONFIG_PM_SLEEP */
 
-static SIMPLE_DEV_PM_OPS(stmmac_pltfr_pm_ops,
-			 stmmac_pltfr_suspend, stmmac_pltfr_resume);
+SIMPLE_DEV_PM_OPS(stmmac_pltfr_pm_ops, stmmac_pltfr_suspend,
+				       stmmac_pltfr_resume);
+EXPORT_SYMBOL_GPL(stmmac_pltfr_pm_ops);
 
-static struct platform_driver stmmac_pltfr_driver = {
-	.probe = stmmac_pltfr_probe,
-	.remove = stmmac_pltfr_remove,
-	.driver = {
-		   .name = STMMAC_RESOURCE_NAME,
-		   .pm = &stmmac_pltfr_pm_ops,
-		   .of_match_table = of_match_ptr(stmmac_dt_ids),
-	},
-};
-
-module_platform_driver(stmmac_pltfr_driver);
-
-MODULE_DESCRIPTION("STMMAC 10/100/1000 Ethernet PLATFORM driver");
+MODULE_DESCRIPTION("STMMAC 10/100/1000 Ethernet platform support");
 MODULE_AUTHOR("Giuseppe Cavallaro <peppe.cavallaro@st.com>");
 MODULE_LICENSE("GPL");

@@ -36,6 +36,11 @@ void pci_update_resource(struct pci_dev *dev, int resno)
 	enum pci_bar_type type;
 	struct resource *res = dev->resource + resno;
 
+	if (dev->is_virtfn) {
+		dev_warn(&dev->dev, "can't update VF BAR%d\n", resno);
+		return;
+	}
+
 	/*
 	 * Ignore resources for unimplemented BARs and unused resource slots
 	 * for 64 bit BARs.
@@ -116,10 +121,19 @@ int pci_claim_resource(struct pci_dev *dev, int resource)
 		return -EINVAL;
 	}
 
+	/*
+	 * If we have a shadow copy in RAM, the PCI device doesn't respond
+	 * to the shadow range, so we don't need to claim it, and upstream
+	 * bridges don't need to route the range to the device.
+	 */
+	if (res->flags & IORESOURCE_ROM_SHADOW)
+		return 0;
+
 	root = pci_find_parent_resource(dev, res);
 	if (!root) {
 		dev_info(&dev->dev, "can't claim BAR %d %pR: no compatible bridge window\n",
 			 resource, res);
+		res->flags |= IORESOURCE_UNSET;
 		return -EINVAL;
 	}
 
@@ -127,6 +141,7 @@ int pci_claim_resource(struct pci_dev *dev, int resource)
 	if (conflict) {
 		dev_info(&dev->dev, "can't claim BAR %d %pR: address conflict with %s %pR\n",
 			 resource, res, conflict->name, conflict);
+		res->flags |= IORESOURCE_UNSET;
 		return -EBUSY;
 	}
 
@@ -175,6 +190,7 @@ static int pci_revert_fw_address(struct resource *res, struct pci_dev *dev,
 	end = res->end;
 	res->start = fw_addr;
 	res->end = res->start + size - 1;
+	res->flags &= ~IORESOURCE_UNSET;
 
 	root = pci_find_parent_resource(dev, res);
 	if (!root) {
@@ -192,6 +208,7 @@ static int pci_revert_fw_address(struct resource *res, struct pci_dev *dev,
 			 resno, res, conflict->name, conflict);
 		res->start = start;
 		res->end = end;
+		res->flags |= IORESOURCE_UNSET;
 		return -EBUSY;
 	}
 	return 0;
@@ -267,6 +284,9 @@ int pci_assign_resource(struct pci_dev *dev, int resno)
 	resource_size_t align, size;
 	int ret;
 
+	if (res->flags & IORESOURCE_PCI_FIXED)
+		return 0;
+
 	res->flags |= IORESOURCE_UNSET;
 	align = pci_resource_alignment(dev, res);
 	if (!align) {
@@ -311,6 +331,9 @@ int pci_reassign_resource(struct pci_dev *dev, int resno, resource_size_t addsiz
 	unsigned long flags;
 	resource_size_t new_size;
 	int ret;
+
+	if (res->flags & IORESOURCE_PCI_FIXED)
+		return 0;
 
 	flags = res->flags;
 	res->flags |= IORESOURCE_UNSET;

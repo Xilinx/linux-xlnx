@@ -2,7 +2,7 @@
  * Driver for the ST Microelectronics SPEAr320 pinmux
  *
  * Copyright (C) 2012 ST Microelectronics
- * Viresh Kumar <viresh.linux@gmail.com>
+ * Viresh Kumar <vireshk@kernel.org>
  *
  * This file is licensed under the terms of the GNU General Public
  * License version 2. This program is licensed "as is" without any
@@ -3441,18 +3441,12 @@ static int spear320_pinctrl_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int spear320_pinctrl_remove(struct platform_device *pdev)
-{
-	return spear_pinctrl_remove(pdev);
-}
-
 static struct platform_driver spear320_pinctrl_driver = {
 	.driver = {
 		.name = DRIVER_NAME,
 		.of_match_table = spear320_pinctrl_of_match,
 	},
 	.probe = spear320_pinctrl_probe,
-	.remove = spear320_pinctrl_remove,
 };
 
 static int __init spear320_pinctrl_init(void)
@@ -3467,7 +3461,7 @@ static void __exit spear320_pinctrl_exit(void)
 }
 module_exit(spear320_pinctrl_exit);
 
-MODULE_AUTHOR("Viresh Kumar <viresh.linux@gmail.com>");
+MODULE_AUTHOR("Viresh Kumar <vireshk@kernel.org>");
 MODULE_DESCRIPTION("ST Microelectronics SPEAr320 pinctrl driver");
 MODULE_LICENSE("GPL v2");
 MODULE_DEVICE_TABLE(of, spear320_pinctrl_of_match);

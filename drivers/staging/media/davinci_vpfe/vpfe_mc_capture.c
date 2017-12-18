@@ -226,8 +226,8 @@ static int vpfe_enable_clock(struct vpfe_device *vpfe_dev)
 	if (!vpfe_cfg->num_clocks)
 		return 0;
 
-	vpfe_dev->clks = kzalloc(vpfe_cfg->num_clocks *
-				   sizeof(struct clock *), GFP_KERNEL);
+	vpfe_dev->clks = kcalloc(vpfe_cfg->num_clocks,
+				 sizeof(*vpfe_dev->clks), GFP_KERNEL);
 	if (vpfe_dev->clks == NULL)
 		return -ENOMEM;
 
@@ -294,7 +294,7 @@ static void vpfe_detach_irq(struct vpfe_device *vpfe_dev)
  */
 static int vpfe_attach_irq(struct vpfe_device *vpfe_dev)
 {
-	int ret = 0;
+	int ret;
 
 	ret = request_irq(vpfe_dev->ccdc_irq0, vpfe_isr, 0,
 			  "vpfe_capture0", vpfe_dev);
@@ -346,7 +346,8 @@ static int register_i2c_devices(struct vpfe_device *vpfe_dev)
 	i2c_adap = i2c_get_adapter(1);
 	num_subdevs = vpfe_cfg->num_subdevs;
 	vpfe_dev->sd =
-		  kzalloc(sizeof(struct v4l2_subdev *)*num_subdevs, GFP_KERNEL);
+		  kcalloc(num_subdevs, sizeof(struct v4l2_subdev *),
+			  GFP_KERNEL);
 	if (vpfe_dev->sd == NULL)
 		return -ENOMEM;
 
@@ -441,35 +442,37 @@ static int vpfe_register_entities(struct vpfe_device *vpfe_dev)
 
 	/* create links now, starting with external(i2c) entities */
 	for (i = 0; i < vpfe_dev->num_ext_subdevs; i++)
-		/* if entity has no pads (ex: amplifier),
-		   cant establish link */
+		/*
+		 * if entity has no pads (ex: amplifier),
+		 * cant establish link
+		 */
 		if (vpfe_dev->sd[i]->entity.num_pads) {
-			ret = media_entity_create_link(&vpfe_dev->sd[i]->entity,
+			ret = media_create_pad_link(&vpfe_dev->sd[i]->entity,
 				0, &vpfe_dev->vpfe_isif.subdev.entity,
 				0, flags);
 			if (ret < 0)
 				goto out_resizer_register;
 		}
 
-	ret = media_entity_create_link(&vpfe_dev->vpfe_isif.subdev.entity, 1,
+	ret = media_create_pad_link(&vpfe_dev->vpfe_isif.subdev.entity, 1,
 				       &vpfe_dev->vpfe_ipipeif.subdev.entity,
 				       0, flags);
 	if (ret < 0)
 		goto out_resizer_register;
 
-	ret = media_entity_create_link(&vpfe_dev->vpfe_ipipeif.subdev.entity, 1,
+	ret = media_create_pad_link(&vpfe_dev->vpfe_ipipeif.subdev.entity, 1,
 				       &vpfe_dev->vpfe_ipipe.subdev.entity,
 				       0, flags);
 	if (ret < 0)
 		goto out_resizer_register;
 
-	ret = media_entity_create_link(&vpfe_dev->vpfe_ipipe.subdev.entity,
+	ret = media_create_pad_link(&vpfe_dev->vpfe_ipipe.subdev.entity,
 			1, &vpfe_dev->vpfe_resizer.crop_resizer.subdev.entity,
 			0, flags);
 	if (ret < 0)
 		goto out_resizer_register;
 
-	ret = media_entity_create_link(&vpfe_dev->vpfe_ipipeif.subdev.entity, 1,
+	ret = media_create_pad_link(&vpfe_dev->vpfe_ipipeif.subdev.entity, 1,
 			&vpfe_dev->vpfe_resizer.crop_resizer.subdev.entity,
 			0, flags);
 	if (ret < 0)

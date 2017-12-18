@@ -64,6 +64,13 @@ static inline ktime_t ktime_set(const s64 secs, const unsigned long nsecs)
 		({ (ktime_t){ .tv64 = (lhs).tv64 + (rhs).tv64 }; })
 
 /*
+ * Same as ktime_add(), but avoids undefined behaviour on overflow; however,
+ * this means that you must check the result for overflow yourself.
+ */
+#define ktime_add_unsafe(lhs, rhs) \
+		({ (ktime_t){ .tv64 = (u64) (lhs).tv64 + (rhs).tv64 }; })
+
+/*
  * Add a ktime_t variable and a scalar nanosecond value.
  * res = kt + nsval:
  */
@@ -166,19 +173,34 @@ static inline bool ktime_before(const ktime_t cmp1, const ktime_t cmp2)
 }
 
 #if BITS_PER_LONG < 64
-extern u64 __ktime_divns(const ktime_t kt, s64 div);
-static inline u64 ktime_divns(const ktime_t kt, s64 div)
+extern s64 __ktime_divns(const ktime_t kt, s64 div);
+static inline s64 ktime_divns(const ktime_t kt, s64 div)
 {
+	/*
+	 * Negative divisors could cause an inf loop,
+	 * so bug out here.
+	 */
+	BUG_ON(div < 0);
 	if (__builtin_constant_p(div) && !(div >> 32)) {
-		u64 ns = kt.tv64;
-		do_div(ns, div);
-		return ns;
+		s64 ns = kt.tv64;
+		u64 tmp = ns < 0 ? -ns : ns;
+
+		do_div(tmp, div);
+		return ns < 0 ? -tmp : tmp;
 	} else {
 		return __ktime_divns(kt, div);
 	}
 }
 #else /* BITS_PER_LONG < 64 */
-# define ktime_divns(kt, div)		(u64)((kt).tv64 / (div))
+static inline s64 ktime_divns(const ktime_t kt, s64 div)
+{
+	/*
+	 * 32-bit implementation cannot handle negative divisors,
+	 * so catch them on 64bit as well.
+	 */
+	WARN_ON(div < 0);
+	return kt.tv64 / div;
+}
 #endif
 
 static inline s64 ktime_to_us(const ktime_t kt)
@@ -214,6 +236,11 @@ static inline ktime_t ktime_add_ms(const ktime_t kt, const u64 msec)
 static inline ktime_t ktime_sub_us(const ktime_t kt, const u64 usec)
 {
 	return ktime_sub_ns(kt, usec * NSEC_PER_USEC);
+}
+
+static inline ktime_t ktime_sub_ms(const ktime_t kt, const u64 msec)
+{
+	return ktime_sub_ns(kt, msec * NSEC_PER_MSEC);
 }
 
 extern ktime_t ktime_add_safe(const ktime_t lhs, const ktime_t rhs);

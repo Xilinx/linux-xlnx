@@ -1,6 +1,6 @@
 /**************************************************************************
  *
- * Copyright © 2009 VMware, Inc., Palo Alto, CA., USA
+ * Copyright © 2009-2015 VMware, Inc., Palo Alto, CA., USA
  * All Rights Reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
@@ -70,6 +70,12 @@ static struct ttm_place mob_placement_flags = {
 	.fpfn = 0,
 	.lpfn = 0,
 	.flags = VMW_PL_FLAG_MOB | TTM_PL_FLAG_CACHED
+};
+
+static struct ttm_place mob_ne_placement_flags = {
+	.fpfn = 0,
+	.lpfn = 0,
+	.flags = VMW_PL_FLAG_MOB | TTM_PL_FLAG_CACHED | TTM_PL_FLAG_NO_EVICT
 };
 
 struct ttm_placement vmw_vram_placement = {
@@ -198,6 +204,13 @@ struct ttm_placement vmw_mob_placement = {
 	.num_busy_placement = 1,
 	.placement = &mob_placement_flags,
 	.busy_placement = &mob_placement_flags
+};
+
+struct ttm_placement vmw_mob_ne_placement = {
+	.num_placement = 1,
+	.num_busy_placement = 1,
+	.placement = &mob_ne_placement_flags,
+	.busy_placement = &mob_ne_placement_flags
 };
 
 struct vmw_ttm_tt {
@@ -804,9 +817,9 @@ static int vmw_ttm_fault_reserve_notify(struct ttm_buffer_object *bo)
 /**
  * vmw_move_notify - TTM move_notify_callback
  *
- * @bo:             The TTM buffer object about to move.
- * @mem:            The truct ttm_mem_reg indicating to what memory
- *                  region the move is taking place.
+ * @bo: The TTM buffer object about to move.
+ * @mem: The struct ttm_mem_reg indicating to what memory
+ *       region the move is taking place.
  *
  * Calls move_notify for all subsystems needing it.
  * (currently only resources).
@@ -815,17 +828,18 @@ static void vmw_move_notify(struct ttm_buffer_object *bo,
 			    struct ttm_mem_reg *mem)
 {
 	vmw_resource_move_notify(bo, mem);
+	vmw_query_move_notify(bo, mem);
 }
 
 
 /**
  * vmw_swap_notify - TTM move_notify_callback
  *
- * @bo:             The TTM buffer object about to be swapped out.
+ * @bo: The TTM buffer object about to be swapped out.
  */
 static void vmw_swap_notify(struct ttm_buffer_object *bo)
 {
-	ttm_bo_wait(bo, false, false, false);
+	ttm_bo_wait(bo, false, false);
 }
 
 
@@ -843,4 +857,6 @@ struct ttm_bo_driver vmw_bo_driver = {
 	.fault_reserve_notify = &vmw_ttm_fault_reserve_notify,
 	.io_mem_reserve = &vmw_ttm_io_mem_reserve,
 	.io_mem_free = &vmw_ttm_io_mem_free,
+	.lru_tail = &ttm_bo_default_lru_tail,
+	.swap_lru_tail = &ttm_bo_default_swap_lru_tail,
 };

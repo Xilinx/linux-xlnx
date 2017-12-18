@@ -60,14 +60,14 @@ static pci_ers_result_t adf_error_detected(struct pci_dev *pdev,
 {
 	struct adf_accel_dev *accel_dev = adf_devmgr_pci_to_accel_dev(pdev);
 
-	pr_info("QAT: Acceleration driver hardware error detected.\n");
+	dev_info(&pdev->dev, "Acceleration driver hardware error detected.\n");
 	if (!accel_dev) {
-		pr_err("QAT: Can't find acceleration device\n");
+		dev_err(&pdev->dev, "Can't find acceleration device\n");
 		return PCI_ERS_RESULT_DISCONNECT;
 	}
 
 	if (state == pci_channel_io_perm_failure) {
-		pr_err("QAT: Can't recover from device error\n");
+		dev_err(&pdev->dev, "Can't recover from device error\n");
 		return PCI_ERS_RESULT_DISCONNECT;
 	}
 
@@ -82,16 +82,20 @@ struct adf_reset_dev_data {
 	struct work_struct reset_work;
 };
 
-static void adf_dev_restore(struct adf_accel_dev *accel_dev)
+void adf_reset_sbr(struct adf_accel_dev *accel_dev)
 {
 	struct pci_dev *pdev = accel_to_pci_dev(accel_dev);
 	struct pci_dev *parent = pdev->bus->self;
 	uint16_t bridge_ctl = 0;
 
-	pr_info("QAT: Resetting device qat_dev%d\n", accel_dev->accel_id);
+	if (!parent)
+		parent = pdev;
 
 	if (!pci_wait_for_pending_transaction(pdev))
-		pr_info("QAT: Transaction still in progress. Proceeding\n");
+		dev_info(&GET_DEV(accel_dev),
+			 "Transaction still in progress. Proceeding\n");
+
+	dev_info(&GET_DEV(accel_dev), "Secondary bus reset\n");
 
 	pci_read_config_word(parent, PCI_BRIDGE_CONTROL, &bridge_ctl);
 	bridge_ctl |= PCI_BRIDGE_CTL_BUS_RESET;
@@ -100,8 +104,40 @@ static void adf_dev_restore(struct adf_accel_dev *accel_dev)
 	bridge_ctl &= ~PCI_BRIDGE_CTL_BUS_RESET;
 	pci_write_config_word(parent, PCI_BRIDGE_CONTROL, bridge_ctl);
 	msleep(100);
-	pci_restore_state(pdev);
-	pci_save_state(pdev);
+}
+EXPORT_SYMBOL_GPL(adf_reset_sbr);
+
+void adf_reset_flr(struct adf_accel_dev *accel_dev)
+{
+	struct pci_dev *pdev = accel_to_pci_dev(accel_dev);
+	u16 control = 0;
+	int pos = 0;
+
+	dev_info(&GET_DEV(accel_dev), "Function level reset\n");
+	pos = pci_pcie_cap(pdev);
+	if (!pos) {
+		dev_err(&GET_DEV(accel_dev), "Restart device failed\n");
+		return;
+	}
+	pci_read_config_word(pdev, pos + PCI_EXP_DEVCTL, &control);
+	control |= PCI_EXP_DEVCTL_BCR_FLR;
+	pci_write_config_word(pdev, pos + PCI_EXP_DEVCTL, control);
+	msleep(100);
+}
+EXPORT_SYMBOL_GPL(adf_reset_flr);
+
+void adf_dev_restore(struct adf_accel_dev *accel_dev)
+{
+	struct adf_hw_device_data *hw_device = accel_dev->hw_device;
+	struct pci_dev *pdev = accel_to_pci_dev(accel_dev);
+
+	if (hw_device->reset_device) {
+		dev_info(&GET_DEV(accel_dev), "Resetting device qat_dev%d\n",
+			 accel_dev->accel_id);
+		hw_device->reset_device(accel_dev);
+		pci_restore_state(pdev);
+		pci_save_state(pdev);
+	}
 }
 
 static void adf_device_reset_worker(struct work_struct *work)
@@ -113,7 +149,6 @@ static void adf_device_reset_worker(struct work_struct *work)
 	adf_dev_restarting_notify(accel_dev);
 	adf_dev_stop(accel_dev);
 	adf_dev_shutdown(accel_dev);
-	adf_dev_restore(accel_dev);
 	if (adf_dev_init(accel_dev) || adf_dev_start(accel_dev)) {
 		/* The device hanged and we can't restart it so stop here */
 		dev_err(&GET_DEV(accel_dev), "Restart device failed\n");
@@ -158,7 +193,8 @@ static int adf_dev_aer_schedule_reset(struct adf_accel_dev *accel_dev,
 		unsigned long timeout = wait_for_completion_timeout(
 				   &reset_data->compl, wait_jiffies);
 		if (!timeout) {
-			pr_err("QAT: Reset device timeout expired\n");
+			dev_err(&GET_DEV(accel_dev),
+				"Reset device timeout expired\n");
 			ret = -EFAULT;
 		}
 		kfree(reset_data);
@@ -184,11 +220,11 @@ static pci_ers_result_t adf_slot_reset(struct pci_dev *pdev)
 
 static void adf_resume(struct pci_dev *pdev)
 {
-	pr_info("QAT: Acceleration driver reset completed\n");
-	pr_info("QAT: Device is up and runnig\n");
+	dev_info(&pdev->dev, "Acceleration driver reset completed\n");
+	dev_info(&pdev->dev, "Device is up and runnig\n");
 }
 
-static struct pci_error_handlers adf_err_handler = {
+static const struct pci_error_handlers adf_err_handler = {
 	.error_detected = adf_error_detected,
 	.slot_reset = adf_slot_reset,
 	.resume = adf_resume,
@@ -203,7 +239,7 @@ static struct pci_error_handlers adf_err_handler = {
  * QAT acceleration device accel_dev.
  * To be used by QAT device specific drivers.
  *
- * Return: 0 on success, error code othewise.
+ * Return: 0 on success, error code otherwise.
  */
 int adf_enable_aer(struct adf_accel_dev *accel_dev, struct pci_driver *adf)
 {
@@ -235,8 +271,9 @@ EXPORT_SYMBOL_GPL(adf_disable_aer);
 
 int adf_init_aer(void)
 {
-	device_reset_wq = create_workqueue("qat_device_reset_wq");
-	return (device_reset_wq == NULL) ? -EFAULT : 0;
+	device_reset_wq = alloc_workqueue("qat_device_reset_wq",
+					  WQ_MEM_RECLAIM, 0);
+	return !device_reset_wq ? -EFAULT : 0;
 }
 
 void adf_exit_aer(void)

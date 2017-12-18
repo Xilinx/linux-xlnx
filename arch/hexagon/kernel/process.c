@@ -37,8 +37,6 @@
  */
 void start_thread(struct pt_regs *regs, unsigned long pc, unsigned long sp)
 {
-	/* Set to run with user-mode data segmentation */
-	set_fs(USER_DS);
 	/* We want to zero all data-containing registers. Is this overkill? */
 	memset(regs, 0, sizeof(*regs));
 	/* We might want to also zero all Processor registers here */
@@ -135,13 +133,6 @@ int copy_thread(unsigned long clone_flags, unsigned long usp,
  * Release any architecture-specific resources locked by thread
  */
 void release_thread(struct task_struct *dead_task)
-{
-}
-
-/*
- * Free any architecture-specific thread data structures, etc.
- */
-void exit_thread(void)
 {
 }
 

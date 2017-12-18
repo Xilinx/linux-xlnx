@@ -22,6 +22,7 @@
 #include <linux/limits.h>
 #include <linux/of.h>
 #include <linux/of_iommu.h>
+#include <linux/of_pci.h>
 #include <linux/slab.h>
 
 static const struct of_device_id __iommu_of_table_sentinel
@@ -98,18 +99,19 @@ EXPORT_SYMBOL_GPL(of_get_dma_window);
 struct of_iommu_node {
 	struct list_head list;
 	struct device_node *np;
-	struct iommu_ops *ops;
+	const struct iommu_ops *ops;
 };
 static LIST_HEAD(of_iommu_list);
 static DEFINE_SPINLOCK(of_iommu_lock);
 
-void of_iommu_set_ops(struct device_node *np, struct iommu_ops *ops)
+void of_iommu_set_ops(struct device_node *np, const struct iommu_ops *ops)
 {
 	struct of_iommu_node *iommu = kzalloc(sizeof(*iommu), GFP_KERNEL);
 
 	if (WARN_ON(!iommu))
 		return;
 
+	of_node_get(np);
 	INIT_LIST_HEAD(&iommu->list);
 	iommu->np = np;
 	iommu->ops = ops;
@@ -118,10 +120,10 @@ void of_iommu_set_ops(struct device_node *np, struct iommu_ops *ops)
 	spin_unlock(&of_iommu_lock);
 }
 
-struct iommu_ops *of_iommu_get_ops(struct device_node *np)
+const struct iommu_ops *of_iommu_get_ops(struct device_node *np)
 {
 	struct of_iommu_node *node;
-	struct iommu_ops *ops = NULL;
+	const struct iommu_ops *ops = NULL;
 
 	spin_lock(&of_iommu_lock);
 	list_for_each_entry(node, &of_iommu_list, list)
@@ -133,25 +135,72 @@ struct iommu_ops *of_iommu_get_ops(struct device_node *np)
 	return ops;
 }
 
-struct iommu_ops *of_iommu_configure(struct device *dev)
+static int __get_pci_rid(struct pci_dev *pdev, u16 alias, void *data)
+{
+	struct of_phandle_args *iommu_spec = data;
+
+	iommu_spec->args[0] = alias;
+	return iommu_spec->np == pdev->bus->dev.of_node;
+}
+
+static const struct iommu_ops
+*of_pci_iommu_configure(struct pci_dev *pdev, struct device_node *bridge_np)
+{
+	const struct iommu_ops *ops;
+	struct of_phandle_args iommu_spec;
+
+	/*
+	 * Start by tracing the RID alias down the PCI topology as
+	 * far as the host bridge whose OF node we have...
+	 * (we're not even attempting to handle multi-alias devices yet)
+	 */
+	iommu_spec.args_count = 1;
+	iommu_spec.np = bridge_np;
+	pci_for_each_dma_alias(pdev, __get_pci_rid, &iommu_spec);
+	/*
+	 * ...then find out what that becomes once it escapes the PCI
+	 * bus into the system beyond, and which IOMMU it ends up at.
+	 */
+	iommu_spec.np = NULL;
+	if (of_pci_map_rid(bridge_np, iommu_spec.args[0], "iommu-map",
+			   "iommu-map-mask", &iommu_spec.np, iommu_spec.args))
+		return NULL;
+
+	ops = of_iommu_get_ops(iommu_spec.np);
+	if (!ops || !ops->of_xlate ||
+	    iommu_fwspec_init(&pdev->dev, &iommu_spec.np->fwnode, ops) ||
+	    ops->of_xlate(&pdev->dev, &iommu_spec))
+		ops = NULL;
+
+	of_node_put(iommu_spec.np);
+	return ops;
+}
+
+const struct iommu_ops *of_iommu_configure(struct device *dev,
+					   struct device_node *master_np)
 {
 	struct of_phandle_args iommu_spec;
 	struct device_node *np;
-	struct iommu_ops *ops = NULL;
+	const struct iommu_ops *ops = NULL;
 	int idx = 0;
+
+	if (dev_is_pci(dev))
+		return of_pci_iommu_configure(to_pci_dev(dev), master_np);
 
 	/*
 	 * We don't currently walk up the tree looking for a parent IOMMU.
 	 * See the `Notes:' section of
 	 * Documentation/devicetree/bindings/iommu/iommu.txt
 	 */
-	while (!of_parse_phandle_with_args(dev->of_node, "iommus",
+	while (!of_parse_phandle_with_args(master_np, "iommus",
 					   "#iommu-cells", idx,
 					   &iommu_spec)) {
 		np = iommu_spec.np;
 		ops = of_iommu_get_ops(np);
 
-		if (!ops || !ops->of_xlate || ops->of_xlate(dev, &iommu_spec))
+		if (!ops || !ops->of_xlate ||
+		    iommu_fwspec_init(dev, &np->fwnode, ops) ||
+		    ops->of_xlate(dev, &iommu_spec))
 			goto err_put_node;
 
 		of_node_put(np);
@@ -165,7 +214,7 @@ err_put_node:
 	return NULL;
 }
 
-void __init of_iommu_init(void)
+static int __init of_iommu_init(void)
 {
 	struct device_node *np;
 	const struct of_device_id *match, *matches = &__iommu_of_table;
@@ -177,4 +226,7 @@ void __init of_iommu_init(void)
 			pr_err("Failed to initialise IOMMU %s\n",
 				of_node_full_name(np));
 	}
+
+	return 0;
 }
+postcore_initcall_sync(of_iommu_init);

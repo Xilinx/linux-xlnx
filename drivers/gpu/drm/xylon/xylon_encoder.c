@@ -43,7 +43,7 @@ static void xylon_drm_encoder_dpms(struct drm_encoder *base_encoder, int dpms)
 {
 	struct xylon_drm_encoder *encoder;
 	struct drm_encoder_slave *encoder_slave;
-	struct drm_encoder_slave_funcs *encoder_sfuncs;
+	const struct drm_encoder_slave_funcs *encoder_sfuncs;
 
 	encoder_slave = to_encoder_slave(base_encoder);
 	encoder_sfuncs = encoder_slave->slave_funcs;
@@ -63,7 +63,7 @@ xylon_drm_encoder_mode_fixup(struct drm_encoder *base_encoder,
 			     struct drm_display_mode *adjusted_mode)
 {
 	struct drm_encoder_slave *encoder_slave;
-	struct drm_encoder_slave_funcs *encoder_sfuncs;
+	const struct drm_encoder_slave_funcs *encoder_sfuncs;
 	bool ret = true;
 
 	encoder_slave = to_encoder_slave(base_encoder);
@@ -82,7 +82,7 @@ static void xylon_drm_encoder_mode_set(struct drm_encoder *base_encoder,
 	struct xylon_drm_encoder *encoder;
 	struct drm_device *dev = base_encoder->dev;
 	struct drm_encoder_slave *encoder_slave;
-	struct drm_encoder_slave_funcs *encoder_sfuncs;
+	const struct drm_encoder_slave_funcs *encoder_sfuncs;
 	struct drm_connector *iter;
 	struct drm_connector *connector = NULL;
 
@@ -170,7 +170,7 @@ struct drm_encoder *xylon_drm_encoder_create(struct drm_device *dev)
 	encoder->slave.base.possible_crtcs = 1;
 	ret = drm_encoder_init(dev, &encoder->slave.base,
 			       &xylon_drm_encoder_funcs,
-			       DRM_MODE_ENCODER_TMDS);
+			       DRM_MODE_ENCODER_TMDS, NULL);
 	if (ret) {
 		DRM_ERROR("failed initialize encoder\n");
 		return ERR_PTR(ret);

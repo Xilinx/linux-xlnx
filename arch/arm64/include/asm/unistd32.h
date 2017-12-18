@@ -406,7 +406,7 @@ __SYSCALL(__NR_vfork, sys_vfork)
 #define __NR_ugetrlimit 191	/* SuS compliant getrlimit */
 __SYSCALL(__NR_ugetrlimit, compat_sys_getrlimit)		/* SuS compliant getrlimit */
 #define __NR_mmap2 192
-__SYSCALL(__NR_mmap2, sys_mmap_pgoff)
+__SYSCALL(__NR_mmap2, compat_sys_mmap2_wrapper)
 #define __NR_truncate64 193
 __SYSCALL(__NR_truncate64, compat_sys_truncate64_wrapper)
 #define __NR_ftruncate64 194
@@ -797,3 +797,20 @@ __SYSCALL(__NR_memfd_create, sys_memfd_create)
 __SYSCALL(__NR_bpf, sys_bpf)
 #define __NR_execveat 387
 __SYSCALL(__NR_execveat, compat_sys_execveat)
+#define __NR_userfaultfd 388
+__SYSCALL(__NR_userfaultfd, sys_userfaultfd)
+#define __NR_membarrier 389
+__SYSCALL(__NR_membarrier, sys_membarrier)
+#define __NR_mlock2 390
+__SYSCALL(__NR_mlock2, sys_mlock2)
+#define __NR_copy_file_range 391
+__SYSCALL(__NR_copy_file_range, sys_copy_file_range)
+#define __NR_preadv2 392
+__SYSCALL(__NR_preadv2, compat_sys_preadv2)
+#define __NR_pwritev2 393
+__SYSCALL(__NR_pwritev2, compat_sys_pwritev2)
+
+/*
+ * Please add new compat syscalls above this comment and update
+ * __NR_compat_syscalls in asm/unistd.h.
+ */

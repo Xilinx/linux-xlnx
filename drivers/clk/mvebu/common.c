@@ -13,8 +13,8 @@
  */
 
 #include <linux/kernel.h>
+#include <linux/slab.h>
 #include <linux/clk.h>
-#include <linux/clkdev.h>
 #include <linux/clk-provider.h>
 #include <linux/io.h>
 #include <linux/of.h>
@@ -121,6 +121,11 @@ void __init mvebu_coreclk_setup(struct device_node *np,
 
 	/* Allocate struct for TCLK, cpu clk, and core ratio clocks */
 	clk_data.clk_num = 2 + desc->num_ratios;
+
+	/* One more clock for the optional refclk */
+	if (desc->get_refclk_freq)
+		clk_data.clk_num += 1;
+
 	clk_data.clks = kzalloc(clk_data.clk_num * sizeof(struct clk *),
 				GFP_KERNEL);
 	if (WARN_ON(!clk_data.clks)) {
@@ -132,8 +137,8 @@ void __init mvebu_coreclk_setup(struct device_node *np,
 	of_property_read_string_index(np, "clock-output-names", 0,
 				      &tclk_name);
 	rate = desc->get_tclk_freq(base);
-	clk_data.clks[0] = clk_register_fixed_rate(NULL, tclk_name, NULL,
-						   CLK_IS_ROOT, rate);
+	clk_data.clks[0] = clk_register_fixed_rate(NULL, tclk_name, NULL, 0,
+						   rate);
 	WARN_ON(IS_ERR(clk_data.clks[0]));
 
 	/* Register CPU clock */
@@ -145,8 +150,8 @@ void __init mvebu_coreclk_setup(struct device_node *np,
 		&& desc->is_sscg_enabled(base))
 		rate = desc->fix_sscg_deviation(rate);
 
-	clk_data.clks[1] = clk_register_fixed_rate(NULL, cpuclk_name, NULL,
-						   CLK_IS_ROOT, rate);
+	clk_data.clks[1] = clk_register_fixed_rate(NULL, cpuclk_name, NULL, 0,
+						   rate);
 	WARN_ON(IS_ERR(clk_data.clks[1]));
 
 	/* Register fixed-factor clocks derived from CPU clock */
@@ -160,7 +165,18 @@ void __init mvebu_coreclk_setup(struct device_node *np,
 		clk_data.clks[2+n] = clk_register_fixed_factor(NULL, rclk_name,
 				       cpuclk_name, 0, mult, div);
 		WARN_ON(IS_ERR(clk_data.clks[2+n]));
-	};
+	}
+
+	/* Register optional refclk */
+	if (desc->get_refclk_freq) {
+		const char *name = "refclk";
+		of_property_read_string_index(np, "clock-output-names",
+					      2 + desc->num_ratios, &name);
+		rate = desc->get_refclk_freq(base);
+		clk_data.clks[2 + desc->num_ratios] =
+			clk_register_fixed_rate(NULL, name, NULL, 0, rate);
+		WARN_ON(IS_ERR(clk_data.clks[2 + desc->num_ratios]));
+	}
 
 	/* SAR register isn't needed anymore */
 	iounmap(base);
@@ -181,8 +197,6 @@ struct clk_gating_ctrl {
 	void __iomem *base;
 	u32 saved_reg;
 };
-
-#define to_clk_gate(_hw) container_of(_hw, struct clk_gate, hw)
 
 static struct clk_gating_ctrl *ctrl;
 

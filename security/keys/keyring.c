@@ -118,7 +118,7 @@ static void keyring_publish_name(struct key *keyring)
 		if (!keyring_name_hash[bucket].next)
 			INIT_LIST_HEAD(&keyring_name_hash[bucket]);
 
-		list_add_tail(&keyring->type_data.link,
+		list_add_tail(&keyring->name_link,
 			      &keyring_name_hash[bucket]);
 
 		write_unlock(&keyring_name_lock);
@@ -387,9 +387,9 @@ static void keyring_destroy(struct key *keyring)
 	if (keyring->description) {
 		write_lock(&keyring_name_lock);
 
-		if (keyring->type_data.link.next != NULL &&
-		    !list_empty(&keyring->type_data.link))
-			list_del(&keyring->type_data.link);
+		if (keyring->name_link.next != NULL &&
+		    !list_empty(&keyring->name_link))
+			list_del(&keyring->name_link);
 
 		write_unlock(&keyring_name_lock);
 	}
@@ -491,13 +491,17 @@ static long keyring_read(const struct key *keyring,
  */
 struct key *keyring_alloc(const char *description, kuid_t uid, kgid_t gid,
 			  const struct cred *cred, key_perm_t perm,
-			  unsigned long flags, struct key *dest)
+			  unsigned long flags,
+			  int (*restrict_link)(struct key *,
+					       const struct key_type *,
+					       const union key_payload *),
+			  struct key *dest)
 {
 	struct key *keyring;
 	int ret;
 
 	keyring = key_alloc(&key_type_keyring, description,
-			    uid, gid, cred, perm, flags);
+			    uid, gid, cred, perm, flags, restrict_link);
 	if (!IS_ERR(keyring)) {
 		ret = key_instantiate_and_link(keyring, NULL, 0, dest, NULL);
 		if (ret < 0) {
@@ -509,6 +513,26 @@ struct key *keyring_alloc(const char *description, kuid_t uid, kgid_t gid,
 	return keyring;
 }
 EXPORT_SYMBOL(keyring_alloc);
+
+/**
+ * restrict_link_reject - Give -EPERM to restrict link
+ * @keyring: The keyring being added to.
+ * @type: The type of key being added.
+ * @payload: The payload of the key intended to be added.
+ *
+ * Reject the addition of any links to a keyring.  It can be overridden by
+ * passing KEY_ALLOC_BYPASS_RESTRICTION to key_instantiate_and_link() when
+ * adding a key to a keyring.
+ *
+ * This is meant to be passed as the restrict_link parameter to
+ * keyring_alloc().
+ */
+int restrict_link_reject(struct key *keyring,
+			 const struct key_type *type,
+			 const union key_payload *payload)
+{
+	return -EPERM;
+}
 
 /*
  * By default, we keys found by getting an exact match on their descriptions.
@@ -572,7 +596,7 @@ static int keyring_search_iterator(const void *object, void *iterator_data)
 		/* we set a different error code if we pass a negative key */
 		if (kflags & (1 << KEY_FLAG_NEGATIVE)) {
 			smp_rmb();
-			ctx->result = ERR_PTR(key->type_data.reject_error);
+			ctx->result = ERR_PTR(key->reject_error);
 			kleave(" = %d [neg]", ctx->skipped_ret);
 			goto skipped;
 		}
@@ -990,7 +1014,7 @@ struct key *find_keyring_by_name(const char *name, bool skip_perm_check)
 		 * that's readable and that hasn't been revoked */
 		list_for_each_entry(keyring,
 				    &keyring_name_hash[bucket],
-				    type_data.link
+				    name_link
 				    ) {
 			if (!kuid_has_mapping(current_user_ns(), keyring->user->uid))
 				continue;
@@ -1181,12 +1205,24 @@ void __key_link_end(struct key *keyring,
 	if (index_key->type == &key_type_keyring)
 		up_write(&keyring_serialise_link_sem);
 
-	if (edit && !edit->dead_leaf) {
-		key_payload_reserve(keyring,
-				    keyring->datalen - KEYQUOTA_LINK_BYTES);
+	if (edit) {
+		if (!edit->dead_leaf) {
+			key_payload_reserve(keyring,
+				keyring->datalen - KEYQUOTA_LINK_BYTES);
+		}
 		assoc_array_cancel_edit(edit);
 	}
 	up_write(&keyring->sem);
+}
+
+/*
+ * Check addition of keys to restricted keyrings.
+ */
+static int __key_link_check_restriction(struct key *keyring, struct key *key)
+{
+	if (!keyring->restrict_link)
+		return 0;
+	return keyring->restrict_link(keyring, key->type, &key->payload);
 }
 
 /**
@@ -1219,14 +1255,12 @@ int key_link(struct key *keyring, struct key *key)
 	key_check(keyring);
 	key_check(key);
 
-	if (test_bit(KEY_FLAG_TRUSTED_ONLY, &keyring->flags) &&
-	    !test_bit(KEY_FLAG_TRUSTED, &key->flags))
-		return -EPERM;
-
 	ret = __key_link_begin(keyring, &key->index_key, &edit);
 	if (ret == 0) {
 		kdebug("begun {%d,%d}", keyring->serial, atomic_read(&keyring->usage));
-		ret = __key_link_check_live_key(keyring, key);
+		ret = __key_link_check_restriction(keyring, key);
+		if (ret == 0)
+			ret = __key_link_check_live_key(keyring, key);
 		if (ret == 0)
 			__key_link(key, &edit);
 		__key_link_end(keyring, &key->index_key, edit);

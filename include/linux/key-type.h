@@ -40,13 +40,11 @@ struct key_construction {
  */
 struct key_preparsed_payload {
 	char		*description;	/* Proposed key description (or NULL) */
-	void		*type_data[2];	/* Private key-type data */
-	void		*payload[2];	/* Proposed payload */
+	union key_payload payload;	/* Proposed payload */
 	const void	*data;		/* Raw data */
 	size_t		datalen;	/* Raw datalen */
 	size_t		quotalen;	/* Quota length for proposed payload */
 	time_t		expiry;		/* Expiry time of key */
-	bool		trusted;	/* True if key is trusted */
 };
 
 typedef int (*request_key_actor_t)(struct key_construction *key,

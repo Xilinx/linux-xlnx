@@ -17,7 +17,7 @@
 
 static int sa1100_gpio_get(struct gpio_chip *chip, unsigned offset)
 {
-	return GPLR & GPIO_GPIO(offset);
+	return !!(GPLR & GPIO_GPIO(offset));
 }
 
 static void sa1100_gpio_set(struct gpio_chip *chip, unsigned offset, int value)
@@ -155,12 +155,12 @@ static int sa1100_gpio_irqdomain_map(struct irq_domain *d,
 {
 	irq_set_chip_and_handler(irq, &sa1100_gpio_irq_chip,
 				 handle_edge_irq);
-	set_irq_flags(irq, IRQF_VALID | IRQF_PROBE);
+	irq_set_probe(irq);
 
 	return 0;
 }
 
-static struct irq_domain_ops sa1100_gpio_irqdomain_ops = {
+static const struct irq_domain_ops sa1100_gpio_irqdomain_ops = {
 	.map = sa1100_gpio_irqdomain_map,
 	.xlate = irq_domain_xlate_onetwocell,
 };
@@ -172,10 +172,9 @@ static struct irq_domain *sa1100_gpio_irqdomain;
  * irq_controller_lock held, and IRQs disabled.  Decode the IRQ
  * and call the handler.
  */
-static void
-sa1100_gpio_handler(unsigned int irq, struct irq_desc *desc)
+static void sa1100_gpio_handler(struct irq_desc *desc)
 {
-	unsigned int mask;
+	unsigned int irq, mask;
 
 	mask = GEDR;
 	do {
@@ -239,7 +238,7 @@ void __init sa1100_init_gpio(void)
 	GRER = 0;
 	GEDR = -1;
 
-	gpiochip_add(&sa1100_gpio_chip);
+	gpiochip_add_data(&sa1100_gpio_chip, NULL);
 
 	sa1100_gpio_irqdomain = irq_domain_add_simple(NULL,
 			28, IRQ_GPIO0,

@@ -34,6 +34,7 @@
 #include <drm/drm.h>
 
 #include "radeon.h"
+#include "radeon_ucode.h"
 #include "r600d.h"
 
 /* 1 second timeout */
@@ -47,7 +48,8 @@
 #define FIRMWARE_CYPRESS	"radeon/CYPRESS_uvd.bin"
 #define FIRMWARE_SUMO		"radeon/SUMO_uvd.bin"
 #define FIRMWARE_TAHITI		"radeon/TAHITI_uvd.bin"
-#define FIRMWARE_BONAIRE	"radeon/BONAIRE_uvd.bin"
+#define FIRMWARE_BONAIRE_LEGACY	"radeon/BONAIRE_uvd.bin"
+#define FIRMWARE_BONAIRE	"radeon/bonaire_uvd.bin"
 
 MODULE_FIRMWARE(FIRMWARE_R600);
 MODULE_FIRMWARE(FIRMWARE_RS780);
@@ -56,6 +58,7 @@ MODULE_FIRMWARE(FIRMWARE_RV710);
 MODULE_FIRMWARE(FIRMWARE_CYPRESS);
 MODULE_FIRMWARE(FIRMWARE_SUMO);
 MODULE_FIRMWARE(FIRMWARE_TAHITI);
+MODULE_FIRMWARE(FIRMWARE_BONAIRE_LEGACY);
 MODULE_FIRMWARE(FIRMWARE_BONAIRE);
 
 static void radeon_uvd_idle_work_handler(struct work_struct *work);
@@ -63,7 +66,7 @@ static void radeon_uvd_idle_work_handler(struct work_struct *work);
 int radeon_uvd_init(struct radeon_device *rdev)
 {
 	unsigned long bo_size;
-	const char *fw_name;
+	const char *fw_name = NULL, *legacy_fw_name = NULL;
 	int i, r;
 
 	INIT_DELAYED_WORK(&rdev->uvd.idle_work, radeon_uvd_idle_work_handler);
@@ -74,22 +77,22 @@ int radeon_uvd_init(struct radeon_device *rdev)
 	case CHIP_RV670:
 	case CHIP_RV620:
 	case CHIP_RV635:
-		fw_name = FIRMWARE_R600;
+		legacy_fw_name = FIRMWARE_R600;
 		break;
 
 	case CHIP_RS780:
 	case CHIP_RS880:
-		fw_name = FIRMWARE_RS780;
+		legacy_fw_name = FIRMWARE_RS780;
 		break;
 
 	case CHIP_RV770:
-		fw_name = FIRMWARE_RV770;
+		legacy_fw_name = FIRMWARE_RV770;
 		break;
 
 	case CHIP_RV710:
 	case CHIP_RV730:
 	case CHIP_RV740:
-		fw_name = FIRMWARE_RV710;
+		legacy_fw_name = FIRMWARE_RV710;
 		break;
 
 	case CHIP_CYPRESS:
@@ -97,7 +100,7 @@ int radeon_uvd_init(struct radeon_device *rdev)
 	case CHIP_JUNIPER:
 	case CHIP_REDWOOD:
 	case CHIP_CEDAR:
-		fw_name = FIRMWARE_CYPRESS;
+		legacy_fw_name = FIRMWARE_CYPRESS;
 		break;
 
 	case CHIP_SUMO:
@@ -107,7 +110,7 @@ int radeon_uvd_init(struct radeon_device *rdev)
 	case CHIP_BARTS:
 	case CHIP_TURKS:
 	case CHIP_CAICOS:
-		fw_name = FIRMWARE_SUMO;
+		legacy_fw_name = FIRMWARE_SUMO;
 		break;
 
 	case CHIP_TAHITI:
@@ -115,7 +118,7 @@ int radeon_uvd_init(struct radeon_device *rdev)
 	case CHIP_PITCAIRN:
 	case CHIP_ARUBA:
 	case CHIP_OLAND:
-		fw_name = FIRMWARE_TAHITI;
+		legacy_fw_name = FIRMWARE_TAHITI;
 		break;
 
 	case CHIP_BONAIRE:
@@ -123,6 +126,7 @@ int radeon_uvd_init(struct radeon_device *rdev)
 	case CHIP_KAVERI:
 	case CHIP_HAWAII:
 	case CHIP_MULLINS:
+		legacy_fw_name = FIRMWARE_BONAIRE_LEGACY;
 		fw_name = FIRMWARE_BONAIRE;
 		break;
 
@@ -130,16 +134,56 @@ int radeon_uvd_init(struct radeon_device *rdev)
 		return -EINVAL;
 	}
 
-	r = request_firmware(&rdev->uvd_fw, fw_name, rdev->dev);
-	if (r) {
-		dev_err(rdev->dev, "radeon_uvd: Can't load firmware \"%s\"\n",
-			fw_name);
-		return r;
+	rdev->uvd.fw_header_present = false;
+	rdev->uvd.max_handles = RADEON_DEFAULT_UVD_HANDLES;
+	if (fw_name) {
+		/* Let's try to load the newer firmware first */
+		r = request_firmware(&rdev->uvd_fw, fw_name, rdev->dev);
+		if (r) {
+			dev_err(rdev->dev, "radeon_uvd: Can't load firmware \"%s\"\n",
+				fw_name);
+		} else {
+			struct common_firmware_header *hdr = (void *)rdev->uvd_fw->data;
+			unsigned version_major, version_minor, family_id;
+
+			r = radeon_ucode_validate(rdev->uvd_fw);
+			if (r)
+				return r;
+
+			rdev->uvd.fw_header_present = true;
+
+			family_id = le32_to_cpu(hdr->ucode_version) & 0xff;
+			version_major = (le32_to_cpu(hdr->ucode_version) >> 24) & 0xff;
+			version_minor = (le32_to_cpu(hdr->ucode_version) >> 8) & 0xff;
+			DRM_INFO("Found UVD firmware Version: %hu.%hu Family ID: %hu\n",
+				 version_major, version_minor, family_id);
+
+			/*
+			 * Limit the number of UVD handles depending on
+			 * microcode major and minor versions.
+			 */
+			if ((version_major >= 0x01) && (version_minor >= 0x37))
+				rdev->uvd.max_handles = RADEON_MAX_UVD_HANDLES;
+		}
+	}
+
+	/*
+	 * In case there is only legacy firmware, or we encounter an error
+	 * while loading the new firmware, we fall back to loading the legacy
+	 * firmware now.
+	 */
+	if (!fw_name || r) {
+		r = request_firmware(&rdev->uvd_fw, legacy_fw_name, rdev->dev);
+		if (r) {
+			dev_err(rdev->dev, "radeon_uvd: Can't load firmware \"%s\"\n",
+				legacy_fw_name);
+			return r;
+		}
 	}
 
 	bo_size = RADEON_GPU_PAGE_ALIGN(rdev->uvd_fw->size + 8) +
 		  RADEON_UVD_STACK_SIZE + RADEON_UVD_HEAP_SIZE +
-		  RADEON_GPU_PAGE_SIZE;
+		  RADEON_UVD_SESSION_SIZE * rdev->uvd.max_handles;
 	r = radeon_bo_create(rdev, bo_size, PAGE_SIZE, true,
 			     RADEON_GEM_DOMAIN_VRAM, 0, NULL,
 			     NULL, &rdev->uvd.vcpu_bo);
@@ -172,7 +216,7 @@ int radeon_uvd_init(struct radeon_device *rdev)
 
 	radeon_bo_unreserve(rdev->uvd.vcpu_bo);
 
-	for (i = 0; i < RADEON_MAX_UVD_HANDLES; ++i) {
+	for (i = 0; i < rdev->uvd.max_handles; ++i) {
 		atomic_set(&rdev->uvd.handles[i], 0);
 		rdev->uvd.filp[i] = NULL;
 		rdev->uvd.img_size[i] = 0;
@@ -204,28 +248,32 @@ void radeon_uvd_fini(struct radeon_device *rdev)
 
 int radeon_uvd_suspend(struct radeon_device *rdev)
 {
-	unsigned size;
-	void *ptr;
-	int i;
+	int i, r;
 
 	if (rdev->uvd.vcpu_bo == NULL)
 		return 0;
 
-	for (i = 0; i < RADEON_MAX_UVD_HANDLES; ++i)
-		if (atomic_read(&rdev->uvd.handles[i]))
-			break;
+	for (i = 0; i < rdev->uvd.max_handles; ++i) {
+		uint32_t handle = atomic_read(&rdev->uvd.handles[i]);
+		if (handle != 0) {
+			struct radeon_fence *fence;
 
-	if (i == RADEON_MAX_UVD_HANDLES)
-		return 0;
+			radeon_uvd_note_usage(rdev);
 
-	size = radeon_bo_size(rdev->uvd.vcpu_bo);
-	size -= rdev->uvd_fw->size;
+			r = radeon_uvd_get_destroy_msg(rdev,
+				R600_RING_TYPE_UVD_INDEX, handle, &fence);
+			if (r) {
+				DRM_ERROR("Error destroying UVD (%d)!\n", r);
+				continue;
+			}
 
-	ptr = rdev->uvd.cpu_addr;
-	ptr += rdev->uvd_fw->size;
+			radeon_fence_wait(fence, false);
+			radeon_fence_unref(&fence);
 
-	rdev->uvd.saved_bo = kmalloc(size, GFP_KERNEL);
-	memcpy(rdev->uvd.saved_bo, ptr, size);
+			rdev->uvd.filp[i] = NULL;
+			atomic_set(&rdev->uvd.handles[i], 0);
+		}
+	}
 
 	return 0;
 }
@@ -246,12 +294,7 @@ int radeon_uvd_resume(struct radeon_device *rdev)
 	ptr = rdev->uvd.cpu_addr;
 	ptr += rdev->uvd_fw->size;
 
-	if (rdev->uvd.saved_bo != NULL) {
-		memcpy(ptr, rdev->uvd.saved_bo, size);
-		kfree(rdev->uvd.saved_bo);
-		rdev->uvd.saved_bo = NULL;
-	} else
-		memset(ptr, 0, size);
+	memset(ptr, 0, size);
 
 	return 0;
 }
@@ -285,7 +328,7 @@ void radeon_uvd_force_into_uvd_segment(struct radeon_bo *rbo,
 void radeon_uvd_free_handles(struct radeon_device *rdev, struct drm_file *filp)
 {
 	int i, r;
-	for (i = 0; i < RADEON_MAX_UVD_HANDLES; ++i) {
+	for (i = 0; i < rdev->uvd.max_handles; ++i) {
 		uint32_t handle = atomic_read(&rdev->uvd.handles[i]);
 		if (handle != 0 && rdev->uvd.filp[i] == filp) {
 			struct radeon_fence *fence;
@@ -396,6 +439,29 @@ static int radeon_uvd_cs_msg_decode(uint32_t *msg, unsigned buf_sizes[])
 	return 0;
 }
 
+static int radeon_uvd_validate_codec(struct radeon_cs_parser *p,
+				     unsigned stream_type)
+{
+	switch (stream_type) {
+	case 0: /* H264 */
+	case 1: /* VC1 */
+		/* always supported */
+		return 0;
+
+	case 3: /* MPEG2 */
+	case 4: /* MPEG4 */
+		/* only since UVD 3 */
+		if (p->rdev->family >= CHIP_PALM)
+			return 0;
+
+		/* fall through */
+	default:
+		DRM_ERROR("UVD codec not supported by hardware %d!\n",
+			  stream_type);
+		return -EINVAL;
+	}
+}
+
 static int radeon_uvd_cs_msg(struct radeon_cs_parser *p, struct radeon_bo *bo,
 			     unsigned offset, unsigned buf_sizes[])
 {
@@ -436,50 +502,70 @@ static int radeon_uvd_cs_msg(struct radeon_cs_parser *p, struct radeon_bo *bo,
 		return -EINVAL;
 	}
 
-	if (msg_type == 1) {
-		/* it's a decode msg, calc buffer sizes */
-		r = radeon_uvd_cs_msg_decode(msg, buf_sizes);
-		/* calc image size (width * height) */
-		img_size = msg[6] * msg[7];
+	switch (msg_type) {
+	case 0:
+		/* it's a create msg, calc image size (width * height) */
+		img_size = msg[7] * msg[8];
+
+		r = radeon_uvd_validate_codec(p, msg[4]);
 		radeon_bo_kunmap(bo);
 		if (r)
 			return r;
 
-	} else if (msg_type == 2) {
+		/* try to alloc a new handle */
+		for (i = 0; i < p->rdev->uvd.max_handles; ++i) {
+			if (atomic_read(&p->rdev->uvd.handles[i]) == handle) {
+				DRM_ERROR("Handle 0x%x already in use!\n", handle);
+				return -EINVAL;
+			}
+
+			if (!atomic_cmpxchg(&p->rdev->uvd.handles[i], 0, handle)) {
+				p->rdev->uvd.filp[i] = p->filp;
+				p->rdev->uvd.img_size[i] = img_size;
+				return 0;
+			}
+		}
+
+		DRM_ERROR("No more free UVD handles!\n");
+		return -EINVAL;
+
+	case 1:
+		/* it's a decode msg, validate codec and calc buffer sizes */
+		r = radeon_uvd_validate_codec(p, msg[4]);
+		if (!r)
+			r = radeon_uvd_cs_msg_decode(msg, buf_sizes);
+		radeon_bo_kunmap(bo);
+		if (r)
+			return r;
+
+		/* validate the handle */
+		for (i = 0; i < p->rdev->uvd.max_handles; ++i) {
+			if (atomic_read(&p->rdev->uvd.handles[i]) == handle) {
+				if (p->rdev->uvd.filp[i] != p->filp) {
+					DRM_ERROR("UVD handle collision detected!\n");
+					return -EINVAL;
+				}
+				return 0;
+			}
+		}
+
+		DRM_ERROR("Invalid UVD handle 0x%x!\n", handle);
+		return -ENOENT;
+
+	case 2:
 		/* it's a destroy msg, free the handle */
-		for (i = 0; i < RADEON_MAX_UVD_HANDLES; ++i)
+		for (i = 0; i < p->rdev->uvd.max_handles; ++i)
 			atomic_cmpxchg(&p->rdev->uvd.handles[i], handle, 0);
 		radeon_bo_kunmap(bo);
 		return 0;
-	} else {
-		/* it's a create msg, calc image size (width * height) */
-		img_size = msg[7] * msg[8];
-		radeon_bo_kunmap(bo);
 
-		if (msg_type != 0) {
-			DRM_ERROR("Illegal UVD message type (%d)!\n", msg_type);
-			return -EINVAL;
-		}
+	default:
 
-		/* it's a create msg, no special handling needed */
+		DRM_ERROR("Illegal UVD message type (%d)!\n", msg_type);
+		return -EINVAL;
 	}
 
-	/* create or decode, validate the handle */
-	for (i = 0; i < RADEON_MAX_UVD_HANDLES; ++i) {
-		if (atomic_read(&p->rdev->uvd.handles[i]) == handle)
-			return 0;
-	}
-
-	/* handle not found try to alloc a new one */
-	for (i = 0; i < RADEON_MAX_UVD_HANDLES; ++i) {
-		if (!atomic_cmpxchg(&p->rdev->uvd.handles[i], 0, handle)) {
-			p->rdev->uvd.filp[i] = p->filp;
-			p->rdev->uvd.img_size[i] = img_size;
-			return 0;
-		}
-	}
-
-	DRM_ERROR("No more free UVD handles!\n");
+	BUG();
 	return -EINVAL;
 }
 
@@ -583,6 +669,7 @@ static int radeon_uvd_cs_reg(struct radeon_cs_parser *p,
 				return r;
 			break;
 		case UVD_ENGINE_CNTL:
+		case UVD_NO_OP:
 			break;
 		default:
 			DRM_ERROR("Invalid reg 0x%X!\n",
@@ -667,8 +754,10 @@ static int radeon_uvd_send_msg(struct radeon_device *rdev,
 	ib.ptr[3] = addr >> 32;
 	ib.ptr[4] = PACKET0(UVD_GPCOM_VCPU_CMD, 0);
 	ib.ptr[5] = 0;
-	for (i = 6; i < 16; ++i)
-		ib.ptr[i] = PACKET2(0);
+	for (i = 6; i < 16; i += 2) {
+		ib.ptr[i] = PACKET0(UVD_NO_OP, 0);
+		ib.ptr[i+1] = 0;
+	}
 	ib.length_dw = 16;
 
 	r = radeon_ib_schedule(rdev, &ib, NULL, false);
@@ -680,9 +769,11 @@ static int radeon_uvd_send_msg(struct radeon_device *rdev,
 	return r;
 }
 
-/* multiple fence commands without any stream commands in between can
-   crash the vcpu so just try to emmit a dummy create/destroy msg to
-   avoid this */
+/*
+ * multiple fence commands without any stream commands in between can
+ * crash the vcpu so just try to emmit a dummy create/destroy msg to
+ * avoid this
+ */
 int radeon_uvd_get_create_msg(struct radeon_device *rdev, int ring,
 			      uint32_t handle, struct radeon_fence **fence)
 {
@@ -765,7 +856,7 @@ static void radeon_uvd_count_handles(struct radeon_device *rdev,
 	*sd = 0;
 	*hd = 0;
 
-	for (i = 0; i < RADEON_MAX_UVD_HANDLES; ++i) {
+	for (i = 0; i < rdev->uvd.max_handles; ++i) {
 		if (!atomic_read(&rdev->uvd.handles[i]))
 			continue;
 

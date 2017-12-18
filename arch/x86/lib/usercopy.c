@@ -5,7 +5,7 @@
  */
 
 #include <linux/highmem.h>
-#include <linux/module.h>
+#include <linux/export.h>
 
 #include <asm/word-at-a-time.h>
 #include <linux/sched.h>
@@ -20,7 +20,7 @@ copy_from_user_nmi(void *to, const void __user *from, unsigned long n)
 	unsigned long ret;
 
 	if (__range_not_ok(from, n, TASK_SIZE))
-		return 0;
+		return n;
 
 	/*
 	 * Even though this function is typically called from NMI/IRQ context

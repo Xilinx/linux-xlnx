@@ -66,7 +66,7 @@ static const struct bug_entry *module_find_bug(unsigned long bugaddr)
 	struct module *mod;
 	const struct bug_entry *bug = NULL;
 
-	rcu_read_lock();
+	rcu_read_lock_sched();
 	list_for_each_entry_rcu(mod, &module_bug_list, bug_list) {
 		unsigned i;
 
@@ -77,7 +77,7 @@ static const struct bug_entry *module_find_bug(unsigned long bugaddr)
 	}
 	bug = NULL;
 out:
-	rcu_read_unlock();
+	rcu_read_unlock_sched();
 
 	return bug;
 }
@@ -87,6 +87,8 @@ void module_bug_finalize(const Elf_Ehdr *hdr, const Elf_Shdr *sechdrs,
 {
 	char *secstrings;
 	unsigned int i;
+
+	lockdep_assert_held(&module_mutex);
 
 	mod->bug_table = NULL;
 	mod->num_bugs = 0;
@@ -113,6 +115,7 @@ void module_bug_finalize(const Elf_Ehdr *hdr, const Elf_Shdr *sechdrs,
 
 void module_bug_cleanup(struct module *mod)
 {
+	lockdep_assert_held(&module_mutex);
 	list_del_rcu(&mod->bug_list);
 }
 
@@ -164,19 +167,8 @@ enum bug_trap_type report_bug(unsigned long bugaddr, struct pt_regs *regs)
 
 	if (warning) {
 		/* this is a WARN_ON rather than BUG/BUG_ON */
-		pr_warn("------------[ cut here ]------------\n");
-
-		if (file)
-			pr_warn("WARNING: at %s:%u\n", file, line);
-		else
-			pr_warn("WARNING: at %p [verbose debug info unavailable]\n",
-				(void *)bugaddr);
-
-		print_modules();
-		show_regs(regs);
-		print_oops_end_marker();
-		/* Just a warning, don't kill lockdep. */
-		add_taint(BUG_GET_TAINT(bug), LOCKDEP_STILL_OK);
+		__warn(file, line, (void *)bugaddr, BUG_GET_TAINT(bug), regs,
+		       NULL);
 		return BUG_TRAP_TYPE_WARN;
 	}
 

@@ -1,4 +1,4 @@
-/* Copyright (C) 2007-2014 B.A.T.M.A.N. contributors:
+/* Copyright (C) 2007-2016  B.A.T.M.A.N. contributors:
  *
  * Marek Lindner, Simon Wunderlich
  *
@@ -18,17 +18,35 @@
 #ifndef _NET_BATMAN_ADV_SEND_H_
 #define _NET_BATMAN_ADV_SEND_H_
 
-int batadv_send_skb_packet(struct sk_buff *skb,
-			   struct batadv_hard_iface *hard_iface,
-			   const uint8_t *dst_addr);
+#include "main.h"
+
+#include <linux/compiler.h>
+#include <linux/types.h>
+
+#include "packet.h"
+
+struct sk_buff;
+
+void batadv_forw_packet_free(struct batadv_forw_packet *forw_packet);
+struct batadv_forw_packet *
+batadv_forw_packet_alloc(struct batadv_hard_iface *if_incoming,
+			 struct batadv_hard_iface *if_outgoing,
+			 atomic_t *queue_left,
+			 struct batadv_priv *bat_priv);
+
 int batadv_send_skb_to_orig(struct sk_buff *skb,
 			    struct batadv_orig_node *orig_node,
 			    struct batadv_hard_iface *recv_if);
-void batadv_schedule_bat_ogm(struct batadv_hard_iface *hard_iface);
+int batadv_send_skb_packet(struct sk_buff *skb,
+			   struct batadv_hard_iface *hard_iface,
+			   const u8 *dst_addr);
+int batadv_send_broadcast_skb(struct sk_buff *skb,
+			      struct batadv_hard_iface *hard_iface);
+int batadv_send_unicast_skb(struct sk_buff *skb,
+			    struct batadv_neigh_node *neigh_node);
 int batadv_add_bcast_packet_to_list(struct batadv_priv *bat_priv,
 				    const struct sk_buff *skb,
 				    unsigned long delay);
-void batadv_send_outstanding_bat_ogm_packet(struct work_struct *work);
 void
 batadv_purge_outstanding_packets(struct batadv_priv *bat_priv,
 				 const struct batadv_hard_iface *hard_iface);
@@ -43,7 +61,7 @@ int batadv_send_skb_unicast(struct batadv_priv *bat_priv,
 			    unsigned short vid);
 int batadv_send_skb_via_tt_generic(struct batadv_priv *bat_priv,
 				   struct sk_buff *skb, int packet_type,
-				   int packet_subtype, uint8_t *dst_hint,
+				   int packet_subtype, u8 *dst_hint,
 				   unsigned short vid);
 int batadv_send_skb_via_gw(struct batadv_priv *bat_priv, struct sk_buff *skb,
 			   unsigned short vid);
@@ -59,10 +77,10 @@ int batadv_send_skb_via_gw(struct batadv_priv *bat_priv, struct sk_buff *skb,
  * header via the translation table. Wrap the given skb into a batman-adv
  * unicast header. Then send this frame to the according destination node.
  *
- * Returns NET_XMIT_DROP in case of error or NET_XMIT_SUCCESS otherwise.
+ * Return: NET_XMIT_DROP in case of error or NET_XMIT_SUCCESS otherwise.
  */
 static inline int batadv_send_skb_via_tt(struct batadv_priv *bat_priv,
-					 struct sk_buff *skb, uint8_t *dst_hint,
+					 struct sk_buff *skb, u8 *dst_hint,
 					 unsigned short vid)
 {
 	return batadv_send_skb_via_tt_generic(bat_priv, skb, BATADV_UNICAST, 0,
@@ -82,12 +100,12 @@ static inline int batadv_send_skb_via_tt(struct batadv_priv *bat_priv,
  * unicast-4addr header. Then send this frame to the according destination
  * node.
  *
- * Returns NET_XMIT_DROP in case of error or NET_XMIT_SUCCESS otherwise.
+ * Return: NET_XMIT_DROP in case of error or NET_XMIT_SUCCESS otherwise.
  */
 static inline int batadv_send_skb_via_tt_4addr(struct batadv_priv *bat_priv,
 					       struct sk_buff *skb,
 					       int packet_subtype,
-					       uint8_t *dst_hint,
+					       u8 *dst_hint,
 					       unsigned short vid)
 {
 	return batadv_send_skb_via_tt_generic(bat_priv, skb,

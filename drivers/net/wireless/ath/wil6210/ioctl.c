@@ -76,11 +76,11 @@ static int wil_ioc_memio_dword(struct wil6210_priv *wil, void __user *data)
 	/* operation */
 	switch (io.op & wil_mmio_op_mask) {
 	case wil_mmio_read:
-		io.val = ioread32(a);
+		io.val = readl(a);
 		need_copy = true;
 		break;
 	case wil_mmio_write:
-		iowrite32(io.val, a);
+		writel(io.val, a);
 		wmb(); /* make sure write propagated to HW */
 		break;
 	default:
@@ -161,13 +161,20 @@ out_free:
 
 int wil_ioctl(struct wil6210_priv *wil, void __user *data, int cmd)
 {
+	int ret;
+
 	switch (cmd) {
 	case WIL_IOCTL_MEMIO:
-		return wil_ioc_memio_dword(wil, data);
+		ret = wil_ioc_memio_dword(wil, data);
+		break;
 	case WIL_IOCTL_MEMIO_BLOCK:
-		return wil_ioc_memio_block(wil, data);
+		ret = wil_ioc_memio_block(wil, data);
+		break;
 	default:
 		wil_dbg_ioctl(wil, "Unsupported IOCTL 0x%04x\n", cmd);
 		return -ENOIOCTLCMD;
 	}
+
+	wil_dbg_ioctl(wil, "ioctl(0x%04x) -> %d\n", cmd, ret);
+	return ret;
 }

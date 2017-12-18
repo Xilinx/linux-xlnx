@@ -17,10 +17,19 @@ to deliver its interrupts via SPIs.
 - interrupts : Interrupt list for secure, non-secure, virtual and
   hypervisor timers, in that order.
 
-- clock-frequency : The frequency of the main counter, in Hz. Optional.
+- clock-frequency : The frequency of the main counter, in Hz. Should be present
+  only where necessary to work around broken firmware which does not configure
+  CNTFRQ on all CPUs to a uniform correct value. Use of this property is
+  strongly discouraged; fix your firmware unless absolutely impossible.
 
 - always-on : a boolean property. If present, the timer is powered through an
   always-on power domain, therefore it never loses context.
+
+- fsl,erratum-a008585 : A boolean property. Indicates the presence of
+  QorIQ erratum A-008585, which says that reading the counter is
+  unreliable unless the same value is returned by back-to-back reads.
+  This also affects writes to the tval register, due to the implicit
+  counter read.
 
 ** Optional properties:
 
@@ -46,7 +55,8 @@ Example:
 
 - compatible : Should at least contain "arm,armv7-timer-mem".
 
-- clock-frequency : The frequency of the main counter, in Hz. Optional.
+- clock-frequency : The frequency of the main counter, in Hz. Should be present
+  only when firmware has not configured the MMIO CNTFRQ registers.
 
 - reg : The control frame base address.
 

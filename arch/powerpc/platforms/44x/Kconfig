@@ -273,18 +273,9 @@ config PPC44x_SIMPLE
 config PPC4xx_GPIO
 	bool "PPC4xx GPIO support"
 	depends on 44x
-	select ARCH_REQUIRE_GPIOLIB
+	select GPIOLIB
 	help
 	  Enable gpiolib support for ppc440 based boards
-
-config XILINX_PPC_FPU
-	depends on XILINX_VIRTEX_5_FXT
-	bool "Enable Xilinx Soft FPU"
-	select PPC_FPU
-	default n
-	help
-	  This option enables the Xilinx Soft FPU attached to the APU
-	  interface of the PPC440 (requires DP_FULL FPU pcore).
 
 config PPC4xx_OCM
 	bool "PPC4xx On Chip Memory (OCM) support"

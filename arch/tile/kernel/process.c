@@ -22,11 +22,13 @@
 #include <linux/init.h>
 #include <linux/mm.h>
 #include <linux/compat.h>
-#include <linux/hardirq.h>
+#include <linux/nmi.h>
 #include <linux/syscalls.h>
 #include <linux/kernel.h>
 #include <linux/tracehook.h>
 #include <linux/signal.h>
+#include <linux/delay.h>
+#include <linux/context_tracking.h>
 #include <asm/stack.h>
 #include <asm/switch_to.h>
 #include <asm/homecache.h>
@@ -71,8 +73,9 @@ void arch_cpu_idle(void)
 /*
  * Release a thread_info structure
  */
-void arch_release_thread_info(struct thread_info *info)
+void arch_release_thread_stack(unsigned long *stack)
 {
+	struct thread_info *info = (void *)stack;
 	struct single_step_state *step_state = info->step_state;
 
 	if (step_state) {
@@ -131,7 +134,6 @@ int copy_thread(unsigned long clone_flags, unsigned long sp,
 		       (CALLEE_SAVED_REGS_COUNT - 2) * sizeof(unsigned long));
 		callee_regs[0] = sp;   /* r30 = function */
 		callee_regs[1] = arg;  /* r31 = arg */
-		childregs->ex1 = PL_ICS_EX1(KERNEL_PL, 0);
 		p->thread.pc = (unsigned long) ret_from_kernel_thread;
 		return 0;
 	}
@@ -445,6 +447,11 @@ struct task_struct *__sched _switch_to(struct task_struct *prev,
 	hardwall_switch_tasks(prev, next);
 #endif
 
+	/* Notify the simulator of task exit. */
+	if (unlikely(prev->state == TASK_DEAD))
+		__insn_mtspr(SPR_SIM_CONTROL, SIM_CONTROL_OS_EXIT |
+			     (prev->pid << _SIM_CONTROL_OPERATOR_BITS));
+
 	/*
 	 * Switch kernel SP, PC, and callee-saved registers.
 	 * In the context of the new task, return the old task pointer
@@ -456,51 +463,57 @@ struct task_struct *__sched _switch_to(struct task_struct *prev,
 
 /*
  * This routine is called on return from interrupt if any of the
- * TIF_WORK_MASK flags are set in thread_info->flags.  It is
- * entered with interrupts disabled so we don't miss an event
- * that modified the thread_info flags.  If any flag is set, we
- * handle it and return, and the calling assembly code will
- * re-disable interrupts, reload the thread flags, and call back
- * if more flags need to be handled.
- *
- * We return whether we need to check the thread_info flags again
- * or not.  Note that we don't clear TIF_SINGLESTEP here, so it's
- * important that it be tested last, and then claim that we don't
- * need to recheck the flags.
+ * TIF_ALLWORK_MASK flags are set in thread_info->flags.  It is
+ * entered with interrupts disabled so we don't miss an event that
+ * modified the thread_info flags.  We loop until all the tested flags
+ * are clear.  Note that the function is called on certain conditions
+ * that are not listed in the loop condition here (e.g. SINGLESTEP)
+ * which guarantees we will do those things once, and redo them if any
+ * of the other work items is re-done, but won't continue looping if
+ * all the other work is done.
  */
-int do_work_pending(struct pt_regs *regs, u32 thread_info_flags)
+void prepare_exit_to_usermode(struct pt_regs *regs, u32 thread_info_flags)
 {
-	/* If we enter in kernel mode, do nothing and exit the caller loop. */
-	if (!user_mode(regs))
-		return 0;
+	if (WARN_ON(!user_mode(regs)))
+		return;
 
-	/* Enable interrupts; they are disabled again on return to caller. */
-	local_irq_enable();
+	do {
+		local_irq_enable();
 
-	if (thread_info_flags & _TIF_NEED_RESCHED) {
-		schedule();
-		return 1;
-	}
+		if (thread_info_flags & _TIF_NEED_RESCHED)
+			schedule();
+
 #if CHIP_HAS_TILE_DMA()
-	if (thread_info_flags & _TIF_ASYNC_TLB) {
-		do_async_page_fault(regs);
-		return 1;
-	}
+		if (thread_info_flags & _TIF_ASYNC_TLB)
+			do_async_page_fault(regs);
 #endif
-	if (thread_info_flags & _TIF_SIGPENDING) {
-		do_signal(regs);
-		return 1;
-	}
-	if (thread_info_flags & _TIF_NOTIFY_RESUME) {
-		clear_thread_flag(TIF_NOTIFY_RESUME);
-		tracehook_notify_resume(regs);
-		return 1;
-	}
+
+		if (thread_info_flags & _TIF_SIGPENDING)
+			do_signal(regs);
+
+		if (thread_info_flags & _TIF_NOTIFY_RESUME) {
+			clear_thread_flag(TIF_NOTIFY_RESUME);
+			tracehook_notify_resume(regs);
+		}
+
+		local_irq_disable();
+		thread_info_flags = READ_ONCE(current_thread_info()->flags);
+
+	} while (thread_info_flags & _TIF_WORK_MASK);
+
 	if (thread_info_flags & _TIF_SINGLESTEP) {
 		single_step_once(regs);
-		return 0;
+#ifndef __tilegx__
+		/*
+		 * FIXME: on tilepro, since we enable interrupts in
+		 * this routine, it's possible that we miss a signal
+		 * or other asynchronous event.
+		 */
+		local_irq_disable();
+#endif
 	}
-	panic("work_pending: bad flags %#x\n", thread_info_flags);
+
+	user_enter();
 }
 
 unsigned long get_wchan(struct task_struct *p)
@@ -529,7 +542,7 @@ void flush_thread(void)
 /*
  * Free current thread data structures etc..
  */
-void exit_thread(void)
+void exit_thread(struct task_struct *tsk)
 {
 #ifdef CONFIG_HARDWALL
 	/*
@@ -538,35 +551,106 @@ void exit_thread(void)
 	 * the last reference to a hardwall fd, it would already have
 	 * been released and deactivated at this point.)
 	 */
-	hardwall_deactivate_all(current);
+	hardwall_deactivate_all(tsk);
 #endif
+}
+
+void tile_show_regs(struct pt_regs *regs)
+{
+	int i;
+#ifdef __tilegx__
+	for (i = 0; i < 17; i++)
+		pr_err(" r%-2d: "REGFMT" r%-2d: "REGFMT" r%-2d: "REGFMT"\n",
+		       i, regs->regs[i], i+18, regs->regs[i+18],
+		       i+36, regs->regs[i+36]);
+	pr_err(" r17: "REGFMT" r35: "REGFMT" tp : "REGFMT"\n",
+	       regs->regs[17], regs->regs[35], regs->tp);
+	pr_err(" sp : "REGFMT" lr : "REGFMT"\n", regs->sp, regs->lr);
+#else
+	for (i = 0; i < 13; i++)
+		pr_err(" r%-2d: "REGFMT" r%-2d: "REGFMT
+		       " r%-2d: "REGFMT" r%-2d: "REGFMT"\n",
+		       i, regs->regs[i], i+14, regs->regs[i+14],
+		       i+27, regs->regs[i+27], i+40, regs->regs[i+40]);
+	pr_err(" r13: "REGFMT" tp : "REGFMT" sp : "REGFMT" lr : "REGFMT"\n",
+	       regs->regs[13], regs->tp, regs->sp, regs->lr);
+#endif
+	pr_err(" pc : "REGFMT" ex1: %ld     faultnum: %ld flags:%s%s%s%s\n",
+	       regs->pc, regs->ex1, regs->faultnum,
+	       is_compat_task() ? " compat" : "",
+	       (regs->flags & PT_FLAGS_DISABLE_IRQ) ? " noirq" : "",
+	       !(regs->flags & PT_FLAGS_CALLER_SAVES) ? " nocallersave" : "",
+	       (regs->flags & PT_FLAGS_RESTORE_REGS) ? " restoreregs" : "");
 }
 
 void show_regs(struct pt_regs *regs)
 {
-	struct task_struct *tsk = validate_current();
-	int i;
+	struct KBacktraceIterator kbt;
 
-	if (tsk != &corrupt_current)
-		show_regs_print_info(KERN_ERR);
-#ifdef __tilegx__
-	for (i = 0; i < 17; i++)
-		pr_err(" r%-2d: " REGFMT " r%-2d: " REGFMT " r%-2d: " REGFMT "\n",
-		       i, regs->regs[i], i+18, regs->regs[i+18],
-		       i+36, regs->regs[i+36]);
-	pr_err(" r17: " REGFMT " r35: " REGFMT " tp : " REGFMT "\n",
-	       regs->regs[17], regs->regs[35], regs->tp);
-	pr_err(" sp : " REGFMT " lr : " REGFMT "\n", regs->sp, regs->lr);
-#else
-	for (i = 0; i < 13; i++)
-		pr_err(" r%-2d: " REGFMT " r%-2d: " REGFMT " r%-2d: " REGFMT " r%-2d: " REGFMT "\n",
-		       i, regs->regs[i], i+14, regs->regs[i+14],
-		       i+27, regs->regs[i+27], i+40, regs->regs[i+40]);
-	pr_err(" r13: " REGFMT " tp : " REGFMT " sp : " REGFMT " lr : " REGFMT "\n",
-	       regs->regs[13], regs->tp, regs->sp, regs->lr);
-#endif
-	pr_err(" pc : " REGFMT " ex1: %ld     faultnum: %ld\n",
-	       regs->pc, regs->ex1, regs->faultnum);
+	show_regs_print_info(KERN_DEFAULT);
+	tile_show_regs(regs);
 
-	dump_stack_regs(regs);
+	KBacktraceIterator_init(&kbt, NULL, regs);
+	tile_show_stack(&kbt);
 }
+
+#ifdef __tilegx__
+void nmi_raise_cpu_backtrace(struct cpumask *in_mask)
+{
+	struct cpumask mask;
+	HV_Coord tile;
+	unsigned int timeout;
+	int cpu;
+	HV_NMI_Info info[NR_CPUS];
+
+	/* Tentatively dump stack on remote tiles via NMI. */
+	timeout = 100;
+	cpumask_copy(&mask, in_mask);
+	while (!cpumask_empty(&mask) && timeout) {
+		for_each_cpu(cpu, &mask) {
+			tile.x = cpu_x(cpu);
+			tile.y = cpu_y(cpu);
+			info[cpu] = hv_send_nmi(tile, TILE_NMI_DUMP_STACK, 0);
+			if (info[cpu].result == HV_NMI_RESULT_OK)
+				cpumask_clear_cpu(cpu, &mask);
+		}
+
+		mdelay(10);
+		touch_softlockup_watchdog();
+		timeout--;
+	}
+
+	/* Warn about cpus stuck in ICS. */
+	if (!cpumask_empty(&mask)) {
+		for_each_cpu(cpu, &mask) {
+
+			/* Clear the bit as if nmi_cpu_backtrace() ran. */
+			cpumask_clear_cpu(cpu, in_mask);
+
+			switch (info[cpu].result) {
+			case HV_NMI_RESULT_FAIL_ICS:
+				pr_warn("Skipping stack dump of cpu %d in ICS at pc %#llx\n",
+					cpu, info[cpu].pc);
+				break;
+			case HV_NMI_RESULT_FAIL_HV:
+				pr_warn("Skipping stack dump of cpu %d in hypervisor\n",
+					cpu);
+				break;
+			case HV_ENOSYS:
+				WARN_ONCE(1, "Hypervisor too old to allow remote stack dumps.\n");
+				break;
+			default:  /* should not happen */
+				pr_warn("Skipping stack dump of cpu %d [%d,%#llx]\n",
+					cpu, info[cpu].result, info[cpu].pc);
+				break;
+			}
+		}
+	}
+}
+
+void arch_trigger_cpumask_backtrace(const cpumask_t *mask, bool exclude_self)
+{
+	nmi_trigger_cpumask_backtrace(mask, exclude_self,
+				      nmi_raise_cpu_backtrace);
+}
+#endif /* __tilegx_ */

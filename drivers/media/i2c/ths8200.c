@@ -479,7 +479,6 @@ static int ths8200_remove(struct i2c_client *client)
 
 	ths8200_s_power(sd, false);
 	v4l2_async_unregister_subdev(&decoder->sd);
-	v4l2_device_unregister_subdev(sd);
 
 	return 0;
 }
@@ -500,7 +499,6 @@ MODULE_DEVICE_TABLE(of, ths8200_of_match);
 
 static struct i2c_driver ths8200_driver = {
 	.driver = {
-		.owner = THIS_MODULE,
 		.name = "ths8200",
 		.of_match_table = of_match_ptr(ths8200_of_match),
 	},

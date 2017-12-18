@@ -14,11 +14,13 @@
  */
 #include <linux/init.h>
 #include <linux/irq.h>
+#include <linux/irqchip.h>
 #include <linux/sched.h>
 #include <linux/smp.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/irqchip/mips-gic.h>
+#include <linux/of_irq.h>
 #include <linux/kernel_stat.h>
 #include <linux/kernel.h>
 #include <linux/random.h>
@@ -36,10 +38,6 @@
 #include <asm/msc01_ic.h>
 #include <asm/setup.h>
 #include <asm/rtlx.h>
-
-static void __iomem *_msc01_biu_base;
-
-static DEFINE_RAW_SPINLOCK(mips_irq_lock);
 
 static inline int mips_pcibios_iack(void)
 {
@@ -83,49 +81,6 @@ static inline int mips_pcibios_iack(void)
 		return -1;
 	}
 	return irq;
-}
-
-static inline int get_int(void)
-{
-	unsigned long flags;
-	int irq;
-	raw_spin_lock_irqsave(&mips_irq_lock, flags);
-
-	irq = mips_pcibios_iack();
-
-	/*
-	 * The only way we can decide if an interrupt is spurious
-	 * is by checking the 8259 registers.  This needs a spinlock
-	 * on an SMP system,  so leave it up to the generic code...
-	 */
-
-	raw_spin_unlock_irqrestore(&mips_irq_lock, flags);
-
-	return irq;
-}
-
-static void malta_hw0_irqdispatch(void)
-{
-	int irq;
-
-	irq = get_int();
-	if (irq < 0) {
-		/* interrupt has already been cleared */
-		return;
-	}
-
-	do_IRQ(MALTA_INT_BASE + irq);
-
-#ifdef CONFIG_MIPS_VPE_APSP_API_MT
-	if (aprp_hook)
-		aprp_hook();
-#endif
-}
-
-static irqreturn_t i8259_handler(int irq, void *dev_id)
-{
-	malta_hw0_irqdispatch();
-	return IRQ_HANDLED;
 }
 
 static void corehi_irqdispatch(void)
@@ -222,7 +177,7 @@ static irqreturn_t ipi_resched_interrupt(int irq, void *dev_id)
 
 static irqreturn_t ipi_call_interrupt(int irq, void *dev_id)
 {
-	smp_call_function_interrupt();
+	generic_smp_call_function_interrupt();
 
 	return IRQ_HANDLED;
 }
@@ -239,12 +194,6 @@ static struct irqaction irq_call = {
 	.name		= "IPI_call"
 };
 #endif /* CONFIG_MIPS_MT_SMP */
-
-static struct irqaction i8259irq = {
-	.handler = i8259_handler,
-	.name = "XT-PIC cascade",
-	.flags = IRQF_NO_THREAD,
-};
 
 static struct irqaction corehi_irqaction = {
 	.handler = corehi_handler,
@@ -281,28 +230,10 @@ void __init arch_init_ipiirq(int irq, struct irqaction *action)
 
 void __init arch_init_irq(void)
 {
-	int corehi_irq, i8259_irq;
+	int corehi_irq;
 
-	init_i8259_irqs();
-
-	if (!cpu_has_veic)
-		mips_cpu_irq_init();
-
-	if (mips_cm_present()) {
-		write_gcr_gic_base(GIC_BASE_ADDR | CM_GCR_GIC_BASE_GICEN_MSK);
-		gic_present = 1;
-	} else {
-		if (mips_revision_sconid == MIPS_REVISION_SCON_ROCIT) {
-			_msc01_biu_base = ioremap_nocache(MSC01_BIU_REG_BASE,
-						MSC01_BIU_ADDRSPACE_SZ);
-			gic_present =
-			  (__raw_readl(_msc01_biu_base + MSC01_SC_CFG_OFS) &
-			   MSC01_SC_CFG_GICPRES_MSK) >>
-			  MSC01_SC_CFG_GICPRES_SHF;
-		}
-	}
-	if (gic_present)
-		pr_debug("GIC present\n");
+	i8259_set_poll(mips_pcibios_iack);
+	irqchip_init();
 
 	switch (mips_revision_sconid) {
 	case MIPS_REVISION_SCON_SOCIT:
@@ -330,18 +261,6 @@ void __init arch_init_irq(void)
 	}
 
 	if (gic_present) {
-		int i;
-
-		gic_init(GIC_BASE_ADDR, GIC_ADDRSPACE_SZ, MIPSCPU_INT_GIC,
-			 MIPS_GIC_IRQ_BASE);
-		if (!mips_cm_present()) {
-			/* Enable the GIC */
-			i = __raw_readl(_msc01_biu_base + MSC01_SC_CFG_OFS);
-			__raw_writel(i | (0x1 << MSC01_SC_CFG_GICENA_SHF),
-				 _msc01_biu_base + MSC01_SC_CFG_OFS);
-			pr_debug("GIC Enabled\n");
-		}
-		i8259_irq = MIPS_GIC_IRQ_BASE + GIC_INT_I8259A;
 		corehi_irq = MIPS_CPU_IRQ_BASE + MIPSCPU_INT_COREHI;
 	} else {
 #if defined(CONFIG_MIPS_MT_SMP)
@@ -361,143 +280,13 @@ void __init arch_init_irq(void)
 		arch_init_ipiirq(cpu_ipi_call_irq, &irq_call);
 #endif
 		if (cpu_has_veic) {
-			set_vi_handler(MSC01E_INT_I8259A,
-				       malta_hw0_irqdispatch);
 			set_vi_handler(MSC01E_INT_COREHI,
 				       corehi_irqdispatch);
-			i8259_irq = MSC01E_INT_BASE + MSC01E_INT_I8259A;
 			corehi_irq = MSC01E_INT_BASE + MSC01E_INT_COREHI;
 		} else {
-			i8259_irq = MIPS_CPU_IRQ_BASE + MIPSCPU_INT_I8259A;
 			corehi_irq = MIPS_CPU_IRQ_BASE + MIPSCPU_INT_COREHI;
 		}
 	}
 
-	setup_irq(i8259_irq, &i8259irq);
 	setup_irq(corehi_irq, &corehi_irqaction);
-}
-
-void malta_be_init(void)
-{
-	/* Could change CM error mask register. */
-}
-
-
-static char *tr[8] = {
-	"mem",	"gcr",	"gic",	"mmio",
-	"0x04", "0x05", "0x06", "0x07"
-};
-
-static char *mcmd[32] = {
-	[0x00] = "0x00",
-	[0x01] = "Legacy Write",
-	[0x02] = "Legacy Read",
-	[0x03] = "0x03",
-	[0x04] = "0x04",
-	[0x05] = "0x05",
-	[0x06] = "0x06",
-	[0x07] = "0x07",
-	[0x08] = "Coherent Read Own",
-	[0x09] = "Coherent Read Share",
-	[0x0a] = "Coherent Read Discard",
-	[0x0b] = "Coherent Ready Share Always",
-	[0x0c] = "Coherent Upgrade",
-	[0x0d] = "Coherent Writeback",
-	[0x0e] = "0x0e",
-	[0x0f] = "0x0f",
-	[0x10] = "Coherent Copyback",
-	[0x11] = "Coherent Copyback Invalidate",
-	[0x12] = "Coherent Invalidate",
-	[0x13] = "Coherent Write Invalidate",
-	[0x14] = "Coherent Completion Sync",
-	[0x15] = "0x15",
-	[0x16] = "0x16",
-	[0x17] = "0x17",
-	[0x18] = "0x18",
-	[0x19] = "0x19",
-	[0x1a] = "0x1a",
-	[0x1b] = "0x1b",
-	[0x1c] = "0x1c",
-	[0x1d] = "0x1d",
-	[0x1e] = "0x1e",
-	[0x1f] = "0x1f"
-};
-
-static char *core[8] = {
-	"Invalid/OK",	"Invalid/Data",
-	"Shared/OK",	"Shared/Data",
-	"Modified/OK",	"Modified/Data",
-	"Exclusive/OK", "Exclusive/Data"
-};
-
-static char *causes[32] = {
-	"None", "GC_WR_ERR", "GC_RD_ERR", "COH_WR_ERR",
-	"COH_RD_ERR", "MMIO_WR_ERR", "MMIO_RD_ERR", "0x07",
-	"0x08", "0x09", "0x0a", "0x0b",
-	"0x0c", "0x0d", "0x0e", "0x0f",
-	"0x10", "0x11", "0x12", "0x13",
-	"0x14", "0x15", "0x16", "INTVN_WR_ERR",
-	"INTVN_RD_ERR", "0x19", "0x1a", "0x1b",
-	"0x1c", "0x1d", "0x1e", "0x1f"
-};
-
-int malta_be_handler(struct pt_regs *regs, int is_fixup)
-{
-	/* This duplicates the handling in do_be which seems wrong */
-	int retval = is_fixup ? MIPS_BE_FIXUP : MIPS_BE_FATAL;
-
-	if (mips_cm_present()) {
-		unsigned long cm_error = read_gcr_error_cause();
-		unsigned long cm_addr = read_gcr_error_addr();
-		unsigned long cm_other = read_gcr_error_mult();
-		unsigned long cause, ocause;
-		char buf[256];
-
-		cause = cm_error & CM_GCR_ERROR_CAUSE_ERRTYPE_MSK;
-		if (cause != 0) {
-			cause >>= CM_GCR_ERROR_CAUSE_ERRTYPE_SHF;
-			if (cause < 16) {
-				unsigned long cca_bits = (cm_error >> 15) & 7;
-				unsigned long tr_bits = (cm_error >> 12) & 7;
-				unsigned long cmd_bits = (cm_error >> 7) & 0x1f;
-				unsigned long stag_bits = (cm_error >> 3) & 15;
-				unsigned long sport_bits = (cm_error >> 0) & 7;
-
-				snprintf(buf, sizeof(buf),
-					 "CCA=%lu TR=%s MCmd=%s STag=%lu "
-					 "SPort=%lu\n",
-					 cca_bits, tr[tr_bits], mcmd[cmd_bits],
-					 stag_bits, sport_bits);
-			} else {
-				/* glob state & sresp together */
-				unsigned long c3_bits = (cm_error >> 18) & 7;
-				unsigned long c2_bits = (cm_error >> 15) & 7;
-				unsigned long c1_bits = (cm_error >> 12) & 7;
-				unsigned long c0_bits = (cm_error >> 9) & 7;
-				unsigned long sc_bit = (cm_error >> 8) & 1;
-				unsigned long cmd_bits = (cm_error >> 3) & 0x1f;
-				unsigned long sport_bits = (cm_error >> 0) & 7;
-				snprintf(buf, sizeof(buf),
-					 "C3=%s C2=%s C1=%s C0=%s SC=%s "
-					 "MCmd=%s SPort=%lu\n",
-					 core[c3_bits], core[c2_bits],
-					 core[c1_bits], core[c0_bits],
-					 sc_bit ? "True" : "False",
-					 mcmd[cmd_bits], sport_bits);
-			}
-
-			ocause = (cm_other & CM_GCR_ERROR_MULT_ERR2ND_MSK) >>
-				 CM_GCR_ERROR_MULT_ERR2ND_SHF;
-
-			pr_err("CM_ERROR=%08lx %s <%s>\n", cm_error,
-			       causes[cause], buf);
-			pr_err("CM_ADDR =%08lx\n", cm_addr);
-			pr_err("CM_OTHER=%08lx %s\n", cm_other, causes[ocause]);
-
-			/* reprime cause register */
-			write_gcr_error_cause(0);
-		}
-	}
-
-	return retval;
 }

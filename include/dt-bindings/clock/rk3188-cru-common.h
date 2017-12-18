@@ -13,6 +13,9 @@
  * GNU General Public License for more details.
  */
 
+#ifndef _DT_BINDINGS_CLK_ROCKCHIP_RK3188_COMMON_H
+#define _DT_BINDINGS_CLK_ROCKCHIP_RK3188_COMMON_H
+
 /* core clocks from */
 #define PLL_APLL		1
 #define PLL_DPLL		2
@@ -52,6 +55,7 @@
 #define SCLK_TIMER6		90
 #define SCLK_JTAG		91
 #define SCLK_SMC		92
+#define SCLK_TSADC		93
 
 #define DCLK_LCDC0		190
 #define DCLK_LCDC1		191
@@ -248,3 +252,5 @@
 #define SRST_PTM1_ATB		141
 #define SRST_CTM		142
 #define SRST_TS			143
+
+#endif

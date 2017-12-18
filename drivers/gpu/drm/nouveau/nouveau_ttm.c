@@ -24,17 +24,20 @@
  * USE OR OTHER DEALINGS IN THE SOFTWARE.
  */
 
-#include "nouveau_drm.h"
+#include "nouveau_drv.h"
 #include "nouveau_ttm.h"
 #include "nouveau_gem.h"
 
 #include "drm_legacy.h"
+
+#include <core/tegra.h>
+
 static int
 nouveau_vram_manager_init(struct ttm_mem_type_manager *man, unsigned long psize)
 {
 	struct nouveau_drm *drm = nouveau_bdev(man->bdev);
-	struct nvkm_fb *pfb = nvxx_fb(&drm->device);
-	man->priv = pfb;
+	struct nvkm_fb *fb = nvxx_fb(&drm->device);
+	man->priv = fb;
 	return 0;
 }
 
@@ -64,9 +67,9 @@ nouveau_vram_manager_del(struct ttm_mem_type_manager *man,
 			 struct ttm_mem_reg *mem)
 {
 	struct nouveau_drm *drm = nouveau_bdev(man->bdev);
-	struct nvkm_fb *pfb = nvxx_fb(&drm->device);
+	struct nvkm_ram *ram = nvxx_fb(&drm->device)->ram;
 	nvkm_mem_node_cleanup(mem->mm_node);
-	pfb->ram->put(pfb, (struct nvkm_mem **)&mem->mm_node);
+	ram->func->put(ram, (struct nvkm_mem **)&mem->mm_node);
 }
 
 static int
@@ -76,18 +79,21 @@ nouveau_vram_manager_new(struct ttm_mem_type_manager *man,
 			 struct ttm_mem_reg *mem)
 {
 	struct nouveau_drm *drm = nouveau_bdev(man->bdev);
-	struct nvkm_fb *pfb = nvxx_fb(&drm->device);
+	struct nvkm_ram *ram = nvxx_fb(&drm->device)->ram;
 	struct nouveau_bo *nvbo = nouveau_bo(bo);
 	struct nvkm_mem *node;
 	u32 size_nc = 0;
 	int ret;
 
+	if (drm->device.info.ram_size == 0)
+		return -ENOMEM;
+
 	if (nvbo->tile_flags & NOUVEAU_GEM_TILE_NONCONTIG)
 		size_nc = 1 << nvbo->page_shift;
 
-	ret = pfb->ram->get(pfb, mem->num_pages << PAGE_SHIFT,
-			   mem->page_alignment << PAGE_SHIFT, size_nc,
-			   (nvbo->tile_flags >> 8) & 0x3ff, &node);
+	ret = ram->func->get(ram, mem->num_pages << PAGE_SHIFT,
+			     mem->page_alignment << PAGE_SHIFT, size_nc,
+			     (nvbo->tile_flags >> 8) & 0x3ff, &node);
 	if (ret) {
 		mem->mm_node = NULL;
 		return (ret == -ENOSPC) ? 0 : ret;
@@ -100,38 +106,11 @@ nouveau_vram_manager_new(struct ttm_mem_type_manager *man,
 	return 0;
 }
 
-static void
-nouveau_vram_manager_debug(struct ttm_mem_type_manager *man, const char *prefix)
-{
-	struct nvkm_fb *pfb = man->priv;
-	struct nvkm_mm *mm = &pfb->vram;
-	struct nvkm_mm_node *r;
-	u32 total = 0, free = 0;
-
-	mutex_lock(&nv_subdev(pfb)->mutex);
-	list_for_each_entry(r, &mm->nodes, nl_entry) {
-		printk(KERN_DEBUG "%s %d: 0x%010llx 0x%010llx\n",
-		       prefix, r->type, ((u64)r->offset << 12),
-		       (((u64)r->offset + r->length) << 12));
-
-		total += r->length;
-		if (!r->type)
-			free += r->length;
-	}
-	mutex_unlock(&nv_subdev(pfb)->mutex);
-
-	printk(KERN_DEBUG "%s  total: 0x%010llx free: 0x%010llx\n",
-	       prefix, (u64)total << 12, (u64)free << 12);
-	printk(KERN_DEBUG "%s  block: 0x%08x\n",
-	       prefix, mm->block_size << 12);
-}
-
 const struct ttm_mem_type_manager_func nouveau_vram_manager = {
 	nouveau_vram_manager_init,
 	nouveau_vram_manager_fini,
 	nouveau_vram_manager_new,
 	nouveau_vram_manager_del,
-	nouveau_vram_manager_debug
 };
 
 static int
@@ -172,15 +151,25 @@ nouveau_gart_manager_new(struct ttm_mem_type_manager *man,
 	node->page_shift = 12;
 
 	switch (drm->device.info.family) {
+	case NV_DEVICE_INFO_V0_TNT:
+	case NV_DEVICE_INFO_V0_CELSIUS:
+	case NV_DEVICE_INFO_V0_KELVIN:
+	case NV_DEVICE_INFO_V0_RANKINE:
+	case NV_DEVICE_INFO_V0_CURIE:
+		break;
 	case NV_DEVICE_INFO_V0_TESLA:
 		if (drm->device.info.chipset != 0x50)
 			node->memtype = (nvbo->tile_flags & 0x7f00) >> 8;
 		break;
 	case NV_DEVICE_INFO_V0_FERMI:
 	case NV_DEVICE_INFO_V0_KEPLER:
+	case NV_DEVICE_INFO_V0_MAXWELL:
+	case NV_DEVICE_INFO_V0_PASCAL:
 		node->memtype = (nvbo->tile_flags & 0xff00) >> 8;
 		break;
 	default:
+		NV_WARN(drm, "%s: unhandled family type %x\n", __func__,
+			drm->device.info.family);
 		break;
 	}
 
@@ -209,7 +198,7 @@ nv04_gart_manager_init(struct ttm_mem_type_manager *man, unsigned long psize)
 {
 	struct nouveau_drm *drm = nouveau_bdev(man->bdev);
 	struct nvkm_mmu *mmu = nvxx_mmu(&drm->device);
-	struct nv04_mmu_priv *priv = (void *)mmu;
+	struct nv04_mmu *priv = (void *)mmu;
 	struct nvkm_vm *vm = NULL;
 	nvkm_vm_ref(priv->vm, &vm, NULL);
 	man->priv = vm;
@@ -350,26 +339,46 @@ nouveau_ttm_global_release(struct nouveau_drm *drm)
 int
 nouveau_ttm_init(struct nouveau_drm *drm)
 {
+	struct nvkm_device *device = nvxx_device(&drm->device);
+	struct nvkm_pci *pci = device->pci;
 	struct drm_device *dev = drm->dev;
-	u32 bits;
+	u8 bits;
 	int ret;
 
-	bits = nvxx_mmu(&drm->device)->dma_bits;
-	if (nv_device_is_pci(nvxx_device(&drm->device))) {
-		if (drm->agp.stat == ENABLED ||
-		     !pci_dma_supported(dev->pdev, DMA_BIT_MASK(bits)))
-			bits = 32;
-
-		ret = pci_set_dma_mask(dev->pdev, DMA_BIT_MASK(bits));
-		if (ret)
-			return ret;
-
-		ret = pci_set_consistent_dma_mask(dev->pdev,
-						  DMA_BIT_MASK(bits));
-		if (ret)
-			pci_set_consistent_dma_mask(dev->pdev,
-						    DMA_BIT_MASK(32));
+	if (pci && pci->agp.bridge) {
+		drm->agp.bridge = pci->agp.bridge;
+		drm->agp.base = pci->agp.base;
+		drm->agp.size = pci->agp.size;
+		drm->agp.cma = pci->agp.cma;
 	}
+
+	bits = nvxx_mmu(&drm->device)->dma_bits;
+	if (nvxx_device(&drm->device)->func->pci) {
+		if (drm->agp.bridge)
+			bits = 32;
+	} else if (device->func->tegra) {
+		struct nvkm_device_tegra *tegra = device->func->tegra(device);
+
+		/*
+		 * If the platform can use a IOMMU, then the addressable DMA
+		 * space is constrained by the IOMMU bit
+		 */
+		if (tegra->func->iommu_bit)
+			bits = min(bits, tegra->func->iommu_bit);
+
+	}
+
+	ret = dma_set_mask(dev->dev, DMA_BIT_MASK(bits));
+	if (ret && bits != 32) {
+		bits = 32;
+		ret = dma_set_mask(dev->dev, DMA_BIT_MASK(bits));
+	}
+	if (ret)
+		return ret;
+
+	ret = dma_set_coherent_mask(dev->dev, DMA_BIT_MASK(bits));
+	if (ret)
+		dma_set_coherent_mask(dev->dev, DMA_BIT_MASK(32));
 
 	ret = nouveau_ttm_global_init(drm);
 	if (ret)
@@ -389,6 +398,9 @@ nouveau_ttm_init(struct nouveau_drm *drm)
 	/* VRAM init */
 	drm->gem.vram_available = drm->device.info.ram_user;
 
+	arch_io_reserve_memtype_wc(device->func->resource_addr(device, 1),
+				   device->func->resource_size(device, 1));
+
 	ret = ttm_bo_init_mm(&drm->ttm.bdev, TTM_PL_VRAM,
 			      drm->gem.vram_available >> PAGE_SHIFT);
 	if (ret) {
@@ -396,11 +408,11 @@ nouveau_ttm_init(struct nouveau_drm *drm)
 		return ret;
 	}
 
-	drm->ttm.mtrr = arch_phys_wc_add(nv_device_resource_start(nvxx_device(&drm->device), 1),
-					 nv_device_resource_len(nvxx_device(&drm->device), 1));
+	drm->ttm.mtrr = arch_phys_wc_add(device->func->resource_addr(device, 1),
+					 device->func->resource_size(device, 1));
 
 	/* GART init */
-	if (drm->agp.stat != ENABLED) {
+	if (!drm->agp.bridge) {
 		drm->gem.gart_available = nvxx_mmu(&drm->device)->limit;
 	} else {
 		drm->gem.gart_available = drm->agp.size;
@@ -421,10 +433,10 @@ nouveau_ttm_init(struct nouveau_drm *drm)
 void
 nouveau_ttm_fini(struct nouveau_drm *drm)
 {
-	mutex_lock(&drm->dev->struct_mutex);
+	struct nvkm_device *device = nvxx_device(&drm->device);
+
 	ttm_bo_clean_mm(&drm->ttm.bdev, TTM_PL_VRAM);
 	ttm_bo_clean_mm(&drm->ttm.bdev, TTM_PL_TT);
-	mutex_unlock(&drm->dev->struct_mutex);
 
 	ttm_bo_device_release(&drm->ttm.bdev);
 
@@ -432,4 +444,7 @@ nouveau_ttm_fini(struct nouveau_drm *drm)
 
 	arch_phys_wc_del(drm->ttm.mtrr);
 	drm->ttm.mtrr = 0;
+	arch_io_free_memtype_wc(device->func->resource_addr(device, 1),
+				device->func->resource_size(device, 1));
+
 }

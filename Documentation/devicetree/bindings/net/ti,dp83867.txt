@@ -2,12 +2,17 @@
 
 Required properties:
 	- reg - The ID number for the phy, usually a small integer
-	- ti,rx-internal-delay - RGMII Recieve Clock Delay - see dt-bindings/net/ti-dp83867.h
+	- ti,rx-internal-delay - RGMII Receive Clock Delay - see dt-bindings/net/ti-dp83867.h
 		for applicable values
 	- ti,tx-internal-delay - RGMII Transmit Clock Delay - see dt-bindings/net/ti-dp83867.h
 		for applicable values
 	- ti,fifo-depth - Transmitt FIFO depth- see dt-bindings/net/ti-dp83867.h
 		for applicable values
+
+Optional properties:
+	- ti,rxctrl-strap-worka - Enable SW workaround flag when RX CTRL is not
+				  STRAP mode 3 or 4 in HW. This is recommended
+				  to fix link instability issues.
 
 Default child nodes are standard Ethernet PHY device
 nodes as described in Documentation/devicetree/bindings/net/phy.txt

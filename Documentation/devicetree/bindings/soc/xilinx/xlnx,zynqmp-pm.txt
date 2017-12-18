@@ -1,0 +1,23 @@
+Xilinx Zynq MPSoC Firmware Device Tree Bindings
+
+The zynqmp-pm node describes the interface to platform firmware.
+
+Required properties:
+ - compatible:	Must contain:  "xlnx,zynqmp-pm"
+ - method:	The method of calling the PM-API firmware layer.
+		Permitted values are:
+		 - "smc" : To be used in configurations without a hypervisor
+		 - "hvc" : To be used when hypervisor is present
+ - interrupts:	Interrupt specifier
+
+Optional Properties:
+ - pinctrl-0: pin control group to be used for this controller
+ - pinctrl-names: must contain a "default" entry
+
+Examples:
+	zynqmp-firmware {
+		compatible = "xlnx,zynqmp-pm";
+		method = "smc";
+		interrupt-parent = <&gic>;
+		interrupts = <0 35 4>;
+	};

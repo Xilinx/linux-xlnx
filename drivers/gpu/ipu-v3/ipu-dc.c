@@ -147,69 +147,72 @@ static void dc_write_tmpl(struct ipu_dc *dc, int word, u32 opcode, u32 operand,
 	writel(reg2, priv->dc_tmpl_reg + word * 8 + 4);
 }
 
-static int ipu_pixfmt_to_map(u32 fmt)
+static int ipu_bus_format_to_map(u32 fmt)
 {
 	switch (fmt) {
-	case V4L2_PIX_FMT_RGB24:
-		return IPU_DC_MAP_RGB24;
-	case V4L2_PIX_FMT_RGB565:
-		return IPU_DC_MAP_RGB565;
-	case IPU_PIX_FMT_GBR24:
-		return IPU_DC_MAP_GBR24;
-	case V4L2_PIX_FMT_BGR666:
-		return IPU_DC_MAP_BGR666;
-	case v4l2_fourcc('L', 'V', 'D', '6'):
-		return IPU_DC_MAP_LVDS666;
-	case V4L2_PIX_FMT_BGR24:
-		return IPU_DC_MAP_BGR24;
 	default:
-		return -EINVAL;
+		WARN_ON(1);
+		/* fall-through */
+	case MEDIA_BUS_FMT_RGB888_1X24:
+		return IPU_DC_MAP_RGB24;
+	case MEDIA_BUS_FMT_RGB565_1X16:
+		return IPU_DC_MAP_RGB565;
+	case MEDIA_BUS_FMT_GBR888_1X24:
+		return IPU_DC_MAP_GBR24;
+	case MEDIA_BUS_FMT_RGB666_1X18:
+		return IPU_DC_MAP_BGR666;
+	case MEDIA_BUS_FMT_RGB666_1X24_CPADHI:
+		return IPU_DC_MAP_LVDS666;
+	case MEDIA_BUS_FMT_BGR888_1X24:
+		return IPU_DC_MAP_BGR24;
 	}
 }
 
 int ipu_dc_init_sync(struct ipu_dc *dc, struct ipu_di *di, bool interlaced,
-		u32 pixel_fmt, u32 width)
+		u32 bus_format, u32 width)
 {
 	struct ipu_dc_priv *priv = dc->priv;
+	int addr, sync;
 	u32 reg = 0;
 	int map;
 
 	dc->di = ipu_di_get_num(di);
 
-	map = ipu_pixfmt_to_map(pixel_fmt);
-	if (map < 0) {
-		dev_dbg(priv->dev, "IPU_DISP: No MAP\n");
-		return map;
-	}
+	map = ipu_bus_format_to_map(bus_format);
+
+	/*
+	 * In interlaced mode we need more counters to create the asymmetric
+	 * per-field VSYNC signals. The pixel active signal synchronising DC
+	 * to DI moves to signal generator #6 (see ipu-di.c). In progressive
+	 * mode counter #5 is used.
+	 */
+	sync = interlaced ? 6 : 5;
+
+	/* Reserve 5 microcode template words for each DI */
+	if (dc->di)
+		addr = 5;
+	else
+		addr = 0;
 
 	if (interlaced) {
-		dc_link_event(dc, DC_EVT_NL, 0, 3);
-		dc_link_event(dc, DC_EVT_EOL, 0, 2);
-		dc_link_event(dc, DC_EVT_NEW_DATA, 0, 1);
+		dc_link_event(dc, DC_EVT_NL, addr, 3);
+		dc_link_event(dc, DC_EVT_EOL, addr, 2);
+		dc_link_event(dc, DC_EVT_NEW_DATA, addr, 1);
 
 		/* Init template microcode */
-		dc_write_tmpl(dc, 0, WROD(0), 0, map, SYNC_WAVE, 0, 8, 1);
+		dc_write_tmpl(dc, addr, WROD(0), 0, map, SYNC_WAVE, 0, sync, 1);
 	} else {
-		if (dc->di) {
-			dc_link_event(dc, DC_EVT_NL, 2, 3);
-			dc_link_event(dc, DC_EVT_EOL, 3, 2);
-			dc_link_event(dc, DC_EVT_NEW_DATA, 1, 1);
-			/* Init template microcode */
-			dc_write_tmpl(dc, 2, WROD(0), 0, map, SYNC_WAVE, 8, 5, 1);
-			dc_write_tmpl(dc, 3, WROD(0), 0, map, SYNC_WAVE, 4, 5, 0);
-			dc_write_tmpl(dc, 4, WRG, 0, map, NULL_WAVE, 0, 0, 1);
-			dc_write_tmpl(dc, 1, WROD(0), 0, map, SYNC_WAVE, 0, 5, 1);
-		} else {
-			dc_link_event(dc, DC_EVT_NL, 5, 3);
-			dc_link_event(dc, DC_EVT_EOL, 6, 2);
-			dc_link_event(dc, DC_EVT_NEW_DATA, 8, 1);
-			/* Init template microcode */
-			dc_write_tmpl(dc, 5, WROD(0), 0, map, SYNC_WAVE, 8, 5, 1);
-			dc_write_tmpl(dc, 6, WROD(0), 0, map, SYNC_WAVE, 4, 5, 0);
-			dc_write_tmpl(dc, 7, WRG, 0, map, NULL_WAVE, 0, 0, 1);
-			dc_write_tmpl(dc, 8, WROD(0), 0, map, SYNC_WAVE, 0, 5, 1);
-		}
+		dc_link_event(dc, DC_EVT_NL, addr + 2, 3);
+		dc_link_event(dc, DC_EVT_EOL, addr + 3, 2);
+		dc_link_event(dc, DC_EVT_NEW_DATA, addr + 1, 1);
+
+		/* Init template microcode */
+		dc_write_tmpl(dc, addr + 2, WROD(0), 0, map, SYNC_WAVE, 8, sync, 1);
+		dc_write_tmpl(dc, addr + 3, WROD(0), 0, map, SYNC_WAVE, 4, sync, 0);
+		dc_write_tmpl(dc, addr + 4, WRG, 0, map, NULL_WAVE, 0, 0, 1);
+		dc_write_tmpl(dc, addr + 1, WROD(0), 0, map, SYNC_WAVE, 0, sync, 1);
 	}
+
 	dc_link_event(dc, DC_EVT_NF, 0, 0);
 	dc_link_event(dc, DC_EVT_NFIELD, 0, 0);
 	dc_link_event(dc, DC_EVT_EOF, 0, 0);

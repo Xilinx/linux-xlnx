@@ -243,21 +243,21 @@ static int wm8994_ldo_in_use(struct wm8994_pdata *pdata, int ldo)
 }
 #endif
 
-static const struct reg_default wm8994_revc_patch[] = {
+static const struct reg_sequence wm8994_revc_patch[] = {
 	{ 0x102, 0x3 },
 	{ 0x56, 0x3 },
 	{ 0x817, 0x0 },
 	{ 0x102, 0x0 },
 };
 
-static const struct reg_default wm8958_reva_patch[] = {
+static const struct reg_sequence wm8958_reva_patch[] = {
 	{ 0x102, 0x3 },
 	{ 0xcb, 0x81 },
 	{ 0x817, 0x0 },
 	{ 0x102, 0x0 },
 };
 
-static const struct reg_default wm1811_reva_patch[] = {
+static const struct reg_sequence wm1811_reva_patch[] = {
 	{ 0x102, 0x3 },
 	{ 0x56, 0xc07 },
 	{ 0x5d, 0x7e },
@@ -326,7 +326,7 @@ static int wm8994_device_init(struct wm8994 *wm8994, int irq)
 {
 	struct wm8994_pdata *pdata;
 	struct regmap_config *regmap_config;
-	const struct reg_default *regmap_patch = NULL;
+	const struct reg_sequence *regmap_patch = NULL;
 	const char *devname;
 	int ret, i, patch_regs = 0;
 	int pulls = 0;
@@ -393,8 +393,13 @@ static int wm8994_device_init(struct wm8994 *wm8994, int irq)
 		BUG();
 		goto err;
 	}
-		
-	ret = devm_regulator_bulk_get(wm8994->dev, wm8994->num_supplies,
+
+	/*
+	 * Can't use devres helper here as some of the supplies are provided by
+	 * wm8994->dev's children (regulators) and those regulators are
+	 * unregistered by the devres core before the supplies are freed.
+	 */
+	ret = regulator_bulk_get(wm8994->dev, wm8994->num_supplies,
 				 wm8994->supplies);
 	if (ret != 0) {
 		dev_err(wm8994->dev, "Failed to get supplies: %d\n", ret);
@@ -405,7 +410,7 @@ static int wm8994_device_init(struct wm8994 *wm8994, int irq)
 				    wm8994->supplies);
 	if (ret != 0) {
 		dev_err(wm8994->dev, "Failed to enable supplies: %d\n", ret);
-		goto err;
+		goto err_regulator_free;
 	}
 
 	ret = wm8994_reg_read(wm8994, WM8994_SOFTWARE_RESET);
@@ -596,6 +601,8 @@ err_irq:
 err_enable:
 	regulator_bulk_disable(wm8994->num_supplies,
 			       wm8994->supplies);
+err_regulator_free:
+	regulator_bulk_free(wm8994->num_supplies, wm8994->supplies);
 err:
 	mfd_remove_devices(wm8994->dev);
 	return ret;
@@ -604,10 +611,11 @@ err:
 static void wm8994_device_exit(struct wm8994 *wm8994)
 {
 	pm_runtime_disable(wm8994->dev);
-	mfd_remove_devices(wm8994->dev);
 	wm8994_irq_exit(wm8994);
 	regulator_bulk_disable(wm8994->num_supplies,
 			       wm8994->supplies);
+	regulator_bulk_free(wm8994->num_supplies, wm8994->supplies);
+	mfd_remove_devices(wm8994->dev);
 }
 
 static const struct of_device_id wm8994_of_match[] = {
@@ -677,7 +685,6 @@ static const struct dev_pm_ops wm8994_pm_ops = {
 static struct i2c_driver wm8994_i2c_driver = {
 	.driver = {
 		.name = "wm8994",
-		.owner = THIS_MODULE,
 		.pm = &wm8994_pm_ops,
 		.of_match_table = of_match_ptr(wm8994_of_match),
 	},

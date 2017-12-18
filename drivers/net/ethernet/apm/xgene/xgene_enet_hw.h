@@ -26,6 +26,7 @@
 
 struct xgene_enet_pdata;
 struct xgene_enet_stats;
+struct xgene_enet_desc_ring;
 
 /* clears and then set bits */
 static inline void xgene_set_bits(u32 *dst, u32 val, u32 start, u32 len)
@@ -53,6 +54,13 @@ enum xgene_enet_rm {
 #define IS_BUFFER_POOL		BIT(20)
 #define PREFETCH_BUF_EN		BIT(21)
 #define CSR_RING_ID_BUF		0x000c
+#define CSR_PBM_COAL		0x0014
+#define CSR_PBM_CTICK0		0x0018
+#define CSR_PBM_CTICK1		0x001c
+#define CSR_PBM_CTICK2		0x0020
+#define CSR_PBM_CTICK3		0x0024
+#define CSR_THRESHOLD0_SET1	0x0030
+#define CSR_THRESHOLD1_SET1	0x0034
 #define CSR_RING_NE_INT_MODE	0x017c
 #define CSR_RING_CONFIG		0x006c
 #define CSR_RING_WR_BASE	0x0070
@@ -80,7 +88,7 @@ enum xgene_enet_rm {
 #define RINGADDRL_POS		5
 #define RINGADDRL_LEN		27
 #define RINGADDRH_POS		0
-#define RINGADDRH_LEN		6
+#define RINGADDRH_LEN		7
 #define RINGSIZE_POS		23
 #define RINGSIZE_LEN		3
 #define RINGTYPE_POS		19
@@ -88,19 +96,24 @@ enum xgene_enet_rm {
 #define RINGMODE_POS		20
 #define RINGMODE_LEN		3
 #define RECOMTIMEOUTL_POS	28
-#define RECOMTIMEOUTL_LEN	3
+#define RECOMTIMEOUTL_LEN	4
 #define RECOMTIMEOUTH_POS	0
-#define RECOMTIMEOUTH_LEN	2
+#define RECOMTIMEOUTH_LEN	3
 #define NUMMSGSINQ_POS		1
 #define NUMMSGSINQ_LEN		16
 #define ACCEPTLERR		BIT(19)
 #define QCOHERENT		BIT(4)
 #define RECOMBBUF		BIT(27)
 
-#define BLOCK_ETH_CSR_OFFSET		0x2000
-#define BLOCK_ETH_RING_IF_OFFSET	0x9000
-#define BLOCK_ETH_DIAG_CSR_OFFSET	0xD000
+#define MAC_OFFSET			0x30
+#define OFFSET_4			0x04
+#define OFFSET_8			0x08
 
+#define BLOCK_ETH_CSR_OFFSET		0x2000
+#define BLOCK_ETH_CLE_CSR_OFFSET	0x6000
+#define BLOCK_ETH_RING_IF_OFFSET	0x9000
+#define BLOCK_ETH_CLKRST_CSR_OFFSET	0xc000
+#define BLOCK_ETH_DIAG_CSR_OFFSET	0xD000
 #define BLOCK_ETH_MAC_OFFSET		0x0000
 #define BLOCK_ETH_MAC_CSR_OFFSET	0x2800
 
@@ -112,6 +125,12 @@ enum xgene_enet_rm {
 #define MAC_WRITE_REG_OFFSET		0x08
 #define MAC_READ_REG_OFFSET		0x0c
 #define MAC_COMMAND_DONE_REG_OFFSET	0x10
+
+#define PCS_ADDR_REG_OFFSET		0x00
+#define PCS_COMMAND_REG_OFFSET		0x04
+#define PCS_WRITE_REG_OFFSET		0x08
+#define PCS_READ_REG_OFFSET		0x0c
+#define PCS_COMMAND_DONE_REG_OFFSET	0x10
 
 #define MII_MGMT_CONFIG_ADDR		0x20
 #define MII_MGMT_COMMAND_ADDR		0x24
@@ -141,6 +160,7 @@ enum xgene_enet_rm {
 #define CFG_BYPASS_UNISEC_RX		BIT(1)
 #define CFG_CLE_BYPASS_EN0		BIT(31)
 #define CFG_TXCLK_MUXSEL0_SET(dst, val)	xgene_set_bits(dst, val, 29, 3)
+#define CFG_RXCLK_MUXSEL0_SET(dst, val)	xgene_set_bits(dst, val, 26, 3)
 
 #define CFG_CLE_IP_PROTOCOL0_SET(dst, val)	xgene_set_bits(dst, val, 16, 2)
 #define CFG_CLE_DSTQID0_SET(dst, val)		xgene_set_bits(dst, val, 0, 12)
@@ -155,6 +175,8 @@ enum xgene_enet_rm {
 #define TX_DV_GATE_EN0			BIT(2)
 #define RX_DV_GATE_EN0			BIT(1)
 #define RESUME_RX0			BIT(0)
+#define ENET_CFGSSQMIFPRESET_ADDR		0x14
+#define ENET_CFGSSQMIWQRESET_ADDR		0x1c
 #define ENET_CFGSSQMIWQASSOC_ADDR		0xe0
 #define ENET_CFGSSQMIFPQASSOC_ADDR		0xdc
 #define ENET_CFGSSQMIQMLITEFPQASSOC_ADDR	0xf0
@@ -177,6 +199,7 @@ enum xgene_enet_rm {
 #define ENET_LHD_MODE			BIT(25)
 #define ENET_GHD_MODE			BIT(26)
 #define FULL_DUPLEX2			BIT(0)
+#define PAD_CRC				BIT(2)
 #define SCAN_AUTO_INCR			BIT(5)
 #define TBYT_ADDR			0x38
 #define TPKT_ADDR			0x39
@@ -190,12 +213,18 @@ enum xgene_enet_rm {
 #define USERINFO_LEN			32
 #define FPQNUM_POS			32
 #define FPQNUM_LEN			12
+#define ELERR_POS                       46
+#define ELERR_LEN                       2
+#define NV_POS				50
+#define NV_LEN				1
+#define LL_POS				51
+#define LL_LEN				1
 #define LERR_POS			60
 #define LERR_LEN			3
 #define STASH_POS			52
 #define STASH_LEN			2
 #define BUFDATALEN_POS			48
-#define BUFDATALEN_LEN			12
+#define BUFDATALEN_LEN			15
 #define DATAADDR_POS			0
 #define DATAADDR_LEN			42
 #define COHERENT_POS			63
@@ -210,11 +239,28 @@ enum xgene_enet_rm {
 #define TCPHDR_LEN			6
 #define IPHDR_POS			6
 #define IPHDR_LEN			6
+#define MSS_POS				20
+#define MSS_LEN				2
 #define EC_POS				22	/* Enable checksum */
 #define EC_LEN				1
+#define ET_POS				23	/* Enable TSO */
 #define IS_POS				24	/* IP protocol select */
 #define IS_LEN				1
 #define TYPE_ETH_WORK_MESSAGE_POS	44
+#define LL_BYTES_MSB_POS		56
+#define LL_BYTES_MSB_LEN		8
+#define LL_BYTES_LSB_POS		48
+#define LL_BYTES_LSB_LEN		12
+#define LL_LEN_POS			48
+#define LL_LEN_LEN			8
+#define DATALEN_MASK			GENMASK(11, 0)
+
+#define LAST_BUFFER			(0x7800ULL << BUFDATALEN_POS)
+
+#define TSO_MSS0_POS			0
+#define TSO_MSS0_LEN			14
+#define TSO_MSS1_POS			16
+#define TSO_MSS1_LEN			14
 
 struct xgene_enet_raw_desc {
 	__le64 m0;
@@ -259,6 +305,7 @@ enum xgene_enet_ring_type {
 
 enum xgene_ring_owner {
 	RING_OWNER_ETH0,
+	RING_OWNER_ETH1,
 	RING_OWNER_CPU = 15,
 	RING_OWNER_INVALID
 };
@@ -267,11 +314,6 @@ enum xgene_enet_ring_bufnum {
 	RING_BUFNUM_REGULAR = 0x0,
 	RING_BUFNUM_BUFPOOL = 0x20,
 	RING_BUFNUM_INVALID
-};
-
-enum xgene_enet_cmd {
-	XGENE_ENET_WR_CMD = BIT(31),
-	XGENE_ENET_RD_CMD = BIT(30)
 };
 
 enum xgene_enet_err_code {
@@ -312,9 +354,6 @@ static inline u16 xgene_enet_get_numslots(u16 id, u32 size)
 		      size / WORK_DESC_SIZE;
 }
 
-struct xgene_enet_desc_ring *xgene_enet_setup_ring(
-		struct xgene_enet_desc_ring *ring);
-void xgene_enet_clear_ring(struct xgene_enet_desc_ring *ring);
 void xgene_enet_parse_error(struct xgene_enet_desc_ring *ring,
 			    struct xgene_enet_pdata *pdata,
 			    enum xgene_enet_err_code status);
@@ -322,8 +361,11 @@ void xgene_enet_parse_error(struct xgene_enet_desc_ring *ring,
 int xgene_enet_mdio_config(struct xgene_enet_pdata *pdata);
 void xgene_enet_mdio_remove(struct xgene_enet_pdata *pdata);
 bool xgene_ring_mgr_init(struct xgene_enet_pdata *p);
+int xgene_enet_phy_connect(struct net_device *ndev);
+void xgene_enet_phy_disconnect(struct xgene_enet_pdata *pdata);
 
-extern struct xgene_mac_ops xgene_gmac_ops;
-extern struct xgene_port_ops xgene_gport_ops;
+extern const struct xgene_mac_ops xgene_gmac_ops;
+extern const struct xgene_port_ops xgene_gport_ops;
+extern struct xgene_ring_ops xgene_ring1_ops;
 
 #endif /* __XGENE_ENET_HW_H__ */

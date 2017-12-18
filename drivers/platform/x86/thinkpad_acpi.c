@@ -83,6 +83,7 @@
 #include <sound/control.h>
 #include <sound/initval.h>
 #include <asm/uaccess.h>
+#include <acpi/video.h>
 
 /* ThinkPad CMOS commands */
 #define TP_CMOS_VOLUME_DOWN	0
@@ -302,6 +303,7 @@ static struct {
 	u32 hotkey_mask:1;
 	u32 hotkey_wlsw:1;
 	u32 hotkey_tablet:1;
+	u32 kbdlight:1;
 	u32 light:1;
 	u32 light_status:1;
 	u32 bright_acpimode:1;
@@ -319,6 +321,7 @@ static struct {
 	u32 sensors_pdrv_attrs_registered:1;
 	u32 sensors_pdev_attrs_registered:1;
 	u32 hotkey_poll_active:1;
+	u32 has_adaptive_kbd:1;
 } tp_features;
 
 static struct {
@@ -400,7 +403,7 @@ static const char *str_supported(int is_supported);
 #else
 static inline const char *str_supported(int is_supported) { return ""; }
 #define vdbg_printk(a_dbg_level, format, arg...)	\
-	no_printk(format, ##arg)
+	do { if (0) no_printk(format, ##arg); } while (0)
 #endif
 
 static void tpacpi_log_usertask(const char * const what)
@@ -1911,6 +1914,27 @@ enum {	/* hot key scan codes (derived from ACPI DSDT) */
 	TP_ACPI_HOTKEYSCAN_UNK7,
 	TP_ACPI_HOTKEYSCAN_UNK8,
 
+	TP_ACPI_HOTKEYSCAN_MUTE2,
+	TP_ACPI_HOTKEYSCAN_BRIGHTNESS_ZERO,
+	TP_ACPI_HOTKEYSCAN_CLIPPING_TOOL,
+	TP_ACPI_HOTKEYSCAN_CLOUD,
+	TP_ACPI_HOTKEYSCAN_UNK9,
+	TP_ACPI_HOTKEYSCAN_VOICE,
+	TP_ACPI_HOTKEYSCAN_UNK10,
+	TP_ACPI_HOTKEYSCAN_GESTURES,
+	TP_ACPI_HOTKEYSCAN_UNK11,
+	TP_ACPI_HOTKEYSCAN_UNK12,
+	TP_ACPI_HOTKEYSCAN_UNK13,
+	TP_ACPI_HOTKEYSCAN_CONFIG,
+	TP_ACPI_HOTKEYSCAN_NEW_TAB,
+	TP_ACPI_HOTKEYSCAN_RELOAD,
+	TP_ACPI_HOTKEYSCAN_BACK,
+	TP_ACPI_HOTKEYSCAN_MIC_DOWN,
+	TP_ACPI_HOTKEYSCAN_MIC_UP,
+	TP_ACPI_HOTKEYSCAN_MIC_CANCELLATION,
+	TP_ACPI_HOTKEYSCAN_CAMERA_MODE,
+	TP_ACPI_HOTKEYSCAN_ROTATE_DISPLAY,
+
 	/* Hotkey keymap size */
 	TPACPI_HOTKEY_MAP_LEN
 };
@@ -2019,6 +2043,7 @@ static int hotkey_autosleep_ack;
 
 static u32 hotkey_orig_mask;		/* events the BIOS had enabled */
 static u32 hotkey_all_mask;		/* all events supported in fw */
+static u32 hotkey_adaptive_all_mask;	/* all adaptive events supported in fw */
 static u32 hotkey_reserved_mask;	/* events better left disabled */
 static u32 hotkey_driver_mask;		/* events needed by the driver */
 static u32 hotkey_user_mask;		/* events visible to userspace */
@@ -2093,7 +2118,7 @@ static int hotkey_mask_get(void)
 	return 0;
 }
 
-void static hotkey_mask_warn_incomplete_mask(void)
+static void hotkey_mask_warn_incomplete_mask(void)
 {
 	/* log only what the user can fix... */
 	const u32 wantedmask = hotkey_driver_mask &
@@ -2647,9 +2672,7 @@ static ssize_t hotkey_enable_store(struct device *dev,
 	return count;
 }
 
-static struct device_attribute dev_attr_hotkey_enable =
-	__ATTR(hotkey_enable, S_IWUSR | S_IRUGO,
-		hotkey_enable_show, hotkey_enable_store);
+static DEVICE_ATTR_RW(hotkey_enable);
 
 /* sysfs hotkey mask --------------------------------------------------- */
 static ssize_t hotkey_mask_show(struct device *dev,
@@ -2685,9 +2708,7 @@ static ssize_t hotkey_mask_store(struct device *dev,
 	return (res) ? res : count;
 }
 
-static struct device_attribute dev_attr_hotkey_mask =
-	__ATTR(hotkey_mask, S_IWUSR | S_IRUGO,
-		hotkey_mask_show, hotkey_mask_store);
+static DEVICE_ATTR_RW(hotkey_mask);
 
 /* sysfs hotkey bios_enabled ------------------------------------------- */
 static ssize_t hotkey_bios_enabled_show(struct device *dev,
@@ -2697,8 +2718,7 @@ static ssize_t hotkey_bios_enabled_show(struct device *dev,
 	return sprintf(buf, "0\n");
 }
 
-static struct device_attribute dev_attr_hotkey_bios_enabled =
-	__ATTR(hotkey_bios_enabled, S_IRUGO, hotkey_bios_enabled_show, NULL);
+static DEVICE_ATTR_RO(hotkey_bios_enabled);
 
 /* sysfs hotkey bios_mask ---------------------------------------------- */
 static ssize_t hotkey_bios_mask_show(struct device *dev,
@@ -2710,8 +2730,7 @@ static ssize_t hotkey_bios_mask_show(struct device *dev,
 	return snprintf(buf, PAGE_SIZE, "0x%08x\n", hotkey_orig_mask);
 }
 
-static struct device_attribute dev_attr_hotkey_bios_mask =
-	__ATTR(hotkey_bios_mask, S_IRUGO, hotkey_bios_mask_show, NULL);
+static DEVICE_ATTR_RO(hotkey_bios_mask);
 
 /* sysfs hotkey all_mask ----------------------------------------------- */
 static ssize_t hotkey_all_mask_show(struct device *dev,
@@ -2722,8 +2741,18 @@ static ssize_t hotkey_all_mask_show(struct device *dev,
 				hotkey_all_mask | hotkey_source_mask);
 }
 
-static struct device_attribute dev_attr_hotkey_all_mask =
-	__ATTR(hotkey_all_mask, S_IRUGO, hotkey_all_mask_show, NULL);
+static DEVICE_ATTR_RO(hotkey_all_mask);
+
+/* sysfs hotkey all_mask ----------------------------------------------- */
+static ssize_t hotkey_adaptive_all_mask_show(struct device *dev,
+			   struct device_attribute *attr,
+			   char *buf)
+{
+	return snprintf(buf, PAGE_SIZE, "0x%08x\n",
+			hotkey_adaptive_all_mask | hotkey_source_mask);
+}
+
+static DEVICE_ATTR_RO(hotkey_adaptive_all_mask);
 
 /* sysfs hotkey recommended_mask --------------------------------------- */
 static ssize_t hotkey_recommended_mask_show(struct device *dev,
@@ -2735,9 +2764,7 @@ static ssize_t hotkey_recommended_mask_show(struct device *dev,
 			& ~hotkey_reserved_mask);
 }
 
-static struct device_attribute dev_attr_hotkey_recommended_mask =
-	__ATTR(hotkey_recommended_mask, S_IRUGO,
-		hotkey_recommended_mask_show, NULL);
+static DEVICE_ATTR_RO(hotkey_recommended_mask);
 
 #ifdef CONFIG_THINKPAD_ACPI_HOTKEY_POLL
 
@@ -2792,9 +2819,7 @@ static ssize_t hotkey_source_mask_store(struct device *dev,
 	return (rc < 0) ? rc : count;
 }
 
-static struct device_attribute dev_attr_hotkey_source_mask =
-	__ATTR(hotkey_source_mask, S_IWUSR | S_IRUGO,
-		hotkey_source_mask_show, hotkey_source_mask_store);
+static DEVICE_ATTR_RW(hotkey_source_mask);
 
 /* sysfs hotkey hotkey_poll_freq --------------------------------------- */
 static ssize_t hotkey_poll_freq_show(struct device *dev,
@@ -2826,9 +2851,7 @@ static ssize_t hotkey_poll_freq_store(struct device *dev,
 	return count;
 }
 
-static struct device_attribute dev_attr_hotkey_poll_freq =
-	__ATTR(hotkey_poll_freq, S_IWUSR | S_IRUGO,
-		hotkey_poll_freq_show, hotkey_poll_freq_store);
+static DEVICE_ATTR_RW(hotkey_poll_freq);
 
 #endif /* CONFIG_THINKPAD_ACPI_HOTKEY_POLL */
 
@@ -2849,8 +2872,7 @@ static ssize_t hotkey_radio_sw_show(struct device *dev,
 			(res == TPACPI_RFK_RADIO_OFF) ? 0 : 1);
 }
 
-static struct device_attribute dev_attr_hotkey_radio_sw =
-	__ATTR(hotkey_radio_sw, S_IRUGO, hotkey_radio_sw_show, NULL);
+static DEVICE_ATTR_RO(hotkey_radio_sw);
 
 static void hotkey_radio_sw_notify_change(void)
 {
@@ -2872,8 +2894,7 @@ static ssize_t hotkey_tablet_mode_show(struct device *dev,
 	return snprintf(buf, PAGE_SIZE, "%d\n", !!s);
 }
 
-static struct device_attribute dev_attr_hotkey_tablet_mode =
-	__ATTR(hotkey_tablet_mode, S_IRUGO, hotkey_tablet_mode_show, NULL);
+static DEVICE_ATTR_RO(hotkey_tablet_mode);
 
 static void hotkey_tablet_mode_notify_change(void)
 {
@@ -2890,8 +2911,7 @@ static ssize_t hotkey_wakeup_reason_show(struct device *dev,
 	return snprintf(buf, PAGE_SIZE, "%d\n", hotkey_wakeup_reason);
 }
 
-static struct device_attribute dev_attr_hotkey_wakeup_reason =
-	__ATTR(wakeup_reason, S_IRUGO, hotkey_wakeup_reason_show, NULL);
+static DEVICE_ATTR(wakeup_reason, S_IRUGO, hotkey_wakeup_reason_show, NULL);
 
 static void hotkey_wakeup_reason_notify_change(void)
 {
@@ -2907,9 +2927,8 @@ static ssize_t hotkey_wakeup_hotunplug_complete_show(struct device *dev,
 	return snprintf(buf, PAGE_SIZE, "%d\n", hotkey_autosleep_ack);
 }
 
-static struct device_attribute dev_attr_hotkey_wakeup_hotunplug_complete =
-	__ATTR(wakeup_hotunplug_complete, S_IRUGO,
-	       hotkey_wakeup_hotunplug_complete_show, NULL);
+static DEVICE_ATTR(wakeup_hotunplug_complete, S_IRUGO,
+		   hotkey_wakeup_hotunplug_complete_show, NULL);
 
 static void hotkey_wakeup_hotunplug_complete_notify_change(void)
 {
@@ -2917,16 +2936,68 @@ static void hotkey_wakeup_hotunplug_complete_notify_change(void)
 		     "wakeup_hotunplug_complete");
 }
 
+/* sysfs adaptive kbd mode --------------------------------------------- */
+
+static int adaptive_keyboard_get_mode(void);
+static int adaptive_keyboard_set_mode(int new_mode);
+
+enum ADAPTIVE_KEY_MODE {
+	HOME_MODE,
+	WEB_BROWSER_MODE,
+	WEB_CONFERENCE_MODE,
+	FUNCTION_MODE,
+	LAYFLAT_MODE
+};
+
+static ssize_t adaptive_kbd_mode_show(struct device *dev,
+			   struct device_attribute *attr,
+			   char *buf)
+{
+	int current_mode;
+
+	current_mode = adaptive_keyboard_get_mode();
+	if (current_mode < 0)
+		return current_mode;
+
+	return snprintf(buf, PAGE_SIZE, "%d\n", current_mode);
+}
+
+static ssize_t adaptive_kbd_mode_store(struct device *dev,
+			    struct device_attribute *attr,
+			    const char *buf, size_t count)
+{
+	unsigned long t;
+	int res;
+
+	if (parse_strtoul(buf, LAYFLAT_MODE, &t))
+		return -EINVAL;
+
+	res = adaptive_keyboard_set_mode(t);
+	return (res < 0) ? res : count;
+}
+
+static DEVICE_ATTR_RW(adaptive_kbd_mode);
+
+static struct attribute *adaptive_kbd_attributes[] = {
+	&dev_attr_adaptive_kbd_mode.attr,
+	NULL
+};
+
+static const struct attribute_group adaptive_kbd_attr_group = {
+	.attrs = adaptive_kbd_attributes,
+};
+
 /* --------------------------------------------------------------------- */
 
 static struct attribute *hotkey_attributes[] __initdata = {
 	&dev_attr_hotkey_enable.attr,
 	&dev_attr_hotkey_bios_enabled.attr,
 	&dev_attr_hotkey_bios_mask.attr,
-	&dev_attr_hotkey_wakeup_reason.attr,
-	&dev_attr_hotkey_wakeup_hotunplug_complete.attr,
+	&dev_attr_wakeup_reason.attr,
+	&dev_attr_wakeup_hotunplug_complete.attr,
 	&dev_attr_hotkey_mask.attr,
 	&dev_attr_hotkey_all_mask.attr,
+	&dev_attr_hotkey_adaptive_all_mask.attr,
 	&dev_attr_hotkey_recommended_mask.attr,
 #ifdef CONFIG_THINKPAD_ACPI_HOTKEY_POLL
 	&dev_attr_hotkey_source_mask.attr,
@@ -3118,6 +3189,13 @@ static int __init hotkey_init(struct ibm_init_struct *iibm)
 		/* (assignments unknown, please report if found) */
 		KEY_UNKNOWN, KEY_UNKNOWN, KEY_UNKNOWN, KEY_UNKNOWN,
 		KEY_UNKNOWN, KEY_UNKNOWN, KEY_UNKNOWN, KEY_UNKNOWN,
+
+		/* No assignments, only used for Adaptive keyboards. */
+		KEY_UNKNOWN, KEY_UNKNOWN, KEY_UNKNOWN, KEY_UNKNOWN,
+		KEY_UNKNOWN, KEY_UNKNOWN, KEY_UNKNOWN, KEY_UNKNOWN,
+		KEY_UNKNOWN, KEY_UNKNOWN, KEY_UNKNOWN, KEY_UNKNOWN,
+		KEY_UNKNOWN, KEY_UNKNOWN, KEY_UNKNOWN, KEY_UNKNOWN,
+		KEY_UNKNOWN, KEY_UNKNOWN, KEY_UNKNOWN,
 		},
 
 	/* Generic keymap for Lenovo ThinkPads */
@@ -3174,6 +3252,35 @@ static int __init hotkey_init(struct ibm_init_struct *iibm)
 
 		/* Extra keys in use since the X240 / T440 / T540 */
 		KEY_CONFIG, KEY_SEARCH, KEY_SCALE, KEY_FILE,
+
+		/*
+		 * These are the adaptive keyboard keycodes for Carbon X1 2014.
+		 * The first item in this list is the Mute button which is
+		 * emitted with 0x103 through
+		 * adaptive_keyboard_hotkey_notify_hotkey() when the sound
+		 * symbol is held.
+		 * We'll need to offset those by 0x20.
+		 */
+		KEY_RESERVED,        /* Mute held, 0x103 */
+		KEY_BRIGHTNESS_MIN,  /* Backlight off */
+		KEY_RESERVED,        /* Clipping tool */
+		KEY_RESERVED,        /* Cloud */
+		KEY_RESERVED,
+		KEY_VOICECOMMAND,    /* Voice */
+		KEY_RESERVED,
+		KEY_RESERVED,        /* Gestures */
+		KEY_RESERVED,
+		KEY_RESERVED,
+		KEY_RESERVED,
+		KEY_CONFIG,          /* Settings */
+		KEY_RESERVED,        /* New tab */
+		KEY_REFRESH,         /* Reload */
+		KEY_BACK,            /* Back */
+		KEY_RESERVED,        /* Microphone down */
+		KEY_RESERVED,        /* Microphone up */
+		KEY_RESERVED,        /* Microphone cancellation */
+		KEY_RESERVED,        /* Camera mode */
+		KEY_RESERVED,        /* Rotate display, 0x116 */
 		},
 	};
 
@@ -3249,30 +3356,70 @@ static int __init hotkey_init(struct ibm_init_struct *iibm)
 	   A30, R30, R31, T20-22, X20-21, X22-24.  Detected by checking
 	   for HKEY interface version 0x100 */
 	if (acpi_evalf(hkey_handle, &hkeyv, "MHKV", "qd")) {
-		if ((hkeyv >> 8) != 1) {
-			pr_err("unknown version of the HKEY interface: 0x%x\n",
-			       hkeyv);
-			pr_err("please report this to %s\n", TPACPI_MAIL);
-		} else {
+		vdbg_printk(TPACPI_DBG_INIT | TPACPI_DBG_HKEY,
+			    "firmware HKEY interface version: 0x%x\n",
+			    hkeyv);
+
+		switch (hkeyv >> 8) {
+		case 1:
 			/*
 			 * MHKV 0x100 in A31, R40, R40e,
 			 * T4x, X31, and later
 			 */
-			vdbg_printk(TPACPI_DBG_INIT | TPACPI_DBG_HKEY,
-				"firmware HKEY interface version: 0x%x\n",
-				hkeyv);
 
 			/* Paranoia check AND init hotkey_all_mask */
 			if (!acpi_evalf(hkey_handle, &hotkey_all_mask,
 					"MHKA", "qd")) {
-				pr_err("missing MHKA handler, "
-				       "please report this to %s\n",
+				pr_err("missing MHKA handler, please report this to %s\n",
 				       TPACPI_MAIL);
 				/* Fallback: pre-init for FN+F3,F4,F12 */
 				hotkey_all_mask = 0x080cU;
 			} else {
 				tp_features.hotkey_mask = 1;
 			}
+			break;
+
+		case 2:
+			/*
+			 * MHKV 0x200 in X1, T460s, X260, T560, X1 Tablet (2016)
+			 */
+
+			/* Paranoia check AND init hotkey_all_mask */
+			if (!acpi_evalf(hkey_handle, &hotkey_all_mask,
+					"MHKA", "dd", 1)) {
+				pr_err("missing MHKA handler, please report this to %s\n",
+				       TPACPI_MAIL);
+				/* Fallback: pre-init for FN+F3,F4,F12 */
+				hotkey_all_mask = 0x080cU;
+			} else {
+				tp_features.hotkey_mask = 1;
+			}
+
+			/*
+			 * Check if we have an adaptive keyboard, like on the
+			 * Lenovo Carbon X1 2014 (2nd Gen).
+			 */
+			if (acpi_evalf(hkey_handle, &hotkey_adaptive_all_mask,
+				       "MHKA", "dd", 2)) {
+				if (hotkey_adaptive_all_mask != 0) {
+					tp_features.has_adaptive_kbd = true;
+					res = sysfs_create_group(
+						&tpacpi_pdev->dev.kobj,
+						&adaptive_kbd_attr_group);
+					if (res)
+						goto err_exit;
+				}
+			} else {
+				tp_features.has_adaptive_kbd = false;
+				hotkey_adaptive_all_mask = 0x0U;
+			}
+			break;
+
+		default:
+			pr_err("unknown version of the HKEY interface: 0x%x\n",
+			       hkeyv);
+			pr_err("please report this to %s\n", TPACPI_MAIL);
+			break;
 		}
 	}
 
@@ -3381,7 +3528,7 @@ static int __init hotkey_init(struct ibm_init_struct *iibm)
 	/* Do not issue duplicate brightness change events to
 	 * userspace. tpacpi_detect_brightness_capabilities() must have
 	 * been called before this point  */
-	if (acpi_video_backlight_support()) {
+	if (acpi_video_get_backlight_type() != acpi_backlight_vendor) {
 		pr_info("This ThinkPad has standard ACPI backlight "
 			"brightness control, supported by the ACPI "
 			"video driver\n");
@@ -3437,6 +3584,9 @@ static int __init hotkey_init(struct ibm_init_struct *iibm)
 
 err_exit:
 	delete_attr_set(hotkey_dev_attributes, &tpacpi_pdev->dev.kobj);
+	sysfs_remove_group(&tpacpi_pdev->dev.kobj,
+			&adaptive_kbd_attr_group);
+
 	hotkey_dev_attributes = NULL;
 
 	return (res < 0) ? res : 1;
@@ -3449,14 +3599,6 @@ err_exit:
  * Will consider support rest of modes in future.
  *
  */
-enum ADAPTIVE_KEY_MODE {
-	HOME_MODE,
-	WEB_BROWSER_MODE,
-	WEB_CONFERENCE_MODE,
-	FUNCTION_MODE,
-	LAYFLAT_MODE
-};
-
 static const int adaptive_keyboard_modes[] = {
 	HOME_MODE,
 /*	WEB_BROWSER_MODE = 2,
@@ -3466,12 +3608,40 @@ static const int adaptive_keyboard_modes[] = {
 
 #define DFR_CHANGE_ROW			0x101
 #define DFR_SHOW_QUICKVIEW_ROW		0x102
+#define FIRST_ADAPTIVE_KEY		0x103
+#define ADAPTIVE_KEY_OFFSET		0x020
 
 /* press Fn key a while second, it will switch to Function Mode. Then
  * release Fn key, previous mode be restored.
  */
 static bool adaptive_keyboard_mode_is_saved;
 static int adaptive_keyboard_prev_mode;
+
+static int adaptive_keyboard_get_mode(void)
+{
+	int mode = 0;
+
+	if (!acpi_evalf(hkey_handle, &mode, "GTRW", "dd", 0)) {
+		pr_err("Cannot read adaptive keyboard mode\n");
+		return -EIO;
+	}
+
+	return mode;
+}
+
+static int adaptive_keyboard_set_mode(int new_mode)
+{
+	if (new_mode < 0 ||
+		new_mode > LAYFLAT_MODE)
+		return -EINVAL;
+
+	if (!acpi_evalf(hkey_handle, NULL, "STRW", "vd", new_mode)) {
+		pr_err("Cannot set adaptive keyboard mode\n");
+		return -EIO;
+	}
+
+	return 0;
+}
 
 static int adaptive_keyboard_get_next_mode(int mode)
 {
@@ -3493,8 +3663,9 @@ static int adaptive_keyboard_get_next_mode(int mode)
 
 static bool adaptive_keyboard_hotkey_notify_hotkey(unsigned int scancode)
 {
-	u32 current_mode = 0;
+	int current_mode = 0;
 	int new_mode = 0;
+	int keycode;
 
 	switch (scancode) {
 	case DFR_CHANGE_ROW:
@@ -3502,43 +3673,51 @@ static bool adaptive_keyboard_hotkey_notify_hotkey(unsigned int scancode)
 			new_mode = adaptive_keyboard_prev_mode;
 			adaptive_keyboard_mode_is_saved = false;
 		} else {
-			if (!acpi_evalf(
-					hkey_handle, &current_mode,
-					"GTRW", "dd", 0)) {
-				pr_err("Cannot read adaptive keyboard mode\n");
+			current_mode = adaptive_keyboard_get_mode();
+			if (current_mode < 0)
 				return false;
-			} else {
-				new_mode = adaptive_keyboard_get_next_mode(
-						current_mode);
-			}
+			new_mode = adaptive_keyboard_get_next_mode(
+					current_mode);
 		}
 
-		if (!acpi_evalf(hkey_handle, NULL, "STRW", "vd", new_mode)) {
-			pr_err("Cannot set adaptive keyboard mode\n");
+		if (adaptive_keyboard_set_mode(new_mode) < 0)
 			return false;
-		}
 
 		return true;
 
 	case DFR_SHOW_QUICKVIEW_ROW:
-		if (!acpi_evalf(hkey_handle,
-				&adaptive_keyboard_prev_mode,
-				"GTRW", "dd", 0)) {
-			pr_err("Cannot read adaptive keyboard mode\n");
+		current_mode = adaptive_keyboard_get_mode();
+		if (current_mode < 0)
 			return false;
-		} else {
-			adaptive_keyboard_mode_is_saved = true;
 
-			if (!acpi_evalf(hkey_handle,
-					NULL, "STRW", "vd", FUNCTION_MODE)) {
-				pr_err("Cannot set adaptive keyboard mode\n");
-				return false;
-			}
-		}
+		adaptive_keyboard_prev_mode = current_mode;
+		adaptive_keyboard_mode_is_saved = true;
+
+		if (adaptive_keyboard_set_mode (FUNCTION_MODE) < 0)
+			return false;
 		return true;
 
 	default:
-		return false;
+		if (scancode < FIRST_ADAPTIVE_KEY ||
+		    scancode >= FIRST_ADAPTIVE_KEY + TPACPI_HOTKEY_MAP_LEN -
+				ADAPTIVE_KEY_OFFSET) {
+			pr_info("Unhandled adaptive keyboard key: 0x%x\n",
+					scancode);
+			return false;
+		}
+		keycode = hotkey_keycode_map[scancode - FIRST_ADAPTIVE_KEY + ADAPTIVE_KEY_OFFSET];
+		if (keycode != KEY_RESERVED) {
+			mutex_lock(&tpacpi_inputdev_send_mutex);
+
+			input_report_key(tpacpi_inputdev, keycode, 1);
+			input_sync(tpacpi_inputdev);
+
+			input_report_key(tpacpi_inputdev, keycode, 0);
+			input_sync(tpacpi_inputdev);
+
+			mutex_unlock(&tpacpi_inputdev_send_mutex);
+		}
+		return true;
 	}
 }
 
@@ -3836,28 +4015,21 @@ static void hotkey_notify(struct ibm_struct *ibm, u32 event)
 
 static void hotkey_suspend(void)
 {
-	int hkeyv;
-
 	/* Do these on suspend, we get the events on early resume! */
 	hotkey_wakeup_reason = TP_ACPI_WAKEUP_NONE;
 	hotkey_autosleep_ack = 0;
 
 	/* save previous mode of adaptive keyboard of X1 Carbon */
-	if (acpi_evalf(hkey_handle, &hkeyv, "MHKV", "qd")) {
-		if ((hkeyv >> 8) == 2) {
-			if (!acpi_evalf(hkey_handle,
-						&adaptive_keyboard_prev_mode,
-						"GTRW", "dd", 0)) {
-				pr_err("Cannot read adaptive keyboard mode.\n");
-			}
+	if (tp_features.has_adaptive_kbd) {
+		if (!acpi_evalf(hkey_handle, &adaptive_keyboard_prev_mode,
+					"GTRW", "dd", 0)) {
+			pr_err("Cannot read adaptive keyboard mode.\n");
 		}
 	}
 }
 
 static void hotkey_resume(void)
 {
-	int hkeyv;
-
 	tpacpi_disable_brightness_delay();
 
 	if (hotkey_status_set(true) < 0 ||
@@ -3872,14 +4044,10 @@ static void hotkey_resume(void)
 	hotkey_poll_setup_safe(false);
 
 	/* restore previous mode of adapive keyboard of X1 Carbon */
-	if (acpi_evalf(hkey_handle, &hkeyv, "MHKV", "qd")) {
-		if ((hkeyv >> 8) == 2) {
-			if (!acpi_evalf(hkey_handle,
-						NULL,
-						"STRW", "vd",
-						adaptive_keyboard_prev_mode)) {
-				pr_err("Cannot set adaptive keyboard mode.\n");
-			}
+	if (tp_features.has_adaptive_kbd) {
+		if (!acpi_evalf(hkey_handle, NULL, "STRW", "vd",
+					adaptive_keyboard_prev_mode)) {
+			pr_err("Cannot set adaptive keyboard mode.\n");
 		}
 	}
 }
@@ -4079,9 +4247,7 @@ static ssize_t bluetooth_enable_store(struct device *dev,
 				attr, buf, count);
 }
 
-static struct device_attribute dev_attr_bluetooth_enable =
-	__ATTR(bluetooth_enable, S_IWUSR | S_IRUGO,
-		bluetooth_enable_show, bluetooth_enable_store);
+static DEVICE_ATTR_RW(bluetooth_enable);
 
 /* --------------------------------------------------------------------- */
 
@@ -4269,14 +4435,13 @@ static ssize_t wan_enable_store(struct device *dev,
 			attr, buf, count);
 }
 
-static struct device_attribute dev_attr_wan_enable =
-	__ATTR(wwan_enable, S_IWUSR | S_IRUGO,
-		wan_enable_show, wan_enable_store);
+static DEVICE_ATTR(wwan_enable, S_IWUSR | S_IRUGO,
+		   wan_enable_show, wan_enable_store);
 
 /* --------------------------------------------------------------------- */
 
 static struct attribute *wan_attributes[] = {
-	&dev_attr_wan_enable.attr,
+	&dev_attr_wwan_enable.attr,
 	NULL
 };
 
@@ -4861,6 +5026,244 @@ static struct ibm_struct video_driver_data = {
 #endif /* CONFIG_THINKPAD_ACPI_VIDEO */
 
 /*************************************************************************
+ * Keyboard backlight subdriver
+ */
+
+static int kbdlight_set_level(int level)
+{
+	if (!hkey_handle)
+		return -ENXIO;
+
+	if (!acpi_evalf(hkey_handle, NULL, "MLCS", "dd", level))
+		return -EIO;
+
+	return 0;
+}
+
+static int kbdlight_set_level_and_update(int level);
+
+static int kbdlight_get_level(void)
+{
+	int status = 0;
+
+	if (!hkey_handle)
+		return -ENXIO;
+
+	if (!acpi_evalf(hkey_handle, &status, "MLCG", "dd", 0))
+		return -EIO;
+
+	if (status < 0)
+		return status;
+
+	return status & 0x3;
+}
+
+static bool kbdlight_is_supported(void)
+{
+	int status = 0;
+
+	if (!hkey_handle)
+		return false;
+
+	if (!acpi_has_method(hkey_handle, "MLCG")) {
+		vdbg_printk(TPACPI_DBG_INIT, "kbdlight MLCG is unavailable\n");
+		return false;
+	}
+
+	if (!acpi_evalf(hkey_handle, &status, "MLCG", "qdd", 0)) {
+		vdbg_printk(TPACPI_DBG_INIT, "kbdlight MLCG failed\n");
+		return false;
+	}
+
+	if (status < 0) {
+		vdbg_printk(TPACPI_DBG_INIT, "kbdlight MLCG err: %d\n", status);
+		return false;
+	}
+
+	vdbg_printk(TPACPI_DBG_INIT, "kbdlight MLCG returned 0x%x\n", status);
+	/*
+	 * Guessed test for keyboard backlight:
+	 *
+	 * Machines with backlight keyboard return:
+	 *   b010100000010000000XX - ThinkPad X1 Carbon 3rd
+	 *   b110100010010000000XX - ThinkPad x230
+	 *   b010100000010000000XX - ThinkPad x240
+	 *   b010100000010000000XX - ThinkPad W541
+	 * (XX is current backlight level)
+	 *
+	 * Machines without backlight keyboard return:
+	 *   b10100001000000000000 - ThinkPad x230
+	 *   b10110001000000000000 - ThinkPad E430
+	 *   b00000000000000000000 - ThinkPad E450
+	 *
+	 * Candidate BITs for detection test (XOR):
+	 *   b01000000001000000000
+	 *              ^
+	 */
+	return status & BIT(9);
+}
+
+static void kbdlight_set_worker(struct work_struct *work)
+{
+	struct tpacpi_led_classdev *data =
+			container_of(work, struct tpacpi_led_classdev, work);
+
+	if (likely(tpacpi_lifecycle == TPACPI_LIFE_RUNNING))
+		kbdlight_set_level_and_update(data->new_state);
+}
+
+static void kbdlight_sysfs_set(struct led_classdev *led_cdev,
+			enum led_brightness brightness)
+{
+	struct tpacpi_led_classdev *data =
+			container_of(led_cdev,
+				     struct tpacpi_led_classdev,
+				     led_classdev);
+	data->new_state = brightness;
+	queue_work(tpacpi_wq, &data->work);
+}
+
+static enum led_brightness kbdlight_sysfs_get(struct led_classdev *led_cdev)
+{
+	int level;
+
+	level = kbdlight_get_level();
+	if (level < 0)
+		return 0;
+
+	return level;
+}
+
+static struct tpacpi_led_classdev tpacpi_led_kbdlight = {
+	.led_classdev = {
+		.name		= "tpacpi::kbd_backlight",
+		.max_brightness	= 2,
+		.brightness_set	= &kbdlight_sysfs_set,
+		.brightness_get	= &kbdlight_sysfs_get,
+	}
+};
+
+static int __init kbdlight_init(struct ibm_init_struct *iibm)
+{
+	int rc;
+
+	vdbg_printk(TPACPI_DBG_INIT, "initializing kbdlight subdriver\n");
+
+	TPACPI_ACPIHANDLE_INIT(hkey);
+	INIT_WORK(&tpacpi_led_kbdlight.work, kbdlight_set_worker);
+
+	if (!kbdlight_is_supported()) {
+		tp_features.kbdlight = 0;
+		vdbg_printk(TPACPI_DBG_INIT, "kbdlight is unsupported\n");
+		return 1;
+	}
+
+	tp_features.kbdlight = 1;
+
+	rc = led_classdev_register(&tpacpi_pdev->dev,
+				   &tpacpi_led_kbdlight.led_classdev);
+	if (rc < 0) {
+		tp_features.kbdlight = 0;
+		return rc;
+	}
+
+	return 0;
+}
+
+static void kbdlight_exit(void)
+{
+	if (tp_features.kbdlight)
+		led_classdev_unregister(&tpacpi_led_kbdlight.led_classdev);
+	flush_workqueue(tpacpi_wq);
+}
+
+static int kbdlight_set_level_and_update(int level)
+{
+	int ret;
+	struct led_classdev *led_cdev;
+
+	ret = kbdlight_set_level(level);
+	led_cdev = &tpacpi_led_kbdlight.led_classdev;
+
+	if (ret == 0 && !(led_cdev->flags & LED_SUSPENDED))
+		led_cdev->brightness = level;
+
+	return ret;
+}
+
+static int kbdlight_read(struct seq_file *m)
+{
+	int level;
+
+	if (!tp_features.kbdlight) {
+		seq_printf(m, "status:\t\tnot supported\n");
+	} else {
+		level = kbdlight_get_level();
+		if (level < 0)
+			seq_printf(m, "status:\t\terror %d\n", level);
+		else
+			seq_printf(m, "status:\t\t%d\n", level);
+		seq_printf(m, "commands:\t0, 1, 2\n");
+	}
+
+	return 0;
+}
+
+static int kbdlight_write(char *buf)
+{
+	char *cmd;
+	int level = -1;
+
+	if (!tp_features.kbdlight)
+		return -ENODEV;
+
+	while ((cmd = next_cmd(&buf))) {
+		if (strlencmp(cmd, "0") == 0)
+			level = 0;
+		else if (strlencmp(cmd, "1") == 0)
+			level = 1;
+		else if (strlencmp(cmd, "2") == 0)
+			level = 2;
+		else
+			return -EINVAL;
+	}
+
+	if (level == -1)
+		return -EINVAL;
+
+	return kbdlight_set_level_and_update(level);
+}
+
+static void kbdlight_suspend(void)
+{
+	struct led_classdev *led_cdev;
+
+	if (!tp_features.kbdlight)
+		return;
+
+	led_cdev = &tpacpi_led_kbdlight.led_classdev;
+	led_update_brightness(led_cdev);
+	led_classdev_suspend(led_cdev);
+}
+
+static void kbdlight_resume(void)
+{
+	if (!tp_features.kbdlight)
+		return;
+
+	led_classdev_resume(&tpacpi_led_kbdlight.led_classdev);
+}
+
+static struct ibm_struct kbdlight_driver_data = {
+	.name = "kbdlight",
+	.read = kbdlight_read,
+	.write = kbdlight_write,
+	.suspend = kbdlight_suspend,
+	.resume = kbdlight_resume,
+	.exit = kbdlight_exit,
+};
+
+/*************************************************************************
  * Light (thinklight) subdriver
  */
 
@@ -5048,8 +5451,7 @@ static ssize_t cmos_command_store(struct device *dev,
 	return (res) ? res : count;
 }
 
-static struct device_attribute dev_attr_cmos_command =
-	__ATTR(cmos_command, S_IWUSR, NULL, cmos_command_store);
+static DEVICE_ATTR_WO(cmos_command);
 
 /* --------------------------------------------------------------------- */
 
@@ -6327,19 +6729,16 @@ static void __init tpacpi_detect_brightness_capabilities(void)
 	switch (b) {
 	case 16:
 		bright_maxlvl = 15;
-		pr_info("detected a 16-level brightness capable ThinkPad\n");
 		break;
 	case 8:
 	case 0:
 		bright_maxlvl = 7;
-		pr_info("detected a 8-level brightness capable ThinkPad\n");
 		break;
 	default:
-		pr_err("Unsupported brightness interface, "
-		       "please contact %s\n", TPACPI_MAIL);
 		tp_features.bright_unkfw = 1;
 		bright_maxlvl = b - 1;
 	}
+	pr_debug("detected %u brightness levels\n", bright_maxlvl + 1);
 }
 
 static int __init brightness_init(struct ibm_init_struct *iibm)
@@ -6368,7 +6767,7 @@ static int __init brightness_init(struct ibm_init_struct *iibm)
 		return 1;
 	}
 
-	if (acpi_video_backlight_support()) {
+	if (acpi_video_get_backlight_type() != acpi_backlight_vendor) {
 		if (brightness_enable > 1) {
 			pr_info("Standard ACPI backlight interface "
 				"available, not loading native one\n");
@@ -7649,10 +8048,12 @@ static int fan_get_status_safe(u8 *status)
 		fan_update_desired_level(s);
 	mutex_unlock(&fan_mutex);
 
+	if (rc)
+		return rc;
 	if (status)
 		*status = s;
 
-	return rc;
+	return 0;
 }
 
 static int fan_get_speed(unsigned int *speed)
@@ -8017,9 +8418,8 @@ static ssize_t fan_pwm1_enable_store(struct device *dev,
 	return count;
 }
 
-static struct device_attribute dev_attr_fan_pwm1_enable =
-	__ATTR(pwm1_enable, S_IWUSR | S_IRUGO,
-		fan_pwm1_enable_show, fan_pwm1_enable_store);
+static DEVICE_ATTR(pwm1_enable, S_IWUSR | S_IRUGO,
+		   fan_pwm1_enable_show, fan_pwm1_enable_store);
 
 /* sysfs fan pwm1 ------------------------------------------------------ */
 static ssize_t fan_pwm1_show(struct device *dev,
@@ -8079,9 +8479,7 @@ static ssize_t fan_pwm1_store(struct device *dev,
 	return (rc) ? rc : count;
 }
 
-static struct device_attribute dev_attr_fan_pwm1 =
-	__ATTR(pwm1, S_IWUSR | S_IRUGO,
-		fan_pwm1_show, fan_pwm1_store);
+static DEVICE_ATTR(pwm1, S_IWUSR | S_IRUGO, fan_pwm1_show, fan_pwm1_store);
 
 /* sysfs fan fan1_input ------------------------------------------------ */
 static ssize_t fan_fan1_input_show(struct device *dev,
@@ -8098,9 +8496,7 @@ static ssize_t fan_fan1_input_show(struct device *dev,
 	return snprintf(buf, PAGE_SIZE, "%u\n", speed);
 }
 
-static struct device_attribute dev_attr_fan_fan1_input =
-	__ATTR(fan1_input, S_IRUGO,
-		fan_fan1_input_show, NULL);
+static DEVICE_ATTR(fan1_input, S_IRUGO, fan_fan1_input_show, NULL);
 
 /* sysfs fan fan2_input ------------------------------------------------ */
 static ssize_t fan_fan2_input_show(struct device *dev,
@@ -8117,9 +8513,7 @@ static ssize_t fan_fan2_input_show(struct device *dev,
 	return snprintf(buf, PAGE_SIZE, "%u\n", speed);
 }
 
-static struct device_attribute dev_attr_fan_fan2_input =
-	__ATTR(fan2_input, S_IRUGO,
-		fan_fan2_input_show, NULL);
+static DEVICE_ATTR(fan2_input, S_IRUGO, fan_fan2_input_show, NULL);
 
 /* sysfs fan fan_watchdog (hwmon driver) ------------------------------- */
 static ssize_t fan_fan_watchdog_show(struct device_driver *drv,
@@ -8152,8 +8546,8 @@ static DRIVER_ATTR(fan_watchdog, S_IWUSR | S_IRUGO,
 
 /* --------------------------------------------------------------------- */
 static struct attribute *fan_attributes[] = {
-	&dev_attr_fan_pwm1_enable.attr, &dev_attr_fan_pwm1.attr,
-	&dev_attr_fan_fan1_input.attr,
+	&dev_attr_pwm1_enable.attr, &dev_attr_pwm1.attr,
+	&dev_attr_fan1_input.attr,
 	NULL, /* for fan2_input */
 	NULL
 };
@@ -8287,7 +8681,7 @@ static int __init fan_init(struct ibm_init_struct *iibm)
 		if (tp_features.second_fan) {
 			/* attach second fan tachometer */
 			fan_attributes[ARRAY_SIZE(fan_attributes)-2] =
-					&dev_attr_fan_fan2_input.attr;
+					&dev_attr_fan2_input.attr;
 		}
 		rc = sysfs_create_group(&tpacpi_sensors_pdev->dev.kobj,
 					 &fan_attr_group);
@@ -8735,8 +9129,7 @@ static ssize_t thinkpad_acpi_pdev_name_show(struct device *dev,
 	return snprintf(buf, PAGE_SIZE, "%s\n", TPACPI_NAME);
 }
 
-static struct device_attribute dev_attr_thinkpad_acpi_pdev_name =
-	__ATTR(name, S_IRUGO, thinkpad_acpi_pdev_name_show, NULL);
+static DEVICE_ATTR(name, S_IRUGO, thinkpad_acpi_pdev_name_show, NULL);
 
 /* --------------------------------------------------------------------- */
 
@@ -9092,6 +9485,10 @@ static struct ibm_init_struct ibms_init[] __initdata = {
 	},
 #endif
 	{
+		.init = kbdlight_init,
+		.data = &kbdlight_driver_data,
+	},
+	{
 		.init = light_init,
 		.data = &light_driver_data,
 	},
@@ -9278,8 +9675,7 @@ static void thinkpad_acpi_module_exit(void)
 		hwmon_device_unregister(tpacpi_hwmon);
 
 	if (tp_features.sensors_pdev_attrs_registered)
-		device_remove_file(&tpacpi_sensors_pdev->dev,
-				   &dev_attr_thinkpad_acpi_pdev_name);
+		device_remove_file(&tpacpi_sensors_pdev->dev, &dev_attr_name);
 	if (tpacpi_sensors_pdev)
 		platform_device_unregister(tpacpi_sensors_pdev);
 	if (tpacpi_pdev)
@@ -9400,8 +9796,7 @@ static int __init thinkpad_acpi_module_init(void)
 		thinkpad_acpi_module_exit();
 		return ret;
 	}
-	ret = device_create_file(&tpacpi_sensors_pdev->dev,
-				 &dev_attr_thinkpad_acpi_pdev_name);
+	ret = device_create_file(&tpacpi_sensors_pdev->dev, &dev_attr_name);
 	if (ret) {
 		pr_err("unable to create sysfs hwmon device attributes\n");
 		thinkpad_acpi_module_exit();

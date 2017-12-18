@@ -904,7 +904,7 @@ static int ene_set_tx_carrier(struct rc_dev *rdev, u32 carrier)
 
 		dbg("TX: out of range %d-%d kHz carrier",
 			2000 / ENE_CIRMOD_PRD_MIN, 2000 / ENE_CIRMOD_PRD_MAX);
-		return -1;
+		return -EINVAL;
 	}
 
 	dev->tx_period = period;
@@ -1195,16 +1195,6 @@ static struct pnp_driver ene_driver = {
 	.shutdown = ene_shutdown,
 };
 
-static int __init ene_init(void)
-{
-	return pnp_register_driver(&ene_driver);
-}
-
-static void ene_exit(void)
-{
-	pnp_unregister_driver(&ene_driver);
-}
-
 module_param(sample_period, int, S_IRUGO);
 MODULE_PARM_DESC(sample_period, "Hardware sample period (50 us default)");
 
@@ -1226,5 +1216,4 @@ MODULE_DESCRIPTION
 MODULE_AUTHOR("Maxim Levitsky");
 MODULE_LICENSE("GPL");
 
-module_init(ene_init);
-module_exit(ene_exit);
+module_pnp_driver(ene_driver);

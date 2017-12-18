@@ -7,6 +7,7 @@
  */
 
 #include "target.h"
+#include "util.h"
 #include "debug.h"
 
 #include <pwd.h>
@@ -121,14 +122,7 @@ int target__strerror(struct target *target, int errnum,
 	BUG_ON(buflen == 0);
 
 	if (errnum >= 0) {
-		const char *err = strerror_r(errnum, buf, buflen);
-
-		if (err != buf) {
-			size_t len = strlen(err);
-			memcpy(buf, err, min(buflen - 1, len));
-			*(buf + min(buflen - 1, len)) = '\0';
-		}
-
+		str_error_r(errnum, buf, buflen);
 		return 0;
 	}
 

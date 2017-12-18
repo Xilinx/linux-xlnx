@@ -1,6 +1,6 @@
 config CRYPTO_DEV_FSL_CAAM
 	tristate "Freescale CAAM-Multicore driver backend"
-	depends on FSL_SOC
+	depends on FSL_SOC || ARCH_MXC || ARCH_LAYERSCAPE
 	help
 	  Enables the driver module for Freescale's Cryptographic Accelerator
 	  and Assurance Module (CAAM), also known as the SEC version 4 (SEC4).
@@ -45,7 +45,6 @@ config CRYPTO_DEV_FSL_CAAM_RINGSIZE
 config CRYPTO_DEV_FSL_CAAM_INTC
 	bool "Job Ring interrupt coalescing"
 	depends on CRYPTO_DEV_FSL_CAAM_JR
-	default n
 	help
 	  Enable the Job Ring's interrupt coalescing feature.
 
@@ -77,8 +76,9 @@ config CRYPTO_DEV_FSL_CAAM_CRYPTO_API
 	tristate "Register algorithm implementations with the Crypto API"
 	depends on CRYPTO_DEV_FSL_CAAM && CRYPTO_DEV_FSL_CAAM_JR
 	default y
-	select CRYPTO_ALGAPI
+	select CRYPTO_AEAD
 	select CRYPTO_AUTHENC
+	select CRYPTO_BLKCIPHER
 	help
 	  Selecting this will offload crypto for users of the
 	  scatterlist crypto API (such as the linux native IPSec
@@ -99,6 +99,18 @@ config CRYPTO_DEV_FSL_CAAM_AHASH_API
 	  To compile this as a module, choose M here: the module
 	  will be called caamhash.
 
+config CRYPTO_DEV_FSL_CAAM_PKC_API
+        tristate "Register public key cryptography implementations with Crypto API"
+        depends on CRYPTO_DEV_FSL_CAAM && CRYPTO_DEV_FSL_CAAM_JR
+        default y
+        select CRYPTO_RSA
+        help
+          Selecting this will allow SEC Public key support for RSA.
+          Supported cryptographic primitives: encryption, decryption,
+          signature and verification.
+          To compile this as a module, choose M here: the module
+          will be called caam_pkc.
+
 config CRYPTO_DEV_FSL_CAAM_RNG_API
 	tristate "Register caam device for hwrng API"
 	depends on CRYPTO_DEV_FSL_CAAM && CRYPTO_DEV_FSL_CAAM_JR
@@ -112,10 +124,13 @@ config CRYPTO_DEV_FSL_CAAM_RNG_API
 	  To compile this as a module, choose M here: the module
 	  will be called caamrng.
 
+config CRYPTO_DEV_FSL_CAAM_IMX
+	def_bool SOC_IMX6 || SOC_IMX7D
+	depends on CRYPTO_DEV_FSL_CAAM
+
 config CRYPTO_DEV_FSL_CAAM_DEBUG
 	bool "Enable debug output in CAAM driver"
 	depends on CRYPTO_DEV_FSL_CAAM
-	default n
 	help
 	  Selecting this will enable printing of various debug
 	  information in the CAAM driver.

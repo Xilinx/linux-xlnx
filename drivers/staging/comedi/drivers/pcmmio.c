@@ -78,33 +78,31 @@
 
 #include "../comedidev.h"
 
-#include "comedi_fc.h"
-
 /*
  * Register I/O map
  */
 #define PCMMIO_AI_LSB_REG			0x00
 #define PCMMIO_AI_MSB_REG			0x01
 #define PCMMIO_AI_CMD_REG			0x02
-#define PCMMIO_AI_CMD_SE			(1 << 7)
-#define PCMMIO_AI_CMD_ODD_CHAN			(1 << 6)
+#define PCMMIO_AI_CMD_SE			BIT(7)
+#define PCMMIO_AI_CMD_ODD_CHAN			BIT(6)
 #define PCMMIO_AI_CMD_CHAN_SEL(x)		(((x) & 0x3) << 4)
 #define PCMMIO_AI_CMD_RANGE(x)			(((x) & 0x3) << 2)
 #define PCMMIO_RESOURCE_REG			0x02
 #define PCMMIO_RESOURCE_IRQ(x)			(((x) & 0xf) << 0)
 #define PCMMIO_AI_STATUS_REG			0x03
-#define PCMMIO_AI_STATUS_DATA_READY		(1 << 7)
-#define PCMMIO_AI_STATUS_DATA_DMA_PEND		(1 << 6)
-#define PCMMIO_AI_STATUS_CMD_DMA_PEND		(1 << 5)
-#define PCMMIO_AI_STATUS_IRQ_PEND		(1 << 4)
-#define PCMMIO_AI_STATUS_DATA_DRQ_ENA		(1 << 2)
-#define PCMMIO_AI_STATUS_REG_SEL		(1 << 3)
-#define PCMMIO_AI_STATUS_CMD_DRQ_ENA		(1 << 1)
-#define PCMMIO_AI_STATUS_IRQ_ENA		(1 << 0)
+#define PCMMIO_AI_STATUS_DATA_READY		BIT(7)
+#define PCMMIO_AI_STATUS_DATA_DMA_PEND		BIT(6)
+#define PCMMIO_AI_STATUS_CMD_DMA_PEND		BIT(5)
+#define PCMMIO_AI_STATUS_IRQ_PEND		BIT(4)
+#define PCMMIO_AI_STATUS_DATA_DRQ_ENA		BIT(2)
+#define PCMMIO_AI_STATUS_REG_SEL		BIT(3)
+#define PCMMIO_AI_STATUS_CMD_DRQ_ENA		BIT(1)
+#define PCMMIO_AI_STATUS_IRQ_ENA		BIT(0)
 #define PCMMIO_AI_RES_ENA_REG			0x03
 #define PCMMIO_AI_RES_ENA_CMD_REG_ACCESS	(0 << 3)
-#define PCMMIO_AI_RES_ENA_AI_RES_ACCESS		(1 << 3)
-#define PCMMIO_AI_RES_ENA_DIO_RES_ACCESS	(1 << 4)
+#define PCMMIO_AI_RES_ENA_AI_RES_ACCESS		BIT(3)
+#define PCMMIO_AI_RES_ENA_DIO_RES_ACCESS	BIT(4)
 #define PCMMIO_AI_2ND_ADC_OFFSET		0x04
 
 #define PCMMIO_AO_LSB_REG			0x08
@@ -127,14 +125,14 @@
 #define PCMMIO_AO_CMD_CHAN_SEL(x)		(((x) & 0x03) << 1)
 #define PCMMIO_AO_CMD_CHAN_SEL_ALL		(0x0f << 0)
 #define PCMMIO_AO_STATUS_REG			0x0b
-#define PCMMIO_AO_STATUS_DATA_READY		(1 << 7)
-#define PCMMIO_AO_STATUS_DATA_DMA_PEND		(1 << 6)
-#define PCMMIO_AO_STATUS_CMD_DMA_PEND		(1 << 5)
-#define PCMMIO_AO_STATUS_IRQ_PEND		(1 << 4)
-#define PCMMIO_AO_STATUS_DATA_DRQ_ENA		(1 << 2)
-#define PCMMIO_AO_STATUS_REG_SEL		(1 << 3)
-#define PCMMIO_AO_STATUS_CMD_DRQ_ENA		(1 << 1)
-#define PCMMIO_AO_STATUS_IRQ_ENA		(1 << 0)
+#define PCMMIO_AO_STATUS_DATA_READY		BIT(7)
+#define PCMMIO_AO_STATUS_DATA_DMA_PEND		BIT(6)
+#define PCMMIO_AO_STATUS_CMD_DMA_PEND		BIT(5)
+#define PCMMIO_AO_STATUS_IRQ_PEND		BIT(4)
+#define PCMMIO_AO_STATUS_DATA_DRQ_ENA		BIT(2)
+#define PCMMIO_AO_STATUS_REG_SEL		BIT(3)
+#define PCMMIO_AO_STATUS_CMD_DRQ_ENA		BIT(1)
+#define PCMMIO_AO_STATUS_IRQ_ENA		BIT(0)
 #define PCMMIO_AO_RESOURCE_ENA_REG		0x0b
 #define PCMMIO_AO_2ND_DAC_OFFSET		0x04
 
@@ -483,19 +481,19 @@ static int pcmmio_cmdtest(struct comedi_device *dev,
 
 	/* Step 1 : check if triggers are trivially valid */
 
-	err |= cfc_check_trigger_src(&cmd->start_src, TRIG_NOW | TRIG_INT);
-	err |= cfc_check_trigger_src(&cmd->scan_begin_src, TRIG_EXT);
-	err |= cfc_check_trigger_src(&cmd->convert_src, TRIG_NOW);
-	err |= cfc_check_trigger_src(&cmd->scan_end_src, TRIG_COUNT);
-	err |= cfc_check_trigger_src(&cmd->stop_src, TRIG_COUNT | TRIG_NONE);
+	err |= comedi_check_trigger_src(&cmd->start_src, TRIG_NOW | TRIG_INT);
+	err |= comedi_check_trigger_src(&cmd->scan_begin_src, TRIG_EXT);
+	err |= comedi_check_trigger_src(&cmd->convert_src, TRIG_NOW);
+	err |= comedi_check_trigger_src(&cmd->scan_end_src, TRIG_COUNT);
+	err |= comedi_check_trigger_src(&cmd->stop_src, TRIG_COUNT | TRIG_NONE);
 
 	if (err)
 		return 1;
 
 	/* Step 2a : make sure trigger sources are unique */
 
-	err |= cfc_check_trigger_is_unique(cmd->start_src);
-	err |= cfc_check_trigger_is_unique(cmd->stop_src);
+	err |= comedi_check_trigger_is_unique(cmd->start_src);
+	err |= comedi_check_trigger_is_unique(cmd->stop_src);
 
 	/* Step 2b : and mutually compatible */
 
@@ -504,15 +502,16 @@ static int pcmmio_cmdtest(struct comedi_device *dev,
 
 	/* Step 3: check if arguments are trivially valid */
 
-	err |= cfc_check_trigger_arg_is(&cmd->start_arg, 0);
-	err |= cfc_check_trigger_arg_is(&cmd->scan_begin_arg, 0);
-	err |= cfc_check_trigger_arg_is(&cmd->convert_arg, 0);
-	err |= cfc_check_trigger_arg_is(&cmd->scan_end_arg, cmd->chanlist_len);
+	err |= comedi_check_trigger_arg_is(&cmd->start_arg, 0);
+	err |= comedi_check_trigger_arg_is(&cmd->scan_begin_arg, 0);
+	err |= comedi_check_trigger_arg_is(&cmd->convert_arg, 0);
+	err |= comedi_check_trigger_arg_is(&cmd->scan_end_arg,
+					   cmd->chanlist_len);
 
 	if (cmd->stop_src == TRIG_COUNT)
-		err |= cfc_check_trigger_arg_min(&cmd->stop_arg, 1);
+		err |= comedi_check_trigger_arg_min(&cmd->stop_arg, 1);
 	else	/* TRIG_NONE */
-		err |= cfc_check_trigger_arg_is(&cmd->stop_arg, 0);
+		err |= comedi_check_trigger_arg_is(&cmd->stop_arg, 0);
 
 	if (err)
 		return 3;

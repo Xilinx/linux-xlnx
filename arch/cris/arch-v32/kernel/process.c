@@ -23,9 +23,9 @@ extern void stop_watchdog(void);
 /* We use this if we don't have any better idle routine. */
 void default_idle(void)
 {
+	local_irq_enable();
 	/* Halt until exception. */
-	__asm__ volatile("ei    \n\t"
-			 "halt      ");
+	__asm__ volatile("halt");
 }
 
 /*
@@ -33,9 +33,9 @@ void default_idle(void)
  */
 
 extern void deconfigure_bp(long pid);
-void exit_thread(void)
+void exit_thread(struct task_struct *tsk)
 {
-	deconfigure_bp(current->pid);
+	deconfigure_bp(tsk->pid);
 }
 
 /*

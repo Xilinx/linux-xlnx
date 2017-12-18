@@ -33,17 +33,6 @@
 		stdout-path = &uart0;
 	};
 
-	mbus {
-		pcie-controller {
-			status = "okay";
-
-			/* Wifi model has Atheros chipset on pcie port */
-			pcie@1,0 {
-				status = "okay";
-			};
-		};
-	};
-
 	ocp@f1000000 {
 		pinctrl: pin-controller@10000 {
 			pmx_button_power: pmx-button-power {
@@ -74,7 +63,7 @@
 			m25p16@0 {
 				#address-cells = <1>;
 				#size-cells = <1>;
-				compatible = "st,m25p16";
+				compatible = "st,m25p16", "jedec,spi-nor";
 				reg = <0>;
 				spi-max-frequency = <40000000>;
 				mode = <0>;
@@ -199,3 +188,11 @@
 	};
 };
 
+/* Wifi model has Atheros chipset on pcie port */
+&pciec {
+        status = "okay";
+};
+
+&pcie0 {
+	status = "okay";
+};

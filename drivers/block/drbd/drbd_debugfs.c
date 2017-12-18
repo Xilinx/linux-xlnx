@@ -237,14 +237,9 @@ static void seq_print_peer_request_flags(struct seq_file *m, struct drbd_peer_re
 	seq_print_rq_state_bit(m, f & EE_SEND_WRITE_ACK, &sep, "C");
 	seq_print_rq_state_bit(m, f & EE_MAY_SET_IN_SYNC, &sep, "set-in-sync");
 
-	if (f & EE_IS_TRIM) {
-		seq_putc(m, sep);
-		sep = '|';
-		if (f & EE_IS_TRIM_USE_ZEROOUT)
-			seq_puts(m, "zero-out");
-		else
-			seq_puts(m, "trim");
-	}
+	if (f & EE_IS_TRIM)
+		__seq_print_rq_state_bit(m, f & EE_IS_TRIM_USE_ZEROOUT, &sep, "zero-out", "trim");
+	seq_print_rq_state_bit(m, f & EE_WRITE_SAME, &sep, "write-same");
 	seq_putc(m, '\n');
 }
 
@@ -419,14 +414,6 @@ static int in_flight_summary_show(struct seq_file *m, void *pos)
 	return 0;
 }
 
-/* simple_positive(file->f_path.dentry) respectively debugfs_positive(),
- * but neither is "reachable" from here.
- * So we have our own inline version of it above.  :-( */
-static inline int debugfs_positive(struct dentry *dentry)
-{
-        return dentry->d_inode && !d_unhashed(dentry);
-}
-
 /* make sure at *open* time that the respective object won't go away. */
 static int drbd_single_open(struct file *file, int (*show)(struct seq_file *, void *),
 		                void *data, struct kref *kref,
@@ -438,22 +425,18 @@ static int drbd_single_open(struct file *file, int (*show)(struct seq_file *, vo
 	/* Are we still linked,
 	 * or has debugfs_remove() already been called? */
 	parent = file->f_path.dentry->d_parent;
-	/* not sure if this can happen: */
-	if (!parent || !parent->d_inode)
-		goto out;
 	/* serialize with d_delete() */
-	mutex_lock(&parent->d_inode->i_mutex);
+	inode_lock(d_inode(parent));
 	/* Make sure the object is still alive */
-	if (debugfs_positive(file->f_path.dentry)
+	if (simple_positive(file->f_path.dentry)
 	&& kref_get_unless_zero(kref))
 		ret = 0;
-	mutex_unlock(&parent->d_inode->i_mutex);
+	inode_unlock(d_inode(parent));
 	if (!ret) {
 		ret = single_open(file, show, data);
 		if (ret)
 			kref_put(kref, release);
 	}
-out:
 	return ret;
 }
 
@@ -779,6 +762,13 @@ static int device_data_gen_id_show(struct seq_file *m, void *ignored)
 	return 0;
 }
 
+static int device_ed_gen_id_show(struct seq_file *m, void *ignored)
+{
+	struct drbd_device *device = m->private;
+	seq_printf(m, "0x%016llX\n", (unsigned long long)device->ed_uuid);
+	return 0;
+}
+
 #define drbd_debugfs_device_attr(name)						\
 static int device_ ## name ## _open(struct inode *inode, struct file *file)	\
 {										\
@@ -804,6 +794,7 @@ drbd_debugfs_device_attr(oldest_requests)
 drbd_debugfs_device_attr(act_log_extents)
 drbd_debugfs_device_attr(resync_extents)
 drbd_debugfs_device_attr(data_gen_id)
+drbd_debugfs_device_attr(ed_gen_id)
 
 void drbd_debugfs_device_add(struct drbd_device *device)
 {
@@ -847,6 +838,7 @@ void drbd_debugfs_device_add(struct drbd_device *device)
 	DCF(act_log_extents);
 	DCF(resync_extents);
 	DCF(data_gen_id);
+	DCF(ed_gen_id);
 #undef DCF
 	return;
 
@@ -862,6 +854,7 @@ void drbd_debugfs_device_cleanup(struct drbd_device *device)
 	drbd_debugfs_remove(&device->debugfs_vol_act_log_extents);
 	drbd_debugfs_remove(&device->debugfs_vol_resync_extents);
 	drbd_debugfs_remove(&device->debugfs_vol_data_gen_id);
+	drbd_debugfs_remove(&device->debugfs_vol_ed_gen_id);
 	drbd_debugfs_remove(&device->debugfs_vol);
 }
 
@@ -906,7 +899,7 @@ static int drbd_version_open(struct inode *inode, struct file *file)
 	return single_open(file, drbd_version_show, NULL);
 }
 
-static struct file_operations drbd_version_fops = {
+static const struct file_operations drbd_version_fops = {
 	.owner = THIS_MODULE,
 	.open = drbd_version_open,
 	.llseek = seq_lseek,

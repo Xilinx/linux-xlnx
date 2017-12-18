@@ -113,18 +113,20 @@ static int mdio_mux_mmioreg_probe(struct platform_device *pdev)
 		if (!iprop || len != sizeof(uint32_t)) {
 			dev_err(&pdev->dev, "mdio-mux child node %s is "
 				"missing a 'reg' property\n", np2->full_name);
+			of_node_put(np2);
 			return -ENODEV;
 		}
 		if (be32_to_cpup(iprop) & ~s->mask) {
 			dev_err(&pdev->dev, "mdio-mux child node %s has "
 				"a 'reg' value with unmasked bits\n",
 				np2->full_name);
+			of_node_put(np2);
 			return -ENODEV;
 		}
 	}
 
 	ret = mdio_mux_init(&pdev->dev, mdio_mux_mmioreg_switch_fn,
-			    &s->mux_handle, s);
+			    &s->mux_handle, s, NULL);
 	if (ret) {
 		dev_err(&pdev->dev, "failed to register mdio-mux bus %s\n",
 			np->full_name);
@@ -145,7 +147,7 @@ static int mdio_mux_mmioreg_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static struct of_device_id mdio_mux_mmioreg_match[] = {
+static const struct of_device_id mdio_mux_mmioreg_match[] = {
 	{
 		.compatible = "mdio-mux-mmioreg",
 	},

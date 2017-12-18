@@ -12,9 +12,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  *
  * File: rxtx.c
  *
@@ -45,8 +42,11 @@
 #include "usbpipe.h"
 
 static const u16 vnt_time_stampoff[2][MAX_RATE] = {
-	{384, 288, 226, 209, 54, 43, 37, 31, 28, 25, 24, 23},/* Long Preamble */
-	{384, 192, 130, 113, 54, 43, 37, 31, 28, 25, 24, 23},/* Short Preamble */
+	/* Long Preamble */
+	{384, 288, 226, 209, 54, 43, 37, 31, 28, 25, 24, 23},
+
+	/* Short Preamble */
+	{384, 192, 130, 113, 54, 43, 37, 31, 28, 25, 24, 23},
 };
 
 static const u16 vnt_fb_opt0[2][5] = {
@@ -87,7 +87,7 @@ static struct vnt_usb_send_context
 			return NULL;
 
 		context = priv->tx_context[ii];
-		if (context->in_use == false) {
+		if (!context->in_use) {
 			context->in_use = true;
 			memset(context->data, 0,
 					MAX_TOTAL_SIZE_WITH_ALL_HEADERS);
@@ -98,8 +98,11 @@ static struct vnt_usb_send_context
 		}
 	}
 
-	if (ii == priv->num_tx_context)
+	if (ii == priv->num_tx_context) {
 		dev_dbg(&priv->usb->dev, "%s No Free Tx Context\n", __func__);
+
+		ieee80211_stop_queues(priv->hw);
+	}
 
 	return NULL;
 }
@@ -713,7 +716,7 @@ static void vnt_fill_txkey(struct vnt_usb_send_context *tx_context,
 	u16 payload_len, struct vnt_mic_hdr *mic_hdr)
 {
 	struct ieee80211_hdr *hdr = tx_context->hdr;
-	struct ieee80211_key_seq seq;
+	u64 pn64;
 	u8 *iv = ((u8 *)hdr + ieee80211_get_hdrlen_from_skb(skb));
 
 	/* strip header and icv len from payload */
@@ -746,18 +749,22 @@ static void vnt_fill_txkey(struct vnt_usb_send_context *tx_context,
 		mic_hdr->payload_len = cpu_to_be16(payload_len);
 		ether_addr_copy(mic_hdr->mic_addr2, hdr->addr2);
 
-		ieee80211_get_key_tx_seq(tx_key, &seq);
-
-		memcpy(mic_hdr->ccmp_pn, seq.ccmp.pn, IEEE80211_CCMP_PN_LEN);
+		pn64 = atomic64_read(&tx_key->tx_pn);
+		mic_hdr->ccmp_pn[5] = pn64;
+		mic_hdr->ccmp_pn[4] = pn64 >> 8;
+		mic_hdr->ccmp_pn[3] = pn64 >> 16;
+		mic_hdr->ccmp_pn[2] = pn64 >> 24;
+		mic_hdr->ccmp_pn[1] = pn64 >> 32;
+		mic_hdr->ccmp_pn[0] = pn64 >> 40;
 
 		if (ieee80211_has_a4(hdr->frame_control))
 			mic_hdr->hlen = cpu_to_be16(28);
 		else
 			mic_hdr->hlen = cpu_to_be16(22);
 
-		memcpy(mic_hdr->addr1, hdr->addr1, ETH_ALEN);
-		memcpy(mic_hdr->addr2, hdr->addr2, ETH_ALEN);
-		memcpy(mic_hdr->addr3, hdr->addr3, ETH_ALEN);
+		ether_addr_copy(mic_hdr->addr1, hdr->addr1);
+		ether_addr_copy(mic_hdr->addr2, hdr->addr2);
+		ether_addr_copy(mic_hdr->addr3, hdr->addr3);
 
 		mic_hdr->frame_control = cpu_to_le16(
 			le16_to_cpu(hdr->frame_control) & 0xc78f);
@@ -765,7 +772,7 @@ static void vnt_fill_txkey(struct vnt_usb_send_context *tx_context,
 				le16_to_cpu(hdr->seq_ctrl) & 0xf);
 
 		if (ieee80211_has_a4(hdr->frame_control))
-			memcpy(mic_hdr->addr4, hdr->addr4, ETH_ALEN);
+			ether_addr_copy(mic_hdr->addr4, hdr->addr4);
 
 
 		memcpy(key_buffer, tx_key->key, WLAN_KEY_LEN_CCMP);
@@ -805,10 +812,18 @@ int vnt_tx_packet(struct vnt_private *priv, struct sk_buff *skb)
 		vnt_schedule_command(priv, WLAN_CMD_SETPOWER);
 	}
 
-	if (current_rate > RATE_11M)
-		pkt_type = priv->packet_type;
-	else
+	if (current_rate > RATE_11M) {
+		if (info->band == NL80211_BAND_5GHZ) {
+			pkt_type = PK_TYPE_11A;
+		} else {
+			if (tx_rate->flags & IEEE80211_TX_RC_USE_CTS_PROTECT)
+				pkt_type = PK_TYPE_11GB;
+			else
+				pkt_type = PK_TYPE_11GA;
+		}
+	} else {
 		pkt_type = PK_TYPE_11B;
+	}
 
 	spin_lock_irqsave(&priv->lock, flags);
 

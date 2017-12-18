@@ -14,9 +14,10 @@
 #define _CAN_DEV_H
 
 #include <linux/can.h>
-#include <linux/can/netlink.h>
 #include <linux/can/error.h>
 #include <linux/can/led.h>
+#include <linux/can/netlink.h>
+#include <linux/netdevice.h>
 
 /*
  * CAN mode
@@ -31,6 +32,7 @@ enum can_mode {
  * CAN common private data
  */
 struct can_priv {
+	struct net_device *dev;
 	struct can_device_stats can_stats;
 
 	struct can_bittiming bittiming, data_bittiming;
@@ -39,11 +41,14 @@ struct can_priv {
 	struct can_clock clock;
 
 	enum can_state state;
-	u32 ctrlmode;
-	u32 ctrlmode_supported;
+
+	/* CAN controller features - see include/uapi/linux/can/netlink.h */
+	u32 ctrlmode;		/* current options setting */
+	u32 ctrlmode_supported;	/* options that can be modified by netlink */
+	u32 ctrlmode_static;	/* static enabled options for driver/hardware */
 
 	int restart_ms;
-	struct timer_list restart_timer;
+	struct delayed_work restart_work;
 
 	int (*do_set_bittiming)(struct net_device *dev);
 	int (*do_set_data_bittiming)(struct net_device *dev);
@@ -61,6 +66,8 @@ struct can_priv {
 	char tx_led_trig_name[CAN_LED_NAME_SZ];
 	struct led_trigger *rx_led_trig;
 	char rx_led_trig_name[CAN_LED_NAME_SZ];
+	struct led_trigger *rxtx_led_trig;
+	char rxtx_led_trig_name[CAN_LED_NAME_SZ];
 #endif
 };
 
@@ -75,7 +82,7 @@ struct can_priv {
 #define get_canfd_dlc(i)	(min_t(__u8, (i), CANFD_MAX_DLC))
 
 /* Drop a given socketbuffer if it does not contain a valid CAN frame. */
-static inline int can_dropped_invalid_skb(struct net_device *dev,
+static inline bool can_dropped_invalid_skb(struct net_device *dev,
 					  struct sk_buff *skb)
 {
 	const struct canfd_frame *cfd = (struct canfd_frame *)skb->data;
@@ -91,18 +98,33 @@ static inline int can_dropped_invalid_skb(struct net_device *dev,
 	} else
 		goto inval_skb;
 
-	return 0;
+	return false;
 
 inval_skb:
 	kfree_skb(skb);
 	dev->stats.tx_dropped++;
-	return 1;
+	return true;
 }
 
 static inline bool can_is_canfd_skb(const struct sk_buff *skb)
 {
 	/* the CAN specific type of skb is identified by its data length */
 	return skb->len == CANFD_MTU;
+}
+
+/* helper to define static CAN controller features at device creation time */
+static inline void can_set_static_ctrlmode(struct net_device *dev,
+					   u32 static_mode)
+{
+	struct can_priv *priv = netdev_priv(dev);
+
+	/* alloc_candev() succeeded => netdev_priv() is valid at this point */
+	priv->ctrlmode = static_mode;
+	priv->ctrlmode_static = static_mode;
+
+	/* override MTU which was set by default in can_setup()? */
+	if (static_mode & CAN_CTRLMODE_FD)
+		dev->mtu = CANFD_MTU;
 }
 
 /* get data length from can_dlc with sanitized can_dlc */

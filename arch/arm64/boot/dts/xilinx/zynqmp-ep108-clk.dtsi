@@ -5,17 +5,15 @@
  *
  * Michal Simek <michal.simek@xilinx.com>
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License as
- * published by the Free Software Foundation; either version 2 of
- * the License, or (at your option) any later version.
+ * SPDX-License-Identifier:	GPL-2.0+
  */
 
-&amba {
+/ {
 	misc_clk: misc_clk {
 		compatible = "fixed-clock";
 		#clock-cells = <0>;
 		clock-frequency = <25000000>;
+		u-boot,dm-pre-reloc;
 	};
 
 	i2c_clk: i2c_clk {
@@ -33,20 +31,68 @@
 	dp_aclk: clock0 {
 		compatible = "fixed-clock";
 		#clock-cells = <0>;
-		clock-frequency = <50000000>; /* 316 663 000 DC2 hw design */
+		clock-frequency = <50000000>;
 		clock-accuracy = <100>;
+	};
+
+	clk100: clk100 {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <100000000>;
+	};
+
+	clk600: clk600 {
+		compatible = "fixed-clock";
+		#clock-cells = <0>;
+		clock-frequency = <600000000>;
 	};
 
 	dp_aud_clk: clock1 {
 		compatible = "fixed-clock";
 		#clock-cells = <0>;
-		clock-frequency = <22579200>; /* 2483600 DC2 hw design */
+		clock-frequency = <22579200>;
 		clock-accuracy = <100>;
 	};
 };
 
 &can0 {
 	clocks = <&misc_clk &misc_clk>;
+};
+
+&can1 {
+	clocks = <&misc_clk &misc_clk>;
+};
+
+&fpd_dma_chan1 {
+	clocks = <&clk600>, <&clk100>;
+};
+
+&fpd_dma_chan2 {
+	clocks = <&clk600>, <&clk100>;
+};
+
+&fpd_dma_chan3 {
+	clocks = <&clk600>, <&clk100>;
+};
+
+&fpd_dma_chan4 {
+	clocks = <&clk600>, <&clk100>;
+};
+
+&fpd_dma_chan5 {
+	clocks = <&clk600>, <&clk100>;
+};
+
+&fpd_dma_chan6 {
+	clocks = <&clk600>, <&clk100>;
+};
+
+&fpd_dma_chan7 {
+	clocks = <&clk600>, <&clk100>;
+};
+
+&fpd_dma_chan8 {
+	clocks = <&clk600>, <&clk100>;
 };
 
 &gem0 {

@@ -197,6 +197,8 @@ struct wl1271 {
 
 	int irq;
 
+	int irq_flags;
+
 	spinlock_t wl_lock;
 
 	enum wlcore_state state;
@@ -308,15 +310,12 @@ struct wl1271 {
 	/* FW memory block size */
 	u32 fw_mem_block_size;
 
-	/* Sysfs FW log entry readers wait queue */
-	wait_queue_head_t fwlog_waitq;
-
 	/* Hardware recovery work */
 	struct work_struct recovery_work;
 	bool watchdog_recovery;
 
 	/* Reg domain last configuration */
-	u32 reg_ch_conf_last[2];
+	u32 reg_ch_conf_last[2]  __aligned(8);
 	/* Reg domain pending configuration */
 	u32 reg_ch_conf_pending[2];
 
@@ -343,7 +342,7 @@ struct wl1271 {
 	struct wl12xx_vif *sched_vif;
 
 	/* The current band */
-	enum ieee80211_band band;
+	enum nl80211_band band;
 
 	struct completion *elp_compl;
 	struct delayed_work elp_work;
@@ -403,9 +402,6 @@ struct wl1271 {
 
 	/* Quirks of specific hardware revisions */
 	unsigned int quirks;
-
-	/* Platform limitations */
-	unsigned int platform_quirks;
 
 	/* number of currently active RX BA sessions */
 	int ba_rx_session_count;
@@ -467,6 +463,7 @@ struct wl1271 {
 
 	/* the current dfs region */
 	enum nl80211_dfs_regions dfs_region;
+	bool radar_debug_mode;
 
 	/* size of the private FW status data */
 	size_t fw_status_len;
@@ -501,6 +498,12 @@ struct wl1271 {
 	/* interface combinations supported by the hw */
 	const struct ieee80211_iface_combination *iface_combinations;
 	u8 n_iface_combinations;
+
+	/* dynamic fw traces */
+	u32 dynamic_fw_traces;
+
+	/* time sync zone master */
+	u8 zone_master_mac_addr[ETH_ALEN];
 };
 
 int wlcore_probe(struct wl1271 *wl, struct platform_device *pdev);
@@ -517,7 +520,7 @@ void wlcore_update_inconn_sta(struct wl1271 *wl, struct wl12xx_vif *wlvif,
 			      struct wl1271_station *wl_sta, bool in_conn);
 
 static inline void
-wlcore_set_ht_cap(struct wl1271 *wl, enum ieee80211_band band,
+wlcore_set_ht_cap(struct wl1271 *wl, enum nl80211_band band,
 		  struct ieee80211_sta_ht_cap *ht_cap)
 {
 	memcpy(&wl->ht_cap[band], ht_cap, sizeof(*ht_cap));

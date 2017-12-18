@@ -9,7 +9,7 @@
  * published by the Free Software Foundation.
  */
 
-#include <linux/module.h>
+#include <linux/init.h>
 #include <linux/cpuidle.h>
 #include <linux/spinlock.h>
 #include <linux/atomic.h>
@@ -19,7 +19,6 @@
 #include <linux/platform_device.h>
 
 #include <asm/cpuidle.h>
-#include <asm/proc-fns.h>
 
 static atomic_t master = ATOMIC_INIT(0);
 static DEFINE_SPINLOCK(master_lock);
@@ -125,5 +124,4 @@ static struct platform_driver dbx500_cpuidle_plat_driver = {
 	},
 	.probe = dbx500_cpuidle_probe,
 };
-
-module_platform_driver(dbx500_cpuidle_plat_driver);
+builtin_platform_driver(dbx500_cpuidle_plat_driver);

@@ -849,7 +849,7 @@ static int mdfld_crtc_mode_set(struct drm_crtc *crtc,
 
 	/* Flush the plane changes */
 	{
-		struct drm_crtc_helper_funcs *crtc_funcs =
+		const struct drm_crtc_helper_funcs *crtc_funcs =
 		    crtc->helper_private;
 		crtc_funcs->mode_set_base(crtc, x, y, old_fb);
 	}
@@ -1026,10 +1026,8 @@ mrst_crtc_mode_set_exit:
 
 const struct drm_crtc_helper_funcs mdfld_helper_funcs = {
 	.dpms = mdfld_crtc_dpms,
-	.mode_fixup = gma_crtc_mode_fixup,
 	.mode_set = mdfld_crtc_mode_set,
 	.mode_set_base = mdfld__intel_pipe_set_base,
 	.prepare = gma_crtc_prepare,
 	.commit = gma_crtc_commit,
 };
-

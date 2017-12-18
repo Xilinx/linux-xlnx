@@ -28,6 +28,9 @@
 
 #include "stac9766.h"
 
+#define STAC9766_VENDOR_ID 0x83847666
+#define STAC9766_VENDOR_ID_MASK 0xffffffff
+
 /*
  * STAC9766 register cache
  */
@@ -82,10 +85,10 @@ static SOC_ENUM_SINGLE_DECL(stac9766_boost2_enum,
 static SOC_ENUM_SINGLE_DECL(stac9766_stereo_mic_enum,
 			    AC97_STAC_STEREO_MIC, 2, stac9766_stereo_mic);
 
-static const DECLARE_TLV_DB_LINEAR(master_tlv, -4600, 0);
-static const DECLARE_TLV_DB_LINEAR(record_tlv, 0, 2250);
-static const DECLARE_TLV_DB_LINEAR(beep_tlv, -4500, 0);
-static const DECLARE_TLV_DB_LINEAR(mix_tlv, -3450, 1200);
+static const SNDRV_CTL_TLVD_DECLARE_DB_SCALE(master_tlv, -4650, 150, 0);
+static const SNDRV_CTL_TLVD_DECLARE_DB_SCALE(record_tlv,     0, 150, 0);
+static const SNDRV_CTL_TLVD_DECLARE_DB_SCALE(beep_tlv,   -4500, 300, 0);
+static const SNDRV_CTL_TLVD_DECLARE_DB_SCALE(mix_tlv,    -3450, 150, 0);
 
 static const struct snd_kcontrol_new stac9766_snd_ac97_controls[] = {
 	SOC_DOUBLE_TLV("Speaker Volume", AC97_MASTER, 8, 0, 31, 1, master_tlv),
@@ -236,49 +239,15 @@ static int stac9766_set_bias_level(struct snd_soc_codec *codec,
 		stac9766_ac97_write(codec, AC97_POWERDOWN, 0xffff);
 		break;
 	}
-	codec->dapm.bias_level = level;
-	return 0;
-}
-
-static int stac9766_reset(struct snd_soc_codec *codec, int try_warm)
-{
-	struct snd_ac97 *ac97 = snd_soc_codec_get_drvdata(codec);
-
-	if (try_warm && soc_ac97_ops->warm_reset) {
-		soc_ac97_ops->warm_reset(ac97);
-		if (stac9766_ac97_read(codec, 0) == stac9766_reg[0])
-			return 1;
-	}
-
-	soc_ac97_ops->reset(ac97);
-	if (soc_ac97_ops->warm_reset)
-		soc_ac97_ops->warm_reset(ac97);
-	if (stac9766_ac97_read(codec, 0) != stac9766_reg[0])
-		return -EIO;
 	return 0;
 }
 
 static int stac9766_codec_resume(struct snd_soc_codec *codec)
 {
 	struct snd_ac97 *ac97 = snd_soc_codec_get_drvdata(codec);
-	u16 id, reset;
 
-	reset = 0;
-	/* give the codec an AC97 warm reset to start the link */
-reset:
-	if (reset > 5) {
-		dev_err(codec->dev, "Failed to resume\n");
-		return -EIO;
-	}
-	ac97->bus->ops->warm_reset(ac97);
-	id = soc_ac97_ops->read(ac97, AC97_VENDOR_ID2);
-	if (id != 0x4c13) {
-		stac9766_reset(codec, 0);
-		reset++;
-		goto reset;
-	}
-
-	return 0;
+	return snd_ac97_reset(ac97, true, STAC9766_VENDOR_ID,
+		STAC9766_VENDOR_ID_MASK);
 }
 
 static const struct snd_soc_dai_ops stac9766_dai_ops_analog = {
@@ -321,7 +290,7 @@ static struct snd_soc_dai_driver stac9766_dai[] = {
 		.channels_max = 2,
 		.rates = SNDRV_PCM_RATE_32000 | \
 			SNDRV_PCM_RATE_44100 | SNDRV_PCM_RATE_48000,
-		.formats = SNDRV_PCM_FORMAT_IEC958_SUBFRAME_BE,
+		.formats = SNDRV_PCM_FMTBIT_IEC958_SUBFRAME_BE,
 	},
 	/* alsa ops */
 	.ops = &stac9766_dai_ops_digital,
@@ -331,28 +300,15 @@ static struct snd_soc_dai_driver stac9766_dai[] = {
 static int stac9766_codec_probe(struct snd_soc_codec *codec)
 {
 	struct snd_ac97 *ac97;
-	int ret = 0;
 
-	ac97 = snd_soc_new_ac97_codec(codec);
+	ac97 = snd_soc_new_ac97_codec(codec, STAC9766_VENDOR_ID,
+			STAC9766_VENDOR_ID_MASK);
 	if (IS_ERR(ac97))
 		return PTR_ERR(ac97);
 
 	snd_soc_codec_set_drvdata(codec, ac97);
 
-	/* do a cold reset for the controller and then try
-	 * a warm reset followed by an optional cold reset for codec */
-	stac9766_reset(codec, 0);
-	ret = stac9766_reset(codec, 1);
-	if (ret < 0) {
-		dev_err(codec->dev, "Failed to reset: AC97 link error\n");
-		goto codec_err;
-	}
-
 	return 0;
-
-codec_err:
-	snd_soc_free_ac97_codec(ac97);
-	return ret;
 }
 
 static int stac9766_codec_remove(struct snd_soc_codec *codec)
@@ -364,8 +320,10 @@ static int stac9766_codec_remove(struct snd_soc_codec *codec)
 }
 
 static struct snd_soc_codec_driver soc_codec_dev_stac9766 = {
-	.controls = stac9766_snd_ac97_controls,
-	.num_controls = ARRAY_SIZE(stac9766_snd_ac97_controls),
+	.component_driver = {
+		.controls		= stac9766_snd_ac97_controls,
+		.num_controls		= ARRAY_SIZE(stac9766_snd_ac97_controls),
+	},
 	.write = stac9766_ac97_write,
 	.read = stac9766_ac97_read,
 	.set_bias_level = stac9766_set_bias_level,

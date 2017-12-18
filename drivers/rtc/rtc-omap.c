@@ -13,18 +13,23 @@
  * 2 of the License, or (at your option) any later version.
  */
 
-#include <linux/kernel.h>
-#include <linux/init.h>
-#include <linux/module.h>
-#include <linux/ioport.h>
-#include <linux/delay.h>
-#include <linux/rtc.h>
+#include <dt-bindings/gpio/gpio.h>
 #include <linux/bcd.h>
-#include <linux/platform_device.h>
+#include <linux/clk.h>
+#include <linux/delay.h>
+#include <linux/init.h>
+#include <linux/io.h>
+#include <linux/ioport.h>
+#include <linux/kernel.h>
+#include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
+#include <linux/pinctrl/pinctrl.h>
+#include <linux/pinctrl/pinconf.h>
+#include <linux/pinctrl/pinconf-generic.h>
+#include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
-#include <linux/io.h>
+#include <linux/rtc.h>
 
 /*
  * The OMAP RTC is a year/month/day/hours/minutes/seconds BCD clock
@@ -107,33 +112,44 @@
 
 /* OMAP_RTC_OSC_REG bit fields: */
 #define OMAP_RTC_OSC_32KCLK_EN		BIT(6)
+#define OMAP_RTC_OSC_SEL_32KCLK_SRC	BIT(3)
+#define OMAP_RTC_OSC_OSC32K_GZ_DISABLE	BIT(4)
 
 /* OMAP_RTC_IRQWAKEEN bit fields: */
 #define OMAP_RTC_IRQWAKEEN_ALARM_WAKEEN	BIT(1)
 
 /* OMAP_RTC_PMIC bit fields: */
 #define OMAP_RTC_PMIC_POWER_EN_EN	BIT(16)
+#define OMAP_RTC_PMIC_EXT_WKUP_EN(x)	BIT(x)
+#define OMAP_RTC_PMIC_EXT_WKUP_POL(x)	BIT(4 + x)
 
 /* OMAP_RTC_KICKER values */
 #define	KICK0_VALUE			0x83e70b13
 #define	KICK1_VALUE			0x95a4f1e0
 
+struct omap_rtc;
+
 struct omap_rtc_device_type {
 	bool has_32kclk_en;
-	bool has_kicker;
 	bool has_irqwakeen;
 	bool has_pmic_mode;
 	bool has_power_up_reset;
+	void (*lock)(struct omap_rtc *rtc);
+	void (*unlock)(struct omap_rtc *rtc);
 };
 
 struct omap_rtc {
 	struct rtc_device *rtc;
 	void __iomem *base;
+	struct clk *clk;
 	int irq_alarm;
 	int irq_timer;
 	u8 interrupts_reg;
 	bool is_pmic_controller;
+	bool has_ext_clk;
+	bool is_suspending;
 	const struct omap_rtc_device_type *type;
+	struct pinctrl_dev *pctldev;
 };
 
 static inline u8 rtc_read(struct omap_rtc *rtc, unsigned int reg)
@@ -154,6 +170,26 @@ static inline void rtc_write(struct omap_rtc *rtc, unsigned int reg, u8 val)
 static inline void rtc_writel(struct omap_rtc *rtc, unsigned int reg, u32 val)
 {
 	writel(val, rtc->base + reg);
+}
+
+static void am3352_rtc_unlock(struct omap_rtc *rtc)
+{
+	rtc_writel(rtc, OMAP_RTC_KICK0_REG, KICK0_VALUE);
+	rtc_writel(rtc, OMAP_RTC_KICK1_REG, KICK1_VALUE);
+}
+
+static void am3352_rtc_lock(struct omap_rtc *rtc)
+{
+	rtc_writel(rtc, OMAP_RTC_KICK0_REG, 0);
+	rtc_writel(rtc, OMAP_RTC_KICK1_REG, 0);
+}
+
+static void default_rtc_unlock(struct omap_rtc *rtc)
+{
+}
+
+static void default_rtc_lock(struct omap_rtc *rtc)
+{
 }
 
 /*
@@ -186,7 +222,9 @@ static irqreturn_t rtc_irq(int irq, void *dev_id)
 
 	/* alarm irq? */
 	if (irq_data & OMAP_RTC_STATUS_ALARM) {
+		rtc->type->unlock(rtc);
 		rtc_write(rtc, OMAP_RTC_STATUS_REG, OMAP_RTC_STATUS_ALARM);
+		rtc->type->lock(rtc);
 		events |= RTC_IRQF | RTC_AF;
 	}
 
@@ -218,9 +256,11 @@ static int omap_rtc_alarm_irq_enable(struct device *dev, unsigned int enabled)
 		irqwake_reg &= ~OMAP_RTC_IRQWAKEEN_ALARM_WAKEEN;
 	}
 	rtc_wait_not_busy(rtc);
+	rtc->type->unlock(rtc);
 	rtc_write(rtc, OMAP_RTC_INTERRUPTS_REG, reg);
 	if (rtc->type->has_irqwakeen)
 		rtc_write(rtc, OMAP_RTC_IRQWAKEEN, irqwake_reg);
+	rtc->type->lock(rtc);
 	local_irq_enable();
 
 	return 0;
@@ -293,12 +333,14 @@ static int omap_rtc_set_time(struct device *dev, struct rtc_time *tm)
 	local_irq_disable();
 	rtc_wait_not_busy(rtc);
 
+	rtc->type->unlock(rtc);
 	rtc_write(rtc, OMAP_RTC_YEARS_REG, tm->tm_year);
 	rtc_write(rtc, OMAP_RTC_MONTHS_REG, tm->tm_mon);
 	rtc_write(rtc, OMAP_RTC_DAYS_REG, tm->tm_mday);
 	rtc_write(rtc, OMAP_RTC_HOURS_REG, tm->tm_hour);
 	rtc_write(rtc, OMAP_RTC_MINUTES_REG, tm->tm_min);
 	rtc_write(rtc, OMAP_RTC_SECONDS_REG, tm->tm_sec);
+	rtc->type->lock(rtc);
 
 	local_irq_enable();
 
@@ -341,6 +383,7 @@ static int omap_rtc_set_alarm(struct device *dev, struct rtc_wkalrm *alm)
 	local_irq_disable();
 	rtc_wait_not_busy(rtc);
 
+	rtc->type->unlock(rtc);
 	rtc_write(rtc, OMAP_RTC_ALARM_YEARS_REG, alm->time.tm_year);
 	rtc_write(rtc, OMAP_RTC_ALARM_MONTHS_REG, alm->time.tm_mon);
 	rtc_write(rtc, OMAP_RTC_ALARM_DAYS_REG, alm->time.tm_mday);
@@ -362,6 +405,7 @@ static int omap_rtc_set_alarm(struct device *dev, struct rtc_wkalrm *alm)
 	rtc_write(rtc, OMAP_RTC_INTERRUPTS_REG, reg);
 	if (rtc->type->has_irqwakeen)
 		rtc_write(rtc, OMAP_RTC_IRQWAKEEN, irqwake_reg);
+	rtc->type->lock(rtc);
 
 	local_irq_enable();
 
@@ -391,6 +435,7 @@ static void omap_rtc_power_off(void)
 	unsigned long now;
 	u32 val;
 
+	rtc->type->unlock(rtc);
 	/* enable pmic_power_en control */
 	val = rtc_readl(rtc, OMAP_RTC_PMIC_REG);
 	rtc_writel(rtc, OMAP_RTC_PMIC_REG, val | OMAP_RTC_PMIC_POWER_EN_EN);
@@ -423,6 +468,7 @@ static void omap_rtc_power_off(void)
 	val = rtc_read(rtc, OMAP_RTC_INTERRUPTS_REG);
 	rtc_writel(rtc, OMAP_RTC_INTERRUPTS_REG,
 			val | OMAP_RTC_INTERRUPTS_IT_ALARM2);
+	rtc->type->lock(rtc);
 
 	/*
 	 * Wait for alarm to trigger (within two seconds) and external PMIC to
@@ -432,7 +478,7 @@ static void omap_rtc_power_off(void)
 	mdelay(2500);
 }
 
-static struct rtc_class_ops omap_rtc_ops = {
+static const struct rtc_class_ops omap_rtc_ops = {
 	.read_time	= omap_rtc_read_time,
 	.set_time	= omap_rtc_set_time,
 	.read_alarm	= omap_rtc_read_alarm,
@@ -442,17 +488,21 @@ static struct rtc_class_ops omap_rtc_ops = {
 
 static const struct omap_rtc_device_type omap_rtc_default_type = {
 	.has_power_up_reset = true,
+	.lock		= default_rtc_lock,
+	.unlock		= default_rtc_unlock,
 };
 
 static const struct omap_rtc_device_type omap_rtc_am3352_type = {
 	.has_32kclk_en	= true,
-	.has_kicker	= true,
 	.has_irqwakeen	= true,
 	.has_pmic_mode	= true,
+	.lock		= am3352_rtc_lock,
+	.unlock		= am3352_rtc_unlock,
 };
 
 static const struct omap_rtc_device_type omap_rtc_da830_type = {
-	.has_kicker	= true,
+	.lock		= am3352_rtc_lock,
+	.unlock		= am3352_rtc_unlock,
 };
 
 static const struct platform_device_id omap_rtc_id_table[] = {
@@ -484,7 +534,140 @@ static const struct of_device_id omap_rtc_of_match[] = {
 };
 MODULE_DEVICE_TABLE(of, omap_rtc_of_match);
 
-static int __init omap_rtc_probe(struct platform_device *pdev)
+static const struct pinctrl_pin_desc rtc_pins_desc[] = {
+	PINCTRL_PIN(0, "ext_wakeup0"),
+	PINCTRL_PIN(1, "ext_wakeup1"),
+	PINCTRL_PIN(2, "ext_wakeup2"),
+	PINCTRL_PIN(3, "ext_wakeup3"),
+};
+
+static int rtc_pinctrl_get_groups_count(struct pinctrl_dev *pctldev)
+{
+	return 0;
+}
+
+static const char *rtc_pinctrl_get_group_name(struct pinctrl_dev *pctldev,
+					unsigned int group)
+{
+	return NULL;
+}
+
+static const struct pinctrl_ops rtc_pinctrl_ops = {
+	.get_groups_count = rtc_pinctrl_get_groups_count,
+	.get_group_name = rtc_pinctrl_get_group_name,
+	.dt_node_to_map = pinconf_generic_dt_node_to_map_pin,
+	.dt_free_map = pinconf_generic_dt_free_map,
+};
+
+enum rtc_pin_config_param {
+	PIN_CONFIG_ACTIVE_HIGH = PIN_CONFIG_END + 1,
+};
+
+static const struct pinconf_generic_params rtc_params[] = {
+	{"ti,active-high", PIN_CONFIG_ACTIVE_HIGH, 0},
+};
+
+#ifdef CONFIG_DEBUG_FS
+static const struct pin_config_item rtc_conf_items[ARRAY_SIZE(rtc_params)] = {
+	PCONFDUMP(PIN_CONFIG_ACTIVE_HIGH, "input active high", NULL, false),
+};
+#endif
+
+static int rtc_pinconf_get(struct pinctrl_dev *pctldev,
+			unsigned int pin, unsigned long *config)
+{
+	struct omap_rtc *rtc = pinctrl_dev_get_drvdata(pctldev);
+	unsigned int param = pinconf_to_config_param(*config);
+	u32 val;
+	u16 arg = 0;
+
+	rtc->type->unlock(rtc);
+	val = rtc_readl(rtc, OMAP_RTC_PMIC_REG);
+	rtc->type->lock(rtc);
+
+	switch (param) {
+	case PIN_CONFIG_INPUT_ENABLE:
+		if (!(val & OMAP_RTC_PMIC_EXT_WKUP_EN(pin)))
+			return -EINVAL;
+		break;
+	case PIN_CONFIG_ACTIVE_HIGH:
+		if (val & OMAP_RTC_PMIC_EXT_WKUP_POL(pin))
+			return -EINVAL;
+		break;
+	default:
+		return -ENOTSUPP;
+	};
+
+	*config = pinconf_to_config_packed(param, arg);
+
+	return 0;
+}
+
+static int rtc_pinconf_set(struct pinctrl_dev *pctldev,
+			unsigned int pin, unsigned long *configs,
+			unsigned int num_configs)
+{
+	struct omap_rtc *rtc = pinctrl_dev_get_drvdata(pctldev);
+	u32 val;
+	unsigned int param;
+	u16 param_val;
+	int i;
+
+	rtc->type->unlock(rtc);
+	val = rtc_readl(rtc, OMAP_RTC_PMIC_REG);
+	rtc->type->lock(rtc);
+
+	/* active low by default */
+	val |= OMAP_RTC_PMIC_EXT_WKUP_POL(pin);
+
+	for (i = 0; i < num_configs; i++) {
+		param = pinconf_to_config_param(configs[i]);
+		param_val = pinconf_to_config_argument(configs[i]);
+
+		switch (param) {
+		case PIN_CONFIG_INPUT_ENABLE:
+			if (param_val)
+				val |= OMAP_RTC_PMIC_EXT_WKUP_EN(pin);
+			else
+				val &= ~OMAP_RTC_PMIC_EXT_WKUP_EN(pin);
+			break;
+		case PIN_CONFIG_ACTIVE_HIGH:
+			val &= ~OMAP_RTC_PMIC_EXT_WKUP_POL(pin);
+			break;
+		default:
+			dev_err(&rtc->rtc->dev, "Property %u not supported\n",
+				param);
+			return -ENOTSUPP;
+		}
+	}
+
+	rtc->type->unlock(rtc);
+	rtc_writel(rtc, OMAP_RTC_PMIC_REG, val);
+	rtc->type->lock(rtc);
+
+	return 0;
+}
+
+static const struct pinconf_ops rtc_pinconf_ops = {
+	.is_generic = true,
+	.pin_config_get = rtc_pinconf_get,
+	.pin_config_set = rtc_pinconf_set,
+};
+
+static struct pinctrl_desc rtc_pinctrl_desc = {
+	.pins = rtc_pins_desc,
+	.npins = ARRAY_SIZE(rtc_pins_desc),
+	.pctlops = &rtc_pinctrl_ops,
+	.confops = &rtc_pinconf_ops,
+	.custom_params = rtc_params,
+	.num_custom_params = ARRAY_SIZE(rtc_params),
+#ifdef CONFIG_DEBUG_FS
+	.custom_conf_items = rtc_conf_items,
+#endif
+	.owner = THIS_MODULE,
+};
+
+static int omap_rtc_probe(struct platform_device *pdev)
 {
 	struct omap_rtc	*rtc;
 	struct resource	*res;
@@ -516,6 +699,15 @@ static int __init omap_rtc_probe(struct platform_device *pdev)
 	if (rtc->irq_alarm <= 0)
 		return -ENOENT;
 
+	rtc->clk = devm_clk_get(&pdev->dev, "ext-clk");
+	if (!IS_ERR(rtc->clk))
+		rtc->has_ext_clk = true;
+	else
+		rtc->clk = devm_clk_get(&pdev->dev, "int-clk");
+
+	if (!IS_ERR(rtc->clk))
+		clk_prepare_enable(rtc->clk);
+
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	rtc->base = devm_ioremap_resource(&pdev->dev, res);
 	if (IS_ERR(rtc->base))
@@ -527,10 +719,7 @@ static int __init omap_rtc_probe(struct platform_device *pdev)
 	pm_runtime_enable(&pdev->dev);
 	pm_runtime_get_sync(&pdev->dev);
 
-	if (rtc->type->has_kicker) {
-		rtc_writel(rtc, OMAP_RTC_KICK0_REG, KICK0_VALUE);
-		rtc_writel(rtc, OMAP_RTC_KICK1_REG, KICK1_VALUE);
-	}
+	rtc->type->unlock(rtc);
 
 	/*
 	 * disable interrupts
@@ -593,6 +782,19 @@ static int __init omap_rtc_probe(struct platform_device *pdev)
 	if (reg != new_ctrl)
 		rtc_write(rtc, OMAP_RTC_CTRL_REG, new_ctrl);
 
+	/*
+	 * If we have the external clock then switch to it so we can keep
+	 * ticking across suspend.
+	 */
+	if (rtc->has_ext_clk) {
+		reg = rtc_read(rtc, OMAP_RTC_OSC_REG);
+		reg &= ~OMAP_RTC_OSC_OSC32K_GZ_DISABLE;
+		reg |= OMAP_RTC_OSC_32KCLK_EN | OMAP_RTC_OSC_SEL_32KCLK_SRC;
+		rtc_writel(rtc, OMAP_RTC_OSC_REG, reg);
+	}
+
+	rtc->type->lock(rtc);
+
 	device_init_wakeup(&pdev->dev, true);
 
 	rtc->rtc = devm_rtc_device_register(&pdev->dev, pdev->name,
@@ -622,12 +824,20 @@ static int __init omap_rtc_probe(struct platform_device *pdev)
 		}
 	}
 
+	/* Support ext_wakeup pinconf */
+	rtc_pinctrl_desc.name = dev_name(&pdev->dev);
+
+	rtc->pctldev = pinctrl_register(&rtc_pinctrl_desc, &pdev->dev, rtc);
+	if (IS_ERR(rtc->pctldev)) {
+		dev_err(&pdev->dev, "Couldn't register pinctrl driver\n");
+		return PTR_ERR(rtc->pctldev);
+	}
+
 	return 0;
 
 err:
 	device_init_wakeup(&pdev->dev, false);
-	if (rtc->type->has_kicker)
-		rtc_writel(rtc, OMAP_RTC_KICK0_REG, 0);
+	rtc->type->lock(rtc);
 	pm_runtime_put_sync(&pdev->dev);
 	pm_runtime_disable(&pdev->dev);
 
@@ -637,6 +847,7 @@ err:
 static int __exit omap_rtc_remove(struct platform_device *pdev)
 {
 	struct omap_rtc *rtc = platform_get_drvdata(pdev);
+	u8 reg;
 
 	if (pm_power_off == omap_rtc_power_off &&
 			omap_rtc_power_off_rtc == rtc) {
@@ -646,15 +857,27 @@ static int __exit omap_rtc_remove(struct platform_device *pdev)
 
 	device_init_wakeup(&pdev->dev, 0);
 
+	if (!IS_ERR(rtc->clk))
+		clk_disable_unprepare(rtc->clk);
+
+	rtc->type->unlock(rtc);
 	/* leave rtc running, but disable irqs */
 	rtc_write(rtc, OMAP_RTC_INTERRUPTS_REG, 0);
 
-	if (rtc->type->has_kicker)
-		rtc_writel(rtc, OMAP_RTC_KICK0_REG, 0);
+	if (rtc->has_ext_clk) {
+		reg = rtc_read(rtc, OMAP_RTC_OSC_REG);
+		reg &= ~OMAP_RTC_OSC_SEL_32KCLK_SRC;
+		rtc_write(rtc, OMAP_RTC_OSC_REG, reg);
+	}
+
+	rtc->type->lock(rtc);
 
 	/* Disable the clock/module */
 	pm_runtime_put_sync(&pdev->dev);
 	pm_runtime_disable(&pdev->dev);
+
+	/* Remove ext_wakeup pinconf */
+	pinctrl_unregister(rtc->pctldev);
 
 	return 0;
 }
@@ -666,6 +889,7 @@ static int omap_rtc_suspend(struct device *dev)
 
 	rtc->interrupts_reg = rtc_read(rtc, OMAP_RTC_INTERRUPTS_REG);
 
+	rtc->type->unlock(rtc);
 	/*
 	 * FIXME: the RTC alarm is not currently acting as a wakeup event
 	 * source on some platforms, and in fact this enable() call is just
@@ -675,9 +899,9 @@ static int omap_rtc_suspend(struct device *dev)
 		enable_irq_wake(rtc->irq_alarm);
 	else
 		rtc_write(rtc, OMAP_RTC_INTERRUPTS_REG, 0);
+	rtc->type->lock(rtc);
 
-	/* Disable the clock/module */
-	pm_runtime_put_sync(dev);
+	rtc->is_suspending = true;
 
 	return 0;
 }
@@ -686,19 +910,41 @@ static int omap_rtc_resume(struct device *dev)
 {
 	struct omap_rtc *rtc = dev_get_drvdata(dev);
 
-	/* Enable the clock/module so that we can access the registers */
-	pm_runtime_get_sync(dev);
-
+	rtc->type->unlock(rtc);
 	if (device_may_wakeup(dev))
 		disable_irq_wake(rtc->irq_alarm);
 	else
 		rtc_write(rtc, OMAP_RTC_INTERRUPTS_REG, rtc->interrupts_reg);
+	rtc->type->lock(rtc);
+
+	rtc->is_suspending = false;
 
 	return 0;
 }
 #endif
 
-static SIMPLE_DEV_PM_OPS(omap_rtc_pm_ops, omap_rtc_suspend, omap_rtc_resume);
+#ifdef CONFIG_PM
+static int omap_rtc_runtime_suspend(struct device *dev)
+{
+	struct omap_rtc *rtc = dev_get_drvdata(dev);
+
+	if (rtc->is_suspending && !rtc->has_ext_clk)
+		return -EBUSY;
+
+	return 0;
+}
+
+static int omap_rtc_runtime_resume(struct device *dev)
+{
+	return 0;
+}
+#endif
+
+static const struct dev_pm_ops omap_rtc_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(omap_rtc_suspend, omap_rtc_resume)
+	SET_RUNTIME_PM_OPS(omap_rtc_runtime_suspend,
+			   omap_rtc_runtime_resume, NULL)
+};
 
 static void omap_rtc_shutdown(struct platform_device *pdev)
 {
@@ -709,12 +955,15 @@ static void omap_rtc_shutdown(struct platform_device *pdev)
 	 * Keep the ALARM interrupt enabled to allow the system to power up on
 	 * alarm events.
 	 */
+	rtc->type->unlock(rtc);
 	mask = rtc_read(rtc, OMAP_RTC_INTERRUPTS_REG);
 	mask &= OMAP_RTC_INTERRUPTS_IT_ALARM;
 	rtc_write(rtc, OMAP_RTC_INTERRUPTS_REG, mask);
+	rtc->type->lock(rtc);
 }
 
 static struct platform_driver omap_rtc_driver = {
+	.probe		= omap_rtc_probe,
 	.remove		= __exit_p(omap_rtc_remove),
 	.shutdown	= omap_rtc_shutdown,
 	.driver		= {
@@ -725,7 +974,7 @@ static struct platform_driver omap_rtc_driver = {
 	.id_table	= omap_rtc_id_table,
 };
 
-module_platform_driver_probe(omap_rtc_driver, omap_rtc_probe);
+module_platform_driver(omap_rtc_driver);
 
 MODULE_ALIAS("platform:omap_rtc");
 MODULE_AUTHOR("George G. Davis (and others)");

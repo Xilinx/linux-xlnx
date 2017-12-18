@@ -986,7 +986,7 @@ ia64_mca_modify_original_stack(struct pt_regs *regs,
 	int cpu = smp_processor_id();
 
 	previous_current = curr_task(cpu);
-	set_curr_task(cpu, current);
+	ia64_set_curr_task(cpu, current);
 	if ((p = strchr(current->comm, ' ')))
 		*p = '\0';
 
@@ -1293,7 +1293,7 @@ ia64_mca_handler(struct pt_regs *regs, struct switch_stack *sw,
 		monarch_cpu = cpu;
 		sos->monarch = 1;
 	} else {
-		cpu_set(cpu, mca_cpu);
+		cpumask_set_cpu(cpu, &mca_cpu);
 		sos->monarch = 0;
 	}
 	mprintk(KERN_INFO "Entered OS MCA handler. PSP=%lx cpu=%d "
@@ -1316,7 +1316,7 @@ ia64_mca_handler(struct pt_regs *regs, struct switch_stack *sw,
 		 */
 		ia64_mca_wakeup_all();
 	} else {
-		while (cpu_isset(cpu, mca_cpu))
+		while (cpumask_test_cpu(cpu, &mca_cpu))
 			cpu_relax();	/* spin until monarch wakes us */
 	}
 
@@ -1355,19 +1355,19 @@ ia64_mca_handler(struct pt_regs *regs, struct switch_stack *sw,
 		 * and put this cpu in the rendez loop.
 		 */
 		for_each_online_cpu(i) {
-			if (cpu_isset(i, mca_cpu)) {
+			if (cpumask_test_cpu(i, &mca_cpu)) {
 				monarch_cpu = i;
-				cpu_clear(i, mca_cpu);	/* wake next cpu */
+				cpumask_clear_cpu(i, &mca_cpu);	/* wake next cpu */
 				while (monarch_cpu != -1)
 					cpu_relax();	/* spin until last cpu leaves */
-				set_curr_task(cpu, previous_current);
+				ia64_set_curr_task(cpu, previous_current);
 				ia64_mc_info.imi_rendez_checkin[cpu]
 						= IA64_MCA_RENDEZ_CHECKIN_NOTDONE;
 				return;
 			}
 		}
 	}
-	set_curr_task(cpu, previous_current);
+	ia64_set_curr_task(cpu, previous_current);
 	ia64_mc_info.imi_rendez_checkin[cpu] = IA64_MCA_RENDEZ_CHECKIN_NOTDONE;
 	monarch_cpu = -1;	/* This frees the slaves and previous monarchs */
 }
@@ -1729,7 +1729,7 @@ ia64_init_handler(struct pt_regs *regs, struct switch_stack *sw,
 		NOTIFY_INIT(DIE_INIT_SLAVE_LEAVE, regs, (long)&nd, 1);
 
 		mprintk("Slave on cpu %d returning to normal service.\n", cpu);
-		set_curr_task(cpu, previous_current);
+		ia64_set_curr_task(cpu, previous_current);
 		ia64_mc_info.imi_rendez_checkin[cpu] = IA64_MCA_RENDEZ_CHECKIN_NOTDONE;
 		atomic_dec(&slaves);
 		return;
@@ -1756,7 +1756,7 @@ ia64_init_handler(struct pt_regs *regs, struct switch_stack *sw,
 
 	mprintk("\nINIT dump complete.  Monarch on cpu %d returning to normal service.\n", cpu);
 	atomic_dec(&monarchs);
-	set_curr_task(cpu, previous_current);
+	ia64_set_curr_task(cpu, previous_current);
 	monarch_cpu = -1;
 	return;
 }
@@ -1822,7 +1822,7 @@ format_mca_init_stack(void *mca_data, unsigned long offset,
 	ti->cpu = cpu;
 	p->stack = ti;
 	p->state = TASK_UNINTERRUPTIBLE;
-	cpu_set(cpu, p->cpus_allowed);
+	cpumask_set_cpu(cpu, &p->cpus_allowed);
 	INIT_LIST_HEAD(&p->tasks);
 	p->parent = p->real_parent = p->group_leader = p;
 	INIT_LIST_HEAD(&p->children);
@@ -1831,7 +1831,7 @@ format_mca_init_stack(void *mca_data, unsigned long offset,
 }
 
 /* Caller prevents this from being called after init */
-static void * __init_refok mca_bootmem(void)
+static void * __ref mca_bootmem(void)
 {
 	return __alloc_bootmem(sizeof(struct ia64_mca_cpu),
 	                    KERNEL_STACK_SIZE, 0);
@@ -1890,7 +1890,7 @@ ia64_mca_cpu_init(void *cpu_data)
 							      PAGE_KERNEL)));
 }
 
-static void ia64_mca_cmc_vector_adjust(void *dummy)
+static int ia64_mca_cpu_online(unsigned int cpu)
 {
 	unsigned long flags;
 
@@ -1898,27 +1898,8 @@ static void ia64_mca_cmc_vector_adjust(void *dummy)
 	if (!cmc_polling_enabled)
 		ia64_mca_cmc_vector_enable(NULL);
 	local_irq_restore(flags);
+	return 0;
 }
-
-static int mca_cpu_callback(struct notifier_block *nfb,
-				      unsigned long action,
-				      void *hcpu)
-{
-	int hotcpu = (unsigned long) hcpu;
-
-	switch (action) {
-	case CPU_ONLINE:
-	case CPU_ONLINE_FROZEN:
-		smp_call_function_single(hotcpu, ia64_mca_cmc_vector_adjust,
-					 NULL, 0);
-		break;
-	}
-	return NOTIFY_OK;
-}
-
-static struct notifier_block mca_cpu_notifier = {
-	.notifier_call = mca_cpu_callback
-};
 
 /*
  * ia64_mca_init
@@ -2114,23 +2095,19 @@ ia64_mca_late_init(void)
 	if (!mca_init)
 		return 0;
 
-	register_hotcpu_notifier(&mca_cpu_notifier);
-
 	/* Setup the CMCI/P vector and handler */
-	init_timer(&cmc_poll_timer);
-	cmc_poll_timer.function = ia64_mca_cmc_poll;
+	setup_timer(&cmc_poll_timer, ia64_mca_cmc_poll, 0UL);
 
 	/* Unmask/enable the vector */
 	cmc_polling_enabled = 0;
-	schedule_work(&cmc_enable_work);
-
+	cpuhp_setup_state(CPUHP_AP_ONLINE_DYN, "ia64/mca:online",
+			  ia64_mca_cpu_online, NULL);
 	IA64_MCA_DEBUG("%s: CMCI/P setup and enabled.\n", __func__);
 
 #ifdef CONFIG_ACPI
 	/* Setup the CPEI/P vector and handler */
 	cpe_vector = acpi_request_vector(ACPI_INTERRUPT_CPEI);
-	init_timer(&cpe_poll_timer);
-	cpe_poll_timer.function = ia64_mca_cpe_poll;
+	setup_timer(&cpe_poll_timer, ia64_mca_cpe_poll, 0UL);
 
 	{
 		unsigned int irq;

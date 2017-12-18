@@ -34,6 +34,7 @@
 #define NETCP_SOP_OFFSET	(NET_IP_ALIGN + NET_SKB_PAD)
 #define NETCP_NAPI_WEIGHT	64
 #define NETCP_TX_TIMEOUT	(5 * HZ)
+#define NETCP_PACKET_SIZE	(ETH_FRAME_LEN + ETH_FCS_LEN)
 #define NETCP_MIN_PACKET_SIZE	ETH_ZLEN
 #define NETCP_MAX_MCAST_ADDR	16
 
@@ -50,6 +51,8 @@
 		    NETIF_MSG_TX_ERR	| NETIF_MSG_TX_DONE	|	\
 		    NETIF_MSG_PKTDATA	| NETIF_MSG_TX_QUEUED	|	\
 		    NETIF_MSG_RX_STATUS)
+
+#define NETCP_EFUSE_ADDR_SWAP	2
 
 #define knav_queue_get_id(q)	knav_queue_device_control(q, \
 				KNAV_QUEUE_GET_ID, (unsigned long)NULL)
@@ -106,78 +109,99 @@ module_param(netcp_debug_level, int, 0);
 MODULE_PARM_DESC(netcp_debug_level, "Netcp debug level (NETIF_MSG bits) (0=none,...,16=all)");
 
 /* Helper functions - Get/Set */
-static void get_pkt_info(u32 *buff, u32 *buff_len, u32 *ndesc,
+static void get_pkt_info(dma_addr_t *buff, u32 *buff_len, dma_addr_t *ndesc,
 			 struct knav_dma_desc *desc)
 {
-	*buff_len = desc->buff_len;
-	*buff = desc->buff;
-	*ndesc = desc->next_desc;
+	*buff_len = le32_to_cpu(desc->buff_len);
+	*buff = le32_to_cpu(desc->buff);
+	*ndesc = le32_to_cpu(desc->next_desc);
 }
 
-static void get_pad_info(u32 *pad0, u32 *pad1, struct knav_dma_desc *desc)
+static u32 get_sw_data(int index, struct knav_dma_desc *desc)
 {
-	*pad0 = desc->pad[0];
-	*pad1 = desc->pad[1];
+	/* No Endian conversion needed as this data is untouched by hw */
+	return desc->sw_data[index];
 }
 
-static void get_org_pkt_info(u32 *buff, u32 *buff_len,
+/* use these macros to get sw data */
+#define GET_SW_DATA0(desc) get_sw_data(0, desc)
+#define GET_SW_DATA1(desc) get_sw_data(1, desc)
+#define GET_SW_DATA2(desc) get_sw_data(2, desc)
+#define GET_SW_DATA3(desc) get_sw_data(3, desc)
+
+static void get_org_pkt_info(dma_addr_t *buff, u32 *buff_len,
 			     struct knav_dma_desc *desc)
 {
-	*buff = desc->orig_buff;
-	*buff_len = desc->orig_len;
+	*buff = le32_to_cpu(desc->orig_buff);
+	*buff_len = le32_to_cpu(desc->orig_len);
 }
 
-static void get_words(u32 *words, int num_words, u32 *desc)
+static void get_words(dma_addr_t *words, int num_words, __le32 *desc)
 {
 	int i;
 
 	for (i = 0; i < num_words; i++)
-		words[i] = desc[i];
+		words[i] = le32_to_cpu(desc[i]);
 }
 
-static void set_pkt_info(u32 buff, u32 buff_len, u32 ndesc,
+static void set_pkt_info(dma_addr_t buff, u32 buff_len, u32 ndesc,
 			 struct knav_dma_desc *desc)
 {
-	desc->buff_len = buff_len;
-	desc->buff = buff;
-	desc->next_desc = ndesc;
+	desc->buff_len = cpu_to_le32(buff_len);
+	desc->buff = cpu_to_le32(buff);
+	desc->next_desc = cpu_to_le32(ndesc);
 }
 
 static void set_desc_info(u32 desc_info, u32 pkt_info,
 			  struct knav_dma_desc *desc)
 {
-	desc->desc_info = desc_info;
-	desc->packet_info = pkt_info;
+	desc->desc_info = cpu_to_le32(desc_info);
+	desc->packet_info = cpu_to_le32(pkt_info);
 }
 
-static void set_pad_info(u32 pad0, u32 pad1, struct knav_dma_desc *desc)
+static void set_sw_data(int index, u32 data, struct knav_dma_desc *desc)
 {
-	desc->pad[0] = pad0;
-	desc->pad[1] = pad1;
+	/* No Endian conversion needed as this data is untouched by hw */
+	desc->sw_data[index] = data;
 }
 
-static void set_org_pkt_info(u32 buff, u32 buff_len,
+/* use these macros to set sw data */
+#define SET_SW_DATA0(data, desc) set_sw_data(0, data, desc)
+#define SET_SW_DATA1(data, desc) set_sw_data(1, data, desc)
+#define SET_SW_DATA2(data, desc) set_sw_data(2, data, desc)
+#define SET_SW_DATA3(data, desc) set_sw_data(3, data, desc)
+
+static void set_org_pkt_info(dma_addr_t buff, u32 buff_len,
 			     struct knav_dma_desc *desc)
 {
-	desc->orig_buff = buff;
-	desc->orig_len = buff_len;
+	desc->orig_buff = cpu_to_le32(buff);
+	desc->orig_len = cpu_to_le32(buff_len);
 }
 
-static void set_words(u32 *words, int num_words, u32 *desc)
+static void set_words(u32 *words, int num_words, __le32 *desc)
 {
 	int i;
 
 	for (i = 0; i < num_words; i++)
-		desc[i] = words[i];
+		desc[i] = cpu_to_le32(words[i]);
 }
 
 /* Read the e-fuse value as 32 bit values to be endian independent */
-static int emac_arch_get_mac_addr(char *x, void __iomem *efuse_mac)
+static int emac_arch_get_mac_addr(char *x, void __iomem *efuse_mac, u32 swap)
 {
 	unsigned int addr0, addr1;
 
 	addr1 = readl(efuse_mac + 4);
 	addr0 = readl(efuse_mac);
+
+	switch (swap) {
+	case NETCP_EFUSE_ADDR_SWAP:
+		addr0 = addr1;
+		addr1 = readl(efuse_mac);
+		break;
+	default:
+		break;
+	}
 
 	x[0] = (addr1 & 0x0000ff00) >> 8;
 	x[1] = addr1 & 0x000000ff;
@@ -279,13 +303,6 @@ static int netcp_module_probe(struct netcp_device *netcp_device,
 			    interface_list) {
 		struct netcp_intf_modpriv *intf_modpriv;
 
-		/* If interface not registered then register now */
-		if (!netcp_intf->netdev_registered)
-			ret = netcp_register_interface(netcp_intf);
-
-		if (ret)
-			return -ENODEV;
-
 		intf_modpriv = devm_kzalloc(dev, sizeof(*intf_modpriv),
 					    GFP_KERNEL);
 		if (!intf_modpriv)
@@ -293,6 +310,11 @@ static int netcp_module_probe(struct netcp_device *netcp_device,
 
 		interface = of_parse_phandle(netcp_intf->node_interface,
 					     module->name, 0);
+
+		if (!interface) {
+			devm_kfree(dev, intf_modpriv);
+			continue;
+		}
 
 		intf_modpriv->netcp_priv = netcp_intf;
 		intf_modpriv->netcp_module = module;
@@ -309,6 +331,18 @@ static int netcp_module_probe(struct netcp_device *netcp_device,
 			list_del(&intf_modpriv->intf_list);
 			devm_kfree(dev, intf_modpriv);
 			continue;
+		}
+	}
+
+	/* Now register the interface with netdev */
+	list_for_each_entry(netcp_intf,
+			    &netcp_device->interface_head,
+			    interface_list) {
+		/* If interface not registered then register now */
+		if (!netcp_intf->netdev_registered) {
+			ret = netcp_register_interface(netcp_intf);
+			if (ret)
+				return -ENODEV;
 		}
 	}
 	return 0;
@@ -345,7 +379,6 @@ int netcp_register_module(struct netcp_module *module)
 		if (ret < 0)
 			goto fail;
 	}
-
 	mutex_unlock(&netcp_modules_lock);
 	return 0;
 
@@ -537,7 +570,7 @@ int netcp_unregister_rxhook(struct netcp_intf *netcp_priv, int order,
 static void netcp_frag_free(bool is_frag, void *ptr)
 {
 	if (is_frag)
-		put_page(virt_to_head_page(ptr));
+		skb_free_frag(ptr);
 	else
 		kfree(ptr);
 }
@@ -560,13 +593,21 @@ static void netcp_free_rx_desc_chain(struct netcp_intf *netcp,
 			break;
 		}
 		get_pkt_info(&dma_buf, &tmp, &dma_desc, ndesc);
-		get_pad_info((u32 *)&buf_ptr, &tmp, ndesc);
+		/* warning!!!! We are retrieving the virtual ptr in the sw_data
+		 * field as a 32bit value. Will not work on 64bit machines
+		 */
+		buf_ptr = (void *)GET_SW_DATA0(ndesc);
+		buf_len = (int)GET_SW_DATA1(desc);
 		dma_unmap_page(netcp->dev, dma_buf, PAGE_SIZE, DMA_FROM_DEVICE);
 		__free_page(buf_ptr);
 		knav_pool_desc_put(netcp->rx_pool, desc);
 	}
+	/* warning!!!! We are retrieving the virtual ptr in the sw_data
+	 * field as a 32bit value. Will not work on 64bit machines
+	 */
+	buf_ptr = (void *)GET_SW_DATA0(desc);
+	buf_len = (int)GET_SW_DATA1(desc);
 
-	get_pad_info((u32 *)&buf_ptr, &buf_len, desc);
 	if (buf_ptr)
 		netcp_frag_free(buf_len <= PAGE_SIZE, buf_ptr);
 	knav_pool_desc_put(netcp->rx_pool, desc);
@@ -605,7 +646,6 @@ static int netcp_process_one_rx_packet(struct netcp_intf *netcp)
 	struct netcp_packet p_info;
 	struct sk_buff *skb;
 	void *org_buf_ptr;
-	u32 tmp;
 
 	dma_desc = knav_queue_pop(netcp->rx_queue, &dma_sz);
 	if (!dma_desc)
@@ -618,7 +658,11 @@ static int netcp_process_one_rx_packet(struct netcp_intf *netcp)
 	}
 
 	get_pkt_info(&dma_buff, &buf_len, &dma_desc, desc);
-	get_pad_info((u32 *)&org_buf_ptr, &org_buf_len, desc);
+	/* warning!!!! We are retrieving the virtual ptr in the sw_data
+	 * field as a 32bit value. Will not work on 64bit machines
+	 */
+	org_buf_ptr = (void *)GET_SW_DATA0(desc);
+	org_buf_len = (int)GET_SW_DATA1(desc);
 
 	if (unlikely(!org_buf_ptr)) {
 		dev_err(netcp->ndev_dev, "NULL bufptr in desc\n");
@@ -651,14 +695,17 @@ static int netcp_process_one_rx_packet(struct netcp_intf *netcp)
 		}
 
 		get_pkt_info(&dma_buff, &buf_len, &dma_desc, ndesc);
-		get_pad_info((u32 *)&page, &tmp, ndesc);
+		/* warning!!!! We are retrieving the virtual ptr in the sw_data
+		 * field as a 32bit value. Will not work on 64bit machines
+		 */
+		page = (struct page *)GET_SW_DATA0(desc);
 
 		if (likely(dma_buff && buf_len && page)) {
 			dma_unmap_page(netcp->dev, dma_buff, PAGE_SIZE,
 				       DMA_FROM_DEVICE);
 		} else {
-			dev_err(netcp->ndev_dev, "Bad Rx desc dma_buff(%p), len(%d), page(%p)\n",
-				(void *)dma_buff, buf_len, page);
+			dev_err(netcp->ndev_dev, "Bad Rx desc dma_buff(%pad), len(%d), page(%p)\n",
+				&dma_buff, buf_len, page);
 			goto free_desc;
 		}
 
@@ -698,7 +745,6 @@ static int netcp_process_one_rx_packet(struct netcp_intf *netcp)
 		}
 	}
 
-	netcp->ndev->last_rx = jiffies;
 	netcp->ndev->stats.rx_packets++;
 	netcp->ndev->stats.rx_bytes += skb->len;
 
@@ -730,7 +776,6 @@ static void netcp_free_rx_buf(struct netcp_intf *netcp, int fdq)
 	unsigned int buf_len, dma_sz;
 	dma_addr_t dma;
 	void *buf_ptr;
-	u32 tmp;
 
 	/* Allocate descriptor */
 	while ((dma = knav_queue_pop(netcp->rx_fdq[fdq], &dma_sz))) {
@@ -741,7 +786,10 @@ static void netcp_free_rx_buf(struct netcp_intf *netcp, int fdq)
 		}
 
 		get_org_pkt_info(&dma, &buf_len, desc);
-		get_pad_info((u32 *)&buf_ptr, &tmp, desc);
+		/* warning!!!! We are retrieving the virtual ptr in the sw_data
+		 * field as a 32bit value. Will not work on 64bit machines
+		 */
+		buf_ptr = (void *)GET_SW_DATA0(desc);
 
 		if (unlikely(!dma)) {
 			dev_err(netcp->ndev_dev, "NULL orig_buff in desc\n");
@@ -785,7 +833,7 @@ static void netcp_rxpool_free(struct netcp_intf *netcp)
 	netcp->rx_pool = NULL;
 }
 
-static void netcp_allocate_rx_buf(struct netcp_intf *netcp, int fdq)
+static int netcp_allocate_rx_buf(struct netcp_intf *netcp, int fdq)
 {
 	struct knav_dma_desc *hwdesc;
 	unsigned int buf_len, dma_sz;
@@ -793,50 +841,53 @@ static void netcp_allocate_rx_buf(struct netcp_intf *netcp, int fdq)
 	struct page *page;
 	dma_addr_t dma;
 	void *bufptr;
-	u32 pad[2];
+	u32 sw_data[2];
 
 	/* Allocate descriptor */
 	hwdesc = knav_pool_desc_get(netcp->rx_pool);
 	if (IS_ERR_OR_NULL(hwdesc)) {
 		dev_dbg(netcp->ndev_dev, "out of rx pool desc\n");
-		return;
+		return -ENOMEM;
 	}
 
 	if (likely(fdq == 0)) {
 		unsigned int primary_buf_len;
 		/* Allocate a primary receive queue entry */
-		buf_len = netcp->rx_buffer_sizes[0] + NETCP_SOP_OFFSET;
+		buf_len = NETCP_PACKET_SIZE + NETCP_SOP_OFFSET;
 		primary_buf_len = SKB_DATA_ALIGN(buf_len) +
 				SKB_DATA_ALIGN(sizeof(struct skb_shared_info));
 
-		if (primary_buf_len <= PAGE_SIZE) {
-			bufptr = netdev_alloc_frag(primary_buf_len);
-			pad[1] = primary_buf_len;
-		} else {
-			bufptr = kmalloc(primary_buf_len, GFP_ATOMIC |
-					 GFP_DMA32 | __GFP_COLD);
-			pad[1] = 0;
-		}
+		bufptr = netdev_alloc_frag(primary_buf_len);
+		sw_data[1] = primary_buf_len;
 
 		if (unlikely(!bufptr)) {
-			dev_warn_ratelimited(netcp->ndev_dev, "Primary RX buffer alloc failed\n");
+			dev_warn_ratelimited(netcp->ndev_dev,
+					     "Primary RX buffer alloc failed\n");
 			goto fail;
 		}
 		dma = dma_map_single(netcp->dev, bufptr, buf_len,
 				     DMA_TO_DEVICE);
-		pad[0] = (u32)bufptr;
+		if (unlikely(dma_mapping_error(netcp->dev, dma)))
+			goto fail;
 
+		/* warning!!!! We are saving the virtual ptr in the sw_data
+		 * field as a 32bit value. Will not work on 64bit machines
+		 */
+		sw_data[0] = (u32)bufptr;
 	} else {
 		/* Allocate a secondary receive queue entry */
-		page = alloc_page(GFP_ATOMIC | GFP_DMA32 | __GFP_COLD);
+		page = alloc_page(GFP_ATOMIC | GFP_DMA | __GFP_COLD);
 		if (unlikely(!page)) {
 			dev_warn_ratelimited(netcp->ndev_dev, "Secondary page alloc failed\n");
 			goto fail;
 		}
 		buf_len = PAGE_SIZE;
 		dma = dma_map_page(netcp->dev, page, 0, buf_len, DMA_TO_DEVICE);
-		pad[0] = (u32)page;
-		pad[1] = 0;
+		/* warning!!!! We are saving the virtual ptr in the sw_data
+		 * field as a 32bit value. Will not work on 64bit machines
+		 */
+		sw_data[0] = (u32)page;
+		sw_data[1] = 0;
 	}
 
 	desc_info =  KNAV_DMA_DESC_PS_INFO_IN_DESC;
@@ -846,32 +897,34 @@ static void netcp_allocate_rx_buf(struct netcp_intf *netcp, int fdq)
 	pkt_info |= (netcp->rx_queue_id & KNAV_DMA_DESC_RETQ_MASK) <<
 		    KNAV_DMA_DESC_RETQ_SHIFT;
 	set_org_pkt_info(dma, buf_len, hwdesc);
-	set_pad_info(pad[0], pad[1], hwdesc);
+	SET_SW_DATA0(sw_data[0], hwdesc);
+	SET_SW_DATA1(sw_data[1], hwdesc);
 	set_desc_info(desc_info, pkt_info, hwdesc);
 
 	/* Push to FDQs */
 	knav_pool_desc_map(netcp->rx_pool, hwdesc, sizeof(*hwdesc), &dma,
 			   &dma_sz);
 	knav_queue_push(netcp->rx_fdq[fdq], dma, sizeof(*hwdesc), 0);
-	return;
+	return 0;
 
 fail:
 	knav_pool_desc_put(netcp->rx_pool, hwdesc);
+	return -ENOMEM;
 }
 
 /* Refill Rx FDQ with descriptors & attached buffers */
 static void netcp_rxpool_refill(struct netcp_intf *netcp)
 {
 	u32 fdq_deficit[KNAV_DMA_FDQ_PER_CHAN] = {0};
-	int i;
+	int i, ret = 0;
 
 	/* Calculate the FDQ deficit and refill */
 	for (i = 0; i < KNAV_DMA_FDQ_PER_CHAN && netcp->rx_fdq[i]; i++) {
 		fdq_deficit[i] = netcp->rx_queue_depths[i] -
 				 knav_queue_get_count(netcp->rx_fdq[i]);
 
-		while (fdq_deficit[i]--)
-			netcp_allocate_rx_buf(netcp, i);
+		while (fdq_deficit[i]-- && !ret)
+			ret = netcp_allocate_rx_buf(netcp, i);
 	} /* end for fdqs */
 }
 
@@ -884,12 +937,12 @@ static int netcp_rx_poll(struct napi_struct *napi, int budget)
 
 	packets = netcp_process_rx_packets(netcp, budget);
 
+	netcp_rxpool_refill(netcp);
 	if (packets < budget) {
 		napi_complete(&netcp->rx_napi);
 		knav_queue_enable_notify(netcp->rx_queue);
 	}
 
-	netcp_rxpool_refill(netcp);
 	return packets;
 }
 
@@ -916,8 +969,8 @@ static void netcp_free_tx_desc_chain(struct netcp_intf *netcp,
 			dma_unmap_single(netcp->dev, dma_buf, buf_len,
 					 DMA_TO_DEVICE);
 		else
-			dev_warn(netcp->ndev_dev, "bad Tx desc buf(%p), len(%d)\n",
-				 (void *)dma_buf, buf_len);
+			dev_warn(netcp->ndev_dev, "bad Tx desc buf(%pad), len(%d)\n",
+				 &dma_buf, buf_len);
 
 		knav_pool_desc_put(netcp->tx_pool, ndesc);
 		ndesc = NULL;
@@ -938,7 +991,6 @@ static int netcp_process_tx_compl_packets(struct netcp_intf *netcp,
 	unsigned int dma_sz;
 	dma_addr_t dma;
 	int pkts = 0;
-	u32 tmp;
 
 	while (budget--) {
 		dma = knav_queue_pop(netcp->tx_compl_q, &dma_sz);
@@ -951,7 +1003,10 @@ static int netcp_process_tx_compl_packets(struct netcp_intf *netcp,
 			continue;
 		}
 
-		get_pad_info((u32 *)&skb, &tmp, desc);
+		/* warning!!!! We are retrieving the virtual ptr in the sw_data
+		 * field as a 32bit value. Will not work on 64bit machines
+		 */
+		skb = (struct sk_buff *)GET_SW_DATA0(desc);
 		netcp_free_tx_desc_chain(netcp, desc, dma_sz);
 		if (!skb) {
 			dev_err(netcp->ndev_dev, "No skb in Tx desc\n");
@@ -1011,13 +1066,13 @@ netcp_tx_map_skb(struct sk_buff *skb, struct netcp_intf *netcp)
 
 	/* Map the linear buffer */
 	dma_addr = dma_map_single(dev, skb->data, pkt_len, DMA_TO_DEVICE);
-	if (unlikely(!dma_addr)) {
+	if (unlikely(dma_mapping_error(dev, dma_addr))) {
 		dev_err(netcp->ndev_dev, "Failed to map skb buffer\n");
 		return NULL;
 	}
 
 	desc = knav_pool_desc_get(netcp->tx_pool);
-	if (unlikely(IS_ERR_OR_NULL(desc))) {
+	if (IS_ERR_OR_NULL(desc)) {
 		dev_err(netcp->ndev_dev, "out of TX desc\n");
 		dma_unmap_single(dev, dma_addr, pkt_len, DMA_TO_DEVICE);
 		return NULL;
@@ -1040,6 +1095,7 @@ netcp_tx_map_skb(struct sk_buff *skb, struct netcp_intf *netcp)
 		u32 page_offset = frag->page_offset;
 		u32 buf_len = skb_frag_size(frag);
 		dma_addr_t desc_dma;
+		u32 desc_dma_32;
 		u32 pkt_info;
 
 		dma_addr = dma_map_page(dev, page, page_offset, buf_len,
@@ -1050,19 +1106,19 @@ netcp_tx_map_skb(struct sk_buff *skb, struct netcp_intf *netcp)
 		}
 
 		ndesc = knav_pool_desc_get(netcp->tx_pool);
-		if (unlikely(IS_ERR_OR_NULL(ndesc))) {
+		if (IS_ERR_OR_NULL(ndesc)) {
 			dev_err(netcp->ndev_dev, "out of TX desc for frags\n");
 			dma_unmap_page(dev, dma_addr, buf_len, DMA_TO_DEVICE);
 			goto free_descs;
 		}
 
-		desc_dma = knav_pool_desc_virt_to_dma(netcp->tx_pool,
-						      (void *)ndesc);
+		desc_dma = knav_pool_desc_virt_to_dma(netcp->tx_pool, ndesc);
 		pkt_info =
 			(netcp->tx_compl_qid & KNAV_DMA_DESC_RETQ_MASK) <<
 				KNAV_DMA_DESC_RETQ_SHIFT;
 		set_pkt_info(dma_addr, buf_len, 0, ndesc);
-		set_words(&desc_dma, 1, &pdesc->next_desc);
+		desc_dma_32 = (u32)desc_dma;
+		set_words(&desc_dma_32, 1, &pdesc->next_desc);
 		pkt_len += buf_len;
 		if (pdesc != desc)
 			knav_pool_desc_map(netcp->tx_pool, pdesc,
@@ -1098,9 +1154,9 @@ static int netcp_tx_submit_skb(struct netcp_intf *netcp,
 	struct netcp_tx_pipe *tx_pipe = NULL;
 	struct netcp_hook_list *tx_hook;
 	struct netcp_packet p_info;
-	u32 packet_info = 0;
 	unsigned int dma_sz;
 	dma_addr_t dma;
+	u32 tmp = 0;
 	int ret = 0;
 
 	p_info.netcp = netcp;
@@ -1110,8 +1166,8 @@ static int netcp_tx_submit_skb(struct netcp_intf *netcp,
 	p_info.ts_context = NULL;
 	p_info.txtstamp_complete = NULL;
 	p_info.epib = desc->epib;
-	p_info.psdata = desc->psdata;
-	memset(p_info.epib, 0, KNAV_DMA_NUM_EPIB_WORDS * sizeof(u32));
+	p_info.psdata = (u32 __force *)desc->psdata;
+	memset(p_info.epib, 0, KNAV_DMA_NUM_EPIB_WORDS * sizeof(__le32));
 
 	/* Find out where to inject the packet for transmission */
 	list_for_each_entry(tx_hook, &netcp->txhook_list_head, list) {
@@ -1135,24 +1191,35 @@ static int netcp_tx_submit_skb(struct netcp_intf *netcp,
 
 	/* update descriptor */
 	if (p_info.psdata_len) {
-		u32 *psdata = p_info.psdata;
+		/* psdata points to both native-endian and device-endian data */
+		__le32 *psdata = (void __force *)p_info.psdata;
 
 		memmove(p_info.psdata, p_info.psdata + p_info.psdata_len,
 			p_info.psdata_len);
-		set_words(psdata, p_info.psdata_len, psdata);
-		packet_info |=
-			(p_info.psdata_len & KNAV_DMA_DESC_PSLEN_MASK) <<
+		set_words(p_info.psdata, p_info.psdata_len, psdata);
+		tmp |= (p_info.psdata_len & KNAV_DMA_DESC_PSLEN_MASK) <<
 			KNAV_DMA_DESC_PSLEN_SHIFT;
 	}
 
-	packet_info |= KNAV_DMA_DESC_HAS_EPIB |
+	tmp |= KNAV_DMA_DESC_HAS_EPIB |
 		((netcp->tx_compl_qid & KNAV_DMA_DESC_RETQ_MASK) <<
-		KNAV_DMA_DESC_RETQ_SHIFT) |
-		((tx_pipe->dma_psflags & KNAV_DMA_DESC_PSFLAG_MASK) <<
-		KNAV_DMA_DESC_PSFLAG_SHIFT);
+		KNAV_DMA_DESC_RETQ_SHIFT);
 
-	set_words(&packet_info, 1, &desc->packet_info);
-	set_words((u32 *)&skb, 1, &desc->pad[0]);
+	if (!(tx_pipe->flags & SWITCH_TO_PORT_IN_TAGINFO)) {
+		tmp |= ((tx_pipe->switch_to_port & KNAV_DMA_DESC_PSFLAG_MASK) <<
+			KNAV_DMA_DESC_PSFLAG_SHIFT);
+	}
+
+	set_words(&tmp, 1, &desc->packet_info);
+	/* warning!!!! We are saving the virtual ptr in the sw_data
+	 * field as a 32bit value. Will not work on 64bit machines
+	 */
+	SET_SW_DATA0((u32)skb, desc);
+
+	if (tx_pipe->flags & SWITCH_TO_PORT_IN_TAGINFO) {
+		tmp = tx_pipe->switch_to_port;
+		set_words(&tmp, 1, &desc->tag_info);
+	}
 
 	/* submit packet descriptor */
 	ret = knav_pool_desc_map(netcp->tx_pool, desc, sizeof(*desc), &dma,
@@ -1205,7 +1272,7 @@ static int netcp_ndo_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	if (ret)
 		goto drop;
 
-	ndev->trans_start = jiffies;
+	netif_trans_update(ndev);
 
 	/* Check Tx pool count & stop subqueue if needed */
 	desc_count = knav_pool_count(netcp->tx_pool);
@@ -1320,7 +1387,7 @@ static struct netcp_addr *netcp_addr_add(struct netcp_intf *netcp,
 	if (addr)
 		ether_addr_copy(naddr->addr, addr);
 	else
-		memset(naddr->addr, 0, ETH_ALEN);
+		eth_zero_addr(naddr->addr);
 	list_add_tail(&naddr->node, &netcp->addr_list);
 
 	return naddr;
@@ -1368,7 +1435,6 @@ static void netcp_addr_sweep_del(struct netcp_intf *netcp)
 			continue;
 		dev_dbg(netcp->ndev_dev, "deleting address %pM, type %x\n",
 			naddr->addr, naddr->type);
-		mutex_lock(&netcp_modules_lock);
 		for_each_module(netcp, priv) {
 			module = priv->netcp_module;
 			if (!module->del_addr)
@@ -1377,7 +1443,6 @@ static void netcp_addr_sweep_del(struct netcp_intf *netcp)
 						 naddr);
 			WARN_ON(error);
 		}
-		mutex_unlock(&netcp_modules_lock);
 		netcp_addr_del(netcp, naddr);
 	}
 }
@@ -1394,7 +1459,7 @@ static void netcp_addr_sweep_add(struct netcp_intf *netcp)
 			continue;
 		dev_dbg(netcp->ndev_dev, "adding address %pM, type %x\n",
 			naddr->addr, naddr->type);
-		mutex_lock(&netcp_modules_lock);
+
 		for_each_module(netcp, priv) {
 			module = priv->netcp_module;
 			if (!module->add_addr)
@@ -1402,7 +1467,6 @@ static void netcp_addr_sweep_add(struct netcp_intf *netcp)
 			error = module->add_addr(priv->module_priv, naddr);
 			WARN_ON(error);
 		}
-		mutex_unlock(&netcp_modules_lock);
 	}
 }
 
@@ -1416,6 +1480,7 @@ static void netcp_set_rx_mode(struct net_device *ndev)
 		   ndev->flags & IFF_ALLMULTI ||
 		   netdev_mc_count(ndev) > NETCP_MAX_MCAST_ADDR);
 
+	spin_lock(&netcp->lock);
 	/* first clear all marks */
 	netcp_addr_clear_mark(netcp);
 
@@ -1434,6 +1499,7 @@ static void netcp_set_rx_mode(struct net_device *ndev)
 	/* finally sweep and callout into modules */
 	netcp_addr_sweep_del(netcp);
 	netcp_addr_sweep_add(netcp);
+	spin_unlock(&netcp->lock);
 }
 
 static void netcp_free_navigator_resources(struct netcp_intf *netcp)
@@ -1540,8 +1606,8 @@ static int netcp_setup_navigator_resources(struct net_device *ndev)
 	knav_queue_disable_notify(netcp->rx_queue);
 
 	/* open Rx FDQs */
-	for (i = 0; i < KNAV_DMA_FDQ_PER_CHAN &&
-	     netcp->rx_queue_depths[i] && netcp->rx_buffer_sizes[i]; ++i) {
+	for (i = 0; i < KNAV_DMA_FDQ_PER_CHAN && netcp->rx_queue_depths[i];
+	     ++i) {
 		snprintf(name, sizeof(name), "rx-fdq-%s-%d", ndev->name, i);
 		netcp->rx_fdq[i] = knav_queue_open(name, KNAV_QUEUE_GP, 0);
 		if (IS_ERR_OR_NULL(netcp->rx_fdq[i])) {
@@ -1598,7 +1664,6 @@ static int netcp_ndo_open(struct net_device *ndev)
 		goto fail;
 	}
 
-	mutex_lock(&netcp_modules_lock);
 	for_each_module(netcp, intf_modpriv) {
 		module = intf_modpriv->netcp_module;
 		if (module->open) {
@@ -1609,13 +1674,12 @@ static int netcp_ndo_open(struct net_device *ndev)
 			}
 		}
 	}
-	mutex_unlock(&netcp_modules_lock);
 
-	netcp_rxpool_refill(netcp);
 	napi_enable(&netcp->rx_napi);
 	napi_enable(&netcp->tx_napi);
 	knav_queue_enable_notify(netcp->tx_compl_q);
 	knav_queue_enable_notify(netcp->rx_queue);
+	netcp_rxpool_refill(netcp);
 	netif_tx_wake_all_queues(ndev);
 	dev_dbg(netcp->ndev_dev, "netcp device %s opened\n", ndev->name);
 	return 0;
@@ -1626,7 +1690,6 @@ fail_open:
 		if (module->close)
 			module->close(intf_modpriv->module_priv, ndev);
 	}
-	mutex_unlock(&netcp_modules_lock);
 
 fail:
 	netcp_free_navigator_resources(netcp);
@@ -1650,7 +1713,6 @@ static int netcp_ndo_stop(struct net_device *ndev)
 	napi_disable(&netcp->rx_napi);
 	napi_disable(&netcp->tx_napi);
 
-	mutex_lock(&netcp_modules_lock);
 	for_each_module(netcp, intf_modpriv) {
 		module = intf_modpriv->netcp_module;
 		if (module->close) {
@@ -1659,7 +1721,6 @@ static int netcp_ndo_stop(struct net_device *ndev)
 				dev_err(netcp->ndev_dev, "Close failed\n");
 		}
 	}
-	mutex_unlock(&netcp_modules_lock);
 
 	/* Recycle Rx descriptors from completion queue */
 	netcp_empty_rx_queue(netcp);
@@ -1687,7 +1748,6 @@ static int netcp_ndo_ioctl(struct net_device *ndev,
 	if (!netif_running(ndev))
 		return -EINVAL;
 
-	mutex_lock(&netcp_modules_lock);
 	for_each_module(netcp, intf_modpriv) {
 		module = intf_modpriv->netcp_module;
 		if (!module->ioctl)
@@ -1703,7 +1763,6 @@ static int netcp_ndo_ioctl(struct net_device *ndev,
 	}
 
 out:
-	mutex_unlock(&netcp_modules_lock);
 	return (ret == 0) ? 0 : err;
 }
 
@@ -1729,7 +1788,7 @@ static void netcp_ndo_tx_timeout(struct net_device *ndev)
 
 	dev_err(netcp->ndev_dev, "transmit timed out tx descs(%d)\n", descs);
 	netcp_process_tx_compl_packets(netcp, netcp->tx_pool_size);
-	ndev->trans_start = jiffies;
+	netif_trans_update(ndev);
 	netif_tx_wake_all_queues(ndev);
 }
 
@@ -1738,11 +1797,12 @@ static int netcp_rx_add_vid(struct net_device *ndev, __be16 proto, u16 vid)
 	struct netcp_intf *netcp = netdev_priv(ndev);
 	struct netcp_intf_modpriv *intf_modpriv;
 	struct netcp_module *module;
+	unsigned long flags;
 	int err = 0;
 
 	dev_dbg(netcp->ndev_dev, "adding rx vlan id: %d\n", vid);
 
-	mutex_lock(&netcp_modules_lock);
+	spin_lock_irqsave(&netcp->lock, flags);
 	for_each_module(netcp, intf_modpriv) {
 		module = intf_modpriv->netcp_module;
 		if ((module->add_vid) && (vid != 0)) {
@@ -1754,7 +1814,8 @@ static int netcp_rx_add_vid(struct net_device *ndev, __be16 proto, u16 vid)
 			}
 		}
 	}
-	mutex_unlock(&netcp_modules_lock);
+	spin_unlock_irqrestore(&netcp->lock, flags);
+
 	return err;
 }
 
@@ -1763,11 +1824,12 @@ static int netcp_rx_kill_vid(struct net_device *ndev, __be16 proto, u16 vid)
 	struct netcp_intf *netcp = netdev_priv(ndev);
 	struct netcp_intf_modpriv *intf_modpriv;
 	struct netcp_module *module;
+	unsigned long flags;
 	int err = 0;
 
 	dev_dbg(netcp->ndev_dev, "removing rx vlan id: %d\n", vid);
 
-	mutex_lock(&netcp_modules_lock);
+	spin_lock_irqsave(&netcp->lock, flags);
 	for_each_module(netcp, intf_modpriv) {
 		module = intf_modpriv->netcp_module;
 		if (module->del_vid) {
@@ -1779,7 +1841,7 @@ static int netcp_rx_kill_vid(struct net_device *ndev, __be16 proto, u16 vid)
 			}
 		}
 	}
-	mutex_unlock(&netcp_modules_lock);
+	spin_unlock_irqrestore(&netcp->lock, flags);
 	return err;
 }
 
@@ -1790,22 +1852,26 @@ static u16 netcp_select_queue(struct net_device *dev, struct sk_buff *skb,
 	return 0;
 }
 
-static int netcp_setup_tc(struct net_device *dev, u8 num_tc)
+static int netcp_setup_tc(struct net_device *dev, u32 handle, __be16 proto,
+			  struct tc_to_netdev *tc)
 {
 	int i;
 
 	/* setup tc must be called under rtnl lock */
 	ASSERT_RTNL();
 
+	if (tc->type != TC_SETUP_MQPRIO)
+		return -EINVAL;
+
 	/* Sanity-check the number of traffic classes requested */
 	if ((dev->real_num_tx_queues <= 1) ||
-	    (dev->real_num_tx_queues < num_tc))
+	    (dev->real_num_tx_queues < tc->tc))
 		return -EINVAL;
 
 	/* Configure traffic class to queue mappings */
-	if (num_tc) {
-		netdev_set_num_tc(dev, num_tc);
-		for (i = 0; i < num_tc; i++)
+	if (tc->tc) {
+		netdev_set_num_tc(dev, tc->tc);
+		for (i = 0; i < tc->tc; i++)
 			netdev_set_tc_queue(dev, i, 1, i);
 	} else {
 		netdev_reset_tc(dev);
@@ -1896,7 +1962,7 @@ static int netcp_create_interface(struct netcp_device *netcp_device,
 			goto quit;
 		}
 
-		emac_arch_get_mac_addr(efuse_mac_addr, efuse);
+		emac_arch_get_mac_addr(efuse_mac_addr, efuse, efuse_mac);
 		if (is_valid_ether_addr(efuse_mac_addr))
 			ether_addr_copy(ndev->dev_addr, efuse_mac_addr);
 		else
@@ -1935,14 +2001,6 @@ static int netcp_create_interface(struct netcp_device *netcp_device,
 		netcp->rx_queue_depths[0] = 128;
 	}
 
-	ret = of_property_read_u32_array(node_interface, "rx-buffer-size",
-					 netcp->rx_buffer_sizes,
-					 KNAV_DMA_FDQ_PER_CHAN);
-	if (ret) {
-		dev_err(dev, "missing \"rx-buffer-size\" parameter\n");
-		netcp->rx_buffer_sizes[0] = 1536;
-	}
-
 	ret = of_property_read_u32_array(node_interface, "rx-pool", temp, 2);
 	if (ret < 0) {
 		dev_err(dev, "missing \"rx-pool\" parameter\n");
@@ -1977,7 +2035,7 @@ static int netcp_create_interface(struct netcp_device *netcp_device,
 
 	/* NAPI register */
 	netif_napi_add(ndev, &netcp->rx_napi, netcp_rx_poll, NETCP_NAPI_WEIGHT);
-	netif_napi_add(ndev, &netcp->tx_napi, netcp_tx_poll, NETCP_NAPI_WEIGHT);
+	netif_tx_napi_add(ndev, &netcp->tx_napi, netcp_tx_poll, NETCP_NAPI_WEIGHT);
 
 	/* Register the network device */
 	ndev->dev_id		= 0;
@@ -2032,7 +2090,6 @@ static int netcp_probe(struct platform_device *pdev)
 	struct device_node *child, *interfaces;
 	struct netcp_device *netcp_device;
 	struct device *dev = &pdev->dev;
-	struct netcp_module *module;
 	int ret;
 
 	if (!node) {
@@ -2079,14 +2136,6 @@ static int netcp_probe(struct platform_device *pdev)
 	/* Add the device instance to the list */
 	list_add_tail(&netcp_device->device_list, &netcp_devices);
 
-	/* Probe & attach any modules already registered */
-	mutex_lock(&netcp_modules_lock);
-	for_each_netcp_module(module) {
-		ret = netcp_module_probe(netcp_device, module);
-		if (ret < 0)
-			dev_err(dev, "module(%s) probe failed\n", module->name);
-	}
-	mutex_unlock(&netcp_modules_lock);
 	return 0;
 
 probe_quit_interface:
@@ -2106,6 +2155,7 @@ probe_quit:
 static int netcp_remove(struct platform_device *pdev)
 {
 	struct netcp_device *netcp_device = platform_get_drvdata(pdev);
+	struct netcp_intf *netcp_intf, *netcp_tmp;
 	struct netcp_inst_modpriv *inst_modpriv, *tmp;
 	struct netcp_module *module;
 
@@ -2117,17 +2167,24 @@ static int netcp_remove(struct platform_device *pdev)
 		list_del(&inst_modpriv->inst_list);
 		kfree(inst_modpriv);
 	}
-	WARN(!list_empty(&netcp_device->interface_head), "%s interface list not empty!\n",
-	     pdev->name);
 
-	devm_kfree(&pdev->dev, netcp_device);
+	/* now that all modules are removed, clean up the interfaces */
+	list_for_each_entry_safe(netcp_intf, netcp_tmp,
+				 &netcp_device->interface_head,
+				 interface_list) {
+		netcp_delete_interface(netcp_device, netcp_intf->ndev);
+	}
+
+	WARN(!list_empty(&netcp_device->interface_head),
+	     "%s interface list not empty!\n", pdev->name);
+
 	pm_runtime_put_sync(&pdev->dev);
 	pm_runtime_disable(&pdev->dev);
 	platform_set_drvdata(pdev, NULL);
 	return 0;
 }
 
-static struct of_device_id of_match[] = {
+static const struct of_device_id of_match[] = {
 	{ .compatible = "ti,netcp-1.0", },
 	{},
 };
@@ -2136,7 +2193,6 @@ MODULE_DEVICE_TABLE(of, of_match);
 static struct platform_driver netcp_driver = {
 	.driver = {
 		.name		= "netcp-1.0",
-		.owner		= THIS_MODULE,
 		.of_match_table	= of_match,
 	},
 	.probe = netcp_probe,

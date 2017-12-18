@@ -21,14 +21,8 @@
 #include <linux/scatterlist.h>
 #include <linux/slab.h>
 #include <linux/err.h>
-#include <crypto/hash_info.h>
-#include "ima.h"
 
-#ifdef CONFIG_IMA_X509_PATH
-#define IMA_X509_PATH	CONFIG_IMA_X509_PATH
-#else
-#define IMA_X509_PATH	"/etc/keys/x509_ima.der"
-#endif
+#include "ima.h"
 
 /* name for boot aggregate entry */
 static const char *boot_aggregate_name = "boot_aggregate";
@@ -55,6 +49,8 @@ static int __init ima_add_boot_aggregate(void)
 	const char *audit_cause = "ENOMEM";
 	struct ima_template_entry *entry;
 	struct integrity_iint_cache tmp_iint, *iint = &tmp_iint;
+	struct ima_event_data event_data = {iint, NULL, boot_aggregate_name,
+					    NULL, 0, NULL};
 	int result = -ENOMEM;
 	int violation = 0;
 	struct {
@@ -76,15 +72,15 @@ static int __init ima_add_boot_aggregate(void)
 		}
 	}
 
-	result = ima_alloc_init_template(iint, NULL, boot_aggregate_name,
-					 NULL, 0, &entry);
+	result = ima_alloc_init_template(&event_data, &entry);
 	if (result < 0) {
 		audit_cause = "alloc_entry";
 		goto err_out;
 	}
 
 	result = ima_store_template(entry, violation, NULL,
-				    boot_aggregate_name);
+				    boot_aggregate_name,
+				    CONFIG_IMA_MEASURE_PCR_IDX);
 	if (result < 0) {
 		ima_free_template_entry(entry);
 		audit_cause = "store_entry";
@@ -103,7 +99,7 @@ void __init ima_load_x509(void)
 	int unset_flags = ima_policy_flag & IMA_APPRAISE;
 
 	ima_policy_flag &= ~unset_flags;
-	integrity_load_x509(INTEGRITY_KEYRING_IMA, IMA_X509_PATH);
+	integrity_load_x509(INTEGRITY_KEYRING_IMA, CONFIG_IMA_X509_PATH);
 	ima_policy_flag |= unset_flags;
 }
 #endif
@@ -121,7 +117,7 @@ int __init ima_init(void)
 	if (!ima_used_chip)
 		pr_info("No TPM chip found, activating TPM-bypass!\n");
 
-	rc = ima_init_keyring(INTEGRITY_KEYRING_IMA);
+	rc = integrity_init_keyring(INTEGRITY_KEYRING_IMA);
 	if (rc)
 		return rc;
 

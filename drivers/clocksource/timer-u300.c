@@ -187,85 +187,82 @@ struct u300_clockevent_data {
 	unsigned ticks_per_jiffy;
 };
 
+static int u300_shutdown(struct clock_event_device *evt)
+{
+	/* Disable interrupts on GP1 */
+	writel(U300_TIMER_APP_GPT1IE_IRQ_DISABLE,
+	       u300_timer_base + U300_TIMER_APP_GPT1IE);
+	/* Disable GP1 */
+	writel(U300_TIMER_APP_DGPT1_TIMER_DISABLE,
+	       u300_timer_base + U300_TIMER_APP_DGPT1);
+	return 0;
+}
+
 /*
- * The u300_set_mode() function is always called first, if we
- * have oneshot timer active, the oneshot scheduling function
+ * If we have oneshot timer active, the oneshot scheduling function
  * u300_set_next_event() is called immediately after.
  */
-static void u300_set_mode(enum clock_event_mode mode,
-			  struct clock_event_device *evt)
+static int u300_set_oneshot(struct clock_event_device *evt)
+{
+	/* Just return; here? */
+	/*
+	 * The actual event will be programmed by the next event hook,
+	 * so we just set a dummy value somewhere at the end of the
+	 * universe here.
+	 */
+	/* Disable interrupts on GPT1 */
+	writel(U300_TIMER_APP_GPT1IE_IRQ_DISABLE,
+	       u300_timer_base + U300_TIMER_APP_GPT1IE);
+	/* Disable GP1 while we're reprogramming it. */
+	writel(U300_TIMER_APP_DGPT1_TIMER_DISABLE,
+	       u300_timer_base + U300_TIMER_APP_DGPT1);
+	/*
+	 * Expire far in the future, u300_set_next_event() will be
+	 * called soon...
+	 */
+	writel(0xFFFFFFFF, u300_timer_base + U300_TIMER_APP_GPT1TC);
+	/* We run one shot per tick here! */
+	writel(U300_TIMER_APP_SGPT1M_MODE_ONE_SHOT,
+	       u300_timer_base + U300_TIMER_APP_SGPT1M);
+	/* Enable interrupts for this timer */
+	writel(U300_TIMER_APP_GPT1IE_IRQ_ENABLE,
+	       u300_timer_base + U300_TIMER_APP_GPT1IE);
+	/* Enable timer */
+	writel(U300_TIMER_APP_EGPT1_TIMER_ENABLE,
+	       u300_timer_base + U300_TIMER_APP_EGPT1);
+	return 0;
+}
+
+static int u300_set_periodic(struct clock_event_device *evt)
 {
 	struct u300_clockevent_data *cevdata =
 		container_of(evt, struct u300_clockevent_data, cevd);
 
-	switch (mode) {
-	case CLOCK_EVT_MODE_PERIODIC:
-		/* Disable interrupts on GPT1 */
-		writel(U300_TIMER_APP_GPT1IE_IRQ_DISABLE,
-		       u300_timer_base + U300_TIMER_APP_GPT1IE);
-		/* Disable GP1 while we're reprogramming it. */
-		writel(U300_TIMER_APP_DGPT1_TIMER_DISABLE,
-		       u300_timer_base + U300_TIMER_APP_DGPT1);
-		/*
-		 * Set the periodic mode to a certain number of ticks per
-		 * jiffy.
-		 */
-		writel(cevdata->ticks_per_jiffy,
-		       u300_timer_base + U300_TIMER_APP_GPT1TC);
-		/*
-		 * Set continuous mode, so the timer keeps triggering
-		 * interrupts.
-		 */
-		writel(U300_TIMER_APP_SGPT1M_MODE_CONTINUOUS,
-		       u300_timer_base + U300_TIMER_APP_SGPT1M);
-		/* Enable timer interrupts */
-		writel(U300_TIMER_APP_GPT1IE_IRQ_ENABLE,
-		       u300_timer_base + U300_TIMER_APP_GPT1IE);
-		/* Then enable the OS timer again */
-		writel(U300_TIMER_APP_EGPT1_TIMER_ENABLE,
-		       u300_timer_base + U300_TIMER_APP_EGPT1);
-		break;
-	case CLOCK_EVT_MODE_ONESHOT:
-		/* Just break; here? */
-		/*
-		 * The actual event will be programmed by the next event hook,
-		 * so we just set a dummy value somewhere at the end of the
-		 * universe here.
-		 */
-		/* Disable interrupts on GPT1 */
-		writel(U300_TIMER_APP_GPT1IE_IRQ_DISABLE,
-		       u300_timer_base + U300_TIMER_APP_GPT1IE);
-		/* Disable GP1 while we're reprogramming it. */
-		writel(U300_TIMER_APP_DGPT1_TIMER_DISABLE,
-		       u300_timer_base + U300_TIMER_APP_DGPT1);
-		/*
-		 * Expire far in the future, u300_set_next_event() will be
-		 * called soon...
-		 */
-		writel(0xFFFFFFFF, u300_timer_base + U300_TIMER_APP_GPT1TC);
-		/* We run one shot per tick here! */
-		writel(U300_TIMER_APP_SGPT1M_MODE_ONE_SHOT,
-		       u300_timer_base + U300_TIMER_APP_SGPT1M);
-		/* Enable interrupts for this timer */
-		writel(U300_TIMER_APP_GPT1IE_IRQ_ENABLE,
-		       u300_timer_base + U300_TIMER_APP_GPT1IE);
-		/* Enable timer */
-		writel(U300_TIMER_APP_EGPT1_TIMER_ENABLE,
-		       u300_timer_base + U300_TIMER_APP_EGPT1);
-		break;
-	case CLOCK_EVT_MODE_UNUSED:
-	case CLOCK_EVT_MODE_SHUTDOWN:
-		/* Disable interrupts on GP1 */
-		writel(U300_TIMER_APP_GPT1IE_IRQ_DISABLE,
-		       u300_timer_base + U300_TIMER_APP_GPT1IE);
-		/* Disable GP1 */
-		writel(U300_TIMER_APP_DGPT1_TIMER_DISABLE,
-		       u300_timer_base + U300_TIMER_APP_DGPT1);
-		break;
-	case CLOCK_EVT_MODE_RESUME:
-		/* Ignore this call */
-		break;
-	}
+	/* Disable interrupts on GPT1 */
+	writel(U300_TIMER_APP_GPT1IE_IRQ_DISABLE,
+	       u300_timer_base + U300_TIMER_APP_GPT1IE);
+	/* Disable GP1 while we're reprogramming it. */
+	writel(U300_TIMER_APP_DGPT1_TIMER_DISABLE,
+	       u300_timer_base + U300_TIMER_APP_DGPT1);
+	/*
+	 * Set the periodic mode to a certain number of ticks per
+	 * jiffy.
+	 */
+	writel(cevdata->ticks_per_jiffy,
+	       u300_timer_base + U300_TIMER_APP_GPT1TC);
+	/*
+	 * Set continuous mode, so the timer keeps triggering
+	 * interrupts.
+	 */
+	writel(U300_TIMER_APP_SGPT1M_MODE_CONTINUOUS,
+	       u300_timer_base + U300_TIMER_APP_SGPT1M);
+	/* Enable timer interrupts */
+	writel(U300_TIMER_APP_GPT1IE_IRQ_ENABLE,
+	       u300_timer_base + U300_TIMER_APP_GPT1IE);
+	/* Then enable the OS timer again */
+	writel(U300_TIMER_APP_EGPT1_TIMER_ENABLE,
+	       u300_timer_base + U300_TIMER_APP_EGPT1);
+	return 0;
 }
 
 /*
@@ -309,13 +306,15 @@ static int u300_set_next_event(unsigned long cycles,
 static struct u300_clockevent_data u300_clockevent_data = {
 	/* Use general purpose timer 1 as clock event */
 	.cevd = {
-		.name		= "GPT1",
+		.name			= "GPT1",
 		/* Reasonably fast and accurate clock event */
-		.rating		= 300,
-		.features	= CLOCK_EVT_FEAT_PERIODIC |
-			CLOCK_EVT_FEAT_ONESHOT,
-		.set_next_event	= u300_set_next_event,
-		.set_mode	= u300_set_mode,
+		.rating			= 300,
+		.features		= CLOCK_EVT_FEAT_PERIODIC |
+					  CLOCK_EVT_FEAT_ONESHOT,
+		.set_next_event		= u300_set_next_event,
+		.set_state_shutdown	= u300_shutdown,
+		.set_state_periodic	= u300_set_periodic,
+		.set_state_oneshot	= u300_set_oneshot,
 	},
 };
 
@@ -360,27 +359,37 @@ static struct delay_timer u300_delay_timer;
 /*
  * This sets up the system timers, clock source and clock event.
  */
-static void __init u300_timer_init_of(struct device_node *np)
+static int __init u300_timer_init_of(struct device_node *np)
 {
 	unsigned int irq;
 	struct clk *clk;
 	unsigned long rate;
+	int ret;
 
 	u300_timer_base = of_iomap(np, 0);
-	if (!u300_timer_base)
-		panic("could not ioremap system timer\n");
+	if (!u300_timer_base) {
+		pr_err("could not ioremap system timer\n");
+		return -ENXIO;
+	}
 
 	/* Get the IRQ for the GP1 timer */
 	irq = irq_of_parse_and_map(np, 2);
-	if (!irq)
-		panic("no IRQ for system timer\n");
+	if (!irq) {
+		pr_err("no IRQ for system timer\n");
+		return -EINVAL;
+	}
 
 	pr_info("U300 GP1 timer @ base: %p, IRQ: %u\n", u300_timer_base, irq);
 
 	/* Clock the interrupt controller */
 	clk = of_clk_get(np, 0);
-	BUG_ON(IS_ERR(clk));
-	clk_prepare_enable(clk);
+	if (IS_ERR(clk))
+		return PTR_ERR(clk);
+
+	ret = clk_prepare_enable(clk);
+	if (ret)
+		return ret;
+
 	rate = clk_get_rate(clk);
 
 	u300_clockevent_data.ticks_per_jiffy = DIV_ROUND_CLOSEST(rate, HZ);
@@ -411,7 +420,9 @@ static void __init u300_timer_init_of(struct device_node *np)
 		u300_timer_base + U300_TIMER_APP_RGPT1);
 
 	/* Set up the IRQ handler */
-	setup_irq(irq, &u300_timer_irq);
+	ret = setup_irq(irq, &u300_timer_irq);
+	if (ret)
+		return ret;
 
 	/* Reset the General Purpose timer 2 */
 	writel(U300_TIMER_APP_RGPT2_TIMER_RESET,
@@ -429,9 +440,12 @@ static void __init u300_timer_init_of(struct device_node *np)
 		u300_timer_base + U300_TIMER_APP_EGPT2);
 
 	/* Use general purpose timer 2 as clock source */
-	if (clocksource_mmio_init(u300_timer_base + U300_TIMER_APP_GPT2CC,
-			"GPT2", rate, 300, 32, clocksource_mmio_readl_up))
+	ret = clocksource_mmio_init(u300_timer_base + U300_TIMER_APP_GPT2CC,
+				    "GPT2", rate, 300, 32, clocksource_mmio_readl_up);
+	if (ret) {
 		pr_err("timer: failed to initialize U300 clock source\n");
+		return ret;
+	}
 
 	/* Configure and register the clockevent */
 	clockevents_config_and_register(&u300_clockevent_data.cevd, rate,
@@ -441,6 +455,7 @@ static void __init u300_timer_init_of(struct device_node *np)
 	 * TODO: init and register the rest of the timers too, they can be
 	 * used by hrtimers!
 	 */
+	return 0;
 }
 
 CLOCKSOURCE_OF_DECLARE(u300_timer, "stericsson,u300-apptimer",

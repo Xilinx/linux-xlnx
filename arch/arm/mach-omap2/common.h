@@ -88,8 +88,7 @@ static inline int omap_mux_late_init(void)
 
 extern void omap2_init_common_infrastructure(void);
 
-extern void omap2_sync32k_timer_init(void);
-extern void omap3_sync32k_timer_init(void);
+extern void omap_init_time(void);
 extern void omap3_secure_sync32k_timer_init(void);
 extern void omap3_gptimer_timer_init(void);
 extern void omap4_local_timer_init(void);
@@ -189,6 +188,15 @@ static inline void omap44xx_restart(enum reboot_mode mode, const char *cmd)
 }
 #endif
 
+#ifdef CONFIG_OMAP_INTERCONNECT_BARRIER
+void omap_barrier_reserve_memblock(void);
+void omap_barriers_init(void);
+#else
+static inline void omap_barrier_reserve_memblock(void)
+{
+}
+#endif
+
 /* This gets called from mach-omap2/io.c, do not call this */
 void __init omap2_set_globals_tap(u32 class, void __iomem *tap);
 
@@ -198,10 +206,8 @@ void __init omap3_map_io(void);
 void __init am33xx_map_io(void);
 void __init omap4_map_io(void);
 void __init omap5_map_io(void);
+void __init dra7xx_map_io(void);
 void __init ti81xx_map_io(void);
-
-/* omap_barriers_init() is OMAP4 only */
-void omap_barriers_init(void);
 
 /**
  * omap_test_timeout - busy-loop, testing a condition
@@ -251,20 +257,24 @@ extern void gic_dist_enable(void);
 extern bool gic_dist_disabled(void);
 extern void gic_timer_retrigger(void);
 extern void omap_smc1(u32 fn, u32 arg);
+extern void omap4_sar_ram_init(void);
 extern void __iomem *omap4_get_sar_ram_base(void);
+extern void omap4_mpuss_early_init(void);
 extern void omap_do_wfi(void);
+
+extern void omap4_secondary_startup(void);
+extern void omap4460_secondary_startup(void);
 
 #ifdef CONFIG_SMP
 /* Needed for secondary core boot */
-extern void omap4_secondary_startup(void);
-extern void omap4460_secondary_startup(void);
 extern u32 omap_modify_auxcoreboot0(u32 set_mask, u32 clear_mask);
 extern void omap_auxcoreboot_addr(u32 cpu_addr);
 extern u32 omap_read_auxcoreboot0(void);
 
 extern void omap4_cpu_die(unsigned int cpu);
+extern int omap4_cpu_kill(unsigned int cpu);
 
-extern struct smp_operations omap4_smp_ops;
+extern const struct smp_operations omap4_smp_ops;
 
 extern void omap5_secondary_startup(void);
 extern void omap5_secondary_hyp_startup(void);

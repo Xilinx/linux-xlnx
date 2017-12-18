@@ -12,9 +12,6 @@
  * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  * GNU General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
  *
  * File: wcmd.c
  *
@@ -100,7 +97,7 @@ void vnt_run_command(struct work_struct *work)
 	if (test_bit(DEVICE_FLAGS_DISCONNECTED, &priv->flags))
 		return;
 
-	if (priv->cmd_running != true)
+	if (!priv->cmd_running)
 		return;
 
 	switch (priv->command_state) {
@@ -146,13 +143,13 @@ void vnt_run_command(struct work_struct *work)
 
 		if (priv->rx_antenna_sel == 0) {
 			priv->rx_antenna_sel = 1;
-			if (priv->tx_rx_ant_inv == true)
+			if (priv->tx_rx_ant_inv)
 				vnt_set_antenna_mode(priv, ANT_RXA);
 			else
 				vnt_set_antenna_mode(priv, ANT_RXB);
 		} else {
 			priv->rx_antenna_sel = 0;
-			if (priv->tx_rx_ant_inv == true)
+			if (priv->tx_rx_ant_inv)
 				vnt_set_antenna_mode(priv, ANT_RXB);
 			else
 				vnt_set_antenna_mode(priv, ANT_RXA);
@@ -177,7 +174,7 @@ int vnt_schedule_command(struct vnt_private *priv, enum vnt_cmd command)
 	ADD_ONE_WITH_WRAP_AROUND(priv->cmd_enqueue_idx, CMD_Q_SIZE);
 	priv->free_cmd_queue--;
 
-	if (priv->cmd_running == false)
+	if (!priv->cmd_running)
 		vnt_cmd_complete(priv);
 
 	return true;

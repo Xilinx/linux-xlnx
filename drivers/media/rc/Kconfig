@@ -101,7 +101,8 @@ config IR_SHARP_DECODER
 
 	---help---
 	   Enable this option if you have an infrared remote control which
-	   uses the Sharp protocol, and you need software decoding support.
+	   uses the Sharp protocol (Sharp, Denon), and you need software
+	   decoding support.
 
 config IR_MCE_KBD_DECODER
 	tristate "Enable IR raw decoder for the MCE keyboard/mouse protocol"
@@ -335,7 +336,7 @@ config IR_TTUSBIR
 
 config IR_RX51
 	tristate "Nokia N900 IR transmitter diode"
-	depends on OMAP_DM_TIMER && ARCH_OMAP2PLUS && LIRC && !ARCH_MULTIPLATFORM
+	depends on OMAP_DM_TIMER && PWM_OMAP_DMTIMER && ARCH_OMAP2PLUS && LIRC
 	---help---
 	   Say Y or M here if you want to enable support for the IR
 	   transmitter diode built in the Nokia N900 (RX51) device.
@@ -371,21 +372,21 @@ config RC_ST
 	tristate "ST remote control receiver"
 	depends on RC_CORE
 	depends on ARCH_STI || COMPILE_TEST
-	help
-	 Say Y here if you want support for ST remote control driver
-	 which allows both IR and UHF RX.
-	 The driver passes raw pulse and space information to the LIRC decoder.
+	---help---
+	   Say Y here if you want support for ST remote control driver
+	   which allows both IR and UHF RX.
+	   The driver passes raw pulse and space information to the LIRC decoder.
 
-	 If you're not sure, select N here.
+	   If you're not sure, select N here.
 
 config IR_SUNXI
-    tristate "SUNXI IR remote control"
-    depends on RC_CORE
-    depends on ARCH_SUNXI || COMPILE_TEST
-    ---help---
-      Say Y if you want to use sunXi internal IR Controller
+	tristate "SUNXI IR remote control"
+	depends on RC_CORE
+	depends on ARCH_SUNXI || COMPILE_TEST
+	---help---
+	   Say Y if you want to use sunXi internal IR Controller
 
-      To compile this driver as a module, choose M here: the module will
-      be called sunxi-ir.
+	   To compile this driver as a module, choose M here: the module will
+	   be called sunxi-ir.
 
 endif #RC_DEVICES

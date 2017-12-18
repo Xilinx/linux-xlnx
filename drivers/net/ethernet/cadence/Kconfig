@@ -8,8 +8,6 @@ config NET_CADENCE
 	default y
 	---help---
 	  If you have a network (Ethernet) card belonging to this class, say Y.
-	  Make sure you know the name of your card. Read the Ethernet-HOWTO,
-	  available from <http://www.tldp.org/docs.html#howto>.
 
 	  If unsure, say Y.
 
@@ -19,14 +17,6 @@ config NET_CADENCE
 	  asked for your specific card in the following questions.
 
 if NET_CADENCE
-
-config ARM_AT91_ETHER
-	tristate "AT91RM9200 Ethernet support"
-	depends on HAS_DMA && (ARCH_AT91 || COMPILE_TEST)
-	select MACB
-	---help---
-	  If you wish to compile a kernel for the AT91RM9200 and enable
-	  ethernet support, then you should always answer Y to this.
 
 config MACB
 	tristate "Cadence MACB/GEM support"

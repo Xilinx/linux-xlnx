@@ -20,6 +20,9 @@
 #ifndef cpu_has_tlb
 #define cpu_has_tlb		(cpu_data[0].options & MIPS_CPU_TLB)
 #endif
+#ifndef cpu_has_ftlb
+#define cpu_has_ftlb		(cpu_data[0].options & MIPS_CPU_FTLB)
+#endif
 #ifndef cpu_has_tlbinv
 #define cpu_has_tlbinv		(cpu_data[0].options & MIPS_CPU_TLBINV)
 #endif
@@ -31,6 +34,9 @@
 #endif
 #ifndef cpu_has_htw
 #define cpu_has_htw		(cpu_data[0].options & MIPS_CPU_HTW)
+#endif
+#ifndef cpu_has_ldpte
+#define cpu_has_ldpte		(cpu_data[0].options & MIPS_CPU_LDPTE)
 #endif
 #ifndef cpu_has_rixiex
 #define cpu_has_rixiex		(cpu_data[0].options & MIPS_CPU_RIXIEX)
@@ -68,6 +74,7 @@
 #ifndef cpu_has_octeon_cache
 #define cpu_has_octeon_cache	0
 #endif
+/* Don't override `cpu_has_fpu' to 1 or the "nofpu" option won't work.  */
 #ifndef cpu_has_fpu
 #define cpu_has_fpu		(current_cpu_data.options & MIPS_CPU_FPU)
 #define raw_cpu_has_fpu		(raw_current_cpu_data.options & MIPS_CPU_FPU)
@@ -107,8 +114,26 @@
 #ifndef cpu_has_llsc
 #define cpu_has_llsc		(cpu_data[0].options & MIPS_CPU_LLSC)
 #endif
+#ifndef cpu_has_bp_ghist
+#define cpu_has_bp_ghist	(cpu_data[0].options & MIPS_CPU_BP_GHIST)
+#endif
 #ifndef kernel_uses_llsc
 #define kernel_uses_llsc	cpu_has_llsc
+#endif
+#ifndef cpu_has_guestctl0ext
+#define cpu_has_guestctl0ext	(cpu_data[0].options & MIPS_CPU_GUESTCTL0EXT)
+#endif
+#ifndef cpu_has_guestctl1
+#define cpu_has_guestctl1	(cpu_data[0].options & MIPS_CPU_GUESTCTL1)
+#endif
+#ifndef cpu_has_guestctl2
+#define cpu_has_guestctl2	(cpu_data[0].options & MIPS_CPU_GUESTCTL2)
+#endif
+#ifndef cpu_has_guestid
+#define cpu_has_guestid		(cpu_data[0].options & MIPS_CPU_GUESTID)
+#endif
+#ifndef cpu_has_drg
+#define cpu_has_drg		(cpu_data[0].options & MIPS_CPU_DRG)
 #endif
 #ifndef cpu_has_mips16
 #define cpu_has_mips16		(cpu_data[0].ases & MIPS_ASE_MIPS16)
@@ -124,11 +149,7 @@
 #endif
 
 #ifndef cpu_has_rixi
-# ifdef CONFIG_64BIT
-# define cpu_has_rixi		(cpu_data[0].options & MIPS_CPU_RIXI)
-# else /* CONFIG_32BIT */
-# define cpu_has_rixi		((cpu_data[0].options & MIPS_CPU_RIXI) && !cpu_has_64bits)
-# endif
+#define cpu_has_rixi		(cpu_data[0].options & MIPS_CPU_RIXI)
 #endif
 
 #ifndef cpu_has_mmips
@@ -139,6 +160,15 @@
 # endif
 #endif
 
+#ifndef cpu_has_lpa
+#define cpu_has_lpa		(cpu_data[0].options & MIPS_CPU_LPA)
+#endif
+#ifndef cpu_has_mvh
+#define cpu_has_mvh		(cpu_data[0].options & MIPS_CPU_MVH)
+#endif
+#ifndef cpu_has_xpa
+#define cpu_has_xpa		(cpu_has_lpa && cpu_has_mvh)
+#endif
 #ifndef cpu_has_vtag_icache
 #define cpu_has_vtag_icache	(cpu_data[0].icache.flags & MIPS_CACHE_VTAG)
 #endif
@@ -172,6 +202,16 @@
 #else
 #define cpu_icache_snoops_remote_store	1
 #endif
+#endif
+
+/* __builtin_constant_p(cpu_has_mips_r) && cpu_has_mips_r */
+#if !((defined(cpu_has_mips32r1) && cpu_has_mips32r1) || \
+	  (defined(cpu_has_mips32r2) && cpu_has_mips32r2) || \
+	  (defined(cpu_has_mips32r6) && cpu_has_mips32r6) || \
+	  (defined(cpu_has_mips64r1) && cpu_has_mips64r1) || \
+	  (defined(cpu_has_mips64r2) && cpu_has_mips64r2) || \
+	  (defined(cpu_has_mips64r6) && cpu_has_mips64r6))
+#define CPU_NO_EFFICIENT_FFS 1
 #endif
 
 #ifndef cpu_has_mips_1
@@ -220,8 +260,11 @@
 #define cpu_has_mips_4_5_r	(cpu_has_mips_4 | cpu_has_mips_5_r)
 #define cpu_has_mips_5_r	(cpu_has_mips_5 | cpu_has_mips_r)
 
-#define cpu_has_mips_4_5_r2_r6	(cpu_has_mips_4_5 | cpu_has_mips_r2 | \
-				 cpu_has_mips_r6)
+#define cpu_has_mips_3_4_5_64_r2_r6					\
+				(cpu_has_mips_3 | cpu_has_mips_4_5_64_r2_r6)
+#define cpu_has_mips_4_5_64_r2_r6					\
+				(cpu_has_mips_4_5 | cpu_has_mips64r1 |	\
+				 cpu_has_mips_r2 | cpu_has_mips_r6)
 
 #define cpu_has_mips32	(cpu_has_mips32r1 | cpu_has_mips32r2 | cpu_has_mips32r6)
 #define cpu_has_mips64	(cpu_has_mips64r1 | cpu_has_mips64r2 | cpu_has_mips64r6)
@@ -235,8 +278,39 @@
 /* MIPSR2 and MIPSR6 have a lot of similarities */
 #define cpu_has_mips_r2_r6	(cpu_has_mips_r2 | cpu_has_mips_r6)
 
+/*
+ * cpu_has_mips_r2_exec_hazard - return if IHB is required on current processor
+ *
+ * Returns non-zero value if the current processor implementation requires
+ * an IHB instruction to deal with an instruction hazard as per MIPS R2
+ * architecture specification, zero otherwise.
+ */
 #ifndef cpu_has_mips_r2_exec_hazard
-#define cpu_has_mips_r2_exec_hazard (cpu_has_mips_r2 | cpu_has_mips_r6)
+#define cpu_has_mips_r2_exec_hazard					\
+({									\
+	int __res;							\
+									\
+	switch (current_cpu_type()) {					\
+	case CPU_M14KC:							\
+	case CPU_74K:							\
+	case CPU_1074K:							\
+	case CPU_PROAPTIV:						\
+	case CPU_P5600:							\
+	case CPU_M5150:							\
+	case CPU_QEMU_GENERIC:						\
+	case CPU_CAVIUM_OCTEON:						\
+	case CPU_CAVIUM_OCTEON_PLUS:					\
+	case CPU_CAVIUM_OCTEON2:					\
+	case CPU_CAVIUM_OCTEON3:					\
+		__res = 0;						\
+		break;							\
+									\
+	default:							\
+		__res = 1;						\
+	}								\
+									\
+	__res;								\
+})
 #endif
 
 /*
@@ -267,8 +341,16 @@
 #define cpu_has_dsp2		(cpu_data[0].ases & MIPS_ASE_DSP2P)
 #endif
 
+#ifndef cpu_has_dsp3
+#define cpu_has_dsp3		(cpu_data[0].ases & MIPS_ASE_DSP3)
+#endif
+
 #ifndef cpu_has_mipsmt
 #define cpu_has_mipsmt		(cpu_data[0].ases & MIPS_ASE_MIPSMT)
+#endif
+
+#ifndef cpu_has_vp
+#define cpu_has_vp		(cpu_data[0].options & MIPS_CPU_VP)
 #endif
 
 #ifndef cpu_has_userlocal
@@ -364,6 +446,124 @@
 
 #ifndef cpu_has_fre
 # define cpu_has_fre		(cpu_data[0].options & MIPS_CPU_FRE)
+#endif
+
+#ifndef cpu_has_cdmm
+# define cpu_has_cdmm		(cpu_data[0].options & MIPS_CPU_CDMM)
+#endif
+
+#ifndef cpu_has_small_pages
+# define cpu_has_small_pages	(cpu_data[0].options & MIPS_CPU_SP)
+#endif
+
+#ifndef cpu_has_nan_legacy
+#define cpu_has_nan_legacy	(cpu_data[0].options & MIPS_CPU_NAN_LEGACY)
+#endif
+#ifndef cpu_has_nan_2008
+#define cpu_has_nan_2008	(cpu_data[0].options & MIPS_CPU_NAN_2008)
+#endif
+
+#ifndef cpu_has_ebase_wg
+# define cpu_has_ebase_wg	(cpu_data[0].options & MIPS_CPU_EBASE_WG)
+#endif
+
+#ifndef cpu_has_badinstr
+# define cpu_has_badinstr	(cpu_data[0].options & MIPS_CPU_BADINSTR)
+#endif
+
+#ifndef cpu_has_badinstrp
+# define cpu_has_badinstrp	(cpu_data[0].options & MIPS_CPU_BADINSTRP)
+#endif
+
+#ifndef cpu_has_contextconfig
+# define cpu_has_contextconfig	(cpu_data[0].options & MIPS_CPU_CTXTC)
+#endif
+
+#ifndef cpu_has_perf
+# define cpu_has_perf		(cpu_data[0].options & MIPS_CPU_PERF)
+#endif
+
+/*
+ * Guest capabilities
+ */
+#ifndef cpu_guest_has_conf1
+#define cpu_guest_has_conf1	(cpu_data[0].guest.conf & (1 << 1))
+#endif
+#ifndef cpu_guest_has_conf2
+#define cpu_guest_has_conf2	(cpu_data[0].guest.conf & (1 << 2))
+#endif
+#ifndef cpu_guest_has_conf3
+#define cpu_guest_has_conf3	(cpu_data[0].guest.conf & (1 << 3))
+#endif
+#ifndef cpu_guest_has_conf4
+#define cpu_guest_has_conf4	(cpu_data[0].guest.conf & (1 << 4))
+#endif
+#ifndef cpu_guest_has_conf5
+#define cpu_guest_has_conf5	(cpu_data[0].guest.conf & (1 << 5))
+#endif
+#ifndef cpu_guest_has_conf6
+#define cpu_guest_has_conf6	(cpu_data[0].guest.conf & (1 << 6))
+#endif
+#ifndef cpu_guest_has_conf7
+#define cpu_guest_has_conf7	(cpu_data[0].guest.conf & (1 << 7))
+#endif
+#ifndef cpu_guest_has_fpu
+#define cpu_guest_has_fpu	(cpu_data[0].guest.options & MIPS_CPU_FPU)
+#endif
+#ifndef cpu_guest_has_watch
+#define cpu_guest_has_watch	(cpu_data[0].guest.options & MIPS_CPU_WATCH)
+#endif
+#ifndef cpu_guest_has_contextconfig
+#define cpu_guest_has_contextconfig (cpu_data[0].guest.options & MIPS_CPU_CTXTC)
+#endif
+#ifndef cpu_guest_has_segments
+#define cpu_guest_has_segments	(cpu_data[0].guest.options & MIPS_CPU_SEGMENTS)
+#endif
+#ifndef cpu_guest_has_badinstr
+#define cpu_guest_has_badinstr	(cpu_data[0].guest.options & MIPS_CPU_BADINSTR)
+#endif
+#ifndef cpu_guest_has_badinstrp
+#define cpu_guest_has_badinstrp	(cpu_data[0].guest.options & MIPS_CPU_BADINSTRP)
+#endif
+#ifndef cpu_guest_has_htw
+#define cpu_guest_has_htw	(cpu_data[0].guest.options & MIPS_CPU_HTW)
+#endif
+#ifndef cpu_guest_has_msa
+#define cpu_guest_has_msa	(cpu_data[0].guest.ases & MIPS_ASE_MSA)
+#endif
+#ifndef cpu_guest_has_kscr
+#define cpu_guest_has_kscr(n)	(cpu_data[0].guest.kscratch_mask & (1u << (n)))
+#endif
+#ifndef cpu_guest_has_rw_llb
+#define cpu_guest_has_rw_llb	(cpu_has_mips_r6 || (cpu_data[0].guest.options & MIPS_CPU_RW_LLB))
+#endif
+#ifndef cpu_guest_has_perf
+#define cpu_guest_has_perf	(cpu_data[0].guest.options & MIPS_CPU_PERF)
+#endif
+#ifndef cpu_guest_has_maar
+#define cpu_guest_has_maar	(cpu_data[0].guest.options & MIPS_CPU_MAAR)
+#endif
+
+/*
+ * Guest dynamic capabilities
+ */
+#ifndef cpu_guest_has_dyn_fpu
+#define cpu_guest_has_dyn_fpu	(cpu_data[0].guest.options_dyn & MIPS_CPU_FPU)
+#endif
+#ifndef cpu_guest_has_dyn_watch
+#define cpu_guest_has_dyn_watch	(cpu_data[0].guest.options_dyn & MIPS_CPU_WATCH)
+#endif
+#ifndef cpu_guest_has_dyn_contextconfig
+#define cpu_guest_has_dyn_contextconfig (cpu_data[0].guest.options_dyn & MIPS_CPU_CTXTC)
+#endif
+#ifndef cpu_guest_has_dyn_perf
+#define cpu_guest_has_dyn_perf	(cpu_data[0].guest.options_dyn & MIPS_CPU_PERF)
+#endif
+#ifndef cpu_guest_has_dyn_msa
+#define cpu_guest_has_dyn_msa	(cpu_data[0].guest.ases_dyn & MIPS_ASE_MSA)
+#endif
+#ifndef cpu_guest_has_dyn_maar
+#define cpu_guest_has_dyn_maar	(cpu_data[0].guest.options_dyn & MIPS_CPU_MAAR)
 #endif
 
 #endif /* __ASM_CPU_FEATURES_H */

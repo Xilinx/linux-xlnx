@@ -60,15 +60,19 @@
 #include <net/netns/generic.h>
 #include <linux/rhashtable.h>
 
-#include "node.h"
-#include "bearer.h"
-#include "bcast.h"
-#include "netlink.h"
-#include "link.h"
-#include "node.h"
-#include "msg.h"
+struct tipc_node;
+struct tipc_bearer;
+struct tipc_bc_base;
+struct tipc_link;
+struct tipc_name_table;
+struct tipc_server;
+struct tipc_monitor;
 
 #define TIPC_MOD_VER "2.0.0"
+
+#define NODE_HTABLE_SIZE       512
+#define MAX_BEARERS	         3
+#define TIPC_DEF_MON_THRESHOLD  32
 
 extern int tipc_net_id __read_mostly;
 extern int sysctl_tipc_rmem[3] __read_mostly;
@@ -86,12 +90,16 @@ struct tipc_net {
 	u32 num_nodes;
 	u32 num_links;
 
+	/* Neighbor monitoring list */
+	struct tipc_monitor *monitors[MAX_BEARERS];
+	int mon_threshold;
+
 	/* Bearer list */
 	struct tipc_bearer __rcu *bearer_list[MAX_BEARERS + 1];
 
 	/* Broadcast link */
-	struct tipc_bcbearer *bcbearer;
-	struct tipc_bclink *bclink;
+	spinlock_t bclock;
+	struct tipc_bc_base *bcbase;
 	struct tipc_link *bcl;
 
 	/* Socket hash table */
@@ -101,10 +109,58 @@ struct tipc_net {
 	spinlock_t nametbl_lock;
 	struct name_table *nametbl;
 
+	/* Name dist queue */
+	struct list_head dist_queue;
+
 	/* Topology subscription server */
 	struct tipc_server *topsrv;
 	atomic_t subscription_count;
 };
+
+static inline struct tipc_net *tipc_net(struct net *net)
+{
+	return net_generic(net, tipc_net_id);
+}
+
+static inline int tipc_netid(struct net *net)
+{
+	return tipc_net(net)->net_id;
+}
+
+static inline struct list_head *tipc_nodes(struct net *net)
+{
+	return &tipc_net(net)->node_list;
+}
+
+static inline unsigned int tipc_hashfn(u32 addr)
+{
+	return addr & (NODE_HTABLE_SIZE - 1);
+}
+
+static inline u16 mod(u16 x)
+{
+	return x & 0xffffu;
+}
+
+static inline int less_eq(u16 left, u16 right)
+{
+	return mod(right - left) < 32768u;
+}
+
+static inline int more(u16 left, u16 right)
+{
+	return !less_eq(left, right);
+}
+
+static inline int less(u16 left, u16 right)
+{
+	return less_eq(left, right) && (mod(right) != mod(left));
+}
+
+static inline int in_range(u16 val, u16 min, u16 max)
+{
+	return !less(val, min) && !more(val, max);
+}
 
 #ifdef CONFIG_SYSCTL
 int tipc_register_sysctl(void);

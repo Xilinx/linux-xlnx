@@ -94,7 +94,7 @@ struct nfcwilink {
 	struct nci_dev			*ndev;
 	unsigned long			flags;
 
-	char				st_register_cb_status;
+	int				st_register_cb_status;
 	long				(*st_write) (struct sk_buff *);
 
 	struct completion		completed;
@@ -320,7 +320,7 @@ exit:
 }
 
 /* Called by ST when registration is complete */
-static void nfcwilink_register_complete(void *priv_data, char data)
+static void nfcwilink_register_complete(void *priv_data, int data)
 {
 	struct nfcwilink *drv = priv_data;
 
@@ -497,7 +497,7 @@ static struct nci_ops nfcwilink_ops = {
 
 static int nfcwilink_probe(struct platform_device *pdev)
 {
-	static struct nfcwilink *drv;
+	struct nfcwilink *drv;
 	int rc;
 	__u32 protocols;
 

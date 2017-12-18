@@ -18,12 +18,15 @@
 #ifndef __MSM_DRM_H__
 #define __MSM_DRM_H__
 
-#include <stddef.h>
-#include <drm/drm.h>
+#include "drm.h"
+
+#if defined(__cplusplus)
+extern "C" {
+#endif
 
 /* Please note that modifications to all structs defined here are
  * subject to backwards-compatibility constraints:
- *  1) Do not use pointers, use uint64_t instead for 32 bit / 64 bit
+ *  1) Do not use pointers, use __u64 instead for 32 bit / 64 bit
  *     user/kernel compatibility
  *  2) Keep fields aligned to their size
  *  3) Because of how drm_ioctl() works, we can add new fields at
@@ -39,23 +42,34 @@
 #define MSM_PIPE_2D1         0x02
 #define MSM_PIPE_3D0         0x10
 
+/* The pipe-id just uses the lower bits, so can be OR'd with flags in
+ * the upper 16 bits (which could be extended further, if needed, maybe
+ * we extend/overload the pipe-id some day to deal with multiple rings,
+ * but even then I don't think we need the full lower 16 bits).
+ */
+#define MSM_PIPE_ID_MASK     0xffff
+#define MSM_PIPE_ID(x)       ((x) & MSM_PIPE_ID_MASK)
+#define MSM_PIPE_FLAGS(x)    ((x) & ~MSM_PIPE_ID_MASK)
+
 /* timeouts are specified in clock-monotonic absolute times (to simplify
  * restarting interrupted ioctls).  The following struct is logically the
  * same as 'struct timespec' but 32/64b ABI safe.
  */
 struct drm_msm_timespec {
-	int64_t tv_sec;          /* seconds */
-	int64_t tv_nsec;         /* nanoseconds */
+	__s64 tv_sec;          /* seconds */
+	__s64 tv_nsec;         /* nanoseconds */
 };
 
 #define MSM_PARAM_GPU_ID     0x01
 #define MSM_PARAM_GMEM_SIZE  0x02
 #define MSM_PARAM_CHIP_ID    0x03
+#define MSM_PARAM_MAX_FREQ   0x04
+#define MSM_PARAM_TIMESTAMP  0x05
 
 struct drm_msm_param {
-	uint32_t pipe;           /* in, MSM_PIPE_x */
-	uint32_t param;          /* in, MSM_PARAM_x */
-	uint64_t value;          /* out (get_param) or in (set_param) */
+	__u32 pipe;           /* in, MSM_PIPE_x */
+	__u32 param;          /* in, MSM_PARAM_x */
+	__u64 value;          /* out (get_param) or in (set_param) */
 };
 
 /*
@@ -77,15 +91,15 @@ struct drm_msm_param {
                               MSM_BO_UNCACHED)
 
 struct drm_msm_gem_new {
-	uint64_t size;           /* in */
-	uint32_t flags;          /* in, mask of MSM_BO_x */
-	uint32_t handle;         /* out */
+	__u64 size;           /* in */
+	__u32 flags;          /* in, mask of MSM_BO_x */
+	__u32 handle;         /* out */
 };
 
 struct drm_msm_gem_info {
-	uint32_t handle;         /* in */
-	uint32_t pad;
-	uint64_t offset;         /* out, offset to pass to mmap() */
+	__u32 handle;         /* in */
+	__u32 pad;
+	__u64 offset;         /* out, offset to pass to mmap() */
 };
 
 #define MSM_PREP_READ        0x01
@@ -95,13 +109,13 @@ struct drm_msm_gem_info {
 #define MSM_PREP_FLAGS       (MSM_PREP_READ | MSM_PREP_WRITE | MSM_PREP_NOSYNC)
 
 struct drm_msm_gem_cpu_prep {
-	uint32_t handle;         /* in */
-	uint32_t op;             /* in, mask of MSM_PREP_x */
+	__u32 handle;         /* in */
+	__u32 op;             /* in, mask of MSM_PREP_x */
 	struct drm_msm_timespec timeout;   /* in */
 };
 
 struct drm_msm_gem_cpu_fini {
-	uint32_t handle;         /* in */
+	__u32 handle;         /* in */
 };
 
 /*
@@ -120,11 +134,11 @@ struct drm_msm_gem_cpu_fini {
  * otherwise EINVAL.
  */
 struct drm_msm_gem_submit_reloc {
-	uint32_t submit_offset;  /* in, offset from submit_bo */
-	uint32_t or;             /* in, value OR'd with result */
-	int32_t  shift;          /* in, amount of left shift (can be negative) */
-	uint32_t reloc_idx;      /* in, index of reloc_bo buffer */
-	uint64_t reloc_offset;   /* in, offset from start of reloc_bo */
+	__u32 submit_offset;  /* in, offset from submit_bo */
+	__u32 or;             /* in, value OR'd with result */
+	__s32 shift;          /* in, amount of left shift (can be negative) */
+	__u32 reloc_idx;      /* in, index of reloc_bo buffer */
+	__u64 reloc_offset;   /* in, offset from start of reloc_bo */
 };
 
 /* submit-types:
@@ -139,13 +153,13 @@ struct drm_msm_gem_submit_reloc {
 #define MSM_SUBMIT_CMD_IB_TARGET_BUF   0x0002
 #define MSM_SUBMIT_CMD_CTX_RESTORE_BUF 0x0003
 struct drm_msm_gem_submit_cmd {
-	uint32_t type;           /* in, one of MSM_SUBMIT_CMD_x */
-	uint32_t submit_idx;     /* in, index of submit_bo cmdstream buffer */
-	uint32_t submit_offset;  /* in, offset into submit_bo */
-	uint32_t size;           /* in, cmdstream size */
-	uint32_t pad;
-	uint32_t nr_relocs;      /* in, number of submit_reloc's */
-	uint64_t __user relocs;  /* in, ptr to array of submit_reloc's */
+	__u32 type;           /* in, one of MSM_SUBMIT_CMD_x */
+	__u32 submit_idx;     /* in, index of submit_bo cmdstream buffer */
+	__u32 submit_offset;  /* in, offset into submit_bo */
+	__u32 size;           /* in, cmdstream size */
+	__u32 pad;
+	__u32 nr_relocs;      /* in, number of submit_reloc's */
+	__u64 __user relocs;  /* in, ptr to array of submit_reloc's */
 };
 
 /* Each buffer referenced elsewhere in the cmdstream submit (ie. the
@@ -165,22 +179,33 @@ struct drm_msm_gem_submit_cmd {
 #define MSM_SUBMIT_BO_FLAGS            (MSM_SUBMIT_BO_READ | MSM_SUBMIT_BO_WRITE)
 
 struct drm_msm_gem_submit_bo {
-	uint32_t flags;          /* in, mask of MSM_SUBMIT_BO_x */
-	uint32_t handle;         /* in, GEM handle */
-	uint64_t presumed;       /* in/out, presumed buffer address */
+	__u32 flags;          /* in, mask of MSM_SUBMIT_BO_x */
+	__u32 handle;         /* in, GEM handle */
+	__u64 presumed;       /* in/out, presumed buffer address */
 };
+
+/* Valid submit ioctl flags: */
+#define MSM_SUBMIT_NO_IMPLICIT   0x80000000 /* disable implicit sync */
+#define MSM_SUBMIT_FENCE_FD_IN   0x40000000 /* enable input fence_fd */
+#define MSM_SUBMIT_FENCE_FD_OUT  0x20000000 /* enable output fence_fd */
+#define MSM_SUBMIT_FLAGS                ( \
+		MSM_SUBMIT_NO_IMPLICIT   | \
+		MSM_SUBMIT_FENCE_FD_IN   | \
+		MSM_SUBMIT_FENCE_FD_OUT  | \
+		0)
 
 /* Each cmdstream submit consists of a table of buffers involved, and
  * one or more cmdstream buffers.  This allows for conditional execution
  * (context-restore), and IB buffers needed for per tile/bin draw cmds.
  */
 struct drm_msm_gem_submit {
-	uint32_t pipe;           /* in, MSM_PIPE_x */
-	uint32_t fence;          /* out */
-	uint32_t nr_bos;         /* in, number of submit_bo's */
-	uint32_t nr_cmds;        /* in, number of submit_cmd's */
-	uint64_t __user bos;     /* in, ptr to array of submit_bo's */
-	uint64_t __user cmds;    /* in, ptr to array of submit_cmd's */
+	__u32 flags;          /* MSM_PIPE_x | MSM_SUBMIT_x */
+	__u32 fence;          /* out */
+	__u32 nr_bos;         /* in, number of submit_bo's */
+	__u32 nr_cmds;        /* in, number of submit_cmd's */
+	__u64 __user bos;     /* in, ptr to array of submit_bo's */
+	__u64 __user cmds;    /* in, ptr to array of submit_cmd's */
+	__s32 fence_fd;       /* in/out fence fd (see MSM_SUBMIT_FENCE_FD_IN/OUT) */
 };
 
 /* The normal way to synchronize with the GPU is just to CPU_PREP on
@@ -191,9 +216,30 @@ struct drm_msm_gem_submit {
  * APIs without requiring a dummy bo to synchronize on.
  */
 struct drm_msm_wait_fence {
-	uint32_t fence;          /* in */
-	uint32_t pad;
+	__u32 fence;          /* in */
+	__u32 pad;
 	struct drm_msm_timespec timeout;   /* in */
+};
+
+/* madvise provides a way to tell the kernel in case a buffers contents
+ * can be discarded under memory pressure, which is useful for userspace
+ * bo cache where we want to optimistically hold on to buffer allocate
+ * and potential mmap, but allow the pages to be discarded under memory
+ * pressure.
+ *
+ * Typical usage would involve madvise(DONTNEED) when buffer enters BO
+ * cache, and madvise(WILLNEED) if trying to recycle buffer from BO cache.
+ * In the WILLNEED case, 'retained' indicates to userspace whether the
+ * backing pages still exist.
+ */
+#define MSM_MADV_WILLNEED 0       /* backing pages are needed, status returned in 'retained' */
+#define MSM_MADV_DONTNEED 1       /* backing pages not needed */
+#define __MSM_MADV_PURGED 2       /* internal state */
+
+struct drm_msm_gem_madvise {
+	__u32 handle;         /* in, GEM handle */
+	__u32 madv;           /* in, MSM_MADV_x */
+	__u32 retained;       /* out, whether backing store still exists */
 };
 
 #define DRM_MSM_GET_PARAM              0x00
@@ -206,7 +252,8 @@ struct drm_msm_wait_fence {
 #define DRM_MSM_GEM_CPU_FINI           0x05
 #define DRM_MSM_GEM_SUBMIT             0x06
 #define DRM_MSM_WAIT_FENCE             0x07
-#define DRM_MSM_NUM_IOCTLS             0x08
+#define DRM_MSM_GEM_MADVISE            0x08
+#define DRM_MSM_NUM_IOCTLS             0x09
 
 #define DRM_IOCTL_MSM_GET_PARAM        DRM_IOWR(DRM_COMMAND_BASE + DRM_MSM_GET_PARAM, struct drm_msm_param)
 #define DRM_IOCTL_MSM_GEM_NEW          DRM_IOWR(DRM_COMMAND_BASE + DRM_MSM_GEM_NEW, struct drm_msm_gem_new)
@@ -215,5 +262,10 @@ struct drm_msm_wait_fence {
 #define DRM_IOCTL_MSM_GEM_CPU_FINI     DRM_IOW (DRM_COMMAND_BASE + DRM_MSM_GEM_CPU_FINI, struct drm_msm_gem_cpu_fini)
 #define DRM_IOCTL_MSM_GEM_SUBMIT       DRM_IOWR(DRM_COMMAND_BASE + DRM_MSM_GEM_SUBMIT, struct drm_msm_gem_submit)
 #define DRM_IOCTL_MSM_WAIT_FENCE       DRM_IOW (DRM_COMMAND_BASE + DRM_MSM_WAIT_FENCE, struct drm_msm_wait_fence)
+#define DRM_IOCTL_MSM_GEM_MADVISE      DRM_IOWR(DRM_COMMAND_BASE + DRM_MSM_GEM_MADVISE, struct drm_msm_gem_madvise)
+
+#if defined(__cplusplus)
+}
+#endif
 
 #endif /* __MSM_DRM_H__ */

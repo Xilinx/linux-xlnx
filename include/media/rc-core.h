@@ -29,9 +29,16 @@ do {								\
 		printk(KERN_DEBUG pr_fmt(fmt), ##__VA_ARGS__);	\
 } while (0)
 
+/**
+ * enum rc_driver_type - type of the RC output
+ *
+ * @RC_DRIVER_SCANCODE:	Driver or hardware generates a scancode
+ * @RC_DRIVER_IR_RAW:	Driver or hardware generates pulse/space sequences.
+ *			It needs a Infra-Red pulse/space decoder
+ */
 enum rc_driver_type {
-	RC_DRIVER_SCANCODE = 0,	/* Driver or hardware generates a scancode */
-	RC_DRIVER_IR_RAW,	/* Needs a Infra-Red pulse/space decoder */
+	RC_DRIVER_SCANCODE = 0,
+	RC_DRIVER_IR_RAW,
 };
 
 /**
@@ -60,6 +67,7 @@ enum rc_filter_type {
 /**
  * struct rc_dev - represents a remote control device
  * @dev: driver model's view of this device
+ * @initialized: 1 if the device init has completed, 0 otherwise
  * @sysfs_groups: sysfs attribute groups
  * @input_name: name of the input child device
  * @input_phys: physical path to the input child device
@@ -69,7 +77,7 @@ enum rc_filter_type {
  * @rc_map: current scan/key table
  * @lock: used to ensure we've filled in all protocol details before
  *	anyone can call show_protocols or store_protocols
- * @devno: unique remote control device number
+ * @minor: unique minor remote control device number
  * @raw: additional data for raw pulse/space devices
  * @input_dev: the input child device used to communicate events to userspace
  * @driver_type: specifies if protocol decoding is done in hardware or software
@@ -110,7 +118,7 @@ enum rc_filter_type {
  * @s_tx_mask: set transmitter mask (for devices with multiple tx outputs)
  * @s_tx_carrier: set transmit carrier frequency
  * @s_tx_duty_cycle: set transmit duty cycle (0% - 100%)
- * @s_rx_carrier: inform driver about carrier it is expected to handle
+ * @s_rx_carrier_range: inform driver about carrier it is expected to handle
  * @tx_ir: transmit IR
  * @s_idle: enable/disable hardware idle mode, upon which,
  *	device doesn't interrupt host until it sees IR pulses
@@ -118,9 +126,11 @@ enum rc_filter_type {
  * @s_carrier_report: enable carrier reports
  * @s_filter: set the scancode filter
  * @s_wakeup_filter: set the wakeup scancode filter
+ * @s_timeout: set hardware timeout in ns
  */
 struct rc_dev {
 	struct device			dev;
+	atomic_t			initialized;
 	const struct attribute_group	*sysfs_groups[5];
 	const char			*input_name;
 	const char			*input_phys;
@@ -129,7 +139,7 @@ struct rc_dev {
 	const char			*map_name;
 	struct rc_map			rc_map;
 	struct mutex			lock;
-	unsigned long			devno;
+	unsigned int			minor;
 	struct ir_raw_event_ctrl	*raw;
 	struct input_dev		*input_dev;
 	enum rc_driver_type		driver_type;
@@ -172,6 +182,8 @@ struct rc_dev {
 						    struct rc_scancode_filter *filter);
 	int				(*s_wakeup_filter)(struct rc_dev *dev,
 							   struct rc_scancode_filter *filter);
+	int				(*s_timeout)(struct rc_dev *dev,
+						     unsigned int timeout);
 };
 
 #define to_rc_dev(d) container_of(d, struct rc_dev, dev)
@@ -183,12 +195,46 @@ struct rc_dev {
  * Remote Controller, at sys/class/rc.
  */
 
+/**
+ * rc_allocate_device - Allocates a RC device
+ *
+ * returns a pointer to struct rc_dev.
+ */
 struct rc_dev *rc_allocate_device(void);
+
+/**
+ * rc_free_device - Frees a RC device
+ *
+ * @dev: pointer to struct rc_dev.
+ */
 void rc_free_device(struct rc_dev *dev);
+
+/**
+ * rc_register_device - Registers a RC device
+ *
+ * @dev: pointer to struct rc_dev.
+ */
 int rc_register_device(struct rc_dev *dev);
+
+/**
+ * rc_unregister_device - Unregisters a RC device
+ *
+ * @dev: pointer to struct rc_dev.
+ */
 void rc_unregister_device(struct rc_dev *dev);
 
+/**
+ * rc_open - Opens a RC device
+ *
+ * @rdev: pointer to struct rc_dev.
+ */
 int rc_open(struct rc_dev *rdev);
+
+/**
+ * rc_close - Closes a RC device
+ *
+ * @rdev: pointer to struct rc_dev.
+ */
 void rc_close(struct rc_dev *rdev);
 
 void rc_repeat(struct rc_dev *dev);
@@ -213,12 +259,9 @@ enum raw_event_type {
 struct ir_raw_event {
 	union {
 		u32             duration;
-
-		struct {
-			u32     carrier;
-			u8      duty_cycle;
-		};
+		u32             carrier;
 	};
+	u8                      duty_cycle;
 
 	unsigned                pulse:1;
 	unsigned                reset:1;
@@ -226,20 +269,15 @@ struct ir_raw_event {
 	unsigned                carrier_report:1;
 };
 
-#define DEFINE_IR_RAW_EVENT(event) \
-	struct ir_raw_event event = { \
-		{ .duration = 0 } , \
-		.pulse = 0, \
-		.reset = 0, \
-		.timeout = 0, \
-		.carrier_report = 0 }
+#define DEFINE_IR_RAW_EVENT(event) struct ir_raw_event event = {}
 
 static inline void init_ir_raw_event(struct ir_raw_event *ev)
 {
 	memset(ev, 0, sizeof(*ev));
 }
 
-#define IR_MAX_DURATION         0xFFFFFFFF      /* a bit more than 4 seconds */
+#define IR_DEFAULT_TIMEOUT	MS_TO_NS(125)
+#define IR_MAX_DURATION         500000000	/* 500 ms */
 #define US_TO_NS(usec)		((usec) * 1000)
 #define MS_TO_US(msec)		((msec) * 1000)
 #define MS_TO_NS(msec)		((msec) * 1000 * 1000)
@@ -253,8 +291,7 @@ void ir_raw_event_set_idle(struct rc_dev *dev, bool idle);
 
 static inline void ir_raw_event_reset(struct rc_dev *dev)
 {
-	DEFINE_IR_RAW_EVENT(ev);
-	ev.reset = true;
+	struct ir_raw_event ev = { .reset = true };
 
 	ir_raw_event_store(dev, &ev);
 	ir_raw_event_handle(dev);

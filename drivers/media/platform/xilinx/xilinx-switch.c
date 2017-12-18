@@ -115,12 +115,13 @@ static int xsw_s_stream(struct v4l2_subdev *subdev, int enable)
  */
 
 static struct v4l2_mbus_framefmt *
-xsw_get_pad_format(struct xswitch_device *xsw, struct v4l2_subdev_fh *fh,
+xsw_get_pad_format(struct xswitch_device *xsw,
+		   struct v4l2_subdev_pad_config *cfg,
 		   unsigned int pad, u32 which)
 {
 	switch (which) {
 	case V4L2_SUBDEV_FORMAT_TRY:
-		return v4l2_subdev_get_try_format(fh, pad);
+		return v4l2_subdev_get_try_format(&xsw->xvip.subdev, cfg, pad);
 	case V4L2_SUBDEV_FORMAT_ACTIVE:
 		return &xsw->formats[pad];
 	default:
@@ -129,7 +130,7 @@ xsw_get_pad_format(struct xswitch_device *xsw, struct v4l2_subdev_fh *fh,
 }
 
 static int xsw_get_format(struct v4l2_subdev *subdev,
-			  struct v4l2_subdev_fh *fh,
+			  struct v4l2_subdev_pad_config *cfg,
 			  struct v4l2_subdev_format *fmt)
 {
 	struct xswitch_device *xsw = to_xsw(subdev);
@@ -143,35 +144,35 @@ static int xsw_get_format(struct v4l2_subdev *subdev,
 		}
 	}
 
-	fmt->format = *xsw_get_pad_format(xsw, fh, pad, fmt->which);
+	fmt->format = *xsw_get_pad_format(xsw, cfg, pad, fmt->which);
 
 	return 0;
 }
 
 static int xsw_set_format(struct v4l2_subdev *subdev,
-			  struct v4l2_subdev_fh *fh,
+			  struct v4l2_subdev_pad_config *cfg,
 			  struct v4l2_subdev_format *fmt)
 {
 	struct xswitch_device *xsw = to_xsw(subdev);
-	struct v4l2_mbus_framefmt *__format;
+	struct v4l2_mbus_framefmt *format;
 
 	/* The source pad format is always identical to the sink pad format and
 	 * can't be modified.
 	 */
 	if (fmt->pad >= xsw->nsinks)
-		return xsw_get_format(subdev, fh, fmt);
+		return xsw_get_format(subdev, cfg, fmt);
 
-	__format = xsw_get_pad_format(xsw, fh, fmt->pad, fmt->which);
+	format = xsw_get_pad_format(xsw, cfg, fmt->pad, fmt->which);
 
-	__format->code = fmt->format.code;
-	__format->width = clamp_t(unsigned int, fmt->format.width,
-				  XVIP_MIN_WIDTH, XVIP_MAX_WIDTH);
-	__format->height = clamp_t(unsigned int, fmt->format.height,
-				   XVIP_MIN_HEIGHT, XVIP_MAX_HEIGHT);
-	__format->field = V4L2_FIELD_NONE;
-	__format->colorspace = V4L2_COLORSPACE_SRGB;
+	format->code = fmt->format.code;
+	format->width = clamp_t(unsigned int, fmt->format.width,
+				XVIP_MIN_WIDTH, XVIP_MAX_WIDTH);
+	format->height = clamp_t(unsigned int, fmt->format.height,
+				 XVIP_MIN_HEIGHT, XVIP_MAX_HEIGHT);
+	format->field = V4L2_FIELD_NONE;
+	format->colorspace = V4L2_COLORSPACE_SRGB;
 
-	fmt->format = *__format;
+	fmt->format = *format;
 
 	return 0;
 }
@@ -182,7 +183,7 @@ static int xsw_get_routing(struct v4l2_subdev *subdev,
 	struct xswitch_device *xsw = to_xsw(subdev);
 	unsigned int i;
 
-	mutex_lock(&subdev->entity.parent->graph_mutex);
+	mutex_lock(&subdev->entity.graph_obj.mdev->graph_mutex);
 
 	for (i = 0; i < min(xsw->nsources, route->num_routes); ++i) {
 		route->routes[i].sink = xsw->routing[i];
@@ -191,7 +192,7 @@ static int xsw_get_routing(struct v4l2_subdev *subdev,
 
 	route->num_routes = xsw->nsources;
 
-	mutex_unlock(&subdev->entity.parent->graph_mutex);
+	mutex_unlock(&subdev->entity.graph_obj.mdev->graph_mutex);
 
 	return 0;
 }
@@ -203,7 +204,7 @@ static int xsw_set_routing(struct v4l2_subdev *subdev,
 	unsigned int i;
 	int ret = 0;
 
-	mutex_lock(&subdev->entity.parent->graph_mutex);
+	mutex_lock(&subdev->entity.graph_obj.mdev->graph_mutex);
 
 	if (subdev->entity.stream_count) {
 		ret = -EBUSY;
@@ -218,7 +219,7 @@ static int xsw_set_routing(struct v4l2_subdev *subdev,
 			route->routes[i].sink;
 
 done:
-	mutex_unlock(&subdev->entity.parent->graph_mutex);
+	mutex_unlock(&subdev->entity.graph_obj.mdev->graph_mutex);
 	return ret;
 }
 
@@ -255,7 +256,7 @@ static void xsw_init_formats(struct v4l2_subdev *subdev,
 		format.format.width = 1920;
 		format.format.height = 1080;
 
-		xsw_set_format(subdev, fh, &format);
+		xsw_set_format(subdev, fh ? fh->pad : NULL, &format);
 	}
 }
 
@@ -402,7 +403,7 @@ static int xsw_probe(struct platform_device *pdev)
 
 	xsw_init_formats(subdev, NULL);
 
-	ret = media_entity_init(&subdev->entity, npads, xsw->pads, 0);
+	ret = media_entity_pads_init(&subdev->entity, npads, xsw->pads);
 	if (ret < 0)
 		goto error;
 

@@ -63,6 +63,8 @@ struct kvm_stats_debugfs_item debugfs_entries[] = {
 	{ "dec",        VCPU_STAT(dec_exits) },
 	{ "ext_intr",   VCPU_STAT(ext_intr_exits) },
 	{ "halt_successful_poll", VCPU_STAT(halt_successful_poll) },
+	{ "halt_attempted_poll", VCPU_STAT(halt_attempted_poll) },
+	{ "halt_poll_invalid", VCPU_STAT(halt_poll_invalid) },
 	{ "halt_wakeup", VCPU_STAT(halt_wakeup) },
 	{ "doorbell", VCPU_STAT(dbell_exits) },
 	{ "guest doorbell", VCPU_STAT(gdbell_exits) },
@@ -97,6 +99,7 @@ void kvmppc_vcpu_disable_spe(struct kvm_vcpu *vcpu)
 	preempt_disable();
 	enable_kernel_spe();
 	kvmppc_save_guest_spe(vcpu);
+	disable_kernel_spe();
 	vcpu->arch.shadow_msr &= ~MSR_SPE;
 	preempt_enable();
 }
@@ -106,6 +109,7 @@ static void kvmppc_vcpu_enable_spe(struct kvm_vcpu *vcpu)
 	preempt_disable();
 	enable_kernel_spe();
 	kvmppc_load_guest_spe(vcpu);
+	disable_kernel_spe();
 	vcpu->arch.shadow_msr |= MSR_SPE;
 	preempt_enable();
 }
@@ -140,6 +144,7 @@ static inline void kvmppc_load_guest_fp(struct kvm_vcpu *vcpu)
 	if (!(current->thread.regs->msr & MSR_FP)) {
 		enable_kernel_fp();
 		load_fp_state(&vcpu->arch.fp);
+		disable_kernel_fp();
 		current->thread.fp_save_area = &vcpu->arch.fp;
 		current->thread.regs->msr |= MSR_FP;
 	}
@@ -181,6 +186,7 @@ static inline void kvmppc_load_guest_altivec(struct kvm_vcpu *vcpu)
 		if (!(current->thread.regs->msr & MSR_VEC)) {
 			enable_kernel_altivec();
 			load_vr_state(&vcpu->arch.vr);
+			disable_kernel_altivec();
 			current->thread.vr_save_area = &vcpu->arch.vr;
 			current->thread.regs->msr |= MSR_VEC;
 		}
@@ -770,7 +776,7 @@ int kvmppc_vcpu_run(struct kvm_run *kvm_run, struct kvm_vcpu *vcpu)
 
 	ret = __kvmppc_vcpu_run(kvm_run, vcpu);
 
-	/* No need for kvm_guest_exit. It's done in handle_exit.
+	/* No need for guest_exit. It's done in handle_exit.
 	   We also get here with interrupts enabled. */
 
 	/* Switch back to user space debug context */
@@ -933,6 +939,7 @@ static void kvmppc_restart_interrupt(struct kvm_vcpu *vcpu,
 #endif
 		break;
 	case BOOKE_INTERRUPT_CRITICAL:
+		kvmppc_fill_pt_regs(&regs);
 		unknown_exception(&regs);
 		break;
 	case BOOKE_INTERRUPT_DEBUG:
@@ -986,7 +993,7 @@ int kvmppc_handle_exit(struct kvm_run *run, struct kvm_vcpu *vcpu,
 	kvmppc_restart_interrupt(vcpu, exit_nr);
 
 	/*
-	 * get last instruction before beeing preempted
+	 * get last instruction before being preempted
 	 * TODO: for e6500 check also BOOKE_INTERRUPT_LRAT_ERROR & ESR_DATA
 	 */
 	switch (exit_nr) {
@@ -1004,10 +1011,10 @@ int kvmppc_handle_exit(struct kvm_run *run, struct kvm_vcpu *vcpu,
 		break;
 	}
 
-	local_irq_enable();
-
 	trace_kvm_exit(exit_nr, vcpu);
-	kvm_guest_exit();
+	guest_exit_irqoff();
+
+	local_irq_enable();
 
 	run->exit_reason = KVM_EXIT_UNKNOWN;
 	run->ready_for_interrupt_injection = 1;
@@ -1784,14 +1791,15 @@ int kvmppc_core_create_memslot(struct kvm *kvm, struct kvm_memory_slot *slot,
 
 int kvmppc_core_prepare_memory_region(struct kvm *kvm,
 				      struct kvm_memory_slot *memslot,
-				      struct kvm_userspace_memory_region *mem)
+				      const struct kvm_userspace_memory_region *mem)
 {
 	return 0;
 }
 
 void kvmppc_core_commit_memory_region(struct kvm *kvm,
-				struct kvm_userspace_memory_region *mem,
-				const struct kvm_memory_slot *old)
+				const struct kvm_userspace_memory_region *mem,
+				const struct kvm_memory_slot *old,
+				const struct kvm_memory_slot *new)
 {
 }
 
@@ -2030,7 +2038,7 @@ int kvm_arch_vcpu_ioctl_set_guest_debug(struct kvm_vcpu *vcpu,
 		if (type == KVMPPC_DEBUG_NONE)
 			continue;
 
-		if (type & !(KVMPPC_DEBUG_WATCH_READ |
+		if (type & ~(KVMPPC_DEBUG_WATCH_READ |
 			     KVMPPC_DEBUG_WATCH_WRITE |
 			     KVMPPC_DEBUG_BREAKPOINT))
 			return -EINVAL;

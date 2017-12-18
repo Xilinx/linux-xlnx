@@ -28,18 +28,76 @@
 
 #include <drm/drmP.h>
 #include <drm/drm_atomic.h>
+#include <drm/drm_mode.h>
 #include <drm/drm_plane_helper.h>
 
-static void kfree_state(struct drm_atomic_state *state)
+#include "drm_crtc_internal.h"
+
+static void crtc_commit_free(struct kref *kref)
+{
+	struct drm_crtc_commit *commit =
+		container_of(kref, struct drm_crtc_commit, ref);
+
+	kfree(commit);
+}
+
+void drm_crtc_commit_put(struct drm_crtc_commit *commit)
+{
+	kref_put(&commit->ref, crtc_commit_free);
+}
+EXPORT_SYMBOL(drm_crtc_commit_put);
+
+/**
+ * drm_atomic_state_default_release -
+ * release memory initialized by drm_atomic_state_init
+ * @state: atomic state
+ *
+ * Free all the memory allocated by drm_atomic_state_init.
+ * This is useful for drivers that subclass the atomic state.
+ */
+void drm_atomic_state_default_release(struct drm_atomic_state *state)
 {
 	kfree(state->connectors);
-	kfree(state->connector_states);
 	kfree(state->crtcs);
-	kfree(state->crtc_states);
 	kfree(state->planes);
-	kfree(state->plane_states);
-	kfree(state);
 }
+EXPORT_SYMBOL(drm_atomic_state_default_release);
+
+/**
+ * drm_atomic_state_init - init new atomic state
+ * @dev: DRM device
+ * @state: atomic state
+ *
+ * Default implementation for filling in a new atomic state.
+ * This is useful for drivers that subclass the atomic state.
+ */
+int
+drm_atomic_state_init(struct drm_device *dev, struct drm_atomic_state *state)
+{
+	/* TODO legacy paths should maybe do a better job about
+	 * setting this appropriately?
+	 */
+	state->allow_modeset = true;
+
+	state->crtcs = kcalloc(dev->mode_config.num_crtc,
+			       sizeof(*state->crtcs), GFP_KERNEL);
+	if (!state->crtcs)
+		goto fail;
+	state->planes = kcalloc(dev->mode_config.num_total_plane,
+				sizeof(*state->planes), GFP_KERNEL);
+	if (!state->planes)
+		goto fail;
+
+	state->dev = dev;
+
+	DRM_DEBUG_ATOMIC("Allocated atomic state %p\n", state);
+
+	return 0;
+fail:
+	drm_atomic_state_default_release(state);
+	return -ENOMEM;
+}
+EXPORT_SYMBOL(drm_atomic_state_init);
 
 /**
  * drm_atomic_state_alloc - allocate atomic state
@@ -50,57 +108,85 @@ static void kfree_state(struct drm_atomic_state *state)
 struct drm_atomic_state *
 drm_atomic_state_alloc(struct drm_device *dev)
 {
+	struct drm_mode_config *config = &dev->mode_config;
 	struct drm_atomic_state *state;
 
-	state = kzalloc(sizeof(*state), GFP_KERNEL);
-	if (!state)
-		return NULL;
+	if (!config->funcs->atomic_state_alloc) {
+		state = kzalloc(sizeof(*state), GFP_KERNEL);
+		if (!state)
+			return NULL;
+		if (drm_atomic_state_init(dev, state) < 0) {
+			kfree(state);
+			return NULL;
+		}
+		return state;
+	}
 
-	/* TODO legacy paths should maybe do a better job about
-	 * setting this appropriately?
-	 */
-	state->allow_modeset = true;
-
-	state->num_connector = ACCESS_ONCE(dev->mode_config.num_connector);
-
-	state->crtcs = kcalloc(dev->mode_config.num_crtc,
-			       sizeof(*state->crtcs), GFP_KERNEL);
-	if (!state->crtcs)
-		goto fail;
-	state->crtc_states = kcalloc(dev->mode_config.num_crtc,
-				     sizeof(*state->crtc_states), GFP_KERNEL);
-	if (!state->crtc_states)
-		goto fail;
-	state->planes = kcalloc(dev->mode_config.num_total_plane,
-				sizeof(*state->planes), GFP_KERNEL);
-	if (!state->planes)
-		goto fail;
-	state->plane_states = kcalloc(dev->mode_config.num_total_plane,
-				      sizeof(*state->plane_states), GFP_KERNEL);
-	if (!state->plane_states)
-		goto fail;
-	state->connectors = kcalloc(state->num_connector,
-				    sizeof(*state->connectors),
-				    GFP_KERNEL);
-	if (!state->connectors)
-		goto fail;
-	state->connector_states = kcalloc(state->num_connector,
-					  sizeof(*state->connector_states),
-					  GFP_KERNEL);
-	if (!state->connector_states)
-		goto fail;
-
-	state->dev = dev;
-
-	DRM_DEBUG_KMS("Allocate atomic state %p\n", state);
-
-	return state;
-fail:
-	kfree_state(state);
-
-	return NULL;
+	return config->funcs->atomic_state_alloc(dev);
 }
 EXPORT_SYMBOL(drm_atomic_state_alloc);
+
+/**
+ * drm_atomic_state_default_clear - clear base atomic state
+ * @state: atomic state
+ *
+ * Default implementation for clearing atomic state.
+ * This is useful for drivers that subclass the atomic state.
+ */
+void drm_atomic_state_default_clear(struct drm_atomic_state *state)
+{
+	struct drm_device *dev = state->dev;
+	struct drm_mode_config *config = &dev->mode_config;
+	int i;
+
+	DRM_DEBUG_ATOMIC("Clearing atomic state %p\n", state);
+
+	for (i = 0; i < state->num_connector; i++) {
+		struct drm_connector *connector = state->connectors[i].ptr;
+
+		if (!connector)
+			continue;
+
+		connector->funcs->atomic_destroy_state(connector,
+						       state->connectors[i].state);
+		state->connectors[i].ptr = NULL;
+		state->connectors[i].state = NULL;
+		drm_connector_unreference(connector);
+	}
+
+	for (i = 0; i < config->num_crtc; i++) {
+		struct drm_crtc *crtc = state->crtcs[i].ptr;
+
+		if (!crtc)
+			continue;
+
+		crtc->funcs->atomic_destroy_state(crtc,
+						  state->crtcs[i].state);
+
+		if (state->crtcs[i].commit) {
+			kfree(state->crtcs[i].commit->event);
+			state->crtcs[i].commit->event = NULL;
+			drm_crtc_commit_put(state->crtcs[i].commit);
+		}
+
+		state->crtcs[i].commit = NULL;
+		state->crtcs[i].ptr = NULL;
+		state->crtcs[i].state = NULL;
+	}
+
+	for (i = 0; i < config->num_total_plane; i++) {
+		struct drm_plane *plane = state->planes[i].ptr;
+
+		if (!plane)
+			continue;
+
+		plane->funcs->atomic_destroy_state(plane,
+						   state->planes[i].state);
+		state->planes[i].ptr = NULL;
+		state->planes[i].state = NULL;
+	}
+}
+EXPORT_SYMBOL(drm_atomic_state_default_clear);
 
 /**
  * drm_atomic_state_clear - clear state object
@@ -120,44 +206,11 @@ void drm_atomic_state_clear(struct drm_atomic_state *state)
 {
 	struct drm_device *dev = state->dev;
 	struct drm_mode_config *config = &dev->mode_config;
-	int i;
 
-	DRM_DEBUG_KMS("Clearing atomic state %p\n", state);
-
-	for (i = 0; i < state->num_connector; i++) {
-		struct drm_connector *connector = state->connectors[i];
-
-		if (!connector)
-			continue;
-
-		WARN_ON(!drm_modeset_is_locked(&config->connection_mutex));
-
-		connector->funcs->atomic_destroy_state(connector,
-						       state->connector_states[i]);
-		state->connector_states[i] = NULL;
-	}
-
-	for (i = 0; i < config->num_crtc; i++) {
-		struct drm_crtc *crtc = state->crtcs[i];
-
-		if (!crtc)
-			continue;
-
-		crtc->funcs->atomic_destroy_state(crtc,
-						  state->crtc_states[i]);
-		state->crtc_states[i] = NULL;
-	}
-
-	for (i = 0; i < config->num_total_plane; i++) {
-		struct drm_plane *plane = state->planes[i];
-
-		if (!plane)
-			continue;
-
-		plane->funcs->atomic_destroy_state(plane,
-						   state->plane_states[i]);
-		state->plane_states[i] = NULL;
-	}
+	if (config->funcs->atomic_state_clear)
+		config->funcs->atomic_state_clear(state);
+	else
+		drm_atomic_state_default_clear(state);
 }
 EXPORT_SYMBOL(drm_atomic_state_clear);
 
@@ -170,11 +223,25 @@ EXPORT_SYMBOL(drm_atomic_state_clear);
  */
 void drm_atomic_state_free(struct drm_atomic_state *state)
 {
+	struct drm_device *dev;
+	struct drm_mode_config *config;
+
+	if (!state)
+		return;
+
+	dev = state->dev;
+	config = &dev->mode_config;
+
 	drm_atomic_state_clear(state);
 
-	DRM_DEBUG_KMS("Freeing atomic state %p\n", state);
+	DRM_DEBUG_ATOMIC("Freeing atomic state %p\n", state);
 
-	kfree_state(state);
+	if (config->funcs->atomic_state_free) {
+		config->funcs->atomic_state_free(state);
+	} else {
+		drm_atomic_state_default_release(state);
+		kfree(state);
+	}
 }
 EXPORT_SYMBOL(drm_atomic_state_free);
 
@@ -197,13 +264,14 @@ struct drm_crtc_state *
 drm_atomic_get_crtc_state(struct drm_atomic_state *state,
 			  struct drm_crtc *crtc)
 {
-	int ret, index;
+	int ret, index = drm_crtc_index(crtc);
 	struct drm_crtc_state *crtc_state;
 
-	index = drm_crtc_index(crtc);
+	WARN_ON(!state->acquire_ctx);
 
-	if (state->crtc_states[index])
-		return state->crtc_states[index];
+	crtc_state = drm_atomic_get_existing_crtc_state(state, crtc);
+	if (crtc_state)
+		return crtc_state;
 
 	ret = drm_modeset_lock(&crtc->mutex, state->acquire_ctx);
 	if (ret)
@@ -213,16 +281,163 @@ drm_atomic_get_crtc_state(struct drm_atomic_state *state,
 	if (!crtc_state)
 		return ERR_PTR(-ENOMEM);
 
-	state->crtc_states[index] = crtc_state;
-	state->crtcs[index] = crtc;
+	state->crtcs[index].state = crtc_state;
+	state->crtcs[index].ptr = crtc;
 	crtc_state->state = state;
 
-	DRM_DEBUG_KMS("Added [CRTC:%d] %p state to %p\n",
-		      crtc->base.id, crtc_state, state);
+	DRM_DEBUG_ATOMIC("Added [CRTC:%d:%s] %p state to %p\n",
+			 crtc->base.id, crtc->name, crtc_state, state);
 
 	return crtc_state;
 }
 EXPORT_SYMBOL(drm_atomic_get_crtc_state);
+
+/**
+ * drm_atomic_set_mode_for_crtc - set mode for CRTC
+ * @state: the CRTC whose incoming state to update
+ * @mode: kernel-internal mode to use for the CRTC, or NULL to disable
+ *
+ * Set a mode (originating from the kernel) on the desired CRTC state. Does
+ * not change any other state properties, including enable, active, or
+ * mode_changed.
+ *
+ * RETURNS:
+ * Zero on success, error code on failure. Cannot return -EDEADLK.
+ */
+int drm_atomic_set_mode_for_crtc(struct drm_crtc_state *state,
+				 struct drm_display_mode *mode)
+{
+	struct drm_mode_modeinfo umode;
+
+	/* Early return for no change. */
+	if (mode && memcmp(&state->mode, mode, sizeof(*mode)) == 0)
+		return 0;
+
+	drm_property_unreference_blob(state->mode_blob);
+	state->mode_blob = NULL;
+
+	if (mode) {
+		drm_mode_convert_to_umode(&umode, mode);
+		state->mode_blob =
+			drm_property_create_blob(state->crtc->dev,
+		                                 sizeof(umode),
+		                                 &umode);
+		if (IS_ERR(state->mode_blob))
+			return PTR_ERR(state->mode_blob);
+
+		drm_mode_copy(&state->mode, mode);
+		state->enable = true;
+		DRM_DEBUG_ATOMIC("Set [MODE:%s] for CRTC state %p\n",
+				 mode->name, state);
+	} else {
+		memset(&state->mode, 0, sizeof(state->mode));
+		state->enable = false;
+		DRM_DEBUG_ATOMIC("Set [NOMODE] for CRTC state %p\n",
+				 state);
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL(drm_atomic_set_mode_for_crtc);
+
+/**
+ * drm_atomic_set_mode_prop_for_crtc - set mode for CRTC
+ * @state: the CRTC whose incoming state to update
+ * @blob: pointer to blob property to use for mode
+ *
+ * Set a mode (originating from a blob property) on the desired CRTC state.
+ * This function will take a reference on the blob property for the CRTC state,
+ * and release the reference held on the state's existing mode property, if any
+ * was set.
+ *
+ * RETURNS:
+ * Zero on success, error code on failure. Cannot return -EDEADLK.
+ */
+int drm_atomic_set_mode_prop_for_crtc(struct drm_crtc_state *state,
+                                      struct drm_property_blob *blob)
+{
+	if (blob == state->mode_blob)
+		return 0;
+
+	drm_property_unreference_blob(state->mode_blob);
+	state->mode_blob = NULL;
+
+	memset(&state->mode, 0, sizeof(state->mode));
+
+	if (blob) {
+		if (blob->length != sizeof(struct drm_mode_modeinfo) ||
+		    drm_mode_convert_umode(&state->mode,
+		                           (const struct drm_mode_modeinfo *)
+		                            blob->data))
+			return -EINVAL;
+
+		state->mode_blob = drm_property_reference_blob(blob);
+		state->enable = true;
+		DRM_DEBUG_ATOMIC("Set [MODE:%s] for CRTC state %p\n",
+				 state->mode.name, state);
+	} else {
+		state->enable = false;
+		DRM_DEBUG_ATOMIC("Set [NOMODE] for CRTC state %p\n",
+				 state);
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL(drm_atomic_set_mode_prop_for_crtc);
+
+/**
+ * drm_atomic_replace_property_blob - replace a blob property
+ * @blob: a pointer to the member blob to be replaced
+ * @new_blob: the new blob to replace with
+ * @replaced: whether the blob has been replaced
+ *
+ * RETURNS:
+ * Zero on success, error code on failure
+ */
+static void
+drm_atomic_replace_property_blob(struct drm_property_blob **blob,
+				 struct drm_property_blob *new_blob,
+				 bool *replaced)
+{
+	struct drm_property_blob *old_blob = *blob;
+
+	if (old_blob == new_blob)
+		return;
+
+	drm_property_unreference_blob(old_blob);
+	if (new_blob)
+		drm_property_reference_blob(new_blob);
+	*blob = new_blob;
+	*replaced = true;
+
+	return;
+}
+
+static int
+drm_atomic_replace_property_blob_from_id(struct drm_crtc *crtc,
+					 struct drm_property_blob **blob,
+					 uint64_t blob_id,
+					 ssize_t expected_size,
+					 bool *replaced)
+{
+	struct drm_property_blob *new_blob = NULL;
+
+	if (blob_id != 0) {
+		new_blob = drm_property_lookup_blob(crtc->dev, blob_id);
+		if (new_blob == NULL)
+			return -EINVAL;
+
+		if (expected_size > 0 && expected_size != new_blob->length) {
+			drm_property_unreference_blob(new_blob);
+			return -EINVAL;
+		}
+	}
+
+	drm_atomic_replace_property_blob(blob, new_blob, replaced);
+	drm_property_unreference_blob(new_blob);
+
+	return 0;
+}
 
 /**
  * drm_atomic_crtc_set_property - set property on CRTC
@@ -246,29 +461,89 @@ int drm_atomic_crtc_set_property(struct drm_crtc *crtc,
 {
 	struct drm_device *dev = crtc->dev;
 	struct drm_mode_config *config = &dev->mode_config;
+	bool replaced = false;
+	int ret;
 
-	/* FIXME: Mode prop is missing, which also controls ->enable. */
-	if (property == config->prop_active) {
+	if (property == config->prop_active)
 		state->active = val;
+	else if (property == config->prop_mode_id) {
+		struct drm_property_blob *mode =
+			drm_property_lookup_blob(dev, val);
+		ret = drm_atomic_set_mode_prop_for_crtc(state, mode);
+		drm_property_unreference_blob(mode);
+		return ret;
+	} else if (property == config->degamma_lut_property) {
+		ret = drm_atomic_replace_property_blob_from_id(crtc,
+					&state->degamma_lut,
+					val,
+					-1,
+					&replaced);
+		state->color_mgmt_changed |= replaced;
+		return ret;
+	} else if (property == config->ctm_property) {
+		ret = drm_atomic_replace_property_blob_from_id(crtc,
+					&state->ctm,
+					val,
+					sizeof(struct drm_color_ctm),
+					&replaced);
+		state->color_mgmt_changed |= replaced;
+		return ret;
+	} else if (property == config->gamma_lut_property) {
+		ret = drm_atomic_replace_property_blob_from_id(crtc,
+					&state->gamma_lut,
+					val,
+					-1,
+					&replaced);
+		state->color_mgmt_changed |= replaced;
+		return ret;
 	} else if (crtc->funcs->atomic_set_property)
 		return crtc->funcs->atomic_set_property(crtc, state, property, val);
-	return -EINVAL;
+	else
+		return -EINVAL;
+
+	return 0;
 }
 EXPORT_SYMBOL(drm_atomic_crtc_set_property);
 
-/*
+/**
+ * drm_atomic_crtc_get_property - get property value from CRTC state
+ * @crtc: the drm CRTC to set a property on
+ * @state: the state object to get the property value from
+ * @property: the property to set
+ * @val: return location for the property value
+ *
  * This function handles generic/core properties and calls out to
  * driver's ->atomic_get_property() for driver properties.  To ensure
  * consistent behavior you must call this function rather than the
  * driver hook directly.
+ *
+ * RETURNS:
+ * Zero on success, error code on failure
  */
-int drm_atomic_crtc_get_property(struct drm_crtc *crtc,
+static int
+drm_atomic_crtc_get_property(struct drm_crtc *crtc,
 		const struct drm_crtc_state *state,
 		struct drm_property *property, uint64_t *val)
 {
-	if (crtc->funcs->atomic_get_property)
+	struct drm_device *dev = crtc->dev;
+	struct drm_mode_config *config = &dev->mode_config;
+
+	if (property == config->prop_active)
+		*val = state->active;
+	else if (property == config->prop_mode_id)
+		*val = (state->mode_blob) ? state->mode_blob->base.id : 0;
+	else if (property == config->degamma_lut_property)
+		*val = (state->degamma_lut) ? state->degamma_lut->base.id : 0;
+	else if (property == config->ctm_property)
+		*val = (state->ctm) ? state->ctm->base.id : 0;
+	else if (property == config->gamma_lut_property)
+		*val = (state->gamma_lut) ? state->gamma_lut->base.id : 0;
+	else if (crtc->funcs->atomic_get_property)
 		return crtc->funcs->atomic_get_property(crtc, state, property, val);
-	return -EINVAL;
+	else
+		return -EINVAL;
+
+	return 0;
 }
 
 /**
@@ -293,8 +568,41 @@ static int drm_atomic_crtc_check(struct drm_crtc *crtc,
 	 */
 
 	if (state->active && !state->enable) {
-		DRM_DEBUG_KMS("[CRTC:%d] active without enabled\n",
-			      crtc->base.id);
+		DRM_DEBUG_ATOMIC("[CRTC:%d:%s] active without enabled\n",
+				 crtc->base.id, crtc->name);
+		return -EINVAL;
+	}
+
+	/* The state->enable vs. state->mode_blob checks can be WARN_ON,
+	 * as this is a kernel-internal detail that userspace should never
+	 * be able to trigger. */
+	if (drm_core_check_feature(crtc->dev, DRIVER_ATOMIC) &&
+	    WARN_ON(state->enable && !state->mode_blob)) {
+		DRM_DEBUG_ATOMIC("[CRTC:%d:%s] enabled without mode blob\n",
+				 crtc->base.id, crtc->name);
+		return -EINVAL;
+	}
+
+	if (drm_core_check_feature(crtc->dev, DRIVER_ATOMIC) &&
+	    WARN_ON(!state->enable && state->mode_blob)) {
+		DRM_DEBUG_ATOMIC("[CRTC:%d:%s] disabled with mode blob\n",
+				 crtc->base.id, crtc->name);
+		return -EINVAL;
+	}
+
+	/*
+	 * Reject event generation for when a CRTC is off and stays off.
+	 * It wouldn't be hard to implement this, but userspace has a track
+	 * record of happily burning through 100% cpu (or worse, crash) when the
+	 * display pipe is suspended. To avoid all that fun just reject updates
+	 * that ask for events since likely that indicates a bug in the
+	 * compositor's drawing loop. This is consistent with the vblank IOCTL
+	 * and legacy page_flip IOCTL which also reject service on a disabled
+	 * pipe.
+	 */
+	if (state->event && !state->active && !crtc->state->active) {
+		DRM_DEBUG_ATOMIC("[CRTC:%d] requesting event but off\n",
+				 crtc->base.id);
 		return -EINVAL;
 	}
 
@@ -320,13 +628,14 @@ struct drm_plane_state *
 drm_atomic_get_plane_state(struct drm_atomic_state *state,
 			  struct drm_plane *plane)
 {
-	int ret, index;
+	int ret, index = drm_plane_index(plane);
 	struct drm_plane_state *plane_state;
 
-	index = drm_plane_index(plane);
+	WARN_ON(!state->acquire_ctx);
 
-	if (state->plane_states[index])
-		return state->plane_states[index];
+	plane_state = drm_atomic_get_existing_plane_state(state, plane);
+	if (plane_state)
+		return plane_state;
 
 	ret = drm_modeset_lock(&plane->mutex, state->acquire_ctx);
 	if (ret)
@@ -336,12 +645,12 @@ drm_atomic_get_plane_state(struct drm_atomic_state *state,
 	if (!plane_state)
 		return ERR_PTR(-ENOMEM);
 
-	state->plane_states[index] = plane_state;
-	state->planes[index] = plane;
+	state->planes[index].state = plane_state;
+	state->planes[index].ptr = plane;
 	plane_state->state = state;
 
-	DRM_DEBUG_KMS("Added [PLANE:%d] %p state to %p\n",
-		      plane->base.id, plane_state, state);
+	DRM_DEBUG_ATOMIC("Added [PLANE:%d:%s] %p state to %p\n",
+			 plane->base.id, plane->name, plane_state, state);
 
 	if (plane_state->crtc) {
 		struct drm_crtc_state *crtc_state;
@@ -405,6 +714,8 @@ int drm_atomic_plane_set_property(struct drm_plane *plane,
 		state->src_h = val;
 	} else if (property == config->rotation_property) {
 		state->rotation = val;
+	} else if (property == plane->zpos_property) {
+		state->zpos = val;
 	} else if (plane->funcs->atomic_set_property) {
 		return plane->funcs->atomic_set_property(plane, state,
 				property, val);
@@ -416,11 +727,20 @@ int drm_atomic_plane_set_property(struct drm_plane *plane,
 }
 EXPORT_SYMBOL(drm_atomic_plane_set_property);
 
-/*
+/**
+ * drm_atomic_plane_get_property - get property value from plane state
+ * @plane: the drm plane to set a property on
+ * @state: the state object to get the property value from
+ * @property: the property to set
+ * @val: return location for the property value
+ *
  * This function handles generic/core properties and calls out to
  * driver's ->atomic_get_property() for driver properties.  To ensure
  * consistent behavior you must call this function rather than the
  * driver hook directly.
+ *
+ * RETURNS:
+ * Zero on success, error code on failure
  */
 static int
 drm_atomic_plane_get_property(struct drm_plane *plane,
@@ -450,6 +770,10 @@ drm_atomic_plane_get_property(struct drm_plane *plane,
 		*val = state->src_w;
 	} else if (property == config->prop_src_h) {
 		*val = state->src_h;
+	} else if (property == config->rotation_property) {
+		*val = state->rotation;
+	} else if (property == plane->zpos_property) {
+		*val = state->zpos;
 	} else if (plane->funcs->atomic_get_property) {
 		return plane->funcs->atomic_get_property(plane, state, property, val);
 	} else {
@@ -457,6 +781,25 @@ drm_atomic_plane_get_property(struct drm_plane *plane,
 	}
 
 	return 0;
+}
+
+static bool
+plane_switching_crtc(struct drm_atomic_state *state,
+		     struct drm_plane *plane,
+		     struct drm_plane_state *plane_state)
+{
+	if (!plane->state->crtc || !plane_state->crtc)
+		return false;
+
+	if (plane->state->crtc == plane_state->crtc)
+		return false;
+
+	/* This could be refined, but currently there's no helper or driver code
+	 * to implement direct switching of active planes nor userspace to take
+	 * advantage of more direct plane switching without the intermediate
+	 * full OFF state.
+	 */
+	return true;
 }
 
 /**
@@ -473,14 +816,14 @@ static int drm_atomic_plane_check(struct drm_plane *plane,
 		struct drm_plane_state *state)
 {
 	unsigned int fb_width, fb_height;
-	unsigned int i;
+	int ret;
 
 	/* either *both* CRTC and FB must be set, or neither */
 	if (WARN_ON(state->crtc && !state->fb)) {
-		DRM_DEBUG_KMS("CRTC set but no FB\n");
+		DRM_DEBUG_ATOMIC("CRTC set but no FB\n");
 		return -EINVAL;
 	} else if (WARN_ON(state->fb && !state->crtc)) {
-		DRM_DEBUG_KMS("FB set but no CRTC\n");
+		DRM_DEBUG_ATOMIC("FB set but no CRTC\n");
 		return -EINVAL;
 	}
 
@@ -490,18 +833,17 @@ static int drm_atomic_plane_check(struct drm_plane *plane,
 
 	/* Check whether this plane is usable on this CRTC */
 	if (!(plane->possible_crtcs & drm_crtc_mask(state->crtc))) {
-		DRM_DEBUG_KMS("Invalid crtc for plane\n");
+		DRM_DEBUG_ATOMIC("Invalid crtc for plane\n");
 		return -EINVAL;
 	}
 
 	/* Check whether this plane supports the fb pixel format. */
-	for (i = 0; i < plane->format_count; i++)
-		if (state->fb->pixel_format == plane->format_types[i])
-			break;
-	if (i == plane->format_count) {
-		DRM_DEBUG_KMS("Invalid pixel format %s\n",
-			      drm_get_format_name(state->fb->pixel_format));
-		return -EINVAL;
+	ret = drm_plane_check_pixel_format(plane, state->fb->pixel_format);
+	if (ret) {
+		char *format_name = drm_get_format_name(state->fb->pixel_format);
+		DRM_DEBUG_ATOMIC("Invalid pixel format %s\n", format_name);
+		kfree(format_name);
+		return ret;
 	}
 
 	/* Give drivers some help against integer overflows */
@@ -509,9 +851,9 @@ static int drm_atomic_plane_check(struct drm_plane *plane,
 	    state->crtc_x > INT_MAX - (int32_t) state->crtc_w ||
 	    state->crtc_h > INT_MAX ||
 	    state->crtc_y > INT_MAX - (int32_t) state->crtc_h) {
-		DRM_DEBUG_KMS("Invalid CRTC coordinates %ux%u+%d+%d\n",
-			      state->crtc_w, state->crtc_h,
-			      state->crtc_x, state->crtc_y);
+		DRM_DEBUG_ATOMIC("Invalid CRTC coordinates %ux%u+%d+%d\n",
+				 state->crtc_w, state->crtc_h,
+				 state->crtc_x, state->crtc_y);
 		return -ERANGE;
 	}
 
@@ -523,13 +865,19 @@ static int drm_atomic_plane_check(struct drm_plane *plane,
 	    state->src_x > fb_width - state->src_w ||
 	    state->src_h > fb_height ||
 	    state->src_y > fb_height - state->src_h) {
-		DRM_DEBUG_KMS("Invalid source coordinates "
-			      "%u.%06ux%u.%06u+%u.%06u+%u.%06u\n",
-			      state->src_w >> 16, ((state->src_w & 0xffff) * 15625) >> 10,
-			      state->src_h >> 16, ((state->src_h & 0xffff) * 15625) >> 10,
-			      state->src_x >> 16, ((state->src_x & 0xffff) * 15625) >> 10,
-			      state->src_y >> 16, ((state->src_y & 0xffff) * 15625) >> 10);
+		DRM_DEBUG_ATOMIC("Invalid source coordinates "
+				 "%u.%06ux%u.%06u+%u.%06u+%u.%06u\n",
+				 state->src_w >> 16, ((state->src_w & 0xffff) * 15625) >> 10,
+				 state->src_h >> 16, ((state->src_h & 0xffff) * 15625) >> 10,
+				 state->src_x >> 16, ((state->src_x & 0xffff) * 15625) >> 10,
+				 state->src_y >> 16, ((state->src_y & 0xffff) * 15625) >> 10);
 		return -ENOSPC;
+	}
+
+	if (plane_switching_crtc(state->state, plane, state)) {
+		DRM_DEBUG_ATOMIC("[PLANE:%d:%s] switching CRTC directly\n",
+				 plane->base.id, plane->name);
+		return -EINVAL;
 	}
 
 	return 0;
@@ -558,40 +906,43 @@ drm_atomic_get_connector_state(struct drm_atomic_state *state,
 	struct drm_mode_config *config = &connector->dev->mode_config;
 	struct drm_connector_state *connector_state;
 
+	WARN_ON(!state->acquire_ctx);
+
 	ret = drm_modeset_lock(&config->connection_mutex, state->acquire_ctx);
 	if (ret)
 		return ERR_PTR(ret);
 
 	index = drm_connector_index(connector);
 
-	/*
-	 * Construction of atomic state updates can race with a connector
-	 * hot-add which might overflow. In this case flip the table and just
-	 * restart the entire ioctl - no one is fast enough to livelock a cpu
-	 * with physical hotplug events anyway.
-	 *
-	 * Note that we only grab the indexes once we have the right lock to
-	 * prevent hotplug/unplugging of connectors. So removal is no problem,
-	 * at most the array is a bit too large.
-	 */
 	if (index >= state->num_connector) {
-		DRM_DEBUG_KMS("Hot-added connector would overflow state array, restarting\n");
-		return ERR_PTR(-EAGAIN);
+		struct __drm_connnectors_state *c;
+		int alloc = max(index + 1, config->num_connector);
+
+		c = krealloc(state->connectors, alloc * sizeof(*state->connectors), GFP_KERNEL);
+		if (!c)
+			return ERR_PTR(-ENOMEM);
+
+		state->connectors = c;
+		memset(&state->connectors[state->num_connector], 0,
+		       sizeof(*state->connectors) * (alloc - state->num_connector));
+
+		state->num_connector = alloc;
 	}
 
-	if (state->connector_states[index])
-		return state->connector_states[index];
+	if (state->connectors[index].state)
+		return state->connectors[index].state;
 
 	connector_state = connector->funcs->atomic_duplicate_state(connector);
 	if (!connector_state)
 		return ERR_PTR(-ENOMEM);
 
-	state->connector_states[index] = connector_state;
-	state->connectors[index] = connector;
+	drm_connector_reference(connector);
+	state->connectors[index].state = connector_state;
+	state->connectors[index].ptr = connector;
 	connector_state->state = state;
 
-	DRM_DEBUG_KMS("Added [CONNECTOR:%d] %p state to %p\n",
-		      connector->base.id, connector_state, state);
+	DRM_DEBUG_ATOMIC("Added [CONNECTOR:%d] %p state to %p\n",
+			 connector->base.id, connector_state, state);
 
 	if (connector_state->crtc) {
 		struct drm_crtc_state *crtc_state;
@@ -647,11 +998,20 @@ int drm_atomic_connector_set_property(struct drm_connector *connector,
 }
 EXPORT_SYMBOL(drm_atomic_connector_set_property);
 
-/*
+/**
+ * drm_atomic_connector_get_property - get property value from connector state
+ * @connector: the drm connector to set a property on
+ * @state: the state object to get the property value from
+ * @property: the property to set
+ * @val: return location for the property value
+ *
  * This function handles generic/core properties and calls out to
  * driver's ->atomic_get_property() for driver properties.  To ensure
  * consistent behavior you must call this function rather than the
  * driver hook directly.
+ *
+ * RETURNS:
+ * Zero on success, error code on failure
  */
 static int
 drm_atomic_connector_get_property(struct drm_connector *connector,
@@ -752,17 +1112,18 @@ drm_atomic_set_crtc_for_plane(struct drm_plane_state *plane_state,
 	}
 
 	if (crtc)
-		DRM_DEBUG_KMS("Link plane state %p to [CRTC:%d]\n",
-			      plane_state, crtc->base.id);
+		DRM_DEBUG_ATOMIC("Link plane state %p to [CRTC:%d:%s]\n",
+				 plane_state, crtc->base.id, crtc->name);
 	else
-		DRM_DEBUG_KMS("Link plane state %p to [NOCRTC]\n", plane_state);
+		DRM_DEBUG_ATOMIC("Link plane state %p to [NOCRTC]\n",
+				 plane_state);
 
 	return 0;
 }
 EXPORT_SYMBOL(drm_atomic_set_crtc_for_plane);
 
 /**
- * drm_atomic_set_fb_for_plane - set crtc for plane
+ * drm_atomic_set_fb_for_plane - set framebuffer for plane
  * @plane_state: atomic state object for the plane
  * @fb: fb to use for the plane
  *
@@ -782,10 +1143,11 @@ drm_atomic_set_fb_for_plane(struct drm_plane_state *plane_state,
 	plane_state->fb = fb;
 
 	if (fb)
-		DRM_DEBUG_KMS("Set [FB:%d] for plane state %p\n",
-			      fb->base.id, plane_state);
+		DRM_DEBUG_ATOMIC("Set [FB:%d] for plane state %p\n",
+				 fb->base.id, plane_state);
 	else
-		DRM_DEBUG_KMS("Set [NOFB] for plane state %p\n", plane_state);
+		DRM_DEBUG_ATOMIC("Set [NOFB] for plane state %p\n",
+				 plane_state);
 }
 EXPORT_SYMBOL(drm_atomic_set_fb_for_plane);
 
@@ -809,20 +1171,37 @@ drm_atomic_set_crtc_for_connector(struct drm_connector_state *conn_state,
 {
 	struct drm_crtc_state *crtc_state;
 
+	if (conn_state->crtc == crtc)
+		return 0;
+
+	if (conn_state->crtc) {
+		crtc_state = drm_atomic_get_existing_crtc_state(conn_state->state,
+								conn_state->crtc);
+
+		crtc_state->connector_mask &=
+			~(1 << drm_connector_index(conn_state->connector));
+
+		drm_connector_unreference(conn_state->connector);
+		conn_state->crtc = NULL;
+	}
+
 	if (crtc) {
 		crtc_state = drm_atomic_get_crtc_state(conn_state->state, crtc);
 		if (IS_ERR(crtc_state))
 			return PTR_ERR(crtc_state);
+
+		crtc_state->connector_mask |=
+			1 << drm_connector_index(conn_state->connector);
+
+		drm_connector_reference(conn_state->connector);
+		conn_state->crtc = crtc;
+
+		DRM_DEBUG_ATOMIC("Link connector state %p to [CRTC:%d:%s]\n",
+				 conn_state, crtc->base.id, crtc->name);
+	} else {
+		DRM_DEBUG_ATOMIC("Link connector state %p to [NOCRTC]\n",
+				 conn_state);
 	}
-
-	conn_state->crtc = crtc;
-
-	if (crtc)
-		DRM_DEBUG_KMS("Link connector state %p to [CRTC:%d]\n",
-			      conn_state, crtc->base.id);
-	else
-		DRM_DEBUG_KMS("Link connector state %p to [NOCRTC]\n",
-			      conn_state);
 
 	return 0;
 }
@@ -858,14 +1237,14 @@ drm_atomic_add_affected_connectors(struct drm_atomic_state *state,
 	if (ret)
 		return ret;
 
-	DRM_DEBUG_KMS("Adding all current connectors for [CRTC:%d] to %p\n",
-		      crtc->base.id, state);
+	DRM_DEBUG_ATOMIC("Adding all current connectors for [CRTC:%d:%s] to %p\n",
+			 crtc->base.id, crtc->name, state);
 
 	/*
 	 * Changed connectors are already in @state, so only need to look at the
 	 * current configuration.
 	 */
-	list_for_each_entry(connector, &config->connector_list, head) {
+	drm_for_each_connector(connector, state->dev) {
 		if (connector->state->crtc != crtc)
 			continue;
 
@@ -879,34 +1258,43 @@ drm_atomic_add_affected_connectors(struct drm_atomic_state *state,
 EXPORT_SYMBOL(drm_atomic_add_affected_connectors);
 
 /**
- * drm_atomic_connectors_for_crtc - count number of connected outputs
+ * drm_atomic_add_affected_planes - add planes for crtc
  * @state: atomic state
  * @crtc: DRM crtc
  *
- * This function counts all connectors which will be connected to @crtc
- * according to @state. Useful to recompute the enable state for @crtc.
+ * This function walks the current configuration and adds all planes
+ * currently used by @crtc to the atomic configuration @state. This is useful
+ * when an atomic commit also needs to check all currently enabled plane on
+ * @crtc, e.g. when changing the mode. It's also useful when re-enabling a CRTC
+ * to avoid special code to force-enable all planes.
+ *
+ * Since acquiring a plane state will always also acquire the w/w mutex of the
+ * current CRTC for that plane (if there is any) adding all the plane states for
+ * a CRTC will not reduce parallism of atomic updates.
+ *
+ * Returns:
+ * 0 on success or can fail with -EDEADLK or -ENOMEM. When the error is EDEADLK
+ * then the w/w mutex code has detected a deadlock and the entire atomic
+ * sequence must be restarted. All other errors are fatal.
  */
 int
-drm_atomic_connectors_for_crtc(struct drm_atomic_state *state,
+drm_atomic_add_affected_planes(struct drm_atomic_state *state,
 			       struct drm_crtc *crtc)
 {
-	int i, num_connected_connectors = 0;
+	struct drm_plane *plane;
 
-	for (i = 0; i < state->num_connector; i++) {
-		struct drm_connector_state *conn_state;
+	WARN_ON(!drm_atomic_get_existing_crtc_state(state, crtc));
 
-		conn_state = state->connector_states[i];
+	drm_for_each_plane_mask(plane, state->dev, crtc->state->plane_mask) {
+		struct drm_plane_state *plane_state =
+			drm_atomic_get_plane_state(state, plane);
 
-		if (conn_state && conn_state->crtc == crtc)
-			num_connected_connectors++;
+		if (IS_ERR(plane_state))
+			return PTR_ERR(plane_state);
 	}
-
-	DRM_DEBUG_KMS("State %p has %i connectors for [CRTC:%d]\n",
-		      state, num_connected_connectors, crtc->base.id);
-
-	return num_connected_connectors;
+	return 0;
 }
-EXPORT_SYMBOL(drm_atomic_connectors_for_crtc);
+EXPORT_SYMBOL(drm_atomic_add_affected_planes);
 
 /**
  * drm_atomic_legacy_backoff - locking backoff for legacy ioctls
@@ -914,23 +1302,43 @@ EXPORT_SYMBOL(drm_atomic_connectors_for_crtc);
  *
  * This function should be used by legacy entry points which don't understand
  * -EDEADLK semantics. For simplicity this one will grab all modeset locks after
- *  the slowpath completed.
+ * the slowpath completed.
  */
 void drm_atomic_legacy_backoff(struct drm_atomic_state *state)
 {
+	struct drm_device *dev = state->dev;
+	unsigned crtc_mask = 0;
+	struct drm_crtc *crtc;
 	int ret;
+	bool global = false;
+
+	drm_for_each_crtc(crtc, dev) {
+		if (crtc->acquire_ctx != state->acquire_ctx)
+			continue;
+
+		crtc_mask |= drm_crtc_mask(crtc);
+		crtc->acquire_ctx = NULL;
+	}
+
+	if (WARN_ON(dev->mode_config.acquire_ctx == state->acquire_ctx)) {
+		global = true;
+
+		dev->mode_config.acquire_ctx = NULL;
+	}
 
 retry:
 	drm_modeset_backoff(state->acquire_ctx);
 
-	ret = drm_modeset_lock(&state->dev->mode_config.connection_mutex,
-			       state->acquire_ctx);
+	ret = drm_modeset_lock_all_ctx(dev, state->acquire_ctx);
 	if (ret)
 		goto retry;
-	ret = drm_modeset_lock_all_crtcs(state->dev,
-					 state->acquire_ctx);
-	if (ret)
-		goto retry;
+
+	drm_for_each_crtc(crtc, dev)
+		if (drm_crtc_mask(crtc) & crtc_mask)
+			crtc->acquire_ctx = state->acquire_ctx;
+
+	if (global)
+		dev->mode_config.acquire_ctx = state->acquire_ctx;
 }
 EXPORT_SYMBOL(drm_atomic_legacy_backoff);
 
@@ -949,36 +1357,28 @@ int drm_atomic_check_only(struct drm_atomic_state *state)
 {
 	struct drm_device *dev = state->dev;
 	struct drm_mode_config *config = &dev->mode_config;
-	int nplanes = config->num_total_plane;
-	int ncrtcs = config->num_crtc;
+	struct drm_plane *plane;
+	struct drm_plane_state *plane_state;
+	struct drm_crtc *crtc;
+	struct drm_crtc_state *crtc_state;
 	int i, ret = 0;
 
-	DRM_DEBUG_KMS("checking %p\n", state);
+	DRM_DEBUG_ATOMIC("checking %p\n", state);
 
-	for (i = 0; i < nplanes; i++) {
-		struct drm_plane *plane = state->planes[i];
-
-		if (!plane)
-			continue;
-
-		ret = drm_atomic_plane_check(plane, state->plane_states[i]);
+	for_each_plane_in_state(state, plane, plane_state, i) {
+		ret = drm_atomic_plane_check(plane, plane_state);
 		if (ret) {
-			DRM_DEBUG_KMS("[PLANE:%d] atomic core check failed\n",
-				      plane->base.id);
+			DRM_DEBUG_ATOMIC("[PLANE:%d:%s] atomic core check failed\n",
+					 plane->base.id, plane->name);
 			return ret;
 		}
 	}
 
-	for (i = 0; i < ncrtcs; i++) {
-		struct drm_crtc *crtc = state->crtcs[i];
-
-		if (!crtc)
-			continue;
-
-		ret = drm_atomic_crtc_check(crtc, state->crtc_states[i]);
+	for_each_crtc_in_state(state, crtc, crtc_state, i) {
+		ret = drm_atomic_crtc_check(crtc, crtc_state);
 		if (ret) {
-			DRM_DEBUG_KMS("[CRTC:%d] atomic core check failed\n",
-				      crtc->base.id);
+			DRM_DEBUG_ATOMIC("[CRTC:%d:%s] atomic core check failed\n",
+					 crtc->base.id, crtc->name);
 			return ret;
 		}
 	}
@@ -987,17 +1387,10 @@ int drm_atomic_check_only(struct drm_atomic_state *state)
 		ret = config->funcs->atomic_check(state->dev, state);
 
 	if (!state->allow_modeset) {
-		for (i = 0; i < ncrtcs; i++) {
-			struct drm_crtc *crtc = state->crtcs[i];
-			struct drm_crtc_state *crtc_state = state->crtc_states[i];
-
-			if (!crtc)
-				continue;
-
-			if (crtc_state->mode_changed ||
-			    crtc_state->active_changed) {
-				DRM_DEBUG_KMS("[CRTC:%d] requires full modeset\n",
-					      crtc->base.id);
+		for_each_crtc_in_state(state, crtc, crtc_state, i) {
+			if (drm_atomic_crtc_needs_modeset(crtc_state)) {
+				DRM_DEBUG_ATOMIC("[CRTC:%d:%s] requires full modeset\n",
+						 crtc->base.id, crtc->name);
 				return -EINVAL;
 			}
 		}
@@ -1032,14 +1425,14 @@ int drm_atomic_commit(struct drm_atomic_state *state)
 	if (ret)
 		return ret;
 
-	DRM_DEBUG_KMS("commiting %p\n", state);
+	DRM_DEBUG_ATOMIC("commiting %p\n", state);
 
 	return config->funcs->atomic_commit(state->dev, state, false);
 }
 EXPORT_SYMBOL(drm_atomic_commit);
 
 /**
- * drm_atomic_async_commit - atomic&async configuration commit
+ * drm_atomic_nonblocking_commit - atomic&nonblocking configuration commit
  * @state: atomic configuration to check
  *
  * Note that this function can return -EDEADLK if the driver needed to acquire
@@ -1054,7 +1447,7 @@ EXPORT_SYMBOL(drm_atomic_commit);
  * Returns:
  * 0 on success, negative error code on failure.
  */
-int drm_atomic_async_commit(struct drm_atomic_state *state)
+int drm_atomic_nonblocking_commit(struct drm_atomic_state *state)
 {
 	struct drm_mode_config *config = &state->dev->mode_config;
 	int ret;
@@ -1063,58 +1456,43 @@ int drm_atomic_async_commit(struct drm_atomic_state *state)
 	if (ret)
 		return ret;
 
-	DRM_DEBUG_KMS("commiting %p asynchronously\n", state);
+	DRM_DEBUG_ATOMIC("commiting %p nonblocking\n", state);
 
 	return config->funcs->atomic_commit(state->dev, state, true);
 }
-EXPORT_SYMBOL(drm_atomic_async_commit);
+EXPORT_SYMBOL(drm_atomic_nonblocking_commit);
 
 /*
  * The big monstor ioctl
  */
 
 static struct drm_pending_vblank_event *create_vblank_event(
-		struct drm_device *dev, struct drm_file *file_priv, uint64_t user_data)
+		struct drm_device *dev, struct drm_file *file_priv,
+		struct fence *fence, uint64_t user_data)
 {
 	struct drm_pending_vblank_event *e = NULL;
-	unsigned long flags;
-
-	spin_lock_irqsave(&dev->event_lock, flags);
-	if (file_priv->event_space < sizeof e->event) {
-		spin_unlock_irqrestore(&dev->event_lock, flags);
-		goto out;
-	}
-	file_priv->event_space -= sizeof e->event;
-	spin_unlock_irqrestore(&dev->event_lock, flags);
+	int ret;
 
 	e = kzalloc(sizeof *e, GFP_KERNEL);
-	if (e == NULL) {
-		spin_lock_irqsave(&dev->event_lock, flags);
-		file_priv->event_space += sizeof e->event;
-		spin_unlock_irqrestore(&dev->event_lock, flags);
-		goto out;
-	}
+	if (!e)
+		return NULL;
 
 	e->event.base.type = DRM_EVENT_FLIP_COMPLETE;
-	e->event.base.length = sizeof e->event;
+	e->event.base.length = sizeof(e->event);
 	e->event.user_data = user_data;
-	e->base.event = &e->event.base;
-	e->base.file_priv = file_priv;
-	e->base.destroy = (void (*) (struct drm_pending_event *)) kfree;
 
-out:
+	if (file_priv) {
+		ret = drm_event_reserve_init(dev, file_priv, &e->base,
+					     &e->event.base);
+		if (ret) {
+			kfree(e);
+			return NULL;
+		}
+	}
+
+	e->base.fence = fence;
+
 	return e;
-}
-
-static void destroy_vblank_event(struct drm_device *dev,
-		struct drm_file *file_priv, struct drm_pending_vblank_event *e)
-{
-	unsigned long flags;
-
-	spin_lock_irqsave(&dev->event_lock, flags);
-	file_priv->event_space += sizeof e->event;
-	spin_unlock_irqrestore(&dev->event_lock, flags);
-	kfree(e);
 }
 
 static int atomic_set_prop(struct drm_atomic_state *state,
@@ -1179,6 +1557,45 @@ static int atomic_set_prop(struct drm_atomic_state *state,
 	return ret;
 }
 
+/**
+ * drm_atomic_clean_old_fb -- Unset old_fb pointers and set plane->fb pointers.
+ *
+ * @dev: drm device to check.
+ * @plane_mask: plane mask for planes that were updated.
+ * @ret: return value, can be -EDEADLK for a retry.
+ *
+ * Before doing an update plane->old_fb is set to plane->fb,
+ * but before dropping the locks old_fb needs to be set to NULL
+ * and plane->fb updated. This is a common operation for each
+ * atomic update, so this call is split off as a helper.
+ */
+void drm_atomic_clean_old_fb(struct drm_device *dev,
+			     unsigned plane_mask,
+			     int ret)
+{
+	struct drm_plane *plane;
+
+	/* if succeeded, fixup legacy plane crtc/fb ptrs before dropping
+	 * locks (ie. while it is still safe to deref plane->state).  We
+	 * need to do this here because the driver entry points cannot
+	 * distinguish between legacy and atomic ioctls.
+	 */
+	drm_for_each_plane_mask(plane, dev, plane_mask) {
+		if (ret == 0) {
+			struct drm_framebuffer *new_fb = plane->state->fb;
+			if (new_fb)
+				drm_framebuffer_reference(new_fb);
+			plane->fb = new_fb;
+			plane->crtc = plane->state->crtc;
+
+			if (plane->old_fb)
+				drm_framebuffer_unreference(plane->old_fb);
+		}
+		plane->old_fb = NULL;
+	}
+}
+EXPORT_SYMBOL(drm_atomic_clean_old_fb);
+
 int drm_mode_atomic_ioctl(struct drm_device *dev,
 			  void *data, struct drm_file *file_priv)
 {
@@ -1191,7 +1608,9 @@ int drm_mode_atomic_ioctl(struct drm_device *dev,
 	struct drm_atomic_state *state;
 	struct drm_modeset_acquire_ctx ctx;
 	struct drm_plane *plane;
-	unsigned plane_mask = 0;
+	struct drm_crtc *crtc;
+	struct drm_crtc_state *crtc_state;
+	unsigned plane_mask;
 	int ret = 0;
 	unsigned int i, j;
 
@@ -1231,6 +1650,7 @@ int drm_mode_atomic_ioctl(struct drm_device *dev,
 	state->allow_modeset = !!(arg->flags & DRM_MODE_ATOMIC_ALLOW_MODESET);
 
 retry:
+	plane_mask = 0;
 	copied_objs = 0;
 	copied_props = 0;
 
@@ -1240,24 +1660,25 @@ retry:
 
 		if (get_user(obj_id, objs_ptr + copied_objs)) {
 			ret = -EFAULT;
-			goto fail;
+			goto out;
 		}
 
 		obj = drm_mode_object_find(dev, obj_id, DRM_MODE_OBJECT_ANY);
-		if (!obj || !obj->properties) {
+		if (!obj) {
 			ret = -ENOENT;
-			goto fail;
+			goto out;
 		}
 
-		if (obj->type == DRM_MODE_OBJECT_PLANE) {
-			plane = obj_to_plane(obj);
-			plane_mask |= (1 << drm_plane_index(plane));
-			plane->old_fb = plane->fb;
+		if (!obj->properties) {
+			drm_mode_object_unreference(obj);
+			ret = -ENOENT;
+			goto out;
 		}
 
 		if (get_user(count_props, count_props_ptr + copied_objs)) {
+			drm_mode_object_unreference(obj);
 			ret = -EFAULT;
-			goto fail;
+			goto out;
 		}
 
 		copied_objs++;
@@ -1268,45 +1689,53 @@ retry:
 			struct drm_property *prop;
 
 			if (get_user(prop_id, props_ptr + copied_props)) {
+				drm_mode_object_unreference(obj);
 				ret = -EFAULT;
-				goto fail;
+				goto out;
 			}
 
-			prop = drm_property_find(dev, prop_id);
+			prop = drm_mode_obj_find_prop_id(obj, prop_id);
 			if (!prop) {
+				drm_mode_object_unreference(obj);
 				ret = -ENOENT;
-				goto fail;
+				goto out;
 			}
 
 			if (copy_from_user(&prop_value,
 					   prop_values_ptr + copied_props,
 					   sizeof(prop_value))) {
+				drm_mode_object_unreference(obj);
 				ret = -EFAULT;
-				goto fail;
+				goto out;
 			}
 
 			ret = atomic_set_prop(state, obj, prop, prop_value);
-			if (ret)
-				goto fail;
+			if (ret) {
+				drm_mode_object_unreference(obj);
+				goto out;
+			}
 
 			copied_props++;
 		}
+
+		if (obj->type == DRM_MODE_OBJECT_PLANE && count_props &&
+		    !(arg->flags & DRM_MODE_ATOMIC_TEST_ONLY)) {
+			plane = obj_to_plane(obj);
+			plane_mask |= (1 << drm_plane_index(plane));
+			plane->old_fb = plane->fb;
+		}
+		drm_mode_object_unreference(obj);
 	}
 
 	if (arg->flags & DRM_MODE_PAGE_FLIP_EVENT) {
-		int ncrtcs = dev->mode_config.num_crtc;
-
-		for (i = 0; i < ncrtcs; i++) {
-			struct drm_crtc_state *crtc_state = state->crtc_states[i];
+		for_each_crtc_in_state(state, crtc, crtc_state, i) {
 			struct drm_pending_vblank_event *e;
 
-			if (!crtc_state)
-				continue;
-
-			e = create_vblank_event(dev, file_priv, arg->user_data);
+			e = create_vblank_event(dev, file_priv, NULL,
+						arg->user_data);
 			if (!e) {
 				ret = -ENOMEM;
-				goto fail;
+				goto out;
 			}
 
 			crtc_state->event = e;
@@ -1314,69 +1743,46 @@ retry:
 	}
 
 	if (arg->flags & DRM_MODE_ATOMIC_TEST_ONLY) {
+		/*
+		 * Unlike commit, check_only does not clean up state.
+		 * Below we call drm_atomic_state_free for it.
+		 */
 		ret = drm_atomic_check_only(state);
-		/* _check_only() does not free state, unlike _commit() */
-		drm_atomic_state_free(state);
 	} else if (arg->flags & DRM_MODE_ATOMIC_NONBLOCK) {
-		ret = drm_atomic_async_commit(state);
+		ret = drm_atomic_nonblocking_commit(state);
 	} else {
 		ret = drm_atomic_commit(state);
 	}
 
-	/* if succeeded, fixup legacy plane crtc/fb ptrs before dropping
-	 * locks (ie. while it is still safe to deref plane->state).  We
-	 * need to do this here because the driver entry points cannot
-	 * distinguish between legacy and atomic ioctls.
-	 */
-	drm_for_each_plane_mask(plane, dev, plane_mask) {
-		if (ret == 0) {
-			struct drm_framebuffer *new_fb = plane->state->fb;
-			if (new_fb)
-				drm_framebuffer_reference(new_fb);
-			plane->fb = new_fb;
-			plane->crtc = plane->state->crtc;
-		} else {
-			plane->old_fb = NULL;
-		}
-		if (plane->old_fb) {
-			drm_framebuffer_unreference(plane->old_fb);
-			plane->old_fb = NULL;
-		}
-	}
+out:
+	drm_atomic_clean_old_fb(dev, plane_mask, ret);
 
-	drm_modeset_drop_locks(&ctx);
-	drm_modeset_acquire_fini(&ctx);
+	if (ret && arg->flags & DRM_MODE_PAGE_FLIP_EVENT) {
+		/*
+		 * TEST_ONLY and PAGE_FLIP_EVENT are mutually exclusive,
+		 * if they weren't, this code should be called on success
+		 * for TEST_ONLY too.
+		 */
 
-	return ret;
-
-fail:
-	if (ret == -EDEADLK)
-		goto backoff;
-
-	if (arg->flags & DRM_MODE_PAGE_FLIP_EVENT) {
-		int ncrtcs = dev->mode_config.num_crtc;
-
-		for (i = 0; i < ncrtcs; i++) {
-			struct drm_crtc_state *crtc_state = state->crtc_states[i];
-
-			if (!crtc_state)
+		for_each_crtc_in_state(state, crtc, crtc_state, i) {
+			if (!crtc_state->event)
 				continue;
 
-			destroy_vblank_event(dev, file_priv, crtc_state->event);
-			crtc_state->event = NULL;
+			drm_event_cancel_free(dev, &crtc_state->event->base);
 		}
 	}
 
-	drm_atomic_state_free(state);
+	if (ret == -EDEADLK) {
+		drm_atomic_state_clear(state);
+		drm_modeset_backoff(&ctx);
+		goto retry;
+	}
+
+	if (ret || arg->flags & DRM_MODE_ATOMIC_TEST_ONLY)
+		drm_atomic_state_free(state);
 
 	drm_modeset_drop_locks(&ctx);
 	drm_modeset_acquire_fini(&ctx);
 
 	return ret;
-
-backoff:
-	drm_atomic_state_clear(state);
-	drm_modeset_backoff(&ctx);
-
-	goto retry;
 }

@@ -795,7 +795,7 @@ static int wm8580_set_bias_level(struct snd_soc_codec *codec,
 		break;
 
 	case SND_SOC_BIAS_STANDBY:
-		if (codec->dapm.bias_level == SND_SOC_BIAS_OFF) {
+		if (snd_soc_codec_get_bias_level(codec) == SND_SOC_BIAS_OFF) {
 			/* Power up and get individual control of the DACs */
 			snd_soc_update_bits(codec, WM8580_PWRDN1,
 					    WM8580_PWRDN1_PWDN |
@@ -812,7 +812,6 @@ static int wm8580_set_bias_level(struct snd_soc_codec *codec,
 				    WM8580_PWRDN1_PWDN, WM8580_PWRDN1_PWDN);
 		break;
 	}
-	codec->dapm.bias_level = level;
 	return 0;
 }
 
@@ -900,23 +899,26 @@ static int wm8580_remove(struct snd_soc_codec *codec)
 	return 0;
 }
 
-static struct snd_soc_codec_driver soc_codec_dev_wm8580 = {
+static const struct snd_soc_codec_driver soc_codec_dev_wm8580 = {
 	.probe =	wm8580_probe,
 	.remove =	wm8580_remove,
 	.set_bias_level = wm8580_set_bias_level,
 
-	.controls = wm8580_snd_controls,
-	.num_controls = ARRAY_SIZE(wm8580_snd_controls),
-	.dapm_widgets = wm8580_dapm_widgets,
-	.num_dapm_widgets = ARRAY_SIZE(wm8580_dapm_widgets),
-	.dapm_routes = wm8580_dapm_routes,
-	.num_dapm_routes = ARRAY_SIZE(wm8580_dapm_routes),
+	.component_driver = {
+		.controls		= wm8580_snd_controls,
+		.num_controls		= ARRAY_SIZE(wm8580_snd_controls),
+		.dapm_widgets		= wm8580_dapm_widgets,
+		.num_dapm_widgets	= ARRAY_SIZE(wm8580_dapm_widgets),
+		.dapm_routes		= wm8580_dapm_routes,
+		.num_dapm_routes	= ARRAY_SIZE(wm8580_dapm_routes),
+	},
 };
 
 static const struct of_device_id wm8580_of_match[] = {
 	{ .compatible = "wlf,wm8580" },
 	{ },
 };
+MODULE_DEVICE_TABLE(of, wm8580_of_match);
 
 static const struct regmap_config wm8580_regmap = {
 	.reg_bits = 7,
@@ -979,7 +981,6 @@ MODULE_DEVICE_TABLE(i2c, wm8580_i2c_id);
 static struct i2c_driver wm8580_i2c_driver = {
 	.driver = {
 		.name = "wm8580",
-		.owner = THIS_MODULE,
 		.of_match_table = wm8580_of_match,
 	},
 	.probe =    wm8580_i2c_probe,

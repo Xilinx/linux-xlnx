@@ -206,8 +206,8 @@ static int au1xpsc_pcm_hw_params(struct snd_pcm_substream *substream,
 	stype = substream->stream;
 	pcd = to_dmadata(substream);
 
-	DBG("runtime->dma_area = 0x%08lx dma_addr_t = 0x%08lx dma_size = %d "
-	    "runtime->min_align %d\n",
+	DBG("runtime->dma_area = 0x%08lx dma_addr_t = 0x%08lx dma_size = %zu "
+	    "runtime->min_align %lu\n",
 		(unsigned long)runtime->dma_area,
 		(unsigned long)runtime->dma_addr, runtime->dma_bytes,
 		runtime->min_align);
@@ -344,14 +344,8 @@ static int au1xpsc_pcm_drvprobe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, dmadata);
 
-	return snd_soc_register_platform(&pdev->dev, &au1xpsc_soc_platform);
-}
-
-static int au1xpsc_pcm_drvremove(struct platform_device *pdev)
-{
-	snd_soc_unregister_platform(&pdev->dev);
-
-	return 0;
+	return devm_snd_soc_register_platform(&pdev->dev,
+					      &au1xpsc_soc_platform);
 }
 
 static struct platform_driver au1xpsc_pcm_driver = {
@@ -359,7 +353,6 @@ static struct platform_driver au1xpsc_pcm_driver = {
 		.name	= "au1xpsc-pcm",
 	},
 	.probe		= au1xpsc_pcm_drvprobe,
-	.remove		= au1xpsc_pcm_drvremove,
 };
 
 module_platform_driver(au1xpsc_pcm_driver);

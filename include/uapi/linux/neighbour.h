@@ -106,6 +106,7 @@ struct ndt_stats {
 	__u64		ndts_rcv_probes_ucast;
 	__u64		ndts_periodic_gc_runs;
 	__u64		ndts_forced_gc_runs;
+	__u64		ndts_table_fulls;
 };
 
 enum {
@@ -126,6 +127,8 @@ enum {
 	NDTPA_PROXY_QLEN,		/* u32 */
 	NDTPA_LOCKTIME,			/* u64, msecs */
 	NDTPA_QUEUE_LENBYTES,		/* u32 */
+	NDTPA_MCAST_REPROBES,		/* u32 */
+	NDTPA_PAD,
 	__NDTPA_MAX
 };
 #define NDTPA_MAX (__NDTPA_MAX - 1)
@@ -158,6 +161,7 @@ enum {
 	NDTA_PARMS,			/* nested TLV NDTPA_* */
 	NDTA_STATS,			/* struct ndt_stats, read-only */
 	NDTA_GC_INTERVAL,		/* u64, msecs */
+	NDTA_PAD,
 	__NDTA_MAX
 };
 #define NDTA_MAX (__NDTA_MAX - 1)

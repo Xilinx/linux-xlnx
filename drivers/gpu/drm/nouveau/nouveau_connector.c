@@ -27,13 +27,14 @@
 #include <acpi/button.h>
 
 #include <linux/pm_runtime.h>
+#include <linux/vga_switcheroo.h>
 
 #include <drm/drmP.h>
 #include <drm/drm_edid.h>
 #include <drm/drm_crtc_helper.h>
 
 #include "nouveau_reg.h"
-#include "nouveau_drm.h"
+#include "nouveau_drv.h"
 #include "dispnv04/hw.h"
 #include "nouveau_acpi.h"
 
@@ -42,6 +43,8 @@
 #include "nouveau_encoder.h"
 #include "nouveau_crtc.h"
 
+#include <nvif/class.h>
+#include <nvif/cl0046.h>
 #include <nvif/event.h>
 
 MODULE_PARM_DESC(tv_disable, "Disable TV-out detection");
@@ -55,6 +58,10 @@ module_param_named(ignorelid, nouveau_ignorelid, int, 0400);
 MODULE_PARM_DESC(duallink, "Allow dual-link TMDS (default: enabled)");
 int nouveau_duallink = 1;
 module_param_named(duallink, nouveau_duallink, int, 0400);
+
+MODULE_PARM_DESC(hdmimhz, "Force a maximum HDMI pixel clock (in MHz)");
+int nouveau_hdmimhz = 0;
+module_param_named(hdmimhz, nouveau_hdmimhz, int, 0400);
 
 struct nouveau_encoder *
 find_encoder(struct drm_connector *connector, int type)
@@ -125,9 +132,9 @@ nouveau_connector_ddc_detect(struct drm_connector *connector)
 	 * is handled by the SOR itself, and not required for LVDS DDC.
 	 */
 	if (nv_connector->type == DCB_CONNECTOR_eDP) {
-		panel = gpio->get(gpio, 0, DCB_GPIO_PANEL_POWER, 0xff);
+		panel = nvkm_gpio_get(gpio, 0, DCB_GPIO_PANEL_POWER, 0xff);
 		if (panel == 0) {
-			gpio->set(gpio, 0, DCB_GPIO_PANEL_POWER, 0xff, 1);
+			nvkm_gpio_set(gpio, 0, DCB_GPIO_PANEL_POWER, 0xff, 1);
 			msleep(300);
 		}
 	}
@@ -147,8 +154,19 @@ nouveau_connector_ddc_detect(struct drm_connector *connector)
 			if (ret == 0)
 				break;
 		} else
+		if ((vga_switcheroo_handler_flags() &
+		     VGA_SWITCHEROO_CAN_SWITCH_DDC) &&
+		    nv_encoder->dcb->type == DCB_OUTPUT_LVDS &&
+		    nv_encoder->i2c) {
+			int ret;
+			vga_switcheroo_lock_ddc(dev->pdev);
+			ret = nvkm_probe_i2c(nv_encoder->i2c, 0x50);
+			vga_switcheroo_unlock_ddc(dev->pdev);
+			if (ret)
+				break;
+		} else
 		if (nv_encoder->i2c) {
-			if (nv_probe_i2c(nv_encoder->i2c, 0x50))
+			if (nvkm_probe_i2c(nv_encoder->i2c, 0x50))
 				break;
 		}
 	}
@@ -157,7 +175,7 @@ nouveau_connector_ddc_detect(struct drm_connector *connector)
 	 * state to avoid confusing the SOR for other output types.
 	 */
 	if (!nv_encoder && panel == 0)
-		gpio->set(gpio, 0, DCB_GPIO_PANEL_POWER, 0xff, panel);
+		nvkm_gpio_set(gpio, 0, DCB_GPIO_PANEL_POWER, 0xff, panel);
 
 	return nv_encoder;
 }
@@ -241,7 +259,7 @@ nouveau_connector_detect(struct drm_connector *connector, bool force)
 	struct nouveau_connector *nv_connector = nouveau_connector(connector);
 	struct nouveau_encoder *nv_encoder = NULL;
 	struct nouveau_encoder *nv_partner;
-	struct nvkm_i2c_port *i2c;
+	struct i2c_adapter *i2c;
 	int type;
 	int ret;
 	enum drm_connector_status conn_status = connector_status_disconnected;
@@ -259,7 +277,14 @@ nouveau_connector_detect(struct drm_connector *connector, bool force)
 
 	nv_encoder = nouveau_connector_ddc_detect(connector);
 	if (nv_encoder && (i2c = nv_encoder->i2c) != NULL) {
-		nv_connector->edid = drm_get_edid(connector, &i2c->adapter);
+		if ((vga_switcheroo_handler_flags() &
+		     VGA_SWITCHEROO_CAN_SWITCH_DDC) &&
+		    nv_connector->type == DCB_CONNECTOR_LVDS)
+			nv_connector->edid = drm_get_edid_switcheroo(connector,
+								     i2c);
+		else
+			nv_connector->edid = drm_get_edid(connector, i2c);
+
 		drm_mode_connector_update_edid_property(connector,
 							nv_connector->edid);
 		if (!nv_connector->edid) {
@@ -309,7 +334,7 @@ detect_analog:
 		nv_encoder = find_encoder(connector, DCB_OUTPUT_TV);
 	if (nv_encoder && force) {
 		struct drm_encoder *encoder = to_drm_encoder(nv_encoder);
-		struct drm_encoder_helper_funcs *helper =
+		const struct drm_encoder_helper_funcs *helper =
 						encoder->helper_private;
 
 		if (helper->detect(encoder, connector) ==
@@ -592,7 +617,7 @@ nouveau_connector_set_property(struct drm_connector *connector,
 static struct drm_display_mode *
 nouveau_connector_native_mode(struct drm_connector *connector)
 {
-	struct drm_connector_helper_funcs *helper = connector->helper_private;
+	const struct drm_connector_helper_funcs *helper = connector->helper_private;
 	struct nouveau_drm *drm = nouveau_drm(connector->dev);
 	struct nouveau_connector *nv_connector = nouveau_connector(connector);
 	struct drm_device *dev = connector->dev;
@@ -809,12 +834,23 @@ nouveau_connector_get_modes(struct drm_connector *connector)
 }
 
 static unsigned
-get_tmds_link_bandwidth(struct drm_connector *connector)
+get_tmds_link_bandwidth(struct drm_connector *connector, bool hdmi)
 {
 	struct nouveau_connector *nv_connector = nouveau_connector(connector);
 	struct nouveau_drm *drm = nouveau_drm(connector->dev);
 	struct dcb_output *dcb = nv_connector->detected_encoder->dcb;
 
+	if (hdmi) {
+		if (nouveau_hdmimhz > 0)
+			return nouveau_hdmimhz * 1000;
+		/* Note: these limits are conservative, some Fermi's
+		 * can do 297 MHz. Unclear how this can be determined.
+		 */
+		if (drm->device.info.family >= NV_DEVICE_INFO_V0_KEPLER)
+			return 297000;
+		if (drm->device.info.family >= NV_DEVICE_INFO_V0_FERMI)
+			return 225000;
+	}
 	if (dcb->location != DCB_LOC_ON_CHIP ||
 	    drm->device.info.chipset >= 0x46)
 		return 165000;
@@ -835,6 +871,7 @@ nouveau_connector_mode_valid(struct drm_connector *connector,
 	struct drm_encoder *encoder = to_drm_encoder(nv_encoder);
 	unsigned min_clock = 25000, max_clock = min_clock;
 	unsigned clock = mode->clock;
+	bool hdmi;
 
 	switch (nv_encoder->dcb->type) {
 	case DCB_OUTPUT_LVDS:
@@ -847,8 +884,10 @@ nouveau_connector_mode_valid(struct drm_connector *connector,
 		max_clock = 400000;
 		break;
 	case DCB_OUTPUT_TMDS:
-		max_clock = get_tmds_link_bandwidth(connector);
-		if (nouveau_duallink && nv_encoder->dcb->duallink_possible)
+		hdmi = drm_detect_hdmi_monitor(nv_connector->edid);
+		max_clock = get_tmds_link_bandwidth(connector, hdmi);
+		if (!hdmi && nouveau_duallink &&
+		    nv_encoder->dcb->duallink_possible)
 			max_clock *= 2;
 		break;
 	case DCB_OUTPUT_ANALOG:
@@ -898,8 +937,6 @@ nouveau_connector_helper_funcs = {
 static const struct drm_connector_funcs
 nouveau_connector_funcs = {
 	.dpms = drm_helper_connector_dpms,
-	.save = NULL,
-	.restore = NULL,
 	.detect = nouveau_connector_detect,
 	.destroy = nouveau_connector_destroy,
 	.fill_modes = drm_helper_probe_single_connector_modes,
@@ -910,8 +947,6 @@ nouveau_connector_funcs = {
 static const struct drm_connector_funcs
 nouveau_connector_funcs_lvds = {
 	.dpms = drm_helper_connector_dpms,
-	.save = NULL,
-	.restore = NULL,
 	.detect = nouveau_connector_detect_lvds,
 	.destroy = nouveau_connector_destroy,
 	.fill_modes = drm_helper_probe_single_connector_modes,
@@ -919,7 +954,7 @@ nouveau_connector_funcs_lvds = {
 	.force = nouveau_connector_force
 };
 
-static void
+static int
 nouveau_connector_dp_dpms(struct drm_connector *connector, int mode)
 {
 	struct nouveau_encoder *nv_encoder = NULL;
@@ -930,22 +965,20 @@ nouveau_connector_dp_dpms(struct drm_connector *connector, int mode)
 	    nv_encoder->dcb->type == DCB_OUTPUT_DP) {
 		if (mode == DRM_MODE_DPMS_ON) {
 			u8 data = DP_SET_POWER_D0;
-			nv_wraux(nv_encoder->i2c, DP_SET_POWER, &data, 1);
+			nvkm_wraux(nv_encoder->aux, DP_SET_POWER, &data, 1);
 			usleep_range(1000, 2000);
 		} else {
 			u8 data = DP_SET_POWER_D3;
-			nv_wraux(nv_encoder->i2c, DP_SET_POWER, &data, 1);
+			nvkm_wraux(nv_encoder->aux, DP_SET_POWER, &data, 1);
 		}
 	}
 
-	drm_helper_connector_dpms(connector, mode);
+	return drm_helper_connector_dpms(connector, mode);
 }
 
 static const struct drm_connector_funcs
 nouveau_connector_funcs_dp = {
 	.dpms = nouveau_connector_dp_dpms,
-	.save = NULL,
-	.restore = NULL,
 	.detect = nouveau_connector_detect,
 	.destroy = nouveau_connector_destroy,
 	.fill_modes = drm_helper_probe_single_connector_modes,
@@ -969,10 +1002,13 @@ nouveau_connector_hotplug(struct nvif_notify *notify)
 
 		NV_DEBUG(drm, "%splugged %s\n", plugged ? "" : "un", name);
 
+		mutex_lock(&drm->dev->mode_config.mutex);
 		if (plugged)
 			drm_helper_connector_dpms(connector, DRM_MODE_DPMS_ON);
 		else
 			drm_helper_connector_dpms(connector, DRM_MODE_DPMS_OFF);
+		mutex_unlock(&drm->dev->mode_config.mutex);
+
 		drm_helper_hpd_irq_event(connector->dev);
 	}
 
@@ -980,29 +1016,29 @@ nouveau_connector_hotplug(struct nvif_notify *notify)
 }
 
 static ssize_t
-nouveau_connector_aux_xfer(struct drm_dp_aux *aux, struct drm_dp_aux_msg *msg)
+nouveau_connector_aux_xfer(struct drm_dp_aux *obj, struct drm_dp_aux_msg *msg)
 {
 	struct nouveau_connector *nv_connector =
-		container_of(aux, typeof(*nv_connector), aux);
+		container_of(obj, typeof(*nv_connector), aux);
 	struct nouveau_encoder *nv_encoder;
-	struct nvkm_i2c_port *port;
+	struct nvkm_i2c_aux *aux;
 	int ret;
 
 	nv_encoder = find_encoder(&nv_connector->base, DCB_OUTPUT_DP);
-	if (!nv_encoder || !(port = nv_encoder->i2c))
+	if (!nv_encoder || !(aux = nv_encoder->aux))
 		return -ENODEV;
 	if (WARN_ON(msg->size > 16))
 		return -E2BIG;
 	if (msg->size == 0)
 		return msg->size;
 
-	ret = nvkm_i2c(port)->acquire(port, 0);
+	ret = nvkm_i2c_aux_acquire(aux);
 	if (ret)
 		return ret;
 
-	ret = port->func->aux(port, false, msg->request, msg->address,
-			      msg->buffer, msg->size);
-	nvkm_i2c(port)->release(port);
+	ret = nvkm_i2c_aux_xfer(aux, false, msg->request, msg->address,
+				msg->buffer, msg->size);
+	nvkm_i2c_aux_release(aux);
 	if (ret >= 0) {
 		msg->reply = ret;
 		return msg->size;
@@ -1240,24 +1276,24 @@ nouveau_connector_create(struct drm_device *dev, int index)
 		break;
 	default:
 		if (disp->dithering_mode) {
+			nv_connector->dithering_mode = DITHERING_MODE_AUTO;
 			drm_object_attach_property(&connector->base,
 						   disp->dithering_mode,
 						   nv_connector->
 						   dithering_mode);
-			nv_connector->dithering_mode = DITHERING_MODE_AUTO;
 		}
 		if (disp->dithering_depth) {
+			nv_connector->dithering_depth = DITHERING_DEPTH_AUTO;
 			drm_object_attach_property(&connector->base,
 						   disp->dithering_depth,
 						   nv_connector->
 						   dithering_depth);
-			nv_connector->dithering_depth = DITHERING_DEPTH_AUTO;
 		}
 		break;
 	}
 
-	ret = nvif_notify_init(&disp->disp, NULL, nouveau_connector_hotplug,
-				true, NV04_DISP_NTFY_CONN,
+	ret = nvif_notify_init(&disp->disp, nouveau_connector_hotplug, true,
+			       NV04_DISP_NTFY_CONN,
 			       &(struct nvif_notify_conn_req_v0) {
 				.mask = NVIF_NOTIFY_CONN_V0_ANY,
 				.conn = index,

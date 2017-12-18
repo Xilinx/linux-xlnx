@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2014 Mellanox Technologies. All rights reserved.
+ * Copyright (c) 2013-2015, Mellanox Technologies. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -109,65 +109,60 @@ void mlx5_ib_invalidate_range(struct ib_umem *umem, unsigned long start,
 	ib_umem_odp_unmap_dma_pages(umem, start, end);
 }
 
-#define COPY_ODP_BIT_MLX_TO_IB(reg, ib_caps, field_name, bit_name) do {	\
-	if (be32_to_cpu(reg.field_name) & MLX5_ODP_SUPPORT_##bit_name)	\
-		ib_caps->field_name |= IB_ODP_SUPPORT_##bit_name;	\
-} while (0)
-
-int mlx5_ib_internal_query_odp_caps(struct mlx5_ib_dev *dev)
+void mlx5_ib_internal_fill_odp_caps(struct mlx5_ib_dev *dev)
 {
-	int err;
-	struct mlx5_odp_caps hw_caps;
 	struct ib_odp_caps *caps = &dev->odp_caps;
 
 	memset(caps, 0, sizeof(*caps));
 
-	if (!(dev->mdev->caps.gen.flags & MLX5_DEV_CAP_FLAG_ON_DMND_PG))
-		return 0;
-
-	err = mlx5_query_odp_caps(dev->mdev, &hw_caps);
-	if (err)
-		goto out;
+	if (!MLX5_CAP_GEN(dev->mdev, pg))
+		return;
 
 	caps->general_caps = IB_ODP_SUPPORT;
-	COPY_ODP_BIT_MLX_TO_IB(hw_caps, caps, per_transport_caps.ud_odp_caps,
-			       SEND);
-	COPY_ODP_BIT_MLX_TO_IB(hw_caps, caps, per_transport_caps.rc_odp_caps,
-			       SEND);
-	COPY_ODP_BIT_MLX_TO_IB(hw_caps, caps, per_transport_caps.rc_odp_caps,
-			       RECV);
-	COPY_ODP_BIT_MLX_TO_IB(hw_caps, caps, per_transport_caps.rc_odp_caps,
-			       WRITE);
-	COPY_ODP_BIT_MLX_TO_IB(hw_caps, caps, per_transport_caps.rc_odp_caps,
-			       READ);
 
-out:
-	return err;
+	if (MLX5_CAP_ODP(dev->mdev, ud_odp_caps.send))
+		caps->per_transport_caps.ud_odp_caps |= IB_ODP_SUPPORT_SEND;
+
+	if (MLX5_CAP_ODP(dev->mdev, rc_odp_caps.send))
+		caps->per_transport_caps.rc_odp_caps |= IB_ODP_SUPPORT_SEND;
+
+	if (MLX5_CAP_ODP(dev->mdev, rc_odp_caps.receive))
+		caps->per_transport_caps.rc_odp_caps |= IB_ODP_SUPPORT_RECV;
+
+	if (MLX5_CAP_ODP(dev->mdev, rc_odp_caps.write))
+		caps->per_transport_caps.rc_odp_caps |= IB_ODP_SUPPORT_WRITE;
+
+	if (MLX5_CAP_ODP(dev->mdev, rc_odp_caps.read))
+		caps->per_transport_caps.rc_odp_caps |= IB_ODP_SUPPORT_READ;
+
+	return;
 }
 
 static struct mlx5_ib_mr *mlx5_ib_odp_find_mr_lkey(struct mlx5_ib_dev *dev,
 						   u32 key)
 {
 	u32 base_key = mlx5_base_mkey(key);
-	struct mlx5_core_mr *mmr = __mlx5_mr_lookup(dev->mdev, base_key);
-	struct mlx5_ib_mr *mr = container_of(mmr, struct mlx5_ib_mr, mmr);
+	struct mlx5_core_mkey *mmkey = __mlx5_mr_lookup(dev->mdev, base_key);
+	struct mlx5_ib_mr *mr = container_of(mmkey, struct mlx5_ib_mr, mmkey);
 
-	if (!mmr || mmr->key != key || !mr->live)
+	if (!mmkey || mmkey->key != key || !mr->live)
 		return NULL;
 
-	return container_of(mmr, struct mlx5_ib_mr, mmr);
+	return container_of(mmkey, struct mlx5_ib_mr, mmkey);
 }
 
 static void mlx5_ib_page_fault_resume(struct mlx5_ib_qp *qp,
 				      struct mlx5_ib_pfault *pfault,
-				      int error) {
+				      int error)
+{
 	struct mlx5_ib_dev *dev = to_mdev(qp->ibqp.pd->device);
-	int ret = mlx5_core_page_fault_resume(dev->mdev, qp->mqp.qpn,
+	u32 qpn = qp->trans_qp.base.mqp.qpn;
+	int ret = mlx5_core_page_fault_resume(dev->mdev,
+					      qpn,
 					      pfault->mpfault.flags,
 					      error);
 	if (ret)
-		pr_err("Failed to resolve the page fault on QP 0x%x\n",
-		       qp->mqp.qpn);
+		pr_err("Failed to resolve the page fault on QP 0x%x\n", qpn);
 }
 
 /*
@@ -237,7 +232,7 @@ static int pagefault_single_data_segment(struct mlx5_ib_qp *qp,
 	io_virt += pfault->mpfault.bytes_committed;
 	bcnt -= pfault->mpfault.bytes_committed;
 
-	start_idx = (io_virt - (mr->mmr.iova & PAGE_MASK)) >> PAGE_SHIFT;
+	start_idx = (io_virt - (mr->mmkey.iova & PAGE_MASK)) >> PAGE_SHIFT;
 
 	if (mr->umem->writable)
 		access_mask |= ODP_WRITE_ALLOWED_BIT;
@@ -398,6 +393,7 @@ static int mlx5_ib_mr_initiator_pfault_handler(
 #if defined(DEBUG)
 	u32 ctrl_wqe_index, ctrl_qpn;
 #endif
+	u32 qpn = qp->trans_qp.base.mqp.qpn;
 
 	ds = be32_to_cpu(ctrl->qpn_ds) & MLX5_WQE_CTRL_DS_MASK;
 	if (ds * MLX5_WQE_DS_UNITS > wqe_length) {
@@ -408,7 +404,7 @@ static int mlx5_ib_mr_initiator_pfault_handler(
 
 	if (ds == 0) {
 		mlx5_ib_err(dev, "Got WQE with zero DS. wqe_index=%x, qpn=%x\n",
-			    wqe_index, qp->mqp.qpn);
+			    wqe_index, qpn);
 		return -EFAULT;
 	}
 
@@ -418,16 +414,16 @@ static int mlx5_ib_mr_initiator_pfault_handler(
 			MLX5_WQE_CTRL_WQE_INDEX_SHIFT;
 	if (wqe_index != ctrl_wqe_index) {
 		mlx5_ib_err(dev, "Got WQE with invalid wqe_index. wqe_index=0x%x, qpn=0x%x ctrl->wqe_index=0x%x\n",
-			    wqe_index, qp->mqp.qpn,
+			    wqe_index, qpn,
 			    ctrl_wqe_index);
 		return -EFAULT;
 	}
 
 	ctrl_qpn = (be32_to_cpu(ctrl->qpn_ds) & MLX5_WQE_CTRL_QPN_MASK) >>
 		MLX5_WQE_CTRL_QPN_SHIFT;
-	if (qp->mqp.qpn != ctrl_qpn) {
+	if (qpn != ctrl_qpn) {
 		mlx5_ib_err(dev, "Got WQE with incorrect QP number. wqe_index=0x%x, qpn=0x%x ctrl->qpn=0x%x\n",
-			    wqe_index, qp->mqp.qpn,
+			    wqe_index, qpn,
 			    ctrl_qpn);
 		return -EFAULT;
 	}
@@ -544,6 +540,7 @@ static void mlx5_ib_mr_wqe_pfault_handler(struct mlx5_ib_qp *qp,
 	int resume_with_error = 0;
 	u16 wqe_index = pfault->mpfault.wqe.wqe_index;
 	int requestor = pfault->mpfault.flags & MLX5_PFAULT_REQUESTOR;
+	u32 qpn = qp->trans_qp.base.mqp.qpn;
 
 	buffer = (char *)__get_free_page(GFP_KERNEL);
 	if (!buffer) {
@@ -553,10 +550,10 @@ static void mlx5_ib_mr_wqe_pfault_handler(struct mlx5_ib_qp *qp,
 	}
 
 	ret = mlx5_ib_read_user_wqe(qp, requestor, wqe_index, buffer,
-				    PAGE_SIZE);
+				    PAGE_SIZE, &qp->trans_qp.base);
 	if (ret < 0) {
 		mlx5_ib_err(dev, "Failed reading a WQE following page fault, error=%x, wqe_index=%x, qpn=%x\n",
-			    -ret, wqe_index, qp->mqp.qpn);
+			    -ret, wqe_index, qpn);
 		resume_with_error = 1;
 		goto resolve_page_fault;
 	}
@@ -593,7 +590,8 @@ static void mlx5_ib_mr_wqe_pfault_handler(struct mlx5_ib_qp *qp,
 resolve_page_fault:
 	mlx5_ib_page_fault_resume(qp, pfault, resume_with_error);
 	mlx5_ib_dbg(dev, "PAGE FAULT completed. QP 0x%x resume_with_error=%d, flags: 0x%x\n",
-		    qp->mqp.qpn, resume_with_error, pfault->mpfault.flags);
+		    qpn, resume_with_error,
+		    pfault->mpfault.flags);
 
 	free_page((unsigned long)buffer);
 }
@@ -760,7 +758,7 @@ void mlx5_ib_odp_create_qp(struct mlx5_ib_qp *qp)
 	qp->disable_page_faults = 1;
 	spin_lock_init(&qp->disable_page_faults_lock);
 
-	qp->mqp.pfault_handler	= mlx5_ib_pfault_handler;
+	qp->trans_qp.base.mqp.pfault_handler = mlx5_ib_pfault_handler;
 
 	for (i = 0; i < MLX5_IB_PAGEFAULT_CONTEXTS; ++i)
 		INIT_WORK(&qp->pagefaults[i].work, mlx5_ib_qp_pfault_action);
@@ -784,8 +782,8 @@ void mlx5_ib_odp_remove_one(struct mlx5_ib_dev *ibdev)
 
 int __init mlx5_ib_odp_init(void)
 {
-	mlx5_ib_page_fault_wq =
-		create_singlethread_workqueue("mlx5_ib_page_faults");
+	mlx5_ib_page_fault_wq = alloc_ordered_workqueue("mlx5_ib_page_faults",
+							WQ_MEM_RECLAIM);
 	if (!mlx5_ib_page_fault_wq)
 		return -ENOMEM;
 

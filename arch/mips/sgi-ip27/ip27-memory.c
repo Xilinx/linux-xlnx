@@ -7,7 +7,7 @@
  * Copyright (C) 2000 by Silicon Graphics, Inc.
  * Copyright (C) 2004 by Christoph Hellwig
  *
- * On SGI IP27 the ARC memory configuration data is completly bogus but
+ * On SGI IP27 the ARC memory configuration data is completely bogus but
  * alternate easier to use mechanisms are available.
  */
 #include <linux/init.h>
@@ -404,7 +404,7 @@ static void __init node_mem_init(cnodeid_t node)
 	NODE_DATA(node)->node_start_pfn = start_pfn;
 	NODE_DATA(node)->node_spanned_pages = end_pfn - start_pfn;
 
-	cpus_clear(hub_data(node)->h_cpus);
+	cpumask_clear(&hub_data(node)->h_cpus);
 
 	slot_freepfn += PFN_UP(sizeof(struct pglist_data) +
 			       sizeof(struct hub_data));

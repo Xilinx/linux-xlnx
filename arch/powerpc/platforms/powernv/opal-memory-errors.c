@@ -44,7 +44,7 @@ static void handle_memory_error_event(struct OpalMemoryErrorData *merr_evt)
 {
 	uint64_t paddr_start, paddr_end;
 
-	pr_debug("%s: Retrived memory error event, type: 0x%x\n",
+	pr_debug("%s: Retrieved memory error event, type: 0x%x\n",
 		  __func__, merr_evt->type);
 	switch (merr_evt->type) {
 	case OPAL_MEM_ERR_TYPE_RESILIENCE:
@@ -144,4 +144,4 @@ static int __init opal_mem_err_init(void)
 	}
 	return 0;
 }
-machine_subsys_initcall(powernv, opal_mem_err_init);
+machine_device_initcall(powernv, opal_mem_err_init);

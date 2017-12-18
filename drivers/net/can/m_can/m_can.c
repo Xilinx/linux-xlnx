@@ -312,8 +312,8 @@ static inline u32 m_can_fifo_read(const struct m_can_priv *priv,
 static inline void m_can_fifo_write(const struct m_can_priv *priv,
 				    u32 fpi, unsigned int offset, u32 val)
 {
-	return writel(val, priv->mram_base + priv->mcfg[MRAM_TXB].off +
-		      fpi * TXB_ELEMENT_SIZE + offset);
+	writel(val, priv->mram_base + priv->mcfg[MRAM_TXB].off +
+	       fpi * TXB_ELEMENT_SIZE + offset);
 }
 
 static inline void m_can_config_endisable(const struct m_can_priv *priv,
@@ -487,7 +487,6 @@ static int m_can_handle_lec_err(struct net_device *dev,
 	 * type of the last error to occur on the CAN bus
 	 */
 	cf->can_id |= CAN_ERR_PROT | CAN_ERR_BUSERROR;
-	cf->data[2] |= CAN_ERR_PROT_UNSPEC;
 
 	switch (lec_type) {
 	case LEC_STUFF_ERROR:
@@ -500,8 +499,7 @@ static int m_can_handle_lec_err(struct net_device *dev,
 		break;
 	case LEC_ACK_ERROR:
 		netdev_dbg(dev, "ack error\n");
-		cf->data[3] |= (CAN_ERR_PROT_LOC_ACK |
-				CAN_ERR_PROT_LOC_ACK_DEL);
+		cf->data[3] = CAN_ERR_PROT_LOC_ACK;
 		break;
 	case LEC_BIT1_ERROR:
 		netdev_dbg(dev, "bit1 error\n");
@@ -513,8 +511,7 @@ static int m_can_handle_lec_err(struct net_device *dev,
 		break;
 	case LEC_CRC_ERROR:
 		netdev_dbg(dev, "CRC error\n");
-		cf->data[3] |= (CAN_ERR_PROT_LOC_CRC_SEQ |
-				CAN_ERR_PROT_LOC_CRC_DEL);
+		cf->data[3] = CAN_ERR_PROT_LOC_CRC_SEQ;
 		break;
 	default:
 		break;
@@ -958,7 +955,7 @@ static struct net_device *alloc_m_can_dev(void)
 	priv->can.do_get_berr_counter = m_can_get_berr_counter;
 
 	/* CAN_CTRLMODE_FD_NON_ISO is fixed with M_CAN IP v3.0.1 */
-	priv->can.ctrlmode = CAN_CTRLMODE_FD_NON_ISO;
+	can_set_static_ctrlmode(dev, CAN_CTRLMODE_FD_NON_ISO);
 
 	/* CAN_CTRLMODE_FD_NON_ISO can not be changed with M_CAN IP v3.0.1 */
 	priv->can.ctrlmode_supported = CAN_CTRLMODE_LOOPBACK |

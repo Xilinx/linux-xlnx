@@ -290,7 +290,7 @@ static int overwrite_test(void)
 
 	while (opno < max_overwrite) {
 
-		err = rewrite_page(0);
+		err = write_page(0);
 		if (err)
 			break;
 
@@ -319,6 +319,10 @@ static int overwrite_test(void)
 			pr_info("ECC failure, read data is incorrect despite read success\n");
 			break;
 		}
+
+		err = mtdtest_relax();
+		if (err)
+			break;
 
 		opno++;
 	}

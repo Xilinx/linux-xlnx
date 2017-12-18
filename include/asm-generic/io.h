@@ -191,7 +191,7 @@ static inline void writeq(u64 value, volatile void __iomem *addr)
 #define readl_relaxed readl
 #endif
 
-#ifndef readq_relaxed
+#if defined(readq) && !defined(readq_relaxed)
 #define readq_relaxed readq
 #endif
 
@@ -207,7 +207,7 @@ static inline void writeq(u64 value, volatile void __iomem *addr)
 #define writel_relaxed writel
 #endif
 
-#ifndef writeq_relaxed
+#if defined(writeq) && !defined(writeq_relaxed)
 #define writeq_relaxed writeq
 #endif
 
@@ -585,6 +585,16 @@ static inline u32 ioread32(const volatile void __iomem *addr)
 }
 #endif
 
+#ifdef CONFIG_64BIT
+#ifndef ioread64
+#define ioread64 ioread64
+static inline u64 ioread64(const volatile void __iomem *addr)
+{
+	return readq(addr);
+}
+#endif
+#endif /* CONFIG_64BIT */
+
 #ifndef iowrite8
 #define iowrite8 iowrite8
 static inline void iowrite8(u8 value, volatile void __iomem *addr)
@@ -609,11 +619,21 @@ static inline void iowrite32(u32 value, volatile void __iomem *addr)
 }
 #endif
 
+#ifdef CONFIG_64BIT
+#ifndef iowrite64
+#define iowrite64 iowrite64
+static inline void iowrite64(u64 value, volatile void __iomem *addr)
+{
+	writeq(value, addr);
+}
+#endif
+#endif /* CONFIG_64BIT */
+
 #ifndef ioread16be
 #define ioread16be ioread16be
 static inline u16 ioread16be(const volatile void __iomem *addr)
 {
-	return __be16_to_cpu(__raw_readw(addr));
+	return swab16(readw(addr));
 }
 #endif
 
@@ -621,15 +641,25 @@ static inline u16 ioread16be(const volatile void __iomem *addr)
 #define ioread32be ioread32be
 static inline u32 ioread32be(const volatile void __iomem *addr)
 {
-	return __be32_to_cpu(__raw_readl(addr));
+	return swab32(readl(addr));
 }
 #endif
+
+#ifdef CONFIG_64BIT
+#ifndef ioread64be
+#define ioread64be ioread64be
+static inline u64 ioread64be(const volatile void __iomem *addr)
+{
+	return swab64(readq(addr));
+}
+#endif
+#endif /* CONFIG_64BIT */
 
 #ifndef iowrite16be
 #define iowrite16be iowrite16be
 static inline void iowrite16be(u16 value, void volatile __iomem *addr)
 {
-	__raw_writew(__cpu_to_be16(value), addr);
+	writew(swab16(value), addr);
 }
 #endif
 
@@ -637,9 +667,19 @@ static inline void iowrite16be(u16 value, void volatile __iomem *addr)
 #define iowrite32be iowrite32be
 static inline void iowrite32be(u32 value, volatile void __iomem *addr)
 {
-	__raw_writel(__cpu_to_be32(value), addr);
+	writel(swab32(value), addr);
 }
 #endif
+
+#ifdef CONFIG_64BIT
+#ifndef iowrite64be
+#define iowrite64be iowrite64be
+static inline void iowrite64be(u64 value, volatile void __iomem *addr)
+{
+	writeq(swab64(value), addr);
+}
+#endif
+#endif /* CONFIG_64BIT */
 
 #ifndef ioread8_rep
 #define ioread8_rep ioread8_rep
@@ -667,6 +707,17 @@ static inline void ioread32_rep(const volatile void __iomem *addr,
 	readsl(addr, buffer, count);
 }
 #endif
+
+#ifdef CONFIG_64BIT
+#ifndef ioread64_rep
+#define ioread64_rep ioread64_rep
+static inline void ioread64_rep(const volatile void __iomem *addr,
+				void *buffer, unsigned int count)
+{
+	readsq(addr, buffer, count);
+}
+#endif
+#endif /* CONFIG_64BIT */
 
 #ifndef iowrite8_rep
 #define iowrite8_rep iowrite8_rep
@@ -697,6 +748,18 @@ static inline void iowrite32_rep(volatile void __iomem *addr,
 	writesl(addr, buffer, count);
 }
 #endif
+
+#ifdef CONFIG_64BIT
+#ifndef iowrite64_rep
+#define iowrite64_rep iowrite64_rep
+static inline void iowrite64_rep(volatile void __iomem *addr,
+				 const void *buffer,
+				 unsigned int count)
+{
+	writesq(addr, buffer, count);
+}
+#endif
+#endif /* CONFIG_64BIT */
 #endif /* CONFIG_GENERIC_IOMAP */
 
 #ifdef __KERNEL__
@@ -736,6 +799,35 @@ static inline void *phys_to_virt(unsigned long address)
 }
 #endif
 
+/**
+ * DOC: ioremap() and ioremap_*() variants
+ *
+ * If you have an IOMMU your architecture is expected to have both ioremap()
+ * and iounmap() implemented otherwise the asm-generic helpers will provide a
+ * direct mapping.
+ *
+ * There are ioremap_*() call variants, if you have no IOMMU we naturally will
+ * default to direct mapping for all of them, you can override these defaults.
+ * If you have an IOMMU you are highly encouraged to provide your own
+ * ioremap variant implementation as there currently is no safe architecture
+ * agnostic default. To avoid possible improper behaviour default asm-generic
+ * ioremap_*() variants all return NULL when an IOMMU is available. If you've
+ * defined your own ioremap_*() variant you must then declare your own
+ * ioremap_*() variant as defined to itself to avoid the default NULL return.
+ */
+
+#ifdef CONFIG_MMU
+
+#ifndef ioremap_uc
+#define ioremap_uc ioremap_uc
+static inline void __iomem *ioremap_uc(phys_addr_t offset, size_t size)
+{
+	return NULL;
+}
+#endif
+
+#else /* !CONFIG_MMU */
+
 /*
  * Change "struct page" to physical address.
  *
@@ -743,7 +835,6 @@ static inline void *phys_to_virt(unsigned long address)
  * you'll need to provide your own definitions.
  */
 
-#ifndef CONFIG_MMU
 #ifndef ioremap
 #define ioremap ioremap
 static inline void __iomem *ioremap(phys_addr_t offset, size_t size)
@@ -769,6 +860,14 @@ static inline void __iomem *ioremap_nocache(phys_addr_t offset, size_t size)
 }
 #endif
 
+#ifndef ioremap_uc
+#define ioremap_uc ioremap_uc
+static inline void __iomem *ioremap_uc(phys_addr_t offset, size_t size)
+{
+	return ioremap_nocache(offset, size);
+}
+#endif
+
 #ifndef ioremap_wc
 #define ioremap_wc ioremap_wc
 static inline void __iomem *ioremap_wc(phys_addr_t offset, size_t size)
@@ -777,8 +876,17 @@ static inline void __iomem *ioremap_wc(phys_addr_t offset, size_t size)
 }
 #endif
 
+#ifndef ioremap_wt
+#define ioremap_wt ioremap_wt
+static inline void __iomem *ioremap_wt(phys_addr_t offset, size_t size)
+{
+	return ioremap_nocache(offset, size);
+}
+#endif
+
 #ifndef iounmap
 #define iounmap iounmap
+
 static inline void iounmap(void __iomem *addr)
 {
 }

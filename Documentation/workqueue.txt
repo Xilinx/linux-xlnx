@@ -169,7 +169,7 @@ resources, scheduled and executed.
   WQ_UNBOUND
 
 	Work items queued to an unbound wq are served by the special
-	woker-pools which host workers which are not bound to any
+	worker-pools which host workers which are not bound to any
 	specific CPU.  This makes the wq behave as a simple execution
 	context provider without concurrency management.  The unbound
 	worker-pools try to start execution of work items as soon as
@@ -365,7 +365,7 @@ root      5674  0.0  0.0      0     0 ?        S    12:13   0:00 [kworker/1:0]
 If kworkers are going crazy (using too much cpu), there are two types
 of possible problems:
 
-	1. Something beeing scheduled in rapid succession
+	1. Something being scheduled in rapid succession
 	2. A single work item that consumes lots of cpu cycles
 
 The first one can be tracked using tracing:

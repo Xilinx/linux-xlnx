@@ -13,17 +13,30 @@
 #ifndef _WM_ARIZONA_CORE_H
 #define _WM_ARIZONA_CORE_H
 
+#include <linux/clk.h>
 #include <linux/interrupt.h>
+#include <linux/notifier.h>
 #include <linux/regmap.h>
 #include <linux/regulator/consumer.h>
 #include <linux/mfd/arizona/pdata.h>
 
 #define ARIZONA_MAX_CORE_SUPPLIES 2
 
+enum {
+	ARIZONA_MCLK1,
+	ARIZONA_MCLK2,
+	ARIZONA_NUM_MCLK
+};
+
 enum arizona_type {
 	WM5102 = 1,
 	WM5110 = 2,
 	WM8997 = 3,
+	WM8280 = 4,
+	WM8998 = 5,
+	WM1814 = 6,
+	WM1831 = 7,
+	CS47L24 = 8,
 };
 
 #define ARIZONA_IRQ_GP1                    0
@@ -116,6 +129,7 @@ struct arizona {
 	int num_core_supplies;
 	struct regulator_bulk_data core_supplies[ARIZONA_MAX_CORE_SUPPLIES];
 	struct regulator *dcvdd;
+	bool has_fully_powered_off;
 
 	struct arizona_pdata pdata;
 
@@ -126,11 +140,13 @@ struct arizona {
 	struct regmap_irq_chip_data *aod_irq_chip;
 	struct regmap_irq_chip_data *irq_chip;
 
-	bool hpdet_magic;
+	bool hpdet_clamp;
 	unsigned int hp_ena;
 
 	struct mutex clk_lock;
 	int clk32k_ref;
+
+	struct clk *mclk[ARIZONA_NUM_MCLK];
 
 	bool ctrlif_error;
 
@@ -142,7 +158,16 @@ struct arizona {
 	uint16_t dac_comp_coeff;
 	uint8_t dac_comp_enabled;
 	struct mutex dac_comp_lock;
+
+	struct blocking_notifier_head notifier;
 };
+
+static inline int arizona_call_notifiers(struct arizona *arizona,
+					 unsigned long event,
+					 void *data)
+{
+	return blocking_notifier_call_chain(&arizona->notifier, event, data);
+}
 
 int arizona_clk32k_enable(struct arizona *arizona);
 int arizona_clk32k_disable(struct arizona *arizona);
@@ -152,11 +177,18 @@ int arizona_request_irq(struct arizona *arizona, int irq, char *name,
 void arizona_free_irq(struct arizona *arizona, int irq, void *data);
 int arizona_set_irq_wake(struct arizona *arizona, int irq, int on);
 
+#ifdef CONFIG_MFD_WM5102
 int wm5102_patch(struct arizona *arizona);
-int wm5110_patch(struct arizona *arizona);
-int wm8997_patch(struct arizona *arizona);
+#else
+static inline int wm5102_patch(struct arizona *arizona)
+{
+	return 0;
+}
+#endif
 
-extern int arizona_of_get_named_gpio(struct arizona *arizona, const char *prop,
-				     bool mandatory);
+int wm5110_patch(struct arizona *arizona);
+int cs47l24_patch(struct arizona *arizona);
+int wm8997_patch(struct arizona *arizona);
+int wm8998_patch(struct arizona *arizona);
 
 #endif

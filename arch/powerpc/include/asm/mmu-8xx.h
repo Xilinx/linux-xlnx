@@ -27,6 +27,19 @@
 #define MI_Ks		0x80000000	/* Should not be set */
 #define MI_Kp		0x40000000	/* Should always be set */
 
+/*
+ * All pages' PP exec bits are set to 000, which means Execute for Supervisor
+ * and no Execute for User.
+ * Then we use the APG to say whether accesses are according to Page rules,
+ * "all Supervisor" rules (Exec for all) and "all User" rules (Exec for noone)
+ * Therefore, we define 4 APG groups. msb is _PAGE_EXEC, lsb is _PAGE_USER
+ * 0 (00) => Not User, no exec => 11 (all accesses performed as user)
+ * 1 (01) => User but no exec => 11 (all accesses performed as user)
+ * 2 (10) => Not User, exec => 01 (rights according to page definition)
+ * 3 (11) => User, exec => 00 (all accesses performed as supervisor)
+ */
+#define MI_APG_INIT	0xf4ffffff
+
 /* The effective page number register.  When read, contains the information
  * about the last instruction TLB miss.  When MI_RPN is written, bits in
  * this register are used to create the TLB entry.
@@ -87,6 +100,19 @@
 #define MD_Ks		0x80000000	/* Should not be set */
 #define MD_Kp		0x40000000	/* Should always be set */
 
+/*
+ * All pages' PP data bits are set to either 000 or 011, which means
+ * respectively RW for Supervisor and no access for User, or RO for
+ * Supervisor and no access for user.
+ * Then we use the APG to say whether accesses are according to Page rules or
+ * "all Supervisor" rules (Access to all)
+ * Therefore, we define 2 APG groups. lsb is _PAGE_USER
+ * 0 => No user => 01 (all accesses performed according to page definition)
+ * 1 => User => 00 (all accesses performed as supervisor
+ *                                 according to page definition)
+ */
+#define MD_APG_INIT	0x4fffffff
+
 /* The effective page number register.  When read, contains the information
  * about the last instruction TLB miss.  When MD_RPN is written, bits in
  * this register are used to create the TLB entry.
@@ -143,9 +169,19 @@ typedef struct {
 	unsigned int active;
 	unsigned long vdso_base;
 } mm_context_t;
+
+#define PHYS_IMMR_BASE (mfspr(SPRN_IMMR) & 0xfff80000)
+#define VIRT_IMMR_BASE (__fix_to_virt(FIX_IMMR_BASE))
 #endif /* !__ASSEMBLY__ */
 
+#if defined(CONFIG_PPC_4K_PAGES)
 #define mmu_virtual_psize	MMU_PAGE_4K
+#elif defined(CONFIG_PPC_16K_PAGES)
+#define mmu_virtual_psize	MMU_PAGE_16K
+#else
+#error "Unsupported PAGE_SIZE"
+#endif
+
 #define mmu_linear_psize	MMU_PAGE_8M
 
 #endif /* _ASM_POWERPC_MMU_8XX_H_ */

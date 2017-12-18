@@ -228,10 +228,12 @@
 	.hidden __memset
 	.endif
 
+#ifdef CONFIG_CPU_MIPSR6
 .Lbyte_fixup\@:
 	PTR_SUBU	a2, $0, t0
 	jr		ra
 	 PTR_ADDIU	a2, 1
+#endif /* CONFIG_CPU_MIPSR6 */
 
 .Lfirst_fixup\@:
 	jr	ra
@@ -283,6 +285,8 @@ LEAF(memset)
 1:
 #ifndef CONFIG_EVA
 FEXPORT(__bzero)
+#else
+FEXPORT(__bzero_kernel)
 #endif
 	__BUILD_BZERO LEGACY_MODE
 

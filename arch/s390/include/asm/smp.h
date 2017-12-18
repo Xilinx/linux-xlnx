@@ -18,6 +18,7 @@
 extern struct mutex smp_cpu_state_mutex;
 extern unsigned int smp_cpu_mt_shift;
 extern unsigned int smp_cpu_mtid;
+extern __vector128 __initdata boot_cpu_vector_save_area[__NUM_VXRS];
 
 extern int __cpu_up(unsigned int cpu, struct task_struct *tidle);
 
@@ -29,6 +30,7 @@ extern void smp_call_ipl_cpu(void (*func)(void *), void *);
 
 extern int smp_find_processor_id(u16 address);
 extern int smp_store_status(int cpu);
+extern void smp_save_dump_cpus(void);
 extern int smp_vcpu_scheduled(int cpu);
 extern void smp_yield_cpu(int cpu);
 extern void smp_cpu_set_polarization(int cpu, int val);

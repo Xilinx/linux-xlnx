@@ -21,10 +21,10 @@
 struct xfs_mount;
 
 extern void xfs_error_report(const char *tag, int level, struct xfs_mount *mp,
-			const char *filename, int linenum, inst_t *ra);
+			const char *filename, int linenum, void *ra);
 extern void xfs_corruption_error(const char *tag, int level,
 			struct xfs_mount *mp, void *p, const char *filename,
-			int linenum, inst_t *ra);
+			int linenum, void *ra);
 extern void xfs_verifier_error(struct xfs_buf *bp);
 
 #define	XFS_ERROR_REPORT(e, lvl, mp)	\
@@ -40,25 +40,25 @@ extern void xfs_verifier_error(struct xfs_buf *bp);
 /*
  * Macros to set EFSCORRUPTED & return/branch.
  */
-#define	XFS_WANT_CORRUPTED_GOTO(x,l)	\
+#define	XFS_WANT_CORRUPTED_GOTO(mp, x, l)	\
 	{ \
 		int fs_is_ok = (x); \
 		ASSERT(fs_is_ok); \
 		if (unlikely(!fs_is_ok)) { \
 			XFS_ERROR_REPORT("XFS_WANT_CORRUPTED_GOTO", \
-					 XFS_ERRLEVEL_LOW, NULL); \
+					 XFS_ERRLEVEL_LOW, mp); \
 			error = -EFSCORRUPTED; \
 			goto l; \
 		} \
 	}
 
-#define	XFS_WANT_CORRUPTED_RETURN(x)	\
+#define	XFS_WANT_CORRUPTED_RETURN(mp, x)	\
 	{ \
 		int fs_is_ok = (x); \
 		ASSERT(fs_is_ok); \
 		if (unlikely(!fs_is_ok)) { \
 			XFS_ERROR_REPORT("XFS_WANT_CORRUPTED_RETURN", \
-					 XFS_ERRLEVEL_LOW, NULL); \
+					 XFS_ERRLEVEL_LOW, mp); \
 			return -EFSCORRUPTED; \
 		} \
 	}
@@ -90,7 +90,13 @@ extern void xfs_verifier_error(struct xfs_buf *bp);
 #define XFS_ERRTAG_STRATCMPL_IOERR			19
 #define XFS_ERRTAG_DIOWRITE_IOERR			20
 #define XFS_ERRTAG_BMAPIFORMAT				21
-#define XFS_ERRTAG_MAX					22
+#define XFS_ERRTAG_FREE_EXTENT				22
+#define XFS_ERRTAG_RMAP_FINISH_ONE			23
+#define XFS_ERRTAG_REFCOUNT_CONTINUE_UPDATE		24
+#define XFS_ERRTAG_REFCOUNT_FINISH_ONE			25
+#define XFS_ERRTAG_BMAP_FINISH_ONE			26
+#define XFS_ERRTAG_AG_RESV_CRITICAL			27
+#define XFS_ERRTAG_MAX					28
 
 /*
  * Random factors for above tags, 1 means always, 2 means 1/2 time, etc.
@@ -117,6 +123,12 @@ extern void xfs_verifier_error(struct xfs_buf *bp);
 #define XFS_RANDOM_STRATCMPL_IOERR			(XFS_RANDOM_DEFAULT/10)
 #define XFS_RANDOM_DIOWRITE_IOERR			(XFS_RANDOM_DEFAULT/10)
 #define	XFS_RANDOM_BMAPIFORMAT				XFS_RANDOM_DEFAULT
+#define XFS_RANDOM_FREE_EXTENT				1
+#define XFS_RANDOM_RMAP_FINISH_ONE			1
+#define XFS_RANDOM_REFCOUNT_CONTINUE_UPDATE		1
+#define XFS_RANDOM_REFCOUNT_FINISH_ONE			1
+#define XFS_RANDOM_BMAP_FINISH_ONE			1
+#define XFS_RANDOM_AG_RESV_CRITICAL			4
 
 #ifdef DEBUG
 extern int xfs_error_test_active;
@@ -128,7 +140,7 @@ extern int xfs_error_test(int, int *, char *, int, char *, unsigned long);
 	 xfs_error_test((tag), (mp)->m_fixedfsid, "expr", __LINE__, __FILE__, \
 			(rf))))
 
-extern int xfs_errortag_add(int error_tag, struct xfs_mount *mp);
+extern int xfs_errortag_add(unsigned int error_tag, struct xfs_mount *mp);
 extern int xfs_errortag_clearall(struct xfs_mount *mp, int loud);
 #else
 #define XFS_TEST_ERROR(expr, mp, tag, rf)	(expr)

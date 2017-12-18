@@ -93,8 +93,15 @@ static int bq32k_rtc_read_time(struct device *dev, struct rtc_time *tm)
 	if (error)
 		return error;
 
+	/*
+	 * In case of oscillator failure, the register contents should be
+	 * considered invalid. The flag is cleared the next time the RTC is set.
+	 */
+	if (regs.minutes & BQ32K_OF)
+		return -EINVAL;
+
 	tm->tm_sec = bcd2bin(regs.seconds & BQ32K_SECONDS_MASK);
-	tm->tm_min = bcd2bin(regs.minutes & BQ32K_SECONDS_MASK);
+	tm->tm_min = bcd2bin(regs.minutes & BQ32K_MINUTES_MASK);
 	tm->tm_hour = bcd2bin(regs.cent_hours & BQ32K_HOURS_MASK);
 	tm->tm_mday = bcd2bin(regs.date);
 	tm->tm_wday = bcd2bin(regs.day) - 1;
@@ -204,15 +211,12 @@ static int bq32k_probe(struct i2c_client *client,
 
 	/* Check Oscillator Failure flag */
 	error = bq32k_read(dev, &reg, BQ32K_MINUTES, 1);
-	if (!error && (reg & BQ32K_OF)) {
-		dev_warn(dev, "Oscillator Failure. Check RTC battery.\n");
-		reg &= ~BQ32K_OF;
-		error = bq32k_write(dev, &reg, BQ32K_MINUTES, 1);
-	}
 	if (error)
 		return error;
+	if (reg & BQ32K_OF)
+		dev_warn(dev, "Oscillator Failure. Check RTC battery.\n");
 
-	if (client && client->dev.of_node)
+	if (client->dev.of_node)
 		trickle_charger_of_init(dev, client->dev.of_node);
 
 	rtc = devm_rtc_device_register(&client->dev, bq32k_driver.driver.name,
@@ -234,7 +238,6 @@ MODULE_DEVICE_TABLE(i2c, bq32k_id);
 static struct i2c_driver bq32k_driver = {
 	.driver = {
 		.name	= "bq32k",
-		.owner	= THIS_MODULE,
 	},
 	.probe		= bq32k_probe,
 	.id_table	= bq32k_id,

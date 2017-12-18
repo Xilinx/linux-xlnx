@@ -11,11 +11,6 @@
  * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
  * more details.
  *
- * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110, USA
- *
- *
  ******************************************************************************/
 #ifndef __STA_INFO_H_
 #define __STA_INFO_H_
@@ -113,7 +108,6 @@ struct sta_info {
 
 	u8	raid;
 	u8	init_rate;
-	u32	ra_mask;
 	u8	wireless_mode;	/*  NETWORK_TYPE */
 	struct stainfo_stats sta_stats;
 
@@ -351,19 +345,19 @@ static inline u32 wifi_mac_hash(u8 *mac)
 	return x;
 }
 
-extern u32	_rtw_init_sta_priv(struct sta_priv *pstapriv);
-extern u32	_rtw_free_sta_priv(struct sta_priv *pstapriv);
+u32 _rtw_init_sta_priv(struct sta_priv *pstapriv);
+u32 _rtw_free_sta_priv(struct sta_priv *pstapriv);
 
 #define stainfo_offset_valid(offset) (offset < NUM_STA && offset >= 0)
 int rtw_stainfo_offset(struct sta_priv *stapriv, struct sta_info *sta);
 struct sta_info *rtw_get_stainfo_by_offset(struct sta_priv *stapriv, int off);
 
-extern struct sta_info *rtw_alloc_stainfo(struct sta_priv *stapriv, u8 *hwaddr);
-extern u32	rtw_free_stainfo(struct adapter *adapt, struct sta_info *psta);
-extern void rtw_free_all_stainfo(struct adapter *adapt);
-extern struct sta_info *rtw_get_stainfo(struct sta_priv *stapriv, u8 *hwaddr);
-extern u32 rtw_init_bcmc_stainfo(struct adapter *adapt);
-extern struct sta_info *rtw_get_bcmc_stainfo(struct adapter *padapter);
-extern u8 rtw_access_ctrl(struct adapter *padapter, u8 *mac_addr);
+struct sta_info *rtw_alloc_stainfo(struct sta_priv *stapriv, u8 *hwaddr);
+u32 rtw_free_stainfo(struct adapter *adapt, struct sta_info *psta);
+void rtw_free_all_stainfo(struct adapter *adapt);
+struct sta_info *rtw_get_stainfo(struct sta_priv *stapriv, u8 *hwaddr);
+u32 rtw_init_bcmc_stainfo(struct adapter *adapt);
+struct sta_info *rtw_get_bcmc_stainfo(struct adapter *padapter);
+u8 rtw_access_ctrl(struct adapter *padapter, u8 *mac_addr);
 
 #endif /* _STA_INFO_H_ */

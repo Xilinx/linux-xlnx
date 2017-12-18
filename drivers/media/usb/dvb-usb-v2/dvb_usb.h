@@ -1,7 +1,7 @@
 /*
  * DVB USB framework
  *
- * Copyright (C) 2004-6 Patrick Boettcher <patrick.boettcher@desy.de>
+ * Copyright (C) 2004-6 Patrick Boettcher <patrick.boettcher@posteo.de>
  * Copyright (C) 2012 Antti Palosaari <crope@iki.fi>
  *
  *    This program is free software; you can redistribute it and/or modify
@@ -25,6 +25,7 @@
 #include <linux/usb/input.h>
 #include <linux/firmware.h>
 #include <media/rc-core.h>
+#include <media/media-device.h>
 
 #include "dvb_frontend.h"
 #include "dvb_demux.h"

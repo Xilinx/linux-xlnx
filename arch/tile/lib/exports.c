@@ -18,8 +18,6 @@
 
 /* arch/tile/lib/usercopy.S */
 #include <linux/uaccess.h>
-EXPORT_SYMBOL(strnlen_user_asm);
-EXPORT_SYMBOL(strncpy_from_user_asm);
 EXPORT_SYMBOL(clear_user_asm);
 EXPORT_SYMBOL(flush_user_asm);
 EXPORT_SYMBOL(finv_user_asm);
@@ -28,7 +26,6 @@ EXPORT_SYMBOL(finv_user_asm);
 #include <linux/kernel.h>
 #include <asm/processor.h>
 EXPORT_SYMBOL(current_text_addr);
-EXPORT_SYMBOL(dump_stack);
 
 /* arch/tile/kernel/head.S */
 EXPORT_SYMBOL(empty_zero_page);
@@ -80,7 +77,11 @@ uint64_t __umoddi3(uint64_t dividend, uint64_t divisor);
 EXPORT_SYMBOL(__umoddi3);
 int64_t __moddi3(int64_t dividend, int64_t divisor);
 EXPORT_SYMBOL(__moddi3);
-#ifndef __tilegx__
+#ifdef __tilegx__
+typedef int TItype __attribute__((mode(TI)));
+TItype __multi3(TItype a, TItype b);
+EXPORT_SYMBOL(__multi3);  /* required for gcc 7 and later */
+#else
 int64_t __muldi3(int64_t, int64_t);
 EXPORT_SYMBOL(__muldi3);
 uint64_t __lshrdi3(uint64_t, unsigned int);

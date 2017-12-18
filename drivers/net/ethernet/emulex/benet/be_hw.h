@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2005 - 2014 Emulex
+ * Copyright (C) 2005-2016 Broadcom.
  * All rights reserved.
  *
  * This program is free software; you can redistribute it and/or
@@ -32,18 +32,23 @@
 #define MPU_EP_CONTROL 		0
 
 /********** MPU semphore: used for SH & BE  *************/
+#define SLIPORT_SOFTRESET_OFFSET		0x5c	/* CSR BAR offset */
 #define SLIPORT_SEMAPHORE_OFFSET_BEx		0xac  /* CSR BAR offset */
 #define SLIPORT_SEMAPHORE_OFFSET_SH		0x94  /* PCI-CFG offset */
 #define POST_STAGE_MASK				0x0000FFFF
 #define POST_ERR_MASK				0x1
 #define POST_ERR_SHIFT				31
+#define POST_ERR_RECOVERY_CODE_MASK		0xFFF
+
+/* Soft Reset register masks */
+#define SLIPORT_SOFTRESET_SR_MASK		0x00000080	/* SR bit */
 
 /* MPU semphore POST stage values */
 #define POST_STAGE_AWAITING_HOST_RDY 	0x1 /* FW awaiting goahead from host */
 #define POST_STAGE_HOST_RDY 		0x2 /* Host has given go-ahed to FW */
 #define POST_STAGE_BE_RESET		0x3 /* Host wants to reset chip */
 #define POST_STAGE_ARMFW_RDY		0xc000	/* FW is done with POST */
-
+#define POST_STAGE_RECOVERABLE_ERR	0xE000	/* Recoverable err detected */
 
 /* Lancer SLIPORT registers */
 #define SLIPORT_STATUS_OFFSET		0x404
@@ -132,6 +137,18 @@
 #define DB_EQ_NUM_POPPED_SHIFT		(16)	/* bits 16 - 28 */
 /* Rearm bit */
 #define DB_EQ_REARM_SHIFT		(29)	/* bit 29 */
+/* Rearm to interrupt delay encoding */
+#define DB_EQ_R2I_DLY_SHIFT		(30)    /* bits 30 - 31 */
+
+/* Rearm to interrupt (R2I) delay multiplier encoding represents 3 different
+ * values configured in CEV_REARM2IRPT_DLY_MULT_CSR register. This value is
+ * programmed by host driver while ringing an EQ doorbell(EQ_DB) if a delay
+ * between rearming the EQ and next interrupt on this EQ is desired.
+ */
+#define	R2I_DLY_ENC_0			0	/* No delay */
+#define	R2I_DLY_ENC_1			1	/* maps to 160us EQ delay */
+#define	R2I_DLY_ENC_2			2	/* maps to 96us EQ delay */
+#define	R2I_DLY_ENC_3			3	/* maps to 48us EQ delay */
 
 /********* Compl Q door bell *************/
 #define DB_CQ_OFFSET 			0x120

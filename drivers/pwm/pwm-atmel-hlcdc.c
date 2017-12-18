@@ -218,15 +218,28 @@ static const struct atmel_hlcdc_pwm_errata atmel_hlcdc_pwm_sama5d3_errata = {
 
 static const struct of_device_id atmel_hlcdc_dt_ids[] = {
 	{
+		.compatible = "atmel,at91sam9n12-hlcdc",
+		/* 9n12 has same errata as 9x5 HLCDC PWM */
+		.data = &atmel_hlcdc_pwm_at91sam9x5_errata,
+	},
+	{
 		.compatible = "atmel,at91sam9x5-hlcdc",
 		.data = &atmel_hlcdc_pwm_at91sam9x5_errata,
+	},
+	{
+		.compatible = "atmel,sama5d2-hlcdc",
 	},
 	{
 		.compatible = "atmel,sama5d3-hlcdc",
 		.data = &atmel_hlcdc_pwm_sama5d3_errata,
 	},
+	{
+		.compatible = "atmel,sama5d4-hlcdc",
+		.data = &atmel_hlcdc_pwm_sama5d3_errata,
+	},
 	{ /* sentinel */ },
 };
+MODULE_DEVICE_TABLE(of, atmel_hlcdc_dt_ids);
 
 static int atmel_hlcdc_pwm_probe(struct platform_device *pdev)
 {
@@ -259,7 +272,7 @@ static int atmel_hlcdc_pwm_probe(struct platform_device *pdev)
 	chip->chip.of_pwm_n_cells = 3;
 	chip->chip.can_sleep = 1;
 
-	ret = pwmchip_add(&chip->chip);
+	ret = pwmchip_add_with_polarity(&chip->chip, PWM_POLARITY_INVERSED);
 	if (ret) {
 		clk_disable_unprepare(hlcdc->periph_clk);
 		return ret;

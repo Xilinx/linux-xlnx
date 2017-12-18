@@ -102,7 +102,7 @@ struct lguest {
 
 	struct pgdir pgdirs[4];
 
-	unsigned long noirq_start, noirq_end;
+	unsigned long noirq_iret;
 
 	unsigned int stack_pages;
 	u32 tsc_khz;
@@ -167,6 +167,7 @@ void guest_set_clockevent(struct lg_cpu *cpu, unsigned long delta);
 bool send_notify_to_eventfd(struct lg_cpu *cpu);
 void init_clockdev(struct lg_cpu *cpu);
 bool check_syscall_vector(struct lguest *lg);
+bool could_be_syscall(unsigned int num);
 int init_interrupts(void);
 void free_interrupts(void);
 

@@ -42,7 +42,7 @@ struct drm_file;
 #define DRM_KERNEL_CONTEXT		0
 #define DRM_RESERVED_CONTEXTS		1
 
-int drm_legacy_ctxbitmap_init(struct drm_device *dev);
+void drm_legacy_ctxbitmap_init(struct drm_device *dev);
 void drm_legacy_ctxbitmap_cleanup(struct drm_device *dev);
 void drm_legacy_ctxbitmap_free(struct drm_device *dev, int ctx_handle);
 void drm_legacy_ctxbitmap_flush(struct drm_device *dev, struct drm_file *file);
@@ -63,6 +63,8 @@ int drm_legacy_getsareactx(struct drm_device *d, void *v, struct drm_file *f);
 
 #define DRM_MAP_HASH_OFFSET 0x10000000
 
+int drm_legacy_getmap_ioctl(struct drm_device *dev, void *data,
+			    struct drm_file *file_priv);
 int drm_legacy_addmap_ioctl(struct drm_device *d, void *v, struct drm_file *f);
 int drm_legacy_rmmap_ioctl(struct drm_device *d, void *v, struct drm_file *f);
 int drm_legacy_addbufs(struct drm_device *d, void *v, struct drm_file *f);
@@ -86,14 +88,10 @@ struct drm_agp_mem {
 	struct list_head head;
 };
 
-/*
- * Generic Userspace Locking-API
- */
-
-int drm_legacy_i_have_hw_lock(struct drm_device *d, struct drm_file *f);
+/* drm_lock.c */
 int drm_legacy_lock(struct drm_device *d, void *v, struct drm_file *f);
 int drm_legacy_unlock(struct drm_device *d, void *v, struct drm_file *f);
-int drm_legacy_lock_free(struct drm_lock_data *lock, unsigned int ctx);
+void drm_legacy_lock_release(struct drm_device *dev, struct file *filp);
 
 /* DMA support */
 int drm_legacy_dma_setup(struct drm_device *dev);

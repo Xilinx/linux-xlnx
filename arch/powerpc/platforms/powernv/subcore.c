@@ -190,7 +190,7 @@ static void unsplit_core(void)
 
 	hid0 = mfspr(SPRN_HID0);
 	hid0 &= ~HID0_POWER8_DYNLPARDIS;
-	mtspr(SPRN_HID0, hid0);
+	update_power8_hid0(hid0);
 	update_hid_in_slw(hid0);
 
 	while (mfspr(SPRN_HID0) & mask)
@@ -227,7 +227,7 @@ static void split_core(int new_mode)
 	/* Write new mode */
 	hid0  = mfspr(SPRN_HID0);
 	hid0 |= HID0_POWER8_DYNLPARDIS | split_parms[i].value;
-	mtspr(SPRN_HID0, hid0);
+	update_power8_hid0(hid0);
 	update_hid_in_slw(hid0);
 
 	/* Wait for it to happen */
@@ -407,7 +407,7 @@ static DEVICE_ATTR(subcores_per_core, 0644,
 
 static int subcore_init(void)
 {
-	if (!cpu_has_feature(CPU_FTR_ARCH_207S))
+	if (!cpu_has_feature(CPU_FTR_SUBCORE))
 		return 0;
 
 	/*

@@ -24,13 +24,13 @@
 #include <linux/usb.h>
 #include <linux/usb/hcd.h>
 #include <linux/gpio.h>
-#include <asm/qe.h>
+#include <soc/fsl/qe/qe.h>
 #include "fhci.h"
 
 /* virtual root hub specific descriptor */
 static u8 root_hub_des[] = {
 	0x09, /* blength */
-	0x29, /* bDescriptorType;hub-descriptor */
+	USB_DT_HUB, /* bDescriptorType;hub-descriptor */
 	0x01, /* bNbrPorts */
 	HUB_CHAR_INDV_PORT_LPSM | HUB_CHAR_NO_OCPM, /* wHubCharacteristics */
 	0x00, /* per-port power, no overcurrent */

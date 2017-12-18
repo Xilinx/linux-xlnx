@@ -129,7 +129,7 @@ static struct platform_device *devices[] __initdata = {
 	&pcm043_flash,
 };
 
-static iomux_v3_cfg_t pcm043_pads[] = {
+static const iomux_v3_cfg_t pcm043_pads[] __initconst = {
 	/* UART1 */
 	MX35_PAD_CTS1__UART1_CTS,
 	MX35_PAD_RTS1__UART1_RTS,
@@ -363,7 +363,6 @@ static void __init pcm043_init(void)
 
 	imx35_add_imx_uart0(&uart_pdata);
 	imx35_add_mxc_nand(&pcm037_nand_board_info);
-	imx35_add_imx_ssi(0, &pcm043_ssi_pdata);
 
 	imx35_add_imx_uart1(&uart_pdata);
 
@@ -387,6 +386,12 @@ static void __init pcm043_init(void)
 		imx35_add_fsl_usb2_udc(&otg_device_pdata);
 
 	imx35_add_flexcan1();
+}
+
+static void __init pcm043_late_init(void)
+{
+	imx35_add_imx_ssi(0, &pcm043_ssi_pdata);
+
 	imx35_add_sdhci_esdhc_imx(0, &sd1_pdata);
 }
 
@@ -402,6 +407,7 @@ MACHINE_START(PCM043, "Phytec Phycore pcm043")
 	.init_early = imx35_init_early,
 	.init_irq = mx35_init_irq,
 	.init_time = pcm043_timer_init,
-	.init_machine = pcm043_init,
+	.init_machine	= pcm043_init,
+	.init_late	= pcm043_late_init,
 	.restart	= mxc_restart,
 MACHINE_END

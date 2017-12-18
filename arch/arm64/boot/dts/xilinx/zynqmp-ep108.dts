@@ -5,38 +5,45 @@
  *
  * Michal Simek <michal.simek@xilinx.com>
  *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License as
- * published by the Free Software Foundation; either version 2 of
- * the License, or (at your option) any later version.
+ * SPDX-License-Identifier:	GPL-2.0+
  */
 
 /dts-v1/;
 
-/include/ "zynqmp.dtsi"
-/include/ "zynqmp-ep108-clk.dtsi"
+#include "zynqmp.dtsi"
+#include "zynqmp-ep108-clk.dtsi"
 
 / {
 	model = "ZynqMP EP108";
 
 	aliases {
+		ethernet0 = &gem0;
+		mmc0 = &sdhci0;
+		mmc1 = &sdhci1;
 		serial0 = &uart0;
 		spi0 = &qspi;
 		spi1 = &spi0;
 		spi2 = &spi1;
+		usb0 = &usb0;
+		usb1 = &usb1;
 	};
 
 	chosen {
+		bootargs = "earlycon";
 		stdout-path = "serial0:115200n8";
 	};
 
-	memory {
+	memory@0 {
 		device_type = "memory";
-		reg = <0x0 0x0 0x40000000>;
+		reg = <0x0 0x0 0x0 0x40000000>;
 	};
 };
 
 &can0 {
+	status = "okay";
+};
+
+&can1 {
 	status = "okay";
 };
 
@@ -75,31 +82,35 @@
 &nand0 {
 	status = "okay";
 	arasan,has-mdma;
-	num-cs = <1>;
 
-	partition@0 {	/* for testing purpose */
-		label = "nand-fsbl-uboot";
-		reg = <0x0 0x0 0x400000>;
-	};
-	partition@1 {	/* for testing purpose */
-		label = "nand-linux";
-		reg = <0x0 0x400000 0x1400000>;
-	};
-	partition@2 {	/* for testing purpose */
-		label = "nand-device-tree";
-		reg = <0x0 0x1800000 0x400000>;
-	};
-	partition@3 {	/* for testing purpose */
-		label = "nand-rootfs";
-		reg = <0x0 0x1C00000 0x1400000>;
-	};
-	partition@4 {	/* for testing purpose */
-		label = "nand-bitstream";
-		reg = <0x0 0x3000000 0x400000>;
-	};
-	partition@5 {	/* for testing purpose */
-		label = "nand-misc";
-		reg = <0x0 0x3400000 0xFCC00000>;
+	nand@0 {
+		reg = <0x0>;
+		#address-cells = <0x2>;
+		#size-cells = <0x1>;
+		partition@0 {   /* for testing purpose */
+			label = "nand-fsbl-uboot";
+			reg = <0x0 0x0 0x400000>;
+		};
+		partition@1 {   /* for testing purpose */
+			label = "nand-linux";
+			reg = <0x0 0x400000 0x1400000>;
+		};
+		partition@2 {   /* for testing purpose */
+			label = "nand-device-tree";
+			reg = <0x0 0x1800000 0x400000>;
+		};
+		partition@3 {   /* for testing purpose */
+			label = "nand-rootfs";
+			reg = <0x0 0x1c00000 0x1400000>;
+		};
+		partition@4 {   /* for testing purpose */
+			label = "nand-bitstream";
+			reg = <0x0 0x3000000 0x400000>;
+		};
+		partition@5 {   /* for testing purpose */
+			label = "nand-misc";
+			reg = <0x0 0x3400000 0xfcc00000>;
+		};
 	};
 };
 
@@ -148,10 +159,13 @@
 
 &sdhci0 {
 	status = "okay";
+	bus-width = <8>;
+	xlnx,mio_bank = <2>;
 };
 
 &sdhci1 {
 	status = "okay";
+	xlnx,mio_bank = <1>;
 };
 
 &spi0 {
@@ -164,7 +178,7 @@
 		spi-max-frequency = <50000000>;
 		reg = <0>;
 
-		spi0_flash0@00000000 {
+		spi0_flash0@0 {
 			label = "spi0_flash0";
 			reg = <0x0 0x100000>;
 		};
@@ -181,7 +195,7 @@
 		spi-max-frequency = <50000000>;
 		reg = <0>;
 
-		spi1_flash0@00000000 {
+		spi1_flash0@0 {
 			label = "spi1_flash0";
 			reg = <0x0 0x100000>;
 		};
@@ -194,11 +208,19 @@
 
 &usb0 {
 	status = "okay";
+};
+
+&dwc3_0 {
+	status = "okay";
 	dr_mode = "peripheral";
 	maximum-speed = "high-speed";
 };
 
 &usb1 {
+	status = "okay";
+};
+
+&dwc3_1 {
 	status = "okay";
 	dr_mode = "host";
 	maximum-speed = "high-speed";

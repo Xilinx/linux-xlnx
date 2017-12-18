@@ -25,7 +25,7 @@
 #include <linux/v4l2-mediabus.h>
 #include <linux/videodev2.h>
 
-#include <media/mt9t112.h>
+#include <media/i2c/mt9t112.h>
 #include <media/soc_camera.h>
 #include <media/v4l2-clk.h>
 #include <media/v4l2-common.h>
@@ -104,22 +104,22 @@ struct mt9t112_priv {
 static const struct mt9t112_format mt9t112_cfmts[] = {
 	{
 		.code		= MEDIA_BUS_FMT_UYVY8_2X8,
-		.colorspace	= V4L2_COLORSPACE_JPEG,
+		.colorspace	= V4L2_COLORSPACE_SRGB,
 		.fmt		= 1,
 		.order		= 0,
 	}, {
 		.code		= MEDIA_BUS_FMT_VYUY8_2X8,
-		.colorspace	= V4L2_COLORSPACE_JPEG,
+		.colorspace	= V4L2_COLORSPACE_SRGB,
 		.fmt		= 1,
 		.order		= 1,
 	}, {
 		.code		= MEDIA_BUS_FMT_YUYV8_2X8,
-		.colorspace	= V4L2_COLORSPACE_JPEG,
+		.colorspace	= V4L2_COLORSPACE_SRGB,
 		.fmt		= 1,
 		.order		= 2,
 	}, {
 		.code		= MEDIA_BUS_FMT_YVYU8_2X8,
-		.colorspace	= V4L2_COLORSPACE_JPEG,
+		.colorspace	= V4L2_COLORSPACE_SRGB,
 		.fmt		= 1,
 		.order		= 3,
 	}, {
@@ -867,48 +867,62 @@ static int mt9t112_set_params(struct mt9t112_priv *priv,
 	return 0;
 }
 
-static int mt9t112_cropcap(struct v4l2_subdev *sd, struct v4l2_cropcap *a)
-{
-	a->bounds.left			= 0;
-	a->bounds.top			= 0;
-	a->bounds.width			= MAX_WIDTH;
-	a->bounds.height		= MAX_HEIGHT;
-	a->defrect.left			= 0;
-	a->defrect.top			= 0;
-	a->defrect.width		= VGA_WIDTH;
-	a->defrect.height		= VGA_HEIGHT;
-	a->type				= V4L2_BUF_TYPE_VIDEO_CAPTURE;
-	a->pixelaspect.numerator	= 1;
-	a->pixelaspect.denominator	= 1;
-
-	return 0;
-}
-
-static int mt9t112_g_crop(struct v4l2_subdev *sd, struct v4l2_crop *a)
+static int mt9t112_get_selection(struct v4l2_subdev *sd,
+		struct v4l2_subdev_pad_config *cfg,
+		struct v4l2_subdev_selection *sel)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	struct mt9t112_priv *priv = to_mt9t112(client);
 
-	a->c	= priv->frame;
-	a->type	= V4L2_BUF_TYPE_VIDEO_CAPTURE;
+	if (sel->which != V4L2_SUBDEV_FORMAT_ACTIVE)
+		return -EINVAL;
 
-	return 0;
+	switch (sel->target) {
+	case V4L2_SEL_TGT_CROP_BOUNDS:
+		sel->r.left = 0;
+		sel->r.top = 0;
+		sel->r.width = MAX_WIDTH;
+		sel->r.height = MAX_HEIGHT;
+		return 0;
+	case V4L2_SEL_TGT_CROP_DEFAULT:
+		sel->r.left = 0;
+		sel->r.top = 0;
+		sel->r.width = VGA_WIDTH;
+		sel->r.height = VGA_HEIGHT;
+		return 0;
+	case V4L2_SEL_TGT_CROP:
+		sel->r = priv->frame;
+		return 0;
+	default:
+		return -EINVAL;
+	}
 }
 
-static int mt9t112_s_crop(struct v4l2_subdev *sd, const struct v4l2_crop *a)
+static int mt9t112_set_selection(struct v4l2_subdev *sd,
+		struct v4l2_subdev_pad_config *cfg,
+		struct v4l2_subdev_selection *sel)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	struct mt9t112_priv *priv = to_mt9t112(client);
-	const struct v4l2_rect *rect = &a->c;
+	const struct v4l2_rect *rect = &sel->r;
+
+	if (sel->which != V4L2_SUBDEV_FORMAT_ACTIVE ||
+	    sel->target != V4L2_SEL_TGT_CROP)
+		return -EINVAL;
 
 	return mt9t112_set_params(priv, rect, priv->format->code);
 }
 
-static int mt9t112_g_fmt(struct v4l2_subdev *sd,
-			 struct v4l2_mbus_framefmt *mf)
+static int mt9t112_get_fmt(struct v4l2_subdev *sd,
+		struct v4l2_subdev_pad_config *cfg,
+		struct v4l2_subdev_format *format)
 {
+	struct v4l2_mbus_framefmt *mf = &format->format;
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	struct mt9t112_priv *priv = to_mt9t112(client);
+
+	if (format->pad)
+		return -EINVAL;
 
 	mf->width	= priv->frame.width;
 	mf->height	= priv->frame.height;
@@ -940,13 +954,18 @@ static int mt9t112_s_fmt(struct v4l2_subdev *sd,
 	return ret;
 }
 
-static int mt9t112_try_fmt(struct v4l2_subdev *sd,
-			   struct v4l2_mbus_framefmt *mf)
+static int mt9t112_set_fmt(struct v4l2_subdev *sd,
+		struct v4l2_subdev_pad_config *cfg,
+		struct v4l2_subdev_format *format)
 {
+	struct v4l2_mbus_framefmt *mf = &format->format;
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	struct mt9t112_priv *priv = to_mt9t112(client);
 	unsigned int top, left;
 	int i;
+
+	if (format->pad)
+		return -EINVAL;
 
 	for (i = 0; i < priv->num_formats; i++)
 		if (mt9t112_cfmts[i].code == mf->code)
@@ -963,19 +982,23 @@ static int mt9t112_try_fmt(struct v4l2_subdev *sd,
 
 	mf->field = V4L2_FIELD_NONE;
 
+	if (format->which == V4L2_SUBDEV_FORMAT_ACTIVE)
+		return mt9t112_s_fmt(sd, mf);
+	cfg->try_fmt = *mf;
 	return 0;
 }
 
-static int mt9t112_enum_fmt(struct v4l2_subdev *sd, unsigned int index,
-			   u32 *code)
+static int mt9t112_enum_mbus_code(struct v4l2_subdev *sd,
+		struct v4l2_subdev_pad_config *cfg,
+		struct v4l2_subdev_mbus_code_enum *code)
 {
 	struct i2c_client *client = v4l2_get_subdevdata(sd);
 	struct mt9t112_priv *priv = to_mt9t112(client);
 
-	if (index >= priv->num_formats)
+	if (code->pad || code->index >= priv->num_formats)
 		return -EINVAL;
 
-	*code = mt9t112_cfmts[index].code;
+	code->code = mt9t112_cfmts[code->index].code;
 
 	return 0;
 }
@@ -1010,15 +1033,16 @@ static int mt9t112_s_mbus_config(struct v4l2_subdev *sd,
 
 static struct v4l2_subdev_video_ops mt9t112_subdev_video_ops = {
 	.s_stream	= mt9t112_s_stream,
-	.g_mbus_fmt	= mt9t112_g_fmt,
-	.s_mbus_fmt	= mt9t112_s_fmt,
-	.try_mbus_fmt	= mt9t112_try_fmt,
-	.cropcap	= mt9t112_cropcap,
-	.g_crop		= mt9t112_g_crop,
-	.s_crop		= mt9t112_s_crop,
-	.enum_mbus_fmt	= mt9t112_enum_fmt,
 	.g_mbus_config	= mt9t112_g_mbus_config,
 	.s_mbus_config	= mt9t112_s_mbus_config,
+};
+
+static const struct v4l2_subdev_pad_ops mt9t112_subdev_pad_ops = {
+	.enum_mbus_code = mt9t112_enum_mbus_code,
+	.get_selection	= mt9t112_get_selection,
+	.set_selection	= mt9t112_set_selection,
+	.get_fmt	= mt9t112_get_fmt,
+	.set_fmt	= mt9t112_set_fmt,
 };
 
 /************************************************************************
@@ -1027,6 +1051,7 @@ static struct v4l2_subdev_video_ops mt9t112_subdev_video_ops = {
 static struct v4l2_subdev_ops mt9t112_subdev_ops = {
 	.core	= &mt9t112_subdev_core_ops,
 	.video	= &mt9t112_subdev_video_ops,
+	.pad	= &mt9t112_subdev_pad_ops,
 };
 
 static int mt9t112_camera_probe(struct i2c_client *client)

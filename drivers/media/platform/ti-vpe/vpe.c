@@ -40,7 +40,7 @@
 #include <media/v4l2-event.h>
 #include <media/v4l2-ioctl.h>
 #include <media/v4l2-mem2mem.h>
-#include <media/videobuf2-core.h>
+#include <media/videobuf2-v4l2.h>
 #include <media/videobuf2-dma-contig.h>
 
 #include "vpdma.h"
@@ -362,7 +362,6 @@ struct vpe_dev {
 	void __iomem		*base;
 	struct resource		*res;
 
-	struct vb2_alloc_ctx	*alloc_ctx;
 	struct vpdma_data	*vpdma;		/* vpdma data handle */
 	struct sc_data		*sc;		/* scaler data handle */
 	struct csc_data		*csc;		/* csc data handle */
@@ -384,8 +383,8 @@ struct vpe_ctx {
 	unsigned int		bufs_completed;		/* bufs done in this batch */
 
 	struct vpe_q_data	q_data[2];		/* src & dst queue data */
-	struct vb2_buffer	*src_vbs[VPE_MAX_SRC_BUFS];
-	struct vb2_buffer	*dst_vb;
+	struct vb2_v4l2_buffer	*src_vbs[VPE_MAX_SRC_BUFS];
+	struct vb2_v4l2_buffer	*dst_vb;
 
 	dma_addr_t		mv_buf_dma[2];		/* dma addrs of motion vector in/out bufs */
 	void			*mv_buf[2];		/* virtual addrs of motion vector bufs */
@@ -988,7 +987,7 @@ static void add_out_dtd(struct vpe_ctx *ctx, int port)
 {
 	struct vpe_q_data *q_data = &ctx->q_data[Q_DATA_DST];
 	const struct vpe_port_data *p_data = &port_data[port];
-	struct vb2_buffer *vb = ctx->dst_vb;
+	struct vb2_buffer *vb = &ctx->dst_vb->vb2_buf;
 	struct vpe_fmt *fmt = q_data->fmt;
 	const struct vpdma_data_format *vpdma_fmt;
 	int mv_buf_selector = !ctx->src_mv_buf_selector;
@@ -1025,11 +1024,12 @@ static void add_in_dtd(struct vpe_ctx *ctx, int port)
 {
 	struct vpe_q_data *q_data = &ctx->q_data[Q_DATA_SRC];
 	const struct vpe_port_data *p_data = &port_data[port];
-	struct vb2_buffer *vb = ctx->src_vbs[p_data->vb_index];
+	struct vb2_buffer *vb = &ctx->src_vbs[p_data->vb_index]->vb2_buf;
+	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(vb);
 	struct vpe_fmt *fmt = q_data->fmt;
 	const struct vpdma_data_format *vpdma_fmt;
 	int mv_buf_selector = ctx->src_mv_buf_selector;
-	int field = vb->v4l2_buf.field == V4L2_FIELD_BOTTOM;
+	int field = vbuf->field == V4L2_FIELD_BOTTOM;
 	int frame_width, frame_height;
 	dma_addr_t dma_addr;
 	u32 flags = 0;
@@ -1222,8 +1222,7 @@ static irqreturn_t vpe_irq(int irq_vpe, void *data)
 	struct vpe_dev *dev = (struct vpe_dev *)data;
 	struct vpe_ctx *ctx;
 	struct vpe_q_data *d_q_data;
-	struct vb2_buffer *s_vb, *d_vb;
-	struct v4l2_buffer *s_buf, *d_buf;
+	struct vb2_v4l2_buffer *s_vb, *d_vb;
 	unsigned long flags;
 	u32 irqst0, irqst1;
 
@@ -1286,20 +1285,18 @@ static irqreturn_t vpe_irq(int irq_vpe, void *data)
 
 	s_vb = ctx->src_vbs[0];
 	d_vb = ctx->dst_vb;
-	s_buf = &s_vb->v4l2_buf;
-	d_buf = &d_vb->v4l2_buf;
 
-	d_buf->flags = s_buf->flags;
+	d_vb->flags = s_vb->flags;
+	d_vb->vb2_buf.timestamp = s_vb->vb2_buf.timestamp;
 
-	d_buf->timestamp = s_buf->timestamp;
-	if (s_buf->flags & V4L2_BUF_FLAG_TIMECODE)
-		d_buf->timecode = s_buf->timecode;
+	if (s_vb->flags & V4L2_BUF_FLAG_TIMECODE)
+		d_vb->timecode = s_vb->timecode;
 
-	d_buf->sequence = ctx->sequence;
+	d_vb->sequence = ctx->sequence;
 
 	d_q_data = &ctx->q_data[Q_DATA_DST];
 	if (d_q_data->flags & Q_DATA_INTERLACED) {
-		d_buf->field = ctx->field;
+		d_vb->field = ctx->field;
 		if (ctx->field == V4L2_FIELD_BOTTOM) {
 			ctx->sequence++;
 			ctx->field = V4L2_FIELD_TOP;
@@ -1308,7 +1305,7 @@ static irqreturn_t vpe_irq(int irq_vpe, void *data)
 			ctx->field = V4L2_FIELD_BOTTOM;
 		}
 	} else {
-		d_buf->field = V4L2_FIELD_NONE;
+		d_vb->field = V4L2_FIELD_NONE;
 		ctx->sequence++;
 	}
 
@@ -1798,9 +1795,8 @@ static const struct v4l2_ioctl_ops vpe_ioctl_ops = {
  * Queue operations
  */
 static int vpe_queue_setup(struct vb2_queue *vq,
-			   const struct v4l2_format *fmt,
 			   unsigned int *nbuffers, unsigned int *nplanes,
-			   unsigned int sizes[], void *alloc_ctxs[])
+			   unsigned int sizes[], struct device *alloc_devs[])
 {
 	int i;
 	struct vpe_ctx *ctx = vb2_get_drv_priv(vq);
@@ -1810,10 +1806,8 @@ static int vpe_queue_setup(struct vb2_queue *vq,
 
 	*nplanes = q_data->fmt->coplanar ? 2 : 1;
 
-	for (i = 0; i < *nplanes; i++) {
+	for (i = 0; i < *nplanes; i++)
 		sizes[i] = q_data->sizeimage[i];
-		alloc_ctxs[i] = ctx->dev->alloc_ctx;
-	}
 
 	vpe_dbg(ctx->dev, "get %d buffer(s) of size %d", *nbuffers,
 		sizes[VPE_LUMA]);
@@ -1825,6 +1819,7 @@ static int vpe_queue_setup(struct vb2_queue *vq,
 
 static int vpe_buf_prepare(struct vb2_buffer *vb)
 {
+	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(vb);
 	struct vpe_ctx *ctx = vb2_get_drv_priv(vb->vb2_queue);
 	struct vpe_q_data *q_data;
 	int i, num_planes;
@@ -1836,10 +1831,10 @@ static int vpe_buf_prepare(struct vb2_buffer *vb)
 
 	if (vb->vb2_queue->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
 		if (!(q_data->flags & Q_DATA_INTERLACED)) {
-			vb->v4l2_buf.field = V4L2_FIELD_NONE;
+			vbuf->field = V4L2_FIELD_NONE;
 		} else {
-			if (vb->v4l2_buf.field != V4L2_FIELD_TOP &&
-					vb->v4l2_buf.field != V4L2_FIELD_BOTTOM)
+			if (vbuf->field != V4L2_FIELD_TOP &&
+					vbuf->field != V4L2_FIELD_BOTTOM)
 				return -EINVAL;
 		}
 	}
@@ -1862,9 +1857,10 @@ static int vpe_buf_prepare(struct vb2_buffer *vb)
 
 static void vpe_buf_queue(struct vb2_buffer *vb)
 {
+	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(vb);
 	struct vpe_ctx *ctx = vb2_get_drv_priv(vb->vb2_queue);
 
-	v4l2_m2m_buf_queue(ctx->fh.m2m_ctx, vb);
+	v4l2_m2m_buf_queue(ctx->fh.m2m_ctx, vbuf);
 }
 
 static int vpe_start_streaming(struct vb2_queue *q, unsigned int count)
@@ -1882,7 +1878,7 @@ static void vpe_stop_streaming(struct vb2_queue *q)
 	vpdma_dump_regs(ctx->dev->vpdma);
 }
 
-static struct vb2_ops vpe_qops = {
+static const struct vb2_ops vpe_qops = {
 	.queue_setup	 = vpe_queue_setup,
 	.buf_prepare	 = vpe_buf_prepare,
 	.buf_queue	 = vpe_buf_queue,
@@ -1908,6 +1904,7 @@ static int queue_init(void *priv, struct vb2_queue *src_vq,
 	src_vq->mem_ops = &vb2_dma_contig_memops;
 	src_vq->timestamp_flags = V4L2_BUF_FLAG_TIMESTAMP_COPY;
 	src_vq->lock = &dev->dev_mutex;
+	src_vq->dev = dev->v4l2_dev.dev;
 
 	ret = vb2_queue_init(src_vq);
 	if (ret)
@@ -1922,6 +1919,7 @@ static int queue_init(void *priv, struct vb2_queue *src_vq,
 	dst_vq->mem_ops = &vb2_dma_contig_memops;
 	dst_vq->timestamp_flags = V4L2_BUF_FLAG_TIMESTAMP_COPY;
 	dst_vq->lock = &dev->dev_mutex;
+	dst_vq->dev = dev->v4l2_dev.dev;
 
 	return vb2_queue_init(dst_vq);
 }
@@ -2162,7 +2160,6 @@ static void vpe_fw_cb(struct platform_device *pdev)
 		vpe_runtime_put(pdev);
 		pm_runtime_disable(&pdev->dev);
 		v4l2_m2m_release(dev->m2m_dev);
-		vb2_dma_contig_cleanup_ctx(dev->alloc_ctx);
 		v4l2_device_unregister(&dev->v4l2_dev);
 
 		return;
@@ -2214,18 +2211,11 @@ static int vpe_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, dev);
 
-	dev->alloc_ctx = vb2_dma_contig_init_ctx(&pdev->dev);
-	if (IS_ERR(dev->alloc_ctx)) {
-		vpe_err(dev, "Failed to alloc vb2 context\n");
-		ret = PTR_ERR(dev->alloc_ctx);
-		goto v4l2_dev_unreg;
-	}
-
 	dev->m2m_dev = v4l2_m2m_init(&m2m_ops);
 	if (IS_ERR(dev->m2m_dev)) {
 		vpe_err(dev, "Failed to init mem2mem device\n");
 		ret = PTR_ERR(dev->m2m_dev);
-		goto rel_ctx;
+		goto v4l2_dev_unreg;
 	}
 
 	pm_runtime_enable(&pdev->dev);
@@ -2270,8 +2260,6 @@ runtime_put:
 rel_m2m:
 	pm_runtime_disable(&pdev->dev);
 	v4l2_m2m_release(dev->m2m_dev);
-rel_ctx:
-	vb2_dma_contig_cleanup_ctx(dev->alloc_ctx);
 v4l2_dev_unreg:
 	v4l2_device_unregister(&dev->v4l2_dev);
 
@@ -2287,7 +2275,6 @@ static int vpe_remove(struct platform_device *pdev)
 	v4l2_m2m_release(dev->m2m_dev);
 	video_unregister_device(&dev->vfd);
 	v4l2_device_unregister(&dev->v4l2_dev);
-	vb2_dma_contig_cleanup_ctx(dev->alloc_ctx);
 
 	vpe_set_clock_enable(dev, 0);
 	vpe_runtime_put(pdev);

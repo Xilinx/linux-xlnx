@@ -1,4 +1,3 @@
-CC = $(CROSS_COMPILE)gcc
 CFLAGS = -Wall
 BINARIES = execveat
 DEPS = execveat.symlink execveat.denatured script subdir
@@ -18,8 +17,11 @@ execveat.denatured: execveat
 %: %.c
 	$(CC) $(CFLAGS) -o $@ $^
 
-run_tests: all
-	./execveat
+TEST_PROGS := execveat
+# Makefile is a run-time dependency, since it's accessed by the execveat test
+TEST_FILES := $(DEPS) Makefile
+
+include ../lib.mk
 
 clean:
 	rm -rf $(BINARIES) $(DEPS) subdir.moved execveat.moved xxxxx*

@@ -57,7 +57,7 @@ static ssize_t addresses_show(struct device *dev,
 		return sprintf(buf, "%pM\n", wiphy->perm_addr);
 
 	for (i = 0; i < wiphy->n_addresses; i++)
-		buf += sprintf(buf, "%pM\n", &wiphy->addresses[i].addr);
+		buf += sprintf(buf, "%pM\n", wiphy->addresses[i].addr);
 
 	return buf - start;
 }
@@ -86,16 +86,16 @@ static int wiphy_uevent(struct device *dev, struct kobj_uevent_env *env)
 	return 0;
 }
 
-#ifdef CONFIG_PM
+#ifdef CONFIG_PM_SLEEP
 static void cfg80211_leave_all(struct cfg80211_registered_device *rdev)
 {
 	struct wireless_dev *wdev;
 
-	list_for_each_entry(wdev, &rdev->wdev_list, list)
+	list_for_each_entry(wdev, &rdev->wiphy.wdev_list, list)
 		cfg80211_leave(rdev, wdev);
 }
 
-static int wiphy_suspend(struct device *dev, pm_message_t state)
+static int wiphy_suspend(struct device *dev)
 {
 	struct cfg80211_registered_device *rdev = dev_to_rdev(dev);
 	int ret = 0;
@@ -104,13 +104,16 @@ static int wiphy_suspend(struct device *dev, pm_message_t state)
 
 	rtnl_lock();
 	if (rdev->wiphy.registered) {
-		if (!rdev->wiphy.wowlan_config)
+		if (!rdev->wiphy.wowlan_config) {
 			cfg80211_leave_all(rdev);
+			cfg80211_process_rdev_events(rdev);
+		}
 		if (rdev->ops->suspend)
 			ret = rdev_suspend(rdev, rdev->wiphy.wowlan_config);
 		if (ret == 1) {
 			/* Driver refuse to configure wowlan */
 			cfg80211_leave_all(rdev);
+			cfg80211_process_rdev_events(rdev);
 			ret = rdev_suspend(rdev, NULL);
 		}
 	}
@@ -136,6 +139,11 @@ static int wiphy_resume(struct device *dev)
 
 	return ret;
 }
+
+static SIMPLE_DEV_PM_OPS(wiphy_pm_ops, wiphy_suspend, wiphy_resume);
+#define WIPHY_PM_OPS (&wiphy_pm_ops)
+#else
+#define WIPHY_PM_OPS NULL
 #endif
 
 static const void *wiphy_namespace(struct device *d)
@@ -151,10 +159,7 @@ struct class ieee80211_class = {
 	.dev_release = wiphy_dev_release,
 	.dev_groups = ieee80211_groups,
 	.dev_uevent = wiphy_uevent,
-#ifdef CONFIG_PM
-	.suspend = wiphy_suspend,
-	.resume = wiphy_resume,
-#endif
+	.pm = WIPHY_PM_OPS,
 	.ns_type = &net_ns_type_operations,
 	.namespace = wiphy_namespace,
 };

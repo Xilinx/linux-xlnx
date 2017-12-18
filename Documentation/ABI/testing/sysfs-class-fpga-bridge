@@ -1,0 +1,20 @@
+What:		/sys/class/fpga_bridge/<bridge>/name
+Date:		January 2016
+KernelVersion:	4.5
+Contact:	Alan Tull <atull@opensource.altera.com>
+Description:	Name of low level FPGA bridge driver.
+
+What:		/sys/class/fpga_bridge/<bridge>/state
+Date:		January 2016
+KernelVersion:	4.5
+Contact:	Alan Tull <atull@opensource.altera.com>
+Description:	Show bridge state as "enabled" or "disabled"
+
+What:		/sys/class/fpga_bridge/<bridge>/set
+Date:		January 2017
+KernelVersion:	4.9
+Contact:	Michal Simek <michal.simek@xilinx.com>
+Description:	Manual set bridge state (0-disable, !0 enable).
+		Enabling this option requires that the module is
+		compiled with #define DEBUG which is enabled by default
+		when CONFIG_DEBUG_KERNEL is setup.

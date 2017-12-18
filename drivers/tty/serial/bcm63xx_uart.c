@@ -474,7 +474,7 @@ static int bcm_uart_startup(struct uart_port *port)
 
 	/* register irq and enable rx interrupts */
 	ret = request_irq(port->irq, bcm_uart_interrupt, 0,
-			  bcm_uart_type(port), port);
+			  dev_name(port->dev), port);
 	if (ret)
 		return ret;
 	bcm_uart_writel(port, UART_RX_INT_MASK, UART_IR_REG);
@@ -631,7 +631,7 @@ static int bcm_uart_verify_port(struct uart_port *port,
 }
 
 /* serial core callbacks */
-static struct uart_ops bcm_uart_ops = {
+static const struct uart_ops bcm_uart_ops = {
 	.tx_empty	= bcm_uart_tx_empty,
 	.get_mctrl	= bcm_uart_get_mctrl,
 	.set_mctrl	= bcm_uart_set_mctrl,
@@ -653,7 +653,7 @@ static struct uart_ops bcm_uart_ops = {
 
 
 #ifdef CONFIG_SERIAL_BCM63XX_CONSOLE
-static inline void wait_for_xmitr(struct uart_port *port)
+static void wait_for_xmitr(struct uart_port *port)
 {
 	unsigned int tmout;
 
@@ -813,8 +813,12 @@ static int bcm_uart_probe(struct platform_device *pdev)
 	struct clk *clk;
 	int ret;
 
-	if (pdev->dev.of_node)
-		pdev->id = of_alias_get_id(pdev->dev.of_node, "uart");
+	if (pdev->dev.of_node) {
+		pdev->id = of_alias_get_id(pdev->dev.of_node, "serial");
+
+		if (pdev->id < 0)
+			pdev->id = of_alias_get_id(pdev->dev.of_node, "uart");
+	}
 
 	if (pdev->id < 0 || pdev->id >= BCM63XX_NR_UARTS)
 		return -EINVAL;
@@ -854,7 +858,7 @@ static int bcm_uart_probe(struct platform_device *pdev)
 
 	ret = uart_add_one_port(&bcm_uart_driver, port);
 	if (ret) {
-		ports[pdev->id].membase = 0;
+		ports[pdev->id].membase = NULL;
 		return ret;
 	}
 	platform_set_drvdata(pdev, port);
@@ -868,7 +872,7 @@ static int bcm_uart_remove(struct platform_device *pdev)
 	port = platform_get_drvdata(pdev);
 	uart_remove_one_port(&bcm_uart_driver, port);
 	/* mark port as free */
-	ports[pdev->id].membase = 0;
+	ports[pdev->id].membase = NULL;
 	return 0;
 }
 

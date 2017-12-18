@@ -92,7 +92,7 @@ menu "Special HID drivers"
 	depends on HID
 
 config HID_A4TECH
-	tristate "A4 tech mice" if EXPERT
+	tristate "A4 tech mice"
 	depends on HID
 	default !EXPERT
 	---help---
@@ -113,7 +113,7 @@ config HID_ACRUX_FF
 	game controllers.
 
 config HID_APPLE
-	tristate "Apple {i,Power,Mac}Books" if EXPERT
+	tristate "Apple {i,Power,Mac}Books"
 	depends on HID
 	default !EXPERT
 	---help---
@@ -134,6 +134,16 @@ config HID_APPLEIR
 
 	Say Y here if you want support for Apple infrared remote control.
 
+config HID_ASUS
+	tristate "Asus"
+	depends on I2C_HID
+	---help---
+	Support for Asus notebook built-in keyboard via i2c.
+
+	Supported devices:
+	- EeeBook X205TA
+	- VivoBook E200HA
+
 config HID_AUREAL
 	tristate "Aureal"
 	depends on HID
@@ -141,7 +151,7 @@ config HID_AUREAL
 	Support for Aureal Cy se W-01RN Remote Controller and other Aureal derived remotes.
 
 config HID_BELKIN
-	tristate "Belkin Flip KVM and Wireless keyboard" if EXPERT
+	tristate "Belkin Flip KVM and Wireless keyboard"
 	depends on HID
 	default !EXPERT
 	---help---
@@ -158,18 +168,28 @@ config HID_BETOP_FF
 	 - BETOP 2185 PC & BFM MODE
 
 config HID_CHERRY
-	tristate "Cherry Cymotion keyboard" if EXPERT
+	tristate "Cherry Cymotion keyboard"
 	depends on HID
 	default !EXPERT
 	---help---
 	Support for Cherry Cymotion keyboard.
 
 config HID_CHICONY
-	tristate "Chicony Tactical pad" if EXPERT
+	tristate "Chicony Tactical pad"
 	depends on HID
 	default !EXPERT
 	---help---
 	Support for Chicony Tactical pad.
+
+config HID_CORSAIR
+	tristate "Corsair devices"
+	depends on HID && USB && LEDS_CLASS
+	---help---
+	Support for Corsair devices that are not fully compliant with the
+	HID standard.
+
+	Supported devices:
+	- Vengeance K90
 
 config HID_PRODIKEYS
 	tristate "Prodikeys PC-MIDI Keyboard support"
@@ -186,6 +206,12 @@ config HID_PRODIKEYS
 	  multimedia keyboard, but will lack support for the musical keyboard
 	  and some additional multimedia keys.
 
+config HID_CMEDIA
+	tristate "CMedia CM6533 HID audio jack controls"
+	depends on HID
+	---help---
+	Support for CMedia CM6533 HID audio jack controls.
+
 config HID_CP2112
 	tristate "Silicon Labs CP2112 HID USB-to-SMBus Bridge support"
 	depends on USB_HID && I2C && GPIOLIB
@@ -196,7 +222,7 @@ config HID_CP2112
 	customizable USB descriptor fields are exposed as sysfs attributes.
 
 config HID_CYPRESS
-	tristate "Cypress mouse and barcode readers" if EXPERT
+	tristate "Cypress mouse and barcode readers"
 	depends on HID
 	default !EXPERT
 	---help---
@@ -245,11 +271,23 @@ config HID_ELO
 	different devices than those handled by CONFIG_TOUCHSCREEN_USB_ELO.
 
 config HID_EZKEY
-	tristate "Ezkey BTC 8193 keyboard" if EXPERT
+	tristate "Ezkey BTC 8193 keyboard"
 	depends on HID
 	default !EXPERT
 	---help---
 	Support for Ezkey BTC 8193 keyboard.
+
+config HID_GEMBIRD
+	tristate "Gembird Joypad"
+	depends on HID
+	---help---
+	Support for Gembird JPD-DualForce 2.
+
+config HID_GFRM
+	tristate "Google Fiber TV Box remote control support"
+	depends on HID
+	---help---
+	Support for Google Fiber TV Box remote controls
 
 config HID_HOLTEK
 	tristate "Holtek HID devices"
@@ -286,12 +324,6 @@ config HID_GT683R
 	Currently the following devices are know to be supported:
 	  - MSI GT683R
 
-config HID_HUION
-	tristate "Huion tablets"
-	depends on USB_HID
-	---help---
-	Support for Huion 580 tablet.
-
 config HID_KEYTOUCH
 	tristate "Keytouch HID devices"
 	depends on HID
@@ -312,9 +344,9 @@ config HID_KYE
 
 config HID_UCLOGIC
 	tristate "UC-Logic"
-	depends on HID
+	depends on USB_HID
 	---help---
-	Support for UC-Logic tablets.
+	Support for UC-Logic and Huion tablets.
 
 config HID_WALTOP
 	tristate "Waltop"
@@ -344,7 +376,7 @@ config HID_TWINHAN
 	Support for Twinhan IR remote control.
 
 config HID_KENSINGTON
-	tristate "Kensington Slimblade Trackball" if EXPERT
+	tristate "Kensington Slimblade Trackball"
 	depends on HID
 	default !EXPERT
 	---help---
@@ -355,6 +387,21 @@ config HID_LCPOWER
 	depends on HID
 	---help---
 	Support for LC-Power RC1000MCE RF remote control.
+
+config HID_LED
+	tristate "Simple RGB LED support"
+	depends on HID
+	depends on LEDS_CLASS
+	---help---
+	Support for simple RGB LED devices. Currently supported are:
+	- Riso Kagaku Webmail Notifier
+	- Dream Cheeky Webmail Notifier and Friends Alert
+	- ThingM blink(1)
+	- Delcom Visual Signal Indicator Generation 2
+	- Greynut Luxafor
+
+	To compile this driver as a module, choose M here: the
+	module will be called hid-led.
 
 config HID_LENOVO
 	tristate "Lenovo / Thinkpad devices"
@@ -372,7 +419,7 @@ config HID_LENOVO
 	- ThinkPad Compact USB Keyboard with TrackPoint (supports Fn keys)
 
 config HID_LOGITECH
-	tristate "Logitech devices" if EXPERT
+	tristate "Logitech devices"
 	depends on HID
 	default !EXPERT
 	---help---
@@ -410,8 +457,6 @@ config LOGITECH_FF
 	  - Logitech WingMan Cordless RumblePad
 	  - Logitech WingMan Cordless RumblePad 2
 	  - Logitech WingMan Force 3D
-	  - Logitech Formula Force EX
-	  - Logitech WingMan Formula Force GP
 
 	  and if you want to enable force feedback for them.
 	  Note: if you say N here, this device will still be supported, but without
@@ -441,15 +486,22 @@ config LOGIWHEELS_FF
 	select INPUT_FF_MEMLESS
 	default LOGITECH_FF
 	help
-	  Say Y here if you want to enable force feedback and range setting
+	  Say Y here if you want to enable force feedback and range setting(*)
 	  support for following Logitech wheels:
+	  - Logitech G25 (*)
+	  - Logitech G27 (*)
+	  - Logitech G29 (*)
 	  - Logitech Driving Force
-	  - Logitech Driving Force Pro
-	  - Logitech Driving Force GT
-	  - Logitech G25
-	  - Logitech G27
-	  - Logitech MOMO/MOMO 2
-	  - Logitech Formula Force EX
+	  - Logitech Driving Force Pro (*)
+	  - Logitech Driving Force GT (*)
+	  - Logitech Driving Force EX/RX
+	  - Logitech Driving Force Wireless
+	  - Logitech Speed Force Wireless
+	  - Logitech MOMO Force
+	  - Logitech MOMO Racing Force
+	  - Logitech Formula Force GP
+	  - Logitech Formula Force EX/RX
+	  - Logitech Wingman Formula Force GP
 
 config HID_MAGICMOUSE
 	tristate "Apple Magic Mouse/Trackpad multi-touch support"
@@ -461,14 +513,14 @@ config HID_MAGICMOUSE
 	Apple Wireless "Magic" Mouse and the Apple Wireless "Magic" Trackpad.
 
 config HID_MICROSOFT
-	tristate "Microsoft non-fully HID-compliant devices" if EXPERT
+	tristate "Microsoft non-fully HID-compliant devices"
 	depends on HID
 	default !EXPERT
 	---help---
 	Support for Microsoft devices that are not fully compliant with HID standard.
 
 config HID_MONTEREY
-	tristate "Monterey Genius KB29E keyboard" if EXPERT
+	tristate "Monterey Genius KB29E keyboard"
 	depends on HID
 	default !EXPERT
 	---help---
@@ -486,6 +538,7 @@ config HID_MULTITOUCH
 	  - Atmel panels
 	  - Cando dual touch panels
 	  - Chunghwa panels
+	  - CJTouch panels
 	  - CVTouch panels
 	  - Cypress TrueTouch panels
 	  - Elan Microelectronics touch panels
@@ -638,10 +691,14 @@ config HID_PICOLCD_CIR
 
 config HID_PLANTRONICS
 	tristate "Plantronics USB HID Driver"
-	default !EXPERT
 	depends on HID
 	---help---
-	Provides HID support for Plantronics telephony devices.
+	  Provides HID support for Plantronics USB audio devices.
+	  Correctly maps vendor unique volume up/down HID usages to
+	  KEY_VOLUMEUP and KEY_VOLUMEDOWN events and prevents core mapping
+	  of other vendor unique HID usages to random mouse events.
+
+	  Say M here if you may ever plug in a Plantronics USB audio device.
 
 config HID_PRIMAX
 	tristate "Primax non-fully HID-compliant devices"
@@ -667,9 +724,8 @@ config HID_SAITEK
 
 	Supported devices:
 	- PS1000 Dual Analog Pad
-	- R.A.T.9 Gaming Mouse
-	- R.A.T.7 Gaming Mouse
-	- M.M.O.7 Gaming Mouse
+	- Saitek R.A.T.7, R.A.T.9, M.M.O.7 Gaming Mice
+	- Mad Catz R.A.T.5, R.A.T.9 Gaming Mice
 
 config HID_SAMSUNG
 	tristate "Samsung InfraRed remote control or keyboards"
@@ -783,11 +839,11 @@ config HID_THINGM
 	tristate "ThingM blink(1) USB RGB LED"
 	depends on HID
 	depends on LEDS_CLASS
+	select HID_LED
 	---help---
-	Support for the ThingM blink(1) USB RGB LED. This driver registers a
-	Linux LED class instance, plus additional sysfs attributes to control
-	RGB colors, fade time and playing. The device is exposed through hidraw
-	to access other functions.
+	Support for the ThingM blink(1) USB RGB LED. This driver has been
+	merged into the generic hid led driver. Config symbol HID_THINGM
+	just selects HID_LED and will be removed soon.
 
 config HID_THRUSTMASTER
 	tristate "ThrustMaster devices support"
@@ -811,6 +867,7 @@ config HID_WACOM
 	select POWER_SUPPLY
 	select NEW_LEDS
 	select LEDS_CLASS
+	select LEDS_TRIGGERS
 	help
 	  Say Y here if you want to use the USB or BT version of the Wacom Intuos
 	  or Graphire tablet.
@@ -885,6 +942,29 @@ config HID_SENSOR_HUB
 	  for events and handle data streams. Each sensor driver can format
 	  data and present to user mode using input or IIO interface.
 
+config HID_SENSOR_CUSTOM_SENSOR
+	tristate "HID Sensors hub custom sensor support"
+	depends on HID_SENSOR_HUB
+	default n
+	---help---
+	  HID Sensor hub specification allows definition of some custom and
+	  generic sensors. Unlike other HID sensors, they can't be exported
+	  via Linux IIO because of custom fields. This is up to the manufacturer
+	  to decide how to interpret these special sensor ids and process in
+	  the user space. Currently some manufacturers are using these ids for
+	  sensor calibration and debugging other sensors. Manufacturers
+	  should't use these special custom sensor ids to export any of the
+	  standard sensors.
+	  Select this config option for custom/generic sensor support.
+
+config HID_ALPS
+	tristate "Alps HID device support"
+	depends on HID
+	---help---
+	Support for Alps I2C HID touchpads and StickPointer.
+	Say Y here if you have a Alps touchpads over i2c-hid or usbhid
+	and want support for its special functionalities.
+
 endmenu
 
 endif # HID
@@ -892,5 +972,7 @@ endif # HID
 source "drivers/hid/usbhid/Kconfig"
 
 source "drivers/hid/i2c-hid/Kconfig"
+
+source "drivers/hid/intel-ish-hid/Kconfig"
 
 endmenu

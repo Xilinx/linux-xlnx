@@ -88,9 +88,15 @@ static int command_write(struct pci_dev *dev, int offset, u16 value, void *data)
 			printk(KERN_DEBUG DRV_NAME ": %s: set bus master\n",
 			       pci_name(dev));
 		pci_set_master(dev);
+	} else if (dev->is_busmaster && !is_master_cmd(value)) {
+		if (unlikely(verbose_request))
+			printk(KERN_DEBUG DRV_NAME ": %s: clear bus master\n",
+			       pci_name(dev));
+		pci_clear_master(dev);
 	}
 
-	if (value & PCI_COMMAND_INVALIDATE) {
+	if (!(cmd->val & PCI_COMMAND_INVALIDATE) &&
+	    (value & PCI_COMMAND_INVALIDATE)) {
 		if (unlikely(verbose_request))
 			printk(KERN_DEBUG
 			       DRV_NAME ": %s: enable memory-write-invalidate\n",
@@ -101,11 +107,18 @@ static int command_write(struct pci_dev *dev, int offset, u16 value, void *data)
 				pci_name(dev), err);
 			value &= ~PCI_COMMAND_INVALIDATE;
 		}
+	} else if ((cmd->val & PCI_COMMAND_INVALIDATE) &&
+		   !(value & PCI_COMMAND_INVALIDATE)) {
+		if (unlikely(verbose_request))
+			printk(KERN_DEBUG
+			       DRV_NAME ": %s: disable memory-write-invalidate\n",
+			       pci_name(dev));
+		pci_clear_mwi(dev);
 	}
 
 	cmd->val = value;
 
-	if (!permissive && (!dev_data || !dev_data->permissive))
+	if (!xen_pcibk_permissive && (!dev_data || !dev_data->permissive))
 		return 0;
 
 	/* Only allow the guest to control certain bits. */
@@ -132,7 +145,7 @@ static int rom_write(struct pci_dev *dev, int offset, u32 value, void *data)
 	/* A write to obtain the length must happen as a 32-bit write.
 	 * This does not (yet) support writing individual bytes
 	 */
-	if (value == ~PCI_ROM_ADDRESS_ENABLE)
+	if ((value | ~PCI_ROM_ADDRESS_MASK) == ~0U)
 		bar->which = 1;
 	else {
 		u32 tmpval;
@@ -196,54 +209,35 @@ static int bar_read(struct pci_dev *dev, int offset, u32 * value, void *data)
 	return 0;
 }
 
-static inline void read_dev_bar(struct pci_dev *dev,
-				struct pci_bar_info *bar_info, int offset,
-				u32 len_mask)
+static void *bar_init(struct pci_dev *dev, int offset)
 {
-	int	pos;
-	struct resource	*res = dev->resource;
+	unsigned int pos;
+	const struct resource *res = dev->resource;
+	struct pci_bar_info *bar = kzalloc(sizeof(*bar), GFP_KERNEL);
+
+	if (!bar)
+		return ERR_PTR(-ENOMEM);
 
 	if (offset == PCI_ROM_ADDRESS || offset == PCI_ROM_ADDRESS1)
 		pos = PCI_ROM_RESOURCE;
 	else {
 		pos = (offset - PCI_BASE_ADDRESS_0) / 4;
-		if (pos && ((res[pos - 1].flags & (PCI_BASE_ADDRESS_SPACE |
-				PCI_BASE_ADDRESS_MEM_TYPE_MASK)) ==
-			   (PCI_BASE_ADDRESS_SPACE_MEMORY |
-				PCI_BASE_ADDRESS_MEM_TYPE_64))) {
-			bar_info->val = res[pos - 1].start >> 32;
-			bar_info->len_val = res[pos - 1].end >> 32;
-			return;
+		if (pos && (res[pos - 1].flags & IORESOURCE_MEM_64)) {
+			bar->val = res[pos - 1].start >> 32;
+			bar->len_val = -resource_size(&res[pos - 1]) >> 32;
+			return bar;
 		}
 	}
 
-	bar_info->val = res[pos].start |
-			(res[pos].flags & PCI_REGION_FLAG_MASK);
-	bar_info->len_val = resource_size(&res[pos]);
-}
+	if (!res[pos].flags ||
+	    (res[pos].flags & (IORESOURCE_DISABLED | IORESOURCE_UNSET |
+			       IORESOURCE_BUSY)))
+		return bar;
 
-static void *bar_init(struct pci_dev *dev, int offset)
-{
-	struct pci_bar_info *bar = kmalloc(sizeof(*bar), GFP_KERNEL);
-
-	if (!bar)
-		return ERR_PTR(-ENOMEM);
-
-	read_dev_bar(dev, bar, offset, ~0);
-	bar->which = 0;
-
-	return bar;
-}
-
-static void *rom_init(struct pci_dev *dev, int offset)
-{
-	struct pci_bar_info *bar = kmalloc(sizeof(*bar), GFP_KERNEL);
-
-	if (!bar)
-		return ERR_PTR(-ENOMEM);
-
-	read_dev_bar(dev, bar, offset, ~PCI_ROM_ADDRESS_ENABLE);
-	bar->which = 0;
+	bar->val = res[pos].start |
+		   (res[pos].flags & PCI_REGION_FLAG_MASK);
+	bar->len_val = -resource_size(&res[pos]) |
+		       (res[pos].flags & PCI_REGION_FLAG_MASK);
 
 	return bar;
 }
@@ -366,7 +360,7 @@ static const struct config_field header_common[] = {
 	{						\
 	.offset     = reg_offset,			\
 	.size       = 4,				\
-	.init       = rom_init,				\
+	.init       = bar_init,				\
 	.reset      = bar_reset,			\
 	.release    = bar_release,			\
 	.u.dw.read  = bar_read,				\

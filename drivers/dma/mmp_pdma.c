@@ -72,7 +72,6 @@
 #define DCMD_WIDTH4	(3 << 14)	/* 4 byte width (Word) */
 #define DCMD_LENGTH	0x01fff		/* length mask (max = 8K - 1) */
 
-#define PDMA_ALIGNMENT		3
 #define PDMA_MAX_DESC_BYTES	DCMD_LENGTH
 
 struct mmp_pdma_desc_hw {
@@ -365,13 +364,12 @@ mmp_pdma_alloc_descriptor(struct mmp_pdma_chan *chan)
 	struct mmp_pdma_desc_sw *desc;
 	dma_addr_t pdesc;
 
-	desc = dma_pool_alloc(chan->desc_pool, GFP_ATOMIC, &pdesc);
+	desc = dma_pool_zalloc(chan->desc_pool, GFP_ATOMIC, &pdesc);
 	if (!desc) {
 		dev_err(chan->dev, "out of memory for link descriptor\n");
 		return NULL;
 	}
 
-	memset(desc, 0, sizeof(*desc));
 	INIT_LIST_HEAD(&desc->tx_list);
 	dma_async_tx_descriptor_init(&desc->async_tx, &chan->chan);
 	/* each desc has submit */
@@ -866,19 +864,15 @@ static void dma_do_tasklet(unsigned long data)
 	struct mmp_pdma_desc_sw *desc, *_desc;
 	LIST_HEAD(chain_cleanup);
 	unsigned long flags;
+	struct dmaengine_desc_callback cb;
 
 	if (chan->cyclic_first) {
-		dma_async_tx_callback cb = NULL;
-		void *cb_data = NULL;
-
 		spin_lock_irqsave(&chan->desc_lock, flags);
 		desc = chan->cyclic_first;
-		cb = desc->async_tx.callback;
-		cb_data = desc->async_tx.callback_param;
+		dmaengine_desc_get_callback(&desc->async_tx, &cb);
 		spin_unlock_irqrestore(&chan->desc_lock, flags);
 
-		if (cb)
-			cb(cb_data);
+		dmaengine_desc_callback_invoke(&cb, NULL);
 
 		return;
 	}
@@ -923,8 +917,8 @@ static void dma_do_tasklet(unsigned long data)
 		/* Remove from the list of transactions */
 		list_del(&desc->node);
 		/* Run the link descriptor callback function */
-		if (txd->callback)
-			txd->callback(txd->callback_param);
+		dmaengine_desc_get_callback(txd, &cb);
+		dmaengine_desc_callback_invoke(&cb, NULL);
 
 		dma_pool_free(chan->desc_pool, desc, txd->phys);
 	}
@@ -933,6 +927,25 @@ static void dma_do_tasklet(unsigned long data)
 static int mmp_pdma_remove(struct platform_device *op)
 {
 	struct mmp_pdma_device *pdev = platform_get_drvdata(op);
+	struct mmp_pdma_phy *phy;
+	int i, irq = 0, irq_num = 0;
+
+
+	for (i = 0; i < pdev->dma_channels; i++) {
+		if (platform_get_irq(op, i) > 0)
+			irq_num++;
+	}
+
+	if (irq_num != pdev->dma_channels) {
+		irq = platform_get_irq(op, 0);
+		devm_free_irq(&op->dev, irq, pdev);
+	} else {
+		for (i = 0; i < pdev->dma_channels; i++) {
+			phy = &pdev->phy[i];
+			irq = platform_get_irq(op, i);
+			devm_free_irq(&op->dev, irq, phy);
+		}
+	}
 
 	dma_async_device_unregister(&pdev->device);
 	return 0;
@@ -973,7 +986,7 @@ static int mmp_pdma_chan_init(struct mmp_pdma_device *pdev, int idx, int irq)
 	return 0;
 }
 
-static struct of_device_id mmp_pdma_dt_ids[] = {
+static const struct of_device_id mmp_pdma_dt_ids[] = {
 	{ .compatible = "marvell,pdma-1.0", },
 	{}
 };
@@ -1071,7 +1084,7 @@ static int mmp_pdma_probe(struct platform_device *op)
 	pdev->device.device_issue_pending = mmp_pdma_issue_pending;
 	pdev->device.device_config = mmp_pdma_config;
 	pdev->device.device_terminate_all = mmp_pdma_terminate_all;
-	pdev->device.copy_align = PDMA_ALIGNMENT;
+	pdev->device.copy_align = DMAENGINE_ALIGN_8_BYTES;
 	pdev->device.src_addr_widths = widths;
 	pdev->device.dst_addr_widths = widths;
 	pdev->device.directions = BIT(DMA_MEM_TO_DEV) | BIT(DMA_DEV_TO_MEM);

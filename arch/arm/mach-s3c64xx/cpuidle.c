@@ -16,8 +16,9 @@
 #include <linux/export.h>
 #include <linux/time.h>
 
-#include <asm/proc-fns.h>
+#include <asm/cpuidle.h>
 
+#include <plat/cpu.h>
 #include <mach/map.h>
 
 #include "regs-sys.h"
@@ -57,6 +58,8 @@ static struct cpuidle_driver s3c64xx_cpuidle_driver = {
 
 static int __init s3c64xx_init_cpuidle(void)
 {
-	return cpuidle_register(&s3c64xx_cpuidle_driver, NULL);
+	if (soc_is_s3c64xx())
+		return cpuidle_register(&s3c64xx_cpuidle_driver, NULL);
+	return 0;
 }
 device_initcall(s3c64xx_init_cpuidle);

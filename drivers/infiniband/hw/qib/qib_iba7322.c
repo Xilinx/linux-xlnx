@@ -1308,21 +1308,6 @@ static const struct  qib_hwerror_msgs qib_7322p_error_msgs[] = {
 	SYM_LSB(IntMask, fldname##17IntMask)), \
 	.msg = #fldname "_C", .sz = sizeof(#fldname "_C") }
 
-static const struct  qib_hwerror_msgs qib_7322_intr_msgs[] = {
-	INTR_AUTO_P(SDmaInt),
-	INTR_AUTO_P(SDmaProgressInt),
-	INTR_AUTO_P(SDmaIdleInt),
-	INTR_AUTO_P(SDmaCleanupDone),
-	INTR_AUTO_C(RcvUrg),
-	INTR_AUTO_P(ErrInt),
-	INTR_AUTO(ErrInt),      /* non-port-specific errs */
-	INTR_AUTO(AssertGPIOInt),
-	INTR_AUTO_P(SendDoneInt),
-	INTR_AUTO(SendBufAvailInt),
-	INTR_AUTO_C(RcvAvail),
-	{ .mask = 0, .sz = 0 }
-};
-
 #define TXSYMPTOM_AUTO_P(fldname) \
 	{ .mask = SYM_MASK(SendHdrErrSymptom_0, fldname), \
 	.msg = #fldname, .sz = sizeof(#fldname) }
@@ -1430,7 +1415,7 @@ static void flush_fifo(struct qib_pportdata *ppd)
 	u32 *hdr;
 	u64 pbc;
 	const unsigned hdrwords = 7;
-	static struct qib_ib_header ibhdr = {
+	static struct ib_header ibhdr = {
 		.lrh[0] = cpu_to_be16(0xF000 | QIB_LRH_BTH),
 		.lrh[1] = IB_LID_PERMISSIVE,
 		.lrh[2] = cpu_to_be16(hdrwords + SIZE_OF_CRC),
@@ -2910,8 +2895,6 @@ static void qib_setup_7322_cleanup(struct qib_devdata *dd)
 			spin_unlock_irqrestore(&dd->cspec->gpio_lock, flags);
 			qib_qsfp_deinit(&dd->pport[i].cpspec->qsfp_data);
 		}
-		if (dd->pport[i].ibport_data.smi_ah)
-			ib_destroy_ah(&dd->pport[i].ibport_data.smi_ah->ibah);
 	}
 }
 
@@ -5497,12 +5480,13 @@ static void try_7322_ipg(struct qib_pportdata *ppd)
 	unsigned delay;
 	int ret;
 
-	agent = ibp->send_agent;
+	agent = ibp->rvp.send_agent;
 	if (!agent)
 		goto retry;
 
 	send_buf = ib_create_send_mad(agent, 0, 0, 0, IB_MGMT_MAD_HDR,
-				      IB_MGMT_MAD_DATA, GFP_ATOMIC);
+				      IB_MGMT_MAD_DATA, GFP_ATOMIC,
+				      IB_MGMT_BASE_VERSION);
 	if (IS_ERR(send_buf))
 		goto retry;
 
@@ -5514,7 +5498,7 @@ static void try_7322_ipg(struct qib_pportdata *ppd)
 			ret = PTR_ERR(ah);
 		else {
 			send_buf->ah = ah;
-			ibp->smi_ah = to_iah(ah);
+			ibp->smi_ah = ibah_to_rvtah(ah);
 			ret = 0;
 		}
 	} else {
@@ -6429,6 +6413,7 @@ static int qib_init_7322_variables(struct qib_devdata *dd)
 	unsigned features, pidx, sbufcnt;
 	int ret, mtu;
 	u32 sbufs, updthresh;
+	resource_size_t vl15off;
 
 	/* pport structs are contiguous, allocated after devdata */
 	ppd = (struct qib_pportdata *)(dd + 1);
@@ -6677,29 +6662,27 @@ static int qib_init_7322_variables(struct qib_devdata *dd)
 	qib_7322_config_ctxts(dd);
 	qib_set_ctxtcnt(dd);
 
-	if (qib_wc_pat) {
-		resource_size_t vl15off;
-		/*
-		 * We do not set WC on the VL15 buffers to avoid
-		 * a rare problem with unaligned writes from
-		 * interrupt-flushed store buffers, so we need
-		 * to map those separately here.  We can't solve
-		 * this for the rarely used mtrr case.
-		 */
-		ret = init_chip_wc_pat(dd, 0);
-		if (ret)
-			goto bail;
+	/*
+	 * We do not set WC on the VL15 buffers to avoid
+	 * a rare problem with unaligned writes from
+	 * interrupt-flushed store buffers, so we need
+	 * to map those separately here.  We can't solve
+	 * this for the rarely used mtrr case.
+	 */
+	ret = init_chip_wc_pat(dd, 0);
+	if (ret)
+		goto bail;
 
-		/* vl15 buffers start just after the 4k buffers */
-		vl15off = dd->physaddr + (dd->piobufbase >> 32) +
-			dd->piobcnt4k * dd->align4k;
-		dd->piovl15base	= ioremap_nocache(vl15off,
-						  NUM_VL15_BUFS * dd->align4k);
-		if (!dd->piovl15base) {
-			ret = -ENOMEM;
-			goto bail;
-		}
+	/* vl15 buffers start just after the 4k buffers */
+	vl15off = dd->physaddr + (dd->piobufbase >> 32) +
+		  dd->piobcnt4k * dd->align4k;
+	dd->piovl15base	= ioremap_nocache(vl15off,
+					  NUM_VL15_BUFS * dd->align4k);
+	if (!dd->piovl15base) {
+		ret = -ENOMEM;
+		goto bail;
 	}
+
 	qib_7322_set_baseaddrs(dd); /* set chip access pointers now */
 
 	ret = 0;

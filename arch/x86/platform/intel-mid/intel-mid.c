@@ -16,10 +16,11 @@
 #include <linux/init.h>
 #include <linux/kernel.h>
 #include <linux/interrupt.h>
+#include <linux/regulator/machine.h>
 #include <linux/scatterlist.h>
 #include <linux/sfi.h>
 #include <linux/irq.h>
-#include <linux/module.h>
+#include <linux/export.h>
 #include <linux/notifier.h>
 
 #include <asm/setup.h>
@@ -61,7 +62,7 @@
 enum intel_mid_timer_options intel_mid_timer_options;
 
 /* intel_mid_ops to store sub arch ops */
-struct intel_mid_ops *intel_mid_ops;
+static struct intel_mid_ops *intel_mid_ops;
 /* getter function for sub arch ops*/
 static void *(*get_intel_mid_ops[])(void) = INTEL_MID_OPS_INIT;
 enum intel_mid_cpu_type __intel_mid_cpu_chip;
@@ -69,6 +70,11 @@ EXPORT_SYMBOL_GPL(__intel_mid_cpu_chip);
 
 static void intel_mid_power_off(void)
 {
+	/* Shut down South Complex via PWRMU */
+	intel_mid_pwr_power_off();
+
+	/* Only for Tangier, the rest will ignore this command */
+	intel_scu_ipc_simple_command(IPCMSG_COLD_OFF, 1);
 };
 
 static void intel_mid_reboot(void)
@@ -81,26 +87,34 @@ static unsigned long __init intel_mid_calibrate_tsc(void)
 	return 0;
 }
 
+static void __init intel_mid_setup_bp_timer(void)
+{
+	apbt_time_init();
+	setup_boot_APIC_clock();
+}
+
 static void __init intel_mid_time_init(void)
 {
 	sfi_table_parse(SFI_SIG_MTMR, NULL, NULL, sfi_parse_mtmr);
+
 	switch (intel_mid_timer_options) {
 	case INTEL_MID_TIMER_APBT_ONLY:
 		break;
 	case INTEL_MID_TIMER_LAPIC_APBT:
-		x86_init.timers.setup_percpu_clockev = setup_boot_APIC_clock;
+		/* Use apbt and local apic */
+		x86_init.timers.setup_percpu_clockev = intel_mid_setup_bp_timer;
 		x86_cpuinit.setup_percpu_clockev = setup_secondary_APIC_clock;
-		break;
+		return;
 	default:
 		if (!boot_cpu_has(X86_FEATURE_ARAT))
 			break;
+		/* Lapic only, no apbt */
 		x86_init.timers.setup_percpu_clockev = setup_boot_APIC_clock;
 		x86_cpuinit.setup_percpu_clockev = setup_secondary_APIC_clock;
 		return;
 	}
-	/* we need at least one APB timer */
-	pre_init_apic_IRQ0();
-	apbt_time_init();
+
+	x86_init.timers.setup_percpu_clockev = apbt_time_init;
 }
 
 static void intel_mid_arch_setup(void)
@@ -130,12 +144,21 @@ static void intel_mid_arch_setup(void)
 		intel_mid_ops = get_intel_mid_ops[__intel_mid_cpu_chip]();
 	else {
 		intel_mid_ops = get_intel_mid_ops[INTEL_MID_CPU_CHIP_PENWELL]();
-		pr_info("ARCH: Unknown SoC, assuming PENWELL!\n");
+		pr_info("ARCH: Unknown SoC, assuming Penwell!\n");
 	}
 
 out:
 	if (intel_mid_ops->arch_setup)
 		intel_mid_ops->arch_setup();
+
+	/*
+	 * Intel MID platforms are using explicitly defined regulators.
+	 *
+	 * Let the regulator core know that we do not have any additional
+	 * regulators left. This lets it substitute unprovided regulators with
+	 * dummy ones:
+	 */
+	regulator_has_full_constraints();
 }
 
 /* MID systems don't have i8042 controller */
@@ -206,12 +229,10 @@ static inline int __init setup_x86_intel_mid_timer(char *arg)
 	else if (strcmp("lapic_and_apbt", arg) == 0)
 		intel_mid_timer_options = INTEL_MID_TIMER_LAPIC_APBT;
 	else {
-		pr_warn("X86 INTEL_MID timer option %s not recognised"
-			   " use x86_intel_mid_timer=apbt_only or lapic_and_apbt\n",
-			   arg);
+		pr_warn("X86 INTEL_MID timer option %s not recognised use x86_intel_mid_timer=apbt_only or lapic_and_apbt\n",
+			arg);
 		return -EINVAL;
 	}
 	return 0;
 }
 __setup("x86_intel_mid_timer=", setup_x86_intel_mid_timer);
-

@@ -60,7 +60,7 @@ struct lgdt3305_state {
 
 	struct dvb_frontend frontend;
 
-	fe_modulation_t current_modulation;
+	enum fe_modulation current_modulation;
 	u32 current_frequency;
 	u32 snr;
 };
@@ -812,9 +812,9 @@ fail:
 	return ret;
 }
 
-static int lgdt3305_get_frontend(struct dvb_frontend *fe)
+static int lgdt3305_get_frontend(struct dvb_frontend *fe,
+				 struct dtv_frontend_properties *p)
 {
-	struct dtv_frontend_properties *p = &fe->dtv_property_cache;
 	struct lgdt3305_state *state = fe->demodulator_priv;
 
 	lg_dbg("\n");
@@ -912,7 +912,7 @@ fail:
 	return ret;
 }
 
-static int lgdt3305_read_status(struct dvb_frontend *fe, fe_status_t *status)
+static int lgdt3305_read_status(struct dvb_frontend *fe, enum fe_status *status)
 {
 	struct lgdt3305_state *state = fe->demodulator_priv;
 	u8 val;

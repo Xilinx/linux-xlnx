@@ -78,11 +78,10 @@ struct jz4740_codec {
 	struct regmap *regmap;
 };
 
-static const unsigned int jz4740_mic_tlv[] = {
-	TLV_DB_RANGE_HEAD(2),
+static const DECLARE_TLV_DB_RANGE(jz4740_mic_tlv,
 	0, 2, TLV_DB_SCALE_ITEM(0, 600, 0),
-	3, 3, TLV_DB_SCALE_ITEM(2000, 0, 0),
-};
+	3, 3, TLV_DB_SCALE_ITEM(2000, 0, 0)
+);
 
 static const DECLARE_TLV_DB_SCALE(jz4740_out_tlv, 0, 200, 0);
 static const DECLARE_TLV_DB_SCALE(jz4740_in_tlv, -3450, 150, 0);
@@ -258,7 +257,7 @@ static int jz4740_codec_set_bias_level(struct snd_soc_codec *codec,
 		break;
 	case SND_SOC_BIAS_STANDBY:
 		/* The only way to clear the suspend flag is to reset the codec */
-		if (codec->dapm.bias_level == SND_SOC_BIAS_OFF)
+		if (snd_soc_codec_get_bias_level(codec) == SND_SOC_BIAS_OFF)
 			jz4740_codec_wakeup(regmap);
 
 		mask = JZ4740_CODEC_1_VREF_DISABLE |
@@ -281,8 +280,6 @@ static int jz4740_codec_set_bias_level(struct snd_soc_codec *codec,
 		break;
 	}
 
-	codec->dapm.bias_level = level;
-
 	return 0;
 }
 
@@ -301,12 +298,14 @@ static struct snd_soc_codec_driver soc_codec_dev_jz4740_codec = {
 	.set_bias_level = jz4740_codec_set_bias_level,
 	.suspend_bias_off = true,
 
-	.controls = jz4740_codec_controls,
-	.num_controls = ARRAY_SIZE(jz4740_codec_controls),
-	.dapm_widgets = jz4740_codec_dapm_widgets,
-	.num_dapm_widgets = ARRAY_SIZE(jz4740_codec_dapm_widgets),
-	.dapm_routes = jz4740_codec_dapm_routes,
-	.num_dapm_routes = ARRAY_SIZE(jz4740_codec_dapm_routes),
+	.component_driver = {
+		.controls		= jz4740_codec_controls,
+		.num_controls		= ARRAY_SIZE(jz4740_codec_controls),
+		.dapm_widgets		= jz4740_codec_dapm_widgets,
+		.num_dapm_widgets	= ARRAY_SIZE(jz4740_codec_dapm_widgets),
+		.dapm_routes		= jz4740_codec_dapm_routes,
+		.num_dapm_routes	= ARRAY_SIZE(jz4740_codec_dapm_routes),
+	},
 };
 
 static const struct regmap_config jz4740_codec_regmap_config = {

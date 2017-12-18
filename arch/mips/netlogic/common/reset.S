@@ -50,7 +50,6 @@
 #include <asm/netlogic/xlp-hal/sys.h>
 #include <asm/netlogic/xlp-hal/cpucontrol.h>
 
-#define CP0_EBASE	$15
 #define SYS_CPU_COHERENT_BASE	CKSEG1ADDR(XLP_DEFAULT_IO_BASE) + \
 			XLP_IO_SYS_OFFSET(0) + XLP_IO_PCI_HDRSZ + \
 			SYS_CPU_NONCOHERENT_MODE * 4
@@ -60,7 +59,7 @@
 	li	t0, LSU_DEFEATURE
 	mfcr	t1, t0
 
-	lui	t2, 0xc080	/* SUE, Enable Unaligned Access, L2HPE */
+	lui	t2, 0x4080	/* Enable Unaligned Access, L2HPE */
 	or	t1, t1, t2
 	mtcr	t1, t0
 
@@ -92,7 +91,7 @@
  * registers. On XLPII CPUs, usual cache instructions work.
  */
 .macro	xlp_flush_l1_dcache
-	mfc0	t0, CP0_EBASE, 0
+	mfc0	t0, CP0_PRID
 	andi	t0, t0, PRID_IMP_MASK
 	slt	t1, t0, 0x1200
 	beqz	t1, 15f
@@ -171,7 +170,7 @@ FEXPORT(nlm_reset_entry)
 	nop
 
 1:	/* Entry point on core wakeup */
-	mfc0	t0, CP0_EBASE, 0	/* processor ID */
+	mfc0	t0, CP0_PRID		/* processor ID */
 	andi	t0, PRID_IMP_MASK
 	li	t1, 0x1500		/* XLP 9xx */
 	beq	t0, t1, 2f		/* does not need to set coherent */
@@ -182,8 +181,8 @@ FEXPORT(nlm_reset_entry)
 	nop
 
 	/* set bit in SYS coherent register for the core */
-	mfc0	t0, CP0_EBASE, 1
-	mfc0	t1, CP0_EBASE, 1
+	mfc0	t0, CP0_EBASE
+	mfc0	t1, CP0_EBASE
 	srl	t1, 5
 	andi	t1, 0x3			/* t1 <- node */
 	li	t2, 0x40000
@@ -232,9 +231,29 @@ EXPORT(nlm_boot_siblings)
 
 	 * NOTE: All GPR contents are lost after the mtcr above!
 	 */
-	mfc0	v0, CP0_EBASE, 1
+	mfc0	v0, CP0_EBASE
 	andi	v0, 0x3ff		/* v0 <- node/core */
 
+	/*
+	 * Errata: to avoid potential live lock, setup IFU_BRUB_RESERVE
+	 * when running 4 threads per core
+	 */
+	andi	v1, v0, 0x3             /* v1 <- thread id */
+	bnez	v1, 2f
+	nop
+
+	/* thread 0 of each core. */
+	li	t0, CKSEG1ADDR(RESET_DATA_PHYS)
+	lw	t1, BOOT_THREAD_MODE(t0)        /* t1 <- thread mode */
+	subu	t1, 0x3				/* 4-thread per core mode? */
+	bnez	t1, 2f
+	nop
+
+	li	t0, IFU_BRUB_RESERVE
+	li	t1, 0x55
+	mtcr	t1, t0
+	_ehb
+2:
 	beqz	v0, 4f		/* boot cpu (cpuid == 0)? */
 	nop
 

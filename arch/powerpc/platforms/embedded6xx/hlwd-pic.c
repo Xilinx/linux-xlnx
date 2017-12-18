@@ -114,17 +114,16 @@ static unsigned int __hlwd_pic_get_irq(struct irq_domain *h)
 	irq_status = in_be32(io_base + HW_BROADWAY_ICR) &
 		     in_be32(io_base + HW_BROADWAY_IMR);
 	if (irq_status == 0)
-		return NO_IRQ;	/* no more IRQs pending */
+		return 0;	/* no more IRQs pending */
 
 	irq = __ffs(irq_status);
 	return irq_linear_revmap(h, irq);
 }
 
-static void hlwd_pic_irq_cascade(unsigned int cascade_virq,
-				      struct irq_desc *desc)
+static void hlwd_pic_irq_cascade(struct irq_desc *desc)
 {
 	struct irq_chip *chip = irq_desc_get_chip(desc);
-	struct irq_domain *irq_domain = irq_get_handler_data(cascade_virq);
+	struct irq_domain *irq_domain = irq_desc_get_handler_data(desc);
 	unsigned int virq;
 
 	raw_spin_lock(&desc->lock);
@@ -132,7 +131,7 @@ static void hlwd_pic_irq_cascade(unsigned int cascade_virq,
 	raw_spin_unlock(&desc->lock);
 
 	virq = __hlwd_pic_get_irq(irq_domain);
-	if (virq != NO_IRQ)
+	if (virq)
 		generic_handle_irq(virq);
 	else
 		pr_err("spurious interrupt!\n");

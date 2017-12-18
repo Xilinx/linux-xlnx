@@ -15,12 +15,13 @@
  * GNU General Public License for more details.
  */
 
-#include <linux/clk/shmobile.h>
+#include <linux/clk/renesas.h>
 #include <linux/clocksource.h>
 #include <linux/device.h>
 #include <linux/dma-contiguous.h>
 #include <linux/io.h>
 #include <linux/kernel.h>
+#include <linux/memblock.h>
 #include <linux/of.h>
 #include <linux/of_fdt.h>
 #include <asm/mach/arch.h>
@@ -45,20 +46,38 @@ u32 rcar_gen2_read_mode_pins(void)
 	return mode;
 }
 
+static unsigned int __init get_extal_freq(void)
+{
+	struct device_node *cpg, *extal;
+	u32 freq = 20000000;
+
+	cpg = of_find_compatible_node(NULL, NULL,
+				      "renesas,rcar-gen2-cpg-clocks");
+	if (!cpg)
+		return freq;
+
+	extal = of_parse_phandle(cpg, "clocks", 0);
+	of_node_put(cpg);
+	if (!extal)
+		return freq;
+
+	of_property_read_u32(extal, "clock-frequency", &freq);
+	of_node_put(extal);
+	return freq;
+}
+
 #define CNTCR 0
 #define CNTFID0 0x20
 
 void __init rcar_gen2_timer_init(void)
 {
-#if defined(CONFIG_ARM_ARCH_TIMER) || defined(CONFIG_COMMON_CLK)
 	u32 mode = rcar_gen2_read_mode_pins();
-#endif
 #ifdef CONFIG_ARM_ARCH_TIMER
 	void __iomem *base;
-	int extal_mhz = 0;
 	u32 freq;
 
-	if (of_machine_is_compatible("renesas,r8a7794")) {
+	if (of_machine_is_compatible("renesas,r8a7792") ||
+	    of_machine_is_compatible("renesas,r8a7794")) {
 		freq = 260000000 / 8;	/* ZS / 8 */
 		/* CNTVOFF has to be initialized either from non-secure
 		 * Hypervisor mode or secure Monitor mode with SCR.NS==1.
@@ -83,26 +102,9 @@ void __init rcar_gen2_timer_init(void)
 		 * with the counter disabled. Moreover, it may also report
 		 * a potentially incorrect fixed 13 MHz frequency. To be
 		 * correct these registers need to be updated to use the
-		 * frequency EXTAL / 2 which can be determined by the MD pins.
+		 * frequency EXTAL / 2.
 		 */
-
-		switch (mode & (MD(14) | MD(13))) {
-		case 0:
-			extal_mhz = 15;
-			break;
-		case MD(13):
-			extal_mhz = 20;
-			break;
-		case MD(14):
-			extal_mhz = 26;
-			break;
-		case MD(13) | MD(14):
-			extal_mhz = 30;
-			break;
-		}
-
-		/* The arch timer frequency equals EXTAL / 2 */
-		freq = extal_mhz * (1000000 / 2);
+		freq = get_extal_freq() / 2;
 	}
 
 	/* Remap "armgcnt address map" space */
@@ -128,12 +130,8 @@ void __init rcar_gen2_timer_init(void)
 	iounmap(base);
 #endif /* CONFIG_ARM_ARCH_TIMER */
 
-#ifdef CONFIG_COMMON_CLK
 	rcar_gen2_clocks_init(mode);
-#endif
-#ifdef CONFIG_ARCH_SHMOBILE_MULTI
-	clocksource_of_init();
-#endif
+	clocksource_probe();
 }
 
 struct memory_reserve_config {
@@ -187,8 +185,6 @@ static int __init rcar_gen2_scan_mem(unsigned long node, const char *uname,
 	return 0;
 }
 
-struct cma *rcar_gen2_dma_contiguous;
-
 void __init rcar_gen2_reserve(void)
 {
 	struct memory_reserve_config mrc;
@@ -199,8 +195,11 @@ void __init rcar_gen2_reserve(void)
 
 	of_scan_flat_dt(rcar_gen2_scan_mem, &mrc);
 #ifdef CONFIG_DMA_CMA
-	if (mrc.size)
+	if (mrc.size && memblock_is_region_memory(mrc.base, mrc.size)) {
+		static struct cma *rcar_gen2_dma_contiguous;
+
 		dma_contiguous_reserve_area(mrc.size, mrc.base, 0,
 					    &rcar_gen2_dma_contiguous, true);
+	}
 #endif
 }

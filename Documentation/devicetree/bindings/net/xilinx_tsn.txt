@@ -1,0 +1,41 @@
+Xilinx TSN (time sensitive networking) controller Device Tree Bindings
+-----------------------------------------------------------------------
+
+Required properties:
+- compatible		: Should be "xlnx,tsn-ethernet-1.00.a"
+- reg			: Physical base address and size of the TSN registers map.
+- interrupts		: Property with a value describing the interrupt
+			  number.
+- interrupt-parent	: Must be core interrupt controller.
+- phy-handle		: See ethernet.txt file in the same directory.
+- local-mac-address	: See ethernet.txt file in the same directory.
+- phy-mode		: see ethernet.txt file in the same directory.
+
+Optional properties:
+- xlnx,tsn		: Denotes a ethernet with TSN capabilities
+- xlnx,tsn-slave	: Denotes a TSN slave port
+- xlnx,txcsum		: Checks for tx checksum.
+- xlnx,rxcsum		: Check for rx checksum.
+- xlnx,phy-type		: Phy device type.
+- xlnx,eth-hasnobuf	: Used when 1G MAC is configured in non processor mode.
+- xlnx,num-queue	: Number of queue supported in current design
+
+Example:
+
+	tsn_emac_1: tsn_mac@80060000 {
+		compatible = "xlnx,tsn-ethernet-1.00.a";
+		interrupt-parent = <&gic>;
+		interrupts = < 0 105 1>, <0 107 1>, <0 109 1>, <0 111 1 >;
+		interrupt-names = "ptp_rx", "ptp_tx", "qbv_irq", "rtc_irq";
+		clock-frequency = <100000000>;
+		clocks = <&misc_clk_0>;
+		axistream-connected = <&axi_dma_0>, <&axi_dma_1>, <&axi_dma_2>;
+		axistream-control-connected = <&axi_dma_2>;
+		local-mac-address = [ 00 0A 35 00 01 0f ];
+		phy-mode = "gmii";
+		xlnx,tsn;
+		xlnx,tsn-slave;
+		xlnx,eth-hasnobuf;
+		xlnx,bus2core-clk-ratio = <0x1>;
+		xlnx,num-queue = <0x2>;
+	};

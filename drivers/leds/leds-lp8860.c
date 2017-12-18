@@ -91,26 +91,22 @@
 /**
  * struct lp8860_led -
  * @lock - Lock for reading/writing the device
- * @work - Work item used to off load the brightness register writes
  * @client - Pointer to the I2C client
  * @led_dev - led class device pointer
  * @regmap - Devices register map
  * @eeprom_regmap - EEPROM register map
  * @enable_gpio - VDDIO/EN gpio to enable communication interface
  * @regulator - LED supply regulator pointer
- * @brightness - Current brightness value requested
  * @label - LED label
 **/
 struct lp8860_led {
 	struct mutex lock;
-	struct work_struct work;
 	struct i2c_client *client;
 	struct led_classdev led_dev;
 	struct regmap *regmap;
 	struct regmap *eeprom_regmap;
 	struct gpio_desc *enable_gpio;
 	struct regulator *regulator;
-	enum led_brightness brightness;
 	const char *label;
 };
 
@@ -212,11 +208,13 @@ out:
 	return ret;
 }
 
-static void lp8860_led_brightness_work(struct work_struct *work)
+static int lp8860_brightness_set(struct led_classdev *led_cdev,
+				enum led_brightness brt_val)
 {
-	struct lp8860_led *led = container_of(work, struct lp8860_led, work);
+	struct lp8860_led *led =
+			container_of(led_cdev, struct lp8860_led, led_dev);
+	int disp_brightness = brt_val * 255;
 	int ret;
-	int disp_brightness = led->brightness * 255;
 
 	mutex_lock(&led->lock);
 
@@ -241,16 +239,7 @@ static void lp8860_led_brightness_work(struct work_struct *work)
 	}
 out:
 	mutex_unlock(&led->lock);
-}
-
-static void lp8860_brightness_set(struct led_classdev *led_cdev,
-				enum led_brightness brt_val)
-{
-	struct lp8860_led *led =
-			container_of(led_cdev, struct lp8860_led, led_dev);
-
-	led->brightness = brt_val;
-	schedule_work(&led->work);
+	return ret;
 }
 
 static int lp8860_init(struct lp8860_led *led)
@@ -302,7 +291,7 @@ out:
 	return ret;
 }
 
-static struct reg_default lp8860_reg_defs[] = {
+static const struct reg_default lp8860_reg_defs[] = {
 	{ LP8860_DISP_CL1_BRT_MSB, 0x00},
 	{ LP8860_DISP_CL1_BRT_LSB, 0x00},
 	{ LP8860_DISP_CL1_CURR_MSB, 0x00},
@@ -332,7 +321,7 @@ static const struct regmap_config lp8860_regmap_config = {
 	.cache_type = REGCACHE_NONE,
 };
 
-static struct reg_default lp8860_eeprom_defs[] = {
+static const struct reg_default lp8860_eeprom_defs[] = {
 	{ LP8860_EEPROM_REG_0, 0x00 },
 	{ LP8860_EEPROM_REG_1, 0x00 },
 	{ LP8860_EEPROM_REG_2, 0x00 },
@@ -391,11 +380,13 @@ static int lp8860_probe(struct i2c_client *client,
 		}
 	}
 
-	led->enable_gpio = devm_gpiod_get(&client->dev, "enable");
-	if (IS_ERR(led->enable_gpio))
-		led->enable_gpio = NULL;
-	else
-		gpiod_direction_output(led->enable_gpio, 0);
+	led->enable_gpio = devm_gpiod_get_optional(&client->dev,
+						   "enable", GPIOD_OUT_LOW);
+	if (IS_ERR(led->enable_gpio)) {
+		ret = PTR_ERR(led->enable_gpio);
+		dev_err(&client->dev, "Failed to get enable gpio: %d\n", ret);
+		return ret;
+	}
 
 	led->regulator = devm_regulator_get(&client->dev, "vled");
 	if (IS_ERR(led->regulator))
@@ -404,10 +395,9 @@ static int lp8860_probe(struct i2c_client *client,
 	led->client = client;
 	led->led_dev.name = led->label;
 	led->led_dev.max_brightness = LED_FULL;
-	led->led_dev.brightness_set = lp8860_brightness_set;
+	led->led_dev.brightness_set_blocking = lp8860_brightness_set;
 
 	mutex_init(&led->lock);
-	INIT_WORK(&led->work, lp8860_led_brightness_work);
 
 	i2c_set_clientdata(client, led);
 
@@ -446,7 +436,6 @@ static int lp8860_remove(struct i2c_client *client)
 	int ret;
 
 	led_classdev_unregister(&led->led_dev);
-	cancel_work_sync(&led->work);
 
 	if (led->enable_gpio)
 		gpiod_direction_output(led->enable_gpio, 0);
@@ -486,6 +475,6 @@ static struct i2c_driver lp8860_driver = {
 };
 module_i2c_driver(lp8860_driver);
 
-MODULE_DESCRIPTION("Texas Instruments LP8860 LED drvier");
+MODULE_DESCRIPTION("Texas Instruments LP8860 LED driver");
 MODULE_AUTHOR("Dan Murphy <dmurphy@ti.com>");
 MODULE_LICENSE("GPL");

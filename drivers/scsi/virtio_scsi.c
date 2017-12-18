@@ -107,8 +107,8 @@ struct virtio_scsi {
 	/* If the affinity hint is set for virtqueues */
 	bool affinity_hint_set;
 
-	/* CPU hotplug notifier */
-	struct notifier_block nb;
+	struct hlist_node node;
+	struct hlist_node node_dead;
 
 	/* Protected by event_vq lock */
 	bool stop_events;
@@ -118,6 +118,7 @@ struct virtio_scsi {
 	struct virtio_scsi_vq req_vqs[];
 };
 
+static enum cpuhp_state virtioscsi_online;
 static struct kmem_cache *virtscsi_cmd_cache;
 static mempool_t *virtscsi_cmd_pool;
 
@@ -258,7 +259,7 @@ static void virtscsi_complete_free(struct virtio_scsi *vscsi, void *buf)
 	struct virtio_scsi_cmd *cmd = buf;
 
 	if (cmd->comp)
-		complete_all(cmd->comp);
+		complete(cmd->comp);
 }
 
 static void virtscsi_ctrl_done(struct virtqueue *vq)
@@ -501,6 +502,7 @@ static void virtio_scsi_init_hdr(struct virtio_device *vdev,
 	cmd->crn = 0;
 }
 
+#ifdef CONFIG_BLK_DEV_INTEGRITY
 static void virtio_scsi_init_hdr_pi(struct virtio_device *vdev,
 				    struct virtio_scsi_cmd_req_pi *cmd_pi,
 				    struct scsi_cmnd *sc)
@@ -524,6 +526,7 @@ static void virtio_scsi_init_hdr_pi(struct virtio_device *vdev,
 						       blk_rq_sectors(rq) *
 						       bi->tuple_size);
 }
+#endif
 
 static int virtscsi_queuecommand(struct virtio_scsi *vscsi,
 				 struct virtio_scsi_vq *req_vq,
@@ -546,11 +549,14 @@ static int virtscsi_queuecommand(struct virtio_scsi *vscsi,
 
 	BUG_ON(sc->cmd_len > VIRTIO_SCSI_CDB_SIZE);
 
+#ifdef CONFIG_BLK_DEV_INTEGRITY
 	if (virtio_has_feature(vscsi->vdev, VIRTIO_SCSI_F_T10_PI)) {
 		virtio_scsi_init_hdr_pi(vscsi->vdev, &cmd->req.cmd_pi, sc);
 		memcpy(cmd->req.cmd_pi.cdb, sc->cmnd, sc->cmd_len);
 		req_size = sizeof(cmd->req.cmd_pi);
-	} else {
+	} else
+#endif
+	{
 		virtio_scsi_init_hdr(vscsi->vdev, &cmd->req.cmd, sc);
 		memcpy(cmd->req.cmd.cdb, sc->cmnd, sc->cmd_len);
 		req_size = sizeof(cmd->req.cmd);
@@ -847,21 +853,33 @@ static void virtscsi_set_affinity(struct virtio_scsi *vscsi, bool affinity)
 	put_online_cpus();
 }
 
-static int virtscsi_cpu_callback(struct notifier_block *nfb,
-				 unsigned long action, void *hcpu)
+static int virtscsi_cpu_online(unsigned int cpu, struct hlist_node *node)
 {
-	struct virtio_scsi *vscsi = container_of(nfb, struct virtio_scsi, nb);
-	switch(action) {
-	case CPU_ONLINE:
-	case CPU_ONLINE_FROZEN:
-	case CPU_DEAD:
-	case CPU_DEAD_FROZEN:
-		__virtscsi_set_affinity(vscsi, true);
-		break;
-	default:
-		break;
-	}
-	return NOTIFY_OK;
+	struct virtio_scsi *vscsi = hlist_entry_safe(node, struct virtio_scsi,
+						     node);
+	__virtscsi_set_affinity(vscsi, true);
+	return 0;
+}
+
+static int virtscsi_cpu_notif_add(struct virtio_scsi *vi)
+{
+	int ret;
+
+	ret = cpuhp_state_add_instance(virtioscsi_online, &vi->node);
+	if (ret)
+		return ret;
+
+	ret = cpuhp_state_add_instance(CPUHP_VIRT_SCSI_DEAD, &vi->node_dead);
+	if (ret)
+		cpuhp_state_remove_instance(virtioscsi_online, &vi->node);
+	return ret;
+}
+
+static void virtscsi_cpu_notif_remove(struct virtio_scsi *vi)
+{
+	cpuhp_state_remove_instance_nocalls(virtioscsi_online, &vi->node);
+	cpuhp_state_remove_instance_nocalls(CPUHP_VIRT_SCSI_DEAD,
+					    &vi->node_dead);
 }
 
 static void virtscsi_init_vq(struct virtio_scsi_vq *virtscsi_vq,
@@ -924,8 +942,6 @@ static int virtscsi_init(struct virtio_device *vdev,
 		virtscsi_init_vq(&vscsi->req_vqs[i - VIRTIO_SCSI_VQ_BASE],
 				 vqs[i]);
 
-	virtscsi_set_affinity(vscsi, true);
-
 	virtscsi_config_set(vdev, cdb_size, VIRTIO_SCSI_CDB_SIZE);
 	virtscsi_config_set(vdev, sense_size, VIRTIO_SCSI_SENSE_SIZE);
 
@@ -944,7 +960,7 @@ static int virtscsi_probe(struct virtio_device *vdev)
 {
 	struct Scsi_Host *shost;
 	struct virtio_scsi *vscsi;
-	int err, host_prot;
+	int err;
 	u32 sg_elems, num_targets;
 	u32 cmd_per_lun;
 	u32 num_queues;
@@ -982,12 +998,9 @@ static int virtscsi_probe(struct virtio_device *vdev)
 	if (err)
 		goto virtscsi_init_failed;
 
-	vscsi->nb.notifier_call = &virtscsi_cpu_callback;
-	err = register_hotcpu_notifier(&vscsi->nb);
-	if (err) {
-		pr_err("registering cpu notifier failed\n");
+	err = virtscsi_cpu_notif_add(vscsi);
+	if (err)
 		goto scsi_add_host_failed;
-	}
 
 	cmd_per_lun = virtscsi_config_get(vdev, cmd_per_lun) ?: 1;
 	shost->cmd_per_lun = min_t(u32, cmd_per_lun, shost->can_queue);
@@ -1002,7 +1015,10 @@ static int virtscsi_probe(struct virtio_device *vdev)
 	shost->max_cmd_len = VIRTIO_SCSI_CDB_SIZE;
 	shost->nr_hw_queues = num_queues;
 
+#ifdef CONFIG_BLK_DEV_INTEGRITY
 	if (virtio_has_feature(vdev, VIRTIO_SCSI_F_T10_PI)) {
+		int host_prot;
+
 		host_prot = SHOST_DIF_TYPE1_PROTECTION | SHOST_DIF_TYPE2_PROTECTION |
 			    SHOST_DIF_TYPE3_PROTECTION | SHOST_DIX_TYPE1_PROTECTION |
 			    SHOST_DIX_TYPE2_PROTECTION | SHOST_DIX_TYPE3_PROTECTION;
@@ -1010,6 +1026,7 @@ static int virtscsi_probe(struct virtio_device *vdev)
 		scsi_host_set_prot(shost, host_prot);
 		scsi_host_set_guard(shost, SHOST_DIX_GUARD_CRC);
 	}
+#endif
 
 	err = scsi_add_host(shost, &vdev->dev);
 	if (err)
@@ -1040,7 +1057,7 @@ static void virtscsi_remove(struct virtio_device *vdev)
 
 	scsi_remove_host(shost);
 
-	unregister_hotcpu_notifier(&vscsi->nb);
+	virtscsi_cpu_notif_remove(vscsi);
 
 	virtscsi_remove_vqs(vdev);
 	scsi_host_put(shost);
@@ -1052,7 +1069,7 @@ static int virtscsi_freeze(struct virtio_device *vdev)
 	struct Scsi_Host *sh = virtio_scsi_host(vdev);
 	struct virtio_scsi *vscsi = shost_priv(sh);
 
-	unregister_hotcpu_notifier(&vscsi->nb);
+	virtscsi_cpu_notif_remove(vscsi);
 	virtscsi_remove_vqs(vdev);
 	return 0;
 }
@@ -1067,12 +1084,11 @@ static int virtscsi_restore(struct virtio_device *vdev)
 	if (err)
 		return err;
 
-	err = register_hotcpu_notifier(&vscsi->nb);
+	err = virtscsi_cpu_notif_add(vscsi);
 	if (err) {
 		vdev->config->del_vqs(vdev);
 		return err;
 	}
-
 	virtio_device_ready(vdev);
 
 	if (virtio_has_feature(vdev, VIRTIO_SCSI_F_HOTPLUG))
@@ -1090,7 +1106,9 @@ static struct virtio_device_id id_table[] = {
 static unsigned int features[] = {
 	VIRTIO_SCSI_F_HOTPLUG,
 	VIRTIO_SCSI_F_CHANGE,
+#ifdef CONFIG_BLK_DEV_INTEGRITY
 	VIRTIO_SCSI_F_T10_PI,
+#endif
 };
 
 static struct virtio_driver virtio_scsi_driver = {
@@ -1125,6 +1143,16 @@ static int __init init(void)
 		pr_err("mempool_create() for virtscsi_cmd_pool failed\n");
 		goto error;
 	}
+	ret = cpuhp_setup_state_multi(CPUHP_AP_ONLINE_DYN,
+				      "scsi/virtio:online",
+				      virtscsi_cpu_online, NULL);
+	if (ret < 0)
+		goto error;
+	virtioscsi_online = ret;
+	ret = cpuhp_setup_state_multi(CPUHP_VIRT_SCSI_DEAD, "scsi/virtio:dead",
+				      NULL, virtscsi_cpu_online);
+	if (ret)
+		goto error;
 	ret = register_virtio_driver(&virtio_scsi_driver);
 	if (ret < 0)
 		goto error;
@@ -1140,12 +1168,17 @@ error:
 		kmem_cache_destroy(virtscsi_cmd_cache);
 		virtscsi_cmd_cache = NULL;
 	}
+	if (virtioscsi_online)
+		cpuhp_remove_multi_state(virtioscsi_online);
+	cpuhp_remove_multi_state(CPUHP_VIRT_SCSI_DEAD);
 	return ret;
 }
 
 static void __exit fini(void)
 {
 	unregister_virtio_driver(&virtio_scsi_driver);
+	cpuhp_remove_multi_state(virtioscsi_online);
+	cpuhp_remove_multi_state(CPUHP_VIRT_SCSI_DEAD);
 	mempool_destroy(virtscsi_cmd_pool);
 	kmem_cache_destroy(virtscsi_cmd_cache);
 }

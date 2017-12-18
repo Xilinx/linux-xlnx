@@ -6,7 +6,7 @@
  *
  * License Terms: GNU General Public License, version 2
  * Author: Rabin Vincent <rabin.vincent@stericsson.com> for ST-Ericsson
- * Author: Viresh Kumar <viresh.linux@gmail.com> for ST Microelectronics
+ * Author: Viresh Kumar <vireshk@kernel.org> for ST Microelectronics
  */
 
 #include <linux/i2c.h>
@@ -57,6 +57,7 @@ static const struct of_device_id stmpe_of_match[] = {
 	{ .compatible = "st,stmpe610", .data = (void *)STMPE610, },
 	{ .compatible = "st,stmpe801", .data = (void *)STMPE801, },
 	{ .compatible = "st,stmpe811", .data = (void *)STMPE811, },
+	{ .compatible = "st,stmpe1600", .data = (void *)STMPE1600, },
 	{ .compatible = "st,stmpe1601", .data = (void *)STMPE1601, },
 	{ .compatible = "st,stmpe1801", .data = (void *)STMPE1801, },
 	{ .compatible = "st,stmpe2401", .data = (void *)STMPE2401, },
@@ -101,6 +102,7 @@ static const struct i2c_device_id stmpe_i2c_id[] = {
 	{ "stmpe610", STMPE610 },
 	{ "stmpe801", STMPE801 },
 	{ "stmpe811", STMPE811 },
+	{ "stmpe1600", STMPE1600 },
 	{ "stmpe1601", STMPE1601 },
 	{ "stmpe1801", STMPE1801 },
 	{ "stmpe2401", STMPE2401 },
@@ -112,7 +114,6 @@ MODULE_DEVICE_TABLE(i2c, stmpe_id);
 static struct i2c_driver stmpe_i2c_driver = {
 	.driver = {
 		.name = "stmpe-i2c",
-		.owner = THIS_MODULE,
 #ifdef CONFIG_PM
 		.pm = &stmpe_dev_pm_ops,
 #endif

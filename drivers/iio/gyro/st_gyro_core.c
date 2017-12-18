@@ -87,6 +87,31 @@
 #define ST_GYRO_2_DRDY_IRQ_INT2_MASK		0x08
 #define ST_GYRO_2_MULTIREAD_BIT			true
 
+/* CUSTOM VALUES FOR SENSOR 3 */
+#define ST_GYRO_3_WAI_EXP			0xd7
+#define ST_GYRO_3_ODR_ADDR			0x20
+#define ST_GYRO_3_ODR_MASK			0xc0
+#define ST_GYRO_3_ODR_AVL_95HZ_VAL		0x00
+#define ST_GYRO_3_ODR_AVL_190HZ_VAL		0x01
+#define ST_GYRO_3_ODR_AVL_380HZ_VAL		0x02
+#define ST_GYRO_3_ODR_AVL_760HZ_VAL		0x03
+#define ST_GYRO_3_PW_ADDR			0x20
+#define ST_GYRO_3_PW_MASK			0x08
+#define ST_GYRO_3_FS_ADDR			0x23
+#define ST_GYRO_3_FS_MASK			0x30
+#define ST_GYRO_3_FS_AVL_250_VAL		0x00
+#define ST_GYRO_3_FS_AVL_500_VAL		0x01
+#define ST_GYRO_3_FS_AVL_2000_VAL		0x02
+#define ST_GYRO_3_FS_AVL_250_GAIN		IIO_DEGREE_TO_RAD(8750)
+#define ST_GYRO_3_FS_AVL_500_GAIN		IIO_DEGREE_TO_RAD(17500)
+#define ST_GYRO_3_FS_AVL_2000_GAIN		IIO_DEGREE_TO_RAD(70000)
+#define ST_GYRO_3_BDU_ADDR			0x23
+#define ST_GYRO_3_BDU_MASK			0x80
+#define ST_GYRO_3_DRDY_IRQ_ADDR			0x22
+#define ST_GYRO_3_DRDY_IRQ_INT2_MASK		0x08
+#define ST_GYRO_3_MULTIREAD_BIT			true
+
+
 static const struct iio_chan_spec st_gyro_16bit_channels[] = {
 	ST_SENSORS_LSM_CHANNELS(IIO_ANGL_VEL,
 			BIT(IIO_CHAN_INFO_RAW) | BIT(IIO_CHAN_INFO_SCALE),
@@ -106,6 +131,7 @@ static const struct iio_chan_spec st_gyro_16bit_channels[] = {
 static const struct st_sensor_settings st_gyro_sensors_settings[] = {
 	{
 		.wai = ST_GYRO_1_WAI_EXP,
+		.wai_addr = ST_SENSORS_DEFAULT_WAI_ADDRESS,
 		.sensors_supported = {
 			[0] = L3G4200D_GYRO_DEV_NAME,
 			[1] = LSM330DL_GYRO_DEV_NAME,
@@ -159,18 +185,26 @@ static const struct st_sensor_settings st_gyro_sensors_settings[] = {
 		.drdy_irq = {
 			.addr = ST_GYRO_1_DRDY_IRQ_ADDR,
 			.mask_int2 = ST_GYRO_1_DRDY_IRQ_INT2_MASK,
+			/*
+			 * The sensor has IHL (active low) and open
+			 * drain settings, but only for INT1 and not
+			 * for the DRDY line on INT2.
+			 */
+			.addr_stat_drdy = ST_SENSORS_DEFAULT_STAT_ADDR,
 		},
 		.multi_read_bit = ST_GYRO_1_MULTIREAD_BIT,
 		.bootime = 2,
 	},
 	{
 		.wai = ST_GYRO_2_WAI_EXP,
+		.wai_addr = ST_SENSORS_DEFAULT_WAI_ADDRESS,
 		.sensors_supported = {
 			[0] = L3GD20_GYRO_DEV_NAME,
 			[1] = LSM330D_GYRO_DEV_NAME,
 			[2] = LSM330DLC_GYRO_DEV_NAME,
 			[3] = L3G4IS_GYRO_DEV_NAME,
 			[4] = LSM330_GYRO_DEV_NAME,
+			[5] = LSM9DS0_GYRO_DEV_NAME,
 		},
 		.ch = (struct iio_chan_spec *)st_gyro_16bit_channels,
 		.odr = {
@@ -221,8 +255,79 @@ static const struct st_sensor_settings st_gyro_sensors_settings[] = {
 		.drdy_irq = {
 			.addr = ST_GYRO_2_DRDY_IRQ_ADDR,
 			.mask_int2 = ST_GYRO_2_DRDY_IRQ_INT2_MASK,
+			/*
+			 * The sensor has IHL (active low) and open
+			 * drain settings, but only for INT1 and not
+			 * for the DRDY line on INT2.
+			 */
+			.addr_stat_drdy = ST_SENSORS_DEFAULT_STAT_ADDR,
 		},
 		.multi_read_bit = ST_GYRO_2_MULTIREAD_BIT,
+		.bootime = 2,
+	},
+	{
+		.wai = ST_GYRO_3_WAI_EXP,
+		.wai_addr = ST_SENSORS_DEFAULT_WAI_ADDRESS,
+		.sensors_supported = {
+			[0] = L3GD20_GYRO_DEV_NAME,
+		},
+		.ch = (struct iio_chan_spec *)st_gyro_16bit_channels,
+		.odr = {
+			.addr = ST_GYRO_3_ODR_ADDR,
+			.mask = ST_GYRO_3_ODR_MASK,
+			.odr_avl = {
+				{ 95, ST_GYRO_3_ODR_AVL_95HZ_VAL, },
+				{ 190, ST_GYRO_3_ODR_AVL_190HZ_VAL, },
+				{ 380, ST_GYRO_3_ODR_AVL_380HZ_VAL, },
+				{ 760, ST_GYRO_3_ODR_AVL_760HZ_VAL, },
+			},
+		},
+		.pw = {
+			.addr = ST_GYRO_3_PW_ADDR,
+			.mask = ST_GYRO_3_PW_MASK,
+			.value_on = ST_SENSORS_DEFAULT_POWER_ON_VALUE,
+			.value_off = ST_SENSORS_DEFAULT_POWER_OFF_VALUE,
+		},
+		.enable_axis = {
+			.addr = ST_SENSORS_DEFAULT_AXIS_ADDR,
+			.mask = ST_SENSORS_DEFAULT_AXIS_MASK,
+		},
+		.fs = {
+			.addr = ST_GYRO_3_FS_ADDR,
+			.mask = ST_GYRO_3_FS_MASK,
+			.fs_avl = {
+				[0] = {
+					.num = ST_GYRO_FS_AVL_250DPS,
+					.value = ST_GYRO_3_FS_AVL_250_VAL,
+					.gain = ST_GYRO_3_FS_AVL_250_GAIN,
+				},
+				[1] = {
+					.num = ST_GYRO_FS_AVL_500DPS,
+					.value = ST_GYRO_3_FS_AVL_500_VAL,
+					.gain = ST_GYRO_3_FS_AVL_500_GAIN,
+				},
+				[2] = {
+					.num = ST_GYRO_FS_AVL_2000DPS,
+					.value = ST_GYRO_3_FS_AVL_2000_VAL,
+					.gain = ST_GYRO_3_FS_AVL_2000_GAIN,
+				},
+			},
+		},
+		.bdu = {
+			.addr = ST_GYRO_3_BDU_ADDR,
+			.mask = ST_GYRO_3_BDU_MASK,
+		},
+		.drdy_irq = {
+			.addr = ST_GYRO_3_DRDY_IRQ_ADDR,
+			.mask_int2 = ST_GYRO_3_DRDY_IRQ_INT2_MASK,
+			/*
+			 * The sensor has IHL (active low) and open
+			 * drain settings, but only for INT1 and not
+			 * for the DRDY line on INT2.
+			 */
+			.addr_stat_drdy = ST_SENSORS_DEFAULT_STAT_ADDR,
+		},
+		.multi_read_bit = ST_GYRO_3_MULTIREAD_BIT,
 		.bootime = 2,
 	},
 };
@@ -297,12 +402,14 @@ static const struct iio_info gyro_info = {
 	.attrs = &st_gyro_attribute_group,
 	.read_raw = &st_gyro_read_raw,
 	.write_raw = &st_gyro_write_raw,
+	.debugfs_reg_access = &st_sensors_debugfs_reg_access,
 };
 
 #ifdef CONFIG_IIO_TRIGGER
 static const struct iio_trigger_ops st_gyro_trigger_ops = {
 	.owner = THIS_MODULE,
 	.set_trigger_state = ST_GYRO_TRIGGER_SET_STATE,
+	.validate_device = st_sensors_validate_device,
 };
 #define ST_GYRO_TRIGGER_OPS (&st_gyro_trigger_ops)
 #else
@@ -317,14 +424,17 @@ int st_gyro_common_probe(struct iio_dev *indio_dev)
 
 	indio_dev->modes = INDIO_DIRECT_MODE;
 	indio_dev->info = &gyro_info;
+	mutex_init(&gdata->tb.buf_lock);
 
-	st_sensors_power_enable(indio_dev);
+	err = st_sensors_power_enable(indio_dev);
+	if (err)
+		return err;
 
 	err = st_sensors_check_device_support(indio_dev,
 					ARRAY_SIZE(st_gyro_sensors_settings),
 					st_gyro_sensors_settings);
 	if (err < 0)
-		return err;
+		goto st_gyro_power_off;
 
 	gdata->num_data_channels = ST_GYRO_NUMBER_DATA_CHANNELS;
 	gdata->multiread_bit = gdata->sensor_settings->multi_read_bit;
@@ -338,11 +448,11 @@ int st_gyro_common_probe(struct iio_dev *indio_dev)
 	err = st_sensors_init_sensor(indio_dev,
 				(struct st_sensors_platform_data *)&gyro_pdata);
 	if (err < 0)
-		return err;
+		goto st_gyro_power_off;
 
 	err = st_gyro_allocate_ring(indio_dev);
 	if (err < 0)
-		return err;
+		goto st_gyro_power_off;
 
 	if (irq > 0) {
 		err = st_sensors_allocate_trigger(indio_dev,
@@ -365,6 +475,8 @@ st_gyro_device_register_error:
 		st_sensors_deallocate_trigger(indio_dev);
 st_gyro_probe_trigger_error:
 	st_gyro_deallocate_ring(indio_dev);
+st_gyro_power_off:
+	st_sensors_power_disable(indio_dev);
 
 	return err;
 }

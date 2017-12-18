@@ -8,8 +8,6 @@
  * Common Clock Framework support for S3C2410 and following SoCs.
  */
 
-#include <linux/clk.h>
-#include <linux/clkdev.h>
 #include <linux/clk-provider.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
@@ -346,7 +344,7 @@ struct samsung_mux_clock s3c2442_muxes[] __initdata = {
  */
 #define XTI	1
 struct samsung_fixed_rate_clock s3c2410_common_frate_clks[] __initdata = {
-	FRATE(XTI, "xti", NULL, CLK_IS_ROOT, 0),
+	FRATE(XTI, "xti", NULL, 0, 0),
 };
 
 static void __init s3c2410_common_clk_register_fixed_ext(
@@ -376,8 +374,6 @@ void __init s3c2410_common_clk_init(struct device_node *np, unsigned long xti_f,
 	}
 
 	ctx = samsung_clk_init(np, reg_base, NR_CLKS);
-	if (!ctx)
-		panic("%s: unable to allocate context.\n", __func__);
 
 	/* Register external clocks only in non-dt cases */
 	if (!np)

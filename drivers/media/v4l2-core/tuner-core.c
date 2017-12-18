@@ -134,6 +134,10 @@ struct tuner {
 	unsigned int        type; /* chip type id */
 	void                *config;
 	const char          *name;
+
+#if defined(CONFIG_MEDIA_CONTROLLER)
+	struct media_pad	pad[TUNER_NUM_PADS];
+#endif
 };
 
 /*
@@ -434,6 +438,10 @@ static void set_type(struct i2c_client *c, unsigned int type,
 		t->name = analog_ops->info.name;
 	}
 
+#ifdef CONFIG_MEDIA_CONTROLLER
+	t->sd.entity.name = t->name;
+#endif
+
 	tuner_dbg("type set to %s\n", t->name);
 
 	t->mode_mask = new_mode_mask;
@@ -592,6 +600,9 @@ static int tuner_probe(struct i2c_client *client,
 	struct tuner *t;
 	struct tuner *radio;
 	struct tuner *tv;
+#ifdef CONFIG_MEDIA_CONTROLLER
+	int ret;
+#endif
 
 	t = kzalloc(sizeof(struct tuner), GFP_KERNEL);
 	if (NULL == t)
@@ -684,6 +695,35 @@ static int tuner_probe(struct i2c_client *client,
 
 	/* Should be just before return */
 register_client:
+#if defined(CONFIG_MEDIA_CONTROLLER)
+	t->sd.entity.name = t->name;
+	/*
+	 * Handle the special case where the tuner has actually
+	 * two stages: the PLL to tune into a frequency and the
+	 * IF-PLL demodulator (tda988x).
+	 */
+	if (t->type == TUNER_TDA9887) {
+		t->pad[IF_VID_DEC_PAD_IF_INPUT].flags = MEDIA_PAD_FL_SINK;
+		t->pad[IF_VID_DEC_PAD_OUT].flags = MEDIA_PAD_FL_SOURCE;
+		ret = media_entity_pads_init(&t->sd.entity,
+					     IF_VID_DEC_PAD_NUM_PADS,
+					     &t->pad[0]);
+		t->sd.entity.function = MEDIA_ENT_F_IF_VID_DECODER;
+	} else {
+		t->pad[TUNER_PAD_RF_INPUT].flags = MEDIA_PAD_FL_SINK;
+		t->pad[TUNER_PAD_OUTPUT].flags = MEDIA_PAD_FL_SOURCE;
+		t->pad[TUNER_PAD_AUD_OUT].flags = MEDIA_PAD_FL_SOURCE;
+		ret = media_entity_pads_init(&t->sd.entity, TUNER_NUM_PADS,
+					     &t->pad[0]);
+		t->sd.entity.function = MEDIA_ENT_F_TUNER;
+	}
+
+	if (ret < 0) {
+		tuner_err("failed to initialize media entity!\n");
+		kfree(t);
+		return ret;
+	}
+#endif
 	/* Sets a default mode */
 	if (t->mode_mask & T_ANALOG_TV)
 		t->mode = V4L2_TUNER_ANALOG_TV;
@@ -1344,7 +1384,6 @@ MODULE_DEVICE_TABLE(i2c, tuner_id);
 
 static struct i2c_driver tuner_driver = {
 	.driver = {
-		.owner	= THIS_MODULE,
 		.name	= "tuner",
 		.pm	= &tuner_pm_ops,
 	},

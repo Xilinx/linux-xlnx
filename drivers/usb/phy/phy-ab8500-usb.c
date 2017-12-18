@@ -277,7 +277,7 @@ static void ab8500_usb_regulator_enable(struct ab8500_usb *ab)
 			dev_err(ab->dev, "Failed to set the Vintcore to 1.3V, ret=%d\n",
 					ret);
 
-		ret = regulator_set_optimum_mode(ab->v_ulpi, 28000);
+		ret = regulator_set_load(ab->v_ulpi, 28000);
 		if (ret < 0)
 			dev_err(ab->dev, "Failed to set optimum mode (ret=%d)\n",
 					ret);
@@ -317,7 +317,7 @@ static void ab8500_usb_regulator_disable(struct ab8500_usb *ab)
 						ab->saved_v_ulpi, ret);
 		}
 
-		ret = regulator_set_optimum_mode(ab->v_ulpi, 0);
+		ret = regulator_set_load(ab->v_ulpi, 0);
 		if (ret < 0)
 			dev_err(ab->dev, "Failed to set optimum mode (ret=%d)\n",
 					ret);
@@ -893,7 +893,7 @@ static int abx500_usb_link_status_update(struct ab8500_usb *ab)
 
 /*
  * Disconnection Sequence:
- *   1. Disconect Interrupt
+ *   1. Disconnect Interrupt
  *   2. Disable regulators
  *   3. Disable AB clock
  *   4. Disable the Phy
@@ -1179,7 +1179,7 @@ static int ab8500_usb_irq_setup(struct platform_device *pdev,
 		}
 		err = devm_request_threaded_irq(&pdev->dev, irq, NULL,
 				ab8500_usb_link_status_irq,
-				IRQF_NO_SUSPEND | IRQF_SHARED,
+				IRQF_NO_SUSPEND | IRQF_SHARED | IRQF_ONESHOT,
 				"usb-link-status", ab);
 		if (err < 0) {
 			dev_err(ab->dev, "request_irq failed for link status irq\n");
@@ -1195,7 +1195,7 @@ static int ab8500_usb_irq_setup(struct platform_device *pdev,
 		}
 		err = devm_request_threaded_irq(&pdev->dev, irq, NULL,
 				ab8500_usb_disconnect_irq,
-				IRQF_NO_SUSPEND | IRQF_SHARED,
+				IRQF_NO_SUSPEND | IRQF_SHARED | IRQF_ONESHOT,
 				"usb-id-fall", ab);
 		if (err < 0) {
 			dev_err(ab->dev, "request_irq failed for ID fall irq\n");
@@ -1211,7 +1211,7 @@ static int ab8500_usb_irq_setup(struct platform_device *pdev,
 		}
 		err = devm_request_threaded_irq(&pdev->dev, irq, NULL,
 				ab8500_usb_disconnect_irq,
-				IRQF_NO_SUSPEND | IRQF_SHARED,
+				IRQF_NO_SUSPEND | IRQF_SHARED | IRQF_ONESHOT,
 				"usb-vbus-fall", ab);
 		if (err < 0) {
 			dev_err(ab->dev, "request_irq failed for Vbus fall irq\n");
@@ -1248,7 +1248,7 @@ static void ab8500_usb_set_ab8500_tuning_values(struct ab8500_usb *ab)
 	err = abx500_set_register_interruptible(ab->dev,
 			AB8500_DEBUG, AB8500_USB_PHY_TUNE3, 0x78);
 	if (err < 0)
-		dev_err(ab->dev, "Failed to set PHY_TUNE3 regester err=%d\n",
+		dev_err(ab->dev, "Failed to set PHY_TUNE3 register err=%d\n",
 				err);
 
 	/* Switch to normal mode/disable Bank 0x12 access */
@@ -1290,7 +1290,7 @@ static void ab8500_usb_set_ab8505_tuning_values(struct ab8500_usb *ab)
 			0xFC, 0x80);
 
 	if (err < 0)
-		dev_err(ab->dev, "Failed to set PHY_TUNE3 regester err=%d\n",
+		dev_err(ab->dev, "Failed to set PHY_TUNE3 register err=%d\n",
 				err);
 
 	/* Switch to normal mode/disable Bank 0x12 access */
@@ -1321,7 +1321,7 @@ static void ab8500_usb_set_ab8540_tuning_values(struct ab8500_usb *ab)
 	err = abx500_set_register_interruptible(ab->dev,
 			AB8540_DEBUG, AB8500_USB_PHY_TUNE3, 0x90);
 	if (err < 0)
-		dev_err(ab->dev, "Failed to set PHY_TUNE3 regester ret=%d\n",
+		dev_err(ab->dev, "Failed to set PHY_TUNE3 register ret=%d\n",
 				err);
 }
 
@@ -1351,7 +1351,7 @@ static void ab8500_usb_set_ab9540_tuning_values(struct ab8500_usb *ab)
 	err = abx500_set_register_interruptible(ab->dev,
 			AB8500_DEBUG, AB8500_USB_PHY_TUNE3, 0x80);
 	if (err < 0)
-		dev_err(ab->dev, "Failed to set PHY_TUNE3 regester err=%d\n",
+		dev_err(ab->dev, "Failed to set PHY_TUNE3 register err=%d\n",
 				err);
 
 	/* Switch to normal mode/disable Bank 0x12 access */
@@ -1504,7 +1504,7 @@ static int ab8500_usb_remove(struct platform_device *pdev)
 	return 0;
 }
 
-static struct platform_device_id ab8500_usb_devtype[] = {
+static const struct platform_device_id ab8500_usb_devtype[] = {
 	{ .name = "ab8500-usb", },
 	{ .name = "ab8540-usb", },
 	{ .name = "ab9540-usb", },

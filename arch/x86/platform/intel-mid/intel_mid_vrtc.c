@@ -22,6 +22,7 @@
 #include <linux/init.h>
 #include <linux/sfi.h>
 #include <linux/platform_device.h>
+#include <linux/mc146818rtc.h>
 
 #include <asm/intel-mid.h>
 #include <asm/intel_mid_vrtc.h>
@@ -173,5 +174,4 @@ static int __init intel_mid_device_create(void)
 
 	return platform_device_register(&vrtc_device);
 }
-
-module_init(intel_mid_device_create);
+device_initcall(intel_mid_device_create);

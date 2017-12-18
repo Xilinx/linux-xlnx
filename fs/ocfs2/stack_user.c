@@ -655,14 +655,7 @@ static int ocfs2_control_init(void)
 
 static void ocfs2_control_exit(void)
 {
-	int rc;
-
-	rc = misc_deregister(&ocfs2_control_device);
-	if (rc)
-		printk(KERN_ERR
-		       "ocfs2: Unable to deregister ocfs2_control device "
-		       "(errno %d)\n",
-		       -rc);
+	misc_deregister(&ocfs2_control_device);
 }
 
 static void fsdlm_lock_ast_wrapper(void *astarg)
@@ -1004,10 +997,8 @@ static int user_cluster_connect(struct ocfs2_cluster_connection *conn)
 	BUG_ON(conn == NULL);
 
 	lc = kzalloc(sizeof(struct ocfs2_live_connection), GFP_KERNEL);
-	if (!lc) {
-		rc = -ENOMEM;
-		goto out;
-	}
+	if (!lc)
+		return -ENOMEM;
 
 	init_waitqueue_head(&lc->oc_wait);
 	init_completion(&lc->oc_sync_wait);
@@ -1016,10 +1007,17 @@ static int user_cluster_connect(struct ocfs2_cluster_connection *conn)
 	lc->oc_type = NO_CONTROLD;
 
 	rc = dlm_new_lockspace(conn->cc_name, conn->cc_cluster_name,
-			       DLM_LSFL_FS, DLM_LVB_LEN,
+			       DLM_LSFL_FS | DLM_LSFL_NEWEXCL, DLM_LVB_LEN,
 			       &ocfs2_ls_ops, conn, &ops_rv, &fsdlm);
-	if (rc)
+	if (rc) {
+		if (rc == -EEXIST || rc == -EPROTO)
+			printk(KERN_ERR "ocfs2: Unable to create the "
+				"lockspace %s (%d), because a ocfs2-tools "
+				"program is running on this file system "
+				"with the same name lockspace\n",
+				conn->cc_name, rc);
 		goto out;
+	}
 
 	if (ops_rv == -EOPNOTSUPP) {
 		lc->oc_type = WITH_CONTROLD;
@@ -1063,7 +1061,7 @@ static int user_cluster_connect(struct ocfs2_cluster_connection *conn)
 	}
 
 out:
-	if (rc && lc)
+	if (rc)
 		kfree(lc);
 	return rc;
 }

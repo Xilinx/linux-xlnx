@@ -775,7 +775,6 @@ static void cyttsp4_get_touch(struct cyttsp4_mt_data *md,
 	struct device *dev = &md->input->dev;
 	struct cyttsp4_sysinfo *si = md->si;
 	enum cyttsp4_tch_abs abs;
-	int tmp;
 	bool flipped;
 
 	for (abs = CY_TCH_X; abs < CY_TCH_NUM_ABS; abs++) {
@@ -790,9 +789,7 @@ static void cyttsp4_get_touch(struct cyttsp4_mt_data *md,
 	}
 
 	if (md->pdata->flags & CY_FLAG_FLIP) {
-		tmp = touch->abs[CY_TCH_X];
-		touch->abs[CY_TCH_X] = touch->abs[CY_TCH_Y];
-		touch->abs[CY_TCH_Y] = tmp;
+		swap(touch->abs[CY_TCH_X], touch->abs[CY_TCH_Y]);
 		flipped = true;
 	} else
 		flipped = false;
@@ -1502,7 +1499,7 @@ static int cyttsp4_core_sleep_(struct cyttsp4 *cd)
 
 	if (IS_BOOTLOADER(mode[0], mode[1])) {
 		mutex_unlock(&cd->system_lock);
-		dev_err(cd->dev, "%s: Device in BOOTLADER mode.\n", __func__);
+		dev_err(cd->dev, "%s: Device in BOOTLOADER mode.\n", __func__);
 		rc = -EINVAL;
 		goto error;
 	}

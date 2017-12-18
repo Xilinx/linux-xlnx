@@ -1408,6 +1408,7 @@ snd_ali_playback_pointer(struct snd_pcm_substream *substream)
 	spin_unlock(&codec->reg_lock);
 	dev_dbg(codec->card->dev, "playback pointer returned cso=%xh.\n", cso);
 
+	cso %= runtime->buffer_size;
 	return cso;
 }
 
@@ -1428,6 +1429,7 @@ static snd_pcm_uframes_t snd_ali_pointer(struct snd_pcm_substream *substream)
 	cso = inw(ALI_REG(codec, ALI_CSO_ALPHA_FMS + 2));
 	spin_unlock(&codec->reg_lock);
 
+	cso %= runtime->buffer_size;
 	return cso;
 }
 
@@ -2105,8 +2107,8 @@ static int snd_ali_create(struct snd_card *card,
 	if (err < 0)
 		return err;
 	/* check, if we can restrict PCI DMA transfers to 31 bits */
-	if (pci_set_dma_mask(pci, DMA_BIT_MASK(31)) < 0 ||
-	    pci_set_consistent_dma_mask(pci, DMA_BIT_MASK(31)) < 0) {
+	if (dma_set_mask(&pci->dev, DMA_BIT_MASK(31)) < 0 ||
+	    dma_set_coherent_mask(&pci->dev, DMA_BIT_MASK(31)) < 0) {
 		dev_err(card->dev,
 			"architecture does not support 31bit PCI busmaster DMA\n");
 		pci_disable_device(pci);

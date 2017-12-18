@@ -1,6 +1,8 @@
 config USB_DWC2
 	tristate "DesignWare USB2 DRD Core Support"
+	depends on HAS_DMA
 	depends on USB || USB_GADGET
+	depends on HAS_IOMEM
 	help
 	  Say Y here if your system has a Dual Role Hi-Speed USB
 	  controller based on the DesignWare HSOTG IP Core.
@@ -50,20 +52,15 @@ config USB_DWC2_DUAL_ROLE
 	  option requires USB_GADGET to be enabled.
 endchoice
 
-config USB_DWC2_PLATFORM
-	tristate "DWC2 Platform"
-	default USB_DWC2_HOST || USB_DWC2_PERIPHERAL
-        help
-          The Designware USB2.0 platform interface module for
-          controllers directly connected to the CPU.
-
 config USB_DWC2_PCI
 	tristate "DWC2 PCI"
-	depends on USB_DWC2_HOST && PCI
-	default USB_DWC2_HOST
+	depends on PCI
+	depends on USB_GADGET || !USB_GADGET
+	default n
+	select NOP_USB_XCEIV
 	help
 	  The Designware USB2.0 PCI interface module for controllers
-	  connected to a PCI bus. This is only used for host mode.
+	  connected to a PCI bus.
 
 config USB_DWC2_DEBUG
 	bool "Enable Debugging Messages"

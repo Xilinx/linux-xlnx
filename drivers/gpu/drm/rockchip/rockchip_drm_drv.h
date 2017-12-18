@@ -18,6 +18,7 @@
 #define _ROCKCHIP_DRM_DRV_H
 
 #include <drm/drm_fb_helper.h>
+#include <drm/drm_atomic_helper.h>
 #include <drm/drm_gem.h>
 
 #include <linux/module.h>
@@ -40,6 +41,14 @@ struct rockchip_crtc_funcs {
 	void (*disable_vblank)(struct drm_crtc *crtc);
 };
 
+struct rockchip_crtc_state {
+	struct drm_crtc_state base;
+	int output_type;
+	int output_mode;
+};
+#define to_rockchip_crtc_state(s) \
+		container_of(s, struct rockchip_crtc_state, base)
+
 /*
  * Rockchip drm private structure.
  *
@@ -50,19 +59,20 @@ struct rockchip_drm_private {
 	struct drm_fb_helper fbdev_helper;
 	struct drm_gem_object *fbdev_bo;
 	const struct rockchip_crtc_funcs *crtc_funcs[ROCKCHIP_MAX_CRTC];
+	struct drm_atomic_state *state;
+
+	struct list_head psr_list;
+	spinlock_t psr_list_lock;
 };
 
-int rockchip_register_crtc_funcs(struct drm_device *dev,
-				 const struct rockchip_crtc_funcs *crtc_funcs,
-				 int pipe);
-void rockchip_unregister_crtc_funcs(struct drm_device *dev, int pipe);
-int rockchip_drm_encoder_get_mux_id(struct device_node *node,
-				    struct drm_encoder *encoder);
-int rockchip_drm_crtc_mode_config(struct drm_crtc *crtc, int connector_type,
-				  int out_mode);
+int rockchip_register_crtc_funcs(struct drm_crtc *crtc,
+				 const struct rockchip_crtc_funcs *crtc_funcs);
+void rockchip_unregister_crtc_funcs(struct drm_crtc *crtc);
 int rockchip_drm_dma_attach_device(struct drm_device *drm_dev,
 				   struct device *dev);
 void rockchip_drm_dma_detach_device(struct drm_device *drm_dev,
 				    struct device *dev);
+int rockchip_drm_wait_line_flag(struct drm_crtc *crtc, unsigned int line_num,
+				unsigned int mstimeout);
 
 #endif /* _ROCKCHIP_DRM_DRV_H_ */

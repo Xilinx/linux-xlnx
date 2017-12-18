@@ -28,3 +28,6 @@ else:
     import linux.dmesg
     import linux.tasks
     import linux.cpus
+    import linux.lists
+    import linux.proc
+    import linux.constants

@@ -30,7 +30,7 @@ extern void amd_iommu_reset_cmd_buffer(struct amd_iommu *iommu);
 extern int amd_iommu_init_devices(void);
 extern void amd_iommu_uninit_devices(void);
 extern void amd_iommu_init_notifier(void);
-extern void amd_iommu_init_api(void);
+extern int amd_iommu_init_api(void);
 
 /* Needed for interrupt remapping */
 extern int amd_iommu_prepare(void);
@@ -38,6 +38,7 @@ extern int amd_iommu_enable(void);
 extern void amd_iommu_disable(void);
 extern int amd_iommu_reenable(int);
 extern int amd_iommu_enable_faulting(void);
+extern int amd_iommu_guest_ir;
 
 /* IOMMUv2 specific functions */
 struct iommu_domain;
@@ -62,18 +63,21 @@ extern u8 amd_iommu_pc_get_max_counters(u16 devid);
 extern int amd_iommu_pc_get_set_reg_val(u16 devid, u8 bank, u8 cntr, u8 fxn,
 				    u64 *value, bool is_write);
 
+#ifdef CONFIG_IRQ_REMAP
+extern int amd_iommu_create_irq_domain(struct amd_iommu *iommu);
+#else
+static inline int amd_iommu_create_irq_domain(struct amd_iommu *iommu)
+{
+	return 0;
+}
+#endif
+
 #define PPR_SUCCESS			0x0
 #define PPR_INVALID			0x1
 #define PPR_FAILURE			0xf
 
 extern int amd_iommu_complete_ppr(struct pci_dev *pdev, int pasid,
 				  int status, int tag);
-
-#ifndef CONFIG_AMD_IOMMU_STATS
-
-static inline void amd_iommu_stats_init(void) { }
-
-#endif /* !CONFIG_AMD_IOMMU_STATS */
 
 static inline bool is_rd890_iommu(struct pci_dev *pdev)
 {

@@ -4144,7 +4144,7 @@ static int hw_del_addr(struct ksz_hw *hw, u8 *mac_addr)
 
 	for (i = 0; i < hw->addr_list_size; i++) {
 		if (ether_addr_equal(hw->address[i], mac_addr)) {
-			memset(hw->address[i], 0, ETH_ALEN);
+			eth_zero_addr(hw->address[i]);
 			writel(0, hw->io + ADD_ADDR_INCR * i +
 				KS_ADD_ADDR_0_HI);
 			return 0;
@@ -4790,7 +4790,7 @@ static void transmit_cleanup(struct dev_info *hw_priv, int normal)
 
 	/* Notify the network subsystem that the packet has been sent. */
 	if (dev)
-		dev->trans_start = jiffies;
+		netif_trans_update(dev);
 }
 
 /**
@@ -4965,7 +4965,7 @@ static void netdev_tx_timeout(struct net_device *dev)
 		hw_ena_intr(hw);
 	}
 
-	dev->trans_start = jiffies;
+	netif_trans_update(dev);
 	netif_wake_queue(dev);
 }
 
@@ -6664,7 +6664,7 @@ static void mib_read_work(struct work_struct *work)
 				wake_up_interruptible(
 					&hw_priv->counter[i].counter);
 			}
-		} else if (jiffies >= hw_priv->counter[i].time) {
+		} else if (time_after_eq(jiffies, hw_priv->counter[i].time)) {
 			/* Only read MIB counters when the port is connected. */
 			if (media_connected == mib->state)
 				hw_priv->counter[i].read = 1;
@@ -6689,7 +6689,7 @@ static void mib_monitor(unsigned long ptr)
 
 	/* This is used to verify Wake-on-LAN is working. */
 	if (hw_priv->pme_wait) {
-		if (hw_priv->pme_wait <= jiffies) {
+		if (time_is_before_eq_jiffies(hw_priv->pme_wait)) {
 			hw_clr_wol_pme_status(&hw_priv->hw);
 			hw_priv->pme_wait = 0;
 		}

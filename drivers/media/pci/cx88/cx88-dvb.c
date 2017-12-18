@@ -82,9 +82,9 @@ DVB_DEFINE_MOD_OPT_ADAPTER_NR(adapter_nr);
 
 /* ------------------------------------------------------------------ */
 
-static int queue_setup(struct vb2_queue *q, const struct v4l2_format *fmt,
+static int queue_setup(struct vb2_queue *q,
 			   unsigned int *num_buffers, unsigned int *num_planes,
-			   unsigned int sizes[], void *alloc_ctxs[])
+			   unsigned int sizes[], struct device *alloc_devs[])
 {
 	struct cx8802_dev *dev = q->drv_priv;
 
@@ -92,23 +92,24 @@ static int queue_setup(struct vb2_queue *q, const struct v4l2_format *fmt,
 	dev->ts_packet_size  = 188 * 4;
 	dev->ts_packet_count = dvb_buf_tscnt;
 	sizes[0] = dev->ts_packet_size * dev->ts_packet_count;
-	alloc_ctxs[0] = dev->alloc_ctx;
 	*num_buffers = dvb_buf_tscnt;
 	return 0;
 }
 
 static int buffer_prepare(struct vb2_buffer *vb)
 {
+	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(vb);
 	struct cx8802_dev *dev = vb->vb2_queue->drv_priv;
-	struct cx88_buffer *buf = container_of(vb, struct cx88_buffer, vb);
+	struct cx88_buffer *buf = container_of(vbuf, struct cx88_buffer, vb);
 
 	return cx8802_buf_prepare(vb->vb2_queue, dev, buf);
 }
 
 static void buffer_finish(struct vb2_buffer *vb)
 {
+	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(vb);
 	struct cx8802_dev *dev = vb->vb2_queue->drv_priv;
-	struct cx88_buffer *buf = container_of(vb, struct cx88_buffer, vb);
+	struct cx88_buffer *buf = container_of(vbuf, struct cx88_buffer, vb);
 	struct cx88_riscmem *risc = &buf->risc;
 
 	if (risc->cpu)
@@ -118,8 +119,9 @@ static void buffer_finish(struct vb2_buffer *vb)
 
 static void buffer_queue(struct vb2_buffer *vb)
 {
+	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(vb);
 	struct cx8802_dev *dev = vb->vb2_queue->drv_priv;
-	struct cx88_buffer    *buf = container_of(vb, struct cx88_buffer, vb);
+	struct cx88_buffer    *buf = container_of(vbuf, struct cx88_buffer, vb);
 
 	cx8802_buf_queue(dev, buf);
 }
@@ -149,12 +151,12 @@ static void stop_streaming(struct vb2_queue *q)
 			struct cx88_buffer, list);
 
 		list_del(&buf->list);
-		vb2_buffer_done(&buf->vb, VB2_BUF_STATE_ERROR);
+		vb2_buffer_done(&buf->vb.vb2_buf, VB2_BUF_STATE_ERROR);
 	}
 	spin_unlock_irqrestore(&dev->slock, flags);
 }
 
-static struct vb2_ops dvb_qops = {
+static const struct vb2_ops dvb_qops = {
 	.queue_setup    = queue_setup,
 	.buf_prepare  = buffer_prepare,
 	.buf_finish = buffer_finish,
@@ -449,7 +451,7 @@ static int cx24123_set_ts_param(struct dvb_frontend* fe,
 }
 
 static int kworld_dvbs_100_set_voltage(struct dvb_frontend* fe,
-				       fe_sec_voltage_t voltage)
+				       enum fe_sec_voltage voltage)
 {
 	struct cx8802_dev *dev= fe->dvb->priv;
 	struct cx88_core *core = dev->core;
@@ -465,7 +467,7 @@ static int kworld_dvbs_100_set_voltage(struct dvb_frontend* fe,
 }
 
 static int geniatech_dvbs_set_voltage(struct dvb_frontend *fe,
-				      fe_sec_voltage_t voltage)
+				      enum fe_sec_voltage voltage)
 {
 	struct cx8802_dev *dev= fe->dvb->priv;
 	struct cx88_core *core = dev->core;
@@ -481,7 +483,7 @@ static int geniatech_dvbs_set_voltage(struct dvb_frontend *fe,
 }
 
 static int tevii_dvbs_set_voltage(struct dvb_frontend *fe,
-				      fe_sec_voltage_t voltage)
+				  enum fe_sec_voltage voltage)
 {
 	struct cx8802_dev *dev= fe->dvb->priv;
 	struct cx88_core *core = dev->core;
@@ -505,7 +507,7 @@ static int tevii_dvbs_set_voltage(struct dvb_frontend *fe,
 }
 
 static int vp1027_set_voltage(struct dvb_frontend *fe,
-				    fe_sec_voltage_t voltage)
+			      enum fe_sec_voltage voltage)
 {
 	struct cx8802_dev *dev = fe->dvb->priv;
 	struct cx88_core *core = dev->core;
@@ -897,7 +899,7 @@ static int samsung_smt_7020_tuner_set_params(struct dvb_frontend *fe)
 }
 
 static int samsung_smt_7020_set_tone(struct dvb_frontend *fe,
-	fe_sec_tone_mode_t tone)
+	enum fe_sec_tone_mode tone)
 {
 	struct cx8802_dev *dev = fe->dvb->priv;
 	struct cx88_core *core = dev->core;
@@ -919,7 +921,7 @@ static int samsung_smt_7020_set_tone(struct dvb_frontend *fe,
 }
 
 static int samsung_smt_7020_set_voltage(struct dvb_frontend *fe,
-	fe_sec_voltage_t voltage)
+					enum fe_sec_voltage voltage)
 {
 	struct cx8802_dev *dev = fe->dvb->priv;
 	struct cx88_core *core = dev->core;
@@ -1639,7 +1641,8 @@ static int dvb_register(struct cx8802_dev *dev)
 
 	/* register everything */
 	res = vb2_dvb_register_bus(&dev->frontends, THIS_MODULE, dev,
-		&dev->pci->dev, adapter_nr, mfe_shared);
+				   &dev->pci->dev, NULL, adapter_nr,
+				   mfe_shared);
 	if (res)
 		goto frontend_detach;
 	return res;
@@ -1789,6 +1792,7 @@ static int cx8802_dvb_probe(struct cx8802_driver *drv)
 		q->mem_ops = &vb2_dma_sg_memops;
 		q->timestamp_flags = V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC;
 		q->lock = &core->lock;
+		q->dev = &dev->pci->dev;
 
 		err = vb2_queue_init(q);
 		if (err < 0)

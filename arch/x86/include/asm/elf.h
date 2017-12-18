@@ -78,7 +78,7 @@ typedef struct user_fxsr_struct elf_fpxregset_t;
 #ifdef CONFIG_X86_64
 extern unsigned int vdso64_enabled;
 #endif
-#if defined(CONFIG_X86_32) || defined(CONFIG_COMPAT)
+#if defined(CONFIG_X86_32) || defined(CONFIG_IA32_EMULATION)
 extern unsigned int vdso32_enabled;
 #endif
 
@@ -171,11 +171,12 @@ do {						\
 static inline void elf_common_init(struct thread_struct *t,
 				   struct pt_regs *regs, const u16 ds)
 {
-	regs->ax = regs->bx = regs->cx = regs->dx = 0;
+	/* ax gets execve's return value. */
+	/*regs->ax = */ regs->bx = regs->cx = regs->dx = 0;
 	regs->si = regs->di = regs->bp = 0;
 	regs->r8 = regs->r9 = regs->r10 = regs->r11 = 0;
 	regs->r12 = regs->r13 = regs->r14 = regs->r15 = 0;
-	t->fs = t->gs = 0;
+	t->fsbase = t->gsbase = 0;
 	t->fsindex = t->gsindex = 0;
 	t->ds = t->es = ds;
 }
@@ -186,8 +187,8 @@ static inline void elf_common_init(struct thread_struct *t,
 #define	COMPAT_ELF_PLAT_INIT(regs, load_addr)		\
 	elf_common_init(&current->thread, regs, __USER_DS)
 
-void start_thread_ia32(struct pt_regs *regs, u32 new_ip, u32 new_sp);
-#define compat_start_thread start_thread_ia32
+void compat_start_thread(struct pt_regs *regs, u32 new_ip, u32 new_sp);
+#define compat_start_thread compat_start_thread
 
 void set_personality_ia32(bool);
 #define COMPAT_SET_PERSONALITY(ex)			\
@@ -225,8 +226,8 @@ do {								\
 	(pr_reg)[18] = (regs)->flags;				\
 	(pr_reg)[19] = (regs)->sp;				\
 	(pr_reg)[20] = (regs)->ss;				\
-	(pr_reg)[21] = current->thread.fs;			\
-	(pr_reg)[22] = current->thread.gs;			\
+	(pr_reg)[21] = current->thread.fsbase;			\
+	(pr_reg)[22] = current->thread.gsbase;			\
 	asm("movl %%ds,%0" : "=r" (v)); (pr_reg)[23] = v;	\
 	asm("movl %%es,%0" : "=r" (v)); (pr_reg)[24] = v;	\
 	asm("movl %%fs,%0" : "=r" (v)); (pr_reg)[25] = v;	\
@@ -255,7 +256,7 @@ extern int force_personality32;
    instruction set this CPU supports.  This could be done in user space,
    but it's not easy, and we've already done it here.  */
 
-#define ELF_HWCAP		(boot_cpu_data.x86_capability[0])
+#define ELF_HWCAP		(boot_cpu_data.x86_capability[CPUID_1_EDX])
 
 /* This yields a string that ld.so will use to load implementation
    specific libraries for optimization.  This is more specific in
@@ -327,7 +328,7 @@ else									\
 
 #define VDSO_ENTRY							\
 	((unsigned long)current->mm->context.vdso +			\
-	 selected_vdso32->sym___kernel_vsyscall)
+	 vdso_image_32.sym___kernel_vsyscall)
 
 struct linux_binprm;
 
@@ -338,22 +339,14 @@ extern int compat_arch_setup_additional_pages(struct linux_binprm *bprm,
 					      int uses_interp);
 #define compat_arch_setup_additional_pages compat_arch_setup_additional_pages
 
-extern unsigned long arch_randomize_brk(struct mm_struct *mm);
-#define arch_randomize_brk arch_randomize_brk
-
 /*
  * True on X86_32 or when emulating IA32 on X86_64
  */
 static inline int mmap_is_ia32(void)
 {
-#ifdef CONFIG_X86_32
-	return 1;
-#endif
-#ifdef CONFIG_IA32_EMULATION
-	if (test_thread_flag(TIF_ADDR32))
-		return 1;
-#endif
-	return 0;
+	return IS_ENABLED(CONFIG_X86_32) ||
+	       (IS_ENABLED(CONFIG_COMPAT) &&
+		test_thread_flag(TIF_ADDR32));
 }
 
 /* Do not change the values. See get_align_mask() */
@@ -365,6 +358,7 @@ enum align_flags {
 struct va_alignment {
 	int flags;
 	unsigned long mask;
+	unsigned long bits;
 } ____cacheline_aligned;
 
 extern struct va_alignment va_align;

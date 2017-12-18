@@ -3,57 +3,25 @@ memory to device and device to memory transfers. It also has flow
 control and rate control support for slave/peripheral dma access.
 
 Required properties:
-- compatible: Should be "xlnx,zynqmp-dma-1.0"
-- reg: Memory map for gdma/adma module access.
-- interrupt-parent: Interrupt controller the interrupt is routed through
-- interrupts: Should contain DMA channel interrupt.
-- xlnx,bus-width: Axi buswidth in bits. Should contain 128 or 64
+- compatible		: Should be "xlnx,zynqmp-dma-1.0"
+- reg			: Memory map for gdma/adma module access.
+- interrupt-parent	: Interrupt controller the interrupt is routed through
+- interrupts		: Should contain DMA channel interrupt.
+- xlnx,bus-width	: Axi buswidth in bits. Should contain 128 or 64
+- clock-names		: List of input clocks "clk_main", "clk_apb"
+			  (see clock bindings for details)
 
 Optional properties:
-- xlnx,include-sg: Indicates the controller to operate in simple or scatter
-		   gather dma mode
-- xlnx,ratectrl: Scheduling interval in terms of clock cycles for
-		 source AXI transaction
-- xlnx,overfetch: Tells whether the channel is allowed to over fetch the data
-- xlnx,src-issue: Number of AXI outstanding transactions on source side
-- xlnx,desc-axi-cohrnt: Tells whether the AXI transactions generated for the
-			descriptor read are marked Non-coherent
-- xlnx,src-axi-cohrnt: Tells whether the AXI transactions generated for the
-			source descriptor payload are marked Non-coherent
-- xlnx,dst-axi-cohrnt: Tells whether the AXI transactions generated for the
-			dst descriptor payload are marked Non-coherent
-- xlnx,desc-axi-qos: AXI QOS bits to be used for descriptor fetch
-- xlnx,src-axi-qos: AXI QOS bits to be used for data read
-- xlnx,dst-axi-qos: Axi QOS bits to be used for data write
-- xlnx,desc-axi-cache: AXI cache bits to be used for descriptor fetch
-- xlnx,desc-axi-cache: AXI cache bits to be used for data read
-- xlnx,desc-axi-cache: AXI cache bits to be used for data write
-- xlnx,src-burst-len: AXI length for data read. Support only power of 2 values
-		      i.e 1,2,4,8 and 16.
-- xlnx,dst-burst-len: AXI length for data write. Support only power of 2 values
-		      i.e 1,2,4,8 and 16.
+- dma-coherent		: Present if dma operations are coherent.
 
 Example:
 ++++++++
-fpd_dma_chan1: dma@FD500000 {
+fpd_dma_chan1: dma@fd500000 {
 	compatible = "xlnx,zynqmp-dma-1.0";
 	reg = <0x0 0xFD500000 0x1000>;
 	interrupt-parent = <&gic>;
 	interrupts = <0 117 4>;
+	clock-names = "clk_main", "clk_apb";
 	xlnx,bus-width = <128>;
-	xlnx,include-sg;
-	xlnx,overfetch;
-	xlnx,ratectrl = <0>;
-	xlnx,src-issue = <16>;
-	xlnx,desc-axi-cohrnt;
-	xlnx,src-axi-cohrnt;
-	xlnx,dst-axi-cohrnt;
-	xlnx,desc-axi-qos = <0>;
-	xlnx,desc-axi-cache = <0>;
-	xlnx,src-axi-qos = <0>;
-	xlnx,src-axi-cache = <2>;
-	xlnx,dst-axi-qos = <0>;
-	xlnx,dst-axi-cache = <2>;
-	xlnx,src-burst-len = <4>;
-	xlnx,dst-burst-len = <4>;
+	dma-coherent;
 };

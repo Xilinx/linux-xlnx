@@ -25,7 +25,6 @@
 #include <asm/machdep.h>
 #include <asm/cputable.h>
 #include <asm/firmware.h>
-#include <asm/rtas.h>
 #include <asm/vdso_datapage.h>
 #include <asm/cputhreads.h>
 #include <asm/xics.h>
@@ -62,14 +61,15 @@ static int pnv_smp_kick_cpu(int nr)
 	unsigned long start_here =
 			__pa(ppc_function_entry(generic_secondary_smp_init));
 	long rc;
+	uint8_t status;
 
 	BUG_ON(nr < 0 || nr >= NR_CPUS);
 
 	/*
-	 * If we already started or OPALv2 is not supported, we just
+	 * If we already started or OPAL is not supported, we just
 	 * kick the CPU via the PACA
 	 */
-	if (paca[nr].cpu_start || !firmware_has_feature(FW_FEATURE_OPALv2))
+	if (paca[nr].cpu_start || !firmware_has_feature(FW_FEATURE_OPAL))
 		goto kick;
 
 	/*
@@ -78,55 +78,42 @@ static int pnv_smp_kick_cpu(int nr)
 	 * first time. OPAL v3 allows us to query OPAL to know if it
 	 * has the CPUs, so we do that
 	 */
-	if (firmware_has_feature(FW_FEATURE_OPALv3)) {
-		uint8_t status;
+	rc = opal_query_cpu_status(pcpu, &status);
+	if (rc != OPAL_SUCCESS) {
+		pr_warn("OPAL Error %ld querying CPU %d state\n", rc, nr);
+		return -ENODEV;
+	}
 
-		rc = opal_query_cpu_status(pcpu, &status);
+	/*
+	 * Already started, just kick it, probably coming from
+	 * kexec and spinning
+	 */
+	if (status == OPAL_THREAD_STARTED)
+		goto kick;
+
+	/*
+	 * Available/inactive, let's kick it
+	 */
+	if (status == OPAL_THREAD_INACTIVE) {
+		pr_devel("OPAL: Starting CPU %d (HW 0x%x)...\n", nr, pcpu);
+		rc = opal_start_cpu(pcpu, start_here);
 		if (rc != OPAL_SUCCESS) {
-			pr_warn("OPAL Error %ld querying CPU %d state\n",
-				rc, nr);
-			return -ENODEV;
-		}
-
-		/*
-		 * Already started, just kick it, probably coming from
-		 * kexec and spinning
-		 */
-		if (status == OPAL_THREAD_STARTED)
-			goto kick;
-
-		/*
-		 * Available/inactive, let's kick it
-		 */
-		if (status == OPAL_THREAD_INACTIVE) {
-			pr_devel("OPAL: Starting CPU %d (HW 0x%x)...\n",
-				 nr, pcpu);
-			rc = opal_start_cpu(pcpu, start_here);
-			if (rc != OPAL_SUCCESS) {
-				pr_warn("OPAL Error %ld starting CPU %d\n",
-					rc, nr);
-				return -ENODEV;
-			}
-		} else {
-			/*
-			 * An unavailable CPU (or any other unknown status)
-			 * shouldn't be started. It should also
-			 * not be in the possible map but currently it can
-			 * happen
-			 */
-			pr_devel("OPAL: CPU %d (HW 0x%x) is unavailable"
-				 " (status %d)...\n", nr, pcpu, status);
+			pr_warn("OPAL Error %ld starting CPU %d\n", rc, nr);
 			return -ENODEV;
 		}
 	} else {
 		/*
-		 * On OPAL v2, we just kick it and hope for the best,
-		 * we must not test the error from opal_start_cpu() or
-		 * we would fail to get CPUs from kexec.
+		 * An unavailable CPU (or any other unknown status)
+		 * shouldn't be started. It should also
+		 * not be in the possible map but currently it can
+		 * happen
 		 */
-		opal_start_cpu(pcpu, start_here);
+		pr_devel("OPAL: CPU %d (HW 0x%x) is unavailable"
+			 " (status %d)...\n", nr, pcpu, status);
+		return -ENODEV;
 	}
- kick:
+
+kick:
 	return smp_generic_kick_cpu(nr);
 }
 
@@ -172,11 +159,32 @@ static void pnv_smp_cpu_kill_self(void)
 	 * so clear LPCR:PECE1. We keep PECE2 enabled.
 	 */
 	mtspr(SPRN_LPCR, mfspr(SPRN_LPCR) & ~(u64)LPCR_PECE1);
+
+	/*
+	 * Hard-disable interrupts, and then clear irq_happened flags
+	 * that we can safely ignore while off-line, since they
+	 * are for things for which we do no processing when off-line
+	 * (or in the case of HMI, all the processing we need to do
+	 * is done in lower-level real-mode code).
+	 */
+	hard_irq_disable();
+	local_paca->irq_happened &= ~(PACA_IRQ_DEC | PACA_IRQ_HMI);
+
 	while (!generic_check_cpu_restart(cpu)) {
+		/*
+		 * Clear IPI flag, since we don't handle IPIs while
+		 * offline, except for those when changing micro-threading
+		 * mode, which are handled explicitly below, and those
+		 * for coming online, which are handled via
+		 * generic_check_cpu_restart() calls.
+		 */
+		kvmppc_set_host_ipi(cpu, 0);
 
 		ppc64_runlatch_off();
 
-		if (idle_states & OPAL_PM_WINKLE_ENABLED)
+		if (cpu_has_feature(CPU_FTR_ARCH_300))
+			srr1 = power9_idle_stop(pnv_deepest_stop_state);
+		else if (idle_states & OPAL_PM_WINKLE_ENABLED)
 			srr1 = power7_winkle();
 		else if ((idle_states & OPAL_PM_SLEEP_ENABLED) ||
 				(idle_states & OPAL_PM_SLEEP_ENABLED_ER1))
@@ -197,20 +205,20 @@ static void pnv_smp_cpu_kill_self(void)
 		 * having finished executing in a KVM guest, then srr1
 		 * contains 0.
 		 */
-		if ((srr1 & wmask) == SRR1_WAKEEE) {
+		if (((srr1 & wmask) == SRR1_WAKEEE) ||
+		    (local_paca->irq_happened & PACA_IRQ_EE)) {
 			icp_native_flush_interrupt();
-			local_paca->irq_happened &= PACA_IRQ_HARD_DIS;
-			smp_mb();
 		} else if ((srr1 & wmask) == SRR1_WAKEHDBELL) {
 			unsigned long msg = PPC_DBELL_TYPE(PPC_DBELL_SERVER);
 			asm volatile(PPC_MSGCLR(%0) : : "r" (msg));
-			kvmppc_set_host_ipi(cpu, 0);
 		}
+		local_paca->irq_happened &= ~(PACA_IRQ_EE | PACA_IRQ_DBELL);
+		smp_mb();
 
 		if (cpu_core_split_required())
 			continue;
 
-		if (!generic_check_cpu_restart(cpu))
+		if (srr1 && !generic_check_cpu_restart(cpu))
 			DBG("CPU%d Unexpected exit while offline !\n", cpu);
 	}
 	mtspr(SPRN_LPCR, mfspr(SPRN_LPCR) | LPCR_PECE1);
@@ -250,18 +258,6 @@ static struct smp_ops_t pnv_smp_ops = {
 void __init pnv_smp_init(void)
 {
 	smp_ops = &pnv_smp_ops;
-
-	/* XXX We don't yet have a proper entry point from HAL, for
-	 * now we rely on kexec-style entry from BML
-	 */
-
-#ifdef CONFIG_PPC_RTAS
-	/* Non-lpar has additional take/give timebase */
-	if (rtas_token("freeze-time-base") != RTAS_UNKNOWN_SERVICE) {
-		smp_ops->give_timebase = rtas_give_timebase;
-		smp_ops->take_timebase = rtas_take_timebase;
-	}
-#endif /* CONFIG_PPC_RTAS */
 
 #ifdef CONFIG_HOTPLUG_CPU
 	ppc_md.cpu_die	= pnv_smp_cpu_kill_self;

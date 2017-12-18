@@ -1,0 +1,9 @@
+Xilinx Zynqmp FPGA Manager
+
+Required properties:
+- compatible:		should contain "xlnx,zynqmp-pcap-fpga"
+
+Example:
+	pcap: pcap@00 {
+		compatible = "xlnx,zynqmp-pcap-fpga";
+	};

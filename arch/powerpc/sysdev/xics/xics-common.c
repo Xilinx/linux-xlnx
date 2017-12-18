@@ -131,7 +131,7 @@ static void xics_request_ipi(void)
 	unsigned int ipi;
 
 	ipi = irq_create_mapping(xics_host, XICS_IPI);
-	BUG_ON(ipi == NO_IRQ);
+	BUG_ON(!ipi);
 
 	/*
 	 * IPIs are marked IRQF_PERCPU. The handler was set in map.
@@ -140,15 +140,13 @@ static void xics_request_ipi(void)
 			   IRQF_PERCPU | IRQF_NO_THREAD, "IPI", NULL));
 }
 
-int __init xics_smp_probe(void)
+void __init xics_smp_probe(void)
 {
 	/* Setup cause_ipi callback  based on which ICP is used */
 	smp_ops->cause_ipi = icp_ops->cause_ipi;
 
 	/* Register all the IPIs */
 	xics_request_ipi();
-
-	return num_possible_cpus();
 }
 
 #endif /* CONFIG_SMP */
@@ -229,7 +227,7 @@ void xics_migrate_irqs_away(void)
 
 		/* Locate interrupt server */
 		server = -1;
-		ics = irq_get_chip_data(virq);
+		ics = irq_desc_get_chip_data(desc);
 		if (ics)
 			server = ics->get_server(ics, irq);
 		if (server < 0) {
@@ -300,7 +298,8 @@ int xics_get_irq_server(unsigned int virq, const struct cpumask *cpumask,
 }
 #endif /* CONFIG_SMP */
 
-static int xics_host_match(struct irq_domain *h, struct device_node *node)
+static int xics_host_match(struct irq_domain *h, struct device_node *node,
+			   enum irq_domain_bus_token bus_token)
 {
 	struct ics *ics;
 
@@ -329,8 +328,12 @@ static int xics_host_map(struct irq_domain *h, unsigned int virq,
 
 	pr_devel("xics: map virq %d, hwirq 0x%lx\n", virq, hw);
 
-	/* They aren't all level sensitive but we just don't really know */
-	irq_set_status_flags(virq, IRQ_LEVEL);
+	/*
+	 * Mark interrupts as edge sensitive by default so that resend
+	 * actually works. The device-tree parsing will turn the LSIs
+	 * back to level.
+	 */
+	irq_clear_status_flags(virq, IRQ_LEVEL);
 
 	/* Don't call into ICS for IPIs */
 	if (hw == XICS_IPI) {
@@ -352,17 +355,58 @@ static int xics_host_xlate(struct irq_domain *h, struct device_node *ct,
 			   irq_hw_number_t *out_hwirq, unsigned int *out_flags)
 
 {
-	/* Current xics implementation translates everything
-	 * to level. It is not technically right for MSIs but this
-	 * is irrelevant at this point. We might get smarter in the future
-	 */
 	*out_hwirq = intspec[0];
-	*out_flags = IRQ_TYPE_LEVEL_LOW;
+
+	/*
+	 * If intsize is at least 2, we look for the type in the second cell,
+	 * we assume the LSB indicates a level interrupt.
+	 */
+	if (intsize > 1) {
+		if (intspec[1] & 1)
+			*out_flags = IRQ_TYPE_LEVEL_LOW;
+		else
+			*out_flags = IRQ_TYPE_EDGE_RISING;
+	} else
+		*out_flags = IRQ_TYPE_LEVEL_LOW;
 
 	return 0;
 }
 
-static struct irq_domain_ops xics_host_ops = {
+int xics_set_irq_type(struct irq_data *d, unsigned int flow_type)
+{
+	/*
+	 * We only support these. This has really no effect other than setting
+	 * the corresponding descriptor bits mind you but those will in turn
+	 * affect the resend function when re-enabling an edge interrupt.
+	 *
+	 * Set set the default to edge as explained in map().
+	 */
+	if (flow_type == IRQ_TYPE_DEFAULT || flow_type == IRQ_TYPE_NONE)
+		flow_type = IRQ_TYPE_EDGE_RISING;
+
+	if (flow_type != IRQ_TYPE_EDGE_RISING &&
+	    flow_type != IRQ_TYPE_LEVEL_LOW)
+		return -EINVAL;
+
+	irqd_set_trigger_type(d, flow_type);
+
+	return IRQ_SET_MASK_OK_NOCOPY;
+}
+
+int xics_retrigger(struct irq_data *data)
+{
+	/*
+	 * We need to push a dummy CPPR when retriggering, since the subsequent
+	 * EOI will try to pop it. Passing 0 works, as the function hard codes
+	 * the priority value anyway.
+	 */
+	xics_push_cppr(0);
+
+	/* Tell the core to do a soft retrigger */
+	return 0;
+}
+
+static const struct irq_domain_ops xics_host_ops = {
 	.match = xics_host_match,
 	.map = xics_host_map,
 	.xlate = xics_host_xlate,
@@ -405,8 +449,11 @@ void __init xics_init(void)
 	/* Fist locate ICP */
 	if (firmware_has_feature(FW_FEATURE_LPAR))
 		rc = icp_hv_init();
-	if (rc < 0)
+	if (rc < 0) {
 		rc = icp_native_init();
+		if (rc == -ENODEV)
+		    rc = icp_opal_init();
+	}
 	if (rc < 0) {
 		pr_warning("XICS: Cannot find a Presentation Controller !\n");
 		return;

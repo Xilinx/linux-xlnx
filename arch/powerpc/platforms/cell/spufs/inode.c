@@ -103,7 +103,7 @@ spufs_new_inode(struct super_block *sb, umode_t mode)
 	inode->i_mode = mode;
 	inode->i_uid = current_fsuid();
 	inode->i_gid = current_fsgid();
-	inode->i_atime = inode->i_mtime = inode->i_ctime = CURRENT_TIME;
+	inode->i_atime = inode->i_mtime = inode->i_ctime = current_time(inode);
 out:
 	return inode;
 }
@@ -111,7 +111,7 @@ out:
 static int
 spufs_setattr(struct dentry *dentry, struct iattr *attr)
 {
-	struct inode *inode = dentry->d_inode;
+	struct inode *inode = d_inode(dentry);
 
 	if ((attr->ia_valid & ATTR_SIZE) &&
 	    (attr->ia_size != inode->i_size))
@@ -163,14 +163,14 @@ static void spufs_prune_dir(struct dentry *dir)
 {
 	struct dentry *dentry, *tmp;
 
-	mutex_lock(&dir->d_inode->i_mutex);
+	inode_lock(d_inode(dir));
 	list_for_each_entry_safe(dentry, tmp, &dir->d_subdirs, d_child) {
 		spin_lock(&dentry->d_lock);
-		if (!(d_unhashed(dentry)) && dentry->d_inode) {
+		if (simple_positive(dentry)) {
 			dget_dlock(dentry);
 			__d_drop(dentry);
 			spin_unlock(&dentry->d_lock);
-			simple_unlink(dir->d_inode, dentry);
+			simple_unlink(d_inode(dir), dentry);
 			/* XXX: what was dcache_lock protecting here? Other
 			 * filesystems (IB, configfs) release dcache_lock
 			 * before unlink */
@@ -180,7 +180,7 @@ static void spufs_prune_dir(struct dentry *dir)
 		}
 	}
 	shrink_dcache_parent(dir);
-	mutex_unlock(&dir->d_inode->i_mutex);
+	inode_unlock(d_inode(dir));
 }
 
 /* Caller must hold parent->i_mutex */
@@ -192,7 +192,7 @@ static int spufs_rmdir(struct inode *parent, struct dentry *dir)
 	d_drop(dir);
 	res = simple_rmdir(parent, dir);
 	/* We have to give up the mm_struct */
-	spu_forget(SPUFS_I(dir->d_inode)->i_ctx);
+	spu_forget(SPUFS_I(d_inode(dir))->i_ctx);
 	return res;
 }
 
@@ -222,12 +222,12 @@ static int spufs_dir_close(struct inode *inode, struct file *file)
 	int ret;
 
 	dir = file->f_path.dentry;
-	parent = dir->d_parent->d_inode;
-	ctx = SPUFS_I(dir->d_inode)->i_ctx;
+	parent = d_inode(dir->d_parent);
+	ctx = SPUFS_I(d_inode(dir))->i_ctx;
 
-	mutex_lock_nested(&parent->i_mutex, I_MUTEX_PARENT);
+	inode_lock_nested(parent, I_MUTEX_PARENT);
 	ret = spufs_rmdir(parent, dir);
-	mutex_unlock(&parent->i_mutex);
+	inode_unlock(parent);
 	WARN_ON(ret);
 
 	return dcache_dir_close(inode, file);
@@ -238,7 +238,7 @@ const struct file_operations spufs_context_fops = {
 	.release	= spufs_dir_close,
 	.llseek		= dcache_dir_lseek,
 	.read		= generic_read_dir,
-	.iterate	= dcache_readdir,
+	.iterate_shared	= dcache_readdir,
 	.fsync		= noop_fsync,
 };
 EXPORT_SYMBOL_GPL(spufs_context_fops);
@@ -270,7 +270,7 @@ spufs_mkdir(struct inode *dir, struct dentry *dentry, unsigned int flags,
 	inode->i_op = &simple_dir_inode_operations;
 	inode->i_fop = &simple_dir_operations;
 
-	mutex_lock(&inode->i_mutex);
+	inode_lock(inode);
 
 	dget(dentry);
 	inc_nlink(dir);
@@ -291,7 +291,7 @@ spufs_mkdir(struct inode *dir, struct dentry *dentry, unsigned int flags,
 	if (ret)
 		spufs_rmdir(dir, dentry);
 
-	mutex_unlock(&inode->i_mutex);
+	inode_unlock(inode);
 
 	return ret;
 }
@@ -460,7 +460,7 @@ spufs_create_context(struct inode *inode, struct dentry *dentry,
 		goto out_aff_unlock;
 
 	if (affinity) {
-		spufs_set_affinity(flags, SPUFS_I(dentry->d_inode)->i_ctx,
+		spufs_set_affinity(flags, SPUFS_I(d_inode(dentry))->i_ctx,
 								neighbor);
 		if (neighbor)
 			put_spu_context(neighbor);
@@ -496,15 +496,17 @@ spufs_mkgang(struct inode *dir, struct dentry *dentry, umode_t mode)
 	gang = alloc_spu_gang();
 	SPUFS_I(inode)->i_ctx = NULL;
 	SPUFS_I(inode)->i_gang = gang;
-	if (!gang)
+	if (!gang) {
+		ret = -ENOMEM;
 		goto out_iput;
+	}
 
 	inode->i_op = &simple_dir_inode_operations;
 	inode->i_fop = &simple_dir_operations;
 
 	d_instantiate(dentry, inode);
 	inc_nlink(dir);
-	inc_nlink(dentry->d_inode);
+	inc_nlink(d_inode(dentry));
 	return ret;
 
 out_iput:
@@ -561,7 +563,7 @@ static struct file_system_type spufs_type;
 long spufs_create(struct path *path, struct dentry *dentry,
 		unsigned int flags, umode_t mode, struct file *filp)
 {
-	struct inode *dir = path->dentry->d_inode;
+	struct inode *dir = d_inode(path->dentry);
 	int ret;
 
 	/* check if we are on spufs */
@@ -732,8 +734,8 @@ spufs_fill_super(struct super_block *sb, void *data, int silent)
 		return -ENOMEM;
 
 	sb->s_maxbytes = MAX_LFS_FILESIZE;
-	sb->s_blocksize = PAGE_CACHE_SIZE;
-	sb->s_blocksize_bits = PAGE_CACHE_SHIFT;
+	sb->s_blocksize = PAGE_SIZE;
+	sb->s_blocksize_bits = PAGE_SHIFT;
 	sb->s_magic = SPUFS_MAGIC;
 	sb->s_op = &s_ops;
 	sb->s_fs_info = info;
@@ -767,7 +769,7 @@ static int __init spufs_init(void)
 	ret = -ENOMEM;
 	spufs_inode_cache = kmem_cache_create("spufs_inode_cache",
 			sizeof(struct spufs_inode_info), 0,
-			SLAB_HWCACHE_ALIGN, spufs_init_once);
+			SLAB_HWCACHE_ALIGN|SLAB_ACCOUNT, spufs_init_once);
 
 	if (!spufs_inode_cache)
 		goto out;

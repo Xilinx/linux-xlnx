@@ -84,7 +84,8 @@ xfs_dir2_sf_getdents(
 
 	sfp = (xfs_dir2_sf_hdr_t *)dp->i_df.if_u1.if_data;
 
-	ASSERT(dp->i_d.di_size >= xfs_dir2_sf_hdr_size(sfp->i8count));
+	if (dp->i_d.di_size < xfs_dir2_sf_hdr_size(sfp->i8count))
+		return -EFSCORRUPTED;
 
 	/*
 	 * If the block number in the offset is out of range, we're done.
@@ -171,6 +172,7 @@ xfs_dir2_block_getdents(
 	int			wantoff;	/* starting block offset */
 	xfs_off_t		cook;
 	struct xfs_da_geometry	*geo = args->geo;
+	int			lock_mode;
 
 	/*
 	 * If the block number in the offset is out of range, we're done.
@@ -178,7 +180,9 @@ xfs_dir2_block_getdents(
 	if (xfs_dir2_dataptr_to_db(geo, ctx->pos) > geo->datablk)
 		return 0;
 
+	lock_mode = xfs_ilock_data_map_shared(dp);
 	error = xfs_dir3_block_read(NULL, dp, &bp);
+	xfs_iunlock(dp, lock_mode);
 	if (error)
 		return error;
 
@@ -270,10 +274,11 @@ xfs_dir2_leaf_readbuf(
 	size_t			bufsize,
 	struct xfs_dir2_leaf_map_info *mip,
 	xfs_dir2_off_t		*curoff,
-	struct xfs_buf		**bpp)
+	struct xfs_buf		**bpp,
+	bool			trim_map)
 {
 	struct xfs_inode	*dp = args->dp;
-	struct xfs_buf		*bp = *bpp;
+	struct xfs_buf		*bp = NULL;
 	struct xfs_bmbt_irec	*map = mip->map;
 	struct blk_plug		plug;
 	int			error = 0;
@@ -283,13 +288,10 @@ xfs_dir2_leaf_readbuf(
 	struct xfs_da_geometry	*geo = args->geo;
 
 	/*
-	 * If we have a buffer, we need to release it and
-	 * take it out of the mapping.
+	 * If the caller just finished processing a buffer, it will tell us
+	 * we need to trim that block out of the mapping now it is done.
 	 */
-
-	if (bp) {
-		xfs_trans_brelse(NULL, bp);
-		bp = NULL;
+	if (trim_map) {
 		mip->map_blocks -= geo->fsbcount;
 		/*
 		 * Loop to get rid of the extents for the
@@ -529,9 +531,19 @@ xfs_dir2_leaf_getdents(
 		 * current buffer, need to get another one.
 		 */
 		if (!bp || ptr >= (char *)bp->b_addr + geo->blksize) {
+			int	lock_mode;
+			bool	trim_map = false;
 
+			if (bp) {
+				xfs_trans_brelse(NULL, bp);
+				bp = NULL;
+				trim_map = true;
+			}
+
+			lock_mode = xfs_ilock_data_map_shared(dp);
 			error = xfs_dir2_leaf_readbuf(args, bufsize, map_info,
-						      &curoff, &bp);
+						      &curoff, &bp, trim_map);
+			xfs_iunlock(dp, lock_mode);
 			if (error || !map_info->map_valid)
 				break;
 
@@ -653,20 +665,19 @@ xfs_readdir(
 	struct xfs_da_args	args = { NULL };
 	int			rval;
 	int			v;
-	uint			lock_mode;
 
 	trace_xfs_readdir(dp);
 
 	if (XFS_FORCED_SHUTDOWN(dp->i_mount))
 		return -EIO;
 
-	ASSERT(S_ISDIR(dp->i_d.di_mode));
-	XFS_STATS_INC(xs_dir_getdents);
+	ASSERT(S_ISDIR(VFS_I(dp)->i_mode));
+	XFS_STATS_INC(dp->i_mount, xs_dir_getdents);
 
 	args.dp = dp;
 	args.geo = dp->i_mount->m_dir_geo;
 
-	lock_mode = xfs_ilock_data_map_shared(dp);
+	xfs_ilock(dp, XFS_IOLOCK_SHARED);
 	if (dp->i_d.di_format == XFS_DINODE_FMT_LOCAL)
 		rval = xfs_dir2_sf_getdents(&args, ctx);
 	else if ((rval = xfs_dir2_isblock(&args, &v)))
@@ -675,7 +686,7 @@ xfs_readdir(
 		rval = xfs_dir2_block_getdents(&args, ctx);
 	else
 		rval = xfs_dir2_leaf_getdents(&args, ctx, bufsize);
-	xfs_iunlock(dp, lock_mode);
+	xfs_iunlock(dp, XFS_IOLOCK_SHARED);
 
 	return rval;
 }

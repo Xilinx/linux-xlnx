@@ -167,6 +167,12 @@ static int __mlx4_qp_modify(struct mlx4_dev *dev, struct mlx4_mtt *mtt,
 		context->log_page_size   = mtt->page_shift - MLX4_ICM_PAGE_SHIFT;
 	}
 
+	if ((cur_state == MLX4_QP_STATE_RTR) &&
+	    (new_state == MLX4_QP_STATE_RTS) &&
+	    dev->caps.flags2 & MLX4_DEV_CAP_FLAG2_ROCE_V1_V2)
+		context->roce_entropy =
+			cpu_to_be16(mlx4_qp_roce_entropy(dev, qp->qpn));
+
 	*(__be32 *) mailbox->buf = cpu_to_be32(optpar);
 	memcpy(mailbox->buf + 8, context, sizeof *context);
 
@@ -422,18 +428,35 @@ int mlx4_update_qp(struct mlx4_dev *dev, u32 qpn,
 	u64 qp_mask = 0;
 	int err = 0;
 
+	if (!attr || (attr & ~MLX4_UPDATE_QP_SUPPORTED_ATTRS))
+		return -EINVAL;
+
 	mailbox = mlx4_alloc_cmd_mailbox(dev);
 	if (IS_ERR(mailbox))
 		return PTR_ERR(mailbox);
 
 	cmd = (struct mlx4_update_qp_context *)mailbox->buf;
 
-	if (!attr || (attr & ~MLX4_UPDATE_QP_SUPPORTED_ATTRS))
-		return -EINVAL;
-
 	if (attr & MLX4_UPDATE_QP_SMAC) {
 		pri_addr_path_mask |= 1ULL << MLX4_UPD_QP_PATH_MASK_MAC_INDEX;
 		cmd->qp_context.pri_path.grh_mylmc = params->smac_index;
+	}
+
+	if (attr & MLX4_UPDATE_QP_ETH_SRC_CHECK_MC_LB) {
+		if (!(dev->caps.flags2
+		      & MLX4_DEV_CAP_FLAG2_UPDATE_QP_SRC_CHECK_LB)) {
+			mlx4_warn(dev,
+				  "Trying to set src check LB, but it isn't supported\n");
+			err = -ENOTSUPP;
+			goto out;
+		}
+		pri_addr_path_mask |=
+			1ULL << MLX4_UPD_QP_PATH_MASK_ETH_SRC_CHECK_MC_LB;
+		if (params->flags &
+		    MLX4_UPDATE_QP_PARAMS_FLAGS_ETH_CHECK_MC_LB) {
+			cmd->qp_context.pri_path.fl |=
+				MLX4_FL_ETH_SRC_CHECK_MC_LB;
+		}
 	}
 
 	if (attr & MLX4_UPDATE_QP_VSD) {
@@ -442,13 +465,23 @@ int mlx4_update_qp(struct mlx4_dev *dev, u32 qpn,
 			cmd->qp_context.param3 |= cpu_to_be32(MLX4_STRIP_VLAN);
 	}
 
+	if (attr & MLX4_UPDATE_QP_RATE_LIMIT) {
+		qp_mask |= 1ULL << MLX4_UPD_QP_MASK_RATE_LIMIT;
+		cmd->qp_context.rate_limit_params = cpu_to_be16((params->rate_unit << 14) | params->rate_val);
+	}
+
+	if (attr & MLX4_UPDATE_QP_QOS_VPORT) {
+		qp_mask |= 1ULL << MLX4_UPD_QP_MASK_QOS_VPP;
+		cmd->qp_context.qos_vport = params->qos_vport;
+	}
+
 	cmd->primary_addr_path_mask = cpu_to_be64(pri_addr_path_mask);
 	cmd->qp_mask = cpu_to_be64(qp_mask);
 
 	err = mlx4_cmd(dev, mailbox->dma, qpn & 0xffffff, 0,
 		       MLX4_CMD_UPDATE_QP, MLX4_CMD_TIME_CLASS_A,
 		       MLX4_CMD_NATIVE);
-
+out:
 	mlx4_free_cmd_mailbox(dev, mailbox);
 	return err;
 }
@@ -739,7 +772,7 @@ int mlx4_init_qp_table(struct mlx4_dev *dev)
 
 	{
 		int sort[MLX4_NUM_QP_REGION];
-		int i, j, tmp;
+		int i, j;
 		int last_base = dev->caps.num_qps;
 
 		for (i = 1; i < MLX4_NUM_QP_REGION; ++i)
@@ -748,11 +781,8 @@ int mlx4_init_qp_table(struct mlx4_dev *dev)
 		for (i = MLX4_NUM_QP_REGION; i > MLX4_QP_REGION_BOTTOM; --i) {
 			for (j = MLX4_QP_REGION_BOTTOM + 2; j < i; ++j) {
 				if (dev->caps.reserved_qps_cnt[sort[j]] >
-				    dev->caps.reserved_qps_cnt[sort[j - 1]]) {
-					tmp             = sort[j];
-					sort[j]         = sort[j - 1];
-					sort[j - 1]     = tmp;
-				}
+				    dev->caps.reserved_qps_cnt[sort[j - 1]])
+					swap(sort[j], sort[j - 1]);
 			}
 		}
 
@@ -897,3 +927,23 @@ int mlx4_qp_to_ready(struct mlx4_dev *dev, struct mlx4_mtt *mtt,
 	return 0;
 }
 EXPORT_SYMBOL_GPL(mlx4_qp_to_ready);
+
+u16 mlx4_qp_roce_entropy(struct mlx4_dev *dev, u32 qpn)
+{
+	struct mlx4_qp_context context;
+	struct mlx4_qp qp;
+	int err;
+
+	qp.qpn = qpn;
+	err = mlx4_qp_query(dev, &qp, &context);
+	if (!err) {
+		u32 dest_qpn = be32_to_cpu(context.remote_qpn) & 0xffffff;
+		u16 folded_dst = folded_qp(dest_qpn);
+		u16 folded_src = folded_qp(qpn);
+
+		return (dest_qpn != qpn) ?
+			((folded_dst ^ folded_src) | 0xC000) :
+			folded_src | 0xC000;
+	}
+	return 0xdead;
+}

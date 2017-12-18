@@ -73,8 +73,8 @@
 #include "si2157.h"
 #include "sp2.h"
 #include "m88ds3103.h"
-#include "m88ts2022.h"
 #include "m88rs6000t.h"
+#include "lgdt3306a.h"
 
 static unsigned int debug;
 
@@ -93,9 +93,9 @@ DVB_DEFINE_MOD_OPT_ADAPTER_NR(adapter_nr);
 
 /* ------------------------------------------------------------------ */
 
-static int queue_setup(struct vb2_queue *q, const struct v4l2_format *fmt,
+static int queue_setup(struct vb2_queue *q,
 			   unsigned int *num_buffers, unsigned int *num_planes,
-			   unsigned int sizes[], void *alloc_ctxs[])
+			   unsigned int sizes[], struct device *alloc_devs[])
 {
 	struct cx23885_tsport *port = q->drv_priv;
 
@@ -103,7 +103,6 @@ static int queue_setup(struct vb2_queue *q, const struct v4l2_format *fmt,
 	port->ts_packet_count = 32;
 	*num_planes = 1;
 	sizes[0] = port->ts_packet_size * port->ts_packet_count;
-	alloc_ctxs[0] = port->dev->alloc_ctx;
 	*num_buffers = 32;
 	return 0;
 }
@@ -111,18 +110,20 @@ static int queue_setup(struct vb2_queue *q, const struct v4l2_format *fmt,
 
 static int buffer_prepare(struct vb2_buffer *vb)
 {
+	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(vb);
 	struct cx23885_tsport *port = vb->vb2_queue->drv_priv;
 	struct cx23885_buffer *buf =
-		container_of(vb, struct cx23885_buffer, vb);
+		container_of(vbuf, struct cx23885_buffer, vb);
 
 	return cx23885_buf_prepare(buf, port);
 }
 
 static void buffer_finish(struct vb2_buffer *vb)
 {
+	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(vb);
 	struct cx23885_tsport *port = vb->vb2_queue->drv_priv;
 	struct cx23885_dev *dev = port->dev;
-	struct cx23885_buffer *buf = container_of(vb,
+	struct cx23885_buffer *buf = container_of(vbuf,
 		struct cx23885_buffer, vb);
 
 	cx23885_free_buffer(dev, buf);
@@ -130,8 +131,9 @@ static void buffer_finish(struct vb2_buffer *vb)
 
 static void buffer_queue(struct vb2_buffer *vb)
 {
+	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(vb);
 	struct cx23885_tsport *port = vb->vb2_queue->drv_priv;
-	struct cx23885_buffer   *buf = container_of(vb,
+	struct cx23885_buffer   *buf = container_of(vbuf,
 		struct cx23885_buffer, vb);
 
 	cx23885_buf_queue(port, buf);
@@ -171,7 +173,7 @@ static void cx23885_stop_streaming(struct vb2_queue *q)
 	cx23885_cancel_buffers(port);
 }
 
-static struct vb2_ops dvb_qops = {
+static const struct vb2_ops dvb_qops = {
 	.queue_setup    = queue_setup,
 	.buf_prepare  = buffer_prepare,
 	.buf_finish = buffer_finish,
@@ -573,7 +575,32 @@ static struct stb6100_config prof_8000_stb6100_config = {
 	.refclock = 27000000,
 };
 
-static int p8000_set_voltage(struct dvb_frontend *fe, fe_sec_voltage_t voltage)
+static struct lgdt3306a_config hauppauge_quadHD_ATSC_a_config = {
+	.i2c_addr               = 0x59,
+	.qam_if_khz             = 4000,
+	.vsb_if_khz             = 3250,
+	.deny_i2c_rptr          = 1, /* Disabled */
+	.spectral_inversion     = 0, /* Disabled */
+	.mpeg_mode              = LGDT3306A_MPEG_SERIAL,
+	.tpclk_edge             = LGDT3306A_TPCLK_RISING_EDGE,
+	.tpvalid_polarity       = LGDT3306A_TP_VALID_HIGH,
+	.xtalMHz                = 25, /* 24 or 25 */
+};
+
+static struct lgdt3306a_config hauppauge_quadHD_ATSC_b_config = {
+	.i2c_addr               = 0x0e,
+	.qam_if_khz             = 4000,
+	.vsb_if_khz             = 3250,
+	.deny_i2c_rptr          = 1, /* Disabled */
+	.spectral_inversion     = 0, /* Disabled */
+	.mpeg_mode              = LGDT3306A_MPEG_SERIAL,
+	.tpclk_edge             = LGDT3306A_TPCLK_RISING_EDGE,
+	.tpvalid_polarity       = LGDT3306A_TP_VALID_HIGH,
+	.xtalMHz                = 25, /* 24 or 25 */
+};
+
+static int p8000_set_voltage(struct dvb_frontend *fe,
+			     enum fe_sec_voltage voltage)
 {
 	struct cx23885_tsport *port = fe->dvb->priv;
 	struct cx23885_dev *dev = port->dev;
@@ -588,7 +615,7 @@ static int p8000_set_voltage(struct dvb_frontend *fe, fe_sec_voltage_t voltage)
 }
 
 static int dvbsky_t9580_set_voltage(struct dvb_frontend *fe,
-					fe_sec_voltage_t voltage)
+					enum fe_sec_voltage voltage)
 {
 	struct cx23885_tsport *port = fe->dvb->priv;
 	struct cx23885_dev *dev = port->dev;
@@ -617,7 +644,7 @@ static int dvbsky_t9580_set_voltage(struct dvb_frontend *fe,
 }
 
 static int dvbsky_s952_portc_set_voltage(struct dvb_frontend *fe,
-					fe_sec_voltage_t voltage)
+					enum fe_sec_voltage voltage)
 {
 	struct cx23885_tsport *port = fe->dvb->priv;
 	struct cx23885_dev *dev = port->dev;
@@ -857,24 +884,12 @@ static struct mt2063_config terratec_mt2063_config[] = {
 	},
 };
 
-static const struct tda10071_config hauppauge_tda10071_config = {
-	.demod_i2c_addr = 0x05,
-	.tuner_i2c_addr = 0x54,
+static const struct tda10071_platform_data hauppauge_tda10071_pdata = {
+	.clk = 40444000, /* 40.444 MHz */
 	.i2c_wr_max = 64,
 	.ts_mode = TDA10071_TS_SERIAL,
-	.spec_inv = 0,
-	.xtal = 40444000, /* 40.444 MHz */
 	.pll_multiplier = 20,
-};
-
-static const struct a8293_config hauppauge_a8293_config = {
-	.i2c_addr = 0x0b,
-};
-
-static const struct si2165_config hauppauge_hvr4400_si2165_config = {
-	.i2c_addr	= 0x64,
-	.chip_mode	= SI2165_MODE_PLL_XTAL,
-	.ref_freq_Hz	= 16000000,
+	.tuner_i2c_addr = 0x54,
 };
 
 static const struct m88ds3103_config dvbsky_t9580_m88ds3103_config = {
@@ -1142,7 +1157,7 @@ static int dvb_register_ci_mac(struct cx23885_tsport *port)
 		u8 eeprom[256]; /* 24C02 i2c eeprom */
 		struct sp2_config sp2_config;
 		struct i2c_board_info info;
-		struct cx23885_i2c *i2c_bus2 = &dev->i2c_bus[1];
+		struct cx23885_i2c *i2c_bus = &dev->i2c_bus[0];
 
 		/* attach CI */
 		memset(&sp2_config, 0, sizeof(sp2_config));
@@ -1154,7 +1169,7 @@ static int dvb_register_ci_mac(struct cx23885_tsport *port)
 		info.addr = 0x40;
 		info.platform_data = &sp2_config;
 		request_module(info.type);
-		client_ci = i2c_new_device(&i2c_bus2->i2c_adap, &info);
+		client_ci = i2c_new_device(&i2c_bus->i2c_adap, &info);
 		if (client_ci == NULL || client_ci->dev.driver == NULL)
 			return -ENODEV;
 		if (!try_module_get(client_ci->dev.driver->owner)) {
@@ -1186,13 +1201,16 @@ static int dvb_register(struct cx23885_tsport *port)
 	struct cx23885_i2c *i2c_bus = NULL, *i2c_bus2 = NULL;
 	struct vb2_dvb_frontend *fe0, *fe1 = NULL;
 	struct si2168_config si2168_config;
+	struct si2165_platform_data si2165_pdata;
 	struct si2157_config si2157_config;
-	struct m88ts2022_config m88ts2022_config;
+	struct ts2020_config ts2020_config;
 	struct i2c_board_info info;
 	struct i2c_adapter *adapter;
 	struct i2c_client *client_demod = NULL, *client_tuner = NULL;
+	struct i2c_client *client_sec = NULL;
 	const struct m88ds3103_config *p_m88ds3103_config = NULL;
-	int (*p_set_voltage)(struct dvb_frontend *fe, fe_sec_voltage_t voltage) = NULL;
+	int (*p_set_voltage)(struct dvb_frontend *fe,
+			     enum fe_sec_voltage voltage) = NULL;
 	int mfe_shared = 0; /* bus not shared by default */
 	int ret;
 
@@ -1702,6 +1720,9 @@ static int dvb_register(struct cx23885_tsport *port)
 		}
 		break;
 	case CX23885_BOARD_NETUP_DUAL_DVB_T_C_CI_RF:
+		if (port->nr > 2)
+			return 0;
+
 		i2c_bus = &dev->i2c_bus[0];
 		mfe_shared = 1;/* MFE */
 		port->frontends.gate = 0;/* not clear for me yet */
@@ -1798,27 +1819,69 @@ static int dvb_register(struct cx23885_tsport *port)
 
 		fe0->dvb.frontend->ops.set_voltage = p8000_set_voltage;
 		break;
-	case CX23885_BOARD_HAUPPAUGE_HVR4400:
+	case CX23885_BOARD_HAUPPAUGE_HVR4400: {
+		struct tda10071_platform_data tda10071_pdata = hauppauge_tda10071_pdata;
+		struct a8293_platform_data a8293_pdata = {};
+
 		i2c_bus = &dev->i2c_bus[0];
 		i2c_bus2 = &dev->i2c_bus[1];
 		switch (port->nr) {
 		/* port b */
 		case 1:
-			fe0->dvb.frontend = dvb_attach(tda10071_attach,
-						&hauppauge_tda10071_config,
-						&i2c_bus->i2c_adap);
-			if (fe0->dvb.frontend == NULL)
-				break;
-			if (!dvb_attach(a8293_attach, fe0->dvb.frontend,
-					&i2c_bus->i2c_adap,
-					&hauppauge_a8293_config))
+			/* attach demod + tuner combo */
+			memset(&info, 0, sizeof(info));
+			strlcpy(info.type, "tda10071_cx24118", I2C_NAME_SIZE);
+			info.addr = 0x05;
+			info.platform_data = &tda10071_pdata;
+			request_module("tda10071");
+			client_demod = i2c_new_device(&i2c_bus->i2c_adap, &info);
+			if (!client_demod || !client_demod->dev.driver)
 				goto frontend_detach;
+			if (!try_module_get(client_demod->dev.driver->owner)) {
+				i2c_unregister_device(client_demod);
+				goto frontend_detach;
+			}
+			fe0->dvb.frontend = tda10071_pdata.get_dvb_frontend(client_demod);
+			port->i2c_client_demod = client_demod;
+
+			/* attach SEC */
+			a8293_pdata.dvb_frontend = fe0->dvb.frontend;
+			memset(&info, 0, sizeof(info));
+			strlcpy(info.type, "a8293", I2C_NAME_SIZE);
+			info.addr = 0x0b;
+			info.platform_data = &a8293_pdata;
+			request_module("a8293");
+			client_sec = i2c_new_device(&i2c_bus->i2c_adap, &info);
+			if (!client_sec || !client_sec->dev.driver)
+				goto frontend_detach;
+			if (!try_module_get(client_sec->dev.driver->owner)) {
+				i2c_unregister_device(client_sec);
+				goto frontend_detach;
+			}
+			port->i2c_client_sec = client_sec;
 			break;
 		/* port c */
 		case 2:
-			fe0->dvb.frontend = dvb_attach(si2165_attach,
-					&hauppauge_hvr4400_si2165_config,
-					&i2c_bus->i2c_adap);
+			/* attach frontend */
+			memset(&si2165_pdata, 0, sizeof(si2165_pdata));
+			si2165_pdata.fe = &fe0->dvb.frontend;
+			si2165_pdata.chip_mode = SI2165_MODE_PLL_XTAL,
+			si2165_pdata.ref_freq_Hz = 16000000,
+			memset(&info, 0, sizeof(struct i2c_board_info));
+			strlcpy(info.type, "si2165", I2C_NAME_SIZE);
+			info.addr = 0x64;
+			info.platform_data = &si2165_pdata;
+			request_module(info.type);
+			client_demod = i2c_new_device(&i2c_bus->i2c_adap, &info);
+			if (client_demod == NULL ||
+					client_demod->dev.driver == NULL)
+				goto frontend_detach;
+			if (!try_module_get(client_demod->dev.driver->owner)) {
+				i2c_unregister_device(client_demod);
+				goto frontend_detach;
+			}
+			port->i2c_client_demod = client_demod;
+
 			if (fe0->dvb.frontend == NULL)
 				break;
 			fe0->dvb.frontend->ops.i2c_gate_ctrl = NULL;
@@ -1830,17 +1893,46 @@ static int dvb_register(struct cx23885_tsport *port)
 			break;
 		}
 		break;
-	case CX23885_BOARD_HAUPPAUGE_STARBURST:
+	}
+	case CX23885_BOARD_HAUPPAUGE_STARBURST: {
+		struct tda10071_platform_data tda10071_pdata = hauppauge_tda10071_pdata;
+		struct a8293_platform_data a8293_pdata = {};
+
 		i2c_bus = &dev->i2c_bus[0];
-		fe0->dvb.frontend = dvb_attach(tda10071_attach,
-						&hauppauge_tda10071_config,
-						&i2c_bus->i2c_adap);
-		if (fe0->dvb.frontend != NULL) {
-			dvb_attach(a8293_attach, fe0->dvb.frontend,
-				   &i2c_bus->i2c_adap,
-				   &hauppauge_a8293_config);
+
+		/* attach demod + tuner combo */
+		memset(&info, 0, sizeof(info));
+		strlcpy(info.type, "tda10071_cx24118", I2C_NAME_SIZE);
+		info.addr = 0x05;
+		info.platform_data = &tda10071_pdata;
+		request_module("tda10071");
+		client_demod = i2c_new_device(&i2c_bus->i2c_adap, &info);
+		if (!client_demod || !client_demod->dev.driver)
+			goto frontend_detach;
+		if (!try_module_get(client_demod->dev.driver->owner)) {
+			i2c_unregister_device(client_demod);
+			goto frontend_detach;
 		}
+		fe0->dvb.frontend = tda10071_pdata.get_dvb_frontend(client_demod);
+		port->i2c_client_demod = client_demod;
+
+		/* attach SEC */
+		a8293_pdata.dvb_frontend = fe0->dvb.frontend;
+		memset(&info, 0, sizeof(info));
+		strlcpy(info.type, "a8293", I2C_NAME_SIZE);
+		info.addr = 0x0b;
+		info.platform_data = &a8293_pdata;
+		request_module("a8293");
+		client_sec = i2c_new_device(&i2c_bus->i2c_adap, &info);
+		if (!client_sec || !client_sec->dev.driver)
+			goto frontend_detach;
+		if (!try_module_get(client_sec->dev.driver->owner)) {
+			i2c_unregister_device(client_sec);
+			goto frontend_detach;
+		}
+		port->i2c_client_sec = client_sec;
 		break;
+	}
 	case CX23885_BOARD_DVBSKY_T9580:
 	case CX23885_BOARD_DVBSKY_S950:
 		i2c_bus = &dev->i2c_bus[0];
@@ -1856,13 +1948,13 @@ static int dvb_register(struct cx23885_tsport *port)
 				break;
 
 			/* attach tuner */
-			memset(&m88ts2022_config, 0, sizeof(m88ts2022_config));
-			m88ts2022_config.fe = fe0->dvb.frontend;
-			m88ts2022_config.clock = 27000000;
+			memset(&ts2020_config, 0, sizeof(ts2020_config));
+			ts2020_config.fe = fe0->dvb.frontend;
+			ts2020_config.get_agc_pwm = m88ds3103_get_agc_pwm;
 			memset(&info, 0, sizeof(struct i2c_board_info));
-			strlcpy(info.type, "m88ts2022", I2C_NAME_SIZE);
+			strlcpy(info.type, "ts2020", I2C_NAME_SIZE);
 			info.addr = 0x60;
-			info.platform_data = &m88ts2022_config;
+			info.platform_data = &ts2020_config;
 			request_module(info.type);
 			client_tuner = i2c_new_device(adapter, &info);
 			if (client_tuner == NULL ||
@@ -1914,6 +2006,7 @@ static int dvb_register(struct cx23885_tsport *port)
 			/* attach tuner */
 			memset(&si2157_config, 0, sizeof(si2157_config));
 			si2157_config.fe = fe0->dvb.frontend;
+			si2157_config.if_port = 1;
 			memset(&info, 0, sizeof(struct i2c_board_info));
 			strlcpy(info.type, "si2157", I2C_NAME_SIZE);
 			info.addr = 0x60;
@@ -1934,8 +2027,8 @@ static int dvb_register(struct cx23885_tsport *port)
 		break;
 	case CX23885_BOARD_DVBSKY_T980C:
 	case CX23885_BOARD_TT_CT2_4500_CI:
-		i2c_bus = &dev->i2c_bus[1];
-		i2c_bus2 = &dev->i2c_bus[0];
+		i2c_bus = &dev->i2c_bus[0];
+		i2c_bus2 = &dev->i2c_bus[1];
 
 		/* attach frontend */
 		memset(&si2168_config, 0, sizeof(si2168_config));
@@ -1947,7 +2040,7 @@ static int dvb_register(struct cx23885_tsport *port)
 		info.addr = 0x64;
 		info.platform_data = &si2168_config;
 		request_module(info.type);
-		client_demod = i2c_new_device(&i2c_bus->i2c_adap, &info);
+		client_demod = i2c_new_device(&i2c_bus2->i2c_adap, &info);
 		if (client_demod == NULL || client_demod->dev.driver == NULL)
 			goto frontend_detach;
 		if (!try_module_get(client_demod->dev.driver->owner)) {
@@ -1959,6 +2052,7 @@ static int dvb_register(struct cx23885_tsport *port)
 		/* attach tuner */
 		memset(&si2157_config, 0, sizeof(si2157_config));
 		si2157_config.fe = fe0->dvb.frontend;
+		si2157_config.if_port = 1;
 		memset(&info, 0, sizeof(struct i2c_board_info));
 		strlcpy(info.type, "si2157", I2C_NAME_SIZE);
 		info.addr = 0x60;
@@ -1975,24 +2069,24 @@ static int dvb_register(struct cx23885_tsport *port)
 		port->i2c_client_tuner = client_tuner;
 		break;
 	case CX23885_BOARD_DVBSKY_S950C:
-		i2c_bus = &dev->i2c_bus[1];
-		i2c_bus2 = &dev->i2c_bus[0];
+		i2c_bus = &dev->i2c_bus[0];
+		i2c_bus2 = &dev->i2c_bus[1];
 
 		/* attach frontend */
 		fe0->dvb.frontend = dvb_attach(m88ds3103_attach,
 				&dvbsky_s950c_m88ds3103_config,
-				&i2c_bus->i2c_adap, &adapter);
+				&i2c_bus2->i2c_adap, &adapter);
 		if (fe0->dvb.frontend == NULL)
 			break;
 
 		/* attach tuner */
-		memset(&m88ts2022_config, 0, sizeof(m88ts2022_config));
-		m88ts2022_config.fe = fe0->dvb.frontend;
-		m88ts2022_config.clock = 27000000;
+		memset(&ts2020_config, 0, sizeof(ts2020_config));
+		ts2020_config.fe = fe0->dvb.frontend;
+		ts2020_config.get_agc_pwm = m88ds3103_get_agc_pwm;
 		memset(&info, 0, sizeof(struct i2c_board_info));
-		strlcpy(info.type, "m88ts2022", I2C_NAME_SIZE);
+		strlcpy(info.type, "ts2020", I2C_NAME_SIZE);
 		info.addr = 0x60;
-		info.platform_data = &m88ts2022_config;
+		info.platform_data = &ts2020_config;
 		request_module(info.type);
 		client_tuner = i2c_new_device(adapter, &info);
 		if (client_tuner == NULL || client_tuner->dev.driver == NULL)
@@ -2032,13 +2126,13 @@ static int dvb_register(struct cx23885_tsport *port)
 			break;
 
 		/* attach tuner */
-		memset(&m88ts2022_config, 0, sizeof(m88ts2022_config));
-		m88ts2022_config.fe = fe0->dvb.frontend;
-		m88ts2022_config.clock = 27000000;
+		memset(&ts2020_config, 0, sizeof(ts2020_config));
+		ts2020_config.fe = fe0->dvb.frontend;
+		ts2020_config.get_agc_pwm = m88ds3103_get_agc_pwm;
 		memset(&info, 0, sizeof(struct i2c_board_info));
-		strlcpy(info.type, "m88ts2022", I2C_NAME_SIZE);
+		strlcpy(info.type, "ts2020", I2C_NAME_SIZE);
 		info.addr = 0x60;
-		info.platform_data = &m88ts2022_config;
+		info.platform_data = &ts2020_config;
 		request_module(info.type);
 		client_tuner = i2c_new_device(adapter, &info);
 		if (client_tuner == NULL || client_tuner->dev.driver == NULL)
@@ -2097,6 +2191,7 @@ static int dvb_register(struct cx23885_tsport *port)
 		/* attach tuner */
 		memset(&si2157_config, 0, sizeof(si2157_config));
 		si2157_config.fe = fe0->dvb.frontend;
+		si2157_config.if_port = 1;
 		memset(&info, 0, sizeof(struct i2c_board_info));
 		strlcpy(info.type, "si2157", I2C_NAME_SIZE);
 		info.addr = 0x60;
@@ -2112,9 +2207,11 @@ static int dvb_register(struct cx23885_tsport *port)
 		}
 		port->i2c_client_tuner = client_tuner;
 		break;
-	case CX23885_BOARD_HAUPPAUGE_HVR5525:
-		switch (port->nr) {
+	case CX23885_BOARD_HAUPPAUGE_HVR5525: {
 		struct m88rs6000t_config m88rs6000t_config;
+		struct a8293_platform_data a8293_pdata = {};
+
+		switch (port->nr) {
 
 		/* port b - satellite */
 		case 1:
@@ -2126,10 +2223,20 @@ static int dvb_register(struct cx23885_tsport *port)
 				break;
 
 			/* attach SEC */
-			if (!dvb_attach(a8293_attach, fe0->dvb.frontend,
-					&dev->i2c_bus[0].i2c_adap,
-					&hauppauge_a8293_config))
+			a8293_pdata.dvb_frontend = fe0->dvb.frontend;
+			memset(&info, 0, sizeof(info));
+			strlcpy(info.type, "a8293", I2C_NAME_SIZE);
+			info.addr = 0x0b;
+			info.platform_data = &a8293_pdata;
+			request_module("a8293");
+			client_sec = i2c_new_device(&dev->i2c_bus[0].i2c_adap, &info);
+			if (!client_sec || !client_sec->dev.driver)
 				goto frontend_detach;
+			if (!try_module_get(client_sec->dev.driver->owner)) {
+				i2c_unregister_device(client_sec);
+				goto frontend_detach;
+			}
+			port->i2c_client_sec = client_sec;
 
 			/* attach tuner */
 			memset(&m88rs6000t_config, 0, sizeof(m88rs6000t_config));
@@ -2176,6 +2283,7 @@ static int dvb_register(struct cx23885_tsport *port)
 			/* attach tuner */
 			memset(&si2157_config, 0, sizeof(si2157_config));
 			si2157_config.fe = fe0->dvb.frontend;
+			si2157_config.if_port = 1;
 			memset(&info, 0, sizeof(struct i2c_board_info));
 			strlcpy(info.type, "si2157", I2C_NAME_SIZE);
 			info.addr = 0x60;
@@ -2199,9 +2307,183 @@ static int dvb_register(struct cx23885_tsport *port)
 			break;
 		}
 		break;
+	}
+	case CX23885_BOARD_HAUPPAUGE_QUADHD_DVB:
+		switch (port->nr) {
+		/* port b - Terrestrial/cable */
+		case 1:
+			/* attach frontend */
+			memset(&si2168_config, 0, sizeof(si2168_config));
+			si2168_config.i2c_adapter = &adapter;
+			si2168_config.fe = &fe0->dvb.frontend;
+			si2168_config.ts_mode = SI2168_TS_SERIAL;
+			memset(&info, 0, sizeof(struct i2c_board_info));
+			strlcpy(info.type, "si2168", I2C_NAME_SIZE);
+			info.addr = 0x64;
+			info.platform_data = &si2168_config;
+			request_module("%s", info.type);
+			client_demod = i2c_new_device(&dev->i2c_bus[0].i2c_adap, &info);
+			if (!client_demod || !client_demod->dev.driver)
+				goto frontend_detach;
+			if (!try_module_get(client_demod->dev.driver->owner)) {
+				i2c_unregister_device(client_demod);
+				goto frontend_detach;
+			}
+			port->i2c_client_demod = client_demod;
+
+			/* attach tuner */
+			memset(&si2157_config, 0, sizeof(si2157_config));
+			si2157_config.fe = fe0->dvb.frontend;
+			si2157_config.if_port = 1;
+			memset(&info, 0, sizeof(struct i2c_board_info));
+			strlcpy(info.type, "si2157", I2C_NAME_SIZE);
+			info.addr = 0x60;
+			info.platform_data = &si2157_config;
+			request_module("%s", info.type);
+			client_tuner = i2c_new_device(&dev->i2c_bus[1].i2c_adap, &info);
+			if (!client_tuner || !client_tuner->dev.driver) {
+				module_put(client_demod->dev.driver->owner);
+				i2c_unregister_device(client_demod);
+				port->i2c_client_demod = NULL;
+				goto frontend_detach;
+			}
+			if (!try_module_get(client_tuner->dev.driver->owner)) {
+				i2c_unregister_device(client_tuner);
+				module_put(client_demod->dev.driver->owner);
+				i2c_unregister_device(client_demod);
+				port->i2c_client_demod = NULL;
+				goto frontend_detach;
+			}
+			port->i2c_client_tuner = client_tuner;
+			break;
+
+		/* port c - terrestrial/cable */
+		case 2:
+			/* attach frontend */
+			memset(&si2168_config, 0, sizeof(si2168_config));
+			si2168_config.i2c_adapter = &adapter;
+			si2168_config.fe = &fe0->dvb.frontend;
+			si2168_config.ts_mode = SI2168_TS_SERIAL;
+			memset(&info, 0, sizeof(struct i2c_board_info));
+			strlcpy(info.type, "si2168", I2C_NAME_SIZE);
+			info.addr = 0x66;
+			info.platform_data = &si2168_config;
+			request_module("%s", info.type);
+			client_demod = i2c_new_device(&dev->i2c_bus[0].i2c_adap, &info);
+			if (!client_demod || !client_demod->dev.driver)
+				goto frontend_detach;
+			if (!try_module_get(client_demod->dev.driver->owner)) {
+				i2c_unregister_device(client_demod);
+				goto frontend_detach;
+			}
+			port->i2c_client_demod = client_demod;
+
+			/* attach tuner */
+			memset(&si2157_config, 0, sizeof(si2157_config));
+			si2157_config.fe = fe0->dvb.frontend;
+			si2157_config.if_port = 1;
+			memset(&info, 0, sizeof(struct i2c_board_info));
+			strlcpy(info.type, "si2157", I2C_NAME_SIZE);
+			info.addr = 0x62;
+			info.platform_data = &si2157_config;
+			request_module("%s", info.type);
+			client_tuner = i2c_new_device(&dev->i2c_bus[1].i2c_adap, &info);
+			if (!client_tuner || !client_tuner->dev.driver) {
+				module_put(client_demod->dev.driver->owner);
+				i2c_unregister_device(client_demod);
+				port->i2c_client_demod = NULL;
+				goto frontend_detach;
+			}
+			if (!try_module_get(client_tuner->dev.driver->owner)) {
+				i2c_unregister_device(client_tuner);
+				module_put(client_demod->dev.driver->owner);
+				i2c_unregister_device(client_demod);
+				port->i2c_client_demod = NULL;
+				goto frontend_detach;
+			}
+			port->i2c_client_tuner = client_tuner;
+			break;
+		}
+		break;
+	case CX23885_BOARD_HAUPPAUGE_QUADHD_ATSC:
+		switch (port->nr) {
+		/* port b - Terrestrial/cable */
+		case 1:
+			/* attach frontend */
+			i2c_bus = &dev->i2c_bus[0];
+			fe0->dvb.frontend = dvb_attach(lgdt3306a_attach,
+				&hauppauge_quadHD_ATSC_a_config, &i2c_bus->i2c_adap);
+			if (fe0->dvb.frontend == NULL)
+				break;
+
+			/* attach tuner */
+			memset(&si2157_config, 0, sizeof(si2157_config));
+			si2157_config.fe = fe0->dvb.frontend;
+			si2157_config.if_port = 1;
+			si2157_config.inversion = 1;
+			memset(&info, 0, sizeof(struct i2c_board_info));
+			strlcpy(info.type, "si2157", I2C_NAME_SIZE);
+			info.addr = 0x60;
+			info.platform_data = &si2157_config;
+			request_module("%s", info.type);
+			client_tuner = i2c_new_device(&dev->i2c_bus[1].i2c_adap, &info);
+			if (!client_tuner || !client_tuner->dev.driver) {
+				module_put(client_demod->dev.driver->owner);
+				i2c_unregister_device(client_demod);
+				port->i2c_client_demod = NULL;
+				goto frontend_detach;
+			}
+			if (!try_module_get(client_tuner->dev.driver->owner)) {
+				i2c_unregister_device(client_tuner);
+				module_put(client_demod->dev.driver->owner);
+				i2c_unregister_device(client_demod);
+				port->i2c_client_demod = NULL;
+				goto frontend_detach;
+			}
+			port->i2c_client_tuner = client_tuner;
+			break;
+
+		/* port c - terrestrial/cable */
+		case 2:
+			/* attach frontend */
+			i2c_bus = &dev->i2c_bus[0];
+			fe0->dvb.frontend = dvb_attach(lgdt3306a_attach,
+				&hauppauge_quadHD_ATSC_b_config, &i2c_bus->i2c_adap);
+			if (fe0->dvb.frontend == NULL)
+				break;
+
+			/* attach tuner */
+			memset(&si2157_config, 0, sizeof(si2157_config));
+			si2157_config.fe = fe0->dvb.frontend;
+			si2157_config.if_port = 1;
+			si2157_config.inversion = 1;
+			memset(&info, 0, sizeof(struct i2c_board_info));
+			strlcpy(info.type, "si2157", I2C_NAME_SIZE);
+			info.addr = 0x62;
+			info.platform_data = &si2157_config;
+			request_module("%s", info.type);
+			client_tuner = i2c_new_device(&dev->i2c_bus[1].i2c_adap, &info);
+			if (!client_tuner || !client_tuner->dev.driver) {
+				module_put(client_demod->dev.driver->owner);
+				i2c_unregister_device(client_demod);
+				port->i2c_client_demod = NULL;
+				goto frontend_detach;
+			}
+			if (!try_module_get(client_tuner->dev.driver->owner)) {
+				i2c_unregister_device(client_tuner);
+				module_put(client_demod->dev.driver->owner);
+				i2c_unregister_device(client_demod);
+				port->i2c_client_demod = NULL;
+				goto frontend_detach;
+			}
+			port->i2c_client_tuner = client_tuner;
+			break;
+		}
+		break;
+
 	default:
 		printk(KERN_INFO "%s: The frontend of your DVB/ATSC card "
-			" isn't supported yet\n",
+		       " isn't supported yet\n",
 		       dev->name);
 		break;
 	}
@@ -2231,7 +2513,8 @@ static int dvb_register(struct cx23885_tsport *port)
 
 	/* register everything */
 	ret = vb2_dvb_register_bus(&port->frontends, THIS_MODULE, port,
-					&dev->pci->dev, adapter_nr, mfe_shared);
+				   &dev->pci->dev, NULL,
+				   adapter_nr, mfe_shared);
 	if (ret)
 		goto frontend_detach;
 
@@ -2242,6 +2525,14 @@ static int dvb_register(struct cx23885_tsport *port)
 	return 0;
 
 frontend_detach:
+	/* remove I2C client for SEC */
+	client_sec = port->i2c_client_sec;
+	if (client_sec) {
+		module_put(client_sec->dev.driver->owner);
+		i2c_unregister_device(client_sec);
+		port->i2c_client_sec = NULL;
+	}
+
 	/* remove I2C client for tuner */
 	client_tuner = port->i2c_client_tuner;
 	if (client_tuner) {
@@ -2318,6 +2609,7 @@ int cx23885_dvb_register(struct cx23885_tsport *port)
 		q->mem_ops = &vb2_dma_sg_memops;
 		q->timestamp_flags = V4L2_BUF_FLAG_TIMESTAMP_MONOTONIC;
 		q->lock = &dev->lock;
+		q->dev = &dev->pci->dev;
 
 		err = vb2_queue_init(q);
 		if (err < 0)
@@ -2338,6 +2630,13 @@ int cx23885_dvb_unregister(struct cx23885_tsport *port)
 
 	/* remove I2C client for CI */
 	client = port->i2c_client_ci;
+	if (client) {
+		module_put(client->dev.driver->owner);
+		i2c_unregister_device(client);
+	}
+
+	/* remove I2C client for SEC */
+	client = port->i2c_client_sec;
 	if (client) {
 		module_put(client->dev.driver->owner);
 		i2c_unregister_device(client);

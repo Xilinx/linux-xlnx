@@ -49,7 +49,7 @@ static int gfs2_encode_fh(struct inode *inode, __u32 *p, int *len,
 	fh[3] = cpu_to_be32(ip->i_no_addr & 0xFFFFFFFF);
 	*len = GFS2_SMALL_FH_SIZE;
 
-	if (!parent || inode == sb->s_root->d_inode)
+	if (!parent || inode == d_inode(sb->s_root))
 		return *len;
 
 	ip = GFS2_I(parent);
@@ -88,8 +88,8 @@ static int get_name_filldir(struct dir_context *ctx, const char *name,
 static int gfs2_get_name(struct dentry *parent, char *name,
 			 struct dentry *child)
 {
-	struct inode *dir = parent->d_inode;
-	struct inode *inode = child->d_inode;
+	struct inode *dir = d_inode(parent);
+	struct inode *inode = d_inode(child);
 	struct gfs2_inode *dip, *ip;
 	struct get_name_filldir gnfd = {
 		.ctx.actor = get_name_filldir,
@@ -128,7 +128,7 @@ static int gfs2_get_name(struct dentry *parent, char *name,
 
 static struct dentry *gfs2_get_parent(struct dentry *child)
 {
-	return d_obtain_alias(gfs2_lookupi(child->d_inode, &gfs2_qdotdot, 1));
+	return d_obtain_alias(gfs2_lookupi(d_inode(child), &gfs2_qdotdot, 1));
 }
 
 static struct dentry *gfs2_get_dentry(struct super_block *sb,
@@ -137,21 +137,10 @@ static struct dentry *gfs2_get_dentry(struct super_block *sb,
 	struct gfs2_sbd *sdp = sb->s_fs_info;
 	struct inode *inode;
 
-	inode = gfs2_ilookup(sb, inum->no_addr, 0);
-	if (inode) {
-		if (GFS2_I(inode)->i_no_formal_ino != inum->no_formal_ino) {
-			iput(inode);
-			return ERR_PTR(-ESTALE);
-		}
-		goto out_inode;
-	}
-
 	inode = gfs2_lookup_by_inum(sdp, inum->no_addr, &inum->no_formal_ino,
 				    GFS2_BLKST_DINODE);
 	if (IS_ERR(inode))
 		return ERR_CAST(inode);
-
-out_inode:
 	return d_obtain_alias(inode);
 }
 

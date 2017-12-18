@@ -22,6 +22,7 @@
 
 #include "hw.h"
 #include "ce.h"
+#include "ahb.h"
 
 /*
  * maximum number of bytes that can be handled atomically by DiagRead/DiagWrite
@@ -147,9 +148,6 @@ struct ath10k_pci_pipe {
 
 	/* protects compl_free and num_send_allowed */
 	spinlock_t pipe_lock;
-
-	struct ath10k_pci *ar_pci;
-	struct tasklet_struct intr;
 };
 
 struct ath10k_pci_supp_chip {
@@ -157,24 +155,29 @@ struct ath10k_pci_supp_chip {
 	u32 rev_id;
 };
 
+struct ath10k_bus_ops {
+	u32 (*read32)(struct ath10k *ar, u32 offset);
+	void (*write32)(struct ath10k *ar, u32 offset, u32 value);
+	int (*get_num_banks)(struct ath10k *ar);
+};
+
+enum ath10k_pci_irq_mode {
+	ATH10K_PCI_IRQ_AUTO = 0,
+	ATH10K_PCI_IRQ_LEGACY = 1,
+	ATH10K_PCI_IRQ_MSI = 2,
+};
+
 struct ath10k_pci {
 	struct pci_dev *pdev;
 	struct device *dev;
 	struct ath10k *ar;
 	void __iomem *mem;
+	size_t mem_len;
 
-	/*
-	 * Number of MSI interrupts granted, 0 --> using legacy PCI line
-	 * interrupts.
-	 */
-	int num_msi_intrs;
-
-	struct tasklet_struct intr_tq;
-	struct tasklet_struct msi_fw_err;
+	/* Operating interrupt mode */
+	enum ath10k_pci_irq_mode oper_irq_mode;
 
 	struct ath10k_pci_pipe pipe_info[CE_COUNT_MAX];
-
-	struct ath10k_hif_cb msg_callbacks_current;
 
 	/* Copy Engine used for Diagnostic Accesses */
 	struct ath10k_ce_pipe *ce_diag;
@@ -185,6 +188,61 @@ struct ath10k_pci {
 	/* Map CE id to ce_state */
 	struct ath10k_ce_pipe ce_states[CE_COUNT_MAX];
 	struct timer_list rx_post_retry;
+
+	/* Due to HW quirks it is recommended to disable ASPM during device
+	 * bootup. To do that the original PCI-E Link Control is stored before
+	 * device bootup is executed and re-programmed later.
+	 */
+	u16 link_ctl;
+
+	/* Protects ps_awake and ps_wake_refcount */
+	spinlock_t ps_lock;
+
+	/* The device has a special powersave-oriented register. When device is
+	 * considered asleep it drains less power and driver is forbidden from
+	 * accessing most MMIO registers. If host were to access them without
+	 * waking up the device might scribble over host memory or return
+	 * 0xdeadbeef readouts.
+	 */
+	unsigned long ps_wake_refcount;
+
+	/* Waking up takes some time (up to 2ms in some cases) so it can be bad
+	 * for latency. To mitigate this the device isn't immediately allowed
+	 * to sleep after all references are undone - instead there's a grace
+	 * period after which the powersave register is updated unless some
+	 * activity to/from device happened in the meantime.
+	 *
+	 * Also see comments on ATH10K_PCI_SLEEP_GRACE_PERIOD_MSEC.
+	 */
+	struct timer_list ps_timer;
+
+	/* MMIO registers are used to communicate with the device. With
+	 * intensive traffic accessing powersave register would be a bit
+	 * wasteful overhead and would needlessly stall CPU. It is far more
+	 * efficient to rely on a variable in RAM and update it only upon
+	 * powersave register state changes.
+	 */
+	bool ps_awake;
+
+	/* pci power save, disable for QCA988X and QCA99X0.
+	 * Writing 'false' to this variable avoids frequent locking
+	 * on MMIO read/write.
+	 */
+	bool pci_ps;
+
+	const struct ath10k_bus_ops *bus_ops;
+
+	/* Chip specific pci reset routine used to do a safe reset */
+	int (*pci_soft_reset)(struct ath10k *ar);
+
+	/* Chip specific pci full reset function */
+	int (*pci_hard_reset)(struct ath10k *ar);
+
+	/* Keep this entry in the last, memory for struct ath10k_ahb is
+	 * allocated (ahb support enabled case) in the continuation of
+	 * this struct.
+	 */
+	struct ath10k_ahb ahb[0];
 };
 
 static inline struct ath10k_pci *ath10k_pci_priv(struct ath10k *ar)
@@ -194,76 +252,63 @@ static inline struct ath10k_pci *ath10k_pci_priv(struct ath10k *ar)
 
 #define ATH10K_PCI_RX_POST_RETRY_MS 50
 #define ATH_PCI_RESET_WAIT_MAX 10 /* ms */
-#define PCIE_WAKE_TIMEOUT 10000	/* 10ms */
+#define PCIE_WAKE_TIMEOUT 30000	/* 30ms */
+#define PCIE_WAKE_LATE_US 10000	/* 10ms */
 
 #define BAR_NUM 0
 
 #define CDC_WAR_MAGIC_STR   0xceef0000
 #define CDC_WAR_DATA_CE     4
 
-/*
- * TODO: Should be a function call specific to each Target-type.
- * This convoluted macro converts from Target CPU Virtual Address Space to CE
- * Address Space. As part of this process, we conservatively fetch the current
- * PCIE_BAR. MOST of the time, this should match the upper bits of PCI space
- * for this device; but that's not guaranteed.
- */
-#define TARG_CPU_SPACE_TO_CE_SPACE(ar, pci_addr, addr)			\
-	(((ioread32((pci_addr)+(SOC_CORE_BASE_ADDRESS|			\
-	  CORE_CTRL_ADDRESS)) & 0x7ff) << 21) |				\
-	 0x100000 | ((addr) & 0xfffff))
-
 /* Wait up to this many Ms for a Diagnostic Access CE operation to complete */
 #define DIAG_ACCESS_CE_TIMEOUT_MS 10
 
-/* Target exposes its registers for direct access. However before host can
- * access them it needs to make sure the target is awake (ath10k_pci_wake,
- * ath10k_pci_wake_wait, ath10k_pci_is_awake). Once target is awake it won't go
- * to sleep unless host tells it to (ath10k_pci_sleep).
- *
- * If host tries to access target registers without waking it up it can
- * scribble over host memory.
- *
- * If target is asleep waking it up may take up to even 2ms.
+void ath10k_pci_write32(struct ath10k *ar, u32 offset, u32 value);
+void ath10k_pci_soc_write32(struct ath10k *ar, u32 addr, u32 val);
+void ath10k_pci_reg_write32(struct ath10k *ar, u32 addr, u32 val);
+
+u32 ath10k_pci_read32(struct ath10k *ar, u32 offset);
+u32 ath10k_pci_soc_read32(struct ath10k *ar, u32 addr);
+u32 ath10k_pci_reg_read32(struct ath10k *ar, u32 addr);
+
+int ath10k_pci_hif_tx_sg(struct ath10k *ar, u8 pipe_id,
+			 struct ath10k_hif_sg_item *items, int n_items);
+int ath10k_pci_hif_diag_read(struct ath10k *ar, u32 address, void *buf,
+			     size_t buf_len);
+int ath10k_pci_diag_write_mem(struct ath10k *ar, u32 address,
+			      const void *data, int nbytes);
+int ath10k_pci_hif_exchange_bmi_msg(struct ath10k *ar, void *req, u32 req_len,
+				    void *resp, u32 *resp_len);
+int ath10k_pci_hif_map_service_to_pipe(struct ath10k *ar, u16 service_id,
+				       u8 *ul_pipe, u8 *dl_pipe);
+void ath10k_pci_hif_get_default_pipe(struct ath10k *ar, u8 *ul_pipe,
+				     u8 *dl_pipe);
+void ath10k_pci_hif_send_complete_check(struct ath10k *ar, u8 pipe,
+					int force);
+u16 ath10k_pci_hif_get_free_queue_number(struct ath10k *ar, u8 pipe);
+void ath10k_pci_hif_power_down(struct ath10k *ar);
+int ath10k_pci_alloc_pipes(struct ath10k *ar);
+void ath10k_pci_free_pipes(struct ath10k *ar);
+void ath10k_pci_free_pipes(struct ath10k *ar);
+void ath10k_pci_rx_replenish_retry(unsigned long ptr);
+void ath10k_pci_ce_deinit(struct ath10k *ar);
+void ath10k_pci_init_napi(struct ath10k *ar);
+int ath10k_pci_init_pipes(struct ath10k *ar);
+int ath10k_pci_init_config(struct ath10k *ar);
+void ath10k_pci_rx_post(struct ath10k *ar);
+void ath10k_pci_flush(struct ath10k *ar);
+void ath10k_pci_enable_legacy_irq(struct ath10k *ar);
+bool ath10k_pci_irq_pending(struct ath10k *ar);
+void ath10k_pci_disable_and_clear_legacy_irq(struct ath10k *ar);
+void ath10k_pci_irq_msi_fw_mask(struct ath10k *ar);
+int ath10k_pci_wait_for_target_init(struct ath10k *ar);
+int ath10k_pci_setup_resource(struct ath10k *ar);
+void ath10k_pci_release_resource(struct ath10k *ar);
+
+/* QCA6174 is known to have Tx/Rx issues when SOC_WAKE register is poked too
+ * frequently. To avoid this put SoC to sleep after a very conservative grace
+ * period. Adjust with great care.
  */
-
-static inline void ath10k_pci_write32(struct ath10k *ar, u32 offset,
-				      u32 value)
-{
-	struct ath10k_pci *ar_pci = ath10k_pci_priv(ar);
-
-	iowrite32(value, ar_pci->mem + offset);
-}
-
-static inline u32 ath10k_pci_read32(struct ath10k *ar, u32 offset)
-{
-	struct ath10k_pci *ar_pci = ath10k_pci_priv(ar);
-
-	return ioread32(ar_pci->mem + offset);
-}
-
-static inline u32 ath10k_pci_soc_read32(struct ath10k *ar, u32 addr)
-{
-	return ath10k_pci_read32(ar, RTC_SOC_BASE_ADDRESS + addr);
-}
-
-static inline void ath10k_pci_soc_write32(struct ath10k *ar, u32 addr, u32 val)
-{
-	ath10k_pci_write32(ar, RTC_SOC_BASE_ADDRESS + addr, val);
-}
-
-static inline u32 ath10k_pci_reg_read32(struct ath10k *ar, u32 addr)
-{
-	struct ath10k_pci *ar_pci = ath10k_pci_priv(ar);
-
-	return ioread32(ar_pci->mem + PCIE_LOCAL_BASE_ADDRESS + addr);
-}
-
-static inline void ath10k_pci_reg_write32(struct ath10k *ar, u32 addr, u32 val)
-{
-	struct ath10k_pci *ar_pci = ath10k_pci_priv(ar);
-
-	iowrite32(val, ar_pci->mem + PCIE_LOCAL_BASE_ADDRESS + addr);
-}
+#define ATH10K_PCI_SLEEP_GRACE_PERIOD_MSEC 60
 
 #endif /* _PCI_H_ */

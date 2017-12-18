@@ -42,8 +42,7 @@ static struct inode *befs_iget(struct super_block *, unsigned long);
 static struct inode *befs_alloc_inode(struct super_block *sb);
 static void befs_destroy_inode(struct inode *inode);
 static void befs_destroy_inodecache(void);
-static void *befs_follow_link(struct dentry *, struct nameidata *);
-static void *befs_fast_follow_link(struct dentry *, struct nameidata *);
+static int befs_symlink_readpage(struct file *, struct page *);
 static int befs_utf2nls(struct super_block *sb, const char *in, int in_len,
 			char **out, int *out_len);
 static int befs_nls2utf(struct super_block *sb, const char *in, int in_len,
@@ -51,7 +50,7 @@ static int befs_nls2utf(struct super_block *sb, const char *in, int in_len,
 static void befs_put_super(struct super_block *);
 static int befs_remount(struct super_block *, int *, char *);
 static int befs_statfs(struct dentry *, struct kstatfs *);
-static int parse_options(char *, befs_mount_options *);
+static int parse_options(char *, struct befs_mount_options *);
 
 static const struct super_operations befs_sops = {
 	.alloc_inode	= befs_alloc_inode,	/* allocate a new inode */
@@ -67,7 +66,7 @@ static struct kmem_cache *befs_inode_cachep;
 
 static const struct file_operations befs_dir_operations = {
 	.read		= generic_read_dir,
-	.iterate	= befs_readdir,
+	.iterate_shared	= befs_readdir,
 	.llseek		= generic_file_llseek,
 };
 
@@ -80,15 +79,8 @@ static const struct address_space_operations befs_aops = {
 	.bmap		= befs_bmap,
 };
 
-static const struct inode_operations befs_fast_symlink_inode_operations = {
-	.readlink	= generic_readlink,
-	.follow_link	= befs_fast_follow_link,
-};
-
-static const struct inode_operations befs_symlink_inode_operations = {
-	.readlink	= generic_readlink,
-	.follow_link	= befs_follow_link,
-	.put_link	= kfree_put_link,
+static const struct address_space_operations befs_symlink_aops = {
+	.readpage	= befs_symlink_readpage,
 };
 
 /* 
@@ -128,7 +120,7 @@ befs_get_block(struct inode *inode, sector_t block,
 	struct super_block *sb = inode->i_sb;
 	befs_data_stream *ds = &BEFS_I(inode)->i_data.ds;
 	befs_block_run run = BAD_IADDR;
-	int res = 0;
+	int res;
 	ulong disk_off;
 
 	befs_debug(sb, "---> befs_get_block() for inode %lu, block %ld",
@@ -163,9 +155,9 @@ befs_get_block(struct inode *inode, sector_t block,
 static struct dentry *
 befs_lookup(struct inode *dir, struct dentry *dentry, unsigned int flags)
 {
-	struct inode *inode = NULL;
+	struct inode *inode;
 	struct super_block *sb = dir->i_sb;
-	befs_data_stream *ds = &BEFS_I(dir)->i_data.ds;
+	const befs_data_stream *ds = &BEFS_I(dir)->i_data.ds;
 	befs_off_t offset;
 	int ret;
 	int utfnamelen;
@@ -187,15 +179,16 @@ befs_lookup(struct inode *dir, struct dentry *dentry, unsigned int flags)
 		kfree(utfname);
 
 	} else {
-		ret = befs_btree_find(sb, ds, dentry->d_name.name, &offset);
+		ret = befs_btree_find(sb, ds, name, &offset);
 	}
 
 	if (ret == BEFS_BT_NOT_FOUND) {
 		befs_debug(sb, "<--- %s %pd not found", __func__, dentry);
+		d_add(dentry, NULL);
 		return ERR_PTR(-ENOENT);
 
 	} else if (ret != BEFS_OK || offset == 0) {
-		befs_warning(sb, "<--- %s Error", __func__);
+		befs_error(sb, "<--- %s Error", __func__);
 		return ERR_PTR(-ENODATA);
 	}
 
@@ -215,60 +208,59 @@ befs_readdir(struct file *file, struct dir_context *ctx)
 {
 	struct inode *inode = file_inode(file);
 	struct super_block *sb = inode->i_sb;
-	befs_data_stream *ds = &BEFS_I(inode)->i_data.ds;
+	const befs_data_stream *ds = &BEFS_I(inode)->i_data.ds;
 	befs_off_t value;
 	int result;
 	size_t keysize;
-	unsigned char d_type;
 	char keybuf[BEFS_NAME_LEN + 1];
 
 	befs_debug(sb, "---> %s name %pD, inode %ld, ctx->pos %lld",
 		  __func__, file, inode->i_ino, ctx->pos);
 
-more:
-	result = befs_btree_read(sb, ds, ctx->pos, BEFS_NAME_LEN + 1,
-				 keybuf, &keysize, &value);
+	while (1) {
+		result = befs_btree_read(sb, ds, ctx->pos, BEFS_NAME_LEN + 1,
+					 keybuf, &keysize, &value);
 
-	if (result == BEFS_ERR) {
-		befs_debug(sb, "<--- %s ERROR", __func__);
-		befs_error(sb, "IO error reading %pD (inode %lu)",
-			   file, inode->i_ino);
-		return -EIO;
-
-	} else if (result == BEFS_BT_END) {
-		befs_debug(sb, "<--- %s END", __func__);
-		return 0;
-
-	} else if (result == BEFS_BT_EMPTY) {
-		befs_debug(sb, "<--- %s Empty directory", __func__);
-		return 0;
-	}
-
-	d_type = DT_UNKNOWN;
-
-	/* Convert to NLS */
-	if (BEFS_SB(sb)->nls) {
-		char *nlsname;
-		int nlsnamelen;
-		result =
-		    befs_utf2nls(sb, keybuf, keysize, &nlsname, &nlsnamelen);
-		if (result < 0) {
+		if (result == BEFS_ERR) {
 			befs_debug(sb, "<--- %s ERROR", __func__);
-			return result;
+			befs_error(sb, "IO error reading %pD (inode %lu)",
+				   file, inode->i_ino);
+			return -EIO;
+
+		} else if (result == BEFS_BT_END) {
+			befs_debug(sb, "<--- %s END", __func__);
+			return 0;
+
+		} else if (result == BEFS_BT_EMPTY) {
+			befs_debug(sb, "<--- %s Empty directory", __func__);
+			return 0;
 		}
-		if (!dir_emit(ctx, nlsname, nlsnamelen,
-				 (ino_t) value, d_type)) {
+
+		/* Convert to NLS */
+		if (BEFS_SB(sb)->nls) {
+			char *nlsname;
+			int nlsnamelen;
+
+			result =
+			    befs_utf2nls(sb, keybuf, keysize, &nlsname,
+					 &nlsnamelen);
+			if (result < 0) {
+				befs_debug(sb, "<--- %s ERROR", __func__);
+				return result;
+			}
+			if (!dir_emit(ctx, nlsname, nlsnamelen,
+				      (ino_t) value, DT_UNKNOWN)) {
+				kfree(nlsname);
+				return 0;
+			}
 			kfree(nlsname);
-			return 0;
+		} else {
+			if (!dir_emit(ctx, keybuf, keysize,
+				      (ino_t) value, DT_UNKNOWN))
+				return 0;
 		}
-		kfree(nlsname);
-	} else {
-		if (!dir_emit(ctx, keybuf, keysize,
-				 (ino_t) value, d_type))
-			return 0;
+		ctx->pos++;
 	}
-	ctx->pos++;
-	goto more;
 }
 
 static struct inode *
@@ -302,13 +294,11 @@ static void init_once(void *foo)
 
 static struct inode *befs_iget(struct super_block *sb, unsigned long ino)
 {
-	struct buffer_head *bh = NULL;
-	befs_inode *raw_inode = NULL;
-
-	befs_sb_info *befs_sb = BEFS_SB(sb);
-	befs_inode_info *befs_ino = NULL;
+	struct buffer_head *bh;
+	befs_inode *raw_inode;
+	struct befs_sb_info *befs_sb = BEFS_SB(sb);
+	struct befs_inode_info *befs_ino;
 	struct inode *inode;
-	long ret = -EIO;
 
 	befs_debug(sb, "---> %s inode = %lu", __func__, ino);
 
@@ -327,7 +317,7 @@ static struct inode *befs_iget(struct super_block *sb, unsigned long ino)
 		   befs_ino->i_inode_num.allocation_group,
 		   befs_ino->i_inode_num.start, befs_ino->i_inode_num.len);
 
-	bh = befs_bread(sb, inode->i_ino);
+	bh = sb_bread(sb, inode->i_ino);
 	if (!bh) {
 		befs_error(sb, "unable to read inode block - "
 			   "inode = %lu", inode->i_ino);
@@ -404,10 +394,14 @@ static struct inode *befs_iget(struct super_block *sb, unsigned long ino)
 		inode->i_op = &befs_dir_inode_operations;
 		inode->i_fop = &befs_dir_operations;
 	} else if (S_ISLNK(inode->i_mode)) {
-		if (befs_ino->i_flags & BEFS_LONG_SYMLINK)
-			inode->i_op = &befs_symlink_inode_operations;
-		else
-			inode->i_op = &befs_fast_symlink_inode_operations;
+		if (befs_ino->i_flags & BEFS_LONG_SYMLINK) {
+			inode->i_op = &page_symlink_inode_operations;
+			inode_nohighmem(inode);
+			inode->i_mapping->a_ops = &befs_symlink_aops;
+		} else {
+			inode->i_link = befs_ino->i_data.symlink;
+			inode->i_op = &simple_symlink_inode_operations;
+		}
 	} else {
 		befs_error(sb, "Inode %lu is not a regular file, "
 			   "directory or symlink. THAT IS WRONG! BeFS has no "
@@ -426,7 +420,7 @@ static struct inode *befs_iget(struct super_block *sb, unsigned long ino)
       unacquire_none:
 	iget_failed(inode);
 	befs_debug(sb, "<--- %s - Bad inode", __func__);
-	return ERR_PTR(ret);
+	return ERR_PTR(-EIO);
 }
 
 /* Initialize the inode cache. Called at fs setup.
@@ -439,12 +433,11 @@ befs_init_inodecache(void)
 	befs_inode_cachep = kmem_cache_create("befs_inode_cache",
 					      sizeof (struct befs_inode_info),
 					      0, (SLAB_RECLAIM_ACCOUNT|
-						SLAB_MEM_SPREAD),
+						SLAB_MEM_SPREAD|SLAB_ACCOUNT),
 					      init_once);
-	if (befs_inode_cachep == NULL) {
-		pr_err("%s: Couldn't initialize inode slabcache\n", __func__);
+	if (befs_inode_cachep == NULL)
 		return -ENOMEM;
-	}
+
 	return 0;
 }
 
@@ -468,43 +461,33 @@ befs_destroy_inodecache(void)
  * The data stream become link name. Unless the LONG_SYMLINK
  * flag is set.
  */
-static void *
-befs_follow_link(struct dentry *dentry, struct nameidata *nd)
+static int befs_symlink_readpage(struct file *unused, struct page *page)
 {
-	struct super_block *sb = dentry->d_sb;
-	befs_inode_info *befs_ino = BEFS_I(dentry->d_inode);
+	struct inode *inode = page->mapping->host;
+	struct super_block *sb = inode->i_sb;
+	struct befs_inode_info *befs_ino = BEFS_I(inode);
 	befs_data_stream *data = &befs_ino->i_data.ds;
 	befs_off_t len = data->size;
-	char *link;
+	char *link = page_address(page);
 
-	if (len == 0) {
+	if (len == 0 || len > PAGE_SIZE) {
 		befs_error(sb, "Long symlink with illegal length");
-		link = ERR_PTR(-EIO);
-	} else {
-		befs_debug(sb, "Follow long symlink");
-
-		link = kmalloc(len, GFP_NOFS);
-		if (!link) {
-			link = ERR_PTR(-ENOMEM);
-		} else if (befs_read_lsymlink(sb, data, link, len) != len) {
-			kfree(link);
-			befs_error(sb, "Failed to read entire long symlink");
-			link = ERR_PTR(-EIO);
-		} else {
-			link[len - 1] = '\0';
-		}
+		goto fail;
 	}
-	nd_set_link(nd, link);
-	return NULL;
-}
+	befs_debug(sb, "Follow long symlink");
 
-
-static void *
-befs_fast_follow_link(struct dentry *dentry, struct nameidata *nd)
-{
-	befs_inode_info *befs_ino = BEFS_I(dentry->d_inode);
-	nd_set_link(nd, befs_ino->i_data.symlink);
-	return NULL;
+	if (befs_read_lsymlink(sb, data, link, len) != len) {
+		befs_error(sb, "Failed to read entire long symlink");
+		goto fail;
+	}
+	link[len - 1] = '\0';
+	SetPageUptodate(page);
+	unlock_page(page);
+	return 0;
+fail:
+	SetPageError(page);
+	unlock_page(page);
+	return -EIO;
 }
 
 /*
@@ -539,8 +522,6 @@ befs_utf2nls(struct super_block *sb, const char *in,
 
 	*out = result = kmalloc(maxlen, GFP_NOFS);
 	if (!*out) {
-		befs_error(sb, "%s cannot allocate memory", __func__);
-		*out_len = 0;
 		return -ENOMEM;
 	}
 
@@ -619,7 +600,6 @@ befs_nls2utf(struct super_block *sb, const char *in,
 
 	*out = result = kmalloc(maxlen, GFP_NOFS);
 	if (!*out) {
-		befs_error(sb, "%s cannot allocate memory", __func__);
 		*out_len = 0;
 		return -ENOMEM;
 	}
@@ -652,10 +632,6 @@ befs_nls2utf(struct super_block *sb, const char *in,
 	return -EILSEQ;
 }
 
-/**
- * Use the
- *
- */
 enum {
 	Opt_uid, Opt_gid, Opt_charset, Opt_debug, Opt_err,
 };
@@ -669,7 +645,7 @@ static const match_table_t befs_tokens = {
 };
 
 static int
-parse_options(char *options, befs_mount_options * opts)
+parse_options(char *options, struct befs_mount_options *opts)
 {
 	char *p;
 	substring_t args[MAX_OPT_ARGS];
@@ -769,25 +745,25 @@ static int
 befs_fill_super(struct super_block *sb, void *data, int silent)
 {
 	struct buffer_head *bh;
-	befs_sb_info *befs_sb;
+	struct befs_sb_info *befs_sb;
 	befs_super_block *disk_sb;
 	struct inode *root;
 	long ret = -EINVAL;
 	const unsigned long sb_block = 0;
 	const off_t x86_sb_off = 512;
+	int blocksize;
 
 	save_mount_options(sb, data);
 
 	sb->s_fs_info = kzalloc(sizeof(*befs_sb), GFP_KERNEL);
-	if (sb->s_fs_info == NULL) {
-		pr_err("(%s): Unable to allocate memory for private "
-		       "portion of superblock. Bailing.\n", sb->s_id);
+	if (sb->s_fs_info == NULL)
 		goto unacquire_none;
-	}
+
 	befs_sb = BEFS_SB(sb);
 
 	if (!parse_options((char *) data, &befs_sb->mount_opts)) {
-		befs_error(sb, "cannot parse mount options");
+		if (!silent)
+			befs_error(sb, "cannot parse mount options");
 		goto unacquire_priv_sbp;
 	}
 
@@ -804,14 +780,20 @@ befs_fill_super(struct super_block *sb, void *data, int silent)
 	 * Will be set to real fs blocksize later.
 	 *
 	 * Linux 2.4.10 and later refuse to read blocks smaller than
-	 * the hardsect size for the device. But we also need to read at 
+	 * the logical block size for the device. But we also need to read at
 	 * least 1k to get the second 512 bytes of the volume.
 	 * -WD 10-26-01
 	 */ 
-	sb_min_blocksize(sb, 1024);
+	blocksize = sb_min_blocksize(sb, 1024);
+	if (!blocksize) {
+		if (!silent)
+			befs_error(sb, "unable to set blocksize");
+		goto unacquire_priv_sbp;
+	}
 
 	if (!(bh = sb_bread(sb, sb_block))) {
-		befs_error(sb, "unable to read superblock");
+		if (!silent)
+			befs_error(sb, "unable to read superblock");
 		goto unacquire_priv_sbp;
 	}
 
@@ -835,9 +817,9 @@ befs_fill_super(struct super_block *sb, void *data, int silent)
 	brelse(bh);
 
 	if( befs_sb->num_blocks > ~((sector_t)0) ) {
-		befs_error(sb, "blocks count: %llu "
-			"is larger than the host can use",
-			befs_sb->num_blocks);
+		if (!silent)
+			befs_error(sb, "blocks count: %llu is larger than the host can use",
+					befs_sb->num_blocks);
 		goto unacquire_priv_sbp;
 	}
 
@@ -856,7 +838,8 @@ befs_fill_super(struct super_block *sb, void *data, int silent)
 	}
 	sb->s_root = d_make_root(root);
 	if (!sb->s_root) {
-		befs_error(sb, "get root inode failed");
+		if (!silent)
+			befs_error(sb, "get root inode failed");
 		goto unacquire_priv_sbp;
 	}
 
@@ -885,9 +868,9 @@ befs_fill_super(struct super_block *sb, void *data, int silent)
       unacquire_priv_sbp:
 	kfree(befs_sb->mount_opts.iocharset);
 	kfree(sb->s_fs_info);
+	sb->s_fs_info = NULL;
 
       unacquire_none:
-	sb->s_fs_info = NULL;
 	return ret;
 }
 

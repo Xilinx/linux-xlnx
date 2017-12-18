@@ -66,7 +66,7 @@
 #define HYM8563_ALM_BIT_DISABLE	BIT(7)
 
 #define HYM8563_CLKOUT		0x0d
-#define HYM8563_CLKOUT_DISABLE	BIT(7)
+#define HYM8563_CLKOUT_ENABLE	BIT(7)
 #define HYM8563_CLKOUT_32768	0
 #define HYM8563_CLKOUT_1024	1
 #define HYM8563_CLKOUT_32	2
@@ -144,7 +144,7 @@ static int hym8563_rtc_set_time(struct device *dev, struct rtc_time *tm)
 	 * it does not seem to carry it over a subsequent write/read.
 	 * So we'll limit ourself to 100 years, starting at 2000 for now.
 	 */
-	buf[6] = tm->tm_year - 100;
+	buf[6] = bin2bcd(tm->tm_year - 100);
 
 	/*
 	 * CTL1 only contains TEST-mode bits apart from stop,
@@ -198,7 +198,7 @@ static int hym8563_rtc_read_alarm(struct device *dev, struct rtc_wkalrm *alm)
 		return ret;
 
 	/* The alarm only has a minute accuracy */
-	alm_tm->tm_sec = -1;
+	alm_tm->tm_sec = 0;
 
 	alm_tm->tm_min = (buf[0] & HYM8563_ALM_BIT_DISABLE) ?
 					-1 :
@@ -212,9 +212,6 @@ static int hym8563_rtc_read_alarm(struct device *dev, struct rtc_wkalrm *alm)
 	alm_tm->tm_wday = (buf[3] & HYM8563_ALM_BIT_DISABLE) ?
 					-1 :
 					bcd2bin(buf[3] & HYM8563_WEEKDAY_MASK);
-
-	alm_tm->tm_mon = -1;
-	alm_tm->tm_year = -1;
 
 	ret = i2c_smbus_read_byte_data(client, HYM8563_CTL2);
 	if (ret < 0)
@@ -309,7 +306,7 @@ static unsigned long hym8563_clkout_recalc_rate(struct clk_hw *hw,
 	struct i2c_client *client = hym8563->client;
 	int ret = i2c_smbus_read_byte_data(client, HYM8563_CLKOUT);
 
-	if (ret < 0 || ret & HYM8563_CLKOUT_DISABLE)
+	if (ret < 0)
 		return 0;
 
 	ret &= HYM8563_CLKOUT_MASK;
@@ -360,9 +357,9 @@ static int hym8563_clkout_control(struct clk_hw *hw, bool enable)
 		return ret;
 
 	if (enable)
-		ret &= ~HYM8563_CLKOUT_DISABLE;
+		ret |= HYM8563_CLKOUT_ENABLE;
 	else
-		ret |= HYM8563_CLKOUT_DISABLE;
+		ret &= ~HYM8563_CLKOUT_ENABLE;
 
 	return i2c_smbus_write_byte_data(client, HYM8563_CLKOUT, ret);
 }
@@ -386,7 +383,7 @@ static int hym8563_clkout_is_prepared(struct clk_hw *hw)
 	if (ret < 0)
 		return ret;
 
-	return !(ret & HYM8563_CLKOUT_DISABLE);
+	return !!(ret & HYM8563_CLKOUT_ENABLE);
 }
 
 static const struct clk_ops hym8563_clkout_ops = {
@@ -407,13 +404,13 @@ static struct clk *hym8563_clkout_register_clk(struct hym8563 *hym8563)
 	int ret;
 
 	ret = i2c_smbus_write_byte_data(client, HYM8563_CLKOUT,
-						HYM8563_CLKOUT_DISABLE);
+						0);
 	if (ret < 0)
 		return ERR_PTR(ret);
 
 	init.name = "hym8563-clkout";
 	init.ops = &hym8563_clkout_ops;
-	init.flags = CLK_IS_ROOT;
+	init.flags = 0;
 	init.parent_names = NULL;
 	init.num_parents = 0;
 	hym8563->clkout_hw.init = &init;
@@ -548,14 +545,16 @@ static int hym8563_probe(struct i2c_client *client,
 		return ret;
 	}
 
-	ret = devm_request_threaded_irq(&client->dev, client->irq,
-					NULL, hym8563_irq,
-					IRQF_TRIGGER_LOW | IRQF_ONESHOT,
-					client->name, hym8563);
-	if (ret < 0) {
-		dev_err(&client->dev, "irq %d request failed, %d\n",
-			client->irq, ret);
-		return ret;
+	if (client->irq > 0) {
+		ret = devm_request_threaded_irq(&client->dev, client->irq,
+						NULL, hym8563_irq,
+						IRQF_TRIGGER_LOW | IRQF_ONESHOT,
+						client->name, hym8563);
+		if (ret < 0) {
+			dev_err(&client->dev, "irq %d request failed, %d\n",
+				client->irq, ret);
+			return ret;
+		}
 	}
 
 	/* check state of calendar information */
@@ -597,7 +596,6 @@ MODULE_DEVICE_TABLE(of, hym8563_dt_idtable);
 static struct i2c_driver hym8563_driver = {
 	.driver		= {
 		.name	= "rtc-hym8563",
-		.owner	= THIS_MODULE,
 		.pm	= &hym8563_pm_ops,
 		.of_match_table	= hym8563_dt_idtable,
 	},

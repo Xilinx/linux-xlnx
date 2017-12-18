@@ -35,9 +35,11 @@
 static int subdev_fh_init(struct v4l2_subdev_fh *fh, struct v4l2_subdev *sd)
 {
 #if defined(CONFIG_VIDEO_V4L2_SUBDEV_API)
-	fh->pad = kzalloc(sizeof(*fh->pad) * sd->entity.num_pads, GFP_KERNEL);
-	if (fh->pad == NULL)
-		return -ENOMEM;
+	if (sd->entity.num_pads) {
+		fh->pad = v4l2_subdev_alloc_pad_config(sd);
+		if (fh->pad == NULL)
+			return -ENOMEM;
+	}
 #endif
 	return 0;
 }
@@ -45,7 +47,7 @@ static int subdev_fh_init(struct v4l2_subdev_fh *fh, struct v4l2_subdev *sd)
 static void subdev_fh_free(struct v4l2_subdev_fh *fh)
 {
 #if defined(CONFIG_VIDEO_V4L2_SUBDEV_API)
-	kfree(fh->pad);
+	v4l2_subdev_free_pad_config(fh->pad);
 	fh->pad = NULL;
 #endif
 }
@@ -93,8 +95,7 @@ static int subdev_open(struct file *file)
 
 err:
 #if defined(CONFIG_MEDIA_CONTROLLER)
-	if (entity)
-		media_entity_put(entity);
+	media_entity_put(entity);
 #endif
 	v4l2_fh_del(&subdev_fh->vfh);
 	v4l2_fh_exit(&subdev_fh->vfh);
@@ -262,7 +263,7 @@ static long subdev_do_ioctl(struct file *file, unsigned int cmd, void *arg)
 		if (rval)
 			return rval;
 
-		return v4l2_subdev_call(sd, pad, get_fmt, subdev_fh, format);
+		return v4l2_subdev_call(sd, pad, get_fmt, subdev_fh->pad, format);
 	}
 
 	case VIDIOC_SUBDEV_S_FMT: {
@@ -272,7 +273,7 @@ static long subdev_do_ioctl(struct file *file, unsigned int cmd, void *arg)
 		if (rval)
 			return rval;
 
-		return v4l2_subdev_call(sd, pad, set_fmt, subdev_fh, format);
+		return v4l2_subdev_call(sd, pad, set_fmt, subdev_fh->pad, format);
 	}
 
 	case VIDIOC_SUBDEV_G_CROP: {
@@ -289,7 +290,7 @@ static long subdev_do_ioctl(struct file *file, unsigned int cmd, void *arg)
 		sel.target = V4L2_SEL_TGT_CROP;
 
 		rval = v4l2_subdev_call(
-			sd, pad, get_selection, subdev_fh, &sel);
+			sd, pad, get_selection, subdev_fh->pad, &sel);
 
 		crop->rect = sel.r;
 
@@ -311,7 +312,7 @@ static long subdev_do_ioctl(struct file *file, unsigned int cmd, void *arg)
 		sel.r = crop->rect;
 
 		rval = v4l2_subdev_call(
-			sd, pad, set_selection, subdev_fh, &sel);
+			sd, pad, set_selection, subdev_fh->pad, &sel);
 
 		crop->rect = sel.r;
 
@@ -321,20 +322,28 @@ static long subdev_do_ioctl(struct file *file, unsigned int cmd, void *arg)
 	case VIDIOC_SUBDEV_ENUM_MBUS_CODE: {
 		struct v4l2_subdev_mbus_code_enum *code = arg;
 
+		if (code->which != V4L2_SUBDEV_FORMAT_TRY &&
+		    code->which != V4L2_SUBDEV_FORMAT_ACTIVE)
+			return -EINVAL;
+
 		if (code->pad >= sd->entity.num_pads)
 			return -EINVAL;
 
-		return v4l2_subdev_call(sd, pad, enum_mbus_code, subdev_fh,
+		return v4l2_subdev_call(sd, pad, enum_mbus_code, subdev_fh->pad,
 					code);
 	}
 
 	case VIDIOC_SUBDEV_ENUM_FRAME_SIZE: {
 		struct v4l2_subdev_frame_size_enum *fse = arg;
 
+		if (fse->which != V4L2_SUBDEV_FORMAT_TRY &&
+		    fse->which != V4L2_SUBDEV_FORMAT_ACTIVE)
+			return -EINVAL;
+
 		if (fse->pad >= sd->entity.num_pads)
 			return -EINVAL;
 
-		return v4l2_subdev_call(sd, pad, enum_frame_size, subdev_fh,
+		return v4l2_subdev_call(sd, pad, enum_frame_size, subdev_fh->pad,
 					fse);
 	}
 
@@ -359,10 +368,14 @@ static long subdev_do_ioctl(struct file *file, unsigned int cmd, void *arg)
 	case VIDIOC_SUBDEV_ENUM_FRAME_INTERVAL: {
 		struct v4l2_subdev_frame_interval_enum *fie = arg;
 
+		if (fie->which != V4L2_SUBDEV_FORMAT_TRY &&
+		    fie->which != V4L2_SUBDEV_FORMAT_ACTIVE)
+			return -EINVAL;
+
 		if (fie->pad >= sd->entity.num_pads)
 			return -EINVAL;
 
-		return v4l2_subdev_call(sd, pad, enum_frame_interval, subdev_fh,
+		return v4l2_subdev_call(sd, pad, enum_frame_interval, subdev_fh->pad,
 					fie);
 	}
 
@@ -374,7 +387,7 @@ static long subdev_do_ioctl(struct file *file, unsigned int cmd, void *arg)
 			return rval;
 
 		return v4l2_subdev_call(
-			sd, pad, get_selection, subdev_fh, sel);
+			sd, pad, get_selection, subdev_fh->pad, sel);
 	}
 
 	case VIDIOC_SUBDEV_S_SELECTION: {
@@ -385,7 +398,7 @@ static long subdev_do_ioctl(struct file *file, unsigned int cmd, void *arg)
 			return rval;
 
 		return v4l2_subdev_call(
-			sd, pad, set_selection, subdev_fh, sel);
+			sd, pad, set_selection, subdev_fh->pad, sel);
 	}
 
 	case VIDIOC_G_EDID: {
@@ -526,7 +539,7 @@ int v4l2_subdev_link_validate_default(struct v4l2_subdev *sd,
 	if (source_fmt->format.width != sink_fmt->format.width
 	    || source_fmt->format.height != sink_fmt->format.height
 	    || source_fmt->format.code != sink_fmt->format.code)
-		return -EINVAL;
+		return -EPIPE;
 
 	/* The field order must match, or the sink field order must be NONE
 	 * to support interlaced hardware connected to bridges that support
@@ -534,7 +547,7 @@ int v4l2_subdev_link_validate_default(struct v4l2_subdev *sd,
 	 */
 	if (source_fmt->format.field != sink_fmt->format.field &&
 	    sink_fmt->format.field != V4L2_FIELD_NONE)
-		return -EINVAL;
+		return -EPIPE;
 
 	return 0;
 }
@@ -544,7 +557,7 @@ static int
 v4l2_subdev_link_validate_get_format(struct media_pad *pad,
 				     struct v4l2_subdev_format *fmt)
 {
-	if (media_entity_type(pad->entity) == MEDIA_ENT_T_V4L2_SUBDEV) {
+	if (is_media_entity_v4l2_subdev(pad->entity)) {
 		struct v4l2_subdev *sd =
 			media_entity_to_v4l2_subdev(pad->entity);
 
@@ -553,9 +566,9 @@ v4l2_subdev_link_validate_get_format(struct media_pad *pad,
 		return v4l2_subdev_call(sd, pad, get_fmt, NULL, fmt);
 	}
 
-	WARN(pad->entity->type != MEDIA_ENT_T_DEVNODE_V4L,
+	WARN(pad->entity->function != MEDIA_ENT_F_IO_V4L,
 	     "Driver bug! Wrong media entity type 0x%08x, entity %s\n",
-	     pad->entity->type, pad->entity->name);
+	     pad->entity->function, pad->entity->name);
 
 	return -EINVAL;
 }
@@ -587,6 +600,35 @@ int v4l2_subdev_link_validate(struct media_link *link)
 		sink, link, &source_fmt, &sink_fmt);
 }
 EXPORT_SYMBOL_GPL(v4l2_subdev_link_validate);
+
+struct v4l2_subdev_pad_config *
+v4l2_subdev_alloc_pad_config(struct v4l2_subdev *sd)
+{
+	struct v4l2_subdev_pad_config *cfg;
+	int ret;
+
+	if (!sd->entity.num_pads)
+		return NULL;
+
+	cfg = kcalloc(sd->entity.num_pads, sizeof(*cfg), GFP_KERNEL);
+	if (!cfg)
+		return NULL;
+
+	ret = v4l2_subdev_call(sd, pad, init_cfg, cfg);
+	if (ret < 0 && ret != -ENOIOCTLCMD) {
+		kfree(cfg);
+		return NULL;
+	}
+
+	return cfg;
+}
+EXPORT_SYMBOL_GPL(v4l2_subdev_alloc_pad_config);
+
+void v4l2_subdev_free_pad_config(struct v4l2_subdev_pad_config *cfg)
+{
+	kfree(cfg);
+}
+EXPORT_SYMBOL_GPL(v4l2_subdev_free_pad_config);
 #endif /* CONFIG_MEDIA_CONTROLLER */
 
 void v4l2_subdev_init(struct v4l2_subdev *sd, const struct v4l2_subdev_ops *ops)
@@ -602,7 +644,16 @@ void v4l2_subdev_init(struct v4l2_subdev *sd, const struct v4l2_subdev_ops *ops)
 	sd->host_priv = NULL;
 #if defined(CONFIG_MEDIA_CONTROLLER)
 	sd->entity.name = sd->name;
-	sd->entity.type = MEDIA_ENT_T_V4L2_SUBDEV;
+	sd->entity.obj_type = MEDIA_ENTITY_TYPE_V4L2_SUBDEV;
+	sd->entity.function = MEDIA_ENT_F_V4L2_SUBDEV_UNKNOWN;
 #endif
 }
 EXPORT_SYMBOL(v4l2_subdev_init);
+
+void v4l2_subdev_notify_event(struct v4l2_subdev *sd,
+			      const struct v4l2_event *ev)
+{
+	v4l2_event_queue(sd->devnode, ev);
+	v4l2_subdev_notify(sd, V4L2_DEVICE_NOTIFY_EVENT, (void *)ev);
+}
+EXPORT_SYMBOL_GPL(v4l2_subdev_notify_event);

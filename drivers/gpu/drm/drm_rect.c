@@ -100,7 +100,7 @@ static int drm_calc_scale(int src, int dst)
 {
 	int scale = 0;
 
-	if (src < 0 || dst < 0)
+	if (WARN_ON(src < 0 || dst < 0))
 		return -EINVAL;
 
 	if (dst == 0)
@@ -275,22 +275,23 @@ EXPORT_SYMBOL(drm_rect_calc_vscale_relaxed);
 
 /**
  * drm_rect_debug_print - print the rectangle information
+ * @prefix: prefix string
  * @r: rectangle to print
  * @fixed_point: rectangle is in 16.16 fixed point format
  */
-void drm_rect_debug_print(const struct drm_rect *r, bool fixed_point)
+void drm_rect_debug_print(const char *prefix, const struct drm_rect *r, bool fixed_point)
 {
 	int w = drm_rect_width(r);
 	int h = drm_rect_height(r);
 
 	if (fixed_point)
-		DRM_DEBUG_KMS("%d.%06ux%d.%06u%+d.%06u%+d.%06u\n",
+		DRM_DEBUG_KMS("%s%d.%06ux%d.%06u%+d.%06u%+d.%06u\n", prefix,
 			      w >> 16, ((w & 0xffff) * 15625) >> 10,
 			      h >> 16, ((h & 0xffff) * 15625) >> 10,
 			      r->x1 >> 16, ((r->x1 & 0xffff) * 15625) >> 10,
 			      r->y1 >> 16, ((r->y1 & 0xffff) * 15625) >> 10);
 	else
-		DRM_DEBUG_KMS("%dx%d%+d%+d\n", w, h, r->x1, r->y1);
+		DRM_DEBUG_KMS("%s%dx%d%+d%+d\n", prefix, w, h, r->x1, r->y1);
 }
 EXPORT_SYMBOL(drm_rect_debug_print);
 
@@ -316,38 +317,38 @@ void drm_rect_rotate(struct drm_rect *r,
 {
 	struct drm_rect tmp;
 
-	if (rotation & (BIT(DRM_REFLECT_X) | BIT(DRM_REFLECT_Y))) {
+	if (rotation & (DRM_REFLECT_X | DRM_REFLECT_Y)) {
 		tmp = *r;
 
-		if (rotation & BIT(DRM_REFLECT_X)) {
+		if (rotation & DRM_REFLECT_X) {
 			r->x1 = width - tmp.x2;
 			r->x2 = width - tmp.x1;
 		}
 
-		if (rotation & BIT(DRM_REFLECT_Y)) {
+		if (rotation & DRM_REFLECT_Y) {
 			r->y1 = height - tmp.y2;
 			r->y2 = height - tmp.y1;
 		}
 	}
 
-	switch (rotation & 0xf) {
-	case BIT(DRM_ROTATE_0):
+	switch (rotation & DRM_ROTATE_MASK) {
+	case DRM_ROTATE_0:
 		break;
-	case BIT(DRM_ROTATE_90):
+	case DRM_ROTATE_90:
 		tmp = *r;
 		r->x1 = tmp.y1;
 		r->x2 = tmp.y2;
 		r->y1 = width - tmp.x2;
 		r->y2 = width - tmp.x1;
 		break;
-	case BIT(DRM_ROTATE_180):
+	case DRM_ROTATE_180:
 		tmp = *r;
 		r->x1 = width - tmp.x2;
 		r->x2 = width - tmp.x1;
 		r->y1 = height - tmp.y2;
 		r->y2 = height - tmp.y1;
 		break;
-	case BIT(DRM_ROTATE_270):
+	case DRM_ROTATE_270:
 		tmp = *r;
 		r->x1 = height - tmp.y2;
 		r->x2 = height - tmp.y1;
@@ -390,24 +391,24 @@ void drm_rect_rotate_inv(struct drm_rect *r,
 {
 	struct drm_rect tmp;
 
-	switch (rotation & 0xf) {
-	case BIT(DRM_ROTATE_0):
+	switch (rotation & DRM_ROTATE_MASK) {
+	case DRM_ROTATE_0:
 		break;
-	case BIT(DRM_ROTATE_90):
+	case DRM_ROTATE_90:
 		tmp = *r;
 		r->x1 = width - tmp.y2;
 		r->x2 = width - tmp.y1;
 		r->y1 = tmp.x1;
 		r->y2 = tmp.x2;
 		break;
-	case BIT(DRM_ROTATE_180):
+	case DRM_ROTATE_180:
 		tmp = *r;
 		r->x1 = width - tmp.x2;
 		r->x2 = width - tmp.x1;
 		r->y1 = height - tmp.y2;
 		r->y2 = height - tmp.y1;
 		break;
-	case BIT(DRM_ROTATE_270):
+	case DRM_ROTATE_270:
 		tmp = *r;
 		r->x1 = tmp.y1;
 		r->x2 = tmp.y2;
@@ -418,15 +419,15 @@ void drm_rect_rotate_inv(struct drm_rect *r,
 		break;
 	}
 
-	if (rotation & (BIT(DRM_REFLECT_X) | BIT(DRM_REFLECT_Y))) {
+	if (rotation & (DRM_REFLECT_X | DRM_REFLECT_Y)) {
 		tmp = *r;
 
-		if (rotation & BIT(DRM_REFLECT_X)) {
+		if (rotation & DRM_REFLECT_X) {
 			r->x1 = width - tmp.x2;
 			r->x2 = width - tmp.x1;
 		}
 
-		if (rotation & BIT(DRM_REFLECT_Y)) {
+		if (rotation & DRM_REFLECT_Y) {
 			r->y1 = height - tmp.y2;
 			r->y2 = height - tmp.y1;
 		}

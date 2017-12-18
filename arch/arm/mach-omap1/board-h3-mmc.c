@@ -16,10 +16,11 @@
 
 #include <linux/i2c/tps65010.h>
 
+#include "common.h"
 #include "board-h3.h"
 #include "mmc.h"
 
-#if defined(CONFIG_MMC_OMAP) || defined(CONFIG_MMC_OMAP_MODULE)
+#if IS_ENABLED(CONFIG_MMC_OMAP)
 
 static int mmc_set_power(struct device *dev, int slot, int power_on,
 				int vdd)

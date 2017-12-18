@@ -129,7 +129,7 @@ static int process_ep_req(struct mv_udc *udc, int index,
 {
 	struct mv_dtd	*curr_dtd;
 	struct mv_dqh	*curr_dqh;
-	int td_complete, actual, remaining_length;
+	int actual, remaining_length;
 	int i, direction;
 	int retval = 0;
 	u32 errors;
@@ -139,7 +139,6 @@ static int process_ep_req(struct mv_udc *udc, int index,
 	direction = index % 2;
 
 	curr_dtd = curr_req->head;
-	td_complete = 0;
 	actual = curr_req->req.length;
 
 	for (i = 0; i < curr_req->dtd_count; i++) {
@@ -412,10 +411,7 @@ static int req_to_dtd(struct mv_req *req)
 	unsigned count;
 	int is_last, is_first = 1;
 	struct mv_dtd *dtd, *last_dtd = NULL;
-	struct mv_udc *udc;
 	dma_addr_t dma;
-
-	udc = req->ep->udc;
 
 	do {
 		dtd = build_dtd(req, &count, &dma, &is_last);
@@ -567,7 +563,7 @@ static int  mv_ep_disable(struct usb_ep *_ep)
 	struct mv_udc *udc;
 	struct mv_ep *ep;
 	struct mv_dqh *dqh;
-	u32 bit_pos, epctrlx, direction;
+	u32 epctrlx, direction;
 	unsigned long flags;
 
 	ep = container_of(_ep, struct mv_ep, ep);
@@ -582,7 +578,6 @@ static int  mv_ep_disable(struct usb_ep *_ep)
 	spin_lock_irqsave(&udc->lock, flags);
 
 	direction = ep_dir(ep);
-	bit_pos = 1 << ((direction == EP_DIR_OUT ? 0 : 16) + ep->ep_num);
 
 	/* Reset the max packet length and the interrupt on Setup */
 	dqh->max_packet_length = 0;
@@ -1257,6 +1252,9 @@ static int eps_init(struct mv_udc *udc)
 	ep->wedge = 0;
 	ep->stopped = 0;
 	usb_ep_set_maxpacket_limit(&ep->ep, EP0_MAX_PKT_SIZE);
+	ep->ep.caps.type_control = true;
+	ep->ep.caps.dir_in = true;
+	ep->ep.caps.dir_out = true;
 	ep->ep_num = 0;
 	ep->ep.desc = &mv_ep0_desc;
 	INIT_LIST_HEAD(&ep->queue);
@@ -1269,13 +1267,19 @@ static int eps_init(struct mv_udc *udc)
 		if (i % 2) {
 			snprintf(name, sizeof(name), "ep%din", i / 2);
 			ep->direction = EP_DIR_IN;
+			ep->ep.caps.dir_in = true;
 		} else {
 			snprintf(name, sizeof(name), "ep%dout", i / 2);
 			ep->direction = EP_DIR_OUT;
+			ep->ep.caps.dir_out = true;
 		}
 		ep->udc = udc;
 		strncpy(ep->name, name, sizeof(ep->name));
 		ep->ep.name = ep->name;
+
+		ep->ep.caps.type_iso = true;
+		ep->ep.caps.type_bulk = true;
+		ep->ep.caps.type_int = true;
 
 		ep->ep.ops = &mv_ep_ops;
 		ep->stopped = 0;
@@ -2091,8 +2095,7 @@ static int mv_udc_remove(struct platform_device *pdev)
 	}
 
 	/* free memory allocated in probe */
-	if (udc->dtd_pool)
-		dma_pool_destroy(udc->dtd_pool);
+	dma_pool_destroy(udc->dtd_pool);
 
 	if (udc->ep_dqh)
 		dma_free_coherent(&pdev->dev, udc->ep_dqh_size,
@@ -2167,7 +2170,7 @@ static int mv_udc_probe(struct platform_device *pdev)
 		return -ENODEV;
 	}
 
-	udc->phy_regs = ioremap(r->start, resource_size(r));
+	udc->phy_regs = devm_ioremap(&pdev->dev, r->start, resource_size(r));
 	if (udc->phy_regs == NULL) {
 		dev_err(&pdev->dev, "failed to map phy I/O memory\n");
 		return -EBUSY;

@@ -120,71 +120,26 @@ static ssize_t vol_attribute_show(struct device *dev,
 	return ret;
 }
 
+static struct attribute *volume_dev_attrs[] = {
+	&attr_vol_reserved_ebs.attr,
+	&attr_vol_type.attr,
+	&attr_vol_name.attr,
+	&attr_vol_corrupted.attr,
+	&attr_vol_alignment.attr,
+	&attr_vol_usable_eb_size.attr,
+	&attr_vol_data_bytes.attr,
+	&attr_vol_upd_marker.attr,
+	NULL
+};
+ATTRIBUTE_GROUPS(volume_dev);
+
 /* Release method for volume devices */
 static void vol_release(struct device *dev)
 {
 	struct ubi_volume *vol = container_of(dev, struct ubi_volume, dev);
 
-	kfree(vol->eba_tbl);
+	ubi_eba_replace_table(vol, NULL);
 	kfree(vol);
-}
-
-/**
- * volume_sysfs_init - initialize sysfs for new volume.
- * @ubi: UBI device description object
- * @vol: volume description object
- *
- * This function returns zero in case of success and a negative error code in
- * case of failure.
- *
- * Note, this function does not free allocated resources in case of failure -
- * the caller does it. This is because this would cause release() here and the
- * caller would oops.
- */
-static int volume_sysfs_init(struct ubi_device *ubi, struct ubi_volume *vol)
-{
-	int err;
-
-	err = device_create_file(&vol->dev, &attr_vol_reserved_ebs);
-	if (err)
-		return err;
-	err = device_create_file(&vol->dev, &attr_vol_type);
-	if (err)
-		return err;
-	err = device_create_file(&vol->dev, &attr_vol_name);
-	if (err)
-		return err;
-	err = device_create_file(&vol->dev, &attr_vol_corrupted);
-	if (err)
-		return err;
-	err = device_create_file(&vol->dev, &attr_vol_alignment);
-	if (err)
-		return err;
-	err = device_create_file(&vol->dev, &attr_vol_usable_eb_size);
-	if (err)
-		return err;
-	err = device_create_file(&vol->dev, &attr_vol_data_bytes);
-	if (err)
-		return err;
-	err = device_create_file(&vol->dev, &attr_vol_upd_marker);
-	return err;
-}
-
-/**
- * volume_sysfs_close - close sysfs for a volume.
- * @vol: volume description object
- */
-static void volume_sysfs_close(struct ubi_volume *vol)
-{
-	device_remove_file(&vol->dev, &attr_vol_upd_marker);
-	device_remove_file(&vol->dev, &attr_vol_data_bytes);
-	device_remove_file(&vol->dev, &attr_vol_usable_eb_size);
-	device_remove_file(&vol->dev, &attr_vol_alignment);
-	device_remove_file(&vol->dev, &attr_vol_corrupted);
-	device_remove_file(&vol->dev, &attr_vol_name);
-	device_remove_file(&vol->dev, &attr_vol_type);
-	device_remove_file(&vol->dev, &attr_vol_reserved_ebs);
-	device_unregister(&vol->dev);
 }
 
 /**
@@ -203,6 +158,7 @@ int ubi_create_volume(struct ubi_device *ubi, struct ubi_mkvol_req *req)
 	int i, err, vol_id = req->vol_id, do_free = 1;
 	struct ubi_volume *vol;
 	struct ubi_vtbl_record vtbl_rec;
+	struct ubi_eba_table *eba_tbl = NULL;
 	dev_t dev;
 
 	if (ubi->ro_mode)
@@ -253,8 +209,8 @@ int ubi_create_volume(struct ubi_device *ubi, struct ubi_mkvol_req *req)
 
 	/* Calculate how many eraseblocks are requested */
 	vol->usable_leb_size = ubi->leb_size - ubi->leb_size % req->alignment;
-	vol->reserved_pebs += div_u64(req->bytes + vol->usable_leb_size - 1,
-				      vol->usable_leb_size);
+	vol->reserved_pebs = div_u64(req->bytes + vol->usable_leb_size - 1,
+				     vol->usable_leb_size);
 
 	/* Reserve physical eraseblocks */
 	if (vol->reserved_pebs > ubi->avail_pebs) {
@@ -286,14 +242,13 @@ int ubi_create_volume(struct ubi_device *ubi, struct ubi_mkvol_req *req)
 	if (err)
 		goto out_acc;
 
-	vol->eba_tbl = kmalloc(vol->reserved_pebs * sizeof(int), GFP_KERNEL);
-	if (!vol->eba_tbl) {
-		err = -ENOMEM;
+	eba_tbl = ubi_eba_create_table(vol, vol->reserved_pebs);
+	if (IS_ERR(eba_tbl)) {
+		err = PTR_ERR(eba_tbl);
 		goto out_acc;
 	}
 
-	for (i = 0; i < vol->reserved_pebs; i++)
-		vol->eba_tbl[i] = UBI_LEB_UNMAPPED;
+	ubi_eba_replace_table(vol, eba_tbl);
 
 	if (vol->vol_type == UBI_DYNAMIC_VOLUME) {
 		vol->used_ebs = vol->reserved_pebs;
@@ -323,7 +278,8 @@ int ubi_create_volume(struct ubi_device *ubi, struct ubi_mkvol_req *req)
 	vol->dev.release = vol_release;
 	vol->dev.parent = &ubi->dev;
 	vol->dev.devt = dev;
-	vol->dev.class = ubi_class;
+	vol->dev.class = &ubi_class;
+	vol->dev.groups = volume_dev_groups;
 
 	dev_set_name(&vol->dev, "%s_%d", ubi->ubi_name, vol->vol_id);
 	err = device_register(&vol->dev);
@@ -331,10 +287,6 @@ int ubi_create_volume(struct ubi_device *ubi, struct ubi_mkvol_req *req)
 		ubi_err(ubi, "cannot register device");
 		goto out_cdev;
 	}
-
-	err = volume_sysfs_init(ubi, vol);
-	if (err)
-		goto out_sysfs;
 
 	/* Fill volume table record */
 	memset(&vtbl_rec, 0, sizeof(struct ubi_vtbl_record));
@@ -372,12 +324,12 @@ out_sysfs:
 	 */
 	do_free = 0;
 	get_device(&vol->dev);
-	volume_sysfs_close(vol);
+	device_unregister(&vol->dev);
 out_cdev:
 	cdev_del(&vol->cdev);
 out_mapping:
 	if (do_free)
-		kfree(vol->eba_tbl);
+		ubi_eba_destroy_table(eba_tbl);
 out_acc:
 	spin_lock(&ubi->volumes_lock);
 	ubi->rsvd_pebs -= vol->reserved_pebs;
@@ -440,7 +392,7 @@ int ubi_remove_volume(struct ubi_volume_desc *desc, int no_vtbl)
 	}
 
 	cdev_del(&vol->cdev);
-	volume_sysfs_close(vol);
+	device_unregister(&vol->dev);
 
 	spin_lock(&ubi->volumes_lock);
 	ubi->rsvd_pebs -= reserved_pebs;
@@ -453,7 +405,7 @@ int ubi_remove_volume(struct ubi_volume_desc *desc, int no_vtbl)
 	if (!no_vtbl)
 		self_check_volumes(ubi);
 
-	return err;
+	return 0;
 
 out_err:
 	ubi_err(ubi, "cannot remove volume %d, error %d", vol_id, err);
@@ -475,10 +427,11 @@ out_unlock:
  */
 int ubi_resize_volume(struct ubi_volume_desc *desc, int reserved_pebs)
 {
-	int i, err, pebs, *new_mapping;
+	int i, err, pebs;
 	struct ubi_volume *vol = desc->vol;
 	struct ubi_device *ubi = vol->ubi;
 	struct ubi_vtbl_record vtbl_rec;
+	struct ubi_eba_table *new_eba_tbl = NULL;
 	int vol_id = vol->vol_id;
 
 	if (ubi->ro_mode)
@@ -498,12 +451,9 @@ int ubi_resize_volume(struct ubi_volume_desc *desc, int reserved_pebs)
 	if (reserved_pebs == vol->reserved_pebs)
 		return 0;
 
-	new_mapping = kmalloc(reserved_pebs * sizeof(int), GFP_KERNEL);
-	if (!new_mapping)
-		return -ENOMEM;
-
-	for (i = 0; i < reserved_pebs; i++)
-		new_mapping[i] = UBI_LEB_UNMAPPED;
+	new_eba_tbl = ubi_eba_create_table(vol, reserved_pebs);
+	if (IS_ERR(new_eba_tbl))
+		return PTR_ERR(new_eba_tbl);
 
 	spin_lock(&ubi->volumes_lock);
 	if (vol->ref_count > 1) {
@@ -529,19 +479,10 @@ int ubi_resize_volume(struct ubi_volume_desc *desc, int reserved_pebs)
 		}
 		ubi->avail_pebs -= pebs;
 		ubi->rsvd_pebs += pebs;
-		for (i = 0; i < vol->reserved_pebs; i++)
-			new_mapping[i] = vol->eba_tbl[i];
-		kfree(vol->eba_tbl);
-		vol->eba_tbl = new_mapping;
+		ubi_eba_copy_table(vol, new_eba_tbl, vol->reserved_pebs);
+		ubi_eba_replace_table(vol, new_eba_tbl);
 		spin_unlock(&ubi->volumes_lock);
 	}
-
-	/* Change volume table record */
-	vtbl_rec = ubi->vtbl[vol_id];
-	vtbl_rec.reserved_pebs = cpu_to_be32(reserved_pebs);
-	err = ubi_change_vtbl_record(ubi, vol_id, &vtbl_rec);
-	if (err)
-		goto out_acc;
 
 	if (pebs < 0) {
 		for (i = 0; i < -pebs; i++) {
@@ -553,12 +494,28 @@ int ubi_resize_volume(struct ubi_volume_desc *desc, int reserved_pebs)
 		ubi->rsvd_pebs += pebs;
 		ubi->avail_pebs -= pebs;
 		ubi_update_reserved(ubi);
-		for (i = 0; i < reserved_pebs; i++)
-			new_mapping[i] = vol->eba_tbl[i];
-		kfree(vol->eba_tbl);
-		vol->eba_tbl = new_mapping;
+		ubi_eba_copy_table(vol, new_eba_tbl, reserved_pebs);
+		ubi_eba_replace_table(vol, new_eba_tbl);
 		spin_unlock(&ubi->volumes_lock);
 	}
+
+	/*
+	 * When we shrink a volume we have to flush all pending (erase) work.
+	 * Otherwise it can happen that upon next attach UBI finds a LEB with
+	 * lnum > highest_lnum and refuses to attach.
+	 */
+	if (pebs < 0) {
+		err = ubi_wl_flush(ubi, vol_id, UBI_ALL);
+		if (err)
+			goto out_acc;
+	}
+
+	/* Change volume table record */
+	vtbl_rec = ubi->vtbl[vol_id];
+	vtbl_rec.reserved_pebs = cpu_to_be32(reserved_pebs);
+	err = ubi_change_vtbl_record(ubi, vol_id, &vtbl_rec);
+	if (err)
+		goto out_acc;
 
 	vol->reserved_pebs = reserved_pebs;
 	if (vol->vol_type == UBI_DYNAMIC_VOLUME) {
@@ -580,7 +537,7 @@ out_acc:
 		spin_unlock(&ubi->volumes_lock);
 	}
 out_free:
-	kfree(new_mapping);
+	kfree(new_eba_tbl);
 	return err;
 }
 
@@ -653,18 +610,12 @@ int ubi_add_volume(struct ubi_device *ubi, struct ubi_volume *vol)
 	vol->dev.release = vol_release;
 	vol->dev.parent = &ubi->dev;
 	vol->dev.devt = dev;
-	vol->dev.class = ubi_class;
+	vol->dev.class = &ubi_class;
+	vol->dev.groups = volume_dev_groups;
 	dev_set_name(&vol->dev, "%s_%d", ubi->ubi_name, vol->vol_id);
 	err = device_register(&vol->dev);
 	if (err)
 		goto out_cdev;
-
-	err = volume_sysfs_init(ubi, vol);
-	if (err) {
-		cdev_del(&vol->cdev);
-		volume_sysfs_close(vol);
-		return err;
-	}
 
 	self_check_volumes(ubi);
 	return err;
@@ -688,7 +639,7 @@ void ubi_free_volume(struct ubi_device *ubi, struct ubi_volume *vol)
 
 	ubi->volumes[vol->vol_id] = NULL;
 	cdev_del(&vol->cdev);
-	volume_sysfs_close(vol);
+	device_unregister(&vol->dev);
 }
 
 /**

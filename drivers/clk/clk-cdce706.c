@@ -10,6 +10,7 @@
  * published by the Free Software Foundation.
  */
 
+#include <linux/clk.h>
 #include <linux/clk-provider.h>
 #include <linux/delay.h>
 #include <linux/i2c.h>
@@ -58,7 +59,7 @@
 #define CDCE706_CLKOUT_DIVIDER_MASK	0x7
 #define CDCE706_CLKOUT_ENABLE_MASK	0x8
 
-static struct regmap_config cdce706_regmap_config = {
+static const struct regmap_config cdce706_regmap_config = {
 	.reg_bits = 8,
 	.val_bits = 8,
 	.val_format_endian = REGMAP_ENDIAN_NATIVE,
@@ -70,7 +71,6 @@ struct cdce706_hw_data {
 	struct cdce706_dev_data *dev_data;
 	unsigned idx;
 	unsigned parent;
-	struct clk *clk;
 	struct clk_hw hw;
 	unsigned div;
 	unsigned mul;
@@ -80,8 +80,6 @@ struct cdce706_hw_data {
 struct cdce706_dev_data {
 	struct i2c_client *client;
 	struct regmap *regmap;
-	struct clk_onecell_data onecell;
-	struct clk *clks[6];
 	struct clk *clkin_clk[2];
 	const char *clkin_name[2];
 	struct cdce706_hw_data clkin[1];
@@ -94,7 +92,7 @@ static const char * const cdce706_source_name[] = {
 	"clk_in0", "clk_in1",
 };
 
-static const char *cdce706_clkin_name[] = {
+static const char * const cdce706_clkin_name[] = {
 	"clk_in",
 };
 
@@ -102,7 +100,7 @@ static const char * const cdce706_pll_name[] = {
 	"pll1", "pll2", "pll3",
 };
 
-static const char *cdce706_divider_parent_name[] = {
+static const char * const cdce706_divider_parent_name[] = {
 	"clk_in", "pll1", "pll2", "pll2", "pll3",
 };
 
@@ -309,7 +307,7 @@ static long cdce706_divider_round_rate(struct clk_hw *hw, unsigned long rate,
 	if (!mul)
 		div = CDCE706_DIVIDER_DIVIDER_MAX;
 
-	if (__clk_get_flags(hw->clk) & CLK_SET_RATE_PARENT) {
+	if (clk_hw_get_flags(hw) & CLK_SET_RATE_PARENT) {
 		unsigned long best_diff = rate;
 		unsigned long best_div = 0;
 		struct clk *gp_clk = cdce->clkin_clk[cdce->clkin[0].parent];
@@ -454,18 +452,19 @@ static int cdce706_register_hw(struct cdce706_dev_data *cdce,
 			       struct clk_init_data *init)
 {
 	unsigned i;
+	int ret;
 
 	for (i = 0; i < num_hw; ++i, ++hw) {
 		init->name = clk_names[i];
 		hw->dev_data = cdce;
 		hw->idx = i;
 		hw->hw.init = init;
-		hw->clk = devm_clk_register(&cdce->client->dev,
+		ret = devm_clk_hw_register(&cdce->client->dev,
 					    &hw->hw);
-		if (IS_ERR(hw->clk)) {
+		if (ret) {
 			dev_err(&cdce->client->dev, "Failed to register %s\n",
 				clk_names[i]);
-			return PTR_ERR(hw->clk);
+			return ret;
 		}
 	}
 	return 0;
@@ -612,13 +611,23 @@ static int cdce706_register_clkouts(struct cdce706_dev_data *cdce)
 			cdce->clkout[i].parent);
 	}
 
-	ret = cdce706_register_hw(cdce, cdce->clkout,
-				  ARRAY_SIZE(cdce->clkout),
-				  cdce706_clkout_name, &init);
-	for (i = 0; i < ARRAY_SIZE(cdce->clkout); ++i)
-		cdce->clks[i] = cdce->clkout[i].clk;
+	return cdce706_register_hw(cdce, cdce->clkout,
+				   ARRAY_SIZE(cdce->clkout),
+				   cdce706_clkout_name, &init);
+}
 
-	return ret;
+static struct clk_hw *
+of_clk_cdce_get(struct of_phandle_args *clkspec, void *data)
+{
+	struct cdce706_dev_data *cdce = data;
+	unsigned int idx = clkspec->args[0];
+
+	if (idx >= ARRAY_SIZE(cdce->clkout)) {
+		pr_err("%s: invalid index %u\n", __func__, idx);
+		return ERR_PTR(-EINVAL);
+	}
+
+	return &cdce->clkout[idx].hw;
 }
 
 static int cdce706_probe(struct i2c_client *client,
@@ -656,16 +665,13 @@ static int cdce706_probe(struct i2c_client *client,
 	ret = cdce706_register_clkouts(cdce);
 	if (ret < 0)
 		return ret;
-	cdce->onecell.clks = cdce->clks;
-	cdce->onecell.clk_num = ARRAY_SIZE(cdce->clks);
-	ret = of_clk_add_provider(client->dev.of_node, of_clk_src_onecell_get,
-				  &cdce->onecell);
-
-	return ret;
+	return of_clk_add_hw_provider(client->dev.of_node, of_clk_cdce_get,
+				      cdce);
 }
 
 static int cdce706_remove(struct i2c_client *client)
 {
+	of_clk_del_provider(client->dev.of_node);
 	return 0;
 }
 

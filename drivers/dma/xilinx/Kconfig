@@ -11,35 +11,23 @@ menuconfig XILINX_DMA_ENGINES
 
 if XILINX_DMA_ENGINES
 
-config XILINX_AXIDMA
-	tristate "Xilinx AXI DMA Engine"
-	select DMA_ENGINE
-	help
-	  Enable support for Xilinx Axi DMA (memory and device transfer).
-
 config XILINX_DMATEST
 	tristate "DMA Test client for AXI DMA"
-	depends on XILINX_AXIDMA
+	depends on XILINX_DMA
 	help
 	  Simple DMA test client. Say N unless you're debugging a
 	  DMA Device driver.
 
 config XILINX_VDMATEST
 	tristate "DMA Test client for VDMA"
-	depends on XILINX_VDMA
+	depends on XILINX_DMA
 	help
 	  Simple DMA test client. Say N unless you're debugging a
 	  DMA Device driver.
 
-config XILINX_AXICDMA
-	tristate "Xilinx AXI CDMA Engine"
-	select DMA_ENGINE
-	help
-	  Enable support for Xilinx Axi Central DMA (memory to memory transfer).
-
 config XILINX_CDMATEST
 	tristate "DMA Test client for CDMA"
-	depends on XILINX_AXICDMA
+	depends on XILINX_DMA
 	help
 	  Simple DMA test client. Say N unless you're debugging a
 	  DMA Device driver.
@@ -50,4 +38,30 @@ config XILINX_DPDMA
 	help
 	  Enable support for Xilinx DisplayPort DMA.
 
+config XILINX_DPDMA_DEBUG_FS
+	bool "Xilinx DPDMA debugfs"
+	depends on DEBUG_FS && XILINX_DPDMA
+	help
+	  Enable the debugfs code for DPDMA driver. The debugfs code
+	  enables debugging or testing related features. It exposes some
+	  low level controls to the user space to help testing automation,
+	  as well as can enable additional diagnostic or statistical
+	  information.
+
+config XILINX_PS_PCIE_DMA_TEST
+	tristate "Xilinx PS PCIe DMA test client"
+	depends on XILINX_PS_PCIE_DMA
+	help
+	  Enable support for the test client of Xilinx PS PCIe DMA engine
+	  in recent Xilinx ZynqMP chipsets.
+
+	  Say Y here if you have such a chipset.
+
+	  If unsure, say N.
+
+config XILINX_FRMBUF
+	tristate "Xilinx Framebuffer"
+	select DMA_ENGINE
+	help
+	 Enable support for Xilinx Framebuffer DMA.
 endif # XILINX_DMA_ENGINES

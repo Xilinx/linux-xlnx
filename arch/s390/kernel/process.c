@@ -7,6 +7,7 @@
  *		 Denis Joseph Barrow,
  */
 
+#include <linux/elf-randomize.h>
 #include <linux/compiler.h>
 #include <linux/cpu.h>
 #include <linux/sched.h>
@@ -23,6 +24,7 @@
 #include <linux/kprobes.h>
 #include <linux/random.h>
 #include <linux/module.h>
+#include <linux/init_task.h>
 #include <asm/io.h>
 #include <asm/processor.h>
 #include <asm/vtimer.h>
@@ -52,10 +54,10 @@ unsigned long thread_saved_pc(struct task_struct *tsk)
 		return 0;
 	low = task_stack_page(tsk);
 	high = (struct stack_frame *) task_pt_regs(tsk);
-	sf = (struct stack_frame *) (tsk->thread.ksp & PSW_ADDR_INSN);
+	sf = (struct stack_frame *) tsk->thread.ksp;
 	if (sf <= low || sf > high)
 		return 0;
-	sf = (struct stack_frame *) (sf->back_chain & PSW_ADDR_INSN);
+	sf = (struct stack_frame *) sf->back_chain;
 	if (sf <= low || sf > high)
 		return 0;
 	return sf->gprs[8];
@@ -66,9 +68,10 @@ extern void kernel_thread_starter(void);
 /*
  * Free current thread data structures etc..
  */
-void exit_thread(void)
+void exit_thread(struct task_struct *tsk)
 {
-	exit_thread_runtime_instr();
+	if (tsk == current)
+		exit_thread_runtime_instr();
 }
 
 void flush_thread(void)
@@ -79,13 +82,23 @@ void release_thread(struct task_struct *dead_task)
 {
 }
 
-#ifdef CONFIG_64BIT
 void arch_release_task_struct(struct task_struct *tsk)
 {
-	if (tsk->thread.vxrs)
-		kfree(tsk->thread.vxrs);
 }
-#endif
+
+int arch_dup_task_struct(struct task_struct *dst, struct task_struct *src)
+{
+	/*
+	 * Save the floating-point or vector register state of the current
+	 * task and set the CIF_FPU flag to lazy restore the FPU register
+	 * state when returning to user space.
+	 */
+	save_fpu_regs();
+
+	memcpy(dst, src, arch_task_struct_size);
+	dst->thread.fpu.regs = dst->thread.fpu.fprs;
+	return 0;
+}
 
 int copy_thread(unsigned long clone_flags, unsigned long new_stackp,
 		unsigned long arg, struct task_struct *p)
@@ -124,7 +137,7 @@ int copy_thread(unsigned long clone_flags, unsigned long new_stackp,
 		memset(&frame->childregs, 0, sizeof(struct pt_regs));
 		frame->childregs.psw.mask = PSW_KERNEL_BITS | PSW_MASK_DAT |
 				PSW_MASK_IO | PSW_MASK_EXT | PSW_MASK_MCHECK;
-		frame->childregs.psw.addr = PSW_ADDR_AMODE |
+		frame->childregs.psw.addr =
 				(unsigned long) kernel_thread_starter;
 		frame->childregs.gprs[9] = new_stackp; /* function */
 		frame->childregs.gprs[10] = arg;
@@ -141,27 +154,8 @@ int copy_thread(unsigned long clone_flags, unsigned long new_stackp,
 
 	/* Don't copy runtime instrumentation info */
 	p->thread.ri_cb = NULL;
-	p->thread.ri_signum = 0;
 	frame->childregs.psw.mask &= ~PSW_MASK_RI;
 
-#ifndef CONFIG_64BIT
-	/*
-	 * save fprs to current->thread.fp_regs to merge them with
-	 * the emulated registers and then copy the result to the child.
-	 */
-	save_fp_ctl(&current->thread.fp_regs.fpc);
-	save_fp_regs(current->thread.fp_regs.fprs);
-	memcpy(&p->thread.fp_regs, &current->thread.fp_regs,
-	       sizeof(s390_fp_regs));
-	/* Set a new TLS ?  */
-	if (clone_flags & CLONE_SETTLS)
-		p->thread.acrs[0] = frame->childregs.gprs[6];
-#else /* CONFIG_64BIT */
-	/* Save the fpu registers to new thread structure. */
-	save_fp_ctl(&p->thread.fp_regs.fpc);
-	save_fp_regs(p->thread.fp_regs.fprs);
-	p->thread.fp_regs.pad = 0;
-	p->thread.vxrs = NULL;
 	/* Set a new TLS ?  */
 	if (clone_flags & CLONE_SETTLS) {
 		unsigned long tls = frame->childregs.gprs[6];
@@ -172,15 +166,13 @@ int copy_thread(unsigned long clone_flags, unsigned long new_stackp,
 			p->thread.acrs[1] = (unsigned int)tls;
 		}
 	}
-#endif /* CONFIG_64BIT */
 	return 0;
 }
 
 asmlinkage void execve_tail(void)
 {
-	current->thread.fp_regs.fpc = 0;
-	if (MACHINE_HAS_IEEE)
-		asm volatile("sfpc %0,%0" : : "d" (0));
+	current->thread.fpu.fpc = 0;
+	asm volatile("sfpc %0" : : "d" (0));
 }
 
 /*
@@ -188,18 +180,15 @@ asmlinkage void execve_tail(void)
  */
 int dump_fpu (struct pt_regs * regs, s390_fp_regs *fpregs)
 {
-#ifndef CONFIG_64BIT
-	/*
-	 * save fprs to current->thread.fp_regs to merge them with
-	 * the emulated registers and then copy the result to the dump.
-	 */
-	save_fp_ctl(&current->thread.fp_regs.fpc);
-	save_fp_regs(current->thread.fp_regs.fprs);
-	memcpy(fpregs, &current->thread.fp_regs, sizeof(s390_fp_regs));
-#else /* CONFIG_64BIT */
-	save_fp_ctl(&fpregs->fpc);
-	save_fp_regs(fpregs->fprs);
-#endif /* CONFIG_64BIT */
+	save_fpu_regs();
+	fpregs->fpc = current->thread.fpu.fpc;
+	fpregs->pad = 0;
+	if (MACHINE_HAS_VX)
+		convert_vx_to_fp((freg_t *)&fpregs->fprs,
+				 current->thread.fpu.vxrs);
+	else
+		memcpy(&fpregs->fprs, current->thread.fpu.fprs,
+		       sizeof(fpregs->fprs));
 	return 1;
 }
 EXPORT_SYMBOL(dump_fpu);
@@ -214,14 +203,14 @@ unsigned long get_wchan(struct task_struct *p)
 		return 0;
 	low = task_stack_page(p);
 	high = (struct stack_frame *) task_pt_regs(p);
-	sf = (struct stack_frame *) (p->thread.ksp & PSW_ADDR_INSN);
+	sf = (struct stack_frame *) p->thread.ksp;
 	if (sf <= low || sf > high)
 		return 0;
 	for (count = 0; count < 16; count++) {
-		sf = (struct stack_frame *) (sf->back_chain & PSW_ADDR_INSN);
+		sf = (struct stack_frame *) sf->back_chain;
 		if (sf <= low || sf > high)
 			return 0;
-		return_address = sf->gprs[8] & PSW_ADDR_INSN;
+		return_address = sf->gprs[8];
 		if (!in_sched_functions(return_address))
 			return return_address;
 	}
@@ -237,11 +226,7 @@ unsigned long arch_align_stack(unsigned long sp)
 
 static inline unsigned long brk_rnd(void)
 {
-	/* 8MB for 32bit, 1GB for 64bit */
-	if (is_32bit_task())
-		return (get_random_int() & 0x7ffUL) << PAGE_SHIFT;
-	else
-		return (get_random_int() & 0x3ffffUL) << PAGE_SHIFT;
+	return (get_random_int() & BRK_RND_MASK) << PAGE_SHIFT;
 }
 
 unsigned long arch_randomize_brk(struct mm_struct *mm)

@@ -82,30 +82,31 @@ static void tcp_illinois_init(struct sock *sk)
 }
 
 /* Measure RTT for each ack. */
-static void tcp_illinois_acked(struct sock *sk, u32 pkts_acked, s32 rtt)
+static void tcp_illinois_acked(struct sock *sk, const struct ack_sample *sample)
 {
 	struct illinois *ca = inet_csk_ca(sk);
+	s32 rtt_us = sample->rtt_us;
 
-	ca->acked = pkts_acked;
+	ca->acked = sample->pkts_acked;
 
 	/* dup ack, no rtt sample */
-	if (rtt < 0)
+	if (rtt_us < 0)
 		return;
 
 	/* ignore bogus values, this prevents wraparound in alpha math */
-	if (rtt > RTT_MAX)
-		rtt = RTT_MAX;
+	if (rtt_us > RTT_MAX)
+		rtt_us = RTT_MAX;
 
 	/* keep track of minimum RTT seen so far */
-	if (ca->base_rtt > rtt)
-		ca->base_rtt = rtt;
+	if (ca->base_rtt > rtt_us)
+		ca->base_rtt = rtt_us;
 
 	/* and max */
-	if (ca->max_rtt < rtt)
-		ca->max_rtt = rtt;
+	if (ca->max_rtt < rtt_us)
+		ca->max_rtt = rtt_us;
 
 	++ca->cnt_rtt;
-	ca->sum_rtt += rtt;
+	ca->sum_rtt += rtt_us;
 }
 
 /* Maximum queuing delay */
@@ -268,7 +269,7 @@ static void tcp_illinois_cong_avoid(struct sock *sk, u32 ack, u32 acked)
 		return;
 
 	/* In slow start */
-	if (tp->snd_cwnd <= tp->snd_ssthresh)
+	if (tcp_in_slow_start(tp))
 		tcp_slow_start(tp, acked);
 
 	else {
@@ -300,26 +301,27 @@ static u32 tcp_illinois_ssthresh(struct sock *sk)
 }
 
 /* Extract info for Tcp socket info provided via netlink. */
-static void tcp_illinois_info(struct sock *sk, u32 ext,
-			      struct sk_buff *skb)
+static size_t tcp_illinois_info(struct sock *sk, u32 ext, int *attr,
+				union tcp_cc_info *info)
 {
 	const struct illinois *ca = inet_csk_ca(sk);
 
 	if (ext & (1 << (INET_DIAG_VEGASINFO - 1))) {
-		struct tcpvegas_info info = {
-			.tcpv_enabled = 1,
-			.tcpv_rttcnt = ca->cnt_rtt,
-			.tcpv_minrtt = ca->base_rtt,
-		};
+		info->vegas.tcpv_enabled = 1;
+		info->vegas.tcpv_rttcnt = ca->cnt_rtt;
+		info->vegas.tcpv_minrtt = ca->base_rtt;
+		info->vegas.tcpv_rtt = 0;
 
-		if (info.tcpv_rttcnt > 0) {
+		if (info->vegas.tcpv_rttcnt > 0) {
 			u64 t = ca->sum_rtt;
 
-			do_div(t, info.tcpv_rttcnt);
-			info.tcpv_rtt = t;
+			do_div(t, info->vegas.tcpv_rttcnt);
+			info->vegas.tcpv_rtt = t;
 		}
-		nla_put(skb, INET_DIAG_VEGASINFO, sizeof(info), &info);
+		*attr = INET_DIAG_VEGASINFO;
+		return sizeof(struct tcpvegas_info);
 	}
+	return 0;
 }
 
 static struct tcp_congestion_ops tcp_illinois __read_mostly = {

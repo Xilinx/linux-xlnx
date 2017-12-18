@@ -110,7 +110,8 @@ int aa_audit_file(struct aa_profile *profile, struct file_perms *perms,
 	int type = AUDIT_APPARMOR_AUTO;
 	struct common_audit_data sa;
 	struct apparmor_audit_data aad = {0,};
-	sa.type = LSM_AUDIT_DATA_NONE;
+	sa.type = LSM_AUDIT_DATA_TASK;
+	sa.u.tsk = NULL;
 	sa.aad = &aad;
 	aad.op = op,
 	aad.fs.request = request;
@@ -259,7 +260,7 @@ unsigned int aa_str_perms(struct aa_dfa *dfa, unsigned int start,
  */
 static inline bool is_deleted(struct dentry *dentry)
 {
-	if (d_unlinked(dentry) && dentry->d_inode->i_nlink == 0)
+	if (d_unlinked(dentry) && d_backing_inode(dentry)->i_nlink == 0)
 		return 1;
 	return 0;
 }
@@ -275,7 +276,7 @@ static inline bool is_deleted(struct dentry *dentry)
  *
  * Returns: %0 else error if access denied or other error
  */
-int aa_path_perm(int op, struct aa_profile *profile, struct path *path,
+int aa_path_perm(int op, struct aa_profile *profile, const struct path *path,
 		 int flags, u32 request, struct path_cond *cond)
 {
 	char *buffer = NULL;
@@ -346,13 +347,13 @@ static inline bool xindex_is_subset(u32 link, u32 target)
  * Returns: %0 if allowed else error
  */
 int aa_path_link(struct aa_profile *profile, struct dentry *old_dentry,
-		 struct path *new_dir, struct dentry *new_dentry)
+		 const struct path *new_dir, struct dentry *new_dentry)
 {
 	struct path link = { new_dir->mnt, new_dentry };
 	struct path target = { new_dir->mnt, old_dentry };
 	struct path_cond cond = {
-		old_dentry->d_inode->i_uid,
-		old_dentry->d_inode->i_mode
+		d_backing_inode(old_dentry)->i_uid,
+		d_backing_inode(old_dentry)->i_mode
 	};
 	char *buffer = NULL, *buffer2 = NULL;
 	const char *lname, *tname = NULL, *info = NULL;

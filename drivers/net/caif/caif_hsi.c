@@ -1120,7 +1120,7 @@ static void cfhsi_setup(struct net_device *dev)
 	dev->type = ARPHRD_CAIF;
 	dev->flags = IFF_POINTOPOINT | IFF_NOARP;
 	dev->mtu = CFHSI_MAX_CAIF_FRAME_SZ;
-	dev->tx_queue_len = 0;
+	dev->priv_flags |= IFF_NO_QUEUE;
 	dev->destructor = free_netdev;
 	dev->netdev_ops = &cfhsi_netdevops;
 	for (i = 0; i < CFHSI_PRIO_LAST; ++i)
@@ -1201,7 +1201,7 @@ static int cfhsi_open(struct net_device *ndev)
 	clear_bit(CFHSI_AWAKE, &cfhsi->bits);
 
 	/* Create work thread. */
-	cfhsi->wq = create_singlethread_workqueue(cfhsi->ndev->name);
+	cfhsi->wq = alloc_ordered_workqueue(cfhsi->ndev->name, WQ_MEM_RECLAIM);
 	if (!cfhsi->wq) {
 		netdev_err(cfhsi->ndev, "%s: Failed to create work queue.\n",
 			__func__);
@@ -1266,9 +1266,6 @@ static int cfhsi_close(struct net_device *ndev)
 
 	/* going to shutdown driver */
 	set_bit(CFHSI_SHUTDOWN, &cfhsi->bits);
-
-	/* Flush workqueue */
-	flush_workqueue(cfhsi->wq);
 
 	/* Delete timers if pending */
 	del_timer_sync(&cfhsi->inactivity_timer);

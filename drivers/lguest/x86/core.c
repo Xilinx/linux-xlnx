@@ -46,7 +46,7 @@
 #include <asm/setup.h>
 #include <asm/lguest.h>
 #include <asm/uaccess.h>
-#include <asm/i387.h>
+#include <asm/fpu/internal.h>
 #include <asm/tlbflush.h>
 #include "../lg.h"
 
@@ -251,7 +251,7 @@ void lguest_arch_run_guest(struct lg_cpu *cpu)
 	 * we set it now, so we can trap and pass that trap to the Guest if it
 	 * uses the FPU.
 	 */
-	if (cpu->ts && user_has_fpu())
+	if (cpu->ts && fpregs_active())
 		stts();
 
 	/*
@@ -283,7 +283,7 @@ void lguest_arch_run_guest(struct lg_cpu *cpu)
 		wrmsr(MSR_IA32_SYSENTER_CS, __KERNEL_CS, 0);
 
 	/* Clear the host TS bit if it was set above. */
-	if (cpu->ts && user_has_fpu())
+	if (cpu->ts && fpregs_active())
 		clts();
 
 	/*
@@ -297,12 +297,12 @@ void lguest_arch_run_guest(struct lg_cpu *cpu)
 	/*
 	 * Similarly, if we took a trap because the Guest used the FPU,
 	 * we have to restore the FPU it expects to see.
-	 * math_state_restore() may sleep and we may even move off to
+	 * fpu__restore() may sleep and we may even move off to
 	 * a different CPU. So all the critical stuff should be done
 	 * before this.
 	 */
-	else if (cpu->regs->trapnum == 7 && !user_has_fpu())
-		math_state_restore();
+	else if (cpu->regs->trapnum == 7 && !fpregs_active())
+		fpu__restore(&current->thread.fpu);
 }
 
 /*H:130
@@ -429,8 +429,12 @@ void lguest_arch_handle_trap(struct lg_cpu *cpu)
 			return;
 		break;
 	case 32 ... 255:
+		/* This might be a syscall. */
+		if (could_be_syscall(cpu->regs->trapnum))
+			break;
+
 		/*
-		 * These values mean a real interrupt occurred, in which case
+		 * Other values mean a real interrupt occurred, in which case
 		 * the Host handler has already been run. We just do a
 		 * friendly check if another process should now be run, then
 		 * return to run the Guest again.
@@ -599,7 +603,7 @@ void __init lguest_arch_host_init(void)
 	 * doing this.
 	 */
 	get_online_cpus();
-	if (cpu_has_pge) { /* We have a broader idea of "global". */
+	if (boot_cpu_has(X86_FEATURE_PGE)) { /* We have a broader idea of "global". */
 		/* Remember that this was originally set (for cleanup). */
 		cpu_had_pge = 1;
 		/*

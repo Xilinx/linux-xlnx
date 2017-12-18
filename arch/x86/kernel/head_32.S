@@ -19,9 +19,11 @@
 #include <asm/setup.h>
 #include <asm/processor-flags.h>
 #include <asm/msr-index.h>
-#include <asm/cpufeature.h>
+#include <asm/cpufeatures.h>
 #include <asm/percpu.h>
 #include <asm/nops.h>
+#include <asm/bootparam.h>
+#include <asm/export.h>
 
 /* Physical address */
 #define pa(X) ((X) - __PAGE_OFFSET)
@@ -61,9 +63,16 @@
 #define PAGE_TABLE_SIZE(pages) ((pages) / PTRS_PER_PGD)
 #endif
 
-/* Number of possible pages in the lowmem region */
-LOWMEM_PAGES = (((1<<32) - __PAGE_OFFSET) >> PAGE_SHIFT)
-	
+/*
+ * Number of possible pages in the lowmem region.
+ *
+ * We shift 2 by 31 instead of 1 by 32 to the left in order to avoid a
+ * gas warning about overflowing shift count when gas has been compiled
+ * with only a host target support using a 32-bit type for internal
+ * representation.
+ */
+LOWMEM_PAGES = (((2<<31) - __PAGE_OFFSET) >> PAGE_SHIFT)
+
 /* Enough space to fit pagetables for the low memory linear map */
 MAPPING_BEYOND_END = PAGE_TABLE_SIZE(LOWMEM_PAGES) << PAGE_SHIFT
 
@@ -86,11 +95,11 @@ RESERVE_BRK(pagetables, INIT_MAP_SIZE)
  */
 __HEAD
 ENTRY(startup_32)
-	movl pa(stack_start),%ecx
+	movl pa(initial_stack),%ecx
 	
 	/* test KEEP_SEGMENTS flag to see if the bootloader is asking
 		us to not reload segments */
-	testb $(1<<6), BP_loadflags(%esi)
+	testb $KEEP_SEGMENTS, BP_loadflags(%esi)
 	jnz 2f
 
 /*
@@ -144,7 +153,7 @@ ENTRY(startup_32)
 	movl %eax, pa(olpc_ofw_pgd)
 #endif
 
-#ifdef CONFIG_MICROCODE_EARLY
+#ifdef CONFIG_MICROCODE
 	/* Early load ucode on BSP. */
 	call load_ucode_bsp
 #endif
@@ -278,7 +287,7 @@ num_subarch_entries = (. - subarch_entries) / 4
  * start_secondary().
  */
 ENTRY(start_cpu0)
-	movl stack_start, %ecx
+	movl initial_stack, %ecx
 	movl %ecx, %esp
 	jmp  *(initial_code)
 ENDPROC(start_cpu0)
@@ -299,15 +308,14 @@ ENTRY(startup_32_smp)
 	movl %eax,%es
 	movl %eax,%fs
 	movl %eax,%gs
-	movl pa(stack_start),%ecx
+	movl pa(initial_stack),%ecx
 	movl %eax,%ss
 	leal -__PAGE_OFFSET(%ecx),%esp
 
-#ifdef CONFIG_MICROCODE_EARLY
+#ifdef CONFIG_MICROCODE
 	/* Early load ucode on AP. */
 	call load_ucode_ap
 #endif
-
 
 default_entry:
 #define CR0_STATE	(X86_CR0_PE | X86_CR0_MP | X86_CR0_ET | \
@@ -477,21 +485,22 @@ is486:
 __INIT
 setup_once:
 	/*
-	 * Set up a idt with 256 entries pointing to ignore_int,
-	 * interrupt gates. It doesn't actually load idt - that needs
-	 * to be done on each CPU. Interrupts are enabled elsewhere,
-	 * when we can be relatively sure everything is ok.
+	 * Set up a idt with 256 interrupt gates that push zero if there
+	 * is no error code and then jump to early_idt_handler_common.
+	 * It doesn't actually load the idt - that needs to be done on
+	 * each CPU. Interrupts are enabled elsewhere, when we can be
+	 * relatively sure everything is ok.
 	 */
 
 	movl $idt_table,%edi
-	movl $early_idt_handlers,%eax
+	movl $early_idt_handler_array,%eax
 	movl $NUM_EXCEPTION_VECTORS,%ecx
 1:
 	movl %eax,(%edi)
 	movl %eax,4(%edi)
 	/* interrupt gate, dpl=0, present */
 	movl $(0x8E000000 + __KERNEL_CS),2(%edi)
-	addl $9,%eax
+	addl $EARLY_IDT_HANDLER_SIZE,%eax
 	addl $8,%edi
 	loop 1b
 
@@ -523,86 +532,79 @@ setup_once:
 	andl $0,setup_once_ref	/* Once is enough, thanks */
 	ret
 
-ENTRY(early_idt_handlers)
+ENTRY(early_idt_handler_array)
 	# 36(%esp) %eflags
 	# 32(%esp) %cs
 	# 28(%esp) %eip
 	# 24(%rsp) error code
 	i = 0
 	.rept NUM_EXCEPTION_VECTORS
-	.if (EXCEPTION_ERRCODE_MASK >> i) & 1
-	ASM_NOP2
-	.else
+	.ifeq (EXCEPTION_ERRCODE_MASK >> i) & 1
 	pushl $0		# Dummy error code, to make stack frame uniform
 	.endif
 	pushl $i		# 20(%esp) Vector number
-	jmp early_idt_handler
+	jmp early_idt_handler_common
 	i = i + 1
+	.fill early_idt_handler_array + i*EARLY_IDT_HANDLER_SIZE - ., 1, 0xcc
 	.endr
-ENDPROC(early_idt_handlers)
+ENDPROC(early_idt_handler_array)
 	
-	/* This is global to keep gas from relaxing the jumps */
-ENTRY(early_idt_handler)
+early_idt_handler_common:
+	/*
+	 * The stack is the hardware frame, an error code or zero, and the
+	 * vector number.
+	 */
 	cld
 
-	cmpl $2,(%esp)		# X86_TRAP_NMI
-	je is_nmi		# Ignore NMI
-
-	cmpl $2,%ss:early_recursion_flag
-	je hlt_loop
 	incl %ss:early_recursion_flag
 
-	push %eax		# 16(%esp)
-	push %ecx		# 12(%esp)
-	push %edx		#  8(%esp)
-	push %ds		#  4(%esp)
-	push %es		#  0(%esp)
-	movl $(__KERNEL_DS),%eax
-	movl %eax,%ds
-	movl %eax,%es
+	/* The vector number is in pt_regs->gs */
 
-	cmpl $(__KERNEL_CS),32(%esp)
-	jne 10f
+	cld
+	pushl	%fs		/* pt_regs->fs */
+	movw	$0, 2(%esp)	/* clear high bits (some CPUs leave garbage) */
+	pushl	%es		/* pt_regs->es */
+	movw	$0, 2(%esp)	/* clear high bits (some CPUs leave garbage) */
+	pushl	%ds		/* pt_regs->ds */
+	movw	$0, 2(%esp)	/* clear high bits (some CPUs leave garbage) */
+	pushl	%eax		/* pt_regs->ax */
+	pushl	%ebp		/* pt_regs->bp */
+	pushl	%edi		/* pt_regs->di */
+	pushl	%esi		/* pt_regs->si */
+	pushl	%edx		/* pt_regs->dx */
+	pushl	%ecx		/* pt_regs->cx */
+	pushl	%ebx		/* pt_regs->bx */
 
-	leal 28(%esp),%eax	# Pointer to %eip
-	call early_fixup_exception
-	andl %eax,%eax
-	jnz ex_entry		/* found an exception entry */
+	/* Fix up DS and ES */
+	movl	$(__KERNEL_DS), %ecx
+	movl	%ecx, %ds
+	movl	%ecx, %es
 
-10:
-#ifdef CONFIG_PRINTK
-	xorl %eax,%eax
-	movw %ax,2(%esp)	/* clean up the segment values on some cpus */
-	movw %ax,6(%esp)
-	movw %ax,34(%esp)
-	leal  40(%esp),%eax
-	pushl %eax		/* %esp before the exception */
-	pushl %ebx
-	pushl %ebp
-	pushl %esi
-	pushl %edi
-	movl %cr2,%eax
-	pushl %eax
-	pushl (20+6*4)(%esp)	/* trapno */
-	pushl $fault_msg
-	call printk
-#endif
-	call dump_stack
-hlt_loop:
-	hlt
-	jmp hlt_loop
+	/* Load the vector number into EDX */
+	movl	PT_GS(%esp), %edx
 
-ex_entry:
-	pop %es
-	pop %ds
-	pop %edx
-	pop %ecx
-	pop %eax
-	decl %ss:early_recursion_flag
-is_nmi:
-	addl $8,%esp		/* drop vector number and error code */
+	/* Load GS into pt_regs->gs and clear high bits */
+	movw	%gs, PT_GS(%esp)
+	movw	$0, PT_GS+2(%esp)
+
+	movl	%esp, %eax	/* args are pt_regs (EAX), trapnr (EDX) */
+	call	early_fixup_exception
+
+	popl	%ebx		/* pt_regs->bx */
+	popl	%ecx		/* pt_regs->cx */
+	popl	%edx		/* pt_regs->dx */
+	popl	%esi		/* pt_regs->si */
+	popl	%edi		/* pt_regs->di */
+	popl	%ebp		/* pt_regs->bp */
+	popl	%eax		/* pt_regs->ax */
+	popl	%ds		/* pt_regs->ds */
+	popl	%es		/* pt_regs->es */
+	popl	%fs		/* pt_regs->fs */
+	popl	%gs		/* pt_regs->gs */
+	decl	%ss:early_recursion_flag
+	addl	$4, %esp	/* pop pt_regs->orig_ax */
 	iret
-ENDPROC(early_idt_handler)
+ENDPROC(early_idt_handler_common)
 
 /* This is the default interrupt "handler" :-) */
 	ALIGN
@@ -637,10 +639,14 @@ ignore_int:
 	popl %eax
 #endif
 	iret
+
+hlt_loop:
+	hlt
+	jmp hlt_loop
 ENDPROC(ignore_int)
 __INITDATA
 	.align 4
-early_recursion_flag:
+GLOBAL(early_recursion_flag)
 	.long 0
 
 __REFDATA
@@ -659,15 +665,19 @@ __PAGE_ALIGNED_BSS
 initial_pg_pmd:
 	.fill 1024*KPMDS,4,0
 #else
-ENTRY(initial_page_table)
+.globl initial_page_table
+initial_page_table:
 	.fill 1024,4,0
 #endif
 initial_pg_fixmap:
 	.fill 1024,4,0
-ENTRY(empty_zero_page)
+.globl empty_zero_page
+empty_zero_page:
 	.fill 4096,1,0
-ENTRY(swapper_pg_dir)
+.globl swapper_pg_dir
+swapper_pg_dir:
 	.fill 1024,4,0
+EXPORT_SYMBOL(empty_zero_page)
 
 /*
  * This starts the data section.
@@ -698,25 +708,12 @@ ENTRY(initial_page_table)
 
 .data
 .balign 4
-ENTRY(stack_start)
+ENTRY(initial_stack)
 	.long init_thread_union+THREAD_SIZE
 
 __INITRODATA
 int_msg:
 	.asciz "Unknown interrupt or fault at: %p %p %p\n"
-
-fault_msg:
-/* fault info: */
-	.ascii "BUG: Int %d: CR2 %p\n"
-/* regs pushed in early_idt_handler: */
-	.ascii "     EDI %p  ESI %p  EBP %p  EBX %p\n"
-	.ascii "     ESP %p   ES %p   DS %p\n"
-	.ascii "     EDX %p  ECX %p  EAX %p\n"
-/* fault frame: */
-	.ascii "     vec %p  err %p  EIP %p   CS %p  flg %p\n"
-	.ascii "Stack: %p %p %p %p %p %p %p %p\n"
-	.ascii "       %p %p %p %p %p %p %p %p\n"
-	.asciz "       %p %p %p %p %p %p %p %p\n"
 
 #include "../../x86/xen/xen-head.S"
 

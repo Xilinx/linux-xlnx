@@ -281,7 +281,7 @@ static inline void buffer_swap32(u32 *buf, int len)
 	int i;
 
 	for (i = 0; i < ((len + 3) / 4); i++) {
-		st_le32(buf, *buf);
+		*buf = swab32(*buf);
 		buf++;
 	}
 }
@@ -306,9 +306,6 @@ static int mxcmci_setup_data(struct mxcmci_host *host, struct mmc_data *data)
 	struct scatterlist *sg;
 	enum dma_transfer_direction slave_dirn;
 	int i, nents;
-
-	if (data->flags & MMC_DATA_STREAM)
-		nob = 0xffff;
 
 	host->data = data;
 	data->bytes_xfered = 0;
@@ -605,11 +602,7 @@ static int mxcmci_push(struct mxcmci_host *host, void *_buf, int bytes)
 		mxcmci_writel(host, cpu_to_le32(tmp), MMC_REG_BUFFER_ACCESS);
 	}
 
-	stat = mxcmci_poll_status(host, STATUS_BUF_WRITE_RDY);
-	if (stat)
-		return stat;
-
-	return 0;
+	return mxcmci_poll_status(host, STATUS_BUF_WRITE_RDY);
 }
 
 static int mxcmci_transfer_data(struct mxcmci_host *host)
@@ -1072,7 +1065,7 @@ static int mxcmci_probe(struct platform_device *pdev)
 
 	if (pdata)
 		dat3_card_detect = pdata->dat3_card_detect;
-	else if (!(mmc->caps & MMC_CAP_NONREMOVABLE)
+	else if (mmc_card_is_removable(mmc)
 			&& !of_property_read_bool(pdev->dev.of_node, "cd-gpios"))
 		dat3_card_detect = true;
 
