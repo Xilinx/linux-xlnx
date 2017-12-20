@@ -1015,11 +1015,20 @@ static void dwc3_prepare_one_trb(struct dwc3_ep *dep,
 		struct dwc3_request *req, unsigned chain, unsigned node)
 {
 	struct dwc3_trb		*trb;
-	unsigned		length = req->request.length;
+	unsigned int		length;
+	dma_addr_t		dma;
 	unsigned		stream_id = req->request.stream_id;
 	unsigned		short_not_ok = req->request.short_not_ok;
 	unsigned		no_interrupt = req->request.no_interrupt;
-	dma_addr_t		dma = req->request.dma;
+
+	if (req->request.num_sgs > 0) {
+		/* Use scattergather list addresses */
+		length = sg_dma_len(req->sg_to_start);
+		dma = sg_dma_address(req->sg_to_start);
+	} else {
+		length = req->request.length;
+		dma = req->request.dma;
+	}
 
 	trb = &dep->trb_pool[dep->trb_enqueue];
 
@@ -1125,10 +1134,10 @@ static void dwc3_prepare_one_trb_sg(struct dwc3_ep *dep,
 		 * to next sg from which we can start queing trbs once trbs
 		 * availbale
 		 */
-		req->sg_to_start = sg_next(s);
+		if (chain)
+			req->sg_to_start = sg_next(s);
+
 		req->num_queued_sgs++;
-		dwc3_prepare_one_trb(dep, req, dma, length,
-				chain, i);
 
 		if (!dwc3_calc_trbs_left(dep))
 			break;
