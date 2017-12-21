@@ -140,6 +140,9 @@
 #define GQSPI_RX_BUS_WIDTH_QUAD		0x4
 #define GQSPI_RX_BUS_WIDTH_DUAL		0x2
 #define GQSPI_RX_BUS_WIDTH_SINGLE	0x1
+#define GQSPI_TX_BUS_WIDTH_QUAD		0x4
+#define GQSPI_TX_BUS_WIDTH_DUAL		0x2
+#define GQSPI_TX_BUS_WIDTH_SINGLE	0x1
 #define GQSPI_LPBK_DLY_ADJ_LPBK_SHIFT	5
 #define GQSPI_LPBK_DLY_ADJ_DLY_1	0x2
 #define GQSPI_LPBK_DLY_ADJ_DLY_1_SHIFT	3
@@ -196,6 +199,7 @@ struct zynqmp_qspi {
 	u32 dma_rx_bytes;
 	dma_addr_t dma_addr;
 	u32 rx_bus_width;
+	u32 tx_bus_width;
 	u32 genfifoentry;
 	bool isinstr;
 	enum mode_type mode;
@@ -667,16 +671,20 @@ static void zynqmp_qspi_preparedummy(struct zynqmp_qspi *xqspi,
 
 	/* SPI mode */
 	*genfifoentry &= ~GQSPI_GENFIFO_MODE_QUADSPI;
-	if (xqspi->rx_bus_width == GQSPI_RX_BUS_WIDTH_QUAD)
+	if (xqspi->rx_bus_width == GQSPI_RX_BUS_WIDTH_QUAD ||
+			xqspi->tx_bus_width == GQSPI_TX_BUS_WIDTH_QUAD)
 		*genfifoentry |= GQSPI_GENFIFO_MODE_QUADSPI;
-	else if (xqspi->rx_bus_width == GQSPI_RX_BUS_WIDTH_DUAL)
+	else if (xqspi->rx_bus_width == GQSPI_RX_BUS_WIDTH_DUAL ||
+			xqspi->tx_bus_width == GQSPI_TX_BUS_WIDTH_DUAL)
 		*genfifoentry |= GQSPI_GENFIFO_MODE_DUALSPI;
 	else
 		*genfifoentry |= GQSPI_GENFIFO_MODE_SPI;
 
 	/* Immediate data */
 	*genfifoentry &= ~GQSPI_GENFIFO_IMM_DATA_MASK;
-	*genfifoentry |= transfer->dummy;
+
+	if (transfer->dummy)
+		*genfifoentry |= transfer->dummy;
 }
 
 /**
@@ -959,7 +967,7 @@ static int zynqmp_qspi_start_transfer(struct spi_master *master,
 		genfifoentry &= ~GQSPI_GENFIFO_IMM_DATA_MASK;
 		genfifoentry |= transfer_len;
 		zynqmp_gqspi_write(xqspi, GQSPI_GEN_FIFO_OFST, genfifoentry);
-		if (transfer->dummy) {
+		if (transfer->dummy || transfer->tx_nbits >= 1) {
 			zynqmp_qspi_preparedummy(xqspi, transfer,
 					&genfifoentry);
 			zynqmp_gqspi_write(xqspi, GQSPI_GEN_FIFO_OFST,
@@ -1172,6 +1180,7 @@ static int zynqmp_qspi_probe(struct platform_device *pdev)
 	struct device_node *nc;
 	u32 num_cs;
 	u32 rx_bus_width;
+	u32 tx_bus_width;
 
 	master = spi_alloc_master(&pdev->dev, sizeof(*xqspi));
 	if (!master)
@@ -1254,6 +1263,18 @@ static int zynqmp_qspi_probe(struct platform_device *pdev)
 	}
 	if (ret)
 		dev_err(dev, "rx bus width not found\n");
+
+	xqspi->tx_bus_width = GQSPI_TX_BUS_WIDTH_SINGLE;
+	for_each_available_child_of_node(pdev->dev.of_node, nc) {
+		ret = of_property_read_u32(nc, "spi-tx-bus-width",
+					&tx_bus_width);
+		if (!ret) {
+			xqspi->tx_bus_width = tx_bus_width;
+			break;
+		}
+	}
+	if (ret)
+		dev_err(dev, "tx bus width not found\n");
 
 	ret = of_property_read_u32(pdev->dev.of_node, "num-cs", &num_cs);
 	if (ret < 0)
