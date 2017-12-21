@@ -271,9 +271,7 @@ static int m25p_probe(struct spi_device *spi)
 		hwcaps.mask |= SNOR_HWCAPS_READ_1_1_4;
 
 		if (spi->mode & SPI_TX_QUAD)
-			hwcaps.mask |= (SNOR_HWCAPS_READ_1_4_4 |
-					SNOR_HWCAPS_PP_1_1_4 |
-					SNOR_HWCAPS_PP_1_4_4);
+			hwcaps.mask |= SNOR_HWCAPS_PP_1_1_4;
 	} else if (spi->mode & SPI_RX_DUAL) {
 		hwcaps.mask |= SNOR_HWCAPS_READ_1_1_2;
 
