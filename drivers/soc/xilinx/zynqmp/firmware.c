@@ -229,12 +229,9 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_get_chipid);
 static void get_set_conduit_method(struct device_node *np)
 {
 	const char *method;
-	struct device *dev;
-
-	dev = container_of(&np, struct device, of_node);
 
 	if (of_property_read_string(np, "method", &method)) {
-		dev_warn(dev, "%s Missing \"method\" property - defaulting to smc\n",
+		pr_warn("%s Missing \"method\" property - defaulting to smc\n",
 			__func__);
 		do_fw_call = do_fw_call_smc;
 		return;
@@ -246,7 +243,7 @@ static void get_set_conduit_method(struct device_node *np)
 	} else if (!strcmp("smc", method)) {
 		do_fw_call = do_fw_call_smc;
 	} else {
-		dev_warn(dev, "%s Invalid \"method\" property: %s - defaulting to smc\n",
+		pr_warn("%s Invalid \"method\" property: %s - defaulting to smc\n",
 			__func__, method);
 		do_fw_call = do_fw_call_smc;
 	}
