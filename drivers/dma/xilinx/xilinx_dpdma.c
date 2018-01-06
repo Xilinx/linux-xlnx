@@ -340,7 +340,9 @@ struct xilinx_dpdma_device {
 #ifdef CONFIG_XILINX_DPDMA_DEBUG_FS
 #define XILINX_DPDMA_DEBUGFS_READ_MAX_SIZE	32
 #define XILINX_DPDMA_DEBUGFS_UINT16_MAX_STR	"65535"
-#define IN_RANGE(x, min, max) ((x) >= (min) && (x) <= (max))
+#define IN_RANGE(x, min, max) ({		\
+		typeof(x) _x = (x);		\
+		_x >= (min) && _x <= (max); })
 
 /* Match xilinx_dpdma_testcases vs dpdma_debugfs_reqs[] entry */
 enum xilinx_dpdma_testcases {
