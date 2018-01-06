@@ -1901,8 +1901,9 @@ static void xilinx_dpdma_handle_err_intr(struct xilinx_dpdma_device *xdev,
 	bool err = xilinx_dpdma_err(isr, eisr);
 	unsigned int i;
 
-	dev_err(xdev->dev, "error intr: isr = 0x%08x, eisr = 0x%08x\n",
-		isr, eisr);
+	dev_dbg_ratelimited(xdev->dev,
+			    "error intr: isr = 0x%08x, eisr = 0x%08x\n",
+			    isr, eisr);
 
 	/* Disable channel error interrupts until errors are handled. */
 	dpdma_write(xdev->reg, XILINX_DPDMA_IDS,
