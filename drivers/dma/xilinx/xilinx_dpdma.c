@@ -1687,31 +1687,25 @@ static void xilinx_dpdma_chan_handle_err(struct xilinx_dpdma_chan *chan)
 	xilinx_dpdma_chan_disable(chan);
 	chan->status = IDLE;
 
-	/* Decide if the current descriptor can be rescheduled */
-	if (chan->active_desc) {
-		switch (chan->active_desc->status) {
-		case ACTIVE:
-		case PREPARED:
-			xilinx_dpdma_chan_free_tx_desc(chan,
-						       chan->submitted_desc);
-			chan->submitted_desc = NULL;
-			xilinx_dpdma_chan_free_tx_desc(chan,
-						       chan->pending_desc);
-			chan->pending_desc = NULL;
-			chan->active_desc->status = ERRORED;
-			chan->submitted_desc = chan->active_desc;
-			break;
-		case ERRORED:
-			dev_err(dev, "desc is dropped by unrecoverable err\n");
-			xilinx_dpdma_chan_dump_tx_desc(chan, chan->active_desc);
-			xilinx_dpdma_chan_free_tx_desc(chan, chan->active_desc);
-			break;
-		default:
-			break;
-		}
-		chan->active_desc = NULL;
-	}
+	if (!chan->active_desc)
+		goto out_unlock;
 
+	xilinx_dpdma_chan_dump_tx_desc(chan, chan->active_desc);
+
+	switch (chan->active_desc->status) {
+	case ERRORED:
+		dev_dbg(dev, "repeated error on desc\n");
+	case ACTIVE:
+	case PREPARED:
+		/* Reschedule if there's no new descriptor */
+		if (!chan->submitted_desc)
+			chan->submitted_desc = chan->active_desc;
+		chan->active_desc->status = ERRORED;
+		break;
+	}
+	chan->active_desc = NULL;
+
+out_unlock:
 	spin_unlock_irqrestore(&chan->lock, flags);
 }
 
