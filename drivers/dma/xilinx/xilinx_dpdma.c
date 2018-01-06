@@ -1923,7 +1923,7 @@ static void xilinx_dpdma_synchronize(struct dma_chan *dchan)
 static bool xilinx_dpdma_err(u32 isr, u32 eisr)
 {
 	if ((isr & XILINX_DPDMA_INTR_GLOBAL_ERR ||
-	    eisr & XILINX_DPDMA_EINTR_GLOBAL_ERR))
+	     eisr & XILINX_DPDMA_EINTR_GLOBAL_ERR))
 		return true;
 
 	return false;
