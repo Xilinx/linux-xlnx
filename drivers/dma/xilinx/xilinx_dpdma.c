@@ -2240,7 +2240,7 @@ static int xilinx_dpdma_probe(struct platform_device *pdev)
 
 	ret = dma_async_device_register(ddev);
 	if (ret) {
-		dev_err(xdev->dev, "failed to enable the axi clock\n");
+		dev_err(xdev->dev, "failed to register the dma device\n");
 		goto error_dma_async;
 	}
 
