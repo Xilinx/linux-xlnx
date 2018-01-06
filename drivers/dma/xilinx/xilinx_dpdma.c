@@ -476,6 +476,7 @@ static ssize_t xilinx_dpdma_debugfs_read(struct file *f, char __user *buf,
 {
 	char *kern_buff = NULL;
 	size_t kern_buff_len, out_str_len;
+	enum xilinx_dpdma_testcases tc;
 	int ret;
 
 	if (size <= 0)
@@ -490,14 +491,14 @@ static ssize_t xilinx_dpdma_debugfs_read(struct file *f, char __user *buf,
 		return -ENOMEM;
 	}
 
-	if (dpdma_debugfs.testcase == DPDMA_TC_NONE) {
+	tc = dpdma_debugfs.testcase;
+	if (tc == DPDMA_TC_NONE) {
 		out_str_len = strlen("No testcase executed");
 		out_str_len = min_t(size_t, XILINX_DPDMA_DEBUGFS_READ_MAX_SIZE,
 				    out_str_len);
 		snprintf(kern_buff, out_str_len, "%s", "No testcase executed");
 	} else {
-		ret = dpdma_debugfs_reqs[dpdma_debugfs.testcase].read_handler(
-				&kern_buff);
+		ret = dpdma_debugfs_reqs[tc].read_handler(&kern_buff);
 		if (ret) {
 			kfree(kern_buff);
 			return ret;
