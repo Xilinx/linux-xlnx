@@ -1545,19 +1545,23 @@ static int xilinx_dpdma_chan_poll_no_ostand(struct xilinx_dpdma_chan *chan)
 /**
  * xilinx_dpdma_chan_stop - Stop the channel
  * @chan: DPDMA channel
+ * @poll: flag whether to poll or wait
  *
  * Stop the channel with the following sequence: 1. Pause, 2. Wait (sleep) for
  * no outstanding transaction interrupt, 3. Disable the channel.
  *
- * Return: 0 on success, or error code from xilinx_dpdma_chan_wait_no_ostand().
+ * Return: 0 on success, or an error from xilinx_dpdma_chan_poll/wait_ostand().
  */
-static int xilinx_dpdma_chan_stop(struct xilinx_dpdma_chan *chan)
+static int xilinx_dpdma_chan_stop(struct xilinx_dpdma_chan *chan, bool poll)
 {
 	unsigned long flags;
 	bool ret;
 
 	xilinx_dpdma_chan_pause(chan);
-	ret = xilinx_dpdma_chan_wait_no_ostand(chan);
+	if (poll)
+		ret = xilinx_dpdma_chan_poll_no_ostand(chan);
+	else
+		ret = xilinx_dpdma_chan_wait_no_ostand(chan);
 	if (ret)
 		return ret;
 
@@ -1609,7 +1613,8 @@ static void xilinx_dpdma_chan_free_resources(struct xilinx_dpdma_chan *chan)
  * xilinx_dpdma_chan_terminate_all - Terminate the channel and descriptors
  * @chan: DPDMA channel
  *
- * Stop the channel and free all associated descriptors.
+ * Stop the channel and free all associated descriptors. Poll the no outstanding
+ * transaction interrupt as this can be called from an atomic context.
  *
  * Return: 0 on success, or the error code from xilinx_dpdma_chan_stop().
  */
@@ -1629,10 +1634,47 @@ static int xilinx_dpdma_chan_terminate_all(struct xilinx_dpdma_chan *chan)
 		}
 	}
 
-	ret = xilinx_dpdma_chan_stop(chan);
+	ret = xilinx_dpdma_chan_stop(chan, true);
 	if (ret)
 		return ret;
 
+	xilinx_dpdma_chan_free_all_desc(chan);
+
+	return 0;
+}
+
+/**
+ * xilinx_dpdma_chan_synchronize - Synchronize all outgoing transfer
+ * @chan: DPDMA channel
+ *
+ * Stop the channel and free all associated descriptors. As this can't be
+ * called in an atomic context, sleep-wait for no outstanding transaction
+ * interrupt. Then kill all related tasklets.
+ *
+ * Return: 0 on success, or the error code from xilinx_dpdma_chan_stop().
+ */
+static int xilinx_dpdma_chan_synchronize(struct xilinx_dpdma_chan *chan)
+{
+	struct xilinx_dpdma_device *xdev = chan->xdev;
+	int ret;
+	unsigned int i;
+
+	if (chan->video_group) {
+		for (i = VIDEO0; i < GRAPHICS; i++) {
+			if (xdev->chan[i]->video_group &&
+			    xdev->chan[i]->status == STREAMING) {
+				xilinx_dpdma_chan_pause(xdev->chan[i]);
+				xdev->chan[i]->video_group = false;
+			}
+		}
+	}
+
+	ret = xilinx_dpdma_chan_stop(chan, false);
+	if (ret)
+		return ret;
+
+	tasklet_kill(&chan->err_task);
+	tasklet_kill(&chan->done_task);
 	xilinx_dpdma_chan_free_all_desc(chan);
 
 	return 0;
@@ -1859,6 +1901,11 @@ static int xilinx_dpdma_resume(struct dma_chan *dchan)
 static int xilinx_dpdma_terminate_all(struct dma_chan *dchan)
 {
 	return xilinx_dpdma_chan_terminate_all(to_xilinx_chan(dchan));
+}
+
+static void xilinx_dpdma_synchronize(struct dma_chan *dchan)
+{
+	xilinx_dpdma_chan_synchronize(to_xilinx_chan(dchan));
 }
 
 /* Xilinx DPDMA device operations */
@@ -2165,6 +2212,7 @@ static int xilinx_dpdma_probe(struct platform_device *pdev)
 	ddev->device_pause = xilinx_dpdma_pause;
 	ddev->device_resume = xilinx_dpdma_resume;
 	ddev->device_terminate_all = xilinx_dpdma_terminate_all;
+	ddev->device_synchronize = xilinx_dpdma_synchronize;
 	ddev->src_addr_widths = BIT(DMA_SLAVE_BUSWIDTH_UNDEFINED);
 	ddev->directions = BIT(DMA_MEM_TO_DEV);
 	ddev->residue_granularity = DMA_RESIDUE_GRANULARITY_DESCRIPTOR;
