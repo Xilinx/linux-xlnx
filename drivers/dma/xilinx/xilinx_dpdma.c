@@ -299,7 +299,7 @@ struct xilinx_dpdma_chan {
 	bool first_frame;
 	bool video_group;
 
-	spinlock_t lock;
+	spinlock_t lock; /* lock to access struct xilinx_dpdma_chan */
 	struct dma_pool *desc_pool;
 	struct tasklet_struct done_task;
 	struct tasklet_struct err_task;
