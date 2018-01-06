@@ -263,7 +263,7 @@ enum xilinx_dpdma_chan_status {
  * Transition is triggered as following:
  *
  * -> allocated_desc : a descriptor allocation
- * allocated_desc -> submitted_desc: a descriptorsubmission
+ * allocated_desc -> submitted_desc: a descriptor submission
  * submitted_desc -> pending_desc: request to issue pending a descriptor
  * pending_desc -> active_desc: VSYNC intr when a desc is scheduled to DPDMA
  * active_desc -> done_list: VSYNC intr when DPDMA switches to a new desc
