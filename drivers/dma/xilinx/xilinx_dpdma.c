@@ -455,7 +455,7 @@ static ssize_t xilinx_dpdma_debugfs_write(struct file *f, const char __user
 		return ret;
 	}
 
-	/* Read the testcase name from an user request */
+	/* Read the testcase name from a user request */
 	dpdma_test_req = strsep(&kern_buff, " ");
 
 	for (i = 0; i < ARRAY_SIZE(dpdma_debugfs_reqs); i++) {
@@ -1451,10 +1451,11 @@ static inline u32 xilinx_dpdma_chan_ostand(struct xilinx_dpdma_chan *chan)
  * @chan: DPDMA channel
  *
  * Notify waiters for no outstanding event, so waiters can stop the channel
- * safely. This function is supposed to be called when 'no oustanding' interrupt
- * is generated. The 'no outstanding' interrupt is disabled and should be
- * re-enabled when this event is handled. If the channel status register still
- * shows some number of outstanding transactions, the interrupt remains enabled.
+ * safely. This function is supposed to be called when 'no outstanding'
+ * interrupt is generated. The 'no outstanding' interrupt is disabled and
+ * should be re-enabled when this event is handled. If the channel status
+ * register still shows some number of outstanding transactions, the interrupt
+ * remains enabled.
  *
  * Return: 0 on success. On failure, -EWOULDBLOCK if there's still outstanding
  * transaction(s).
@@ -1469,7 +1470,7 @@ static int xilinx_dpdma_chan_notify_no_ostand(struct xilinx_dpdma_chan *chan)
 		return -EWOULDBLOCK;
 	}
 
-	/* Disable 'no oustanding' interrupt */
+	/* Disable 'no outstanding' interrupt */
 	dpdma_write(chan->xdev->reg, XILINX_DPDMA_IDS,
 		    1 << (XILINX_DPDMA_INTR_NO_OSTAND_SHIFT + chan->id));
 	wake_up(&chan->wait_to_stop);
@@ -1478,7 +1479,7 @@ static int xilinx_dpdma_chan_notify_no_ostand(struct xilinx_dpdma_chan *chan)
 }
 
 /**
- * xilinx_dpdma_chan_wait_no_ostand - Wait for the oustanding transaction intr
+ * xilinx_dpdma_chan_wait_no_ostand - Wait for the no outstanding intr
  * @chan: DPDMA channel
  *
  * Wait for the no outstanding transaction interrupt. This functions can sleep
@@ -1512,7 +1513,7 @@ static int xilinx_dpdma_chan_wait_no_ostand(struct xilinx_dpdma_chan *chan)
 }
 
 /**
- * xilinx_dpdma_chan_poll_no_ostand - Poll the oustanding transaction status reg
+ * xilinx_dpdma_chan_poll_no_ostand - Poll the outstanding transaction status
  * @chan: DPDMA channel
  *
  * Poll the outstanding transaction status, and return when there's no
