@@ -891,6 +891,7 @@ struct dwc3_scratchpad_array {
  * 	3	- Reserved
  * @imod_interval: set the interrupt moderation interval in 250ns
  *                 increments or 0 to disable.
+ * @is_d3: set if the controller is in d3 state
  */
 struct dwc3 {
 	struct work_struct	drd_work;
@@ -1049,6 +1050,7 @@ struct dwc3 {
 	unsigned		tx_de_emphasis:2;
 
 	u16			imod_interval;
+	bool			is_d3;
 };
 
 #define work_to_dwc(w)		(container_of((w), struct dwc3, drd_work))
