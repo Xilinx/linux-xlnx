@@ -24,6 +24,7 @@ Required properties:
 
 Optional properties:
  - xlnx,dp-sub: the phandle to DisplayPort subsystem node for ZynqMP.
+ - xlnx,sdi: the phandle to SDI node if the pipeline has the SDI IP core.
  - ports: device graph binding can be used to define connectivity. The DT
    bindings are defined in Documentation/devicetree/bindings/graph.txt.
 
