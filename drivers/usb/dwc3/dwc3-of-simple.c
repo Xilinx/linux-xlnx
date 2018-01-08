@@ -408,6 +408,8 @@ int dwc3_set_usb_core_power(struct dwc3 *dwc, bool on)
 			dev_err(dwc->dev, "Failed to set power state to D0\n");
 			return -EIO;
 		}
+
+		dwc->is_d3 = false;
 	} else {
 		dev_dbg(dwc->dev, "Trying to set power state to D3...\n");
 
@@ -436,6 +438,8 @@ int dwc3_set_usb_core_power(struct dwc3 *dwc, bool on)
 
 		/* Assert USB core reset after entering D3 state */
 		xpsgtr_usb_crst_assert(simple->phy);
+
+		dwc->is_d3 = true;
 	}
 
 	return 0;
