@@ -1310,26 +1310,25 @@ static void xilinx_sdi_register_device(struct xilinx_sdi *sdi)
  *
  * This function searches and returns a SDI subsystem structure for
  * the parent device node, @np. The SDI subsystem node should be a child node
- * of @np, with 'xlnx,v-smpte-uhdsdi-tx-ss' property pointing to the SDI
- * device node. An instance can be shared by multiple users.
+ * of @np, with 'xlnx,sdi' property pointing to the SDI device node.
+ * An instance can be shared by multiple users.
  *
  * Return: corresponding SDI subsystem structure if found. NULL if
- * the device node doesn't have 'xlnx,v-smpte-uhdsdi-tx-ss' property, or
- * -EPROBE_DEFER error pointer if the the SDI subsystem isn't found.
+ * the device node doesn't have 'xlnx,sdi' property, or -EPROBE_DEFER error
+ * pointer if the the SDI subsystem isn't found.
  */
 struct xilinx_sdi *xilinx_drm_sdi_of_get(struct device_node *np)
 {
 	struct xilinx_sdi *found = NULL;
 	struct xilinx_sdi *sdi;
-	struct device_node *ep_node, *sdi_node;
+	struct device_node *sdi_node;
 
-	ep_node = of_find_node_by_name(np, "endpoint");
-	if (!ep_node)
+	if (!of_find_property(np, "xlnx,sdi", NULL))
 		return NULL;
-	sdi_node = of_graph_get_remote_port_parent(ep_node);
-	of_node_put(ep_node);
+
+	sdi_node = of_parse_phandle(np, "xlnx,sdi", 0);
 	if (!sdi_node)
-		return NULL;
+		return ERR_PTR(-EINVAL);
 
 	mutex_lock(&xilinx_sdi_lock);
 	list_for_each_entry(sdi, &xilinx_sdi_list, list) {
