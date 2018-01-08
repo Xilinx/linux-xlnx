@@ -239,6 +239,7 @@ enum pll_frequencies {
  * @protocol: protocol in which the lane operates
  * @ref_clk: enum of allowed ref clock rates for this lane PLL
  * @pll_lock: PLL status
+ * @skip_phy_init: skip phy_init() if true
  * @data: pointer to hold private data
  * @refclk_rate: PLL reference clock frequency
  * @share_laneclk: lane number of the clock to be shared
@@ -250,6 +251,7 @@ struct xpsgtr_phy {
 	u8 protocol;
 	enum pll_frequencies ref_clk;
 	bool pll_lock;
+	bool skip_phy_init;
 	void *data;
 	u32 refclk_rate;
 	u32 share_laneclk;
@@ -295,6 +297,8 @@ static struct xpsgtr_ssc ssc_lookup[] = {
  * @phys: pointer to all the lanes
  * @lpd: base address for low power domain devices reset control
  * @tx_term_fix: fix for GT issue
+ * @saved_icm_cfg0: stored value of ICM CFG0 register
+ * @saved_icm_cfg1: stored value of ICM CFG1 register
  * @sata_rst: a reset control for SATA
  * @dp_rst: a reset control for DP
  * @usb0_crst: a reset control for usb0 core
@@ -316,6 +320,8 @@ struct xpsgtr_dev {
 	struct xpsgtr_phy **phys;
 	void __iomem *lpd;
 	bool tx_term_fix;
+	unsigned int saved_icm_cfg0;
+	unsigned int saved_icm_cfg1;
 	struct reset_control *sata_rst;
 	struct reset_control *dp_rst;
 	struct reset_control *usb0_crst;
@@ -998,6 +1004,27 @@ static int xpsgtr_set_sgmii_pcs(struct xpsgtr_phy *gtr_phy)
 }
 
 /**
+ * xpsgtr_phyinit_required - check if phy_init for the lane can be skipped
+ * @gtr_phy: pointer to the phy lane
+ *
+ * Return: true if phy_init can be skipped or false
+ */
+static bool xpsgtr_phyinit_required(struct xpsgtr_phy *gtr_phy)
+{
+	/*
+	 * As USB may save the snapshot of the states during hibernation, doing
+	 * phy_init() will put the USB controller into reset, resulting in the
+	 * losing of the saved snapshot. So try to avoid phy_init() for USB
+	 * except when gtr_phy->skip_phy_init is false (this happens when FPD is
+	 * shutdown during suspend or when gt lane is changed from current one)
+	 */
+	if (gtr_phy->protocol == ICM_PROTOCOL_USB && gtr_phy->skip_phy_init)
+		return true;
+	else
+		return false;
+}
+
+/**
  * xpsgtr_phy_init - initializes a lane
  * @phy: pointer to kernel PHY device
  *
@@ -1014,6 +1041,10 @@ static int xpsgtr_phy_init(struct phy *phy)
 	u32 timeout = 500;
 
 	mutex_lock(&gtr_dev->gtr_mutex);
+
+	/* Check if phy_init() is required  */
+	if (xpsgtr_phyinit_required(gtr_phy))
+		goto out;
 
 	/* Put controller in reset */
 	ret = xpsgtr_controller_reset(gtr_phy);
@@ -1292,8 +1323,25 @@ static struct phy *xpsgtr_xlate(struct device *dev,
 	return ERR_PTR(-EINVAL);
 }
 
+/**
+ * xpsgtr_phy_exit - clears previous initialized variables
+ * @phy: pointer to kernel PHY device
+ *
+ * Return: 0 on success
+ */
+static int xpsgtr_phy_exit(struct phy *phy)
+{
+	struct xpsgtr_phy *gtr_phy = phy_get_drvdata(phy);
+
+	/* As we are exiting, clear skip_phy_init flag */
+	gtr_phy->skip_phy_init = false;
+
+	return 0;
+}
+
 static struct phy_ops xpsgtr_phyops = {
 	.init		= xpsgtr_phy_init,
+	.exit		= xpsgtr_phy_exit,
 	.owner		= THIS_MODULE,
 };
 
@@ -1502,6 +1550,51 @@ static int xpsgtr_probe(struct platform_device *pdev)
 	return 0;
 }
 
+static int xpsgtr_suspend(struct device *dev)
+{
+	struct xpsgtr_dev *gtr_dev = dev_get_drvdata(dev);
+
+	/* Save the ICM_CFG registers */
+	gtr_dev->saved_icm_cfg0 = readl(gtr_dev->serdes + ICM_CFG0);
+	gtr_dev->saved_icm_cfg1 = readl(gtr_dev->serdes + ICM_CFG1);
+
+	return 0;
+}
+
+static int xpsgtr_resume(struct device *dev)
+{
+	unsigned int icm_cfg0, icm_cfg1, index;
+	bool skip_phy_init;
+	struct xpsgtr_phy *gtr_phy;
+	struct xpsgtr_dev *gtr_dev = dev_get_drvdata(dev);
+
+	icm_cfg0 = readl(gtr_dev->serdes + ICM_CFG0);
+	icm_cfg1 = readl(gtr_dev->serdes + ICM_CFG1);
+
+	/* Just return if no gt lanes got configured before suspend */
+	if (!gtr_dev->saved_icm_cfg0 && !gtr_dev->saved_icm_cfg1)
+		return 0;
+
+	/* Check if the ICM configurations changed after suspend */
+	if (icm_cfg0 == gtr_dev->saved_icm_cfg0 &&
+	    icm_cfg1 == gtr_dev->saved_icm_cfg1)
+		skip_phy_init = true;
+	else
+		skip_phy_init = false;
+
+	/* This below updates the skip_phy_init for all gtr_phy instances `*/
+	for (index = 0; index < of_get_child_count(dev->of_node); index++) {
+		gtr_phy = gtr_dev->phys[index];
+		gtr_phy->skip_phy_init = skip_phy_init;
+	}
+
+	return 0;
+}
+
+static const struct dev_pm_ops xpsgtr_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(xpsgtr_suspend, xpsgtr_resume)
+};
+
 /* Match table for of_platform binding */
 static const struct of_device_id xpsgtr_of_match[] = {
 	{ .compatible = "xlnx,zynqmp-psgtr", },
@@ -1514,6 +1607,7 @@ static struct platform_driver xpsgtr_driver = {
 	.driver = {
 		.name = "xilinx-psgtr",
 		.of_match_table	= xpsgtr_of_match,
+		.pm =  &xpsgtr_pm_ops,
 	},
 };
 
