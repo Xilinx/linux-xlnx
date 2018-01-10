@@ -520,7 +520,6 @@ static int xpsgtr_get_ssc(struct xpsgtr_phy *gtr_phy)
  */
 static int xpsgtr_configure_lane(struct xpsgtr_phy *gtr_phy)
 {
-
 	switch (gtr_phy->type) {
 	case XPSGTR_TYPE_USB0:
 	case XPSGTR_TYPE_USB1:
@@ -919,7 +918,6 @@ static void xpsgtr_misc_sata(struct xpsgtr_phy *gtr_phy)
 	writel(gtr_phy->lane, gtr_dev->siou + SATA_CONTROL_OFFSET);
 }
 
-
 /**
  * xpsgtr_ulpi_reset - This function does ULPI reset.
  * @gtr_phy: pointer to lane
@@ -947,7 +945,6 @@ static void xpsgtr_ulpi_reset(struct xpsgtr_phy *gtr_phy)
 	} while (!time_after_eq(jiffies, timeout));
 
 	writel(RST_ULPI_HI, gtr_dev->lpd + RST_ULPI);
-
 }
 
 /**
@@ -1059,7 +1056,6 @@ static int xpsgtr_phy_init(struct phy *phy)
 	 * the workaround to fix it. This below is required for XCZU9EG silicon.
 	 */
 	if (gtr_dev->tx_term_fix) {
-
 		/* Enabling Test Mode control for CMN Rest */
 		reg = readl(gtr_dev->serdes + TM_CMN_RST);
 		reg = (reg & ~TM_CMN_RST_MASK) | TM_CMN_RST_SET;
