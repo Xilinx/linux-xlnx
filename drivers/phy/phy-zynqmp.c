@@ -823,8 +823,8 @@ int xpsgtr_wait_pll_lock(struct phy *phy)
 		gtr_phy->pll_lock = true;
 
 	dev_info(gtr_dev->dev, "Lane:%d type:%d protocol:%d pll_locked:%s\n",
-			gtr_phy->lane, gtr_phy->type, gtr_phy->protocol,
-			gtr_phy->pll_lock ? "yes" : "no");
+		 gtr_phy->lane, gtr_phy->type, gtr_phy->protocol,
+		 gtr_phy->pll_lock ? "yes" : "no");
 	return ret;
 }
 EXPORT_SYMBOL_GPL(xpsgtr_wait_pll_lock);
@@ -839,7 +839,7 @@ static void xpsgtr_set_txwidth(struct xpsgtr_phy *gtr_phy, u32 width)
 	struct xpsgtr_dev *gtr_dev = gtr_phy->data;
 
 	writel(gtr_phy->lane * PROT_BUS_WIDTH_SHIFT >> width,
-					gtr_dev->serdes + TX_PROT_BUS_WIDTH);
+	       gtr_dev->serdes + TX_PROT_BUS_WIDTH);
 }
 
 /**
@@ -852,7 +852,7 @@ static void xpsgtr_set_rxwidth(struct xpsgtr_phy *gtr_phy, u32 width)
 	struct xpsgtr_dev *gtr_dev = gtr_phy->data;
 
 	writel(gtr_phy->lane * PROT_BUS_WIDTH_SHIFT >> width,
-					gtr_dev->serdes + RX_PROT_BUS_WIDTH);
+	       gtr_dev->serdes + RX_PROT_BUS_WIDTH);
 }
 
 /**
@@ -994,7 +994,7 @@ static int xpsgtr_set_sgmii_pcs(struct xpsgtr_phy *gtr_phy)
 	mask = GEM_CLK_CTRL_MASK << GEM_CLK_CTRL_OFFSET * shift;
 	value = GEM_RX_SRC_SEL_GTR | GEM_SGMII_MODE;
 	ret = zynqmp_pm_mmio_write(IOU_SLCR + IOU_GEM_CLK_CTRL_OFFSET,
-								mask, value);
+				   mask, value);
 	if (ret < 0) {
 		dev_err(gtr_dev->dev, "failed to set GEM to SGMII mode\n");
 		return ret;
@@ -1190,7 +1190,7 @@ out:
  * Return: 0 on success or error on failure
  */
 static int xpsgtr_set_lanetype(struct xpsgtr_phy *gtr_phy, u8 controller,
-				u8 instance_num)
+			       u8 instance_num)
 {
 	switch (controller) {
 	case PHY_TYPE_SATA:
@@ -1256,7 +1256,7 @@ static int xpsgtr_set_lanetype(struct xpsgtr_phy *gtr_phy, u8 controller,
  * Return: pointer to kernel PHY device or error on failure
  */
 static struct phy *xpsgtr_xlate(struct device *dev,
-				   struct of_phandle_args *args)
+				struct of_phandle_args *args)
 {
 	struct xpsgtr_dev *gtr_dev = dev_get_drvdata(dev);
 	struct xpsgtr_phy *gtr_phy = NULL;
@@ -1306,7 +1306,7 @@ static struct phy *xpsgtr_xlate(struct device *dev,
 	/* configures SSC settings for a lane */
 	if (xpsgtr_configure_lane(gtr_phy) < 0) {
 		dev_err(gtr_dev->dev, "Invalid clock rate: %d\n",
-						gtr_phy->refclk_rate);
+			gtr_phy->refclk_rate);
 		return ERR_PTR(-EINVAL);
 	}
 
@@ -1385,7 +1385,7 @@ static int xpsgtr_get_resets(struct xpsgtr_dev *gtr_dev)
 	}
 
 	gtr_dev->usb0_hibrst = devm_reset_control_get(gtr_dev->dev,
-							"usb0_hibrst");
+						      "usb0_hibrst");
 	if (IS_ERR(gtr_dev->usb0_hibrst)) {
 		name = "usb0_hibrst";
 		rst_temp = gtr_dev->usb0_hibrst;
@@ -1393,7 +1393,7 @@ static int xpsgtr_get_resets(struct xpsgtr_dev *gtr_dev)
 	}
 
 	gtr_dev->usb1_hibrst = devm_reset_control_get(gtr_dev->dev,
-							"usb1_hibrst");
+						      "usb1_hibrst");
 	if (IS_ERR(gtr_dev->usb1_hibrst)) {
 		name = "usb1_hibrst";
 		rst_temp = gtr_dev->usb1_hibrst;
@@ -1401,7 +1401,7 @@ static int xpsgtr_get_resets(struct xpsgtr_dev *gtr_dev)
 	}
 
 	gtr_dev->usb0_apbrst = devm_reset_control_get(gtr_dev->dev,
-							"usb0_apbrst");
+						      "usb0_apbrst");
 	if (IS_ERR(gtr_dev->usb0_apbrst)) {
 		name = "usb0_apbrst";
 		rst_temp = gtr_dev->usb0_apbrst;
@@ -1409,7 +1409,7 @@ static int xpsgtr_get_resets(struct xpsgtr_dev *gtr_dev)
 	}
 
 	gtr_dev->usb1_apbrst = devm_reset_control_get(gtr_dev->dev,
-							"usb1_apbrst");
+						      "usb1_apbrst");
 	if (IS_ERR(gtr_dev->usb1_apbrst)) {
 		name = "usb1_apbrst";
 		rst_temp = gtr_dev->usb1_apbrst;
@@ -1491,7 +1491,7 @@ static int xpsgtr_probe(struct platform_device *pdev)
 		return -EINVAL;
 
 	gtr_dev->phys = devm_kzalloc(&pdev->dev, sizeof(phy) * lanecount,
-				       GFP_KERNEL);
+				     GFP_KERNEL);
 	if (!gtr_dev->phys)
 		return -ENOMEM;
 
@@ -1520,7 +1520,7 @@ static int xpsgtr_probe(struct platform_device *pdev)
 		struct xpsgtr_phy *gtr_phy;
 
 		gtr_phy = devm_kzalloc(&pdev->dev, sizeof(*gtr_phy),
-					 GFP_KERNEL);
+				       GFP_KERNEL);
 		if (!gtr_phy)
 			return -ENOMEM;
 
