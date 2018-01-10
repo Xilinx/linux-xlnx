@@ -12,11 +12,6 @@ Required properties:
  - clocks: phandle for AXI clock
  - clock-names: The identification string, "axi_clk", is always required.
 
-Optional properties:
- - dma-channels: Number of DMA channels.
- - xlnx,axi-clock-freq: AXi clock frequency. If not given, the default
-   value, 533000000Hz (533MHz), is used per specification.
-
 Required child node properties:
 - compatible: Should be one of "xlnx,video0", "xlnx,video1", "xlnx,video2",
   "xlnx,graphics", "xlnx,audio0", or "xlnx,audio1".
