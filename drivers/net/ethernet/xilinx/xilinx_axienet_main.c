@@ -3330,9 +3330,9 @@ static int __maybe_unused axienet_mcdma_probe(struct platform_device *pdev,
 		q = lp->dq[i];
 
 		q->dma_regs = lp->mcdma_regs;
-		sprintf(dma_name, "dma%d_tx", i);
+		sprintf(dma_name, "mm2s_ch%d_introut", i + 1);
 		q->tx_irq = platform_get_irq_byname(pdev, dma_name);
-		sprintf(dma_name, "dma%d_rx", i);
+		sprintf(dma_name, "s2mm_ch%d_introut", i + 1);
 		q->rx_irq = platform_get_irq_byname(pdev, dma_name);
 		q->eth_hasdre = of_property_read_bool(np,
 						      "xlnx,include-dre");
