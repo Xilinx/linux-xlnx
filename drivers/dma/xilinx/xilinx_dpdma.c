@@ -1,7 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
- * Xilinx DPDMA Engine driver
+ * Xilinx ZynqMP DPDMA Engine driver
  *
- *  Copyright (C) 2015 Xilinx, Inc.
+ *  Copyright (C) 2015 - 2018 Xilinx, Inc.
  *
  *  Author: Hyun Woo Kwon <hyun.kwon@xilinx.com>
  *
