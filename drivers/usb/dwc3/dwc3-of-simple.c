@@ -405,6 +405,27 @@ static void dwc3_simple_vbus(struct dwc3 *dwc, bool vbus_off)
 	writel(reg, dwc->regs + addr);
 }
 
+void dwc3_usb2phycfg(struct dwc3 *dwc, bool suspend)
+{
+	u32 addr, reg;
+
+	addr = DWC3_OF_ADDRESS(DWC3_GUSB2PHYCFG(0));
+
+	if (suspend) {
+		reg = readl(dwc->regs + addr);
+		if (!(reg & DWC3_GUSB2PHYCFG_SUSPHY)) {
+			reg |= DWC3_GUSB2PHYCFG_SUSPHY;
+			writel(reg, (dwc->regs + addr));
+		}
+	} else {
+		reg = readl(dwc->regs + addr);
+		if ((reg & DWC3_GUSB2PHYCFG_SUSPHY)) {
+			reg &= ~DWC3_GUSB2PHYCFG_SUSPHY;
+			writel(reg, (dwc->regs + addr));
+		}
+	}
+}
+
 int dwc3_set_usb_core_power(struct dwc3 *dwc, bool on)
 {
 	u32 reg, retries;
@@ -452,8 +473,19 @@ int dwc3_set_usb_core_power(struct dwc3 *dwc, bool on)
 		}
 
 		dwc->is_d3 = false;
+
+		/* Clear Suspend PHY bit if dis_u2_susphy_quirk is set */
+		if (dwc->dis_u2_susphy_quirk)
+			dwc3_usb2phycfg(dwc, false);
 	} else {
 		dev_dbg(dwc->dev, "Trying to set power state to D3...\n");
+
+		/*
+		 * Set Suspend PHY bit before entering D3 if
+		 * dis_u2_susphy_quirk is set
+		 */
+		if (dwc->dis_u2_susphy_quirk)
+			dwc3_usb2phycfg(dwc, true);
 
 		/* enable PME to wakeup from hibernation */
 		writel(XLNX_PME_ENABLE_SIG_GEN, reg_base + XLNX_USB_PME_ENABLE);
