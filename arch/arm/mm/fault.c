@@ -21,6 +21,7 @@
 #include <linux/highmem.h>
 #include <linux/perf_event.h>
 
+#include <asm/cp15.h>
 #include <asm/exception.h>
 #include <asm/pgtable.h>
 #include <asm/system_misc.h>
@@ -181,6 +182,7 @@ __do_user_fault(struct task_struct *tsk, unsigned long addr,
 	si.si_errno = 0;
 	si.si_code = code;
 	si.si_addr = (void __user *)addr;
+
 	force_sig_info(sig, &si, tsk);
 }
 
@@ -396,9 +398,32 @@ no_context:
 	__do_kernel_fault(mm, addr, fsr, regs);
 	return 0;
 }
+
+static int
+do_pabt_page_fault(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
+{
+	if (addr > TASK_SIZE) {
+		switch(read_cpuid_part()) {
+		case ARM_CPU_PART_CORTEX_A8:
+		case ARM_CPU_PART_CORTEX_A9:
+		case ARM_CPU_PART_CORTEX_A12:
+		case ARM_CPU_PART_CORTEX_A17:
+			write_sysreg(0, BPIALL);
+			break;
+		}
+	}
+
+	return do_page_fault(addr, fsr, regs);
+}
 #else					/* CONFIG_MMU */
 static int
 do_page_fault(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
+{
+	return 0;
+}
+
+static int
+do_pabt_page_fault(unsigned long addr, unsigned int fsr, struct pt_regs *regs)
 {
 	return 0;
 }
