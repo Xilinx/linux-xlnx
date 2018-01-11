@@ -292,7 +292,6 @@ static int zynq_remoteproc_probe(struct platform_device *pdev)
 	struct zynq_rproc_pdata *local;
 	struct gen_pool *mem_pool = NULL;
 	struct mem_pool_st *mem_node = NULL;
-	char mem_name[16];
 	int i;
 
 	rproc = rproc_alloc(&pdev->dev, dev_name(&pdev->dev),
