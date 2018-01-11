@@ -483,7 +483,7 @@ static int dwc3_of_simple_suspend(struct device *dev)
 	struct dwc3_of_simple	*simple = dev_get_drvdata(dev);
 	int			i;
 
-	if (!simple->wakeup_capable) {
+	if (!simple->wakeup_capable && !simple->dwc->is_d3) {
 		/* Ask ULPI to turn OFF Vbus */
 		dwc3_simple_vbus(simple->dwc, true);
 
@@ -501,7 +501,7 @@ static int dwc3_of_simple_resume(struct device *dev)
 	int			ret;
 	int			i;
 
-	if (simple->wakeup_capable)
+	if (simple->wakeup_capable || simple->dwc->is_d3)
 		return 0;
 
 	for (i = 0; i < simple->num_clocks; i++) {
