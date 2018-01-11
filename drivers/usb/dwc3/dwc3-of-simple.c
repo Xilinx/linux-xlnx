@@ -464,7 +464,7 @@ int dwc3_set_usb_core_power(struct dwc3 *dwc, bool on)
 			     XLNX_CUR_PWR_STATE_D0)
 				break;
 
-			usleep_range(DWC3_PWR_TIMEOUT, DWC3_PWR_TIMEOUT * 2);
+			udelay(DWC3_PWR_TIMEOUT);
 		} while (--retries);
 
 		if (!retries) {
@@ -502,7 +502,7 @@ int dwc3_set_usb_core_power(struct dwc3 *dwc, bool on)
 					XLNX_CUR_PWR_STATE_D3)
 				break;
 
-			usleep_range(DWC3_PWR_TIMEOUT, DWC3_PWR_TIMEOUT * 2);
+			udelay(DWC3_PWR_TIMEOUT);
 		} while (--retries);
 
 		if (!retries) {
