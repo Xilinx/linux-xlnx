@@ -230,7 +230,7 @@ static int dwc3_core_soft_reset(struct dwc3 *dwc)
 	 * XHCI driver will reset the host block. If dwc3 was configured for
 	 * host-only mode, then we can return early.
 	 */
-	if (dwc->dr_mode == USB_DR_MODE_HOST)
+	if (dwc->dr_mode == USB_DR_MODE_HOST || dwc->is_hibernated == true)
 		return 0;
 
 	reg = dwc3_readl(dwc->regs, DWC3_DCTL);
@@ -745,8 +745,15 @@ static void dwc3_core_setup_global_control(struct dwc3 *dwc)
 			reg &= ~DWC3_GCTL_DSBLCLKGTNG;
 		break;
 	case DWC3_GHWPARAMS1_EN_PWROPT_HIB:
+		if (!device_property_read_bool(dwc->dev,
+					       "snps,enable-hibernation")) {
+			dev_dbg(dwc->dev, "Hibernation not enabled\n");
+			break;
+		}
+
 		/* enable hibernation here */
 		dwc->nr_scratch = DWC3_GHWPARAMS4_HIBER_SCRATCHBUFS(hwparams4);
+		dwc->has_hibernation = 1;
 
 		/*
 		 * REVISIT Enabling this bit so that host-mode hibernation
@@ -796,7 +803,7 @@ static int dwc3_core_get_phy(struct dwc3 *dwc);
  *
  * Returns 0 on success otherwise negative errno.
  */
-static int dwc3_core_init(struct dwc3 *dwc)
+int dwc3_core_init(struct dwc3 *dwc)
 {
 	u32			reg;
 	int			ret;
