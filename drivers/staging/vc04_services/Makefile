@@ -1,4 +1,5 @@
-obj-$(CONFIG_BCM2708_VCHIQ)	+= vchiq.o
+# SPDX-License-Identifier: GPL-2.0
+obj-$(CONFIG_BCM2835_VCHIQ)	+= vchiq.o
 
 vchiq-objs := \
    interface/vchiq_arm/vchiq_core.o  \
@@ -9,6 +10,9 @@ vchiq-objs := \
    interface/vchiq_arm/vchiq_shim.o \
    interface/vchiq_arm/vchiq_util.o \
    interface/vchiq_arm/vchiq_connected.o \
+
+obj-$(CONFIG_SND_BCM2835)	+= bcm2835-audio/
+obj-$(CONFIG_VIDEO_BCM2835)	+= bcm2835-camera/
 
 ccflags-y += -DVCOS_VERIFY_BKPTS=1 -Idrivers/staging/vc04_services -DUSE_VCHIQ_ARM -D__VCCOREVER__=0x04000000
 

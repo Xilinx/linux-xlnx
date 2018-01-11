@@ -420,7 +420,7 @@ static void bot_cleanup_old_alt(struct f_uas *fu)
 
 	usb_ep_free_request(fu->ep_in, fu->bot_req_in);
 	usb_ep_free_request(fu->ep_out, fu->bot_req_out);
-	usb_ep_free_request(fu->ep_out, fu->bot_status.req);
+	usb_ep_free_request(fu->ep_in, fu->bot_status.req);
 
 	free_cmd_resource(fu, fu->ep_out);
 
@@ -1175,7 +1175,7 @@ static struct usbg_cmd *usbg_get_cmd(struct f_uas *fu,
 	struct usbg_cmd *cmd;
 	int tag;
 
-	tag = percpu_ida_alloc(&se_sess->sess_tag_pool, GFP_ATOMIC);
+	tag = percpu_ida_alloc(&se_sess->sess_tag_pool, TASK_RUNNING);
 	if (tag < 0)
 		return ERR_PTR(-ENOMEM);
 
@@ -2258,6 +2258,13 @@ static int tcm_set_alt(struct usb_function *f, unsigned intf, unsigned alt)
 	return -EOPNOTSUPP;
 }
 
+static int tcm_get_alt(struct usb_function *f, unsigned int intf)
+{
+	struct f_uas *fu = to_f_uas(f);
+
+	return fu->flags & USBG_IS_UAS ? 1 : 0;
+}
+
 static void tcm_disable(struct usb_function *f)
 {
 	struct f_uas *fu = to_f_uas(f);
@@ -2446,6 +2453,7 @@ static struct usb_function *tcm_alloc(struct usb_function_instance *fi)
 	fu->function.bind = tcm_bind;
 	fu->function.unbind = tcm_unbind;
 	fu->function.set_alt = tcm_set_alt;
+	fu->function.get_alt = tcm_get_alt;
 	fu->function.setup = tcm_setup;
 	fu->function.disable = tcm_disable;
 	fu->function.free_func = tcm_free;

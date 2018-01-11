@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef __PERF_MACHINE_H
 #define __PERF_MACHINE_H
 
@@ -97,6 +98,9 @@ int machine__process_itrace_start_event(struct machine *machine,
 					union perf_event *event);
 int machine__process_switch_event(struct machine *machine,
 				  union perf_event *event);
+int machine__process_namespaces_event(struct machine *machine,
+				      union perf_event *event,
+				      struct perf_sample *sample);
 int machine__process_mmap_event(struct machine *machine, union perf_event *event,
 				struct perf_sample *sample);
 int machine__process_mmap2_event(struct machine *machine, union perf_event *event,
@@ -129,6 +133,7 @@ char *machine__mmap_name(struct machine *machine, char *bf, size_t size);
 void machines__set_comm_exec(struct machines *machines, bool comm_exec);
 
 struct machine *machine__new_host(void);
+struct machine *machine__new_kallsyms(void);
 int machine__init(struct machine *machine, const char *root_dir, pid_t pid);
 void machine__exit(struct machine *machine);
 void machine__delete_threads(struct machine *machine);

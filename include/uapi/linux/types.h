@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
 #ifndef _UAPI_LINUX_TYPES_H
 #define _UAPI_LINUX_TYPES_H
 
@@ -23,11 +24,7 @@
 #else
 #define __bitwise__
 #endif
-#ifdef __CHECK_ENDIAN__
 #define __bitwise __bitwise__
-#else
-#define __bitwise
-#endif
 
 typedef __u16 __bitwise __le16;
 typedef __u16 __bitwise __be16;

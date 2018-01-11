@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  *    ECBDIC -> ASCII, ASCII -> ECBDIC,
  *    upper to lower case (EBCDIC) conversion tables.
@@ -8,8 +9,8 @@
  *               Martin Peschke <peschke@fh-brandenburg.de>
  */
 
-#include <linux/module.h>
-#include <asm/types.h>
+#include <linux/types.h>
+#include <linux/export.h>
 #include <asm/ebcdic.h>
 
 /*

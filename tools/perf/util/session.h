@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef __PERF_SESSION_H
 #define __PERF_SESSION_H
 
@@ -5,14 +6,14 @@
 #include "event.h"
 #include "header.h"
 #include "machine.h"
-#include "symbol.h"
-#include "thread.h"
 #include "data.h"
 #include "ordered-events.h"
+#include <linux/kernel.h>
 #include <linux/rbtree.h>
 #include <linux/perf_event.h>
 
 struct ip_callchain;
+struct symbol;
 struct thread;
 
 struct auxtrace;

@@ -1,9 +1,10 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef __PERF_THREAD_MAP_H
 #define __PERF_THREAD_MAP_H
 
 #include <sys/types.h>
 #include <stdio.h>
-#include <linux/atomic.h>
+#include <linux/refcount.h>
 
 struct thread_map_data {
 	pid_t    pid;
@@ -11,7 +12,7 @@ struct thread_map_data {
 };
 
 struct thread_map {
-	atomic_t refcnt;
+	refcount_t refcnt;
 	int nr;
 	struct thread_map_data map[];
 };
@@ -58,4 +59,5 @@ static inline char *thread_map__comm(struct thread_map *map, int thread)
 
 void thread_map__read_comms(struct thread_map *threads);
 bool thread_map__has(struct thread_map *threads, pid_t pid);
+int thread_map__remove(struct thread_map *threads, int idx);
 #endif	/* __PERF_THREAD_MAP_H */

@@ -49,11 +49,13 @@
 /* Counter maximum value */
 #define CDNS_WDT_COUNTER_MAX 0xFFF
 
-static unsigned int wdt_timeout;
+static int wdt_timeout;
 static int nowayout = WATCHDOG_NOWAYOUT;
 
 module_param(wdt_timeout, int, 0644);
-MODULE_PARM_DESC(wdt_timeout, "initial watchdog timeout (in seconds)");
+MODULE_PARM_DESC(wdt_timeout,
+		 "Watchdog time in seconds. (default="
+		 __MODULE_STRING(CDNS_WDT_DEFAULT_TIMEOUT) ")");
 
 module_param(nowayout, int, 0644);
 MODULE_PARM_DESC(nowayout,
@@ -260,7 +262,7 @@ static irqreturn_t cdns_wdt_irq_handler(int irq, void *dev_id)
  * Info structure used to indicate the features supported by the device
  * to the upper layers. This is defined in watchdog.h header file.
  */
-static struct watchdog_info cdns_wdt_info = {
+static const struct watchdog_info cdns_wdt_info = {
 	.identity	= "cdns_wdt watchdog",
 	.options	= WDIOF_SETTIMEOUT | WDIOF_KEEPALIVEPING |
 			  WDIOF_MAGICCLOSE,

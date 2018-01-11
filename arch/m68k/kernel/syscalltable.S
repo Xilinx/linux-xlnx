@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  *  Copyright (C) 2002, Greg Ungerer (gerg@snapgear.com)
  *
@@ -399,3 +400,4 @@ ENTRY(sys_call_table)
 	.long sys_copy_file_range
 	.long sys_preadv2
 	.long sys_pwritev2
+	.long sys_statx

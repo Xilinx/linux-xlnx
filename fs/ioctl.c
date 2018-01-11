@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  *  linux/fs/ioctl.c
  *
@@ -15,6 +16,8 @@
 #include <linux/writeback.h>
 #include <linux/buffer_head.h>
 #include <linux/falloc.h>
+#include <linux/sched/signal.h>
+
 #include "internal.h"
 
 #include <asm/ioctls.h>
@@ -223,7 +226,11 @@ static long ioctl_file_clone(struct file *dst_file, unsigned long srcfd,
 
 	if (!src_file.file)
 		return -EBADF;
-	ret = vfs_clone_file_range(src_file.file, off, dst_file, destoff, olen);
+	ret = -EXDEV;
+	if (src_file.file->f_path.mnt != dst_file->f_path.mnt)
+		goto fdput;
+	ret = do_clone_file_range(src_file.file, off, dst_file, destoff, olen);
+fdput:
 	fdput(src_file);
 	return ret;
 }

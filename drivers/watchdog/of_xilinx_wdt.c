@@ -191,7 +191,7 @@ static int xwdt_probe(struct platform_device *pdev)
 
 	watchdog_set_nowayout(xilinx_wdt_wdd, enable_once);
 
-	xdev->clk = devm_clk_get(&pdev->dev, "xwdt_clk");
+	xdev->clk = devm_clk_get(&pdev->dev, NULL);
 	if (IS_ERR(xdev->clk)) {
 		if (PTR_ERR(xdev->clk) != -ENOENT)
 			return PTR_ERR(xdev->clk);
@@ -203,10 +203,10 @@ static int xwdt_probe(struct platform_device *pdev)
 		xdev->clk = NULL;
 
 		rc = of_property_read_u32(pdev->dev.of_node, "clock-frequency",
-									&pfreq);
+					  &pfreq);
 		if (rc)
 			dev_warn(&pdev->dev,
-			"The watchdog clock frequency cannot be obtained\n");
+				 "The watchdog clock freq cannot be obtained\n");
 	} else {
 		pfreq = clk_get_rate(xdev->clk);
 	}

@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef S390_CHSC_H
 #define S390_CHSC_H
 
@@ -241,6 +242,8 @@ int chsc_pnso_brinfo(struct subchannel_id schid,
 		struct chsc_pnso_area *brinfo_area,
 		struct chsc_brinfo_resume_token resume_token,
 		int cnc);
+
+int __init chsc_get_cssid(int idx);
 
 #ifdef CONFIG_SCM_BUS
 int scm_update_information(void);

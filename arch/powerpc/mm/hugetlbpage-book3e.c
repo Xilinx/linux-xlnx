@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * PPC Huge TLB Page Support for Book3E MMU
  *
@@ -148,16 +149,9 @@ void book3e_hugetlb_preload(struct vm_area_struct *vma, unsigned long ea,
 
 	mm = vma->vm_mm;
 
-#ifdef CONFIG_PPC_MM_SLICES
-	psize = get_slice_psize(mm, ea);
-	tsize = mmu_get_tsize(psize);
-	shift = mmu_psize_defs[psize].shift;
-#else
 	psize = vma_mmu_pagesize(vma);
 	shift = __ilog2(psize);
 	tsize = shift - 10;
-#endif
-
 	/*
 	 * We can't be interrupted while we're setting up the MAS
 	 * regusters or after we've confirmed that no tlb exists.

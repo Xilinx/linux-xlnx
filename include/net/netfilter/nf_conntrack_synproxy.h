@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef _NF_CONNTRACK_SYNPROXY_H
 #define _NF_CONNTRACK_SYNPROXY_H
 
@@ -52,9 +53,11 @@ struct synproxy_stats {
 struct synproxy_net {
 	struct nf_conn			*tmpl;
 	struct synproxy_stats __percpu	*stats;
+	unsigned int			hook_ref4;
+	unsigned int			hook_ref6;
 };
 
-extern int synproxy_net_id;
+extern unsigned int synproxy_net_id;
 static inline struct synproxy_net *synproxy_pernet(struct net *net)
 {
 	return net_generic(net, synproxy_net_id);

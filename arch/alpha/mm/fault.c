@@ -1,10 +1,11 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  *  linux/arch/alpha/mm/fault.c
  *
  *  Copyright (C) 1995  Linus Torvalds
  */
 
-#include <linux/sched.h>
+#include <linux/sched/signal.h>
 #include <linux/kernel.h>
 #include <linux/mm.h>
 #include <asm/io.h>
@@ -22,7 +23,7 @@
 #include <linux/mman.h>
 #include <linux/smp.h>
 #include <linux/interrupt.h>
-#include <linux/module.h>
+#include <linux/extable.h>
 #include <linux/uaccess.h>
 
 extern void die_if_kernel(char *,struct pt_regs *,long, unsigned long *);

@@ -1,5 +1,7 @@
 #!/bin/sh
+# SPDX-License-Identifier: GPL-2.0
 # description: event tracing - restricts events based on pid
+# flags: instance
 
 do_reset() {
     echo > set_event

@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef _KERNEL_TIME_TIMEKEEPING_H
 #define _KERNEL_TIME_TIMEKEEPING_H
 /*
@@ -11,8 +12,6 @@ extern ktime_t ktime_get_update_offsets_now(unsigned int *cwsseq,
 extern int timekeeping_valid_for_hres(void);
 extern u64 timekeeping_max_deferment(void);
 extern int timekeeping_inject_offset(struct timespec *ts);
-extern s32 timekeeping_get_tai_offset(void);
-extern void timekeeping_set_tai_offset(s32 tai_offset);
 extern int timekeeping_suspend(void);
 extern void timekeeping_resume(void);
 

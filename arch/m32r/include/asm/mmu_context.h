@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef _ASM_M32R_MMU_CONTEXT_H
 #define _ASM_M32R_MMU_CONTEXT_H
 #ifdef __KERNEL__
@@ -12,6 +13,8 @@
 #ifndef __ASSEMBLY__
 
 #include <linux/atomic.h>
+#include <linux/mm_types.h>
+
 #include <asm/pgalloc.h>
 #include <asm/mmu.h>
 #include <asm/tlbflush.h>

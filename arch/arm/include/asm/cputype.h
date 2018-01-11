@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef __ASM_ARM_CPUTYPE_H
 #define __ASM_ARM_CPUTYPE_H
 
@@ -93,6 +94,9 @@
 #define ARM_CPU_XSCALE_ARCH_V1		0x2000
 #define ARM_CPU_XSCALE_ARCH_V2		0x4000
 #define ARM_CPU_XSCALE_ARCH_V3		0x6000
+
+/* Qualcomm implemented cores */
+#define ARM_CPU_PART_SCORPION		0x510002d0
 
 extern unsigned int processor_id;
 

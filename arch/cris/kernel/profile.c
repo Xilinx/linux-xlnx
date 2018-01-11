@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 #include <linux/init.h>
 #include <linux/errno.h>
 #include <linux/kernel.h>
@@ -5,7 +6,7 @@
 #include <linux/slab.h>
 #include <linux/types.h>
 #include <asm/ptrace.h>
-#include <asm/uaccess.h>
+#include <linux/uaccess.h>
 
 #define SAMPLE_BUFFER_SIZE 8192
 

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2012-2014 Andy Lutomirski <luto@amacapital.net>
  *
@@ -27,6 +28,8 @@
 
 #include <linux/kernel.h>
 #include <linux/timer.h>
+#include <linux/sched/signal.h>
+#include <linux/mm_types.h>
 #include <linux/syscalls.h>
 #include <linux/ratelimit.h>
 

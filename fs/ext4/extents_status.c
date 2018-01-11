@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  *  fs/ext4/extents_status.c
  *
@@ -84,7 +85,7 @@
  *   --	writeout
  *	Writeout looks up whole page cache to see if a buffer is
  *	mapped, If there are not very many delayed buffers, then it is
- *	time comsuming.
+ *	time consuming.
  *
  * With extent status tree implementation, FIEMAP, SEEK_HOLE/DATA,
  * bigalloc and writeout can figure out if a block or a range of

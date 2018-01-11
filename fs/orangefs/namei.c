@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * (C) 2001 Clemson University and The University of Chicago
  *
@@ -74,6 +75,7 @@ static int orangefs_create(struct inode *dir,
 	unlock_new_inode(inode);
 	orangefs_set_timeout(dentry);
 	ORANGEFS_I(inode)->getattr_time = jiffies - 1;
+	ORANGEFS_I(inode)->getattr_mask = STATX_BASIC_STATS;
 
 	gossip_debug(GOSSIP_NAME_DEBUG,
 		     "%s: dentry instantiated for %pd\n",
@@ -192,8 +194,6 @@ static struct dentry *orangefs_lookup(struct inode *dir, struct dentry *dentry,
 		res = ERR_CAST(inode);
 		goto out;
 	}
-
-	ORANGEFS_I(inode)->getattr_time = jiffies - 1;
 
 	gossip_debug(GOSSIP_NAME_DEBUG,
 		     "%s:%s:%d "
@@ -324,6 +324,7 @@ static int orangefs_symlink(struct inode *dir,
 	unlock_new_inode(inode);
 	orangefs_set_timeout(dentry);
 	ORANGEFS_I(inode)->getattr_time = jiffies - 1;
+	ORANGEFS_I(inode)->getattr_mask = STATX_BASIC_STATS;
 
 	gossip_debug(GOSSIP_NAME_DEBUG,
 		     "Inode (Symlink) %pU -> %pd\n",
@@ -388,6 +389,7 @@ static int orangefs_mkdir(struct inode *dir, struct dentry *dentry, umode_t mode
 	unlock_new_inode(inode);
 	orangefs_set_timeout(dentry);
 	ORANGEFS_I(inode)->getattr_time = jiffies - 1;
+	ORANGEFS_I(inode)->getattr_mask = STATX_BASIC_STATS;
 
 	gossip_debug(GOSSIP_NAME_DEBUG,
 		     "Inode (Directory) %pU -> %pd\n",

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  *  linux/arch/m68k/mm/fault.c
  *
@@ -32,7 +33,7 @@ int send_fault_sig(struct pt_regs *regs)
 		force_sig_info(siginfo.si_signo,
 			       &siginfo, current);
 	} else {
-		if (handle_kernel_fault(regs))
+		if (fixup_exception(regs))
 			return -1;
 
 		//if (siginfo.si_signo == SIGBUS)

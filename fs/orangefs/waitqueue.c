@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * (C) 2001 Clemson University and The University of Chicago
  * (C) 2011 Omnibond Systems
@@ -124,7 +125,14 @@ retry_servicing:
 		gossip_debug(GOSSIP_WAIT_DEBUG,
 			     "%s:client core is NOT in service.\n",
 			     __func__);
-		timeout = op_timeout_secs * HZ;
+		/*
+		 * Don't wait for the userspace component to return if
+		 * the filesystem is being umounted anyway.
+		 */
+		if (op->upcall.type == ORANGEFS_VFS_OP_FS_UMOUNT)
+			timeout = 0;
+		else
+			timeout = op_timeout_secs * HZ;
 	}
 	spin_unlock(&orangefs_request_list_lock);
 

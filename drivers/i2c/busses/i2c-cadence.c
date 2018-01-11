@@ -1186,8 +1186,7 @@ static int cdns_i2c_clk_notifier_cb(struct notifier_block *nb, unsigned long
  */
 static int __maybe_unused cdns_i2c_runtime_suspend(struct device *dev)
 {
-	struct platform_device *pdev = to_platform_device(dev);
-	struct cdns_i2c *xi2c = platform_get_drvdata(pdev);
+	struct cdns_i2c *xi2c = dev_get_drvdata(dev);
 
 	clk_disable(xi2c->clk);
 
@@ -1224,8 +1223,7 @@ static void cdns_i2c_init(struct cdns_i2c *id)
  */
 static int __maybe_unused cdns_i2c_runtime_resume(struct device *dev)
 {
-	struct platform_device *pdev = to_platform_device(dev);
-	struct cdns_i2c *xi2c = platform_get_drvdata(pdev);
+	struct cdns_i2c *xi2c = dev_get_drvdata(dev);
 	int ret;
 
 	ret = clk_enable(xi2c->clk);
@@ -1441,12 +1439,12 @@ static int cdns_i2c_probe(struct platform_device *pdev)
 
 	cdns_i2c_init(id);
 
-	dev_info(&pdev->dev, "%u kHz mmio %08lx irq %d\n",
-		 id->i2c_clk / 1000, (unsigned long)r_mem->start, id->irq);
-
 	ret = i2c_add_adapter(&id->adap);
 	if (ret < 0)
 		goto err_clk_dis;
+
+	dev_info(&pdev->dev, "%u kHz mmio %08lx irq %d\n",
+		 id->i2c_clk / 1000, (unsigned long)r_mem->start, id->irq);
 
 	return 0;
 

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * IOCTL interface for SCLP
  *
@@ -10,7 +11,7 @@
 #include <linux/uaccess.h>
 #include <linux/miscdevice.h>
 #include <linux/gfp.h>
-#include <linux/module.h>
+#include <linux/init.h>
 #include <linux/ioctl.h>
 #include <linux/fs.h>
 #include <asm/compat.h>
@@ -126,4 +127,4 @@ static struct miscdevice sclp_ctl_device = {
 	.name = "sclp",
 	.fops = &sclp_ctl_fops,
 };
-module_misc_device(sclp_ctl_device);
+builtin_misc_device(sclp_ctl_device);

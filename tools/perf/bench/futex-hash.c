@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (C) 2013  Davidlohr Bueso <davidlohr@hp.com>
  *
@@ -9,6 +10,7 @@
  */
 
 /* For the CLR_() macros */
+#include <string.h>
 #include <pthread.h>
 
 #include <errno.h>
@@ -63,8 +65,9 @@ static const char * const bench_futex_hash_usage[] = {
 static void *workerfn(void *arg)
 {
 	int ret;
-	unsigned int i;
 	struct worker *w = (struct worker *) arg;
+	unsigned int i;
+	unsigned long ops = w->ops; /* avoid cacheline bouncing */
 
 	pthread_mutex_lock(&thread_lock);
 	threads_starting--;
@@ -74,7 +77,7 @@ static void *workerfn(void *arg)
 	pthread_mutex_unlock(&thread_lock);
 
 	do {
-		for (i = 0; i < nfutexes; i++, w->ops++) {
+		for (i = 0; i < nfutexes; i++, ops++) {
 			/*
 			 * We want the futex calls to fail in order to stress
 			 * the hashing of uaddr and not measure other steps,
@@ -88,6 +91,7 @@ static void *workerfn(void *arg)
 		}
 	}  while (!done);
 
+	w->ops = ops;
 	return NULL;
 }
 
@@ -111,8 +115,7 @@ static void print_summary(void)
 	       (int) runtime.tv_sec);
 }
 
-int bench_futex_hash(int argc, const char **argv,
-		     const char *prefix __maybe_unused)
+int bench_futex_hash(int argc, const char **argv)
 {
 	int ret = 0;
 	cpu_set_t cpu;

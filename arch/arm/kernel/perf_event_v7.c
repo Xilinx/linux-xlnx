@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * ARMv7 Cortex-A8 and Cortex-A9 Performance Events handling code.
  *
@@ -2034,9 +2035,5 @@ static struct platform_driver armv7_pmu_driver = {
 	.probe		= armv7_pmu_device_probe,
 };
 
-static int __init register_armv7_pmu_driver(void)
-{
-	return platform_driver_register(&armv7_pmu_driver);
-}
-device_initcall(register_armv7_pmu_driver);
+builtin_platform_driver(armv7_pmu_driver);
 #endif	/* CONFIG_CPU_V7 */

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /* cnode related routines for the coda kernel code
    (C) 1996 Peter Braam
    */
@@ -17,7 +18,6 @@ static inline int coda_fideq(struct CodaFid *fid1, struct CodaFid *fid2)
 }
 
 static const struct inode_operations coda_symlink_inode_operations = {
-	.readlink	= generic_readlink,
 	.get_link	= page_get_link,
 	.setattr	= coda_setattr,
 };

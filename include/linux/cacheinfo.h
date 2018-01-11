@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef _LINUX_CACHEINFO_H
 #define _LINUX_CACHEINFO_H
 
@@ -18,6 +19,7 @@ enum cache_type {
 
 /**
  * struct cacheinfo - represent a cache leaf node
+ * @id: This cache's id. It is unique among caches with the same (type, level).
  * @type: type of the cache - data, inst or unified
  * @level: represents the hierarchy in the multi-level cache
  * @coherency_line_size: size of each cache line usually representing
@@ -44,6 +46,7 @@ enum cache_type {
  * keeping, the remaining members form the core properties of the cache
  */
 struct cacheinfo {
+	unsigned int id;
 	enum cache_type type;
 	unsigned int level;
 	unsigned int coherency_line_size;
@@ -61,6 +64,7 @@ struct cacheinfo {
 #define CACHE_WRITE_ALLOCATE	BIT(3)
 #define CACHE_ALLOCATE_POLICY_MASK	\
 	(CACHE_READ_ALLOCATE | CACHE_WRITE_ALLOCATE)
+#define CACHE_ID		BIT(4)
 
 	struct device_node *of_node;
 	bool disable_sysfs;
@@ -71,6 +75,7 @@ struct cpu_cacheinfo {
 	struct cacheinfo *info_list;
 	unsigned int num_levels;
 	unsigned int num_leaves;
+	bool cpu_map_populated;
 };
 
 /*

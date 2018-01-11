@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef __NVKM_DEVICE_H__
 #define __NVKM_DEVICE_H__
 #include <core/event.h>
@@ -59,6 +60,7 @@ enum nvkm_devidx {
 	NVKM_ENGINE_NVDEC,
 	NVKM_ENGINE_PM,
 	NVKM_ENGINE_SEC,
+	NVKM_ENGINE_SEC2,
 	NVKM_ENGINE_SW,
 	NVKM_ENGINE_VIC,
 	NVKM_ENGINE_VP,
@@ -155,9 +157,10 @@ struct nvkm_device {
 	struct nvkm_engine *msppp;
 	struct nvkm_engine *msvld;
 	struct nvkm_engine *nvenc[3];
-	struct nvkm_engine *nvdec;
+	struct nvkm_nvdec *nvdec;
 	struct nvkm_pm *pm;
 	struct nvkm_engine *sec;
+	struct nvkm_sec2 *sec2;
 	struct nvkm_sw *sw;
 	struct nvkm_engine *vic;
 	struct nvkm_engine *vp;
@@ -225,9 +228,10 @@ struct nvkm_device_chip {
 	int (*msppp   )(struct nvkm_device *, int idx, struct nvkm_engine **);
 	int (*msvld   )(struct nvkm_device *, int idx, struct nvkm_engine **);
 	int (*nvenc[3])(struct nvkm_device *, int idx, struct nvkm_engine **);
-	int (*nvdec   )(struct nvkm_device *, int idx, struct nvkm_engine **);
+	int (*nvdec   )(struct nvkm_device *, int idx, struct nvkm_nvdec **);
 	int (*pm      )(struct nvkm_device *, int idx, struct nvkm_pm **);
 	int (*sec     )(struct nvkm_device *, int idx, struct nvkm_engine **);
+	int (*sec2    )(struct nvkm_device *, int idx, struct nvkm_sec2 **);
 	int (*sw      )(struct nvkm_device *, int idx, struct nvkm_sw **);
 	int (*vic     )(struct nvkm_device *, int idx, struct nvkm_engine **);
 	int (*vp      )(struct nvkm_device *, int idx, struct nvkm_engine **);
@@ -262,7 +266,7 @@ extern const struct nvkm_sclass nvkm_udevice_sclass;
 
 /* device logging */
 #define nvdev_printk_(d,l,p,f,a...) do {                                       \
-	struct nvkm_device *_device = (d);                                     \
+	const struct nvkm_device *_device = (d);                               \
 	if (_device->debug >= (l))                                             \
 		dev_##p(_device->dev, f, ##a);                                 \
 } while(0)

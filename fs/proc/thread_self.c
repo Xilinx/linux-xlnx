@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 #include <linux/sched.h>
 #include <linux/slab.h>
 #include <linux/pid_namespace.h>
@@ -6,19 +7,6 @@
 /*
  * /proc/thread_self:
  */
-static int proc_thread_self_readlink(struct dentry *dentry, char __user *buffer,
-			      int buflen)
-{
-	struct pid_namespace *ns = dentry->d_sb->s_fs_info;
-	pid_t tgid = task_tgid_nr_ns(current, ns);
-	pid_t pid = task_pid_nr_ns(current, ns);
-	char tmp[PROC_NUMBUF + 6 + PROC_NUMBUF];
-	if (!pid)
-		return -ENOENT;
-	sprintf(tmp, "%d/task/%d", tgid, pid);
-	return readlink_copy(buffer, buflen, tmp);
-}
-
 static const char *proc_thread_self_get_link(struct dentry *dentry,
 					     struct inode *inode,
 					     struct delayed_call *done)
@@ -40,7 +28,6 @@ static const char *proc_thread_self_get_link(struct dentry *dentry,
 }
 
 static const struct inode_operations proc_thread_self_inode_operations = {
-	.readlink	= proc_thread_self_readlink,
 	.get_link	= proc_thread_self_get_link,
 };
 

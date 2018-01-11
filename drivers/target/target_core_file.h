@@ -1,5 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef TARGET_CORE_FILE_H
 #define TARGET_CORE_FILE_H
+
+#include <target/target_core_base.h>
 
 #define FD_VERSION		"4.0"
 

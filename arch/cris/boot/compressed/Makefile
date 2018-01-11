@@ -1,9 +1,7 @@
+# SPDX-License-Identifier: GPL-2.0
 #
 # arch/cris/boot/compressed/Makefile
 #
-
-asflags-y += $(LINUXINCLUDE)
-ccflags-y += -O2 $(LINUXINCLUDE)
 
 # asflags-$(CONFIG_ETRAX_ARCH_V32) += -I$(srctree)/include/asm/mach \
 # 				    -I$(srctree)/include/asm/arch

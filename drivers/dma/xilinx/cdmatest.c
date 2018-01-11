@@ -19,6 +19,7 @@
 #include <linux/of_dma.h>
 #include <linux/platform_device.h>
 #include <linux/wait.h>
+#include <linux/sched/task.h>
 #include <linux/dma/xilinx_dma.h>
 
 static unsigned int test_buf_size = 64;

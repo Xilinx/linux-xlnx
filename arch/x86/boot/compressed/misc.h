@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef BOOT_COMPRESSED_MISC_H
 #define BOOT_COMPRESSED_MISC_H
 
@@ -81,8 +82,6 @@ static inline void choose_random_location(unsigned long input,
 					  unsigned long output_size,
 					  unsigned long *virt_addr)
 {
-	/* No change from existing output location. */
-	*virt_addr = *output;
 }
 #endif
 

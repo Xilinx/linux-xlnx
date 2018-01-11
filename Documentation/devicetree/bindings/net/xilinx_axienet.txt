@@ -1,20 +1,32 @@
-Xilinx Axi Ethernet controller Device Tree Bindings
----------------------------------------------------------
+XILINX AXI ETHERNET Device Tree Bindings
+--------------------------------------------------------
+
+Also called  AXI 1G/2.5G Ethernet Subsystem, the xilinx axi ethernet IP core
+provides connectivity to an external ethernet PHY supporting different
+interfaces: MII, GMII, RGMII, SGMII, 1000BaseX. It also includes two
+segments of memory for buffering TX and RX, as well as the capability of
+offloading TX/RX checksum calculation off the processor.
+
+Management configuration is done through the AXI interface, while payload is
+sent and received through means of an AXI DMA controller. This driver
+includes the DMA driver code, so this driver is incompatible with AXI DMA
+driver.
+
+For more details about mdio please refer phy.txt file in the same directory.
 
 Required properties:
-- compatible		: Should be "xlnx,axi-ethernet-1.00.a" or
-			  "xlnx,axi-ethernet-1.01.a" or
-			  "xlnx,axi-ethernet-2.01.a" for Axi Ethenret 1G MAC
-			  controllers and "xlnx,ten-gig-eth-mac" for Axi
-			  Ethernet 10G MAC controllers and
-			  "xlnx,xxv-ethernet-1.0" for 10G/25G MAC and
-			  "xlnx,axi-2_5-gig-ethernet-1.0" for 2.5G MAC.
-- reg			: Physical base address and size of the Axi 1G/10G
-			  Ethernet registers map.
-- interrupts		: Property with a value describing the interrupt
-			  number.
+- compatible	: Must be one of "xlnx,axi-ethernet-1.00.a",
+		  "xlnx,axi-ethernet-1.01.a", "xlnx,axi-ethernet-2.01.a"
+		  for Axi Ethenret 1G MAC
+		  controllers and "xlnx,ten-gig-eth-mac" for Axi
+		  Ethernet 10G MAC controllers and
+		  "xlnx,xxv-ethernet-1.0" for 10G/25G MAC and
+		  "xlnx,axi-2_5-gig-ethernet-1.0" for 2.5G MAC.
+- reg		: Address and length of the IO space.
+- interrupts	: Should be a list of two interrupt, TX and RX.
 - interrupt-parent	: Must be core interrupt controller.
-- phy-handle		: See ethernet.txt file in the same directory.
+- phy-handle	: Should point to the external phy device.
+		  See ethernet.txt file in the same directory.
 - local-mac-address	: See ethernet.txt file in the same directory.
 - phy-mode		: see ethernet.txt file in the same directory.
 Required properties (When AxiEthernet is configured with MCDMA):

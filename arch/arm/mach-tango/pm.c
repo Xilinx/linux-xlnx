@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 #include <linux/init.h>
 #include <linux/suspend.h>
 #include <asm/suspend.h>
@@ -5,7 +6,7 @@
 
 static int tango_pm_powerdown(unsigned long arg)
 {
-	tango_suspend(virt_to_phys(cpu_resume));
+	tango_suspend(__pa_symbol(cpu_resume));
 
 	return -EIO; /* tango_suspend has failed */
 }

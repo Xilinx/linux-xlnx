@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef _LINUX_POISON_H
 #define _LINUX_POISON_H
 
@@ -80,6 +81,7 @@
 /********** kernel/mutexes **********/
 #define MUTEX_DEBUG_INIT	0x11
 #define MUTEX_DEBUG_FREE	0x22
+#define MUTEX_POISON_WW_CTX	((void *) 0x500 + POISON_POINTER_DELTA)
 
 /********** lib/flex_array.c **********/
 #define FLEX_ARRAY_FREE	0x6c	/* for use-after-free poisoning */

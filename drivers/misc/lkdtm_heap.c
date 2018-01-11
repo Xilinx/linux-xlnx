@@ -1,9 +1,11 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * This is for all the tests relating directly to heap memory, including
  * page allocation and slab allocations.
  */
 #include "lkdtm.h"
 #include <linux/slab.h>
+#include <linux/sched.h>
 
 /*
  * This tries to stay within the next largest power-of-2 kmalloc cache

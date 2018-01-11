@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * This header file contains public constants and structures used by
  * the SCSI initiator code.
@@ -28,16 +29,6 @@ enum scsi_timeouts {
  * possible channels, (target) ids, or luns on a given shost.
  */
 #define SCAN_WILD_CARD	~0
-
-#ifdef CONFIG_ACPI
-struct acpi_bus_type;
-
-extern int
-scsi_register_acpi_bus_type(struct acpi_bus_type *bus);
-
-extern void
-scsi_unregister_acpi_bus_type(struct acpi_bus_type *bus);
-#endif
 
 /** scsi_status_is_good - check the status return.
  *

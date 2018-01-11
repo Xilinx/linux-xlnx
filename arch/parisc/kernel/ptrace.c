@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Kernel support for the ptrace() and syscall tracing interfaces.
  *
@@ -24,7 +25,7 @@
 #include <linux/signal.h>
 #include <linux/audit.h>
 
-#include <asm/uaccess.h>
+#include <linux/uaccess.h>
 #include <asm/pgtable.h>
 #include <asm/processor.h>
 #include <asm/asm-offsets.h>

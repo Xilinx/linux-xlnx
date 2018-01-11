@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
 /*
  * Copyright (C) 2012 ARM Ltd.
  *
@@ -30,5 +31,11 @@
 #define HWCAP_ATOMICS		(1 << 8)
 #define HWCAP_FPHP		(1 << 9)
 #define HWCAP_ASIMDHP		(1 << 10)
+#define HWCAP_CPUID		(1 << 11)
+#define HWCAP_ASIMDRDM		(1 << 12)
+#define HWCAP_JSCVT		(1 << 13)
+#define HWCAP_FCMA		(1 << 14)
+#define HWCAP_LRCPC		(1 << 15)
+#define HWCAP_DCPOP		(1 << 16)
 
 #endif /* _UAPI__ASM_HWCAP_H */

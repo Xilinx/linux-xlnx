@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  *  linux/fs/nfs/symlink.c
  *
@@ -77,7 +78,6 @@ static const char *nfs_get_link(struct dentry *dentry,
  * symlinks can't do much...
  */
 const struct inode_operations nfs_symlink_inode_operations = {
-	.readlink	= generic_readlink,
 	.get_link	= nfs_get_link,
 	.getattr	= nfs_getattr,
 	.setattr	= nfs_setattr,

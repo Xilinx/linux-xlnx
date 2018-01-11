@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef _ASM_DMA_MAPPING_H
 #define _ASM_DMA_MAPPING_H
 
@@ -7,9 +8,9 @@
 extern unsigned long __nongprelbss dma_coherent_mem_start;
 extern unsigned long __nongprelbss dma_coherent_mem_end;
 
-extern struct dma_map_ops frv_dma_ops;
+extern const struct dma_map_ops frv_dma_ops;
 
-static inline struct dma_map_ops *get_dma_ops(struct device *dev)
+static inline const struct dma_map_ops *get_arch_dma_ops(struct bus_type *bus)
 {
 	return &frv_dma_ops;
 }

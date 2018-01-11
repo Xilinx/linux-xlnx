@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * This is for all the tests related to copy_to_user() and copy_from_user()
  * hardening.
@@ -5,6 +6,7 @@
 #include "lkdtm.h"
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
+#include <linux/sched/task_stack.h>
 #include <linux/mman.h>
 #include <linux/uaccess.h>
 #include <asm/cacheflush.h>

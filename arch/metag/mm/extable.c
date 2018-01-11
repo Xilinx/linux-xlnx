@@ -1,5 +1,5 @@
-
-#include <linux/module.h>
+// SPDX-License-Identifier: GPL-2.0
+#include <linux/extable.h>
 #include <linux/uaccess.h>
 
 int fixup_exception(struct pt_regs *regs)

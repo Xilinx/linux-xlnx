@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef _ADE7854_H
 #define _ADE7854_H
 
@@ -136,7 +137,7 @@
 
 #define ADE7854_MAX_TX    7
 #define ADE7854_MAX_RX    7
-#define ADE7854_STARTUP_DELAY 1
+#define ADE7854_STARTUP_DELAY 1000
 
 #define ADE7854_SPI_SLOW	(u32)(300 * 1000)
 #define ADE7854_SPI_BURST	(u32)(1000 * 1000)

@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Definitions for Xilinx Axi Ethernet device driver.
  *
@@ -594,6 +595,7 @@ enum axienet_tsn_ioctl {
  * @napi:	Napi Structure array for all dma queues
  * @num_queues: Total number of DMA queues
  * @dq:		DMA queues data
+ * @phy_mode:	Phy type to identify between MII/GMII/RGMII/SGMII/1000 Base-X
  * @is_tsn:	Denotes a tsn port
  * @num_q:	Denotes number of queue in current TSN design
  * @temac_no:	Denotes the port number in TSN IP
@@ -609,7 +611,6 @@ enum axienet_tsn_ioctl {
  * @ptp_tx_lock: PTP tx lock
  * @dma_err_tasklet: Tasklet structure to process Axi DMA errors
  * @eth_irq:	Axi Ethernet IRQ number
- * @phy_type:	Phy type to identify between MII/GMII/RGMII/SGMII/1000 Base-X
  * @options:	AxiEthernet option word
  * @last_link:	Phy link state in which the PHY was negotiated earlier
  * @features:	Stores the extended features supported by the axienet hw
@@ -660,6 +661,9 @@ struct axienet_local {
 	u8     temac_no;
 	u16    num_queues;	/* Number of DMA queues */
 	struct axienet_dma_q *dq[XAE_MAX_QUEUES];	/* DAM queue data*/
+
+	phy_interface_t phy_mode;
+
 	bool is_tsn;
 #ifdef CONFIG_XILINX_TSN
 	int num_q;
@@ -677,7 +681,6 @@ struct axienet_local {
 #endif
 #endif
 	int eth_irq;
-	u32 phy_type;
 
 	u32 options;			/* Current options word */
 	u32 last_link;

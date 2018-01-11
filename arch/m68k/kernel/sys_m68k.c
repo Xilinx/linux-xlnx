@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * linux/arch/m68k/kernel/sys_m68k.c
  *
@@ -22,7 +23,7 @@
 #include <linux/ipc.h>
 
 #include <asm/setup.h>
-#include <asm/uaccess.h>
+#include <linux/uaccess.h>
 #include <asm/cachectl.h>
 #include <asm/traps.h>
 #include <asm/page.h>
@@ -398,7 +399,6 @@ sys_cacheflush (unsigned long addr, int scope, int cache, unsigned long len)
 		 * Verify that the specified address region actually belongs
 		 * to this process.
 		 */
-		ret = -EINVAL;
 		down_read(&current->mm->mmap_sem);
 		vma = find_vma(current->mm, addr);
 		if (!vma || addr < vma->vm_start || addr + len > vma->vm_end)

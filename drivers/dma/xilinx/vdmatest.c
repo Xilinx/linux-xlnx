@@ -26,6 +26,7 @@
 #include <linux/platform_device.h>
 #include <linux/random.h>
 #include <linux/slab.h>
+#include <linux/sched/task.h>
 #include <linux/wait.h>
 
 static unsigned int test_buf_size = 64;

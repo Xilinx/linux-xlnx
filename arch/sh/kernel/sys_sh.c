@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * linux/arch/sh/kernel/sys_sh.c
  *
@@ -23,7 +24,7 @@
 #include <linux/fs.h>
 #include <linux/ipc.h>
 #include <asm/syscalls.h>
-#include <asm/uaccess.h>
+#include <linux/uaccess.h>
 #include <asm/unistd.h>
 #include <asm/cacheflush.h>
 #include <asm/cachectl.h>

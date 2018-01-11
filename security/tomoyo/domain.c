@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * security/tomoyo/domain.c
  *
@@ -5,8 +6,10 @@
  */
 
 #include "common.h"
+
 #include <linux/binfmts.h>
 #include <linux/slab.h>
+#include <linux/rculist.h>
 
 /* Variables definitions.*/
 
@@ -881,7 +884,7 @@ bool tomoyo_dump_page(struct linux_binprm *bprm, unsigned long pos,
 	 * the execve().
 	 */
 	if (get_user_pages_remote(current, bprm->mm, pos, 1,
-				FOLL_FORCE, &page, NULL) <= 0)
+				FOLL_FORCE, &page, NULL, NULL) <= 0)
 		return false;
 #else
 	page = bprm->page[pos / PAGE_SIZE];

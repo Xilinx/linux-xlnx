@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef _VT_KERN_H
 #define _VT_KERN_H
 
@@ -191,5 +192,7 @@ extern void vt_set_led_state(int console, int leds);
 extern void vt_kbd_con_start(int console);
 extern void vt_kbd_con_stop(int console);
 
+void vc_scrolldelta_helper(struct vc_data *c, int lines,
+		unsigned int rolled_over, void *_base, unsigned int size);
 
 #endif /* _VT_KERN_H */

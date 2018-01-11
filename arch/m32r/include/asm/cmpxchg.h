@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef _ASM_M32R_CMPXCHG_H
 #define _ASM_M32R_CMPXCHG_H
 
@@ -64,8 +65,10 @@ __xchg(unsigned long x, volatile void *ptr, int size)
 	return (tmp);
 }
 
-#define xchg(ptr, x)							\
-	((__typeof__(*(ptr)))__xchg((unsigned long)(x), (ptr), sizeof(*(ptr))))
+#define xchg(ptr, x) ({							\
+	((__typeof__(*(ptr)))__xchg((unsigned long)(x), (ptr),		\
+				    sizeof(*(ptr))));			\
+})
 
 static __always_inline unsigned long
 __xchg_local(unsigned long x, volatile void *ptr, int size)
@@ -187,9 +190,12 @@ __cmpxchg(volatile void *ptr, unsigned long old, unsigned long new, int size)
 	return old;
 }
 
-#define cmpxchg(ptr, o, n)						 \
-	((__typeof__(*(ptr))) __cmpxchg((ptr), (unsigned long)(o),	 \
-			(unsigned long)(n), sizeof(*(ptr))))
+#define cmpxchg(ptr, o, n) ({				\
+	((__typeof__(*(ptr)))				\
+		 __cmpxchg((ptr), (unsigned long)(o),	\
+			   (unsigned long)(n),		\
+			   sizeof(*(ptr))));		\
+})
 
 #include <asm-generic/cmpxchg-local.h>
 

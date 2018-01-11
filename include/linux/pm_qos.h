@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef _LINUX_PM_QOS_H
 #define _LINUX_PM_QOS_H
 /* interface for the pm_qos_power infrastructure of the linux kernel.
@@ -6,7 +7,6 @@
  */
 #include <linux/plist.h>
 #include <linux/notifier.h>
-#include <linux/miscdevice.h>
 #include <linux/device.h>
 #include <linux/workqueue.h>
 
@@ -147,8 +147,6 @@ int dev_pm_qos_add_notifier(struct device *dev,
 			    struct notifier_block *notifier);
 int dev_pm_qos_remove_notifier(struct device *dev,
 			       struct notifier_block *notifier);
-int dev_pm_qos_add_global_notifier(struct notifier_block *notifier);
-int dev_pm_qos_remove_global_notifier(struct notifier_block *notifier);
 void dev_pm_qos_constraints_init(struct device *dev);
 void dev_pm_qos_constraints_destroy(struct device *dev);
 int dev_pm_qos_add_ancestor_request(struct device *dev,
@@ -172,6 +170,12 @@ static inline s32 dev_pm_qos_requested_resume_latency(struct device *dev)
 static inline s32 dev_pm_qos_requested_flags(struct device *dev)
 {
 	return dev->power.qos->flags_req->data.flr.flags;
+}
+
+static inline s32 dev_pm_qos_raw_read_value(struct device *dev)
+{
+	return IS_ERR_OR_NULL(dev->power.qos) ?
+		0 : pm_qos_read_value(&dev->power.qos->resume_latency);
 }
 #else
 static inline enum pm_qos_flags_status __dev_pm_qos_flags(struct device *dev,
@@ -199,12 +203,6 @@ static inline int dev_pm_qos_add_notifier(struct device *dev,
 			{ return 0; }
 static inline int dev_pm_qos_remove_notifier(struct device *dev,
 					     struct notifier_block *notifier)
-			{ return 0; }
-static inline int dev_pm_qos_add_global_notifier(
-					struct notifier_block *notifier)
-			{ return 0; }
-static inline int dev_pm_qos_remove_global_notifier(
-					struct notifier_block *notifier)
 			{ return 0; }
 static inline void dev_pm_qos_constraints_init(struct device *dev)
 {
@@ -237,6 +235,7 @@ static inline void dev_pm_qos_hide_latency_tolerance(struct device *dev) {}
 
 static inline s32 dev_pm_qos_requested_resume_latency(struct device *dev) { return 0; }
 static inline s32 dev_pm_qos_requested_flags(struct device *dev) { return 0; }
+static inline s32 dev_pm_qos_raw_read_value(struct device *dev) { return 0; }
 #endif
 
 #endif

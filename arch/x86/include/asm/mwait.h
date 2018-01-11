@@ -1,7 +1,9 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef _ASM_X86_MWAIT_H
 #define _ASM_X86_MWAIT_H
 
 #include <linux/sched.h>
+#include <linux/sched/idle.h>
 
 #include <asm/cpufeature.h>
 

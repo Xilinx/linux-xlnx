@@ -280,6 +280,10 @@ int rproc_alloc_vring(struct rproc_vdev *rvdev, int i)
 	}
 	notifyid = ret;
 
+	/* Potentially bump max_notifyid */
+	if (notifyid > rproc->max_notifyid)
+		rproc->max_notifyid = notifyid;
+
 	dev_dbg(dev, "vring%d: va %p dma %pad size 0x%x idr %d\n",
 		i, va, &dma, size, notifyid);
 
@@ -339,6 +343,20 @@ void rproc_free_vring(struct rproc_vring *rvring)
 	rsc = (void *)rproc->table_ptr + rvring->rvdev->rsc_offset;
 	rsc->vring[idx].da = 0;
 	rsc->vring[idx].notifyid = -1;
+}
+
+static int rproc_vdev_do_probe(struct rproc_subdev *subdev)
+{
+	struct rproc_vdev *rvdev = container_of(subdev, struct rproc_vdev, subdev);
+
+	return rproc_add_virtio_dev(rvdev, rvdev->id);
+}
+
+static void rproc_vdev_do_remove(struct rproc_subdev *subdev)
+{
+	struct rproc_vdev *rvdev = container_of(subdev, struct rproc_vdev, subdev);
+
+	rproc_remove_virtio_dev(rvdev);
 }
 
 /**
@@ -401,6 +419,9 @@ static int rproc_handle_vdev(struct rproc *rproc, struct fw_rsc_vdev *rsc,
 	if (!rvdev)
 		return -ENOMEM;
 
+	kref_init(&rvdev->refcount);
+
+	rvdev->id = rsc->id;
 	rvdev->rproc = rproc;
 
 	/* parse the vrings */
@@ -413,20 +434,46 @@ static int rproc_handle_vdev(struct rproc *rproc, struct fw_rsc_vdev *rsc,
 	/* remember the resource offset*/
 	rvdev->rsc_offset = offset;
 
+	/* allocate the vring resources */
+	for (i = 0; i < rsc->num_of_vrings; i++) {
+		ret = rproc_alloc_vring(rvdev, i);
+		if (ret)
+			goto unwind_vring_allocations;
+	}
+
 	list_add_tail(&rvdev->node, &rproc->rvdevs);
 
-	/* it is now safe to add the virtio device */
-	ret = rproc_add_virtio_dev(rvdev, rsc->id);
-	if (ret)
-		goto remove_rvdev;
+	rproc_add_subdev(rproc, &rvdev->subdev,
+			 rproc_vdev_do_probe, rproc_vdev_do_remove);
 
 	return 0;
 
-remove_rvdev:
-	list_del(&rvdev->node);
+unwind_vring_allocations:
+	for (i--; i >= 0; i--)
+		rproc_free_vring(&rvdev->vring[i]);
 free_rvdev:
 	kfree(rvdev);
 	return ret;
+}
+
+void rproc_vdev_release(struct kref *ref)
+{
+	struct rproc_vdev *rvdev = container_of(ref, struct rproc_vdev, refcount);
+	struct rproc_vring *rvring;
+	struct rproc *rproc = rvdev->rproc;
+	int id;
+
+	for (id = 0; id < ARRAY_SIZE(rvdev->vring); id++) {
+		rvring = &rvdev->vring[id];
+		if (!rvring->va)
+			continue;
+
+		rproc_free_vring(rvring);
+	}
+
+	rproc_remove_subdev(rproc, &rvdev->subdev);
+	list_del(&rvdev->node);
+	kfree(rvdev);
 }
 
 /**
@@ -718,15 +765,6 @@ free_carv:
 	return ret;
 }
 
-static int rproc_count_vrings(struct rproc *rproc, struct fw_rsc_vdev *rsc,
-			      int offset, int avail)
-{
-	/* Summarize the number of notification IDs */
-	rproc->max_notifyid += rsc->num_of_vrings;
-
-	return 0;
-}
-
 /**
  * rproc_handle_rproc_mem() - handle remote processor memory
  * @rproc: rproc handle
@@ -755,8 +793,8 @@ static int rproc_handle_rproc_mem(struct rproc *rproc,
 		return -EINVAL;
 	}
 	ret = dma_declare_coherent_memory(dev->parent, rsc->pa,
-		rsc->pa, rsc->len, DMA_MEMORY_MAP);
-	if (!ret) {
+		rsc->pa, rsc->len, 0);
+	if (ret) {
 		dev_err(dev, "failed to declare rproc mem as DMA mem.\n");
 		return -ENOMEM;
 	}
@@ -771,10 +809,6 @@ static rproc_handle_resource_t rproc_loading_handlers[RSC_LAST] = {
 	[RSC_CARVEOUT] = (rproc_handle_resource_t)rproc_handle_carveout,
 	[RSC_DEVMEM] = (rproc_handle_resource_t)rproc_handle_devmem,
 	[RSC_TRACE] = (rproc_handle_resource_t)rproc_handle_trace,
-	[RSC_VDEV] = (rproc_handle_resource_t)rproc_count_vrings,
-};
-
-static rproc_handle_resource_t rproc_vdev_handler[RSC_LAST] = {
 	[RSC_VDEV] = (rproc_handle_resource_t)rproc_handle_vdev,
 };
 
@@ -819,6 +853,34 @@ static int rproc_handle_resources(struct rproc *rproc, int len,
 	}
 
 	return ret;
+}
+
+static int rproc_probe_subdevices(struct rproc *rproc)
+{
+	struct rproc_subdev *subdev;
+	int ret;
+
+	list_for_each_entry(subdev, &rproc->subdevs, node) {
+		ret = subdev->probe(subdev);
+		if (ret)
+			goto unroll_registration;
+	}
+
+	return 0;
+
+unroll_registration:
+	list_for_each_entry_continue_reverse(subdev, &rproc->subdevs, node)
+		subdev->remove(subdev);
+
+	return ret;
+}
+
+static void rproc_remove_subdevices(struct rproc *rproc)
+{
+	struct rproc_subdev *subdev;
+
+	list_for_each_entry_reverse(subdev, &rproc->subdevs, node)
+		subdev->remove(subdev);
 }
 
 /**
@@ -867,7 +929,7 @@ static void rproc_resource_cleanup(struct rproc *rproc)
 
 	/* clean up remote vdev entries */
 	list_for_each_entry_safe(rvdev, rvtmp, &rproc->rvdevs, node)
-		rproc_remove_virtio_dev(rvdev);
+		kref_put(&rvdev->refcount, rproc_vdev_release);
 
 	/* Release DMA declared memory */
 	dma_release_declared_memory(dev->parent);
@@ -971,6 +1033,63 @@ static bool rproc_is_running_fw(struct rproc *rproc, const struct firmware *fw)
 	return true;
 }
 
+static int rproc_start(struct rproc *rproc, const struct firmware *fw)
+{
+	struct resource_table *table, *loaded_table;
+	struct device *dev = &rproc->dev;
+	int ret, tablesz;
+
+	/* look for the resource table */
+	table = rproc_find_rsc_table(rproc, fw, &tablesz);
+	if (!table) {
+		dev_err(dev, "Resource table look up failed\n");
+		return -EINVAL;
+	}
+
+	/* load the ELF segments to memory */
+	ret = rproc_load_segments(rproc, fw);
+	if (ret) {
+		dev_err(dev, "Failed to load program segments: %d\n", ret);
+		return ret;
+	}
+
+	/*
+	 * The starting device has been given the rproc->cached_table as the
+	 * resource table. The address of the vring along with the other
+	 * allocated resources (carveouts etc) is stored in cached_table.
+	 * In order to pass this information to the remote device we must copy
+	 * this information to device memory. We also update the table_ptr so
+	 * that any subsequent changes will be applied to the loaded version.
+	 */
+	loaded_table = rproc_find_loaded_rsc_table(rproc, fw);
+	if (loaded_table) {
+		memcpy(loaded_table, rproc->cached_table, tablesz);
+		rproc->table_ptr = loaded_table;
+	}
+
+	/* power up the remote processor */
+	ret = rproc->ops->start(rproc);
+	if (ret) {
+		dev_err(dev, "can't start rproc %s: %d\n", rproc->name, ret);
+		return ret;
+	}
+
+	/* probe any subdevices for the remote processor */
+	ret = rproc_probe_subdevices(rproc);
+	if (ret) {
+		dev_err(dev, "failed to probe subdevices for %s: %d\n",
+			rproc->name, ret);
+		rproc->ops->stop(rproc);
+		return ret;
+	}
+
+	rproc->state = RPROC_RUNNING;
+
+	dev_info(dev, "remote processor %s is now up\n", rproc->name);
+
+	return 0;
+}
+
 /*
  * take a firmware and boot a remote processor with it.
  */
@@ -1044,13 +1163,6 @@ static int rproc_fw_boot(struct rproc *rproc, const struct firmware *fw)
 		goto clean_up_resources;
 	}
 
-	/* look for virtio devices and register them */
-	ret = rproc_handle_resources(rproc, tablesz, rproc_vdev_handler);
-	if (ret) {
-		dev_err(dev, "Failed to handle vdev resources: %d\n", ret);
-		goto clean_up_resources;
-	}
-
 	/* handle fw resources which are required to boot rproc */
 	ret = rproc_handle_resources(rproc, tablesz, rproc_loading_handlers);
 	if (ret) {
@@ -1070,39 +1182,9 @@ static int rproc_fw_boot(struct rproc *rproc, const struct firmware *fw)
 			}
 		}
 
-		/* load the ELF segments to memory */
-		ret = rproc_load_segments(rproc, fw);
-		if (ret) {
-			dev_err(dev, "Failed to load program segments: %d\n",
-				ret);
+		ret = rproc_start(rproc, fw);
+		if (ret)
 			goto clean_up_resources;
-		}
-
-		/*
-		 * The starting device has been given the rproc->cached_table
-		 * as the resource table. The address of the vring along with
-		 * the other allocated resources (carveouts etc) is stored in
-		 * cached_table. In order to pass this information to the
-		 * remote device we must copy this information to device
-		 * memory. We also update the table_ptr so that any subsequent
-		 * changes will be applied to the loaded version.
-		 */
-		loaded_table = rproc_find_loaded_rsc_table(rproc, fw);
-		if (loaded_table) {
-			memcpy(loaded_table, rproc->cached_table, tablesz);
-			rproc->table_ptr = loaded_table;
-		}
-
-		/* power up the remote processor */
-		ret = rproc->ops->start(rproc);
-		if (ret) {
-			dev_err(dev, "can't start rproc %s: %d\n",
-				rproc->name, ret);
-			goto clean_up_resources;
-		}
-
-		rproc->state = RPROC_RUNNING;
-		dev_info(dev, "remote processor %s is now up\n", rproc->name);
 	} else {
 		dev_info(dev, "remote is already running. Do not restart\n");
 	}
@@ -1121,14 +1203,14 @@ clean_up:
 }
 
 /*
- * take a firmware and look for virtio devices to register.
+ * take a firmware and boot it up.
  *
  * Note: this function is called asynchronously upon registration of the
  * remote processor (so we must wait until it completes before we try
  * to unregister the device. one other option is just to use kref here,
  * that might be cleaner).
  */
-static void rproc_fw_config_virtio(const struct firmware *fw, void *context)
+static void rproc_auto_boot_callback(const struct firmware *fw, void *context)
 {
 	struct rproc *rproc = context;
 
@@ -1137,25 +1219,47 @@ static void rproc_fw_config_virtio(const struct firmware *fw, void *context)
 	release_firmware(fw);
 }
 
-static int rproc_add_virtio_devices(struct rproc *rproc)
+static int rproc_trigger_auto_boot(struct rproc *rproc)
 {
 	int ret;
 
 	/*
-	 * We must retrieve early virtio configuration info from
-	 * the firmware (e.g. whether to register a virtio device,
-	 * what virtio features does it support, ...).
-	 *
 	 * We're initiating an asynchronous firmware loading, so we can
 	 * be built-in kernel code, without hanging the boot process.
 	 */
 	ret = request_firmware_nowait(THIS_MODULE, FW_ACTION_HOTPLUG,
 				      rproc->firmware, &rproc->dev, GFP_KERNEL,
-				      rproc, rproc_fw_config_virtio);
+				      rproc, rproc_auto_boot_callback);
 	if (ret < 0)
 		dev_err(&rproc->dev, "request_firmware_nowait err: %d\n", ret);
 
 	return ret;
+}
+
+static int rproc_stop(struct rproc *rproc)
+{
+	struct device *dev = &rproc->dev;
+	int ret;
+
+	/* remove any subdevices for the remote processor */
+	rproc_remove_subdevices(rproc);
+
+	/* power off the remote processor */
+	ret = rproc->ops->stop(rproc);
+	if (ret) {
+		dev_err(dev, "can't stop rproc: %d\n", ret);
+		return ret;
+	}
+
+	/* if in crash state, unlock crash handler */
+	if (rproc->state == RPROC_CRASHED)
+		complete_all(&rproc->crash_comp);
+
+	rproc->state = RPROC_OFFLINE;
+
+	dev_info(dev, "stopped remote processor %s\n", rproc->name);
+
+	return 0;
 }
 
 /**
@@ -1170,23 +1274,40 @@ static int rproc_add_virtio_devices(struct rproc *rproc)
  */
 int rproc_trigger_recovery(struct rproc *rproc)
 {
-	dev_err(&rproc->dev, "recovering %s\n", rproc->name);
+	const struct firmware *firmware_p;
+	struct device *dev = &rproc->dev;
+	int ret;
+
+	dev_err(dev, "recovering %s\n", rproc->name);
 
 	init_completion(&rproc->crash_comp);
 
-	/* shut down the remote */
-	/* TODO: make sure this works with rproc->power > 1 */
-	rproc_shutdown(rproc);
+	ret = mutex_lock_interruptible(&rproc->lock);
+	if (ret)
+		return ret;
+
+	ret = rproc_stop(rproc);
+	if (ret)
+		goto unlock_mutex;
 
 	/* wait until there is no more rproc users */
 	wait_for_completion(&rproc->crash_comp);
 
-	/*
-	 * boot the remote processor up again
-	 */
-	rproc_boot(rproc);
+	/* load firmware */
+	ret = request_firmware(&firmware_p, rproc->firmware, dev);
+	if (ret < 0) {
+		dev_err(dev, "request_firmware failed: %d\n", ret);
+		goto unlock_mutex;
+	}
 
-	return 0;
+	/* boot the remote processor up again */
+	ret = rproc_start(rproc, firmware_p);
+
+	release_firmware(firmware_p);
+
+unlock_mutex:
+	mutex_unlock(&rproc->lock);
+	return ret;
 }
 
 /**
@@ -1221,7 +1342,7 @@ static void rproc_crash_handler_work(struct work_struct *work)
 }
 
 /**
- * __rproc_boot() - boot a remote processor
+ * rproc_boot() - boot a remote processor
  * @rproc: handle of a remote processor
  *
  * Boot a remote processor (i.e. load its firmware, power it on, ...).
@@ -1231,7 +1352,7 @@ static void rproc_crash_handler_work(struct work_struct *work)
  *
  * Returns 0 on success, and an appropriate error value otherwise.
  */
-static int __rproc_boot(struct rproc *rproc)
+int rproc_boot(struct rproc *rproc)
 {
 	const struct firmware *firmware_p;
 	struct device *dev;
@@ -1282,15 +1403,6 @@ unlock_mutex:
 	mutex_unlock(&rproc->lock);
 	return ret;
 }
-
-/**
- * rproc_boot() - boot a remote processor
- * @rproc: handle of a remote processor
- */
-int rproc_boot(struct rproc *rproc)
-{
-	return __rproc_boot(rproc);
-}
 EXPORT_SYMBOL(rproc_boot);
 
 /**
@@ -1316,7 +1428,6 @@ void rproc_shutdown(struct rproc *rproc)
 {
 	struct device *dev = &rproc->dev;
 	int ret;
-	int pre_rproc_state;
 
 	ret = mutex_lock_interruptible(&rproc->lock);
 	if (ret) {
@@ -1328,16 +1439,11 @@ void rproc_shutdown(struct rproc *rproc)
 	if (!atomic_dec_and_test(&rproc->power))
 		goto out;
 
-	/* power off the remote processor */
-	ret = rproc->ops->stop(rproc);
+	ret = rproc_stop(rproc);
 	if (ret) {
 		atomic_inc(&rproc->power);
-		dev_err(dev, "can't stop rproc: %d\n", ret);
 		goto out;
 	}
-
-	pre_rproc_state = rproc->state;
-	rproc->state = RPROC_OFFLINE;
 
 	/* clean up all acquired resources */
 	rproc_resource_cleanup(rproc);
@@ -1348,13 +1454,6 @@ void rproc_shutdown(struct rproc *rproc)
 	kfree(rproc->cached_table);
 	rproc->cached_table = NULL;
 	rproc->table_ptr = NULL;
-
-	/* if in crash state, unlock crash handler */
-	if (pre_rproc_state == RPROC_CRASHED)
-		complete_all(&rproc->crash_comp);
-
-	dev_info(dev, "stopped remote processor %s\n", rproc->name);
-
 out:
 	mutex_unlock(&rproc->lock);
 }
@@ -1441,15 +1540,12 @@ int rproc_add(struct rproc *rproc)
 
 	dev_info(dev, "%s is available\n", rproc->name);
 
-	dev_info(dev, "Note: remoteproc is still under development and considered experimental.\n");
-	dev_info(dev, "THE BINARY FORMAT IS NOT YET FINALIZED, and backward compatibility isn't yet guaranteed.\n");
-
 	/* create debugfs entries */
 	rproc_create_debug_dir(rproc);
 
 	/* if rproc is marked always-on, request it to boot */
 	if (rproc->auto_boot) {
-		ret = rproc_add_virtio_devices(rproc);
+		ret = rproc_trigger_auto_boot(rproc);
 		if (ret < 0)
 			return ret;
 	}
@@ -1478,8 +1574,6 @@ static void rproc_type_release(struct device *dev)
 
 	dev_info(&rproc->dev, "releasing %s\n", rproc->name);
 
-	rproc_delete_debug_dir(rproc);
-
 	idr_destroy(&rproc->notifyids);
 
 	if (rproc->index >= 0)
@@ -1489,7 +1583,7 @@ static void rproc_type_release(struct device *dev)
 	kfree(rproc);
 }
 
-static struct device_type rproc_type = {
+static const struct device_type rproc_type = {
 	.name		= "remoteproc",
 	.release	= rproc_type_release,
 };
@@ -1560,6 +1654,7 @@ struct rproc *rproc_alloc(struct device *dev, const char *name,
 	rproc->dev.parent = dev;
 	rproc->dev.type = &rproc_type;
 	rproc->dev.class = &rproc_class;
+	rproc->dev.driver_data = rproc;
 
 	/* Assign a unique device index and name */
 	rproc->index = ida_simple_get(&rproc_dev_index, 0, 0, GFP_KERNEL);
@@ -1584,6 +1679,7 @@ struct rproc *rproc_alloc(struct device *dev, const char *name,
 	INIT_LIST_HEAD(&rproc->mappings);
 	INIT_LIST_HEAD(&rproc->traces);
 	INIT_LIST_HEAD(&rproc->rvdevs);
+	INIT_LIST_HEAD(&rproc->subdevs);
 
 	INIT_WORK(&rproc->crash_handler, rproc_crash_handler_work);
 	init_completion(&rproc->crash_comp);
@@ -1642,8 +1738,6 @@ EXPORT_SYMBOL(rproc_put);
  */
 int rproc_del(struct rproc *rproc)
 {
-	struct rproc_vdev *rvdev, *tmp;
-
 	if (!rproc)
 		return -EINVAL;
 
@@ -1652,13 +1746,11 @@ int rproc_del(struct rproc *rproc)
 	if (rproc->auto_boot)
 		rproc_shutdown(rproc);
 
-	/* clean up remote vdev entries */
-	list_for_each_entry_safe(rvdev, tmp, &rproc->rvdevs, node)
-		rproc_remove_virtio_dev(rvdev);
-
 	mutex_lock(&rproc->lock);
 	rproc->state = RPROC_DELETED;
 	mutex_unlock(&rproc->lock);
+
+	rproc_delete_debug_dir(rproc);
 
 	/* the rproc is downref'ed as soon as it's removed from the klist */
 	mutex_lock(&rproc_list_mutex);
@@ -1670,6 +1762,53 @@ int rproc_del(struct rproc *rproc)
 	return 0;
 }
 EXPORT_SYMBOL(rproc_del);
+
+/**
+ * rproc_add_subdev() - add a subdevice to a remoteproc
+ * @rproc: rproc handle to add the subdevice to
+ * @subdev: subdev handle to register
+ * @probe: function to call when the rproc boots
+ * @remove: function to call when the rproc shuts down
+ */
+void rproc_add_subdev(struct rproc *rproc,
+		      struct rproc_subdev *subdev,
+		      int (*probe)(struct rproc_subdev *subdev),
+		      void (*remove)(struct rproc_subdev *subdev))
+{
+	subdev->probe = probe;
+	subdev->remove = remove;
+
+	list_add_tail(&subdev->node, &rproc->subdevs);
+}
+EXPORT_SYMBOL(rproc_add_subdev);
+
+/**
+ * rproc_remove_subdev() - remove a subdevice from a remoteproc
+ * @rproc: rproc handle to remove the subdevice from
+ * @subdev: subdev handle, previously registered with rproc_add_subdev()
+ */
+void rproc_remove_subdev(struct rproc *rproc, struct rproc_subdev *subdev)
+{
+	list_del(&subdev->node);
+}
+EXPORT_SYMBOL(rproc_remove_subdev);
+
+/**
+ * rproc_get_by_child() - acquire rproc handle of @dev's ancestor
+ * @dev:	child device to find ancestor of
+ *
+ * Returns the ancestor rproc instance, or NULL if not found.
+ */
+struct rproc *rproc_get_by_child(struct device *dev)
+{
+	for (dev = dev->parent; dev; dev = dev->parent) {
+		if (dev->type == &rproc_type)
+			return dev->driver_data;
+	}
+
+	return NULL;
+}
+EXPORT_SYMBOL(rproc_get_by_child);
 
 /**
  * rproc_report_crash() - rproc crash reporter function

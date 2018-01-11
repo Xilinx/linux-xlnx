@@ -1,9 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Sane locale-independent, ASCII ctype.
  *
  * No surprises, and works with signed and unsigned chars.
  */
-#include "util.h"
+#include "sane_ctype.h"
 
 enum {
 	S = GIT_SPACE,

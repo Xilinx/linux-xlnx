@@ -1,6 +1,6 @@
 /*
  * Copyright (C) 2015 Imagination Technologies
- * Author: Paul Burton <paul.burton@imgtec.com>
+ * Author: Paul Burton <paul.burton@mips.com>
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
@@ -10,7 +10,7 @@
 
 #include <asm/bcache.h>
 #include <asm/debug.h>
-#include <asm/uaccess.h>
+#include <linux/uaccess.h>
 #include <linux/debugfs.h>
 #include <linux/init.h>
 

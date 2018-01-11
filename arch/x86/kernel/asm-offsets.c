@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Generate definitions needed by assembly language modules.
  * This code generates raw asm output which is post-processed to extract
@@ -81,6 +82,7 @@ void common(void) {
 
 	BLANK();
 	OFFSET(BP_scratch, boot_params, scratch);
+	OFFSET(BP_secure_boot, boot_params, secure_boot);
 	OFFSET(BP_loadflags, boot_params, hdr.loadflags);
 	OFFSET(BP_hardware_subarch, boot_params, hdr.hardware_subarch);
 	OFFSET(BP_version, boot_params, hdr.version);

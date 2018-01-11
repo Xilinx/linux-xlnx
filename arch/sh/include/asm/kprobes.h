@@ -1,5 +1,10 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef __ASM_SH_KPROBES_H
 #define __ASM_SH_KPROBES_H
+
+#include <asm-generic/kprobes.h>
+
+#define BREAKPOINT_INSTRUCTION	0xc33a
 
 #ifdef CONFIG_KPROBES
 
@@ -7,7 +12,6 @@
 #include <linux/ptrace.h>
 
 typedef insn_size_t kprobe_opcode_t;
-#define BREAKPOINT_INSTRUCTION	0xc33a
 
 #define MAX_INSN_SIZE 16
 #define MAX_STACK_SIZE 64

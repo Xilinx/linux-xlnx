@@ -1,29 +1,36 @@
-Xilinx FPGA PR Decoupler
+Xilinx LogiCORE Partial Reconfig Decoupler Softcore
 
-The Partial Reconfiguration (PR) Decoupler IP provides logical isolation
-capabilities for PR designs. One or more PR Decoupler cores can be used to
-make the interface between a Reconfigurable Partition (RP) and the static logic
-safe from unpredictable activity while partial reconfiguration is occurring.
-When active, user-selected signals crossing between the RP and the static logic
-are driven to user configurable values. When inactive, signals are passed
-unaltered. PR Decoupler cores can be connected to the PR Controller IP or custom
-user controllers to create a complete Partial Reconfiguration management
-solution.
+The Xilinx LogiCORE Partial Reconfig Decoupler manages one or more
+decouplers / fpga bridges.
+The controller can decouple/disable the bridges which prevents signal
+changes from passing through the bridge.  The controller can also
+couple / enable the bridges which allows traffic to pass through the
+bridge normally.
 
-Driver supports only MMIO handling. PR region can have multiple PR Decouplers
-which can be handled independently or chained via decouple/decouple_status
-signals.
+The Driver supports only MMIO handling. A PR region can have multiple
+PR Decouplers which can be handled independently or chained via decouple/
+decouple_status signals.
 
 Required properties:
-- compatible:	should contain "xlnx,pr_decoupler"
-- reg:		base address and size for memory mapped IO
-- clocks:	input clock to IP
-- clock-names:	should contain "aclk"
+- compatible		: Should contain "xlnx,pr-decoupler-1.00" followed by
+                          "xlnx,pr-decoupler"
+- regs			: base address and size for decoupler module
+- clocks		: input clock to IP
+- clock-names		: should contain "aclk"
+
+Optional properties:
+- bridge-enable		: 0 if driver should disable bridge at startup
+			  1 if driver should enable bridge at startup
+			  Default is to leave bridge in current state.
+
+See Documentation/devicetree/bindings/fpga/fpga-region.txt for generic bindings.
 
 Example:
-	fpga_bridge0: fpga-bridge@83c00000 {
-		compatible = "xlnx,pr_decoupler";
-		reg = <0x83c00000 0x10000>;
+	fpga-bridge@100000450 {
+		compatible = "xlnx,pr-decoupler-1.00",
+			     "xlnx-pr-decoupler";
+		regs = <0x10000045 0x10>;
 		clocks = <&clkc 15>;
 		clock-names = "aclk";
+		bridge-enable = <0>;
 	};

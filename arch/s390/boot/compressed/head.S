@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Startup glue code to uncompress the kernel
  *
@@ -46,7 +47,7 @@ mover_end:
 
 	.align	8
 .Lstack:
-	.quad	0x8000 + (1<<(PAGE_SHIFT+THREAD_ORDER))
+	.quad	0x8000 + (1<<(PAGE_SHIFT+THREAD_SIZE_ORDER))
 .Loffset:
 	.quad	0x11000
 .Lmvsize:

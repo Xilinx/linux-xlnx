@@ -1,6 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0
+#include <errno.h>
 #include <lzma.h>
 #include <stdio.h>
 #include <linux/compiler.h>
+#include "compress.h"
 #include "util.h"
 #include "debug.h"
 

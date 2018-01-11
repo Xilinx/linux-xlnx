@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Linux driver for digital TV devices equipped with B2C2 FlexcopII(b)/III
  * flexcop-i2c.c - flexcop internal 2Wire bus (I2C) and dvb i2c initialization
@@ -33,8 +34,8 @@ static int flexcop_i2c_operation(struct flexcop_device *fc,
 			return -EREMOTEIO;
 		}
 	}
-	deb_i2c("tried %d times i2c operation, "
-			"never finished or too many ack errors.\n", i);
+	deb_i2c("tried %d times i2c operation, never finished or too many ack errors.\n",
+		i);
 	return -EREMOTEIO;
 }
 
@@ -124,10 +125,10 @@ int flexcop_i2c_request(struct flexcop_i2c_adapter *i2c,
 #ifdef DUMP_I2C_MESSAGES
 	printk(KERN_DEBUG "%d ", i2c->port);
 	if (op == FC_READ)
-		printk("rd(");
+		printk(KERN_CONT "rd(");
 	else
-		printk("wr(");
-	printk("%02x): %02x ", chipaddr, addr);
+		printk(KERN_CONT "wr(");
+	printk(KERN_CONT "%02x): %02x ", chipaddr, addr);
 #endif
 
 	/* in that case addr is the only value ->
@@ -151,7 +152,7 @@ int flexcop_i2c_request(struct flexcop_i2c_adapter *i2c,
 
 #ifdef DUMP_I2C_MESSAGES
 		for (i = 0; i < bytes_to_transfer; i++)
-			printk("%02x ", buf[i]);
+			printk(KERN_CONT "%02x ", buf[i]);
 #endif
 
 		if (ret < 0)
@@ -163,7 +164,7 @@ int flexcop_i2c_request(struct flexcop_i2c_adapter *i2c,
 	}
 
 #ifdef DUMP_I2C_MESSAGES
-	printk("\n");
+	printk(KERN_CONT "\n");
 #endif
 
 	return 0;

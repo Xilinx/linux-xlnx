@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef S390_DEVICE_H
 #define S390_DEVICE_H
 
@@ -13,7 +14,6 @@
  */
 enum dev_state {
 	DEV_STATE_NOT_OPER,
-	DEV_STATE_SENSE_PGID,
 	DEV_STATE_SENSE_ID,
 	DEV_STATE_OFFLINE,
 	DEV_STATE_VERIFY,
@@ -135,6 +135,7 @@ void ccw_device_set_disconnected(struct ccw_device *cdev);
 void ccw_device_set_notoper(struct ccw_device *cdev);
 
 void ccw_device_set_timeout(struct ccw_device *, int);
+void ccw_device_schedule_recovery(void);
 
 /* Channel measurement facility related */
 void retry_set_schib(struct ccw_device *cdev);

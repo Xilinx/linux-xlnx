@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 #include <math.h>
 #include <unistd.h>
 #include <stdio.h>
@@ -14,7 +15,7 @@ void usage(char *name) {
 }
 
 int main(int argc, char **argv) {
-	int i, cpu, fd;
+	unsigned int i, cpu, fd;
 	char msr_file_name[64];
 	long long tsc, old_tsc, new_tsc;
 	long long aperf, old_aperf, new_aperf;

@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef __PERF_TOP_H
 #define __PERF_TOP_H 1
 
@@ -5,7 +6,7 @@
 #include <linux/types.h>
 #include <stddef.h>
 #include <stdbool.h>
-#include <termios.h>
+#include <sys/ioctl.h>
 
 struct perf_evlist;
 struct perf_evsel;

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 #include <linux/ieee80211.h>
 #include <linux/export.h>
 #include <net/cfg80211.h>
@@ -32,6 +33,11 @@ int __cfg80211_stop_ap(struct cfg80211_registered_device *rdev,
 		rdev_set_qos_map(rdev, dev, NULL);
 		if (notify)
 			nl80211_send_ap_stopped(wdev);
+
+		/* Should we apply the grace period during beaconing interface
+		 * shutdown also?
+		 */
+		cfg80211_sched_dfs_chan_update(rdev);
 	}
 
 	return err;

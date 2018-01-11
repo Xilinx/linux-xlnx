@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef _ASM_POWERPC_SECTIONS_H
 #define _ASM_POWERPC_SECTIONS_H
 #ifdef __KERNEL__
@@ -5,6 +6,8 @@
 #include <linux/elf.h>
 #include <linux/uaccess.h>
 #include <asm-generic/sections.h>
+
+extern char __head_end[];
 
 #ifdef __powerpc64__
 

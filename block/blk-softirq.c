@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Functions related to softirq rq completions
  */
@@ -9,6 +10,7 @@
 #include <linux/interrupt.h>
 #include <linux/cpu.h>
 #include <linux/sched.h>
+#include <linux/sched/topology.h>
 
 #include "blk.h"
 
@@ -59,7 +61,7 @@ static void trigger_softirq(void *data)
 static int raise_blk_irq(int cpu, struct request *rq)
 {
 	if (cpu_online(cpu)) {
-		struct call_single_data *data = &rq->csd;
+		call_single_data_t *data = &rq->csd;
 
 		data->func = trigger_softirq;
 		data->info = rq;

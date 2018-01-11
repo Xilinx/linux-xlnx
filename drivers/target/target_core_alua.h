@@ -1,5 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef TARGET_CORE_ALUA_H
 #define TARGET_CORE_ALUA_H
+
+#include <target/target_core_base.h>
 
 /*
  * INQUIRY response data, TPGS Field

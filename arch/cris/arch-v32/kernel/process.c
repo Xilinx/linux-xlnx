@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  *  Copyright (C) 2000-2003  Axis Communications AB
  *
@@ -9,6 +10,9 @@
  */
 
 #include <linux/sched.h>
+#include <linux/sched/debug.h>
+#include <linux/sched/task.h>
+#include <linux/sched/task_stack.h>
 #include <linux/slab.h>
 #include <linux/err.h>
 #include <linux/fs.h>
@@ -79,14 +83,6 @@ hard_reset_now(void)
 
 	while (1)
 		; /* Wait for reset. */
-}
-
-/*
- * Return saved PC of a blocked thread.
- */
-unsigned long thread_saved_pc(struct task_struct *t)
-{
-	return task_pt_regs(t)->erp;
 }
 
 /*

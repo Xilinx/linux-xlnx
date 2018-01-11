@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #include <ppc-asm.h>
 
 #define CONFIG_ALTIVEC
@@ -24,6 +25,8 @@
 #define _GLOBAL_TOC(A) _GLOBAL(A)
 
 #define PPC_MTOCRF(A, B)	mtocrf A, B
+
+#define EX_TABLE(x, y)
 
 FUNC_START(enter_vmx_usercopy)
 	li	r3,1

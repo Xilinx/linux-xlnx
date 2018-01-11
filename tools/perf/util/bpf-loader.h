@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Copyright (C) 2015, Wang Nan <wangnan0@huawei.com>
  * Copyright (C) 2015, Huawei Inc.
@@ -85,6 +86,8 @@ int bpf__strerror_setup_stdout(struct perf_evlist *evlist, int err,
 			       char *buf, size_t size);
 
 #else
+#include <errno.h>
+
 static inline struct bpf_object *
 bpf__prepare_load(const char *filename __maybe_unused,
 		  bool source __maybe_unused)

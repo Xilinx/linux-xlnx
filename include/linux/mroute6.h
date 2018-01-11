@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef __LINUX_MROUTE6_H
 #define __LINUX_MROUTE6_H
 
@@ -116,7 +117,7 @@ struct mfc6_cache {
 
 struct rtmsg;
 extern int ip6mr_get_route(struct net *net, struct sk_buff *skb,
-			   struct rtmsg *rtm, int nowait, u32 portid);
+			   struct rtmsg *rtm, u32 portid);
 
 #ifdef CONFIG_IPV6_MROUTE
 extern struct sock *mroute6_socket(struct net *net, struct sk_buff *skb);

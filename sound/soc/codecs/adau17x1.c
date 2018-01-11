@@ -65,7 +65,6 @@ static int adau17x1_pll_event(struct snd_soc_dapm_widget *w,
 {
 	struct snd_soc_codec *codec = snd_soc_dapm_to_codec(w->dapm);
 	struct adau *adau = snd_soc_codec_get_drvdata(codec);
-	int ret;
 
 	if (SND_SOC_DAPM_EVENT_ON(event)) {
 		adau->pll_regs[5] = 1;
@@ -78,7 +77,7 @@ static int adau17x1_pll_event(struct snd_soc_dapm_widget *w,
 	}
 
 	/* The PLL register is 6 bytes long and can only be written at once. */
-	ret = regmap_raw_write(adau->regmap, ADAU17X1_PLL_CONTROL,
+	regmap_raw_write(adau->regmap, ADAU17X1_PLL_CONTROL,
 			adau->pll_regs, ARRAY_SIZE(adau->pll_regs));
 
 	if (SND_SOC_DAPM_EVENT_ON(event)) {
@@ -87,6 +86,27 @@ static int adau17x1_pll_event(struct snd_soc_dapm_widget *w,
 			ADAU17X1_CLOCK_CONTROL_CORECLK_SRC_PLL,
 			ADAU17X1_CLOCK_CONTROL_CORECLK_SRC_PLL);
 	}
+
+	return 0;
+}
+
+static int adau17x1_adc_fixup(struct snd_soc_dapm_widget *w,
+	struct snd_kcontrol *kcontrol, int event)
+{
+	struct snd_soc_codec *codec = snd_soc_dapm_to_codec(w->dapm);
+	struct adau *adau = snd_soc_codec_get_drvdata(codec);
+
+	/*
+	 * If we are capturing, toggle the ADOSR bit in Converter Control 0 to
+	 * avoid losing SNR (workaround from ADI). This must be done after
+	 * the ADC(s) have been enabled. According to the data sheet, it is
+	 * normally illegal to set this bit when the sampling rate is 96 kHz,
+	 * but according to ADI it is acceptable for this workaround.
+	 */
+	regmap_update_bits(adau->regmap, ADAU17X1_CONVERTER0,
+		ADAU17X1_CONVERTER0_ADOSR, ADAU17X1_CONVERTER0_ADOSR);
+	regmap_update_bits(adau->regmap, ADAU17X1_CONVERTER0,
+		ADAU17X1_CONVERTER0_ADOSR, 0);
 
 	return 0;
 }
@@ -122,7 +142,8 @@ static const struct snd_soc_dapm_widget adau17x1_dapm_widgets[] = {
 	SND_SOC_DAPM_MUX("Right DAC Mode Mux", SND_SOC_NOPM, 0, 0,
 		&adau17x1_dac_mode_mux),
 
-	SND_SOC_DAPM_ADC("Left Decimator", NULL, ADAU17X1_ADC_CONTROL, 0, 0),
+	SND_SOC_DAPM_ADC_E("Left Decimator", NULL, ADAU17X1_ADC_CONTROL, 0, 0,
+			   adau17x1_adc_fixup, SND_SOC_DAPM_POST_PMU),
 	SND_SOC_DAPM_ADC("Right Decimator", NULL, ADAU17X1_ADC_CONTROL, 1, 0),
 	SND_SOC_DAPM_DAC("Left DAC", NULL, ADAU17X1_DAC_CONTROL0, 0, 0),
 	SND_SOC_DAPM_DAC("Right DAC", NULL, ADAU17X1_DAC_CONTROL0, 1, 0),
@@ -160,7 +181,7 @@ static int adau17x1_dsp_mux_enum_put(struct snd_kcontrol *kcontrol,
 	struct snd_soc_dapm_context *dapm = snd_soc_codec_get_dapm(codec);
 	struct adau *adau = snd_soc_codec_get_drvdata(codec);
 	struct soc_enum *e = (struct soc_enum *)kcontrol->private_value;
-	struct snd_soc_dapm_update update;
+	struct snd_soc_dapm_update update = { 0 };
 	unsigned int stream = e->shift_l;
 	unsigned int val, change;
 	int reg;

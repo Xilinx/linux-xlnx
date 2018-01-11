@@ -2477,45 +2477,6 @@ static void xemacps_set_rx_mode(struct net_device *ndev)
 }
 
 /**
- * xemacps_get_settings - get device specific settings.
- * Usage: Issue "ethtool ethX" under linux prompt.
- * @ndev: network device
- * @ecmd: ethtool command structure
- * Return: 0 on success, negative value if error.
- */
-static int
-xemacps_get_settings(struct net_device *ndev, struct ethtool_cmd *ecmd)
-{
-	struct net_local *lp = netdev_priv(ndev);
-	struct phy_device *phydev = lp->phy_dev;
-
-	if (!phydev)
-		return -ENODEV;
-
-	return phy_ethtool_gset(phydev, ecmd);
-}
-
-/**
- * xemacps_set_settings - set device specific settings.
- * Usage: Issue "ethtool -s ethX speed 1000" under linux prompt
- * to change speed
- * @ndev: network device
- * @ecmd: ethtool command structure
- * Return: 0 on success, negative value if error.
- */
-static int
-xemacps_set_settings(struct net_device *ndev, struct ethtool_cmd *ecmd)
-{
-	struct net_local *lp = netdev_priv(ndev);
-	struct phy_device *phydev = lp->phy_dev;
-
-	if (!phydev)
-		return -ENODEV;
-
-	return phy_ethtool_sset(phydev, ecmd);
-}
-
-/**
  * xemacps_get_drvinfo - report driver information
  * Usage: Issue "ethtool -i ethX" under linux prompt
  * @ndev: network device
@@ -2705,8 +2666,8 @@ static int xemacps_get_ts_info(struct net_device *dev,
 #endif
 
 static struct ethtool_ops xemacps_ethtool_ops = {
-	.get_settings   = xemacps_get_settings,
-	.set_settings   = xemacps_set_settings,
+	.get_link_ksettings     = phy_ethtool_get_link_ksettings,
+	.set_link_ksettings     = phy_ethtool_set_link_ksettings,
 	.get_drvinfo    = xemacps_get_drvinfo,
 	.get_link       = ethtool_op_get_link, /* ethtool default */
 	.get_ringparam  = xemacps_get_ringparam,

@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * This file defines the trace event structures that go into the ring
  * buffer directly. They are created via macros so that changes for them
@@ -244,6 +245,21 @@ FTRACE_ENTRY(print, print_entry,
 	FILTER_OTHER
 );
 
+FTRACE_ENTRY(raw_data, raw_data_entry,
+
+	TRACE_RAW_DATA,
+
+	F_STRUCT(
+		__field(	unsigned int,	id	)
+		__dynamic_array(	char,	buf	)
+	),
+
+	F_printk("id:%04x %08x",
+		 __entry->id, (int)__entry->buf[0]),
+
+	FILTER_OTHER
+);
+
 FTRACE_ENTRY(bputs, bputs_entry,
 
 	TRACE_BPUTS,
@@ -313,11 +329,13 @@ FTRACE_ENTRY(branch, trace_branch,
 		__array(	char,		func,	TRACE_FUNC_SIZE+1	)
 		__array(	char,		file,	TRACE_FILE_SIZE+1	)
 		__field(	char,		correct				)
+		__field(	char,		constant			)
 	),
 
-	F_printk("%u:%s:%s (%u)",
+	F_printk("%u:%s:%s (%u)%s",
 		 __entry->line,
-		 __entry->func, __entry->file, __entry->correct),
+		 __entry->func, __entry->file, __entry->correct,
+		 __entry->constant ? " CONSTANT" : ""),
 
 	FILTER_OTHER
 );
@@ -331,14 +349,14 @@ FTRACE_ENTRY(hwlat, hwlat_entry,
 		__field(	u64,			duration	)
 		__field(	u64,			outer_duration	)
 		__field(	u64,			nmi_total_ts	)
-		__field_struct( struct timespec,	timestamp	)
-		__field_desc(	long,	timestamp,	tv_sec		)
+		__field_struct( struct timespec64,	timestamp	)
+		__field_desc(	s64,	timestamp,	tv_sec		)
 		__field_desc(	long,	timestamp,	tv_nsec		)
 		__field(	unsigned int,		nmi_count	)
 		__field(	unsigned int,		seqnum		)
 	),
 
-	F_printk("cnt:%u\tts:%010lu.%010lu\tinner:%llu\touter:%llunmi-ts:%llu\tnmi-count:%u\n",
+	F_printk("cnt:%u\tts:%010llu.%010lu\tinner:%llu\touter:%llunmi-ts:%llu\tnmi-count:%u\n",
 		 __entry->seqnum,
 		 __entry->tv_sec,
 		 __entry->tv_nsec,

@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * CRIS pgtable.h - macros and functions to manipulate page tables.
  */
@@ -6,10 +7,11 @@
 #define _CRIS_PGTABLE_H
 
 #include <asm/page.h>
+#define __ARCH_USE_5LEVEL_HACK
 #include <asm-generic/pgtable-nopmd.h>
 
 #ifndef __ASSEMBLY__
-#include <linux/sched.h>
+#include <linux/sched/mm.h>
 #include <asm/mmu.h>
 #endif
 #include <arch/pgtable.h>

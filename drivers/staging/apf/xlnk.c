@@ -393,21 +393,15 @@ static int xlnk_allocbuf(unsigned int len, unsigned int cacheable)
 	int id;
 	void *kaddr;
 	dma_addr_t phys_addr_anchor;
+	unsigned long attrs;
 
-	if (cacheable)
-		kaddr = dma_alloc_noncoherent(xlnk_dev,
-					      len,
-					      &phys_addr_anchor,
-					      GFP_KERNEL |
-					      GFP_DMA |
-					      __GFP_REPEAT);
-	else
-		kaddr = dma_alloc_coherent(xlnk_dev,
-					   len,
-					   &phys_addr_anchor,
-					   GFP_KERNEL |
-					   GFP_DMA |
-					   __GFP_REPEAT);
+	attrs = cacheable ? DMA_ATTR_NON_CONSISTENT : 0;
+
+	kaddr = dma_alloc_attrs(xlnk_dev,
+				len,
+				&phys_addr_anchor,
+				GFP_KERNEL | GFP_DMA,
+				attrs);
 	if (!kaddr)
 		return -ENOMEM;
 
@@ -859,6 +853,7 @@ static int xlnk_freebuf(int id)
 	dma_addr_t p_addr;
 	size_t buf_len;
 	int cacheable;
+	unsigned long attrs;
 
 	if (id <= 0 || id >= xlnk_bufpool_size)
 		return -ENOMEM;
@@ -877,16 +872,13 @@ static int xlnk_freebuf(int id)
 	xlnk_bufcacheable[id] = 0;
 	spin_unlock(&xlnk_buf_lock);
 
-	if (cacheable)
-		dma_free_noncoherent(xlnk_dev,
-				     buf_len,
-				     alloc_point,
-				     p_addr);
-	else
-		dma_free_coherent(xlnk_dev,
-				  buf_len,
-				  alloc_point,
-				  p_addr);
+	attrs = cacheable ? DMA_ATTR_NON_CONSISTENT : 0;
+
+	dma_free_attrs(xlnk_dev,
+		       buf_len,
+		       alloc_point,
+		       p_addr,
+		       attrs);
 
 	return 0;
 }
@@ -1526,7 +1518,7 @@ static int xlnk_config_ioctl(struct file *filp, unsigned long args)
 static int xlnk_memop_ioctl(struct file *filp, unsigned long arg_addr)
 {
 	union xlnk_args args;
-	xlnk_intptr_type p_addr;
+	xlnk_intptr_type p_addr = 0;
 	int status = 0;
 	int buf_id;
 	struct xlnk_dmabuf_reg *cp = NULL;

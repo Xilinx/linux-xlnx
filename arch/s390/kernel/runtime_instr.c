@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright IBM Corp. 2012
  * Author(s): Jan Glauber <jang@linux.vnet.ibm.com>
@@ -11,6 +12,8 @@
 #include <linux/init.h>
 #include <linux/errno.h>
 #include <linux/kernel_stat.h>
+#include <linux/sched/task_stack.h>
+
 #include <asm/runtime_instr.h>
 #include <asm/cpu_mf.h>
 #include <asm/irq.h>

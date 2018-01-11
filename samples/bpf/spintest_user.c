@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 #include <stdio.h>
 #include <unistd.h>
 #include <linux/bpf.h>
@@ -31,8 +32,8 @@ int main(int ac, char **argv)
 	for (i = 0; i < 5; i++) {
 		key = 0;
 		printf("kprobing funcs:");
-		while (bpf_get_next_key(map_fd[0], &key, &next_key) == 0) {
-			bpf_lookup_elem(map_fd[0], &next_key, &value);
+		while (bpf_map_get_next_key(map_fd[0], &key, &next_key) == 0) {
+			bpf_map_lookup_elem(map_fd[0], &next_key, &value);
 			assert(next_key == value);
 			sym = ksym_search(value);
 			printf(" %s", sym->name);
@@ -41,8 +42,8 @@ int main(int ac, char **argv)
 		if (key)
 			printf("\n");
 		key = 0;
-		while (bpf_get_next_key(map_fd[0], &key, &next_key) == 0)
-			bpf_delete_elem(map_fd[0], &next_key);
+		while (bpf_map_get_next_key(map_fd[0], &key, &next_key) == 0)
+			bpf_map_delete_elem(map_fd[0], &next_key);
 		sleep(1);
 	}
 

@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0
 OBJECT_FILES_NON_STANDARD := y
 
 purgatory-y := purgatory.o stack.o setup-x86_$(BITS).o sha256.o entry64.o string.o
@@ -8,6 +9,7 @@ PURGATORY_OBJS = $(addprefix $(obj)/,$(purgatory-y))
 LDFLAGS_purgatory.ro := -e purgatory_start -r --no-undefined -nostdlib -z nodefaultlib
 targets += purgatory.ro
 
+KASAN_SANITIZE	:= n
 KCOV_INSTRUMENT := n
 
 # Default KBUILD_CFLAGS can have -pg option set when FTRACE is enabled. That

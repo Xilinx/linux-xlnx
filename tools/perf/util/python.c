@@ -1,13 +1,28 @@
+// SPDX-License-Identifier: GPL-2.0
 #include <Python.h>
 #include <structmember.h>
 #include <inttypes.h>
 #include <poll.h>
 #include <linux/err.h>
 #include "evlist.h"
+#include "callchain.h"
 #include "evsel.h"
 #include "event.h"
 #include "cpumap.h"
+#include "print_binary.h"
 #include "thread_map.h"
+
+/*
+ * Provide these two so that we don't have to link against callchain.c and
+ * start dragging hist.c, etc.
+ */
+struct callchain_param callchain_param;
+
+int parse_callchain_record(const char *arg __maybe_unused,
+			   struct callchain_param *param __maybe_unused)
+{
+	return 0;
+}
 
 /*
  * Support debug printing even though util/debug.c is not linked.  That means

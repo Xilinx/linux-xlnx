@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0
 ccflags-$(CONFIG_DRM_TEGRA_DEBUG) += -DDEBUG
 
 tegra-drm-y := \
@@ -13,6 +14,10 @@ tegra-drm-y := \
 	sor.o \
 	dpaux.o \
 	gr2d.o \
-	gr3d.o
+	gr3d.o \
+	falcon.o \
+	vic.o
+
+tegra-drm-y += trace.o
 
 obj-$(CONFIG_DRM_TEGRA) += tegra-drm.o

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * security/tomoyo/network.c
  *
@@ -608,7 +609,7 @@ static int tomoyo_check_unix_address(struct sockaddr *addr,
 static bool tomoyo_kernel_service(void)
 {
 	/* Nothing to do if I am a kernel service. */
-	return segment_eq(get_fs(), KERNEL_DS);
+	return uaccess_kernel();
 }
 
 /**

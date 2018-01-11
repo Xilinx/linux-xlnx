@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-2.0
+
 ccflags-y := -Iinclude/drm
 
 obj-$(CONFIG_DRM_I2C_ADV7511_LEGACY) += adv7511.o

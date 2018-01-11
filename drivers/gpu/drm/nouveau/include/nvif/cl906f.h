@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef __NVIF_CL906F_H__
 #define __NVIF_CL906F_H__
 
@@ -10,5 +11,6 @@ struct fermi_channel_gpfifo_v0 {
 	__u64 vm;
 };
 
-#define FERMI_CHANNEL_GPFIFO_V0_NTFY_UEVENT                                0x00
+#define NV906F_V0_NTFY_NON_STALL_INTERRUPT                                 0x00
+#define NV906F_V0_NTFY_KILLED                                              0x01
 #endif

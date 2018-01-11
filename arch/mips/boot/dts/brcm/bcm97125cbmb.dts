@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /dts-v1/;
 
 /include/ "bcm7125.dtsi"
@@ -56,4 +57,8 @@
 
 &ohci0 {
 	status = "disabled";
+};
+
+&mspi {
+	status = "okay";
 };

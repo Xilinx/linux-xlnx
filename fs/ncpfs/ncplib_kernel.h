@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  *  ncplib_kernel.h
  *
@@ -21,7 +22,7 @@
 #include <linux/fcntl.h>
 #include <linux/pagemap.h>
 
-#include <asm/uaccess.h>
+#include <linux/uaccess.h>
 #include <asm/byteorder.h>
 #include <asm/unaligned.h>
 #include <asm/string.h>

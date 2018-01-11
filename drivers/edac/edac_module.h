@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 
 /*
  * edac_module.h
@@ -10,7 +11,9 @@
 #ifndef	__EDAC_MODULE_H__
 #define	__EDAC_MODULE_H__
 
-#include "edac_core.h"
+#include "edac_mc.h"
+#include "edac_pci.h"
+#include "edac_device.h"
 
 /*
  * INTERNAL EDAC MODULE:

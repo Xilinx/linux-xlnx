@@ -21,7 +21,7 @@
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/mtd/mtd.h>
-#include <linux/mtd/nand.h>
+#include <linux/mtd/rawnand.h>
 #include <linux/mtd/nand_ecc.h>
 #include <linux/mtd/partitions.h>
 #include <linux/of_address.h>
@@ -1112,6 +1112,8 @@ static int pl35x_nand_probe(struct platform_device *pdev)
 	nand_chip->cmdfunc = pl35x_nand_cmd_function;
 	nand_chip->dev_ready = pl35x_nand_device_ready;
 	nand_chip->select_chip = pl35x_nand_select_chip;
+	nand_chip->onfi_set_features = nand_onfi_get_set_features_notsupp;
+	nand_chip->onfi_get_features = nand_onfi_get_set_features_notsupp;
 
 	/* If we don't set this delay driver sets 20us by default */
 	nand_chip->chip_delay = 30;

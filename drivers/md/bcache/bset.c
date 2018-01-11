@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Code for working with individual keys, and sorted sets of keys with in a
  * btree node
@@ -11,6 +12,7 @@
 #include "bset.h"
 
 #include <linux/console.h>
+#include <linux/sched/clock.h>
 #include <linux/random.h>
 #include <linux/prefetch.h>
 

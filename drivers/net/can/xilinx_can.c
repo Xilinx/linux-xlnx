@@ -1074,7 +1074,7 @@ static int xcan_rx_poll(struct napi_struct *napi, int quota)
 		can_led_event(ndev, CAN_LED_EVENT_RX);
 
 	if (work_done < quota) {
-		napi_complete(napi);
+		napi_complete_done(napi, work_done);
 		ier = priv->read_reg(priv, XCAN_IER_OFFSET);
 		ier |= rx_bit_mask;
 		priv->write_reg(priv, XCAN_IER_OFFSET, ier);

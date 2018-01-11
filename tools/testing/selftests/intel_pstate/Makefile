@@ -1,15 +1,13 @@
-CC := $(CROSS_COMPILE)gcc
+# SPDX-License-Identifier: GPL-2.0
 CFLAGS := $(CFLAGS) -Wall -D_GNU_SOURCE
-LDFLAGS := $(LDFLAGS) -lm
+LDLIBS := $(LDLIBS) -lm
 
-TARGETS := msr aperf
+ifeq (,$(filter $(ARCH),x86))
+TEST_GEN_FILES := msr aperf
+endif
 
-TEST_PROGS := $(TARGETS) run.sh
+TEST_PROGS := run.sh
 
-.PHONY: all clean
-all: $(TARGETS)
+include ../lib.mk
 
-$(TARGETS): $(HEADERS)
-
-clean:
-	rm -f $(TARGETS)
+$(TEST_GEN_FILES): $(HEADERS)

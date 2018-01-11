@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0
 menu "Kernel hacking"
 
 config TRACE_IRQFLAGS_SUPPORT
@@ -17,7 +18,7 @@ config S390_PTDUMP
 	  kernel.
 	  If in doubt, say "N"
 
-config DEBUG_SET_MODULE_RONX
+config EARLY_PRINTK
 	def_bool y
-	depends on MODULES
+
 endmenu

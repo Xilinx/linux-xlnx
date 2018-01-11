@@ -19,7 +19,7 @@
 #include <linux/platform_device.h>
 #include <ras/ras_event.h>
 
-#include "edac_core.h"
+#include "edac_module.h"
 
 #define DRV_NAME			"cortex_edac"
 

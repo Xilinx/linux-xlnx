@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0
 if ETRAX_ARCH_V32
 
 config ETRAX_ETHERNET
@@ -136,7 +137,6 @@ config ETRAX_NANDFLASH
 	bool "NAND flash support"
 	depends on ETRAX_ARCH_V32
 	select MTD_NAND
-	select MTD_NAND_IDS
 	help
 	  This option enables MTD mapping of NAND flash devices.  Needed to use
 	  NAND flash memories.  If unsure, say Y.

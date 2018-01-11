@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef ASMARM_PCI_H
 #define ASMARM_PCI_H
 
@@ -29,8 +30,7 @@ static inline int pci_proc_domain(struct pci_bus *bus)
 #define PCI_DMA_BUS_IS_PHYS     (1)
 
 #define HAVE_PCI_MMAP
-extern int pci_mmap_page_range(struct pci_dev *dev, struct vm_area_struct *vma,
-                               enum pci_mmap_state mmap_state, int write_combine);
+#define ARCH_GENERIC_PCI_MMAP_RESOURCE
 
 static inline int pci_get_legacy_ide_irq(struct pci_dev *dev, int channel)
 {

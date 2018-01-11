@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  *    Copyright IBM Corp. 2013
  *    Author(s): Eugene Crosser <eugene.crosser@ru.ibm.com>
@@ -7,6 +8,8 @@
 #define __QETH_L2_H__
 
 #include "qeth_core.h"
+
+extern const struct attribute_group *qeth_l2_attr_groups[];
 
 int qeth_l2_create_device_attributes(struct device *);
 void qeth_l2_remove_device_attributes(struct device *);

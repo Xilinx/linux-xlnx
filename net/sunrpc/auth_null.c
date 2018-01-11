@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * linux/net/sunrpc/auth_null.c
  *
@@ -139,7 +140,4 @@ struct rpc_cred null_cred = {
 	.cr_ops		= &null_credops,
 	.cr_count	= ATOMIC_INIT(1),
 	.cr_flags	= 1UL << RPCAUTH_CRED_UPTODATE,
-#if IS_ENABLED(CONFIG_SUNRPC_DEBUG)
-	.cr_magic	= RPCAUTH_CRED_MAGIC,
-#endif
 };

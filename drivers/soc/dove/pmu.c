@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Marvell Dove PMU support
  */
@@ -87,7 +88,7 @@ static int pmu_reset_deassert(struct reset_controller_dev *rc, unsigned long id)
 	return 0;
 }
 
-static struct reset_control_ops pmu_reset_ops = {
+static const struct reset_control_ops pmu_reset_ops = {
 	.reset = pmu_reset_reset,
 	.assert = pmu_reset_assert,
 	.deassert = pmu_reset_deassert,

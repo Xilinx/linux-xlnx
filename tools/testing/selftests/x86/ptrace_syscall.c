@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 #define _GNU_SOURCE
 
 #include <sys/ptrace.h>
@@ -58,7 +59,8 @@ static void do_full_int80(struct syscall_args32 *args)
 	asm volatile ("int $0x80"
 		      : "+a" (args->nr),
 			"+b" (args->arg0), "+c" (args->arg1), "+d" (args->arg2),
-			"+S" (args->arg3), "+D" (args->arg4), "+r" (bp));
+			"+S" (args->arg3), "+D" (args->arg4), "+r" (bp)
+			: : "r8", "r9", "r10", "r11");
 	args->arg5 = bp;
 #else
 	sys32_helper(args, int80_and_ret);

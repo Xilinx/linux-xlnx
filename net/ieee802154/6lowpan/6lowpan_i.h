@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef __IEEE802154_6LOWPAN_I_H__
 #define __IEEE802154_6LOWPAN_I_H__
 
@@ -7,7 +8,7 @@
 #include <net/inet_frag.h>
 #include <net/6lowpan.h>
 
-typedef unsigned __bitwise__ lowpan_rx_result;
+typedef unsigned __bitwise lowpan_rx_result;
 #define RX_CONTINUE		((__force lowpan_rx_result) 0u)
 #define RX_DROP_UNUSABLE	((__force lowpan_rx_result) 1u)
 #define RX_DROP			((__force lowpan_rx_result) 2u)

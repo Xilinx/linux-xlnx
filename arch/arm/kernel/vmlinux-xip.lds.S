@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /* ld script to make ARM Linux kernel
  * taken from the i386 version by Russell King
  * Written by Martin Mares <mj@atrey.karlin.mff.cuni.cz>
@@ -241,6 +242,8 @@ SECTIONS
 		_edata = .;
 	}
 	_edata_loc = __data_loc + SIZEOF(.data);
+
+	BUG_TABLE
 
 #ifdef CONFIG_HAVE_TCM
         /*

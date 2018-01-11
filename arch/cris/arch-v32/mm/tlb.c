@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Low level TLB handling.
  *
@@ -6,6 +7,7 @@
  * Authors:   Bjorn Wesen <bjornw@axis.com>
  *            Tobias Anderberg <tobiasa@axis.com>, CRISv32 port.
  */
+#include <linux/mm_types.h>
 
 #include <asm/tlb.h>
 #include <asm/mmu_context.h>

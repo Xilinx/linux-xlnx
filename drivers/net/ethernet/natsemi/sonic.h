@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Header file for sonic.c
  *
@@ -444,7 +445,7 @@ static inline __u16 sonic_rra_get(struct net_device* dev, int entry,
 			     (entry * SIZEOF_SONIC_RR) + offset);
 }
 
-static const char *version =
+static const char version[] =
     "sonic.c:v0.92 20.9.98 tsbogend@alpha.franken.de\n";
 
 #endif /* SONIC_H */

@@ -641,7 +641,7 @@ xsdfec_add_ldpc(struct xsdfec_dev *xsdfec, void __user *arg)
 	struct xsdfec_ldpc *ldpc;
 	int err;
 
-	ldpc = kzalloc(sizeof(*ldpc), GFP_KERNEL | __GFP_REPEAT);
+	ldpc = kzalloc(sizeof(*ldpc), GFP_KERNEL);
 	if (!ldpc)
 		return -ENOMEM;
 

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 
 #include <linux/linkage.h>
 #include <linux/errno.h>
@@ -150,6 +151,9 @@ cond_syscall(sys_io_destroy);
 cond_syscall(sys_io_submit);
 cond_syscall(sys_io_cancel);
 cond_syscall(sys_io_getevents);
+cond_syscall(compat_sys_io_setup);
+cond_syscall(compat_sys_io_submit);
+cond_syscall(compat_sys_io_getevents);
 cond_syscall(sys_sysfs);
 cond_syscall(sys_syslog);
 cond_syscall(sys_process_vm_readv);

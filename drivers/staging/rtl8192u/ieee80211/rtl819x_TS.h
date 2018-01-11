@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef _TSTYPE_H_
 #define _TSTYPE_H_
 #include "rtl819x_Qos.h"
@@ -14,7 +15,7 @@ typedef enum _TR_SELECT {
 	RX_DIR = 1,
 } TR_SELECT, *PTR_SELECT;
 
-typedef struct _TS_COMMON_INFO{
+typedef struct _TS_COMMON_INFO {
 	struct list_head		List;
 	struct timer_list		SetupTimer;
 	struct timer_list		InactTimer;
@@ -25,7 +26,7 @@ typedef struct _TS_COMMON_INFO{
 	u8				TClasNum;
 } TS_COMMON_INFO, *PTS_COMMON_INFO;
 
-typedef struct _TX_TS_RECORD{
+typedef struct _TX_TS_RECORD {
 	TS_COMMON_INFO		TsCommonInfo;
 	u16				TxCurSeq;
 	BA_RECORD			TxPendingBARecord;	/*  For BA Originator */

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Linux/Meta general interrupt handling code
  *
@@ -13,7 +14,7 @@
 
 #include <asm/core_reg.h>
 #include <asm/mach/arch.h>
-#include <asm/uaccess.h>
+#include <linux/uaccess.h>
 
 #ifdef CONFIG_4KSTACKS
 union irq_ctx {

@@ -258,12 +258,6 @@ static int xilinx_drm_crtc_mode_set_base(struct drm_crtc *base_crtc,
 	       x, y);
 }
 
-/* load rgb LUT for crtc */
-static void xilinx_drm_crtc_load_lut(struct drm_crtc *base_crtc)
-{
-	/* no op */
-}
-
 static struct drm_crtc_helper_funcs xilinx_drm_crtc_helper_funcs = {
 	.dpms		= xilinx_drm_crtc_dpms,
 	.prepare	= xilinx_drm_crtc_prepare,
@@ -271,7 +265,6 @@ static struct drm_crtc_helper_funcs xilinx_drm_crtc_helper_funcs = {
 	.mode_fixup	= xilinx_drm_crtc_mode_fixup,
 	.mode_set	= xilinx_drm_crtc_mode_set,
 	.mode_set_base	= xilinx_drm_crtc_mode_set_base,
-	.load_lut	= xilinx_drm_crtc_load_lut,
 };
 
 /* destroy crtc */
@@ -336,7 +329,8 @@ static void xilinx_drm_crtc_finish_page_flip(struct drm_crtc *base_crtc)
 static int xilinx_drm_crtc_page_flip(struct drm_crtc *base_crtc,
 				     struct drm_framebuffer *fb,
 				     struct drm_pending_vblank_event *event,
-				     uint32_t page_flip_flags)
+				     uint32_t page_flip_flags,
+				     struct drm_modeset_acquire_ctx *ctx)
 {
 	struct xilinx_drm_crtc *crtc = to_xilinx_crtc(base_crtc);
 	struct drm_device *drm = base_crtc->dev;

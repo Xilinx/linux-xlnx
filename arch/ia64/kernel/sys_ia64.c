@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * This file contains various system calls that have different calling
  * conventions on different platforms.
@@ -10,6 +11,8 @@
 #include <linux/mm.h>
 #include <linux/mman.h>
 #include <linux/sched.h>
+#include <linux/sched/mm.h>
+#include <linux/sched/task_stack.h>
 #include <linux/shm.h>
 #include <linux/file.h>		/* doh, must come after sched.h... */
 #include <linux/smp.h>
@@ -18,7 +21,7 @@
 #include <linux/hugetlb.h>
 
 #include <asm/shmparam.h>
-#include <asm/uaccess.h>
+#include <linux/uaccess.h>
 
 unsigned long
 arch_get_unmapped_area (struct file *filp, unsigned long addr, unsigned long len,

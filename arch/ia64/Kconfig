@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0
 config PGTABLE_LEVELS
 	int "Page Table Levels" if !IA64_PAGE_SIZE_64KB
 	range 3 4 if !IA64_PAGE_SIZE_64KB
@@ -52,7 +53,6 @@ config IA64
 	select MODULES_USE_ELF_RELA
 	select ARCH_USE_CMPXCHG_LOCKREF
 	select HAVE_ARCH_AUDITSYSCALL
-	select HAVE_ARCH_HARDENED_USERCOPY
 	default y
 	help
 	  The Itanium Processor Family is Intel's 64-bit successor to

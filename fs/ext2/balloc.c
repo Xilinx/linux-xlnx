@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  *  linux/fs/ext2/balloc.c
  *
@@ -15,6 +16,7 @@
 #include <linux/quotaops.h>
 #include <linux/slab.h>
 #include <linux/sched.h>
+#include <linux/cred.h>
 #include <linux/buffer_head.h>
 #include <linux/capability.h>
 

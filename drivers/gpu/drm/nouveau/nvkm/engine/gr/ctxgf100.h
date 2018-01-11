@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef __NVKM_GRCTX_NVC0_H__
 #define __NVKM_GRCTX_NVC0_H__
 #include "gf100.h"
@@ -102,6 +103,13 @@ void gm200_grctx_generate_405b60(struct gf100_gr *);
 extern const struct gf100_grctx_func gm20b_grctx;
 
 extern const struct gf100_grctx_func gp100_grctx;
+void gp100_grctx_generate_main(struct gf100_gr *, struct gf100_grctx *);
+void gp100_grctx_generate_pagepool(struct gf100_grctx *);
+
+extern const struct gf100_grctx_func gp102_grctx;
+void gp102_grctx_generate_attrib(struct gf100_grctx *);
+
+extern const struct gf100_grctx_func gp107_grctx;
 
 /* context init value lists */
 

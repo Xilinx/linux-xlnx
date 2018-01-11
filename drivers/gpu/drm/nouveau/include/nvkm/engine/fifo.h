@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef __NVKM_FIFO_H__
 #define __NVKM_FIFO_H__
 #include <core/engine.h>
@@ -40,6 +41,7 @@ struct nvkm_fifo {
 
 	struct nvkm_event uevent; /* async user trigger */
 	struct nvkm_event cevent; /* channel creation event */
+	struct nvkm_event kevent; /* channel killed */
 };
 
 void nvkm_fifo_pause(struct nvkm_fifo *, unsigned long *);
@@ -67,4 +69,5 @@ int gm107_fifo_new(struct nvkm_device *, int, struct nvkm_fifo **);
 int gm200_fifo_new(struct nvkm_device *, int, struct nvkm_fifo **);
 int gm20b_fifo_new(struct nvkm_device *, int, struct nvkm_fifo **);
 int gp100_fifo_new(struct nvkm_device *, int, struct nvkm_fifo **);
+int gp10b_fifo_new(struct nvkm_device *, int, struct nvkm_fifo **);
 #endif

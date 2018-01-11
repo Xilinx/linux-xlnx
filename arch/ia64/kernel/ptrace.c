@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Kernel support for the ptrace() and syscall tracing interfaces.
  *
@@ -11,6 +12,8 @@
  */
 #include <linux/kernel.h>
 #include <linux/sched.h>
+#include <linux/sched/task.h>
+#include <linux/sched/task_stack.h>
 #include <linux/mm.h>
 #include <linux/errno.h>
 #include <linux/ptrace.h>
@@ -26,7 +29,7 @@
 #include <asm/processor.h>
 #include <asm/ptrace_offsets.h>
 #include <asm/rse.h>
-#include <asm/uaccess.h>
+#include <linux/uaccess.h>
 #include <asm/unwind.h>
 #ifdef CONFIG_PERFMON
 #include <asm/perfmon.h>
@@ -1159,7 +1162,7 @@ arch_ptrace (struct task_struct *child, long request,
 	case PTRACE_PEEKTEXT:
 	case PTRACE_PEEKDATA:
 		/* read word at location addr */
-		if (access_process_vm(child, addr, &data, sizeof(data),
+		if (ptrace_access_vm(child, addr, &data, sizeof(data),
 				FOLL_FORCE)
 		    != sizeof(data))
 			return -EIO;

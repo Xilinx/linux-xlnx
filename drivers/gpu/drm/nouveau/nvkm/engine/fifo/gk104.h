@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef __GK104_FIFO_H__
 #define __GK104_FIFO_H__
 #define gk104_fifo(p) container_of((p), struct gk104_fifo, base)
@@ -83,4 +84,5 @@ extern const struct nvkm_enum gk104_fifo_fault_hubclient[];
 extern const struct nvkm_enum gk104_fifo_fault_gpcclient[];
 
 extern const struct nvkm_enum gm107_fifo_fault_engine[];
+extern const struct nvkm_enum gp100_fifo_fault_engine[];
 #endif

@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Macros and functions to manipulate Meta page tables.
  */
@@ -6,6 +7,7 @@
 #define _METAG_PGTABLE_H
 
 #include <asm/pgtable-bits.h>
+#define __ARCH_USE_5LEVEL_HACK
 #include <asm-generic/pgtable-nopmd.h>
 
 /* Invalid regions on Meta: 0x00000000-0x001FFFFF and 0xFFFF0000-0xFFFFFFFF */

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * ARM Ltd. Versatile Express
  *
@@ -190,7 +191,7 @@
 		};
 	};
 
-	smb@08000000 {
+	smb@8000000 {
 		compatible = "simple-bus";
 
 		#address-cells = <2>;

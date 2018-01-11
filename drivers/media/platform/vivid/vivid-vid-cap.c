@@ -513,6 +513,13 @@ static unsigned vivid_ycbcr_enc_cap(struct vivid_dev *dev)
 	return dev->ycbcr_enc_out;
 }
 
+static unsigned int vivid_hsv_enc_cap(struct vivid_dev *dev)
+{
+	if (!dev->loop_video || vivid_is_webcam(dev) || vivid_is_tv_cap(dev))
+		return tpg_g_hsv_enc(&dev->tpg);
+	return dev->hsv_enc_out;
+}
+
 static unsigned vivid_quantization_cap(struct vivid_dev *dev)
 {
 	if (!dev->loop_video || vivid_is_webcam(dev) || vivid_is_tv_cap(dev))
@@ -533,7 +540,10 @@ int vivid_g_fmt_vid_cap(struct file *file, void *priv,
 	mp->pixelformat  = dev->fmt_cap->fourcc;
 	mp->colorspace   = vivid_colorspace_cap(dev);
 	mp->xfer_func    = vivid_xfer_func_cap(dev);
-	mp->ycbcr_enc    = vivid_ycbcr_enc_cap(dev);
+	if (dev->fmt_cap->color_enc == TGP_COLOR_ENC_HSV)
+		mp->hsv_enc    = vivid_hsv_enc_cap(dev);
+	else
+		mp->ycbcr_enc    = vivid_ycbcr_enc_cap(dev);
 	mp->quantization = vivid_quantization_cap(dev);
 	mp->num_planes = dev->fmt_cap->buffers;
 	for (p = 0; p < mp->num_planes; p++) {
@@ -606,7 +616,7 @@ int vivid_try_fmt_vid_cap(struct file *file, void *priv,
 	/* This driver supports custom bytesperline values */
 
 	mp->num_planes = fmt->buffers;
-	for (p = 0; p < mp->num_planes; p++) {
+	for (p = 0; p < fmt->buffers; p++) {
 		/* Calculate the minimum supported bytesperline value */
 		bytesperline = (mp->width * fmt->bit_depth[p]) >> 3;
 		/* Calculate the maximum supported bytesperline value */
@@ -616,12 +626,22 @@ int vivid_try_fmt_vid_cap(struct file *file, void *priv,
 			pfmt[p].bytesperline = max_bpl;
 		if (pfmt[p].bytesperline < bytesperline)
 			pfmt[p].bytesperline = bytesperline;
-		pfmt[p].sizeimage = tpg_calc_line_width(&dev->tpg, p, pfmt[p].bytesperline) *
-			mp->height + fmt->data_offset[p];
+
+		pfmt[p].sizeimage = (pfmt[p].bytesperline * mp->height) /
+				fmt->vdownsampling[p] + fmt->data_offset[p];
+
 		memset(pfmt[p].reserved, 0, sizeof(pfmt[p].reserved));
 	}
+	for (p = fmt->buffers; p < fmt->planes; p++)
+		pfmt[0].sizeimage += (pfmt[0].bytesperline * mp->height *
+			(fmt->bit_depth[p] / fmt->vdownsampling[p])) /
+			(fmt->bit_depth[0] / fmt->vdownsampling[0]);
+
 	mp->colorspace = vivid_colorspace_cap(dev);
-	mp->ycbcr_enc = vivid_ycbcr_enc_cap(dev);
+	if (fmt->color_enc == TGP_COLOR_ENC_HSV)
+		mp->hsv_enc = vivid_hsv_enc_cap(dev);
+	else
+		mp->ycbcr_enc = vivid_ycbcr_enc_cap(dev);
 	mp->xfer_func = vivid_xfer_func_cap(dev);
 	mp->quantization = vivid_quantization_cap(dev);
 	memset(mp->reserved, 0, sizeof(mp->reserved));

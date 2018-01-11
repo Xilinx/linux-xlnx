@@ -1,9 +1,12 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef _ASM_SCORE_MMU_CONTEXT_H
 #define _ASM_SCORE_MMU_CONTEXT_H
 
 #include <linux/errno.h>
 #include <linux/sched.h>
+#include <linux/mm_types.h>
 #include <linux/slab.h>
+
 #include <asm-generic/mm_hooks.h>
 
 #include <asm/cacheflush.h>

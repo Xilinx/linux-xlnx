@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef __OF_IOMMU_H
 #define __OF_IOMMU_H
 
@@ -30,9 +31,6 @@ static inline const struct iommu_ops *of_iommu_configure(struct device *dev,
 }
 
 #endif	/* CONFIG_OF_IOMMU */
-
-void of_iommu_set_ops(struct device_node *np, const struct iommu_ops *ops);
-const struct iommu_ops *of_iommu_get_ops(struct device_node *np);
 
 extern struct of_device_id __iommu_of_table;
 

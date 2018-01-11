@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  *	linux/arch/alpha/kernel/srmcons.c
  *
@@ -18,7 +19,7 @@
 #include <linux/tty_flip.h>
 
 #include <asm/console.h>
-#include <asm/uaccess.h>
+#include <linux/uaccess.h>
 
 
 static DEFINE_SPINLOCK(srmcons_callback_lock);

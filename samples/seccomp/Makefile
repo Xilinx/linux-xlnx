@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0
 # kbuild trick to avoid linker error. Can be omitted if a module is built.
 obj- := dummy.o
 
@@ -36,13 +37,13 @@ HOSTLOADLIBES_bpf-direct += $(MFLAG)
 HOSTLOADLIBES_bpf-fancy += $(MFLAG)
 HOSTLOADLIBES_dropper += $(MFLAG)
 endif
-always := $(hostprogs-y)
+always := $(hostprogs-m)
 else
 # MIPS system calls are defined based on the -mabi that is passed
 # to the toolchain which may or may not be a valid option
 # for the host toolchain. So disable tests if target architecture
 # is MIPS but the host isn't.
 ifndef CONFIG_MIPS
-always := $(hostprogs-y)
+always := $(hostprogs-m)
 endif
 endif

@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef _NF_TABLES_IPV6_H_
 #define _NF_TABLES_IPV6_H_
 
@@ -9,12 +10,13 @@ nft_set_pktinfo_ipv6(struct nft_pktinfo *pkt,
 		     struct sk_buff *skb,
 		     const struct nf_hook_state *state)
 {
+	unsigned int flags = IP6_FH_F_AUTH;
 	int protohdr, thoff = 0;
 	unsigned short frag_off;
 
 	nft_set_pktinfo(pkt, skb, state);
 
-	protohdr = ipv6_find_hdr(pkt->skb, &thoff, -1, &frag_off, NULL);
+	protohdr = ipv6_find_hdr(pkt->skb, &thoff, -1, &frag_off, &flags);
 	if (protohdr < 0) {
 		nft_set_pktinfo_proto_unspec(pkt, skb);
 		return;
@@ -32,6 +34,7 @@ __nft_set_pktinfo_ipv6_validate(struct nft_pktinfo *pkt,
 				const struct nf_hook_state *state)
 {
 #if IS_ENABLED(CONFIG_IPV6)
+	unsigned int flags = IP6_FH_F_AUTH;
 	struct ipv6hdr *ip6h, _ip6h;
 	unsigned int thoff = 0;
 	unsigned short frag_off;
@@ -50,7 +53,7 @@ __nft_set_pktinfo_ipv6_validate(struct nft_pktinfo *pkt,
 	if (pkt_len + sizeof(*ip6h) > skb->len)
 		return -1;
 
-	protohdr = ipv6_find_hdr(pkt->skb, &thoff, -1, &frag_off, NULL);
+	protohdr = ipv6_find_hdr(pkt->skb, &thoff, -1, &frag_off, &flags);
 	if (protohdr < 0)
 		return -1;
 

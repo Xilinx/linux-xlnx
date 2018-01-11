@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef __NVKM_MM_H__
 #define __NVKM_MM_H__
 #include <core/os.h>
@@ -5,7 +6,7 @@
 struct nvkm_mm_node {
 	struct list_head nl_entry;
 	struct list_head fl_entry;
-	struct list_head rl_entry;
+	struct nvkm_mm_node *next;
 
 #define NVKM_MM_HEAP_ANY 0x00
 	u8  heap;
@@ -38,4 +39,10 @@ int  nvkm_mm_tail(struct nvkm_mm *, u8 heap, u8 type, u32 size_max,
 		  u32 size_min, u32 align, struct nvkm_mm_node **);
 void nvkm_mm_free(struct nvkm_mm *, struct nvkm_mm_node **);
 void nvkm_mm_dump(struct nvkm_mm *, const char *);
+
+static inline bool
+nvkm_mm_contiguous(struct nvkm_mm_node *node)
+{
+	return !node->next;
+}
 #endif

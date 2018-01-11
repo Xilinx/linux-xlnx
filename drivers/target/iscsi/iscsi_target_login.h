@@ -1,5 +1,13 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef ISCSI_TARGET_LOGIN_H
 #define ISCSI_TARGET_LOGIN_H
+
+#include <linux/types.h>
+
+struct iscsi_conn;
+struct iscsi_login;
+struct iscsi_np;
+struct sockaddr_storage;
 
 extern int iscsi_login_setup_crypto(struct iscsi_conn *);
 extern int iscsi_check_for_session_reinstatement(struct iscsi_conn *);

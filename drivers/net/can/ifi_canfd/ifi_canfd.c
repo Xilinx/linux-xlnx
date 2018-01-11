@@ -557,7 +557,7 @@ static int ifi_canfd_poll(struct napi_struct *napi, int quota)
 	int work_done = 0;
 
 	u32 stcmd = readl(priv->base + IFI_CANFD_STCMD);
-	u32 rxstcmd = readl(priv->base + IFI_CANFD_STCMD);
+	u32 rxstcmd = readl(priv->base + IFI_CANFD_RXSTCMD);
 	u32 errctr = readl(priv->base + IFI_CANFD_ERROR_CTR);
 
 	/* Handle bus state changes */
@@ -578,7 +578,7 @@ static int ifi_canfd_poll(struct napi_struct *napi, int quota)
 		work_done += ifi_canfd_do_rx_poll(ndev, quota - work_done);
 
 	if (work_done < quota) {
-		napi_complete(napi);
+		napi_complete_done(napi, work_done);
 		ifi_canfd_irq_enable(ndev, 1);
 	}
 
@@ -670,9 +670,9 @@ static void ifi_canfd_set_bittiming(struct net_device *ndev)
 	       priv->base + IFI_CANFD_FTIME);
 
 	/* Configure transmitter delay */
-	tdc = (dbt->brp * (dbt->phase_seg1 + 1)) & IFI_CANFD_TDELAY_MASK;
-	writel(IFI_CANFD_TDELAY_EN | IFI_CANFD_TDELAY_ABS | tdc,
-	       priv->base + IFI_CANFD_TDELAY);
+	tdc = dbt->brp * (dbt->prop_seg + dbt->phase_seg1);
+	tdc &= IFI_CANFD_TDELAY_MASK;
+	writel(IFI_CANFD_TDELAY_EN | tdc, priv->base + IFI_CANFD_TDELAY);
 }
 
 static void ifi_canfd_set_filter(struct net_device *ndev, const u32 id,

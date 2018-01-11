@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*!***************************************************************************
 *!
 *! FILE NAME  : ds1302.c
@@ -17,7 +18,6 @@
 #include <linux/init.h>
 #include <linux/mm.h>
 #include <linux/module.h>
-#include <linux/miscdevice.h>
 #include <linux/delay.h>
 #include <linux/bcd.h>
 #include <linux/mutex.h>

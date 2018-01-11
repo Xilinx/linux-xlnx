@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * SCLP VT220 terminal driver.
  *
@@ -26,7 +27,7 @@
 #include <linux/reboot.h>
 #include <linux/slab.h>
 
-#include <asm/uaccess.h>
+#include <linux/uaccess.h>
 #include "sclp.h"
 #include "ctrlchar.h"
 

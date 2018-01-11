@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 #define _GNU_SOURCE
 #include "main.h"
 #include <stdlib.h>
@@ -97,6 +98,9 @@ void alloc_ring(void)
 {
 	int ret = ptr_ring_init(&array, ring_size, 0);
 	assert(!ret);
+	/* Hacky way to poke at ring internals. Useful for testing though. */
+	if (param)
+		array.batch = param;
 }
 
 /* guest side */

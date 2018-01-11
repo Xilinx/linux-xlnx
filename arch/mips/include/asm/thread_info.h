@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /* thread_info.h: MIPS low-level thread information
  *
  * Copyright (C) 2002  David Howells (dhowells@redhat.com)
@@ -27,7 +28,6 @@ struct thread_info {
 	unsigned long		tp_value;	/* thread pointer */
 	__u32			cpu;		/* current CPU */
 	int			preempt_count;	/* 0 => preemptable, <0 => BUG */
-	int			r2_emul_return; /* 1 => Returning from R2 emulator */
 	mm_segment_t		addr_limit;	/*
 						 * thread address space limit:
 						 * 0x7fffffff for user-thead

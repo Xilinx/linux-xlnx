@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
 #ifndef _LINUX_ELF_EM_H
 #define _LINUX_ELF_EM_H
 
@@ -42,7 +43,6 @@
 #define EM_TILEGX	191	/* Tilera TILE-Gx */
 #define EM_BPF		247	/* Linux BPF - in-kernel virtual machine */
 #define EM_FRV		0x5441	/* Fujitsu FR-V */
-#define EM_AVR32	0x18ad	/* Atmel AVR32 */
 
 /*
  * This is an interim value that we will use until the committee comes

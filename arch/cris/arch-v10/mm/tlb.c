@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  *  linux/arch/cris/arch-v10/mm/tlb.c
  *
@@ -9,6 +10,8 @@
  *  Authors:   Bjorn Wesen (bjornw@axis.com)
  *
  */
+
+#include <linux/mm_types.h>
 
 #include <asm/tlb.h>
 #include <asm/mmu_context.h>

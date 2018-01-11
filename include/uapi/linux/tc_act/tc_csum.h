@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
 #ifndef __LINUX_TC_CSUM_H
 #define __LINUX_TC_CSUM_H
 
@@ -21,7 +22,8 @@ enum {
 	TCA_CSUM_UPDATE_FLAG_IGMP    = 4,
 	TCA_CSUM_UPDATE_FLAG_TCP     = 8,
 	TCA_CSUM_UPDATE_FLAG_UDP     = 16,
-	TCA_CSUM_UPDATE_FLAG_UDPLITE = 32
+	TCA_CSUM_UPDATE_FLAG_UDPLITE = 32,
+	TCA_CSUM_UPDATE_FLAG_SCTP    = 64,
 };
 
 struct tc_csum {

@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef _NET_IP6_TUNNEL_H
 #define _NET_IP6_TUNNEL_H
 
@@ -33,6 +34,8 @@ struct __ip6_tnl_parm {
 	__be16			o_flags;
 	__be32			i_key;
 	__be32			o_key;
+
+	__u32			fwmark;
 };
 
 /* IPv6 tunnel */

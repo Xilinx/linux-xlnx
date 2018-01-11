@@ -26,7 +26,7 @@
 #include <linux/of.h>
 #include <linux/of_platform.h>
 
-#include "edac_core.h"
+#include "edac_module.h"
 
 #define ZYNQMP_OCM_EDAC_MSG_SIZE	256
 

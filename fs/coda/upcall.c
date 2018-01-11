@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Mostly platform independent upcall operations to Venus:
  *  -- upcalls
@@ -15,7 +16,7 @@
  */
 
 #include <linux/signal.h>
-#include <linux/sched.h>
+#include <linux/sched/signal.h>
 #include <linux/types.h>
 #include <linux/kernel.h>
 #include <linux/mm.h>

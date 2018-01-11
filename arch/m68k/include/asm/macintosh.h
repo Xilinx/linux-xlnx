@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef __ASM_MACINTOSH_H
 #define __ASM_MACINTOSH_H
 
@@ -38,7 +39,7 @@ struct mac_model
 
 #define MAC_ADB_NONE		0
 #define MAC_ADB_II		1
-#define MAC_ADB_IISI		2
+#define MAC_ADB_EGRET		2
 #define MAC_ADB_CUDA		3
 #define MAC_ADB_PB1		4
 #define MAC_ADB_PB2		5

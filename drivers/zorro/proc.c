@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  *	Procfs interface for the Zorro bus.
  *
@@ -16,7 +17,7 @@
 #include <linux/export.h>
 
 #include <asm/byteorder.h>
-#include <asm/uaccess.h>
+#include <linux/uaccess.h>
 #include <asm/amigahw.h>
 #include <asm/setup.h>
 

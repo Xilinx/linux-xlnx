@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef R819XUSB_CMDPKT_H
 #define R819XUSB_CMDPKT_H
 /* Different command packet have dedicated message length and definition. */
@@ -55,7 +56,8 @@ typedef struct tag_cmd_pkt_tx_feedback {
 } cmpk_txfb_t;
 
 /* 2. RX side: Interrupt status packet. It includes Beacon State,
- * Beacon Timer Interrupt and other useful informations in MAC ISR Reg. */
+ * Beacon Timer Interrupt and other useful informations in MAC ISR Reg.
+ */
 typedef struct tag_cmd_pkt_interrupt_status {
 	u8	element_id;			/* Command packet type. */
 	u8	length;				/* Command packet length. */
@@ -83,13 +85,15 @@ typedef struct tag_cmd_pkt_set_configuration {
 } cmpk_set_cfg_t;
 
 /* 4. Both side : TX/RX query configuraton packet. The query structure is the
-      same as set configuration. */
+ *    same as set configuration.
+ */
 #define		cmpk_query_cfg_t	cmpk_set_cfg_t
 
 /* 5. Multi packet feedback status. */
 typedef struct tag_tx_stats_feedback {
 	/* For endian transfer --> Driver will not the same as
-	   firmware structure. */
+	 *  firmware structure.
+	 */
 	/* DW 0 */
 	u16	reserve1;
 	u8	length;				/* Command packet length */

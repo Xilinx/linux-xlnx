@@ -101,7 +101,7 @@ xilinx_drm_fb_alloc(struct drm_device *drm,
 	if (!fb)
 		return ERR_PTR(-ENOMEM);
 
-	drm_helper_mode_fill_fb_struct(&fb->base, mode_cmd);
+	drm_helper_mode_fill_fb_struct(drm, &fb->base, mode_cmd);
 
 	for (i = 0; i < num_planes; i++)
 		fb->obj[i] = obj[i];
@@ -278,7 +278,8 @@ static int xilinx_drm_fbdev_create(struct drm_fb_helper *fb_helper,
 		goto err_xilinx_drm_fb_destroy;
 	}
 
-	drm_fb_helper_fill_fix(fbi, base_fb->pitches[0], base_fb->depth);
+	drm_fb_helper_fill_fix(fbi, base_fb->pitches[0],
+			       base_fb->format->depth);
 	drm_fb_helper_fill_var(fbi, fb_helper, base_fb->width, base_fb->height);
 	fbi->var.yres = base_fb->height / fbdev->vres_mult;
 
@@ -322,8 +323,8 @@ static struct drm_fb_helper_funcs xilinx_drm_fb_helper_funcs = {
  */
 struct drm_fb_helper *
 xilinx_drm_fb_init(struct drm_device *drm, int preferred_bpp,
-		   unsigned int num_crtc, unsigned int max_conn_count,
-		   unsigned int align, unsigned int vres_mult)
+		   unsigned int max_conn_count, unsigned int align,
+		   unsigned int vres_mult)
 {
 	struct xilinx_drm_fbdev *fbdev;
 	struct drm_fb_helper *fb_helper;
@@ -341,7 +342,7 @@ xilinx_drm_fb_init(struct drm_device *drm, int preferred_bpp,
 	fb_helper = &fbdev->fb_helper;
 	drm_fb_helper_prepare(drm, fb_helper, &xilinx_drm_fb_helper_funcs);
 
-	ret = drm_fb_helper_init(drm, fb_helper, num_crtc, max_conn_count);
+	ret = drm_fb_helper_init(drm, fb_helper, max_conn_count);
 	if (ret < 0) {
 		DRM_ERROR("Failed to initialize drm fb helper.\n");
 		goto err_free;
@@ -443,13 +444,23 @@ xilinx_drm_fb_create(struct drm_device *drm, struct drm_file *file_priv,
 	struct xilinx_drm_fb *fb;
 	struct drm_gem_cma_object *objs[4];
 	struct drm_gem_object *obj;
+	const struct drm_format_info *info;
+	struct drm_format_name_buf format_name;
 	unsigned int hsub;
 	unsigned int vsub;
 	int ret;
 	int i;
 
-	hsub = drm_format_horz_chroma_subsampling(mode_cmd->pixel_format);
-	vsub = drm_format_vert_chroma_subsampling(mode_cmd->pixel_format);
+	info = drm_format_info(mode_cmd->pixel_format);
+	if (!info) {
+		DRM_ERROR("Unsupported framebuffer format %s\n",
+			  drm_get_format_name(mode_cmd->pixel_format,
+					      &format_name));
+		return ERR_PTR(-EINVAL);
+	}
+
+	hsub = info->hsub;
+	vsub = info->vsub;
 
 	for (i = 0; i < drm_format_num_planes(mode_cmd->pixel_format); i++) {
 		unsigned int width = mode_cmd->width / (i ? hsub : 1);
@@ -465,8 +476,7 @@ xilinx_drm_fb_create(struct drm_device *drm, struct drm_file *file_priv,
 		}
 
 		min_size = (height - 1) * mode_cmd->pitches[i] + width *
-			   drm_format_plane_cpp(mode_cmd->pixel_format, i) +
-			   mode_cmd->offsets[i];
+			   info->cpp[i] + mode_cmd->offsets[i];
 
 		if (obj->size < min_size) {
 			drm_gem_object_unreference_unlocked(obj);
@@ -482,11 +492,7 @@ xilinx_drm_fb_create(struct drm_device *drm, struct drm_file *file_priv,
 		goto err_gem_object_unreference;
 	}
 
-	drm_fb_get_bpp_depth(mode_cmd->pixel_format, &fb->base.depth,
-			     &fb->base.bits_per_pixel);
-	if (!fb->base.bits_per_pixel)
-		fb->base.bits_per_pixel =
-			xilinx_drm_format_bpp(mode_cmd->pixel_format);
+	fb->base.format = info;
 
 	return &fb->base;
 

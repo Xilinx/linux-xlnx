@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef __SPARC64_PCI_H
 #define __SPARC64_PCI_H
 
@@ -42,12 +43,9 @@ static inline int pci_proc_domain(struct pci_bus *bus)
 /* Platform support for /proc/bus/pci/X/Y mmap()s. */
 
 #define HAVE_PCI_MMAP
+#define arch_can_pci_mmap_io()	1
 #define HAVE_ARCH_PCI_GET_UNMAPPED_AREA
 #define get_pci_unmapped_area get_fb_unmapped_area
-
-int pci_mmap_page_range(struct pci_dev *dev, struct vm_area_struct *vma,
-			enum pci_mmap_state mmap_state,
-			int write_combine);
 
 static inline int pci_get_legacy_ide_irq(struct pci_dev *dev, int channel)
 {

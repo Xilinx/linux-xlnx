@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef __ASM_COMPAT_SIGNAL_H
 #define __ASM_COMPAT_SIGNAL_H
 
@@ -8,7 +9,7 @@
 #include <asm/signal.h>
 #include <asm/siginfo.h>
 
-#include <asm/uaccess.h>
+#include <linux/uaccess.h>
 
 static inline int __copy_conv_sigset_to_user(compat_sigset_t __user *d,
 	const sigset_t *s)

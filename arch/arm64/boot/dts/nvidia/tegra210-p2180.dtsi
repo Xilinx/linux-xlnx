@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 #include <dt-bindings/mfd/max77620.h>
 
 #include "tegra210.dtsi"
@@ -19,6 +20,10 @@
 	memory {
 		device_type = "memory";
 		reg = <0x0 0x80000000 0x1 0x0>;
+	};
+
+	gpu@57000000 {
+		vdd-supply = <&vdd_gpu>;
 	};
 
 	/* debug port */
@@ -289,6 +294,20 @@
 			reg = <0>;
 			#clock-cells = <0>;
 			clock-frequency = <32768>;
+		};
+	};
+
+	regulators {
+		vdd_gpu: regulator@100 {
+			compatible = "pwm-regulator";
+			reg = <100>;
+			pwms = <&pwm 1 4880>;
+			regulator-name = "VDD_GPU";
+			regulator-min-microvolt = <710000>;
+			regulator-max-microvolt = <1320000>;
+			enable-gpios = <&pmic 6 GPIO_ACTIVE_HIGH>;
+			regulator-ramp-delay = <80>;
+			regulator-enable-ramp-delay = <1000>;
 		};
 	};
 };

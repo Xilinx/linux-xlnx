@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 #ifndef _ASM_X86_KASAN_H
 #define _ASM_X86_KASAN_H
 
@@ -11,9 +12,12 @@
  * 'kernel address space start' >> KASAN_SHADOW_SCALE_SHIFT
  */
 #define KASAN_SHADOW_START      (KASAN_SHADOW_OFFSET + \
-					(0xffff800000000000ULL >> 3))
-/* 47 bits for kernel address -> (47 - 3) bits for shadow */
-#define KASAN_SHADOW_END        (KASAN_SHADOW_START + (1ULL << (47 - 3)))
+					((-1UL << __VIRTUAL_MASK_SHIFT) >> 3))
+/*
+ * 47 bits for kernel address -> (47 - 3) bits for shadow
+ * 56 bits for kernel address -> (56 - 3) bits for shadow
+ */
+#define KASAN_SHADOW_END        (KASAN_SHADOW_START + (1ULL << (__VIRTUAL_MASK_SHIFT - 3)))
 
 #ifndef __ASSEMBLY__
 

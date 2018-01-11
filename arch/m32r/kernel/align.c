@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * align.c - address exception handler for M32R
  *
@@ -5,7 +6,7 @@
  */
 
 #include <asm/ptrace.h>
-#include <asm/uaccess.h>
+#include <linux/uaccess.h>
 
 static int get_reg(struct pt_regs *regs, int nr)
 {

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /* net/atm/svc.c - ATM SVC sockets */
 
 /* Written 1995-2000 by Werner Almesberger, EPFL LRC/ICA */
@@ -10,7 +11,7 @@
 #include <linux/kernel.h>	/* printk */
 #include <linux/skbuff.h>
 #include <linux/wait.h>
-#include <linux/sched.h>	/* jiffies and HZ */
+#include <linux/sched/signal.h>
 #include <linux/fcntl.h>	/* O_NONBLOCK */
 #include <linux/init.h>
 #include <linux/atm.h>		/* ATM stuff */
@@ -318,7 +319,8 @@ out:
 	return error;
 }
 
-static int svc_accept(struct socket *sock, struct socket *newsock, int flags)
+static int svc_accept(struct socket *sock, struct socket *newsock, int flags,
+		      bool kern)
 {
 	struct sock *sk = sock->sk;
 	struct sk_buff *skb;
@@ -329,7 +331,7 @@ static int svc_accept(struct socket *sock, struct socket *newsock, int flags)
 
 	lock_sock(sk);
 
-	error = svc_create(sock_net(sk), newsock, 0, 0);
+	error = svc_create(sock_net(sk), newsock, 0, kern);
 	if (error)
 		goto out;
 

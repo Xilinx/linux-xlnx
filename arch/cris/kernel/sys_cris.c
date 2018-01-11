@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /* $Id: sys_cris.c,v 1.6 2004/03/11 11:38:40 starvik Exp $
  *
  * linux/arch/cris/kernel/sys_cris.c
@@ -23,7 +24,7 @@
 #include <linux/file.h>
 #include <linux/ipc.h>
 
-#include <asm/uaccess.h>
+#include <linux/uaccess.h>
 #include <asm/segment.h>
 
 asmlinkage long

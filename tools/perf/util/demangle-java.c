@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 #include <sys/types.h>
 #include <stdio.h>
 #include <string.h>
@@ -6,6 +7,8 @@
 #include "symbol.h"
 
 #include "demangle-java.h"
+
+#include "sane_ctype.h"
 
 enum {
 	MODE_PREFIX = 0,

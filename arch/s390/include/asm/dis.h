@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Disassemble s390 instructions.
  *
@@ -39,6 +40,8 @@ static inline int insn_length(unsigned char code)
 {
 	return ((((int) code + 64) >> 7) + 1) << 1;
 }
+
+struct pt_regs;
 
 void show_code(struct pt_regs *regs);
 void print_fn_code(unsigned char *code, unsigned long len);

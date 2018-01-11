@@ -157,8 +157,8 @@ LABEL skip_ %I
 .endr
 
 	# Find min length
-	vmovdqa _lens+0*16(state), %xmm0
-	vmovdqa _lens+1*16(state), %xmm1
+	vmovdqu _lens+0*16(state), %xmm0
+	vmovdqu _lens+1*16(state), %xmm1
 
 	vpminud %xmm1, %xmm0, %xmm2     # xmm2 has {D,C,B,A}
 	vpalignr $8, %xmm2, %xmm3, %xmm3   # xmm3 has {x,x,D,C}
@@ -178,8 +178,8 @@ LABEL skip_ %I
 	vpsubd  %xmm2, %xmm0, %xmm0
 	vpsubd  %xmm2, %xmm1, %xmm1
 
-	vmovdqa %xmm0, _lens+0*16(state)
-	vmovdqa %xmm1, _lens+1*16(state)
+	vmovdqu %xmm0, _lens+0*16(state)
+	vmovdqu %xmm1, _lens+1*16(state)
 
 	# "state" and "args" are the same address, arg1
 	# len is arg2
@@ -235,8 +235,8 @@ ENTRY(sha1_mb_mgr_get_comp_job_avx2)
 	jc      .return_null
 
 	# Find min length
-	vmovdqa _lens(state), %xmm0
-	vmovdqa _lens+1*16(state), %xmm1
+	vmovdqu _lens(state), %xmm0
+	vmovdqu _lens+1*16(state), %xmm1
 
 	vpminud %xmm1, %xmm0, %xmm2        # xmm2 has {D,C,B,A}
 	vpalignr $8, %xmm2, %xmm3, %xmm3   # xmm3 has {x,x,D,C}
@@ -281,11 +281,13 @@ ENTRY(sha1_mb_mgr_get_comp_job_avx2)
 	ret
 ENDPROC(sha1_mb_mgr_get_comp_job_avx2)
 
-.data
-
+.section	.rodata.cst16.clear_low_nibble, "aM", @progbits, 16
 .align 16
 clear_low_nibble:
 .octa	0x000000000000000000000000FFFFFFF0
+
+.section	.rodata.cst8, "aM", @progbits, 8
+.align 8
 one:
 .quad  1
 two:

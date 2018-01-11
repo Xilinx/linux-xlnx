@@ -39,13 +39,13 @@
 #include <linux/gpio/consumer.h>
 #include <linux/i2c.h>
 #include <linux/i2c-mux.h>
-#include <linux/i2c/pca954x.h>
 #include <linux/interrupt.h>
 #include <linux/irq.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
 #include <linux/of_irq.h>
+#include <linux/platform_data/pca954x.h>
 #include <linux/pm.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
@@ -413,13 +413,8 @@ static int pca954x_probe(struct i2c_client *client,
 				   idle_disconnect_dt) << num;
 
 		ret = i2c_mux_add_adapter(muxc, force, num, class);
-
-		if (ret) {
-			dev_err(&client->dev,
-				"failed to register multiplexed adapter"
-				" %d as bus %d\n", num, force);
+		if (ret)
 			goto fail_del_adapters;
-		}
 	}
 
 	dev_info(&client->dev,

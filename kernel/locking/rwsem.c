@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /* kernel/rwsem.c: R/W semaphores, public implementation
  *
  * Written by David Howells (dhowells@redhat.com).
@@ -7,6 +8,7 @@
 #include <linux/types.h>
 #include <linux/kernel.h>
 #include <linux/sched.h>
+#include <linux/sched/debug.h>
 #include <linux/export.h>
 #include <linux/rwsem.h>
 #include <linux/atomic.h>
@@ -123,10 +125,8 @@ EXPORT_SYMBOL(up_write);
  */
 void downgrade_write(struct rw_semaphore *sem)
 {
-	/*
-	 * lockdep: a downgraded write will live on as a write
-	 * dependency.
-	 */
+	lock_downgrade(&sem->dep_map, _RET_IP_);
+
 	rwsem_set_reader_owned(sem);
 	__downgrade_write(sem);
 }

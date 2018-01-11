@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Architecture-specific unaligned trap handling.
  *
@@ -15,14 +16,16 @@
  */
 #include <linux/jiffies.h>
 #include <linux/kernel.h>
-#include <linux/sched.h>
+#include <linux/sched/signal.h>
 #include <linux/tty.h>
+#include <linux/extable.h>
 #include <linux/ratelimit.h>
+#include <linux/uaccess.h>
 
 #include <asm/intrinsics.h>
 #include <asm/processor.h>
 #include <asm/rse.h>
-#include <asm/uaccess.h>
+#include <asm/exception.h>
 #include <asm/unaligned.h>
 
 extern int die_if_kernel(char *str, struct pt_regs *regs, long err);

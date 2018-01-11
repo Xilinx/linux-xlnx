@@ -1,10 +1,13 @@
+// SPDX-License-Identifier: GPL-2.0
 #include "../evlist.h"
 #include "../cache.h"
 #include "../evsel.h"
 #include "../sort.h"
 #include "../hist.h"
 #include "../helpline.h"
+#include "../string2.h"
 #include "gtk.h"
+#include <signal.h>
 
 #define MAX_COLUMNS			32
 

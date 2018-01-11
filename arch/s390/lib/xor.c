@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Optimized xor_block operation for RAID4/5
  *
@@ -6,7 +7,7 @@
  */
 
 #include <linux/types.h>
-#include <linux/module.h>
+#include <linux/export.h>
 #include <linux/raid/xor.h>
 
 static void xor_xc_2(unsigned long bytes, unsigned long *p1, unsigned long *p2)
