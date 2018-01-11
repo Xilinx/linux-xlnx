@@ -294,9 +294,7 @@ static int dwc3_of_simple_probe(struct platform_device *pdev)
 	}
 
 	/* Set phy data for future use */
-	ret = dwc3_simple_set_phydata(simple);
-	if (ret)
-		return ret;
+	dwc3_simple_set_phydata(simple);
 
 	/*
 	 * Some controllers need to toggle the usb3-otg reset before trying to
@@ -444,6 +442,9 @@ int dwc3_set_usb_core_power(struct dwc3 *dwc, bool on)
 
 	/* Check if entering into D3 state is allowed during suspend */
 	if ((simple->soc_rev < ZYNQMP_SILICON_V4) || !simple->enable_d3_suspend)
+		return 0;
+
+	if (!simple->phy)
 		return 0;
 
 	if (on) {
