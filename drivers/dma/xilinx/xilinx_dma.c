@@ -2156,6 +2156,7 @@ static int xilinx_dma_terminate_all(struct dma_chan *dchan)
 		dma_ctrl_clr(chan, XILINX_DMA_REG_DMACR,
 			     XILINX_CDMA_CR_SGMODE);
 
+	chan->idle = true;
 	return 0;
 }
 
