@@ -434,11 +434,10 @@ static int xilinx_drm_platform_probe(struct platform_device *pdev)
 	struct drm_encoder *encoder;
 	struct drm_connector *connector;
 	const struct drm_format_info *info;
-	struct drm_format_name_buf format_name;
 	struct device_node *encoder_node, *ep = NULL, *remote;
 	struct component_match *match = NULL;
 	unsigned int align, i = 0;
-	int bpp, ret;
+	int ret;
 	u32 format;
 
 	drm = drm_dev_alloc(&xilinx_drm_driver, &pdev->dev);
@@ -518,25 +517,17 @@ static int xilinx_drm_platform_probe(struct platform_device *pdev)
 
 	format = xilinx_drm_crtc_get_format(private->crtc);
 	info = drm_format_info(format);
-	if (!info || !info->depth) {
-		DRM_ERROR("Unsupported framebuffer format %s\n",
-			  drm_get_format_name(format, &format_name));
-		return -EINVAL;
-	}
-
-	/* initialize xilinx framebuffer */
-	bpp = info->cpp[0] * 8;
-	if (bpp) {
+	if (info && info->depth && info->cpp[0]) {
 		align = xilinx_drm_crtc_get_align(private->crtc);
-		private->fb = xilinx_drm_fb_init(drm, bpp, 1, align,
-						 xilinx_drm_fbdev_vres);
+		private->fb = xilinx_drm_fb_init(drm, info->cpp[0] * 8, 1,
+						 align, xilinx_drm_fbdev_vres);
 		if (IS_ERR(private->fb)) {
 			DRM_ERROR("failed to initialize drm fb\n");
 			private->fb = NULL;
 		}
-	}
-	if (!private->fb)
+	} else {
 		dev_info(&pdev->dev, "fbdev is not initialized\n");
+	}
 
 	drm_kms_helper_poll_init(drm);
 
