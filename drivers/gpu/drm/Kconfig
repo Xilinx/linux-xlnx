@@ -346,6 +346,8 @@ source "drivers/gpu/drm/tiny/Kconfig"
 
 source "drivers/gpu/drm/pl111/Kconfig"
 
+source "drivers/gpu/drm/xlnx/Kconfig"
+
 source "drivers/gpu/drm/tve200/Kconfig"
 
 source "drivers/gpu/drm/xen/Kconfig"
