@@ -7819,6 +7819,14 @@ F:	Documentation/devicetree/bindings/display/xlnx/
 F:	Documentation/gpu/zynqmp.rst
 F:	drivers/gpu/drm/xlnx/
 
+DRM KMS DRIVER AND HELPERS FOR XILINX
+M:	Vishal Sagar <vishal.sagar@amd.com>
+S:	Maintained
+F:	drivers/gpu/drm/xlnx/xlnx_crtc*
+F:	drivers/gpu/drm/xlnx/xlnx_drv*
+F:	drivers/gpu/drm/xlnx/xlnx_fb*
+F:	drivers/gpu/drm/xlnx/xlnx_gem*
+
 DRM GPU SCHEDULER
 M:	Luben Tuikov <ltuikov89@gmail.com>
 M:	Matthew Brost <matthew.brost@intel.com>

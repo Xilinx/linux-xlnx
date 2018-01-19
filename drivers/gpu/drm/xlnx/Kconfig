@@ -25,3 +25,16 @@ config DRM_ZYNQMP_DPSUB_AUDIO
 	help
 	  Choose this option to enable DisplayPort audio support in the ZynqMP
 	  DisplayPort driver.
+
+config DRM_XLNX
+	tristate "Xilinx DRM KMS Driver"
+	depends on DRM && OF
+	select DRM_KMS_HELPER
+	select DRM_KMS_DMA_HELPER
+	select DRM_GEM_DMA_HELPER
+	help
+	  Xilinx DRM KMS driver. Choose this option if you have
+	  a Xilinx SoCs with hardened display pipeline or soft
+	  display pipeline using Xilinx IPs in FPGA. This module
+	  provides the kernel mode setting functionalities
+	  for Xilinx display drivers.
