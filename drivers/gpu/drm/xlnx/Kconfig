@@ -10,3 +10,14 @@ config DRM_XLNX
 	  display pipeline using Xilinx IPs in FPGA. This module
 	  provides the kernel mode setting functionalities
 	  for Xilinx display drivers.
+
+config DRM_ZYNQMP_DPSUB
+	tristate "ZynqMP DP Subsystem Driver"
+	depends on ARCH_ZYNQMP && OF && DRM_XLNX && COMMON_CLK
+	select DMA_ENGINE
+	select GENERIC_PHY
+	help
+	  DRM KMS driver for ZynqMP DP Subsystem controller. Choose
+	  this option if you have a Xilinx ZynqMP SoC with DisplayPort
+	  subsystem. The driver provides the kernel mode setting
+	  functionlaities for ZynqMP DP subsystem.
