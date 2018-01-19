@@ -1745,9 +1745,12 @@ static void xilinx_dpdma_chan_handle_err(struct xilinx_dpdma_chan *chan)
 	case ACTIVE:
 	case PREPARED:
 		/* Reschedule if there's no new descriptor */
-		if (!chan->submitted_desc)
+		if (!chan->pending_desc && !chan->submitted_desc) {
+			chan->active_desc->status = ERRORED;
 			chan->submitted_desc = chan->active_desc;
-		chan->active_desc->status = ERRORED;
+		} else {
+			xilinx_dpdma_chan_free_tx_desc(chan, chan->active_desc);
+		}
 		break;
 	}
 	chan->active_desc = NULL;
