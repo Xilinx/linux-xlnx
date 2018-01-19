@@ -1,0 +1,68 @@
+Xilinx Display Pipeline
+-----------------------
+
+Xilinx display pipeline can be designed with various types of multiple IPs:
+IPs hardened on chip, ob board IPs, and soft IPs in programmable logic.
+While each component would need its own node, this node represents
+a whole display pipeline as a single entity by integrating individual subdevice
+with glue logics.
+
+The following illustrates some examples of topology:
+
+A linear pipeline with multiple blocks:
+
+	SoC DMA -> SoC display controller -> SoC display enc
+or,
+	FPGA DMA -> FPGA display controller -> FPGA display enc
+
+A pipeline with branches:
+
+	SoC DMA -> SoC display controller -> SoC display enc
+		|
+	FPGA DMA->
+or,
+	SoC DMA -> SoC display controller -> SoC display enc
+					  |
+					  -> FPAG display enc
+
+or,
+
+			SoC DMA -> SoC display controller -> SoC display enc
+				|			  |
+	FPGA display controller ->			  -> FPGA display enc
+
+Required properties:
+
+- compatible: Must be "xlnx,display".
+
+- ports: phandles for ports of display controller subdevice.
+  In the display controller port nodes, topology for entire pipeline
+  should be described using the DT bindings defined in
+  Documentation/devicetree/bindings/graph.txt.
+
+Example:
+
+	xlnx_display {
+		compatible = "xlnx,display";
+		ports = <&display_controller_port>;
+	};
+
+	display_controller {
+		...
+		display_controller_port: port@0 {
+			display_controller_ep: endpoint {
+				remote-endpoint = <&dp_controller_ep>;
+			};
+		};
+		...
+	};
+
+	dp_controller {
+		...
+		dp_controller_port: port@0 {
+			dp_controller_ep: endpoint {
+				remote-endpoint = <&display_controller_ep>;
+			};
+		};
+		...
+	};
