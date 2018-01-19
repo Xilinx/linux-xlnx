@@ -5573,6 +5573,15 @@ F:	drivers/gpu/drm/etnaviv/
 F:	include/uapi/drm/etnaviv_drm.h
 F:	Documentation/devicetree/bindings/display/etnaviv/
 
+DRM DRIVERS FOR XILINX
+M:	Hyun Kwon <hyun.kwon@xilinx.com>
+M:	Laurent Pinchart <laurent.pinchart@ideasonboard.com>
+L:	dri-devel@lists.freedesktop.org
+S:	Maintained
+F:	drivers/gpu/drm/xlnx/
+F:	Documentation/devicetree/bindings/display/xlnx/
+T:	git git://anongit.freedesktop.org/drm/drm-misc
+
 DRM DRIVERS FOR ZTE ZX
 M:	Shawn Guo <shawnguo@kernel.org>
 L:	dri-devel@lists.freedesktop.org
