@@ -302,6 +302,8 @@ struct zynqmp_dp_config {
  * struct zynqmp_dp - Xilinx DisplayPort core
  * @encoder: the drm encoder structure
  * @connector: the drm connector structure
+ * @sync_prop: synchronous mode property
+ * @bpc_prop: bpc mode property
  * @dev: device structure
  * @dpsub: Display subsystem
  * @drm: DRM core
@@ -323,6 +325,8 @@ struct zynqmp_dp_config {
 struct zynqmp_dp {
 	struct drm_encoder encoder;
 	struct drm_connector connector;
+	struct drm_property *sync_prop;
+	struct drm_property *bpc_prop;
 	struct device *dev;
 	struct zynqmp_dpsub *dpsub;
 	struct drm_device *drm;
@@ -1116,6 +1120,37 @@ static void zynqmp_dp_update_misc(struct zynqmp_dp *dp)
 }
 
 /**
+ * zynqmp_dp_set_sync_mode - Set the sync mode bit in the software misc state
+ * @dp: DisplayPort IP core structure
+ * @mode: flag if the sync mode should be on or off
+ *
+ * Set the bit in software misc state. To apply to hardware,
+ * zynqmp_dp_update_misc() should be called.
+ */
+static void zynqmp_dp_set_sync_mode(struct zynqmp_dp *dp, bool mode)
+{
+	struct zynqmp_dp_config *config = &dp->config;
+
+	if (mode)
+		config->misc0 |= ZYNQMP_DP_TX_MAIN_STREAM_MISC0_SYNC;
+	else
+		config->misc0 &= ~ZYNQMP_DP_TX_MAIN_STREAM_MISC0_SYNC;
+}
+
+/**
+ * zynqmp_dp_get_sync_mode - Get the sync mode state
+ * @dp: DisplayPort IP core structure
+ *
+ * Return: true if the sync mode is on, or false
+ */
+static bool zynqmp_dp_get_sync_mode(struct zynqmp_dp *dp)
+{
+	struct zynqmp_dp_config *config = &dp->config;
+
+	return !!(config->misc0 & ZYNQMP_DP_TX_MAIN_STREAM_MISC0_SYNC);
+}
+
+/**
  * zynqmp_dp_set_bpc - Set bpc value in software misc state
  * @dp: DisplayPort IP core structure
  * @bpc: bits per component
@@ -1162,6 +1197,17 @@ static u8 zynqmp_dp_set_bpc(struct zynqmp_dp *dp, u8 bpc)
 	zynqmp_dp_update_bpp(dp);
 
 	return ret;
+}
+
+/**
+ * zynqmp_dp_get_bpc - Set bpc value from software state
+ * @dp: DisplayPort IP core structure
+ *
+ * Return: current bpc value
+ */
+static u8 zynqmp_dp_get_bpc(struct zynqmp_dp *dp)
+{
+	return dp->config.bpc;
 }
 
 /**
@@ -1368,6 +1414,51 @@ static void zynqmp_dp_connector_destroy(struct drm_connector *connector)
 	drm_connector_cleanup(connector);
 }
 
+static int
+zynqmp_dp_connector_atomic_set_property(struct drm_connector *connector,
+					struct drm_connector_state *state,
+					struct drm_property *property,
+					uint64_t val)
+{
+	struct zynqmp_dp *dp = connector_to_dp(connector);
+	int ret;
+
+	if (property == dp->sync_prop) {
+		zynqmp_dp_set_sync_mode(dp, val);
+	} else if (property == dp->bpc_prop) {
+		u8 bpc;
+
+		bpc = zynqmp_dp_set_bpc(dp, val);
+		if (bpc) {
+			drm_object_property_set_value(&connector->base,
+						      property, bpc);
+			ret = -EINVAL;
+		}
+	} else {
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int
+zynqmp_dp_connector_atomic_get_property(struct drm_connector *connector,
+					const struct drm_connector_state *state,
+					struct drm_property *property,
+					uint64_t *val)
+{
+	struct zynqmp_dp *dp = connector_to_dp(connector);
+
+	if (property == dp->sync_prop)
+		*val = zynqmp_dp_get_sync_mode(dp);
+	else if (property == dp->bpc_prop)
+		*val =  zynqmp_dp_get_bpc(dp);
+	else
+		return -EINVAL;
+
+	return 0;
+}
+
 static const struct drm_connector_funcs zynqmp_dp_connector_funcs = {
 	.detect			= zynqmp_dp_connector_detect,
 	.fill_modes		= drm_helper_probe_single_connector_modes,
@@ -1375,6 +1466,8 @@ static const struct drm_connector_funcs zynqmp_dp_connector_funcs = {
 	.atomic_duplicate_state	= drm_atomic_helper_connector_duplicate_state,
 	.atomic_destroy_state	= drm_atomic_helper_connector_destroy_state,
 	.reset			= drm_atomic_helper_connector_reset,
+	.atomic_set_property	= zynqmp_dp_connector_atomic_set_property,
+	.atomic_get_property	= zynqmp_dp_connector_atomic_get_property,
 };
 
 static struct drm_connector_helper_funcs zynqmp_dp_connector_helper_funcs = {
@@ -1520,6 +1613,13 @@ static void zynqmp_dp_hpd_work_func(struct work_struct *work)
 		drm_helper_hpd_irq_event(dp->drm);
 }
 
+static struct drm_prop_enum_list zynqmp_dp_bpc_enum[] = {
+	{ 6, "6BPC" },
+	{ 8, "8BPC" },
+	{ 10, "10BPC" },
+	{ 12, "12BPC" },
+};
+
 int zynqmp_dp_bind(struct device *dev, struct device *master, void *data)
 {
 	struct zynqmp_dpsub *dpsub = dev_get_drvdata(dev);
@@ -1556,21 +1656,31 @@ int zynqmp_dp_bind(struct device *dev, struct device *master, void *data)
 	connector->dpms = DRM_MODE_DPMS_OFF;
 
 	dp->drm = drm;
+	dp->sync_prop = drm_property_create_bool(drm, 0, "sync");
+	dp->bpc_prop = drm_property_create_enum(drm, 0, "bpc",
+						zynqmp_dp_bpc_enum,
+						ARRAY_SIZE(zynqmp_dp_bpc_enum));
+
 	dp->config.misc0 &= ~ZYNQMP_DP_TX_MAIN_STREAM_MISC0_SYNC;
+	drm_object_attach_property(&connector->base, dp->sync_prop, false);
 	ret = zynqmp_dp_set_bpc(dp, 8);
+	drm_object_attach_property(&connector->base, dp->bpc_prop,
+				   ret ? ret : 8);
 	zynqmp_dp_update_bpp(dp);
 
 	/* This enables interrupts, so should be called after DRM init */
 	ret = zynqmp_dp_init_aux(dp);
 	if (ret) {
 		dev_err(dp->dev, "failed to initialize DP aux");
-		goto error_connector;
+		goto error_prop;
 	}
 	INIT_DELAYED_WORK(&dp->hpd_work, zynqmp_dp_hpd_work_func);
 
 	return 0;
 
-error_connector:
+error_prop:
+	drm_property_destroy(dp->drm, dp->bpc_prop);
+	drm_property_destroy(dp->drm, dp->sync_prop);
 	zynqmp_dp_connector_destroy(&dp->connector);
 error_encoder:
 	drm_encoder_cleanup(&dp->encoder);
@@ -1585,6 +1695,8 @@ void zynqmp_dp_unbind(struct device *dev, struct device *master, void *data)
 	cancel_delayed_work_sync(&dp->hpd_work);
 	disable_irq(dp->irq);
 	zynqmp_dp_exit_aux(dp);
+	drm_property_destroy(dp->drm, dp->bpc_prop);
+	drm_property_destroy(dp->drm, dp->sync_prop);
 	zynqmp_dp_connector_destroy(&dp->connector);
 	drm_encoder_cleanup(&dp->encoder);
 }
