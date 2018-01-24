@@ -34,7 +34,7 @@ config DRM_ZYNQMP_DPSUB
 	tristate "ZynqMP DP Subsystem Driver"
 	depends on ARCH_ZYNQMP && OF && DRM_XLNX && COMMON_CLK
 	select DMA_ENGINE
-	select GENERIC_PHY
+	select PHY_XILINX_ZYNQMP
 	help
 	  DRM KMS driver for ZynqMP DP Subsystem controller. Choose
 	  this option if you have a Xilinx ZynqMP SoC with DisplayPort
