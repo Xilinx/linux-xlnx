@@ -35,7 +35,9 @@
 #include <linux/of_graph.h>
 #include <linux/platform_device.h>
 
+#include "xlnx_bridge.h"
 #include "xlnx_crtc.h"
+#include "xlnx_drv.h"
 #include "xlnx_fb.h"
 #include "xlnx_gem.h"
 
@@ -371,6 +373,7 @@ static int xlnx_compare_of(struct device *dev, void *data)
 
 static int xlnx_platform_probe(struct platform_device *pdev)
 {
+	xlnx_bridge_helper_init();
 	return xlnx_of_component_probe(&pdev->dev, xlnx_compare_of,
 				       &xlnx_master_ops);
 }
@@ -378,6 +381,7 @@ static int xlnx_platform_probe(struct platform_device *pdev)
 static int xlnx_platform_remove(struct platform_device *pdev)
 {
 	component_master_del(&pdev->dev, &xlnx_master_ops);
+	xlnx_bridge_helper_fini();
 	return 0;
 }
 
