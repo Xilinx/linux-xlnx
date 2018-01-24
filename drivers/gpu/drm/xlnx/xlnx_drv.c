@@ -35,7 +35,9 @@
 #include <linux/of_graph.h>
 #include <linux/platform_device.h>
 
+#include "xlnx_bridge.h"
 #include "xlnx_crtc.h"
+#include "xlnx_drv.h"
 #include "xlnx_fb.h"
 #include "xlnx_gem.h"
 
@@ -506,6 +508,7 @@ EXPORT_SYMBOL_GPL(xlnx_drm_pipeline_exit);
 
 static int __init xlnx_drm_drv_init(void)
 {
+	xlnx_bridge_helper_init();
 	platform_driver_register(&xlnx_driver);
 	return 0;
 }
@@ -513,6 +516,7 @@ static int __init xlnx_drm_drv_init(void)
 static void __exit xlnx_drm_drv_exit(void)
 {
 	platform_driver_unregister(&xlnx_driver);
+	xlnx_bridge_helper_fini();
 }
 
 module_init(xlnx_drm_drv_init);
