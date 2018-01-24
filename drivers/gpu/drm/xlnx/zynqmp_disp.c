@@ -41,6 +41,7 @@
 #include <linux/spinlock.h>
 #include <linux/uaccess.h>
 
+#include "xlnx_bridge.h"
 #include "xlnx_crtc.h"
 #include "xlnx_fb.h"
 #include "zynqmp_disp.h"
@@ -342,6 +343,7 @@ struct zynqmp_disp_layer_dma {
 /**
  * struct zynqmp_disp_layer - Display subsystem layer
  * @plane: DRM plane
+ * @bridge: Xlnx bridge
  * @of_node: device node
  * @dma: struct for DMA engine
  * @num_chan: Number of DMA channel
@@ -361,6 +363,7 @@ struct zynqmp_disp_layer_dma {
  */
 struct zynqmp_disp_layer {
 	struct drm_plane plane;
+	struct xlnx_bridge bridge;
 	struct device_node *of_node;
 	struct zynqmp_disp_layer_dma dma[ZYNQMP_DISP_MAX_NUM_SUB_PLANES];
 	unsigned int num_chan;
@@ -1191,6 +1194,29 @@ zynqmp_disp_av_buf_get_fmt(struct zynqmp_disp_av_buf *av_buf)
 }
 
 /**
+ * zynqmp_disp_av_buf_set_live_fmt - Set the live_input format
+ * @av_buf: av buffer manager
+ * @fmt: format
+ * @is_vid: if it's for video layer
+ *
+ * Set the live input format to @fmt. @fmt should have valid values.
+ * @vid will determine if it's for video layer or graphics layer
+ * @fmt should be a valid hardware value.
+ */
+static void zynqmp_disp_av_buf_set_live_fmt(struct zynqmp_disp_av_buf *av_buf,
+					    u32 fmt, bool is_vid)
+{
+	u32 offset;
+
+	if (is_vid)
+		offset = ZYNQMP_DISP_AV_BUF_LIVE_VID_CONFIG;
+	else
+		offset = ZYNQMP_DISP_AV_BUF_LIVE_GFX_CONFIG;
+
+	zynqmp_disp_write(av_buf->base, offset, fmt);
+}
+
+/**
  * zynqmp_disp_av_buf_set_vid_clock_src - Set the video clock source
  * @av_buf: av buffer manager
  * @from_ps: flag if the video clock is from ps
@@ -1212,6 +1238,20 @@ zynqmp_disp_av_buf_set_vid_clock_src(struct zynqmp_disp_av_buf *av_buf,
 }
 
 /**
+ * zynqmp_disp_av_buf_vid_clock_src_is_ps - if ps clock is used
+ * @av_buf: av buffer manager
+ *
+ * Return: if ps clock is used
+ */
+static bool
+zynqmp_disp_av_buf_vid_clock_src_is_ps(struct zynqmp_disp_av_buf *av_buf)
+{
+	u32 reg = zynqmp_disp_read(av_buf->base, ZYNQMP_DISP_AV_BUF_CLK_SRC);
+
+	return !!(reg & ZYNQMP_DISP_AV_BUF_CLK_SRC_VID_FROM_PS);
+}
+
+/**
  * zynqmp_disp_av_buf_set_vid_timing_src - Set the video timing source
  * @av_buf: av buffer manager
  * @internal: flag if the video timing is generated internally
@@ -1230,6 +1270,20 @@ zynqmp_disp_av_buf_set_vid_timing_src(struct zynqmp_disp_av_buf *av_buf,
 	else
 		reg &= ~ZYNQMP_DISP_AV_BUF_CLK_SRC_VID_INTERNAL_TIMING;
 	zynqmp_disp_write(av_buf->base, ZYNQMP_DISP_AV_BUF_CLK_SRC, reg);
+}
+
+/**
+ * zynqmp_disp_av_buf_vid_timing_src_is_int - if internal timing is used
+ * @av_buf: av buffer manager
+ *
+ * Return: if the internal timing is used
+ */
+static bool
+zynqmp_disp_av_buf_vid_timing_src_is_int(struct zynqmp_disp_av_buf *av_buf)
+{
+	u32 reg = zynqmp_disp_read(av_buf->base, ZYNQMP_DISP_AV_BUF_CLK_SRC);
+
+	return !!(reg & ZYNQMP_DISP_AV_BUF_CLK_SRC_VID_INTERNAL_TIMING);
 }
 
 /**
@@ -1467,6 +1521,31 @@ static void zynqmp_disp_av_buf_init_sf(struct zynqmp_disp_av_buf *av_buf,
 	}
 }
 
+/**
+ * zynqmp_disp_av_buf_init_live_sf - Initialize scaling factors for live source
+ * @av_buf: av buffer manager
+ * @fmt: format descriptor
+ * @is_vid: flag if this is for video layer
+ *
+ * Initialize scaling factors for live source.
+ */
+static void zynqmp_disp_av_buf_init_live_sf(struct zynqmp_disp_av_buf *av_buf,
+					    const struct zynqmp_disp_fmt *fmt,
+					    bool is_vid)
+{
+	unsigned int i;
+	u32 offset;
+
+	if (is_vid)
+		offset = ZYNQMP_DISP_AV_BUF_LIVE_VID_COMP0_SF;
+	else
+		offset = ZYNQMP_DISP_AV_BUF_LIVE_GFX_COMP0_SF;
+
+	for (i = 0; i < ZYNQMP_DISP_AV_BUF_NUM_SF; i++)
+		zynqmp_disp_write(av_buf->base, offset + i * 4,
+				  fmt->sf[i]);
+}
+
 /*
  * Audio functions
  */
@@ -1596,6 +1675,61 @@ static int zynqmp_disp_layer_set_fmt(struct zynqmp_disp *disp,
 	fmts |= fmt->disp_fmt;
 	zynqmp_disp_av_buf_set_fmt(&disp->av_buf, fmts);
 	zynqmp_disp_av_buf_init_sf(&disp->av_buf, vid_fmt, gfx_fmt);
+	layer->fmt = fmt;
+
+	return 0;
+}
+
+/**
+ * zynqmp_disp_map_live_fmt - Find the hardware format for given bus format
+ * @fmts: format table to look up
+ * @size: size of the table @fmts
+ * @bus_fmt: bus format to search
+ *
+ * Search a Display subsystem format corresponding to the given bus format
+ * @bus_fmt, and return the format descriptor which contains the Display
+ * subsystem format value.
+ *
+ * Return: a Display subsystem format descriptor on success, or NULL.
+ */
+static const struct zynqmp_disp_fmt *
+zynqmp_disp_map_live_fmt(const struct zynqmp_disp_fmt fmts[],
+			 unsigned int size, uint32_t bus_fmt)
+{
+	unsigned int i;
+
+	for (i = 0; i < size; i++)
+		if (fmts[i].bus_fmt == bus_fmt)
+			return &fmts[i];
+
+	return NULL;
+}
+
+/**
+ * zynqmp_disp_set_live_fmt - Set the live format of the layer
+ * @disp: Display subsystem
+ * @layer: layer to set the format
+ * @bus_fmt: bus format to set
+ *
+ * Set the live format of the given layer to @live_fmt.
+ *
+ * Return: 0 on success. -EINVAL if @bus_fmt is not supported by the layer.
+ */
+static int zynqmp_disp_layer_set_live_fmt(struct zynqmp_disp *disp,
+					  struct zynqmp_disp_layer *layer,
+					  uint32_t bus_fmt)
+{
+	const struct zynqmp_disp_fmt *fmt;
+	u32 size;
+	bool is_vid = layer->id == ZYNQMP_DISP_LAYER_VID;
+
+	size = ARRAY_SIZE(av_buf_live_fmts);
+	fmt = zynqmp_disp_map_live_fmt(av_buf_live_fmts, size, bus_fmt);
+	if (!fmt)
+		return -EINVAL;
+
+	zynqmp_disp_av_buf_set_live_fmt(&disp->av_buf, fmt->disp_fmt, is_vid);
+	zynqmp_disp_av_buf_init_live_sf(&disp->av_buf, fmt, is_vid);
 	layer->fmt = fmt;
 
 	return 0;
@@ -2058,6 +2192,25 @@ static void zynqmp_disp_disable(struct zynqmp_disp *disp, bool force)
 	disp->enabled = false;
 }
 
+/**
+ * zynqmp_disp_init - Initialize the Display subsystem states
+ * @disp: Display subsystem
+ *
+ * Some states are not initialized as desired. For example, the output select
+ * register resets to the live source. This function is to initialize
+ * some register states as desired.
+ */
+static void zynqmp_disp_init(struct zynqmp_disp *disp)
+{
+	struct zynqmp_disp_layer *layer;
+	unsigned int i;
+
+	for (i = 0; i < ZYNQMP_DISP_NUM_LAYERS; i++) {
+		layer = &disp->layers[i];
+		zynqmp_disp_av_buf_disable_vid(&disp->av_buf, layer);
+	}
+}
+
 /*
  * ZynqMP Display external functions for zynqmp_dp
  */
@@ -2122,6 +2275,107 @@ unsigned int zynqmp_disp_get_aud_clk_rate(struct zynqmp_disp *disp)
 uint32_t zynqmp_disp_get_crtc_mask(struct zynqmp_disp *disp)
 {
 	return drm_crtc_mask(&disp->xlnx_crtc.crtc);
+}
+
+/*
+ * Xlnx bridge functions
+ */
+
+static inline struct zynqmp_disp_layer
+*bridge_to_layer(struct xlnx_bridge *bridge)
+{
+	return container_of(bridge, struct zynqmp_disp_layer, bridge);
+}
+
+static int zynqmp_disp_bridge_enable(struct xlnx_bridge *bridge)
+{
+	struct zynqmp_disp_layer *layer = bridge_to_layer(bridge);
+	struct zynqmp_disp *disp = layer->disp;
+	int ret;
+
+	if (!disp->_pl_pclk) {
+		dev_err(disp->dev, "PL clock is required for live\n");
+		return -ENODEV;
+	}
+
+	ret = zynqmp_disp_layer_check_size(disp, layer, layer->w, layer->h);
+	if (ret)
+		return ret;
+
+	zynqmp_disp_set_g_alpha(disp, disp->alpha_en);
+	zynqmp_disp_set_alpha(disp, disp->alpha);
+	ret = zynqmp_disp_layer_enable(layer->disp, layer,
+				       ZYNQMP_DISP_LAYER_LIVE);
+	if (ret)
+		return ret;
+
+	if (layer->id == ZYNQMP_DISP_LAYER_GFX && disp->tpg_on) {
+		layer = &disp->layers[ZYNQMP_DISP_LAYER_VID];
+		zynqmp_disp_layer_set_tpg(disp, layer, disp->tpg_on);
+	}
+
+	if (zynqmp_disp_av_buf_vid_timing_src_is_int(&disp->av_buf) ||
+	    zynqmp_disp_av_buf_vid_clock_src_is_ps(&disp->av_buf)) {
+		dev_info(disp->dev,
+			 "Disabling the pipeline to change the clk/timing src");
+		zynqmp_disp_disable(disp, true);
+		zynqmp_disp_av_buf_set_vid_clock_src(&disp->av_buf, false);
+		zynqmp_disp_av_buf_set_vid_timing_src(&disp->av_buf, false);
+	}
+
+	zynqmp_disp_enable(disp);
+
+	return 0;
+}
+
+static void zynqmp_disp_bridge_disable(struct xlnx_bridge *bridge)
+{
+	struct zynqmp_disp_layer *layer = bridge_to_layer(bridge);
+	struct zynqmp_disp *disp = layer->disp;
+
+	zynqmp_disp_disable(disp, false);
+
+	zynqmp_disp_layer_disable(disp, layer, ZYNQMP_DISP_LAYER_LIVE);
+	if (layer->id == ZYNQMP_DISP_LAYER_VID && disp->tpg_on)
+		zynqmp_disp_layer_set_tpg(disp, layer, disp->tpg_on);
+
+	if (!zynqmp_disp_layer_is_live(disp)) {
+		dev_info(disp->dev,
+			 "Disabling the pipeline to change the clk/timing src");
+		zynqmp_disp_disable(disp, true);
+		zynqmp_disp_av_buf_set_vid_clock_src(&disp->av_buf, true);
+		zynqmp_disp_av_buf_set_vid_timing_src(&disp->av_buf, true);
+		if (zynqmp_disp_layer_is_enabled(disp))
+			zynqmp_disp_enable(disp);
+	}
+}
+
+static int zynqmp_disp_bridge_set_input(struct xlnx_bridge *bridge,
+					u32 width, u32 height, u32 bus_fmt)
+{
+	struct zynqmp_disp_layer *layer = bridge_to_layer(bridge);
+	int ret;
+
+	ret = zynqmp_disp_layer_check_size(layer->disp, layer, width, height);
+	if (ret)
+		return ret;
+
+	ret = zynqmp_disp_layer_set_live_fmt(layer->disp,  layer, bus_fmt);
+	if (ret)
+		dev_err(layer->disp->dev, "failed to set live fmt\n");
+
+	return ret;
+}
+
+static int zynqmp_disp_bridge_get_input_fmts(struct xlnx_bridge *bridge,
+					     const u32 **fmts, u32 *count)
+{
+	struct zynqmp_disp_layer *layer = bridge_to_layer(bridge);
+
+	*fmts = layer->bus_fmts;
+	*count = layer->num_bus_fmts;
+
+	return 0;
 }
 
 /*
@@ -2225,6 +2479,9 @@ static int zynqmp_disp_plane_mode_set(struct drm_plane *plane,
 
 static void zynqmp_disp_plane_destroy(struct drm_plane *plane)
 {
+	struct zynqmp_disp_layer *layer = plane_to_layer(plane);
+
+	xlnx_bridge_unregister(&layer->bridge);
 	drm_plane_cleanup(plane);
 }
 
@@ -2340,6 +2597,17 @@ static int zynqmp_disp_create_plane(struct zynqmp_disp *disp)
 		drm_plane_helper_add(&layer->plane,
 				     &zynqmp_disp_plane_helper_funcs);
 		type = DRM_PLANE_TYPE_PRIMARY;
+	}
+
+	for (i = 0; i < ZYNQMP_DISP_NUM_LAYERS; i++) {
+		layer = &disp->layers[i];
+		layer->bridge.enable = &zynqmp_disp_bridge_enable;
+		layer->bridge.disable = &zynqmp_disp_bridge_disable;
+		layer->bridge.set_input = &zynqmp_disp_bridge_set_input;
+		layer->bridge.get_input_fmts =
+			&zynqmp_disp_bridge_get_input_fmts;
+		layer->bridge.of_node = layer->of_node;
+		xlnx_bridge_register(&layer->bridge);
 	}
 
 	/* Attach properties to each layers */
@@ -2849,6 +3117,8 @@ int zynqmp_disp_probe(struct platform_device *pdev)
 	ret = zynqmp_disp_layer_create(disp);
 	if (ret)
 		goto error_aclk;
+
+	zynqmp_disp_init(disp);
 
 	return 0;
 
