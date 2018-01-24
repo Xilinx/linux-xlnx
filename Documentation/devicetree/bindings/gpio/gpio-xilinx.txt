@@ -15,7 +15,7 @@ Required properties:
 - gpio-controller : Marks the device node as a GPIO controller.
 
 Optional properties:
-- clock-names : Should be "axi_clk"
+- clock-names : Should be "s_axi_aclk"
 - clocks: Input clock specifier. Refer to common clock bindings.
 - interrupts : Interrupt mapping for GPIO IRQ.
 - interrupt-parent : Phandle for the interrupt controller that
@@ -36,7 +36,7 @@ gpio: gpio@40000000 {
 	#gpio-cells = <2>;
 	compatible = "xlnx,xps-gpio-1.00.a";
 	gpio-controller ;
-	clock-names = "axi_clk";
+	clock-names = "s_axi_aclk";
 	clocks = <&clkc 71>;
 	interrupt-parent = <&microblaze_0_intc>;
 	interrupts = < 6 2 >;

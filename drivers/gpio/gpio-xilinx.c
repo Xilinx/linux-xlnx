@@ -623,9 +623,10 @@ static int xgpio_of_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, chip);
 
-	chip->clk = devm_clk_get(&pdev->dev, "axi_clk");
+	chip->clk = devm_clk_get(&pdev->dev, "s_axi_aclk");
 	if (IS_ERR(chip->clk)) {
-		if (PTR_ERR(chip->clk) != -ENOENT) {
+		if ((PTR_ERR(chip->clk) != -ENOENT) ||
+				(PTR_ERR(chip->clk) != -EPROBE_DEFER)) {
 			dev_err(&pdev->dev, "Input clock not found\n");
 			return PTR_ERR(chip->clk);
 		}
@@ -637,7 +638,7 @@ static int xgpio_of_probe(struct platform_device *pdev)
 		chip->clk = NULL;
 	}
 
-	status = clk_prepare(chip->clk);
+	status = clk_prepare_enable(chip->clk);
 	if (status < 0) {
 		dev_err(&pdev->dev, "Failed to prepare clk\n");
 		return status;
@@ -734,7 +735,7 @@ err_pm_put:
 	pm_runtime_put(&pdev->dev);
 err_unprepare_clk:
 	pm_runtime_disable(&pdev->dev);
-	clk_unprepare(chip->clk);
+	clk_disable_unprepare(chip->clk);
 	return status;
 }
 
