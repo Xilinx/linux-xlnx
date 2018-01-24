@@ -7827,6 +7827,12 @@ F:	drivers/gpu/drm/xlnx/xlnx_drv*
 F:	drivers/gpu/drm/xlnx/xlnx_fb*
 F:	drivers/gpu/drm/xlnx/xlnx_gem*
 
+DRM BRIDGE DRIVER FOR XILINX
+M:	Vishal Sagar <vishal.sagar@amd.com>
+S:	Maintained
+F:	Documentation/devicetree/bindings/display/xlnx/bridge.txt
+F:	drivers/gpu/drm/xlnx/xlnx_bridge*
+
 DRM GPU SCHEDULER
 M:	Luben Tuikov <ltuikov89@gmail.com>
 M:	Matthew Brost <matthew.brost@intel.com>
