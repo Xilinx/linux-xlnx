@@ -27,3 +27,22 @@ config DRM_XLNX
 	  display pipeline using Xilinx IPs in FPGA. This module
 	  provides the kernel mode setting functionalities
 	  for Xilinx display drivers.
+
+config DRM_XLNX_BRIDGE
+	tristate "Xilinx DRM KMS bridge"
+	depends on DRM_XLNX
+	help
+	  Xilinx DRM KMS bridge. This module provides some interfaces
+	  to enable inter-module communication. Choose this option
+	  from the provider driver when the Xilinx bridge interface is
+	  needed.
+
+config DRM_XLNX_BRIDGE_DEBUG_FS
+	bool "Xilinx DRM KMS bridge debugfs"
+	depends on DEBUG_FS && DRM_XLNX_BRIDGE
+	help
+	  Enable the debugfs code for Xilinx bridge. The debugfs code
+	  enables debugging or testing related features. It exposes some
+	  low level controls to the user space to help testing automation,
+	  as well as can enable additional diagnostic or statistical
+	  information.
