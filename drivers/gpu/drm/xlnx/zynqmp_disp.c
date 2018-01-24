@@ -414,12 +414,19 @@ struct zynqmp_disp_aud {
  * @av_buf: AV buffer manager block
  * @aud:Audio block
  * @layers: layers
+ * @g_alpha_prop: global alpha property
  * @alpha: current global alpha value
+ * @g_alpha_en_prop: the global alpha enable property
  * @alpha_en: flag if the global alpha is enabled
+ * @color_prop: output color format property
  * @color: current output color value
+ * @bg_c0_prop: 1st component of background color property
  * @bg_c0: current value of 1st background color component
+ * @bg_c1_prop: 2nd component of background color property
  * @bg_c1: current value of 2nd background color component
+ * @bg_c2_prop: 3rd component of background color property
  * @bg_c2: current value of 3rd background color component
+ * @tpg_prop: Test Pattern Generation mode property
  * @tpg_on: current TPG mode state
  * @event: pending vblank event request
  * @_ps_pclk: Pixel clock from PS
@@ -443,12 +450,19 @@ struct zynqmp_disp {
 	struct zynqmp_disp_av_buf av_buf;
 	struct zynqmp_disp_aud aud;
 	struct zynqmp_disp_layer layers[ZYNQMP_DISP_NUM_LAYERS];
+	struct drm_property *g_alpha_prop;
 	u32 alpha;
+	struct drm_property *g_alpha_en_prop;
 	bool alpha_en;
+	struct drm_property *color_prop;
 	unsigned int color;
+	struct drm_property *bg_c0_prop;
 	u32 bg_c0;
+	struct drm_property *bg_c1_prop;
 	u32 bg_c1;
+	struct drm_property *bg_c2_prop;
 	u32 bg_c2;
+	struct drm_property *tpg_prop;
 	bool tpg_on;
 	struct drm_pending_vblank_event *event;
 	/* Don't operate directly on _ps_ */
@@ -1622,6 +1636,21 @@ static int zynqmp_disp_layer_set_tpg(struct zynqmp_disp *disp,
 }
 
 /**
+ * zynqmp_disp_get_tpg - Get the TPG mode status
+ * @disp: Display subsystem
+ * @layer: Video layer
+ *
+ * Return if the TPG is enabled or not.
+ *
+ * Return: true if TPG is on, otherwise false
+ */
+static bool zynqmp_disp_layer_get_tpg(struct zynqmp_disp *disp,
+				      struct zynqmp_disp_layer *layer)
+{
+	return disp->tpg_on;
+}
+
+/**
  * zynqmp_disp_get_fmt - Get the supported DRM formats of the layer
  * @disp: Display subsystem
  * @layer: layer to get the formats
@@ -1938,6 +1967,19 @@ static void zynqmp_disp_set_alpha(struct zynqmp_disp *disp, u32 alpha)
 }
 
 /**
+ * zynqmp_disp_get_alpha - Get the alpha value
+ * @disp: Display subsystem
+ *
+ * Get the alpha value for blending.
+ *
+ * Return: current alpha value.
+ */
+static u32 zynqmp_disp_get_alpha(struct zynqmp_disp *disp)
+{
+	return disp->alpha;
+}
+
+/**
  * zynqmp_disp_set_g_alpha - Enable/disable the global alpha blending
  * @disp: Display subsystem
  * @enable: flag to enable or disable alpha blending
@@ -1948,6 +1990,19 @@ static void zynqmp_disp_set_g_alpha(struct zynqmp_disp *disp, bool enable)
 {
 	disp->alpha_en = enable;
 	zynqmp_disp_blend_enable_alpha(&disp->blend, enable);
+}
+
+/**
+ * zynqmp_disp_get_g_alpha - Get the global alpha status
+ * @disp: Display subsystem
+ *
+ * Get the global alpha statue.
+ *
+ * Return: true if global alpha is enabled, or false.
+ */
+static bool zynqmp_disp_get_g_alpha(struct zynqmp_disp *disp)
+{
+	return disp->alpha_en;
 }
 
 /**
@@ -2173,9 +2228,54 @@ static void zynqmp_disp_plane_destroy(struct drm_plane *plane)
 	drm_plane_cleanup(plane);
 }
 
+static int
+zynqmp_disp_plane_atomic_set_property(struct drm_plane *plane,
+				      struct drm_plane_state *state,
+				      struct drm_property *property, u64 val)
+{
+	struct zynqmp_disp_layer *layer = plane_to_layer(plane);
+	struct zynqmp_disp *disp = layer->disp;
+	int ret = 0;
+
+	if (property == disp->g_alpha_prop)
+		zynqmp_disp_set_alpha(disp, val);
+	else if (property == disp->g_alpha_en_prop)
+		zynqmp_disp_set_g_alpha(disp, val);
+	else if (property == disp->tpg_prop)
+		ret = zynqmp_disp_layer_set_tpg(disp, layer, val);
+	else
+		return -EINVAL;
+
+	return ret;
+}
+
+static int
+zynqmp_disp_plane_atomic_get_property(struct drm_plane *plane,
+				      const struct drm_plane_state *state,
+				      struct drm_property *property,
+				      uint64_t *val)
+{
+	struct zynqmp_disp_layer *layer = plane_to_layer(plane);
+	struct zynqmp_disp *disp = layer->disp;
+	int ret = 0;
+
+	if (property == disp->g_alpha_prop)
+		*val = zynqmp_disp_get_alpha(disp);
+	else if (property == disp->g_alpha_en_prop)
+		*val = zynqmp_disp_get_g_alpha(disp);
+	else if (property == disp->tpg_prop)
+		*val = zynqmp_disp_layer_get_tpg(disp, layer);
+	else
+		return -EINVAL;
+
+	return ret;
+}
+
 static struct drm_plane_funcs zynqmp_disp_plane_funcs = {
 	.update_plane		= drm_atomic_helper_update_plane,
 	.disable_plane		= drm_atomic_helper_disable_plane,
+	.atomic_set_property	= zynqmp_disp_plane_atomic_set_property,
+	.atomic_get_property	= zynqmp_disp_plane_atomic_get_property,
 	.destroy		= zynqmp_disp_plane_destroy,
 	.reset			= drm_atomic_helper_plane_reset,
 	.atomic_duplicate_state	= drm_atomic_helper_plane_duplicate_state,
@@ -2241,6 +2341,18 @@ static int zynqmp_disp_create_plane(struct zynqmp_disp *disp)
 				     &zynqmp_disp_plane_helper_funcs);
 		type = DRM_PLANE_TYPE_PRIMARY;
 	}
+
+	/* Attach properties to each layers */
+	drm_object_attach_property(&layer->plane.base, disp->g_alpha_prop,
+				   ZYNQMP_DISP_V_BLEND_SET_GLOBAL_ALPHA_MAX);
+	disp->alpha = ZYNQMP_DISP_V_BLEND_SET_GLOBAL_ALPHA_MAX;
+	/* Enable the global alpha as default */
+	drm_object_attach_property(&layer->plane.base, disp->g_alpha_en_prop,
+				   true);
+	disp->alpha_en = true;
+
+	layer = &disp->layers[ZYNQMP_DISP_LAYER_VID];
+	drm_object_attach_property(&layer->plane.base, disp->tpg_prop, false);
 
 	return ret;
 
@@ -2431,10 +2543,60 @@ static void zynqmp_disp_crtc_disable_vblank(struct drm_crtc *crtc)
 	zynqmp_dp_disable_vblank(disp->dpsub->dp);
 }
 
+static int
+zynqmp_disp_crtc_atomic_set_property(struct drm_crtc *crtc,
+				     struct drm_crtc_state *state,
+				     struct drm_property *property,
+				     uint64_t val)
+{
+	struct zynqmp_disp *disp = crtc_to_disp(crtc);
+
+	/*
+	 * CRTC prop values are just stored here and applied when CRTC gets
+	 * enabled
+	 */
+	if (property == disp->color_prop)
+		disp->color = val;
+	else if (property == disp->bg_c0_prop)
+		disp->bg_c0 = val;
+	else if (property == disp->bg_c1_prop)
+		disp->bg_c1 = val;
+	else if (property == disp->bg_c2_prop)
+		disp->bg_c2 = val;
+	else
+		return -EINVAL;
+
+	return 0;
+}
+
+static int
+zynqmp_disp_crtc_atomic_get_property(struct drm_crtc *crtc,
+				     const struct drm_crtc_state *state,
+				     struct drm_property *property,
+				     uint64_t *val)
+{
+	struct zynqmp_disp *disp = crtc_to_disp(crtc);
+
+	if (property == disp->color_prop)
+		*val = disp->color;
+	else if (property == disp->bg_c0_prop)
+		*val = disp->bg_c0;
+	else if (property == disp->bg_c1_prop)
+		*val = disp->bg_c1;
+	else if (property == disp->bg_c2_prop)
+		*val = disp->bg_c2;
+	else
+		return -EINVAL;
+
+	return 0;
+}
+
 static struct drm_crtc_funcs zynqmp_disp_crtc_funcs = {
 	.destroy		= zynqmp_disp_crtc_destroy,
 	.set_config		= drm_atomic_helper_set_config,
 	.page_flip		= drm_atomic_helper_page_flip,
+	.atomic_set_property	= zynqmp_disp_crtc_atomic_set_property,
+	.atomic_get_property	= zynqmp_disp_crtc_atomic_get_property,
 	.reset			= drm_atomic_helper_crtc_reset,
 	.atomic_duplicate_state	= drm_atomic_helper_crtc_duplicate_state,
 	.atomic_destroy_state	= drm_atomic_helper_crtc_destroy_state,
@@ -2445,12 +2607,18 @@ static struct drm_crtc_funcs zynqmp_disp_crtc_funcs = {
 static void zynqmp_disp_create_crtc(struct zynqmp_disp *disp)
 {
 	struct drm_plane *plane = &disp->layers[ZYNQMP_DISP_LAYER_GFX].plane;
+	struct drm_mode_object *obj = &disp->xlnx_crtc.crtc.base;
 	int ret;
 
 	ret = drm_crtc_init_with_planes(disp->drm, &disp->xlnx_crtc.crtc, plane,
 					NULL, &zynqmp_disp_crtc_funcs, NULL);
 	drm_crtc_helper_add(&disp->xlnx_crtc.crtc,
 			    &zynqmp_disp_crtc_helper_funcs);
+	drm_object_attach_property(obj, disp->color_prop, 0);
+	zynqmp_dp_set_color(disp->dpsub->dp, zynqmp_disp_color_enum[0].name);
+	drm_object_attach_property(obj, disp->bg_c0_prop, 0);
+	drm_object_attach_property(obj, disp->bg_c1_prop, 0);
+	drm_object_attach_property(obj, disp->bg_c2_prop, 0);
 
 	disp->xlnx_crtc.get_max_width = &zynqmp_disp_get_max_width;
 	disp->xlnx_crtc.get_max_height = &zynqmp_disp_get_max_height;
@@ -2484,9 +2652,26 @@ int zynqmp_disp_bind(struct device *dev, struct device *master, void *data)
 	struct zynqmp_dpsub *dpsub = dev_get_drvdata(dev);
 	struct zynqmp_disp *disp = dpsub->disp;
 	struct drm_device *drm = data;
+	int num;
+	u64 max;
 	int ret;
 
 	disp->drm = drm;
+
+	max = ZYNQMP_DISP_V_BLEND_SET_GLOBAL_ALPHA_MAX;
+	disp->g_alpha_prop = drm_property_create_range(drm, 0, "alpha", 0, max);
+	disp->g_alpha_en_prop = drm_property_create_bool(drm, 0,
+							 "g_alpha_en");
+	num = ARRAY_SIZE(zynqmp_disp_color_enum);
+	disp->color_prop = drm_property_create_enum(drm, 0,
+						    "output_color",
+						    zynqmp_disp_color_enum,
+						    num);
+	max = ZYNQMP_DISP_V_BLEND_BG_MAX;
+	disp->bg_c0_prop = drm_property_create_range(drm, 0, "bg_c0", 0, max);
+	disp->bg_c1_prop = drm_property_create_range(drm, 0, "bg_c1", 0, max);
+	disp->bg_c2_prop = drm_property_create_range(drm, 0, "bg_c2", 0, max);
+	disp->tpg_prop = drm_property_create_bool(drm, 0, "tpg");
 
 	ret = zynqmp_disp_create_plane(disp);
 	if (ret)
@@ -2504,6 +2689,12 @@ void zynqmp_disp_unbind(struct device *dev, struct device *master, void *data)
 
 	zynqmp_disp_destroy_crtc(disp);
 	zynqmp_disp_destroy_plane(disp);
+	drm_property_destroy(disp->drm, disp->bg_c2_prop);
+	drm_property_destroy(disp->drm, disp->bg_c1_prop);
+	drm_property_destroy(disp->drm, disp->bg_c0_prop);
+	drm_property_destroy(disp->drm, disp->color_prop);
+	drm_property_destroy(disp->drm, disp->g_alpha_en_prop);
+	drm_property_destroy(disp->drm, disp->g_alpha_prop);
 }
 
 /*
