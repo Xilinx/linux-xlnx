@@ -29,6 +29,7 @@
 #include <linux/module.h>
 #include <linux/mutex.h>
 #include <linux/phy/phy.h>
+#include <linux/phy/phy-zynqmp.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 #include <linux/uaccess.h>
@@ -488,6 +489,15 @@ static int zynqmp_dp_init_phy(struct zynqmp_dp *dp)
 	zynqmp_dp_clr(dp->iomem, ZYNQMP_DP_TX_PHY_CONFIG,
 		      ZYNQMP_DP_TX_PHY_CONFIG_ALL_RESET);
 
+	/* Wait for PLL to be locked for the primary (1st) lane */
+	if (dp->phy[0]) {
+		ret = xpsgtr_wait_pll_lock(dp->phy[0]);
+		if (ret) {
+			dev_err(dp->dev, "failed to lock pll\n");
+			return ret;
+		}
+	}
+
 	return 0;
 }
 
@@ -676,6 +686,8 @@ static int zynqmp_dp_update_vs_emph(struct zynqmp_dp *dp)
 		p_level = (train_set[i] & DP_TRAIN_PRE_EMPHASIS_MASK) >>
 			  DP_TRAIN_PRE_EMPHASIS_SHIFT;
 
+		xpsgtr_margining_factor(dp->phy[i], p_level, v_level);
+		xpsgtr_override_deemph(dp->phy[i], p_level, v_level);
 		zynqmp_dp_write(dp->iomem, reg, 0x2);
 	}
 
