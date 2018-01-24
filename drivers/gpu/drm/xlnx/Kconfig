@@ -20,6 +20,16 @@ config DRM_XLNX_BRIDGE
 	  from the provider driver when the Xilinx bridge interface is
 	  needed.
 
+config DRM_XLNX_BRIDGE_DEBUG_FS
+	bool "Xilinx DRM KMS bridge debugfs"
+	depends on DEBUG_FS && DRM_XLNX_BRIDGE
+	help
+	  Enable the debugfs code for Xilinx bridge. The debugfs code
+	  enables debugging or testing related features. It exposes some
+	  low level controls to the user space to help testing automation,
+	  as well as can enable additional diagnostic or statistical
+	  information.
+
 config DRM_ZYNQMP_DPSUB
 	tristate "ZynqMP DP Subsystem Driver"
 	depends on ARCH_ZYNQMP && OF && DRM_XLNX && COMMON_CLK

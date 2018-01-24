@@ -19,6 +19,8 @@
 #ifndef _XLNX_BRIDGE_H_
 #define _XLNX_BRIDGE_H_
 
+struct xlnx_bridge_debugfs_file;
+
 /**
  * struct xlnx_bridge - Xilinx bridge device
  * @list: list node for Xilinx bridge device list
@@ -28,6 +30,7 @@
  * @disable: callback to disable the bridge
  * @set_input: callback to set the input
  * @get_input_fmts: callback to get supported input formats.
+ * @debugfs_file: for debugfs support
  */
 struct xlnx_bridge {
 	struct list_head list;
@@ -39,6 +42,7 @@ struct xlnx_bridge {
 			 u32 width, u32 height, u32 bus_fmt);
 	int (*get_input_fmts)(struct xlnx_bridge *bridge,
 			      const u32 **fmts, u32 *count);
+	struct xlnx_bridge_debugfs_file *debugfs_file;
 };
 
 #if IS_ENABLED(CONFIG_DRM_XLNX_BRIDGE)

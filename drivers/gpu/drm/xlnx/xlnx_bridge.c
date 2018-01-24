@@ -205,6 +205,174 @@ void of_xlnx_bridge_put(struct xlnx_bridge *bridge)
 }
 EXPORT_SYMBOL_GPL(of_xlnx_bridge_put);
 
+#ifdef CONFIG_DRM_XLNX_BRIDGE_DEBUG_FS
+
+#include <linux/debugfs.h>
+
+struct xlnx_bridge_debugfs_dir {
+	struct dentry *dir;
+	int ref_cnt;
+};
+
+static struct xlnx_bridge_debugfs_dir *dir;
+
+struct xlnx_bridge_debugfs_file {
+	struct dentry *file;
+	const char *status;
+};
+
+#define XLNX_BRIDGE_DEBUGFS_MAX_BYTES	16
+
+static ssize_t xlnx_bridge_debugfs_read(struct file *f, char __user *buf,
+					size_t size, loff_t *pos)
+{
+	struct xlnx_bridge *bridge = f->f_inode->i_private;
+	int ret;
+
+	if (size <= 0)
+		return -EINVAL;
+
+	if (*pos != 0)
+		return 0;
+
+	size = min(size, strlen(bridge->debugfs_file->status));
+	ret = copy_to_user(buf, bridge->debugfs_file->status, size);
+	if (ret)
+		return ret;
+
+	*pos = size + 1;
+	return size;
+}
+
+static ssize_t xlnx_bridge_debugfs_write(struct file *f, const char __user *buf,
+					 size_t size, loff_t *pos)
+{
+	struct xlnx_bridge *bridge = f->f_inode->i_private;
+
+	if (*pos != 0 || size <= 0)
+		return -EINVAL;
+
+	if (!strncmp(buf, "enable", 5)) {
+		xlnx_bridge_enable(bridge);
+	} else if (!strncmp(buf, "disable", 6)) {
+		xlnx_bridge_disable(bridge);
+	} else if (!strncmp(buf, "set_input", 3)) {
+		char *cmd, **tmp;
+		char *w, *h, *f;
+		u32 width, height, fmt;
+		int ret = -EINVAL;
+
+		cmd = kzalloc(size, GFP_KERNEL);
+		ret = strncpy_from_user(cmd, buf, size);
+		if (ret < 0) {
+			pr_err("%s %d failed to copy the command  %s\n",
+			       __func__, __LINE__, buf);
+			return ret;
+		}
+
+		tmp = &cmd;
+		strsep(tmp, " ");
+		w = strsep(tmp, " ");
+		h = strsep(tmp, " ");
+		f = strsep(tmp, " ");
+		if (w && h && f) {
+			ret = kstrtouint(w, 0, &width);
+			ret |= kstrtouint(h, 0, &height);
+			ret |= kstrtouint(f, 0, &fmt);
+		}
+
+		kfree(cmd);
+		if (ret) {
+			pr_err("%s %d invalid command: %s\n",
+			       __func__, __LINE__, buf);
+			return -EINVAL;
+		}
+		xlnx_bridge_set_input(bridge, width, height, fmt);
+	}
+
+	return size;
+}
+
+static const struct file_operations xlnx_bridge_debugfs_fops = {
+	.owner	= THIS_MODULE,
+	.read	= xlnx_bridge_debugfs_read,
+	.write	= xlnx_bridge_debugfs_write,
+};
+
+static int xlnx_bridge_debugfs_register(struct xlnx_bridge *bridge)
+{
+	struct xlnx_bridge_debugfs_file *file;
+	char file_name[32];
+
+	file = kzalloc(sizeof(*file), GFP_KERNEL);
+	if (!file)
+		return -ENOMEM;
+
+	snprintf(file_name, sizeof(file_name), "xlnx_bridge-%s",
+		 bridge->of_node->name);
+	file->file = debugfs_create_file(file_name, 0444, dir->dir, bridge,
+					 &xlnx_bridge_debugfs_fops);
+	bridge->debugfs_file = file;
+
+	return 0;
+}
+
+static void xlnx_bridge_debugfs_unregister(struct xlnx_bridge *bridge)
+{
+	debugfs_remove(bridge->debugfs_file->file);
+	kfree(bridge->debugfs_file);
+}
+
+static int xlnx_bridge_debugfs_init(void)
+{
+	if (dir) {
+		dir->ref_cnt++;
+		return 0;
+	}
+
+	dir = kzalloc(sizeof(*dir), GFP_KERNEL);
+	if (!dir)
+		return -ENOMEM;
+
+	dir->dir = debugfs_create_dir("xlnx-bridge", NULL);
+	if (!dir->dir)
+		return -ENODEV;
+	dir->ref_cnt++;
+
+	return 0;
+}
+
+static void xlnx_bridge_debugfs_fini(void)
+{
+	if (--dir->ref_cnt)
+		return;
+
+	debugfs_remove_recursive(dir->dir);
+	dir = NULL;
+}
+
+#else
+
+static int xlnx_bridge_debugfs_register(struct xlnx_bridge *bridge)
+{
+	return 0;
+}
+
+static void xlnx_bridge_debugfs_unregister(struct xlnx_bridge *bridge)
+{
+}
+
+static int xlnx_bridge_debugfs_init(void)
+{
+	return 0;
+}
+
+static void xlnx_bridge_debugfs_fini(void)
+{
+}
+
+#endif
+
 /*
  * Provider functions
  */
@@ -229,6 +397,7 @@ int xlnx_bridge_register(struct xlnx_bridge *bridge)
 	mutex_lock(&helper.lock);
 	WARN_ON(!bridge->of_node);
 	bridge->owned = false;
+	xlnx_bridge_debugfs_register(bridge);
 	list_add_tail(&bridge->list, &helper.xlnx_bridges);
 	mutex_unlock(&helper.lock);
 
@@ -250,6 +419,7 @@ void xlnx_bridge_unregister(struct xlnx_bridge *bridge)
 
 	mutex_lock(&helper.lock);
 	WARN_ON(bridge->owned);
+	xlnx_bridge_debugfs_unregister(bridge);
 	list_del(&bridge->list);
 	mutex_unlock(&helper.lock);
 }
@@ -279,6 +449,9 @@ int xlnx_bridge_helper_init(void)
 	INIT_LIST_HEAD(&helper.xlnx_bridges);
 	mutex_init(&helper.lock);
 	helper.error = false;
+
+	if (xlnx_bridge_debugfs_init())
+		pr_err("failed to init xlnx bridge debugfs\n");
 
 	return 0;
 }
