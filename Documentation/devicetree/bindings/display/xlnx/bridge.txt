@@ -1,0 +1,29 @@
+Xilinx DRM bridge
+-----------------
+
+The Xilinx DRM provides the interface layer called Xilinx bridge to bridge
+multiple components with a series of functions. It models a simple
+unidirectional communication, single client -> single bridge. The client
+is not limited to DRM compatible drivers, but can be any subsystem driver,
+but the client driver should call the bridge functions explicitly.
+
+Provider
+--------
+
+The bridge provider should assign a corresponding of_node to struct xlnx_bridge.
+For example, if its own node is used,
+
+	provider_node: provider_node {
+	};
+
+	bridge.of_node = provider_device->of_node;
+
+Client
+------
+
+The bridge client should have a phandle to the bridge device node. The bridge
+device node should be passed to get a bridge instance,
+
+       client_node {
+	       xlnx,bridge = <&provider_node>;
+       };
