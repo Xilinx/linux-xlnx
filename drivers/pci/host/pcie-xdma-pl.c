@@ -598,7 +598,6 @@ static int xilinx_pcie_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct pci_bus *bus;
 	struct pci_bus *child;
-
 	int err;
 	resource_size_t iobase = 0;
 	LIST_HEAD(res);
@@ -630,10 +629,15 @@ static int xilinx_pcie_probe(struct platform_device *pdev)
 		return err;
 	}
 
-	bus = pci_create_root_bus(&pdev->dev, 0,
-				  &xilinx_pcie_ops, port, &res);
-	if (!bus)
-		return -ENOMEM;
+	err = devm_request_pci_bus_resources(dev, &res);
+	if (err)
+		goto error;
+
+	bus = pci_create_root_bus(&pdev->dev, 0, &xilinx_pcie_ops, port, &res);
+	if (!bus) {
+		err = -ENOMEM;
+		goto error;
+	}
 
 	pci_scan_child_bus(bus);
 	pci_assign_unassigned_bus_resources(bus);
@@ -641,8 +645,11 @@ static int xilinx_pcie_probe(struct platform_device *pdev)
 		pcie_bus_configure_settings(child);
 	pci_bus_add_devices(bus);
 	platform_set_drvdata(pdev, port);
-
 	return 0;
+
+error:
+	pci_free_resource_list(&res);
+	return err;
 }
 
 static const struct of_device_id xilinx_pcie_of_match[] = {
