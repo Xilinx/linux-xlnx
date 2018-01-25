@@ -218,8 +218,8 @@ static void xilinx_pcie_enable_msi(struct xilinx_pcie_port *port)
 
 	msi->msi_pages = __get_free_pages(GFP_KERNEL, 0);
 	msg_addr = virt_to_phys((void *)msi->msi_pages);
-	pcie_write(port, 0x0, XILINX_PCIE_REG_MSIBASE1);
-	pcie_write(port, msg_addr, XILINX_PCIE_REG_MSIBASE2);
+	pcie_write(port, upper_32_bits(msg_addr), XILINX_PCIE_REG_MSIBASE1);
+	pcie_write(port, lower_32_bits(msg_addr), XILINX_PCIE_REG_MSIBASE2);
 }
 
 /**
