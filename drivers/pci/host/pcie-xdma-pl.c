@@ -654,7 +654,6 @@ static int xilinx_pcie_probe(struct platform_device *pdev)
 	list_for_each_entry(child, &bus->children, node)
 		pcie_bus_configure_settings(child);
 	pci_bus_add_devices(bus);
-	platform_set_drvdata(pdev, port);
 	return 0;
 
 error:
