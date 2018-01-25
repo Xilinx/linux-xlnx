@@ -223,9 +223,9 @@ static int xapm_probe(struct platform_device *pdev)
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	xapm->regs = devm_ioremap_resource(&pdev->dev, res);
-	if (!xapm->regs) {
+	if (IS_ERR(xapm->regs)) {
 		dev_err(&pdev->dev, "unable to iomap registers\n");
-		return -ENOMEM;
+		return PTR_ERR(xapm->regs);
 	}
 
 	xapm->param.clk = devm_clk_get(&pdev->dev, NULL);
