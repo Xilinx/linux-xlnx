@@ -90,7 +90,7 @@
 #define ECAM_DEV_NUM_SHIFT		12
 
 /* Number of MSI IRQs */
-#define XILINX_NUM_MSI_IRQS		128
+#define XILINX_NUM_MSI_IRQS		32
 #define INTX_NUM                        4
 
 struct xilinx_msi {
