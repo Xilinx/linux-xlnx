@@ -577,8 +577,8 @@ static ssize_t xtg_sysfs_ioctl(struct device *dev, const char *buf,
 		break;
 
 	case XTG_GET_LAST_VALID_INDEX:
-		rdval = (tg->last_wr_valid_idx << 16) |
-				tg->last_rd_valid_idx;
+		rdval = (((tg->last_wr_valid_idx << 16) & 0xffff0000) |
+				(tg->last_rd_valid_idx & 0xffff));
 		break;
 
 	case XTG_GET_DEVICE_ID:
