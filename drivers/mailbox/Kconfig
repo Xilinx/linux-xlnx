@@ -170,4 +170,12 @@ config BCM_FLEXRM_MBOX
 	  Mailbox implementation of the Broadcom FlexRM ring manager,
 	  which provides access to various offload engines on Broadcom
 	  SoCs. Say Y here if you want to use the Broadcom FlexRM.
+
+config ZYNQMP_IPI_MBOX
+	bool "Xilinx ZynqMP IPI Mailbox"
+	depends on ARCH_ZYNQMP && OF
+	help
+	  Mailbox implementation for Xilinx ZynqMP IPI. It is used to send
+	  notification or short message between processors with Xilinx
+	  ZynqMP IPI.
 endif
