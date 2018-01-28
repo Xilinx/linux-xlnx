@@ -1513,11 +1513,22 @@ static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 		cur_p->app0 |= 2; /* Tx Full Checksum Offload Enabled */
 	}
 
+	if (num_frag == 0) {
 #ifdef CONFIG_AXIENET_HAS_MCDMA
-	cur_p->cntrl = (skb_headlen(skb) | XMCDMA_BD_CTRL_TXSOF_MASK) + pad;
+		cur_p->cntrl = (skb_headlen(skb) |
+				XMCDMA_BD_CTRL_TXSOF_MASK) + pad;
 #else
-	cur_p->cntrl = (skb_headlen(skb) | XAXIDMA_BD_CTRL_TXSOF_MASK) + pad;
+		cur_p->cntrl = (skb_headlen(skb) |
+				XAXIDMA_BD_CTRL_TXSOF_MASK) + pad;
 #endif
+	} else {
+#ifdef CONFIG_AXIENET_HAS_MCDMA
+		cur_p->cntrl = (skb_headlen(skb) | XMCDMA_BD_CTRL_TXSOF_MASK);
+#else
+		cur_p->cntrl = (skb_headlen(skb) | XAXIDMA_BD_CTRL_TXSOF_MASK);
+#endif
+	}
+
 	if (!q->eth_hasdre &&
 	    (((phys_addr_t)skb->data & 0x3) || (num_frag > 0))) {
 		skb_copy_and_csum_dev(skb, q->tx_buf[q->tx_bd_tail]);
@@ -1557,7 +1568,10 @@ static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 		len = skb_frag_size(frag);
 		cur_p->phys = skb_frag_dma_map(ndev->dev.parent, frag, 0, len,
 					       DMA_TO_DEVICE);
-		cur_p->cntrl = len + pad;
+		cur_p->cntrl = len;
+		/* Only add padding to the end of the last element */
+		if ((ii + 1) == num_frag)
+			cur_p->cntrl = len + pad;
 		cur_p->tx_desc_mapping = DESC_DMA_MAP_PAGE;
 	}
 
