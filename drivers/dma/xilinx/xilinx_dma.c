@@ -115,6 +115,9 @@
 #define XILINX_VDMA_REG_START_ADDRESS(n)	(0x000c + 4 * (n))
 #define XILINX_VDMA_REG_START_ADDRESS_64(n)	(0x000c + 8 * (n))
 
+#define XILINX_VDMA_REG_ENABLE_VERTICAL_FLIP	0x00ec
+#define XILINX_VDMA_ENABLE_VERTICAL_FLIP	BIT(0)
+
 /* HW specific definitions */
 #define XILINX_DMA_MAX_CHANS_PER_DEVICE	0x20
 
@@ -340,6 +343,7 @@ struct xilinx_dma_tx_descriptor {
  * @start_transfer: Differentiate b/w DMA IP's transfer
  * @stop_transfer: Differentiate b/w DMA IP's quiesce
  * @tdest: TDEST value for mcdma
+ * @has_vflip: S2MM vertical flip
  */
 struct xilinx_dma_chan {
 	struct xilinx_dma_device *xdev;
@@ -376,6 +380,7 @@ struct xilinx_dma_chan {
 	void (*start_transfer)(struct xilinx_dma_chan *chan);
 	int (*stop_transfer)(struct xilinx_dma_chan *chan);
 	u16 tdest;
+	bool has_vflip;
 };
 
 struct xilinx_dma_config {
@@ -1074,6 +1079,14 @@ static void xilinx_vdma_start_transfer(struct xilinx_dma_chan *chan)
 				desc->async_tx.phys);
 
 	/* Configure the hardware using info in the config structure */
+	if (chan->has_vflip) {
+		reg = dma_read(chan, XILINX_VDMA_REG_ENABLE_VERTICAL_FLIP);
+		reg &= ~XILINX_VDMA_ENABLE_VERTICAL_FLIP;
+		reg |= config->vflip_en;
+		dma_write(chan, XILINX_VDMA_REG_ENABLE_VERTICAL_FLIP,
+				reg);
+	}
+
 	reg = dma_ctrl_read(chan, XILINX_DMA_REG_DMACR);
 
 	if (config->frm_cnt_en)
@@ -2197,6 +2210,8 @@ int xilinx_vdma_channel_set_config(struct dma_chan *dchan,
 	}
 
 	chan->config.frm_cnt_en = cfg->frm_cnt_en;
+	chan->config.vflip_en = cfg->vflip_en;
+
 	if (cfg->park)
 		chan->config.park_frm = cfg->park_frm;
 	else
@@ -2522,6 +2537,13 @@ static int xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 		chan->id = chan_id;
 		chan->tdest = chan_id - xdev->nr_channels;
 		xdev->common.directions |= BIT(DMA_DEV_TO_MEM);
+		chan->has_vflip = of_property_read_bool(node,
+					"xlnx,enable-vert-flip");
+		if (chan->has_vflip) {
+			chan->config.vflip_en = dma_read(chan,
+				XILINX_VDMA_REG_ENABLE_VERTICAL_FLIP) &
+				XILINX_VDMA_ENABLE_VERTICAL_FLIP;
+		}
 
 		chan->ctrl_offset = XILINX_DMA_S2MM_CTRL_OFFSET;
 		if (xdev->dma_config->dmatype == XDMA_TYPE_VDMA) {
