@@ -494,6 +494,12 @@ static ssize_t zynqmp_pm_debugfs_api_write(struct file *file,
 		pm_id = PINCTRL_GET_FUNCTION;
 	else if (strncasecmp(pm_api_req, "PINCTRL_SET_FUNCTION", 21) == 0)
 		pm_id = PINCTRL_SET_FUNCTION;
+	else if (strncasecmp(pm_api_req,
+			     "PINCTRL_CONFIG_PARAM_GET", 25) == 0)
+		pm_id = PINCTRL_CONFIG_PARAM_GET;
+	else if (strncasecmp(pm_api_req,
+			     "PINCTRL_CONFIG_PARAM_SET", 25) == 0)
+		pm_id = PINCTRL_CONFIG_PARAM_SET;
 	/* If no name was entered look for PM-API ID instead */
 	else if (kstrtouint(pm_api_req, 10, &pm_id))
 		ret = -EINVAL;
@@ -627,6 +633,18 @@ static ssize_t zynqmp_pm_debugfs_api_write(struct file *file,
 	case PINCTRL_SET_FUNCTION:
 		ret = zynqmp_pm_pinctrl_set_function(pm_api_arg[0],
 						     pm_api_arg[1]);
+		break;
+	case PINCTRL_CONFIG_PARAM_GET:
+		ret = zynqmp_pm_pinctrl_get_config(pm_api_arg[0], pm_api_arg[1],
+						   &pm_api_ret[0]);
+		pr_info("%s pin: %llu, param: %llu, value: %u\n",
+			__func__, pm_api_arg[0], pm_api_arg[1],
+			pm_api_ret[0]);
+		break;
+	case PINCTRL_CONFIG_PARAM_SET:
+		ret = zynqmp_pm_pinctrl_set_config(pm_api_arg[0],
+						   pm_api_arg[1],
+						   pm_api_arg[2]);
 		break;
 	default:
 		pr_err("%s Unsupported PM-API request\n", __func__);
