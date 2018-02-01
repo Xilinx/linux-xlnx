@@ -17,7 +17,6 @@
 #include <linux/slab.h>
 #include <linux/interrupt.h>
 #include <linux/uaccess.h>
-#include <linux/pinctrl/consumer.h>
 #include <linux/platform_device.h>
 #include <linux/debugfs.h>
 #include <linux/reboot.h>
@@ -1176,8 +1175,6 @@ do { \
 static int zynqmp_pm_probe(struct platform_device *pdev)
 {
 	int ret, irq;
-	struct pinctrl *pinctrl;
-	struct pinctrl_state *pins_default;
 
 	zynqmp_pm_get_api_version(&pm_api_version);
 
@@ -1217,17 +1214,6 @@ static int zynqmp_pm_probe(struct platform_device *pdev)
 
 	zynqmp_pm_api_debugfs_init(&pdev->dev);
 
-	pinctrl = devm_pinctrl_get(&pdev->dev);
-	if (!IS_ERR(pinctrl)) {
-		pins_default = pinctrl_lookup_state(pinctrl,
-						    PINCTRL_STATE_DEFAULT);
-		if (IS_ERR(pins_default)) {
-			dev_err(&pdev->dev, "Missing default pinctrl config\n");
-			return IS_ERR(pins_default);
-		}
-
-		pinctrl_select_state(pinctrl, pins_default);
-	}
 
 	/* Create Global General Storage register. */
 	CREATE_GGS_DEVICE(0);
