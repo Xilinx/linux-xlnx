@@ -1168,7 +1168,8 @@ static int zynqmp_pm_probe(struct platform_device *pdev)
 		return -ENXIO;
 	}
 
-	ret = request_irq(irq, zynqmp_pm_isr, IRQF_SHARED, DRIVER_NAME, pdev);
+	ret = devm_request_irq(&pdev->dev, irq, zynqmp_pm_isr, IRQF_SHARED,
+			       DRIVER_NAME, pdev);
 	if (ret) {
 		dev_err(&pdev->dev, "request_irq '%d' failed with %d\n",
 			irq, ret);
@@ -1177,10 +1178,8 @@ static int zynqmp_pm_probe(struct platform_device *pdev)
 
 	zynqmp_pm_init_suspend_work = devm_kzalloc(&pdev->dev,
 			sizeof(struct zynqmp_pm_work_struct), GFP_KERNEL);
-	if (!zynqmp_pm_init_suspend_work) {
-		ret = -ENOMEM;
-		goto error;
-	}
+	if (!zynqmp_pm_init_suspend_work)
+		return -ENOMEM;
 
 	INIT_WORK(&zynqmp_pm_init_suspend_work->callback_work,
 		zynqmp_pm_init_suspend_work_fn);
@@ -1188,7 +1187,7 @@ static int zynqmp_pm_probe(struct platform_device *pdev)
 	ret = zynqmp_pm_sysfs_init(&pdev->dev);
 	if (ret) {
 		dev_err(&pdev->dev, "unable to initialize sysfs interface\n");
-		goto error;
+		return ret;
 	}
 
 	dev_info(&pdev->dev, "Power management API v%d.%d\n",
@@ -1221,10 +1220,6 @@ static int zynqmp_pm_probe(struct platform_device *pdev)
 	CREATE_PGGS_DEVICE(3);
 
 	return 0;
-
-error:
-	free_irq(irq, 0);
-	return ret;
 }
 
 static struct platform_driver zynqmp_pm_platform_driver = {
