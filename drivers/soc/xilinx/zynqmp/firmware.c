@@ -414,6 +414,114 @@ int zynqmp_pm_rsa(const u64 address, const u32 size, const u32 flags)
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_rsa);
 
+/**
+ * zynqmp_pm_pinctrl_request - Request Pin from firmware
+ * @pin:	Pin number to request
+ *
+ * This function requests pin from firmware.
+ *
+ * Return:	Returns status, either success or error+reason.
+ */
+int zynqmp_pm_pinctrl_request(const u32 pin)
+{
+	return invoke_pm_fn(PINCTRL_REQUEST, pin, 0, 0, 0, NULL);
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_pinctrl_request);
+
+/**
+ * zynqmp_pm_pinctrl_release - Inform firmware that Pin control is released
+ * @pin:	Pin number to release
+ *
+ * This function release pin from firmware.
+ *
+ * Return:	Returns status, either success or error+reason.
+ */
+int zynqmp_pm_pinctrl_release(const u32 pin)
+{
+	return invoke_pm_fn(PINCTRL_RELEASE, pin, 0, 0, 0, NULL);
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_pinctrl_release);
+
+/**
+ * zynqmp_pm_pinctrl_get_function - Read function id set for the given pin
+ * @pin:	Pin number
+ * @node:	Buffer to store node ID matching current function
+ *
+ * This function provides the function currently set for the given pin.
+ *
+ * Return:	Returns status, either success or error+reason
+ */
+int zynqmp_pm_pinctrl_get_function(const u32 pin, u32 *node)
+{
+	u32 ret_payload[PAYLOAD_ARG_CNT];
+
+	if (!node)
+		return -EINVAL;
+
+	invoke_pm_fn(PINCTRL_GET_FUNCTION, pin, 0, 0, 0, ret_payload);
+	*node = ret_payload[1];
+
+	return zynqmp_pm_ret_code((enum pm_ret_status)ret_payload[0]);
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_pinctrl_get_function);
+
+/**
+ * zynqmp_pm_pinctrl_set_function - Set requested function for the pin
+ * @pin:	Pin number
+ * @node:	Node ID mapped with the requested function
+ *
+ * This function sets requested function for the given pin.
+ *
+ * Return:	Returns status, either success or error+reason.
+ */
+int zynqmp_pm_pinctrl_set_function(const u32 pin, const u32 node)
+{
+	return invoke_pm_fn(PINCTRL_SET_FUNCTION, pin, node, 0, 0, NULL);
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_pinctrl_set_function);
+
+/**
+ * zynqmp_pm_pinctrl_get_config - Get configuration parameter for the pin
+ * @pin:	Pin number
+ * @param:	Parameter to get
+ * @value:	Buffer to store parameter value
+ *
+ * This function gets requested configuration parameter for the given pin.
+ *
+ * Return:	Returns status, either success or error+reason.
+ */
+int zynqmp_pm_pinctrl_get_config(const u32 pin, const u32 param, u32 *value)
+{
+	u32 ret_payload[PAYLOAD_ARG_CNT];
+
+	if (!value)
+		return -EINVAL;
+
+	invoke_pm_fn(PINCTRL_CONFIG_PARAM_GET, pin,
+		     param, 0, 0, ret_payload);
+	*value = ret_payload[1];
+
+	return zynqmp_pm_ret_code((enum pm_ret_status)ret_payload[0]);
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_pinctrl_get_config);
+
+/**
+ * zynqmp_pm_pinctrl_set_config - Set configuration parameter for the pin
+ * @pin:	Pin number
+ * @param:	Parameter to set
+ * @value:	Parameter value to set
+ *
+ * This function sets requested configuration parameter for the given pin.
+ *
+ * Return:	Returns status, either success or error+reason.
+ */
+int zynqmp_pm_pinctrl_set_config(const u32 pin, const u32 param, u32 value)
+{
+	return invoke_pm_fn(PINCTRL_CONFIG_PARAM_SET, pin,
+			    param, value, 0, NULL);
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_pinctrl_set_config);
+
 static int __init zynqmp_plat_init(void)
 {
 	struct device_node *np;

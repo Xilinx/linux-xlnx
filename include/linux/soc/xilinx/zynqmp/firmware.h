@@ -74,6 +74,13 @@ enum pm_api_id {
 	/* Secure library generic API functions */
 	SECURE_SHA = 26,
 	SECURE_RSA,
+	/* Pin control API functions */
+	PINCTRL_REQUEST,
+	PINCTRL_RELEASE,
+	PINCTRL_GET_FUNCTION,
+	PINCTRL_SET_FUNCTION,
+	PINCTRL_CONFIG_PARAM_GET,
+	PINCTRL_CONFIG_PARAM_SET,
 };
 
 /* PMU-FW return status codes */
@@ -214,6 +221,125 @@ enum zynqmp_pm_reset {
 	ZYNQMP_PM_RESET_END
 };
 
+enum pm_node_id {
+	NODE_UNKNOWN = 0,
+	NODE_APU,
+	NODE_APU_0,
+	NODE_APU_1,
+	NODE_APU_2,
+	NODE_APU_3,
+	NODE_RPU,
+	NODE_RPU_0,
+	NODE_RPU_1,
+	NODE_PLD,
+	NODE_FPD,
+	NODE_OCM_BANK_0,
+	NODE_OCM_BANK_1,
+	NODE_OCM_BANK_2,
+	NODE_OCM_BANK_3,
+	NODE_TCM_0_A,
+	NODE_TCM_0_B,
+	NODE_TCM_1_A,
+	NODE_TCM_1_B,
+	NODE_L2,
+	NODE_GPU_PP_0,
+	NODE_GPU_PP_1,
+	NODE_USB_0,
+	NODE_USB_1,
+	NODE_TTC_0,
+	NODE_TTC_1,
+	NODE_TTC_2,
+	NODE_TTC_3,
+	NODE_SATA,
+	NODE_ETH_0,
+	NODE_ETH_1,
+	NODE_ETH_2,
+	NODE_ETH_3,
+	NODE_UART_0,
+	NODE_UART_1,
+	NODE_SPI_0,
+	NODE_SPI_1,
+	NODE_I2C_0,
+	NODE_I2C_1,
+	NODE_SD_0,
+	NODE_SD_1,
+	NODE_DP,
+	NODE_GDMA,
+	NODE_ADMA,
+	NODE_NAND,
+	NODE_QSPI,
+	NODE_GPIO,
+	NODE_CAN_0,
+	NODE_CAN_1,
+	NODE_EXTERN,
+	NODE_APLL,
+	NODE_VPLL,
+	NODE_DPLL,
+	NODE_RPLL,
+	NODE_IOPLL,
+	NODE_DDR,
+	NODE_IPI_APU,
+	NODE_IPI_RPU_0,
+	NODE_GPU,
+	NODE_PCIE,
+	NODE_PCAP,
+	NODE_RTC,
+	NODE_LPD,
+	NODE_VCU,
+	NODE_IPI_RPU_1,
+	NODE_IPI_PL_0,
+	NODE_IPI_PL_1,
+	NODE_IPI_PL_2,
+	NODE_IPI_PL_3,
+	NODE_PL,
+	NODE_GEM_TSU,
+	NODE_SWDT_0,
+	NODE_SWDT_1,
+	NODE_CSU,
+	NODE_PJTAG,
+	NODE_TRACE,
+	NODE_TESTSCAN,
+	NODE_PMU,
+	NODE_MAX,
+};
+
+enum pm_pinctrl_config_param {
+	PM_PINCTRL_CONFIG_SLEW_RATE,
+	PM_PINCTRL_CONFIG_BIAS_STATUS,
+	PM_PINCTRL_CONFIG_PULL_CTRL,
+	PM_PINCTRL_CONFIG_SCHMITT_CMOS,
+	PM_PINCTRL_CONFIG_DRIVE_STRENGTH,
+	PM_PINCTRL_CONFIG_VOLTAGE_STATUS,
+	PM_PINCTRL_CONFIG_MAX,
+};
+
+enum pm_pinctrl_slew_rate {
+	PM_PINCTRL_SLEW_RATE_FAST,
+	PM_PINCTRL_SLEW_RATE_SLOW,
+};
+
+enum pm_pinctrl_bias_status {
+	PM_PINCTRL_BIAS_DISABLE,
+	PM_PINCTRL_BIAS_ENABLE,
+};
+
+enum pm_pinctrl_pull_ctrl {
+	PM_PINCTRL_BIAS_PULL_DOWN,
+	PM_PINCTRL_BIAS_PULL_UP,
+};
+
+enum pm_pinctrl_schmitt_cmos {
+	PM_PINCTRL_INPUT_TYPE_CMOS,
+	PM_PINCTRL_INPUT_TYPE_SCHMITT,
+};
+
+enum pm_pinctrl_drive_strength {
+	PM_PINCTRL_DRIVE_STRENGTH_2MA,
+	PM_PINCTRL_DRIVE_STRENGTH_4MA,
+	PM_PINCTRL_DRIVE_STRENGTH_8MA,
+	PM_PINCTRL_DRIVE_STRENGTH_12MA,
+};
+
 /*
  * Internal functions
  */
@@ -238,5 +364,12 @@ int zynqmp_pm_fpga_load(const u64 address, const u32 size, const u32 flags);
 int zynqmp_pm_fpga_get_status(u32 *value);
 int zynqmp_pm_sha_hash(const u64 address, const u32 size, const u32 flags);
 int zynqmp_pm_rsa(const u64 address, const u32 size, const u32 flags);
+/* Pin control APIs */
+int zynqmp_pm_pinctrl_request(const u32 pin);
+int zynqmp_pm_pinctrl_release(const u32 pin);
+int zynqmp_pm_pinctrl_get_function(const u32 pin, u32 *node);
+int zynqmp_pm_pinctrl_set_function(const u32 pin, const u32 node);
+int zynqmp_pm_pinctrl_get_config(const u32 pin, const u32 param, u32 *value);
+int zynqmp_pm_pinctrl_set_config(const u32 pin, const u32 param, u32 value);
 
 #endif /* __SOC_ZYNQMP_FIRMWARE_H__ */
