@@ -490,6 +490,10 @@ static ssize_t zynqmp_pm_debugfs_api_write(struct file *file,
 		pm_id = MMIO_WRITE;
 	else if (strncasecmp(pm_api_req, "GET_CHIPID", 9) == 0)
 		pm_id = GET_CHIPID;
+	else if (strncasecmp(pm_api_req, "PINCTRL_GET_FUNCTION", 21) == 0)
+		pm_id = PINCTRL_GET_FUNCTION;
+	else if (strncasecmp(pm_api_req, "PINCTRL_SET_FUNCTION", 21) == 0)
+		pm_id = PINCTRL_SET_FUNCTION;
 	/* If no name was entered look for PM-API ID instead */
 	else if (kstrtouint(pm_api_req, 10, &pm_id))
 		ret = -EINVAL;
@@ -613,6 +617,16 @@ static ssize_t zynqmp_pm_debugfs_api_write(struct file *file,
 		ret = zynqmp_pm_get_chipid(&pm_api_ret[0], &pm_api_ret[1]);
 		pr_info("%s idcode: %#x, version:%#x\n",
 			__func__, pm_api_ret[0], pm_api_ret[1]);
+		break;
+	case PINCTRL_GET_FUNCTION:
+		ret = zynqmp_pm_pinctrl_get_function(pm_api_arg[0],
+						     &pm_api_ret[0]);
+		pr_info("%s Current set function for the pin: %u\n",
+			__func__, pm_api_ret[0]);
+		break;
+	case PINCTRL_SET_FUNCTION:
+		ret = zynqmp_pm_pinctrl_set_function(pm_api_arg[0],
+						     pm_api_arg[1]);
 		break;
 	default:
 		pr_err("%s Unsupported PM-API request\n", __func__);
