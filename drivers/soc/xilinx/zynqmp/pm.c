@@ -730,9 +730,8 @@ static int zynqmp_pm_api_debugfs_init(struct device *dev)
 	}
 
 	zynqmp_pm_debugfs_power =
-		debugfs_create_file("power", S_IWUSR | S_IWGRP | S_IWOTH,
-					zynqmp_pm_debugfs_dir, NULL,
-					&fops_zynqmp_pm_dbgfs);
+		debugfs_create_file("power", 0220, zynqmp_pm_debugfs_dir, NULL,
+				    &fops_zynqmp_pm_dbgfs);
 	if (!zynqmp_pm_debugfs_power) {
 		dev_err(dev, "debugfs_create_file power failed\n");
 		err = -ENODEV;
@@ -740,9 +739,8 @@ static int zynqmp_pm_api_debugfs_init(struct device *dev)
 	}
 
 	zynqmp_pm_debugfs_api_version =
-		debugfs_create_file("api_version", S_IRUSR | S_IRGRP | S_IROTH,
-					zynqmp_pm_debugfs_dir, NULL,
-					&fops_zynqmp_pm_dbgfs);
+		debugfs_create_file("api_version", 0444, zynqmp_pm_debugfs_dir,
+				    NULL, &fops_zynqmp_pm_dbgfs);
 	if (!zynqmp_pm_debugfs_api_version) {
 		dev_err(dev, "debugfs_create_file api_version failed\n");
 		err = -ENODEV;
