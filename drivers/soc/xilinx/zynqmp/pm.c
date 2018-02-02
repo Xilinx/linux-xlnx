@@ -499,6 +499,8 @@ static ssize_t zynqmp_pm_debugfs_api_write(struct file *file,
 	else if (strncasecmp(pm_api_req,
 			     "PINCTRL_CONFIG_PARAM_SET", 25) == 0)
 		pm_id = PINCTRL_CONFIG_PARAM_SET;
+	else if (strncasecmp(pm_api_req, "IOCTL", 6) == 0)
+		pm_id = IOCTL;
 	/* If no name was entered look for PM-API ID instead */
 	else if (kstrtouint(pm_api_req, 10, &pm_id))
 		ret = -EINVAL;
@@ -644,6 +646,14 @@ static ssize_t zynqmp_pm_debugfs_api_write(struct file *file,
 		ret = zynqmp_pm_pinctrl_set_config(pm_api_arg[0],
 						   pm_api_arg[1],
 						   pm_api_arg[2]);
+		break;
+	case IOCTL:
+		ret = zynqmp_pm_ioctl(pm_api_arg[0], pm_api_arg[1],
+				      pm_api_arg[2], pm_api_arg[3],
+				      &pm_api_ret[0]);
+		if (pm_api_arg[1] == IOCTL_GET_RPU_OPER_MODE)
+			pr_info("%s RPU operation mode is %u\n",
+				__func__, pm_api_ret[1]);
 		break;
 	default:
 		pr_err("%s Unsupported PM-API request\n", __func__);

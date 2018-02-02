@@ -523,6 +523,24 @@ int zynqmp_pm_pinctrl_set_config(const u32 pin, const u32 param, u32 value)
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_pinctrl_set_config);
 
+/**
+ * zynqmp_pm_ioctl - PM IOCTL API for device control and configs
+ * @node_id:	Node ID of the device
+ * @ioctl_id:	ID of the requested IOCTL
+ * @arg1:	Argument 1 to requested IOCTL call
+ * @arg2:	Argument 2 to requested IOCTL call
+ * @out:	Returned output value
+ *
+ * This function calls IOCTL to firmware for device control and configuration.
+ *
+ * Return:		Returns status, either success or error+reason
+ */
+int zynqmp_pm_ioctl(u32 node_id, u32 ioctl_id, u32 arg1, u32 arg2, u32 *out)
+{
+	return invoke_pm_fn(IOCTL, node_id, ioctl_id, arg1, arg2, out);
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_ioctl);
+
 static int __init zynqmp_plat_init(void)
 {
 	struct device_node *np;
