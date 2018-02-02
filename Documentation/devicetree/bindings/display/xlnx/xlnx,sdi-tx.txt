@@ -1,0 +1,31 @@
+Device-Tree bindings for Xilinx SDI Tx subsystem
+
+The IP core supports transmission of video data in SDI Tx protocol
+
+Required properties:
+ - compatible: Should be "xlnx,sdi-tx".
+ - interrupts: Interrupt number.
+ - interrupts-parent: phandle for interrupt controller.
+ - reg: Base address and size of the IP core.
+ - port: Logical block can be used / connected independently with
+   external device. In the display controller port nodes, topology
+   for entire pipeline should be described using the DT bindings defined in
+   Documentation/devicetree/bindings/graph.txt.
+
+
+Example:
+
+	sdi_tx_subsystem@80000000 {
+		compatible = "xlnx,sdi-tx";
+		reg = <0x0 0x80000000 0x0 0x10000>;
+		interrupt-parent = <&gic>;
+		interrupts = <0 90 4>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		encoder_sdi_port: port@0 {
+			reg = <0>;
+			sdi_encoder: endpoint {
+				remote-endpoint = <&xyz_port>;
+			};
+		};
+	};
