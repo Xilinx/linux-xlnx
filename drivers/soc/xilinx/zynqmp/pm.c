@@ -22,6 +22,7 @@
 #include <linux/reboot.h>
 #include <linux/suspend.h>
 #include <linux/soc/xilinx/zynqmp/pm.h>
+#include <linux/soc/xilinx/zynqmp/firmware-debug.h>
 
 #define DRIVER_NAME	"zynqmp_pm"
 
@@ -58,295 +59,6 @@ enum pm_api_cb_id {
 	PM_ACKNOWLEDGE_CB,
 	PM_NOTIFY_CB,
 };
-
-/* PM-APIs for suspending of APU */
-
-#ifdef CONFIG_ZYNQMP_PM_API_DEBUGFS
-
-/**
- * zynqmp_pm_self_suspend - PM call for master to suspend itself
- * @node:	Node ID of the master or subsystem
- * @latency:	Requested maximum wakeup latency (not supported)
- * @state:	Requested state (not supported)
- *
- * Return:	Returns status, either success or error+reason
- */
-static int zynqmp_pm_self_suspend(const u32 node,
-				  const u32 latency,
-				  const u32 state)
-{
-	return invoke_pm_fn(SELF_SUSPEND, node, latency, state, 0, NULL);
-}
-
-/**
- * zynqmp_pm_abort_suspend - PM call to announce that a prior suspend request
- *				is to be aborted.
- * @reason:	Reason for the abort
- *
- * Return:	Returns status, either success or error+reason
- */
-static int zynqmp_pm_abort_suspend(const enum zynqmp_pm_abort_reason reason)
-{
-	return invoke_pm_fn(ABORT_SUSPEND, reason, 0, 0, 0, NULL);
-}
-
-/**
- * zynqmp_pm_register_notifier - Register the PU to be notified of PM events
- * @node:	Node ID of the slave
- * @event:	The event to be notified about
- * @wake:	Wake up on event
- * @enable:	Enable or disable the notifier
- *
- * Return:	Returns status, either success or error+reason
- */
-static int zynqmp_pm_register_notifier(const u32 node, const u32 event,
-				       const u32 wake, const u32 enable)
-{
-	return invoke_pm_fn(REGISTER_NOTIFIER, node, event,
-						wake, enable, NULL);
-}
-#endif
-
-/**
- * zynqmp_pm_request_suspend - PM call to request for another PU or subsystem to
- *					be suspended gracefully.
- * @node:	Node ID of the targeted PU or subsystem
- * @ack:	Flag to specify whether acknowledge is requested
- * @latency:	Requested wakeup latency (not supported)
- * @state:	Requested state (not supported)
- *
- * Return:	Returns status, either success or error+reason
- */
-int zynqmp_pm_request_suspend(const u32 node,
-				      const enum zynqmp_pm_request_ack ack,
-				      const u32 latency,
-				      const u32 state)
-{
-	return invoke_pm_fn(REQUEST_SUSPEND, node, ack,
-						latency, state, NULL);
-}
-EXPORT_SYMBOL_GPL(zynqmp_pm_request_suspend);
-
-/**
- * zynqmp_pm_force_powerdown - PM call to request for another PU or subsystem to
- *				be powered down forcefully
- * @target:	Node ID of the targeted PU or subsystem
- * @ack:	Flag to specify whether acknowledge is requested
- *
- * Return:	Returns status, either success or error+reason
- */
-int zynqmp_pm_force_powerdown(const u32 target,
-					  const enum zynqmp_pm_request_ack ack)
-{
-	return invoke_pm_fn(FORCE_POWERDOWN, target, ack, 0, 0, NULL);
-}
-EXPORT_SYMBOL_GPL(zynqmp_pm_force_powerdown);
-
-/**
- * zynqmp_pm_request_wakeup - PM call for to wake up selected master or subsystem
- * @node:	Node ID of the master or subsystem
- * @set_addr:	Specifies whether the address argument is relevant
- * @address:	Address from which to resume when woken up
- * @ack:	Flag to specify whether acknowledge requested
- *
- * Return:	Returns status, either success or error+reason
- */
-int zynqmp_pm_request_wakeup(const u32 node,
-				     const bool set_addr,
-				     const u64 address,
-				     const enum zynqmp_pm_request_ack ack)
-{
-	/* set_addr flag is encoded into 1st bit of address */
-	return invoke_pm_fn(REQUEST_WAKEUP, node, address | set_addr,
-				address >> 32, ack, NULL);
-}
-EXPORT_SYMBOL_GPL(zynqmp_pm_request_wakeup);
-
-/**
- * zynqmp_pm_set_wakeup_source - PM call to specify the wakeup source
- *					while suspended
- * @target:	Node ID of the targeted PU or subsystem
- * @wakeup_node:Node ID of the wakeup peripheral
- * @enable:	Enable or disable the specified peripheral as wake source
- *
- * Return:	Returns status, either success or error+reason
- */
-int zynqmp_pm_set_wakeup_source(const u32 target,
-					    const u32 wakeup_node,
-					    const u32 enable)
-{
-	return invoke_pm_fn(SET_WAKEUP_SOURCE, target,
-					wakeup_node, enable, 0, NULL);
-}
-EXPORT_SYMBOL_GPL(zynqmp_pm_set_wakeup_source);
-
-/**
- * zynqmp_pm_system_shutdown - PM call to request a system shutdown or restart
- * @type:	Shutdown or restart? 0 for shutdown, 1 for restart
- * @subtype:	Specifies which system should be restarted or shut down
- *
- * Return:	Returns status, either success or error+reason
- */
-int zynqmp_pm_system_shutdown(const u32 type, const u32 subtype)
-{
-	return invoke_pm_fn(SYSTEM_SHUTDOWN, type, subtype, 0, 0, NULL);
-}
-EXPORT_SYMBOL_GPL(zynqmp_pm_system_shutdown);
-
-/* API functions for managing PM Slaves */
-
-/**
- * zynqmp_pm_request_node - PM call to request a node with specific capabilities
- * @node:		Node ID of the slave
- * @capabilities:	Requested capabilities of the slave
- * @qos:		Quality of service (not supported)
- * @ack:		Flag to specify whether acknowledge is requested
- *
- * Return:		Returns status, either success or error+reason
- */
-int zynqmp_pm_request_node(const u32 node,
-				   const u32 capabilities,
-				   const u32 qos,
-				   const enum zynqmp_pm_request_ack ack)
-{
-	return invoke_pm_fn(REQUEST_NODE, node, capabilities,
-						qos, ack, NULL);
-}
-EXPORT_SYMBOL_GPL(zynqmp_pm_request_node);
-
-/**
- * zynqmp_pm_release_node - PM call to release a node
- * @node:	Node ID of the slave
- *
- * Return:	Returns status, either success or error+reason
- */
-int zynqmp_pm_release_node(const u32 node)
-{
-	return invoke_pm_fn(RELEASE_NODE, node, 0, 0, 0, NULL);
-}
-EXPORT_SYMBOL_GPL(zynqmp_pm_release_node);
-
-/**
- * zynqmp_pm_set_requirement - PM call to set requirement for PM slaves
- * @node:		Node ID of the slave
- * @capabilities:	Requested capabilities of the slave
- * @qos:		Quality of service (not supported)
- * @ack:		Flag to specify whether acknowledge is requested
- *
- * This API function is to be used for slaves a PU already has requested
- *
- * Return:		Returns status, either success or error+reason
- */
-int zynqmp_pm_set_requirement(const u32 node,
-				const u32 capabilities,
-				const u32 qos,
-				const enum zynqmp_pm_request_ack ack)
-{
-	return invoke_pm_fn(SET_REQUIREMENT, node, capabilities,
-						qos, ack, NULL);
-}
-EXPORT_SYMBOL_GPL(zynqmp_pm_set_requirement);
-
-/**
- * zynqmp_pm_set_max_latency - PM call to set wakeup latency requirements
- * @node:	Node ID of the slave
- * @latency:	Requested maximum wakeup latency
- *
- * Return:	Returns status, either success or error+reason
- */
-int zynqmp_pm_set_max_latency(const u32 node,
-					  const u32 latency)
-{
-	return invoke_pm_fn(SET_MAX_LATENCY, node,
-					latency, 0, 0, NULL);
-}
-EXPORT_SYMBOL_GPL(zynqmp_pm_set_max_latency);
-
-/* Miscellaneous API functions */
-
-/**
- * zynqmp_pm_set_configuration - PM call to set system configuration
- * @physical_addr:	Physical 32-bit address of data structure in memory
- *
- * Return:		Returns status, either success or error+reason
- */
-int zynqmp_pm_set_configuration(const u32 physical_addr)
-{
-	return invoke_pm_fn(SET_CONFIGURATION, physical_addr, 0, 0, 0, NULL);
-}
-EXPORT_SYMBOL_GPL(zynqmp_pm_set_configuration);
-
-/**
- * zynqmp_pm_get_node_status - PM call to request a node's current power state
- * @node:		ID of the component or sub-system in question
- * @status:		Current operating state of the requested node
- * @requirements:	Current requirements asserted on the node,
- *			used for slave nodes only.
- * @usage:		Usage information, used for slave nodes only:
- *			0 - No master is currently using the node
- *			1 - Only requesting master is currently using the node
- *			2 - Only other masters are currently using the node
- *			3 - Both the current and at least one other master
- *			is currently using the node
- *
- * Return:	Returns status, either success or error+reason
- */
-int zynqmp_pm_get_node_status(const u32 node,
-				u32 *const status,
-				u32 *const requirements,
-				u32 *const usage)
-{
-	u32 ret_payload[PAYLOAD_ARG_CNT];
-
-	if (!status)
-		return -EINVAL;
-
-	invoke_pm_fn(GET_NODE_STATUS, node, 0, 0, 0, ret_payload);
-	if (ret_payload[0] == XST_PM_SUCCESS) {
-		*status = ret_payload[1];
-		if (requirements)
-			*requirements = ret_payload[2];
-		if (usage)
-			*usage = ret_payload[3];
-	}
-
-	return zynqmp_pm_ret_code((enum pm_ret_status)ret_payload[0]);
-}
-EXPORT_SYMBOL_GPL(zynqmp_pm_get_node_status);
-
-/**
- * zynqmp_pm_get_operating_characteristic - PM call to request operating
- *						characteristic information
- * @node:	Node ID of the slave
- * @type:	Type of the operating characteristic requested
- * @result:	Used to return the requsted operating characteristic
- *
- * Return:	Returns status, either success or error+reason
- */
-int zynqmp_pm_get_operating_characteristic(const u32 node,
-					const enum zynqmp_pm_opchar_type type,
-					u32 *const result)
-{
-	u32 ret_payload[PAYLOAD_ARG_CNT];
-
-	if (!result)
-		return -EINVAL;
-
-	invoke_pm_fn(GET_OPERATING_CHARACTERISTIC,
-			node, type, 0, 0, ret_payload);
-	if (ret_payload[0] == XST_PM_SUCCESS)
-		*result = ret_payload[1];
-
-	return zynqmp_pm_ret_code((enum pm_ret_status)ret_payload[0]);
-}
-EXPORT_SYMBOL_GPL(zynqmp_pm_get_operating_characteristic);
-
-/* Direct-Control API functions */
-
-static void zynqmp_pm_get_callback_data(u32 *buf)
-{
-	invoke_pm_fn(GET_CALLBACK_DATA, 0, 0, 0, 0, buf);
-}
 
 static irqreturn_t zynqmp_pm_isr(int irq, void *data)
 {
@@ -835,7 +547,7 @@ static ssize_t suspend_mode_store(struct device *dev,
 		}
 
 	if (!ret && (md != suspend_mode)) {
-		ret = invoke_pm_fn(SET_SUSPEND_MODE, md, 0, 0, 0, NULL);
+		ret = zynqmp_pm_set_suspend_mode(md);
 		if (likely(!ret))
 			suspend_mode = md;
 	}
@@ -1249,14 +961,14 @@ builtin_platform_driver(zynqmp_pm_platform_driver);
 
 #ifdef CONFIG_PM
 /**
- * zynqmp_pm_init_finalize - Notify PM firmware that initialization is completed
+ * zynqmp_pm_init - Notify PM firmware that initialization is completed
  *
  * Return:	Status returned from the PM firmware
  */
-static int __init zynqmp_pm_init_finalize(void)
+static int __init zynqmp_pm_init(void)
 {
-	return invoke_pm_fn(PM_INIT_FINALIZE, 0, 0, 0, 0, NULL);
+	return zynqmp_pm_init_finalize();
 }
 
-late_initcall_sync(zynqmp_pm_init_finalize);
+late_initcall_sync(zynqmp_pm_init);
 #endif

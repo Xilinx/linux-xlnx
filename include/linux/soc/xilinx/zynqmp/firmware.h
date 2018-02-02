@@ -41,6 +41,12 @@
 #define PGGS_BASEADDR	(0xFFD80050U)
 #define PGSS_NUM_REGS	(4)
 
+/* Capabilities for RAM */
+#define	ZYNQMP_PM_CAPABILITY_ACCESS	0x1U
+#define	ZYNQMP_PM_CAPABILITY_CONTEXT	0x2U
+#define	ZYNQMP_PM_CAPABILITY_WAKEUP	0x4U
+#define	ZYNQMP_PM_CAPABILITY_POWER	0x8U
+
 enum pm_api_id {
 	/* Miscellaneous API functions: */
 	GET_API_VERSION = 1,
@@ -221,6 +227,37 @@ enum zynqmp_pm_reset {
 	ZYNQMP_PM_RESET_PS_ONLY,
 	ZYNQMP_PM_RESET_PL,
 	ZYNQMP_PM_RESET_END
+};
+
+enum zynqmp_pm_request_ack {
+	ZYNQMP_PM_REQUEST_ACK_NO = 1,
+	ZYNQMP_PM_REQUEST_ACK_BLOCKING,
+	ZYNQMP_PM_REQUEST_ACK_NON_BLOCKING,
+};
+
+enum zynqmp_pm_abort_reason {
+	ZYNQMP_PM_ABORT_REASON_WAKEUP_EVENT = 100,
+	ZYNQMP_PM_ABORT_REASON_POWER_UNIT_BUSY,
+	ZYNQMP_PM_ABORT_REASON_NO_POWERDOWN,
+	ZYNQMP_PM_ABORT_REASON_UNKNOWN,
+};
+
+enum zynqmp_pm_suspend_reason {
+	ZYNQMP_PM_SUSPEND_REASON_POWER_UNIT_REQUEST = 201,
+	ZYNQMP_PM_SUSPEND_REASON_ALERT,
+	ZYNQMP_PM_SUSPEND_REASON_SYSTEM_SHUTDOWN,
+};
+
+enum zynqmp_pm_ram_state {
+	ZYNQMP_PM_RAM_STATE_OFF = 1,
+	ZYNQMP_PM_RAM_STATE_RETENTION,
+	ZYNQMP_PM_RAM_STATE_ON,
+};
+
+enum zynqmp_pm_opchar_type {
+	ZYNQMP_PM_OPERATING_CHARACTERISTIC_POWER = 1,
+	ZYNQMP_PM_OPERATING_CHARACTERISTIC_ENERGY,
+	ZYNQMP_PM_OPERATING_CHARACTERISTIC_TEMPERATURE,
 };
 
 enum pm_node_id {
@@ -409,24 +446,68 @@ int zynqmp_pm_get_chipid(u32 *idcode, u32 *version);
 
 /* Direct-Control API functions */
 int zynqmp_pm_reset_assert(const enum zynqmp_pm_reset reset,
-				const enum zynqmp_pm_reset_action assert_flag);
-int zynqmp_pm_reset_get_status(const enum zynqmp_pm_reset reset,
-					u32 *status);
-int zynqmp_pm_mmio_write(const u32 address,
-				     const u32 mask,
-				     const u32 value);
+			   const enum zynqmp_pm_reset_action assert_flag);
+int zynqmp_pm_reset_get_status(const enum zynqmp_pm_reset reset, u32 *status);
+int zynqmp_pm_mmio_write(const u32 address, const u32 mask, const u32 value);
 int zynqmp_pm_mmio_read(const u32 address, u32 *value);
 int zynqmp_pm_fpga_load(const u64 address, const u32 size, const u32 flags);
 int zynqmp_pm_fpga_get_status(u32 *value);
 int zynqmp_pm_sha_hash(const u64 address, const u32 size, const u32 flags);
 int zynqmp_pm_rsa(const u64 address, const u32 size, const u32 flags);
-/* Pin control APIs */
+
+/* API for suspending of APU */
+int zynqmp_pm_request_suspend(const u32 node,
+			      const enum zynqmp_pm_request_ack ack,
+			      const u32 latency, const u32 state);
+int zynqmp_pm_request_wakeup(const u32 node,
+			     const bool set_addr,
+			     const u64 address,
+			     const enum zynqmp_pm_request_ack ack);
+int zynqmp_pm_set_wakeup_source(const u32 target,
+				const u32 wakeup_node,
+				const u32 enable);
+int zynqmp_pm_system_shutdown(const u32 type, const u32 subtype);
+
+/* API for suspending of RPU */
+int zynqmp_pm_force_powerdown(const u32 target,
+			      const enum zynqmp_pm_request_ack ack);
+
+/* API functions for managing PM Slaves */
+int zynqmp_pm_request_node(const u32 node,
+			   const u32 capabilities,
+			   const u32 qos,
+			   const enum zynqmp_pm_request_ack ack);
+int zynqmp_pm_release_node(const u32 node);
+int zynqmp_pm_set_requirement(const u32 node,
+			      const u32 capabilities,
+			      const u32 qos,
+			      const enum zynqmp_pm_request_ack ack);
+int zynqmp_pm_set_max_latency(const u32 node,
+			      const u32 latency);
+
+/* Miscellaneous API functions */
+int zynqmp_pm_set_configuration(const u32 physical_addr);
+int zynqmp_pm_get_node_status(const u32 node,
+			      u32 *const status,
+			      u32 *const requirements,
+			      u32 *const usage);
+int zynqmp_pm_get_operating_characteristic(const u32 node,
+				   const enum zynqmp_pm_opchar_type type,
+				   u32 *const result);
+int zynqmp_pm_init_finalize(void);
+/* Direct-Control API functions */
+int zynqmp_pm_get_callback_data(u32 *buf);
+int zynqmp_pm_set_suspend_mode(u32 mode);
+
+/* Pin-Control API functions */
 int zynqmp_pm_pinctrl_request(const u32 pin);
 int zynqmp_pm_pinctrl_release(const u32 pin);
 int zynqmp_pm_pinctrl_get_function(const u32 pin, u32 *node);
 int zynqmp_pm_pinctrl_set_function(const u32 pin, const u32 node);
 int zynqmp_pm_pinctrl_get_config(const u32 pin, const u32 param, u32 *value);
 int zynqmp_pm_pinctrl_set_config(const u32 pin, const u32 param, u32 value);
+
+/* IOCTL API function */
 int zynqmp_pm_ioctl(u32 node_id, u32 ioctl_id, u32 arg1, u32 arg2, u32 *out);
 
 #endif /* __SOC_ZYNQMP_FIRMWARE_H__ */
