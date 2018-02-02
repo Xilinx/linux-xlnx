@@ -779,6 +779,163 @@ static int zynqmp_pm_ioctl(u32 node_id, u32 ioctl_id, u32 arg1, u32 arg2,
 	return invoke_pm_fn(IOCTL, node_id, ioctl_id, arg1, arg2, out);
 }
 
+static int zynqmp_pm_query_data(struct zynqmp_pm_query_data qdata, u32 *out)
+{
+	return invoke_pm_fn(QUERY_DATA, qdata.qid, qdata.arg1,
+			    qdata.arg2, qdata.arg3, out);
+}
+
+/**
+ * zynqmp_pm_clock_enable - Enable the clock for given id
+ * @clock_id:	ID of the clock to be enabled
+ *
+ * This function is used by master to enable the clock
+ * including peripherals and PLL clocks.
+ *
+ * Return:	Returns status, either success or error+reason.
+ */
+static int zynqmp_pm_clock_enable(u32 clock_id)
+{
+	return invoke_pm_fn(CLOCK_ENABLE, clock_id, 0, 0, 0, NULL);
+}
+
+/**
+ * zynqmp_pm_clock_disable - Disable the clock for given id
+ * @clock_id:	ID of the clock to be disable
+ *
+ * This function is used by master to disable the clock
+ * including peripherals and PLL clocks.
+ *
+ * Return:	Returns status, either success or error+reason.
+ */
+static int zynqmp_pm_clock_disable(u32 clock_id)
+{
+	return invoke_pm_fn(CLOCK_DISABLE, clock_id, 0, 0, 0, NULL);
+}
+
+/**
+ * zynqmp_pm_clock_getstate - Get the clock state for given id
+ * @clock_id:	ID of the clock to be queried
+ * @state:	1/0 (Enabled/Disabled)
+ *
+ * This function is used by master to get the state of clock
+ * including peripherals and PLL clocks.
+ *
+ * Return:	Returns status, either success or error+reason.
+ */
+static int zynqmp_pm_clock_getstate(u32 clock_id, u32 *state)
+{
+	u32 ret_payload[PAYLOAD_ARG_CNT];
+
+	invoke_pm_fn(CLOCK_GETSTATE, clock_id, 0, 0, 0, ret_payload);
+	*state = ret_payload[1];
+
+	return zynqmp_pm_ret_code((enum pm_ret_status)ret_payload[0]);
+}
+
+/**
+ * zynqmp_pm_clock_setdivider - Set the clock divider for given id
+ * @clock_id:	ID of the clock
+ * @divider:	divider value.
+ *
+ * This function is used by master to set divider for any clock
+ * to achieve desired rate.
+ *
+ * Return:	Returns status, either success or error+reason.
+ */
+static int zynqmp_pm_clock_setdivider(u32 clock_id, u32 divider)
+{
+	return invoke_pm_fn(CLOCK_SETDIVIDER, clock_id, divider, 0, 0, NULL);
+}
+
+/**
+ * zynqmp_pm_clock_getdivider - Get the clock divider for given id
+ * @clock_id:	ID of the clock
+ * @divider:	divider value.
+ *
+ * This function is used by master to get divider values
+ * for any clock.
+ *
+ * Return:	Returns status, either success or error+reason.
+ */
+static int zynqmp_pm_clock_getdivider(u32 clock_id, u32 *divider)
+{
+	u32 ret_payload[PAYLOAD_ARG_CNT];
+
+	invoke_pm_fn(CLOCK_GETDIVIDER, clock_id, 0, 0, 0, ret_payload);
+	*divider = ret_payload[1];
+
+	return zynqmp_pm_ret_code((enum pm_ret_status)ret_payload[0]);
+}
+
+/**
+ * zynqmp_pm_clock_setrate - Set the clock rate for given id
+ * @clock_id:	ID of the clock
+ * @rate:	rate value in hz
+ *
+ * This function is used by master to set rate for any clock.
+ *
+ * Return:	Returns status, either success or error+reason.
+ */
+static int zynqmp_pm_clock_setrate(u32 clock_id, u32 rate)
+{
+	return invoke_pm_fn(CLOCK_SETRATE, clock_id, rate, 0, 0, NULL);
+}
+
+/**
+ * zynqmp_pm_clock_getrate - Get the clock rate for given id
+ * @clock_id:	ID of the clock
+ * @rate:	rate value in hz
+ *
+ * This function is used by master to get rate
+ * for any clock.
+ *
+ * Return:	Returns status, either success or error+reason.
+ */
+static int zynqmp_pm_clock_getrate(u32 clock_id, u32 *rate)
+{
+	u32 ret_payload[PAYLOAD_ARG_CNT];
+
+	invoke_pm_fn(CLOCK_GETRATE, clock_id, 0, 0, 0, ret_payload);
+	*rate = ret_payload[1];
+
+	return zynqmp_pm_ret_code((enum pm_ret_status)ret_payload[0]);
+}
+
+/**
+ * zynqmp_pm_clock_setparent - Set the clock parent for given id
+ * @clock_id:	ID of the clock
+ * @parent_id:	parent id
+ *
+ * This function is used by master to set parent for any clock.
+ *
+ * Return:	Returns status, either success or error+reason.
+ */
+static int zynqmp_pm_clock_setparent(u32 clock_id, u32 parent_id)
+{
+	return invoke_pm_fn(CLOCK_SETPARENT, clock_id, parent_id, 0, 0, NULL);
+}
+
+/**
+ * zynqmp_pm_clock_getparent - Get the clock parent for given id
+ * @clock_id:	ID of the clock
+ * @parent_id:	parent id
+ *
+ * This function is used by master to get parent index
+ * for any clock.
+ *
+ * Return:	Returns status, either success or error+reason.
+ */
+static int zynqmp_pm_clock_getparent(u32 clock_id, u32 *parent_id)
+{
+	u32 ret_payload[PAYLOAD_ARG_CNT];
+
+	invoke_pm_fn(CLOCK_GETPARENT, clock_id, 0, 0, 0, ret_payload);
+	*parent_id = ret_payload[1];
+
+	return zynqmp_pm_ret_code((enum pm_ret_status)ret_payload[0]);
+}
+
 static const struct zynqmp_eemi_ops eemi_ops  = {
 	.get_api_version = zynqmp_pm_get_api_version,
 	.get_chipid = zynqmp_pm_get_chipid,
@@ -806,12 +963,22 @@ static const struct zynqmp_eemi_ops eemi_ops  = {
 	.get_callback_data = zynqmp_pm_get_callback_data,
 	.set_suspend_mode = zynqmp_pm_set_suspend_mode,
 	.ioctl = zynqmp_pm_ioctl,
+	.query_data = zynqmp_pm_query_data,
 	.pinctrl_request = zynqmp_pm_pinctrl_request,
 	.pinctrl_release = zynqmp_pm_pinctrl_release,
 	.pinctrl_get_function = zynqmp_pm_pinctrl_get_function,
 	.pinctrl_set_function = zynqmp_pm_pinctrl_set_function,
 	.pinctrl_get_config = zynqmp_pm_pinctrl_get_config,
 	.pinctrl_set_config = zynqmp_pm_pinctrl_set_config,
+	.clock_enable = zynqmp_pm_clock_enable,
+	.clock_disable = zynqmp_pm_clock_disable,
+	.clock_getstate = zynqmp_pm_clock_getstate,
+	.clock_setdivider = zynqmp_pm_clock_setdivider,
+	.clock_getdivider = zynqmp_pm_clock_getdivider,
+	.clock_setrate = zynqmp_pm_clock_setrate,
+	.clock_getrate = zynqmp_pm_clock_getrate,
+	.clock_setparent = zynqmp_pm_clock_setparent,
+	.clock_getparent = zynqmp_pm_clock_getparent,
 };
 
 /**

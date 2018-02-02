@@ -138,7 +138,7 @@ static ssize_t zynqmp_pm_debugfs_api_write(struct file *file,
 	u32 pm_id = 0;
 	u64 pm_api_arg[4];
 	/* Return values from PM APIs calls */
-	u32 pm_api_ret[3] = {0, 0, 0};
+	u32 pm_api_ret[4] = {0, 0, 0, 0};
 	int ret;
 	int i = 0;
 	const struct zynqmp_eemi_ops *eemi_ops = get_eemi_ops();
@@ -221,6 +221,27 @@ static ssize_t zynqmp_pm_debugfs_api_write(struct file *file,
 		pm_id = PINCTRL_CONFIG_PARAM_SET;
 	else if (strncasecmp(pm_api_req, "IOCTL", 6) == 0)
 		pm_id = IOCTL;
+	else if (strncasecmp(pm_api_req, "CLOCK_ENABLE", 12) == 0)
+		pm_id = CLOCK_ENABLE;
+	else if (strncasecmp(pm_api_req, "CLOCK_DISABLE", 13) == 0)
+		pm_id = CLOCK_DISABLE;
+	else if (strncasecmp(pm_api_req, "CLOCK_GETSTATE", 14) == 0)
+		pm_id = CLOCK_GETSTATE;
+	else if (strncasecmp(pm_api_req, "CLOCK_SETDIVIDER", 16) == 0)
+		pm_id = CLOCK_SETDIVIDER;
+	else if (strncasecmp(pm_api_req, "CLOCK_GETDIVIDER", 16) == 0)
+		pm_id = CLOCK_GETDIVIDER;
+	else if (strncasecmp(pm_api_req, "CLOCK_SETRATE", 13) == 0)
+		pm_id = CLOCK_SETRATE;
+	else if (strncasecmp(pm_api_req, "CLOCK_GETRATE", 13) == 0)
+		pm_id = CLOCK_GETRATE;
+	else if (strncasecmp(pm_api_req, "CLOCK_SETPARENT", 15) == 0)
+		pm_id = CLOCK_SETPARENT;
+	else if (strncasecmp(pm_api_req, "CLOCK_GETPARENT", 15) == 0)
+		pm_id = CLOCK_GETPARENT;
+	else if (strncasecmp(pm_api_req, "QUERY_DATA", 22) == 0)
+		pm_id = QUERY_DATA;
+
 	/* If no name was entered look for PM-API ID instead */
 	else if (kstrtouint(pm_api_req, 10, &pm_id))
 		ret = -EINVAL;
@@ -371,10 +392,60 @@ static ssize_t zynqmp_pm_debugfs_api_write(struct file *file,
 		ret = eemi_ops->ioctl(pm_api_arg[0], pm_api_arg[1],
 				      pm_api_arg[2], pm_api_arg[3],
 				      &pm_api_ret[0]);
-		if (pm_api_arg[1] == IOCTL_GET_RPU_OPER_MODE)
-			pr_info("%s RPU operation mode is %u\n",
+		if (pm_api_arg[1] == IOCTL_GET_RPU_OPER_MODE ||
+		    pm_api_arg[1] == IOCTL_GET_PLL_FRAC_MODE ||
+		    pm_api_arg[1] == IOCTL_GET_PLL_FRAC_DATA)
+			pr_info("%s Value: %u\n",
 				__func__, pm_api_ret[1]);
 		break;
+	case CLOCK_ENABLE:
+		ret = eemi_ops->clock_enable(pm_api_arg[0]);
+		break;
+	case CLOCK_DISABLE:
+		ret = eemi_ops->clock_disable(pm_api_arg[0]);
+		break;
+	case CLOCK_GETSTATE:
+		ret = eemi_ops->clock_getstate(pm_api_arg[0], &pm_api_ret[0]);
+		pr_info("%s state: %u\n", __func__, pm_api_ret[0]);
+		break;
+	case CLOCK_SETDIVIDER:
+		ret = eemi_ops->clock_setdivider(pm_api_arg[0], pm_api_arg[1]);
+		break;
+	case CLOCK_GETDIVIDER:
+		ret = eemi_ops->clock_getdivider(pm_api_arg[0], &pm_api_ret[0]);
+		pr_info("%s Divider Value: %d\n", __func__, pm_api_ret[0]);
+		break;
+	case CLOCK_SETRATE:
+		ret = eemi_ops->clock_setrate(pm_api_arg[0], pm_api_arg[1]);
+		break;
+	case CLOCK_GETRATE:
+		ret = eemi_ops->clock_getrate(pm_api_arg[0], &pm_api_ret[0]);
+		pr_info("%s Rate Value: %u\n", __func__, pm_api_ret[0]);
+		break;
+	case CLOCK_SETPARENT:
+		ret = eemi_ops->clock_setparent(pm_api_arg[0], pm_api_arg[1]);
+		break;
+	case CLOCK_GETPARENT:
+		ret = eemi_ops->clock_getparent(pm_api_arg[0], &pm_api_ret[0]);
+		pr_info("%s Parent Index: %u\n", __func__, pm_api_ret[0]);
+		break;
+	case QUERY_DATA:
+	{
+		struct zynqmp_pm_query_data qdata = {0};
+
+		qdata.qid = pm_api_arg[0];
+		qdata.arg1 = pm_api_arg[1];
+		qdata.arg2 = pm_api_arg[2];
+		qdata.arg3 = pm_api_arg[3];
+
+		ret = eemi_ops->query_data(qdata, pm_api_ret);
+
+		pr_info("%s: data[0] = 0x%08x\n", __func__, pm_api_ret[0]);
+		pr_info("%s: data[1] = 0x%08x\n", __func__, pm_api_ret[1]);
+		pr_info("%s: data[2] = 0x%08x\n", __func__, pm_api_ret[2]);
+		pr_info("%s: data[3] = 0x%08x\n", __func__, pm_api_ret[3]);
+		break;
+	}
 	default:
 		pr_err("%s Unsupported PM-API request\n", __func__);
 		ret = -EINVAL;

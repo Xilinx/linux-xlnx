@@ -47,6 +47,13 @@
 #define	ZYNQMP_PM_CAPABILITY_WAKEUP	0x4U
 #define	ZYNQMP_PM_CAPABILITY_POWER	0x8U
 
+/* Clock APIs payload parameters */
+#define CLK_GET_NAME_RESP_LEN				16
+#define CLK_GET_TOPOLOGY_RESP_WORDS			3
+#define CLK_GET_FIXEDFACTOR_RESP_WORDS			2
+#define CLK_GET_PARENTS_RESP_WORDS			3
+#define CLK_GET_ATTR_RESP_WORDS				1
+
 enum pm_api_id {
 	/* Miscellaneous API functions: */
 	GET_API_VERSION = 1,
@@ -89,6 +96,18 @@ enum pm_api_id {
 	PINCTRL_CONFIG_PARAM_SET,
 	/* PM IOCTL API */
 	IOCTL,
+	/* API to query information from firmware */
+	QUERY_DATA,
+	/* Clock control API functions */
+	CLOCK_ENABLE,
+	CLOCK_DISABLE,
+	CLOCK_GETSTATE,
+	CLOCK_SETDIVIDER,
+	CLOCK_GETDIVIDER,
+	CLOCK_SETRATE,
+	CLOCK_GETRATE,
+	CLOCK_SETPARENT,
+	CLOCK_GETPARENT,
 };
 
 /* PMU-FW return status codes */
@@ -388,6 +407,11 @@ enum pm_ioctl_id {
 	IOCTL_SET_SGMII_MODE,
 	IOCTL_SD_DLL_RESET,
 	IOCTL_SET_SD_TAPDELAY,
+	/* Ioctl for clock driver */
+	IOCTL_SET_PLL_FRAC_MODE,
+	IOCTL_GET_PLL_FRAC_MODE,
+	IOCTL_SET_PLL_FRAC_DATA,
+	IOCTL_GET_PLL_FRAC_DATA,
 };
 
 enum rpu_oper_mode {
@@ -431,6 +455,32 @@ enum dll_reset_type {
 	PM_DLL_RESET_ASSERT,
 	PM_DLL_RESET_RELEASE,
 	PM_DLL_RESET_PULSE,
+};
+
+enum topology_type {
+	TYPE_INVALID,
+	TYPE_MUX,
+	TYPE_PLL,
+	TYPE_FIXEDFACTOR,
+	TYPE_DIV1,
+	TYPE_DIV2,
+	TYPE_GATE,
+};
+
+enum pm_query_id {
+	PM_QID_INVALID,
+	PM_QID_CLOCK_GET_NAME,
+	PM_QID_CLOCK_GET_TOPOLOGY,
+	PM_QID_CLOCK_GET_FIXEDFACTOR_PARAMS,
+	PM_QID_CLOCK_GET_PARENTS,
+	PM_QID_CLOCK_GET_ATTRIBUTES,
+};
+
+struct zynqmp_pm_query_data {
+	u32 qid;
+	u32 arg1;
+	u32 arg2;
+	u32 arg3;
 };
 
 struct zynqmp_eemi_ops {
@@ -479,12 +529,22 @@ struct zynqmp_eemi_ops {
 	int (*get_callback_data)(u32 *buf);
 	int (*set_suspend_mode)(u32 mode);
 	int (*ioctl)(u32 node_id, u32 ioctl_id, u32 arg1, u32 arg2, u32 *out);
+	int (*query_data)(struct zynqmp_pm_query_data qdata, u32 *out);
 	int (*pinctrl_request)(const u32 pin);
 	int (*pinctrl_release)(const u32 pin);
 	int (*pinctrl_get_function)(const u32 pin, u32 *node);
 	int (*pinctrl_set_function)(const u32 pin, const u32 node);
 	int (*pinctrl_get_config)(const u32 pin, const u32 param, u32 *value);
 	int (*pinctrl_set_config)(const u32 pin, const u32 param, u32 value);
+	int (*clock_enable)(u32 clock_id);
+	int (*clock_disable)(u32 clock_id);
+	int (*clock_getstate)(u32 clock_id, u32 *state);
+	int (*clock_setdivider)(u32 clock_id, u32 divider);
+	int (*clock_getdivider)(u32 clock_id, u32 *divider);
+	int (*clock_setrate)(u32 clock_id, u32 rate);
+	int (*clock_getrate)(u32 clock_id, u32 *rate);
+	int (*clock_setparent)(u32 clock_id, u32 parent_id);
+	int (*clock_getparent)(u32 clock_id, u32 *parent_id);
 };
 
 /*
