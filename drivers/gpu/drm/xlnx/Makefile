@@ -6,5 +6,8 @@ obj-$(CONFIG_DRM_XLNX_DSI) += xlnx_dsi.o
 
 obj-$(CONFIG_DRM_XLNX_MIXER) += xlnx_mixer.o
 
+xlnx-sdi-objs += xlnx_sdi.o xlnx_sdi_timing.o
+obj-$(CONFIG_DRM_XLNX_SDI) += xlnx-sdi.o
+
 zynqmp-dpsub-objs += zynqmp_disp.o zynqmp_dpsub.o zynqmp_dp.o
 obj-$(CONFIG_DRM_ZYNQMP_DPSUB) += zynqmp-dpsub.o
