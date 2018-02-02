@@ -25,8 +25,12 @@ static int zynqmp_nvmem_read(void *context, unsigned int offset,
 {
 	int ret;
 	int idcode, version;
+	const struct zynqmp_eemi_ops *eemi_ops = get_eemi_ops();
 
-	ret = zynqmp_pm_get_chipid(&idcode, &version);
+	if (!eemi_ops || !eemi_ops->get_chipid)
+		return -ENXIO;
+
+	ret = eemi_ops->get_chipid(&idcode, &version);
 	if (ret < 0)
 		return ret;
 

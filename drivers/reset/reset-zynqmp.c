@@ -21,6 +21,8 @@
 #define ZYNQMP_NR_RESETS (ZYNQMP_PM_RESET_END - ZYNQMP_PM_RESET_START - 2)
 #define ZYNQMP_RESET_ID (ZYNQMP_PM_RESET_START + 1)
 
+static const struct zynqmp_eemi_ops *eemi_ops;
+
 struct zynqmp_reset {
 	struct reset_controller_dev rcdev;
 };
@@ -28,14 +30,14 @@ struct zynqmp_reset {
 static int zynqmp_reset_assert(struct reset_controller_dev *rcdev,
 				unsigned long id)
 {
-	return zynqmp_pm_reset_assert(ZYNQMP_RESET_ID + id,
+	return eemi_ops->reset_assert(ZYNQMP_RESET_ID + id,
 						PM_RESET_ACTION_ASSERT);
 }
 
 static int zynqmp_reset_deassert(struct reset_controller_dev *rcdev,
 				unsigned long id)
 {
-	return zynqmp_pm_reset_assert(ZYNQMP_RESET_ID + id,
+	return eemi_ops->reset_assert(ZYNQMP_RESET_ID + id,
 						PM_RESET_ACTION_RELEASE);
 }
 
@@ -44,14 +46,14 @@ static int zynqmp_reset_status(struct reset_controller_dev *rcdev,
 {
 	int val;
 
-	zynqmp_pm_reset_get_status(ZYNQMP_RESET_ID + id, &val);
+	eemi_ops->reset_get_status(ZYNQMP_RESET_ID + id, &val);
 	return val;
 }
 
 static int zynqmp_reset_reset(struct reset_controller_dev *rcdev,
 				unsigned long id)
 {
-	return zynqmp_pm_reset_assert(ZYNQMP_RESET_ID + id,
+	return eemi_ops->reset_assert(ZYNQMP_RESET_ID + id,
 						PM_RESET_ACTION_PULSE);
 }
 
@@ -71,6 +73,10 @@ static int zynqmp_reset_probe(struct platform_device *pdev)
 				sizeof(*zynqmp_reset), GFP_KERNEL);
 	if (!zynqmp_reset)
 		return -ENOMEM;
+
+	eemi_ops = get_eemi_ops();
+	if (!eemi_ops)
+		return -ENXIO;
 
 	platform_set_drvdata(pdev, zynqmp_reset);
 

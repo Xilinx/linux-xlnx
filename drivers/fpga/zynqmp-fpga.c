@@ -52,6 +52,10 @@ static int zynqmp_fpga_ops_write(struct fpga_manager *mgr,
 	dma_addr_t dma_addr;
 	u32 transfer_length;
 	int ret;
+	const struct zynqmp_eemi_ops *eemi_ops = get_eemi_ops();
+
+	if (!eemi_ops || !eemi_ops->fpga_load)
+		return -ENXIO;
 
 	priv = mgr->priv;
 
@@ -84,7 +88,7 @@ static int zynqmp_fpga_ops_write(struct fpga_manager *mgr,
 	else
 		transfer_length = size >> 2;
 
-	ret = zynqmp_pm_fpga_load(dma_addr, transfer_length, mgr->flags);
+	ret = eemi_ops->fpga_load(dma_addr, transfer_length, mgr->flags);
 
 	dma_free_coherent(priv->dev, dma_size, kbuf, dma_addr);
 
@@ -100,8 +104,12 @@ static int zynqmp_fpga_ops_write_complete(struct fpga_manager *mgr,
 static enum fpga_mgr_states zynqmp_fpga_ops_state(struct fpga_manager *mgr)
 {
 	u32 status;
+	const struct zynqmp_eemi_ops *eemi_ops = get_eemi_ops();
 
-	zynqmp_pm_fpga_get_status(&status);
+	if (!eemi_ops || !eemi_ops->fpga_get_status)
+		return FPGA_MGR_STATE_UNKNOWN;
+
+	eemi_ops->fpga_get_status(&status);
 	if (status & IXR_FPGA_DONE_MASK)
 		return FPGA_MGR_STATE_OPERATING;
 

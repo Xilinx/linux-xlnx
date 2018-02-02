@@ -63,8 +63,12 @@ enum pm_api_cb_id {
 static irqreturn_t zynqmp_pm_isr(int irq, void *data)
 {
 	u32 payload[CB_PAYLOAD_SIZE];
+	const struct zynqmp_eemi_ops *eemi_ops = get_eemi_ops();
 
-	zynqmp_pm_get_callback_data(payload);
+	if (!eemi_ops || !eemi_ops->get_callback_data)
+		return IRQ_NONE;
+
+	eemi_ops->get_callback_data(payload);
 
 	if (!payload[0])
 		return IRQ_NONE;
@@ -137,6 +141,10 @@ static ssize_t zynqmp_pm_debugfs_api_write(struct file *file,
 	u32 pm_api_ret[3] = {0, 0, 0};
 	int ret;
 	int i = 0;
+	const struct zynqmp_eemi_ops *eemi_ops = get_eemi_ops();
+
+	if (!eemi_ops)
+		return -ENXIO;
 
 	if (*off != 0 || len <= 0)
 		return -EINVAL;
@@ -231,7 +239,7 @@ static ssize_t zynqmp_pm_debugfs_api_write(struct file *file,
 				pm_api_version >> 16, pm_api_version & 0xffff);
 		break;
 	case REQUEST_SUSPEND:
-		ret = zynqmp_pm_request_suspend(pm_api_arg[0],
+		ret = eemi_ops->request_suspend(pm_api_arg[0],
 				pm_api_arg[1] ? pm_api_arg[1] :
 						ZYNQMP_PM_REQUEST_ACK_NO,
 				pm_api_arg[2] ? pm_api_arg[2] :
@@ -243,7 +251,7 @@ static ssize_t zynqmp_pm_debugfs_api_write(struct file *file,
 						ZYNQMP_PM_MAX_LATENCY, 0);
 		break;
 	case FORCE_POWERDOWN:
-		ret = zynqmp_pm_force_powerdown(pm_api_arg[0],
+		ret = eemi_ops->force_powerdown(pm_api_arg[0],
 				pm_api_arg[1] ? pm_api_arg[1] :
 						ZYNQMP_PM_REQUEST_ACK_NO);
 		break;
@@ -253,20 +261,20 @@ static ssize_t zynqmp_pm_debugfs_api_write(struct file *file,
 					ZYNQMP_PM_ABORT_REASON_UNKNOWN);
 		break;
 	case REQUEST_WAKEUP:
-		ret = zynqmp_pm_request_wakeup(pm_api_arg[0],
+		ret = eemi_ops->request_wakeup(pm_api_arg[0],
 				pm_api_arg[1], pm_api_arg[2],
 				pm_api_arg[3] ? pm_api_arg[3] :
 						ZYNQMP_PM_REQUEST_ACK_NO);
 		break;
 	case SET_WAKEUP_SOURCE:
-		ret = zynqmp_pm_set_wakeup_source(pm_api_arg[0],
+		ret = eemi_ops->set_wakeup_source(pm_api_arg[0],
 					pm_api_arg[1], pm_api_arg[2]);
 		break;
 	case SYSTEM_SHUTDOWN:
-		ret = zynqmp_pm_system_shutdown(pm_api_arg[0], pm_api_arg[1]);
+		ret = eemi_ops->system_shutdown(pm_api_arg[0], pm_api_arg[1]);
 		break;
 	case REQUEST_NODE:
-		ret = zynqmp_pm_request_node(pm_api_arg[0],
+		ret = eemi_ops->request_node(pm_api_arg[0],
 			pm_api_arg[1] ? pm_api_arg[1] :
 					ZYNQMP_PM_CAPABILITY_ACCESS,
 			pm_api_arg[2] ? pm_api_arg[2] : 0,
@@ -274,10 +282,10 @@ static ssize_t zynqmp_pm_debugfs_api_write(struct file *file,
 				ZYNQMP_PM_REQUEST_ACK_BLOCKING);
 		break;
 	case RELEASE_NODE:
-		ret = zynqmp_pm_release_node(pm_api_arg[0]);
+		ret = eemi_ops->release_node(pm_api_arg[0]);
 		break;
 	case SET_REQUIREMENT:
-		ret = zynqmp_pm_set_requirement(pm_api_arg[0],
+		ret = eemi_ops->set_requirement(pm_api_arg[0],
 			pm_api_arg[1] ? pm_api_arg[1] :
 					ZYNQMP_PM_CAPABILITY_CONTEXT,
 			pm_api_arg[2] ? pm_api_arg[2] : 0,
@@ -285,15 +293,15 @@ static ssize_t zynqmp_pm_debugfs_api_write(struct file *file,
 				ZYNQMP_PM_REQUEST_ACK_BLOCKING);
 		break;
 	case SET_MAX_LATENCY:
-		ret = zynqmp_pm_set_max_latency(pm_api_arg[0],
+		ret = eemi_ops->set_max_latency(pm_api_arg[0],
 				pm_api_arg[1] ? pm_api_arg[1] :
 						ZYNQMP_PM_MAX_LATENCY);
 		break;
 	case SET_CONFIGURATION:
-		ret = zynqmp_pm_set_configuration(pm_api_arg[0]);
+		ret = eemi_ops->set_configuration(pm_api_arg[0]);
 		break;
 	case GET_NODE_STATUS:
-		ret = zynqmp_pm_get_node_status(pm_api_arg[0],
+		ret = eemi_ops->get_node_status(pm_api_arg[0],
 						&pm_api_ret[0],
 						&pm_api_ret[1],
 						&pm_api_ret[2]);
@@ -303,7 +311,7 @@ static ssize_t zynqmp_pm_debugfs_api_write(struct file *file,
 				pm_api_ret[1], pm_api_ret[2]);
 		break;
 	case GET_OPERATING_CHARACTERISTIC:
-		ret = zynqmp_pm_get_operating_characteristic(pm_api_arg[0],
+		ret = eemi_ops->get_operating_characteristic(pm_api_arg[0],
 				pm_api_arg[1] ? pm_api_arg[1] :
 				ZYNQMP_PM_OPERATING_CHARACTERISTIC_POWER,
 				&pm_api_ret[0]);
@@ -318,49 +326,49 @@ static ssize_t zynqmp_pm_debugfs_api_write(struct file *file,
 				pm_api_arg[3] ? pm_api_arg[3] : 0);
 		break;
 	case RESET_ASSERT:
-		ret = zynqmp_pm_reset_assert(pm_api_arg[0], pm_api_arg[1]);
+		ret = eemi_ops->reset_assert(pm_api_arg[0], pm_api_arg[1]);
 		break;
 	case RESET_GET_STATUS:
-		ret = zynqmp_pm_reset_get_status(pm_api_arg[0], &pm_api_ret[0]);
+		ret = eemi_ops->reset_get_status(pm_api_arg[0], &pm_api_ret[0]);
 		pr_info("%s Reset status: %u\n", __func__, pm_api_ret[0]);
 		break;
 	case MMIO_READ:
-		ret = zynqmp_pm_mmio_read(pm_api_arg[0], &pm_api_ret[0]);
+		ret = eemi_ops->mmio_read(pm_api_arg[0], &pm_api_ret[0]);
 		pr_info("%s MMIO value: %#x\n", __func__, pm_api_ret[0]);
 		break;
 	case MMIO_WRITE:
-		ret = zynqmp_pm_mmio_write(pm_api_arg[0],
+		ret = eemi_ops->mmio_write(pm_api_arg[0],
 				     pm_api_arg[1], pm_api_arg[2]);
 		break;
 	case GET_CHIPID:
-		ret = zynqmp_pm_get_chipid(&pm_api_ret[0], &pm_api_ret[1]);
+		ret = eemi_ops->get_chipid(&pm_api_ret[0], &pm_api_ret[1]);
 		pr_info("%s idcode: %#x, version:%#x\n",
 			__func__, pm_api_ret[0], pm_api_ret[1]);
 		break;
 	case PINCTRL_GET_FUNCTION:
-		ret = zynqmp_pm_pinctrl_get_function(pm_api_arg[0],
+		ret = eemi_ops->pinctrl_get_function(pm_api_arg[0],
 						     &pm_api_ret[0]);
 		pr_info("%s Current set function for the pin: %u\n",
 			__func__, pm_api_ret[0]);
 		break;
 	case PINCTRL_SET_FUNCTION:
-		ret = zynqmp_pm_pinctrl_set_function(pm_api_arg[0],
+		ret = eemi_ops->pinctrl_set_function(pm_api_arg[0],
 						     pm_api_arg[1]);
 		break;
 	case PINCTRL_CONFIG_PARAM_GET:
-		ret = zynqmp_pm_pinctrl_get_config(pm_api_arg[0], pm_api_arg[1],
+		ret = eemi_ops->pinctrl_get_config(pm_api_arg[0], pm_api_arg[1],
 						   &pm_api_ret[0]);
 		pr_info("%s pin: %llu, param: %llu, value: %u\n",
 			__func__, pm_api_arg[0], pm_api_arg[1],
 			pm_api_ret[0]);
 		break;
 	case PINCTRL_CONFIG_PARAM_SET:
-		ret = zynqmp_pm_pinctrl_set_config(pm_api_arg[0],
+		ret = eemi_ops->pinctrl_set_config(pm_api_arg[0],
 						   pm_api_arg[1],
 						   pm_api_arg[2]);
 		break;
 	case IOCTL:
-		ret = zynqmp_pm_ioctl(pm_api_arg[0], pm_api_arg[1],
+		ret = eemi_ops->ioctl(pm_api_arg[0], pm_api_arg[1],
 				      pm_api_arg[2], pm_api_arg[3],
 				      &pm_api_ret[0]);
 		if (pm_api_arg[1] == IOCTL_GET_RPU_OPER_MODE)
@@ -538,6 +546,10 @@ static ssize_t suspend_mode_store(struct device *dev,
 			const char *buf, size_t count)
 {
 	int md, ret = -EINVAL;
+	const struct zynqmp_eemi_ops *eemi_ops = get_eemi_ops();
+
+	if (!eemi_ops || !eemi_ops->set_suspend_mode)
+		return ret;
 
 	for (md = PM_SUSPEND_MODE_FIRST; md < ARRAY_SIZE(suspend_modes); md++)
 		if (suspend_modes[md] &&
@@ -547,7 +559,7 @@ static ssize_t suspend_mode_store(struct device *dev,
 		}
 
 	if (!ret && (md != suspend_mode)) {
-		ret = zynqmp_pm_set_suspend_mode(md);
+		ret = eemi_ops->set_suspend_mode(md);
 		if (likely(!ret))
 			suspend_mode = md;
 	}
@@ -895,8 +907,12 @@ do { \
 static int zynqmp_pm_probe(struct platform_device *pdev)
 {
 	int ret, irq;
+	const struct zynqmp_eemi_ops *eemi_ops = get_eemi_ops();
 
-	zynqmp_pm_get_api_version(&pm_api_version);
+	if (!eemi_ops || !eemi_ops->get_api_version)
+		return -ENXIO;
+
+	eemi_ops->get_api_version(&pm_api_version);
 
 	/* Check PM API version number */
 	if (pm_api_version != ZYNQMP_PM_VERSION)
@@ -967,7 +983,12 @@ builtin_platform_driver(zynqmp_pm_platform_driver);
  */
 static int __init zynqmp_pm_init(void)
 {
-	return zynqmp_pm_init_finalize();
+	const struct zynqmp_eemi_ops *eemi_ops = get_eemi_ops();
+
+	if (!eemi_ops || !eemi_ops->init_finalize)
+		return -ENXIO;
+
+	return eemi_ops->init_finalize();
 }
 
 late_initcall_sync(zynqmp_pm_init);

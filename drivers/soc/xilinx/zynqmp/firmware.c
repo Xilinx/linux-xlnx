@@ -168,7 +168,7 @@ static u32 pm_api_version;
  *
  * Return:	Returns status, either success or error+reason
  */
-int zynqmp_pm_get_api_version(u32 *version)
+static int zynqmp_pm_get_api_version(u32 *version)
 {
 	u32 ret_payload[PAYLOAD_ARG_CNT];
 
@@ -185,7 +185,6 @@ int zynqmp_pm_get_api_version(u32 *version)
 
 	return zynqmp_pm_ret_code((enum pm_ret_status)ret_payload[0]);
 }
-EXPORT_SYMBOL_GPL(zynqmp_pm_get_api_version);
 
 /**
  * zynqmp_pm_get_chipid - Get silicon ID registers
@@ -195,7 +194,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_get_api_version);
  * Return:	Returns the status of the operation and the idcode and version
  *		registers in @idcode and @version.
  */
-int zynqmp_pm_get_chipid(u32 *idcode, u32 *version)
+static int zynqmp_pm_get_chipid(u32 *idcode, u32 *version)
 {
 	u32 ret_payload[PAYLOAD_ARG_CNT];
 
@@ -208,7 +207,6 @@ int zynqmp_pm_get_chipid(u32 *idcode, u32 *version)
 
 	return zynqmp_pm_ret_code((enum pm_ret_status)ret_payload[0]);
 }
-EXPORT_SYMBOL_GPL(zynqmp_pm_get_chipid);
 
 /**
  * get_set_conduit_method - Choose SMC or HVC based communication
@@ -248,12 +246,11 @@ static int get_set_conduit_method(struct device_node *np)
  *
  * Return:		Returns status, either success or error+reason
  */
-int zynqmp_pm_reset_assert(const enum zynqmp_pm_reset reset,
+static int zynqmp_pm_reset_assert(const enum zynqmp_pm_reset reset,
 			   const enum zynqmp_pm_reset_action assert_flag)
 {
 	return invoke_pm_fn(RESET_ASSERT, reset, assert_flag, 0, 0, NULL);
 }
-EXPORT_SYMBOL_GPL(zynqmp_pm_reset_assert);
 
 /**
  * zynqmp_pm_reset_get_status - Get status of the reset
@@ -262,7 +259,8 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_reset_assert);
  *
  * Return:	Returns status, either success or error+reason
  */
-int zynqmp_pm_reset_get_status(const enum zynqmp_pm_reset reset, u32 *status)
+static int zynqmp_pm_reset_get_status(const enum zynqmp_pm_reset reset,
+				      u32 *status)
 {
 	u32 ret_payload[PAYLOAD_ARG_CNT];
 
@@ -274,7 +272,6 @@ int zynqmp_pm_reset_get_status(const enum zynqmp_pm_reset reset, u32 *status)
 
 	return zynqmp_pm_ret_code((enum pm_ret_status)ret_payload[0]);
 }
-EXPORT_SYMBOL_GPL(zynqmp_pm_reset_get_status);
 
 /**
  * zynqmp_pm_mmio_write - Perform write to protected mmio
@@ -341,12 +338,12 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_mmio_read);
  *
  * Return:      Returns status, either success or error+reason
  */
-int zynqmp_pm_fpga_load(const u64 address, const u32 size, const u32 flags)
+static int zynqmp_pm_fpga_load(const u64 address, const u32 size,
+			       const u32 flags)
 {
 	return invoke_pm_fn(FPGA_LOAD, (u32)address,
 			((u32)(address >> 32)), size, flags, NULL);
 }
-EXPORT_SYMBOL_GPL(zynqmp_pm_fpga_load);
 
 /**
  * zynqmp_pm_fpga_get_status - Read value from PCAP status register
@@ -357,7 +354,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_fpga_load);
  *
  * Return:      Returns status, either success or error+reason
  */
-int zynqmp_pm_fpga_get_status(u32 *value)
+static int zynqmp_pm_fpga_get_status(u32 *value)
 {
 	u32 ret_payload[PAYLOAD_ARG_CNT];
 
@@ -369,7 +366,6 @@ int zynqmp_pm_fpga_get_status(u32 *value)
 
 	return zynqmp_pm_ret_code((enum pm_ret_status)ret_payload[0]);
 }
-EXPORT_SYMBOL_GPL(zynqmp_pm_fpga_get_status);
 
 /**
  * zynqmp_pm_request_suspend - PM call to request for another PU or subsystem to
@@ -381,7 +377,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_fpga_get_status);
  *
  * Return:	Returns status, either success or error+reason
  */
-int zynqmp_pm_request_suspend(const u32 node,
+static int zynqmp_pm_request_suspend(const u32 node,
 			      const enum zynqmp_pm_request_ack ack,
 			      const u32 latency,
 			      const u32 state)
@@ -389,7 +385,6 @@ int zynqmp_pm_request_suspend(const u32 node,
 	return invoke_pm_fn(REQUEST_SUSPEND, node, ack,
 						latency, state, NULL);
 }
-EXPORT_SYMBOL_GPL(zynqmp_pm_request_suspend);
 
 /**
  * zynqmp_pm_force_powerdown - PM call to request for another PU or subsystem to
@@ -399,12 +394,11 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_request_suspend);
  *
  * Return:	Returns status, either success or error+reason
  */
-int zynqmp_pm_force_powerdown(const u32 target,
-			      const enum zynqmp_pm_request_ack ack)
+static int zynqmp_pm_force_powerdown(const u32 target,
+				     const enum zynqmp_pm_request_ack ack)
 {
 	return invoke_pm_fn(FORCE_POWERDOWN, target, ack, 0, 0, NULL);
 }
-EXPORT_SYMBOL_GPL(zynqmp_pm_force_powerdown);
 
 /**
  * zynqmp_pm_request_wakeup - PM call to wake up selected master or subsystem
@@ -415,16 +409,15 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_force_powerdown);
  *
  * Return:	Returns status, either success or error+reason
  */
-int zynqmp_pm_request_wakeup(const u32 node,
-			     const bool set_addr,
-			     const u64 address,
-			     const enum zynqmp_pm_request_ack ack)
+static int zynqmp_pm_request_wakeup(const u32 node,
+				    const bool set_addr,
+				    const u64 address,
+				    const enum zynqmp_pm_request_ack ack)
 {
 	/* set_addr flag is encoded into 1st bit of address */
 	return invoke_pm_fn(REQUEST_WAKEUP, node, address | set_addr,
 				address >> 32, ack, NULL);
 }
-EXPORT_SYMBOL_GPL(zynqmp_pm_request_wakeup);
 
 /**
  * zynqmp_pm_set_wakeup_source - PM call to specify the wakeup source
@@ -435,14 +428,13 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_request_wakeup);
  *
  * Return:	Returns status, either success or error+reason
  */
-int zynqmp_pm_set_wakeup_source(const u32 target,
-				const u32 wakeup_node,
-				const u32 enable)
+static int zynqmp_pm_set_wakeup_source(const u32 target,
+				       const u32 wakeup_node,
+				       const u32 enable)
 {
 	return invoke_pm_fn(SET_WAKEUP_SOURCE, target,
 					wakeup_node, enable, 0, NULL);
 }
-EXPORT_SYMBOL_GPL(zynqmp_pm_set_wakeup_source);
 
 /**
  * zynqmp_pm_system_shutdown - PM call to request a system shutdown or restart
@@ -451,11 +443,10 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_set_wakeup_source);
  *
  * Return:	Returns status, either success or error+reason
  */
-int zynqmp_pm_system_shutdown(const u32 type, const u32 subtype)
+static int zynqmp_pm_system_shutdown(const u32 type, const u32 subtype)
 {
 	return invoke_pm_fn(SYSTEM_SHUTDOWN, type, subtype, 0, 0, NULL);
 }
-EXPORT_SYMBOL_GPL(zynqmp_pm_system_shutdown);
 
 /**
  * zynqmp_pm_request_node - PM call to request a node with specific capabilities
@@ -466,15 +457,13 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_system_shutdown);
  *
  * Return:		Returns status, either success or error+reason
  */
-int zynqmp_pm_request_node(const u32 node,
-			   const u32 capabilities,
-			   const u32 qos,
-			   const enum zynqmp_pm_request_ack ack)
+static int zynqmp_pm_request_node(const u32 node, const u32 capabilities,
+				  const u32 qos,
+				  const enum zynqmp_pm_request_ack ack)
 {
 	return invoke_pm_fn(REQUEST_NODE, node, capabilities,
 						qos, ack, NULL);
 }
-EXPORT_SYMBOL_GPL(zynqmp_pm_request_node);
 
 /**
  * zynqmp_pm_release_node - PM call to release a node
@@ -482,11 +471,10 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_request_node);
  *
  * Return:	Returns status, either success or error+reason
  */
-int zynqmp_pm_release_node(const u32 node)
+static int zynqmp_pm_release_node(const u32 node)
 {
 	return invoke_pm_fn(RELEASE_NODE, node, 0, 0, 0, NULL);
 }
-EXPORT_SYMBOL_GPL(zynqmp_pm_release_node);
 
 /**
  * zynqmp_pm_set_requirement - PM call to set requirement for PM slaves
@@ -499,14 +487,13 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_release_node);
  *
  * Return:		Returns status, either success or error+reason
  */
-int zynqmp_pm_set_requirement(const u32 node, const u32 capabilities,
-			      const u32 qos,
-			      const enum zynqmp_pm_request_ack ack)
+static int zynqmp_pm_set_requirement(const u32 node, const u32 capabilities,
+				     const u32 qos,
+				     const enum zynqmp_pm_request_ack ack)
 {
 	return invoke_pm_fn(SET_REQUIREMENT, node, capabilities,
 						qos, ack, NULL);
 }
-EXPORT_SYMBOL_GPL(zynqmp_pm_set_requirement);
 
 /**
  * zynqmp_pm_set_max_latency - PM call to set wakeup latency requirements
@@ -515,12 +502,11 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_set_requirement);
  *
  * Return:	Returns status, either success or error+reason
  */
-int zynqmp_pm_set_max_latency(const u32 node, const u32 latency)
+static int zynqmp_pm_set_max_latency(const u32 node, const u32 latency)
 {
 	return invoke_pm_fn(SET_MAX_LATENCY, node,
 					latency, 0, 0, NULL);
 }
-EXPORT_SYMBOL_GPL(zynqmp_pm_set_max_latency);
 
 /**
  * zynqmp_pm_set_configuration - PM call to set system configuration
@@ -528,11 +514,10 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_set_max_latency);
  *
  * Return:		Returns status, either success or error+reason
  */
-int zynqmp_pm_set_configuration(const u32 physical_addr)
+static int zynqmp_pm_set_configuration(const u32 physical_addr)
 {
 	return invoke_pm_fn(SET_CONFIGURATION, physical_addr, 0, 0, 0, NULL);
 }
-EXPORT_SYMBOL_GPL(zynqmp_pm_set_configuration);
 
 /**
  * zynqmp_pm_get_node_status - PM call to request a node's current power state
@@ -549,8 +534,8 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_set_configuration);
  *
  * Return:	Returns status, either success or error+reason
  */
-int zynqmp_pm_get_node_status(const u32 node, u32 *const status,
-			      u32 *const requirements, u32 *const usage)
+static int zynqmp_pm_get_node_status(const u32 node, u32 *const status,
+				     u32 *const requirements, u32 *const usage)
 {
 	u32 ret_payload[PAYLOAD_ARG_CNT];
 
@@ -568,7 +553,6 @@ int zynqmp_pm_get_node_status(const u32 node, u32 *const status,
 
 	return zynqmp_pm_ret_code((enum pm_ret_status)ret_payload[0]);
 }
-EXPORT_SYMBOL_GPL(zynqmp_pm_get_node_status);
 
 /**
  * zynqmp_pm_get_operating_characteristic - PM call to request operating
@@ -579,9 +563,9 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_get_node_status);
  *
  * Return:	Returns status, either success or error+reason
  */
-int zynqmp_pm_get_operating_characteristic(const u32 node,
-				   const enum zynqmp_pm_opchar_type type,
-				   u32 *const result)
+static int zynqmp_pm_get_operating_characteristic(const u32 node,
+						const enum zynqmp_pm_opchar_type
+						type, u32 *const result)
 {
 	u32 ret_payload[PAYLOAD_ARG_CNT];
 
@@ -595,7 +579,6 @@ int zynqmp_pm_get_operating_characteristic(const u32 node,
 
 	return zynqmp_pm_ret_code((enum pm_ret_status)ret_payload[0]);
 }
-EXPORT_SYMBOL_GPL(zynqmp_pm_get_operating_characteristic);
 
 /**
  * zynqmp_pm_init_finalize - PM call to informi firmware that the caller master
@@ -603,11 +586,10 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_get_operating_characteristic);
  *
  * Return:	Returns status, either success or error+reason
  */
-int zynqmp_pm_init_finalize(void)
+static int zynqmp_pm_init_finalize(void)
 {
 	return invoke_pm_fn(PM_INIT_FINALIZE, 0, 0, 0, 0, NULL);
 }
-EXPORT_SYMBOL_GPL(zynqmp_pm_init_finalize);
 
 /**
  * zynqmp_pm_get_callback_data - Get callback data from firmware
@@ -615,11 +597,10 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_init_finalize);
  *
  * Return:	Returns status, either success or error+reason
  */
-int zynqmp_pm_get_callback_data(u32 *buf)
+static int zynqmp_pm_get_callback_data(u32 *buf)
 {
 	return invoke_pm_fn(GET_CALLBACK_DATA, 0, 0, 0, 0, buf);
 }
-EXPORT_SYMBOL_GPL(zynqmp_pm_get_callback_data);
 
 /**
  * zynqmp_pm_set_suspend_mode	- Set system suspend mode
@@ -628,11 +609,10 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_get_callback_data);
  *
  * Return:	Returns status, either success or error+reason
  */
-int zynqmp_pm_set_suspend_mode(u32 mode)
+static int zynqmp_pm_set_suspend_mode(u32 mode)
 {
 	return invoke_pm_fn(SET_SUSPEND_MODE, mode, 0, 0, 0, NULL);
 }
-EXPORT_SYMBOL_GPL(zynqmp_pm_set_suspend_mode);
 
 /**
  * zynqmp_pm_sha_hash - Access the SHA engine to calculate the hash
@@ -647,7 +627,8 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_set_suspend_mode);
  *
  * Return:	Returns status, either success or error code.
  */
-int zynqmp_pm_sha_hash(const u64 address, const u32 size, const u32 flags)
+static int zynqmp_pm_sha_hash(const u64 address, const u32 size,
+			      const u32 flags)
 {
 	u32 lower_32_bits = (u32)address;
 	u32 upper_32_bits = (u32)(address >> 32);
@@ -655,7 +636,6 @@ int zynqmp_pm_sha_hash(const u64 address, const u32 size, const u32 flags)
 	return invoke_pm_fn(SECURE_SHA, upper_32_bits, lower_32_bits,
 				size, flags, NULL);
 }
-EXPORT_SYMBOL_GPL(zynqmp_pm_sha_hash);
 
 /**
  * zynqmp_pm_rsa - Access RSA hardware to encrypt/decrypt the data with RSA.
@@ -668,7 +648,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_sha_hash);
  *
  * Return:	Returns status, either success or error code.
  */
-int zynqmp_pm_rsa(const u64 address, const u32 size, const u32 flags)
+static int zynqmp_pm_rsa(const u64 address, const u32 size, const u32 flags)
 {
 	u32 lower_32_bits = (u32)address;
 	u32 upper_32_bits = (u32)(address >> 32);
@@ -676,7 +656,6 @@ int zynqmp_pm_rsa(const u64 address, const u32 size, const u32 flags)
 	return invoke_pm_fn(SECURE_RSA, upper_32_bits, lower_32_bits,
 				size, flags, NULL);
 }
-EXPORT_SYMBOL_GPL(zynqmp_pm_rsa);
 
 /**
  * zynqmp_pm_pinctrl_request - Request Pin from firmware
@@ -686,11 +665,10 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_rsa);
  *
  * Return:	Returns status, either success or error+reason.
  */
-int zynqmp_pm_pinctrl_request(const u32 pin)
+static int zynqmp_pm_pinctrl_request(const u32 pin)
 {
 	return invoke_pm_fn(PINCTRL_REQUEST, pin, 0, 0, 0, NULL);
 }
-EXPORT_SYMBOL_GPL(zynqmp_pm_pinctrl_request);
 
 /**
  * zynqmp_pm_pinctrl_release - Inform firmware that Pin control is released
@@ -700,11 +678,10 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_pinctrl_request);
  *
  * Return:	Returns status, either success or error+reason.
  */
-int zynqmp_pm_pinctrl_release(const u32 pin)
+static int zynqmp_pm_pinctrl_release(const u32 pin)
 {
 	return invoke_pm_fn(PINCTRL_RELEASE, pin, 0, 0, 0, NULL);
 }
-EXPORT_SYMBOL_GPL(zynqmp_pm_pinctrl_release);
 
 /**
  * zynqmp_pm_pinctrl_get_function - Read function id set for the given pin
@@ -715,7 +692,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_pinctrl_release);
  *
  * Return:	Returns status, either success or error+reason
  */
-int zynqmp_pm_pinctrl_get_function(const u32 pin, u32 *node)
+static int zynqmp_pm_pinctrl_get_function(const u32 pin, u32 *node)
 {
 	u32 ret_payload[PAYLOAD_ARG_CNT];
 
@@ -727,7 +704,6 @@ int zynqmp_pm_pinctrl_get_function(const u32 pin, u32 *node)
 
 	return zynqmp_pm_ret_code((enum pm_ret_status)ret_payload[0]);
 }
-EXPORT_SYMBOL_GPL(zynqmp_pm_pinctrl_get_function);
 
 /**
  * zynqmp_pm_pinctrl_set_function - Set requested function for the pin
@@ -738,11 +714,10 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_pinctrl_get_function);
  *
  * Return:	Returns status, either success or error+reason.
  */
-int zynqmp_pm_pinctrl_set_function(const u32 pin, const u32 node)
+static int zynqmp_pm_pinctrl_set_function(const u32 pin, const u32 node)
 {
 	return invoke_pm_fn(PINCTRL_SET_FUNCTION, pin, node, 0, 0, NULL);
 }
-EXPORT_SYMBOL_GPL(zynqmp_pm_pinctrl_set_function);
 
 /**
  * zynqmp_pm_pinctrl_get_config - Get configuration parameter for the pin
@@ -754,7 +729,8 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_pinctrl_set_function);
  *
  * Return:	Returns status, either success or error+reason.
  */
-int zynqmp_pm_pinctrl_get_config(const u32 pin, const u32 param, u32 *value)
+static int zynqmp_pm_pinctrl_get_config(const u32 pin, const u32 param,
+					u32 *value)
 {
 	u32 ret_payload[PAYLOAD_ARG_CNT];
 
@@ -767,7 +743,6 @@ int zynqmp_pm_pinctrl_get_config(const u32 pin, const u32 param, u32 *value)
 
 	return zynqmp_pm_ret_code((enum pm_ret_status)ret_payload[0]);
 }
-EXPORT_SYMBOL_GPL(zynqmp_pm_pinctrl_get_config);
 
 /**
  * zynqmp_pm_pinctrl_set_config - Set configuration parameter for the pin
@@ -779,12 +754,12 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_pinctrl_get_config);
  *
  * Return:	Returns status, either success or error+reason.
  */
-int zynqmp_pm_pinctrl_set_config(const u32 pin, const u32 param, u32 value)
+static int zynqmp_pm_pinctrl_set_config(const u32 pin, const u32 param,
+					u32 value)
 {
 	return invoke_pm_fn(PINCTRL_CONFIG_PARAM_SET, pin,
 			    param, value, 0, NULL);
 }
-EXPORT_SYMBOL_GPL(zynqmp_pm_pinctrl_set_config);
 
 /**
  * zynqmp_pm_ioctl - PM IOCTL API for device control and configs
@@ -798,11 +773,57 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_pinctrl_set_config);
  *
  * Return:		Returns status, either success or error+reason
  */
-int zynqmp_pm_ioctl(u32 node_id, u32 ioctl_id, u32 arg1, u32 arg2, u32 *out)
+static int zynqmp_pm_ioctl(u32 node_id, u32 ioctl_id, u32 arg1, u32 arg2,
+			   u32 *out)
 {
 	return invoke_pm_fn(IOCTL, node_id, ioctl_id, arg1, arg2, out);
 }
-EXPORT_SYMBOL_GPL(zynqmp_pm_ioctl);
+
+static const struct zynqmp_eemi_ops eemi_ops  = {
+	.get_api_version = zynqmp_pm_get_api_version,
+	.get_chipid = zynqmp_pm_get_chipid,
+	.reset_assert = zynqmp_pm_reset_assert,
+	.reset_get_status = zynqmp_pm_reset_get_status,
+	.mmio_write = zynqmp_pm_mmio_write,
+	.mmio_read = zynqmp_pm_mmio_read,
+	.fpga_load = zynqmp_pm_fpga_load,
+	.fpga_get_status = zynqmp_pm_fpga_get_status,
+	.sha_hash = zynqmp_pm_sha_hash,
+	.rsa = zynqmp_pm_rsa,
+	.request_suspend = zynqmp_pm_request_suspend,
+	.force_powerdown = zynqmp_pm_force_powerdown,
+	.request_wakeup = zynqmp_pm_request_wakeup,
+	.set_wakeup_source = zynqmp_pm_set_wakeup_source,
+	.system_shutdown = zynqmp_pm_system_shutdown,
+	.request_node = zynqmp_pm_request_node,
+	.release_node = zynqmp_pm_release_node,
+	.set_requirement = zynqmp_pm_set_requirement,
+	.set_max_latency = zynqmp_pm_set_max_latency,
+	.set_configuration = zynqmp_pm_set_configuration,
+	.get_node_status = zynqmp_pm_get_node_status,
+	.get_operating_characteristic = zynqmp_pm_get_operating_characteristic,
+	.init_finalize = zynqmp_pm_init_finalize,
+	.get_callback_data = zynqmp_pm_get_callback_data,
+	.set_suspend_mode = zynqmp_pm_set_suspend_mode,
+	.ioctl = zynqmp_pm_ioctl,
+	.pinctrl_request = zynqmp_pm_pinctrl_request,
+	.pinctrl_release = zynqmp_pm_pinctrl_release,
+	.pinctrl_get_function = zynqmp_pm_pinctrl_get_function,
+	.pinctrl_set_function = zynqmp_pm_pinctrl_set_function,
+	.pinctrl_get_config = zynqmp_pm_pinctrl_get_config,
+	.pinctrl_set_config = zynqmp_pm_pinctrl_set_config,
+};
+
+/**
+ * get_eemi_ops	- Get eemi ops functions
+ *
+ * Return:	- pointer of eemi_ops structure
+ */
+const struct zynqmp_eemi_ops *get_eemi_ops(void)
+{
+	return &eemi_ops;
+}
+EXPORT_SYMBOL_GPL(get_eemi_ops);
 
 static int __init zynqmp_plat_init(void)
 {

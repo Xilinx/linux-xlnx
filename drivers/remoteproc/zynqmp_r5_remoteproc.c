@@ -37,7 +37,7 @@
 #include <linux/genalloc.h>
 #include <linux/pfn.h>
 #include <linux/idr.h>
-#include <linux/soc/xilinx/zynqmp/pm.h>
+#include <linux/soc/xilinx/zynqmp/firmware.h>
 
 #include "remoteproc_internal.h"
 
@@ -209,9 +209,15 @@ static void r5_mode_config(struct zynqmp_r5_rproc_pdata *pdata)
 static bool r5_is_running(struct zynqmp_r5_rproc_pdata *pdata)
 {
 	u32 status, requirements, usage;
+	const struct zynqmp_eemi_ops *eemi_ops = get_eemi_ops();
 
 	pr_debug("%s: rpu id: %d\n", __func__, pdata->rpu_id);
-	if (zynqmp_pm_get_node_status(pdata->rpu_pd_id,
+	if (!eemi_ops || !eemi_ops->get_node_status) {
+		pr_err("Failed to get RPU node status.\n");
+		return false;
+	}
+
+	if (eemi_ops->get_node_status(pdata->rpu_pd_id,
 				      &status, &requirements, &usage)) {
 		pr_err("Failed to get RPU node status.\n");
 		return false;
@@ -235,6 +241,12 @@ static bool r5_is_running(struct zynqmp_r5_rproc_pdata *pdata)
 static int r5_request_tcm(struct zynqmp_r5_rproc_pdata *pdata)
 {
 	struct mem_pool_st *mem_node;
+	const struct zynqmp_eemi_ops *eemi_ops = get_eemi_ops();
+
+	if (!eemi_ops || !eemi_ops->request_node) {
+		pr_err("Failed to request TCM\n");
+		return 0;
+	}
 
 	r5_mode_config(pdata);
 
@@ -242,9 +254,9 @@ static int r5_request_tcm(struct zynqmp_r5_rproc_pdata *pdata)
 		struct pd_id_st *pd_id;
 
 		list_for_each_entry(pd_id, &mem_node->pd_ids, node)
-			zynqmp_pm_request_node(pd_id->id,
-					       ZYNQMP_PM_CAPABILITY_ACCESS,
-				0, ZYNQMP_PM_REQUEST_ACK_BLOCKING);
+			eemi_ops->request_node(pd_id->id,
+					       ZYNQMP_PM_CAPABILITY_ACCESS, 0,
+					       ZYNQMP_PM_REQUEST_ACK_BLOCKING);
 	}
 
 	return 0;
@@ -260,12 +272,18 @@ static int r5_request_tcm(struct zynqmp_r5_rproc_pdata *pdata)
 static void r5_release_tcm(struct zynqmp_r5_rproc_pdata *pdata)
 {
 	struct mem_pool_st *mem_node;
+	const struct zynqmp_eemi_ops *eemi_ops = get_eemi_ops();
+
+	if (!eemi_ops || !eemi_ops->release_node) {
+		pr_err("Failed to release TCM\n");
+		return;
+	}
 
 	list_for_each_entry(mem_node, &pdata->mem_pools, node) {
 		struct pd_id_st *pd_id;
 
 		list_for_each_entry(pd_id, &mem_node->pd_ids, node)
-			zynqmp_pm_release_node(pd_id->id);
+			eemi_ops->release_node(pd_id->id);
 	}
 }
 
@@ -328,8 +346,15 @@ static int zynqmp_r5_rproc_start(struct rproc *rproc)
 {
 	struct device *dev = rproc->dev.parent;
 	struct zynqmp_r5_rproc_pdata *local = rproc->priv;
+	const struct zynqmp_eemi_ops *eemi_ops = get_eemi_ops();
 
 	dev_dbg(dev, "%s\n", __func__);
+
+	if (!eemi_ops || !eemi_ops->force_powerdown ||
+	    !eemi_ops->request_wakeup) {
+		pr_err("Failed to start R5\n");
+		return -ENXIO;
+	}
 
 	/*
 	 * Use memory barrier to make sure all write memory operations
@@ -345,12 +370,12 @@ static int zynqmp_r5_rproc_start(struct rproc *rproc)
 		 local->bootmem == OCM ? "OCM" : "TCM");
 
 	r5_mode_config(local);
-	zynqmp_pm_force_powerdown(local->rpu_pd_id,
+	eemi_ops->force_powerdown(local->rpu_pd_id,
 				  ZYNQMP_PM_REQUEST_ACK_BLOCKING);
 	r5_boot_addr_config(local);
 	/* Add delay before release from halt and reset */
 	usleep_range(400, 500);
-	zynqmp_pm_request_wakeup(local->rpu_pd_id,
+	eemi_ops->request_wakeup(local->rpu_pd_id,
 				 1, local->bootmem,
 		ZYNQMP_PM_REQUEST_ACK_NO);
 
@@ -387,11 +412,17 @@ static int zynqmp_r5_rproc_stop(struct rproc *rproc)
 	struct device *dev = rproc->dev.parent;
 	struct zynqmp_r5_rproc_pdata *local = rproc->priv;
 	struct rproc_mem_entry *mem, *nmem;
+	const struct zynqmp_eemi_ops *eemi_ops = get_eemi_ops();
 
 	dev_dbg(dev, "%s\n", __func__);
 
+	if (!eemi_ops || !eemi_ops->force_powerdown) {
+		pr_err("Failed to stop R5\n");
+		return -ENXIO;
+	}
+
 	disable_ipi(local);
-	zynqmp_pm_force_powerdown(local->rpu_pd_id,
+	eemi_ops->force_powerdown(local->rpu_pd_id,
 				  ZYNQMP_PM_REQUEST_ACK_BLOCKING);
 
 	/* After it reset was once asserted, TCM will be initialized
