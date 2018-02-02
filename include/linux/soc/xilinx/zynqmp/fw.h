@@ -34,9 +34,8 @@ static inline char *zynqmp_nvmem_get_silicon_version(struct device *dev,
 	char *ret;
 
 	cell = nvmem_cell_get(dev, cname);
-	if (IS_ERR(cell)) {
+	if (IS_ERR(cell))
 		return ERR_CAST(cell);
-	}
 
 	ret = nvmem_cell_read(cell, &data);
 	nvmem_cell_put(cell);
