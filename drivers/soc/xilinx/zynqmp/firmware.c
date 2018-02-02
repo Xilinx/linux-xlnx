@@ -215,28 +215,29 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_get_chipid);
  * @np:	Pointer to the device_node structure
  *
  * Use SMC or HVC-based functions to communicate with EL2/EL3
+ *
+ * Return: Returns 0 on success or error code
  */
-static void get_set_conduit_method(struct device_node *np)
+static int get_set_conduit_method(struct device_node *np)
 {
 	const char *method;
 
 	if (of_property_read_string(np, "method", &method)) {
-		pr_warn("%s Missing \"method\" property - defaulting to smc\n",
-			__func__);
-		do_fw_call = do_fw_call_smc;
-		return;
+		pr_warn("%s missing \"method\" property\n", __func__);
+		return -ENXIO;
 	}
 
 	if (!strcmp("hvc", method)) {
 		do_fw_call = do_fw_call_hvc;
-
 	} else if (!strcmp("smc", method)) {
 		do_fw_call = do_fw_call_smc;
 	} else {
-		pr_warn("%s Invalid \"method\" property: %s - defaulting to smc\n",
+		pr_warn("%s Invalid \"method\" property: %s\n",
 			__func__, method);
-		do_fw_call = do_fw_call_smc;
+		return -EINVAL;
 	}
+
+	return 0;
 }
 
 /**
@@ -534,10 +535,16 @@ static int __init zynqmp_plat_init(void)
 
 	/* We're running on a ZynqMP machine, the PM node is mandatory. */
 	np = of_find_compatible_node(NULL, NULL, "xlnx,zynqmp-pm");
-	if (!np)
-		panic("%s: pm node not found\n", __func__);
+	if (!np) {
+		pr_warn("%s: pm node not found\n", __func__);
+		return -ENXIO;
+	}
 
-	get_set_conduit_method(np);
+	ret = get_set_conduit_method(np);
+	if (ret) {
+		of_node_put(np);
+		return ret;
+	}
 
 	/* Check PM API version number */
 	zynqmp_pm_get_api_version(&pm_api_version);
