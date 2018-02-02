@@ -5,3 +5,5 @@ xlnx_drm-$(CONFIG_DRM_XLNX_BRIDGE) += xlnx_bridge.o
 obj-$(CONFIG_DRM_XLNX) += xlnx_drm.o
 obj-$(CONFIG_DRM_XLNX_DSI) += xlnx_dsi.o
 obj-$(CONFIG_DRM_XLNX_MIXER) += xlnx_mixer.o
+xlnx-sdi-objs += xlnx_sdi.o xlnx_sdi_timing.o
+obj-$(CONFIG_DRM_XLNX_SDI) += xlnx-sdi.o
