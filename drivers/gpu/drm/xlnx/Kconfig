@@ -59,3 +59,9 @@ config DRM_XLNX_MIXER
 	depends on DRM_XLNX
 	help
 	  DRM driver for Xilinx Mixer driver
+
+config DRM_XLNX_SDI
+	tristate "Xilinx DRM SDI Subsystem Driver"
+	depends on DRM_XLNX
+	help
+	  DRM driver for Xilinx SDI Tx Subsystem.
