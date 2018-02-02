@@ -171,19 +171,20 @@ static u32 pm_api_version;
 static int zynqmp_pm_get_api_version(u32 *version)
 {
 	u32 ret_payload[PAYLOAD_ARG_CNT];
+	int ret;
 
 	if (version == NULL)
-		return zynqmp_pm_ret_code(XST_PM_CONFLICT);
+		return -EINVAL;
 
 	/* Check is PM API version already verified */
 	if (pm_api_version > 0) {
 		*version = pm_api_version;
-		return XST_PM_SUCCESS;
+		return 0;
 	}
-	invoke_pm_fn(GET_API_VERSION, 0, 0, 0, 0, ret_payload);
+	ret = invoke_pm_fn(GET_API_VERSION, 0, 0, 0, 0, ret_payload);
 	*version = ret_payload[1];
 
-	return zynqmp_pm_ret_code((enum pm_ret_status)ret_payload[0]);
+	return ret;
 }
 
 /**
@@ -197,15 +198,16 @@ static int zynqmp_pm_get_api_version(u32 *version)
 static int zynqmp_pm_get_chipid(u32 *idcode, u32 *version)
 {
 	u32 ret_payload[PAYLOAD_ARG_CNT];
+	int ret;
 
 	if (!idcode || !version)
 		return -EINVAL;
 
-	invoke_pm_fn(GET_CHIPID, 0, 0, 0, 0, ret_payload);
+	ret = invoke_pm_fn(GET_CHIPID, 0, 0, 0, 0, ret_payload);
 	*idcode = ret_payload[1];
 	*version = ret_payload[2];
 
-	return zynqmp_pm_ret_code((enum pm_ret_status)ret_payload[0]);
+	return ret;
 }
 
 /**
@@ -263,14 +265,15 @@ static int zynqmp_pm_reset_get_status(const enum zynqmp_pm_reset reset,
 				      u32 *status)
 {
 	u32 ret_payload[PAYLOAD_ARG_CNT];
+	int ret;
 
 	if (status == NULL)
-		return zynqmp_pm_ret_code(XST_PM_CONFLICT);
+		return -EINVAL;
 
-	invoke_pm_fn(RESET_GET_STATUS, reset, 0, 0, 0, ret_payload);
+	ret = invoke_pm_fn(RESET_GET_STATUS, reset, 0, 0, 0, ret_payload);
 	*status = ret_payload[1];
 
-	return zynqmp_pm_ret_code((enum pm_ret_status)ret_payload[0]);
+	return ret;
 }
 
 /**
@@ -357,14 +360,15 @@ static int zynqmp_pm_fpga_load(const u64 address, const u32 size,
 static int zynqmp_pm_fpga_get_status(u32 *value)
 {
 	u32 ret_payload[PAYLOAD_ARG_CNT];
+	int ret;
 
 	if (!value)
 		return -EINVAL;
 
-	invoke_pm_fn(FPGA_GET_STATUS, 0, 0, 0, 0, ret_payload);
+	ret = invoke_pm_fn(FPGA_GET_STATUS, 0, 0, 0, 0, ret_payload);
 	*value = ret_payload[1];
 
-	return zynqmp_pm_ret_code((enum pm_ret_status)ret_payload[0]);
+	return ret;
 }
 
 /**
@@ -538,11 +542,12 @@ static int zynqmp_pm_get_node_status(const u32 node, u32 *const status,
 				     u32 *const requirements, u32 *const usage)
 {
 	u32 ret_payload[PAYLOAD_ARG_CNT];
+	int ret;
 
 	if (!status)
 		return -EINVAL;
 
-	invoke_pm_fn(GET_NODE_STATUS, node, 0, 0, 0, ret_payload);
+	ret = invoke_pm_fn(GET_NODE_STATUS, node, 0, 0, 0, ret_payload);
 	if (ret_payload[0] == XST_PM_SUCCESS) {
 		*status = ret_payload[1];
 		if (requirements)
@@ -551,7 +556,7 @@ static int zynqmp_pm_get_node_status(const u32 node, u32 *const status,
 			*usage = ret_payload[3];
 	}
 
-	return zynqmp_pm_ret_code((enum pm_ret_status)ret_payload[0]);
+	return ret;
 }
 
 /**
@@ -568,16 +573,17 @@ static int zynqmp_pm_get_operating_characteristic(const u32 node,
 						type, u32 *const result)
 {
 	u32 ret_payload[PAYLOAD_ARG_CNT];
+	int ret;
 
 	if (!result)
 		return -EINVAL;
 
-	invoke_pm_fn(GET_OPERATING_CHARACTERISTIC,
-		     node, type, 0, 0, ret_payload);
+	ret = invoke_pm_fn(GET_OPERATING_CHARACTERISTIC,
+			   node, type, 0, 0, ret_payload);
 	if (ret_payload[0] == XST_PM_SUCCESS)
 		*result = ret_payload[1];
 
-	return zynqmp_pm_ret_code((enum pm_ret_status)ret_payload[0]);
+	return ret;
 }
 
 /**
@@ -695,14 +701,15 @@ static int zynqmp_pm_pinctrl_release(const u32 pin)
 static int zynqmp_pm_pinctrl_get_function(const u32 pin, u32 *node)
 {
 	u32 ret_payload[PAYLOAD_ARG_CNT];
+	int ret;
 
 	if (!node)
 		return -EINVAL;
 
-	invoke_pm_fn(PINCTRL_GET_FUNCTION, pin, 0, 0, 0, ret_payload);
+	ret = invoke_pm_fn(PINCTRL_GET_FUNCTION, pin, 0, 0, 0, ret_payload);
 	*node = ret_payload[1];
 
-	return zynqmp_pm_ret_code((enum pm_ret_status)ret_payload[0]);
+	return ret;
 }
 
 /**
@@ -733,15 +740,16 @@ static int zynqmp_pm_pinctrl_get_config(const u32 pin, const u32 param,
 					u32 *value)
 {
 	u32 ret_payload[PAYLOAD_ARG_CNT];
+	int ret;
 
 	if (!value)
 		return -EINVAL;
 
-	invoke_pm_fn(PINCTRL_CONFIG_PARAM_GET, pin,
-		     param, 0, 0, ret_payload);
+	ret = invoke_pm_fn(PINCTRL_CONFIG_PARAM_GET, pin,
+			   param, 0, 0, ret_payload);
 	*value = ret_payload[1];
 
-	return zynqmp_pm_ret_code((enum pm_ret_status)ret_payload[0]);
+	return ret;
 }
 
 /**
@@ -826,11 +834,12 @@ static int zynqmp_pm_clock_disable(u32 clock_id)
 static int zynqmp_pm_clock_getstate(u32 clock_id, u32 *state)
 {
 	u32 ret_payload[PAYLOAD_ARG_CNT];
+	int ret;
 
-	invoke_pm_fn(CLOCK_GETSTATE, clock_id, 0, 0, 0, ret_payload);
+	ret = invoke_pm_fn(CLOCK_GETSTATE, clock_id, 0, 0, 0, ret_payload);
 	*state = ret_payload[1];
 
-	return zynqmp_pm_ret_code((enum pm_ret_status)ret_payload[0]);
+	return ret;
 }
 
 /**
@@ -861,11 +870,12 @@ static int zynqmp_pm_clock_setdivider(u32 clock_id, u32 divider)
 static int zynqmp_pm_clock_getdivider(u32 clock_id, u32 *divider)
 {
 	u32 ret_payload[PAYLOAD_ARG_CNT];
+	int ret;
 
-	invoke_pm_fn(CLOCK_GETDIVIDER, clock_id, 0, 0, 0, ret_payload);
+	ret = invoke_pm_fn(CLOCK_GETDIVIDER, clock_id, 0, 0, 0, ret_payload);
 	*divider = ret_payload[1];
 
-	return zynqmp_pm_ret_code((enum pm_ret_status)ret_payload[0]);
+	return ret;
 }
 
 /**
@@ -895,11 +905,12 @@ static int zynqmp_pm_clock_setrate(u32 clock_id, u32 rate)
 static int zynqmp_pm_clock_getrate(u32 clock_id, u32 *rate)
 {
 	u32 ret_payload[PAYLOAD_ARG_CNT];
+	int ret;
 
-	invoke_pm_fn(CLOCK_GETRATE, clock_id, 0, 0, 0, ret_payload);
+	ret = invoke_pm_fn(CLOCK_GETRATE, clock_id, 0, 0, 0, ret_payload);
 	*rate = ret_payload[1];
 
-	return zynqmp_pm_ret_code((enum pm_ret_status)ret_payload[0]);
+	return ret;
 }
 
 /**
@@ -929,11 +940,12 @@ static int zynqmp_pm_clock_setparent(u32 clock_id, u32 parent_id)
 static int zynqmp_pm_clock_getparent(u32 clock_id, u32 *parent_id)
 {
 	u32 ret_payload[PAYLOAD_ARG_CNT];
+	int ret;
 
-	invoke_pm_fn(CLOCK_GETPARENT, clock_id, 0, 0, 0, ret_payload);
+	ret = invoke_pm_fn(CLOCK_GETPARENT, clock_id, 0, 0, 0, ret_payload);
 	*parent_id = ret_payload[1];
 
-	return zynqmp_pm_ret_code((enum pm_ret_status)ret_payload[0]);
+	return ret;
 }
 
 static const struct zynqmp_eemi_ops eemi_ops  = {
