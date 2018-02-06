@@ -1,0 +1,123 @@
+Device-Tree bindings for Xilinx Video Mixer IP core
+
+The IP core provides a flexible video processing block for alpha blending
+and compositing multiple video and/or graphics layers.
+Support for up to eight layers, with an optional logo layer, using a
+combination of video inputs from either frame buffer or streaming video
+cores (through AXI4-Stream interfaces) is provided.
+The Video Mixer always has one streaming input layer, known as master layer.
+
+Required properties:
+ - compatible: Should be "xlnx,mixer".
+ - reg: Base address and size of the IP core.
+ - interrupts: Interrupt number.
+ - interrupts-parent: phandle for interrupt controller.
+ - reset-gpio: gpio to reset the mixer IP
+ - xlnx,dma-addr-width: dma address width, valid values are 32 and 64
+ - xlnx,bpc: bits per component for mixer
+ - xlnx,ppc: pixel per clock for mixer
+ - layer_[x]: node for [x] layer
+ - xlnx,layer-id: layer identifier number
+ - xlnx,vformat: video format for layer
+ - xlnx,layer-max-width: max layer width, mandatory for master layer
+   for overlay layers if scaling is alowed then this is mandatory otherwise
+   not required for overlay layers
+ - xlnx,layer-max-height: max layer height, mandatory for master layer
+   Not required for overlay layers
+
+Optional properties:
+ - dmas: dma attach to layer, mandatory for master layer
+   for rest other layers its optional
+ - xlnx,layer-streaming: denotes layer can be streaming,
+   mandatory for master layer. Streaming layers need external dma, where
+   as non streaming layers read directly from memory.
+ - xlnx,layer-alpha: denotes layer can do alpha compositing
+ - xlnx,layer-scale: denotes layer can be scale to 2x and 4x
+ - xlnx,logo-layer: denotes logo layer is enable
+ - logo: logo layer
+Example:
+	v_mix_0: v_mix@80100000 {
+		compatible = "xlnx,mixer";
+		interrupt-parent = <&gic>;
+		interrupts = <0 93 4>;
+		reg = <0x0 0x80100000 0x0 0x80000>;
+
+		xlnx,dma-addr-width=<32>;
+		reset-gpios = <&gpio 1 1>;
+
+		xlnx,bpc = <8>;
+		xlnx,ppc = <2>;
+		xlnx,num-layers = <8>;
+		xlnx,logo-layer;
+
+		mixer_port: mixer_port@0 {
+			reg = <0>;
+			mixer_crtc: endpoint {
+				remote-endpoint = <&sdi_encoder>;
+			};
+		};
+		xv_mix_master: layer_0 {
+			xlnx,layer-id = <0>;
+			xlnx,vformat = "yuyv";
+			xlnx,layer-max-width = <4096>;
+			xlnx,layer-height = <2160>;
+			dmas = <&axi_vdma_0 0>;
+			xlnx,layer-streaming;
+		};
+		xv_mix_overlay_1: layer_1 {
+			xlnx,layer-id = <1>;
+			xlnx,vformat = "nv16";
+			xlnx,layer-alpha;
+			xlnx,layer-scale;
+			xlnx,layer-max-width=<1920>;
+		};
+		xv_mix_overlay_2: layer_2 {
+			xlnx,layer-id = <2>;
+			xlnx,vformat = "yuyv";
+			xlnx,layer-alpha;
+			xlnx,layer-scale;
+			xlnx,layer-max-width=<1920>;
+		};
+		xv_mix_overlay_3: layer_3 {
+			xlnx,layer-id = <3>;
+			xlnx,vformat = "avuy";
+			xlnx,layer-alpha;
+			xlnx,layer-scale;
+			xlnx,layer-max-width=<1920>;
+		};
+		xv_mix_overlay_4: layer_4 {
+			xlnx,layer-id = <4>;
+			xlnx,vformat = "y8";
+			dmas = <&scaler_v_frmbuf_rd_0 0>;
+			xlnx,layer-streaming;
+			xlnx,layer-alpha;
+			xlnx,layer-scale;
+			xlnx,layer-max-width=<1920>;
+		};
+		xv_mix_overlay_5: layer_5 {
+			xlnx,layer-id = <5>;
+			xlnx,vformat = "abgr8888";
+			xlnx,layer-alpha;
+			xlnx,layer-scale;
+			xlnx,layer-max-width=<1920>;
+		};
+		xv_mix_overlay_6: layer_6 {
+			xlnx,layer-id = <6>;
+			xlnx,vformat = "xbgr8888";
+			xlnx,layer-alpha;
+			xlnx,layer-scale;
+			xlnx,layer-max-width=<1920>;
+			};
+		xv_mix_overlay_7: layer_7 {
+			xlnx,layer-id = <7>;
+			xlnx,vformat = "bgr888";
+			xlnx,layer-alpha;
+			xlnx,layer-scale;
+			xlnx,layer-max-width=<1920>;
+		};
+		xv_mix_logo: logo {
+			xlnx,layer-id = <8>;
+			xlnx,logo-height = <64>;
+			xlnx,logo-width = <64>;
+		};
+	};
