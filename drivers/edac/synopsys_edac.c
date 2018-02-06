@@ -1049,12 +1049,12 @@ static void synps_edac_remove_sysfs_attributes(struct mem_ctl_info *mci)
 }
 
 /**
-* setup_address_map -	Set Address Map by querying ADDRMAP registers
-* @priv:		Pointer to synps_edac_priv struct
-*
-* Set Address Map by querying ADDRMAP registers
-* Return: none.
-*/
+ * setup_address_map -	Set Address Map by querying ADDRMAP registers
+ * @priv:		Pointer to synps_edac_priv struct
+ *
+ * Set Address Map by querying ADDRMAP registers
+ * Return: none.
+ */
 static void setup_address_map(struct synps_edac_priv *priv)
 {
 	u32 addrmap[12], addrmap_row_b2_10;
