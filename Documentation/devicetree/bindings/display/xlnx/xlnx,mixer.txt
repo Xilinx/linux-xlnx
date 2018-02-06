@@ -1,0 +1,211 @@
+Device-Tree bindings for Xilinx Video Mixer IP core
+
+The IP core provides a flexible video processing block for alpha blending
+and compositing multiple video and/or graphics layers.
+Support for up to sixteen layers based on IP version, with an optional logo
+layer, using a combination of video inputs from either frame buffer or
+streaming video cores (through AXI4-Stream interfaces) is provided.
+The Video Mixer always has one streaming input layer, known as master layer.
+
+Required properties:
+ - compatible: Must contain atleast one of
+	"xlnx,mixer-5.0" (MIXER 5.0 version)
+	"xlnx,mixer-4.0" (MIXER 4.0 version)
+	"xlnx,mixer-3.0" (MIXER 3.0 version)
+ - reg: Base address and size of the IP core.
+ - interrupts: Interrupt number.
+ - interrupts-parent: phandle for interrupt controller.
+ - reset-gpio: gpio to reset the mixer IP
+ - xlnx,enable-csc-coefficient-register: denotes colorimetry
+   coefficients can be programmed, valid for mixer 5.0 version only.
+ - xlnx,dma-addr-width: dma address width, valid values are 32 and 64
+ - xlnx,bpc: bits per component for mixer
+ - xlnx,ppc: pixel per clock for mixer
+ - xlnx,num-layers: Total number of layers (excluding logo)
+   Value ranges from 1-9 for compatible string xlnx,mixer-3.0 and
+   Value ranges from 1-17 for comptaible string xlnx,mixer-4.0 and above
+ - layer_[x]: node for [x] layer
+ - xlnx,layer-id: layer identifier number
+ - xlnx,vformat: video format for layer. See list of supported formats below.
+ - xlnx,layer-max-width: max layer width, mandatory for master layer
+   for overlay layers if scaling is alowed then this is mandatory otherwise
+   not required for overlay layers. Valid range is 64 to 8192
+ - xlnx,layer-max-height: max layer height, mandatory for master layer
+   Not required for overlay layers. Valid range is 64 to 4320
+ - xlnx,layer-primary: denotes the primary layer, should be mentioned in node
+   of layer which is expected to be constructing the primary plane
+
+Optional properties:
+ - dmas: dma attach to layer, mandatory for master layer
+   for rest other layers its optional
+ - dma-names: Should be "dma0", for more details on DMA identifier string
+   refer Documentation/devicetree/bindings/dma/dma.txt
+ - xlnx,layer-streaming: denotes layer can be streaming,
+   mandatory for master layer. Streaming layers need external dma, where
+   as non streaming layers read directly from memory.
+ - xlnx,layer-alpha: denotes layer can do alpha compositing
+ - xlnx,layer-scale: denotes layer can be scale to 2x and 4x
+ - xlnx,logo-layer: denotes logo layer is enable
+ - logo: logo layer
+ - xlnx,bridge: phandle to bridge node.
+   This handle is required only when VTC is connected as bridge.
+ - memory-region: phandle to /reserved-memory node.
+   If memory is reserved for special use by mixer then this node
+   can be used to refer and use from this reserved memory region.
+
+Supported Formats:
+	Mixer IP Format		Driver supported Format String
+	 BGR888			"RG24"
+	 RGB888			"BG24"
+	 XBGR2101010		"XB30"
+	 XRGB8888		"XR24"
+	 RGBA8888		"RA24"
+	 ABGR8888		"AB24"
+	 ARGB8888		"AR24"
+	 XBGR8888		"XB24"
+	 YUYV			"YUYV"
+	 UYVY			"UYVY"
+	 AYUV			"AYUV"
+	 NV12			"NV12"
+	 NV16			"NV16"
+	 Y8			"GREY"
+	 Y10			"Y10 " (Note: Space included)
+	 XVUY2101010		"XV30"
+	 VUY888			"VU24"
+	 XVUY8888		"XV24"
+	 XV15			"XV15"
+	 XV20			"XV20"
+Note : Format strings are case sensitive.
+
+Example:
+	v_mix_0: v_mix@80100000 {
+		compatible = "xlnx,mixer-3.0";
+		interrupt-parent = <&gic>;
+		interrupts = <0 93 4>;
+		reg = <0x0 0x80100000 0x0 0x80000>;
+
+		xlnx,dma-addr-width=<32>;
+		reset-gpios = <&gpio 1 1>;
+
+		xlnx,bpc = <8>;
+		xlnx,ppc = <2>;
+		xlnx,num-layers = <8>;
+		xlnx,logo-layer;
+		xlnx,bridge = <&v_tc_0>;
+
+		mixer_port: mixer_port@0 {
+			reg = <0>;
+			mixer_crtc: endpoint {
+				remote-endpoint = <&sdi_encoder>;
+			};
+		};
+		xv_mix_master: layer_0 {
+			xlnx,layer-id = <0>;
+			xlnx,vformat = "YUYV";
+			xlnx,layer-max-width = <4096>;
+			xlnx,layer-height = <2160>;
+			dmas = <&axi_vdma_0 0>;
+			dma-names = "dma0";
+			xlnx,layer-streaming;
+			xlnx,layer-primary;
+		};
+		xv_mix_overlay_1: layer_1 {
+			xlnx,layer-id = <1>;
+			xlnx,vformat = "NV16";
+			xlnx,layer-alpha;
+			xlnx,layer-scale;
+			xlnx,layer-max-width=<1920>;
+		};
+		xv_mix_overlay_2: layer_2 {
+			xlnx,layer-id = <2>;
+			xlnx,vformat = "YUYV";
+			xlnx,layer-alpha;
+			xlnx,layer-scale;
+			xlnx,layer-max-width=<1920>;
+		};
+		xv_mix_overlay_3: layer_3 {
+			xlnx,layer-id = <3>;
+			xlnx,vformat = "AYUV";
+			xlnx,layer-alpha;
+			xlnx,layer-scale;
+			xlnx,layer-max-width=<1920>;
+		};
+		xv_mix_overlay_4: layer_4 {
+			xlnx,layer-id = <4>;
+			xlnx,vformat = "GREY";
+			dmas = <&scaler_v_frmbuf_rd_0 0>;
+			dma-names = "dma0";
+			xlnx,layer-streaming;
+			xlnx,layer-alpha;
+			xlnx,layer-scale;
+			xlnx,layer-max-width=<1920>;
+		};
+		xv_mix_overlay_5: layer_5 {
+			xlnx,layer-id = <5>;
+			xlnx,vformat = "AB24";
+			xlnx,layer-alpha;
+			xlnx,layer-scale;
+			xlnx,layer-max-width=<1920>;
+		};
+		xv_mix_overlay_6: layer_6 {
+			xlnx,layer-id = <6>;
+			xlnx,vformat = "XB24";
+			xlnx,layer-alpha;
+			xlnx,layer-scale;
+			xlnx,layer-max-width=<1920>;
+			};
+		xv_mix_overlay_7: layer_7 {
+			xlnx,layer-id = <7>;
+			xlnx,vformat = "BG24";
+			xlnx,layer-alpha;
+			xlnx,layer-scale;
+			xlnx,layer-max-width=<1920>;
+		};
+		xv_mix_logo: logo {
+			xlnx,layer-id = <8>;
+			xlnx,logo-height = <64>;
+			xlnx,logo-width = <64>;
+		};
+	};
+Example using reserved memory:
+Reserving from 32bit Shared CMA pool of 512MiB using System RAM:
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+/ {
+	reserved-memory {
+		#address-cells = <0x2>;
+		#size-cells = <0x2>;
+		ranges;
+		psmem_multimedia: multimedia_cma_mem_region {
+			compatible = "shared-dma-pool";
+			reg = <0x00 0x40000000 0x00 0x20000000>;
+			reusable;
+		};
+	};
+};
+...
+	v_mix_0: v_mix@80100000 {
+		/* ... */
+		memory-region = <&psmem_multimedia>;
+	};
+
+Reserving from 64bit Shared DMA pool of 1792 MiB using external PL based
+DDR memory:
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+/ {
+	reserved-memory {
+		#address-cells = <0x2>;
+		#size-cells = <0x2>;
+		ranges;
+		plmem_multimedia: multimedia_dma_mem_region {
+			compatible = "shared-dma-pool";
+			no-map;
+			reg = <0x48 0x0 0x0 0x70000000>;
+		};
+	};
+
+};
+...
+	v_mix_0: v_mix@80100000 {
+		/* ... */
+		memory-region = <&plmem_multimedia>;
+	}
