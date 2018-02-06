@@ -142,6 +142,8 @@
 #define ECC_POISON0_OFST	0xB8
 #define ECC_POISON1_OFST	0xBC
 
+#define ECC_ADDRMAP0_OFFSET	0x200
+
 /* Control register bitfield definitions */
 #define ECC_CTRL_BUSWIDTH_MASK	0x3000
 #define ECC_CTRL_BUSWIDTH_SHIFT	12
@@ -183,11 +185,11 @@
 #define ECC_POISON1_BANKNR_SHIFT 24
 
 /* DDR Memory type defines */
-#define MEM_TYPE_DDR3 0x1
-#define MEM_TYPE_LPDDR3 0x1
-#define MEM_TYPE_DDR2 0x4
-#define MEM_TYPE_DDR4 0x10
-#define MEM_TYPE_LPDDR4 0x10
+#define MEM_TYPE_DDR3		0x1
+#define MEM_TYPE_LPDDR3		0x8
+#define MEM_TYPE_DDR2		0x4
+#define MEM_TYPE_DDR4		0x10
+#define MEM_TYPE_LPDDR4		0x20
 
 /* DDRC Software control register */
 #define DDRC_SWCTL 0x320
@@ -204,22 +206,57 @@
 #define DDRC_MSTR_DEV_CONFIG_X16_MASK	0x2
 #define DDRC_MSTR_DEV_CONFIG_X32_MASK	0x3
 
-/* DDR4 and DDR3 device Row,Column,Bank Mapping */
-#define DDR4_COL_SHIFT		3
-#define DDR4_BANKGRP_SHIFT	13
-#define DDR4_BANK_SHIFT	15
-#define DDR4_ROW_SHIFT		17
-#define DDR4_COL_MASK		0x3FF
-#define DDR4_BANKGRP_MASK	0x3
-#define DDR4_BANK_MASK		0x3
-#define DDR4_ROW_MASK		0x7FFF
+#define DDR_MAX_ROW_SHIFT	18
+#define DDR_MAX_COL_SHIFT	14
+#define DDR_MAX_BANK_SHIFT	3
+#define DDR_MAX_BANKGRP_SHIFT	2
 
-#define DDR3_COL_SHIFT	3
-#define DDR3_BANK_SHIFT 13
-#define DDR3_ROW_SHIFT	16
-#define DDR3_COL_MASK	0x3FF
-#define DDR3_BANK_MASK	0x7
-#define DDR3_ROW_MASK	0x3FFF
+#define ROW_MAX_VAL_MASK	0xF
+#define COL_MAX_VAL_MASK	0xF
+#define BANK_MAX_VAL_MASK	0x1F
+#define BANKGRP_MAX_VAL_MASK	0x1F
+#define RANK_MAX_VAL_MASK	0x1F
+
+#define ROW_B0_BASE		6
+#define ROW_B1_BASE		7
+#define ROW_B2_BASE		8
+#define ROW_B3_BASE		9
+#define ROW_B4_BASE		10
+#define ROW_B5_BASE		11
+#define ROW_B6_BASE		12
+#define ROW_B7_BASE		13
+#define ROW_B8_BASE		14
+#define ROW_B9_BASE		15
+#define ROW_B10_BASE		16
+#define ROW_B11_BASE		17
+#define ROW_B12_BASE		18
+#define ROW_B13_BASE		19
+#define ROW_B14_BASE		20
+#define ROW_B15_BASE		21
+#define ROW_B16_BASE		22
+#define ROW_B17_BASE		23
+
+#define COL_B2_BASE		2
+#define COL_B3_BASE		3
+#define COL_B4_BASE		4
+#define COL_B5_BASE		5
+#define COL_B6_BASE		6
+#define COL_B7_BASE		7
+#define COL_B8_BASE		8
+#define COL_B9_BASE		9
+#define COL_B10_BASE		10
+#define COL_B11_BASE		11
+#define COL_B12_BASE		12
+#define COL_B13_BASE		13
+
+#define BANK_B0_BASE		2
+#define BANK_B1_BASE		3
+#define BANK_B2_BASE		4
+
+#define BANKGRP_B0_BASE		2
+#define BANKGRP_B1_BASE		3
+
+#define RANK_B0_BASE		6
 
 /**
  * struct ecc_error_info - ECC error log information
@@ -257,13 +294,18 @@ struct synps_ecc_status {
 
 /**
  * struct synps_edac_priv - DDR memory controller private instance data
- * @baseaddr:	Base address of the DDR controller
- * @message:	Buffer for framing the event specific info
- * @stat:	ECC status information
- * @p_data:	Pointer to platform data
- * @ce_cnt:	Correctable Error count
- * @ue_cnt:	Uncorrectable Error count
- * @poison_addr:Data poison address
+ * @baseaddr:		Base address of the DDR controller
+ * @message:		Buffer for framing the event specific info
+ * @stat:		ECC status information
+ * @p_data:		Pointer to platform data
+ * @ce_cnt:		Correctable Error count
+ * @ue_cnt:		Uncorrectable Error count
+ * @poison_addr:	Data poison address
+ * @row_shift:		Value of row shifts
+ * @col_shift:		Value of col shifts
+ * @bank_shift:		Value of bank shifts
+ * @bankgrp_shift:	Value of bank group shifts
+ * @rank_shift:		Value of rank shifts
  */
 struct synps_edac_priv {
 	void __iomem *baseaddr;
@@ -273,6 +315,11 @@ struct synps_edac_priv {
 	u32 ce_cnt;
 	u32 ue_cnt;
 	ulong poison_addr;
+	u32 row_shift[18];
+	u32 col_shift[14];
+	u32 bank_shift[3];
+	u32 bankgrp_shift[2];
+	u32 rank_shift[1];
 };
 
 /**
@@ -806,82 +853,57 @@ MODULE_DEVICE_TABLE(of, synps_edac_match);
 #define to_mci(k) container_of(k, struct mem_ctl_info, dev)
 
 /**
- * ddr4_poison_setup - update poison registers
- * @dttype:		Device structure variable
- * @device_config:	Device configuration
- * @priv:		Pointer to synps_edac_priv struct
- *
- * Update poison registers as per ddr4 mapping
- * Return: none.
- */
-static void ddr4_poison_setup(enum dev_type dttype, int device_config,
-				struct synps_edac_priv *priv)
+* ddr_poison_setup -	update poison registers
+* @priv:		Pointer to synps_edac_priv struct
+*
+* Update poison registers as per ddr mapping
+* Return: none.
+*/
+static void ddr_poison_setup(struct synps_edac_priv *priv)
 {
-	int col, row, bank, bankgrp, regval, shift_val = 0, col_shift;
+	int col = 0, row = 0, bank = 0, bankgrp = 0, rank = 0, regval;
+	int index;
+	ulong hif_addr = 0;
 
-	/* Check the Configuration of the device */
-	if (device_config & DDRC_MSTR_DEV_CONFIG_X8_MASK) {
-		/* For Full Dq bus */
-		if (dttype == DEV_X8)
-			shift_val = 0;
-		/* For Half Dq bus */
-		else if (dttype == DEV_X4)
-			shift_val = 1;
-		col_shift = 0;
-	} else if (device_config & DDRC_MSTR_DEV_CONFIG_X16_MASK) {
-		if (dttype == DEV_X8)
-			shift_val = 1;
-		else if (dttype == DEV_X4)
-			shift_val = 2;
-		col_shift = 1;
+	hif_addr = priv->poison_addr >> 3;
+
+	for (index = 0; index < DDR_MAX_ROW_SHIFT; index++) {
+		if (priv->row_shift[index])
+			row |= (((hif_addr >> priv->row_shift[index]) &
+						BIT(0)) << index);
+		else
+			break;
 	}
 
-	col = (priv->poison_addr >> (DDR4_COL_SHIFT -
-				(shift_val - col_shift))) &
-				DDR4_COL_MASK;
-	row = priv->poison_addr >> (DDR4_ROW_SHIFT - shift_val);
-	row &= DDR4_ROW_MASK;
-	bank = priv->poison_addr >> (DDR4_BANK_SHIFT - shift_val);
-	bank &= DDR4_BANK_MASK;
-	bankgrp = (priv->poison_addr >> (DDR4_BANKGRP_SHIFT -
-				(shift_val - col_shift))) &
-				DDR4_BANKGRP_MASK;
+	for (index = 0; index < DDR_MAX_COL_SHIFT; index++) {
+		if (priv->col_shift[index] || index < 3)
+			col |= (((hif_addr >> priv->col_shift[index]) &
+						BIT(0)) << index);
+		else
+			break;
+	}
 
-	writel(col, priv->baseaddr + ECC_POISON0_OFST);
-	regval = (bankgrp << ECC_POISON1_BANKGRP_SHIFT) |
-		 (bank << ECC_POISON1_BANKNR_SHIFT) | row;
-	writel(regval, priv->baseaddr + ECC_POISON1_OFST);
-}
+	for (index = 0; index < DDR_MAX_BANK_SHIFT; index++) {
+		if (priv->bank_shift[index])
+			bank |= (((hif_addr >> priv->bank_shift[index]) &
+						BIT(0)) << index);
+		else
+			break;
+	}
 
-/**
- * ddr3_poison_setup - update poison registers
- * @dttype:		Device structure variable
- * @device_config:	Device configuration
- * @priv:		Pointer to synps_edac_priv struct
- *
- * Update poison registers as per ddr3 mapping
- * Return: none.
- */
-static void ddr3_poison_setup(enum dev_type dttype, int device_config,
-				struct synps_edac_priv *priv)
-{
-	int col, row, bank, bankgrp, regval, shift_val = 0;
+	for (index = 0; index < DDR_MAX_BANKGRP_SHIFT; index++) {
+		if (priv->bankgrp_shift[index])
+			bankgrp |= (((hif_addr >> priv->bankgrp_shift[index])
+						& BIT(0)) << index);
+		else
+			break;
+	}
 
-	if (dttype == DEV_X8)
-		/* For Full Dq bus */
-		shift_val = 0;
-	else if (dttype == DEV_X4)
-		/* For Half Dq bus */
-		shift_val = 1;
+	if (priv->rank_shift[0])
+		rank = (hif_addr >> priv->rank_shift[0]) & BIT(0);
 
-	col = (priv->poison_addr >> (DDR3_COL_SHIFT - shift_val)) &
-		DDR3_COL_MASK;
-	row = priv->poison_addr >> (DDR3_ROW_SHIFT - shift_val);
-	row &= DDR3_ROW_MASK;
-	bank = priv->poison_addr >> (DDR3_BANK_SHIFT - shift_val);
-	bank &= DDR3_BANK_MASK;
-	bankgrp = 0;
-	writel(col, priv->baseaddr + ECC_POISON0_OFST);
+	regval = (rank << ECC_POISON0_RANK_SHIFT) | col;
+	writel(regval, priv->baseaddr + ECC_POISON0_OFST);
 	regval = (bankgrp << ECC_POISON1_BANKGRP_SHIFT) |
 			 (bank << ECC_POISON1_BANKNR_SHIFT) | row;
 	writel(regval, priv->baseaddr + ECC_POISON1_OFST);
@@ -927,24 +949,11 @@ static ssize_t synps_edac_mc_inject_data_error_store(struct device *dev,
 {
 	struct mem_ctl_info *mci = to_mci(dev);
 	struct synps_edac_priv *priv = mci->pvt_info;
-	int device_config;
-	enum mem_type mttype;
-	enum dev_type dttype;
 
-	mttype = priv->p_data->synps_edac_get_mtype(
-						priv->baseaddr);
-	dttype = priv->p_data->synps_edac_get_dtype(
-						priv->baseaddr);
 	if (kstrtoul(data, 0, &priv->poison_addr))
 		return -EINVAL;
 
-	device_config = readl(priv->baseaddr + CTRL_OFST);
-	device_config = (device_config & DDRC_MSTR_DEV_CONFIG_MASK) >>
-					DDRC_MSTR_DEV_CONFIG_SHIFT;
-	if (mttype == MEM_DDR4)
-		ddr4_poison_setup(dttype, device_config, priv);
-	else if (mttype == MEM_DDR3)
-		ddr3_poison_setup(dttype, device_config, priv);
+	ddr_poison_setup(priv);
 
 	return count;
 }
@@ -966,8 +975,8 @@ static ssize_t synps_edac_mc_inject_data_poison_show(struct device *dev,
 	struct synps_edac_priv *priv = mci->pvt_info;
 
 	return sprintf(data, "Data Poisoning: %s\n\r",
-			((readl(priv->baseaddr + ECC_CFG1_OFST)) & 0x3) ?
-			("Correctable Error"):("UnCorrectable Error"));
+			(((readl(priv->baseaddr + ECC_CFG1_OFST)) & 0x3) == 0x3)
+			? ("Correctable Error") : ("UnCorrectable Error"));
 }
 
 /**
@@ -1037,6 +1046,197 @@ static void synps_edac_remove_sysfs_attributes(struct mem_ctl_info *mci)
 {
 	device_remove_file(&mci->dev, &dev_attr_inject_data_error);
 	device_remove_file(&mci->dev, &dev_attr_inject_data_poison);
+}
+
+/**
+* setup_address_map -	Set Address Map by querying ADDRMAP registers
+* @priv:		Pointer to synps_edac_priv struct
+*
+* Set Address Map by querying ADDRMAP registers
+* Return: none.
+*/
+static void setup_address_map(struct synps_edac_priv *priv)
+{
+	u32 addrmap[12], addrmap_row_b2_10;
+	int index;
+	u32 width, memtype;
+
+	memtype = readl(priv->baseaddr + CTRL_OFST);
+	width = (memtype & ECC_CTRL_BUSWIDTH_MASK) >> ECC_CTRL_BUSWIDTH_SHIFT;
+
+	for (index = 0; index < 12; index++) {
+		u32 addrmap_offset;
+
+		addrmap_offset = ECC_ADDRMAP0_OFFSET + (index * 4);
+		addrmap[index] = readl(priv->baseaddr + addrmap_offset);
+	}
+
+	priv->row_shift[0] = (addrmap[5] & ROW_MAX_VAL_MASK) + ROW_B0_BASE;
+	priv->row_shift[1] = ((addrmap[5] >> 8) &
+			ROW_MAX_VAL_MASK) + ROW_B1_BASE;
+
+	addrmap_row_b2_10 = (addrmap[5] >> 16) & ROW_MAX_VAL_MASK;
+	if (addrmap_row_b2_10 != ROW_MAX_VAL_MASK) {
+		for (index = 2; index < 11; index++)
+			priv->row_shift[index] = addrmap_row_b2_10 +
+				index + ROW_B0_BASE;
+
+	} else {
+		priv->row_shift[2] = (addrmap[9] &
+				ROW_MAX_VAL_MASK) + ROW_B2_BASE;
+		priv->row_shift[3] = ((addrmap[9] >> 8) &
+				ROW_MAX_VAL_MASK) + ROW_B3_BASE;
+		priv->row_shift[4] = ((addrmap[9] >> 16) &
+				ROW_MAX_VAL_MASK) + ROW_B4_BASE;
+		priv->row_shift[5] = ((addrmap[9] >> 24) &
+				ROW_MAX_VAL_MASK) + ROW_B5_BASE;
+		priv->row_shift[6] = (addrmap[10] &
+				ROW_MAX_VAL_MASK) + ROW_B6_BASE;
+		priv->row_shift[7] = ((addrmap[10] >> 8) &
+				ROW_MAX_VAL_MASK) + ROW_B7_BASE;
+		priv->row_shift[8] = ((addrmap[10] >> 16) &
+				ROW_MAX_VAL_MASK) + ROW_B8_BASE;
+		priv->row_shift[9] = ((addrmap[10] >> 24) &
+				ROW_MAX_VAL_MASK) + ROW_B9_BASE;
+		priv->row_shift[10] = (addrmap[11] &
+				ROW_MAX_VAL_MASK) + ROW_B10_BASE;
+	}
+
+	priv->row_shift[11] = (((addrmap[5] >> 24) & ROW_MAX_VAL_MASK) ==
+				ROW_MAX_VAL_MASK) ? 0 : (((addrmap[5] >> 24) &
+				ROW_MAX_VAL_MASK) + ROW_B11_BASE);
+	priv->row_shift[12] = ((addrmap[6] & ROW_MAX_VAL_MASK) ==
+				ROW_MAX_VAL_MASK) ? 0 : ((addrmap[6] &
+				ROW_MAX_VAL_MASK) + ROW_B12_BASE);
+	priv->row_shift[13] = (((addrmap[6] >> 8) & ROW_MAX_VAL_MASK) ==
+				ROW_MAX_VAL_MASK) ? 0 : (((addrmap[6] >> 8) &
+				ROW_MAX_VAL_MASK) + ROW_B13_BASE);
+	priv->row_shift[14] = (((addrmap[6] >> 16) & ROW_MAX_VAL_MASK) ==
+				ROW_MAX_VAL_MASK) ? 0 : (((addrmap[6] >> 16) &
+				ROW_MAX_VAL_MASK) + ROW_B14_BASE);
+	priv->row_shift[15] = (((addrmap[6] >> 24) & ROW_MAX_VAL_MASK) ==
+				ROW_MAX_VAL_MASK) ? 0 : (((addrmap[6] >> 24) &
+				ROW_MAX_VAL_MASK) + ROW_B15_BASE);
+	priv->row_shift[16] = ((addrmap[7] & ROW_MAX_VAL_MASK) ==
+				ROW_MAX_VAL_MASK) ? 0 : ((addrmap[7] &
+				ROW_MAX_VAL_MASK) + ROW_B16_BASE);
+	priv->row_shift[17] = (((addrmap[7] >> 8) & ROW_MAX_VAL_MASK) ==
+				ROW_MAX_VAL_MASK) ? 0 : (((addrmap[7] >> 8) &
+				ROW_MAX_VAL_MASK) + ROW_B17_BASE);
+
+	priv->col_shift[0] = 0;
+	priv->col_shift[1] = 1;
+	priv->col_shift[2] = (addrmap[2] & COL_MAX_VAL_MASK) + COL_B2_BASE;
+	priv->col_shift[3] = ((addrmap[2] >> 8) &
+			COL_MAX_VAL_MASK) + COL_B3_BASE;
+	priv->col_shift[4] = (((addrmap[2] >> 16) & COL_MAX_VAL_MASK) ==
+			COL_MAX_VAL_MASK) ? 0 : (((addrmap[2] >> 16) &
+					COL_MAX_VAL_MASK) + COL_B4_BASE);
+	priv->col_shift[5] = (((addrmap[2] >> 24) & COL_MAX_VAL_MASK) ==
+			COL_MAX_VAL_MASK) ? 0 : (((addrmap[2] >> 24) &
+					COL_MAX_VAL_MASK) + COL_B5_BASE);
+	priv->col_shift[6] = ((addrmap[3] & COL_MAX_VAL_MASK) ==
+			COL_MAX_VAL_MASK) ? 0 : ((addrmap[3] &
+					COL_MAX_VAL_MASK) + COL_B6_BASE);
+	priv->col_shift[7] = (((addrmap[3] >> 8) & COL_MAX_VAL_MASK) ==
+			COL_MAX_VAL_MASK) ? 0 : (((addrmap[3] >> 8) &
+					COL_MAX_VAL_MASK) + COL_B7_BASE);
+	priv->col_shift[8] = (((addrmap[3] >> 16) & COL_MAX_VAL_MASK) ==
+			COL_MAX_VAL_MASK) ? 0 : (((addrmap[3] >> 16) &
+					COL_MAX_VAL_MASK) + COL_B8_BASE);
+	priv->col_shift[9] = (((addrmap[3] >> 24) & COL_MAX_VAL_MASK) ==
+			COL_MAX_VAL_MASK) ? 0 : (((addrmap[3] >> 24) &
+					COL_MAX_VAL_MASK) + COL_B9_BASE);
+	if (width == DDRCTL_EWDTH_64) {
+		if (memtype & MEM_TYPE_LPDDR3) {
+			priv->col_shift[10] = ((addrmap[4] &
+				COL_MAX_VAL_MASK) == COL_MAX_VAL_MASK) ? 0 :
+				((addrmap[4] & COL_MAX_VAL_MASK) +
+				 COL_B10_BASE);
+			priv->col_shift[11] = (((addrmap[4] >> 8) &
+				COL_MAX_VAL_MASK) == COL_MAX_VAL_MASK) ? 0 :
+				(((addrmap[4] >> 8) & COL_MAX_VAL_MASK) +
+				 COL_B11_BASE);
+		} else {
+			priv->col_shift[11] = ((addrmap[4] &
+				COL_MAX_VAL_MASK) == COL_MAX_VAL_MASK) ? 0 :
+				((addrmap[4] & COL_MAX_VAL_MASK) +
+				 COL_B10_BASE);
+			priv->col_shift[13] = (((addrmap[4] >> 8) &
+				COL_MAX_VAL_MASK) == COL_MAX_VAL_MASK) ? 0 :
+				(((addrmap[4] >> 8) & COL_MAX_VAL_MASK) +
+				 COL_B11_BASE);
+		}
+	} else if (width == DDRCTL_EWDTH_32) {
+		if (memtype & MEM_TYPE_LPDDR3) {
+			priv->col_shift[10] = (((addrmap[3] >> 24) &
+				COL_MAX_VAL_MASK) == COL_MAX_VAL_MASK) ? 0 :
+				(((addrmap[3] >> 24) & COL_MAX_VAL_MASK) +
+				 COL_B9_BASE);
+			priv->col_shift[11] = ((addrmap[4] &
+				COL_MAX_VAL_MASK) == COL_MAX_VAL_MASK) ? 0 :
+				((addrmap[4] & COL_MAX_VAL_MASK) +
+				 COL_B10_BASE);
+		} else {
+			priv->col_shift[11] = (((addrmap[3] >> 24) &
+				COL_MAX_VAL_MASK) == COL_MAX_VAL_MASK) ? 0 :
+				(((addrmap[3] >> 24) & COL_MAX_VAL_MASK) +
+				 COL_B9_BASE);
+			priv->col_shift[13] = ((addrmap[4] &
+				COL_MAX_VAL_MASK) == COL_MAX_VAL_MASK) ? 0 :
+				((addrmap[4] & COL_MAX_VAL_MASK) +
+				 COL_B10_BASE);
+		}
+	} else {
+		if (memtype & MEM_TYPE_LPDDR3) {
+			priv->col_shift[10] = (((addrmap[3] >> 16) &
+				COL_MAX_VAL_MASK) == COL_MAX_VAL_MASK) ? 0 :
+				(((addrmap[3] >> 16) & COL_MAX_VAL_MASK) +
+				 COL_B8_BASE);
+			priv->col_shift[11] = (((addrmap[3] >> 24) &
+				COL_MAX_VAL_MASK) == COL_MAX_VAL_MASK) ? 0 :
+				(((addrmap[3] >> 24) & COL_MAX_VAL_MASK) +
+				 COL_B9_BASE);
+			priv->col_shift[13] = ((addrmap[4] &
+				COL_MAX_VAL_MASK) == COL_MAX_VAL_MASK) ? 0 :
+				((addrmap[4] & COL_MAX_VAL_MASK) +
+				 COL_B10_BASE);
+		} else {
+			priv->col_shift[11] = (((addrmap[3] >> 16) &
+				COL_MAX_VAL_MASK) == COL_MAX_VAL_MASK) ? 0 :
+				(((addrmap[3] >> 16) & COL_MAX_VAL_MASK) +
+				 COL_B8_BASE);
+			priv->col_shift[13] = (((addrmap[3] >> 24) &
+				COL_MAX_VAL_MASK) == COL_MAX_VAL_MASK) ? 0 :
+				(((addrmap[3] >> 24) & COL_MAX_VAL_MASK) +
+				 COL_B9_BASE);
+		}
+	}
+
+	if (width) {
+		for (index = 9; index > width; index--) {
+			priv->col_shift[index] = priv->col_shift[index - width];
+			priv->col_shift[index - width] = 0;
+		}
+	}
+
+	priv->bank_shift[0] = (addrmap[1] & BANK_MAX_VAL_MASK) + BANK_B0_BASE;
+	priv->bank_shift[1] = ((addrmap[1] >> 8) &
+				BANK_MAX_VAL_MASK) + BANK_B1_BASE;
+	priv->bank_shift[2] = (((addrmap[1] >> 16) &
+				BANK_MAX_VAL_MASK) == BANK_MAX_VAL_MASK) ? 0 :
+				(((addrmap[1] >> 16) & BANK_MAX_VAL_MASK) +
+				 BANK_B2_BASE);
+
+	priv->bankgrp_shift[0] = (addrmap[8] &
+				BANKGRP_MAX_VAL_MASK) + BANKGRP_B0_BASE;
+	priv->bankgrp_shift[1] = (((addrmap[8] >> 8) & BANKGRP_MAX_VAL_MASK) ==
+				BANKGRP_MAX_VAL_MASK) ? 0 : (((addrmap[8] >> 8)
+				& BANKGRP_MAX_VAL_MASK) + BANKGRP_B1_BASE);
+
+	priv->rank_shift[0] = ((addrmap[0] & RANK_MAX_VAL_MASK) ==
+				RANK_MAX_VAL_MASK) ? 0 : ((addrmap[0] &
+				RANK_MAX_VAL_MASK) + RANK_B0_BASE);
 }
 
 /**
@@ -1137,6 +1337,11 @@ static int synps_edac_mc_probe(struct platform_device *pdev)
 			goto free_edac_mc;
 		}
 	}
+
+	if (of_device_is_compatible(pdev->dev.of_node,
+				    "xlnx,zynqmp-ddrc-2.40a"))
+		setup_address_map(priv);
+
 	/*
 	 * Start capturing the correctable and uncorrectable errors. A write of
 	 * 0 starts the counters.
