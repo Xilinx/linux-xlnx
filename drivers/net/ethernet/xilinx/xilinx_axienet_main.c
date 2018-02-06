@@ -1536,16 +1536,11 @@ static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 		cur_p->phys = q->tx_bufs_dma +
 			      (q->tx_buf[q->tx_bd_tail] - q->tx_bufs);
 
-		if (num_frag > 0) {
-			pad = skb_pagelen(skb) - skb_headlen(skb);
 #ifdef CONFIG_AXIENET_HAS_MCDMA
-			cur_p->cntrl = (skb_headlen(skb) |
-					XMCDMA_BD_CTRL_TXSOF_MASK) + pad;
+		cur_p->cntrl = skb_pagelen(skb) | XMCDMA_BD_CTRL_TXSOF_MASK;
 #else
-			cur_p->cntrl = (skb_headlen(skb) |
-					XAXIDMA_BD_CTRL_TXSOF_MASK) + pad;
+		cur_p->cntrl = skb_pagelen(skb) | XAXIDMA_BD_CTRL_TXSOF_MASK;
 #endif
-		}
 		goto out;
 	} else {
 		cur_p->phys = dma_map_single(ndev->dev.parent, skb->data,
