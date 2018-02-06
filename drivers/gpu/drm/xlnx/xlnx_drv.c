@@ -131,6 +131,10 @@ static void xlnx_mode_config_init(struct drm_device *drm)
 	drm->mode_config.min_height = 0;
 	drm->mode_config.max_width = xlnx_crtc_helper_get_max_width(crtc);
 	drm->mode_config.max_height = xlnx_crtc_helper_get_max_height(crtc);
+	drm->mode_config.cursor_width =
+		xlnx_crtc_helper_get_cursor_width(crtc);
+	drm->mode_config.cursor_height =
+		xlnx_crtc_helper_get_cursor_height(crtc);
 }
 
 static void xlnx_lastclose(struct drm_device *drm)
