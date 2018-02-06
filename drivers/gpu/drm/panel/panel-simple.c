@@ -4386,7 +4386,6 @@ static const struct drm_display_mode auo_b101uan01_mode = {
 	.vsync_start = 1200 + 3,
 	.vsync_end = 1200 + 3 + 5,
 	.vtotal = 1200 + 3 + 5 + 4,
-	.vrefresh = 60,
 };
 
 static const struct panel_desc_dsi auo_b101uan01 = {
