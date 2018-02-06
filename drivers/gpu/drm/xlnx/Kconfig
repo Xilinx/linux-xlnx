@@ -46,3 +46,14 @@ config DRM_XLNX_BRIDGE_DEBUG_FS
 	  low level controls to the user space to help testing automation,
 	  as well as can enable additional diagnostic or statistical
 	  information.
+
+config DRM_XLNX_DSI
+	tristate "Xilinx DRM DSI Subsystem Driver"
+	depends on DRM_XLNX
+	select DRM_MIPI_DSI
+	select DRM_PANEL
+	select BACKLIGHT_LCD_SUPPORT
+	select BACKLIGHT_CLASS_DEVICE
+	select DRM_PANEL_SIMPLE
+	help
+	  DRM driver for Xilinx MIPI-DSI.
