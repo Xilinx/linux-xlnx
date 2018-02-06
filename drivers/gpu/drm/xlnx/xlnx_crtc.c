@@ -128,6 +128,35 @@ uint32_t xlnx_crtc_helper_get_format(struct xlnx_crtc_helper *helper)
 	return format;
 }
 
+uint32_t xlnx_crtc_helper_get_cursor_width(struct xlnx_crtc_helper *helper)
+{
+	struct xlnx_crtc *crtc;
+	int width = XLNX_CRTC_MAX_HEIGHT_WIDTH, tmp;
+
+	list_for_each_entry(crtc, &helper->xlnx_crtcs, list) {
+		if (crtc->get_cursor_width) {
+			tmp = crtc->get_cursor_width(crtc);
+			width = min(width, tmp);
+		}
+	}
+
+	return width;
+}
+
+uint32_t xlnx_crtc_helper_get_cursor_height(struct xlnx_crtc_helper *helper)
+{
+	struct xlnx_crtc *crtc;
+	int height = XLNX_CRTC_MAX_HEIGHT_WIDTH, tmp;
+
+	list_for_each_entry(crtc, &helper->xlnx_crtcs, list) {
+		if (crtc->get_cursor_height) {
+			tmp = crtc->get_cursor_height(crtc);
+			height = min(height, tmp);
+		}
+	}
+
+	return height;
+}
 struct xlnx_crtc_helper *xlnx_crtc_helper_init(struct drm_device *drm)
 {
 	struct xlnx_crtc_helper *helper;
