@@ -57,3 +57,9 @@ config DRM_XLNX_DSI
 	select DRM_PANEL_SIMPLE
 	help
 	  DRM driver for Xilinx MIPI-DSI.
+
+config DRM_XLNX_MIXER
+	tristate "Xilinx DRM Mixer Driver"
+	depends on DRM_XLNX
+	help
+	  DRM driver for Xilinx Mixer driver
