@@ -1,0 +1,41 @@
+Xilinx PL Display driver
+------------------------
+
+Pl_Display is a logical device to provide completeness to xilinx display
+pipeline. This is a software driver for providing drm components crtc
+and plane for various IPs using xilinx display pipelines.
+
+A linear pipeline with multiple blocks:
+DMA --> PL_Display --> SDI
+
+Required properties:
+
+- compatible: Must be "xlnx,pl-disp"
+- dmas: dma attach to pipeline
+- dma-names: names for dma
+- xlnx,vformat: video format for layer
+- port: Logical block can be used / connected independently with
+  external device. In the display controller port nodes, topology
+  for entire pipeline should be described using the DT bindings defined in
+  Documentation/devicetree/bindings/graph.txt.
+- reg: Base address and size of device
+
+Optional properties:
+ - xlnx,bridge: bridge phandle
+   This handle is required only when VTC is connected as bridge.
+
+Example:
+
+	drm-pl-disp-drv {
+		compatible = "xlnx,pl-disp";
+		dmas = <&axi_vdma_0 0>;
+		dma-names = "dma0";
+		xlnx,vformat = "YUYV";
+		xlnx,bridge = <&v_tc_0>;
+		pl_disp_port@0 {
+			reg = <0>;
+			endpoint {
+				remote-endpoint = <&sdi_port>;
+			};
+		};
+	};
