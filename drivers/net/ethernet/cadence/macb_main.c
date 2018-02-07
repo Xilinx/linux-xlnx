@@ -32,9 +32,7 @@
 #include <linux/of_gpio.h>
 #include <linux/of_mdio.h>
 #include <linux/of_net.h>
-#include <linux/net_tstamp.h>
 #include <linux/pm_runtime.h>
-#include <linux/ptp_clock_kernel.h>
 #include <linux/crc32.h>
 #include <linux/inetdevice.h>
 
@@ -69,9 +67,6 @@
 #define GEM_MAX_TX_LEN		((unsigned int)((1 << GEM_TX_FRMLEN_SIZE) - 1))
 
 #define GEM_MTU_MIN_SIZE	ETH_MIN_MTU
-
-#define GEM_TX_PTPHDR_OFFSET	42
-#define GEM_RX_PTPHDR_OFFSET	28
 
 /* Graceful stop timeouts in us. We should allow up to
  * 1 frame time (10 Mbits/s, full-duplex, ignoring collisions)
@@ -869,43 +864,6 @@ static void macb_tx_error_task(struct work_struct *work)
 	spin_unlock_irqrestore(&bp->lock, flags);
 }
 
-#ifdef CONFIG_MACB_EXT_BD
-static inline void macb_handle_txtstamp(struct macb *bp, struct sk_buff *skb,
-					struct macb_dma_desc *desc)
-{
-	u32 ts_s, ts_ns;
-	u8 msg_type;
-	struct skb_shared_hwtstamps *shhwtstamps;
-
-	skb_copy_from_linear_data_offset(skb, GEM_TX_PTPHDR_OFFSET,
-					 &msg_type, 1);
-
-	/* Bit[32:6] of TS secs from register
-	 * Bit[5:0] of TS secs from BD
-	 * TS nano secs is available in BD
-	 */
-	if (msg_type & 0x2) {
-		/* PTP Peer Event Frame packets */
-		ts_s = (gem_readl(bp, 1588PEERTXSEC) & GEM_SEC_MASK) |
-		       ((desc->tsl >> GEM_TSL_SEC_RS) |
-		       (desc->tsh << GEM_TSH_SEC_LS));
-		ts_ns = desc->tsl & GEM_TSL_NSEC_MASK;
-	} else {
-		/* PTP Event Frame packets */
-		ts_s = (gem_readl(bp, 1588TXSEC) & GEM_SEC_MASK) |
-		       ((desc->tsl >> GEM_TSL_SEC_RS) |
-		       (desc->tsh << GEM_TSH_SEC_LS));
-		ts_ns = desc->tsl & GEM_TSL_NSEC_MASK;
-	}
-
-	shhwtstamps = skb_hwtstamps(skb);
-
-	memset(shhwtstamps, 0, sizeof(struct skb_shared_hwtstamps));
-	shhwtstamps->hwtstamp = ns_to_ktime((ts_s * NS_PER_SEC) + ts_ns);
-	skb_tstamp_tx(skb, skb_hwtstamps(skb));
-}
-#endif
-
 static void macb_tx_interrupt(struct macb_queue *queue)
 {
 	unsigned int tail;
@@ -950,15 +908,17 @@ static void macb_tx_interrupt(struct macb_queue *queue)
 
 			/* First, update TX stats if needed */
 			if (skb) {
+				if (gem_ptp_do_txstamp(queue, skb, desc) == 0) {
+					/* skb now belongs to timestamp buffer
+					 * and will be removed later
+					 */
+					tx_skb->skb = NULL;
+				}
 				netdev_vdbg(bp->dev, "skb %u (data %p) TX complete\n",
 					    macb_tx_ring_wrap(bp, tail),
 					    skb->data);
 				bp->stats.tx_packets++;
 				bp->stats.tx_bytes += skb->len;
-#ifdef CONFIG_MACB_EXT_BD
-				if (skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP)
-					macb_handle_txtstamp(bp, skb, desc);
-#endif
 			}
 
 			/* Now we can safely release resources */
@@ -1058,41 +1018,6 @@ static void discard_partial_frame(struct macb *bp, unsigned int begin,
 	 */
 }
 
-#ifdef CONFIG_MACB_EXT_BD
-static inline void macb_handle_rxtstamp(struct macb *bp, struct sk_buff *skb,
-					struct macb_dma_desc *desc)
-{
-	u8 msg_type;
-	u32 ts_ns, ts_s;
-	struct skb_shared_hwtstamps *shhwtstamps;
-
-	skb_copy_from_linear_data_offset(skb, GEM_RX_PTPHDR_OFFSET,
-					 &msg_type, 1);
-
-	/* Bit[32:6] of TS secs from register
-	 * Bit[5:0] of TS secs from BD
-	 * TS nano secs is available in BD
-	 */
-	if (msg_type & 0x2) {
-		/* PTP Peer Event Frame packets */
-		ts_s = (gem_readl(bp, 1588PEERRXSEC) & GEM_SEC_MASK) |
-			((desc->tsl >> GEM_TSL_SEC_RS) |
-			(desc->tsh << GEM_TSH_SEC_LS));
-		ts_ns = desc->tsl & GEM_TSL_NSEC_MASK;
-	} else {
-		/* PTP Event Frame packets */
-		ts_s = (gem_readl(bp, 1588RXSEC) & GEM_SEC_MASK) |
-			((desc->tsl >> GEM_TSL_SEC_RS) |
-			(desc->tsh << GEM_TSH_SEC_LS));
-		ts_ns = desc->tsl & GEM_TSL_NSEC_MASK;
-	}
-
-	shhwtstamps = skb_hwtstamps(skb);
-
-	memset(shhwtstamps, 0, sizeof(struct skb_shared_hwtstamps));
-	shhwtstamps->hwtstamp = ns_to_ktime((ts_s * NS_PER_SEC) + ts_ns);
-}
-#endif
 
 static int macb_validate_hw_csum(struct sk_buff *skb)
 {
@@ -1158,11 +1083,6 @@ static int gem_rx(struct macb *bp, int budget)
 
 		skb->protocol = eth_type_trans(skb, bp->dev);
 
-#ifdef CONFIG_MACB_EXT_BD
-		if (addr & GEM_RX_TS_MASK)
-			macb_handle_rxtstamp(bp, skb, desc);
-#endif
-
 		/* Validate MAC fcs if RX checsum offload disabled */
 		if (!(bp->dev->features & NETIF_F_RXCSUM)) {
 			if (macb_validate_hw_csum(skb)) {
@@ -1180,6 +1100,8 @@ static int gem_rx(struct macb *bp, int budget)
 
 		bp->stats.rx_packets++;
 		bp->stats.rx_bytes += skb->len;
+
+		gem_ptp_do_rxstamp(bp, skb, desc);
 
 #if defined(DEBUG) && defined(VERBOSE_DEBUG)
 		netdev_vdbg(bp->dev, "received skb of length %u, csum: %08x\n",
@@ -1573,7 +1495,6 @@ static irqreturn_t macb_interrupt(int irq, void *dev_id)
 			if (bp->caps & MACB_CAPS_ISR_CLEAR_ON_WRITE)
 				queue_writel(queue, ISR, MACB_BIT(HRESP));
 		}
-
 		status = queue_readl(queue, ISR);
 	}
 
@@ -1800,7 +1721,6 @@ static int macb_start_xmit(struct sk_buff *skb, struct net_device *dev)
 
 	/* Make newly initialized descriptor visible to hardware */
 	wmb();
-
 	skb_tx_timestamp(skb);
 
 	macb_writel(bp, NCR, macb_readl(bp, NCR) | MACB_BIT(TSTART));
@@ -2139,193 +2059,6 @@ static u32 macb_dbw(struct macb *bp)
 	}
 }
 
-static inline void macb_ptp_read(struct macb *bp, struct timespec64 *ts)
-{
-	ts->tv_sec = gem_readl(bp, 1588S);
-	ts->tv_nsec = gem_readl(bp, 1588NS);
-
-	if (ts->tv_sec < gem_readl(bp, 1588S))
-		ts->tv_nsec = gem_readl(bp, 1588NS);
-}
-
-static inline void macb_ptp_write(struct macb *bp, const struct timespec64 *ts)
-{
-	gem_writel(bp, 1588S, ts->tv_sec);
-	gem_writel(bp, 1588NS, ts->tv_nsec);
-}
-
-static int macb_ptp_enable(struct ptp_clock_info *ptp,
-			   struct ptp_clock_request *rq, int on)
-{
-	return -EOPNOTSUPP;
-}
-
-static void macb_ptp_close(struct macb *bp)
-{
-	unsigned long flags;
-
-	spin_lock_irqsave(&bp->lock, flags);
-	/* Clear the time counters */
-	gem_writel(bp, 1588NS, 0);
-	gem_writel(bp, 1588S, 0);
-	gem_writel(bp, 1588ADJ, 0);
-	gem_writel(bp, 1588INCR, 0);
-	spin_unlock_irqrestore(&bp->lock, flags);
-
-	ptp_clock_unregister(bp->ptp_clock);
-}
-
-static int macb_ptp_gettime(struct ptp_clock_info *ptp, struct timespec64 *ts)
-{
-	struct macb *bp = container_of(ptp, struct macb, ptp_caps);
-
-	macb_ptp_read(bp, ts);
-
-	return 0;
-}
-
-static int macb_ptp_settime(struct ptp_clock_info *ptp,
-			    const struct timespec64 *ts)
-{
-	struct macb *bp = container_of(ptp, struct macb, ptp_caps);
-
-	macb_ptp_write(bp, ts);
-
-	return 0;
-}
-
-static int macb_ptp_adjtime(struct ptp_clock_info *ptp, s64 delta)
-{
-	struct macb *bp = container_of(ptp, struct macb, ptp_caps);
-	struct timespec now, then = ns_to_timespec(delta);
-	u32 adj, sign = 0;
-
-	if (delta < 0) {
-		delta = -delta;
-		sign = 1;
-	}
-
-	if (delta > 0x3FFFFFFF) {
-		macb_ptp_read(bp, (struct timespec64 *)&now);
-		now = timespec_add(now, then);
-
-		macb_ptp_write(bp, (const struct timespec64 *)&now);
-	} else {
-		adj = delta;
-		if (sign)
-			adj |= GEM_BIT(ADDSUB);
-
-		gem_writel(bp, 1588ADJ, adj);
-	}
-
-	return 0;
-}
-
-static int macb_ptp_adjfreq(struct ptp_clock_info *ptp, s32 ppb)
-{
-	struct macb *bp = container_of(ptp, struct macb, ptp_caps);
-	unsigned long rate = bp->tsu_rate;
-	u64 adjsub;
-	u32 addend, diff;
-	u32 diffsub, addendsub;
-	bool neg_adj = false;
-	u32 subnsreg, rem;
-
-	if (ppb < 0) {
-		neg_adj = true;
-		ppb = -ppb;
-	}
-
-	addend = bp->ns_incr;
-	addendsub = bp->subns_incr;
-
-	diff = div_u64_rem(ppb, rate, &rem);
-	addend = neg_adj ? addend - diff : addend + diff;
-
-	if (rem) {
-		adjsub = rem;
-		/* Multiple by 2^24 as subns field is 24 bits */
-		adjsub = adjsub << 24;
-
-		diffsub = div_u64(adjsub, rate);
-	} else {
-		diffsub = 0;
-	}
-
-	if (neg_adj && (diffsub > addendsub)) {
-		addend -= 1;
-		rem = (NS_PER_SEC - rem);
-		neg_adj = false;
-
-		adjsub = rem;
-		adjsub = adjsub << 24;
-		diffsub = div_u64(adjsub, rate);
-	}
-
-	addendsub = neg_adj ? addendsub - diffsub : addendsub + diffsub;
-	/* RegBit[15:0] = Subns[23:8]; RegBit[31:24] = Subns[7:0] */
-	subnsreg = ((addendsub & GEM_SUBNSINCL_MASK) << GEM_SUBNSINCL_SHFT) |
-		   ((addendsub & GEM_SUBNSINCH_MASK) >> GEM_SUBNSINCH_SHFT);
-
-	gem_writel(bp, 1588INCRSUBNS, subnsreg);
-	gem_writel(bp, 1588INCR, GEM_BF(NSINCR, addend));
-
-	return 0;
-}
-
-static void macb_ptp_init(struct macb *bp)
-{
-	struct timespec now;
-	unsigned long rate;
-	u32 subnsreg, rem = 0;
-	u64 adj;
-
-	bp->ptp_caps.owner = THIS_MODULE;
-	bp->ptp_caps.max_adj = 250000000;
-	bp->ptp_caps.n_alarm = 0;
-	bp->ptp_caps.n_ext_ts = 0;
-	bp->ptp_caps.n_per_out = 0;
-	bp->ptp_caps.pps = 0;
-	bp->ptp_caps.adjtime = macb_ptp_adjtime;
-	bp->ptp_caps.gettime64 = macb_ptp_gettime;
-	bp->ptp_caps.settime64 = macb_ptp_settime;
-	bp->ptp_caps.enable = macb_ptp_enable;
-	bp->ptp_caps.adjfreq = macb_ptp_adjfreq;
-
-	rate = bp->tsu_rate;
-
-	getnstimeofday(&now);
-	gem_writel(bp, 1588SMSB, 0);
-	macb_ptp_write(bp, (const struct timespec64 *)&now);
-
-	bp->ns_incr = div_u64_rem(NS_PER_SEC, rate, &rem);
-	if (rem) {
-		adj = rem;
-		/* Multiply by 2^24 as subns register is 24 bits */
-		adj = adj << 24;
-
-		bp->subns_incr = div_u64(adj, rate);
-	} else {
-		bp->subns_incr = 0;
-	}
-
-	/* RegBit[15:0] = Subns[23:8]; RegBit[31:24] = Subns[7:0] */
-	subnsreg = ((bp->subns_incr & GEM_SUBNSINCL_MASK)
-		    << GEM_SUBNSINCL_SHFT) |
-		   ((bp->subns_incr & GEM_SUBNSINCH_MASK)
-		    >> GEM_SUBNSINCH_SHFT);
-	gem_writel(bp, 1588INCRSUBNS, subnsreg);
-	gem_writel(bp, 1588INCR, bp->ns_incr);
-	gem_writel(bp, 1588ADJ, 0);
-
-	bp->ptp_clock = ptp_clock_register(&bp->ptp_caps, &bp->pdev->dev);
-	if (IS_ERR(bp->ptp_clock)) {
-		bp->ptp_clock = NULL;
-		netdev_err(bp->dev, "ptp_clock_register failed\n");
-	}
-	bp->phc_index = ptp_clock_index(bp->ptp_clock);
-}
-
 /* Configure the receive DMA engine
  * - use the correct receive buffer size
  * - set best burst length for DMA operations
@@ -2354,10 +2087,6 @@ static void macb_configure_dma(struct macb *bp)
 			dmacfg |= GEM_BIT(TXCOEN);
 		else
 			dmacfg &= ~GEM_BIT(TXCOEN);
-#ifdef CONFIG_MACB_EXT_BD
-		dmacfg |= GEM_BIT(RXBDEXT);
-		dmacfg |= GEM_BIT(TXBDEXT);
-#endif
 
 #ifdef CONFIG_ARCH_DMA_ADDR_T_64BIT
 		if (bp->hw_dma_cap & HW_DMA_CAP_64B)
@@ -2416,21 +2145,6 @@ static void macb_init_hw(struct macb *bp)
 	bp->rx_frm_len_mask = MACB_RX_FRMLEN_MASK;
 	if (bp->caps & MACB_CAPS_JUMBO)
 		bp->rx_frm_len_mask = MACB_RX_JFRMLEN_MASK;
-
-
-#ifdef CONFIG_MACB_EXT_BD
-	gem_writel(bp, TXBDCNTRL,
-		   (gem_readl(bp, TXBDCNTRL) & ~(GEM_TXBDCNTRL_MODE_ALL)) |
-		   GEM_TXBDCNTRL_MODE_PTP_EVNT);
-	gem_writel(bp, RXBDCNTRL,
-		   (gem_readl(bp, RXBDCNTRL) & ~(GEM_RXBDCNTRL_MODE_ALL)) |
-		   GEM_RXBDCNTRL_MODE_PTP_EVNT);
-#endif
-
-	if ((gem_readl(bp, DCFG5) & GEM_BIT(TSU)) &&
-	    (bp->caps & MACB_CAPS_TSU)) {
-		macb_ptp_init(bp);
-	}
 
 	macb_configure_dma(bp);
 
@@ -2659,10 +2373,6 @@ static int macb_close(struct net_device *dev)
 	netif_carrier_off(dev);
 	spin_unlock_irqrestore(&bp->lock, flags);
 
-	if ((gem_readl(bp, DCFG5) & GEM_BIT(TSU)) &&
-	    (bp->caps & MACB_CAPS_TSU))
-		macb_ptp_close(bp);
-
 	macb_free_consistent(bp);
 
 	if (bp->ptp_info)
@@ -2860,22 +2570,70 @@ static void macb_get_regs(struct net_device *dev, struct ethtool_regs *regs,
 		regs_buff[13] = gem_readl(bp, DMACFG);
 }
 
-static int macb_get_ts_info(struct net_device *dev,
-			    struct ethtool_ts_info *info)
+
+#ifdef CONFIG_MACB_USE_HWSTAMP
+static unsigned int gem_get_tsu_rate(struct macb *bp)
+{
+	struct clk *tsu_clk;
+	unsigned int tsu_rate;
+
+	tsu_clk = devm_clk_get(&bp->pdev->dev, "tsu_clk");
+	if (!IS_ERR(tsu_clk))
+		tsu_rate = clk_get_rate(tsu_clk);
+	/* try pclk instead */
+	else if (!IS_ERR(bp->pclk)) {
+		tsu_clk = bp->pclk;
+		tsu_rate = clk_get_rate(tsu_clk);
+	} else
+		return -ENOTSUPP;
+	return tsu_rate;
+}
+
+static s32 gem_get_ptp_max_adj(void)
+{
+	return 64000000;
+}
+
+static int gem_get_ts_info(struct net_device *dev,
+			   struct ethtool_ts_info *info)
 {
 	struct macb *bp = netdev_priv(dev);
 
-	info->so_timestamping = SOF_TIMESTAMPING_TX_HARDWARE |
-				SOF_TIMESTAMPING_RX_HARDWARE |
-				SOF_TIMESTAMPING_RAW_HARDWARE;
-	info->phc_index = bp->phc_index;
-	info->tx_types = (1 << HWTSTAMP_TX_OFF) |
-			 (1 << HWTSTAMP_TX_ON);
-	info->rx_filters = (1 << HWTSTAMP_FILTER_NONE) |
-			   (1 << HWTSTAMP_FILTER_ALL);
+	if ((bp->hw_dma_cap & HW_DMA_CAP_PTP) == 0) {
+		ethtool_op_get_ts_info(dev, info);
+		return 0;
+	}
+
+	info->so_timestamping =
+		SOF_TIMESTAMPING_TX_SOFTWARE |
+		SOF_TIMESTAMPING_RX_SOFTWARE |
+		SOF_TIMESTAMPING_SOFTWARE |
+		SOF_TIMESTAMPING_TX_HARDWARE |
+		SOF_TIMESTAMPING_RX_HARDWARE |
+		SOF_TIMESTAMPING_RAW_HARDWARE;
+	info->tx_types =
+		(1 << HWTSTAMP_TX_ONESTEP_SYNC) |
+		(1 << HWTSTAMP_TX_OFF) |
+		(1 << HWTSTAMP_TX_ON);
+	info->rx_filters =
+		(1 << HWTSTAMP_FILTER_NONE) |
+		(1 << HWTSTAMP_FILTER_ALL);
+
+	info->phc_index = bp->ptp_clock ? ptp_clock_index(bp->ptp_clock) : -1;
 
 	return 0;
 }
+
+static struct macb_ptp_info gem_ptp_info = {
+	.ptp_init	 = gem_ptp_init,
+	.ptp_remove	 = gem_ptp_remove,
+	.get_ptp_max_adj = gem_get_ptp_max_adj,
+	.get_tsu_rate	 = gem_get_tsu_rate,
+	.get_ts_info	 = gem_get_ts_info,
+	.get_hwtst	 = gem_get_hwtst,
+	.set_hwtst	 = gem_set_hwtst,
+};
+#endif
 
 static int macb_get_ts_info(struct net_device *netdev,
 			    struct ethtool_ts_info *info)
@@ -3022,12 +2780,16 @@ static void macb_configure_caps(struct macb *bp,
 		dcfg = gem_readl(bp, DCFG2);
 		if ((dcfg & (GEM_BIT(RX_PKT_BUFF) | GEM_BIT(TX_PKT_BUFF))) == 0)
 			bp->caps |= MACB_CAPS_FIFO_MODE;
-		if (IS_ENABLED(CONFIG_MACB_USE_HWSTAMP) && gem_has_ptp(bp)) {
+#ifdef CONFIG_MACB_USE_HWSTAMP
+		if (gem_has_ptp(bp)) {
 			if (!GEM_BFEXT(TSU, gem_readl(bp, DCFG5)))
 				pr_err("GEM doesn't support hardware ptp.\n");
-			else
+			else {
 				bp->hw_dma_cap |= HW_DMA_CAP_PTP;
+				bp->ptp_info = &gem_ptp_info;
+			}
 		}
+#endif
 	}
 
 	dev_dbg(&bp->pdev->dev, "Cadence caps 0x%08x\n", bp->caps);
@@ -3678,7 +3440,7 @@ static const struct macb_config np4_config = {
 
 static const struct macb_config zynqmp_config = {
 	.caps = MACB_CAPS_GIGABIT_MODE_AVAILABLE | MACB_CAPS_JUMBO |
-		MACB_CAPS_TSU | MACB_CAPS_PCS |
+		MACB_CAPS_GEM_HAS_PTP | MACB_CAPS_PCS |
 		MACB_CAPS_PARTIAL_STORE_FORWARD | MACB_CAPS_WOL,
 	.dma_burst_length = 16,
 	.clk_init = macb_clk_init,
@@ -4011,9 +3773,8 @@ static int __maybe_unused macb_suspend(struct device *dev)
 	}
 
 	netif_carrier_off(netdev);
-	if ((gem_readl(bp, DCFG5) & GEM_BIT(TSU)) &&
-	    (bp->caps & MACB_CAPS_TSU))
-		macb_ptp_close(bp);
+	if (bp->ptp_info)
+		bp->ptp_info->ptp_remove(netdev);
 	pm_runtime_force_suspend(dev);
 
 	return 0;
