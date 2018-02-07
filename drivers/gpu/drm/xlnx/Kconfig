@@ -60,6 +60,15 @@ config DRM_XLNX_MIXER
 	help
 	  DRM driver for Xilinx Mixer driver
 
+config DRM_XLNX_PL_DISP
+	tristate "Xilinx DRM PL display driver"
+	depends on DRM_XLNX
+	help
+	  DRM driver for Xilinx PL display driver, provides drm
+	  crtc and plane object to display pipeline. You need to
+	  choose this option if your display pipeline needs one
+	  crtc and plane object with single DMA connected.
+
 config DRM_XLNX_SDI
 	tristate "Xilinx DRM SDI Subsystem Driver"
 	depends on DRM_XLNX
