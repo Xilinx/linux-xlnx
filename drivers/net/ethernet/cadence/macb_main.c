@@ -2513,6 +2513,9 @@ static int macb_open(struct net_device *dev)
 
 	netif_tx_start_all_queues(dev);
 
+	if (bp->ptp_info)
+		bp->ptp_info->ptp_init(dev);
+
 	return 0;
 }
 
@@ -2538,7 +2541,11 @@ static int macb_close(struct net_device *dev)
 
 	macb_free_consistent(bp);
 
+	if (bp->ptp_info)
+		bp->ptp_info->ptp_remove(dev);
+
 	pm_runtime_put(&bp->pdev->dev);
+
 	return 0;
 }
 
@@ -2746,6 +2753,17 @@ static int macb_get_ts_info(struct net_device *dev,
 	return 0;
 }
 
+static int macb_get_ts_info(struct net_device *netdev,
+			    struct ethtool_ts_info *info)
+{
+	struct macb *bp = netdev_priv(netdev);
+
+	if (bp->ptp_info)
+		return bp->ptp_info->get_ts_info(netdev, info);
+
+	return ethtool_op_get_ts_info(netdev, info);
+}
+
 static const struct ethtool_ops macb_ethtool_ops = {
 	.get_regs_len		= macb_get_regs_len,
 	.get_regs		= macb_get_regs,
@@ -2767,66 +2785,26 @@ static const struct ethtool_ops gem_ethtool_ops = {
 	.set_link_ksettings     = phy_ethtool_set_link_ksettings,
 };
 
-static int macb_hwtstamp_ioctl(struct net_device *dev,
-			       struct ifreq *ifr, int cmd)
-{
-	struct hwtstamp_config config;
-
-	if (copy_from_user(&config, ifr->ifr_data, sizeof(config)))
-		return -EFAULT;
-
-	/* reserved for future extensions */
-	if (config.flags)
-		return -EINVAL;
-
-	if ((config.tx_type != HWTSTAMP_TX_OFF) &&
-	    (config.tx_type != HWTSTAMP_TX_ON))
-		return -ERANGE;
-
-	switch (config.rx_filter) {
-	case HWTSTAMP_FILTER_NONE:
-		break;
-	case HWTSTAMP_FILTER_PTP_V1_L4_EVENT:
-	case HWTSTAMP_FILTER_PTP_V2_L4_EVENT:
-	case HWTSTAMP_FILTER_PTP_V2_L2_EVENT:
-	case HWTSTAMP_FILTER_ALL:
-	case HWTSTAMP_FILTER_PTP_V1_L4_SYNC:
-	case HWTSTAMP_FILTER_PTP_V1_L4_DELAY_REQ:
-	case HWTSTAMP_FILTER_PTP_V2_L2_SYNC:
-	case HWTSTAMP_FILTER_PTP_V2_L4_SYNC:
-	case HWTSTAMP_FILTER_PTP_V2_L2_DELAY_REQ:
-	case HWTSTAMP_FILTER_PTP_V2_L4_DELAY_REQ:
-	case HWTSTAMP_FILTER_PTP_V2_EVENT:
-	case HWTSTAMP_FILTER_PTP_V2_SYNC:
-	case HWTSTAMP_FILTER_PTP_V2_DELAY_REQ:
-		config.rx_filter = HWTSTAMP_FILTER_ALL;
-		break;
-	default:
-		return -ERANGE;
-	}
-
-	config.tx_type = HWTSTAMP_TX_ON;
-
-	return copy_to_user(ifr->ifr_data, &config, sizeof(config)) ?
-		-EFAULT : 0;
-}
-
 static int macb_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 {
+	struct phy_device *phydev = dev->phydev;
 	struct macb *bp = netdev_priv(dev);
-	struct phy_device *phydev = bp->phy_dev;
+
+	if (!netif_running(dev))
+		return -EINVAL;
+
+	if (!phydev)
+		return -ENODEV;
+
+	if (!bp->ptp_info)
+		return phy_mii_ioctl(phydev, rq, cmd);
 
 	switch (cmd) {
 	case SIOCSHWTSTAMP:
-			return macb_hwtstamp_ioctl(dev, rq, cmd);
-
+		return bp->ptp_info->set_hwtst(dev, rq, cmd);
+	case SIOCGHWTSTAMP:
+		return bp->ptp_info->get_hwtst(dev, rq);
 	default:
-		if (!netif_running(dev))
-			return -EINVAL;
-
-		if (!phydev)
-			return -ENODEV;
-
 		return phy_mii_ioctl(phydev, rq, cmd);
 	}
 }

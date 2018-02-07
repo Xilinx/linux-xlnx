@@ -135,20 +135,20 @@
 #define GEM_RXIPCCNT		0x01a8 /* IP header Checksum Error Counter */
 #define GEM_RXTCPCCNT		0x01ac /* TCP Checksum Error Counter */
 #define GEM_RXUDPCCNT		0x01b0 /* UDP Checksum Error Counter */
-#define GEM_1588INCRSUBNS	0x01BC /* 1588 timer sub nsec increment */
-#define GEM_1588SMSB		0x01C0 /* 1588 timer seconds register[47:32] */
-#define GEM_1588S		0x01D0 /* 1588 timer seconds register[31:0] */
-#define GEM_1588NS		0x01D4 /* 1588 timer nano seconds register */
-#define GEM_1588ADJ		0x01D8 /* 1588 timer adjust register */
-#define GEM_1588INCR		0x01DC /* 1588 timer increment register */
-#define GEM_1588TXSEC		0x01E0 /* PTP event TX timestamp secs */
-#define GEM_1588TXNSEC		0x01E4 /* PTP event TX timestamp nsecs */
-#define GEM_1588RXSEC		0x01E8 /* PTP event RX timestamp secs */
-#define GEM_1588RXNSEC		0x01EC /* PTP event RX timestamp nsecs */
-#define GEM_1588PEERTXSEC	0x01F0 /* PTP peer event TX timestamp secs */
-#define GEM_1588PEERTXNSEC	0x01F4 /* PTP peer event TX timestamp nsecs */
-#define GEM_1588PEERRXSEC	0x01F8 /* PTP peer event RX timestamp secs */
-#define GEM_1588PEERRXNSEC	0x01FC /* PTP peer event RX timestamp nsecs */
+#define GEM_TISUBN		0x01bc /* 1588 Timer Increment Sub-ns */
+#define GEM_TSH			0x01c0 /* 1588 Timer Seconds High */
+#define GEM_TSL			0x01d0 /* 1588 Timer Seconds Low */
+#define GEM_TN			0x01d4 /* 1588 Timer Nanoseconds */
+#define GEM_TA			0x01d8 /* 1588 Timer Adjust */
+#define GEM_TI			0x01dc /* 1588 Timer Increment */
+#define GEM_EFTSL		0x01e0 /* PTP Event Frame Tx Seconds Low */
+#define GEM_EFTN		0x01e4 /* PTP Event Frame Tx Nanoseconds */
+#define GEM_EFRSL		0x01e8 /* PTP Event Frame Rx Seconds Low */
+#define GEM_EFRN		0x01ec /* PTP Event Frame Rx Nanoseconds */
+#define GEM_PEFTSL		0x01f0 /* PTP Peer Event Frame Tx Secs Low */
+#define GEM_PEFTN		0x01f4 /* PTP Peer Event Frame Tx Ns */
+#define GEM_PEFRSL		0x01f8 /* PTP Peer Event Frame Rx Sec Low */
+#define GEM_PEFRN		0x01fc /* PTP Peer Event Frame Rx Ns */
 #define GEM_PCSCNTRL		0x0200 /* PCS Control */
 #define GEM_DCFG1		0x0280 /* Design Config 1 */
 #define GEM_DCFG2		0x0284 /* Design Config 2 */
@@ -195,6 +195,7 @@
 #define MACB_NCR_TPF_SIZE	1
 #define MACB_TZQ_OFFSET		12 /* Transmit zero quantum pause frame */
 #define MACB_TZQ_SIZE		1
+#define MACB_SRTSM_OFFSET	15
 #define MACB_PTPUNI_OFFSET			20
 #define MACB_PTPUNI_SIZE			1
 
@@ -351,6 +352,32 @@
 #define MACB_PTZ_SIZE		1
 #define MACB_WOL_OFFSET		28 /* Enable WOL received interrupt */
 #define MACB_WOL_SIZE		1
+#define MACB_DRQFR_OFFSET	18 /* PTP Delay Request Frame Received */
+#define MACB_DRQFR_SIZE		1
+#define MACB_SFR_OFFSET		19 /* PTP Sync Frame Received */
+#define MACB_SFR_SIZE		1
+#define MACB_DRQFT_OFFSET	20 /* PTP Delay Request Frame Transmitted */
+#define MACB_DRQFT_SIZE		1
+#define MACB_SFT_OFFSET		21 /* PTP Sync Frame Transmitted */
+#define MACB_SFT_SIZE		1
+#define MACB_PDRQFR_OFFSET	22 /* PDelay Request Frame Received */
+#define MACB_PDRQFR_SIZE	1
+#define MACB_PDRSFR_OFFSET	23 /* PDelay Response Frame Received */
+#define MACB_PDRSFR_SIZE	1
+#define MACB_PDRQFT_OFFSET	24 /* PDelay Request Frame Transmitted */
+#define MACB_PDRQFT_SIZE	1
+#define MACB_PDRSFT_OFFSET	25 /* PDelay Response Frame Transmitted */
+#define MACB_PDRSFT_SIZE	1
+#define MACB_SRI_OFFSET		26 /* TSU Seconds Register Increment */
+#define MACB_SRI_SIZE		1
+
+/* Timer increment fields */
+#define MACB_TI_CNS_OFFSET	0
+#define MACB_TI_CNS_SIZE	8
+#define MACB_TI_ACNS_OFFSET	8
+#define MACB_TI_ACNS_SIZE	8
+#define MACB_TI_NIT_OFFSET	16
+#define MACB_TI_NIT_SIZE	8
 
 /* Bitfields in MAN */
 #define MACB_DATA_OFFSET	0 /* data */
@@ -446,6 +473,17 @@
 #define GEM_RXBDCNTRL_MODE_PTP_EVNT		0x00000010
 #define GEM_RXBDCNTRL_MODE_PTP_ALL		0x00000020
 
+/* Bitfields in TISUBN */
+#define GEM_SUBNSINCR_OFFSET			0
+#define GEM_SUBNSINCR_SIZE			16
+
+/* Bitfields in TI */
+#define GEM_NSINCR_OFFSET			0
+#define GEM_NSINCR_SIZE				8
+
+/* Bitfields in ADJ */
+#define GEM_ADDSUB_OFFSET			31
+#define GEM_ADDSUB_SIZE				1
 /* Constants for CLK */
 #define MACB_CLK_DIV8				0
 #define MACB_CLK_DIV16				1
@@ -473,8 +511,8 @@
 #define MACB_CAPS_NO_GIGABIT_HALF		0x00000008
 #define MACB_CAPS_USRIO_DISABLED		0x00000010
 #define MACB_CAPS_JUMBO				0x00000020
-#define MACB_CAPS_PCS				0x00000040
-#define MACB_CAPS_TSU				0x00000080
+#define MACB_CAPS_GEM_HAS_PTP			0x00000040
+#define MACB_CAPS_PCS				0x00000080
 #define MACB_CAPS_PARTIAL_STORE_FORWARD		0x00000100
 #define MACB_CAPS_WOL				0x00000200
 #define MACB_CAPS_FIFO_MODE			0x10000000
@@ -849,6 +887,20 @@ struct macb_or_gem_ops {
 	int	(*mog_rx)(struct macb *bp, int budget);
 };
 
+/* MACB-PTP interface: adapt to platform needs. */
+struct macb_ptp_info {
+	void (*ptp_init)(struct net_device *ndev);
+	void (*ptp_remove)(struct net_device *ndev);
+	s32 (*get_ptp_max_adj)(void);
+	unsigned int (*get_tsu_rate)(struct macb *bp);
+	int (*get_ts_info)(struct net_device *dev,
+			   struct ethtool_ts_info *info);
+	int (*get_hwtst)(struct net_device *netdev,
+			 struct ifreq *ifr);
+	int (*set_hwtst)(struct net_device *netdev,
+			 struct ifreq *ifr, int cmd);
+};
+
 struct macb_config {
 	u32			caps;
 	unsigned int		dma_burst_length;
@@ -947,22 +999,23 @@ struct macb {
 	unsigned int		jumbo_max_len;
 
 	unsigned int		tsu_rate;
-	struct ptp_clock	*ptp_clock;
-	struct ptp_clock_info	ptp_caps;
-	int			rx_hwtstamp_filter;
-	int			phc_index;
-	unsigned int		ns_incr;
-	unsigned int		subns_incr;
 
 	struct tasklet_struct   hresp_err_tasklet;
 
 	/* holds value of rx watermark value for pbuf_rxcutthru register */
 	u16			rx_watermark;
+
+	struct macb_ptp_info	*ptp_info;	/* macb-ptp interface */
 };
 
 static inline bool macb_is_gem(struct macb *bp)
 {
 	return !!(bp->caps & MACB_CAPS_MACB_IS_GEM);
+}
+
+static inline bool gem_has_ptp(struct macb *bp)
+{
+	return !!(bp->caps & MACB_CAPS_GEM_HAS_PTP);
 }
 
 #endif /* _MACB_H */
