@@ -7833,6 +7833,12 @@ S:	Maintained
 F:	Documentation/devicetree/bindings/display/xlnx/bridge.txt
 F:	drivers/gpu/drm/xlnx/xlnx_bridge*
 
+DRM PL DISPLAY DRIVER FOR XILINX
+M:	Vishal Sagar <vishal.sagar@amd.com>
+S:	Maintained
+F:	Documentation/devicetree/bindings/display/xlnx/xlnx,pl-disp.txt
+F:	drivers/gpu/drm/xlnx/xlnx_pl_disp.c
+
 DRM GPU SCHEDULER
 M:	Luben Tuikov <ltuikov89@gmail.com>
 M:	Matthew Brost <matthew.brost@intel.com>
