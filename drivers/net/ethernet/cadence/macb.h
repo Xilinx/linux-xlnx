@@ -449,41 +449,10 @@
 #define GEM_TSU_OFFSET				8
 #define GEM_TSU_SIZE				1
 
-/* Bitfields in 1588INCRSUBNS */
-#define GEM_SUBNSINCL_SHFT			24
-#define GEM_SUBNSINCL_MASK			0xFF
-#define GEM_SUBNSINCH_SHFT			8
-#define GEM_SUBNSINCH_MASK			0xFFFF00
+/* Bitfields in DCFG6. */
+#define GEM_DAW64_OFFSET			23
+#define GEM_DAW64_SIZE				1
 
-/* Bitfields in 1588INCRNS */
-#define GEM_NSINCR_OFFSET			0
-#define GEM_NSINCR_SIZE				8
-
-/* Bitfields in 1588ADJ */
-#define GEM_ADDSUB_OFFSET			31
-#define GEM_ADDSUB_SIZE				1
-
-/* Bitfields in TXBDCNTRL */
-#define GEM_TXBDCNTRL_MODE_ALL			0x00000030
-#define GEM_TXBDCNTRL_MODE_PTP_EVNT		0x00000010
-#define GEM_TXBDCNTRL_MODE_PTP_ALL		0x00000020
-
-/* Bitfields in RXBDCNTRL */
-#define GEM_RXBDCNTRL_MODE_ALL			0x00000030
-#define GEM_RXBDCNTRL_MODE_PTP_EVNT		0x00000010
-#define GEM_RXBDCNTRL_MODE_PTP_ALL		0x00000020
-
-/* Bitfields in TISUBN */
-#define GEM_SUBNSINCR_OFFSET			0
-#define GEM_SUBNSINCR_SIZE			16
-
-/* Bitfields in TI */
-#define GEM_NSINCR_OFFSET			0
-#define GEM_NSINCR_SIZE				8
-
-/* Bitfields in ADJ */
-#define GEM_ADDSUB_OFFSET			31
-#define GEM_ADDSUB_SIZE				1
 /* Constants for CLK */
 #define MACB_CLK_DIV8				0
 #define MACB_CLK_DIV16				1
@@ -587,15 +556,19 @@
 struct macb_dma_desc {
 	u32	addr;
 	u32	ctrl;
-#ifdef CONFIG_ARCH_DMA_ADDR_T_64BIT
-	u32     addrh;
-	u32     resvd;
-#endif
-#ifdef CONFIG_MACB_EXT_BD
-	u32	tsl;
-	u32	tsh;
-#endif
 };
+
+#ifdef CONFIG_ARCH_DMA_ADDR_T_64BIT
+enum macb_hw_dma_cap {
+	HW_DMA_CAP_32B,
+	HW_DMA_CAP_64B,
+};
+
+struct macb_dma_desc_64 {
+	u32 addrh;
+	u32 resvd;
+};
+#endif
 
 /* DMA descriptor bitfields */
 #define MACB_RX_USED_OFFSET			0
@@ -1006,6 +979,10 @@ struct macb {
 	u16			rx_watermark;
 
 	struct macb_ptp_info	*ptp_info;	/* macb-ptp interface */
+
+#ifdef CONFIG_ARCH_DMA_ADDR_T_64BIT
+	enum macb_hw_dma_cap hw_dma_cap;
+#endif
 };
 
 static inline bool macb_is_gem(struct macb *bp)
