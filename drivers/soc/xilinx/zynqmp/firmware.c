@@ -29,7 +29,7 @@
  *
  * Return:		corresponding Linux error code
  */
-int zynqmp_pm_ret_code(u32 ret_status)
+static int zynqmp_pm_ret_code(u32 ret_status)
 {
 	switch (ret_status) {
 	case XST_PM_SUCCESS:

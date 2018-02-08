@@ -552,7 +552,6 @@ struct zynqmp_eemi_ops {
  */
 int invoke_pm_fn(u32 pm_api_id, u32 arg0, u32 arg1, u32 arg2, u32 arg3,
 		 u32 *ret_payload);
-int zynqmp_pm_ret_code(u32 ret_status);
 
 int zynqmp_pm_mmio_write(const u32 address, const u32 mask, const u32 value);
 int zynqmp_pm_mmio_read(const u32 address, u32 *value);
