@@ -1029,7 +1029,7 @@ static int __init zynqmp_plat_init(void)
 
 	/* Check PM API version number */
 	zynqmp_pm_get_api_version(&pm_api_version);
-	if (pm_api_version != ZYNQMP_PM_VERSION) {
+	if (pm_api_version < ZYNQMP_PM_VERSION) {
 		panic("%s power management API version error. Expected: v%d.%d - Found: v%d.%d\n",
 		       __func__,
 		       ZYNQMP_PM_VERSION_MAJOR, ZYNQMP_PM_VERSION_MINOR,
@@ -1037,7 +1037,7 @@ static int __init zynqmp_plat_init(void)
 	}
 
 	pr_info("%s Power management API v%d.%d\n", __func__,
-		ZYNQMP_PM_VERSION_MAJOR, ZYNQMP_PM_VERSION_MINOR);
+		pm_api_version >> 16, pm_api_version & 0xffff);
 
 	of_node_put(np);
 	return ret;
