@@ -78,3 +78,12 @@ config DRM_XLNX_SDI
 	depends on DRM_XLNX
 	help
 	  DRM driver for Xilinx SDI Tx Subsystem.
+
+config DRM_XLNX_BRIDGE_CSC
+	tristate "Xilinx DRM CSC Driver"
+	depends on DRM_XLNX_BRIDGE
+	help
+	  DRM brige driver for color space converter of VPSS. Choose
+	  this option if color space converter is connected to an encoder.
+	  The driver provides set/get resolution and color format
+	  functionality through bridge layer.
