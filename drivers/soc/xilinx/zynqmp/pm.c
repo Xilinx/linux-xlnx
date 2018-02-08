@@ -990,9 +990,8 @@ static int zynqmp_pm_probe(struct platform_device *pdev)
 		return -ENODEV;
 
 	irq = platform_get_irq(pdev, 0);
-	if (irq <= 0) {
+	if (irq <= 0)
 		return -ENXIO;
-	}
 
 	ret = devm_request_irq(&pdev->dev, irq, zynqmp_pm_isr, IRQF_SHARED,
 			       DRIVER_NAME, pdev);
