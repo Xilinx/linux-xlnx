@@ -163,7 +163,7 @@ static ssize_t zynqmp_pm_debugfs_api_write(struct file *file,
 		goto err;
 	}
 
-	/* Read the API name from an user request */
+	/* Read the API name from a user request */
 	pm_api_req = strsep(&kern_buff, " ");
 
 	if (strncasecmp(pm_api_req, "REQUEST_SUSPEND", 15) == 0)
@@ -800,7 +800,7 @@ static GGS0_STORE(1);
 static GGS0_STORE(2);
 static GGS0_STORE(3);
 
-/* GGS regsiter device attributes */
+/* GGS register device attributes */
 static DEVICE_ATTR_RW(ggs0);
 static DEVICE_ATTR_RW(ggs1);
 static DEVICE_ATTR_RW(ggs2);
