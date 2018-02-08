@@ -79,56 +79,58 @@ void xlnx_bridge_unregister(struct xlnx_bridge *bridge);
 
 struct xlnx_bridge_helper;
 
-int xlnx_bridge_helper_init(void)
+static inline inline int xlnx_bridge_helper_init(void)
 {
 	return 0;
 }
 
-void xlnx_bridge_helper_fini(void)
+static inline void xlnx_bridge_helper_fini(void)
 {
 }
 
-int xlnx_bridge_enable(struct xlnx_bridge *bridge)
+static inline int xlnx_bridge_enable(struct xlnx_bridge *bridge)
 {
 	if (bridge)
 		return -ENODEV;
 	return 0;
 }
 
-void xlnx_bridge_disable(struct xlnx_bridge *bridge)
+static inline void xlnx_bridge_disable(struct xlnx_bridge *bridge)
 {
 }
 
-int xlnx_bridge_set_input(struct xlnx_bridge *bridge,
-			  u32 width, u32 height, u32 bus_fmt)
-{
-	if (bridge)
-		return -ENODEV;
-	return 0;
-}
-
-int xlnx_bridge_get_input_fmts(struct xlnx_bridge *bridge,
-			       const u32 **fmts, u32 *count)
+static inline int xlnx_bridge_set_input(struct xlnx_bridge *bridge,
+					u32 width, u32 height, u32 bus_fmt)
 {
 	if (bridge)
 		return -ENODEV;
 	return 0;
 }
 
-struct xlnx_bridge *of_xlnx_bridge_get(struct device_node *bridge_np)
+static inline int xlnx_bridge_get_input_fmts(struct xlnx_bridge *bridge,
+					     const u32 **fmts, u32 *count)
+{
+	if (bridge)
+		return -ENODEV;
+	return 0;
+}
+
+static inline struct xlnx_bridge *
+of_xlnx_bridge_get(struct device_node *bridge_np)
 {
 	return NULL;
 }
 
-void of_xlnx_bridge_put(struct xlnx_bridge *bridge)
+static inline void of_xlnx_bridge_put(struct xlnx_bridge *bridge)
 {
 }
 
-void xlnx_bridge_register(struct xlnx_bridge *bridge)
+static inline int xlnx_bridge_register(struct xlnx_bridge *bridge)
 {
+	return 0;
 }
 
-void xlnx_bridge_unregister(struct xlnx_bridge *bridge)
+static inline void xlnx_bridge_unregister(struct xlnx_bridge *bridge)
 {
 }
 
