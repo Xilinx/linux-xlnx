@@ -4091,7 +4091,8 @@ static int axienet_remove(struct platform_device *pdev)
 	struct axienet_local *lp = netdev_priv(ndev);
 	int i;
 
-	axienet_mdio_teardown(lp);
+	if (lp->mii_bus)
+		axienet_mdio_teardown(lp);
 
 #ifdef CONFIG_XILINX_TSN_PTP
 	axienet_ptp_timer_remove(lp->timer_priv);
