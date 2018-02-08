@@ -686,8 +686,10 @@ static int xiic_xfer(struct i2c_adapter *adap, struct i2c_msg *msgs, int num)
 		return err;
 
 	err = xiic_busy(i2c);
-	if (err)
+	if (err) {
+		xiic_reinit(i2c);
 		goto out;
+	}
 
 	i2c->tx_msg = msgs;
 	i2c->nmsgs = num;
