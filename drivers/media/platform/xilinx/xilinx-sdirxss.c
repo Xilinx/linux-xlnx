@@ -170,8 +170,6 @@
 #define XSDIRX_STAT_SB_RX_TDATA_GT_RESETDONE_MASK	BIT(2)
 #define XSDIRX_STAT_SB_RX_TDATA_GT_BITRATE_MASK		BIT(3)
 
-#define XSDIRX_VID_LOCK_WINDOW_VAL_MASK			GENMASK(15, 0)
-
 /* Number of media pads */
 #define XSDIRX_MEDIA_PADS	(1)
 
@@ -462,8 +460,7 @@ static void xsdirx_setvidlockwindow(struct xsdirxss_core *core, u32 val)
 	 * the mode and transport stream should be locked to get the
 	 * video lock interrupt.
 	 */
-	xsdirxss_write(core, XSDIRX_VID_LOCK_WINDOW_REG,
-		       val & XSDIRX_VID_LOCK_WINDOW_VAL_MASK);
+	xsdirxss_write(core, XSDIRX_VID_LOCK_WINDOW_REG, val);
 }
 
 static void xsdirx_disableintr(struct xsdirxss_core *core, u32 mask)
@@ -1415,7 +1412,7 @@ static struct v4l2_ctrl_config xsdirxss_ctrls[] = {
 		.name	= "SDI Rx : Video Lock Window",
 		.type	= V4L2_CTRL_TYPE_INTEGER,
 		.min	= 0,
-		.max	= 0xFFFF,
+		.max	= 0xFFFFFFFF,
 		.step	= 1,
 		.def	= XSDIRX_DEFAULT_VIDEO_LOCK_WINDOW,
 	}, {
