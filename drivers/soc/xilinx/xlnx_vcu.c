@@ -15,7 +15,7 @@
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
 
-#include <misc/xlnx_vcu.h>
+#include <soc/xilinx/xlnx_vcu.h>
 
 /* Address map for different registers implemented in the VCU LogiCORE IP. */
 #define VCU_ECODER_ENABLE		0x00

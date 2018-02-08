@@ -50,7 +50,6 @@ obj-$(CONFIG_SRAM)		+= sram.o
 obj-$(CONFIG_SRAM_EXEC)		+= sram-exec.o
 obj-$(CONFIG_XILINX_SDFEC)	+= xilinx_sdfec.o
 obj-$(CONFIG_XILINX_TRAFGEN)	+= xilinx_trafgen.o
-obj-$(CONFIG_XILINX_VCU)	+= xlnx_vcu.o
 obj-$(CONFIG_XILINX_JESD204B)	+= jesd204b/
 obj-y				+= mic/
 obj-$(CONFIG_GENWQE)		+= genwqe/
