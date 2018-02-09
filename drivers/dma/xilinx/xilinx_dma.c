@@ -991,6 +991,8 @@ static enum dma_status xilinx_dma_tx_status(struct dma_chan *dchan,
 /**
  * xilinx_dma_stop_transfer - Halt DMA channel
  * @chan: Driver specific DMA channel
+ *
+ * Return: '0' on DMA stop and and failure value on error
  */
 static int xilinx_dma_stop_transfer(struct xilinx_dma_chan *chan)
 {
@@ -1007,6 +1009,8 @@ static int xilinx_dma_stop_transfer(struct xilinx_dma_chan *chan)
 /**
  * xilinx_cdma_stop_transfer - Wait for the current transfer to complete
  * @chan: Driver specific DMA channel
+ *
+ * Return: '0' on CDMA stop and failure value on error
  */
 static int xilinx_cdma_stop_transfer(struct xilinx_dma_chan *chan)
 {
