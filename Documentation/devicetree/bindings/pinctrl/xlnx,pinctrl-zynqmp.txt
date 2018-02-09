@@ -1,7 +1,7 @@
 	Binding for Xilinx ZynqMP Pinctrl
 
 Required properties:
-- compatible: "xlnx,zynqmp-pinctrl"
+- compatible: "xlnx,pinctrl-zynqmp"
 - reg: Offset and length of pinctrl space in IOU_SLCR
 
 Please refer to pinctrl-bindings.txt in this directory for details of the

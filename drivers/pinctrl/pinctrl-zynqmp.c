@@ -2181,7 +2181,7 @@ static const struct of_device_id zynqmp_pinctrl_of_match[] = {
 
 static struct platform_driver zynqmp_pinctrl_driver = {
 	.driver = {
-		.name = "zynqmp-pinctrl",
+		.name = "pinctrl-zynqmp",
 		.of_match_table = zynqmp_pinctrl_of_match,
 	},
 	.probe = zynqmp_pinctrl_probe,
