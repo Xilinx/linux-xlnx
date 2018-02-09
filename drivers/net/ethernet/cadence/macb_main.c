@@ -3813,6 +3813,8 @@ static int __maybe_unused macb_resume(struct device *dev)
 	bp->macbgem_ops.mog_init_rings(bp);
 	macb_init_hw(bp);
 	netif_device_attach(netdev);
+	if (bp->ptp_info)
+		bp->ptp_info->ptp_init(netdev);
 
 	return 0;
 }
