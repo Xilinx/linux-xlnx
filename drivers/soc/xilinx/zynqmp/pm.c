@@ -1045,7 +1045,6 @@ static struct platform_driver zynqmp_pm_platform_driver = {
 };
 builtin_platform_driver(zynqmp_pm_platform_driver);
 
-#ifdef CONFIG_PM
 /**
  * zynqmp_pm_init - Notify PM firmware that initialization is completed
  *
@@ -1062,4 +1061,3 @@ static int __init zynqmp_pm_init(void)
 }
 
 late_initcall_sync(zynqmp_pm_init);
-#endif
