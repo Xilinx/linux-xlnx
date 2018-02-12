@@ -40,7 +40,7 @@
 #include <media/v4l2-common.h>
 #include <media/v4l2-ctrls.h>
 #include <media/v4l2-event.h>
-#include <media/v4l2-of.h>
+#include <media/v4l2-fwnode.h>
 #include <media/v4l2-subdev.h>
 #include "xilinx-vip.h"
 
@@ -1478,9 +1478,10 @@ static int xcsi2rxss_parse_of(struct xcsi2rxss_state *xcsi2rxss)
 		ports = node;
 
 	for_each_child_of_node(ports, port) {
+		int ret;
 		const struct xvip_video_format *format;
 		struct device_node *endpoint;
-		struct v4l2_of_endpoint v4lendpoint;
+		struct v4l2_fwnode_endpoint v4lendpoint;
 
 		if (!port->name || of_node_cmp(port->name, "port"))
 			continue;
@@ -1529,8 +1530,14 @@ static int xcsi2rxss_parse_of(struct xcsi2rxss_state *xcsi2rxss)
 			return -EINVAL;
 		}
 
-		v4l2_of_parse_endpoint(endpoint, &v4lendpoint);
+		ret = v4l2_fwnode_endpoint_parse(of_fwnode_handle(endpoint),
+						 &v4lendpoint);
+		if (ret) {
+			of_node_put(endpoint);
+			return ret;
+		}
 
+		of_node_put(endpoint);
 		dev_dbg(core->dev, "%s : port %d bus type = %d\n",
 				__func__, nports, v4lendpoint.bus_type);
 
