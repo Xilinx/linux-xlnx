@@ -44,12 +44,11 @@ struct xilinx_vdma_config {
 };
 
 /**
- * enum xdma_ip_type: DMA IP type.
+ * enum xdma_ip_type - DMA IP type.
  *
- * XDMA_TYPE_AXIDMA: Axi dma ip.
- * XDMA_TYPE_CDMA: Axi cdma ip.
- * XDMA_TYPE_VDMA: Axi vdma ip.
- *
+ * @XDMA_TYPE_AXIDMA: Axi dma ip.
+ * @XDMA_TYPE_CDMA: Axi cdma ip.
+ * @XDMA_TYPE_VDMA: Axi vdma ip.
  */
 enum xdma_ip_type {
 	XDMA_TYPE_AXIDMA = 0,
