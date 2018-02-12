@@ -83,3 +83,12 @@ config DRM_XLNX_BRIDGE_CSC
 	  this option if color space converter is connected to an encoder.
 	  The driver provides set/get resolution and color format
 	  functionality through bridge layer.
+
+config DRM_XLNX_BRIDGE_SCALER
+	tristate "Xilinx DRM Scaler Driver"
+	depends on DRM_XLNX_BRIDGE
+	help
+	  DRM brige driver for scaler of VPSS. Choose this option
+	  if scaler is connected to an encoder. The driver provides
+	  upscaling, down scaling and no scaling functionality through
+	  bridge layer.
