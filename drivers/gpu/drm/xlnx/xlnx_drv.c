@@ -55,14 +55,14 @@ MODULE_PARM_DESC(fbdev_vres,
  * @drm: DRM core
  * @crtc: Xilinx DRM CRTC helper
  * @fb: DRM fb helper
- * @pdev: platform device
+ * @master: logical master device for pipeline
  * @suspend_state: atomic state for suspend / resume
  */
 struct xlnx_drm {
 	struct drm_device *drm;
 	struct xlnx_crtc_helper *crtc;
 	struct drm_fb_helper *fb;
-	struct platform_device *pdev;
+	struct platform_device *master;
 	struct drm_atomic_state *suspend_state;
 };
 
@@ -190,7 +190,8 @@ static int xlnx_bind(struct device *dev)
 	struct xlnx_drm *xlnx_drm;
 	struct drm_device *drm;
 	const struct drm_format_info *info;
-	struct platform_device *pdev = to_platform_device(dev);
+	struct platform_device *master = to_platform_device(dev);
+	struct platform_device *pdev = to_platform_device(dev->parent);
 	int ret;
 	u32 format;
 
@@ -216,8 +217,9 @@ static int xlnx_bind(struct device *dev)
 	drm->irq_enabled = 1;
 	drm->dev_private = xlnx_drm;
 	xlnx_drm->drm = drm;
+	xlnx_drm->master = master;
 	drm_kms_helper_poll_init(drm);
-	platform_set_drvdata(pdev, xlnx_drm);
+	platform_set_drvdata(master, xlnx_drm);
 
 	xlnx_drm->crtc = xlnx_crtc_helper_init(drm);
 	if (IS_ERR(xlnx_drm->crtc)) {
@@ -225,7 +227,7 @@ static int xlnx_bind(struct device *dev)
 		goto err_xlnx_drm;
 	}
 
-	ret = component_bind_all(drm->dev, drm);
+	ret = component_bind_all(&master->dev, drm);
 	if (ret)
 		goto err_crtc;
 
@@ -278,7 +280,7 @@ static void xlnx_unbind(struct device *dev)
 	drm_dev_unregister(drm);
 	if (xlnx_drm->fb)
 		xlnx_fb_fini(xlnx_drm->fb);
-	component_unbind_all(drm->dev, drm);
+	component_unbind_all(&xlnx_drm->master->dev, drm);
 	xlnx_crtc_helper_fini(drm, xlnx_drm->crtc);
 	drm_kms_helper_poll_fini(drm);
 	drm_mode_config_cleanup(drm);
@@ -290,10 +292,11 @@ static const struct component_master_ops xlnx_master_ops = {
 	.unbind	= xlnx_unbind,
 };
 
-static int xlnx_of_component_probe(struct device *dev,
+static int xlnx_of_component_probe(struct device *master_dev,
 				   int (*compare_of)(struct device *, void *),
 				   const struct component_master_ops *m_ops)
 {
+	struct device *dev = master_dev->parent;
 	struct device_node *ep, *port, *remote, *parent;
 	struct component_match *match = NULL;
 	int i;
@@ -301,6 +304,8 @@ static int xlnx_of_component_probe(struct device *dev,
 	if (!dev->of_node)
 		return -EINVAL;
 
+	component_match_add(master_dev, &match, compare_of, dev->of_node);
+
 	for (i = 0; ; i++) {
 		port = of_parse_phandle(dev->of_node, "ports", i);
 		if (!port)
@@ -317,40 +322,23 @@ static int xlnx_of_component_probe(struct device *dev,
 			continue;
 		}
 
-		component_match_add(dev, &match, compare_of, parent);
+		component_match_add(master_dev, &match, compare_of, parent);
 		of_node_put(parent);
 		of_node_put(port);
 	}
 
-	if (i == 0) {
-		dev_err(dev, "missing 'ports' property\n");
-		return -ENODEV;
-	}
-
-	if (!match) {
-		dev_err(dev, "no available port\n");
-		return -ENODEV;
-	}
-
+	parent = dev->of_node;
 	for (i = 0; ; i++) {
-		port = of_parse_phandle(dev->of_node, "ports", i);
-		if (!port)
-			break;
-
-		parent = port->parent;
-		if (!of_node_cmp(parent->name, "ports"))
-			parent = parent->parent;
 		parent = of_node_get(parent);
-
 		if (!of_device_is_available(parent)) {
 			of_node_put(parent);
-			of_node_put(port);
 			continue;
 		}
 
-		for_each_child_of_node(port, ep) {
+		for_each_endpoint_of_node(parent, ep) {
 			remote = of_graph_get_remote_port_parent(ep);
-			if (!remote || !of_device_is_available(remote)) {
+			if (!remote || !of_device_is_available(remote) ||
+			    remote == dev->of_node) {
 				of_node_put(remote);
 				continue;
 			} else if (!of_device_is_available(remote->parent)) {
@@ -359,14 +347,23 @@ static int xlnx_of_component_probe(struct device *dev,
 				of_node_put(remote);
 				continue;
 			}
-			component_match_add(dev, &match, compare_of, remote);
+			component_match_add(master_dev, &match, compare_of,
+					    remote);
 			of_node_put(remote);
 		}
 		of_node_put(parent);
+
+		port = of_parse_phandle(dev->of_node, "ports", i);
+		if (!port)
+			break;
+
+		parent = port->parent;
+		if (!of_node_cmp(parent->name, "ports"))
+			parent = parent->parent;
 		of_node_put(port);
 	}
 
-	return component_master_add_with_match(dev, m_ops, match);
+	return component_master_add_with_match(master_dev, m_ops, match);
 }
 
 static int xlnx_compare_of(struct device *dev, void *data)
@@ -426,12 +423,6 @@ static const struct dev_pm_ops xlnx_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(xlnx_pm_suspend, xlnx_pm_resume)
 };
 
-static const struct of_device_id xlnx_of_match[] = {
-	{ .compatible = "xlnx,display", },
-	{ /* end of table */ },
-};
-MODULE_DEVICE_TABLE(of, xlnx_of_match);
-
 static struct platform_driver xlnx_driver = {
 	.probe			= xlnx_platform_probe,
 	.remove			= xlnx_platform_remove,
@@ -439,11 +430,80 @@ static struct platform_driver xlnx_driver = {
 	.driver			= {
 		.name		= "xlnx-drm",
 		.pm		= &xlnx_pm_ops,
-		.of_match_table	= xlnx_of_match,
 	},
 };
 
-module_platform_driver(xlnx_driver);
+/* bitmap for master id */
+static u32 xlnx_master_ids = GENMASK(31, 0);
+
+/**
+ * xlnx_drm_pipeline_init - Initialize the drm pipeline for the device
+ * @pdev: The platform device to initialize the drm pipeline device
+ *
+ * This function initializes the drm pipeline device, struct drm_device,
+ * on @pdev by creating a logical master platform device. The logical platform
+ * device acts as a master device to bind slave devices and represents
+ * the entire pipeline.
+ * The logical master uses the port bindings of the calling device to
+ * figure out the pipeline topology.
+ *
+ * Return: the logical master platform device if the drm device is initialized
+ * on @pdev. Error code otherwise.
+ */
+struct platform_device *xlnx_drm_pipeline_init(struct platform_device *pdev)
+{
+	struct platform_device *master;
+	int id, ret;
+
+	id = ffs(xlnx_master_ids);
+	if (!id)
+		return ERR_PTR(-ENOSPC);
+
+	master = platform_device_alloc("xlnx-drm", id - 1);
+	if (!master)
+		return ERR_PTR(-ENOMEM);
+
+	master->dev.parent = &pdev->dev;
+	ret = platform_device_add(master);
+	if (ret)
+		goto err_out;
+
+	WARN_ON(master->id != id - 1);
+	xlnx_master_ids &= ~BIT(master->id);
+	return master;
+
+err_out:
+	platform_device_unregister(master);
+	return ERR_PTR(ret);
+}
+EXPORT_SYMBOL_GPL(xlnx_drm_pipeline_init);
+
+/**
+ * xlnx_drm_pipeline_exit - Release the drm pipeline for the device
+ * @master: The master pipeline device to release
+ *
+ * Release the logical pipeline device returned by xlnx_drm_pipeline_init().
+ */
+void xlnx_drm_pipeline_exit(struct platform_device *master)
+{
+	xlnx_master_ids |= BIT(master->id);
+	platform_device_unregister(master);
+}
+EXPORT_SYMBOL_GPL(xlnx_drm_pipeline_exit);
+
+static int __init xlnx_drm_drv_init(void)
+{
+	platform_driver_register(&xlnx_driver);
+	return 0;
+}
+
+static void __exit xlnx_drm_drv_exit(void)
+{
+	platform_driver_unregister(&xlnx_driver);
+}
+
+module_init(xlnx_drm_drv_init);
+module_exit(xlnx_drm_drv_exit);
 
 MODULE_AUTHOR("Xilinx, Inc.");
 MODULE_DESCRIPTION("Xilinx DRM KMS Driver");
