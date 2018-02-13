@@ -22,6 +22,8 @@
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 
+#include "xlnx_drv.h"
+
 #include "zynqmp_disp.h"
 #include "zynqmp_dp.h"
 #include "zynqmp_dpsub.h"
@@ -91,10 +93,18 @@ static int zynqmp_dpsub_probe(struct platform_device *pdev)
 		goto err_component;
 	}
 
+	dpsub->master = xlnx_drm_pipeline_init(pdev);
+	if (IS_ERR(dpsub->master)) {
+		dev_err(&pdev->dev, "failed to initialize the drm pipeline\n");
+		goto err_populate;
+	}
+
 	dev_info(&pdev->dev, "ZynqMP DisplayPort Subsystem driver probed");
 
 	return 0;
 
+err_populate:
+	of_platform_depopulate(&pdev->dev);
 err_component:
 	component_del(&pdev->dev, &zynqmp_dpsub_component_ops);
 err_disp:
@@ -108,8 +118,10 @@ err_pm:
 
 static int zynqmp_dpsub_remove(struct platform_device *pdev)
 {
+	struct zynqmp_dpsub *dpsub = platform_get_drvdata(pdev);
 	int err, ret = 0;
 
+	xlnx_drm_pipeline_exit(dpsub->master);
 	of_platform_depopulate(&pdev->dev);
 	component_del(&pdev->dev, &zynqmp_dpsub_component_ops);
 
