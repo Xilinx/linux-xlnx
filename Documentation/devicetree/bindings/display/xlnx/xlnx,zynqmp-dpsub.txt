@@ -19,25 +19,18 @@ Required properties:
   "dp_aud_clk" for audio clock. "dp_vtc_pixel_clk_in" for non-live video clock.
   "dp_live_video_in_clk" for live video clock (clock from programmable logic).
 
-- phys: phandles for phy specifier.
-- phy-names: The identifier strings. "dp-phy" followed by index.
+- phys: phandles for phy specifier. The number of lanes is configurable
+  between 1 and 2. The number of phandles should be 1 or 2.
+- phy-names: The identifier strings. "dp-phy" followed by index, 0 or 1.
+  For single lane, only "dp-phy0" is required. For dual lane, both "dp-phy0"
+  and "dp-phy1" are required where "dp-phy0" is the primary lane.
 
 - power-domains: phandle for the corresponding power domain
 
-- ports: There are 2 logical blocks in the IP: display controller and
-  DisplayPort encoder. Each block can be used / connected independently with
-  external device, hence ports for each block are required using DT bindings
-  defined in Documentation/devicetree/bindings/graph.txt. Refer to
-  ./xlnx,display.txt for how topology for entire pipeline is described.
-
-- vid-layer, gfx-layer: Required to represent available layers
-
-Required layer properties
-
 - dmas: phandles for DMA channels as defined in
   Documentation/devicetree/bindings/dma/dma.txt.
-- dma-names: The identifier strings are required. "graphics0" for graphics
-  layer. "video" followed by index for video layer
+- dma-names: The identifier strings are required. "gfx0" for graphics layer
+  dma channel. "vid" followed by index (0 - 2) for video layer dma channels.
 
 Optional child node
 
@@ -46,7 +39,7 @@ Optional child node
   driver.
 
 Example:
-	zynqmp_dpsub: zynqmp_dpsub@fd4a0000 {
+	zynqmp-display-subsystem@fd4a0000 {
 		compatible = "xlnx,zynqmp-dpsub-1.7";
 		reg = <0x0 0xfd4a0000 0x0 0x1000>,
 		      <0x0 0xfd4aa000 0x0 0x1000>,
@@ -64,34 +57,10 @@ Example:
 
 		power-domains = <&pd_dp>;
 
-		vid-layer {
-			dma-names = "vid0", "vid1", "vid2";
-			dmas = <&xlnx_dpdma 0>,
-			       <&xlnx_dpdma 1>,
-			       <&xlnx_dpdma 2>;
-		};
-
-		gfx-layer {
-			dma-names = "gfx0";
-			dmas = <&xlnx_dpdma 3>;
-		};
-
-		ports {
-			#address-cells = <1>;
-			#size-cells = <0>;
-
-			display_port: port@0 {
-				reg = <0>;
-				display_port: endpoint {
-					remote-endpoint = <&dp_port>;
-				};
-			};
-			port@1 {
-				reg = <1>;
-				dp_port: endpoint {
-					remote-endpoint = <&display_port>;
-				};
-			};
-		}
+		dma-names = "vid0", "vid1", "vid2", "gfx0";
+		dmas = <&xlnx_dpdma 0>,
+		       <&xlnx_dpdma 1>,
+		       <&xlnx_dpdma 2>,
+		       <&xlnx_dpdma 3>;
 	};
 };
