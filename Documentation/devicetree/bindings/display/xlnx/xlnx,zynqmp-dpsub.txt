@@ -27,6 +27,10 @@ Required properties:
 
 - power-domains: phandle for the corresponding power domain
 
+- vid-layer, gfx-layer: Required to represent available layers
+
+Required layer properties
+
 - dmas: phandles for DMA channels as defined in
   Documentation/devicetree/bindings/dma/dma.txt.
 - dma-names: The identifier strings are required. "gfx0" for graphics layer
@@ -56,6 +60,18 @@ Example:
 		phy-names = "dp-phy0", "dp-phy1";
 
 		power-domains = <&pd_dp>;
+
+		vid-layer {
+			dma-names = "vid0", "vid1", "vid2";
+			dmas = <&xlnx_dpdma 0>,
+			       <&xlnx_dpdma 1>,
+			       <&xlnx_dpdma 2>;
+		};
+
+		gfx-layer {
+			dma-names = "gfx0";
+			dmas = <&xlnx_dpdma 3>;
+		};
 
 		dma-names = "vid0", "vid1", "vid2", "gfx0";
 		dmas = <&xlnx_dpdma 0>,
