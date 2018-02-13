@@ -1746,6 +1746,7 @@ static SIMPLE_DEV_PM_OPS(xcsi2rxss_pm_ops,
 
 static const struct of_device_id xcsi2rxss_of_id_table[] = {
 	{ .compatible = "xlnx,mipi-csi2-rx-subsystem-2.0" },
+	{ .compatible = "xlnx,mipi-csi2-rx-subsystem-3.0" },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, xcsi2rxss_of_id_table);
