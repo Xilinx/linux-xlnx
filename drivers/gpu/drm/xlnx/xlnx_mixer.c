@@ -267,6 +267,7 @@ struct xlnx_mix_hw {
 /**
  * struct xlnx_mix - Container for interfacing DRM driver to mixer
  * @mixer_hw: Object representing actual hardware state of mixer
+ * @master: Logical master device from xlnx drm
  * @crtc: Xilinx DRM driver crtc object
  * @drm_primary_layer: Hardware layer serving as logical DRM primary layer
  * @hw_master_layer: Base video streaming layer
@@ -294,6 +295,7 @@ struct xlnx_mix_hw {
  */
 struct xlnx_mix {
 	struct xlnx_mix_hw mixer_hw;
+	struct platform_device *master;
 	struct xlnx_crtc crtc;
 	struct xlnx_mix_plane *drm_primary_layer;
 	struct xlnx_mix_plane *hw_master_layer;
@@ -2560,13 +2562,28 @@ static int xlnx_mix_probe(struct platform_device *pdev)
 
 	ret = component_add(&pdev->dev, &xlnx_mix_component_ops);
 	if (ret)
-		return ret;
+		goto err;
+
+	mixer->master = xlnx_drm_pipeline_init(pdev);
+	if (IS_ERR(mixer->master)) {
+		dev_err(&pdev->dev, "Failed to initialize the drm pipeline\n");
+		goto err_component;
+	}
+
 	dev_info(&pdev->dev, "Xilinx Mixer driver probed success\n");
+	return ret;
+
+err_component:
+	component_del(&pdev->dev, &xlnx_mix_component_ops);
+err:
 	return ret;
 }
 
 static int xlnx_mix_remove(struct platform_device *pdev)
 {
+	struct xlnx_mix *mixer = platform_get_drvdata(pdev);
+
+	xlnx_drm_pipeline_exit(mixer->master);
 	component_del(&pdev->dev, &xlnx_mix_component_ops);
 	return 0;
 }
