@@ -466,14 +466,28 @@ static int xlnx_pl_disp_probe(struct platform_device *pdev)
 	ret = of_property_read_string(dev->of_node, "xlnx,vformat", &vformat);
 	if (ret) {
 		dev_err(dev, "No xlnx,vformat value in dts\n");
-		return ret;
+		goto err_dma;
 	}
 
 	strcpy((char *)&xlnx_pl_disp->fmt, vformat);
 	xlnx_pl_disp->dev = dev;
 	platform_set_drvdata(pdev, xlnx_pl_disp);
 
-	return component_add(dev, &xlnx_pl_disp_component_ops);
+	ret = component_add(dev, &xlnx_pl_disp_component_ops);
+	if (ret)
+		goto err_dma;
+
+	dev_info(&pdev->dev, "Xlnx PL display driver probed\n");
+
+	return 0;
+
+err_dma:
+	for (i = 0; i < XLNX_DMA_MAX_CHAN; i++) {
+		if (xlnx_pl_disp->chan[i])
+			dma_release_channel(xlnx_pl_disp->chan[i]->dma_chan);
+	}
+
+	return ret;
 }
 
 static int xlnx_pl_disp_remove(struct platform_device *pdev)
@@ -481,15 +495,16 @@ static int xlnx_pl_disp_remove(struct platform_device *pdev)
 	struct xlnx_pl_disp *xlnx_pl_disp = platform_get_drvdata(pdev);
 	unsigned int i;
 
+	component_del(&pdev->dev, &xlnx_pl_disp_component_ops);
 	for (i = 0; i < XLNX_DMA_MAX_CHAN; i++) {
-		if (xlnx_pl_disp->chan[i] && xlnx_pl_disp->chan[i]->is_active) {
+		struct xlnx_dma_chan *xlnx_dma_chan = xlnx_pl_disp->chan[i];
+
+		if (xlnx_dma_chan) {
 			/* Make sure the channel is terminated before release */
-			dmaengine_terminate_all(xlnx_pl_disp->chan[i]->dma_chan);
-			dma_release_channel(xlnx_pl_disp->chan[i]->dma_chan);
+			dmaengine_terminate_sync(xlnx_dma_chan->dma_chan);
+			dma_release_channel(xlnx_dma_chan->dma_chan);
 		}
 	}
-
-	component_del(&pdev->dev, &xlnx_pl_disp_component_ops);
 
 	return 0;
 }
