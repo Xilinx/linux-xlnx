@@ -1362,13 +1362,13 @@ static void macb_hresp_error_task(unsigned long data)
 
 	macb_writel(bp, RBQP, lower_32_bits(bp->rx_ring_dma));
 #ifdef CONFIG_ARCH_DMA_ADDR_T_64BIT
-	if (bp->hw_dma_cap == HW_DMA_CAP_64B)
+	if (bp->hw_dma_cap & HW_DMA_CAP_64B)
 		macb_writel(bp, RBQPH, upper_32_bits(bp->rx_ring_dma));
 #endif
 	for (q = 0, queue = bp->queues; q < bp->num_queues; ++q, ++queue) {
 		queue_writel(queue, TBQP, lower_32_bits(queue->tx_ring_dma));
 #ifdef CONFIG_ARCH_DMA_ADDR_T_64BIT
-		if (bp->hw_dma_cap == HW_DMA_CAP_64B)
+		if (bp->hw_dma_cap & HW_DMA_CAP_64B)
 			queue_writel(queue, TBQPH, upper_32_bits(queue->tx_ring_dma));
 #endif
 		/* We only use the first queue at the moment. Remaining
