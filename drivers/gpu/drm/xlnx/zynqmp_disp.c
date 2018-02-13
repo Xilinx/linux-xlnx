@@ -2014,17 +2014,12 @@ static int zynqmp_disp_layer_create(struct zynqmp_disp *disp)
 	int ret;
 
 	for (i = 0; i < ZYNQMP_DISP_NUM_LAYERS; i++) {
-		char temp[16];
-
 		layer = &disp->layers[i];
 		layer->id = i;
 		layer->offset = i * 4;
 		layer->other = &disp->layers[!i];
 		layer->num_chan = num_chans[i];
-		snprintf(temp, sizeof(temp), "%s-layer", dma_name[i]);
-		layer->of_node = of_get_child_by_name(disp->dev->of_node, temp);
-		if (!layer->of_node)
-			goto err;
+		layer->of_node = disp->dev->of_node;
 		ret = zynqmp_disp_layer_request_dma(disp, layer, dma_name[i]);
 		if (ret)
 			goto err;
