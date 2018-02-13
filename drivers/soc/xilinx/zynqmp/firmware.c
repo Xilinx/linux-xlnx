@@ -1004,7 +1004,7 @@ const struct zynqmp_eemi_ops *get_eemi_ops(void)
 }
 EXPORT_SYMBOL_GPL(get_eemi_ops);
 
-static int __init zynqmp_plat_init(void)
+static int __init zynqmp_plat_init_v1(void)
 {
 	struct device_node *np;
 	int ret = 0;
@@ -1043,4 +1043,4 @@ static int __init zynqmp_plat_init(void)
 	return ret;
 }
 
-early_initcall(zynqmp_plat_init);
+early_initcall(zynqmp_plat_init_v1);
