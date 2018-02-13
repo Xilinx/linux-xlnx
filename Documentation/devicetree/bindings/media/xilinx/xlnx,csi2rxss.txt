@@ -14,7 +14,8 @@ For more details, please refer to PG232 MIPI CSI-2 Receiver Subsystem v2.0
 
 Required properties:
 
-- compatible: Must contain "xlnx,mipi-csi2-rx-subsystem-2.0"
+- compatible: Must contain "xlnx,mipi-csi2-rx-subsystem-2.0" or
+  "xlnx,mipi-csi2-rx-subsystem-3.0"
 
 - reg: Physical base address and length of the registers set for the device.
 
