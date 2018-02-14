@@ -29,6 +29,7 @@
 
 #include <drm/drm_device.h>
 #include <drm/drm_fourcc.h>
+#include <drm/drm_print.h>
 
 static char printable_char(int c)
 {
@@ -405,3 +406,38 @@ uint64_t drm_format_info_min_pitch(const struct drm_format_info *info,
 			    drm_format_info_block_height(info, plane));
 }
 EXPORT_SYMBOL(drm_format_info_min_pitch);
+
+/**
+ * drm_format_plane_width_bytes - bytes of the given width of the plane
+ * @info: DRM format information
+ * @plane: plane index
+ * @width: width to get the number of bytes
+ *
+ * This returns the number of bytes for given @width and @plane.
+ * The @char_per_block or macro pixel information should be valid.
+ *
+ * Returns:
+ * The bytes of @width of @plane. 0 for invalid format info.
+ */
+uint64_t drm_format_plane_width_bytes(const struct drm_format_info *info,
+				 int plane, unsigned int width)
+{
+	if (!info || plane >= info->num_planes)
+		return 0;
+
+	if (info->char_per_block[plane])
+		return drm_format_info_min_pitch(info, plane, width);
+
+	if (WARN_ON(!info->bytes_per_macropixel[plane] ||
+		    !info->pixels_per_macropixel[plane])) {
+		struct drm_format_name_buf buf;
+
+		DRM_WARN("Either cpp or macro-pixel info should be valid: %s\n",
+			 drm_get_format_name(info->format, &buf));
+		return 0;
+	}
+
+	return DIV_ROUND_UP(width * info->bytes_per_macropixel[plane],
+			    info->pixels_per_macropixel[plane]);
+}
+EXPORT_SYMBOL(drm_format_plane_width_bytes);
