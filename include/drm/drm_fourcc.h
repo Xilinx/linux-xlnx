@@ -125,6 +125,8 @@ int drm_format_horz_chroma_subsampling(uint32_t format);
 int drm_format_vert_chroma_subsampling(uint32_t format);
 int drm_format_plane_width(int width, uint32_t format, int plane);
 int drm_format_plane_height(int height, uint32_t format, int plane);
+int drm_format_plane_width_bytes(const struct drm_format_info *info,
+				 int plane, int width);
 const char *drm_get_format_name(uint32_t format, struct drm_format_name_buf *buf);
 
 #endif /* __DRM_FOURCC_H__ */
