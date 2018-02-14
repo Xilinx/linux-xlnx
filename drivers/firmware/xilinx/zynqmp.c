@@ -1026,8 +1026,16 @@ static int zynqmp_pm_sysfs_init(void)
 	if (ret) {
 		pr_err("%s() sysfs creation fail with error %d\n",
 		       __func__, ret);
+		goto err;
 	}
 
+	ret = zynqmp_pm_ggs_init(zynqmp_kobj);
+	if (ret) {
+		pr_err("%s() GGS init fail with error %d\n",
+		       __func__, ret);
+		goto err;
+	}
+err:
 	return ret;
 }
 
