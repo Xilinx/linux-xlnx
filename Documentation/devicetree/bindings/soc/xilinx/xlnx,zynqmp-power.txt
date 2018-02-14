@@ -1,0 +1,28 @@
+Xilinx Zynq MPSoC Power Management Device Tree Bindings
+
+The zynqmp-power node describes the power management configurations.
+
+Required properties:
+ - compatible	: Must contain:  "xlnx,zynqmp-power"
+ - mbox-names	: Name given to channels seen in the 'mboxes' property.
+		  "rx" - Mailbox corresponding to receive path
+		  "tx" - Mailbox corresponding to transmit path
+ - mboxes	: Standard property to specify a Mailbox. Each value of
+		  the mboxes property should contain a phandle to the
+		  mailbox controller device node and an args specifier
+		  that will be the phandle to the intended sub-mailbox
+		  child node to be used for communication. See
+		  Documentation/devicetree/bindings/mailbox/mailbox.txt
+		  for more details about the generic mailbox controller
+		  and client driver bindings. Also see
+		  Documentation/devicetree/bindings/mailbox/ \
+		  xlnx,zynqmp-ipi-mailbox.txt for typical controller that
+		  is used to communicate with this System controllers.
+
+Examples:
+	zynqmp_power: zynqmp-power {
+		compatible = "xlnx,zynqmp-power";
+		mboxes = <&ipi_mailbox_pmu0 0>,
+			 <&ipi_mailbox_pmu0 1>;
+		mbox-names = "tx", "rx";
+	};
