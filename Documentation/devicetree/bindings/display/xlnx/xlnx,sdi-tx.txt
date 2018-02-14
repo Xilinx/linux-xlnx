@@ -12,6 +12,9 @@ Required properties:
    for entire pipeline should be described using the DT bindings defined in
    Documentation/devicetree/bindings/graph.txt.
 
+Optional properties:
+ - xlnx,vpss: vpss phandle
+   This handle is required only when VPSS is connected to SDI as bridge.
 
 Example:
 
@@ -22,6 +25,7 @@ Example:
 		interrupts = <0 90 4>;
 		#address-cells = <1>;
 		#size-cells = <0>;
+		xlnx,vpss = <&v_proc_ss_0>;
 		encoder_sdi_port: port@0 {
 			reg = <0>;
 			sdi_encoder: endpoint {
