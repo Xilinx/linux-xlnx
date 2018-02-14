@@ -198,7 +198,8 @@ static int framebuffer_check(struct drm_device *dev,
 	for (i = 0; i < info->num_planes; i++) {
 		unsigned int width = fb_plane_width(r->width, info, i);
 		unsigned int height = fb_plane_height(r->height, info, i);
-		unsigned int block_size = info->char_per_block[i];
+		unsigned int block_size = info->char_per_block[i] ||
+					  info->bytes_per_macropixel[i];
 		u64 min_pitch = drm_format_info_min_pitch(info, i, width);
 
 		if (!block_size && (r->modifier[i] == DRM_FORMAT_MOD_LINEAR)) {
