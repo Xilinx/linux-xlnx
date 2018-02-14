@@ -1,0 +1,20 @@
+# SPDX-License-Identifier: GPL-2.0+
+# Kconfig for Xilinx ZynqMP SoC
+
+menu "Zynq MPSoC SoC Drivers"
+	depends on ARCH_ZYNQMP
+
+config ZYNQMP_POWER
+	bool "Enable Xilinx Zynq MPSoC Power Management driver"
+	depends on PM
+	default y
+	select MAILBOX
+	select ZYNQMP_IPI_MBOX
+	help
+	  Say yes to enable power management support for ZyqnMP SoC.
+	  This driver uses firmware driver as an interface for power
+	  management request to firmware. It registers mailbox client
+	  to handle power management callbacks from firmware.
+	  In doubt, say N.
+
+endmenu
