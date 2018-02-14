@@ -986,6 +986,24 @@ static const struct zynqmp_disp_fmt av_buf_vid_fmts[] = {
 		.sf[0]		= ZYNQMP_DISP_AV_BUF_8BIT_SF,
 		.sf[1]		= ZYNQMP_DISP_AV_BUF_8BIT_SF,
 		.sf[2]		= ZYNQMP_DISP_AV_BUF_8BIT_SF,
+	}, {
+		.drm_fmt	= DRM_FORMAT_XV15,
+		.disp_fmt	= ZYNQMP_DISP_AV_BUF_FMT_NL_VID_YV16CI_420_10,
+		.rgb		= false,
+		.swap		= false,
+		.chroma_sub	= true,
+		.sf[0]		= ZYNQMP_DISP_AV_BUF_10BIT_SF,
+		.sf[1]		= ZYNQMP_DISP_AV_BUF_10BIT_SF,
+		.sf[2]		= ZYNQMP_DISP_AV_BUF_10BIT_SF,
+	}, {
+		.drm_fmt	= DRM_FORMAT_XV20,
+		.disp_fmt	= ZYNQMP_DISP_AV_BUF_FMT_NL_VID_YV16CI_10,
+		.rgb		= false,
+		.swap		= false,
+		.chroma_sub	= true,
+		.sf[0]		= ZYNQMP_DISP_AV_BUF_10BIT_SF,
+		.sf[1]		= ZYNQMP_DISP_AV_BUF_10BIT_SF,
+		.sf[2]		= ZYNQMP_DISP_AV_BUF_10BIT_SF,
 	}
 };
 
@@ -2448,6 +2466,7 @@ static int zynqmp_disp_plane_mode_set(struct drm_plane *plane,
 	for (i = 0; i < info->num_planes; i++) {
 		unsigned int width = src_w / (i ? info->hsub : 1);
 		unsigned int height = src_h / (i ? info->vsub : 1);
+		int width_bytes;
 
 		paddr = drm_fb_cma_get_gem_addr(fb, plane->state, i);
 		if (!paddr) {
@@ -2456,7 +2475,8 @@ static int zynqmp_disp_plane_mode_set(struct drm_plane *plane,
 		}
 
 		layer->dma[i].xt.numf = height;
-		layer->dma[i].sgl[0].size = width * info->cpp[i];
+		width_bytes = drm_format_plane_width_bytes(info, i, width);
+		layer->dma[i].sgl[0].size = width_bytes;
 		layer->dma[i].sgl[0].icg = fb->pitches[i] -
 					   layer->dma[i].sgl[0].size;
 		layer->dma[i].xt.src_start = paddr;
