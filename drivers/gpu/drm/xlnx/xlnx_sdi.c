@@ -20,6 +20,8 @@
 #include "xlnx_sdi_modes.h"
 #include "xlnx_sdi_timing.h"
 
+#include "xlnx_bridge.h"
+
 /* SDI register offsets */
 #define XSDI_TX_RST_CTRL		0x00
 #define XSDI_TX_MDL_CTRL		0x04
@@ -94,6 +96,8 @@
 #define	XSDI_MODE_6G			4
 #define	XSDI_MODE_12G			5
 
+#define SDI_TIMING_PARAMS_SIZE		48
+
 /**
  * enum payload_line_1 - Payload Ids Line 1 number
  * @PAYLD_LN1_HD_3_6_12G:	line 1 HD,3G,6G or 12G mode value
@@ -140,6 +144,15 @@ enum payload_line_2 {
  *			    value currently supported are 2, 4 and 8
  * @is_frac_prop: configurable SDI fractional fps parameter
  * @is_frac_prop_val: configurable SDI fractional fps parameter value
+ * @bridge: bridge structure
+ * @height_out: configurable bridge output height parameter
+ * @height_out_prop_val: configurable bridge output height parameter value
+ * @width_out: configurable bridge output width parameter
+ * @width_out_prop_val: configurable bridge output width parameter value
+ * @in_fmt: configurable bridge input media format
+ * @in_fmt_prop_val: configurable media bus format value
+ * @out_fmt: configurable bridge output media format
+ * @out_fmt_prop_val: configurable media bus format value
  */
 struct xlnx_sdi {
 	struct drm_encoder encoder;
@@ -155,6 +168,15 @@ struct xlnx_sdi {
 	u32 sdi_data_strm_prop_val;
 	struct drm_property *is_frac_prop;
 	bool is_frac_prop_val;
+	struct xlnx_bridge *bridge;
+	struct drm_property *height_out;
+	u32 height_out_prop_val;
+	struct drm_property *width_out;
+	u32 width_out_prop_val;
+	struct drm_property *in_fmt;
+	u32 in_fmt_prop_val;
+	struct drm_property *out_fmt;
+	u32 out_fmt_prop_val;
 };
 
 #define connector_to_sdi(c) container_of(c, struct xlnx_sdi, connector)
@@ -424,6 +446,14 @@ xlnx_sdi_atomic_set_property(struct drm_connector *connector,
 		sdi->sdi_data_strm_prop_val = (unsigned int)val;
 	else if (property == sdi->is_frac_prop)
 		sdi->is_frac_prop_val = !!val;
+	else if (property == sdi->height_out)
+		sdi->height_out_prop_val = (unsigned int)val;
+	else if (property == sdi->width_out)
+		sdi->width_out_prop_val = (unsigned int)val;
+	else if (property == sdi->in_fmt)
+		sdi->in_fmt_prop_val = (unsigned int)val;
+	else if (property == sdi->out_fmt)
+		sdi->out_fmt_prop_val = (unsigned int)val;
 	else
 		return -EINVAL;
 	return 0;
@@ -442,6 +472,14 @@ xlnx_sdi_atomic_get_property(struct drm_connector *connector,
 		*val =  sdi->sdi_data_strm_prop_val;
 	else if (property == sdi->is_frac_prop)
 		*val =  sdi->is_frac_prop_val;
+	else if (property == sdi->height_out)
+		*val = sdi->height_out_prop_val;
+	else if (property == sdi->width_out)
+		*val = sdi->width_out_prop_val;
+	else if (property == sdi->in_fmt)
+		*val = sdi->in_fmt_prop_val;
+	else if (property == sdi->out_fmt)
+		*val = sdi->out_fmt_prop_val;
 	else
 		return -EINVAL;
 
@@ -551,6 +589,14 @@ xlnx_sdi_drm_connector_create_property(struct drm_connector *base_connector)
 						  "sdi_mode", 0, 5);
 	sdi->sdi_data_strm = drm_property_create_range(dev, 0,
 						       "sdi_data_stream", 2, 8);
+	sdi->height_out = drm_property_create_range(dev, 0,
+						    "height_out", 2, 4096);
+	sdi->width_out = drm_property_create_range(dev, 0,
+						   "width_out", 2, 4096);
+	sdi->in_fmt = drm_property_create_range(dev, 0,
+						"in_fmt", 0, 16384);
+	sdi->out_fmt = drm_property_create_range(dev, 0,
+						 "out_fmt", 0, 16384);
 }
 
 /**
@@ -573,6 +619,18 @@ xlnx_sdi_drm_connector_attach_property(struct drm_connector *base_connector)
 
 	if (sdi->is_frac_prop)
 		drm_object_attach_property(obj, sdi->is_frac_prop, 0);
+
+	if (sdi->height_out)
+		drm_object_attach_property(obj, sdi->height_out, 0);
+
+	if (sdi->width_out)
+		drm_object_attach_property(obj, sdi->width_out, 0);
+
+	if (sdi->in_fmt)
+		drm_object_attach_property(obj, sdi->in_fmt, 0);
+
+	if (sdi->out_fmt)
+		drm_object_attach_property(obj, sdi->out_fmt, 0);
 }
 
 static int xlnx_sdi_create_connector(struct drm_encoder *encoder)
@@ -692,6 +750,31 @@ static void xlnx_sdi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	struct videomode vm;
 	u32 payload, i;
 
+	/* Set timing parameters as per bridge output parameters */
+	xlnx_bridge_set_input(sdi->bridge, adjusted_mode->hdisplay,
+			      adjusted_mode->vdisplay, sdi->in_fmt_prop_val);
+	xlnx_bridge_set_output(sdi->bridge, sdi->width_out_prop_val,
+			       sdi->height_out_prop_val, sdi->out_fmt_prop_val);
+	xlnx_bridge_enable(sdi->bridge);
+
+	if (sdi->bridge) {
+		for (i = 0; i < ARRAY_SIZE(xlnx_sdi_modes); i++) {
+			if (xlnx_sdi_modes[i].mode.hdisplay ==
+			    sdi->width_out_prop_val &&
+			    xlnx_sdi_modes[i].mode.vdisplay ==
+			    sdi->height_out_prop_val &&
+			    xlnx_sdi_modes[i].mode.vrefresh ==
+			    adjusted_mode->vrefresh) {
+				memcpy((char *)adjusted_mode +
+				       offsetof(struct drm_display_mode,
+						clock),
+				       &xlnx_sdi_modes[i].mode.clock,
+				       SDI_TIMING_PARAMS_SIZE);
+				break;
+			}
+		}
+	}
+
 	xlnx_sdi_setup(sdi);
 	xlnx_sdi_set_config_parameters(sdi);
 
@@ -808,6 +891,7 @@ static void xlnx_sdi_unbind(struct device *dev, struct device *master,
 	xlnx_stc_disable(sdi->base);
 	drm_encoder_cleanup(&sdi->encoder);
 	drm_connector_cleanup(&sdi->connector);
+	xlnx_bridge_disable(sdi->bridge);
 }
 
 static const struct component_ops xlnx_sdi_component_ops = {
@@ -820,6 +904,7 @@ static int xlnx_sdi_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct resource *res;
 	struct xlnx_sdi *sdi;
+	struct device_node *vpss_node;
 	int ret, irq;
 
 	sdi = devm_kzalloc(dev, sizeof(*sdi), GFP_KERNEL);
@@ -849,6 +934,16 @@ static int xlnx_sdi_probe(struct platform_device *pdev)
 
 	/* initialize the wait queue for GT reset event */
 	init_waitqueue_head(&sdi->wait_event);
+
+	/* Bridge support */
+	vpss_node = of_parse_phandle(sdi->dev->of_node, "xlnx,vpss", 0);
+	if (vpss_node) {
+		sdi->bridge = of_xlnx_bridge_get(vpss_node);
+		if (!sdi->bridge) {
+			dev_info(sdi->dev, "Didn't get bridge instance\n");
+			return -EPROBE_DEFER;
+		}
+	}
 
 	return component_add(dev, &xlnx_sdi_component_ops);
 }
