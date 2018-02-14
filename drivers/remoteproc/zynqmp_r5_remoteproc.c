@@ -37,7 +37,7 @@
 #include <linux/genalloc.h>
 #include <linux/pfn.h>
 #include <linux/idr.h>
-#include <linux/soc/xilinx/zynqmp/firmware.h>
+#include <linux/firmware/xilinx/zynqmp/firmware.h>
 
 #include "remoteproc_internal.h"
 
@@ -209,7 +209,7 @@ static void r5_mode_config(struct zynqmp_r5_rproc_pdata *pdata)
 static bool r5_is_running(struct zynqmp_r5_rproc_pdata *pdata)
 {
 	u32 status, requirements, usage;
-	const struct zynqmp_eemi_ops *eemi_ops = get_eemi_ops();
+	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 
 	pr_debug("%s: rpu id: %d\n", __func__, pdata->rpu_id);
 	if (!eemi_ops || !eemi_ops->get_node_status) {
@@ -241,7 +241,7 @@ static bool r5_is_running(struct zynqmp_r5_rproc_pdata *pdata)
 static int r5_request_tcm(struct zynqmp_r5_rproc_pdata *pdata)
 {
 	struct mem_pool_st *mem_node;
-	const struct zynqmp_eemi_ops *eemi_ops = get_eemi_ops();
+	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 
 	if (!eemi_ops || !eemi_ops->request_node) {
 		pr_err("Failed to request TCM\n");
@@ -272,7 +272,7 @@ static int r5_request_tcm(struct zynqmp_r5_rproc_pdata *pdata)
 static void r5_release_tcm(struct zynqmp_r5_rproc_pdata *pdata)
 {
 	struct mem_pool_st *mem_node;
-	const struct zynqmp_eemi_ops *eemi_ops = get_eemi_ops();
+	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 
 	if (!eemi_ops || !eemi_ops->release_node) {
 		pr_err("Failed to release TCM\n");
@@ -346,7 +346,7 @@ static int zynqmp_r5_rproc_start(struct rproc *rproc)
 {
 	struct device *dev = rproc->dev.parent;
 	struct zynqmp_r5_rproc_pdata *local = rproc->priv;
-	const struct zynqmp_eemi_ops *eemi_ops = get_eemi_ops();
+	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 
 	dev_dbg(dev, "%s\n", __func__);
 
@@ -412,7 +412,7 @@ static int zynqmp_r5_rproc_stop(struct rproc *rproc)
 	struct device *dev = rproc->dev.parent;
 	struct zynqmp_r5_rproc_pdata *local = rproc->priv;
 	struct rproc_mem_entry *mem, *nmem;
-	const struct zynqmp_eemi_ops *eemi_ops = get_eemi_ops();
+	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 
 	dev_dbg(dev, "%s\n", __func__);
 

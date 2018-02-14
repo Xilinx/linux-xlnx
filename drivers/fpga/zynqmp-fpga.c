@@ -20,7 +20,7 @@
 #include <linux/module.h>
 #include <linux/of_address.h>
 #include <linux/string.h>
-#include <linux/soc/xilinx/zynqmp/firmware.h>
+#include <linux/firmware/xilinx/zynqmp/firmware.h>
 
 /* Constant Definitions */
 #define IXR_FPGA_DONE_MASK	0X00000008U
@@ -52,7 +52,7 @@ static int zynqmp_fpga_ops_write(struct fpga_manager *mgr,
 	dma_addr_t dma_addr;
 	u32 transfer_length;
 	int ret;
-	const struct zynqmp_eemi_ops *eemi_ops = get_eemi_ops();
+	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 
 	if (!eemi_ops || !eemi_ops->fpga_load)
 		return -ENXIO;
@@ -104,7 +104,7 @@ static int zynqmp_fpga_ops_write_complete(struct fpga_manager *mgr,
 static enum fpga_mgr_states zynqmp_fpga_ops_state(struct fpga_manager *mgr)
 {
 	u32 status;
-	const struct zynqmp_eemi_ops *eemi_ops = get_eemi_ops();
+	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 
 	if (!eemi_ops || !eemi_ops->fpga_get_status)
 		return FPGA_MGR_STATE_UNKNOWN;

@@ -16,7 +16,7 @@
 #include <linux/nvmem-provider.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
-#include <linux/soc/xilinx/zynqmp/firmware.h>
+#include <linux/firmware/xilinx/zynqmp/firmware.h>
 
 #define SILICON_REVISION_MASK 0xF
 
@@ -25,7 +25,7 @@ static int zynqmp_nvmem_read(void *context, unsigned int offset,
 {
 	int ret;
 	int idcode, version;
-	const struct zynqmp_eemi_ops *eemi_ops = get_eemi_ops();
+	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 
 	if (!eemi_ops || !eemi_ops->get_chipid)
 		return -ENXIO;

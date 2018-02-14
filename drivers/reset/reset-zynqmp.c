@@ -16,7 +16,7 @@
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/reset-controller.h>
-#include <linux/soc/xilinx/zynqmp/firmware.h>
+#include <linux/firmware/xilinx/zynqmp/firmware.h>
 
 #define ZYNQMP_NR_RESETS (ZYNQMP_PM_RESET_END - ZYNQMP_PM_RESET_START - 2)
 #define ZYNQMP_RESET_ID (ZYNQMP_PM_RESET_START + 1)
@@ -74,7 +74,7 @@ static int zynqmp_reset_probe(struct platform_device *pdev)
 	if (!zynqmp_reset)
 		return -ENOMEM;
 
-	eemi_ops = get_eemi_ops();
+	eemi_ops = zynqmp_pm_get_eemi_ops();
 	if (!eemi_ops)
 		return -ENXIO;
 

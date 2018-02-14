@@ -16,7 +16,8 @@
 #include <linux/pm_domain.h>
 #include <linux/slab.h>
 #include <linux/list.h>
-#include <linux/soc/xilinx/zynqmp/pm.h>
+#include <linux/firmware/xilinx/zynqmp/firmware.h>
+#include <linux/soc/xilinx/zynqmp/power.h>
 
 #define DRIVER_NAME "zynqmp_gpd"
 
@@ -84,7 +85,7 @@ static int zynqmp_gpd_power_on(struct generic_pm_domain *domain)
 {
 	int i, status = 0;
 	struct zynqmp_pm_domain *pd;
-	const struct zynqmp_eemi_ops *eemi_ops = get_eemi_ops();
+	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 
 	if (!eemi_ops || !eemi_ops->set_requirement)
 		return status;
@@ -117,7 +118,7 @@ static int zynqmp_gpd_power_off(struct generic_pm_domain *domain)
 	struct zynqmp_domain_device *zdev, *tmp;
 	u32 capabilities = 0;
 	bool may_wakeup = 0;
-	const struct zynqmp_eemi_ops *eemi_ops = get_eemi_ops();
+	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 
 	if (!eemi_ops || !eemi_ops->set_requirement)
 		return status;
@@ -170,7 +171,7 @@ static int zynqmp_gpd_attach_dev(struct generic_pm_domain *domain,
 	int i, status;
 	struct zynqmp_pm_domain *pd;
 	struct zynqmp_domain_device *zdev;
-	const struct zynqmp_eemi_ops *eemi_ops = get_eemi_ops();
+	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 
 	if (!eemi_ops || !eemi_ops->request_node)
 		return -ENXIO;
@@ -218,7 +219,7 @@ static void zynqmp_gpd_detach_dev(struct generic_pm_domain *domain,
 	int i, status;
 	struct zynqmp_pm_domain *pd;
 	struct zynqmp_domain_device *zdev, *tmp;
-	const struct zynqmp_eemi_ops *eemi_ops = get_eemi_ops();
+	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 
 	if (!eemi_ops || !eemi_ops->release_node)
 		return;
