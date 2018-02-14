@@ -174,7 +174,8 @@ dma_addr_t drm_fb_cma_get_gem_addr(struct drm_framebuffer *fb,
 		return 0;
 
 	paddr = obj->paddr + fb->offsets[plane];
-	paddr += fb->format->cpp[plane] * (state->src_x >> 16);
+	paddr += drm_format_plane_width_bytes(fb->format, plane,
+					      state->src_x >> 16);
 	paddr += fb->pitches[plane] * (state->src_y >> 16);
 
 	return paddr;
