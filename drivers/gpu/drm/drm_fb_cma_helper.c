@@ -71,7 +71,6 @@ dma_addr_t drm_fb_cma_get_gem_addr(struct drm_framebuffer *fb,
 	u8 h_div = 1, v_div = 1;
 	u32 block_w = drm_format_info_block_width(fb->format, plane);
 	u32 block_h = drm_format_info_block_height(fb->format, plane);
-	u32 block_size = fb->format->char_per_block[plane];
 	u32 sample_x;
 	u32 sample_y;
 	u32 block_start_y;
@@ -94,7 +93,7 @@ dma_addr_t drm_fb_cma_get_gem_addr(struct drm_framebuffer *fb,
 	num_hblocks = sample_x / block_w;
 
 	paddr += fb->pitches[plane] * block_start_y;
-	paddr += block_size * num_hblocks;
+	paddr += drm_format_plane_width_bytes(fb->format, plane, num_hblocks);
 
 	return paddr;
 }
