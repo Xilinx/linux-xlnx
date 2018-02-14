@@ -986,7 +986,7 @@ static int zynqmp_pm_probe(struct platform_device *pdev)
 	eemi_ops->get_api_version(&pm_api_version);
 
 	/* Check PM API version number */
-	if (pm_api_version != ZYNQMP_PM_VERSION)
+	if (pm_api_version < ZYNQMP_PM_VERSION)
 		return -ENODEV;
 
 	irq = platform_get_irq(pdev, 0);
@@ -1016,7 +1016,7 @@ static int zynqmp_pm_probe(struct platform_device *pdev)
 	}
 
 	dev_info(&pdev->dev, "Power management API v%d.%d\n",
-		ZYNQMP_PM_VERSION_MAJOR, ZYNQMP_PM_VERSION_MINOR);
+		pm_api_version >> 16, pm_api_version & 0xFFFF);
 
 	zynqmp_pm_api_debugfs_init(&pdev->dev);
 
