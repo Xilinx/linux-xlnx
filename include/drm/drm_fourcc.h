@@ -36,6 +36,17 @@ struct drm_mode_fb_cmd2;
  *	use in new code and set to 0 for new formats.
  * @num_planes: Number of color planes (1 to 3)
  * @cpp: Number of bytes per pixel (per plane)
+ * @pixels_per_macropixel:
+ * Number of pixels per macro-pixel (per plane). A macro-pixel is
+ * composed of multiple pixels, and there can be extra bits between
+ * pixels. This must be used along with @bytes_per_macropixel, only
+ * when single pixel size is not byte-aligned. In this case, @cpp
+ * is not valid and should be 0.
+ * @bytes_per_macropixel:
+ * Number of bytes per macro-pixel (per plane). A macro-pixel is
+ * composed of multiple pixels. The size of single macro-pixel should
+ * be byte-aligned. This should be used with @pixels_per_macropixel,
+ * and @cpp should be 0.
  * @hsub: Horizontal chroma subsampling factor
  * @vsub: Vertical chroma subsampling factor
  * @has_alpha: Does the format embeds an alpha component?
@@ -46,6 +57,8 @@ struct drm_format_info {
 	u8 depth;
 	u8 num_planes;
 	u8 cpp[3];
+	u8 pixels_per_macropixel[3];
+	u8 bytes_per_macropixel[3];
 	u8 hsub;
 	u8 vsub;
 	bool has_alpha;
