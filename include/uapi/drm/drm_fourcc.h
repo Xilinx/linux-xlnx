@@ -164,6 +164,8 @@ extern "C" {
 #define DRM_FORMAT_AYUV		fourcc_code('A', 'Y', 'U', 'V') /* [31:0] A:Y:Cb:Cr 8:8:8:8 little endian */
 #define DRM_FORMAT_XYUV8888	fourcc_code('X', 'Y', 'U', 'V') /* [31:0] X:Y:Cb:Cr 8:8:8:8 little endian */
 #define DRM_FORMAT_VUY888	fourcc_code('V', 'U', '2', '4') /* [23:0] Cr:Cb:Y 8:8:8 little endian */
+#define DRM_FORMAT_XVUY8888	fourcc_code('X', 'V', '2', '4') /* [31:0] x:Cr:Cb:Y 8:8:8:8 little endian */
+#define DRM_FORMAT_XVUY2101010	fourcc_code('X', 'Y', '3', '0') /* [31:0] x:Cr:Cb:Y 2:10:10:10 little endian */
 #define DRM_FORMAT_VUY101010	fourcc_code('V', 'U', '3', '0') /* Y followed by U then V, 10:10:10. Non-linear modifier only */
 
 /*
@@ -208,6 +210,10 @@ extern "C" {
  */
 #define DRM_FORMAT_YUV420_8BIT	fourcc_code('Y', 'U', '0', '8')
 #define DRM_FORMAT_YUV420_10BIT	fourcc_code('Y', 'U', '1', '0')
+
+/* Grey scale */
+#define DRM_FORMAT_Y8		fourcc_code('G', 'R', 'E', 'Y') /* 8  Greyscale	*/
+#define DRM_FORMAT_Y10		fourcc_code('Y', '1', '0', ' ') /* 10 Greyscale */
 
 /*
  * 2 plane RGB + A
