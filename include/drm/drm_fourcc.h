@@ -123,6 +123,25 @@ struct drm_format_info {
 	 */
 	u8 block_h[4];
 
+	/**
+	 * @pixels_per_macropixel:
+	 * Number of pixels per macro-pixel (per plane). A macro-pixel is
+	 * composed of multiple pixels, and there can be extra bits between
+	 * pixels. This must be used along with @bytes_per_macropixel, only
+	 * when single pixel size is not byte-aligned. In this case, @cpp
+	 * is not valid and should be 0.
+	 */
+	u8 pixels_per_macropixel[3];
+
+	/**
+	 * @bytes_per_macropixel:
+	 * Number of bytes per macro-pixel (per plane). A macro-pixel is
+	 * composed of multiple pixels. The size of single macro-pixel should
+	 * be byte-aligned. This should be used with @pixels_per_macropixel,
+	 * and @cpp should be 0.
+	 */
+	u8 bytes_per_macropixel[3];
+
 	/** @hsub: Horizontal chroma subsampling factor */
 	u8 hsub;
 	/** @vsub: Vertical chroma subsampling factor */
