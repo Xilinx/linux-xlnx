@@ -1049,3 +1049,16 @@ static int __init zynqmp_plat_init(void)
 	return ret;
 }
 early_initcall(zynqmp_plat_init);
+
+static int zynqmp_firmware_init(void)
+{
+	int ret;
+
+	ret = zynqmp_pm_ggs_init();
+	if (ret)
+		pr_err("%s() GGS init fail with error %d\n",
+		       __func__, ret);
+
+	return ret;
+}
+device_initcall(zynqmp_firmware_init);
