@@ -348,3 +348,38 @@ int drm_format_plane_height(int height, uint32_t format, int plane)
 	return height / info->vsub;
 }
 EXPORT_SYMBOL(drm_format_plane_height);
+
+/**
+ * drm_format_plane_width_bytes - bytes of the given width of the plane
+ * @info: DRM format information
+ * @plane: plane index
+ * @width: width to get the number of bytes
+ *
+ * This returns the number of bytes for given @width and @plane.
+ * The @cpp or macro pixel information should be valid.
+ *
+ * Returns:
+ * The bytes of @width of @plane. 0 for invalid format info.
+ */
+int drm_format_plane_width_bytes(const struct drm_format_info *info,
+				 int plane, int width)
+{
+	if (!info || plane >= info->num_planes)
+		return 0;
+
+	if (info->cpp[plane])
+		return info->cpp[plane] * width;
+
+	if (WARN_ON(!info->bytes_per_macropixel[plane] ||
+		    !info->pixels_per_macropixel[plane])) {
+		struct drm_format_name_buf buf;
+
+		DRM_WARN("Either cpp or macro-pixel info should be valid: %s\n",
+			 drm_get_format_name(info->format, &buf));
+		return 0;
+	}
+
+	return DIV_ROUND_UP(width * info->bytes_per_macropixel[plane],
+			    info->pixels_per_macropixel[plane]);
+}
+EXPORT_SYMBOL(drm_format_plane_width_bytes);
