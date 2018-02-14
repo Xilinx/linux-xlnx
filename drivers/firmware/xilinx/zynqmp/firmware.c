@@ -19,6 +19,7 @@
 #include <linux/uaccess.h>
 
 #include <linux/firmware/xilinx/zynqmp/firmware.h>
+#include <linux/firmware/xilinx/zynqmp/firmware-debug.h>
 
 /**
  * zynqmp_pm_ret_code - Convert PMU-FW error codes to Linux error codes
@@ -1055,9 +1056,13 @@ static int zynqmp_firmware_init(void)
 	int ret;
 
 	ret = zynqmp_pm_ggs_init();
-	if (ret)
+	if (ret) {
 		pr_err("%s() GGS init fail with error %d\n",
 		       __func__, ret);
+		return ret;
+	}
+
+	zynqmp_pm_api_debugfs_init();
 
 	return ret;
 }
