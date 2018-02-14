@@ -155,6 +155,61 @@ int xlnx_bridge_get_input_fmts(struct xlnx_bridge *bridge,
 EXPORT_SYMBOL(xlnx_bridge_get_input_fmts);
 
 /**
+ * xlnx_bridge_set_output - Set the output of @bridge
+ * @bridge: bridge to set
+ * @width: width
+ * @height: height
+ * @bus_fmt: bus format (ex, MEDIA_BUS_FMT_*);
+ *
+ * Set the bridge output with height / width / format.
+ *
+ * Return: 0 on success. -ENOENT if no callback, -EFAULT if in error state,
+ * or return code from callback.
+ */
+int xlnx_bridge_set_output(struct xlnx_bridge *bridge,
+			   u32 width, u32 height, u32 bus_fmt)
+{
+	if (!bridge)
+		return 0;
+
+	if (helper.error)
+		return -EFAULT;
+
+	if (bridge->set_output)
+		return bridge->set_output(bridge, width, height, bus_fmt);
+
+	return -ENOENT;
+}
+EXPORT_SYMBOL(xlnx_bridge_set_output);
+
+/**
+ * xlnx_bridge_get_output_fmts - Get the supported output formats
+ * @bridge: bridge to set
+ * @fmts: pointer to formats
+ * @count: pointer to format count
+ *
+ * Get the list of supported output bus formats.
+ *
+ * Return: 0 on success. -ENOENT if no callback, -EFAULT if in error state,
+ * or return code from callback.
+ */
+int xlnx_bridge_get_output_fmts(struct xlnx_bridge *bridge,
+				const u32 **fmts, u32 *count)
+{
+	if (!bridge)
+		return 0;
+
+	if (helper.error)
+		return -EFAULT;
+
+	if (bridge->get_output_fmts)
+		return bridge->get_output_fmts(bridge, fmts, count);
+
+	return -ENOENT;
+}
+EXPORT_SYMBOL(xlnx_bridge_get_output_fmts);
+
+/**
  * of_xlnx_bridge_get - Get the corresponding Xlnx bridge instance
  * @bridge_np: The device node of the bridge device
  *
