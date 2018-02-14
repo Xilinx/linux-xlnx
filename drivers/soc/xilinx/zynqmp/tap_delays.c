@@ -21,52 +21,27 @@
 #include <linux/types.h>
 #include <linux/soc/xilinx/zynqmp/tap_delays.h>
 
-#define SD_DLL_CTRL			0xFF180358
-#define SD_ITAP_DLY			0xFF180314
-#define SD_OTAP_DLY			0xFF180318
-#define SD0_DLL_RST_MASK		0x00000004
-#define SD0_DLL_RST			0x00000004
-#define SD1_DLL_RST_MASK		0x00040000
-#define SD1_DLL_RST			0x00040000
-#define SD0_ITAPCHGWIN_MASK		0x00000200
-#define SD0_ITAPCHGWIN			0x00000200
-#define SD1_ITAPCHGWIN_MASK		0x02000000
-#define SD1_ITAPCHGWIN			0x02000000
-#define SD0_ITAPDLYENA_MASK		0x00000100
-#define SD0_ITAPDLYENA			0x00000100
-#define SD1_ITAPDLYENA_MASK		0x01000000
-#define SD1_ITAPDLYENA			0x01000000
-#define SD0_ITAPDLYSEL_MASK		0x000000FF
-#define SD0_ITAPDLYSEL_HSD		0x00000015
-#define SD0_ITAPDLYSEL_SD_DDR50		0x0000003D
-#define SD0_ITAPDLYSEL_MMC_DDR50	0x00000012
+#define SD0_ITAPDLYSEL_HSD		0x15
+#define SD0_ITAPDLYSEL_SD_DDR50		0x3D
+#define SD0_ITAPDLYSEL_MMC_DDR50	0x12
+#define SD1_ITAPDLYSEL_HSD		0x15
+#define SD1_ITAPDLYSEL_SD_DDR50		0x3D
+#define SD1_ITAPDLYSEL_MMC_DDR50	0x12
 
-#define SD1_ITAPDLYSEL_MASK		0x00FF0000
-#define SD1_ITAPDLYSEL_HSD		0x00150000
-#define SD1_ITAPDLYSEL_SD_DDR50		0x003D0000
-#define SD1_ITAPDLYSEL_MMC_DDR50	0x00120000
-
-#define SD0_OTAPDLYENA_MASK		0x00000040
-#define SD0_OTAPDLYENA			0x00000040
-#define SD1_OTAPDLYENA_MASK		0x00400000
-#define SD1_OTAPDLYENA			0x00400000
-#define SD0_OTAPDLYSEL_MASK		0x0000003F
-#define SD0_OTAPDLYSEL_MMC_HSD		0x00000006
-#define SD0_OTAPDLYSEL_SD_HSD		0x00000005
-#define SD0_OTAPDLYSEL_SDR50		0x00000003
-#define SD0_OTAPDLYSEL_SDR104_B0	0x00000003
-#define SD0_OTAPDLYSEL_SDR104_B2	0x00000002
-#define SD0_OTAPDLYSEL_SD_DDR50		0x00000004
-#define SD0_OTAPDLYSEL_MMC_DDR50	0x00000006
-
-#define SD1_OTAPDLYSEL_MASK		0x003F0000
-#define SD1_OTAPDLYSEL_MMC_HSD		0x00060000
-#define SD1_OTAPDLYSEL_SD_HSD		0x00050000
-#define SD1_OTAPDLYSEL_SDR50		0x00030000
-#define SD1_OTAPDLYSEL_SDR104_B0	0x00030000
-#define SD1_OTAPDLYSEL_SDR104_B2	0x00020000
-#define SD1_OTAPDLYSEL_SD_DDR50		0x00040000
-#define SD1_OTAPDLYSEL_MMC_DDR50	0x00060000
+#define SD0_OTAPDLYSEL_MMC_HSD		0x06
+#define SD0_OTAPDLYSEL_SD_HSD		0x05
+#define SD0_OTAPDLYSEL_SDR50		0x03
+#define SD0_OTAPDLYSEL_SDR104_B0	0x03
+#define SD0_OTAPDLYSEL_SDR104_B2	0x02
+#define SD0_OTAPDLYSEL_SD_DDR50		0x04
+#define SD0_OTAPDLYSEL_MMC_DDR50	0x06
+#define SD1_OTAPDLYSEL_MMC_HSD		0x06
+#define SD1_OTAPDLYSEL_SD_HSD		0x05
+#define SD1_OTAPDLYSEL_SDR50		0x03
+#define SD1_OTAPDLYSEL_SDR104_B0	0x03
+#define SD1_OTAPDLYSEL_SDR104_B2	0x02
+#define SD1_OTAPDLYSEL_SD_DDR50		0x04
+#define SD1_OTAPDLYSEL_MMC_DDR50	0x06
 
 #define MMC_BANK2		0x2
 
@@ -87,38 +62,37 @@
  */
 static void arasan_zynqmp_tap_hs(u8 deviceid, u8 timing, u8 bank)
 {
+	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
+
+	if (!eemi_ops || !eemi_ops->ioctl)
+		return;
+
 	if (deviceid == 0) {
-		/* Program ITAP */
-		zynqmp_pm_mmio_write(SD_ITAP_DLY, SD0_ITAPCHGWIN_MASK,
-				     SD0_ITAPCHGWIN);
-		zynqmp_pm_mmio_write(SD_ITAP_DLY, SD0_ITAPDLYENA_MASK,
-				     SD0_ITAPDLYENA);
-		zynqmp_pm_mmio_write(SD_ITAP_DLY, SD0_ITAPDLYSEL_MASK,
-				     SD0_ITAPDLYSEL_HSD);
-		zynqmp_pm_mmio_write(SD_ITAP_DLY, SD0_ITAPCHGWIN_MASK, 0x0);
-		/* Program OTAP */
+		eemi_ops->ioctl(NODE_SD_0, IOCTL_SET_SD_TAPDELAY,
+			       PM_TAPDELAY_INPUT, SD0_ITAPDLYSEL_HSD, NULL);
 		if (timing == MMC_TIMING_MMC_HS)
-			zynqmp_pm_mmio_write(SD_OTAP_DLY, SD0_OTAPDLYSEL_MASK,
-					     SD0_OTAPDLYSEL_MMC_HSD);
+			eemi_ops->ioctl(NODE_SD_0, IOCTL_SET_SD_TAPDELAY,
+				       PM_TAPDELAY_OUTPUT,
+				       SD0_OTAPDLYSEL_MMC_HSD,
+				       NULL);
 		else
-			zynqmp_pm_mmio_write(SD_OTAP_DLY, SD0_OTAPDLYSEL_MASK,
-					     SD0_OTAPDLYSEL_SD_HSD);
+			eemi_ops->ioctl(NODE_SD_0, IOCTL_SET_SD_TAPDELAY,
+				       PM_TAPDELAY_OUTPUT,
+				       SD0_OTAPDLYSEL_SD_HSD,
+				       NULL);
 	} else {
-		/* Program ITAP */
-		zynqmp_pm_mmio_write(SD_ITAP_DLY, SD1_ITAPCHGWIN_MASK,
-				     SD1_ITAPCHGWIN);
-		zynqmp_pm_mmio_write(SD_ITAP_DLY, SD1_ITAPDLYENA_MASK,
-				     SD1_ITAPDLYENA);
-		zynqmp_pm_mmio_write(SD_ITAP_DLY, SD1_ITAPDLYSEL_MASK,
-				     SD1_ITAPDLYSEL_HSD);
-		zynqmp_pm_mmio_write(SD_ITAP_DLY, SD1_ITAPCHGWIN_MASK, 0x0);
-		/* Program OTAP */
+		eemi_ops->ioctl(NODE_SD_1, IOCTL_SET_SD_TAPDELAY,
+			       PM_TAPDELAY_INPUT, SD1_ITAPDLYSEL_HSD, NULL);
 		if (timing == MMC_TIMING_MMC_HS)
-			zynqmp_pm_mmio_write(SD_OTAP_DLY, SD1_OTAPDLYSEL_MASK,
-					     SD1_OTAPDLYSEL_MMC_HSD);
+			eemi_ops->ioctl(NODE_SD_1, IOCTL_SET_SD_TAPDELAY,
+				       PM_TAPDELAY_OUTPUT,
+				       SD1_OTAPDLYSEL_MMC_HSD,
+				       NULL);
 		else
-			zynqmp_pm_mmio_write(SD_OTAP_DLY, SD1_OTAPDLYSEL_MASK,
-					     SD1_OTAPDLYSEL_SD_HSD);
+			eemi_ops->ioctl(NODE_SD_1, IOCTL_SET_SD_TAPDELAY,
+				       PM_TAPDELAY_OUTPUT,
+				       SD1_OTAPDLYSEL_SD_HSD,
+				       NULL);
 	}
 }
 
@@ -130,46 +104,51 @@ static void arasan_zynqmp_tap_hs(u8 deviceid, u8 timing, u8 bank)
  */
 static void arasan_zynqmp_tap_ddr50(u8 deviceid, u8 timing, u8 bank)
 {
+	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
+
+	if (!eemi_ops || !eemi_ops->ioctl)
+		return;
+
 	if (deviceid == 0) {
-		/* Program ITAP */
-		zynqmp_pm_mmio_write(SD_ITAP_DLY, SD0_ITAPCHGWIN_MASK,
-				     SD0_ITAPCHGWIN);
-		zynqmp_pm_mmio_write(SD_ITAP_DLY, SD0_ITAPDLYENA_MASK,
-				     SD0_ITAPDLYENA);
-		if (timing == MMC_TIMING_UHS_DDR50)
-			zynqmp_pm_mmio_write(SD_ITAP_DLY, SD0_ITAPDLYSEL_MASK,
-					     SD0_ITAPDLYSEL_SD_DDR50);
-		else
-			zynqmp_pm_mmio_write(SD_ITAP_DLY, SD0_ITAPDLYSEL_MASK,
-					     SD0_ITAPDLYSEL_MMC_DDR50);
-		zynqmp_pm_mmio_write(SD_ITAP_DLY, SD0_ITAPCHGWIN_MASK, 0x0);
-		/* Program OTAP */
-		if (timing == MMC_TIMING_UHS_DDR50)
-			zynqmp_pm_mmio_write(SD_OTAP_DLY, SD0_OTAPDLYSEL_MASK,
-					     SD0_OTAPDLYSEL_SD_DDR50);
-		else
-			zynqmp_pm_mmio_write(SD_OTAP_DLY, SD0_OTAPDLYSEL_MASK,
-					     SD0_OTAPDLYSEL_MMC_DDR50);
+		if (timing == MMC_TIMING_UHS_DDR50) {
+			eemi_ops->ioctl(NODE_SD_0, IOCTL_SET_SD_TAPDELAY,
+				       PM_TAPDELAY_INPUT,
+				       SD0_ITAPDLYSEL_SD_DDR50,
+				       NULL);
+			eemi_ops->ioctl(NODE_SD_0, IOCTL_SET_SD_TAPDELAY,
+				       PM_TAPDELAY_OUTPUT,
+				       SD0_OTAPDLYSEL_SD_DDR50,
+				       NULL);
+		} else {
+			eemi_ops->ioctl(NODE_SD_0, IOCTL_SET_SD_TAPDELAY,
+				       PM_TAPDELAY_INPUT,
+				       SD0_ITAPDLYSEL_MMC_DDR50,
+				       NULL);
+			eemi_ops->ioctl(NODE_SD_0, IOCTL_SET_SD_TAPDELAY,
+				       PM_TAPDELAY_OUTPUT,
+				       SD0_OTAPDLYSEL_MMC_DDR50,
+				       NULL);
+		}
 	} else {
-		/* Program ITAP */
-		zynqmp_pm_mmio_write(SD_ITAP_DLY, SD1_ITAPCHGWIN_MASK,
-				     SD1_ITAPCHGWIN);
-		zynqmp_pm_mmio_write(SD_ITAP_DLY, SD1_ITAPDLYENA_MASK,
-				     SD1_ITAPDLYENA);
-		if (timing == MMC_TIMING_UHS_DDR50)
-			zynqmp_pm_mmio_write(SD_ITAP_DLY, SD1_ITAPDLYSEL_MASK,
-					     SD1_ITAPDLYSEL_SD_DDR50);
-		else
-			zynqmp_pm_mmio_write(SD_ITAP_DLY, SD1_ITAPDLYSEL_MASK,
-					     SD1_ITAPDLYSEL_MMC_DDR50);
-		zynqmp_pm_mmio_write(SD_ITAP_DLY, SD1_ITAPCHGWIN_MASK, 0x0);
-		/* Program OTAP */
-		if (timing == MMC_TIMING_UHS_DDR50)
-			zynqmp_pm_mmio_write(SD_OTAP_DLY, SD1_OTAPDLYSEL_MASK,
-					     SD1_OTAPDLYSEL_SD_DDR50);
-		else
-			zynqmp_pm_mmio_write(SD_OTAP_DLY, SD1_OTAPDLYSEL_MASK,
-					     SD1_OTAPDLYSEL_MMC_DDR50);
+		if (timing == MMC_TIMING_UHS_DDR50) {
+			eemi_ops->ioctl(NODE_SD_1, IOCTL_SET_SD_TAPDELAY,
+				       PM_TAPDELAY_INPUT,
+				       SD1_ITAPDLYSEL_SD_DDR50,
+				       NULL);
+			eemi_ops->ioctl(NODE_SD_1, IOCTL_SET_SD_TAPDELAY,
+				       PM_TAPDELAY_OUTPUT,
+				       SD1_OTAPDLYSEL_SD_DDR50,
+				       NULL);
+		} else {
+			eemi_ops->ioctl(NODE_SD_1, IOCTL_SET_SD_TAPDELAY,
+				       PM_TAPDELAY_INPUT,
+				       SD1_ITAPDLYSEL_MMC_DDR50,
+				       NULL);
+			eemi_ops->ioctl(NODE_SD_1, IOCTL_SET_SD_TAPDELAY,
+				       PM_TAPDELAY_OUTPUT,
+				       SD1_OTAPDLYSEL_MMC_DDR50,
+				       NULL);
+		}
 	}
 }
 
@@ -181,14 +160,22 @@ static void arasan_zynqmp_tap_ddr50(u8 deviceid, u8 timing, u8 bank)
  */
 static void arasan_zynqmp_tap_sdr50(u8 deviceid, u8 timing, u8 bank)
 {
+	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
+
+	if (!eemi_ops || !eemi_ops->ioctl)
+		return;
+
 	if (deviceid == 0) {
-		/* Program OTAP */
-		zynqmp_pm_mmio_write(SD_OTAP_DLY, SD0_OTAPDLYSEL_MASK,
-				     SD0_OTAPDLYSEL_SDR50);
+		eemi_ops->ioctl(NODE_SD_0, IOCTL_SET_SD_TAPDELAY,
+			       PM_TAPDELAY_OUTPUT,
+			       SD0_OTAPDLYSEL_SDR50,
+			       NULL);
 	} else {
 		/* Program OTAP */
-		zynqmp_pm_mmio_write(SD_OTAP_DLY, SD1_OTAPDLYSEL_MASK,
-				     SD1_OTAPDLYSEL_SDR50);
+		eemi_ops->ioctl(NODE_SD_1, IOCTL_SET_SD_TAPDELAY,
+			       PM_TAPDELAY_OUTPUT,
+			       SD1_OTAPDLYSEL_SDR50,
+			       NULL);
 	}
 }
 
@@ -200,22 +187,35 @@ static void arasan_zynqmp_tap_sdr50(u8 deviceid, u8 timing, u8 bank)
  */
 static void arasan_zynqmp_tap_sdr104(u8 deviceid, u8 timing, u8 bank)
 {
+	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
+
+	if (!eemi_ops || !eemi_ops->ioctl)
+		return;
+
 	if (deviceid == 0) {
 		/* Program OTAP */
 		if (bank == MMC_BANK2)
-			zynqmp_pm_mmio_write(SD_OTAP_DLY, SD0_OTAPDLYSEL_MASK,
-					     SD0_OTAPDLYSEL_SDR104_B2);
+			eemi_ops->ioctl(NODE_SD_0, IOCTL_SET_SD_TAPDELAY,
+				       PM_TAPDELAY_OUTPUT,
+				       SD0_OTAPDLYSEL_SDR104_B2,
+				       NULL);
 		else
-			zynqmp_pm_mmio_write(SD_OTAP_DLY, SD0_OTAPDLYSEL_MASK,
-					     SD0_OTAPDLYSEL_SDR104_B0);
+			eemi_ops->ioctl(NODE_SD_0, IOCTL_SET_SD_TAPDELAY,
+				       PM_TAPDELAY_OUTPUT,
+				       SD0_OTAPDLYSEL_SDR104_B0,
+				       NULL);
 	} else {
 		/* Program OTAP */
 		if (bank == MMC_BANK2)
-			zynqmp_pm_mmio_write(SD_OTAP_DLY, SD1_OTAPDLYSEL_MASK,
-					     SD1_OTAPDLYSEL_SDR104_B2);
+			eemi_ops->ioctl(NODE_SD_1, IOCTL_SET_SD_TAPDELAY,
+				       PM_TAPDELAY_OUTPUT,
+				       SD1_OTAPDLYSEL_SDR104_B2,
+				       NULL);
 		else
-			zynqmp_pm_mmio_write(SD_OTAP_DLY, SD1_OTAPDLYSEL_MASK,
-					     SD1_OTAPDLYSEL_SDR104_B0);
+			eemi_ops->ioctl(NODE_SD_1, IOCTL_SET_SD_TAPDELAY,
+				       PM_TAPDELAY_OUTPUT,
+				       SD1_OTAPDLYSEL_SDR104_B0,
+				       NULL);
 	}
 }
 
@@ -227,13 +227,6 @@ static void arasan_zynqmp_tap_sdr104(u8 deviceid, u8 timing, u8 bank)
  */
 void arasan_zynqmp_set_tap_delay(u8 deviceid, u8 timing, u8 bank)
 {
-	if (deviceid == 0)
-		zynqmp_pm_mmio_write(SD_DLL_CTRL, SD0_DLL_RST_MASK,
-				     SD0_DLL_RST);
-	else
-		zynqmp_pm_mmio_write(SD_DLL_CTRL, SD1_DLL_RST_MASK,
-				     SD1_DLL_RST);
-
 	switch (timing) {
 	case MMC_TIMING_SD_HS:
 	case MMC_TIMING_MMC_HS:
@@ -252,12 +245,6 @@ void arasan_zynqmp_set_tap_delay(u8 deviceid, u8 timing, u8 bank)
 		arasan_zynqmp_tap_ddr50(deviceid, timing, bank);
 		break;
 	}
-
-	if (deviceid == 0)
-		zynqmp_pm_mmio_write(SD_DLL_CTRL, SD0_DLL_RST_MASK, 0x0);
-	else
-		zynqmp_pm_mmio_write(SD_DLL_CTRL, SD1_DLL_RST_MASK, 0x0);
-
 }
 EXPORT_SYMBOL_GPL(arasan_zynqmp_set_tap_delay);
 
@@ -267,20 +254,17 @@ EXPORT_SYMBOL_GPL(arasan_zynqmp_set_tap_delay);
  */
 void zynqmp_dll_reset(u8 deviceid)
 {
+	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
+
+	if (!eemi_ops || !eemi_ops->ioctl)
+		return;
+
 	/* Issue DLL Reset */
 	if (deviceid == 0)
-		zynqmp_pm_mmio_write(SD_DLL_CTRL, SD0_DLL_RST_MASK,
-				     SD0_DLL_RST);
+		eemi_ops->ioctl(NODE_SD_0, IOCTL_SD_DLL_RESET,
+			       PM_DLL_RESET_PULSE, 0, NULL);
 	else
-		zynqmp_pm_mmio_write(SD_DLL_CTRL, SD1_DLL_RST_MASK,
-				     SD1_DLL_RST);
-
-	mdelay(1);
-
-	/* Release DLL Reset */
-	if (deviceid == 0)
-		zynqmp_pm_mmio_write(SD_DLL_CTRL, SD0_DLL_RST_MASK, 0x0);
-	else
-		zynqmp_pm_mmio_write(SD_DLL_CTRL, SD1_DLL_RST_MASK, 0x0);
+		eemi_ops->ioctl(NODE_SD_1, IOCTL_SD_DLL_RESET,
+			       PM_DLL_RESET_PULSE, 0, NULL);
 }
 EXPORT_SYMBOL_GPL(zynqmp_dll_reset);

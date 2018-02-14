@@ -34,7 +34,7 @@
 #include <linux/delay.h>
 #include <dt-bindings/phy/phy.h>
 #include <linux/soc/xilinx/zynqmp/fw.h>
-#include <linux/soc/xilinx/zynqmp/firmware.h>
+#include <linux/firmware/xilinx/zynqmp/firmware.h>
 #include <linux/reset.h>
 #include <linux/list.h>
 #include <linux/slab.h>
@@ -159,23 +159,6 @@
 #define SATA_CONTROL_OFFSET		0x0100
 
 #define CONTROLLERS_PER_LANE		5
-
-#define IOU_SLCR			0xFF180000
-
-#define IOU_GEM_CTRL_OFFSET		0x360
-#define SGMII_SD_MASK			0x3
-#define SGMII_SD_OFFSET			2
-#define SGMII_PCS_SD_0			0x0
-#define SGMII_PCS_SD_1			0x1
-#define SGMII_PCS_SD_PHY		0x2
-
-#define IOU_GEM_CLK_CTRL_OFFSET		0x308
-#define GEM_CLK_CTRL_MASK		0xF
-#define GEM_CLK_CTRL_OFFSET		5
-#define GEM_RX_SRC_SEL_GTR		0x1
-#define GEM_REF_SRC_SEL_GTR		0x2
-#define GEM_SGMII_MODE			0x4
-#define GEM_FIFO_CLK_PL			0x8
 
 #define PIPE_CLK_OFFSET			0x7c
 #define PIPE_CLK_ON			1
@@ -956,42 +939,34 @@ static void xpsgtr_ulpi_reset(struct xpsgtr_phy *gtr_phy)
  */
 static int xpsgtr_set_sgmii_pcs(struct xpsgtr_phy *gtr_phy)
 {
-	u32 shift, mask, value;
+	u32 node_id;
 	int ret = 0;
 	struct xpsgtr_dev *gtr_dev = gtr_phy->data;
+	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
+
+	if (!eemi_ops || !eemi_ops->ioctl)
+		return -ENOTSUPP;
 
 	/* Set the PCS signal detect to 1 */
 	switch (gtr_phy->type) {
 	case XPSGTR_TYPE_SGMII0:
-		shift = 0;
+		node_id = NODE_ETH_0;
 		break;
 	case XPSGTR_TYPE_SGMII1:
-		shift = 1;
+		node_id = NODE_ETH_1;
 		break;
 	case XPSGTR_TYPE_SGMII2:
-		shift = 2;
+		node_id = NODE_ETH_2;
 		break;
 	case XPSGTR_TYPE_SGMII3:
-		shift = 3;
+		node_id = NODE_ETH_3;
 		break;
 	default:
 		return -EINVAL;
 	}
 
-	/* Tie the GEM PCS Signal Detect to 1 */
-	mask = SGMII_SD_MASK << SGMII_SD_OFFSET * shift;
-	value = SGMII_PCS_SD_1 << SGMII_SD_OFFSET * shift;
-	ret = zynqmp_pm_mmio_write(IOU_SLCR + IOU_GEM_CTRL_OFFSET, mask, value);
-	if (ret < 0) {
-		dev_err(gtr_dev->dev, "failed to set GEM PCS SD\n");
-		return ret;
-	}
-
-	/* Set the GEM to SGMII mode */
-	mask = GEM_CLK_CTRL_MASK << GEM_CLK_CTRL_OFFSET * shift;
-	value = GEM_RX_SRC_SEL_GTR | GEM_SGMII_MODE;
-	ret = zynqmp_pm_mmio_write(IOU_SLCR + IOU_GEM_CLK_CTRL_OFFSET,
-				   mask, value);
+	ret = eemi_ops->ioctl(node_id, IOCTL_SET_SGMII_MODE,
+			     PM_SGMII_ENABLE, 0, NULL);
 	if (ret < 0) {
 		dev_err(gtr_dev->dev, "failed to set GEM to SGMII mode\n");
 		return ret;
