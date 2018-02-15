@@ -269,7 +269,7 @@ static void xlnx_pl_disp_plane_atomic_update(struct drm_plane *plane,
 	}
 	/* in case frame buffer is used set the color format */
 	xilinx_xdma_drm_config(xlnx_pl_disp->chan[0]->dma_chan,
-			       xlnx_pl_disp->fmt);
+			       xlnx_pl_disp->plane.state->fb->format->format);
 	/* apply the new fb addr and enable */
 	xlnx_pl_disp_plane_enable(plane);
 }
@@ -391,10 +391,16 @@ static int xlnx_pl_disp_bind(struct device *dev, struct device *master,
 	struct drm_device *drm = data;
 	struct xlnx_pl_disp *xlnx_pl_disp = dev_get_drvdata(dev);
 	int ret;
+	u32 *fmts = NULL;
+	unsigned int num_fmts = 0;
 
+	/* in case of fb IP query the supported formats and there count */
+	xilinx_xdma_get_drm_vid_fmts(xlnx_pl_disp->chan[0]->dma_chan,
+				     &num_fmts, &fmts);
 	ret = drm_universal_plane_init(drm, &xlnx_pl_disp->plane, 0,
 				       &xlnx_pl_disp_plane_funcs,
-				       &xlnx_pl_disp->fmt, 1,
+				       fmts ? fmts : &xlnx_pl_disp->fmt,
+				       num_fmts ? num_fmts : 1,
 				       NULL, DRM_PLANE_TYPE_PRIMARY, NULL);
 	if (ret)
 		return ret;
