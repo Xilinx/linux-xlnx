@@ -33,23 +33,17 @@
  * This driver intends to support the display pipeline with DMA engine
  * driver by initializing DRM crtc and plane objects. The driver makes
  * an assumption that it's single plane pipeline, as multi-plane pipeline
- * would require programing beyond the DMA engine interface. Each plane
- * can have up to XLNX_DMA_MAX_CHAN DMA channels to support multi-planar
- * formats.
+ * would require programing beyond the DMA engine interface.
  */
-
-#define XLNX_DMA_MAX_CHAN	1
 
 /**
  * struct xlnx_dma_chan - struct for DMA engine
  * @dma_chan: DMA channel
- * @is_active: flag if the DMA is active
  * @xt: Interleaved desc config container
  * @sgl: Data chunk for dma_interleaved_template
  */
 struct xlnx_dma_chan {
 	struct dma_chan *dma_chan;
-	bool is_active;
 	struct dma_interleaved_template xt;
 	struct data_chunk sgl[1];
 };
@@ -72,7 +66,7 @@ struct xlnx_pl_disp {
 	struct platform_device *master;
 	struct xlnx_crtc xlnx_crtc;
 	struct drm_plane plane;
-	struct xlnx_dma_chan *chan[XLNX_DMA_MAX_CHAN];
+	struct xlnx_dma_chan *chan;
 	struct drm_pending_vblank_event *event;
 	dma_async_tx_callback callback;
 	void *callback_param;
@@ -130,7 +124,7 @@ static unsigned int xlnx_pl_disp_get_align(struct xlnx_crtc *xlnx_crtc)
 {
 	struct xlnx_pl_disp *xlnx_pl_disp = crtc_to_dma(xlnx_crtc);
 
-	return 1 << xlnx_pl_disp->chan[0]->dma_chan->device->copy_align;
+	return 1 << xlnx_pl_disp->chan->dma_chan->device->copy_align;
 }
 
 /*
@@ -150,14 +144,9 @@ static inline struct xlnx_pl_disp *plane_to_dma(struct drm_plane *plane)
 static void xlnx_pl_disp_plane_disable(struct drm_plane *plane)
 {
 	struct xlnx_pl_disp *xlnx_pl_disp = plane_to_dma(plane);
-	unsigned int i;
+	struct xlnx_dma_chan *xlnx_dma_chan = xlnx_pl_disp->chan;
 
-	for (i = 0; i < XLNX_DMA_MAX_CHAN; i++) {
-		struct xlnx_dma_chan *xlnx_dma_chan = xlnx_pl_disp->chan[i];
-
-		if (xlnx_dma_chan->dma_chan)
-			dmaengine_terminate_sync(xlnx_dma_chan->dma_chan);
-	}
+	dmaengine_terminate_sync(xlnx_dma_chan->dma_chan);
 }
 
 /**
@@ -171,29 +160,22 @@ static void xlnx_pl_disp_plane_enable(struct drm_plane *plane)
 	struct xlnx_pl_disp *xlnx_pl_disp = plane_to_dma(plane);
 	struct dma_async_tx_descriptor *desc;
 	enum dma_ctrl_flags flags;
-	unsigned int i;
+	struct xlnx_dma_chan *xlnx_dma_chan = xlnx_pl_disp->chan;
+	struct dma_chan *dma_chan = xlnx_dma_chan->dma_chan;
+	struct dma_interleaved_template *xt = &xlnx_dma_chan->xt;
 
-	for (i = 0; i < XLNX_DMA_MAX_CHAN; i++) {
-		struct xlnx_dma_chan *xlnx_dma_chan = xlnx_pl_disp->chan[i];
-		struct dma_chan *dma_chan = xlnx_dma_chan->dma_chan;
-		struct dma_interleaved_template *xt = &xlnx_dma_chan->xt;
-
-		if (xlnx_dma_chan && xlnx_dma_chan->is_active) {
-			flags = DMA_CTRL_ACK | DMA_PREP_INTERRUPT;
-			desc = dmaengine_prep_interleaved_dma(dma_chan, xt,
-							      flags);
-			if (!desc) {
-				dev_err(xlnx_pl_disp->dev,
-					"failed to prepare DMA descriptor\n");
-				return;
-			}
-			desc->callback = xlnx_pl_disp->callback;
-			desc->callback_param = xlnx_pl_disp->callback_param;
-
-			dmaengine_submit(desc);
-			dma_async_issue_pending(xlnx_dma_chan->dma_chan);
-		}
+	flags = DMA_CTRL_ACK | DMA_PREP_INTERRUPT;
+	desc = dmaengine_prep_interleaved_dma(dma_chan, xt, flags);
+	if (!desc) {
+		dev_err(xlnx_pl_disp->dev,
+			"failed to prepare DMA descriptor\n");
+		return;
 	}
+	desc->callback = xlnx_pl_disp->callback;
+	desc->callback_param = xlnx_pl_disp->callback_param;
+
+	dmaengine_submit(desc);
+	dma_async_issue_pending(xlnx_dma_chan->dma_chan);
 }
 
 static void xlnx_pl_disp_plane_atomic_disable(struct drm_plane *plane,
@@ -215,8 +197,12 @@ static int xlnx_pl_disp_plane_mode_set(struct drm_plane *plane,
 	size_t offset;
 	unsigned int i;
 
+	/* only support packed format for now */
+	if (info->num_planes > 1)
+		return -EINVAL;
+
 	for (i = 0; i < info->num_planes; i++) {
-		struct xlnx_dma_chan *xlnx_dma_chan = xlnx_pl_disp->chan[i];
+		struct xlnx_dma_chan *xlnx_dma_chan = xlnx_pl_disp->chan;
 		unsigned int width = src_w / (i ? info->hsub : 1);
 		unsigned int height = src_h / (i ? info->vsub : 1);
 		unsigned int cpp = drm_format_plane_cpp(info->format, i);
@@ -238,11 +224,7 @@ static int xlnx_pl_disp_plane_mode_set(struct drm_plane *plane,
 		xlnx_dma_chan->xt.dir = DMA_MEM_TO_DEV;
 		xlnx_dma_chan->xt.src_sgl = true;
 		xlnx_dma_chan->xt.dst_sgl = false;
-		xlnx_dma_chan->is_active = true;
 	}
-
-	for (; i < XLNX_DMA_MAX_CHAN; i++)
-		xlnx_pl_disp->chan[i]->is_active = false;
 
 	return 0;
 }
@@ -268,7 +250,7 @@ static void xlnx_pl_disp_plane_atomic_update(struct drm_plane *plane,
 		return;
 	}
 	/* in case frame buffer is used set the color format */
-	xilinx_xdma_drm_config(xlnx_pl_disp->chan[0]->dma_chan,
+	xilinx_xdma_drm_config(xlnx_pl_disp->chan->dma_chan,
 			       xlnx_pl_disp->plane.state->fb->format->format);
 	/* apply the new fb addr and enable */
 	xlnx_pl_disp_plane_enable(plane);
@@ -395,7 +377,7 @@ static int xlnx_pl_disp_bind(struct device *dev, struct device *master,
 	unsigned int num_fmts = 0;
 
 	/* in case of fb IP query the supported formats and there count */
-	xilinx_xdma_get_drm_vid_fmts(xlnx_pl_disp->chan[0]->dma_chan,
+	xilinx_xdma_get_drm_vid_fmts(xlnx_pl_disp->chan->dma_chan,
 				     &num_fmts, &fmts);
 	ret = drm_universal_plane_init(drm, &xlnx_pl_disp->plane, 0,
 				       &xlnx_pl_disp_plane_funcs,
@@ -444,34 +426,27 @@ static int xlnx_pl_disp_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct xlnx_pl_disp *xlnx_pl_disp;
-	unsigned int i;
 	int ret;
 	const char *vformat;
+	struct dma_chan *dma_chan;
+	struct xlnx_dma_chan *xlnx_dma_chan;
 
 	xlnx_pl_disp = devm_kzalloc(dev, sizeof(*xlnx_pl_disp), GFP_KERNEL);
 	if (!xlnx_pl_disp)
 		return -ENOMEM;
 
-	for (i = 0; i < XLNX_DMA_MAX_CHAN; i++) {
-		struct dma_chan *dma_chan;
-		struct xlnx_dma_chan *xlnx_dma_chan;
-		char temp[16];
-
-		snprintf(temp, sizeof(temp), "dma%d", i);
-		dma_chan = of_dma_request_slave_channel(dev->of_node, temp);
-		if (IS_ERR(dma_chan)) {
-			dev_err(dev, "failed to request dma channel\n");
-			return PTR_ERR(dma_chan);
-		}
-
-		xlnx_dma_chan = devm_kzalloc(dev, sizeof(*xlnx_dma_chan),
-					     GFP_KERNEL);
-		if (!xlnx_dma_chan)
-			return -ENOMEM;
-
-		xlnx_dma_chan->dma_chan = dma_chan;
-		xlnx_pl_disp->chan[i] = xlnx_dma_chan;
+	dma_chan = of_dma_request_slave_channel(dev->of_node, "dma0");
+	if (IS_ERR_OR_NULL(dma_chan)) {
+		dev_err(dev, "failed to request dma channel\n");
+		return PTR_ERR(dma_chan);
 	}
+
+	xlnx_dma_chan = devm_kzalloc(dev, sizeof(*xlnx_dma_chan), GFP_KERNEL);
+	if (!xlnx_dma_chan)
+		return -ENOMEM;
+
+	xlnx_dma_chan->dma_chan = dma_chan;
+	xlnx_pl_disp->chan = xlnx_dma_chan;
 	ret = of_property_read_string(dev->of_node, "xlnx,vformat", &vformat);
 	if (ret) {
 		dev_err(dev, "No xlnx,vformat value in dts\n");
@@ -500,10 +475,7 @@ static int xlnx_pl_disp_probe(struct platform_device *pdev)
 err_component:
 	component_del(dev, &xlnx_pl_disp_component_ops);
 err_dma:
-	for (i = 0; i < XLNX_DMA_MAX_CHAN; i++) {
-		if (xlnx_pl_disp->chan[i])
-			dma_release_channel(xlnx_pl_disp->chan[i]->dma_chan);
-	}
+	dma_release_channel(xlnx_pl_disp->chan->dma_chan);
 
 	return ret;
 }
@@ -511,19 +483,14 @@ err_dma:
 static int xlnx_pl_disp_remove(struct platform_device *pdev)
 {
 	struct xlnx_pl_disp *xlnx_pl_disp = platform_get_drvdata(pdev);
-	unsigned int i;
+	struct xlnx_dma_chan *xlnx_dma_chan = xlnx_pl_disp->chan;
 
 	xlnx_drm_pipeline_exit(xlnx_pl_disp->master);
 	component_del(&pdev->dev, &xlnx_pl_disp_component_ops);
-	for (i = 0; i < XLNX_DMA_MAX_CHAN; i++) {
-		struct xlnx_dma_chan *xlnx_dma_chan = xlnx_pl_disp->chan[i];
 
-		if (xlnx_dma_chan) {
-			/* Make sure the channel is terminated before release */
-			dmaengine_terminate_sync(xlnx_dma_chan->dma_chan);
-			dma_release_channel(xlnx_dma_chan->dma_chan);
-		}
-	}
+	/* Make sure the channel is terminated before release */
+	dmaengine_terminate_sync(xlnx_dma_chan->dma_chan);
+	dma_release_channel(xlnx_dma_chan->dma_chan);
 
 	return 0;
 }
