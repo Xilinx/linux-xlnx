@@ -38,6 +38,10 @@ Required simple_panel properties:
    For available panel compatible strings, please refer to bindings in
    Documentation/devicetree/bindings/display/panel/
 
+Optional properties:
+ - xlnx,vpss: vpss phandle
+   This handle is required only when VPSS is connected to DSI as bridge.
+
 Example:
 
 #include <dt-bindings/drm/mipi-dsi.h>
@@ -48,6 +52,7 @@ Example:
 		xlnx,dsi-data-type = <MIPI_DSI_FMT_RGB888>;
 		#address-cells = <1>;
 		#size-cells = <0>;
+		xlnx,vpss = <&v_proc_ss_0>;
 		encoder_dsi_port: port@0 {
 			reg = <0>;
 			dsi_encoder: endpoint {
