@@ -25,6 +25,8 @@
 #include <video/mipi_display.h>
 #include <video/videomode.h>
 
+#include "xlnx_bridge.h"
+
 /* DSI Tx IP registers */
 #define XDSI_CCR			0x00
 #define XDSI_CCR_COREENB		BIT(0)
@@ -92,6 +94,15 @@
  * @video_mode_prop_val: configurable Video mode DSI parameter value
  * @bllp_burst_time_prop_val: Configurable BLLP time for burst mode value
  * @cmd_queue_prop_val: configurable command queue value
+ * @bridge: bridge structure
+ * @height_out: configurable bridge output height parameter
+ * @height_out_prop_val: configurable bridge output height parameter value
+ * @width_out: configurable bridge output width parameter
+ * @width_out_prop_val: configurable bridge output width parameter value
+ * @in_fmt: configurable bridge input media format
+ * @in_fmt_prop_val: configurable media bus format value
+ * @out_fmt: configurable bridge output media format
+ * @out_fmt_prop_val: configurable media bus format value
  */
 struct xlnx_dsi {
 	struct drm_encoder encoder;
@@ -118,6 +129,15 @@ struct xlnx_dsi {
 	u32 video_mode_prop_val;
 	u32 bllp_burst_time_prop_val;
 	u32 cmd_queue_prop_val;
+	struct xlnx_bridge *bridge;
+	struct drm_property *height_out;
+	u32 height_out_prop_val;
+	struct drm_property *width_out;
+	u32 width_out_prop_val;
+	struct drm_property *in_fmt;
+	u32 in_fmt_prop_val;
+	struct drm_property *out_fmt;
+	u32 out_fmt_prop_val;
 };
 
 #define host_to_dsi(host) container_of(host, struct xlnx_dsi, dsi_host)
@@ -297,6 +317,14 @@ static int xlnx_dsi_atomic_set_property(struct drm_connector *connector,
 		dsi->bllp_burst_time_prop_val = (unsigned int)val;
 	else if (prop == dsi->cmd_queue_prop)
 		dsi->cmd_queue_prop_val = (unsigned int)val;
+	else if (prop == dsi->height_out)
+		dsi->height_out_prop_val = (u32)val;
+	else if (prop == dsi->width_out)
+		dsi->width_out_prop_val = (u32)val;
+	else if (prop == dsi->in_fmt)
+		dsi->in_fmt_prop_val = (u32)val;
+	else if (prop == dsi->out_fmt)
+		dsi->out_fmt_prop_val = (u32)val;
 	else
 		return -EINVAL;
 
@@ -324,6 +352,14 @@ xlnx_dsi_atomic_get_property(struct drm_connector *connector,
 		*val = dsi->bllp_burst_time_prop_val;
 	else if (prop == dsi->cmd_queue_prop)
 		*val = dsi->cmd_queue_prop_val;
+	else if (prop == dsi->height_out)
+		*val = dsi->height_out_prop_val;
+	else if (prop == dsi->width_out)
+		*val = dsi->width_out_prop_val;
+	else if (prop == dsi->in_fmt)
+		*val = dsi->in_fmt_prop_val;
+	else if (prop == dsi->out_fmt)
+		*val = dsi->out_fmt_prop_val;
 	else
 		return -EINVAL;
 
@@ -496,6 +532,12 @@ static void xlnx_dsi_connector_create_property(struct drm_connector *connector)
 		drm_property_create_range(dev, 0, "bllp_burst_time", 0, 0xFFFF);
 	dsi->cmd_queue_prop = drm_property_create_range(dev, 0, "cmd_queue", 0,
 							0xffffff);
+	dsi->height_out = drm_property_create_range(dev, 0, "height_out",
+						    2, 4096);
+	dsi->width_out = drm_property_create_range(dev, 0, "width_out",
+						   2, 4096);
+	dsi->in_fmt = drm_property_create_range(dev, 0, "in_fmt", 0, 16384);
+	dsi->out_fmt = drm_property_create_range(dev, 0, "out_fmt", 0, 16384);
 }
 
 /**
@@ -530,6 +572,18 @@ static void xlnx_dsi_connector_attach_property(struct drm_connector *connector)
 	if (dsi->cmd_queue_prop)
 		drm_object_attach_property(&connector->base,
 					   dsi->cmd_queue_prop, 0);
+
+	if (dsi->height_out)
+		drm_object_attach_property(obj, dsi->height_out, 0);
+
+	if (dsi->width_out)
+		drm_object_attach_property(obj, dsi->width_out, 0);
+
+	if (dsi->in_fmt)
+		drm_object_attach_property(obj, dsi->in_fmt, 0);
+
+	if (dsi->out_fmt)
+		drm_object_attach_property(obj, dsi->out_fmt, 0);
 }
 
 static int xlnx_dsi_create_connector(struct drm_encoder *encoder)
@@ -575,6 +629,14 @@ xlnx_dsi_atomic_mode_set(struct drm_encoder *encoder,
 	struct xlnx_dsi *dsi = encoder_to_dsi(encoder);
 	struct videomode *vm = &dsi->vm;
 	struct drm_display_mode *m = &crtc_state->adjusted_mode;
+
+	/* Set bridge input and output parameters */
+	xlnx_bridge_set_input(dsi->bridge, m->hdisplay, m->vdisplay,
+			      dsi->in_fmt_prop_val);
+	xlnx_bridge_set_output(dsi->bridge, dsi->width_out_prop_val,
+			       dsi->height_out_prop_val,
+			       dsi->out_fmt_prop_val);
+	xlnx_bridge_enable(dsi->bridge);
 
 	vm->hactive = m->hdisplay;
 	vm->vactive = m->vdisplay;
@@ -701,6 +763,7 @@ static void xlnx_dsi_unbind(struct device *dev, struct device *master,
 
 	xlnx_dsi_disable(&dsi->encoder);
 	mipi_dsi_host_unregister(&dsi->dsi_host);
+	xlnx_bridge_disable(dsi->bridge);
 }
 
 static const struct component_ops xlnx_dsi_component_ops = {
@@ -713,6 +776,7 @@ static int xlnx_dsi_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct resource *res;
 	struct xlnx_dsi *dsi;
+	struct device_node *vpss_node;
 	int ret;
 
 	dsi = devm_kzalloc(dev, sizeof(*dsi), GFP_KERNEL);
@@ -733,6 +797,16 @@ static int xlnx_dsi_probe(struct platform_device *pdev)
 		return PTR_ERR(dsi->iomem);
 
 	platform_set_drvdata(pdev, dsi);
+
+	/* Bridge support */
+	vpss_node = of_parse_phandle(dsi->dev->of_node, "xlnx,vpss", 0);
+	if (vpss_node) {
+		dsi->bridge = of_xlnx_bridge_get(vpss_node);
+		if (!dsi->bridge) {
+			dev_info(dsi->dev, "Didn't get bridge instance\n");
+			return -EPROBE_DEFER;
+		}
+	}
 
 	return component_add(dev, &xlnx_dsi_component_ops);
 }
