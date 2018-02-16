@@ -130,6 +130,10 @@ Reset outputs:
 	113 :rpu_ls reset.
 	114 :ps_only reset.
 	115 :pl reset.
+	116 :ps_pl0 reset
+	117 :ps_pl1 reset
+	118 :ps_pl2 reset
+	119 :ps_pl3 reset
 
 Example:
 	reset-controller:reset-controller@0 {
