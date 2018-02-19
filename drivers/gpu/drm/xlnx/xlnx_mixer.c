@@ -1368,15 +1368,16 @@ static int xlnx_mix_logo_load(struct xlnx_mix_hw *mixer, u32 logo_w, u32 logo_h,
 		shift = (x % 4) * 8;
 		rword |= r_buf[x] << shift;
 		gword |= g_buf[x] << shift;
-		bword |= r_buf[x] << shift;
+		bword |= b_buf[x] << shift;
 		if (mixer->logo_pixel_alpha_enabled)
 			aword |= a_buf[x] << shift;
+
 		if (x % 4 == 3) {
-			reg_writel(reg, (rbase_addr + x), rword);
-			reg_writel(reg, (gbase_addr + x), gword);
-			reg_writel(reg, (bbase_addr + x), bword);
+			reg_writel(reg, (rbase_addr + (x - 3)), rword);
+			reg_writel(reg, (gbase_addr + (x - 3)), gword);
+			reg_writel(reg, (bbase_addr + (x - 3)), bword);
 			if (mixer->logo_pixel_alpha_enabled)
-				reg_writel(reg, (abase_addr + x), aword);
+				reg_writel(reg, (abase_addr + (x - 3)), aword);
 		}
 	}
 
@@ -1423,7 +1424,7 @@ static int xlnx_mix_update_logo_img(struct xlnx_mix_plane *plane,
 		return -EINVAL;
 	}
 	per_pixel_alpha = (logo_layer->hw_config.vid_fmt ==
-			   DRM_FORMAT_RGBA8888) ? false : true;
+			   DRM_FORMAT_RGBA8888) ? true : false;
 	r_data = kcalloc(pixel_cnt, el_size, GFP_KERNEL);
 	g_data = kcalloc(pixel_cnt, el_size, GFP_KERNEL);
 	b_data = kcalloc(pixel_cnt, el_size, GFP_KERNEL);
