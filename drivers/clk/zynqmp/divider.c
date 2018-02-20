@@ -27,71 +27,88 @@
  * parent - fixed parent.  No clk_set_parent support
  */
 
-#define to_clk_divider(_hw) container_of(_hw, struct clk_divider, hw)
+#define to_zynqmp_clk_divider(_hw)		\
+	container_of(_hw, struct zynqmp_clk_divider, hw)
 
-#define div_mask(width)	((1 << (width)) - 1)
+/**
+ * struct zynqmp_clk_divider - adjustable divider clock
+ *
+ * @hw:	handle between common and hardware-specific interfaces
+ * @flags: Hardware specific flags
+ * @clk_id: Id of clock
+ * @div_type: divisor type (TYPE_DIV1 or TYPE_DIV2)
+ */
+struct zynqmp_clk_divider {
+	struct clk_hw hw;
+	u8 flags;
+	u32 clk_id;
+	u32 div_type;
+};
 
-static unsigned int _get_table_div(const struct clk_div_table *table,
-							unsigned int val)
+static int zynqmp_divider_get_val(unsigned long parent_rate, unsigned long rate)
 {
-	const struct clk_div_table *clkt;
-
-	for (clkt = table; clkt->div; clkt++)
-		if (clkt->val == val)
-			return clkt->div;
-	return 0;
-}
-
-static unsigned int _get_div(const struct clk_div_table *table,
-			     unsigned int val, unsigned long flags, u8 width)
-{
-	if (flags & CLK_DIVIDER_ONE_BASED)
-		return val;
-	if (flags & CLK_DIVIDER_POWER_OF_TWO)
-		return 1 << val;
-	if (flags & CLK_DIVIDER_MAX_AT_ZERO)
-		return val ? val : div_mask(width) + 1;
-	if (table)
-		return _get_table_div(table, val);
-	return val + 1;
+	return DIV_ROUND_CLOSEST(parent_rate, rate);
 }
 
 static unsigned long zynqmp_clk_divider_recalc_rate(struct clk_hw *hw,
-		unsigned long parent_rate)
+						    unsigned long parent_rate)
 {
-	struct clk_divider *divider = to_clk_divider(hw);
-	unsigned int val;
+	struct zynqmp_clk_divider *divider = to_zynqmp_clk_divider(hw);
+	const char *clk_name = clk_hw_get_name(hw);
+	u32 clk_id = divider->clk_id;
+	u32 div_type = divider->div_type;
+	u32 div, value;
 	int ret;
+	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 
-	ret = zynqmp_pm_mmio_read((u32)(ulong)divider->reg, &val);
+	if (!eemi_ops || !eemi_ops->clock_getdivider)
+		return -ENXIO;
+
+	ret = eemi_ops->clock_getdivider(clk_id, &div);
+
 	if (ret)
-		pr_warn_once("Read fail divider address: %x\n",
-				(u32)(ulong)divider->reg);
+		pr_warn_once("%s() get divider failed for %s, ret = %d\n",
+			     __func__, clk_name, ret);
 
-	val = val >> divider->shift;
-	val &= div_mask(divider->width);
+	if (div_type == TYPE_DIV1)
+		value = div & 0xFFFF;
+	else
+		value = (div >> 16) & 0xFFFF;
 
-	return divider_recalc_rate(hw, parent_rate, val, divider->table,
-				   divider->flags);
+	return DIV_ROUND_UP_ULL(parent_rate, value);
 }
 
 static long zynqmp_clk_divider_round_rate(struct clk_hw *hw,
-				unsigned long rate, unsigned long *prate)
+					  unsigned long rate,
+					  unsigned long *prate)
 {
-	struct clk_divider *divider = to_clk_divider(hw);
-	int bestdiv;
+	struct zynqmp_clk_divider *divider = to_zynqmp_clk_divider(hw);
+	const char *clk_name = clk_hw_get_name(hw);
+	u32 clk_id = divider->clk_id;
+	u32 div_type = divider->div_type;
+	u32 bestdiv;
+	int ret;
+	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
+
+	if (!eemi_ops || !eemi_ops->clock_getdivider)
+		return -ENXIO;
 
 	/* if read only, just return current value */
 	if (divider->flags & CLK_DIVIDER_READ_ONLY) {
-		bestdiv = readl(divider->reg) >> divider->shift;
-		bestdiv &= div_mask(divider->width);
-		bestdiv = _get_div(divider->table, bestdiv, divider->flags,
-			divider->width);
+		ret = eemi_ops->clock_getdivider(clk_id, &bestdiv);
+
+		if (ret)
+			pr_warn_once("%s() get divider failed for %s, ret = %d\n",
+				     __func__, clk_name, ret);
+		if (div_type == TYPE_DIV1)
+			bestdiv = bestdiv & 0xFFFF;
+		else
+			bestdiv  = (bestdiv >> 16) & 0xFFFF;
+
 		return DIV_ROUND_UP_ULL((u64)*prate, bestdiv);
 	}
 
-	bestdiv = divider_get_val(rate, *prate, divider->table, divider->width,
-			divider->flags);
+	bestdiv = zynqmp_divider_get_val(*prate, rate);
 
 	if ((clk_hw_get_flags(hw) & CLK_SET_RATE_PARENT) &&
 	    ((clk_hw_get_flags(hw) & CLK_FRAC)))
@@ -101,31 +118,42 @@ static long zynqmp_clk_divider_round_rate(struct clk_hw *hw,
 	return rate;
 }
 
+/**
+ * zynqmp_clk_divider_set_rate - Set rate of divider clock
+ * @hw:	handle between common and hardware-specific interfaces
+ * @rate: rate of clock to be set
+ * @parent_rate: rate of parent clock
+ *
+ * Return: 0 always
+ */
 static int zynqmp_clk_divider_set_rate(struct clk_hw *hw, unsigned long rate,
-				unsigned long parent_rate)
+				       unsigned long parent_rate)
 {
-	struct clk_divider *divider = to_clk_divider(hw);
-	unsigned int value;
-	u32 val;
+	struct zynqmp_clk_divider *divider = to_zynqmp_clk_divider(hw);
+	const char *clk_name = clk_hw_get_name(hw);
+	u32 clk_id = divider->clk_id;
+	u32 div_type = divider->div_type;
+	u32 value, div;
 	int ret;
+	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 
-	value = divider_get_val(rate, parent_rate, divider->table,
-				divider->width, divider->flags);
+	if (!eemi_ops || !eemi_ops->clock_setdivider)
+		return -ENXIO;
 
-	if (divider->flags & CLK_DIVIDER_HIWORD_MASK) {
-		val = div_mask(divider->width) << (divider->shift + 16);
+	value = zynqmp_divider_get_val(parent_rate, rate);
+	if (div_type == TYPE_DIV1) {
+		div = value & 0xFFFF;
+		div |= ((u16)-1) << 16;
 	} else {
-		ret = zynqmp_pm_mmio_read((u32)(ulong)divider->reg, &val);
-		if (ret)
-			pr_warn_once("Read fail divider address: %x\n",
-					(u32)(ulong)divider->reg);
-		val &= ~(div_mask(divider->width) << divider->shift);
+		div = ((u16)-1);
+		div |= value << 16;
 	}
-	val |= value << divider->shift;
-	ret = zynqmp_pm_mmio_writel(val, divider->reg);
+
+	ret = eemi_ops->clock_setdivider(clk_id, div);
+
 	if (ret)
-		pr_warn_once("Write failed to divider address:%x\n",
-				(u32)(ulong)divider->reg);
+		pr_warn_once("%s() set divider failed for %s, ret = %d\n",
+			     __func__, clk_name, ret);
 
 	return 0;
 }
@@ -136,21 +164,28 @@ static const struct clk_ops zynqmp_clk_divider_ops = {
 	.set_rate = zynqmp_clk_divider_set_rate,
 };
 
+/**
+ * _register_divider - register a divider clock
+ * @dev: device registering this clock
+ * @name: name of this clock
+ * @clk_id: Id of clock
+ * @div_type: Type of divisor
+ * @parents: name of clock's parents
+ * @num_parents: number of parents
+ * @flags: framework-specific flags
+ * @clk_divider_flags: divider-specific flags for this clock
+ *
+ * Return: handle to registered clock divider
+ */
 static struct clk *_register_divider(struct device *dev, const char *name,
-		const char *parent_name, unsigned long flags,
-		void __iomem *reg, u8 shift, u8 width,
-		u8 clk_divider_flags, const struct clk_div_table *table)
+				     u32 clk_id, u32 div_type,
+				     const char * const *parents,
+				     u8 num_parents, unsigned long flags,
+				     u8 clk_divider_flags)
 {
-	struct clk_divider *div;
+	struct zynqmp_clk_divider *div;
 	struct clk *clk;
 	struct clk_init_data init;
-
-	if (clk_divider_flags & CLK_DIVIDER_HIWORD_MASK) {
-		if (width + shift > 16) {
-			pr_warn("divider value exceeds LOWORD field\n");
-			return ERR_PTR(-EINVAL);
-		}
-	}
 
 	/* allocate the divider */
 	div = kzalloc(sizeof(*div), GFP_KERNEL);
@@ -159,17 +194,15 @@ static struct clk *_register_divider(struct device *dev, const char *name,
 
 	init.name = name;
 	init.ops = &zynqmp_clk_divider_ops;
-	init.flags = flags | CLK_IS_BASIC;
-	init.parent_names = (parent_name ? &parent_name : NULL);
-	init.num_parents = (parent_name ? 1 : 0);
+	init.flags = flags;
+	init.parent_names = parents;
+	init.num_parents = num_parents;
 
 	/* struct clk_divider assignments */
-	div->reg = reg;
-	div->shift = shift;
-	div->width = width;
 	div->flags = clk_divider_flags;
 	div->hw.init = &init;
-	div->table = table;
+	div->clk_id = clk_id;
+	div->div_type = div_type;
 
 	/* register the clock */
 	clk = clk_register(dev, &div->hw);
@@ -184,22 +217,22 @@ static struct clk *_register_divider(struct device *dev, const char *name,
  * zynqmp_clk_register_divider - register a divider clock
  * @dev: device registering this clock
  * @name: name of this clock
- * @parent_name: name of clock's parent
+ * @clk_id: Id of clock
+ * @div_type: Type of divisor
+ * @parents: name of clock's parents
+ * @num_parents: number of parents
  * @flags: framework-specific flags
- * @reg: register address to adjust divider
- * @shift: number of bits to shift the bitfield
- * @width: width of the bitfield
  * @clk_divider_flags: divider-specific flags for this clock
  *
  * Return: handle to registered clock divider
  */
 struct clk *zynqmp_clk_register_divider(struct device *dev, const char *name,
-		const char *parent_name, unsigned long flags,
-		resource_size_t *reg, u8 shift, u8 width,
-		u8 clk_divider_flags)
+					u32 clk_id, u32 div_type,
+					const char * const *parents,
+					u8 num_parents, unsigned long flags,
+					u8 clk_divider_flags)
 {
-	return _register_divider(dev, name, parent_name, flags,
-			(void __iomem *)reg, shift,
-			width, clk_divider_flags, NULL);
+	return _register_divider(dev, name, clk_id, div_type, parents,
+				 num_parents, flags, clk_divider_flags);
 }
 EXPORT_SYMBOL_GPL(zynqmp_clk_register_divider);

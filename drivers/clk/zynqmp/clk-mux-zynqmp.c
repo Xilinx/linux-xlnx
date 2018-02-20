@@ -22,37 +22,44 @@
  * parent - parent is adjustable through clk_set_parent
  */
 
-#define to_clk_mux(_hw) container_of(_hw, struct clk_mux, hw)
+/**
+ * struct zynqmp_clk_mux - multiplexer clock
+ *
+ * @hw: handle between common and hardware-specific interfaces
+ * @flags: hardware-specific flags
+ * @clk_id: Id of clock
+ */
+struct zynqmp_clk_mux {
+	struct clk_hw hw;
+	u8 flags;
+	u32 clk_id;
+};
 
+#define to_zynqmp_clk_mux(_hw) container_of(_hw, struct zynqmp_clk_mux, hw)
+
+/**
+ * zynqmp_clk_mux_get_parent - Get parent of clock
+ * @hw: handle between common and hardware-specific interfaces
+ *
+ * Return: Parent index
+ */
 static u8 zynqmp_clk_mux_get_parent(struct clk_hw *hw)
 {
-	struct clk_mux *mux = to_clk_mux(hw);
-	int num_parents = clk_hw_get_num_parents(hw);
+	struct zynqmp_clk_mux *mux = to_zynqmp_clk_mux(hw);
+	const char *clk_name = clk_hw_get_name(hw);
+	u32 clk_id = mux->clk_id;
 	u32 val;
 	int ret;
+	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 
-	/*
-	 * FIXME need a mux-specific flag to determine if val is bitwise or
-	 * numeric e.g. sys_clkin_ck's clksel field is 3 bits wide, but ranges
-	 * from 0x1 to 0x7 (index starts at one)
-	 * OTOH, pmd_trace_clk_mux_ck uses a separate bit for each clock, so
-	 * val = 0x4 really means "bit 2, index starts at bit 0"
-	 */
-	ret = zynqmp_pm_mmio_read((u32)(ulong)mux->reg, &val);
+	if (!eemi_ops || !eemi_ops->clock_getparent)
+		return -ENXIO;
+
+	ret = eemi_ops->clock_getparent(clk_id, &val);
+
 	if (ret)
-		pr_warn_once("Read fail mux address: %x\n",
-				(u32)(ulong)mux->reg);
-	val = val >> mux->shift;
-	val &= mux->mask;
-
-	if (mux->table) {
-		int i;
-
-		for (i = 0; i < num_parents; i++)
-			if (mux->table[i] == val)
-				return i;
-		return 0;
-	}
+		pr_warn_once("%s() getparent failed for clock: %s, ret = %d\n",
+			     __func__, clk_name, ret);
 
 	if (val && (mux->flags & CLK_MUX_INDEX_BIT))
 		val = ffs(val) - 1;
@@ -63,36 +70,35 @@ static u8 zynqmp_clk_mux_get_parent(struct clk_hw *hw)
 	return val;
 }
 
+/**
+ * zynqmp_clk_mux_set_parent - Set parent of clock
+ * @hw: handle between common and hardware-specific interfaces
+ * @index: Parent index
+ *
+ * Return: 0 always
+ */
 static int zynqmp_clk_mux_set_parent(struct clk_hw *hw, u8 index)
 {
-	struct clk_mux *mux = to_clk_mux(hw);
-	u32 val;
+	struct zynqmp_clk_mux *mux = to_zynqmp_clk_mux(hw);
+	const char *clk_name = clk_hw_get_name(hw);
+	u32 clk_id = mux->clk_id;
 	int ret;
+	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 
-	if (mux->table) {
-		index = mux->table[index];
-	} else {
-		if (mux->flags & CLK_MUX_INDEX_BIT)
-			index = 1 << index;
+	if (!eemi_ops || !eemi_ops->clock_setparent)
+		return -ENXIO;
 
-		if (mux->flags & CLK_MUX_INDEX_ONE)
-			index++;
-	}
+	if (mux->flags & CLK_MUX_INDEX_BIT)
+		index = 1 << index;
 
-	if (mux->flags & CLK_MUX_HIWORD_MASK) {
-		val = mux->mask << (mux->shift + 16);
-	} else {
-		ret = zynqmp_pm_mmio_read((u32)(ulong)mux->reg, &val);
-		if (ret)
-			pr_warn_once("Read fail mux address: %x\n",
-					(u32)(ulong)mux->reg);
-		val &= ~(mux->mask << mux->shift);
-	}
-	val |= index << mux->shift;
-	ret = zynqmp_pm_mmio_writel(val, mux->reg);
+	if (mux->flags & CLK_MUX_INDEX_ONE)
+		index++;
+
+	ret = eemi_ops->clock_setparent(clk_id, index);
+
 	if (ret)
-		pr_warn_once("Write failed to mux address:%x\n",
-				(u32)(ulong)mux->reg);
+		pr_warn_once("%s() set parent failed for clock: %s, ret = %d\n",
+			     __func__, clk_name, ret);
 
 	return 0;
 }
@@ -109,27 +115,31 @@ const struct clk_ops zynqmp_clk_mux_ro_ops = {
 };
 EXPORT_SYMBOL_GPL(zynqmp_clk_mux_ro_ops);
 
+/**
+ * zynqmp_clk_register_mux_table - register a mux table with the clock framework
+ * @dev: device that is registering this clock
+ * @name: name of this clock
+ * @clk_id: Id of this clock
+ * @parent_names: name of this clock's parents
+ * @num_parents: number of parents
+ * @flags: framework-specific flags for this clock
+ * @clk_mux_flags: mux-specific flags for this clock
+ *
+ * Return: clock handle of the registered clock mux
+ */
 struct clk *zynqmp_clk_register_mux_table(struct device *dev, const char *name,
-		const char * const *parent_names, u8 num_parents,
-		unsigned long flags,
-		resource_size_t *reg, u8 shift, u32 mask,
-		u8 clk_mux_flags, u32 *table)
+					  u32 clk_id,
+					  const char * const *parent_names,
+					  u8 num_parents,
+					  unsigned long flags,
+					  u8 clk_mux_flags)
 {
-	struct clk_mux *mux;
+	struct zynqmp_clk_mux *mux;
 	struct clk *clk;
 	struct clk_init_data init;
-	u8 width = 0;
-
-	if (clk_mux_flags & CLK_MUX_HIWORD_MASK) {
-		width = fls(mask) - ffs(mask) + 1;
-		if (width + shift > 16) {
-			pr_err("mux value exceeds LOWORD field\n");
-			return ERR_PTR(-EINVAL);
-		}
-	}
 
 	/* allocate the mux */
-	mux = kzalloc(sizeof(struct clk_mux), GFP_KERNEL);
+	mux = kzalloc(sizeof(*mux), GFP_KERNEL);
 	if (!mux)
 		return ERR_PTR(-ENOMEM);
 
@@ -138,17 +148,14 @@ struct clk *zynqmp_clk_register_mux_table(struct device *dev, const char *name,
 		init.ops = &zynqmp_clk_mux_ro_ops;
 	else
 		init.ops = &zynqmp_clk_mux_ops;
-	init.flags = flags | CLK_IS_BASIC;
+	init.flags = flags;
 	init.parent_names = parent_names;
 	init.num_parents = num_parents;
 
 	/* struct clk_mux assignments */
-	mux->reg = reg;
-	mux->shift = shift;
-	mux->mask = mask;
 	mux->flags = clk_mux_flags;
-	mux->table = table;
 	mux->hw.init = &init;
+	mux->clk_id = clk_id;
 
 	clk = clk_register(dev, &mux->hw);
 
@@ -159,16 +166,24 @@ struct clk *zynqmp_clk_register_mux_table(struct device *dev, const char *name,
 }
 EXPORT_SYMBOL_GPL(zynqmp_clk_register_mux_table);
 
+/**
+ * zynqmp_clk_register_mux - register a mux clock with the clock framework
+ * @dev: device that is registering this clock
+ * @name: name of this clock
+ * @clk_id: Id of this clock
+ * @parent_names: name of this clock's parents
+ * @num_parents: number of parents
+ * @flags: framework-specific flags for this clock
+ * @clk_mux_flags: mux-specific flags for this clock
+ *
+ * Return: clock handle of the registered clock mux
+ */
 struct clk *zynqmp_clk_register_mux(struct device *dev, const char *name,
-		const char **parent_names, u8 num_parents,
-		unsigned long flags,
-		resource_size_t *reg, u8 shift, u8 width,
-		u8 clk_mux_flags)
+				    u32 clk_id, const char **parent_names,
+				    u8 num_parents, unsigned long flags,
+				    u8 clk_mux_flags)
 {
-	u32 mask = BIT(width) - 1;
-
-	return zynqmp_clk_register_mux_table(dev, name, parent_names,
-					num_parents, flags, reg, shift, mask,
-					clk_mux_flags, NULL);
+	return zynqmp_clk_register_mux_table(dev, name, clk_id, parent_names,
+					     num_parents, flags, clk_mux_flags);
 }
 EXPORT_SYMBOL_GPL(zynqmp_clk_register_mux);
