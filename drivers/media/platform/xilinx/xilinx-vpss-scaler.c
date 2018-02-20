@@ -1325,6 +1325,7 @@ static int xscaler_s_stream(struct v4l2_subdev *subdev, int enable)
 		gpiod_set_value_cansleep(xscaler->rst_gpio,
 					 XSCALER_RESET_DEASSERT);
 		xscaler_reset(xscaler);
+		memset(xscaler->H_phases, 0, sizeof(xscaler->H_phases));
 		return 0;
 	}
 
