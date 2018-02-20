@@ -1,0 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0+
+# Kconfig for Xilinx firmwares
+
+source "drivers/firmware/xilinx/zynqmp/Kconfig"
