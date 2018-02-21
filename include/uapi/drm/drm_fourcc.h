@@ -165,7 +165,7 @@ extern "C" {
 #define DRM_FORMAT_XYUV8888	fourcc_code('X', 'Y', 'U', 'V') /* [31:0] X:Y:Cb:Cr 8:8:8:8 little endian */
 #define DRM_FORMAT_VUY888	fourcc_code('V', 'U', '2', '4') /* [23:0] Cr:Cb:Y 8:8:8 little endian */
 #define DRM_FORMAT_XVUY8888	fourcc_code('X', 'V', '2', '4') /* [31:0] x:Cr:Cb:Y 8:8:8:8 little endian */
-#define DRM_FORMAT_XVUY2101010	fourcc_code('X', 'Y', '3', '0') /* [31:0] x:Cr:Cb:Y 2:10:10:10 little endian */
+#define DRM_FORMAT_XVUY2101010	fourcc_code('X', 'V', '3', '0') /* [31:0] x:Cr:Cb:Y 2:10:10:10 little endian */
 #define DRM_FORMAT_VUY101010	fourcc_code('V', 'U', '3', '0') /* Y followed by U then V, 10:10:10. Non-linear modifier only */
 
 /*
