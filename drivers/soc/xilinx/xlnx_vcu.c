@@ -305,6 +305,19 @@ u32 xvcu_get_memory_depth(struct xvcu_device *xvcu)
 EXPORT_SYMBOL_GPL(xvcu_get_memory_depth);
 
 /**
+ * xvcu_get_clock_frequency - provide the core clock frequency
+ * @xvcu:	Pointer to the xvcu_device structure
+ *
+ * Return:	Returns 32bit value
+ *
+ */
+u32 xvcu_get_clock_frequency(struct xvcu_device *xvcu)
+{
+	return xvcu->coreclk;
+}
+EXPORT_SYMBOL_GPL(xvcu_get_clock_frequency);
+
+/**
  * xvcu_set_vcu_pll_info - Set the VCU PLL info
  * @xvcu:	Pointer to the xvcu_device structure
  *
