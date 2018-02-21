@@ -59,6 +59,7 @@ MODULE_PARM_DESC(fbdev_vres,
  * @fb: DRM fb helper
  * @master: logical master device for pipeline
  * @suspend_state: atomic state for suspend / resume
+ * @is_master: A flag to indicate if this instance is fake master
  */
 struct xlnx_drm {
 	struct drm_device *drm;
@@ -66,6 +67,7 @@ struct xlnx_drm {
 	struct drm_fb_helper *fb;
 	struct platform_device *master;
 	struct drm_atomic_state *suspend_state;
+	bool is_master;
 };
 
 /**
@@ -137,6 +139,35 @@ static void xlnx_mode_config_init(struct drm_device *drm)
 		xlnx_crtc_helper_get_cursor_height(crtc);
 }
 
+static int xlnx_drm_open(struct drm_device *dev, struct drm_file *file)
+{
+	struct xlnx_drm *xlnx_drm = dev->dev_private;
+
+	/* This is a hacky way to allow the root user to run as a master */
+	if (!(drm_is_primary_client(file) && !dev->master) &&
+	    !file->is_master && capable(CAP_SYS_ADMIN)) {
+		file->is_master = 1;
+		xlnx_drm->is_master = true;
+	}
+
+	return 0;
+}
+
+static int xlnx_drm_release(struct inode *inode, struct file *filp)
+{
+	struct drm_file *file = filp->private_data;
+	struct drm_minor *minor = file->minor;
+	struct drm_device *drm = minor->dev;
+	struct xlnx_drm *xlnx_drm = drm->dev_private;
+
+	if (xlnx_drm->is_master) {
+		xlnx_drm->is_master = false;
+		file->is_master = 0;
+	}
+
+	return drm_release(inode, filp);
+}
+
 static void xlnx_lastclose(struct drm_device *drm)
 {
 	struct xlnx_drm *xlnx_drm = drm->dev_private;
@@ -148,7 +179,7 @@ static void xlnx_lastclose(struct drm_device *drm)
 static const struct file_operations xlnx_fops = {
 	.owner		= THIS_MODULE,
 	.open		= drm_open,
-	.release	= drm_release,
+	.release	= xlnx_drm_release,
 	.unlocked_ioctl	= drm_ioctl,
 	.mmap		= drm_gem_cma_mmap,
 	.poll		= drm_poll,
@@ -162,6 +193,7 @@ static const struct file_operations xlnx_fops = {
 static struct drm_driver xlnx_drm_driver = {
 	.driver_features		= DRIVER_MODESET | DRIVER_GEM |
 					  DRIVER_ATOMIC,
+	.open				= xlnx_drm_open,
 	.lastclose			= xlnx_lastclose,
 
 	.prime_handle_to_fd		= drm_gem_prime_handle_to_fd,
