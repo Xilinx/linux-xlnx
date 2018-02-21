@@ -31,8 +31,6 @@ struct xlnk_dma_transfer_handle {
 	void *kern_addr;
 	unsigned long user_addr;
 	enum dma_data_direction transfer_direction;
-	struct scatterlist *sg_list;
-	int sg_list_size;
 	int sg_effective_length;
 	int flags;
 	struct dma_chan *channel;

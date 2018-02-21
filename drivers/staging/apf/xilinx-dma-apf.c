@@ -584,6 +584,7 @@ static unsigned int sgl_merge(struct scatterlist *sgl,
 	unsigned int sg_visited_cnt = 0, sg_merged_num = 0;
 	unsigned int dma_len = 0;
 
+	sg_init_table(sgl_merged, sgl_len);
 	sg_merged_head = sgl_merged;
 	sghead = sgl;
 
@@ -776,8 +777,10 @@ int xdma_submit(struct xdma_chan *chan,
 		struct xlnk_dmabuf_reg *dp)
 {
 	struct xdma_head *dmahead;
-	struct scatterlist *sglist, *sglist_dma;
-	unsigned int sgcnt, sgcnt_dma;
+	struct scatterlist *pagelist = NULL;
+	struct scatterlist *sglist = NULL;
+	unsigned int pagecnt = 0;
+	unsigned int sgcnt = 0;
 	enum dma_data_direction dmadir;
 	int status;
 	unsigned long attrs = 0;
@@ -799,55 +802,56 @@ int xdma_submit(struct xdma_chan *chan,
 
 	if (dp) {
 		int i;
-		int cpy_size;
 		struct scatterlist *sg;
 		unsigned int remaining_size = size;
-		unsigned int observed_size = 0;
 
-		dp->dbuf_attach = dma_buf_attach(dp->dbuf, chan->dev);
-		dp->dbuf_sg_table = dma_buf_map_attachment(dp->dbuf_attach,
-							   chan->direction);
 		if (IS_ERR_OR_NULL(dp->dbuf_sg_table)) {
-			pr_err("%s unable to map sg_table for dbuf: %p\n",
+			pr_err("%s dmabuf not mapped: %p\n",
 			       __func__, dp->dbuf_sg_table);
 			return -EINVAL;
 		}
-		cpy_size = dp->dbuf_sg_table->nents *
-			sizeof(struct scatterlist);
-		dp->sg_list = kmalloc(cpy_size, GFP_KERNEL);
+		if (dp->dbuf_sg_table->nents == 0) {
+			pr_err("%s: cannot map a scatterlist with 0 entries\n",
+			       __func__);
+			return -EINVAL;
+		}
+		sglist = kmalloc_array(dp->dbuf_sg_table->nents,
+				       sizeof(*sglist),
+				       GFP_KERNEL);
 		if (!dp->sg_list)
 			return -ENOMEM;
-		dp->sg_list_cnt = 0;
-		memcpy(dp->sg_list, dp->dbuf_sg_table->sgl, cpy_size);
-		for_each_sg(dp->sg_list,
+		sg_init_table(sglist, dp->dbuf_sg_table->nents);
+		sgcnt = 0;
+		for_each_sg(dp->dbuf_sg_table->sgl,
 			    sg,
 			    dp->dbuf_sg_table->nents,
 			    i) {
-			observed_size += sg_dma_len(sg);
+			sg_set_page(sglist + i,
+				    sg_page(sg),
+				    sg_dma_len(sg),
+				    sg->offset);
+			sg_dma_address(sglist + i) = sg_dma_address(sg);
 			if (remaining_size == 0) {
-				sg_dma_len(sg) = 0;
+				sg_dma_len(sglist + i) = 0;
 			} else if (sg_dma_len(sg) > remaining_size) {
-				sg_dma_len(sg) = remaining_size;
-				dp->sg_list_cnt++;
+				sg_dma_len(sglist + i) = remaining_size;
+				sgcnt++;
 			} else {
 				remaining_size -= sg_dma_len(sg);
-				dp->sg_list_cnt++;
+				sgcnt++;
 			}
 		}
-
-		sglist_dma = dp->sg_list;
-		sglist = dp->sg_list;
-		sgcnt = dp->sg_list_cnt;
-		sgcnt_dma = dp->sg_list_cnt;
 		dmahead->userbuf = (xlnk_intptr_type)sglist->dma_address;
+		pagelist = NULL;
+		pagecnt = 0;
 	} else if (user_flags & CF_FLAG_PHYSICALLY_CONTIGUOUS) {
-		sglist = chan->scratch_sglist;
+		size_t elem_cnt;
+
+		elem_cnt = DIV_ROUND_UP(size, XDMA_MAX_TRANS_LEN);
+		sglist = kmalloc_array(elem_cnt, sizeof(*sglist), GFP_KERNEL);
 		sgcnt = phy_buf_to_sgl(userbuf, size, sglist);
 		if (!sgcnt)
 			return -ENOMEM;
-
-		sglist_dma = sglist;
-		sgcnt_dma = sgcnt;
 
 		status = get_dma_ops(chan->dev)->map_sg(chan->dev,
 							sglist,
@@ -859,35 +863,49 @@ int xdma_submit(struct xdma_chan *chan,
 			pr_err("sg contiguous mapping failed\n");
 			return -ENOMEM;
 		}
+		pagelist = NULL;
+		pagecnt = 0;
 	} else {
-		status = pin_user_pages(userbuf, size,
+		status = pin_user_pages(userbuf,
+					size,
 					dmadir != DMA_TO_DEVICE,
-					&sglist, &sgcnt, user_flags);
+					&pagelist,
+					&pagecnt,
+					user_flags);
 		if (status < 0) {
 			pr_err("pin_user_pages failed\n");
 			return status;
 		}
 
-		status = get_dma_ops(chan->dev)->map_sg(chan->dev, sglist,
-							sgcnt, dmadir, attrs);
+		status = get_dma_ops(chan->dev)->map_sg(chan->dev,
+							pagelist,
+							pagecnt,
+							dmadir,
+							attrs);
 		if (!status) {
 			pr_err("dma_map_sg failed\n");
-			unpin_user_pages(sglist, sgcnt);
+			unpin_user_pages(pagelist, pagecnt);
 			return -ENOMEM;
 		}
 
-		/* merge sg list to save dma bds */
-		sglist_dma = chan->scratch_sglist;
-		sgcnt_dma = sgl_merge(sglist, sgcnt, sglist_dma);
-		if (!sgcnt_dma) {
-			get_dma_ops(chan->dev)->unmap_sg(chan->dev, sglist,
-							 sgcnt, dmadir, attrs);
-			unpin_user_pages(sglist, sgcnt);
+		sglist = kmalloc_array(pagecnt, sizeof(*sglist), GFP_KERNEL);
+		if (sglist)
+			sgcnt = sgl_merge(pagelist, pagecnt, sglist);
+		if (!sgcnt) {
+			get_dma_ops(chan->dev)->unmap_sg(chan->dev,
+							 pagelist,
+							 pagecnt,
+							 dmadir,
+							 attrs);
+			unpin_user_pages(pagelist, pagecnt);
+			kfree(sglist);
 			return -ENOMEM;
 		}
 	}
 	dmahead->sglist = sglist;
 	dmahead->sgcnt = sgcnt;
+	dmahead->pagelist = pagelist;
+	dmahead->pagecnt = pagecnt;
 
 	/* skipping config */
 	init_completion(&dmahead->cmp);
@@ -900,15 +918,25 @@ int xdma_submit(struct xdma_chan *chan,
 
 	dmahead->nappwords_o = nappwords_o;
 
-	status = xdma_setup_hw_desc(chan, dmahead, sglist_dma, sgcnt_dma,
+	status = xdma_setup_hw_desc(chan, dmahead, sglist, sgcnt,
 				    dmadir, nappwords_i, appwords_i);
 	if (status) {
 		pr_err("setup hw desc failed\n");
-		if (!(user_flags & CF_FLAG_PHYSICALLY_CONTIGUOUS)) {
-			get_dma_ops(chan->dev)->unmap_sg(chan->dev, sglist,
-							 sgcnt, dmadir, attrs);
-			unpin_user_pages(sglist, sgcnt);
+		if (dmahead->pagelist) {
+			get_dma_ops(chan->dev)->unmap_sg(chan->dev,
+							 pagelist,
+							 pagecnt,
+							 dmadir,
+							 attrs);
+			unpin_user_pages(pagelist, pagecnt);
+		} else if (!dp) {
+			get_dma_ops(chan->dev)->unmap_sg(chan->dev,
+							 sglist,
+							 sgcnt,
+							 dmadir,
+							 attrs);
 		}
+		kfree(dmahead->sglist);
 		return -ENOMEM;
 	}
 
@@ -938,25 +966,26 @@ int xdma_wait(struct xdma_head *dmahead,
 		}
 	}
 
-	if (dmahead->dmabuf) {
-		dma_buf_unmap_attachment(dmahead->dmabuf->dbuf_attach,
-					 dmahead->dmabuf->dbuf_sg_table,
-					 dmahead->dmabuf->dma_direction);
-		kfree(dmahead->dmabuf->sg_list);
-		dma_buf_detach(dmahead->dmabuf->dbuf,
-			       dmahead->dmabuf->dbuf_attach);
-	} else {
+	if (!dmahead->dmabuf) {
 		if (!(user_flags & CF_FLAG_CACHE_FLUSH_INVALIDATE))
 			attrs |= DMA_ATTR_SKIP_CPU_SYNC;
 
-		get_dma_ops(chan->dev)->unmap_sg(chan->dev,
-						 dmahead->sglist,
-						 dmahead->sgcnt,
-						 dmahead->dmadir,
-						 attrs);
-		if (!(user_flags & CF_FLAG_PHYSICALLY_CONTIGUOUS))
-			unpin_user_pages(dmahead->sglist, dmahead->sgcnt);
+		if (user_flags & CF_FLAG_PHYSICALLY_CONTIGUOUS) {
+			get_dma_ops(chan->dev)->unmap_sg(chan->dev,
+							 dmahead->sglist,
+							 dmahead->sgcnt,
+							 dmahead->dmadir,
+							 attrs);
+		} else {
+			get_dma_ops(chan->dev)->unmap_sg(chan->dev,
+							 dmahead->pagelist,
+							 dmahead->pagecnt,
+							 dmahead->dmadir,
+							 attrs);
+			unpin_user_pages(dmahead->pagelist, dmahead->pagecnt);
+		}
 	}
+	kfree(dmahead->sglist);
 
 	return 0;
 }
