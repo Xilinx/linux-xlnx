@@ -16,12 +16,12 @@
  * Need to implement in a modular approach to share driver code between
  * V4L2 and DRM frameworks.
  * Should be integrated with plane.
- * Reset though GPIO.
  * Add YUV420 support.
  */
 
 #include <linux/device.h>
 #include <linux/err.h>
+#include <linux/gpio/consumer.h>
 #include <linux/io.h>
 #include <linux/module.h>
 #include <linux/of_device.h>
@@ -53,6 +53,10 @@
 #define XGPIO_IER_OFFSET		(0x128)
 #define XGPIO_CHAN_OFFSET		(8)
 #define STEP_PRECISION			(65536)
+
+/* SCALER POWER MACROS */
+#define XSCALER_RESET_ASSERT            (0x1)
+#define XSCALER_RESET_DEASSERT          (0x0)
 
 /* Video IP PPC */
 #define XSCALER_PPC_1			(1)
@@ -712,6 +716,7 @@ static const u32 xilinx_scaler_video_fmts[] = {
  * @hscaler_coeff: The complete array of H-scaler coefficients
  * @vscaler_coeff: The complete array of V-scaler coefficients
  * @is_polyphase: Track if scaling algorithm is polyphase or not
+ * @rst_gpio: GPIO reset line to bring VPSS Scaler out of reset
  */
 struct xilinx_scaler {
 	void __iomem *base;
@@ -733,6 +738,7 @@ struct xilinx_scaler {
 	short hscaler_coeff[XV_HSCALER_MAX_H_PHASES][XV_HSCALER_MAX_H_TAPS];
 	short vscaler_coeff[XV_VSCALER_MAX_V_PHASES][XV_VSCALER_MAX_V_TAPS];
 	bool is_polyphase;
+	struct gpio_desc *rst_gpio;
 };
 
 static inline void xilinx_scaler_write(void __iomem *base, u32 offset, u32 val)
@@ -761,7 +767,7 @@ static inline void
 xilinx_scaler_disable_block(struct xilinx_scaler *scaler, u32 channel,
 			    u32 ip_block)
 {
-	xilinx_scaler_clr(scaler, ((channel - 1) * XGPIO_CHAN_OFFSET) +
+	xilinx_scaler_clr(scaler->base, ((channel - 1) * XGPIO_CHAN_OFFSET) +
 			  XGPIO_DATA_OFFSET + S_AXIS_RESET_OFF, ip_block);
 }
 
@@ -769,7 +775,7 @@ static inline void
 xilinx_scaler_enable_block(struct xilinx_scaler *scaler, u32 channel,
 			   u32 ip_block)
 {
-	xilinx_scaler_set(scaler, ((channel - 1) * XGPIO_CHAN_OFFSET) +
+	xilinx_scaler_set(scaler->base, ((channel - 1) * XGPIO_CHAN_OFFSET) +
 			  XGPIO_DATA_OFFSET + S_AXIS_RESET_OFF, ip_block);
 }
 
@@ -804,7 +810,6 @@ static void xilinx_scaler_reset(struct xilinx_scaler *scaler)
  * @width_in: input width
  * @width_out: output width
  * @pixel_rate: pixel rate
- *
  */
 static void
 xv_hscaler_calculate_phases(struct xilinx_scaler *scaler,
@@ -1378,6 +1383,15 @@ static int xilinx_scaler_parse_of(struct xilinx_scaler *scaler)
 		return -EINVAL;
 	}
 	scaler->pix_per_clk = dt_ppc;
+
+	/* Reset GPIO */
+	scaler->rst_gpio = devm_gpiod_get(scaler->dev, "reset", GPIOD_OUT_HIGH);
+	if (IS_ERR(scaler->rst_gpio)) {
+		if (PTR_ERR(scaler->rst_gpio) != -EPROBE_DEFER)
+			dev_err(scaler->dev, "Reset GPIO not setup in DT");
+		return PTR_ERR(scaler->rst_gpio);
+	}
+
 	return 0;
 }
 
@@ -1504,6 +1518,11 @@ static int xilinx_scaler_bridge_set_input(struct xlnx_bridge *bridge,
 	scaler->width_in = width;
 	scaler->fmt_in = bus_fmt;
 
+	/* IP Reset through GPIO */
+	gpiod_set_value_cansleep(scaler->rst_gpio, XSCALER_RESET_DEASSERT);
+	gpiod_set_value_cansleep(scaler->rst_gpio, XSCALER_RESET_ASSERT);
+	xilinx_scaler_reset(scaler);
+
 	xilinx_scaler_write(scaler->base, V_VSCALER_OFF +
 			    XV_VSCALER_CTRL_ADDR_HWREG_HEIGHTIN_DATA, height);
 	xilinx_scaler_write(scaler->base, V_VSCALER_OFF +
@@ -1606,6 +1625,9 @@ static int xilinx_scaler_probe(struct platform_device *pdev)
 	scaler->max_num_phases = XSCALER_MAX_PHASES;
 	scaler->max_lines = XSCALER_MAX_HEIGHT;
 	scaler->max_pixels = XSCALER_MAX_WIDTH;
+
+	/* Reset the Global IP Reset through a GPIO */
+	gpiod_set_value_cansleep(scaler->rst_gpio, XSCALER_RESET_ASSERT);
 	xilinx_scaler_reset(scaler);
 
 	scaler->bridge.enable = &xilinx_scaler_bridge_enable;
