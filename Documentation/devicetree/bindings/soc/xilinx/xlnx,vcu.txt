@@ -19,13 +19,43 @@ Required properties:
 - clocks: phandle for aclk and pll_ref clocksource
 - clock-names: The identification string, "aclk", is always required for
    the axi clock. "pll_ref" is required for pll.
+- ranges
+- VCU Init driver node define the following child nodes:
+	* Allegro encoder driver node
+		- compatible: Must be "al,al5e"
+		- reg: There is a one set of register.
+		- interrupts: interrupt number to the cpu.
+		- interrupt-parent: the phandle for the interrupt controller
+		  that services interrupts for this device.
+	* Allegro decoder driver node
+		- compatible: Must be "al,al5d"
+		- reg: There is a one set of register.
+		- interrupts: interrupt number to the cpu.
+		- interrupt-parent: the phandle for the interrupt controller
+		  that services interrupts for this device.
 Example:
 
 	xlnx_vcu: vcu@a0040000 {
-		compatible = "xlnx,vcu-logicoreip-1.0";
+		compatible = "xlnx,vcu";
+		#address-cells = <2>;
+		#size-cells = <2>;
 		reg = <0x0 0xa0040000 0x0 0x1000>,
 			 <0x0 0xa0041000 0x0 0x1000>;
 		reg-names = "vcu_slcr", "logicore";
 		clocks = <&si570_1>, <&clkc 71>;
 		clock-names = "pll_ref", "aclk";
+		ranges;
+		encoder: al5e@a0000000 {
+			compatible = "al,al5e";
+			reg = <0x0 0xa0000000 0x0 0x10000>;
+			interrupts = <0 89 4>;
+			interrupt-parent = <&gic>;
+		};
+
+		decoder: al5d@a0020000 {
+			compatible = "al,al5d";
+			reg = <0x0 0xa0020000 0x0 0x10000>;
+			interrupts = <0 89 4>;
+			interrupt-parent = <&gic>;
+		};
 	};
