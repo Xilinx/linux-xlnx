@@ -86,7 +86,7 @@ int axienet_preemption_sts(struct net_device *ndev, void __user *useraddr)
 					ADDITIONAL_FRAG_SIZE_MASK;
 	status.disable_preemp_verify = value & DISABLE_PREEMPTION_VERIFY;
 
-	if (copy_to_user(useraddr, &status, sizeof(value)))
+	if (copy_to_user(useraddr, &status, sizeof(struct preempt_ctrl_sts)))
 		return -EFAULT;
 	return 0;
 }
