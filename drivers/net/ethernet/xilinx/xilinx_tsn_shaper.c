@@ -128,6 +128,12 @@ static int __axienet_get_schedule(struct net_device *ndev, struct qbv_info *qbv)
 	u32 u_value = 0;
 	u8 port = qbv->port;
 
+	if (!(axienet_ior(lp, CONFIG_CHANGE(port)) &
+			CC_ADMIN_GATE_ENABLE_BIT)) {
+		qbv->cycle_time = 0;
+		return 0;
+	}
+
 	u_value = axienet_ior(lp, GATE_STATE(port));
 	qbv->list_length = (u_value >> CC_ADMIN_CTRL_LIST_LENGTH_SHIFT) &
 				CC_ADMIN_CTRL_LIST_LENGTH_MASK;
@@ -146,6 +152,13 @@ static int __axienet_get_schedule(struct net_device *ndev, struct qbv_info *qbv)
 		u_value = axienet_ior(lp, OPER_CTRL_LIST(port, i));
 		qbv->acl_gate_state[i] = (u_value >> ACL_GATE_STATE_SHIFT) &
 					ACL_GATE_STATE_MASK;
+		/**
+		 * In 2Q system, the actual ST Gate state value is 2,
+		 * for user the ST Gate state value is always 4.
+		 */
+		if ((lp->num_queues == 2) && (qbv->acl_gate_state[i] == 2))
+			qbv->acl_gate_state[i] = 4;
+
 		u_value = axienet_ior(lp, OPER_CTRL_LIST_TIME(port, i));
 		qbv->acl_gate_time[i] = u_value & BASE_TIME_SECS_MASK;
 	}
