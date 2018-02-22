@@ -1220,7 +1220,6 @@ static struct platform_driver xdma_driver = {
 	.probe = xdma_probe,
 	.remove = xdma_remove,
 	.driver = {
-		.owner = THIS_MODULE,
 		.name = "xilinx-axidma",
 	},
 };
