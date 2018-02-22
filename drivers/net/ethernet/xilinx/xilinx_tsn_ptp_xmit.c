@@ -193,6 +193,8 @@ static void axienet_ptp_recv(struct net_device *ndev)
 	struct sk_buff *skb;
 	u16 msg_len;
 	u8 msg_type;
+	u32 bytes = 0;
+	u32 packets = 0;
 
 	pr_debug("%s:\n ", __func__);
 
@@ -216,6 +218,9 @@ static void axienet_ptp_recv(struct net_device *ndev)
 
 		skb_put(skb, ntohs(msg_len) + ETH_HLEN);
 
+		bytes += skb->len;
+		packets++;
+
 		skb->protocol = eth_type_trans(skb, ndev);
 		skb->ip_summed = CHECKSUM_UNNECESSARY;
 
@@ -231,6 +236,8 @@ static void axienet_ptp_recv(struct net_device *ndev)
 
 		netif_rx(skb);
 	}
+	ndev->stats.rx_packets += packets;
+	ndev->stats.rx_bytes += bytes;
 }
 
 /**
@@ -264,12 +271,15 @@ void axienet_tx_tstamp(struct work_struct *work)
 {
 	struct axienet_local *lp = container_of(work, struct axienet_local,
 			tx_tstamp_work);
+	struct net_device *ndev = lp->ndev;
 	struct skb_shared_hwtstamps hwtstamps;
 	struct sk_buff *skb;
 	unsigned long ts_reg_offset;
 	unsigned long flags;
 	u8 tx_packet;
 	u8 index;
+	u32 bytes = 0;
+	u32 packets = 0;
 
 	memset(&hwtstamps, 0, sizeof(struct skb_shared_hwtstamps));
 
@@ -297,8 +307,12 @@ void axienet_tx_tstamp(struct work_struct *work)
 			skb_tstamp_tx(skb, &hwtstamps);
 		}
 
+		bytes += skb->len;
+		packets++;
 		dev_kfree_skb_any(skb);
 	}
+	ndev->stats.tx_packets += packets;
+	ndev->stats.tx_bytes += bytes;
 
 	spin_unlock_irqrestore(&lp->ptp_tx_lock, flags);
 }
