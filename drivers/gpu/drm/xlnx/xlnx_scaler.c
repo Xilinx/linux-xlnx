@@ -1522,6 +1522,7 @@ static int xilinx_scaler_bridge_set_input(struct xlnx_bridge *bridge,
 	gpiod_set_value_cansleep(scaler->rst_gpio, XSCALER_RESET_DEASSERT);
 	gpiod_set_value_cansleep(scaler->rst_gpio, XSCALER_RESET_ASSERT);
 	xilinx_scaler_reset(scaler);
+	memset(scaler->H_phases, 0, sizeof(scaler->H_phases));
 
 	xilinx_scaler_write(scaler->base, V_VSCALER_OFF +
 			    XV_VSCALER_CTRL_ADDR_HWREG_HEIGHTIN_DATA, height);
