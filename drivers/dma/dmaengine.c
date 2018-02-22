@@ -972,6 +972,13 @@ int dma_async_device_register(struct dma_device *device)
 		return -EIO;
 	}
 
+	if (dma_has_cap(DMA_SG, device->cap_mask) && !device->device_prep_dma_sg) {
+		dev_err(device->dev,
+			"Device claims capability %s, but op is not defined\n",
+			"DMA_SG");
+		return -EIO;
+	}
+
 	if (dma_has_cap(DMA_CYCLIC, device->cap_mask) && !device->device_prep_dma_cyclic) {
 		dev_err(device->dev,
 			"Device claims capability %s, but op is not defined\n",
