@@ -41,7 +41,7 @@ static inline int axienet_map_gs_to_hw(struct axienet_local *lp, u32 gs)
 static int __axienet_set_schedule(struct net_device *ndev, struct qbv_info *qbv)
 {
 	struct axienet_local *lp = netdev_priv(ndev);
-	u8 i;
+	u16 i;
 	unsigned int acl_bit_map = 0;
 	u32 u_config_change = 0;
 	u8 port = qbv->port;
@@ -66,7 +66,8 @@ static int __axienet_set_schedule(struct net_device *ndev, struct qbv_info *qbv)
 		}
 	}
 	/* write admin time */
-	axienet_iow(lp, ADMIN_CYCLE_TIME_DENOMINATOR(port), qbv->cycle_time);
+	axienet_iow(lp, ADMIN_CYCLE_TIME_DENOMINATOR(port),
+		    qbv->cycle_time & CYCLE_TIME_DENOMINATOR_MASK);
 
 	axienet_iow(lp, ADMIN_BASE_TIME_NS(port), qbv->ptp_time_ns);
 
@@ -78,7 +79,7 @@ static int __axienet_set_schedule(struct net_device *ndev, struct qbv_info *qbv)
 	u_config_change = axienet_ior(lp, CONFIG_CHANGE(port));
 
 	u_config_change &= ~(CC_ADMIN_CTRL_LIST_LENGTH_MASK <<
-		CC_ADMIN_CTRL_LIST_LENGTH_SHIFT);
+				CC_ADMIN_CTRL_LIST_LENGTH_SHIFT);
 	u_config_change |= (qbv->list_length & CC_ADMIN_CTRL_LIST_LENGTH_MASK)
 					<< CC_ADMIN_CTRL_LIST_LENGTH_SHIFT;
 
@@ -91,7 +92,7 @@ static int __axienet_set_schedule(struct net_device *ndev, struct qbv_info *qbv)
 
 	    /* set the time for each entry */
 	    axienet_iow(lp, ADMIN_CTRL_LIST_TIME(port, i),
-			qbv->acl_gate_time[i]);
+			qbv->acl_gate_time[i] & CTRL_LIST_TIME_INTERVAL_MASK);
 	}
 
 	/* clear interrupt status */
@@ -111,20 +112,30 @@ static int __axienet_set_schedule(struct net_device *ndev, struct qbv_info *qbv)
 
 int axienet_set_schedule(struct net_device *ndev, void __user *useraddr)
 {
-	struct qbv_info config;
+	struct qbv_info *config;
+	int ret;
 
-	if (copy_from_user(&config, useraddr, sizeof(struct qbv_info)))
-		return -EFAULT;
+	config = kmalloc(sizeof(*config), GFP_KERNEL);
+	if (!config)
+		return -ENOMEM;
+
+	if (copy_from_user(config, useraddr, sizeof(struct qbv_info))) {
+		ret = -EFAULT;
+		goto out;
+	}
 
 	pr_debug("setting new schedule\n");
 
-	return __axienet_set_schedule(ndev, &config);
+	ret = __axienet_set_schedule(ndev, config);
+out:
+	kfree(config);
+	return ret;
 }
 
 static int __axienet_get_schedule(struct net_device *ndev, struct qbv_info *qbv)
 {
 	struct axienet_local *lp = netdev_priv(ndev);
-	u8 i = 0;
+	u16 i = 0;
 	u32 u_value = 0;
 	u8 port = qbv->port;
 
@@ -139,7 +150,7 @@ static int __axienet_get_schedule(struct net_device *ndev, struct qbv_info *qbv)
 				CC_ADMIN_CTRL_LIST_LENGTH_MASK;
 
 	u_value = axienet_ior(lp, OPER_CYCLE_TIME_DENOMINATOR(port));
-	qbv->cycle_time = u_value & OPER_CYCLE_TIME_DENOMINATOR_MASK;
+	qbv->cycle_time = u_value & CYCLE_TIME_DENOMINATOR_MASK;
 
 	u_value = axienet_ior(lp, OPER_BASE_TIME_NS(port));
 	qbv->ptp_time_ns = u_value & OPER_BASE_TIME_NS_MASK;
@@ -160,24 +171,32 @@ static int __axienet_get_schedule(struct net_device *ndev, struct qbv_info *qbv)
 			qbv->acl_gate_state[i] = 4;
 
 		u_value = axienet_ior(lp, OPER_CTRL_LIST_TIME(port, i));
-		qbv->acl_gate_time[i] = u_value & BASE_TIME_SECS_MASK;
+		qbv->acl_gate_time[i] = u_value & CTRL_LIST_TIME_INTERVAL_MASK;
 	}
 	return 0;
 }
 
 int axienet_get_schedule(struct net_device *ndev, void __user *useraddr)
 {
-	struct qbv_info qbv;
+	struct qbv_info *qbv;
+	int ret = 0;
 
-	if (copy_from_user(&qbv, useraddr, sizeof(struct qbv_info)))
-		return -EFAULT;
+	qbv = kmalloc(sizeof(*qbv), GFP_KERNEL);
+	if (!qbv)
+		return -ENOMEM;
 
-	__axienet_get_schedule(ndev, &qbv);
+	if (copy_from_user(qbv, useraddr, sizeof(struct qbv_info))) {
+		ret = -EFAULT;
+		goto out;
+	}
 
-	if (copy_to_user(useraddr, &qbv, sizeof(struct qbv_info)))
-		return -EFAULT;
+	__axienet_get_schedule(ndev, qbv);
 
-	return 0;
+	if (copy_to_user(useraddr, qbv, sizeof(struct qbv_info)))
+		ret = -EFAULT;
+out:
+	kfree(qbv);
+	return ret;
 }
 
 static irqreturn_t axienet_qbv_irq(int irq, void *_ndev)
