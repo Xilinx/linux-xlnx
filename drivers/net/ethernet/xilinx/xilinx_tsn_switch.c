@@ -17,6 +17,7 @@
 
 #include "xilinx_tsn_switch.h"
 #include <linux/of_platform.h>
+#include <linux/module.h>
 #include <linux/miscdevice.h>
 
 static struct miscdevice switch_dev;
