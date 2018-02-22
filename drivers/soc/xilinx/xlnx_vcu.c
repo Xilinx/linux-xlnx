@@ -1,11 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Xilinx VCU Init
  *
  * Copyright (C) 2016 - 2017 Xilinx, Inc.
  *
  * Contacts   Dhaval Shah <dshah@xilinx.com>
- *
- * SPDX-License-Identifier: GPL-2.0
  */
 #include <linux/clk.h>
 #include <linux/device.h>
@@ -244,7 +243,7 @@ static const struct xvcu_pll_cfg xvcu_pll_cfg[] = {
  * Return:	Returns 32bit value from VCU register specified
  *
  */
-static u32 xvcu_read(void __iomem *iomem, u32 offset)
+static inline u32 xvcu_read(void __iomem *iomem, u32 offset)
 {
 	return ioread32(iomem + offset);
 }
@@ -255,7 +254,7 @@ static u32 xvcu_read(void __iomem *iomem, u32 offset)
  * @offset:	vcu reg offset from base
  * @value:	Value to write
  */
-static void xvcu_write(void __iomem *iomem, u32 offset, u32 value)
+static inline void xvcu_write(void __iomem *iomem, u32 offset, u32 value)
 {
 	iowrite32(value, iomem + offset);
 }
@@ -269,7 +268,7 @@ static void xvcu_write(void __iomem *iomem, u32 offset, u32 value)
  * @shift:	vcu reg number of bits to shift the bitfield
  */
 static void xvcu_write_field_reg(void __iomem *iomem, int offset,
-				u32 field, u32 mask, int shift)
+				 u32 field, u32 mask, int shift)
 {
 	u32 val = xvcu_read(iomem, offset);
 
@@ -326,8 +325,7 @@ static int xvcu_set_vcu_pll_info(struct xvcu_device *xvcu)
 	u32 divisor_mcu, divisor_core, fvco;
 	u32 clkoutdiv, vcu_pll_ctrl, pll_clk;
 	u32 cfg_val, mod, ctrl;
-	int ret;
-	unsigned int i;
+	int ret, i;
 	const struct xvcu_pll_cfg *found = NULL;
 
 	inte = xvcu_read(xvcu->logicore_reg_ba, VCU_PLL_CLK);
@@ -357,7 +355,8 @@ static int xvcu_set_vcu_pll_info(struct xvcu_device *xvcu)
 
 	refclk = clk_get_rate(xvcu->pll_ref);
 
-	/* The divide-by-2 should be always enabled (==1)
+	/*
+	 * The divide-by-2 should be always enabled (==1)
 	 * to meet the timing in the design.
 	 * Otherwise, it's an error
 	 */
@@ -369,7 +368,7 @@ static int xvcu_set_vcu_pll_info(struct xvcu_device *xvcu)
 		return -EINVAL;
 	}
 
-	for (i = ARRAY_SIZE(xvcu_pll_cfg) - 1; i > 0; i--) {
+	for (i = ARRAY_SIZE(xvcu_pll_cfg) - 1; i >= 0; i--) {
 		const struct xvcu_pll_cfg *cfg = &xvcu_pll_cfg[i];
 
 		fvco = cfg->fbdiv * refclk;
@@ -494,7 +493,8 @@ static int xvcu_set_pll(struct xvcu_device *xvcu)
 	xvcu_write_field_reg(xvcu->vcu_slcr_ba, VCU_PLL_CTRL,
 			     0, VCU_PLL_CTRL_RESET_MASK,
 			     VCU_PLL_CTRL_RESET_SHIFT);
-	/* Defined the timeout for the max time to wait the
+	/*
+	 * Defined the timeout for the max time to wait the
 	 * PLL_STATUS to be locked.
 	 */
 	timeout = jiffies + msecs_to_jiffies(2000);
@@ -539,8 +539,8 @@ static int xvcu_probe(struct platform_device *pdev)
 		return -ENODEV;
 	}
 
-	xvcu->vcu_slcr_ba = devm_ioremap_nocache(&pdev->dev,
-			res->start, resource_size(res));
+	xvcu->vcu_slcr_ba = devm_ioremap_nocache(&pdev->dev, res->start,
+						 resource_size(res));
 	if (!xvcu->vcu_slcr_ba) {
 		dev_err(&pdev->dev, "vcu_slcr register mapping failed.\n");
 		return -ENOMEM;
@@ -552,8 +552,8 @@ static int xvcu_probe(struct platform_device *pdev)
 		return -ENODEV;
 	}
 
-	xvcu->logicore_reg_ba = devm_ioremap_nocache(&pdev->dev,
-			res->start, resource_size(res));
+	xvcu->logicore_reg_ba = devm_ioremap_nocache(&pdev->dev, res->start,
+						     resource_size(res));
 	if (!xvcu->logicore_reg_ba) {
 		dev_err(&pdev->dev, "logicore register mapping failed.\n");
 		return -ENOMEM;
@@ -583,7 +583,8 @@ static int xvcu_probe(struct platform_device *pdev)
 		goto error_aclk;
 	}
 
-	/* Do the Gasket isolation and put the VCU out of reset
+	/*
+	 * Do the Gasket isolation and put the VCU out of reset
 	 * Bit 0 : Gasket isolation
 	 * Bit 1 : put VCU out of reset
 	 */
@@ -632,8 +633,7 @@ static int xvcu_remove(struct platform_device *pdev)
 
 	of_platform_depopulate(&pdev->dev);
 
-	/* Add the the Gasket isolation and put the VCU in reset.
-	 */
+	/* Add the the Gasket isolation and put the VCU in reset. */
 	xvcu_write(xvcu->logicore_reg_ba, VCU_GASKET_INIT, 0);
 
 	clk_disable_unprepare(xvcu->pll_ref);
@@ -644,6 +644,7 @@ static int xvcu_remove(struct platform_device *pdev)
 
 static const struct of_device_id xvcu_of_id_table[] = {
 	{ .compatible = "xlnx,vcu" },
+	{ .compatible = "xlnx,vcu-logicoreip-1.0" },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, xvcu_of_id_table);

@@ -1,15 +1,17 @@
-Xilinx VCU init Driver
------------------------------
+LogicoreIP designed compatible with Xilinx ZYNQ family.
+-------------------------------------------------------
 
 General concept
 ---------------
 
-Xilinx VCU init driver is developed to handle the LogiCore related
-new implementation. In this directory, The DT node of the Xilinx
-VCU init driver represents as a top level node.
+LogicoreIP design to provide the isolation between processing system
+and programmable logic. Also provides the list of register set to configure
+the frequency.
 
 Required properties:
-- compatible: Must be "xlnx,vcu".
+- compatible: shall be one of:
+	"xlnx,vcu"
+	"xlnx,vcu-logicoreip-1.0"
 - reg, reg-names: There are two sets of registers need to provide.
 	1. vcu slcr
 	2. Logicore
