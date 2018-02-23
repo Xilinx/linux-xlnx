@@ -97,8 +97,7 @@ static inline void xg_write(struct xgamma_dev *xg, u32 reg, u32 data)
 #ifdef DEBUG
 	if (xg_read(xg, reg) != data)
 		dev_err(xg->xvip.dev,
-			"Wrote 0x%x does not match read back 0x%x",
-			data, rb);
+			"Write 0x%x does not match read back", data);
 #endif
 }
 
