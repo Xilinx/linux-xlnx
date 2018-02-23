@@ -24,7 +24,6 @@
 #define XDEMOSAIC_AP_CTRL			(0x00)
 #define XDEMOSAIC_WIDTH				(0x10)
 #define XDEMOSAIC_HEIGHT			(0x18)
-#define XDEMOSAIC_OUTPUT_VIDEO_FORMAT		(0x20)
 #define XDEMOSAIC_INPUT_BAYER_FORMAT		(0x28)
 
 #define XDEMOSAIC_MIN_HEIGHT	(32)
@@ -40,10 +39,6 @@
 #define XDEMOSAIC_AUTO_RESTART		BIT(7)
 #define XDEMOSAIC_STREAM_ON	(XDEMOSAIC_AUTO_RESTART | XDEMOSAIC_START)
 
-enum xdmsc_video_format {
-	XDEMOSAIC_RGB = 0,
-};
-
 enum xdmsc_bayer_format {
 	XDEMOSAIC_RGGB = 0,
 	XDEMOSAIC_GRBG,
@@ -57,9 +52,7 @@ struct xdmsc_dev {
 	struct v4l2_mbus_framefmt formats[2];
 	struct v4l2_mbus_framefmt default_formats[2];
 
-	enum xdmsc_video_format vid_fmt;
 	enum xdmsc_bayer_format bayer_fmt;
-
 	struct gpio_desc *rst_gpio;
 };
 
@@ -123,7 +116,6 @@ static int xdmsc_s_stream(struct v4l2_subdev *subdev, int enable)
 		    xdmsc->formats[XVIP_PAD_SINK].width);
 	xdmsc_write(xdmsc, XDEMOSAIC_HEIGHT,
 		    xdmsc->formats[XVIP_PAD_SINK].height);
-	xdmsc_write(xdmsc, XDEMOSAIC_OUTPUT_VIDEO_FORMAT, xdmsc->vid_fmt);
 	xdmsc_write(xdmsc, XDEMOSAIC_INPUT_BAYER_FORMAT, xdmsc->bayer_fmt);
 
 	/* Start Demosaic Video IP */
@@ -186,7 +178,7 @@ static int xdmsc_set_format(struct v4l2_subdev *subdev,
 	if (fmt->pad == XVIP_PAD_SOURCE) {
 		if (__format->code != MEDIA_BUS_FMT_RBG888_1X24) {
 			dev_dbg(xdmsc->xvip.dev,
-				"%s : Unsupported sink media bus code format",
+				"%s : Unsupported source media bus code format",
 				__func__);
 			__format->code = MEDIA_BUS_FMT_RBG888_1X24;
 		}
@@ -195,7 +187,7 @@ static int xdmsc_set_format(struct v4l2_subdev *subdev,
 	if (fmt->pad == XVIP_PAD_SINK) {
 		if (!xdmsc_is_format_bayer(xdmsc, __format->code)) {
 			dev_dbg(xdmsc->xvip.dev,
-				"Unsupported Sink Pad Media formtat, defaulting to RGGB");
+				"Unsupported Sink Pad Media format, defaulting to RGGB");
 			__format->code = MEDIA_BUS_FMT_SRGGB8_1X8;
 		}
 	}
