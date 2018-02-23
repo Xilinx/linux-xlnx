@@ -2109,10 +2109,9 @@ static int xlnx_mix_plane_create(struct device *dev, struct xlnx_mix *mixer)
 	mixer->max_width = XVMIX_DISP_MAX_WIDTH;
 	mixer->max_height = XVMIX_DISP_MAX_HEIGHT;
 	if (mixer->hw_logo_layer) {
-		mixer->max_cursor_width =
-			mixer->hw_logo_layer->mixer_layer->layer_regs.width;
-		mixer->max_cursor_height =
-			mixer->hw_logo_layer->mixer_layer->layer_regs.height;
+		layer_data = &mixer_hw->layer_data[XVMIX_LOGO_LAYER_IDX];
+		mixer->max_cursor_width = layer_data->hw_config.max_width;
+		mixer->max_cursor_height = layer_data->hw_config.max_height;
 	}
 	return 0;
 }
