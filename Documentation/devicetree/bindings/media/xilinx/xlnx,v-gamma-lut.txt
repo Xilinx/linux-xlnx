@@ -15,7 +15,7 @@ Required properties:
 - reset-gpios: Specifier for a GPIO that asserts Gamma IP (AP_RST_N) reset
 
 - ports: Video ports, using the DT bindings defined in ../video-interfaces.txt.
-  The scaler has an input port (0) and an output port (1).
+  The Gamma LUT IP has an input port (0) and an output port (1).
 
 
 Required port properties:
@@ -23,7 +23,7 @@ Required port properties:
   A Sink Pad is represented by reg = <0>
   A Source Pad is represented by reg = <1>
 
-- xlnx,video-width: Video width as defined in video.txt
+- xlnx,video-width: Video width as defined in video.txt. Can be either 8 or 10.
 
 Example :
 
