@@ -50,6 +50,20 @@ enum xgamma_video_format {
 	XGAMMA_RGB = 0,
 };
 
+/**
+ * struct xgamma_dev - Xilinx Video Gamma LUT device structure
+ * @xvip: Xilinx Video IP device
+ * @pads: Scaler sub-device media pads
+ * @formats: V4L2 media bus formats at the sink and source pads
+ * @default_formats: default V4L2 media bus formats
+ * @ctrl_handler: V4L2 Control Handler for R,G,B Gamma Controls
+ * @red_lut: Pointer to the gamma coefficient as per the Red Gamma control
+ * @green_lut: Pointer to the gamma coefficient as per the Green Gamma control
+ * @blue_lut: Pointer to the gamma coefficient as per the Blue Gamma control
+ * @color_depth: Color depth of the Video Gamma IP
+ * @gamma_table: Pointer to the table containing various gamma values
+ * @rst_gpio: GPIO reset line to bring VPSS Scaler out of reset
+ */
 struct xgamma_dev {
 	struct xvip_device xvip;
 	struct media_pad pads[2];
