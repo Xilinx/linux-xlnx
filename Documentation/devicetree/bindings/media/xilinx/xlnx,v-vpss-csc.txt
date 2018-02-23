@@ -22,7 +22,7 @@ Required port properties:
   for input port (0) and XVIP_VF_RBG, XVIP_VF_YUV_444 or XVIP_VF_YUV_422
   for output port (1). See <dt-bindings/media/xilinx-vip.h> for more details.
 
-- xlnx,video-width: Video width as defined in video.txt
+- xlnx,video-width: Video width as defined in video.txt. Must be either 8 or 10.
 
 Example:
 	csc_1:csc@a0040000 {
