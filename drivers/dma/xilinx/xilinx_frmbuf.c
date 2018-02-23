@@ -75,11 +75,21 @@
 #define XILINX_FRMBUF_FMT_RGBX8			10
 #define XILINX_FRMBUF_FMT_YUVX8			11
 #define XILINX_FRMBUF_FMT_YUYV8			12
+#define XILINX_FRMBUF_FMT_RGBA8			13
+#define XILINX_FRMBUF_FMT_YUVA8			14
+#define XILINX_FRMBUF_FMT_RGBX10		15
+#define XILINX_FRMBUF_FMT_YUVX10		16
 #define XILINX_FRMBUF_FMT_Y_UV8			18
 #define XILINX_FRMBUF_FMT_Y_UV8_420		19
 #define XILINX_FRMBUF_FMT_RGB8			20
 #define XILINX_FRMBUF_FMT_YUV8			21
+#define XILINX_FRMBUF_FMT_Y_UV10		22
+#define XILINX_FRMBUF_FMT_Y_UV10_420		23
 #define XILINX_FRMBUF_FMT_Y8			24
+#define XILINX_FRMBUF_FMT_Y10			25
+#define XILINX_FRMBUF_FMT_BGRA8			26
+#define XILINX_FRMBUF_FMT_BGRX8			27
+#define XILINX_FRMBUF_FMT_UYVY8			28
 
 /**
  * struct xilinx_frmbuf_desc_hw - Hardware Descriptor
@@ -152,7 +162,8 @@ struct xilinx_frmbuf_chan {
  * struct xilinx_frmbuf_format_desc - lookup table to match fourcc to format
  * @dts_name: Device tree name for this entry.
  * @id: Format ID
- * @bpp: Bytes per pixel
+ * @bpw: Bits of pixel data + padding in a 32-bit word (luma plane for semi-pl)
+ * @ppw: Number of pixels represented in a 32-bit word (luma plane for semi-pl)
  * @num_planes: Expected number of plane buffers in framebuffer for this format
  * @drm_fmt: DRM video framework equivalent fourcc code
  * @v4l2_fmt: Video 4 Linux framework equivalent fourcc code
@@ -162,7 +173,8 @@ struct xilinx_frmbuf_chan {
 struct xilinx_frmbuf_format_desc {
 	const char *dts_name;
 	u32 id;
-	u32 bpp;
+	u32 bpw;
+	u32 ppw;
 	u32 num_planes;
 	u32 drm_fmt;
 	u32 v4l2_fmt;
@@ -176,74 +188,172 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 	{
 		.dts_name = "xbgr8888",
 		.id = XILINX_FRMBUF_FMT_RGBX8,
-		.bpp = 4,
+		.bpw = 32,
+		.ppw = 1,
 		.num_planes = 1,
 		.drm_fmt = DRM_FORMAT_XBGR8888,
-		.v4l2_fmt = 0,
+		.v4l2_fmt = V4L2_PIX_FMT_BGRX32,
 		.fmt_bitmask = BIT(0),
 	},
 	{
-		.dts_name = "unsupported",
-		.id = XILINX_FRMBUF_FMT_YUVX8,
-		.bpp = 4,
+		.dts_name = "xbgr2101010",
+		.id = XILINX_FRMBUF_FMT_RGBX10,
+		.bpw = 32,
+		.ppw = 1,
 		.num_planes = 1,
-		.drm_fmt = 0,
-		.v4l2_fmt = 0,
+		.drm_fmt = DRM_FORMAT_XBGR2101010,
+		.v4l2_fmt = V4L2_PIX_FMT_XBGR30,
 		.fmt_bitmask = BIT(1),
+	},
+	{
+		.dts_name = "xrgb8888",
+		.id = XILINX_FRMBUF_FMT_BGRX8,
+		.bpw = 32,
+		.ppw = 1,
+		.num_planes = 1,
+		.drm_fmt = DRM_FORMAT_XRGB8888,
+		.v4l2_fmt = V4L2_PIX_FMT_XRGB32,
+		.fmt_bitmask = BIT(2),
+	},
+	{
+		.dts_name = "xvuy8888",
+		.id = XILINX_FRMBUF_FMT_YUVX8,
+		.bpw = 32,
+		.ppw = 1,
+		.num_planes = 1,
+		.drm_fmt = DRM_FORMAT_XVUY8888,
+		.v4l2_fmt = V4L2_PIX_FMT_XVUY32,
+		.fmt_bitmask = BIT(5),
+	},
+	{
+		.dts_name = "vuy888",
+		.id = XILINX_FRMBUF_FMT_YUV8,
+		.bpw = 24,
+		.ppw = 1,
+		.num_planes = 1,
+		.drm_fmt = DRM_FORMAT_VUY888,
+		.v4l2_fmt = V4L2_PIX_FMT_VUY24,
+		.fmt_bitmask = BIT(6),
+	},
+	{
+		.dts_name = "yuvx2101010",
+		.id = XILINX_FRMBUF_FMT_YUVX10,
+		.bpw = 32,
+		.ppw = 1,
+		.num_planes = 1,
+		.drm_fmt = DRM_FORMAT_XVUY2101010,
+		.v4l2_fmt = V4L2_PIX_FMT_XVUY10,
+		.fmt_bitmask = BIT(7),
 	},
 	{
 		.dts_name = "yuyv",
 		.id = XILINX_FRMBUF_FMT_YUYV8,
-		.bpp = 2,
+		.bpw = 32,
+		.ppw = 2,
 		.num_planes = 1,
 		.drm_fmt = DRM_FORMAT_YUYV,
 		.v4l2_fmt = V4L2_PIX_FMT_YUYV,
-		.fmt_bitmask = BIT(2),
+		.fmt_bitmask = BIT(8),
+	},
+	{
+		.dts_name = "uyvy",
+		.id = XILINX_FRMBUF_FMT_UYVY8,
+		.bpw = 32,
+		.ppw = 2,
+		.num_planes = 1,
+		.drm_fmt = DRM_FORMAT_UYVY,
+		.v4l2_fmt = V4L2_PIX_FMT_UYVY,
+		.fmt_bitmask = BIT(9),
 	},
 	{
 		.dts_name = "nv16",
 		.id = XILINX_FRMBUF_FMT_Y_UV8,
-		.bpp = 1,
+		.bpw = 32,
+		.ppw = 4,
 		.num_planes = 2,
 		.drm_fmt = DRM_FORMAT_NV16,
+		.v4l2_fmt = V4L2_PIX_FMT_NV16M,
+		.fmt_bitmask = BIT(11),
+	},
+	{
+		.dts_name = "nv16",
+		.id = XILINX_FRMBUF_FMT_Y_UV8,
+		.bpw = 32,
+		.ppw = 4,
+		.num_planes = 2,
+		.drm_fmt = 0,
 		.v4l2_fmt = V4L2_PIX_FMT_NV16,
-		.fmt_bitmask = BIT(3),
+		.fmt_bitmask = BIT(11),
 	},
 	{
 		.dts_name = "nv12",
 		.id = XILINX_FRMBUF_FMT_Y_UV8_420,
-		.bpp = 1,
+		.bpw = 32,
+		.ppw = 4,
 		.num_planes = 2,
 		.drm_fmt = DRM_FORMAT_NV12,
+		.v4l2_fmt = V4L2_PIX_FMT_NV12M,
+		.fmt_bitmask = BIT(12),
+	},
+	{
+		.dts_name = "nv12",
+		.id = XILINX_FRMBUF_FMT_Y_UV8_420,
+		.bpw = 32,
+		.ppw = 4,
+		.num_planes = 2,
+		.drm_fmt = 0,
 		.v4l2_fmt = V4L2_PIX_FMT_NV12,
-		.fmt_bitmask = BIT(4),
+		.fmt_bitmask = BIT(12),
+	},
+	{
+		.dts_name = "xv15",
+		.id = XILINX_FRMBUF_FMT_Y_UV10_420,
+		.bpw = 32,
+		.ppw = 3,
+		.num_planes = 2,
+		.drm_fmt = DRM_FORMAT_XV15,
+		.v4l2_fmt = V4L2_PIX_FMT_XV15M,
+		.fmt_bitmask = BIT(13),
+	},
+	{
+		.dts_name = "xv20",
+		.id = XILINX_FRMBUF_FMT_Y_UV10,
+		.bpw = 32,
+		.ppw = 3,
+		.num_planes = 2,
+		.drm_fmt = DRM_FORMAT_XV20,
+		.v4l2_fmt = V4L2_PIX_FMT_XV20M,
+		.fmt_bitmask = BIT(14),
 	},
 	{
 		.dts_name = "bgr888",
 		.id = XILINX_FRMBUF_FMT_RGB8,
-		.bpp = 3,
+		.bpw = 24,
+		.ppw = 1,
 		.num_planes = 1,
 		.drm_fmt = DRM_FORMAT_BGR888,
 		.v4l2_fmt = V4L2_PIX_FMT_RGB24,
-		.fmt_bitmask = BIT(5),
-	},
-	{
-		.dts_name = "unsupported",
-		.id = XILINX_FRMBUF_FMT_YUV8,
-		.bpp = 3,
-		.num_planes = 1,
-		.drm_fmt = 0,
-		.v4l2_fmt = 0,
-		.fmt_bitmask = BIT(6),
+		.fmt_bitmask = BIT(15),
 	},
 	{
 		.dts_name = "y8",
 		.id = XILINX_FRMBUF_FMT_Y8,
-		.bpp = 1,
+		.bpw = 32,
+		.ppw = 4,
 		.num_planes = 1,
-		.drm_fmt = 0,
+		.drm_fmt = DRM_FORMAT_Y8,
 		.v4l2_fmt = V4L2_PIX_FMT_GREY,
-		.fmt_bitmask = BIT(7),
+		.fmt_bitmask = BIT(16),
+	},
+	{
+		.dts_name = "y10",
+		.id = XILINX_FRMBUF_FMT_Y10,
+		.bpw = 32,
+		.ppw = 3,
+		.num_planes = 1,
+		.drm_fmt = DRM_FORMAT_Y10,
+		.v4l2_fmt = V4L2_PIX_FMT_Y10,
+		.fmt_bitmask = BIT(17),
 	},
 };
 
@@ -840,8 +950,13 @@ xilinx_frmbuf_dma_prep_interleaved(struct dma_chan *dchan,
 
 	hw = &desc->hw;
 	hw->vsize = xt->numf;
-	hw->hsize = xt->sgl[0].size / chan->vid_fmt->bpp;
 	hw->stride = xt->sgl[0].icg + xt->sgl[0].size;
+	hw->hsize = (xt->sgl[0].size * chan->vid_fmt->ppw * 8) /
+		     chan->vid_fmt->bpw;
+
+	/* hsize calc should not have resulted in an odd number */
+	if (hw->hsize & 1)
+		hw->hsize++;
 
 	if (chan->direction == DMA_MEM_TO_DEV) {
 		hw->luma_plane_addr = xt->src_start;
@@ -1038,6 +1153,8 @@ static int xilinx_frmbuf_probe(struct platform_device *pdev)
 		return PTR_ERR(xdev->regs);
 
 	/* Initialize the DMA engine */
+	/* TODO: Get DMA alignment from device tree property */
+	xdev->common.copy_align = 4;
 	xdev->common.dev = &pdev->dev;
 
 	INIT_LIST_HEAD(&xdev->common.channels);
