@@ -175,6 +175,11 @@ static int zynqmp_pm_probe(struct platform_device *pdev)
 	struct mbox_chan *rx_chan;
 	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 
+	if (of_device_is_compatible(pdev->dev.of_node, "xlnx,zynqmp-pm")) {
+		dev_err(&pdev->dev, "ERROR: This binding is deprecated, please use new compatible binding\n");
+		return -ENOENT;
+	}
+
 	if (!eemi_ops || !eemi_ops->get_api_version)
 		return -ENXIO;
 
@@ -217,6 +222,7 @@ static int zynqmp_pm_probe(struct platform_device *pdev)
 
 static const struct of_device_id pm_of_match[] = {
 	{ .compatible = "xlnx,zynqmp-power", },
+	{ .compatible = "xlnx,zynqmp-pm", },
 	{ /* end of table */ },
 };
 MODULE_DEVICE_TABLE(of, pm_of_match);
