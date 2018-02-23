@@ -2106,13 +2106,6 @@ static int xlnx_mix_plane_create(struct device *dev, struct xlnx_mix *mixer)
 		return ret;
 	}
 
-	/* Init all layers to inactive state in software. An update_plane()
-	 * call to our drm driver will change this to 'active' and permit the
-	 * layer to be enabled in hardware
-	 */
-	for (i = 0; i < mixer_hw->layer_cnt; i++)
-		layer_data = &mixer_hw->layer_data[i];
-
 	mixer->max_width = XVMIX_DISP_MAX_WIDTH;
 	mixer->max_height = XVMIX_DISP_MAX_HEIGHT;
 	if (mixer->hw_logo_layer) {
