@@ -54,8 +54,8 @@ u64 xlnx_crtc_helper_get_dma_mask(struct xlnx_crtc_helper *helper);
 int xlnx_crtc_helper_get_max_width(struct xlnx_crtc_helper *helper);
 int xlnx_crtc_helper_get_max_height(struct xlnx_crtc_helper *helper);
 uint32_t xlnx_crtc_helper_get_format(struct xlnx_crtc_helper *helper);
-uint32_t xlnx_crtc_helper_get_cursor_width(struct xlnx_crtc_helper *helper);
-uint32_t xlnx_crtc_helper_get_cursor_height(struct xlnx_crtc_helper *helper);
+u32 xlnx_crtc_helper_get_cursor_width(struct xlnx_crtc_helper *helper);
+u32 xlnx_crtc_helper_get_cursor_height(struct xlnx_crtc_helper *helper);
 
 struct xlnx_crtc_helper *xlnx_crtc_helper_init(struct drm_device *drm);
 void xlnx_crtc_helper_fini(struct drm_device *drm,
