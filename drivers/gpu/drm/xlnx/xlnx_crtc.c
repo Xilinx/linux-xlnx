@@ -130,10 +130,10 @@ uint32_t xlnx_crtc_helper_get_format(struct xlnx_crtc_helper *helper)
 	return format;
 }
 
-uint32_t xlnx_crtc_helper_get_cursor_width(struct xlnx_crtc_helper *helper)
+u32 xlnx_crtc_helper_get_cursor_width(struct xlnx_crtc_helper *helper)
 {
 	struct xlnx_crtc *crtc;
-	int width = XLNX_CRTC_MAX_HEIGHT_WIDTH, tmp;
+	u32 width = XLNX_CRTC_MAX_HEIGHT_WIDTH, tmp;
 
 	list_for_each_entry(crtc, &helper->xlnx_crtcs, list) {
 		if (crtc->get_cursor_width) {
@@ -145,10 +145,10 @@ uint32_t xlnx_crtc_helper_get_cursor_width(struct xlnx_crtc_helper *helper)
 	return width;
 }
 
-uint32_t xlnx_crtc_helper_get_cursor_height(struct xlnx_crtc_helper *helper)
+u32 xlnx_crtc_helper_get_cursor_height(struct xlnx_crtc_helper *helper)
 {
 	struct xlnx_crtc *crtc;
-	int height = XLNX_CRTC_MAX_HEIGHT_WIDTH, tmp;
+	u32 height = XLNX_CRTC_MAX_HEIGHT_WIDTH, tmp;
 
 	list_for_each_entry(crtc, &helper->xlnx_crtcs, list) {
 		if (crtc->get_cursor_height) {
