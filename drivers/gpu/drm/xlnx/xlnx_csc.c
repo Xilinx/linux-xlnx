@@ -61,6 +61,7 @@ static const u32 xilinx_csc_video_fmts[] = {
 	MEDIA_BUS_FMT_RGB888_1X24,
 	MEDIA_BUS_FMT_VUY8_1X24,
 	MEDIA_BUS_FMT_UYVY8_1X16,
+	MEDIA_BUS_FMT_VYYUYY8_1X24,
 };
 
 /* vpss_csc_color_fmt - Color format type */
@@ -304,6 +305,9 @@ static int xilinx_csc_bridge_set_input(struct xlnx_bridge *bridge, u32 width,
 	case MEDIA_BUS_FMT_UYVY8_1X16:
 		csc->cft_in = XVIDC_CSF_YCRCB_422;
 		break;
+	case MEDIA_BUS_FMT_VYYUYY8_1X24:
+		csc->cft_in = XVIDC_CSF_YCRCB_420;
+		break;
 	default:
 		dev_dbg(csc->dev, "unsupported input video format\n");
 		return -EINVAL;
@@ -367,6 +371,12 @@ static int xilinx_csc_bridge_set_output(struct xlnx_bridge *bridge, u32 width,
 	case MEDIA_BUS_FMT_UYVY8_1X16:
 		csc->cft_out = XVIDC_CSF_YCRCB_422;
 		dev_dbg(csc->dev, "Media Format Out : YUV 422");
+		if (csc->cft_in == MEDIA_BUS_FMT_RBG888_1X24)
+			xcsc_rgb_to_ycrcb(csc, &csc->clip_max);
+		break;
+	case MEDIA_BUS_FMT_VYYUYY8_1X24:
+		csc->cft_out = XVIDC_CSF_YCRCB_420;
+		dev_dbg(csc->dev, "Media Format Out : YUV 420");
 		if (csc->cft_in == MEDIA_BUS_FMT_RBG888_1X24)
 			xcsc_rgb_to_ycrcb(csc, &csc->clip_max);
 		break;
