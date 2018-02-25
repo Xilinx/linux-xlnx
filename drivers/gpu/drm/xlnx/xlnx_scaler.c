@@ -16,7 +16,6 @@
  * Need to implement in a modular approach to share driver code between
  * V4L2 and DRM frameworks.
  * Should be integrated with plane.
- * Add YUV420 support.
  */
 
 #include <linux/device.h>
@@ -693,6 +692,7 @@ static const u32 xilinx_scaler_video_fmts[] = {
 	MEDIA_BUS_FMT_RGB888_1X24,
 	MEDIA_BUS_FMT_VUY8_1X24,
 	MEDIA_BUS_FMT_UYVY8_1X16,
+	MEDIA_BUS_FMT_VYYUYY8_1X24,
 };
 
 /**
@@ -1250,6 +1250,9 @@ xv_vscaler_setup_video_fmt(struct xilinx_scaler *scaler, u32 code_in)
 	case MEDIA_BUS_FMT_RGB888_1X24:
 		video_in = XVIDC_CSF_RGB;
 		break;
+	case MEDIA_BUS_FMT_VYYUYY8_1X24:
+		video_in = XVIDC_CSF_YCRCB_420;
+		break;
 	default:
 		dev_info(scaler->dev, "Vscaler Unsupported media fmt\n");
 		return -EINVAL;
@@ -1303,6 +1306,9 @@ static int xv_hscaler_setup_video_fmt(struct xilinx_scaler *scaler,
 		break;
 	case MEDIA_BUS_FMT_RGB888_1X24:
 		video_out = XVIDC_CSF_RGB;
+		break;
+	case MEDIA_BUS_FMT_VYYUYY8_1X24:
+		video_out = XVIDC_CSF_YCRCB_420;
 		break;
 	default:
 		dev_info(scaler->dev, "Hscaler Unsupported Out media fmt\n");
