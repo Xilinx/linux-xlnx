@@ -390,7 +390,7 @@ static int clock_get_parents(u32 clk_id, struct clock_parent *parents,
 			}
 
 			parents[k + j].id = pm_resp[k] & CLK_PARENTS_ID_MASK;
-			if (parents[k + j].id == DUMMY_PARENT) {
+			if (pm_resp[k] == (u32)DUMMY_PARENT) {
 				strncpy(parents[k + j].name,
 					"dummy_name", MAX_NAME_LEN);
 				parents[k + j].flag = 0;
