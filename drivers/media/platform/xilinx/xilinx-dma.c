@@ -434,6 +434,7 @@ static void xvip_dma_buffer_queue(struct vb2_buffer *vb)
 	dma_addr_t addr = vb2_dma_contig_plane_dma_addr(vb, 0);
 	u32 flags;
 	u32 luma_size;
+	u32 padding_factor_nume, padding_factor_deno, bpl_nume, bpl_deno;
 
 	if (dma->queue.type == V4L2_BUF_TYPE_VIDEO_CAPTURE ||
 	    dma->queue.type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
@@ -460,8 +461,15 @@ static void xvip_dma_buffer_queue(struct vb2_buffer *vb)
 
 		pix_mp = &dma->format.fmt.pix_mp;
 		xilinx_xdma_v4l2_config(dma->dma, pix_mp->pixelformat);
+		xvip_width_padding_factor(pix_mp->pixelformat,
+					  &padding_factor_nume,
+					  &padding_factor_deno);
+		xvip_bpl_scaling_factor(pix_mp->pixelformat, &bpl_nume,
+					&bpl_deno);
 		dma->xt.frame_size = dma->fmtinfo->num_planes;
-		dma->sgl[0].size = pix_mp->width * dma->fmtinfo->bpl_factor;
+		dma->sgl[0].size = (pix_mp->width * dma->fmtinfo->bpl_factor *
+				    padding_factor_nume * bpl_nume) /
+				    (padding_factor_deno * bpl_deno);
 		dma->sgl[0].icg = pix_mp->plane_fmt[0].bytesperline -
 							dma->sgl[0].size;
 		dma->xt.numf = pix_mp->height;
@@ -490,8 +498,15 @@ static void xvip_dma_buffer_queue(struct vb2_buffer *vb)
 		struct v4l2_pix_format *pix;
 
 		pix = &dma->format.fmt.pix;
+		xvip_width_padding_factor(pix->pixelformat,
+					  &padding_factor_nume,
+					  &padding_factor_deno);
+		xvip_bpl_scaling_factor(pix->pixelformat, &bpl_nume,
+					&bpl_deno);
 		dma->xt.frame_size = dma->fmtinfo->num_planes;
-		dma->sgl[0].size = pix->width * dma->fmtinfo->bpl_factor;
+		dma->sgl[0].size = (pix->width * dma->fmtinfo->bpl_factor *
+				    padding_factor_nume * bpl_nume) /
+				    (padding_factor_deno * bpl_deno);
 		dma->sgl[0].icg = pix->bytesperline - dma->sgl[0].size;
 		dma->xt.numf = pix->height;
 		dma->sgl[0].dst_icg = dma->sgl[0].size;
@@ -759,6 +774,8 @@ __xvip_dma_try_format(struct xvip_dma *dma,
 	unsigned int bpl;
 	unsigned int i, hsub, vsub, plane_width, plane_height;
 	unsigned int fourcc;
+	unsigned int padding_factor_nume, padding_factor_deno;
+	unsigned int bpl_nume, bpl_deno;
 
 	/* Retrieve format information and select the default format if the
 	 * requested format isn't supported.
@@ -772,6 +789,10 @@ __xvip_dma_try_format(struct xvip_dma *dma,
 
 	if (IS_ERR(info))
 		info = xvip_get_format_by_fourcc(XVIP_DMA_DEF_FORMAT);
+
+	xvip_width_padding_factor(info->fourcc, &padding_factor_nume,
+				  &padding_factor_deno);
+	xvip_bpl_scaling_factor(info->fourcc, &bpl_nume, &bpl_deno);
 
 	/* The transfer alignment requirements are expressed in bytes. Compute
 	 * the minimum and maximum values, clamp the requested width and convert
@@ -816,7 +837,9 @@ __xvip_dma_try_format(struct xvip_dma *dma,
 			for (i = 0; i < info->num_planes; i++) {
 				plane_width = pix_mp->width / (i ? hsub : 1);
 				plane_height = pix_mp->height / (i ? vsub : 1);
-				min_bpl = plane_width * info->bpl_factor;
+				min_bpl = (plane_width * info->bpl_factor *
+					   padding_factor_nume * bpl_nume) /
+					   (padding_factor_deno * bpl_deno);
 				max_bpl = rounddown(XVIP_DMA_MAX_WIDTH,
 						    dma->align);
 				bpl = pix_mp->plane_fmt[i].bytesperline;
