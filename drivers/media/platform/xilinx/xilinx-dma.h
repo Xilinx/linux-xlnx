@@ -55,12 +55,15 @@ static inline struct xvip_pipeline *to_xvip_pipeline(struct media_entity *e)
  * @list: list entry in a composite device dmas list
  * @video: V4L2 video device associated with the DMA channel
  * @pad: media pad for the video device entity
+ * @remote_subdev_med_bus: media bus format of sub-device
  * @xdev: composite device the DMA channel belongs to
  * @pipe: pipeline belonging to the DMA channel
  * @port: composite device DT node port number for the DMA channel
  * @lock: protects the @format, @fmtinfo and @queue fields
  * @format: active V4L2 pixel format
  * @fmtinfo: format information corresponding to the active @format
+ * @poss_v4l2_fmts: All possible v4l formats supported
+ * @poss_v4l2_fmt_cnt: number of supported v4l formats
  * @queue: vb2 buffers queue
  * @sequence: V4L2 buffers sequence number
  * @queued_bufs: list of queued buffers
@@ -74,6 +77,7 @@ struct xvip_dma {
 	struct list_head list;
 	struct video_device video;
 	struct media_pad pad;
+	u32 remote_subdev_med_bus;
 
 	struct xvip_composite_device *xdev;
 	struct xvip_pipeline pipe;
@@ -82,6 +86,8 @@ struct xvip_dma {
 	struct mutex lock;
 	struct v4l2_format format;
 	const struct xvip_video_format *fmtinfo;
+	u32 *poss_v4l2_fmts;
+	u32 poss_v4l2_fmt_cnt;
 
 	struct vb2_queue queue;
 	unsigned int sequence;
