@@ -157,6 +157,22 @@
 /* HSV - next is	0x6002 */
 #define MEDIA_BUS_FMT_AHSV8888_1X32		0x6001
 
+/* RGB: Xilinx Specific - next is        0x1103 */
+#define MEDIA_BUS_FMT_RBG101010_1X30		0x1100
+#define MEDIA_BUS_FMT_RBG121212_1X36		0x1101
+#define MEDIA_BUS_FMT_RBG161616_1X48		0x1102
+
+/* YUV: Xilinx Specific - next is       0x2109 */
+#define MEDIA_BUS_FMT_VYYUYY8_1X24		0x2100
+#define MEDIA_BUS_FMT_VYYUYY10_4X20		0x2101
+#define MEDIA_BUS_FMT_VUY10_1X30		0x2102
+#define MEDIA_BUS_FMT_UYYVYY12_4X24		0x2103
+#define MEDIA_BUS_FMT_VUY12_1X36		0x2104
+#define MEDIA_BUS_FMT_Y16_1X16			0x2105
+#define MEDIA_BUS_FMT_UYYVYY16_4X32		0x2106
+#define MEDIA_BUS_FMT_VUY16_1X48		0x2107
+#define MEDIA_BUS_FMT_UYVY16_2X32		0x2108
+
 /*
  * This format should be used when the same driver handles
  * both sides of the link and the bus format is a fixed
