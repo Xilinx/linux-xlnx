@@ -132,6 +132,8 @@ struct xvip_video_format {
 const struct xvip_video_format *xvip_get_format_by_code(unsigned int code);
 const struct xvip_video_format *xvip_get_format_by_fourcc(u32 fourcc);
 const struct xvip_video_format *xvip_of_get_format(struct device_node *node);
+void xvip_bpl_scaling_factor(u32 fourcc, u32 *numerator, u32 *denominator);
+void xvip_width_padding_factor(u32 fourcc, u32 *numerator, u32 *denominator);
 void xvip_set_format_size(struct v4l2_mbus_framefmt *format,
 			  const struct v4l2_subdev_format *fmt);
 int xvip_enum_mbus_code(struct v4l2_subdev *subdev,
