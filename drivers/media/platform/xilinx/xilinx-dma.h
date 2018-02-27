@@ -80,7 +80,7 @@ struct xvip_dma {
 	unsigned int port;
 
 	struct mutex lock;
-	struct v4l2_pix_format format;
+	struct v4l2_format format;
 	const struct xvip_video_format *fmtinfo;
 
 	struct vb2_queue queue;
