@@ -27,6 +27,15 @@
 #define XVIPP_DMA_S2MM				0
 #define XVIPP_DMA_MM2S				1
 
+/*
+ * This is for backward compatibility for existing applications,
+ * and planned to be deprecated
+ */
+static bool xvip_is_mplane = true;
+MODULE_PARM_DESC(is_mplane,
+		 "v4l2 device capability to handle multi planar formats");
+module_param_named(is_mplane, xvip_is_mplane, bool, 0444);
+
 /**
  * struct xvip_graph_entity - Entity in the video graph
  * @asd: subdev asynchronous registration information
@@ -442,9 +451,11 @@ static int xvip_graph_dma_init_one(struct xvip_composite_device *xdev,
 		return ret;
 
 	if (strcmp(direction, "input") == 0)
-		type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+		type = xvip_is_mplane ? V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE :
+						V4L2_BUF_TYPE_VIDEO_CAPTURE;
 	else if (strcmp(direction, "output") == 0)
-		type = V4L2_BUF_TYPE_VIDEO_OUTPUT;
+		type = xvip_is_mplane ? V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE :
+					V4L2_BUF_TYPE_VIDEO_OUTPUT;
 	else
 		return -EINVAL;
 
@@ -462,8 +473,14 @@ static int xvip_graph_dma_init_one(struct xvip_composite_device *xdev,
 
 	list_add_tail(&dma->list, &xdev->dmas);
 
-	xdev->v4l2_caps |= type == V4L2_BUF_TYPE_VIDEO_CAPTURE
-			 ? V4L2_CAP_VIDEO_CAPTURE : V4L2_CAP_VIDEO_OUTPUT;
+	if (type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)
+		xdev->v4l2_caps |= V4L2_CAP_VIDEO_CAPTURE_MPLANE;
+	else if (type == V4L2_BUF_TYPE_VIDEO_CAPTURE)
+		xdev->v4l2_caps |= V4L2_CAP_VIDEO_CAPTURE;
+	else if (type == V4L2_BUF_TYPE_VIDEO_OUTPUT)
+		xdev->v4l2_caps |= V4L2_CAP_VIDEO_OUTPUT;
+	else if (type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE)
+		xdev->v4l2_caps |= V4L2_CAP_VIDEO_OUTPUT_MPLANE;
 
 	return 0;
 }
