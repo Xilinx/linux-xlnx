@@ -109,8 +109,13 @@ struct xvip_device {
  * @width: AXI4 format width in bits per component
  * @pattern: CFA pattern for Mono/Sensor formats
  * @code: media bus format code
- * @bpp: bytes per pixel (when stored in memory)
+ * @bpl_factor: Bytes per line factor
+ * @bpp: bits per pixel
  * @fourcc: V4L2 pixel format FCC identifier
+ * @num_planes: number of planes w.r.t. color format
+ * @buffers: number of buffers per format
+ * @hsub: Horizontal sampling factor of Chroma
+ * @vsub: Vertical sampling factor of Chroma
  * @description: format description, suitable for userspace
  */
 struct xvip_video_format {
@@ -118,8 +123,13 @@ struct xvip_video_format {
 	unsigned int width;
 	const char *pattern;
 	unsigned int code;
+	unsigned int bpl_factor;
 	unsigned int bpp;
 	u32 fourcc;
+	u8 num_planes;
+	u8 buffers;
+	u8 hsub;
+	u8 vsub;
 	const char *description;
 };
 
