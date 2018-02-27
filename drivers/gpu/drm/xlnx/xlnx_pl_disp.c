@@ -193,37 +193,47 @@ static int xlnx_pl_disp_plane_mode_set(struct drm_plane *plane,
 {
 	struct xlnx_pl_disp *xlnx_pl_disp = plane_to_dma(plane);
 	const struct drm_format_info *info = fb->format;
-	struct drm_gem_cma_object *obj;
-	size_t offset;
-	unsigned int i;
+	dma_addr_t luma_paddr, chroma_paddr;
+	size_t stride;
+	struct xlnx_dma_chan *xlnx_dma_chan = xlnx_pl_disp->chan;
 
-	/* only support packed format for now */
-	if (info->num_planes > 1)
+	if (info->num_planes > 2) {
+		dev_err(xlnx_pl_disp->dev, "Color format not supported\n");
 		return -EINVAL;
+	}
+	luma_paddr = drm_fb_cma_get_gem_addr(fb, plane->state, 0);
+	if (!luma_paddr) {
+		dev_err(xlnx_pl_disp->dev, "failed to get luma paddr\n");
+		return -EINVAL;
+	}
 
-	for (i = 0; i < info->num_planes; i++) {
-		struct xlnx_dma_chan *xlnx_dma_chan = xlnx_pl_disp->chan;
-		unsigned int width = src_w / (i ? info->hsub : 1);
-		unsigned int height = src_h / (i ? info->vsub : 1);
-		unsigned int cpp = drm_format_plane_cpp(info->format, i);
+	dev_dbg(xlnx_pl_disp->dev, "num planes = %d\n", info->num_planes);
+	xlnx_dma_chan->xt.numf = src_h;
+	xlnx_dma_chan->sgl[0].size = drm_format_plane_width_bytes(info,
+								  0, src_w);
+	xlnx_dma_chan->sgl[0].icg = fb->pitches[0] - xlnx_dma_chan->sgl[0].size;
+	xlnx_dma_chan->xt.src_start = luma_paddr;
+	xlnx_dma_chan->xt.frame_size = info->num_planes;
+	xlnx_dma_chan->xt.dir = DMA_MEM_TO_DEV;
+	xlnx_dma_chan->xt.src_sgl = true;
+	xlnx_dma_chan->xt.dst_sgl = false;
 
-		obj = drm_fb_cma_get_gem_obj(fb, i);
-		if (!obj) {
-			dev_err(xlnx_pl_disp->dev, "failed to get fb obj\n");
+	/* Do we have a video format aware dma channel?
+	 * so, modify descriptor accordingly. Hueristic test:
+	 * we have a multi-plane format but only one dma channel
+	 */
+	if (info->num_planes > 1) {
+		chroma_paddr = drm_fb_cma_get_gem_addr(fb, plane->state, 1);
+		if (!chroma_paddr) {
+			dev_err(xlnx_pl_disp->dev,
+				"failed to get chroma paddr\n");
 			return -EINVAL;
 		}
-
-		xlnx_dma_chan->xt.numf = height;
-		xlnx_dma_chan->sgl[0].size = width * cpp;
-		xlnx_dma_chan->sgl[0].icg = fb->pitches[i] -
-					   xlnx_dma_chan->sgl[0].size;
-		offset = src_x * cpp + src_y * fb->pitches[i];
-		offset += fb->offsets[i];
-		xlnx_dma_chan->xt.src_start = obj->paddr + offset;
-		xlnx_dma_chan->xt.frame_size = 1;
-		xlnx_dma_chan->xt.dir = DMA_MEM_TO_DEV;
-		xlnx_dma_chan->xt.src_sgl = true;
-		xlnx_dma_chan->xt.dst_sgl = false;
+		stride = xlnx_dma_chan->sgl[0].size +
+			xlnx_dma_chan->sgl[0].icg;
+		xlnx_dma_chan->sgl[0].src_icg = chroma_paddr -
+			xlnx_dma_chan->xt.src_start -
+			(xlnx_dma_chan->xt.numf * stride);
 	}
 
 	return 0;
