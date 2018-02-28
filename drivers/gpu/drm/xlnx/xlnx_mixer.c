@@ -115,6 +115,13 @@ static const u32 color_table[] = {
 	DRM_FORMAT_AYUV,
 	DRM_FORMAT_NV12,
 	DRM_FORMAT_NV16,
+	DRM_FORMAT_Y8,
+	DRM_FORMAT_Y10,
+	DRM_FORMAT_XVUY2101010,
+	DRM_FORMAT_VUY888,
+	DRM_FORMAT_XVUY8888,
+	DRM_FORMAT_XV15,
+	DRM_FORMAT_XV20,
 };
 
 /*********************** Inline Functions/Macros *****************************/
