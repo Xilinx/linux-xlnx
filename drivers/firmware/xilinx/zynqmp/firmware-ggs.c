@@ -283,15 +283,7 @@ static const struct attribute_group attr_group = {
 	NULL,
 };
 
-int zynqmp_pm_ggs_init(void)
+int zynqmp_pm_ggs_init(struct kobject *parent_kobj)
 {
-	struct kobject *zynqmp_kobj;
-
-	zynqmp_kobj = kobject_create_and_add("zynqmp", firmware_kobj);
-	if (!zynqmp_kobj) {
-		pr_err("zynqmp: Firmware kobj add failed.\n");
-		return -ENOMEM;
-	}
-
-	return sysfs_create_group(zynqmp_kobj, &attr_group);
+	return sysfs_create_group(parent_kobj, &attr_group);
 }
