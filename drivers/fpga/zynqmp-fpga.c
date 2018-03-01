@@ -137,7 +137,6 @@ static int zynqmp_fpga_probe(struct platform_device *pdev)
 
 static int zynqmp_fpga_remove(struct platform_device *pdev)
 {
-
 	fpga_mgr_unregister(&pdev->dev);
 
 	return 0;
