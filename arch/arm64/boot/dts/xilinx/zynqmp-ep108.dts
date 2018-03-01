@@ -114,6 +114,10 @@
 	};
 };
 
+&perf_monitor_ocm {
+	status = "disabled";
+};
+
 &qspi {
 	status = "okay";
 	flash@0 {
