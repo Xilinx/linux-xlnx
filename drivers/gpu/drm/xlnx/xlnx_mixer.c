@@ -1507,11 +1507,9 @@ static int xlnx_mix_set_plane(struct xlnx_mix_plane *plane,
 {
 	struct xlnx_mix_hw *mixer_hw;
 	struct xlnx_mix *mixer;
-	struct drm_gem_cma_object *luma_buffer, *chroma_buffer;
+	struct drm_gem_cma_object *luma_buffer;
 	u32 luma_stride = fb->pitches[0];
-	u32 chroma_stride = fb->pitches[1];
-	u32 luma_offset, chroma_offset;
-	u64 luma_addr, chroma_addr;
+	u64 luma_addr, chroma_addr = 0;
 	u32 active_area_width;
 	u32 active_area_height;
 	enum xlnx_mix_layer_id layer_id;
@@ -1527,16 +1525,19 @@ static int xlnx_mix_set_plane(struct xlnx_mix_plane *plane,
 		mixer->drm_primary_layer->mixer_layer->layer_regs.height;
 	/* compute memory data */
 	luma_buffer = drm_fb_cma_get_gem_obj(fb, 0);
-	chroma_buffer = drm_fb_cma_get_gem_obj(fb, 1);
-	/* JPM fix for 10-bit formats */
-	luma_offset = src_x * drm_format_plane_cpp(info->format, 0) +
-						   src_y * luma_stride;
-	chroma_offset = src_x * drm_format_plane_cpp(info->format, 1) +
-						     src_y * chroma_stride;
-	luma_offset += fb->offsets[0];
-	chroma_offset += fb->offsets[1];
-	luma_addr = luma_buffer ? luma_buffer->paddr + luma_offset : 0;
-	chroma_addr = chroma_buffer ? chroma_buffer->paddr + chroma_offset : 0;
+	luma_addr = drm_fb_cma_get_gem_addr(fb, plane->base.state, 0);
+	if (!luma_addr) {
+		DRM_ERROR("%s failed to get luma paddr\n", __func__);
+		return -EINVAL;
+	}
+
+	if (info->num_planes > 1) {
+		chroma_addr = drm_fb_cma_get_gem_addr(fb, plane->base.state, 1);
+		if (!chroma_addr) {
+			DRM_ERROR("failed to get chroma paddr\n");
+			return -EINVAL;
+		}
+	}
 	ret = xlnx_mix_mark_layer_active(plane);
 	if (ret)
 		return ret;
@@ -1595,8 +1596,8 @@ static int xlnx_mix_plane_mode_set(struct drm_plane *base_plane,
 {
 	struct xlnx_mix_plane *plane = to_xlnx_plane(base_plane);
 	const struct drm_format_info *info = fb->format;
-	struct drm_gem_cma_object *obj;
-	size_t offset = 0, i = 0;
+	size_t i = 0;
+	dma_addr_t luma_paddr;
 	int ret;
 	u32 stride;
 
@@ -1608,20 +1609,20 @@ static int xlnx_mix_plane_mode_set(struct drm_plane *base_plane,
 	for (; i < info->num_planes; i++) {
 		unsigned int width = src_w / (i ? info->hsub : 1);
 		unsigned int height = src_h / (i ? info->vsub : 1);
-		unsigned int cpp = drm_format_plane_cpp(info->format, i);
 
-		obj = drm_fb_cma_get_gem_obj(fb, i);
-		if (!obj) {
-			DRM_ERROR("failed to get a gem obj for fb\n");
+		luma_paddr = drm_fb_cma_get_gem_addr(fb, base_plane->state, i);
+		if (!luma_paddr) {
+			DRM_ERROR("%s failed to get luma paddr\n", __func__);
 			return -EINVAL;
 		}
 
 		plane->dma[i].xt.numf = height;
-		plane->dma[i].sgl[0].size = width * cpp;
-		offset = src_x * cpp + src_y * fb->pitches[i];
-		offset += fb->offsets[i];
-		plane->dma[i].xt.src_start = obj->paddr + offset;
-		plane->dma[i].xt.frame_size = 1;
+		plane->dma[i].sgl[0].size =
+			drm_format_plane_width_bytes(info, 0, width);
+		plane->dma[i].sgl[0].icg = fb->pitches[0] -
+						plane->dma[i].sgl[0].size;
+		plane->dma[i].xt.src_start = luma_paddr;
+		plane->dma[i].xt.frame_size = info->num_planes;
 		plane->dma[i].xt.dir = DMA_MEM_TO_DEV;
 		plane->dma[i].xt.src_sgl = true;
 		plane->dma[i].xt.dst_sgl = false;
@@ -1638,7 +1639,6 @@ static int xlnx_mix_plane_mode_set(struct drm_plane *base_plane,
 		plane->dma[0].sgl[0].src_icg = plane->dma[1].xt.src_start -
 				plane->dma[0].xt.src_start -
 				(plane->dma[0].xt.numf * stride);
-		plane->dma[0].xt.frame_size = info->num_planes;
 	}
 
 	ret = xlnx_mix_set_plane(plane, fb, crtc_x, crtc_y, src_x, src_y,
