@@ -30,11 +30,11 @@
 #include <linux/wait.h>
 
 static unsigned int test_buf_size = 64;
-module_param(test_buf_size, uint, S_IRUGO);
+module_param(test_buf_size, uint, 0444);
 MODULE_PARM_DESC(test_buf_size, "Size of the memcpy test buffer");
 
 static unsigned int iterations = 1;
-module_param(iterations, uint, S_IRUGO);
+module_param(iterations, uint, 0444);
 MODULE_PARM_DESC(iterations,
 		"Iterations before stopping test (default: infinite)");
 
