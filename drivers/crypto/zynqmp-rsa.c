@@ -24,7 +24,7 @@
 #include <linux/platform_device.h>
 #include <linux/scatterlist.h>
 #include <crypto/scatterwalk.h>
-#include <linux/soc/xilinx/zynqmp/firmware.h>
+#include <linux/firmware/xilinx/zynqmp/firmware.h>
 
 #define ZYNQMP_RSA_QUEUE_LENGTH	1
 #define ZYNQMP_RSA_MAX_KEY_SIZE	1024
@@ -97,11 +97,15 @@ zynqmp_rsa_decrypt(struct blkcipher_desc *desc,
 {
 	struct zynqmp_rsa_op *op = crypto_blkcipher_ctx(desc->tfm);
 	struct zynqmp_rsa_dev *dd = zynqmp_rsa_find_dev(op);
+	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 	struct blkcipher_walk walk;
 	char *kbuf;
 	size_t dma_size;
 	dma_addr_t dma_addr;
 	int err;
+
+	if (!eemi_ops || !eemi_ops->rsa)
+		return -ENOTSUPP;
 
 	blkcipher_walk_init(&walk, dst, src, nbytes);
 	err = blkcipher_walk_virt(desc, &walk);
@@ -116,7 +120,7 @@ zynqmp_rsa_decrypt(struct blkcipher_desc *desc,
 
 	memcpy(kbuf, op->src, nbytes);
 	memcpy(kbuf + nbytes, op->key, op->keylen);
-	zynqmp_pm_rsa(dma_addr, nbytes, 0);
+	eemi_ops->rsa(dma_addr, nbytes, 0);
 	memcpy(walk.dst.virt.addr, kbuf, nbytes);
 	err = blkcipher_walk_done(desc, &walk, nbytes  - 1);
 	dma_free_coherent(dd->dev, dma_size, kbuf, dma_addr);
@@ -131,11 +135,15 @@ zynqmp_rsa_encrypt(struct blkcipher_desc *desc,
 {
 	struct zynqmp_rsa_op *op = crypto_blkcipher_ctx(desc->tfm);
 	struct zynqmp_rsa_dev *dd = zynqmp_rsa_find_dev(op);
+	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 	struct blkcipher_walk walk;
 	char *kbuf;
 	size_t dma_size;
 	dma_addr_t dma_addr;
 	int err;
+
+	if (!eemi_ops || !eemi_ops->rsa)
+		return -ENOTSUPP;
 
 	blkcipher_walk_init(&walk, dst, src, nbytes);
 	err = blkcipher_walk_virt(desc, &walk);
@@ -150,7 +158,7 @@ zynqmp_rsa_encrypt(struct blkcipher_desc *desc,
 
 	memcpy(kbuf, op->src, nbytes);
 	memcpy(kbuf + nbytes, op->key, op->keylen);
-	zynqmp_pm_rsa(dma_addr, nbytes, 1);
+	eemi_ops->rsa(dma_addr, nbytes, 1);
 	memcpy(walk.dst.virt.addr, kbuf, nbytes);
 	err = blkcipher_walk_done(desc, &walk, nbytes  - 1);
 	dma_free_coherent(dd->dev, dma_size, kbuf, dma_addr);
