@@ -41,11 +41,6 @@
 
 #define MAX_LANES			4
 
-#define RST_ULPI			0x0250
-#define RST_ULPI_HI			0x202
-#define RST_ULPI_LOW			0x02
-
-#define RST_ULPI_TIMEOUT		10
 #define RST_TIMEOUT			1000
 
 #define ICM_CFG0			0x10010
@@ -278,7 +273,6 @@ static struct xpsgtr_ssc ssc_lookup[] = {
  * @siou: siou base address
  * @gtr_mutex: mutex for locking
  * @phys: pointer to all the lanes
- * @lpd: base address for low power domain devices reset control
  * @tx_term_fix: fix for GT issue
  * @saved_icm_cfg0: stored value of ICM CFG0 register
  * @saved_icm_cfg1: stored value of ICM CFG1 register
@@ -301,7 +295,6 @@ struct xpsgtr_dev {
 	void __iomem *siou;
 	struct mutex gtr_mutex;
 	struct xpsgtr_phy **phys;
-	void __iomem *lpd;
 	bool tx_term_fix;
 	unsigned int saved_icm_cfg0;
 	unsigned int saved_icm_cfg1;
@@ -902,32 +895,38 @@ static void xpsgtr_misc_sata(struct xpsgtr_phy *gtr_phy)
 }
 
 /**
- * xpsgtr_ulpi_reset - This function does ULPI reset.
+ * xpsgtr_ulpi_reset - This function perform's ULPI reset sequence.
  * @gtr_phy: pointer to lane
+ *
+ * Return: 0 on success, -EINVAL on non existing USB type or error from
+ * communication with firmware
  */
-static void xpsgtr_ulpi_reset(struct xpsgtr_phy *gtr_phy)
+static int xpsgtr_ulpi_reset(struct xpsgtr_phy *gtr_phy)
 {
+	u32 node_id;
+	int ret = 0;
 	struct xpsgtr_dev *gtr_dev = gtr_phy->data;
-	unsigned long loop_time = msecs_to_jiffies(RST_ULPI_TIMEOUT);
-	unsigned long timeout;
+	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 
-	writel(RST_ULPI_HI, gtr_dev->lpd + RST_ULPI);
+	if (!eemi_ops || !eemi_ops->ioctl)
+		return -ENOTSUPP;
 
-	/* wait for some time */
-	timeout = jiffies + loop_time;
-	do {
-		cpu_relax();
-	} while (!time_after_eq(jiffies, timeout));
+	switch (gtr_phy->type) {
+	case XPSGTR_TYPE_USB0:
+		node_id = NODE_USB_0;
+		break;
+	case XPSGTR_TYPE_USB1:
+		node_id = NODE_USB_1;
+		break;
+	default:
+		return -EINVAL;
+	}
 
-	writel(RST_ULPI_LOW, gtr_dev->lpd + RST_ULPI);
+	ret = eemi_ops->ioctl(node_id, IOCTL_ULPI_RESET, 0, 0, NULL);
+	if (ret < 0)
+		dev_err(gtr_dev->dev, "failed to perform ULPI reset\n");
 
-	/* wait for some time */
-	timeout = jiffies + loop_time;
-	do {
-		cpu_relax();
-	} while (!time_after_eq(jiffies, timeout));
-
-	writel(RST_ULPI_HI, gtr_dev->lpd + RST_ULPI);
+	return ret;
 }
 
 /**
@@ -1142,7 +1141,7 @@ static int xpsgtr_phy_init(struct phy *phy)
 
 	/* Do ULPI reset for usb */
 	if (gtr_phy->protocol == ICM_PROTOCOL_USB)
-		xpsgtr_ulpi_reset(gtr_phy);
+		ret = xpsgtr_ulpi_reset(gtr_phy);
 
 	/* Select SGMII Mode for GEM and set the PCS Signal detect*/
 	if (gtr_phy->protocol == ICM_PROTOCOL_SGMII)
@@ -1438,6 +1437,9 @@ static int xpsgtr_probe(struct platform_device *pdev)
 	int lanecount, port = 0, index = 0;
 	int err;
 
+	if (of_device_is_compatible(np, "xlnx,zynqmp-psgtr"))
+		dev_warn(&pdev->dev, "This binding is deprecated, please use new compatible binding\n");
+
 	gtr_dev = devm_kzalloc(&pdev->dev, sizeof(*gtr_dev), GFP_KERNEL);
 	if (!gtr_dev)
 		return -ENOMEM;
@@ -1451,11 +1453,6 @@ static int xpsgtr_probe(struct platform_device *pdev)
 	gtr_dev->siou = devm_ioremap_resource(&pdev->dev, res);
 	if (IS_ERR(gtr_dev->siou))
 		return PTR_ERR(gtr_dev->siou);
-
-	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "lpd");
-	gtr_dev->lpd = devm_ioremap_resource(&pdev->dev, res);
-	if (IS_ERR(gtr_dev->lpd))
-		return PTR_ERR(gtr_dev->lpd);
 
 	lanecount = of_get_child_count(np);
 	if (lanecount > MAX_LANES || lanecount == 0)
@@ -1569,6 +1566,7 @@ static const struct dev_pm_ops xpsgtr_pm_ops = {
 /* Match table for of_platform binding */
 static const struct of_device_id xpsgtr_of_match[] = {
 	{ .compatible = "xlnx,zynqmp-psgtr", },
+	{ .compatible = "xlnx,zynqmp-psgtr-v1.1", },
 	{},
 };
 MODULE_DEVICE_TABLE(of, xpsgtr_of_match);
