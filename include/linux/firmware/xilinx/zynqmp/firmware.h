@@ -450,6 +450,8 @@ enum pm_ioctl_id {
 	IOCTL_READ_GGS,
 	IOCTL_WRITE_PGGS,
 	IOCTL_READ_PGGS,
+	/* IOCTL for ULPI reset */
+	IOCTL_ULPI_RESET,
 };
 
 enum rpu_oper_mode {
