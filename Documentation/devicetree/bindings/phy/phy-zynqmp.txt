@@ -5,7 +5,8 @@ High Speed Gigabit Transceiver(GT). ZynqMP PS GTR provides four lanes
 and are used by USB, SATA, PCIE, Display port and Ethernet SGMMI controllers.
 
 Required properties (controller (parent) node):
-- compatible    : Should be "xlnx,zynqmp-psgtr"
+- compatible	: Can be "xlnx,zynqmp-psgtr-v1.1" or "xlnx,zynqmp-psgtr"
+		  "xlnx,zynqmp-psgtr-v1.1" has the lpd address mapping removed
 
 - reg           : Address and length of register sets for each device in
                   "reg-names"
