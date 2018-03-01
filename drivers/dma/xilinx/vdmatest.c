@@ -38,6 +38,14 @@ module_param(iterations, uint, S_IRUGO);
 MODULE_PARM_DESC(iterations,
 		"Iterations before stopping test (default: infinite)");
 
+static unsigned int hsize = 64;
+module_param(hsize, uint, 0444);
+MODULE_PARM_DESC(hsize, "Horizontal size in bytes");
+
+static unsigned int vsize = 32;
+module_param(vsize, uint, 0444);
+MODULE_PARM_DESC(vsize, "Vertical size in bytes");
+
 /*
  * Initialization patterns. All bytes in the source buffer has bit 7
  * set, all bytes in the destination buffer has bit 7 cleared.
@@ -237,7 +245,6 @@ static int xilinx_vdmatest_slave_func(void *data)
 	enum dma_status status;
 	enum dma_ctrl_flags flags;
 	int ret = -ENOMEM, i;
-	int hsize = 64, vsize = 32;
 	struct xilinx_vdma_config config;
 
 	thread_name = current->comm;
