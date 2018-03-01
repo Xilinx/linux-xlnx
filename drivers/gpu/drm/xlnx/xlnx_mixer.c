@@ -72,14 +72,15 @@
 #define XVMIX_LOGOA_V_HIGH		0x40fff
 
 /************************** Constant Definitions *****************************/
-#define XVMIX_MASK_ENABLE_ALL_LAYERS    GENMASK(8, 0)
+#define XVMIX_LOGO_EN			BIT(15)
+#define XVMIX_MASK_ENABLE_ALL_LAYERS	(GENMASK(8, 0) | XVMIX_LOGO_EN)
 #define XVMIX_MASK_DISABLE_ALL_LAYERS   0x0
 #define XVMIX_REG_OFFSET                0x100
 #define XVMIX_MASTER_LAYER_IDX		0x0
 #define XVMIX_LOGO_LAYER_IDX		0x1
 #define XVMIX_DISP_MAX_WIDTH		4096
 #define XVMIX_DISP_MAX_HEIGHT		2160
-#define XVMIX_MAX_LAYERS		9
+#define XVMIX_MAX_LAYERS		10
 #define XVMIX_MAX_BPC			16
 #define XVMIX_ALPHA_MIN			0
 #define XVMIX_ALPHA_MAX			256
@@ -134,6 +135,7 @@ static const u32 color_table[] = {
  * @XVMIX_LAYER_5: Layer 5
  * @XVMIX_LAYER_6: Layer 6
  * @XVMIX_LAYER_7: Layer 7
+ * @XVMIX_LAYER_8: Layer 8
  * @XVMIX_LAYER_LOGO: Logo Layer
  * @XVMIX_LAYER_ALL: Layer count
  */
@@ -146,6 +148,7 @@ enum xlnx_mix_layer_id {
 	XVMIX_LAYER_5,
 	XVMIX_LAYER_6,
 	XVMIX_LAYER_7,
+	XVMIX_LAYER_8,
 	XVMIX_LAYER_LOGO,
 	XVMIX_LAYER_ALL
 };
@@ -563,7 +566,10 @@ static void xlnx_mix_layer_enable(struct xlnx_mix_hw *mixer,
 	} else if ((id < mixer->layer_cnt) ||
 		   ((id == XVMIX_LAYER_LOGO) && mixer->logo_layer_en)) {
 		curr_state = reg_readl(mixer->base, XVMIX_LAYERENABLE_DATA);
-		curr_state |= (1 << id);
+		if (id == XVMIX_LAYER_LOGO)
+			curr_state |= XVMIX_LOGO_EN;
+		else
+			curr_state |= BIT(id);
 		reg_writel(mixer->base, XVMIX_LAYERENABLE_DATA, curr_state);
 	} else {
 		DRM_ERROR("Can't enable requested layer %d\n", id);
@@ -620,7 +626,10 @@ static void xlnx_mix_layer_disable(struct xlnx_mix_hw *mixer,
 	} else if ((id < num_layers) ||
 		   ((id == XVMIX_LAYER_LOGO) && (mixer->logo_layer_en))) {
 		curr_state = reg_readl(mixer->base, XVMIX_LAYERENABLE_DATA);
-		curr_state &= ~(BIT(id));
+		if (id == XVMIX_LAYER_LOGO)
+			curr_state &= ~XVMIX_LOGO_EN;
+		else
+			curr_state &= ~(BIT(id));
 		reg_writel(mixer->base, XVMIX_LAYERENABLE_DATA, curr_state);
 	} else {
 		DRM_ERROR("Can't disable requested layer %d\n", id);
@@ -2582,7 +2591,7 @@ static int xlnx_mix_remove(struct platform_device *pdev)
 }
 
 static const struct of_device_id xlnx_mix_of_match[] = {
-	{ .compatible = "xlnx,mixer", },
+	{ .compatible = "xlnx,mixer-3.0", },
 	{ /* end of table */ },
 };
 MODULE_DEVICE_TABLE(of, xlnx_mix_of_match);
