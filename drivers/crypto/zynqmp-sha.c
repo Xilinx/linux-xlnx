@@ -28,7 +28,7 @@
 #include <crypto/sha.h>
 #include <crypto/hash.h>
 #include <crypto/internal/hash.h>
-#include <linux/soc/xilinx/zynqmp/firmware.h>
+#include <linux/firmware/xilinx/zynqmp/firmware.h>
 
 #define ZYNQMP_SHA3_INIT	1
 #define ZYNQMP_SHA3_UPDATE	2
@@ -80,9 +80,13 @@ static int zynqmp_sha_init(struct ahash_request *req)
 	struct crypto_ahash *tfm = crypto_ahash_reqtfm(req);
 	struct zynqmp_sha_ctx *tctx = crypto_ahash_ctx(tfm);
 	struct zynqmp_sha_reqctx *ctx = ahash_request_ctx(req);
+	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 	struct zynqmp_sha_dev *dd = NULL;
 	struct zynqmp_sha_dev *tmp;
 	int ret;
+
+	if (!eemi_ops || !eemi_ops->sha_hash)
+		return -ENOTSUPP;
 
 	spin_lock_bh(&zynqmp_sha.lock);
 	if (!tctx->dd) {
@@ -100,7 +104,7 @@ static int zynqmp_sha_init(struct ahash_request *req)
 	dev_dbg(dd->dev, "init: digest size: %d\n",
 		crypto_ahash_digestsize(tfm));
 
-	ret = zynqmp_pm_sha_hash(0, 0, ZYNQMP_SHA3_INIT);
+	ret = eemi_ops->sha_hash(0, 0, ZYNQMP_SHA3_INIT);
 
 	return ret;
 }
@@ -109,6 +113,7 @@ static int zynqmp_sha_update(struct ahash_request *req)
 {
 	struct zynqmp_sha_ctx *tctx = crypto_tfm_ctx(req->base.tfm);
 	struct zynqmp_sha_dev *dd = tctx->dd;
+	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 	char *kbuf;
 	size_t dma_size = req->nbytes;
 	dma_addr_t dma_addr;
@@ -117,6 +122,9 @@ static int zynqmp_sha_update(struct ahash_request *req)
 	if (!req->nbytes)
 		return 0;
 
+	if (!eemi_ops || !eemi_ops->sha_hash)
+		return -ENOTSUPP;
+
 	kbuf = dma_alloc_coherent(dd->dev, dma_size, &dma_addr, GFP_KERNEL);
 	if (!kbuf)
 		return -ENOMEM;
@@ -124,7 +132,7 @@ static int zynqmp_sha_update(struct ahash_request *req)
 	scatterwalk_map_and_copy(kbuf, req->src, 0, req->nbytes, 0);
 	 __flush_cache_user_range((unsigned long)kbuf,
 				  (unsigned long)kbuf + dma_size);
-	ret = zynqmp_pm_sha_hash(dma_addr, req->nbytes, ZYNQMP_SHA3_UPDATE);
+	ret = eemi_ops->sha_hash(dma_addr, req->nbytes, ZYNQMP_SHA3_UPDATE);
 	dma_free_coherent(dd->dev, dma_size, kbuf, dma_addr);
 
 	return ret;
@@ -134,16 +142,20 @@ static int zynqmp_sha_final(struct ahash_request *req)
 {
 	struct zynqmp_sha_ctx *tctx = crypto_tfm_ctx(req->base.tfm);
 	struct zynqmp_sha_dev *dd = tctx->dd;
+	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 	char *kbuf;
 	size_t dma_size = SHA384_DIGEST_SIZE;
 	dma_addr_t dma_addr;
 	int ret;
 
+	if (!eemi_ops || !eemi_ops->sha_hash)
+		return -ENOTSUPP;
+
 	kbuf = dma_alloc_coherent(dd->dev, dma_size, &dma_addr, GFP_KERNEL);
 	if (!kbuf)
 		return -ENOMEM;
 
-	ret = zynqmp_pm_sha_hash(dma_addr, dma_size, ZYNQMP_SHA3_FINAL);
+	ret = eemi_ops->sha_hash(dma_addr, dma_size, ZYNQMP_SHA3_FINAL);
 	memcpy(req->result, kbuf, 48);
 	dma_free_coherent(dd->dev, dma_size, kbuf, dma_addr);
 
