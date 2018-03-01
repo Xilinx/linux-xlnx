@@ -319,7 +319,6 @@ static int xilinx_vdmatest_slave_func(void *data)
 		config.park = 1;
 		xilinx_vdma_channel_set_config(tx_chan, &config);
 
-		config.park = 0;
 		xilinx_vdma_channel_set_config(rx_chan, &config);
 
 		for (i = 0; i < frm_cnt; i++) {
