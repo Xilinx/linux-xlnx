@@ -2500,7 +2500,7 @@ static void xlnx_mix_init(struct xlnx_mix_hw *mixer)
 	/* default to blue */
 	xlnx_mix_set_bkg_col(mixer, rgb_bg_clr);
 
-	for (i = 0; i <= mixer->layer_cnt; i++) {
+	for (i = 0; i < mixer->layer_cnt; i++) {
 		layer_id = mixer->layer_data[i].id;
 		layer_data = &mixer->layer_data[i];
 		if (layer_id == XVMIX_LAYER_MASTER)
