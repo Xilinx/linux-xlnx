@@ -84,7 +84,7 @@ Specifying phy control of devices
 Device nodes should specify the configuration required in their "phys"
 property, containing a phandle to the phy port node and a device type.
 
-phys = <PHANDLE CONTOLLER_TYPE CONTROLLER_INSTANCE LANE_NUM LANE_FREQ>;
+phys = <PHANDLE CONTROLLER_TYPE CONTROLLER_INSTANCE LANE_NUM LANE_FREQ>;
 
 PHANDLE                 = &lane0 or &lane1 or &lane2 or &lane3
 CONTROLLER_TYPE         = PHY_TYPE_PCIE or PHY_TYPE_SATA or PHY_TYPE_USB
