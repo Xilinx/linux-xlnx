@@ -764,8 +764,8 @@ static int xemaclite_mdio_read(struct mii_bus *bus, int phy_id, int reg)
 	rc = xemaclite_readl(lp->base_addr + XEL_MDIORD_OFFSET);
 
 	dev_dbg(&lp->ndev->dev,
-		"xemaclite_mdio_read(phy_id=%i, reg=%x) == %x\n",
-		phy_id, reg, rc);
+		"%s(phy_id=%i, reg=%x) == %x\n",
+		__func__, phy_id, reg, rc);
 
 	return rc;
 }
@@ -789,8 +789,8 @@ static int xemaclite_mdio_write(struct mii_bus *bus, int phy_id, int reg,
 	u32 ctrl_reg;
 
 	dev_dbg(&lp->ndev->dev,
-		"xemaclite_mdio_write(phy_id=%i, reg=%x, val=%x)\n",
-		phy_id, reg, val);
+		"%s(phy_id=%i, reg=%x, val=%x)\n",
+		__func__, phy_id, reg, val);
 
 	if (xemaclite_mdio_wait(lp))
 		return -ETIMEDOUT;
