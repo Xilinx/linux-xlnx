@@ -50,6 +50,7 @@
 #define XSDI_TX_CTRL_M_SHIFT		7
 #define XSDI_TX_CTRL_MUX_SHIFT		8
 #define XSDI_TX_CTRL_ST352_F2_EN_SHIFT	15
+#define XSDI_TX_CTRL_420_BIT		BIT(21)
 
 /* TX_ST352_LINE register masks */
 #define XSDI_TX_ST352_LINE_MASK		GENMASK(10, 0)
@@ -85,6 +86,7 @@
 #define XST352_PROG_PIC			BIT(6)
 #define XST352_PROG_TRANS		BIT(7)
 #define XST352_2048_SHIFT		BIT(6)
+#define XST352_YUV420_MASK		0x03
 #define ST352_BYTE3			0x00
 #define ST352_BYTE4			0x01
 #define GT_TIMEOUT			50
@@ -142,6 +144,10 @@ enum payload_line_2 {
  * @sdi_data_strm: configurable SDI data stream parameter
  * @sdi_data_strm_prop_val: configurable number of SDI data streams
  *			    value currently supported are 2, 4 and 8
+ * @sdi_420_in: Specifying input bus color format parameter to SDI
+ * @sdi_420_in_val: 1 for yuv420 and 0 for yuv422
+ * @sdi_420_out: configurable SDI out color format parameter
+ * @sdi_420_out_val: 1 for yuv420 and 0 for yuv422
  * @is_frac_prop: configurable SDI fractional fps parameter
  * @is_frac_prop_val: configurable SDI fractional fps parameter value
  * @bridge: bridge structure
@@ -166,6 +172,10 @@ struct xlnx_sdi {
 	u32 sdi_mod_prop_val;
 	struct drm_property *sdi_data_strm;
 	u32 sdi_data_strm_prop_val;
+	struct drm_property *sdi_420_in;
+	bool sdi_420_in_val;
+	struct drm_property *sdi_420_out;
+	bool sdi_420_out_val;
 	struct drm_property *is_frac_prop;
 	bool is_frac_prop_val;
 	struct xlnx_bridge *bridge;
@@ -368,11 +378,14 @@ static void xlnx_sdi_set_mode(struct xlnx_sdi *sdi, u32 mode,
 	data &= ~(XSDI_TX_CTRL_MODE << XSDI_TX_CTRL_MODE_SHIFT);
 	data &= ~(XSDI_TX_CTRL_M);
 	data &= ~(XSDI_TX_CTRL_MUX << XSDI_TX_CTRL_MUX_SHIFT);
+	data &= ~XSDI_TX_CTRL_420_BIT;
 
 	data |= (((mode & XSDI_TX_CTRL_MODE) << XSDI_TX_CTRL_MODE_SHIFT) |
 		(is_frac  << XSDI_TX_CTRL_M_SHIFT) |
 		((mux_ptrn & XSDI_TX_CTRL_MUX) << XSDI_TX_CTRL_MUX_SHIFT));
 
+	if (sdi->sdi_420_out_val)
+		data |= XSDI_TX_CTRL_420_BIT;
 	xlnx_sdi_writel(sdi->base, XSDI_TX_MDL_CTRL, data);
 }
 
@@ -444,6 +457,10 @@ xlnx_sdi_atomic_set_property(struct drm_connector *connector,
 		sdi->sdi_mod_prop_val = (unsigned int)val;
 	else if (property == sdi->sdi_data_strm)
 		sdi->sdi_data_strm_prop_val = (unsigned int)val;
+	else if (property == sdi->sdi_420_in)
+		sdi->sdi_420_in_val = val;
+	else if (property == sdi->sdi_420_out)
+		sdi->sdi_420_out_val = val;
 	else if (property == sdi->is_frac_prop)
 		sdi->is_frac_prop_val = !!val;
 	else if (property == sdi->height_out)
@@ -470,6 +487,10 @@ xlnx_sdi_atomic_get_property(struct drm_connector *connector,
 		*val = sdi->sdi_mod_prop_val;
 	else if (property == sdi->sdi_data_strm)
 		*val =  sdi->sdi_data_strm_prop_val;
+	else if (property == sdi->sdi_420_in)
+		*val = sdi->sdi_420_in_val;
+	else if (property == sdi->sdi_420_out)
+		*val = sdi->sdi_420_out_val;
 	else if (property == sdi->is_frac_prop)
 		*val =  sdi->is_frac_prop_val;
 	else if (property == sdi->height_out)
@@ -589,6 +610,8 @@ xlnx_sdi_drm_connector_create_property(struct drm_connector *base_connector)
 						  "sdi_mode", 0, 5);
 	sdi->sdi_data_strm = drm_property_create_range(dev, 0,
 						       "sdi_data_stream", 2, 8);
+	sdi->sdi_420_in = drm_property_create_bool(dev, 1, "sdi_420_in");
+	sdi->sdi_420_out = drm_property_create_bool(dev, 1, "sdi_420_out");
 	sdi->height_out = drm_property_create_range(dev, 0,
 						    "height_out", 2, 4096);
 	sdi->width_out = drm_property_create_range(dev, 0,
@@ -616,6 +639,12 @@ xlnx_sdi_drm_connector_attach_property(struct drm_connector *base_connector)
 
 	if (sdi->sdi_data_strm)
 		drm_object_attach_property(obj, sdi->sdi_data_strm, 0);
+
+	if (sdi->sdi_420_in)
+		drm_object_attach_property(obj, sdi->sdi_420_in, 0);
+
+	if (sdi->sdi_420_out)
+		drm_object_attach_property(obj, sdi->sdi_420_out, 0);
 
 	if (sdi->is_frac_prop)
 		drm_object_attach_property(obj, sdi->is_frac_prop, 0);
@@ -700,6 +729,9 @@ static u32 xlnx_sdi_calc_st352_payld(struct xlnx_sdi *sdi,
 	dev_dbg(sdi->dev, "mode id: %d\n", id);
 	if (mode->hdisplay == 2048 || mode->hdisplay == 4096)
 		byt3 |= XST352_2048_SHIFT;
+	if (sdi->sdi_420_in_val)
+		byt3 |= XST352_YUV420_MASK;
+
 	/* byte 2 calculation */
 	is_p = !(mode->flags & DRM_MODE_FLAG_INTERLACE);
 	byt2 = xlnx_sdi_modes[id].st352_byt2[is_frac];
