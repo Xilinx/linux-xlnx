@@ -20,8 +20,9 @@ Required properties:
 		  for Axi Ethenret 1G MAC
 		  controllers and "xlnx,ten-gig-eth-mac" for Axi
 		  Ethernet 10G MAC controllers and
-		  "xlnx,xxv-ethernet-1.0" for 10G/25G MAC and
-		  "xlnx,axi-2_5-gig-ethernet-1.0" for 2.5G MAC.
+		  "xlnx,xxv-ethernet-1.0" for 10G/25G MAC,
+		  "xlnx,axi-2_5-gig-ethernet-1.0" for 2.5G MAC and
+		  "xlnx,xxv-usxgmii-ethernet-1.0" for USXGMII.
 - reg		: Address and length of the IO space.
 - interrupts	: Should be a list of two interrupt, TX and RX.
 - interrupt-parent	: Must be core interrupt controller.
@@ -46,6 +47,9 @@ Optional properties:
 - clock-names		: Input clock name, should be ethernet_clk and dma_clk.
 Optional properties (When AxiEthernet is configured with MCDMA):
 - xlnx,num-queues	: Number of queues h/w configured for.
+Optional properties (When USXGMII is in use):
+- xlnx,usxgmii-rate	: USXGMII PHY speed - can be 10, 100, 1000, 2500,
+			  5000 or 10000.
 
 Example:
 
