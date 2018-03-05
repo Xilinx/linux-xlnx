@@ -99,6 +99,7 @@
 #define	XVMIX_SCALE_FACTOR_2X		1
 #define	XVMIX_SCALE_FACTOR_4X		2
 #define	XVMIX_SCALE_FACTOR_INVALID	3
+#define	XVMIX_BASE_ALIGN		8
 
 /*************************** STATIC DATA  ************************************/
 static const u32 color_table[] = {
@@ -129,8 +130,6 @@ static const u32 color_table[] = {
 #define to_xlnx_crtc(x)	container_of(x, struct xlnx_crtc, crtc)
 #define to_xlnx_plane(x)	container_of(x, struct xlnx_mix_plane, base)
 #define to_xlnx_mixer(x)	container_of(x, struct xlnx_mix, crtc)
-#define get_xlnx_mixer_mem_align(m)  \
-	sizeof((m)->mixer_hw.layer_data[0].layer_regs.buff_addr1)
 
 /**
  * enum xlnx_mix_layer_id - Describes the layer by index to be acted upon
@@ -779,7 +778,7 @@ static unsigned int xlnx_mix_crtc_get_align(struct xlnx_crtc *crtc)
 	struct xlnx_mix_plane *plane = to_xlnx_plane(crtc->crtc.primary);
 	struct xlnx_mix *m = plane->mixer;
 
-	return get_xlnx_mixer_mem_align(m);
+	return XVMIX_BASE_ALIGN * m->mixer_hw.ppc;
 }
 
 /**
