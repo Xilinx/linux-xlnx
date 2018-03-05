@@ -866,6 +866,18 @@ static void axienet_device_reset(struct net_device *ndev)
 	struct axienet_dma_q *q;
 	u32 i;
 
+	if (lp->axienet_config->mactype == XAXIENET_10G_25G) {
+		/* Reset the XXV MAC */
+		val = axienet_ior(lp, XXV_GT_RESET_OFFSET);
+		val |= XXV_GT_RESET_MASK;
+		axienet_iow(lp, XXV_GT_RESET_OFFSET, val);
+		/* Wait for 1ms for GT reset to complete as per spec */
+		mdelay(1);
+		val = axienet_ior(lp, XXV_GT_RESET_OFFSET);
+		val &= ~XXV_GT_RESET_MASK;
+		axienet_iow(lp, XXV_GT_RESET_OFFSET, val);
+	}
+
 	if (!lp->is_tsn || lp->temac_no == XAE_TEMAC1) {
 		for_each_dma_queue(lp, i) {
 			q = lp->dq[i];
@@ -2207,6 +2219,7 @@ static int axienet_open(struct net_device *ndev)
 	struct axienet_local *lp = netdev_priv(ndev);
 	struct phy_device *phydev = NULL;
 	struct axienet_dma_q *q;
+	u32 reg, err;
 
 	dev_dbg(&ndev->dev, "axienet_open()\n");
 
@@ -2310,6 +2323,76 @@ static int axienet_open(struct net_device *ndev)
 			goto err_ptp_rx_irq;
 	}
 #endif
+
+	if (lp->phy_mode == XXE_PHY_TYPE_USXGMII) {
+		netdev_dbg(ndev, "RX reg: 0x%x\n",
+			   axienet_ior(lp, XXV_RCW1_OFFSET));
+		/* USXGMII setup at selected speed */
+		reg = axienet_ior(lp, XXV_USXGMII_AN_OFFSET);
+		reg &= ~USXGMII_RATE_MASK;
+		netdev_dbg(ndev, "usxgmii_rate %d\n", lp->usxgmii_rate);
+		switch (lp->usxgmii_rate) {
+		case SPEED_1000:
+			reg |= USXGMII_RATE_1G;
+			break;
+		case SPEED_2500:
+			reg |= USXGMII_RATE_2G5;
+			break;
+		case SPEED_10:
+			reg |= USXGMII_RATE_10M;
+			break;
+		case SPEED_100:
+			reg |= USXGMII_RATE_100M;
+			break;
+		case SPEED_5000:
+			reg |= USXGMII_RATE_5G;
+			break;
+		case SPEED_10000:
+			reg |= USXGMII_RATE_10G;
+			break;
+		default:
+			reg |= USXGMII_RATE_1G;
+		}
+		reg |= USXGMII_FD;
+		reg |= (USXGMII_EN | USXGMII_LINK_STS);
+		axienet_iow(lp, XXV_USXGMII_AN_OFFSET, reg);
+		reg |= USXGMII_AN_EN;
+		axienet_iow(lp, XXV_USXGMII_AN_OFFSET, reg);
+		/* AN Restart bit should be reset, set and then reset as per
+		 * spec with a 1 ms delay for a raising edge trigger
+		 */
+		axienet_iow(lp, XXV_USXGMII_AN_OFFSET,
+			    reg & ~USXGMII_AN_RESTART);
+		mdelay(1);
+		axienet_iow(lp, XXV_USXGMII_AN_OFFSET,
+			    reg | USXGMII_AN_RESTART);
+		mdelay(1);
+		axienet_iow(lp, XXV_USXGMII_AN_OFFSET,
+			    reg & ~USXGMII_AN_RESTART);
+
+		/* Check block lock bit to make sure RX path is ok with
+		 * USXGMII initialization.
+		 */
+		err = readl_poll_timeout(lp->regs + XXV_STATRX_BLKLCK_OFFSET,
+					 reg, (reg & XXV_RX_BLKLCK_MASK),
+					 100, DELAY_OF_ONE_MILLISEC);
+		if (err) {
+			netdev_err(ndev, "%s: USXGMII Block lock bit not set",
+				   __func__);
+			return -ENODEV;
+		}
+
+		err = readl_poll_timeout(lp->regs + XXV_USXGMII_AN_STS_OFFSET,
+					 reg, (reg & USXGMII_AN_STS_COMP_MASK),
+					 1000000, DELAY_OF_ONE_MILLISEC);
+		if (err) {
+			netdev_err(ndev, "%s: USXGMII AN not complete",
+				   __func__);
+			return -ENODEV;
+		}
+
+		netdev_info(ndev, "USXGMII setup at %d\n", lp->usxgmii_rate);
+	}
 
 	if (!lp->eth_hasnobuf && (lp->axienet_config->mactype == XAXIENET_1G)) {
 		/* Enable interrupts for Axi Ethernet */
@@ -3470,6 +3553,12 @@ static const struct axienet_config axienet_10g25g_config = {
 	.tx_ptplen = XXV_TX_PTP_LEN,
 };
 
+static const struct axienet_config axienet_usxgmii_config = {
+	.mactype = XAXIENET_10G_25G,
+	.setoptions = xxvenet_setoptions,
+	.tx_ptplen = 0,
+};
+
 /* Match table for of_platform binding */
 static const struct of_device_id axienet_of_match[] = {
 	{ .compatible = "xlnx,axi-ethernet-1.00.a", .data = &axienet_1g_config},
@@ -3481,6 +3570,8 @@ static const struct of_device_id axienet_of_match[] = {
 	{ .compatible = "xlnx,xxv-ethernet-1.0",
 						.data = &axienet_10g25g_config},
 	{ .compatible = "xlnx,tsn-ethernet-1.00.a", .data = &axienet_1g_config},
+	{ .compatible = "xlnx,xxv-usxgmii-ethernet-1.0",
+					.data = &axienet_usxgmii_config},
 	{},
 };
 
@@ -3886,6 +3977,11 @@ static int axienet_probe(struct platform_device *pdev)
 	 */
 	lp->phy_mode = ~0;
 	of_property_read_u32(pdev->dev.of_node, "xlnx,phy-type", &lp->phy_mode);
+
+	/* Set default USXGMII rate */
+	lp->usxgmii_rate = SPEED_1000;
+	of_property_read_u32(pdev->dev.of_node, "xlnx,usxgmii-rate",
+			     &lp->usxgmii_rate);
 
 	lp->eth_hasnobuf = of_property_read_bool(pdev->dev.of_node,
 						 "xlnx,eth-hasnobuf");
