@@ -1268,7 +1268,7 @@ static void xlnx_mix_plane_dpms(struct drm_plane *base_plane, int dpms)
 		/* stop dma engine and release descriptors */
 		for (i = 0; i < XVMIX_MAX_NUM_SUB_PLANES; i++) {
 			if (plane->dma[i].chan && plane->dma[i].is_active) {
-				dmaengine_terminate_all(plane->dma[i].chan);
+				dmaengine_terminate_sync(plane->dma[i].chan);
 				plane->dma[i].is_active = false;
 			}
 		}
