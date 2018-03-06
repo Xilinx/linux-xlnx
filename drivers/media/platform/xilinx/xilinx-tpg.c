@@ -259,6 +259,9 @@ static int xtpg_s_stream(struct v4l2_subdev *subdev, int enable)
 		u32 fmt = 0;
 
 		switch (xtpg->vip_format->code) {
+		case MEDIA_BUS_FMT_VYYUYY8_1X24:
+			fmt = XTPG_HLS_COLOR_FORMAT_YUV_420;
+			break;
 		case MEDIA_BUS_FMT_UYVY8_1X16:
 			fmt = XTPG_HLS_COLOR_FORMAT_YUV_422;
 			break;
