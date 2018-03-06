@@ -18,7 +18,7 @@
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <asm/hardware/cache-l2x0.h>
-#include "edac_core.h"
+#include "edac_module.h"
 
 /* Auxilary control register definitions */
 #define L2X0_AUX_CTRL_PARITY_MASK	BIT(21)
