@@ -1377,7 +1377,8 @@ static void macb_hresp_error_task(unsigned long data)
 		 * See the documentation for receive_q1_ptr for more info.
 		 */
 		if (q)
-			queue_writel(queue, RBQP, bp->rx_ring_tieoff_dma);
+			queue_writel(queue, RBQP,
+				     lower_32_bits(bp->rx_ring_tieoff_dma));
 
 		/* Enable interrupts */
 		queue_writel(queue, IER,
@@ -1805,7 +1806,7 @@ static void macb_free_consistent(struct macb *bp)
 	}
 
 	if (bp->rx_ring_tieoff) {
-		dma_free_coherent(&bp->pdev->dev, sizeof(bp->rx_ring_tieoff[0]),
+		dma_free_coherent(&bp->pdev->dev, macb_dma_desc_get_size(bp),
 				  bp->rx_ring_tieoff, bp->rx_ring_tieoff_dma);
 		bp->rx_ring_tieoff = NULL;
 	}
@@ -1887,7 +1888,7 @@ static int macb_alloc_consistent(struct macb *bp)
 	 */
 	if (bp->num_queues > 1) {
 		bp->rx_ring_tieoff = dma_alloc_coherent(&bp->pdev->dev,
-						sizeof(bp->rx_ring_tieoff[0]),
+						macb_dma_desc_get_size(bp),
 						&bp->rx_ring_tieoff_dma,
 						GFP_KERNEL);
 		if (!bp->rx_ring_tieoff)
@@ -1916,7 +1917,7 @@ static void macb_init_tieoff(struct macb *bp)
 		/* Setup a wrapping descriptor with no free slots
 		 * (WRAP and USED) to tie off/disable unused RX queues.
 		 */
-		d->addr = MACB_BIT(RX_WRAP) | MACB_BIT(RX_USED);
+		macb_set_addr(bp, d, MACB_BIT(RX_WRAP) | MACB_BIT(RX_USED));
 		d->ctrl = 0;
 	}
 }
@@ -2173,7 +2174,8 @@ static void macb_init_hw(struct macb *bp)
 		 * See the documentation for receive_q1_ptr for more info.
 		 */
 		if (q)
-			queue_writel(queue, RBQP, bp->rx_ring_tieoff_dma);
+			queue_writel(queue, RBQP,
+				     lower_32_bits(bp->rx_ring_tieoff_dma));
 
 		/* Enable interrupts */
 		queue_writel(queue, IER,
@@ -3735,7 +3737,7 @@ static int __maybe_unused macb_suspend(struct device *dev)
 		ctrl &= ~(MACB_BIT(TE) | MACB_BIT(RE));
 		macb_writel(bp, NCR, ctrl);
 		/* Tie off RXQ0 as well */
-		macb_writel(bp, RBQP, bp->rx_ring_tieoff_dma);
+		macb_writel(bp, RBQP, lower_32_bits(bp->rx_ring_tieoff_dma));
 		ctrl = macb_readl(bp, NCR);
 		ctrl |= MACB_BIT(RE);
 		macb_writel(bp, NCR, ctrl);
