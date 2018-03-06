@@ -7,7 +7,7 @@ It outputs the video as an AXI4 Stream video data in YUV 422 10bpc mode.
 The subsystem consists of the SDI Rx IP whose SDI native output is connected
 to a SDI to Native conversion Bridge. The output of the Native bridge is
 connected to a Native to AXI4S Bridge which generates the AXI4 Stream of
-YUV422 10 bpc in dual pixel per clock. This output is fixed.
+YUV422 or YUV420 10 bpc in dual pixel per clock.
 
 Required properties:
 
@@ -27,8 +27,8 @@ Required properties:
   The SDI Rx subsystem has one port configured as output port.
 
 - xlnx,video-format, xlnx,video-width: Video format and width, as defined in
-  video.txt. Please note that the video format is fixed to YUV422 and the
-  video-width is 10.
+  video.txt. Please note that the video format is fixed to either YUV422 or YUV420
+  and the video-width is 10.
 
 Example:
 		v_smpte_uhdsdi_rx_ss: v_smpte_uhdsdi_rx_ss@80000000 {
