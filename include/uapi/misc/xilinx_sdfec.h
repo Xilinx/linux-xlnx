@@ -140,6 +140,22 @@ struct xsdfec_status {
 };
 
 /**
+ * struct xsdfec_config - Configuration of SDFEC device
+ * @fec_id: ID of SDFEC instance
+ * @code: The codes being used by the SDFEC instance
+ * @mode: Mode that the SDFEC is operating
+ * @order: Order of Operation
+ * @state: State of the SDFEC device
+ */
+struct xsdfec_config {
+	s32 fec_id;
+	enum xsdfec_code code;
+	enum xsdfec_op_mode mode;
+	enum xsdfec_order order;
+	enum xsdfec_state state;
+};
+
+/**
  * struct xsdfec_irq - Enabling or Disabling Interrupts
  * @enable_isr: If true enables the ISR
  * @enable_ecc_isr: If true enables the ECC ISR
@@ -167,5 +183,7 @@ struct xsdfec_irq {
 #define XSDFEC_SET_TURBO	_IOW(XSDFEC_MAGIC, 5, struct xsdfec_turbo *)
 /* ioctl to add an LDPC code to the sdfec ldpc codes */
 #define XSDFEC_ADD_LDPC		_IOW(XSDFEC_MAGIC, 6, struct xsdfec_ldpc *)
+/* ioctl that returns sdfec device configuration */
+#define XSDFEC_GET_CONFIG	_IOR(XSDFEC_MAGIC, 7, struct xsdfec_config *)
 
 #endif /* __XILINX_SDFEC_H__ */
