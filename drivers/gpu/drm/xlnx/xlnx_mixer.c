@@ -1896,6 +1896,8 @@ static int xlnx_mix_dt_parse(struct device *dev, struct xlnx_mix *mixer)
 			dev_err(dev, "No reset gpio info from dts for mixer\n");
 		return ret;
 	}
+	gpiod_set_raw_value(mixer_hw->reset_gpio, 0);
+	gpiod_set_raw_value(mixer_hw->reset_gpio, 1);
 
 	ret = of_address_to_resource(node, 0, &res);
 	if (ret) {
