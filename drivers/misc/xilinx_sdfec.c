@@ -254,6 +254,27 @@ xsdfec_get_status(struct xsdfec_dev *xsdfec, void __user *arg)
 }
 
 static int
+xsdfec_get_config(struct xsdfec_dev *xsdfec, void __user *arg)
+{
+	struct xsdfec_config config;
+	int err = 0;
+
+	config.fec_id = xsdfec->fec_id;
+	config.state = xsdfec->state;
+	config.code = xsdfec->code;
+	config.mode = xsdfec->op_mode;
+	config.order = xsdfec->order;
+
+	err = copy_to_user(arg, &config, sizeof(config));
+	if (err) {
+		dev_err(xsdfec->dev, "%s failed for SDFEC%d",
+			__func__, xsdfec->fec_id);
+		err = -EFAULT;
+	}
+	return err;
+}
+
+static int
 xsdfec_isr_enable(struct xsdfec_dev *xsdfec, bool enable)
 {
 	u32 mask_read;
@@ -822,6 +843,9 @@ xsdfec_dev_ioctl(struct file *fptr, unsigned int cmd, unsigned long data)
 		break;
 	case XSDFEC_GET_STATUS:
 		rval = xsdfec_get_status(xsdfec, arg);
+		break;
+	case XSDFEC_GET_CONFIG:
+		rval = xsdfec_get_config(xsdfec, arg);
 		break;
 	case XSDFEC_SET_IRQ:
 		rval = xsdfec_set_irq(xsdfec, arg);
