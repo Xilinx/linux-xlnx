@@ -39,7 +39,7 @@
 #include <uapi/misc/xilinx_sdfec.h>
 
 #define DRIVER_NAME	"xilinx_sdfec"
-#define DRIVER_VERSION	"0.2"
+#define DRIVER_VERSION	"0.3"
 #define DRIVER_MAX_DEV	(6)
 
 static  struct class *xsdfec_class;
