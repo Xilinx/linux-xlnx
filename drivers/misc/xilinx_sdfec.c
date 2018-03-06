@@ -1048,7 +1048,7 @@ xsdfec_probe(struct platform_device *pdev)
 	if (atomic_read(&xsdfec_ndevs) > DRIVER_MAX_DEV) {
 		dev_err(&pdev->dev,
 			"Cannot instantiate more than %d SDFEC instances",
-			DRIVER_MAX_DEV);
+			(DRIVER_MAX_DEV + 1));
 		return -EINVAL;
 	}
 
