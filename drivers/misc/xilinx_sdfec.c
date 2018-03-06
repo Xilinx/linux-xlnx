@@ -755,7 +755,7 @@ static int xsdfec_start(struct xsdfec_dev *xsdfec)
 		return -EINVAL;
 	}
 	/* Set Order to maintain order */
-	xsdfec->order = MAINTAIN_ORDER;
+	xsdfec->order = XSDFEC_MAINTAIN_ORDER;
 	xsdfec_regwrite(xsdfec, XSDFEC_ORDER_ADDR, (xsdfec->order - 1));
 	/* Set AXIS width */
 	xsdfec_regwrite(xsdfec, XSDFEC_AXIS_WIDTH_ADDR, 0);
@@ -798,7 +798,7 @@ static int
 xsdfec_reset_req(struct xsdfec_dev *xsdfec)
 {
 	xsdfec->state = XSDFEC_INIT;
-	xsdfec->order = INVALID_ORDER;
+	xsdfec->order = XSDFEC_INVALID_ORDER;
 	xsdfec->sc_off = 0;
 	xsdfec->la_off = 0;
 	xsdfec->qc_off = 0;

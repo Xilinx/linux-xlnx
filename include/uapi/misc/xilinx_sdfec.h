@@ -38,9 +38,9 @@ enum xsdfec_code {
 };
 
 enum xsdfec_order {
-	INVALID_ORDER = 0,
-	MAINTAIN_ORDER,
-	OUT_OF_ORDER,
+	XSDFEC_INVALID_ORDER = 0,
+	XSDFEC_MAINTAIN_ORDER,
+	XSDFEC_OUT_OF_ORDER,
 };
 
 enum xsdfec_state {
