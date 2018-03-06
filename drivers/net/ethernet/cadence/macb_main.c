@@ -3766,6 +3766,7 @@ static int __maybe_unused macb_suspend(struct device *dev)
 		netif_device_detach(netdev);
 		napi_disable(&bp->napi);
 		phy_stop(bp->phy_dev);
+		phy_suspend(bp->phy_dev);
 		spin_lock_irqsave(&bp->lock, flags);
 		macb_reset_hw(bp);
 		spin_unlock_irqrestore(&bp->lock, flags);
@@ -3807,6 +3808,7 @@ static int __maybe_unused macb_resume(struct device *dev)
 		macb_writel(bp, NCR, MACB_BIT(MPE));
 		napi_enable(&bp->napi);
 		netif_carrier_on(netdev);
+		phy_resume(bp->phy_dev);
 		phy_start(bp->phy_dev);
 	}
 
