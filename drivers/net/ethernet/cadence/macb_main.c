@@ -2115,7 +2115,6 @@ static void macb_init_hw(struct macb *bp)
 	config = macb_mdc_clk_div(bp);
 	if (bp->phy_interface == PHY_INTERFACE_MODE_SGMII)
 		config |= GEM_BIT(SGMIIEN) | GEM_BIT(PCSSEL);
-	config |= macb_readl(bp, NCFGR) & (3 << GEM_DBW_OFFSET);
 	config |= MACB_BF(RBOF, NET_IP_ALIGN);	/* Make eth data aligned */
 	config |= MACB_BIT(PAE);		/* PAuse Enable */
 
