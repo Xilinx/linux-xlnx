@@ -1096,6 +1096,26 @@ static const struct xilinx_drm_dp_sub_fmt av_buf_vid_fmts[] = {
 		.sf[1]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
 		.sf[2]		= XILINX_DP_SUB_AV_BUF_8BIT_SF,
 		.name		= "nv21",
+	}, {
+		.drm_fmt	= DRM_FORMAT_XV15,
+		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FMT_NL_VID_YV16CI_420_10,
+		.rgb		= false,
+		.swap		= false,
+		.chroma_sub	= true,
+		.sf[0]		= XILINX_DP_SUB_AV_BUF_10BIT_SF,
+		.sf[1]		= XILINX_DP_SUB_AV_BUF_10BIT_SF,
+		.sf[2]		= XILINX_DP_SUB_AV_BUF_10BIT_SF,
+		.name		= "yuv42010b",
+	}, {
+		.drm_fmt	= DRM_FORMAT_XV20,
+		.dp_sub_fmt	= XILINX_DP_SUB_AV_BUF_FMT_NL_VID_YV16CI_10,
+		.rgb		= false,
+		.swap		= false,
+		.chroma_sub	= true,
+		.sf[0]		= XILINX_DP_SUB_AV_BUF_10BIT_SF,
+		.sf[1]		= XILINX_DP_SUB_AV_BUF_10BIT_SF,
+		.sf[2]		= XILINX_DP_SUB_AV_BUF_10BIT_SF,
+		.name		= "yuv42210b",
 	}
 };
 
