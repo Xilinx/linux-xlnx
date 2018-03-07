@@ -6,7 +6,6 @@ Required properties:
 - compatible: Must contain at least one of
 
     "xlnx,v-tpg-5.0" (TPG version 5.0)
-    "xlnx,v-tpg-6.0" (TPG version 6.0)
     "xlnx,v-tpg-7.0" (TPG version 7.0)
 
   TPG versions backward-compatible with previous versions should list all
@@ -40,7 +39,7 @@ synthesized with two ports and forbidden when synthesized with one port.
 Example:
 
 	tpg_0: tpg@40050000 {
-		compatible = "xlnx,v-tpg-6.0", "xlnx,v-tpg-5.0";
+		compatible = "xlnx,v-tpg-5.0";
 		reg = <0x40050000 0x10000>;
 		clocks = <&clkc 15>;
 
