@@ -835,6 +835,7 @@ __xvip_dma_try_format(struct xvip_dma *dma,
 				min_bpl = (plane_width * info->bpl_factor *
 					   padding_factor_nume * bpl_nume) /
 					   (padding_factor_deno * bpl_deno);
+				min_bpl = roundup(min_bpl, dma->align);
 				bpl = rounddown(plane_fmt[i].bytesperline,
 						dma->align);
 				plane_fmt[i].bytesperline =
