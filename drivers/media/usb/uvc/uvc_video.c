@@ -1058,6 +1058,20 @@ static int uvc_video_decode_start(struct uvc_streaming *stream,
 	return data[0];
 }
 
+static void uvc_video_copy_packets(struct uvc_urb *uvc_urb)
+{
+	unsigned int i;
+
+	for (i = 0; i < uvc_urb->packets; i++) {
+		struct uvc_decode_op *op = &uvc_urb->decodes[i];
+
+		memcpy(op->dst, op->src, op->len);
+
+		/* Release reference taken on this buffer. */
+		uvc_queue_buffer_release(op->buf);
+	}
+}
+
 /**
  * uvc_video_decode_data_work: Asynchronous memcpy processing
  *
@@ -1069,23 +1083,26 @@ static int uvc_video_decode_start(struct uvc_streaming *stream,
 static void uvc_video_decode_data_work(struct work_struct *work)
 {
 	struct uvc_urb *uvc_urb = container_of(work, struct uvc_urb, work);
-	unsigned int i;
+	struct uvc_streaming *stream = uvc_urb->stream;
+	struct uvc_video_queue *queue = &stream->queue;
 	int ret;
 
-	for (i = 0; i < uvc_urb->packets; i++) {
-		struct uvc_decode_op *op = &uvc_urb->decodes[i];
+	uvc_video_copy_packets(uvc_urb);
 
-		memcpy(op->dst, op->src, op->len);
-
-		/* Release reference taken on this buffer */
-		uvc_queue_buffer_release(op->buf);
+	/*
+	 * Prevent resubmitting URBs when shutting down to ensure that no new
+	 * work item will be scheduled after uvc_stop_streaming() flushes the
+	 * work queue.
+	 */
+	spin_lock_irq(&queue->irqlock);
+	if (!(queue->flags & UVC_QUEUE_STOPPING)) {
+		ret = usb_submit_urb(uvc_urb->urb, GFP_ATOMIC);
+		if (ret < 0)
+			uvc_printk(KERN_ERR,
+				   "Failed to resubmit video URB (%d).\n",
+				   ret);
 	}
-
-	ret = usb_submit_urb(uvc_urb->urb, GFP_ATOMIC);
-	if (ret  < 0) {
-		uvc_printk(KERN_ERR, "Failed to resubmit video URB (%d).\n",
-			ret);
-	}
+	spin_unlock_irq(&queue->irqlock);
 }
 
 static void uvc_video_decode_data(struct uvc_decode_op *decode,
@@ -1363,6 +1380,8 @@ static void uvc_video_complete(struct urb *urb)
 	struct uvc_streaming *stream = uvc_urb->stream;
 	struct uvc_video_queue *queue = &stream->queue;
 	struct uvc_buffer *buf = NULL;
+	unsigned long flags;
+	int ret;
 
 	switch (urb->status) {
 	case 0:
@@ -1387,12 +1406,37 @@ static void uvc_video_complete(struct urb *urb)
 	/* Re-initialise the URB packet work */
 	uvc_urb->packets = 0;
 
-	/* Process the URB headers, but work is deferred to a work queue */
+	/*
+	 * Process the URB headers, and optionally queue expensive memcpy tasks
+	 * to be deferred to a work queue.
+	 */
 	stream->decode(uvc_urb, buf);
 
-	/* Handle any heavy lifting required */
-	INIT_WORK(&uvc_urb->work, uvc_video_decode_data_work);
-	queue_work(stream->async_wq, &uvc_urb->work);
+	/* Without any queued work, we must submit the URB. */
+	if (!uvc_urb->packets) {
+		ret = usb_submit_urb(uvc_urb->urb, GFP_ATOMIC);
+		if (ret < 0)
+			uvc_printk(KERN_ERR,
+				   "Failed to resubmit video URB (%d).\n",
+				   ret);
+		return;
+	}
+
+	/*
+	 * When the stream is stopped, all URBs are freed as part of the call to
+	 * uvc_stop_streaming() and must not be handled asynchronously. In that
+	 * event we can safely complete the packet work directly in this
+	 * context, without resubmitting the URB.
+	 */
+	spin_lock_irqsave(&queue->irqlock, flags);
+	if (!(queue->flags & UVC_QUEUE_STOPPING)) {
+		/* Handle any heavy lifting required */
+		INIT_WORK(&uvc_urb->work, uvc_video_decode_data_work);
+		queue_work(stream->async_wq, &uvc_urb->work);
+	} else {
+		uvc_video_copy_packets(uvc_urb);
+	}
+	spin_unlock_irqrestore(&queue->irqlock, flags);
 }
 
 /*
