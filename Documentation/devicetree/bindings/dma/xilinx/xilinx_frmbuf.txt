@@ -39,6 +39,7 @@ and DRM fourcc code---respectively---by the driver.
 IP FORMAT	DTS String	V4L2 Fourcc		DRM Fourcc
 -------------|----------------|----------------------|---------------------
 RGB8		bgr888		V4L2_PIX_FMT_RGB24	DRM_FORMAT_BGR888
+BGR8		rgb888		V4L2_PIX_FMT_BGR24	DRM_FORMAT_RGB888
 RGBX8		xbgr8888	V4L2_PIX_FMT_BGRX32	DRM_FORMAT_XBGR8888
 RGBA8		<none>		<not supported>		<not supported>
 BGRA8		<none>		<not supported>		<not supported>
