@@ -180,14 +180,27 @@ static int uvc_start_streaming(struct vb2_queue *vq, unsigned int count)
 static void uvc_stop_streaming(struct vb2_queue *vq)
 {
 	struct uvc_video_queue *queue = vb2_get_drv_priv(vq);
+	struct uvc_streaming *stream = uvc_queue_to_stream(queue);
 
 	lockdep_assert_irqs_enabled();
+
+	/* Prevent new buffers coming in. */
+	spin_lock_irq(&queue->irqlock);
+	queue->flags |= UVC_QUEUE_STOPPING;
+	spin_unlock_irq(&queue->irqlock);
+
+	/*
+	 * All pending work should be completed before disabling the stream, as
+	 * all URBs will be free'd during uvc_video_enable(s, 0).
+	 */
+	flush_workqueue(stream->async_wq);
 
 	if (vq->type != V4L2_BUF_TYPE_META_CAPTURE)
 		uvc_video_stop_streaming(uvc_queue_to_stream(queue));
 
 	spin_lock_irq(&queue->irqlock);
 	uvc_queue_return_buffers(queue, UVC_BUF_STATE_ERROR);
+	queue->flags &= ~UVC_QUEUE_STOPPING;
 	spin_unlock_irq(&queue->irqlock);
 }
 
