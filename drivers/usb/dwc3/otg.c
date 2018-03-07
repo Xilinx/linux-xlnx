@@ -298,7 +298,6 @@ static int start_host(struct dwc3_otg *otg)
 	u32 octl;
 	u32 osts;
 	u32 dctl;
-	u32 event_addr;
 	struct usb_hcd *hcd;
 	struct xhci_hcd *xhci;
 
@@ -312,12 +311,6 @@ static int start_host(struct dwc3_otg *otg)
 		otg_dbg(otg, "Disabling the RUN/STOP bit\n");
 		dctl &= ~DWC3_DCTL_RUN_STOP;
 		otg_write(otg, DCTL, dctl);
-	}
-
-	event_addr = dwc3_readl(otg->dwc->regs, DWC3_GEVNTADRLO(0));
-	if (event_addr != 0x0) {
-		otg_dbg(otg, "Freeing the device event buffers\n");
-		dwc3_free_event_buffers(otg->dwc);
 	}
 
 	if (!set_peri_mode(otg, PERI_MODE_HOST)) {
@@ -337,7 +330,6 @@ static int start_host(struct dwc3_otg *otg)
 	/* Start host driver */
 
 	*(struct xhci_hcd **)hcd->hcd_priv = xhci;
-	otg_dbg(otg, "1- calling usb_add_hcd() irq=%d\n", otg->hcd_irq);
 	ret = usb_add_hcd(hcd, otg->hcd_irq, IRQF_SHARED);
 	if (ret) {
 		otg_err(otg, "%s: failed to start primary hcd, ret=%d\n",
@@ -347,7 +339,6 @@ static int start_host(struct dwc3_otg *otg)
 
 	*(struct xhci_hcd **)xhci->shared_hcd->hcd_priv = xhci;
 	if (xhci->shared_hcd) {
-		otg_dbg(otg, "2- calling usb_add_hcd() irq=%d\n", otg->hcd_irq);
 		ret = usb_add_hcd(xhci->shared_hcd, otg->hcd_irq, IRQF_SHARED);
 		if (ret) {
 			otg_err(otg,
@@ -490,15 +481,7 @@ static void host_release(struct dwc3_otg *otg)
 static void dwc3_otg_setup_event_buffers(struct dwc3_otg *otg)
 {
 	if (dwc3_readl(otg->dwc->regs, DWC3_GEVNTADRLO(0)) == 0x0) {
-		int ret;
 
-		otg_dbg(otg, "allocating the event buffer\n");
-		ret = dwc3_alloc_event_buffers(otg->dwc,
-				DWC3_EVENT_BUFFERS_SIZE);
-		if (ret) {
-			dev_err(otg->dwc->dev,
-					"failed to allocate event buffers\n");
-		}
 		otg_dbg(otg, "setting up event buffers\n");
 		dwc3_event_buffers_setup(otg->dwc);
 	}
