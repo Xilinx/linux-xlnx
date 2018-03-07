@@ -56,7 +56,7 @@ static const struct xvip_video_format xvip_video_formats[] = {
 	{ XVIP_VF_BGRX, 8, NULL, MEDIA_BUS_FMT_RBG888_1X24,
 	  4, 32, V4L2_PIX_FMT_BGRX32, 1, 1, 1, 1, "x:8:8:8 RGB w/8 bits padding" },
 	{ XVIP_VF_XRGB, 8, NULL, MEDIA_BUS_FMT_RBG888_1X24,
-	  4, 32, V4L2_PIX_FMT_XRGB32, 1, 1, 1, 1, "8:8:8:x RGBx w/8 bits padding" },
+	  4, 32, V4L2_PIX_FMT_XBGR32, 1, 1, 1, 1, "8:8:8:x RGBx w/8 bits padding" },
 	{ XVIP_VF_XBGR, 10, NULL, MEDIA_BUS_FMT_RBG888_1X24,
 	  4, 32, V4L2_PIX_FMT_XBGR30, 1, 1, 1, 1, "2:10:10:10, packed, XBGR" },
 	{ XVIP_VF_MONO_SENSOR, 8, "mono", MEDIA_BUS_FMT_Y8_1X8,
