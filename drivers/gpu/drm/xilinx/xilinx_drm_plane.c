@@ -297,10 +297,13 @@ int xilinx_drm_plane_mode_set(struct drm_plane *base_plane,
 		}
 
 		plane->dma[i].xt.numf = height;
-		plane->dma[i].sgl[0].size = width * cpp;
+		plane->dma[i].sgl[0].size = drm_format_plane_width_bytes(info,
+									 i,
+									 width);
 		plane->dma[i].sgl[0].icg = fb->pitches[i] -
 					   plane->dma[i].sgl[0].size;
-		offset = src_x * cpp + src_y * fb->pitches[i];
+		offset = drm_format_plane_width_bytes(info, i, src_x);
+		offset += src_y * fb->pitches[i];
 		offset += fb->offsets[i];
 		plane->dma[i].xt.src_start = obj->paddr + offset;
 		plane->dma[i].xt.frame_size = 1;
