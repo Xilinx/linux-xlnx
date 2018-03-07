@@ -213,7 +213,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.ppw = 1,
 		.num_planes = 1,
 		.drm_fmt = DRM_FORMAT_XRGB8888,
-		.v4l2_fmt = V4L2_PIX_FMT_XRGB32,
+		.v4l2_fmt = V4L2_PIX_FMT_XBGR32,
 		.fmt_bitmask = BIT(2),
 	},
 	{
