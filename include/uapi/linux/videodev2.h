@@ -584,6 +584,8 @@ struct v4l2_pix_format {
 #define V4L2_PIX_FMT_BGR48_12    v4l2_fourcc('B', '3', '1', '2') /* 48  BGR 12-bit per component */
 #define V4L2_PIX_FMT_ABGR64_12   v4l2_fourcc('B', '4', '1', '2') /* 64  BGRA 12-bit per component */
 #define V4L2_PIX_FMT_XBGR30  v4l2_fourcc('X', 'R', '3', '0') /* 32  XBGR-2-10-10-10 */
+#define V4L2_PIX_FMT_XBGR40  v4l2_fourcc('R', 'X', '4', '0') /* 40  XBGR-4-12-12-12 */
+#define V4L2_PIX_FMT_BGR48   v4l2_fourcc('R', 'G', '4', '8') /* 32  BGR-16-16-16 */
 
 /* Grey formats */
 #define V4L2_PIX_FMT_GREY    v4l2_fourcc('G', 'R', 'E', 'Y') /*  8  Greyscale     */
