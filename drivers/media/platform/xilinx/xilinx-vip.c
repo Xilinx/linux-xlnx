@@ -32,7 +32,9 @@ static const struct xvip_video_format xvip_video_formats[] = {
 	{ XVIP_VF_YUV_420, 8, NULL, MEDIA_BUS_FMT_VYYUYY8_1X24,
 	  1, 12, V4L2_PIX_FMT_NV12M, 2, 2, 1, 2, "4:2:0, 2-plane non-cont" },
 	{ XVIP_VF_YUV_420, 10, NULL, MEDIA_BUS_FMT_VYYUYY8_1X24,
-	  1, 15, V4L2_PIX_FMT_XV15M, 2, 2, 1, 2, "4:2:0, 10-bit 2-plane non-cont" },
+	  1, 12, V4L2_PIX_FMT_XV15, 2, 1, 2, 2, "4:2:0, 10-bit 2-plane cont" },
+	{ XVIP_VF_YUV_420, 10, NULL, MEDIA_BUS_FMT_VYYUYY8_1X24,
+	  1, 12, V4L2_PIX_FMT_XV15M, 2, 2, 1, 2, "4:2:0, 10-bit 2-plane non-cont" },
 	{ XVIP_VF_YUV_422, 8, NULL, MEDIA_BUS_FMT_UYVY8_1X16,
 	  2, 16, V4L2_PIX_FMT_YUYV, 1, 1, 2, 1, "4:2:2, packed, YUYV" },
 	{ XVIP_VF_VUY_422, 8, NULL, MEDIA_BUS_FMT_UYVY8_1X16,
@@ -42,7 +44,9 @@ static const struct xvip_video_format xvip_video_formats[] = {
 	{ XVIP_VF_YUV_422, 8, NULL, MEDIA_BUS_FMT_UYVY8_1X16,
 	  1, 16, V4L2_PIX_FMT_NV16M, 2, 2, 1, 1, "4:2:2, 2-plane non-contiguous" },
 	{ XVIP_VF_YUV_422, 10, NULL, MEDIA_BUS_FMT_UYVY8_1X16,
-	  1, 20, V4L2_PIX_FMT_XV20M, 2, 2, 1, 1, "4:2:2, 10-bit 2-plane non-cont" },
+	  1, 16, V4L2_PIX_FMT_XV20, 2, 1, 2, 1, "4:2:2, 10-bit 2-plane cont" },
+	{ XVIP_VF_YUV_422, 10, NULL, MEDIA_BUS_FMT_UYVY8_1X16,
+	  1, 16, V4L2_PIX_FMT_XV20M, 2, 2, 1, 1, "4:2:2, 10-bit 2-plane non-cont" },
 	{ XVIP_VF_YUV_444, 8, NULL, MEDIA_BUS_FMT_VUY8_1X24,
 	  3, 24, V4L2_PIX_FMT_VUY24, 1, 1, 1, 1, "4:4:4, packed, YUYV" },
 	{ XVIP_VF_YUVX, 8, NULL, MEDIA_BUS_FMT_VUY8_1X24,
@@ -130,6 +134,8 @@ EXPORT_SYMBOL_GPL(xvip_get_format_by_fourcc);
 void xvip_bpl_scaling_factor(u32 fourcc, u32 *numerator, u32 *denominator)
 {
 	switch (fourcc) {
+	case V4L2_PIX_FMT_XV15:
+	case V4L2_PIX_FMT_XV20:
 	case V4L2_PIX_FMT_XV15M:
 	case V4L2_PIX_FMT_XV20M:
 		*numerator = 10;
@@ -154,6 +160,8 @@ EXPORT_SYMBOL_GPL(xvip_bpl_scaling_factor);
 void xvip_width_padding_factor(u32 fourcc, u32 *numerator, u32 *denominator)
 {
 	switch (fourcc) {
+	case V4L2_PIX_FMT_XV15:
+	case V4L2_PIX_FMT_XV20:
 	case V4L2_PIX_FMT_XV15M:
 	case V4L2_PIX_FMT_XV20M:
 		/* 32 bits are required per 30 bits of data */
