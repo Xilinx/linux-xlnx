@@ -563,8 +563,8 @@ static int macb_mii_probe(struct net_device *dev)
 static int macb_mii_init(struct macb *bp)
 {
 	struct macb_platform_data *pdata;
-	struct device_node *np;
-	int err = -ENXIO;
+	struct device_node *np, *mdio_np;
+	int err = -ENXIO, i;
 
 	/* Enable management port */
 	macb_writel(bp, NCR, MACB_BIT(MPE));
@@ -581,20 +581,40 @@ static int macb_mii_init(struct macb *bp)
 	snprintf(bp->mii_bus->id, MII_BUS_ID_SIZE, "%s-%x",
 		 bp->pdev->name, bp->pdev->id);
 	bp->mii_bus->priv = bp;
-	bp->mii_bus->parent = &bp->pdev->dev;
+	bp->mii_bus->parent = &bp->dev->dev;
 	pdata = dev_get_platdata(&bp->pdev->dev);
 
 	dev_set_drvdata(&bp->dev->dev, bp->mii_bus);
 
 	np = bp->pdev->dev.of_node;
-	if (np && of_phy_is_fixed_link(np)) {
-		if (of_phy_register_fixed_link(np) < 0) {
-			dev_err(&bp->pdev->dev,
-				"broken fixed-link specification %pOF\n", np);
+	mdio_np = of_get_child_by_name(np, "mdio");
+	if (mdio_np) {
+		of_node_put(mdio_np);
+		err = of_mdiobus_register(bp->mii_bus, mdio_np);
+		if (err)
 			goto err_out_free_mdiobus;
-		}
+	} else if (np) {
+		/* try dt phy registration */
+		err = of_mdiobus_register(bp->mii_bus, np);
 
-		err = mdiobus_register(bp->mii_bus);
+		/* fallback to standard phy registration if no phy were
+		 * found during dt phy registration
+		 */
+		if (!err && !phy_find_first(bp->mii_bus)) {
+			for (i = 0; i < PHY_MAX_ADDR; i++) {
+				struct phy_device *phydev;
+
+				phydev = mdiobus_scan(bp->mii_bus, i);
+				if (IS_ERR(phydev) &&
+				    PTR_ERR(phydev) != -ENODEV) {
+					err = PTR_ERR(phydev);
+					break;
+				}
+			}
+
+			if (err)
+				goto err_out_unregister_bus;
+		}
 	} else {
 		if (pdata)
 			bp->mii_bus->phy_mask = pdata->phy_mask;
