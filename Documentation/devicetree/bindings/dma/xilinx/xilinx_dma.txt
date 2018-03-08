@@ -42,6 +42,9 @@ Optional properties:
 	the hardware.
 Optional properties for AXI DMA:
 - xlnx,mcdma: Tells whether configured for multi-channel mode in the hardware.
+- xlnx,sg-length-width: Should be set to the width of buffer length register as
+	configured in hardware. If this property is missing or has invalid width
+	i.e not in range of 8-23, maximum buffer length width 23 bits is used.
 Optional properties for VDMA:
 - xlnx,flush-fsync: Tells which channel to Flush on Frame sync.
 	It takes following values:
