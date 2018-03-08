@@ -1000,6 +1000,7 @@ struct macb {
 	unsigned int		rx_tail;
 	unsigned int		rx_prepared_head;
 	struct macb_dma_desc	*rx_ring;
+	struct macb_dma_desc	*rx_ring_tieoff;
 	struct sk_buff		**rx_skbuff;
 	void			*rx_buffers;
 	size_t			rx_buffer_size;
@@ -1025,6 +1026,7 @@ struct macb {
 	}			hw_stats;
 
 	dma_addr_t		rx_ring_dma;
+	dma_addr_t		rx_ring_tieoff_dma;
 	dma_addr_t		rx_buffers_dma;
 
 	struct macb_or_gem_ops	macbgem_ops;

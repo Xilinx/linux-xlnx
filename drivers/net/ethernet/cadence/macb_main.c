@@ -1744,6 +1744,12 @@ static void macb_free_consistent(struct macb *bp)
 		bp->rx_ring = NULL;
 	}
 
+	if (bp->rx_ring_tieoff) {
+		dma_free_coherent(&bp->pdev->dev, macb_dma_desc_get_size(bp),
+				  bp->rx_ring_tieoff, bp->rx_ring_tieoff_dma);
+		bp->rx_ring_tieoff = NULL;
+	}
+
 	for (q = 0, queue = bp->queues; q < bp->num_queues; ++q, ++queue) {
 		kfree(queue->tx_skb);
 		queue->tx_skb = NULL;
@@ -1815,6 +1821,19 @@ static int macb_alloc_consistent(struct macb *bp)
 					 &bp->rx_ring_dma, GFP_KERNEL);
 	if (!bp->rx_ring)
 		goto out_err;
+
+	/* If we have more than one queue, allocate a tie off descriptor
+	 * that will be used to disable unused RX queues.
+	 */
+	if (bp->num_queues > 1) {
+		bp->rx_ring_tieoff = dma_alloc_coherent(&bp->pdev->dev,
+						macb_dma_desc_get_size(bp),
+						&bp->rx_ring_tieoff_dma,
+						GFP_KERNEL);
+		if (!bp->rx_ring_tieoff)
+			goto out_err;
+	}
+
 	netdev_dbg(bp->dev,
 		   "Allocated RX ring of %d bytes at %08lx (mapped %p)\n",
 		   size, (unsigned long)bp->rx_ring_dma, bp->rx_ring);
@@ -1827,6 +1846,19 @@ static int macb_alloc_consistent(struct macb *bp)
 out_err:
 	macb_free_consistent(bp);
 	return -ENOMEM;
+}
+
+static void macb_init_tieoff(struct macb *bp)
+{
+	struct macb_dma_desc *d = bp->rx_ring_tieoff;
+
+	if (bp->num_queues > 1) {
+		/* Setup a wrapping descriptor with no free slots
+		 * (WRAP and USED) to tie off/disable unused RX queues.
+		 */
+		macb_set_addr(bp, d, MACB_BIT(RX_WRAP) | MACB_BIT(RX_USED));
+		d->ctrl = 0;
+	}
 }
 
 static void gem_init_rings(struct macb *bp)
@@ -1851,6 +1883,7 @@ static void gem_init_rings(struct macb *bp)
 	bp->rx_prepared_head = 0;
 
 	gem_rx_refill(bp);
+	macb_init_tieoff(bp);
 }
 
 static void macb_init_rings(struct macb *bp)
@@ -1868,6 +1901,8 @@ static void macb_init_rings(struct macb *bp)
 	bp->queues[0].tx_head = 0;
 	bp->queues[0].tx_tail = 0;
 	desc->ctrl |= MACB_BIT(TX_WRAP);
+
+	macb_init_tieoff(bp);
 }
 
 static void macb_reset_hw(struct macb *bp)
@@ -2051,6 +2086,14 @@ static void macb_init_hw(struct macb *bp)
 		if (bp->hw_dma_cap & HW_DMA_CAP_64B)
 			queue_writel(queue, TBQPH, upper_32_bits(queue->tx_ring_dma));
 #endif
+		/* We only use the first queue at the moment. Remaining
+		 * queues must be tied-off before we enable the receiver.
+		 *
+		 * See the documentation for receive_q1_ptr for more info.
+		 */
+		if (q)
+			queue_writel(queue, RBQP,
+				     lower_32_bits(bp->rx_ring_tieoff_dma));
 
 		/* Enable interrupts */
 		queue_writel(queue, IER,
