@@ -317,6 +317,16 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.fmt_bitmask = BIT(13),
 	},
 	{
+		.dts_name = "xv15",
+		.id = XILINX_FRMBUF_FMT_Y_UV10_420,
+		.bpw = 32,
+		.ppw = 3,
+		.num_planes = 2,
+		.drm_fmt = 0,
+		.v4l2_fmt = V4L2_PIX_FMT_XV15,
+		.fmt_bitmask = BIT(13),
+	},
+	{
 		.dts_name = "xv20",
 		.id = XILINX_FRMBUF_FMT_Y_UV10,
 		.bpw = 32,
@@ -324,6 +334,16 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.num_planes = 2,
 		.drm_fmt = DRM_FORMAT_XV20,
 		.v4l2_fmt = V4L2_PIX_FMT_XV20M,
+		.fmt_bitmask = BIT(14),
+	},
+	{
+		.dts_name = "xv20",
+		.id = XILINX_FRMBUF_FMT_Y_UV10,
+		.bpw = 32,
+		.ppw = 3,
+		.num_planes = 2,
+		.drm_fmt = 0,
+		.v4l2_fmt = V4L2_PIX_FMT_XV20,
 		.fmt_bitmask = BIT(14),
 	},
 	{
