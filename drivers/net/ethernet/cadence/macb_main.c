@@ -403,7 +403,7 @@ static void macb_set_tx_clk(struct clk *clk, int speed, struct net_device *dev)
 static void macb_handle_link_change(struct net_device *dev)
 {
 	struct macb *bp = netdev_priv(dev);
-	struct phy_device *phydev = dev->phydev;
+	struct phy_device *phydev = bp->phy_dev;
 	unsigned long flags;
 	int status_change = 0;
 
@@ -525,6 +525,7 @@ static int macb_mii_probe(struct net_device *dev)
 	bp->link = 0;
 	bp->speed = 0;
 	bp->duplex = -1;
+	bp->phy_dev = phydev;
 
 	return 0;
 }
@@ -2209,7 +2210,7 @@ static int macb_open(struct net_device *dev)
 	netif_carrier_off(dev);
 
 	/* if the phy is not yet register, retry later*/
-	if (!dev->phydev)
+	if (!bp->phy_dev)
 		return -EAGAIN;
 
 	/* RX buffers initialization */
@@ -2228,7 +2229,7 @@ static int macb_open(struct net_device *dev)
 	macb_init_hw(bp);
 
 	/* schedule a link state check */
-	phy_start(dev->phydev);
+	phy_start(bp->phy_dev);
 
 	netif_tx_start_all_queues(dev);
 
@@ -2246,8 +2247,8 @@ static int macb_close(struct net_device *dev)
 	netif_tx_stop_all_queues(dev);
 	napi_disable(&bp->napi);
 
-	if (dev->phydev)
-		phy_stop(dev->phydev);
+	if (bp->phy_dev)
+		phy_stop(bp->phy_dev);
 
 	spin_lock_irqsave(&bp->lock, flags);
 	macb_reset_hw(bp);
@@ -3062,7 +3063,7 @@ static int at91ether_open(struct net_device *dev)
 			     MACB_BIT(HRESP));
 
 	/* schedule a link state check */
-	phy_start(dev->phydev);
+	phy_start(lp->phy_dev);
 
 	netif_start_queue(dev);
 
@@ -3556,6 +3557,8 @@ static int macb_probe(struct platform_device *pdev)
 		    macb_is_gem(bp) ? "GEM" : "MACB", macb_readl(bp, MID),
 		    dev->base_addr, dev->irq, dev->dev_addr);
 
+	phydev = bp->phy_dev;
+
 	return 0;
 
 err_out_unregister_mdio:
@@ -3588,8 +3591,8 @@ static int macb_remove(struct platform_device *pdev)
 
 	if (dev) {
 		bp = netdev_priv(dev);
-		if (dev->phydev)
-			phy_disconnect(dev->phydev);
+		if (bp->phy_dev)
+			phy_disconnect(bp->phy_dev);
 		mdiobus_unregister(bp->mii_bus);
 		dev->phydev = NULL;
 		mdiobus_free(bp->mii_bus);
