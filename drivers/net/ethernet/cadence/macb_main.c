@@ -3952,6 +3952,7 @@ static int macb_probe(struct platform_device *pdev)
 					      = macb_config->clk_init;
 	int (*init)(struct platform_device *) = macb_config->init;
 	struct device_node *np = pdev->dev.of_node;
+	struct device_node *phy_node;
 	struct clk *pclk, *hclk = NULL, *tx_clk = NULL, *rx_clk = NULL;
 	unsigned int queue_mask, num_queues;
 	struct macb_platform_data *pdata;
@@ -4074,6 +4075,18 @@ static int macb_probe(struct platform_device *pdev)
 			macb_get_hwaddr(bp);
 		}
 	}
+
+	/* Power up the PHY if there is a GPIO reset */
+	phy_node = of_parse_phandle(np, "phy-handle", 0);
+	if (!phy_node && of_phy_is_fixed_link(np)) {
+		err = of_phy_register_fixed_link(np);
+		if (err < 0) {
+			dev_err(&pdev->dev, "broken fixed-link specification");
+			goto err_out_free_netdev;
+		}
+		phy_node = of_node_get(np);
+	}
+	bp->phy_node = phy_node;
 
 	err = of_get_phy_mode(np);
 	if (err < 0) {
