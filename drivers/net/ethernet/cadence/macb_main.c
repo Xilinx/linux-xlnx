@@ -1858,7 +1858,7 @@ static void macb_init_rx_buffer_size(struct macb *bp, size_t size)
 		}
 	}
 
-	netdev_dbg(bp->dev, "mtu [%u] rx_buffer_size [%Zu]\n",
+	netdev_dbg(bp->dev, "mtu [%u] rx_buffer_size [%zu]\n",
 		   bp->dev->mtu, bp->rx_buffer_size);
 }
 
