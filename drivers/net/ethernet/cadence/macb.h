@@ -974,6 +974,7 @@ struct macb_queue {
 	unsigned int		IMR;
 	unsigned int		TBQP;
 	unsigned int		TBQPH;
+	unsigned int		RBQP;
 
 	unsigned int		tx_head, tx_tail;
 	struct macb_dma_desc	*tx_ring;
