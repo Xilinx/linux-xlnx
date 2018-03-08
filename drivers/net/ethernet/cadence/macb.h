@@ -738,7 +738,6 @@ struct gem_tx_ts {
 #define GEM_TX_FRMLEN_OFFSET			0
 #define GEM_TX_FRMLEN_SIZE			14
 
-
 /* Buffer descriptor constants */
 #define GEM_RX_CSUM_NONE			0
 #define GEM_RX_CSUM_IP_ONLY			1

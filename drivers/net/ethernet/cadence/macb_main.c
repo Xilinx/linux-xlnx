@@ -1022,7 +1022,6 @@ static void discard_partial_frame(struct macb *bp, unsigned int begin,
 	 */
 }
 
-
 static int macb_validate_hw_csum(struct sk_buff *skb)
 {
 	u32 pkt_csum = *((u32 *)&skb->data[skb->len - ETH_FCS_LEN]);
