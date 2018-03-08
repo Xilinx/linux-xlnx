@@ -61,8 +61,8 @@ Clock ID:	Output clock name:
 9		vpll_to_lpd
 10		acpu
 11		acpu_half
-12		dbf_fpd
-13		dbf_lpd
+12		dbg_fpd
+13		dbg_lpd
 14		dbg_trace
 15		dbg_tstmp
 16		dp_video_ref
