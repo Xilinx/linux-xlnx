@@ -3442,6 +3442,7 @@ static const struct net_device_ops at91ether_netdev_ops = {
 	.ndo_set_mac_address	= eth_mac_addr,
 	.ndo_do_ioctl		= macb_ioctl,
 	.ndo_validate_addr	= eth_validate_addr,
+	.ndo_change_mtu		= eth_change_mtu,
 #ifdef CONFIG_NET_POLL_CONTROLLER
 	.ndo_poll_controller	= at91ether_poll_controller,
 #endif
@@ -3579,25 +3580,15 @@ static const struct of_device_id macb_dt_ids[] = {
 MODULE_DEVICE_TABLE(of, macb_dt_ids);
 #endif /* CONFIG_OF */
 
-static const struct macb_config default_gem_config = {
-	.caps = MACB_CAPS_GIGABIT_MODE_AVAILABLE |
-			MACB_CAPS_JUMBO |
-			MACB_CAPS_GEM_HAS_PTP,
-	.dma_burst_length = 16,
-	.clk_init = macb_clk_init,
-	.init = macb_init,
-	.jumbo_max_len = 10240,
-};
-
 static int macb_probe(struct platform_device *pdev)
 {
-	const struct macb_config *macb_config = &default_gem_config;
 	int (*clk_init)(struct platform_device *, struct clk **,
 			struct clk **, struct clk **,  struct clk **)
-					      = macb_config->clk_init;
-	int (*init)(struct platform_device *) = macb_config->init;
+					      = macb_clk_init;
+	int (*init)(struct platform_device *) = macb_init;
 	struct device_node *np = pdev->dev.of_node;
 	struct device_node *phy_node;
+	const struct macb_config *macb_config = NULL;
 	struct clk *pclk, *hclk = NULL, *tx_clk = NULL, *rx_clk = NULL;
 	unsigned int queue_mask, num_queues;
 	struct macb_platform_data *pdata;
