@@ -361,7 +361,6 @@ void gem_ptp_init(struct net_device *dev)
 	bp->ptp_clock_info = gem_ptp_caps_template;
 
 	/* nominal frequency and maximum adjustment in ppb */
-	bp->tsu_rate = bp->ptp_info->get_tsu_rate(bp);
 	bp->ptp_clock_info.max_adj = bp->ptp_info->get_ptp_max_adj();
 	gem_ptp_init_timer(bp);
 	bp->ptp_clock = ptp_clock_register(&bp->ptp_clock_info, &dev->dev);
@@ -391,11 +390,14 @@ void gem_ptp_init(struct net_device *dev)
 void gem_ptp_remove(struct net_device *ndev)
 {
 	struct macb *bp = netdev_priv(ndev);
+	unsigned long flags;
 
 	if (bp->ptp_clock)
 		ptp_clock_unregister(bp->ptp_clock);
 
+	spin_lock_irqsave(&bp->tsu_clk_lock, flags);
 	gem_ptp_clear_timer(bp);
+	spin_unlock_irqrestore(&bp->tsu_clk_lock, flags);
 
 	dev_info(&bp->pdev->dev, "%s ptp clock unregistered.\n",
 		 GEM_PTP_TIMER_NAME);
