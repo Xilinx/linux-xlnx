@@ -489,16 +489,13 @@ static int macb_mii_probe(struct net_device *dev)
 		}
 
 		pdata = dev_get_platdata(&bp->pdev->dev);
-		if (pdata) {
-			if (gpio_is_valid(pdata->phy_irq_pin)) {
-				ret = devm_gpio_request(&bp->pdev->dev,
-							pdata->phy_irq_pin, "phy int");
-				if (!ret) {
-					phy_irq = gpio_to_irq(pdata->phy_irq_pin);
-					phydev->irq = (phy_irq < 0) ? PHY_POLL : phy_irq;
-				}
-			} else {
-				phydev->irq = PHY_POLL;
+		if (pdata && gpio_is_valid(pdata->phy_irq_pin)) {
+			ret = devm_gpio_request(&bp->pdev->dev,
+						pdata->phy_irq_pin, "phy int");
+			if (!ret) {
+				phy_irq = gpio_to_irq(pdata->phy_irq_pin);
+				phydev->irq = (phy_irq < 0) ?
+					      PHY_POLL : phy_irq;
 			}
 		}
 
@@ -3510,8 +3507,16 @@ static int macb_probe(struct platform_device *pdev)
 		macb_get_hwaddr(bp);
 
 	/* Power up the PHY if there is a GPIO reset */
-	phy_node =  of_get_next_available_child(np, NULL);
-	if (phy_node) {
+	phy_node = of_parse_phandle(np, "phy-handle", 0);
+	if (!phy_node && of_phy_is_fixed_link(np)) {
+		err = of_phy_register_fixed_link(np);
+		if (err < 0) {
+			dev_err(&pdev->dev, "broken fixed-link specification");
+			goto failed_phy;
+		}
+		phy_node = of_node_get(np);
+		bp->phy_node = phy_node;
+	} else {
 		int gpio = of_get_named_gpio(phy_node, "reset-gpios", 0);
 
 		if (gpio_is_valid(gpio)) {
@@ -3519,7 +3524,6 @@ static int macb_probe(struct platform_device *pdev)
 			gpiod_direction_output(bp->reset_gpio, 1);
 		}
 	}
-	of_node_put(phy_node);
 
 	err = of_get_phy_mode(np);
 	if (err < 0) {
@@ -3572,6 +3576,9 @@ err_out_unregister_mdio:
 
 err_out_free_netdev:
 	free_netdev(dev);
+
+failed_phy:
+	of_node_put(phy_node);
 
 err_disable_clocks:
 	clk_disable_unprepare(tx_clk);
