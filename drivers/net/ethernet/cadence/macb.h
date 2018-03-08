@@ -13,6 +13,7 @@
 #include <linux/phy.h>
 #include <linux/ptp_clock_kernel.h>
 #include <linux/net_tstamp.h>
+#include <linux/interrupt.h>
 
 #if defined(CONFIG_ARCH_DMA_ADDR_T_64BIT) || defined(CONFIG_MACB_USE_HWSTAMP)
 #define MACB_EXT_DESC
@@ -1056,6 +1057,8 @@ struct macb {
 	unsigned int		jumbo_max_len;
 
 	u32			wol;
+
+	struct tasklet_struct   hresp_err_tasklet;
 
 	struct macb_ptp_info	*ptp_info;	/* macb-ptp interface */
 #ifdef MACB_EXT_DESC
