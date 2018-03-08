@@ -1045,6 +1045,7 @@ static int gem_rx(struct macb *bp, int budget)
 		bool rxused;
 
 		entry = macb_rx_ring_wrap(bp, bp->rx_tail);
+
 		desc = macb_rx_desc(bp, entry);
 
 		/* Make hw descriptor updates visible to CPU */
@@ -3771,7 +3772,6 @@ static int macb_probe(struct platform_device *pdev)
 		bp->phy_node = phy_node;
 	} else {
 		int gpio = of_get_named_gpio(phy_node, "reset-gpios", 0);
-
 		if (gpio_is_valid(gpio)) {
 			bp->reset_gpio = gpio_to_desc(gpio);
 			gpiod_direction_output(bp->reset_gpio, 1);

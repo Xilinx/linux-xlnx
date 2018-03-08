@@ -170,7 +170,6 @@
 #define GEM_DCFG5		0x0290 /* Design Config 5 */
 #define GEM_DCFG6		0x0294 /* Design Config 6 */
 #define GEM_DCFG7		0x0298 /* Design Config 7 */
-
 #define GEM_TXBDCTRL	0x04cc /* TX Buffer Descriptor control register */
 #define GEM_RXBDCTRL	0x04d0 /* RX Buffer Descriptor control register */
 
@@ -460,7 +459,6 @@
 #define GEM_RX_PKT_BUFF_SIZE			1
 #define GEM_TX_PKT_BUFF_OFFSET			21
 #define GEM_TX_PKT_BUFF_SIZE			1
-
 
 /* Bitfields in DCFG5. */
 #define GEM_TSU_OFFSET				8
