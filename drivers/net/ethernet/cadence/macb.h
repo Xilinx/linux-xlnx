@@ -1034,7 +1034,6 @@ struct macb {
 	struct clk		*tsu_clk;
 	struct net_device	*dev;
 	struct napi_struct	napi;
-	struct net_device_stats	stats;
 	union {
 		struct macb_stats	macb;
 		struct gem_stats	gem;
