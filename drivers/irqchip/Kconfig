@@ -286,8 +286,12 @@ config XTENSA_MX
 	select GENERIC_IRQ_EFFECTIVE_AFF_MASK
 
 config XILINX_INTC
-	bool
+	bool "Xilinx Interrupt Controller (IP core)"
 	select IRQ_DOMAIN
+	help
+	  Support for the Xilinx Interrupt Controller which can be used
+	  with MicroBlaze and Zynq. It is a secondary chained controller when
+	  used with Zynq.
 
 config IRQ_CROSSBAR
 	bool
