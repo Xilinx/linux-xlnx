@@ -881,13 +881,16 @@ static int xlnk_adddmabuf_ioctl(struct file *filp,
 	if (status)
 		return -ENOMEM;
 
+	spin_lock(&xlnk_buf_lock);
 	list_for_each_entry(db, &xlnk_dmabuf_list, list) {
 		if (db->user_vaddr == temp_args.dmasubmit.buf) {
 			pr_err("Attempting to register DMA-BUF for addr %llx that is already registered\n",
 			       (unsigned long long)temp_args.dmabuf.user_addr);
+			spin_unlock(&xlnk_buf_lock);
 			return -EINVAL;
 		}
 	}
+	spin_unlock(&xlnk_buf_lock);
 
 	db = kzalloc(sizeof(*db), GFP_KERNEL);
 	if (!db)
@@ -913,8 +916,10 @@ static int xlnk_adddmabuf_ioctl(struct file *filp,
 		return -EINVAL;
 	}
 
+	spin_lock(&xlnk_buf_lock);
 	INIT_LIST_HEAD(&db->list);
 	list_add_tail(&db->list, &xlnk_dmabuf_list);
+	spin_unlock(&xlnk_buf_lock);
 
 	return 0;
 }
@@ -933,6 +938,7 @@ static int xlnk_cleardmabuf_ioctl(struct file *filp,
 	if (status)
 		return -ENOMEM;
 
+	spin_lock(&xlnk_buf_lock);
 	list_for_each_entry_safe(dp, dp_temp, &xlnk_dmabuf_list, list) {
 		if (dp->user_vaddr == temp_args.dmabuf.user_addr) {
 			dma_buf_unmap_attachment(dp->dbuf_attach,
@@ -941,10 +947,12 @@ static int xlnk_cleardmabuf_ioctl(struct file *filp,
 			dma_buf_detach(dp->dbuf, dp->dbuf_attach);
 			dma_buf_put(dp->dbuf);
 			list_del(&dp->list);
+			spin_unlock(&xlnk_buf_lock);
 			kfree(dp);
 			return 0;
 		}
 	}
+	spin_unlock(&xlnk_buf_lock);
 	pr_err("Attempting to unregister a DMA-BUF that was not registered at addr %llx\n",
 	       (unsigned long long)temp_args.dmabuf.user_addr);
 
