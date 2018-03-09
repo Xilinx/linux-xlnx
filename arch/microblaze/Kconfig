@@ -35,6 +35,7 @@ config MICROBLAZE
 	select TRACING_SUPPORT
 	select VIRT_TO_BUS
 	select CPU_NO_EFFICIENT_FFS
+	select SPARSE_IRQ
 
 # Endianness selection
 choice
