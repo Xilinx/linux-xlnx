@@ -180,7 +180,8 @@ struct xsdfec_irq {
 /* ioctl to enable turbo params for sdfec device */
 #define XSDFEC_SET_TURBO	_IOW(XSDFEC_MAGIC, 5, struct xsdfec_turbo *)
 /* ioctl to add an LDPC code to the sdfec ldpc codes */
-#define XSDFEC_ADD_LDPC		_IOW(XSDFEC_MAGIC, 6, struct xsdfec_ldpc_params *)
+#define XSDFEC_ADD_LDPC_CODE_PARAMS	\
+	_IOW(XSDFEC_MAGIC, 6, struct xsdfec_ldpc_params *)
 /* ioctl that returns sdfec device configuration */
 #define XSDFEC_GET_CONFIG	_IOR(XSDFEC_MAGIC, 7, struct xsdfec_config *)
 
