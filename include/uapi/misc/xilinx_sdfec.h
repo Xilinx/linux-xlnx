@@ -68,7 +68,7 @@ struct xsdfec_turbo {
 };
 
 /**
- * struct xsdfec_ldpc - User data for LDPC Codes
+ * struct xsdfec_ldpc_params - User data for LDPC Codes
  * @n: Number of code word bits
  * @k: Number of information bits
  * @psize: Size of sub-matrix
@@ -92,7 +92,7 @@ struct xsdfec_turbo {
  * This structure describes the LDPC code that is passed to the driver
  * by the application.
  */
-struct xsdfec_ldpc {
+struct xsdfec_ldpc_params {
 	u32 n;
 	u32 k;
 	u32 psize;
@@ -180,7 +180,7 @@ struct xsdfec_irq {
 /* ioctl to enable turbo params for sdfec device */
 #define XSDFEC_SET_TURBO	_IOW(XSDFEC_MAGIC, 5, struct xsdfec_turbo *)
 /* ioctl to add an LDPC code to the sdfec ldpc codes */
-#define XSDFEC_ADD_LDPC		_IOW(XSDFEC_MAGIC, 6, struct xsdfec_ldpc *)
+#define XSDFEC_ADD_LDPC		_IOW(XSDFEC_MAGIC, 6, struct xsdfec_ldpc_params *)
 /* ioctl that returns sdfec device configuration */
 #define XSDFEC_GET_CONFIG	_IOR(XSDFEC_MAGIC, 7, struct xsdfec_config *)
 
