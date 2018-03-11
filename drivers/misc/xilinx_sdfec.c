@@ -486,13 +486,11 @@ xsdfec_reg1_write(struct xsdfec_dev *xsdfec, u32 psize,
 #define XSDFEC_REG2_NO_FINAL_PARITY_LSB		(22)
 #define XSDFEC_REG2_MAX_SCHEDULE_MASK		(0x01800000)
 #define XSDFEC_REG2_MAX_SCHEDULE_LSB		(23)
-#define XSDFEC_REG2_LAT_CTRL_MASK		(0xFE000000)
-#define XSDFEC_REG2_LAT_CTRL_LSB		(25)
 
 static int
 xsdfec_reg2_write(struct xsdfec_dev *xsdfec, u32 nlayers, u32 nmqc,
 		  u32 norm_type, u32 special_qc, u32 no_final_parity,
-		  u32 max_schedule, u32 lat_ctrl, u32 offset)
+		  u32 max_schedule, u32 offset)
 {
 	u32 wdata;
 
@@ -524,13 +522,10 @@ xsdfec_reg2_write(struct xsdfec_dev *xsdfec, u32 nlayers, u32 nmqc,
 		dev_err(xsdfec->dev, "Max Schdule exceeds 2 bits");
 	max_schedule = ((max_schedule << XSDFEC_REG2_MAX_SCHEDULE_LSB) &
 				XSDFEC_REG2_MAX_SCHEDULE_MASK);
-	if (lat_ctrl &
-		~(XSDFEC_REG2_LAT_CTRL_MASK >> XSDFEC_REG2_LAT_CTRL_LSB))
-		dev_err(xsdfec->dev, "Lat_Ctrl exceeds 8 bits");
-	lat_ctrl = ((lat_ctrl << XSDFEC_REG2_LAT_CTRL_LSB) &
-					XSDFEC_REG2_LAT_CTRL_MASK);
-	wdata = (lat_ctrl | max_schedule | no_final_parity | special_qc |
-			norm_type | nmqc | nlayers);
+
+	wdata = (max_schedule | no_final_parity | special_qc | norm_type |
+			nmqc | nlayers);
+
 	if (XSDFEC_LDPC_CODE_REG2_ADDR_BASE + (offset * XSDFEC_LDPC_REG_JUMP)
 		> XSDFEC_LDPC_CODE_REG2_ADDR_HIGH) {
 		dev_err(xsdfec->dev,
@@ -701,7 +696,7 @@ xsdfec_add_ldpc(struct xsdfec_dev *xsdfec, void __user *arg)
 	err = xsdfec_reg2_write(xsdfec, ldpc->nlayers, ldpc->nmqc,
 				ldpc->norm_type, ldpc->special_qc,
 				ldpc->no_final_parity, ldpc->max_schedule,
-				ldpc->lat_ctrl, ldpc->code_id);
+				ldpc->code_id);
 	if (err)
 		goto err_out;
 
