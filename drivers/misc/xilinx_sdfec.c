@@ -654,7 +654,7 @@ xsdfec_qc_table_write(struct xsdfec_dev *xsdfec,
 static int
 xsdfec_add_ldpc(struct xsdfec_dev *xsdfec, void __user *arg)
 {
-	struct xsdfec_ldpc *ldpc;
+	struct xsdfec_ldpc_params *ldpc;
 	int err;
 
 	ldpc = kzalloc(sizeof(*ldpc), GFP_KERNEL);
