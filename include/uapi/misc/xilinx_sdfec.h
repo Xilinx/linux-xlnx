@@ -81,7 +81,6 @@ struct xsdfec_turbo {
  * @special_qc: Sub-Matrix property for Circulant weight > 0
  * @no_final_parity: Decide if final parity check needs to be performed
  * @max_schedule: Experimental code word scheduling limit
- * @lat_ctrl: Latency Control
  * @sc_off: SC offset
  * @la_off: LA offset
  * @qc_off: QC offset
@@ -106,7 +105,6 @@ struct xsdfec_ldpc {
 	u32 special_qc;
 	u32 no_final_parity;
 	u32 max_schedule;
-	u32 lat_ctrl;
 	u32 sc_off;
 	u32 la_off;
 	u32 qc_off;
