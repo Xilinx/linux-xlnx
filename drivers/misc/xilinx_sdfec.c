@@ -848,7 +848,7 @@ xsdfec_dev_ioctl(struct file *fptr, unsigned int cmd, unsigned long data)
 	case XSDFEC_SET_TURBO:
 		rval = xsdfec_set_turbo(xsdfec, arg);
 		break;
-	case XSDFEC_ADD_LDPC:
+	case XSDFEC_ADD_LDPC_CODE_PARAMS:
 		rval  = xsdfec_add_ldpc(xsdfec, arg);
 		break;
 	default:
