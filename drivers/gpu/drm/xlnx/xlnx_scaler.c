@@ -1525,8 +1525,8 @@ static int xilinx_scaler_bridge_set_input(struct xlnx_bridge *bridge,
 	scaler->fmt_in = bus_fmt;
 
 	/* IP Reset through GPIO */
-	gpiod_set_value_cansleep(scaler->rst_gpio, XSCALER_RESET_DEASSERT);
 	gpiod_set_value_cansleep(scaler->rst_gpio, XSCALER_RESET_ASSERT);
+	gpiod_set_value_cansleep(scaler->rst_gpio, XSCALER_RESET_DEASSERT);
 	xilinx_scaler_reset(scaler);
 	memset(scaler->H_phases, 0, sizeof(scaler->H_phases));
 
@@ -1634,7 +1634,7 @@ static int xilinx_scaler_probe(struct platform_device *pdev)
 	scaler->max_pixels = XSCALER_MAX_WIDTH;
 
 	/* Reset the Global IP Reset through a GPIO */
-	gpiod_set_value_cansleep(scaler->rst_gpio, XSCALER_RESET_ASSERT);
+	gpiod_set_value_cansleep(scaler->rst_gpio, XSCALER_RESET_DEASSERT);
 	xilinx_scaler_reset(scaler);
 
 	scaler->bridge.enable = &xilinx_scaler_bridge_enable;
