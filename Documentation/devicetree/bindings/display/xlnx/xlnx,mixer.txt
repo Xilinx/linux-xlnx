@@ -28,6 +28,8 @@ Required properties:
 Optional properties:
  - dmas: dma attach to layer, mandatory for master layer
    for rest other layers its optional
+ - dma-names: Should be "dma0", for more details on DMA identifier string
+   refer Documentation/devicetree/bindings/dma/dma.txt
  - xlnx,layer-streaming: denotes layer can be streaming,
    mandatory for master layer. Streaming layers need external dma, where
    as non streaming layers read directly from memory.
@@ -62,6 +64,7 @@ Example:
 			xlnx,layer-max-width = <4096>;
 			xlnx,layer-height = <2160>;
 			dmas = <&axi_vdma_0 0>;
+			dma-names = "dma0";
 			xlnx,layer-streaming;
 		};
 		xv_mix_overlay_1: layer_1 {
@@ -89,6 +92,7 @@ Example:
 			xlnx,layer-id = <4>;
 			xlnx,vformat = "y8";
 			dmas = <&scaler_v_frmbuf_rd_0 0>;
+			dma-names = "dma0";
 			xlnx,layer-streaming;
 			xlnx,layer-alpha;
 			xlnx,layer-scale;
