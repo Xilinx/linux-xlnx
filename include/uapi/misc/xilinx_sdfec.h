@@ -186,5 +186,8 @@ struct xsdfec_irq {
 #define XSDFEC_GET_CONFIG	_IOR(XSDFEC_MAGIC, 7, struct xsdfec_config *)
 /* ioctl that returns sdfec turbo param values */
 #define XSDFEC_GET_TURBO	_IOR(XSDFEC_MAGIC, 8, struct xsdfec_turbo *)
+/* ioctl that returns sdfec LDPC code param values, code_id must be specified */
+#define XSDFEC_GET_LDPC_CODE_PARAMS \
+	_IOWR(XSDFEC_MAGIC, 9, struct xsdfec_ldpc_params *)
 
 #endif /* __XILINX_SDFEC_H__ */
