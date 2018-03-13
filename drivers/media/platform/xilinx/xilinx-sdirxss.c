@@ -669,7 +669,7 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 						format->field = V4L2_FIELD_NONE;
 					else
 						format->field =
-							V4L2_FIELD_INTERLACED;
+							V4L2_FIELD_ALTERNATE;
 				} else {
 					format->width = 1920;
 					format->height = 1080;
@@ -677,7 +677,7 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 						format->field = V4L2_FIELD_NONE;
 					else
 						format->field =
-							V4L2_FIELD_INTERLACED;
+							V4L2_FIELD_ALTERNATE;
 				}
 				break;
 			case XSDIRX_TS_DET_STAT_RATE_50HZ:
@@ -720,7 +720,7 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 		}
 		break;
 	case XSDIRX_MODE_SD_MASK:
-		format->field = V4L2_FIELD_INTERLACED;
+		format->field = V4L2_FIELD_ALTERNATE;
 
 		switch (family) {
 		case XSDIRX_NTSC:
@@ -804,8 +804,11 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 		if (pic_type)
 			format->field = V4L2_FIELD_NONE;
 		else
-			format->field = V4L2_FIELD_INTERLACED;
+			format->field = V4L2_FIELD_ALTERNATE;
 	}
+
+	if (format->field == V4L2_FIELD_ALTERNATE)
+		format->height = format->height / 2;
 
 	switch (sampling) {
 	case XST352_BYTE3_COLOR_FORMAT_420:
