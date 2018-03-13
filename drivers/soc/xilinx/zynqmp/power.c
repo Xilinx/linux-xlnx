@@ -186,7 +186,7 @@ static int zynqmp_pm_probe(struct platform_device *pdev)
 	eemi_ops->get_api_version(&pm_api_version);
 
 	/* Check PM API version number */
-	if (pm_api_version <= ZYNQMP_PM_VERSION)
+	if (pm_api_version < ZYNQMP_PM_VERSION)
 		return -ENODEV;
 
 	zynqmp_pm_init_suspend_work =
