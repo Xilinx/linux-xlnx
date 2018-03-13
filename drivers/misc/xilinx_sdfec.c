@@ -398,6 +398,36 @@ xsdfec_set_turbo(struct xsdfec_dev *xsdfec, void __user *arg)
 	return err;
 }
 
+static int
+xsdfec_get_turbo(struct xsdfec_dev *xsdfec, void __user *arg)
+{
+	u32 reg_value;
+	struct xsdfec_turbo turbo_params;
+	int err;
+
+	if (xsdfec->code == XSDFEC_LDPC_CODE) {
+		dev_err(xsdfec->dev,
+			"%s: SDFEC%d is configured for LDPC, check DT",
+			__func__, xsdfec->fec_id);
+		return -EIO;
+	}
+
+	reg_value = xsdfec_regread(xsdfec, XSDFEC_TURBO_ADDR);
+
+	turbo_params.scale = (reg_value & XSDFEC_TURBO_SCALE_MASK) >>
+			      XSDFEC_TURBO_SCALE_BIT_POS;
+	turbo_params.alg = reg_value & 0x1;
+
+	err = copy_to_user(arg, &turbo_params, sizeof(turbo_params));
+	if (err) {
+		dev_err(xsdfec->dev, "%s failed for SDFEC%d",
+			__func__, xsdfec->fec_id);
+		err = -EFAULT;
+	}
+
+	return err;
+}
+
 #define XSDFEC_LDPC_REG_JUMP	(0x10)
 #define XSDFEC_REG0_N_MASK	(0x0000FFFF)
 #define XSDFEC_REG0_N_LSB	(0)
@@ -847,6 +877,9 @@ xsdfec_dev_ioctl(struct file *fptr, unsigned int cmd, unsigned long data)
 		break;
 	case XSDFEC_SET_TURBO:
 		rval = xsdfec_set_turbo(xsdfec, arg);
+		break;
+	case XSDFEC_GET_TURBO:
+		rval = xsdfec_get_turbo(xsdfec, arg);
 		break;
 	case XSDFEC_ADD_LDPC_CODE_PARAMS:
 		rval  = xsdfec_add_ldpc(xsdfec, arg);
