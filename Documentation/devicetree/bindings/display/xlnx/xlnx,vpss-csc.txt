@@ -13,9 +13,12 @@ Required properties:
   width expressed as a number of bits per pixel component. Supported video
   width values are 8/10/12/16.
 
+-reset-gpios: GPIO specifier to assert/de-assert the reset line.
+
 Example:
 	csc@a0040000 {
 		compatible = "xlnx,vpss-csc";
 		reg = <0x0 0xa0040000 0x0 0x10000>;
+		reset-gpios = <&gpio 0x0 GPIO_ACTIVE_LOW>;
 		xlnx,video-width = <8>;
 	}
