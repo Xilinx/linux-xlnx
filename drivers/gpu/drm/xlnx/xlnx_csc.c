@@ -15,11 +15,11 @@
  * Need to implement in a modular approach to share driver code between
  * V4L2 and DRM frameworks.
  * Should be integrated with plane
- * Reset though GPIO.
  */
 
 #include <linux/device.h>
 #include <linux/err.h>
+#include <linux/gpio/consumer.h>
 #include <linux/io.h>
 #include <linux/module.h>
 #include <linux/of_device.h>
@@ -56,6 +56,9 @@
 #define XCSC_AP_AUTO_RESTART		BIT(7)
 #define XCSC_STREAM_ON			(XCSC_AP_START | XCSC_AP_AUTO_RESTART)
 #define XCSC_STREAM_OFF			(0)
+/* GPIO Reset Assert/De-assert */
+#define XCSC_RESET_ASSERT		(1)
+#define XCSC_RESET_DEASSERT		(0)
 
 static const u32 xilinx_csc_video_fmts[] = {
 	MEDIA_BUS_FMT_RGB888_1X24,
@@ -84,6 +87,7 @@ enum vpss_csc_color_fmt {
  * @clip_max: clipping maximum value
  * @width: width of the video
  * @height: height of video
+ * @rst_gpio: Handle to GPIO specifier to assert/de-assert the reset line
  */
 struct xilinx_csc {
 	void __iomem *base;
@@ -96,6 +100,7 @@ struct xilinx_csc {
 	s32 clip_max;
 	u32 width;
 	u32 height;
+	struct gpio_desc *rst_gpio;
 };
 
 static inline void xilinx_csc_write(void __iomem *base, u32 offset, u32 val)
@@ -274,6 +279,9 @@ static void xilinx_csc_bridge_disable(struct xlnx_bridge *bridge)
 	struct xilinx_csc *csc = bridge_to_layer(bridge);
 
 	xilinx_csc_write(csc->base, XV_CSC_AP_CTRL, XCSC_STREAM_OFF);
+	/* Reset the Global IP Reset through GPIO */
+	gpiod_set_value_cansleep(csc->rst_gpio, XCSC_RESET_ASSERT);
+	gpiod_set_value_cansleep(csc->rst_gpio, XCSC_RESET_DEASSERT);
 }
 
 /**
@@ -422,6 +430,14 @@ static int xcsc_parse_of(struct xilinx_csc *csc)
 		dev_err(csc->dev, "Invalid video width in DT\n");
 		return -EINVAL;
 	}
+	/* Reset GPIO */
+	csc->rst_gpio = devm_gpiod_get(csc->dev, "reset", GPIOD_OUT_HIGH);
+	if (IS_ERR(csc->rst_gpio)) {
+		if (PTR_ERR(csc->rst_gpio) != -EPROBE_DEFER)
+			dev_err(csc->dev, "Reset GPIO not setup in DT");
+		return PTR_ERR(csc->rst_gpio);
+	}
+
 	return 0;
 }
 
@@ -446,7 +462,7 @@ static int xilinx_csc_probe(struct platform_device *pdev)
 	ret = xcsc_parse_of(csc);
 	if (ret < 0)
 		return ret;
-
+	gpiod_set_value_cansleep(csc->rst_gpio, XCSC_RESET_DEASSERT);
 	csc->bridge.enable = &xilinx_csc_bridge_enable;
 	csc->bridge.disable = &xilinx_csc_bridge_disable;
 	csc->bridge.set_input = &xilinx_csc_bridge_set_input;
