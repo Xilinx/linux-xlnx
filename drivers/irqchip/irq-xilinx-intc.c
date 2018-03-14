@@ -187,7 +187,7 @@ static int __init xilinx_intc_of_init(struct device_node *intc,
 	ret = of_property_read_u32(intc, "xlnx,num-intr-inputs", &irqc->nr_irq);
 	if (ret < 0) {
 		pr_err("irq-xilinx: unable to read xlnx,num-intr-inputs\n");
-		goto err_alloc;
+		goto error;
 	}
 
 	ret = of_property_read_u32(intc, "xlnx,kind-of-intr", &irqc->intr_mask);
@@ -259,10 +259,10 @@ static int __init xilinx_intc_of_init(struct device_node *intc,
 
 	return 0;
 
+err_alloc:
+	kfree(intc_dev);
 error:
 	iounmap(irqc->base);
-err_alloc:
-	irqc = NULL;
 	kfree(irqc);
 	return ret;
 
