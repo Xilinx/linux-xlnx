@@ -1030,6 +1030,35 @@ err_out:
 	return err;
 }
 
+static int
+xsdfec_set_order(struct xsdfec_dev *xsdfec, enum xsdfec_order __user order)
+{
+	bool order_out_of_range;
+
+	order_out_of_range = (order <= XSDFEC_INVALID_ORDER) ||
+			     (order >= XSDFEC_ORDER_MAX);
+	if (order_out_of_range) {
+		dev_err(xsdfec->dev,
+			"%s invalid order value %d for SDFEC%d",
+			__func__, order, xsdfec->fec_id);
+		return -EINVAL;
+	}
+
+	/* Verify Device has not started */
+	if (xsdfec->state == XSDFEC_STARTED) {
+		dev_err(xsdfec->dev,
+			"%s attempting to set Order while started for SDFEC%d",
+			__func__, xsdfec->fec_id);
+		return -EIO;
+	}
+
+	xsdfec_regwrite(xsdfec, XSDFEC_ORDER_ADDR, (order - 1));
+
+	xsdfec->order = order;
+
+	return 0;
+}
+
 static int xsdfec_start(struct xsdfec_dev *xsdfec)
 {
 	u32 regread;
@@ -1175,6 +1204,9 @@ xsdfec_dev_ioctl(struct file *fptr, unsigned int cmd, unsigned long data)
 		if (!arg)
 			return rval;
 		rval = xsdfec_get_ldpc_code_params(xsdfec, arg);
+		break;
+	case XSDFEC_SET_ORDER:
+		rval = xsdfec_set_order(xsdfec, (enum xsdfec_order)data);
 		break;
 	default:
 		/* Should not get here */
