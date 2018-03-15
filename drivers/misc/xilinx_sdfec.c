@@ -1078,9 +1078,15 @@ static int xsdfec_start(struct xsdfec_dev *xsdfec)
 			__func__);
 		return -EINVAL;
 	}
-	/* Set Order to maintain order */
-	xsdfec->order = XSDFEC_MAINTAIN_ORDER;
-	xsdfec_regwrite(xsdfec, XSDFEC_ORDER_ADDR, (xsdfec->order - 1));
+
+	/* Verify Order has been set */
+	if (xsdfec->code == XSDFEC_CODE_INVALID) {
+		dev_err(xsdfec->dev,
+			"%s : set order before starting SDFEC%d",
+			__func__, xsdfec->fec_id);
+		return -EINVAL;
+	}
+
 	/* Set AXIS width */
 	xsdfec_regwrite(xsdfec, XSDFEC_AXIS_WIDTH_ADDR, 0);
 	/* Set AXIS enable */
