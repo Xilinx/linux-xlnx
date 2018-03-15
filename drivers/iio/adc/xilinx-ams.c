@@ -12,6 +12,7 @@
 #include <linux/platform_device.h>
 #include <linux/clk.h>
 #include <linux/of_address.h>
+#include <linux/iopoll.h>
 
 #include <linux/iio/iio.h>
 #include <linux/iio/sysfs.h>
@@ -215,15 +216,41 @@ static void ams_enable_channel_sequence(struct ams *ams)
 	}
 }
 
-static void iio_ams_init_device(struct ams *ams)
+static int iio_ams_init_device(struct ams *ams)
 {
+	int ret = 0;
+	u32 reg;
 
 	/* reset AMS */
-	if (ams->ps_base)
+	if (ams->ps_base) {
 		ams_ps_write_reg(ams, AMS_VP_VN, AMS_PS_RESET_VALUE);
 
-	if (ams->pl_base)
+		ret = readl_poll_timeout(ams->base + AMS_PS_CSTS, reg,
+					 (reg & AMS_PS_CSTS_PS_READY) ==
+					 AMS_PS_CSTS_PS_READY, 0,
+					 AMS_INIT_TIMEOUT);
+		if (ret)
+			return ret;
+
+		/* put sysmon in a default state */
+		ams_ps_update_reg(ams, AMS_REG_CONFIG1, AMS_CONF1_SEQ_MASK,
+				  AMS_CONF1_SEQ_DEFAULT);
+	}
+
+	if (ams->pl_base) {
 		ams->pl_bus->write(ams, AMS_VP_VN, AMS_PL_RESET_VALUE);
+
+		ret = readl_poll_timeout(ams->base + AMS_PL_CSTS, reg,
+					 (reg & AMS_PL_CSTS_ACCESS_MASK) ==
+					 AMS_PL_CSTS_ACCESS_MASK, 0,
+					 AMS_INIT_TIMEOUT);
+		if (ret)
+			return ret;
+
+		/* put sysmon in a default state */
+		ams->pl_bus->update(ams, AMS_REG_CONFIG1, AMS_CONF1_SEQ_MASK,
+				    AMS_CONF1_SEQ_DEFAULT);
+	}
 
 	iio_ams_disable_all_alarm(ams);
 
@@ -234,7 +261,7 @@ static void iio_ams_init_device(struct ams *ams)
 	ams_write_reg(ams, AMS_ISR_0, AMS_ISR0_ALARM_MASK);
 	ams_write_reg(ams, AMS_ISR_1, AMS_ISR1_ALARM_MASK);
 
-	ams_enable_channel_sequence(ams);
+	return ret;
 }
 
 static void ams_enable_single_channel(struct ams *ams, unsigned int offset)
@@ -1009,23 +1036,35 @@ static int ams_probe(struct platform_device *pdev)
 		return PTR_ERR(ams->clk);
 	clk_prepare_enable(ams->clk);
 
-	ret = ams_parse_dt(indio_dev, pdev);
-	if (ret)
-		return ret;
+	ret = iio_ams_init_device(ams);
+	if (ret) {
+		dev_err(&pdev->dev, "failed to initialize AMS\n");
+		goto clk_disable;
+	}
 
-	iio_ams_init_device(ams);
+	ret = ams_parse_dt(indio_dev, pdev);
+	if (ret) {
+		dev_err(&pdev->dev, "failure in parsing DT\n");
+		goto clk_disable;
+	}
+
+	ams_enable_channel_sequence(ams);
 
 	ams->irq = platform_get_irq_byname(pdev, "ams-irq");
 	ret = devm_request_irq(&pdev->dev, ams->irq, &ams_iio_irq, 0, "ams-irq",
 			       indio_dev);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "failed to register interrupt\n");
-		return ret;
+		goto clk_disable;
 	}
 
 	platform_set_drvdata(pdev, indio_dev);
 
 	return iio_device_register(indio_dev);
+
+clk_disable:
+	clk_disable_unprepare(ams->clk);
+	return ret;
 }
 
 static int ams_remove(struct platform_device *pdev)

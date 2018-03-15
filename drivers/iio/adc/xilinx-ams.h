@@ -119,6 +119,8 @@
 #define AMS_PL_MAX_FIXED_CHANNEL   10
 #define AMS_PL_MAX_EXT_CHANNEL     20
 
+#define AMS_INIT_TIMEOUT	10000
+
 /* Following scale and offset value is derivef from
  * UG580 (v1.7) December 20, 2016
  */
