@@ -1114,8 +1114,6 @@ xsdfec_dev_ioctl(struct file *fptr, unsigned int cmd, unsigned long data)
 
 	if (!xsdfec)
 		return rval;
-	if (!arg)
-		return rval;
 
 	/* In failed state allow only reset and get status IOCTLs */
 	if (xsdfec->state == XSDFEC_NEEDS_RESET &&
@@ -1137,24 +1135,45 @@ xsdfec_dev_ioctl(struct file *fptr, unsigned int cmd, unsigned long data)
 		rval = xsdfec_reset_req(xsdfec);
 		break;
 	case XSDFEC_GET_STATUS:
+		arg = (void __user *)data;
+		if (!arg)
+			return rval;
 		rval = xsdfec_get_status(xsdfec, arg);
 		break;
 	case XSDFEC_GET_CONFIG:
+		arg = (void __user *)data;
+		if (!arg)
+			return rval;
 		rval = xsdfec_get_config(xsdfec, arg);
 		break;
 	case XSDFEC_SET_IRQ:
+		arg = (void __user *)data;
+		if (!arg)
+			return rval;
 		rval = xsdfec_set_irq(xsdfec, arg);
 		break;
 	case XSDFEC_SET_TURBO:
+		arg = (void __user *)data;
+		if (!arg)
+			return rval;
 		rval = xsdfec_set_turbo(xsdfec, arg);
 		break;
 	case XSDFEC_GET_TURBO:
+		arg = (void __user *)data;
+		if (!arg)
+			return rval;
 		rval = xsdfec_get_turbo(xsdfec, arg);
 		break;
 	case XSDFEC_ADD_LDPC_CODE_PARAMS:
+		arg = (void __user *)data;
+		if (!arg)
+			return rval;
 		rval  = xsdfec_add_ldpc(xsdfec, arg);
 		break;
 	case XSDFEC_GET_LDPC_CODE_PARAMS:
+		arg = (void __user *)data;
+		if (!arg)
+			return rval;
 		rval = xsdfec_get_ldpc_code_params(xsdfec, arg);
 		break;
 	default:
