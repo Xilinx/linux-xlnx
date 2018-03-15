@@ -41,6 +41,7 @@ enum xsdfec_order {
 	XSDFEC_INVALID_ORDER = 0,
 	XSDFEC_MAINTAIN_ORDER,
 	XSDFEC_OUT_OF_ORDER,
+	XSDFEC_ORDER_MAX,
 };
 
 enum xsdfec_state {
@@ -189,5 +190,7 @@ struct xsdfec_irq {
 /* ioctl that returns sdfec LDPC code param values, code_id must be specified */
 #define XSDFEC_GET_LDPC_CODE_PARAMS \
 	_IOWR(XSDFEC_MAGIC, 9, struct xsdfec_ldpc_params *)
+/* ioctl that sets order, if order of blocks can change from input to output */
+#define XSDFEC_SET_ORDER	_IOW(XSDFEC_MAGIC, 10, enum xsdfec_order)
 
 #endif /* __XILINX_SDFEC_H__ */
