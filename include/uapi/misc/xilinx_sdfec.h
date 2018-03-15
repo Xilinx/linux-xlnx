@@ -192,5 +192,12 @@ struct xsdfec_irq {
 	_IOWR(XSDFEC_MAGIC, 9, struct xsdfec_ldpc_params *)
 /* ioctl that sets order, if order of blocks can change from input to output */
 #define XSDFEC_SET_ORDER	_IOW(XSDFEC_MAGIC, 10, enum xsdfec_order)
+/*
+ * ioctl that sets bypass.
+ * setting a value of 0 results in normal operation.
+ * setting a value of 1 results in the sdfec performing the configured
+ * operations (same number of cycles) but output data matches the input data
+ */
+#define XSDFEC_SET_BYPASS	_IOW(XSDFEC_MAGIC, 11, unsigned long)
 
 #endif /* __XILINX_SDFEC_H__ */

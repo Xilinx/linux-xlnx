@@ -1061,6 +1061,29 @@ xsdfec_set_order(struct xsdfec_dev *xsdfec, enum xsdfec_order __user order)
 	return 0;
 }
 
+static int
+xsdfec_set_bypass(struct xsdfec_dev *xsdfec, unsigned long bypass)
+{
+	if (bypass > 1) {
+		dev_err(xsdfec->dev,
+			"%s invalid bypass value %ld for SDFEC%d",
+			__func__, bypass, xsdfec->fec_id);
+		return -EINVAL;
+	}
+
+	/* Verify Device has not started */
+	if (xsdfec->state == XSDFEC_STARTED) {
+		dev_err(xsdfec->dev,
+			"%s attempting to set bypass while started for SDFEC%d",
+			__func__, xsdfec->fec_id);
+		return -EIO;
+	}
+
+	xsdfec_regwrite(xsdfec, XSDFEC_BYPASS_ADDR, bypass);
+
+	return 0;
+}
+
 static int xsdfec_start(struct xsdfec_dev *xsdfec)
 {
 	u32 regread;
@@ -1215,6 +1238,9 @@ xsdfec_dev_ioctl(struct file *fptr, unsigned int cmd, unsigned long data)
 		break;
 	case XSDFEC_SET_ORDER:
 		rval = xsdfec_set_order(xsdfec, (enum xsdfec_order)data);
+		break;
+	case XSDFEC_SET_BYPASS:
+		rval = xsdfec_set_bypass(xsdfec, data);
 		break;
 	default:
 		/* Should not get here */
