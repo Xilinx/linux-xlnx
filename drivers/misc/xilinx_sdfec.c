@@ -206,8 +206,10 @@ xsdfec_dev_open(struct inode *iptr, struct file *fptr)
 		return  -EAGAIN;
 
 	/* Only one open per device at a time */
-	if (!atomic_dec_and_test(&xsdfec->open_count))
+	if (!atomic_dec_and_test(&xsdfec->open_count)) {
+		atomic_inc(&xsdfec->open_count);
 		return -EBUSY;
+	}
 
 	fptr->private_data = xsdfec;
 	return 0;
