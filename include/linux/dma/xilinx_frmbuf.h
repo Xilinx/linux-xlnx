@@ -72,6 +72,32 @@ int xilinx_xdma_get_drm_vid_fmts(struct dma_chan *chan, u32 *fmt_cnt,
  */
 int xilinx_xdma_get_v4l2_vid_fmts(struct dma_chan *chan, u32 *fmt_cnt,
 				  u32 **fmts);
+
+/**
+ * xilinx_xdma_get_fid - Get the Field ID of the buffer received.
+ * This function should be called from the callback function registered
+ * per descriptor in prep_interleaved.
+ *
+ * @chan: dma channel instance
+ * @async_tx: descriptor whose parent structure contains fid.
+ * @fid: Output param - Field ID of the buffer. 0 - even, 1 - odd.
+ *
+ * Return: 0 on success, -EINVAL in case of invalid chan
+ */
+int xilinx_xdma_get_fid(struct dma_chan *chan,
+			struct dma_async_tx_descriptor *async_tx, u32 *fid);
+
+/**
+ * xilinx_xdma_set_fid - Set the Field ID of the buffer to be transmitted
+ * @chan: dma channel instance
+ * @async_tx: dma async tx descriptor for the buffer
+ * @fid: Field ID of the buffer. 0 - even, 1 - odd.
+ *
+ * Return: 0 on success, -EINVAL in case of invalid chan
+ */
+int xilinx_xdma_set_fid(struct dma_chan *chan,
+			struct dma_async_tx_descriptor *async_tx, u32 fid);
+
 #else
 static inline void xilinx_xdma_drm_config(struct dma_chan *chan, u32 drm_fourcc)
 { }
@@ -88,6 +114,20 @@ static inline int xilinx_xdma_get_drm_vid_fmts(struct dma_chan *chan,
 
 static inline int xilinx_xdma_get_v4l2_vid_fmts(struct dma_chan *chan,
 						u32 *fmt_cnt,u32 **fmts)
+{
+	return -ENODEV;
+}
+
+static inline int xilinx_xdma_get_fid(struct dma_chan *chan,
+				      struct dma_async_tx_descriptor *async_tx,
+				      u32 *fid);
+{
+	return -ENODEV;
+}
+
+static inline int xilinx_xdma_set_fid(struct dma_chan *chan,
+				      struct dma_async_tx_descriptor *async_tx,
+				      u32 fid)
 {
 	return -ENODEV;
 }
