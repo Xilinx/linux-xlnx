@@ -51,6 +51,7 @@
 #define XILINX_FRMBUF_FMT_OFFSET		0x28
 #define XILINX_FRMBUF_ADDR_OFFSET		0x30
 #define XILINX_FRMBUF_ADDR2_OFFSET		0x3c
+#define XILINX_FRMBUF_FID_OFFSET		0x48
 
 /* Control Registers */
 #define XILINX_FRMBUF_CTRL_AP_START		BIT(0)
@@ -92,6 +93,9 @@
 #define XILINX_FRMBUF_FMT_UYVY8			28
 #define XILINX_FRMBUF_FMT_BGR8				29
 
+/* FID Register */
+#define XILINX_FRMBUF_FID_MASK			BIT(0)
+
 /**
  * struct xilinx_frmbuf_desc_hw - Hardware Descriptor
  * @luma_plane_addr: Luma or packed plane buffer address
@@ -114,11 +118,13 @@ struct xilinx_frmbuf_desc_hw {
  * @async_tx: Async transaction descriptor
  * @hw: Hardware descriptor
  * @node: Node in the channel descriptors list
+ * @fid: Field ID of buffer
  */
 struct xilinx_frmbuf_tx_descriptor {
 	struct dma_async_tx_descriptor async_tx;
 	struct xilinx_frmbuf_desc_hw hw;
 	struct list_head node;
+	u32 fid;
 };
 
 /**
@@ -611,6 +617,56 @@ int xilinx_xdma_get_v4l2_vid_fmts(struct dma_chan *chan, u32 *fmt_cnt,
 }
 EXPORT_SYMBOL(xilinx_xdma_get_v4l2_vid_fmts);
 
+int xilinx_xdma_get_fid(struct dma_chan *chan,
+			struct dma_async_tx_descriptor *async_tx, u32 *fid)
+{
+	struct xilinx_frmbuf_device *xdev;
+	struct xilinx_frmbuf_tx_descriptor *desc;
+
+	xdev = frmbuf_find_dev(chan);
+	if (IS_ERR(xdev))
+		return PTR_ERR(xdev);
+
+	if (!async_tx || !fid)
+		return -EINVAL;
+
+	if (xdev->chan.direction != DMA_DEV_TO_MEM)
+		return -EINVAL;
+
+	desc = to_dma_tx_descriptor(async_tx);
+	if (!desc)
+		return -EINVAL;
+
+	*fid = desc->fid;
+	return 0;
+}
+EXPORT_SYMBOL(xilinx_xdma_get_fid);
+
+int xilinx_xdma_set_fid(struct dma_chan *chan,
+			struct dma_async_tx_descriptor *async_tx, u32 fid)
+{
+	struct xilinx_frmbuf_device *xdev;
+	struct xilinx_frmbuf_tx_descriptor *desc;
+
+	if (fid > 1 || !async_tx)
+		return -EINVAL;
+
+	xdev = frmbuf_find_dev(chan);
+	if (IS_ERR(xdev))
+		return PTR_ERR(xdev);
+
+	if (xdev->chan.direction != DMA_MEM_TO_DEV)
+		return -EINVAL;
+
+	desc = to_dma_tx_descriptor(async_tx);
+	if (!desc)
+		return -EINVAL;
+
+	desc->fid = fid;
+	return 0;
+}
+EXPORT_SYMBOL(xilinx_xdma_set_fid);
+
 /**
  * of_dma_xilinx_xlate - Translation function
  * @dma_spec: Pointer to DMA specifier as found in the device tree
@@ -806,6 +862,14 @@ static void xilinx_frmbuf_complete_descriptor(struct xilinx_frmbuf_chan *chan)
 {
 	struct xilinx_frmbuf_tx_descriptor *desc = chan->active_desc;
 
+	/*
+	 * In case of frame buffer write, read the fid register
+	 * and associate it with descriptor
+	 */
+	if (chan->direction == DMA_DEV_TO_MEM)
+		desc->fid = frmbuf_read(chan, XILINX_FRMBUF_FID_OFFSET) &
+			    XILINX_FRMBUF_FID_MASK;
+
 	dma_cookie_complete(&desc->async_tx);
 	list_add_tail(&desc->node, &chan->done_list);
 }
@@ -849,6 +913,10 @@ static void xilinx_frmbuf_start_transfer(struct xilinx_frmbuf_chan *chan)
 	frmbuf_write(chan, XILINX_FRMBUF_STRIDE_OFFSET, desc->hw.stride);
 	frmbuf_write(chan, XILINX_FRMBUF_HEIGHT_OFFSET, desc->hw.vsize);
 	frmbuf_write(chan, XILINX_FRMBUF_FMT_OFFSET, chan->vid_fmt->id);
+
+	/* If it is framebuffer read IP set the FID */
+	if (chan->direction == DMA_MEM_TO_DEV)
+		frmbuf_write(chan, XILINX_FRMBUF_FID_OFFSET, desc->fid);
 
 	/* Start the hardware */
 	xilinx_frmbuf_start(chan);
