@@ -734,6 +734,8 @@ xvip_dma_enum_format(struct file *file, void *fh, struct v4l2_fmtdesc *f)
 		f->pixelformat = fmt->fourcc;
 		strlcpy(f->description, fmt->description,
 			sizeof(f->description));
+
+		return 0;
 	}
 
 	/* Single plane formats */
