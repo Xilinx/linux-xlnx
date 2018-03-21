@@ -476,7 +476,7 @@ static int zynqmp_dp_init_phy(struct zynqmp_dp *dp)
 	unsigned int i;
 	int ret;
 
-	for (i = 0; i < ZYNQMP_DP_MAX_LANES; i++) {
+	for (i = 0; i < dp->num_lanes; i++) {
 		ret = phy_init(dp->phy[i]);
 		if (ret) {
 			dev_err(dp->dev, "failed to init phy lane %d\n", i);
@@ -503,7 +503,7 @@ static void zynqmp_dp_exit_phy(struct zynqmp_dp *dp)
 	unsigned int i;
 	int ret;
 
-	for (i = 0; i < ZYNQMP_DP_MAX_LANES; i++) {
+	for (i = 0; i < dp->num_lanes; i++) {
 		ret = phy_exit(dp->phy[i]);
 		if (ret)
 			dev_err(dp->dev, "failed to exit phy(%d) %d\n", i, ret);
@@ -523,7 +523,7 @@ static int zynqmp_dp_phy_ready(struct zynqmp_dp *dp)
 {
 	u32 i, reg, ready;
 
-	ready = (1 << ZYNQMP_DP_MAX_LANES) - 1;
+	ready = (1 << dp->num_lanes) - 1;
 
 	/* Wait for 100 * 1ms. This should be enough time for PHY to be ready */
 	for (i = 0; ; i++) {
@@ -1788,7 +1788,10 @@ int zynqmp_dp_probe(struct platform_device *pdev)
 		if (IS_ERR(dp->phy[i])) {
 			/* 2nd lane is optional */
 			if (i == 0 || PTR_ERR(dp->phy[i]) != -ENODEV) {
-				dev_err(dp->dev, "failed to get phy lane\n");
+				if (PTR_ERR(dp->phy[i]) != -EPROBE_DEFER) {
+					dev_err(dp->dev,
+						"failed to get phy lane\n");
+				}
 				ret = PTR_ERR(dp->phy[i]);
 				dp->phy[i] = NULL;
 				return ret;
