@@ -882,13 +882,13 @@ xsdfec_add_ldpc(struct xsdfec_dev *xsdfec, void __user *arg)
 		dev_err(xsdfec->dev,
 			"%s failed to copy from user for SDFEC%d",
 			__func__, xsdfec->fec_id);
-		return -EFAULT;
+		goto err_out;
 	}
 	if (xsdfec->code == XSDFEC_TURBO_CODE) {
 		dev_err(xsdfec->dev,
 			"%s: Unable to write LDPC to SDFEC%d check DT",
 			__func__, xsdfec->fec_id);
-		return -EIO;
+		goto err_out;
 	}
 	xsdfec->code = XSDFEC_LDPC_CODE;
 	/* Disable Write Protection before proceeding */
@@ -968,7 +968,7 @@ xsdfec_get_ldpc_code_params(struct xsdfec_dev *xsdfec, void __user *arg)
 		dev_err(xsdfec->dev,
 			"%s failed to copy from user for SDFEC%d",
 			__func__, xsdfec->fec_id);
-		return -EFAULT;
+		goto err_out;
 	}
 
 	err = xsdfec_collect_ldpc_reg0(xsdfec, ldpc_params->code_id,
