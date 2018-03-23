@@ -389,7 +389,6 @@ xsdfec_set_turbo(struct xsdfec_dev *xsdfec, void __user *arg)
 	if (xsdfec->wr_protect)
 		xsdfec_wr_protect(xsdfec, false);
 
-	xsdfec_regwrite(xsdfec, XSDFEC_FEC_CODE_ADDR, (xsdfec->code - 1));
 	turbo_write = ((turbo.scale & XSDFEC_TURBO_SCALE_MASK) <<
 			XSDFEC_TURBO_SCALE_BIT_POS) | turbo.alg;
 	xsdfec_regwrite(xsdfec, XSDFEC_TURBO_ADDR, turbo_write);
@@ -895,8 +894,6 @@ xsdfec_add_ldpc(struct xsdfec_dev *xsdfec, void __user *arg)
 	if (xsdfec->wr_protect)
 		xsdfec_wr_protect(xsdfec, false);
 
-	/* Write LDPC to CODE Register */
-	xsdfec_regwrite(xsdfec, XSDFEC_FEC_CODE_ADDR, (xsdfec->code - 1));
 	/* Write Reg 0 */
 	err = xsdfec_reg0_write(xsdfec, ldpc->n, ldpc->k, ldpc->code_id);
 	if (err)
@@ -1105,10 +1102,10 @@ static int xsdfec_start(struct xsdfec_dev *xsdfec)
 	}
 	regread = xsdfec_regread(xsdfec, XSDFEC_FEC_CODE_ADDR);
 	regread &= 0x1;
-	if (regread + 1 != xsdfec->code) {
+	if (regread != (xsdfec->code - 1)) {
 		dev_err(xsdfec->dev,
-			"%s SDFEC HW code does not match driver code",
-			__func__);
+			"%s SDFEC HW code does not match driver code, reg %d, code %d",
+			__func__, regread, (xsdfec->code - 1));
 		return -EINVAL;
 	}
 
@@ -1329,6 +1326,9 @@ xsdfec_parse_of(struct xsdfec_dev *xsdfec)
 		dev_err(xsdfec->dev, "Invalid Op Mode in DT");
 		return -EINVAL;
 	}
+
+	/* Write LDPC to CODE Register */
+	xsdfec_regwrite(xsdfec, XSDFEC_FEC_CODE_ADDR, (xsdfec->code - 1));
 
 	return 0;
 }
