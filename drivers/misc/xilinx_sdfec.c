@@ -1113,7 +1113,7 @@ static int xsdfec_start(struct xsdfec_dev *xsdfec)
 	}
 
 	/* Verify Order has been set */
-	if (xsdfec->code == XSDFEC_CODE_INVALID) {
+	if (xsdfec->order == XSDFEC_INVALID_ORDER) {
 		dev_err(xsdfec->dev,
 			"%s : set order before starting SDFEC%d",
 			__func__, xsdfec->fec_id);
