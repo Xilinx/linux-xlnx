@@ -237,14 +237,10 @@ xsdfec_get_status(struct xsdfec_dev *xsdfec, void __user *arg)
 
 	status.fec_id = xsdfec->fec_id;
 	status.state = xsdfec->state;
-	status.code = xsdfec->code;
-	status.order = xsdfec->order;
-	status.mode = xsdfec->op_mode;
 	status.activity  =
 		(xsdfec_regread(xsdfec,
 				XSDFEC_ACTIVE_ADDR) &
 				XSDFEC_IS_ACTIVITY_SET);
-	status.cecc_count = atomic_read(&xsdfec->cecc_count);
 
 	err = copy_to_user(arg, &status, sizeof(status));
 	if (err) {

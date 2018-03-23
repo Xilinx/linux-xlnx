@@ -121,21 +121,13 @@ struct xsdfec_ldpc_params {
 /**
  * struct xsdfec_status - Status of SDFEC device
  * @fec_id: ID of SDFEC instance
- * @code: The codes being used by the SDFEC instance
- * @order: Order of Operation
  * @state: State of the SDFEC device
- * @mode: Mode of Operation
  * @activity: Describes if the SDFEC instance is Active
- * @cecc_count: Count of the Correctable ECC Errors occurred
  */
 struct xsdfec_status {
 	s32 fec_id;
-	enum xsdfec_code code;
-	enum xsdfec_order order;
 	enum xsdfec_state state;
-	enum xsdfec_op_mode mode;
 	bool activity;
-	int cecc_count;
 };
 
 /**
