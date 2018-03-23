@@ -495,6 +495,7 @@ static void xvip_dma_buffer_queue(struct vb2_buffer *vb)
 		struct v4l2_pix_format *pix;
 
 		pix = &dma->format.fmt.pix;
+		xilinx_xdma_v4l2_config(dma->dma, pix->pixelformat);
 		xvip_width_padding_factor(pix->pixelformat,
 					  &padding_factor_nume,
 					  &padding_factor_deno);
@@ -506,7 +507,7 @@ static void xvip_dma_buffer_queue(struct vb2_buffer *vb)
 				    (padding_factor_deno * bpl_deno);
 		dma->sgl[0].icg = pix->bytesperline - dma->sgl[0].size;
 		dma->xt.numf = pix->height;
-		dma->sgl[0].dst_icg = dma->sgl[0].size;
+		dma->sgl[0].dst_icg = 0;
 	}
 
 	desc = dmaengine_prep_interleaved_dma(dma->dma, &dma->xt, flags);
@@ -857,7 +858,10 @@ __xvip_dma_try_format(struct xvip_dma *dma,
 		pix->height = clamp(pix->height, XVIP_DMA_MIN_HEIGHT,
 				    XVIP_DMA_MAX_HEIGHT);
 
-		min_bpl = pix->width * info->bpl_factor;
+		min_bpl = (pix->width * info->bpl_factor *
+			  padding_factor_nume * bpl_nume) /
+			  (padding_factor_deno * bpl_deno);
+		min_bpl = roundup(min_bpl, dma->align);
 		max_bpl = rounddown(XVIP_DMA_MAX_WIDTH, dma->align);
 		bpl = rounddown(pix->bytesperline, dma->align);
 		pix->bytesperline = clamp(bpl, min_bpl, max_bpl);
