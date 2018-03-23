@@ -199,5 +199,7 @@ struct xsdfec_irq {
  * operations (same number of cycles) but output data matches the input data
  */
 #define XSDFEC_SET_BYPASS	_IOW(XSDFEC_MAGIC, 11, unsigned long)
+/* ioctl that determines if sdfec is processing data */
+#define XSDFEC_IS_ACTIVE	_IOR(XSDFEC_MAGIC, 12, bool *)
 
 #endif /* __XILINX_SDFEC_H__ */

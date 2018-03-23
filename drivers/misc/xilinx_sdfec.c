@@ -1084,6 +1084,18 @@ xsdfec_set_bypass(struct xsdfec_dev *xsdfec, unsigned long bypass)
 	return 0;
 }
 
+static int
+xsdfec_is_active(struct xsdfec_dev *xsdfec, bool __user *is_active)
+{
+	u32 reg_value;
+
+	reg_value = xsdfec_regread(xsdfec, XSDFEC_ACTIVE_ADDR);
+	/* using a double ! operator instead of casting */
+	*is_active = !!(reg_value & XSDFEC_IS_ACTIVITY_SET);
+
+	return 0;
+}
+
 static int xsdfec_start(struct xsdfec_dev *xsdfec)
 {
 	u32 regread;
@@ -1241,6 +1253,9 @@ xsdfec_dev_ioctl(struct file *fptr, unsigned int cmd, unsigned long data)
 		break;
 	case XSDFEC_SET_BYPASS:
 		rval = xsdfec_set_bypass(xsdfec, data);
+		break;
+	case XSDFEC_IS_ACTIVE:
+		rval = xsdfec_is_active(xsdfec, (bool __user *)arg);
 		break;
 	default:
 		/* Should not get here */
