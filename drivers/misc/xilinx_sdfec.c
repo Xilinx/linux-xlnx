@@ -167,9 +167,9 @@ xsdfec_regread(struct xsdfec_dev *xsdfec, u32 addr)
 	u32 rval;
 
 	rval = ioread32(xsdfec->regs + addr);
-	dev_info(xsdfec->dev,
-		 "Read value = 0x%x from offset 0x%x",
-		 rval, addr);
+	dev_dbg(xsdfec->dev,
+		"Read value = 0x%x from offset 0x%x",
+		rval, addr);
 	return rval;
 }
 
