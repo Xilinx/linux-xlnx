@@ -194,7 +194,7 @@
 		 */
 	};
 
-	i2cswitch@75 { /* u60 */
+	i2c-mux@75 { /* u60 */
 		compatible = "nxp,pca9544";
 		#address-cells = <1>;
 		#size-cells = <0>;
@@ -382,7 +382,7 @@
 
 	/* FIXME PL i2c via PCA9306 - u45 */
 	/* FIXME MSP430 - u41 - not detected */
-	i2cswitch@74 { /* u34 */
+	i2c-mux@74 { /* u34 */
 		compatible = "nxp,pca9548";
 		#address-cells = <1>;
 		#size-cells = <0>;
@@ -461,7 +461,7 @@
 		/* 6 - 7 unconnected */
 	};
 
-	i2cswitch@75 {
+	i2c-mux@75 {
 		compatible = "nxp,pca9548"; /* u135 */
 		#address-cells = <1>;
 		#size-cells = <0>;
