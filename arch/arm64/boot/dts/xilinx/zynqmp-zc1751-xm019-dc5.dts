@@ -40,7 +40,6 @@
 	};
 };
 
-/* fpd_dma clk 667MHz, lpd_dma 500MHz */
 &fpd_dma_chan1 {
 	status = "okay";
 };
@@ -88,7 +87,6 @@
 	status = "okay";
 };
 
-/* FIXME: Add device */
 &i2c0 {
 	status = "okay";
 	pinctrl-names = "default", "gpio";
@@ -98,7 +96,6 @@
 	sda-gpios = <&gpio 75 GPIO_ACTIVE_HIGH>;
 };
 
-/* FIXME: Add device */
 &i2c1 {
 	status = "okay";
 	pinctrl-names = "default", "gpio";
