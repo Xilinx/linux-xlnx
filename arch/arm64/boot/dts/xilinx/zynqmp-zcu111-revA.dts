@@ -166,7 +166,7 @@
 		#address-cells = <1>;
 		#size-cells = <0>;
 		reg = <0x75>;
-		i2c@0 { /* i2c mw 75 0 1 */
+		i2c@0 {
 			#address-cells = <1>;
 			#size-cells = <0>;
 			reg = <0>;
@@ -249,7 +249,7 @@
 			reg = <1>;
 			/* NC */
 		};
-		i2c@2 { /* i2c mw 75 0 4 */
+		i2c@2 {
 			#address-cells = <1>;
 			#size-cells = <0>;
 			reg = <2>;
@@ -275,7 +275,7 @@
 			/* J19 header too */
 
 		};
-		i2c@3 { /* i2c mw 75 0 8 */
+		i2c@3 {
 			#address-cells = <1>;
 			#size-cells = <0>;
 			reg = <3>;
@@ -298,7 +298,7 @@
 		#address-cells = <1>;
 		#size-cells = <0>;
 		reg = <0x74>;
-		i2c@0 { /* i2c mw 74 0 1 */
+		i2c@0 {
 			#address-cells = <1>;
 			#size-cells = <0>;
 			reg = <0>;
@@ -315,7 +315,7 @@
 				reg = <0x54>;
 			};
 		};
-		i2c@1 { /* i2c mw 74 0 2 */
+		i2c@1 {
 			#address-cells = <1>;
 			#size-cells = <0>;
 			reg = <1>;
@@ -325,7 +325,7 @@
 			};
 
 		};
-		i2c@2 { /* i2c mw 74 0 4 */
+		i2c@2 {
 			#address-cells = <1>;
 			#size-cells = <0>;
 			reg = <2>;
@@ -338,7 +338,7 @@
 				clock-frequency = <300000000>;
 			};
 		};
-		i2c@3 { /* i2c mw 74 0 8 */
+		i2c@3 {
 			#address-cells = <1>;
 			#size-cells = <0>;
 			reg = <3>;
@@ -351,7 +351,7 @@
 				clock-frequency = <148500000>;
 			};
 		};
-		i2c@4 { /* i2c mw 74 0 10 */
+		i2c@4 {
 			#address-cells = <1>;
 			#size-cells = <0>;
 			reg = <4>;
@@ -360,7 +360,7 @@
 				reg = <0x69>;
 			};
 		};
-		i2c@5 { /* i2c mw 74 0 11 */
+		i2c@5 {
 			#address-cells = <1>;
 			#size-cells = <0>;
 			reg = <5>;
@@ -377,7 +377,7 @@
 					 */
 				};
 		};
-		i2c@6 { /* i2c mw 74 0 11 */
+		i2c@6 {
 			#address-cells = <1>;
 			#size-cells = <0>;
 			reg = <6>;
@@ -410,7 +410,7 @@
 			reg = <2>;
 			/* SYSMON */
 		};
-		i2c@3 { /* i2c mw 75 0 8 */
+		i2c@3 {
 			#address-cells = <1>;
 			#size-cells = <0>;
 			reg = <3>;

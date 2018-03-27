@@ -110,7 +110,7 @@
 		#address-cells = <1>;
 		#size-cells = <0>;
 		reg = <0x74>;
-		i2c@0 { /* i2c mw 74 0 1 */
+		i2c@0 {
 			#address-cells = <1>;
 			#size-cells = <0>;
 			reg = <0>;
@@ -130,7 +130,7 @@
 			};
 		};
 
-		i2c@1 { /* i2c mw 74 0 2 */
+		i2c@1 {
 			#address-cells = <1>;
 			#size-cells = <0>;
 			reg = <1>;
@@ -140,7 +140,7 @@
 			};
 		};
 
-		i2c@2 { /* i2c mw 74 0 4 */
+		i2c@2 {
 			#address-cells = <1>;
 			#size-cells = <0>;
 			reg = <2>;
@@ -156,19 +156,19 @@
 			};
 		};
 
-		i2c@4 { /* i2c mw 74 0 8 */
+		i2c@4 {
 			#address-cells = <1>;
 			#size-cells = <0>;
 			reg = <4>;
 		};
 
-		i2c@5 { /* i2c mw 74 0 10 */ /* FMC_LPC */
+		i2c@5 {
 			#address-cells = <1>;
 			#size-cells = <0>;
 			reg = <5>;
 		};
 
-		i2c@7 { /* i2c mw 74 0 14 */ /* DDR4_SODIMM */
+		i2c@7 {
 			#address-cells = <1>;
 			#size-cells = <0>;
 			reg = <7>;
