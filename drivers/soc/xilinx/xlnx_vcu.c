@@ -43,6 +43,7 @@
 #define VCU_BUFFER_B_FRAME		0x5c
 #define VCU_WPP_EN			0x60
 #define VCU_PLL_CLK_DEC			0x64
+#define VCU_NUM_CORE			0x6c
 #define VCU_GASKET_INIT			0x74
 #define VCU_GASKET_VALUE		0x03
 
@@ -316,6 +317,19 @@ u32 xvcu_get_clock_frequency(struct xvcu_device *xvcu)
 	return xvcu->coreclk;
 }
 EXPORT_SYMBOL_GPL(xvcu_get_clock_frequency);
+
+/**
+ * xvcu_get_num_cores - read the number of core register
+ * @xvcu:	Pointer to the xvcu_device structure
+ *
+ * Return:	Returns 32bit value
+ *
+ */
+u32 xvcu_get_num_cores(struct xvcu_device *xvcu)
+{
+	return xvcu_read(xvcu->logicore_reg_ba, VCU_NUM_CORE);
+}
+EXPORT_SYMBOL_GPL(xvcu_get_num_cores);
 
 /**
  * xvcu_set_vcu_pll_info - Set the VCU PLL info
