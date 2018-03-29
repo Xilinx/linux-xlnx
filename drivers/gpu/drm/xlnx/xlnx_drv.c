@@ -417,9 +417,7 @@ static int xlnx_platform_remove(struct platform_device *pdev)
 
 static void xlnx_platform_shutdown(struct platform_device *pdev)
 {
-	struct xlnx_drm *xlnx_drm = platform_get_drvdata(pdev);
-
-	drm_put_dev(xlnx_drm->drm);
+	component_master_del(&pdev->dev, &xlnx_master_ops);
 }
 
 static int __maybe_unused xlnx_pm_suspend(struct device *dev)
