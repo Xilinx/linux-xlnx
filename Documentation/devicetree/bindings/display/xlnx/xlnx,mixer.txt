@@ -18,7 +18,7 @@ Required properties:
  - xlnx,ppc: pixel per clock for mixer
  - layer_[x]: node for [x] layer
  - xlnx,layer-id: layer identifier number
- - xlnx,vformat: video format for layer
+ - xlnx,vformat: video format for layer. See list of supported formats below.
  - xlnx,layer-max-width: max layer width, mandatory for master layer
    for overlay layers if scaling is alowed then this is mandatory otherwise
    not required for overlay layers
@@ -37,6 +37,31 @@ Optional properties:
  - xlnx,layer-scale: denotes layer can be scale to 2x and 4x
  - xlnx,logo-layer: denotes logo layer is enable
  - logo: logo layer
+
+Supported Formats:
+	Mixer IP Format		Driver supported Format String
+	 BGR888			"BG24"
+	 RGB888			"RG24"
+	 XBGR2101010		"XB30"
+	 XRGB8888		"XR24"
+	 RGBA8888		"RA24"
+	 ABGR8888		"AB24"
+	 ARGB8888		"AR24"
+	 XBGR8888		"XB24"
+	 YUYV			"YUYV"
+	 UYVY			"UYVY"
+	 AYUV			"AYUV"
+	 NV12			"NV12"
+	 NV16			"NV16"
+	 Y8			"GREY"
+	 Y10			"Y10 " (Note: Space included)
+	 XVUY2101010		"XV30"
+	 VUY888			"VU24"
+	 XVUY8888		"XV24"
+	 XV15			"XV15"
+	 XV20			"XV20"
+Note : Format strings are case sensitive.
+
 Example:
 	v_mix_0: v_mix@80100000 {
 		compatible = "xlnx,mixer-3.0";
