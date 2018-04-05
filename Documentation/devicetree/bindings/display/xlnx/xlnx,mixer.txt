@@ -85,7 +85,7 @@ Example:
 		};
 		xv_mix_master: layer_0 {
 			xlnx,layer-id = <0>;
-			xlnx,vformat = "yuyv";
+			xlnx,vformat = "YUYV";
 			xlnx,layer-max-width = <4096>;
 			xlnx,layer-height = <2160>;
 			dmas = <&axi_vdma_0 0>;
@@ -94,28 +94,28 @@ Example:
 		};
 		xv_mix_overlay_1: layer_1 {
 			xlnx,layer-id = <1>;
-			xlnx,vformat = "nv16";
+			xlnx,vformat = "NV16";
 			xlnx,layer-alpha;
 			xlnx,layer-scale;
 			xlnx,layer-max-width=<1920>;
 		};
 		xv_mix_overlay_2: layer_2 {
 			xlnx,layer-id = <2>;
-			xlnx,vformat = "yuyv";
+			xlnx,vformat = "YUYV";
 			xlnx,layer-alpha;
 			xlnx,layer-scale;
 			xlnx,layer-max-width=<1920>;
 		};
 		xv_mix_overlay_3: layer_3 {
 			xlnx,layer-id = <3>;
-			xlnx,vformat = "avuy";
+			xlnx,vformat = "AYUV";
 			xlnx,layer-alpha;
 			xlnx,layer-scale;
 			xlnx,layer-max-width=<1920>;
 		};
 		xv_mix_overlay_4: layer_4 {
 			xlnx,layer-id = <4>;
-			xlnx,vformat = "y8";
+			xlnx,vformat = "GREY";
 			dmas = <&scaler_v_frmbuf_rd_0 0>;
 			dma-names = "dma0";
 			xlnx,layer-streaming;
@@ -125,21 +125,21 @@ Example:
 		};
 		xv_mix_overlay_5: layer_5 {
 			xlnx,layer-id = <5>;
-			xlnx,vformat = "abgr8888";
+			xlnx,vformat = "AB24";
 			xlnx,layer-alpha;
 			xlnx,layer-scale;
 			xlnx,layer-max-width=<1920>;
 		};
 		xv_mix_overlay_6: layer_6 {
 			xlnx,layer-id = <6>;
-			xlnx,vformat = "xbgr8888";
+			xlnx,vformat = "XB24";
 			xlnx,layer-alpha;
 			xlnx,layer-scale;
 			xlnx,layer-max-width=<1920>;
 			};
 		xv_mix_overlay_7: layer_7 {
 			xlnx,layer-id = <7>;
-			xlnx,vformat = "bgr888";
+			xlnx,vformat = "BG24";
 			xlnx,layer-alpha;
 			xlnx,layer-scale;
 			xlnx,layer-max-width=<1920>;
