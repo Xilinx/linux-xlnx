@@ -473,7 +473,7 @@ static int xlnx_pl_disp_probe(struct platform_device *pdev)
 
 	xlnx_pl_disp->master = xlnx_drm_pipeline_init(pdev);
 	if (IS_ERR(xlnx_pl_disp->master)) {
-		ret = PTR_ERR(xlnx_pl_disp->dev);
+		ret = PTR_ERR(xlnx_pl_disp->master);
 		dev_err(dev, "failed to initialize the drm pipeline\n");
 		goto err_component;
 	}
