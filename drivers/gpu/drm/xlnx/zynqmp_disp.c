@@ -2568,6 +2568,10 @@ zynqmp_disp_plane_atomic_update(struct drm_plane *plane,
 	if (!plane->state->crtc || !plane->state->fb)
 		return;
 
+	if (old_state->fb &&
+	    old_state->fb->format->format != plane->state->fb->format->format)
+		zynqmp_disp_plane_disable(plane);
+
 	ret = zynqmp_disp_plane_mode_set(plane, plane->state->fb,
 					 plane->state->crtc_x,
 					 plane->state->crtc_y,
