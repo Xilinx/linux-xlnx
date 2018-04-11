@@ -28,6 +28,7 @@
 #include <drm/drm_gem_cma_helper.h>
 #include <drm/drm_gem_framebuffer_helper.h>
 
+#include "xlnx_crtc.h"
 #include "xlnx_drv.h"
 #include "xlnx_fb.h"
 
@@ -161,6 +162,8 @@ static int xlnx_fbdev_create(struct drm_fb_helper *fb_helper,
 	unsigned int bytes_per_pixel;
 	unsigned long offset;
 	struct fb_info *fbi;
+	u32 format;
+	const struct drm_format_info *info;
 	size_t bytes;
 	int ret;
 
@@ -182,6 +185,12 @@ static int xlnx_fbdev_create(struct drm_fb_helper *fb_helper,
 		ret = -ENOMEM;
 		goto err_drm_gem_cma_free_object;
 	}
+
+	/* Override the depth given by fb helper with current format value */
+	format = xlnx_get_format(drm);
+	info = drm_format_info(format);
+	if (size->surface_bpp == info->cpp[0] * 8)
+		size->surface_depth = info->depth;
 
 	fbdev->fb = xlnx_fb_gem_fbdev_fb_create(drm, size, fbdev->align,
 						&obj->base, &xlnx_fb_funcs);
