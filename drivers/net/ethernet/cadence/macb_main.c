@@ -3769,7 +3769,6 @@ static int macb_probe(struct platform_device *pdev)
 			goto failed_phy;
 		}
 		phy_node = of_node_get(np);
-		bp->phy_node = phy_node;
 	} else {
 		int gpio = of_get_named_gpio(phy_node, "reset-gpios", 0);
 		if (gpio_is_valid(gpio)) {
@@ -3777,6 +3776,7 @@ static int macb_probe(struct platform_device *pdev)
 			gpiod_direction_output(bp->reset_gpio, 1);
 		}
 	}
+	bp->phy_node = phy_node;
 
 	err = of_get_phy_mode(np);
 	if (err < 0) {
