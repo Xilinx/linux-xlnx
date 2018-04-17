@@ -635,7 +635,7 @@ static int macb_mii_init(struct macb *bp)
 		of_node_put(mdio_np);
 		err = of_mdiobus_register(bp->mii_bus, mdio_np);
 		if (err)
-			goto err_out_unregister_bus;
+			goto err_out_free_mdiobus;
 	} else if (np) {
 		/* try dt phy registration */
 		err = of_mdiobus_register(bp->mii_bus, np);
