@@ -13,6 +13,8 @@ Required properties:
 
 Optional properties:
 - port-number		: Set Uart port number
+- clock-names		: Should be "s_axi_aclk"
+- clocks		: Input clock specifier. Refer to common clock bindings.
 
 Example:
 serial@800C0000 {
