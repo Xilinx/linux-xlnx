@@ -77,6 +77,7 @@ static inline struct xvip_pipeline *to_xvip_pipeline(struct video_device *vdev)
  * @align: transfer alignment required by the DMA channel (in bytes)
  * @xt: dma interleaved template for dma configuration
  * @sgl: data chunk structure for dma_interleaved_template
+ * @prev_fid: Previous Field ID
  */
 struct xvip_dma {
 	struct list_head list;
@@ -104,6 +105,8 @@ struct xvip_dma {
 	unsigned int align;
 	struct dma_interleaved_template xt;
 	struct data_chunk sgl[1];
+
+	u32 prev_fid;
 };
 
 #define to_xvip_dma(vdev)	container_of(vdev, struct xvip_dma, video)
