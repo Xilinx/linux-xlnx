@@ -64,7 +64,7 @@ static int xvip_dma_verify_format(struct xvip_dma *dma)
 	int width, height;
 
 	subdev = xvip_dma_remote_subdev(&dma->pad, &fmt.pad);
-	if (subdev == NULL)
+	if (!subdev)
 		return -EPIPE;
 
 	fmt.which = V4L2_SUBDEV_FORMAT_ACTIVE;
@@ -102,7 +102,7 @@ static struct media_pad *xvip_get_entity_sink(struct media_entity *entity,
 	/* The source pad can be NULL when the entity has no source pad. Return
 	 * the first pad in that case, guaranteed to be a sink pad.
 	 */
-	if (source == NULL)
+	if (!source)
 		return &entity->pads[0];
 
 	/* Iterates through the pads to find a connected sink pad. */
@@ -146,7 +146,7 @@ static int xvip_pipeline_start_stop(struct xvip_pipeline *pipe, bool start)
 
 	while (1) {
 		pad = xvip_get_entity_sink(entity, pad);
-		if (pad == NULL)
+		if (!pad)
 			break;
 
 		if (!(pad->flags & MEDIA_PAD_FL_SINK))
@@ -331,11 +331,13 @@ done:
  * @buf: vb2 buffer base object
  * @queue: buffer list entry in the DMA engine queued buffers list
  * @dma: DMA channel that uses the buffer
+ * @desc: Descriptor associated with this structure
  */
 struct xvip_dma_buffer {
 	struct vb2_v4l2_buffer buf;
 	struct list_head queue;
 	struct xvip_dma *dma;
+	struct dma_async_tx_descriptor *desc;
 };
 
 #define to_xvip_dma_buffer(vb)	container_of(vb, struct xvip_dma_buffer, buf)
@@ -345,6 +347,8 @@ static void xvip_dma_complete(void *param)
 	struct xvip_dma_buffer *buf = param;
 	struct xvip_dma *dma = buf->dma;
 	int i, sizeimage;
+	u32 fid;
+	int status;
 
 	spin_lock(&dma->queued_lock);
 	list_del(&buf->queue);
@@ -353,6 +357,26 @@ static void xvip_dma_complete(void *param)
 	buf->buf.field = V4L2_FIELD_NONE;
 	buf->buf.sequence = dma->sequence++;
 	buf->buf.vb2_buf.timestamp = ktime_get_ns();
+
+	status = xilinx_xdma_get_fid(dma->dma, buf->desc, &fid);
+	if (!status) {
+		if (((V4L2_TYPE_IS_MULTIPLANAR(dma->format.type)) &&
+		     dma->format.fmt.pix_mp.field == V4L2_FIELD_ALTERNATE) ||
+		     dma->format.fmt.pix.field == V4L2_FIELD_ALTERNATE) {
+			/*
+			 * fid = 1 is odd field i.e. V4L2_FIELD_TOP.
+			 * fid = 0 is even field i.e. V4L2_FIELD_BOTTOM.
+			 */
+			buf->buf.field = fid ?
+					 V4L2_FIELD_TOP : V4L2_FIELD_BOTTOM;
+
+			if (fid == dma->prev_fid)
+				buf->buf.sequence = dma->sequence++;
+
+			buf->buf.sequence >>= 1;
+			dma->prev_fid = fid;
+		}
+	}
 
 	if (V4L2_TYPE_IS_MULTIPLANAR(dma->format.type)) {
 		for (i = 0; i < dma->fmtinfo->buffers; i++) {
@@ -432,6 +456,7 @@ static void xvip_dma_buffer_queue(struct vb2_buffer *vb)
 	u32 flags;
 	u32 luma_size;
 	u32 padding_factor_nume, padding_factor_deno, bpl_nume, bpl_deno;
+	u32 fid = ~0;
 
 	if (dma->queue.type == V4L2_BUF_TYPE_VIDEO_CAPTURE ||
 	    dma->queue.type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
@@ -518,6 +543,16 @@ static void xvip_dma_buffer_queue(struct vb2_buffer *vb)
 	}
 	desc->callback = xvip_dma_complete;
 	desc->callback_param = buf;
+	buf->desc = desc;
+
+	if (buf->buf.field == V4L2_FIELD_TOP)
+		fid = 1;
+	else if (buf->buf.field == V4L2_FIELD_BOTTOM)
+		fid = 0;
+	else if (buf->buf.field == V4L2_FIELD_NONE)
+		fid = 0;
+
+	xilinx_xdma_set_fid(dma->dma, desc, fid);
 
 	spin_lock_irq(&dma->queued_lock);
 	list_add_tail(&buf->queue, &dma->queued_bufs);
@@ -537,6 +572,7 @@ static int xvip_dma_start_streaming(struct vb2_queue *vq, unsigned int count)
 	int ret;
 
 	dma->sequence = 0;
+	dma->prev_fid = ~0;
 
 	/*
 	 * Start streaming on the pipeline. No link touching an entity in the
@@ -756,6 +792,30 @@ __xvip_dma_try_format(struct xvip_dma *dma,
 	unsigned int fourcc;
 	unsigned int padding_factor_nume, padding_factor_deno;
 	unsigned int bpl_nume, bpl_deno;
+	struct v4l2_subdev_format fmt;
+	struct v4l2_subdev *subdev;
+	int ret;
+
+	subdev = xvip_dma_remote_subdev(&dma->pad, &fmt.pad);
+	if (!subdev)
+		return;
+
+	fmt.which = V4L2_SUBDEV_FORMAT_ACTIVE;
+	ret = v4l2_subdev_call(subdev, pad, get_fmt, NULL, &fmt);
+	if (ret < 0)
+		return;
+
+	if (fmt.format.field == V4L2_FIELD_ALTERNATE) {
+		if (V4L2_TYPE_IS_MULTIPLANAR(dma->format.type))
+			dma->format.fmt.pix_mp.field = V4L2_FIELD_ALTERNATE;
+		else
+			dma->format.fmt.pix.field = V4L2_FIELD_ALTERNATE;
+	} else {
+		if (V4L2_TYPE_IS_MULTIPLANAR(dma->format.type))
+			dma->format.fmt.pix_mp.field = V4L2_FIELD_NONE;
+		else
+			dma->format.fmt.pix.field = V4L2_FIELD_NONE;
+	}
 
 	/* Retrieve format information and select the default format if the
 	 * requested format isn't supported.
@@ -788,12 +848,14 @@ __xvip_dma_try_format(struct xvip_dma *dma,
 
 		pix_mp = &format->fmt.pix_mp;
 		plane_fmt = pix_mp->plane_fmt;
-		pix_mp->field = V4L2_FIELD_NONE;
+		pix_mp->field = dma->format.fmt.pix_mp.field;
 		width = rounddown(pix_mp->width * info->bpl_factor, align);
 		pix_mp->width = clamp(width, min_width, max_width) /
 				info->bpl_factor;
 		pix_mp->height = clamp(pix_mp->height, XVIP_DMA_MIN_HEIGHT,
 				       XVIP_DMA_MAX_HEIGHT);
+		if (pix_mp->field == V4L2_FIELD_ALTERNATE)
+			pix_mp->height = pix_mp->height / 2;
 
 		/*
 		 * Clamp the requested bytes per line value. If the maximum
@@ -850,13 +912,15 @@ __xvip_dma_try_format(struct xvip_dma *dma,
 		struct v4l2_pix_format *pix;
 
 		pix = &format->fmt.pix;
-		pix->field = V4L2_FIELD_NONE;
-
+		pix->field = dma->format.fmt.pix.field;
 		width = rounddown(pix->width * info->bpl_factor, align);
 		pix->width = clamp(width, min_width, max_width) /
 			     info->bpl_factor;
 		pix->height = clamp(pix->height, XVIP_DMA_MIN_HEIGHT,
 				    XVIP_DMA_MAX_HEIGHT);
+
+		if (pix->field == V4L2_FIELD_ALTERNATE)
+			pix->height = pix->height / 2;
 
 		min_bpl = (pix->width * info->bpl_factor *
 			  padding_factor_nume * bpl_nume) /
