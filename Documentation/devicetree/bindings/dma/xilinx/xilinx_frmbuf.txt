@@ -8,13 +8,15 @@ is format aware, only one buffer pointer is needed by the IP blocks even
 when planar or semi-planar format are used.
 
 FB Read Required propertie(s):
-- compatible		: Should be "xlnx,axi-frmbuf-rd-v2"
+- compatible		: Should be "xlnx,axi-frmbuf-rd-v2" or
+			  "xlnx,axi-frmbuf-rd-v2.1"
 
 Note: Compatible string "xlnx,axi-frmbuf-rd" and the hardware it
 represented is no longer supported.
 
 FB Write Required propertie(s):
-- compatible		: Should be "xlnx,axi-frmbuf-wr-v2"
+- compatible		: Should be "xlnx,axi-frmbuf-wr-v2" or
+			  "xlnx,axi-frmbuf-wr-v2.1"
 
 Note: Compatible string "xlnx,axi-frmbuf-wr" and the hardware it
 represented is no longer supported.
@@ -30,6 +32,17 @@ Required Properties Common to both FB Read and FB Write:
 			  formats the IP has been configured to support.
 			  See VIDEO FORMATS table below and examples.
 
+Required Properties Common to both FB Read and FB Write for v2.1:
+- xlnx,pixels-per-clock	: Pixels per clock set in IP (1, 2 or 4)
+
+Optional Properties Common to both FB Read and FB Write for v2.1:
+- xlnx,dma-align	: DMA alignment required in bytes.
+			  If absent then dma alignment is calculated as
+			  pixels per clock * 8.
+			  If present it should be power of 2 and at least
+			  pixels per clock * 8.
+			  Minimum is 8, 16, 32 when pixels-per-clock is
+			  1, 2 or 4.
 VIDEO FORMATS
 The following table describes the legal string values to be used for
 the xlnx,vid-formats property.  To the left is the string value and the
@@ -68,24 +81,28 @@ FB Read Example:
 ++++++++
 v_frmbuf_rd_0: v_frmbuf_rd@80000000 {
 	#dma-cells = <1>;
-	compatible = "xlnx,axi-frmbuf-rd-v2";
+	compatible = "xlnx,axi-frmbuf-rd-v2.1";
 	interrupt-parent = <&gic>;
 	interrupts = <0 92 4>;
 	reset-gpios = <&gpio 80 1>;
 	reg = <0x0 0x80000000 0x0 0x10000>;
 	xlnx,dma-addr-width = <32>;
 	xlnx,vid-formats = "bgr888","xbgr8888";
+	xlnx,pixels-per-clock = <1>;
+	xlnx,dma-align = <8>;
 };
 
 FB Write Example:
 ++++++++
 v_frmbuf_wr_0: v_frmbuf_wr@80000000 {
 	#dma-cells = <1>;
-	compatible = "xlnx,axi-frmbuf-wr-v2";
+	compatible = "xlnx,axi-frmbuf-wr-v2.1";
 	interrupt-parent = <&gic>;
 	interrupts = <0 92 4>;
 	reset-gpios = <&gpio 80 1>;
 	reg = <0x0 0x80000000 0x0 0x10000>;
 	xlnx,dma-addr-width = <64>;
 	xlnx,vid-formats = "bgr888","yuyv","nv16","nv12";
+	xlnx,pixels-per-clock = <2>;
+	xlnx,dma-align = <16>;
 };
