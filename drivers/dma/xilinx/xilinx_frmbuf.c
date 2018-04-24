@@ -96,6 +96,11 @@
 /* FID Register */
 #define XILINX_FRMBUF_FID_MASK			BIT(0)
 
+#define XILINX_FRMBUF_ALIGN_MUL			8
+
+/* Pixels per clock property flag */
+#define XILINX_PPC_PROP				BIT(0)
+
 /**
  * struct xilinx_frmbuf_desc_hw - Hardware Descriptor
  * @luma_plane_addr: Luma or packed plane buffer address
@@ -425,6 +430,16 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 };
 
 /**
+ * struct xilinx_frmbuf_feature - dt or IP property structure
+ * @direction: dma transfer mode and direction
+ * @flags: Bitmask of properties enabled in IP or dt
+ */
+struct xilinx_frmbuf_feature {
+	enum dma_transfer_direction direction;
+	u32 flags;
+};
+
+/**
  * struct xilinx_frmbuf_device - dma device structure
  * @regs: I/O mapped base address
  * @dev: Device Structure
@@ -436,6 +451,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
  * @drm_fmt_cnt: Count of supported DRM fourcc codes
  * @v4l2_memory_fmts: Array of supported V4L2 fourcc codes
  * @v4l2_fmt_cnt: Count of supported V4L2 fourcc codes
+ * @cfg: Pointer to Framebuffer Feature config struct
  */
 struct xilinx_frmbuf_device {
 	void __iomem *regs;
@@ -448,13 +464,36 @@ struct xilinx_frmbuf_device {
 	u32 drm_fmt_cnt;
 	u32 v4l2_memory_fmts[ARRAY_SIZE(xilinx_frmbuf_formats)];
 	u32 v4l2_fmt_cnt;
+	const struct xilinx_frmbuf_feature *cfg;
+};
+
+static const struct xilinx_frmbuf_feature xlnx_fbwr_cfg_v20 = {
+	.direction = DMA_DEV_TO_MEM,
+};
+
+static const struct xilinx_frmbuf_feature xlnx_fbwr_cfg_v21 = {
+	.direction = DMA_DEV_TO_MEM,
+	.flags = XILINX_PPC_PROP
+};
+
+static const struct xilinx_frmbuf_feature xlnx_fbrd_cfg_v20 = {
+	.direction = DMA_MEM_TO_DEV,
+};
+
+static const struct xilinx_frmbuf_feature xlnx_fbrd_cfg_v21 = {
+	.direction = DMA_MEM_TO_DEV,
+	.flags = XILINX_PPC_PROP
 };
 
 static const struct of_device_id xilinx_frmbuf_of_ids[] = {
 	{ .compatible = "xlnx,axi-frmbuf-wr-v2",
-		.data = (void *)DMA_DEV_TO_MEM},
+		.data = (void *)&xlnx_fbwr_cfg_v20},
+	{ .compatible = "xlnx,axi-frmbuf-wr-v2.1",
+		.data = (void *)&xlnx_fbwr_cfg_v21},
 	{ .compatible = "xlnx,axi-frmbuf-rd-v2",
-		.data = (void *)DMA_MEM_TO_DEV},
+		.data = (void *)&xlnx_fbrd_cfg_v20},
+	{ .compatible = "xlnx,axi-frmbuf-rd-v2.1",
+		.data = (void *)&xlnx_fbrd_cfg_v21},
 	{/* end of list */}
 };
 
@@ -1256,7 +1295,7 @@ static int xilinx_frmbuf_probe(struct platform_device *pdev)
 	enum dma_transfer_direction dma_dir;
 	const struct of_device_id *match;
 	int err;
-	u32 i, j;
+	u32 i, j, align, ppc;
 	int hw_vid_fmt_cnt;
 	const char *vid_fmts[ARRAY_SIZE(xilinx_frmbuf_formats)];
 
@@ -1270,7 +1309,9 @@ static int xilinx_frmbuf_probe(struct platform_device *pdev)
 	if (!match)
 		return -ENODEV;
 
-	dma_dir = (enum dma_transfer_direction)match->data;
+	xdev->cfg = match->data;
+
+	dma_dir = (enum dma_transfer_direction)xdev->cfg->direction;
 
 	xdev->rst_gpio = devm_gpiod_get(&pdev->dev, "reset",
 					GPIOD_OUT_HIGH);
@@ -1293,8 +1334,27 @@ static int xilinx_frmbuf_probe(struct platform_device *pdev)
 		return PTR_ERR(xdev->regs);
 
 	/* Initialize the DMA engine */
-	/* TODO: Get DMA alignment from device tree property */
-	xdev->common.copy_align = 4;
+	if (xdev->cfg->flags & XILINX_PPC_PROP) {
+		err = of_property_read_u32(node, "xlnx,pixels-per-clock", &ppc);
+		if (err || (ppc != 1 && ppc != 2 && ppc != 4)) {
+			dev_err(&pdev->dev, "missing or invalid pixels per clock dts prop\n");
+			return err;
+		}
+
+		err = of_property_read_u32(node, "xlnx,dma-align", &align);
+		if (err)
+			align = ppc * XILINX_FRMBUF_ALIGN_MUL;
+
+		if (align < (ppc * XILINX_FRMBUF_ALIGN_MUL) ||
+		    ffs(align) != fls(align)) {
+			dev_err(&pdev->dev, "invalid dma align dts prop\n");
+			return -EINVAL;
+		}
+	} else {
+		align = 16;
+	}
+
+	xdev->common.copy_align = fls(align) - 1;
 	xdev->common.dev = &pdev->dev;
 
 	INIT_LIST_HEAD(&xdev->common.channels);
