@@ -392,6 +392,36 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.v4l2_fmt = V4L2_PIX_FMT_BGR24,
 		.fmt_bitmask = BIT(18),
 	},
+	{
+		.dts_name = "abgr8888",
+		.id = XILINX_FRMBUF_FMT_RGBA8,
+		.bpw = 32,
+		.ppw = 1,
+		.num_planes = 1,
+		.drm_fmt = DRM_FORMAT_ABGR8888,
+		.v4l2_fmt = 0,
+		.fmt_bitmask = BIT(19),
+	},
+	{
+		.dts_name = "argb8888",
+		.id = XILINX_FRMBUF_FMT_BGRA8,
+		.bpw = 32,
+		.ppw = 1,
+		.num_planes = 1,
+		.drm_fmt = DRM_FORMAT_ARGB8888,
+		.v4l2_fmt = 0,
+		.fmt_bitmask = BIT(20),
+	},
+	{
+		.dts_name = "avuy8888",
+		.id = XILINX_FRMBUF_FMT_YUVA8,
+		.bpw = 32,
+		.ppw = 1,
+		.num_planes = 1,
+		.drm_fmt = DRM_FORMAT_AVUY,
+		.v4l2_fmt = 0,
+		.fmt_bitmask = BIT(21),
+	},
 };
 
 /**
@@ -533,6 +563,17 @@ static int frmbuf_verify_format(struct dma_chan *chan, u32 fourcc, u32 type)
 
 		if (!(xilinx_frmbuf_formats[i].fmt_bitmask &
 		      xil_chan->xdev->enabled_vid_fmts))
+			return -EINVAL;
+
+		/*
+		 * The Alpha color formats are supported in Framebuffer Read
+		 * IP only as corresponding DRM formats.
+		 */
+		if (type == XDMA_DRM &&
+		    (xilinx_frmbuf_formats[i].drm_fmt == DRM_FORMAT_ABGR8888 ||
+		     xilinx_frmbuf_formats[i].drm_fmt == DRM_FORMAT_ARGB8888 ||
+		     xilinx_frmbuf_formats[i].drm_fmt == DRM_FORMAT_AVUY) &&
+		    xil_chan->direction != DMA_MEM_TO_DEV)
 			return -EINVAL;
 
 		xil_chan->vid_fmt = &xilinx_frmbuf_formats[i];
