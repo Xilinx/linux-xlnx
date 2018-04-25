@@ -417,7 +417,7 @@ static int xvcu_set_vcu_pll_info(struct xvcu_device *xvcu)
 				found = cfg;
 				divisor_mcu = pll_clk / mcuclk;
 				mod = pll_clk % mcuclk;
-				if (mcuclk - mod < LIMIT)
+				if (mod != 0)
 					divisor_mcu++;
 				break;
 			}
