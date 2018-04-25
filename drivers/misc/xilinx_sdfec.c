@@ -1026,9 +1026,10 @@ err_out:
 }
 
 static int
-xsdfec_set_order(struct xsdfec_dev *xsdfec, enum xsdfec_order __user order)
+xsdfec_set_order(struct xsdfec_dev *xsdfec, void __user *arg)
 {
 	bool order_out_of_range;
+	enum xsdfec_order order = *((enum xsdfec_order *)arg);
 
 	order_out_of_range = (order <= XSDFEC_INVALID_ORDER) ||
 			     (order >= XSDFEC_ORDER_MAX);
@@ -1055,8 +1056,10 @@ xsdfec_set_order(struct xsdfec_dev *xsdfec, enum xsdfec_order __user order)
 }
 
 static int
-xsdfec_set_bypass(struct xsdfec_dev *xsdfec, unsigned long bypass)
+xsdfec_set_bypass(struct xsdfec_dev *xsdfec, void __user *arg)
 {
+	unsigned long bypass = *((unsigned long *)arg);
+
 	if (bypass > 1) {
 		dev_err(xsdfec->dev,
 			"%s invalid bypass value %ld for SDFEC%d",
@@ -1174,8 +1177,9 @@ static long
 xsdfec_dev_ioctl(struct file *fptr, unsigned int cmd, unsigned long data)
 {
 	struct xsdfec_dev *xsdfec = fptr->private_data;
-	void __user *arg = (void __user *)data;
+	void __user *arg = NULL;
 	int rval = -EINVAL;
+	int err = 0;
 
 	if (!xsdfec)
 		return rval;
@@ -1189,6 +1193,31 @@ xsdfec_dev_ioctl(struct file *fptr, unsigned int cmd, unsigned long data)
 		return -EPERM;
 	}
 
+	if (_IOC_TYPE(cmd) != XSDFEC_MAGIC) {
+		dev_err(xsdfec->dev, "Not a xilinx sdfec ioctl");
+		return -ENOTTY;
+	}
+
+	/* check if ioctl argument is present and valid */
+	if (_IOC_DIR(cmd) != _IOC_NONE) {
+		arg = (void __user *)data;
+		if (!arg) {
+			dev_err(xsdfec->dev, "xilinx sdfec ioctl argument is NULL Pointer");
+			return rval;
+		}
+	}
+
+	/* Access check of the argument if present */
+	if (_IOC_DIR(cmd) & _IOC_READ)
+		err = !access_ok(VERIFY_WRITE, (void *)arg, _IOC_SIZE(cmd));
+	else if (_IOC_DIR(cmd) & _IOC_WRITE)
+		err = !access_ok(VERIFY_READ, (void *)arg, _IOC_SIZE(cmd));
+
+	if (err) {
+		dev_err(xsdfec->dev, "Invalid xilinx sdfec ioctl argument");
+		return -EFAULT;
+	}
+
 	switch (cmd) {
 	case XSDFEC_START_DEV:
 		rval = xsdfec_start(xsdfec);
@@ -1200,52 +1229,31 @@ xsdfec_dev_ioctl(struct file *fptr, unsigned int cmd, unsigned long data)
 		rval = xsdfec_reset_req(xsdfec);
 		break;
 	case XSDFEC_GET_STATUS:
-		arg = (void __user *)data;
-		if (!arg)
-			return rval;
 		rval = xsdfec_get_status(xsdfec, arg);
 		break;
 	case XSDFEC_GET_CONFIG:
-		arg = (void __user *)data;
-		if (!arg)
-			return rval;
 		rval = xsdfec_get_config(xsdfec, arg);
 		break;
 	case XSDFEC_SET_IRQ:
-		arg = (void __user *)data;
-		if (!arg)
-			return rval;
 		rval = xsdfec_set_irq(xsdfec, arg);
 		break;
 	case XSDFEC_SET_TURBO:
-		arg = (void __user *)data;
-		if (!arg)
-			return rval;
 		rval = xsdfec_set_turbo(xsdfec, arg);
 		break;
 	case XSDFEC_GET_TURBO:
-		arg = (void __user *)data;
-		if (!arg)
-			return rval;
 		rval = xsdfec_get_turbo(xsdfec, arg);
 		break;
 	case XSDFEC_ADD_LDPC_CODE_PARAMS:
-		arg = (void __user *)data;
-		if (!arg)
-			return rval;
 		rval  = xsdfec_add_ldpc(xsdfec, arg);
 		break;
 	case XSDFEC_GET_LDPC_CODE_PARAMS:
-		arg = (void __user *)data;
-		if (!arg)
-			return rval;
 		rval = xsdfec_get_ldpc_code_params(xsdfec, arg);
 		break;
 	case XSDFEC_SET_ORDER:
-		rval = xsdfec_set_order(xsdfec, (enum xsdfec_order)data);
+		rval = xsdfec_set_order(xsdfec, arg);
 		break;
 	case XSDFEC_SET_BYPASS:
-		rval = xsdfec_set_bypass(xsdfec, data);
+		rval = xsdfec_set_bypass(xsdfec, arg);
 		break;
 	case XSDFEC_IS_ACTIVE:
 		rval = xsdfec_is_active(xsdfec, (bool __user *)arg);
