@@ -473,8 +473,8 @@ xsdfec_collect_ldpc_reg0(struct xsdfec_dev *xsdfec,
 
 	if (reg_addr > XSDFEC_LDPC_CODE_REG0_ADDR_HIGH) {
 		dev_err(xsdfec->dev,
-			"Accessing outside of LDPC reg0 space 0x%x",
-			reg_addr);
+			"Accessing outside of LDPC reg0 for code_id %d",
+			code_id);
 		return -EINVAL;
 	}
 
@@ -537,8 +537,8 @@ xsdfec_collect_ldpc_reg1(struct xsdfec_dev *xsdfec,
 
 	if (reg_addr > XSDFEC_LDPC_CODE_REG1_ADDR_HIGH) {
 		dev_err(xsdfec->dev,
-			"Accessing outside of LDPC reg1 space 0x%x",
-			reg_addr);
+			"Accessing outside of LDPC reg1 for code_id %d",
+			code_id);
 		return -EINVAL;
 	}
 
@@ -630,8 +630,8 @@ xsdfec_collect_ldpc_reg2(struct xsdfec_dev *xsdfec,
 
 	if (reg_addr > XSDFEC_LDPC_CODE_REG2_ADDR_HIGH) {
 		dev_err(xsdfec->dev,
-			"Accessing outside of LDPC reg1 space 0x%x",
-			reg_addr);
+			"Accessing outside of LDPC reg2 for code_id %d",
+			code_id);
 		return -EINVAL;
 	}
 
@@ -695,8 +695,8 @@ xsdfec_collect_ldpc_reg3(struct xsdfec_dev *xsdfec,
 
 	if (reg_addr > XSDFEC_LDPC_CODE_REG3_ADDR_HIGH) {
 		dev_err(xsdfec->dev,
-			"Accessing outside of LDPC reg3 space 0x%x",
-			reg_addr);
+			"Accessing outside of LDPC reg3 for code_id %d",
+			code_id);
 		return -EINVAL;
 	}
 
