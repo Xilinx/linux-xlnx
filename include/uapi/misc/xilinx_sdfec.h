@@ -183,14 +183,14 @@ struct xsdfec_irq {
 #define XSDFEC_GET_LDPC_CODE_PARAMS \
 	_IOWR(XSDFEC_MAGIC, 9, struct xsdfec_ldpc_params *)
 /* ioctl that sets order, if order of blocks can change from input to output */
-#define XSDFEC_SET_ORDER	_IOW(XSDFEC_MAGIC, 10, enum xsdfec_order)
+#define XSDFEC_SET_ORDER	_IOW(XSDFEC_MAGIC, 10, unsigned long *)
 /*
  * ioctl that sets bypass.
  * setting a value of 0 results in normal operation.
  * setting a value of 1 results in the sdfec performing the configured
  * operations (same number of cycles) but output data matches the input data
  */
-#define XSDFEC_SET_BYPASS	_IOW(XSDFEC_MAGIC, 11, unsigned long)
+#define XSDFEC_SET_BYPASS	_IOW(XSDFEC_MAGIC, 11, unsigned long *)
 /* ioctl that determines if sdfec is processing data */
 #define XSDFEC_IS_ACTIVE	_IOR(XSDFEC_MAGIC, 12, bool *)
 
