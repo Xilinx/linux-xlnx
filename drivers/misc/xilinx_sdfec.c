@@ -40,7 +40,7 @@
 
 #define DRIVER_NAME	"xilinx_sdfec"
 #define DRIVER_VERSION	"0.3"
-#define DRIVER_MAX_DEV	(6)
+#define DRIVER_MAX_DEV	BIT(MINORBITS)
 
 static  struct class *xsdfec_class;
 static atomic_t xsdfec_ndevs = ATOMIC_INIT(0);
@@ -1442,13 +1442,6 @@ xsdfec_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	xsdfec->dev = &pdev->dev;
-	if (atomic_read(&xsdfec_ndevs) > DRIVER_MAX_DEV) {
-		dev_err(&pdev->dev,
-			"Cannot instantiate more than %d SDFEC instances",
-			(DRIVER_MAX_DEV + 1));
-		return -EINVAL;
-	}
-
 	xsdfec->fec_id = atomic_read(&xsdfec_ndevs);
 
 	dev = xsdfec->dev;
