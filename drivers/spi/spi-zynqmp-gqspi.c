@@ -1282,6 +1282,7 @@ static int zynqmp_qspi_probe(struct platform_device *pdev)
 	else
 		master->num_chipselect = num_cs;
 
+	dma_set_mask(&pdev->dev, DMA_BIT_MASK(44));
 	master->setup = zynqmp_qspi_setup;
 	master->set_cs = zynqmp_qspi_chipselect;
 	master->transfer_one = zynqmp_qspi_start_transfer;
@@ -1301,8 +1302,6 @@ static int zynqmp_qspi_probe(struct platform_device *pdev)
 	ret = spi_register_master(master);
 	if (ret)
 		goto clk_dis_all;
-
-	dma_set_mask(&pdev->dev, DMA_BIT_MASK(44));
 
 	return 0;
 
