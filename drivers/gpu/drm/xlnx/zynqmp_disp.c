@@ -2548,8 +2548,57 @@ zynqmp_disp_plane_atomic_get_property(struct drm_plane *plane,
 	return ret;
 }
 
+static int
+zynqmp_disp_plane_atomic_update_plane(struct drm_plane *plane,
+				      struct drm_crtc *crtc,
+				      struct drm_framebuffer *fb,
+				      int crtc_x, int crtc_y,
+				      unsigned int crtc_w, unsigned int crtc_h,
+				      u32 src_x, u32 src_y,
+				      u32 src_w, u32 src_h,
+				      struct drm_modeset_acquire_ctx *ctx)
+{
+	struct drm_atomic_state *state;
+	struct drm_plane_state *plane_state;
+	int ret;
+
+	state = drm_atomic_state_alloc(plane->dev);
+	if (!state)
+		return -ENOMEM;
+
+	state->acquire_ctx = ctx;
+	plane_state = drm_atomic_get_plane_state(state, plane);
+	if (IS_ERR(plane_state)) {
+		ret = PTR_ERR(plane_state);
+		goto fail;
+	}
+
+	ret = drm_atomic_set_crtc_for_plane(plane_state, crtc);
+	if (ret)
+		goto fail;
+	drm_atomic_set_fb_for_plane(plane_state, fb);
+	plane_state->crtc_x = crtc_x;
+	plane_state->crtc_y = crtc_y;
+	plane_state->crtc_w = crtc_w;
+	plane_state->crtc_h = crtc_h;
+	plane_state->src_x = src_x;
+	plane_state->src_y = src_y;
+	plane_state->src_w = src_w;
+	plane_state->src_h = src_h;
+
+	if (plane == crtc->cursor)
+		state->legacy_cursor_update = true;
+
+	/* Do async-update if possible */
+	state->async_update = !drm_atomic_helper_async_check(plane->dev, state);
+	ret = drm_atomic_commit(state);
+fail:
+	drm_atomic_state_put(state);
+	return ret;
+}
+
 static struct drm_plane_funcs zynqmp_disp_plane_funcs = {
-	.update_plane		= drm_atomic_helper_update_plane,
+	.update_plane		= zynqmp_disp_plane_atomic_update_plane,
 	.disable_plane		= drm_atomic_helper_disable_plane,
 	.atomic_set_property	= zynqmp_disp_plane_atomic_set_property,
 	.atomic_get_property	= zynqmp_disp_plane_atomic_get_property,
@@ -2594,9 +2643,40 @@ zynqmp_disp_plane_atomic_disable(struct drm_plane *plane,
 	zynqmp_disp_plane_disable(plane);
 }
 
+static int zynqmp_disp_plane_atomic_async_check(struct drm_plane *plane,
+						struct drm_plane_state *state)
+{
+	return 0;
+}
+
+static void
+zynqmp_disp_plane_atomic_async_update(struct drm_plane *plane,
+				      struct drm_plane_state *new_state)
+{
+	struct drm_plane_state *old_state =
+		drm_atomic_get_old_plane_state(new_state->state, plane);
+
+	 /* Update the current state with new configurations */
+	swap(plane->state->fb, new_state->fb);
+	plane->state->crtc = new_state->crtc;
+	plane->state->crtc_x = new_state->crtc_x;
+	plane->state->crtc_y = new_state->crtc_y;
+	plane->state->crtc_w = new_state->crtc_w;
+	plane->state->crtc_h = new_state->crtc_h;
+	plane->state->src_x = new_state->src_x;
+	plane->state->src_y = new_state->src_y;
+	plane->state->src_w = new_state->src_w;
+	plane->state->src_h = new_state->src_h;
+	plane->state->state = new_state->state;
+
+	zynqmp_disp_plane_atomic_update(plane, old_state);
+}
+
 static const struct drm_plane_helper_funcs zynqmp_disp_plane_helper_funcs = {
-	.atomic_update	= zynqmp_disp_plane_atomic_update,
-	.atomic_disable	= zynqmp_disp_plane_atomic_disable,
+	.atomic_update		= zynqmp_disp_plane_atomic_update,
+	.atomic_disable		= zynqmp_disp_plane_atomic_disable,
+	.atomic_async_check	= zynqmp_disp_plane_atomic_async_check,
+	.atomic_async_update	= zynqmp_disp_plane_atomic_async_update,
 };
 
 static int zynqmp_disp_create_plane(struct zynqmp_disp *disp)
