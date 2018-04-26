@@ -1392,7 +1392,8 @@ static int __dwc3_gadget_ep_queue(struct dwc3_ep *dep, struct dwc3_request *req)
 	 */
 	if (usb_endpoint_xfer_isoc(dep->endpoint.desc)) {
 		if ((dep->flags & DWC3_EP_PENDING_REQUEST)) {
-			if (dep->flags & DWC3_EP_TRANSFER_STARTED) {
+			if ((dep->flags & DWC3_EP_TRANSFER_STARTED) ||
+			    !(dep->flags & DWC3_EP_BUSY)) {
 				dwc3_stop_active_transfer(dwc, dep->number, true);
 				dep->flags = DWC3_EP_ENABLED;
 			} else {
