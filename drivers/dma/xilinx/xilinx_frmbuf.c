@@ -21,6 +21,7 @@
  */
 
 #include <linux/bitops.h>
+#include <linux/delay.h>
 #include <linux/dma/xilinx_frmbuf.h>
 #include <linux/dmapool.h>
 #include <linux/gpio/consumer.h>
@@ -58,6 +59,8 @@
 #define XILINX_FRMBUF_CTRL_AP_DONE		BIT(1)
 #define XILINX_FRMBUF_CTRL_AP_IDLE		BIT(2)
 #define XILINX_FRMBUF_CTRL_AP_READY		BIT(3)
+#define XILINX_FRMBUF_CTRL_FLUSH		BIT(5)
+#define XILINX_FRMBUF_CTRL_FLUSH_DONE		BIT(6)
 #define XILINX_FRMBUF_CTRL_AUTO_RESTART		BIT(7)
 #define XILINX_FRMBUF_GIE_EN			BIT(0)
 
@@ -98,8 +101,11 @@
 
 #define XILINX_FRMBUF_ALIGN_MUL			8
 
+#define WAIT_FOR_FLUSH_DONE			25
+
 /* Pixels per clock property flag */
 #define XILINX_PPC_PROP				BIT(0)
+#define XILINX_FLUSH_PROP			BIT(1)
 
 /**
  * struct xilinx_frmbuf_desc_hw - Hardware Descriptor
@@ -473,7 +479,7 @@ static const struct xilinx_frmbuf_feature xlnx_fbwr_cfg_v20 = {
 
 static const struct xilinx_frmbuf_feature xlnx_fbwr_cfg_v21 = {
 	.direction = DMA_DEV_TO_MEM,
-	.flags = XILINX_PPC_PROP
+	.flags = XILINX_PPC_PROP | XILINX_FLUSH_PROP,
 };
 
 static const struct xilinx_frmbuf_feature xlnx_fbrd_cfg_v20 = {
@@ -482,7 +488,7 @@ static const struct xilinx_frmbuf_feature xlnx_fbrd_cfg_v20 = {
 
 static const struct xilinx_frmbuf_feature xlnx_fbrd_cfg_v21 = {
 	.direction = DMA_MEM_TO_DEV,
-	.flags = XILINX_PPC_PROP
+	.flags = XILINX_PPC_PROP | XILINX_FLUSH_PROP,
 };
 
 static const struct of_device_id xilinx_frmbuf_of_ids[] = {
@@ -1175,6 +1181,27 @@ static int xilinx_frmbuf_terminate_all(struct dma_chan *dchan)
 	xilinx_frmbuf_free_descriptors(chan);
 	/* worst case frame-to-frame boundary; ensure frame output complete */
 	msleep(50);
+
+	if (chan->xdev->cfg->flags & XILINX_FLUSH_PROP) {
+		u8 count;
+
+		/*
+		 * Flush the framebuffer FIFO and
+		 * wait for max 50ms for flush done
+		 */
+		frmbuf_set(chan, XILINX_FRMBUF_CTRL_OFFSET,
+			   XILINX_FRMBUF_CTRL_FLUSH);
+		for (count = WAIT_FOR_FLUSH_DONE; count > 0; count--) {
+			if (frmbuf_read(chan, XILINX_FRMBUF_CTRL_OFFSET) &
+					XILINX_FRMBUF_CTRL_FLUSH_DONE)
+				break;
+			usleep_range(2000, 2100);
+		}
+
+		if (!count)
+			dev_err(chan->xdev->dev, "Framebuffer Flush not done!\n");
+	}
+
 	xilinx_frmbuf_chan_reset(chan);
 
 	return 0;
