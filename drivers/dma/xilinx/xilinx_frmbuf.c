@@ -106,6 +106,7 @@
 /* Pixels per clock property flag */
 #define XILINX_PPC_PROP				BIT(0)
 #define XILINX_FLUSH_PROP			BIT(1)
+#define XILINX_FID_PROP				BIT(2)
 
 /**
  * struct xilinx_frmbuf_desc_hw - Hardware Descriptor
@@ -155,6 +156,7 @@ struct xilinx_frmbuf_tx_descriptor {
  * @idle: Channel idle state
  * @tasklet: Cleanup work after irq
  * @vid_fmt: Reference to currently assigned video format description
+ * @hw_fid: FID enabled in hardware flag
  */
 struct xilinx_frmbuf_chan {
 	struct xilinx_frmbuf_device *xdev;
@@ -174,6 +176,7 @@ struct xilinx_frmbuf_chan {
 	bool idle;
 	struct tasklet_struct tasklet;
 	const struct xilinx_frmbuf_format_desc *vid_fmt;
+	bool hw_fid;
 };
 
 /**
@@ -479,7 +482,7 @@ static const struct xilinx_frmbuf_feature xlnx_fbwr_cfg_v20 = {
 
 static const struct xilinx_frmbuf_feature xlnx_fbwr_cfg_v21 = {
 	.direction = DMA_DEV_TO_MEM,
-	.flags = XILINX_PPC_PROP | XILINX_FLUSH_PROP,
+	.flags = XILINX_PPC_PROP | XILINX_FLUSH_PROP | XILINX_FID_PROP,
 };
 
 static const struct xilinx_frmbuf_feature xlnx_fbrd_cfg_v20 = {
@@ -488,7 +491,7 @@ static const struct xilinx_frmbuf_feature xlnx_fbrd_cfg_v20 = {
 
 static const struct xilinx_frmbuf_feature xlnx_fbrd_cfg_v21 = {
 	.direction = DMA_MEM_TO_DEV,
-	.flags = XILINX_PPC_PROP | XILINX_FLUSH_PROP,
+	.flags = XILINX_PPC_PROP | XILINX_FLUSH_PROP | XILINX_FID_PROP,
 };
 
 static const struct of_device_id xilinx_frmbuf_of_ids[] = {
@@ -952,7 +955,7 @@ static void xilinx_frmbuf_complete_descriptor(struct xilinx_frmbuf_chan *chan)
 	 * In case of frame buffer write, read the fid register
 	 * and associate it with descriptor
 	 */
-	if (chan->direction == DMA_DEV_TO_MEM)
+	if (chan->direction == DMA_DEV_TO_MEM && chan->hw_fid)
 		desc->fid = frmbuf_read(chan, XILINX_FRMBUF_FID_OFFSET) &
 			    XILINX_FRMBUF_FID_MASK;
 
@@ -1001,7 +1004,7 @@ static void xilinx_frmbuf_start_transfer(struct xilinx_frmbuf_chan *chan)
 	frmbuf_write(chan, XILINX_FRMBUF_FMT_OFFSET, chan->vid_fmt->id);
 
 	/* If it is framebuffer read IP set the FID */
-	if (chan->direction == DMA_MEM_TO_DEV)
+	if (chan->direction == DMA_MEM_TO_DEV && chan->hw_fid)
 		frmbuf_write(chan, XILINX_FRMBUF_FID_OFFSET, desc->fid);
 
 	/* Start the hardware */
@@ -1274,6 +1277,9 @@ static int xilinx_frmbuf_chan_probe(struct xilinx_frmbuf_device *xdev,
 		chan->write_addr = writeq_addr;
 	else
 		chan->write_addr = write_addr;
+
+	if (xdev->cfg->flags & XILINX_FID_PROP)
+		chan->hw_fid = of_property_read_bool(node, "xlnx,fid");
 
 	spin_lock_init(&chan->lock);
 	INIT_LIST_HEAD(&chan->pending_list);
