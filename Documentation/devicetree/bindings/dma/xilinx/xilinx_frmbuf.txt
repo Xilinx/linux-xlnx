@@ -43,6 +43,9 @@ Optional Properties Common to both FB Read and FB Write for v2.1:
 			  pixels per clock * 8.
 			  Minimum is 8, 16, 32 when pixels-per-clock is
 			  1, 2 or 4.
+- xlnx,fid		: Field ID enabled for interlaced video support.
+			  Can be absent for progressive video.
+
 VIDEO FORMATS
 The following table describes the legal string values to be used for
 the xlnx,vid-formats property.  To the left is the string value and the
