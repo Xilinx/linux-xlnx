@@ -167,7 +167,7 @@ static int pl35x_ecc_ooblayout64_ecc(struct mtd_info *mtd, int section,
 	if (section >= chip->ecc.steps)
 		return -ERANGE;
 
-	oobregion->offset = (section * 16) + 52;
+	oobregion->offset = (section * chip->ecc.bytes) + 52;
 	oobregion->length = chip->ecc.bytes;
 
 	return 0;
@@ -178,10 +178,12 @@ static int pl35x_ecc_ooblayout64_free(struct mtd_info *mtd, int section,
 {
 	struct nand_chip *chip = mtd_to_nand(mtd);
 
+	if (section)
+		return -ERANGE;
 	if (section >= chip->ecc.steps)
 		return -ERANGE;
 
-	oobregion->offset = (section * 16) + 2;
+	oobregion->offset = (section * chip->ecc.bytes) + 2;
 
 	oobregion->length = 50;
 
@@ -292,7 +294,7 @@ static int pl35x_nand_calculate_hwecc(struct mtd_info *mtd,
 		if (ecc_status & 0x40) {
 			for (ecc_byte = 0; ecc_byte < 3; ecc_byte++) {
 				/* Copy ECC bytes to MTD buffer */
-				*ecc_code = ecc_value & 0xFF;
+				*ecc_code = ~ecc_value & 0xFF;
 				ecc_value = ecc_value >> 8;
 				ecc_code++;
 			}
