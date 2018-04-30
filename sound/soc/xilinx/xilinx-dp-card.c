@@ -91,11 +91,6 @@ static int xilinx_dp_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int xilinx_dp_remove(struct platform_device *pdev)
-{
-	return 0;
-}
-
 static const struct of_device_id xilinx_dp_of_match[] = {
 	{ .compatible = "xlnx,dp-snd-card", },
 	{},
@@ -109,7 +104,6 @@ static struct platform_driver xilinx_dp_aud_driver = {
 		.pm		= &snd_soc_pm_ops,
 	},
 	.probe	= xilinx_dp_probe,
-	.remove	= xilinx_dp_remove,
 };
 module_platform_driver(xilinx_dp_aud_driver);
 
