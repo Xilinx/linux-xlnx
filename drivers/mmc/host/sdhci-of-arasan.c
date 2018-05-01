@@ -38,6 +38,9 @@
 #include "sdhci-pltfm.h"
 
 #define SDHCI_ARASAN_VENDOR_REGISTER	0x78
+#define SDHCI_ARASAN_ITAPDLY_REGISTER	0xF0F8
+#define SDHCI_ARASAN_OTAPDLY_REGISTER	0xF0FC
+
 #define SDHCI_ARASAN_CQE_BASE_ADDR	0x200
 #define VENDOR_ENHANCED_STROBE		BIT(0)
 #define CLK_CTRL_TIMEOUT_SHIFT		16
@@ -48,6 +51,10 @@
 #define MAX_TUNING_LOOP 40
 
 #define PHY_CLK_TOO_SLOW_HZ		400000
+
+#define SDHCI_ITAPDLY_CHGWIN		0x200
+#define SDHCI_ITAPDLY_ENABLE		0x100
+#define SDHCI_OTAPDLY_ENABLE		0x40
 
 #define SDHCI_ITAPDLYSEL_SD_HSD		0x15
 #define SDHCI_ITAPDLYSEL_SDR25		0x15
@@ -147,6 +154,8 @@ struct sdhci_arasan_data {
 /* Controller immediately reports SDHCI_CLOCK_INT_STABLE after enabling the
  * internal clock even when the clock isn't stable */
 #define SDHCI_ARASAN_QUIRK_CLOCK_UNSTABLE BIT(1)
+/* Controller has tap delay setting registers in it's local reg space */
+#define SDHCI_ARASAN_TAPDELAY_REG_LOCAL	BIT(2)
 };
 
 static const struct sdhci_arasan_soc_ctl_map rk3399_soc_ctl_map = {
@@ -392,13 +401,54 @@ out:
 	return err;
 }
 
+static void __arasan_set_tap_delay(struct sdhci_host *host, u8 itap_delay,
+				   u8 otap_delay)
+{
+	u32 regval;
+
+	if (itap_delay) {
+		regval = sdhci_readl(host, SDHCI_ARASAN_ITAPDLY_REGISTER);
+		regval |= SDHCI_ITAPDLY_CHGWIN;
+		sdhci_writel(host, regval, SDHCI_ARASAN_ITAPDLY_REGISTER);
+		regval |= SDHCI_ITAPDLY_ENABLE;
+		sdhci_writel(host, regval, SDHCI_ARASAN_ITAPDLY_REGISTER);
+		regval |= itap_delay;
+		sdhci_writel(host, regval, SDHCI_ARASAN_ITAPDLY_REGISTER);
+		regval &= ~SDHCI_ITAPDLY_CHGWIN;
+		sdhci_writel(host, regval, SDHCI_ARASAN_ITAPDLY_REGISTER);
+	}
+
+	if (otap_delay) {
+		regval = sdhci_readl(host, SDHCI_ARASAN_OTAPDLY_REGISTER);
+		regval |= SDHCI_OTAPDLY_ENABLE;
+		sdhci_writel(host, regval, SDHCI_ARASAN_OTAPDLY_REGISTER);
+		regval |= otap_delay;
+		sdhci_writel(host, regval, SDHCI_ARASAN_OTAPDLY_REGISTER);
+	}
+}
+
+static void arasan_set_tap_delay(struct sdhci_host *host)
+{
+	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
+	struct sdhci_arasan_data *sdhci_arasan = sdhci_pltfm_priv(pltfm_host);
+	u8 itap_delay;
+	u8 otap_delay;
+
+	itap_delay = sdhci_arasan->itapdly[host->timing];
+	otap_delay = sdhci_arasan->otapdly[host->timing];
+
+	if (sdhci_arasan->quirks & SDHCI_ARASAN_TAPDELAY_REG_LOCAL)
+		__arasan_set_tap_delay(host, itap_delay, otap_delay);
+	else
+		arasan_zynqmp_set_tap_delay(sdhci_arasan->device_id,
+					    itap_delay, otap_delay);
+}
+
 static void sdhci_arasan_set_clock(struct sdhci_host *host, unsigned int clock)
 {
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
 	struct sdhci_arasan_data *sdhci_arasan = sdhci_pltfm_priv(pltfm_host);
 	bool ctrl_phy = false;
-	u8 itap_delay;
-	u8 otap_delay;
 
 	if (!IS_ERR(sdhci_arasan->phy)) {
 		if (!sdhci_arasan->is_phy_on && clock <= PHY_CLK_TOO_SLOW_HZ) {
@@ -441,10 +491,7 @@ static void sdhci_arasan_set_clock(struct sdhci_host *host, unsigned int clock)
 			clock = SD_CLK_19_MHZ;
 		if ((host->timing != MMC_TIMING_LEGACY) &&
 			(host->timing != MMC_TIMING_UHS_SDR12)) {
-			itap_delay = sdhci_arasan->itapdly[host->timing];
-			otap_delay = sdhci_arasan->otapdly[host->timing];
-			arasan_zynqmp_set_tap_delay(sdhci_arasan->device_id,
-						    itap_delay, otap_delay);
+			arasan_set_tap_delay(host);
 		}
 	}
 
@@ -1291,6 +1338,9 @@ static int sdhci_arasan_probe(struct platform_device *pdev)
 	if (of_property_read_bool(np, "xlnx,int-clock-stable-broken"))
 		sdhci_arasan->quirks |= SDHCI_ARASAN_QUIRK_CLOCK_UNSTABLE;
 
+	if (of_device_is_compatible(pdev->dev.of_node, "xlnx,versal-8.9a"))
+		sdhci_arasan->quirks |= SDHCI_ARASAN_TAPDELAY_REG_LOCAL;
+
 	pltfm_host->clk = clk_xin;
 
 	if (of_device_is_compatible(pdev->dev.of_node,
@@ -1310,35 +1360,32 @@ static int sdhci_arasan_probe(struct platform_device *pdev)
 		goto unreg_clk;
 	}
 
-	if (of_device_is_compatible(pdev->dev.of_node, "xlnx,zynqmp-8.9a") ||
-		of_device_is_compatible(pdev->dev.of_node,
-					"arasan,sdhci-8.9a")) {
+	if (of_device_is_compatible(pdev->dev.of_node, "arasan,sdhci-8.9a")) {
 		host->quirks |= SDHCI_QUIRK_MULTIBLOCK_READ_ACMD12;
 		host->quirks2 |= SDHCI_QUIRK2_CLOCK_STANDARD_25_BROKEN;
-		if (of_device_is_compatible(pdev->dev.of_node,
-					    "xlnx,zynqmp-8.9a")) {
-			ret = of_property_read_u32(pdev->dev.of_node,
-						   "xlnx,mio_bank",
-						   &sdhci_arasan->mio_bank);
-			if (ret < 0) {
-				dev_err(&pdev->dev,
-					"\"xlnx,mio_bank \" property is missing.\n");
-				goto clk_disable_all;
-			}
-			ret = of_property_read_u32(pdev->dev.of_node,
-						   "xlnx,device_id",
-						   &sdhci_arasan->device_id);
-			if (ret < 0) {
-				dev_err(&pdev->dev,
-					"\"xlnx,device_id \" property is missing.\n");
-				goto clk_disable_all;
-			}
+	}
 
-			arasan_zynqmp_dt_parse_tap_delays(&pdev->dev);
-
-			sdhci_arasan_ops.platform_execute_tuning =
-				arasan_zynqmp_execute_tuning;
+	if (of_device_is_compatible(pdev->dev.of_node, "xlnx,zynqmp-8.9a") ||
+	    of_device_is_compatible(pdev->dev.of_node, "xlnx,versal-8.9a")) {
+		ret = of_property_read_u32(pdev->dev.of_node, "xlnx,mio_bank",
+					   &sdhci_arasan->mio_bank);
+		if (ret < 0) {
+			dev_err(&pdev->dev,
+				"\"xlnx,mio_bank \" property is missing.\n");
+			goto clk_disable_all;
 		}
+		ret = of_property_read_u32(pdev->dev.of_node, "xlnx,device_id",
+					   &sdhci_arasan->device_id);
+		if (ret < 0) {
+			dev_err(&pdev->dev,
+				"\"xlnx,device_id \" property is missing.\n");
+			goto clk_disable_all;
+		}
+
+		arasan_zynqmp_dt_parse_tap_delays(&pdev->dev);
+
+		sdhci_arasan_ops.platform_execute_tuning =
+			arasan_zynqmp_execute_tuning;
 	}
 
 	sdhci_arasan->pinctrl = devm_pinctrl_get(&pdev->dev);
