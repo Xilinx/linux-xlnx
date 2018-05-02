@@ -16,6 +16,7 @@ Required properties:
  - xlnx,dma-addr-width: dma address width, valid values are 32 and 64
  - xlnx,bpc: bits per component for mixer
  - xlnx,ppc: pixel per clock for mixer
+ - xlnx,num-layers: Total number of layers (excluding logo)
  - layer_[x]: node for [x] layer
  - xlnx,layer-id: layer identifier number
  - xlnx,vformat: video format for layer. See list of supported formats below.
