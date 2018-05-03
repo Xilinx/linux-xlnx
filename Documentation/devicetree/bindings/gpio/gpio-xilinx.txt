@@ -31,6 +31,7 @@ Optional properties:
 - xlnx,dout-default-2 : as above but the second channel
 - xlnx,gpio2-width : as above but for the second channel
 - xlnx,tri-default-2 : as above but for the second channel
+- xlnx,no-init : No initialisation at probe
 
 
 Example:
