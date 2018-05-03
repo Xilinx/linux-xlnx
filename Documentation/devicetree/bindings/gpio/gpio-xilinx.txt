@@ -8,11 +8,17 @@ local interrupts can be enabled on channel basis.
 Required properties:
 - compatible : Should be "xlnx,xps-gpio-1.00.a"
 - reg : Address and length of the register set for the device
-- #gpio-cells : Should be two. The first cell is the pin number and the
-  second cell is used to specify optional parameters (currently unused).
+- #gpio-cells : Should be two or three. The first cell is the pin number,
+  The second cell is used to specify channel offset:
+		0 - first channel
+		8 - second channel
+  The third cell is optional and used to specify flags. Use the macros
+  defined in include/dt-bindings/gpio/gpio.h
 - gpio-controller : Marks the device node as a GPIO controller.
 
 Optional properties:
+- clock-names : Should be "s_axi_aclk"
+- clocks: Input clock specifier. Refer to common clock bindings.
 - interrupts : Interrupt mapping for GPIO IRQ.
 - xlnx,all-inputs : if n-th bit is setup, GPIO-n is input
 - xlnx,dout-default : if n-th bit is 1, GPIO-n default value is 1
@@ -23,6 +29,7 @@ Optional properties:
 - xlnx,dout-default-2 : as above but the second channel
 - xlnx,gpio2-width : as above but for the second channel
 - xlnx,tri-default-2 : as above but for the second channel
+- xlnx,no-init : No initialisation at probe
 
 
 Example:
@@ -30,6 +37,8 @@ gpio: gpio@40000000 {
 	#gpio-cells = <2>;
 	compatible = "xlnx,xps-gpio-1.00.a";
 	gpio-controller ;
+	clock-names = "s_axi_aclk";
+	clocks = <&clkc 71>;
 	interrupt-parent = <&microblaze_0_intc>;
 	interrupts = < 6 2 >;
 	reg = < 0x40000000 0x10000 >;
@@ -44,3 +53,11 @@ gpio: gpio@40000000 {
 	xlnx,tri-default = <0xffffffff>;
 	xlnx,tri-default-2 = <0xffffffff>;
 } ;
+
+Example to demonstrate how reset-gpios property is used in drivers:
+
+driver: driver@80000000 {
+	compatible = "xlnx,driver";
+	reset-gpios = <&gpio 0 0 GPIO_ACTIVE_LOW>; /* gpio phandle, gpio pin-number, channel offset, flag state */
+	reg = <0x0 0x80000000 0x0 0x10000>;
+};
