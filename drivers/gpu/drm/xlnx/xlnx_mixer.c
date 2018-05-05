@@ -2061,9 +2061,11 @@ static int xlnx_mix_dt_parse(struct device *dev, struct xlnx_mix *mixer)
 	ret = xlnx_mix_parse_dt_bg_video_fmt(node, mixer_hw);
 	if (ret)
 		return ret;
-	/* read logo data from dts */
-	ret = xlnx_mix_parse_dt_logo_data(node, mixer_hw);
+	if (mixer_hw->logo_layer_en) {
+		/* read logo data from dts */
+		ret = xlnx_mix_parse_dt_logo_data(node, mixer_hw);
 		return ret;
+	}
 	return 0;
 }
 
