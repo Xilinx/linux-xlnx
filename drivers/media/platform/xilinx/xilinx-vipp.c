@@ -41,11 +41,13 @@ module_param_named(is_mplane, xvip_is_mplane, bool, 0444);
  * @asd: subdev asynchronous registration information
  * @entity: media entity, from the corresponding V4L2 subdev
  * @subdev: V4L2 subdev
+ * @streaming: status of the V4L2 subdev if streaming or not
  */
 struct xvip_graph_entity {
 	struct v4l2_async_subdev asd; /* must be first */
 	struct media_entity *entity;
 	struct v4l2_subdev *subdev;
+	bool streaming;
 };
 
 static inline struct xvip_graph_entity *
@@ -189,6 +191,38 @@ xvip_graph_find_dma(struct xvip_composite_device *xdev, unsigned int port)
 	}
 
 	return NULL;
+}
+
+/**
+ * xvip_subdev_set_streaming - Find and update streaming status of subdev
+ * @xdev: Composite video device
+ * @subdev: V4L2 sub-device
+ * @enable: enable/disable streaming status
+ *
+ * Walk the xvip graph entities list and find if subdev is present. Returns
+ * streaming status of subdev and update the status as requested
+ *
+ * Return: streaming status (true or false) if successful or warn_on if subdev
+ * is not present and return false
+ */
+bool xvip_subdev_set_streaming(struct xvip_composite_device *xdev,
+			       struct v4l2_subdev *subdev, bool enable)
+{
+	struct xvip_graph_entity *entity;
+	struct v4l2_async_subdev *asd;
+
+	list_for_each_entry(asd, &xdev->notifier.asd_list, asd_list) {
+		entity = to_xvip_entity(asd);
+		if (entity->asd.match.fwnode == subdev->fwnode) {
+			bool status = entity->streaming;
+
+			entity->streaming = enable;
+			return status;
+		}
+	}
+
+	WARN(1, "Should never get here\n");
+	return false;
 }
 
 static int xvip_graph_build_dma(struct xvip_composite_device *xdev)
