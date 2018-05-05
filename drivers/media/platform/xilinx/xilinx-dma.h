@@ -35,7 +35,7 @@ struct xvip_video_format;
  * @use_count: number of DMA engines using the pipeline
  * @stream_count: number of DMA engines currently streaming
  * @num_dmas: number of DMA engines in the pipeline
- * @output: DMA engine at the output of the pipeline
+ * @xdev: Composite device the pipe belongs to
  */
 struct xvip_pipeline {
 	struct media_pipeline pipe;
@@ -45,7 +45,7 @@ struct xvip_pipeline {
 	unsigned int stream_count;
 
 	unsigned int num_dmas;
-	struct xvip_dma *output;
+	struct xvip_composite_device *xdev;
 };
 
 static inline struct xvip_pipeline *to_xvip_pipeline(struct media_entity *e)
