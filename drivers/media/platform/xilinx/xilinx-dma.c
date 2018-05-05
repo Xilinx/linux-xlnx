@@ -124,21 +124,22 @@ static struct media_pad *xvip_get_entity_sink(struct media_entity *entity,
 
 /**
  * xvip_pipeline_start_stop - Start ot stop streaming on a pipeline
- * @pipe: The pipeline
+ * @xdev: Composite video device
+ * @dma: xvip dma
  * @start: Start (when true) or stop (when false) the pipeline
  *
- * Walk the entities chain starting at the pipeline output video node and start
- * or stop all of them.
+ * Walk the entities chain starting @dma and start or stop all of them
  *
  * Return: 0 if successful, or the return value of the failed video::s_stream
  * operation otherwise.
  */
-static int xvip_pipeline_start_stop(struct xvip_pipeline *pipe, bool start)
+static int xvip_pipeline_start_stop(struct xvip_composite_device *xdev,
+				    struct xvip_dma *dma, bool start)
 {
-	struct xvip_dma *dma = pipe->output;
 	struct media_entity *entity;
 	struct media_pad *pad;
 	struct v4l2_subdev *subdev;
+	bool is_streaming;
 	int ret;
 
 	entity = &dma->video.entity;
@@ -159,9 +160,21 @@ static int xvip_pipeline_start_stop(struct xvip_pipeline *pipe, bool start)
 		entity = pad->entity;
 		subdev = media_entity_to_v4l2_subdev(entity);
 
-		ret = v4l2_subdev_call(subdev, video, s_stream, start);
-		if (start && ret < 0 && ret != -ENOIOCTLCMD)
-			return ret;
+		is_streaming = xvip_subdev_set_streaming(xdev, subdev, start);
+
+		/*
+		 * start or stop the subdev only once in case if they are
+		 * shared between sub-graphs
+		 */
+		if (start != is_streaming) {
+			ret = v4l2_subdev_call(subdev, video, s_stream,
+					       start);
+			if (start && ret < 0 && ret != -ENOIOCTLCMD) {
+				dev_err(xdev->dev, "s_stream is failed on subdev\n");
+				xvip_subdev_set_streaming(xdev, subdev, !start);
+				return ret;
+			}
+		}
 	}
 
 	return 0;
@@ -177,7 +190,8 @@ static int xvip_pipeline_start_stop(struct xvip_pipeline *pipe, bool start)
  * independently, pipelines have a shared stream state that enable or disable
  * all entities in the pipeline. For this reason the pipeline uses a streaming
  * counter that tracks the number of DMA engines that have requested the stream
- * to be enabled.
+ * to be enabled. This will walk the graph starting from each DMA and enable or
+ * disable the entities in the path.
  *
  * When called with the @on argument set to true, this function will increment
  * the pipeline streaming count. If the streaming count reaches the number of
@@ -194,20 +208,31 @@ static int xvip_pipeline_start_stop(struct xvip_pipeline *pipe, bool start)
  */
 static int xvip_pipeline_set_stream(struct xvip_pipeline *pipe, bool on)
 {
+	struct xvip_composite_device *xdev;
+	struct xvip_dma *dma;
 	int ret = 0;
 
 	mutex_lock(&pipe->lock);
+	xdev = pipe->xdev;
 
 	if (on) {
 		if (pipe->stream_count == pipe->num_dmas - 1) {
-			ret = xvip_pipeline_start_stop(pipe, true);
-			if (ret < 0)
-				goto done;
+			/*
+			 * This will iterate the DMAs and the stream-on of
+			 * subdevs may not be sequential due to multiple
+			 * sub-graph path
+			 */
+			list_for_each_entry(dma, &xdev->dmas, list) {
+				ret = xvip_pipeline_start_stop(xdev, dma, true);
+				if (ret < 0)
+					goto done;
+			}
 		}
 		pipe->stream_count++;
 	} else {
 		if (--pipe->stream_count == 0)
-			xvip_pipeline_start_stop(pipe, false);
+			list_for_each_entry(dma, &xdev->dmas, list)
+				xvip_pipeline_start_stop(xdev, dma, false);
 	}
 
 done:
@@ -245,7 +270,6 @@ static int xvip_pipeline_validate(struct xvip_pipeline *pipe,
 		dma = to_xvip_dma(media_entity_to_video_device(entity));
 
 		if (dma->pad.flags & MEDIA_PAD_FL_SINK) {
-			pipe->output = dma;
 			num_outputs++;
 		} else {
 			num_inputs++;
@@ -256,11 +280,12 @@ static int xvip_pipeline_validate(struct xvip_pipeline *pipe,
 
 	media_graph_walk_cleanup(&graph);
 
-	/* We need exactly one output and zero or one input. */
-	if (num_outputs != 1 || num_inputs > 1)
+	/* We need at least one DMA to proceed */
+	if (num_outputs == 0 && num_inputs == 0)
 		return -EPIPE;
 
 	pipe->num_dmas = num_inputs + num_outputs;
+	pipe->xdev = start->xdev;
 
 	return 0;
 }
@@ -268,7 +293,6 @@ static int xvip_pipeline_validate(struct xvip_pipeline *pipe,
 static void __xvip_pipeline_cleanup(struct xvip_pipeline *pipe)
 {
 	pipe->num_dmas = 0;
-	pipe->output = NULL;
 }
 
 /**
@@ -605,7 +629,9 @@ static int xvip_dma_start_streaming(struct vb2_queue *vq, unsigned int count)
 	dma_async_issue_pending(dma->dma);
 
 	/* Start the pipeline. */
-	xvip_pipeline_set_stream(pipe, true);
+	ret = xvip_pipeline_set_stream(pipe, true);
+	if (ret < 0)
+		goto error_stop;
 
 	return 0;
 
