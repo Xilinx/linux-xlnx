@@ -1314,8 +1314,81 @@ xlnx_mix_disp_plane_atomic_get_property(struct drm_plane *base_plane,
 	return 0;
 }
 
+/**
+ * xlnx_mix_disp_plane_atomic_update_plane - plane update using atomic
+ * @plane: plane object to update
+ * @crtc: owning CRTC of owning plane
+ * @fb: framebuffer to flip onto plane
+ * @crtc_x: x offset of primary plane on crtc
+ * @crtc_y: y offset of primary plane on crtc
+ * @crtc_w: width of primary plane rectangle on crtc
+ * @crtc_h: height of primary plane rectangle on crtc
+ * @src_x: x offset of @fb for panning
+ * @src_y: y offset of @fb for panning
+ * @src_w: width of source rectangle in @fb
+ * @src_h: height of source rectangle in @fb
+ * @ctx: lock acquire context
+ *
+ * Provides a default plane update handler using the atomic driver interface.
+ *
+ * RETURNS:
+ * Zero on success, error code on failure
+ */
+static int
+xlnx_mix_disp_plane_atomic_update_plane(struct drm_plane *plane,
+					struct drm_crtc *crtc,
+					struct drm_framebuffer *fb,
+					int crtc_x, int crtc_y,
+					unsigned int crtc_w,
+					unsigned int crtc_h,
+					uint32_t src_x, uint32_t src_y,
+					uint32_t src_w, uint32_t src_h,
+					struct drm_modeset_acquire_ctx *ctx)
+{
+	struct drm_atomic_state *state;
+	struct drm_plane_state *plane_state;
+	int ret = 0;
+
+	state = drm_atomic_state_alloc(plane->dev);
+	if (!state)
+		return -ENOMEM;
+
+	state->acquire_ctx = ctx;
+	plane_state = drm_atomic_get_plane_state(state, plane);
+	if (IS_ERR(plane_state)) {
+		ret = PTR_ERR(plane_state);
+		goto fail;
+	}
+
+	ret = drm_atomic_set_crtc_for_plane(plane_state, crtc);
+	if (ret != 0)
+		goto fail;
+
+	drm_atomic_set_fb_for_plane(plane_state, fb);
+	plane_state->crtc_x = crtc_x;
+	plane_state->crtc_y = crtc_y;
+	plane_state->crtc_w = crtc_w;
+	plane_state->crtc_h = crtc_h;
+	plane_state->src_x = src_x;
+	plane_state->src_y = src_y;
+	plane_state->src_w = src_w;
+	plane_state->src_h = src_h;
+
+	if (plane == crtc->cursor)
+		state->legacy_cursor_update = true;
+
+	/* Do async-update if possible */
+	state->async_update = !drm_atomic_helper_async_check(plane->dev, state);
+
+	ret = drm_atomic_commit(state);
+
+fail:
+	drm_atomic_state_put(state);
+	return ret;
+}
+
 static struct drm_plane_funcs xlnx_mix_plane_funcs = {
-	.update_plane	= drm_atomic_helper_update_plane,
+	.update_plane	= xlnx_mix_disp_plane_atomic_update_plane,
 	.disable_plane	= drm_atomic_helper_disable_plane,
 	.atomic_set_property	= xlnx_mix_disp_plane_atomic_set_property,
 	.atomic_get_property	= xlnx_mix_disp_plane_atomic_get_property,
@@ -1565,7 +1638,6 @@ static int xlnx_mix_set_plane(struct xlnx_mix_plane *plane,
 			xlnx_mix_mark_layer_inactive(plane);
 		if (mixer->drm_primary_layer == mixer->hw_master_layer) {
 			xlnx_mix_layer_disable(mixer_hw, layer_id);
-			msleep(50);
 			ret = xlnx_mix_set_active_area(mixer_hw, src_w, src_h);
 			if (ret)
 				return ret;
@@ -1675,6 +1747,13 @@ static void xlnx_mix_plane_atomic_update(struct drm_plane *plane,
 {
 	int ret;
 
+	if (!plane->state->crtc || !plane->state->fb)
+		return;
+
+	if (old_state->fb &&
+	    old_state->fb->format->format != plane->state->fb->format->format)
+		xlnx_mix_plane_dpms(plane, DRM_MODE_DPMS_OFF);
+
 	ret = xlnx_mix_plane_mode_set(plane, plane->state->fb,
 				      plane->state->crtc_x,
 				      plane->state->crtc_y,
@@ -1700,12 +1779,43 @@ static void xlnx_mix_plane_atomic_disable(struct drm_plane *plane,
 	xlnx_mix_plane_dpms(plane, DRM_MODE_DPMS_OFF);
 }
 
+static int xlnx_mix_plane_atomic_async_check(struct drm_plane *plane,
+					     struct drm_plane_state *state)
+{
+	return 0;
+}
+
+static void
+xlnx_mix_plane_atomic_async_update(struct drm_plane *plane,
+				   struct drm_plane_state *new_state)
+{
+	struct drm_plane_state *old_state =
+		drm_atomic_get_old_plane_state(new_state->state, plane);
+
+	/* Update the current state with new configurations */
+	drm_atomic_set_fb_for_plane(plane->state, new_state->fb);
+	plane->state->crtc = new_state->crtc;
+	plane->state->crtc_x = new_state->crtc_x;
+	plane->state->crtc_y = new_state->crtc_y;
+	plane->state->crtc_w = new_state->crtc_w;
+	plane->state->crtc_h = new_state->crtc_h;
+	plane->state->src_x = new_state->src_x;
+	plane->state->src_y = new_state->src_y;
+	plane->state->src_w = new_state->src_w;
+	plane->state->src_h = new_state->src_h;
+	plane->state->state = new_state->state;
+
+	xlnx_mix_plane_atomic_update(plane, old_state);
+}
+
 static const struct drm_plane_helper_funcs xlnx_mix_plane_helper_funcs = {
 	.prepare_fb	= xlnx_mix_plane_prepare_fb,
 	.cleanup_fb	= xlnx_mix_plane_cleanup_fb,
 	.atomic_check	= xlnx_mix_plane_atomic_check,
 	.atomic_update	= xlnx_mix_plane_atomic_update,
 	.atomic_disable	= xlnx_mix_plane_atomic_disable,
+	.atomic_async_check = xlnx_mix_plane_atomic_async_check,
+	.atomic_async_update = xlnx_mix_plane_atomic_async_update,
 };
 
 static int xlnx_mix_init_plane(struct xlnx_mix_plane *plane,
