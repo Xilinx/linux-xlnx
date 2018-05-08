@@ -2,7 +2,8 @@ Xilinx Zynq UltraScale+ MPSoC GQSPI controller Device Tree Bindings
 -------------------------------------------------------------------
 
 Required properties:
-- compatible		: Should be "xlnx,zynqmp-qspi-1.0".
+- compatible		: Should be "xlnx,zynqmp-qspi-1.0" for zynqmp or
+			  "xlnx,versal-qspi-1.0" for versal.
 - reg			: Physical base address and size of GQSPI registers map.
 - interrupts		: Property with a value describing the interrupt
 			  number.
