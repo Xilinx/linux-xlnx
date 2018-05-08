@@ -1739,7 +1739,17 @@ static void xlnx_mix_plane_cleanup_fb(struct drm_plane *plane,
 static int xlnx_mix_plane_atomic_check(struct drm_plane *plane,
 				       struct drm_plane_state *state)
 {
-	return 0;
+	int scale;
+	struct xlnx_mix_plane *mix_plane = to_xlnx_plane(plane);
+	struct xlnx_mix_hw *mixer_hw = to_mixer_hw(mix_plane);
+
+	scale = xlnx_mix_get_layer_scaling(mixer_hw,
+					   mix_plane->mixer_layer->id);
+	if (is_window_valid(mixer_hw, state->crtc_x, state->crtc_y,
+			    state->src_w >> 16, state->src_h >> 16, scale))
+		return 0;
+
+	return -EINVAL;
 }
 
 static void xlnx_mix_plane_atomic_update(struct drm_plane *plane,
