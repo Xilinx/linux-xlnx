@@ -19,6 +19,7 @@
 #include <linux/module.h>
 #include <linux/of_irq.h>
 #include <linux/of_address.h>
+#include <linux/of_device.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 #include <linux/spi/spi.h>
@@ -37,6 +38,7 @@
 #define GQSPI_RXD_OFST			0x00000120
 #define GQSPI_TX_THRESHOLD_OFST		0x00000128
 #define GQSPI_RX_THRESHOLD_OFST		0x0000012C
+#define IOU_TAPDLY_BYPASS_OFST		0x0000003C
 #define GQSPI_LPBK_DLY_ADJ_OFST		0x00000138
 #define GQSPI_GEN_FIFO_OFST		0x00000140
 #define GQSPI_SEL_OFST			0x00000144
@@ -154,6 +156,9 @@
 #define TAP_DLY_BYPASS_LQSPI_RX_VALUE	0x1
 #define TAP_DLY_BYPASS_LQSPI_RX_SHIFT	2
 
+/* set to differentiate versal from zynqmp, 1=versal, 0=zynqmp */
+#define QSPI_QUIRK_HAS_TAPDELAY	BIT(0)
+
 #define GQSPI_FREQ_40MHZ	40000000
 #define GQSPI_FREQ_100MHZ	100000000
 #define GQSPI_FREQ_150MHZ	150000000
@@ -162,6 +167,14 @@
 #define SPI_AUTOSUSPEND_TIMEOUT		3000
 enum mode_type {GQSPI_MODE_IO, GQSPI_MODE_DMA};
 static const struct zynqmp_eemi_ops *eemi_ops;
+
+/**
+ * struct zynq_platform_data - zynqmp qspi platform data structure
+ * @quirks:	Flags is used to identify the platform
+ */
+struct qspi_platform_data {
+	u32 quirks;
+};
 
 /**
  * struct zynqmp_qspi - Defines qspi driver instance
@@ -185,6 +198,7 @@ static const struct zynqmp_eemi_ops *eemi_ops;
  * @mode:		Defines the mode in which QSPI is operating
  * @speed_hz:		Current SPI bus clock speed in hz
  * @io_mode:		Defines the operating mode, either IO or dma
+ * @has_tapdelay:	Used for tapdelay register available in qspi
  */
 struct zynqmp_qspi {
 	void __iomem *regs;
@@ -207,6 +221,7 @@ struct zynqmp_qspi {
 	enum mode_type mode;
 	u32 speed_hz;
 	bool io_mode;
+	bool has_tapdelay;
 };
 
 /**
@@ -287,7 +302,7 @@ static void zynqmp_gqspi_selectslave(struct zynqmp_qspi *instanceptr,
  */
 static void zynqmp_qspi_set_tapdelay(struct zynqmp_qspi *xqspi, u32 baudrateval)
 {
-	u32 lpbkdlyadj = 0, datadlyadj = 0, clk_rate;
+	u32 tapdlybypass = 0, lpbkdlyadj = 0, datadlyadj = 0, clk_rate;
 	u32 reqhz = 0;
 
 	if (!eemi_ops->ioctl)
@@ -296,24 +311,60 @@ static void zynqmp_qspi_set_tapdelay(struct zynqmp_qspi *xqspi, u32 baudrateval)
 	clk_rate = clk_get_rate(xqspi->refclk);
 	reqhz = (clk_rate / (GQSPI_BAUD_DIV_SHIFT << baudrateval));
 
-	if (reqhz < GQSPI_FREQ_40MHZ) {
-		eemi_ops->ioctl(NODE_QSPI, IOCTL_SET_TAPDELAY_BYPASS,
-			       PM_TAPDELAY_QSPI, PM_TAPDELAY_BYPASS_ENABLE,
-			       NULL);
-	} else if (reqhz < GQSPI_FREQ_100MHZ) {
-		eemi_ops->ioctl(NODE_QSPI, IOCTL_SET_TAPDELAY_BYPASS,
-			       PM_TAPDELAY_QSPI, PM_TAPDELAY_BYPASS_ENABLE,
-			       NULL);
-		lpbkdlyadj = zynqmp_gqspi_read(xqspi, GQSPI_LPBK_DLY_ADJ_OFST);
-		lpbkdlyadj |= (GQSPI_LPBK_DLY_ADJ_USE_LPBK_MASK);
-		datadlyadj = zynqmp_gqspi_read(xqspi, GQSPI_DATA_DLY_ADJ_OFST);
-		datadlyadj |= ((GQSPI_USE_DATA_DLY << GQSPI_USE_DATA_DLY_SHIFT)
-				| (GQSPI_DATA_DLY_ADJ_VALUE <<
-					GQSPI_DATA_DLY_ADJ_SHIFT));
-	} else if (reqhz < GQSPI_FREQ_150MHZ) {
-		lpbkdlyadj = zynqmp_gqspi_read(xqspi, GQSPI_LPBK_DLY_ADJ_OFST);
-		lpbkdlyadj |= ((GQSPI_LPBK_DLY_ADJ_USE_LPBK_MASK) |
-				GQSPI_LPBK_DLY_ADJ_DLY_0);
+	if (!xqspi->has_tapdelay) {
+		if (reqhz < GQSPI_FREQ_40MHZ) {
+			eemi_ops->ioctl(NODE_QSPI, IOCTL_SET_TAPDELAY_BYPASS,
+					   PM_TAPDELAY_QSPI,
+					   PM_TAPDELAY_BYPASS_ENABLE,
+					   NULL);
+		} else if (reqhz < GQSPI_FREQ_100MHZ) {
+			eemi_ops->ioctl(NODE_QSPI, IOCTL_SET_TAPDELAY_BYPASS,
+					   PM_TAPDELAY_QSPI,
+					   PM_TAPDELAY_BYPASS_ENABLE,
+					   NULL);
+			lpbkdlyadj = zynqmp_gqspi_read(xqspi,
+					GQSPI_LPBK_DLY_ADJ_OFST);
+			lpbkdlyadj |= (GQSPI_LPBK_DLY_ADJ_USE_LPBK_MASK);
+			datadlyadj = zynqmp_gqspi_read(xqspi,
+					GQSPI_DATA_DLY_ADJ_OFST);
+			datadlyadj |= ((GQSPI_USE_DATA_DLY <<
+					GQSPI_USE_DATA_DLY_SHIFT)
+					| (GQSPI_DATA_DLY_ADJ_VALUE <<
+						GQSPI_DATA_DLY_ADJ_SHIFT));
+		} else if (reqhz < GQSPI_FREQ_150MHZ) {
+			lpbkdlyadj = zynqmp_gqspi_read(xqspi,
+					GQSPI_LPBK_DLY_ADJ_OFST);
+			lpbkdlyadj |= ((GQSPI_LPBK_DLY_ADJ_USE_LPBK_MASK) |
+					GQSPI_LPBK_DLY_ADJ_DLY_0);
+		}
+	} else {
+		if (reqhz < GQSPI_FREQ_40MHZ) {
+			tapdlybypass = zynqmp_gqspi_read(xqspi,
+					IOU_TAPDLY_BYPASS_OFST);
+			tapdlybypass |= (TAP_DLY_BYPASS_LQSPI_RX_VALUE <<
+					TAP_DLY_BYPASS_LQSPI_RX_SHIFT);
+		} else if (reqhz < GQSPI_FREQ_100MHZ) {
+			tapdlybypass = zynqmp_gqspi_read(xqspi,
+					IOU_TAPDLY_BYPASS_OFST);
+			tapdlybypass |= (TAP_DLY_BYPASS_LQSPI_RX_VALUE <<
+					TAP_DLY_BYPASS_LQSPI_RX_SHIFT);
+			lpbkdlyadj = zynqmp_gqspi_read(xqspi,
+					GQSPI_LPBK_DLY_ADJ_OFST);
+			lpbkdlyadj |= (GQSPI_LPBK_DLY_ADJ_USE_LPBK_MASK);
+			datadlyadj = zynqmp_gqspi_read(xqspi,
+					GQSPI_DATA_DLY_ADJ_OFST);
+			datadlyadj |= ((GQSPI_USE_DATA_DLY <<
+					GQSPI_USE_DATA_DLY_SHIFT)
+					| (GQSPI_DATA_DLY_ADJ_VALUE <<
+						GQSPI_DATA_DLY_ADJ_SHIFT));
+		} else if (reqhz < GQSPI_FREQ_150MHZ) {
+			lpbkdlyadj = zynqmp_gqspi_read(xqspi,
+					GQSPI_LPBK_DLY_ADJ_OFST);
+			lpbkdlyadj |= ((GQSPI_LPBK_DLY_ADJ_USE_LPBK_MASK) |
+					GQSPI_LPBK_DLY_ADJ_DLY_0);
+		}
+		zynqmp_gqspi_write(xqspi,
+				IOU_TAPDLY_BYPASS_OFST, tapdlybypass);
 	}
 
 	zynqmp_gqspi_write(xqspi, GQSPI_LPBK_DLY_ADJ_OFST, lpbkdlyadj);
@@ -1186,6 +1237,16 @@ static const struct dev_pm_ops zynqmp_qspi_dev_pm_ops = {
 	SET_SYSTEM_SLEEP_PM_OPS(zynqmp_qspi_suspend, zynqmp_qspi_resume)
 };
 
+static const struct qspi_platform_data versal_qspi_def = {
+	.quirks = QSPI_QUIRK_HAS_TAPDELAY,
+};
+
+static const struct of_device_id zynqmp_qspi_of_match[] = {
+	{ .compatible = "xlnx,zynqmp-qspi-1.0"},
+	{ .compatible = "xlnx,versal-qspi-1.0", .data = &versal_qspi_def },
+	{ /* End of table */ }
+};
+
 /**
  * zynqmp_qspi_probe -	Probe method for the QSPI driver
  * @pdev:	Pointer to the platform_device structure
@@ -1202,6 +1263,7 @@ static int zynqmp_qspi_probe(struct platform_device *pdev)
 	struct resource *res;
 	struct device *dev = &pdev->dev;
 	struct device_node *nc;
+	const struct of_device_id *match;
 	u32 num_cs;
 	u32 rx_bus_width;
 	u32 tx_bus_width;
@@ -1217,6 +1279,14 @@ static int zynqmp_qspi_probe(struct platform_device *pdev)
 	xqspi = spi_master_get_devdata(master);
 	master->dev.of_node = pdev->dev.of_node;
 	platform_set_drvdata(pdev, master);
+
+	match = of_match_node(zynqmp_qspi_of_match, pdev->dev.of_node);
+	if (match) {
+		const struct qspi_platform_data *p_data = match->data;
+
+		if (p_data && (p_data->quirks & QSPI_QUIRK_HAS_TAPDELAY))
+			xqspi->has_tapdelay = true;
+	}
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	xqspi->regs = devm_ioremap_resource(&pdev->dev, res);
@@ -1370,11 +1440,6 @@ static int zynqmp_qspi_remove(struct platform_device *pdev)
 
 	return 0;
 }
-
-static const struct of_device_id zynqmp_qspi_of_match[] = {
-	{ .compatible = "xlnx,zynqmp-qspi-1.0", },
-	{ /* End of table */ }
-};
 
 MODULE_DEVICE_TABLE(of, zynqmp_qspi_of_match);
 
