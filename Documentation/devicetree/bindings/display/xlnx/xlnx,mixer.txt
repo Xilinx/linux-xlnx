@@ -25,6 +25,8 @@ Required properties:
    not required for overlay layers
  - xlnx,layer-max-height: max layer height, mandatory for master layer
    Not required for overlay layers
+ - xlnx,layer-primary: denotes the primary layer, should be mentioned in node
+   of layer which is expected to be constructing the primary plane
 
 Optional properties:
  - dmas: dma attach to layer, mandatory for master layer
@@ -92,6 +94,7 @@ Example:
 			dmas = <&axi_vdma_0 0>;
 			dma-names = "dma0";
 			xlnx,layer-streaming;
+			xlnx,layer-primary;
 		};
 		xv_mix_overlay_1: layer_1 {
 			xlnx,layer-id = <1>;
