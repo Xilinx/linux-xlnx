@@ -312,7 +312,15 @@ static void xlnx_pl_disp_clear_event(struct drm_crtc *crtc)
 static void xlnx_pl_disp_crtc_atomic_enable(struct drm_crtc *crtc,
 					    struct drm_crtc_state *old_state)
 {
+	struct drm_display_mode *adjusted_mode = &crtc->state->adjusted_mode;
+	int vrefresh;
+
 	xlnx_pl_disp_plane_enable(crtc->primary);
+
+	/* Delay of 1 vblank interval for timing gen to be stable */
+	vrefresh = (adjusted_mode->clock * 1000) /
+		   (adjusted_mode->vtotal * adjusted_mode->htotal);
+	msleep(1 * 1000 / vrefresh);
 }
 
 static void xlnx_pl_disp_crtc_atomic_disable(struct drm_crtc *crtc,
