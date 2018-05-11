@@ -1079,6 +1079,75 @@ xsdfec_is_active(struct xsdfec_dev *xsdfec, bool __user *is_active)
 	return 0;
 }
 
+static u32
+xsdfec_translate_axis_width_cfg_val(enum xsdfec_axis_width axis_width_cfg)
+{
+	u32 axis_width_field = 0;
+
+	switch (axis_width_cfg) {
+	case XSDFEC_1x128b:
+		axis_width_field = 0;
+		break;
+	case XSDFEC_2x128b:
+		axis_width_field = 1;
+		break;
+	case XSDFEC_4x128b:
+		axis_width_field = 2;
+		break;
+	}
+
+	return axis_width_field;
+}
+
+static u32
+xsdfec_translate_axis_words_cfg_val(
+	enum xsdfec_axis_word_include axis_word_inc_cfg)
+{
+	u32 axis_words_field = 0;
+
+	if (axis_word_inc_cfg == XSDFEC_FIXED_VALUE ||
+	    axis_word_inc_cfg == XSDFEC_IN_BLOCK)
+		axis_words_field = 0;
+	else if (axis_word_inc_cfg == XSDFEC_PER_AXI_TRANSACTION)
+		axis_words_field = 1;
+
+	return axis_words_field;
+}
+
+#define XSDFEC_AXIS_DOUT_WORDS_LSB	(5)
+#define XSDFEC_AXIS_DOUT_WIDTH_LSB	(3)
+#define XSDFEC_AXIS_DIN_WORDS_LSB	(2)
+#define XSDFEC_AXIS_DIN_WIDTH_LSB	(0)
+static int
+xsdfec_cfg_axi_streams(struct xsdfec_dev *xsdfec)
+{
+	u32 reg_value;
+	u32 dout_words_field;
+	u32 dout_width_field;
+	u32 din_words_field;
+	u32 din_width_field;
+	struct xsdfec_config *config = &xsdfec->config;
+
+	/* translate config info to register values */
+	dout_words_field =
+		xsdfec_translate_axis_words_cfg_val(config->dout_word_include);
+	dout_width_field =
+		xsdfec_translate_axis_width_cfg_val(config->dout_width);
+	din_words_field =
+		xsdfec_translate_axis_words_cfg_val(config->din_word_include);
+	din_width_field =
+		xsdfec_translate_axis_words_cfg_val(config->din_width);
+
+	reg_value = dout_words_field << XSDFEC_AXIS_DOUT_WORDS_LSB;
+	reg_value |= dout_width_field << XSDFEC_AXIS_DOUT_WIDTH_LSB;
+	reg_value |= din_words_field << XSDFEC_AXIS_DIN_WORDS_LSB;
+	reg_value |= din_width_field << XSDFEC_AXIS_DIN_WIDTH_LSB;
+
+	xsdfec_regwrite(xsdfec, XSDFEC_AXIS_WIDTH_ADDR, reg_value);
+
+	return 0;
+}
+
 static int xsdfec_start(struct xsdfec_dev *xsdfec)
 {
 	u32 regread;
@@ -1107,8 +1176,6 @@ static int xsdfec_start(struct xsdfec_dev *xsdfec)
 		return -EINVAL;
 	}
 
-	/* Set AXIS width */
-	xsdfec_regwrite(xsdfec, XSDFEC_AXIS_WIDTH_ADDR, 0);
 	/* Set AXIS enable */
 	xsdfec_regwrite(xsdfec,
 			XSDFEC_AXIS_ENABLE_ADDR,
@@ -1288,24 +1355,10 @@ xsdfec_parse_of(struct xsdfec_dev *xsdfec)
 	struct device_node *node = dev->of_node;
 	int rval;
 	const char *fec_code;
-	const char *fec_op_mode;
-
-	rval = of_property_read_string(node,
-				       "xlnx,sdfec-op-mode",
-				       &fec_op_mode);
-	if (rval < 0) {
-		dev_err(dev, "xlnx,sdfec-op-mode not in DT");
-		return rval;
-	}
-
-	if (!strcasecmp(fec_op_mode, "encode")) {
-		xsdfec->config.mode = XSDFEC_ENCODE;
-	} else if (!strcasecmp(fec_op_mode, "decode")) {
-		xsdfec->config.mode = XSDFEC_DECODE;
-	} else {
-		dev_err(dev, "Encode or Decode not specified in DT");
-		return -EINVAL;
-	}
+	u32 din_width;
+	u32 din_word_include;
+	u32 dout_width;
+	u32 dout_word_include;
 
 	rval = of_property_read_string(node, "xlnx,sdfec-code", &fec_code);
 	if (rval < 0) {
@@ -1318,12 +1371,78 @@ xsdfec_parse_of(struct xsdfec_dev *xsdfec)
 	} else if (!strcasecmp(fec_code, "turbo")) {
 		xsdfec->config.code = XSDFEC_TURBO_CODE;
 	} else {
-		dev_err(xsdfec->dev, "Invalid Op Mode in DT");
+		dev_err(xsdfec->dev, "Invalid Code in DT");
+		return -EINVAL;
+	}
+
+	rval = of_property_read_u32(node, "xlnx,sdfec-din-words",
+				    &din_word_include);
+	if (rval < 0) {
+		dev_err(dev, "xlnx,sdfec-din-words not in DT");
+		return rval;
+	}
+
+	if (din_word_include < XSDFEC_AXIS_WORDS_INCLUDE_MAX) {
+		xsdfec->config.din_word_include = din_word_include;
+	} else {
+		dev_err(xsdfec->dev, "Invalid DIN Words in DT");
+		return -EINVAL;
+	}
+
+	rval = of_property_read_u32(node, "xlnx,sdfec-din-width", &din_width);
+	if (rval < 0) {
+		dev_err(dev, "xlnx,sdfec-din-width not in DT");
+		return rval;
+	}
+
+	switch (din_width) {
+	/* Fall through and set for valid values */
+	case XSDFEC_1x128b:
+	case XSDFEC_2x128b:
+	case XSDFEC_4x128b:
+		xsdfec->config.din_width = din_width;
+		break;
+	default:
+		dev_err(xsdfec->dev, "Invalid DIN Width in DT");
+		return -EINVAL;
+	}
+
+	rval = of_property_read_u32(node, "xlnx,sdfec-dout-words",
+				    &dout_word_include);
+	if (rval < 0) {
+		dev_err(dev, "xlnx,sdfec-dout-words not in DT");
+		return rval;
+	}
+
+	if (dout_word_include < XSDFEC_AXIS_WORDS_INCLUDE_MAX) {
+		xsdfec->config.dout_word_include = dout_word_include;
+	} else {
+		dev_err(xsdfec->dev, "Invalid DOUT Words in DT");
+		return -EINVAL;
+	}
+
+	rval = of_property_read_u32(node, "xlnx,sdfec-dout-width", &dout_width);
+	if (rval < 0) {
+		dev_err(dev, "xlnx,sdfec-dout-width not in DT");
+		return rval;
+	}
+
+	switch (dout_width) {
+	/* Fall through and set for valid values */
+	case XSDFEC_1x128b:
+	case XSDFEC_2x128b:
+	case XSDFEC_4x128b:
+		xsdfec->config.dout_width = dout_width;
+		break;
+	default:
+		dev_err(xsdfec->dev, "Invalid DOUT Width in DT");
 		return -EINVAL;
 	}
 
 	/* Write LDPC to CODE Register */
 	xsdfec_regwrite(xsdfec, XSDFEC_FEC_CODE_ADDR, xsdfec->config.code - 1);
+
+	xsdfec_cfg_axi_streams(xsdfec);
 
 	return 0;
 }
@@ -1536,7 +1655,7 @@ xsdfec_remove(struct platform_device *pdev)
 }
 
 static const struct of_device_id xsdfec_of_match[] = {
-	{ .compatible = "xlnx,fec-engine", },
+	{ .compatible = "xlnx,sd-fec-1.1", },
 	{ /* end of table */ }
 };
 MODULE_DEVICE_TABLE(of, xsdfec_of_match);
