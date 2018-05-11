@@ -1758,7 +1758,7 @@ static int macb_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	unsigned long flags;
 	unsigned int desc_cnt, nr_frags, frag_size, f;
 	unsigned int hdrlen;
-	bool is_lso, is_udp = 0;
+	bool is_lso, is_udp = false;
 
 	is_lso = (skb_shinfo(skb)->gso_size != 0);
 
