@@ -51,10 +51,17 @@ enum xsdfec_state {
 	XSDFEC_NEEDS_RESET,
 };
 
-enum xsdfec_op_mode {
-	XSDFEC_UNKNOWN_MODE = 0,
-	XSDFEC_ENCODE,
-	XSDFEC_DECODE,
+enum xsdfec_axis_width {
+	XSDFEC_1x128b = 1,
+	XSDFEC_2x128b = 2,
+	XSDFEC_4x128b = 4,
+};
+
+enum xsdfec_axis_word_include {
+	XSDFEC_FIXED_VALUE = 0,
+	XSDFEC_IN_BLOCK,
+	XSDFEC_PER_AXI_TRANSACTION,
+	XSDFEC_AXIS_WORDS_INCLUDE_MAX,
 };
 
 /**
@@ -134,14 +141,20 @@ struct xsdfec_status {
  * struct xsdfec_config - Configuration of SDFEC device
  * @fec_id: ID of SDFEC instance
  * @code: The codes being used by the SDFEC instance
- * @mode: Mode that the SDFEC is operating
  * @order: Order of Operation
+ * @din_width: Width of the DIN AXI Stream
+ * @din_word_include: How DIN_WORDS are inputted
+ * @dout_width: Width of the DOUT AXI Stream
+ * @dout_word_include: HOW DOUT_WORDS are outputted
  */
 struct xsdfec_config {
 	s32 fec_id;
 	enum xsdfec_code code;
-	enum xsdfec_op_mode mode;
 	enum xsdfec_order order;
+	enum xsdfec_axis_width din_width;
+	enum xsdfec_axis_word_include din_word_include;
+	enum xsdfec_axis_width dout_width;
+	enum xsdfec_axis_word_include dout_word_include;
 };
 
 /**
