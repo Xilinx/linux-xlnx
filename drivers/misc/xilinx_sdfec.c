@@ -104,13 +104,10 @@ static dev_t xsdfec_devt;
  * struct xsdfec_dev - Driver data for SDFEC
  * @regs: device physical base address
  * @dev: pointer to device struct
- * @fec_id: Instance number
+ * @state: State of the SDFEC device
+ * @config: Configuration of the SDFEC device
  * @intr_enabled: indicates IRQ enabled
  * @wr_protect: indicates Write Protect enabled
- * @code: LDPC or Turbo Codes being used
- * @order: In-Order or Out-of-Order
- * @state: State of the SDFEC device
- * @op_mode: Operating in Encode or Decode
  * @isr_err_count: Count of ISR errors
  * @cecc_count: Count of Correctable ECC errors (SBE)
  * @uecc_count: Count of Uncorrectable ECC errors (MBE)
@@ -128,13 +125,10 @@ static dev_t xsdfec_devt;
 struct xsdfec_dev {
 	void __iomem *regs;
 	struct device *dev;
-	s32  fec_id;
+	enum xsdfec_state state;
+	struct xsdfec_config config;
 	bool intr_enabled;
 	bool wr_protect;
-	enum xsdfec_code code;
-	enum xsdfec_order order;
-	enum xsdfec_state state;
-	enum xsdfec_op_mode op_mode;
 	atomic_t isr_err_count;
 	atomic_t cecc_count;
 	atomic_t uecc_count;
@@ -235,7 +229,7 @@ xsdfec_get_status(struct xsdfec_dev *xsdfec, void __user *arg)
 	struct xsdfec_status status;
 	int err = 0;
 
-	status.fec_id = xsdfec->fec_id;
+	status.fec_id = xsdfec->config.fec_id;
 	status.state = xsdfec->state;
 	status.activity  =
 		(xsdfec_regread(xsdfec,
@@ -245,7 +239,7 @@ xsdfec_get_status(struct xsdfec_dev *xsdfec, void __user *arg)
 	err = copy_to_user(arg, &status, sizeof(status));
 	if (err) {
 		dev_err(xsdfec->dev, "%s failed for SDFEC%d",
-			__func__, xsdfec->fec_id);
+			__func__, xsdfec->config.fec_id);
 		err = -EFAULT;
 	}
 	return err;
@@ -254,19 +248,12 @@ xsdfec_get_status(struct xsdfec_dev *xsdfec, void __user *arg)
 static int
 xsdfec_get_config(struct xsdfec_dev *xsdfec, void __user *arg)
 {
-	struct xsdfec_config config;
 	int err = 0;
 
-	config.fec_id = xsdfec->fec_id;
-	config.state = xsdfec->state;
-	config.code = xsdfec->code;
-	config.mode = xsdfec->op_mode;
-	config.order = xsdfec->order;
-
-	err = copy_to_user(arg, &config, sizeof(config));
+	err = copy_to_user(arg, &xsdfec->config, sizeof(xsdfec->config));
 	if (err) {
 		dev_err(xsdfec->dev, "%s failed for SDFEC%d",
-			__func__, xsdfec->fec_id);
+			__func__, xsdfec->config.fec_id);
 		err = -EFAULT;
 	}
 	return err;
@@ -339,7 +326,7 @@ xsdfec_set_irq(struct xsdfec_dev *xsdfec, void __user *arg)
 	err = copy_from_user(&irq, arg, sizeof(irq));
 	if (err) {
 		dev_err(xsdfec->dev, "%s failed for SDFEC%d",
-			__func__, xsdfec->fec_id);
+			__func__, xsdfec->config.fec_id);
 		return -EFAULT;
 	}
 
@@ -372,18 +359,18 @@ xsdfec_set_turbo(struct xsdfec_dev *xsdfec, void __user *arg)
 	err = copy_from_user(&turbo, arg, sizeof(turbo));
 	if (err) {
 		dev_err(xsdfec->dev, "%s failed for SDFEC%d",
-			__func__, xsdfec->fec_id);
+			__func__, xsdfec->config.fec_id);
 		return -EFAULT;
 	}
 
 	/* Check to see what device tree says about the FEC codes */
-	if (xsdfec->code == XSDFEC_LDPC_CODE) {
+	if (xsdfec->config.code == XSDFEC_LDPC_CODE) {
 		dev_err(xsdfec->dev,
 			"%s: Unable to write Turbo to SDFEC%d check DT",
-				__func__, xsdfec->fec_id);
+				__func__, xsdfec->config.fec_id);
 		return -EIO;
-	} else if (xsdfec->code == XSDFEC_CODE_INVALID) {
-		xsdfec->code = XSDFEC_TURBO_CODE;
+	} else if (xsdfec->config.code == XSDFEC_CODE_INVALID) {
+		xsdfec->config.code = XSDFEC_TURBO_CODE;
 	}
 
 	if (xsdfec->wr_protect)
@@ -402,10 +389,10 @@ xsdfec_get_turbo(struct xsdfec_dev *xsdfec, void __user *arg)
 	struct xsdfec_turbo turbo_params;
 	int err;
 
-	if (xsdfec->code == XSDFEC_LDPC_CODE) {
+	if (xsdfec->config.code == XSDFEC_LDPC_CODE) {
 		dev_err(xsdfec->dev,
 			"%s: SDFEC%d is configured for LDPC, check DT",
-			__func__, xsdfec->fec_id);
+			__func__, xsdfec->config.fec_id);
 		return -EIO;
 	}
 
@@ -418,7 +405,7 @@ xsdfec_get_turbo(struct xsdfec_dev *xsdfec, void __user *arg)
 	err = copy_to_user(arg, &turbo_params, sizeof(turbo_params));
 	if (err) {
 		dev_err(xsdfec->dev, "%s failed for SDFEC%d",
-			__func__, xsdfec->fec_id);
+			__func__, xsdfec->config.fec_id);
 		err = -EFAULT;
 	}
 
@@ -880,16 +867,16 @@ xsdfec_add_ldpc(struct xsdfec_dev *xsdfec, void __user *arg)
 	if (err) {
 		dev_err(xsdfec->dev,
 			"%s failed to copy from user for SDFEC%d",
-			__func__, xsdfec->fec_id);
+			__func__, xsdfec->config.fec_id);
 		goto err_out;
 	}
-	if (xsdfec->code == XSDFEC_TURBO_CODE) {
+	if (xsdfec->config.code == XSDFEC_TURBO_CODE) {
 		dev_err(xsdfec->dev,
 			"%s: Unable to write LDPC to SDFEC%d check DT",
-			__func__, xsdfec->fec_id);
+			__func__, xsdfec->config.fec_id);
 		goto err_out;
 	}
-	xsdfec->code = XSDFEC_LDPC_CODE;
+	xsdfec->config.code = XSDFEC_LDPC_CODE;
 	/* Disable Write Protection before proceeding */
 	if (xsdfec->wr_protect)
 		xsdfec_wr_protect(xsdfec, false);
@@ -949,10 +936,10 @@ xsdfec_get_ldpc_code_params(struct xsdfec_dev *xsdfec, void __user *arg)
 	struct xsdfec_ldpc_params *ldpc_params;
 	int err = 0;
 
-	if (xsdfec->code == XSDFEC_TURBO_CODE) {
+	if (xsdfec->config.code == XSDFEC_TURBO_CODE) {
 		dev_err(xsdfec->dev,
 			"%s: SDFEC%d is configured for TURBO, check DT",
-				__func__, xsdfec->fec_id);
+				__func__, xsdfec->config.fec_id);
 		return -EIO;
 	}
 
@@ -964,7 +951,7 @@ xsdfec_get_ldpc_code_params(struct xsdfec_dev *xsdfec, void __user *arg)
 	if (err) {
 		dev_err(xsdfec->dev,
 			"%s failed to copy from user for SDFEC%d",
-			__func__, xsdfec->fec_id);
+			__func__, xsdfec->config.fec_id);
 		goto err_out;
 	}
 
@@ -1013,7 +1000,7 @@ xsdfec_get_ldpc_code_params(struct xsdfec_dev *xsdfec, void __user *arg)
 	err = copy_to_user(arg, ldpc_params, sizeof(*ldpc_params));
 	if (err) {
 		dev_err(xsdfec->dev, "%s failed for SDFEC%d",
-			__func__, xsdfec->fec_id);
+			__func__, xsdfec->config.fec_id);
 		err = -EFAULT;
 	}
 
@@ -1036,7 +1023,7 @@ xsdfec_set_order(struct xsdfec_dev *xsdfec, void __user *arg)
 	if (order_out_of_range) {
 		dev_err(xsdfec->dev,
 			"%s invalid order value %d for SDFEC%d",
-			__func__, order, xsdfec->fec_id);
+			__func__, order, xsdfec->config.fec_id);
 		return -EINVAL;
 	}
 
@@ -1044,13 +1031,13 @@ xsdfec_set_order(struct xsdfec_dev *xsdfec, void __user *arg)
 	if (xsdfec->state == XSDFEC_STARTED) {
 		dev_err(xsdfec->dev,
 			"%s attempting to set Order while started for SDFEC%d",
-			__func__, xsdfec->fec_id);
+			__func__, xsdfec->config.fec_id);
 		return -EIO;
 	}
 
 	xsdfec_regwrite(xsdfec, XSDFEC_ORDER_ADDR, (order - 1));
 
-	xsdfec->order = order;
+	xsdfec->config.order = order;
 
 	return 0;
 }
@@ -1063,7 +1050,7 @@ xsdfec_set_bypass(struct xsdfec_dev *xsdfec, void __user *arg)
 	if (bypass > 1) {
 		dev_err(xsdfec->dev,
 			"%s invalid bypass value %ld for SDFEC%d",
-			__func__, bypass, xsdfec->fec_id);
+			__func__, bypass, xsdfec->config.fec_id);
 		return -EINVAL;
 	}
 
@@ -1071,7 +1058,7 @@ xsdfec_set_bypass(struct xsdfec_dev *xsdfec, void __user *arg)
 	if (xsdfec->state == XSDFEC_STARTED) {
 		dev_err(xsdfec->dev,
 			"%s attempting to set bypass while started for SDFEC%d",
-			__func__, xsdfec->fec_id);
+			__func__, xsdfec->config.fec_id);
 		return -EIO;
 	}
 
@@ -1097,26 +1084,26 @@ static int xsdfec_start(struct xsdfec_dev *xsdfec)
 	u32 regread;
 
 	/* Verify Code is loaded */
-	if (xsdfec->code == XSDFEC_CODE_INVALID) {
+	if (xsdfec->config.code == XSDFEC_CODE_INVALID) {
 		dev_err(xsdfec->dev,
 			"%s : set code before start for SDFEC%d",
-			__func__, xsdfec->fec_id);
+			__func__, xsdfec->config.fec_id);
 		return -EINVAL;
 	}
 	regread = xsdfec_regread(xsdfec, XSDFEC_FEC_CODE_ADDR);
 	regread &= 0x1;
-	if (regread != (xsdfec->code - 1)) {
+	if (regread != (xsdfec->config.code - 1)) {
 		dev_err(xsdfec->dev,
 			"%s SDFEC HW code does not match driver code, reg %d, code %d",
-			__func__, regread, (xsdfec->code - 1));
+			__func__, regread, (xsdfec->config.code - 1));
 		return -EINVAL;
 	}
 
 	/* Verify Order has been set */
-	if (xsdfec->order == XSDFEC_INVALID_ORDER) {
+	if (xsdfec->config.order == XSDFEC_INVALID_ORDER) {
 		dev_err(xsdfec->dev,
 			"%s : set order before starting SDFEC%d",
-			__func__, xsdfec->fec_id);
+			__func__, xsdfec->config.fec_id);
 		return -EINVAL;
 	}
 
@@ -1161,7 +1148,7 @@ static int
 xsdfec_reset_req(struct xsdfec_dev *xsdfec)
 {
 	xsdfec->state = XSDFEC_INIT;
-	xsdfec->order = XSDFEC_INVALID_ORDER;
+	xsdfec->config.order = XSDFEC_INVALID_ORDER;
 	xsdfec->sc_off = 0;
 	xsdfec->la_off = 0;
 	xsdfec->qc_off = 0;
@@ -1189,7 +1176,7 @@ xsdfec_dev_ioctl(struct file *fptr, unsigned int cmd, unsigned long data)
 	    (cmd != XSDFEC_RESET_REQ && cmd != XSDFEC_GET_STATUS)) {
 		dev_err(xsdfec->dev,
 			"SDFEC%d in failed state. Reset Required",
-			xsdfec->fec_id);
+			xsdfec->config.fec_id);
 		return -EPERM;
 	}
 
@@ -1312,9 +1299,9 @@ xsdfec_parse_of(struct xsdfec_dev *xsdfec)
 	}
 
 	if (!strcasecmp(fec_op_mode, "encode")) {
-		xsdfec->op_mode = XSDFEC_ENCODE;
+		xsdfec->config.mode = XSDFEC_ENCODE;
 	} else if (!strcasecmp(fec_op_mode, "decode")) {
-		xsdfec->op_mode = XSDFEC_DECODE;
+		xsdfec->config.mode = XSDFEC_DECODE;
 	} else {
 		dev_err(dev, "Encode or Decode not specified in DT");
 		return -EINVAL;
@@ -1327,16 +1314,16 @@ xsdfec_parse_of(struct xsdfec_dev *xsdfec)
 	}
 
 	if (!strcasecmp(fec_code, "ldpc")) {
-		xsdfec->code = XSDFEC_LDPC_CODE;
+		xsdfec->config.code = XSDFEC_LDPC_CODE;
 	} else if (!strcasecmp(fec_code, "turbo")) {
-		xsdfec->code = XSDFEC_TURBO_CODE;
+		xsdfec->config.code = XSDFEC_TURBO_CODE;
 	} else {
 		dev_err(xsdfec->dev, "Invalid Op Mode in DT");
 		return -EINVAL;
 	}
 
 	/* Write LDPC to CODE Register */
-	xsdfec_regwrite(xsdfec, XSDFEC_FEC_CODE_ADDR, (xsdfec->code - 1));
+	xsdfec_regwrite(xsdfec, XSDFEC_FEC_CODE_ADDR, xsdfec->config.code - 1);
 
 	return 0;
 }
@@ -1356,7 +1343,7 @@ xsdfec_log_ecc_errors(struct xsdfec_dev *xsdfec, u32 ecc_err)
 	if (uecc_cnt > 0 && uecc_cnt < XSDFEC_ERROR_MAX_THRESHOLD) {
 		dev_err(xsdfec->dev,
 			"Multi-bit error on xsdfec%d. Needs reset",
-			xsdfec->fec_id);
+			xsdfec->config.fec_id);
 	}
 
 	/* Clear ECC errors */
@@ -1450,7 +1437,7 @@ xsdfec_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	xsdfec->dev = &pdev->dev;
-	xsdfec->fec_id = atomic_read(&xsdfec_ndevs);
+	xsdfec->config.fec_id = atomic_read(&xsdfec_ndevs);
 
 	dev = xsdfec->dev;
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
@@ -1491,7 +1478,7 @@ xsdfec_probe(struct platform_device *pdev)
 	cdev_init(&xsdfec->xsdfec_cdev, &xsdfec_fops);
 	xsdfec->xsdfec_cdev.owner = THIS_MODULE;
 	err = cdev_add(&xsdfec->xsdfec_cdev,
-		       MKDEV(MAJOR(xsdfec_devt), xsdfec->fec_id), 1);
+		       MKDEV(MAJOR(xsdfec_devt), xsdfec->config.fec_id), 1);
 	if (err < 0) {
 		dev_err(dev, "cdev_add failed");
 		err = -EIO;
@@ -1505,8 +1492,9 @@ xsdfec_probe(struct platform_device *pdev)
 	}
 
 	dev_create = device_create(xsdfec_class, dev,
-				   MKDEV(MAJOR(xsdfec_devt), xsdfec->fec_id),
-				   xsdfec, "xsdfec%d", xsdfec->fec_id);
+				   MKDEV(MAJOR(xsdfec_devt),
+					 xsdfec->config.fec_id),
+				   xsdfec, "xsdfec%d", xsdfec->config.fec_id);
 	if (IS_ERR(dev_create)) {
 		dev_err(dev, "unable to create device");
 		err = PTR_ERR(dev_create);
@@ -1514,7 +1502,7 @@ xsdfec_probe(struct platform_device *pdev)
 	}
 
 	atomic_set(&xsdfec->open_count, 1);
-	dev_info(dev, "XSDFEC%d Probe Successful", xsdfec->fec_id);
+	dev_info(dev, "XSDFEC%d Probe Successful", xsdfec->config.fec_id);
 	atomic_inc(&xsdfec_ndevs);
 	return 0;
 
@@ -1541,7 +1529,7 @@ xsdfec_remove(struct platform_device *pdev)
 	}
 
 	device_destroy(xsdfec_class,
-		       MKDEV(MAJOR(xsdfec_devt), xsdfec->fec_id));
+		       MKDEV(MAJOR(xsdfec_devt), xsdfec->config.fec_id));
 	cdev_del(&xsdfec->xsdfec_cdev);
 	atomic_dec(&xsdfec_ndevs);
 	return 0;

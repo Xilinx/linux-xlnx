@@ -136,14 +136,12 @@ struct xsdfec_status {
  * @code: The codes being used by the SDFEC instance
  * @mode: Mode that the SDFEC is operating
  * @order: Order of Operation
- * @state: State of the SDFEC device
  */
 struct xsdfec_config {
 	s32 fec_id;
 	enum xsdfec_code code;
 	enum xsdfec_op_mode mode;
 	enum xsdfec_order order;
-	enum xsdfec_state state;
 };
 
 /**
