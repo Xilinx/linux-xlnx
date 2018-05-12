@@ -2655,6 +2655,9 @@ zynqmp_disp_plane_atomic_async_update(struct drm_plane *plane,
 	struct drm_plane_state *old_state =
 		drm_atomic_get_old_plane_state(new_state->state, plane);
 
+	if (plane->state->fb == new_state->fb)
+		return;
+
 	 /* Update the current state with new configurations */
 	drm_atomic_set_fb_for_plane(plane->state, new_state->fb);
 	plane->state->crtc = new_state->crtc;
