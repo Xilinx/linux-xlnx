@@ -1103,7 +1103,7 @@ xsdfec_cfg_axi_streams(struct xsdfec_dev *xsdfec)
 	din_words_field =
 		xsdfec_translate_axis_words_cfg_val(config->din_word_include);
 	din_width_field =
-		xsdfec_translate_axis_words_cfg_val(config->din_width);
+		xsdfec_translate_axis_width_cfg_val(config->din_width);
 
 	reg_value = dout_words_field << XSDFEC_AXIS_DOUT_WORDS_LSB;
 	reg_value |= dout_width_field << XSDFEC_AXIS_DOUT_WIDTH_LSB;
