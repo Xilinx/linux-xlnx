@@ -204,5 +204,7 @@ struct xsdfec_irq {
 #define XSDFEC_SET_BYPASS	_IOW(XSDFEC_MAGIC, 11, unsigned long *)
 /* ioctl that determines if sdfec is processing data */
 #define XSDFEC_IS_ACTIVE	_IOR(XSDFEC_MAGIC, 12, bool *)
+/* ioctl that clears error stats collected during interrupts */
+#define XSDFEC_CLEAR_STATS	_IO(XSDFEC_MAGIC, 13)
 
 #endif /* __XILINX_SDFEC_H__ */
