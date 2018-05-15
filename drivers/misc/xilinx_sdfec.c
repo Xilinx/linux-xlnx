@@ -1203,6 +1203,26 @@ xsdfec_clear_stats(struct xsdfec_dev *xsdfec)
 	return 0;
 }
 
+static int
+xsdfec_get_stats(struct xsdfec_dev *xsdfec, void __user *arg)
+{
+	int err = 0;
+	struct xsdfec_stats user_stats;
+
+	user_stats.isr_err_count = atomic_read(&xsdfec->isr_err_count);
+	user_stats.cecc_count = atomic_read(&xsdfec->cecc_count);
+	user_stats.uecc_count = atomic_read(&xsdfec->uecc_count);
+
+	err = copy_to_user(arg, &user_stats, sizeof(user_stats));
+	if (err) {
+		dev_err(xsdfec->dev, "%s failed for SDFEC%d",
+			__func__, xsdfec->config.fec_id);
+		err = -EFAULT;
+	}
+
+	return err;
+}
+
 static long
 xsdfec_dev_ioctl(struct file *fptr, unsigned int cmd, unsigned long data)
 {
@@ -1260,6 +1280,9 @@ xsdfec_dev_ioctl(struct file *fptr, unsigned int cmd, unsigned long data)
 		break;
 	case XSDFEC_CLEAR_STATS:
 		rval = xsdfec_clear_stats(xsdfec);
+		break;
+	case XSDFEC_GET_STATS:
+		rval = xsdfec_get_stats(xsdfec, arg);
 		break;
 	case XSDFEC_GET_STATUS:
 		rval = xsdfec_get_status(xsdfec, arg);
