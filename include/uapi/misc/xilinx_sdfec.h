@@ -222,5 +222,7 @@ struct xsdfec_stats {
 #define XSDFEC_CLEAR_STATS	_IO(XSDFEC_MAGIC, 13)
 /* ioctl that returns sdfec device stats */
 #define XSDFEC_GET_STATS	_IOR(XSDFEC_MAGIC, 14, struct xsdfec_stats *)
+/* ioctl that returns sdfec device to default config, use after a reset */
+#define XSDFEC_SET_DEFAULT_CONFIG _IO(XSDFEC_MAGIC, 15)
 
 #endif /* __XILINX_SDFEC_H__ */
