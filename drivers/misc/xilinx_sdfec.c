@@ -1193,6 +1193,16 @@ xsdfec_reset_req(struct xsdfec_dev *xsdfec)
 	return 0;
 }
 
+static int
+xsdfec_clear_stats(struct xsdfec_dev *xsdfec)
+{
+	atomic_set(&xsdfec->isr_err_count, 0);
+	atomic_set(&xsdfec->uecc_count, 0);
+	atomic_set(&xsdfec->cecc_count, 0);
+
+	return 0;
+}
+
 static long
 xsdfec_dev_ioctl(struct file *fptr, unsigned int cmd, unsigned long data)
 {
@@ -1247,6 +1257,9 @@ xsdfec_dev_ioctl(struct file *fptr, unsigned int cmd, unsigned long data)
 		break;
 	case XSDFEC_RESET_REQ:
 		rval = xsdfec_reset_req(xsdfec);
+		break;
+	case XSDFEC_CLEAR_STATS:
+		rval = xsdfec_clear_stats(xsdfec);
 		break;
 	case XSDFEC_GET_STATUS:
 		rval = xsdfec_get_status(xsdfec, arg);
