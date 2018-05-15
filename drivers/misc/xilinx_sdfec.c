@@ -846,7 +846,6 @@ xsdfec_add_ldpc(struct xsdfec_dev *xsdfec, void __user *arg)
 			__func__, xsdfec->config.fec_id);
 		goto err_out;
 	}
-	xsdfec->config.code = XSDFEC_LDPC_CODE;
 	/* Disable Write Protection before proceeding */
 	if (xsdfec->wr_protect)
 		xsdfec_wr_protect(xsdfec, false);
