@@ -171,7 +171,11 @@ xsdfec_wr_protect(struct xsdfec_dev *xsdfec, bool wr_pr)
 		xsdfec_regwrite(xsdfec,
 				XSDFEC_AXI_WR_PROTECT_ADDR,
 				XSDFEC_WRITE_PROTECT_ENABLE);
+		/* prevents register and tables writes */
+		xsdfec->wr_protect = wr_pr;
 	} else {
+		/* allows register and table writes including protection regs */
+		xsdfec->wr_protect = wr_pr;
 		xsdfec_regwrite(xsdfec,
 				XSDFEC_AXI_WR_PROTECT_ADDR,
 				XSDFEC_WRITE_PROTECT_DISABLE);
@@ -179,7 +183,6 @@ xsdfec_wr_protect(struct xsdfec_dev *xsdfec, bool wr_pr)
 				XSDFEC_CODE_WR_PROTECT_ADDR,
 				XSDFEC_WRITE_PROTECT_DISABLE);
 	}
-	xsdfec->wr_protect = wr_pr;
 }
 
 static int
