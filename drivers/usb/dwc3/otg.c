@@ -397,6 +397,11 @@ static int stop_host(struct dwc3_otg *otg)
 	otg_dbg(otg, "%s: turn off host %s\n",
 		__func__, otg->otg.host->bus_name);
 
+	if (work_pending(&otg->hp_work.work)) {
+		while (!cancel_delayed_work(&otg->hp_work))
+			msleep(20);
+	}
+
 	hcd = container_of(otg->otg.host, struct usb_hcd, self);
 	xhci = hcd_to_xhci(hcd);
 
