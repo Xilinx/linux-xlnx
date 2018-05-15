@@ -1223,6 +1223,21 @@ xsdfec_get_stats(struct xsdfec_dev *xsdfec, void __user *arg)
 	return err;
 }
 
+static int
+xsdfec_set_default_config(struct xsdfec_dev *xsdfec)
+{
+	xsdfec->state = XSDFEC_INIT;
+	xsdfec->config.order = XSDFEC_INVALID_ORDER;
+	xsdfec->wr_protect = false;
+
+	xsdfec_wr_protect(xsdfec, false);
+	/* Ensure registers are aligned with core configuration */
+	xsdfec_regwrite(xsdfec, XSDFEC_FEC_CODE_ADDR, xsdfec->config.code - 1);
+	xsdfec_cfg_axi_streams(xsdfec);
+
+	return 0;
+}
+
 static long
 xsdfec_dev_ioctl(struct file *fptr, unsigned int cmd, unsigned long data)
 {
@@ -1289,6 +1304,9 @@ xsdfec_dev_ioctl(struct file *fptr, unsigned int cmd, unsigned long data)
 		break;
 	case XSDFEC_GET_CONFIG:
 		rval = xsdfec_get_config(xsdfec, arg);
+		break;
+	case XSDFEC_SET_DEFAULT_CONFIG:
+		rval = xsdfec_set_default_config(xsdfec);
 		break;
 	case XSDFEC_SET_IRQ:
 		rval = xsdfec_set_irq(xsdfec, arg);
