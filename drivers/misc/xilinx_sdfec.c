@@ -111,7 +111,6 @@ static dev_t xsdfec_devt;
  * @isr_err_count: Count of ISR errors
  * @cecc_count: Count of Correctable ECC errors (SBE)
  * @uecc_count: Count of Uncorrectable ECC errors (MBE)
- * @reset_count: Count of Resets requested
  * @open_count: Count of char device being opened
  * @irq: IRQ number
  * @xsdfec_cdev: Character device handle
@@ -129,7 +128,6 @@ struct xsdfec_dev {
 	atomic_t isr_err_count;
 	atomic_t cecc_count;
 	atomic_t uecc_count;
-	atomic_t reset_count;
 	atomic_t open_count;
 	int  irq;
 	struct cdev xsdfec_cdev;
@@ -1174,25 +1172,6 @@ xsdfec_stop(struct xsdfec_dev *xsdfec)
 	return 0;
 }
 
-/*
- * Reset will happen asynchronously
- * since there is no in-band reset register
- * Prepare driver for reset
- */
-
-static int
-xsdfec_reset_req(struct xsdfec_dev *xsdfec)
-{
-	xsdfec->state = XSDFEC_INIT;
-	xsdfec->config.order = XSDFEC_INVALID_ORDER;
-	xsdfec->wr_protect = false;
-	atomic_set(&xsdfec->isr_err_count, 0);
-	atomic_set(&xsdfec->uecc_count, 0);
-	atomic_set(&xsdfec->cecc_count, 0);
-	atomic_inc(&xsdfec->reset_count);
-	return 0;
-}
-
 static int
 xsdfec_clear_stats(struct xsdfec_dev *xsdfec)
 {
@@ -1251,7 +1230,8 @@ xsdfec_dev_ioctl(struct file *fptr, unsigned int cmd, unsigned long data)
 
 	/* In failed state allow only reset and get status IOCTLs */
 	if (xsdfec->state == XSDFEC_NEEDS_RESET &&
-	    (cmd != XSDFEC_RESET_REQ && cmd != XSDFEC_GET_STATUS)) {
+	    (cmd != XSDFEC_SET_DEFAULT_CONFIG && cmd != XSDFEC_GET_STATUS &&
+	     cmd != XSDFEC_GET_STATS && cmd != XSDFEC_CLEAR_STATS)) {
 		dev_err(xsdfec->dev,
 			"SDFEC%d in failed state. Reset Required",
 			xsdfec->config.fec_id);
@@ -1289,9 +1269,6 @@ xsdfec_dev_ioctl(struct file *fptr, unsigned int cmd, unsigned long data)
 		break;
 	case XSDFEC_STOP_DEV:
 		rval = xsdfec_stop(xsdfec);
-		break;
-	case XSDFEC_RESET_REQ:
-		rval = xsdfec_reset_req(xsdfec);
 		break;
 	case XSDFEC_CLEAR_STATS:
 		rval = xsdfec_clear_stats(xsdfec);

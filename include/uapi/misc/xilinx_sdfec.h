@@ -189,8 +189,6 @@ struct xsdfec_stats {
 #define XSDFEC_START_DEV	_IO(XSDFEC_MAGIC, 0)
 /* ioctl to stop the device */
 #define XSDFEC_STOP_DEV		_IO(XSDFEC_MAGIC, 1)
-/* ioctl to communicate to the driver that device has been reset */
-#define XSDFEC_RESET_REQ	_IO(XSDFEC_MAGIC, 2)
 /* ioctl that returns status of sdfec device */
 #define XSDFEC_GET_STATUS	_IOR(XSDFEC_MAGIC, 3, struct xsdfec_status *)
 /* ioctl to enable or disable irq */
