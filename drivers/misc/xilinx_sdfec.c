@@ -115,9 +115,6 @@ static dev_t xsdfec_devt;
  * @open_count: Count of char device being opened
  * @irq: IRQ number
  * @xsdfec_cdev: Character device handle
- * @sc_off: Shared Scale Table Offset
- * @qc_off: Shared Circulant Table Offset
- * @la_off: Shared Layer Table Offset
  * @waitq: Driver wait queue
  *
  * This structure contains necessary state for SDFEC driver to operate
@@ -136,9 +133,6 @@ struct xsdfec_dev {
 	atomic_t open_count;
 	int  irq;
 	struct cdev xsdfec_cdev;
-	int sc_off;
-	int qc_off;
-	int la_off;
 	wait_queue_head_t waitq;
 };
 
@@ -713,22 +707,10 @@ xsdfec_sc_table_write(struct xsdfec_dev *xsdfec, u32 offset,
 		return -EINVAL;
 	}
 
-	/*
-	 * sc_off tracks the points to the last written location
-	 * in the Shared Scale(SC) table. Those shared codes might
-	 * be in use. Updating them without quiescing the device
-	 * can put the SDFEC device in an indeterminate state
-	 */
-	if ((XSDFEC_REG_WIDTH_JUMP * offset) < xsdfec->sc_off) {
-		dev_err(xsdfec->dev, "Might write to in use shared SC code");
-		return -EINVAL;
-	}
-
 	for (reg = 0; reg < len; reg++) {
 		xsdfec_regwrite(xsdfec, XSDFEC_LDPC_SC_TABLE_ADDR_BASE +
 		(offset + reg) *  XSDFEC_REG_WIDTH_JUMP, sc_ptr[reg]);
 	}
-	xsdfec->sc_off = reg + (XSDFEC_REG_WIDTH_JUMP * offset);
 	return reg;
 }
 
@@ -767,17 +749,11 @@ xsdfec_la_table_write(struct xsdfec_dev *xsdfec, u32 offset,
 		return -EINVAL;
 	}
 
-	if  (XSDFEC_REG_WIDTH_JUMP * offset < xsdfec->la_off) {
-		dev_err(xsdfec->dev, "Might write to in use shared LA code");
-		return -EINVAL;
-	}
-
 	for (reg = 0; reg < len; reg++) {
 		xsdfec_regwrite(xsdfec, XSDFEC_LDPC_LA_TABLE_ADDR_BASE +
 				(offset + reg) * XSDFEC_REG_WIDTH_JUMP,
 				la_ptr[reg]);
 	}
-	xsdfec->la_off = reg + (offset * XSDFEC_REG_WIDTH_JUMP);
 	return reg;
 }
 
@@ -816,17 +792,11 @@ xsdfec_qc_table_write(struct xsdfec_dev *xsdfec,
 		return -EINVAL;
 	}
 
-	if (XSDFEC_REG_WIDTH_JUMP * offset < xsdfec->qc_off) {
-		dev_err(xsdfec->dev, "Might write to in use shared LA code");
-		return -EINVAL;
-	}
-
 	for (reg = 0; reg < len; reg++) {
 		xsdfec_regwrite(xsdfec, XSDFEC_LDPC_QC_TABLE_ADDR_BASE +
 		 (offset + reg) * XSDFEC_REG_WIDTH_JUMP, qc_ptr[reg]);
 	}
 
-	xsdfec->qc_off = reg + (offset * XSDFEC_REG_WIDTH_JUMP);
 	return reg;
 }
 
@@ -1216,9 +1186,6 @@ xsdfec_reset_req(struct xsdfec_dev *xsdfec)
 {
 	xsdfec->state = XSDFEC_INIT;
 	xsdfec->config.order = XSDFEC_INVALID_ORDER;
-	xsdfec->sc_off = 0;
-	xsdfec->la_off = 0;
-	xsdfec->qc_off = 0;
 	xsdfec->wr_protect = false;
 	atomic_set(&xsdfec->isr_err_count, 0);
 	atomic_set(&xsdfec->uecc_count, 0);
