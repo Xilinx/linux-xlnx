@@ -285,7 +285,6 @@ static void uas_workaround_cmplt(struct urb *urb)
 {
 	struct scsi_cmnd *cmnd;
 	struct uas_cmd_info *cmdinfo;
-	unsigned long flags;
 
 	if ((urb->context != NULL) && (urb->status == 0)) {
 		cmnd = urb->context;
