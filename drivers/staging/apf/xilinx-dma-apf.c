@@ -818,8 +818,9 @@ int xdma_submit(struct xdma_chan *chan,
 		sglist = kmalloc_array(dp->dbuf_sg_table->nents,
 				       sizeof(*sglist),
 				       GFP_KERNEL);
-		if (!dp->sg_list)
+		if (!sglist)
 			return -ENOMEM;
+
 		sg_init_table(sglist, dp->dbuf_sg_table->nents);
 		sgcnt = 0;
 		for_each_sg(dp->dbuf_sg_table->sgl,
@@ -837,6 +838,7 @@ int xdma_submit(struct xdma_chan *chan,
 				sg_dma_len(sglist + i) = remaining_size;
 				sgcnt++;
 			} else {
+				sg_dma_len(sglist + i) = sg_dma_len(sg);
 				remaining_size -= sg_dma_len(sg);
 				sgcnt++;
 			}

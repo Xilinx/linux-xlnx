@@ -45,8 +45,6 @@ struct xlnk_dmabuf_reg {
 	struct dma_buf *dbuf;
 	struct dma_buf_attachment *dbuf_attach;
 	struct sg_table *dbuf_sg_table;
-	struct scatterlist *sg_list;
-	int sg_list_cnt;
 	int is_mapped;
 	int dma_direction;
 	struct list_head list;
