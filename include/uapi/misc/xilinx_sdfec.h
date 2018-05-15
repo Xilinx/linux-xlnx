@@ -167,6 +167,20 @@ struct xsdfec_irq {
 	bool enable_ecc_isr;
 };
 
+/**
+ * struct xsdfec_ioctl_stats - Stats retrived by ioctl XSDFEC_GET_STATS. Used
+ *			       to buffer atomic_t variables from struct
+ *			       xsdfec_dev.
+ * @isr_err_count: Count of ISR errors
+ * @cecc_count: Count of Correctable ECC errors (SBE)
+ * @uecc_count: Count of Uncorrectable ECC errors (MBE)
+ */
+struct xsdfec_stats {
+	u32 isr_err_count;
+	u32 cecc_count;
+	u32 uecc_count;
+};
+
 /*
  * XSDFEC IOCTL List
  */
@@ -206,5 +220,7 @@ struct xsdfec_irq {
 #define XSDFEC_IS_ACTIVE	_IOR(XSDFEC_MAGIC, 12, bool *)
 /* ioctl that clears error stats collected during interrupts */
 #define XSDFEC_CLEAR_STATS	_IO(XSDFEC_MAGIC, 13)
+/* ioctl that returns sdfec device stats */
+#define XSDFEC_GET_STATS	_IOR(XSDFEC_MAGIC, 14, struct xsdfec_stats *)
 
 #endif /* __XILINX_SDFEC_H__ */
