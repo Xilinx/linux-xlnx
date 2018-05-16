@@ -143,6 +143,7 @@
 #define XILINX_DPDMA_DESC_ADDR_EXT_ADDR_SHIFT		(16)
 
 #define XILINX_DPDMA_ALIGN_BYTES			256
+#define XILINX_DPDMA_LINESIZE_ALIGN_BITS		128
 
 #define XILINX_DPDMA_NUM_CHAN				6
 #define XILINX_DPDMA_PAGE_MASK				((1 << 12) - 1)
@@ -1240,6 +1241,7 @@ xilinx_dpdma_chan_prep_interleaved(struct xilinx_dpdma_chan *chan,
 
 	chan->xdev->desc_addr(sw_desc, sw_desc, &xt->src_start, 1);
 	hw_desc = &sw_desc->hw;
+	hsize = ALIGN(hsize, XILINX_DPDMA_LINESIZE_ALIGN_BITS / 8);
 	hw_desc->xfer_size = hsize * xt->numf;
 	hw_desc->hsize_stride = hsize <<
 				XILINX_DPDMA_DESC_HSIZE_STRIDE_HSIZE_SHIFT;
