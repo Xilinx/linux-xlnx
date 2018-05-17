@@ -177,6 +177,7 @@ enum mode_type {GQSPI_MODE_IO, GQSPI_MODE_DMA};
  * @genfifobus:		Used to select the upper or lower bus
  * @dma_rx_bytes:	Remaining bytes to receive by DMA mode
  * @dma_addr:		DMA address after mapping the kernel buffer
+ * @tx_bus_width:	Used to represent number of data wires for tx
  * @rx_bus_width:	Used to represent number of data wires
  * @genfifoentry:	Used for storing the genfifoentry instruction.
  * @isinstr:		To determine whether the transfer is instruction
