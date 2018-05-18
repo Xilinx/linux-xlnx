@@ -1642,6 +1642,9 @@ int zynqmp_dp_bind(struct device *dev, struct device *master, void *data)
 	struct device_node *port;
 	int ret;
 
+	if (!dp->num_lanes)
+		return 0;
+
 	encoder->possible_crtcs |= zynqmp_disp_get_crtc_mask(dpsub->disp);
 	for_each_child_of_node(dev->of_node, port) {
 		if (!port->name || of_node_cmp(port->name, "port"))
@@ -1704,8 +1707,11 @@ void zynqmp_dp_unbind(struct device *dev, struct device *master, void *data)
 	struct zynqmp_dpsub *dpsub = dev_get_drvdata(dev);
 	struct zynqmp_dp *dp = dpsub->dp;
 
-	cancel_delayed_work_sync(&dp->hpd_work);
 	disable_irq(dp->irq);
+	if (!dp->num_lanes)
+		return;
+
+	cancel_delayed_work_sync(&dp->hpd_work);
 	zynqmp_dp_exit_aux(dp);
 	drm_property_destroy(dp->drm, dp->bpc_prop);
 	drm_property_destroy(dp->drm, dp->sync_prop);
@@ -1797,18 +1803,30 @@ int zynqmp_dp_probe(struct platform_device *pdev)
 		snprintf(phy_name, sizeof(phy_name), "dp-phy%d", i);
 		dp->phy[i] = devm_phy_get(dp->dev, phy_name);
 		if (IS_ERR(dp->phy[i])) {
-			/* 2nd lane is optional */
-			if (i == 0 || PTR_ERR(dp->phy[i]) != -ENODEV) {
-				if (PTR_ERR(dp->phy[i]) != -EPROBE_DEFER) {
-					dev_err(dp->dev,
-						"failed to get phy lane\n");
-				}
-				ret = PTR_ERR(dp->phy[i]);
-				dp->phy[i] = NULL;
-				return ret;
-			}
+			ret = PTR_ERR(dp->phy[i]);
 			dp->phy[i] = NULL;
-			dp->num_lanes = 1;
+
+			/* 2nd lane is optional */
+			if (i == 1 && ret == -ENODEV) {
+				dp->num_lanes = 1;
+				break;
+			}
+
+			/*
+			 * If no phy lane is assigned, the DP Tx gets disabled.
+			 * The display part of the DP subsystem can still be
+			 * used to drive the output to FPGA, thus let the DP
+			 * subsystem driver to proceed without this DP Tx.
+			 */
+			if (i == 0 && ret == -ENODEV) {
+				dp->num_lanes = 0;
+				goto out;
+			}
+
+			if (ret != -EPROBE_DEFER)
+				dev_err(dp->dev, "failed to get phy lane\n");
+
+			return ret;
 		}
 	}
 
@@ -1825,6 +1843,7 @@ int zynqmp_dp_probe(struct platform_device *pdev)
 		goto error;
 	}
 
+out:
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0) {
 		ret = irq;
@@ -1841,6 +1860,10 @@ int zynqmp_dp_probe(struct platform_device *pdev)
 	dpsub = platform_get_drvdata(pdev);
 	dpsub->dp = dp;
 	dp->dpsub = dpsub;
+
+	dev_dbg(dp->dev,
+		"ZynqMP DisplayPort Tx driver probed with %u phy lanes\n",
+		dp->num_lanes);
 
 	return 0;
 
