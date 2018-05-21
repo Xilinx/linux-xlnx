@@ -46,8 +46,10 @@
 #define IDT24x_VCO_MAX			4000004000u
 #define IDT24x_VCO_OPT			3500000000u
 #define IDT24x_MIN_INT_DIVIDER		6
+#define IDT24x_MIN_NS1			4
+#define IDT24x_MAX_NS1			6
 
-u8 q0_ns1_options[3] = { 4, 5, 6 };
+static u8 q0_ns1_options[3] = { 5, 6, 4 };
 
 /**
  * bits_to_shift - num bits to shift given specified mask
@@ -295,11 +297,8 @@ static int idt24x_calc_div_q0(struct clk_idt24x_chip *chip)
 		"%s. requested: %u, min_div: %u, max_div: %u",
 		__func__, chip->clk[0].requested, min_div, max_div);
 
-	min_ns2 = div64_u64(
-		(u64)min_div,
-		q0_ns1_options[ARRAY_SIZE(q0_ns1_options) - 1] * 2);
-	max_ns2 = div64_u64(
-		(u64)max_div, q0_ns1_options[0] * 2);
+	min_ns2 = div64_u64((u64)min_div, IDT24x_MAX_NS1 * 2);
+	max_ns2 = div64_u64((u64)max_div, IDT24x_MIN_NS1 * 2);
 
 	dev_dbg(&chip->i2c_client->dev,
 		"%s. min_ns2: %u, max_ns2: %u", __func__, min_ns2, max_ns2);
@@ -343,7 +342,7 @@ static int idt24x_calc_div_q0(struct clk_idt24x_chip *chip)
 					   current_vco > best_vco)
 					use = true;
 				if (use) {
-					chip->divs.ns1_q0 = q0_ns1_options[x];
+					chip->divs.ns1_q0 = x;
 					chip->divs.ns2_q0 = y;
 					best_vco = current_vco;
 				}
@@ -353,10 +352,9 @@ static int idt24x_calc_div_q0(struct clk_idt24x_chip *chip)
 	}
 
 	dev_dbg(&chip->i2c_client->dev,
-		"%s. best: (ns1=%u * ns2=%u * 2 * %u) == %u",
-		__func__, chip->divs.ns1_q0, chip->divs.ns2_q0,
-		chip->clk[0].requested,
-		best_vco);
+		"%s. best: (ns1=%u [/%u] * ns2=%u * 2 * %u) == %u",
+		__func__, chip->divs.ns1_q0, q0_ns1_options[chip->divs.ns1_q0],
+		chip->divs.ns2_q0, chip->clk[0].requested, best_vco);
 	return 0;
 }
 
@@ -380,16 +378,17 @@ static int idt24x_calc_divs(struct clk_idt24x_chip *chip)
 		return result;
 
 	dev_dbg(&chip->i2c_client->dev,
-		"%s: after idt24x_calc_div_q0. ns1: %u, ns2: %u",
-		__func__, chip->divs.ns1_q0, chip->divs.ns2_q0);
+		"%s: after idt24x_calc_div_q0. ns1: %u [/%u], ns2: %u",
+		__func__, chip->divs.ns1_q0, q0_ns1_options[chip->divs.ns1_q0],
+		chip->divs.ns2_q0);
 
 	chip->divs.dsmint = 0;
 	chip->divs.dsmfrac = 0;
 
-	if (chip->divs.ns1_q0 > 0) {
+	if (chip->clk[0].requested > 0) {
 		/* Q0 is in use and is governing the actual VCO freq */
-		vco = chip->divs.ns1_q0 * chip->divs.ns2_q0 * 2 *
-			chip->clk[0].requested;
+		vco = q0_ns1_options[chip->divs.ns1_q0] * chip->divs.ns2_q0 *
+			2 * chip->clk[0].requested;
 	} else {
 		u32 freq = 0;
 		u32 walk;
@@ -690,10 +689,10 @@ static int idt24x_update_device(struct clk_idt24x_chip *chip)
 
 	dev_dbg(&client->dev,
 		"%s: setting IDT24x_REG_NS1_Q0 (val %u @ 0x%x)",
-		__func__, chip->divs.ns1_q0 >> 8, IDT24x_REG_NS1_Q0);
+		__func__, chip->divs.ns1_q0, IDT24x_REG_NS1_Q0);
 	err = i2cwritewithmask(
 		client, chip->regmap, IDT24x_REG_NS1_Q0,
-		(chip->divs.ns1_q0 >> 8) & IDT24x_REG_NS1_Q0_MASK,
+		chip->divs.ns1_q0 & IDT24x_REG_NS1_Q0_MASK,
 		chip->reg_ns1_q0, IDT24x_REG_NS1_Q0_MASK);
 	if (err) {
 		dev_err(&client->dev,

@@ -16,7 +16,7 @@
 
 #include "clk-idt8t49n24x-debugfs.h"
 
-struct clk_idt24x_chip *idt24x_chip_fordebugfs;
+static struct clk_idt24x_chip *idt24x_chip_fordebugfs;
 
 static int idt24x_read_all_settings(
 	struct clk_idt24x_chip *chip, char *output_buffer, int count)
@@ -234,6 +234,7 @@ static ssize_t idt24x_debugfs_writer_i2c(struct file *fp,
 	int err = 0;
 	int x = 0;
 	int start = 0;
+	ssize_t written;
 	unsigned int reg = -1;
 	u8 val[WRITE_BLOCK_SIZE];
 	u16 nextbyte = 0;
@@ -242,9 +243,18 @@ static ssize_t idt24x_debugfs_writer_i2c(struct file *fp,
 	if (count > DEBUGFS_BUFFER_LENGTH)
 		return -EINVAL;
 
+	written = simple_write_to_buffer(
+		idt24x_chip_fordebugfs->dbg_cache, DEBUGFS_BUFFER_LENGTH,
+		position, user_buffer, count);
+	if (written != count) {
+		dev_dbg(&idt24x_chip_fordebugfs->i2c_client->dev,
+			"write count != expected count");
+		return written;
+	}
+
 	for (x = 0; x < count; x++) {
-		token[x - start] = user_buffer[x];
-		if (user_buffer[x] == ' ') {
+		token[x - start] = idt24x_chip_fordebugfs->dbg_cache[x];
+		if (idt24x_chip_fordebugfs->dbg_cache[x] == ' ') {
 			token[x - start] = '\0';
 			err = idt24x_handle_i2c_debug_token(
 				&idt24x_chip_fordebugfs->i2c_client->dev,
@@ -277,9 +287,7 @@ static ssize_t idt24x_debugfs_writer_i2c(struct file *fp,
 			"successfully wrote i2c data to chip");
 	}
 
-	return simple_write_to_buffer(
-		idt24x_chip_fordebugfs->dbg_cache, DEBUGFS_BUFFER_LENGTH,
-		position, user_buffer, count);
+	return written;
 }
 
 static const struct file_operations idt24x_fops_debug_action = {
