@@ -2215,7 +2215,7 @@ static int axienet_mii_init(struct net_device *ndev)
  */
 static int axienet_open(struct net_device *ndev)
 {
-	int ret = 0, i;
+	int ret = 0, i = 0;
 	struct axienet_local *lp = netdev_priv(ndev);
 	struct phy_device *phydev = NULL;
 	struct axienet_dma_q *q;
