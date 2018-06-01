@@ -358,17 +358,11 @@ static int ams_read_raw(struct iio_dev *indio_dev,
 				else
 					*val = AMS_SUPPLY_SCALE_6VOLT;
 				break;
-			case AMS_VCC_PSPLL0:
-			case AMS_VCC_PSPLL3:
-			case AMS_VCCINT:
-			case AMS_VCCBRAM:
-			case AMS_VCCAUX:
-			case AMS_PSDDRPLL:
-			case AMS_PSINTFPDDR:
-				*val = AMS_SUPPLY_SCALE_3VOLT;
-				break;
 			default:
-				*val = AMS_SUPPLY_SCALE_1VOLT;
+				if (chan->scan_index >= (PS_SEQ_MAX * 3))
+					*val = AMS_SUPPLY_SCALE_3VOLT;
+				else
+					*val = AMS_SUPPLY_SCALE_1VOLT;
 				break;
 			}
 			*val2 = AMS_SUPPLY_SCALE_DIV_BIT;
