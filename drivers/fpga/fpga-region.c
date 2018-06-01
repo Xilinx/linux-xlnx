@@ -236,7 +236,6 @@ static int fpga_region_program_fpga(struct fpga_region *region,
 {
 	struct fpga_manager *mgr;
 	int ret;
-	struct device *dev = &region->dev;
 	struct reset_control *rstc;
 
 	region = fpga_region_get(region);
@@ -276,7 +275,7 @@ static int fpga_region_program_fpga(struct fpga_region *region,
 		goto err_put_br;
 	}
 
-	rstc = of_reset_control_array_get(dev->of_node, false, true);
+	rstc = of_reset_control_array_get(overlay, false, true);
 	if (IS_ERR(rstc))
 		goto err_put_br;
 
