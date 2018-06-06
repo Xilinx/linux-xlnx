@@ -28,6 +28,7 @@
 #include <linux/delay.h>
 #include <linux/pm.h>
 #include <linux/i2c.h>
+#include <linux/interrupt.h>
 #include <linux/gpio.h>
 #include <linux/regulator/consumer.h>
 #include <linux/firmware.h>
@@ -798,7 +799,7 @@ static int tas2557_i2c_probe(struct i2c_client *pClient,
 		dev_dbg(pTAS2557->dev, "irq = %d\n", pTAS2557->mnIRQ);
 		INIT_DELAYED_WORK(&pTAS2557->irq_work, irq_work_routine);
 		nResult = request_threaded_irq(pTAS2557->mnIRQ, tas2557_irq_handler,
-					NULL, IRQF_TRIGGER_HIGH | IRQF_ONESHOT,
+					NULL, IRQF_TRIGGER_RISING | IRQF_ONESHOT,
 				pClient->name, pTAS2557);
 		if (nResult < 0) {
 			dev_err(pTAS2557->dev,
