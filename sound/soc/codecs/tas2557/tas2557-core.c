@@ -453,7 +453,7 @@ int tas2557_enable(struct tas2557_priv *pTAS2557, bool bEnable)
 
 	dev_dbg(pTAS2557->dev, "Enable: %d\n", bEnable);
 
-	tas2557_get_die_temperature(pTAS2770, &nValue);
+	tas2557_get_die_temperature(pTAS2557, &nValue);
 	if(nValue == 0x80000000)
 	{
 		dev_err(pTAS2557->dev, "%s, thermal sensor is wrong, mute output\n", __func__);
@@ -481,7 +481,7 @@ int tas2557_enable(struct tas2557_priv *pTAS2557, bool bEnable)
 	if (bEnable) {
 		if (!pTAS2557->mbPowerUp) {
 			if (!pTAS2557->mbCalibrationLoaded) {
-				tas2557_set_calibration(pTAS2559, 0xFF);
+				tas2557_set_calibration(pTAS2557, 0xFF);
 				pTAS2557->mbCalibrationLoaded = true;
 			}
 
