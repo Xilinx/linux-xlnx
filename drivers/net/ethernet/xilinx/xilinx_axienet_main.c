@@ -999,6 +999,7 @@ static void axienet_adjust_link(struct net_device *ndev)
 			switch (phy->speed) {
 			case SPEED_2500:
 				emmc_reg |= XAE_EMMC_LINKSPD_2500;
+				break;
 			case SPEED_1000:
 				emmc_reg |= XAE_EMMC_LINKSPD_1000;
 				break;
@@ -3452,7 +3453,7 @@ static int __maybe_unused axienet_dma_probe(struct platform_device *pdev,
 	int i, ret;
 	struct axienet_local *lp = netdev_priv(ndev);
 	struct axienet_dma_q *q;
-	struct device_node *np;
+	struct device_node *np = NULL;
 	struct resource dmares;
 #ifdef CONFIG_XILINX_TSN
 	char dma_name[10];
