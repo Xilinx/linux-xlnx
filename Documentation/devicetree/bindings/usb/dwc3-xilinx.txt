@@ -1,7 +1,8 @@
 Xilinx SuperSpeed DWC3 USB SoC controller
 
 Required properties:
-- compatible:	Should contain "xlnx,zynqmp-dwc3"
+- compatible:	May contain "xlnx,zynqmp-dwc3" or "xlnx,versal-dwc3"
+- reg:		Base address and length of the register control block
 - clocks:	A list of phandles for the clocks listed in clock-names
 - clock-names:	Should contain the following:
   "bus_clk"	 Master/Core clock, have to be >= 125 MHz for SS
@@ -13,20 +14,38 @@ Required child node:
 A child node must exist to represent the core DWC3 IP block. The name of
 the node is not important. The content of the node is defined in dwc3.txt.
 
+Optional properties for xlnx,zynqmp-dwc3:
+- nvmem-cells:       list of phandle to the nvmem data cells.
+- nvmem-cell-names:  Names for the each nvmem-cells specified.
+
+Optional properties for snps,dwc3:
+- dma-coherent:	Enable this flag if CCI is enabled in design. Adding this
+		flag configures Global SoC bus Configuration Register and
+		Xilinx USB 3.0 IP - USB coherency register to enable CCI.
+- snps,enable-hibernation: Add this flag to enable hibernation support for
+		peripheral mode
+- interrupt-names: This property provides the names of the interrupt ids used
+
 Example device node:
 
 		usb@0 {
 			#address-cells = <0x2>;
 			#size-cells = <0x1>;
 			compatible = "xlnx,zynqmp-dwc3";
+			reg = <0x0 0xff9d0000 0x0 0x100>;
 			clock-names = "bus_clk" "ref_clk";
 			clocks = <&clk125>, <&clk125>;
 			ranges;
+			nvmem-cells = <&soc_revision>;
+			nvmem-cell-names = "soc_revision";
 
 			dwc3@fe200000 {
 				compatible = "snps,dwc3";
 				reg = <0x0 0xfe200000 0x40000>;
+				interrupt-name = "dwc_usb3";
 				interrupts = <0x0 0x41 0x4>;
 				dr_mode = "host";
+				dma-coherent;
+				snps,enable-hibernation
 			};
 		};

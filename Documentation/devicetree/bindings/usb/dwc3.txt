@@ -85,6 +85,19 @@ Optional properties:
  - snps,quirk-frame-length-adjustment: Value for GFLADJ_30MHZ field of GFLADJ
 	register for post-silicon frame length adjustment when the
 	fladj_30mhz_sdbnd signal is invalid or incorrect.
+ - snps,refclk_fladj: Enable frame length adjustment for SOF/ITP counter.
+ - snps,enable_guctl1_resume_quirk: Adding this flag sets bit 10 of GUCTL1
+	thus enabling the workaround in HW to fix the issue where the controller
+	was not able to generate correct CRC checksum on the very first transfer
+	packet after sending resume signal.
+ - snps,enable_guctl1_ipd_quirk: Adding this flag sets bit 9 of GUCTL1
+	enabling the workaround in HW to reduce the Inter Packet Delay (IPD)
+	and making controller enumerate FS/LS devices connected behind VIA-LAB.
+ - snps,xhci-stream-quirk: Dwc3 host controller has a bug where it sometimes
+	fails to process the traansfer descriptors present in the BULK IN
+	stream ring. Since the controller is not processing any TD, no transfer
+	events will be triggered, resulting in a hang condition. Enabling this
+	flag in dts fixes the above said issue.
  - snps,rx-thr-num-pkt-prd: periodic ESS RX packet threshold count - host mode
 			only. Set this and rx-max-burst-prd to a valid,
 			non-zero value 1-16 (DWC_usb31 programming guide
@@ -108,6 +121,8 @@ Optional properties:
 			When just one value, which means INCRX burst mode enabled. When
 			more than one value, which means undefined length INCR burst type
 			enabled. The values can be 1, 4, 8, 16, 32, 64, 128 and 256.
+ - snps,mask_phy_reset: enabling this quirk masks phy reset signal from reaching
+			the ULPI phy after initialization done of the phy.
 
  - in addition all properties from usb-xhci.txt from the current directory are
    supported as well
