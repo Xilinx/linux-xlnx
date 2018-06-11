@@ -36,6 +36,5 @@ struct device_node;
 
 struct xilinx_vtc *xlnx_vtc_probe(struct device *dev,
 				    struct device_node *node);
-void xilinx_vtc_remove(struct xilinx_vtc *vtc);
 
 #endif /* _XILINX_VTC_H_ */
