@@ -52,6 +52,7 @@ struct xlnx_bridge_helper {
 
 static struct xlnx_bridge_helper helper;
 
+struct videomode;
 /*
  * Client functions
  */
@@ -208,6 +209,34 @@ int xlnx_bridge_get_output_fmts(struct xlnx_bridge *bridge,
 	return -ENOENT;
 }
 EXPORT_SYMBOL(xlnx_bridge_get_output_fmts);
+
+/**
+ * xlnx_bridge_set_timing - Set the video timing
+ * @bridge: bridge to set
+ * @vm: Videomode
+ *
+ * Set the video mode so that timing can be generated using this
+ * by the video timing controller.
+ *
+ * Return: 0 on success. -ENOENT if no callback, -EFAULT if in error state,
+ * or return code from callback.
+ */
+int xlnx_bridge_set_timing(struct xlnx_bridge *bridge, struct videomode *vm)
+{
+	if (!bridge)
+		return 0;
+
+	if (helper.error)
+		return -EFAULT;
+
+	if (bridge->set_timing) {
+		bridge->set_timing(bridge, vm);
+		return 0;
+	}
+
+	return -ENOENT;
+}
+EXPORT_SYMBOL(xlnx_bridge_set_timing);
 
 /**
  * of_xlnx_bridge_get - Get the corresponding Xlnx bridge instance

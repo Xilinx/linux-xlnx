@@ -19,6 +19,8 @@
 #ifndef _XLNX_BRIDGE_H_
 #define _XLNX_BRIDGE_H_
 
+struct videomode;
+
 struct xlnx_bridge_debugfs_file;
 
 /**
@@ -32,6 +34,7 @@ struct xlnx_bridge_debugfs_file;
  * @get_input_fmts: callback to get supported input formats.
  * @set_output: callback to set the output
  * @get_output_fmts: callback to get supported output formats.
+ * @set_timing: callback to set timing in connected video timing controller.
  * @debugfs_file: for debugfs support
  */
 struct xlnx_bridge {
@@ -48,6 +51,7 @@ struct xlnx_bridge {
 			  u32 width, u32 height, u32 bus_fmt);
 	int (*get_output_fmts)(struct xlnx_bridge *bridge,
 			       const u32 **fmts, u32 *count);
+	int (*set_timing)(struct xlnx_bridge *bridge, struct videomode *vm);
 	struct xlnx_bridge_debugfs_file *debugfs_file;
 };
 
@@ -75,6 +79,7 @@ int xlnx_bridge_set_output(struct xlnx_bridge *bridge,
 			   u32 width, u32 height, u32 bus_fmt);
 int xlnx_bridge_get_output_fmts(struct xlnx_bridge *bridge,
 				const u32 **fmts, u32 *count);
+int xlnx_bridge_set_timing(struct xlnx_bridge *bridge, struct videomode *vm);
 struct xlnx_bridge *of_xlnx_bridge_get(struct device_node *bridge_np);
 void of_xlnx_bridge_put(struct xlnx_bridge *bridge);
 
@@ -135,6 +140,14 @@ static inline int xlnx_bridge_set_output(struct xlnx_bridge *bridge,
 
 static inline int xlnx_bridge_get_output_fmts(struct xlnx_bridge *bridge,
 					      const u32 **fmts, u32 *count)
+{
+	if (bridge)
+		return -ENODEV;
+	return 0;
+}
+
+static int xlnx_bridge_set_timing(struct xlnx_bridge *bridge,
+				  struct videomode *vm)
 {
 	if (bridge)
 		return -ENODEV;
