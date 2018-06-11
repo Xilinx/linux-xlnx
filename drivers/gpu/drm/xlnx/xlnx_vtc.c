@@ -513,6 +513,14 @@ void xlnx_vtc_reset(struct xilinx_vtc *vtc)
 	xilinx_drm_writel(vtc->base, VTC_CTL, reg | VTC_CTL_RU);
 }
 
+/* enable vblank interrupt */
+void xlnx_vtc_vblank_enable(struct xilinx_vtc *vtc)
+{
+	xilinx_drm_writel(vtc->base, VTC_IER, VTC_IXR_G_VBLANK |
+			  xilinx_drm_readl(vtc->base, VTC_IER));
+}
+EXPORT_SYMBOL_GPL(xlnx_vtc_vblank_enable);
+
 /* enable interrupt */
 static inline void xilinx_vtc_intr_enable(struct xilinx_vtc *vtc, u32 intr)
 {
@@ -527,18 +535,28 @@ static inline void xilinx_vtc_intr_disable(struct xilinx_vtc *vtc, u32 intr)
 			  xilinx_drm_readl(vtc->base, VTC_IER));
 }
 
+/* disable vblank interrupt */
+void xlnx_vtc_vblank_disable(struct xilinx_vtc *vtc)
+{
+	xilinx_drm_writel(vtc->base, VTC_IER, ~(VTC_IXR_G_VBLANK) &
+			  xilinx_drm_readl(vtc->base, VTC_IER));
+}
+EXPORT_SYMBOL_GPL(xlnx_vtc_vblank_disable);
+
 /* get interrupt */
-static inline u32 xlnx_vtc_intr_get(struct xilinx_vtc *vtc)
+u32 xlnx_vtc_intr_get(struct xilinx_vtc *vtc)
 {
 	return xilinx_drm_readl(vtc->base, VTC_IER) &
 	       xilinx_drm_readl(vtc->base, VTC_ISR) & VTC_IXR_ALLINTR_MASK;
 }
+EXPORT_SYMBOL_GPL(xlnx_vtc_intr_get);
 
 /* clear interrupt */
-static inline void xlnx_vtc_intr_clear(struct xilinx_vtc *vtc, u32 intr)
+void xlnx_vtc_intr_clear(struct xilinx_vtc *vtc, u32 intr)
 {
 	xilinx_drm_writel(vtc->base, VTC_ISR, intr & VTC_IXR_ALLINTR_MASK);
 }
+EXPORT_SYMBOL_GPL(xlnx_vtc_intr_clear);
 
 /* interrupt handler */
 static irqreturn_t xilinx_vtc_intr_handler(int irq, void *data)
