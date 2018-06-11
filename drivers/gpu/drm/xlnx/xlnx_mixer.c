@@ -26,8 +26,10 @@
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
 #include <linux/dmaengine.h>
-#include "xlnx_drv.h"
+#include <video/videomode.h>
+#include "xlnx_bridge.h"
 #include "xlnx_crtc.h"
+#include "xlnx_drv.h"
 
 /**************************** Register Data **********************************/
 #define XVMIX_AP_CTRL			0x00000
@@ -295,6 +297,7 @@ struct xlnx_mix_hw {
  * @pixel_clock_enabled: pixel clock status
  * @dpms: mixer drm state
  * @event: vblank pending event
+ * @vtc_bridge: vtc_bridge structure
  *
  * Contains pointers to logical constructions such as the DRM plane manager as
  * well as pointers to distinquish the mixer layer serving as the DRM "primary"
@@ -323,6 +326,7 @@ struct xlnx_mix {
 	bool pixel_clock_enabled;
 	int dpms;
 	struct drm_pending_vblank_event *event;
+	struct xlnx_bridge *vtc_bridge;
 };
 
 /**
@@ -1998,7 +2002,7 @@ static int xlnx_mix_dt_parse(struct device *dev, struct xlnx_mix *mixer)
 {
 	struct xlnx_mix_plane *planes;
 	struct xlnx_mix_hw *mixer_hw;
-	struct device_node *node;
+	struct device_node *node, *vtc_node;
 	struct xlnx_mix_layer_data *l_data;
 	struct resource	res;
 	int ret, l_cnt, i;
@@ -2050,6 +2054,19 @@ static int xlnx_mix_dt_parse(struct device *dev, struct xlnx_mix *mixer)
 		dev_err(dev, "invalid addr-width dts prop\n");
 		return -EINVAL;
 	}
+
+	/* VTC Bridge support */
+	vtc_node = of_parse_phandle(node, "xlnx,bridge", 0);
+	if (vtc_node) {
+		mixer->vtc_bridge = of_xlnx_bridge_get(vtc_node);
+		if (!mixer->vtc_bridge) {
+			dev_info(dev, "Didn't get vtc bridge instance\n");
+			return -EPROBE_DEFER;
+		}
+	} else {
+		dev_info(dev, "vtc bridge property not present\n");
+	}
+
 	mixer_hw->logo_layer_en = of_property_read_bool(node,
 							"xlnx,logo-layer");
 	l_cnt = mixer_hw->max_layers + (mixer_hw->logo_layer_en ? 1 : 0);
@@ -2344,6 +2361,8 @@ static void xlnx_mix_crtc_dpms(struct drm_crtc *base_crtc, int dpms)
 	struct xlnx_crtc *crtc = to_xlnx_crtc(base_crtc);
 	struct xlnx_mix *mixer = to_xlnx_mixer(crtc);
 	int ret;
+	struct videomode vm;
+	struct drm_display_mode *mode = &base_crtc->mode;
 
 	DRM_DEBUG_KMS("dpms: %d\n", dpms);
 	if (mixer->dpms == dpms)
@@ -2361,12 +2380,19 @@ static void xlnx_mix_crtc_dpms(struct drm_crtc *base_crtc, int dpms)
 		}
 		mixer->pixel_clock_enabled = true;
 
+		if (mixer->vtc_bridge) {
+			drm_display_mode_to_videomode(mode, &vm);
+			xlnx_bridge_set_timing(mixer->vtc_bridge, &vm);
+			xlnx_bridge_enable(mixer->vtc_bridge);
+		}
+
 		xlnx_mix_dpms(mixer, dpms);
 		xlnx_mix_plane_dpms(base_crtc->primary, dpms);
 		break;
 	default:
 		xlnx_mix_plane_dpms(base_crtc->primary, dpms);
 		xlnx_mix_dpms(mixer, dpms);
+		xlnx_bridge_disable(mixer->vtc_bridge);
 		if (mixer->pixel_clock_enabled) {
 			clk_disable_unprepare(mixer->pixel_clock);
 			mixer->pixel_clock_enabled = false;
@@ -2715,6 +2741,7 @@ static int xlnx_mix_remove(struct platform_device *pdev)
 {
 	struct xlnx_mix *mixer = platform_get_drvdata(pdev);
 
+	of_xlnx_bridge_put(mixer->vtc_bridge);
 	xlnx_drm_pipeline_exit(mixer->master);
 	component_del(&pdev->dev, &xlnx_mix_component_ops);
 	return 0;
