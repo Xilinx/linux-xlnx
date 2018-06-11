@@ -40,6 +40,8 @@ Optional properties:
  - xlnx,layer-scale: denotes layer can be scale to 2x and 4x
  - xlnx,logo-layer: denotes logo layer is enable
  - logo: logo layer
+ - xlnx,bridge: phandle to bridge node.
+   This handle is required only when VTC is connected as bridge.
 
 Supported Formats:
 	Mixer IP Format		Driver supported Format String
@@ -79,6 +81,7 @@ Example:
 		xlnx,ppc = <2>;
 		xlnx,num-layers = <8>;
 		xlnx,logo-layer;
+		xlnx,bridge = <&v_tc_0>;
 
 		mixer_port: mixer_port@0 {
 			reg = <0>;
