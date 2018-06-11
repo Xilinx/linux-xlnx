@@ -36,13 +36,17 @@
 #define VTC_ERROR	0x008	/* error */
 
 #define VTC_GASIZE	0x060	/* generator active size */
+#define VTC_GENC	0x068	/* generator encoding */
 #define VTC_GPOL	0x06c	/* generator polarity */
 #define VTC_GHSIZE	0x070	/* generator frame horizontal size */
 #define VTC_GVSIZE	0x074	/* generator frame vertical size */
 #define VTC_GHSYNC	0x078	/* generator horizontal sync */
-#define VTC_GVBHOFF	0x07c	/* generator vblank horizontal offset */
-#define VTC_GVSYNC	0x080	/* generator vertical sync */
-#define VTC_GVSHOFF	0x084	/* generator vsync horizontal offset */
+#define VTC_GVBHOFF_F0	0x07c	/* generator Field 0 vblank horizontal offset */
+#define VTC_GVSYNC_F0	0x080	/* generator Field 0 vertical sync */
+#define VTC_GVSHOFF_F0	0x084	/* generator Field 0 vsync horizontal offset */
+#define VTC_GVBHOFF_F1	0x088	/* generator Field 1 vblank horizontal offset */
+#define VTC_GVSYNC_F1	0x08C	/* generator Field 1 vertical sync */
+#define VTC_GVSHOFF_F1	0x090	/* generator Field 1 vsync horizontal offset */
 
 #define VTC_RESET	0x000	/* reset register */
 #define VTC_ISR		0x004	/* interrupt status register */
@@ -154,6 +158,7 @@
 #define VTC_IXR_HBL	(1 << 17)	/* horizontal blank signal lock */
 #define VTC_IXR_VBL	(1 << 16)	/* vertical blank signal lock */
 
+#define VTC_GENC_INTERL	BIT(6)		/* Interlaced bit in VTC_GENC */
 /* mask for all interrupts */
 #define VTC_IXR_ALLINTR_MASK	(VTC_IXR_FSYNCALL_MASK |	\
 				VTC_IXR_G_ALL_MASK |		\
@@ -198,16 +203,24 @@ struct xilinx_vtc_polarity {
 /**
  * struct xilinx_vtc_hori_offset - vtc horizontal offset config
  *
- * @vblank_hori_start: vblank horizontal start
- * @vblank_hori_end: vblank horizontal end
- * @vsync_hori_start: vsync horizontal start
- * @vsync_hori_end: vsync horizontal end
+ * @v0blank_hori_start: vblank horizontal start (field 0)
+ * @v0blank_hori_end: vblank horizontal end (field 0)
+ * @v0sync_hori_start: vsync horizontal start (field 0)
+ * @v0sync_hori_end: vsync horizontal end (field 0)
+ * @v1blank_hori_start: vblank horizontal start (field 1)
+ * @v1blank_hori_end: vblank horizontal end (field 1)
+ * @v1sync_hori_start: vsync horizontal start (field 1)
+ * @v1sync_hori_end: vsync horizontal end (field 1)
  */
 struct xilinx_vtc_hori_offset {
-	u16 vblank_hori_start;
-	u16 vblank_hori_end;
-	u16 vsync_hori_start;
-	u16 vsync_hori_end;
+	u16 v0blank_hori_start;
+	u16 v0blank_hori_end;
+	u16 v0sync_hori_start;
+	u16 v0sync_hori_end;
+	u16 v1blank_hori_start;
+	u16 v1blank_hori_end;
+	u16 v1sync_hori_start;
+	u16 v1sync_hori_end;
 };
 
 /**
@@ -288,15 +301,30 @@ xilinx_vtc_config_hori_offset(struct xilinx_vtc *vtc,
 {
 	u32 reg;
 
-	reg = hori_offset->vblank_hori_start & VTC_XVXHOX_HSTART_MASK;
-	reg |= (hori_offset->vblank_hori_end << VTC_XVXHOX_HEND_SHIFT) &
-	       VTC_XVXHOX_HEND_MASK;
-	xilinx_drm_writel(vtc->base, VTC_GVBHOFF, reg);
+	/* Calculate and update Generator VBlank Hori field 0 */
+	reg = hori_offset->v0blank_hori_start & VTC_XVXHOX_HSTART_MASK;
+	reg |= (hori_offset->v0blank_hori_end << VTC_XVXHOX_HEND_SHIFT) &
+		VTC_XVXHOX_HEND_MASK;
+	xilinx_drm_writel(vtc->base, VTC_GVBHOFF_F0, reg);
 
-	reg = hori_offset->vsync_hori_start & VTC_XVXHOX_HSTART_MASK;
-	reg |= (hori_offset->vsync_hori_end << VTC_XVXHOX_HEND_SHIFT) &
-	       VTC_XVXHOX_HEND_MASK;
-	xilinx_drm_writel(vtc->base, VTC_GVSHOFF, reg);
+	/* Calculate and update Generator VSync Hori field 0 */
+	reg = hori_offset->v0sync_hori_start & VTC_XVXHOX_HSTART_MASK;
+	reg |= (hori_offset->v0sync_hori_end << VTC_XVXHOX_HEND_SHIFT) &
+		VTC_XVXHOX_HEND_MASK;
+	xilinx_drm_writel(vtc->base, VTC_GVSHOFF_F0, reg);
+
+	/* Calculate and update Generator VBlank Hori field 1 */
+	reg = hori_offset->v1blank_hori_start & VTC_XVXHOX_HSTART_MASK;
+	reg |= (hori_offset->v1blank_hori_end << VTC_XVXHOX_HEND_SHIFT) &
+		VTC_XVXHOX_HEND_MASK;
+	xilinx_drm_writel(vtc->base, VTC_GVBHOFF_F1, reg);
+
+	/* Calculate and update Generator VBlank Hori field 1 */
+	reg =  hori_offset->v1sync_hori_start & VTC_XVXHOX_HSTART_MASK;
+	reg |= (hori_offset->v1sync_hori_end << VTC_XVXHOX_HEND_SHIFT) &
+		VTC_XVXHOX_HEND_MASK;
+	xilinx_drm_writel(vtc->base, VTC_GVSHOFF_F1, reg);
+
 }
 
 /* configure source */
@@ -399,6 +427,7 @@ void xlnx_vtc_config_sig(struct xilinx_vtc *vtc,
 	xilinx_drm_writel(vtc->base, VTC_GHSIZE, reg);
 
 	reg = vtotal & 0x1fff;
+	reg |= reg << VTC_GV1_BPSTART_SHIFT;
 	xilinx_drm_writel(vtc->base, VTC_GVSIZE, reg);
 
 	DRM_DEBUG_DRIVER("ht: %d, vt: %d\n", htotal, vtotal);
@@ -419,17 +448,31 @@ void xlnx_vtc_config_sig(struct xilinx_vtc *vtc,
 	reg = vsync_start & VTC_GV1_SYNCSTART_MASK;
 	reg |= (vbackporch_start << VTC_GV1_BPSTART_SHIFT) &
 	       VTC_GV1_BPSTART_MASK;
-	xilinx_drm_writel(vtc->base, VTC_GVSYNC, reg);
-
+	xilinx_drm_writel(vtc->base, VTC_GVSYNC_F0, reg);
 	DRM_DEBUG_DRIVER("vs: %d, vb: %d\n", vsync_start, vbackporch_start);
 
-	hori_offset.vblank_hori_start = hactive;
-	hori_offset.vblank_hori_end = hactive;
-	hori_offset.vsync_hori_start = hactive;
-	hori_offset.vsync_hori_end = hactive;
+	hori_offset.v0blank_hori_start = hactive;
+	hori_offset.v0blank_hori_end = hactive;
+	hori_offset.v0sync_hori_start = hsync_start;
+	hori_offset.v0sync_hori_end = hsync_start;
+
+	hori_offset.v1blank_hori_start = hactive;
+	hori_offset.v1blank_hori_end = hactive;
+
+	if (vm->flags & DISPLAY_FLAGS_INTERLACED) {
+		hori_offset.v1sync_hori_start = hsync_start - (htotal / 2);
+		hori_offset.v1sync_hori_end = hsync_start - (htotal / 2);
+		xilinx_drm_writel(vtc->base, VTC_GVSYNC_F1, reg);
+		reg = xilinx_drm_readl(vtc->base, VTC_GENC) | VTC_GENC_INTERL;
+		xilinx_drm_writel(vtc->base, VTC_GENC, reg);
+	} else {
+		hori_offset.v1sync_hori_start = hsync_start;
+		hori_offset.v1sync_hori_end = hsync_start;
+		reg = xilinx_drm_readl(vtc->base, VTC_GENC) & ~VTC_GENC_INTERL;
+		xilinx_drm_writel(vtc->base, VTC_GENC, reg);
+	}
 
 	xilinx_vtc_config_hori_offset(vtc, &hori_offset);
-
 	/* set up polarity */
 	memset(&polarity, 0x0, sizeof(polarity));
 	polarity.hsync = 1;
