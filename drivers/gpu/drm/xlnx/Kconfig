@@ -92,3 +92,13 @@ config DRM_XLNX_BRIDGE_SCALER
 	  if scaler is connected to an encoder. The driver provides
 	  upscaling, down scaling and no scaling functionality through
 	  bridge layer.
+
+config DRM_XLNX_BRIDGE_VTC
+	tristate "Xilinx DRM VTC Driver"
+	depends on DRM_XLNX_BRIDGE
+	help
+	  DRM brige driver for Xilinx Video Timing Controller. Choose
+	  this option to make VTC a part of the CRTC in display pipeline.
+	  Currently the support is added to the Xilinx Video Mixer and
+	  Xilinx PL display CRTC drivers. This driver provides ability
+	  to generate timings through the bridge layer.
