@@ -1,9 +1,14 @@
 /*
  * Video Timing Controller support for Xilinx DRM KMS
  *
- *  Copyright (C) 2013 Xilinx, Inc.
+ * Copyright (C) 2013 - 2018 Xilinx, Inc.
  *
- *  Author: Hyun Woo Kwon <hyunk@xilinx.com>
+ * Author: Hyun Woo Kwon <hyunk@xilinx.com>
+ *	   Saurabh Sengar <saurabhs@xilinx.com>
+ *	   Vishal Sagar <vishal.sagar@xilinx.com>
+ *
+ * This driver adds support to control the Xilinx Video Timing
+ * Controller connected to the CRTC.
  *
  * This software is licensed under the terms of the GNU General Public
  * License version 2, as published by the Free Software Foundation, and
@@ -16,396 +21,189 @@
  */
 
 #include <drm/drmP.h>
-
 #include <linux/device.h>
 #include <linux/err.h>
-#include <linux/interrupt.h>
 #include <linux/io.h>
-#include <linux/of_address.h>
-#include <linux/of_irq.h>
+#include <linux/module.h>
+#include <linux/of_device.h>
+#include <linux/platform_device.h>
 #include <linux/slab.h>
-
 #include <video/videomode.h>
-
-#include "../xilinx/xilinx_drm_drv.h"
-#include "xlnx_vtc.h"
+#include "xlnx_bridge.h"
 
 /* register offsets */
-#define VTC_CTL		0x000	/* control */
-#define VTC_STATS	0x004	/* status */
-#define VTC_ERROR	0x008	/* error */
+#define XVTC_CTL		0x000
+#define XVTC_VER		0x010
+#define XVTC_GASIZE		0x060
+#define XVTC_GENC		0x068
+#define XVTC_GPOL		0x06c
+#define XVTC_GHSIZE		0x070
+#define XVTC_GVSIZE		0x074
+#define XVTC_GHSYNC		0x078
+#define XVTC_GVBHOFF_F0		0x07c
+#define XVTC_GVSYNC_F0		0x080
+#define XVTC_GVSHOFF_F0		0x084
+#define XVTC_GVBHOFF_F1		0x088
+#define XVTC_GVSYNC_F1		0x08C
+#define XVTC_GVSHOFF_F1		0x090
 
-#define VTC_GASIZE	0x060	/* generator active size */
-#define VTC_GENC	0x068	/* generator encoding */
-#define VTC_GPOL	0x06c	/* generator polarity */
-#define VTC_GHSIZE	0x070	/* generator frame horizontal size */
-#define VTC_GVSIZE	0x074	/* generator frame vertical size */
-#define VTC_GHSYNC	0x078	/* generator horizontal sync */
-#define VTC_GVBHOFF_F0	0x07c	/* generator Field 0 vblank horizontal offset */
-#define VTC_GVSYNC_F0	0x080	/* generator Field 0 vertical sync */
-#define VTC_GVSHOFF_F0	0x084	/* generator Field 0 vsync horizontal offset */
-#define VTC_GVBHOFF_F1	0x088	/* generator Field 1 vblank horizontal offset */
-#define VTC_GVSYNC_F1	0x08C	/* generator Field 1 vertical sync */
-#define VTC_GVSHOFF_F1	0x090	/* generator Field 1 vsync horizontal offset */
+/* vtc control register bits */
+#define XVTC_CTL_SWRESET	BIT(31)
+#define XVTC_CTL_FIPSS		BIT(26)
+#define XVTC_CTL_ACPSS		BIT(25)
+#define XVTC_CTL_AVPSS		BIT(24)
+#define XVTC_CTL_HSPSS		BIT(23)
+#define XVTC_CTL_VSPSS		BIT(22)
+#define XVTC_CTL_HBPSS		BIT(21)
+#define XVTC_CTL_VBPSS		BIT(20)
+#define XVTC_CTL_VCSS		BIT(18)
+#define XVTC_CTL_VASS		BIT(17)
+#define XVTC_CTL_VBSS		BIT(16)
+#define XVTC_CTL_VSSS		BIT(15)
+#define XVTC_CTL_VFSS		BIT(14)
+#define XVTC_CTL_VTSS		BIT(13)
+#define XVTC_CTL_HBSS		BIT(11)
+#define XVTC_CTL_HSSS		BIT(10)
+#define XVTC_CTL_HFSS		BIT(9)
+#define XVTC_CTL_HTSS		BIT(8)
+#define XVTC_CTL_GE		BIT(2)
+#define XVTC_CTL_RU		BIT(1)
 
-#define VTC_RESET	0x000	/* reset register */
-#define VTC_ISR		0x004	/* interrupt status register */
-#define VTC_IER		0x00c	/* interrupt enable register */
-
-/* control register bit */
-#define VTC_CTL_FIP	(1 << 6)	/* field id output polarity */
-#define VTC_CTL_ACP	(1 << 5)	/* active chroma output polarity */
-#define VTC_CTL_AVP	(1 << 4)	/* active video output polarity */
-#define VTC_CTL_HSP	(1 << 3)	/* hori sync output polarity */
-#define VTC_CTL_VSP	(1 << 2)	/* vert sync output polarity */
-#define VTC_CTL_HBP	(1 << 1)	/* hori blank output polarity */
-#define VTC_CTL_VBP	(1 << 0)	/* vert blank output polarity */
-
-#define VTC_CTL_FIPSS	(1 << 26)	/* field id output polarity source */
-#define VTC_CTL_ACPSS	(1 << 25)	/* active chroma out polarity source */
-#define VTC_CTL_AVPSS	(1 << 24)	/* active video out polarity source */
-#define VTC_CTL_HSPSS	(1 << 23)	/* hori sync out polarity source */
-#define VTC_CTL_VSPSS	(1 << 22)	/* vert sync out polarity source */
-#define VTC_CTL_HBPSS	(1 << 21)	/* hori blank out polarity source */
-#define VTC_CTL_VBPSS	(1 << 20)	/* vert blank out polarity source */
-
-#define VTC_CTL_VCSS	(1 << 18)	/* chroma source select */
-#define VTC_CTL_VASS	(1 << 17)	/* vertical offset source select */
-#define VTC_CTL_VBSS	(1 << 16)	/* vertical sync end source select */
-#define VTC_CTL_VSSS	(1 << 15)	/* vertical sync start source select */
-#define VTC_CTL_VFSS	(1 << 14)	/* vertical active size source select */
-#define VTC_CTL_VTSS	(1 << 13)	/* vertical frame size source select */
-
-#define VTC_CTL_HBSS	(1 << 11)	/* horiz sync end source select */
-#define VTC_CTL_HSSS	(1 << 10)	/* horiz sync start source select */
-#define VTC_CTL_HFSS	(1 << 9)	/* horiz active size source select */
-#define VTC_CTL_HTSS	(1 << 8)	/* horiz frame size source select */
-
-#define VTC_CTL_GE	(1 << 2)	/* vtc generator enable */
-#define VTC_CTL_RU	(1 << 1)	/* vtc register update */
+/* vtc generator polarity register bits */
+#define XVTC_GPOL_FIP		BIT(6)
+#define XVTC_GPOL_ACP		BIT(5)
+#define XVTC_GPOL_AVP		BIT(4)
+#define XVTC_GPOL_HSP		BIT(3)
+#define XVTC_GPOL_VSP		BIT(2)
+#define XVTC_GPOL_HBP		BIT(1)
+#define XVTC_GPOL_VBP		BIT(0)
 
 /* vtc generator horizontal 1 */
-#define VTC_GH1_BPSTART_MASK   0x1fff0000	/* horiz back porch start */
-#define VTC_GH1_BPSTART_SHIFT  16
-#define VTC_GH1_SYNCSTART_MASK 0x00001fff
-
-/* vtc generator vertical 1 (filed 0) */
-#define VTC_GV1_BPSTART_MASK   0x1fff0000	/* vertical back porch start */
-#define VTC_GV1_BPSTART_SHIFT  16
-#define VTC_GV1_SYNCSTART_MASK 0x00001fff
-
+#define XVTC_GH1_BPSTART_MASK	GENMASK(28, 16)
+#define XVTC_GH1_BPSTART_SHIFT	16
+#define XVTC_GH1_SYNCSTART_MASK GENMASK(12, 0)
+/* vtc generator vertical 1 (field 0) */
+#define XVTC_GV1_BPSTART_MASK	GENMASK(28, 16)
+#define XVTC_GV1_BPSTART_SHIFT	16
+#define XVTC_GV1_SYNCSTART_MASK	GENMASK(12, 0)
 /* vtc generator/detector vblank/vsync horizontal offset registers */
-#define VTC_XVXHOX_HEND_MASK	0x1fff0000	/* horiz offset end */
-#define VTC_XVXHOX_HEND_SHIFT	16		/* horiz offset end shift */
-#define VTC_XVXHOX_HSTART_MASK	0x00001fff	/* horiz offset start */
+#define XVTC_XVXHOX_HEND_MASK	GENMASK(28, 16)
+#define XVTC_XVXHOX_HEND_SHIFT	16
+#define XVTC_XVXHOX_HSTART_MASK	GENMASK(12, 0)
 
-/* reset register bit definition */
-#define VTC_RESET_RESET		(1 << 31)	/* Software Reset */
+#define XVTC_GHFRAME_HSIZE	GENMASK(12, 0)
+#define XVTC_GVFRAME_HSIZE_F1	GENMASK(12, 0)
+#define XVTC_GA_ACTSIZE_MASK	GENMASK(12, 0)
 
-/* interrupt status/enable register bit definition */
-#define VTC_IXR_FSYNC15		(1 << 31)	/* frame sync interrupt 15 */
-#define VTC_IXR_FSYNC14		(1 << 30)	/* frame sync interrupt 14 */
-#define VTC_IXR_FSYNC13		(1 << 29)	/* frame sync interrupt 13 */
-#define VTC_IXR_FSYNC12		(1 << 28)	/* frame sync interrupt 12 */
-#define VTC_IXR_FSYNC11		(1 << 27)	/* frame sync interrupt 11 */
-#define VTC_IXR_FSYNC10		(1 << 26)	/* frame sync interrupt 10 */
-#define VTC_IXR_FSYNC09		(1 << 25)	/* frame sync interrupt 09 */
-#define VTC_IXR_FSYNC08		(1 << 24)	/* frame sync interrupt 08 */
-#define VTC_IXR_FSYNC07		(1 << 23)	/* frame sync interrupt 07 */
-#define VTC_IXR_FSYNC06		(1 << 22)	/* frame sync interrupt 06 */
-#define VTC_IXR_FSYNC05		(1 << 21)	/* frame sync interrupt 05 */
-#define VTC_IXR_FSYNC04		(1 << 20)	/* frame sync interrupt 04 */
-#define VTC_IXR_FSYNC03		(1 << 19)	/* frame sync interrupt 03 */
-#define VTC_IXR_FSYNC02		(1 << 18)	/* frame sync interrupt 02 */
-#define VTC_IXR_FSYNC01		(1 << 17)	/* frame sync interrupt 01 */
-#define VTC_IXR_FSYNC00		(1 << 16)	/* frame sync interrupt 00 */
-#define VTC_IXR_FSYNCALL_MASK	(VTC_IXR_FSYNC00 |	\
-				VTC_IXR_FSYNC01 |	\
-				VTC_IXR_FSYNC02 |	\
-				VTC_IXR_FSYNC03 |	\
-				VTC_IXR_FSYNC04 |	\
-				VTC_IXR_FSYNC05 |	\
-				VTC_IXR_FSYNC06 |	\
-				VTC_IXR_FSYNC07 |	\
-				VTC_IXR_FSYNC08 |	\
-				VTC_IXR_FSYNC09 |	\
-				VTC_IXR_FSYNC10 |	\
-				VTC_IXR_FSYNC11 |	\
-				VTC_IXR_FSYNC12 |	\
-				VTC_IXR_FSYNC13 |	\
-				VTC_IXR_FSYNC14 |	\
-				VTC_IXR_FSYNC15)
+/* vtc generator encoding register bits */
+#define XVTC_GENC_INTERL	BIT(6)
 
-#define VTC_IXR_G_AV		(1 << 13)	/* generator actv video intr */
-#define VTC_IXR_G_VBLANK	(1 << 12)	/* generator vblank interrupt */
-#define VTC_IXR_G_ALL_MASK	(VTC_IXR_G_AV |	\
-				 VTC_IXR_G_VBLANK)	/* all generator intr */
-
-#define VTC_IXR_D_AV		(1 << 11)	/* detector active video intr */
-#define VTC_IXR_D_VBLANK	(1 << 10)	/* detector vblank interrupt */
-#define VTC_IXR_D_ALL_MASK	(VTC_IXR_D_AV |	\
-				VTC_IXR_D_VBLANK)	/* all detector intr */
-
-#define VTC_IXR_LOL		(1 << 9)	/* lock loss */
-#define VTC_IXR_LO		(1 << 8)	/* lock  */
-#define VTC_IXR_LOCKALL_MASK	(VTC_IXR_LOL |	\
-				VTC_IXR_LO)	/* all signal lock intr */
-
-#define VTC_IXR_ACL	(1 << 21)	/* active chroma signal lock */
-#define VTC_IXR_AVL	(1 << 20)	/* active video signal lock */
-#define VTC_IXR_HSL	(1 << 19)	/* horizontal sync signal lock */
-#define VTC_IXR_VSL	(1 << 18)	/* vertical sync signal lock */
-#define VTC_IXR_HBL	(1 << 17)	/* horizontal blank signal lock */
-#define VTC_IXR_VBL	(1 << 16)	/* vertical blank signal lock */
-
-#define VTC_GENC_INTERL	BIT(6)		/* Interlaced bit in VTC_GENC */
-/* mask for all interrupts */
-#define VTC_IXR_ALLINTR_MASK	(VTC_IXR_FSYNCALL_MASK |	\
-				VTC_IXR_G_ALL_MASK |		\
-				VTC_IXR_D_ALL_MASK |		\
-				VTC_IXR_LOCKALL_MASK)
 /**
- * struct xilinx_vtc - Xilinx VTC object
+ * struct xlnx_vtc - Xilinx VTC object
  *
+ * @bridge: xilinx bridge structure
+ * @dev: device structure
  * @base: base addr
- * @irq: irq
- * @vblank_fn: vblank handler func
- * @vblank_data: vblank handler private data
+ * @ppc: pixels per clock
  */
-struct xilinx_vtc {
+struct xlnx_vtc {
+	struct xlnx_bridge bridge;
+	struct device *dev;
 	void __iomem *base;
-	int irq;
-	void (*vblank_fn)(void *);
-	void *vblank_data;
+	u32 ppc;
 };
+
+static inline void xlnx_vtc_writel(void __iomem *base, int offset, u32 val)
+{
+	writel(val, base + offset);
+}
+
+static inline u32 xlnx_vtc_readl(void __iomem *base, int offset)
+{
+	return readl(base + offset);
+}
+
+static inline struct xlnx_vtc *bridge_to_vtc(struct xlnx_bridge *bridge)
+{
+	return container_of(bridge, struct xlnx_vtc, bridge);
+}
+
+static void xlnx_vtc_reset(struct xlnx_vtc *vtc)
+{
+	u32 reg;
+
+	xlnx_vtc_writel(vtc->base, XVTC_CTL, XVTC_CTL_SWRESET);
+
+	/* enable register update */
+	reg = xlnx_vtc_readl(vtc->base, XVTC_CTL);
+	xlnx_vtc_writel(vtc->base, XVTC_CTL, reg | XVTC_CTL_RU);
+}
 
 /**
- * struct xilinx_vtc_polarity - vtc polarity config
+ * xlnx_vtc_enable - Enable the VTC
+ * @bridge: xilinx bridge structure pointer
  *
- * @active_chroma: active chroma polarity
- * @active_video: active video polarity
- * @field_id: field ID polarity
- * @vblank: vblank polarity
- * @vsync: vsync polarity
- * @hblank: hblank polarity
- * @hsync: hsync polarity
+ * Return:
+ * Zero on success.
+ *
+ * This function enables the VTC
  */
-struct xilinx_vtc_polarity {
-	u8 active_chroma;
-	u8 active_video;
-	u8 field_id;
-	u8 vblank;
-	u8 vsync;
-	u8 hblank;
-	u8 hsync;
-};
+static int xlnx_vtc_enable(struct xlnx_bridge *bridge)
+{
+	u32 reg;
+	struct xlnx_vtc *vtc = bridge_to_vtc(bridge);
+
+	/* enable generator */
+	reg = xlnx_vtc_readl(vtc->base, XVTC_CTL);
+	xlnx_vtc_writel(vtc->base, XVTC_CTL, reg | XVTC_CTL_GE);
+	dev_dbg(vtc->dev, "enabled\n");
+	return 0;
+}
 
 /**
- * struct xilinx_vtc_hori_offset - vtc horizontal offset config
+ * xlnx_vtc_disable - Disable the VTC
+ * @bridge: xilinx bridge structure pointer
  *
- * @v0blank_hori_start: vblank horizontal start (field 0)
- * @v0blank_hori_end: vblank horizontal end (field 0)
- * @v0sync_hori_start: vsync horizontal start (field 0)
- * @v0sync_hori_end: vsync horizontal end (field 0)
- * @v1blank_hori_start: vblank horizontal start (field 1)
- * @v1blank_hori_end: vblank horizontal end (field 1)
- * @v1sync_hori_start: vsync horizontal start (field 1)
- * @v1sync_hori_end: vsync horizontal end (field 1)
+ * This function disables and resets the VTC.
  */
-struct xilinx_vtc_hori_offset {
-	u16 v0blank_hori_start;
-	u16 v0blank_hori_end;
-	u16 v0sync_hori_start;
-	u16 v0sync_hori_end;
-	u16 v1blank_hori_start;
-	u16 v1blank_hori_end;
-	u16 v1sync_hori_start;
-	u16 v1sync_hori_end;
-};
+static void xlnx_vtc_disable(struct xlnx_bridge *bridge)
+{
+	u32 reg;
+	struct xlnx_vtc *vtc = bridge_to_vtc(bridge);
+
+	/* disable generator and reset */
+	reg = xlnx_vtc_readl(vtc->base, XVTC_CTL);
+	xlnx_vtc_writel(vtc->base, XVTC_CTL, reg & ~XVTC_CTL_GE);
+	xlnx_vtc_reset(vtc);
+	dev_dbg(vtc->dev, "disabled\n");
+}
 
 /**
- * struct xilinx_vtc_src_config - vtc source config
+ * xlnx_vtc_set_timing - Configures the VTC
+ * @bridge: xilinx bridge structure pointer
+ * @vm: video mode requested
  *
- * @field_id_pol: filed id polarity source
- * @active_chroma_pol: active chroma polarity source
- * @active_video_pol: active video polarity source
- * @hsync_pol: hsync polarity source
- * @vsync_pol: vsync polarity source
- * @hblank_pol: hblnak polarity source
- * @vblank_pol: vblank polarity source
- * @vchroma: vchroma polarity start source
- * @vactive: vactive size source
- * @vbackporch: vbackporch start source
- * @vsync: vsync start source
- * @vfrontporch: vfrontporch start source
- * @vtotal: vtotal size source
- * @hactive: hactive start source
- * @hbackporch: hbackporch start source
- * @hsync: hsync start source
- * @hfrontporch: hfrontporch start source
- * @htotal: htotal size source
+ * Return:
+ * Zero on success.
+ *
+ * This function calculates the timing values from the video mode
+ * structure passed from the CRTC and configures the VTC.
  */
-struct xilinx_vtc_src_config {
-	u8 field_id_pol;
-	u8 active_chroma_pol;
-	u8 active_video_pol;
-	u8 hsync_pol;
-	u8 vsync_pol;
-	u8 hblank_pol;
-	u8 vblank_pol;
-
-	u8 vchroma;
-	u8 vactive;
-	u8 vbackporch;
-	u8 vsync;
-	u8 vfrontporch;
-	u8 vtotal;
-
-	u8 hactive;
-	u8 hbackporch;
-	u8 hsync;
-	u8 hfrontporch;
-	u8 htotal;
-};
-
-/* configure polarity of signals */
-static void xilinx_vtc_config_polarity(struct xilinx_vtc *vtc,
-				       struct xilinx_vtc_polarity *polarity)
-{
-	u32 reg = 0;
-
-	if (polarity->active_chroma)
-		reg |= VTC_CTL_ACP;
-	if (polarity->active_video)
-		reg |= VTC_CTL_AVP;
-	if (polarity->field_id)
-		reg |= VTC_CTL_FIP;
-	if (polarity->vblank)
-		reg |= VTC_CTL_VBP;
-	if (polarity->vsync)
-		reg |= VTC_CTL_VSP;
-	if (polarity->hblank)
-		reg |= VTC_CTL_HBP;
-	if (polarity->hsync)
-		reg |= VTC_CTL_HSP;
-
-	xilinx_drm_writel(vtc->base, VTC_GPOL, reg);
-}
-
-/* configure horizontal offset */
-static void
-xilinx_vtc_config_hori_offset(struct xilinx_vtc *vtc,
-			      struct xilinx_vtc_hori_offset *hori_offset)
-{
-	u32 reg;
-
-	/* Calculate and update Generator VBlank Hori field 0 */
-	reg = hori_offset->v0blank_hori_start & VTC_XVXHOX_HSTART_MASK;
-	reg |= (hori_offset->v0blank_hori_end << VTC_XVXHOX_HEND_SHIFT) &
-		VTC_XVXHOX_HEND_MASK;
-	xilinx_drm_writel(vtc->base, VTC_GVBHOFF_F0, reg);
-
-	/* Calculate and update Generator VSync Hori field 0 */
-	reg = hori_offset->v0sync_hori_start & VTC_XVXHOX_HSTART_MASK;
-	reg |= (hori_offset->v0sync_hori_end << VTC_XVXHOX_HEND_SHIFT) &
-		VTC_XVXHOX_HEND_MASK;
-	xilinx_drm_writel(vtc->base, VTC_GVSHOFF_F0, reg);
-
-	/* Calculate and update Generator VBlank Hori field 1 */
-	reg = hori_offset->v1blank_hori_start & VTC_XVXHOX_HSTART_MASK;
-	reg |= (hori_offset->v1blank_hori_end << VTC_XVXHOX_HEND_SHIFT) &
-		VTC_XVXHOX_HEND_MASK;
-	xilinx_drm_writel(vtc->base, VTC_GVBHOFF_F1, reg);
-
-	/* Calculate and update Generator VBlank Hori field 1 */
-	reg =  hori_offset->v1sync_hori_start & VTC_XVXHOX_HSTART_MASK;
-	reg |= (hori_offset->v1sync_hori_end << VTC_XVXHOX_HEND_SHIFT) &
-		VTC_XVXHOX_HEND_MASK;
-	xilinx_drm_writel(vtc->base, VTC_GVSHOFF_F1, reg);
-
-}
-
-/* configure source */
-static void xilinx_vtc_config_src(struct xilinx_vtc *vtc,
-				  struct xilinx_vtc_src_config *src_config)
-{
-	u32 reg;
-
-	reg = xilinx_drm_readl(vtc->base, VTC_CTL);
-
-	if (src_config->field_id_pol)
-		reg |= VTC_CTL_FIPSS;
-	if (src_config->active_chroma_pol)
-		reg |= VTC_CTL_ACPSS;
-	if (src_config->active_video_pol)
-		reg |= VTC_CTL_AVPSS;
-	if (src_config->hsync_pol)
-		reg |= VTC_CTL_HSPSS;
-	if (src_config->vsync_pol)
-		reg |= VTC_CTL_VSPSS;
-	if (src_config->hblank_pol)
-		reg |= VTC_CTL_HBPSS;
-	if (src_config->vblank_pol)
-		reg |= VTC_CTL_VBPSS;
-
-	if (src_config->vchroma)
-		reg |= VTC_CTL_VCSS;
-	if (src_config->vactive)
-		reg |= VTC_CTL_VASS;
-	if (src_config->vbackporch)
-		reg |= VTC_CTL_VBSS;
-	if (src_config->vsync)
-		reg |= VTC_CTL_VSSS;
-	if (src_config->vfrontporch)
-		reg |= VTC_CTL_VFSS;
-	if (src_config->vtotal)
-		reg |= VTC_CTL_VTSS;
-
-	if (src_config->hbackporch)
-		reg |= VTC_CTL_HBSS;
-	if (src_config->hsync)
-		reg |= VTC_CTL_HSSS;
-	if (src_config->hfrontporch)
-		reg |= VTC_CTL_HFSS;
-	if (src_config->htotal)
-		reg |= VTC_CTL_HTSS;
-
-	xilinx_drm_writel(vtc->base, VTC_CTL, reg);
-}
-
-/* enable vtc */
-void xlnx_vtc_enable(struct xilinx_vtc *vtc)
-{
-	u32 reg;
-
-	/* enable a generator only for now */
-	reg = xilinx_drm_readl(vtc->base, VTC_CTL);
-	xilinx_drm_writel(vtc->base, VTC_CTL, reg | VTC_CTL_GE);
-}
-
-/* disable vtc */
-void xlnx_vtc_disable(struct xilinx_vtc *vtc)
-{
-	u32 reg;
-
-	/* disable a generator only for now */
-	reg = xilinx_drm_readl(vtc->base, VTC_CTL);
-	xilinx_drm_writel(vtc->base, VTC_CTL, reg & ~VTC_CTL_GE);
-}
-
-/* configure vtc signals */
-void xlnx_vtc_config_sig(struct xilinx_vtc *vtc,
-			   struct videomode *vm)
+static int xlnx_vtc_set_timing(struct xlnx_bridge *bridge,
+			       struct videomode *vm)
 {
 	u32 reg;
 	u32 htotal, hactive, hsync_start, hbackporch_start;
 	u32 vtotal, vactive, vsync_start, vbackporch_start;
-	struct xilinx_vtc_hori_offset hori_offset;
-	struct xilinx_vtc_polarity polarity;
-	struct xilinx_vtc_src_config src;
+	struct xlnx_vtc *vtc = bridge_to_vtc(bridge);
 
-	reg = xilinx_drm_readl(vtc->base, VTC_CTL);
-	xilinx_drm_writel(vtc->base, VTC_CTL, reg & ~VTC_CTL_RU);
+	reg = xlnx_vtc_readl(vtc->base, XVTC_CTL);
+	xlnx_vtc_writel(vtc->base, XVTC_CTL, reg & ~XVTC_CTL_RU);
+
+	vm->hactive /= vtc->ppc;
+	vm->hfront_porch /= vtc->ppc;
+	vm->hback_porch /= vtc->ppc;
+	vm->hsync_len /= vtc->ppc;
 
 	htotal = vm->hactive + vm->hfront_porch + vm->hsync_len +
 		 vm->hback_porch;
@@ -421,225 +219,190 @@ void xlnx_vtc_config_sig(struct xilinx_vtc *vtc,
 	hbackporch_start = hsync_start + vm->hsync_len;
 	vbackporch_start = vsync_start + vm->vsync_len;
 
-	reg = htotal & 0x1fff;
-	xilinx_drm_writel(vtc->base, VTC_GHSIZE, reg);
+	dev_dbg(vtc->dev, "ha: %d, va: %d\n", hactive, vactive);
+	dev_dbg(vtc->dev, "ht: %d, vt: %d\n", htotal, vtotal);
+	dev_dbg(vtc->dev, "hs: %d, hb: %d\n", hsync_start, hbackporch_start);
+	dev_dbg(vtc->dev, "vs: %d, vb: %d\n", vsync_start, vbackporch_start);
 
-	reg = vtotal & 0x1fff;
-	reg |= reg << VTC_GV1_BPSTART_SHIFT;
-	xilinx_drm_writel(vtc->base, VTC_GVSIZE, reg);
+	reg = htotal & XVTC_GHFRAME_HSIZE;
+	xlnx_vtc_writel(vtc->base, XVTC_GHSIZE, reg);
 
-	DRM_DEBUG_DRIVER("ht: %d, vt: %d\n", htotal, vtotal);
+	reg = vtotal & XVTC_GVFRAME_HSIZE_F1;
+	reg |= reg << XVTC_GV1_BPSTART_SHIFT;
+	xlnx_vtc_writel(vtc->base, XVTC_GVSIZE, reg);
 
-	reg = hactive & 0x1fff;
-	reg |= (vactive & 0x1fff) << 16;
-	xilinx_drm_writel(vtc->base, VTC_GASIZE, reg);
+	reg = hactive & XVTC_GA_ACTSIZE_MASK;
+	reg |= (vactive & XVTC_GA_ACTSIZE_MASK) << 16;
+	xlnx_vtc_writel(vtc->base, XVTC_GASIZE, reg);
 
-	DRM_DEBUG_DRIVER("ha: %d, va: %d\n", hactive, vactive);
+	reg = hsync_start & XVTC_GH1_SYNCSTART_MASK;
+	reg |= (hbackporch_start << XVTC_GH1_BPSTART_SHIFT) &
+	       XVTC_GH1_BPSTART_MASK;
+	xlnx_vtc_writel(vtc->base, XVTC_GHSYNC, reg);
 
-	reg = hsync_start & VTC_GH1_SYNCSTART_MASK;
-	reg |= (hbackporch_start << VTC_GH1_BPSTART_SHIFT) &
-	       VTC_GH1_BPSTART_MASK;
-	xilinx_drm_writel(vtc->base, VTC_GHSYNC, reg);
-
-	DRM_DEBUG_DRIVER("hs: %d, hb: %d\n", hsync_start, hbackporch_start);
-
-	reg = vsync_start & VTC_GV1_SYNCSTART_MASK;
-	reg |= (vbackporch_start << VTC_GV1_BPSTART_SHIFT) &
-	       VTC_GV1_BPSTART_MASK;
-	xilinx_drm_writel(vtc->base, VTC_GVSYNC_F0, reg);
-	DRM_DEBUG_DRIVER("vs: %d, vb: %d\n", vsync_start, vbackporch_start);
-
-	hori_offset.v0blank_hori_start = hactive;
-	hori_offset.v0blank_hori_end = hactive;
-	hori_offset.v0sync_hori_start = hsync_start;
-	hori_offset.v0sync_hori_end = hsync_start;
-
-	hori_offset.v1blank_hori_start = hactive;
-	hori_offset.v1blank_hori_end = hactive;
+	reg = vsync_start & XVTC_GV1_SYNCSTART_MASK;
+	reg |= (vbackporch_start << XVTC_GV1_BPSTART_SHIFT) &
+	       XVTC_GV1_BPSTART_MASK;
+	xlnx_vtc_writel(vtc->base, XVTC_GVSYNC_F0, reg);
 
 	if (vm->flags & DISPLAY_FLAGS_INTERLACED) {
-		hori_offset.v1sync_hori_start = hsync_start - (htotal / 2);
-		hori_offset.v1sync_hori_end = hsync_start - (htotal / 2);
-		xilinx_drm_writel(vtc->base, VTC_GVSYNC_F1, reg);
-		reg = xilinx_drm_readl(vtc->base, VTC_GENC) | VTC_GENC_INTERL;
-		xilinx_drm_writel(vtc->base, VTC_GENC, reg);
+		xlnx_vtc_writel(vtc->base, XVTC_GVSYNC_F1, reg);
+		reg = xlnx_vtc_readl(vtc->base, XVTC_GENC) | XVTC_GENC_INTERL;
+		xlnx_vtc_writel(vtc->base, XVTC_GENC, reg);
 	} else {
-		hori_offset.v1sync_hori_start = hsync_start;
-		hori_offset.v1sync_hori_end = hsync_start;
-		reg = xilinx_drm_readl(vtc->base, VTC_GENC) & ~VTC_GENC_INTERL;
-		xilinx_drm_writel(vtc->base, VTC_GENC, reg);
+		reg = xlnx_vtc_readl(vtc->base, XVTC_GENC) & ~XVTC_GENC_INTERL;
+		xlnx_vtc_writel(vtc->base, XVTC_GENC, reg);
 	}
 
-	xilinx_vtc_config_hori_offset(vtc, &hori_offset);
-	/* set up polarity */
-	memset(&polarity, 0x0, sizeof(polarity));
-	polarity.hsync = !!(vm->flags & DISPLAY_FLAGS_HSYNC_LOW);
-	polarity.vsync = !!(vm->flags & DISPLAY_FLAGS_VSYNC_LOW);
-	polarity.hblank = !!(vm->flags & DISPLAY_FLAGS_HSYNC_LOW);
-	polarity.vblank = !!(vm->flags & DISPLAY_FLAGS_VSYNC_LOW);
-	polarity.active_video = 1;
-	polarity.active_chroma = 1;
-	polarity.field_id = !!(vm->flags & DISPLAY_FLAGS_INTERLACED);
-	xilinx_vtc_config_polarity(vtc, &polarity);
+	/* configure horizontal offset */
+	/* Calculate and update Generator VBlank Hori field 0 */
+	reg = hactive & XVTC_XVXHOX_HSTART_MASK;
+	reg |= (hactive << XVTC_XVXHOX_HEND_SHIFT) &
+		XVTC_XVXHOX_HEND_MASK;
+	xlnx_vtc_writel(vtc->base, XVTC_GVBHOFF_F0, reg);
 
-	/* set up src config */
-	memset(&src, 0x0, sizeof(src));
-	src.vchroma = 1;
-	src.vactive = 1;
-	src.vbackporch = 1;
-	src.vsync = 1;
-	src.vfrontporch = 1;
-	src.vtotal = 1;
-	src.hactive = 1;
-	src.hbackporch = 1;
-	src.hsync = 1;
-	src.hfrontporch = 1;
-	src.htotal = 1;
-	xilinx_vtc_config_src(vtc, &src);
+	/* Calculate and update Generator VSync Hori field 0 */
+	reg = hsync_start & XVTC_XVXHOX_HSTART_MASK;
+	reg |= (hsync_start << XVTC_XVXHOX_HEND_SHIFT) &
+		XVTC_XVXHOX_HEND_MASK;
+	xlnx_vtc_writel(vtc->base, XVTC_GVSHOFF_F0, reg);
 
-	reg = xilinx_drm_readl(vtc->base, VTC_CTL);
-	xilinx_drm_writel(vtc->base, VTC_CTL, reg | VTC_CTL_RU);
+	/* Calculate and update Generator VBlank Hori field 1 */
+	reg = hactive & XVTC_XVXHOX_HSTART_MASK;
+	reg |= (hactive << XVTC_XVXHOX_HEND_SHIFT) &
+		XVTC_XVXHOX_HEND_MASK;
+	xlnx_vtc_writel(vtc->base, XVTC_GVBHOFF_F1, reg);
+
+	/* Calculate and update Generator VBlank Hori field 1 */
+	if (vm->flags & DISPLAY_FLAGS_INTERLACED) {
+		reg =  (hsync_start - (htotal / 2)) & XVTC_XVXHOX_HSTART_MASK;
+		reg |= ((hsync_start - (htotal / 2)) <<
+			XVTC_XVXHOX_HEND_SHIFT) & XVTC_XVXHOX_HEND_MASK;
+	} else {
+		reg =  hsync_start & XVTC_XVXHOX_HSTART_MASK;
+		reg |= (hsync_start << XVTC_XVXHOX_HEND_SHIFT) &
+			XVTC_XVXHOX_HEND_MASK;
+	}
+	xlnx_vtc_writel(vtc->base, XVTC_GVSHOFF_F1, reg);
+
+	/* configure polarity of signals */
+	reg = 0;
+	reg |= XVTC_GPOL_ACP;
+	reg |= XVTC_GPOL_AVP;
+	if (vm->flags & DISPLAY_FLAGS_INTERLACED)
+		reg |= XVTC_GPOL_FIP;
+	if (vm->flags & DISPLAY_FLAGS_VSYNC_HIGH) {
+		reg |= XVTC_GPOL_VBP;
+		reg |= XVTC_GPOL_VSP;
+	}
+	if (vm->flags & DISPLAY_FLAGS_HSYNC_HIGH) {
+		reg |= XVTC_GPOL_HBP;
+		reg |= XVTC_GPOL_HSP;
+	}
+	xlnx_vtc_writel(vtc->base, XVTC_GPOL, reg);
+
+	/* configure timing source */
+	reg = xlnx_vtc_readl(vtc->base, XVTC_CTL);
+	reg |= XVTC_CTL_VCSS;
+	reg |= XVTC_CTL_VASS;
+	reg |= XVTC_CTL_VBSS;
+	reg |= XVTC_CTL_VSSS;
+	reg |= XVTC_CTL_VFSS;
+	reg |= XVTC_CTL_VTSS;
+	reg |= XVTC_CTL_HBSS;
+	reg |= XVTC_CTL_HSSS;
+	reg |= XVTC_CTL_HFSS;
+	reg |= XVTC_CTL_HTSS;
+	xlnx_vtc_writel(vtc->base, XVTC_CTL, reg);
+
+	reg = xlnx_vtc_readl(vtc->base, XVTC_CTL);
+	xlnx_vtc_writel(vtc->base, XVTC_CTL, reg | XVTC_CTL_RU);
+	dev_dbg(vtc->dev, "set timing done\n");
+
+	return 0;
 }
 
-/* reset vtc */
-void xlnx_vtc_reset(struct xilinx_vtc *vtc)
+static int xlnx_vtc_probe(struct platform_device *pdev)
 {
-	u32 reg;
-
-	xilinx_drm_writel(vtc->base, VTC_RESET, VTC_RESET_RESET);
-
-	/* enable register update */
-	reg = xilinx_drm_readl(vtc->base, VTC_CTL);
-	xilinx_drm_writel(vtc->base, VTC_CTL, reg | VTC_CTL_RU);
-}
-
-/* enable vblank interrupt */
-void xlnx_vtc_vblank_enable(struct xilinx_vtc *vtc)
-{
-	xilinx_drm_writel(vtc->base, VTC_IER, VTC_IXR_G_VBLANK |
-			  xilinx_drm_readl(vtc->base, VTC_IER));
-}
-EXPORT_SYMBOL_GPL(xlnx_vtc_vblank_enable);
-
-/* enable interrupt */
-static inline void xilinx_vtc_intr_enable(struct xilinx_vtc *vtc, u32 intr)
-{
-	xilinx_drm_writel(vtc->base, VTC_IER, (intr & VTC_IXR_ALLINTR_MASK) |
-			  xilinx_drm_readl(vtc->base, VTC_IER));
-}
-
-/* disable interrupt */
-static inline void xilinx_vtc_intr_disable(struct xilinx_vtc *vtc, u32 intr)
-{
-	xilinx_drm_writel(vtc->base, VTC_IER, ~(intr & VTC_IXR_ALLINTR_MASK) &
-			  xilinx_drm_readl(vtc->base, VTC_IER));
-}
-
-/* disable vblank interrupt */
-void xlnx_vtc_vblank_disable(struct xilinx_vtc *vtc)
-{
-	xilinx_drm_writel(vtc->base, VTC_IER, ~(VTC_IXR_G_VBLANK) &
-			  xilinx_drm_readl(vtc->base, VTC_IER));
-}
-EXPORT_SYMBOL_GPL(xlnx_vtc_vblank_disable);
-
-/* get interrupt */
-u32 xlnx_vtc_intr_get(struct xilinx_vtc *vtc)
-{
-	return xilinx_drm_readl(vtc->base, VTC_IER) &
-	       xilinx_drm_readl(vtc->base, VTC_ISR) & VTC_IXR_ALLINTR_MASK;
-}
-EXPORT_SYMBOL_GPL(xlnx_vtc_intr_get);
-
-/* clear interrupt */
-void xlnx_vtc_intr_clear(struct xilinx_vtc *vtc, u32 intr)
-{
-	xilinx_drm_writel(vtc->base, VTC_ISR, intr & VTC_IXR_ALLINTR_MASK);
-}
-EXPORT_SYMBOL_GPL(xlnx_vtc_intr_clear);
-
-/* interrupt handler */
-static irqreturn_t xilinx_vtc_intr_handler(int irq, void *data)
-{
-	struct xilinx_vtc *vtc = data;
-
-	u32 intr = xlnx_vtc_intr_get(vtc);
-
-	if (!intr)
-		return IRQ_NONE;
-
-	if ((intr & VTC_IXR_G_VBLANK) && (vtc->vblank_fn))
-		vtc->vblank_fn(vtc->vblank_data);
-
-	xlnx_vtc_intr_clear(vtc, intr);
-
-	return IRQ_HANDLED;
-}
-
-/* enable vblank interrupt */
-void xlnx_vtc_enable_vblank_intr(struct xilinx_vtc *vtc,
-				   void (*vblank_fn)(void *),
-				   void *vblank_priv)
-{
-	vtc->vblank_fn = vblank_fn;
-	vtc->vblank_data = vblank_priv;
-	xilinx_vtc_intr_enable(vtc, VTC_IXR_G_VBLANK);
-}
-
-/* disable vblank interrupt */
-void xlnx_vtc_disable_vblank_intr(struct xilinx_vtc *vtc)
-{
-	xilinx_vtc_intr_disable(vtc, VTC_IXR_G_VBLANK);
-	vtc->vblank_data = NULL;
-	vtc->vblank_fn = NULL;
-}
-
-static const struct of_device_id xilinx_vtc_of_match[] = {
-	{ .compatible = "xlnx,v-tc-5.01.a" },
-	{ /* end of table */ },
-};
-
-/* probe vtc */
-struct xilinx_vtc *xlnx_vtc_probe(struct device *dev,
-				    struct device_node *node)
-{
-	struct xilinx_vtc *vtc;
-	const struct of_device_id *match;
-	struct resource res;
+	struct device *dev = &pdev->dev;
+	struct xlnx_vtc *vtc;
+	struct resource *res;
 	int ret;
-
-	match = of_match_node(xilinx_vtc_of_match, node);
-	if (!match) {
-		dev_err(dev, "failed to match the device node\n");
-		return ERR_PTR(-ENODEV);
-	}
 
 	vtc = devm_kzalloc(dev, sizeof(*vtc), GFP_KERNEL);
 	if (!vtc)
-		return ERR_PTR(-ENOMEM);
+		return -ENOMEM;
 
-	ret = of_address_to_resource(node, 0, &res);
-	if (ret) {
-		dev_err(dev, "failed to of_address_to_resource\n");
-		return ERR_PTR(ret);
+	vtc->dev = dev;
+
+	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	if (!res) {
+		dev_err(dev, "failed to get resource for device\n");
+		return -EFAULT;
 	}
 
-	vtc->base = devm_ioremap_resource(dev, &res);
-	if (IS_ERR(vtc->base))
-		return ERR_CAST(vtc->base);
-
-	xilinx_vtc_intr_disable(vtc, VTC_IXR_ALLINTR_MASK);
-	vtc->irq = irq_of_parse_and_map(node, 0);
-	if (vtc->irq > 0) {
-		ret = devm_request_irq(dev, vtc->irq, xilinx_vtc_intr_handler,
-				       IRQF_SHARED, "xilinx_vtc", vtc);
-		if (ret) {
-			dev_warn(dev, "failed to requet_irq() for vtc\n");
-			return ERR_PTR(ret);
-		}
+	vtc->base = devm_ioremap_resource(dev, res);
+	if (IS_ERR(vtc->base)) {
+		dev_err(dev, "failed to remap io region\n");
+		return PTR_ERR(vtc->base);
 	}
+
+	platform_set_drvdata(pdev, vtc);
+
+	ret = of_property_read_u32(dev->of_node, "xlnx,pixels-per-clock",
+				   &vtc->ppc);
+	if (ret || (vtc->ppc != 1 && vtc->ppc != 2 && vtc->ppc != 4)) {
+		dev_err(dev, "failed to get ppc\n");
+		return ret;
+	}
+	dev_info(dev, "vtc ppc = %d\n", vtc->ppc);
 
 	xlnx_vtc_reset(vtc);
 
-	return vtc;
+	vtc->bridge.enable = &xlnx_vtc_enable;
+	vtc->bridge.disable = &xlnx_vtc_disable;
+	vtc->bridge.set_timing = &xlnx_vtc_set_timing;
+	vtc->bridge.of_node = dev->of_node;
+	ret = xlnx_bridge_register(&vtc->bridge);
+	if (ret) {
+		dev_err(dev, "Bridge registration failed\n");
+		return ret;
+	}
+
+	dev_info(dev, "Xilinx VTC IP version : 0x%08x\n",
+		 xlnx_vtc_readl(vtc->base, XVTC_VER));
+	dev_info(dev, "Xilinx VTC DRM Bridge driver probed\n");
+	return 0;
 }
+
+static int xlnx_vtc_remove(struct platform_device *pdev)
+{
+	struct xlnx_vtc *vtc = platform_get_drvdata(pdev);
+
+	xlnx_bridge_unregister(&vtc->bridge);
+
+	return 0;
+}
+
+static const struct of_device_id xlnx_vtc_of_match[] = {
+	{ .compatible = "xlnx,bridge-v-tc-6.1" },
+	{ /* end of table */ },
+};
+
+MODULE_DEVICE_TABLE(of, xlnx_vtc_of_match);
+
+static struct platform_driver xlnx_vtc_bridge_driver = {
+	.probe = xlnx_vtc_probe,
+	.remove = xlnx_vtc_remove,
+	.driver = {
+		.name = "xlnx,bridge-vtc",
+		.of_match_table = xlnx_vtc_of_match,
+	},
+};
+
+module_platform_driver(xlnx_vtc_bridge_driver);
+
+MODULE_AUTHOR("Vishal Sagar");
+MODULE_DESCRIPTION("Xilinx VTC Bridge Driver");
+MODULE_LICENSE("GPL v2");
+
