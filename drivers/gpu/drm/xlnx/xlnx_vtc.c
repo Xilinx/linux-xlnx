@@ -535,13 +535,25 @@ void xlnx_vtc_disable_vblank_intr(struct xilinx_vtc *vtc)
 	vtc->vblank_fn = NULL;
 }
 
+static const struct of_device_id xilinx_vtc_of_match[] = {
+	{ .compatible = "xlnx,v-tc-5.01.a" },
+	{ /* end of table */ },
+};
+
 /* probe vtc */
 struct xilinx_vtc *xlnx_vtc_probe(struct device *dev,
 				    struct device_node *node)
 {
 	struct xilinx_vtc *vtc;
+	const struct of_device_id *match;
 	struct resource res;
 	int ret;
+
+	match = of_match_node(xilinx_vtc_of_match, node);
+	if (!match) {
+		dev_err(dev, "failed to match the device node\n");
+		return ERR_PTR(-ENODEV);
+	}
 
 	vtc = devm_kzalloc(dev, sizeof(*vtc), GFP_KERNEL);
 	if (!vtc)
