@@ -20,6 +20,10 @@ Required properties:
   Documentation/devicetree/bindings/graph.txt.
 - reg: Base address and size of device
 
+Optional properties:
+ - xlnx,bridge: bridge phandle
+   This handle is required only when VTC is connected as bridge.
+
 Example:
 
 	drm-pl-disp-drv {
@@ -27,6 +31,7 @@ Example:
 		dmas = <&axi_vdma_0 0>;
 		dma-names = "dma0";
 		xlnx,vformat = "YUYV";
+		xlnx,bridge = <&v_tc_0>;
 		pl_disp_port@0 {
 			reg = <0>;
 			endpoint {
