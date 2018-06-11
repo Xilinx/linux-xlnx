@@ -23,8 +23,10 @@
 #include <linux/of.h>
 #include <linux/of_dma.h>
 #include <linux/platform_device.h>
-#include "xlnx_drv.h"
+#include <video/videomode.h>
+#include "xlnx_bridge.h"
 #include "xlnx_crtc.h"
+#include "xlnx_drv.h"
 
 /*
  * Overview
@@ -60,6 +62,7 @@ struct xlnx_dma_chan {
  * @callback_param: parameter for passing  to DMA callback function
  * @drm: core drm object
  * @fmt: drm color format
+ * @vtc_bridge: vtc_bridge structure
  */
 struct xlnx_pl_disp {
 	struct device *dev;
@@ -72,6 +75,7 @@ struct xlnx_pl_disp {
 	void *callback_param;
 	struct drm_device *drm;
 	u32 fmt;
+	struct xlnx_bridge *vtc_bridge;
 };
 
 /*
@@ -314,6 +318,16 @@ static void xlnx_pl_disp_crtc_atomic_enable(struct drm_crtc *crtc,
 {
 	struct drm_display_mode *adjusted_mode = &crtc->state->adjusted_mode;
 	int vrefresh;
+	struct xlnx_crtc *xlnx_crtc = to_xlnx_crtc(crtc);
+	struct xlnx_pl_disp *xlnx_pl_disp = crtc_to_dma(xlnx_crtc);
+	struct videomode vm;
+
+	if (xlnx_pl_disp->vtc_bridge) {
+		/* set video timing */
+		drm_display_mode_to_videomode(adjusted_mode, &vm);
+		xlnx_bridge_set_timing(xlnx_pl_disp->vtc_bridge, &vm);
+		xlnx_bridge_enable(xlnx_pl_disp->vtc_bridge);
+	}
 
 	xlnx_pl_disp_plane_enable(crtc->primary);
 
@@ -326,8 +340,12 @@ static void xlnx_pl_disp_crtc_atomic_enable(struct drm_crtc *crtc,
 static void xlnx_pl_disp_crtc_atomic_disable(struct drm_crtc *crtc,
 					     struct drm_crtc_state *old_state)
 {
+	struct xlnx_crtc *xlnx_crtc = to_xlnx_crtc(crtc);
+	struct xlnx_pl_disp *xlnx_pl_disp = crtc_to_dma(xlnx_crtc);
+
 	xlnx_pl_disp_plane_disable(crtc->primary);
 	xlnx_pl_disp_clear_event(crtc);
+	xlnx_bridge_disable(xlnx_pl_disp->vtc_bridge);
 }
 
 static int xlnx_pl_disp_crtc_atomic_check(struct drm_crtc *crtc,
@@ -443,6 +461,7 @@ static const struct component_ops xlnx_pl_disp_component_ops = {
 static int xlnx_pl_disp_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
+	struct device_node *vtc_node;
 	struct xlnx_pl_disp *xlnx_pl_disp;
 	int ret;
 	const char *vformat;
@@ -472,6 +491,19 @@ static int xlnx_pl_disp_probe(struct platform_device *pdev)
 	}
 
 	strcpy((char *)&xlnx_pl_disp->fmt, vformat);
+
+	/* VTC Bridge support */
+	vtc_node = of_parse_phandle(dev->of_node, "xlnx,bridge", 0);
+	if (vtc_node) {
+		xlnx_pl_disp->vtc_bridge = of_xlnx_bridge_get(vtc_node);
+		if (!xlnx_pl_disp->vtc_bridge) {
+			dev_info(dev, "Didn't get vtc bridge instance\n");
+			return -EPROBE_DEFER;
+		}
+	} else {
+		dev_info(dev, "vtc bridge property not present\n");
+	}
+
 	xlnx_pl_disp->dev = dev;
 	platform_set_drvdata(pdev, xlnx_pl_disp);
 
@@ -503,6 +535,7 @@ static int xlnx_pl_disp_remove(struct platform_device *pdev)
 	struct xlnx_pl_disp *xlnx_pl_disp = platform_get_drvdata(pdev);
 	struct xlnx_dma_chan *xlnx_dma_chan = xlnx_pl_disp->chan;
 
+	of_xlnx_bridge_put(xlnx_pl_disp->vtc_bridge);
 	xlnx_drm_pipeline_exit(xlnx_pl_disp->master);
 	component_del(&pdev->dev, &xlnx_pl_disp_component_ops);
 
