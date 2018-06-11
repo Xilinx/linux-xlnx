@@ -509,6 +509,9 @@ static irqreturn_t xilinx_vtc_intr_handler(int irq, void *data)
 
 	u32 intr = xlnx_vtc_intr_get(vtc);
 
+	if (!intr)
+		return IRQ_NONE;
+
 	if ((intr & VTC_IXR_G_VBLANK) && (vtc->vblank_fn))
 		vtc->vblank_fn(vtc->vblank_data);
 
