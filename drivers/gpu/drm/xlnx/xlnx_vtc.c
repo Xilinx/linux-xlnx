@@ -272,9 +272,7 @@ struct xilinx_vtc_src_config {
 static void xilinx_vtc_config_polarity(struct xilinx_vtc *vtc,
 				       struct xilinx_vtc_polarity *polarity)
 {
-	u32 reg;
-
-	reg = xilinx_drm_readl(vtc->base, VTC_GPOL);
+	u32 reg = 0;
 
 	if (polarity->active_chroma)
 		reg |= VTC_CTL_ACP;
@@ -475,13 +473,13 @@ void xlnx_vtc_config_sig(struct xilinx_vtc *vtc,
 	xilinx_vtc_config_hori_offset(vtc, &hori_offset);
 	/* set up polarity */
 	memset(&polarity, 0x0, sizeof(polarity));
-	polarity.hsync = 1;
-	polarity.vsync = 1;
-	polarity.hblank = 1;
-	polarity.vblank = 1;
+	polarity.hsync = !!(vm->flags & DISPLAY_FLAGS_HSYNC_LOW);
+	polarity.vsync = !!(vm->flags & DISPLAY_FLAGS_VSYNC_LOW);
+	polarity.hblank = !!(vm->flags & DISPLAY_FLAGS_HSYNC_LOW);
+	polarity.vblank = !!(vm->flags & DISPLAY_FLAGS_VSYNC_LOW);
 	polarity.active_video = 1;
 	polarity.active_chroma = 1;
-	polarity.field_id = 1;
+	polarity.field_id = !!(vm->flags & DISPLAY_FLAGS_INTERLACED);
 	xilinx_vtc_config_polarity(vtc, &polarity);
 
 	/* set up src config */
