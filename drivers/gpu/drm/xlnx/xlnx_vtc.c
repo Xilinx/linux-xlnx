@@ -91,10 +91,9 @@
 #define VTC_GV1_SYNCSTART_MASK 0x00001fff
 
 /* vtc generator/detector vblank/vsync horizontal offset registers */
-#define VTC_XVXHOX_HEND_MASK	0x1fff0000	/* horizontal offset end */
-#define VTC_XVXHOX_HEND_SHIFT	16		/* horizontal offset end
-						   shift */
-#define VTC_XVXHOX_HSTART_MASK	0x00001fff	/* horizontal offset start */
+#define VTC_XVXHOX_HEND_MASK	0x1fff0000	/* horiz offset end */
+#define VTC_XVXHOX_HEND_SHIFT	16		/* horiz offset end shift */
+#define VTC_XVXHOX_HSTART_MASK	0x00001fff	/* horiz offset start */
 
 /* reset register bit definition */
 #define VTC_RESET_RESET		(1 << 31)	/* Software Reset */
@@ -150,11 +149,9 @@
 
 #define VTC_IXR_ACL	(1 << 21)	/* active chroma signal lock */
 #define VTC_IXR_AVL	(1 << 20)	/* active video signal lock */
-#define VTC_IXR_HSL	(1 << 19)	/* horizontal sync signal
-						   lock */
+#define VTC_IXR_HSL	(1 << 19)	/* horizontal sync signal lock */
 #define VTC_IXR_VSL	(1 << 18)	/* vertical sync signal lock */
-#define VTC_IXR_HBL	(1 << 17)	/* horizontal blank signal
-						   lock */
+#define VTC_IXR_HBL	(1 << 17)	/* horizontal blank signal lock */
 #define VTC_IXR_VBL	(1 << 16)	/* vertical blank signal lock */
 
 /* mask for all interrupts */
