@@ -25,6 +25,11 @@
 #define IXR_FPGA_DONE_MASK	0X00000008U
 #define IXR_FPGA_ENCRYPTION_EN	0x00000008U
 
+/**
+ * struct zynqmp_fpga_priv - Private data structure
+ * @dev:	Device data structure
+ * @flags:	flags which is used to identify the bitfile type
+ */
 struct zynqmp_fpga_priv {
 	struct device *dev;
 	u32 flags;
