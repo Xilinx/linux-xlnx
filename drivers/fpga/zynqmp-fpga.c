@@ -12,7 +12,6 @@
  * GNU General Public License for more details.
  */
 
-#include <asm/cacheflush.h>
 #include <linux/dma-mapping.h>
 #include <linux/fpga/fpga-mgr.h>
 #include <linux/io.h>
@@ -72,8 +71,7 @@ static int zynqmp_fpga_ops_write(struct fpga_manager *mgr,
 	if (mgr->flags & IXR_FPGA_ENCRYPTION_EN)
 		memcpy(kbuf + size, mgr->key, ENCRYPTED_KEY_LEN);
 
-	__flush_cache_user_range((unsigned long)kbuf,
-				 (unsigned long)kbuf + dma_size);
+	wmb(); /* ensure all writes are done before initiate FW call */
 
 	ret = eemi_ops->fpga_load(dma_addr, dma_addr + size, mgr->flags);
 
