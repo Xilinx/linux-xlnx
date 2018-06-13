@@ -253,7 +253,7 @@
  * @XSDIRX_SMPTE_ST_296: SMPTE ST 296 detected with AP 1280x720
  * @XSDIRX_SMPTE_ST_2048_2: SMPTE ST 2048-2 detected with AP 2048x1080
  * @XSDIRX_SMPTE_ST_295: SMPTE ST 295 detected with AP 1920x1080
- * @XSDIRX_NTSC: NTSC encoding detected with AP 720x480
+ * @XSDIRX_NTSC: NTSC encoding detected with AP 720x486
  * @XSDIRX_PAL: PAL encoding detected with AP 720x576
  * @XSDIRX_TS_UNKNOWN: Unknown SMPTE Transport family type
  */
@@ -725,7 +725,7 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 		switch (family) {
 		case XSDIRX_NTSC:
 			format->width = 720;
-			format->height = 480;
+			format->height = 486;
 			break;
 		case XSDIRX_PAL:
 			format->width = 720;
