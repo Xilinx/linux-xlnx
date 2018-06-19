@@ -924,10 +924,7 @@ static void axienet_device_reset(struct net_device *ndev)
 					 val, (val & XXV_RX_BLKLCK_MASK),
 					 10, DELAY_OF_ONE_MILLISEC);
 		if (err) {
-			netdev_err(ndev, "%s: Block lock bit of XXV MAC didn't",
-				   __func__);
-			netdev_err(ndev, "Got Set cross check the ref clock");
-			netdev_err(ndev, "Configuration for the mac");
+			netdev_err(ndev, "XXV MAC block lock not complete! Cross-check the MAC ref clock configuration\n");
 		}
 #ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
 		if (!lp->is_tsn) {
