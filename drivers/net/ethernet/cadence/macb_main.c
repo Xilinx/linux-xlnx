@@ -327,18 +327,18 @@ static int macb_mdio_wait_for_idle(struct macb *bp)
 
 	timeout = jiffies + msecs_to_jiffies(1000);
 	/* wait for end of transfer */
-	do {
+	while (1) {
 		if (MACB_BFEXT(IDLE, macb_readl(bp, NSR)))
 			break;
 
-		cpu_relax();
-	} while (!time_after_eq(jiffies, timeout));
+		if (time_after_eq(jiffies, timeout)) {
+			netdev_err(bp->dev, "wait for end of transfer timed out\n");
+			pm_runtime_mark_last_busy(&bp->pdev->dev);
+			pm_runtime_put_autosuspend(&bp->pdev->dev);
+			return -ETIMEDOUT;
+		}
 
-	if (time_after_eq(jiffies, timeout)) {
-		netdev_err(bp->dev, "wait for end of transfer timed out\n");
-		pm_runtime_mark_last_busy(&bp->pdev->dev);
-		pm_runtime_put_autosuspend(&bp->pdev->dev);
-		return -ETIMEDOUT;
+		cpu_relax();
 	}
 
 	return 0;
