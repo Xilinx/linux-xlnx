@@ -338,7 +338,37 @@ void xlnx_stc_sig(void __iomem *base, struct videomode *vm)
 	reg = vsync_start & XSTC_GV1_SYNCSTART_MASK;
 	reg |= (vbackporch_start << XSTC_GV1_BPSTART_SHIFT) &
 	       XSTC_GV1_BPSTART_MASK;
+
+	/*
+	 * Fix the Vsync_vstart and vsync_vend of Field 0
+	 * for all interlaced modes including 3GB.
+	 */
+	if (vm->flags & DISPLAY_FLAGS_INTERLACED)
+		reg = ((((reg & XSTC_GV1_BPSTART_MASK) >>
+			XSTC_GV1_BPSTART_SHIFT) - 1) <<
+			XSTC_GV1_BPSTART_SHIFT) |
+			((reg & XSTC_GV1_SYNCSTART_MASK) - 1);
+
 	xlnx_stc_writel(base, XSTC_GVSYNC_F0, reg);
+
+	/*
+	 * Fix the Vsync_vstart and vsync_vend of Field 1
+	 * for interlaced and 3GB modes.
+	 */
+	if (vm->flags & DISPLAY_FLAGS_INTERLACED) {
+		if (vm->pixelclock == 148500000)
+			/* Revert and increase by 1 for 3GB mode */
+			reg = ((((reg & XSTC_GV1_BPSTART_MASK) >>
+				XSTC_GV1_BPSTART_SHIFT) + 2) <<
+				XSTC_GV1_BPSTART_SHIFT) |
+				((reg & XSTC_GV1_SYNCSTART_MASK) + 2);
+		else
+			/* Only revert the reduction */
+			reg = ((((reg & XSTC_GV1_BPSTART_MASK) >>
+				XSTC_GV1_BPSTART_SHIFT) + 1) <<
+				XSTC_GV1_BPSTART_SHIFT) |
+				((reg & XSTC_GV1_SYNCSTART_MASK) + 1);
+	}
 
 	hori_off.v0blank_hori_start = hactive;
 	hori_off.v0blank_hori_end = hactive;
