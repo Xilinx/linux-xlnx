@@ -318,7 +318,16 @@ void xlnx_stc_sig(void __iomem *base, struct videomode *vm)
 	reg = htotal & XSTC_GHFRAME_HSIZE;
 	xlnx_stc_writel(base, XSTC_GHSIZE, reg);
 	reg = vtotal & XSTC_GVFRAME_HSIZE_F1;
-	reg |= reg << XSTC_GV1_BPSTART_SHIFT;
+	if (vm->flags & DISPLAY_FLAGS_INTERLACED) {
+		if (vm->pixelclock == 148500000)
+			reg |= (reg + 2) <<
+				XSTC_GV1_BPSTART_SHIFT;
+		else
+			reg |= (reg + 1) <<
+				XSTC_GV1_BPSTART_SHIFT;
+	} else {
+		reg |= reg << XSTC_GV1_BPSTART_SHIFT;
+	}
 	xlnx_stc_writel(base, XSTC_GVSIZE, reg);
 	reg = hactive & XSTC_GA_ACTSIZE_MASK;
 	reg |= (vactive & XSTC_GA_ACTSIZE_MASK) << 16;
