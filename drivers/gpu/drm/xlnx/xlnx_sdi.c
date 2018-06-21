@@ -780,6 +780,7 @@ static void xlnx_sdi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	struct drm_display_mode *adjusted_mode = &crtc_state->adjusted_mode;
 	struct videomode vm;
 	u32 payload, i;
+	u32 sditx_blank, vtc_blank;
 
 	/* Set timing parameters as per bridge output parameters */
 	xlnx_bridge_set_input(sdi->bridge, adjusted_mode->hdisplay,
@@ -842,6 +843,21 @@ static void xlnx_sdi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 		vm.flags |= DISPLAY_FLAGS_HSYNC_LOW;
 	if (adjusted_mode->flags & DRM_MODE_FLAG_PVSYNC)
 		vm.flags |= DISPLAY_FLAGS_VSYNC_LOW;
+
+	do {
+		sditx_blank = (adjusted_mode->hsync_start -
+			       adjusted_mode->hdisplay) +
+			      (adjusted_mode->hsync_end -
+			       adjusted_mode->hsync_start) +
+			      (adjusted_mode->htotal -
+			       adjusted_mode->hsync_end);
+
+		vtc_blank = (vm.hfront_porch + vm.hback_porch +
+			     vm.hsync_len) * PIXELS_PER_CLK;
+
+		if (vtc_blank != sditx_blank)
+			vm.hfront_porch++;
+	} while (vtc_blank < sditx_blank);
 
 	xlnx_stc_sig(sdi->base, &vm);
 }
