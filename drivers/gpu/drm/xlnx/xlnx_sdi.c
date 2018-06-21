@@ -859,6 +859,7 @@ static void xlnx_sdi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 			vm.hfront_porch++;
 	} while (vtc_blank < sditx_blank);
 
+	vm.pixelclock = adjusted_mode->clock * 1000;
 	xlnx_stc_sig(sdi->base, &vm);
 }
 
