@@ -19,6 +19,7 @@
 #include <linux/component.h>
 #include <linux/module.h>
 #include <linux/of_platform.h>
+#include <linux/of_reserved_mem.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
 
@@ -86,11 +87,14 @@ static int zynqmp_dpsub_probe(struct platform_device *pdev)
 	if (ret)
 		goto err_disp;
 
+	/* Try the reserved memory. Proceed if there's none */
+	of_reserved_mem_device_init(&pdev->dev);
+
 	/* Populate the sound child nodes */
 	ret = of_platform_populate(pdev->dev.of_node, NULL, NULL, &pdev->dev);
 	if (ret) {
 		dev_err(&pdev->dev, "failed to populate child nodes\n");
-		goto err_component;
+		goto err_rmem;
 	}
 
 	dpsub->master = xlnx_drm_pipeline_init(pdev);
@@ -105,7 +109,8 @@ static int zynqmp_dpsub_probe(struct platform_device *pdev)
 
 err_populate:
 	of_platform_depopulate(&pdev->dev);
-err_component:
+err_rmem:
+	of_reserved_mem_device_release(&pdev->dev);
 	component_del(&pdev->dev, &zynqmp_dpsub_component_ops);
 err_disp:
 	zynqmp_disp_remove(pdev);
@@ -123,6 +128,7 @@ static int zynqmp_dpsub_remove(struct platform_device *pdev)
 
 	xlnx_drm_pipeline_exit(dpsub->master);
 	of_platform_depopulate(&pdev->dev);
+	of_reserved_mem_device_release(&pdev->dev);
 	component_del(&pdev->dev, &zynqmp_dpsub_component_ops);
 
 	err = zynqmp_disp_remove(pdev);
