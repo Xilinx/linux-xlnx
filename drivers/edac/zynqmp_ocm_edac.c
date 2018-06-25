@@ -280,7 +280,7 @@ static ssize_t zynqmp_ocm_edac_inject_fault_count_store(
 	if (!data)
 		return -EFAULT;
 
-	if (kstrtoint(data, 0, &ficount))
+	if (kstrtouint(data, 0, &ficount))
 		return -EINVAL;
 
 	ficount &= OCM_FICOUNT_MASK;
