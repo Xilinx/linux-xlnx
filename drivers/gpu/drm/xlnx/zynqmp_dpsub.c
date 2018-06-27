@@ -138,6 +138,33 @@ static int zynqmp_dpsub_remove(struct platform_device *pdev)
 	return err;
 }
 
+static int __maybe_unused zynqmp_dpsub_pm_suspend(struct device *dev)
+{
+	struct platform_device *pdev =
+		container_of(dev, struct platform_device, dev);
+	struct zynqmp_dpsub *dpsub = platform_get_drvdata(pdev);
+
+	zynqmp_dp_pm_suspend(dpsub->dp);
+
+	return 0;
+}
+
+static int __maybe_unused zynqmp_dpsub_pm_resume(struct device *dev)
+{
+	struct platform_device *pdev =
+		container_of(dev, struct platform_device, dev);
+	struct zynqmp_dpsub *dpsub = platform_get_drvdata(pdev);
+
+	zynqmp_dp_pm_resume(dpsub->dp);
+
+	return 0;
+}
+
+static const struct dev_pm_ops zynqmp_dpsub_pm_ops = {
+	SET_SYSTEM_SLEEP_PM_OPS(zynqmp_dpsub_pm_suspend,
+			zynqmp_dpsub_pm_resume)
+};
+
 static const struct of_device_id zynqmp_dpsub_of_match[] = {
 	{ .compatible = "xlnx,zynqmp-dpsub-1.7", },
 	{ /* end of table */ },
@@ -150,6 +177,7 @@ static struct platform_driver zynqmp_dpsub_driver = {
 	.driver			= {
 		.name		= "zynqmp-display",
 		.of_match_table	= zynqmp_dpsub_of_match,
+		.pm             = &zynqmp_dpsub_pm_ops,
 	},
 };
 
