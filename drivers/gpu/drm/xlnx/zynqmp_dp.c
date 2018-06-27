@@ -470,6 +470,7 @@ void zynqmp_dp_disable_vblank(struct zynqmp_dp *dp)
  *
  * Return: 0 if the phy instances are initialized correctly, or the error code
  * returned from the callee functions.
+ * Note: We can call this function without any phy lane assigned to DP.
  */
 static int zynqmp_dp_init_phy(struct zynqmp_dp *dp)
 {
@@ -483,14 +484,12 @@ static int zynqmp_dp_init_phy(struct zynqmp_dp *dp)
 			return ret;
 		}
 	}
-
-	zynqmp_dp_write(dp->iomem, ZYNQMP_DP_SUB_TX_INTR_DS,
-			ZYNQMP_DP_TX_INTR_ALL);
-	zynqmp_dp_clr(dp->iomem, ZYNQMP_DP_TX_PHY_CONFIG,
-		      ZYNQMP_DP_TX_PHY_CONFIG_ALL_RESET);
-
 	/* Wait for PLL to be locked for the primary (1st) lane */
 	if (dp->phy[0]) {
+		zynqmp_dp_write(dp->iomem, ZYNQMP_DP_SUB_TX_INTR_DS,
+				ZYNQMP_DP_TX_INTR_ALL);
+		zynqmp_dp_clr(dp->iomem, ZYNQMP_DP_TX_PHY_CONFIG,
+				ZYNQMP_DP_TX_PHY_CONFIG_ALL_RESET);
 		ret = xpsgtr_wait_pll_lock(dp->phy[0]);
 		if (ret) {
 			dev_err(dp->dev, "failed to lock pll\n");
@@ -551,6 +550,29 @@ static int zynqmp_dp_phy_ready(struct zynqmp_dp *dp)
 	return 0;
 }
 
+/*
+ * Power Management functions
+ */
+/**
+ * zynqmp_dp_pm_resume - Resume DP IP
+ * @dp: DisplayPort IP core structure
+ *
+ * Resume the DP IP including PHY and pipeline.
+ */
+void zynqmp_dp_pm_resume(struct zynqmp_dp *dp)
+{
+	zynqmp_dp_init_phy(dp);
+}
+/**
+ * zynqmp_dp_pm_suspend - Suspend DP IP
+ * @dp: DisplayPort IP core structure
+ *
+ * Suspend the DP IP including PHY and pipeline.
+ */
+void zynqmp_dp_pm_suspend(struct zynqmp_dp *dp)
+{
+	zynqmp_dp_exit_phy(dp);
+}
 /*
  * DP functions
  */
