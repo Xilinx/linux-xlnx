@@ -27,7 +27,8 @@ void zynqmp_dp_enable_vblank(struct zynqmp_dp *dp);
 void zynqmp_dp_disable_vblank(struct zynqmp_dp *dp);
 void zynqmp_dp_encoder_mode_set_stream(struct zynqmp_dp *dp,
 				       struct drm_display_mode *mode);
-
+void __maybe_unused zynqmp_dp_pm_suspend(struct zynqmp_dp *dp);
+void __maybe_unused zynqmp_dp_pm_resume(struct zynqmp_dp *dp);
 int zynqmp_dp_bind(struct device *dev, struct device *master, void *data);
 void zynqmp_dp_unbind(struct device *dev, struct device *master, void *data);
 
