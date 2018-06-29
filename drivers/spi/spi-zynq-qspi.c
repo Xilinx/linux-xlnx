@@ -11,6 +11,7 @@
 
 #include <linux/clk.h>
 #include <linux/delay.h>
+#include <linux/gpio.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/module.h>
@@ -56,7 +57,7 @@
 #define ZYNQ_QSPI_CONFIG_BDRATE_MASK	0x00000038 /* Baud Rate Divisor Mask */
 #define ZYNQ_QSPI_CONFIG_CPHA_MASK	0x00000004 /* Clock Phase Control */
 #define ZYNQ_QSPI_CONFIG_CPOL_MASK	0x00000002 /* Clock Polarity Control */
-#define ZYNQ_QSPI_CONFIG_SSCTRL_MASK	0x00003C00 /* Slave Select Mask */
+#define ZYNQ_QSPI_CONFIG_SSCTRL_MASK	0x00000400 /* Slave Select Mask */
 #define ZYNQ_QSPI_CONFIG_FWIDTH_MASK	0x000000C0 /* FIFO width */
 #define ZYNQ_QSPI_CONFIG_MSTREN_MASK	0x00000001 /* Master Mode */
 
@@ -367,9 +368,15 @@ static void zynq_qspi_chipselect(struct spi_device *qspi, bool is_high)
 	} else {
 		/* Select the slave */
 		config_reg &= ~ZYNQ_QSPI_CONFIG_SSCTRL_MASK;
-		config_reg |= (((~(BIT(qspi->chip_select))) <<
-				 ZYNQ_QSPI_SS_SHIFT) &
-				 ZYNQ_QSPI_CONFIG_SSCTRL_MASK);
+		if (gpio_is_valid(qspi->cs_gpio)) {
+			config_reg |= (((~(BIT(0))) <<
+					ZYNQ_QSPI_SS_SHIFT) &
+					ZYNQ_QSPI_CONFIG_SSCTRL_MASK);
+		} else {
+			config_reg |= (((~(BIT(qspi->chip_select))) <<
+					ZYNQ_QSPI_SS_SHIFT) &
+					ZYNQ_QSPI_CONFIG_SSCTRL_MASK);
+		}
 		xqspi->is_instr = 1;
 	}
 
@@ -440,6 +447,20 @@ static int zynq_qspi_setup_transfer(struct spi_device *qspi,
  */
 static int zynq_qspi_setup(struct spi_device *qspi)
 {
+	struct device *dev = &qspi->master->dev;
+	int ret;
+
+	if (gpio_is_valid(qspi->cs_gpio)) {
+		ret = devm_gpio_request(dev, qspi->cs_gpio, dev_name(dev));
+		if (ret) {
+			dev_err(dev, "Invalid cs_gpio\n");
+			return ret;
+		}
+
+		gpio_direction_output(qspi->cs_gpio,
+				!(qspi->mode & SPI_CS_HIGH));
+	}
+
 	if (qspi->master->busy)
 		return -EBUSY;
 
@@ -753,7 +774,7 @@ static int zynq_qspi_probe(struct platform_device *pdev)
 	master->transfer_one = zynq_qspi_start_transfer;
 	master->prepare_transfer_hardware = zynq_prepare_transfer_hardware;
 	master->unprepare_transfer_hardware = zynq_unprepare_transfer_hardware;
-	master->flags = SPI_MASTER_QUAD_MODE;
+	master->flags = SPI_MASTER_QUAD_MODE | SPI_MASTER_GPIO_SS;
 
 	master->max_speed_hz = clk_get_rate(xqspi->refclk) / 2;
 	master->bits_per_word_mask = SPI_BPW_MASK(8);
