@@ -330,7 +330,8 @@ static int read_ear(struct spi_nor *nor, struct flash_info *info)
 	if (JEDEC_MFR(info) == CFI_MFR_AMD)
 		code = SPINOR_OP_BRRD;
 	/* This is actually Micron */
-	else if (JEDEC_MFR(info) == CFI_MFR_ST)
+	else if (JEDEC_MFR(info) == CFI_MFR_ST ||
+		 JEDEC_MFR(info) == CFI_MFR_MACRONIX)
 		code = SPINOR_OP_RDEAR;
 	else
 		return -EINVAL;
@@ -494,7 +495,8 @@ static int write_ear(struct spi_nor *nor, u32 addr)
 
 	if (nor->jedec_id == CFI_MFR_AMD)
 		code = SPINOR_OP_BRWR;
-	if (nor->jedec_id == CFI_MFR_ST) {
+	if (nor->jedec_id == CFI_MFR_ST ||
+	    nor->jedec_id == CFI_MFR_MACRONIX) {
 		write_enable(nor);
 		code = SPINOR_OP_WREAR;
 	}
