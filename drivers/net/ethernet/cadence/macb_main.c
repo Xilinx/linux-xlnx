@@ -931,7 +931,6 @@ static void gem_rx_refill(struct macb *bp)
 		/* Make hw descriptor updates visible to CPU */
 		rmb();
 
-		bp->rx_prepared_head++;
 		desc = macb_rx_desc(bp, entry);
 
 		if (!bp->rx_skbuff[entry]) {
@@ -965,6 +964,7 @@ static void gem_rx_refill(struct macb *bp)
 			desc->addr &= ~MACB_BIT(RX_USED);
 			desc->ctrl = 0;
 		}
+		bp->rx_prepared_head++;
 	}
 
 	/* Make descriptor updates visible to hardware */
