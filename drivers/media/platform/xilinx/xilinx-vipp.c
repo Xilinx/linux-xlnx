@@ -633,6 +633,7 @@ static int xvip_composite_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	xdev->dev = &pdev->dev;
+	mutex_init(&xdev->lock);
 	INIT_LIST_HEAD(&xdev->dmas);
 
 	ret = xvip_composite_v4l2_init(xdev);
@@ -658,6 +659,7 @@ static void xvip_composite_remove(struct platform_device *pdev)
 {
 	struct xvip_composite_device *xdev = platform_get_drvdata(pdev);
 
+	mutex_destroy(&xdev->lock);
 	xvip_graph_cleanup(xdev);
 	xvip_composite_v4l2_cleanup(xdev);
 }

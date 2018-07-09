@@ -590,9 +590,11 @@ static int xvip_dma_start_streaming(struct vb2_queue *vq, unsigned int count)
 	 * Use the pipeline object embedded in the first DMA object that starts
 	 * streaming.
 	 */
+	mutex_lock(&dma->xdev->lock);
 	pipe = to_xvip_pipeline(&dma->video) ? : &dma->pipe;
 
 	ret = video_device_pipeline_start(&dma->video, &pipe->pipe);
+	mutex_unlock(&dma->xdev->lock);
 	if (ret < 0)
 		goto error;
 
