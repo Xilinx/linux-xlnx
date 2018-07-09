@@ -33,6 +33,9 @@ bool zynq_efuse_cpu_state(int cpu)
 	if (!cpu)
 		return true;
 
+	if (!zynq_efuse_base)
+		return true;
+
 	state = readl(zynq_efuse_base + EFUSE_STATUS_OFFSET);
 	state &= EFUSE_STATUS_CPU_BIT;
 
@@ -56,13 +59,13 @@ int __init zynq_early_efuse_init(void)
 	np = of_find_compatible_node(NULL, NULL, "xlnx,zynq-efuse");
 	if (!np) {
 		pr_err("%s: no efuse node found\n", __func__);
-		BUG();
+		return -1;
 	}
 
 	zynq_efuse_base = of_iomap(np, 0);
 	if (!zynq_efuse_base) {
 		pr_err("%s: Unable to map I/O memory\n", __func__);
-		BUG();
+		return -1;
 	}
 
 	np->data = (__force void *)zynq_efuse_base;
