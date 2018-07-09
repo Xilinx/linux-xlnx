@@ -32,6 +32,7 @@
  * @num_subdevs: number of subdevs in the pipeline
  * @dmas: list of DMA channels at the pipeline output and input
  * @v4l2_caps: V4L2 capabilities of the whole device (see VIDIOC_QUERYCAP)
+ * @lock: This is to ensure all dma path entities acquire same pipeline object
  */
 struct xvip_composite_device {
 	struct v4l2_device v4l2_dev;
@@ -44,6 +45,7 @@ struct xvip_composite_device {
 
 	struct list_head dmas;
 	u32 v4l2_caps;
+	struct mutex lock; /* lock to protect xvip pipeline instance */
 };
 
 bool xvip_subdev_set_streaming(struct xvip_composite_device *xdev,
