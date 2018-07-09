@@ -371,8 +371,8 @@ static inline void reg_writel(void __iomem *base, int offset, u32 val)
 
 static inline void reg_writeq(void __iomem *base, int offset, u64 val)
 {
-	writel(upper_32_bits(val), base + offset);
-	writel(lower_32_bits(val), base + offset + 4);
+	writel(lower_32_bits(val), base + offset);
+	writel(upper_32_bits(val), base + offset + 4);
 }
 
 static inline u32 reg_readl(void __iomem *base, int offset)
