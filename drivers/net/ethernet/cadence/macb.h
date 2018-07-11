@@ -1050,6 +1050,7 @@ struct macb {
 	int 			link;
 	int 			speed;
 	int 			duplex;
+	int 			fixed_link;
 
 	u32			caps;
 	unsigned int		dma_burst_length;
