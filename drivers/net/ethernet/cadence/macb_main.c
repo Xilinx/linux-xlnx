@@ -3735,6 +3735,7 @@ static int macb_probe(struct platform_device *pdev)
 
 	/* Power up the PHY if there is a GPIO reset */
 	phy_node = of_parse_phandle(np, "phy-handle", 0);
+	bp->fixed_link = 0;
 	if (!phy_node && of_phy_is_fixed_link(np)) {
 		err = of_phy_register_fixed_link(np);
 		if (err < 0) {
@@ -3742,6 +3743,7 @@ static int macb_probe(struct platform_device *pdev)
 			goto err_out_free_netdev;
 		}
 		phy_node = of_node_get(np);
+		bp->fixed_link = 1;
 	} else {
 		int gpio = of_get_named_gpio(phy_node, "reset-gpios", 0);
 		if (gpio_is_valid(gpio)) {
@@ -3775,9 +3777,26 @@ static int macb_probe(struct platform_device *pdev)
 		goto err_out_unregister_netdev;
 	}
 
-	err = macb_mii_init(bp);
-	if (err)
-		goto err_out_unregister_netdev;
+	if(bp->fixed_link){
+		phydev = of_phy_connect(dev, bp->phy_node,
+					&macb_handle_link_change, 0,
+					bp->phy_interface);
+		if (phydev){
+			phydev->advertising = phydev->supported;
+			
+			bp->link = phydev->link;
+			bp->speed = phydev->speed;
+			bp->duplex = phydev->duplex;
+			bp->phy_dev = phydev;
+		}else{
+			dev_err(&pdev->dev, "fixed-link, call of_phy_connect() failed\n");
+			goto err_out_unregister_netdev;
+		}
+	}else{
+		err = macb_mii_init(bp);
+		if (err)
+			goto err_out_unregister_netdev;
+	}
 
 	netif_carrier_off(dev);
 
