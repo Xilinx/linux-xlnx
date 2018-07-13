@@ -196,7 +196,7 @@ static int zynqmp_pll_set_rate(struct clk_hw *hw, unsigned long rate,
 	struct zynqmp_pll *clk = to_zynqmp_pll(hw);
 	u32 clk_id = clk->clk_id;
 	const char *clk_name = clk_hw_get_name(hw);
-	u32 fbdiv, data;
+	u32 fbdiv;
 	long rate_div, frac, m, f;
 	int ret;
 	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
@@ -229,8 +229,7 @@ static int zynqmp_pll_set_rate(struct clk_hw *hw, unsigned long rate,
 			pr_warn_once("%s() set divider failed for %s, ret = %d\n",
 				     __func__, clk_name, ret);
 
-		data = (FRAC_DIV * f) / FRAC_DIV;
-		eemi_ops->ioctl(0, IOCTL_SET_PLL_FRAC_DATA, clk_id, data, NULL);
+		eemi_ops->ioctl(0, IOCTL_SET_PLL_FRAC_DATA, clk_id, f, NULL);
 
 		return (rate + frac);
 	}
