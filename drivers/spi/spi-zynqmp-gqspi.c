@@ -1168,9 +1168,23 @@ static int __maybe_unused zynqmp_runtime_resume(struct device *dev)
 	return 0;
 }
 
+static int __maybe_unused zynqmp_runtime_idle(struct device *dev)
+{
+	struct platform_device *pdev = to_platform_device(dev);
+	struct spi_master *master = platform_get_drvdata(pdev);
+	struct zynqmp_qspi *xqspi = spi_master_get_devdata(master);
+	u32 value;
+
+	value = zynqmp_gqspi_read(xqspi, GQSPI_EN_OFST);
+	if (value)
+		return -EBUSY;
+
+	return 0;
+}
+
 static const struct dev_pm_ops zynqmp_qspi_dev_pm_ops = {
 	SET_RUNTIME_PM_OPS(zynqmp_runtime_suspend,
-			   zynqmp_runtime_resume, NULL)
+			   zynqmp_runtime_resume, zynqmp_runtime_idle)
 	SET_SYSTEM_SLEEP_PM_OPS(zynqmp_qspi_suspend, zynqmp_qspi_resume)
 };
 
