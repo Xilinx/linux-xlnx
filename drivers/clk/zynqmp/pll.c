@@ -215,7 +215,7 @@ static int zynqmp_pll_set_rate(struct clk_hw *hw, unsigned long rate,
 
 		/* Account for vpll_to_lpd and dp_video_ref */
 		if (children > 2)
-			WARN(1, "Two devices are using vpll which is forbidden\n");
+			WARN(1, "More than two devices are using the vpll, which is forbidden\n");
 
 		rate_div = ((rate * FRAC_DIV) / parent_rate);
 		m = rate_div / FRAC_DIV;
