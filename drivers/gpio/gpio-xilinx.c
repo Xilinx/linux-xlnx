@@ -363,7 +363,7 @@ static void xgpio_irq_unmask(struct irq_data *irq_data)
 static int xgpio_set_irq_type(struct irq_data *irq_data, unsigned int type)
 {
 	/* Only rising edge case is supported now */
-	if (type == IRQ_TYPE_EDGE_RISING)
+	if (type & IRQ_TYPE_EDGE_RISING)
 		return 0;
 
 	return -EINVAL;
