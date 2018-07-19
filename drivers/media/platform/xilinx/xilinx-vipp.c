@@ -34,7 +34,7 @@
  * This is for backward compatibility for existing applications,
  * and planned to be deprecated
  */
-static bool xvip_is_mplane = true;
+static bool xvip_is_mplane = false;
 MODULE_PARM_DESC(is_mplane,
 		 "v4l2 device capability to handle multi planar formats");
 module_param_named(is_mplane, xvip_is_mplane, bool, 0444);
