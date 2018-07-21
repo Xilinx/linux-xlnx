@@ -25,14 +25,58 @@
 #define IXR_FPGA_DONE_MASK	0X00000008U
 #define IXR_FPGA_ENCRYPTION_EN	0x00000008U
 
+#define READ_DMA_SIZE		0x200
+#define DUMMY_FRAMES_SIZE	0x64
+
+static bool readback_type;
+module_param(readback_type, bool, 0644);
+MODULE_PARM_DESC(readback_type,
+		 "readback_type 0-configuration register read "
+		 "1- configuration data read (default: 0)");
+
+/**
+ * struct zynqmp_configreg - Configuration register offsets
+ * @reg:	Name of the configuration register.
+ * @offset:	Register offset.
+ */
+struct zynqmp_configreg {
+	char *reg;
+	u32 offset;
+};
+
+static struct zynqmp_configreg cfgreg[] = {
+	{.reg = "CRC",		.offset = 0},
+	{.reg = "FAR",		.offset = 1},
+	{.reg = "FDRI",		.offset = 2},
+	{.reg = "FDRO",		.offset = 3},
+	{.reg = "CMD",		.offset = 4},
+	{.reg = "CTRL0",	.offset = 5},
+	{.reg = "MASK",		.offset = 6},
+	{.reg = "STAT",		.offset = 7},
+	{.reg = "LOUT",		.offset = 8},
+	{.reg = "COR0",		.offset = 9},
+	{.reg = "MFWR",		.offset = 10},
+	{.reg = "CBC",		.offset = 11},
+	{.reg = "IDCODE",	.offset = 12},
+	{.reg = "AXSS",		.offset = 13},
+	{.reg = "COR1",		.offset = 14},
+	{.reg = "WBSTR",	.offset = 16},
+	{.reg = "TIMER",	.offset = 17},
+	{.reg = "BOOTSTS",	.offset = 22},
+	{.reg = "CTRL1",	.offset = 24},
+	{}
+};
+
 /**
  * struct zynqmp_fpga_priv - Private data structure
  * @dev:	Device data structure
  * @flags:	flags which is used to identify the bitfile type
+ * @size:	Size of the Bit-stream used for readback
  */
 struct zynqmp_fpga_priv {
 	struct device *dev;
 	u32 flags;
+	u32 size;
 };
 
 static int zynqmp_fpga_ops_write_init(struct fpga_manager *mgr,
@@ -61,6 +105,7 @@ static int zynqmp_fpga_ops_write(struct fpga_manager *mgr,
 		return -ENXIO;
 
 	priv = mgr->priv;
+	priv->size = size;
 
 	if (mgr->flags & IXR_FPGA_ENCRYPTION_EN)
 		dma_size = size + ENCRYPTED_KEY_LEN;
@@ -111,11 +156,92 @@ static enum fpga_mgr_states zynqmp_fpga_ops_state(struct fpga_manager *mgr)
 	return FPGA_MGR_STATE_UNKNOWN;
 }
 
+static int zynqmp_fpga_read_cfgreg(struct fpga_manager *mgr,
+				   struct seq_file *s)
+{
+	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
+	int ret, val;
+	unsigned int *buf;
+	dma_addr_t dma_addr;
+	struct zynqmp_configreg *p = cfgreg;
+
+	buf = dma_zalloc_coherent(mgr->dev.parent, READ_DMA_SIZE,
+				  &dma_addr, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	seq_puts(s, "zynqMP FPGA Configuration register contents are\n");
+
+	while (p->reg) {
+		ret = eemi_ops->fpga_read(p->offset, dma_addr, readback_type,
+					  &val);
+		if (ret)
+			goto free_dmabuf;
+		seq_printf(s, "%s --> \t %x \t\r\n", p->reg, val);
+		p++;
+	}
+
+free_dmabuf:
+	dma_free_coherent(mgr->dev.parent, READ_DMA_SIZE, buf,
+			  dma_addr);
+
+	return ret;
+}
+
+static int zynqmp_fpga_read_cfgdata(struct fpga_manager *mgr,
+				    struct seq_file *s)
+{
+	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
+	struct zynqmp_fpga_priv *priv;
+	int ret, data_offset;
+	unsigned int *buf;
+	dma_addr_t dma_addr;
+	size_t size;
+
+	priv = mgr->priv;
+	size = priv->size + READ_DMA_SIZE + DUMMY_FRAMES_SIZE;
+
+	buf = dma_zalloc_coherent(mgr->dev.parent, size, &dma_addr,
+				  GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	seq_puts(s, "zynqMP FPGA Configuration data contents are\n");
+	ret = eemi_ops->fpga_read((priv->size + DUMMY_FRAMES_SIZE) / 4,
+				  dma_addr, readback_type, &data_offset);
+	if (ret)
+		goto free_dmabuf;
+
+	seq_write(s, &buf[data_offset], priv->size);
+
+free_dmabuf:
+	dma_free_coherent(mgr->dev.parent, size, buf, dma_addr);
+
+	return ret;
+}
+
+static int zynqmp_fpga_ops_read(struct fpga_manager *mgr, struct seq_file *s)
+{
+	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
+	int ret;
+
+	if (!eemi_ops || !eemi_ops->fpga_read)
+		return -ENXIO;
+
+	if (readback_type)
+		ret = zynqmp_fpga_read_cfgdata(mgr, s);
+	else
+		ret = zynqmp_fpga_read_cfgreg(mgr, s);
+
+	return ret;
+}
+
 static const struct fpga_manager_ops zynqmp_fpga_ops = {
 	.state = zynqmp_fpga_ops_state,
 	.write_init = zynqmp_fpga_ops_write_init,
 	.write = zynqmp_fpga_ops_write,
 	.write_complete = zynqmp_fpga_ops_write_complete,
+	.read = zynqmp_fpga_ops_read,
 };
 
 static int zynqmp_fpga_probe(struct platform_device *pdev)
