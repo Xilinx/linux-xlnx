@@ -78,7 +78,12 @@ static int zynqmp_fpga_ops_write(struct fpga_manager *mgr,
 
 	wmb(); /* ensure all writes are done before initiate FW call */
 
-	ret = eemi_ops->fpga_load(dma_addr, dma_addr + size, mgr->flags);
+	if (mgr->flags & IXR_FPGA_ENCRYPTION_EN)
+		ret = eemi_ops->fpga_load(dma_addr, dma_addr + size,
+							mgr->flags);
+	else
+		ret = eemi_ops->fpga_load(dma_addr, size,
+						mgr->flags);
 
 	dma_free_coherent(priv->dev, dma_size, kbuf, dma_addr);
 
