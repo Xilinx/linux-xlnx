@@ -18,6 +18,13 @@ config FPGA_REGION
 	  FPGA Regions allow loading FPGA images under control of
 	  the Device Tree.
 
+config FPGA_MGR_DEBUG_FS
+	tristate "FPGA debug fs"
+	select DEBUG_FS
+	help
+	  FPGA manager debug provides support for reading fpga configuration
+	  information.
+
 config FPGA_MGR_ICE40_SPI
 	tristate "Lattice iCE40 SPI"
 	depends on OF && SPI
