@@ -356,6 +356,36 @@ static int zynqmp_pm_fpga_get_status(u32 *value)
 }
 
 /**
+ * zynqmp_pm_fpga_read - Perform the fpga configuration readback
+ * @reg_numframes: Configuration register offset (or) Number of frames to read
+ * @phys_address: Physical Address of the buffer
+ * @readback_type: Type of fpga readback operation
+ * @value: Value to read
+ *
+ * This function provides access to xilfpga library to perform
+ * fpga configuration readback.
+ *
+ * Return:	Returns status, either success or error+reason
+ */
+static int zynqmp_pm_fpga_read(const u32 reg_numframes, const u64 phys_address,
+			       u32 readback_type, u32 *value)
+{
+	u32 ret_payload[PAYLOAD_ARG_CNT];
+	int ret;
+
+	if (!value)
+		return -EINVAL;
+
+	ret = zynqmp_pm_invoke_fn(PM_FPGA_READ, reg_numframes,
+				  lower_32_bits(phys_address),
+				  upper_32_bits(phys_address), readback_type,
+				  ret_payload);
+	*value = ret_payload[1];
+
+	return ret;
+}
+
+/**
  * zynqmp_pm_request_suspend - PM call to request for another PU or subsystem to
  *					be suspended gracefully.
  * @node:	Node ID of the targeted PU or subsystem
@@ -950,6 +980,7 @@ static const struct zynqmp_eemi_ops eemi_ops = {
 	.reset_get_status = zynqmp_pm_reset_get_status,
 	.fpga_load = zynqmp_pm_fpga_load,
 	.fpga_get_status = zynqmp_pm_fpga_get_status,
+	.fpga_read = zynqmp_pm_fpga_read,
 	.sha_hash = zynqmp_pm_sha_hash,
 	.rsa = zynqmp_pm_rsa,
 	.request_suspend = zynqmp_pm_request_suspend,

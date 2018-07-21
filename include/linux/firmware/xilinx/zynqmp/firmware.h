@@ -126,6 +126,7 @@ enum pm_api_id {
 	PM_CLOCK_GETRATE,
 	PM_CLOCK_SETPARENT,
 	PM_CLOCK_GETPARENT,
+	PM_FPGA_READ = 46,
 };
 
 /* PMU-FW return status codes */
@@ -540,6 +541,8 @@ struct zynqmp_eemi_ops {
 	int (*reset_get_status)(const enum zynqmp_pm_reset reset, u32 *status);
 	int (*fpga_load)(const u64 address, const u32 size, const u32 flags);
 	int (*fpga_get_status)(u32 *value);
+	int (*fpga_read)(const u32 reg_numframes, const u64 phys_address,
+			 u32 readback_type, u32 *value);
 	int (*sha_hash)(const u64 address, const u32 size, const u32 flags);
 	int (*rsa)(const u64 address, const u32 size, const u32 flags);
 	int (*request_suspend)(const u32 node,
