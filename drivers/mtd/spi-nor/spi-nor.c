@@ -331,7 +331,8 @@ static int read_ear(struct spi_nor *nor, struct flash_info *info)
 		code = SPINOR_OP_BRRD;
 	/* This is actually Micron */
 	else if (JEDEC_MFR(info) == CFI_MFR_ST ||
-		 JEDEC_MFR(info) == CFI_MFR_MACRONIX)
+		 JEDEC_MFR(info) == CFI_MFR_MACRONIX ||
+		 JEDEC_MFR(info) == CFI_MFR_ISSI)
 		code = SPINOR_OP_RDEAR;
 	else
 		return -EINVAL;
@@ -496,7 +497,8 @@ static int write_ear(struct spi_nor *nor, u32 addr)
 	if (nor->jedec_id == CFI_MFR_AMD)
 		code = SPINOR_OP_BRWR;
 	if (nor->jedec_id == CFI_MFR_ST ||
-	    nor->jedec_id == CFI_MFR_MACRONIX) {
+	    nor->jedec_id == CFI_MFR_MACRONIX ||
+	    nor->jedec_id == CFI_MFR_ISSI) {
 		write_enable(nor);
 		code = SPINOR_OP_WREAR;
 	}
@@ -1348,6 +1350,12 @@ static const struct flash_info spi_nor_ids[] = {
 	{ "640s33b",  INFO(0x898913, 0, 64 * 1024, 128, 0) },
 
 	/* ISSI */
+	{ "is25lp080d", INFO(0x9d6014, 0, 64 * 1024, 32, SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ | SPI_NOR_HAS_LOCK) },
+	{ "is25wp080d", INFO(0x9d7014, 0, 64 * 1024, 32, SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ | SPI_NOR_HAS_LOCK) },
+	{ "is25lp016d", INFO(0x9d6015, 0, 64 * 1024, 32, SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ | SPI_NOR_HAS_LOCK) },
+	{ "is25wp016d", INFO(0x9d7015, 0, 64 * 1024, 32, SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ | SPI_NOR_HAS_LOCK) },
+	{ "is25lp032d", INFO(0x9d6016, 0, 64 * 1024, 64, SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ | SPI_NOR_HAS_LOCK) },
+	{ "is25wp032d", INFO(0x9d7016, 0, 64 * 1024, 64, SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ | SPI_NOR_HAS_LOCK) },
 	{ "is25lp064a", INFO(0x9d6017, 0, 64 * 1024, 128, SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ | SPI_NOR_HAS_LOCK) },
 	{ "is25wp064a", INFO(0x9d7017, 0, 64 * 1024, 128, SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ | SPI_NOR_HAS_LOCK) },
 	{ "is25lp128f", INFO(0x9d6018, 0, 64 * 1024, 256, SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ | SPI_NOR_HAS_LOCK) },
