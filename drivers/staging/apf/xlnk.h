@@ -128,16 +128,6 @@ union xlnk_args {
 		xlnk_uint_type chan1_data_width;
 	} dmaregister;
 	struct __attribute__ ((__packed__)) {
-		xlnk_char_type name[32];
-		xlnk_uint_type id;
-		xlnk_intptr_type base;
-		xlnk_uint_type size;
-		xlnk_uint_type mm2s_chan_num;
-		xlnk_uint_type mm2s_chan_irq;
-		xlnk_uint_type s2mm_chan_num;
-		xlnk_uint_type s2mm_chan_irq;
-	} mcdmaregister;
-	struct __attribute__ ((__packed__)) {
 		xlnk_intptr_type phys_addr;
 		xlnk_uint_type size;
 		xlnk_int_type action;

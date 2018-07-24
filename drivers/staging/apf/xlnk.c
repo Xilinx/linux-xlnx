@@ -60,16 +60,6 @@
 #include "xilinx-dma-apf.h"
 #endif
 
-#ifdef CONFIG_XILINX_MCDMA
-#include "xdma-if.h"
-#include "xdma.h"
-
-static void xdma_if_device_release(struct device *op)
-{
-}
-
-#endif
-
 #define DRIVER_NAME  "xlnk"
 #define DRIVER_VERSION  "0.2"
 
@@ -140,11 +130,6 @@ struct xlnk_device_pack {
 	struct xdma_channel_config dma_chan_cfg[4];  /* for xidane dma only */
 	struct xdma_device_config dma_dev_cfg;	   /* for xidane dma only */
 #endif
-
-#ifdef CONFIG_XILINX_MCDMA
-	struct xdma_device_info mcdma_dev_cfg;	 /* for mcdma only */
-#endif
-
 };
 
 static struct semaphore xlnk_devpack_sem;
@@ -711,71 +696,6 @@ static int xlnk_dmaregister(char *name,
 	return status;
 }
 
-static int xlnk_mcdmaregister(char *name, unsigned int id,
-			      xlnk_intptr_type base, unsigned int size,
-			      unsigned int mm2s_chan_num,
-			      unsigned int mm2s_chan_irq,
-			      unsigned int s2mm_chan_num,
-			      unsigned int s2mm_chan_irq,
-			      xlnk_intptr_type *handle)
-{
-	int status = -1;
-
-#ifdef CONFIG_XILINX_MCDMA
-	struct xlnk_device_pack *devpack;
-
-	if (strcmp(name, "xdma"))
-		return -EINVAL;
-
-	devpack = xlnk_devpacks_find(base);
-	if (devpack) {
-		devpack->refs++;
-		*handle = (xlnk_intptr_type)devpack;
-		return 0;
-	}
-
-	devpack = xlnk_devpacks_alloc()
-	if (!devpack)
-		return -ENOMEM;
-
-	strcpy(devpack->name, name);
-	devpack->pdev.name = devpack->name;
-	devpack->pdev.id = id;
-
-	devpack->mcdma_dev_cfg.tx_chans	= mm2s_chan_num;
-	devpack->mcdma_dev_cfg.rx_chans	= s2mm_chan_num;
-	devpack->mcdma_dev_cfg.legacy_mode = XDMA_MCHAN_MODE;
-	devpack->mcdma_dev_cfg.device_id   = id;
-
-	devpack->pdev.dev.platform_data	 = &devpack->mcdma_dev_cfg;
-	devpack->pdev.dev.dma_mask = &dma_mask;
-	devpack->pdev.dev.coherent_dma_mask = dma_mask;
-	devpack->pdev.dev.release = xdma_if_device_release,
-
-	devpack->res[0].start = base;
-	devpack->res[0].end   = base + size - 1;
-	devpack->res[0].flags = IORESOURCE_MEM;
-
-	devpack->res[1].start = mm2s_chan_irq;
-	devpack->res[1].end   = s2mm_chan_irq;
-	devpack->res[1].flags = IORESOURCE_IRQ;
-
-	devpack->pdev.resource	  = devpack->res;
-	devpack->pdev.num_resources = 2;
-
-	status = platform_device_register(&devpack->pdev);
-	if (status) {
-		xlnk_devpacks_delete(devpack);
-		*handle = 0;
-	} else {
-		*handle = (xlnk_intptr_type)devpack;
-	}
-
-#endif
-
-	return status;
-}
-
 static int xlnk_allocbuf_ioctl(struct file *filp,
 			       unsigned int code,
 			       unsigned long args)
@@ -1173,33 +1093,6 @@ static int xlnk_dmaregister_ioctl(struct file *filp, unsigned int code,
 	return status;
 }
 
-static int xlnk_mcdmaregister_ioctl(struct file *filp,
-				    unsigned int code,
-				    unsigned long args)
-{
-	union xlnk_args temp_args;
-	int status;
-	xlnk_intptr_type handle;
-
-	status = copy_from_user(&temp_args, (void __user *)args,
-				sizeof(union xlnk_args));
-
-	if (status)
-		return -ENOMEM;
-
-	status = xlnk_mcdmaregister(temp_args.mcdmaregister.name,
-				    temp_args.mcdmaregister.id,
-				    temp_args.mcdmaregister.base,
-				    temp_args.mcdmaregister.size,
-				    temp_args.mcdmaregister.mm2s_chan_num,
-				    temp_args.mcdmaregister.mm2s_chan_irq,
-				    temp_args.mcdmaregister.s2mm_chan_num,
-				    temp_args.mcdmaregister.s2mm_chan_irq,
-				    &handle);
-
-	return status;
-}
-
 static int xlnk_devunregister_ioctl(struct file *filp,
 				    unsigned int code,
 				    unsigned long args)
@@ -1453,8 +1346,6 @@ static long xlnk_ioctl(struct file *filp,
 		return xlnk_devregister_ioctl(filp, code, args);
 	case XLNK_IOCDMAREGISTER:
 		return xlnk_dmaregister_ioctl(filp, code, args);
-	case XLNK_IOCMCDMAREGISTER:
-		return xlnk_mcdmaregister_ioctl(filp, code, args);
 	case XLNK_IOCDEVUNREGISTER:
 		return xlnk_devunregister_ioctl(filp, code, args);
 	case XLNK_IOCCACHECTRL:
