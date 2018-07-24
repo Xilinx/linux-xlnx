@@ -617,9 +617,9 @@ static int xlnk_dmaregister(char *name,
 		devpack->io_ptr = NULL;
 
 		devpack->dma_chan_cfg[0].include_dre = chan0_include_dre;
-		devpack->dma_chan_cfg[0].datawidth   = chan0_data_width;
+		devpack->dma_chan_cfg[0].datawidth = chan0_data_width;
 		devpack->dma_chan_cfg[0].irq = chan0_irq;
-		devpack->dma_chan_cfg[0].poll_mode   = chan0_poll_mode;
+		devpack->dma_chan_cfg[0].poll_mode = chan0_poll_mode;
 		devpack->dma_chan_cfg[0].type =
 			(chan0_dir == XLNK_DMA_FROM_DEVICE) ?
 				"axi-dma-s2mm-channel" :
@@ -1343,8 +1343,8 @@ static int xlnk_mmap(struct file *filp, struct vm_area_struct *vma)
 		xlnk_buf_process[bufid] = current->pid;
 	}
 	if (status) {
-		pr_err("xlnk_mmap failed with code %d\n", EAGAIN);
-		return -EAGAIN;
+		pr_err("%s failed with code %d\n", __func__, status);
+		return status;
 	}
 
 	xlnk_vma_open(vma);
