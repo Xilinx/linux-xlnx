@@ -52,7 +52,6 @@
 #include <linux/semaphore.h>
 
 #include "xlnk-ioctl.h"
-#include "xlnk-config.h"
 #include "xlnk-sysdef.h"
 #include "xlnk.h"
 
@@ -225,29 +224,6 @@ static void xlnk_devpacks_free_all(void)
 	}
 }
 
-static void xlnk_load_config_from_dt(struct platform_device *pdev)
-{
-	const char *dma_name = NULL;
-	struct xlnk_config_block block;
-
-	xlnk_init_config();
-	xlnk_get_config(&block);
-
-	if (of_property_read_string(xlnk_dev->of_node,
-				    "config-dma-type",
-				    &dma_name) == 0) {
-		if (strcmp(dma_name, "manual") == 0) {
-			block.valid_mask[xlnk_config_valid_dma_type] = 1;
-			block.dma_type = xlnk_config_dma_manual;
-		} else if (strcmp(dma_name, "standard") == 0) {
-			block.valid_mask[xlnk_config_valid_dma_type] = 1;
-		} else
-			pr_err("%s: Unrecognized DMA type %s\n",
-			       __func__, dma_name);
-	}
-	xlnk_set_config(&block);
-}
-
 static int xlnk_probe(struct platform_device *pdev)
 {
 	int err;
@@ -297,8 +273,6 @@ static int xlnk_probe(struct platform_device *pdev)
 
 	xlnk_pdev = pdev;
 	xlnk_dev = &pdev->dev;
-
-	xlnk_load_config_from_dt(pdev);
 
 	if (xlnk_pdev)
 		dev_info(&pdev->dev, "xlnk_pdev is not null\n");
@@ -681,8 +655,7 @@ static int xlnk_dmaregister(char *name,
 
 		devpack->pdev.resource = devpack->res;
 		devpack->pdev.num_resources = 1;
-		if (xlnk_config_dma_type(xlnk_config_dma_manual))
-			status = platform_device_register(&devpack->pdev);
+		status = platform_device_register(&devpack->pdev);
 		if (status) {
 			xlnk_devpacks_delete(devpack);
 			*handle = 0;
@@ -1164,31 +1137,6 @@ static int xlnk_cachecontrol_ioctl(struct file *filp, unsigned int code,
 	return 0;
 }
 
-static int xlnk_config_ioctl(struct file *filp, unsigned long args)
-{
-	struct xlnk_config_block block;
-	int status, setting = 0, i;
-
-	xlnk_config_clear_block(&block);
-	status = copy_from_user(&block, (void __user *)args,
-				sizeof(struct xlnk_config_block));
-	if (status) {
-		pr_err("Error in copy_from_user. status= %d\n", status);
-		return -ENOMEM;
-	}
-	for (i = 0; i < xlnk_config_valid_size; i++)
-		if (block.valid_mask[i])
-			setting = 1;
-	if (setting) {
-		status = xlnk_set_config(&block);
-	} else {
-		xlnk_get_config(&block);
-		status = copy_to_user((void __user *)args, &block,
-				      sizeof(struct xlnk_config_block));
-	}
-	return status;
-}
-
 static int xlnk_memop_ioctl(struct file *filp, unsigned long arg_addr)
 {
 	union xlnk_args args;
@@ -1354,8 +1302,6 @@ static long xlnk_ioctl(struct file *filp,
 		return xlnk_shutdown(args);
 	case XLNK_IOCRECRES:
 		return xlnk_recover_resource(args);
-	case XLNK_IOCCONFIG:
-		return xlnk_config_ioctl(filp, args);
 	case XLNK_IOCMEMOP:
 		return xlnk_memop_ioctl(filp, args);
 	default:
