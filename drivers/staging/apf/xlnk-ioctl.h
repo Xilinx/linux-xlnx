@@ -28,7 +28,6 @@
 
 #define XLNK_IOCSHUTDOWN	_IOWR(XLNK_IOC_MAGIC, 100, unsigned long)
 #define XLNK_IOCRECRES		_IOWR(XLNK_IOC_MAGIC, 101, unsigned long)
-#define XLNK_IOCCONFIG		_IOWR(XLNK_IOC_MAGIC, 30, unsigned long)
 #define XLNK_IOC_MAXNR		101
 
 #endif
