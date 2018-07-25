@@ -28,6 +28,7 @@
 #define XSTC_GVBH_F1	0x88
 #define XSTC_GVSYNC_F1	0x8C
 #define XSTC_GVSH_F1	0x90
+#define XSTC_GASIZE_F1	0x94
 #define XSTC_OFFSET	0x10000
 
 /* timing controller register bit */
@@ -331,6 +332,10 @@ void xlnx_stc_sig(void __iomem *base, struct videomode *vm)
 	reg = hactive & XSTC_GA_ACTSIZE_MASK;
 	reg |= (vactive & XSTC_GA_ACTSIZE_MASK) << 16;
 	xlnx_stc_writel(base, XSTC_GASIZE, reg);
+
+	if (vm->flags & DISPLAY_FLAGS_INTERLACED)
+		xlnx_stc_writel(base, XSTC_GASIZE_F1, reg);
+
 	reg = hsync_start & XSTC_GH1_SYNCSTART_MASK;
 	reg |= (hbackporch_start << XSTC_GH1_BPSTART_SHIFT) &
 	       XSTC_GH1_BPSTART_MASK;
