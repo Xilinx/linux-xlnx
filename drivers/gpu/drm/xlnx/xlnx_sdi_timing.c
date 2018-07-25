@@ -225,11 +225,13 @@ static void xlnx_stc_polarity(void __iomem *base,
  * xlnx_stc_hori_off - Configure horzontal timing offset
  * @base:	Base address of SDI Tx subsystem
  * @hori_off:	horizontal offset configuration data
+ * @flags:	Display flags
  *
  * This function configure horizontal offset
  */
 static void xlnx_stc_hori_off(void __iomem *base,
-			      struct xlnx_stc_hori_off *hori_off)
+			      struct xlnx_stc_hori_off *hori_off,
+			      enum display_flags flags)
 {
 	u32 reg;
 
@@ -246,16 +248,20 @@ static void xlnx_stc_hori_off(void __iomem *base,
 	xlnx_stc_writel(base, XSTC_GVSH_F0, reg);
 
 	/* Calculate and update Generator VBlank Hori field 1 */
-	reg = hori_off->v1blank_hori_start & XSTC_XVXHOX_HSTART_MASK;
-	reg |= (hori_off->v1blank_hori_end << XSTC_XVXHOX_HEND_SHIFT) &
-		XSTC_XVXHOX_HEND_MASK;
-	xlnx_stc_writel(base, XSTC_GVBH_F1, reg);
+	if (flags & DISPLAY_FLAGS_INTERLACED) {
+		reg = hori_off->v1blank_hori_start & XSTC_XVXHOX_HSTART_MASK;
+		reg |= (hori_off->v1blank_hori_end << XSTC_XVXHOX_HEND_SHIFT) &
+			XSTC_XVXHOX_HEND_MASK;
+		xlnx_stc_writel(base, XSTC_GVBH_F1, reg);
+	}
 
 	/* Calculate and update Generator VBlank Hori field 1 */
-	reg =  hori_off->v1sync_hori_start & XSTC_XVXHOX_HSTART_MASK;
-	reg |= (hori_off->v1sync_hori_end << XSTC_XVXHOX_HEND_SHIFT) &
-		XSTC_XVXHOX_HEND_MASK;
-	xlnx_stc_writel(base, XSTC_GVSH_F1, reg);
+	if (flags & DISPLAY_FLAGS_INTERLACED) {
+		reg = hori_off->v1sync_hori_start & XSTC_XVXHOX_HSTART_MASK;
+		reg |= (hori_off->v1sync_hori_end << XSTC_XVXHOX_HEND_SHIFT) &
+			XSTC_XVXHOX_HEND_MASK;
+		xlnx_stc_writel(base, XSTC_GVSH_F1, reg);
+	}
 }
 
 /**
@@ -398,7 +404,7 @@ void xlnx_stc_sig(void __iomem *base, struct videomode *vm)
 		xlnx_stc_writel(base, XSTC_GENC, reg);
 	}
 
-	xlnx_stc_hori_off(base, &hori_off);
+	xlnx_stc_hori_off(base, &hori_off, vm->flags);
 	/* set up polarity */
 	memset(&polarity, 0x0, sizeof(polarity));
 	polarity.hsync = !!(vm->flags & DISPLAY_FLAGS_HSYNC_LOW);
