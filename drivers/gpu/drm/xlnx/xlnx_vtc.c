@@ -264,10 +264,12 @@ static int xlnx_vtc_set_timing(struct xlnx_bridge *bridge,
 	xlnx_vtc_writel(vtc->base, XVTC_GVSHOFF_F0, reg);
 
 	/* Calculate and update Generator VBlank Hori field 1 */
-	reg = hactive & XVTC_XVXHOX_HSTART_MASK;
-	reg |= (hactive << XVTC_XVXHOX_HEND_SHIFT) &
-		XVTC_XVXHOX_HEND_MASK;
-	xlnx_vtc_writel(vtc->base, XVTC_GVBHOFF_F1, reg);
+	if (vm->flags & DISPLAY_FLAGS_INTERLACED) {
+		reg = hactive & XVTC_XVXHOX_HSTART_MASK;
+		reg |= (hactive << XVTC_XVXHOX_HEND_SHIFT) &
+			XVTC_XVXHOX_HEND_MASK;
+		xlnx_vtc_writel(vtc->base, XVTC_GVBHOFF_F1, reg);
+	}
 
 	/* Calculate and update Generator VBlank Hori field 1 */
 	if (vm->flags & DISPLAY_FLAGS_INTERLACED) {
@@ -279,7 +281,9 @@ static int xlnx_vtc_set_timing(struct xlnx_bridge *bridge,
 		reg |= (hsync_start << XVTC_XVXHOX_HEND_SHIFT) &
 			XVTC_XVXHOX_HEND_MASK;
 	}
-	xlnx_vtc_writel(vtc->base, XVTC_GVSHOFF_F1, reg);
+
+	if (vm->flags & DISPLAY_FLAGS_INTERLACED)
+		xlnx_vtc_writel(vtc->base, XVTC_GVSHOFF_F1, reg);
 
 	/* configure polarity of signals */
 	reg = 0;
