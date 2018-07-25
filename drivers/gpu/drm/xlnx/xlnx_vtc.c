@@ -38,6 +38,7 @@
 #define XVTC_GVBHOFF_F1		0x088
 #define XVTC_GVSYNC_F1		0x08C
 #define XVTC_GVSHOFF_F1		0x090
+#define XVTC_GASIZE_F1		0x094
 
 /* vtc control register bits */
 #define XVTC_CTL_SWRESET	BIT(31)
@@ -226,6 +227,9 @@ static int xlnx_vtc_set_timing(struct xlnx_bridge *bridge,
 	reg = hactive & XVTC_GA_ACTSIZE_MASK;
 	reg |= (vactive & XVTC_GA_ACTSIZE_MASK) << 16;
 	xlnx_vtc_writel(vtc->base, XVTC_GASIZE, reg);
+
+	if (vm->flags & DISPLAY_FLAGS_INTERLACED)
+		xlnx_vtc_writel(vtc->base, XVTC_GASIZE_F1, reg);
 
 	reg = hsync_start & XVTC_GH1_SYNCSTART_MASK;
 	reg |= (hbackporch_start << XVTC_GH1_BPSTART_SHIFT) &
