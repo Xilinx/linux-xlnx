@@ -2,6 +2,7 @@
 obj-$(CONFIG_SND_SOC_XILINX_DP) += xilinx-dp-pcm.o
 obj-$(CONFIG_SND_SOC_XILINX_DP) += xilinx-dp-codec.o
 obj-$(CONFIG_SND_SOC_XILINX_DP) += xilinx-dp-card.o
+obj-$(CONFIG_SND_SOC_XILINX_SDI) += xlnx_sdi_audio.o
 snd-soc-xlnx-i2s-objs      := xlnx_i2s.o
 obj-$(CONFIG_SND_SOC_XILINX_I2S) += snd-soc-xlnx-i2s.o
 snd-soc-xlnx-formatter-pcm-objs := xlnx_formatter_pcm.o
