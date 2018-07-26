@@ -6,6 +6,14 @@ config SND_SOC_XILINX_DP
 	help
 	  Audio support the for Xilinx DisplayPort.
 
+config SND_SOC_XILINX_SDI
+	tristate "Audio support for the the Xilinx SDI"
+	depends on DRM_XLNX_SDI
+	depends on VIDEO_XILINX_SDIRXSS
+	help
+	  Select this option to enable Xilinx SDI Audio.This enables
+	  SDI audio playback and capture using xilinx soft IP
+
 config SND_SOC_XILINX_I2S
 	tristate "Audio support for the Xilinx I2S"
 	help
