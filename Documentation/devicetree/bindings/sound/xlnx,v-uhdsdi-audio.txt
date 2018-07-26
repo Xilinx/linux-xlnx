@@ -1,0 +1,60 @@
+Device-Tree bindings for Xilinx SDI audio
+
+The IP core supports embed/extract of audio in SDI Tx and Rx
+protocol respectively. Reference to PG:
+https://www.xilinx.com/support/documentation/ip_documentation/v_uhdsdi_audio/v1_0/pg309-v-uhdsdi-audio.pdf
+
+Required properties:
+ - compatible: Should be one of:
+		"xlnx,v-uhdsdi-audio-2.0"
+		"xlnx,v-uhdsdi-audio-1.0"
+   Note: v1.0 (xlnx,v-uhdsdi-audio-1.0) is deprecated
+   and driver no longer supports it. Mandatory to upgrade to v2.0
+ - interrupts: Interrupt number.
+ - interrupts-parent: phandle for interrupt controller.
+ - reg: Base address and size of the IP core instance.
+ - xlnx,snd-pcm: reference to audio formatter block
+ - clock-names: List of input clocks.
+   Required elements for SDI Embed: "s_axi_aclk", "s_axis_clk", "sdi_embed_clk".
+   Required elements for SDI Extract: "s_axi_aclk", "sdi_extract_clk", "m_axis_clk".
+ - clocks: Input clock specifier. Refer to common clock bindings.
+
+SDI embed contains a output port to remote endpoint of SDI video Tx node.
+This pipeline should be described using the DT bindings defined in
+Documentation/devicetree/bindings/graph.txt
+
+Example:
+
+	audio_ss_0_v_uhdsdi_audio_extract_0: v_uhdsdi_audio@80080000 {
+		compatible = "xlnx,v-uhdsdi-audio-2.0";
+		clock-names = "s_axi_aclk", "sdi_extract_clk", "m_axis_clk";
+		clocks = <&misc_clk_0>, <&misc_clk_1>, <&misc_clk_0>;
+		interrupt-names = "interrupt";
+		interrupt-parent = <&gic>;
+		interrupts = <0 106 4>;
+		reg = <0x0 0x80080000 0x0 0x10000>;
+		xlnx,snd-pcm = <&audio_ss_0_audio_formatter_0>;
+	};
+
+	audio_ss_0_v_uhdsdi_audio_embed_0: v_uhdsdi_audio@80090000 {
+		compatible = "xlnx,v-uhdsdi-audio-2.0";
+		clock-names = "s_axi_aclk", "s_axis_clk", "sdi_embed_clk";
+		clocks = <&misc_clk_0>, <&misc_clk_0>, <&misc_clk_1>;
+		interrupt-names = "interrupt";
+		interrupt-parent = <&gic>;
+		interrupts = <0 107 4>;
+		reg = <0x0 0x80090000 0x0 0x10000>;
+		xlnx,snd-pcm = <&audio_ss_0_audio_formatter_0>;
+		sdi_av_port: port@0 {
+			reg = <0>;
+			sditx_audio_embed_src: endpoint {
+				remote-endpoint = <&sdi_audio_sink_port>;
+			};
+		};
+	};
+
+	Node 'v_smpte_uhdsdi_tx_ss' is documented in SDI Tx video bindings,
+	located at Documentation/devicetree/bindings/display/xlnx/xlnx,sdi-tx.txt.
+
+	Node 'audio_ss_0_audio_formatter_0' node is documented
+	at Documentation/devicetree/bindings/sound/xlnx,audio-formatter.txt
