@@ -11,6 +11,7 @@
 #include <linux/module.h>
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
+#include <drm/drm_modes.h>
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
 
@@ -173,7 +174,31 @@ struct dev_ctx {
 	void __iomem *base;
 	struct device *dev;
 	struct audio_params *params;
+	struct drm_display_mode *video_mode;
 	struct snd_pcm_substream *stream;
+};
+
+/**
+ * struct xsdi_aud_videostd - video properties
+ * @vdisplay: resolution(vertical)
+ * @vrefresh: refresh rate
+ */
+struct xsdi_aud_videostd {
+	u32 vdisplay;
+	u32 vrefresh[5];
+};
+
+/*
+ * programmable values for a given vdisplay and refresh combination
+ * Ex: To send/embed 48khz audio on 1080p@60 (1920x1080p => 1125 lines):
+ * number of audio samples = 48000 / (60 * 1125). Audio embed block maps
+ * video properties to index valus in the below table to program audio block.
+ */
+static const struct xsdi_aud_videostd xsdi_aud_videostd_table[] = {
+	/* vdisplay 24 25 30 50 60 */
+	{720,  {12, 11, 10, 9, 7} },
+	{1080, {6, 5, 4, 14, 13} },
+	{2160, {19, 20, 22, 24, 26} },
 };
 
 static void audio_enable(void __iomem *aud_base)
@@ -209,6 +234,34 @@ static void audio_reset_core(void __iomem *aud_base, bool reset)
 		val &= ~XSDIAUD_SOFT_RST_SCLK_MASK;
 		writel(val, aud_base + XSDIAUD_SOFT_RST_REG_OFFSET);
 	}
+}
+
+static int vdisplay_to_index(u32 vrefresh)
+{
+	int idx;
+
+	switch (vrefresh) {
+	case 24:
+		idx = 0;
+		break;
+	case 25:
+		idx = 1;
+		break;
+	case 30:
+		idx = 2;
+		break;
+	case 50:
+		idx = 3;
+		break;
+	case 60:
+		idx = 4;
+		break;
+	default:
+		idx = -1;
+		break;
+	}
+
+	return idx;
 }
 
 static void audio_rx_irq_enable(void __iomem *aud_base, bool enable)
@@ -508,6 +561,124 @@ static void xlnx_sdi_rx_pcm_shutdown(struct snd_pcm_substream *substream,
 	dev_info(dai->dev, " sdi rx audio disabled\n");
 }
 
+static int xlnx_sdi_tx_pcm_startup(struct snd_pcm_substream *substream,
+				   struct snd_soc_dai *dai)
+{
+	struct dev_ctx *ctx = dev_get_drvdata(dai->dev);
+	void __iomem *base = ctx->base;
+
+	audio_enable(base);
+	ctx->stream = substream;
+
+	dev_info(ctx->dev, " sdi tx audio enabled\n");
+	return 0;
+}
+
+static int xlnx_sdi_tx_hw_params(struct snd_pcm_substream *substream,
+				 struct snd_pcm_hw_params *params,
+				 struct snd_soc_dai *dai)
+{
+	int i;
+	u32 num_channels, sample_rate, sig_bits, sample_size, srate;
+	u32 val, vid_table_size, idx;
+	struct xsdi_aud_videostd const *item;
+	u32 vid_std = 0;
+
+	struct dev_ctx *ctx = dev_get_drvdata(dai->dev);
+	void __iomem *base = ctx->base;
+
+	/* video mode properties needed by audio driver are shared to audio
+	 * driver through a pointer in platform data. This is used here in
+	 * audio driver. The solution may be needed to modify/extend to avoid
+	 * probable error scenarios
+	 */
+	if (!ctx->video_mode || !ctx->video_mode->vdisplay ||
+	    !ctx->video_mode->vrefresh) {
+		dev_err(ctx->dev, "couldn't find video display properties\n");
+		return -EINVAL;
+	}
+
+	/* map video properties to properties in audio ip */
+	vid_table_size = ARRAY_SIZE(xsdi_aud_videostd_table);
+	for (i = 0; i < vid_table_size; i++) {
+		item = &xsdi_aud_videostd_table[i];
+		if (item->vdisplay == ctx->video_mode->vdisplay) {
+			idx = vdisplay_to_index(ctx->video_mode->vrefresh);
+			if (idx >= 0)
+				vid_std = item->vrefresh[idx];
+			break;
+		}
+	}
+
+	if (!vid_std) {
+		dev_err(ctx->dev, "couldn't map video properties to audio\n");
+		return -EINVAL;
+	}
+
+	val = readl(base + XSDIAUD_EMB_VID_CNTRL_REG_OFFSET);
+	val &= ~XSDIAUD_EMB_VID_CNT_STD_MASK;
+	val |= vid_std;
+	writel(val, base + XSDIAUD_EMB_VID_CNTRL_REG_OFFSET);
+
+	num_channels = params_channels(params);
+	sample_rate = params_rate(params);
+	sig_bits = snd_pcm_format_width(params_format(params));
+
+	dev_info(ctx->dev,
+		 "stream params: channels = %d sample_rate = %d bits = %d\n",
+		 num_channels, sample_rate, sig_bits);
+
+	switch (sample_rate) {
+	case 44100:
+		srate = XSDIAUD_SAMPRATE1;
+		break;
+	case 32000:
+		srate = XSDIAUD_SAMPRATE2;
+		break;
+	case 48000:
+	default:
+		srate = XSDIAUD_SAMPRATE0;
+		break;
+	}
+
+	/* TODO: support more channels; currently only 2 */
+	audio_set_channels(base, XSDIAUD_GROUP1, num_channels);
+
+	val = readl(base +  XSDIAUD_AUD_CNTRL_REG_OFFSET);
+	val &= ~XSDIAUD_EMB_AUD_CNT_SR_MASK;
+	val |= srate;
+	writel(val, base + XSDIAUD_AUD_CNTRL_REG_OFFSET);
+
+	if (sig_bits == 24)
+		sample_size = XSDIAUD_SAMPSIZE1;
+	else
+		sample_size = XSDIAUD_SAMPSIZE0;
+
+	val = readl(base +  XSDIAUD_AUD_CNTRL_REG_OFFSET);
+	val &= ~XSDIAUD_EMB_AUD_CNT_SS_MASK;
+	sample_size = sample_size << XSDIAUD_EMB_AUD_CNT_SS_SHIFT;
+	val |= sample_size;
+	writel(val, base + XSDIAUD_AUD_CNTRL_REG_OFFSET);
+
+	val = readl(base + XSDIAUD_EMB_VID_CNTRL_REG_OFFSET);
+	val |= XSDIAUD_EMB_VID_CNT_ELE_MASK;
+	writel(val, base + XSDIAUD_EMB_VID_CNTRL_REG_OFFSET);
+
+	return 0;
+}
+
+static void xlnx_sdi_tx_pcm_shutdown(struct snd_pcm_substream *substream,
+				     struct snd_soc_dai *dai)
+{
+	struct dev_ctx *ctx = dev_get_drvdata(dai->dev);
+	void __iomem *base = ctx->base;
+
+	audio_disable(base);
+	ctx->stream = NULL;
+
+	dev_info(ctx->dev, " sdi tx audio disabled\n");
+}
+
 static const struct snd_soc_component_driver xlnx_sdi_component = {
 	.name = "xlnx-sdi-dai-component",
 };
@@ -530,12 +701,34 @@ static struct snd_soc_dai_driver xlnx_sdi_rx_dai = {
 	.ops = &xlnx_sdi_rx_dai_ops,
 };
 
+static const struct snd_soc_dai_ops xlnx_sdi_tx_dai_ops = {
+	.startup =	xlnx_sdi_tx_pcm_startup,
+	.hw_params =	xlnx_sdi_tx_hw_params,
+	.shutdown =	xlnx_sdi_tx_pcm_shutdown,
+};
+
+static struct snd_soc_dai_driver xlnx_sdi_tx_dai = {
+	.name = "xlnx_sdi_tx",
+	.playback = {
+		.stream_name = "Playback",
+		.channels_min = 2,
+		.channels_max = 2,
+		.rates = SNDRV_PCM_RATE_32000 | SNDRV_PCM_RATE_44100 |
+			SNDRV_PCM_RATE_48000,
+		.formats = SNDRV_PCM_FMTBIT_S24_LE,
+	},
+	.ops = &xlnx_sdi_tx_dai_ops,
+};
+
 static int xlnx_sdi_audio_probe(struct platform_device *pdev)
 {
 	u32 val;
 	int ret;
 	struct dev_ctx *ctx;
 	struct resource *res;
+	struct device *video_dev;
+	struct device_node *video_node;
+	struct platform_device *video_pdev;
 	struct snd_soc_dai_driver *snd_dai;
 
 	ctx = devm_kzalloc(&pdev->dev, sizeof(struct dev_ctx), GFP_KERNEL);
@@ -575,6 +768,31 @@ static int xlnx_sdi_audio_probe(struct platform_device *pdev)
 		snd_dai = &xlnx_sdi_rx_dai;
 	} else {
 		ctx->mode = EMBED;
+		video_node = of_parse_phandle(pdev->dev.of_node,
+					      "xlnx,sdi-tx-video", 0);
+		if (!video_node) {
+			dev_err(ctx->dev, "video_node not found\n");
+			of_node_put(video_node);
+			return -ENODEV;
+		}
+
+		video_pdev = of_find_device_by_node(video_node);
+		if (!video_pdev) {
+			of_node_put(video_node);
+			return -ENODEV;
+		}
+
+		video_dev = &video_pdev->dev;
+		ctx->video_mode =
+			(struct drm_display_mode *)video_dev->platform_data;
+		/* invalid 'platform_data' implies video driver is not loaded */
+		if (!ctx->video_mode) {
+			of_node_put(video_node);
+			return -EPROBE_DEFER;
+		}
+
+		snd_dai = &xlnx_sdi_tx_dai;
+		of_node_put(video_node);
 	}
 
 	ret = devm_snd_soc_register_component(&pdev->dev, &xlnx_sdi_component,
