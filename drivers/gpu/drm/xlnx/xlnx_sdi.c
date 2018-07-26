@@ -42,6 +42,7 @@
 #define XSDI_TX_CTRL_INS_ST352		BIT(13)
 #define XSDI_TX_CTRL_OVR_ST352		BIT(14)
 #define XSDI_TX_CTRL_INS_SYNC_BIT	BIT(16)
+#define XSDI_TX_CTRL_USE_ANC_IN		BIT(18)
 #define XSDI_TX_CTRL_INS_LN		BIT(19)
 #define XSDI_TX_CTRL_INS_EDH		BIT(20)
 #define XSDI_TX_CTRL_MODE		0x7
@@ -159,6 +160,7 @@ enum payload_line_2 {
  * @in_fmt_prop_val: configurable media bus format value
  * @out_fmt: configurable bridge output media format
  * @out_fmt_prop_val: configurable media bus format value
+ * @video_mode: current display mode
  */
 struct xlnx_sdi {
 	struct drm_encoder encoder;
@@ -187,6 +189,7 @@ struct xlnx_sdi {
 	u32 in_fmt_prop_val;
 	struct drm_property *out_fmt;
 	u32 out_fmt_prop_val;
+	struct drm_display_mode video_mode;
 };
 
 #define connector_to_sdi(c) container_of(c, struct xlnx_sdi, connector)
@@ -756,7 +759,7 @@ static void xlnx_sdi_setup(struct xlnx_sdi *sdi)
 	reg = xlnx_sdi_readl(sdi->base, XSDI_TX_MDL_CTRL);
 	reg |= XSDI_TX_CTRL_INS_CRC | XSDI_TX_CTRL_INS_ST352 |
 		XSDI_TX_CTRL_OVR_ST352 | XSDI_TX_CTRL_INS_SYNC_BIT |
-		XSDI_TX_CTRL_INS_EDH;
+		XSDI_TX_CTRL_INS_EDH | XSDI_TX_CTRL_USE_ANC_IN;
 	xlnx_sdi_writel(sdi->base, XSDI_TX_MDL_CTRL, reg);
 	xlnx_sdi_writel(sdi->base, XSDI_TX_IER_STAT, XSDI_IER_EN_MASK);
 	xlnx_sdi_writel(sdi->base, XSDI_TX_GLBL_IER, 1);
@@ -861,6 +864,11 @@ static void xlnx_sdi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	} while (vtc_blank < sditx_blank);
 
 	vm.pixelclock = adjusted_mode->clock * 1000;
+
+	/* parameters for sdi audio */
+	sdi->video_mode.vdisplay = adjusted_mode->vdisplay;
+	sdi->video_mode.vrefresh = adjusted_mode->vrefresh;
+
 	xlnx_stc_sig(sdi->base, &vm);
 }
 
@@ -993,6 +1001,13 @@ static int xlnx_sdi_probe(struct platform_device *pdev)
 			return -EPROBE_DEFER;
 		}
 	}
+
+	/* video mode properties needed by audio driver are shared to audio
+	 * driver through a pointer in platform data. This will be used in
+	 * audio driver. The solution may be needed to modify/extend to avoid
+	 * probable error scenarios
+	 */
+	pdev->dev.platform_data = &sdi->video_mode;
 
 	return component_add(dev, &xlnx_sdi_component_ops);
 }
