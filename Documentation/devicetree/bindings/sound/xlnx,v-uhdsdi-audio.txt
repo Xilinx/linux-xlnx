@@ -1,0 +1,36 @@
+Device-Tree bindings for Xilinx SDI audio
+
+The IP core supports embed/extract of audio in SDI Tx and Rx
+protocol respectively. Reference to PG:
+https://www.xilinx.com/support/documentation/ip_documentation/v_uhdsdi_audio/v1_0/pg309-v-uhdsdi-audio.pdf
+
+Required properties:
+ - compatible: "xlnx,v-uhdsdi-audio-1.0"
+ - interrupts: Interrupt number.
+ - interrupts-parent: phandle for interrupt controller.
+ - reg: Base address and size of the IP core instance.
+ - xlnx,sdi-tx-video: Handle to SDI video Tx subsystem. Required only
+   when IP is used in embed mode and should point to sdi video tx
+   subsystem as mentioned in the subsystem DT documentation.
+
+Example:
+
+	audio_ss_0_v_uhdsdi_audio_extract_0: v_uhdsdi_audio@80080000 {
+		compatible = "xlnx,v-uhdsdi-audio-1.0";
+		interrupt-names = "interrupt";
+		interrupt-parent = <&gic>;
+		interrupts = <0 106 4>;
+		reg = <0x0 0x80080000 0x0 0x10000>;
+	};
+
+	audio_ss_0_v_uhdsdi_audio_embed_0: v_uhdsdi_audio@80090000 {
+		compatible = "xlnx,v-uhdsdi-audio-1.0";
+		interrupt-names = "interrupt";
+		interrupt-parent = <&gic>;
+		interrupts = <0 107 4>;
+		reg = <0x0 0x80090000 0x0 0x10000>;
+		xlnx,sdi-tx-video = <&v_smpte_uhdsdi_tx_ss>;
+	};
+
+	Node 'v_smpte_uhdsdi_tx_ss' is documented in SDI Tx video bindings,
+	located at Documentation/devicetree/bindings/display/xlnx/xlnx,sdi-tx.txt.
