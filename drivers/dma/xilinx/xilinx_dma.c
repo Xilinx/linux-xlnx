@@ -2194,7 +2194,6 @@ static int xilinx_dma_terminate_all(struct dma_chan *dchan)
 		dma_ctrl_clr(chan, XILINX_DMA_REG_DMACR,
 			     XILINX_CDMA_CR_SGMODE);
 
-	chan->idle = true;
 	return 0;
 }
 
@@ -2547,7 +2546,6 @@ static int xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 
 		chan->ctrl_offset = XILINX_DMA_MM2S_CTRL_OFFSET;
 		if (xdev->dma_config->dmatype == XDMA_TYPE_VDMA) {
-			chan->config.park = 1;
 			chan->desc_offset = XILINX_VDMA_MM2S_DESC_OFFSET;
 			chan->config.park = 1;
 
@@ -2573,7 +2571,6 @@ static int xilinx_dma_chan_probe(struct xilinx_dma_device *xdev,
 
 		chan->ctrl_offset = XILINX_DMA_S2MM_CTRL_OFFSET;
 		if (xdev->dma_config->dmatype == XDMA_TYPE_VDMA) {
-			chan->config.park = 1;
 			chan->desc_offset = XILINX_VDMA_S2MM_DESC_OFFSET;
 			chan->config.park = 1;
 
