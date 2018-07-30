@@ -646,57 +646,62 @@ zynqmp_disp_blend_set_output_fmt(struct zynqmp_disp_blend *blend, u32 fmt)
 }
 
 /**
- * zynqmp_disp_blend_layer_enable - Enable a layer
+ * zynqmp_disp_blend_layer_coeff - Set the coefficients for @layer
  * @blend: blend object
- * @layer: layer to enable
+ * @layer: layer to set the coefficients for
+ * @on: if layer is on / off
  *
- * Enable a layer @layer.
+ * Depending on the format (rgb / yuv and swap), and the status (on / off),
+ * this function sets the coefficients for the given layer @layer accordingly.
  */
-static void zynqmp_disp_blend_layer_enable(struct zynqmp_disp_blend *blend,
-					   struct zynqmp_disp_layer *layer)
+static void zynqmp_disp_blend_layer_coeff(struct zynqmp_disp_blend *blend,
+					  struct zynqmp_disp_layer *layer,
+					  bool on)
 {
-	u32 reg, offset, i, s0, s1;
+	u32 offset, i, s0, s1;
 	u16 sdtv_coeffs[] = { 0x1000, 0x166f, 0x0,
 			      0x1000, 0x7483, 0x7a7f,
 			      0x1000, 0x0, 0x1c5a };
 	u16 swap_coeffs[] = { 0x1000, 0x0, 0x0,
 			      0x0, 0x1000, 0x0,
 			      0x0, 0x0, 0x1000 };
+	u16 null_coeffs[] = { 0x0, 0x0, 0x0,
+			      0x0, 0x0, 0x0,
+			      0x0, 0x0, 0x0 };
 	u16 *coeffs;
-	u32 offsets[] = { 0x0, 0x1800, 0x1800 };
-
-	reg = layer->fmt->rgb ? ZYNQMP_DISP_V_BLEND_LAYER_CONTROL_RGB : 0;
-	reg |= layer->fmt->chroma_sub ?
-	       ZYNQMP_DISP_V_BLEND_LAYER_CONTROL_EN_US : 0;
-
-	zynqmp_disp_write(blend->base,
-			  ZYNQMP_DISP_V_BLEND_LAYER_CONTROL + layer->offset,
-			  reg);
+	u32 sdtv_offsets[] = { 0x0, 0x1800, 0x1800 };
+	u32 null_offsets[] = { 0x0, 0x0, 0x0 };
+	u32 *offsets;
 
 	if (layer->id == ZYNQMP_DISP_LAYER_VID)
 		offset = ZYNQMP_DISP_V_BLEND_IN1CSC_COEFF0;
 	else
 		offset = ZYNQMP_DISP_V_BLEND_IN2CSC_COEFF0;
 
-	if (!layer->fmt->rgb) {
-		coeffs = sdtv_coeffs;
-		s0 = 1;
-		s1 = 2;
+	if (!on) {
+		coeffs = null_coeffs;
+		offsets = null_offsets;
 	} else {
-		coeffs = swap_coeffs;
-		s0 = 0;
-		s1 = 2;
+		if (!layer->fmt->rgb) {
+			coeffs = sdtv_coeffs;
+			offsets = sdtv_offsets;
+			s0 = 1;
+			s1 = 2;
+		} else {
+			coeffs = swap_coeffs;
+			s0 = 0;
+			s1 = 2;
 
-		/* No offset for RGB formats */
-		for (i = 0; i < ZYNQMP_DISP_V_BLEND_NUM_OFFSET; i++)
-			offsets[i] = 0;
-	}
+			/* No offset for RGB formats */
+			offsets = null_offsets;
+		}
 
-	if (layer->fmt->swap) {
-		for (i = 0; i < 3; i++) {
-			coeffs[i * 3 + s0] ^= coeffs[i * 3 + s1];
-			coeffs[i * 3 + s1] ^= coeffs[i * 3 + s0];
-			coeffs[i * 3 + s0] ^= coeffs[i * 3 + s1];
+		if (layer->fmt->swap) {
+			for (i = 0; i < 3; i++) {
+				coeffs[i * 3 + s0] ^= coeffs[i * 3 + s1];
+				coeffs[i * 3 + s1] ^= coeffs[i * 3 + s0];
+				coeffs[i * 3 + s0] ^= coeffs[i * 3 + s1];
+			}
 		}
 	}
 
@@ -715,6 +720,29 @@ static void zynqmp_disp_blend_layer_enable(struct zynqmp_disp_blend *blend,
 }
 
 /**
+ * zynqmp_disp_blend_layer_enable - Enable a layer
+ * @blend: blend object
+ * @layer: layer to enable
+ *
+ * Enable a layer @layer.
+ */
+static void zynqmp_disp_blend_layer_enable(struct zynqmp_disp_blend *blend,
+					   struct zynqmp_disp_layer *layer)
+{
+	u32 reg;
+
+	reg = layer->fmt->rgb ? ZYNQMP_DISP_V_BLEND_LAYER_CONTROL_RGB : 0;
+	reg |= layer->fmt->chroma_sub ?
+	       ZYNQMP_DISP_V_BLEND_LAYER_CONTROL_EN_US : 0;
+
+	zynqmp_disp_write(blend->base,
+			  ZYNQMP_DISP_V_BLEND_LAYER_CONTROL + layer->offset,
+			  reg);
+
+	zynqmp_disp_blend_layer_coeff(blend, layer, true);
+}
+
+/**
  * zynqmp_disp_blend_layer_disable - Disable a layer
  * @blend: blend object
  * @layer: layer to disable
@@ -724,26 +752,10 @@ static void zynqmp_disp_blend_layer_enable(struct zynqmp_disp_blend *blend,
 static void zynqmp_disp_blend_layer_disable(struct zynqmp_disp_blend *blend,
 					    struct zynqmp_disp_layer *layer)
 {
-	u32 offset;
-	unsigned int i;
-
 	zynqmp_disp_write(blend->base,
 			  ZYNQMP_DISP_V_BLEND_LAYER_CONTROL + layer->offset, 0);
 
-	if (layer->id == ZYNQMP_DISP_LAYER_VID)
-		offset = ZYNQMP_DISP_V_BLEND_IN1CSC_COEFF0;
-	else
-		offset = ZYNQMP_DISP_V_BLEND_IN2CSC_COEFF0;
-	for (i = 0; i < ZYNQMP_DISP_V_BLEND_NUM_COEFF; i++)
-		zynqmp_disp_write(blend->base, offset + i * 4, 0);
-
-	if (layer->id == ZYNQMP_DISP_LAYER_VID)
-		offset = ZYNQMP_DISP_V_BLEND_LUMA_IN1CSC_OFFSET;
-	else
-		offset = ZYNQMP_DISP_V_BLEND_LUMA_IN2CSC_OFFSET;
-
-	for (i = 0; i < ZYNQMP_DISP_V_BLEND_NUM_OFFSET; i++)
-		zynqmp_disp_write(blend->base, offset + i * 4, 0);
+	zynqmp_disp_blend_layer_coeff(blend, layer, false);
 }
 
 /**
@@ -1796,6 +1808,7 @@ static int zynqmp_disp_layer_set_tpg(struct zynqmp_disp *disp,
 		return -EIO;
 	}
 
+	zynqmp_disp_blend_layer_coeff(&disp->blend, layer, tpg_on);
 	zynqmp_disp_av_buf_set_tpg(&disp->av_buf, tpg_on);
 	disp->tpg_on = tpg_on;
 
