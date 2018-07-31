@@ -79,6 +79,15 @@ config FPGA_MGR_ZYNQ_FPGA
 	help
 	  FPGA manager driver support for Xilinx Zynq FPGAs.
 
+config FPGA_MGR_ZYNQ_AFI_FPGA
+	bool "Xilinx AFI FPGA"
+	depends on FPGA_MGR_ZYNQ_FPGA
+	help
+	  Zynq AFI driver support for writing to the AFI registers
+	  for configuring the PS_PL interface. For some of the bitstream
+	  or designs to work the PS to PL interfaces need to be configured
+	  like the data bus-width etc.
+
 config FPGA_MGR_ZYNQMP_FPGA
 	tristate "Xilinx Zynqmp FPGA"
 	select XILINX_AFI_FPGA
