@@ -1790,6 +1790,7 @@ int zynqmp_dp_probe(struct platform_device *pdev)
 	zynqmp_dp_write(dp->iomem, ZYNQMP_DP_TX_FORCE_SCRAMBLER_RESET, 1);
 	zynqmp_dp_write(dp->iomem, ZYNQMP_DP_TX_ENABLE, 0);
 
+	/*
 	dp->num_lanes = 2;
 	for (i = 0; i < ZYNQMP_DP_MAX_LANES; i++) {
 		char phy_name[16];
@@ -1797,7 +1798,6 @@ int zynqmp_dp_probe(struct platform_device *pdev)
 		snprintf(phy_name, sizeof(phy_name), "dp-phy%d", i);
 		dp->phy[i] = devm_phy_get(dp->dev, phy_name);
 		if (IS_ERR(dp->phy[i])) {
-			/* 2nd lane is optional */
 			if (i == 0 || PTR_ERR(dp->phy[i]) != -ENODEV) {
 				if (PTR_ERR(dp->phy[i]) != -EPROBE_DEFER) {
 					dev_err(dp->dev,
@@ -1815,6 +1815,7 @@ int zynqmp_dp_probe(struct platform_device *pdev)
 	ret = zynqmp_dp_init_phy(dp);
 	if (ret)
 		goto error_phy;
+	*/
 
 	dp->aux.name = "ZynqMP DP AUX";
 	dp->aux.dev = dp->dev;
