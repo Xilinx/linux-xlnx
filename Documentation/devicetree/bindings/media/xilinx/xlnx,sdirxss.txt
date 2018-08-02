@@ -23,6 +23,11 @@ Required properties:
 
 - xlnx,line-rate: The maximum mode supported by the design.
 
+- clocks: Input clock specifier. Refer to common clock bindings.
+
+- clock-names: List of input clocks.
+  Required elements: "s_axi_aclk", "sdi_rx_clk", "video_out_clk"
+
 - port: Video port, using the DT bindings defined in ../video-interfaces.txt.
   The SDI Rx subsystem has one port configured as output port.
 
@@ -40,6 +45,8 @@ Example:
 			xlnx,include-edh = "true";
 			xlnx,include-vid-over-axi = "true";
 			xlnx,line-rate = "12G_SDI_8DS";
+			clocks = <&clk_1>, <&si570_1>, <&clk_2>;
+			clock-names = "s_axi_aclk", "sdi_rx_clk", "video_out_clk";
 
 			ports {
 				#address-cells = <1>;
