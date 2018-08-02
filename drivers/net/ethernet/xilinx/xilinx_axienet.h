@@ -15,6 +15,7 @@
 #include <linux/if_vlan.h>
 #include <linux/net_tstamp.h>
 #include <linux/phy.h>
+#include <linux/of_platform.h>
 
 /* Packet size info */
 #define XAE_HDR_SIZE			14 /* Size of Ethernet header */
@@ -1024,6 +1025,34 @@ void axienet_dma_bd_release(struct net_device *ndev);
 void __axienet_device_reset(struct axienet_dma_q *q, off_t offset);
 void axienet_set_mac_address(struct net_device *ndev, const void *address);
 void axienet_set_multicast_list(struct net_device *ndev);
+int xaxienet_rx_poll(struct napi_struct *napi, int quota);
+
+#if defined(CONFIG_AXIENET_HAS_MCDMA)
+int __maybe_unused axienet_mcdma_rx_q_init(struct net_device *ndev,
+					   struct axienet_dma_q *q);
+int __maybe_unused axienet_mcdma_tx_q_init(struct net_device *ndev,
+					   struct axienet_dma_q *q);
+void __maybe_unused axienet_mcdma_tx_bd_free(struct net_device *ndev,
+					     struct axienet_dma_q *q);
+void __maybe_unused axienet_mcdma_rx_bd_free(struct net_device *ndev,
+					     struct axienet_dma_q *q);
+irqreturn_t __maybe_unused axienet_mcdma_tx_irq(int irq, void *_ndev);
+irqreturn_t __maybe_unused axienet_mcdma_rx_irq(int irq, void *_ndev);
+void __maybe_unused axienet_mcdma_err_handler(unsigned long data);
+void axienet_strings(struct net_device *ndev, u32 sset, u8 *data);
+int axienet_sset_count(struct net_device *ndev, int sset);
+void axienet_get_stats(struct net_device *ndev,
+		       struct ethtool_stats *stats,
+		       u64 *data);
+int axeinet_mcdma_create_sysfs(struct kobject *kobj);
+void axeinet_mcdma_remove_sysfs(struct kobject *kobj);
+int __maybe_unused axienet_mcdma_tx_probe(struct platform_device *pdev,
+					  struct device_node *np,
+					  struct axienet_local *lp);
+int __maybe_unused axienet_mcdma_rx_probe(struct platform_device *pdev,
+					  struct axienet_local *lp,
+					  struct net_device *ndev);
+#endif
 
 #ifdef CONFIG_AXIENET_HAS_MCDMA
 void axienet_tx_hwtstamp(struct axienet_local *lp,
