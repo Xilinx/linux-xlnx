@@ -3372,7 +3372,7 @@ static int __maybe_unused axienet_mcdma_probe(struct platform_device *pdev,
 	struct axienet_dma_q *q;
 	struct device_node *np;
 	struct resource dmares;
-	char dma_name[16];
+	char dma_name[24];
 	const char *str;
 
 	ret = of_property_count_strings(pdev->dev.of_node, "xlnx,channel-ids");
@@ -3420,9 +3420,11 @@ static int __maybe_unused axienet_mcdma_probe(struct platform_device *pdev,
 		q = lp->dq[i];
 
 		q->dma_regs = lp->mcdma_regs;
-		sprintf(dma_name, "mm2s_ch%d_introut", i + 1);
+		snprintf(dma_name, sizeof(dma_name), "mm2s_ch%d_introut",
+			 i + 1);
 		q->tx_irq = platform_get_irq_byname(pdev, dma_name);
-		sprintf(dma_name, "s2mm_ch%d_introut", i + 1);
+		snprintf(dma_name, sizeof(dma_name), "s2mm_ch%d_introut",
+			 i + 1);
 		q->rx_irq = platform_get_irq_byname(pdev, dma_name);
 		q->eth_hasdre = of_property_read_bool(np,
 						      "xlnx,include-dre");
