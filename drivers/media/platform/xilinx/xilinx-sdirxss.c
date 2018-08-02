@@ -18,6 +18,7 @@
 #include <dt-bindings/media/xilinx-vip.h>
 #include <linux/bitops.h>
 #include <linux/compiler.h>
+#include <linux/clk.h>
 #include <linux/delay.h>
 #include <linux/device.h>
 #include <linux/interrupt.h>
@@ -274,6 +275,9 @@ enum sdi_family_enc {
  * @irq: requested irq number
  * @include_edh: EDH processor presence
  * @mode: 3G/6G/12G mode
+ * @axi_clk: Axi lite interface clock
+ * @sdirx_clk: SDI Rx GT clock
+ * @vidout_clk: Video clock
  */
 struct xsdirxss_core {
 	struct device *dev;
@@ -281,6 +285,9 @@ struct xsdirxss_core {
 	int irq;
 	bool include_edh;
 	int mode;
+	struct clk *axi_clk;
+	struct clk *sdirx_clk;
+	struct clk *vidout_clk;
 };
 
 /**
@@ -1636,14 +1643,55 @@ static int xsdirxss_probe(struct platform_device *pdev)
 	xsdirxss->core.dev = &pdev->dev;
 	core = &xsdirxss->core;
 
+	core->axi_clk = devm_clk_get(&pdev->dev, "s_axi_aclk");
+	if (IS_ERR(core->axi_clk)) {
+		ret = PTR_ERR(core->axi_clk);
+		dev_err(&pdev->dev, "failed to get s_axi_clk (%d)\n", ret);
+		return ret;
+	}
+
+	core->sdirx_clk = devm_clk_get(&pdev->dev, "sdi_rx_clk");
+	if (IS_ERR(core->sdirx_clk)) {
+		ret = PTR_ERR(core->sdirx_clk);
+		dev_err(&pdev->dev, "failed to get sdi_rx_clk (%d)\n", ret);
+		return ret;
+	}
+
+	core->vidout_clk = devm_clk_get(&pdev->dev, "video_out_clk");
+	if (IS_ERR(core->vidout_clk)) {
+		ret = PTR_ERR(core->vidout_clk);
+		dev_err(&pdev->dev, "failed to get video_out_aclk (%d)\n", ret);
+		return ret;
+	}
+
+	ret = clk_prepare_enable(core->axi_clk);
+	if (ret) {
+		dev_err(&pdev->dev, "failed to enable axi_clk (%d)\n", ret);
+		return ret;
+	}
+
+	ret = clk_prepare_enable(core->sdirx_clk);
+	if (ret) {
+		dev_err(&pdev->dev, "failed to enable sdirx_clk (%d)\n", ret);
+		goto rx_clk_err;
+	}
+
+	ret = clk_prepare_enable(core->vidout_clk);
+	if (ret) {
+		dev_err(&pdev->dev, "failed to enable vidout_clk (%d)\n", ret);
+		goto vidout_clk_err;
+	}
+
 	ret = xsdirxss_parse_of(xsdirxss);
 	if (ret < 0)
-		return ret;
+		goto clk_err;
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	xsdirxss->core.iomem = devm_ioremap_resource(xsdirxss->core.dev, res);
-	if (IS_ERR(xsdirxss->core.iomem))
-		return PTR_ERR(xsdirxss->core.iomem);
+	if (IS_ERR(xsdirxss->core.iomem)) {
+		ret = PTR_ERR(xsdirxss->core.iomem);
+		goto clk_err;
+	}
 
 	/* Reset the core */
 	xsdirx_streamflow_control(core, false);
@@ -1762,6 +1810,12 @@ error:
 	v4l2_ctrl_handler_free(&xsdirxss->ctrl_handler);
 	media_entity_cleanup(&subdev->entity);
 
+clk_err:
+	clk_disable_unprepare(core->vidout_clk);
+vidout_clk_err:
+	clk_disable_unprepare(core->sdirx_clk);
+rx_clk_err:
+	clk_disable_unprepare(core->axi_clk);
 	return ret;
 }
 
@@ -1773,7 +1827,9 @@ static int xsdirxss_remove(struct platform_device *pdev)
 	v4l2_async_unregister_subdev(subdev);
 	v4l2_ctrl_handler_free(&xsdirxss->ctrl_handler);
 	media_entity_cleanup(&subdev->entity);
-
+	clk_disable_unprepare(xsdirxss->core.vidout_clk);
+	clk_disable_unprepare(xsdirxss->core.sdirx_clk);
+	clk_disable_unprepare(xsdirxss->core.axi_clk);
 	return 0;
 }
 
