@@ -49,10 +49,6 @@
 #include "xilinx_tsn_ptp.h"
 #include "xilinx_tsn_timer.h"
 #endif
-/* Descriptors defines for Tx and Rx DMA - 2^n for the best performance */
-#define TX_BD_NUM		64
-#define RX_BD_NUM		128
-
 /* Must be shorter than length of ethtool_drvinfo.driver field to fit */
 #define DRIVER_NAME		"xaxienet"
 #define DRIVER_DESCRIPTION	"Xilinx Axi Ethernet driver"
@@ -62,10 +58,6 @@
 #define AXIENET_TS_HEADER_LEN	8
 #define XXVENET_TS_HEADER_LEN	4
 #define NS_PER_SEC              1000000000ULL /* Nanoseconds per second */
-
-#define XAE_NUM_QUEUES(lp)	((lp)->num_queues)
-#define for_each_dma_queue(lp, var) \
-	for ((var) = 0; (var) < XAE_NUM_QUEUES(lp); (var)++)
 
 #ifdef CONFIG_XILINX_TSN_PTP
 int axienet_phc_index = -1;
@@ -223,54 +215,6 @@ static struct xxvenet_option xxvenet_options[] = {
 };
 
 /**
- * axienet_dma_in32 - Memory mapped Axi DMA register read
- * @q:		Pointer to DMA queue structure
- * @reg:	Address offset from the base address of the Axi DMA core
- *
- * Return: The contents of the Axi DMA register
- *
- * This function returns the contents of the corresponding Axi DMA register.
- */
-static inline u32 axienet_dma_in32(struct axienet_dma_q *q, off_t reg)
-{
-	return in_be32(q->dma_regs + reg);
-}
-
-/**
- * axienet_dma_out32 - Memory mapped Axi DMA register write.
- * @q:		Pointer to DMA queue structure
- * @reg:	Address offset from the base address of the Axi DMA core
- * @value:	Value to be written into the Axi DMA register
- *
- * This function writes the desired value into the corresponding Axi DMA
- * register.
- */
-static inline void axienet_dma_out32(struct axienet_dma_q *q,
-				     off_t reg, u32 value)
-{
-	out_be32((q->dma_regs + reg), value);
-}
-
-/**
- * axienet_dma_bdout - Memory mapped Axi DMA register Buffer Descriptor write.
- * @q:		Pointer to DMA queue structure
- * @reg:	Address offset from the base address of the Axi DMA core
- * @value:	Value to be written into the Axi DMA register
- *
- * This function writes the desired value into the corresponding Axi DMA
- * register.
- */
-static inline void axienet_dma_bdout(struct axienet_dma_q *q,
-				     off_t reg, dma_addr_t value)
-{
-#if defined(CONFIG_PHYS_ADDR_T_64BIT)
-	writeq(value, (q->dma_regs + reg));
-#else
-	writel(value, (q->dma_regs + reg));
-#endif
-}
-
-/**
  * axienet_bd_free - Release buffer descriptor rings for individual dma queue
  * @ndev:	Pointer to the net_device structure
  * @q:		Pointer to DMA queue structure
@@ -341,7 +285,7 @@ static void __maybe_unused axienet_mcdma_bd_free(struct net_device *ndev,
  * axienet_dma_bd_init. axienet_dma_bd_release is called when Axi Ethernet
  * driver stop api is called.
  */
-static void axienet_dma_bd_release(struct net_device *ndev)
+void axienet_dma_bd_release(struct net_device *ndev)
 {
 	int i;
 	struct axienet_local *lp = netdev_priv(ndev);
@@ -501,132 +445,6 @@ out:
 }
 
 /**
- * axienet_dma_q_init - Setup buffer descriptor rings for individual Axi DMA
- * @ndev:	Pointer to the net_device structure
- * @q:		Pointer to DMA queue structure
- *
- * Return: 0, on success -ENOMEM, on failure
- *
- * This function is helper function to axienet_dma_bd_init
- */
-static int __maybe_unused axienet_dma_q_init(struct net_device *ndev,
-					     struct axienet_dma_q *q)
-{
-	u32 cr;
-	int i;
-	struct sk_buff *skb;
-	struct axienet_local *lp = netdev_priv(ndev);
-
-	/* Reset the indexes which are used for accessing the BDs */
-	q->tx_bd_ci = 0;
-	q->tx_bd_tail = 0;
-	q->rx_bd_ci = 0;
-
-	/* Allocate the Tx and Rx buffer descriptors. */
-	q->tx_bd_v = dma_zalloc_coherent(ndev->dev.parent,
-					  sizeof(*q->tx_bd_v) * TX_BD_NUM,
-					  &q->tx_bd_p, GFP_KERNEL);
-	if (!q->tx_bd_v)
-		goto out;
-
-	q->rx_bd_v = dma_zalloc_coherent(ndev->dev.parent,
-					  sizeof(*q->rx_bd_v) * RX_BD_NUM,
-					  &q->rx_bd_p, GFP_KERNEL);
-	if (!q->rx_bd_v)
-		goto out;
-
-	for (i = 0; i < TX_BD_NUM; i++) {
-		q->tx_bd_v[i].next = q->tx_bd_p +
-				      sizeof(*q->tx_bd_v) *
-				      ((i + 1) % TX_BD_NUM);
-	}
-
-	if (!q->eth_hasdre) {
-		q->tx_bufs = dma_zalloc_coherent(ndev->dev.parent,
-						  XAE_MAX_PKT_LEN * TX_BD_NUM,
-						  &q->tx_bufs_dma,
-						  GFP_KERNEL);
-		if (!q->tx_bufs)
-			goto out;
-
-		for (i = 0; i < TX_BD_NUM; i++)
-			q->tx_buf[i] = &q->tx_bufs[i * XAE_MAX_PKT_LEN];
-	}
-
-	for (i = 0; i < RX_BD_NUM; i++) {
-		q->rx_bd_v[i].next = q->rx_bd_p +
-				      sizeof(*q->rx_bd_v) *
-				      ((i + 1) % RX_BD_NUM);
-
-		skb = netdev_alloc_skb(ndev, lp->max_frm_size);
-		if (!skb)
-			goto out;
-
-		/* Ensure that the skb is completely updated
-		 * prio to mapping the DMA
-		 */
-		wmb();
-
-		q->rx_bd_v[i].sw_id_offset = (phys_addr_t)skb;
-		q->rx_bd_v[i].phys = dma_map_single(ndev->dev.parent,
-						     skb->data,
-						     lp->max_frm_size,
-						     DMA_FROM_DEVICE);
-		q->rx_bd_v[i].cntrl = lp->max_frm_size;
-	}
-
-	/* Start updating the Rx channel control register */
-	cr = axienet_dma_in32(q, XAXIDMA_RX_CR_OFFSET);
-	/* Update the interrupt coalesce count */
-	cr = ((cr & ~XAXIDMA_COALESCE_MASK) |
-	      ((lp->coalesce_count_rx) << XAXIDMA_COALESCE_SHIFT));
-	/* Update the delay timer count */
-	cr = ((cr & ~XAXIDMA_DELAY_MASK) |
-	      (XAXIDMA_DFT_RX_WAITBOUND << XAXIDMA_DELAY_SHIFT));
-	/* Enable coalesce, delay timer and error interrupts */
-	cr |= XAXIDMA_IRQ_ALL_MASK;
-	/* Write to the Rx channel control register */
-	axienet_dma_out32(q, XAXIDMA_RX_CR_OFFSET, cr);
-
-	/* Start updating the Tx channel control register */
-	cr = axienet_dma_in32(q, XAXIDMA_TX_CR_OFFSET);
-	/* Update the interrupt coalesce count */
-	cr = (((cr & ~XAXIDMA_COALESCE_MASK)) |
-	      ((lp->coalesce_count_tx) << XAXIDMA_COALESCE_SHIFT));
-	/* Update the delay timer count */
-	cr = (((cr & ~XAXIDMA_DELAY_MASK)) |
-	      (XAXIDMA_DFT_TX_WAITBOUND << XAXIDMA_DELAY_SHIFT));
-	/* Enable coalesce, delay timer and error interrupts */
-	cr |= XAXIDMA_IRQ_ALL_MASK;
-	/* Write to the Tx channel control register */
-	axienet_dma_out32(q, XAXIDMA_TX_CR_OFFSET, cr);
-
-	/* Populate the tail pointer and bring the Rx Axi DMA engine out of
-	 * halted state. This will make the Rx side ready for reception.
-	 */
-	axienet_dma_bdout(q, XAXIDMA_RX_CDESC_OFFSET, q->rx_bd_p);
-	cr = axienet_dma_in32(q, XAXIDMA_RX_CR_OFFSET);
-	axienet_dma_out32(q, XAXIDMA_RX_CR_OFFSET,
-			  cr | XAXIDMA_CR_RUNSTOP_MASK);
-	axienet_dma_bdout(q, XAXIDMA_RX_TDESC_OFFSET, q->rx_bd_p +
-			  (sizeof(*q->rx_bd_v) * (RX_BD_NUM - 1)));
-
-	/* Write to the RS (Run-stop) bit in the Tx channel control register.
-	 * Tx channel is now ready to run. But only after we write to the
-	 * tail pointer register that the Tx channel will start transmitting.
-	 */
-	axienet_dma_bdout(q, XAXIDMA_TX_CDESC_OFFSET, q->tx_bd_p);
-	cr = axienet_dma_in32(q, XAXIDMA_TX_CR_OFFSET);
-	axienet_dma_out32(q, XAXIDMA_TX_CR_OFFSET,
-			  cr | XAXIDMA_CR_RUNSTOP_MASK);
-
-	return 0;
-out:
-	axienet_dma_bd_release(ndev);
-	return -ENOMEM;
-}
-
-/**
  * axienet_dma_bd_init - Setup buffer descriptor rings for Axi DMA
  * @ndev:	Pointer to the net_device structure
  *
@@ -662,8 +480,7 @@ static int axienet_dma_bd_init(struct net_device *ndev)
  * This function is called to initialize the MAC address of the Axi Ethernet
  * core. It writes to the UAW0 and UAW1 registers of the core.
  */
-static void axienet_set_mac_address(struct net_device *ndev,
-				    const void *address)
+void axienet_set_mac_address(struct net_device *ndev, const void *address)
 {
 	struct axienet_local *lp = netdev_priv(ndev);
 
@@ -719,7 +536,7 @@ static int netdev_set_mac_address(struct net_device *ndev, void *p)
  * means whenever the multicast table entries need to be updated this
  * function gets called.
  */
-static void axienet_set_multicast_list(struct net_device *ndev)
+void axienet_set_multicast_list(struct net_device *ndev)
 {
 	int i;
 	u32 reg, af0reg, af1reg;
@@ -827,7 +644,7 @@ static void xxvenet_setoptions(struct net_device *ndev, u32 options)
 	lp->options |= options;
 }
 
-static void __axienet_device_reset(struct axienet_dma_q *q, off_t offset)
+void __axienet_device_reset(struct axienet_dma_q *q, off_t offset)
 {
 	u32 timeout;
 	/* Reset Axi DMA. This would reset Axi Ethernet core as well. The reset
@@ -1032,11 +849,11 @@ static void axienet_adjust_link(struct net_device *ndev)
  * Return:	None.
  */
 #ifdef CONFIG_AXIENET_HAS_MCDMA
-static void axienet_tx_hwtstamp(struct axienet_local *lp,
-				struct aximcdma_bd *cur_p)
+void axienet_tx_hwtstamp(struct axienet_local *lp,
+			 struct aximcdma_bd *cur_p)
 #else
-static void axienet_tx_hwtstamp(struct axienet_local *lp,
-				struct axidma_bd *cur_p)
+void axienet_tx_hwtstamp(struct axienet_local *lp,
+			 struct axidma_bd *cur_p)
 #endif
 {
 	u32 sec = 0, nsec = 0, val;
@@ -1159,8 +976,7 @@ static void axienet_rx_hwtstamp(struct axienet_local *lp,
  * buffer. It finally invokes "netif_wake_queue" to restart transmission if
  * required.
  */
-static void axienet_start_xmit_done(struct net_device *ndev,
-				    struct axienet_dma_q *q)
+void axienet_start_xmit_done(struct net_device *ndev, struct axienet_dma_q *q)
 {
 	u32 size = 0;
 	u32 packets = 0;
@@ -1365,57 +1181,18 @@ static inline u16 tsn_queue_mapping(const struct sk_buff *skb, u16 num_queues)
 }
 #endif
 
-/**
- * axienet_start_xmit - Starts the transmission.
- * @skb:	sk_buff pointer that contains data to be Txed.
- * @ndev:	Pointer to net_device structure.
- *
- * Return: NETDEV_TX_OK, on success
- *	    NETDEV_TX_BUSY, if any of the descriptors are not free
- *
- * This function is invoked from upper layers to initiate transmission. The
- * function uses the next available free BDs and populates their fields to
- * start the transmission. Additionally if checksum offloading is supported,
- * it populates AXI Stream Control fields with appropriate values.
- */
-static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
+#ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
+static int axienet_skb_tstsmp(struct sk_buff **__skb, struct axienet_dma_q *q,
+			      struct net_device *ndev)
 {
-	u32 ii;
-	u32 num_frag;
-	u32 csum_start_off;
-	u32 csum_index_off;
-	dma_addr_t tail_p;
-	struct axienet_local *lp = netdev_priv(ndev);
 #ifdef CONFIG_AXIENET_HAS_MCDMA
 	struct aximcdma_bd *cur_p;
 #else
 	struct axidma_bd *cur_p;
 #endif
-	unsigned long flags;
-	u32 pad = 0;
-	struct axienet_dma_q *q;
-	u16 map = skb_get_queue_mapping(skb); /* Single dma queue default*/
-
-#ifdef CONFIG_XILINX_TSN
-	if (unlikely(lp->is_tsn)) {
-		map = tsn_queue_mapping(skb, lp->num_queues);
-#ifdef CONFIG_XILINX_TSN_PTP
-		const struct ethhdr *eth;
-
-		eth = (struct ethhdr *)skb->data;
-		/* check if skb is a PTP frame ? */
-		if (eth->h_proto == htons(ETH_P_1588))
-			return axienet_ptp_xmit(skb, ndev);
-#endif
-		if (lp->temac_no == XAE_TEMAC2) {
-			dev_kfree_skb_any(skb);
-			return NETDEV_TX_OK;
-		}
-	}
-#endif
-	num_frag = skb_shinfo(skb)->nr_frags;
-
-	q = lp->dq[map];
+	struct axienet_local *lp = netdev_priv(ndev);
+	struct sk_buff *old_skb = *__skb;
+	struct sk_buff *skb = *__skb;
 
 #ifdef CONFIG_AXIENET_HAS_MCDMA
 	cur_p = &q->txq_bd_v[q->tx_bd_tail];
@@ -1423,15 +1200,6 @@ static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	cur_p = &q->tx_bd_v[q->tx_bd_tail];
 #endif
 
-	spin_lock_irqsave(&q->tx_lock, flags);
-	if (axienet_check_tx_bd_space(q, num_frag)) {
-		if (!__netif_subqueue_stopped(ndev, map))
-			netif_stop_subqueue(ndev, map);
-		spin_unlock_irqrestore(&q->tx_lock, flags);
-		return NETDEV_TX_BUSY;
-	}
-
-#ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
 	if (!lp->is_tsn) {
 		if ((((lp->tstamp_config.tx_type == HWTSTAMP_TX_ONESTEP_SYNC) ||
 		      (lp->tstamp_config.tx_type == HWTSTAMP_TX_ON)) ||
@@ -1440,23 +1208,23 @@ static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 			u8 *tmp;
 			struct sk_buff *new_skb;
 
-			if (skb_headroom(skb) < AXIENET_TS_HEADER_LEN) {
-				new_skb = skb_realloc_headroom(skb,
-							       AXIENET_TS_HEADER_LEN);
+			if (skb_headroom(old_skb) < AXIENET_TS_HEADER_LEN) {
+				new_skb =
+				skb_realloc_headroom(old_skb,
+						     AXIENET_TS_HEADER_LEN);
 				if (!new_skb) {
 					dev_err(&ndev->dev, "failed to allocate new socket buffer\n");
-					dev_kfree_skb_any(skb);
-					spin_unlock_irqrestore(&q->tx_lock,
-							       flags);
+					dev_kfree_skb_any(old_skb);
 					return NETDEV_TX_OK;
 				}
 
 				/*  Transfer the ownership to the
 				 *  new socket buffer if required
 				 */
-				if (skb->sk)
-					skb_set_owner_w(new_skb, skb->sk);
-				dev_kfree_skb_any(skb);
+				if (old_skb->sk)
+					skb_set_owner_w(new_skb, old_skb->sk);
+				dev_kfree_skb_any(old_skb);
+				*__skb = new_skb;
 				skb = new_skb;
 			}
 
@@ -1495,6 +1263,67 @@ static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 				cur_p->ptp_tx_skb = (phys_addr_t)skb_get(skb);
 			}
 		}
+	}
+	return NETDEV_TX_OK;
+}
+#endif
+
+int axienet_queue_xmit(struct sk_buff *skb, struct net_device *ndev, u16 map)
+{
+	u32 ii;
+	u32 num_frag;
+	u32 csum_start_off;
+	u32 csum_index_off;
+	dma_addr_t tail_p;
+	struct axienet_local *lp = netdev_priv(ndev);
+#ifdef CONFIG_AXIENET_HAS_MCDMA
+	struct aximcdma_bd *cur_p;
+#else
+	struct axidma_bd *cur_p;
+#endif
+	unsigned long flags;
+	u32 pad = 0;
+	struct axienet_dma_q *q;
+
+#ifdef CONFIG_XILINX_TSN
+	if (unlikely(lp->is_tsn)) {
+		map = tsn_queue_mapping(skb, lp->num_queues);
+#ifdef CONFIG_XILINX_TSN_PTP
+		const struct ethhdr *eth;
+
+		eth = (struct ethhdr *)skb->data;
+		/* check if skb is a PTP frame ? */
+		if (eth->h_proto == htons(ETH_P_1588))
+			return axienet_ptp_xmit(skb, ndev);
+#endif
+		if (lp->temac_no == XAE_TEMAC2) {
+			dev_kfree_skb_any(skb);
+			return NETDEV_TX_OK;
+		}
+	}
+#endif
+	num_frag = skb_shinfo(skb)->nr_frags;
+
+	q = lp->dq[map];
+
+#ifdef CONFIG_AXIENET_HAS_MCDMA
+	cur_p = &q->txq_bd_v[q->tx_bd_tail];
+#else
+	cur_p = &q->tx_bd_v[q->tx_bd_tail];
+#endif
+
+	spin_lock_irqsave(&q->tx_lock, flags);
+	if (axienet_check_tx_bd_space(q, num_frag)) {
+		if (!__netif_subqueue_stopped(ndev, map))
+			netif_stop_subqueue(ndev, map);
+		spin_unlock_irqrestore(&q->tx_lock, flags);
+		return NETDEV_TX_BUSY;
+	}
+
+#ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
+	if (axienet_skb_tstsmp(&skb, q, ndev)) {
+		spin_unlock_irqrestore(&q->tx_lock, flags);
+		return NETDEV_TX_BUSY;
 	}
 #endif
 	/* Work around for XXV MAC as MAC will drop the packets
@@ -1606,6 +1435,26 @@ out:
 	spin_unlock_irqrestore(&q->tx_lock, flags);
 
 	return NETDEV_TX_OK;
+}
+
+/**
+ * axienet_start_xmit - Starts the transmission.
+ * @skb:	sk_buff pointer that contains data to be Txed.
+ * @ndev:	Pointer to net_device structure.
+ *
+ * Return: NETDEV_TX_OK, on success
+ *	    NETDEV_TX_BUSY, if any of the descriptors are not free
+ *
+ * This function is invoked from upper layers to initiate transmission. The
+ * function uses the next available free BDs and populates their fields to
+ * start the transmission. Additionally if checksum offloading is supported,
+ * it populates AXI Stream Control fields with appropriate values.
+ */
+static int axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
+{
+	u16 map = skb_get_queue_mapping(skb); /* Single dma queue default*/
+
+	return axienet_queue_xmit(skb, ndev, map);
 }
 
 /**
@@ -2030,145 +1879,6 @@ static irqreturn_t __maybe_unused axienet_mcdma_rx_irq(int irq, void *_ndev)
 	return IRQ_HANDLED;
 }
 
-/**
- * map_dma_q_irq - Map dma q based on interrupt number.
- * @irq:	irq number
- * @lp:		axienet local structure
- *
- * Return: DMA queue.
- *
- * This returns the DMA number on which interrupt has occurred.
- */
-static int map_dma_q_irq(int irq, struct axienet_local *lp)
-{
-	int i;
-
-	for_each_dma_queue(lp, i) {
-		if (irq == lp->dq[i]->tx_irq || irq == lp->dq[i]->rx_irq)
-			return i;
-	}
-	pr_err("Error mapping DMA irq\n");
-	return -ENODEV;
-}
-
-/**
- * axienet_tx_irq - Tx Done Isr.
- * @irq:	irq number
- * @_ndev:	net_device pointer
- *
- * Return: IRQ_HANDLED or IRQ_NONE.
- *
- * This is the Axi DMA Tx done Isr. It invokes "axienet_start_xmit_done"
- * to complete the BD processing.
- */
-static irqreturn_t __maybe_unused axienet_tx_irq(int irq, void *_ndev)
-{
-	u32 cr;
-	unsigned int status;
-	struct net_device *ndev = _ndev;
-	struct axienet_local *lp = netdev_priv(ndev);
-	int i = map_dma_q_irq(irq, lp);
-	struct axienet_dma_q *q;
-
-	if (i < 0)
-		return IRQ_NONE;
-
-	q = lp->dq[i];
-
-	status = axienet_dma_in32(q, XAXIDMA_TX_SR_OFFSET);
-	if (status & (XAXIDMA_IRQ_IOC_MASK | XAXIDMA_IRQ_DELAY_MASK)) {
-		axienet_dma_out32(q, XAXIDMA_TX_SR_OFFSET, status);
-		axienet_start_xmit_done(lp->ndev, q);
-		goto out;
-	}
-
-	if (!(status & XAXIDMA_IRQ_ALL_MASK))
-		dev_err(&ndev->dev, "No interrupts asserted in Tx path\n");
-
-	if (status & XAXIDMA_IRQ_ERROR_MASK) {
-		dev_err(&ndev->dev, "DMA Tx error 0x%x\n", status);
-		dev_err(&ndev->dev, "Current BD is at: 0x%x\n",
-			(q->tx_bd_v[q->tx_bd_ci]).phys);
-
-		cr = axienet_dma_in32(q, XAXIDMA_TX_CR_OFFSET);
-		/* Disable coalesce, delay timer and error interrupts */
-		cr &= (~XAXIDMA_IRQ_ALL_MASK);
-		/* Write to the Tx channel control register */
-		axienet_dma_out32(q, XAXIDMA_TX_CR_OFFSET, cr);
-
-		cr = axienet_dma_in32(q, XAXIDMA_RX_CR_OFFSET);
-		/* Disable coalesce, delay timer and error interrupts */
-		cr &= (~XAXIDMA_IRQ_ALL_MASK);
-		/* Write to the Rx channel control register */
-		axienet_dma_out32(q, XAXIDMA_RX_CR_OFFSET, cr);
-
-		tasklet_schedule(&lp->dma_err_tasklet[i]);
-		axienet_dma_out32(q, XAXIDMA_TX_SR_OFFSET, status);
-	}
-out:
-	return IRQ_HANDLED;
-}
-
-/**
- * axienet_rx_irq - Rx Isr.
- * @irq:	irq number
- * @_ndev:	net_device pointer
- *
- * Return: IRQ_HANDLED or IRQ_NONE.
- *
- * This is the Axi DMA Rx Isr. It invokes "axienet_recv" to complete the BD
- * processing.
- */
-static irqreturn_t __maybe_unused axienet_rx_irq(int irq, void *_ndev)
-{
-	u32 cr;
-	unsigned int status;
-	struct net_device *ndev = _ndev;
-	struct axienet_local *lp = netdev_priv(ndev);
-	int i = map_dma_q_irq(irq, lp);
-	struct axienet_dma_q *q;
-
-	if (i < 0)
-		return IRQ_NONE;
-
-	q = lp->dq[i];
-
-	status = axienet_dma_in32(q, XAXIDMA_RX_SR_OFFSET);
-	if (status & (XAXIDMA_IRQ_IOC_MASK | XAXIDMA_IRQ_DELAY_MASK)) {
-		cr = axienet_dma_in32(q, XAXIDMA_RX_CR_OFFSET);
-		cr &= ~(XAXIDMA_IRQ_IOC_MASK | XAXIDMA_IRQ_DELAY_MASK);
-		axienet_dma_out32(q, XAXIDMA_RX_CR_OFFSET, cr);
-		napi_schedule(&lp->napi[i]);
-	}
-
-	if (!(status & XAXIDMA_IRQ_ALL_MASK))
-		dev_err(&ndev->dev, "No interrupts asserted in Rx path\n");
-
-	if (status & XAXIDMA_IRQ_ERROR_MASK) {
-		dev_err(&ndev->dev, "DMA Rx error 0x%x\n", status);
-		dev_err(&ndev->dev, "Current BD is at: 0x%x\n",
-			(q->rx_bd_v[q->rx_bd_ci]).phys);
-
-		cr = axienet_dma_in32(q, XAXIDMA_TX_CR_OFFSET);
-		/* Disable coalesce, delay timer and error interrupts */
-		cr &= (~XAXIDMA_IRQ_ALL_MASK);
-		/* Finally write to the Tx channel control register */
-		axienet_dma_out32(q, XAXIDMA_TX_CR_OFFSET, cr);
-
-		cr = axienet_dma_in32(q, XAXIDMA_RX_CR_OFFSET);
-		/* Disable coalesce, delay timer and error interrupts */
-		cr &= (~XAXIDMA_IRQ_ALL_MASK);
-			/* write to the Rx channel control register */
-		axienet_dma_out32(q, XAXIDMA_RX_CR_OFFSET, cr);
-
-		tasklet_schedule(&lp->dma_err_tasklet[i]);
-		axienet_dma_out32(q, XAXIDMA_RX_SR_OFFSET, status);
-	}
-
-	return IRQ_HANDLED;
-}
-
-static void axienet_dma_err_handler(unsigned long data);
 static void axienet_mcdma_err_handler(unsigned long data);
 
 static int axienet_mii_init(struct net_device *ndev)
@@ -3216,149 +2926,6 @@ static void __maybe_unused axienet_mcdma_err_handler(unsigned long data)
 
 	lp->axienet_config->setoptions(ndev, lp->options &
 				       ~(XAE_OPTION_TXEN | XAE_OPTION_RXEN));
-	axienet_set_mac_address(ndev, NULL);
-	axienet_set_multicast_list(ndev);
-	lp->axienet_config->setoptions(ndev, lp->options);
-}
-
-/**
- * axienet_dma_err_handler - Tasklet handler for Axi DMA Error
- * @data:	Data passed
- *
- * Resets the Axi DMA and Axi Ethernet devices, and reconfigures the
- * Tx/Rx BDs.
- */
-static void __maybe_unused axienet_dma_err_handler(unsigned long data)
-{
-	u32 axienet_status;
-	u32 cr, i;
-	int mdio_mcreg = 0;
-	struct axienet_dma_q *q = (struct axienet_dma_q *)data;
-	struct axienet_local *lp = q->lp;
-	struct net_device *ndev = lp->ndev;
-	struct axidma_bd *cur_p;
-
-	lp->axienet_config->setoptions(ndev, lp->options &
-				       ~(XAE_OPTION_TXEN | XAE_OPTION_RXEN));
-
-	if (lp->axienet_config->mactype != XAXIENET_10G_25G) {
-		mdio_mcreg = axienet_ior(lp, XAE_MDIO_MC_OFFSET);
-		axienet_mdio_wait_until_ready(lp);
-		/* Disable the MDIO interface till Axi Ethernet Reset is
-		 * Completed. When we do an Axi Ethernet reset, it resets the
-		 * Complete core including the MDIO. So if MDIO is not disabled
-		 * When the reset process is started,
-		 * MDIO will be broken afterwards.
-		 */
-		axienet_iow(lp, XAE_MDIO_MC_OFFSET, (mdio_mcreg &
-			    ~XAE_MDIO_MC_MDIOEN_MASK));
-	}
-
-	__axienet_device_reset(q, XAXIDMA_TX_CR_OFFSET);
-	__axienet_device_reset(q, XAXIDMA_RX_CR_OFFSET);
-
-	if (lp->axienet_config->mactype != XAXIENET_10G_25G) {
-		axienet_iow(lp, XAE_MDIO_MC_OFFSET, mdio_mcreg);
-		axienet_mdio_wait_until_ready(lp);
-	}
-
-	for (i = 0; i < TX_BD_NUM; i++) {
-		cur_p = &q->tx_bd_v[i];
-		if (cur_p->phys)
-			dma_unmap_single(ndev->dev.parent, cur_p->phys,
-					 (cur_p->cntrl &
-					  XAXIDMA_BD_CTRL_LENGTH_MASK),
-					 DMA_TO_DEVICE);
-		if (cur_p->tx_skb)
-			dev_kfree_skb_irq((struct sk_buff *)cur_p->tx_skb);
-		cur_p->phys = 0;
-		cur_p->cntrl = 0;
-		cur_p->status = 0;
-		cur_p->app0 = 0;
-		cur_p->app1 = 0;
-		cur_p->app2 = 0;
-		cur_p->app3 = 0;
-		cur_p->app4 = 0;
-		cur_p->sw_id_offset = 0;
-		cur_p->tx_skb = 0;
-	}
-
-	for (i = 0; i < RX_BD_NUM; i++) {
-		cur_p = &q->rx_bd_v[i];
-		cur_p->status = 0;
-		cur_p->app0 = 0;
-		cur_p->app1 = 0;
-		cur_p->app2 = 0;
-		cur_p->app3 = 0;
-		cur_p->app4 = 0;
-	}
-
-	q->tx_bd_ci = 0;
-	q->tx_bd_tail = 0;
-	q->rx_bd_ci = 0;
-
-	/* Start updating the Rx channel control register */
-	cr = axienet_dma_in32(q, XAXIDMA_RX_CR_OFFSET);
-	/* Update the interrupt coalesce count */
-	cr = ((cr & ~XAXIDMA_COALESCE_MASK) |
-	      (XAXIDMA_DFT_RX_THRESHOLD << XAXIDMA_COALESCE_SHIFT));
-	/* Update the delay timer count */
-	cr = ((cr & ~XAXIDMA_DELAY_MASK) |
-	      (XAXIDMA_DFT_RX_WAITBOUND << XAXIDMA_DELAY_SHIFT));
-	/* Enable coalesce, delay timer and error interrupts */
-	cr |= XAXIDMA_IRQ_ALL_MASK;
-	/* Finally write to the Rx channel control register */
-	axienet_dma_out32(q, XAXIDMA_RX_CR_OFFSET, cr);
-
-	/* Start updating the Tx channel control register */
-	cr = axienet_dma_in32(q, XAXIDMA_TX_CR_OFFSET);
-	/* Update the interrupt coalesce count */
-	cr = (((cr & ~XAXIDMA_COALESCE_MASK)) |
-	      (XAXIDMA_DFT_TX_THRESHOLD << XAXIDMA_COALESCE_SHIFT));
-	/* Update the delay timer count */
-	cr = (((cr & ~XAXIDMA_DELAY_MASK)) |
-	      (XAXIDMA_DFT_TX_WAITBOUND << XAXIDMA_DELAY_SHIFT));
-	/* Enable coalesce, delay timer and error interrupts */
-	cr |= XAXIDMA_IRQ_ALL_MASK;
-	/* Finally write to the Tx channel control register */
-	axienet_dma_out32(q, XAXIDMA_TX_CR_OFFSET, cr);
-
-	/* Populate the tail pointer and bring the Rx Axi DMA engine out of
-	 * halted state. This will make the Rx side ready for reception.
-	 */
-	axienet_dma_bdout(q, XAXIDMA_RX_CDESC_OFFSET, q->rx_bd_p);
-	cr = axienet_dma_in32(q, XAXIDMA_RX_CR_OFFSET);
-	axienet_dma_out32(q, XAXIDMA_RX_CR_OFFSET,
-			  cr | XAXIDMA_CR_RUNSTOP_MASK);
-	axienet_dma_bdout(q, XAXIDMA_RX_TDESC_OFFSET, q->rx_bd_p +
-			  (sizeof(*q->rx_bd_v) * (RX_BD_NUM - 1)));
-
-	/* Write to the RS (Run-stop) bit in the Tx channel control register.
-	 * Tx channel is now ready to run. But only after we write to the
-	 * tail pointer register that the Tx channel will start transmitting
-	 */
-	axienet_dma_bdout(q, XAXIDMA_TX_CDESC_OFFSET, q->tx_bd_p);
-	cr = axienet_dma_in32(q, XAXIDMA_TX_CR_OFFSET);
-	axienet_dma_out32(q, XAXIDMA_TX_CR_OFFSET,
-			  cr | XAXIDMA_CR_RUNSTOP_MASK);
-
-	if (lp->axienet_config->mactype != XAXIENET_10G_25G) {
-		axienet_status = axienet_ior(lp, XAE_RCW1_OFFSET);
-		axienet_status &= ~XAE_RCW1_RX_MASK;
-		axienet_iow(lp, XAE_RCW1_OFFSET, axienet_status);
-	}
-
-	if ((lp->axienet_config->mactype == XAXIENET_1G) && !lp->eth_hasnobuf) {
-		axienet_status = axienet_ior(lp, XAE_IP_OFFSET);
-		if (axienet_status & XAE_INT_RXRJECT_MASK)
-			axienet_iow(lp, XAE_IS_OFFSET, XAE_INT_RXRJECT_MASK);
-	}
-
-	if (lp->axienet_config->mactype != XAXIENET_10G_25G)
-		axienet_iow(lp, XAE_FCC_OFFSET, XAE_FCC_FCRX_MASK);
-
-	lp->axienet_config->setoptions(ndev, lp->options &
-			   ~(XAE_OPTION_TXEN | XAE_OPTION_RXEN));
 	axienet_set_mac_address(ndev, NULL);
 	axienet_set_multicast_list(ndev);
 	lp->axienet_config->setoptions(ndev, lp->options);
