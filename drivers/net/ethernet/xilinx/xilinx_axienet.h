@@ -14,6 +14,7 @@
 #include <linux/interrupt.h>
 #include <linux/if_vlan.h>
 #include <linux/net_tstamp.h>
+#include <linux/phy.h>
 
 /* Packet size info */
 #define XAE_HDR_SIZE			14 /* Size of Ethernet header */
@@ -24,6 +25,14 @@
 #define XAE_MAX_FRAME_SIZE	 (XAE_MTU + XAE_HDR_SIZE + XAE_TRL_SIZE)
 #define XAE_MAX_VLAN_FRAME_SIZE  (XAE_MTU + VLAN_ETH_HLEN + XAE_TRL_SIZE)
 #define XAE_MAX_JUMBO_FRAME_SIZE (XAE_JUMBO_MTU + XAE_HDR_SIZE + XAE_TRL_SIZE)
+
+/* Descriptors defines for Tx and Rx DMA - 2^n for the best performance */
+#define TX_BD_NUM		64
+#define RX_BD_NUM		128
+
+#define XAE_NUM_QUEUES(lp)	((lp)->num_queues)
+#define for_each_dma_queue(lp, var) \
+	for ((var) = 0; (var) < XAE_NUM_QUEUES(lp); (var)++)
 
 /* Configuration options */
 
@@ -932,6 +941,54 @@ static inline void axienet_rxts_iow(struct  axienet_local *lp, off_t reg,
 }
 #endif
 
+/**
+ * axienet_dma_in32 - Memory mapped Axi DMA register read
+ * @q:		Pointer to DMA queue structure
+ * @reg:	Address offset from the base address of the Axi DMA core
+ *
+ * Return: The contents of the Axi DMA register
+ *
+ * This function returns the contents of the corresponding Axi DMA register.
+ */
+static inline u32 axienet_dma_in32(struct axienet_dma_q *q, off_t reg)
+{
+	return in_be32(q->dma_regs + reg);
+}
+
+/**
+ * axienet_dma_out32 - Memory mapped Axi DMA register write.
+ * @q:		Pointer to DMA queue structure
+ * @reg:	Address offset from the base address of the Axi DMA core
+ * @value:	Value to be written into the Axi DMA register
+ *
+ * This function writes the desired value into the corresponding Axi DMA
+ * register.
+ */
+static inline void axienet_dma_out32(struct axienet_dma_q *q,
+				     off_t reg, u32 value)
+{
+	out_be32((q->dma_regs + reg), value);
+}
+
+/**
+ * axienet_dma_bdout - Memory mapped Axi DMA register Buffer Descriptor write.
+ * @q:		Pointer to DMA queue structure
+ * @reg:	Address offset from the base address of the Axi DMA core
+ * @value:	Value to be written into the Axi DMA register
+ *
+ * This function writes the desired value into the corresponding Axi DMA
+ * register.
+ */
+static inline void axienet_dma_bdout(struct axienet_dma_q *q,
+				     off_t reg, dma_addr_t value)
+{
+#if defined(CONFIG_PHYS_ADDR_T_64BIT)
+	writeq(value, (q->dma_regs + reg));
+#else
+	writel(value, (q->dma_regs + reg));
+#endif
+}
+
 /* Function prototypes visible in xilinx_axienet_mdio.c for other files */
 int axienet_mdio_setup(struct axienet_local *lp, struct device_node *np);
 int axienet_mdio_wait_until_ready(struct axienet_local *lp);
@@ -955,6 +1012,25 @@ int axienet_preemption_cnt(struct net_device *ndev, void __user *useraddr);
 int axienet_qbu_user_override(struct net_device *ndev, void __user *useraddr);
 int axienet_qbu_sts(struct net_device *ndev, void __user *useraddr);
 #endif
+#endif
+
+int __maybe_unused axienet_dma_q_init(struct net_device *ndev,
+				      struct axienet_dma_q *q);
+void axienet_dma_err_handler(unsigned long data);
+irqreturn_t __maybe_unused axienet_tx_irq(int irq, void *_ndev);
+irqreturn_t __maybe_unused axienet_rx_irq(int irq, void *_ndev);
+void axienet_start_xmit_done(struct net_device *ndev, struct axienet_dma_q *q);
+void axienet_dma_bd_release(struct net_device *ndev);
+void __axienet_device_reset(struct axienet_dma_q *q, off_t offset);
+void axienet_set_mac_address(struct net_device *ndev, const void *address);
+void axienet_set_multicast_list(struct net_device *ndev);
+
+#ifdef CONFIG_AXIENET_HAS_MCDMA
+void axienet_tx_hwtstamp(struct axienet_local *lp,
+			 struct aximcdma_bd *cur_p);
+#else
+void axienet_tx_hwtstamp(struct axienet_local *lp,
+			 struct axidma_bd *cur_p);
 #endif
 
 #endif /* XILINX_AXI_ENET_H */

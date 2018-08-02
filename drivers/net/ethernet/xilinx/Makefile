@@ -12,6 +12,6 @@ obj-$(CONFIG_XILINX_TSN_QBV) += xilinx_tsn_shaper.o
 obj-$(CONFIG_XILINX_TSN_QCI) += xilinx_tsn_qci.o
 obj-$(CONFIG_XILINX_TSN_CB) += xilinx_tsn_cb.o
 obj-$(CONFIG_XILINX_TSN_SWITCH) += xilinx_tsn_switch.o
-xilinx_emac-objs := xilinx_axienet_main.o xilinx_axienet_mdio.o
+xilinx_emac-objs := xilinx_axienet_main.o xilinx_axienet_mdio.o xilinx_axienet_dma.o
 obj-$(CONFIG_XILINX_AXI_EMAC) += xilinx_emac.o
 obj-$(CONFIG_XILINX_TSN_QBR) += xilinx_tsn_preemption.o
