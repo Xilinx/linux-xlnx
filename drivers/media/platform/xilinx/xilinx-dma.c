@@ -905,8 +905,6 @@ __xvip_dma_try_format(struct xvip_dma *dma,
 				info->bpl_factor;
 		pix_mp->height = clamp(pix_mp->height, XVIP_DMA_MIN_HEIGHT,
 				       XVIP_DMA_MAX_HEIGHT);
-		if (pix_mp->field == V4L2_FIELD_ALTERNATE)
-			pix_mp->height = pix_mp->height / 2;
 
 		/*
 		 * Clamp the requested bytes per line value. If the maximum
@@ -969,9 +967,6 @@ __xvip_dma_try_format(struct xvip_dma *dma,
 			     info->bpl_factor;
 		pix->height = clamp(pix->height, XVIP_DMA_MIN_HEIGHT,
 				    XVIP_DMA_MAX_HEIGHT);
-
-		if (pix->field == V4L2_FIELD_ALTERNATE)
-			pix->height = pix->height / 2;
 
 		min_bpl = (pix->width * info->bpl_factor *
 			  padding_factor_nume * bpl_nume) /
