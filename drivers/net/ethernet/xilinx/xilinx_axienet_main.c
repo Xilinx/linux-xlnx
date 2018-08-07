@@ -227,8 +227,10 @@ static int axienet_dma_bd_init(struct net_device *ndev)
 #else
 		ret = axienet_dma_q_init(ndev, lp->dq[i]);
 #endif
-		if (ret != 0)
+		if (ret != 0) {
+			netdev_err(ndev, "%s: Failed to init DMA buf\n", __func__);
 			break;
+		}
 	}
 
 	return ret;
