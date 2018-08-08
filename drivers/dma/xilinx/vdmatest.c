@@ -634,6 +634,7 @@ static int xilinx_vdmatest_remove(struct platform_device *pdev)
 		xilinx_vdmatest_cleanup_channel(dtc);
 		pr_info("xilinx_vdmatest: dropped channel %s\n",
 			dma_chan_name(chan));
+		dmaengine_terminate_async(chan);
 		dma_release_channel(chan);
 	}
 	return 0;
