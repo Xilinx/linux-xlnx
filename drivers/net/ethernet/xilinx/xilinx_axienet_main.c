@@ -174,6 +174,12 @@ static void __maybe_unused axienet_bd_free(struct net_device *ndev,
 				  q->tx_bd_v,
 				  q->tx_bd_p);
 	}
+	if (q->tx_bufs) {
+		dma_free_coherent(ndev->dev.parent,
+				  XAE_MAX_PKT_LEN * TX_BD_NUM,
+				  q->tx_bufs,
+				  q->tx_bufs_dma);
+	}
 }
 
 /**
