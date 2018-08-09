@@ -185,7 +185,10 @@ struct xsdfec_stats {
  * XSDFEC IOCTL List
  */
 #define XSDFEC_MAGIC		'f'
-/* ioctl to start sdfec device */
+/*
+ * ioctl to start sdfec device
+ * This will fail if the XSDFEC_SET_ORDER ioctl has not been previously called
+ */
 #define XSDFEC_START_DEV	_IO(XSDFEC_MAGIC, 0)
 /* ioctl to stop the device */
 #define XSDFEC_STOP_DEV		_IO(XSDFEC_MAGIC, 1)
@@ -193,9 +196,15 @@ struct xsdfec_stats {
 #define XSDFEC_GET_STATUS	_IOR(XSDFEC_MAGIC, 3, struct xsdfec_status *)
 /* ioctl to enable or disable irq */
 #define XSDFEC_SET_IRQ		_IOW(XSDFEC_MAGIC, 4, struct xsdfec_irq *)
-/* ioctl to enable turbo params for sdfec device */
+/*
+ * ioctl to enable turbo params for sdfec device
+ * This can only be used when driver is in the XSDFEC_STOPPED state
+ */
 #define XSDFEC_SET_TURBO	_IOW(XSDFEC_MAGIC, 5, struct xsdfec_turbo *)
-/* ioctl to add an LDPC code to the sdfec ldpc codes */
+/*
+ * ioctl to add an LDPC code to the sdfec ldpc codes
+ * This can only be used when driver is in the XSDFEC_STOPPED state
+ */
 #define XSDFEC_ADD_LDPC_CODE_PARAMS	\
 	_IOW(XSDFEC_MAGIC, 6, struct xsdfec_ldpc_params *)
 /* ioctl that returns sdfec device configuration */
@@ -205,13 +214,17 @@ struct xsdfec_stats {
 /* ioctl that returns sdfec LDPC code param values, code_id must be specified */
 #define XSDFEC_GET_LDPC_CODE_PARAMS \
 	_IOWR(XSDFEC_MAGIC, 9, struct xsdfec_ldpc_params *)
-/* ioctl that sets order, if order of blocks can change from input to output */
+/*
+ * ioctl that sets order, if order of blocks can change from input to output
+ * This can only be used when driver is in the XSDFEC_STOPPED state
+ */
 #define XSDFEC_SET_ORDER	_IOW(XSDFEC_MAGIC, 10, unsigned long *)
 /*
  * ioctl that sets bypass.
  * setting a value of 0 results in normal operation.
  * setting a value of 1 results in the sdfec performing the configured
  * operations (same number of cycles) but output data matches the input data
+ * This can only be used when driver is in the XSDFEC_STOPPED state
  */
 #define XSDFEC_SET_BYPASS	_IOW(XSDFEC_MAGIC, 11, unsigned long *)
 /* ioctl that determines if sdfec is processing data */
@@ -220,7 +233,10 @@ struct xsdfec_stats {
 #define XSDFEC_CLEAR_STATS	_IO(XSDFEC_MAGIC, 13)
 /* ioctl that returns sdfec device stats */
 #define XSDFEC_GET_STATS	_IOR(XSDFEC_MAGIC, 14, struct xsdfec_stats *)
-/* ioctl that returns sdfec device to default config, use after a reset */
+/*
+ * ioctl that returns sdfec device to default config, use after a reset
+ * This can only be used when driver is in the XSDFEC_STOPPED state
+ */
 #define XSDFEC_SET_DEFAULT_CONFIG _IO(XSDFEC_MAGIC, 15)
 
 #endif /* __XILINX_SDFEC_H__ */
