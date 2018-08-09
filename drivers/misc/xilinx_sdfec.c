@@ -48,47 +48,47 @@ static dev_t xsdfec_devt;
 
 /* Xilinx SDFEC Register Map */
 /* AXI_WRI_PROTECT Register */
-#define XSDFEC_AXI_WR_PROTECT_ADDR		(0x00000)
+#define XSDFEC_AXI_WR_PROTECT_ADDR		(0x0)
 /* CODE_WRI_PROTECT Register */
-#define XSDFEC_CODE_WR_PROTECT_ADDR		(0x00004)
+#define XSDFEC_CODE_WR_PROTECT_ADDR		(0x4)
 #define XSDFEC_WRITE_PROTECT_ENABLE		(1)
 #define XSDFEC_WRITE_PROTECT_DISABLE		(0)
 
 /* ACTIVE Register */
-#define XSDFEC_ACTIVE_ADDR			(0x00008)
+#define XSDFEC_ACTIVE_ADDR			(0x8)
 #define XSDFEC_IS_ACTIVITY_SET			(0x1)
 
 /* AXIS_WIDTH Register */
-#define XSDFEC_AXIS_WIDTH_ADDR			(0x0000c)
+#define XSDFEC_AXIS_WIDTH_ADDR			(0xC)
 #define XSDFEC_AXIS_DOUT_WORDS_LSB		(5)
 #define XSDFEC_AXIS_DOUT_WIDTH_LSB		(3)
 #define XSDFEC_AXIS_DIN_WORDS_LSB		(2)
 #define XSDFEC_AXIS_DIN_WIDTH_LSB		(0)
 
 /* AXIS_ENABLE Register */
-#define XSDFEC_AXIS_ENABLE_ADDR			(0x00010)
-#define XSDFEC_AXIS_ENABLE_MASK			(0x0003F)
+#define XSDFEC_AXIS_ENABLE_ADDR			(0x10)
+#define XSDFEC_AXIS_ENABLE_MASK			(0x3F)
 
 /* FEC_CODE Register */
-#define XSDFEC_FEC_CODE_ADDR			(0x00014)
+#define XSDFEC_FEC_CODE_ADDR			(0x14)
 
 /* ORDER Register Map */
-#define XSDFEC_ORDER_ADDR			(0x00018)
+#define XSDFEC_ORDER_ADDR			(0x18)
 
 /* Interrupt Status Register */
-#define XSDFEC_ISR_ADDR				(0x0001c)
+#define XSDFEC_ISR_ADDR				(0x1C)
 /* Interrupt Status Register Bit Mask */
-#define XSDFEC_ISR_MASK				(0x0003F)
+#define XSDFEC_ISR_MASK				(0x3F)
 
 /* Write Only - Interrupt Enable Register */
-#define XSDFEC_IER_ADDR				(0x00020)
+#define XSDFEC_IER_ADDR				(0x20)
 /* Write Only - Interrupt Disable Register */
-#define XSDFEC_IDR_ADDR				(0x00024)
+#define XSDFEC_IDR_ADDR				(0x24)
 /* Read Only - Interrupt Mask Register */
-#define XSDFEC_IMR_ADDR				(0x00028)
+#define XSDFEC_IMR_ADDR				(0x28)
 
 /* ECC Interrupt Status Register */
-#define XSDFEC_ECC_ISR_ADDR			(0x0002c)
+#define XSDFEC_ECC_ISR_ADDR			(0x2C)
 /* Single Bit Errors */
 #define XSDFEC_ECC_ISR_SBE			(0x7FF)
 /* Multi Bit Errors */
@@ -97,65 +97,65 @@ static dev_t xsdfec_devt;
 #define XSDFEC_ECC_ISR_MASK	(XSDFEC_ECC_ISR_SBE | XSDFEC_ECC_ISR_MBE)
 
 /* Write Only - ECC Interrupt Enable Register */
-#define XSDFEC_ECC_IER_ADDR			(0x00030)
+#define XSDFEC_ECC_IER_ADDR			(0x30)
 /* Write Only - ECC Interrupt Disable Register */
-#define XSDFEC_ECC_IDR_ADDR			(0x00034)
+#define XSDFEC_ECC_IDR_ADDR			(0x34)
 /* Read Only - ECC Interrupt Mask Register */
-#define XSDFEC_ECC_IMR_ADDR			(0x00038)
+#define XSDFEC_ECC_IMR_ADDR			(0x38)
 
 /* BYPASS Register */
-#define XSDFEC_BYPASS_ADDR			(0x0003c)
+#define XSDFEC_BYPASS_ADDR			(0x3C)
 
 /* Turbo Code Register */
-#define XSDFEC_TURBO_ADDR			(0x00100)
+#define XSDFEC_TURBO_ADDR			(0x100)
 #define XSDFEC_TURBO_SCALE_MASK			(0xFFF)
 #define XSDFEC_TURBO_SCALE_BIT_POS		(8)
 #define XSDFEC_TURBO_SCALE_MAX			(15)
 
 /* REG0 Register */
-#define XSDFEC_LDPC_CODE_REG0_ADDR_BASE		(0x02000)
-#define XSDFEC_LDPC_CODE_REG0_ADDR_HIGH		(0x021fc)
-#define XSDFEC_REG0_N_MASK			(0x0000FFFF)
+#define XSDFEC_LDPC_CODE_REG0_ADDR_BASE		(0x2000)
+#define XSDFEC_LDPC_CODE_REG0_ADDR_HIGH		(0x21FC)
+#define XSDFEC_REG0_N_MASK			(0xFFFF)
 #define XSDFEC_REG0_N_LSB			(0)
-#define XSDFEC_REG0_K_MASK			(0x7fff0000)
+#define XSDFEC_REG0_K_MASK			(0x7FFF0000)
 #define XSDFEC_REG0_K_LSB			(16)
 
 /* REG1 Register */
-#define XSDFEC_LDPC_CODE_REG1_ADDR_BASE		(0x02004)
-#define XSDFEC_LDPC_CODE_REG1_ADDR_HIGH		(0x02200)
-#define XSDFEC_REG1_PSIZE_MASK			(0x000001ff)
-#define XSDFEC_REG1_NO_PACKING_MASK		(0x00000400)
+#define XSDFEC_LDPC_CODE_REG1_ADDR_BASE		(0x2004)
+#define XSDFEC_LDPC_CODE_REG1_ADDR_HIGH		(0x2200)
+#define XSDFEC_REG1_PSIZE_MASK			(0x1FF)
+#define XSDFEC_REG1_NO_PACKING_MASK		(0x400)
 #define XSDFEC_REG1_NO_PACKING_LSB		(10)
-#define XSDFEC_REG1_NM_MASK			(0x000ff800)
+#define XSDFEC_REG1_NM_MASK			(0xFF800)
 #define XSDFEC_REG1_NM_LSB			(11)
-#define XSDFEC_REG1_BYPASS_MASK			(0x00100000)
+#define XSDFEC_REG1_BYPASS_MASK			(0x100000)
 
 /* REG2 Register */
-#define XSDFEC_LDPC_CODE_REG2_ADDR_BASE		(0x02008)
-#define XSDFEC_LDPC_CODE_REG2_ADDR_HIGH		(0x02204)
-#define XSDFEC_REG2_NLAYERS_MASK		(0x000001FF)
+#define XSDFEC_LDPC_CODE_REG2_ADDR_BASE		(0x2008)
+#define XSDFEC_LDPC_CODE_REG2_ADDR_HIGH		(0x2204)
+#define XSDFEC_REG2_NLAYERS_MASK		(0x1FF)
 #define XSDFEC_REG2_NLAYERS_LSB			(0)
-#define XSDFEC_REG2_NNMQC_MASK			(0x000FFE00)
+#define XSDFEC_REG2_NNMQC_MASK			(0xFFE00)
 #define XSDFEC_REG2_NMQC_LSB			(9)
-#define XSDFEC_REG2_NORM_TYPE_MASK		(0x00100000)
+#define XSDFEC_REG2_NORM_TYPE_MASK		(0x100000)
 #define XSDFEC_REG2_NORM_TYPE_LSB		(20)
-#define XSDFEC_REG2_SPECIAL_QC_MASK		(0x00200000)
+#define XSDFEC_REG2_SPECIAL_QC_MASK		(0x200000)
 #define XSDFEC_REG2_SPEICAL_QC_LSB		(21)
-#define XSDFEC_REG2_NO_FINAL_PARITY_MASK	(0x00400000)
+#define XSDFEC_REG2_NO_FINAL_PARITY_MASK	(0x400000)
 #define XSDFEC_REG2_NO_FINAL_PARITY_LSB		(22)
-#define XSDFEC_REG2_MAX_SCHEDULE_MASK		(0x01800000)
+#define XSDFEC_REG2_MAX_SCHEDULE_MASK		(0x1800000)
 #define XSDFEC_REG2_MAX_SCHEDULE_LSB		(23)
 
 /* REG3 Register */
-#define XSDFEC_LDPC_CODE_REG3_ADDR_BASE		(0x0200c)
-#define XSDFEC_LDPC_CODE_REG3_ADDR_HIGH		(0x02208)
+#define XSDFEC_LDPC_CODE_REG3_ADDR_BASE		(0x200C)
+#define XSDFEC_LDPC_CODE_REG3_ADDR_HIGH		(0x2208)
 #define XSDFEC_REG3_LA_OFF_LSB			(8)
 #define XSDFEC_REG3_QC_OFF_LSB			(16)
 
 #define XSDFEC_LDPC_REG_JUMP			(0x10)
 #define XSDFEC_REG_WIDTH_JUMP			(4)
 
-#define XSDFEC_SC_TABLE_DEPTH			(0x3fc)
+#define XSDFEC_SC_TABLE_DEPTH			(0x3FC)
 #define XSDFEC_LA_TABLE_DEPTH			(0xFFC)
 #define XSDFEC_QC_TABLE_DEPTH			(0x7FFC)
 
