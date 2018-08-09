@@ -47,19 +47,39 @@ static atomic_t xsdfec_ndevs = ATOMIC_INIT(0);
 static dev_t xsdfec_devt;
 
 /* Xilinx SDFEC Register Map */
+/* AXI_WRI_PROTECT Register */
 #define XSDFEC_AXI_WR_PROTECT_ADDR		(0x00000)
+/* CODE_WRI_PROTECT Register */
 #define XSDFEC_CODE_WR_PROTECT_ADDR		(0x00004)
+#define XSDFEC_WRITE_PROTECT_ENABLE		(1)
+#define XSDFEC_WRITE_PROTECT_DISABLE		(0)
+
+/* ACTIVE Register */
 #define XSDFEC_ACTIVE_ADDR			(0x00008)
+#define XSDFEC_IS_ACTIVITY_SET			(0x1)
+
+/* AXIS_WIDTH Register */
 #define XSDFEC_AXIS_WIDTH_ADDR			(0x0000c)
+#define XSDFEC_AXIS_DOUT_WORDS_LSB		(5)
+#define XSDFEC_AXIS_DOUT_WIDTH_LSB		(3)
+#define XSDFEC_AXIS_DIN_WORDS_LSB		(2)
+#define XSDFEC_AXIS_DIN_WIDTH_LSB		(0)
+
+/* AXIS_ENABLE Register */
 #define XSDFEC_AXIS_ENABLE_ADDR			(0x00010)
 #define XSDFEC_AXIS_ENABLE_MASK			(0x0003F)
+
+/* FEC_CODE Register */
 #define XSDFEC_FEC_CODE_ADDR			(0x00014)
+
+/* ORDER Register Map */
 #define XSDFEC_ORDER_ADDR			(0x00018)
 
-/* Interrupt Status Register Bit Mask*/
-#define XSDFEC_ISR_MASK				(0x0003F)
 /* Interrupt Status Register */
 #define XSDFEC_ISR_ADDR				(0x0001c)
+/* Interrupt Status Register Bit Mask */
+#define XSDFEC_ISR_MASK				(0x0003F)
+
 /* Write Only - Interrupt Enable Register */
 #define XSDFEC_IER_ADDR				(0x00020)
 /* Write Only - Interrupt Disable Register */
@@ -67,6 +87,8 @@ static dev_t xsdfec_devt;
 /* Read Only - Interrupt Mask Register */
 #define XSDFEC_IMR_ADDR				(0x00028)
 
+/* ECC Interrupt Status Register */
+#define XSDFEC_ECC_ISR_ADDR			(0x0002c)
 /* Single Bit Errors */
 #define XSDFEC_ECC_ISR_SBE			(0x7FF)
 /* Multi Bit Errors */
@@ -74,10 +96,6 @@ static dev_t xsdfec_devt;
 /* ECC Interrupt Status Bit Mask */
 #define XSDFEC_ECC_ISR_MASK	(XSDFEC_ECC_ISR_SBE | XSDFEC_ECC_ISR_MBE)
 
-#define XSDFEC_ERROR_MAX_THRESHOLD		(100)
-
-/* ECC Interrupt Status Register */
-#define XSDFEC_ECC_ISR_ADDR			(0x0002c)
 /* Write Only - ECC Interrupt Enable Register */
 #define XSDFEC_ECC_IER_ADDR			(0x00030)
 /* Write Only - ECC Interrupt Disable Register */
@@ -85,16 +103,64 @@ static dev_t xsdfec_devt;
 /* Read Only - ECC Interrupt Mask Register */
 #define XSDFEC_ECC_IMR_ADDR			(0x00038)
 
+/* BYPASS Register */
 #define XSDFEC_BYPASS_ADDR			(0x0003c)
+
+/* Turbo Code Register */
 #define XSDFEC_TURBO_ADDR			(0x00100)
+#define XSDFEC_TURBO_SCALE_MASK			(0xFFF)
+#define XSDFEC_TURBO_SCALE_BIT_POS		(8)
+#define XSDFEC_TURBO_SCALE_MAX			(15)
+
+/* REG0 Register */
 #define XSDFEC_LDPC_CODE_REG0_ADDR_BASE		(0x02000)
 #define XSDFEC_LDPC_CODE_REG0_ADDR_HIGH		(0x021fc)
+#define XSDFEC_REG0_N_MASK			(0x0000FFFF)
+#define XSDFEC_REG0_N_LSB			(0)
+#define XSDFEC_REG0_K_MASK			(0x7fff0000)
+#define XSDFEC_REG0_K_LSB			(16)
+
+/* REG1 Register */
 #define XSDFEC_LDPC_CODE_REG1_ADDR_BASE		(0x02004)
 #define XSDFEC_LDPC_CODE_REG1_ADDR_HIGH		(0x02200)
+#define XSDFEC_REG1_PSIZE_MASK			(0x000001ff)
+#define XSDFEC_REG1_NO_PACKING_MASK		(0x00000400)
+#define XSDFEC_REG1_NO_PACKING_LSB		(10)
+#define XSDFEC_REG1_NM_MASK			(0x000ff800)
+#define XSDFEC_REG1_NM_LSB			(11)
+#define XSDFEC_REG1_BYPASS_MASK			(0x00100000)
+
+/* REG2 Register */
 #define XSDFEC_LDPC_CODE_REG2_ADDR_BASE		(0x02008)
 #define XSDFEC_LDPC_CODE_REG2_ADDR_HIGH		(0x02204)
+#define XSDFEC_REG2_NLAYERS_MASK		(0x000001FF)
+#define XSDFEC_REG2_NLAYERS_LSB			(0)
+#define XSDFEC_REG2_NNMQC_MASK			(0x000FFE00)
+#define XSDFEC_REG2_NMQC_LSB			(9)
+#define XSDFEC_REG2_NORM_TYPE_MASK		(0x00100000)
+#define XSDFEC_REG2_NORM_TYPE_LSB		(20)
+#define XSDFEC_REG2_SPECIAL_QC_MASK		(0x00200000)
+#define XSDFEC_REG2_SPEICAL_QC_LSB		(21)
+#define XSDFEC_REG2_NO_FINAL_PARITY_MASK	(0x00400000)
+#define XSDFEC_REG2_NO_FINAL_PARITY_LSB		(22)
+#define XSDFEC_REG2_MAX_SCHEDULE_MASK		(0x01800000)
+#define XSDFEC_REG2_MAX_SCHEDULE_LSB		(23)
+
+/* REG3 Register */
 #define XSDFEC_LDPC_CODE_REG3_ADDR_BASE		(0x0200c)
 #define XSDFEC_LDPC_CODE_REG3_ADDR_HIGH		(0x02208)
+#define XSDFEC_REG3_LA_OFF_LSB			(8)
+#define XSDFEC_REG3_QC_OFF_LSB			(16)
+
+#define XSDFEC_LDPC_REG_JUMP			(0x10)
+#define XSDFEC_REG_WIDTH_JUMP			(4)
+
+#define XSDFEC_SC_TABLE_DEPTH			(0x3fc)
+#define XSDFEC_LA_TABLE_DEPTH			(0xFFC)
+#define XSDFEC_QC_TABLE_DEPTH			(0x7FFC)
+
+/* Error Count Maximum Threshold */
+#define XSDFEC_ERROR_MAX_THRESHOLD		(100)
 
 /**
  * struct xsdfec_dev - Driver data for SDFEC
@@ -155,8 +221,6 @@ xsdfec_regread(struct xsdfec_dev *xsdfec, u32 addr)
 	return rval;
 }
 
-#define XSDFEC_WRITE_PROTECT_ENABLE	(1)
-#define XSDFEC_WRITE_PROTECT_DISABLE	(0)
 static void
 xsdfec_wr_protect(struct xsdfec_dev *xsdfec, bool wr_pr)
 {
@@ -213,7 +277,6 @@ xsdfec_dev_release(struct inode *iptr, struct file *fptr)
 	return 0;
 }
 
-#define XSDFEC_IS_ACTIVITY_SET	(0x1)
 static int
 xsdfec_get_status(struct xsdfec_dev *xsdfec, void __user *arg)
 {
@@ -338,8 +401,6 @@ xsdfec_set_irq(struct xsdfec_dev *xsdfec, void __user *arg)
 	return 0;
 }
 
-#define XSDFEC_TURBO_SCALE_MASK		(0xF)
-#define XSDFEC_TURBO_SCALE_BIT_POS	(8)
 static int
 xsdfec_set_turbo(struct xsdfec_dev *xsdfec, void __user *arg)
 {
@@ -403,11 +464,6 @@ xsdfec_get_turbo(struct xsdfec_dev *xsdfec, void __user *arg)
 	return err;
 }
 
-#define XSDFEC_LDPC_REG_JUMP	(0x10)
-#define XSDFEC_REG0_N_MASK	(0x0000FFFF)
-#define XSDFEC_REG0_N_LSB	(0)
-#define XSDFEC_REG0_K_MASK	(0x7fff0000)
-#define XSDFEC_REG0_K_LSB	(16)
 static int
 xsdfec_reg0_write(struct xsdfec_dev *xsdfec,
 		  u32 n, u32 k, u32 offset)
@@ -465,12 +521,6 @@ xsdfec_collect_ldpc_reg0(struct xsdfec_dev *xsdfec,
 	return 0;
 }
 
-#define XSDFEC_REG1_PSIZE_MASK		(0x000001ff)
-#define XSDFEC_REG1_NO_PACKING_MASK	(0x00000400)
-#define XSDFEC_REG1_NO_PACKING_LSB	(10)
-#define XSDFEC_REG1_NM_MASK		(0x000ff800)
-#define XSDFEC_REG1_NM_LSB		(11)
-#define XSDFEC_REG1_BYPASS_MASK	(0x00100000)
 static int
 xsdfec_reg1_write(struct xsdfec_dev *xsdfec, u32 psize,
 		  u32 no_packing, u32 nm, u32 offset)
@@ -531,19 +581,6 @@ xsdfec_collect_ldpc_reg1(struct xsdfec_dev *xsdfec,
 			   XSDFEC_REG1_NM_MASK;
 	return 0;
 }
-
-#define XSDFEC_REG2_NLAYERS_MASK		(0x000001FF)
-#define XSDFEC_REG2_NLAYERS_LSB			(0)
-#define XSDFEC_REG2_NNMQC_MASK			(0x000FFE00)
-#define XSDFEC_REG2_NMQC_LSB			(9)
-#define XSDFEC_REG2_NORM_TYPE_MASK		(0x00100000)
-#define XSDFEC_REG2_NORM_TYPE_LSB		(20)
-#define XSDFEC_REG2_SPECIAL_QC_MASK		(0x00200000)
-#define XSDFEC_REG2_SPEICAL_QC_LSB		(21)
-#define XSDFEC_REG2_NO_FINAL_PARITY_MASK	(0x00400000)
-#define XSDFEC_REG2_NO_FINAL_PARITY_LSB		(22)
-#define XSDFEC_REG2_MAX_SCHEDULE_MASK		(0x01800000)
-#define XSDFEC_REG2_MAX_SCHEDULE_LSB		(23)
 
 static int
 xsdfec_reg2_write(struct xsdfec_dev *xsdfec, u32 nlayers, u32 nmqc,
@@ -638,8 +675,6 @@ xsdfec_collect_ldpc_reg2(struct xsdfec_dev *xsdfec,
 	return 0;
 }
 
-#define XSDFEC_REG3_LA_OFF_LSB		(8)
-#define XSDFEC_REG3_QC_OFF_LSB		(16)
 static int
 xsdfec_reg3_write(struct xsdfec_dev *xsdfec, u8 sc_off,
 		  u8 la_off, u16 qc_off, u32 offset)
@@ -687,8 +722,6 @@ xsdfec_collect_ldpc_reg3(struct xsdfec_dev *xsdfec,
 	return 0;
 }
 
-#define XSDFEC_SC_TABLE_DEPTH		(0x3fc)
-#define XSDFEC_REG_WIDTH_JUMP		(4)
 static int
 xsdfec_sc_table_write(struct xsdfec_dev *xsdfec, u32 offset,
 		      u32 *sc_ptr, u32 len)
@@ -734,7 +767,6 @@ xsdfec_collect_sc_table(struct xsdfec_dev *xsdfec, u32 offset,
 	return 0;
 }
 
-#define XSDFEC_LA_TABLE_DEPTH		(0xFFC)
 static int
 xsdfec_la_table_write(struct xsdfec_dev *xsdfec, u32 offset,
 		      u32 *la_ptr, u32 len)
@@ -777,7 +809,6 @@ xsdfec_collect_la_table(struct xsdfec_dev *xsdfec, u32 offset,
 	return 0;
 }
 
-#define XSDFEC_QC_TABLE_DEPTH		(0x7FFC)
 static int
 xsdfec_qc_table_write(struct xsdfec_dev *xsdfec,
 		      u32 offset, u32 *qc_ptr, u32 len)
@@ -1080,10 +1111,6 @@ xsdfec_translate_axis_words_cfg_val(
 	return axis_words_field;
 }
 
-#define XSDFEC_AXIS_DOUT_WORDS_LSB	(5)
-#define XSDFEC_AXIS_DOUT_WIDTH_LSB	(3)
-#define XSDFEC_AXIS_DIN_WORDS_LSB	(2)
-#define XSDFEC_AXIS_DIN_WIDTH_LSB	(0)
 static int
 xsdfec_cfg_axi_streams(struct xsdfec_dev *xsdfec)
 {
