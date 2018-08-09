@@ -74,8 +74,6 @@ static dev_t xsdfec_devt;
 /* ECC Interrupt Status Bit Mask */
 #define XSDFEC_ECC_ISR_MASK	(XSDFEC_ECC_ISR_SBE | XSDFEC_ECC_ISR_MBE)
 
-/* Multi Bit Error Postion */
-#define XSDFEC_ECC_MULTI_BIT_POS		(11)
 #define XSDFEC_ERROR_MAX_THRESHOLD		(100)
 
 /* ECC Interrupt Status Register */
@@ -88,8 +86,6 @@ static dev_t xsdfec_devt;
 #define XSDFEC_ECC_IMR_ADDR			(0x00038)
 
 #define XSDFEC_BYPASS_ADDR			(0x0003c)
-#define XSDFEC_TEST_EMA_ADDR_BASE		(0x00080)
-#define XSDFEC_TEST_EMA_ADDR_HIGH		(0x00089)
 #define XSDFEC_TURBO_ADDR			(0x00100)
 #define XSDFEC_LDPC_CODE_REG0_ADDR_BASE		(0x02000)
 #define XSDFEC_LDPC_CODE_REG0_ADDR_HIGH		(0x021fc)
