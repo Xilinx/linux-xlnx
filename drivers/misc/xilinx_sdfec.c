@@ -482,8 +482,8 @@ xsdfec_reg0_write(struct xsdfec_dev *xsdfec,
 	k = ((k << XSDFEC_REG0_K_LSB) & XSDFEC_REG0_K_MASK);
 	wdata = k | n;
 
-	if (XSDFEC_LDPC_CODE_REG0_ADDR_BASE + (offset * XSDFEC_LDPC_REG_JUMP)
-				> XSDFEC_LDPC_CODE_REG0_ADDR_HIGH) {
+	if (XSDFEC_LDPC_CODE_REG0_ADDR_BASE + (offset * XSDFEC_LDPC_REG_JUMP) >
+	    XSDFEC_LDPC_CODE_REG0_ADDR_HIGH) {
 		dev_err(xsdfec->dev,
 			"Writing outside of LDPC reg0 space 0x%x",
 			XSDFEC_LDPC_CODE_REG0_ADDR_BASE +
@@ -541,8 +541,8 @@ xsdfec_reg1_write(struct xsdfec_dev *xsdfec, u32 psize,
 	nm = (nm << XSDFEC_REG1_NM_LSB) & XSDFEC_REG1_NM_MASK;
 
 	wdata = nm | no_packing | psize;
-	if (XSDFEC_LDPC_CODE_REG1_ADDR_BASE + (offset * XSDFEC_LDPC_REG_JUMP)
-		> XSDFEC_LDPC_CODE_REG1_ADDR_HIGH) {
+	if (XSDFEC_LDPC_CODE_REG1_ADDR_BASE + (offset * XSDFEC_LDPC_REG_JUMP) >
+	    XSDFEC_LDPC_CODE_REG1_ADDR_HIGH) {
 		dev_err(xsdfec->dev,
 			"Writing outside of LDPC reg1 space 0x%x",
 			XSDFEC_LDPC_CODE_REG1_ADDR_BASE +
@@ -589,8 +589,7 @@ xsdfec_reg2_write(struct xsdfec_dev *xsdfec, u32 nlayers, u32 nmqc,
 {
 	u32 wdata;
 
-	if (nlayers & ~(XSDFEC_REG2_NLAYERS_MASK >>
-				XSDFEC_REG2_NLAYERS_LSB))
+	if (nlayers & ~(XSDFEC_REG2_NLAYERS_MASK >> XSDFEC_REG2_NLAYERS_LSB))
 		dev_err(xsdfec->dev, "Nlayers exceeds 9 bits");
 	nlayers &= XSDFEC_REG2_NLAYERS_MASK;
 
@@ -621,8 +620,8 @@ xsdfec_reg2_write(struct xsdfec_dev *xsdfec, u32 nlayers, u32 nmqc,
 	wdata = (max_schedule | no_final_parity | special_qc | norm_type |
 			nmqc | nlayers);
 
-	if (XSDFEC_LDPC_CODE_REG2_ADDR_BASE + (offset * XSDFEC_LDPC_REG_JUMP)
-		> XSDFEC_LDPC_CODE_REG2_ADDR_HIGH) {
+	if (XSDFEC_LDPC_CODE_REG2_ADDR_BASE + (offset * XSDFEC_LDPC_REG_JUMP) >
+	    XSDFEC_LDPC_CODE_REG2_ADDR_HIGH) {
 		dev_err(xsdfec->dev,
 			"Writing outside of LDPC reg2 space 0x%x",
 			XSDFEC_LDPC_CODE_REG2_ADDR_BASE +
@@ -683,9 +682,8 @@ xsdfec_reg3_write(struct xsdfec_dev *xsdfec, u8 sc_off,
 
 	wdata = ((qc_off << XSDFEC_REG3_QC_OFF_LSB) |
 		(la_off << XSDFEC_REG3_LA_OFF_LSB) | sc_off);
-	if (XSDFEC_LDPC_CODE_REG3_ADDR_BASE +
-		(offset *  XSDFEC_LDPC_REG_JUMP) >
-			XSDFEC_LDPC_CODE_REG3_ADDR_HIGH) {
+	if (XSDFEC_LDPC_CODE_REG3_ADDR_BASE + (offset *  XSDFEC_LDPC_REG_JUMP) >
+	    XSDFEC_LDPC_CODE_REG3_ADDR_HIGH) {
 		dev_err(xsdfec->dev,
 			"Writing outside of LDPC reg3 space 0x%x",
 			XSDFEC_LDPC_CODE_REG3_ADDR_BASE +
