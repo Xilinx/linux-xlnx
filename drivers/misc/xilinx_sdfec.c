@@ -281,7 +281,7 @@ static int
 xsdfec_get_status(struct xsdfec_dev *xsdfec, void __user *arg)
 {
 	struct xsdfec_status status;
-	int err = 0;
+	int err;
 
 	status.fec_id = xsdfec->config.fec_id;
 	status.state = xsdfec->state;
@@ -302,7 +302,7 @@ xsdfec_get_status(struct xsdfec_dev *xsdfec, void __user *arg)
 static int
 xsdfec_get_config(struct xsdfec_dev *xsdfec, void __user *arg)
 {
-	int err = 0;
+	int err;
 
 	err = copy_to_user(arg, &xsdfec->config, sizeof(xsdfec->config));
 	if (err) {
@@ -375,7 +375,7 @@ static int
 xsdfec_set_irq(struct xsdfec_dev *xsdfec, void __user *arg)
 {
 	struct xsdfec_irq  irq;
-	int err = 0;
+	int err;
 
 	err = copy_from_user(&irq, arg, sizeof(irq));
 	if (err) {
@@ -405,8 +405,8 @@ static int
 xsdfec_set_turbo(struct xsdfec_dev *xsdfec, void __user *arg)
 {
 	struct xsdfec_turbo turbo;
-	int err = 0;
-	u32 turbo_write = 0;
+	int err;
+	u32 turbo_write;
 
 	err = copy_from_user(&turbo, arg, sizeof(turbo));
 	if (err) {
@@ -1211,7 +1211,7 @@ xsdfec_clear_stats(struct xsdfec_dev *xsdfec)
 static int
 xsdfec_get_stats(struct xsdfec_dev *xsdfec, void __user *arg)
 {
-	int err = 0;
+	int err;
 	struct xsdfec_stats user_stats;
 
 	user_stats.isr_err_count = atomic_read(&xsdfec->isr_err_count);
