@@ -747,14 +747,9 @@ int __maybe_unused axienet_mcdma_tx_probe(struct platform_device *pdev,
 		q->tx_irq = platform_get_irq_byname(pdev, dma_name);
 		q->eth_hasdre = of_property_read_bool(np,
 						      "xlnx,include-dre");
-	}
-	of_node_put(np);
-
-	for_each_tx_dma_queue(lp, i) {
-		struct axienet_dma_q *q = lp->dq[i];
-
 		spin_lock_init(&q->tx_lock);
 	}
+	of_node_put(np);
 
 	return 0;
 }
@@ -775,15 +770,9 @@ int __maybe_unused axienet_mcdma_rx_probe(struct platform_device *pdev,
 		snprintf(dma_name, sizeof(dma_name), "s2mm_ch%d_introut",
 			 i + 1);
 		q->rx_irq = platform_get_irq_byname(pdev, dma_name);
-	}
-
-	for_each_rx_dma_queue(lp, i) {
-		struct axienet_dma_q *q = lp->dq[i];
 
 		spin_lock_init(&q->rx_lock);
-	}
 
-	for_each_rx_dma_queue(lp, i) {
 		netif_napi_add(ndev, &lp->napi[i], xaxienet_rx_poll,
 			       XAXIENET_NAPI_WEIGHT);
 	}
