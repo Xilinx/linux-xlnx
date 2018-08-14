@@ -12,6 +12,15 @@ config VIDEO_XILINX
 
 if VIDEO_XILINX
 
+config VIDEO_XILINX_AXI4S_SWITCH
+	tristate "Xilinx AXI4-Stream Video Switch"
+	depends on VIDEO_XILINX
+	---help---
+	   Driver for the Xilinx AXI4-Stream Video Switch. This is a
+	   V4L sub device based driver. It supports fixed (TDEST based)
+	   as well as dynamic (control register based) routing.
+	   Say M to modularize. Say N if unsure.
+
 config VIDEO_XILINX_CFA
 	tristate "Xilinx Video Color Filter Array"
 	depends on VIDEO_XILINX
