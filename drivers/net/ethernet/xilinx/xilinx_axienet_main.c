@@ -979,7 +979,7 @@ static int axienet_skb_tstsmp(struct sk_buff **__skb, struct axienet_dma_q *q,
 				if (!new_skb) {
 					dev_err(&ndev->dev, "failed to allocate new socket buffer\n");
 					dev_kfree_skb_any(old_skb);
-					return NETDEV_TX_OK;
+					return NETDEV_TX_BUSY;
 				}
 
 				/*  Transfer the ownership to the
