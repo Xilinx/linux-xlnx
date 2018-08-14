@@ -26,69 +26,72 @@ struct axienet_stat {
 	const char *name;
 };
 
-static struct axienet_stat axienet_get_strings_stats[] = {
+static struct axienet_stat axienet_get_tx_strings_stats[] = {
 	{ "txq0_packets" },
 	{ "txq0_bytes"   },
-	{ "rxq0_packets" },
-	{ "rxq0_bytes"   },
 	{ "txq1_packets" },
 	{ "txq1_bytes"   },
-	{ "rxq1_packets" },
-	{ "rxq1_bytes"   },
 	{ "txq2_packets" },
 	{ "txq2_bytes"   },
-	{ "rxq2_packets" },
-	{ "rxq2_bytes"   },
 	{ "txq3_packets" },
 	{ "txq3_bytes"   },
-	{ "rxq3_packets" },
-	{ "rxq3_bytes"   },
 	{ "txq4_packets" },
 	{ "txq4_bytes"   },
-	{ "rxq4_packets" },
-	{ "rxq4_bytes"   },
 	{ "txq5_packets" },
 	{ "txq5_bytes"   },
-	{ "rxq5_packets" },
-	{ "rxq5_bytes"   },
 	{ "txq6_packets" },
 	{ "txq6_bytes"   },
-	{ "rxq6_packets" },
-	{ "rxq6_bytes"   },
 	{ "txq7_packets" },
 	{ "txq7_bytes"   },
-	{ "rxq7_packets" },
-	{ "rxq7_bytes"   },
 	{ "txq8_packets" },
 	{ "txq8_bytes"   },
-	{ "rxq8_packets" },
-	{ "rxq8_bytes"   },
 	{ "txq9_packets" },
 	{ "txq9_bytes"   },
-	{ "rxq9_packets" },
-	{ "rxq9_bytes"   },
 	{ "txq10_packets" },
 	{ "txq10_bytes"   },
-	{ "rxq10_packets" },
-	{ "rxq10_bytes"   },
 	{ "txq11_packets" },
 	{ "txq11_bytes"   },
-	{ "rxq11_packets" },
-	{ "rxq11_bytes"   },
 	{ "txq12_packets" },
 	{ "txq12_bytes"   },
-	{ "rxq12_packets" },
-	{ "rxq12_bytes"   },
 	{ "txq13_packets" },
 	{ "txq13_bytes"   },
-	{ "rxq13_packets" },
-	{ "rxq13_bytes"   },
 	{ "txq14_packets" },
 	{ "txq14_bytes"   },
-	{ "rxq14_packets" },
-	{ "rxq14_bytes"   },
 	{ "txq15_packets" },
 	{ "txq15_bytes"   },
+};
+
+static struct axienet_stat axienet_get_rx_strings_stats[] = {
+	{ "rxq0_packets" },
+	{ "rxq0_bytes"   },
+	{ "rxq1_packets" },
+	{ "rxq1_bytes"   },
+	{ "rxq2_packets" },
+	{ "rxq2_bytes"   },
+	{ "rxq3_packets" },
+	{ "rxq3_bytes"   },
+	{ "rxq4_packets" },
+	{ "rxq4_bytes"   },
+	{ "rxq5_packets" },
+	{ "rxq5_bytes"   },
+	{ "rxq6_packets" },
+	{ "rxq6_bytes"   },
+	{ "rxq7_packets" },
+	{ "rxq7_bytes"   },
+	{ "rxq8_packets" },
+	{ "rxq8_bytes"   },
+	{ "rxq9_packets" },
+	{ "rxq9_bytes"   },
+	{ "rxq10_packets" },
+	{ "rxq10_bytes"   },
+	{ "rxq11_packets" },
+	{ "rxq11_bytes"   },
+	{ "rxq12_packets" },
+	{ "rxq12_bytes"   },
+	{ "rxq13_packets" },
+	{ "rxq13_bytes"   },
+	{ "rxq14_packets" },
+	{ "rxq14_bytes"   },
 	{ "rxq15_packets" },
 	{ "rxq15_bytes"   },
 };
@@ -491,20 +494,36 @@ void axienet_strings(struct net_device *ndev, u32 sset, u8 *data)
 	struct axienet_dma_q *q;
 	int i, j, k = 0;
 
-	for (i = 0, j = 0; i < AXIENET_TX_SSTATS_LEN(lp) +
-			       AXIENET_RX_SSTATS_LEN(lp);) {
-		if (j >= lp->num_tx_queues + lp->num_rx_queues)
+	for (i = 0, j = 0; i < AXIENET_TX_SSTATS_LEN(lp);) {
+		if (j >= lp->num_tx_queues)
 			break;
 		q = lp->dq[j];
-		if (i % 4 == 0)
-			k = (q->chan_id - 1) * 4;
+		if (i % 2 == 0)
+			k = (q->chan_id - 1) * 2;
 		if (sset == ETH_SS_STATS)
 			memcpy(data + i * ETH_GSTRING_LEN,
-			       axienet_get_strings_stats[k].name,
+			       axienet_get_tx_strings_stats[k].name,
 			       ETH_GSTRING_LEN);
 		++i;
 		k++;
-		if (i % 4 == 0)
+		if (i % 2 == 0)
+			++j;
+	}
+	k = 0;
+	for (j = 0; i < AXIENET_TX_SSTATS_LEN(lp) +
+			AXIENET_RX_SSTATS_LEN(lp);) {
+		if (j >= lp->num_rx_queues)
+			break;
+		q = lp->dq[j];
+		if (i % 2 == 0)
+			k = (q->chan_id - 1) * 2;
+		if (sset == ETH_SS_STATS)
+			memcpy(data + i * ETH_GSTRING_LEN,
+			       axienet_get_rx_strings_stats[k].name,
+			       ETH_GSTRING_LEN);
+		++i;
+		k++;
+		if (i % 2 == 0)
 			++j;
 	}
 }
@@ -529,14 +548,21 @@ void axienet_get_stats(struct net_device *ndev,
 	struct axienet_dma_q *q;
 	unsigned int i = 0, j;
 
-	for (i = 0, j = 0; i < AXIENET_TX_SSTATS_LEN(lp) +
-			       AXIENET_RX_SSTATS_LEN(lp);) {
-		if (j >= lp->num_tx_queues + lp->num_rx_queues)
+	for (i = 0, j = 0; i < AXIENET_TX_SSTATS_LEN(lp);) {
+		if (j >= lp->num_tx_queues)
 			break;
 
 		q = lp->dq[j];
 		data[i++] = q->tx_packets;
 		data[i++] = q->tx_bytes;
+		++j;
+	}
+	for (j = 0; i < AXIENET_TX_SSTATS_LEN(lp) +
+			AXIENET_RX_SSTATS_LEN(lp);) {
+		if (j >= lp->num_rx_queues)
+			break;
+
+		q = lp->dq[j];
 		data[i++] = q->rx_packets;
 		data[i++] = q->rx_bytes;
 		++j;
