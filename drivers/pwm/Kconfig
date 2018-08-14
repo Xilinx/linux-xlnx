@@ -519,4 +519,10 @@ config PWM_ZX
 	  To compile this driver as a module, choose M here: the module
 	  will be called pwm-zx.
 
+config PWM_CADENCE
+    tristate "Cadence TTC support"
+    depends on ARCH_ZYNQMP
+    help
+      PWM driver for Cadence Triple Timer Counter (TTC) IPs, as found in Xilinx Zynq SoCs
+
 endif
