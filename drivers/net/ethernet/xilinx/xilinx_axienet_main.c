@@ -899,7 +899,7 @@ static void axienet_create_tsheader(u8 *buf, u8 msg_type,
 #endif
 
 #ifdef CONFIG_XILINX_TSN
-static inline u16 get_tsn_queue(u8 pcp, u16 num_queues)
+static inline u16 get_tsn_queue(u8 pcp, u16 num_tc)
 {
 	u16 queue = 0;
 
@@ -907,18 +907,18 @@ static inline u16 get_tsn_queue(u8 pcp, u16 num_queues)
 	 * For 2 queue system, ST queue is 1. BE queue is always 0
 	 */
 	if (pcp == 4) {
-		if (num_queues == 2)
+		if (num_tc == 2)
 			queue = 1;
 		else
 			queue = 2;
-	} else if ((num_queues == 3) && (pcp == 2 || pcp == 3)) {
+	} else if ((num_tc == 3) && (pcp == 2 || pcp == 3)) {
 		queue = 1;
 	}
 
 	return queue;
 }
 
-static inline u16 tsn_queue_mapping(const struct sk_buff *skb, u16 num_queues)
+static inline u16 tsn_queue_mapping(const struct sk_buff *skb, u16 num_tc)
 {
 	int queue = 0;
 	u16 vlan_tci;
@@ -938,7 +938,7 @@ static inline u16 tsn_queue_mapping(const struct sk_buff *skb, u16 num_queues)
 		pr_debug("vlan_tci: %x\n", vlan_tci);
 		pr_debug("pcp: %d\n", pcp);
 
-		queue = get_tsn_queue(pcp, num_queues);
+		queue = get_tsn_queue(pcp, num_tc);
 	}
 	pr_debug("selected queue: %d\n", queue);
 	return queue;
@@ -1051,7 +1051,7 @@ int axienet_queue_xmit(struct sk_buff *skb, struct net_device *ndev, u16 map)
 
 #ifdef CONFIG_XILINX_TSN
 	if (unlikely(lp->is_tsn)) {
-		map = tsn_queue_mapping(skb, lp->num_queues);
+		map = tsn_queue_mapping(skb, lp->num_tc);
 #ifdef CONFIG_XILINX_TSN_PTP
 		const struct ethhdr *eth;
 
@@ -2590,6 +2590,14 @@ static int axienet_probe(struct platform_device *pdev)
 	lp->options = XAE_OPTION_DEFAULTS;
 	lp->num_queues = num_queues;
 	lp->is_tsn = is_tsn;
+
+#ifdef CONFIG_XILINX_TSN
+	ret = of_property_read_u16(pdev->dev.of_node, "xlnx,num-tc",
+				   &lp->num_tc);
+	if (ret || (lp->num_tc != 2 && lp->num_tc != 3))
+		lp->num_tc = XAE_MAX_TSN_TC;
+#endif
+
 	/* Map device registers */
 	ethres = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	lp->regs = devm_ioremap_resource(&pdev->dev, ethres);

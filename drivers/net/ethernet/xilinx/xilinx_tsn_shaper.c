@@ -25,14 +25,14 @@ static inline int axienet_map_gs_to_hw(struct axienet_local *lp, u32 gs)
 	u8 st_queue = 2;
 	unsigned int acl_bit_map = 0;
 
-	if (lp->num_queues == 2)
+	if (lp->num_tc == 2)
 		st_queue = 1;
 
 	if (gs & GS_BE_OPEN)
 		acl_bit_map |= (1 << be_queue);
 	if (gs & GS_ST_OPEN)
 		acl_bit_map |= (1 << st_queue);
-	if ((lp->num_queues == 3) && (gs & GS_RE_OPEN))
+	if (lp->num_tc == 3 && (gs & GS_RE_OPEN))
 		acl_bit_map |= (1 << re_queue);
 
 	return acl_bit_map;
@@ -167,7 +167,7 @@ static int __axienet_get_schedule(struct net_device *ndev, struct qbv_info *qbv)
 		 * In 2Q system, the actual ST Gate state value is 2,
 		 * for user the ST Gate state value is always 4.
 		 */
-		if ((lp->num_queues == 2) && (qbv->acl_gate_state[i] == 2))
+		if (lp->num_tc == 2 && qbv->acl_gate_state[i] == 2)
 			qbv->acl_gate_state[i] = 4;
 
 		u_value = axienet_ior(lp, OPER_CTRL_LIST_TIME(port, i));
