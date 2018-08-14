@@ -427,8 +427,12 @@ static int synps_enh_edac_geterror_info(void __iomem *base,
 					ECC_CEADDR1_BNKGRP_SHIFT;
 	p->ceinfo.blknr = (regval & ECC_CEADDR1_BLKNR_MASK);
 	p->ceinfo.data = readl(base + ECC_CSYND0_OFST);
-	edac_dbg(3, "ce bit position: %d data: %d\n", p->ceinfo.bitpos,
+	edac_dbg(3, "ce bit position: %d data: 0x%08x\n", p->ceinfo.bitpos,
 		 p->ceinfo.data);
+	edac_dbg(3, "ECCCSYN0: 0x%08X ECCCSYN1: 0x%08X ECCCSYN2: 0x%08X\n",
+		 readl(base + ECC_CSYND0_OFST), readl(base + ECC_CSYND1_OFST),
+		 readl(base + ECC_CSYND2_OFST));
+
 
 ue_err:
 	regval = readl(base + ECC_UEADDR0_OFST);
