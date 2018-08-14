@@ -761,7 +761,7 @@ static int tsnswitch_probe(struct platform_device *pdev)
 {
 	struct resource *swt;
 	int ret;
-	u16 num_q;
+	u16 num_tc;
 
 	pr_info("TSN Switch probe\n");
 	/* Map device registers */
@@ -770,17 +770,17 @@ static int tsnswitch_probe(struct platform_device *pdev)
 	if (IS_ERR(lp.regs))
 		return PTR_ERR(lp.regs);
 
-	ret = of_property_read_u16(pdev->dev.of_node, "xlnx,num-queues",
-				   &num_q);
-	if (ret || ((num_q != 2) && (num_q != 3)))
-		num_q = XAE_MAX_QUEUES;
+	ret = of_property_read_u16(pdev->dev.of_node, "xlnx,num-tc",
+				   &num_tc);
+	if (ret || (num_tc != 2 && num_tc != 3))
+		num_tc = XAE_MAX_TSN_TC;
 
 	pr_info("TSN Switch Initializing ....\n");
 	ret = tsn_switch_init();
 	if (ret)
 		return ret;
 	pr_info("TSN CAM Initializing ....\n");
-	ret = tsn_switch_cam_init(num_q);
+	ret = tsn_switch_cam_init(num_tc);
 
 	return ret;
 }

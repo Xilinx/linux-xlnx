@@ -3,7 +3,7 @@
  * Definitions for Xilinx Axi Ethernet device driver.
  *
  * Copyright (c) 2009 Secret Lab Technologies, Ltd.
- * Copyright (c) 2010 - 2012 Xilinx, Inc. All rights reserved.
+ * Copyright (c) 2010 - 2018 Xilinx, Inc. All rights reserved.
  */
 
 #ifndef XILINX_AXIENET_H
@@ -599,6 +599,10 @@ struct aximcdma_bd {
 #define XAE_MAX_QUEUES   3
 #endif
 
+#ifdef CONFIG_XILINX_TSN
+#define XAE_MAX_TSN_TC		3
+#endif
+
 enum axienet_tsn_ioctl {
 	SIOCCHIOCTL = SIOCDEVPRIVATE,
 	SIOC_GET_SCHED,
@@ -624,6 +628,7 @@ enum axienet_tsn_ioctl {
  * @phy_mode:	Phy type to identify between MII/GMII/RGMII/SGMII/1000 Base-X
  * @is_tsn:	Denotes a tsn port
  * @temac_no:	Denotes the port number in TSN IP
+ * @num_tc:	Total number of TSN Traffic classes
  * @timer_priv: PTP timer private data pointer
  * @ptp_tx_irq: PTP tx irq
  * @ptp_rx_irq: PTP rx irq
@@ -692,6 +697,7 @@ struct axienet_local {
 
 	bool is_tsn;
 #ifdef CONFIG_XILINX_TSN
+	u16    num_tc;		/* Number of TSN Traffic classes */
 #ifdef CONFIG_XILINX_TSN_PTP
 	void *timer_priv;
 	int ptp_tx_irq;
