@@ -1033,6 +1033,8 @@ int axienet_qbu_sts(struct net_device *ndev, void __user *useraddr);
 #endif
 #endif
 
+void __maybe_unused axienet_bd_free(struct net_device *ndev,
+				    struct axienet_dma_q *q);
 int __maybe_unused axienet_dma_q_init(struct net_device *ndev,
 				      struct axienet_dma_q *q);
 void axienet_dma_err_handler(unsigned long data);
