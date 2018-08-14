@@ -332,9 +332,6 @@ static struct platform_driver cadence_pwm_driver = {
 static int __init cadence_pwm_init(void)
 {
 	int ret;
-
-	printk(KERN_INFO "cadence_pwm: Compiled on "
-		__DATE__ " at " __TIME__ "\n");
 	ret = platform_driver_register(&cadence_pwm_driver);
 	return ret;
 }
