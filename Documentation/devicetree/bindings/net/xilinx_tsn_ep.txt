@@ -6,9 +6,15 @@ Required properties:
 - reg			: Physical base address and size of the TSN Endpoint
 				registers map
 
+Optional properties:
+- xlnx,num-tc		: Number of traffic class supported in current design,
+			  range is 2,3 and default value is 3. It denotes
+			  the traffic classes based on VLAN-PCP value.
+
 Example:
 
 	tsn_ep: tsn_ep@80056000 {
 		compatible = "xlnx,tsn-ep";
 		reg = <0x0 0x80056000 0x0 0xA000>;
+		xlnx,num-tc = <0x3>;
 	};

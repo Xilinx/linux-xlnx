@@ -19,6 +19,9 @@ Optional properties:
 - xlnx,phy-type		: Phy device type.
 - xlnx,eth-hasnobuf	: Used when 1G MAC is configured in non processor mode.
 - xlnx,num-queue	: Number of queue supported in current design
+- xlnx,num-tc		: Number of traffic class supported in current design,
+			  range is 2,3 and default value is 3. It denotes
+			  the traffic classes based on VLAN-PCP value.
 
 Example:
 
@@ -38,4 +41,5 @@ Example:
 		xlnx,eth-hasnobuf;
 		xlnx,bus2core-clk-ratio = <0x1>;
 		xlnx,num-queue = <0x2>;
+		xlnx,num-tc = <0x3>;
 	};
