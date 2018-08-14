@@ -222,7 +222,7 @@ int __maybe_unused axienet_mcdma_tx_q_init(struct net_device *ndev,
 
 	return 0;
 out:
-	for_each_dma_queue(lp, i) {
+	for_each_tx_dma_queue(lp, i) {
 		axienet_mcdma_tx_bd_free(ndev, lp->dq[i]);
 	}
 	return -ENOMEM;
@@ -314,7 +314,7 @@ int __maybe_unused axienet_mcdma_rx_q_init(struct net_device *ndev,
 	return 0;
 
 out:
-	for_each_dma_queue(lp, i) {
+	for_each_rx_dma_queue(lp, i) {
 		axienet_mcdma_rx_bd_free(ndev, lp->dq[i]);
 	}
 	return -ENOMEM;
@@ -324,7 +324,7 @@ static inline int get_mcdma_tx_q(struct axienet_local *lp, u32 chan_id)
 {
 	int i;
 
-	for_each_dma_queue(lp, i) {
+	for_each_tx_dma_queue(lp, i) {
 		if (chan_id == lp->chan_num[i])
 			return lp->qnum[i];
 	}
@@ -336,7 +336,7 @@ static inline int get_mcdma_rx_q(struct axienet_local *lp, u32 chan_id)
 {
 	int i;
 
-	for_each_dma_queue(lp, i) {
+	for_each_rx_dma_queue(lp, i) {
 		if (chan_id == lp->chan_num[i])
 			return lp->qnum[i];
 	}
@@ -491,8 +491,9 @@ void axienet_strings(struct net_device *ndev, u32 sset, u8 *data)
 	struct axienet_dma_q *q;
 	int i, j, k = 0;
 
-	for (i = 0, j = 0; i < AXIENET_SSTATS_LEN(lp);) {
-		if (j >= lp->num_queues)
+	for (i = 0, j = 0; i < AXIENET_TX_SSTATS_LEN(lp) +
+			       AXIENET_RX_SSTATS_LEN(lp);) {
+		if (j >= lp->num_tx_queues + lp->num_rx_queues)
 			break;
 		q = lp->dq[j];
 		if (i % 4 == 0)
@@ -514,7 +515,7 @@ int axienet_sset_count(struct net_device *ndev, int sset)
 
 	switch (sset) {
 	case ETH_SS_STATS:
-		return AXIENET_SSTATS_LEN(lp);
+		return (AXIENET_TX_SSTATS_LEN(lp) + AXIENET_RX_SSTATS_LEN(lp));
 	default:
 		return -EOPNOTSUPP;
 	}
@@ -528,8 +529,9 @@ void axienet_get_stats(struct net_device *ndev,
 	struct axienet_dma_q *q;
 	unsigned int i = 0, j;
 
-	for (i = 0, j = 0; i < AXIENET_SSTATS_LEN(lp);) {
-		if (j >= lp->num_queues)
+	for (i = 0, j = 0; i < AXIENET_TX_SSTATS_LEN(lp) +
+			       AXIENET_RX_SSTATS_LEN(lp);) {
+		if (j >= lp->num_tx_queues + lp->num_rx_queues)
 			break;
 
 		q = lp->dq[j];
@@ -708,7 +710,7 @@ int __maybe_unused axienet_mcdma_tx_probe(struct platform_device *pdev,
 	int i;
 	char dma_name[24];
 
-	for_each_dma_queue(lp, i) {
+	for_each_tx_dma_queue(lp, i) {
 		struct axienet_dma_q *q;
 
 		q = lp->dq[i];
@@ -722,7 +724,7 @@ int __maybe_unused axienet_mcdma_tx_probe(struct platform_device *pdev,
 	}
 	of_node_put(np);
 
-	for_each_dma_queue(lp, i) {
+	for_each_tx_dma_queue(lp, i) {
 		struct axienet_dma_q *q = lp->dq[i];
 
 		spin_lock_init(&q->tx_lock);
@@ -738,7 +740,7 @@ int __maybe_unused axienet_mcdma_rx_probe(struct platform_device *pdev,
 	int i;
 	char dma_name[24];
 
-	for_each_dma_queue(lp, i) {
+	for_each_rx_dma_queue(lp, i) {
 		struct axienet_dma_q *q;
 
 		q = lp->dq[i];
@@ -749,13 +751,13 @@ int __maybe_unused axienet_mcdma_rx_probe(struct platform_device *pdev,
 		q->rx_irq = platform_get_irq_byname(pdev, dma_name);
 	}
 
-	for_each_dma_queue(lp, i) {
+	for_each_rx_dma_queue(lp, i) {
 		struct axienet_dma_q *q = lp->dq[i];
 
 		spin_lock_init(&q->rx_lock);
 	}
 
-	for_each_dma_queue(lp, i) {
+	for_each_rx_dma_queue(lp, i) {
 		netif_napi_add(ndev, &lp->napi[i], xaxienet_rx_poll,
 			       XAXIENET_NAPI_WEIGHT);
 	}
