@@ -195,9 +195,13 @@ void axienet_dma_bd_release(struct net_device *ndev)
 	int i;
 	struct axienet_local *lp = netdev_priv(ndev);
 
-	for_each_dma_queue(lp, i) {
 #ifdef CONFIG_AXIENET_HAS_MCDMA
+	for_each_tx_dma_queue(lp, i) {
 		axienet_mcdma_tx_bd_free(ndev, lp->dq[i]);
+	}
+#endif
+	for_each_rx_dma_queue(lp, i) {
+#ifdef CONFIG_AXIENET_HAS_MCDMA
 		axienet_mcdma_rx_bd_free(ndev, lp->dq[i]);
 #else
 		axienet_bd_free(ndev, lp->dq[i]);
@@ -220,9 +224,15 @@ static int axienet_dma_bd_init(struct net_device *ndev)
 	int i, ret;
 	struct axienet_local *lp = netdev_priv(ndev);
 
-	for_each_dma_queue(lp, i) {
 #ifdef CONFIG_AXIENET_HAS_MCDMA
+	for_each_tx_dma_queue(lp, i) {
 		ret = axienet_mcdma_tx_q_init(ndev, lp->dq[i]);
+		if (ret != 0)
+			break;
+	}
+#endif
+	for_each_rx_dma_queue(lp, i) {
+#ifdef CONFIG_AXIENET_HAS_MCDMA
 		ret = axienet_mcdma_rx_q_init(ndev, lp->dq[i]);
 #else
 		ret = axienet_dma_q_init(ndev, lp->dq[i]);
@@ -460,7 +470,7 @@ static void axienet_device_reset(struct net_device *ndev)
 	}
 
 	if (!lp->is_tsn || lp->temac_no == XAE_TEMAC1) {
-		for_each_dma_queue(lp, i) {
+		for_each_rx_dma_queue(lp, i) {
 			q = lp->dq[i];
 			__axienet_device_reset(q, XAXIDMA_TX_CR_OFFSET);
 #ifndef CONFIG_AXIENET_HAS_MCDMA
@@ -1503,7 +1513,7 @@ int map_dma_q_irq(int irq, struct axienet_local *lp)
 {
 	int i;
 
-	for_each_dma_queue(lp, i) {
+	for_each_rx_dma_queue(lp, i) {
 		if (irq == lp->dq[i]->tx_irq || irq == lp->dq[i]->rx_irq)
 			return i;
 	}
@@ -1593,7 +1603,7 @@ static int axienet_open(struct net_device *ndev)
 
 	if (!lp->is_tsn || lp->temac_no == XAE_TEMAC1) {
 		/* Enable tasklets for Axi DMA error handling */
-		for_each_dma_queue(lp, i) {
+		for_each_rx_dma_queue(lp, i) {
 #ifdef CONFIG_AXIENET_HAS_MCDMA
 			tasklet_init(&lp->dma_err_tasklet[i],
 				     axienet_mcdma_err_handler,
@@ -1612,7 +1622,7 @@ static int axienet_open(struct net_device *ndev)
 	 */
 			napi_enable(&lp->napi[i]);
 		}
-		for_each_dma_queue(lp, i) {
+		for_each_tx_dma_queue(lp, i) {
 			struct axienet_dma_q *q = lp->dq[i];
 #ifdef CONFIG_AXIENET_HAS_MCDMA
 			/* Enable interrupts for Axi MCDMA Tx */
@@ -1620,18 +1630,23 @@ static int axienet_open(struct net_device *ndev)
 					  IRQF_SHARED, ndev->name, ndev);
 			if (ret)
 				goto err_tx_irq;
-
-			/* Enable interrupts for Axi MCDMA Rx */
-			ret = request_irq(q->rx_irq, axienet_mcdma_rx_irq,
-					  IRQF_SHARED, ndev->name, ndev);
-			if (ret)
-				goto err_rx_irq;
 #else
 			/* Enable interrupts for Axi DMA Tx */
 			ret = request_irq(q->tx_irq, axienet_tx_irq,
 					  0, ndev->name, ndev);
 			if (ret)
 				goto err_tx_irq;
+#endif
+		}
+		for_each_rx_dma_queue(lp, i) {
+			struct axienet_dma_q *q = lp->dq[i];
+#ifdef CONFIG_AXIENET_HAS_MCDMA
+			/* Enable interrupts for Axi MCDMA Rx */
+			ret = request_irq(q->rx_irq, axienet_mcdma_rx_irq,
+					  IRQF_SHARED, ndev->name, ndev);
+			if (ret)
+				goto err_rx_irq;
+#else
 			/* Enable interrupts for Axi DMA Rx */
 			ret = request_irq(q->rx_irq, axienet_rx_irq,
 					  0, ndev->name, ndev);
@@ -1748,14 +1763,14 @@ err_eth_irq:
 		q = lp->dq[i];
 		free_irq(q->rx_irq, ndev);
 	}
-	i = lp->num_queues;
+	i = lp->num_tx_queues;
 err_rx_irq:
 	while (i--) {
 		q = lp->dq[i];
 		free_irq(q->tx_irq, ndev);
 	}
 err_tx_irq:
-	for_each_dma_queue(lp, i)
+	for_each_rx_dma_queue(lp, i)
 		napi_disable(&lp->napi[i]);
 #ifdef CONFIG_XILINX_TSN_PTP
 err_ptp_rx_irq:
@@ -1763,7 +1778,7 @@ err_ptp_rx_irq:
 	if (phydev)
 		phy_disconnect(phydev);
 	phydev = NULL;
-	for_each_dma_queue(lp, i)
+	for_each_rx_dma_queue(lp, i)
 		tasklet_kill(&lp->dma_err_tasklet[i]);
 	dev_err(lp->dev, "request_irq() failed\n");
 	return ret;
@@ -1789,13 +1804,17 @@ static int axienet_stop(struct net_device *ndev)
 	dev_dbg(&ndev->dev, "axienet_close()\n");
 
 	if (!lp->is_tsn || lp->temac_no == XAE_TEMAC1) {
-		for_each_dma_queue(lp, i) {
+		for_each_tx_dma_queue(lp, i) {
+			q = lp->dq[i];
+			cr = axienet_dma_in32(q, XAXIDMA_TX_CR_OFFSET);
+			axienet_dma_out32(q, XAXIDMA_TX_CR_OFFSET,
+					  cr & (~XAXIDMA_CR_RUNSTOP_MASK));
+			free_irq(q->tx_irq, ndev);
+		}
+		for_each_rx_dma_queue(lp, i) {
 			q = lp->dq[i];
 			cr = axienet_dma_in32(q, XAXIDMA_RX_CR_OFFSET);
 			axienet_dma_out32(q, XAXIDMA_RX_CR_OFFSET,
-					  cr & (~XAXIDMA_CR_RUNSTOP_MASK));
-			cr = axienet_dma_in32(q, XAXIDMA_TX_CR_OFFSET);
-			axienet_dma_out32(q, XAXIDMA_TX_CR_OFFSET,
 					  cr & (~XAXIDMA_CR_RUNSTOP_MASK));
 			lp->axienet_config->setoptions(ndev, lp->options &
 				   ~(XAE_OPTION_TXEN | XAE_OPTION_RXEN));
@@ -1804,7 +1823,6 @@ static int axienet_stop(struct net_device *ndev)
 			napi_disable(&lp->napi[i]);
 			tasklet_kill(&lp->dma_err_tasklet[i]);
 
-			free_irq(q->tx_irq, ndev);
 			free_irq(q->rx_irq, ndev);
 		}
 	}
@@ -2228,13 +2246,16 @@ static int axienet_ethtools_get_coalesce(struct net_device *ndev,
 	struct axienet_dma_q *q;
 	int i;
 
-	for_each_dma_queue(lp, i) {
+	for_each_rx_dma_queue(lp, i) {
 		q = lp->dq[i];
 
 		regval = axienet_dma_in32(q, XAXIDMA_RX_CR_OFFSET);
 		ecoalesce->rx_max_coalesced_frames +=
 						(regval & XAXIDMA_COALESCE_MASK)
 						     >> XAXIDMA_COALESCE_SHIFT;
+	}
+	for_each_tx_dma_queue(lp, i) {
+		q = lp->dq[i];
 		regval = axienet_dma_in32(q, XAXIDMA_TX_CR_OFFSET);
 		ecoalesce->tx_max_coalesced_frames +=
 						(regval & XAXIDMA_COALESCE_MASK)
@@ -2356,7 +2377,7 @@ static int __maybe_unused axienet_mcdma_probe(struct platform_device *pdev,
 	if (ret < 0)
 		return -EINVAL;
 
-	for_each_dma_queue(lp, i) {
+	for_each_rx_dma_queue(lp, i) {
 		q = kzalloc(sizeof(*q), GFP_KERNEL);
 
 		/* parent */
@@ -2409,7 +2430,7 @@ static int __maybe_unused axienet_dma_probe(struct platform_device *pdev,
 	char dma_name[10];
 #endif
 
-	for_each_dma_queue(lp, i) {
+	for_each_rx_dma_queue(lp, i) {
 		q = kmalloc(sizeof(*q), GFP_KERNEL);
 
 		/* parent */
@@ -2420,7 +2441,7 @@ static int __maybe_unused axienet_dma_probe(struct platform_device *pdev,
 
 	/* Find the DMA node, map the DMA registers, and decode the DMA IRQs */
 	/* TODO handle error ret */
-	for_each_dma_queue(lp, i) {
+	for_each_rx_dma_queue(lp, i) {
 		q = lp->dq[i];
 
 		np = of_parse_phandle(pdev->dev.of_node, "axistream-connected",
@@ -2441,7 +2462,7 @@ static int __maybe_unused axienet_dma_probe(struct platform_device *pdev,
 
 #ifdef CONFIG_XILINX_TSN
 	if (lp->is_tsn) {
-		for_each_dma_queue(lp, i) {
+		for_each_rx_dma_queue(lp, i) {
 			sprintf(dma_name, "dma%d_tx", i);
 			lp->dq[i]->tx_irq = platform_get_irq_byname(pdev,
 								    dma_name);
@@ -2455,7 +2476,7 @@ static int __maybe_unused axienet_dma_probe(struct platform_device *pdev,
 		}
 	} else {
 #endif /* This should remove when axienet device tree irq comply to dma name */
-		for_each_dma_queue(lp, i) {
+		for_each_rx_dma_queue(lp, i) {
 			lp->dq[i]->tx_irq = irq_of_parse_and_map(np, 0);
 			lp->dq[i]->rx_irq = irq_of_parse_and_map(np, 1);
 		}
@@ -2465,14 +2486,14 @@ static int __maybe_unused axienet_dma_probe(struct platform_device *pdev,
 
 	of_node_put(np);
 
-	for_each_dma_queue(lp, i) {
+	for_each_rx_dma_queue(lp, i) {
 		struct axienet_dma_q *q = lp->dq[i];
 
 		spin_lock_init(&q->tx_lock);
 		spin_lock_init(&q->rx_lock);
 	}
 
-	for_each_dma_queue(lp, i) {
+	for_each_rx_dma_queue(lp, i) {
 		netif_napi_add(ndev, &lp->napi[i], xaxienet_rx_poll,
 			       XAXIENET_NAPI_WEIGHT);
 	}
@@ -2565,8 +2586,11 @@ static int axienet_probe(struct platform_device *pdev)
 #endif
 		}
 	}
-	if (is_tsn && ((num_queues != 2) && (num_queues != 3)))
+#ifdef CONFIG_XILINX_TSN
+	if (is_tsn && (num_queues < XAE_TSN_MIN_QUEUES ||
+		       num_queues > XAE_MAX_QUEUES))
 		num_queues = XAE_MAX_QUEUES;
+#endif
 
 	ndev = alloc_etherdev_mq(sizeof(*lp), num_queues);
 	if (!ndev)
@@ -2588,7 +2612,8 @@ static int axienet_probe(struct platform_device *pdev)
 	lp->ndev = ndev;
 	lp->dev = &pdev->dev;
 	lp->options = XAE_OPTION_DEFAULTS;
-	lp->num_queues = num_queues;
+	lp->num_tx_queues = num_queues;
+	lp->num_rx_queues = num_queues;
 	lp->is_tsn = is_tsn;
 
 #ifdef CONFIG_XILINX_TSN
@@ -2903,7 +2928,7 @@ static int axienet_remove(struct platform_device *pdev)
 #endif
 #endif
 	if (!lp->is_tsn || lp->temac_no == XAE_TEMAC1) {
-		for_each_dma_queue(lp, i)
+		for_each_rx_dma_queue(lp, i)
 			netif_napi_del(&lp->napi[i]);
 	}
 	unregister_netdev(ndev);

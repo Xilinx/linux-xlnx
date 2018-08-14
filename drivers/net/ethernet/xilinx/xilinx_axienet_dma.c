@@ -196,7 +196,7 @@ static int map_dma_q_irq(int irq, struct axienet_local *lp)
 {
 	int i;
 
-	for_each_dma_queue(lp, i) {
+	for_each_rx_dma_queue(lp, i) {
 		if (irq == lp->dq[i]->tx_irq || irq == lp->dq[i]->rx_irq)
 			return i;
 	}
