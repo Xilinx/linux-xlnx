@@ -16,6 +16,47 @@
 #include "xilinx_axienet.h"
 
 /**
+ * axienet_bd_free - Release buffer descriptor rings for individual dma queue
+ * @ndev:	Pointer to the net_device structure
+ * @q:		Pointer to DMA queue structure
+ *
+ * This function is helper function to axienet_dma_bd_release.
+ */
+
+void __maybe_unused axienet_bd_free(struct net_device *ndev,
+				    struct axienet_dma_q *q)
+{
+	int i;
+	struct axienet_local *lp = netdev_priv(ndev);
+
+	for (i = 0; i < RX_BD_NUM; i++) {
+		dma_unmap_single(ndev->dev.parent, q->rx_bd_v[i].phys,
+				 lp->max_frm_size, DMA_FROM_DEVICE);
+		dev_kfree_skb((struct sk_buff *)
+			      (q->rx_bd_v[i].sw_id_offset));
+	}
+
+	if (q->rx_bd_v) {
+		dma_free_coherent(ndev->dev.parent,
+				  sizeof(*q->rx_bd_v) * RX_BD_NUM,
+				  q->rx_bd_v,
+				  q->rx_bd_p);
+	}
+	if (q->tx_bd_v) {
+		dma_free_coherent(ndev->dev.parent,
+				  sizeof(*q->tx_bd_v) * TX_BD_NUM,
+				  q->tx_bd_v,
+				  q->tx_bd_p);
+	}
+	if (q->tx_bufs) {
+		dma_free_coherent(ndev->dev.parent,
+				  XAE_MAX_PKT_LEN * TX_BD_NUM,
+				  q->tx_bufs,
+				  q->tx_bufs_dma);
+	}
+}
+
+/**
  * __dma_txq_init - Setup buffer descriptor rings for individual Axi DMA-Tx
  * @ndev:	Pointer to the net_device structure
  * @q:		Pointer to DMA queue structure
