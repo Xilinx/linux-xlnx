@@ -68,7 +68,7 @@ static const char * cpwm_register_names[] = {
 #define CPWM_COUNTER_CTRL_INTERVAL_ENABLE 0x2
 #define CPWM_COUNTER_CTRL_COUNTING_DISABLE 0x1
 
-#define CPWM_NUM_PWM 3
+#define CPWM_NUM_PWM 1
 
 /* For PWM operation, we want "interval mode" where "Interval mode: The counter
 increments or decrements continuously between 0 and the value of the Interval
