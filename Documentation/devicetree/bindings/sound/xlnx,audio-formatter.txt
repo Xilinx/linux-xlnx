@@ -1,6 +1,6 @@
 Device-Tree bindings for Xilinx PL audio formatter
 
-The IP core supports DMA, data formatting(AES<->PCM conversion)
+The IP core supports DMA, data formatting(packing, conversion)
 of audio samples.
 
 Required properties:
@@ -13,6 +13,19 @@ Required properties:
  - interrupts-parent: Phandle for interrupt controller.
  - interrupts: List of Interrupt numbers.
  - reg: Base address and size of the IP core instance.
+ - xlnx,tx: connected audio sink node.
+	    Should be one of below supported nodes:
+		1. HDMI video Tx output
+		2. I2S transmitter
+		3. UHDSDI audio embed
+	    Only those nodes were supported in sound card driver
+
+ - xlnx,rx: connected audio source node.
+	    Should be one of below supported nodes:
+		1. HDMI video Rx input
+		2. I2S receiver
+		3. UHDSDI audio extract
+	    Only those nodes were supported in sound card driver
  - clock-names: List of input clocks.
    Required elements: "s_axi_lite_aclk", "aud_mclk"
  - clocks: Input clock specifier. Refer to common clock bindings.
@@ -24,6 +37,8 @@ Example:
 		interrupt-parent = <&gic>;
 		interrupts = <0 104 4>, <0 105 4>;
 		reg = <0x0 0x80010000 0x0 0x1000>;
+		xlnx,tx = <&i2s_transmitter>;
+		xlnx,rx = <&i2s_receiver>;
 		clock-names = "s_axi_lite_aclk", "aud_mclk";
 		clocks = <&clk 71>, <&clk_wiz_1 0>;
 	};
