@@ -997,6 +997,7 @@ xsdfec_get_ldpc_code_params(struct xsdfec_dev *xsdfec, void __user *arg)
 		dev_err(xsdfec->dev, "%s failed for SDFEC%d",
 			__func__, xsdfec->config.fec_id);
 		err = -EFAULT;
+		goto err_out;
 	}
 
 	kfree(ldpc_params);
