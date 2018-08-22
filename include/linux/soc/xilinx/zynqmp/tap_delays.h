@@ -21,11 +21,12 @@
 
 #ifdef CONFIG_ARCH_ZYNQMP
 /* API for programming the tap delays */
-void arasan_zynqmp_set_tap_delay(u8 deviceid, u8 timing, u8 bank);
+void arasan_zynqmp_set_tap_delay(u8 deviceid, u8 itap_delay, u8 otap_delay);
 
 /* API to reset the DLL */
 void zynqmp_dll_reset(u8 deviceid);
 #else
-inline void arasan_zynqmp_set_tap_delay(u8 deviceid, u8 timing, u8 bank) {}
+inline void arasan_zynqmp_set_tap_delay(u8 deviceid, u8 itap_delay,
+					u8 otap_delay) {}
 inline void zynqmp_dll_reset(u8 deviceid) {}
 #endif
