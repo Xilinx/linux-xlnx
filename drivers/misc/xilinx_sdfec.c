@@ -1662,7 +1662,7 @@ xsdfec_remove(struct platform_device *pdev)
 	xsdfec = platform_get_drvdata(pdev);
 	if (!xsdfec)
 		return -ENODEV;
-	dev = xsdfec->dev;
+
 	if (!xsdfec_class) {
 		dev_err(dev, "xsdfec_class is NULL");
 		return -EIO;
