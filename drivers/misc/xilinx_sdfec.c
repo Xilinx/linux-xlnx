@@ -1505,7 +1505,7 @@ xsdfec_log_isr_errors(struct xsdfec_dev *xsdfec, u32 isr_err)
 	}
 
 	/* Clear ISR error status */
-	xsdfec_regwrite(xsdfec, XSDFEC_ECC_ISR_ADDR, 0);
+	xsdfec_regwrite(xsdfec, XSDFEC_ISR_ADDR, 0);
 }
 
 static void
