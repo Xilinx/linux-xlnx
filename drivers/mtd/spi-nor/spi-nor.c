@@ -3006,7 +3006,8 @@ static int spi_nor_select_erase(struct spi_nor *nor,
 	struct mtd_info *mtd = &nor->mtd;
 
 	/* Do nothing if already configured from SFDP. */
-	if (mtd->erasesize)
+	if (mtd->erasesize &&
+	    JEDEC_MFR(info) != SNOR_MFR_SPANSION)
 		return 0;
 
 #ifdef CONFIG_MTD_SPI_NOR_USE_4K_SECTORS
