@@ -1917,6 +1917,8 @@ int tas2557_set_calibration(struct tas2557_priv *pTAS2557, int nCalibration)
 	}
 
 	if (nCalibration == 0x00FF) {
+        dev_info(pTAS2557->dev, "skipped loading calibration file!\n");
+        /*
 		nResult = tas2557_load_calibration(pTAS2557, TAS2557_CAL_NAME);
 		if (nResult < 0) {
 			dev_info(pTAS2557->dev, "load new calibration file %s fail %d\n",
@@ -1924,6 +1926,7 @@ int tas2557_set_calibration(struct tas2557_priv *pTAS2557, int nCalibration)
 			goto end;
 		}
 		nCalibration = 0;
+        */
 	}
 
 	if (nCalibration >= pTAS2557->mpCalFirmware->mnCalibrations) {
