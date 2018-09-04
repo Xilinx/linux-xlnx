@@ -1,66 +1,95 @@
-XILINX AXI ETHERNET Device Tree Bindings
+XILINX AXI ETHERNET driver (xilinx_axienet)
 --------------------------------------------------------
 
-Also called  AXI 1G/2.5G Ethernet Subsystem, the xilinx axi ethernet IP core
-provides connectivity to an external ethernet PHY supporting different
-interfaces: MII, GMII, RGMII, SGMII, 1000BaseX. It also includes two
-segments of memory for buffering TX and RX, as well as the capability of
-offloading TX/RX checksum calculation off the processor.
+This driver supports following MAC configurations-
+a) AXI 1G/2.5G Ethernet Subsystem.
+b) 10G/25G High Speed Ethernet Subsystem.
+c) 10 Gigabit Ethernet Subsystem.
+d) USXGMII Ethernet Subsystem.
 
-Management configuration is done through the AXI interface, while payload is
-sent and received through means of an AXI DMA controller. This driver
-includes the DMA driver code, so this driver is incompatible with AXI DMA
-driver.
+Management configuration is done through the AXI4-Lite interface.
+The transmit and receive data interface is via the AXI4-Stream
+interface connected to DMA controller. This driver supports Xilinx
+AXI DMA and MCDMA DMA IP's. Programming sequence for these DMA IP's
+is included in the xilinx_axienet driver.
 
-For more details about mdio please refer phy.txt file in the same directory.
+For details about MDIO please refer phy.txt [1].
 
 Required properties:
-- compatible	: Must be one of "xlnx,axi-ethernet-1.00.a",
-		  "xlnx,axi-ethernet-1.01.a", "xlnx,axi-ethernet-2.01.a"
-		  for Axi Ethenret 1G MAC
-		  controllers and "xlnx,ten-gig-eth-mac" for Axi
-		  Ethernet 10G MAC controllers and
+- compatible	: Must be one of "xlnx,axi-ethernet-1.00.a" or
+		  "xlnx,axi-ethernet-1.01.a" or "xlnx,axi-ethernet-2.01.a"
+		  for 1G MAC,
+		  "xlnx,ten-gig-eth-mac" for 10 Gigabit Ethernet Subsystem,
 		  "xlnx,xxv-ethernet-1.0" for 10G/25G MAC,
 		  "xlnx,axi-2_5-gig-ethernet-1.0" for 2.5G MAC and
 		  "xlnx,xxv-usxgmii-ethernet-1.0" for USXGMII.
 - reg		: Address and length of the IO space.
 - interrupts	: Should be a list of two interrupt, TX and RX.
 - interrupt-parent	: Must be core interrupt controller.
-- phy-handle	: Should point to the external phy device.
-		  See ethernet.txt file in the same directory.
-- local-mac-address	: See ethernet.txt file in the same directory.
-- phy-mode		: see ethernet.txt file in the same directory.
+- phy-handle	: See ethernet.txt [2].
+- local-mac-address	: See ethernet.txt [2].
+- phy-mode		: See ethernet.txt [2].
+- axistream-connected	: Should contain phandle of DMA node.
 Required properties (When AxiEthernet is configured with MCDMA):
 - xlnx,channel-ids	: Queue Identifier associated with the MCDMA Channel.
 - interrupt-names	: Should contain the interrupt names.
 
 Optional properties:
 - xlnx,rxmem		: Max Rx Memory size.
-- xlnx,txcsum		: Checks for tx checksum.
-- xlnx,rxcsum		: Check for rx checksum.
-- xlnx,phy-type		: Phy device type.
-- dma-coherent		: For ACP port designs to allocate cohernet memory.
-- xlnx,eth-hasnobuf	: Used when 1G MAC is configured in non processor mode.
+- xlnx,txcsum		: Tx checksum mode (Full, Partial and None).
+- xlnx,rxcsum		: Rx checksum mode (Full, Partial and None).
+- xlnx,phy-type		: Xilinx phy device type. See xilinx-phy.txt [3].
+- dma-coherent		: Present if dma operations are coherent.
+- xlnx,eth-hasnobuf	: Used when 1G MAC is configured in non-processor mode.
 - xlnx,rxtsfifo 	: Configures the axi fifo for receive timestamping.
-- xlnx,include-dre	: Tells whether DMA h/w is configured with DRE or not.
+- xlnx,include-dre	: Tells whether DMA h/w is configured with data
+			  realignment engine(DRE) or not.
+- xlnx,eth-hasptp	: Tells whether PTP is enabled in h/w or not.
+- axififo-connected	: Should contain the phandle of AXI stream fifo.
 - clocks		: Input clock specifier. Refer to common clock bindings.
 - clock-names		: Input clock name, should be ethernet_clk and dma_clk.
 Optional properties (When AxiEthernet is configured with MCDMA):
-- xlnx,num-queues	: Number of queues h/w configured for.
+- xlnx,num-queues	: Number of queues/channels configured in h/w.
 Optional properties (When USXGMII is in use):
 - xlnx,usxgmii-rate	: USXGMII PHY speed - can be 10, 100, 1000, 2500,
 			  5000 or 10000.
 
-Example:
+NOTE: Time Sensitive Networking (TSN) related DT bindings are explained in [4].
 
-	axi_ethernet_eth_buf: axi-ethernet@44a00000 {
-			axistream-connected = <&axi_dma_1>;
-			compatible = "xlnx,axi-ethernet-buffer-2.0",
-				      "xlnx,axi-ethernet-1.00.a";
-			reg = <0x44a00000 0x40000>;
-			interrupt-parent = <&microblaze_1_axi_intc>;
-			interrupts = <4 2>;
-			local-mac-address = [00 0a 35 00 00 00];
-			phy-handle = <&phy0>;
+[1] Documentation/devicetree/bindings/net/phy.txt
+[2] Documentation/devicetree/bindings/net/ethernet.txt
+[3] Documentation/devicetree/bindings/net/xilinx-phy.txt
+[4] Documentation/devicetree/bindings/net/xilinx_tsn.txt
+
+Example: AXI 1G/2.5G Ethernet Subsystem + AXIDMA
+
+	axi_eth_0_dma: dma@80040000 {
+			#dma-cells = <1>;
+			compatible = "xlnx,eth-dma";
+			<snip>
+	};
+
+	axi_eth_0: ethernet@80000000 {
+			axistream-connected = <&axi_eth_0_dma>;
+			compatible = "xlnx,axi-ethernet-1.00.a";
+			device_type = "network";
+			interrupt-names = "interrupt";
+			interrupt-parent = <&gic>;
+			interrupts = <0 91 4>;
+			phy-handle = <&phy2>;
 			phy-mode = "sgmii";
-	}
+			reg = <0x0 0x80000000 0x0 0x40000>;
+			xlnx,include-dre ;
+			xlnx,phy-type = <0x5>;
+			xlnx,rxcsum = <0x0>;
+			xlnx,rxmem = <0x1000>;
+			xlnx,txcsum = <0x0>;
+			axi_eth_0_mdio: mdio {
+				#address-cells = <1>;
+				#size-cells = <0>;
+				phy2: phy@2 {
+					device_type = "ethernet-phy";
+					reg = <2>;
+				};
+			};
+	};
