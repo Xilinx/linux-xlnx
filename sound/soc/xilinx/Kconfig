@@ -4,3 +4,10 @@ config SND_SOC_XILINX_DP
 	select SND_SOC_GENERIC_DMAENGINE_PCM
 	help
 	  Audio support the for Xilinx DisplayPort.
+
+config SND_SOC_XILINX_AUDIO_FORMATTER
+	tristate "Audio support for the the Xilinx audio formatter"
+	help
+	  Select this option to enable Xilinx audio formatter
+	  support. This provides PCM platform device support for
+	  audio functionality.
