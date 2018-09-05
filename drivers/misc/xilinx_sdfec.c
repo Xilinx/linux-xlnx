@@ -388,11 +388,17 @@ xsdfec_set_irq(struct xsdfec_dev *xsdfec, void __user *arg)
 	err = xsdfec_isr_enable(xsdfec, irq.enable_isr);
 	if (err < 0)
 		return err;
+	xsdfec->config.irq.enable_isr = irq.enable_isr;
+
+	xsdfec->config.irq.enable_isr = irq.enable_isr;
 
 	/* Setup ECC related IRQ */
 	err = xsdfec_ecc_isr_enable(xsdfec, irq.enable_ecc_isr);
 	if (err < 0)
 		return err;
+	xsdfec->config.irq.enable_ecc_isr = irq.enable_ecc_isr;
+
+	xsdfec->config.irq.enable_ecc_isr = irq.enable_ecc_isr;
 
 	return 0;
 }

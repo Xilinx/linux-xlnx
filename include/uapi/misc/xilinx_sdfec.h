@@ -138,6 +138,16 @@ struct xsdfec_status {
 };
 
 /**
+ * struct xsdfec_irq - Enabling or Disabling Interrupts
+ * @enable_isr: If true enables the ISR
+ * @enable_ecc_isr: If true enables the ECC ISR
+ */
+struct xsdfec_irq {
+	bool enable_isr;
+	bool enable_ecc_isr;
+};
+
+/**
  * struct xsdfec_config - Configuration of SDFEC device
  * @fec_id: ID of SDFEC instance
  * @code: The codes being used by the SDFEC instance
@@ -146,6 +156,7 @@ struct xsdfec_status {
  * @din_word_include: How DIN_WORDS are inputted
  * @dout_width: Width of the DOUT AXI Stream
  * @dout_word_include: HOW DOUT_WORDS are outputted
+ * @irq: enabling or disabling interrupts
  */
 struct xsdfec_config {
 	s32 fec_id;
@@ -155,16 +166,7 @@ struct xsdfec_config {
 	enum xsdfec_axis_word_include din_word_include;
 	enum xsdfec_axis_width dout_width;
 	enum xsdfec_axis_word_include dout_word_include;
-};
-
-/**
- * struct xsdfec_irq - Enabling or Disabling Interrupts
- * @enable_isr: If true enables the ISR
- * @enable_ecc_isr: If true enables the ECC ISR
- */
-struct xsdfec_irq {
-	bool enable_isr;
-	bool enable_ecc_isr;
+	struct xsdfec_irq irq;
 };
 
 /**
