@@ -385,18 +385,14 @@ xsdfec_set_irq(struct xsdfec_dev *xsdfec, void __user *arg)
 	}
 
 	/* Setup tlast related IRQ */
-	if (irq.enable_isr) {
-		err = xsdfec_isr_enable(xsdfec, true);
-		if (err < 0)
-			return err;
-	}
+	err = xsdfec_isr_enable(xsdfec, irq.enable_isr);
+	if (err < 0)
+		return err;
 
 	/* Setup ECC related IRQ */
-	if (irq.enable_ecc_isr) {
-		err = xsdfec_ecc_isr_enable(xsdfec, true);
-		if (err < 0)
-			return err;
-	}
+	err = xsdfec_ecc_isr_enable(xsdfec, irq.enable_ecc_isr);
+	if (err < 0)
+		return err;
 
 	return 0;
 }
