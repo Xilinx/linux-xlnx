@@ -376,6 +376,8 @@ xsdfec_set_irq(struct xsdfec_dev *xsdfec, void __user *arg)
 {
 	struct xsdfec_irq  irq;
 	int err;
+	int isr_err;
+	int ecc_err;
 
 	err = copy_from_user(&irq, arg, sizeof(irq));
 	if (err) {
@@ -385,22 +387,19 @@ xsdfec_set_irq(struct xsdfec_dev *xsdfec, void __user *arg)
 	}
 
 	/* Setup tlast related IRQ */
-	err = xsdfec_isr_enable(xsdfec, irq.enable_isr);
-	if (err < 0)
-		return err;
-	xsdfec->config.irq.enable_isr = irq.enable_isr;
-
-	xsdfec->config.irq.enable_isr = irq.enable_isr;
+	isr_err = xsdfec_isr_enable(xsdfec, irq.enable_isr);
+	if (!isr_err)
+		xsdfec->config.irq.enable_isr = irq.enable_isr;
 
 	/* Setup ECC related IRQ */
-	err = xsdfec_ecc_isr_enable(xsdfec, irq.enable_ecc_isr);
-	if (err < 0)
-		return err;
-	xsdfec->config.irq.enable_ecc_isr = irq.enable_ecc_isr;
+	ecc_err = xsdfec_ecc_isr_enable(xsdfec, irq.enable_ecc_isr);
+	if (!ecc_err)
+		xsdfec->config.irq.enable_ecc_isr = irq.enable_ecc_isr;
 
-	xsdfec->config.irq.enable_ecc_isr = irq.enable_ecc_isr;
+	if (isr_err < 0 || ecc_err < 0)
+		err = -EIO;
 
-	return 0;
+	return err;
 }
 
 static int
