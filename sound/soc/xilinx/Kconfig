@@ -25,3 +25,13 @@ config SND_SOC_XILINX_I2S
 	help
 	  Select this option to enable Xilinx I2S Audio. This enables
 	  I2S playback and capture using xilinx soft IP
+
+config SND_SOC_XILINX_PL_SND_CARD
+	tristate "Audio support for the the Xilinx PL sound card"
+	depends on SND_SOC_XILINX_AUDIO_FORMATTER
+	depends on SND_SOC_XILINX_I2S
+	depends on SND_SOC_XILINX_SDI
+	help
+	  Select this option to enable Xilinx PL sound card
+	  support. This enables sound card using xilinx soft IPs
+	  in audio pipeline.
