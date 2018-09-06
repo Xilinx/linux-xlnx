@@ -339,7 +339,7 @@ static int xylon_i2s_pcm_prepare(struct snd_pcm_substream *substream)
 
 	pcm->buf_sz = snd_pcm_lib_buffer_bytes(substream);
 	sample_rate = logii2s_port_init_clock(pcm->port, data->core_clock_freq,
-					      runtime->rate);
+					      runtime->rate, runtime->channels);
 	if ((sample_rate != 0) && (sample_rate != runtime->rate))
 		pr_info("Sample rate set to %dkHz\n", sample_rate);
 
