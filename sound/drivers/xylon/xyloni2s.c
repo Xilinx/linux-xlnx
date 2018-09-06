@@ -637,6 +637,16 @@ static int xylon_i2s_probe(struct platform_device *pdev)
 				dev_err(dev, "failed pcm create\n");
 				goto free_card;
 			}
+
+			if (i == 0) {
+				dev_info(dev, "instance %d: enabling clock for 48kHz stream\n", i);
+				/* TODO: replace hard-coded values with OP values */
+				ret = logii2s_port_init_clock(port, data->core_clock_freq, 48000, 2);
+				if (!ret) {
+					dev_err(dev, "failed to enable clock\n");
+					goto free_card;
+				}
+			}
 		} else {
 			goto free_card;
 		}
