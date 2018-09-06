@@ -11,6 +11,7 @@ Required property common to both I2S playback and capture:
  - xlnx,dwidth: sample data width. Can be any of 16, 24.
  - xlnx,num-channels: Number of I2S streams. Can be any of 1, 2, 3, 4.
 		      supported channels = 2 * xlnx,num-channels
+ - xlnx,snd-pcm: reference to audio formatter block
 
 Example:
 
@@ -19,10 +20,15 @@ Example:
 		reg = <0x0 0xa0080000 0x0 0x10000>;
 		xlnx,dwidth = <0x18>;
 		xlnx,num-channels = <1>;
+		xlnx,snd-pcm = <&audio_ss_0_audio_formatter_0>;
 	};
 	i2s_transmitter@a0090000 {
 		compatible = "xlnx,i2s-transmitter-1.0";
 		reg = <0x0 0xa0090000 0x0 0x10000>;
 		xlnx,dwidth = <0x18>;
 		xlnx,num-channels = <1>;
+		xlnx,snd-pcm = <&audio_ss_0_audio_formatter_0>;
 	};
+	Documentation of "audio_ss_0_audio_formatter_0" node is located
+	at Documentation/devicetree/bindings/sound/xlnx,audio-formatter.txt
+
