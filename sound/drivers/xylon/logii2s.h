@@ -117,6 +117,6 @@ void logii2s_port_read_fifo(struct logii2s_port *port, u32 *data,
 void logii2s_port_write_fifo(struct logii2s_port *port, u32 *data,
 			     unsigned int count);
 unsigned int logii2s_port_transfer_data(struct logii2s_port *port,
-					u32 *data, unsigned int size);
+					u32 *data, unsigned int size, unsigned int offset);
 
 #endif /* __LOGII2S_H__ */

@@ -365,7 +365,7 @@ void logii2s_port_write_fifo(struct logii2s_port *port, u32 *data,
  * @note	None.
  */
 unsigned int logii2s_port_transfer_data(struct logii2s_port *port,
-					u32 *data, unsigned int size)
+					u32 *data, unsigned int size, unsigned int offset)
 {
 	unsigned int direction = logii2s_port_direction(port);
 	unsigned int samples;
@@ -387,9 +387,9 @@ unsigned int logii2s_port_transfer_data(struct logii2s_port *port,
 				       (LOGII2S_INT_FE | LOGII2S_INT_FAE));
 	} else if (direction == LOGII2S_RX_INSTANCE) {
 		if (logii2s_port_get_isr(port) & LOGII2S_INT_FF)
-			samples = port->fifo_size;
+			samples = port->fifo_size - offset;
 		else if (logii2s_port_get_isr(port) & LOGII2S_INT_FAF)
-			samples = port->almost_full;
+			samples = port->almost_full - offset;
 		else
 			samples = 0;
 
