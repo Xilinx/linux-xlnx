@@ -1523,6 +1523,7 @@ xsdfec_irq_thread(int irq, void *dev_id)
 	u32 ecc_err;
 	u32 isr_err;
 	bool fatal_err = false;
+	bool err_present = false;
 
 	WARN_ON(xsdfec->irq != irq);
 
@@ -1538,21 +1539,29 @@ xsdfec_irq_thread(int irq, void *dev_id)
 		/* Multi-Bit Errors need Reset */
 		xsdfec_log_ecc_errors(xsdfec, ecc_err);
 		xsdfec_reset_required(xsdfec);
+		err_present = true;
 		fatal_err = true;
-	} else if (isr_err & XSDFEC_ISR_MASK) {
+	}
+
+	if (isr_err & XSDFEC_ISR_MASK) {
 		/*
 		 * Tlast, DIN_WORDS and DOUT_WORDS related
 		 * errors need Reset
 		 */
 		xsdfec_log_isr_errors(xsdfec, isr_err);
 		xsdfec_reset_required(xsdfec);
+		err_present = true;
 		fatal_err = true;
-	} else if (ecc_err & XSDFEC_ECC_ISR_SBE) {
+	}
+
+	if (ecc_err & XSDFEC_ECC_ISR_SBE) {
 		/* Correctable ECC Errors */
 		xsdfec_log_ecc_errors(xsdfec, ecc_err);
-	} else {
-		ret = IRQ_NONE;
+		err_present = true;
 	}
+
+	if (!err_present)
+		ret = IRQ_NONE;
 
 	if (fatal_err)
 		wake_up_interruptible(&xsdfec->waitq);
