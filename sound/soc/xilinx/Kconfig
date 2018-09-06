@@ -29,3 +29,11 @@ config SND_SOC_XILINX_SPDIF
 	  Select this option to enable Xilinx SPDIF Audio.
 	  This provides playback and capture of SPDIF audio in
 	  AES format.
+
+config SND_SOC_XILINX_PL_SND_CARD
+	tristate "Audio support for the the Xilinx PL sound card"
+	depends on SND_SOC_XILINX_AUDIO_FORMATTER || SND_SOC_XILINX_I2S || SND_SOC_XILINX_SDI
+	help
+	  Select this option to enable Xilinx PL sound card
+	  support. This enables sound card using xilinx soft IPs
+	  in audio pipeline.
