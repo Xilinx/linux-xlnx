@@ -19,3 +19,9 @@ config SND_SOC_XILINX_SDI
 	help
 	  Select this option to enable Xilinx SDI Audio.This enables
 	  SDI audio playback and capture using xilinx soft IP
+
+config SND_SOC_XILINX_I2S
+	tristate "Audio support for the the Xilinx I2S"
+	help
+	  Select this option to enable Xilinx I2S Audio. This enables
+	  I2S playback and capture using xilinx soft IP
