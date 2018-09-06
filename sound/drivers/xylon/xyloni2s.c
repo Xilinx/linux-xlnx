@@ -299,9 +299,18 @@ static int xylon_i2s_close(struct snd_pcm_substream *substream)
 static int xylon_i2s_hw_params(struct snd_pcm_substream *substream,
 				struct snd_pcm_hw_params *hw_params)
 {
+	struct snd_pcm_runtime *runtime = substream->runtime;
+	struct logii2s_pcm_data *pcm = runtime->private_data;
+
 	XYLONI2S_DBG("\n");
 	XYLONI2S_DBG("rate %d, format %d\n",
 		     params_rate(hw_params), params_format(hw_params));
+
+    if (params_rate(hw_params) == 16000 && params_channels(hw_params)) {
+        /* reset alignment */
+        XYLONI2S_DBG("resetting alignment");
+        pcm->is_aligned = 0;
+    }
 
 	return snd_pcm_lib_malloc_pages(substream,
 					params_buffer_bytes(hw_params));
