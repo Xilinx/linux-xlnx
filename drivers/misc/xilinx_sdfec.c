@@ -159,9 +159,6 @@ static dev_t xsdfec_devt;
 #define XSDFEC_LA_TABLE_DEPTH			(0xFFC)
 #define XSDFEC_QC_TABLE_DEPTH			(0x7FFC)
 
-/* Error Count Maximum Threshold */
-#define XSDFEC_ERROR_MAX_THRESHOLD		(100)
-
 /**
  * struct xsdfec_dev - Driver data for SDFEC
  * @regs: device physical base address
@@ -1474,19 +1471,13 @@ static void
 xsdfec_log_ecc_errors(struct xsdfec_dev *xsdfec, u32 ecc_err)
 {
 	u32 cecc, uecc;
-	int uecc_cnt;
 
 	cecc = ecc_err & XSDFEC_ECC_ISR_SBE;
 	uecc = ecc_err & XSDFEC_ECC_ISR_MBE;
 
-	uecc_cnt = atomic_add_return(hweight32(uecc), &xsdfec->uecc_count);
+	/* Update ECC ISR error counts */
+	atomic_add(hweight32(uecc), &xsdfec->uecc_count);
 	atomic_add(hweight32(cecc), &xsdfec->cecc_count);
-
-	if (uecc_cnt > 0 && uecc_cnt < XSDFEC_ERROR_MAX_THRESHOLD) {
-		dev_err(xsdfec->dev,
-			"Multi-bit error on xsdfec%d. Needs reset",
-			xsdfec->config.fec_id);
-	}
 
 	/* Clear ECC errors */
 	xsdfec_regwrite(xsdfec, XSDFEC_ECC_ISR_ADDR, XSDFEC_ECC_ISR_MASK);
@@ -1495,15 +1486,8 @@ xsdfec_log_ecc_errors(struct xsdfec_dev *xsdfec, u32 ecc_err)
 static void
 xsdfec_log_isr_errors(struct xsdfec_dev *xsdfec, u32 isr_err)
 {
-	int isr_err_cnt;
-
 	/* Update ISR error counts */
-	isr_err_cnt = atomic_add_return(hweight32(isr_err),
-					&xsdfec->isr_err_count);
-	if (isr_err_cnt > 0 && isr_err_cnt < XSDFEC_ERROR_MAX_THRESHOLD) {
-		dev_err(xsdfec->dev,
-			"Tlast,or DIN_WORDS or DOUT_WORDS not correct");
-	}
+	atomic_add(hweight32(isr_err), &xsdfec->isr_err_count);
 
 	/* Clear ISR error status */
 	xsdfec_regwrite(xsdfec, XSDFEC_ISR_ADDR, XSDFEC_ISR_MASK);
@@ -1537,6 +1521,9 @@ xsdfec_irq_thread(int irq, void *dev_id)
 
 	if (ecc_err & XSDFEC_ECC_ISR_MBE) {
 		/* Multi-Bit Errors need Reset */
+		dev_err(xsdfec->dev,
+			"Multi-bit error on xsdfec%d. Needs reset",
+			xsdfec->config.fec_id);
 		xsdfec_log_ecc_errors(xsdfec, ecc_err);
 		xsdfec_reset_required(xsdfec);
 		err_present = true;
@@ -1548,7 +1535,9 @@ xsdfec_irq_thread(int irq, void *dev_id)
 		 * Tlast, DIN_WORDS and DOUT_WORDS related
 		 * errors need Reset
 		 */
-		xsdfec_log_isr_errors(xsdfec, isr_err);
+		dev_err(xsdfec->dev,
+			"Tlast,or DIN_WORDS or DOUT_WORDS not correct");
+		xsdfec_log_ecc_errors(xsdfec, isr_err);
 		xsdfec_reset_required(xsdfec);
 		err_present = true;
 		fatal_err = true;
@@ -1556,7 +1545,10 @@ xsdfec_irq_thread(int irq, void *dev_id)
 
 	if (ecc_err & XSDFEC_ECC_ISR_SBE) {
 		/* Correctable ECC Errors */
-		xsdfec_log_ecc_errors(xsdfec, ecc_err);
+		dev_info(xsdfec->dev,
+			 "Correctable error on xsdfec%d",
+			 xsdfec->config.fec_id);
+		xsdfec_log_isr_errors(xsdfec, ecc_err);
 		err_present = true;
 	}
 
