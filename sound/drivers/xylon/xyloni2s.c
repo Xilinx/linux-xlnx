@@ -66,6 +66,9 @@ struct logii2s_pcm_data {
 	unsigned int buf_pos;
 	unsigned int buf_sz;
 	unsigned int xfer_dir;
+
+	/* Raw mic alignment info */
+	unsigned char is_aligned;
 };
 
 static void xylon_i2s_handle_irq(struct logii2s_port *port)
@@ -76,6 +79,10 @@ static void xylon_i2s_handle_irq(struct logii2s_port *port)
 	u32 *buf;
 	unsigned int size = 0;
 
+	unsigned int i, cnt, offset = 0;
+	u32 word;
+	u16 s1, s2;
+
 	if (substream) {
 		runtime = substream->runtime;
 		if (runtime && runtime->dma_area) {
@@ -84,8 +91,56 @@ static void xylon_i2s_handle_irq(struct logii2s_port *port)
 				size = (pcm->buf_sz - pcm->buf_pos) / 4;
 
 			buf = (u32 *)(runtime->dma_area + pcm->buf_pos);
+
+			if (runtime->channels == 6 && !pcm->is_aligned) {
+				XYLONI2S_DBG("6 ch record, not aligned");
+				for (i = 0, cnt = 0; i < port->almost_full; i++) {
+					word = logii2s_port_read_fifo_word(port);
+					s1 = (word & 0xFFFF0000) >> 16;
+					s2 = (word & 0x0000FFFF);
+					XYLONI2S_DBG("s1 = %04x, s2 = %04x", s1, s2);
+
+					switch (cnt) {
+					case 0:
+						if (s1 == 0 && s2 == 0) {
+							/* go ahead if we found blank area */
+							cnt++;
+						}
+						break;
+					case 1:
+					case 2:
+						if (s1 != 0 && s2 != 0) {
+							/* go ahead if we receive valid sample */
+							cnt++;
+						} else {
+							/* go back if we receive blank area */
+							cnt = 0;
+						}
+						break;
+					case 3:
+						if (s1 == 0 && s2 == 0) {
+							/* we got aligned if we receive next blank area */
+							pcm->is_aligned = 1;
+							offset = i + 1;
+							XYLONI2S_DBG("aligned after %d samples", offset);
+                            goto out;
+						} else {
+							/* go back if we receive non-blank sample */
+							cnt = 0;
+						}
+                        break;
+					}
+				}
+				if (i == port->almost_full) {
+					/* didn't get aligned */
+					XYLONI2S_DBG("couldn't align");
+					offset = port->almost_full;
+				}
+			}
+
+            out:
 			pcm->buf_pos += logii2s_port_transfer_data(port, buf,
-								   size);
+								   size, offset);
 
 			if (pcm->buf_pos >= (pcm->buf_sz - 1))
 				pcm->buf_pos = 0;
@@ -560,6 +615,8 @@ static int xylon_i2s_probe(struct platform_device *pdev)
 				dev_err(dev, "failed allocate pcm\n");
 				goto free_card;
 			}
+
+			pcm->is_aligned = 0;
 
 			pcm->port = port;
 			pcm->port->private = pcm;
