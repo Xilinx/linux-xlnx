@@ -1468,23 +1468,35 @@ xsdfec_parse_of(struct xsdfec_dev *xsdfec)
 }
 
 static void
-xsdfec_log_ecc_errors(struct xsdfec_dev *xsdfec, u32 ecc_err)
+xsdfec_count_and_clear_ecc_multi_errors(struct xsdfec_dev *xsdfec, u32 ecc_err)
 {
-	u32 cecc, uecc;
+	u32 uecc;
 
-	cecc = ecc_err & XSDFEC_ECC_ISR_SBE;
 	uecc = ecc_err & XSDFEC_ECC_ISR_MBE;
 
 	/* Update ECC ISR error counts */
 	atomic_add(hweight32(uecc), &xsdfec->uecc_count);
-	atomic_add(hweight32(cecc), &xsdfec->cecc_count);
 
 	/* Clear ECC errors */
-	xsdfec_regwrite(xsdfec, XSDFEC_ECC_ISR_ADDR, XSDFEC_ECC_ISR_MASK);
+	xsdfec_regwrite(xsdfec, XSDFEC_ECC_ISR_ADDR, XSDFEC_ECC_ISR_MBE);
 }
 
 static void
-xsdfec_log_isr_errors(struct xsdfec_dev *xsdfec, u32 isr_err)
+xsdfec_count_and_clear_ecc_single_errors(struct xsdfec_dev *xsdfec, u32 ecc_err)
+{
+	u32 cecc;
+
+	cecc = ecc_err & XSDFEC_ECC_ISR_SBE;
+
+	/* Update ECC ISR error counts */
+	atomic_add(hweight32(cecc), &xsdfec->cecc_count);
+
+	/* Clear ECC errors */
+	xsdfec_regwrite(xsdfec, XSDFEC_ECC_ISR_ADDR, XSDFEC_ECC_ISR_SBE);
+}
+
+static void
+xsdfec_count_and_clear_isr_errors(struct xsdfec_dev *xsdfec, u32 isr_err)
 {
 	/* Update ISR error counts */
 	atomic_add(hweight32(isr_err), &xsdfec->isr_err_count);
@@ -1524,7 +1536,7 @@ xsdfec_irq_thread(int irq, void *dev_id)
 		dev_err(xsdfec->dev,
 			"Multi-bit error on xsdfec%d. Needs reset",
 			xsdfec->config.fec_id);
-		xsdfec_log_ecc_errors(xsdfec, ecc_err);
+		xsdfec_count_and_clear_ecc_multi_errors(xsdfec, ecc_err);
 		xsdfec_reset_required(xsdfec);
 		err_present = true;
 		fatal_err = true;
@@ -1537,7 +1549,7 @@ xsdfec_irq_thread(int irq, void *dev_id)
 		 */
 		dev_err(xsdfec->dev,
 			"Tlast,or DIN_WORDS or DOUT_WORDS not correct");
-		xsdfec_log_ecc_errors(xsdfec, isr_err);
+		xsdfec_count_and_clear_isr_errors(xsdfec, isr_err);
 		xsdfec_reset_required(xsdfec);
 		err_present = true;
 		fatal_err = true;
@@ -1548,7 +1560,7 @@ xsdfec_irq_thread(int irq, void *dev_id)
 		dev_info(xsdfec->dev,
 			 "Correctable error on xsdfec%d",
 			 xsdfec->config.fec_id);
-		xsdfec_log_isr_errors(xsdfec, ecc_err);
+		xsdfec_count_and_clear_ecc_single_errors(xsdfec, ecc_err);
 		err_present = true;
 	}
 
