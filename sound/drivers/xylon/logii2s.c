@@ -67,13 +67,14 @@ static void logii2s_port_calc_ws_value(unsigned int core_clock_freq,
 				       bool clock_master,
 				       unsigned int prescale,
 				       unsigned int sample_rate,
+				       unsigned int channels,
 				       u32 *ws_left,
 				       u32 *ws_right)
 {
 	if (clock_master)
 		clock_freq = core_clock_freq / (2 * prescale);
 
-	*ws_left = clock_freq / (2 * sample_rate);
+	*ws_left = clock_freq / (channels * sample_rate);
 	*ws_right = *ws_left;
 }
 
@@ -95,7 +96,8 @@ static void logii2s_port_calc_ws_value(unsigned int core_clock_freq,
  */
 unsigned int logii2s_port_init_clock(struct logii2s_port *port,
 				     unsigned int core_clock_freq,
-				     unsigned int sample_rate)
+				     unsigned int sample_rate,
+				     unsigned int channels)
 {
 	u32 ctrl = logii2s_read(port->base, LOGII2S_CTRL_ROFF);
 	u32 prescale, ws_left, ws_right;
@@ -110,7 +112,7 @@ unsigned int logii2s_port_init_clock(struct logii2s_port *port,
 
 	logii2s_port_calc_ws_value(core_clock_freq, port->clock_freq,
 				   (ctrl & LOGII2S_CTRL_CLKMASTER),
-				   prescale, sample_rate, &ws_left, &ws_right);
+				   prescale, sample_rate, channels, &ws_left, &ws_right);
 	ws_left <<= 14;
 	ws_right <<= 4;
 

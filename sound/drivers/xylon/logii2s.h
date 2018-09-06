@@ -99,7 +99,8 @@ void logii2s_port_reset(struct logii2s_port *port);
 int logii2s_check_sample_rate(unsigned int sample_rate);
 unsigned int logii2s_port_init_clock(struct logii2s_port *port,
 				     unsigned int core_clock_freq,
-				     unsigned int sample_rate);
+				     unsigned int sample_rate,
+				     unsigned int channels);
 unsigned int logii2s_port_direction(struct logii2s_port *port);
 u32 logii2s_port_get_version(struct logii2s_port *port);
 u32 logii2s_get_device_iur(void __iomem *base);
