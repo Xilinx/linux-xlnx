@@ -16,6 +16,8 @@
 #include <sound/soc.h>
 #include <sound/pcm_params.h>
 
+#include "xlnx_snd_common.h"
+
 #define XLNX_S2MM_OFFSET	0
 #define XLNX_MM2S_OFFSET	0x100
 
@@ -85,6 +87,7 @@ struct xlnx_pcm_drv_data {
 	unsigned int mm2s_irq;
 	struct snd_pcm_substream *play_stream;
 	struct snd_pcm_substream *capture_stream;
+	struct platform_device *pdev;
 };
 
 /*
@@ -343,10 +346,8 @@ static int xlnx_formatter_pcm_trigger(struct snd_pcm_substream *substream,
 
 static int xlnx_formatter_pcm_new(struct snd_soc_pcm_runtime *rtd)
 {
-	struct snd_card *card = rtd->card->snd_card;
-
 	return snd_pcm_lib_preallocate_pages_for_all(rtd->pcm,
-			SNDRV_DMA_TYPE_DEV, card->dev,
+			SNDRV_DMA_TYPE_DEV, rtd->platform->dev,
 			xlnx_pcm_hardware.buffer_bytes_max,
 			xlnx_pcm_hardware.buffer_bytes_max);
 }
@@ -372,6 +373,8 @@ static int xlnx_formatter_pcm_probe(struct platform_device *pdev)
 	u32 val;
 	struct xlnx_pcm_drv_data *aud_drv_data;
 	struct resource *res;
+	struct device_node *nodes[XLNX_MAX_PATHS];
+	struct device *dev = &pdev->dev;
 
 	aud_drv_data = devm_kzalloc(&pdev->dev,
 				    sizeof(*aud_drv_data), GFP_KERNEL);
@@ -408,6 +411,16 @@ static int xlnx_formatter_pcm_probe(struct platform_device *pdev)
 			return ret;
 		}
 		xlnx_formatter_pcm_reset(aud_drv_data->mmio + XLNX_MM2S_OFFSET);
+
+		nodes[XLNX_PLAYBACK] = of_parse_phandle(dev->of_node,
+							"xlnx,tx", 0);
+		if (!nodes[XLNX_PLAYBACK])
+			dev_err(&pdev->dev, "tx node not found\n");
+		else
+			dev_info(&pdev->dev,
+				 "sound card device will use DAI link: %s\n",
+				 (nodes[XLNX_PLAYBACK])->name);
+		of_node_put(nodes[XLNX_PLAYBACK]);
 	}
 	if (val & AUD_CFG_S2MM_MASK) {
 		aud_drv_data->s2mm_presence = true;
@@ -426,6 +439,16 @@ static int xlnx_formatter_pcm_probe(struct platform_device *pdev)
 			return ret;
 		}
 		xlnx_formatter_pcm_reset(aud_drv_data->mmio + XLNX_S2MM_OFFSET);
+
+		nodes[XLNX_CAPTURE] = of_parse_phandle(dev->of_node,
+						       "xlnx,rx", 0);
+		if (!nodes[XLNX_CAPTURE])
+			dev_err(&pdev->dev, "rx node not found\n");
+		else
+			dev_info(&pdev->dev,
+				 "sound card device will use DAI link: %s\n",
+				 (nodes[XLNX_CAPTURE])->name);
+		of_node_put(nodes[XLNX_CAPTURE]);
 	}
 
 	dev_set_drvdata(&pdev->dev, aud_drv_data);
@@ -436,14 +459,24 @@ static int xlnx_formatter_pcm_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	dev_info(&pdev->dev, "pcm platform device registered\n");
+	if (nodes[XLNX_PLAYBACK] || nodes[XLNX_CAPTURE])
+		aud_drv_data->pdev =
+			platform_device_register_resndata(&pdev->dev,
+							  "xlnx_snd_card", 0,
+							  NULL, 0, &nodes,
+							  sizeof(nodes));
+	if (!aud_drv_data->pdev)
+		dev_err(&pdev->dev, "sound card device creation failed\n");
 
+	dev_info(&pdev->dev, "pcm platform device registered\n");
 	return ret;
 }
 
 static int xlnx_formatter_pcm_remove(struct platform_device *pdev)
 {
 	struct xlnx_pcm_drv_data *adata = dev_get_drvdata(&pdev->dev);
+
+	platform_device_unregister(adata->pdev);
 
 	if (adata->s2mm_presence)
 		xlnx_formatter_pcm_reset(adata->mmio + XLNX_S2MM_OFFSET);
