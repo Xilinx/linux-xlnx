@@ -172,9 +172,9 @@ static struct snd_pcm_hardware xylon_i2s_playback_hardware = {
 		 SNDRV_PCM_INFO_BLOCK_TRANSFER |
 		 SNDRV_PCM_INFO_RESUME),
 	.formats = SNDRV_PCM_FMTBIT_S16_LE,
-	.rates = SNDRV_PCM_RATE_8000_192000,
-	.rate_min = 8000,
-	.rate_max = 192000,
+	.rates = SNDRV_PCM_RATE_48000,
+	.rate_min = 48000,
+	.rate_max = 48000,
 	.channels_min = 2,
 	.channels_max = 2,
 	.buffer_bytes_max = MAX_BUFFER_SIZE,
