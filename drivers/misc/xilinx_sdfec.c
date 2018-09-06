@@ -35,6 +35,7 @@
 #include <linux/poll.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
+#include <linux/spinlock.h>
 
 #include <uapi/misc/xilinx_sdfec.h>
 
@@ -167,6 +168,9 @@ static dev_t xsdfec_devt;
  * @config: Configuration of the SDFEC device
  * @intr_enabled: indicates IRQ enabled
  * @wr_protect: indicates Write Protect enabled
+ * @state_reset_updated: indicates State updated to XSDFEC_NEEDS_RESET by
+ * interrupt handler
+ * @stats_updated: indicates Stats updated by interrupt handler
  * @isr_err_count: Count of ISR errors
  * @cecc_count: Count of Correctable ECC errors (SBE)
  * @uecc_count: Count of Uncorrectable ECC errors (MBE)
@@ -174,6 +178,7 @@ static dev_t xsdfec_devt;
  * @irq: IRQ number
  * @xsdfec_cdev: Character device handle
  * @waitq: Driver wait queue
+ * @irq_lock: Driver spinlock
  *
  * This structure contains necessary state for SDFEC driver to operate
  */
@@ -184,6 +189,8 @@ struct xsdfec_dev {
 	struct xsdfec_config config;
 	bool intr_enabled;
 	bool wr_protect;
+	bool state_reset_updated;
+	bool stats_updated;
 	atomic_t isr_err_count;
 	atomic_t cecc_count;
 	atomic_t uecc_count;
@@ -191,6 +198,8 @@ struct xsdfec_dev {
 	int  irq;
 	struct cdev xsdfec_cdev;
 	wait_queue_head_t waitq;
+	/* Spinlock to protect state_reset_updated and stats_updated */
+	spinlock_t irq_lock;
 };
 
 static inline void
@@ -281,7 +290,10 @@ xsdfec_get_status(struct xsdfec_dev *xsdfec, void __user *arg)
 	int err;
 
 	status.fec_id = xsdfec->config.fec_id;
+	spin_lock_irq(&xsdfec->irq_lock);
 	status.state = xsdfec->state;
+	xsdfec->state_reset_updated = false;
+	spin_unlock_irq(&xsdfec->irq_lock);
 	status.activity  =
 		(xsdfec_regread(xsdfec,
 				XSDFEC_ACTIVE_ADDR) &
@@ -1211,9 +1223,12 @@ xsdfec_get_stats(struct xsdfec_dev *xsdfec, void __user *arg)
 	int err;
 	struct xsdfec_stats user_stats;
 
+	spin_lock_irq(&xsdfec->irq_lock);
 	user_stats.isr_err_count = atomic_read(&xsdfec->isr_err_count);
 	user_stats.cecc_count = atomic_read(&xsdfec->cecc_count);
 	user_stats.uecc_count = atomic_read(&xsdfec->uecc_count);
+	xsdfec->stats_updated = false;
+	spin_unlock_irq(&xsdfec->irq_lock);
 
 	err = copy_to_user(arg, &user_stats, sizeof(user_stats));
 	if (err) {
@@ -1343,7 +1358,7 @@ xsdfec_dev_ioctl(struct file *fptr, unsigned int cmd, unsigned long data)
 static unsigned int
 xsdfec_poll(struct file *file, poll_table *wait)
 {
-	unsigned int mask;
+	unsigned int mask = 0;
 	struct xsdfec_dev *xsdfec = file->private_data;
 
 	if (!xsdfec)
@@ -1352,10 +1367,13 @@ xsdfec_poll(struct file *file, poll_table *wait)
 	poll_wait(file, &xsdfec->waitq, wait);
 
 	/* XSDFEC ISR detected an error */
-	if (xsdfec->state == XSDFEC_NEEDS_RESET)
-		mask = POLLIN | POLLRDNORM;
-	else
-		mask = POLLPRI | POLLERR;
+	spin_lock_irq(&xsdfec->irq_lock);
+	if (xsdfec->state_reset_updated)
+		mask |= POLLIN | POLLPRI;
+
+	if (xsdfec->stats_updated)
+		mask |= POLLIN | POLLRDNORM;
+	spin_unlock_irq(&xsdfec->irq_lock);
 
 	return mask;
 }
@@ -1476,6 +1494,7 @@ xsdfec_count_and_clear_ecc_multi_errors(struct xsdfec_dev *xsdfec, u32 ecc_err)
 
 	/* Update ECC ISR error counts */
 	atomic_add(hweight32(uecc), &xsdfec->uecc_count);
+	xsdfec->stats_updated = true;
 
 	/* Clear ECC errors */
 	xsdfec_regwrite(xsdfec, XSDFEC_ECC_ISR_ADDR, XSDFEC_ECC_ISR_MBE);
@@ -1490,6 +1509,7 @@ xsdfec_count_and_clear_ecc_single_errors(struct xsdfec_dev *xsdfec, u32 ecc_err)
 
 	/* Update ECC ISR error counts */
 	atomic_add(hweight32(cecc), &xsdfec->cecc_count);
+	xsdfec->stats_updated = true;
 
 	/* Clear ECC errors */
 	xsdfec_regwrite(xsdfec, XSDFEC_ECC_ISR_ADDR, XSDFEC_ECC_ISR_SBE);
@@ -1500,6 +1520,7 @@ xsdfec_count_and_clear_isr_errors(struct xsdfec_dev *xsdfec, u32 isr_err)
 {
 	/* Update ISR error counts */
 	atomic_add(hweight32(isr_err), &xsdfec->isr_err_count);
+	xsdfec->stats_updated = true;
 
 	/* Clear ISR error status */
 	xsdfec_regwrite(xsdfec, XSDFEC_ISR_ADDR, XSDFEC_ISR_MASK);
@@ -1509,6 +1530,7 @@ static void
 xsdfec_reset_required(struct xsdfec_dev *xsdfec)
 {
 	xsdfec->state = XSDFEC_NEEDS_RESET;
+	xsdfec->state_reset_updated = true;
 }
 
 static irqreturn_t
@@ -1518,8 +1540,6 @@ xsdfec_irq_thread(int irq, void *dev_id)
 	irqreturn_t ret = IRQ_HANDLED;
 	u32 ecc_err;
 	u32 isr_err;
-	bool fatal_err = false;
-	bool err_present = false;
 
 	WARN_ON(xsdfec->irq != irq);
 
@@ -1531,6 +1551,7 @@ xsdfec_irq_thread(int irq, void *dev_id)
 	ecc_err = xsdfec_regread(xsdfec, XSDFEC_ECC_ISR_ADDR);
 	isr_err = xsdfec_regread(xsdfec, XSDFEC_ISR_ADDR);
 
+	spin_lock(&xsdfec->irq_lock);
 	if (ecc_err & XSDFEC_ECC_ISR_MBE) {
 		/* Multi-Bit Errors need Reset */
 		dev_err(xsdfec->dev,
@@ -1538,8 +1559,6 @@ xsdfec_irq_thread(int irq, void *dev_id)
 			xsdfec->config.fec_id);
 		xsdfec_count_and_clear_ecc_multi_errors(xsdfec, ecc_err);
 		xsdfec_reset_required(xsdfec);
-		err_present = true;
-		fatal_err = true;
 	}
 
 	if (isr_err & XSDFEC_ISR_MASK) {
@@ -1551,8 +1570,6 @@ xsdfec_irq_thread(int irq, void *dev_id)
 			"Tlast,or DIN_WORDS or DOUT_WORDS not correct");
 		xsdfec_count_and_clear_isr_errors(xsdfec, isr_err);
 		xsdfec_reset_required(xsdfec);
-		err_present = true;
-		fatal_err = true;
 	}
 
 	if (ecc_err & XSDFEC_ECC_ISR_SBE) {
@@ -1561,18 +1578,18 @@ xsdfec_irq_thread(int irq, void *dev_id)
 			 "Correctable error on xsdfec%d",
 			 xsdfec->config.fec_id);
 		xsdfec_count_and_clear_ecc_single_errors(xsdfec, ecc_err);
-		err_present = true;
 	}
 
-	if (!err_present)
-		ret = IRQ_NONE;
-
-	if (fatal_err)
+	if (xsdfec->state_reset_updated || xsdfec->stats_updated)
 		wake_up_interruptible(&xsdfec->waitq);
+	else
+		ret = IRQ_NONE;
 
 	/* Unmaks Interrupts */
 	xsdfec_isr_enable(xsdfec, true);
 	xsdfec_ecc_isr_enable(xsdfec, true);
+
+	spin_unlock(&xsdfec->irq_lock);
 
 	return ret;
 }
@@ -1593,6 +1610,7 @@ xsdfec_probe(struct platform_device *pdev)
 
 	xsdfec->dev = &pdev->dev;
 	xsdfec->config.fec_id = atomic_read(&xsdfec_ndevs);
+	spin_lock_init(&xsdfec->irq_lock);
 
 	dev = xsdfec->dev;
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
