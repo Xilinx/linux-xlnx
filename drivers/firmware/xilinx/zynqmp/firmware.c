@@ -21,6 +21,8 @@
 #include <linux/firmware/xilinx/zynqmp/firmware.h>
 #include <linux/firmware/xilinx/zynqmp/firmware-debug.h>
 
+static unsigned long register_address;
+
 /**
  * zynqmp_pm_ret_code - Convert PMU-FW error codes to Linux error codes
  * @ret_status:		PMUFW return code
@@ -803,6 +805,26 @@ static int zynqmp_pm_ioctl(u32 node_id, u32 ioctl_id, u32 arg1, u32 arg2,
 				   arg1, arg2, out);
 }
 
+/**
+ * zynqmp_pm_config_reg_access - PM Config API for Config register access
+ * @register_access_id:	ID of the requested REGISTER_ACCESS
+ * @address:		Address of the register to be accessed
+ * @mask:		Mask to be written to the register
+ * @value:		Value to be written to the register
+ * @out:		Returned output value
+ *
+ * This function calls REGISTER_ACCESS to configure CSU/PMU registers.
+ *
+ * Return:	Returns status, either success or error+reason
+ */
+
+static int zynqmp_pm_config_reg_access(u32 register_access_id, u32 address,
+				       u32 mask, u32 value, u32 *out)
+{
+	return zynqmp_pm_invoke_fn(PM_REGISTER_ACCESS, register_access_id,
+				   address, mask, value, out);
+}
+
 static int zynqmp_pm_query_data(struct zynqmp_pm_query_data qdata, u32 *out)
 {
 	return zynqmp_pm_invoke_fn(PM_QUERY_DATA, qdata.qid, qdata.arg1,
@@ -1014,6 +1036,7 @@ static const struct zynqmp_eemi_ops eemi_ops = {
 	.clock_getrate = zynqmp_pm_clock_getrate,
 	.clock_setparent = zynqmp_pm_clock_setparent,
 	.clock_getparent = zynqmp_pm_clock_getparent,
+	.register_access = zynqmp_pm_config_reg_access,
 };
 
 /**
@@ -1206,9 +1229,135 @@ static ssize_t health_status_store(struct kobject *kobj,
 
 static struct kobj_attribute zynqmp_attr_health_status =
 						__ATTR_WO(health_status);
+
+/**
+ * config_reg_store - Write config_reg sysfs attribute
+ * @kobj:	Kobject structure
+ * @attr:	Kobject attribute structure
+ * @buf:	User entered health_status attribute string
+ * @count:	Buffer size
+ *
+ * User-space interface for setting the config register.
+ *
+ * To write any CSU/PMU register
+ * echo <address> <mask> <values> > /sys/firmware/zynqmp/config_reg
+ * Usage:
+ * echo 0x345AB234 0xFFFFFFFF 0x1234ABCD > /sys/firmware/zynqmp/config_reg
+ *
+ * To Read any CSU/PMU register, write address to the variable like below
+ * echo <address> > /sys/firmware/zynqmp/config_reg
+ *
+ * Return:	count argument if request succeeds, the corresponding error
+ *		code otherwise
+ */
+static ssize_t config_reg_store(struct kobject *kobj,
+				struct kobj_attribute *attr,
+				const char *buf, size_t count)
+{
+	char *kern_buff, *inbuf, *tok;
+	unsigned long address, value, mask;
+	int ret;
+
+	kern_buff = kzalloc(count, GFP_KERNEL);
+	if (!kern_buff)
+		return -ENOMEM;
+
+	ret = strlcpy(kern_buff, buf, count);
+	if (ret < 0) {
+		ret = -EFAULT;
+		goto err;
+	}
+
+	inbuf = kern_buff;
+
+	/* Read the addess */
+	tok = strsep(&inbuf, " ");
+	if (!tok) {
+		ret = -EFAULT;
+		goto err;
+	}
+	ret = kstrtol(tok, 16, &address);
+	if (ret) {
+		ret = -EFAULT;
+		goto err;
+	}
+	/* Read the write value */
+	tok = strsep(&inbuf, " ");
+	/*
+	 * If parameter provided is only address, then its a read operation.
+	 * Store the address in a global variable and retrieve whenever
+	 * required.
+	 */
+	if (!tok) {
+		register_address = address;
+		goto err;
+	}
+	register_address = address;
+
+	ret = kstrtol(tok, 16, &mask);
+	if (ret) {
+		ret = -EFAULT;
+		goto err;
+	}
+	tok = strsep(&inbuf, " ");
+	if (!tok) {
+		ret = -EFAULT;
+		goto err;
+	}
+	ret = kstrtol(tok, 16, &value);
+	if (!tok) {
+		ret = -EFAULT;
+		goto err;
+	}
+	ret = zynqmp_pm_config_reg_access(CONFIG_REG_WRITE, address,
+					  mask, value, NULL);
+	if (ret)
+		pr_err("unable to write value to %lx\n", value);
+err:
+	kfree(kern_buff);
+	if (ret)
+		return ret;
+	return count;
+}
+
+/**
+ * config_reg_show - Read config_reg sysfs attribute
+ * @kobj:	Kobject structure
+ * @attr:	Kobject attribute structure
+ * @buf:	User entered health_status attribute string
+ *
+ * User-space interface for getting the config register.
+ *
+ * To Read any CSU/PMU register, write address to the variable like below
+ * echo <address> > /sys/firmware/zynqmp/config_reg
+ *
+ * Then Read the address using below command
+ * cat /sys/firmware/zynqmp/config_reg
+ *
+ * Return: number of chars written to buf.
+ */
+static ssize_t config_reg_show(struct kobject *kobj,
+			       struct kobj_attribute *attr,
+			       char *buf)
+{
+	int ret;
+	u32 ret_payload[PAYLOAD_ARG_CNT];
+
+	ret = zynqmp_pm_config_reg_access(CONFIG_REG_READ, register_address,
+					  0, 0, ret_payload);
+	if (ret)
+		return ret;
+
+	return sprintf(buf, "0x%x\n", ret_payload[1]);
+}
+
+static struct kobj_attribute zynqmp_attr_config_reg =
+					__ATTR_RW(config_reg);
+
 static struct attribute *attrs[] = {
 	&zynqmp_attr_shutdown_scope.attr,
 	&zynqmp_attr_health_status.attr,
+	&zynqmp_attr_config_reg.attr,
 	NULL,
 };
 
