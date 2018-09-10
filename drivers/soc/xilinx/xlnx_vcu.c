@@ -97,24 +97,6 @@
 #define LIMIT				(10 * MHZ)
 
 /**
- * struct xvcu_device - Xilinx VCU init device structure
- * @dev: Platform device
- * @pll_ref: pll ref clock source
- * @aclk: axi clock source
- * @logicore_reg_ba: logicore reg base address
- * @vcu_slcr_ba: vcu_slcr Register base address
- * @coreclk: core clock frequency
- */
-struct xvcu_device {
-	struct device *dev;
-	struct clk *pll_ref;
-	struct clk *aclk;
-	void __iomem *logicore_reg_ba;
-	void __iomem *vcu_slcr_ba;
-	u32 coreclk;
-};
-
-/**
  * struct xvcu_pll_cfg - Helper data
  * @fbdiv: The integer portion of the feedback divider to the PLL
  * @cp: PLL charge pump control
