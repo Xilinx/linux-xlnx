@@ -10,6 +10,9 @@
 #ifndef _XILINX_VCU_H_
 #define _XILINX_VCU_H_
 
+#define VCU_GASKET_INIT			0x74
+#define VCU_GASKET_VALUE		0x03
+
 /**
  * struct xvcu_device - Xilinx VCU init device structure
  * @dev: Platform device

@@ -3,6 +3,7 @@ menu "Xilinx SoC drivers"
 
 config XILINX_VCU
 	tristate "Xilinx VCU logicoreIP Init"
+	select MFD_CORE
 	depends on HAS_IOMEM
 	help
 	  Provides the driver to enable and disable the isolation between the
