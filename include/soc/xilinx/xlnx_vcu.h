@@ -20,7 +20,6 @@
  * @aclk: axi clock source
  * @logicore_reg_ba: logicore reg base address
  * @vcu_slcr_ba: vcu_slcr Register base address
- * @coreclk: core clock frequency
  */
 struct xvcu_device {
 	struct device *dev;
@@ -28,7 +27,6 @@ struct xvcu_device {
 	struct clk *aclk;
 	void __iomem *logicore_reg_ba;
 	void __iomem *vcu_slcr_ba;
-	u32 coreclk;
 };
 
 u32 xvcu_get_color_depth(struct xvcu_device *xvcu);
