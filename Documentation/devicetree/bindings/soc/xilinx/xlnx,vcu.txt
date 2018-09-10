@@ -16,9 +16,15 @@ Required properties:
 	1. vcu slcr
 	2. Logicore
 	reg-names should contain name for the each register sequence.
-- clocks: phandle for aclk and pll_ref clocksource
-- clock-names: The identification string, "aclk", is always required for
-   the axi clock. "pll_ref" is required for pll.
+- #clock-cells : Must be 1
+- clocks: phandle for aclk, pll_ref and encoder/decoder clocksources
+- clock-names: The identification string,
+	* "aclk", is always required for the axi clock.
+	* "pll_ref" is required for pll.
+	* "vcu_core_enc" is required for VCU core encoder.
+	* "vcu_core_dec" is required for VCU core decoder.
+	* "vcu_mcu_enc" is required for MCU core encoder.
+	* "vcu_mcu_dec" is required for MCU core decoder.
 - ranges
 - VCU Init driver node define the following child nodes:
 	* Allegro encoder driver node
@@ -42,8 +48,9 @@ Example:
 		reg = <0x0 0xa0040000 0x0 0x1000>,
 			 <0x0 0xa0041000 0x0 0x1000>;
 		reg-names = "vcu_slcr", "logicore";
-		clocks = <&si570_1>, <&clkc 71>;
-		clock-names = "pll_ref", "aclk";
+		#clock-cells = <0x1>;
+		clock-names = "pll_ref", "aclk", "vcu_core_enc", "vcu_core_dec", "vcu_mcu_enc", "vcu_mcu_dec";
+		clocks = <&si570_1>, <&clkc 71>, <&xlnx_vcu 1>, <&xlnx_vcu 2>, <&xlnx_vcu 3>, <&xlnx_vcu 4>;
 		ranges;
 		encoder: al5e@a0000000 {
 			compatible = "al,al5e";
