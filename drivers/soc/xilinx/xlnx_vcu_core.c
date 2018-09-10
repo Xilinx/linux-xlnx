@@ -16,6 +16,9 @@
 
 static const struct mfd_cell xvcu_devs[] = {
 	{
+		.name = "xilinx-vcu-clk",
+	},
+	{
 		.name = "xilinx-vcu",
 	},
 };
