@@ -104,4 +104,6 @@ source "drivers/staging/wfx/Kconfig"
 
 source "drivers/staging/fclk/Kconfig"
 
+source "drivers/staging/xroeframer/Kconfig"
+
 endif # STAGING
