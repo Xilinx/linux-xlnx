@@ -1,0 +1,18 @@
+#
+# Xilinx Radio over Ethernet Framer driver
+#
+
+config XROE_FRAMER
+	tristate "Xilinx Radio over Ethernet Framer driver"
+	---help---
+	  The "Radio Over Ethernet Framer" IP (roe_framer) ingests/generates
+	  Ethernet packet data, (de-)multiplexes packets based on protocol
+	  into/from various Radio Antenna data streams.
+
+	  It has 2 main, independent, data paths:
+
+	  - Downlink, from the BaseBand to the Phone, Ethernet to Antenna,
+	  we call this the De-Framer path, or defm on all related IP signals.
+
+	  - Uplink, from the Phone to the BaseBand, Antenna to Ethernet,
+	  we call this the Framer path, or fram on all related IP signals.
