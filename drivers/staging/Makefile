@@ -52,3 +52,4 @@ obj-y				+= hikey9xx/
 obj-$(CONFIG_XILINX_FCLK)	+= fclk/
 obj-$(CONFIG_XLNX_SYNC)		+= xlnxsync/
 obj-$(CONFIG_XLNX_TSMUX)	+= xlnx_tsmux/
+obj-$(CONFIG_XROE_FRAMER)	+= xroeframer/
