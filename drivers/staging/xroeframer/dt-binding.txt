@@ -1,0 +1,17 @@
+* Xilinx Radio over Ethernet Framer driver
+
+Required properties:
+- compatible: must be "xlnx,roe-framer-1.0"
+- reg: physical base address of the framer and length of memory mapped region
+- clock-names: list of clock names
+- clocks: list of clock sources corresponding to the clock names
+
+Example:
+	roe_framer@a0000000 {
+		compatible = "xlnx,roe-framer-1.0";
+		reg = <0x0 0xa0000000 0x0 0x10000>;
+		clock-names = "s_axi_aclk", "m_axis_defm_aclk",
+			      "s_axis_fram_aclk", "tx0_eth_port_clk",
+			      "internal_bus_clk";
+		clocks = <0x43 0x44 0x44 0x45 0x45>;
+	};
