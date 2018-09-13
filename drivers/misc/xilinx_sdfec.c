@@ -1066,6 +1066,8 @@ xsdfec_set_bypass(struct xsdfec_dev *xsdfec, bool __user *arg)
 	else
 		xsdfec_regwrite(xsdfec, XSDFEC_BYPASS_ADDR, 0);
 
+	xsdfec->config.bypass = bypass;
+
 	return 0;
 }
 
