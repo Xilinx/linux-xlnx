@@ -1049,16 +1049,9 @@ xsdfec_set_order(struct xsdfec_dev *xsdfec, void __user *arg)
 }
 
 static int
-xsdfec_set_bypass(struct xsdfec_dev *xsdfec, void __user *arg)
+xsdfec_set_bypass(struct xsdfec_dev *xsdfec, bool __user *arg)
 {
-	unsigned long bypass = *((unsigned long *)arg);
-
-	if (bypass > 1) {
-		dev_err(xsdfec->dev,
-			"%s invalid bypass value %ld for SDFEC%d",
-			__func__, bypass, xsdfec->config.fec_id);
-		return -EINVAL;
-	}
+	bool bypass = *arg;
 
 	/* Verify Device has not started */
 	if (xsdfec->state == XSDFEC_STARTED) {
@@ -1068,7 +1061,10 @@ xsdfec_set_bypass(struct xsdfec_dev *xsdfec, void __user *arg)
 		return -EIO;
 	}
 
-	xsdfec_regwrite(xsdfec, XSDFEC_BYPASS_ADDR, bypass);
+	if (bypass)
+		xsdfec_regwrite(xsdfec, XSDFEC_BYPASS_ADDR, 1);
+	else
+		xsdfec_regwrite(xsdfec, XSDFEC_BYPASS_ADDR, 0);
 
 	return 0;
 }
