@@ -152,6 +152,7 @@ struct xsdfec_irq {
  * @fec_id: ID of SDFEC instance
  * @code: The codes being used by the SDFEC instance
  * @order: Order of Operation
+ * @bypass: Is the core being bypassed
  * @din_width: Width of the DIN AXI Stream
  * @din_word_include: How DIN_WORDS are inputted
  * @dout_width: Width of the DOUT AXI Stream
@@ -162,6 +163,7 @@ struct xsdfec_config {
 	s32 fec_id;
 	enum xsdfec_code code;
 	enum xsdfec_order order;
+	bool bypass;
 	enum xsdfec_axis_width din_width;
 	enum xsdfec_axis_word_include din_word_include;
 	enum xsdfec_axis_width dout_width;
