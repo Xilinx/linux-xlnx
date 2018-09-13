@@ -228,7 +228,7 @@ struct xsdfec_stats {
  * operations (same number of cycles) but output data matches the input data
  * This can only be used when driver is in the XSDFEC_STOPPED state
  */
-#define XSDFEC_SET_BYPASS	_IOW(XSDFEC_MAGIC, 11, unsigned long *)
+#define XSDFEC_SET_BYPASS	_IOW(XSDFEC_MAGIC, 11,  bool *)
 /* ioctl that determines if sdfec is processing data */
 #define XSDFEC_IS_ACTIVE	_IOR(XSDFEC_MAGIC, 12, bool *)
 /* ioctl that clears error stats collected during interrupts */
