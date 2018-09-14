@@ -160,14 +160,20 @@ static int xlnx_snd_probe(struct platform_device *pdev)
 
 	card->num_links = 0;
 	for (i = XLNX_PLAYBACK; i < XLNX_MAX_PATHS; i++) {
+		struct device_node *pnode = of_parse_phandle(node[i],
+							     "xlnx,snd-pcm", 0);
+		if (!pnode) {
+			dev_err(card->dev, "platform node not found\n");
+			of_node_put(pnode);
+			return -ENODEV;
+		}
+		of_node_put(pnode);
 		dai = &card->dai_link[i];
 		audio_interface = find_link(node[i], i);
 		switch (audio_interface) {
 		case I2S_AUDIO:
 			*dai = xlnx_snd_dai[I2S_AUDIO][i];
-			dai->platform_of_node = of_parse_phandle(node[i],
-								 "xlnx,snd-pcm",
-								 0);
+			dai->platform_of_node = pnode;
 			dai->cpu_of_node = node[i];
 			card->num_links++;
 			dev_dbg(card->dev, "%s registered\n",
@@ -175,9 +181,7 @@ static int xlnx_snd_probe(struct platform_device *pdev)
 			break;
 		case HDMI_AUDIO:
 			*dai = xlnx_snd_dai[HDMI_AUDIO][i];
-			dai->platform_of_node = of_parse_phandle(node[i],
-								 "xlnx,snd-pcm",
-								 0);
+			dai->platform_of_node = pnode;
 			if (i == XLNX_CAPTURE)
 				dai->codec_of_node = node[i];
 			card->num_links++;
@@ -186,9 +190,7 @@ static int xlnx_snd_probe(struct platform_device *pdev)
 			break;
 		case SDI_AUDIO:
 			*dai = xlnx_snd_dai[SDI_AUDIO][i];
-			dai->platform_of_node = of_parse_phandle(node[i],
-								 "xlnx,snd-pcm",
-								 0);
+			dai->platform_of_node = pnode;
 			dai->codec_of_node = node[i];
 			card->num_links++;
 			dev_dbg(card->dev, "%s registered\n",
