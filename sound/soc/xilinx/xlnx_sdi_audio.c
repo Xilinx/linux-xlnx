@@ -11,6 +11,7 @@
 #include <linux/module.h>
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
+#include <linux/wait.h>
 #include <drm/drm_modes.h>
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
@@ -24,51 +25,28 @@
 #define XSDIAUD_INT_STS_REG_OFFSET		0x10
 #define XSDIAUD_EMB_VID_CNTRL_REG_OFFSET	0X14
 #define XSDIAUD_AUD_CNTRL_REG_OFFSET		0x18
-#define XSDIAUD_AXIS_CHCOUNT_REG_OFFSET		0x1C
-#define XSDIAUD_MUX1_OR_DMUX1_CNTRL_REG_OFFSET	0x20
-#define XSDIAUD_DMUX1_CNTRL_REG_OFFSET		0x20
-#define XSDIAUD_GRP_PRES_REG_OFFSET		0X40
-#define XSDIAUD_EXT_CNTRL_PKTSTAT_REG_OFFSET	0X44
+#define XSDIAUD_CH_VALID_REG_OFFSET		0x20
+#define XSDIAUD_CH_MUTE_REG_OFFSET		0x30
+#define XSDIAUD_ACTIVE_GRP_REG_OFFSET		0X40
 #define XSDIAUD_EXT_CH_STAT0_REG_OFFSET		0X48
 #define XSDIAUD_GUI_PARAM_REG_OFFSET		0XFC
 
 #define XSDIAUD_CNTRL_EN_MASK		BIT(0)
-#define XSDIAUD_SOFT_RST_ACLK_MASK	BIT(0)
-#define XSDIAUD_SOFT_RST_SCLK_MASK	BIT(1)
-#define XSDIAUD_VER_MASK		GENMASK(7, 0)
+#define XSDIAUD_SOFT_RST_CONFIG_MASK	BIT(0)
+#define XSDIAUD_SOFT_RST_CORE_MASK	BIT(1)
+#define XSDIAUD_VER_MAJOR_MASK		GENMASK(31, 24)
+#define XSDIAUD_VER_MINOR_MASK		GENMASK(23, 16)
 
-#define XSDIAUD_EMB_VID_CNT_STD_MASK	GENMASK(4, 0)
-#define XSDIAUD_EMB_VID_CNT_ELE_SHIFT	(5)
-#define XSDIAUD_EMB_VID_CNT_ELE_MASK	BIT(5)
-#define XSDIAUD_EMB_AUD_CNT_SR_MASK	GENMASK(2, 0)
-#define XSDIAUD_EMB_AUD_CNT_SS_SHIFT	(3)
+#define XSDIAUD_EMB_CS_UPDATE_MASK	BIT(16)
+#define XSDIAUD_EMB_VID_CNT_ELE_SHIFT	(16)
+#define XSDIAUD_EMB_VID_CNT_ELE_MASK	BIT(16)
+#define XSDIAUD_EMB_VID_CNT_TSCAN_MASK	BIT(8)
+#define XSDIAUD_EMB_VID_CNT_TSCAN_SHIFT	(8)
+#define XSDIAUD_EMB_VID_CNT_TRATE_SHIFT	(4)
 #define XSDIAUD_EMB_AUD_CNT_SS_MASK	BIT(3)
-#define XSDIAUD_EMB_AXIS_CHCOUNT_MASK	GENMASK(4, 0)
-#define XSDIAUD_EMD_MUX_CNT_GS_MASK	GENMASK(1, 0)
+#define XSDIAUD_EMB_AUD_CNT_ASYNC_AUDIO	BIT(4)
 
-#define XSDIAUD_GRP_PRESNT_MASK		GENMASK(3, 0)
-#define XSDIAUD_GRP_PRESNTV_MASK	BIT(4)
-
-#define XSDIAUD_INT_EN_GRP_CHG_MASK	BIT(0)
-#define XSDIAUD_EXT_INT_EN_PKT_CHG_MASK	BIT(1)
-#define XSDIAUD_EXT_INT_EN_STS_CHG_MASK	BIT(2)
-#define XSDIAUD_EXT_INT_EN_FIFO_OF_MASK	BIT(3)
-#define XSDIAUD_EXT_INT_EN_PERR_MASK	BIT(4)
-#define XSDIAUD_EXT_INT_EN_CERR_MASK	BIT(5)
-#define XSDIAUD_INT_ST_GRP_CHG_MASK	BIT(0)
-#define XSDIAUD_EXT_INT_ST_PKT_CHG_MASK	BIT(1)
-#define XSDIAUD_EXT_INT_ST_STS_CHG_MASK	BIT(2)
-#define XSDIAUD_EXT_INT_ST_FIFO_OF_MASK	BIT(3)
-#define XSDIAUD_EXT_INT_ST_PERR_MASK	BIT(4)
-#define XSDIAUD_EXT_INT_ST_CERR_MASK	BIT(5)
-#define XSDIAUD_EXT_AUD_CNT_CP_EN_MASK	BIT(0)
-#define XSDIAUD_EXT_AXIS_CHCOUNT_MASK	GENMASK(4, 0)
-#define XSDIAUD_EXT_DMUX_GRPS_MASK	GENMASK(1, 0)
-#define XSDIAUD_EXT_DMUX_MUTEALL_MASK	GENMASK(5, 2)
-#define XSDIAUD_EXT_DMUX_MUTE1_MASK	BIT(2)
-#define XSDIAUD_EXT_DMUX_MUTE2_MASK	BIT(3)
-#define XSDIAUD_EXT_PKTST_AC_MASK	GENMASK(27, 12)
-
+#define CH_STATUS_UPDATE_TIMEOUT	40
 /* audio params macros */
 #define PROF_SAMPLERATE_MASK		GENMASK(7, 6)
 #define PROF_SAMPLERATE_SHIFT		6
@@ -108,6 +86,19 @@ enum IP_MODE {
 	EXTRACT,
 };
 
+enum channel_id {
+	CHAN_ID_0 = 1,
+	CHAN_ID_1,
+};
+
+enum sdi_transport_family {
+	SDI_TRANSPORT_FAMILY_1920,
+	SDI_TRANSPORT_FAMILY_1280,
+	SDI_TRANSPORT_FAMILY_2048,
+	SDI_TRANSPORT_FAMILY_NTSC = 8,
+	SDI_TRANSPORT_FAMILY_PAL = 9,
+};
+
 /**
  * enum sdi_audio_samplerate - audio sampling rate
  * @XSDIAUD_SAMPRATE0:	48 KHz
@@ -130,33 +121,6 @@ enum sdi_audio_samplesize {
 	XSDIAUD_SAMPSIZE1
 };
 
-enum audio_group {
-	XSDIAUD_GROUP_0 = 0,
-	XSDIAUD_GROUP_1,
-	XSDIAUD_GROUP_2,
-	XSDIAUD_GROUP_1_2,
-	XSDIAUD_GROUP_3,
-	XSDIAUD_GROUP_1_3,
-	XSDIAUD_GROUP_2_3,
-	XSDIAUD_GROUP_1_2_3,
-	XSDIAUD_GROUP_4,
-	XSDIAUD_GROUP_1_4,
-	XSDIAUD_GROUP_2_4,
-	XSDIAUD_GROUP_1_2_4,
-	XSDIAUD_GROUP_3_4,
-	XSDIAUD_GROUP_1_3_4,
-	XSDIAUD_GROUP_2_3_4,
-	XSDIAUD_GROUP_ALL,
-	XSDIAUD_NUM_CHANNELS
-};
-
-enum audio_group_num {
-	XSDIAUD_GROUP1 = 1,
-	XSDIAUD_GROUP2,
-	XSDIAUD_GROUP3,
-	XSDIAUD_GROUP4
-};
-
 /**
  * struct audio_params - audio stream parameters
  * @srate: sampling rate
@@ -176,30 +140,31 @@ struct dev_ctx {
 	struct audio_params *params;
 	struct drm_display_mode *video_mode;
 	struct snd_pcm_substream *stream;
+	bool rx_prams_valid;
+	wait_queue_head_t params_q;
 };
 
-/**
- * struct xsdi_aud_videostd - video properties
- * @vdisplay: resolution(vertical)
- * @vrefresh: refresh rate
- */
-struct xsdi_aud_videostd {
-	u32 vdisplay;
-	u32 vrefresh[5];
-};
+static irqreturn_t xtract_irq_handler(int irq, void *dev_id)
+{
+	u32 val;
+	struct dev_ctx *ctx = dev_id;
 
-/*
- * programmable values for a given vdisplay and refresh combination
- * Ex: To send/embed 48khz audio on 1080p@60 (1920x1080p => 1125 lines):
- * number of audio samples = 48000 / (60 * 1125). Audio embed block maps
- * video properties to index valus in the below table to program audio block.
- */
-static const struct xsdi_aud_videostd xsdi_aud_videostd_table[] = {
-	/* vdisplay 24 25 30 50 60 */
-	{720,  {12, 11, 10, 9, 7} },
-	{1080, {6, 5, 4, 14, 13} },
-	{2160, {19, 20, 22, 24, 26} },
-};
+	val = readl(ctx->base + XSDIAUD_INT_STS_REG_OFFSET);
+	if (val & XSDIAUD_EMB_CS_UPDATE_MASK) {
+		writel(XSDIAUD_EMB_CS_UPDATE_MASK,
+		       ctx->base + XSDIAUD_INT_STS_REG_OFFSET);
+		val = readl(ctx->base + XSDIAUD_INT_EN_REG_OFFSET);
+		/* Disable further interrupts. CH status got updated*/
+		writel(val & ~XSDIAUD_EMB_CS_UPDATE_MASK,
+		       ctx->base + XSDIAUD_INT_EN_REG_OFFSET);
+
+		ctx->rx_prams_valid = true;
+		wake_up_interruptible(&ctx->params_q);
+		return IRQ_HANDLED;
+	}
+
+	return IRQ_NONE;
+}
 
 static void audio_enable(void __iomem *aud_base)
 {
@@ -226,123 +191,14 @@ static void audio_reset_core(void __iomem *aud_base, bool reset)
 	if (reset) {
 		/* reset the core */
 		val = readl(aud_base + XSDIAUD_SOFT_RST_REG_OFFSET);
-		val |= XSDIAUD_SOFT_RST_SCLK_MASK;
+		val |= XSDIAUD_SOFT_RST_CORE_MASK;
 		writel(val, aud_base + XSDIAUD_SOFT_RST_REG_OFFSET);
 	} else {
 		/* bring the core out of reset */
 		val = readl(aud_base + XSDIAUD_SOFT_RST_REG_OFFSET);
-		val &= ~XSDIAUD_SOFT_RST_SCLK_MASK;
+		val &= ~XSDIAUD_SOFT_RST_CORE_MASK;
 		writel(val, aud_base + XSDIAUD_SOFT_RST_REG_OFFSET);
 	}
-}
-
-static int vdisplay_to_index(u32 vrefresh)
-{
-	int idx;
-
-	switch (vrefresh) {
-	case 24:
-		idx = 0;
-		break;
-	case 25:
-		idx = 1;
-		break;
-	case 30:
-		idx = 2;
-		break;
-	case 50:
-		idx = 3;
-		break;
-	case 60:
-		idx = 4;
-		break;
-	default:
-		idx = -1;
-		break;
-	}
-
-	return idx;
-}
-
-static void audio_rx_irq_enable(void __iomem *aud_base, bool enable)
-{
-	u32 val;
-
-	val = readl(aud_base + XSDIAUD_INT_EN_REG_OFFSET);
-	if (enable)
-		val |= XSDIAUD_INT_EN_GRP_CHG_MASK;
-	else
-		val &= ~XSDIAUD_INT_EN_GRP_CHG_MASK;
-
-	writel(val, aud_base + XSDIAUD_INT_EN_REG_OFFSET);
-}
-
-/*
- * Audio channels is received in groups. Each group can hold max 4 channels.
- * Number of channels and the group in which they are present in Rx stream,
- * is detected earlier to this call. This function need to mark the group
- * again with the number of active channels. If channels exceed 4,
- * next consecutive group is marked.
- */
-static void audio_set_channels(void __iomem *aud_base,
-			       enum audio_group group_num, u16 num_ch)
-{
-	u32 i, offset, val, num_grp;
-
-	writel(num_ch, aud_base + XSDIAUD_AXIS_CHCOUNT_REG_OFFSET);
-
-	num_grp = num_ch / 4;
-	group_num = group_num - 1;
-
-	for (i = 0; i < num_grp; i++) {
-		offset = XSDIAUD_MUX1_OR_DMUX1_CNTRL_REG_OFFSET + (4 * i);
-		val = readl(aud_base + offset);
-		val &= ~XSDIAUD_EMD_MUX_CNT_GS_MASK;
-		val |= group_num;
-		group_num = group_num + 1;
-		writel(val, aud_base + offset);
-	}
-}
-
-static irqreturn_t xtract_irq_handler(int irq, void *dev_id)
-{
-	u16 num_ch;
-	u32 val, audio_groups;
-
-	struct dev_ctx *ctx = dev_id;
-
-	val = readl(ctx->base + XSDIAUD_INT_STS_REG_OFFSET);
-	val &= XSDIAUD_INT_EN_GRP_CHG_MASK;
-	if (!val)
-		return IRQ_NONE;
-
-	/* TODO: handle other interrupt types */
-	writel(XSDIAUD_INT_EN_GRP_CHG_MASK,
-	       ctx->base + XSDIAUD_INT_STS_REG_OFFSET);
-
-	audio_reset_core(ctx->base, true);
-
-	val = readl(ctx->base + XSDIAUD_EXT_CNTRL_PKTSTAT_REG_OFFSET);
-	val = val & XSDIAUD_EXT_PKTST_AC_MASK;
-	num_ch = hweight32(val);
-
-	val = readl(ctx->base + XSDIAUD_AUD_CNTRL_REG_OFFSET);
-	val |= XSDIAUD_EXT_AUD_CNT_CP_EN_MASK;
-	writel(val, ctx->base + XSDIAUD_AUD_CNTRL_REG_OFFSET);
-
-	audio_groups = readl(ctx->base + XSDIAUD_GRP_PRES_REG_OFFSET);
-	audio_groups &= XSDIAUD_GRP_PRESNT_MASK;
-
-	audio_reset_core(ctx->base, false);
-	dev_info(ctx->dev, "detected audio groups = %d num channels = %d\n",
-		 audio_groups, num_ch);
-	if (num_ch > 2)
-		dev_info(ctx->dev,
-			 "Receiving more channels, but only 2 are extracted\n");
-
-	/* TODO: support more channels later, currently only 2 */
-	audio_set_channels(ctx->base, XSDIAUD_GROUP1, 2);
-	return IRQ_HANDLED;
 }
 
 static struct audio_params *parse_professional_format(u32 reg1_val,
@@ -495,6 +351,20 @@ static int xlnx_sdi_rx_pcm_startup(struct snd_pcm_substream *substream,
 	struct snd_pcm_runtime *rtd = substream->runtime;
 	struct dev_ctx *ctx = dev_get_drvdata(dai->dev);
 	void __iomem *base = ctx->base;
+	unsigned long jiffies = msecs_to_jiffies(CH_STATUS_UPDATE_TIMEOUT);
+
+	audio_enable(base);
+	writel(XSDIAUD_EMB_CS_UPDATE_MASK,
+	       ctx->base + XSDIAUD_INT_EN_REG_OFFSET);
+	err = wait_event_interruptible_timeout(ctx->params_q,
+					       ctx->rx_prams_valid,
+					       jiffies);
+
+	if (!err) {
+		dev_err(ctx->dev, "Didn't received valid audio data\n");
+		return -EINVAL;
+	}
+	ctx->rx_prams_valid = false;
 
 	reg1_val = readl(base + XSDIAUD_EXT_CH_STAT0_REG_OFFSET);
 	reg2_val = readl(base + XSDIAUD_EXT_CH_STAT0_REG_OFFSET + 4);
@@ -558,6 +428,8 @@ static void xlnx_sdi_rx_pcm_shutdown(struct snd_pcm_substream *substream,
 	struct dev_ctx *ctx = dev_get_drvdata(dai->dev);
 
 	kfree(ctx->params);
+	audio_disable(ctx->base);
+
 	dev_info(dai->dev, " sdi rx audio disabled\n");
 }
 
@@ -565,9 +437,8 @@ static int xlnx_sdi_tx_pcm_startup(struct snd_pcm_substream *substream,
 				   struct snd_soc_dai *dai)
 {
 	struct dev_ctx *ctx = dev_get_drvdata(dai->dev);
-	void __iomem *base = ctx->base;
 
-	audio_enable(base);
+	audio_enable(ctx->base);
 	ctx->stream = substream;
 
 	dev_info(ctx->dev, " sdi tx audio enabled\n");
@@ -578,11 +449,8 @@ static int xlnx_sdi_tx_hw_params(struct snd_pcm_substream *substream,
 				 struct snd_pcm_hw_params *params,
 				 struct snd_soc_dai *dai)
 {
-	int i;
-	u32 num_channels, sample_rate, sig_bits, sample_size, srate;
-	u32 val, vid_table_size, idx;
-	struct xsdi_aud_videostd const *item;
-	u32 vid_std = 0;
+	u32 val = 0;
+	u32 num_channels, sample_rate, sig_bits;
 
 	struct dev_ctx *ctx = dev_get_drvdata(dai->dev);
 	void __iomem *base = ctx->base;
@@ -598,28 +466,60 @@ static int xlnx_sdi_tx_hw_params(struct snd_pcm_substream *substream,
 		return -EINVAL;
 	}
 
-	/* map video properties to properties in audio ip */
-	vid_table_size = ARRAY_SIZE(xsdi_aud_videostd_table);
-	for (i = 0; i < vid_table_size; i++) {
-		item = &xsdi_aud_videostd_table[i];
-		if (item->vdisplay == ctx->video_mode->vdisplay) {
-			idx = vdisplay_to_index(drm_mode_vrefresh(ctx->video_mode));
-			if (idx >= 0)
-				vid_std = item->vrefresh[idx];
-			break;
-		}
-	}
-
-	if (!vid_std) {
-		dev_err(ctx->dev, "couldn't map video properties to audio\n");
+	/* map video properties */
+	switch (ctx->video_mode->hdisplay) {
+	case 1920:
+		val = SDI_TRANSPORT_FAMILY_1920;
+		break;
+	case 1280:
+		val |= SDI_TRANSPORT_FAMILY_1280;
+		break;
+	case 2048:
+		val |= SDI_TRANSPORT_FAMILY_2048;
+		break;
+	case 720:
+		if (ctx->video_mode->vdisplay == 486)
+			val |= SDI_TRANSPORT_FAMILY_NTSC;
+		else if (ctx->video_mode->vdisplay == 576)
+			val |= SDI_TRANSPORT_FAMILY_PAL;
+		else
+			return -EINVAL;
+		break;
+	default:
 		return -EINVAL;
 	}
 
-	val = readl(base + XSDIAUD_EMB_VID_CNTRL_REG_OFFSET);
-	val &= ~XSDIAUD_EMB_VID_CNT_STD_MASK;
-	val |= vid_std;
+	switch (drm_mode_vrefresh(ctx->video_mode)) {
+	case 24:
+		val |= (3 << XSDIAUD_EMB_VID_CNT_TRATE_SHIFT);
+		break;
+	case 25:
+		val |= (5 << XSDIAUD_EMB_VID_CNT_TRATE_SHIFT);
+		break;
+	case 30:
+		val |= (7 << XSDIAUD_EMB_VID_CNT_TRATE_SHIFT);
+		break;
+	case 48:
+		val |= (8 << XSDIAUD_EMB_VID_CNT_TRATE_SHIFT);
+		break;
+	case 50:
+		val |= (9 << XSDIAUD_EMB_VID_CNT_TRATE_SHIFT);
+		break;
+	case 60:
+		val |= (11 << XSDIAUD_EMB_VID_CNT_TRATE_SHIFT);
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	if (!(ctx->video_mode->flags & DRM_MODE_FLAG_INTERLACE))
+		val |= XSDIAUD_EMB_VID_CNT_TSCAN_MASK;
+
+	val |= XSDIAUD_EMB_VID_CNT_ELE_MASK;
+
 	writel(val, base + XSDIAUD_EMB_VID_CNTRL_REG_OFFSET);
 
+	/* map audio properties */
 	num_channels = params_channels(params);
 	sample_rate = params_rate(params);
 	sig_bits = snd_pcm_format_width(params_format(params));
@@ -628,41 +528,30 @@ static int xlnx_sdi_tx_hw_params(struct snd_pcm_substream *substream,
 		 "stream params: channels = %d sample_rate = %d bits = %d\n",
 		 num_channels, sample_rate, sig_bits);
 
+	val = 0;
+	val |= XSDIAUD_EMB_AUD_CNT_ASYNC_AUDIO;
+
 	switch (sample_rate) {
+	case 48000:
+		val |= XSDIAUD_SAMPRATE0;
+		break;
 	case 44100:
-		srate = XSDIAUD_SAMPRATE1;
+		val |= XSDIAUD_SAMPRATE1;
 		break;
 	case 32000:
-		srate = XSDIAUD_SAMPRATE2;
+		val |= XSDIAUD_SAMPRATE2;
 		break;
-	case 48000:
 	default:
-		srate = XSDIAUD_SAMPRATE0;
-		break;
+		return -EINVAL;
 	}
 
-	/* TODO: support more channels; currently only 2 */
-	audio_set_channels(base, XSDIAUD_GROUP1, num_channels);
-
-	val = readl(base +  XSDIAUD_AUD_CNTRL_REG_OFFSET);
-	val &= ~XSDIAUD_EMB_AUD_CNT_SR_MASK;
-	val |= srate;
-	writel(val, base + XSDIAUD_AUD_CNTRL_REG_OFFSET);
-
 	if (sig_bits == 24)
-		sample_size = XSDIAUD_SAMPSIZE1;
-	else
-		sample_size = XSDIAUD_SAMPSIZE0;
+		val |= XSDIAUD_EMB_AUD_CNT_SS_MASK;
 
-	val = readl(base +  XSDIAUD_AUD_CNTRL_REG_OFFSET);
-	val &= ~XSDIAUD_EMB_AUD_CNT_SS_MASK;
-	sample_size = sample_size << XSDIAUD_EMB_AUD_CNT_SS_SHIFT;
-	val |= sample_size;
 	writel(val, base + XSDIAUD_AUD_CNTRL_REG_OFFSET);
 
-	val = readl(base + XSDIAUD_EMB_VID_CNTRL_REG_OFFSET);
-	val |= XSDIAUD_EMB_VID_CNT_ELE_MASK;
-	writel(val, base + XSDIAUD_EMB_VID_CNTRL_REG_OFFSET);
+	/* TODO: support more channels, currently only 2. */
+	writel(CHAN_ID_1 | CHAN_ID_0, base + XSDIAUD_CH_VALID_REG_OFFSET);
 
 	return 0;
 }
@@ -730,6 +619,14 @@ static int xlnx_sdi_audio_probe(struct platform_device *pdev)
 	struct device_node *video_node;
 	struct platform_device *video_pdev;
 	struct snd_soc_dai_driver *snd_dai;
+	struct device *dev = &pdev->dev;
+	struct device_node *node = dev->of_node;
+
+	/* TODO - remove before upstreaming */
+	if (of_device_is_compatible(node, "xlnx,v-uhdsdi-audio-1.0")) {
+		dev_err(&pdev->dev, "driver doesn't support sdi audio v1.0\n");
+		return -ENODEV;
+	}
 
 	ctx = devm_kzalloc(&pdev->dev, sizeof(struct dev_ctx), GFP_KERNEL);
 	if (!ctx)
@@ -764,6 +661,8 @@ static int xlnx_sdi_audio_probe(struct platform_device *pdev)
 			dev_err(&pdev->dev, "extract irq request failed\n");
 			return -ENODEV;
 		}
+
+		init_waitqueue_head(&ctx->params_q);
 
 		snd_dai = &xlnx_sdi_rx_dai;
 	} else {
@@ -806,10 +705,6 @@ static int xlnx_sdi_audio_probe(struct platform_device *pdev)
 
 	audio_reset_core(ctx->base, true);
 	audio_reset_core(ctx->base, false);
-	audio_enable(ctx->base);
-
-	if (ctx->mode == EXTRACT)
-		audio_rx_irq_enable(ctx->base, true);
 
 	dev_info(&pdev->dev, "xlnx sdi codec dai component registered\n");
 	return 0;
@@ -827,6 +722,7 @@ static int xlnx_sdi_audio_remove(struct platform_device *pdev)
 
 static const struct of_device_id xlnx_sdi_audio_of_match[] = {
 	{ .compatible = "xlnx,v-uhdsdi-audio-1.0"},
+	{ .compatible = "xlnx,v-uhdsdi-audio-2.0"},
 	{ }
 };
 MODULE_DEVICE_TABLE(of, xlnx_sdi_audio_of_match);
@@ -845,4 +741,3 @@ module_platform_driver(xlnx_sdi_audio_driver);
 MODULE_DESCRIPTION("xilinx sdi audio codec driver");
 MODULE_AUTHOR("Maruthi Srinivas Bayyavarapu");
 MODULE_LICENSE("GPL v2");
-MODULE_ALIAS("platform:" DRIVER_NAME);
