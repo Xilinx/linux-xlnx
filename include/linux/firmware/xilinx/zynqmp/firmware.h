@@ -127,6 +127,7 @@ enum pm_api_id {
 	PM_CLOCK_SETPARENT,
 	PM_CLOCK_GETPARENT,
 	PM_FPGA_READ = 46,
+	PM_SECURE_AES,
 	/* PM_REGISTER_ACCESS API */
 	PM_REGISTER_ACCESS = 52,
 };
@@ -603,6 +604,7 @@ struct zynqmp_eemi_ops {
 	int (*clock_getparent)(u32 clock_id, u32 *parent_id);
 	int (*register_access)(u32 register_access_id, u32 address,
 			       u32 mask, u32 value, u32 *out);
+	int (*aes)(const u64 address, u32 *out);
 };
 
 /*
