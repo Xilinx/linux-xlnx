@@ -72,6 +72,8 @@ struct zynq_rproc_pdata {
 	u32 mem_end;
 };
 
+static bool autoboot __read_mostly;
+
 /* Store rproc for IPI handler */
 static struct rproc *rproc;
 static struct work_struct workqueue;
@@ -405,6 +407,8 @@ static int zynq_remoteproc_probe(struct platform_device *pdev)
 		goto ipi_fault;
 	}
 
+	rproc->auto_boot = autoboot;
+
 	ret = rproc_add(local->rproc);
 	if (ret) {
 		dev_err(&pdev->dev, "rproc registration failed\n");
@@ -465,6 +469,10 @@ static struct platform_driver zynq_remoteproc_driver = {
 	},
 };
 module_platform_driver(zynq_remoteproc_driver);
+
+module_param_named(autoboot,  autoboot, bool, 0444);
+MODULE_PARM_DESC(autoboot,
+		 "enable | disable autoboot. (default: false)");
 
 MODULE_AUTHOR("Michal Simek <monstr@monstr.eu");
 MODULE_LICENSE("GPL v2");
