@@ -259,6 +259,13 @@ static int alg_setsockopt(struct socket *sock, int level, int optname,
 		if (!type->setauthsize)
 			goto unlock;
 		err = type->setauthsize(ask->private, optlen);
+		break;
+	case ALG_SET_KEY_TYPE:
+		if (sock->state == SS_CONNECTED)
+			goto unlock;
+		if (!type->setkeytype)
+			goto unlock;
+		err = type->setkeytype(ask->private, optval, optlen);
 	}
 
 unlock:

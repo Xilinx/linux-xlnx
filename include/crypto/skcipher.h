@@ -54,7 +54,9 @@ struct skcipher_givcrypt_request {
 
 struct crypto_skcipher {
 	int (*setkey)(struct crypto_skcipher *tfm, const u8 *key,
-	              unsigned int keylen);
+			unsigned int keylen);
+	int (*setkeytype)(struct crypto_skcipher *tfm, const u8 *key,
+			  unsigned int keylen);
 	int (*encrypt)(struct skcipher_request *req);
 	int (*decrypt)(struct skcipher_request *req);
 
@@ -125,6 +127,8 @@ struct crypto_skcipher {
 struct skcipher_alg {
 	int (*setkey)(struct crypto_skcipher *tfm, const u8 *key,
 	              unsigned int keylen);
+	int (*setkeytype)(struct crypto_skcipher *tfm, const u8 *key,
+			  unsigned int keylen);
 	int (*encrypt)(struct skcipher_request *req);
 	int (*decrypt)(struct skcipher_request *req);
 	int (*init)(struct crypto_skcipher *tfm);
@@ -399,6 +403,12 @@ static inline int crypto_skcipher_setkey(struct crypto_skcipher *tfm,
 					 const u8 *key, unsigned int keylen)
 {
 	return tfm->setkey(tfm, key, keylen);
+}
+
+static inline int crypto_skcipher_setkeytype(struct crypto_skcipher *tfm,
+					     const u8 *key, unsigned int keylen)
+{
+	return tfm->setkeytype(tfm, key, keylen);
 }
 
 static inline bool crypto_skcipher_has_setkey(struct crypto_skcipher *tfm)
