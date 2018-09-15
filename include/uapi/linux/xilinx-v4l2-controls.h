@@ -202,4 +202,17 @@
 #define V4L2_CID_XILINX_SDIRX_ACTIVE_STREAMS	(V4L2_CID_XILINX_SDIRX + 10)
 /* Is Mode 3GB */
 #define V4L2_CID_XILINX_SDIRX_IS_3GB		(V4L2_CID_XILINX_SDIRX + 11)
+
+/*
+ * Xilinx SCD
+ */
+
+/* Base ID */
+#define V4L2_CID_XILINX_SCD			(V4L2_CID_USER_BASE + 0xc140)
+
+/*
+ * SCD Threshold
+ * User can pass percentage as an integer to tune threshold value
+ */
+#define V4L2_CID_XILINX_SCD_THRESHOLD		(V4L2_CID_XILINX_SCD + 1)
 #endif /* __UAPI_XILINX_V4L2_CONTROLS_H__ */
