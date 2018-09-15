@@ -123,4 +123,13 @@ config VIDEO_XILINX_CSI2RXSS
 	---help---
 	  Driver for Xilinx MIPI CSI2 Rx Subsystem
 
+config VIDEO_XILINX_SCD
+	tristate "Xilinx Scene Change Detect"
+	depends on VIDEO_XILINX
+	---help---
+	  Driver for Xilinx Scene Change Detection Controller.
+	  The driver allows applications to pass video buffers and
+	  provides if scene change detection is present between
+	  adjacent frames.
+
 endif #VIDEO_XILINX
