@@ -153,8 +153,19 @@ static int xvip_pipeline_start_stop(struct xvip_composite_device *xdev,
 		if (!pad)
 			break;
 
-		if (!(pad->flags & MEDIA_PAD_FL_SINK))
-			break;
+		/*
+		 * This will walk through the subdevices multiple times in case
+		 * of mem2mem pipeline. But there won't be any issues as
+		 * driver is maintaining list of streamed subdevices
+		 */
+		if (xdev->v4l2_caps & V4L2_CAP_VIDEO_CAPTURE_MPLANE ||
+		    xdev->v4l2_caps & V4L2_CAP_VIDEO_CAPTURE) {
+			if (!(pad->flags & MEDIA_PAD_FL_SINK))
+				break;
+		} else {
+			if (!(pad->flags & MEDIA_PAD_FL_SOURCE))
+				break;
+		}
 
 		pad = media_entity_remote_pad(pad);
 		if (!pad || !is_media_entity_v4l2_subdev(pad->entity))
