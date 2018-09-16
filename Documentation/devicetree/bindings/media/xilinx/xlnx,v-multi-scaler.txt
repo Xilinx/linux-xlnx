@@ -1,0 +1,95 @@
+Xilinx mem2mem Multi Video Scaler (XM2MSC)
+-----------------------------------------
+
+Required propertie(s):
+- compatible		: Should be "xlnx,v-multi-scaler-v1.0"
+- clocks		: Input clock specifier. Refer to common clk bindings.
+- interrupt-parent	: Interrupt controller the interrupt is routed through
+- interrupts		: Should contain MultiScaler interrupt
+- reset-gpios		: Should contain GPIO reset phandle
+- reg			: Physical base address and
+			  length of the registers set for the device.
+- xlnx,max-chan		: Maximum number of supported scaling channels (1 - 8)
+- xlnx,max-width	: Maximum number of supported column/width (64 - 3840)
+- xlnx,max-height	: Maximum number of supported row/height (64 - 2160)
+- xlnx,dma-addr-width	: dma address width (either 32 or 64)
+- xlnx,pixels-per-clock	: pixels per clock set in IP (1, 2 or 4)
+- xlnx,vid-formats	: A list of strings indicating what video memory
+			  formats the IP has been configured to support.
+			  See VIDEO FORMATS table below and examples.
+- xlnx,num-taps		: The number of filter taps for scaling (6, 8, 10, 12)
+
+VIDEO FORMATS
+The following table describes the legal string values to be used for
+the xlnx,vid-formats property. To the left is the string value and the
+column to the right describes the format.
+
+IP FORMAT	DTS String	Description
+-------------|----------------|---------------------
+RGB8		bgr888		Packed RGB, 8 bits per component.
+				Every RGB pixel in memory is represented with
+				24 bits.
+RGBX8		xbgr8888	Packed RGB, 8 bits per component. Every RGB
+				pixel in memory is represented with 32 bits.
+				Bits[31:24] do not contain pixel information.
+BGRX8		xrgb8888	Packed BGR, 8 bits per component. Every BGR
+				pixel in memory is represented with 32 bits.
+				Bits[31:24] do not contain pixel information.
+RGBX10		xbgr2101010	Packed RGB, 10 bits per component. Every RGB
+				pixel is represented with 32 bits. Bits[31:30]
+				do not contain any pixel information.
+YUV8		vuy888		Packed YUV 4:4:4, 8 bits per component. Every
+				YUV 4:4:4 pixel in memory is represented with
+				24 bits.
+YUVX8		xvuy8888	Packed YUV 4:4:4, 8 bits per component.
+				Every YUV 4:4:4 pixel in memory is represented
+				with 32 bits. Bits[31:24] do not contain pixel
+				information.
+YUYV8		yuyv		Packed YUV 4:2:2, 8 bits per component. Every
+				two YUV 4:2:2 pixels in memory are represented
+				with 32 bits.
+UYVY8		uyvy		Packed YUV 4:2:2, 8 bits per component.
+				Every two YUV 4:2:2 pixels in memory are
+				represented with 32 bits.
+YUVX10		yuvx2101010	Packed YUV 4:4:4, 10 bits per component.
+				Every YUV 4:4:4 pixel is represented with 32 bits.
+				Bits[31:30] do not contain any pixel information.
+Y8		y8		Packed Luma-Only, 8 bits per component. Every
+				luma-only pixel in memory is represented with
+				8 bits. Y8 is presented as YUV 4:4:4 on the
+				AXI4-Stream interface.
+Y10		y10		Packed Luma-Only, 10 bits per component. Every
+				three luma-only pixels in memory is represented
+				with 32 bits. Y10 is presented as YUV 4:4:4 on
+				the AXI4-Stream interface.
+Y_UV8		nv16		Semi-planar YUV 4:2:2 with 8 bits per component.
+				Y and UV stored in separate planes.
+Y_UV8_420	nv12		Semi-planar YUV 4:2:0 with 8 bits per component.
+				Y and UV stored in separate planes.
+Y_UV10		xv20		Semi-planar YUV 4:2:2 with 10 bits per component.
+				Every 3 pixels is represented with 32 bits.
+				Bits[31:30] do not contain any pixel information.
+				Y and UV stored in separate planes.
+Y_UV10_420	xv15		Semi-planar YUV 4:2:0 with 10 bits per component.
+				Every 3 pixels is represented with 32 bits.
+				Bits[31:30] do not contain any pixel information.
+				Y and UV stored in separate planes.
+
+Example
+
+v_multi_scaler_0: v_multi_scaler@a0000000 {\
+	clocks = <&clk 71>;
+	compatible = "xlnx,v-multi-scaler-v1.0";
+	interrupt-names = "interrupt";
+	interrupt-parent = <&gic>;
+	interrupts = <0 89 4>;
+	reg = <0x0 0xa0000000 0x0 0x10000>;
+	xlnx,vid-formats = "bgr888","vuy888";
+	reset-gpios = <&gpio 78 1>;
+	xlnx,max-chan = <0x01>;
+	xlnx,dma-addr-width = <0x20>;
+	xlnx,pixels-per-clock = /bits/ 8 <2>;
+	xlnx,max-width = <3840>;
+	xlnx,max-height = <2160>;
+	xlnx,num-taps = <6>;
+};
