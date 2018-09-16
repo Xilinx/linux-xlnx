@@ -1,0 +1,78 @@
+Binding for Silicon Labs si5324, si5328 and si5319 programmable
+I2C clock generator.
+
+Reference
+This binding uses the common clock binding[1].
+The si5324 is programmable i2c low-bandwidth, jitter-attenuating, precision
+clock multiplier with up to 2 output clocks. The internal structure can be
+found in [2].
+The internal pin structure of si5328 and si5319 can be found in [3].
+
+[1] Documentation/devicetree/bindings/clock/clock-bindings.txt
+[2] Si5324 Data Sheet
+	http://www.silabs.com/Support%20Documents/TechnicalDocs/Si5324.pdf
+[3] Si53xx Reference Manual
+	http://www.silabs.com/Support%20Documents/TechnicalDocs/
+	Si53xxReferenceManual.pdf
+
+==I2C device node==
+
+Required properties:
+- compatible: should be one of
+	"silabs,si5324"
+	"silabs,si5319"
+	"silabs,si5328"
+- reg: i2c device address.
+- #clock-cells: from common clock binding; shall be set to 1.
+- clocks: from common clock binding; list of parent clock
+  handles, clock name should be one of
+	"xtal"
+	"clkin1"
+	"clkin2"
+- #address-cells: shall be set to 1.
+- #size-cells: shall be set to 0.
+
+Optional properties:
+- silabs,pll-source: pair of (number, source) for each pll. Allows
+  to overwrite clock source of pll.
+
+==Child nodes==
+
+Each of the clock outputs can be overwritten individually by
+using a child node to the I2C device node. If a child node for a clock
+output is not set, the eeprom configuration is not overwritten.
+
+Required child node properties:
+- reg: number of clock output.
+- clock-frequency: default output frequency at power on
+
+Optional child node properties:
+- silabs,drive-strength: output drive strength in mA, shall be one of {2,4,6,8}.
+
+Example:
+Following example describes the ZCU102 board with hdmi design which
+uses si5319 as clock generator. XTAL is hard-wired on the board to act
+as input clock with a frequency of 114.285MHz.
+
+refhdmi: refhdmi {
+	compatible = "fixed-clock";
+	#clock-cells = <0>;
+	clock-frequency = <114285000>;
+};
+
+/* Si5319 i2c clock generator */
+si5319: clock-generator@68 {
+	status = "okay";
+	compatible = "silabs,si5319";
+	reg = <0x68>;
+	#address-cells = <1>;
+	#size-cells = <0>;
+	#clock-cells = <1>;
+	clocks = <&refhdmi>;
+	clock-names = "xtal";
+
+	clk0 {
+		reg = <0>;
+		clock-frequency = <27000000>;
+	};
+};
