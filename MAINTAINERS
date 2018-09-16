@@ -21061,6 +21061,12 @@ W:	https://linuxtv.org
 T:	git git://linuxtv.org/media_tree.git
 F:	drivers/media/radio/si4713/radio-usb-si4713.c
 
+SI5324 CLOCK DRIVER
+M:	DhanunjanRao Katta <katta.dhanunjanrao@amd.com>
+S:	Maintained
+F:	Documentation/devicetree/bindings/clock/silabs,si5324.txt
+F:	drivers/clk/*si5324*
+
 SIANO DVB DRIVER
 M:	Mauro Carvalho Chehab <mchehab@kernel.org>
 L:	linux-media@vger.kernel.org
