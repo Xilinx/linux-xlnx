@@ -44,6 +44,7 @@ obj-$(CONFIG_COMMON_CLK_SCPI)           += clk-scpi.o
 obj-$(CONFIG_COMMON_CLK_SI5351)		+= clk-si5351.o
 obj-$(CONFIG_COMMON_CLK_SI514)		+= clk-si514.o
 obj-$(CONFIG_COMMON_CLK_SI570)		+= clk-si570.o
+obj-$(CONFIG_COMMON_CLK_SI5324)		+= si5324drv.o clk-si5324.o
 obj-$(CONFIG_ARCH_STM32)		+= clk-stm32f4.o
 obj-$(CONFIG_ARCH_STM32)		+= clk-stm32h7.o
 obj-$(CONFIG_ARCH_TANGO)		+= clk-tango4.o
