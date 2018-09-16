@@ -136,6 +136,17 @@ config COMMON_CLK_SI570
 	  This driver supports Silicon Labs 570/571/598/599 programmable
 	  clock generators.
 
+config COMMON_CLK_SI5324
+	tristate "Clock driver for SiLabs 5324 and compatible devices"
+	depends on I2C
+	depends on OF
+	select REGMAP_I2C
+	help
+	---help--
+	  This driver supports Silicon Labs 5324/5319/5328 programmable
+	  clock generators. Dynamic programming of the oscillator is done
+	  via I2C.
+
 config COMMON_CLK_IDT8T49N24X
 	tristate "Clock driver for IDT 8T49N24x"
 	depends on I2C
