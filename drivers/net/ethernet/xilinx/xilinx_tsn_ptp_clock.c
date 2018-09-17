@@ -274,8 +274,19 @@ void *axienet_ptp_timer_probe(void __iomem *base, struct platform_device *pdev)
 
 	timer->baseaddr = base;
 
-	timer->irq = platform_get_irq_byname(pdev, "rtc_irq");
+	timer->irq = platform_get_irq_byname(pdev, "interrupt_ptp_timer");
 
+	if (timer->irq < 0) {
+		timer->irq = platform_get_irq_byname(pdev, "rtc_irq");
+		if (timer->irq > 0) {
+			pr_err("ptp timer interrupt name 'rtc_irq' is"
+				"deprecated\n");
+		} else {
+			pr_err("ptp timer interrupt not found\n");
+			kfree(timer);
+			return NULL;
+		}
+	}
 	spin_lock_init(&timer->reg_lock);
 
 	timer->ptp_clock_info = xlnx_ptp_clock_info;
