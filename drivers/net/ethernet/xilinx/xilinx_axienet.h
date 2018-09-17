@@ -744,7 +744,7 @@ struct axienet_local {
 	bool eth_hasptp;
 	const struct axienet_config *axienet_config;
 
-#ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
+#if defined (CONFIG_XILINX_AXI_EMAC_HWTSTAMP) || defined (CONFIG_XILINX_TSN_PTP)
 	void __iomem *tx_ts_regs;
 	void __iomem *rx_ts_regs;
 	struct hwtstamp_config tstamp_config;
