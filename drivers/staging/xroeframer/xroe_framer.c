@@ -36,6 +36,13 @@ static struct class *cl;
  */
 struct framer_local *lp;
 static void __iomem *radio_ctrl;
+static struct platform_driver framer_driver;
+/* TODO: to be removed from the header file and resort that main file
+ * not to need them. Also swap const and static.
+ */
+const static struct file_operations framer_fops;
+const static struct file_operations stats_ops;
+const static struct file_operations radio_ctrl_fops;
 /*
  * TODO: placeholder for the IRQ once it's been implemented
  * in the framer block
@@ -183,6 +190,7 @@ static int framer_probe(struct platform_device *pdev)
 		unregister_chrdev_region(third, 1);
 		return rc;
 	}
+	xroe_sysfs_init();
 	/* Get IRQ for the device */
 	/*
 	 * TODO: No IRQ *yet* in the DT from the framer block, as it's still
@@ -502,7 +510,7 @@ static ssize_t radio_ctrl_write(struct file *f, const char __user *buf,
  *
  * Return: 0 on success or a negative errno on error.
  */
-static int utils_check_address_offset(u32 offset, size_t device_size)
+int utils_check_address_offset(u32 offset, size_t device_size)
 {
 	if (offset >= device_size)
 		return -ENXIO; /* No such device or address */
@@ -542,6 +550,7 @@ static int __init framer_init(void)
  */
 static void __exit framer_exit(void)
 {
+	xroe_sysfs_exit();
 	cdev_del(&radio_ctrl_dev);
 	device_destroy(cl, third);
 	cdev_del(&stats_dev);
