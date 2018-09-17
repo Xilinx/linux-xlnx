@@ -1871,11 +1871,11 @@ static int axienet_set_timestamp_mode(struct axienet_local *lp,
 		if (config->flags)
 			return -EINVAL;
 
-		if ((config->tx_type != HWTSTAMP_TX_OFF) &&
-		    (config->tx_type != HWTSTAMP_TX_ON))
+		if (config->tx_type < HWTSTAMP_TX_OFF ||
+		    config->tx_type > HWTSTAMP_TX_ONESTEP_SYNC)
 			return -ERANGE;
 
-		config->tx_type = HWTSTAMP_TX_ON;
+		lp->ptp_ts_type = config->tx_type;
 
 		/* On RX always timestamp everything */
 		switch (config->rx_filter) {
