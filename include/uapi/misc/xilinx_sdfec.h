@@ -44,6 +44,12 @@ enum xsdfec_order {
 	XSDFEC_ORDER_MAX,
 };
 
+enum xsdfec_turbo_alg {
+	XSDFEC_MAX_SCALE = 0,
+	XSDFEC_MAX_STAR,
+	XSDFEC_TURBO_ALG_MAX,
+};
+
 enum xsdfec_state {
 	XSDFEC_INIT = 0,
 	XSDFEC_STARTED,
@@ -71,7 +77,7 @@ enum xsdfec_axis_word_include {
  * Turbo Code structure to communicate parameters to XSDFEC driver
  */
 struct xsdfec_turbo {
-	bool alg;
+	enum xsdfec_turbo_alg alg;
 	u8 scale;
 };
 
