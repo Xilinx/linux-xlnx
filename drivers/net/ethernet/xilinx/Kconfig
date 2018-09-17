@@ -1,5 +1,5 @@
 #
-# Xilink device configuration
+# Xilinx device configuration
 #
 
 config NET_VENDOR_XILINX
@@ -24,12 +24,12 @@ config XILINX_EMACLITE
 	  This driver supports the 10/100 Ethernet Lite from Xilinx.
 
 config XILINX_AXI_EMAC
-	tristate "Xilinx 10/100/1000 AXI Ethernet support"
+	tristate "Xilinx AXI Ethernet support"
 	depends on (MICROBLAZE || ARCH_ZYNQ || ARCH_ZYNQMP)
 	select PHYLIB
 	---help---
-	  This driver supports the 10/100/1000 Ethernet from Xilinx for the
-	  AXI bus interface used in Xilinx Virtex FPGAs.
+	  This driver supports the Xilinx AXI 1G/2.5G, 10 Gigabit,
+	  10G/25G High Speed and USXGMII Ethernet Subsystem.
 
 config XILINX_AXI_EMAC_HWTSTAMP
 	bool "Generate hardware packet timestamps"
@@ -37,14 +37,14 @@ config XILINX_AXI_EMAC_HWTSTAMP
 	select PTP_1588_CLOCK
 	default n
 	---help---
-	  Generate hardare packet timestamps. This is to facilitate IEE 1588.
+	  Generate hardware packet timestamps. This is to facilitate IEEE 1588.
 
 config  AXIENET_HAS_MCDMA
-	bool "AxiEthernet is configured with MCDMA"
+	bool "AXI Ethernet is configured with MCDMA"
 	depends on XILINX_AXI_EMAC
 	default n
 	---help---
-	  When hardware is generated with Axi Ethernet with MCDMA select this option.
+	  When hardware is generated with AXI Ethernet with MCDMA select this option.
 
 config XILINX_LL_TEMAC
 	tristate "Xilinx LL TEMAC (LocalLink Tri-mode Ethernet MAC) driver"
@@ -67,7 +67,7 @@ config XILINX_TSN_PTP
 	select PTP_1588_CLOCK
 	default y
 	---help---
-	  Generate hardare packet timestamps. This is to facilitate IEE 1588.
+	  Generate hardware packet timestamps. This is to facilitate IEEE 1588.
 
 config XILINX_TSN_QBV
 	bool "Support Qbv protocol in TSN"
