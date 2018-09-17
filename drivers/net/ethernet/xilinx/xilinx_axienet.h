@@ -644,6 +644,7 @@ enum axienet_tsn_ioctl {
  * @ptp_rx_irq: PTP rx irq
  * @rtc_irq:	PTP RTC irq
  * @qbv_irq:	QBV shed irq
+ * @ptp_ts_type: ptp time stamp type - 1 or 2 step mode
  * @ptp_rx_hw_pointer: ptp rx hw pointer
  * @ptp_rx_sw_pointer: ptp rx sw pointer
  * @ptp_txq:	PTP tx queue header
@@ -715,6 +716,7 @@ struct axienet_local {
 	int ptp_rx_irq;
 	int rtc_irq;
 	int qbv_irq;
+	int ptp_ts_type;
 	u8  ptp_rx_hw_pointer;
 	u8  ptp_rx_sw_pointer;
 	struct sk_buff_head ptp_txq;

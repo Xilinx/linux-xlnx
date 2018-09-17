@@ -92,6 +92,15 @@ static void memcpy_toio_32(struct axienet_local *lp,
 	}
 }
 
+static int is_sync(struct sk_buff *skb)
+{
+	u8 *msg_type;
+
+	msg_type = (u8 *)skb->data + ETH_HLEN;
+
+	return (*msg_type & 0xf) == PTP_TYPE_SYNC;
+}
+
 /**
  * axienet_ptp_xmit - xmit skb using PTP HW
  * @skb:	sk_buff pointer that contains data to be Txed.
@@ -110,6 +119,8 @@ int axienet_ptp_xmit(struct sk_buff *skb, struct net_device *ndev)
 	unsigned long flags;
 	u8 tx_frame_waiting;
 	u8 free_index;
+	u32 cmd1_field = 0;
+	u32 cmd2_field = 0;
 
 	msg_type  = *(u8 *)(skb->data + ETH_HLEN);
 
@@ -133,23 +144,38 @@ int axienet_ptp_xmit(struct sk_buff *skb, struct net_device *ndev)
 	free_index  = fls(tx_frame_waiting);
 
 	/* write the len */
-	axienet_iow(lp, PTP_TX_BUFFER_OFFSET(free_index), skb->len);
-	memcpy_toio_32(lp, (PTP_TX_BUFFER_OFFSET(free_index) + 8),
+	if (lp->ptp_ts_type == HWTSTAMP_TX_ONESTEP_SYNC &&
+	    is_sync(skb)) {
+		/* enable 1STEP SYNC */
+		cmd1_field |= PTP_TX_CMD_1STEP_SHIFT;
+		cmd2_field |= PTP_TOD_FIELD_OFFSET;
+	}
+
+	cmd1_field |= skb->len;
+
+	axienet_iow(lp, PTP_TX_BUFFER_OFFSET(free_index), cmd1_field);
+	axienet_iow(lp, PTP_TX_BUFFER_OFFSET(free_index) +
+			PTP_TX_BUFFER_CMD2_FIELD, cmd2_field);
+	memcpy_toio_32(lp,
+		       (PTP_TX_BUFFER_OFFSET(free_index) +
+			PTP_TX_CMD_FIELD_LEN),
 		       skb->data, skb->len);
 
 	/* send the frame */
 	axienet_iow(lp, PTP_TX_CONTROL_OFFSET, (1 << free_index));
 
-	spin_lock_irqsave(&lp->ptp_tx_lock, flags);
-	skb->cb[0] = free_index;
-	skb_queue_tail(&lp->ptp_txq, skb);
+	if (lp->ptp_ts_type != HWTSTAMP_TX_ONESTEP_SYNC ||
+	    (!is_sync(skb))) {
+		spin_lock_irqsave(&lp->ptp_tx_lock, flags);
+		skb->cb[0] = free_index;
+		skb_queue_tail(&lp->ptp_txq, skb);
 
-	if (skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP)
-		skb_shinfo(skb)->tx_flags |= SKBTX_IN_PROGRESS;
+		if (skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP)
+			skb_shinfo(skb)->tx_flags |= SKBTX_IN_PROGRESS;
 
-	skb_tx_timestamp(skb);
-	spin_unlock_irqrestore(&lp->ptp_tx_lock, flags);
-
+		skb_tx_timestamp(skb);
+		spin_unlock_irqrestore(&lp->ptp_tx_lock, flags);
+	}
 	return NETDEV_TX_OK;
 }
 
