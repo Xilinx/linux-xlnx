@@ -62,7 +62,6 @@ config XILINX_TSN
 
 config XILINX_TSN_PTP
 	bool "Generate hardware packet timestamps using Xilinx's TSN IP"
-	depends on XILINX_AXI_EMAC_HWTSTAMP
 	depends on XILINX_TSN
 	select PTP_1588_CLOCK
 	default y
