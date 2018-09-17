@@ -26,12 +26,12 @@ static const char *dev_compat[][XLNX_MAX_IFACE] = {
 	[XLNX_PLAYBACK] = {
 		"xlnx,i2s-transmitter-1.0",
 		"xlnx,v-hdmi-tx-ss-3.1",
-		"xlnx,v-uhdsdi-audio-1.0",
+		"xlnx,v-uhdsdi-audio-2.0",
 	},
 	[XLNX_CAPTURE] = {
 		"xlnx,i2s-receiver-1.0",
 		"xlnx,v-hdmi-rx-ss-3.1",
-		"xlnx,v-uhdsdi-audio-1.0",
+		"xlnx,v-uhdsdi-audio-2.0",
 	},
 };
 
