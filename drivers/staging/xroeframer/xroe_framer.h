@@ -51,12 +51,8 @@ struct ioctl_arguments {
 	 u32 *value;
 };
 
-/* TODO: to be removed from the header file and resort that main file
- * not to need them
- */
-static struct platform_driver framer_driver;
-const static struct file_operations framer_fops;
-const static struct file_operations stats_ops;
-const static struct file_operations radio_ctrl_fops;
-
-static int utils_check_address_offset(u32 offset, size_t device_size);
+int xroe_sysfs_init(void);
+void xroe_sysfs_exit(void);
+int utils_write32withmask(void __iomem *working_address, u32 value,
+			  u32 mask, u32 offset);
+int utils_check_address_offset(u32 offset, size_t device_size);
