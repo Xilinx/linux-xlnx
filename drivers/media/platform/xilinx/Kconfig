@@ -73,6 +73,17 @@ config VIDEO_XILINX_SCALER
 	---help---
 	  Driver for the Xilinx Video Scaler
 
+config VIDEO_XILINX_MULTISCALER
+	tristate "Xilinx Video Multiscaler"
+	depends on VIDEO_XILINX
+	depends on VIDEO_DEV && VIDEO_V4L2
+	select V4L2_MEM2MEM_DEV
+	select VIDEOBUF2_DMA_CONTIG
+	---help---
+	  Driver for the Xilinx Video Multi Scaler. This is a V4L2 memory to
+	  memory based driver. Multi-Scaler has max 8 channels which can be
+	  programed for different scaling ratio.
+
 config VIDEO_XILINX_SDIRXSS
 	tristate "Xilinx SDI Rx Subsystem"
 	depends on VIDEO_XILINX
