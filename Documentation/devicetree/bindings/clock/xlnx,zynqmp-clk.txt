@@ -35,10 +35,14 @@ The following strings are optional parameters to the 'clock-names' property in
 order to provide an optional (E)MIO clock source.
  - swdt0_ext_clk
  - swdt1_ext_clk
- - gem0_emio_clk
- - gem1_emio_clk
- - gem2_emio_clk
- - gem3_emio_clk
+ - gem0_tx_ext
+ - gem1_tx_ext
+ - gem2_tx_ext
+ - gem3_tx_ext
+ - gem0_rx_ext
+ - gem1_rx_ext
+ - gem2_rx_ext
+ - gem3_rx_ext
  - mio_clk_XX		# with XX = 00..77
  - mio_clk_50_or_51	#for the mux clock to gem tsu from 50 or 51
 
@@ -94,14 +98,14 @@ Clock ID:	Output clock name:
 42		iou_switch
 43		gem_tsu_ref
 44		gem_tsu
-45		gem0_ref
-46		gem1_ref
-47		gem2_ref
-48		gem3_ref
-49		gem0_tx
-50		gem1_tx
-51		gem2_tx
-52		gem3_tx
+45		gem0_tx
+46		gem1_tx
+47		gem2_tx
+48		gem3_tx
+49		gem0_rx
+50		gem1_rx
+51		gem2_rx
+52		gem3_rx
 53		qspi_ref
 54		sdio0_ref
 55		sdio1_ref
@@ -152,6 +156,15 @@ Clock ID:	Output clock name:
 100		vpll_post_src
 101		can0_mio
 102		can1_mio
+103		acpu_full
+104		gem0_ref
+105		gem1_ref
+106		gem2_ref
+107		gem3_ref
+108		gem0_ref_ung
+109		gem1_ref_ung
+110		gem2_ref_ung
+111		gem3_ref_ung
 
 Example:
 
