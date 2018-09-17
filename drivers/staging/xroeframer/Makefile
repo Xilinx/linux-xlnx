@@ -4,4 +4,4 @@
 #
 obj-$(CONFIG_XROE_FRAMER)	:= framer.o
 
-framer-objs := xroe_framer.o
+framer-objs := xroe_framer.o sysfs_xroe.o
