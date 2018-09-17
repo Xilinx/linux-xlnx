@@ -432,6 +432,13 @@ xsdfec_set_turbo(struct xsdfec_dev *xsdfec, void __user *arg)
 		return -EINVAL;
 	}
 
+	if (turbo.scale > XSDFEC_TURBO_SCALE_MAX) {
+		dev_err(xsdfec->dev,
+			"%s invalid turbo scale value %d for SDFEC%d",
+			__func__, turbo.scale, xsdfec->config.fec_id);
+		return -EINVAL;
+	}
+
 	/* Check to see what device tree says about the FEC codes */
 	if (xsdfec->config.code == XSDFEC_LDPC_CODE) {
 		dev_err(xsdfec->dev,
