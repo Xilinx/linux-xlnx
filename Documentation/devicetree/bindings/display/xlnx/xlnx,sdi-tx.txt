@@ -11,6 +11,8 @@ Required properties:
    external device. In the display controller port nodes, topology
    for entire pipeline should be described using the DT bindings defined in
    Documentation/devicetree/bindings/graph.txt.
+   Minimum one port is required. At max, 2 ports are present.
+   The reg index for AXI4 stream port is 0 and for ancillary data is 1.
 
 Optional properties:
  - xlnx,vpss: vpss phandle
@@ -26,10 +28,21 @@ Example:
 		#address-cells = <1>;
 		#size-cells = <0>;
 		xlnx,vpss = <&v_proc_ss_0>;
-		encoder_sdi_port: port@0 {
-			reg = <0>;
-			sdi_encoder: endpoint {
-				remote-endpoint = <&xyz_port>;
+		ports {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			encoder_sdi_port: port@0 {
+				reg = <0>;
+				sdi_encoder: endpoint {
+					remote-endpoint = <&pl_disp_crtc>;
+				};
+			};
+
+			sdi_audio_port: port@1 {
+				reg = <1>;
+				sdi_audio_sink_port: endpoint {
+					remote-endpoint = <&sditx_audio_embed_src_port>;
+				};
 			};
 		};
 	};
