@@ -146,4 +146,12 @@ config VIDEO_XILINX_SCD
 	  provides if scene change detection is present between
 	  adjacent frames.
 
+config VIDEO_XILINX_M2M
+	tristate "Xilinx Video mem2mem"
+	depends on VIDEO_XILINX
+	select V4L2_MEM2MEM_DEV
+	---help---
+	  Driver for Xilinx V4L2 mem2mem pipeline operation to achieve memory
+	  copy between two different physical memories using DMA transfers.
+
 endif #VIDEO_XILINX
