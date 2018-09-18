@@ -10,6 +10,7 @@ obj-$(CONFIG_VIDEO_XILINX_CSI2RXSS) += xilinx-csi2rxss.o
 obj-$(CONFIG_VIDEO_XILINX_DEMOSAIC) += xilinx-demosaic.o
 obj-$(CONFIG_VIDEO_XILINX_GAMMA) += xilinx-gamma.o
 obj-$(CONFIG_VIDEO_XILINX_HLS) += xilinx-hls.o
+obj-$(CONFIG_VIDEO_XILINX_M2M) += xilinx-m2m.o
 obj-$(CONFIG_VIDEO_XILINX_MULTISCALER) += xilinx-multi-scaler.o
 obj-$(CONFIG_VIDEO_XILINX_REMAPPER) += xilinx-remapper.o
 obj-$(CONFIG_VIDEO_XILINX_RGB2YUV) += xilinx-rgb2yuv.o
