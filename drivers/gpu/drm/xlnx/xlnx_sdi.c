@@ -133,6 +133,7 @@ enum payload_line_2 {
  * @mode_flags: SDI operation mode related flags
  * @wait_event: wait event
  * @event_received: wait event status
+ * @enable_anc_data: Enable/Disable Ancillary Data insertion for Audio
  * @sdi_mode: configurable SDI mode parameter, supported values are:
  *		0 - HD
  *		1 - SD
@@ -169,6 +170,7 @@ struct xlnx_sdi {
 	u32 mode_flags;
 	wait_queue_head_t wait_event;
 	bool event_received;
+	bool enable_anc_data;
 	struct drm_property *sdi_mode;
 	u32 sdi_mod_prop_val;
 	struct drm_property *sdi_data_strm;
@@ -758,7 +760,11 @@ static void xlnx_sdi_setup(struct xlnx_sdi *sdi)
 	reg = xlnx_sdi_readl(sdi->base, XSDI_TX_MDL_CTRL);
 	reg |= XSDI_TX_CTRL_INS_CRC | XSDI_TX_CTRL_INS_ST352 |
 		XSDI_TX_CTRL_OVR_ST352 | XSDI_TX_CTRL_INS_SYNC_BIT |
-		XSDI_TX_CTRL_INS_EDH | XSDI_TX_CTRL_USE_ANC_IN;
+		XSDI_TX_CTRL_INS_EDH;
+
+	if (sdi->enable_anc_data)
+		reg |= XSDI_TX_CTRL_USE_ANC_IN;
+
 	xlnx_sdi_writel(sdi->base, XSDI_TX_MDL_CTRL, reg);
 	xlnx_sdi_writel(sdi->base, XSDI_TX_IER_STAT, XSDI_IER_EN_MASK);
 	xlnx_sdi_writel(sdi->base, XSDI_TX_GLBL_IER, 1);
@@ -964,6 +970,8 @@ static int xlnx_sdi_probe(struct platform_device *pdev)
 	struct xlnx_sdi *sdi;
 	struct device_node *vpss_node;
 	int ret, irq;
+	struct device_node *ports, *port;
+	u32 nports = 0, portmask = 0;
 
 	sdi = devm_kzalloc(dev, sizeof(*sdi), GFP_KERNEL);
 	if (!sdi)
@@ -977,6 +985,53 @@ static int xlnx_sdi_probe(struct platform_device *pdev)
 		return PTR_ERR(sdi->base);
 	}
 	platform_set_drvdata(pdev, sdi);
+
+	/* in case all "port" nodes are grouped under a "ports" node */
+	ports = of_get_child_by_name(sdi->dev->of_node, "ports");
+	if (!ports) {
+		dev_dbg(dev, "Searching for port nodes in device node.\n");
+		ports = sdi->dev->of_node;
+	}
+
+	for_each_child_of_node(ports, port) {
+		struct device_node *endpoint;
+		u32 index;
+
+		if (!port->name || of_node_cmp(port->name, "port")) {
+			dev_dbg(dev, "port name is null or node name is not port!\n");
+			continue;
+		}
+
+		endpoint = of_get_next_child(port, NULL);
+		if (!endpoint) {
+			dev_err(dev, "No remote port at %s\n", port->name);
+			of_node_put(endpoint);
+			return -EINVAL;
+		}
+
+		of_node_put(endpoint);
+
+		ret = of_property_read_u32(port, "reg", &index);
+		if (ret) {
+			dev_err(dev, "reg property not present - %d\n", ret);
+			return ret;
+		}
+
+		portmask |= (1 << index);
+
+		nports++;
+	}
+
+	if (nports == 2 && portmask & 0x3) {
+		dev_dbg(dev, "enable ancillary port\n");
+		sdi->enable_anc_data = true;
+	} else if (nports == 1 && portmask & 0x1) {
+		dev_dbg(dev, "no ancillary port\n");
+		sdi->enable_anc_data = false;
+	} else {
+		dev_err(dev, "Incorrect dt node!\n");
+		return -EINVAL;
+	}
 
 	/* disable interrupt */
 	xlnx_sdi_writel(sdi->base, XSDI_TX_GLBL_IER, 0);
