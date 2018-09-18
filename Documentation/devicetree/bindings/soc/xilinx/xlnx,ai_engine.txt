@@ -1,0 +1,19 @@
+Xilinx AI Engine
+----------------
+
+The Xilinx AI Engine is a tile processor with many cores (up to 400) that
+can run in parallel. The data routing between cores is configured through
+internal switches, and shim tiles interface with external interconnect, such
+as memory or PL.
+
+Required properties:
+
+- compatible: Must be "xlnx,ai_engine".
+- reg: Physical base address and length of the registers set for the device.
+
+Example:
+
+	ai_engine@80000000 {
+		compatible = "xlnx,ai_engine";
+		reg = <0x0 0x80000000 0x0 0x20000000>;
+	};
