@@ -1,0 +1,25 @@
+Xilinx Video IP MEM2MEM Pipeline (XVIM2M)
+----------------------------------------
+
+Xilinx video IP mem2mem pipeline processes DMA transfers to achieve memory
+copy from one physical memory to other. The data is copied by employing two
+DMA transfers memory to device and device to memory transactions one after
+the other. The DT node of the XVIM2M represents as a top level node of the
+pipeline and defines mappings between DMAs.
+
+Required properties:
+
+- compatible: Must be "xlnx,mem2mem".
+
+- dmas, dma-names: List of two DMA specifier and identifier strings (as
+  defined in Documentation/devicetree/bindings/dma/dma.txt) per port.
+  Identifier string of one DMA channel should be "tx" and other should be
+  "rx".
+
+Example:
+
+	video_m2m {
+		compatible = "xlnx,mem2mem";
+		dmas = <&dma_1 0>, <&dma_2 0>;
+		dma-names = "tx", "rx";
+	};
