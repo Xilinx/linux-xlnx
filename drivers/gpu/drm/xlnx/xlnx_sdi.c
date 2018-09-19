@@ -35,6 +35,7 @@
 #define XSDI_TX_STS_SB_TDATA		0x60
 #define XSDI_TX_AXI4S_STS1		0x68
 #define XSDI_TX_AXI4S_STS2		0x6C
+#define XSDI_TX_ST352_DATA_DS2		0x70
 
 /* MODULE_CTRL register masks */
 #define XSDI_TX_CTRL_M			BIT(7)
@@ -52,6 +53,7 @@
 #define XSDI_TX_CTRL_MUX_SHIFT		8
 #define XSDI_TX_CTRL_ST352_F2_EN_SHIFT	15
 #define XSDI_TX_CTRL_420_BIT		BIT(21)
+#define XSDI_TX_CTRL_INS_ST352_CHROMA	BIT(23)
 
 /* TX_ST352_LINE register masks */
 #define XSDI_TX_ST352_LINE_MASK		GENMASK(10, 0)
@@ -134,6 +136,7 @@ enum payload_line_2 {
  * @mode_flags: SDI operation mode related flags
  * @wait_event: wait event
  * @event_received: wait event status
+ * @enable_st352_chroma: Able to send ST352 packets in Chroma stream.
  * @enable_anc_data: Enable/Disable Ancillary Data insertion for Audio
  * @sdi_mode: configurable SDI mode parameter, supported values are:
  *		0 - HD
@@ -161,6 +164,8 @@ enum payload_line_2 {
  * @in_fmt_prop_val: configurable media bus format value
  * @out_fmt: configurable bridge output media format
  * @out_fmt_prop_val: configurable media bus format value
+ * @en_st352_c_prop: configurable ST352 payload on Chroma stream parameter
+ * @en_st352_c_val: configurable ST352 payload on Chroma parameter value
  * @video_mode: current display mode
  */
 struct xlnx_sdi {
@@ -171,6 +176,7 @@ struct xlnx_sdi {
 	u32 mode_flags;
 	wait_queue_head_t wait_event;
 	bool event_received;
+	bool enable_st352_chroma;
 	bool enable_anc_data;
 	struct drm_property *sdi_mode;
 	u32 sdi_mod_prop_val;
@@ -191,6 +197,8 @@ struct xlnx_sdi {
 	u32 in_fmt_prop_val;
 	struct drm_property *out_fmt;
 	u32 out_fmt_prop_val;
+	struct drm_property *en_st352_c_prop;
+	bool en_st352_c_val;
 	struct drm_display_mode video_mode;
 };
 
@@ -310,6 +318,14 @@ static void xlnx_sdi_set_payload_data(struct xlnx_sdi *sdi,
 {
 	xlnx_sdi_writel(sdi->base,
 			(XSDI_TX_ST352_DATA_CH0 + (data_strm * 4)), payload);
+
+	dev_dbg(sdi->dev, "enable_st352_chroma = %d and en_st352_c_val = %d\n",
+		sdi->enable_st352_chroma, sdi->en_st352_c_val);
+	if (sdi->enable_st352_chroma && sdi->en_st352_c_val) {
+		xlnx_sdi_writel(sdi->base,
+				(XSDI_TX_ST352_DATA_DS2 + (data_strm * 4)),
+				payload);
+	}
 }
 
 /**
@@ -476,6 +492,8 @@ xlnx_sdi_atomic_set_property(struct drm_connector *connector,
 		sdi->in_fmt_prop_val = (unsigned int)val;
 	else if (property == sdi->out_fmt)
 		sdi->out_fmt_prop_val = (unsigned int)val;
+	else if (property == sdi->en_st352_c_prop)
+		sdi->en_st352_c_val = !!val;
 	else
 		return -EINVAL;
 	return 0;
@@ -506,6 +524,8 @@ xlnx_sdi_atomic_get_property(struct drm_connector *connector,
 		*val = sdi->in_fmt_prop_val;
 	else if (property == sdi->out_fmt)
 		*val = sdi->out_fmt_prop_val;
+	else if (property == sdi->en_st352_c_prop)
+		*val =  sdi->en_st352_c_val;
 	else
 		return -EINVAL;
 
@@ -625,6 +645,9 @@ xlnx_sdi_drm_connector_create_property(struct drm_connector *base_connector)
 						"in_fmt", 0, 16384);
 	sdi->out_fmt = drm_property_create_range(dev, 0,
 						 "out_fmt", 0, 16384);
+	if (sdi->enable_st352_chroma)
+		sdi->en_st352_c_prop = drm_property_create_bool(dev, 1,
+								"en_st352_c");
 }
 
 /**
@@ -665,6 +688,9 @@ xlnx_sdi_drm_connector_attach_property(struct drm_connector *base_connector)
 
 	if (sdi->out_fmt)
 		drm_object_attach_property(obj, sdi->out_fmt, 0);
+
+	if (sdi->en_st352_c_prop)
+		drm_object_attach_property(obj, sdi->en_st352_c_prop, 0);
 }
 
 static int xlnx_sdi_create_connector(struct drm_encoder *encoder)
@@ -765,6 +791,9 @@ static void xlnx_sdi_setup(struct xlnx_sdi *sdi)
 
 	if (sdi->enable_anc_data)
 		reg |= XSDI_TX_CTRL_USE_ANC_IN;
+
+	if (sdi->enable_st352_chroma && sdi->en_st352_c_val)
+		reg |= XSDI_TX_CTRL_INS_ST352_CHROMA;
 
 	xlnx_sdi_writel(sdi->base, XSDI_TX_MDL_CTRL, reg);
 	xlnx_sdi_writel(sdi->base, XSDI_TX_IER_STAT, XSDI_IER_EN_MASK);
@@ -1033,6 +1062,9 @@ static int xlnx_sdi_probe(struct platform_device *pdev)
 		dev_err(dev, "Incorrect dt node!\n");
 		return -EINVAL;
 	}
+
+	sdi->enable_st352_chroma = of_property_read_bool(sdi->dev->of_node,
+							 "xlnx,tx-insert-c-str-st352");
 
 	/* disable interrupt */
 	xlnx_sdi_writel(sdi->base, XSDI_TX_GLBL_IER, 0);
