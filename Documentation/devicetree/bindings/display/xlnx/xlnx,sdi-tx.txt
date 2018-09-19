@@ -17,6 +17,7 @@ Required properties:
 Optional properties:
  - xlnx,vpss: vpss phandle
    This handle is required only when VPSS is connected to SDI as bridge.
+ - xlnx,tx-insert-c-str-st352: Insert ST352 payload in Chroma stream.
 
 Example:
 
