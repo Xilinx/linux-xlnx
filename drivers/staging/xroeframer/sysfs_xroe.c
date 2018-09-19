@@ -448,7 +448,7 @@ int xroe_sysfs_init(void)
 	ret = sysfs_create_group(root_xroe_kobj, &attr_group);
 	if (ret)
 		kobject_put(root_xroe_kobj);
-
+	ret = xroe_sysfs_ipv4_init();
 	return ret;
 }
 
@@ -462,6 +462,7 @@ int xroe_sysfs_init(void)
 void xroe_sysfs_exit(void)
 {
 	kobject_put(root_xroe_kobj);
+	xroe_sysfs_ipv4_exit();
 }
 
 /**
