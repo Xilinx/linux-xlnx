@@ -53,6 +53,7 @@
 #define XSDI_TX_CTRL_ST352_F2_EN_SHIFT	15
 #define XSDI_TX_CTRL_420_BIT		BIT(21)
 #define XSDI_TX_CTRL_INS_ST352_CHROMA	BIT(23)
+#define XSDI_TX_CTRL_USE_DS2_3GA	BIT(24)
 
 /* TX_ST352_LINE register masks */
 #define XSDI_TX_ST352_LINE_MASK		GENMASK(10, 0)
@@ -165,6 +166,8 @@ enum payload_line_2 {
  * @out_fmt_prop_val: configurable media bus format value
  * @en_st352_c_prop: configurable ST352 payload on Chroma stream parameter
  * @en_st352_c_val: configurable ST352 payload on Chroma parameter value
+ * @use_ds2_3ga_prop: Use DS2 instead of DS3 in 3GA mode parameter
+ * @use_ds2_3ga_val: Use DS2 instead of DS3 in 3GA mode parameter value
  * @video_mode: current display mode
  */
 struct xlnx_sdi {
@@ -198,6 +201,8 @@ struct xlnx_sdi {
 	u32 out_fmt_prop_val;
 	struct drm_property *en_st352_c_prop;
 	bool en_st352_c_val;
+	struct drm_property *use_ds2_3ga_prop;
+	bool use_ds2_3ga_val;
 	struct drm_display_mode video_mode;
 };
 
@@ -493,6 +498,8 @@ xlnx_sdi_atomic_set_property(struct drm_connector *connector,
 		sdi->out_fmt_prop_val = (unsigned int)val;
 	else if (property == sdi->en_st352_c_prop)
 		sdi->en_st352_c_val = !!val;
+	else if (property == sdi->use_ds2_3ga_prop)
+		sdi->use_ds2_3ga_val = !!val;
 	else
 		return -EINVAL;
 	return 0;
@@ -525,6 +532,8 @@ xlnx_sdi_atomic_get_property(struct drm_connector *connector,
 		*val = sdi->out_fmt_prop_val;
 	else if (property == sdi->en_st352_c_prop)
 		*val =  sdi->en_st352_c_val;
+	else if (property == sdi->use_ds2_3ga_prop)
+		*val =  sdi->use_ds2_3ga_val;
 	else
 		return -EINVAL;
 
@@ -644,9 +653,12 @@ xlnx_sdi_drm_connector_create_property(struct drm_connector *base_connector)
 						"in_fmt", 0, 16384);
 	sdi->out_fmt = drm_property_create_range(dev, 0,
 						 "out_fmt", 0, 16384);
-	if (sdi->enable_st352_chroma)
+	if (sdi->enable_st352_chroma) {
 		sdi->en_st352_c_prop = drm_property_create_bool(dev, 1,
 								"en_st352_c");
+		sdi->use_ds2_3ga_prop = drm_property_create_bool(dev, 1,
+								 "use_ds2_3ga");
+	}
 }
 
 /**
@@ -690,6 +702,9 @@ xlnx_sdi_drm_connector_attach_property(struct drm_connector *base_connector)
 
 	if (sdi->en_st352_c_prop)
 		drm_object_attach_property(obj, sdi->en_st352_c_prop, 0);
+
+	if (sdi->use_ds2_3ga_prop)
+		drm_object_attach_property(obj, sdi->use_ds2_3ga_prop, 0);
 }
 
 static int xlnx_sdi_create_connector(struct drm_encoder *encoder)
@@ -791,8 +806,12 @@ static void xlnx_sdi_setup(struct xlnx_sdi *sdi)
 	if (sdi->enable_anc_data)
 		reg |= XSDI_TX_CTRL_USE_ANC_IN;
 
-	if (sdi->enable_st352_chroma && sdi->en_st352_c_val)
+	if (sdi->enable_st352_chroma && sdi->en_st352_c_val) {
 		reg |= XSDI_TX_CTRL_INS_ST352_CHROMA;
+
+		if (sdi->use_ds2_3ga_val)
+			reg |= XSDI_TX_CTRL_USE_DS2_3GA;
+	}
 
 	xlnx_sdi_writel(sdi->base, XSDI_TX_MDL_CTRL, reg);
 	xlnx_sdi_writel(sdi->base, XSDI_TX_IER_STAT, XSDI_IER_EN_MASK);
