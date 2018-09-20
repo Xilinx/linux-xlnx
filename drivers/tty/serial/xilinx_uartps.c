@@ -1440,6 +1440,82 @@ MODULE_DEVICE_TABLE(of, cdns_uart_of_match);
 /* Temporary variable for storing number of instances */
 static int instances;
 
+/* Stores static aliases list */
+static DECLARE_BITMAP(alias_bitmap, CDNS_UART_NR_PORTS);
+static int alias_bitmap_initialized;
+
+/* Stores actual bitmap of allocated IDs with alias IDs together */
+static DECLARE_BITMAP(bitmap, CDNS_UART_NR_PORTS);
+/* Protect bitmap operations to have unique IDs */
+static DEFINE_MUTEX(bitmap_lock);
+
+static int cdns_get_id(struct platform_device *pdev)
+{
+	int id, ret;
+
+	mutex_lock(&bitmap_lock);
+
+	/* Alias list is stable that's why get alias bitmap only once */
+	if (!alias_bitmap_initialized) {
+		ret = of_alias_get_alias_list(cdns_uart_of_match, "serial",
+					      alias_bitmap, CDNS_UART_NR_PORTS);
+		if (ret)
+			return ret;
+
+		alias_bitmap_initialized++;
+	}
+
+	/* Make sure that alias ID is not taken by instance without alias */
+	bitmap_or(bitmap, bitmap, alias_bitmap, CDNS_UART_NR_PORTS);
+
+	dev_dbg(&pdev->dev, "Alias bitmap: %*pb\n",
+		CDNS_UART_NR_PORTS, bitmap);
+
+	/* Look for a serialN alias */
+	id = of_alias_get_id(pdev->dev.of_node, "serial");
+	if (id < 0) {
+		dev_warn(&pdev->dev,
+			 "No serial alias passed. Using the first free id\n");
+
+		/*
+		 * Start with id 0 and check if there is no serial0 alias
+		 * which points to device which is compatible with this driver.
+		 * If alias exists then try next free position.
+		 */
+		id = 0;
+
+		for (;;) {
+			dev_info(&pdev->dev, "Checking id %d\n", id);
+			id = find_next_zero_bit(bitmap, CDNS_UART_NR_PORTS, id);
+
+			/* No free empty instance */
+			if (id == CDNS_UART_NR_PORTS) {
+				dev_err(&pdev->dev, "No free ID\n");
+				mutex_unlock(&bitmap_lock);
+				return -EINVAL;
+			}
+
+			dev_dbg(&pdev->dev, "The empty id is %d\n", id);
+			/* Check if ID is empty */
+			if (!test_and_set_bit(id, bitmap)) {
+				/* Break the loop if bit is taken */
+				dev_dbg(&pdev->dev,
+					"Selected ID %d allocation passed\n",
+					id);
+				break;
+			}
+			dev_dbg(&pdev->dev,
+				"Selected ID %d allocation failed\n", id);
+			/* if taking bit fails then try next one */
+			id++;
+		}
+	}
+
+	mutex_unlock(&bitmap_lock);
+
+	return id;
+}
+
 /**
  * cdns_uart_probe - Platform driver probe
  * @pdev: Pointer to the platform device structure
@@ -1462,15 +1538,9 @@ static int cdns_uart_probe(struct platform_device *pdev)
 	if (!port)
 		return -ENOMEM;
 
-	/* Look for a serialN alias */
-	id = of_alias_get_id(pdev->dev.of_node, "serial");
+	id = cdns_get_id(pdev);
 	if (id < 0)
-		id = 0;
-
-	if (id >= CDNS_UART_NR_PORTS) {
-		dev_err(&pdev->dev, "Cannot get uart_port structure\n");
-		return -ENODEV;
-	}
+		return id;
 
 	if (!cdns_uart_uart_driver.state) {
 		cdns_uart_uart_driver.owner = THIS_MODULE;
@@ -1479,6 +1549,7 @@ static int cdns_uart_probe(struct platform_device *pdev)
 		cdns_uart_uart_driver.major = CDNS_UART_MAJOR;
 		cdns_uart_uart_driver.minor = CDNS_UART_MINOR;
 		cdns_uart_uart_driver.nr = CDNS_UART_NR_PORTS;
+
 #ifdef CONFIG_SERIAL_XILINX_PS_UART_CONSOLE
 		cdns_uart_uart_driver.cons = &cdns_uart_console;
 #endif
@@ -1642,6 +1713,11 @@ err_out_clk_dis_pclk:
 err_out_unregister_driver:
 	if (!instances)
 		uart_unregister_driver(cdns_uart_data->cdns_uart_driver);
+
+	mutex_lock(&bitmap_lock);
+	clear_bit(port->line, bitmap);
+	mutex_unlock(&bitmap_lock);
+
 	return rc;
 }
 
@@ -1664,6 +1740,9 @@ static int cdns_uart_remove(struct platform_device *pdev)
 #endif
 	rc = uart_remove_one_port(cdns_uart_data->cdns_uart_driver, port);
 	port->mapbase = 0;
+	mutex_lock(&bitmap_lock);
+	clear_bit(port->line, bitmap);
+	mutex_unlock(&bitmap_lock);
 	clk_disable_unprepare(cdns_uart_data->uartclk);
 	clk_disable_unprepare(cdns_uart_data->pclk);
 	pm_runtime_disable(&pdev->dev);
