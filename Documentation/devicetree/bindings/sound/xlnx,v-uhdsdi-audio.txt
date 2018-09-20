@@ -13,10 +13,11 @@ Required properties:
  - interrupts: Interrupt number.
  - interrupts-parent: phandle for interrupt controller.
  - reg: Base address and size of the IP core instance.
- - xlnx,sdi-tx-video: Handle to SDI video Tx subsystem. Required only
-   when IP is used in embed mode and should point to sdi video tx
-   subsystem as mentioned in the subsystem DT documentation.
  - xlnx,snd-pcm: reference to audio formatter block
+
+SDI embed contains a output port to remote endpoint of SDI video Tx node.
+This pipeline should be described using the DT bindings defined in
+Documentation/devicetree/bindings/graph.txt
 
 Example:
 
@@ -35,8 +36,13 @@ Example:
 		interrupt-parent = <&gic>;
 		interrupts = <0 107 4>;
 		reg = <0x0 0x80090000 0x0 0x10000>;
-		xlnx,sdi-tx-video = <&v_smpte_uhdsdi_tx_ss>;
 		xlnx,snd-pcm = <&audio_ss_0_audio_formatter_0>;
+		sdi_av_port: port@0 {
+			reg = <0>;
+			sditx_audio_embed_src: endpoint {
+				remote-endpoint = <&sdi_audio_sink_port>;
+			};
+		};
 	};
 
 	Node 'v_smpte_uhdsdi_tx_ss' is documented in SDI Tx video bindings,
