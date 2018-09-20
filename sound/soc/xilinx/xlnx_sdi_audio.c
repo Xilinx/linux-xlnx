@@ -9,6 +9,7 @@
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/module.h>
+#include <linux/of_graph.h>
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
 #include <linux/wait.h>
@@ -667,8 +668,8 @@ static int xlnx_sdi_audio_probe(struct platform_device *pdev)
 		snd_dai = &xlnx_sdi_rx_dai;
 	} else {
 		ctx->mode = EMBED;
-		video_node = of_parse_phandle(pdev->dev.of_node,
-					      "xlnx,sdi-tx-video", 0);
+
+		video_node = of_graph_get_remote_node(pdev->dev.of_node, 0, 0);
 		if (!video_node) {
 			dev_err(ctx->dev, "video_node not found\n");
 			of_node_put(video_node);
