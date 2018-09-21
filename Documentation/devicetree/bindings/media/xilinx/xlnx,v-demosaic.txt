@@ -25,6 +25,11 @@ Required port properties:
 
 - xlnx,video-width: Video width as defined in video.txt
 
+Optional properties:
+
+- xlnx,max-height: Maximum number of lines.
+- xlnx,max-width: Maximum number of pixels in a line.
+
 Example :
 	demosaic_1: demosaic@a00b0000 {
 		compatible = "xlnx,v-demosaic";
