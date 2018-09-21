@@ -24,10 +24,10 @@
 #include <media/v4l2-subdev.h>
 #include "xilinx-vip.h"
 
-#define XSCALER_MIN_WIDTH		(32)
-#define XSCALER_MAX_WIDTH		(3840)
-#define XSCALER_MIN_HEIGHT		(32)
-#define XSCALER_MAX_HEIGHT		(2160)
+#define XSCALER_MIN_WIDTH		(64)
+#define XSCALER_MAX_WIDTH		(8192)
+#define XSCALER_MIN_HEIGHT		(64)
+#define XSCALER_MAX_HEIGHT		(4320)
 #define XSCALER_MAX_PHASES		(64)
 
 /* Modify to defaults incase it is not configured from application */
@@ -1462,9 +1462,9 @@ static int xscaler_set_format(struct v4l2_subdev *subdev,
 	*format = fmt->format;
 
 	format->width = clamp_t(unsigned int, fmt->format.width,
-				XSCALER_MIN_WIDTH, XSCALER_MAX_WIDTH);
+				XSCALER_MIN_WIDTH, xscaler->max_pixels);
 	format->height = clamp_t(unsigned int, fmt->format.height,
-				XSCALER_MIN_HEIGHT, XSCALER_MAX_HEIGHT);
+				 XSCALER_MIN_HEIGHT, xscaler->max_lines);
 	fmt->format = *format;
 	return 0;
 }
@@ -1537,6 +1537,26 @@ static int xscaler_parse_of(struct xscaler_device *xscaler)
 	struct device_node *port;
 	int ret;
 	u32 port_id, dt_ppc;
+
+	ret = of_property_read_u32(node, "xlnx,max-height",
+				   &xscaler->max_lines);
+	if (ret < 0) {
+		xscaler->max_lines = XSCALER_MAX_HEIGHT;
+	} else if (xscaler->max_lines > XSCALER_MAX_HEIGHT ||
+		   xscaler->max_lines < XSCALER_MIN_HEIGHT) {
+		dev_err(dev, "Invalid height in dt");
+		return -EINVAL;
+	}
+
+	ret = of_property_read_u32(node, "xlnx,max-width",
+				   &xscaler->max_pixels);
+	if (ret < 0) {
+		xscaler->max_pixels = XSCALER_MAX_WIDTH;
+	} else if (xscaler->max_pixels > XSCALER_MAX_WIDTH ||
+		   xscaler->max_pixels < XSCALER_MIN_WIDTH) {
+		dev_err(dev, "Invalid width in dt");
+		return -EINVAL;
+	}
 
 	ports = of_get_child_by_name(node, "ports");
 	if (!ports)
@@ -1661,8 +1681,6 @@ static int xscaler_probe(struct platform_device *pdev)
 
 	/* Initialize coefficient parameters */
 	xscaler->max_num_phases = XSCALER_MAX_PHASES;
-	xscaler->max_lines = XSCALER_MAX_HEIGHT;
-	xscaler->max_pixels = XSCALER_MAX_WIDTH;
 
 	ret = xvip_init_resources(&xscaler->xvip);
 	if (ret < 0)
