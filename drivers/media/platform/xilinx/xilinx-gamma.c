@@ -22,11 +22,11 @@
 #include "xilinx-gamma-coeff.h"
 #include "xilinx-vip.h"
 
-#define XGAMMA_MIN_HEIGHT	(32)
-#define XGAMMA_MAX_HEIGHT	(2160)
+#define XGAMMA_MIN_HEIGHT	(64)
+#define XGAMMA_MAX_HEIGHT	(4320)
 #define XGAMMA_DEF_HEIGHT	(720)
-#define XGAMMA_MIN_WIDTH	(32)
-#define XGAMMA_MAX_WIDTH	(3840)
+#define XGAMMA_MIN_WIDTH	(64)
+#define XGAMMA_MAX_WIDTH	(8192)
 #define XGAMMA_DEF_WIDTH	(1280)
 
 #define XGAMMA_AP_CTRL			(0x0000)
@@ -63,6 +63,8 @@ enum xgamma_video_format {
  * @color_depth: Color depth of the Video Gamma IP
  * @gamma_table: Pointer to the table containing various gamma values
  * @rst_gpio: GPIO reset line to bring VPSS Scaler out of reset
+ * @max_width: Maximum width supported by this instance.
+ * @max_height: Maximum height supported by this instance.
  */
 struct xgamma_dev {
 	struct xvip_device xvip;
@@ -77,6 +79,8 @@ struct xgamma_dev {
 	u32 color_depth;
 	const u16 **gamma_table;
 	struct gpio_desc *rst_gpio;
+	u32 max_width;
+	u32 max_height;
 };
 
 static inline u32 xg_read(struct xgamma_dev *xg, u32 reg)
@@ -196,9 +200,9 @@ static int xg_set_format(struct v4l2_subdev *subdev,
 		}
 	}
 	__format->width = clamp_t(unsigned int, fmt->format.width,
-					XGAMMA_MIN_WIDTH, XGAMMA_MAX_WIDTH);
+				  XGAMMA_MIN_WIDTH, xg->max_width);
 	__format->height = clamp_t(unsigned int, fmt->format.height,
-					XGAMMA_MIN_HEIGHT, XGAMMA_MAX_HEIGHT);
+				   XGAMMA_MIN_HEIGHT, xg->max_height);
 
 	fmt->format = *__format;
 	/* Propagate to Source Pad */
@@ -351,6 +355,24 @@ static int xg_parse_of(struct xgamma_dev *xg)
 	struct device_node *port;
 	u32 port_id = 0;
 	int rval;
+
+	rval = of_property_read_u32(node, "xlnx,max-height", &xg->max_height);
+	if (rval < 0) {
+		xg->max_height = XGAMMA_MAX_HEIGHT;
+	} else if (xg->max_height > XGAMMA_MAX_HEIGHT ||
+		   xg->max_height < XGAMMA_MIN_HEIGHT) {
+		dev_err(dev, "Invalid height in dt");
+		return -EINVAL;
+	}
+
+	rval = of_property_read_u32(node, "xlnx,max-width", &xg->max_width);
+	if (rval < 0) {
+		xg->max_width = XGAMMA_MAX_WIDTH;
+	} else if (xg->max_width > XGAMMA_MAX_WIDTH ||
+		   xg->max_width < XGAMMA_MIN_WIDTH) {
+		dev_err(dev, "Invalid width in dt");
+		return -EINVAL;
+	}
 
 	ports = of_get_child_by_name(node, "ports");
 	if (!ports)
