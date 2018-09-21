@@ -1181,7 +1181,8 @@ static int xlnx_mix_disp_set_layer_alpha(struct xlnx_mix_plane *plane,
  */
 static int xlnx_mix_set_layer_buff_addr(struct xlnx_mix_hw *mixer,
 					enum xlnx_mix_layer_id id,
-					u64 luma_addr, u64 chroma_addr)
+					dma_addr_t luma_addr,
+					dma_addr_t chroma_addr)
 {
 	struct xlnx_mix_layer_data *layer_data;
 	u32 align, offset;
@@ -1593,7 +1594,7 @@ static int xlnx_mix_set_plane(struct xlnx_mix_plane *plane,
 	struct xlnx_mix *mixer;
 	struct drm_gem_cma_object *luma_buffer;
 	u32 luma_stride = fb->pitches[0];
-	u64 luma_addr, chroma_addr = 0;
+	dma_addr_t luma_addr, chroma_addr = 0;
 	u32 active_area_width;
 	u32 active_area_height;
 	enum xlnx_mix_layer_id layer_id;
