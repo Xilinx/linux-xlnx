@@ -49,6 +49,11 @@
 #define XV_CSC_DEFAULT_WIDTH	(1280)
 #define XV_CSC_K_MAX_ROWS	(3)
 #define XV_CSC_K_MAX_COLUMNS	(3)
+#define XV_CSC_MIN_WIDTH	(64)
+#define XV_CSC_MAX_WIDTH	(8192)
+#define XV_CSC_MIN_HEIGHT	(64)
+#define XV_CSC_MAX_HEIGHT	(4320)
+
 /* GPIO Reset Assert/De-assert */
 #define XCSC_RESET_ASSERT	(1)
 #define XCSC_RESET_DEASSERT	(0)
@@ -157,6 +162,8 @@ rgb_to_ycrcb_unity[XV_CSC_K_MAX_ROWS][XV_CSC_K_MAX_COLUMNS + 1] = {
  * @shadow_coeff: Coefficients to track RGB equivalents for color controls
  * @clip_max: Maximum value to clip output color range
  * @rst_gpio: Handle to PS GPIO specifier to assert/de-assert the reset line
+ * @max_width: Maximum width supported by IP.
+ * @max_height: Maximum height supported by IP.
  */
 struct xcsc_dev {
 	struct xvip_device xvip;
@@ -185,6 +192,8 @@ struct xcsc_dev {
 	s32 shadow_coeff[XV_CSC_K_MAX_ROWS][XV_CSC_K_MAX_COLUMNS + 1];
 	s32 clip_max;
 	struct gpio_desc *rst_gpio;
+	u32 max_width;
+	u32 max_height;
 };
 
 #ifdef DEBUG
@@ -762,6 +771,11 @@ static int xcsc_set_format(struct v4l2_subdev *subdev,
 					    XVIP_PAD_SOURCE, fmt->which);
 	*__format = fmt->format;
 
+	__format->width = clamp_t(unsigned int, fmt->format.width,
+				  XV_CSC_MIN_WIDTH, xcsc->max_width);
+	__format->height = clamp_t(unsigned int, fmt->format.height,
+				   XV_CSC_MIN_HEIGHT, xcsc->max_height);
+
 	switch (__format->code) {
 	case MEDIA_BUS_FMT_VUY8_1X24:
 	case MEDIA_BUS_FMT_RBG888_1X24:
@@ -940,6 +954,24 @@ static int xcsc_parse_of(struct xcsc_dev *xcsc)
 	int rval;
 	u32 port_id = 0;
 	u32 video_width[2];
+
+	rval = of_property_read_u32(node, "xlnx,max-height", &xcsc->max_height);
+	if (rval < 0) {
+		xcsc->max_height = XV_CSC_MAX_HEIGHT;
+	} else if (xcsc->max_height > XV_CSC_MAX_HEIGHT ||
+		   xcsc->max_height < XV_CSC_MIN_HEIGHT) {
+		dev_err(dev, "Invalid height in dt");
+		return -EINVAL;
+	}
+
+	rval = of_property_read_u32(node, "xlnx,max-width", &xcsc->max_width);
+	if (rval < 0) {
+		xcsc->max_width = XV_CSC_MAX_WIDTH;
+	} else if (xcsc->max_width > XV_CSC_MAX_WIDTH ||
+		   xcsc->max_width < XV_CSC_MIN_WIDTH) {
+		dev_err(dev, "Invalid width in dt");
+		return -EINVAL;
+	}
 
 	ports = of_get_child_by_name(node, "ports");
 	if (!ports)
