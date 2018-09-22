@@ -58,10 +58,10 @@ config XILINX_PS_PCIE_DMA_TEST
 	  Say Y here if you have such a chipset.
 
 	  If unsure, say N.
+endif # XILINX_DMA_ENGINES
 
 config XILINX_FRMBUF
 	tristate "Xilinx Framebuffer"
 	select DMA_ENGINE
 	help
 	 Enable support for Xilinx Framebuffer DMA.
-endif # XILINX_DMA_ENGINES
