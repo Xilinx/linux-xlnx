@@ -449,6 +449,9 @@ int xroe_sysfs_init(void)
 	if (ret)
 		kobject_put(root_xroe_kobj);
 	ret = xroe_sysfs_ipv4_init();
+	if (ret)
+		return ret;
+	ret = xroe_sysfs_ipv6_init();
 	return ret;
 }
 
@@ -463,6 +466,7 @@ void xroe_sysfs_exit(void)
 {
 	kobject_put(root_xroe_kobj);
 	xroe_sysfs_ipv4_exit();
+	xroe_sysfs_ipv6_exit();
 }
 
 /**
