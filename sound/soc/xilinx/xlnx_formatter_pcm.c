@@ -426,6 +426,9 @@ static int xlnx_formatter_pcm_close(struct snd_pcm_substream *substream)
 
 	kfree(stream_data);
 
+	if (substream->stream == SNDRV_PCM_STREAM_CAPTURE)
+		xlnx_formatter_pcm_reset(stream_data->mmio + XLNX_S2MM_OFFSET);
+
 	return 0;
 }
 
