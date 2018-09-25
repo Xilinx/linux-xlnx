@@ -40,6 +40,8 @@ struct cfs_overlay_item {
 	int			dtbo_size;
 };
 
+static DEFINE_MUTEX(overlay_lock);
+
 static int create_overlay(struct cfs_overlay_item *overlay, void *blob)
 {
 	int err;
@@ -55,15 +57,21 @@ static int create_overlay(struct cfs_overlay_item *overlay, void *blob)
 	/* mark it as detached */
 	of_node_set_flag(overlay->overlay, OF_DETACHED);
 
+	/* Lock while resolving phandles and applying overlay */
+	mutex_lock(&overlay_lock);
+
 	/* perform resolution */
 	err = of_resolve_phandles(overlay->overlay);
 	if (err != 0) {
+		mutex_unlock(&overlay_lock);
 		pr_err("%s: Failed to resolve tree\n", __func__);
 		return err;
 	}
 	pr_debug("%s: resolved OK\n", __func__);
 
 	err = of_overlay_create(overlay->overlay);
+	mutex_unlock(&overlay_lock);
+
 	if (err < 0) {
 		pr_err("%s: Failed to create overlay (err=%d)\n",
 				__func__, err);
