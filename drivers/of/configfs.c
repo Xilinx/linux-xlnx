@@ -38,6 +38,8 @@ struct cfs_overlay_item {
 
 	void			*dtbo;
 	int			dtbo_size;
+
+	void			*mem;
 };
 
 static DEFINE_MUTEX(overlay_lock);
@@ -47,7 +49,7 @@ static int create_overlay(struct cfs_overlay_item *overlay, void *blob)
 	int err;
 
 	/* unflatten the tree */
-	of_fdt_unflatten_tree(blob, NULL, &overlay->overlay);
+	overlay->mem = of_fdt_unflatten_tree(blob, NULL, &overlay->overlay);
 	if (overlay->overlay == NULL) {
 		pr_err("%s: failed to unflatten tree\n", __func__);
 		return -EINVAL;
@@ -223,6 +225,7 @@ static void cfs_overlay_release(struct config_item *item)
 		release_firmware(overlay->fw);
 	/* kfree with NULL is safe */
 	kfree(overlay->dtbo);
+	kfree(overlay->mem);
 	kfree(overlay);
 }
 
