@@ -40,6 +40,7 @@
 #define XLNX_BYTES_PER_CH	0x44
 
 #define AUD_STS_IOC_IRQ_MASK	BIT(31)
+#define AUD_STS_CH_STS_MASK	BIT(29)
 #define AUD_CTRL_IOC_IRQ_MASK	BIT(13)
 #define AUD_CTRL_DMA_EN_MASK	BIT(0)
 
@@ -63,6 +64,40 @@
 #define PERIODS_MAX		6
 #define PERIOD_BYTES_MIN	192
 #define PERIOD_BYTES_MAX	(50 * 1024)
+
+/* audio params macros */
+#define PROF_SAMPLERATE_MASK		GENMASK(7, 6)
+#define PROF_SAMPLERATE_SHIFT		6
+#define PROF_CHANNEL_COUNT_MASK		GENMASK(11, 8)
+#define PROF_CHANNEL_COUNT_SHIFT	8
+#define PROF_MAX_BITDEPTH_MASK		GENMASK(18, 16)
+#define PROF_MAX_BITDEPTH_SHIFT		16
+#define PROF_BITDEPTH_MASK		GENMASK(21, 19)
+#define PROF_BITDEPTH_SHIFT		19
+
+#define AES_FORMAT_MASK			BIT(0)
+#define PROF_SAMPLERATE_UNDEFINED	0
+#define PROF_SAMPLERATE_44100		1
+#define PROF_SAMPLERATE_48000		2
+#define PROF_SAMPLERATE_32000		3
+#define PROF_CHANNELS_UNDEFINED		0
+#define PROF_TWO_CHANNELS		8
+#define PROF_STEREO_CHANNELS		2
+#define PROF_MAX_BITDEPTH_UNDEFINED	0
+#define PROF_MAX_BITDEPTH_20		2
+#define PROF_MAX_BITDEPTH_24		4
+
+#define CON_SAMPLE_RATE_MASK		GENMASK(27, 24)
+#define CON_SAMPLE_RATE_SHIFT		24
+#define CON_CHANNEL_COUNT_MASK		GENMASK(23, 20)
+#define CON_CHANNEL_COUNT_SHIFT		20
+#define CON_MAX_BITDEPTH_MASK		BIT(1)
+#define CON_BITDEPTH_MASK		GENMASK(3, 1)
+#define CON_BITDEPTH_SHIFT		0x1
+
+#define CON_SAMPLERATE_44100		0
+#define CON_SAMPLERATE_48000		2
+#define CON_SAMPLERATE_32000		3
 
 static const struct snd_pcm_hardware xlnx_pcm_hardware = {
 	.info = SNDRV_PCM_INFO_INTERLEAVED | SNDRV_PCM_INFO_BLOCK_TRANSFER |
@@ -110,6 +145,18 @@ struct xlnx_pcm_stream_param {
 	u64 buffer_size;
 };
 
+/**
+ * struct audio_params - audio stream parameters
+ * @srate: sampling rate
+ * @sig_bits: significant bits in container
+ * @channels: number of channels
+ */
+struct audio_params {
+	u32 srate;
+	u32 sig_bits;
+	u32 channels;
+};
+
 enum bit_depth {
 	BIT_DEPTH_8,
 	BIT_DEPTH_16,
@@ -117,6 +164,146 @@ enum bit_depth {
 	BIT_DEPTH_24,
 	BIT_DEPTH_32,
 };
+
+enum {
+	AES_TO_AES,
+	AES_TO_PCM,
+	PCM_TO_PCM,
+	PCM_TO_AES
+};
+
+static int parse_professional_format(u32 chsts_reg1_val, u32 chsts_reg2_val,
+				     struct audio_params *params)
+{
+	u32 padded, val;
+
+	val = (chsts_reg1_val & PROF_SAMPLERATE_MASK) >> PROF_SAMPLERATE_SHIFT;
+	switch (val) {
+	case PROF_SAMPLERATE_44100:
+		params->srate = 44100;
+		break;
+	case PROF_SAMPLERATE_48000:
+		params->srate = 48000;
+		break;
+	case PROF_SAMPLERATE_32000:
+		params->srate = 32000;
+		break;
+	case PROF_SAMPLERATE_UNDEFINED:
+	default:
+		/* not indicated */
+		return -EINVAL;
+	}
+
+	val = (chsts_reg1_val & PROF_CHANNEL_COUNT_MASK) >>
+	       PROF_CHANNEL_COUNT_SHIFT;
+	switch (val) {
+	case PROF_CHANNELS_UNDEFINED:
+	case PROF_STEREO_CHANNELS:
+	case PROF_TWO_CHANNELS:
+		params->channels = 2;
+		break;
+	default:
+		/* TODO: handle more channels in future*/
+		return -EINVAL;
+	}
+
+	val = (chsts_reg1_val & PROF_MAX_BITDEPTH_MASK) >>
+	       PROF_MAX_BITDEPTH_SHIFT;
+	switch (val) {
+	case PROF_MAX_BITDEPTH_UNDEFINED:
+	case PROF_MAX_BITDEPTH_20:
+		padded = 0;
+		break;
+	case PROF_MAX_BITDEPTH_24:
+		padded = 4;
+		break;
+	default:
+		/* user defined values are not supported */
+		return -EINVAL;
+	}
+
+	val = (chsts_reg1_val & PROF_BITDEPTH_MASK) >> PROF_BITDEPTH_SHIFT;
+	switch (val) {
+	case 1:
+		params->sig_bits = 16 + padded;
+		break;
+	case 2:
+		params->sig_bits = 18 + padded;
+		break;
+	case 4:
+		params->sig_bits = 19 + padded;
+		break;
+	case 5:
+		params->sig_bits = 20 + padded;
+		break;
+	case 6:
+		params->sig_bits = 17 + padded;
+		break;
+	case 0:
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
+static int parse_consumer_format(u32 chsts_reg1_val, u32 chsts_reg2_val,
+				 struct audio_params *params)
+{
+	u32 padded, val;
+
+	val = (chsts_reg1_val & CON_SAMPLE_RATE_MASK) >> CON_SAMPLE_RATE_SHIFT;
+	switch (val) {
+	case CON_SAMPLERATE_44100:
+		params->srate = 44100;
+		break;
+	case CON_SAMPLERATE_48000:
+		params->srate = 48000;
+		break;
+	case CON_SAMPLERATE_32000:
+		params->srate = 32000;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	val = (chsts_reg1_val & CON_CHANNEL_COUNT_MASK) >>
+	       CON_CHANNEL_COUNT_SHIFT;
+	params->channels = val;
+
+	/* if not found, set it to default */
+	if (!params->channels)
+		params->channels = 2;
+
+	if (chsts_reg2_val & CON_MAX_BITDEPTH_MASK)
+		padded = 4;
+	else
+		padded = 0;
+
+	val = (chsts_reg2_val & CON_BITDEPTH_MASK) >> CON_BITDEPTH_SHIFT;
+	switch (val) {
+	case 1:
+		params->sig_bits = 16 + padded;
+		break;
+	case 2:
+		params->sig_bits = 18 + padded;
+		break;
+	case 4:
+		params->sig_bits = 19 + padded;
+		break;
+	case 5:
+		params->sig_bits = 20 + padded;
+		break;
+	case 6:
+		params->sig_bits = 17 + padded;
+		break;
+	case 0:
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
+}
 
 void xlnx_formatter_pcm_reset(void __iomem *mmio_base)
 {
@@ -265,14 +452,66 @@ static int xlnx_formatter_pcm_hw_params(struct snd_pcm_substream *substream,
 					struct snd_pcm_hw_params *params)
 {
 	u32 low, high, active_ch, val, bits_per_sample, bytes_per_ch;
+	u32 aes_reg1_val, aes_reg2_val, sample_rate;
 	int status;
 	u64 size;
+	struct audio_params *aes_params;
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct xlnx_pcm_stream_param *stream_data = runtime->private_data;
+	struct snd_soc_pcm_runtime *prtd = substream->private_data;
+	struct snd_soc_component *component = snd_soc_rtdcom_lookup(prtd,
+								    DRV_NAME);
+	struct xlnx_pcm_drv_data *adata = dev_get_drvdata(component->dev);
 
+	aes_params = kzalloc(sizeof(*aes_params), GFP_KERNEL);
+	if (!aes_params)
+		return -ENOMEM;
+
+	bits_per_sample = params_width(params);
+	sample_rate = params_rate(params);
 	active_ch = params_channels(params);
 	if (active_ch > stream_data->ch_limit)
 		return -EINVAL;
+
+	if (substream->stream == SNDRV_PCM_STREAM_CAPTURE &&
+	    stream_data->xfer_mode == AES_TO_PCM &&
+	    ((strstr(adata->nodes[XLNX_CAPTURE]->name, "hdmi")) ||
+	    (strstr(adata->nodes[XLNX_CAPTURE]->name, "sdi")))) {
+		/*
+		 * If formatter is in AES_PCM mode for HDMI/SDI capture path,
+		 * parse AES header
+		 */
+		val = readl(stream_data->mmio + XLNX_AUD_STS);
+		if (val & AUD_STS_CH_STS_MASK) {
+			aes_reg1_val = readl(stream_data->mmio +
+					 XLNX_AUD_CH_STS_START);
+			aes_reg2_val = readl(stream_data->mmio +
+					 XLNX_AUD_CH_STS_START + 0x4);
+
+			if (aes_reg1_val & AES_FORMAT_MASK)
+				status = parse_professional_format(aes_reg1_val,
+								   aes_reg2_val,
+								   aes_params);
+			else
+				status = parse_consumer_format(aes_reg1_val,
+							       aes_reg2_val,
+							       aes_params);
+
+			if (status) {
+				kfree(aes_params);
+				return status;
+			}
+
+			if (active_ch != aes_params->channels ||
+			    bits_per_sample != aes_params->sig_bits ||
+			    sample_rate != aes_params->srate) {
+				dev_warn(component->dev, "capture parameters mismatch!\n");
+				kfree(aes_params);
+				return -EINVAL;
+			}
+			kfree(aes_params);
+		}
+	}
 
 	size = params_buffer_bytes(params);
 	status = snd_pcm_lib_malloc_pages(substream, size);
