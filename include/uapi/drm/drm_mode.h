@@ -490,6 +490,8 @@ struct drm_mode_fb_cmd {
 
 #define DRM_MODE_FB_INTERLACED	(1<<0) /* for interlaced framebuffers */
 #define DRM_MODE_FB_MODIFIERS	(1<<1) /* enables ->modifer[] */
+#define DRM_MODE_FB_ALTERNATE_TOP	(1<<2) /* for alternate top field */
+#define DRM_MODE_FB_ALTERNATE_BOTTOM	(1<<3) /* for alternate bottom field */
 
 struct drm_mode_fb_cmd2 {
 	__u32 fb_id;
