@@ -354,6 +354,7 @@ static irqreturn_t xlnx_s2mm_irq_handler(int irq, void *arg)
 
 static int xlnx_formatter_pcm_open(struct snd_pcm_substream *substream)
 {
+	int err;
 	u32 val, data_format_mode;
 	u32 ch_count_mask, ch_count_shift, data_xfer_mode, data_xfer_shift;
 	struct xlnx_pcm_stream_param *stream_data;
@@ -408,6 +409,15 @@ static int xlnx_formatter_pcm_open(struct snd_pcm_substream *substream)
 	snd_soc_set_runtime_hwparams(substream, &xlnx_pcm_hardware);
 	runtime->private_data = stream_data;
 
+	/* Resize the period size divisible by 64 */
+	err = snd_pcm_hw_constraint_step(runtime, 0,
+					 SNDRV_PCM_HW_PARAM_PERIOD_BYTES, 64);
+	if (err) {
+		dev_err(component->dev,
+			"unable to set constraint on period bytes\n");
+		return err;
+	}
+
 	/* enable interrupt on complete */
 	val = readl(stream_data->mmio + XLNX_AUD_CTRL);
 	val |= AUD_CTRL_IOC_IRQ_MASK;
@@ -429,6 +439,9 @@ static int xlnx_formatter_pcm_close(struct snd_pcm_substream *substream)
 	writel(val, stream_data->mmio + XLNX_AUD_CTRL);
 
 	kfree(stream_data);
+
+	if (substream->stream == SNDRV_PCM_STREAM_CAPTURE)
+		xlnx_formatter_pcm_reset(stream_data->mmio + XLNX_S2MM_OFFSET);
 
 	return 0;
 }
@@ -456,12 +469,14 @@ static int xlnx_formatter_pcm_hw_params(struct snd_pcm_substream *substream,
 	int status;
 	u64 size;
 	struct audio_params *aes_params;
+	struct pl_card_data *prv;
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct xlnx_pcm_stream_param *stream_data = runtime->private_data;
 	struct snd_soc_pcm_runtime *prtd = substream->private_data;
 	struct snd_soc_component *component = snd_soc_rtdcom_lookup(prtd,
 								    DRV_NAME);
 	struct xlnx_pcm_drv_data *adata = dev_get_drvdata(component->dev);
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 
 	aes_params = kzalloc(sizeof(*aes_params), GFP_KERNEL);
 	if (!aes_params)
@@ -553,6 +568,12 @@ static int xlnx_formatter_pcm_hw_params(struct snd_pcm_substream *substream,
 	writel(val, stream_data->mmio + XLNX_AUD_PERIOD_CONFIG);
 	bytes_per_ch = DIV_ROUND_UP(params_period_bytes(params), active_ch);
 	writel(bytes_per_ch, stream_data->mmio + XLNX_BYTES_PER_CH);
+
+	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
+		prv = snd_soc_card_get_drvdata(rtd->card);
+		writel(prv->mclk_ratio,
+		       stream_data->mmio + XLNX_AUD_FS_MULTIPLIER);
+	}
 
 	return 0;
 }
