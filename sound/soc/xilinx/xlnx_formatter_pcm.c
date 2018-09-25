@@ -45,15 +45,15 @@
 
 #define CFG_MM2S_CH_MASK	GENMASK(11, 8)
 #define CFG_MM2S_CH_SHIFT	8
-#define CFG_MM2S_FORMAT_MASK	GENMASK(14, 13)
-#define CGG_MM2S_FORMAT_SHIFT	13
-#define CGG_MM2S_PKG_MASK	BIT(12)
+#define CFG_MM2S_XFER_MASK	GENMASK(14, 13)
+#define CFG_MM2S_XFER_SHIFT	13
+#define CFG_MM2S_PKG_MASK	BIT(12)
 
 #define CFG_S2MM_CH_MASK	GENMASK(27, 24)
 #define CFG_S2MM_CH_SHIFT	24
-#define CFG_S2MM_FORMAT_MASK	GENMASK(30, 29)
-#define CGG_S2MM_FORMAT_SHIFT	29
-#define CGG_S2MM_PKG_MASK	BIT(28)
+#define CFG_S2MM_XFER_MASK	GENMASK(30, 29)
+#define CFG_S2MM_XFER_SHIFT	29
+#define CFG_S2MM_PKG_MASK	BIT(28)
 
 #define AUD_CTRL_DATA_WIDTH_SHIFT	16
 #define AUD_CTRL_ACTIVE_CH_SHIFT	19
@@ -189,18 +189,18 @@ static int xlnx_formatter_pcm_open(struct snd_pcm_substream *substream)
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
 		ch_count_mask = CFG_MM2S_CH_MASK;
 		ch_count_shift = CFG_MM2S_CH_SHIFT;
-		data_format_mode = CFG_MM2S_FORMAT_MASK;
-		data_xfer_mode = CGG_MM2S_FORMAT_SHIFT;
-		data_xfer_shift = CGG_MM2S_PKG_MASK;
+		data_xfer_mode = CFG_MM2S_XFER_MASK;
+		data_xfer_shift = CFG_MM2S_XFER_SHIFT;
+		data_format_mode = CFG_MM2S_PKG_MASK;
 		stream_data->mmio = adata->mmio + XLNX_MM2S_OFFSET;
 		adata->play_stream = substream;
 
 	} else {
 		ch_count_mask = CFG_S2MM_CH_MASK;
 		ch_count_shift = CFG_S2MM_CH_SHIFT;
-		data_format_mode = CFG_S2MM_FORMAT_MASK;
-		data_xfer_mode = CGG_S2MM_FORMAT_SHIFT;
-		data_xfer_shift = CGG_S2MM_PKG_MASK;
+		data_xfer_mode = CFG_S2MM_XFER_MASK;
+		data_xfer_shift = CFG_S2MM_XFER_SHIFT;
+		data_format_mode = CFG_S2MM_PKG_MASK;
 		stream_data->mmio = adata->mmio + XLNX_S2MM_OFFSET;
 		adata->capture_stream = substream;
 	}
