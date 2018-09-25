@@ -5,6 +5,7 @@
  * Copyright (C) 2018 Xilinx, Inc.
  */
 
+#include <linux/clk.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
@@ -45,6 +46,7 @@ static int xlnx_i2s_card_hw_params(struct snd_pcm_substream *substream,
 {
 	int ret, clk_div;
 	u32 ch, data_width, sample_rate;
+	struct pl_card_data *prv;
 
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 	struct snd_soc_dai *cpu_dai = rtd->cpu_dai;
@@ -53,19 +55,54 @@ static int xlnx_i2s_card_hw_params(struct snd_pcm_substream *substream,
 	data_width = params_width(params);
 	sample_rate = params_rate(params);
 
-	/*
-	 * Supports only a fixed combination of 48khz, 24 bits/sample,
-	 * 2 channels.
-	 */
-	if (ch != 2 || data_width != 24 || sample_rate != 48000)
+	/* only 2 channels supported */
+	if (ch != 2)
 		return -EINVAL;
 
-	/*
-	 * For the fixed Mclk, I2S_CLOCK_RATIO of 384 is ued to get 48KHz.
-	 * Ex. For a master clock(MCLK) of 18.43MHz and to get 48KHz
-	 * sampling rate, Mclk/srate = 384.
-	 */
-	clk_div = DIV_ROUND_UP(I2S_CLOCK_RATIO, ch * data_width);
+	prv = snd_soc_card_get_drvdata(rtd->card);
+	if (substream->stream == SNDRV_PCM_STREAM_CAPTURE) {
+		switch (sample_rate) {
+		case 5512:
+		case 8000:
+		case 11025:
+		case 16000:
+		case 22050:
+		case 32000:
+		case 44100:
+		case 48000:
+		case 64000:
+		case 88200:
+		case 96000:
+			prv->mclk_ratio = 384;
+			break;
+		default:
+			return -EINVAL;
+		}
+	} else {
+		switch (sample_rate) {
+		case 32000:
+		case 44100:
+		case 48000:
+		case 88200:
+		case 96000:
+			prv->mclk_ratio = 384;
+			break;
+		case 64000:
+		case 176400:
+		case 192000:
+			prv->mclk_ratio = 192;
+			break;
+		default:
+			return -EINVAL;
+		}
+	}
+
+	prv->mclk_val = prv->mclk_ratio * sample_rate;
+	ret = clk_set_rate(prv->mclk, prv->mclk_val);
+	if (ret)
+		return ret;
+
+	clk_div = DIV_ROUND_UP(prv->mclk_ratio, 2 * ch * data_width);
 	ret = snd_soc_dai_set_clkdiv(cpu_dai, 0, clk_div);
 
 	return ret;
@@ -156,6 +193,8 @@ static int xlnx_snd_probe(struct platform_device *pdev)
 	u32 i;
 	int ret, audio_interface;
 	struct snd_soc_dai_link *dai;
+	struct pl_card_data *prv;
+	struct platform_device *iface_pdev;
 
 	struct snd_soc_card *card = &xlnx_card;
 	struct device_node **node = pdev->dev.platform_data;
@@ -175,6 +214,12 @@ static int xlnx_snd_probe(struct platform_device *pdev)
 	if (!card->dai_link)
 		return -ENOMEM;
 
+	prv = devm_kzalloc(card->dev,
+			   sizeof(struct pl_card_data),
+			   GFP_KERNEL);
+	if (!prv)
+		return -ENOMEM;
+
 	card->num_links = 0;
 	for (i = XLNX_PLAYBACK; i < XLNX_MAX_PATHS; i++) {
 		struct device_node *pnode = of_parse_phandle(node[i],
@@ -184,7 +229,24 @@ static int xlnx_snd_probe(struct platform_device *pdev)
 			of_node_put(pnode);
 			return -ENODEV;
 		}
+
+		/*
+		 * Check for either playback or capture is enough, as
+		 * same clock is used for both.
+		 */
+		if (i == XLNX_PLAYBACK) {
+			iface_pdev = of_find_device_by_node(pnode);
+			if (!iface_pdev) {
+				of_node_put(pnode);
+				return -ENODEV;
+			}
+
+			prv->mclk = devm_clk_get(&iface_pdev->dev, "aud_mclk");
+			if (IS_ERR(prv->mclk))
+				return PTR_ERR(prv->mclk);
+		}
 		of_node_put(pnode);
+
 		dai = &card->dai_link[i];
 		audio_interface = find_link(node[i], i);
 		switch (audio_interface) {
@@ -193,6 +255,7 @@ static int xlnx_snd_probe(struct platform_device *pdev)
 			dai->platforms->of_node = pnode;
 			dai->cpus->of_node = node[i];
 			card->num_links++;
+			snd_soc_card_set_drvdata(card, prv);
 			dev_dbg(card->dev, "%s registered\n",
 				card->dai_link[i].name);
 			break;
@@ -202,6 +265,9 @@ static int xlnx_snd_probe(struct platform_device *pdev)
 			if (i == XLNX_CAPTURE)
 				dai->codecs->of_node = node[i];
 			card->num_links++;
+			/* TODO: support multiple sampling rates */
+			prv->mclk_ratio = 384;
+			snd_soc_card_set_drvdata(card, prv);
 			dev_dbg(card->dev, "%s registered\n",
 				card->dai_link[i].name);
 			break;
@@ -210,6 +276,9 @@ static int xlnx_snd_probe(struct platform_device *pdev)
 			dai->platforms->of_node = pnode;
 			dai->codecs->of_node = node[i];
 			card->num_links++;
+			/* TODO: support multiple sampling rates */
+			prv->mclk_ratio = 384;
+			snd_soc_card_set_drvdata(card, prv);
 			dev_dbg(card->dev, "%s registered\n",
 				card->dai_link[i].name);
 			break;
