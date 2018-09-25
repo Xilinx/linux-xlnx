@@ -191,6 +191,42 @@ struct xsdfec_stats {
 	u32 uecc_count;
 };
 
+/**
+ * struct xsdfec_ldpc_param_table_sizes - Used to store sizes of sdfec table
+ *					  entries for an individual LPDC Code
+ *					  Parameter.
+ * @sc_size: Size of SC Table used
+ * @la_size: Size of LA Table used
+ * @qc_size: Size of QC Table used
+ */
+struct xsdfec_ldpc_param_table_sizes {
+	u32 sc_size;
+	u32 la_size;
+	u32 qc_size;
+};
+
+/**
+ * xsdfec_calculate_shared_ldpc_table_entry_size - Calculates shared code
+ * table sizes.
+ * @ldpc: Pointer to the LPDC Code Parameters.
+ * @table_sizes: Pointer to structure containing the calculated table sizes.
+ *
+ * Calculates the size of shared LDPC code tables used for a specified LPDC Code
+ * parameters.
+ *
+ */
+inline void xsdfec_calculate_shared_ldpc_table_entry_size(
+	struct xsdfec_ldpc_params *ldpc,
+	struct xsdfec_ldpc_param_table_sizes *table_sizes)
+{
+	/* Calculate the sc_size in 32 bit words */
+	table_sizes->sc_size = (ldpc->nlayers + 3) >> 2;
+	/* Calculate the la_size in 256 bit words */
+	table_sizes->la_size = ((ldpc->nlayers << 2) + 15) >> 4;
+	/* Calculate the qc_size in 256 bit words */
+	table_sizes->qc_size = ((ldpc->nqc << 2) + 15) >> 4;
+}
+
 /*
  * XSDFEC IOCTL List
  */
