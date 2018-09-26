@@ -98,6 +98,11 @@
 #define XTPG_MIN_VBLANK			3
 #define XTPG_MAX_VBLANK			(XVTC_MAX_VSIZE - XVIP_MIN_HEIGHT)
 
+#define XTPG_MIN_WIDTH			(64)
+#define XTPG_MIN_HEIGHT			(64)
+#define XTPG_MAX_WIDTH			(10328)
+#define XTPG_MAX_HEIGHT			(7760)
+
 /**
  * struct xtpg_device - Xilinx Test Pattern Generator device structure
  * @xvip: Xilinx Video IP device
@@ -117,6 +122,8 @@
  * @vtc: video timing controller
  * @vtmux_gpio: video timing mux GPIO
  * @rst_gpio: reset IP core GPIO
+ * @max_width: Maximum width supported by this instance
+ * @max_height: Maximum height supported by this instance
  */
 struct xtpg_device {
 	struct xvip_device xvip;
@@ -140,6 +147,9 @@ struct xtpg_device {
 	struct xvtc_device *vtc;
 	struct gpio_desc *vtmux_gpio;
 	struct gpio_desc *rst_gpio;
+
+	u32 max_width;
+	u32 max_height;
 };
 
 static inline struct xtpg_device *to_tpg(struct v4l2_subdev *subdev)
@@ -388,7 +398,10 @@ static int xtpg_set_format(struct v4l2_subdev *subdev,
 			__format->code = fmt->format.code;
 	}
 
-	xvip_set_format_size(__format, fmt);
+	__format->width = clamp_t(unsigned int, fmt->format.width,
+				  XTPG_MIN_WIDTH, xtpg->max_width);
+	__format->height = clamp_t(unsigned int, fmt->format.height,
+				   XTPG_MIN_HEIGHT, xtpg->max_height);
 
 	fmt->format = *__format;
 
@@ -895,9 +908,30 @@ static int xtpg_parse_of(struct xtpg_device *xtpg)
 	struct device_node *port;
 	unsigned int nports = 0;
 	bool has_endpoint = false;
+	int ret;
 
 	if (of_device_is_compatible(dev->of_node, "xlnx,v-tpg-7.0"))
 		xtpg->is_hls = true;
+
+	ret = of_property_read_u32(node, "xlnx,max-height",
+				   &xtpg->max_height);
+	if (ret < 0) {
+		xtpg->max_height = XTPG_MAX_HEIGHT;
+	} else if (xtpg->max_height > XTPG_MAX_HEIGHT ||
+		   xtpg->max_height < XTPG_MIN_HEIGHT) {
+		dev_err(dev, "Invalid height in dt");
+		return -EINVAL;
+	}
+
+	ret = of_property_read_u32(node, "xlnx,max-width",
+				   &xtpg->max_width);
+	if (ret < 0) {
+		xtpg->max_width = XTPG_MAX_WIDTH;
+	} else if (xtpg->max_width > XTPG_MAX_WIDTH ||
+		   xtpg->max_width < XTPG_MIN_WIDTH) {
+		dev_err(dev, "Invalid width in dt");
+		return -EINVAL;
+	}
 
 	ports = of_get_child_by_name(node, "ports");
 	if (ports == NULL)
