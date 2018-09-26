@@ -55,6 +55,7 @@ enum xsdfec_state {
 	XSDFEC_STARTED,
 	XSDFEC_STOPPED,
 	XSDFEC_NEEDS_RESET,
+	XSDFEC_PL_RECONFIGURE,
 };
 
 enum xsdfec_axis_width {
