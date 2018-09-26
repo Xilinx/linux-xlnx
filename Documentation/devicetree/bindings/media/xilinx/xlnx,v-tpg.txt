@@ -33,6 +33,10 @@ Optional properties:
 - reset-gpios: Specifier for a GPIO that assert TPG (AP_RST_N) reset.
   This property is mandatory for TPG v7.0.
 
+- xlnx,max-height: Maximum number of lines.
+
+- xlnx,max-width: Maximum number of pixels in a line.
+
 The xlnx,vtc and timing-gpios properties are mandatory when the TPG is
 synthesized with two ports and forbidden when synthesized with one port.
 
