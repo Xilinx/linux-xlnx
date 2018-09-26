@@ -108,6 +108,11 @@
 #define XILINX_FLUSH_PROP			BIT(1)
 #define XILINX_FID_PROP				BIT(2)
 
+#define XILINX_FRMBUF_MAX_HEIGHT		(4320)
+#define XILINX_FRMBUF_MIN_HEIGHT		(64)
+#define XILINX_FRMBUF_MAX_WIDTH			(8192)
+#define XILINX_FRMBUF_MIN_WIDTH			(64)
+
 /**
  * struct xilinx_frmbuf_desc_hw - Hardware Descriptor
  * @luma_plane_addr: Luma or packed plane buffer address
@@ -461,6 +466,8 @@ struct xilinx_frmbuf_feature {
  * @v4l2_memory_fmts: Array of supported V4L2 fourcc codes
  * @v4l2_fmt_cnt: Count of supported V4L2 fourcc codes
  * @cfg: Pointer to Framebuffer Feature config struct
+ * @max_width: Maximum pixel width supported in IP.
+ * @max_height: Maximum number of lines supported in IP.
  */
 struct xilinx_frmbuf_device {
 	void __iomem *regs;
@@ -474,6 +481,8 @@ struct xilinx_frmbuf_device {
 	u32 v4l2_memory_fmts[ARRAY_SIZE(xilinx_frmbuf_formats)];
 	u32 v4l2_fmt_cnt;
 	const struct xilinx_frmbuf_feature *cfg;
+	u32 max_width;
+	u32 max_height;
 };
 
 static const struct xilinx_frmbuf_feature xlnx_fbwr_cfg_v20 = {
@@ -1118,6 +1127,7 @@ xilinx_frmbuf_dma_prep_interleaved(struct dma_chan *dchan,
 	struct xilinx_frmbuf_chan *chan = to_xilinx_chan(dchan);
 	struct xilinx_frmbuf_tx_descriptor *desc;
 	struct xilinx_frmbuf_desc_hw *hw;
+	u32 vsize, hsize;
 
 	if (chan->direction != xt->dir || !chan->vid_fmt)
 		goto error;
@@ -1127,6 +1137,22 @@ xilinx_frmbuf_dma_prep_interleaved(struct dma_chan *dchan,
 
 	if (xt->frame_size != chan->vid_fmt->num_planes)
 		goto error;
+
+	vsize = xt->numf;
+	hsize = (xt->sgl[0].size * chan->vid_fmt->ppw * 8) /
+		 chan->vid_fmt->bpw;
+	/* hsize calc should not have resulted in an odd number */
+	if (hsize & 1)
+		hsize++;
+
+	if (vsize > chan->xdev->max_height || hsize > chan->xdev->max_width) {
+		dev_dbg(chan->xdev->dev,
+			"vsize %d max vsize %d hsize %d max hsize %d\n",
+			vsize, chan->xdev->max_height, hsize,
+			chan->xdev->max_width);
+		dev_err(chan->xdev->dev, "Requested size not supported!\n");
+		goto error;
+	}
 
 	desc = xilinx_frmbuf_alloc_tx_descriptor(chan);
 	if (!desc)
@@ -1365,6 +1391,24 @@ static int xilinx_frmbuf_probe(struct platform_device *pdev)
 	xdev->regs = devm_ioremap_resource(&pdev->dev, io);
 	if (IS_ERR(xdev->regs))
 		return PTR_ERR(xdev->regs);
+
+	err = of_property_read_u32(node, "xlnx,max-height", &xdev->max_height);
+	if (err < 0) {
+		xdev->max_height = XILINX_FRMBUF_MAX_HEIGHT;
+	} else if (xdev->max_height > XILINX_FRMBUF_MAX_HEIGHT ||
+		   xdev->max_height < XILINX_FRMBUF_MIN_HEIGHT) {
+		dev_err(&pdev->dev, "Invalid height in dt");
+		return -EINVAL;
+	}
+
+	err = of_property_read_u32(node, "xlnx,max-width", &xdev->max_width);
+	if (err < 0) {
+		xdev->max_width = XILINX_FRMBUF_MAX_WIDTH;
+	} else if (xdev->max_width > XILINX_FRMBUF_MAX_WIDTH ||
+		   xdev->max_width < XILINX_FRMBUF_MIN_WIDTH) {
+		dev_err(&pdev->dev, "Invalid width in dt");
+		return -EINVAL;
+	}
 
 	/* Initialize the DMA engine */
 	if (xdev->cfg->flags & XILINX_PPC_PROP) {
