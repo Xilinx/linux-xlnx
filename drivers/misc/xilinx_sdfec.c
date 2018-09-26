@@ -92,10 +92,22 @@ static dev_t xsdfec_devt;
 #define XSDFEC_ECC_ISR_ADDR			(0x2C)
 /* Single Bit Errors */
 #define XSDFEC_ECC_ISR_SBE			(0x7FF)
+/* PL Initialize Single Bit Errors */
+#define XSDFEC_PL_INIT_ECC_ISR_SBE		(0x3C00000)
 /* Multi Bit Errors */
 #define XSDFEC_ECC_ISR_MBE			(0x3FF800)
+/* PL Initialize Multi Bit Errors */
+#define XSDFEC_PL_INIT_ECC_ISR_MBE		(0x3C000000)
 /* ECC Interrupt Status Bit Mask */
-#define XSDFEC_ECC_ISR_MASK	(XSDFEC_ECC_ISR_SBE | XSDFEC_ECC_ISR_MBE)
+#define XSDFEC_ECC_ISR_MASK						\
+	(XSDFEC_ECC_ISR_SBE | XSDFEC_ECC_ISR_MBE |			\
+	 XSDFEC_PL_INIT_ECC_ISR_SBE | XSDFEC_PL_INIT_ECC_ISR_MBE)
+/* ECC Interrupt Status Single Bit Errors Mask */
+#define XSDFEC_ECC_ISR_SBE_MASK	\
+	(XSDFEC_ECC_ISR_SBE | XSDFEC_PL_INIT_ECC_ISR_SBE)
+/* ECC Interrupt Status Multi Bit Errors Mask */
+#define XSDFEC_ECC_ISR_MBE_MASK	\
+	(XSDFEC_ECC_ISR_MBE | XSDFEC_PL_INIT_ECC_ISR_MBE)
 
 /* Write Only - ECC Interrupt Enable Register */
 #define XSDFEC_ECC_IER_ADDR			(0x30)
@@ -168,8 +180,7 @@ static dev_t xsdfec_devt;
  * @config: Configuration of the SDFEC device
  * @intr_enabled: indicates IRQ enabled
  * @wr_protect: indicates Write Protect enabled
- * @state_reset_updated: indicates State updated to XSDFEC_NEEDS_RESET by
- * interrupt handler
+ * @state_updated: indicates State updated by interrupt handler
  * @stats_updated: indicates Stats updated by interrupt handler
  * @isr_err_count: Count of ISR errors
  * @cecc_count: Count of Correctable ECC errors (SBE)
@@ -189,7 +200,7 @@ struct xsdfec_dev {
 	struct xsdfec_config config;
 	bool intr_enabled;
 	bool wr_protect;
-	bool state_reset_updated;
+	bool state_updated;
 	bool stats_updated;
 	atomic_t isr_err_count;
 	atomic_t cecc_count;
@@ -198,7 +209,7 @@ struct xsdfec_dev {
 	int  irq;
 	struct cdev xsdfec_cdev;
 	wait_queue_head_t waitq;
-	/* Spinlock to protect state_reset_updated and stats_updated */
+	/* Spinlock to protect state_updated and stats_updated */
 	spinlock_t irq_lock;
 };
 
@@ -292,7 +303,7 @@ xsdfec_get_status(struct xsdfec_dev *xsdfec, void __user *arg)
 	status.fec_id = xsdfec->config.fec_id;
 	spin_lock_irq(&xsdfec->irq_lock);
 	status.state = xsdfec->state;
-	xsdfec->state_reset_updated = false;
+	xsdfec->state_updated = false;
 	spin_unlock_irq(&xsdfec->irq_lock);
 	status.activity  =
 		(xsdfec_regread(xsdfec,
@@ -1380,7 +1391,7 @@ xsdfec_poll(struct file *file, poll_table *wait)
 
 	/* XSDFEC ISR detected an error */
 	spin_lock_irq(&xsdfec->irq_lock);
-	if (xsdfec->state_reset_updated)
+	if (xsdfec->state_updated)
 		mask |= POLLIN | POLLPRI;
 
 	if (xsdfec->stats_updated)
@@ -1502,14 +1513,14 @@ xsdfec_count_and_clear_ecc_multi_errors(struct xsdfec_dev *xsdfec, u32 ecc_err)
 {
 	u32 uecc;
 
-	uecc = ecc_err & XSDFEC_ECC_ISR_MBE;
+	uecc = ecc_err & XSDFEC_ECC_ISR_MBE_MASK;
 
 	/* Update ECC ISR error counts */
 	atomic_add(hweight32(uecc), &xsdfec->uecc_count);
 	xsdfec->stats_updated = true;
 
 	/* Clear ECC errors */
-	xsdfec_regwrite(xsdfec, XSDFEC_ECC_ISR_ADDR, XSDFEC_ECC_ISR_MBE);
+	xsdfec_regwrite(xsdfec, XSDFEC_ECC_ISR_ADDR, XSDFEC_ECC_ISR_MBE_MASK);
 }
 
 static void
@@ -1517,14 +1528,14 @@ xsdfec_count_and_clear_ecc_single_errors(struct xsdfec_dev *xsdfec, u32 ecc_err)
 {
 	u32 cecc;
 
-	cecc = ecc_err & XSDFEC_ECC_ISR_SBE;
+	cecc = ecc_err & XSDFEC_ECC_ISR_SBE_MASK;
 
 	/* Update ECC ISR error counts */
 	atomic_add(hweight32(cecc), &xsdfec->cecc_count);
 	xsdfec->stats_updated = true;
 
 	/* Clear ECC errors */
-	xsdfec_regwrite(xsdfec, XSDFEC_ECC_ISR_ADDR, XSDFEC_ECC_ISR_SBE);
+	xsdfec_regwrite(xsdfec, XSDFEC_ECC_ISR_ADDR, XSDFEC_ECC_ISR_SBE_MASK);
 }
 
 static void
@@ -1539,10 +1550,21 @@ xsdfec_count_and_clear_isr_errors(struct xsdfec_dev *xsdfec, u32 isr_err)
 }
 
 static void
-xsdfec_reset_required(struct xsdfec_dev *xsdfec)
+xsdfec_update_state_for_isr_err(struct xsdfec_dev *xsdfec)
 {
 	xsdfec->state = XSDFEC_NEEDS_RESET;
-	xsdfec->state_reset_updated = true;
+	xsdfec->state_updated = true;
+}
+
+static void
+xsdfec_update_state_for_ecc_err(struct xsdfec_dev *xsdfec, u32 ecc_err)
+{
+	if (ecc_err & XSDFEC_ECC_ISR_MBE)
+		xsdfec->state = XSDFEC_NEEDS_RESET;
+	else if (ecc_err & XSDFEC_PL_INIT_ECC_ISR_MBE)
+		xsdfec->state = XSDFEC_PL_RECONFIGURE;
+
+	xsdfec->state_updated = true;
 }
 
 static irqreturn_t
@@ -1564,13 +1586,13 @@ xsdfec_irq_thread(int irq, void *dev_id)
 	isr_err = xsdfec_regread(xsdfec, XSDFEC_ISR_ADDR);
 
 	spin_lock(&xsdfec->irq_lock);
-	if (ecc_err & XSDFEC_ECC_ISR_MBE) {
-		/* Multi-Bit Errors need Reset */
+	if (ecc_err & XSDFEC_ECC_ISR_MBE_MASK) {
+		/* Multi-Bit Errors */
 		dev_err(xsdfec->dev,
-			"Multi-bit error on xsdfec%d. Needs reset",
+			"Multi-bit error on xsdfec%d",
 			xsdfec->config.fec_id);
 		xsdfec_count_and_clear_ecc_multi_errors(xsdfec, ecc_err);
-		xsdfec_reset_required(xsdfec);
+		xsdfec_update_state_for_ecc_err(xsdfec, ecc_err);
 	}
 
 	if (isr_err & XSDFEC_ISR_MASK) {
@@ -1581,10 +1603,10 @@ xsdfec_irq_thread(int irq, void *dev_id)
 		dev_err(xsdfec->dev,
 			"Tlast,or DIN_WORDS or DOUT_WORDS not correct");
 		xsdfec_count_and_clear_isr_errors(xsdfec, isr_err);
-		xsdfec_reset_required(xsdfec);
+		xsdfec_update_state_for_isr_err(xsdfec);
 	}
 
-	if (ecc_err & XSDFEC_ECC_ISR_SBE) {
+	if (ecc_err & XSDFEC_ECC_ISR_SBE_MASK) {
 		/* Correctable ECC Errors */
 		dev_info(xsdfec->dev,
 			 "Correctable error on xsdfec%d",
@@ -1592,7 +1614,7 @@ xsdfec_irq_thread(int irq, void *dev_id)
 		xsdfec_count_and_clear_ecc_single_errors(xsdfec, ecc_err);
 	}
 
-	if (xsdfec->state_reset_updated || xsdfec->stats_updated)
+	if (xsdfec->state_updated || xsdfec->stats_updated)
 		wake_up_interruptible(&xsdfec->waitq);
 	else
 		ret = IRQ_NONE;
