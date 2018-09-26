@@ -226,6 +226,13 @@ static int zynqmp_pm_probe(struct platform_device *pdev)
 	return 0;
 }
 
+static int zynqmp_pm_remove(struct platform_device *pdev)
+{
+	mbox_free_channel(rx_chan);
+
+	return 0;
+}
+
 static const struct of_device_id pm_of_match[] = {
 	{ .compatible = "xlnx,zynqmp-power", },
 	{ .compatible = "xlnx,zynqmp-pm", },
@@ -235,6 +242,7 @@ MODULE_DEVICE_TABLE(of, pm_of_match);
 
 static struct platform_driver zynqmp_pm_platform_driver = {
 	.probe = zynqmp_pm_probe,
+	.remove = zynqmp_pm_remove,
 	.driver = {
 		.name = "zynqmp_power",
 		.of_match_table = pm_of_match,
