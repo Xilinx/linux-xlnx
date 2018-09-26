@@ -806,11 +806,17 @@ static void xlnx_sdi_setup(struct xlnx_sdi *sdi)
 	if (sdi->enable_anc_data)
 		reg |= XSDI_TX_CTRL_USE_ANC_IN;
 
-	if (sdi->enable_st352_chroma && sdi->en_st352_c_val) {
-		reg |= XSDI_TX_CTRL_INS_ST352_CHROMA;
-
-		if (sdi->use_ds2_3ga_val)
-			reg |= XSDI_TX_CTRL_USE_DS2_3GA;
+	if (sdi->enable_st352_chroma) {
+		if (sdi->en_st352_c_val) {
+			reg |= XSDI_TX_CTRL_INS_ST352_CHROMA;
+			if (sdi->use_ds2_3ga_val)
+				reg |= XSDI_TX_CTRL_USE_DS2_3GA;
+			else
+				reg &= ~XSDI_TX_CTRL_USE_DS2_3GA;
+		} else {
+			reg &= ~XSDI_TX_CTRL_INS_ST352_CHROMA;
+			reg &= ~XSDI_TX_CTRL_USE_DS2_3GA;
+		}
 	}
 
 	xlnx_sdi_writel(sdi->base, XSDI_TX_MDL_CTRL, reg);
