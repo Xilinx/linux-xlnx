@@ -46,6 +46,10 @@ Optional Properties Common to both FB Read and FB Write for v2.1:
 - xlnx,fid		: Field ID enabled for interlaced video support.
 			  Can be absent for progressive video.
 
+Optional properties:
+- xlnx,max-height	: Maximum number of lines.
+- xlnx,max-width	: Maximum number of pixels in a line.
+
 VIDEO FORMATS
 The following table describes the legal string values to be used for
 the xlnx,vid-formats property.  To the left is the string value and the
