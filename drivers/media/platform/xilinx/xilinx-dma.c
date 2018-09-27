@@ -94,35 +94,6 @@ static int xvip_dma_verify_format(struct xvip_dma *dma)
  * Pipeline Stream Management
  */
 
-/* Get the sink pad internally connected to a source pad in the given entity. */
-static struct media_pad *xvip_get_entity_sink(struct media_entity *entity,
-					      struct media_pad *source)
-{
-	unsigned int i;
-
-	/* The source pad can be NULL when the entity has no source pad. Return
-	 * the first pad in that case, guaranteed to be a sink pad.
-	 */
-	if (!source)
-		return &entity->pads[0];
-
-	/* Iterates through the pads to find a connected sink pad. */
-	for (i = 0; i < entity->num_pads; ++i) {
-		struct media_pad *sink = &entity->pads[i];
-
-		if (!(sink->flags & MEDIA_PAD_FL_SINK))
-			continue;
-
-		if (sink == source)
-			continue;
-
-		if (media_entity_has_route(entity, sink->index, source->index))
-			return sink;
-	}
-
-	return NULL;
-}
-
 /**
  * xvip_pipeline_start_stop - Start ot stop streaming on a pipeline
  * @xdev: Composite video device
@@ -137,41 +108,32 @@ static struct media_pad *xvip_get_entity_sink(struct media_entity *entity,
 static int xvip_pipeline_start_stop(struct xvip_composite_device *xdev,
 				    struct xvip_dma *dma, bool start)
 {
-	struct media_entity *entity;
-	struct media_pad *pad;
+	struct media_graph graph;
+	struct media_entity *entity = &dma->video.entity;
+	struct media_device *mdev = entity->graph_obj.mdev;
 	struct v4l2_subdev *subdev;
 	bool is_streaming;
 	int ret;
 
-	entity = &dma->video.entity;
-	pad = NULL;
+	mutex_lock(&mdev->graph_mutex);
 
-	while (1) {
-		pad = xvip_get_entity_sink(entity, pad);
-		if (!pad)
-			break;
+	/* Walk the graph to locate the subdev nodes */
+	ret = media_graph_walk_init(&graph, mdev);
+	if (ret) {
+		mutex_unlock(&mdev->graph_mutex);
+		return ret;
+	}
 
-		/*
-		 * This will walk through the subdevices multiple times in case
-		 * of mem2mem pipeline. But there won't be any issues as
-		 * driver is maintaining list of streamed subdevices
-		 */
-		if (xdev->v4l2_caps & V4L2_CAP_VIDEO_CAPTURE_MPLANE ||
-		    xdev->v4l2_caps & V4L2_CAP_VIDEO_CAPTURE) {
-			if (!(pad->flags & MEDIA_PAD_FL_SINK))
-				break;
-		} else {
-			if (!(pad->flags & MEDIA_PAD_FL_SOURCE))
-				break;
-		}
+	media_graph_walk_start(&graph, entity);
 
-		pad = media_pad_remote_pad_first(pad);
-		if (!pad || !is_media_entity_v4l2_subdev(pad->entity))
-			break;
+	while ((entity = media_graph_walk_next(&graph))) {
+		/* We want to stream on/off only subdevs */
+		if (!is_media_entity_v4l2_subdev(entity))
+			continue;
 
-		entity = pad->entity;
 		subdev = media_entity_to_v4l2_subdev(entity);
 
+		/* This is to maintain list of stream on/off devices */
 		is_streaming = xvip_subdev_set_streaming(xdev, subdev, start);
 
 		/*
@@ -188,6 +150,9 @@ static int xvip_pipeline_start_stop(struct xvip_composite_device *xdev,
 			}
 		}
 	}
+
+	mutex_unlock(&mdev->graph_mutex);
+	media_graph_walk_cleanup(&graph);
 
 	return 0;
 }
