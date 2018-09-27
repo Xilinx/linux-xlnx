@@ -68,7 +68,10 @@ static dev_t xsdfec_devt;
 
 /* AXIS_ENABLE Register */
 #define XSDFEC_AXIS_ENABLE_ADDR			(0x10)
-#define XSDFEC_AXIS_ENABLE_MASK			(0x3F)
+#define XSDFEC_AXIS_OUT_ENABLE_MASK		(0x38)
+#define XSDFEC_AXIS_IN_ENABLE_MASK		(0x7)
+#define XSDFEC_AXIS_ENABLE_MASK			(XSDFEC_AXIS_OUT_ENABLE_MASK | \
+						 XSDFEC_AXIS_IN_ENABLE_MASK)
 
 /* FEC_CODE Register */
 #define XSDFEC_FEC_CODE_ADDR			(0x14)
@@ -1233,9 +1236,9 @@ xsdfec_stop(struct xsdfec_dev *xsdfec)
 		dev_err(xsdfec->dev, "Device not started correctly");
 	/* Disable Write Protect */
 	xsdfec_wr_protect(xsdfec, false);
-	/* Disable AXIS_ENABLE register */
+	/* Disable AXIS_ENABLE Input interfaces only */
 	regread = xsdfec_regread(xsdfec, XSDFEC_AXIS_ENABLE_ADDR);
-	regread &= (~XSDFEC_AXIS_ENABLE_MASK);
+	regread &= (~XSDFEC_AXIS_IN_ENABLE_MASK);
 	xsdfec_regwrite(xsdfec, XSDFEC_AXIS_ENABLE_ADDR, regread);
 	/* Stop */
 	xsdfec->state = XSDFEC_STOPPED;
