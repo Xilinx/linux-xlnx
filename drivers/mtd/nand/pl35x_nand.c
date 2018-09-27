@@ -766,14 +766,34 @@ static int pl35x_nand_read_page_swecc(struct mtd_info *mtd,
 /**
  * pl35x_nand_select_chip - Select the flash device
  * @mtd:	Pointer to the mtd info structure
- * @chip:	Pointer to the NAND chip info structure
+ * @chipnr:	chipnumber to select, -1 for deselect
  *
  * This function is empty as the NAND controller handles chip select line
  * internally based on the chip address passed in command and data phase.
  */
-static void pl35x_nand_select_chip(struct mtd_info *mtd, int chip)
+static void pl35x_nand_select_chip(struct mtd_info *mtd, int chipnr)
 {
-	return;
+	unsigned long data_phase_addr;
+	struct pl35x_nand_info *xnand;
+	unsigned long nand_offset;
+	struct nand_chip *chip;
+
+	/*
+	 * Chip selection will happen in command/data operation
+	 */
+	if (chipnr >= 0)
+		return;
+
+	/* de-assert chip select */
+	chip = mtd_to_nand(mtd);
+	data_phase_addr = (unsigned long __force)chip->IO_ADDR_R;
+	xnand = container_of(chip, struct pl35x_nand_info, chip);
+	nand_offset = (unsigned long __force)xnand->nand_base;
+	data_phase_addr -= nand_offset;
+	data_phase_addr |= PL35X_NAND_CLEAR_CS;
+	data_phase_addr += nand_offset;
+	chip->IO_ADDR_R = (void __iomem * __force)data_phase_addr;
+	chip->read_byte(mtd);
 }
 
 /**
