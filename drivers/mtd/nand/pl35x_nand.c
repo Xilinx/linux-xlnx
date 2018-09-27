@@ -820,6 +820,8 @@ static int pl35x_nand_read_page_swecc(struct mtd_info *mtd,
 
 	ret = mtd_ooblayout_get_eccbytes(mtd, ecc_calc, chip->oob_poi,
 						0, chip->ecc.total);
+	if (ret)
+		return ret;
 
 	eccsteps = chip->ecc.steps;
 	p = buf;
