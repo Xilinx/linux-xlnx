@@ -63,6 +63,7 @@ struct xlnx_dma_chan {
  * @drm: core drm object
  * @fmt: drm color format
  * @vtc_bridge: vtc_bridge structure
+ * @fid: field id
  */
 struct xlnx_pl_disp {
 	struct device *dev;
@@ -76,6 +77,7 @@ struct xlnx_pl_disp {
 	struct drm_device *drm;
 	u32 fmt;
 	struct xlnx_bridge *vtc_bridge;
+	u32 fid;
 };
 
 /*
@@ -177,6 +179,17 @@ static void xlnx_pl_disp_plane_enable(struct drm_plane *plane)
 	}
 	desc->callback = xlnx_pl_disp->callback;
 	desc->callback_param = xlnx_pl_disp->callback_param;
+
+	if (plane->state->fb->flags == DRM_MODE_FB_ALTERNATE_TOP ||
+	    plane->state->fb->flags == DRM_MODE_FB_ALTERNATE_BOTTOM) {
+		if (plane->state->fb->flags == DRM_MODE_FB_ALTERNATE_TOP)
+			xlnx_pl_disp->fid = 1;
+		else
+			xlnx_pl_disp->fid = 0;
+
+		xilinx_xdma_set_fid(xlnx_dma_chan->dma_chan, desc,
+				    xlnx_pl_disp->fid);
+	}
 
 	dmaengine_submit(desc);
 	dma_async_issue_pending(xlnx_dma_chan->dma_chan);
