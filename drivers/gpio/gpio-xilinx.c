@@ -570,6 +570,8 @@ static int xgpio_remove(struct platform_device *pdev)
 	struct xgpio_instance *chip = platform_get_drvdata(pdev);
 
 	of_mm_gpiochip_remove(&chip->mmchip);
+	clk_disable_unprepare(chip->clk);
+	pm_runtime_disable(&pdev->dev);
 
 	return 0;
 }
