@@ -445,6 +445,79 @@ static int pl35x_nand_write_oob(struct mtd_info *mtd, struct nand_chip *chip,
 }
 
 /**
+ * pl35x_nand_read_page_ondie - [Intern] read page data with ondie ecc
+ * @mtd:		Pointer to the mtd info structure
+ * @chip:		Pointer to the NAND chip info structure
+ * @buf:		Pointer to the data buffer
+ * @oob_required:	Caller requires OOB data read to chip->oob_poi
+ * @page:		Page number to read
+ *
+ * Return:	Always return zero
+ */
+static int pl35x_nand_read_page_ondie(struct mtd_info *mtd,
+				      struct nand_chip *chip,
+				      u8 *buf, int oob_required, int page)
+{
+	unsigned long data_phase_addr;
+	u8 *p;
+	struct pl35x_nand_info *xnand =
+		container_of(chip, struct pl35x_nand_info, chip);
+	unsigned long nand_offset = (unsigned long __force)xnand->nand_base;
+	int status;
+
+	chip->read_buf(mtd, buf, mtd->writesize);
+
+	p = chip->oob_poi;
+	chip->read_buf(mtd, p,
+			(mtd->oobsize - PL35X_NAND_LAST_TRANSFER_LENGTH));
+	p += (mtd->oobsize - PL35X_NAND_LAST_TRANSFER_LENGTH);
+
+	data_phase_addr = (unsigned long __force)chip->IO_ADDR_R;
+	data_phase_addr -= nand_offset;
+	data_phase_addr |= PL35X_NAND_CLEAR_CS;
+	data_phase_addr += nand_offset;
+	chip->IO_ADDR_R = (void __iomem * __force)data_phase_addr;
+
+	chip->read_buf(mtd, p, PL35X_NAND_LAST_TRANSFER_LENGTH);
+
+	/* Check ECC info */
+	chip->cmdfunc(mtd, NAND_CMD_STATUS, -1, -1);
+	status = (int)chip->read_byte(mtd);
+	if (!(status & NAND_STATUS_READY)) {
+		pr_err("%s: page %d status=%#x - transfer not finished!\n",
+		       __func__, page, status);
+		ndelay(100);
+		if (!(status & NAND_STATUS_READY))
+			return -EIO;
+	}
+/* UnCorrectable Error bitflips. 5+ on our chip */
+#define NAND_UCE_BITS   5
+	if (status & NAND_STATUS_FAIL) {
+		pr_warn("%s: page %d status=%#x - ECC Uncorrectable Error\n",
+			__func__, page, status);
+		/*
+		 * Note: don't return -EIO which means no data and is fatal
+		 * during a filesystem mount.
+		 * Instead return NAND_UCE_BITS bitflips and increment
+		 * the uncorrectable error count. This allows the layer above
+		 * (such as UBI) to know data is present but corrupt and to
+		 * be safely manage if its only a EC or VI page.
+		 */
+		mtd->ecc_stats.failed++;
+		return NAND_UCE_BITS;
+	}
+#define NAND_STATUS_ECC_COR BIT(3) /* Correctable error */
+	if (status & NAND_STATUS_ECC_COR) {
+		pr_info("%s: page %d status=%#x - ECC Correctable error\n",
+			__func__, page, status);
+		mtd->ecc_stats.corrected++;
+		return 1;
+	}
+
+	return 0;
+}
+
+/**
  * pl35x_nand_read_page_raw - [Intern] read raw page data without ecc
  * @mtd:		Pointer to the mtd info structure
  * @chip:		Pointer to the NAND chip info structure
@@ -1088,7 +1161,7 @@ static void pl35x_nand_ecc_init(struct mtd_info *mtd, struct nand_ecc_ctrl *ecc,
 		 */
 		ecc->bytes = 0;
 		mtd_set_ooblayout(mtd, &fsmc_ecc_ooblayout_ondie64_ops);
-		ecc->read_page = pl35x_nand_read_page_raw;
+		ecc->read_page = pl35x_nand_read_page_ondie;
 		ecc->write_page = pl35x_nand_write_page_raw;
 		ecc->size = mtd->writesize;
 		/*
