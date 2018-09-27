@@ -1327,6 +1327,8 @@ static int xcsi2rxss_set_format(struct v4l2_subdev *sd,
 		/* Restore the original pad format code */
 		fmt->format.code = code;
 		__format->code = code;
+		__format->width = fmt->format.width;
+		__format->height = fmt->format.height;
 	}
 
 	mutex_unlock(&xcsi2rxss->lock);
