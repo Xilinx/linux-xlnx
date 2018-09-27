@@ -98,10 +98,19 @@ static dev_t xsdfec_devt;
 #define XSDFEC_ECC_ISR_MBE			(0x3FF800)
 /* PL Initialize Multi Bit Errors */
 #define XSDFEC_PL_INIT_ECC_ISR_MBE		(0x3C000000)
+/* Multi Bit Error to Event Shift */
+#define XSDFEC_ECC_ISR_MBE_TO_EVENT_SHIFT		(11)
+/* PL Initialize Multi Bit Error to Event Shift */
+#define XSDFEC_PL_INIT_ECC_ISR_MBE_TO_EVENT_SHIFT	(4)
 /* ECC Interrupt Status Bit Mask */
-#define XSDFEC_ECC_ISR_MASK						\
-	(XSDFEC_ECC_ISR_SBE | XSDFEC_ECC_ISR_MBE |			\
-	 XSDFEC_PL_INIT_ECC_ISR_SBE | XSDFEC_PL_INIT_ECC_ISR_MBE)
+#define XSDFEC_ECC_ISR_MASK \
+	(XSDFEC_ECC_ISR_SBE | XSDFEC_ECC_ISR_MBE)
+/* ECC Interrupt Status PL Initialize Bit Mask */
+#define XSDFEC_PL_INIT_ECC_ISR_MASK \
+	(XSDFEC_PL_INIT_ECC_ISR_SBE | XSDFEC_PL_INIT_ECC_ISR_MBE)
+/* ECC Interrupt Status All Bit Mask */
+#define XSDFEC_ALL_ECC_ISR_MASK	\
+	(XSDFEC_ECC_ISR_MASK | XSDFEC_PL_INIT_ECC_ISR_MASK)
 /* ECC Interrupt Status Single Bit Errors Mask */
 #define XSDFEC_ECC_ISR_SBE_MASK	\
 	(XSDFEC_ECC_ISR_SBE | XSDFEC_PL_INIT_ECC_ISR_SBE)
@@ -370,9 +379,9 @@ xsdfec_ecc_isr_enable(struct xsdfec_dev *xsdfec, bool enable)
 	if (enable) {
 		/* Enable */
 		xsdfec_regwrite(xsdfec, XSDFEC_ECC_IER_ADDR,
-				XSDFEC_ECC_ISR_MASK);
+				XSDFEC_ALL_ECC_ISR_MASK);
 		mask_read = xsdfec_regread(xsdfec, XSDFEC_ECC_IMR_ADDR);
-		if (mask_read & XSDFEC_ECC_ISR_MASK) {
+		if (mask_read & XSDFEC_ALL_ECC_ISR_MASK) {
 			dev_err(xsdfec->dev,
 				"SDFEC enabling ECC irq with ECC IER failed");
 			return -EIO;
@@ -380,9 +389,12 @@ xsdfec_ecc_isr_enable(struct xsdfec_dev *xsdfec, bool enable)
 	} else {
 		/* Disable */
 		xsdfec_regwrite(xsdfec, XSDFEC_ECC_IDR_ADDR,
-				XSDFEC_ECC_ISR_MASK);
+				XSDFEC_ALL_ECC_ISR_MASK);
 		mask_read = xsdfec_regread(xsdfec, XSDFEC_ECC_IMR_ADDR);
-		if ((mask_read & XSDFEC_ECC_ISR_MASK) != XSDFEC_ECC_ISR_MASK) {
+		if (!(((mask_read & XSDFEC_ALL_ECC_ISR_MASK) ==
+			XSDFEC_ECC_ISR_MASK) ||
+		      ((mask_read & XSDFEC_ALL_ECC_ISR_MASK) ==
+			XSDFEC_PL_INIT_ECC_ISR_MASK))) {
 			dev_err(xsdfec->dev,
 				"SDFEC disable ECC irq with ECC IDR failed");
 			return -EIO;
@@ -1509,11 +1521,9 @@ xsdfec_parse_of(struct xsdfec_dev *xsdfec)
 }
 
 static void
-xsdfec_count_and_clear_ecc_multi_errors(struct xsdfec_dev *xsdfec, u32 ecc_err)
+xsdfec_count_and_clear_ecc_multi_errors(struct xsdfec_dev *xsdfec, u32 uecc)
 {
-	u32 uecc;
-
-	uecc = ecc_err & XSDFEC_ECC_ISR_MBE_MASK;
+	u32 uecc_event;
 
 	/* Update ECC ISR error counts */
 	atomic_add(hweight32(uecc), &xsdfec->uecc_count);
@@ -1521,21 +1531,27 @@ xsdfec_count_and_clear_ecc_multi_errors(struct xsdfec_dev *xsdfec, u32 ecc_err)
 
 	/* Clear ECC errors */
 	xsdfec_regwrite(xsdfec, XSDFEC_ECC_ISR_ADDR, XSDFEC_ECC_ISR_MBE_MASK);
+	/* Clear ECC events */
+	if (uecc & XSDFEC_ECC_ISR_MBE) {
+		uecc_event = uecc >> XSDFEC_ECC_ISR_MBE_TO_EVENT_SHIFT;
+		xsdfec_regwrite(xsdfec, XSDFEC_ECC_ISR_ADDR, uecc_event);
+	} else if (uecc & XSDFEC_PL_INIT_ECC_ISR_MBE) {
+		uecc_event = uecc >> XSDFEC_PL_INIT_ECC_ISR_MBE_TO_EVENT_SHIFT;
+		xsdfec_regwrite(xsdfec, XSDFEC_ECC_ISR_ADDR, uecc_event);
+	}
 }
 
 static void
-xsdfec_count_and_clear_ecc_single_errors(struct xsdfec_dev *xsdfec, u32 ecc_err)
+xsdfec_count_and_clear_ecc_single_errors(struct xsdfec_dev *xsdfec,
+					 u32 cecc,
+					 u32 sbe_mask)
 {
-	u32 cecc;
-
-	cecc = ecc_err & XSDFEC_ECC_ISR_SBE_MASK;
-
 	/* Update ECC ISR error counts */
 	atomic_add(hweight32(cecc), &xsdfec->cecc_count);
 	xsdfec->stats_updated = true;
 
 	/* Clear ECC errors */
-	xsdfec_regwrite(xsdfec, XSDFEC_ECC_ISR_ADDR, XSDFEC_ECC_ISR_SBE_MASK);
+	xsdfec_regwrite(xsdfec, XSDFEC_ECC_ISR_ADDR, sbe_mask);
 }
 
 static void
@@ -1567,6 +1583,21 @@ xsdfec_update_state_for_ecc_err(struct xsdfec_dev *xsdfec, u32 ecc_err)
 	xsdfec->state_updated = true;
 }
 
+static int
+xsdfec_get_sbe_mask(struct xsdfec_dev *xsdfec, u32 ecc_err)
+{
+	u32 sbe_mask = XSDFEC_ECC_ISR_SBE_MASK;
+
+	if (ecc_err & XSDFEC_ECC_ISR_MBE) {
+		sbe_mask = (XSDFEC_ECC_ISR_MBE - ecc_err) >>
+			    XSDFEC_ECC_ISR_MBE_TO_EVENT_SHIFT;
+	} else if (ecc_err & XSDFEC_PL_INIT_ECC_ISR_MBE)
+		sbe_mask = (XSDFEC_PL_INIT_ECC_ISR_MBE - ecc_err) >>
+			    XSDFEC_PL_INIT_ECC_ISR_MBE_TO_EVENT_SHIFT;
+
+	return sbe_mask;
+}
+
 static irqreturn_t
 xsdfec_irq_thread(int irq, void *dev_id)
 {
@@ -1574,6 +1605,8 @@ xsdfec_irq_thread(int irq, void *dev_id)
 	irqreturn_t ret = IRQ_HANDLED;
 	u32 ecc_err;
 	u32 isr_err;
+	u32 err_value;
+	u32 sbe_mask;
 
 	WARN_ON(xsdfec->irq != irq);
 
@@ -1586,32 +1619,38 @@ xsdfec_irq_thread(int irq, void *dev_id)
 	isr_err = xsdfec_regread(xsdfec, XSDFEC_ISR_ADDR);
 
 	spin_lock(&xsdfec->irq_lock);
-	if (ecc_err & XSDFEC_ECC_ISR_MBE_MASK) {
-		/* Multi-Bit Errors */
+
+	err_value = ecc_err & XSDFEC_ECC_ISR_MBE_MASK;
+	if (err_value) {
 		dev_err(xsdfec->dev,
 			"Multi-bit error on xsdfec%d",
 			xsdfec->config.fec_id);
-		xsdfec_count_and_clear_ecc_multi_errors(xsdfec, ecc_err);
+		/* Count and clear multi-bit errors and associated events */
+		xsdfec_count_and_clear_ecc_multi_errors(xsdfec, err_value);
 		xsdfec_update_state_for_ecc_err(xsdfec, ecc_err);
 	}
 
-	if (isr_err & XSDFEC_ISR_MASK) {
-		/*
-		 * Tlast, DIN_WORDS and DOUT_WORDS related
-		 * errors need Reset
-		 */
-		dev_err(xsdfec->dev,
-			"Tlast,or DIN_WORDS or DOUT_WORDS not correct");
-		xsdfec_count_and_clear_isr_errors(xsdfec, isr_err);
-		xsdfec_update_state_for_isr_err(xsdfec);
-	}
-
-	if (ecc_err & XSDFEC_ECC_ISR_SBE_MASK) {
-		/* Correctable ECC Errors */
+	/*
+	 * Update SBE mask to remove events associated with MBE if present.
+	 * If no MBEs are present will return mask for all SBE bits
+	 */
+	sbe_mask = xsdfec_get_sbe_mask(xsdfec, err_value);
+	err_value = ecc_err & sbe_mask;
+	if (err_value) {
 		dev_info(xsdfec->dev,
 			 "Correctable error on xsdfec%d",
 			 xsdfec->config.fec_id);
-		xsdfec_count_and_clear_ecc_single_errors(xsdfec, ecc_err);
+		xsdfec_count_and_clear_ecc_single_errors(xsdfec,
+							 err_value,
+							 sbe_mask);
+	}
+
+	err_value = isr_err & XSDFEC_ISR_MASK;
+	if (err_value) {
+		dev_err(xsdfec->dev,
+			"Tlast,or DIN_WORDS or DOUT_WORDS not correct");
+		xsdfec_count_and_clear_isr_errors(xsdfec, err_value);
+		xsdfec_update_state_for_isr_err(xsdfec);
 	}
 
 	if (xsdfec->state_updated || xsdfec->stats_updated)
