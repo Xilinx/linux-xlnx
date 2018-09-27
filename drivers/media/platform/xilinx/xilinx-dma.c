@@ -136,41 +136,32 @@ static struct media_pad *xvip_get_entity_sink(struct media_entity *entity,
 static int xvip_pipeline_start_stop(struct xvip_composite_device *xdev,
 				    struct xvip_dma *dma, bool start)
 {
-	struct media_entity *entity;
-	struct media_pad *pad;
+	struct media_graph graph;
+	struct media_entity *entity = &dma->video.entity;
+	struct media_device *mdev = entity->graph_obj.mdev;
 	struct v4l2_subdev *subdev;
 	bool is_streaming;
 	int ret;
 
-	entity = &dma->video.entity;
-	pad = NULL;
+	mutex_lock(&mdev->graph_mutex);
 
-	while (1) {
-		pad = xvip_get_entity_sink(entity, pad);
-		if (!pad)
-			break;
+	/* Walk the graph to locate the subdev nodes */
+	ret = media_graph_walk_init(&graph, mdev);
+	if (ret) {
+		mutex_unlock(&mdev->graph_mutex);
+		return ret;
+	}
 
-		/*
-		 * This will walk through the subdevices multiple times in case
-		 * of mem2mem pipeline. But there won't be any issues as
-		 * driver is maintaining list of streamed subdevices
-		 */
-		if (xdev->v4l2_caps & V4L2_CAP_VIDEO_CAPTURE_MPLANE ||
-		    xdev->v4l2_caps & V4L2_CAP_VIDEO_CAPTURE) {
-			if (!(pad->flags & MEDIA_PAD_FL_SINK))
-				break;
-		} else {
-			if (!(pad->flags & MEDIA_PAD_FL_SOURCE))
-				break;
-		}
+	media_graph_walk_start(&graph, entity);
 
-		pad = media_entity_remote_pad(pad);
-		if (!pad || !is_media_entity_v4l2_subdev(pad->entity))
-			break;
+	while ((entity = media_graph_walk_next(&graph))) {
+		/* We want to stream on/off only subdevs */
+		if (!is_media_entity_v4l2_subdev(entity))
+			continue;
 
-		entity = pad->entity;
 		subdev = media_entity_to_v4l2_subdev(entity);
 
+		/* This is to maintain list of stream on/off devices */
 		is_streaming = xvip_subdev_set_streaming(xdev, subdev, start);
 
 		/*
@@ -187,6 +178,9 @@ static int xvip_pipeline_start_stop(struct xvip_composite_device *xdev,
 			}
 		}
 	}
+
+	mutex_unlock(&mdev->graph_mutex);
+	media_graph_walk_cleanup(&graph);
 
 	return 0;
 }
