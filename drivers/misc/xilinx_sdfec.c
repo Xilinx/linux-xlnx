@@ -547,31 +547,6 @@ xsdfec_reg0_write(struct xsdfec_dev *xsdfec,
 }
 
 static int
-xsdfec_collect_ldpc_reg0(struct xsdfec_dev *xsdfec,
-			 u32 code_id,
-			 struct xsdfec_ldpc_params *ldpc_params)
-{
-	u32 reg_value;
-	u32 reg_addr = XSDFEC_LDPC_CODE_REG0_ADDR_BASE +
-		(code_id * XSDFEC_LDPC_REG_JUMP);
-
-	if (reg_addr > XSDFEC_LDPC_CODE_REG0_ADDR_HIGH) {
-		dev_err(xsdfec->dev,
-			"Accessing outside of LDPC reg0 for code_id %d",
-			code_id);
-		return -EINVAL;
-	}
-
-	reg_value = xsdfec_regread(xsdfec, reg_addr);
-
-	ldpc_params->n = (reg_value >> XSDFEC_REG0_N_LSB) & XSDFEC_REG0_N_MASK;
-
-	ldpc_params->k = (reg_value >> XSDFEC_REG0_K_LSB) & XSDFEC_REG0_K_MASK;
-
-	return 0;
-}
-
-static int
 xsdfec_reg1_write(struct xsdfec_dev *xsdfec, u32 psize,
 		  u32 no_packing, u32 nm, u32 offset)
 {
@@ -601,34 +576,6 @@ xsdfec_reg1_write(struct xsdfec_dev *xsdfec, u32 psize,
 	}
 	xsdfec_regwrite(xsdfec, XSDFEC_LDPC_CODE_REG1_ADDR_BASE +
 		(offset * XSDFEC_LDPC_REG_JUMP), wdata);
-	return 0;
-}
-
-static int
-xsdfec_collect_ldpc_reg1(struct xsdfec_dev *xsdfec,
-			 u32 code_id,
-			 struct xsdfec_ldpc_params *ldpc_params)
-{
-	u32 reg_value;
-	u32 reg_addr = XSDFEC_LDPC_CODE_REG1_ADDR_BASE +
-		(code_id * XSDFEC_LDPC_REG_JUMP);
-
-	if (reg_addr > XSDFEC_LDPC_CODE_REG1_ADDR_HIGH) {
-		dev_err(xsdfec->dev,
-			"Accessing outside of LDPC reg1 for code_id %d",
-			code_id);
-		return -EINVAL;
-	}
-
-	reg_value = xsdfec_regread(xsdfec, reg_addr);
-
-	ldpc_params->psize = reg_value & XSDFEC_REG1_PSIZE_MASK;
-
-	ldpc_params->no_packing = ((reg_value >> XSDFEC_REG1_NO_PACKING_LSB) &
-				    XSDFEC_REG1_NO_PACKING_MASK);
-
-	ldpc_params->nm = (reg_value >> XSDFEC_REG1_NM_LSB) &
-			   XSDFEC_REG1_NM_MASK;
 	return 0;
 }
 
@@ -684,47 +631,6 @@ xsdfec_reg2_write(struct xsdfec_dev *xsdfec, u32 nlayers, u32 nmqc,
 }
 
 static int
-xsdfec_collect_ldpc_reg2(struct xsdfec_dev *xsdfec,
-			 u32 code_id,
-			 struct xsdfec_ldpc_params *ldpc_params)
-{
-	u32 reg_value;
-	u32 reg_addr = XSDFEC_LDPC_CODE_REG2_ADDR_BASE +
-		(code_id * XSDFEC_LDPC_REG_JUMP);
-
-	if (reg_addr > XSDFEC_LDPC_CODE_REG2_ADDR_HIGH) {
-		dev_err(xsdfec->dev,
-			"Accessing outside of LDPC reg2 for code_id %d",
-			code_id);
-		return -EINVAL;
-	}
-
-	reg_value = xsdfec_regread(xsdfec, reg_addr);
-
-	ldpc_params->nlayers = ((reg_value >> XSDFEC_REG2_NLAYERS_LSB) &
-				XSDFEC_REG2_NLAYERS_MASK);
-
-	ldpc_params->nmqc = (reg_value >> XSDFEC_REG2_NMQC_LSB) &
-			     XSDFEC_REG2_NNMQC_MASK;
-
-	ldpc_params->norm_type = ((reg_value >> XSDFEC_REG2_NORM_TYPE_LSB) &
-				  XSDFEC_REG2_NORM_TYPE_MASK);
-
-	ldpc_params->special_qc = ((reg_value >> XSDFEC_REG2_SPEICAL_QC_LSB) &
-				   XSDFEC_REG2_SPECIAL_QC_MASK);
-
-	ldpc_params->no_final_parity =
-		((reg_value >> XSDFEC_REG2_NO_FINAL_PARITY_LSB) &
-		 XSDFEC_REG2_NO_FINAL_PARITY_MASK);
-
-	ldpc_params->max_schedule =
-		((reg_value >> XSDFEC_REG2_MAX_SCHEDULE_LSB) &
-		 XSDFEC_REG2_MAX_SCHEDULE_MASK);
-
-	return 0;
-}
-
-static int
 xsdfec_reg3_write(struct xsdfec_dev *xsdfec, u8 sc_off,
 		  u8 la_off, u16 qc_off, u32 offset)
 {
@@ -742,31 +648,6 @@ xsdfec_reg3_write(struct xsdfec_dev *xsdfec, u8 sc_off,
 	}
 	xsdfec_regwrite(xsdfec, XSDFEC_LDPC_CODE_REG3_ADDR_BASE +
 			(offset * XSDFEC_LDPC_REG_JUMP), wdata);
-	return 0;
-}
-
-static int
-xsdfec_collect_ldpc_reg3(struct xsdfec_dev *xsdfec,
-			 u32 code_id,
-			 struct xsdfec_ldpc_params *ldpc_params)
-{
-	u32 reg_value;
-	u32 reg_addr = XSDFEC_LDPC_CODE_REG3_ADDR_BASE +
-		(code_id * XSDFEC_LDPC_REG_JUMP);
-
-	if (reg_addr > XSDFEC_LDPC_CODE_REG3_ADDR_HIGH) {
-		dev_err(xsdfec->dev,
-			"Accessing outside of LDPC reg3 for code_id %d",
-			code_id);
-		return -EINVAL;
-	}
-
-	reg_value = xsdfec_regread(xsdfec, reg_addr);
-
-	ldpc_params->qc_off = (reg_addr >> XSDFEC_REG3_QC_OFF_LSB) & 0xFF;
-	ldpc_params->la_off = (reg_addr >> XSDFEC_REG3_LA_OFF_LSB) & 0xFF;
-	ldpc_params->sc_off = (reg_addr & 0xFF);
-
 	return 0;
 }
 
@@ -793,29 +674,6 @@ xsdfec_sc_table_write(struct xsdfec_dev *xsdfec, u32 offset,
 }
 
 static int
-xsdfec_collect_sc_table(struct xsdfec_dev *xsdfec, u32 offset,
-			u32 *sc_ptr, u32 len)
-{
-	u32 reg;
-	u32 reg_addr;
-	u32 deepest_reach = (XSDFEC_REG_WIDTH_JUMP * (offset + len));
-
-	if (deepest_reach > XSDFEC_SC_TABLE_DEPTH) {
-		dev_err(xsdfec->dev, "Access will exceed SC table length");
-		return -EINVAL;
-	}
-
-	for (reg = 0; reg < len; reg++) {
-		reg_addr = XSDFEC_LDPC_SC_TABLE_ADDR_BASE +
-			((offset + reg) * XSDFEC_REG_WIDTH_JUMP);
-
-		sc_ptr[reg] = xsdfec_regread(xsdfec, reg_addr);
-	}
-
-	return 0;
-}
-
-static int
 xsdfec_la_table_write(struct xsdfec_dev *xsdfec, u32 offset,
 		      u32 *la_ptr, u32 len)
 {
@@ -835,29 +693,6 @@ xsdfec_la_table_write(struct xsdfec_dev *xsdfec, u32 offset,
 }
 
 static int
-xsdfec_collect_la_table(struct xsdfec_dev *xsdfec, u32 offset,
-			u32 *la_ptr, u32 len)
-{
-	u32 reg;
-	u32 reg_addr;
-	u32 deepest_reach = (XSDFEC_REG_WIDTH_JUMP * (offset + len));
-
-	if (deepest_reach > XSDFEC_LA_TABLE_DEPTH) {
-		dev_err(xsdfec->dev, "Access will exceed LA table length");
-		return -EINVAL;
-	}
-
-	for (reg = 0; reg < len; reg++) {
-		reg_addr = XSDFEC_LDPC_LA_TABLE_ADDR_BASE +
-				((offset + reg) * XSDFEC_REG_WIDTH_JUMP);
-
-		la_ptr[reg] = xsdfec_regread(xsdfec, reg_addr);
-	}
-
-	return 0;
-}
-
-static int
 xsdfec_qc_table_write(struct xsdfec_dev *xsdfec,
 		      u32 offset, u32 *qc_ptr, u32 len)
 {
@@ -874,29 +709,6 @@ xsdfec_qc_table_write(struct xsdfec_dev *xsdfec,
 	}
 
 	return reg;
-}
-
-static int
-xsdfec_collect_qc_table(struct xsdfec_dev *xsdfec,
-			u32 offset, u32 *qc_ptr, u32 len)
-{
-	u32 reg;
-	u32 reg_addr;
-	u32 deepest_reach = (XSDFEC_REG_WIDTH_JUMP * (offset + len));
-
-	if (deepest_reach > XSDFEC_QC_TABLE_DEPTH) {
-		dev_err(xsdfec->dev, "Access will exceed QC table length");
-		return -EINVAL;
-	}
-
-	for (reg = 0; reg < len; reg++) {
-		reg_addr = XSDFEC_LDPC_QC_TABLE_ADDR_BASE +
-		 (offset + reg) * XSDFEC_REG_WIDTH_JUMP;
-
-		qc_ptr[reg] = xsdfec_regread(xsdfec, reg_addr);
-	}
-
-	return 0;
 }
 
 static int
@@ -972,89 +784,6 @@ xsdfec_add_ldpc(struct xsdfec_dev *xsdfec, void __user *arg)
 	/* Error Path */
 err_out:
 	kfree(ldpc);
-	return err;
-}
-
-static int
-xsdfec_get_ldpc_code_params(struct xsdfec_dev *xsdfec, void __user *arg)
-{
-	struct xsdfec_ldpc_params *ldpc_params;
-	int err = 0;
-
-	if (xsdfec->config.code == XSDFEC_TURBO_CODE) {
-		dev_err(xsdfec->dev,
-			"%s: SDFEC%d is configured for TURBO, check DT",
-				__func__, xsdfec->config.fec_id);
-		return -EIO;
-	}
-
-	ldpc_params = kzalloc(sizeof(*ldpc_params), GFP_KERNEL);
-	if (!ldpc_params)
-		return -ENOMEM;
-
-	err = copy_from_user(ldpc_params, arg, sizeof(*ldpc_params));
-	if (err) {
-		dev_err(xsdfec->dev,
-			"%s failed to copy from user for SDFEC%d",
-			__func__, xsdfec->config.fec_id);
-		goto err_out;
-	}
-
-	err = xsdfec_collect_ldpc_reg0(xsdfec, ldpc_params->code_id,
-				       ldpc_params);
-	if (err)
-		goto err_out;
-
-	err = xsdfec_collect_ldpc_reg1(xsdfec, ldpc_params->code_id,
-				       ldpc_params);
-	if (err)
-		goto err_out;
-
-	err = xsdfec_collect_ldpc_reg2(xsdfec, ldpc_params->code_id,
-				       ldpc_params);
-	if (err)
-		goto err_out;
-
-	err = xsdfec_collect_ldpc_reg3(xsdfec, ldpc_params->code_id,
-				       ldpc_params);
-	if (err)
-		goto err_out;
-
-	/*
-	 * Collect the shared table values, needs to happen after reading
-	 * the registers
-	 */
-	err = xsdfec_collect_sc_table(xsdfec, ldpc_params->sc_off,
-				      ldpc_params->sc_table,
-				      ldpc_params->nlayers);
-	if (err < 0)
-		goto err_out;
-
-	err = xsdfec_collect_la_table(xsdfec, 4 * ldpc_params->la_off,
-				      ldpc_params->la_table,
-				      ldpc_params->nlayers);
-	if (err < 0)
-		goto err_out;
-
-	err = xsdfec_collect_qc_table(xsdfec, 4 * ldpc_params->qc_off,
-				      ldpc_params->qc_table,
-				      ldpc_params->nqc);
-	if (err < 0)
-		goto err_out;
-
-	err = copy_to_user(arg, ldpc_params, sizeof(*ldpc_params));
-	if (err) {
-		dev_err(xsdfec->dev, "%s failed for SDFEC%d",
-			__func__, xsdfec->config.fec_id);
-		err = -EFAULT;
-		goto err_out;
-	}
-
-	kfree(ldpc_params);
-	return 0;
-	/* Error Path */
-err_out:
-	kfree(ldpc_params);
 	return err;
 }
 
@@ -1372,9 +1101,6 @@ xsdfec_dev_ioctl(struct file *fptr, unsigned int cmd, unsigned long data)
 		break;
 	case XSDFEC_ADD_LDPC_CODE_PARAMS:
 		rval  = xsdfec_add_ldpc(xsdfec, arg);
-		break;
-	case XSDFEC_GET_LDPC_CODE_PARAMS:
-		rval = xsdfec_get_ldpc_code_params(xsdfec, arg);
 		break;
 	case XSDFEC_SET_ORDER:
 		rval = xsdfec_set_order(xsdfec, arg);
