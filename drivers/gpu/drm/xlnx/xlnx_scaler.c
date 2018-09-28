@@ -1059,10 +1059,11 @@ xv_vscaler_load_ext_coeff(struct xilinx_scaler *scaler,
 			/* pad left */
 			for (j = 0; j < offset; j++)
 				scaler->vscaler_coeff[i][j] = 0;
+			/* pad right */
+			j = ntaps + offset;
+			for (; j < XV_VSCALER_MAX_V_TAPS; j++)
+				scaler->vscaler_coeff[i][j] = 0;
 		}
-		/* pad right */
-		for (j = (ntaps + offset); j < XV_VSCALER_MAX_V_TAPS; j++)
-			scaler->vscaler_coeff[i][j] = 0;
 	}
 }
 
