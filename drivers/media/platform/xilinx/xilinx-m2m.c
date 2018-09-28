@@ -222,8 +222,13 @@ static void xvip_m2m_stop_streaming(struct vb2_queue *q)
 	struct xvip_m2m_dma *dma = ctx->xdev->dma;
 	struct vb2_v4l2_buffer *vbuf;
 
+	if (q->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE)
+		dmaengine_terminate_sync(dma->chan_tx);
+	else
+		dmaengine_terminate_sync(dma->chan_rx);
+
 	for (;;) {
-		if (V4L2_TYPE_IS_OUTPUT(q->type))
+		if (q->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE)
 			vbuf = v4l2_m2m_src_buf_remove(ctx->fh.m2m_ctx);
 		else
 			vbuf = v4l2_m2m_dst_buf_remove(ctx->fh.m2m_ctx);
@@ -234,9 +239,6 @@ static void xvip_m2m_stop_streaming(struct vb2_queue *q)
 		v4l2_m2m_buf_done(vbuf, VB2_BUF_STATE_ERROR);
 		spin_unlock(&ctx->xdev->queued_lock);
 	}
-
-	dmaengine_terminate_sync(dma->chan_tx);
-	dmaengine_terminate_sync(dma->chan_rx);
 }
 
 static const struct vb2_ops m2m_vb2_ops = {
