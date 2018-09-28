@@ -1002,10 +1002,11 @@ xv_vscaler_load_ext_coeff(struct xscaler_device *xscaler,
 			/* pad left */
 			for (j = 0; j < offset; j++)
 				xscaler->vscaler_coeff[i][j] = 0;
+			/* pad right */
+			j = ntaps + offset;
+			for (; j < XV_VSCALER_MAX_V_TAPS; j++)
+				xscaler->vscaler_coeff[i][j] = 0;
 		}
-		/* pad right */
-		for (j = (ntaps + offset); j < XV_VSCALER_MAX_V_TAPS; j++)
-			xscaler->vscaler_coeff[i][j] = 0;
 	}
 }
 
