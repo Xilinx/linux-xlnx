@@ -1746,6 +1746,12 @@ static int xlnx_mix_plane_atomic_check(struct drm_plane *plane,
 	int scale;
 	struct xlnx_mix_plane *mix_plane = to_xlnx_plane(plane);
 	struct xlnx_mix_hw *mixer_hw = to_mixer_hw(mix_plane);
+	struct xlnx_mix *mix;
+
+	/* No check required for the drm_primary_plane */
+	mix = container_of(mixer_hw, struct xlnx_mix, mixer_hw);
+	if (mix->drm_primary_layer == mix_plane)
+		return 0;
 
 	scale = xlnx_mix_get_layer_scaling(mixer_hw,
 					   mix_plane->mixer_layer->id);
