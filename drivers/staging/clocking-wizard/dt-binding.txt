@@ -9,6 +9,7 @@ http://www.xilinx.com/support/documentation/ip_documentation/clk_wiz/v5_1/pg065-
 
 Required properties:
  - compatible: Must be 'xlnx,clocking-wizard'
+ - #clock-cells: Number of cells in a clock specifier. Should be 1
  - reg: Base and size of the cores register space
  - clocks: Handle to input clock
  - clock-names: Tuple containing 'clk_in1' and 's_axi_aclk'
@@ -19,6 +20,7 @@ Optional properties:
 
 Example:
 	clock-generator@40040000 {
+		#clock-cells = <1>;
 		reg = <0x40040000 0x1000>;
 		compatible = "xlnx,clocking-wizard";
 		speed-grade = <1>;
