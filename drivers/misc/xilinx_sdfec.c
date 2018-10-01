@@ -191,7 +191,6 @@ static dev_t xsdfec_devt;
  * @state: State of the SDFEC device
  * @config: Configuration of the SDFEC device
  * @intr_enabled: indicates IRQ enabled
- * @wr_protect: indicates Write Protect enabled
  * @state_updated: indicates State updated by interrupt handler
  * @stats_updated: indicates Stats updated by interrupt handler
  * @isr_err_count: Count of ISR errors
@@ -211,7 +210,6 @@ struct xsdfec_dev {
 	enum xsdfec_state state;
 	struct xsdfec_config config;
 	bool intr_enabled;
-	bool wr_protect;
 	bool state_updated;
 	bool stats_updated;
 	atomic_t isr_err_count;
@@ -228,11 +226,6 @@ struct xsdfec_dev {
 static inline void
 xsdfec_regwrite(struct xsdfec_dev *xsdfec, u32 addr, u32 value)
 {
-	if (xsdfec->wr_protect) {
-		dev_err(xsdfec->dev, "SDFEC in write protect");
-		return;
-	}
-
 	dev_dbg(xsdfec->dev,
 		"Writing 0x%x to offset 0x%x", value, addr);
 	iowrite32(value, xsdfec->regs + addr);
@@ -251,27 +244,51 @@ xsdfec_regread(struct xsdfec_dev *xsdfec, u32 addr)
 }
 
 static void
-xsdfec_wr_protect(struct xsdfec_dev *xsdfec, bool wr_pr)
+update_bool_config_from_reg(struct xsdfec_dev *xsdfec,
+			    u32 reg_offset,
+			    u32 bit_num,
+			    bool *config_value)
 {
-	if (wr_pr) {
-		xsdfec_regwrite(xsdfec,
-				XSDFEC_CODE_WR_PROTECT_ADDR,
-				XSDFEC_WRITE_PROTECT_ENABLE);
-		xsdfec_regwrite(xsdfec,
-				XSDFEC_AXI_WR_PROTECT_ADDR,
-				XSDFEC_WRITE_PROTECT_ENABLE);
-		/* prevents register and tables writes */
-		xsdfec->wr_protect = wr_pr;
-	} else {
-		/* allows register and table writes including protection regs */
-		xsdfec->wr_protect = wr_pr;
-		xsdfec_regwrite(xsdfec,
-				XSDFEC_AXI_WR_PROTECT_ADDR,
-				XSDFEC_WRITE_PROTECT_DISABLE);
-		xsdfec_regwrite(xsdfec,
-				XSDFEC_CODE_WR_PROTECT_ADDR,
-				XSDFEC_WRITE_PROTECT_DISABLE);
-	}
+	u32 reg_val;
+	u32 bit_mask = 1 << bit_num;
+
+	reg_val = xsdfec_regread(xsdfec, reg_offset);
+	*config_value = (reg_val & bit_mask) > 0;
+}
+
+static void
+update_config_from_hw(struct xsdfec_dev *xsdfec)
+{
+	u32 reg_value;
+	bool sdfec_started;
+
+	/* Update the Order */
+	reg_value = xsdfec_regread(xsdfec, XSDFEC_ORDER_ADDR);
+	xsdfec->config.order = reg_value + 1;
+
+	update_bool_config_from_reg(xsdfec,
+				    XSDFEC_BYPASS_ADDR,
+				    0, /* Bit Number, maybe change to mask */
+				    &xsdfec->config.bypass);
+
+	update_bool_config_from_reg(xsdfec,
+				    XSDFEC_CODE_WR_PROTECT_ADDR,
+				    0, /* Bit Number */
+				    &xsdfec->config.code_wr_protect);
+
+	reg_value = xsdfec_regread(xsdfec, XSDFEC_IMR_ADDR);
+	xsdfec->config.irq.enable_isr = (reg_value & XSDFEC_ISR_MASK) > 0;
+
+	reg_value = xsdfec_regread(xsdfec, XSDFEC_ECC_IMR_ADDR);
+	xsdfec->config.irq.enable_ecc_isr = (reg_value & XSDFEC_ECC_ISR_MASK) >
+					    0;
+
+	reg_value = xsdfec_regread(xsdfec, XSDFEC_AXIS_ENABLE_ADDR);
+	sdfec_started = (reg_value & XSDFEC_AXIS_IN_ENABLE_MASK) > 0;
+	if (sdfec_started)
+		xsdfec->state = XSDFEC_STARTED;
+	else
+		xsdfec->state = XSDFEC_STOPPED;
 }
 
 static int
@@ -474,9 +491,6 @@ xsdfec_set_turbo(struct xsdfec_dev *xsdfec, void __user *arg)
 	} else if (xsdfec->config.code == XSDFEC_CODE_INVALID) {
 		xsdfec->config.code = XSDFEC_TURBO_CODE;
 	}
-
-	if (xsdfec->wr_protect)
-		xsdfec_wr_protect(xsdfec, false);
 
 	turbo_write = ((turbo.scale & XSDFEC_TURBO_SCALE_MASK) <<
 			XSDFEC_TURBO_SCALE_BIT_POS) | turbo.alg;
@@ -743,9 +757,12 @@ xsdfec_add_ldpc(struct xsdfec_dev *xsdfec, void __user *arg)
 		return -EIO;
 	}
 
-	/* Disable Write Protection before proceeding */
-	if (xsdfec->wr_protect)
-		xsdfec_wr_protect(xsdfec, false);
+	if (xsdfec->config.code_wr_protect) {
+		dev_err(xsdfec->dev,
+			"%s writing LDPC code while Code Write Protection enabled for SDFEC%d",
+			__func__, xsdfec->config.fec_id);
+		return -EIO;
+	}
 
 	/* Write Reg 0 */
 	err = xsdfec_reg0_write(xsdfec, ldpc->n, ldpc->k, ldpc->code_id);
@@ -958,8 +975,6 @@ static int xsdfec_start(struct xsdfec_dev *xsdfec)
 	xsdfec_regwrite(xsdfec,
 			XSDFEC_AXIS_ENABLE_ADDR,
 			XSDFEC_AXIS_ENABLE_MASK);
-	/* Write Protect Code and Registers */
-	xsdfec_wr_protect(xsdfec, true);
 	/* Done */
 	xsdfec->state = XSDFEC_STARTED;
 	return 0;
@@ -972,8 +987,6 @@ xsdfec_stop(struct xsdfec_dev *xsdfec)
 
 	if (xsdfec->state != XSDFEC_STARTED)
 		dev_err(xsdfec->dev, "Device not started correctly");
-	/* Disable Write Protect */
-	xsdfec_wr_protect(xsdfec, false);
 	/* Disable AXIS_ENABLE Input interfaces only */
 	regread = xsdfec_regread(xsdfec, XSDFEC_AXIS_ENABLE_ADDR);
 	regread &= (~XSDFEC_AXIS_IN_ENABLE_MASK);
@@ -1019,14 +1032,10 @@ xsdfec_get_stats(struct xsdfec_dev *xsdfec, void __user *arg)
 static int
 xsdfec_set_default_config(struct xsdfec_dev *xsdfec)
 {
-	xsdfec->state = XSDFEC_INIT;
-	xsdfec->config.order = XSDFEC_INVALID_ORDER;
-	xsdfec->wr_protect = false;
-
-	xsdfec_wr_protect(xsdfec, false);
 	/* Ensure registers are aligned with core configuration */
 	xsdfec_regwrite(xsdfec, XSDFEC_FEC_CODE_ADDR, xsdfec->config.code - 1);
 	xsdfec_cfg_axi_streams(xsdfec);
+	update_config_from_hw(xsdfec);
 
 	return 0;
 }
@@ -1441,6 +1450,8 @@ xsdfec_probe(struct platform_device *pdev)
 	err = xsdfec_parse_of(xsdfec);
 	if (err < 0)
 		goto err_xsdfec_dev;
+
+	update_config_from_hw(xsdfec);
 
 	/* Save driver private data */
 	platform_set_drvdata(pdev, xsdfec);
