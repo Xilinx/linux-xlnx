@@ -59,6 +59,10 @@ Required properties:
 - data-lanes: The number of data lanes through which CSI2 Rx Subsystem is
   connected to the camera sensor as per video-interfaces.txt
 
+Optional Properties
+
+- xlnx,en-vcx: When present, the max number of virtual channels can be 16 else 4.
+
 Example:
 
 	csiss_1: csiss@a0020000 {
