@@ -39,6 +39,12 @@ Required properties:
 		- interrupts: interrupt number to the cpu.
 		- interrupt-parent: the phandle for the interrupt controller
 		  that services interrupts for this device.
+
+Optional properties:
+- reset-gpios : The GPIO used to reset the VCU, if available. Need use this
+		reset gpio when in design 'vcu_resetn' is driven by gpio. See
+		Documentation/devicetree/bindings/gpio/gpio.txt for details.
+
 Example:
 
 	xlnx_vcu: vcu@a0040000 {
@@ -48,6 +54,7 @@ Example:
 		reg = <0x0 0xa0040000 0x0 0x1000>,
 			 <0x0 0xa0041000 0x0 0x1000>;
 		reg-names = "vcu_slcr", "logicore";
+		reset-gpios = <&gpio 0x4e GPIO_ACTIVE_HIGH>;
 		#clock-cells = <0x1>;
 		clock-names = "pll_ref", "aclk", "vcu_core_enc", "vcu_core_dec", "vcu_mcu_enc", "vcu_mcu_dec";
 		clocks = <&si570_1>, <&clkc 71>, <&xlnx_vcu 1>, <&xlnx_vcu 2>, <&xlnx_vcu 3>, <&xlnx_vcu 4>;
