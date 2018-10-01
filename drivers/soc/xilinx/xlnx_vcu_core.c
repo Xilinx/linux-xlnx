@@ -11,6 +11,8 @@
 #include <linux/io.h>
 #include <linux/mfd/core.h>
 #include <linux/module.h>
+#include <linux/gpio/consumer.h>
+#include <linux/delay.h>
 #include <linux/of_platform.h>
 #include <soc/xilinx/xlnx_vcu.h>
 
@@ -78,6 +80,24 @@ static int xvcu_core_probe(struct platform_device *pdev)
 	 * Bit 0 : Gasket isolation
 	 * Bit 1 : put VCU out of reset
 	 */
+	xvcu->reset_gpio = devm_gpiod_get_optional(&pdev->dev, "reset",
+						   GPIOD_OUT_LOW);
+	if (IS_ERR(xvcu->reset_gpio)) {
+		ret = PTR_ERR(xvcu->reset_gpio);
+		dev_err(&pdev->dev, "failed to get reset gpio for vcu.\n");
+		return ret;
+	}
+
+	if (xvcu->reset_gpio) {
+		gpiod_set_value(xvcu->reset_gpio, 0);
+		/* min 2 clock cycle of vcu pll_ref, slowest freq is 33.33KHz */
+		usleep_range(60, 120);
+		gpiod_set_value(xvcu->reset_gpio, 1);
+		usleep_range(60, 120);
+	} else {
+		dev_warn(&pdev->dev, "No reset gpio info from dts for vcu. This may lead to incorrect functionality if VCU isolation is removed post initialization.\n");
+	}
+
 	iowrite32(VCU_GASKET_VALUE, xvcu->logicore_reg_ba + VCU_GASKET_INIT);
 
 	ret = mfd_add_devices(&pdev->dev, PLATFORM_DEVID_NONE, xvcu_devs,
@@ -111,6 +131,13 @@ static int xvcu_core_remove(struct platform_device *pdev)
 	mfd_remove_devices(&pdev->dev);
 
 	/* Add the the Gasket isolation and put the VCU in reset. */
+	if (xvcu->reset_gpio) {
+		gpiod_set_value(xvcu->reset_gpio, 0);
+		/* min 2 clock cycle of vcu pll_ref, slowest freq is 33.33KHz */
+		usleep_range(60, 120);
+		gpiod_set_value(xvcu->reset_gpio, 1);
+		usleep_range(60, 120);
+	}
 	iowrite32(0, xvcu->logicore_reg_ba + VCU_GASKET_INIT);
 
 	clk_disable_unprepare(xvcu->aclk);
