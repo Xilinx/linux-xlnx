@@ -139,7 +139,7 @@ static dev_t xsdfec_devt;
 
 /* REG0 Register */
 #define XSDFEC_LDPC_CODE_REG0_ADDR_BASE		(0x2000)
-#define XSDFEC_LDPC_CODE_REG0_ADDR_HIGH		(0x21FC)
+#define XSDFEC_LDPC_CODE_REG0_ADDR_HIGH		(0x27F0)
 #define XSDFEC_REG0_N_MASK			(0xFFFF)
 #define XSDFEC_REG0_N_LSB			(0)
 #define XSDFEC_REG0_K_MASK			(0x7FFF0000)
@@ -147,7 +147,7 @@ static dev_t xsdfec_devt;
 
 /* REG1 Register */
 #define XSDFEC_LDPC_CODE_REG1_ADDR_BASE		(0x2004)
-#define XSDFEC_LDPC_CODE_REG1_ADDR_HIGH		(0x2200)
+#define XSDFEC_LDPC_CODE_REG1_ADDR_HIGH		(0x27f4)
 #define XSDFEC_REG1_PSIZE_MASK			(0x1FF)
 #define XSDFEC_REG1_NO_PACKING_MASK		(0x400)
 #define XSDFEC_REG1_NO_PACKING_LSB		(10)
@@ -157,7 +157,7 @@ static dev_t xsdfec_devt;
 
 /* REG2 Register */
 #define XSDFEC_LDPC_CODE_REG2_ADDR_BASE		(0x2008)
-#define XSDFEC_LDPC_CODE_REG2_ADDR_HIGH		(0x2204)
+#define XSDFEC_LDPC_CODE_REG2_ADDR_HIGH		(0x27f8)
 #define XSDFEC_REG2_NLAYERS_MASK		(0x1FF)
 #define XSDFEC_REG2_NLAYERS_LSB			(0)
 #define XSDFEC_REG2_NNMQC_MASK			(0xFFE00)
@@ -173,7 +173,7 @@ static dev_t xsdfec_devt;
 
 /* REG3 Register */
 #define XSDFEC_LDPC_CODE_REG3_ADDR_BASE		(0x200C)
-#define XSDFEC_LDPC_CODE_REG3_ADDR_HIGH		(0x2208)
+#define XSDFEC_LDPC_CODE_REG3_ADDR_HIGH		(0x27FC)
 #define XSDFEC_REG3_LA_OFF_LSB			(8)
 #define XSDFEC_REG3_QC_OFF_LSB			(16)
 
