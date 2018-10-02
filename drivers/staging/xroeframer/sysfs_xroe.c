@@ -119,7 +119,7 @@ static ssize_t enable_show(struct kobject *kobj, struct kobj_attribute *attr,
 static ssize_t enable_store(struct kobject *kobj, struct kobj_attribute *attr,
 			    const char *buff, size_t count)
 {
-	u32 offset = CFG_MASTER_INT_ENABLE_ADDR;
+	u32 offset = CFG_MASTER_INT_ENABLE_OFFSET;
 	u32 mask = CFG_MASTER_INT_ENABLE_MASK;
 	void __iomem *working_address = ((u8 *)lp->base_addr +
 	CFG_MASTER_INT_ENABLE_ADDR);
