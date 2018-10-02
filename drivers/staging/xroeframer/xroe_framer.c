@@ -403,7 +403,7 @@ static long stats_ioctl(struct file *f, unsigned int cmd,
 	struct ioctl_arguments *args = kmalloc(sizeof(*args), GFP_KERNEL);
 	int ret = 0;
 	u32 offset;
-	size_t stats_size = RADIO_CTRL_SIZE;
+	size_t stats_size = STATS_SIZE;
 
 	switch (cmd) {
 	case XROE_FRAMER_IOGET: /* Read */
@@ -412,7 +412,7 @@ static long stats_ioctl(struct file *f, unsigned int cmd,
 			ret = -EFAULT;
 			break;
 		}
-		offset = *args->offset;
+		offset = *args->offset - STATS_BASE;
 		ret = utils_check_address_offset(offset, stats_size);
 		if (ret)
 			break;
