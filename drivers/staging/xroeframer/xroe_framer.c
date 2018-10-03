@@ -210,8 +210,11 @@ static int framer_probe(struct platform_device *pdev)
 	if (rc) {
 		dev_err(dev, "testmodule: Could not allocate interrupt %d.\n",
 			lp->irq);
-
-		return rc;
+		/*
+		 * TODO: Return non-zero (error) code on no IRQ found.
+		 * To be implemented once the IRQ is in the block
+		 */
+		return 0;
 	}
 
 	return rc;
