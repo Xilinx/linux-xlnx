@@ -14,4 +14,9 @@ enum {
 	XLNX_MAX_PATHS
 };
 
+struct pl_card_data {
+	u32 mclk_val;
+	u32 mclk_ratio;
+	struct clk *mclk;
+};
 #endif /* _XLNX_SND_COMMON_H */
