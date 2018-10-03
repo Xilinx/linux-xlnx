@@ -26,6 +26,9 @@ Required properties:
 		2. I2S receiver
 		3. UHDSDI audio extract
 	    Only those nodes were supported in sound card driver
+ - clock-names: List of input clocks.
+   Required elements: "s_axi_lite_aclk", "aud_mclk"
+ - clocks: Input clock specifier. Refer to common clock bindings.
 
 Example:
 	audio_ss_0_audio_formatter_0: audio_formatter@80010000 {
@@ -36,4 +39,6 @@ Example:
 		reg = <0x0 0x80010000 0x0 0x1000>;
 		xlnx,tx = <&i2s_transmitter>;
 		xlnx,rx = <&i2s_receiver>;
+		clock-names = "s_axi_lite_aclk", "aud_mclk";
+		clocks = <&clk 71>, <&clk_wiz_1 0>;
 	};
