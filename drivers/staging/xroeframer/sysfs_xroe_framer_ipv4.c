@@ -532,7 +532,7 @@ static ssize_t ipv4_source_address_show
 	unsigned long mask = ETH_IPV4_SOURCE_ADD_MASK;
 	u32 buffer = 0;
 	u32 source_add = 0;
-	unsigned char *ip_addr_char = NULL;
+	unsigned char ip_addr_char[4];
 	void __iomem *working_address = ((u8 *)lp->base_addr +
 	ETH_IPV4_SOURCE_ADD_ADDR);
 
@@ -591,7 +591,7 @@ static ssize_t ipv4_destination_address_show
 	unsigned long mask = ETH_IPV4_DESTINATION_ADD_MASK;
 	u32 buffer = 0;
 	u32 destination_add = 0;
-	unsigned char *ip_addr_char = NULL;
+	unsigned char ip_addr_char[4];
 	void __iomem *working_address = ((u8 *)lp->base_addr +
 	ETH_IPV4_DESTINATION_ADD_ADDR);
 
