@@ -61,7 +61,9 @@
 #define UART_AUTOSUSPEND_TIMEOUT	3000
 
 /* Static pointer to console port */
+#ifdef CONFIG_SERIAL_UARTLITE_CONSOLE
 static struct uart_port *console_port;
+#endif
 
 struct uartlite_data {
 	const struct uartlite_reg_ops *reg_ops;
