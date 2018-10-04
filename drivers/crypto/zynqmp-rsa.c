@@ -28,6 +28,7 @@
 
 #define ZYNQMP_RSA_QUEUE_LENGTH	1
 #define ZYNQMP_RSA_MAX_KEY_SIZE	1024
+#define ZYNQMP_BLOCKSIZE	64
 
 struct zynqmp_rsa_dev;
 
@@ -102,13 +103,17 @@ zynqmp_rsa_decrypt(struct blkcipher_desc *desc,
 	char *kbuf;
 	size_t dma_size;
 	dma_addr_t dma_addr;
-	int err;
+	int err, datasize;
 
 	if (!eemi_ops || !eemi_ops->rsa)
 		return -ENOTSUPP;
 
 	blkcipher_walk_init(&walk, dst, src, nbytes);
 	err = blkcipher_walk_virt(desc, &walk);
+	while ((datasize = walk.nbytes)) {
+		datasize &= (ZYNQMP_BLOCKSIZE - 1);
+		err = blkcipher_walk_done(desc, &walk, datasize);
+	}
 	op->iv = walk.iv;
 	op->src = walk.src.virt.addr;
 	op->dst = walk.dst.virt.addr;
@@ -116,13 +121,12 @@ zynqmp_rsa_decrypt(struct blkcipher_desc *desc,
 	dma_size = nbytes + op->keylen;
 	kbuf = dma_alloc_coherent(dd->dev, dma_size, &dma_addr, GFP_KERNEL);
 	if (!kbuf)
-	return -ENOMEM;
+		return -ENOMEM;
 
 	memcpy(kbuf, op->src, nbytes);
 	memcpy(kbuf + nbytes, op->key, op->keylen);
 	eemi_ops->rsa(dma_addr, nbytes, 0);
 	memcpy(walk.dst.virt.addr, kbuf, nbytes);
-	err = blkcipher_walk_done(desc, &walk, nbytes  - 1);
 	dma_free_coherent(dd->dev, dma_size, kbuf, dma_addr);
 
 	return err;
@@ -140,13 +144,18 @@ zynqmp_rsa_encrypt(struct blkcipher_desc *desc,
 	char *kbuf;
 	size_t dma_size;
 	dma_addr_t dma_addr;
-	int err;
+	int err, datasize;
 
 	if (!eemi_ops || !eemi_ops->rsa)
 		return -ENOTSUPP;
 
 	blkcipher_walk_init(&walk, dst, src, nbytes);
 	err = blkcipher_walk_virt(desc, &walk);
+	while ((datasize = walk.nbytes)) {
+		datasize &= (ZYNQMP_BLOCKSIZE - 1);
+		err = blkcipher_walk_done(desc, &walk, datasize);
+	}
+
 	op->iv = walk.iv;
 	op->src = walk.src.virt.addr;
 	op->dst = walk.dst.virt.addr;
@@ -160,7 +169,6 @@ zynqmp_rsa_encrypt(struct blkcipher_desc *desc,
 	memcpy(kbuf + nbytes, op->key, op->keylen);
 	eemi_ops->rsa(dma_addr, nbytes, 1);
 	memcpy(walk.dst.virt.addr, kbuf, nbytes);
-	err = blkcipher_walk_done(desc, &walk, nbytes  - 1);
 	dma_free_coherent(dd->dev, dma_size, kbuf, dma_addr);
 
 	return err;
@@ -172,7 +180,7 @@ static struct crypto_alg zynqmp_alg = {
 	.cra_priority           =       400,
 	.cra_flags		=	CRYPTO_ALG_TYPE_BLKCIPHER |
 					CRYPTO_ALG_KERN_DRIVER_ONLY,
-	.cra_blocksize		=	1,
+	.cra_blocksize		=	ZYNQMP_BLOCKSIZE,
 	.cra_ctxsize		=	sizeof(struct zynqmp_rsa_op),
 	.cra_alignmask		=	15,
 	.cra_type		=	&crypto_blkcipher_type,
