@@ -176,8 +176,8 @@ zynqmp_rsa_encrypt(struct blkcipher_desc *desc,
 
 static struct crypto_alg zynqmp_alg = {
 	.cra_name		=	"xilinx-zynqmp-rsa",
-	.cra_driver_name        =	"zynqmp-rsa",
-	.cra_priority           =       400,
+	.cra_driver_name	=	"zynqmp-rsa",
+	.cra_priority		=	400,
 	.cra_flags		=	CRYPTO_ALG_TYPE_BLKCIPHER |
 					CRYPTO_ALG_KERN_DRIVER_ONLY,
 	.cra_blocksize		=	ZYNQMP_BLOCKSIZE,
@@ -186,9 +186,9 @@ static struct crypto_alg zynqmp_alg = {
 	.cra_type		=	&crypto_blkcipher_type,
 	.cra_module		=	THIS_MODULE,
 	.cra_u			=	{
-	.blkcipher      =       {
+	.blkcipher = {
 			.min_keysize	=	0,
-			.max_keysize    =       ZYNQMP_RSA_MAX_KEY_SIZE,
+			.max_keysize	=	ZYNQMP_RSA_MAX_KEY_SIZE,
 			.setkey		=	zynqmp_setkey_blk,
 			.encrypt	=	zynqmp_rsa_encrypt,
 			.decrypt	=	zynqmp_rsa_decrypt,
@@ -219,7 +219,7 @@ static int zynqmp_rsa_probe(struct platform_device *pdev)
 
 	ret = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(44));
 	if (ret < 0)
-	dev_err(dev, "no usable DMA configuration");
+		dev_err(dev, "no usable DMA configuration");
 
 	INIT_LIST_HEAD(&rsa_dd->list);
 	spin_lock_init(&rsa_dd->lock);
@@ -251,8 +251,8 @@ static int zynqmp_rsa_remove(struct platform_device *pdev)
 static struct platform_driver xilinx_rsa_driver = {
 	.probe = zynqmp_rsa_probe,
 	.remove = zynqmp_rsa_remove,
-	.driver         = {
-		.name   = "zynqmp_rsa",
+	.driver = {
+		.name = "zynqmp_rsa",
 		.of_match_table = of_match_ptr(zynqmp_rsa_dt_ids),
 	},
 };
