@@ -97,6 +97,11 @@
 #define XM2MSC_CHAN_OUT		0
 #define XM2MSC_CHAN_CAP		1
 
+#define NUM_STREAM(_x)			\
+	({ typeof(_x) (x) = (_x);	\
+	min(ffz(x->out_streamed_chan),	\
+	    ffz(x->cap_streamed_chan)); })
+
 /* Xilinx Video Specific Color/Pixel Formats */
 enum xm2msc_pix_fmt {
 	XILINX_M2MSC_FMT_RGBX8		= 10,
@@ -299,6 +304,7 @@ struct xm2msc_chan_ctx {
  * @opened_chan: bitmap for all open channel
  * @out_streamed_chan: bitmap for all out streamed channel
  * @cap_streamed_chan: bitmap for all capture streamed channel
+ * @running_chan: currently running channels
  * @v4l2_dev: main struct to for V4L2 device drivers
  * @dev_mutex: lock for V4L2 device
  * @mutex: lock for channel ctx
@@ -321,6 +327,7 @@ struct xm2m_msc_dev {
 	u32 opened_chan;
 	u32 out_streamed_chan;
 	u32 cap_streamed_chan;
+	u32 running_chan;
 
 	struct v4l2_device v4l2_dev;
 
@@ -541,6 +548,23 @@ static void xm2msc_set_chan_com_params(struct xm2msc_chan_ctx *chan_ctx)
 	xm2msc_writereg(base + XM2MSC_LINERATE, line_rate);
 }
 
+static void xm2msc_program_allchan(struct xm2m_msc_dev *xm2msc)
+{
+	u32 chan;
+
+	for (chan = 0; chan < xm2msc->running_chan; chan++) {
+		struct xm2msc_chan_ctx *chan_ctx;
+
+		chan_ctx = &xm2msc->xm2msc_chan[chan];
+
+		xm2msc_set_chan_params(chan_ctx,
+				       V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE);
+		xm2msc_set_chan_params(chan_ctx,
+				       V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE);
+		xm2msc_set_chan_com_params(chan_ctx);
+	}
+}
+
 static void
 xm2msc_pr_q(struct device *dev, struct xm2msc_q_data *q, int chan,
 	    int type, const char *fun_name)
@@ -659,7 +683,7 @@ xm2msc_pr_allchanreg(struct xm2m_msc_dev *xm2msc)
 
 	xm2msc_pr_screg(xm2msc->dev, xm2msc->regs);
 
-	for (i = 0; i < xm2msc->max_chan; i++) {
+	for (i = 0; i < xm2msc->running_chan; i++) {
 		chan_ctx = &xm2msc->xm2msc_chan[i];
 		dev_dbg(dev, "Regs val for channel %d\n", i);
 		dev_dbg(dev, "______________________________________________\n");
@@ -721,13 +745,13 @@ xm2msc_set_chan_stream(struct xm2msc_chan_ctx *ctx, bool state, int type)
 	else
 		ptr = &ctx->xm2msc_dev->out_streamed_chan;
 
-	mutex_lock(&ctx->xm2msc_dev->mutex);
+	spin_lock(&ctx->xm2msc_dev->lock);
 	if (state)
 		xm2msc_setbit(ctx->num, ptr);
 	else
 		xm2msc_clrbit(ctx->num, ptr);
 
-	mutex_unlock(&ctx->xm2msc_dev->mutex);
+	spin_unlock(&ctx->xm2msc_dev->lock);
 }
 
 static int
@@ -822,7 +846,7 @@ static int xm2msc_set_bufaddr(struct xm2m_msc_dev *xm2msc)
 	dma_addr_t src_luma, dst_luma;
 	dma_addr_t src_croma, dst_croma;
 
-	for (chan = 0; chan < xm2msc->max_chan; chan++) {
+	for (chan = 0; chan < xm2msc->running_chan; chan++) {
 		chan_ctx = &xm2msc->xm2msc_chan[chan];
 		base = chan_ctx->regs;
 
@@ -871,7 +895,7 @@ static void xm2msc_job_finish(struct xm2m_msc_dev *xm2msc)
 {
 	unsigned int chan;
 
-	for (chan = 0; chan < xm2msc->max_chan; chan++) {
+	for (chan = 0; chan < xm2msc->running_chan; chan++) {
 		struct xm2msc_chan_ctx *chan_ctx;
 
 		chan_ctx = &xm2msc->xm2msc_chan[chan];
@@ -881,9 +905,9 @@ static void xm2msc_job_finish(struct xm2m_msc_dev *xm2msc)
 
 static void xm2msc_job_done(struct xm2m_msc_dev *xm2msc)
 {
-	unsigned int chan;
+	u32 chan;
 
-	for (chan = 0; chan < xm2msc->max_chan; chan++) {
+	for (chan = 0; chan < xm2msc->running_chan; chan++) {
 		struct xm2msc_chan_ctx *chan_ctx;
 		struct vb2_v4l2_buffer *src_vb, *dst_vb;
 		unsigned long flags;
@@ -913,10 +937,25 @@ static void xm2msc_device_run(void *priv)
 	struct xm2msc_chan_ctx *chan_ctx = priv;
 	struct xm2m_msc_dev *xm2msc = chan_ctx->xm2msc_dev;
 	void __iomem *base = xm2msc->regs;
+	unsigned long flags;
 	int ret;
 
-	/* TODO program to number of opened chan*/
-	xm2msc_writereg(base + XM2MSC_NUM_OUTS, xm2msc->max_chan);
+	spin_lock_irqsave(&xm2msc->lock, flags);
+	if (xm2msc->running_chan != NUM_STREAM(xm2msc)) {
+		dev_dbg(xm2msc->dev, "Running chan was %d\n",
+			xm2msc->running_chan);
+		xm2msc->running_chan = NUM_STREAM(xm2msc);
+
+		/* IP need reset for updating of XM2MSC_NUM_OUT */
+		xm2msc_reset(xm2msc);
+		xm2msc_writereg(base + XM2MSC_NUM_OUTS, xm2msc->running_chan);
+		xm2msc_program_allchan(xm2msc);
+	}
+	spin_unlock_irqrestore(&xm2msc->lock, flags);
+
+	dev_dbg(xm2msc->dev, "Running chan = %d\n", xm2msc->running_chan);
+	if (xm2msc->running_chan == 0)
+		return;
 
 	ret = xm2msc_set_bufaddr(xm2msc);
 	if (ret) {
