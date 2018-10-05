@@ -73,6 +73,12 @@
 
 #define XM2MSC_CHAN_REGS_START(x)	(0x100 + 0x200 * x)
 
+/*
+ * IP has reserved area between XM2MSC_DSTIMGBUF0 and
+ * XM2MSC_DSTIMGBUF1 registers of channel 4
+ */
+#define XM2MSC_RESERVED_AREA		0x600
+
 /* GPIO RESET MACROS */
 #define XM2MSC_RESET_ASSERT	(0x1)
 #define XM2MSC_RESET_DEASSERT	(0x0)
@@ -653,8 +659,10 @@ xm2msc_pr_screg(struct device *dev, const volatile void __iomem *base)
 }
 
 static void
-xm2msc_pr_chanreg(struct device *dev, const volatile void __iomem *base)
+xm2msc_pr_chanreg(struct device *dev, struct xm2msc_chan_ctx *chan)
 {
+	const void __iomem *base = chan->regs;
+
 	dev_dbg(dev, "WIN HIN INPIXELFMT INSTRIDE SRCB0L/H SRCB1L/H\n");
 	dev_dbg(dev, "%d   %d     %d       %d      0x%x/0x%x      0x%x/0x%x\n",
 		xm2msc_readreg(base + XM2MSC_WIDTHIN),
@@ -673,8 +681,14 @@ xm2msc_pr_chanreg(struct device *dev, const volatile void __iomem *base)
 		xm2msc_readreg(base + XM2MSC_OUTSTRIDE),
 		xm2msc_readreg(base + XM2MSC_DSTIMGBUF0),
 		xm2msc_readreg(base + XM2MSC_DSTIMGBUF0 + 4),
-		xm2msc_readreg(base + XM2MSC_DSTIMGBUF1),
-		xm2msc_readreg(base + XM2MSC_DSTIMGBUF1 + 4));
+		chan->num == 4 ?
+		xm2msc_readreg(base +
+			       XM2MSC_DSTIMGBUF1 + XM2MSC_RESERVED_AREA) :
+			xm2msc_readreg(base + XM2MSC_DSTIMGBUF1),
+		chan->num == 4 ?
+		xm2msc_readreg(base +
+			       XM2MSC_DSTIMGBUF1 + XM2MSC_RESERVED_AREA + 4) :
+			xm2msc_readreg(base + XM2MSC_DSTIMGBUF1 + 4));
 
 	dev_dbg(dev, "LINERATE PIXELRATE\n");
 	dev_dbg(dev, "0x%x     0x%x\n",
@@ -695,7 +709,7 @@ xm2msc_pr_allchanreg(struct xm2m_msc_dev *xm2msc)
 		chan_ctx = &xm2msc->xm2msc_chan[i];
 		dev_dbg(dev, "Regs val for channel %d\n", i);
 		dev_dbg(dev, "______________________________________________\n");
-		xm2msc_pr_chanreg(dev, chan_ctx->regs);
+		xm2msc_pr_chanreg(dev, chan_ctx);
 		dev_dbg(dev, "processed frames = %lu\n", chan_ctx->frames);
 		dev_dbg(dev, "______________________________________________\n");
 	}
@@ -909,12 +923,24 @@ static int xm2msc_set_bufaddr(struct xm2m_msc_dev *xm2msc)
 			xm2msc_write64reg(base + XM2MSC_SRCIMGBUF0, src_luma);
 			xm2msc_write64reg(base + XM2MSC_SRCIMGBUF1, src_croma);
 			xm2msc_write64reg(base + XM2MSC_DSTIMGBUF0, dst_luma);
-			xm2msc_write64reg(base + XM2MSC_DSTIMGBUF1, dst_croma);
+			if (chan_ctx->num == 4) /* TODO: To be fixed in HW */
+				xm2msc_write64reg(base + XM2MSC_DSTIMGBUF1 +
+						  XM2MSC_RESERVED_AREA,
+						  dst_croma);
+			else
+				xm2msc_write64reg(base + XM2MSC_DSTIMGBUF1,
+						  dst_croma);
 		} else {
 			xm2msc_writereg(base + XM2MSC_SRCIMGBUF0, src_luma);
 			xm2msc_writereg(base + XM2MSC_SRCIMGBUF1, src_croma);
 			xm2msc_writereg(base + XM2MSC_DSTIMGBUF0, dst_luma);
-			xm2msc_writereg(base + XM2MSC_DSTIMGBUF1, dst_croma);
+			if (chan_ctx->num == 4) /* TODO: To be fixed in HW */
+				xm2msc_writereg(base + XM2MSC_DSTIMGBUF1 +
+						XM2MSC_RESERVED_AREA,
+						dst_croma);
+			else
+				xm2msc_writereg(base + XM2MSC_DSTIMGBUF1,
+						dst_croma);
 		}
 	}
 	return 0;
@@ -1938,6 +1964,8 @@ static int xm2m_msc_probe(struct platform_device *pdev)
 		}
 		chan_ctx->xm2msc_dev = xm2msc;
 		chan_ctx->regs = xm2msc->regs + XM2MSC_CHAN_REGS_START(chan);
+		if (chan > 4) /* TODO: To be fixed in HW */
+			chan_ctx->regs += XM2MSC_RESERVED_AREA;
 		chan_ctx->num = chan;
 		chan_ctx->minor = vfd->minor;
 		xm2msc_pr_chanctx(chan_ctx, __func__);
