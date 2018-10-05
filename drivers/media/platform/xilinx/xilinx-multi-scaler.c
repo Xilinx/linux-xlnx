@@ -660,17 +660,6 @@ xm2msc_chk_chan_stream(struct xm2msc_chan_ctx *ctx, int type)
 	return ret;
 }
 
-static int xm2msc_chk_all_chan_stream(struct xm2m_msc_dev *xm2msc)
-{
-	int ret;
-
-	mutex_lock(&xm2msc->mutex);
-	ret = (ffz(xm2msc->out_streamed_chan) >= xm2msc->max_chan) &&
-		(ffz(xm2msc->cap_streamed_chan) >= xm2msc->max_chan);
-	mutex_unlock(&xm2msc->mutex);
-	return ret;
-}
-
 static void xm2msc_set_fmt(struct xm2m_msc_dev *xm2msc, u32 index)
 {
 	xm2msc_setbit(index, &xm2msc->supported_fmt);
@@ -693,10 +682,6 @@ static void xm2msc_reset(struct xm2m_msc_dev *xm2msc)
 static int xm2msc_job_ready(void *priv)
 {
 	struct xm2msc_chan_ctx *chan_ctx = priv;
-	struct xm2m_msc_dev *xm2msc = chan_ctx->xm2msc_dev;
-
-	if (!xm2msc_chk_all_chan_stream(xm2msc))
-		return 0;
 
 	if ((v4l2_m2m_num_src_bufs_ready(chan_ctx->m2m_ctx) > 0) &&
 	    (v4l2_m2m_num_dst_bufs_ready(chan_ctx->m2m_ctx) > 0))
@@ -800,12 +785,6 @@ static void xm2msc_device_run(void *priv)
 	struct xm2m_msc_dev *xm2msc = chan_ctx->xm2msc_dev;
 	void __iomem *base = xm2msc->regs;
 	int ret;
-
-	if (!xm2msc_chk_all_chan_stream(xm2msc)) {
-		xm2msc_pr_status(xm2msc, __func__);
-		dev_dbg(xm2msc->dev, "not all Channels yet started\n");
-		return;
-	}
 
 	/* TODO program to number of opened chan*/
 	xm2msc_writereg(base + XM2MSC_NUM_OUTS, xm2msc->max_chan);
