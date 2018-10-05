@@ -1065,8 +1065,13 @@ static int xm2msc_streamoff(struct file *file, void *fh,
 			    enum v4l2_buf_type type)
 {
 	struct xm2msc_chan_ctx *chan_ctx = fh_to_chanctx(fh);
+	int ret;
 
-	return v4l2_m2m_streamoff(file, chan_ctx->m2m_ctx, type);
+	ret = v4l2_m2m_streamoff(file, chan_ctx->m2m_ctx, type);
+
+	/* Check if any channel is still running */
+	xm2msc_device_run(chan_ctx);
+	return ret;
 }
 
 static int xm2msc_qbuf(struct file *file, void *fh, struct v4l2_buffer *buf)
