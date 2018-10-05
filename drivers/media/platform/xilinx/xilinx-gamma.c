@@ -28,6 +28,8 @@
 #define XGAMMA_MIN_WIDTH	(64)
 #define XGAMMA_MAX_WIDTH	(8192)
 #define XGAMMA_DEF_WIDTH	(1280)
+#define XGAMMA_DEF_MAX_HEIGHT	(2160)
+#define XGAMMA_DEF_MAX_WIDTH	(3840)
 
 #define XGAMMA_AP_CTRL			(0x0000)
 #define XGAMMA_GIE			(0x0004)
@@ -358,7 +360,7 @@ static int xg_parse_of(struct xgamma_dev *xg)
 
 	rval = of_property_read_u32(node, "xlnx,max-height", &xg->max_height);
 	if (rval < 0) {
-		xg->max_height = XGAMMA_MAX_HEIGHT;
+		xg->max_height = XGAMMA_DEF_MAX_HEIGHT;
 	} else if (xg->max_height > XGAMMA_MAX_HEIGHT ||
 		   xg->max_height < XGAMMA_MIN_HEIGHT) {
 		dev_err(dev, "Invalid height in dt");
@@ -367,7 +369,7 @@ static int xg_parse_of(struct xgamma_dev *xg)
 
 	rval = of_property_read_u32(node, "xlnx,max-width", &xg->max_width);
 	if (rval < 0) {
-		xg->max_width = XGAMMA_MAX_WIDTH;
+		xg->max_width = XGAMMA_DEF_MAX_WIDTH;
 	} else if (xg->max_width > XGAMMA_MAX_WIDTH ||
 		   xg->max_width < XGAMMA_MIN_WIDTH) {
 		dev_err(dev, "Invalid width in dt");
