@@ -1121,7 +1121,9 @@ vidioc_s_fmt(struct xm2msc_chan_ctx *chan_ctx, struct v4l2_format *f)
 
 	for (i = 0; i < q_data->nplanes; i++) {
 		q_data->bytesperline[i] = q_data->stride;
+		pix->plane_fmt[i].bytesperline = q_data->bytesperline[i];
 		q_data->sizeimage[i] = q_data->stride * q_data->height;
+		pix->plane_fmt[i].sizeimage = q_data->sizeimage[i];
 	}
 
 	xm2msc_pr_q(chan_ctx->xm2msc_dev->dev, q_data,
