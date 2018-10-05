@@ -1264,7 +1264,7 @@ static int xm2msc_enum_fmt_vid_out(struct file *file, void *fh,
 {
 	struct xm2msc_chan_ctx *chan_ctx = fh_to_chanctx(fh);
 
-	if (f->type != V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)
+	if (f->type != V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE)
 		return -EINVAL;
 
 	return enum_fmt(chan_ctx->xm2msc_dev, f);
