@@ -268,6 +268,7 @@ struct xm2msc_q_data {
  * @minor: Minor number of the video device
  * @status: channel status, CHAN_ATTACHED or CHAN_OPENED
  * @taps: number of hwtaps required for channel
+ * @frames: number of frames processed
  * @vfd: V4L2 device
  * @fh: v4l2 file handle
  * @m2m_dev: m2m device
@@ -281,6 +282,7 @@ struct xm2msc_chan_ctx {
 	u32 minor;
 	u8 status;
 	u32 taps;
+	unsigned long frames;
 
 	struct video_device vfd;
 	struct v4l2_fh fh;
@@ -694,6 +696,7 @@ xm2msc_pr_allchanreg(struct xm2m_msc_dev *xm2msc)
 		dev_dbg(dev, "Regs val for channel %d\n", i);
 		dev_dbg(dev, "______________________________________________\n");
 		xm2msc_pr_chanreg(dev, chan_ctx->regs);
+		dev_dbg(dev, "processed frames = %lu\n", chan_ctx->frames);
 		dev_dbg(dev, "______________________________________________\n");
 	}
 }
@@ -955,6 +958,7 @@ static void xm2msc_job_done(struct xm2m_msc_dev *xm2msc)
 			v4l2_m2m_buf_done(dst_vb, VB2_BUF_STATE_DONE);
 			spin_unlock_irqrestore(&xm2msc->lock, flags);
 		}
+		chan_ctx->frames++;
 	}
 }
 
@@ -1636,6 +1640,7 @@ static int xm2msc_open(struct file *file)
 	chan_ctx->fh.m2m_ctx = chan_ctx->m2m_ctx;
 	chan_ctx->status |= CHAN_OPENED;
 	chan_ctx->xm2msc_dev = xm2msc;
+	chan_ctx->frames = 0;
 	xm2msc_set_chan(chan_ctx, true);
 
 	v4l2_info(&xm2msc->v4l2_dev, "Channel %d instance created\n", chan);
