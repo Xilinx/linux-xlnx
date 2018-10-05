@@ -32,6 +32,8 @@
 #define XDEMOSAIC_MIN_WIDTH	(64)
 #define XDEMOSAIC_MAX_WIDTH	(8192)
 #define XDEMOSAIC_DEF_WIDTH	(1280)
+#define XDEMOSAIC_DEF_MAX_WIDTH		(3840)
+#define XDEMOSAIC_DEF_MAX_HEIGHT	(2160)
 
 #define XDEMOSAIC_RESET_DEASSERT	(0)
 #define XDEMOSAIC_RESET_ASSERT		(1)
@@ -249,7 +251,7 @@ static int xdmsc_parse_of(struct xdmsc_dev *xdmsc)
 	rval = of_property_read_u32(node, "xlnx,max-height",
 				    &xdmsc->max_height);
 	if (rval < 0) {
-		xdmsc->max_height = XDEMOSAIC_MAX_HEIGHT;
+		xdmsc->max_height = XDEMOSAIC_DEF_MAX_HEIGHT;
 	} else if (xdmsc->max_height > XDEMOSAIC_MAX_HEIGHT ||
 		 xdmsc->max_height < XDEMOSAIC_MIN_HEIGHT) {
 		dev_err(dev, "Invalid height in dt");
@@ -259,7 +261,7 @@ static int xdmsc_parse_of(struct xdmsc_dev *xdmsc)
 	rval = of_property_read_u32(node, "xlnx,max-width",
 				    &xdmsc->max_width);
 	if (rval < 0) {
-		xdmsc->max_width = XDEMOSAIC_MAX_WIDTH;
+		xdmsc->max_width = XDEMOSAIC_DEF_MAX_WIDTH;
 	} else if (xdmsc->max_width > XDEMOSAIC_MAX_WIDTH ||
 		 xdmsc->max_width < XDEMOSAIC_MIN_WIDTH) {
 		dev_err(dev, "Invalid width in dt");
