@@ -807,6 +807,24 @@ static int xm2msc_job_ready(void *priv)
 	return 0;
 }
 
+static bool xm2msc_alljob_ready(struct xm2m_msc_dev *xm2msc)
+{
+	struct xm2msc_chan_ctx *chan_ctx;
+	unsigned int chan;
+
+	for (chan = 0; chan < xm2msc->running_chan; chan++) {
+		chan_ctx = &xm2msc->xm2msc_chan[chan];
+
+		if (!xm2msc_job_ready((void *)chan_ctx)) {
+			dev_info(xm2msc->dev, "chan %d not ready\n",
+				 chan_ctx->num);
+			return false;
+		}
+	}
+
+	return true;
+}
+
 static void xm2msc_chan_abort_bufs(struct xm2msc_chan_ctx *chan_ctx)
 {
 	struct xm2m_msc_dev *xm2msc = chan_ctx->xm2msc_dev;
@@ -852,6 +870,9 @@ static int xm2msc_set_bufaddr(struct xm2m_msc_dev *xm2msc)
 	dma_addr_t src_luma, dst_luma;
 	dma_addr_t src_croma, dst_croma;
 
+	if (!xm2msc_alljob_ready(xm2msc))
+		return -EINVAL;
+
 	for (chan = 0; chan < xm2msc->running_chan; chan++) {
 		chan_ctx = &xm2msc->xm2msc_chan[chan];
 		base = chan_ctx->regs;
@@ -860,9 +881,8 @@ static int xm2msc_set_bufaddr(struct xm2m_msc_dev *xm2msc)
 		dst_vb = v4l2_m2m_next_dst_buf(chan_ctx->m2m_ctx);
 
 		if (!src_vb || !dst_vb) {
-			v4l2_err(&xm2msc->v4l2_dev, "buffer not found ");
-			v4l2_err(&xm2msc->v4l2_dev, "src_vb = 0x%p, dst_vb = 0x%p\n",
-				 src_vb, dst_vb);
+			v4l2_err(&xm2msc->v4l2_dev, "buffer not found chan = %d\n",
+				 chan_ctx->num);
 			return -EINVAL;
 		}
 
@@ -973,7 +993,16 @@ static void xm2msc_device_run(void *priv)
 
 	ret = xm2msc_set_bufaddr(xm2msc);
 	if (ret) {
-		v4l2_err(&xm2msc->v4l2_dev, "Device can't be run\n");
+		/*
+		 * All channel does not have buffer
+		 * Currently we do not handle the removal of any Intermediate
+		 * channel while streaming is going on
+		 */
+		if (xm2msc->out_streamed_chan || xm2msc->cap_streamed_chan)
+			dev_err(xm2msc->dev,
+				"Buffer not available, streaming chan 0x%x\n",
+				xm2msc->cap_streamed_chan);
+
 		xm2msc->device_busy = false;
 		return;
 	}
@@ -994,7 +1023,7 @@ static void xm2msc_device_run(void *priv)
 
 	xm2msc->device_busy = false;
 
-	if (xm2msc_job_ready(xm2msc->xm2msc_chan))
+	if (xm2msc_alljob_ready(xm2msc))
 		xm2msc_device_run(xm2msc->xm2msc_chan);
 
 	xm2msc_job_finish(xm2msc);
