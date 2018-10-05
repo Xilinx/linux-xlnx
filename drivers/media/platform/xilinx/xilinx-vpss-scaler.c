@@ -28,6 +28,8 @@
 #define XSCALER_MAX_WIDTH		(8192)
 #define XSCALER_MIN_HEIGHT		(64)
 #define XSCALER_MAX_HEIGHT		(4320)
+#define XSCALER_DEF_MAX_WIDTH		(3840)
+#define XSCALER_DEF_MAX_HEIGHT		(2160)
 #define XSCALER_MAX_PHASES		(64)
 
 /* Modify to defaults incase it is not configured from application */
@@ -1411,15 +1413,16 @@ static int xscaler_enum_frame_size(struct v4l2_subdev *subdev,
 				   struct v4l2_subdev_frame_size_enum *fse)
 {
 	struct v4l2_mbus_framefmt *format;
+	struct xscaler_device *xscaler = to_scaler(subdev);
 
 	format = v4l2_subdev_get_try_format(subdev, cfg, fse->pad);
 	if (fse->index || fse->code != format->code)
 		return -EINVAL;
 
 	fse->min_width = XSCALER_MIN_WIDTH;
-	fse->max_width = XSCALER_MAX_WIDTH;
+	fse->max_width = xscaler->max_pixels;
 	fse->min_height = XSCALER_MIN_HEIGHT;
-	fse->max_height = XSCALER_MAX_HEIGHT;
+	fse->max_height = xscaler->max_lines;
 
 	return 0;
 }
@@ -1542,7 +1545,7 @@ static int xscaler_parse_of(struct xscaler_device *xscaler)
 	ret = of_property_read_u32(node, "xlnx,max-height",
 				   &xscaler->max_lines);
 	if (ret < 0) {
-		xscaler->max_lines = XSCALER_MAX_HEIGHT;
+		xscaler->max_lines = XSCALER_DEF_MAX_HEIGHT;
 	} else if (xscaler->max_lines > XSCALER_MAX_HEIGHT ||
 		   xscaler->max_lines < XSCALER_MIN_HEIGHT) {
 		dev_err(dev, "Invalid height in dt");
@@ -1552,7 +1555,7 @@ static int xscaler_parse_of(struct xscaler_device *xscaler)
 	ret = of_property_read_u32(node, "xlnx,max-width",
 				   &xscaler->max_pixels);
 	if (ret < 0) {
-		xscaler->max_pixels = XSCALER_MAX_WIDTH;
+		xscaler->max_pixels = XSCALER_DEF_MAX_WIDTH;
 	} else if (xscaler->max_pixels > XSCALER_MAX_WIDTH ||
 		   xscaler->max_pixels < XSCALER_MIN_WIDTH) {
 		dev_err(dev, "Invalid width in dt");
