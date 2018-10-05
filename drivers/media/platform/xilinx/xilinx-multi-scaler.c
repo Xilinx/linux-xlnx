@@ -750,9 +750,9 @@ xm2msc_set_chan_stream(struct xm2msc_chan_ctx *ctx, bool state, int type)
 	u32 *ptr;
 
 	if (type == XM2MSC_CHAN_OUT)
-		ptr = &ctx->xm2msc_dev->cap_streamed_chan;
-	else
 		ptr = &ctx->xm2msc_dev->out_streamed_chan;
+	else
+		ptr = &ctx->xm2msc_dev->cap_streamed_chan;
 
 	spin_lock(&ctx->xm2msc_dev->lock);
 	if (state)
@@ -770,9 +770,9 @@ xm2msc_chk_chan_stream(struct xm2msc_chan_ctx *ctx, int type)
 	int ret;
 
 	if (type == XM2MSC_CHAN_OUT)
-		ptr = &ctx->xm2msc_dev->cap_streamed_chan;
-	else
 		ptr = &ctx->xm2msc_dev->out_streamed_chan;
+	else
+		ptr = &ctx->xm2msc_dev->cap_streamed_chan;
 
 	mutex_lock(&ctx->xm2msc_dev->mutex);
 	ret = xm2msc_testbit(ctx->num, ptr);
