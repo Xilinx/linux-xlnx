@@ -305,6 +305,9 @@ struct xm2msc_chan_ctx {
  * @out_streamed_chan: bitmap for all out streamed channel
  * @cap_streamed_chan: bitmap for all capture streamed channel
  * @running_chan: currently running channels
+ * @device_busy: HW device is busy or not
+ * @isr_wait: flag to follow the ISR complete or not
+ * @isr_finished: Wait queue used to wait for IP to complete processing
  * @v4l2_dev: main struct to for V4L2 device drivers
  * @dev_mutex: lock for V4L2 device
  * @mutex: lock for channel ctx
@@ -328,6 +331,9 @@ struct xm2m_msc_dev {
 	u32 out_streamed_chan;
 	u32 cap_streamed_chan;
 	u32 running_chan;
+	bool device_busy;
+	bool isr_wait;
+	wait_queue_head_t isr_finished;
 
 	struct v4l2_device v4l2_dev;
 
@@ -941,6 +947,12 @@ static void xm2msc_device_run(void *priv)
 	int ret;
 
 	spin_lock_irqsave(&xm2msc->lock, flags);
+	if (xm2msc->device_busy) {
+		spin_unlock_irqrestore(&xm2msc->lock, flags);
+		return;
+	}
+	xm2msc->device_busy = true;
+
 	if (xm2msc->running_chan != NUM_STREAM(xm2msc)) {
 		dev_dbg(xm2msc->dev, "Running chan was %d\n",
 			xm2msc->running_chan);
@@ -954,12 +966,15 @@ static void xm2msc_device_run(void *priv)
 	spin_unlock_irqrestore(&xm2msc->lock, flags);
 
 	dev_dbg(xm2msc->dev, "Running chan = %d\n", xm2msc->running_chan);
-	if (xm2msc->running_chan == 0)
+	if (!xm2msc->running_chan) {
+		xm2msc->device_busy = false;
 		return;
+	}
 
 	ret = xm2msc_set_bufaddr(xm2msc);
 	if (ret) {
 		v4l2_err(&xm2msc->v4l2_dev, "Device can't be run\n");
+		xm2msc->device_busy = false;
 		return;
 	}
 
@@ -971,6 +986,18 @@ static void xm2msc_device_run(void *priv)
 	xm2msc_pr_allchanreg(xm2msc);
 
 	xm2msc_start(xm2msc);
+
+	xm2msc->isr_wait = true;
+	wait_event(xm2msc->isr_finished, !xm2msc->isr_wait);
+
+	xm2msc_job_done(xm2msc);
+
+	xm2msc->device_busy = false;
+
+	if (xm2msc_job_ready(xm2msc->xm2msc_chan))
+		xm2msc_device_run(xm2msc->xm2msc_chan);
+
+	xm2msc_job_finish(xm2msc);
 }
 
 static irqreturn_t xm2msc_isr(int irq, void *data)
@@ -987,15 +1014,9 @@ static irqreturn_t xm2msc_isr(int irq, void *data)
 
 	xm2msc_stop(xm2msc);
 
-	xm2msc_job_done(xm2msc);
+	xm2msc->isr_wait = false;
+	wake_up(&xm2msc->isr_finished);
 
-	if (xm2msc_job_ready(xm2msc->xm2msc_chan)) {
-		xm2msc_device_run(xm2msc->xm2msc_chan);
-		goto handled;
-	}
-
-	xm2msc_job_finish(xm2msc);
-handled:
 	return IRQ_HANDLED;
 }
 
@@ -1884,6 +1905,7 @@ static int xm2m_msc_probe(struct platform_device *pdev)
 
 	mutex_init(&xm2msc->dev_mutex);
 	mutex_init(&xm2msc->mutex);
+	init_waitqueue_head(&xm2msc->isr_finished);
 
 	ret = devm_request_irq(&pdev->dev, xm2msc->irq,
 			       xm2msc_isr, IRQF_SHARED,
