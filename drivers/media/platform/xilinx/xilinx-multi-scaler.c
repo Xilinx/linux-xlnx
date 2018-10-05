@@ -99,25 +99,22 @@
 
 /* Xilinx Video Specific Color/Pixel Formats */
 enum xm2msc_pix_fmt {
-	XILINX_M2MSC_FMT_RGBX8 = 10,
-	XILINX_M2MSC_FMT_YUVX8,
-	XILINX_M2MSC_FMT_YUYV8,
-	XILINX_M2MSC_FMT_RGBA8,
-	XILINX_M2MSC_FMT_YUVA8,
-	XILINX_M2MSC_FMT_RGBX10,
-	XILINX_M2MSC_FMT_YUVX10,
-	XILINX_M2MSC_FMT_Y_UV8 = 18,
-	XILINX_M2MSC_FMT_Y_UV8_420,
-	XILINX_M2MSC_FMT_RGB8,
-	XILINX_M2MSC_FMT_YUV8,
-	XILINX_M2MSC_FMT_Y_UV10,
-	XILINX_M2MSC_FMT_Y_UV10_420,
-	XILINX_M2MSC_FMT_Y8,
-	XILINX_M2MSC_FMT_Y10,
-	XILINX_M2MSC_FMT_BGRA8,
-	XILINX_M2MSC_FMT_BGRX8,
-	XILINX_M2MSC_FMT_UYVY8,
-	XILINX_M2MSC_FMT_BGR8,
+	XILINX_M2MSC_FMT_RGBX8		= 10,
+	XILINX_M2MSC_FMT_YUVX8		= 11,
+	XILINX_M2MSC_FMT_YUYV8		= 12,
+	XILINX_M2MSC_FMT_RGBX10		= 15,
+	XILINX_M2MSC_FMT_YUVX10		= 16,
+	XILINX_M2MSC_FMT_Y_UV8		= 18,
+	XILINX_M2MSC_FMT_Y_UV8_420	= 19,
+	XILINX_M2MSC_FMT_RGB8		= 20,
+	XILINX_M2MSC_FMT_YUV8		= 21,
+	XILINX_M2MSC_FMT_Y_UV10		= 22,
+	XILINX_M2MSC_FMT_Y_UV10_420	= 23,
+	XILINX_M2MSC_FMT_Y8		= 24,
+	XILINX_M2MSC_FMT_Y10		= 25,
+	XILINX_M2MSC_FMT_BGRX8		= 27,
+	XILINX_M2MSC_FMT_UYVY8		= 28,
+	XILINX_M2MSC_FMT_BGR8		= 29,
 };
 
 /**
@@ -154,18 +151,6 @@ static const struct xm2msc_fmt formats[] = {
 		.num_planes = 1,
 	},
 	{
-		.name = "bgr8888",
-		.fourcc = 0,
-		.xm2msc_fmt = XILINX_M2MSC_FMT_RGBA8,
-		.num_planes = 1,
-	},
-	{
-		.name = "avuy8888",
-		.fourcc = 0,
-		.xm2msc_fmt = XILINX_M2MSC_FMT_YUVA8,
-		.num_planes = 1,
-	},
-	{
 		.name = "xbgr2101010",
 		.fourcc = V4L2_PIX_FMT_XBGR30,
 		.xm2msc_fmt = XILINX_M2MSC_FMT_RGBX10,
@@ -179,20 +164,8 @@ static const struct xm2msc_fmt formats[] = {
 	},
 	{
 		.name = "nv16",
-		.fourcc = V4L2_PIX_FMT_NV16M,
-		.xm2msc_fmt = XILINX_M2MSC_FMT_Y_UV8,
-		.num_planes = 2,
-	},
-	{
-		.name = "nv16",
 		.fourcc = V4L2_PIX_FMT_NV16,
 		.xm2msc_fmt = XILINX_M2MSC_FMT_Y_UV8,
-		.num_planes = 2,
-	},
-	{
-		.name = "nv12",
-		.fourcc = V4L2_PIX_FMT_NV12M,
-		.xm2msc_fmt = XILINX_M2MSC_FMT_Y_UV8_420,
 		.num_planes = 2,
 	},
 	{
@@ -215,20 +188,8 @@ static const struct xm2msc_fmt formats[] = {
 	},
 	{
 		.name = "xv20",
-		.fourcc = V4L2_PIX_FMT_XV20M,
-		.xm2msc_fmt = XILINX_M2MSC_FMT_Y_UV10,
-		.num_planes = 2,
-	},
-	{
-		.name = "xv20",
 		.fourcc = V4L2_PIX_FMT_XV20,
 		.xm2msc_fmt = XILINX_M2MSC_FMT_Y_UV10,
-		.num_planes = 2,
-	},
-	{
-		.name = "xv15",
-		.fourcc = V4L2_PIX_FMT_XV15M,
-		.xm2msc_fmt = XILINX_M2MSC_FMT_Y_UV10_420,
 		.num_planes = 2,
 	},
 	{
@@ -247,12 +208,6 @@ static const struct xm2msc_fmt formats[] = {
 		.name = "y10",
 		.fourcc = V4L2_PIX_FMT_Y10,
 		.xm2msc_fmt = XILINX_M2MSC_FMT_Y10,
-		.num_planes = 1,
-	},
-	{
-		.name = "rgb8888",
-		.fourcc = 0,
-		.xm2msc_fmt = XILINX_M2MSC_FMT_BGRA8,
 		.num_planes = 1,
 	},
 	{
@@ -1064,11 +1019,8 @@ xm2msc_cal_stride(unsigned int width, enum xm2msc_pix_fmt xfmt)
 	switch (xfmt) {
 	case XILINX_M2MSC_FMT_RGBX8:
 	case XILINX_M2MSC_FMT_YUVX8:
-	case XILINX_M2MSC_FMT_RGBA8:
-	case XILINX_M2MSC_FMT_YUVA8:
 	case XILINX_M2MSC_FMT_RGBX10:
 	case XILINX_M2MSC_FMT_YUVX10:
-	case XILINX_M2MSC_FMT_BGRA8:
 	case XILINX_M2MSC_FMT_BGRX8:
 		stride = width * 4;
 		break;
