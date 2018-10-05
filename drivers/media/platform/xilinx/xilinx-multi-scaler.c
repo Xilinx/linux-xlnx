@@ -292,9 +292,7 @@ struct xm2msc_chan_ctx {
  * @irq: interrupt number
  * @max_chan: maximum number of Scaling Channels
  * @max_ht: maximum number of rows in a plane
- * @min_row: minimum number of rows in a plane
  * @max_wd: maximum number of column in a plane
- * @min_col: minimum number od column in a plane
  * @supported_fmt: bitmap for all supported fmts by HW
  * @dma_addr_size: Size of dma address pointer in IP (either 32 or 64)
  * @aborting: abort after next irq
@@ -316,9 +314,7 @@ struct xm2m_msc_dev {
 	int irq;
 	u32 max_chan;
 	u32 max_ht;
-	u32 min_row;
 	u32 max_wd;
-	u32 min_col;
 	u32 supported_fmt;
 	u32 dma_addr_size;
 	struct gpio_desc *rst_gpio;
@@ -1068,8 +1064,8 @@ vidioc_try_fmt(struct xm2msc_chan_ctx *chan_ctx, struct v4l2_format *f)
 	struct vb2_queue *vq;
 	int index;
 
-	if (pix->width < xm2msc->min_col || pix->width > xm2msc->max_wd ||
-	    pix->height < xm2msc->min_row || pix->height > xm2msc->max_ht) {
+	if (pix->width < XM2MSC_MIN_WIDTH || pix->width > xm2msc->max_wd ||
+	    pix->height < XM2MSC_MIN_HEIGHT || pix->height > xm2msc->max_ht) {
 		v4l2_err(&xm2msc->v4l2_dev,
 			 "Wrong input parameters %d, wxh: %dx%d.\n",
 			 f->type, f->fmt.pix.width, f->fmt.pix.height);
