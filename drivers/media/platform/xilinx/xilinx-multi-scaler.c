@@ -1438,9 +1438,9 @@ static void xm2msc_stop_streaming(struct vb2_queue *q)
 	xm2msc_return_all_buffers(chan_ctx, q, VB2_BUF_STATE_ERROR);
 
 	if (V4L2_TYPE_IS_OUTPUT(q->type))
-		xm2msc_set_chan_stream(chan_ctx, true, XM2MSC_CHAN_OUT);
+		xm2msc_set_chan_stream(chan_ctx, false, XM2MSC_CHAN_OUT);
 	else
-		xm2msc_set_chan_stream(chan_ctx, true, XM2MSC_CHAN_CAP);
+		xm2msc_set_chan_stream(chan_ctx, false, XM2MSC_CHAN_CAP);
 }
 
 static const struct vb2_ops xm2msc_qops = {
