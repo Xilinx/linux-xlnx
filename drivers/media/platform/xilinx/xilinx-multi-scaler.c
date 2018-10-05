@@ -295,7 +295,6 @@ struct xm2msc_chan_ctx {
  * @max_wd: maximum number of column in a plane
  * @supported_fmt: bitmap for all supported fmts by HW
  * @dma_addr_size: Size of dma address pointer in IP (either 32 or 64)
- * @aborting: abort after next irq
  * @rst_gpio: reset gpio handler
  * @opened_chan: bitmap for all open channel
  * @out_streamed_chan: bitmap for all out streamed channel
@@ -322,7 +321,6 @@ struct xm2m_msc_dev {
 	u32 opened_chan;
 	u32 out_streamed_chan;
 	u32 cap_streamed_chan;
-	bool aborting;
 
 	struct v4l2_device v4l2_dev;
 
@@ -497,7 +495,6 @@ xm2msc_pr_status(struct xm2m_msc_dev *xm2msc,
 	dev_dbg(dev, "0x%x           0x%x               0x%x\n",
 		xm2msc->opened_chan, xm2msc->out_streamed_chan,
 		xm2msc->cap_streamed_chan);
-	dev_dbg(dev, "aborting = %d\n", xm2msc->aborting);
 	dev_dbg(dev, "\n\n");
 }
 
@@ -707,13 +704,40 @@ static int xm2msc_job_ready(void *priv)
 	return 0;
 }
 
+static void xm2msc_chan_abort_bufs(struct xm2msc_chan_ctx *chan_ctx)
+{
+	struct xm2m_msc_dev *xm2msc = chan_ctx->xm2msc_dev;
+	struct vb2_v4l2_buffer *dst_vb, *src_vb;
+
+	spin_lock(&xm2msc->lock);
+	dev_dbg(xm2msc->dev, "aborting all buffers\n");
+
+	while (v4l2_m2m_num_src_bufs_ready(chan_ctx->m2m_ctx) > 0) {
+		src_vb = v4l2_m2m_src_buf_remove(chan_ctx->m2m_ctx);
+		v4l2_m2m_buf_done(src_vb, VB2_BUF_STATE_ERROR);
+	}
+
+	while (v4l2_m2m_num_dst_bufs_ready(chan_ctx->m2m_ctx) > 0) {
+		dst_vb = v4l2_m2m_dst_buf_remove(chan_ctx->m2m_ctx);
+		v4l2_m2m_buf_done(dst_vb, VB2_BUF_STATE_ERROR);
+	}
+
+	v4l2_m2m_job_finish(chan_ctx->m2m_dev, chan_ctx->m2m_ctx);
+	spin_unlock(&xm2msc->lock);
+}
+
 static void xm2msc_job_abort(void *priv)
 {
 	struct xm2msc_chan_ctx *chan_ctx = priv;
-	struct xm2m_msc_dev *xm2msc = chan_ctx->xm2msc_dev;
 
-	/* Handle this in next ISR */
-	xm2msc->aborting = true;
+	xm2msc_chan_abort_bufs(chan_ctx);
+
+	/*
+	 * Stream off the channel as job_abort may not always
+	 * be called after streamoff
+	 */
+	xm2msc_set_chan_stream(chan_ctx, false, XM2MSC_CHAN_OUT);
+	xm2msc_set_chan_stream(chan_ctx, false, XM2MSC_CHAN_CAP);
 }
 
 static int xm2msc_set_bufaddr(struct xm2m_msc_dev *xm2msc)
@@ -802,33 +826,6 @@ static void xm2msc_device_run(void *priv)
 	xm2msc_start(xm2msc);
 }
 
-static void xm2msc_alljob_abort(struct xm2m_msc_dev *xm2msc)
-{
-	unsigned int chan;
-	unsigned long flags;
-
-	for (chan = 0; chan < xm2msc->max_chan; chan++) {
-		struct xm2msc_chan_ctx *chan_ctx;
-
-		chan_ctx = &xm2msc->xm2msc_chan[chan];
-
-		do {
-			struct vb2_v4l2_buffer *src_vb, *dst_vb;
-
-			src_vb = v4l2_m2m_src_buf_remove(chan_ctx->m2m_ctx);
-			dst_vb = v4l2_m2m_dst_buf_remove(chan_ctx->m2m_ctx);
-
-			if (!(src_vb && dst_vb))
-				break;
-
-			spin_lock_irqsave(&xm2msc->lock, flags);
-			v4l2_m2m_buf_done(src_vb, VB2_BUF_STATE_ERROR);
-			v4l2_m2m_buf_done(dst_vb, VB2_BUF_STATE_ERROR);
-			spin_unlock_irqrestore(&xm2msc->lock, flags);
-		} while (1);
-	}
-}
-
 static void xm2msc_job_finish(struct xm2m_msc_dev *xm2msc)
 {
 	unsigned int chan;
@@ -886,18 +883,11 @@ static irqreturn_t xm2msc_isr(int irq, void *data)
 
 	xm2msc_job_done(xm2msc);
 
-	if (xm2msc->aborting) {
-		xm2msc_alljob_abort(xm2msc);
-		xm2msc->aborting = false;
-		goto finished;
-	}
-
 	if (xm2msc_job_ready(xm2msc->xm2msc_chan)) {
 		xm2msc_device_run(xm2msc->xm2msc_chan);
 		goto handled;
 	}
 
-finished:
 	xm2msc_job_finish(xm2msc);
 handled:
 	return IRQ_HANDLED;
