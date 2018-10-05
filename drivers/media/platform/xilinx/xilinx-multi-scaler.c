@@ -1065,12 +1065,23 @@ vidioc_try_fmt(struct xm2msc_chan_ctx *chan_ctx, struct v4l2_format *f)
 	int index;
 
 	if (pix->width < XM2MSC_MIN_WIDTH || pix->width > xm2msc->max_wd ||
-	    pix->height < XM2MSC_MIN_HEIGHT || pix->height > xm2msc->max_ht) {
-		v4l2_err(&xm2msc->v4l2_dev,
-			 "Wrong input parameters %d, wxh: %dx%d.\n",
-			 f->type, f->fmt.pix.width, f->fmt.pix.height);
-		return -EINVAL;
-	}
+	    pix->height < XM2MSC_MIN_HEIGHT || pix->height > xm2msc->max_ht)
+		dev_dbg(xm2msc->dev,
+			"Wrong input parameters %d, wxh: %dx%d.\n",
+			f->type, f->fmt.pix.width, f->fmt.pix.height);
+	/*
+	 * V4L2 specification suggests the driver corrects the
+	 * format struct if any of the dimensions is unsupported
+	 */
+	if (pix->height < XM2MSC_MIN_HEIGHT)
+		pix->height = XM2MSC_MIN_HEIGHT;
+	else if (pix->height > xm2msc->max_ht)
+		pix->height = xm2msc->max_ht;
+
+	if (pix->width < XM2MSC_MIN_WIDTH)
+		pix->width = XM2MSC_MIN_WIDTH;
+	else if (pix->width > xm2msc->max_wd)
+		pix->width = xm2msc->max_wd;
 
 	vq = v4l2_m2m_get_vq(chan_ctx->m2m_ctx, f->type);
 	if (!vq)
