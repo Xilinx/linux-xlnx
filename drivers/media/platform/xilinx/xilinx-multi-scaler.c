@@ -351,6 +351,54 @@ static inline void xm2msc_writereg(volatile void __iomem *addr, u32 value)
 	iowrite32(value, addr);
 }
 
+static struct xm2msc_q_data *get_q_data(struct xm2msc_chan_ctx *chan_ctx,
+					enum v4l2_buf_type type)
+{
+	switch (type) {
+	case V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE:
+	case V4L2_BUF_TYPE_VIDEO_OUTPUT:
+		return &chan_ctx->q_data[XM2MSC_CHAN_OUT];
+	case V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE:
+	case V4L2_BUF_TYPE_VIDEO_CAPTURE:
+		return &chan_ctx->q_data[XM2MSC_CHAN_CAP];
+	default:
+		v4l2_err(&chan_ctx->xm2msc_dev->v4l2_dev,
+			 "Not supported Q type %d\n", type);
+	}
+	return NULL;
+}
+
+static u32 find_format_index(struct v4l2_format *f)
+{
+	const struct xm2msc_fmt *fmt;
+	unsigned int i;
+
+	for (i = 0; i < ARRAY_SIZE(formats); i++) {
+		fmt = &formats[i];
+		if (fmt->fourcc == f->fmt.pix_mp.pixelformat)
+			break;
+	}
+
+	return i;
+}
+
+static const struct xm2msc_fmt *find_format(struct v4l2_format *f)
+{
+	const struct xm2msc_fmt *fmt;
+	unsigned int i;
+
+	for (i = 0; i < ARRAY_SIZE(formats); i++) {
+		fmt = &formats[i];
+		if (fmt->fourcc == f->fmt.pix_mp.pixelformat)
+			break;
+	}
+
+	if (i == ARRAY_SIZE(formats))
+		return NULL;
+
+	return &formats[i];
+}
+
 static void
 xv_hscaler_load_ext_coeff(struct xm2m_msc_dev *xm2msc,
 			  const short *coeff, u32 ntaps)
@@ -451,6 +499,46 @@ static void xm2mvsc_initialize_coeff_banks(struct xm2msc_chan_ctx *chan_ctx)
 	xv_vscaler_load_ext_coeff(xm2msc, &xvsc_coeff_taps6[0][0],
 				  XSCALER_TAPS_6);
 	xv_vscaler_set_coeff(chan_ctx, XM2MVSC_VFLTCOEFF(chan_ctx->num));
+}
+
+static void xm2msc_set_chan_params(struct xm2msc_chan_ctx *chan_ctx,
+				   enum v4l2_buf_type type)
+{
+	struct xm2msc_q_data *q_data = get_q_data(chan_ctx, type);
+	const struct xm2msc_fmt *fmt = q_data->fmt;
+	void __iomem *base = chan_ctx->regs;
+
+	if (type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
+		xm2msc_writereg(base + XM2MSC_WIDTHIN, q_data->width);
+		xm2msc_writereg(base + XM2MSC_HEIGHTIN, q_data->height);
+		xm2msc_writereg(base + XM2MSC_INPIXELFMT, fmt->xm2msc_fmt);
+		xm2msc_writereg(base + XM2MSC_INSTRIDE, q_data->stride);
+	} else {
+		xm2msc_writereg(base + XM2MSC_WIDTHOUT, q_data->width);
+		xm2msc_writereg(base + XM2MSC_HEIGHTOUT, q_data->height);
+		xm2msc_writereg(base + XM2MSC_OUTPIXELFMT, fmt->xm2msc_fmt);
+		xm2msc_writereg(base + XM2MSC_OUTSTRIDE, q_data->stride);
+	}
+}
+
+static void xm2msc_set_chan_com_params(struct xm2msc_chan_ctx *chan_ctx)
+{
+	void __iomem *base = chan_ctx->regs;
+	struct xm2msc_q_data *out_q_data = &chan_ctx->q_data[XM2MSC_CHAN_OUT];
+	struct xm2msc_q_data *cap_q_data = &chan_ctx->q_data[XM2MSC_CHAN_CAP];
+	u32 pixel_rate;
+	u32 line_rate;
+
+	chan_ctx->taps = XSCALER_TAPS_6; /* Currently only 6 tabs supported */
+	xm2mvsc_initialize_coeff_banks(chan_ctx);
+
+	pixel_rate = (out_q_data->width * XM2MSC_STEP_PRECISION) /
+		cap_q_data->width;
+	line_rate = (out_q_data->height * XM2MSC_STEP_PRECISION) /
+		cap_q_data->height;
+
+	xm2msc_writereg(base + XM2MSC_PIXELRATE, pixel_rate);
+	xm2msc_writereg(base + XM2MSC_LINERATE, line_rate);
 }
 
 static void
@@ -779,32 +867,6 @@ static int xm2msc_set_bufaddr(struct xm2m_msc_dev *xm2msc)
 	return 0;
 }
 
-static void xm2msc_device_run(void *priv)
-{
-	struct xm2msc_chan_ctx *chan_ctx = priv;
-	struct xm2m_msc_dev *xm2msc = chan_ctx->xm2msc_dev;
-	void __iomem *base = xm2msc->regs;
-	int ret;
-
-	/* TODO program to number of opened chan*/
-	xm2msc_writereg(base + XM2MSC_NUM_OUTS, xm2msc->max_chan);
-
-	ret = xm2msc_set_bufaddr(xm2msc);
-	if (ret) {
-		v4l2_err(&xm2msc->v4l2_dev, "Device can't be run\n");
-		return;
-	}
-
-	xm2msc_writereg(base + XM2MSC_GIE, XM2MSC_GIE_EN);
-	xm2msc_writereg(base + XM2MSC_IER, XM2MSC_ISR_DONE);
-
-	xm2msc_pr_status(xm2msc, __func__);
-	xm2msc_pr_screg(xm2msc->dev, base);
-	xm2msc_pr_allchanreg(xm2msc);
-
-	xm2msc_start(xm2msc);
-}
-
 static void xm2msc_job_finish(struct xm2m_msc_dev *xm2msc)
 {
 	unsigned int chan;
@@ -846,6 +908,32 @@ static void xm2msc_job_done(struct xm2m_msc_dev *xm2msc)
 	}
 }
 
+static void xm2msc_device_run(void *priv)
+{
+	struct xm2msc_chan_ctx *chan_ctx = priv;
+	struct xm2m_msc_dev *xm2msc = chan_ctx->xm2msc_dev;
+	void __iomem *base = xm2msc->regs;
+	int ret;
+
+	/* TODO program to number of opened chan*/
+	xm2msc_writereg(base + XM2MSC_NUM_OUTS, xm2msc->max_chan);
+
+	ret = xm2msc_set_bufaddr(xm2msc);
+	if (ret) {
+		v4l2_err(&xm2msc->v4l2_dev, "Device can't be run\n");
+		return;
+	}
+
+	xm2msc_writereg(base + XM2MSC_GIE, XM2MSC_GIE_EN);
+	xm2msc_writereg(base + XM2MSC_IER, XM2MSC_ISR_DONE);
+
+	xm2msc_pr_status(xm2msc, __func__);
+	xm2msc_pr_screg(xm2msc->dev, base);
+	xm2msc_pr_allchanreg(xm2msc);
+
+	xm2msc_start(xm2msc);
+}
+
 static irqreturn_t xm2msc_isr(int irq, void *data)
 {
 	struct xm2m_msc_dev *xm2msc = (struct xm2m_msc_dev *)data;
@@ -870,54 +958,6 @@ static irqreturn_t xm2msc_isr(int irq, void *data)
 	xm2msc_job_finish(xm2msc);
 handled:
 	return IRQ_HANDLED;
-}
-
-static struct xm2msc_q_data *get_q_data(struct xm2msc_chan_ctx *chan_ctx,
-					enum v4l2_buf_type type)
-{
-	switch (type) {
-	case V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE:
-	case V4L2_BUF_TYPE_VIDEO_OUTPUT:
-		return &chan_ctx->q_data[XM2MSC_CHAN_OUT];
-	case V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE:
-	case V4L2_BUF_TYPE_VIDEO_CAPTURE:
-		return &chan_ctx->q_data[XM2MSC_CHAN_CAP];
-	default:
-		v4l2_err(&chan_ctx->xm2msc_dev->v4l2_dev,
-			 "Not supported Q type %d\n", type);
-	}
-	return NULL;
-}
-
-static u32 find_format_index(struct v4l2_format *f)
-{
-	const struct xm2msc_fmt *fmt;
-	unsigned int i;
-
-	for (i = 0; i < ARRAY_SIZE(formats); i++) {
-		fmt = &formats[i];
-		if (fmt->fourcc == f->fmt.pix_mp.pixelformat)
-			break;
-	}
-
-	return i;
-}
-
-static const struct xm2msc_fmt *find_format(struct v4l2_format *f)
-{
-	const struct xm2msc_fmt *fmt;
-	unsigned int i;
-
-	for (i = 0; i < ARRAY_SIZE(formats); i++) {
-		fmt = &formats[i];
-		if (fmt->fourcc == f->fmt.pix_mp.pixelformat)
-			break;
-	}
-
-	if (i == ARRAY_SIZE(formats))
-		return NULL;
-
-	return &formats[i];
 }
 
 static int xm2msc_streamon(struct file *file, void *fh,
@@ -1340,46 +1380,6 @@ static void xm2msc_return_all_buffers(struct xm2msc_chan_ctx *chan_ctx,
 		v4l2_m2m_buf_done(vb, state);
 		spin_unlock_irqrestore(&chan_ctx->xm2msc_dev->lock, flags);
 	}
-}
-
-static void xm2msc_set_chan_params(struct xm2msc_chan_ctx *chan_ctx,
-				   enum v4l2_buf_type type)
-{
-	struct xm2msc_q_data *q_data = get_q_data(chan_ctx, type);
-	const struct xm2msc_fmt *fmt = q_data->fmt;
-	void __iomem *base = chan_ctx->regs;
-
-	if (type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
-		xm2msc_writereg(base + XM2MSC_WIDTHIN, q_data->width);
-		xm2msc_writereg(base + XM2MSC_HEIGHTIN, q_data->height);
-		xm2msc_writereg(base + XM2MSC_INPIXELFMT, fmt->xm2msc_fmt);
-		xm2msc_writereg(base + XM2MSC_INSTRIDE, q_data->stride);
-	} else {
-		xm2msc_writereg(base + XM2MSC_WIDTHOUT, q_data->width);
-		xm2msc_writereg(base + XM2MSC_HEIGHTOUT, q_data->height);
-		xm2msc_writereg(base + XM2MSC_OUTPIXELFMT, fmt->xm2msc_fmt);
-		xm2msc_writereg(base + XM2MSC_OUTSTRIDE, q_data->stride);
-	}
-}
-
-static void xm2msc_set_chan_com_params(struct xm2msc_chan_ctx *chan_ctx)
-{
-	void __iomem *base = chan_ctx->regs;
-	struct xm2msc_q_data *out_q_data = &chan_ctx->q_data[XM2MSC_CHAN_OUT];
-	struct xm2msc_q_data *cap_q_data = &chan_ctx->q_data[XM2MSC_CHAN_CAP];
-	u32 pixel_rate;
-	u32 line_rate;
-
-	chan_ctx->taps = XSCALER_TAPS_6; /* Currently only 6 tabs supported */
-	xm2mvsc_initialize_coeff_banks(chan_ctx);
-
-	pixel_rate = (out_q_data->width * XM2MSC_STEP_PRECISION) /
-		cap_q_data->width;
-	line_rate = (out_q_data->height * XM2MSC_STEP_PRECISION) /
-		cap_q_data->height;
-
-	xm2msc_writereg(base + XM2MSC_PIXELRATE, pixel_rate);
-	xm2msc_writereg(base + XM2MSC_LINERATE, line_rate);
 }
 
 static int xm2msc_start_streaming(struct vb2_queue *q, unsigned int count)
