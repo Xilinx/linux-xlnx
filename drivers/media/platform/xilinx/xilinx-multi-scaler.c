@@ -1233,14 +1233,19 @@ static int xm2msc_g_fmt_vid_cap(struct file *file, void *fh,
 static int enum_fmt(struct xm2m_msc_dev *xm2msc, struct v4l2_fmtdesc *f)
 {
 	const struct xm2msc_fmt *fmt;
+	unsigned int i, enabled = 0;
 
-	if (f->index == ARRAY_SIZE(formats) ||
-	    !xm2msc_chk_fmt(xm2msc, f->index))
+	for (i = 0; i < ARRAY_SIZE(formats); i++) {
+		if (xm2msc_chk_fmt(xm2msc, i) && enabled++ == f->index)
+			break;
+	}
+
+	if (i == ARRAY_SIZE(formats))
 		/* Format not found */
 		return -EINVAL;
 
 	/* Format found */
-	fmt = &formats[f->index];
+	fmt = &formats[i];
 	strlcpy(f->description, fmt->name,
 		sizeof(f->description));
 	f->pixelformat = fmt->fourcc;
