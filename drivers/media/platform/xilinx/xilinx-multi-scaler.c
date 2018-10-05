@@ -993,6 +993,14 @@ static int xm2msc_expbuf(struct file *file, void *fh,
 	return v4l2_m2m_expbuf(file, chan_ctx->m2m_ctx, eb);
 }
 
+static int xm2msc_createbufs(struct file *file, void *fh,
+			     struct v4l2_create_buffers *cb)
+{
+	struct xm2msc_chan_ctx *chan_ctx = fh_to_chanctx(fh);
+
+	return v4l2_m2m_create_bufs(file, chan_ctx->m2m_ctx, cb);
+}
+
 static int xm2msc_reqbufs(struct file *file, void *fh,
 			  struct v4l2_requestbuffers *reqbufs)
 {
@@ -1448,7 +1456,7 @@ static int queue_init(void *priv, struct vb2_queue *src_vq,
 
 	memset(src_vq, 0, sizeof(*src_vq));
 	src_vq->type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
-	src_vq->io_modes = VB2_DMABUF;
+	src_vq->io_modes = VB2_DMABUF | VB2_MMAP;
 	src_vq->drv_priv = chan_ctx;
 	src_vq->buf_struct_size = sizeof(struct v4l2_m2m_buffer);
 	src_vq->ops = &xm2msc_qops;
@@ -1462,10 +1470,8 @@ static int queue_init(void *priv, struct vb2_queue *src_vq,
 		return ret;
 
 	memset(dst_vq, 0, sizeof(*dst_vq));
-	/*dst_vq->type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE; */
 	dst_vq->type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
-	/*dst_vq->io_modes = VB2_MMAP | VB2_DMABUF; */
-	dst_vq->io_modes = VB2_DMABUF;
+	dst_vq->io_modes = VB2_MMAP | VB2_DMABUF;
 	dst_vq->drv_priv = chan_ctx;
 	dst_vq->buf_struct_size = sizeof(struct v4l2_m2m_buffer);
 	dst_vq->ops = &xm2msc_qops;
@@ -1493,6 +1499,7 @@ static const struct v4l2_ioctl_ops xm2msc_ioctl_ops = {
 	.vidioc_reqbufs = xm2msc_reqbufs,
 	.vidioc_querybuf = xm2msc_querybuf,
 	.vidioc_expbuf = xm2msc_expbuf,
+	.vidioc_create_bufs = xm2msc_createbufs,
 
 	.vidioc_qbuf = xm2msc_qbuf,
 	.vidioc_dqbuf = xm2msc_dqbuf,
