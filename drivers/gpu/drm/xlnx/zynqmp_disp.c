@@ -2483,8 +2483,7 @@ static int zynqmp_disp_plane_mode_set(struct drm_plane *plane,
 	int ret;
 
 	if (!info) {
-		dev_err(dev, "unsupported framebuffer format %s\n",
-			drm_get_format_name(info->format, &format_name));
+		dev_err(dev, "No format info found\n");
 		return -EINVAL;
 	}
 
