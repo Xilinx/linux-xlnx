@@ -4,8 +4,8 @@ Xilinx Axi CAN/Zynq CANPS controller Device Tree Bindings
 Required properties:
 - compatible		: Should be "xlnx,zynq-can-1.0" for Zynq CAN
 			  controllers and "xlnx,axi-can-1.00.a" for Axi CAN
-			  controllers and "xlnx,axi-canfd-1.0" for Axi CANFD
-			  controllers.
+			  controllers and "xlnx,canfd-1.0" for Axi CANFD 1.0
+			  controllers
 - reg			: Physical base address and size of the Axi CAN/Zynq
 			  CANPS/Axi CANFD registers map.
 - interrupts		: Property with a value describing the interrupt
