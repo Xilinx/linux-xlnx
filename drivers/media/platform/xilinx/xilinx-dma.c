@@ -121,10 +121,8 @@ static int xvip_pipeline_start_stop(struct xvip_composite_device *xdev,
 
 	/* Walk the graph to locate the subdev nodes */
 	ret = media_graph_walk_init(&graph, mdev);
-	if (ret) {
-		mutex_unlock(&mdev->graph_mutex);
-		return ret;
-	}
+	if (ret)
+		goto error;
 
 	media_graph_walk_start(&graph, entity);
 
@@ -148,11 +146,12 @@ static int xvip_pipeline_start_stop(struct xvip_composite_device *xdev,
 			if (start && ret < 0 && ret != -ENOIOCTLCMD) {
 				dev_err(xdev->dev, "s_stream is failed on subdev\n");
 				xvip_subdev_set_streaming(xdev, subdev, !start);
-				return ret;
+				goto error;
 			}
 		}
 	}
 
+error:
 	mutex_unlock(&mdev->graph_mutex);
 	media_graph_walk_cleanup(&graph);
 
