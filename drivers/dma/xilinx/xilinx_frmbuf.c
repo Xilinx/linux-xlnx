@@ -983,11 +983,6 @@ static void xilinx_frmbuf_start_transfer(struct xilinx_frmbuf_chan *chan)
 	if (!chan->idle)
 		return;
 
-	if (chan->active_desc) {
-		xilinx_frmbuf_complete_descriptor(chan);
-		chan->active_desc = NULL;
-	}
-
 	if (chan->staged_desc) {
 		chan->active_desc = chan->staged_desc;
 		chan->staged_desc = NULL;
@@ -1081,6 +1076,10 @@ static irqreturn_t xilinx_frmbuf_irq_handler(int irq, void *data)
 	if (status & XILINX_FRMBUF_ISR_AP_READY_IRQ) {
 		spin_lock(&chan->lock);
 		chan->idle = true;
+		if (chan->active_desc) {
+			xilinx_frmbuf_complete_descriptor(chan);
+			chan->active_desc = NULL;
+		}
 		xilinx_frmbuf_start_transfer(chan);
 		spin_unlock(&chan->lock);
 	}
