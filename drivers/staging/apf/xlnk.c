@@ -330,7 +330,7 @@ static int xlnk_buf_find_by_user_addr(xlnk_intptr_type addr, int pid)
 	return 0;
 }
 
-/**
+/*
  * allocate and return an id
  * id must be a positve number
  */
