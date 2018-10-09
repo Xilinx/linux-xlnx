@@ -24,7 +24,33 @@ enum vid_frmwork_type {
 	XDMA_V4L2,
 };
 
+/**
+ * enum operation_mode - FB IP control register field settings to select mode
+ * @DEFAULT : Use default mode, No explicit bit field settings required.
+ * @AUTO_RESTART : Use auto-restart mode by setting BIT(7) of control register.
+ */
+enum operation_mode {
+	DEFAULT = 0x0,
+	AUTO_RESTART = BIT(7),
+};
+
 #if IS_ENABLED(CONFIG_XILINX_FRMBUF)
+/**
+ * xilinx_xdma_set_mode - Set operation mode for framebuffer IP
+ * @chan: dma channel instance
+ * @mode: Famebuffer IP operation mode.
+ * This routine is used when utilizing "video format aware" Xilinx DMA IP
+ * (such as Video Framebuffer Read or Video Framebuffer Write).  This call
+ * must be made prior to dma_async_issue_pending(). This routine should be
+ * called by client driver to set the operation mode for framebuffer IP based
+ * upon the use-case, for e.g. for non-streaming usecases (like MEM2MEM) it's
+ * more appropriate to use default mode unlike streaming usecases where
+ * auto-restart mode is more suitable.
+ *
+ * auto-restart or free running mode.
+ */
+void xilinx_xdma_set_mode(struct dma_chan *chan, enum operation_mode mode);
+
 /**
  * xilinx_xdma_drm_config - configure video format in video aware DMA
  * @chan: dma channel instance
@@ -32,19 +58,19 @@ enum vid_frmwork_type {
  *
  * This routine is used when utilizing "video format aware" Xilinx DMA IP
  * (such as Video Framebuffer Read or Video Framebuffer Write).  This call
- * must be made prior to dma_async_issue_pending() to enstablish the video
+ * must be made prior to dma_async_issue_pending() to establish the video
  * data memory format within the hardware DMA.
  */
 void xilinx_xdma_drm_config(struct dma_chan *chan, u32 drm_fourcc);
 
 /**
- * xilinx_xdma_drm_config - configure video format in video aware DMA
+ * xilinx_xdma_v4l2_config - configure video format in video aware DMA
  * @chan: dma channel instance
  * @v4l2_fourcc: V4L2 fourcc code describing the memory layout of video data
  *
  * This routine is used when utilizing "video format aware" Xilinx DMA IP
  * (such as Video Framebuffer Read or Video Framebuffer Write).  This call
- * must be made prior to dma_async_issue_pending() to enstablish the video
+ * must be made prior to dma_async_issue_pending() to establish the video
  * data memory format within the hardware DMA.
  */
 void xilinx_xdma_v4l2_config(struct dma_chan *chan, u32 v4l2_fourcc);
@@ -99,6 +125,10 @@ int xilinx_xdma_set_fid(struct dma_chan *chan,
 			struct dma_async_tx_descriptor *async_tx, u32 fid);
 
 #else
+static inline void xilinx_xdma_set_mode(struct dma_chan *chan,
+					enum operation_mode mode)
+{ }
+
 static inline void xilinx_xdma_drm_config(struct dma_chan *chan, u32 drm_fourcc)
 { }
 
