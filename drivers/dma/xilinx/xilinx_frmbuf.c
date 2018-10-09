@@ -162,6 +162,7 @@ struct xilinx_frmbuf_tx_descriptor {
  * @tasklet: Cleanup work after irq
  * @vid_fmt: Reference to currently assigned video format description
  * @hw_fid: FID enabled in hardware flag
+ * @mode: Select operation mode
  */
 struct xilinx_frmbuf_chan {
 	struct xilinx_frmbuf_device *xdev;
@@ -182,6 +183,7 @@ struct xilinx_frmbuf_chan {
 	struct tasklet_struct tasklet;
 	const struct xilinx_frmbuf_format_desc *vid_fmt;
 	bool hw_fid;
+	enum operation_mode mode;
 };
 
 /**
@@ -586,6 +588,29 @@ static void frmbuf_init_format_array(struct xilinx_frmbuf_device *xdev)
 	}
 }
 
+static struct xilinx_frmbuf_chan *frmbuf_find_chan(struct dma_chan *chan)
+{
+	struct xilinx_frmbuf_chan *xil_chan;
+	bool found_xchan = false;
+
+	mutex_lock(&frmbuf_chan_list_lock);
+	list_for_each_entry(xil_chan, &frmbuf_chan_list, chan_node) {
+		if (chan == &xil_chan->common) {
+			found_xchan = true;
+			break;
+		}
+	}
+	mutex_unlock(&frmbuf_chan_list_lock);
+
+	if (!found_xchan) {
+		dev_dbg(chan->device->dev,
+			"dma chan not a Video Framebuffer channel instance\n");
+		return ERR_PTR(-EINVAL);
+	}
+
+	return xil_chan;
+}
+
 static struct xilinx_frmbuf_device *frmbuf_find_dev(struct dma_chan *chan)
 {
 	struct xilinx_frmbuf_chan *xchan, *temp;
@@ -642,24 +667,11 @@ static int frmbuf_verify_format(struct dma_chan *chan, u32 fourcc, u32 type)
 static void xilinx_xdma_set_config(struct dma_chan *chan, u32 fourcc, u32 type)
 {
 	struct xilinx_frmbuf_chan *xil_chan;
-	bool found_xchan = false;
 	int ret;
 
-	mutex_lock(&frmbuf_chan_list_lock);
-	list_for_each_entry(xil_chan, &frmbuf_chan_list, chan_node) {
-		if (chan == &xil_chan->common) {
-			found_xchan = true;
-			break;
-		}
-	}
-	mutex_unlock(&frmbuf_chan_list_lock);
-
-	if (!found_xchan) {
-		dev_dbg(chan->device->dev,
-			"dma chan not a Video Framebuffer channel instance\n");
+	xil_chan = frmbuf_find_chan(chan);
+	if (IS_ERR(xil_chan))
 		return;
-	}
-
 	ret = frmbuf_verify_format(chan, fourcc, type);
 	if (ret == -EINVAL) {
 		dev_err(chan->device->dev,
@@ -668,6 +680,21 @@ static void xilinx_xdma_set_config(struct dma_chan *chan, u32 fourcc, u32 type)
 		return;
 	}
 }
+
+void xilinx_xdma_set_mode(struct dma_chan *chan, enum operation_mode
+			  mode)
+{
+	struct xilinx_frmbuf_chan *xil_chan;
+
+	xil_chan = frmbuf_find_chan(chan);
+	if (IS_ERR(xil_chan))
+		return;
+
+	xil_chan->mode = mode;
+
+	return;
+
+} EXPORT_SYMBOL_GPL(xilinx_xdma_set_mode);
 
 void xilinx_xdma_drm_config(struct dma_chan *chan, u32 drm_fourcc)
 {
@@ -932,8 +959,8 @@ static enum dma_status xilinx_frmbuf_tx_status(struct dma_chan *dchan,
 static void xilinx_frmbuf_halt(struct xilinx_frmbuf_chan *chan)
 {
 	frmbuf_clr(chan, XILINX_FRMBUF_CTRL_OFFSET,
-		   XILINX_FRMBUF_CTRL_AP_START |
-		   XILINX_FRMBUF_CTRL_AUTO_RESTART);
+			XILINX_FRMBUF_CTRL_AP_START |
+			chan->mode);
 	chan->idle = true;
 }
 
@@ -944,8 +971,8 @@ static void xilinx_frmbuf_halt(struct xilinx_frmbuf_chan *chan)
 static void xilinx_frmbuf_start(struct xilinx_frmbuf_chan *chan)
 {
 	frmbuf_set(chan, XILINX_FRMBUF_CTRL_OFFSET,
-		   XILINX_FRMBUF_CTRL_AP_START |
-		   XILINX_FRMBUF_CTRL_AUTO_RESTART);
+			XILINX_FRMBUF_CTRL_AP_START |
+			chan->mode);
 	chan->idle = false;
 }
 
@@ -1014,7 +1041,12 @@ static void xilinx_frmbuf_start_transfer(struct xilinx_frmbuf_chan *chan)
 	/* Start the hardware */
 	xilinx_frmbuf_start(chan);
 	list_del(&desc->node);
-	chan->staged_desc = desc;
+
+	/* No staging descriptor required when auto restart is disabled */
+	if (chan->mode == AUTO_RESTART)
+		chan->staged_desc = desc;
+	else
+		chan->active_desc = desc;
 }
 
 /**
@@ -1290,6 +1322,7 @@ static int xilinx_frmbuf_chan_probe(struct xilinx_frmbuf_device *xdev,
 	chan->dev = xdev->dev;
 	chan->xdev = xdev;
 	chan->idle = true;
+	chan->mode = AUTO_RESTART;
 
 	err = of_property_read_u32(node, "xlnx,dma-addr-width",
 				   &dma_addr_size);
