@@ -30,7 +30,7 @@
  */
 #define STATS_BASE 0x0000C000
 #define STATS_SIZE 0x00000050
-#define RADIO_CTRL_BASE 0xA0030000
+#define RADIO_CTRL_BASE 0xA0060000
 #define RADIO_CTRL_SIZE 0x0000FFFF
 /* TODO: to be made static as well, so that multiple instances can be used. As
  * of now, the following 3 structures are shared among the multiple
