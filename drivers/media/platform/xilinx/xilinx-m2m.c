@@ -587,6 +587,7 @@ static void xvip_m2m_prep_submit_dev2mem_desc(struct xvip_m2m_ctx *ctx,
 	u32 bpl_nume, bpl_deno;
 	u32 luma_size;
 	u32 flags = DMA_PREP_INTERRUPT | DMA_CTRL_ACK;
+	enum operation_mode mode = DEFAULT;
 
 	p_out = vb2_dma_contig_plane_dma_addr(&dst_buf->vb2_buf, 0);
 
@@ -603,6 +604,7 @@ static void xvip_m2m_prep_submit_dev2mem_desc(struct xvip_m2m_ctx *ctx,
 
 	pix_mp = &dma->capfmt.fmt.pix_mp;
 	info = dma->capinfo;
+	xilinx_xdma_set_mode(dma->chan_rx, mode);
 	xilinx_xdma_v4l2_config(dma->chan_rx, pix_mp->pixelformat);
 	xvip_width_padding_factor(pix_mp->pixelformat, &padding_factor_nume,
 				  &padding_factor_deno);
@@ -662,6 +664,7 @@ static void xvip_m2m_prep_submit_mem2dev_desc(struct xvip_m2m_ctx *ctx,
 	u32 bpl_nume, bpl_deno;
 	u32 luma_size;
 	u32 flags = DMA_PREP_INTERRUPT | DMA_CTRL_ACK;
+	enum operation_mode mode = DEFAULT;
 
 	p_in = vb2_dma_contig_plane_dma_addr(&src_buf->vb2_buf, 0);
 
@@ -678,6 +681,7 @@ static void xvip_m2m_prep_submit_mem2dev_desc(struct xvip_m2m_ctx *ctx,
 
 	pix_mp = &dma->outfmt.fmt.pix_mp;
 	info = dma->outinfo;
+	xilinx_xdma_set_mode(dma->chan_tx, mode);
 	xilinx_xdma_v4l2_config(dma->chan_tx, pix_mp->pixelformat);
 	xvip_width_padding_factor(pix_mp->pixelformat, &padding_factor_nume,
 				  &padding_factor_deno);
