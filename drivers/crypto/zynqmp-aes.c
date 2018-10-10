@@ -27,6 +27,8 @@
 #define ZYNQMP_AES_SIZE_ERR			0x06
 #define ZYNQMP_AES_WRONG_KEY_SRC_ERR		0x13
 
+#define ZYNQMP_AES_BLOCKSIZE			0x04
+
 struct zynqmp_aes_dev {
 	struct list_head list;
 	struct device *dev;
@@ -108,34 +110,29 @@ static int zynqmp_setkeytype(struct crypto_tfm *tfm, const u8 *keytype,
 	return 0;
 }
 
-static int zynqmp_aes_decrypt(struct blkcipher_desc *desc,
-			      struct scatterlist *dst,
-			      struct scatterlist *src,
-			      unsigned int nbytes)
+static int zynqmp_aes_xcrypt(struct blkcipher_desc *desc,
+			     struct scatterlist *dst,
+			     struct scatterlist *src,
+			     unsigned int nbytes,
+			     unsigned int flags)
 {
-	/* TODO: Move the common functionality to one API */
 	struct zynqmp_aes_op *op = crypto_blkcipher_ctx(desc->tfm);
 	struct zynqmp_aes_dev *dd = zynqmp_aes_find_dev(op);
 	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
+	int err, ret, copy_bytes, src_data = 0, dst_data = 0;
 	dma_addr_t dma_addr, dma_addr_buf;
 	struct zynqmp_aes_data *abuf;
 	struct blkcipher_walk walk;
-	int err, ret, keytype;
+	unsigned int data_size;
 	size_t dma_size;
 	char *kbuf;
 
 	if (!eemi_ops || !eemi_ops->aes)
 		return -ENOTSUPP;
 
-	blkcipher_walk_init(&walk, dst, src, nbytes);
-	err = blkcipher_walk_virt(desc, &walk);
-	op->iv = walk.iv;
-	op->src = walk.src.virt.addr;
-	op->dst = walk.dst.virt.addr;
-	keytype = op->keytype;
-
-	if (keytype == ZYNQMP_AES_KUP_KEY)
-		dma_size = nbytes + ZYNQMP_AES_KEY_SIZE + ZYNQMP_AES_IV_SIZE;
+	if (op->keytype == ZYNQMP_AES_KUP_KEY)
+		dma_size = nbytes + ZYNQMP_AES_KEY_SIZE
+			+ ZYNQMP_AES_IV_SIZE;
 	else
 		dma_size = nbytes + ZYNQMP_AES_IV_SIZE;
 
@@ -149,23 +146,37 @@ static int zynqmp_aes_decrypt(struct blkcipher_desc *desc,
 		dma_free_coherent(dd->dev, dma_size, kbuf, dma_addr);
 		return -ENOMEM;
 	}
-	memcpy(kbuf, op->src, nbytes);
-	memcpy(kbuf + nbytes, op->iv, ZYNQMP_AES_IV_SIZE);
 
+	data_size = nbytes;
+	blkcipher_walk_init(&walk, dst, src, data_size);
+	err = blkcipher_walk_virt(desc, &walk);
+	op->iv = walk.iv;
+
+	while ((nbytes = walk.nbytes)) {
+		op->src = walk.src.virt.addr;
+		memcpy(kbuf + src_data, op->src, nbytes);
+		src_data = src_data + nbytes;
+		nbytes &= (ZYNQMP_AES_BLOCKSIZE - 1);
+		err = blkcipher_walk_done(desc, &walk, nbytes);
+	}
+	memcpy(kbuf + data_size, op->iv, ZYNQMP_AES_IV_SIZE);
 	abuf->src = dma_addr;
 	abuf->dst = dma_addr;
-	abuf->iv = abuf->src + nbytes;
-	abuf->size = nbytes - ZYNQMP_AES_GCM_SIZE;
-	abuf->optype = ZYNQMP_AES_DECRYPT;
-	abuf->keysrc = keytype;
-	if (keytype == ZYNQMP_AES_KUP_KEY) {
-		memcpy(kbuf + nbytes + ZYNQMP_AES_IV_SIZE,
+	abuf->iv = abuf->src + data_size;
+	abuf->size = data_size - ZYNQMP_AES_GCM_SIZE;
+	abuf->optype = flags;
+	abuf->keysrc = op->keytype;
+
+	if (op->keytype == ZYNQMP_AES_KUP_KEY) {
+		memcpy(kbuf + data_size + ZYNQMP_AES_IV_SIZE,
 		       op->key, ZYNQMP_AES_KEY_SIZE);
-		abuf->key = abuf->iv + ZYNQMP_AES_IV_SIZE;
+
+		abuf->key = abuf->src + data_size + ZYNQMP_AES_IV_SIZE;
 	} else {
 		abuf->key = 0;
 	}
 	eemi_ops->aes(dma_addr_buf, &ret);
+
 	if (ret != 0) {
 		switch (ret) {
 		case ZYNQMP_AES_GCM_TAG_MISMATCH_ERR:
@@ -183,13 +194,33 @@ static int zynqmp_aes_decrypt(struct blkcipher_desc *desc,
 		}
 		goto END;
 	}
-	memcpy(walk.dst.virt.addr, kbuf, nbytes - ZYNQMP_AES_GCM_SIZE);
+	if (flags)
+		copy_bytes = data_size;
+	else
+		copy_bytes = data_size - ZYNQMP_AES_GCM_SIZE;
+
+	blkcipher_walk_init(&walk, dst, src, copy_bytes);
+	err = blkcipher_walk_virt(desc, &walk);
+
+	while ((nbytes = walk.nbytes)) {
+		memcpy(walk.dst.virt.addr, kbuf + dst_data, nbytes);
+		dst_data = dst_data + nbytes;
+		nbytes &= (ZYNQMP_AES_BLOCKSIZE - 1);
+		err = blkcipher_walk_done(desc, &walk, nbytes);
+	}
 END:
-	err = blkcipher_walk_done(desc, &walk, 0);
 	dma_free_coherent(dd->dev, dma_size, kbuf, dma_addr);
 	dma_free_coherent(dd->dev, sizeof(struct zynqmp_aes_data),
 			  abuf, dma_addr_buf);
 	return err;
+}
+
+static int zynqmp_aes_decrypt(struct blkcipher_desc *desc,
+			      struct scatterlist *dst,
+			      struct scatterlist *src,
+			      unsigned int nbytes)
+{
+	return zynqmp_aes_xcrypt(desc, dst, src, nbytes, ZYNQMP_AES_DECRYPT);
 }
 
 static int zynqmp_aes_encrypt(struct blkcipher_desc *desc,
@@ -197,87 +228,7 @@ static int zynqmp_aes_encrypt(struct blkcipher_desc *desc,
 			      struct scatterlist *src,
 			      unsigned int nbytes)
 {
-	struct zynqmp_aes_op *op = crypto_blkcipher_ctx(desc->tfm);
-	struct zynqmp_aes_dev *dd = zynqmp_aes_find_dev(op);
-	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
-	dma_addr_t dma_addr, dma_addr_buf;
-	struct zynqmp_aes_data *abuf;
-	struct blkcipher_walk walk;
-	unsigned int data_size;
-	size_t dma_size;
-	u32 keytype;
-	char *kbuf;
-	int err, ret;
-
-	if (!eemi_ops || !eemi_ops->aes)
-		return -ENOTSUPP;
-
-	blkcipher_walk_init(&walk, dst, src, nbytes);
-	err = blkcipher_walk_virt(desc, &walk);
-	op->iv = walk.iv;
-	op->src = walk.src.virt.addr;
-	op->dst = walk.dst.virt.addr;
-	keytype = op->keytype;
-
-	if (keytype == ZYNQMP_AES_KUP_KEY)
-		dma_size = nbytes + ZYNQMP_AES_KEY_SIZE
-			+ ZYNQMP_AES_IV_SIZE;
-	else
-		dma_size = nbytes + ZYNQMP_AES_IV_SIZE;
-
-	kbuf = dma_alloc_coherent(dd->dev, dma_size, &dma_addr, GFP_KERNEL);
-
-	if (!kbuf)
-		return -ENOMEM;
-
-	abuf = dma_alloc_coherent(dd->dev, sizeof(struct zynqmp_aes_data),
-				  &dma_addr_buf, GFP_KERNEL);
-	if (!abuf) {
-		dma_free_coherent(dd->dev, dma_size, kbuf, dma_addr);
-		return -ENOMEM;
-	}
-	data_size = nbytes - ZYNQMP_AES_GCM_SIZE;
-	memcpy(kbuf, op->src, data_size);
-	memcpy(kbuf + data_size, op->iv, ZYNQMP_AES_IV_SIZE);
-
-	abuf->src = dma_addr;
-	abuf->dst = dma_addr;
-	abuf->iv = abuf->src + data_size;
-	abuf->size = data_size;
-	abuf->optype = ZYNQMP_AES_ENCRYPT;
-	abuf->keysrc = keytype;
-
-	if (keytype == ZYNQMP_AES_KUP_KEY) {
-		memcpy(kbuf + data_size + ZYNQMP_AES_IV_SIZE,
-		       op->key, ZYNQMP_AES_KEY_SIZE);
-
-		abuf->key = abuf->src + data_size + ZYNQMP_AES_IV_SIZE;
-	} else {
-		abuf->key = 0;
-	}
-	eemi_ops->aes(dma_addr_buf, &ret);
-	if (ret != 0) {
-		switch (ret) {
-		case ZYNQMP_AES_SIZE_ERR:
-			dev_err(dd->dev, "ERROR : Non word aligned data\n\r");
-			break;
-		case ZYNQMP_AES_WRONG_KEY_SRC_ERR:
-			dev_err(dd->dev, "ERROR: Wrong KeySrc, enable secure mode\n\r");
-			break;
-		default:
-			dev_err(dd->dev, "ERROR: Invalid");
-			break;
-		}
-		goto END;
-	}
-	memcpy(walk.dst.virt.addr, kbuf, nbytes);
-END:
-	err = blkcipher_walk_done(desc, &walk, 0);
-	dma_free_coherent(dd->dev, dma_size, kbuf, dma_addr);
-	dma_free_coherent(dd->dev, sizeof(struct zynqmp_aes_data),
-			  abuf, dma_addr_buf);
-
-	return err;
+	return zynqmp_aes_xcrypt(desc, dst, src, nbytes, ZYNQMP_AES_ENCRYPT);
 }
 
 static struct crypto_alg zynqmp_alg = {
@@ -286,7 +237,7 @@ static struct crypto_alg zynqmp_alg = {
 	.cra_priority		=	400,
 	.cra_flags		=	CRYPTO_ALG_TYPE_BLKCIPHER |
 					CRYPTO_ALG_KERN_DRIVER_ONLY,
-	.cra_blocksize		=	4,
+	.cra_blocksize		=	ZYNQMP_AES_BLOCKSIZE,
 	.cra_ctxsize		=	sizeof(struct zynqmp_aes_op),
 	.cra_alignmask		=	15,
 	.cra_type		=	&crypto_blkcipher_type,
