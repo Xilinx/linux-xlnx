@@ -468,6 +468,7 @@ static struct clk *zynqmp_register_clk_topology(int clk_id, char *clk_name,
 	char *clk_out = NULL;
 	struct clock_topology *nodes;
 	struct clk *clk = NULL;
+	void *clk_out_ref[num_parents];
 
 	nodes = clock[clk_id].node;
 	num_nodes = clock[clk_id].num_nodes;
@@ -526,8 +527,11 @@ static struct clk *zynqmp_register_clk_topology(int clk_id, char *clk_name,
 				     __func__, clk_name, PTR_ERR(clk));
 
 		parent_names[0] = clk_out;
+		clk_out_ref[j] = clk_out;
 	}
-	kfree(clk_out);
+
+	for (j = 0; j < num_nodes; j++)
+		kfree(clk_out_ref[j]);
 	return clk;
 }
 
