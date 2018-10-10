@@ -98,7 +98,6 @@ static int xvip_graph_build_one(struct xvip_composite_device *xdev,
 		if (next == NULL)
 			break;
 
-		of_node_put(ep);
 		ep = next;
 
 		dev_dbg(xdev->dev, "processing endpoint %pOF\n", ep);
@@ -183,7 +182,6 @@ static int xvip_graph_build_one(struct xvip_composite_device *xdev,
 		}
 	}
 
-	of_node_put(ep);
 	return ret;
 }
 
@@ -252,7 +250,6 @@ static int xvip_graph_build_dma(struct xvip_composite_device *xdev)
 		if (next == NULL)
 			break;
 
-		of_node_put(ep);
 		ep = next;
 
 		dev_dbg(xdev->dev, "processing endpoint %pOF\n", ep);
@@ -328,7 +325,6 @@ static int xvip_graph_build_dma(struct xvip_composite_device *xdev)
 		}
 	}
 
-	of_node_put(ep);
 	return ret;
 }
 
