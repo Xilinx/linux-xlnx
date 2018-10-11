@@ -130,6 +130,7 @@ enum pm_api_id {
 	PM_SECURE_AES,
 	/* PM_REGISTER_ACCESS API */
 	PM_REGISTER_ACCESS = 52,
+	PM_EFUSE_ACCESS,
 };
 
 /* PMU-FW return status codes */
@@ -605,6 +606,7 @@ struct zynqmp_eemi_ops {
 	int (*register_access)(u32 register_access_id, u32 address,
 			       u32 mask, u32 value, u32 *out);
 	int (*aes)(const u64 address, u32 *out);
+	int (*efuse_access)(const u64 address, u32 *out);
 };
 
 /*
