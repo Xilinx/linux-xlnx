@@ -2664,6 +2664,13 @@ static int ov5640_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
 
 	/* v4l2_ctrl_lock() locks our own mutex */
 
+	/*
+	 * If the sensor is not powered up by the host driver, do
+	 * not try to access it to update the volatile controls.
+	 */
+	if (sensor->power_count == 0)
+		return 0;
+
 	switch (ctrl->id) {
 	case V4L2_CID_AUTOGAIN:
 		val = ov5640_get_gain(sensor);
