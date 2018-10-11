@@ -112,6 +112,7 @@ enum ov5640_mode_id {
 enum ov5640_frame_rate {
 	OV5640_15_FPS = 0,
 	OV5640_30_FPS,
+	OV5640_60_FPS,
 	OV5640_NUM_FRAMERATES,
 };
 
@@ -140,6 +141,7 @@ MODULE_PARM_DESC(virtual_channel,
 static const int ov5640_framerates[] = {
 	[OV5640_15_FPS] = 15,
 	[OV5640_30_FPS] = 30,
+	[OV5640_60_FPS] = 60,
 };
 
 /* regulator supplies */
@@ -775,6 +777,37 @@ ov5640_mode_data[OV5640_NUM_FRAMERATES][OV5640_NUM_MODES] = {
 		 1920, 2500, 1080, 1120,
 		 ov5640_setting_30fps_1080P_1920_1080,
 		 ARRAY_SIZE(ov5640_setting_30fps_1080P_1920_1080)},
+		{OV5640_MODE_QSXGA_2592_1944, -1, 0, 0, 0, 0, 0, NULL, 0},
+	}, {
+		{OV5640_MODE_QCIF_176_144, SUBSAMPLING, 1,
+		 176, 1896, 144, 984,
+		 ov5640_setting_30fps_QCIF_176_144,
+		 ARRAY_SIZE(ov5640_setting_30fps_QCIF_176_144)},
+		{OV5640_MODE_QVGA_320_240, SUBSAMPLING, 1,
+		 320, 1896, 240, 984,
+		 ov5640_setting_30fps_QVGA_320_240,
+		 ARRAY_SIZE(ov5640_setting_30fps_QVGA_320_240)},
+		{OV5640_MODE_VGA_640_480, SUBSAMPLING, 1,
+		 640, 1896, 480, 1080,
+		 ov5640_setting_30fps_VGA_640_480,
+		 ARRAY_SIZE(ov5640_setting_30fps_VGA_640_480)},
+		{OV5640_MODE_NTSC_720_480, SUBSAMPLING, 1,
+		 720, 1896, 480, 984,
+		 ov5640_setting_30fps_NTSC_720_480,
+		 ARRAY_SIZE(ov5640_setting_30fps_NTSC_720_480)},
+		{OV5640_MODE_PAL_720_576, SUBSAMPLING, 1,
+		 720, 1896, 576, 984,
+		 ov5640_setting_30fps_PAL_720_576,
+		 ARRAY_SIZE(ov5640_setting_30fps_PAL_720_576)},
+		{OV5640_MODE_XGA_1024_768, SUBSAMPLING, 1,
+		 1024, 1896, 768, 1080,
+		 ov5640_setting_30fps_XGA_1024_768,
+		 ARRAY_SIZE(ov5640_setting_30fps_XGA_1024_768)},
+		{OV5640_MODE_720P_1280_720, SUBSAMPLING, 0,
+		 1280, 1892, 720, 740,
+		 ov5640_setting_30fps_720P_1280_720,
+		 ARRAY_SIZE(ov5640_setting_30fps_720P_1280_720)},
+		{OV5640_MODE_1080P_1920_1080, -1, 0, 0, 0, 0, 0, NULL, 0},
 		{OV5640_MODE_QSXGA_2592_1944, -1, 0, 0, 0, 0, 0, NULL, 0},
 	},
 };
@@ -2149,29 +2182,47 @@ static int ov5640_try_frame_interval(struct ov5640_dev *sensor,
 	const struct ov5640_mode_info *mode;
 	u32 minfps, maxfps, fps;
 	int ret;
+	int i;
 
-	minfps = ov5640_framerates[OV5640_15_FPS];
-	maxfps = ov5640_framerates[OV5640_30_FPS];
+	minfps = ov5640_framerates[0];
+	maxfps = ov5640_framerates[OV5640_NUM_FRAMERATES - 1];
 
 	if (fi->numerator == 0) {
 		fi->denominator = maxfps;
 		fi->numerator = 1;
-		return OV5640_30_FPS;
+		return OV5640_NUM_FRAMERATES - 1;
 	}
 
 	fps = DIV_ROUND_CLOSEST(fi->denominator, fi->numerator);
 
 	fi->numerator = 1;
-	if (fps > maxfps)
+	if (fps > maxfps) {
 		fi->denominator = maxfps;
-	else if (fps < minfps)
+		ret = OV5640_NUM_FRAMERATES - 1;
+	} else if (fps < minfps) {
 		fi->denominator = minfps;
-	else if (2 * fps >= 2 * minfps + (maxfps - minfps))
-		fi->denominator = maxfps;
-	else
-		fi->denominator = minfps;
+		ret = 0;
+	} else {
+		for (i = 0; i < (OV5640_NUM_FRAMERATES - 1); i++) {
+			u32 lowfps, highfps;
 
-	ret = (fi->denominator == minfps) ? OV5640_15_FPS : OV5640_30_FPS;
+			lowfps = ov5640_framerates[i];
+			highfps = ov5640_framerates[i + 1];
+
+			if (fps > highfps)
+				continue;
+
+			if (2 * fps >= 2 * lowfps + (highfps - lowfps)) {
+				fi->denominator = highfps;
+				ret = i + 1;
+				break;
+			}
+
+			fi->denominator = lowfps;
+			ret = i;
+			break;
+		}
+	}
 
 	mode = ov5640_find_mode(sensor, ret, width, height, false);
 	return mode ? ret : -EINVAL;
