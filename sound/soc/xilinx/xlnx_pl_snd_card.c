@@ -41,6 +41,30 @@ static struct snd_soc_card xlnx_card = {
 	.owner = THIS_MODULE,
 };
 
+static int xlnx_sdi_card_hw_params(struct snd_pcm_substream *substream,
+				   struct snd_pcm_hw_params *params)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct pl_card_data *prv = snd_soc_card_get_drvdata(rtd->card);
+	u32 sample_rate = params_rate(params);
+
+	switch (sample_rate) {
+	case 32000:
+		prv->mclk_ratio = 576;
+		break;
+	case 44100:
+		prv->mclk_ratio = 418;
+		break;
+	case 48000:
+		prv->mclk_ratio = 384;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	return 0;
+}
+
 static int xlnx_hdmi_card_hw_params(struct snd_pcm_substream *substream,
 				    struct snd_pcm_hw_params *params)
 {
@@ -135,6 +159,10 @@ static int xlnx_i2s_card_hw_params(struct snd_pcm_substream *substream,
 	return ret;
 }
 
+static const struct snd_soc_ops xlnx_sdi_card_ops = {
+	.hw_params = xlnx_sdi_card_hw_params,
+};
+
 static const struct snd_soc_ops xlnx_i2s_card_ops = {
 	.hw_params = xlnx_i2s_card_hw_params,
 };
@@ -177,6 +205,7 @@ static struct snd_soc_dai_link xlnx_snd_dai[][XLNX_MAX_PATHS] = {
 			.name = "xlnx-sdi-playback",
 			.codec_dai_name = "xlnx_sdi_tx",
 			.cpu_dai_name = "snd-soc-dummy-dai",
+			.ops = &xlnx_sdi_card_ops,
 		},
 		{
 			.name = "xlnx-sdi-capture",
