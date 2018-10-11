@@ -25,8 +25,77 @@ firmware {
 			#size-cells = <1>;
 
 			/* Data cells */
-			soc_revision: soc_revision {
+			soc_revision: soc_revision@0 {
 				reg = <0x0 0x4>;
+			};
+			/*
+			* efuse memory access:
+			* all the efuse feilds need to be read
+			* with the exact size specified in the node
+			*/
+			/* DNA */
+			efuse_dna: efuse_dna@c {
+				reg = <0xc 0xc>;
+			};
+			/* User 0 */
+			efuse_usr0: efuse_usr0@20 {
+				reg = <0x20 0x4>;
+			};
+			/* User 1 */
+			efuse_usr1: efuse_usr1@24 {
+				reg = <0x24 0x4>;
+			};
+			/* User 2 */
+			efuse_usr2: efuse_usr2@28 {
+				reg = <0x28 0x4>;
+			};
+			/* User 3 */
+			efuse_usr3: efuse_usr3@2c {
+				reg = <0x2c 0x4>;
+			};
+			/* User 4 */
+			efuse_usr4: efuse_usr4@30 {
+				reg = <0x30 0x4>;
+			};
+			/* User 5 */
+			efuse_usr5: efuse_usr5@34 {
+				reg = <0x34 0x4>;
+			};
+			/* User 6 */
+			efuse_usr6: efuse_usr6@38 {
+				reg = <0x38 0x4>;
+			};
+			/* User 7 */
+			efuse_usr7: efuse_usr7@3c {
+				reg = <0x3c 0x4>;
+			};
+			/* Misc user control bits */
+			efuse_miscusr: efuse_miscusr@40 {
+				reg = <0x40 0x4>;
+			};
+			/* PUF chash */
+			efuse_chash: efuse_chash@50 {
+				reg = <0x50 0x4>;
+			};
+			/* PUF misc */
+			efuse_pufmisc: efuse_pufmisc@54 {
+				reg = <0x54 0x4>;
+			};
+			/* SEC_CTRL */
+			efuse_sec: efuse_sec@58 {
+				reg = <0x58 0x4>;
+			};
+			/* SPK ID */
+			efuse_spkid: efuse_spkid@5c {
+				reg = <0x5c 0x4>;
+			};
+			/* PPK0 hash */
+			efuse_ppk0hash: efuse_ppk0hash@a0 {
+				reg = <0xa0 0x30>;
+			};
+			/* PPK1 hash */
+			efuse_ppk1hash: efuse_ppk1hash@d0 {
+				reg = <0xd0 0x30>;
 			};
 		};
 	};
@@ -44,3 +113,22 @@ For example:
 
 		...
 	};
+
+To program efuse memory, one should request specified bytes of size as below,
+NOTE: Efuse bits once programmed cannot be reverted.
+
+	- | TYPE	| OFFSET | SIZE(bytes)	|
+	- |User-0	| 0x20	 | 0x4		|
+	- |User-1	| 0x24	 | 0x4		|
+	- |User-2	| 0x28	 | 0x4		|
+	- |User-3	| 0x2C	 | 0x4		|
+	- |User-4	| 0x30	 | 0x4		|
+	- |User-5	| 0x34	 | 0x4		|
+	- |User-6	| 0x38	 | 0x4		|
+	- |User-7	| 0x3c	 | 0x4		|
+	- |Misc User	| 0x40	 | 0x4		|
+	- |SEC_CTRL	| 0x58	 | 0x4		|
+	- |SPK ID 	| 0x5C	 | 0x4		|
+	- |AES KEY 	| 0x60	 | 0x20		|
+	- |PPK0 hash	| 0xA0	 | 0x30		|
+	- |PPK1 hash	| 0xD0	 | 0x30		|
