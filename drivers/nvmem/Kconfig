@@ -149,7 +149,7 @@ config NVMEM_ZYNQMP
 	depends on ARCH_ZYNQMP
 	help
 	  This is a driver to access hardware related data like soc revision,
-	  IDCODE... etc.
+	  IDCODE, efuse ... etc.
 
 	  If sure, say yes. If unsure, say no.
 
