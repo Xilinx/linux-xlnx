@@ -1018,6 +1018,28 @@ static int zynqmp_pm_clock_getparent(u32 clock_id, u32 *parent_id)
 	return ret;
 }
 
+/**
+ * zynqmp_pm_efuse_access - Provides access to efuse memory.
+ * @address:	Address of the efuse params structure
+ * @out:		Returned output value
+ *
+ * Return:	Returns status, either success or error code.
+ */
+static int zynqmp_pm_efuse_access(const u64 address, u32 *out)
+{
+	u32 ret_payload[PAYLOAD_ARG_CNT];
+	int ret;
+
+	if (!out)
+		return -EINVAL;
+
+	ret = zynqmp_pm_invoke_fn(PM_EFUSE_ACCESS, upper_32_bits(address),
+				  lower_32_bits(address), 0, 0, ret_payload);
+	*out = ret_payload[1];
+
+	return ret;
+}
+
 static const struct zynqmp_eemi_ops eemi_ops = {
 	.get_api_version = zynqmp_pm_get_api_version,
 	.get_chipid = zynqmp_pm_get_chipid,
@@ -1061,6 +1083,7 @@ static const struct zynqmp_eemi_ops eemi_ops = {
 	.clock_getparent = zynqmp_pm_clock_getparent,
 	.register_access = zynqmp_pm_config_reg_access,
 	.aes = zynqmp_pm_aes_engine,
+	.efuse_access = zynqmp_pm_efuse_access,
 };
 
 /**
