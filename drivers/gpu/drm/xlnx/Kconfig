@@ -61,12 +61,14 @@ config DRM_XLNX_DSI
 config DRM_XLNX_MIXER
 	tristate "Xilinx DRM Mixer Driver"
 	depends on DRM_XLNX
+	select VIDEOMODE_HELPERS
 	help
 	  DRM driver for Xilinx Mixer driver
 
 config DRM_XLNX_PL_DISP
 	tristate "Xilinx DRM PL display driver"
 	depends on DRM_XLNX
+	select VIDEOMODE_HELPERS
 	help
 	  DRM driver for Xilinx PL display driver, provides drm
 	  crtc and plane object to display pipeline. You need to
