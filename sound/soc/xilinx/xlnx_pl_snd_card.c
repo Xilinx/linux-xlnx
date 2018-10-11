@@ -41,6 +41,33 @@ static struct snd_soc_card xlnx_card = {
 	.owner = THIS_MODULE,
 };
 
+static int xlnx_hdmi_card_hw_params(struct snd_pcm_substream *substream,
+				    struct snd_pcm_hw_params *params)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct pl_card_data *prv = snd_soc_card_get_drvdata(rtd->card);
+	u32 sample_rate = params_rate(params);
+
+	switch (sample_rate) {
+	case 32000:
+	case 44100:
+	case 48000:
+	case 96000:
+	case 176400:
+	case 192000:
+		prv->mclk_ratio = 768;
+		break;
+	case 88200:
+		prv->mclk_ratio = 192;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	prv->mclk_val = prv->mclk_ratio * sample_rate;
+	return clk_set_rate(prv->mclk, prv->mclk_val);
+}
+
 static int xlnx_i2s_card_hw_params(struct snd_pcm_substream *substream,
 				   struct snd_pcm_hw_params *params)
 {
@@ -112,6 +139,10 @@ static const struct snd_soc_ops xlnx_i2s_card_ops = {
 	.hw_params = xlnx_i2s_card_hw_params,
 };
 
+static const struct snd_soc_ops xlnx_hdmi_card_ops = {
+	.hw_params = xlnx_hdmi_card_hw_params,
+};
+
 SND_SOC_DAILINK_DEFS(xlnx_i2s,
 		     DAILINK_COMP_ARRAY(COMP_CPU("xilinx-i2s")),
 		     DAILINK_COMP_ARRAY(COMP_DUMMY()),
@@ -154,6 +185,7 @@ static struct snd_soc_dai_link xlnx_snd_dai[][XLNX_MAX_PATHS] = {
 		{
 			.name = "xilinx-hdmi-playback",
 			SND_SOC_DAILINK_REG(xlnx_hdmi_tx),
+			.ops = &xlnx_hdmi_card_ops,
 		},
 		{
 			.name = "xilinx-hdmi-capture",
