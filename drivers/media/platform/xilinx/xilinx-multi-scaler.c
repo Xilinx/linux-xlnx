@@ -510,16 +510,153 @@ static void xv_vscaler_set_coeff(struct xm2msc_chan_ctx *chan_ctx,
 	}
 }
 
+static u32
+xm2msc_select_hcoeff(struct xm2msc_chan_ctx *chan_ctx, const short **coeff)
+{
+	u16 hscale_ratio;
+	u32 width_in = chan_ctx->q_data[XM2MSC_CHAN_OUT].width;
+	u32 width_out = chan_ctx->q_data[XM2MSC_CHAN_CAP].width;
+	u32 ntaps = chan_ctx->xm2msc_dev->taps;
+
+	if (width_out < width_in) {
+		hscale_ratio = (width_in * 10) / width_out;
+
+		switch (chan_ctx->xm2msc_dev->taps) {
+		case XSCALER_TAPS_12:
+			if (hscale_ratio > 35) {
+				*coeff = &xhsc_coeff_taps12[0][0];
+				ntaps = XSCALER_TAPS_12;
+			} else if (hscale_ratio > 25) {
+				*coeff = &xhsc_coeff_taps10[0][0];
+				ntaps = XSCALER_TAPS_10;
+			} else if (hscale_ratio > 15) {
+				*coeff = &xhsc_coeff_taps8[0][0];
+				ntaps = XSCALER_TAPS_8;
+			} else {
+				*coeff = &xhsc_coeff_taps6[0][0];
+				ntaps = XSCALER_TAPS_6;
+			}
+		break;
+		case XSCALER_TAPS_10:
+			if (hscale_ratio > 25) {
+				*coeff = &xhsc_coeff_taps10[0][0];
+				ntaps = XSCALER_TAPS_10;
+			} else if (hscale_ratio > 15) {
+				*coeff = &xhsc_coeff_taps8[0][0];
+				ntaps = XSCALER_TAPS_8;
+			} else {
+				*coeff = &xhsc_coeff_taps6[0][0];
+				ntaps = XSCALER_TAPS_6;
+			}
+		break;
+		case XSCALER_TAPS_8:
+			if (hscale_ratio > 15) {
+				*coeff = &xhsc_coeff_taps8[0][0];
+				ntaps = XSCALER_TAPS_8;
+			} else {
+				*coeff = &xhsc_coeff_taps6[0][0];
+				ntaps = XSCALER_TAPS_6;
+			}
+		break;
+		default: /* or XSCALER_TAPS_6 */
+			*coeff = &xhsc_coeff_taps6[0][0];
+			ntaps = XSCALER_TAPS_6;
+		}
+	} else {
+		/*
+		 * Scale Up Mode will always use 6 tap filter
+		 * This also includes 1:1
+		 */
+		*coeff = &xhsc_coeff_taps6[0][0];
+		ntaps = XSCALER_TAPS_6;
+	}
+
+	return ntaps;
+}
+
+static u32
+xm2msc_select_vcoeff(struct xm2msc_chan_ctx *chan_ctx, const short **coeff)
+{
+	u16 vscale_ratio;
+	u32 height_in = chan_ctx->q_data[XM2MSC_CHAN_OUT].height;
+	u32 height_out = chan_ctx->q_data[XM2MSC_CHAN_CAP].height;
+	u32 ntaps = chan_ctx->xm2msc_dev->taps;
+
+	if (height_out < height_in) {
+		vscale_ratio = (height_in * 10) / height_out;
+
+		switch (chan_ctx->xm2msc_dev->taps) {
+		case XSCALER_TAPS_12:
+			if (vscale_ratio > 35) {
+				*coeff = &xvsc_coeff_taps12[0][0];
+				ntaps = XSCALER_TAPS_12;
+			} else if (vscale_ratio > 25) {
+				*coeff = &xvsc_coeff_taps10[0][0];
+				ntaps = XSCALER_TAPS_10;
+			} else if (vscale_ratio > 15) {
+				*coeff = &xvsc_coeff_taps8[0][0];
+				ntaps = XSCALER_TAPS_8;
+			} else {
+				*coeff = &xvsc_coeff_taps6[0][0];
+				ntaps = XSCALER_TAPS_6;
+			}
+		break;
+		case XSCALER_TAPS_10:
+			if (vscale_ratio > 25) {
+				*coeff = &xvsc_coeff_taps10[0][0];
+				ntaps = XSCALER_TAPS_10;
+			} else if (vscale_ratio > 15) {
+				*coeff = &xvsc_coeff_taps8[0][0];
+				ntaps = XSCALER_TAPS_8;
+			} else {
+				*coeff = &xvsc_coeff_taps6[0][0];
+				ntaps = XSCALER_TAPS_6;
+			}
+		break;
+		case XSCALER_TAPS_8:
+			if (vscale_ratio > 15) {
+				*coeff = &xvsc_coeff_taps8[0][0];
+				ntaps = XSCALER_TAPS_8;
+			} else {
+				*coeff = &xvsc_coeff_taps6[0][0];
+				ntaps = XSCALER_TAPS_6;
+			}
+		break;
+		default: /* or XSCALER_TAPS_6 */
+			*coeff = &xvsc_coeff_taps6[0][0];
+			ntaps = XSCALER_TAPS_6;
+		}
+	} else {
+		/*
+		 * Scale Up Mode will always use 6 tap filter
+		 * This also includes 1:1
+		 */
+		*coeff = &xvsc_coeff_taps6[0][0];
+		ntaps = XSCALER_TAPS_6;
+	}
+
+	return ntaps;
+}
+
 static void xm2mvsc_initialize_coeff_banks(struct xm2msc_chan_ctx *chan_ctx)
 {
+	const short *coeff = NULL;
+	u32 ntaps;
 	struct xm2m_msc_dev *xm2msc = chan_ctx->xm2msc_dev;
-	/* Bank 0 is init as 6 tap filter for 6, 8, 10 & 12 tap filters */
-	xv_hscaler_load_ext_coeff(xm2msc, &xhsc_coeff_taps6[0][0],
-				  XSCALER_TAPS_6);
+
+	ntaps = xm2msc_select_hcoeff(chan_ctx, &coeff);
+	xv_hscaler_load_ext_coeff(xm2msc, coeff, ntaps);
 	xv_hscaler_set_coeff(chan_ctx, XM2MVSC_HFLTCOEFF(chan_ctx->num));
-	xv_vscaler_load_ext_coeff(xm2msc, &xvsc_coeff_taps6[0][0],
-				  XSCALER_TAPS_6);
+
+	dev_dbg(xm2msc->dev, "htaps %d selected for chan %d\n",
+		ntaps, chan_ctx->num);
+
+	ntaps = xm2msc_select_vcoeff(chan_ctx, &coeff);
+	xv_vscaler_load_ext_coeff(xm2msc, coeff, ntaps);
 	xv_vscaler_set_coeff(chan_ctx, XM2MVSC_VFLTCOEFF(chan_ctx->num));
+
+	dev_dbg(xm2msc->dev, "vtaps %d selected for chan %d\n",
+		ntaps, chan_ctx->num);
 }
 
 static void xm2msc_set_chan_params(struct xm2msc_chan_ctx *chan_ctx,
