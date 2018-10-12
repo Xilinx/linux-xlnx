@@ -550,8 +550,6 @@ static void xm2msc_set_chan_com_params(struct xm2msc_chan_ctx *chan_ctx)
 	u32 pixel_rate;
 	u32 line_rate;
 
-	/* Currently only 6 tabs supported */
-	chan_ctx->xm2msc_dev->taps = XSCALER_TAPS_6;
 	xm2mvsc_initialize_coeff_banks(chan_ctx);
 
 	pixel_rate = (out_q_data->width * XM2MSC_STEP_PRECISION) /
@@ -1832,6 +1830,16 @@ static int xm2msc_parse_of(struct platform_device *pdev,
 		return -EINVAL;
 	}
 
+	ret = of_property_read_u32(node, "xlnx,num-taps",
+				   &xm2msc->taps);
+	if (ret || (xm2msc->taps != XSCALER_TAPS_6 &&
+		    xm2msc->taps != XSCALER_TAPS_8 &&
+		    xm2msc->taps != XSCALER_TAPS_10 &&
+		    xm2msc->taps != XSCALER_TAPS_12)) {
+		dev_err(dev, "missing/invalid taps in dts prop\n");
+		return -EINVAL;
+	}
+
 	xm2msc->irq = irq_of_parse_and_map(node, 0);
 	if (xm2msc->irq < 0) {
 		dev_err(dev, "Unable to get IRQ");
@@ -1842,6 +1850,7 @@ static int xm2msc_parse_of(struct platform_device *pdev,
 	dev_dbg(dev, "DMA Addr width Supported = %d\n", xm2msc->dma_addr_size);
 	dev_dbg(dev, "Max col/row Supported = (%d) / (%d)\n",
 		xm2msc->max_wd, xm2msc->max_ht);
+	dev_dbg(dev, "taps Supported = %d\n", xm2msc->taps);
 	/* read supported video formats and update internal table */
 	hw_vid_fmt_cnt = of_property_count_strings(node, "xlnx,vid-formats");
 
