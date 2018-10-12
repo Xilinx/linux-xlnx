@@ -356,18 +356,18 @@ struct xm2m_msc_dev {
 
 #define fh_to_chanctx(__fh) container_of(__fh, struct xm2msc_chan_ctx, fh)
 
-static inline u32 xm2msc_readreg(const volatile void __iomem *addr)
+static inline u32 xm2msc_readreg(const void __iomem *addr)
 {
 	return ioread32(addr);
 }
 
-static inline void xm2msc_write64reg(volatile void __iomem *addr, u64 value)
+static inline void xm2msc_write64reg(void __iomem *addr, u64 value)
 {
 	iowrite32(lower_32_bits(value), addr);
 	iowrite32(upper_32_bits(value), (void __iomem *)(addr + 4));
 }
 
-static inline void xm2msc_writereg(volatile void __iomem *addr, u32 value)
+static inline void xm2msc_writereg(void __iomem *addr, u32 value)
 {
 	iowrite32(value, addr);
 }
@@ -647,7 +647,7 @@ xm2msc_pr_chanctx(struct xm2msc_chan_ctx *ctx, const char *fun_name)
 }
 
 static void
-xm2msc_pr_screg(struct device *dev, const volatile void __iomem *base)
+xm2msc_pr_screg(struct device *dev, const void __iomem *base)
 {
 	dev_dbg(dev, "Ctr, GIE,  IE,  IS   OUT\n");
 	dev_dbg(dev, "0x%x  0x%x   0x%x  0x%x  0x%x\n",
