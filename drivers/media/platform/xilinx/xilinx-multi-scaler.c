@@ -273,7 +273,6 @@ struct xm2msc_q_data {
  * @num: HW Scaling Channel number
  * @minor: Minor number of the video device
  * @status: channel status, CHAN_ATTACHED or CHAN_OPENED
- * @taps: number of hwtaps required for channel
  * @frames: number of frames processed
  * @vfd: V4L2 device
  * @fh: v4l2 file handle
@@ -287,7 +286,6 @@ struct xm2msc_chan_ctx {
 	u32 num;
 	u32 minor;
 	u8 status;
-	u32 taps;
 	unsigned long frames;
 
 	struct video_device vfd;
@@ -306,6 +304,7 @@ struct xm2msc_chan_ctx {
  * @max_chan: maximum number of Scaling Channels
  * @max_ht: maximum number of rows in a plane
  * @max_wd: maximum number of column in a plane
+ * @taps: number of taps set in HW
  * @supported_fmt: bitmap for all supported fmts by HW
  * @dma_addr_size: Size of dma address pointer in IP (either 32 or 64)
  * @rst_gpio: reset gpio handler
@@ -331,6 +330,7 @@ struct xm2m_msc_dev {
 	u32 max_chan;
 	u32 max_ht;
 	u32 max_wd;
+	u32 taps;
 	u32 supported_fmt;
 	u32 dma_addr_size;
 	struct gpio_desc *rst_gpio;
@@ -447,7 +447,7 @@ static void xv_hscaler_set_coeff(struct xm2msc_chan_ctx *chan_ctx,
 	struct xm2m_msc_dev *xm2msc = chan_ctx->xm2msc_dev;
 	int val, offset, rd_indx;
 	unsigned int i, j;
-	u32 ntaps = chan_ctx->taps;
+	u32 ntaps = chan_ctx->xm2msc_dev->taps;
 	const u32 nphases = XSCALER_MAX_PHASES;
 
 	offset = (XSCALER_MAX_TAPS - ntaps) / 2;
@@ -492,7 +492,7 @@ static void xv_vscaler_set_coeff(struct xm2msc_chan_ctx *chan_ctx,
 {
 	struct xm2m_msc_dev *xm2msc = chan_ctx->xm2msc_dev;
 	u32 val, i, j, offset, rd_indx;
-	u32 ntaps = chan_ctx->taps;
+	u32 ntaps = chan_ctx->xm2msc_dev->taps;
 	const u32 nphases = XSCALER_MAX_PHASES;
 
 	offset = (XSCALER_MAX_TAPS - ntaps) / 2;
@@ -550,7 +550,8 @@ static void xm2msc_set_chan_com_params(struct xm2msc_chan_ctx *chan_ctx)
 	u32 pixel_rate;
 	u32 line_rate;
 
-	chan_ctx->taps = XSCALER_TAPS_6; /* Currently only 6 tabs supported */
+	/* Currently only 6 tabs supported */
+	chan_ctx->xm2msc_dev->taps = XSCALER_TAPS_6;
 	xm2mvsc_initialize_coeff_banks(chan_ctx);
 
 	pixel_rate = (out_q_data->width * XM2MSC_STEP_PRECISION) /
@@ -631,7 +632,7 @@ xm2msc_pr_chanctx(struct xm2msc_chan_ctx *ctx, const char *fun_name)
 
 	dev_dbg(dev, "\n\n----- [[ %s ]]: Channel %d (0x%p) context -----\n",
 		fun_name, ctx->num, ctx);
-	dev_dbg(dev, "minor = %d, taps = %d\n", ctx->minor, ctx->taps);
+	dev_dbg(dev, "minor = %d\n", ctx->minor);
 	dev_dbg(dev, "reg mapped at %p\n", ctx->regs);
 	dev_dbg(dev, "xm2msc \tm2m_dev \tm2m_ctx\n");
 	dev_dbg(dev, "%p \t%p \t%p\n", ctx->xm2msc_dev,
