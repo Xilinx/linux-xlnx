@@ -421,8 +421,8 @@ static const struct xm2msc_fmt *find_format(struct v4l2_format *f)
 }
 
 static void
-xv_hscaler_load_ext_coeff(struct xm2m_msc_dev *xm2msc,
-			  const short *coeff, u32 ntaps)
+xm2msc_hscaler_load_ext_coeff(struct xm2m_msc_dev *xm2msc,
+			      const short *coeff, u32 ntaps)
 {
 	unsigned int i, j, pad, offset;
 	const u32 nphases = XSCALER_MAX_PHASES;
@@ -441,8 +441,8 @@ xv_hscaler_load_ext_coeff(struct xm2m_msc_dev *xm2msc,
 	}
 }
 
-static void xv_hscaler_set_coeff(struct xm2msc_chan_ctx *chan_ctx,
-				 const u32 base_addr)
+static void xm2msc_hscaler_set_coeff(struct xm2msc_chan_ctx *chan_ctx,
+				     const u32 base_addr)
 {
 	struct xm2m_msc_dev *xm2msc = chan_ctx->xm2msc_dev;
 	int val, offset, rd_indx;
@@ -465,8 +465,8 @@ static void xv_hscaler_set_coeff(struct xm2msc_chan_ctx *chan_ctx,
 }
 
 static void
-xv_vscaler_load_ext_coeff(struct xm2m_msc_dev *xm2msc,
-			  const short *coeff, const u32 ntaps)
+xm2msc_vscaler_load_ext_coeff(struct xm2m_msc_dev *xm2msc,
+			      const short *coeff, const u32 ntaps)
 {
 	unsigned int i, j;
 	int pad, offset;
@@ -487,8 +487,9 @@ xv_vscaler_load_ext_coeff(struct xm2m_msc_dev *xm2msc,
 	}
 }
 
-static void xv_vscaler_set_coeff(struct xm2msc_chan_ctx *chan_ctx,
-				 const u32 base_addr)
+static void
+xm2msc_vscaler_set_coeff(struct xm2msc_chan_ctx *chan_ctx,
+			 const u32 base_addr)
 {
 	struct xm2m_msc_dev *xm2msc = chan_ctx->xm2msc_dev;
 	u32 val, i, j, offset, rd_indx;
@@ -645,15 +646,15 @@ static void xm2mvsc_initialize_coeff_banks(struct xm2msc_chan_ctx *chan_ctx)
 	struct xm2m_msc_dev *xm2msc = chan_ctx->xm2msc_dev;
 
 	ntaps = xm2msc_select_hcoeff(chan_ctx, &coeff);
-	xv_hscaler_load_ext_coeff(xm2msc, coeff, ntaps);
-	xv_hscaler_set_coeff(chan_ctx, XM2MVSC_HFLTCOEFF(chan_ctx->num));
+	xm2msc_hscaler_load_ext_coeff(xm2msc, coeff, ntaps);
+	xm2msc_hscaler_set_coeff(chan_ctx, XM2MVSC_HFLTCOEFF(chan_ctx->num));
 
 	dev_dbg(xm2msc->dev, "htaps %d selected for chan %d\n",
 		ntaps, chan_ctx->num);
 
 	ntaps = xm2msc_select_vcoeff(chan_ctx, &coeff);
-	xv_vscaler_load_ext_coeff(xm2msc, coeff, ntaps);
-	xv_vscaler_set_coeff(chan_ctx, XM2MVSC_VFLTCOEFF(chan_ctx->num));
+	xm2msc_vscaler_load_ext_coeff(xm2msc, coeff, ntaps);
+	xm2msc_vscaler_set_coeff(chan_ctx, XM2MVSC_VFLTCOEFF(chan_ctx->num));
 
 	dev_dbg(xm2msc->dev, "vtaps %d selected for chan %d\n",
 		ntaps, chan_ctx->num);
