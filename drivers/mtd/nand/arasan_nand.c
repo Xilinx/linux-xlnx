@@ -1019,7 +1019,7 @@ static int anfc_probe(struct platform_device *pdev)
 	if (!nfc)
 		return -ENOMEM;
 
-	init_waitqueue_head(&nfc->controller.wq);
+	nand_hw_control_init(&nfc->controller);
 	INIT_LIST_HEAD(&nfc->chips);
 	init_completion(&nfc->event);
 	nfc->dev = &pdev->dev;
