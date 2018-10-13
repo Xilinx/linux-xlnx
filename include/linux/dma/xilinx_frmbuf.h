@@ -174,7 +174,7 @@ static inline int xilinx_xdma_get_v4l2_vid_fmts(struct dma_chan *chan,
 
 static inline int xilinx_xdma_get_fid(struct dma_chan *chan,
 				      struct dma_async_tx_descriptor *async_tx,
-				      u32 *fid);
+				      u32 *fid)
 {
 	return -ENODEV;
 }
