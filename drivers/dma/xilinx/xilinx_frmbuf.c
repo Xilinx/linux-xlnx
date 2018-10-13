@@ -136,12 +136,14 @@ struct xilinx_frmbuf_desc_hw {
  * @hw: Hardware descriptor
  * @node: Node in the channel descriptors list
  * @fid: Field ID of buffer
+ * @earlycb: Whether the callback should be called when in staged state
  */
 struct xilinx_frmbuf_tx_descriptor {
 	struct dma_async_tx_descriptor async_tx;
 	struct xilinx_frmbuf_desc_hw hw;
 	struct list_head node;
 	u32 fid;
+	bool earlycb;
 };
 
 /**
@@ -792,6 +794,52 @@ int xilinx_xdma_set_fid(struct dma_chan *chan,
 }
 EXPORT_SYMBOL(xilinx_xdma_set_fid);
 
+int xilinx_xdma_get_earlycb(struct dma_chan *chan,
+			    struct dma_async_tx_descriptor *async_tx,
+			    bool *enable)
+{
+	struct xilinx_frmbuf_device *xdev;
+	struct xilinx_frmbuf_tx_descriptor *desc;
+
+	xdev = frmbuf_find_dev(chan);
+	if (IS_ERR(xdev))
+		return PTR_ERR(xdev);
+
+	if (!async_tx || !enable)
+		return -EINVAL;
+
+	desc = to_dma_tx_descriptor(async_tx);
+	if (!desc)
+		return -EINVAL;
+
+	*enable = desc->earlycb;
+	return 0;
+}
+EXPORT_SYMBOL(xilinx_xdma_get_earlycb);
+
+int xilinx_xdma_set_earlycb(struct dma_chan *chan,
+			    struct dma_async_tx_descriptor *async_tx,
+			    bool enable)
+{
+	struct xilinx_frmbuf_device *xdev;
+	struct xilinx_frmbuf_tx_descriptor *desc;
+
+	if (!async_tx)
+		return -EINVAL;
+
+	xdev = frmbuf_find_dev(chan);
+	if (IS_ERR(xdev))
+		return PTR_ERR(xdev);
+
+	desc = to_dma_tx_descriptor(async_tx);
+	if (!desc)
+		return -EINVAL;
+
+	desc->earlycb = enable;
+	return 0;
+}
+EXPORT_SYMBOL(xilinx_xdma_set_earlycb);
+
 /**
  * of_dma_xilinx_xlate - Translation function
  * @dma_spec: Pointer to DMA specifier as found in the device tree
@@ -1097,6 +1145,9 @@ static irqreturn_t xilinx_frmbuf_irq_handler(int irq, void *data)
 {
 	struct xilinx_frmbuf_chan *chan = data;
 	u32 status;
+	dma_async_tx_callback callback = NULL;
+	void *callback_param;
+	struct xilinx_frmbuf_tx_descriptor *desc;
 
 	status = frmbuf_read(chan, XILINX_FRMBUF_ISR_OFFSET);
 	if (!(status & XILINX_FRMBUF_ISR_ALL_IRQ_MASK))
@@ -1104,6 +1155,17 @@ static irqreturn_t xilinx_frmbuf_irq_handler(int irq, void *data)
 
 	frmbuf_write(chan, XILINX_FRMBUF_ISR_OFFSET,
 		     status & XILINX_FRMBUF_ISR_ALL_IRQ_MASK);
+
+	/* Check if callback function needs to be called early */
+	desc = chan->staged_desc;
+	if (desc && desc->earlycb) {
+		callback = desc->async_tx.callback;
+		callback_param = desc->async_tx.callback_param;
+		if (callback) {
+			callback(callback_param);
+			desc->async_tx.callback = NULL;
+		}
+	}
 
 	if (status & XILINX_FRMBUF_ISR_AP_READY_IRQ) {
 		spin_lock(&chan->lock);
