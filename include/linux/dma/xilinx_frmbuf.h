@@ -124,6 +124,30 @@ int xilinx_xdma_get_fid(struct dma_chan *chan,
 int xilinx_xdma_set_fid(struct dma_chan *chan,
 			struct dma_async_tx_descriptor *async_tx, u32 fid);
 
+/**
+ * xilinx_xdma_get_earlycb - Get info if early callback has been enabled.
+ *
+ * @chan: dma channel instance
+ * @async_tx: descriptor whose parent structure contains fid.
+ * @enable: Output param - Early callback enabled
+ *
+ * Return: 0 on success, -EINVAL in case of invalid chan
+ */
+int xilinx_xdma_get_earlycb(struct dma_chan *chan,
+			    struct dma_async_tx_descriptor *async_tx,
+			    bool *enable);
+
+/**
+ * xilinx_xdma_set_earlycb - Enable/Disable early callback
+ * @chan: dma channel instance
+ * @async_tx: dma async tx descriptor for the buffer
+ * @enable: Flag to enable or disable early callback for descriptor.
+ *
+ * Return: 0 on success, -EINVAL in case of invalid chan
+ */
+int xilinx_xdma_set_earlycb(struct dma_chan *chan,
+			    struct dma_async_tx_descriptor *async_tx,
+			    bool enable);
 #else
 static inline void xilinx_xdma_set_mode(struct dma_chan *chan,
 					enum operation_mode mode)
@@ -158,6 +182,20 @@ static inline int xilinx_xdma_get_fid(struct dma_chan *chan,
 static inline int xilinx_xdma_set_fid(struct dma_chan *chan,
 				      struct dma_async_tx_descriptor *async_tx,
 				      u32 fid)
+{
+	return -ENODEV;
+}
+
+static inline int xilinx_xdma_get_earlycb(struct dma_chan *chan,
+					  struct dma_async_tx_descriptor *atx,
+					  bool *enable)
+{
+	return -ENODEV;
+}
+
+static inline int xilinx_xdma_set_earlycb(struct dma_chan *chan,
+					  struct dma_async_tx_descriptor *atx,
+					  bool enable)
 {
 	return -ENODEV;
 }
