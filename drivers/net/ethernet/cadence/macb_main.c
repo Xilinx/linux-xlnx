@@ -3909,7 +3909,6 @@ static int __maybe_unused macb_suspend(struct device *dev)
 		spin_unlock_irqrestore(&bp->lock, flags);
 	}
 
-	netif_carrier_off(netdev);
 	if (bp->ptp_info)
 		bp->ptp_info->ptp_remove(netdev);
 	pm_runtime_force_suspend(dev);
@@ -3944,8 +3943,8 @@ static int __maybe_unused macb_resume(struct device *dev)
 	} else {
 		macb_writel(bp, NCR, MACB_BIT(MPE));
 		napi_enable(&bp->napi);
-		netif_carrier_on(netdev);
 		phy_resume(bp->phy_dev);
+		phy_init_hw(bp->phy_dev);
 		phy_start(bp->phy_dev);
 	}
 
