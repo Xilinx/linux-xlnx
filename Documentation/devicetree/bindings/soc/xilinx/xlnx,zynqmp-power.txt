@@ -3,7 +3,9 @@ Xilinx Zynq MPSoC Power Management Device Tree Bindings
 The zynqmp-power node describes the power management configurations.
 
 Required properties:
- - compatible	: Must contain:  "xlnx,zynqmp-power"
+ - compatible	: Should be one of
+		  "xlnx,zynqmp-power"
+		  "xlnx,zynqmp-pm" (deprecated)
  - mbox-names	: Name given to channels seen in the 'mboxes' property.
 		  "rx" - Mailbox corresponding to receive path
 		  "tx" - Mailbox corresponding to transmit path
