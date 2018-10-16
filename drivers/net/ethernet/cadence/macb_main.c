@@ -333,8 +333,6 @@ static int macb_mdio_wait_for_idle(struct macb *bp)
 
 		if (time_after_eq(jiffies, timeout)) {
 			netdev_err(bp->dev, "wait for end of transfer timed out\n");
-			pm_runtime_mark_last_busy(&bp->pdev->dev);
-			pm_runtime_put_autosuspend(&bp->pdev->dev);
 			return -ETIMEDOUT;
 		}
 
