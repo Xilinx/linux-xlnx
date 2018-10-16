@@ -2501,7 +2501,7 @@ static void zynqmp_disp_plane_destroy(struct drm_plane *plane)
 	struct zynqmp_disp_layer *layer = plane_to_layer(plane);
 
 	xlnx_bridge_unregister(&layer->bridge);
-	drm_plane_cleanup(plane);
+	//drm_plane_cleanup(plane);
 }
 
 static int
@@ -2895,7 +2895,7 @@ static struct drm_crtc_helper_funcs zynqmp_disp_crtc_helper_funcs = {
 static void zynqmp_disp_crtc_destroy(struct drm_crtc *crtc)
 {
 	zynqmp_disp_crtc_atomic_disable(crtc, NULL);
-	drm_crtc_cleanup(crtc);
+	//drm_crtc_cleanup(crtc);
 }
 
 static int zynqmp_disp_crtc_enable_vblank(struct drm_crtc *crtc)
