@@ -273,8 +273,11 @@ static int parse_consumer_format(u32 chsts_reg1_val, u32 chsts_reg2_val,
 	       CON_CHANNEL_COUNT_SHIFT;
 	params->channels = val;
 
-	/* if not found, set it to default */
-	if (!params->channels)
+	/*
+	 * if incorrect channel count embedded is less than 2, set it to
+	 * supported default which is 2 in our case
+	 */
+	if (params->channels < 2)
 		params->channels = 2;
 
 	if (chsts_reg2_val & CON_MAX_BITDEPTH_MASK)
