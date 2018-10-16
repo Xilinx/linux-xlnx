@@ -53,6 +53,7 @@
 /**
  * struct xgpio_instance - Stores information about GPIO device
  * @mmchip: OF GPIO chip for memory mapped banks
+ * @mmchip_dual: Pointer to the OF dual gpio chip
  * @gpio_state: GPIO state shadow register
  * @gpio_dir: GPIO direction shadow register
  * @offset: GPIO channel offset
@@ -65,6 +66,7 @@
  */
 struct xgpio_instance {
 	struct of_mm_gpio_chip mmchip;
+	struct of_mm_gpio_chip *mmchip_dual;
 	u32 gpio_state;
 	u32 gpio_dir;
 	u32 offset;
@@ -570,6 +572,8 @@ static int xgpio_remove(struct platform_device *pdev)
 	struct xgpio_instance *chip = platform_get_drvdata(pdev);
 
 	of_mm_gpiochip_remove(&chip->mmchip);
+	if (chip->mmchip_dual)
+		of_mm_gpiochip_remove(chip->mmchip_dual);
 	if (!pm_runtime_suspended(&pdev->dev))
 		clk_disable(chip->clk);
 	clk_unprepare(chip->clk);
@@ -592,7 +596,7 @@ static int xgpio_remove(struct platform_device *pdev)
 static int xgpio_of_probe(struct platform_device *pdev)
 {
 	struct device_node *np = pdev->dev.of_node;
-	struct xgpio_instance *chip;
+	struct xgpio_instance *chip, *chip_dual;
 	int status = 0;
 	const u32 *tree_info;
 	u32 ngpio;
@@ -686,22 +690,24 @@ static int xgpio_of_probe(struct platform_device *pdev)
 
 	tree_info = of_get_property(np, "xlnx,is-dual", NULL);
 	if (tree_info && be32_to_cpup(tree_info)) {
-		chip = devm_kzalloc(&pdev->dev, sizeof(*chip), GFP_KERNEL);
-		if (!chip)
-			return -ENOMEM;
+		chip_dual = devm_kzalloc(&pdev->dev, sizeof(*chip_dual),
+					 GFP_KERNEL);
+		if (!chip_dual)
+			goto err_pm_put;
 
 		/* Add dual channel offset */
-		chip->offset = XGPIO_CHANNEL_OFFSET;
+		chip_dual->offset = XGPIO_CHANNEL_OFFSET;
 
 		/* Update GPIO state shadow register with default value */
 		of_property_read_u32(np, "xlnx,dout-default-2",
-				     &chip->gpio_state);
+				     &chip_dual->gpio_state);
 
 		/* By default, all pins are inputs */
-		chip->gpio_dir = 0xFFFFFFFF;
+		chip_dual->gpio_dir = 0xFFFFFFFF;
 
 		/* Update GPIO direction shadow register with default value */
-		of_property_read_u32(np, "xlnx,tri-default-2", &chip->gpio_dir);
+		of_property_read_u32(np, "xlnx,tri-default-2",
+				     &chip_dual->gpio_dir);
 
 		/*
 		 * Check device node and parent device node for device width
@@ -709,25 +715,27 @@ static int xgpio_of_probe(struct platform_device *pdev)
 		 */
 		if (of_property_read_u32(np, "xlnx,gpio2-width", &ngpio))
 			ngpio = 32;
-		chip->mmchip.gc.ngpio = (u16)ngpio;
+		chip_dual->mmchip.gc.ngpio = (u16)ngpio;
 
-		spin_lock_init(&chip->gpio_lock);
+		spin_lock_init(&chip_dual->gpio_lock);
 
-		chip->mmchip.gc.parent = &pdev->dev;
-		chip->mmchip.gc.owner = THIS_MODULE;
-		chip->mmchip.gc.of_xlate = xgpio_xlate;
-		chip->mmchip.gc.of_gpio_n_cells = cells;
-		chip->mmchip.gc.direction_input = xgpio_dir_in;
-		chip->mmchip.gc.direction_output = xgpio_dir_out;
-		chip->mmchip.gc.get = xgpio_get;
-		chip->mmchip.gc.set = xgpio_set;
-		chip->mmchip.gc.request = xgpio_request;
-		chip->mmchip.gc.free = xgpio_free;
-		chip->mmchip.gc.set_multiple = xgpio_set_multiple;
+		chip_dual->mmchip.gc.parent = &pdev->dev;
+		chip_dual->mmchip.gc.owner = THIS_MODULE;
+		chip_dual->mmchip.gc.of_xlate = xgpio_xlate;
+		chip_dual->mmchip.gc.of_gpio_n_cells = cells;
+		chip_dual->mmchip.gc.direction_input = xgpio_dir_in;
+		chip_dual->mmchip.gc.direction_output = xgpio_dir_out;
+		chip_dual->mmchip.gc.get = xgpio_get;
+		chip_dual->mmchip.gc.set = xgpio_set;
+		chip_dual->mmchip.gc.request = xgpio_request;
+		chip_dual->mmchip.gc.free = xgpio_free;
+		chip_dual->mmchip.gc.set_multiple = xgpio_set_multiple;
 
-		chip->mmchip.save_regs = xgpio_save_regs;
+		chip_dual->mmchip.save_regs = xgpio_save_regs;
 
-		status = xgpio_irq_setup(np, chip);
+		chip->mmchip_dual = &chip_dual->mmchip;
+
+		status = xgpio_irq_setup(np, chip_dual);
 		if (status) {
 			pr_err("%s: GPIO IRQ initialization failed %d\n",
 			      np->full_name, status);
@@ -735,14 +743,14 @@ static int xgpio_of_probe(struct platform_device *pdev)
 		}
 
 		/* Call the OF gpio helper to setup and register the GPIO dev */
-		status = of_mm_gpiochip_add(np, &chip->mmchip);
+		status = of_mm_gpiochip_add(np, &chip_dual->mmchip);
 		if (status) {
 			pr_err("%s: error in probe function with status %d\n",
 			       np->full_name, status);
 			goto err_pm_put;
 		}
 		pr_info("XGpio: %s: dual channel registered, base is %d\n",
-					np->full_name, chip->mmchip.gc.base);
+			np->full_name, chip_dual->mmchip.gc.base);
 	}
 
 	pm_runtime_put(&pdev->dev);
