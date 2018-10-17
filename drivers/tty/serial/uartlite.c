@@ -771,7 +771,7 @@ static int ulite_get_id(struct platform_device *pdev)
 
 	/* Alias list is stable that's why get alias bitmap only once */
 	if (!alias_bitmap_initialized) {
-		ret = of_alias_get_alias_list(ulite_of_match, "serial",
+		ret = of_alias_get_alias_list(of_match_ptr(ulite_of_match), "serial",
 					      alias_bitmap, MAX_UART_INSTANCES);
 		if (ret) {
 			mutex_unlock(&bitmap_lock);
