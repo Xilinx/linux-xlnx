@@ -311,6 +311,11 @@ static int cadence_pwm_remove(struct platform_device *pdev)
 	return pwmchip_remove(&cpwm->chip);
 }
 
+static void cadence_pwm_shutdown(struct platform_device *pdev)
+{
+	cadence_pwm_remove(pdev);
+}
+
 static const struct of_device_id cadence_pwm_of_match[] = {
 	{ .compatible = "xlnx,ps7-ttc-1.00.a" },
 	{ .compatible = "cdns,ttc" },
@@ -327,6 +332,7 @@ static struct platform_driver cadence_pwm_driver = {
 	},
 	.probe = cadence_pwm_probe,
 	.remove = cadence_pwm_remove,
+	.shutdown = cadence_pwm_shutdown,
 };
 
 static int __init cadence_pwm_init(void)
