@@ -20,6 +20,7 @@ obj-$(CONFIG_USB_EMXX)		+= emxx_udc/
 obj-$(CONFIG_MFD_NVEC)		+= nvec/
 obj-$(CONFIG_STAGING_BOARD)	+= board/
 obj-$(CONFIG_LTE_GDM724X)	+= gdm724x/
+obj-$(CONFIG_XILINX_APF)	+= apf/
 obj-$(CONFIG_FB_TFT)		+= fbtft/
 obj-$(CONFIG_MOST)		+= most/
 obj-$(CONFIG_KS7010)		+= ks7010/
