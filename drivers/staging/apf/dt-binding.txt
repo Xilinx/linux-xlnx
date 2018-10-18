@@ -1,0 +1,17 @@
+* Xilinx APF xlnk driver
+
+Required properties:
+- compatible: Should be "xlnx,xlnk"
+- clock-names: List of clock names
+- clocks: List of clock sources corresponding to the clock names
+
+The number of elements on the clock-names and clocks lists should be the same.
+If there are no controllable clocks, the xlnk node should be omitted from the
+devicetree.
+
+Example:
+	xlnk {
+		compatible = "xlnx,xlnk-1.0";
+		clock-names = "clk166", "clk150", "clk100", "clk200";
+		clocks = <&clkc 15>, <&clkc 16>, <&clkc 17>, <&clkc 18>;
+	};
