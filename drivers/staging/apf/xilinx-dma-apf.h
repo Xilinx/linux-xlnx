@@ -229,5 +229,6 @@ int xdma_getconfig(struct xdma_chan *chan,
 int xdma_setconfig(struct xdma_chan *chan,
 		   unsigned char irq_thresh,
 		   unsigned char irq_delay);
+unsigned int xlate_irq(unsigned int hwirq);
 
 #endif

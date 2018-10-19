@@ -88,6 +88,10 @@ static size_t xlnk_buflen[XLNK_BUF_POOL_SIZE];
 static unsigned int xlnk_bufcacheable[XLNK_BUF_POOL_SIZE];
 static spinlock_t xlnk_buf_lock;
 
+#define XLNK_IRQ_POOL_SIZE 256
+static struct xlnk_irq_control *xlnk_irq_set[XLNK_IRQ_POOL_SIZE];
+static spinlock_t xlnk_irq_lock;
+
 static int xlnk_open(struct inode *ip, struct file *filp);
 static int xlnk_release(struct inode *ip, struct file *filp);
 static long xlnk_ioctl(struct file *filp, unsigned int code,
@@ -101,6 +105,7 @@ static void xlnk_vma_open(struct vm_area_struct *vma);
 static void xlnk_vma_close(struct vm_area_struct *vma);
 
 static int xlnk_init_bufpool(void);
+static void xlnk_init_irqpool(void);
 
 LIST_HEAD(xlnk_dmabuf_list);
 
@@ -267,7 +272,14 @@ static int xlnk_probe(struct platform_device *pdev)
 	device_create(xlnk_class, NULL, MKDEV(driver_major, 0),
 		      NULL, "xlnk");
 
-	xlnk_init_bufpool();
+	err = xlnk_init_bufpool();
+	if (err) {
+		dev_err(&pdev->dev, "%s: Failed to allocate buffer pool\n",
+			__func__);
+		goto err3;
+	}
+
+	xlnk_init_irqpool();
 
 	dev_info(&pdev->dev, "%s driver loaded\n", DRIVER_NAME);
 
@@ -386,6 +398,15 @@ static int xlnk_init_bufpool(void)
 		xlnk_bufpool[i] = NULL;
 
 	return 0;
+}
+
+static void xlnk_init_irqpool(void)
+{
+	int i;
+
+	spin_lock_init(&xlnk_irq_lock);
+	for (i = 0; i < XLNK_IRQ_POOL_SIZE; i++)
+		xlnk_irq_set[i] = NULL;
 }
 
 #define XLNK_SUSPEND NULL
@@ -1084,6 +1105,175 @@ static int xlnk_devunregister_ioctl(struct file *filp,
 	return 0;
 }
 
+static irqreturn_t xlnk_accel_isr(int irq, void *arg)
+{
+	struct xlnk_irq_control *irq_control = (struct xlnk_irq_control *)arg;
+
+	disable_irq_nosync(irq);
+	complete(&irq_control->cmp);
+
+	return IRQ_HANDLED;
+}
+
+static int xlnk_irq_register_ioctl(struct file *filp, unsigned int code,
+				   unsigned long args)
+{
+	union xlnk_args temp_args;
+	int status;
+	int i;
+	struct xlnk_irq_control *ctrl;
+	int irq_id = -1;
+	int irq_entry_new = 0;
+
+	status = copy_from_user(&temp_args,
+				(void __user *)args,
+				sizeof(temp_args.irqregister));
+	if (status)
+		return -ENOMEM;
+
+	if (temp_args.irqregister.type !=
+	    (XLNK_IRQ_LEVEL | XLNK_IRQ_ACTIVE_HIGH)) {
+		dev_err(xlnk_dev, "Unsupported interrupt type %x\n",
+			temp_args.irqregister.type);
+		return -EINVAL;
+	}
+
+	ctrl = kzalloc(sizeof(*ctrl), GFP_KERNEL);
+	if (!ctrl)
+		return -ENOMEM;
+
+	ctrl->irq = xlate_irq(temp_args.irqregister.irq);
+	ctrl->enabled = 0;
+	init_completion(&ctrl->cmp);
+
+	spin_lock(&xlnk_irq_lock);
+	for (i = 0; i < XLNK_IRQ_POOL_SIZE; i++) {
+		if (!xlnk_irq_set[i] && irq_id == -1) {
+			irq_entry_new = 1;
+			irq_id = i;
+			xlnk_irq_set[i] = ctrl;
+		} else if (xlnk_irq_set[i] &&
+			   xlnk_irq_set[i]->irq == ctrl->irq) {
+			irq_id = i;
+			break;
+		}
+	}
+	spin_unlock(&xlnk_irq_lock);
+
+	if (irq_id == -1) {
+		kfree(ctrl);
+		return -ENOMEM;
+	}
+
+	if (!irq_entry_new) {
+		kfree(ctrl);
+	} else {
+		status = request_irq(ctrl->irq,
+				     xlnk_accel_isr,
+				     IRQF_SHARED,
+				     "xlnk",
+				     ctrl);
+		if (status) {
+			enable_irq(ctrl->irq);
+			xlnk_irq_set[irq_id] = NULL;
+			kfree(ctrl);
+			return -EINVAL;
+		}
+		disable_irq_nosync(ctrl->irq);
+	}
+
+	temp_args.irqregister.irq_id = irq_id;
+
+	status = copy_to_user((void __user *)args,
+			      &temp_args,
+			      sizeof(temp_args.irqregister));
+
+	return status;
+}
+
+static int xlnk_irq_unregister_ioctl(struct file *filp, unsigned int code,
+				     unsigned long args)
+{
+	union xlnk_args temp_args;
+	int status;
+	int irq_id;
+	struct xlnk_irq_control *ctrl;
+
+	status = copy_from_user(&temp_args,
+				(void __user *)args,
+				sizeof(union xlnk_args));
+	if (status)
+		return -ENOMEM;
+
+	irq_id = temp_args.irqunregister.irq_id;
+	if (irq_id < 0 || irq_id >= XLNK_IRQ_POOL_SIZE)
+		return -EINVAL;
+
+	ctrl = xlnk_irq_set[irq_id];
+	if (!ctrl)
+		return -EINVAL;
+
+	xlnk_irq_set[irq_id] = NULL;
+
+	if (ctrl->enabled) {
+		disable_irq_nosync(ctrl->irq);
+		complete(&ctrl->cmp);
+	}
+	free_irq(ctrl->irq, ctrl);
+	kfree(ctrl);
+
+	return 0;
+}
+
+static int xlnk_irq_wait_ioctl(struct file *filp, unsigned int code,
+			       unsigned long args)
+{
+	union xlnk_args temp_args;
+	int status;
+	int irq_id;
+	struct xlnk_irq_control *ctrl;
+
+	status = copy_from_user(&temp_args,
+				(void __user *)args,
+				sizeof(temp_args.irqwait));
+	if (status)
+		return -ENOMEM;
+
+	irq_id = temp_args.irqwait.irq_id;
+	if (irq_id < 0 || irq_id >= XLNK_IRQ_POOL_SIZE)
+		return -EINVAL;
+
+	ctrl = xlnk_irq_set[irq_id];
+	if (!ctrl)
+		return -EINVAL;
+
+	if (!ctrl->enabled) {
+		ctrl->enabled = 1;
+		enable_irq(ctrl->irq);
+	}
+
+	if (temp_args.irqwait.polling) {
+		if (!try_wait_for_completion(&ctrl->cmp))
+			temp_args.irqwait.success = 0;
+		else
+			temp_args.irqwait.success = 1;
+	} else {
+		wait_for_completion(&ctrl->cmp);
+		temp_args.irqwait.success = 1;
+	}
+
+	if (temp_args.irqwait.success) {
+		reinit_completion(&ctrl->cmp);
+		ctrl->enabled = 0;
+	}
+
+	status = copy_to_user((void __user *)args,
+			      &temp_args,
+			      sizeof(temp_args.irqwait));
+
+	return status;
+}
+
 static int xlnk_cachecontrol_ioctl(struct file *filp, unsigned int code,
 				   unsigned long args)
 {
@@ -1298,6 +1488,12 @@ static long xlnk_ioctl(struct file *filp,
 		return xlnk_devunregister_ioctl(filp, code, args);
 	case XLNK_IOCCACHECTRL:
 		return xlnk_cachecontrol_ioctl(filp, code, args);
+	case XLNK_IOCIRQREGISTER:
+		return xlnk_irq_register_ioctl(filp, code, args);
+	case XLNK_IOCIRQUNREGISTER:
+		return xlnk_irq_unregister_ioctl(filp, code, args);
+	case XLNK_IOCIRQWAIT:
+		return xlnk_irq_wait_ioctl(filp, code, args);
 	case XLNK_IOCSHUTDOWN:
 		return xlnk_shutdown(args);
 	case XLNK_IOCRECRES:
