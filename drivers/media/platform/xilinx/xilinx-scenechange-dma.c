@@ -4,7 +4,8 @@
  *
  * Copyright (C) 2018 Xilinx, Inc.
  *
- * Author: Anand Ashok Dumbre <anand.ashok.dumbre@xilinx.com>
+ * Authors: Anand Ashok Dumbre <anand.ashok.dumbre@xilinx.com>
+ *          Satish Kumar Nagireddy <satish.nagireddy.nagireddy@xilinx.com>
  */
 
 #include <linux/bitops.h>
@@ -30,24 +31,16 @@
 #define XILINX_XSCD_CTRL_OFFSET		0x00
 #define XILINX_XSCD_GIE_OFFSET		0x04
 #define XILINX_XSCD_IE_OFFSET		0x08
-#define XILINX_XSCD_WIDTH_OFFSET	0x10
-#define XILINX_XSCD_HEIGHT_OFFSET	0x18
-#define XILINX_XSCD_STRIDE_OFFSET	0x20
-#define XILINX_XSCD_FMT_OFFSET		0x28
-#define XILINX_XSCD_SUBSAMPLE_OFFSET	0x30
 #define XILINX_XSCD_ADDR_OFFSET		0x40
 #define XILINX_XSCD_CHAN_EN_OFFSET	0x780
-#define XILINX_XSCD_FMT_Y8		24
-#define XILINX_XSCD_FMT_Y10		25
 
 /* Control Registers */
 #define XILINX_XSCD_CTRL_AP_START	BIT(0)
 #define XILINX_XSCD_CTRL_AP_DONE	BIT(1)
 #define XILINX_XSCD_CTRL_AP_IDLE	BIT(2)
 #define XILINX_XSCD_CTRL_AP_READY	BIT(3)
+#define XILINX_XSCD_CTRL_AUTO_RESTART	BIT(7)
 #define XILINX_XSCD_GIE_EN		BIT(0)
-
-#define XSCD_V_SUBSAMPLING		16
 
 /**
  * struct xscd_dma_device - Scene Change DMA device
@@ -56,6 +49,7 @@
  * @common: DMA device structure
  * @chan: Driver specific DMA channel
  * @numchannels: Total number of channels
+ * @memory_based: Memory based or streaming based
  */
 struct xscd_dma_device {
 	void __iomem *regs;
@@ -63,6 +57,7 @@ struct xscd_dma_device {
 	struct dma_device common;
 	struct xscd_dma_chan **chan;
 	u32 numchannels;
+	bool memory_based;
 };
 
 /**
@@ -76,33 +71,36 @@ static irqreturn_t xscd_dma_irq_handler(int irq, void *data)
 {
 	struct xscd_dma_device *dev = data;
 	struct xscd_dma_chan *chan;
-	u32 chan_en = 0, id;
 
-	for (id = 0; id < dev->numchannels; id++) {
-		chan = dev->chan[id];
-		spin_lock(&chan->lock);
-		chan->idle = true;
+	if (dev->memory_based) {
+		u32 chan_en = 0, id;
 
-		if (chan->en && (!list_empty(&chan->pending_list))) {
-			chan_en |= 1 << chan->id;
-			chan->valid_interrupt = true;
-		} else {
-			chan->valid_interrupt = false;
+		for (id = 0; id < dev->numchannels; id++) {
+			chan = dev->chan[id];
+			spin_lock(&chan->lock);
+			chan->idle = true;
+
+			if (chan->en && (!list_empty(&chan->pending_list))) {
+				chan_en |= 1 << chan->id;
+				chan->valid_interrupt = true;
+			} else {
+				chan->valid_interrupt = false;
+			}
+
+			xscd_dma_start_transfer(chan);
+			spin_unlock(&chan->lock);
 		}
 
-		xscd_dma_start_transfer(chan);
-		spin_unlock(&chan->lock);
-	}
+		if (chan_en) {
+			xscd_dma_reset(chan);
+			xscd_dma_chan_enable(chan, chan_en);
+			xscd_dma_start(chan);
+		}
 
-	if (chan_en) {
-		xscd_dma_reset(chan);
-		xscd_dma_chan_enable(chan, chan_en);
-		xscd_dma_start(chan);
-	}
-
-	for (id = 0; id < dev->numchannels; id++) {
-		chan = dev->chan[id];
-		tasklet_schedule(&chan->tasklet);
+		for (id = 0; id < dev->numchannels; id++) {
+			chan = dev->chan[id];
+			tasklet_schedule(&chan->tasklet);
+		}
 	}
 
 	return IRQ_HANDLED;
@@ -209,20 +207,6 @@ void xscd_dma_start_transfer(struct xscd_dma_chan *chan)
 	/* Start the transfer */
 	xscd_write(chan->iomem, XILINX_XSCD_ADDR_OFFSET + chanoffset,
 		   desc->sw.luma_plane_addr);
-
-	/* HW expects these parameters to be same for one transaction */
-	xscd_write(chan->iomem, (XILINX_XSCD_WIDTH_OFFSET + chanoffset),
-		   desc->sw.hsize);
-	xscd_write(chan->iomem, (XILINX_XSCD_STRIDE_OFFSET + chanoffset),
-		   desc->sw.stride);
-	xscd_write(chan->iomem, (XILINX_XSCD_HEIGHT_OFFSET + chanoffset),
-		   desc->sw.vsize);
-	xscd_write(chan->iomem, (XILINX_XSCD_FMT_OFFSET + chanoffset),
-		   XILINX_XSCD_FMT_Y8);
-
-	/* Number of times subsampled */
-	xscd_write(chan->iomem, (XILINX_XSCD_SUBSAMPLE_OFFSET + chanoffset),
-		   XSCD_V_SUBSAMPLING);
 
 	list_del(&desc->node);
 	chan->staged_desc = desc;
@@ -371,8 +355,7 @@ static void xscd_dma_issue_pending(struct dma_chan *dchan)
 {
 	struct xscd_dma_chan *chan = to_xilinx_chan(dchan);
 	struct xscd_dma_device *dev = chan->xdev;
-	u32 chan_en = 0;
-	u32 id;
+	u32 chan_en = 0, id;
 
 	for (id = 0; id < dev->numchannels; id++) {
 		chan = dev->chan[id];
@@ -410,8 +393,17 @@ static enum dma_status xscd_dma_tx_status(struct dma_chan *dchan,
  */
 void xscd_dma_halt(struct xscd_dma_chan *chan)
 {
-	xscd_clr(chan->iomem, XILINX_XSCD_CTRL_OFFSET,
-		 XILINX_XSCD_CTRL_AP_START);
+	struct xscd_dma_device *xdev = chan->xdev;
+
+	if (xdev->memory_based)
+		xscd_clr(chan->iomem, XILINX_XSCD_CTRL_OFFSET,
+			 XILINX_XSCD_CTRL_AP_START);
+	else
+		/* Streaming based */
+		xscd_clr(chan->iomem, XILINX_XSCD_CTRL_OFFSET,
+			 XILINX_XSCD_CTRL_AP_START |
+			 XILINX_XSCD_CTRL_AUTO_RESTART);
+
 	chan->idle = true;
 }
 
@@ -421,8 +413,17 @@ void xscd_dma_halt(struct xscd_dma_chan *chan)
  */
 void xscd_dma_start(struct xscd_dma_chan *chan)
 {
-	xscd_set(chan->iomem, XILINX_XSCD_CTRL_OFFSET,
-		 XILINX_XSCD_CTRL_AP_START);
+	struct xscd_dma_device *xdev = chan->xdev;
+
+	if (xdev->memory_based)
+		xscd_set(chan->iomem, XILINX_XSCD_CTRL_OFFSET,
+			 XILINX_XSCD_CTRL_AP_START);
+	else
+		/* Streaming based */
+		xscd_set(chan->iomem, XILINX_XSCD_CTRL_OFFSET,
+			 XILINX_XSCD_CTRL_AP_START |
+			 XILINX_XSCD_CTRL_AUTO_RESTART);
+
 	chan->idle = false;
 }
 
@@ -541,6 +542,7 @@ static int xscd_dma_probe(struct platform_device *pdev)
 	shared_data = (struct xscd_shared_data *)pdev->dev.parent->driver_data;
 	xdev->regs = shared_data->iomem;
 	xdev->chan = shared_data->dma_chan_list;
+	xdev->memory_based = shared_data->memory_based;
 	dma_set_mask(xdev->dev, DMA_BIT_MASK(32));
 
 	/* Initialize the DMA engine */
