@@ -31,7 +31,6 @@
 
 /* Register/Descriptor Offsets */
 #define XILINX_XSCD_ISR_OFFSET		0x0c
-#define XILINX_XSCD_SAD_OFFSET		0x38
 #define XILINX_XSCD_CHAN_OFFSET		0x100
 
 /* Interrupt Status and Control */
