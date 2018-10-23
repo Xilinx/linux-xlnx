@@ -4,7 +4,8 @@
  *
  * Copyright (C) 2018 Xilinx, Inc.
  *
- * Author: Anand Ashok Dumbre <anand.ashok.dumbre@xilinx.com>
+ * Authors: Anand Ashok Dumbre <anand.ashok.dumbre@xilinx.com>
+ *          Satish Kumar Nagireddy <satish.nagireddy.nagireddy@xilinx.com>
  */
 
 #ifndef _XILINX_SCENECHANGE_H_
@@ -50,17 +51,18 @@
  * @iomem: device I/O register space remapped to kernel virtual memory
  * @dma_chan_list: List of DMA channels available
  * @active_streams: Number of active streams
+ * @memory_based: Flag to identify memory based mode
  */
 struct xscd_shared_data {
 	void __iomem *iomem;
 	struct xscd_dma_chan *dma_chan_list[XSCD_MAX_CHANNELS];
 	u8 active_streams;
+	bool memory_based;
 };
 
 /**
  * struct xscd_device - Xilinx Scene Change Detection device structure
  * @iomem: device I/O register space remapped to kernel virtual memory
- * @memorybased: Flag to identify memory based mode
  * @numstreams: Number of streams in the design
  * @irq: Device IRQ
  * @dev: (OF) device
@@ -73,7 +75,6 @@ struct xscd_shared_data {
  */
 struct xscd_device {
 	void __iomem *iomem;
-	bool memorybased;
 	int numstreams;
 	int irq;
 	struct device *dev;
@@ -132,6 +133,7 @@ struct xscd_dma_tx_descriptor {
 struct xscd_dma_chan {
 	struct xscd_dma_device *xdev;
 	void __iomem *iomem;
+
 	/* Descriptor operation Lock */
 	spinlock_t lock;
 	struct list_head chan_node;
@@ -167,7 +169,7 @@ struct xscd_chan {
 	void __iomem *iomem;
 	struct device *dev;
 	struct v4l2_subdev subdev;
-	struct media_pad pad;
+	struct media_pad *pad;
 	struct v4l2_mbus_framefmt format;
 	struct v4l2_event event;
 	struct xscd_dma_chan dmachan;
