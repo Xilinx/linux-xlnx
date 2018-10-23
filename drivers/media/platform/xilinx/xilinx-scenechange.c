@@ -4,7 +4,8 @@
  *
  * Copyright (C) 2018 Xilinx, Inc.
  *
- * Author: Anand Ashok Dumbre <anand.ashok.dumbre@xilinx.com>
+ * Authors: Anand Ashok Dumbre <anand.ashok.dumbre@xilinx.com>
+ *          Satish Kumar Nagireddy <satish.nagireddy.nagireddy@xilinx.com>
  */
 
 #include "xilinx-scenechange.h"
@@ -56,8 +57,8 @@ static void xscd_chan_remove(struct platform_device *dev)
 }
 
 static
-struct platform_device *xlnx_scdma_device_init(struct platform_device *pdev,
-					       struct device_node *node)
+struct platform_device *xilinx_scdma_device_init(struct platform_device *pdev,
+						 struct device_node *node)
 {
 	struct platform_device *dma;
 	int ret;
@@ -107,7 +108,8 @@ static int xscd_parse_of(struct xscd_device *xscd)
 	struct device_node *node = xscd->dev->of_node;
 	int ret;
 
-	xscd->memorybased = of_property_read_bool(node, "xlnx,memorybased");
+	xscd->shared_data.memory_based =
+			of_property_read_bool(node, "xlnx,memorybased");
 	xscd->rst_gpio = devm_gpiod_get(dev, "reset", GPIOD_OUT_HIGH);
 	if (IS_ERR(xscd->rst_gpio)) {
 		if (PTR_ERR(xscd->rst_gpio) != -EPROBE_DEFER)
@@ -140,11 +142,6 @@ static int xscd_probe(struct platform_device *pdev)
 	if (!xscd)
 		return -ENOMEM;
 
-	/*
-	 * Memory based is enabled by default, this can be used for streaming
-	 * based driver
-	 */
-	xscd->memorybased = true;
 	xscd->dev = &pdev->dev;
 	node = pdev->dev.of_node;
 
@@ -162,7 +159,21 @@ static int xscd_probe(struct platform_device *pdev)
 
 	xscd->shared_data.iomem = xscd->iomem;
 	platform_set_drvdata(pdev, (void *)&xscd->shared_data);
-	for_each_child_of_node(node, subdev_node) {
+	if (xscd->shared_data.memory_based) {
+		for_each_child_of_node(node, subdev_node) {
+			subdev = xscd_chan_alloc(pdev, subdev_node, id);
+			if (IS_ERR(subdev)) {
+				dev_err(&pdev->dev,
+					"Failed to initialize subdev@%d\n", id);
+				ret = PTR_ERR(subdev);
+				goto cleanup;
+			}
+			xscd->subdevs[id] = subdev;
+			id++;
+		}
+	} else {
+		/* Streaming based */
+		subdev_node = of_get_next_child(node, NULL);
 		subdev = xscd_chan_alloc(pdev, subdev_node, id);
 		if (IS_ERR(subdev)) {
 			dev_err(&pdev->dev,
@@ -171,17 +182,11 @@ static int xscd_probe(struct platform_device *pdev)
 			goto cleanup;
 		}
 		xscd->subdevs[id] = subdev;
-		id++;
 	}
 
-	if (xscd->memorybased) {
-		xscd->dma_device = xlnx_scdma_device_init(pdev, xscd->dma_node);
-		if (IS_ERR(xscd->dma_node)) {
-			ret = IS_ERR(xscd->dma_node);
-			dev_err(&pdev->dev, "Failed to initialize the DMA\n");
-			goto cleanup;
-		}
-	}
+	xscd->dma_device = xilinx_scdma_device_init(pdev, xscd->dma_node);
+	if (IS_ERR(xscd->dma_node))
+		dev_err(&pdev->dev, "Failed to initialize the DMA\n");
 
 	dev_info(xscd->dev, "scene change detect device found!\n");
 	return 0;
@@ -200,10 +205,8 @@ static int xscd_remove(struct platform_device *pdev)
 	struct xscd_device *xscd = platform_get_drvdata(pdev);
 	u32 i;
 
-	if (xscd->memorybased) {
-		xilinx_scdma_device_exit(xscd->dma_device);
-		xscd->dma_node = NULL;
-	}
+	xilinx_scdma_device_exit(xscd->dma_device);
+	xscd->dma_node = NULL;
 
 	for (i = 0; i < xscd->numstreams; i++)
 		xscd_chan_remove(xscd->subdevs[i]);
