@@ -41,6 +41,7 @@
 #define XSCD_STRIDE_OFFSET		0x20
 #define XSCD_VID_FMT_OFFSET		0x28
 #define XSCD_SUBSAMPLE_OFFSET		0x30
+#define XSCD_SAD_OFFSET			0x38
 
 /* Hardware video formats for memory based IP */
 #define XSCD_COLOR_FMT_Y8		24
@@ -54,6 +55,9 @@
 
 #define XSCD_V_SUBSAMPLING		16
 #define XSCD_BYTE_ALIGN			16
+
+#define XSCD_SCENE_CHANGE		1
+#define XSCD_NO_SCENE_CHANGE		0
 
 /* -----------------------------------------------------------------------------
  * V4L2 Subdevice Pad Operations
@@ -311,29 +315,37 @@ static const struct media_entity_operations xscd_media_ops = {
 	.link_validate = v4l2_subdev_link_validate,
 };
 
+static void xscd_event_notify(struct xscd_chan *chan)
+{
+	u32 *eventdata;
+	u32 sad;
+
+	sad = xscd_read(chan->iomem, XSCD_SAD_OFFSET +
+			(chan->id * XILINX_XSCD_CHAN_OFFSET));
+	sad = (sad * 16) / (chan->format.width * chan->format.height);
+	eventdata = (u32 *)&chan->event.u.data;
+
+	if (sad >= 1)
+		eventdata[0] = XSCD_SCENE_CHANGE;
+	else
+		eventdata[0] = XSCD_NO_SCENE_CHANGE;
+
+	chan->event.type = V4L2_EVENT_XLNXSCD;
+	v4l2_subdev_notify_event(&chan->subdev, &chan->event);
+}
+
 static irqreturn_t xscd_chan_irq_handler(int irq, void *data)
 {
 	struct xscd_chan *chan = (struct xscd_chan *)data;
-	u32 sad;
-	u32 *eventdata;
+	struct xscd_shared_data *shared_data;
 
+	shared_data = (struct xscd_shared_data *)chan->dev->parent->driver_data;
 	spin_lock(&chan->dmachan.lock);
-	if (chan->dmachan.valid_interrupt) {
+
+	if ((shared_data->memory_based && chan->dmachan.valid_interrupt) ||
+	    !shared_data->memory_based) {
 		spin_unlock(&chan->dmachan.lock);
-		sad = xscd_read(chan->iomem, XILINX_XSCD_SAD_OFFSET +
-				(chan->id * XILINX_XSCD_CHAN_OFFSET));
-		sad = (sad * 16) / (chan->format.width * chan->format.height);
-		memset(&chan->event, 0, sizeof(chan->event));
-		eventdata = (u32 *)&chan->event.u.data;
-
-		if (sad >= 1)
-			eventdata[0] = 1;
-		else
-			eventdata[0] = 0;
-
-		chan->event.type = V4L2_EVENT_XLNXSCD;
-		v4l2_subdev_notify(&chan->subdev, V4L2_DEVICE_NOTIFY_EVENT,
-				   &chan->event);
+		xscd_event_notify(chan);
 		return IRQ_HANDLED;
 	}
 
