@@ -37,6 +37,11 @@
 #define XVIP_DMA_MIN_HEIGHT		1U
 #define XVIP_DMA_MAX_HEIGHT		8191U
 
+struct xventity_list {
+	struct list_head list;
+	struct media_entity *entity;
+};
+
 /* -----------------------------------------------------------------------------
  * Helper functions
  */
@@ -93,6 +98,61 @@ static int xvip_dma_verify_format(struct xvip_dma *dma)
  * Pipeline Stream Management
  */
 
+static int xvip_entity_start_stop(struct xvip_composite_device *xdev,
+				  struct media_entity *entity, bool start)
+{
+	struct v4l2_subdev *subdev;
+	bool is_streaming;
+	int ret = 0;
+
+	dev_dbg(xdev->dev, "%s entity %s\n",
+		start ? "Starting" : "Stopping", entity->name);
+	subdev = media_entity_to_v4l2_subdev(entity);
+
+	/* This is to maintain list of stream on/off devices */
+	is_streaming = xvip_subdev_set_streaming(xdev, subdev, start);
+
+	/*
+	 * start or stop the subdev only once in case if they are
+	 * shared between sub-graphs
+	 */
+	if (start && !is_streaming) {
+		/* power-on subdevice */
+		ret = v4l2_subdev_call(subdev, core, s_power, 1);
+		if (ret < 0 && ret != -ENOIOCTLCMD) {
+			dev_err(xdev->dev,
+				"s_power on failed on subdev\n");
+			xvip_subdev_set_streaming(xdev, subdev, 0);
+			return ret;
+		}
+
+		/* stream-on subdevice */
+		ret = v4l2_subdev_call(subdev, video, s_stream, 1);
+		if (ret < 0 && ret != -ENOIOCTLCMD) {
+			dev_err(xdev->dev,
+				"s_stream on failed on subdev\n");
+			v4l2_subdev_call(subdev, core, s_power, 0);
+			xvip_subdev_set_streaming(xdev, subdev, 0);
+		}
+	} else if (!start && is_streaming) {
+		/* stream-off subdevice */
+		ret = v4l2_subdev_call(subdev, video, s_stream, 0);
+		if (ret < 0 && ret != -ENOIOCTLCMD) {
+			dev_err(xdev->dev,
+				"s_stream off failed on subdev\n");
+			xvip_subdev_set_streaming(xdev, subdev, 1);
+		}
+
+		/* power-off subdevice */
+		ret = v4l2_subdev_call(subdev, core, s_power, 0);
+		if (ret < 0 && ret != -ENOIOCTLCMD)
+			dev_err(xdev->dev,
+				"s_power off failed on subdev\n");
+	}
+
+	return ret;
+}
+
 /**
  * xvip_pipeline_start_stop - Start ot stop streaming on a pipeline
  * @xdev: Composite video device
@@ -110,9 +170,9 @@ static int xvip_pipeline_start_stop(struct xvip_composite_device *xdev,
 	struct media_graph graph;
 	struct media_entity *entity = &dma->video.entity;
 	struct media_device *mdev = entity->graph_obj.mdev;
-	struct v4l2_subdev *subdev;
-	bool is_streaming;
-	int ret;
+	struct xventity_list *temp, *_temp;
+	LIST_HEAD(ent_list);
+	int ret = 0;
 
 	mutex_lock(&mdev->graph_mutex);
 
@@ -123,54 +183,44 @@ static int xvip_pipeline_start_stop(struct xvip_composite_device *xdev,
 
 	media_graph_walk_start(&graph, entity);
 
+	/* get the list of entities */
 	while ((entity = media_graph_walk_next(&graph))) {
+		struct xventity_list *ele;
+
 		/* We want to stream on/off only subdevs */
 		if (!is_media_entity_v4l2_subdev(entity))
 			continue;
 
-		subdev = media_entity_to_v4l2_subdev(entity);
-
-		/* This is to maintain list of stream on/off devices */
-		is_streaming = xvip_subdev_set_streaming(xdev, subdev, start);
-
-		/*
-		 * start or stop the subdev only once in case if they are
-		 * shared between sub-graphs
-		 */
-		if (start && !is_streaming) {
-			/* power-on subdevice */
-			ret = v4l2_subdev_call(subdev, core, s_power, 1);
-			if (ret < 0 && ret != -ENOIOCTLCMD) {
-				dev_err(xdev->dev,
-					"s_power on failed on subdev\n");
-				xvip_subdev_set_streaming(xdev, subdev, 0);
-				goto error;
-			}
-
-			/* stream-on subdevice */
-			ret = v4l2_subdev_call(subdev, video, s_stream, 1);
-			if (ret < 0 && ret != -ENOIOCTLCMD) {
-				dev_err(xdev->dev,
-					"s_stream on failed on subdev\n");
-				v4l2_subdev_call(subdev, core, s_power, 0);
-				xvip_subdev_set_streaming(xdev, subdev, 0);
-			}
-		} else if (!start && is_streaming) {
-			/* stream-off subdevice */
-			ret = v4l2_subdev_call(subdev, video, s_stream, 0);
-			if (ret < 0 && ret != -ENOIOCTLCMD) {
-				dev_err(xdev->dev,
-					"s_stream off failed on subdev\n");
-				xvip_subdev_set_streaming(xdev, subdev, 1);
-			}
-
-			/* power-off subdevice */
-			ret = v4l2_subdev_call(subdev, core, s_power, 0);
-			if (ret < 0 && ret != -ENOIOCTLCMD)
-				dev_err(xdev->dev,
-					"s_power off failed on subdev\n");
-
+		/* Maintain the pipeline sequence in a list */
+		ele = kzalloc(sizeof(*ele), GFP_KERNEL);
+		if (!ele) {
+			ret = -ENOMEM;
+			goto error;
 		}
+
+		ele->entity = entity;
+		list_add(&ele->list, &ent_list);
+	}
+
+	if (start) {
+		list_for_each_entry_safe(temp, _temp, &ent_list, list) {
+			/* Enable all subdevs from sink to source */
+			ret = xvip_entity_start_stop(xdev, temp->entity, start);
+			if (ret < 0) {
+				dev_err(xdev->dev, "ret = %d for entity %s\n",
+					ret, temp->entity->name);
+				break;
+			}
+		}
+	} else {
+		list_for_each_entry_safe_reverse(temp, _temp, &ent_list, list)
+			/* Enable all subdevs from source to sink */
+			xvip_entity_start_stop(xdev, temp->entity, start);
+	}
+
+	list_for_each_entry_safe(temp, _temp, &ent_list, list) {
+		list_del(&temp->list);
+		kfree(temp);
 	}
 
 error:
@@ -268,11 +318,10 @@ static int xvip_pipeline_validate(struct xvip_pipeline *pipe,
 
 		dma = to_xvip_dma(media_entity_to_video_device(entity));
 
-		if (dma->pad.flags & MEDIA_PAD_FL_SINK) {
+		if (dma->pad.flags & MEDIA_PAD_FL_SINK)
 			num_outputs++;
-		} else {
+		else
 			num_inputs++;
-		}
 	}
 
 	mutex_unlock(&mdev->graph_mutex);
