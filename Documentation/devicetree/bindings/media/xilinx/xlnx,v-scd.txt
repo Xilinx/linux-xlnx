@@ -10,6 +10,13 @@ based model, which means that it will accept a dma buffer address and perform
 MEM2DEV transfer followed by statistical based image processing and give the
 data back to application if scene change detection is present or not.
 
+Another version of scene change detection IP which supports streaming model,
+which means that IP can be inserted in a capture pipeline. For example,
+"hdmirx -> streaming-scd -> fb_wr" is a typical capture pipeline where
+streaming SCD can be embedded. The IP accespts the AXI video data and perform
+histogram based statistical analysis to detect scene change. The IP supports
+single channel.
+
 Required properties:
 
 - compatible: Should be "xlnx,v-scd"
@@ -19,6 +26,10 @@ Required properties:
 - clocks: Reference to the video core clock.
 
 - reset-gpios: Specifier for a GPIO that assert SCD (AP_RST_N) reset.
+
+- xlnx,memory-based: This is to differentiate between memory based and
+  streaming based IP. The value is 1 for memory based and 0 for streaming
+  based IPs.
 
 - xlnx,numstreams: Maximum active streams IP can support is 8 and this is based
   on the design.
@@ -31,7 +42,10 @@ Required properties:
 - port: Video port, using the DT bindings defined in ../video-interfaces.txt.
 
 Example:
-The following example shows what the device tree would look like for a memory
+
+1. Memory based device tree
+
+The following example shows how the device tree would look like for a memory
 based design where 8 streams are enabled.
 
 	scd: scenechange@a0100000 {
@@ -42,6 +56,7 @@ based design where 8 streams are enabled.
 		interrupts = <0 90 4>;
 		reset-gpios = <&gpio 94 1>;
 
+		xlnx,memory-based;
 		xlnx,numstreams = <8>;
 		xlnx,addrwidth = <0x20>;
 
@@ -110,6 +125,39 @@ based design where 8 streams are enabled.
 				reg = <0>;
 			scd_in7: endpoint {
 					remote-endpoint = <&vcap0_out7>;
+				};
+			};
+		};
+	};
+
+2. Streaming based device tree
+
+The following example shows how the device tree would look like for a streaming
+based design.
+
+	scd: scenechange@a0280000 {
+		compatible = "xlnx,v-scd";
+		reg = <0x0 0xa0280000 0x0 0x1fff>;
+		clocks = <&clk 72>;
+		interrupt-parent = <&gic>;
+		interrupts = <0 111 4>;
+		reset-gpios = <&gpio 100 1>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+		xlnx,numstreams = <1>;
+
+		scd {
+			port@0 {
+				reg = <0x0>;
+				scd_in0: endpoint {
+					remote-endpoint = <&vpss_scaler_out>;
+				};
+			};
+
+			port@1 {
+				reg = <0x1>;
+				scd_out0: endpoint {
+					remote-endpoint = <&vcap_hdmi_in_1>;
 				};
 			};
 		};
