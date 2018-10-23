@@ -124,6 +124,11 @@ static int xscd_parse_of(struct xscd_device *xscd)
 		return ret;
 
 	xscd->irq = irq_of_parse_and_map(node, 0);
+	if (!xscd->irq) {
+		dev_err(xscd->dev, "No valid irq found\n");
+		return -EINVAL;
+	}
+
 	ret = devm_request_irq(xscd->dev, xscd->irq, xscd_irq_handler,
 			       IRQF_SHARED, dev_name(xscd->dev), xscd);
 
