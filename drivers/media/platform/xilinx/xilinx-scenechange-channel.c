@@ -351,7 +351,13 @@ static int xscd_chan_parse_of(struct xscd_chan *chan)
 	shared_data = (struct xscd_shared_data *)chan->dev->parent->driver_data;
 	shared_data->dma_chan_list[chan->id] = &chan->dmachan;
 	chan->iomem = shared_data->iomem;
+
 	chan->irq = irq_of_parse_and_map(parent_node, 0);
+	if (!chan->irq) {
+		dev_err(chan->dev, "No valid irq found\n");
+		return -EINVAL;
+	}
+
 	err = devm_request_irq(chan->dev, chan->irq, xscd_chan_irq_handler,
 			       IRQF_SHARED, dev_name(chan->dev), chan);
 	if (err) {
