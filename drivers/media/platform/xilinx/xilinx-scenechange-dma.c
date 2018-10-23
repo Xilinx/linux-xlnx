@@ -549,7 +549,12 @@ static int xscd_dma_probe(struct platform_device *pdev)
 	xdev->common.dev = &pdev->dev;
 	ret = of_property_read_u32(node, "xlnx,numstreams",
 				   &xdev->numchannels);
+
 	irq_num = irq_of_parse_and_map(node, 0);
+	if (!irq_num) {
+		dev_err(xdev->dev, "No valid irq found\n");
+		return -EINVAL;
+	}
 
 	/* TODO: Clean up multiple interrupt handlers as there is one device */
 	ret = devm_request_irq(xdev->dev, irq_num, xscd_dma_irq_handler,
