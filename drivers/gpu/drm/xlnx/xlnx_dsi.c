@@ -652,6 +652,9 @@ static void xlnx_dsi_disable(struct drm_encoder *encoder)
 {
 	struct xlnx_dsi *dsi = encoder_to_dsi(encoder);
 
+	if (dsi->bridge)
+		xlnx_bridge_disable(dsi->bridge);
+
 	xlnx_dsi_set_display_disable(dsi);
 }
 
