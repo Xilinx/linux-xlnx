@@ -175,13 +175,13 @@ static const struct xm2msc_fmt formats[] = {
 	},
 	{
 		.name = "nv16",
-		.fourcc = V4L2_PIX_FMT_NV16,
+		.fourcc = V4L2_PIX_FMT_NV16M,
 		.xm2msc_fmt = XILINX_M2MSC_FMT_Y_UV8,
 		.num_planes = 2,
 	},
 	{
 		.name = "nv12",
-		.fourcc = V4L2_PIX_FMT_NV12,
+		.fourcc = V4L2_PIX_FMT_NV12M,
 		.xm2msc_fmt = XILINX_M2MSC_FMT_Y_UV8_420,
 		.num_planes = 2,
 	},
@@ -199,13 +199,13 @@ static const struct xm2msc_fmt formats[] = {
 	},
 	{
 		.name = "xv20",
-		.fourcc = V4L2_PIX_FMT_XV20,
+		.fourcc = V4L2_PIX_FMT_XV20M,
 		.xm2msc_fmt = XILINX_M2MSC_FMT_Y_UV10,
 		.num_planes = 2,
 	},
 	{
 		.name = "xv15",
-		.fourcc = V4L2_PIX_FMT_XV15,
+		.fourcc = V4L2_PIX_FMT_XV15M,
 		.xm2msc_fmt = XILINX_M2MSC_FMT_Y_UV10_420,
 		.num_planes = 2,
 	},
