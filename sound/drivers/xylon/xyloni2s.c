@@ -56,7 +56,7 @@ static void xylon_i2s_handle_irq(struct logii2s_port *port)
 	unsigned int size = 0;
 
 	unsigned int i, cnt, offset = 0;
-	u32 word;
+	u32 word, r;
 	u16 s1, s2;
 
 	if (!substream) {
@@ -606,6 +606,7 @@ static int xylon_i2s_probe(struct platform_device *pdev)
 			}
 
 			pcm->is_aligned = 0;
+			pcm->last_r = 0;
 
 			pcm->port = port;
 			pcm->port->private = pcm;

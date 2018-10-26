@@ -293,7 +293,14 @@ u32 logii2s_port_get_version(struct logii2s_port *port)
  */
 u32 logii2s_port_read_fifo_word(struct logii2s_port *port)
 {
-	return logii2s_read(port->base, LOGII2S_FIFO_ROFF);
+	struct logii2s_pcm_data *pcm = port->private;
+	u32 sample = 0, r;
+
+	sample = logii2s_read(port->base, LOGII2S_FIFO_ROFF);
+	r = (sample >> 16) & 0x3;
+	sample = ((sample & 0xFFFC0000) >> 2 | pcm->last_r << 30) | (sample & 0x0000FFFF);
+	pcm->last_r = r;
+	return sample;
 }
 
 /*
@@ -329,7 +336,7 @@ void logii2s_port_read_fifo(struct logii2s_port *port, u32 *data,
 	int i;
 
 	for (i = 0; i < count; i++)
-		data[i] = logii2s_read(port->base, LOGII2S_FIFO_ROFF);
+		data[i] = logii2s_port_read_fifo_word(port);
 }
 
 /*
