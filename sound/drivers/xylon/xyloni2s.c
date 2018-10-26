@@ -46,30 +46,6 @@
 #define BUFFER_SIZE		(PERIODS_MIN * LOGII2S_FIFO_SIZE_MAX * 4)
 #define MAX_BUFFER_SIZE		(PERIODS_MAX * LOGII2S_FIFO_SIZE_MAX * 4)
 
-/*
- * logiI2S private parameter structure
- */
-struct logii2s_data {
-	struct platform_device *pdev;
-	struct logii2s_port *port[LOGII2S_MAX_INST];
-	dma_addr_t pbase;
-	void __iomem *base;
-	u32 core_clock_freq;
-	unsigned int instances;
-	int irq;
-};
-
-struct logii2s_pcm_data {
-	struct logii2s_port *port;
-	struct snd_pcm_substream *substream;
-	spinlock_t lock;
-	unsigned int buf_pos;
-	unsigned int buf_sz;
-	unsigned int xfer_dir;
-
-	/* Raw mic alignment info */
-	unsigned char is_aligned;
-};
 
 static void xylon_i2s_handle_irq(struct logii2s_port *port)
 {

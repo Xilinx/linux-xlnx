@@ -92,6 +92,34 @@ struct logii2s_port {
 	unsigned int id;
 };
 
+/*
+ * logiI2S private parameter structure
+ */
+struct logii2s_data {
+	struct platform_device *pdev;
+	struct logii2s_port *port[LOGII2S_MAX_INST];
+	dma_addr_t pbase;
+	void __iomem *base;
+	u32 core_clock_freq;
+	unsigned int instances;
+	int irq;
+};
+
+struct logii2s_pcm_data {
+	struct logii2s_port *port;
+	struct snd_pcm_substream *substream;
+	spinlock_t lock;
+	unsigned int buf_pos;
+	unsigned int buf_sz;
+	unsigned int xfer_dir;
+
+	/* Raw mic alignment info */
+	unsigned char is_aligned;
+
+    /* Last R channel sample */
+    u32 last_r;
+};
+
 #define logii2s_read(base, offset) readl(base + offset)
 #define logii2s_write(base, offset, val) writel(val, (base + offset))
 
