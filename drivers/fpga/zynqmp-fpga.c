@@ -75,7 +75,7 @@ static struct zynqmp_configreg cfgreg[] = {
  * @lock:	Mutex lock for device
  * @clk:	Clock resource for pcap controller
  * @flags:	flags which is used to identify the bitfile type
- * @size:	Size of the Bit-stream used for readback
+ * @size:	Size of the Bitstream used for readback
  */
 struct zynqmp_fpga_priv {
 	struct device *dev;

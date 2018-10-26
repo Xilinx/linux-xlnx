@@ -310,9 +310,9 @@ static int zynqmp_pm_reset_get_status(const enum zynqmp_pm_reset reset,
  * @address:	Address to write to
  * @size:	pl bitstream size
  * @flags:
- *	BIT(0) - Bit-stream type.
- *		 0 - Full Bit-stream.
- *		 1 - Partial Bit-stream.
+ *	BIT(0) - Bitstream type.
+ *		 0 - Full Bitstream.
+ *		 1 - Partial Bitstream.
  *	BIT(1) - Authentication.
  *		 1 - Enable.
  *		 0 - Disable.
