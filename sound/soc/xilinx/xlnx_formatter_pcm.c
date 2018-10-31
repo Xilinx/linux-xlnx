@@ -510,19 +510,9 @@ static int xlnx_formatter_pcm_hw_params(struct snd_pcm_substream *substream,
 				status = parse_consumer_format(aes_reg1_val,
 							       aes_reg2_val,
 							       aes_params);
-
-			if (status) {
-				kfree(aes_params);
-				return status;
-			}
-
-			if (active_ch != aes_params->channels ||
-			    bits_per_sample != aes_params->sig_bits ||
-			    sample_rate != aes_params->srate) {
-				dev_warn(dev, "capture parameters mismatch!\n");
-				kfree(aes_params);
-				return -EINVAL;
-			}
+			dev_info(dev, "rate = %d bit depth = %d ch = %d\n",
+				 aes_params->srate, aes_params->sig_bits,
+				 aes_params->channels);
 			kfree(aes_params);
 		}
 	}
