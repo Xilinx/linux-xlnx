@@ -78,11 +78,74 @@
 #define CFG_MASTER_INT_ENABLE_DEFAULT 0x0 /* 0 */
 
 /* Type = rw */
+#define CFG_FRAM_FIFO_OF_ENABLE_ADDR 0x14 /* 20 */
+#define CFG_FRAM_FIFO_OF_ENABLE_MASK 0x1 /* 1 */
+#define CFG_FRAM_FIFO_OF_ENABLE_OFFSET 0x0 /* 0 */
+#define CFG_FRAM_FIFO_OF_ENABLE_WIDTH 0x1 /* 1 */
+#define CFG_FRAM_FIFO_OF_ENABLE_DEFAULT 0x0 /* 0 */
+
+/* Type = rw */
+#define CFG_FRAM_FIFO_UF_ENABLE_ADDR 0x14 /* 20 */
+#define CFG_FRAM_FIFO_UF_ENABLE_MASK 0x2 /* 2 */
+#define CFG_FRAM_FIFO_UF_ENABLE_OFFSET 0x1 /* 1 */
+#define CFG_FRAM_FIFO_UF_ENABLE_WIDTH 0x1 /* 1 */
+#define CFG_FRAM_FIFO_UF_ENABLE_DEFAULT 0x0 /* 0 */
+
+/* Type = rw */
 #define CFG_AXI_TIMEOUT_ENABLE_ADDR 0x14 /* 20 */
 #define CFG_AXI_TIMEOUT_ENABLE_MASK 0x80000000 /* 2147483648 */
 #define CFG_AXI_TIMEOUT_ENABLE_OFFSET 0x1f /* 31 */
 #define CFG_AXI_TIMEOUT_ENABLE_WIDTH 0x1 /* 1 */
 #define CFG_AXI_TIMEOUT_ENABLE_DEFAULT 0x1 /* 1 */
+
+/* Type = rw */
+#define CFG_INTERRUPT_STATUS_SAMPLE_ADDR 0x1c /* 28 */
+#define CFG_INTERRUPT_STATUS_SAMPLE_MASK 0x1 /* 1 */
+#define CFG_INTERRUPT_STATUS_SAMPLE_OFFSET 0x0 /* 0 */
+#define CFG_INTERRUPT_STATUS_SAMPLE_WIDTH 0x1 /* 1 */
+#define CFG_INTERRUPT_STATUS_SAMPLE_DEFAULT 0x1 /* 1 */
+
+/* Type = roSig */
+#define CFG_FRAM_RESET_STATUS_ADDR 0x18 /* 24 */
+#define CFG_FRAM_RESET_STATUS_MASK 0x1 /* 1 */
+#define CFG_FRAM_RESET_STATUS_OFFSET 0x0 /* 0 */
+#define CFG_FRAM_RESET_STATUS_WIDTH 0x1 /* 1 */
+#define CFG_FRAM_RESET_STATUS_DEFAULT 0x0 /* 0 */
+
+/* Type = roSig */
+#define CFG_DEFM_RESET_STATUS_ADDR 0x18 /* 24 */
+#define CFG_DEFM_RESET_STATUS_MASK 0x2 /* 2 */
+#define CFG_DEFM_RESET_STATUS_OFFSET 0x1 /* 1 */
+#define CFG_DEFM_RESET_STATUS_WIDTH 0x1 /* 1 */
+#define CFG_DEFM_RESET_STATUS_DEFAULT 0x0 /* 0 */
+
+/* Type = roSig */
+#define CFG_FRAM_ANT_OF_INTERRUPT_ADDR 0x18 /* 24 */
+#define CFG_FRAM_ANT_OF_INTERRUPT_MASK 0x100 /* 256 */
+#define CFG_FRAM_ANT_OF_INTERRUPT_OFFSET 0x8 /* 8 */
+#define CFG_FRAM_ANT_OF_INTERRUPT_WIDTH 0x1 /* 1 */
+#define CFG_FRAM_ANT_OF_INTERRUPT_DEFAULT 0x0 /* 0 */
+
+/* Type = roSig */
+#define CFG_FRAM_ETH_OF_INTERRUPT_ADDR 0x18 /* 24 */
+#define CFG_FRAM_ETH_OF_INTERRUPT_MASK 0x200 /* 512 */
+#define CFG_FRAM_ETH_OF_INTERRUPT_OFFSET 0x9 /* 9 */
+#define CFG_FRAM_ETH_OF_INTERRUPT_WIDTH 0x1 /* 1 */
+#define CFG_FRAM_ETH_OF_INTERRUPT_DEFAULT 0x0 /* 0 */
+
+/* Type = roSig */
+#define CFG_FRAM_ANT_UF_INTERRUPT_ADDR 0x18 /* 24 */
+#define CFG_FRAM_ANT_UF_INTERRUPT_MASK 0x400 /* 1024 */
+#define CFG_FRAM_ANT_UF_INTERRUPT_OFFSET 0xa /* 10 */
+#define CFG_FRAM_ANT_UF_INTERRUPT_WIDTH 0x1 /* 1 */
+#define CFG_FRAM_ANT_UF_INTERRUPT_DEFAULT 0x0 /* 0 */
+
+/* Type = roSig */
+#define CFG_FRAM_ETH_UF_INTERRUPT_ADDR 0x18 /* 24 */
+#define CFG_FRAM_ETH_UF_INTERRUPT_MASK 0x800 /* 2048 */
+#define CFG_FRAM_ETH_UF_INTERRUPT_OFFSET 0xb /* 11 */
+#define CFG_FRAM_ETH_UF_INTERRUPT_WIDTH 0x1 /* 1 */
+#define CFG_FRAM_ETH_UF_INTERRUPT_DEFAULT 0x0 /* 0 */
 
 /* Type = roSig */
 #define CFG_AXI_TIMEOUT_STATUS_ADDR 0x18 /* 24 */
@@ -125,11 +188,11 @@
  *------------------------------------------------------------------------------
  */
 /* Type = rwpdef */
-#define FRAM_RESTART_ADDR 0x2000 /* 8192 */
-#define FRAM_RESTART_MASK 0x1 /* 1 */
-#define FRAM_RESTART_OFFSET 0x0 /* 0 */
-#define FRAM_RESTART_WIDTH 0x1 /* 1 */
-#define FRAM_RESTART_DEFAULT 0x1 /* 1 */
+#define FRAM_DISABLE_ADDR 0x2000 /* 8192 */
+#define FRAM_DISABLE_MASK 0x1 /* 1 */
+#define FRAM_DISABLE_OFFSET 0x0 /* 0 */
+#define FRAM_DISABLE_WIDTH 0x1 /* 1 */
+#define FRAM_DISABLE_DEFAULT 0x1 /* 1 */
 
 /* Type = roSig */
 #define FRAM_READY_ADDR 0x2000 /* 8192 */
@@ -139,11 +202,11 @@
 #define FRAM_READY_DEFAULT 0x0 /* 0 */
 
 /* Type = roSig */
-#define FRAM_AUTO_RESTART_CNT_ADDR 0x2004 /* 8196 */
-#define FRAM_AUTO_RESTART_CNT_MASK 0xffffffff /* 4294967295 */
-#define FRAM_AUTO_RESTART_CNT_OFFSET 0x0 /* 0 */
-#define FRAM_AUTO_RESTART_CNT_WIDTH 0x20 /* 32 */
-#define FRAM_AUTO_RESTART_CNT_DEFAULT 0x0 /* 0 */
+#define FRAM_FIFO_FULL_INDICATOR_ADDR 0x2004 /* 8196 */
+#define FRAM_FIFO_FULL_INDICATOR_MASK 0xffffffff /* 4294967295 */
+#define FRAM_FIFO_FULL_INDICATOR_OFFSET 0x0 /* 0 */
+#define FRAM_FIFO_FULL_INDICATOR_WIDTH 0x20 /* 32 */
+#define FRAM_FIFO_FULL_INDICATOR_DEFAULT 0x0 /* 0 */
 
 /* Type = rw */
 #define FRAM_SN_DATA_LOW_CNT_MIN_ADDR 0x2020 /* 8224 */
@@ -281,7 +344,7 @@
 /*-----------------------------------------------------------------------------
  * C Header bank register definitions for bank roe_framer_v1_0_fram_drp
  * with prefix fram_drp @ address 0x4000
- *-----------------------------------------------------------------------------
+ *------------------------------------------------------------------------------
  */
 /* Type = rw */
 #define FRAM_DRPFRAM_DATA_PC_ID_ADDR 0x4000 /* 16384 */
@@ -592,7 +655,7 @@
 /*-----------------------------------------------------------------------------
  * C Header bank register definitions for bank roe_framer_v1_0_defm_drp
  * with prefix defm_drp @ address 0x8000
- *-----------------------------------------------------------------------------
+ *------------------------------------------------------------------------------
  */
 /* Type = rw */
 #define DEFM_DRPDEFM_DATA_PC_ID_ADDR 0x8000 /* 32768 */
@@ -695,7 +758,7 @@
 /*-----------------------------------------------------------------------------
  * C Header bank register definitions for bank roe_framer_v1_0_eth
  * with prefix eth_ @ address 0xa000
- *-----------------------------------------------------------------------------
+ *------------------------------------------------------------------------------
  */
 /* Type = rwpdef */
 #define ETH_DEST_ADDR_31_0_ADDR 0xa000 /* 40960 */
@@ -901,32 +964,32 @@
 #define ETH_IPV6_SOURCE_ADD_127_96_DEFAULT 0x0 /* 0 */
 
 /* Type = rwpdef */
-#define ETH_IPV6_DESTINATION_ADD_31_0_ADDR 0xa0a4 /* 41124 */
-#define ETH_IPV6_DESTINATION_ADD_31_0_MASK 0xffffffff /* 4294967295 */
-#define ETH_IPV6_DESTINATION_ADD_31_0_OFFSET 0x0 /* 0 */
-#define ETH_IPV6_DESTINATION_ADD_31_0_WIDTH 0x20 /* 32 */
-#define ETH_IPV6_DESTINATION_ADD_31_0_DEFAULT 0x0 /* 0 */
+#define ETH_IPV6_DEST_ADD_31_0_ADDR 0xa0a4 /* 41124 */
+#define ETH_IPV6_DEST_ADD_31_0_MASK 0xffffffff /* 4294967295 */
+#define ETH_IPV6_DEST_ADD_31_0_OFFSET 0x0 /* 0 */
+#define ETH_IPV6_DEST_ADD_31_0_WIDTH 0x20 /* 32 */
+#define ETH_IPV6_DEST_ADD_31_0_DEFAULT 0x0 /* 0 */
 
 /* Type = rwpdef */
-#define ETH_IPV6_DESTINATION_ADD_63_32_ADDR 0xa0a8 /* 41128 */
-#define ETH_IPV6_DESTINATION_ADD_63_32_MASK 0xffffffff /* 4294967295 */
-#define ETH_IPV6_DESTINATION_ADD_63_32_OFFSET 0x0 /* 0 */
-#define ETH_IPV6_DESTINATION_ADD_63_32_WIDTH 0x20 /* 32 */
-#define ETH_IPV6_DESTINATION_ADD_63_32_DEFAULT 0x0 /* 0 */
+#define ETH_IPV6_DEST_ADD_63_32_ADDR 0xa0a8 /* 41128 */
+#define ETH_IPV6_DEST_ADD_63_32_MASK 0xffffffff /* 4294967295 */
+#define ETH_IPV6_DEST_ADD_63_32_OFFSET 0x0 /* 0 */
+#define ETH_IPV6_DEST_ADD_63_32_WIDTH 0x20 /* 32 */
+#define ETH_IPV6_DEST_ADD_63_32_DEFAULT 0x0 /* 0 */
 
 /* Type = rwpdef */
-#define ETH_IPV6_DESTINATION_ADD_95_64_ADDR 0xa0ac /* 41132 */
-#define ETH_IPV6_DESTINATION_ADD_95_64_MASK 0xffffffff /* 4294967295 */
-#define ETH_IPV6_DESTINATION_ADD_95_64_OFFSET 0x0 /* 0 */
-#define ETH_IPV6_DESTINATION_ADD_95_64_WIDTH 0x20 /* 32 */
-#define ETH_IPV6_DESTINATION_ADD_95_64_DEFAULT 0x0 /* 0 */
+#define ETH_IPV6_DEST_ADD_95_64_ADDR 0xa0ac /* 41132 */
+#define ETH_IPV6_DEST_ADD_95_64_MASK 0xffffffff /* 4294967295 */
+#define ETH_IPV6_DEST_ADD_95_64_OFFSET 0x0 /* 0 */
+#define ETH_IPV6_DEST_ADD_95_64_WIDTH 0x20 /* 32 */
+#define ETH_IPV6_DEST_ADD_95_64_DEFAULT 0x0 /* 0 */
 
 /* Type = rwpdef */
-#define ETH_IPV6_DESTINATION_ADD_127_96_ADDR 0xa0b0 /* 41136 */
-#define ETH_IPV6_DESTINATION_ADD_127_96_MASK 0xffffffff /* 4294967295 */
-#define ETH_IPV6_DESTINATION_ADD_127_96_OFFSET 0x0 /* 0 */
-#define ETH_IPV6_DESTINATION_ADD_127_96_WIDTH 0x20 /* 32 */
-#define ETH_IPV6_DESTINATION_ADD_127_96_DEFAULT 0x0 /* 0 */
+#define ETH_IPV6_DEST_ADD_127_96_ADDR 0xa0b0 /* 41136 */
+#define ETH_IPV6_DEST_ADD_127_96_MASK 0xffffffff /* 4294967295 */
+#define ETH_IPV6_DEST_ADD_127_96_OFFSET 0x0 /* 0 */
+#define ETH_IPV6_DEST_ADD_127_96_WIDTH 0x20 /* 32 */
+#define ETH_IPV6_DEST_ADD_127_96_DEFAULT 0x0 /* 0 */
 
 /*-----------------------------------------------------------------------------
  * C Header bank register definitions for bank roe_framer_v1_0_stats

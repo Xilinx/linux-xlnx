@@ -33,15 +33,11 @@ static int utils_ipv4addr_chartohex(char *ip_addr, uint32_t *p_ip_addr);
 static ssize_t ipv4_version_show(struct kobject *kobj,
 				 struct kobj_attribute *attr, char *buff)
 {
-	u32 offset = ETH_IPV4_VERSION_OFFSET;
-	u32 mask = ETH_IPV4_VERSION_MASK;
-	u32 buffer = 0;
-	u32 version = 0;
-	void __iomem *working_address = ((u8 *)lp->base_addr +
-	ETH_IPV4_VERSION_ADDR);
+	u32 version;
 
-	buffer = ioread32(working_address);
-	version = (buffer & mask) >> offset;
+	version = utils_sysfs_show_wrapper(ETH_IPV4_VERSION_ADDR,
+					   ETH_IPV4_VERSION_OFFSET,
+					   ETH_IPV4_VERSION_MASK, kobj);
 	sprintf(buff, "%d\n", version);
 	return XROE_SIZE_MAX;
 }
@@ -78,15 +74,10 @@ static ssize_t ipv4_version_store(struct kobject *kobj,
 static ssize_t ipv4_ihl_show(struct kobject *kobj,
 			     struct kobj_attribute *attr, char *buff)
 {
-	u32 offset = ETH_IPV4_IHL_OFFSET;
-	u32 mask = ETH_IPV4_IHL_MASK;
-	u32 buffer = 0;
-	u32 ihl = 0;
-	void __iomem *working_address = ((u8 *)lp->base_addr
-	+ ETH_IPV4_IHL_ADDR);
+	u32 ihl;
 
-	buffer = ioread32(working_address);
-	ihl = (buffer & mask) >> offset;
+	ihl = utils_sysfs_show_wrapper(ETH_IPV4_IHL_ADDR, ETH_IPV4_IHL_OFFSET,
+				       ETH_IPV4_IHL_MASK, kobj);
 	sprintf(buff, "%d\n", ihl);
 	return XROE_SIZE_MAX;
 }
@@ -106,18 +97,15 @@ static ssize_t ipv4_ihl_store(struct kobject *kobj,
 			      struct kobj_attribute *attr, const char *buff,
 			      size_t count)
 {
-	int ret = 0;
-	u32 offset = ETH_IPV4_IHL_OFFSET;
-	u32 mask = ETH_IPV4_IHL_MASK;
-	void __iomem *working_address = ((u8 *)lp->base_addr
-	+ ETH_IPV4_IHL_ADDR);
-	unsigned int ihl = 0;
+	int ret;
+	u32 ihl;
 
 	xroe_size = min_t(size_t, count, (size_t)XROE_SIZE_MAX);
 	ret = kstrtouint(buff, 10, &ihl);
 	if (ret)
 		return ret;
-	utils_write32withmask(working_address, (u32)ihl, mask, offset);
+	utils_sysfs_store_wrapper(ETH_IPV4_IHL_ADDR, ETH_IPV4_IHL_OFFSET,
+				  ETH_IPV4_IHL_MASK, ihl, kobj);
 	return xroe_size;
 }
 
@@ -134,15 +122,11 @@ static ssize_t ipv4_ihl_store(struct kobject *kobj,
 static ssize_t ipv4_dscp_show(struct kobject *kobj,
 			      struct kobj_attribute *attr, char *buff)
 {
-	u32 offset = ETH_IPV4_DSCP_OFFSET;
-	u32 mask = ETH_IPV4_DSCP_MASK;
-	u32 buffer = 0;
-	u32 dscp = 0;
-	void __iomem *working_address = ((u8 *)lp->base_addr
-	+ ETH_IPV4_DSCP_ADDR);
+	u32 dscp;
 
-	buffer = ioread32(working_address);
-	dscp = (buffer & mask) >> offset;
+	dscp = utils_sysfs_show_wrapper(ETH_IPV4_DSCP_ADDR,
+					ETH_IPV4_DSCP_OFFSET,
+					ETH_IPV4_DSCP_MASK, kobj);
 	sprintf(buff, "%d\n", dscp);
 	return XROE_SIZE_MAX;
 }
@@ -162,18 +146,15 @@ static ssize_t ipv4_dscp_store(struct kobject *kobj,
 			       struct kobj_attribute *attr, const char *buff,
 			       size_t count)
 {
-	int ret = 0;
-	u32 offset = ETH_IPV4_DSCP_OFFSET;
-	u32 mask = ETH_IPV4_DSCP_MASK;
-	unsigned int dscp = 0;
-	void __iomem *working_address = ((u8 *)lp->base_addr
-	+ ETH_IPV4_DSCP_ADDR);
+	int ret;
+	u32 dscp;
 
 	xroe_size = min_t(size_t, count, (size_t)XROE_SIZE_MAX);
 	ret = kstrtouint(buff, 10, &dscp);
 	if (ret)
 		return ret;
-	utils_write32withmask(working_address, (u32)dscp, mask, offset);
+	utils_sysfs_store_wrapper(ETH_IPV4_DSCP_ADDR, ETH_IPV4_DSCP_OFFSET,
+				  ETH_IPV4_DSCP_MASK, dscp, kobj);
 	return xroe_size;
 }
 
@@ -190,15 +171,10 @@ static ssize_t ipv4_dscp_store(struct kobject *kobj,
 static ssize_t ipv4_ecn_show(struct kobject *kobj,
 			     struct kobj_attribute *attr, char *buff)
 {
-	u32 offset = ETH_IPV4_ECN_OFFSET;
-	u32 mask = ETH_IPV4_ECN_MASK;
-	u32 buffer = 0;
-	u32 ecn = 0;
-	void __iomem *working_address = ((u8 *)lp->base_addr
-	+ ETH_IPV4_ECN_ADDR);
+	u32 ecn;
 
-	buffer = ioread32(working_address);
-	ecn = (buffer & mask) >> offset;
+	ecn = utils_sysfs_show_wrapper(ETH_IPV4_ECN_ADDR, ETH_IPV4_ECN_OFFSET,
+				       ETH_IPV4_ECN_MASK, kobj);
 	sprintf(buff, "%d\n", ecn);
 	return XROE_SIZE_MAX;
 }
@@ -218,18 +194,15 @@ static ssize_t ipv4_ecn_store(struct kobject *kobj,
 			      struct kobj_attribute *attr, const char *buff,
 			      size_t count)
 {
-	int ret = 0;
-	u32 offset = ETH_IPV4_ECN_OFFSET;
-	u32 mask = ETH_IPV4_ECN_MASK;
-	unsigned int ecn = 0;
-	void __iomem *working_address = ((u8 *)lp->base_addr
-	+ ETH_IPV4_ECN_ADDR);
+	int ret;
+	u32 ecn;
 
 	xroe_size = min_t(size_t, count, (size_t)XROE_SIZE_MAX);
 	ret = kstrtouint(buff, 10, &ecn);
 	if (ret)
 		return ret;
-	utils_write32withmask(working_address, (u32)ecn, mask, offset);
+	utils_sysfs_store_wrapper(ETH_IPV4_ECN_ADDR, ETH_IPV4_ECN_OFFSET,
+				  ETH_IPV4_ECN_MASK, ecn, kobj);
 	return xroe_size;
 }
 
@@ -246,15 +219,10 @@ static ssize_t ipv4_ecn_store(struct kobject *kobj,
 static ssize_t ipv4_id_show(struct kobject *kobj,
 			    struct kobj_attribute *attr, char *buff)
 {
-	u32 offset = ETH_IPV4_ID_OFFSET;
-	u32 mask = ETH_IPV4_ID_MASK;
-	u32 buffer = 0;
-	u32 id = 0;
-	void __iomem *working_address = ((u8 *)lp->base_addr
-	+ ETH_IPV4_ID_ADDR);
+	u32 id;
 
-	buffer = ioread32(working_address);
-	id = (buffer & mask) >> offset;
+	id = utils_sysfs_show_wrapper(ETH_IPV4_ID_ADDR, ETH_IPV4_ID_OFFSET,
+				      ETH_IPV4_ID_MASK, kobj);
 	sprintf(buff, "%d\n", id);
 	return XROE_SIZE_MAX;
 }
@@ -274,18 +242,15 @@ static ssize_t ipv4_id_store(struct kobject *kobj,
 			     struct kobj_attribute *attr, const char *buff,
 			     size_t count)
 {
-	int ret = 0;
-	u32 offset = ETH_IPV4_ID_OFFSET;
-	u32 mask = ETH_IPV4_ID_MASK;
-	unsigned int id = 0;
-	void __iomem *working_address = ((u8 *)lp->base_addr
-	+ ETH_IPV4_ID_ADDR);
+	int ret;
+	u32 id;
 
 	xroe_size = min_t(size_t, count, (size_t)XROE_SIZE_MAX);
 	ret = kstrtouint(buff, 10, &id);
 	if (ret)
 		return ret;
-	utils_write32withmask(working_address, (u32)id, mask, offset);
+	utils_sysfs_store_wrapper(ETH_IPV4_ID_ADDR, ETH_IPV4_ID_OFFSET,
+				  ETH_IPV4_ID_MASK, id, kobj);
 	return xroe_size;
 }
 
@@ -302,15 +267,11 @@ static ssize_t ipv4_id_store(struct kobject *kobj,
 static ssize_t ipv4_flags_show(struct kobject *kobj,
 			       struct kobj_attribute *attr, char *buff)
 {
-	u32 offset = ETH_IPV4_FLAGS_OFFSET;
-	u32 mask = ETH_IPV4_FLAGS_MASK;
-	u32 buffer = 0;
-	u32 flags = 0;
-	void __iomem *working_address = ((u8 *)lp->base_addr
-	+ ETH_IPV4_FLAGS_ADDR);
+	u32 flags;
 
-	buffer = ioread32(working_address);
-	flags = (buffer & mask) >> offset;
+	flags = utils_sysfs_show_wrapper(ETH_IPV4_FLAGS_ADDR,
+					 ETH_IPV4_FLAGS_OFFSET,
+					 ETH_IPV4_FLAGS_MASK, kobj);
 	sprintf(buff, "%d\n", flags);
 	return XROE_SIZE_MAX;
 }
@@ -330,18 +291,15 @@ static ssize_t ipv4_flags_store(struct kobject *kobj,
 				struct kobj_attribute *attr, const char *buff,
 				size_t count)
 {
-	int ret = 0;
-	u32 offset = ETH_IPV4_FLAGS_OFFSET;
-	u32 mask = ETH_IPV4_FLAGS_MASK;
-	unsigned int flags = 0;
-	void __iomem *working_address = ((u8 *)lp->base_addr
-	+ ETH_IPV4_FLAGS_ADDR);
+	int ret;
+	u32 flags;
 
 	xroe_size = min_t(size_t, count, (size_t)XROE_SIZE_MAX);
 	ret = kstrtouint(buff, 10, &flags);
 	if (ret)
 		return ret;
-	utils_write32withmask(working_address, (u32)flags, mask, offset);
+	utils_sysfs_store_wrapper(ETH_IPV4_FLAGS_ADDR, ETH_IPV4_FLAGS_OFFSET,
+				  ETH_IPV4_FLAGS_MASK, flags, kobj);
 	return xroe_size;
 }
 
@@ -358,16 +316,13 @@ static ssize_t ipv4_flags_store(struct kobject *kobj,
 static ssize_t ipv4_fragment_offset_show
 (struct kobject *kobj, struct kobj_attribute *attr, char *buff)
 {
-	u32 offset = ETH_IPV4_FRAGMENT_OFFSET_OFFSET;
-	u32 mask = ETH_IPV4_FRAGMENT_OFFSET_MASK;
-	u32 buffer = 0;
-	u32 fragment_offset = 0;
-	void __iomem *working_address = ((u8 *)lp->base_addr +
-	ETH_IPV4_FRAGMENT_OFFSET_ADDR);
+	u32 fragment;
 
-	buffer = ioread32(working_address);
-	fragment_offset = (buffer & mask) >> offset;
-	sprintf(buff, "%d\n", fragment_offset);
+	fragment = utils_sysfs_show_wrapper(ETH_IPV4_FRAGMENT_OFFSET_ADDR,
+					    ETH_IPV4_FRAGMENT_OFFSET_OFFSET,
+					    ETH_IPV4_FRAGMENT_OFFSET_MASK,
+					    kobj);
+	sprintf(buff, "%d\n", fragment);
 	return XROE_SIZE_MAX;
 }
 
@@ -386,19 +341,17 @@ static ssize_t ipv4_fragment_offset_store
 (struct kobject *kobj, struct kobj_attribute *attr, const char *buff,
 size_t count)
 {
-	int ret = 0;
-	u32 offset = ETH_IPV4_FRAGMENT_OFFSET_OFFSET;
-	u32 mask = ETH_IPV4_FRAGMENT_OFFSET_MASK;
-	unsigned int fragment_offset = 0;
-	void __iomem *working_address = ((u8 *)lp->base_addr +
-	ETH_IPV4_FRAGMENT_OFFSET_ADDR);
+	int ret;
+	u32 fragment;
 
 	xroe_size = min_t(size_t, count, (size_t)XROE_SIZE_MAX);
-	ret = kstrtouint(buff, 10, &fragment_offset);
+	ret = kstrtouint(buff, 10, &fragment);
 	if (ret)
 		return ret;
-	utils_write32withmask(working_address, (u32)fragment_offset,
-			      mask, offset);
+	utils_sysfs_store_wrapper(ETH_IPV4_FRAGMENT_OFFSET_ADDR,
+				  ETH_IPV4_FRAGMENT_OFFSET_OFFSET,
+				  ETH_IPV4_FRAGMENT_OFFSET_MASK, fragment,
+				  kobj);
 	return xroe_size;
 }
 
@@ -415,15 +368,11 @@ size_t count)
 static ssize_t ipv4_ttl_show(struct kobject *kobj, struct kobj_attribute *attr,
 			     char *buff)
 {
-	u32 offset = ETH_IPV4_TIME_TO_LIVE_OFFSET;
-	u32 mask = ETH_IPV4_TIME_TO_LIVE_MASK;
-	u32 buffer = 0;
-	u32 ttl = 0;
-	void __iomem *working_address = ((u8 *)lp->base_addr +
-	ETH_IPV4_TIME_TO_LIVE_ADDR);
+	u32 ttl;
 
-	buffer = ioread32(working_address);
-	ttl = (buffer & mask) >> offset;
+	ttl = utils_sysfs_show_wrapper(ETH_IPV4_TIME_TO_LIVE_ADDR,
+				       ETH_IPV4_TIME_TO_LIVE_OFFSET,
+				       ETH_IPV4_TIME_TO_LIVE_MASK, kobj);
 	sprintf(buff, "%d\n", ttl);
 	return XROE_SIZE_MAX;
 }
@@ -443,18 +392,16 @@ static ssize_t ipv4_ttl_store(struct kobject *kobj,
 			      struct kobj_attribute *attr, const char *buff,
 			      size_t count)
 {
-	int ret = 0;
-	u32 offset = ETH_IPV4_TIME_TO_LIVE_OFFSET;
-	u32 mask = ETH_IPV4_TIME_TO_LIVE_MASK;
-	unsigned int ttl = 0;
-	void __iomem *working_address = ((u8 *)lp->base_addr +
-	ETH_IPV4_TIME_TO_LIVE_ADDR);
+	int ret;
+	u32 ttl;
 
 	xroe_size = min_t(size_t, count, (size_t)XROE_SIZE_MAX);
 	ret = kstrtouint(buff, 10, &ttl);
 	if (ret)
 		return ret;
-	utils_write32withmask(working_address, (u32)ttl, mask, offset);
+	utils_sysfs_store_wrapper(ETH_IPV4_TIME_TO_LIVE_ADDR,
+				  ETH_IPV4_TIME_TO_LIVE_OFFSET,
+				  ETH_IPV4_TIME_TO_LIVE_MASK, ttl, kobj);
 	return xroe_size;
 }
 
@@ -471,15 +418,11 @@ static ssize_t ipv4_ttl_store(struct kobject *kobj,
 static ssize_t ipv4_protocol_show(struct kobject *kobj,
 				  struct kobj_attribute *attr, char *buff)
 {
-	u32 offset = ETH_IPV4_PROTOCOL_OFFSET;
-	u32 mask = ETH_IPV4_PROTOCOL_MASK;
-	u32 buffer = 0;
-	u32 protocol = 0;
-	void __iomem *working_address = ((u8 *)lp->base_addr +
-	ETH_IPV4_PROTOCOL_ADDR);
+	u32 protocol;
 
-	buffer = ioread32(working_address);
-	protocol = (buffer & mask) >> offset;
+	protocol = utils_sysfs_show_wrapper(ETH_IPV4_PROTOCOL_ADDR,
+					    ETH_IPV4_PROTOCOL_OFFSET,
+					    ETH_IPV4_PROTOCOL_MASK, kobj);
 	sprintf(buff, "%d\n", protocol);
 	return XROE_SIZE_MAX;
 }
@@ -499,19 +442,16 @@ static ssize_t ipv4_protocol_store(struct kobject *kobj,
 				   struct kobj_attribute *attr,
 				   const char *buff, size_t count)
 {
-	int ret = 0;
-	u32 offset = ETH_IPV4_PROTOCOL_OFFSET;
-	u32 mask = ETH_IPV4_PROTOCOL_MASK;
-	unsigned int protocol = 0;
-	void __iomem *working_address = ((u8 *)lp->base_addr +
-	ETH_IPV4_PROTOCOL_ADDR);
+	int ret;
+	u32 protocol;
 
 	xroe_size = min_t(size_t, count, (size_t)XROE_SIZE_MAX);
 	ret = kstrtouint(buff, 10, &protocol);
 	if (ret)
 		return ret;
-	utils_write32withmask(working_address, (u32)protocol,
-			      mask, offset);
+	utils_sysfs_store_wrapper(ETH_IPV4_PROTOCOL_ADDR,
+				  ETH_IPV4_PROTOCOL_OFFSET,
+				  ETH_IPV4_PROTOCOL_MASK, protocol, kobj);
 	return xroe_size;
 }
 
@@ -528,16 +468,12 @@ static ssize_t ipv4_protocol_store(struct kobject *kobj,
 static ssize_t ipv4_source_address_show
 (struct kobject *kobj, struct kobj_attribute *attr, char *buff)
 {
-	u32 offset = ETH_IPV4_SOURCE_ADD_OFFSET;
-	unsigned long mask = ETH_IPV4_SOURCE_ADD_MASK;
-	u32 buffer = 0;
 	u32 source_add = 0;
 	unsigned char ip_addr_char[4];
-	void __iomem *working_address = ((u8 *)lp->base_addr +
-	ETH_IPV4_SOURCE_ADD_ADDR);
 
-	buffer = ioread32(working_address);
-	source_add = (buffer & mask) >> offset;
+	source_add = utils_sysfs_show_wrapper(ETH_IPV4_SOURCE_ADD_ADDR,
+					      ETH_IPV4_SOURCE_ADD_OFFSET,
+					      ETH_IPV4_SOURCE_ADD_MASK, kobj);
 	utils_ipv4addr_hextochar(source_add, ip_addr_char);
 	sprintf(buff, "%d.%d.%d.%d\n", ip_addr_char[3], ip_addr_char[2],
 		ip_addr_char[1], ip_addr_char[0]);
@@ -560,17 +496,15 @@ static ssize_t ipv4_source_address_store
 (struct kobject *kobj, struct kobj_attribute *attr, const char *buff,
 size_t count)
 {
-	u32 offset = ETH_IPV4_SOURCE_ADD_OFFSET;
-	unsigned long mask = ETH_IPV4_SOURCE_ADD_MASK;
 	u32 source_add = 0;
-	void __iomem *working_address = ((u8 *)lp->base_addr +
-	ETH_IPV4_SOURCE_ADD_ADDR);
 
 	xroe_size = min_t(size_t, count, (size_t)XROE_SIZE_MAX);
 	strncpy(xroe_tmp, buff, xroe_size);
 	if (utils_ipv4addr_chartohex(xroe_tmp, &source_add) == 4)
-		utils_write32withmask(working_address,
-				      source_add, mask, offset);
+		utils_sysfs_store_wrapper(ETH_IPV4_SOURCE_ADD_ADDR,
+					  ETH_IPV4_SOURCE_ADD_OFFSET,
+					  ETH_IPV4_SOURCE_ADD_MASK, source_add,
+					  kobj);
 	return xroe_size;
 }
 
@@ -587,19 +521,17 @@ size_t count)
 static ssize_t ipv4_destination_address_show
 (struct kobject *kobj, struct kobj_attribute *attr, char *buff)
 {
-	u32 offset = ETH_IPV4_DESTINATION_ADD_OFFSET;
-	unsigned long mask = ETH_IPV4_DESTINATION_ADD_MASK;
-	u32 buffer = 0;
-	u32 destination_add = 0;
+	u32 dest_add = 0;
 	unsigned char ip_addr_char[4];
-	void __iomem *working_address = ((u8 *)lp->base_addr +
-	ETH_IPV4_DESTINATION_ADD_ADDR);
 
-	buffer = ioread32(working_address);
-	destination_add = (buffer & mask) >> offset;
-	utils_ipv4addr_hextochar(destination_add, ip_addr_char);
+	dest_add = utils_sysfs_show_wrapper(ETH_IPV4_DESTINATION_ADD_ADDR,
+					    ETH_IPV4_DESTINATION_ADD_OFFSET,
+					    ETH_IPV4_DESTINATION_ADD_MASK,
+					    kobj);
+	utils_ipv4addr_hextochar(dest_add, ip_addr_char);
 	sprintf(buff, "%d.%d.%d.%d\n", ip_addr_char[3], ip_addr_char[2],
 		ip_addr_char[1], ip_addr_char[0]);
+
 	return XROE_SIZE_MAX;
 }
 
@@ -619,18 +551,15 @@ static ssize_t ipv4_destination_address_store
 (struct kobject *kobj, struct kobj_attribute *attr, const char *buff,
 size_t count)
 {
-	u32 offset = ETH_IPV4_DESTINATION_ADD_OFFSET;
-	unsigned long mask = ETH_IPV4_DESTINATION_ADD_MASK;
-	u32 destination_add = 0;
-	void __iomem *working_address = ((u8 *)lp->base_addr +
-	ETH_IPV4_DESTINATION_ADD_ADDR);
+	u32 dest_add = 0;
 
 	xroe_size = min_t(size_t, count, (size_t)XROE_SIZE_MAX);
 	strncpy(xroe_tmp, buff, xroe_size);
-	if (utils_ipv4addr_chartohex(xroe_tmp,
-				     &destination_add) == 4)
-		utils_write32withmask(working_address,
-				      destination_add, mask, offset);
+	if (utils_ipv4addr_chartohex(xroe_tmp, &dest_add) == 4)
+		utils_sysfs_store_wrapper(ETH_IPV4_DESTINATION_ADD_ADDR,
+					  ETH_IPV4_DESTINATION_ADD_OFFSET,
+					  ETH_IPV4_DESTINATION_ADD_MASK,
+					  dest_add, kobj);
 	return xroe_size;
 }
 
@@ -682,7 +611,8 @@ static struct attribute_group attr_group = {
 };
 
 struct kobject *kobj_framer;
-static struct kobject *kobj_ipv4;
+static struct kobject *kobj_ipv4[MAX_NUM_ETH_PORTS];
+struct kobject *kobj_eth_ports[MAX_NUM_ETH_PORTS];
 
 /**
  * xroe_sysfs_ipv4_init - Creates the xroe sysfs "ipv4" subdirectory & entries
@@ -695,16 +625,27 @@ static struct kobject *kobj_ipv4;
 int xroe_sysfs_ipv4_init(void)
 {
 	int ret;
+	int i;
+	char eth_port_dir_name[11];
 
 	kobj_framer = kobject_create_and_add("framer", root_xroe_kobj);
 	if (!kobj_framer)
 		return -ENOMEM;
-	kobj_ipv4 = kobject_create_and_add("ipv4", kobj_framer);
-	if (!kobj_ipv4)
-		return -ENOMEM;
-	ret = sysfs_create_group(kobj_ipv4, &attr_group);
-	if (ret)
-		kobject_put(kobj_ipv4);
+	for (i = 0; i < 4; i++) {
+		snprintf(eth_port_dir_name, sizeof(eth_port_dir_name),
+			 "eth_port_%d", i);
+		kobj_eth_ports[i] = kobject_create_and_add(eth_port_dir_name,
+							   kobj_framer);
+		if (!kobj_eth_ports[i])
+			return -ENOMEM;
+		kobj_ipv4[i] = kobject_create_and_add("ipv4",
+						      kobj_eth_ports[i]);
+		if (!kobj_ipv4[i])
+			return -ENOMEM;
+		ret = sysfs_create_group(kobj_ipv4[i], &attr_group);
+		if (ret)
+			kobject_put(kobj_ipv4[i]);
+	}
 	return ret;
 }
 
@@ -716,7 +657,10 @@ int xroe_sysfs_ipv4_init(void)
  */
 void xroe_sysfs_ipv4_exit(void)
 {
-	kobject_put(kobj_ipv4);
+	int i;
+
+	for (i = 0; i < MAX_NUM_ETH_PORTS; i++)
+		kobject_put(kobj_ipv4[i]);
 }
 
 /**
