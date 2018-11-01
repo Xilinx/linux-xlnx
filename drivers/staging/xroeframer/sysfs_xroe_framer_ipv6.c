@@ -33,15 +33,10 @@ static int utils_ipv6addr_chartohex(char *ip_addr, uint32_t *p_ip_addr);
 static ssize_t ipv6_version_show(struct kobject *kobj,
 				 struct kobj_attribute *attr, char *buff)
 {
-	u32 offset = ETH_IPV6_V_OFFSET;
-	u32 mask = ETH_IPV6_V_MASK;
-	u32 buffer = 0;
-	u32 version = 0;
-	void __iomem *working_address = ((u8 *)lp->base_addr
-	+ ETH_IPV6_V_ADDR);
+	u32 version;
 
-	buffer = ioread32(working_address);
-	version = (buffer & mask) >> offset;
+	version = utils_sysfs_show_wrapper(ETH_IPV6_V_ADDR, ETH_IPV6_V_OFFSET,
+					   ETH_IPV6_V_MASK, kobj);
 	sprintf(buff, "%d\n", version);
 	return XROE_SIZE_MAX;
 }
@@ -78,15 +73,12 @@ static ssize_t ipv6_version_store(struct kobject *kobj,
 static ssize_t ipv6_traffic_class_show(struct kobject *kobj,
 				       struct kobj_attribute *attr, char *buff)
 {
-	u32 offset = ETH_IPV6_TRAFFIC_CLASS_OFFSET;
-	u32 mask = ETH_IPV6_TRAFFIC_CLASS_MASK;
-	u32 buffer = 0;
-	u32 traffic_class = 0;
-	void __iomem *working_address = ((u8 *)lp->base_addr +
-	ETH_IPV6_TRAFFIC_CLASS_ADDR);
+	u32 traffic_class;
 
-	buffer = ioread32(working_address);
-	traffic_class = (buffer & mask) >> offset;
+	traffic_class = utils_sysfs_show_wrapper(ETH_IPV6_TRAFFIC_CLASS_ADDR,
+						 ETH_IPV6_TRAFFIC_CLASS_OFFSET,
+						 ETH_IPV6_TRAFFIC_CLASS_MASK,
+						 kobj);
 	sprintf(buff, "%d\n", traffic_class);
 	return XROE_SIZE_MAX;
 }
@@ -107,19 +99,16 @@ static ssize_t ipv6_traffic_class_store(struct kobject *kobj,
 					const char *buff, size_t count)
 {
 	int ret;
-	u32 offset = ETH_IPV6_TRAFFIC_CLASS_OFFSET;
-	u32 mask = ETH_IPV6_TRAFFIC_CLASS_MASK;
-	unsigned int traffic_class = 0;
-	void __iomem *working_address = ((u8 *)lp->base_addr +
-	ETH_IPV6_TRAFFIC_CLASS_ADDR);
+	u32 traffic_class;
 
-	ret = 0;
 	xroe_size = min_t(size_t, count, (size_t)XROE_SIZE_MAX);
 	ret = kstrtouint(buff, 10, &traffic_class);
 	if (ret)
 		return ret;
-	utils_write32withmask(working_address, (u32)traffic_class,
-			      mask, offset);
+	utils_sysfs_store_wrapper(ETH_IPV6_TRAFFIC_CLASS_ADDR,
+				  ETH_IPV6_TRAFFIC_CLASS_OFFSET,
+				  ETH_IPV6_TRAFFIC_CLASS_MASK, traffic_class,
+				  kobj);
 	return xroe_size;
 }
 
@@ -136,15 +125,11 @@ static ssize_t ipv6_traffic_class_store(struct kobject *kobj,
 static ssize_t ipv6_flow_label_show(struct kobject *kobj,
 				    struct kobj_attribute *attr, char *buff)
 {
-	u32 offset = ETH_IPV6_FLOW_LABEL_OFFSET;
-	u32 mask = ETH_IPV6_FLOW_LABEL_MASK;
-	u32 buffer = 0;
-	u32 flow_label = 0;
-	void __iomem *working_address = ((u8 *)lp->base_addr +
-	ETH_IPV6_FLOW_LABEL_ADDR);
+	u32 flow_label;
 
-	buffer = ioread32(working_address);
-	flow_label = (buffer & mask) >> offset;
+	flow_label = utils_sysfs_show_wrapper(ETH_IPV6_FLOW_LABEL_ADDR,
+					      ETH_IPV6_FLOW_LABEL_OFFSET,
+					      ETH_IPV6_FLOW_LABEL_MASK, kobj);
 	sprintf(buff, "%d\n", flow_label);
 	return XROE_SIZE_MAX;
 }
@@ -165,19 +150,15 @@ static ssize_t ipv6_flow_label_store(struct kobject *kobj,
 				     const char *buff, size_t count)
 {
 	int ret;
-	u32 offset = ETH_IPV6_FLOW_LABEL_OFFSET;
-	u32 mask = ETH_IPV6_FLOW_LABEL_MASK;
-	unsigned int flow_label = 0;
-	void __iomem *working_address = ((u8 *)lp->base_addr +
-	ETH_IPV6_FLOW_LABEL_ADDR);
+	u32 flow_label;
 
 	xroe_size = min_t(size_t, count, (size_t)XROE_SIZE_MAX);
-	ret = 0;
 	ret = kstrtouint(buff, 10, &flow_label);
 	if (ret)
 		return ret;
-	utils_write32withmask(working_address, (u32)flow_label,
-			      mask, offset);
+	utils_sysfs_store_wrapper(ETH_IPV6_FLOW_LABEL_ADDR,
+				  ETH_IPV6_FLOW_LABEL_OFFSET,
+				  ETH_IPV6_FLOW_LABEL_MASK, flow_label, kobj);
 	return xroe_size;
 }
 
@@ -195,15 +176,11 @@ static ssize_t ipv6_next_header_show(struct kobject *kobj,
 				     struct kobj_attribute *attr,
 				     char *buff)
 {
-	u32 offset = ETH_IPV6_NEXT_HEADER_OFFSET;
-	u32 mask = ETH_IPV6_NEXT_HEADER_MASK;
-	u32 buffer = 0;
-	u32 next_header = 0;
-	void __iomem *working_address = ((u8 *)lp->base_addr +
-	ETH_IPV6_NEXT_HEADER_ADDR);
+	u32 next_header;
 
-	buffer = ioread32(working_address);
-	next_header = (buffer & mask) >> offset;
+	next_header = utils_sysfs_show_wrapper(ETH_IPV6_NEXT_HEADER_ADDR,
+					       ETH_IPV6_NEXT_HEADER_OFFSET,
+					       ETH_IPV6_NEXT_HEADER_MASK, kobj);
 	sprintf(buff, "%d\n", next_header);
 	return XROE_SIZE_MAX;
 }
@@ -224,19 +201,15 @@ static ssize_t ipv6_next_header_store(struct kobject *kobj,
 				      const char *buff, size_t count)
 {
 	int ret;
-	u32 offset = ETH_IPV6_NEXT_HEADER_OFFSET;
-	u32 mask = ETH_IPV6_NEXT_HEADER_MASK;
-	unsigned int next_header = 0;
-	void __iomem *working_address = ((u8 *)lp->base_addr +
-	ETH_IPV6_NEXT_HEADER_ADDR);
+	u32 next_header;
 
 	xroe_size = min_t(size_t, count, (size_t)XROE_SIZE_MAX);
-	ret = 0;
 	ret = kstrtouint(buff, 10, &next_header);
 	if (ret)
 		return ret;
-	utils_write32withmask(working_address, (u32)next_header,
-			      mask, offset);
+	utils_sysfs_store_wrapper(ETH_IPV6_NEXT_HEADER_ADDR,
+				  ETH_IPV6_NEXT_HEADER_OFFSET,
+				  ETH_IPV6_NEXT_HEADER_MASK, next_header, kobj);
 	return xroe_size;
 }
 
@@ -253,15 +226,11 @@ static ssize_t ipv6_next_header_store(struct kobject *kobj,
 static ssize_t ipv6_hop_limit_show(struct kobject *kobj,
 				   struct kobj_attribute *attr, char *buff)
 {
-	u32 offset = ETH_IPV6_HOP_LIMIT_OFFSET;
-	u32 mask = ETH_IPV6_HOP_LIMIT_MASK;
-	u32 buffer = 0;
-	u32 hop_limit = 0;
-	void __iomem *working_address = ((u8 *)lp->base_addr +
-	ETH_IPV6_HOP_LIMIT_ADDR);
+	u32 hop_limit;
 
-	buffer = ioread32(working_address);
-	hop_limit = (buffer & mask) >> offset;
+	hop_limit = utils_sysfs_show_wrapper(ETH_IPV6_HOP_LIMIT_ADDR,
+					     ETH_IPV6_HOP_LIMIT_OFFSET,
+					     ETH_IPV6_HOP_LIMIT_MASK, kobj);
 	sprintf(buff, "%d\n", hop_limit);
 	return XROE_SIZE_MAX;
 }
@@ -282,19 +251,15 @@ static ssize_t ipv6_hop_limit_store
 size_t count)
 {
 	int ret;
-	u32 offset = ETH_IPV6_HOP_LIMIT_OFFSET;
-	u32 mask = ETH_IPV6_HOP_LIMIT_MASK;
-	unsigned int hop_limit = 0;
-	void __iomem *working_address = ((u8 *)lp->base_addr +
-	ETH_IPV6_HOP_LIMIT_ADDR);
+	u32 hop_limit;
 
 	xroe_size = min_t(size_t, count, (size_t)XROE_SIZE_MAX);
-	ret = 0;
 	ret = kstrtouint(buff, 10, &hop_limit);
 	if (ret)
 		return ret;
-	utils_write32withmask(working_address, (u32)hop_limit,
-			      mask, offset);
+	utils_sysfs_store_wrapper(ETH_IPV6_HOP_LIMIT_ADDR,
+				  ETH_IPV6_HOP_LIMIT_OFFSET,
+				  ETH_IPV6_HOP_LIMIT_MASK, hop_limit, kobj);
 	return xroe_size;
 }
 
@@ -312,42 +277,27 @@ size_t count)
 static ssize_t ipv6_source_address_show
 (struct kobject *kobj, struct kobj_attribute *attr, char *buff)
 {
-	u32 offset = ETH_IPV6_SOURCE_ADD_31_0_OFFSET;
-	unsigned long mask = ETH_IPV6_SOURCE_ADD_31_0_MASK;
-	u32 buffer = 0;
-	u32 source_add[4];
+	u32 source[4];
 	u16 source_add16[8];
-	void __iomem *working_address = ((u8 *)lp->base_addr +
-	ETH_IPV6_SOURCE_ADD_31_0_ADDR);
 
-	buffer = ioread32(working_address);
-	source_add[0] = (buffer & mask) >> offset;
+	source[0] = utils_sysfs_show_wrapper(ETH_IPV6_SOURCE_ADD_31_0_ADDR,
+					     ETH_IPV6_SOURCE_ADD_31_0_OFFSET,
+					     ETH_IPV6_SOURCE_ADD_31_0_MASK,
+					     kobj);
+	source[1] = utils_sysfs_show_wrapper(ETH_IPV6_SOURCE_ADD_63_32_ADDR,
+					     ETH_IPV6_SOURCE_ADD_63_32_OFFSET,
+					     ETH_IPV6_SOURCE_ADD_63_32_MASK,
+					     kobj);
+	source[2] = utils_sysfs_show_wrapper(ETH_IPV6_SOURCE_ADD_95_64_ADDR,
+					     ETH_IPV6_SOURCE_ADD_95_64_OFFSET,
+					     ETH_IPV6_SOURCE_ADD_95_64_MASK,
+					     kobj);
+	source[3] = utils_sysfs_show_wrapper(ETH_IPV6_SOURCE_ADD_127_96_ADDR,
+					     ETH_IPV6_SOURCE_ADD_127_96_OFFSET,
+					     ETH_IPV6_SOURCE_ADD_127_96_MASK,
+					     kobj);
 
-	working_address = ((u8 *)lp->base_addr +
-	ETH_IPV6_SOURCE_ADD_63_32_ADDR);
-	mask = ETH_IPV6_SOURCE_ADD_63_32_MASK;
-	offset = ETH_IPV6_SOURCE_ADD_63_32_OFFSET;
-
-	buffer = ioread32(working_address);
-	source_add[1] = (buffer & mask) >> offset;
-
-	working_address = ((u8 *)lp->base_addr +
-	ETH_IPV6_SOURCE_ADD_95_64_ADDR);
-	mask = ETH_IPV6_SOURCE_ADD_95_64_MASK;
-	offset = ETH_IPV6_SOURCE_ADD_95_64_OFFSET;
-
-	buffer = ioread32(working_address);
-	source_add[2] = (buffer & mask) >> offset;
-
-	working_address = ((u8 *)lp->base_addr +
-	ETH_IPV6_SOURCE_ADD_127_96_ADDR);
-	mask = ETH_IPV6_SOURCE_ADD_127_96_MASK;
-	offset = ETH_IPV6_SOURCE_ADD_127_96_OFFSET;
-
-	buffer = ioread32(working_address);
-	source_add[3] = (buffer & mask) >> offset;
-
-	utils_ipv6addr_32to16(source_add, source_add16);
+	utils_ipv6addr_32to16(source, source_add16);
 	sprintf(buff, "%04x:%04x:%04x:%04x:%04x:%04x:%04x:%04x\n",
 		source_add16[0], source_add16[1], source_add16[2],
 		source_add16[3],
@@ -371,41 +321,27 @@ static ssize_t ipv6_source_address_store
 (struct kobject *kobj, struct kobj_attribute *attr, const char *buff,
 size_t count)
 {
-	u32 offset = ETH_IPV6_SOURCE_ADD_31_0_OFFSET;
-	unsigned long mask = ETH_IPV6_SOURCE_ADD_31_0_MASK;
 	u32 source_add[4];
-	void __iomem *working_address = ((u8 *)lp->base_addr +
-	ETH_IPV6_SOURCE_ADD_31_0_ADDR);
 
 	xroe_size = min_t(size_t, count, (size_t)XROE_SIZE_MAX);
 	strncpy(xroe_tmp, buff, xroe_size);
 	if (utils_ipv6addr_chartohex(xroe_tmp, source_add) == 8) {
-		utils_write32withmask(working_address, source_add[0],
-				      mask, offset);
-
-		working_address = ((u8 *)lp->base_addr +
-		ETH_IPV6_SOURCE_ADD_63_32_ADDR);
-		mask = ETH_IPV6_SOURCE_ADD_63_32_MASK;
-		offset = ETH_IPV6_SOURCE_ADD_63_32_OFFSET;
-
-		utils_write32withmask(working_address, source_add[1],
-				      mask, offset);
-
-		working_address = ((u8 *)lp->base_addr +
-		ETH_IPV6_SOURCE_ADD_95_64_ADDR);
-		mask = ETH_IPV6_SOURCE_ADD_95_64_MASK;
-		offset = ETH_IPV6_SOURCE_ADD_95_64_OFFSET;
-
-		utils_write32withmask(working_address, source_add[2],
-				      mask, offset);
-
-		working_address = ((u8 *)lp->base_addr +
-		ETH_IPV6_SOURCE_ADD_127_96_ADDR);
-		mask = ETH_IPV6_SOURCE_ADD_127_96_MASK;
-		offset = ETH_IPV6_SOURCE_ADD_127_96_OFFSET;
-
-		utils_write32withmask(working_address, source_add[3],
-				      mask, offset);
+		utils_sysfs_store_wrapper(ETH_IPV6_SOURCE_ADD_31_0_ADDR,
+					  ETH_IPV6_SOURCE_ADD_31_0_OFFSET,
+					  ETH_IPV6_SOURCE_ADD_31_0_MASK,
+					  source_add[0], kobj);
+		utils_sysfs_store_wrapper(ETH_IPV6_SOURCE_ADD_63_32_ADDR,
+					  ETH_IPV6_SOURCE_ADD_63_32_OFFSET,
+					  ETH_IPV6_SOURCE_ADD_63_32_MASK,
+					  source_add[1], kobj);
+		utils_sysfs_store_wrapper(ETH_IPV6_SOURCE_ADD_95_64_ADDR,
+					  ETH_IPV6_SOURCE_ADD_95_64_OFFSET,
+					  ETH_IPV6_SOURCE_ADD_95_64_MASK,
+					  source_add[2], kobj);
+		utils_sysfs_store_wrapper(ETH_IPV6_SOURCE_ADD_127_96_ADDR,
+					  ETH_IPV6_SOURCE_ADD_127_96_OFFSET,
+					  ETH_IPV6_SOURCE_ADD_127_96_MASK,
+					  source_add[3], kobj);
 	}
 	return xroe_size;
 }
@@ -424,45 +360,32 @@ size_t count)
 static ssize_t ipv6_destination_address_show
 (struct kobject *kobj, struct kobj_attribute *attr, char *buff)
 {
-	u32 offset = ETH_IPV6_DESTINATION_ADD_31_0_OFFSET;
-	unsigned long mask = ETH_IPV6_DESTINATION_ADD_31_0_MASK;
-	u32 buffer = 0;
-	u32 dest_add[4];
+	u32 dest[4];
 	u16 dest_add16[8];
-	void __iomem *working_address = ((u8 *)lp->base_addr +
-	ETH_IPV6_DESTINATION_ADD_31_0_ADDR);
 
-	buffer = ioread32(working_address);
-	dest_add[0] = (buffer & mask) >> offset;
+	dest[0] = utils_sysfs_show_wrapper(ETH_IPV6_DEST_ADD_31_0_ADDR,
+					   ETH_IPV6_DEST_ADD_31_0_OFFSET,
+					   ETH_IPV6_DEST_ADD_31_0_MASK,
+					   kobj);
+	dest[1] = utils_sysfs_show_wrapper(ETH_IPV6_DEST_ADD_63_32_ADDR,
+					   ETH_IPV6_DEST_ADD_63_32_OFFSET,
+					   ETH_IPV6_DEST_ADD_63_32_MASK,
+					   kobj);
+	dest[2] = utils_sysfs_show_wrapper(ETH_IPV6_DEST_ADD_95_64_ADDR,
+					   ETH_IPV6_DEST_ADD_95_64_OFFSET,
+					   ETH_IPV6_DEST_ADD_95_64_MASK,
+					   kobj);
+	dest[3] = utils_sysfs_show_wrapper(ETH_IPV6_DEST_ADD_127_96_ADDR,
+					   ETH_IPV6_DEST_ADD_127_96_OFFSET,
+					   ETH_IPV6_DEST_ADD_127_96_MASK,
+					   kobj);
 
-	working_address = ((u8 *)lp->base_addr +
-	ETH_IPV6_DESTINATION_ADD_63_32_ADDR);
-	mask = ETH_IPV6_DESTINATION_ADD_63_32_MASK;
-	offset = ETH_IPV6_DESTINATION_ADD_63_32_OFFSET;
-
-	buffer = ioread32(working_address);
-	dest_add[1] = (buffer & mask) >> offset;
-
-	working_address = ((u8 *)lp->base_addr +
-	ETH_IPV6_DESTINATION_ADD_95_64_ADDR);
-	mask = ETH_IPV6_DESTINATION_ADD_95_64_MASK;
-	offset = ETH_IPV6_DESTINATION_ADD_95_64_OFFSET;
-
-	buffer = ioread32(working_address);
-	dest_add[2] = (buffer & mask) >> offset;
-
-	working_address = ((u8 *)lp->base_addr +
-	ETH_IPV6_DESTINATION_ADD_127_96_ADDR);
-	mask = ETH_IPV6_DESTINATION_ADD_127_96_MASK;
-	offset = ETH_IPV6_DESTINATION_ADD_127_96_OFFSET;
-
-	buffer = ioread32(working_address);
-	dest_add[3] = (buffer & mask) >> offset;
-
-	utils_ipv6addr_32to16(dest_add, dest_add16);
+	utils_ipv6addr_32to16(dest, dest_add16);
 	sprintf(buff, "%04x:%04x:%04x:%04x:%04x:%04x:%04x:%04x\n",
-		dest_add16[0], dest_add16[1], dest_add16[2], dest_add16[3],
-		dest_add16[4], dest_add16[5], dest_add16[6], dest_add16[7]);
+		dest_add16[0], dest_add16[1], dest_add16[2],
+		dest_add16[3],
+		dest_add16[4], dest_add16[5], dest_add16[6],
+		dest_add16[7]);
 	return XROE_SIZE_MAX;
 }
 
@@ -482,41 +405,27 @@ static ssize_t ipv6_destination_address_store
 (struct kobject *kobj, struct kobj_attribute *attr, const char *buff,
 size_t count)
 {
-	u32 offset = ETH_IPV6_DESTINATION_ADD_31_0_OFFSET;
-	unsigned long mask = ETH_IPV6_DESTINATION_ADD_31_0_MASK;
 	u32 dest_add[4];
-	void __iomem *working_address = ((u8 *)lp->base_addr +
-	ETH_IPV6_DESTINATION_ADD_31_0_ADDR);
 
 	xroe_size = min_t(size_t, count, (size_t)XROE_SIZE_MAX);
 	strncpy(xroe_tmp, buff, xroe_size);
 	if (utils_ipv6addr_chartohex(xroe_tmp, dest_add) == 8) {
-		utils_write32withmask(working_address, dest_add[0],
-				      mask, offset);
-
-		working_address = ((u8 *)lp->base_addr +
-		ETH_IPV6_DESTINATION_ADD_63_32_ADDR);
-		mask = ETH_IPV6_DESTINATION_ADD_63_32_MASK;
-		offset = ETH_IPV6_DESTINATION_ADD_63_32_OFFSET;
-
-		utils_write32withmask(working_address, dest_add[1],
-				      mask, offset);
-
-		working_address = ((u8 *)lp->base_addr +
-		ETH_IPV6_DESTINATION_ADD_95_64_ADDR);
-		mask = ETH_IPV6_DESTINATION_ADD_95_64_MASK;
-		offset = ETH_IPV6_DESTINATION_ADD_95_64_OFFSET;
-
-		utils_write32withmask(working_address, dest_add[2],
-				      mask, offset);
-
-		working_address = ((u8 *)lp->base_addr +
-		ETH_IPV6_DESTINATION_ADD_127_96_ADDR);
-		mask = ETH_IPV6_DESTINATION_ADD_127_96_MASK;
-		offset = ETH_IPV6_DESTINATION_ADD_127_96_OFFSET;
-
-		utils_write32withmask(working_address, dest_add[3],
-				      mask, offset);
+		utils_sysfs_store_wrapper(ETH_IPV6_DEST_ADD_31_0_ADDR,
+					  ETH_IPV6_DEST_ADD_31_0_OFFSET,
+					  ETH_IPV6_DEST_ADD_31_0_MASK,
+					  dest_add[0], kobj);
+		utils_sysfs_store_wrapper(ETH_IPV6_DEST_ADD_63_32_ADDR,
+					  ETH_IPV6_DEST_ADD_63_32_OFFSET,
+					  ETH_IPV6_DEST_ADD_63_32_MASK,
+					  dest_add[1], kobj);
+		utils_sysfs_store_wrapper(ETH_IPV6_DEST_ADD_95_64_ADDR,
+					  ETH_IPV6_DEST_ADD_95_64_OFFSET,
+					  ETH_IPV6_DEST_ADD_95_64_MASK,
+					  dest_add[2], kobj);
+		utils_sysfs_store_wrapper(ETH_IPV6_DEST_ADD_127_96_ADDR,
+					  ETH_IPV6_DEST_ADD_127_96_OFFSET,
+					  ETH_IPV6_DEST_ADD_127_96_MASK,
+					  dest_add[3], kobj);
 	}
 	return xroe_size;
 }
@@ -557,7 +466,7 @@ static struct attribute_group attr_group = {
 	.attrs = attrs,
 };
 
-static struct kobject *kobj_ipv6;
+static struct kobject *kobj_ipv6[MAX_NUM_ETH_PORTS];
 
 /**
  * xroe_sysfs_ipv6_init - Creates the xroe sysfs "ipv6" subdirectory & entries
@@ -570,13 +479,17 @@ static struct kobject *kobj_ipv6;
 int xroe_sysfs_ipv6_init(void)
 {
 	int ret;
+	int i;
 
-	kobj_ipv6 = kobject_create_and_add("ipv6", kobj_framer);
-	if (!kobj_ipv6)
-		return -ENOMEM;
-	ret = sysfs_create_group(kobj_ipv6, &attr_group);
-	if (ret)
-		kobject_put(kobj_ipv6);
+	for (i = 0; i < 4; i++) {
+		kobj_ipv6[i] = kobject_create_and_add("ipv6",
+						      kobj_eth_ports[i]);
+		if (!kobj_ipv6[i])
+			return -ENOMEM;
+		ret = sysfs_create_group(kobj_ipv6[i], &attr_group);
+		if (ret)
+			kobject_put(kobj_ipv6[i]);
+	}
 	return ret;
 }
 
@@ -589,7 +502,10 @@ int xroe_sysfs_ipv6_init(void)
  */
 void xroe_sysfs_ipv6_exit(void)
 {
-	kobject_put(kobj_ipv6);
+	int i;
+
+	for (i = 0; i < MAX_NUM_ETH_PORTS; i++)
+		kobject_put(kobj_ipv6[i]);
 }
 
 /**

@@ -30,18 +30,12 @@ static ssize_t udp_source_port_show(struct kobject *kobj,
 				    struct kobj_attribute *attr,
 				    char *buff)
 {
-	u32 offset = ETH_UDP_SOURCE_PORT_OFFSET;
-	u32 mask = ETH_UDP_SOURCE_PORT_MASK;
-	u32 buffer = 0;
-	u32 source_port = 0;
-	void __iomem *working_address = ((u8 *)lp->base_addr +
-	ETH_UDP_SOURCE_PORT_ADDR);
+	u32 source_port;
 
-	buffer = ioread32(working_address);
-	source_port = (buffer & mask) >> offset;
-
+	source_port = utils_sysfs_show_wrapper(ETH_UDP_SOURCE_PORT_ADDR,
+					       ETH_UDP_SOURCE_PORT_OFFSET,
+					       ETH_UDP_SOURCE_PORT_MASK, kobj);
 	sprintf(buff, "%d\n", source_port);
-
 	return XROE_SIZE_MAX;
 }
 
@@ -61,18 +55,15 @@ static ssize_t udp_source_port_store(struct kobject *kobj,
 				     const char *buff, size_t count)
 {
 	int ret;
-	u32 offset = ETH_UDP_SOURCE_PORT_OFFSET;
-	u32 mask = ETH_UDP_SOURCE_PORT_MASK;
-	unsigned int source_port = 0;
-	void __iomem *working_address = ((u8 *)lp->base_addr +
-	ETH_UDP_SOURCE_PORT_ADDR);
+	u32 source_port;
 
 	xroe_size = min_t(size_t, count, (size_t)XROE_SIZE_MAX);
-	ret = 0;
 	ret = kstrtouint(buff, 10, &source_port);
 	if (ret)
 		return ret;
-	utils_write32withmask(working_address, (u32)source_port, mask, offset);
+	utils_sysfs_store_wrapper(ETH_UDP_SOURCE_PORT_ADDR,
+				  ETH_UDP_SOURCE_PORT_OFFSET,
+				  ETH_UDP_SOURCE_PORT_MASK, source_port, kobj);
 	return xroe_size;
 }
 
@@ -90,18 +81,13 @@ static ssize_t udp_destination_port_show(struct kobject *kobj,
 					 struct kobj_attribute *attr,
 					 char *buff)
 {
-	u32 offset = ETH_UDP_DESTINATION_PORT_OFFSET;
-	unsigned long mask = ETH_UDP_DESTINATION_PORT_MASK;
-	u32 buffer = 0;
-	u32 dest_port = 0;
-	void __iomem *working_address = ((u8 *)lp->base_addr +
-	ETH_UDP_DESTINATION_PORT_ADDR);
+	u32 dest_port;
 
-	buffer = ioread32(working_address);
-	dest_port = (buffer & mask) >> offset;
-
+	dest_port = utils_sysfs_show_wrapper(ETH_UDP_DESTINATION_PORT_ADDR,
+					     ETH_UDP_DESTINATION_PORT_OFFSET,
+					     ETH_UDP_DESTINATION_PORT_MASK,
+					     kobj);
 	sprintf(buff, "%d\n", dest_port);
-
 	return XROE_SIZE_MAX;
 }
 
@@ -121,19 +107,16 @@ static ssize_t udp_destination_port_store(struct kobject *kobj,
 					  const char *buff, size_t count)
 {
 	int ret;
-	u32 offset = ETH_UDP_DESTINATION_PORT_OFFSET;
-	unsigned long mask = ETH_UDP_DESTINATION_PORT_MASK;
-	unsigned int dest_port = 0;
-	void __iomem *working_address = ((u8 *)lp->base_addr +
-	ETH_UDP_DESTINATION_PORT_ADDR);
+	u32 dest_port;
 
 	xroe_size = min_t(size_t, count, (size_t)XROE_SIZE_MAX);
-	ret = 0;
 	ret = kstrtouint(buff, 10, &dest_port);
 	if (ret)
 		return ret;
-	utils_write32withmask(working_address, (u32)dest_port,
-			      mask, offset);
+	utils_sysfs_store_wrapper(ETH_UDP_DESTINATION_PORT_ADDR,
+				  ETH_UDP_DESTINATION_PORT_OFFSET,
+				  ETH_UDP_DESTINATION_PORT_MASK, dest_port,
+				  kobj);
 	return xroe_size;
 }
 
@@ -156,7 +139,7 @@ static struct attribute_group attr_group = {
 	.attrs = attrs,
 };
 
-static struct kobject *kobj_udp;
+static struct kobject *kobj_udp[MAX_NUM_ETH_PORTS];
 
 /**
  * xroe_sysfs_udp_init - Creates the xroe sysfs "udp" subdirectory and entries
@@ -169,13 +152,16 @@ static struct kobject *kobj_udp;
 int xroe_sysfs_udp_init(void)
 {
 	int ret;
+	int i;
 
-	kobj_udp = kobject_create_and_add("udp", kobj_framer);
-	if (!kobj_udp)
-		return -ENOMEM;
-	ret = sysfs_create_group(kobj_udp, &attr_group);
-	if (ret)
-		kobject_put(kobj_udp);
+	for (i = 0; i < 4; i++) {
+		kobj_udp[i] = kobject_create_and_add("udp",  kobj_eth_ports[i]);
+		if (!kobj_udp[i])
+			return -ENOMEM;
+		ret = sysfs_create_group(kobj_udp[i], &attr_group);
+		if (ret)
+			kobject_put(kobj_udp[i]);
+	}
 	return ret;
 }
 
@@ -188,5 +174,8 @@ int xroe_sysfs_udp_init(void)
  */
 void xroe_sysfs_udp_exit(void)
 {
-	kobject_put(kobj_udp);
+	int i;
+
+	for (i = 0; i < MAX_NUM_ETH_PORTS; i++)
+		kobject_put(kobj_udp[i]);
 }
