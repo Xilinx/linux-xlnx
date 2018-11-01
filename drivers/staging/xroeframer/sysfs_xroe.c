@@ -30,30 +30,19 @@ static char xroe_tmp[XROE_SIZE_MAX];
 static ssize_t version_show(struct kobject *kobj, struct kobj_attribute *attr,
 			    char *buff)
 {
-	u32 offset = CFG_MAJOR_REVISION_OFFSET;
-	unsigned long mask = CFG_MAJOR_REVISION_MASK;
-	u32 buffer = 0;
-	u32 major_rev = 0, minor_rev = 0, version_rev = 0;
-	void __iomem *working_address = ((u8 *)lp->base_addr +
-	CFG_MAJOR_REVISION_ADDR);
+	u32 major_rev;
+	u32 minor_rev;
+	u32 version_rev;
 
-	buffer = ioread32(working_address);
-	major_rev = (buffer & mask) >> offset;
-
-	offset = CFG_MINOR_REVISION_OFFSET;
-	mask = CFG_MINOR_REVISION_MASK;
-	working_address = ((u8 *)lp->base_addr + CFG_MINOR_REVISION_ADDR);
-
-	buffer = ioread32(working_address);
-	minor_rev = (buffer & mask) >> offset;
-
-	offset = CFG_VERSION_REVISION_OFFSET;
-	mask = CFG_VERSION_REVISION_MASK;
-	working_address = ((u8 *)lp->base_addr + CFG_VERSION_REVISION_ADDR);
-
-	buffer = ioread32(working_address);
-	version_rev = (buffer & mask) >> offset;
-
+	major_rev = utils_sysfs_show_wrapper(CFG_MAJOR_REVISION_ADDR,
+					     CFG_MAJOR_REVISION_OFFSET,
+					     CFG_MAJOR_REVISION_MASK, kobj);
+	minor_rev = utils_sysfs_show_wrapper(CFG_MINOR_REVISION_ADDR,
+					     CFG_MINOR_REVISION_OFFSET,
+					     CFG_MINOR_REVISION_MASK, kobj);
+	version_rev = utils_sysfs_show_wrapper(CFG_VERSION_REVISION_ADDR,
+					       CFG_VERSION_REVISION_OFFSET,
+					       CFG_VERSION_REVISION_MASK, kobj);
 	sprintf(buff, "%d.%d.%d\n", major_rev, minor_rev, version_rev);
 	return XROE_SIZE_MAX;
 }
@@ -88,15 +77,11 @@ static ssize_t version_store(struct  kobject *kobj, struct kobj_attribute *attr,
 static ssize_t enable_show(struct kobject *kobj, struct kobj_attribute *attr,
 			   char *buff)
 {
-	u32 offset = CFG_MASTER_INT_ENABLE_OFFSET;
-	u32 mask = CFG_MASTER_INT_ENABLE_MASK;
-	u32 buffer = 0;
-	u32 enable = 0;
-	void __iomem *working_address = ((u8 *)lp->base_addr +
-	CFG_MASTER_INT_ENABLE_ADDR);
+	u32 enable;
 
-	buffer = ioread32(working_address);
-	enable = (buffer & mask) >> offset;
+	enable = utils_sysfs_show_wrapper(CFG_MASTER_INT_ENABLE_ADDR,
+					  CFG_MASTER_INT_ENABLE_OFFSET,
+					  CFG_MASTER_INT_ENABLE_MASK, kobj);
 	if (enable)
 		sprintf(buff, "true\n");
 	else
@@ -119,17 +104,17 @@ static ssize_t enable_show(struct kobject *kobj, struct kobj_attribute *attr,
 static ssize_t enable_store(struct kobject *kobj, struct kobj_attribute *attr,
 			    const char *buff, size_t count)
 {
-	u32 offset = CFG_MASTER_INT_ENABLE_OFFSET;
-	u32 mask = CFG_MASTER_INT_ENABLE_MASK;
-	void __iomem *working_address = ((u8 *)lp->base_addr +
-	CFG_MASTER_INT_ENABLE_ADDR);
+	u32 enable = 0;
 
 	xroe_size = min_t(size_t, count, (size_t)XROE_SIZE_MAX);
 	strncpy(xroe_tmp, buff, xroe_size);
 	if (strncmp(xroe_tmp, "true", xroe_size) == 0)
-		utils_write32withmask(working_address, 1, mask, offset);
+		enable = 1;
 	else if (strncmp(xroe_tmp, "false", xroe_size) == 0)
-		utils_write32withmask(working_address, 0, mask, offset);
+		enable = 0;
+	utils_sysfs_store_wrapper(CFG_MASTER_INT_ENABLE_ADDR,
+				  CFG_MASTER_INT_ENABLE_OFFSET,
+				  CFG_MASTER_INT_ENABLE_MASK, enable, kobj);
 	return xroe_size;
 }
 
@@ -146,15 +131,11 @@ static ssize_t enable_store(struct kobject *kobj, struct kobj_attribute *attr,
 static ssize_t framer_restart_show(struct kobject *kobj,
 				   struct kobj_attribute *attr, char *buff)
 {
-	u32 offset = FRAM_RESTART_OFFSET;
-	u32 mask = FRAM_RESTART_MASK;
-	u32 buffer = 0;
-	u32 restart = 0;
-	void __iomem *working_address = ((u8 *)lp->base_addr
-	+ FRAM_RESTART_ADDR);
+	u32 restart;
 
-	buffer = ioread32(working_address);
-	restart = (buffer & mask) >> offset;
+	restart = utils_sysfs_show_wrapper(FRAM_DISABLE_ADDR,
+					   FRAM_DISABLE_OFFSET,
+					   FRAM_DISABLE_MASK, kobj);
 	if (restart)
 		sprintf(buff, "true\n");
 
@@ -180,24 +161,16 @@ static ssize_t framer_restart_store(struct  kobject *kobj,
 				    struct kobj_attribute *attr,
 				    const char *buff, size_t count)
 {
-	u32 offset = FRAM_RESTART_OFFSET;
-	u32 mask = FRAM_RESTART_MASK;
-	void __iomem *working_address = ((u8 *)lp->base_addr
-	+ FRAM_RESTART_ADDR);
 	u32 restart = 0;
 
 	xroe_size = min_t(size_t, count, (size_t)XROE_SIZE_MAX);
 	strncpy(xroe_tmp, buff, xroe_size);
-	if (strncmp(xroe_tmp, "true", xroe_size) == 0) {
+	if (strncmp(xroe_tmp, "true", xroe_size) == 0)
 		restart = 0x01;
-		utils_write32withmask(working_address, restart,
-				      mask, offset);
-	} else if (strncmp(xroe_tmp, "false", xroe_size) == 0) {
+	else if (strncmp(xroe_tmp, "false", xroe_size) == 0)
 		restart = 0x00;
-		utils_write32withmask(working_address, restart,
-				      mask, offset);
-	}
-
+	utils_sysfs_store_wrapper(FRAM_DISABLE_ADDR, FRAM_DISABLE_OFFSET,
+				  FRAM_DISABLE_MASK, restart, kobj);
 	return xroe_size;
 }
 
@@ -467,10 +440,15 @@ int xroe_sysfs_init(void)
  */
 void xroe_sysfs_exit(void)
 {
-	kobject_put(root_xroe_kobj);
+	int i;
+
 	xroe_sysfs_ipv4_exit();
 	xroe_sysfs_ipv6_exit();
 	xroe_sysfs_udp_exit();
+	for (i = 0; i < MAX_NUM_ETH_PORTS; i++)
+		kobject_put(kobj_eth_ports[i]);
+	kobject_put(kobj_framer);
+	kobject_put(root_xroe_kobj);
 }
 
 /**
@@ -498,4 +476,83 @@ int utils_write32withmask(void __iomem *working_address, u32 value,
 	register_value_to_write |= delta;
 	iowrite32(register_value_to_write, working_address);
 	return 0;
+}
+
+/**
+ * utils_sysfs_path_to_eth_port_num - Get the current ethernet port
+ * @kobj:	The kobject of the entry calling the function
+ *
+ * Extracts the number of the current ethernet port instance
+ *
+ * Return: The number of the ethernet port instance (0 - MAX_NUM_ETH_PORTS) on
+ * success, -1 otherwise
+ */
+static int utils_sysfs_path_to_eth_port_num(struct kobject *kobj)
+{
+	char *current_path = NULL;
+	int port;
+	int ret;
+
+	current_path = kobject_get_path(kobj, GFP_KERNEL);
+	ret = sscanf(current_path, "/kernel/xroe/framer/eth_port_%d/", &port);
+	/* if sscanf() returns 0, no fields were assigned, therefore no
+	 * adjustments will be made for port number
+	 */
+	if (ret == 0)
+		port = 0;
+//	printk(KERN_ALERT "current_path: %s port: %d\n", current_path, port);
+	kfree(current_path);
+	return port;
+}
+
+/**
+ * utils_sysfs_store_wrapper - Wraps the storing function for sysfs entries
+ * @address:	The address of the register to be written
+ * @offset:	The offset from the address of the register
+ * @mask:	The mask to be used on the value to be written
+ * @value:	The value to be written to the register
+ * @kobj:	The kobject of the entry calling the function
+ *
+ * Wraps the core functionality of all "store" functions of sysfs entries.
+ * After calculating the ethernet port number (in N/A cases, it's 0), the value
+ * is written to the designated register
+ *
+ */
+void utils_sysfs_store_wrapper(u32 address, u32 offset, u32 mask, u32 value,
+			       struct kobject *kobj)
+{
+	int port;
+	void __iomem *working_address;
+
+	port = utils_sysfs_path_to_eth_port_num(kobj);
+	working_address = (void __iomem *)(lp->base_addr +
+			  (address + (0x100 * port)));
+	utils_write32withmask(working_address, value, mask, offset);
+}
+
+/**
+ * utils_sysfs_store_wrapper - Wraps the storing function for sysfs entries
+ * @address:	The address of the register to be read
+ * @offset:	The offset from the address of the register
+ * @mask:	The mask to be used on the value to be read
+ * @kobj:	The kobject of the entry calling the function
+ *
+ * Wraps the core functionality of all "show" functions of sysfs entries.
+ * After calculating the ethernet port number (in N/A cases, it's 0), the value
+ * is read from the designated register and returned.
+ *
+ * Return: The value designated by the address, offset and mask
+ */
+u32 utils_sysfs_show_wrapper(u32 address, u32 offset, u32 mask,
+			     struct kobject *kobj)
+{
+	int port;
+	void __iomem *working_address;
+	u32 buffer;
+
+	port = utils_sysfs_path_to_eth_port_num(kobj);
+	working_address = (void __iomem *)(lp->base_addr +
+			  (address + (0x100 * port)));
+	buffer = ioread32(working_address);
+	return (buffer & mask) >> offset;
 }
