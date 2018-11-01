@@ -28,7 +28,7 @@
 void si5324_rate_approx(u64 f, u64 md, u32 *num, u32 *denom)
 {
 	u64 a, h[3] = { 0, 1, 0 }, k[3] = { 1, 0, 0 };
-	u64 x, d, n = 1;
+	u64 x, d, m, n = 1;
 	int i = 0;
 
 	if (md <= 1) {
@@ -49,16 +49,16 @@ void si5324_rate_approx(u64 f, u64 md, u32 *num, u32 *denom)
 	d = f;
 
 	for (i = 0; i < 64; i++) {
-		a = n ? d / n : 0;
+		a = n ? (div64_u64(d, n)) : 0;
 		if (i && !a)
 			break;
 		x = d;
 		d = n;
-		n = x % n;
-
+		div64_u64_rem(x, n, &m);
+		n = m;
 		x = a;
 		if (k[1] * a + k[0] >= md) {
-			x = (md - k[0]) / k[1];
+			x = div64_u64((md - k[0]), k[1]);
 			if (x * 2 >= a || k[1] >= md)
 				i = 65;
 			else
@@ -93,28 +93,29 @@ static int si5324_find_n2ls(struct si5324_settingst *settings)
 	u64 fosc_actual;
 	u64 fout_actual;
 	u64 delta_fout;
-	u64 n2_ls_div_n3;
+	u64 n2_ls_div_n3, mult_res;
 	u32 mult;
 
-	n2_ls_div_n3 = settings->fosc /
-			(settings->fin >> SI5324_FIN_FOUT_SHIFT) /
-			settings->n2_hs / 2;
+	n2_ls_div_n3 = div64_u64(div64_u64(div64_u64(settings->fosc,
+			(settings->fin >> SI5324_FIN_FOUT_SHIFT)),
+			(u64)settings->n2_hs), (u64)2);
+
 	si5324_rate_approx(n2_ls_div_n3, settings->n31_max, &settings->n2_ls,
-			   &settings->n31);
+				&settings->n31);
 	settings->n2_ls *= 2;
 
 	if (settings->n2_ls < settings->n2_ls_min) {
-		mult =  settings->n2_ls_min / settings->n2_ls;
-		mult = (settings->n2_ls_min % settings->n2_ls) ?
-			mult + 1 : mult;
+		mult = div64_u64(settings->n2_ls_min, settings->n2_ls);
+		div64_u64_rem(settings->n2_ls_min, settings->n2_ls, &mult_res);
+		mult = mult_res ? mult + 1 : mult;
 		settings->n2_ls *= mult;
 		settings->n31 *= mult;
 	}
 
 	if (settings->n31 < settings->n31_min) {
-		mult =  settings->n31_min / settings->n31;
-		mult = (settings->n31_min % settings->n31) ?
-			mult + 1 : mult;
+		mult = div64_u64(settings->n31_min, settings->n31);
+		div64_u64_rem(settings->n31_min, settings->n31, &mult_res);
+		mult = mult_res ? mult + 1 : mult;
 		settings->n2_ls *= mult;
 		settings->n31 *= mult;
 	}
@@ -128,10 +129,10 @@ static int si5324_find_n2ls(struct si5324_settingst *settings)
 		   (settings->n31 > settings->n31_max)) {
 		pr_info("N3 out of range.\n");
 	} else {
-		f3_actual = settings->fin / settings->n31;
+		f3_actual = div64_u64(settings->fin, settings->n31);
 		fosc_actual = f3_actual * settings->n2_hs * settings->n2_ls;
-		fout_actual = fosc_actual /
-				(settings->n1_hs * settings->nc1_ls);
+		fout_actual = div64_u64(fosc_actual,
+					(settings->n1_hs * settings->nc1_ls));
 		delta_fout = fout_actual - settings->fout;
 
 		if ((f3_actual < ((u64)SI5324_F3_MIN) <<
@@ -193,18 +194,17 @@ static int si5324_find_n2(struct si5324_settingst *settings)
 	for (settings->n2_hs = SI5324_N2_HS_MAX; settings->n2_hs >=
 		SI5324_N2_HS_MIN; settings->n2_hs--) {
 		pr_debug("Trying N2_HS = %d.\n", settings->n2_hs);
-		settings->n2_ls_min = (u32)(settings->fosc /
-					((u64)(SI5324_F3_MAX *
-					settings->n2_hs) <<
-					SI5324_FIN_FOUT_SHIFT));
+		settings->n2_ls_min = (u32)(div64_u64(settings->fosc,
+					((u64)(SI5324_F3_MAX * settings->n2_hs)
+						<< SI5324_FIN_FOUT_SHIFT)));
 
 		if (settings->n2_ls_min < SI5324_N2_LS_MIN)
 			settings->n2_ls_min = SI5324_N2_LS_MIN;
 
-		settings->n2_ls_max = (u32)(settings->fosc /
+		settings->n2_ls_max = (u32)(div64_u64(settings->fosc,
 					((u64)(SI5324_F3_MIN *
 					settings->n2_hs) <<
-					SI5324_FIN_FOUT_SHIFT));
+					SI5324_FIN_FOUT_SHIFT)));
 		if (settings->n2_ls_max > SI5324_N2_LS_MAX)
 			settings->n2_ls_max = SI5324_N2_LS_MAX;
 
@@ -228,13 +228,14 @@ static int si5324_find_n2(struct si5324_settingst *settings)
  */
 int si5324_calc_ncls_limits(struct si5324_settingst *settings)
 {
-	settings->nc1_ls_min = settings->n1_hs_min / settings->n1_hs;
+	settings->nc1_ls_min = div64_u64(settings->n1_hs_min,
+					 settings->n1_hs);
 
 	if (settings->nc1_ls_min < SI5324_NC_LS_MIN)
 		settings->nc1_ls_min = SI5324_NC_LS_MIN;
 	if (settings->nc1_ls_min > 1 &&	(settings->nc1_ls_min & 0x1) == 1)
 		settings->nc1_ls_min++;
-	settings->nc1_ls_max = settings->n1_hs_max / settings->n1_hs;
+	settings->nc1_ls_max = div64_u64(settings->n1_hs_max, settings->n1_hs);
 
 	if (settings->nc1_ls_max > SI5324_NC_LS_MAX)
 		settings->nc1_ls_max = SI5324_NC_LS_MAX;
@@ -271,8 +272,8 @@ static int si5324_find_ncls(struct si5324_settingst *settings)
 		settings->fosc = fosc_1 * settings->nc1_ls;
 		pr_debug("Trying NCn_LS = %d: fosc = %dkHz.\n",
 			 settings->nc1_ls,
-			 (u32)((settings->fosc >> SI5324_FIN_FOUT_SHIFT) /
-			       1000));
+			 (u32)(div64_u64((settings->fosc >>
+				SI5324_FIN_FOUT_SHIFT), 1000)));
 
 		result = si5324_find_n2(settings);
 		if (result)
@@ -315,19 +316,19 @@ int si5324_calcfreqsettings(u32 clkinfreq, u32 clkoutfreq, u32 *clkactual,
 	settings.fout = (u64)clkoutfreq << SI5324_FIN_FOUT_SHIFT;
 	settings.best_delta_fout = settings.fout;
 
-	settings.n1_hs_min = (int)(SI5324_FOSC_MIN / clkoutfreq);
+	settings.n1_hs_min = (int)(div64_u64(SI5324_FOSC_MIN, clkoutfreq));
 	if (settings.n1_hs_min < SI5324_N1_HS_MIN * SI5324_NC_LS_MIN)
 		settings.n1_hs_min = SI5324_N1_HS_MIN * SI5324_NC_LS_MIN;
 
-	settings.n1_hs_max = (int)(SI5324_FOSC_MAX / clkoutfreq);
+	settings.n1_hs_max = (int)(div64_u64(SI5324_FOSC_MAX, clkoutfreq));
 	if (settings.n1_hs_max > SI5324_N1_HS_MAX * SI5324_NC_LS_MAX)
 		settings.n1_hs_max = SI5324_N1_HS_MAX * SI5324_NC_LS_MAX;
 
-	settings.n31_min = clkinfreq / SI5324_F3_MAX;
+	settings.n31_min = div64_u64(clkinfreq, SI5324_F3_MAX);
 	if (settings.n31_min < SI5324_N3_MIN)
 		settings.n31_min = SI5324_N3_MIN;
 
-	settings.n31_max = clkinfreq / SI5324_F3_MIN;
+	settings.n31_max = div64_u64(clkinfreq, SI5324_F3_MIN);
 	if (settings.n31_max > SI5324_N3_MAX)
 		settings.n31_max = SI5324_N3_MAX;
 
