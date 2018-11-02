@@ -148,11 +148,6 @@ static int xlnx_i2s_card_hw_params(struct snd_pcm_substream *substream,
 		}
 	}
 
-	prv->mclk_val = prv->mclk_ratio * sample_rate;
-	ret = clk_set_rate(prv->mclk, prv->mclk_val);
-	if (ret)
-		return ret;
-
 	clk_div = DIV_ROUND_UP(prv->mclk_ratio, 2 * ch * data_width);
 	ret = snd_soc_dai_set_clkdiv(cpu_dai, 0, clk_div);
 
@@ -192,7 +187,6 @@ static struct snd_soc_dai_link xlnx_snd_dai[][XLNX_MAX_PATHS] = {
 			.codec_dai_name = "i2s-hifi",
 			.codec_name = "hdmi-audio-codec.0",
 			.cpu_dai_name = "snd-soc-dummy-dai",
-			.ops = &xlnx_hdmi_card_ops,
 		},
 		{
 			.name = "xilinx-hdmi-capture",
@@ -205,7 +199,6 @@ static struct snd_soc_dai_link xlnx_snd_dai[][XLNX_MAX_PATHS] = {
 			.name = "xlnx-sdi-playback",
 			.codec_dai_name = "xlnx_sdi_tx",
 			.cpu_dai_name = "snd-soc-dummy-dai",
-			.ops = &xlnx_sdi_card_ops,
 		},
 		{
 			.name = "xlnx-sdi-capture",
