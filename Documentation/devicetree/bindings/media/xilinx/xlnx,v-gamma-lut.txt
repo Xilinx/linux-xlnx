@@ -30,7 +30,7 @@ Optional properties:
 - xlnx,max-height: Maximum number of lines.
 - xlnx,max-width: Maximum number of pixels in a line.
 
-Example :
+Example:
 
 	gamma_lut_1: gamma_lut_1@0xa0080000 {
 		compatible = "xlnx,v-gamma-lut";

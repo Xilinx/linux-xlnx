@@ -82,7 +82,7 @@ Y_UV10		xv20		V4L2_PIX_FMT_XV20	<not supported>
 Y_UV10_420	xv15		V4L2_PIX_FMT_XV15M	DRM_FORMAT_XV15
 Y_UV10_420	xv15		V4L2_PIX_FMT_XV20	<not supported>
 
-Examples
+Examples:
 
 FB Read Example:
 ++++++++
