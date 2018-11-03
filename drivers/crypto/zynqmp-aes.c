@@ -26,6 +26,7 @@
 #define ZYNQMP_AES_GCM_TAG_MISMATCH_ERR		0x01
 #define ZYNQMP_AES_SIZE_ERR			0x06
 #define ZYNQMP_AES_WRONG_KEY_SRC_ERR		0x13
+#define ZYNQMP_AES_PUF_NOT_PROGRAMMED		0xE300
 
 #define ZYNQMP_AES_BLOCKSIZE			0x04
 
@@ -187,6 +188,9 @@ static int zynqmp_aes_xcrypt(struct blkcipher_desc *desc,
 			break;
 		case ZYNQMP_AES_WRONG_KEY_SRC_ERR:
 			dev_err(dd->dev, "ERROR: Wrong KeySrc, enable secure mode\n\r");
+			break;
+		case ZYNQMP_AES_PUF_NOT_PROGRAMMED:
+			dev_err(dd->dev, "ERROR: PUF is not registered\r\n");
 			break;
 		default:
 			dev_err(dd->dev, "ERROR: Invalid");
