@@ -10,6 +10,7 @@
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 #include <linux/clk.h>
+#include <linux/crc32.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/kernel.h>
@@ -648,7 +649,7 @@ static int macb_halt_tx(struct macb *bp)
 		if (!(status & MACB_BIT(TGO)))
 			return 0;
 
-		usleep_range(10, 250);
+		udelay(250);
 	} while (time_before(halt_time, timeout));
 
 	return -ETIMEDOUT;
@@ -1572,6 +1573,9 @@ static unsigned int macb_tx_map(struct macb *bp,
 		if (i == queue->tx_head) {
 			ctrl |= MACB_BF(TX_LSO, lso_ctrl);
 			ctrl |= MACB_BF(TX_TCP_SEQ_SRC, seq_ctrl);
+			if ((bp->dev->features & NETIF_F_HW_CSUM) &&
+			    skb->ip_summed != CHECKSUM_PARTIAL && !lso_ctrl)
+				ctrl |= MACB_BIT(TX_NOCRC);
 		} else
 			/* Only set MSS/MFS on payload descriptors
 			 * (second or later descriptor)
@@ -1658,7 +1662,68 @@ static inline int macb_clear_csum(struct sk_buff *skb)
 	return 0;
 }
 
-static int macb_start_xmit(struct sk_buff *skb, struct net_device *dev)
+static int macb_pad_and_fcs(struct sk_buff **skb, struct net_device *ndev)
+{
+	bool cloned = skb_cloned(*skb) || skb_header_cloned(*skb);
+	int padlen = ETH_ZLEN - (*skb)->len;
+	int headroom = skb_headroom(*skb);
+	int tailroom = skb_tailroom(*skb);
+	struct sk_buff *nskb;
+	u32 fcs;
+
+	if (!(ndev->features & NETIF_F_HW_CSUM) ||
+	    !((*skb)->ip_summed != CHECKSUM_PARTIAL) ||
+	    skb_shinfo(*skb)->gso_size)	/* Not available for GSO */
+		return 0;
+
+	if (padlen <= 0) {
+		/* FCS could be appeded to tailroom. */
+		if (tailroom >= ETH_FCS_LEN)
+			goto add_fcs;
+		/* FCS could be appeded by moving data to headroom. */
+		else if (!cloned && headroom + tailroom >= ETH_FCS_LEN)
+			padlen = 0;
+		/* No room for FCS, need to reallocate skb. */
+		else
+			padlen = ETH_FCS_LEN - tailroom;
+	} else {
+		/* Add room for FCS. */
+		padlen += ETH_FCS_LEN;
+	}
+
+	if (!cloned && headroom + tailroom >= padlen) {
+		(*skb)->data = memmove((*skb)->head, (*skb)->data, (*skb)->len);
+		skb_set_tail_pointer(*skb, (*skb)->len);
+	} else {
+		nskb = skb_copy_expand(*skb, 0, padlen, GFP_ATOMIC);
+		if (!nskb)
+			return -ENOMEM;
+
+		dev_kfree_skb_any(*skb);
+		*skb = nskb;
+	}
+
+	if (padlen) {
+		if (padlen >= ETH_FCS_LEN)
+			skb_put_zero(*skb, padlen - ETH_FCS_LEN);
+		else
+			skb_trim(*skb, ETH_FCS_LEN - padlen);
+	}
+
+add_fcs:
+	/* set FCS to packet */
+	fcs = crc32_le(~0, (*skb)->data, (*skb)->len);
+	fcs = ~fcs;
+
+	skb_put_u8(*skb, fcs		& 0xff);
+	skb_put_u8(*skb, (fcs >> 8)	& 0xff);
+	skb_put_u8(*skb, (fcs >> 16)	& 0xff);
+	skb_put_u8(*skb, (fcs >> 24)	& 0xff);
+
+	return 0;
+}
+
+static netdev_tx_t macb_start_xmit(struct sk_buff *skb, struct net_device *dev)
 {
 	u16 queue_index = skb_get_queue_mapping(skb);
 	struct macb *bp = netdev_priv(dev);
@@ -1667,6 +1732,17 @@ static int macb_start_xmit(struct sk_buff *skb, struct net_device *dev)
 	unsigned int desc_cnt, nr_frags, frag_size, f;
 	unsigned int hdrlen;
 	bool is_lso, is_udp = 0;
+	netdev_tx_t ret = NETDEV_TX_OK;
+
+	if (macb_clear_csum(skb)) {
+		dev_kfree_skb_any(skb);
+		return ret;
+	}
+
+	if (macb_pad_and_fcs(&skb, dev)) {
+		dev_kfree_skb_any(skb);
+		return ret;
+	}
 
 	is_lso = (skb_shinfo(skb)->gso_size != 0);
 
@@ -1723,11 +1799,6 @@ static int macb_start_xmit(struct sk_buff *skb, struct net_device *dev)
 		return NETDEV_TX_BUSY;
 	}
 
-	if (macb_clear_csum(skb)) {
-		dev_kfree_skb_any(skb);
-		goto unlock;
-	}
-
 	/* Map socket buffer for DMA transfer */
 	if (!macb_tx_map(bp, queue, skb, hdrlen)) {
 		dev_kfree_skb_any(skb);
@@ -1746,7 +1817,7 @@ static int macb_start_xmit(struct sk_buff *skb, struct net_device *dev)
 unlock:
 	spin_unlock_irqrestore(&bp->lock, flags);
 
-	return NETDEV_TX_OK;
+	return ret;
 }
 
 static void macb_init_rx_buffer_size(struct macb *bp, size_t size)
@@ -1964,14 +2035,17 @@ static void macb_reset_hw(struct macb *bp)
 {
 	struct macb_queue *queue;
 	unsigned int q;
+	u32 ctrl = macb_readl(bp, NCR);
 
 	/* Disable RX and TX (XXX: Should we halt the transmission
 	 * more gracefully?)
 	 */
-	macb_writel(bp, NCR, 0);
+	ctrl &= ~(MACB_BIT(RE) | MACB_BIT(TE));
 
 	/* Clear the stats registers (XXX: Update stats first?) */
-	macb_writel(bp, NCR, MACB_BIT(CLRSTAT));
+	ctrl |= MACB_BIT(CLRSTAT);
+
+	macb_writel(bp, NCR, ctrl);
 
 	/* Clear all status flags */
 	macb_writel(bp, TSR, -1);
@@ -2086,6 +2160,7 @@ static void macb_configure_dma(struct macb *bp)
 		else
 			dmacfg &= ~GEM_BIT(TXCOEN);
 
+		dmacfg &= ~GEM_BIT(ADDR64);
 #ifdef CONFIG_ARCH_DMA_ADDR_T_64BIT
 		if (bp->hw_dma_cap & HW_DMA_CAP_64B)
 			dmacfg |= GEM_BIT(ADDR64);
@@ -2159,7 +2234,7 @@ static void macb_init_hw(struct macb *bp)
 	}
 
 	/* Enable TX and RX */
-	macb_writel(bp, NCR, MACB_BIT(RE) | MACB_BIT(TE) | MACB_BIT(MPE));
+	macb_writel(bp, NCR, macb_readl(bp, NCR) | MACB_BIT(RE) | MACB_BIT(TE));
 }
 
 /* The hash address register is 64 bits long and takes up two
@@ -3556,7 +3631,8 @@ static int at91ether_close(struct net_device *dev)
 }
 
 /* Transmit packet */
-static int at91ether_start_xmit(struct sk_buff *skb, struct net_device *dev)
+static netdev_tx_t at91ether_start_xmit(struct sk_buff *skb,
+					struct net_device *dev)
 {
 	struct macb *lp = netdev_priv(dev);
 
@@ -3762,6 +3838,13 @@ static const struct macb_config at91sam9260_config = {
 	.init = macb_init,
 };
 
+static const struct macb_config sama5d3macb_config = {
+	.caps = MACB_CAPS_SG_DISABLED
+	      | MACB_CAPS_USRIO_HAS_CLKEN | MACB_CAPS_USRIO_DEFAULT_IS_MII_GMII,
+	.clk_init = macb_clk_init,
+	.init = macb_init,
+};
+
 static const struct macb_config pc302gem_config = {
 	.caps = MACB_CAPS_SG_DISABLED | MACB_CAPS_GIGABIT_MODE_AVAILABLE,
 	.dma_burst_length = 16,
@@ -3829,6 +3912,7 @@ static const struct of_device_id macb_dt_ids[] = {
 	{ .compatible = "cdns,gem", .data = &pc302gem_config },
 	{ .compatible = "atmel,sama5d2-gem", .data = &sama5d2_config },
 	{ .compatible = "atmel,sama5d3-gem", .data = &sama5d3_config },
+	{ .compatible = "atmel,sama5d3-macb", .data = &sama5d3macb_config },
 	{ .compatible = "atmel,sama5d4-gem", .data = &sama5d4_config },
 	{ .compatible = "cdns,at91rm9200-emac", .data = &emac_config },
 	{ .compatible = "cdns,emac", .data = &emac_config },
