@@ -126,6 +126,9 @@ struct fpga_manager_ops {
 /**
  * struct fpga_manager - fpga manager structure
  * @name: name of low level fpga manager
+ * @flags: flags determines the type of Bitstream
+ * @key: key value useful for Encrypted Bitstream loading to read the userkey
+ * @iv: iv (or) initialization vector is useful for Encrypted Bitstream loading
  * @dev: fpga manager device
  * @ref_mutex: only allows one reference to fpga manager
  * @state: state of fpga manager
