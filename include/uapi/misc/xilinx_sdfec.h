@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0+ */
 /*
- * Xilinx SDFEC
+ * Xilinx SD-FEC
  *
  * Copyright (C) 2016 - 2017 Xilinx, Inc.
  *
@@ -22,12 +22,12 @@
 /**
  * enum xsdfec_code - Code Type.
  * @XSDFEC_CODE_INVALID: Driver is in a invalid mode.
- * @XSDFEC_TURBO_CODE: Driver is configured for a Turbo mode.
- * @XSDFEC_LDPC_CODE: Driver is configured for a LDPC mode.
+ * @XSDFEC_TURBO_CODE: Driver is configured for Turbo mode.
+ * @XSDFEC_LDPC_CODE: Driver is configured for LDPC mode.
  *
  * This enum is used to indicate the mode of the driver. The mode is determined
- * by checking which codes are set in the driver. Please note that the mode
- * cannot be changed by the driver.
+ * by checking which codes are set in the driver. Note that the mode cannot be
+ * changed by the driver.
  */
 enum xsdfec_code {
 	XSDFEC_CODE_INVALID = 0,
@@ -36,7 +36,7 @@ enum xsdfec_code {
 };
 
 /**
- * enum xsdfec_order - Order.
+ * enum xsdfec_order - Order
  * @XSDFEC_INVALID_ORDER: Invalid order value
  * @XSDFEC_MAINTAIN_ORDER: Maintain order execution of blocks.
  * @XSDFEC_OUT_OF_ORDER: Out-of-order execution of blocks.
@@ -87,12 +87,12 @@ enum xsdfec_state {
 };
 
 /**
- * enum xsdfec_axis_width - AXIS_WIDTH.DIN Setting for 128 bit width.
+ * enum xsdfec_axis_width - AXIS_WIDTH.DIN Setting for 128-bit width.
  * @XSDFEC_1x128b: DIN data input stream consists of a 128-bit lane
  * @XSDFEC_2x128b: DIN data input stream consists of two 128-bit lanes
  * @XSDFEC_4x128b: DIN data input stream consists of four 128-bit lanes
  *
- * This enum is used to indicate the AXIS_WIDTH.DIN setting for 128 bit width.
+ * This enum is used to indicate the AXIS_WIDTH.DIN setting for 128-bit width.
  * The number of lanes of the DIN data input stream depends upon the
  * AXIS_WIDTH.DIN parameter.
  */
@@ -126,12 +126,12 @@ enum xsdfec_axis_word_include {
 };
 
 /**
- * struct xsdfec_turbo - User data for Turbo Codes.
- * @alg: Specifies which Turbo Decode algorithm to use.
+ * struct xsdfec_turbo - User data for Turbo codes.
+ * @alg: Specifies which Turbo decode algorithm to use
  * @scale: Specifies the extrinsic scaling to apply when the Max Scale algorithm
- *	   has been selected.
+ *	   has been selected
  *
- * Turbo Code structure to communicate parameters to XSDFEC driver.
+ * Turbo code structure to communicate parameters to XSDFEC driver.
  */
 struct xsdfec_turbo {
 	enum xsdfec_turbo_alg alg;
@@ -139,26 +139,26 @@ struct xsdfec_turbo {
 };
 
 /**
- * struct xsdfec_ldpc_params - User data for LDPC Codes.
- * @n: Number of code word bits.
- * @k: Number of information bits.
- * @psize: Size of sub-matrix.
- * @nlayers: Number of layers in code.
- * @nqc: Quasi Cyclic Number.
- * @nmqc: Number of M-sized QC operations in parity check matrix.
- * @nm: Number of M-size vectors in N.
- * @norm_type: Normalization required or not.
- * @no_packing: Determines if multiple QC ops should be performed.
- * @special_qc: Sub-Matrix property for Circulant weight > 0.
- * @no_final_parity: Decide if final parity check needs to be performed.
- * @max_schedule: Experimental code word scheduling limit.
- * @sc_off: SC offset.
- * @la_off: LA offset.
- * @qc_off: QC offset.
- * @sc_table: SC Table.
- * @la_table: LA Table.
- * @qc_table: QC Table.
- * @code_id: LDPC Code.
+ * struct xsdfec_ldpc_params - User data for LDPC codes.
+ * @n: Number of code word bits
+ * @k: Number of information bits
+ * @psize: Size of sub-matrix
+ * @nlayers: Number of layers in code
+ * @nqc: Quasi Cyclic Number
+ * @nmqc: Number of M-sized QC operations in parity check matrix
+ * @nm: Number of M-size vectors in N
+ * @norm_type: Normalization required or not
+ * @no_packing: Determines if multiple QC ops should be performed
+ * @special_qc: Sub-Matrix property for Circulant weight > 0
+ * @no_final_parity: Decide if final parity check needs to be performed
+ * @max_schedule: Experimental code word scheduling limit
+ * @sc_off: SC offset
+ * @la_off: LA offset
+ * @qc_off: QC offset
+ * @sc_table: SC Table
+ * @la_table: LA Table
+ * @qc_table: QC Table
+ * @code_id: LDPC Code
  *
  * This structure describes the LDPC code that is passed to the driver by the
  * application.
@@ -189,10 +189,10 @@ struct xsdfec_ldpc_params {
 };
 
 /**
- * struct xsdfec_status - Status of SDFEC device.
- * @fec_id: ID of SDFEC instance.
- * @state: State of the SDFEC device.
- * @activity: Describes if the SDFEC instance is Active.
+ * struct xsdfec_status - Status of SD-FEC core.
+ * @fec_id: ID of SD-FEC instance
+ * @state: State of the SD-FEC core
+ * @activity: Describes if the SD-FEC instance is Active
  */
 struct xsdfec_status {
 	s32 fec_id;
@@ -202,8 +202,8 @@ struct xsdfec_status {
 
 /**
  * struct xsdfec_irq - Enabling or Disabling Interrupts.
- * @enable_isr: If true enables the ISR.
- * @enable_ecc_isr: If true enables the ECC ISR.
+ * @enable_isr: If true enables the ISR
+ * @enable_ecc_isr: If true enables the ECC ISR
  */
 struct xsdfec_irq {
 	bool enable_isr;
@@ -211,17 +211,17 @@ struct xsdfec_irq {
 };
 
 /**
- * struct xsdfec_config - Configuration of SDFEC device.
- * @fec_id: ID of SDFEC instance.
- * @code: The codes being used by the SDFEC instance.
- * @order: Order of Operation.
- * @bypass: Is the core being bypassed.
+ * struct xsdfec_config - Configuration of SD-FEC core.
+ * @fec_id: ID of SD-FEC instance
+ * @code: The codes being used by the SD-FEC instance
+ * @order: Order of Operation
+ * @bypass: Is the core being bypassed
  * @code_wr_protect: Is write protection of LDPC codes enabled
- * @din_width: Width of the DIN AXI Stream.
- * @din_word_include: How DIN_WORDS are inputted.
- * @dout_width: Width of the DOUT AXI Stream.
- * @dout_word_include: HOW DOUT_WORDS are outputted.
- * @irq: enabling or disabling interrupts.
+ * @din_width: Width of the DIN AXI4-Stream
+ * @din_word_include: How DIN_WORDS are inputted
+ * @dout_width: Width of the DOUT AXI4-Stream
+ * @dout_word_include: HOW DOUT_WORDS are outputted
+ * @irq: Enabling or disabling interrupts
  */
 struct xsdfec_config {
 	s32 fec_id;
@@ -240,9 +240,9 @@ struct xsdfec_config {
  * struct xsdfec_stats - Stats retrived by ioctl XSDFEC_GET_STATS. Used
  *			 to buffer atomic_t variables from struct
  *			 xsdfec_dev.
- * @isr_err_count: Count of ISR errors.
- * @cecc_count: Count of Correctable ECC errors (SBE).
- * @uecc_count: Count of Uncorrectable ECC errors (MBE).
+ * @isr_err_count: Count of ISR errors
+ * @cecc_count: Count of Correctable ECC errors (SBE)
+ * @uecc_count: Count of Uncorrectable ECC errors (MBE)
  */
 struct xsdfec_stats {
 	u32 isr_err_count;
@@ -252,11 +252,11 @@ struct xsdfec_stats {
 
 /**
  * struct xsdfec_ldpc_param_table_sizes - Used to store sizes of SD-FEC table
- *					  entries for an individual LPDC Code
- *					  Parameter.
- * @sc_size: Size of SC Table used
- * @la_size: Size of LA Table used
- * @qc_size: Size of QC Table used
+ *					  entries for an individual LPDC code
+ *					  parameter.
+ * @sc_size: Size of SC table used
+ * @la_size: Size of LA table used
+ * @qc_size: Size of QC table used
  */
 struct xsdfec_ldpc_param_table_sizes {
 	u32 sc_size;
@@ -267,10 +267,10 @@ struct xsdfec_ldpc_param_table_sizes {
 /**
  * xsdfec_calculate_shared_ldpc_table_entry_size - Calculates shared code
  * table sizes.
- * @ldpc: Pointer to the LPDC Code Parameters.
- * @table_sizes: Pointer to structure containing the calculated table sizes.
+ * @ldpc: Pointer to the LPDC Code Parameters
+ * @table_sizes: Pointer to structure containing the calculated table sizes
  *
- * Calculates the size of shared LDPC code tables used for a specified LPDC Code
+ * Calculates the size of shared LDPC code tables used for a specified LPDC code
  * parameters.
  */
 inline void xsdfec_calculate_shared_ldpc_table_entry_size(
@@ -294,9 +294,9 @@ inline void xsdfec_calculate_shared_ldpc_table_entry_size(
  *
  * @Description
  *
- * ioctl to start sdfec device
+ * ioctl to start SD-FEC core
  *
- * This will fail if the XSDFEC_SET_ORDER ioctl has not been previously called
+ * This fails if the XSDFEC_SET_ORDER ioctl has not been previously called
  */
 #define XSDFEC_START_DEV	_IO(XSDFEC_MAGIC, 0)
 /**
@@ -304,7 +304,7 @@ inline void xsdfec_calculate_shared_ldpc_table_entry_size(
  *
  * @Description
  *
- * ioctl to stop the device
+ * ioctl to stop the SD-FEC core
  */
 #define XSDFEC_STOP_DEV		_IO(XSDFEC_MAGIC, 1)
 /**
@@ -312,7 +312,7 @@ inline void xsdfec_calculate_shared_ldpc_table_entry_size(
  *
  * @Description
  *
- * ioctl that returns status of sdfec device
+ * ioctl that returns status of SD-FEC core
  */
 #define XSDFEC_GET_STATUS	_IOR(XSDFEC_MAGIC, 3, struct xsdfec_status *)
 /**
@@ -321,7 +321,7 @@ inline void xsdfec_calculate_shared_ldpc_table_entry_size(
  *
  * @struct xsdfec_irq *
  *	Pointer to the &struct xsdfec_irq that contains the interrupt settings
- *	for the SD-FEC Block.
+ *	for the SD-FEC core
  *
  * @Description
  *
@@ -334,13 +334,13 @@ inline void xsdfec_calculate_shared_ldpc_table_entry_size(
  *
  * @struct xsdfec_turbo *
  *	Pointer to the &struct xsdfec_turbo that contains the Turbo decode
- *	settings for the SD-FEC Block
+ *	settings for the SD-FEC core
  *
  * @Description
  *
- * ioctl that sets the sdfec turbo param values
+ * ioctl that sets the SD-FEC Turbo parameter values
  *
- * This can only be used when driver is in the XSDFEC_STOPPED state
+ * This can only be used when the driver is in the XSDFEC_STOPPED state
  */
 #define XSDFEC_SET_TURBO	_IOW(XSDFEC_MAGIC, 5, struct xsdfec_turbo *)
 /**
@@ -352,13 +352,13 @@ inline void xsdfec_calculate_shared_ldpc_table_entry_size(
  *	parameters to be added to the SD-FEC Block
  *
  * @Description
- * ioctl to add an LDPC code to the sdfec ldpc codes
+ * ioctl to add an LDPC code to the SD-FEC LDPC codes
  *
  * This can only be used when:
  *
- * - driver is in the XSDFEC_STOPPED state
+ * - Driver is in the XSDFEC_STOPPED state
  *
- * - SD-FEC block is configured as LPDC
+ * - SD-FEC core is configured as LPDC
  *
  * - SD-FEC Code Write Protection is disabled
  */
@@ -374,7 +374,7 @@ inline void xsdfec_calculate_shared_ldpc_table_entry_size(
  *
  * @Description
  *
- * ioctl that returns sdfec device configuration
+ * ioctl that returns SD-FEC core configuration
  */
 #define XSDFEC_GET_CONFIG	_IOR(XSDFEC_MAGIC, 7, struct xsdfec_config *)
 /**
@@ -387,7 +387,7 @@ inline void xsdfec_calculate_shared_ldpc_table_entry_size(
  *
  * @Description
  *
- * ioctl that returns sdfec turbo param values
+ * ioctl that returns SD-FEC turbo param values
  */
 #define XSDFEC_GET_TURBO	_IOR(XSDFEC_MAGIC, 8, struct xsdfec_turbo *)
 /**
@@ -402,7 +402,7 @@ inline void xsdfec_calculate_shared_ldpc_table_entry_size(
  *
  * ioctl that sets order, if order of blocks can change from input to output
  *
- * This can only be used when driver is in the XSDFEC_STOPPED state
+ * This can only be used when the driver is in the XSDFEC_STOPPED state
  */
 #define XSDFEC_SET_ORDER	_IOW(XSDFEC_MAGIC, 10, unsigned long *)
 /**
@@ -411,7 +411,7 @@ inline void xsdfec_calculate_shared_ldpc_table_entry_size(
  *
  * @struct bool *
  *	Pointer to bool that sets the bypass value, where false results in
- *	normal operation and false results in the sdfec performing the
+ *	normal operation and false results in the SD-FEC performing the
  *	configured operations (same number of cycles) but output data matches
  *	the input data
  *
@@ -419,7 +419,7 @@ inline void xsdfec_calculate_shared_ldpc_table_entry_size(
  *
  * ioctl that sets bypass.
  *
- * This can only be used when driver is in the XSDFEC_STOPPED state
+ * This can only be used when the driver is in the XSDFEC_STOPPED state
  */
 #define XSDFEC_SET_BYPASS	_IOW(XSDFEC_MAGIC, 11, bool *)
 /**
@@ -427,11 +427,11 @@ inline void xsdfec_calculate_shared_ldpc_table_entry_size(
  * @Parameters
  *
  * @struct bool *
- *	Pointer to bool that will return true if the sdfec is processing data
+ *	Pointer to bool that returns true if the SD-FEC is processing data
  *
  * @Description
  *
- * ioctl that determines if sdfec is processing data
+ * ioctl that determines if SD-FEC is processing data
  */
 #define XSDFEC_IS_ACTIVE	_IOR(XSDFEC_MAGIC, 12, bool *)
 /**
@@ -452,9 +452,9 @@ inline void xsdfec_calculate_shared_ldpc_table_entry_size(
  *
  * @Description
  *
- * ioctl that returns sdfec device stats
+ * ioctl that returns SD-FEC core stats
  *
- * This can only be used when driver is in the XSDFEC_STOPPED state
+ * This can only be used when the driver is in the XSDFEC_STOPPED state
  */
 #define XSDFEC_GET_STATS	_IOR(XSDFEC_MAGIC, 14, struct xsdfec_stats *)
 /**
@@ -462,9 +462,9 @@ inline void xsdfec_calculate_shared_ldpc_table_entry_size(
  *
  * @Description
  *
- * ioctl that returns sdfec device to default config, use after a reset
+ * ioctl that returns SD-FEC core to default config, use after a reset
  *
- * This can only be used when driver is in the XSDFEC_STOPPED state
+ * This can only be used when the driver is in the XSDFEC_STOPPED state
  */
 #define XSDFEC_SET_DEFAULT_CONFIG _IO(XSDFEC_MAGIC, 15)
 
