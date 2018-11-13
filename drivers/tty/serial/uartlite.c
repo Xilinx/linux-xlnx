@@ -654,10 +654,11 @@ static int ulite_assign(struct device *dev, int id, u32 base, int irq,
 static int ulite_release(struct device *dev)
 {
 	struct uart_port *port = dev_get_drvdata(dev);
-	struct uartlite_data *pdata = port->private_data;
 	int rc = 0;
 
 	if (port) {
+		struct uartlite_data *pdata = port->private_data;
+
 		rc = uart_remove_one_port(pdata->ulite_uart_driver, port);
 		dev_set_drvdata(dev, NULL);
 		port->mapbase = 0;
@@ -675,10 +676,12 @@ static int ulite_release(struct device *dev)
 static int __maybe_unused ulite_suspend(struct device *dev)
 {
 	struct uart_port *port = dev_get_drvdata(dev);
-	struct uartlite_data *pdata = port->private_data;
 
-	if (port)
+	if (port) {
+		struct uartlite_data *pdata = port->private_data;
+
 		uart_suspend_port(pdata->ulite_uart_driver, port);
+	}
 
 	return 0;
 }
@@ -692,10 +695,12 @@ static int __maybe_unused ulite_suspend(struct device *dev)
 static int __maybe_unused ulite_resume(struct device *dev)
 {
 	struct uart_port *port = dev_get_drvdata(dev);
-	struct uartlite_data *pdata = port->private_data;
 
-	if (port)
+	if (port) {
+		struct uartlite_data *pdata = port->private_data;
+
 		uart_resume_port(pdata->ulite_uart_driver, port);
+	}
 
 	return 0;
 }
