@@ -1407,6 +1407,15 @@ vidioc_s_fmt(struct xm2msc_chan_ctx *chan_ctx, struct v4l2_format *f)
 		pix->plane_fmt[i].sizeimage = q_data->sizeimage[i];
 	}
 
+	/* Size of 2nd plane of Y_UV10_420 & Y_UV8_420 is half of 1st plane */
+	if (q_data->fmt->xm2msc_fmt == XILINX_M2MSC_FMT_Y_UV10_420 ||
+	    q_data->fmt->xm2msc_fmt == XILINX_M2MSC_FMT_Y_UV8_420) {
+		q_data->sizeimage[1] =
+			q_data->stride * (q_data->height / 2);
+		pix->plane_fmt[1].sizeimage =
+			q_data->stride * (q_data->height / 2);
+	}
+
 	xm2msc_pr_q(chan_ctx->xm2msc_dev->dev, q_data,
 		    chan_ctx->num, f->type, __func__);
 
