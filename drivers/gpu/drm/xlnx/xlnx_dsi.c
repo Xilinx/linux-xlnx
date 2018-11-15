@@ -405,7 +405,7 @@ static int xlnx_dsi_host_detach(struct mipi_dsi_host *host,
 {
 	struct xlnx_dsi *dsi = host_to_dsi(host);
 
-	dsi->panel_node = NULL;
+	dsi->panel = NULL;
 
 	if (dsi->connector.dev)
 		drm_helper_hpd_irq_event(dsi->connector.dev);
