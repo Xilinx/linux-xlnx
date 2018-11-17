@@ -26,7 +26,7 @@ Example:
 		speed-grade = <1>;
 		clock-names = "clk_in1", "s_axi_aclk";
 		clocks = <&clkc 15>, <&clkc 15>;
-		clock-output-names = "clk_out0", "clk_out1", "clk_out2",
+		clock-output-names = "clk_out1", "clk_out2",
 				     "clk_out3", "clk_out4", "clk_out5",
 				     "clk_out6", "clk_out7";
 	};
