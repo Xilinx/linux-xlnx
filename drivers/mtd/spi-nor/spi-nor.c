@@ -3160,25 +3160,6 @@ int spi_nor_scan(struct spi_nor *nor, const char *name,
 	if (ret)
 		return ret;
 
-	/*
-	 * Atmel, SST, Intel/Numonyx, and others serial NOR tend to power up
-	 * with the software protection bits set
-	 */
-
-	if (JEDEC_MFR(info) == SNOR_MFR_ATMEL ||
-	    JEDEC_MFR(info) == SNOR_MFR_INTEL ||
-	    JEDEC_MFR(info) == SNOR_MFR_SST ||
-	    info->flags & SPI_NOR_HAS_LOCK) {
-		write_enable(nor);
-		write_sr(nor, 0);
-		if (info->flags & SST_GLOBAL_PROT_UNLK) {
-			write_enable(nor);
-			/* Unlock global write protection bits */
-			nor->write_reg(nor, GLOBAL_BLKPROT_UNLK, NULL, 0);
-		}
-		spi_nor_wait_till_ready(nor);
-	}
-
 	if (!mtd->name)
 		mtd->name = dev_name(dev);
 	mtd->priv = nor;
@@ -3254,6 +3235,25 @@ int spi_nor_scan(struct spi_nor *nor, const char *name,
 	nor->isstacked = 0;
 	nor->isparallel = 0;
 #endif
+
+	/*
+	 * Atmel, SST, Intel/Numonyx, and others serial NOR tend to power up
+	 * with the software protection bits set
+	 */
+
+	if (JEDEC_MFR(info) == SNOR_MFR_ATMEL ||
+	    JEDEC_MFR(info) == SNOR_MFR_INTEL ||
+	    JEDEC_MFR(info) == SNOR_MFR_SST ||
+	    info->flags & SPI_NOR_HAS_LOCK) {
+		write_enable(nor);
+		write_sr(nor, 0);
+		if (info->flags & SST_GLOBAL_PROT_UNLK) {
+			write_enable(nor);
+			/* Unlock global write protection bits */
+			nor->write_reg(nor, GLOBAL_BLKPROT_UNLK, NULL, 0);
+		}
+		spi_nor_wait_till_ready(nor);
+	}
 
 	/* NOR protection support for STmicro/Micron chips and similar */
 	if (JEDEC_MFR(info) == SNOR_MFR_MICRON ||
