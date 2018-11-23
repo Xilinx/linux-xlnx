@@ -666,6 +666,9 @@
 #define MACB_CAPS_SG_DISABLED			0x40000000
 #define MACB_CAPS_MACB_IS_GEM			0x80000000
 
+/* Errata mask bits */
+#define MACB_ERRATA_RXLOCKUP			0x00000001
+
 /* LSO settings */
 #define MACB_LSO_UFO_ENABLE			0x01
 #define MACB_LSO_TSO_ENABLE			0x02
@@ -1103,6 +1106,7 @@ struct macb_config {
 			    struct clk **rx_clk, struct clk **tsu_clk);
 	int	(*init)(struct platform_device *pdev);
 	int	jumbo_max_len;
+	u32	errata;
 };
 
 struct tsu_incr {
@@ -1249,6 +1253,8 @@ struct macb {
 
 	int	rx_bd_rd_prefetch;
 	int	tx_bd_rd_prefetch;
+
+	u32 errata;
 };
 
 #ifdef CONFIG_MACB_USE_HWSTAMP
