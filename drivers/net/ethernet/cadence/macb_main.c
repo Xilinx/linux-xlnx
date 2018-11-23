@@ -1438,7 +1438,8 @@ static irqreturn_t macb_interrupt(int irq, void *dev_id)
 		 * the at91 manual, section 41.3.1 or the Zynq manual
 		 * section 16.7.4 for details.
 		 */
-		if (status & MACB_BIT(RXUBR)) {
+		if ((bp->errata & MACB_ERRATA_RXLOCKUP) &&
+		    (status & MACB_BIT(RXUBR))) {
 			ctrl = macb_readl(bp, NCR);
 			macb_writel(bp, NCR, ctrl & ~MACB_BIT(RE));
 			wmb();
@@ -3587,6 +3588,7 @@ static const struct macb_config zynq_config = {
 	.dma_burst_length = 16,
 	.clk_init = macb_clk_init,
 	.init = macb_init,
+	.errata = MACB_ERRATA_RXLOCKUP,
 };
 
 static const struct of_device_id macb_dt_ids[] = {
@@ -3692,8 +3694,10 @@ static int macb_probe(struct platform_device *pdev)
 	if (tsu_clk)
 		bp->tsu_rate = clk_get_rate(tsu_clk);
 
-	if (macb_config)
+	if (macb_config) {
 		bp->jumbo_max_len = macb_config->jumbo_max_len;
+		bp->errata = macb_config->errata;
+	}
 
 	spin_lock_init(&bp->lock);
 
