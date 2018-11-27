@@ -224,6 +224,7 @@ int axienet_mdio_setup(struct axienet_local *lp, struct device_node *np)
 	ret = of_mdiobus_register(bus, np1);
 	if (ret) {
 		mdiobus_free(bus);
+		lp->mii_bus = NULL;
 		return ret;
 	}
 	return 0;

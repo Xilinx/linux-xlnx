@@ -1,12 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Intel Denverton SoC pinctrl/GPIO driver
  *
  * Copyright (C) 2017, Intel Corporation
  * Author: Mika Westerberg <mika.westerberg@linux.intel.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
  */
 
 #include <linux/acpi.h>
@@ -207,7 +204,7 @@ static const unsigned int dnv_uart0_pins[] = { 60, 61, 64, 65 };
 static const unsigned int dnv_uart0_modes[] = { 2, 3, 1, 1 };
 static const unsigned int dnv_uart1_pins[] = { 94, 95, 96, 97 };
 static const unsigned int dnv_uart2_pins[] = { 60, 61, 62, 63 };
-static const unsigned int dnv_uart2_modes[] = { 1, 1, 2, 2 };
+static const unsigned int dnv_uart2_modes[] = { 1, 2, 2, 2 };
 static const unsigned int dnv_emmc_pins[] = {
 	142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152,
 };

@@ -20,6 +20,7 @@
 #include <linux/module.h>
 #include <linux/of_address.h>
 #include <linux/string.h>
+#include <linux/seq_file.h>
 #include <linux/firmware/xilinx/zynqmp/firmware.h>
 
 /* Constant Definitions */
@@ -81,6 +82,7 @@ struct zynqmp_fpga_priv {
 	struct device *dev;
 	struct mutex lock;
 	struct clk *clk;
+	char *key;
 	u32 flags;
 	u32 size;
 };
@@ -93,6 +95,7 @@ static int zynqmp_fpga_ops_write_init(struct fpga_manager *mgr,
 
 	priv = mgr->priv;
 	priv->flags = info->flags;
+	priv->key = info->key;
 
 	return 0;
 }
@@ -120,7 +123,7 @@ static int zynqmp_fpga_ops_write(struct fpga_manager *mgr,
 	if (ret)
 		goto err_unlock;
 
-	if (mgr->flags & IXR_FPGA_ENCRYPTION_EN)
+	if (priv->flags & IXR_FPGA_ENCRYPTION_EN)
 		dma_size = size + ENCRYPTED_KEY_LEN;
 	else
 		dma_size = size;
@@ -133,17 +136,16 @@ static int zynqmp_fpga_ops_write(struct fpga_manager *mgr,
 
 	memcpy(kbuf, buf, size);
 
-	if (mgr->flags & IXR_FPGA_ENCRYPTION_EN)
-		memcpy(kbuf + size, mgr->key, ENCRYPTED_KEY_LEN);
+	if (priv->flags & IXR_FPGA_ENCRYPTION_EN)
+		memcpy(kbuf + size, priv->key, ENCRYPTED_KEY_LEN);
 
 	wmb(); /* ensure all writes are done before initiate FW call */
 
-	if (mgr->flags & IXR_FPGA_ENCRYPTION_EN)
+	if (priv->flags & IXR_FPGA_ENCRYPTION_EN)
 		ret = eemi_ops->fpga_load(dma_addr, dma_addr + size,
-							mgr->flags);
+					  priv->flags);
 	else
-		ret = eemi_ops->fpga_load(dma_addr, size,
-						mgr->flags);
+		ret = eemi_ops->fpga_load(dma_addr, size, priv->flags);
 
 	dma_free_coherent(priv->dev, dma_size, kbuf, dma_addr);
 disable_clk:
@@ -308,6 +310,7 @@ static int zynqmp_fpga_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct zynqmp_fpga_priv *priv;
 	int err, ret;
+	struct fpga_manager *mgr;
 
 	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
 	if (!priv)
@@ -318,6 +321,13 @@ static int zynqmp_fpga_probe(struct platform_device *pdev)
 	ret = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(44));
 	if (ret < 0)
 		dev_err(dev, "no usable DMA configuration");
+
+	mgr = fpga_mgr_create(dev, "Xilinx ZynqMP FPGA Manager",
+			      &zynqmp_fpga_ops, priv);
+	if (!mgr)
+		return -ENOMEM;
+
+	platform_set_drvdata(pdev, mgr);
 
 	priv->clk = devm_clk_get(dev, "ref_clk");
 	if (IS_ERR(priv->clk)) {
@@ -332,10 +342,10 @@ static int zynqmp_fpga_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	err = fpga_mgr_register(dev, "Xilinx ZynqMP FPGA Manager",
-				&zynqmp_fpga_ops, priv);
+	err = fpga_mgr_register(mgr);
 	if (err) {
 		dev_err(dev, "unable to register FPGA manager");
+		fpga_mgr_free(mgr);
 		clk_unprepare(priv->clk);
 		return err;
 	}
@@ -351,7 +361,7 @@ static int zynqmp_fpga_remove(struct platform_device *pdev)
 	mgr = platform_get_drvdata(pdev);
 	priv = mgr->priv;
 
-	fpga_mgr_unregister(&pdev->dev);
+	fpga_mgr_unregister(mgr);
 	clk_unprepare(priv->clk);
 
 	return 0;

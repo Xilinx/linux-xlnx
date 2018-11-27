@@ -20,6 +20,8 @@
 #define LIMIT_INVALID_BLOCK	40 /* percentage over total user space */
 #define LIMIT_FREE_BLOCK	40 /* percentage over invalid + free space */
 
+#define DEF_GC_FAILED_PINNED_FILES	2048
+
 /* Search max. number of dirty segments to select a victim segment */
 #define DEF_MAX_VICTIM_SEARCH 4096 /* covers 8GB */
 
@@ -34,8 +36,6 @@ struct f2fs_gc_kthread {
 	unsigned int no_gc_sleep_time;
 
 	/* for changing gc mode */
-	unsigned int gc_idle;
-	unsigned int gc_urgent;
 	unsigned int gc_wake;
 };
 

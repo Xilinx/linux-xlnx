@@ -1,15 +1,13 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 #ifndef __NOUVEAU_DISPLAY_H__
 #define __NOUVEAU_DISPLAY_H__
-
-#include <subdev/mmu.h>
-
 #include "nouveau_drv.h"
+#include <nvif/disp.h>
 
 struct nouveau_framebuffer {
 	struct drm_framebuffer base;
 	struct nouveau_bo *nvbo;
-	struct nvkm_vma vma;
+	struct nouveau_vma *vma;
 	u32 r_handle;
 	u32 r_format;
 	u32 r_pitch;
@@ -41,7 +39,7 @@ struct nouveau_display {
 	int  (*init)(struct drm_device *);
 	void (*fini)(struct drm_device *);
 
-	struct nvif_object disp;
+	struct nvif_disp disp;
 
 	struct drm_property *dithering_mode;
 	struct drm_property *dithering_depth;
@@ -64,7 +62,7 @@ nouveau_display(struct drm_device *dev)
 int  nouveau_display_create(struct drm_device *dev);
 void nouveau_display_destroy(struct drm_device *dev);
 int  nouveau_display_init(struct drm_device *dev);
-void nouveau_display_fini(struct drm_device *dev, bool suspend);
+void nouveau_display_fini(struct drm_device *dev, bool suspend, bool runtime);
 int  nouveau_display_suspend(struct drm_device *dev, bool runtime);
 void nouveau_display_resume(struct drm_device *dev, bool runtime);
 int  nouveau_display_vblank_enable(struct drm_device *, unsigned int);

@@ -18,7 +18,7 @@
 #include <linux/module.h>
 #include <linux/platform_device.h>
 #include <linux/of.h>
-#include <linux/of_gpio.h>
+#include <linux/gpio/consumer.h>
 #include <linux/pm_runtime.h>
 #include <linux/pinctrl/consumer.h>
 
@@ -1293,29 +1293,26 @@ static int cdns_i2c_init_recovery_info(struct cdns_i2c *pid,
 	pid->pinctrl_pins_gpio = pinctrl_lookup_state(pid->pinctrl, "gpio");
 
 	/* Fetches GPIO pins */
-	rinfo->sda_gpio = of_get_named_gpio(pdev->dev.of_node, "sda-gpios", 0);
-	rinfo->scl_gpio = of_get_named_gpio(pdev->dev.of_node, "scl-gpios", 0);
+	rinfo->sda_gpiod = devm_gpiod_get(&pdev->dev, "sda-gpios", 0);
+	rinfo->scl_gpiod = devm_gpiod_get(&pdev->dev, "scl-gpios", 0);
 
 	/* if GPIO driver isn't ready yet, deffer probe */
-	if (rinfo->sda_gpio == -EPROBE_DEFER ||
-			rinfo->scl_gpio == -EPROBE_DEFER)
+	if (PTR_ERR(rinfo->sda_gpiod) == -EPROBE_DEFER ||
+	    PTR_ERR(rinfo->scl_gpiod) == -EPROBE_DEFER)
 		return -EPROBE_DEFER;
 
 	/* Validates fetched information */
-	if (!gpio_is_valid(rinfo->sda_gpio) ||
-			!gpio_is_valid(rinfo->scl_gpio) ||
+	if (IS_ERR(rinfo->sda_gpiod) ||
+	    IS_ERR(rinfo->scl_gpiod) ||
 			IS_ERR(pid->pinctrl_pins_default) ||
 			IS_ERR(pid->pinctrl_pins_gpio)) {
 		dev_dbg(&pdev->dev, "recovery information incomplete\n");
 		return 0;
 	}
 
-	dev_dbg(&pdev->dev, "using scl-gpio %d and sda-gpio %d for recovery\n",
-			rinfo->sda_gpio, rinfo->scl_gpio);
-
 	rinfo->prepare_recovery     = cdns_i2c_prepare_recovery;
 	rinfo->unprepare_recovery   = cdns_i2c_unprepare_recovery;
-	rinfo->recover_bus          = i2c_generic_gpio_recovery;
+	rinfo->recover_bus          = i2c_generic_scl_recovery;
 	pid->adap.bus_recovery_info = rinfo;
 
 	return 0;

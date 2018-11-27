@@ -48,7 +48,7 @@ static struct dentry *dfs_inj;
 
 static u8 n_banks;
 
-#define MAX_FLAG_OPT_SIZE	3
+#define MAX_FLAG_OPT_SIZE	4
 #define NBCFG			0x44
 
 enum injection_type {
@@ -491,7 +491,7 @@ static void do_inject(void)
 	unsigned int cpu = i_mce.extcpu;
 	u8 b = i_mce.bank;
 
-	rdtscll(i_mce.tsc);
+	i_mce.tsc = rdtsc_ordered();
 
 	if (i_mce.misc)
 		i_mce.status |= MCI_STATUS_MISCV;

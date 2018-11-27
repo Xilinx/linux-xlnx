@@ -749,10 +749,8 @@ xvip_dma_querycap(struct file *file, void *fh, struct v4l2_capability *cap)
 	struct v4l2_fh *vfh = file->private_data;
 	struct xvip_dma *dma = to_xvip_dma(vfh->vdev);
 
-	cap->capabilities = V4L2_CAP_DEVICE_CAPS | V4L2_CAP_STREAMING
-			  | dma->xdev->v4l2_caps;
-
 	cap->device_caps = V4L2_CAP_STREAMING;
+
 	switch (dma->queue.type) {
 	case V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE:
 		cap->device_caps |= V4L2_CAP_VIDEO_CAPTURE_MPLANE;
@@ -767,6 +765,9 @@ xvip_dma_querycap(struct file *file, void *fh, struct v4l2_capability *cap)
 		cap->device_caps |= V4L2_CAP_VIDEO_OUTPUT;
 		break;
 	}
+
+	cap->capabilities = cap->device_caps | V4L2_CAP_DEVICE_CAPS
+			  | dma->xdev->v4l2_caps;
 
 	strlcpy(cap->driver, "xilinx-vipp", sizeof(cap->driver));
 	strlcpy(cap->card, dma->video.name, sizeof(cap->card));

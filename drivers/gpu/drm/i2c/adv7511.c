@@ -598,7 +598,7 @@ static int adv7511_get_modes(struct drm_encoder *encoder,
 	if (!edid)
 		return 0;
 
-	drm_mode_connector_update_edid_property(connector, edid);
+	drm_connector_update_edid_property(connector, edid);
 	count = drm_add_edid_modes(connector, edid);
 
 	adv7511_set_config_csc(adv7511, connector, adv7511->rgb);

@@ -1,11 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * device.h - generic, centralized driver model
  *
  * Copyright (c) 2001-2003 Patrick Mochel <mochel@osdl.org>
  * Copyright (c) 2004-2009 Greg Kroah-Hartman <gregkh@suse.de>
  * Copyright (c) 2008-2009 Novell Inc.
- *
- * This file is released under the GPLv2
  *
  * See Documentation/driver-model/ for more information.
  */
@@ -21,12 +20,12 @@
 #include <linux/compiler.h>
 #include <linux/types.h>
 #include <linux/mutex.h>
-#include <linux/pinctrl/devinfo.h>
 #include <linux/pm.h>
 #include <linux/atomic.h>
 #include <linux/ratelimit.h>
 #include <linux/uidgid.h>
 #include <linux/gfp.h>
+#include <linux/overflow.h>
 #include <asm/device.h>
 
 struct device;
@@ -42,6 +41,7 @@ struct fwnode_handle;
 struct iommu_ops;
 struct iommu_group;
 struct iommu_fwspec;
+struct dev_pin_info;
 
 struct bus_attribute {
 	struct attribute	attr;
@@ -89,6 +89,8 @@ extern void bus_remove_file(struct bus_type *, struct bus_attribute *);
  * @resume:	Called to bring a device on this bus out of sleep mode.
  * @num_vf:	Called to find out how many virtual functions a device on this
  *		bus supports.
+ * @dma_configure:	Called to setup DMA configuration on a device on
+ *			this bus.
  * @pm:		Power management operations of this bus, callback the specific
  *		device driver's pm-ops.
  * @iommu_ops:  IOMMU specific operations for this bus, used to attach IOMMU
@@ -97,6 +99,8 @@ extern void bus_remove_file(struct bus_type *, struct bus_attribute *);
  * @p:		The private data of the driver core, only the driver core can
  *		touch this.
  * @lock_key:	Lock class key for use by the lock validator
+ * @need_parent_lock:	When probing or removing a device on this bus, the
+ *			device core should lock the device's parent.
  *
  * A bus is a channel between the processor and one or more devices. For the
  * purposes of the device model, all devices are connected via a bus, even if
@@ -129,12 +133,16 @@ struct bus_type {
 
 	int (*num_vf)(struct device *dev);
 
+	int (*dma_configure)(struct device *dev);
+
 	const struct dev_pm_ops *pm;
 
 	const struct iommu_ops *iommu_ops;
 
 	struct subsys_private *p;
 	struct lock_class_key lock_key;
+
+	bool need_parent_lock;
 };
 
 extern int __must_check bus_register(struct bus_type *bus);
@@ -253,6 +261,9 @@ enum probe_type {
  *		automatically.
  * @pm:		Power management operations of the device which matched
  *		this driver.
+ * @coredump:	Called when sysfs entry is written to. The device driver
+ *		is expected to call the dev_coredump API resulting in a
+ *		uevent.
  * @p:		Driver core's private data, no one other than the driver
  *		core can touch this.
  *
@@ -284,6 +295,7 @@ struct device_driver {
 	const struct attribute_group **groups;
 
 	const struct dev_pm_ops *pm;
+	void (*coredump) (struct device *dev);
 
 	struct driver_private *p;
 };
@@ -296,7 +308,6 @@ extern struct device_driver *driver_find(const char *name,
 					 struct bus_type *bus);
 extern int driver_probe_done(void);
 extern void wait_for_device_probe(void);
-
 
 /* sysfs interface for exporting driver attributes */
 
@@ -327,6 +338,8 @@ extern int __must_check driver_for_each_device(struct device_driver *drv,
 struct device *driver_find_device(struct device_driver *drv,
 				  struct device *start, void *data,
 				  int (*match)(struct device *dev, void *data));
+
+int driver_deferred_probe_check_state(struct device *dev);
 
 /**
  * struct subsys_interface - interfaces to device functions
@@ -370,12 +383,12 @@ int subsys_virtual_register(struct bus_type *subsys,
  * @devnode:	Callback to provide the devtmpfs.
  * @class_release: Called to release this class.
  * @dev_release: Called to release the device.
- * @suspend:	Used to put the device to sleep mode, usually to a low power
- *		state.
- * @resume:	Used to bring the device from the sleep mode.
  * @shutdown_pre: Called at shut-down time before driver shutdown.
  * @ns_type:	Callbacks so sysfs can detemine namespaces.
  * @namespace:	Namespace of the device belongs to this class.
+ * @get_ownership: Allows class to specify uid/gid of the sysfs directories
+ *		for the devices belonging to the class. Usually tied to
+ *		device's namespace.
  * @pm:		The default device power management operations of this class.
  * @p:		The private data of the driver core, no one other than the
  *		driver core can touch this.
@@ -400,12 +413,12 @@ struct class {
 	void (*class_release)(struct class *class);
 	void (*dev_release)(struct device *dev);
 
-	int (*suspend)(struct device *dev, pm_message_t state);
-	int (*resume)(struct device *dev);
 	int (*shutdown_pre)(struct device *dev);
 
 	const struct kobj_ns_type_operations *ns_type;
 	const void *(*namespace)(struct device *dev);
+
+	void (*get_ownership)(struct device *dev, kuid_t *uid, kgid_t *gid);
 
 	const struct dev_pm_ops *pm;
 
@@ -576,6 +589,9 @@ ssize_t device_store_bool(struct device *dev, struct device_attribute *attr,
 
 #define DEVICE_ATTR(_name, _mode, _show, _store) \
 	struct device_attribute dev_attr_##_name = __ATTR(_name, _mode, _show, _store)
+#define DEVICE_ATTR_PREALLOC(_name, _mode, _show, _store) \
+	struct device_attribute dev_attr_##_name = \
+		__ATTR_PREALLOC(_name, _mode, _show, _store)
 #define DEVICE_ATTR_RW(_name) \
 	struct device_attribute dev_attr_##_name = __ATTR_RW(_name)
 #define DEVICE_ATTR_RO(_name) \
@@ -664,9 +680,12 @@ static inline void *devm_kzalloc(struct device *dev, size_t size, gfp_t gfp)
 static inline void *devm_kmalloc_array(struct device *dev,
 				       size_t n, size_t size, gfp_t flags)
 {
-	if (size != 0 && n > SIZE_MAX / size)
+	size_t bytes;
+
+	if (unlikely(check_mul_overflow(n, size, &bytes)))
 		return NULL;
-	return devm_kmalloc(dev, n * size, flags);
+
+	return devm_kmalloc(dev, bytes, flags);
 }
 static inline void *devm_kcalloc(struct device *dev,
 				 size_t n, size_t size, gfp_t flags)
@@ -683,6 +702,10 @@ extern unsigned long devm_get_free_pages(struct device *dev,
 extern void devm_free_pages(struct device *dev, unsigned long addr);
 
 void __iomem *devm_ioremap_resource(struct device *dev, struct resource *res);
+
+void __iomem *devm_of_iomap(struct device *dev,
+			    struct device_node *node, int index,
+			    resource_size_t *size);
 
 /* allows to add/remove a custom action to devres stack */
 int devm_add_action(struct device *dev, void (*action)(void *), void *data);
@@ -729,6 +752,28 @@ struct device_dma_parameters {
 };
 
 /**
+ * struct device_connection - Device Connection Descriptor
+ * @endpoint: The names of the two devices connected together
+ * @id: Unique identifier for the connection
+ * @list: List head, private, for internal use only
+ */
+struct device_connection {
+	const char		*endpoint[2];
+	const char		*id;
+	struct list_head	list;
+};
+
+void *device_connection_find_match(struct device *dev, const char *con_id,
+				void *data,
+				void *(*match)(struct device_connection *con,
+					       int ep, void *data));
+
+struct device *device_connection_find(struct device *dev, const char *con_id);
+
+void device_connection_add(struct device_connection *con);
+void device_connection_remove(struct device_connection *con);
+
+/**
  * enum device_link_state - Device link states.
  * @DL_STATE_NONE: The presence of the drivers is not being tracked.
  * @DL_STATE_DORMANT: None of the supplier/consumer drivers is present.
@@ -750,14 +795,16 @@ enum device_link_state {
  * Device link flags.
  *
  * STATELESS: The core won't track the presence of supplier/consumer drivers.
- * AUTOREMOVE: Remove this link automatically on consumer driver unbind.
+ * AUTOREMOVE_CONSUMER: Remove the link automatically on consumer driver unbind.
  * PM_RUNTIME: If set, the runtime PM framework will use this link.
  * RPM_ACTIVE: Run pm_runtime_get_sync() on the supplier during link creation.
+ * AUTOREMOVE_SUPPLIER: Remove the link automatically on supplier driver unbind.
  */
-#define DL_FLAG_STATELESS	BIT(0)
-#define DL_FLAG_AUTOREMOVE	BIT(1)
-#define DL_FLAG_PM_RUNTIME	BIT(2)
-#define DL_FLAG_RPM_ACTIVE	BIT(3)
+#define DL_FLAG_STATELESS		BIT(0)
+#define DL_FLAG_AUTOREMOVE_CONSUMER	BIT(1)
+#define DL_FLAG_PM_RUNTIME		BIT(2)
+#define DL_FLAG_RPM_ACTIVE		BIT(3)
+#define DL_FLAG_AUTOREMOVE_SUPPLIER	BIT(4)
 
 /**
  * struct device_link - Device link representation.
@@ -768,6 +815,7 @@ enum device_link_state {
  * @status: The state of the link (with respect to the presence of drivers).
  * @flags: Link flags.
  * @rpm_active: Whether or not the consumer device is runtime-PM-active.
+ * @kref: Count repeated addition of the same link.
  * @rcu_head: An RCU head to use for deferred execution of SRCU callbacks.
  */
 struct device_link {
@@ -778,6 +826,7 @@ struct device_link {
 	enum device_link_state status;
 	u32 flags;
 	bool rpm_active;
+	struct kref kref;
 #ifdef CONFIG_SRCU
 	struct rcu_head rcu_head;
 #endif
@@ -850,6 +899,8 @@ struct dev_links_info {
  * @coherent_dma_mask: Like dma_mask, but for alloc_coherent mapping as not all
  * 		hardware supports 64-bit addresses for consistent allocations
  * 		such descriptors.
+ * @bus_dma_mask: Mask of an upstream bridge or bus which imposes a smaller DMA
+ *		limit than the device itself supports.
  * @dma_pfn_offset: offset of DMA memory range relatively of RAM
  * @dma_parms:	A low level driver may set these to teach IOMMU code about
  * 		segment limitations.
@@ -929,6 +980,7 @@ struct device {
 					     not all hardware supports
 					     64 bit addresses for consistent
 					     allocations such descriptors. */
+	u64		bus_dma_mask;	/* upstream dma_mask constraint */
 	unsigned long	dma_pfn_offset;
 
 	struct device_dma_parameters *dma_parms;
@@ -1073,6 +1125,16 @@ static inline void dev_pm_syscore_device(struct device *dev, bool val)
 #ifdef CONFIG_PM_SLEEP
 	dev->power.syscore = val;
 #endif
+}
+
+static inline void dev_pm_set_driver_flags(struct device *dev, u32 flags)
+{
+	dev->power.driver_flags = flags;
+}
+
+static inline bool dev_pm_test_driver_flags(struct device *dev, u32 flags)
+{
+	return !!(dev->power.driver_flags & flags);
 }
 
 static inline void device_lock(struct device *dev)
@@ -1267,31 +1329,36 @@ extern const char *dev_driver_string(const struct device *dev);
 struct device_link *device_link_add(struct device *consumer,
 				    struct device *supplier, u32 flags);
 void device_link_del(struct device_link *link);
+void device_link_remove(void *consumer, struct device *supplier);
+
+#ifndef dev_fmt
+#define dev_fmt(fmt) fmt
+#endif
 
 #ifdef CONFIG_PRINTK
 
-extern __printf(3, 0)
+__printf(3, 0)
 int dev_vprintk_emit(int level, const struct device *dev,
 		     const char *fmt, va_list args);
-extern __printf(3, 4)
+__printf(3, 4)
 int dev_printk_emit(int level, const struct device *dev, const char *fmt, ...);
 
-extern __printf(3, 4)
+__printf(3, 4)
 void dev_printk(const char *level, const struct device *dev,
 		const char *fmt, ...);
-extern __printf(2, 3)
-void dev_emerg(const struct device *dev, const char *fmt, ...);
-extern __printf(2, 3)
-void dev_alert(const struct device *dev, const char *fmt, ...);
-extern __printf(2, 3)
-void dev_crit(const struct device *dev, const char *fmt, ...);
-extern __printf(2, 3)
-void dev_err(const struct device *dev, const char *fmt, ...);
-extern __printf(2, 3)
-void dev_warn(const struct device *dev, const char *fmt, ...);
-extern __printf(2, 3)
-void dev_notice(const struct device *dev, const char *fmt, ...);
-extern __printf(2, 3)
+__printf(2, 3)
+void _dev_emerg(const struct device *dev, const char *fmt, ...);
+__printf(2, 3)
+void _dev_alert(const struct device *dev, const char *fmt, ...);
+__printf(2, 3)
+void _dev_crit(const struct device *dev, const char *fmt, ...);
+__printf(2, 3)
+void _dev_err(const struct device *dev, const char *fmt, ...);
+__printf(2, 3)
+void _dev_warn(const struct device *dev, const char *fmt, ...);
+__printf(2, 3)
+void _dev_notice(const struct device *dev, const char *fmt, ...);
+__printf(2, 3)
 void _dev_info(const struct device *dev, const char *fmt, ...);
 
 #else
@@ -1309,26 +1376,26 @@ static inline void __dev_printk(const char *level, const struct device *dev,
 {}
 static inline __printf(3, 4)
 void dev_printk(const char *level, const struct device *dev,
-		const char *fmt, ...)
+		 const char *fmt, ...)
 {}
 
 static inline __printf(2, 3)
-void dev_emerg(const struct device *dev, const char *fmt, ...)
+void _dev_emerg(const struct device *dev, const char *fmt, ...)
 {}
 static inline __printf(2, 3)
-void dev_crit(const struct device *dev, const char *fmt, ...)
+void _dev_crit(const struct device *dev, const char *fmt, ...)
 {}
 static inline __printf(2, 3)
-void dev_alert(const struct device *dev, const char *fmt, ...)
+void _dev_alert(const struct device *dev, const char *fmt, ...)
 {}
 static inline __printf(2, 3)
-void dev_err(const struct device *dev, const char *fmt, ...)
+void _dev_err(const struct device *dev, const char *fmt, ...)
 {}
 static inline __printf(2, 3)
-void dev_warn(const struct device *dev, const char *fmt, ...)
+void _dev_warn(const struct device *dev, const char *fmt, ...)
 {}
 static inline __printf(2, 3)
-void dev_notice(const struct device *dev, const char *fmt, ...)
+void _dev_notice(const struct device *dev, const char *fmt, ...)
 {}
 static inline __printf(2, 3)
 void _dev_info(const struct device *dev, const char *fmt, ...)
@@ -1337,27 +1404,36 @@ void _dev_info(const struct device *dev, const char *fmt, ...)
 #endif
 
 /*
- * Stupid hackaround for existing uses of non-printk uses dev_info
- *
- * Note that the definition of dev_info below is actually _dev_info
- * and a macro is used to avoid redefining dev_info
+ * #defines for all the dev_<level> macros to prefix with whatever
+ * possible use of #define dev_fmt(fmt) ...
  */
 
-#define dev_info(dev, fmt, arg...) _dev_info(dev, fmt, ##arg)
+#define dev_emerg(dev, fmt, ...)					\
+	_dev_emerg(dev, dev_fmt(fmt), ##__VA_ARGS__)
+#define dev_crit(dev, fmt, ...)						\
+	_dev_crit(dev, dev_fmt(fmt), ##__VA_ARGS__)
+#define dev_alert(dev, fmt, ...)					\
+	_dev_alert(dev, dev_fmt(fmt), ##__VA_ARGS__)
+#define dev_err(dev, fmt, ...)						\
+	_dev_err(dev, dev_fmt(fmt), ##__VA_ARGS__)
+#define dev_warn(dev, fmt, ...)						\
+	_dev_warn(dev, dev_fmt(fmt), ##__VA_ARGS__)
+#define dev_notice(dev, fmt, ...)					\
+	_dev_notice(dev, dev_fmt(fmt), ##__VA_ARGS__)
+#define dev_info(dev, fmt, ...)						\
+	_dev_info(dev, dev_fmt(fmt), ##__VA_ARGS__)
 
 #if defined(CONFIG_DYNAMIC_DEBUG)
-#define dev_dbg(dev, format, ...)		     \
-do {						     \
-	dynamic_dev_dbg(dev, format, ##__VA_ARGS__); \
-} while (0)
+#define dev_dbg(dev, fmt, ...)						\
+	dynamic_dev_dbg(dev, dev_fmt(fmt), ##__VA_ARGS__)
 #elif defined(DEBUG)
-#define dev_dbg(dev, format, arg...)		\
-	dev_printk(KERN_DEBUG, dev, format, ##arg)
+#define dev_dbg(dev, fmt, ...)						\
+	dev_printk(KERN_DEBUG, dev, dev_fmt(fmt), ##__VA_ARGS__)
 #else
-#define dev_dbg(dev, format, arg...)				\
-({								\
-	if (0)							\
-		dev_printk(KERN_DEBUG, dev, format, ##arg);	\
+#define dev_dbg(dev, fmt, ...)						\
+({									\
+	if (0)								\
+		dev_printk(KERN_DEBUG, dev, dev_fmt(fmt), ##__VA_ARGS__); \
 })
 #endif
 
@@ -1429,7 +1505,7 @@ do {									\
 	DEFINE_DYNAMIC_DEBUG_METADATA(descriptor, fmt);			\
 	if (unlikely(descriptor.flags & _DPRINTK_FLAGS_PRINT) &&	\
 	    __ratelimit(&_rs))						\
-		__dynamic_dev_dbg(&descriptor, dev, fmt,		\
+		__dynamic_dev_dbg(&descriptor, dev, dev_fmt(fmt),	\
 				  ##__VA_ARGS__);			\
 } while (0)
 #elif defined(DEBUG)
@@ -1439,23 +1515,23 @@ do {									\
 				      DEFAULT_RATELIMIT_INTERVAL,	\
 				      DEFAULT_RATELIMIT_BURST);		\
 	if (__ratelimit(&_rs))						\
-		dev_printk(KERN_DEBUG, dev, fmt, ##__VA_ARGS__);	\
+		dev_printk(KERN_DEBUG, dev, dev_fmt(fmt), ##__VA_ARGS__); \
 } while (0)
 #else
 #define dev_dbg_ratelimited(dev, fmt, ...)				\
 do {									\
 	if (0)								\
-		dev_printk(KERN_DEBUG, dev, fmt, ##__VA_ARGS__);	\
+		dev_printk(KERN_DEBUG, dev, dev_fmt(fmt), ##__VA_ARGS__); \
 } while (0)
 #endif
 
 #ifdef VERBOSE_DEBUG
 #define dev_vdbg	dev_dbg
 #else
-#define dev_vdbg(dev, format, arg...)				\
-({								\
-	if (0)							\
-		dev_printk(KERN_DEBUG, dev, format, ##arg);	\
+#define dev_vdbg(dev, fmt, ...)						\
+({									\
+	if (0)								\
+		dev_printk(KERN_DEBUG, dev, dev_fmt(fmt), ##__VA_ARGS__); \
 })
 #endif
 

@@ -10,6 +10,10 @@
  *
  * Things ending in "2" are usually because we have no better
  * name for them.  There's no processor called "SILVERMONT2".
+ *
+ * While adding a new CPUID for a new microarchitecture, add a new
+ * group to keep logically sorted out in chronological order. Within
+ * that group keep the CPUID for the variants sorted by model number.
  */
 
 #define INTEL_FAM6_CORE_YONAH		0x0E
@@ -49,6 +53,8 @@
 #define INTEL_FAM6_KABYLAKE_MOBILE	0x8E
 #define INTEL_FAM6_KABYLAKE_DESKTOP	0x9E
 
+#define INTEL_FAM6_CANNONLAKE_MOBILE	0x66
+
 /* "Small Core" Processors (Atom) */
 
 #define INTEL_FAM6_ATOM_PINEVIEW	0x1C
@@ -69,5 +75,18 @@
 
 #define INTEL_FAM6_XEON_PHI_KNL		0x57 /* Knights Landing */
 #define INTEL_FAM6_XEON_PHI_KNM		0x85 /* Knights Mill */
+
+/* Useful macros */
+#define INTEL_CPU_FAM_ANY(_family, _model, _driver_data)	\
+{								\
+	.vendor		= X86_VENDOR_INTEL,			\
+	.family		= _family,				\
+	.model		= _model,				\
+	.feature	= X86_FEATURE_ANY,			\
+	.driver_data	= (kernel_ulong_t)&_driver_data		\
+}
+
+#define INTEL_CPU_FAM6(_model, _driver_data)			\
+	INTEL_CPU_FAM_ANY(6, INTEL_FAM6_##_model, _driver_data)
 
 #endif /* _ASM_X86_INTEL_FAMILY_H */

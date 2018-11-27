@@ -221,6 +221,7 @@
 	jc42@18 {
 		compatible = "nxp,se97b", "jedec,jc-42.4-temp";
 		reg = <0x18>;
+		smbus-timeout-disable;
 	};
 
 	dpot: mcp4651-104@28 {
@@ -233,6 +234,7 @@
 		compatible = "ti,pcm5142";
 
 		reg = <0x4c>;
+		#sound-dai-cells = <0>;
 
 		AVDD-supply = <&reg_3v3>;
 		DVDD-supply = <&reg_3v3>;
@@ -245,7 +247,7 @@
 	};
 
 	eeprom@50 {
-		compatible = "nxp,24c02", "atmel,24c02";
+		compatible = "nxp,se97b", "atmel,24c02";
 		reg = <0x50>;
 		pagesize = <16>;
 	};

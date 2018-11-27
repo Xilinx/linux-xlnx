@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * trace_output.c
  *
@@ -594,8 +595,7 @@ int trace_print_context(struct trace_iterator *iter)
 
 	trace_find_cmdline(entry->pid, comm);
 
-	trace_seq_printf(s, "%16s-%-5d [%03d] ",
-			       comm, entry->pid, iter->cpu);
+	trace_seq_printf(s, "%16s-%-5d ", comm, entry->pid);
 
 	if (tr->trace_flags & TRACE_ITER_RECORD_TGID) {
 		unsigned int tgid = trace_find_tgid(entry->pid);
@@ -605,6 +605,8 @@ int trace_print_context(struct trace_iterator *iter)
 		else
 			trace_seq_printf(s, "(%5d) ", tgid);
 	}
+
+	trace_seq_printf(s, "[%03d] ", iter->cpu);
 
 	if (tr->trace_flags & TRACE_ITER_IRQ_INFO)
 		trace_print_lat_fmt(s, entry);
@@ -921,8 +923,8 @@ static enum print_line_t trace_ctxwake_print(struct trace_iterator *iter,
 
 	trace_assign_type(field, iter->ent);
 
-	T = __task_state_to_char(field->next_state);
-	S = __task_state_to_char(field->prev_state);
+	T = task_index_to_char(field->next_state);
+	S = task_index_to_char(field->prev_state);
 	trace_find_cmdline(field->next_pid, comm);
 	trace_seq_printf(&iter->seq,
 			 " %5d:%3d:%c %s [%03d] %5d:%3d:%c %s\n",
@@ -957,8 +959,8 @@ static int trace_ctxwake_raw(struct trace_iterator *iter, char S)
 	trace_assign_type(field, iter->ent);
 
 	if (!S)
-		S = __task_state_to_char(field->prev_state);
-	T = __task_state_to_char(field->next_state);
+		S = task_index_to_char(field->prev_state);
+	T = task_index_to_char(field->next_state);
 	trace_seq_printf(&iter->seq, "%d %d %c %d %d %d %c\n",
 			 field->prev_pid,
 			 field->prev_prio,
@@ -993,8 +995,8 @@ static int trace_ctxwake_hex(struct trace_iterator *iter, char S)
 	trace_assign_type(field, iter->ent);
 
 	if (!S)
-		S = __task_state_to_char(field->prev_state);
-	T = __task_state_to_char(field->next_state);
+		S = task_index_to_char(field->prev_state);
+	T = task_index_to_char(field->next_state);
 
 	SEQ_PUT_HEX_FIELD(s, field->prev_pid);
 	SEQ_PUT_HEX_FIELD(s, field->prev_prio);

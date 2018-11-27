@@ -134,11 +134,24 @@ struct seccomp_data {
 #endif
 
 #ifndef SECCOMP_FILTER_FLAG_TSYNC
-#define SECCOMP_FILTER_FLAG_TSYNC 1
+#define SECCOMP_FILTER_FLAG_TSYNC (1UL << 0)
 #endif
 
 #ifndef SECCOMP_FILTER_FLAG_LOG
-#define SECCOMP_FILTER_FLAG_LOG 2
+#define SECCOMP_FILTER_FLAG_LOG (1UL << 1)
+#endif
+
+#ifndef SECCOMP_FILTER_FLAG_SPEC_ALLOW
+#define SECCOMP_FILTER_FLAG_SPEC_ALLOW (1UL << 2)
+#endif
+
+#ifndef PTRACE_SECCOMP_GET_METADATA
+#define PTRACE_SECCOMP_GET_METADATA	0x420d
+
+struct seccomp_metadata {
+	__u64 filter_off;       /* Input: which filter */
+	__u64 flags;             /* Output: filter's flags */
+};
 #endif
 
 #ifndef seccomp
@@ -1717,7 +1730,7 @@ void tracer_ptrace(struct __test_metadata *_metadata, pid_t tracee,
 
 	if (nr == __NR_getpid)
 		change_syscall(_metadata, tracee, __NR_getppid);
-	if (nr == __NR_open)
+	if (nr == __NR_openat)
 		change_syscall(_metadata, tracee, -1);
 }
 
@@ -1792,7 +1805,7 @@ TEST_F(TRACE_syscall, ptrace_syscall_dropped)
 					   true);
 
 	/* Tracer should skip the open syscall, resulting in EPERM. */
-	EXPECT_SYSCALL_RETURN(EPERM, syscall(__NR_open));
+	EXPECT_SYSCALL_RETURN(EPERM, syscall(__NR_openat));
 }
 
 TEST_F(TRACE_syscall, syscall_allowed)
@@ -2063,14 +2076,26 @@ TEST(seccomp_syscall_mode_lock)
 TEST(detect_seccomp_filter_flags)
 {
 	unsigned int flags[] = { SECCOMP_FILTER_FLAG_TSYNC,
-				 SECCOMP_FILTER_FLAG_LOG };
+				 SECCOMP_FILTER_FLAG_LOG,
+				 SECCOMP_FILTER_FLAG_SPEC_ALLOW };
 	unsigned int flag, all_flags;
 	int i;
 	long ret;
 
 	/* Test detection of known-good filter flags */
 	for (i = 0, all_flags = 0; i < ARRAY_SIZE(flags); i++) {
+		int bits = 0;
+
 		flag = flags[i];
+		/* Make sure the flag is a single bit! */
+		while (flag) {
+			if (flag & 0x1)
+				bits ++;
+			flag >>= 1;
+		}
+		ASSERT_EQ(1, bits);
+		flag = flags[i];
+
 		ret = seccomp(SECCOMP_SET_MODE_FILTER, flag, NULL);
 		ASSERT_NE(ENOSYS, errno) {
 			TH_LOG("Kernel does not support seccomp syscall!");
@@ -2843,6 +2868,69 @@ TEST(get_action_avail)
 	ret = seccomp(SECCOMP_GET_ACTION_AVAIL, 0, &unknown_action);
 	EXPECT_EQ(ret, -1);
 	EXPECT_EQ(errno, EOPNOTSUPP);
+}
+
+TEST(get_metadata)
+{
+	pid_t pid;
+	int pipefd[2];
+	char buf;
+	struct seccomp_metadata md;
+	long ret;
+
+	ASSERT_EQ(0, pipe(pipefd));
+
+	pid = fork();
+	ASSERT_GE(pid, 0);
+	if (pid == 0) {
+		struct sock_filter filter[] = {
+			BPF_STMT(BPF_RET|BPF_K, SECCOMP_RET_ALLOW),
+		};
+		struct sock_fprog prog = {
+			.len = (unsigned short)ARRAY_SIZE(filter),
+			.filter = filter,
+		};
+
+		/* one with log, one without */
+		ASSERT_EQ(0, seccomp(SECCOMP_SET_MODE_FILTER,
+				     SECCOMP_FILTER_FLAG_LOG, &prog));
+		ASSERT_EQ(0, seccomp(SECCOMP_SET_MODE_FILTER, 0, &prog));
+
+		ASSERT_EQ(0, close(pipefd[0]));
+		ASSERT_EQ(1, write(pipefd[1], "1", 1));
+		ASSERT_EQ(0, close(pipefd[1]));
+
+		while (1)
+			sleep(100);
+	}
+
+	ASSERT_EQ(0, close(pipefd[1]));
+	ASSERT_EQ(1, read(pipefd[0], &buf, 1));
+
+	ASSERT_EQ(0, ptrace(PTRACE_ATTACH, pid));
+	ASSERT_EQ(pid, waitpid(pid, NULL, 0));
+
+	/* Past here must not use ASSERT or child process is never killed. */
+
+	md.filter_off = 0;
+	errno = 0;
+	ret = ptrace(PTRACE_SECCOMP_GET_METADATA, pid, sizeof(md), &md);
+	EXPECT_EQ(sizeof(md), ret) {
+		if (errno == EINVAL)
+			XFAIL(goto skip, "Kernel does not support PTRACE_SECCOMP_GET_METADATA (missing CONFIG_CHECKPOINT_RESTORE?)");
+	}
+
+	EXPECT_EQ(md.flags, SECCOMP_FILTER_FLAG_LOG);
+	EXPECT_EQ(md.filter_off, 0);
+
+	md.filter_off = 1;
+	ret = ptrace(PTRACE_SECCOMP_GET_METADATA, pid, sizeof(md), &md);
+	EXPECT_EQ(sizeof(md), ret);
+	EXPECT_EQ(md.flags, 0);
+	EXPECT_EQ(md.filter_off, 1);
+
+skip:
+	ASSERT_EQ(0, kill(pid, SIGKILL));
 }
 
 /*

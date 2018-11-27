@@ -27,6 +27,14 @@ extern int pSeries_machine_check_exception(struct pt_regs *regs);
 
 #ifdef CONFIG_SMP
 extern void smp_init_pseries(void);
+
+/* Get state of physical CPU from query_cpu_stopped */
+int smp_query_cpu_stopped(unsigned int pcpu);
+#define QCSS_STOPPED 0
+#define QCSS_STOPPING 1
+#define QCSS_NOT_STOPPED 2
+#define QCSS_HARDWARE_ERROR -1
+#define QCSS_HARDWARE_BUSY -2
 #else
 static inline void smp_init_pseries(void) { };
 #endif
@@ -97,5 +105,9 @@ static inline unsigned long cmo_get_page_size(void)
 {
 	return CMO_PageSize;
 }
+
+int dlpar_workqueue_init(void);
+
+void pseries_setup_rfi_flush(void);
 
 #endif /* _PSERIES_PSERIES_H */

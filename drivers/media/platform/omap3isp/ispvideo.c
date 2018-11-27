@@ -1383,11 +1383,11 @@ static int isp_video_release(struct file *file)
 	return 0;
 }
 
-static unsigned int isp_video_poll(struct file *file, poll_table *wait)
+static __poll_t isp_video_poll(struct file *file, poll_table *wait)
 {
 	struct isp_video_fh *vfh = to_isp_video_fh(file->private_data);
 	struct isp_video *video = video_drvdata(file);
-	int ret;
+	__poll_t ret;
 
 	mutex_lock(&video->queue_lock);
 	ret = vb2_poll(&vfh->queue, file, wait);
@@ -1403,7 +1403,7 @@ static int isp_video_mmap(struct file *file, struct vm_area_struct *vma)
 	return vb2_mmap(&vfh->queue, vma);
 }
 
-static struct v4l2_file_operations isp_video_fops = {
+static const struct v4l2_file_operations isp_video_fops = {
 	.owner = THIS_MODULE,
 	.unlocked_ioctl = video_ioctl2,
 	.open = isp_video_open,

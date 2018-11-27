@@ -1399,7 +1399,7 @@ static int zynqmp_dp_connector_get_modes(struct drm_connector *connector)
 	if (!edid)
 		return 0;
 
-	drm_mode_connector_update_edid_property(connector, edid);
+	drm_connector_update_edid_property(connector, edid);
 	ret = drm_add_edid_modes(connector, edid);
 	kfree(edid);
 
@@ -1689,7 +1689,7 @@ int zynqmp_dp_bind(struct device *dev, struct device *master, void *data)
 
 	drm_connector_helper_add(connector, &zynqmp_dp_connector_helper_funcs);
 	drm_connector_register(connector);
-	drm_mode_connector_attach_encoder(connector, encoder);
+	drm_connector_attach_encoder(connector, encoder);
 	connector->dpms = DRM_MODE_DPMS_OFF;
 
 	dp->drm = drm;

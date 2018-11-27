@@ -19,6 +19,8 @@
 
 #include "xlnx_snd_common.h"
 
+#define DRV_NAME "xlnx_formatter_pcm"
+
 #define XLNX_S2MM_OFFSET	0
 #define XLNX_MM2S_OFFSET	0x100
 
@@ -363,8 +365,9 @@ static int xlnx_formatter_pcm_open(struct snd_pcm_substream *substream)
 	struct xlnx_pcm_stream_param *stream_data;
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct snd_soc_pcm_runtime *prtd = substream->private_data;
-	struct device *dev = prtd->platform->dev;
-	struct xlnx_pcm_drv_data *adata = dev_get_drvdata(dev);
+	struct snd_soc_component *component = snd_soc_rtdcom_lookup(prtd,
+								    DRV_NAME);
+	struct xlnx_pcm_drv_data *adata = dev_get_drvdata(component->dev);
 
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK &&
 	    !adata->mm2s_presence)
@@ -403,7 +406,8 @@ static int xlnx_formatter_pcm_open(struct snd_pcm_substream *substream)
 
 	stream_data->xfer_mode = (val & data_xfer_mode) >> data_xfer_shift;
 	stream_data->ch_limit = (val & ch_count_mask) >> ch_count_shift;
-	dev_info(dev, "stream %d : format = %d mode = %d ch_limit = %d\n",
+	dev_info(component->dev,
+		 "stream %d : format = %d mode = %d ch_limit = %d\n",
 		 substream->stream, stream_data->interleaved,
 		 stream_data->xfer_mode, stream_data->ch_limit);
 
@@ -414,7 +418,8 @@ static int xlnx_formatter_pcm_open(struct snd_pcm_substream *substream)
 	err = snd_pcm_hw_constraint_step(runtime, 0,
 					 SNDRV_PCM_HW_PARAM_PERIOD_BYTES, 64);
 	if (err) {
-		dev_err(dev, "unable to set constraint on period bytes\n");
+		dev_err(component->dev,
+			"unable to set constraint on period bytes\n");
 		return err;
 	}
 
@@ -473,8 +478,9 @@ static int xlnx_formatter_pcm_hw_params(struct snd_pcm_substream *substream,
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct xlnx_pcm_stream_param *stream_data = runtime->private_data;
 	struct snd_soc_pcm_runtime *prtd = substream->private_data;
-	struct device *dev = prtd->platform->dev;
-	struct xlnx_pcm_drv_data *adata = dev_get_drvdata(dev);
+	struct snd_soc_component *component = snd_soc_rtdcom_lookup(prtd,
+								    DRV_NAME);
+	struct xlnx_pcm_drv_data *adata = dev_get_drvdata(component->dev);
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
 
 	aes_params = kzalloc(sizeof(*aes_params), GFP_KERNEL);
@@ -510,7 +516,7 @@ static int xlnx_formatter_pcm_hw_params(struct snd_pcm_substream *substream,
 				status = parse_consumer_format(aes_reg1_val,
 							       aes_reg2_val,
 							       aes_params);
-			dev_info(dev, "rate = %d bit depth = %d ch = %d\n",
+			dev_info(component->dev, "rate = %d bit depth = %d ch = %d\n",
 				 aes_params->srate, aes_params->sig_bits,
 				 aes_params->channels);
 			kfree(aes_params);
@@ -601,8 +607,10 @@ static int xlnx_formatter_pcm_trigger(struct snd_pcm_substream *substream,
 
 static int xlnx_formatter_pcm_new(struct snd_soc_pcm_runtime *rtd)
 {
+	struct snd_soc_component *component = snd_soc_rtdcom_lookup(rtd,
+								    DRV_NAME);
 	return snd_pcm_lib_preallocate_pages_for_all(rtd->pcm,
-			SNDRV_DMA_TYPE_DEV, rtd->platform->dev,
+			SNDRV_DMA_TYPE_DEV, component->dev,
 			xlnx_pcm_hardware.buffer_bytes_max,
 			xlnx_pcm_hardware.buffer_bytes_max);
 }
@@ -617,7 +625,8 @@ static const struct snd_pcm_ops xlnx_formatter_pcm_ops = {
 	.pointer = xlnx_formatter_pcm_pointer,
 };
 
-static struct snd_soc_platform_driver xlnx_asoc_platform = {
+static struct snd_soc_component_driver xlnx_asoc_component = {
+	.name = DRV_NAME,
 	.ops = &xlnx_formatter_pcm_ops,
 	.pcm_new = xlnx_formatter_pcm_new,
 };
@@ -725,7 +734,8 @@ static int xlnx_formatter_pcm_probe(struct platform_device *pdev)
 
 	dev_set_drvdata(&pdev->dev, aud_drv_data);
 
-	ret = devm_snd_soc_register_platform(&pdev->dev, &xlnx_asoc_platform);
+	ret = devm_snd_soc_register_component(&pdev->dev, &xlnx_asoc_component,
+					      NULL, 0);
 	if (ret) {
 		dev_err(&pdev->dev, "pcm platform device register failed\n");
 		goto clk_err;
@@ -777,7 +787,7 @@ static struct platform_driver xlnx_formatter_pcm_driver = {
 	.probe	= xlnx_formatter_pcm_probe,
 	.remove	= xlnx_formatter_pcm_remove,
 	.driver	= {
-		.name	= "xlnx_formatter_pcm",
+		.name	= DRV_NAME,
 		.of_match_table	= xlnx_formatter_pcm_of_match,
 	},
 };

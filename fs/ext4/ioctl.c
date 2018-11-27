@@ -15,9 +15,11 @@
 #include <linux/mount.h>
 #include <linux/file.h>
 #include <linux/quotaops.h>
+#include <linux/random.h>
 #include <linux/uuid.h>
 #include <linux/uaccess.h>
 #include <linux/delay.h>
+#include <linux/iversion.h>
 #include "ext4_jbd2.h"
 #include "ext4.h"
 #include <linux/fsmap.h>
@@ -99,7 +101,6 @@ static long swap_inode_boot_loader(struct super_block *sb,
 	int err;
 	struct inode *inode_bl;
 	struct ext4_inode_info *ei_bl;
-	struct ext4_sb_info *sbi = EXT4_SB(sb);
 
 	if (inode->i_nlink != 1 || !S_ISREG(inode->i_mode))
 		return -EINVAL;
@@ -123,8 +124,6 @@ static long swap_inode_boot_loader(struct super_block *sb,
 	truncate_inode_pages(&inode_bl->i_data, 0);
 
 	/* Wait for all existing dio workers */
-	ext4_inode_block_unlocked_dio(inode);
-	ext4_inode_block_unlocked_dio(inode_bl);
 	inode_dio_wait(inode);
 	inode_dio_wait(inode_bl);
 
@@ -144,7 +143,7 @@ static long swap_inode_boot_loader(struct super_block *sb,
 		i_gid_write(inode_bl, 0);
 		inode_bl->i_flags = 0;
 		ei_bl->i_flags = 0;
-		inode_bl->i_version = 1;
+		inode_set_iversion(inode_bl, 1);
 		i_size_write(inode_bl, 0);
 		inode_bl->i_mode = S_IFREG;
 		if (ext4_has_feature_extents(sb)) {
@@ -158,10 +157,8 @@ static long swap_inode_boot_loader(struct super_block *sb,
 
 	inode->i_ctime = inode_bl->i_ctime = current_time(inode);
 
-	spin_lock(&sbi->s_next_gen_lock);
-	inode->i_generation = sbi->s_next_generation++;
-	inode_bl->i_generation = sbi->s_next_generation++;
-	spin_unlock(&sbi->s_next_gen_lock);
+	inode->i_generation = prandom_u32();
+	inode_bl->i_generation = prandom_u32();
 
 	ext4_discard_preallocations(inode);
 
@@ -187,8 +184,6 @@ static long swap_inode_boot_loader(struct super_block *sb,
 	ext4_double_up_write_data_sem(inode, inode_bl);
 
 journal_err_out:
-	ext4_inode_resume_unlocked_dio(inode);
-	ext4_inode_resume_unlocked_dio(inode_bl);
 	unlock_two_nondirectories(inode, inode_bl);
 	iput(inode_bl);
 	return err;
@@ -291,10 +286,20 @@ flags_err:
 	if (err)
 		goto flags_out;
 
-	if ((jflag ^ oldflags) & (EXT4_JOURNAL_DATA_FL))
+	if ((jflag ^ oldflags) & (EXT4_JOURNAL_DATA_FL)) {
+		/*
+		 * Changes to the journaling mode can cause unsafe changes to
+		 * S_DAX if we are using the DAX mount option.
+		 */
+		if (test_opt(inode->i_sb, DAX)) {
+			err = -EBUSY;
+			goto flags_out;
+		}
+
 		err = ext4_change_inode_journal_flag(inode, jflag);
-	if (err)
-		goto flags_out;
+		if (err)
+			goto flags_out;
+	}
 	if (migrate) {
 		if (flags & EXT4_EXTENTS_FL)
 			err = ext4_ext_migrate(inode);
@@ -472,6 +477,7 @@ static int ext4_shutdown(struct super_block *sb, unsigned long arg)
 		return 0;
 
 	ext4_msg(sb, KERN_ALERT, "shut down requested (%d)", flags);
+	trace_ext4_shutdown(sb, flags);
 
 	switch (flags) {
 	case EXT4_GOING_FLAGS_DEFAULT:
@@ -483,15 +489,13 @@ static int ext4_shutdown(struct super_block *sb, unsigned long arg)
 		set_bit(EXT4_FLAGS_SHUTDOWN, &sbi->s_ext4_flags);
 		if (sbi->s_journal && !is_journal_aborted(sbi->s_journal)) {
 			(void) ext4_force_commit(sb);
-			jbd2_journal_abort(sbi->s_journal, 0);
+			jbd2_journal_abort(sbi->s_journal, -ESHUTDOWN);
 		}
 		break;
 	case EXT4_GOING_FLAGS_NOLOGFLUSH:
 		set_bit(EXT4_FLAGS_SHUTDOWN, &sbi->s_ext4_flags);
-		if (sbi->s_journal && !is_journal_aborted(sbi->s_journal)) {
-			msleep(100);
-			jbd2_journal_abort(sbi->s_journal, 0);
-		}
+		if (sbi->s_journal && !is_journal_aborted(sbi->s_journal))
+			jbd2_journal_abort(sbi->s_journal, -ESHUTDOWN);
 		break;
 	default:
 		return -EINVAL;
@@ -582,6 +586,44 @@ static int ext4_ioc_getfsmap(struct super_block *sb,
 		return -EFAULT;
 
 	return 0;
+}
+
+static long ext4_ioctl_group_add(struct file *file,
+				 struct ext4_new_group_data *input)
+{
+	struct super_block *sb = file_inode(file)->i_sb;
+	int err, err2=0;
+
+	err = ext4_resize_begin(sb);
+	if (err)
+		return err;
+
+	if (ext4_has_feature_bigalloc(sb)) {
+		ext4_msg(sb, KERN_ERR,
+			 "Online resizing not supported with bigalloc");
+		err = -EOPNOTSUPP;
+		goto group_add_out;
+	}
+
+	err = mnt_want_write_file(file);
+	if (err)
+		goto group_add_out;
+
+	err = ext4_group_add(sb, input);
+	if (EXT4_SB(sb)->s_journal) {
+		jbd2_journal_lock_updates(EXT4_SB(sb)->s_journal);
+		err2 = jbd2_journal_flush(EXT4_SB(sb)->s_journal);
+		jbd2_journal_unlock_updates(EXT4_SB(sb)->s_journal);
+	}
+	if (err == 0)
+		err = err2;
+	mnt_drop_write_file(file);
+	if (!err && ext4_has_group_desc_csum(sb) &&
+	    test_opt(sb, INIT_INODE_TABLE))
+		err = ext4_register_li_request(sb, input->group);
+group_add_out:
+	ext4_resize_end(sb);
+	return err;
 }
 
 long ext4_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
@@ -768,44 +810,12 @@ mext_out:
 
 	case EXT4_IOC_GROUP_ADD: {
 		struct ext4_new_group_data input;
-		int err, err2=0;
-
-		err = ext4_resize_begin(sb);
-		if (err)
-			return err;
 
 		if (copy_from_user(&input, (struct ext4_new_group_input __user *)arg,
-				sizeof(input))) {
-			err = -EFAULT;
-			goto group_add_out;
-		}
+				sizeof(input)))
+			return -EFAULT;
 
-		if (ext4_has_feature_bigalloc(sb)) {
-			ext4_msg(sb, KERN_ERR,
-				 "Online resizing not supported with bigalloc");
-			err = -EOPNOTSUPP;
-			goto group_add_out;
-		}
-
-		err = mnt_want_write_file(filp);
-		if (err)
-			goto group_add_out;
-
-		err = ext4_group_add(sb, &input);
-		if (EXT4_SB(sb)->s_journal) {
-			jbd2_journal_lock_updates(EXT4_SB(sb)->s_journal);
-			err2 = jbd2_journal_flush(EXT4_SB(sb)->s_journal);
-			jbd2_journal_unlock_updates(EXT4_SB(sb)->s_journal);
-		}
-		if (err == 0)
-			err = err2;
-		mnt_drop_write_file(filp);
-		if (!err && ext4_has_group_desc_csum(sb) &&
-		    test_opt(sb, INIT_INODE_TABLE))
-			err = ext4_register_li_request(sb, input.group);
-group_add_out:
-		ext4_resize_end(sb);
-		return err;
+		return ext4_ioctl_group_add(filp, &input);
 	}
 
 	case EXT4_IOC_MIGRATE:
@@ -861,12 +871,6 @@ group_add_out:
 		ext4_fsblk_t n_blocks_count;
 		int err = 0, err2 = 0;
 		ext4_group_t o_group = EXT4_SB(sb)->s_groups_count;
-
-		if (ext4_has_feature_bigalloc(sb)) {
-			ext4_msg(sb, KERN_ERR,
-				 "Online resizing not (yet) supported with bigalloc");
-			return -EOPNOTSUPP;
-		}
 
 		if (copy_from_user(&n_blocks_count, (__u64 __user *)arg,
 				   sizeof(__u64))) {
@@ -1076,8 +1080,7 @@ long ext4_compat_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		break;
 	case EXT4_IOC32_GROUP_ADD: {
 		struct compat_ext4_new_group_input __user *uinput;
-		struct ext4_new_group_input input;
-		mm_segment_t old_fs;
+		struct ext4_new_group_data input;
 		int err;
 
 		uinput = compat_ptr(arg);
@@ -1090,12 +1093,7 @@ long ext4_compat_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 				&uinput->reserved_blocks);
 		if (err)
 			return -EFAULT;
-		old_fs = get_fs();
-		set_fs(KERNEL_DS);
-		err = ext4_ioctl(file, EXT4_IOC_GROUP_ADD,
-				 (unsigned long) &input);
-		set_fs(old_fs);
-		return err;
+		return ext4_ioctl_group_add(file, &input);
 	}
 	case EXT4_IOC_MOVE_EXT:
 	case EXT4_IOC_RESIZE_FS:

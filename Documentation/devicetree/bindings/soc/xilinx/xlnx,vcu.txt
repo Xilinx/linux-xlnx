@@ -48,7 +48,7 @@ Optional properties:
 Example:
 
 	xlnx_vcu: vcu@a0040000 {
-		compatible = "xlnx,vcu";
+		compatible = "xlnx,vcu-logicoreip-1.0";
 		#address-cells = <2>;
 		#size-cells = <2>;
 		reg = <0x0 0xa0040000 0x0 0x1000>,

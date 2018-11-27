@@ -1,18 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * as3935.c - Support for AS3935 Franklin lightning sensor
  *
- * Copyright (C) 2014 Matt Ranostay <mranostay@gmail.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
- * GNU General Public License for more details.
- *
+ * Copyright (C) 2014, 2017-2018
+ * Author: Matt Ranostay <matt.ranostay@konsulko.com>
  */
 
 #include <linux/module.h>
@@ -221,7 +212,6 @@ static int as3935_read_raw(struct iio_dev *indio_dev,
 }
 
 static const struct iio_info as3935_info = {
-	.driver_module = THIS_MODULE,
 	.attrs = &as3935_attribute_group,
 	.read_raw = &as3935_read_raw,
 };
@@ -247,7 +237,6 @@ err_read:
 }
 
 static const struct iio_trigger_ops iio_interrupt_trigger_ops = {
-	.owner = THIS_MODULE,
 };
 
 static void as3935_event_work(struct work_struct *work)
@@ -504,6 +493,6 @@ static struct spi_driver as3935_driver = {
 };
 module_spi_driver(as3935_driver);
 
-MODULE_AUTHOR("Matt Ranostay <mranostay@gmail.com>");
+MODULE_AUTHOR("Matt Ranostay <matt.ranostay@konsulko.com>");
 MODULE_DESCRIPTION("AS3935 lightning sensor");
 MODULE_LICENSE("GPL");

@@ -33,7 +33,7 @@ config E100
 	  to identify the adapter.
 
 	  More specific information on configuring the driver is in
-	  <file:Documentation/networking/e100.txt>.
+	  <file:Documentation/networking/e100.rst>.
 
 	  To compile this driver as a module, choose M here. The module
 	  will be called e100.
@@ -49,7 +49,7 @@ config E1000
 	  <http://support.intel.com>
 
 	  More specific information on configuring the driver is in
-	  <file:Documentation/networking/e1000.txt>.
+	  <file:Documentation/networking/e1000.rst>.
 
 	  To compile this driver as a module, choose M here. The module
 	  will be called e1000.
@@ -94,7 +94,7 @@ config IGB
 	  <http://support.intel.com>
 
 	  More specific information on configuring the driver is in
-	  <file:Documentation/networking/e1000.txt>.
+	  <file:Documentation/networking/e1000.rst>.
 
 	  To compile this driver as a module, choose M here. The module
 	  will be called igb.
@@ -130,7 +130,7 @@ config IGBVF
 	  <http://support.intel.com>
 
 	  More specific information on configuring the driver is in
-	  <file:Documentation/networking/e1000.txt>.
+	  <file:Documentation/networking/e1000.rst>.
 
 	  To compile this driver as a module, choose M here. The module
 	  will be called igbvf.
@@ -250,6 +250,20 @@ config I40EVF
 	  To compile this driver as a module, choose M here. The module
 	  will be called i40evf.  MSI-X interrupt support is required
 	  for this driver to work correctly.
+
+config ICE
+	tristate "Intel(R) Ethernet Connection E800 Series Support"
+	default n
+	depends on PCI_MSI
+	---help---
+	  This driver supports Intel(R) Ethernet Connection E800 Series of
+	  devices.  For more information on how to identify your adapter, go
+	  to the Adapter & Driver ID Guide that can be located at:
+
+	  <http://support.intel.com>
+
+	  To compile this driver as a module, choose M here. The module
+	  will be called ice.
 
 config FM10K
 	tristate "Intel(R) FM10000 Ethernet Switch Host Interface Support"

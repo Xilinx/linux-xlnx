@@ -30,79 +30,39 @@ struct drm_mode_fb_cmd2;
 
 /**
  * struct drm_format_info - information about a DRM format
+ * @format: 4CC format identifier (DRM_FORMAT_*)
+ * @depth: Color depth (number of bits per pixel excluding padding bits),
+ *	valid for a subset of RGB formats only. This is a legacy field, do not
+ *	use in new code and set to 0 for new formats.
+ * @num_planes: Number of color planes (1 to 3)
+ * @cpp: Number of bytes per pixel (per plane)
+ * @pixels_per_macropixel:
+ * Number of pixels per macro-pixel (per plane). A macro-pixel is
+ * composed of multiple pixels, and there can be extra bits between
+ * pixels. This must be used along with @bytes_per_macropixel, only
+ * when single pixel size is not byte-aligned. In this case, @cpp
+ * is not valid and should be 0.
+ * @bytes_per_macropixel:
+ * Number of bytes per macro-pixel (per plane). A macro-pixel is
+ * composed of multiple pixels. The size of single macro-pixel should
+ * be byte-aligned. This should be used with @pixels_per_macropixel,
+ * and @cpp should be 0.
+ * @hsub: Horizontal chroma subsampling factor
+ * @vsub: Vertical chroma subsampling factor
+ * @has_alpha: Does the format embeds an alpha component?
+ * @is_yuv: Is it a YUV format?
  */
 struct drm_format_info {
-	/**
-	 * @format:
-	 *
-	 * 4CC format identifier (DRM_FORMAT_*)
-	 */
 	u32 format;
-
-	/**
-	 * @depth:
-	 *
-	 * Color depth (number of bits per pixel excluding padding bits),
-	 * valid for a subset of RGB formats only. This is a legacy field,
-	 * do not use in new code and set to 0 for new formats.
-	 */
 	u8 depth;
-
-	/**
-	 * @num_planes:
-	 *
-	 * Number of color planes (1 to 3)
-	 */
 	u8 num_planes;
-
-	/**
-	 * @cpp:
-	 *
-	 * Number of bytes per pixel (per plane). @cpp shouldn't be used when
-	 * @pixels_per_macropixel and @bytes_per_macropixel are used.
-	 */
 	u8 cpp[3];
-
-	/**
-	 * @pixels_per_macropixel:
-	 *
-	 * Number of pixels per macro-pixel (per plane). A macro-pixel is
-	 * composed of multiple pixels, and there can be extra bits between
-	 * pixels. This must be used along with @bytes_per_macropixel, only
-	 * when single pixel size is not byte-aligned. In this case, @cpp
-	 * is not valid and should be 0.
-	 */
 	u8 pixels_per_macropixel[3];
-
-	/**
-	 * @bytes_per_macropixel:
-	 *
-	 * Number of bytes per macro-pixel (per plane). A macro-pixel is
-	 * composed of multiple pixels. The size of single macro-pixel should
-	 * be byte-aligned. This should be used with @pixels_per_macropixel,
-	 * and @cpp should be 0.
-	 */
 	u8 bytes_per_macropixel[3];
-
-	/**
-	 * @hsub:
-	 *
-	 * Horizontal chroma subsampling factor
-	 */
 	u8 hsub;
-
-	/**
-	 * @vsub:
-	 *
-	 * Vertical chroma subsampling factor
-	 */
 	u8 vsub;
-	/**
-	 * @has_alpha:
-	 *
-	 * Does the format embed an alpha component?
-	 */
 	bool has_alpha;
+	bool is_yuv;
 };
 
 /**

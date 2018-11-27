@@ -25,14 +25,16 @@
 #include <linux/spinlock.h>
 #include <linux/bootmem.h>
 #include <linux/ioport.h>
-#include <linux/init.h>
 #include <linux/mc146818rtc.h>
 #include <linux/efi.h>
+#include <linux/export.h>
 #include <linux/uaccess.h>
 #include <linux/io.h>
 #include <linux/reboot.h>
 #include <linux/slab.h>
 #include <linux/ucs2_string.h>
+#include <linux/mem_encrypt.h>
+#include <linux/sched/task.h>
 
 #include <asm/setup.h>
 #include <asm/page.h>
@@ -81,9 +83,8 @@ pgd_t * __init efi_call_phys_prolog(void)
 	int n_pgds, i, j;
 
 	if (!efi_enabled(EFI_OLD_MEMMAP)) {
-		save_pgd = (pgd_t *)__read_cr3();
-		write_cr3((unsigned long)efi_scratch.efi_pgt);
-		goto out;
+		efi_switch_mm(&efi_mm);
+		return NULL;
 	}
 
 	early_code_mapping_set_exec(1);
@@ -134,7 +135,9 @@ pgd_t * __init efi_call_phys_prolog(void)
 				pud[j] = *pud_offset(p4d_k, vaddr);
 			}
 		}
+		pgd_offset_k(pgd * PGDIR_SIZE)->pgd &= ~_PAGE_NX;
 	}
+
 out:
 	__flush_tlb_all();
 
@@ -153,8 +156,7 @@ void __init efi_call_phys_epilog(pgd_t *save_pgd)
 	pud_t *pud;
 
 	if (!efi_enabled(EFI_OLD_MEMMAP)) {
-		write_cr3((unsigned long)save_pgd);
-		__flush_tlb_all();
+		efi_switch_mm(efi_scratch.prev_mm);
 		return;
 	}
 
@@ -164,14 +166,14 @@ void __init efi_call_phys_epilog(pgd_t *save_pgd)
 		pgd = pgd_offset_k(pgd_idx * PGDIR_SIZE);
 		set_pgd(pgd_offset_k(pgd_idx * PGDIR_SIZE), save_pgd[pgd_idx]);
 
-		if (!(pgd_val(*pgd) & _PAGE_PRESENT))
+		if (!pgd_present(*pgd))
 			continue;
 
 		for (i = 0; i < PTRS_PER_P4D; i++) {
 			p4d = p4d_offset(pgd,
 					 pgd_idx * PGDIR_SIZE + i * P4D_SIZE);
 
-			if (!(p4d_val(*p4d) & _PAGE_PRESENT))
+			if (!p4d_present(*p4d))
 				continue;
 
 			pud = (pud_t *)p4d_page_vaddr(*p4d);
@@ -188,17 +190,20 @@ void __init efi_call_phys_epilog(pgd_t *save_pgd)
 	early_code_mapping_set_exec(0);
 }
 
-static pgd_t *efi_pgd;
+EXPORT_SYMBOL_GPL(efi_mm);
 
 /*
  * We need our own copy of the higher levels of the page tables
  * because we want to avoid inserting EFI region mappings (EFI_VA_END
  * to EFI_VA_START) into the standard kernel page tables. Everything
  * else can be shared, see efi_sync_low_kernel_mappings().
+ *
+ * We don't want the pgd on the pgd_list and cannot use pgd_alloc() for the
+ * allocation.
  */
 int __init efi_alloc_page_tables(void)
 {
-	pgd_t *pgd;
+	pgd_t *pgd, *efi_pgd;
 	p4d_t *p4d;
 	pud_t *pud;
 	gfp_t gfp_mask;
@@ -206,8 +211,8 @@ int __init efi_alloc_page_tables(void)
 	if (efi_enabled(EFI_OLD_MEMMAP))
 		return 0;
 
-	gfp_mask = GFP_KERNEL | __GFP_NOTRACK | __GFP_ZERO;
-	efi_pgd = (pgd_t *)__get_free_page(gfp_mask);
+	gfp_mask = GFP_KERNEL | __GFP_ZERO;
+	efi_pgd = (pgd_t *)__get_free_pages(gfp_mask, PGD_ALLOCATION_ORDER);
 	if (!efi_pgd)
 		return -ENOMEM;
 
@@ -220,11 +225,15 @@ int __init efi_alloc_page_tables(void)
 
 	pud = pud_alloc(&init_mm, p4d, EFI_VA_END);
 	if (!pud) {
-		if (CONFIG_PGTABLE_LEVELS > 4)
+		if (pgtable_l5_enabled())
 			free_page((unsigned long) pgd_page_vaddr(*pgd));
-		free_page((unsigned long)efi_pgd);
+		free_pages((unsigned long)efi_pgd, PGD_ALLOCATION_ORDER);
 		return -ENOMEM;
 	}
+
+	efi_mm.pgd = efi_pgd;
+	mm_init_cpumask(&efi_mm);
+	init_new_context(NULL, &efi_mm);
 
 	return 0;
 }
@@ -238,6 +247,7 @@ void efi_sync_low_kernel_mappings(void)
 	pgd_t *pgd_k, *pgd_efi;
 	p4d_t *p4d_k, *p4d_efi;
 	pud_t *pud_k, *pud_efi;
+	pgd_t *efi_pgd = efi_mm.pgd;
 
 	if (efi_enabled(EFI_OLD_MEMMAP))
 		return;
@@ -250,8 +260,8 @@ void efi_sync_low_kernel_mappings(void)
 	 * only span a single PGD entry and that the entry also maps
 	 * other important kernel regions.
 	 */
-	BUILD_BUG_ON(pgd_index(EFI_VA_END) != pgd_index(MODULES_END));
-	BUILD_BUG_ON((EFI_VA_START & PGDIR_MASK) !=
+	MAYBE_BUILD_BUG_ON(pgd_index(EFI_VA_END) != pgd_index(MODULES_END));
+	MAYBE_BUILD_BUG_ON((EFI_VA_START & PGDIR_MASK) !=
 			(EFI_VA_END & PGDIR_MASK));
 
 	pgd_efi = efi_pgd + pgd_index(PAGE_OFFSET);
@@ -331,18 +341,10 @@ int __init efi_setup_page_tables(unsigned long pa_memmap, unsigned num_pages)
 	unsigned long pfn, text, pf;
 	struct page *page;
 	unsigned npages;
-	pgd_t *pgd;
+	pgd_t *pgd = efi_mm.pgd;
 
 	if (efi_enabled(EFI_OLD_MEMMAP))
 		return 0;
-
-	/*
-	 * Since the PGD is encrypted, set the encryption mask so that when
-	 * this value is loaded into cr3 the PGD will be decrypted during
-	 * the pagetable walk.
-	 */
-	efi_scratch.efi_pgt = (pgd_t *)__sme_pa(efi_pgd);
-	pgd = efi_pgd;
 
 	/*
 	 * It can happen that the physical address of new_memmap lands in memory
@@ -357,8 +359,6 @@ int __init efi_setup_page_tables(unsigned long pa_memmap, unsigned num_pages)
 		return 1;
 	}
 
-	efi_scratch.use_pgd = true;
-
 	/*
 	 * Certain firmware versions are way too sentimential and still believe
 	 * they are exclusive and unquestionable owners of the first physical page,
@@ -370,7 +370,11 @@ int __init efi_setup_page_tables(unsigned long pa_memmap, unsigned num_pages)
 	 * as trim_bios_range() will reserve the first page and isolate it away
 	 * from memory allocators anyway.
 	 */
-	if (kernel_map_pages_in_pgd(pgd, 0x0, 0x0, 1, _PAGE_RW)) {
+	pf = _PAGE_RW;
+	if (sev_active())
+		pf |= _PAGE_ENC;
+
+	if (kernel_map_pages_in_pgd(pgd, 0x0, 0x0, 1, pf)) {
 		pr_err("Failed to create 1:1 mapping for the first page!\n");
 		return 1;
 	}
@@ -408,10 +412,13 @@ static void __init __map_region(efi_memory_desc_t *md, u64 va)
 {
 	unsigned long flags = _PAGE_RW;
 	unsigned long pfn;
-	pgd_t *pgd = efi_pgd;
+	pgd_t *pgd = efi_mm.pgd;
 
 	if (!(md->attribute & EFI_MEMORY_WB))
 		flags |= _PAGE_PCD;
+
+	if (sev_active() && md->type != EFI_MEMORY_MAPPED_IO)
+		flags |= _PAGE_ENC;
 
 	pfn = md->phys_addr >> PAGE_SHIFT;
 	if (kernel_map_pages_in_pgd(pgd, pfn, va, md->num_pages, flags))
@@ -509,7 +516,7 @@ void __init parse_efi_setup(u64 phys_addr, u32 data_len)
 static int __init efi_update_mappings(efi_memory_desc_t *md, unsigned long pf)
 {
 	unsigned long pfn;
-	pgd_t *pgd = efi_pgd;
+	pgd_t *pgd = efi_mm.pgd;
 	int err1, err2;
 
 	/* Update the 1:1 mapping */
@@ -538,6 +545,9 @@ static int __init efi_update_mem_attr(struct mm_struct *mm, efi_memory_desc_t *m
 
 	if (!(md->attribute & EFI_MEMORY_RO))
 		pf |= _PAGE_RW;
+
+	if (sev_active())
+		pf |= _PAGE_ENC;
 
 	return efi_update_mappings(md, pf);
 }
@@ -590,6 +600,9 @@ void __init efi_runtime_update_mappings(void)
 			(md->type != EFI_RUNTIME_SERVICES_CODE))
 			pf |= _PAGE_RW;
 
+		if (sev_active())
+			pf |= _PAGE_ENC;
+
 		efi_update_mappings(md, pf);
 	}
 }
@@ -600,12 +613,30 @@ void __init efi_dump_pagetable(void)
 	if (efi_enabled(EFI_OLD_MEMMAP))
 		ptdump_walk_pgd_level(NULL, swapper_pg_dir);
 	else
-		ptdump_walk_pgd_level(NULL, efi_pgd);
+		ptdump_walk_pgd_level(NULL, efi_mm.pgd);
 #endif
+}
+
+/*
+ * Makes the calling thread switch to/from efi_mm context. Can be used
+ * for SetVirtualAddressMap() i.e. current->active_mm == init_mm as well
+ * as during efi runtime calls i.e current->active_mm == current_mm.
+ * We are not mm_dropping()/mm_grabbing() any mm, because we are not
+ * losing/creating any references.
+ */
+void efi_switch_mm(struct mm_struct *mm)
+{
+	task_lock(current);
+	efi_scratch.prev_mm = current->active_mm;
+	current->active_mm = mm;
+	switch_mm(efi_scratch.prev_mm, mm, NULL);
+	task_unlock(current);
 }
 
 #ifdef CONFIG_EFI_MIXED
 extern efi_status_t efi64_thunk(u32, ...);
+
+static DEFINE_SPINLOCK(efi_runtime_lock);
 
 #define runtime_service32(func)						 \
 ({									 \
@@ -628,17 +659,14 @@ extern efi_status_t efi64_thunk(u32, ...);
 #define efi_thunk(f, ...)						\
 ({									\
 	efi_status_t __s;						\
-	unsigned long __flags;						\
 	u32 __func;							\
 									\
-	local_irq_save(__flags);					\
 	arch_efi_call_virt_setup();					\
 									\
 	__func = runtime_service32(f);					\
 	__s = efi64_thunk(__func, __VA_ARGS__);				\
 									\
 	arch_efi_call_virt_teardown();					\
-	local_irq_restore(__flags);					\
 									\
 	__s;								\
 })
@@ -657,16 +685,13 @@ efi_status_t efi_thunk_set_virtual_address_map(
 	efi_sync_low_kernel_mappings();
 	local_irq_save(flags);
 
-	efi_scratch.prev_cr3 = __read_cr3();
-	write_cr3((unsigned long)efi_scratch.efi_pgt);
-	__flush_tlb_all();
+	efi_switch_mm(&efi_mm);
 
 	func = (u32)(unsigned long)phys_set_virtual_address_map;
 	status = efi64_thunk(func, memory_map_size, descriptor_size,
 			     descriptor_version, virtual_map);
 
-	write_cr3(efi_scratch.prev_cr3);
-	__flush_tlb_all();
+	efi_switch_mm(efi_scratch.prev_mm);
 	local_irq_restore(flags);
 
 	return status;
@@ -676,14 +701,17 @@ static efi_status_t efi_thunk_get_time(efi_time_t *tm, efi_time_cap_t *tc)
 {
 	efi_status_t status;
 	u32 phys_tm, phys_tc;
+	unsigned long flags;
 
 	spin_lock(&rtc_lock);
+	spin_lock_irqsave(&efi_runtime_lock, flags);
 
 	phys_tm = virt_to_phys_or_null(tm);
 	phys_tc = virt_to_phys_or_null(tc);
 
 	status = efi_thunk(get_time, phys_tm, phys_tc);
 
+	spin_unlock_irqrestore(&efi_runtime_lock, flags);
 	spin_unlock(&rtc_lock);
 
 	return status;
@@ -693,13 +721,16 @@ static efi_status_t efi_thunk_set_time(efi_time_t *tm)
 {
 	efi_status_t status;
 	u32 phys_tm;
+	unsigned long flags;
 
 	spin_lock(&rtc_lock);
+	spin_lock_irqsave(&efi_runtime_lock, flags);
 
 	phys_tm = virt_to_phys_or_null(tm);
 
 	status = efi_thunk(set_time, phys_tm);
 
+	spin_unlock_irqrestore(&efi_runtime_lock, flags);
 	spin_unlock(&rtc_lock);
 
 	return status;
@@ -711,8 +742,10 @@ efi_thunk_get_wakeup_time(efi_bool_t *enabled, efi_bool_t *pending,
 {
 	efi_status_t status;
 	u32 phys_enabled, phys_pending, phys_tm;
+	unsigned long flags;
 
 	spin_lock(&rtc_lock);
+	spin_lock_irqsave(&efi_runtime_lock, flags);
 
 	phys_enabled = virt_to_phys_or_null(enabled);
 	phys_pending = virt_to_phys_or_null(pending);
@@ -721,6 +754,7 @@ efi_thunk_get_wakeup_time(efi_bool_t *enabled, efi_bool_t *pending,
 	status = efi_thunk(get_wakeup_time, phys_enabled,
 			     phys_pending, phys_tm);
 
+	spin_unlock_irqrestore(&efi_runtime_lock, flags);
 	spin_unlock(&rtc_lock);
 
 	return status;
@@ -731,13 +765,16 @@ efi_thunk_set_wakeup_time(efi_bool_t enabled, efi_time_t *tm)
 {
 	efi_status_t status;
 	u32 phys_tm;
+	unsigned long flags;
 
 	spin_lock(&rtc_lock);
+	spin_lock_irqsave(&efi_runtime_lock, flags);
 
 	phys_tm = virt_to_phys_or_null(tm);
 
 	status = efi_thunk(set_wakeup_time, enabled, phys_tm);
 
+	spin_unlock_irqrestore(&efi_runtime_lock, flags);
 	spin_unlock(&rtc_lock);
 
 	return status;
@@ -755,6 +792,9 @@ efi_thunk_get_variable(efi_char16_t *name, efi_guid_t *vendor,
 	efi_status_t status;
 	u32 phys_name, phys_vendor, phys_attr;
 	u32 phys_data_size, phys_data;
+	unsigned long flags;
+
+	spin_lock_irqsave(&efi_runtime_lock, flags);
 
 	phys_data_size = virt_to_phys_or_null(data_size);
 	phys_vendor = virt_to_phys_or_null(vendor);
@@ -765,6 +805,8 @@ efi_thunk_get_variable(efi_char16_t *name, efi_guid_t *vendor,
 	status = efi_thunk(get_variable, phys_name, phys_vendor,
 			   phys_attr, phys_data_size, phys_data);
 
+	spin_unlock_irqrestore(&efi_runtime_lock, flags);
+
 	return status;
 }
 
@@ -774,6 +816,9 @@ efi_thunk_set_variable(efi_char16_t *name, efi_guid_t *vendor,
 {
 	u32 phys_name, phys_vendor, phys_data;
 	efi_status_t status;
+	unsigned long flags;
+
+	spin_lock_irqsave(&efi_runtime_lock, flags);
 
 	phys_name = virt_to_phys_or_null_size(name, efi_name_size(name));
 	phys_vendor = virt_to_phys_or_null(vendor);
@@ -782,6 +827,33 @@ efi_thunk_set_variable(efi_char16_t *name, efi_guid_t *vendor,
 	/* If data_size is > sizeof(u32) we've got problems */
 	status = efi_thunk(set_variable, phys_name, phys_vendor,
 			   attr, data_size, phys_data);
+
+	spin_unlock_irqrestore(&efi_runtime_lock, flags);
+
+	return status;
+}
+
+static efi_status_t
+efi_thunk_set_variable_nonblocking(efi_char16_t *name, efi_guid_t *vendor,
+				   u32 attr, unsigned long data_size,
+				   void *data)
+{
+	u32 phys_name, phys_vendor, phys_data;
+	efi_status_t status;
+	unsigned long flags;
+
+	if (!spin_trylock_irqsave(&efi_runtime_lock, flags))
+		return EFI_NOT_READY;
+
+	phys_name = virt_to_phys_or_null_size(name, efi_name_size(name));
+	phys_vendor = virt_to_phys_or_null(vendor);
+	phys_data = virt_to_phys_or_null_size(data, data_size);
+
+	/* If data_size is > sizeof(u32) we've got problems */
+	status = efi_thunk(set_variable, phys_name, phys_vendor,
+			   attr, data_size, phys_data);
+
+	spin_unlock_irqrestore(&efi_runtime_lock, flags);
 
 	return status;
 }
@@ -793,6 +865,9 @@ efi_thunk_get_next_variable(unsigned long *name_size,
 {
 	efi_status_t status;
 	u32 phys_name_size, phys_name, phys_vendor;
+	unsigned long flags;
+
+	spin_lock_irqsave(&efi_runtime_lock, flags);
 
 	phys_name_size = virt_to_phys_or_null(name_size);
 	phys_vendor = virt_to_phys_or_null(vendor);
@@ -800,6 +875,8 @@ efi_thunk_get_next_variable(unsigned long *name_size,
 
 	status = efi_thunk(get_next_variable, phys_name_size,
 			   phys_name, phys_vendor);
+
+	spin_unlock_irqrestore(&efi_runtime_lock, flags);
 
 	return status;
 }
@@ -809,9 +886,14 @@ efi_thunk_get_next_high_mono_count(u32 *count)
 {
 	efi_status_t status;
 	u32 phys_count;
+	unsigned long flags;
+
+	spin_lock_irqsave(&efi_runtime_lock, flags);
 
 	phys_count = virt_to_phys_or_null(count);
 	status = efi_thunk(get_next_high_mono_count, phys_count);
+
+	spin_unlock_irqrestore(&efi_runtime_lock, flags);
 
 	return status;
 }
@@ -821,10 +903,15 @@ efi_thunk_reset_system(int reset_type, efi_status_t status,
 		       unsigned long data_size, efi_char16_t *data)
 {
 	u32 phys_data;
+	unsigned long flags;
+
+	spin_lock_irqsave(&efi_runtime_lock, flags);
 
 	phys_data = virt_to_phys_or_null_size(data, data_size);
 
 	efi_thunk(reset_system, reset_type, status, data_size, phys_data);
+
+	spin_unlock_irqrestore(&efi_runtime_lock, flags);
 }
 
 static efi_status_t
@@ -846,9 +933,12 @@ efi_thunk_query_variable_info(u32 attr, u64 *storage_space,
 {
 	efi_status_t status;
 	u32 phys_storage, phys_remaining, phys_max;
+	unsigned long flags;
 
 	if (efi.runtime_version < EFI_2_00_SYSTEM_TABLE_REVISION)
 		return EFI_UNSUPPORTED;
+
+	spin_lock_irqsave(&efi_runtime_lock, flags);
 
 	phys_storage = virt_to_phys_or_null(storage_space);
 	phys_remaining = virt_to_phys_or_null(remaining_space);
@@ -856,6 +946,35 @@ efi_thunk_query_variable_info(u32 attr, u64 *storage_space,
 
 	status = efi_thunk(query_variable_info, attr, phys_storage,
 			   phys_remaining, phys_max);
+
+	spin_unlock_irqrestore(&efi_runtime_lock, flags);
+
+	return status;
+}
+
+static efi_status_t
+efi_thunk_query_variable_info_nonblocking(u32 attr, u64 *storage_space,
+					  u64 *remaining_space,
+					  u64 *max_variable_size)
+{
+	efi_status_t status;
+	u32 phys_storage, phys_remaining, phys_max;
+	unsigned long flags;
+
+	if (efi.runtime_version < EFI_2_00_SYSTEM_TABLE_REVISION)
+		return EFI_UNSUPPORTED;
+
+	if (!spin_trylock_irqsave(&efi_runtime_lock, flags))
+		return EFI_NOT_READY;
+
+	phys_storage = virt_to_phys_or_null(storage_space);
+	phys_remaining = virt_to_phys_or_null(remaining_space);
+	phys_max = virt_to_phys_or_null(max_variable_size);
+
+	status = efi_thunk(query_variable_info, attr, phys_storage,
+			   phys_remaining, phys_max);
+
+	spin_unlock_irqrestore(&efi_runtime_lock, flags);
 
 	return status;
 }
@@ -882,9 +1001,11 @@ void efi_thunk_runtime_setup(void)
 	efi.get_variable = efi_thunk_get_variable;
 	efi.get_next_variable = efi_thunk_get_next_variable;
 	efi.set_variable = efi_thunk_set_variable;
+	efi.set_variable_nonblocking = efi_thunk_set_variable_nonblocking;
 	efi.get_next_high_mono_count = efi_thunk_get_next_high_mono_count;
 	efi.reset_system = efi_thunk_reset_system;
 	efi.query_variable_info = efi_thunk_query_variable_info;
+	efi.query_variable_info_nonblocking = efi_thunk_query_variable_info_nonblocking;
 	efi.update_capsule = efi_thunk_update_capsule;
 	efi.query_capsule_caps = efi_thunk_query_capsule_caps;
 }

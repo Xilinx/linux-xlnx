@@ -52,12 +52,12 @@ struct dmz_target {
 	struct dmz_reclaim	*reclaim;
 
 	/* For chunk work */
-	struct mutex		chunk_lock;
 	struct radix_tree_root	chunk_rxtree;
 	struct workqueue_struct *chunk_wq;
+	struct mutex		chunk_lock;
 
 	/* For cloned BIOs to zones */
-	struct bio_set		*bio_set;
+	struct bio_set		bio_set;
 
 	/* For flush */
 	spinlock_t		flush_lock;
@@ -121,7 +121,7 @@ static int dmz_submit_read_bio(struct dmz_target *dmz, struct dm_zone *zone,
 	}
 
 	/* Partial BIO: we need to clone the BIO */
-	clone = bio_clone_fast(bio, GFP_NOIO, dmz->bio_set);
+	clone = bio_clone_fast(bio, GFP_NOIO, &dmz->bio_set);
 	if (!clone)
 		return -ENOMEM;
 
@@ -660,6 +660,7 @@ static int dmz_get_zoned_device(struct dm_target *ti, char *path)
 	struct dmz_target *dmz = ti->private;
 	struct request_queue *q;
 	struct dmz_dev *dev;
+	sector_t aligned_capacity;
 	int ret;
 
 	/* Get the target device */
@@ -685,15 +686,17 @@ static int dmz_get_zoned_device(struct dm_target *ti, char *path)
 		goto err;
 	}
 
+	q = bdev_get_queue(dev->bdev);
 	dev->capacity = i_size_read(dev->bdev->bd_inode) >> SECTOR_SHIFT;
-	if (ti->begin || (ti->len != dev->capacity)) {
+	aligned_capacity = dev->capacity & ~(blk_queue_zone_sectors(q) - 1);
+	if (ti->begin ||
+	    ((ti->len != dev->capacity) && (ti->len != aligned_capacity))) {
 		ti->error = "Partial mapping not supported";
 		ret = -EINVAL;
 		goto err;
 	}
 
-	q = bdev_get_queue(dev->bdev);
-	dev->zone_nr_sectors = q->limits.chunk_sectors;
+	dev->zone_nr_sectors = blk_queue_zone_sectors(q);
 	dev->zone_nr_sectors_shift = ilog2(dev->zone_nr_sectors);
 
 	dev->zone_nr_blocks = dmz_sect2blk(dev->zone_nr_sectors);
@@ -776,16 +779,15 @@ static int dmz_ctr(struct dm_target *ti, unsigned int argc, char **argv)
 	ti->len = (sector_t)dmz_nr_chunks(dmz->metadata) << dev->zone_nr_sectors_shift;
 
 	/* Zone BIO */
-	dmz->bio_set = bioset_create(DMZ_MIN_BIOS, 0, 0);
-	if (!dmz->bio_set) {
+	ret = bioset_init(&dmz->bio_set, DMZ_MIN_BIOS, 0, 0);
+	if (ret) {
 		ti->error = "Create BIO set failed";
-		ret = -ENOMEM;
 		goto err_meta;
 	}
 
 	/* Chunk BIO work */
 	mutex_init(&dmz->chunk_lock);
-	INIT_RADIX_TREE(&dmz->chunk_rxtree, GFP_KERNEL);
+	INIT_RADIX_TREE(&dmz->chunk_rxtree, GFP_NOIO);
 	dmz->chunk_wq = alloc_workqueue("dmz_cwq_%s", WQ_MEM_RECLAIM | WQ_UNBOUND,
 					0, dev->name);
 	if (!dmz->chunk_wq) {
@@ -824,7 +826,8 @@ err_fwq:
 err_cwq:
 	destroy_workqueue(dmz->chunk_wq);
 err_bio:
-	bioset_free(dmz->bio_set);
+	mutex_destroy(&dmz->chunk_lock);
+	bioset_exit(&dmz->bio_set);
 err_meta:
 	dmz_dtr_metadata(dmz->metadata);
 err_dev:
@@ -854,9 +857,11 @@ static void dmz_dtr(struct dm_target *ti)
 
 	dmz_dtr_metadata(dmz->metadata);
 
-	bioset_free(dmz->bio_set);
+	bioset_exit(&dmz->bio_set);
 
 	dmz_put_zoned_device(ti);
+
+	mutex_destroy(&dmz->chunk_lock);
 
 	kfree(dmz);
 }
@@ -892,8 +897,7 @@ static void dmz_io_hints(struct dm_target *ti, struct queue_limits *limits)
 /*
  * Pass on ioctl to the backend device.
  */
-static int dmz_prepare_ioctl(struct dm_target *ti,
-			     struct block_device **bdev, fmode_t *mode)
+static int dmz_prepare_ioctl(struct dm_target *ti, struct block_device **bdev)
 {
 	struct dmz_target *dmz = ti->private;
 
@@ -929,8 +933,10 @@ static int dmz_iterate_devices(struct dm_target *ti,
 			       iterate_devices_callout_fn fn, void *data)
 {
 	struct dmz_target *dmz = ti->private;
+	struct dmz_dev *dev = dmz->dev;
+	sector_t capacity = dev->capacity & ~(dev->zone_nr_sectors - 1);
 
-	return fn(ti, dmz->ddev, 0, dmz->dev->capacity, data);
+	return fn(ti, dmz->ddev, 0, capacity, data);
 }
 
 static struct target_type dmz_type = {

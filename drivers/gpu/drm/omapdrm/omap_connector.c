@@ -1,7 +1,5 @@
 /*
- * drivers/gpu/drm/omapdrm/omap_connector.c
- *
- * Copyright (C) 2011 Texas Instruments
+ * Copyright (C) 2011 Texas Instruments Incorporated - http://www.ti.com/
  * Author: Rob Clark <rob@ti.com>
  *
  * This program is free software; you can redistribute it and/or modify it
@@ -123,16 +121,19 @@ static int omap_connector_get_modes(struct drm_connector *connector)
 	if (dssdrv->read_edid) {
 		void *edid = kzalloc(MAX_EDID, GFP_KERNEL);
 
+		if (!edid)
+			return 0;
+
 		if ((dssdrv->read_edid(dssdev, edid, MAX_EDID) > 0) &&
 				drm_edid_is_valid(edid)) {
-			drm_mode_connector_update_edid_property(
+			drm_connector_update_edid_property(
 					connector, edid);
 			n = drm_add_edid_modes(connector, edid);
 
 			omap_connector->hdmi_mode =
 				drm_detect_hdmi_monitor(edid);
 		} else {
-			drm_mode_connector_update_edid_property(
+			drm_connector_update_edid_property(
 					connector, NULL);
 		}
 
@@ -141,6 +142,9 @@ static int omap_connector_get_modes(struct drm_connector *connector)
 		struct drm_display_mode *mode = drm_mode_create(dev);
 		struct videomode vm = {0};
 
+		if (!mode)
+			return 0;
+
 		dssdrv->get_timings(dssdev, &vm);
 
 		drm_display_mode_from_videomode(&vm, mode);
@@ -148,6 +152,12 @@ static int omap_connector_get_modes(struct drm_connector *connector)
 		mode->type = DRM_MODE_TYPE_DRIVER | DRM_MODE_TYPE_PREFERRED;
 		drm_mode_set_name(mode);
 		drm_mode_probed_add(connector, mode);
+
+		if (dssdrv->get_size) {
+			dssdrv->get_size(dssdev,
+					 &connector->display_info.width_mm,
+					 &connector->display_info.height_mm);
+		}
 
 		n = 1;
 	}
@@ -196,6 +206,10 @@ static int omap_connector_mode_valid(struct drm_connector *connector,
 	if (!r) {
 		/* check if vrefresh is still valid */
 		new_mode = drm_mode_duplicate(dev, mode);
+
+		if (!new_mode)
+			return MODE_BAD;
+
 		new_mode->clock = vm.pixelclock / 1000;
 		new_mode->vrefresh = 0;
 		if (mode->vrefresh == drm_mode_vrefresh(new_mode))

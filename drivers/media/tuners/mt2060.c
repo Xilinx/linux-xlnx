@@ -23,7 +23,7 @@
 #include <linux/i2c.h>
 #include <linux/slab.h>
 
-#include "dvb_frontend.h"
+#include <media/dvb_frontend.h>
 
 #include "mt2060.h"
 #include "mt2060_priv.h"
@@ -395,10 +395,10 @@ static void mt2060_release(struct dvb_frontend *fe)
 
 static const struct dvb_tuner_ops mt2060_tuner_ops = {
 	.info = {
-		.name           = "Microtune MT2060",
-		.frequency_min  =  48000000,
-		.frequency_max  = 860000000,
-		.frequency_step =     50000,
+		.name              = "Microtune MT2060",
+		.frequency_min_hz  =  48 * MHz,
+		.frequency_max_hz  = 860 * MHz,
+		.frequency_step_hz =  50 * kHz,
 	},
 
 	.release       = mt2060_release,

@@ -864,6 +864,7 @@ static int xilinx_spi_remove(struct platform_device *pdev)
 MODULE_ALIAS("platform:" XILINX_SPI_NAME);
 
 static const struct of_device_id xilinx_spi_of_match[] = {
+	{ .compatible = "xlnx,axi-quad-spi-1.00.a", },
 	{ .compatible = "xlnx,xps-spi-2.00.a", },
 	{ .compatible = "xlnx,xps-spi-2.00.b", },
 	{}

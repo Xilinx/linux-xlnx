@@ -428,6 +428,7 @@ static void xgpio_irqhandler(struct irq_desc *desc)
 }
 
 static struct lock_class_key gpio_lock_class;
+static struct lock_class_key gpio_request_class;
 
 /**
  * xgpio_irq_setup - Allocate irq for gpio and setup appropriate functions
@@ -467,7 +468,8 @@ static int xgpio_irq_setup(struct device_node *np, struct xgpio_instance *chip)
 	for (pin_num = 0; pin_num < chip->mmchip.gc.ngpio; pin_num++) {
 		u32 gpio_irq = irq_find_mapping(chip->irq_domain, pin_num);
 
-		irq_set_lockdep_class(gpio_irq, &gpio_lock_class);
+		irq_set_lockdep_class(gpio_irq, &gpio_lock_class,
+				      &gpio_request_class);
 		pr_debug("IRQ Base: %d, Pin %d = IRQ %d\n",
 			chip->irq_base,	pin_num, gpio_irq);
 		irq_set_chip_and_handler(gpio_irq, &xgpio_irqchip,

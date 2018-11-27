@@ -651,6 +651,7 @@
 			#size-cells = <0>;
 			compatible = "snps,designware-i2c";
 			reg = <0xffc04000 0x1000>;
+			resets = <&rst I2C0_RESET>;
 			clocks = <&l4_sp_clk>;
 			interrupts = <0 158 0x4>;
 			status = "disabled";
@@ -661,6 +662,7 @@
 			#size-cells = <0>;
 			compatible = "snps,designware-i2c";
 			reg = <0xffc05000 0x1000>;
+			resets = <&rst I2C1_RESET>;
 			clocks = <&l4_sp_clk>;
 			interrupts = <0 159 0x4>;
 			status = "disabled";
@@ -671,6 +673,7 @@
 			#size-cells = <0>;
 			compatible = "snps,designware-i2c";
 			reg = <0xffc06000 0x1000>;
+			resets = <&rst I2C2_RESET>;
 			clocks = <&l4_sp_clk>;
 			interrupts = <0 160 0x4>;
 			status = "disabled";
@@ -681,6 +684,7 @@
 			#size-cells = <0>;
 			compatible = "snps,designware-i2c";
 			reg = <0xffc07000 0x1000>;
+			resets = <&rst I2C3_RESET>;
 			clocks = <&l4_sp_clk>;
 			interrupts = <0 161 0x4>;
 			status = "disabled";
@@ -744,13 +748,13 @@
 		nand0: nand@ff900000 {
 			#address-cells = <0x1>;
 			#size-cells = <0x1>;
-			compatible = "denali,denali-nand-dt";
+			compatible = "altr,socfpga-denali-nand";
 			reg = <0xff900000 0x100000>,
 			      <0xffb80000 0x10000>;
 			reg-names = "nand_data", "denali_reg";
 			interrupts = <0x0 0x90 0x4>;
 			dma-mask = <0xffffffff>;
-			clocks = <&nand_clk>;
+			clocks = <&nand_x_clk>;
 			status = "disabled";
 		};
 
@@ -827,7 +831,7 @@
 		timer@fffec600 {
 			compatible = "arm,cortex-a9-twd-timer";
 			reg = <0xfffec600 0x100>;
-			interrupts = <1 13 0xf04>;
+			interrupts = <1 13 0xf01>;
 			clocks = <&mpu_periph_clk>;
 		};
 

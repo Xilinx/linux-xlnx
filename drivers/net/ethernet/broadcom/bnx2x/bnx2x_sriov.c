@@ -571,7 +571,7 @@ int bnx2x_vf_mcast(struct bnx2x *bp, struct bnx2x_virtf *vf,
 	else
 		set_bit(RAMROD_COMP_WAIT, &mcast.ramrod_flags);
 	if (mc_num) {
-		mc = kzalloc(mc_num * sizeof(struct bnx2x_mcast_list_elem),
+		mc = kcalloc(mc_num, sizeof(struct bnx2x_mcast_list_elem),
 			     GFP_KERNEL);
 		if (!mc) {
 			BNX2X_ERR("Cannot Configure multicasts due to lack of memory\n");
@@ -812,7 +812,7 @@ static u8 bnx2x_vf_is_pcie_pending(struct bnx2x *bp, u8 abs_vfid)
 	if (!vf)
 		return false;
 
-	dev = pci_get_bus_and_slot(vf->bus, vf->devfn);
+	dev = pci_get_domain_bus_and_slot(vf->domain, vf->bus, vf->devfn);
 	if (dev)
 		return bnx2x_is_pcie_pending(dev);
 	return false;
@@ -1041,6 +1041,13 @@ void bnx2x_iov_init_dmae(struct bnx2x *bp)
 		REG_WR(bp, DMAE_REG_BACKWARD_COMP_EN, 0);
 }
 
+static int bnx2x_vf_domain(struct bnx2x *bp, int vfid)
+{
+	struct pci_dev *dev = bp->pdev;
+
+	return pci_domain_nr(dev->bus);
+}
+
 static int bnx2x_vf_bus(struct bnx2x *bp, int vfid)
 {
 	struct pci_dev *dev = bp->pdev;
@@ -1072,11 +1079,6 @@ static void bnx2x_vf_set_bars(struct bnx2x *bp, struct bnx2x_virtf *vf)
 		vf->bars[n].bar = start + size * vf->abs_vfid;
 		vf->bars[n].size = size;
 	}
-}
-
-static int bnx2x_ari_enabled(struct pci_dev *dev)
-{
-	return dev->bus->self && dev->bus->self->ari_enabled;
 }
 
 static int
@@ -1212,7 +1214,7 @@ int bnx2x_iov_init_one(struct bnx2x *bp, int int_mode_param,
 
 	err = -EIO;
 	/* verify ari is enabled */
-	if (!bnx2x_ari_enabled(bp->pdev)) {
+	if (!pci_ari_enabled(bp->pdev->bus)) {
 		BNX2X_ERR("ARI not supported (check pci bridge ARI forwarding), SRIOV can not be enabled\n");
 		return 0;
 	}
@@ -1251,8 +1253,9 @@ int bnx2x_iov_init_one(struct bnx2x *bp, int int_mode_param,
 	   num_vfs_param, iov->nr_virtfn);
 
 	/* allocate the vf array */
-	bp->vfdb->vfs = kzalloc(sizeof(struct bnx2x_virtf) *
-				BNX2X_NR_VIRTFN(bp), GFP_KERNEL);
+	bp->vfdb->vfs = kcalloc(BNX2X_NR_VIRTFN(bp),
+				sizeof(struct bnx2x_virtf),
+				GFP_KERNEL);
 	if (!bp->vfdb->vfs) {
 		BNX2X_ERR("failed to allocate vf array\n");
 		err = -ENOMEM;
@@ -1276,9 +1279,9 @@ int bnx2x_iov_init_one(struct bnx2x *bp, int int_mode_param,
 	}
 
 	/* allocate the queue arrays for all VFs */
-	bp->vfdb->vfqs = kzalloc(
-		BNX2X_MAX_NUM_VF_QUEUES * sizeof(struct bnx2x_vf_queue),
-		GFP_KERNEL);
+	bp->vfdb->vfqs = kcalloc(BNX2X_MAX_NUM_VF_QUEUES,
+				 sizeof(struct bnx2x_vf_queue),
+				 GFP_KERNEL);
 
 	if (!bp->vfdb->vfqs) {
 		BNX2X_ERR("failed to allocate vf queue array\n");
@@ -1611,6 +1614,7 @@ int bnx2x_iov_nic_init(struct bnx2x *bp)
 		struct bnx2x_virtf *vf = BP_VF(bp, vfid);
 
 		/* fill in the BDF and bars */
+		vf->domain = bnx2x_vf_domain(bp, vfid);
 		vf->bus = bnx2x_vf_bus(bp, vfid);
 		vf->devfn = bnx2x_vf_devfn(bp, vfid);
 		bnx2x_vf_set_bars(bp, vf);
@@ -1823,6 +1827,7 @@ get_vf:
 		DP(BNX2X_MSG_IOV, "got VF [%d:%d] RSS update ramrod\n",
 		   vf->abs_vfid, qidx);
 		bnx2x_vf_handle_rss_update_eqe(bp, vf);
+		/* fall through */
 	case EVENT_RING_OPCODE_VF_FLR:
 		/* Do nothing for now */
 		return 0;

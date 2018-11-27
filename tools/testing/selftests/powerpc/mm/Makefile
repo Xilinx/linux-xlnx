@@ -2,9 +2,10 @@
 noarg:
 	$(MAKE) -C ../
 
-TEST_GEN_PROGS := hugetlb_vs_thp_test subpage_prot prot_sao
+TEST_GEN_PROGS := hugetlb_vs_thp_test subpage_prot prot_sao segv_errors
 TEST_GEN_FILES := tempfile
 
+top_srcdir = ../../../../..
 include ../../lib.mk
 
 $(TEST_GEN_PROGS): ../harness.c

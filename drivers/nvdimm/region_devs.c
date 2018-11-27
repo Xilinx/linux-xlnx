@@ -182,6 +182,14 @@ struct nd_region *to_nd_region(struct device *dev)
 }
 EXPORT_SYMBOL_GPL(to_nd_region);
 
+struct device *nd_region_dev(struct nd_region *nd_region)
+{
+	if (!nd_region)
+		return NULL;
+	return &nd_region->dev;
+}
+EXPORT_SYMBOL_GPL(nd_region_dev);
+
 struct nd_blk_region *to_nd_blk_region(struct device *dev)
 {
 	struct nd_region *nd_region = to_nd_region(dev);
@@ -381,6 +389,30 @@ resource_size_t nd_region_available_dpa(struct nd_region *nd_region)
 	return available;
 }
 
+resource_size_t nd_region_allocatable_dpa(struct nd_region *nd_region)
+{
+	resource_size_t available = 0;
+	int i;
+
+	if (is_memory(&nd_region->dev))
+		available = PHYS_ADDR_MAX;
+
+	WARN_ON(!is_nvdimm_bus_locked(&nd_region->dev));
+	for (i = 0; i < nd_region->ndr_mappings; i++) {
+		struct nd_mapping *nd_mapping = &nd_region->mapping[i];
+
+		if (is_memory(&nd_region->dev))
+			available = min(available,
+					nd_pmem_max_contiguous_dpa(nd_region,
+								   nd_mapping));
+		else if (is_nd_blk(&nd_region->dev))
+			available += nd_blk_available_dpa(nd_region);
+	}
+	if (is_memory(&nd_region->dev))
+		return available * nd_region->ndr_mappings;
+	return available;
+}
+
 static ssize_t available_size_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
@@ -401,6 +433,21 @@ static ssize_t available_size_show(struct device *dev,
 	return sprintf(buf, "%llu\n", available);
 }
 static DEVICE_ATTR_RO(available_size);
+
+static ssize_t max_available_extent_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct nd_region *nd_region = to_nd_region(dev);
+	unsigned long long available = 0;
+
+	nvdimm_bus_lock(dev);
+	wait_nvdimm_bus_probe_idle(dev);
+	available = nd_region_allocatable_dpa(nd_region);
+	nvdimm_bus_unlock(dev);
+
+	return sprintf(buf, "%llu\n", available);
+}
+static DEVICE_ATTR_RO(max_available_extent);
 
 static ssize_t init_namespaces_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
@@ -528,6 +575,20 @@ static ssize_t resource_show(struct device *dev,
 }
 static DEVICE_ATTR_RO(resource);
 
+static ssize_t persistence_domain_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct nd_region *nd_region = to_nd_region(dev);
+
+	if (test_bit(ND_REGION_PERSIST_CACHE, &nd_region->flags))
+		return sprintf(buf, "cpu_cache\n");
+	else if (test_bit(ND_REGION_PERSIST_MEMCTRL, &nd_region->flags))
+		return sprintf(buf, "memory_controller\n");
+	else
+		return sprintf(buf, "\n");
+}
+static DEVICE_ATTR_RO(persistence_domain);
+
 static struct attribute *nd_region_attributes[] = {
 	&dev_attr_size.attr,
 	&dev_attr_nstype.attr,
@@ -539,10 +600,12 @@ static struct attribute *nd_region_attributes[] = {
 	&dev_attr_read_only.attr,
 	&dev_attr_set_cookie.attr,
 	&dev_attr_available_size.attr,
+	&dev_attr_max_available_extent.attr,
 	&dev_attr_namespace_seed.attr,
 	&dev_attr_init_namespaces.attr,
 	&dev_attr_badblocks.attr,
 	&dev_attr_resource.attr,
+	&dev_attr_persistence_domain.attr,
 	NULL,
 };
 
@@ -562,8 +625,12 @@ static umode_t region_visible(struct kobject *kobj, struct attribute *a, int n)
 	if (!is_nd_pmem(dev) && a == &dev_attr_badblocks.attr)
 		return 0;
 
-	if (!is_nd_pmem(dev) && a == &dev_attr_resource.attr)
-		return 0;
+	if (a == &dev_attr_resource.attr) {
+		if (is_nd_pmem(dev))
+			return 0400;
+		else
+			return 0;
+	}
 
 	if (a == &dev_attr_deep_flush.attr) {
 		int has_flush = nvdimm_has_flush(nd_region);
@@ -574,6 +641,13 @@ static umode_t region_visible(struct kobject *kobj, struct attribute *a, int n)
 			return 0444;
 		else
 			return 0;
+	}
+
+	if (a == &dev_attr_persistence_domain.attr) {
+		if ((nd_region->flags & (BIT(ND_REGION_PERSIST_CACHE)
+					| BIT(ND_REGION_PERSIST_MEMCTRL))) == 0)
+			return 0;
+		return a->mode;
 	}
 
 	if (a != &dev_attr_set_cookie.attr
@@ -988,6 +1062,7 @@ static struct nd_region *nd_region_create(struct nvdimm_bus *nvdimm_bus,
 	dev->parent = &nvdimm_bus->dev;
 	dev->type = dev_type;
 	dev->groups = ndr_desc->attr_groups;
+	dev->of_node = ndr_desc->of_node;
 	nd_region->ndr_size = resource_size(ndr_desc->res);
 	nd_region->ndr_start = ndr_desc->res->start;
 	nd_device_register(dev);
@@ -1097,7 +1172,8 @@ EXPORT_SYMBOL_GPL(nvdimm_has_flush);
 
 int nvdimm_has_cache(struct nd_region *nd_region)
 {
-	return is_nd_pmem(&nd_region->dev);
+	return is_nd_pmem(&nd_region->dev) &&
+		!test_bit(ND_REGION_PERSIST_CACHE, &nd_region->flags);
 }
 EXPORT_SYMBOL_GPL(nvdimm_has_cache);
 

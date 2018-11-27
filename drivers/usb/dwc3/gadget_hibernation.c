@@ -120,8 +120,7 @@ static int restart_ep0_trans(struct dwc3 *dwc, int epnum)
 		return ret;
 	}
 
-	dep->flags |= DWC3_EP_BUSY;
-	dep->resource_index = dwc3_gadget_ep_get_transfer_index(dep);
+	dwc3_gadget_ep_get_transfer_index(dep);
 
 	return 0;
 }
@@ -149,7 +148,7 @@ static int restore_eps(struct dwc3 *dwc)
 		if (!(dep->flags & DWC3_EP_ENABLED))
 			continue;
 
-		ret = __dwc3_gadget_ep_enable(dep, false, true);
+		ret = __dwc3_gadget_ep_enable(dep, true);
 		if (ret) {
 			dev_err(dwc->dev, "failed to enable %s\n", dep->name);
 			return ret;
@@ -213,11 +212,9 @@ static int restore_eps(struct dwc3 *dwc)
 
 				dwc3_send_gadget_ep_cmd(dep, cmd, &params);
 
-				dep->flags |= DWC3_EP_BUSY;
-				dep->resource_index =
-					dwc3_gadget_ep_get_transfer_index(dep);
+				dwc3_gadget_ep_get_transfer_index(dep);
 			} else {
-				ret = __dwc3_gadget_kick_transfer(dep, 0);
+				ret = __dwc3_gadget_kick_transfer(dep);
 				if (ret) {
 					dev_err(dwc->dev,
 						"%s: restart transfer failed\n",
@@ -250,7 +247,7 @@ static int restore_ep0(struct dwc3 *dwc)
 		if (!(dep->flags & DWC3_EP_ENABLED))
 			continue;
 
-		ret = __dwc3_gadget_ep_enable(dep, false, true);
+		ret = __dwc3_gadget_ep_enable(dep, true);
 		if (ret) {
 			dev_err(dwc->dev, "failed to enable %s\n", dep->name);
 			return ret;
@@ -340,8 +337,8 @@ void gadget_hibernation_interrupt(struct dwc3 *dwc)
 		if (!(dep->flags & DWC3_EP_ENABLED))
 			continue;
 
-		if (dep->flags & DWC3_EP_BUSY)
-			dwc3_stop_active_transfer(dwc, dep->number, false);
+		if (dep->flags & DWC3_EP_TRANSFER_STARTED)
+			dwc3_stop_active_transfer(dep, false);
 
 		save_endpoint_state(dep);
 	}

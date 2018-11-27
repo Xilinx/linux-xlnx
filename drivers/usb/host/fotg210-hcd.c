@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0+
 /* Faraday FOTG210 EHCI-like driver
  *
  * Copyright (c) 2013 Faraday Technology Corporation
@@ -7,20 +8,6 @@
  *	   Po-Yu Chuang <ratbert.chuang@gmail.com>
  *
  * Most of code borrowed from the Linux-3.7 EHCI driver
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License as published by the
- * Free Software Foundation; either version 2 of the License, or (at your
- * option) any later version.
- *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License
- * for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software Foundation,
- * Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 #include <linux/module.h>
 #include <linux/device.h>
@@ -857,28 +844,16 @@ static int debug_registers_open(struct inode *inode, struct file *file)
 static inline void create_debug_files(struct fotg210_hcd *fotg210)
 {
 	struct usb_bus *bus = &fotg210_to_hcd(fotg210)->self;
+	struct dentry *root;
 
-	fotg210->debug_dir = debugfs_create_dir(bus->bus_name,
-			fotg210_debug_root);
-	if (!fotg210->debug_dir)
-		return;
+	root = debugfs_create_dir(bus->bus_name, fotg210_debug_root);
+	fotg210->debug_dir = root;
 
-	if (!debugfs_create_file("async", S_IRUGO, fotg210->debug_dir, bus,
-			&debug_async_fops))
-		goto file_error;
-
-	if (!debugfs_create_file("periodic", S_IRUGO, fotg210->debug_dir, bus,
-			&debug_periodic_fops))
-		goto file_error;
-
-	if (!debugfs_create_file("registers", S_IRUGO, fotg210->debug_dir, bus,
-			&debug_registers_fops))
-		goto file_error;
-
-	return;
-
-file_error:
-	debugfs_remove_recursive(fotg210->debug_dir);
+	debugfs_create_file("async", S_IRUGO, root, bus, &debug_async_fops);
+	debugfs_create_file("periodic", S_IRUGO, root, bus,
+			    &debug_periodic_fops);
+	debugfs_create_file("registers", S_IRUGO, root, bus,
+			    &debug_registers_fops);
 }
 
 static inline void remove_debug_files(struct fotg210_hcd *fotg210)
@@ -1878,11 +1853,9 @@ static struct fotg210_qh *fotg210_qh_alloc(struct fotg210_hcd *fotg210,
 	qh = kzalloc(sizeof(*qh), GFP_ATOMIC);
 	if (!qh)
 		goto done;
-	qh->hw = (struct fotg210_qh_hw *)
-		dma_pool_alloc(fotg210->qh_pool, flags, &dma);
+	qh->hw = dma_pool_zalloc(fotg210->qh_pool, flags, &dma);
 	if (!qh->hw)
 		goto fail;
-	memset(qh->hw, 0, sizeof(*qh->hw));
 	qh->qh_dma = dma;
 	INIT_LIST_HEAD(&qh->qtd_list);
 
@@ -4134,7 +4107,7 @@ static int itd_urb_transaction(struct fotg210_iso_stream *stream,
 		} else {
 alloc_itd:
 			spin_unlock_irqrestore(&fotg210->lock, flags);
-			itd = dma_pool_alloc(fotg210->itd_pool, mem_flags,
+			itd = dma_pool_zalloc(fotg210->itd_pool, mem_flags,
 					&itd_dma);
 			spin_lock_irqsave(&fotg210->lock, flags);
 			if (!itd) {
@@ -4144,7 +4117,6 @@ alloc_itd:
 			}
 		}
 
-		memset(itd, 0, sizeof(*itd));
 		itd->itd_dma = itd_dma;
 		list_add(&itd->itd_list, &sched->td_list);
 	}
@@ -4709,7 +4681,7 @@ static void scan_isoc(struct fotg210_hcd *fotg210)
 
 /* Display / Set uframe_periodic_max
  */
-static ssize_t show_uframe_periodic_max(struct device *dev,
+static ssize_t uframe_periodic_max_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
 	struct fotg210_hcd *fotg210;
@@ -4721,7 +4693,7 @@ static ssize_t show_uframe_periodic_max(struct device *dev,
 }
 
 
-static ssize_t store_uframe_periodic_max(struct device *dev,
+static ssize_t uframe_periodic_max_store(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t count)
 {
 	struct fotg210_hcd *fotg210;
@@ -4788,8 +4760,7 @@ out_unlock:
 	return ret;
 }
 
-static DEVICE_ATTR(uframe_periodic_max, 0644, show_uframe_periodic_max,
-		   store_uframe_periodic_max);
+static DEVICE_ATTR_RW(uframe_periodic_max);
 
 static inline int create_sysfs_files(struct fotg210_hcd *fotg210)
 {
@@ -5449,7 +5420,7 @@ idle_timeout:
 			qh_destroy(fotg210, qh);
 			break;
 		}
-		/* else FALL THROUGH */
+		/* fall through */
 	default:
 		/* caller was supposed to have unlinked any requests;
 		 * that's not our job.  just leak this memory.
@@ -5703,10 +5674,6 @@ static int __init fotg210_hcd_init(void)
 			sizeof(struct fotg210_itd));
 
 	fotg210_debug_root = debugfs_create_dir("fotg210", usb_debug_root);
-	if (!fotg210_debug_root) {
-		retval = -ENOENT;
-		goto err_debug;
-	}
 
 	retval = platform_driver_register(&fotg210_hcd_driver);
 	if (retval < 0)
@@ -5716,7 +5683,7 @@ static int __init fotg210_hcd_init(void)
 clean:
 	debugfs_remove(fotg210_debug_root);
 	fotg210_debug_root = NULL;
-err_debug:
+
 	clear_bit(USB_EHCI_LOADED, &usb_hcds_loaded);
 	return retval;
 }

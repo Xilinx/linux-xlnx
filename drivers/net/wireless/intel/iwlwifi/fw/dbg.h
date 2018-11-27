@@ -8,6 +8,7 @@
  * Copyright(c) 2008 - 2014 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
  * Copyright(c) 2015 - 2017 Intel Deutschland GmbH
+ * Copyright(c) 2018        Intel Corporation
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of version 2 of the GNU General Public License as
@@ -33,6 +34,7 @@
  * Copyright(c) 2005 - 2014 Intel Corporation. All rights reserved.
  * Copyright(c) 2013 - 2015 Intel Mobile Communications GmbH
  * Copyright(c) 2015 - 2017 Intel Deutschland GmbH
+ * Copyright(c) 2018        Intel Corporation
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -91,6 +93,7 @@ static inline void iwl_fw_free_dump_desc(struct iwl_fw_runtime *fwrt)
 	if (fwrt->dump.desc != &iwl_dump_desc_assert)
 		kfree(fwrt->dump.desc);
 	fwrt->dump.desc = NULL;
+	fwrt->dump.trig = NULL;
 }
 
 void iwl_fw_error_dump(struct iwl_fw_runtime *fwrt);
@@ -209,8 +212,6 @@ static inline void iwl_fw_dbg_stop_recording(struct iwl_fw_runtime *fwrt)
 
 static inline void iwl_fw_dump_conf_clear(struct iwl_fw_runtime *fwrt)
 {
-	iwl_fw_dbg_stop_recording(fwrt);
-
 	fwrt->dump.conf = FW_DBG_INVALID;
 }
 
@@ -225,5 +226,41 @@ static inline void iwl_fw_cancel_dump(struct iwl_fw_runtime *fwrt)
 {
 	cancel_delayed_work_sync(&fwrt->dump.wk);
 }
+
+#ifdef CONFIG_IWLWIFI_DEBUGFS
+static inline void iwl_fw_cancel_timestamp(struct iwl_fw_runtime *fwrt)
+{
+	fwrt->timestamp.delay = 0;
+	cancel_delayed_work_sync(&fwrt->timestamp.wk);
+}
+
+void iwl_fw_trigger_timestamp(struct iwl_fw_runtime *fwrt, u32 delay);
+
+static inline void iwl_fw_suspend_timestamp(struct iwl_fw_runtime *fwrt)
+{
+	cancel_delayed_work_sync(&fwrt->timestamp.wk);
+}
+
+static inline void iwl_fw_resume_timestamp(struct iwl_fw_runtime *fwrt)
+{
+	if (!fwrt->timestamp.delay)
+		return;
+
+	schedule_delayed_work(&fwrt->timestamp.wk,
+			      round_jiffies_relative(fwrt->timestamp.delay));
+}
+
+#else
+
+static inline void iwl_fw_cancel_timestamp(struct iwl_fw_runtime *fwrt) {}
+
+static inline void iwl_fw_trigger_timestamp(struct iwl_fw_runtime *fwrt,
+					    u32 delay) {}
+
+static inline void iwl_fw_suspend_timestamp(struct iwl_fw_runtime *fwrt) {}
+
+static inline void iwl_fw_resume_timestamp(struct iwl_fw_runtime *fwrt) {}
+
+#endif /* CONFIG_IWLWIFI_DEBUGFS */
 
 #endif  /* __iwl_fw_dbg_h__ */

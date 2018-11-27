@@ -1,20 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Analog Devices ADV7511 HDMI Transmitter Device Driver
  *
  * Copyright 2013 Cisco Systems, Inc. and/or its affiliates. All rights reserved.
- *
- * This program is free software; you may redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; version 2 of the License.
- *
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
- * EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
- * MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND
- * NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS
- * BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
- * ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
- * CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
- * SOFTWARE.
  */
 
 
@@ -792,8 +780,8 @@ static int adv7511_cec_adap_enable(struct cec_adapter *adap, bool enable)
 		/* power up cec section */
 		adv7511_cec_write_and_or(sd, 0x4e, 0xfc, 0x01);
 		/* legacy mode and clear all rx buffers */
+		adv7511_cec_write(sd, 0x4a, 0x00);
 		adv7511_cec_write(sd, 0x4a, 0x07);
-		adv7511_cec_write(sd, 0x4a, 0);
 		adv7511_cec_write_and_or(sd, 0x11, 0xfe, 0); /* initially disable tx */
 		/* enabled irqs: */
 		/* tx: ready */
@@ -891,8 +879,8 @@ static int adv7511_cec_adap_transmit(struct cec_adapter *adap, u8 attempts,
 	 */
 	adv7511_cec_write_and_or(sd, 0x12, ~0x70, max(1, attempts - 1) << 4);
 
-	/* blocking, clear cec tx irq status */
-	adv7511_wr_and_or(sd, 0x97, 0xc7, 0x38);
+	/* clear cec tx irq status */
+	adv7511_wr(sd, 0x97, 0x38);
 
 	/* write data */
 	for (i = 0; i < len; i++)
@@ -977,9 +965,6 @@ static void adv7511_set_isr(struct v4l2_subdev *sd, bool enable)
 	else if (adv7511_have_hotplug(sd))
 		irqs |= MASK_ADV7511_EDID_RDY_INT;
 
-	adv7511_wr_and_or(sd, 0x95, 0xc0,
-			  (state->cec_enabled_adap && enable) ? 0x39 : 0x00);
-
 	/*
 	 * This i2c write can fail (approx. 1 in 1000 writes). But it
 	 * is essential that this register is correct, so retry it
@@ -993,9 +978,11 @@ static void adv7511_set_isr(struct v4l2_subdev *sd, bool enable)
 		irqs_rd = adv7511_rd(sd, 0x94);
 	} while (retries-- && irqs_rd != irqs);
 
-	if (irqs_rd == irqs)
-		return;
-	v4l2_err(sd, "Could not set interrupts: hw failure?\n");
+	if (irqs_rd != irqs)
+		v4l2_err(sd, "Could not set interrupts: hw failure?\n");
+
+	adv7511_wr_and_or(sd, 0x95, 0xc0,
+			  (state->cec_enabled_adap && enable) ? 0x39 : 0x00);
 }
 
 /* Interrupt handler */
@@ -1042,8 +1029,8 @@ static int adv7511_isr(struct v4l2_subdev *sd, u32 status, bool *handled)
 			for (i = 0; i < msg.len; i++)
 				msg.msg[i] = adv7511_cec_read(sd, i + 0x15);
 
-			adv7511_cec_write(sd, 0x4a, 1); /* toggle to re-enable rx 1 */
-			adv7511_cec_write(sd, 0x4a, 0);
+			adv7511_cec_write(sd, 0x4a, 0); /* toggle to re-enable rx 1 */
+			adv7511_cec_write(sd, 0x4a, 1);
 			cec_received_msg(state->cec_adap, &msg);
 		}
 	}
@@ -2082,6 +2069,7 @@ static void adv7511_init_setup(struct v4l2_subdev *sd)
 
 	/* legacy mode */
 	adv7511_cec_write(sd, 0x4a, 0x00);
+	adv7511_cec_write(sd, 0x4a, 0x07);
 
 	if (cec_clk % 750000 != 0)
 		v4l2_err(sd, "%s: cec_clk %d, not multiple of 750 Khz\n",
@@ -2333,6 +2321,7 @@ static int adv7511_probe(struct i2c_client *client, const struct i2c_device_id *
 		goto err_hdl;
 	}
 	state->pad.flags = MEDIA_PAD_FL_SINK;
+	sd->entity.function = MEDIA_ENT_F_DV_ENCODER;
 	err = media_entity_pads_init(&sd->entity, 1, &state->pad);
 	if (err)
 		goto err_hdl;

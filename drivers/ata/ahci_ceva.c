@@ -84,7 +84,7 @@
 #define CEVA_FLAG_BROKEN_GEN2	1
 
 static unsigned int rx_watermark = PTC_RX_WM_VAL;
-module_param(rx_watermark, uint, 0);
+module_param(rx_watermark, uint, 0644);
 MODULE_PARM_DESC(rx_watermark, "RxWaterMark value (0 - 0x80)");
 
 struct ceva_ahci_priv {
@@ -213,7 +213,7 @@ static int ceva_ahci_probe(struct platform_device *pdev)
 
 	cevapriv->ahci_pdev = pdev;
 
-	hpriv = ahci_platform_get_resources(pdev);
+	hpriv = ahci_platform_get_resources(pdev, 0);
 	if (IS_ERR(hpriv))
 		return PTR_ERR(hpriv);
 

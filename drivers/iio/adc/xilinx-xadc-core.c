@@ -345,6 +345,8 @@ static int xadc_zynq_setup(struct platform_device *pdev,
 	xadc->zynq_intmask = ~0;
 
 	pcap_rate = clk_get_rate(xadc->clk);
+	if (!pcap_rate)
+		return -EINVAL;
 
 	if (pcap_rate > XADC_ZYNQ_PCAP_RATE_MAX) {
 		ret = clk_set_rate(xadc->clk,
@@ -722,7 +724,6 @@ err_out:
 }
 
 static const struct iio_trigger_ops xadc_trigger_ops = {
-	.owner = THIS_MODULE,
 	.set_trigger_state = &xadc_trigger_set_state,
 };
 
@@ -1078,7 +1079,6 @@ static const struct iio_info xadc_info = {
 	.read_event_value = &xadc_read_event_value,
 	.write_event_value = &xadc_write_event_value,
 	.update_scan_mode = &xadc_update_scan_mode,
-	.driver_module = THIS_MODULE,
 };
 
 static const struct of_device_id xadc_of_match_table[] = {
@@ -1206,6 +1206,7 @@ static int xadc_probe(struct platform_device *pdev)
 
 	xadc = iio_priv(indio_dev);
 	xadc->ops = id->data;
+	xadc->irq = irq;
 	init_completion(&xadc->completion);
 	mutex_init(&xadc->mutex);
 	spin_lock_init(&xadc->lock);
@@ -1256,12 +1257,12 @@ static int xadc_probe(struct platform_device *pdev)
 	if (ret)
 		goto err_free_samplerate_trigger;
 
-	ret = xadc->ops->setup(pdev, indio_dev, irq);
+	ret = devm_request_irq(&pdev->dev, irq, xadc->ops->interrupt_handler, 0,
+			       dev_name(&pdev->dev), indio_dev);
 	if (ret)
 		goto err_clk_disable_unprepare;
 
-	ret = devm_request_irq(&pdev->dev, irq, xadc->ops->interrupt_handler, 0,
-			       dev_name(&pdev->dev), indio_dev);
+	ret = xadc->ops->setup(pdev, indio_dev, xadc->irq);
 	if (ret)
 		goto err_clk_disable_unprepare;
 

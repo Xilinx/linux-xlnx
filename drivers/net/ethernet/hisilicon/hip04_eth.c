@@ -373,7 +373,7 @@ static int hip04_tx_reclaim(struct net_device *ndev, bool force)
 	unsigned int count;
 
 	smp_rmb();
-	count = tx_count(ACCESS_ONCE(priv->tx_head), tx_tail);
+	count = tx_count(READ_ONCE(priv->tx_head), tx_tail);
 	if (count == 0)
 		goto out;
 
@@ -431,7 +431,7 @@ static int hip04_mac_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 	dma_addr_t phys;
 
 	smp_rmb();
-	count = tx_count(tx_head, ACCESS_ONCE(priv->tx_tail));
+	count = tx_count(tx_head, READ_ONCE(priv->tx_tail));
 	if (count == (TX_DESC_NUM - 1)) {
 		netif_stop_queue(ndev);
 		return NETDEV_TX_BUSY;
@@ -904,7 +904,7 @@ static int hip04_mac_probe(struct platform_device *pdev)
 		hip04_config_port(ndev, SPEED_100, DUPLEX_FULL);
 
 	hip04_config_fifo(priv);
-	random_ether_addr(ndev->dev_addr);
+	eth_random_addr(ndev->dev_addr);
 	hip04_update_mac_address(ndev);
 
 	ret = hip04_alloc_ring(ndev, d);

@@ -20,8 +20,6 @@ Required Properties:
   - clocks: From clock bindings: Handles to clock inputs.
   - clock-names: From clock bindings: Tuple including "clk_xin" and "clk_ahb"
   - interrupts: Interrupt specifier
-  - interrupt-parent: Phandle for the interrupt controller that services
-		      interrupts for this device.
 
 Required Properties for "arasan,sdhci-5.1":
   - phys: From PHY bindings: Phandle for the Generic PHY for arasan.
@@ -52,6 +50,8 @@ Optional Properties:
 Optional Properties for "xlnx,zynqmp-8.9a":
  - nvmem-cells: list of phandle to the nvmem data cells.
  - nvmem-cell-names: Names for the each nvmem-cells specified.
+ - xlnx,int-clock-stable-broken: when present, the controller always reports
+   that the internal clock is stable even when it is not.
  - xlnx,itap-delay-sd-hsd: Input Tap Delay for SD HS.
  - xlnx,itap-delay-sdr25: Input Tap Delay for SDR25.
  - xlnx,itap-delay-sdr50: Input Tap Delay for SDR50.

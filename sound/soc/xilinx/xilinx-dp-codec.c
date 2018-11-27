@@ -56,7 +56,11 @@ static const struct xilinx_dp_codec_fmt rates[] = {
 	}
 };
 
-static const struct snd_soc_codec_driver xilinx_dp_codec_codec_driver = {
+static const struct snd_soc_component_driver xilinx_dp_component_driver = {
+	.idle_bias_on		= 1,
+	.use_pmdown_time	= 1,
+	.endianness		= 1,
+	.non_legacy_dai_naming	= 1,
 };
 
 static int xilinx_dp_codec_probe(struct platform_device *pdev)
@@ -101,8 +105,9 @@ static int xilinx_dp_codec_probe(struct platform_device *pdev)
 		goto error_clk;
 	}
 
-	ret = snd_soc_register_codec(&pdev->dev, &xilinx_dp_codec_codec_driver,
-				     &xilinx_dp_codec_dai, 1);
+	ret = devm_snd_soc_register_component(&pdev->dev,
+					      &xilinx_dp_component_driver,
+					      &xilinx_dp_codec_dai, 1);
 	if (ret)
 		goto error_clk;
 
@@ -121,7 +126,6 @@ static int xilinx_dp_codec_dev_remove(struct platform_device *pdev)
 {
 	struct xilinx_dp_codec *codec = platform_get_drvdata(pdev);
 
-	snd_soc_unregister_codec(&pdev->dev);
 	clk_disable_unprepare(codec->aud_clk);
 
 	return 0;

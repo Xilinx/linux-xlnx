@@ -8,6 +8,7 @@
 #include <linux/delay.h>
 #include <linux/idr.h>
 #include <linux/nvmem-provider.h>
+#include <linux/pm_runtime.h>
 #include <linux/sizes.h>
 #include <linux/slab.h>
 #include <linux/vmalloc.h>
@@ -172,11 +173,11 @@ static int nvm_authenticate_host(struct tb_switch *sw)
 
 	/*
 	 * Root switch NVM upgrade requires that we disconnect the
-	 * existing PCIe paths first (in case it is not in safe mode
+	 * existing paths first (in case it is not in safe mode
 	 * already).
 	 */
 	if (!sw->safe_mode) {
-		ret = tb_domain_disconnect_pcie_paths(sw->tb);
+		ret = tb_domain_disconnect_all_paths(sw->tb);
 		if (ret)
 			return ret;
 		/*
@@ -236,8 +237,14 @@ static int tb_switch_nvm_read(void *priv, unsigned int offset, void *val,
 			      size_t bytes)
 {
 	struct tb_switch *sw = priv;
+	int ret;
 
-	return dma_port_flash_read(sw->dma_port, offset, val, bytes);
+	pm_runtime_get_sync(&sw->dev);
+	ret = dma_port_flash_read(sw->dma_port, offset, val, bytes);
+	pm_runtime_mark_last_busy(&sw->dev);
+	pm_runtime_put_autosuspend(&sw->dev);
+
+	return ret;
 }
 
 static int tb_switch_nvm_write(void *priv, unsigned int offset, void *val,
@@ -716,6 +723,14 @@ static int tb_switch_set_authorized(struct tb_switch *sw, unsigned int val)
 	if (sw->authorized)
 		goto unlock;
 
+	/*
+	 * Make sure there is no PCIe rescan ongoing when a new PCIe
+	 * tunnel is created. Otherwise the PCIe rescan code might find
+	 * the new tunnel too early.
+	 */
+	pci_lock_rescan_remove();
+	pm_runtime_get_sync(&sw->dev);
+
 	switch (val) {
 	/* Approve switch */
 	case 1:
@@ -734,6 +749,10 @@ static int tb_switch_set_authorized(struct tb_switch *sw, unsigned int val)
 	default:
 		break;
 	}
+
+	pm_runtime_mark_last_busy(&sw->dev);
+	pm_runtime_put_autosuspend(&sw->dev);
+	pci_unlock_rescan_remove();
 
 	if (!ret) {
 		sw->authorized = val;
@@ -765,6 +784,15 @@ static ssize_t authorized_store(struct device *dev,
 	return ret ? ret : count;
 }
 static DEVICE_ATTR_RW(authorized);
+
+static ssize_t boot_show(struct device *dev, struct device_attribute *attr,
+			 char *buf)
+{
+	struct tb_switch *sw = tb_to_switch(dev);
+
+	return sprintf(buf, "%u\n", sw->boot);
+}
+static DEVICE_ATTR_RO(boot);
 
 static ssize_t device_show(struct device *dev, struct device_attribute *attr,
 			   char *buf)
@@ -870,9 +898,18 @@ static ssize_t nvm_authenticate_store(struct device *dev,
 	nvm_clear_auth_status(sw);
 
 	if (val) {
-		ret = nvm_validate_and_write(sw);
-		if (ret)
+		if (!sw->nvm->buf) {
+			ret = -EINVAL;
 			goto exit_unlock;
+		}
+
+		pm_runtime_get_sync(&sw->dev);
+		ret = nvm_validate_and_write(sw);
+		if (ret) {
+			pm_runtime_mark_last_busy(&sw->dev);
+			pm_runtime_put_autosuspend(&sw->dev);
+			goto exit_unlock;
+		}
 
 		sw->nvm->authenticating = true;
 
@@ -880,6 +917,8 @@ static ssize_t nvm_authenticate_store(struct device *dev,
 			ret = nvm_authenticate_host(sw);
 		else
 			ret = nvm_authenticate_device(sw);
+		pm_runtime_mark_last_busy(&sw->dev);
+		pm_runtime_put_autosuspend(&sw->dev);
 	}
 
 exit_unlock:
@@ -942,6 +981,7 @@ static DEVICE_ATTR_RO(unique_id);
 
 static struct attribute *switch_attrs[] = {
 	&dev_attr_authorized.attr,
+	&dev_attr_boot.attr,
 	&dev_attr_device.attr,
 	&dev_attr_device_name.attr,
 	&dev_attr_key.attr,
@@ -968,6 +1008,10 @@ static umode_t switch_attr_is_visible(struct kobject *kobj,
 	} else if (attr == &dev_attr_nvm_authenticate.attr ||
 		   attr == &dev_attr_nvm_version.attr) {
 		if (sw->dma_port)
+			return attr->mode;
+		return 0;
+	} else if (attr == &dev_attr_boot.attr) {
+		if (tb_route(sw))
 			return attr->mode;
 		return 0;
 	}
@@ -1000,9 +1044,29 @@ static void tb_switch_release(struct device *dev)
 	kfree(sw);
 }
 
+/*
+ * Currently only need to provide the callbacks. Everything else is handled
+ * in the connection manager.
+ */
+static int __maybe_unused tb_switch_runtime_suspend(struct device *dev)
+{
+	return 0;
+}
+
+static int __maybe_unused tb_switch_runtime_resume(struct device *dev)
+{
+	return 0;
+}
+
+static const struct dev_pm_ops tb_switch_pm_ops = {
+	SET_RUNTIME_PM_OPS(tb_switch_runtime_suspend, tb_switch_runtime_resume,
+			   NULL)
+};
+
 struct device_type tb_switch_type = {
 	.name = "thunderbolt_device",
 	.release = tb_switch_release,
+	.pm = &tb_switch_pm_ops,
 };
 
 static int tb_switch_get_generation(struct tb_switch *sw)
@@ -1028,6 +1092,9 @@ static int tb_switch_get_generation(struct tb_switch *sw)
 	case PCI_DEVICE_ID_INTEL_ALPINE_RIDGE_4C_BRIDGE:
 	case PCI_DEVICE_ID_INTEL_ALPINE_RIDGE_C_2C_BRIDGE:
 	case PCI_DEVICE_ID_INTEL_ALPINE_RIDGE_C_4C_BRIDGE:
+	case PCI_DEVICE_ID_INTEL_TITAN_RIDGE_2C_BRIDGE:
+	case PCI_DEVICE_ID_INTEL_TITAN_RIDGE_4C_BRIDGE:
+	case PCI_DEVICE_ID_INTEL_TITAN_RIDGE_DD_BRIDGE:
 		return 3;
 
 	default:
@@ -1339,10 +1406,21 @@ int tb_switch_add(struct tb_switch *sw)
 		return ret;
 
 	ret = tb_switch_nvm_add(sw);
-	if (ret)
+	if (ret) {
 		device_del(&sw->dev);
+		return ret;
+	}
 
-	return ret;
+	pm_runtime_set_active(&sw->dev);
+	if (sw->rpm) {
+		pm_runtime_set_autosuspend_delay(&sw->dev, TB_AUTOSUSPEND_DELAY);
+		pm_runtime_use_autosuspend(&sw->dev);
+		pm_runtime_mark_last_busy(&sw->dev);
+		pm_runtime_enable(&sw->dev);
+		pm_request_autosuspend(&sw->dev);
+	}
+
+	return 0;
 }
 
 /**
@@ -1357,6 +1435,11 @@ void tb_switch_remove(struct tb_switch *sw)
 {
 	int i;
 
+	if (sw->rpm) {
+		pm_runtime_get_sync(&sw->dev);
+		pm_runtime_disable(&sw->dev);
+	}
+
 	/* port 0 is the switch itself and never has a remote */
 	for (i = 1; i <= sw->config.max_port_number; i++) {
 		if (tb_is_upstream_port(&sw->ports[i]))
@@ -1364,6 +1447,9 @@ void tb_switch_remove(struct tb_switch *sw)
 		if (sw->ports[i].remote)
 			tb_switch_remove(sw->ports[i].remote->sw);
 		sw->ports[i].remote = NULL;
+		if (sw->ports[i].xdomain)
+			tb_xdomain_remove(sw->ports[i].xdomain);
+		sw->ports[i].xdomain = NULL;
 	}
 
 	if (!sw->is_unplugged)
@@ -1467,6 +1553,7 @@ struct tb_sw_lookup {
 	u8 link;
 	u8 depth;
 	const uuid_t *uuid;
+	u64 route;
 };
 
 static int tb_switch_match(struct device *dev, void *data)
@@ -1481,6 +1568,11 @@ static int tb_switch_match(struct device *dev, void *data)
 
 	if (lookup->uuid)
 		return !memcmp(sw->uuid, lookup->uuid, sizeof(*lookup->uuid));
+
+	if (lookup->route) {
+		return sw->config.route_lo == lower_32_bits(lookup->route) &&
+		       sw->config.route_hi == upper_32_bits(lookup->route);
+	}
 
 	/* Root switch is matched only by depth */
 	if (!lookup->depth)
@@ -1516,7 +1608,7 @@ struct tb_switch *tb_switch_find_by_link_depth(struct tb *tb, u8 link, u8 depth)
 }
 
 /**
- * tb_switch_find_by_link_depth() - Find switch by UUID
+ * tb_switch_find_by_uuid() - Find switch by UUID
  * @tb: Domain the switch belongs
  * @uuid: UUID to look for
  *
@@ -1531,6 +1623,33 @@ struct tb_switch *tb_switch_find_by_uuid(struct tb *tb, const uuid_t *uuid)
 	memset(&lookup, 0, sizeof(lookup));
 	lookup.tb = tb;
 	lookup.uuid = uuid;
+
+	dev = bus_find_device(&tb_bus_type, NULL, &lookup, tb_switch_match);
+	if (dev)
+		return tb_to_switch(dev);
+
+	return NULL;
+}
+
+/**
+ * tb_switch_find_by_route() - Find switch by route string
+ * @tb: Domain the switch belongs
+ * @route: Route string to look for
+ *
+ * Returned switch has reference count increased so the caller needs to
+ * call tb_switch_put() when done with the switch.
+ */
+struct tb_switch *tb_switch_find_by_route(struct tb *tb, u64 route)
+{
+	struct tb_sw_lookup lookup;
+	struct device *dev;
+
+	if (!route)
+		return tb_switch_get(tb->root_switch);
+
+	memset(&lookup, 0, sizeof(lookup));
+	lookup.tb = tb;
+	lookup.route = route;
 
 	dev = bus_find_device(&tb_bus_type, NULL, &lookup, tb_switch_match);
 	if (dev)

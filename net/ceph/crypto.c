@@ -37,7 +37,9 @@ static int set_secret(struct ceph_crypto_key *key, void *buf)
 		return -ENOTSUPP;
 	}
 
-	WARN_ON(!key->len);
+	if (!key->len)
+		return -EINVAL;
+
 	key->key = kmemdup(buf, key->len, GFP_NOIO);
 	if (!key->key) {
 		ret = -ENOMEM;
@@ -345,10 +347,12 @@ struct key_type key_type_ceph = {
 	.destroy	= ceph_key_destroy,
 };
 
-int ceph_crypto_init(void) {
+int __init ceph_crypto_init(void)
+{
 	return register_key_type(&key_type_ceph);
 }
 
-void ceph_crypto_shutdown(void) {
+void ceph_crypto_shutdown(void)
+{
 	unregister_key_type(&key_type_ceph);
 }

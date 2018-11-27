@@ -1006,7 +1006,7 @@ static int xilinx_sdi_create_connector(struct drm_encoder *encoder)
 
 	drm_connector_helper_add(connector, &xilinx_sdi_connector_helper_funcs);
 	drm_connector_register(connector);
-	drm_mode_connector_attach_encoder(connector, encoder);
+	drm_connector_attach_encoder(connector, encoder);
 	xilinx_sdi_drm_connector_create_property(connector);
 	xilinx_sdi_drm_connector_attach_property(connector);
 

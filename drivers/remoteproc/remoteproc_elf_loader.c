@@ -29,7 +29,6 @@
 #include <linux/firmware.h>
 #include <linux/remoteproc.h>
 #include <linux/elf.h>
-#include <crypto/hash.h>
 
 #include "remoteproc_internal.h"
 
@@ -40,8 +39,7 @@
  *
  * Make sure this fw image is sane.
  */
-static int
-rproc_elf_sanity_check(struct rproc *rproc, const struct firmware *fw)
+int rproc_elf_sanity_check(struct rproc *rproc, const struct firmware *fw)
 {
 	const char *name = rproc->firmware;
 	struct device *dev = &rproc->dev;
@@ -99,6 +97,7 @@ rproc_elf_sanity_check(struct rproc *rproc, const struct firmware *fw)
 
 	return 0;
 }
+EXPORT_SYMBOL(rproc_elf_sanity_check);
 
 /**
  * rproc_elf_get_boot_addr() - Get rproc's boot address.
@@ -111,13 +110,13 @@ rproc_elf_sanity_check(struct rproc *rproc, const struct firmware *fw)
  * Note that the boot address is not a configurable property of all remote
  * processors. Some will always boot at a specific hard-coded address.
  */
-static
 u32 rproc_elf_get_boot_addr(struct rproc *rproc, const struct firmware *fw)
 {
 	struct elf32_hdr *ehdr  = (struct elf32_hdr *)fw->data;
 
 	return ehdr->e_entry;
 }
+EXPORT_SYMBOL(rproc_elf_get_boot_addr);
 
 /**
  * rproc_elf_load_segments() - load firmware segments to memory
@@ -143,8 +142,7 @@ u32 rproc_elf_get_boot_addr(struct rproc *rproc, const struct firmware *fw)
  * directly allocate memory for every segment/resource. This is not yet
  * supported, though.
  */
-static int
-rproc_elf_load_segments(struct rproc *rproc, const struct firmware *fw)
+int rproc_elf_load_segments(struct rproc *rproc, const struct firmware *fw)
 {
 	struct device *dev = &rproc->dev;
 	struct elf32_hdr *ehdr;
@@ -208,6 +206,7 @@ rproc_elf_load_segments(struct rproc *rproc, const struct firmware *fw)
 
 	return ret;
 }
+EXPORT_SYMBOL(rproc_elf_load_segments);
 
 static struct elf32_shdr *
 find_table(struct device *dev, struct elf32_hdr *ehdr, size_t fw_size)
@@ -269,41 +268,49 @@ find_table(struct device *dev, struct elf32_hdr *ehdr, size_t fw_size)
 }
 
 /**
- * rproc_elf_find_rsc_table() - find the resource table
+ * rproc_elf_load_rsc_table() - load the resource table
  * @rproc: the rproc handle
  * @fw: the ELF firmware image
- * @tablesz: place holder for providing back the table size
  *
  * This function finds the resource table inside the remote processor's
- * firmware. It is used both upon the registration of @rproc (in order
- * to look for and register the supported virito devices), and when the
- * @rproc is booted.
+ * firmware, load it into the @cached_table and update @table_ptr.
  *
- * Returns the pointer to the resource table if it is found, and write its
- * size into @tablesz. If a valid table isn't found, NULL is returned
- * (and @tablesz isn't set).
+ * Return: 0 on success, negative errno on failure.
  */
-static struct resource_table *
-rproc_elf_find_rsc_table(struct rproc *rproc, const struct firmware *fw,
-			 int *tablesz)
+int rproc_elf_load_rsc_table(struct rproc *rproc, const struct firmware *fw)
 {
 	struct elf32_hdr *ehdr;
 	struct elf32_shdr *shdr;
 	struct device *dev = &rproc->dev;
 	struct resource_table *table = NULL;
 	const u8 *elf_data = fw->data;
+	size_t tablesz;
 
 	ehdr = (struct elf32_hdr *)elf_data;
 
 	shdr = find_table(dev, ehdr, fw->size);
 	if (!shdr)
-		return NULL;
+		return -EINVAL;
 
 	table = (struct resource_table *)(elf_data + shdr->sh_offset);
-	*tablesz = shdr->sh_size;
+	tablesz = shdr->sh_size;
 
-	return table;
+	/*
+	 * Create a copy of the resource table. When a virtio device starts
+	 * and calls vring_new_virtqueue() the address of the allocated vring
+	 * will be stored in the cached_table. Before the device is started,
+	 * cached_table will be copied into device memory.
+	 */
+	rproc->cached_table = kmemdup(table, tablesz, GFP_KERNEL);
+	if (!rproc->cached_table)
+		return -ENOMEM;
+
+	rproc->table_ptr = rproc->cached_table;
+	rproc->table_sz = tablesz;
+
+	return 0;
 }
+EXPORT_SYMBOL(rproc_elf_load_rsc_table);
 
 /**
  * rproc_elf_find_loaded_rsc_table() - find the loaded resource table
@@ -316,8 +323,8 @@ rproc_elf_find_rsc_table(struct rproc *rproc, const struct firmware *fw,
  * Returns the pointer to the resource table if it is found or NULL otherwise.
  * If the table wasn't loaded yet the result is unspecified.
  */
-static struct resource_table *
-rproc_elf_find_loaded_rsc_table(struct rproc *rproc, const struct firmware *fw)
+struct resource_table *rproc_elf_find_loaded_rsc_table(struct rproc *rproc,
+						       const struct firmware *fw)
 {
 	struct elf32_hdr *ehdr = (struct elf32_hdr *)fw->data;
 	struct elf32_shdr *shdr;
@@ -328,119 +335,4 @@ rproc_elf_find_loaded_rsc_table(struct rproc *rproc, const struct firmware *fw)
 
 	return rproc_da_to_va(rproc, shdr->sh_addr, shdr->sh_size);
 }
-
-/**
- * rproc_elf_get_chksum() - calcuate checksum of the loadable section
- * @rproc: the rproc handle
- * @fw: the ELF firmware image
- * @algo: name of the checksum algorithm
- * @chksum: checksum
- * @output_size: size of the checksum
- *
- * This function calculate the checksum of the loadable secitons
- * of the specified firmware.
- *
- * Returns 0 for success, negative value for failure.
- */
-static int
-rproc_elf_get_chksum(struct rproc *rproc, const struct firmware *fw,
-		char *algo, u8 *chksum, int output_size)
-{
-	int ret, i;
-	struct device *dev = &rproc->dev;
-	struct crypto_shash *tfm;
-	struct shash_desc *desc;
-	int algo_len = 0;
-	struct elf32_hdr *ehdr;
-	struct elf32_phdr *phdr;
-	const u8 *elf_data = fw->data;
-
-	memset(chksum, 0, output_size);
-	/* If no algo is specified, default it to "sha256" */
-	if (!strlen(algo))
-		sprintf(algo, "sha256");
-	ret = crypto_has_alg(algo, 0, 0);
-	if (!ret) {
-		dev_err(dev, "failed to find crypto algo: %s.\n", algo);
-		return -EINVAL;
-	}
-	dev_dbg(dev, "firmware checksum algo: %s.\n", algo);
-	tfm =  crypto_alloc_shash(algo, 0, 0);
-	if (!tfm) {
-		dev_err(dev, "failed to allocate shash.\n");
-		return -ENOMEM;
-	}
-	algo_len = crypto_shash_digestsize(tfm);
-	if (algo_len > output_size) {
-		dev_err(dev,
-			"algo digest size %d is larger expected %d.\n",
-			algo_len, output_size);
-		return -EINVAL;
-	}
-	desc = kzalloc(sizeof(*desc) + algo_len, GFP_KERNEL);
-	if (!desc)
-		return -ENOMEM;
-	desc->tfm = tfm;
-	ret = crypto_shash_init(desc);
-	if (ret) {
-		dev_err(dev, "failed crypto %s initialization.\n", algo);
-		return ret;
-	}
-
-	ehdr = (struct elf32_hdr *)elf_data;
-	phdr = (struct elf32_phdr *)(elf_data + ehdr->e_phoff);
-
-	/* go through the available ELF segments */
-	for (i = 0; i < ehdr->e_phnum; i++, phdr++) {
-		u32 memsz = phdr->p_memsz;
-		u32 filesz = phdr->p_filesz;
-		u32 offset = phdr->p_offset;
-
-		if (phdr->p_type != PT_LOAD)
-			continue;
-
-		if (filesz > memsz) {
-			dev_err(dev, "bad phdr filesz 0x%x memsz 0x%x\n",
-				filesz, memsz);
-			ret = -EINVAL;
-			break;
-		}
-
-		if (offset + filesz > fw->size) {
-			dev_err(dev, "truncated fw: need 0x%x avail 0x%zx\n",
-				offset + filesz, fw->size);
-			ret = -EINVAL;
-			break;
-		}
-
-		/* put the segment where the remote processor expects it */
-		if (phdr->p_filesz) {
-			ret = crypto_shash_update(desc,
-				elf_data + offset, filesz);
-			if (ret) {
-				dev_err(dev,
-				"Failed to update fw crypto digest state at offset 0x%x, size 0x%x.\n",
-				offset, filesz);
-				return ret;
-			}
-		}
-
-	}
-	ret = crypto_shash_final(desc, chksum);
-	crypto_free_shash(tfm);
-	kfree(desc);
-	if (ret) {
-		dev_err(dev, "failed to finalize checksum of firmware.\n");
-		return ret;
-	}
-	return ret;
-}
-
-const struct rproc_fw_ops rproc_elf_fw_ops = {
-	.load = rproc_elf_load_segments,
-	.find_rsc_table = rproc_elf_find_rsc_table,
-	.find_loaded_rsc_table = rproc_elf_find_loaded_rsc_table,
-	.sanity_check = rproc_elf_sanity_check,
-	.get_chksum = rproc_elf_get_chksum,
-	.get_boot_addr = rproc_elf_get_boot_addr
-};
+EXPORT_SYMBOL(rproc_elf_find_loaded_rsc_table);

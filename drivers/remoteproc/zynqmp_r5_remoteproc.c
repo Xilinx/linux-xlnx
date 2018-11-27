@@ -135,8 +135,6 @@ struct mem_pool_st {
  */
 struct zynqmp_r5_rproc_pdata {
 	struct rproc *rproc;
-	struct rproc_fw_ops fw_ops;
-	const struct rproc_fw_ops *default_fw_ops;
 	struct work_struct workqueue;
 	void __iomem *rpu_base;
 	void __iomem *rpu_glbl_base;
@@ -197,37 +195,6 @@ static void r5_mode_config(struct zynqmp_r5_rproc_pdata *pdata)
 		tmp |= SLCLAMP_BIT;
 	}
 	reg_write(pdata->rpu_glbl_base, 0, tmp);
-}
-
-/*
- * r5_is_running - check if r5 is running
- * @pdata: platform data
- *
- * check if R5 is running
- * @retrun: true if r5 is running, false otherwise
- */
-static bool r5_is_running(struct zynqmp_r5_rproc_pdata *pdata)
-{
-	u32 status, requirements, usage;
-	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
-
-	pr_debug("%s: rpu id: %d\n", __func__, pdata->rpu_id);
-	if (!eemi_ops || !eemi_ops->get_node_status) {
-		pr_err("Failed to get RPU node status.\n");
-		return false;
-	}
-
-	if (eemi_ops->get_node_status(pdata->rpu_pd_id,
-				      &status, &requirements, &usage)) {
-		pr_err("Failed to get RPU node status.\n");
-		return false;
-	} else if (status != PM_PROC_STATE_ACTIVE) {
-		pr_debug("RPU %d is not running.\n", pdata->rpu_id);
-		return false;
-	}
-
-	pr_debug("RPU %d is running.\n", pdata->rpu_id);
-	return true;
 }
 
 /**
@@ -313,33 +280,15 @@ static inline void enable_ipi(struct zynqmp_r5_rproc_pdata *pdata)
 		reg_write(pdata->ipi_base, IER_OFFSET, pdata->ipi_dest_mask);
 }
 
-/**
- * event_notified_idr_cb - event notified idr callback
- * @id: idr id
- * @ptr: pointer to idr private data
- * @data: data passed to idr_for_each callback
- *
- * Pass notification to remtoeproc virtio
- *
- * @return: 0. having return is to satisfy the idr_for_each() function
- *          pointer input argument requirement.
- */
-static int event_notified_idr_cb(int id, void *ptr, void *data)
-{
-	struct rproc *rproc = data;
-	(void)rproc_virtio_interrupt(rproc, id);
-	return 0;
-}
-
 static void handle_event_notified(struct work_struct *work)
 {
-	struct rproc *rproc;
 	struct zynqmp_r5_rproc_pdata *local = container_of(
 				work, struct zynqmp_r5_rproc_pdata,
 				workqueue);
 
-	rproc = local->rproc;
-	idr_for_each(&rproc->notifyids, event_notified_idr_cb, rproc);
+	if (rproc_vq_interrupt(local->rproc, 0) == IRQ_NONE)
+		dev_dbg(local->rproc->dev.parent,
+			"no message found in vqid 0\n");
 }
 
 static int zynqmp_r5_rproc_start(struct rproc *rproc)
@@ -438,15 +387,14 @@ static int zynqmp_r5_rproc_stop(struct rproc *rproc)
 	return 0;
 }
 
-/* check if ZynqMP r5 is running */
-static bool zynqmp_r5_rproc_is_running(struct rproc *rproc)
+static int zynqmp_r5_parse_fw(struct rproc *rproc, const struct firmware *fw)
 {
-	struct device *dev = rproc->dev.parent;
-	struct zynqmp_r5_rproc_pdata *local = rproc->priv;
+	int ret;
 
-	dev_dbg(dev, "%s\n", __func__);
-
-	return r5_is_running(local);
+	ret = rproc_elf_load_rsc_table(rproc, fw);
+	if (ret == -EINVAL)
+		ret = 0;
+	return ret;
 }
 
 static void *zynqmp_r5_rproc_da_to_va(struct rproc *rproc, u64 da, int len)
@@ -476,7 +424,11 @@ static void *zynqmp_r5_rproc_da_to_va(struct rproc *rproc, u64 da, int len)
 static struct rproc_ops zynqmp_r5_rproc_ops = {
 	.start		= zynqmp_r5_rproc_start,
 	.stop		= zynqmp_r5_rproc_stop,
-	.is_running     = zynqmp_r5_rproc_is_running,
+	.load		= rproc_elf_load_segments,
+	.parse_fw	= zynqmp_r5_parse_fw,
+	.find_loaded_rsc_table = rproc_elf_find_loaded_rsc_table,
+	.sanity_check	= rproc_elf_sanity_check,
+	.get_boot_addr	= rproc_elf_get_boot_addr,
 	.kick		= zynqmp_r5_rproc_kick,
 	.da_to_va       = zynqmp_r5_rproc_da_to_va,
 };
@@ -564,32 +516,6 @@ static irqreturn_t r5_remoteproc_interrupt(int irq, void *dev_id)
 	schedule_work(&local->workqueue);
 
 	return IRQ_HANDLED;
-}
-
-/*
- * Empty RSC table
- */
-static struct resource_table r5_rproc_default_rsc_table = {
-	.ver = 1,
-	.num = 0,
-};
-
-/* Redefine r5 resource table to allow empty resource table */
-static struct resource_table *r5_rproc_find_rsc_table(
-			struct rproc *rproc,
-			const struct firmware *fw,
-			int *tablesz)
-{
-	struct zynqmp_r5_rproc_pdata *local = rproc->priv;
-	struct resource_table *rsc;
-
-	rsc = local->default_fw_ops->find_rsc_table(rproc, fw, tablesz);
-	if (!rsc) {
-		*tablesz = sizeof(r5_rproc_default_rsc_table);
-		return &r5_rproc_default_rsc_table;
-	} else {
-		return rsc;
-	}
 }
 
 static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
@@ -784,12 +710,6 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 	}
 
 	rproc->auto_boot = autoboot;
-
-	/* Set local firmware operations */
-	memcpy(&local->fw_ops, rproc->fw_ops, sizeof(local->fw_ops));
-	local->fw_ops.find_rsc_table = r5_rproc_find_rsc_table;
-	local->default_fw_ops = rproc->fw_ops;
-	rproc->fw_ops = &local->fw_ops;
 
 	ret = rproc_add(local->rproc);
 	if (ret) {

@@ -1,28 +1,5 @@
-/*******************************************************************************
- *
- * Intel Ethernet Controller XL710 Family Linux Virtual Function Driver
- * Copyright(c) 2013 - 2014 Intel Corporation.
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms and conditions of the GNU General Public License,
- * version 2, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
- * more details.
- *
- * You should have received a copy of the GNU General Public License along
- * with this program.  If not, see <http://www.gnu.org/licenses/>.
- *
- * The full GNU General Public License is included in this distribution in
- * the file called "COPYING".
- *
- * Contact Information:
- * e1000-devel Mailing List <e1000-devel@lists.sourceforge.net>
- * Intel Corporation, 5200 N.E. Elam Young Parkway, Hillsboro, OR 97124-6497
- *
- ******************************************************************************/
+// SPDX-License-Identifier: GPL-2.0
+/* Copyright(c) 2013 - 2018 Intel Corporation. */
 
 #include "i40e_type.h"
 #include "i40e_adminq.h"
@@ -284,6 +261,8 @@ const char *i40evf_stat_str(struct i40e_hw *hw, i40e_status stat_err)
 		return "I40E_NOT_SUPPORTED";
 	case I40E_ERR_FIRMWARE_API_VERSION:
 		return "I40E_ERR_FIRMWARE_API_VERSION";
+	case I40E_ERR_ADMIN_QUEUE_CRITICAL_ERROR:
+		return "I40E_ERR_ADMIN_QUEUE_CRITICAL_ERROR";
 	}
 
 	snprintf(hw->err_str, sizeof(hw->err_str), "%d", stat_err);
@@ -1133,7 +1112,7 @@ i40e_status i40e_vf_reset(struct i40e_hw *hw)
 }
 
 /**
- * i40evf_aq_write_ppp - Write pipeline personalization profile (ppp)
+ * i40evf_aq_write_ddp - Write dynamic device personalization (ddp)
  * @hw: pointer to the hw struct
  * @buff: command buffer (size in bytes = buff_size)
  * @buff_size: buffer size in bytes
@@ -1143,7 +1122,7 @@ i40e_status i40e_vf_reset(struct i40e_hw *hw)
  * @cmd_details: pointer to command details structure or NULL
  **/
 enum
-i40e_status_code i40evf_aq_write_ppp(struct i40e_hw *hw, void *buff,
+i40e_status_code i40evf_aq_write_ddp(struct i40e_hw *hw, void *buff,
 				     u16 buff_size, u32 track_id,
 				     u32 *error_offset, u32 *error_info,
 				     struct i40e_asq_cmd_details *cmd_details)
@@ -1152,7 +1131,7 @@ i40e_status_code i40evf_aq_write_ppp(struct i40e_hw *hw, void *buff,
 	struct i40e_aqc_write_personalization_profile *cmd =
 		(struct i40e_aqc_write_personalization_profile *)
 		&desc.params.raw;
-	struct i40e_aqc_write_ppp_resp *resp;
+	struct i40e_aqc_write_ddp_resp *resp;
 	i40e_status status;
 
 	i40evf_fill_default_direct_cmd_desc(&desc,
@@ -1168,7 +1147,7 @@ i40e_status_code i40evf_aq_write_ppp(struct i40e_hw *hw, void *buff,
 
 	status = i40evf_asq_send_command(hw, &desc, buff, buff_size, cmd_details);
 	if (!status) {
-		resp = (struct i40e_aqc_write_ppp_resp *)&desc.params.raw;
+		resp = (struct i40e_aqc_write_ddp_resp *)&desc.params.raw;
 		if (error_offset)
 			*error_offset = le32_to_cpu(resp->error_offset);
 		if (error_info)
@@ -1179,16 +1158,17 @@ i40e_status_code i40evf_aq_write_ppp(struct i40e_hw *hw, void *buff,
 }
 
 /**
- * i40evf_aq_get_ppp_list - Read pipeline personalization profile (ppp)
+ * i40evf_aq_get_ddp_list - Read dynamic device personalization (ddp)
  * @hw: pointer to the hw struct
  * @buff: command buffer (size in bytes = buff_size)
  * @buff_size: buffer size in bytes
+ * @flags: AdminQ command flags
  * @cmd_details: pointer to command details structure or NULL
  **/
 enum
-i40e_status_code i40evf_aq_get_ppp_list(struct i40e_hw *hw, void *buff,
+i40e_status_code i40evf_aq_get_ddp_list(struct i40e_hw *hw, void *buff,
 					u16 buff_size, u8 flags,
-				      struct i40e_asq_cmd_details *cmd_details)
+				       struct i40e_asq_cmd_details *cmd_details)
 {
 	struct i40e_aq_desc desc;
 	struct i40e_aqc_get_applied_profiles *cmd =
@@ -1261,11 +1241,6 @@ i40evf_write_profile(struct i40e_hw *hw, struct i40e_profile_segment *profile,
 	u32 offset = 0, info = 0;
 	u32 i;
 
-	if (!track_id) {
-		i40e_debug(hw, I40E_DEBUG_PACKAGE, "Track_id can't be 0.");
-		return I40E_NOT_SUPPORTED;
-	}
-
 	dev_cnt = profile->device_table_count;
 
 	for (i = 0; i < dev_cnt; i++) {
@@ -1275,7 +1250,7 @@ i40evf_write_profile(struct i40e_hw *hw, struct i40e_profile_segment *profile,
 				break;
 	}
 	if (i == dev_cnt) {
-		i40e_debug(hw, I40E_DEBUG_PACKAGE, "Device doesn't support PPP");
+		i40e_debug(hw, I40E_DEBUG_PACKAGE, "Device doesn't support DDP");
 		return I40E_ERR_DEVICE_NOT_SUPPORTED;
 	}
 
@@ -1294,7 +1269,7 @@ i40evf_write_profile(struct i40e_hw *hw, struct i40e_profile_segment *profile,
 			sizeof(struct i40e_profile_section_header);
 
 		/* Write profile */
-		status = i40evf_aq_write_ppp(hw, (void *)sec, (u16)section_size,
+		status = i40evf_aq_write_ddp(hw, (void *)sec, (u16)section_size,
 					     track_id, &offset, &info, NULL);
 		if (status) {
 			i40e_debug(hw, I40E_DEBUG_PACKAGE,
@@ -1336,10 +1311,10 @@ i40evf_add_pinfo_to_list(struct i40e_hw *hw,
 					     sec->section.offset);
 	pinfo->track_id = track_id;
 	pinfo->version = profile->version;
-	pinfo->op = I40E_PPP_ADD_TRACKID;
-	memcpy(pinfo->name, profile->name, I40E_PPP_NAME_SIZE);
+	pinfo->op = I40E_DDP_ADD_TRACKID;
+	memcpy(pinfo->name, profile->name, I40E_DDP_NAME_SIZE);
 
-	status = i40evf_aq_write_ppp(hw, (void *)sec, sec->data_end,
+	status = i40evf_aq_write_ddp(hw, (void *)sec, sec->data_end,
 				     track_id, &offset, &info, NULL);
 	return status;
 }

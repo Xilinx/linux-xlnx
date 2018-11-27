@@ -645,8 +645,15 @@ int dquot_writeback_dquots(struct super_block *sb, int type)
 			spin_unlock(&dq_list_lock);
 			dqstats_inc(DQST_LOOKUPS);
 			err = sb->dq_op->write_dquot(dquot);
-			if (!ret && err)
-				ret = err;
+			if (err) {
+				/*
+				 * Clear dirty bit anyway to avoid infinite
+				 * loop here.
+				 */
+				clear_dquot_dirty(dquot);
+				if (!ret)
+					ret = err;
+			}
 			dqput(dquot);
 			spin_lock(&dq_list_lock);
 		}
@@ -704,21 +711,18 @@ EXPORT_SYMBOL(dquot_quota_sync);
 static unsigned long
 dqcache_shrink_scan(struct shrinker *shrink, struct shrink_control *sc)
 {
-	struct list_head *head;
 	struct dquot *dquot;
 	unsigned long freed = 0;
 
 	spin_lock(&dq_list_lock);
-	head = free_dquots.prev;
-	while (head != &free_dquots && sc->nr_to_scan) {
-		dquot = list_entry(head, struct dquot, dq_free);
+	while (!list_empty(&free_dquots) && sc->nr_to_scan) {
+		dquot = list_first_entry(&free_dquots, struct dquot, dq_free);
 		remove_dquot_hash(dquot);
 		remove_free_dquot(dquot);
 		remove_inuse(dquot);
 		do_destroy_dquot(dquot);
 		sc->nr_to_scan--;
 		freed++;
-		head = free_dquots.prev;
 	}
 	spin_unlock(&dq_list_lock);
 	return freed;
@@ -934,12 +938,13 @@ static int dqinit_needed(struct inode *inode, int type)
 }
 
 /* This routine is guarded by s_umount semaphore */
-static void add_dquot_ref(struct super_block *sb, int type)
+static int add_dquot_ref(struct super_block *sb, int type)
 {
 	struct inode *inode, *old_inode = NULL;
 #ifdef CONFIG_QUOTA_DEBUG
 	int reserved = 0;
 #endif
+	int err = 0;
 
 	spin_lock(&sb->s_inode_list_lock);
 	list_for_each_entry(inode, &sb->s_inodes, i_sb_list) {
@@ -959,7 +964,11 @@ static void add_dquot_ref(struct super_block *sb, int type)
 			reserved = 1;
 #endif
 		iput(old_inode);
-		__dquot_initialize(inode, type);
+		err = __dquot_initialize(inode, type);
+		if (err) {
+			iput(inode);
+			goto out;
+		}
 
 		/*
 		 * We hold a reference to 'inode' so it couldn't have been
@@ -974,7 +983,7 @@ static void add_dquot_ref(struct super_block *sb, int type)
 	}
 	spin_unlock(&sb->s_inode_list_lock);
 	iput(old_inode);
-
+out:
 #ifdef CONFIG_QUOTA_DEBUG
 	if (reserved) {
 		quota_error(sb, "Writes happened before quota was turned on "
@@ -982,6 +991,7 @@ static void add_dquot_ref(struct super_block *sb, int type)
 			"Please run quotacheck(8)");
 	}
 #endif
+	return err;
 }
 
 /*
@@ -2139,7 +2149,7 @@ int dquot_file_open(struct inode *inode, struct file *file)
 
 	error = generic_file_open(inode, file);
 	if (!error && (file->f_mode & FMODE_WRITE))
-		dquot_initialize(inode);
+		error = dquot_initialize(inode);
 	return error;
 }
 EXPORT_SYMBOL(dquot_file_open);
@@ -2372,10 +2382,11 @@ static int vfs_load_quota_inode(struct inode *inode, int type, int format_id,
 	dqopt->flags |= dquot_state_flag(flags, type);
 	spin_unlock(&dq_state_lock);
 
-	add_dquot_ref(sb, type);
+	error = add_dquot_ref(sb, type);
+	if (error)
+		dquot_disable(sb, type, flags);
 
-	return 0;
-
+	return error;
 out_file_init:
 	dqopt->files[type] = NULL;
 	iput(inode);
@@ -2952,7 +2963,7 @@ static int __init dquot_init(void)
 			NULL);
 
 	order = 0;
-	dquot_hash = (struct hlist_head *)__get_free_pages(GFP_ATOMIC, order);
+	dquot_hash = (struct hlist_head *)__get_free_pages(GFP_KERNEL, order);
 	if (!dquot_hash)
 		panic("Cannot create dquot hash table");
 
@@ -2978,7 +2989,8 @@ static int __init dquot_init(void)
 	pr_info("VFS: Dquot-cache hash table entries: %ld (order %ld,"
 		" %ld bytes)\n", nr_hash, order, (PAGE_SIZE << order));
 
-	register_shrinker(&dqcache_shrinker);
+	if (register_shrinker(&dqcache_shrinker))
+		panic("Cannot register dquot shrinker");
 
 	return 0;
 }

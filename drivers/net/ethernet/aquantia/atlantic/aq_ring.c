@@ -136,11 +136,12 @@ void aq_ring_queue_stop(struct aq_ring_s *ring)
 		netif_stop_subqueue(ndev, ring->idx);
 }
 
-void aq_ring_tx_clean(struct aq_ring_s *self)
+bool aq_ring_tx_clean(struct aq_ring_s *self)
 {
 	struct device *dev = aq_nic_get_dev(self->aq_nic);
+	unsigned int budget = AQ_CFG_TX_CLEAN_BUDGET;
 
-	for (; self->sw_head != self->hw_head;
+	for (; self->sw_head != self->hw_head && budget--;
 		self->sw_head = aq_ring_next_dx(self, self->sw_head)) {
 		struct aq_ring_buff_s *buff = &self->buff_ring[self->sw_head];
 
@@ -167,6 +168,8 @@ void aq_ring_tx_clean(struct aq_ring_s *self)
 		buff->pa = 0U;
 		buff->eop_index = 0xffffU;
 	}
+
+	return !!budget;
 }
 
 #define AQ_SKB_ALIGN SKB_DATA_ALIGN(sizeof(struct skb_shared_info))
@@ -222,9 +225,10 @@ int aq_ring_rx_clean(struct aq_ring_s *self,
 		}
 
 		/* for single fragment packets use build_skb() */
-		if (buff->is_eop) {
+		if (buff->is_eop &&
+		    buff->len <= AQ_CFG_RX_FRAME_MAX - AQ_SKB_ALIGN) {
 			skb = build_skb(page_address(buff->page),
-					buff->len + AQ_SKB_ALIGN);
+					AQ_CFG_RX_FRAME_MAX);
 			if (unlikely(!skb)) {
 				err = -ENOMEM;
 				goto err_exit;
@@ -244,18 +248,21 @@ int aq_ring_rx_clean(struct aq_ring_s *self,
 					buff->len - ETH_HLEN,
 					SKB_TRUESIZE(buff->len - ETH_HLEN));
 
-			for (i = 1U, next_ = buff->next,
-			     buff_ = &self->buff_ring[next_]; true;
-			     next_ = buff_->next,
-			     buff_ = &self->buff_ring[next_], ++i) {
-				skb_add_rx_frag(skb, i, buff_->page, 0,
-						buff_->len,
-						SKB_TRUESIZE(buff->len -
-						ETH_HLEN));
-				buff_->is_cleaned = 1;
+			if (!buff->is_eop) {
+				for (i = 1U, next_ = buff->next,
+				     buff_ = &self->buff_ring[next_];
+				     true; next_ = buff_->next,
+				     buff_ = &self->buff_ring[next_], ++i) {
+					skb_add_rx_frag(skb, i,
+							buff_->page, 0,
+							buff_->len,
+							SKB_TRUESIZE(buff->len -
+							ETH_HLEN));
+					buff_->is_cleaned = 1;
 
-				if (buff_->is_eop)
-					break;
+					if (buff_->is_eop)
+						break;
+				}
 			}
 		}
 
@@ -279,10 +286,10 @@ int aq_ring_rx_clean(struct aq_ring_s *self,
 
 		skb_record_rx_queue(skb, self->idx);
 
-		napi_gro_receive(napi, skb);
-
 		++self->stats.rx.packets;
 		self->stats.rx.bytes += skb->len;
+
+		napi_gro_receive(napi, skb);
 	}
 
 err_exit:
@@ -304,8 +311,7 @@ int aq_ring_rx_fill(struct aq_ring_s *self)
 		buff->flags = 0U;
 		buff->len = AQ_CFG_RX_FRAME_MAX;
 
-		buff->page = alloc_pages(GFP_ATOMIC | __GFP_COLD |
-					 __GFP_COMP, pages_order);
+		buff->page = alloc_pages(GFP_ATOMIC | __GFP_COMP, pages_order);
 		if (!buff->page) {
 			err = -ENOMEM;
 			goto err_exit;

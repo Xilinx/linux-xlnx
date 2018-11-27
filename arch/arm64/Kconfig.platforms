@@ -71,6 +71,13 @@ config ARCH_EXYNOS
 	help
 	  This enables support for ARMv8 based Samsung Exynos SoC family.
 
+config ARCH_K3
+	bool "Texas Instruments Inc. K3 multicore SoC architecture"
+	select PM_GENERIC_DOMAINS if PM
+	help
+	  This enables support for Texas Instruments' K3 multicore SoC
+	  architecture.
+
 config ARCH_LAYERSCAPE
 	bool "ARMv8 based Freescale Layerscape SoC family"
 	select EDAC_SUPPORT
@@ -91,12 +98,13 @@ config ARCH_HISI
 	  This enables support for Hisilicon ARMv8 SoC family
 
 config ARCH_MEDIATEK
-	bool "Mediatek MT65xx & MT81xx ARMv8 SoC"
+	bool "MediaTek SoC Family"
 	select ARM_GIC
 	select PINCTRL
 	select MTK_TIMER
 	help
-	  Support for Mediatek MT65xx & MT81xx ARMv8 SoCs
+	  This enables support for MediaTek MT27xx, MT65xx, MT76xx
+	  & MT81xx ARMv8 SoCs
 
 config ARCH_MESON
 	bool "Amlogic Platforms"
@@ -104,6 +112,8 @@ config ARCH_MESON
 	select PINCTRL_MESON
 	select COMMON_CLK_AMLOGIC
 	select COMMON_CLK_GXBB
+	select COMMON_CLK_AXG
+	select MESON_IRQ_GPIO
 	help
 	  This enables support for the Amlogic S905 SoCs.
 
@@ -148,6 +158,7 @@ config ARCH_ROCKCHIP
 	select GPIOLIB
 	select PINCTRL
 	select PINCTRL_ROCKCHIP
+	select PM
 	select ROCKCHIP_TIMER
 	help
 	  This enables support for the ARMv8 based Rockchip chipsets,
@@ -160,6 +171,9 @@ config ARCH_SEATTLE
 
 config ARCH_SHMOBILE
 	bool
+
+config ARCH_SYNQUACER
+	bool "Socionext SynQuacer SoC Family"
 
 config ARCH_RENESAS
 	bool "Renesas SoC Platforms"
@@ -183,6 +197,30 @@ config ARCH_R8A7796
 	depends on ARCH_RENESAS
 	help
 	  This enables support for the Renesas R-Car M3-W SoC.
+
+config ARCH_R8A77965
+	bool "Renesas R-Car M3-N SoC Platform"
+	depends on ARCH_RENESAS
+	help
+	  This enables support for the Renesas R-Car M3-N SoC.
+
+config ARCH_R8A77970
+	bool "Renesas R-Car V3M SoC Platform"
+	depends on ARCH_RENESAS
+	help
+	  This enables support for the Renesas R-Car V3M SoC.
+
+config ARCH_R8A77980
+	bool "Renesas R-Car V3H SoC Platform"
+	depends on ARCH_RENESAS
+	help
+	  This enables support for the Renesas R-Car V3H SoC.
+
+config ARCH_R8A77990
+	bool "Renesas R-Car E3 SoC Platform"
+	depends on ARCH_RENESAS
+	help
+	  This enables support for the Renesas R-Car E3 SoC.
 
 config ARCH_R8A77995
 	bool "Renesas R-Car D3 SoC Platform"
@@ -231,6 +269,7 @@ config ARCH_UNIPHIER
 	bool "Socionext UniPhier SoC Family"
 	select ARCH_HAS_RESET_CONTROLLER
 	select PINCTRL
+	select RESET_CONTROLLER
 	help
 	  This enables support for Socionext UniPhier SoC family.
 

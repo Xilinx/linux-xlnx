@@ -179,12 +179,17 @@ static ssize_t write_file_tx99(struct file *file, const char __user *user_buf,
 	ssize_t len;
 	int r;
 
+	if (count < 1)
+		return -EINVAL;
+
 	if (sc->cur_chan->nvifs > 1)
 		return -EOPNOTSUPP;
 
 	len = min(count, sizeof(buf) - 1);
 	if (copy_from_user(buf, user_buf, len))
 		return -EFAULT;
+
+	buf[len] = '\0';
 
 	if (strtobool(buf, &start))
 		return -EINVAL;
@@ -273,10 +278,10 @@ void ath9k_tx99_init_debug(struct ath_softc *sc)
 	if (!AR_SREV_9280_20_OR_LATER(sc->sc_ah))
 		return;
 
-	debugfs_create_file("tx99", S_IRUSR | S_IWUSR,
+	debugfs_create_file("tx99", 0600,
 			    sc->debug.debugfs_phy, sc,
 			    &fops_tx99);
-	debugfs_create_file("tx99_power", S_IRUSR | S_IWUSR,
+	debugfs_create_file("tx99_power", 0600,
 			    sc->debug.debugfs_phy, sc,
 			    &fops_tx99_power);
 }

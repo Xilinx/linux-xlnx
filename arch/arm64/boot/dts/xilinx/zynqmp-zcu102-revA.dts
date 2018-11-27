@@ -373,7 +373,6 @@
 				status = "disabled"; /* unreachable */
 				reg = <0x20>;
 			};
-
 			max20751@72 { /* u95 */
 				compatible = "maxim,max20751";
 				reg = <0x72>;
@@ -858,6 +857,7 @@
 
 &serdes {
 	status = "okay";
+	no-1-8-v;
 };
 
 &uart0 {

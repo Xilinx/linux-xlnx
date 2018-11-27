@@ -105,6 +105,9 @@ static void adv748x_hdmi_fill_format(struct adv748x_hdmi *hdmi,
 
 	fmt->width = hdmi->timings.bt.width;
 	fmt->height = hdmi->timings.bt.height;
+
+	if (fmt->field == V4L2_FIELD_ALTERNATE)
+		fmt->height /= 2;
 }
 
 static void adv748x_fill_optional_dv_timings(struct v4l2_dv_timings *timings)
@@ -399,8 +402,6 @@ static int adv748x_hdmi_propagate_pixelrate(struct adv748x_hdmi *hdmi)
 {
 	struct v4l2_subdev *tx;
 	struct v4l2_dv_timings timings;
-	struct v4l2_bt_timings *bt = &timings.bt;
-	unsigned int fps;
 
 	tx = adv748x_get_remote_sd(&hdmi->pads[ADV748X_HDMI_SOURCE]);
 	if (!tx)
@@ -408,11 +409,7 @@ static int adv748x_hdmi_propagate_pixelrate(struct adv748x_hdmi *hdmi)
 
 	adv748x_hdmi_query_dv_timings(&hdmi->sd, &timings);
 
-	fps = DIV_ROUND_CLOSEST_ULL(bt->pixelclock,
-				    V4L2_DV_BT_FRAME_WIDTH(bt) *
-				    V4L2_DV_BT_FRAME_HEIGHT(bt));
-
-	return adv748x_csi2_set_pixelrate(tx, bt->width * bt->height * fps);
+	return adv748x_csi2_set_pixelrate(tx, timings.bt.pixelclock);
 }
 
 static int adv748x_hdmi_enum_mbus_code(struct v4l2_subdev *sd,

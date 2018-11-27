@@ -97,7 +97,7 @@
 #define ALIGNMENT		4
 
 /* BUFFER_ALIGN(adr) calculates the number of bytes to the next alignment. */
-#define BUFFER_ALIGN(adr) ((ALIGNMENT - ((ulong)adr)) % ALIGNMENT)
+#define BUFFER_ALIGN(adr) ((ALIGNMENT - ((u32)adr)) % ALIGNMENT)
 
 #ifdef __BIG_ENDIAN
 #define xemaclite_readl		ioread32be
@@ -412,7 +412,8 @@ static u16 xemaclite_recv_data(struct net_local *drvdata, u8 *data, int maxlen)
 			return 0;	/* No data was available */
 	}
 
-	/* Get the protocol type of the ethernet frame that arrived */
+	/* Get the protocol type of the ethernet frame that arrived
+	 */
 	proto_type = ((ntohl(xemaclite_readl(addr + XEL_HEADER_OFFSET +
 			XEL_RXBUFF_OFFSET)) >> XEL_HEADER_SHIFT) &
 			XEL_RPLR_LENGTH_MASK);
@@ -572,18 +573,19 @@ static void xemaclite_tx_handler(struct net_device *dev)
 	struct net_local *lp = netdev_priv(dev);
 
 	dev->stats.tx_packets++;
-	if (lp->deferred_skb) {
-		if (xemaclite_send_data(lp,
-					(u8 *)lp->deferred_skb->data,
-					lp->deferred_skb->len) != 0)
-			return;
 
-		dev->stats.tx_bytes += lp->deferred_skb->len;
-		dev_kfree_skb_irq(lp->deferred_skb);
-		lp->deferred_skb = NULL;
-		netif_trans_update(dev); /* prevent tx timeout */
-		netif_wake_queue(dev);
-	}
+	if (!lp->deferred_skb)
+		return;
+
+	if (xemaclite_send_data(lp, (u8 *)lp->deferred_skb->data,
+				lp->deferred_skb->len))
+		return;
+
+	dev->stats.tx_bytes += lp->deferred_skb->len;
+	dev_kfree_skb_irq(lp->deferred_skb);
+	lp->deferred_skb = NULL;
+	netif_trans_update(dev); /* prevent tx timeout */
+	netif_wake_queue(dev);
 }
 
 /**
@@ -646,7 +648,7 @@ static void xemaclite_rx_handler(struct net_device *dev)
  * @dev_id:	Void pointer to the network device instance used as callback
  *		reference
  *
- * Return: IRQ_HANDLED.
+ * Return:	IRQ_HANDLED
  *
  * This function handles the Tx and Rx interrupts of the EmacLite device.
  */
@@ -765,8 +767,8 @@ static int xemaclite_mdio_read(struct mii_bus *bus, int phy_id, int reg)
 	rc = xemaclite_readl(lp->base_addr + XEL_MDIORD_OFFSET);
 
 	dev_dbg(&lp->ndev->dev,
-		"%s(phy_id=%i, reg=%x) == %x\n",
-		__func__, phy_id, reg, rc);
+		"%s(phy_id=%i, reg=%x) == %x\n", __func__,
+		phy_id, reg, rc);
 
 	return rc;
 }
@@ -790,8 +792,8 @@ static int xemaclite_mdio_write(struct mii_bus *bus, int phy_id, int reg,
 	u32 ctrl_reg;
 
 	dev_dbg(&lp->ndev->dev,
-		"%s(phy_id=%i, reg=%x, val=%x)\n",
-		__func__, phy_id, reg, val);
+		"%s(phy_id=%i, reg=%x, val=%x)\n", __func__,
+		phy_id, reg, val);
 
 	if (xemaclite_mdio_wait(lp))
 		return -ETIMEDOUT;
@@ -913,13 +915,12 @@ static void xemaclite_adjust_link(struct net_device *ndev)
  * xemaclite_open - Open the network device
  * @dev:	Pointer to the network device
  *
- * Return: 0, on success.
- *	    -ENODEV, if PHY cannot be connected to
- *	    non-zero error value on failure
- *
  * This function sets the MAC address, requests an IRQ and enables interrupts
  * for the Emaclite device and starts the Tx queue.
  * It also connects to the phy device, if MDIO is included in Emaclite device.
+ *
+ * Return:	0 on success. -ENODEV, if PHY cannot be connected.
+ *		Non-zero error value on failure.
  */
 static int xemaclite_open(struct net_device *dev)
 {
@@ -1070,15 +1071,11 @@ static bool get_bool(struct platform_device *ofdev, const char *s)
 {
 	u32 *p = (u32 *)of_get_property(ofdev->dev.of_node, s, NULL);
 
-	if (p) {
-		goto out;
-	} else {
-		dev_warn(&ofdev->dev, "Parameter %s not found", s);
-		dev_warn(&ofdev->dev, " defaulting to false\n");
+	if (!p) {
+		dev_warn(&ofdev->dev, "Parameter %s not found, defaulting to false\n", s);
 		return false;
 	}
 
-out:
 	return (bool)*p;
 }
 

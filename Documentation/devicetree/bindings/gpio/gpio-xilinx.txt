@@ -20,8 +20,6 @@ Optional properties:
 - clock-names : Should be "s_axi_aclk"
 - clocks: Input clock specifier. Refer to common clock bindings.
 - interrupts : Interrupt mapping for GPIO IRQ.
-- interrupt-parent : Phandle for the interrupt controller that
-  services interrupts for this device.
 - xlnx,all-inputs : if n-th bit is setup, GPIO-n is input
 - xlnx,dout-default : if n-th bit is 1, GPIO-n default value is 1
 - xlnx,gpio-width : gpio width

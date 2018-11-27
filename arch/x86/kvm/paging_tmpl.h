@@ -181,7 +181,7 @@ no_present:
  * set bit 0 if execute only is supported. Here, we repurpose ACC_USER_MASK
  * to signify readability since it isn't used in the EPT case
  */
-static inline unsigned FNAME(gpte_access)(struct kvm_vcpu *vcpu, u64 gpte)
+static inline unsigned FNAME(gpte_access)(u64 gpte)
 {
 	unsigned access;
 #if PTTYPE == PTTYPE_EPT
@@ -394,8 +394,8 @@ retry_walk:
 	accessed_dirty = have_ad ? pte_access & PT_GUEST_ACCESSED_MASK : 0;
 
 	/* Convert to ACC_*_MASK flags for struct guest_walker.  */
-	walker->pt_access = FNAME(gpte_access)(vcpu, pt_access ^ walk_nx_mask);
-	walker->pte_access = FNAME(gpte_access)(vcpu, pte_access ^ walk_nx_mask);
+	walker->pt_access = FNAME(gpte_access)(pt_access ^ walk_nx_mask);
+	walker->pte_access = FNAME(gpte_access)(pte_access ^ walk_nx_mask);
 	errcode = permission_fault(vcpu, mmu, walker->pte_access, pte_pkey, access);
 	if (unlikely(errcode))
 		goto error;
@@ -452,14 +452,21 @@ error:
 	 * done by is_rsvd_bits_set() above.
 	 *
 	 * We set up the value of exit_qualification to inject:
-	 * [2:0] - Derive from [2:0] of real exit_qualification at EPT violation
+	 * [2:0] - Derive from the access bits. The exit_qualification might be
+	 *         out of date if it is serving an EPT misconfiguration.
 	 * [5:3] - Calculated by the page walk of the guest EPT page tables
 	 * [7:8] - Derived from [7:8] of real exit_qualification
 	 *
 	 * The other bits are set to 0.
 	 */
 	if (!(errcode & PFERR_RSVD_MASK)) {
-		vcpu->arch.exit_qualification &= 0x187;
+		vcpu->arch.exit_qualification &= 0x180;
+		if (write_fault)
+			vcpu->arch.exit_qualification |= EPT_VIOLATION_ACC_WRITE;
+		if (user_fault)
+			vcpu->arch.exit_qualification |= EPT_VIOLATION_ACC_READ;
+		if (fetch_fault)
+			vcpu->arch.exit_qualification |= EPT_VIOLATION_ACC_INSTR;
 		vcpu->arch.exit_qualification |= (pte_access & 0x7) << 3;
 	}
 #endif
@@ -501,7 +508,7 @@ FNAME(prefetch_gpte)(struct kvm_vcpu *vcpu, struct kvm_mmu_page *sp,
 	pgprintk("%s: gpte %llx spte %p\n", __func__, (u64)gpte, spte);
 
 	gfn = gpte_to_gfn(gpte);
-	pte_access = sp->role.access & FNAME(gpte_access)(vcpu, gpte);
+	pte_access = sp->role.access & FNAME(gpte_access)(gpte);
 	FNAME(protect_clean_gpte)(&vcpu->arch.mmu, &pte_access, gpte);
 	pfn = pte_prefetch_gfn_to_pfn(vcpu, gfn,
 			no_dirty_log && (pte_access & ACC_WRITE_MASK));
@@ -593,7 +600,7 @@ static int FNAME(fetch)(struct kvm_vcpu *vcpu, gva_t addr,
 	struct kvm_mmu_page *sp = NULL;
 	struct kvm_shadow_walk_iterator it;
 	unsigned direct_access, access = gw->pt_access;
-	int top_level, emulate;
+	int top_level, ret;
 
 	direct_access = gw->pte_access;
 
@@ -659,15 +666,15 @@ static int FNAME(fetch)(struct kvm_vcpu *vcpu, gva_t addr,
 	}
 
 	clear_sp_write_flooding_count(it.sptep);
-	emulate = mmu_set_spte(vcpu, it.sptep, gw->pte_access, write_fault,
-			       it.level, gw->gfn, pfn, prefault, map_writable);
+	ret = mmu_set_spte(vcpu, it.sptep, gw->pte_access, write_fault,
+			   it.level, gw->gfn, pfn, prefault, map_writable);
 	FNAME(pte_prefetch)(vcpu, gw, it.sptep);
 
-	return emulate;
+	return ret;
 
 out_gpte_changed:
 	kvm_release_pfn_clean(pfn);
-	return 0;
+	return RET_PF_RETRY;
 }
 
  /*
@@ -762,12 +769,12 @@ static int FNAME(page_fault)(struct kvm_vcpu *vcpu, gva_t addr, u32 error_code,
 		if (!prefault)
 			inject_page_fault(vcpu, &walker.fault);
 
-		return 0;
+		return RET_PF_RETRY;
 	}
 
 	if (page_fault_handle_page_track(vcpu, error_code, walker.gfn)) {
 		shadow_page_table_clear_flood(vcpu, addr);
-		return 1;
+		return RET_PF_EMULATE;
 	}
 
 	vcpu->arch.write_fault_to_shadow_pgtable = false;
@@ -789,7 +796,7 @@ static int FNAME(page_fault)(struct kvm_vcpu *vcpu, gva_t addr, u32 error_code,
 
 	if (try_async_pf(vcpu, prefault, walker.gfn, addr, &pfn, write_fault,
 			 &map_writable))
-		return 0;
+		return RET_PF_RETRY;
 
 	if (handle_abnormal_pfn(vcpu, addr, walker.gfn, pfn, walker.pte_access, &r))
 		return r;
@@ -834,7 +841,7 @@ static int FNAME(page_fault)(struct kvm_vcpu *vcpu, gva_t addr, u32 error_code,
 out_unlock:
 	spin_unlock(&vcpu->kvm->mmu_lock);
 	kvm_release_pfn_clean(pfn);
-	return 0;
+	return RET_PF_RETRY;
 }
 
 static gpa_t FNAME(get_level1_sp_gpa)(struct kvm_mmu_page *sp)
@@ -849,7 +856,7 @@ static gpa_t FNAME(get_level1_sp_gpa)(struct kvm_mmu_page *sp)
 	return gfn_to_gpa(sp->gfn) + offset * sizeof(pt_element_t);
 }
 
-static void FNAME(invlpg)(struct kvm_vcpu *vcpu, gva_t gva)
+static void FNAME(invlpg)(struct kvm_vcpu *vcpu, gva_t gva, hpa_t root_hpa)
 {
 	struct kvm_shadow_walk_iterator iterator;
 	struct kvm_mmu_page *sp;
@@ -864,13 +871,13 @@ static void FNAME(invlpg)(struct kvm_vcpu *vcpu, gva_t gva)
 	 */
 	mmu_topup_memory_caches(vcpu);
 
-	if (!VALID_PAGE(vcpu->arch.mmu.root_hpa)) {
+	if (!VALID_PAGE(root_hpa)) {
 		WARN_ON(1);
 		return;
 	}
 
 	spin_lock(&vcpu->kvm->mmu_lock);
-	for_each_shadow_entry(vcpu, gva, iterator) {
+	for_each_shadow_entry_using_root(vcpu, root_hpa, gva, iterator) {
 		level = iterator.level;
 		sptep = iterator.sptep;
 
@@ -961,6 +968,7 @@ static int FNAME(sync_page)(struct kvm_vcpu *vcpu, struct kvm_mmu_page *sp)
 	int i, nr_present = 0;
 	bool host_writable;
 	gpa_t first_pte_gpa;
+	int set_spte_ret = 0;
 
 	/* direct kvm_mmu_page can not be unsync. */
 	BUG_ON(sp->role.direct);
@@ -995,7 +1003,7 @@ static int FNAME(sync_page)(struct kvm_vcpu *vcpu, struct kvm_mmu_page *sp)
 
 		gfn = gpte_to_gfn(gpte);
 		pte_access = sp->role.access;
-		pte_access &= FNAME(gpte_access)(vcpu, gpte);
+		pte_access &= FNAME(gpte_access)(gpte);
 		FNAME(protect_clean_gpte)(&vcpu->arch.mmu, &pte_access, gpte);
 
 		if (sync_mmio_spte(vcpu, &sp->spt[i], gfn, pte_access,
@@ -1017,11 +1025,14 @@ static int FNAME(sync_page)(struct kvm_vcpu *vcpu, struct kvm_mmu_page *sp)
 
 		host_writable = sp->spt[i] & SPTE_HOST_WRITEABLE;
 
-		set_spte(vcpu, &sp->spt[i], pte_access,
-			 PT_PAGE_TABLE_LEVEL, gfn,
-			 spte_to_pfn(sp->spt[i]), true, false,
-			 host_writable);
+		set_spte_ret |= set_spte(vcpu, &sp->spt[i],
+					 pte_access, PT_PAGE_TABLE_LEVEL,
+					 gfn, spte_to_pfn(sp->spt[i]),
+					 true, false, host_writable);
 	}
+
+	if (set_spte_ret & SET_SPTE_NEED_REMOTE_TLB_FLUSH)
+		kvm_flush_remote_tlbs(vcpu->kvm);
 
 	return nr_present;
 }

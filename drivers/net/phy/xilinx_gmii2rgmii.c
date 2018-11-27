@@ -87,7 +87,7 @@ static int xgmiitorgmii_probe(struct mdio_device *mdiodev)
 	}
 
 	if (!priv->phy_dev->drv) {
-		dev_err(dev, "External PHY driver not probed\n");
+		dev_info(dev, "Attached phy not ready\n");
 		return -EPROBE_DEFER;
 	}
 

@@ -139,6 +139,7 @@ static int crtc_crc_data_count(struct drm_crtc_crc *crc)
 static void crtc_crc_cleanup(struct drm_crtc_crc *crc)
 {
 	kfree(crc->entries);
+	crc->overflow = false;
 	crc->entries = NULL;
 	crc->head = 0;
 	crc->tail = 0;
@@ -155,7 +156,7 @@ static int crtc_crc_open(struct inode *inode, struct file *filep)
 	int ret = 0;
 
 	if (drm_drv_uses_atomic_modeset(crtc->dev)) {
-		ret = drm_modeset_lock_interruptible(&crtc->mutex, NULL);
+		ret = drm_modeset_lock_single_interruptible(&crtc->mutex);
 		if (ret)
 			return ret;
 
@@ -307,10 +308,29 @@ static ssize_t crtc_crc_read(struct file *filep, char __user *user_buf,
 	return LINE_LEN(crc->values_cnt);
 }
 
+static unsigned int crtc_crc_poll(struct file *file, poll_table *wait)
+{
+	struct drm_crtc *crtc = file->f_inode->i_private;
+	struct drm_crtc_crc *crc = &crtc->crc;
+	unsigned ret;
+
+	poll_wait(file, &crc->wq, wait);
+
+	spin_lock_irq(&crc->lock);
+	if (crc->source && crtc_crc_data_count(crc))
+		ret = POLLIN | POLLRDNORM;
+	else
+		ret = 0;
+	spin_unlock_irq(&crc->lock);
+
+	return ret;
+}
+
 static const struct file_operations drm_crtc_crc_data_fops = {
 	.owner = THIS_MODULE,
 	.open = crtc_crc_open,
 	.read = crtc_crc_read,
+	.poll = crtc_crc_poll,
 	.release = crtc_crc_release,
 };
 
@@ -372,8 +392,14 @@ int drm_crtc_add_crc_entry(struct drm_crtc *crtc, bool has_frame,
 	tail = crc->tail;
 
 	if (CIRC_SPACE(head, tail, DRM_CRC_ENTRIES_NR) < 1) {
+		bool was_overflow = crc->overflow;
+
+		crc->overflow = true;
 		spin_unlock(&crc->lock);
-		DRM_ERROR("Overflow of CRC buffer, userspace reads too slow.\n");
+
+		if (!was_overflow)
+			DRM_ERROR("Overflow of CRC buffer, userspace reads too slow.\n");
+
 		return -ENOBUFS;
 	}
 

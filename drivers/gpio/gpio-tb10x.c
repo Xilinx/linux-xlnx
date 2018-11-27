@@ -22,7 +22,7 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
-#include <linux/gpio.h>
+#include <linux/gpio/driver.h>
 #include <linux/slab.h>
 #include <linux/irq.h>
 #include <linux/irqdomain.h>
@@ -30,7 +30,6 @@
 #include <linux/io.h>
 #include <linux/of.h>
 #include <linux/of_platform.h>
-#include <linux/of_gpio.h>
 #include <linux/spinlock.h>
 #include <linux/bitops.h>
 #include <linux/pinctrl/consumer.h>
@@ -193,6 +192,9 @@ static int tb10x_gpio_probe(struct platform_device *pdev)
 
 	tb10x_gpio->gc.label		=
 		devm_kasprintf(&pdev->dev, GFP_KERNEL, "%pOF", pdev->dev.of_node);
+	if (!tb10x_gpio->gc.label)
+		return -ENOMEM;
+
 	tb10x_gpio->gc.parent		= &pdev->dev;
 	tb10x_gpio->gc.owner		= THIS_MODULE;
 	tb10x_gpio->gc.direction_input	= tb10x_gpio_direction_in;

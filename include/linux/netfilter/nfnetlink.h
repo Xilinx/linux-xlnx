@@ -29,8 +29,10 @@ struct nfnetlink_subsystem {
 	__u8 subsys_id;			/* nfnetlink subsystem ID */
 	__u8 cb_count;			/* number of callbacks */
 	const struct nfnl_callback *cb;	/* callback for individual types */
+	struct module *owner;
 	int (*commit)(struct net *net, struct sk_buff *skb);
 	int (*abort)(struct net *net, struct sk_buff *skb);
+	void (*cleanup)(struct net *net);
 	bool (*valid_genid)(struct net *net, u32 genid);
 };
 
@@ -67,8 +69,7 @@ static inline bool lockdep_nfnl_is_held(__u8 subsys_id)
  * @ss: The nfnetlink subsystem ID
  *
  * Return the value of the specified RCU-protected pointer, but omit
- * both the smp_read_barrier_depends() and the ACCESS_ONCE(), because
- * caller holds the NFNL subsystem mutex.
+ * the READ_ONCE(), because caller holds the NFNL subsystem mutex.
  */
 #define nfnl_dereference(p, ss)					\
 	rcu_dereference_protected(p, lockdep_nfnl_is_held(ss))

@@ -1,12 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * uartlite.c: Serial driver for Xilinx uartlite serial controller
  *
  * Copyright (C) 2006 Peter Korsgaard <jacmet@sunsite.dk>
  * Copyright (C) 2007 Secret Lab Technologies Ltd.
- *
- * This file is licensed under the terms of the GNU General Public License
- * version 2.  This program is licensed "as is" without any warranty of any
- * kind, whether express or implied.
  */
 
 #include <linux/platform_device.h>
@@ -393,7 +390,7 @@ static int ulite_verify_port(struct uart_port *port, struct serial_struct *ser)
 }
 
 static void ulite_pm(struct uart_port *port, unsigned int state,
-	      unsigned int oldstate)
+		     unsigned int oldstate)
 {
 	if (!state) {
 		pm_runtime_get_sync(port->dev);
@@ -595,7 +592,7 @@ OF_EARLYCON_DECLARE(uartlite_a, "xlnx,xps-uartlite-1.00.a", early_uartlite_setup
  * Returns: 0 on success, <0 otherwise
  */
 static int ulite_assign(struct device *dev, int id, u32 base, int irq,
-		struct uartlite_data *pdata)
+			struct uartlite_data *pdata)
 {
 	struct uart_port *port;
 	int rc;
@@ -846,7 +843,7 @@ static int ulite_probe(struct platform_device *pdev)
 #endif
 
 	pdata = devm_kzalloc(&pdev->dev, sizeof(struct uartlite_data),
-			GFP_KERNEL);
+			     GFP_KERNEL);
 	if (!pdata)
 		return -ENOMEM;
 

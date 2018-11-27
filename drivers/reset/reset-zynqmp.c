@@ -14,6 +14,7 @@
 
 #include <linux/io.h>
 #include <linux/module.h>
+#include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/reset-controller.h>
 #include <linux/firmware/xilinx/zynqmp/firmware.h>

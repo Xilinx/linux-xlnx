@@ -536,7 +536,7 @@ static int ingenic_pinmux_gpio_set_direction(struct pinctrl_dev *pctldev,
 		ingenic_config_pin(jzpc, pin, JZ4770_GPIO_PAT1, input);
 	} else {
 		ingenic_config_pin(jzpc, pin, JZ4740_GPIO_SELECT, false);
-		ingenic_config_pin(jzpc, pin, JZ4740_GPIO_DIR, input);
+		ingenic_config_pin(jzpc, pin, JZ4740_GPIO_DIR, !input);
 		ingenic_config_pin(jzpc, pin, JZ4740_GPIO_FUNC, false);
 	}
 
@@ -717,7 +717,7 @@ static const struct of_device_id ingenic_pinctrl_of_match[] = {
 	{},
 };
 
-int ingenic_pinctrl_probe(struct platform_device *pdev)
+static int ingenic_pinctrl_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct ingenic_pinctrl *jzpc;
@@ -736,10 +736,8 @@ int ingenic_pinctrl_probe(struct platform_device *pdev)
 
 	base = devm_ioremap_resource(dev,
 			platform_get_resource(pdev, IORESOURCE_MEM, 0));
-	if (IS_ERR(base)) {
-		dev_err(dev, "Failed to ioremap registers\n");
+	if (IS_ERR(base))
 		return PTR_ERR(base);
-	}
 
 	jzpc->map = devm_regmap_init_mmio(dev, base,
 			&ingenic_pinctrl_regmap_config);
@@ -772,8 +770,8 @@ int ingenic_pinctrl_probe(struct platform_device *pdev)
 	pctl_desc->pmxops = &ingenic_pmxops;
 	pctl_desc->confops = &ingenic_confops;
 	pctl_desc->npins = chip_info->num_chips * PINS_PER_GPIO_CHIP;
-	pctl_desc->pins = jzpc->pdesc = devm_kzalloc(&pdev->dev,
-			sizeof(*jzpc->pdesc) * pctl_desc->npins, GFP_KERNEL);
+	pctl_desc->pins = jzpc->pdesc = devm_kcalloc(&pdev->dev,
+			pctl_desc->npins, sizeof(*jzpc->pdesc), GFP_KERNEL);
 	if (!jzpc->pdesc)
 		return -ENOMEM;
 
@@ -795,7 +793,7 @@ int ingenic_pinctrl_probe(struct platform_device *pdev)
 
 		err = pinctrl_generic_add_group(jzpc->pctl, group->name,
 				group->pins, group->num_pins, group->data);
-		if (err) {
+		if (err < 0) {
 			dev_err(dev, "Failed to register group %s\n",
 					group->name);
 			return err;
@@ -808,7 +806,7 @@ int ingenic_pinctrl_probe(struct platform_device *pdev)
 		err = pinmux_generic_add_function(jzpc->pctl, func->name,
 				func->group_names, func->num_group_names,
 				func->data);
-		if (err) {
+		if (err < 0) {
 			dev_err(dev, "Failed to register function %s\n",
 					func->name);
 			return err;

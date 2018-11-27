@@ -967,7 +967,6 @@ static int ams_parse_dt(struct iio_dev *indio_dev, struct platform_device *pdev)
 }
 
 static const struct iio_info iio_pl_info = {
-	.driver_module = THIS_MODULE,
 	.read_raw = &ams_read_raw,
 	.read_event_config = &ams_read_event_config,
 	.write_event_config = &ams_write_event_config,

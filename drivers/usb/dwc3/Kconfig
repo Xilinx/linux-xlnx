@@ -20,7 +20,6 @@ config USB_DWC3_ULPI
 
 choice
 	bool "DWC3 Mode Selection"
-	default USB_DWC3_OTG if (USB && USB_GADGET && USB_OTG && USB_OTG_FSM)
 	default USB_DWC3_DUAL_ROLE if (USB && USB_GADGET)
 	default USB_DWC3_HOST if (USB && !USB_GADGET)
 	default USB_DWC3_GADGET if (!USB && USB_GADGET)
@@ -46,13 +45,6 @@ config USB_DWC3_DUAL_ROLE
 	help
 	  This is the default mode of working of DWC3 controller where
 	  both host and gadget features are enabled.
-
-config USB_DWC3_OTG
-	bool "Dual Role mode + OTG"
-	depends on ((USB=y || USB=USB_DWC3) && (USB_GADGET=y || USB_GADGET=USB_DWC3) && USB_OTG && USB_OTG_FSM && PM)
-	help
-	  This is the default mode of working of DWC3 controller where
-	  both host and gadget features are enabled with OTG support.
 
 endchoice
 
@@ -82,11 +74,16 @@ config USB_DWC3_PCI
 	depends on USB_PCI && ACPI
 	default USB_DWC3
 	help
-	  If you're using the DesignWare Core IP with a PCIe, please say
-	  'Y' or 'M' here.
+	  If you're using the DesignWare Core IP with a PCIe (but not HAPS
+	  platform), please say 'Y' or 'M' here.
 
-	  One such PCIe-based platform is Synopsys' PCIe HAPS model of
-	  this IP.
+config USB_DWC3_HAPS
+	tristate "Synopsys PCIe-based HAPS Platforms"
+	depends on USB_PCI
+	default USB_DWC3
+	help
+	  If you're using the DesignWare Core IP with a Synopsys PCIe HAPS
+	  platform, please say 'Y' or 'M' here.
 
 config USB_DWC3_KEYSTONE
 	tristate "Texas Instruments Keystone2 Platforms"
@@ -112,6 +109,18 @@ config USB_DWC3_ST
 	help
 	  STMicroelectronics SoCs with one DesignWare Core USB3 IP
 	  inside (i.e. STiH407).
+	  Say 'Y' or 'M' if you have one such device.
+
+config USB_DWC3_QCOM
+	tristate "Qualcomm Platform"
+	depends on ARCH_QCOM || COMPILE_TEST
+	depends on OF
+	default USB_DWC3
+	help
+	  Some Qualcomm SoCs use DesignWare Core IP for USB2/3
+	  functionality.
+	  This driver also handles Qscratch wrapper which is needed
+	  for peripheral mode support.
 	  Say 'Y' or 'M' if you have one such device.
 
 endif

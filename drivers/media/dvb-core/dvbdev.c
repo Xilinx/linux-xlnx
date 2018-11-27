@@ -24,13 +24,14 @@
 #include <linux/string.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
+#include <linux/i2c.h>
 #include <linux/init.h>
 #include <linux/slab.h>
 #include <linux/device.h>
 #include <linux/fs.h>
 #include <linux/cdev.h>
 #include <linux/mutex.h>
-#include "dvbdev.h"
+#include <media/dvbdev.h>
 
 /* Due to enum tuner_pad_index */
 #include <media/tuner.h>
@@ -51,8 +52,15 @@ static LIST_HEAD(dvb_adapter_list);
 static DEFINE_MUTEX(dvbdev_register_lock);
 
 static const char * const dnames[] = {
-	"video", "audio", "sec", "frontend", "demux", "dvr", "ca",
-	"net", "osd"
+	[DVB_DEVICE_VIDEO] =		"video",
+	[DVB_DEVICE_AUDIO] =		"audio",
+	[DVB_DEVICE_SEC] =		"sec",
+	[DVB_DEVICE_FRONTEND] =		"frontend",
+	[DVB_DEVICE_DEMUX] =		"demux",
+	[DVB_DEVICE_DVR] =		"dvr",
+	[DVB_DEVICE_CA] =		"ca",
+	[DVB_DEVICE_NET] =		"net",
+	[DVB_DEVICE_OSD] =		"osd"
 };
 
 #ifdef CONFIG_DVB_DYNAMIC_MINORS
@@ -60,7 +68,22 @@ static const char * const dnames[] = {
 #define DVB_MAX_IDS		MAX_DVB_MINORS
 #else
 #define DVB_MAX_IDS		4
-#define nums2minor(num, type, id)	((num << 6) | (id << 4) | type)
+
+static const u8 minor_type[] = {
+       [DVB_DEVICE_VIDEO]      = 0,
+       [DVB_DEVICE_AUDIO]      = 1,
+       [DVB_DEVICE_SEC]        = 2,
+       [DVB_DEVICE_FRONTEND]   = 3,
+       [DVB_DEVICE_DEMUX]      = 4,
+       [DVB_DEVICE_DVR]        = 5,
+       [DVB_DEVICE_CA]         = 6,
+       [DVB_DEVICE_NET]        = 7,
+       [DVB_DEVICE_OSD]        = 8,
+};
+
+#define nums2minor(num, type, id) \
+       (((num) << 6) | ((id) << 4) | minor_type[type])
+
 #define MAX_DVB_MINORS		(DVB_MAX_ADAPTERS*64)
 #endif
 
@@ -417,8 +440,10 @@ static int dvb_register_media_device(struct dvb_device *dvbdev,
 	if (!dvbdev->entity)
 		return 0;
 
-	link = media_create_intf_link(dvbdev->entity, &dvbdev->intf_devnode->intf,
-				      MEDIA_LNK_FL_ENABLED);
+	link = media_create_intf_link(dvbdev->entity,
+				      &dvbdev->intf_devnode->intf,
+				      MEDIA_LNK_FL_ENABLED |
+				      MEDIA_LNK_FL_IMMUTABLE);
 	if (!link)
 		return -ENOMEM;
 #endif
@@ -426,8 +451,8 @@ static int dvb_register_media_device(struct dvb_device *dvbdev,
 }
 
 int dvb_register_device(struct dvb_adapter *adap, struct dvb_device **pdvbdev,
-			const struct dvb_device *template, void *priv, int type,
-			int demux_sink_pads)
+			const struct dvb_device *template, void *priv,
+			enum dvb_device_type type, int demux_sink_pads)
 {
 	struct dvb_device *dvbdev;
 	struct file_operations *dvbdevfops;
@@ -576,7 +601,8 @@ static int dvb_create_io_intf_links(struct dvb_adapter *adap,
 			if (strncmp(entity->name, name, strlen(name)))
 				continue;
 			link = media_create_intf_link(entity, intf,
-						      MEDIA_LNK_FL_ENABLED);
+						      MEDIA_LNK_FL_ENABLED |
+						      MEDIA_LNK_FL_IMMUTABLE);
 			if (!link)
 				return -ENOMEM;
 		}
@@ -731,14 +757,16 @@ int dvb_create_media_graph(struct dvb_adapter *adap,
 	media_device_for_each_intf(intf, mdev) {
 		if (intf->type == MEDIA_INTF_T_DVB_CA && ca) {
 			link = media_create_intf_link(ca, intf,
-						      MEDIA_LNK_FL_ENABLED);
+						      MEDIA_LNK_FL_ENABLED |
+						      MEDIA_LNK_FL_IMMUTABLE);
 			if (!link)
 				return -ENOMEM;
 		}
 
 		if (intf->type == MEDIA_INTF_T_DVB_FE && tuner) {
 			link = media_create_intf_link(tuner, intf,
-						      MEDIA_LNK_FL_ENABLED);
+						      MEDIA_LNK_FL_ENABLED |
+						      MEDIA_LNK_FL_IMMUTABLE);
 			if (!link)
 				return -ENOMEM;
 		}
@@ -750,7 +778,8 @@ int dvb_create_media_graph(struct dvb_adapter *adap,
 		 */
 		if (intf->type == MEDIA_INTF_T_DVB_DVR && demux) {
 			link = media_create_intf_link(demux, intf,
-						      MEDIA_LNK_FL_ENABLED);
+						      MEDIA_LNK_FL_ENABLED |
+						      MEDIA_LNK_FL_IMMUTABLE);
 			if (!link)
 				return -ENOMEM;
 		}
@@ -836,6 +865,10 @@ int dvb_register_adapter(struct dvb_adapter *adap, const char *name,
 	adap->mfe_dvbdev = NULL;
 	mutex_init (&adap->mfe_lock);
 
+#ifdef CONFIG_MEDIA_CONTROLLER_DVB
+	mutex_init(&adap->mdev_lock);
+#endif
+
 	list_add_tail (&adap->list_head, &dvb_adapter_list);
 
 	mutex_unlock(&dvbdev_register_lock);
@@ -918,6 +951,55 @@ out:
 	kfree(mbuf);
 	return err;
 }
+
+#if IS_ENABLED(CONFIG_I2C)
+struct i2c_client *dvb_module_probe(const char *module_name,
+				    const char *name,
+				    struct i2c_adapter *adap,
+				    unsigned char addr,
+				    void *platform_data)
+{
+	struct i2c_client *client;
+	struct i2c_board_info *board_info;
+
+	board_info = kzalloc(sizeof(*board_info), GFP_KERNEL);
+	if (!board_info)
+		return NULL;
+
+	if (name)
+		strlcpy(board_info->type, name, I2C_NAME_SIZE);
+	else
+		strlcpy(board_info->type, module_name, I2C_NAME_SIZE);
+
+	board_info->addr = addr;
+	board_info->platform_data = platform_data;
+	request_module(module_name);
+	client = i2c_new_device(adap, board_info);
+	if (client == NULL || client->dev.driver == NULL) {
+		kfree(board_info);
+		return NULL;
+	}
+
+	if (!try_module_get(client->dev.driver->owner)) {
+		i2c_unregister_device(client);
+		client = NULL;
+	}
+
+	kfree(board_info);
+	return client;
+}
+EXPORT_SYMBOL_GPL(dvb_module_probe);
+
+void dvb_module_release(struct i2c_client *client)
+{
+	if (!client)
+		return;
+
+	module_put(client->dev.driver->owner);
+	i2c_unregister_device(client);
+}
+EXPORT_SYMBOL_GPL(dvb_module_release);
+#endif
 
 static int dvb_uevent(struct device *dev, struct kobj_uevent_env *env)
 {

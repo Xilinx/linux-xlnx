@@ -1,14 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Copyright (c) 2011-2015, The Linux Foundation. All rights reserved.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 and
- * only version 2 as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
 #include <linux/amba/bus.h>
@@ -163,10 +155,8 @@ static int replicator_probe(struct amba_device *adev, const struct amba_id *id)
 	desc.dev = &adev->dev;
 	desc.groups = replicator_groups;
 	drvdata->csdev = coresight_register(&desc);
-	if (IS_ERR(drvdata->csdev))
-		return PTR_ERR(drvdata->csdev);
 
-	return 0;
+	return PTR_ERR_OR_ZERO(drvdata->csdev);
 }
 
 #ifdef CONFIG_PM
@@ -199,8 +189,8 @@ static const struct dev_pm_ops replicator_dev_pm_ops = {
 
 static const struct amba_id replicator_ids[] = {
 	{
-		.id     = 0x0003b909,
-		.mask   = 0x0003ffff,
+		.id     = 0x000bb909,
+		.mask   = 0x000fffff,
 	},
 	{
 		/* Coresight SoC-600 */

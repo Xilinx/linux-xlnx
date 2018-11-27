@@ -1632,6 +1632,9 @@ rocker_world_port_obj_vlan_add(struct rocker_port *rocker_port,
 {
 	struct rocker_world_ops *wops = rocker_port->rocker->wops;
 
+	if (netif_is_bridge_master(vlan->obj.orig_dev))
+		return -EOPNOTSUPP;
+
 	if (!wops->port_obj_vlan_add)
 		return -EOPNOTSUPP;
 
@@ -1646,6 +1649,9 @@ rocker_world_port_obj_vlan_del(struct rocker_port *rocker_port,
 			       const struct switchdev_obj_port_vlan *vlan)
 {
 	struct rocker_world_ops *wops = rocker_port->rocker->wops;
+
+	if (netif_is_bridge_master(vlan->obj.orig_dev))
+		return -EOPNOTSUPP;
 
 	if (!wops->port_obj_vlan_del)
 		return -EOPNOTSUPP;
@@ -2738,6 +2744,8 @@ static void rocker_switchdev_event_work(struct work_struct *work)
 	switch (switchdev_work->event) {
 	case SWITCHDEV_FDB_ADD_TO_DEVICE:
 		fdb_info = &switchdev_work->fdb_info;
+		if (!fdb_info->added_by_user)
+			break;
 		err = rocker_world_port_fdb_add(rocker_port, fdb_info);
 		if (err) {
 			netdev_dbg(rocker_port->dev, "fdb add failed err=%d\n", err);
@@ -2747,6 +2755,8 @@ static void rocker_switchdev_event_work(struct work_struct *work)
 		break;
 	case SWITCHDEV_FDB_DEL_TO_DEVICE:
 		fdb_info = &switchdev_work->fdb_info;
+		if (!fdb_info->added_by_user)
+			break;
 		err = rocker_world_port_fdb_del(rocker_port, fdb_info);
 		if (err)
 			netdev_dbg(rocker_port->dev, "fdb add failed err=%d\n", err);
@@ -2902,6 +2912,12 @@ static int rocker_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 		goto err_alloc_ordered_workqueue;
 	}
 
+	err = rocker_probe_ports(rocker);
+	if (err) {
+		dev_err(&pdev->dev, "failed to probe ports\n");
+		goto err_probe_ports;
+	}
+
 	/* Only FIBs pointing to our own netdevs are programmed into
 	 * the device, so no need to pass a callback.
 	 */
@@ -2918,22 +2934,16 @@ static int rocker_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 
 	rocker->hw.id = rocker_read64(rocker, SWITCH_ID);
 
-	err = rocker_probe_ports(rocker);
-	if (err) {
-		dev_err(&pdev->dev, "failed to probe ports\n");
-		goto err_probe_ports;
-	}
-
 	dev_info(&pdev->dev, "Rocker switch with id %*phN\n",
 		 (int)sizeof(rocker->hw.id), &rocker->hw.id);
 
 	return 0;
 
-err_probe_ports:
-	unregister_switchdev_notifier(&rocker_switchdev_notifier);
 err_register_switchdev_notifier:
 	unregister_fib_notifier(&rocker->fib_nb);
 err_register_fib_notifier:
+	rocker_remove_ports(rocker);
+err_probe_ports:
 	destroy_workqueue(rocker->rocker_owq);
 err_alloc_ordered_workqueue:
 	free_irq(rocker_msix_vector(rocker, ROCKER_MSIX_VEC_EVENT), rocker);
@@ -2961,9 +2971,9 @@ static void rocker_remove(struct pci_dev *pdev)
 {
 	struct rocker *rocker = pci_get_drvdata(pdev);
 
-	rocker_remove_ports(rocker);
 	unregister_switchdev_notifier(&rocker_switchdev_notifier);
 	unregister_fib_notifier(&rocker->fib_nb);
+	rocker_remove_ports(rocker);
 	rocker_write32(rocker, CONTROL, ROCKER_CONTROL_RESET);
 	destroy_workqueue(rocker->rocker_owq);
 	free_irq(rocker_msix_vector(rocker, ROCKER_MSIX_VEC_EVENT), rocker);

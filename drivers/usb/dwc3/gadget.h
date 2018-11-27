@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * gadget.h - DesignWare USB3 DRD Gadget Header
  *
@@ -5,15 +6,6 @@
  *
  * Authors: Felipe Balbi <balbi@ti.com>,
  *	    Sebastian Andrzej Siewior <bigeasy@linutronix.de>
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2  of
- * the License as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
 #ifndef __DRIVERS_USB_DWC3_GADGET_H
@@ -33,7 +25,7 @@ struct dwc3;
 #define DWC3_DEPCFG_XFER_IN_PROGRESS_EN	BIT(9)
 #define DWC3_DEPCFG_XFER_NOT_READY_EN	BIT(10)
 #define DWC3_DEPCFG_FIFO_ERROR_EN	BIT(11)
-#define DWC3_DEPCFG_STREAM_EVENT_EN	BIT(12)
+#define DWC3_DEPCFG_STREAM_EVENT_EN	BIT(13)
 #define DWC3_DEPCFG_BINTERVAL_M1(n)	(((n) & 0xff) << 16)
 #define DWC3_DEPCFG_STREAM_CAPABLE	BIT(24)
 #define DWC3_DEPCFG_EP_NUMBER(n)	(((n) & 0x1f) << 25)
@@ -108,10 +100,10 @@ int dwc3_gadget_ep0_set_halt(struct usb_ep *ep, int value);
 int dwc3_gadget_ep0_queue(struct usb_ep *ep, struct usb_request *request,
 		gfp_t gfp_flags);
 int __dwc3_gadget_ep_set_halt(struct dwc3_ep *dep, int value, int protocol);
-int __dwc3_gadget_ep_enable(struct dwc3_ep *dep, bool modify, bool restore);
+int __dwc3_gadget_ep_enable(struct dwc3_ep *dep, unsigned int action);
 int __dwc3_gadget_ep_disable(struct dwc3_ep *dep);
-int __dwc3_gadget_kick_transfer(struct dwc3_ep *dep, u16 cmd_param);
-void dwc3_stop_active_transfer(struct dwc3 *dwc, u32 epnum, bool force);
+int __dwc3_gadget_kick_transfer(struct dwc3_ep *dep);
+void dwc3_stop_active_transfer(struct dwc3_ep *dep, bool force);
 int dwc3_gadget_run_stop(struct dwc3 *dwc, int is_on, int suspend);
 dma_addr_t dwc3_trb_dma_offset(struct dwc3_ep *dep, struct dwc3_trb *trb);
 void gadget_hibernation_interrupt(struct dwc3 *dwc);
@@ -124,13 +116,12 @@ void gadget_wakeup_interrupt(struct dwc3 *dwc);
  * Caller should take care of locking. Returns the transfer resource
  * index for a given endpoint.
  */
-static inline u32 dwc3_gadget_ep_get_transfer_index(struct dwc3_ep *dep)
+static inline void dwc3_gadget_ep_get_transfer_index(struct dwc3_ep *dep)
 {
 	u32			res_id;
 
 	res_id = dwc3_readl(dep->regs, DWC3_DEPCMD);
-
-	return DWC3_DEPCMD_GET_RSC_IDX(res_id);
+	dep->resource_index = DWC3_DEPCMD_GET_RSC_IDX(res_id);
 }
 
 #endif /* __DRIVERS_USB_DWC3_GADGET_H */

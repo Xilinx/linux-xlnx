@@ -510,11 +510,11 @@ static int ti_iodelay_dt_node_to_map(struct pinctrl_dev *pctldev,
 		goto free_map;
 	}
 
-	pins = devm_kzalloc(iod->dev, sizeof(*pins) * rows, GFP_KERNEL);
+	pins = devm_kcalloc(iod->dev, rows, sizeof(*pins), GFP_KERNEL);
 	if (!pins)
 		goto free_group;
 
-	cfg = devm_kzalloc(iod->dev, sizeof(*cfg) * rows, GFP_KERNEL);
+	cfg = devm_kcalloc(iod->dev, rows, sizeof(*cfg), GFP_KERNEL);
 	if (!cfg) {
 		error = -ENOMEM;
 		goto free_pins;
@@ -575,11 +575,9 @@ static int ti_iodelay_pinconf_group_get(struct pinctrl_dev *pctldev,
 					unsigned long *config)
 {
 	struct ti_iodelay_device *iod;
-	struct device *dev;
 	struct ti_iodelay_pingroup *group;
 
 	iod = pinctrl_dev_get_drvdata(pctldev);
-	dev = iod->dev;
 	group = ti_iodelay_get_pingroup(iod, selector);
 
 	if (!group)
@@ -693,12 +691,10 @@ static void ti_iodelay_pinconf_group_dbg_show(struct pinctrl_dev *pctldev,
 					      unsigned int selector)
 {
 	struct ti_iodelay_device *iod;
-	struct device *dev;
 	struct ti_iodelay_pingroup *group;
 	int i;
 
 	iod = pinctrl_dev_get_drvdata(pctldev);
-	dev = iod->dev;
 	group = ti_iodelay_get_pingroup(iod, selector);
 	if (!group)
 		return;
@@ -753,7 +749,7 @@ static int ti_iodelay_alloc_pins(struct device *dev,
 	nr_pins = ti_iodelay_offset_to_pin(iod, r->regmap_config->max_register);
 	dev_dbg(dev, "Allocating %i pins\n", nr_pins);
 
-	iod->pa = devm_kzalloc(dev, sizeof(*iod->pa) * nr_pins, GFP_KERNEL);
+	iod->pa = devm_kcalloc(dev, nr_pins, sizeof(*iod->pa), GFP_KERNEL);
 	if (!iod->pa)
 		return -ENOMEM;
 

@@ -51,7 +51,9 @@ static unsigned int rx_weight = 64;
 module_param(rx_weight, uint, 0644);
 MODULE_PARM_DESC(rx_weight, "Number Rx packets for NAPI budget (default=64)");
 
-#define PCI_DEVICE_ID_HI1822_PF         0x1822
+#define HINIC_DEV_ID_QUAD_PORT_25GE     0x1822
+#define HINIC_DEV_ID_DUAL_PORT_25GE     0x0200
+#define HINIC_DEV_ID_DUAL_PORT_100GE    0x0201
 
 #define HINIC_WQ_NAME                   "hinic_dev"
 
@@ -787,23 +789,6 @@ static void hinic_get_stats64(struct net_device *netdev,
 	stats->tx_errors  = nic_tx_stats->tx_dropped;
 }
 
-#ifdef CONFIG_NET_POLL_CONTROLLER
-static void hinic_netpoll(struct net_device *netdev)
-{
-	struct hinic_dev *nic_dev = netdev_priv(netdev);
-	int i, num_qps;
-
-	num_qps = hinic_hwdev_num_qps(nic_dev->hwdev);
-	for (i = 0; i < num_qps; i++) {
-		struct hinic_txq *txq = &nic_dev->txqs[i];
-		struct hinic_rxq *rxq = &nic_dev->rxqs[i];
-
-		napi_schedule(&txq->napi);
-		napi_schedule(&rxq->napi);
-	}
-}
-#endif
-
 static const struct net_device_ops hinic_netdev_ops = {
 	.ndo_open = hinic_open,
 	.ndo_stop = hinic_close,
@@ -816,9 +801,6 @@ static const struct net_device_ops hinic_netdev_ops = {
 	.ndo_start_xmit = hinic_xmit_frame,
 	.ndo_tx_timeout = hinic_tx_timeout,
 	.ndo_get_stats64 = hinic_get_stats64,
-#ifdef CONFIG_NET_POLL_CONTROLLER
-	.ndo_poll_controller = hinic_netpoll,
-#endif
 };
 
 static void netdev_features_init(struct net_device *netdev)
@@ -981,6 +963,7 @@ static int nic_dev_init(struct pci_dev *pdev)
 	hinic_hwdev_cb_register(nic_dev->hwdev, HINIC_MGMT_MSG_CMD_LINK_STATUS,
 				nic_dev, link_status_event_handler);
 
+	SET_NETDEV_DEV(netdev, &pdev->dev);
 	err = register_netdev(netdev);
 	if (err) {
 		dev_err(&pdev->dev, "Failed to register netdev\n");
@@ -1097,7 +1080,9 @@ static void hinic_remove(struct pci_dev *pdev)
 }
 
 static const struct pci_device_id hinic_pci_table[] = {
-	{ PCI_VDEVICE(HUAWEI, PCI_DEVICE_ID_HI1822_PF), 0},
+	{ PCI_VDEVICE(HUAWEI, HINIC_DEV_ID_QUAD_PORT_25GE), 0},
+	{ PCI_VDEVICE(HUAWEI, HINIC_DEV_ID_DUAL_PORT_25GE), 0},
+	{ PCI_VDEVICE(HUAWEI, HINIC_DEV_ID_DUAL_PORT_100GE), 0},
 	{ 0, 0}
 };
 MODULE_DEVICE_TABLE(pci, hinic_pci_table);
