@@ -141,6 +141,9 @@
 
 #define XVTC_GENERATOR_GLOBAL_DELAY		0x0104
 
+/* Value of 1 = .01% */
+#define XVTC_CLK_MAX_PCT_ERR			1
+
 /**
  * struct xvtc_device - Xilinx Video Timing Controller device structure
  * @xvip: Xilinx Video IP device
@@ -175,9 +178,24 @@ int xvtc_generator_start(struct xvtc_device *xvtc,
 			 const struct xvtc_config *config)
 {
 	int ret;
+	unsigned long s_rate;
+	unsigned long g_rate;
+	unsigned long clk_err;
 
 	if (!xvtc->has_generator)
 		return -ENXIO;
+
+	s_rate = config->fps * config->hsize * config->vsize;
+	ret = clk_set_rate(xvtc->xvip.clk, s_rate);
+	if (ret < 0)
+		return ret;
+
+	/* Verify that the clock is within a reasonable tolerance. */
+	g_rate = clk_get_rate(xvtc->xvip.clk);
+	clk_err = (abs(g_rate - s_rate) * 10000) / (s_rate);
+	if (clk_err > XVTC_CLK_MAX_PCT_ERR)
+		dev_warn(xvtc->xvip.dev, "Failed to set clk rate: %lu, actual rate: %lu\n",
+				s_rate, g_rate);
 
 	ret = clk_prepare_enable(xvtc->xvip.clk);
 	if (ret < 0)
