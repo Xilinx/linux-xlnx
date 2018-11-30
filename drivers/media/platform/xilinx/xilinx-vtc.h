@@ -27,6 +27,7 @@ struct xvtc_config {
 	unsigned int vsync_start;
 	unsigned int vsync_end;
 	unsigned int vsize;
+	unsigned int fps;
 };
 
 struct xvtc_device *xvtc_of_get(struct device_node *np);
