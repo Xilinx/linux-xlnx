@@ -26,6 +26,14 @@ config SND_SOC_XILINX_I2S
 	  Select this option to enable Xilinx I2S Audio. This enables
 	  I2S playback and capture using xilinx soft IP
 
+config SND_SOC_XILINX_SPDIF
+	tristate "Audio support for the the Xilinx SPDIF"
+	help
+	  Select this option to enable Xilinx SPDIF Audio.
+	  Enabling this provides one of the component required in ASoC
+	  audio pipeline.
+	  This supports playback and capture usecases.
+
 config SND_SOC_XILINX_PL_SND_CARD
 	tristate "Audio support for the the Xilinx PL sound card"
 	depends on SND_SOC_XILINX_AUDIO_FORMATTER
