@@ -1,28 +1,27 @@
-Device-Tree bindings for Xilinx SPDIF IP
+Device-Tree bindings for Xilinx SPDIF PL IP
 
-The IP supports playback and capture of SPDIF audio
+The IP supports SPDIF based playback and capture audio
 
 Required properties:
  - compatible: "xlnx,spdif-2.0"
- - clock-names: List of input clocks.
-   Required elements: "s_axi_aclk", "aud_clk_i"
- - clocks: Input clock specifier. Refer to common clock bindings.
+ - clocks: List of phandles to AXI4-Lite clock,
+	   Audio clock input used at the SPDIF/AES3 interface
+ - clock-names: Must contain "s_axi_aclk", "aud_clk_i" in the same order as
+		clocks listed in clocks property
  - reg: Base address and address length of the IP core instance.
  - interrupts-parent: Phandle for interrupt controller.
  - interrupts: List of Interrupt numbers.
- - xlnx,spdif-mode: 0 :- receiver mode
-		    1 :- transmitter mode
- - xlnx,aud_clk_i: input audio clock value.
+ - xlnx,spdif-mode: 0 :- receiver mode ; 1 :- transmitter mode
+ - xlnx,snd-pcm: phandle to audio formatter node
 
 Example:
 	spdif_0: spdif@80010000 {
 		clock-names = "aud_clk_i", "s_axi_aclk";
-		clocks = <&misc_clk_0>, <&clk 71>;
+		clocks = <&si570_1>, <&clk 71>;
 		compatible = "xlnx,spdif-2.0";
-		interrupt-names = "spdif_interrupt";
 		interrupt-parent = <&gic>;
 		interrupts = <0 91 4>;
 		reg = <0x0 0x80010000 0x0 0x10000>;
 		xlnx,spdif-mode = <1>;
-		xlnx,aud_clk_i = <49152913>;
+		xlnx,snd-pcm = <&audio_formatter_0>;
 	};
