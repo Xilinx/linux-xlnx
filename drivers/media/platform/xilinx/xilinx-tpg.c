@@ -103,6 +103,9 @@
 #define XTPG_MAX_WIDTH			(10328)
 #define XTPG_MAX_HEIGHT			(7760)
 
+#define XTPG_MIN_PPC			1
+#define XTPG_MAX_PPC			8
+
 /**
  * struct xtpg_device - Xilinx Test Pattern Generator device structure
  * @xvip: Xilinx Video IP device
@@ -124,6 +127,7 @@
  * @rst_gpio: reset IP core GPIO
  * @max_width: Maximum width supported by this instance
  * @max_height: Maximum height supported by this instance
+ * @ppc: Pixels per clock control
  */
 struct xtpg_device {
 	struct xvip_device xvip;
@@ -150,6 +154,7 @@ struct xtpg_device {
 
 	u32 max_width;
 	u32 max_height;
+	u32 ppc;
 };
 
 static inline struct xtpg_device *to_tpg(struct v4l2_subdev *subdev)
@@ -177,8 +182,8 @@ static void xtpg_config_vtc(struct xtpg_device *xtpg, int width, int height)
 {
 
 	struct xvtc_config config = {
-		.hblank_start = width,
-		.hsync_start = width + 1,
+		.hblank_start = width / xtpg->ppc,
+		.hsync_start = width / xtpg->ppc + 1,
 		.vblank_start = height,
 		.vsync_start = height + 1,
 	};
@@ -186,7 +191,7 @@ static void xtpg_config_vtc(struct xtpg_device *xtpg, int width, int height)
 	unsigned int vtotal;
 
 	htotal = min_t(unsigned int, XVTC_MAX_HSIZE,
-		       v4l2_ctrl_g_ctrl(xtpg->hblank) + width);
+		       (v4l2_ctrl_g_ctrl(xtpg->hblank) + width) / xtpg->ppc);
 	vtotal = min_t(unsigned int, XVTC_MAX_VSIZE,
 		       v4l2_ctrl_g_ctrl(xtpg->vblank) + height);
 
@@ -927,6 +932,18 @@ static int xtpg_parse_of(struct xtpg_device *xtpg)
 	} else if (xtpg->max_width > XTPG_MAX_WIDTH ||
 		   xtpg->max_width < XTPG_MIN_WIDTH) {
 		dev_err(dev, "Invalid width in dt");
+		return -EINVAL;
+	}
+
+	ret = of_property_read_u32(node, "xlnx,ppc",
+				   &xtpg->ppc);
+	if (ret < 0) {
+		xtpg->ppc = XTPG_MIN_PPC;
+		dev_dbg(dev, "failed to read ppc in dt\n");
+	} else if ((xtpg->ppc > XTPG_MAX_PPC)
+		|| (xtpg->ppc < XTPG_MIN_PPC)
+		|| (xtpg->ppc % 2)) {
+		dev_err(dev, "Invalid ppc config in dt\n");
 		return -EINVAL;
 	}
 
