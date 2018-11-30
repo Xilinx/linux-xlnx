@@ -23,6 +23,8 @@ Required properties:
 
 Optional properties:
 
+- xlnx,ppc: Pixels per clock. Valid values are 1, 2, 4 or 8.
+
 - xlnx,vtc: A phandle referencing the Video Timing Controller that generates
   video timings for the TPG test patterns.
 
@@ -47,6 +49,7 @@ Example:
 		reg = <0x40050000 0x10000>;
 		clocks = <&clkc 15>;
 
+		xlnx,ppc = <2>;
 		xlnx,vtc = <&vtc_3>;
 		timing-gpios = <&ps7_gpio_0 55 GPIO_ACTIVE_LOW>;
 
