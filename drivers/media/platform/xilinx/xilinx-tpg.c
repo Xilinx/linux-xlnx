@@ -106,6 +106,8 @@
 #define XTPG_MIN_PPC			1
 #define XTPG_MAX_PPC			8
 
+#define XTPG_MIN_FRM_INT		1
+
 /**
  * struct xtpg_device - Xilinx Test Pattern Generator device structure
  * @xvip: Xilinx Video IP device
@@ -127,6 +129,8 @@
  * @rst_gpio: reset IP core GPIO
  * @max_width: Maximum width supported by this instance
  * @max_height: Maximum height supported by this instance
+ * @fi_d: frame interval denominator
+ * @fi_n: frame interval numerator
  * @ppc: Pixels per clock control
  */
 struct xtpg_device {
@@ -154,6 +158,8 @@ struct xtpg_device {
 
 	u32 max_width;
 	u32 max_height;
+	u32 fi_d;
+	u32 fi_n;
 	u32 ppc;
 };
 
@@ -238,6 +244,33 @@ static void xtpg_update_pattern_control(struct xtpg_device *xtpg,
 /* -----------------------------------------------------------------------------
  * V4L2 Subdevice Video Operations
  */
+
+static int xtpg_g_frame_interval(struct v4l2_subdev *subdev,
+				 struct v4l2_subdev_frame_interval *fi)
+{
+	struct xtpg_device *xtpg = to_tpg(subdev);
+
+	fi->interval.numerator = xtpg->fi_n;
+	fi->interval.denominator = xtpg->fi_d;
+
+	return 0;
+}
+
+static int xtpg_s_frame_interval(struct v4l2_subdev *subdev,
+				 struct v4l2_subdev_frame_interval *fi)
+{
+	struct xtpg_device *xtpg = to_tpg(subdev);
+
+	if (!fi->interval.numerator || !fi->interval.denominator) {
+		xtpg->fi_n = XTPG_MIN_FRM_INT;
+		xtpg->fi_d = XTPG_MIN_FRM_INT;
+	} else {
+		xtpg->fi_n = fi->interval.numerator;
+		xtpg->fi_d = fi->interval.denominator;
+	}
+
+	return 0;
+}
 
 static int xtpg_s_stream(struct v4l2_subdev *subdev, int enable)
 {
@@ -618,6 +651,8 @@ static const struct v4l2_subdev_core_ops xtpg_core_ops = {
 };
 
 static const struct v4l2_subdev_video_ops xtpg_video_ops = {
+	.g_frame_interval = xtpg_g_frame_interval,
+	.s_frame_interval = xtpg_s_frame_interval,
 	.s_stream = xtpg_s_stream,
 };
 
@@ -1162,6 +1197,10 @@ static int xtpg_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, xtpg);
 
 	xvip_print_version(&xtpg->xvip);
+
+	/* Initialize default frame interval */
+	xtpg->fi_n = 1;
+	xtpg->fi_d = 30;
 
 	ret = v4l2_async_register_subdev(subdev);
 	if (ret < 0) {
