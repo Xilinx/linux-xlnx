@@ -25466,6 +25466,13 @@ L:	netdev@vger.kernel.org
 S:	Orphan
 F:	drivers/net/ethernet/xilinx/ll_temac*
 
+XILINX MEDIA VTC DRIVER
+M:	Rajesh Gugulothu <rajesh.gugulothu@amd.com>
+L:	git@amd.com
+S:	Maintained
+F:	Documentation/devicetree/bindings/media/xilinx/xlnx,v-tc.yaml
+F:	drivers/media/platform/xilinx/xilinx-vtc.c
+
 XILINX HDCP1X CIPHER DRIVER
 M:	Lakshmi Prasanna Eachuri <lakshmi.prasanna.eachuri@amd.com>
 R:	Vishal Sagar <vishal.sagar@amd.com>
