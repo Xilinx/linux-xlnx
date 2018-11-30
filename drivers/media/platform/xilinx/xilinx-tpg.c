@@ -192,6 +192,7 @@ static void xtpg_config_vtc(struct xtpg_device *xtpg, int width, int height)
 		.hsync_start = width / xtpg->ppc + 1,
 		.vblank_start = height,
 		.vsync_start = height + 1,
+		.fps = xtpg->fi_d / xtpg->fi_n,
 	};
 	unsigned int htotal;
 	unsigned int vtotal;
