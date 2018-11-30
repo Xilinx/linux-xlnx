@@ -20,6 +20,7 @@ enum {
 	I2S_AUDIO = 0,
 	HDMI_AUDIO,
 	SDI_AUDIO,
+	SPDIF_AUDIO,
 	XLNX_MAX_IFACE,
 };
 
@@ -28,11 +29,14 @@ static const char *dev_compat[][XLNX_MAX_IFACE] = {
 		"xlnx,i2s-transmitter-1.0",
 		"xlnx,v-hdmi-tx-ss-3.1",
 		"xlnx,v-uhdsdi-audio-2.0",
+		"xlnx,spdif-2.0",
 	},
+
 	[XLNX_CAPTURE] = {
 		"xlnx,i2s-receiver-1.0",
 		"xlnx,v-hdmi-rx-ss-3.1",
 		"xlnx,v-uhdsdi-audio-2.0",
+		"xlnx,spdif-2.0",
 	},
 };
 
@@ -191,6 +195,11 @@ SND_SOC_DAILINK_DEFS(xlnx_sdi_rx,
 		     DAILINK_COMP_ARRAY(COMP_CODEC(NULL, "xlnx_sdi_rx")),
 		     DAILINK_COMP_ARRAY(COMP_PLATFORM(NULL)));
 
+SND_SOC_DAILINK_DEFS(xlnx_spdif,
+		     DAILINK_COMP_ARRAY(COMP_DUMMY()),
+		     DAILINK_COMP_ARRAY(COMP_DUMMY()),
+		     DAILINK_COMP_ARRAY(COMP_PLATFORM(NULL)));
+
 static struct snd_soc_dai_link xlnx_snd_dai[][XLNX_MAX_PATHS] = {
 	[I2S_AUDIO] = {
 		{
@@ -224,6 +233,17 @@ static struct snd_soc_dai_link xlnx_snd_dai[][XLNX_MAX_PATHS] = {
 			SND_SOC_DAILINK_REG(xlnx_sdi_rx),
 		},
 	},
+	[SPDIF_AUDIO] = {
+		{
+			.name = "xilinx-spdif_playback",
+			SND_SOC_DAILINK_REG(xlnx_spdif),
+		},
+		{
+			.name = "xilinx-spdif_capture",
+			SND_SOC_DAILINK_REG(xlnx_spdif),
+		},
+	},
+
 };
 
 static int find_link(struct device_node *node, int direction)
@@ -298,6 +318,7 @@ static int xlnx_snd_probe(struct platform_device *pdev)
 			prv->mclk = devm_clk_get(&iface_pdev->dev, "aud_mclk");
 			if (IS_ERR(prv->mclk))
 				return PTR_ERR(prv->mclk);
+
 		}
 		of_node_put(pnode);
 
@@ -331,6 +352,16 @@ static int xlnx_snd_probe(struct platform_device *pdev)
 			dai->codecs->of_node = node[i];
 			card->num_links++;
 			/* TODO: support multiple sampling rates */
+			prv->mclk_ratio = 384;
+			snd_soc_card_set_drvdata(card, prv);
+			dev_dbg(card->dev, "%s registered\n",
+				card->dai_link[i].name);
+			break;
+		case SPDIF_AUDIO:
+			*dai = xlnx_snd_dai[SPDIF_AUDIO][i];
+			dai->platforms->of_node = pnode;
+			dai->codecs->of_node = node[i];
+			card->num_links++;
 			prv->mclk_ratio = 384;
 			snd_soc_card_set_drvdata(card, prv);
 			dev_dbg(card->dev, "%s registered\n",
