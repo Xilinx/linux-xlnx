@@ -39,11 +39,12 @@ config SND_SOC_XILINX_AUDIO_FORMATTER
           audio functionality.
 
 config SND_SOC_XILINX_SPDIF
-        tristate "Audio support for the the Xilinx SPDIF"
-        help
-          Select this option to enable Xilinx SPDIF Audio.
-          This provides playback and capture of SPDIF audio in
-          AES format.
+	tristate "Audio support for the the Xilinx SPDIF"
+	help
+	  Select this option to enable Xilinx SPDIF Audio.
+	  Enabling this provides one of the component required in ASoC
+	  audio pipeline.
+	  This supports playback and capture usecases.
 
 config SND_SOC_XILINX_PL_SND_CARD
 	tristate "Audio support for the the Xilinx PL sound card"
