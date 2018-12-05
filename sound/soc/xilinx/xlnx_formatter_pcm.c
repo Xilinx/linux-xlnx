@@ -310,7 +310,7 @@ static int parse_consumer_format(u32 chsts_reg1_val, u32 chsts_reg2_val,
 	return 0;
 }
 
-void xlnx_formatter_pcm_reset(void __iomem *mmio_base)
+static void xlnx_formatter_pcm_reset(void __iomem *mmio_base)
 {
 	u32 val;
 
@@ -443,11 +443,10 @@ static int xlnx_formatter_pcm_close(struct snd_pcm_substream *substream)
 	val &= ~AUD_CTRL_IOC_IRQ_MASK;
 	writel(val, stream_data->mmio + XLNX_AUD_CTRL);
 
-	kfree(stream_data);
-
 	if (substream->stream == SNDRV_PCM_STREAM_CAPTURE)
 		xlnx_formatter_pcm_reset(stream_data->mmio + XLNX_S2MM_OFFSET);
 
+	kfree(stream_data);
 	return 0;
 }
 
