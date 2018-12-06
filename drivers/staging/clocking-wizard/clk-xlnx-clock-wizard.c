@@ -133,12 +133,9 @@ static int clk_wzrd_dynamic_reconfig(struct clk_hw *hw, unsigned long rate,
 	u16 retries;
 	u32 value;
 	unsigned long flags = 0;
-	unsigned long curr_rate;
 	struct clk_wzrd_divider *divider = to_clk_wzrd_divider(hw);
 	void __iomem *div_addr =
 			(void __iomem *)((u64)divider->base + divider->offset);
-
-	curr_rate = clk_hw_get_rate(hw);
 
 	if (divider->lock)
 		spin_lock_irqsave(divider->lock, flags);
