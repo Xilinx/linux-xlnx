@@ -547,7 +547,7 @@ static ssize_t xtg_sysfs_ioctl(struct device *dev, const char *buf,
 	ssize_t status, rdval = 0;
 
 	if (opcode > XTG_GET_STREAM_TRANSFERCNT) {
-		status = kstrtoul(buf, 16, &wrval);
+		status = kstrtoul(buf, 0, &wrval);
 		if (status < 0)
 			return status;
 	}
@@ -713,27 +713,32 @@ static ssize_t xtg_sysfs_ioctl(struct device *dev, const char *buf,
 
 	case XTG_SET_STREAM_ENABLE:
 		if (wrval) {
-			wrval &= XTG_STREAM_CNTL_STEN_MASK;
-			writel(readl(tg->regs + XTG_STREAM_CNTL_OFFSET) | wrval,
-			tg->regs + XTG_STREAM_CNTL_OFFSET);
+			rdval = readl(tg->regs + XTG_STREAM_CNTL_OFFSET);
+			rdval |= XTG_STREAM_CNTL_STEN_MASK,
+			writel(rdval,
+			       tg->regs + XTG_STREAM_CNTL_OFFSET);
 		} else {
 			writel(readl(tg->regs + XTG_STREAM_CNTL_OFFSET) &
-			~XTG_STREAM_CNTL_STEN_MASK,
-			tg->regs + XTG_STREAM_CNTL_OFFSET);
+			       ~XTG_STREAM_CNTL_STEN_MASK,
+			       tg->regs + XTG_STREAM_CNTL_OFFSET);
 		}
 		break;
 
 	case XTG_SET_STREAM_TRANSFERLEN:
 		wrval &= XTG_STREAM_TL_TLEN_MASK;
-		writel(readl(tg->regs + XTG_STREAM_TL_OFFSET) | wrval,
-			tg->regs + XTG_STREAM_TL_OFFSET);
+		rdval = readl(tg->regs + XTG_STREAM_TL_OFFSET);
+		rdval &= ~XTG_STREAM_TL_TLEN_MASK;
+		writel(rdval | wrval,
+		       tg->regs + XTG_STREAM_TL_OFFSET);
 		break;
 
 	case XTG_SET_STREAM_TRANSFERCNT:
 		wrval = ((wrval << XTG_STREAM_TL_TCNT_SHIFT) &
 				XTG_STREAM_TL_TCNT_MASK);
-		writel(readl(tg->regs + XTG_STREAM_TL_OFFSET) | wrval,
-			tg->regs + XTG_STREAM_TL_OFFSET);
+		rdval = readl(tg->regs + XTG_STREAM_TL_OFFSET);
+		rdval = rdval & ~XTG_STREAM_TL_TCNT_MASK;
+		writel(rdval | wrval,
+		       tg->regs + XTG_STREAM_TL_OFFSET);
 		break;
 
 	default:
