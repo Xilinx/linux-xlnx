@@ -663,6 +663,9 @@ static void zynqmp_disp_blend_layer_coeff(struct zynqmp_disp_blend *blend,
 	u16 sdtv_coeffs[] = { 0x1000, 0x166f, 0x0,
 			      0x1000, 0x7483, 0x7a7f,
 			      0x1000, 0x0, 0x1c5a };
+	u16 sdtv_coeffs_yonly[] = { 0x0, 0x0, 0x1000,
+				    0x0, 0x0, 0x1000,
+				    0x0, 0x0, 0x1000 };
 	u16 swap_coeffs[] = { 0x1000, 0x0, 0x0,
 			      0x0, 0x1000, 0x0,
 			      0x0, 0x0, 0x1000 };
@@ -671,6 +674,7 @@ static void zynqmp_disp_blend_layer_coeff(struct zynqmp_disp_blend *blend,
 			      0x0, 0x0, 0x0 };
 	u16 *coeffs;
 	u32 sdtv_offsets[] = { 0x0, 0x1800, 0x1800 };
+	u32 sdtv_offsets_yonly[] = { 0x1800, 0x1800, 0x0 };
 	u32 null_offsets[] = { 0x0, 0x0, 0x0 };
 	u32 *offsets;
 
@@ -684,8 +688,19 @@ static void zynqmp_disp_blend_layer_coeff(struct zynqmp_disp_blend *blend,
 		offsets = null_offsets;
 	} else {
 		if (!layer->fmt->rgb) {
-			coeffs = sdtv_coeffs;
-			offsets = sdtv_offsets;
+			/*
+			 * In case of Y_ONLY formats, pixels are unpacked
+			 * differently compared to YCbCr
+			 */
+			if (layer->fmt->drm_fmt == DRM_FORMAT_Y8 ||
+			    layer->fmt->drm_fmt == DRM_FORMAT_Y10) {
+				coeffs = sdtv_coeffs_yonly;
+				offsets = sdtv_offsets_yonly;
+			} else {
+				coeffs = sdtv_coeffs;
+				offsets = sdtv_offsets;
+			}
+
 			s0 = 1;
 			s1 = 2;
 		} else {
@@ -925,6 +940,24 @@ static const struct zynqmp_disp_fmt av_buf_vid_fmts[] = {
 		.sf[0]		= ZYNQMP_DISP_AV_BUF_8BIT_SF,
 		.sf[1]		= ZYNQMP_DISP_AV_BUF_8BIT_SF,
 		.sf[2]		= ZYNQMP_DISP_AV_BUF_8BIT_SF,
+	}, {
+		.drm_fmt	= DRM_FORMAT_Y8,
+		.disp_fmt	= ZYNQMP_DISP_AV_BUF_FMT_NL_VID_MONO,
+		.rgb		= false,
+		.swap		= false,
+		.chroma_sub	= false,
+		.sf[0]		= ZYNQMP_DISP_AV_BUF_8BIT_SF,
+		.sf[1]		= ZYNQMP_DISP_AV_BUF_8BIT_SF,
+		.sf[2]		= ZYNQMP_DISP_AV_BUF_8BIT_SF,
+	}, {
+		.drm_fmt	= DRM_FORMAT_Y10,
+		.disp_fmt	= ZYNQMP_DISP_AV_BUF_FMT_NL_VID_YONLY_10,
+		.rgb		= false,
+		.swap		= false,
+		.chroma_sub	= false,
+		.sf[0]		= ZYNQMP_DISP_AV_BUF_10BIT_SF,
+		.sf[1]		= ZYNQMP_DISP_AV_BUF_10BIT_SF,
+		.sf[2]		= ZYNQMP_DISP_AV_BUF_10BIT_SF,
 	}, {
 		.drm_fmt	= DRM_FORMAT_BGR888,
 		.disp_fmt	= ZYNQMP_DISP_AV_BUF_FMT_NL_VID_RGB888,
