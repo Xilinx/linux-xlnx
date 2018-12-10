@@ -43,6 +43,7 @@
 #define AUD_STS_IOC_IRQ_MASK	BIT(31)
 #define AUD_STS_CH_STS_MASK	BIT(29)
 #define AUD_CTRL_IOC_IRQ_MASK	BIT(13)
+#define AUD_CTRL_TOUT_IRQ_MASK	BIT(14)
 #define AUD_CTRL_DMA_EN_MASK	BIT(0)
 
 #define CFG_MM2S_CH_MASK	GENMASK(11, 8)
@@ -310,12 +311,36 @@ static int parse_consumer_format(u32 chsts_reg1_val, u32 chsts_reg2_val,
 	return 0;
 }
 
-static void xlnx_formatter_pcm_reset(void __iomem *mmio_base)
+static int xlnx_formatter_pcm_reset(void __iomem *mmio_base)
+{
+	u32 val, retries = 0;
+
+	val = readl(mmio_base + XLNX_AUD_CTRL);
+	val |= AUD_CTRL_RESET_MASK;
+	writel(val, mmio_base + XLNX_AUD_CTRL);
+
+	val = readl(mmio_base + XLNX_AUD_CTRL);
+	/* Poll for maximum timeout of approximately 100ms (1 * 100)*/
+	while ((val & AUD_CTRL_RESET_MASK) && (retries < 100)) {
+		mdelay(1);
+		retries++;
+		val = readl(mmio_base + XLNX_AUD_CTRL);
+	}
+	if (val & AUD_CTRL_RESET_MASK)
+		return -ENODEV;
+
+	return 0;
+}
+
+static void xlnx_formatter_disable_irqs(void __iomem *mmio_base, int stream)
 {
 	u32 val;
 
 	val = readl(mmio_base + XLNX_AUD_CTRL);
-	val |= AUD_CTRL_RESET_MASK;
+	val &= ~AUD_CTRL_IOC_IRQ_MASK;
+	if (stream == SNDRV_PCM_STREAM_CAPTURE)
+		val &= ~AUD_CTRL_TOUT_IRQ_MASK;
+
 	writel(val, mmio_base + XLNX_AUD_CTRL);
 }
 
@@ -421,7 +446,7 @@ static int xlnx_formatter_pcm_open(struct snd_soc_component *component,
 		return err;
 	}
 
-	/* enable interrupt on complete */
+	/* enable DMA IOC irq */
 	val = readl(stream_data->mmio + XLNX_AUD_CTRL);
 	val |= AUD_CTRL_IOC_IRQ_MASK;
 	writel(val, stream_data->mmio + XLNX_AUD_CTRL);
@@ -432,19 +457,18 @@ static int xlnx_formatter_pcm_open(struct snd_soc_component *component,
 static int xlnx_formatter_pcm_close(struct snd_soc_component *component,
 			       struct snd_pcm_substream *substream)
 {
-	u32 val;
-
+	int ret;
 	struct xlnx_pcm_stream_param *stream_data =
 			substream->runtime->private_data;
 
-	/* disable interrupt on complete */
-	val = readl(stream_data->mmio + XLNX_AUD_CTRL);
-	val &= ~AUD_CTRL_IOC_IRQ_MASK;
-	writel(val, stream_data->mmio + XLNX_AUD_CTRL);
+	ret = xlnx_formatter_pcm_reset(stream_data->mmio);
+	if (ret) {
+		dev_err(component->dev, "audio formatter reset failed\n");
+		goto err_reset;
+	}
+	xlnx_formatter_disable_irqs(stream_data->mmio, substream->stream);
 
-	if (substream->stream == SNDRV_PCM_STREAM_CAPTURE)
-		xlnx_formatter_pcm_reset(stream_data->mmio + XLNX_S2MM_OFFSET);
-
+err_reset:
 	kfree(stream_data);
 	return 0;
 }
@@ -674,7 +698,15 @@ static int xlnx_formatter_pcm_probe(struct platform_device *pdev)
 			dev_err(&pdev->dev, "xlnx audio mm2s irq request failed\n");
 			goto clk_err;
 		}
-		xlnx_formatter_pcm_reset(aud_drv_data->mmio + XLNX_MM2S_OFFSET);
+		ret = xlnx_formatter_pcm_reset(aud_drv_data->mmio +
+					       XLNX_MM2S_OFFSET);
+		if (ret) {
+			dev_err(&pdev->dev, "audio formatter reset failed\n");
+			goto clk_err;
+		}
+		xlnx_formatter_disable_irqs(aud_drv_data->mmio +
+					    XLNX_MM2S_OFFSET,
+					    SNDRV_PCM_STREAM_PLAYBACK);
 
 		aud_drv_data->nodes[XLNX_PLAYBACK] =
 			of_parse_phandle(dev->of_node, "xlnx,tx", 0);
@@ -702,7 +734,15 @@ static int xlnx_formatter_pcm_probe(struct platform_device *pdev)
 			dev_err(&pdev->dev, "xlnx audio s2mm irq request failed\n");
 			goto clk_err;
 		}
-		xlnx_formatter_pcm_reset(aud_drv_data->mmio + XLNX_S2MM_OFFSET);
+		ret = xlnx_formatter_pcm_reset(aud_drv_data->mmio +
+					       XLNX_S2MM_OFFSET);
+		if (ret) {
+			dev_err(&pdev->dev, "audio formatter reset failed\n");
+			goto clk_err;
+		}
+		xlnx_formatter_disable_irqs(aud_drv_data->mmio +
+					    XLNX_S2MM_OFFSET,
+					    SNDRV_PCM_STREAM_CAPTURE);
 
 		aud_drv_data->nodes[XLNX_CAPTURE] =
 			of_parse_phandle(dev->of_node, "xlnx,rx", 0);
@@ -746,18 +786,23 @@ clk_err:
 
 static int xlnx_formatter_pcm_remove(struct platform_device *pdev)
 {
+	int ret = 0;
 	struct xlnx_pcm_drv_data *adata = dev_get_drvdata(&pdev->dev);
 
 	platform_device_unregister(adata->pdev);
 
 	if (adata->s2mm_presence)
-		xlnx_formatter_pcm_reset(adata->mmio + XLNX_S2MM_OFFSET);
+		ret = xlnx_formatter_pcm_reset(adata->mmio + XLNX_S2MM_OFFSET);
 
+	/* Try MM2S reset, even if S2MM  reset fails */
 	if (adata->mm2s_presence)
-		xlnx_formatter_pcm_reset(adata->mmio + XLNX_MM2S_OFFSET);
+		ret = xlnx_formatter_pcm_reset(adata->mmio + XLNX_MM2S_OFFSET);
+
+	if (ret)
+		dev_err(&pdev->dev, "audio formatter reset failed\n");
 
 	clk_disable_unprepare(adata->axi_clk);
-	return 0;
+	return ret;
 }
 
 static const struct of_device_id xlnx_formatter_pcm_of_match[] = {
