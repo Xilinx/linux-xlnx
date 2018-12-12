@@ -496,7 +496,7 @@ static int __maybe_unused xilinx_spi_resume(struct device *dev)
 
 	ret = spi_master_resume(master);
 	if (ret < 0) {
-        dev_warn(dev, "spi-xilinx: %s,%d: attempted to disable clk!\n", __func__, __LINE__);
+		dev_warn(dev, "spi-xilinx: %s,%d: attempted to disable clk!\n", __func__, __LINE__);
 		//clk_disable(xspi->axi_clk);
 		//clk_disable(xspi->axi4_clk);
 		//clk_disable(xspi->spi_clk);
@@ -715,13 +715,13 @@ static int xilinx_spi_probe(struct platform_device *pdev)
 	return ret;
 
 clk_unprepare_all:
-    dev_warn(&pdev->dev, "spi-xilinx: %s,%d: attempted to unprepare clk!\n", __func__, __LINE__);
+	dev_warn(&pdev->dev, "spi-xilinx: %s,%d: attempted to unprepare clk!\n", __func__, __LINE__);
 	//clk_unprepare(xspi->spi_clk);
 clk_unprepare_axi4_clk:
-    dev_warn(&pdev->dev, "spi-xilinx: %s,%d: attempted to unprepare clk!\n", __func__, __LINE__);
+	dev_warn(&pdev->dev, "spi-xilinx: %s,%d: attempted to unprepare clk!\n", __func__, __LINE__);
 	//clk_unprepare(xspi->axi4_clk);
 clk_unprepare_axi_clk:
-    dev_warn(&pdev->dev, "spi-xilinx: %s,%d: attempted to unprepare clk!\n", __func__, __LINE__);
+	dev_warn(&pdev->dev, "spi-xilinx: %s,%d: attempted to unprepare clk!\n", __func__, __LINE__);
 	//clk_unprepare(xspi->axi_clk);
 put_master:
 	spi_master_put(master);
@@ -750,7 +750,7 @@ static int xilinx_spi_remove(struct platform_device *pdev)
 	/* Disable the global IPIF interrupt */
 	xspi->write_fn(0, regs_base + XIPIF_V123B_DGIER_OFFSET);
 
-    dev_warn(&pdev->dev, "spi-xilinx: %s,%d: attempted to disable_unprepare clk!\n", __func__, __LINE__);
+	dev_warn(&pdev->dev, "spi-xilinx: %s,%d: attempted to disable_unprepare clk!\n", __func__, __LINE__);
 	//clk_disable_unprepare(xspi->axi_clk);
 	//clk_disable_unprepare(xspi->axi4_clk);
 	//clk_disable_unprepare(xspi->spi_clk);
