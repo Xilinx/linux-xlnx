@@ -15,6 +15,7 @@
 #include <linux/mailbox/zynqmp-ipi-message.h>
 #include <linux/module.h>
 #include <linux/of.h>
+#include <linux/of_address.h>
 #include <linux/of_device.h>
 #include <linux/of_irq.h>
 #include <linux/platform_device.h>
@@ -67,51 +68,73 @@
  * @resp_buf: local to remote response buffer start address
  * @req_buf_size: request buffer size
  * @resp_buf_size: response buffer size
+ * @rx_buf: receive buffer to pass received message to client
  * @chan_type: channel type
  */
 struct zynqmp_ipi_mchan {
 	int is_opened;
 	void __iomem *req_buf;
 	void __iomem *resp_buf;
+	void *rx_buf;
 	size_t req_buf_size;
 	size_t resp_buf_size;
 	unsigned int chan_type;
 };
 
 /**
- * struct zynqmp_ipi_mbox_pdata - Description of a ZynqMP IPI mailbox
- *                                platform data.
+ * struct zynqmp_ipi_mbox - Description of a ZynqMP IPI mailbox
+ *                          platform data.
+ * @pdata:		  pointer to the IPI private data
  * @dev:                  device pointer corresponding to the Xilinx ZynqMP
  *                        IPI mailbox
- * @local_id:             local IPI agent ID
  * @remote_id:            remote IPI agent ID
- * @method:               IPI SMC or HVC is going to be used
  * @mbox:                 mailbox Controller
  * @mchans:               array for channels, tx channel and rx channel.
  * @irq:                  IPI agent interrupt ID
- * @lock:                 IPI mailbox platform data lock
  */
-struct zynqmp_ipi_mbox_pdata {
-	struct device *dev;
-	u32 local_id;
+struct zynqmp_ipi_mbox {
+	struct zynqmp_ipi_pdata *pdata;
+	struct device dev;
 	u32 remote_id;
-	unsigned int method;
 	struct mbox_controller mbox;
 	struct zynqmp_ipi_mchan mchans[2];
-	int irq;
-	spinlock_t lock; /* spin lock for local data */
 };
 
-static void zynqmp_ipi_fw_call(struct zynqmp_ipi_mbox_pdata *pdata,
+/**
+ * struct zynqmp_ipi_pdata - Description of z ZynqMP IPI agent platform data.
+ *
+ * @dev:                  device pointer corresponding to the Xilinx ZynqMP
+ *                        IPI agent
+ * @irq:                  IPI agent interrupt ID
+ * @method:               IPI SMC or HVC is going to be used
+ * @local_id:             local IPI agent ID
+ * @ipi_mboxes:           IPI mailboxes of this IPI agent
+ */
+struct zynqmp_ipi_pdata {
+	struct device *dev;
+	int irq;
+	unsigned int method;
+	u32 local_id;
+	int num_mboxes;
+	struct zynqmp_ipi_mbox *ipi_mboxes;
+};
+
+static struct device_driver zynqmp_ipi_mbox_driver = {
+	.owner = THIS_MODULE,
+	.name = "zynqmp-ipi-mbox",
+};
+
+static void zynqmp_ipi_fw_call(struct zynqmp_ipi_mbox *ipi_mbox,
 			       unsigned long a0, unsigned long a3,
 			       unsigned long a4, unsigned long a5,
 			       unsigned long a6, unsigned long a7,
 			       struct arm_smccc_res *res)
 {
+	struct zynqmp_ipi_pdata *pdata = ipi_mbox->pdata;
 	unsigned long a1, a2;
 
 	a1 = pdata->local_id;
-	a2 = pdata->remote_id;
+	a2 = ipi_mbox->remote_id;
 	if (pdata->method == USE_SMC)
 		arm_smccc_smc(a0, a1, a2, a3, a4, a5, a6, a7, res);
 	else
@@ -130,29 +153,32 @@ static void zynqmp_ipi_fw_call(struct zynqmp_ipi_mbox_pdata *pdata,
  */
 static irqreturn_t zynqmp_ipi_interrupt(int irq, void *data)
 {
-	struct zynqmp_ipi_mbox_pdata *pdata = data;
+	struct zynqmp_ipi_pdata *pdata = data;
 	struct mbox_chan *chan;
+	struct zynqmp_ipi_mbox *ipi_mbox;
 	struct zynqmp_ipi_mchan *mchan;
-	struct zynqmp_ipi_message msg;
+	struct zynqmp_ipi_message *msg;
 	u64 arg0, arg3;
 	struct arm_smccc_res res;
-	int ret;
+	int ret, i;
 
 	arg0 = SMC_IPI_MAILBOX_STATUS_ENQUIRY;
 	arg3 = IPI_SMC_ENQUIRY_DIRQ_MASK;
-	zynqmp_ipi_fw_call(pdata, arg0, arg3, 0, 0, 0, 0, &res);
-	ret = (int)(res.a0 & 0xFFFFFFFF);
-	if (ret > 0 && ret & IPI_MB_STATUS_RECV_PENDING) {
-		chan = &pdata->mbox.chans[IPI_MB_CHNL_RX];
-		mchan = chan->con_priv;
-		if (mchan->is_opened) {
-			msg.len = mchan->req_buf_size;
-			memcpy_fromio(&msg.data[0], mchan->req_buf, msg.len);
-			/* Client will direclty copy data from
-			 * IPI buffer to client data memory
-			 */
-			mbox_chan_received_data(chan, (void *)&msg);
-			return IRQ_HANDLED;
+	for (i = 0; i < pdata->num_mboxes; i++) {
+		ipi_mbox = &pdata->ipi_mboxes[i];
+		mchan = &ipi_mbox->mchans[IPI_MB_CHNL_RX];
+		chan = &ipi_mbox->mbox.chans[IPI_MB_CHNL_RX];
+		zynqmp_ipi_fw_call(ipi_mbox, arg0, arg3, 0, 0, 0, 0, &res);
+		ret = (int)(res.a0 & 0xFFFFFFFF);
+		if (ret > 0 && ret & IPI_MB_STATUS_RECV_PENDING) {
+			if (mchan->is_opened) {
+				msg = mchan->rx_buf;
+				msg->len = mchan->req_buf_size;
+				memcpy_fromio(msg->data, mchan->req_buf,
+					      msg->len);
+				mbox_chan_received_data(chan, (void *)msg);
+				return IRQ_HANDLED;
+			}
 		}
 	}
 	return IRQ_NONE;
@@ -168,19 +194,19 @@ static irqreturn_t zynqmp_ipi_interrupt(int irq, void *data)
 static bool zynqmp_ipi_peek_data(struct mbox_chan *chan)
 {
 	struct device *dev = chan->mbox->dev;
-	struct zynqmp_ipi_mbox_pdata *pdata = dev_get_drvdata(dev);
+	struct zynqmp_ipi_mbox *ipi_mbox = dev_get_drvdata(dev);
 	struct zynqmp_ipi_mchan *mchan = chan->con_priv;
 	int ret;
 	u64 arg0;
 	struct arm_smccc_res res;
 
-	if (WARN_ON(!pdata)) {
+	if (WARN_ON(!ipi_mbox)) {
 		dev_err(dev, "no platform drv data??\n");
 		return false;
 	}
 
 	arg0 = SMC_IPI_MAILBOX_STATUS_ENQUIRY;
-	zynqmp_ipi_fw_call(pdata, arg0, 0, 0, 0, 0, 0, &res);
+	zynqmp_ipi_fw_call(ipi_mbox, arg0, 0, 0, 0, 0, 0, &res);
 	ret = (int)(res.a0 & 0xFFFFFFFF);
 
 	if (mchan->chan_type == IPI_MB_CHNL_TX) {
@@ -208,14 +234,14 @@ static bool zynqmp_ipi_peek_data(struct mbox_chan *chan)
 static bool zynqmp_ipi_last_tx_done(struct mbox_chan *chan)
 {
 	struct device *dev = chan->mbox->dev;
-	struct zynqmp_ipi_mbox_pdata *pdata = dev_get_drvdata(dev);
+	struct zynqmp_ipi_mbox *ipi_mbox = dev_get_drvdata(dev);
 	struct zynqmp_ipi_mchan *mchan = chan->con_priv;
 	int ret;
 	u64 arg0;
 	struct arm_smccc_res res;
-	struct zynqmp_ipi_message msg;
+	struct zynqmp_ipi_message *msg;
 
-	if (WARN_ON(!pdata)) {
+	if (WARN_ON(!ipi_mbox)) {
 		dev_err(dev, "no platform drv data??\n");
 		return false;
 	}
@@ -225,18 +251,16 @@ static bool zynqmp_ipi_last_tx_done(struct mbox_chan *chan)
 		 * by the remote in the TX channel
 		 */
 		arg0 = SMC_IPI_MAILBOX_STATUS_ENQUIRY;
-		zynqmp_ipi_fw_call(pdata, arg0, 0, 0, 0, 0, 0, &res);
+		zynqmp_ipi_fw_call(ipi_mbox, arg0, 0, 0, 0, 0, 0, &res);
 		/* Check the SMC call status, a0 of the result */
 		ret = (int)(res.a0 & 0xFFFFFFFF);
 		if (ret < 0 || ret & IPI_MB_STATUS_SEND_PENDING)
 			return false;
 
-		msg.len = mchan->resp_buf_size;
-		memcpy_fromio(&msg.data[0], mchan->resp_buf, msg.len);
-		/* Client will direclty copy data from
-		 * IPI buffer to client data memory
-		 */
-		mbox_chan_received_data(chan, (void *)&msg);
+		msg = mchan->rx_buf;
+		msg->len = mchan->resp_buf_size;
+		memcpy_fromio(msg->data, mchan->resp_buf, msg->len);
+		mbox_chan_received_data(chan, (void *)msg);
 		return true;
 	}
 	/* Always true for the response message in RX channel */
@@ -254,7 +278,7 @@ static bool zynqmp_ipi_last_tx_done(struct mbox_chan *chan)
 static int zynqmp_ipi_send_data(struct mbox_chan *chan, void *data)
 {
 	struct device *dev = chan->mbox->dev;
-	struct zynqmp_ipi_mbox_pdata *pdata = dev_get_drvdata(dev);
+	struct zynqmp_ipi_mbox *ipi_mbox = dev_get_drvdata(dev);
 	struct zynqmp_ipi_mchan *mchan = chan->con_priv;
 	struct zynqmp_ipi_message *msg = data;
 	u64 arg0;
@@ -262,41 +286,44 @@ static int zynqmp_ipi_send_data(struct mbox_chan *chan, void *data)
 	u32 timeout;
 	int ret;
 
-	if (WARN_ON(!pdata)) {
+	if (WARN_ON(!ipi_mbox)) {
 		dev_err(dev, "no platform drv data??\n");
 		return -EINVAL;
 	}
 
 	if (mchan->chan_type == IPI_MB_CHNL_TX) {
 		/* Send request message */
-		if (msg && msg->len > mchan->resp_buf_size) {
+		if (msg && msg->len > mchan->req_buf_size) {
 			dev_err(dev, "channel %d message length %u > max %lu\n",
 				mchan->chan_type, (unsigned int)msg->len,
-				mchan->resp_buf_size);
+				mchan->req_buf_size);
 			return -EINVAL;
 		}
 		/* Enquire if the mailbox is free to send message */
 		arg0 = SMC_IPI_MAILBOX_STATUS_ENQUIRY;
 		timeout = 10;
-		do {
-			zynqmp_ipi_fw_call(pdata, arg0, 0, 0, 0, 0, 0, &res);
-			ret = res.a0 & 0xFFFFFFFF;
-			if (ret >= 0 && !(ret & IPI_MB_STATUS_SEND_PENDING))
-				break;
-			usleep_range(1, 2);
-			timeout--;
-		} while (timeout);
-		if (!timeout) {
-			dev_warn(dev, "channel %d sending msg timesout.\n",
-				 pdata->remote_id);
-			return -ETIME;
+		if (msg && msg->len) {
+			timeout = 10;
+			do {
+				zynqmp_ipi_fw_call(ipi_mbox, arg0,
+						   0, 0, 0, 0, 0, &res);
+				ret = res.a0 & 0xFFFFFFFF;
+				if (ret >= 0 &&
+				    !(ret & IPI_MB_STATUS_SEND_PENDING))
+					break;
+				usleep_range(1, 2);
+				timeout--;
+			} while (timeout);
+			if (!timeout) {
+				dev_warn(dev, "chan %d sending msg timeout.\n",
+					 ipi_mbox->remote_id);
+				return -ETIME;
+			}
+			memcpy_toio(mchan->req_buf, msg->data, msg->len);
 		}
-		/* Copy message to the request buffer */
-		if (msg && msg->len)
-			memcpy_toio(mchan->req_buf, &msg->data[0], msg->len);
 		/* Kick IPI mailbox to send message */
 		arg0 = SMC_IPI_MAILBOX_NOTIFY;
-		zynqmp_ipi_fw_call(pdata, arg0, 0, 0, 0, 0, 0, &res);
+		zynqmp_ipi_fw_call(ipi_mbox, arg0, 0, 0, 0, 0, 0, &res);
 	} else {
 		/* Send response message */
 		if (msg && msg->len > mchan->resp_buf_size) {
@@ -306,10 +333,10 @@ static int zynqmp_ipi_send_data(struct mbox_chan *chan, void *data)
 			return -EINVAL;
 		}
 		if (msg && msg->len)
-			memcpy_toio(mchan->resp_buf, &msg->data[0], msg->len);
+			memcpy(mchan->resp_buf, msg->data, msg->len);
 		arg0 = SMC_IPI_MAILBOX_NOTIFY;
 		arg0 = SMC_IPI_MAILBOX_ACK;
-		zynqmp_ipi_fw_call(pdata, arg0, IPI_SMC_ACK_EIRQ_MASK,
+		zynqmp_ipi_fw_call(ipi_mbox, arg0, IPI_SMC_ACK_EIRQ_MASK,
 				   0, 0, 0, 0, &res);
 	}
 	return 0;
@@ -325,32 +352,26 @@ static int zynqmp_ipi_send_data(struct mbox_chan *chan, void *data)
 static int zynqmp_ipi_startup(struct mbox_chan *chan)
 {
 	struct device *dev = chan->mbox->dev;
-	struct zynqmp_ipi_mbox_pdata *pdata = dev_get_drvdata(dev);
+	struct zynqmp_ipi_mbox *ipi_mbox = dev_get_drvdata(dev);
 	struct zynqmp_ipi_mchan *mchan = chan->con_priv;
 	u64 arg0;
 	struct arm_smccc_res res;
 	int ret = 0;
-	unsigned long flags;
 	unsigned int nchan_type;
 
-	spin_lock_irqsave(&pdata->lock, flags);
-	if (mchan->is_opened) {
-		/* IPI mailbox has been opened */
-		spin_unlock_irqrestore(&pdata->lock, flags);
-		return -EBUSY;
-	}
+	if (mchan->is_opened)
+		return 0;
 
 	/* If no channel has been opened, open the IPI mailbox */
 	nchan_type = (mchan->chan_type + 1) % 2;
-	if (!pdata->mchans[nchan_type].is_opened) {
+	if (!ipi_mbox->mchans[nchan_type].is_opened) {
 		arg0 = SMC_IPI_MAILBOX_OPEN;
-		zynqmp_ipi_fw_call(pdata, arg0, 0, 0, 0, 0, 0, &res);
+		zynqmp_ipi_fw_call(ipi_mbox, arg0, 0, 0, 0, 0, 0, &res);
 		/* Check the SMC call status, a0 of the result */
 		ret = (int)(res.a0 | 0xFFFFFFFF);
 		if (res.a0 < 0) {
 			dev_err(dev, "SMC to open the IPI channel failed.\n");
 			ret = res.a0;
-			spin_unlock_irqrestore(&pdata->lock, flags);
 			return ret;
 		}
 		ret = 0;
@@ -359,10 +380,9 @@ static int zynqmp_ipi_startup(struct mbox_chan *chan)
 	/* If it is RX channel, enable the IPI notification interrupt */
 	if (mchan->chan_type == IPI_MB_CHNL_RX) {
 		arg0 = SMC_IPI_MAILBOX_ENABLE_IRQ;
-		zynqmp_ipi_fw_call(pdata, arg0, 0, 0, 0, 0, 0, &res);
+		zynqmp_ipi_fw_call(ipi_mbox, arg0, 0, 0, 0, 0, 0, &res);
 	}
 	mchan->is_opened = 1;
-	spin_unlock_irqrestore(&pdata->lock, flags);
 
 	return ret;
 }
@@ -375,34 +395,29 @@ static int zynqmp_ipi_startup(struct mbox_chan *chan)
 static void zynqmp_ipi_shutdown(struct mbox_chan *chan)
 {
 	struct device *dev = chan->mbox->dev;
-	struct zynqmp_ipi_mbox_pdata *pdata = dev_get_drvdata(dev);
+	struct zynqmp_ipi_mbox *ipi_mbox = dev_get_drvdata(dev);
 	struct zynqmp_ipi_mchan *mchan = chan->con_priv;
 	u64 arg0;
 	struct arm_smccc_res res;
-	unsigned long flags;
 	unsigned int chan_type;
 
-	spin_lock_irqsave(&pdata->lock, flags);
-	if (!mchan->is_opened) {
-		spin_unlock_irqrestore(&pdata->lock, flags);
+	if (!mchan->is_opened)
 		return;
-	}
 
 	/* If it is RX channel, disable notification interrupt */
 	chan_type = mchan->chan_type;
 	if (chan_type == IPI_MB_CHNL_RX) {
 		arg0 = SMC_IPI_MAILBOX_DISABLE_IRQ;
-		zynqmp_ipi_fw_call(pdata, arg0, 0, 0, 0, 0, 0, &res);
+		zynqmp_ipi_fw_call(ipi_mbox, arg0, 0, 0, 0, 0, 0, &res);
 	}
 	/* Release IPI mailbox if no other channel is opened */
 	chan_type = (chan_type + 1) % 2;
-	if (!pdata->mchans[chan_type].is_opened) {
+	if (!ipi_mbox->mchans[chan_type].is_opened) {
 		arg0 = SMC_IPI_MAILBOX_RELEASE;
-		zynqmp_ipi_fw_call(pdata, arg0, 0, 0, 0, 0, 0, &res);
+		zynqmp_ipi_fw_call(ipi_mbox, arg0, 0, 0, 0, 0, 0, &res);
 	}
 
 	mchan->is_opened = 0;
-	spin_unlock_irqrestore(&pdata->lock, flags);
 }
 
 /* ZynqMP IPI mailbox operations */
@@ -425,12 +440,9 @@ static const struct mbox_chan_ops zynqmp_ipi_chan_ops = {
 static struct mbox_chan *zynqmp_ipi_of_xlate(struct mbox_controller *mbox,
 					     const struct of_phandle_args *p)
 {
-	struct zynqmp_ipi_mbox_pdata *pdata;
 	struct mbox_chan *chan;
 	struct device *dev = mbox->dev;
 	unsigned int chan_type;
-
-	pdata = container_of(mbox, struct zynqmp_ipi_mbox_pdata, mbox);
 
 	/* Only supports TX and RX channels */
 	chan_type = p->args[0];
@@ -449,136 +461,277 @@ static const struct of_device_id zynqmp_ipi_of_match[] = {
 };
 MODULE_DEVICE_TABLE(of, zynqmp_ipi_of_match);
 
-static int zynqmp_ipi_probe(struct platform_device *pdev)
+/**
+ * zynqmp_ipi_mbox_get_buf_res - Get buffer resource from the IPI dev node
+ *
+ * @node: IPI mbox device child node
+ * @name: name of the IPI buffer
+ * @res: pointer to where the resource information will be stored.
+ *
+ * Return: 0 for success, negative value for failure
+ */
+static int zynqmp_ipi_mbox_get_buf_res(struct device_node *node,
+				       const char *name,
+				       struct resource *res)
 {
-	struct device *dev = &pdev->dev;
-	struct device_node *np = pdev->dev.of_node;
-	struct zynqmp_ipi_mbox_pdata *pdata;
+	int ret, index;
+
+	index = of_property_match_string(node, "reg-names", name);
+	if (index >= 0) {
+		ret = of_address_to_resource(node, index, res);
+		if (ret < 0)
+			return -EINVAL;
+		return 0;
+	}
+	return -ENODEV;
+}
+
+/**
+ * zynqmp_ipi_mbox_dev_release() - release the existence of a ipi mbox dev
+ *
+ * This is to avoid the no device release() function kernel warning.
+ *
+ * @dev: the ipi mailbox device
+ */
+static void zynqmp_ipi_mbox_dev_release(struct device *dev)
+{
+	(void)dev;
+}
+
+/**
+ * zynqmp_ipi_mbox_probe - probe IPI mailbox resource from device node
+ *
+ * @ipi_mbox: pointer to IPI mailbox private data structure
+ * @node: IPI mailbox device node
+ *
+ * Return: 0 for success, negative value for failure
+ */
+static int zynqmp_ipi_mbox_probe(struct zynqmp_ipi_mbox *ipi_mbox,
+				 struct device_node *node)
+{
 	struct zynqmp_ipi_mchan *mchan;
 	struct mbox_chan *chans;
 	struct mbox_controller *mbox;
-	const unsigned char *prop;
-	struct resource *res;
+	struct resource res;
+	struct device *dev, *mdev;
+	const char *name;
 	int ret;
 
-	pdata = devm_kzalloc(dev, sizeof(*pdata), GFP_KERNEL);
-	if (!pdata)
-		return -ENOMEM;
-
-	pdata->dev = dev;
-
-	mchan = &pdata->mchans[IPI_MB_CHNL_TX];
-	res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
-					   "local_request_region");
-	mchan->req_buf = devm_ioremap_resource(&pdev->dev, res);
-	if (IS_ERR(mchan->req_buf)) {
-		dev_err(dev, "Unable to map IPI buffer I/O memory\n");
-		return PTR_ERR(mchan->req_buf);
-	}
-	mchan->req_buf_size = resource_size(res);
-
-	res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
-					   "remote_response_region");
-	mchan->resp_buf = devm_ioremap_resource(&pdev->dev, res);
-	if (IS_ERR(mchan->resp_buf)) {
-		dev_err(dev, "Unable to map IPI buffer I/O memory\n");
-		return PTR_ERR(mchan->resp_buf);
-	}
-	mchan->resp_buf_size = resource_size(res);
-
-	mchan = &pdata->mchans[IPI_MB_CHNL_RX];
-	res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
-					   "remote_request_region");
-	mchan->req_buf = devm_ioremap_resource(&pdev->dev, res);
-	if (IS_ERR(mchan->req_buf)) {
-		dev_err(dev, "Unable to map IPI buffer I/O memory\n");
-		return PTR_ERR(mchan->req_buf);
-	}
-	mchan->req_buf_size = resource_size(res);
-
-	res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
-					   "local_response_region");
-	mchan->resp_buf = devm_ioremap_resource(&pdev->dev, res);
-	if (IS_ERR(mchan->resp_buf)) {
-		dev_err(dev, "Unable to map IPI buffer I/O memory\n");
-		return PTR_ERR(mchan->resp_buf);
-	}
-	mchan->resp_buf_size = resource_size(res);
-
-	/* Get the IPI local and remote agents IDs */
-	ret = of_property_read_u32_index(np, "xlnx,ipi-ids", 0,
-					 &pdata->local_id);
-	if (ret < 0) {
-		dev_err(dev, "No IPI local ID is specified.\n");
+	dev = ipi_mbox->pdata->dev;
+	/* Initialize dev for IPI mailbox */
+	ipi_mbox->dev.parent = dev;
+	ipi_mbox->dev.release = NULL;
+	ipi_mbox->dev.of_node = node;
+	dev_set_name(&ipi_mbox->dev, "%s", of_node_full_name(node));
+	dev_set_drvdata(&ipi_mbox->dev, ipi_mbox);
+	ipi_mbox->dev.release = zynqmp_ipi_mbox_dev_release;
+	ipi_mbox->dev.driver = &zynqmp_ipi_mbox_driver;
+	ret = device_register(&ipi_mbox->dev);
+	if (ret) {
+		dev_err(dev, "Failed to register ipi mbox dev.\n");
 		return ret;
 	}
-	ret = of_property_read_u32_index(np, "xlnx,ipi-ids", 1,
-					 &pdata->remote_id);
+	mdev = &ipi_mbox->dev;
+
+	mchan = &ipi_mbox->mchans[IPI_MB_CHNL_TX];
+	name = "local_request_region";
+	ret = zynqmp_ipi_mbox_get_buf_res(node, name, &res);
+	if (!ret) {
+		mchan->req_buf_size = resource_size(&res);
+		mchan->req_buf = devm_ioremap(mdev, res.start,
+					      mchan->req_buf_size);
+		if (IS_ERR(mchan->req_buf)) {
+			dev_err(mdev, "Unable to map IPI buffer I/O memory\n");
+			ret = PTR_ERR(mchan->req_buf);
+			return ret;
+		}
+	} else if (ret != -ENODEV) {
+		dev_err(mdev, "Unmatched resource %s, %d.\n", name, ret);
+		return ret;
+	}
+
+	name = "remote_response_region";
+	ret = zynqmp_ipi_mbox_get_buf_res(node, name, &res);
+	if (!ret) {
+		mchan->resp_buf_size = resource_size(&res);
+		mchan->resp_buf = devm_ioremap(mdev, res.start,
+					       mchan->resp_buf_size);
+		if (IS_ERR(mchan->resp_buf)) {
+			dev_err(mdev, "Unable to map IPI buffer I/O memory\n");
+			ret = PTR_ERR(mchan->resp_buf);
+			return ret;
+		}
+	} else if (ret != -ENODEV) {
+		dev_err(mdev, "Unmatched resource %s.\n", name);
+		return ret;
+	}
+	mchan->rx_buf = devm_kzalloc(mdev,
+				     mchan->resp_buf_size +
+				     sizeof(struct zynqmp_ipi_message),
+				     GFP_KERNEL);
+	if (!mchan->rx_buf)
+		return -ENOMEM;
+
+	mchan = &ipi_mbox->mchans[IPI_MB_CHNL_RX];
+	name = "remote_request_region";
+	ret = zynqmp_ipi_mbox_get_buf_res(node, name, &res);
+	if (!ret) {
+		mchan->req_buf_size = resource_size(&res);
+		mchan->req_buf = devm_ioremap(mdev, res.start,
+					      mchan->req_buf_size);
+		if (IS_ERR(mchan->req_buf)) {
+			dev_err(mdev, "Unable to map IPI buffer I/O memory\n");
+			ret = PTR_ERR(mchan->req_buf);
+			return ret;
+		}
+	} else if (ret != -ENODEV) {
+		dev_err(mdev, "Unmatched resource %s.\n", name);
+		return ret;
+	}
+
+	name = "local_response_region";
+	ret = zynqmp_ipi_mbox_get_buf_res(node, name, &res);
+	if (!ret) {
+		mchan->resp_buf_size = resource_size(&res);
+		mchan->resp_buf = devm_ioremap(mdev, res.start,
+					       mchan->resp_buf_size);
+		if (IS_ERR(mchan->resp_buf)) {
+			dev_err(mdev, "Unable to map IPI buffer I/O memory\n");
+			ret = PTR_ERR(mchan->resp_buf);
+			return ret;
+		}
+	} else if (ret != -ENODEV) {
+		dev_err(mdev, "Unmatched resource %s.\n", name);
+		return ret;
+	}
+	mchan->rx_buf = devm_kzalloc(mdev,
+				     mchan->resp_buf_size +
+				     sizeof(struct zynqmp_ipi_message),
+				     GFP_KERNEL);
+	if (!mchan->rx_buf)
+		return -ENOMEM;
+
+	/* Get the IPI remote agent ID */
+	ret = of_property_read_u32(node, "xlnx,ipi-id", &ipi_mbox->remote_id);
 	if (ret < 0) {
 		dev_err(dev, "No IPI remote ID is specified.\n");
 		return ret;
 	}
 
-	/* Get how to access IPI agent method */
-	prop = of_get_property(np, "method", NULL);
-	if (!prop) {
-		pdata->method = USE_SMC;
-	} else if (!strcmp(prop, "smc")) {
-		pdata->method = USE_SMC;
-	} else if (!strcmp(prop, "hvc")) {
-		pdata->method = USE_HVC;
-	} else {
-		dev_err(dev, "Invalid \"method\" %s.\n", prop);
-		return ret;
-	}
-
-	/* IPI IRQ */
-	pdata->irq = platform_get_irq(pdev, 0);
-	if (pdata->irq < 0) {
-		dev_err(dev, "unable to find IPI IRQ.\n");
-		return pdata->irq;
-	}
-	ret = devm_request_irq(dev, pdata->irq, zynqmp_ipi_interrupt,
-			       IRQF_SHARED, dev_name(dev), pdata);
-	if (ret) {
-		dev_err(dev, "IRQ %d is not requested successfully.\n",
-			pdata->irq);
-		return ret;
-	}
-
-	mbox = &pdata->mbox;
-	mbox->dev = dev;
+	mbox = &ipi_mbox->mbox;
+	mbox->dev = mdev;
 	mbox->ops = &zynqmp_ipi_chan_ops;
-	/* Each mailbox has tx and rx channels. */
 	mbox->num_chans = 2;
 	mbox->txdone_irq = false;
 	mbox->txdone_poll = true;
 	mbox->txpoll_period = 5;
 	mbox->of_xlate = zynqmp_ipi_of_xlate;
-	chans = devm_kzalloc(dev, mbox->num_chans * sizeof(*chans), GFP_KERNEL);
+	chans = devm_kzalloc(mdev, 2 * sizeof(*chans), GFP_KERNEL);
 	if (!chans)
 		return -ENOMEM;
 	mbox->chans = chans;
-	mbox->chans[IPI_MB_CHNL_TX].con_priv = &pdata->mchans[IPI_MB_CHNL_TX];
-	mbox->chans[IPI_MB_CHNL_RX].con_priv = &pdata->mchans[IPI_MB_CHNL_RX];
-	pdata->mchans[IPI_MB_CHNL_TX].chan_type = IPI_MB_CHNL_TX;
-	pdata->mchans[IPI_MB_CHNL_RX].chan_type = IPI_MB_CHNL_RX;
-	spin_lock_init(&pdata->lock);
-	platform_set_drvdata(pdev, pdata);
+	chans[IPI_MB_CHNL_TX].con_priv = &ipi_mbox->mchans[IPI_MB_CHNL_TX];
+	chans[IPI_MB_CHNL_RX].con_priv = &ipi_mbox->mchans[IPI_MB_CHNL_RX];
+	ipi_mbox->mchans[IPI_MB_CHNL_TX].chan_type = IPI_MB_CHNL_TX;
+	ipi_mbox->mchans[IPI_MB_CHNL_RX].chan_type = IPI_MB_CHNL_RX;
 	ret = mbox_controller_register(mbox);
 	if (ret)
-		dev_err(dev, "Failed to register mbox_controller(%d)\n", ret);
+		dev_err(mdev,
+			"Failed to register mbox_controller(%d)\n", ret);
 	else
-		dev_info(dev, "Probed ZynqMP IPI Mailbox driver.\n");
+		dev_info(mdev, "Probed ZynqMP IPI Mailbox driver.\n");
+	return ret;
+}
+
+/**
+ * zynqmp_ipi_free_mboxes - Free IPI mailboxes devices
+ *
+ * @pdata: IPI private data
+ */
+static void zynqmp_ipi_free_mboxes(struct zynqmp_ipi_pdata *pdata)
+{
+	struct zynqmp_ipi_mbox *ipi_mbox;
+	int i;
+
+	i = pdata->num_mboxes;
+	for (; i >= 0; i--) {
+		ipi_mbox = &pdata->ipi_mboxes[i];
+		if (ipi_mbox->dev.parent) {
+			mbox_controller_unregister(&ipi_mbox->mbox);
+			device_unregister(&ipi_mbox->dev);
+		}
+	}
+}
+
+static int zynqmp_ipi_probe(struct platform_device *pdev)
+{
+	struct device *dev = &pdev->dev;
+	struct device_node *nc, *np = pdev->dev.of_node;
+	struct zynqmp_ipi_pdata *pdata;
+	struct zynqmp_ipi_mbox *mbox;
+	int i, ret = -EINVAL;
+
+	i = 0;
+	for_each_available_child_of_node(np, nc)
+		i++;
+	pdata = devm_kzalloc(dev, sizeof(*pdata) + (i * sizeof(*mbox)),
+			     GFP_KERNEL);
+	if (!pdata)
+		return -ENOMEM;
+	pdata->dev = dev;
+
+	/* Get the IPI local agents ID */
+	ret = of_property_read_u32(np, "xlnx,ipi-id", &pdata->local_id);
+	if (ret < 0) {
+		dev_err(dev, "No IPI local ID is specified.\n");
+		return ret;
+	}
+
+	pdata->num_mboxes = i;
+	pdata->ipi_mboxes = (struct zynqmp_ipi_mbox *)
+			    ((char *)pdata + sizeof(*pdata));
+
+	mbox = pdata->ipi_mboxes;
+	for_each_available_child_of_node(np, nc) {
+		mbox->pdata = pdata;
+		ret = zynqmp_ipi_mbox_probe(mbox, nc);
+		if (ret) {
+			dev_err(dev, "failed to probe subdev.\n");
+			ret = -EINVAL;
+			goto free_mbox_dev;
+		}
+		mbox++;
+	}
+
+	/* IPI IRQ */
+	ret = platform_get_irq(pdev, 0);
+	if (ret < 0) {
+		dev_err(dev, "unable to find IPI IRQ.\n");
+		goto free_mbox_dev;
+	}
+	pdata->irq = ret;
+	ret = devm_request_irq(dev, pdata->irq, zynqmp_ipi_interrupt,
+			       IRQF_SHARED, dev_name(dev), pdata);
+	if (ret) {
+		dev_err(dev, "IRQ %d is not requested successfully.\n",
+			pdata->irq);
+		goto free_mbox_dev;
+	}
+
+	platform_set_drvdata(pdev, pdata);
+	return ret;
+
+free_mbox_dev:
+	zynqmp_ipi_free_mboxes(pdata);
 	return ret;
 }
 
 static int zynqmp_ipi_remove(struct platform_device *pdev)
 {
-	struct zynqmp_ipi_mbox_pdata *pdata;
+	struct zynqmp_ipi_pdata *pdata;
 
 	pdata = platform_get_drvdata(pdev);
-	mbox_controller_unregister(&pdata->mbox);
+	zynqmp_ipi_free_mboxes(pdata);
 
 	return 0;
 }
