@@ -592,16 +592,8 @@ static struct platform_driver zynqmp_ipi_driver = {
 	},
 };
 
-static struct class zynqmp_ipi_class = { .name = "zynqmp_ipi_mbox", };
-
 static int __init zynqmp_ipi_init(void)
 {
-	int err;
-
-	err = class_register(&zynqmp_ipi_class);
-	if (err)
-		return err;
-
 	return platform_driver_register(&zynqmp_ipi_driver);
 }
 subsys_initcall(zynqmp_ipi_init);
@@ -609,7 +601,6 @@ subsys_initcall(zynqmp_ipi_init);
 static void __exit zynqmp_ipi_exit(void)
 {
 	platform_driver_unregister(&zynqmp_ipi_driver);
-	class_unregister(&zynqmp_ipi_class);
 }
 module_exit(zynqmp_ipi_exit);
 
