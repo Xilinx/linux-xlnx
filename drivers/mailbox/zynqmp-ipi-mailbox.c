@@ -7,19 +7,19 @@
 
 #define pr_fmt(fmt) "%s: " fmt, __func__
 
+#include <linux/arm-smccc.h>
+#include <linux/delay.h>
 #include <linux/device.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/kernel.h>
 #include <linux/mailbox_controller.h>
+#include <linux/mailbox/zynqmp-ipi-message.h>
 #include <linux/module.h>
-#include <linux/of_device.h>
 #include <linux/of.h>
+#include <linux/of_device.h>
 #include <linux/of_irq.h>
 #include <linux/platform_device.h>
-#include <linux/arm-smccc.h>
-#include <linux/delay.h>
-#include <linux/mailbox/zynqmp-ipi-message.h>
 
 /* IPI agent ID any */
 #define IPI_ID_ANY 0xFFUL
