@@ -5,8 +5,6 @@
  * Copyright (C) 2018 Xilinx, Inc.
  */
 
-#define pr_fmt(fmt) "%s: " fmt, __func__
-
 #include <linux/arm-smccc.h>
 #include <linux/delay.h>
 #include <linux/device.h>
