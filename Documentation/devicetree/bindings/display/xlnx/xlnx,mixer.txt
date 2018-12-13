@@ -45,8 +45,8 @@ Optional properties:
 
 Supported Formats:
 	Mixer IP Format		Driver supported Format String
-	 BGR888			"BG24"
-	 RGB888			"RG24"
+	 BGR888			"RG24"
+	 RGB888			"BG24"
 	 XBGR2101010		"XB30"
 	 XRGB8888		"XR24"
 	 RGBA8888		"RA24"
