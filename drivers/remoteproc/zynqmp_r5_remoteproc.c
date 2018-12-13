@@ -13,23 +13,23 @@
  * Copyright (C) 2011 Google, Inc.
  */
 
-#include <linux/kernel.h>
-#include <linux/module.h>
-#include <linux/err.h>
-#include <linux/platform_device.h>
+#include <linux/cpu.h>
 #include <linux/dma-mapping.h>
-#include <linux/remoteproc.h>
+#include <linux/delay.h>
+#include <linux/err.h>
+#include <linux/firmware/xilinx/zynqmp/firmware.h>
+#include <linux/genalloc.h>
+#include <linux/idr.h>
 #include <linux/interrupt.h>
+#include <linux/kernel.h>
+#include <linux/list.h>
+#include <linux/module.h>
 #include <linux/of_irq.h>
 #include <linux/of_platform.h>
-#include <linux/slab.h>
-#include <linux/cpu.h>
-#include <linux/delay.h>
-#include <linux/list.h>
-#include <linux/genalloc.h>
 #include <linux/pfn.h>
-#include <linux/idr.h>
-#include <linux/firmware/xilinx/zynqmp/firmware.h>
+#include <linux/platform_device.h>
+#include <linux/remoteproc.h>
+#include <linux/slab.h>
 
 #include "remoteproc_internal.h"
 
