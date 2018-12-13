@@ -1,8 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Zynq R5 Remote Processor driver
  *
+ * Copyright (C) 2015 - 2018 Xilinx Inc.
  * Copyright (C) 2015 Jason Wu <j.wu@xilinx.com>
- * Copyright (C) 2015 Xilinx, Inc.
  *
  * Based on origin OMAP and Zynq Remote Processor driver
  *
@@ -10,15 +11,6 @@
  * Copyright (C) 2012 PetaLogix
  * Copyright (C) 2011 Texas Instruments, Inc.
  * Copyright (C) 2011 Google, Inc.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
 #include <linux/kernel.h>
