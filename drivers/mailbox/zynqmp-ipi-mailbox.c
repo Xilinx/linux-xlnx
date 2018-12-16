@@ -369,10 +369,9 @@ static int zynqmp_ipi_startup(struct mbox_chan *chan)
 		arg0 = SMC_IPI_MAILBOX_OPEN;
 		zynqmp_ipi_fw_call(ipi_mbox, arg0, 0, 0, 0, 0, 0, &res);
 		/* Check the SMC call status, a0 of the result */
-		ret = (int)(res.a0 | 0xFFFFFFFF);
-		if (res.a0 < 0) {
+		ret = (int)(res.a0 & 0xFFFFFFFF);
+		if (ret < 0) {
 			dev_err(dev, "SMC to open the IPI channel failed.\n");
-			ret = res.a0;
 			return ret;
 		}
 		ret = 0;
