@@ -23,6 +23,7 @@
 #include <linux/interrupt.h>
 #include <linux/kernel.h>
 #include <linux/list.h>
+#include <linux/mailbox_client.h>
 #include <linux/module.h>
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
@@ -67,6 +68,11 @@ struct zynqmp_r5_mem {
  * @pnode_id: RPU CPU power domain id
  * @mems: memory resources
  * @is_r5_mode_set: indicate if r5 operation mode is set
+ * @tx_mc: tx mailbox client
+ * @rx_mc: rx mailbox client
+ * @tx_chan: tx mailbox channel
+ * @rx_chan: rx mailbox channel
+ * @workqueue: workqueue for the RPU remoteproc
  */
 struct zynqmp_r5_pdata {
 	struct device dev;
@@ -75,6 +81,11 @@ struct zynqmp_r5_pdata {
 	u32 pnode_id;
 	struct list_head mems;
 	bool is_r5_mode_set;
+	struct mbox_client tx_mc;
+	struct mbox_client rx_mc;
+	struct mbox_chan *tx_chan;
+	struct mbox_chan *rx_chan;
+	struct work_struct workqueue;
 };
 
 /**
@@ -355,6 +366,20 @@ static void *zynqmp_r5_da_to_va(struct rproc *rproc, u64 da, int len)
 	return NULL;
 }
 
+/* kick a firmware */
+static void zynqmp_r5_rproc_kick(struct rproc *rproc, int vqid)
+{
+	struct device *dev = rproc->dev.parent;
+	struct zynqmp_r5_pdata *local = rproc->priv;
+	int ret;
+
+	dev_dbg(dev, "KICK Firmware to start send messages vqid %d\n", vqid);
+
+	ret = mbox_send_message(local->tx_chan, NULL);
+	if (ret < 0)
+		dev_warn(dev, "Failed to kick remote.\n");
+}
+
 static struct rproc_ops zynqmp_r5_rproc_ops = {
 	.start		= zynqmp_r5_rproc_start,
 	.stop		= zynqmp_r5_rproc_stop,
@@ -364,6 +389,7 @@ static struct rproc_ops zynqmp_r5_rproc_ops = {
 	.sanity_check	= rproc_elf_sanity_check,
 	.get_boot_addr	= rproc_elf_get_boot_addr,
 	.da_to_va	= zynqmp_r5_da_to_va,
+	.kick		= zynqmp_r5_rproc_kick,
 };
 
 /* zynqmp_r5_get_reserved_mems() - get reserved memories
@@ -474,7 +500,69 @@ static void zynqmp_r5_release(struct device *dev)
 		rproc_del(rproc);
 		rproc_free(rproc);
 	}
+	if (pdata->tx_chan)
+		mbox_free_channel(pdata->tx_chan);
+	if (pdata->rx_chan)
+		mbox_free_channel(pdata->rx_chan);
 	put_device(dev->parent);
+}
+
+/**
+ * event_notified_idr_cb() - event notified idr callback
+ * @id: idr id
+ * @ptr: pointer to idr private data
+ * @data: data passed to idr_for_each callback
+ *
+ * Pass notification to remtoeproc virtio
+ *
+ * Return: 0. having return is to satisfy the idr_for_each() function
+ *          pointer input argument requirement.
+ **/
+static int event_notified_idr_cb(int id, void *ptr, void *data)
+{
+	struct rproc *rproc = data;
+
+	(void)rproc_vq_interrupt(rproc, id);
+	return 0;
+}
+
+/**
+ * handle_event_notified() - remoteproc notification work funciton
+ * @work: pointer to the work structure
+ *
+ * It checks each registered remoteproc notify IDs.
+ */
+static void handle_event_notified(struct work_struct *work)
+{
+	struct rproc *rproc;
+	struct zynqmp_r5_pdata *local;
+
+	local = container_of(work, struct zynqmp_r5_pdata, workqueue);
+
+	rproc = local->rproc;
+	/*
+	 * We only use IPI for interrupt. The firmware side may or may
+	 * not write the notifyid when it trigger IPI.
+	 * And thus, we scan through all the registered notifyids.
+	 */
+	idr_for_each(&rproc->notifyids, event_notified_idr_cb, rproc);
+	(void)mbox_send_message(local->rx_chan, NULL);
+}
+
+/**
+ * zynqmp_r5_mb_rx_cb() - Receive channel mailbox callback
+ * @cl: mailbox client
+ * @mssg: message pointer
+ *
+ * It will schedule the R5 notification work.
+ */
+static void zynqmp_r5_mb_rx_cb(struct mbox_client *cl, void *mssg)
+{
+	struct zynqmp_r5_pdata *local;
+
+	(void)mssg;
+	local = container_of(cl, struct zynqmp_r5_pdata, rx_mc);
+	schedule_work(&local->workqueue);
 }
 
 /**
@@ -494,6 +582,7 @@ static int zynqmp_r5_probe(struct zynqmp_r5_pdata *pdata,
 	struct device *dev = &pdata->dev;
 	struct rproc *rproc;
 	struct device_node *nc;
+	struct mbox_client *mclient;
 	int ret;
 
 	/* Create device for ZynqMP R5 device */
@@ -555,6 +644,39 @@ static int zynqmp_r5_probe(struct zynqmp_r5_pdata *pdata,
 	/* Check if R5 is running */
 	if (r5_is_running(pdata))
 		atomic_inc(&rproc->power);
+
+	/* Setup TX mailbox channel client */
+	mclient = &pdata->tx_mc;
+	mclient->dev = dev;
+	mclient->rx_callback = NULL;
+	mclient->tx_block = false;
+	mclient->knows_txdone = false;
+
+	/* Setup TX mailbox channel client */
+	mclient = &pdata->rx_mc;
+	mclient->dev = dev;
+	mclient->rx_callback = zynqmp_r5_mb_rx_cb;
+	mclient->tx_block = false;
+	mclient->knows_txdone = false;
+
+	INIT_WORK(&pdata->workqueue, handle_event_notified);
+
+	/* Request TX and RX channels */
+	pdata->tx_chan = mbox_request_channel_byname(&pdata->tx_mc, "tx");
+	if (IS_ERR(pdata->tx_chan)) {
+		dev_err(dev, "failed to request mbox tx channel.\n");
+		ret = -EINVAL;
+		pdata->tx_chan = NULL;
+		goto error;
+	}
+	pdata->rx_chan = mbox_request_channel_byname(&pdata->rx_mc, "rx");
+	if (IS_ERR(pdata->rx_chan)) {
+		dev_err(dev, "failed to request mbox rx channel.\n");
+		ret = -EINVAL;
+		pdata->rx_chan = NULL;
+		goto error;
+	}
+
 	/* Add R5 remoteproc */
 	ret = rproc_add(rproc);
 	if (ret) {
