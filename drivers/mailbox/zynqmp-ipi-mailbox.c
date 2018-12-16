@@ -334,7 +334,7 @@ static int zynqmp_ipi_send_data(struct mbox_chan *chan, void *data)
 			return -EINVAL;
 		}
 		if (msg && msg->len)
-			memcpy(mchan->resp_buf, msg->data, msg->len);
+			memcpy_toio(mchan->resp_buf, msg->data, msg->len);
 		arg0 = SMC_IPI_MAILBOX_NOTIFY;
 		arg0 = SMC_IPI_MAILBOX_ACK;
 		zynqmp_ipi_fw_call(ipi_mbox, arg0, IPI_SMC_ACK_EIRQ_MASK,
