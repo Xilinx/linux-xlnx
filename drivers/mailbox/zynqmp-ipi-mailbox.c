@@ -490,9 +490,10 @@ static int zynqmp_ipi_mbox_get_buf_res(struct device_node *node,
 /**
  * zynqmp_ipi_mbox_dev_release() - release the existence of a ipi mbox dev
  *
+ * @dev: the ipi mailbox device
+ *
  * This is to avoid the no device release() function kernel warning.
  *
- * @dev: the ipi mailbox device
  */
 static void zynqmp_ipi_mbox_dev_release(struct device *dev)
 {
