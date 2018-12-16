@@ -50,7 +50,9 @@ Required Properties:
 
 Optional Properties:
 --------------------
- - memory-region: reversed memory which will be used by R5 processor
+ - memory-region:	reversed memory which will be used by R5 processor
+ - mboxes:		Specify tx and rx mailboxes
+ - mbox-names:		List of identifier strings for tx/rx mailbox channel.
 
 ZynqMP R5 TCM Device Node:
 =================================
@@ -107,6 +109,8 @@ Example:
 			ranges;
 			memory-region = <&rproc_0_reserved>;
 			pnode-id = <0x7>;
+			mboxes = <&ipi_mailbox_rpu0 0>, <&ipi_mailbox_rpu0 1>;
+			mbox-names = "tx", "rx";
 			tcm-a: tcm@0 {
 				reg = <0x0 0xFFE00000 0x0 0x10000>,
 				pnode-id = <0xf>;
@@ -117,3 +121,27 @@ Example:
 			};
 		};
 	} ;
+
+	zynqmp_ipi {
+		compatible = "xlnx,zynqmp-ipi-mailbox";
+		interrupt-parent = <&gic>;
+		interrupts = <0 29 4>;
+		xlnx,ipi-id = <0>;
+		#address-cells = <1>;
+		#size-cells = <1>;
+		ranges;
+
+		/* APU<->RPU0 IPI mailbox controller */
+		ipi_mailbox_rpu0: mailbox@ff90400 {
+			reg = <0xff990400 0x20>,
+			      <0xff990420 0x20>,
+			      <0xff990080 0x20>,
+			      <0xff9900a0 0x20>;
+			reg-names = "local_request_region",
+				    "local_response_region",
+				    "remote_request_region",
+				    "remote_response_region";
+			#mbox-cells = <1>;
+			xlnx,ipi-id = <1>;
+		};
+	};
