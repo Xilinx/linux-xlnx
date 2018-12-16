@@ -108,6 +108,7 @@ struct zynqmp_ipi_mbox {
  * @irq:                  IPI agent interrupt ID
  * @method:               IPI SMC or HVC is going to be used
  * @local_id:             local IPI agent ID
+ * @num_mboxes:           number of mailboxes of this IPI agent
  * @ipi_mboxes:           IPI mailboxes of this IPI agent
  */
 struct zynqmp_ipi_pdata {
