@@ -162,6 +162,7 @@ static irqreturn_t zynqmp_ipi_interrupt(int irq, void *data)
 	struct arm_smccc_res res;
 	int ret, i;
 
+	(void)irq;
 	arg0 = SMC_IPI_MAILBOX_STATUS_ENQUIRY;
 	arg3 = IPI_SMC_ENQUIRY_DIRQ_MASK;
 	for (i = 0; i < pdata->num_mboxes; i++) {
