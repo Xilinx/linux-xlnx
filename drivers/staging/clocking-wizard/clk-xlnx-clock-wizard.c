@@ -209,7 +209,7 @@ static long clk_wzrd_round_rate(struct clk_hw *hw, unsigned long rate,
 	return (*prate / div);
 }
 
-const struct clk_ops clk_wzrd_clk_divider_ops = {
+static const struct clk_ops clk_wzrd_clk_divider_ops = {
 	.round_rate = clk_wzrd_round_rate,
 	.set_rate = clk_wzrd_dynamic_reconfig,
 	.recalc_rate = clk_wzrd_recalc_rate,
