@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: GPL-2.0
+
+#
+# Xilinx Radio over Ethernet Traffic Generator driver
+#
+
+config XROE_TRAFFIC_GEN
+	tristate "Xilinx Radio over Ethernet Traffic Generator driver"
+	help
+	  The Traffic Generator is used for in testing of other RoE IP Blocks
+	  (currenty the XRoE Framer) and simulates an radio antenna interface.
+	  It generates rolling rampdata for eCPRI antenna paths.
+	  Each path is tagged with the antenna number. The sink locks to this
+	  ramp data, then checks the next value is as expected.
