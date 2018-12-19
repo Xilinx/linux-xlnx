@@ -21,6 +21,7 @@
  */
 
 #include <linux/bitops.h>
+#include <linux/clk.h>
 #include <linux/delay.h>
 #include <linux/dma/xilinx_frmbuf.h>
 #include <linux/dmapool.h>
@@ -107,6 +108,7 @@
 #define XILINX_PPC_PROP				BIT(0)
 #define XILINX_FLUSH_PROP			BIT(1)
 #define XILINX_FID_PROP				BIT(2)
+#define XILINX_CLK_PROP				BIT(3)
 
 #define XILINX_FRMBUF_MAX_HEIGHT		(4320)
 #define XILINX_FRMBUF_MIN_HEIGHT		(64)
@@ -472,6 +474,7 @@ struct xilinx_frmbuf_feature {
  * @cfg: Pointer to Framebuffer Feature config struct
  * @max_width: Maximum pixel width supported in IP.
  * @max_height: Maximum number of lines supported in IP.
+ * @ap_clk: Video core clock
  */
 struct xilinx_frmbuf_device {
 	void __iomem *regs;
@@ -487,6 +490,7 @@ struct xilinx_frmbuf_device {
 	const struct xilinx_frmbuf_feature *cfg;
 	u32 max_width;
 	u32 max_height;
+	struct clk *ap_clk;
 };
 
 static const struct xilinx_frmbuf_feature xlnx_fbwr_cfg_v20 = {
@@ -495,7 +499,8 @@ static const struct xilinx_frmbuf_feature xlnx_fbwr_cfg_v20 = {
 
 static const struct xilinx_frmbuf_feature xlnx_fbwr_cfg_v21 = {
 	.direction = DMA_DEV_TO_MEM,
-	.flags = XILINX_PPC_PROP | XILINX_FLUSH_PROP | XILINX_FID_PROP,
+	.flags = XILINX_PPC_PROP | XILINX_FLUSH_PROP
+		| XILINX_FID_PROP | XILINX_CLK_PROP,
 };
 
 static const struct xilinx_frmbuf_feature xlnx_fbrd_cfg_v20 = {
@@ -504,7 +509,8 @@ static const struct xilinx_frmbuf_feature xlnx_fbrd_cfg_v20 = {
 
 static const struct xilinx_frmbuf_feature xlnx_fbrd_cfg_v21 = {
 	.direction = DMA_MEM_TO_DEV,
-	.flags = XILINX_PPC_PROP | XILINX_FLUSH_PROP | XILINX_FID_PROP,
+	.flags = XILINX_PPC_PROP | XILINX_FLUSH_PROP
+		| XILINX_FID_PROP | XILINX_CLK_PROP,
 };
 
 static const struct of_device_id xilinx_frmbuf_of_ids[] = {
@@ -1466,6 +1472,17 @@ static int xilinx_frmbuf_probe(struct platform_device *pdev)
 
 	dma_dir = (enum dma_transfer_direction)xdev->cfg->direction;
 
+	if (xdev->cfg->flags & XILINX_CLK_PROP) {
+		xdev->ap_clk = devm_clk_get(xdev->dev, "ap_clk");
+		if (IS_ERR(xdev->ap_clk)) {
+			err = PTR_ERR(xdev->ap_clk);
+			dev_err(xdev->dev, "failed to get ap_clk (%d)\n", err);
+			return err;
+		}
+	} else {
+		dev_info(xdev->dev, "assuming clock is enabled!\n");
+	}
+
 	xdev->rst_gpio = devm_gpiod_get(&pdev->dev, "reset",
 					GPIOD_OUT_HIGH);
 	if (IS_ERR(xdev->rst_gpio)) {
@@ -1528,6 +1545,15 @@ static int xilinx_frmbuf_probe(struct platform_device *pdev)
 	xdev->common.copy_align = fls(align) - 1;
 	xdev->common.dev = &pdev->dev;
 
+	if (xdev->cfg->flags & XILINX_CLK_PROP) {
+		err = clk_prepare_enable(xdev->ap_clk);
+		if (err) {
+			dev_err(&pdev->dev, " failed to enable ap_clk (%d)\n",
+				err);
+			return err;
+		}
+	}
+
 	INIT_LIST_HEAD(&xdev->common.channels);
 	dma_cap_set(DMA_SLAVE, xdev->common.cap_mask);
 	dma_cap_set(DMA_PRIVATE, xdev->common.cap_mask);
@@ -1535,7 +1561,7 @@ static int xilinx_frmbuf_probe(struct platform_device *pdev)
 	/* Initialize the channels */
 	err = xilinx_frmbuf_chan_probe(xdev, node);
 	if (err < 0)
-		return err;
+		goto disable_clk;
 
 	xdev->chan.direction = dma_dir;
 
@@ -1546,8 +1572,8 @@ static int xilinx_frmbuf_probe(struct platform_device *pdev)
 		xdev->common.directions = BIT(DMA_MEM_TO_DEV);
 		dev_info(&pdev->dev, "Xilinx AXI frmbuf DMA_MEM_TO_DEV\n");
 	} else {
-		xilinx_frmbuf_chan_remove(&xdev->chan);
-		return -EINVAL;
+		err = -EINVAL;
+		goto remove_chan;
 	}
 
 	/* read supported video formats and update internal table */
@@ -1558,7 +1584,7 @@ static int xilinx_frmbuf_probe(struct platform_device *pdev)
 	if (err < 0) {
 		dev_err(&pdev->dev,
 			"Missing or invalid xlnx,vid-formats dts prop\n");
-		return err;
+		goto remove_chan;
 	}
 
 	for (i = 0; i < hw_vid_fmt_cnt; i++) {
@@ -1594,18 +1620,23 @@ static int xilinx_frmbuf_probe(struct platform_device *pdev)
 
 	/* Register the DMA engine with the core */
 	dma_async_device_register(&xdev->common);
-	err = of_dma_controller_register(node, of_dma_xilinx_xlate, xdev);
 
+	err = of_dma_controller_register(node, of_dma_xilinx_xlate, xdev);
 	if (err < 0) {
 		dev_err(&pdev->dev, "Unable to register DMA to DT\n");
-		xilinx_frmbuf_chan_remove(&xdev->chan);
-		dma_async_device_unregister(&xdev->common);
-		return err;
+		goto error;
 	}
 
 	dev_info(&pdev->dev, "Xilinx AXI FrameBuffer Engine Driver Probed!!\n");
 
 	return 0;
+error:
+	dma_async_device_unregister(&xdev->common);
+remove_chan:
+	xilinx_frmbuf_chan_remove(&xdev->chan);
+disable_clk:
+	clk_disable_unprepare(xdev->ap_clk);
+	return err;
 }
 
 /**
@@ -1620,6 +1651,7 @@ static int xilinx_frmbuf_remove(struct platform_device *pdev)
 
 	dma_async_device_unregister(&xdev->common);
 	xilinx_frmbuf_chan_remove(&xdev->chan);
+	clk_disable_unprepare(xdev->ap_clk);
 
 	return 0;
 }
