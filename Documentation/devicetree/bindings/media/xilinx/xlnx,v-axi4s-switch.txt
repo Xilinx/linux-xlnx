@@ -27,10 +27,15 @@ Required properties:
  - xlnx,num-si-slots: Number of slave / input ports. Min 1 Max 16 .
  - xlnx,num-mi-slots: Number of master / output ports. Min 1 Max 16.
  - ports: Video ports, using the DT bindings defined in ../video-interfaces.txt.
+ - clocks: Reference to the AXI Streaming clock feeding the ACLK and
+   AXI4 Lite control interface clock when control routing is enabled.
+ - clock-names: Must have "aclk".
 
 Optional properties:
  - reg: Physical base address and length of the registers set for the device.
 	This is required only if xlnx,routing-mode is 1.
+ - clocks: Reference to AXI4 Lite control interface clock when routing-mode is 1.
+ - clock-names: "s_axi_ctl_clk" clock for AXI4 Lite interface when routing-mode is 1.
 
 Example:
 
@@ -41,6 +46,8 @@ For TDEST routing, from 1 slave port to 4 master ports
 		xlnx,routing-mode = <0x0>;
 		xlnx,num-si-slots = <0x1>;
 		xlnx,num-mi-slots = <0x4>;
+		clocks = <&vid_stream_clk>;
+		clock-names = "aclk";
 
 		ports {
 			#address-cells = <1>;
@@ -87,6 +94,8 @@ For Control reg based routing, from 2 slave ports to 4 master ports
 		xlnx,routing-mode = <0x1>;
 		xlnx,num-si-slots = <0x2>;
 		xlnx,num-mi-slots = <0x4>;
+		clocks = <&vid_stream_clk>, <&misc_clk_0>;
+		clock-names = "aclk", "s_axi_ctl_clk;
 
 		ports {
 			#address-cells = <1>;
