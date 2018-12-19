@@ -17,6 +17,7 @@
 
 #include <dt-bindings/media/xilinx-vip.h>
 #include <linux/bitops.h>
+#include <linux/clk.h>
 #include <linux/compiler.h>
 #include <linux/delay.h>
 #include <linux/device.h>
@@ -320,10 +321,24 @@
 #define XCSI_DEFAULT_WIDTH	(1920)
 #define XCSI_DEFAULT_HEIGHT	(1080)
 
+#define XCSI_DPHY_CLK_MIN	197000000000UL
+#define XCSI_DPHY_CLK_MAX	203000000000UL
+#define XCSI_DPHY_CLK_REQ	200000000000UL
+
 /*
  * Macro to return "true" or "false" string if bit is set
  */
 #define XCSI_GET_BITSET_STR(val, mask)	(val) & (mask) ? "true" : "false"
+
+#define XCSI_CLK_PROP		BIT(0)
+
+/**
+ * struct xcsi2rxss_feature - dt or IP property structure
+ * @flags: Bitmask of properties enabled in IP or dt
+ */
+struct xcsi2rxss_feature {
+	u32 flags;
+};
 
 enum CSI_DataTypes {
 	MIPI_CSI_DT_FRAME_START_CODE = 0x00,
@@ -433,6 +448,10 @@ struct xcsi2rxss_event {
  * @events: Structure to maintain event logs
  * @vcx_events: Structure to maintain VCX event logs
  * @en_vcx: If more than 4 VC are enabled.
+ * @cfg: Pointer to csi2rxss config structure
+ * @lite_aclk: AXI4-Lite interface clock
+ * @video_aclk: Video clock
+ * @dphy_clk_200M: 200MHz DPHY clock
  */
 struct xcsi2rxss_core {
 	struct device *dev;
@@ -452,6 +471,10 @@ struct xcsi2rxss_core {
 	struct xcsi2rxss_event *events;
 	struct xcsi2rxss_event *vcx_events;
 	bool en_vcx;
+	const struct xcsi2rxss_feature *cfg;
+	struct clk *lite_aclk;
+	struct clk *video_aclk;
+	struct clk *dphy_clk_200M;
 };
 
 /**
@@ -485,6 +508,25 @@ struct xcsi2rxss_state {
 	bool streaming;
 	bool suspended;
 };
+
+static const struct xcsi2rxss_feature xlnx_csi2rxss_v4_0 = {
+	.flags = XCSI_CLK_PROP,
+};
+
+static const struct xcsi2rxss_feature xlnx_csi2rxss_v2_0 = {
+	.flags = 0,
+};
+
+static const struct of_device_id xcsi2rxss_of_id_table[] = {
+	{ .compatible = "xlnx,mipi-csi2-rx-subsystem-2.0",
+		.data = &xlnx_csi2rxss_v2_0 },
+	{ .compatible = "xlnx,mipi-csi2-rx-subsystem-3.0",
+		.data = &xlnx_csi2rxss_v2_0 },
+	{ .compatible = "xlnx,mipi-csi2-rx-subsystem-4.0",
+		.data = &xlnx_csi2rxss_v4_0 },
+	{ }
+};
+MODULE_DEVICE_TABLE(of, xcsi2rxss_of_id_table);
 
 static inline struct xcsi2rxss_state *
 to_xcsi2rxssstate(struct v4l2_subdev *subdev)
@@ -1508,6 +1550,34 @@ static int xcsi2rxss_parse_of(struct xcsi2rxss_state *xcsi2rxss)
 	int ret;
 	bool iic_present;
 
+	if (core->cfg->flags & XCSI_CLK_PROP) {
+		core->lite_aclk = devm_clk_get(core->dev, "lite_aclk");
+		if (IS_ERR(core->lite_aclk)) {
+			ret = PTR_ERR(core->lite_aclk);
+			dev_err(core->dev, "failed to get lite_aclk (%d)\n",
+				ret);
+			return ret;
+		}
+
+		core->video_aclk = devm_clk_get(core->dev, "video_aclk");
+		if (IS_ERR(core->video_aclk)) {
+			ret = PTR_ERR(core->video_aclk);
+			dev_err(core->dev, "failed to get video_aclk (%d)\n",
+				ret);
+			return ret;
+		}
+
+		core->dphy_clk_200M = devm_clk_get(core->dev, "dphy_clk_200M");
+		if (IS_ERR(core->dphy_clk_200M)) {
+			ret = PTR_ERR(core->dphy_clk_200M);
+			dev_err(core->dev, "failed to get dphy_clk_200M (%d)\n",
+				ret);
+			return ret;
+		}
+	} else {
+		dev_info(core->dev, "assuming all required clocks are enabled!\n");
+	}
+
 	core->dphy_present = of_property_read_bool(node, "xlnx,dphy-present");
 	dev_dbg(core->dev, "DPHY present property = %s\n",
 			core->dphy_present ? "Present" : "Absent");
@@ -1692,7 +1762,8 @@ static int xcsi2rxss_probe(struct platform_device *pdev)
 	struct v4l2_subdev *subdev;
 	struct xcsi2rxss_state *xcsi2rxss;
 	struct resource *res;
-
+	const struct of_device_id *match;
+	struct device_node *node = pdev->dev.of_node;
 	u32 i;
 	int ret;
 	int num_ctrls;
@@ -1705,6 +1776,12 @@ static int xcsi2rxss_probe(struct platform_device *pdev)
 
 	xcsi2rxss->core.dev = &pdev->dev;
 
+	match = of_match_node(xcsi2rxss_of_id_table, node);
+	if (!match)
+		return -ENODEV;
+
+	xcsi2rxss->core.cfg = match->data;
+
 	ret = xcsi2rxss_parse_of(xcsi2rxss);
 	if (ret < 0)
 		return ret;
@@ -1713,6 +1790,48 @@ static int xcsi2rxss_probe(struct platform_device *pdev)
 	xcsi2rxss->core.iomem = devm_ioremap_resource(xcsi2rxss->core.dev, res);
 	if (IS_ERR(xcsi2rxss->core.iomem))
 		return PTR_ERR(xcsi2rxss->core.iomem);
+
+	if (xcsi2rxss->core.cfg->flags & XCSI_CLK_PROP) {
+		unsigned long rate;
+
+		ret = clk_prepare_enable(xcsi2rxss->core.lite_aclk);
+		if (ret) {
+			dev_err(&pdev->dev, "failed to enable lite_aclk (%d)\n",
+				ret);
+			goto clk_err;
+		}
+
+		ret = clk_prepare_enable(xcsi2rxss->core.video_aclk);
+		if (ret) {
+			dev_err(&pdev->dev, "failed to enable video_aclk (%d)\n",
+				ret);
+			goto video_aclk_err;
+		}
+
+		ret = clk_prepare_enable(xcsi2rxss->core.dphy_clk_200M);
+		if (ret) {
+			dev_err(&pdev->dev, "failed to enable dphy clk (%d)\n",
+				ret);
+			goto dphy_clk_err;
+		}
+
+		ret = clk_set_rate(xcsi2rxss->core.dphy_clk_200M,
+				   XCSI_DPHY_CLK_REQ);
+		if (ret) {
+			dev_err(&pdev->dev, "failed to set dphy clk rate (%d)\n",
+				ret);
+
+			goto all_clk_err;
+		}
+
+		rate = clk_get_rate(xcsi2rxss->core.dphy_clk_200M);
+		if (rate < XCSI_DPHY_CLK_MIN && rate > XCSI_DPHY_CLK_MAX) {
+			dev_err(&pdev->dev, "Err DPHY Clock = %lu\n",
+				rate);
+			ret = -EINVAL;
+			goto all_clk_err;
+		}
+	}
 
 	/*
 	 * Reset and initialize the core.
@@ -1851,6 +1970,13 @@ error:
 	media_entity_cleanup(&subdev->entity);
 	mutex_destroy(&xcsi2rxss->lock);
 
+all_clk_err:
+	clk_disable_unprepare(xcsi2rxss->core.dphy_clk_200M);
+dphy_clk_err:
+	clk_disable_unprepare(xcsi2rxss->core.video_aclk);
+video_aclk_err:
+	clk_disable_unprepare(xcsi2rxss->core.lite_aclk);
+clk_err:
 	return ret;
 }
 
@@ -1863,19 +1989,15 @@ static int xcsi2rxss_remove(struct platform_device *pdev)
 	v4l2_ctrl_handler_free(&xcsi2rxss->ctrl_handler);
 	media_entity_cleanup(&subdev->entity);
 	mutex_destroy(&xcsi2rxss->lock);
+	clk_disable_unprepare(xcsi2rxss->core.dphy_clk_200M);
+	clk_disable_unprepare(xcsi2rxss->core.video_aclk);
+	clk_disable_unprepare(xcsi2rxss->core.lite_aclk);
 
 	return 0;
 }
 
 static SIMPLE_DEV_PM_OPS(xcsi2rxss_pm_ops,
 			 xcsi2rxss_pm_suspend, xcsi2rxss_pm_resume);
-
-static const struct of_device_id xcsi2rxss_of_id_table[] = {
-	{ .compatible = "xlnx,mipi-csi2-rx-subsystem-2.0" },
-	{ .compatible = "xlnx,mipi-csi2-rx-subsystem-3.0" },
-	{ }
-};
-MODULE_DEVICE_TABLE(of, xcsi2rxss_of_id_table);
 
 static struct platform_driver xcsi2rxss_driver = {
 	.driver = {
