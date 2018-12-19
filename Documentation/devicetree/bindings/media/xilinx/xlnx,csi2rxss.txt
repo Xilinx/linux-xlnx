@@ -14,8 +14,9 @@ For more details, please refer to PG232 MIPI CSI-2 Receiver Subsystem v2.0
 
 Required properties:
 
-- compatible: Must contain "xlnx,mipi-csi2-rx-subsystem-2.0" or
-  "xlnx,mipi-csi2-rx-subsystem-3.0"
+- compatible: Must contain "xlnx,mipi-csi2-rx-subsystem-4.0". The older strings
+  "xlnx,mipi-csi2-rx-subsystem-2.0" and "xlnx,mipi-csi2-rx-subsystem-3.0" are
+  deprecated.
 
 - reg: Physical base address and length of the registers set for the device.
 
@@ -59,6 +60,11 @@ Required properties:
 - data-lanes: The number of data lanes through which CSI2 Rx Subsystem is
   connected to the camera sensor as per video-interfaces.txt
 
+- clocks: List of phandles to AXI Lite, Video and 200 MHz DPHY clocks.
+
+- clock-names: Must contain "lite_aclk", "video_aclk" and "dphy_clk_200M" in
+  the same order as clocks listed in clocks property.
+
 Optional Properties
 
 - xlnx,en-vcx: When present, the max number of virtual channels can be 16 else 4.
@@ -66,7 +72,7 @@ Optional Properties
 Example:
 
 	csiss_1: csiss@a0020000 {
-		compatible = "xlnx,mipi-csi2-rx-subsystem-2.0";
+		compatible = "xlnx,mipi-csi2-rx-subsystem-4.0";
 		reg = <0x0 0xa0020000 0x0 0x20000>;
 		interrupt-parent = <&gic>;
 		interrupts = <0 95 4>;
@@ -81,6 +87,9 @@ Example:
 		xlnx,vfb;
 		xlnx,ppc = <0x4>;
 		xlnx,axis-tdata-width = <0x20>;
+
+		clock-names = "lite_aclk", "dphy_clk_200M", "video_aclk";
+		clocks = <&misc_clk_0>, <&misc_clk_1>, <&misc_clk_2>;
 
 		ports {
 			#address-cells = <1>;
