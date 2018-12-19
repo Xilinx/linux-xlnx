@@ -7,6 +7,7 @@
  * Author: Vishal Sagar <vishal.sagar@xilinx.com>
  */
 
+#include <linux/clk.h>
 #include <linux/device.h>
 #include <linux/module.h>
 #include <linux/of.h>
@@ -41,6 +42,8 @@
  * @nsinks: number of sink pads (1 to 8)
  * @nsources: number of source pads (2 to 8)
  * @tdest_routing: Whether TDEST routing is enabled
+ * @aclk: Video clock
+ * @saxi_ctlclk: AXI-Lite control clock
  */
 struct xvswitch_device {
 	struct device *dev;
@@ -52,6 +55,8 @@ struct xvswitch_device {
 	u32 nsinks;
 	u32 nsources;
 	bool tdest_routing;
+	struct clk *aclk;
+	struct clk *saxi_ctlclk;
 };
 
 static inline struct xvswitch_device *to_xvsw(struct v4l2_subdev *subdev)
@@ -366,6 +371,25 @@ static int xvsw_parse_of(struct xvswitch_device *xvsw)
 	if (!routing_mode)
 		xvsw->tdest_routing = true;
 
+	xvsw->aclk = devm_clk_get(xvsw->dev, "aclk");
+	if (IS_ERR(xvsw->aclk)) {
+		ret = PTR_ERR(xvsw->aclk);
+		dev_err(xvsw->dev, "failed to get ap_clk (%d)\n", ret);
+		return ret;
+	}
+
+	if (!xvsw->tdest_routing) {
+		xvsw->saxi_ctlclk = devm_clk_get(xvsw->dev,
+						 "s_axi_ctl_clk");
+		if (IS_ERR(xvsw->saxi_ctlclk)) {
+			ret = PTR_ERR(xvsw->saxi_ctlclk);
+			dev_err(xvsw->dev,
+				"failed to get s_axi_ctl_clk (%d)\n",
+				ret);
+			return ret;
+		}
+	}
+
 	if (xvsw->tdest_routing && xvsw->nsinks > 1) {
 		dev_err(xvsw->dev, "sinks = %d. Driver Limitation max 1 sink in TDEST routing mode\n",
 			xvsw->nsinks);
@@ -477,6 +501,24 @@ static int xvsw_probe(struct platform_device *pdev)
 	for (i = 0; i < MAX_VSW_SRCS; ++i)
 		xvsw->routing[i] = -1;
 
+	ret = clk_prepare_enable(xvsw->aclk);
+	if (ret) {
+		dev_err(&pdev->dev, "failed to enable aclk (%d)\n",
+			ret);
+		return ret;
+	}
+
+	if (!xvsw->tdest_routing) {
+		ret = clk_prepare_enable(xvsw->saxi_ctlclk);
+		if (ret) {
+			dev_err(&pdev->dev,
+				"failed to enable s_axi_ctl_clk (%d)\n",
+				ret);
+			clk_disable_unprepare(xvsw->aclk);
+			return ret;
+		}
+	}
+
 	subdev = &xvsw->subdev;
 	v4l2_subdev_init(subdev, &xvsw_ops);
 	subdev->dev = &pdev->dev;
@@ -488,7 +530,7 @@ static int xvsw_probe(struct platform_device *pdev)
 
 	ret = media_entity_pads_init(&subdev->entity, npads, xvsw->pads);
 	if (ret < 0)
-		goto error;
+		goto clk_error;
 
 	platform_set_drvdata(pdev, xvsw);
 
@@ -504,6 +546,10 @@ static int xvsw_probe(struct platform_device *pdev)
 
 error:
 	media_entity_cleanup(&subdev->entity);
+clk_error:
+	if (!xvsw->tdest_routing)
+		clk_disable_unprepare(xvsw->saxi_ctlclk);
+	clk_disable_unprepare(xvsw->aclk);
 	return ret;
 }
 
@@ -514,7 +560,9 @@ static int xvsw_remove(struct platform_device *pdev)
 
 	v4l2_async_unregister_subdev(subdev);
 	media_entity_cleanup(&subdev->entity);
-
+	if (!xvsw->tdest_routing)
+		clk_disable_unprepare(xvsw->saxi_ctlclk);
+	clk_disable_unprepare(xvsw->aclk);
 	return 0;
 }
 
