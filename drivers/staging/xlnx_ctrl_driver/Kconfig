@@ -1,0 +1,7 @@
+config XLNX_CTRL_FRMBUF
+	tristate "FB Control driver"
+	help
+	  This driver is to support Xilinx Framebuffer read and write IP. This
+	  driver is simple control plane driver which is controlled by ioctls
+	  from userspace. It is free from any other media framework like V4l2 or
+	  DRM hence, doesn't need to adhere to V4L2 or DRM.
