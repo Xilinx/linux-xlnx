@@ -86,9 +86,9 @@ static ssize_t radio_id_show(struct device *dev,
 {
 	u32 radio_id;
 
-	radio_id = utils_sysfs_show_wrapper(dev, CFG_RADIO_ID_ADDR,
-					    CFG_RADIO_ID_OFFSET,
-					    lower_32_bits(CFG_RADIO_ID_MASK));
+	radio_id = utils_sysfs_show_wrapper(dev, RADIO_ID_ADDR,
+					    RADIO_ID_OFFSET,
+					    RADIO_ID_MASK);
 	return sprintf(buf, "%d\n", radio_id);
 }
 static DEVICE_ATTR_RO(radio_id);
@@ -108,9 +108,10 @@ static ssize_t timeout_enable_show(struct device *dev,
 {
 	u32 timeout_enable;
 
-	timeout_enable = utils_sysfs_show_wrapper(dev, CFG_TIMEOUT_ENABLE_ADDR,
-						  CFG_TIMEOUT_ENABLE_OFFSET,
-						  CFG_TIMEOUT_ENABLE_MASK);
+	timeout_enable = utils_sysfs_show_wrapper(dev,
+						  RADIO_TIMEOUT_ENABLE_ADDR,
+						  RADIO_TIMEOUT_ENABLE_OFFSET,
+						  RADIO_TIMEOUT_ENABLE_MASK);
 	if (timeout_enable)
 		return sprintf(buf, "true\n");
 	else
@@ -141,12 +142,19 @@ static ssize_t timeout_enable_store(struct device *dev,
 		enable = 1;
 	else if (strncmp(xroe_tmp, "false", xroe_size) == 0)
 		enable = 0;
-	utils_sysfs_store_wrapper(dev, CFG_TIMEOUT_ENABLE_ADDR,
-				  CFG_TIMEOUT_ENABLE_OFFSET,
-				  CFG_TIMEOUT_ENABLE_MASK, enable);
+	utils_sysfs_store_wrapper(dev, RADIO_TIMEOUT_ENABLE_ADDR,
+				  RADIO_TIMEOUT_ENABLE_OFFSET,
+				  RADIO_TIMEOUT_ENABLE_MASK, enable);
 	return count;
 }
 static DEVICE_ATTR_RW(timeout_enable);
+
+static struct attribute *xroe_traffic_gen_attrs[] = {
+	&dev_attr_radio_id.attr,
+	&dev_attr_timeout_enable.attr,
+	NULL,
+};
+ATTRIBUTE_GROUPS(xroe_traffic_gen);
 
 /**
  * xroe_traffic_gen_sysfs_init - Creates the xroe sysfs directory and entries
@@ -161,8 +169,11 @@ int xroe_traffic_gen_sysfs_init(struct device *dev)
 {
 	int ret;
 
-	ret = device_create_file(dev, &dev_attr_radio_id);
-	ret = device_create_file(dev, &dev_attr_timeout_enable);
+	dev->groups = xroe_traffic_gen_groups;
+	ret = sysfs_create_group(&dev->kobj, *xroe_traffic_gen_groups);
+	if (ret)
+		dev_err(dev, "sysfs creation failed\n");
+
 	return ret;
 }
 
@@ -174,6 +185,5 @@ int xroe_traffic_gen_sysfs_init(struct device *dev)
  */
 void xroe_traffic_gen_sysfs_exit(struct device *dev)
 {
-	device_remove_file(dev, &dev_attr_radio_id);
-	device_remove_file(dev, &dev_attr_timeout_enable);
+	sysfs_remove_group(&dev->kobj, *xroe_traffic_gen_groups);
 }
