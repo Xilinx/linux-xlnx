@@ -26,6 +26,9 @@
 #define XSET_FB_RELEASE		20
 #define XSET_FB_ENABLE_SNGL	21
 #define XSET_FB_POLL		22
+#define XVPSS_SET_CONFIGURE	16
+#define XVPSS_SET_ENABLE	17
+#define XVPSS_SET_DISABLE	18
 
 #endif /* __UAPI_XLNX_CTRL_H__ */
 

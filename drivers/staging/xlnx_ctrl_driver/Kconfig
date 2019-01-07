@@ -5,3 +5,11 @@ config XLNX_CTRL_FRMBUF
 	  driver is simple control plane driver which is controlled by ioctls
 	  from userspace. It is free from any other media framework like V4l2 or
 	  DRM hence, doesn't need to adhere to V4L2 or DRM.
+
+config XLNX_CTRL_VPSS
+	tristate "VPSS Control driver"
+	help
+	  This driver is to support Xilinx VPSS IP. This driver is simple
+	  control plane driver which is controlled by ioctls from userspace. It
+	  is free from any media framework like V4l2 or DRM hence, doesn't need
+	  to adhere to V4L2 or DRM.
