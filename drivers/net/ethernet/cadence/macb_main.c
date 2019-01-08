@@ -4440,10 +4440,14 @@ static int __maybe_unused macb_suspend(struct device *dev)
 		spin_unlock_irqrestore(&bp->lock, flags);
 		enable_irq_wake(bp->queues[0].irq);
 		netif_device_detach(netdev);
-		napi_disable(&bp->napi);
+		for (q = 0, queue = bp->queues; q < bp->num_queues;
+		     ++q, ++queue)
+			napi_disable(&queue->napi);
 	} else {
 		netif_device_detach(netdev);
-		napi_disable(&bp->napi);
+		for (q = 0, queue = bp->queues; q < bp->num_queues;
+		     ++q, ++queue)
+			napi_disable(&queue->napi);
 		phy_stop(bp->phy_dev);
 		phy_suspend(bp->phy_dev);
 		spin_lock_irqsave(&bp->lock, flags);
@@ -4463,7 +4467,9 @@ static int __maybe_unused macb_resume(struct device *dev)
 	struct platform_device *pdev = to_platform_device(dev);
 	struct net_device *netdev = platform_get_drvdata(pdev);
 	struct macb *bp = netdev_priv(netdev);
+	struct macb_queue *queue = bp->queues;
 	unsigned long flags;
+	unsigned int q;
 
 	if (!netif_running(netdev))
 		return 0;
@@ -4480,11 +4486,15 @@ static int __maybe_unused macb_resume(struct device *dev)
 		disable_irq_wake(bp->queues[0].irq);
 		spin_unlock_irqrestore(&bp->lock, flags);
 		macb_writel(bp, NCR, MACB_BIT(MPE));
-		napi_enable(&bp->napi);
+		for (q = 0, queue = bp->queues; q < bp->num_queues;
+		     ++q, ++queue)
+			napi_enable(&queue->napi);
 		netif_carrier_on(netdev);
 	} else {
 		macb_writel(bp, NCR, MACB_BIT(MPE));
-		napi_enable(&bp->napi);
+		for (q = 0, queue = bp->queues; q < bp->num_queues;
+		     ++q, ++queue)
+			napi_enable(&queue->napi);
 		phy_resume(bp->phy_dev);
 		phy_init_hw(bp->phy_dev);
 		phy_start(bp->phy_dev);
