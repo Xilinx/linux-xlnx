@@ -207,6 +207,9 @@ void dwc3_gadget_giveback(struct dwc3_ep *dep, struct dwc3_request *req,
 {
 	struct dwc3			*dwc = dep->dwc;
 
+	if (dep->stream_capable && timer_pending(&req->stream_timeout_timer))
+		del_timer(&req->stream_timeout_timer);
+
 	dwc3_gadget_del_and_unmap_request(dep, req, status);
 
 	spin_unlock(&dwc->lock);
@@ -538,7 +541,8 @@ static int dwc3_gadget_start_config(struct dwc3_ep *dep)
 
 static void stream_timeout_function(struct timer_list *arg)
 {
-	struct dwc3_ep *dep = from_timer(dep, arg, stream_timeout_timer);
+	struct dwc3_request	*req = from_timer(req, arg, stream_timeout_timer);
+	struct dwc3_ep		*dep = req->dep;
 	struct dwc3		*dwc = dep->dwc;
 	unsigned long		flags;
 
@@ -584,8 +588,6 @@ static int dwc3_gadget_set_ep_config(struct dwc3_ep *dep, unsigned int action)
 			| DWC3_DEPCFG_STREAM_EVENT_EN
 			| DWC3_DEPCFG_XFER_COMPLETE_EN;
 		dep->stream_capable = true;
-		timer_setup(&dep->stream_timeout_timer,
-			    stream_timeout_function, 0);
 	}
 
 	if (!usb_endpoint_xfer_control(desc))
@@ -742,9 +744,6 @@ int __dwc3_gadget_ep_disable(struct dwc3_ep *dep)
 	u32			reg;
 
 	trace_dwc3_gadget_ep_disable(dep);
-
-	if (dep->stream_capable)
-		del_timer(&dep->stream_timeout_timer);
 
 	dwc3_remove_requests(dwc, dep);
 
@@ -1273,13 +1272,11 @@ int __dwc3_gadget_kick_transfer(struct dwc3_ep *dep)
 		return ret;
 	}
 
-	if (starting) {
-		if (dep->stream_capable) {
-			dep->stream_timeout_timer.expires = jiffies +
-					msecs_to_jiffies(STREAM_TIMEOUT);
-			add_timer(&dep->stream_timeout_timer);
-		}
-		dwc3_gadget_ep_get_transfer_index(dep);
+	if (starting && dep->stream_capable) {
+		req->stream_timeout_timer.expires = jiffies +
+				msecs_to_jiffies(STREAM_TIMEOUT_MS);
+		mod_timer(&req->stream_timeout_timer,
+			  req->stream_timeout_timer.expires);
 	}
 
 	return 0;
@@ -1326,6 +1323,10 @@ static int __dwc3_gadget_ep_queue(struct dwc3_ep *dep, struct dwc3_request *req)
 
 	req->request.actual	= 0;
 	req->request.status	= -EINPROGRESS;
+
+	if (dep->stream_capable)
+		timer_setup(&req->stream_timeout_timer,
+			    stream_timeout_function, 0);
 
 	trace_dwc3_ep_queue(req);
 
@@ -1406,6 +1407,9 @@ static int dwc3_gadget_ep_dequeue(struct usb_ep *ep,
 	trace_dwc3_ep_dequeue(req);
 
 	spin_lock_irqsave(&dwc->lock, flags);
+
+	if (dep->stream_capable && timer_pending(&req->stream_timeout_timer))
+		del_timer(&req->stream_timeout_timer);
 
 	list_for_each_entry(r, &dep->pending_list, list) {
 		if (r == req)
@@ -2471,6 +2475,9 @@ static void dwc3_gadget_endpoint_transfer_in_progress(struct dwc3_ep *dep,
 
 	dwc3_gadget_ep_cleanup_completed_requests(dep, event, status);
 
+	if (dep->stream_capable && !list_empty(&dep->started_list))
+		__dwc3_gadget_kick_transfer(dep);
+
 	if (stop) {
 		dwc3_stop_active_transfer(dep, true);
 		dep->flags = DWC3_EP_ENABLED;
@@ -2509,6 +2516,28 @@ static void dwc3_gadget_endpoint_transfer_not_ready(struct dwc3_ep *dep,
 	__dwc3_gadget_start_isoc(dep);
 }
 
+static void dwc3_endpoint_stream_event(struct dwc3 *dwc,
+				       const struct dwc3_event_depevt *event)
+{
+	struct dwc3_ep		*dep;
+	struct dwc3_request	*req;
+	u8			epnum = event->endpoint_number;
+	u8			stream_id;
+
+	dep = dwc->eps[epnum];
+
+	stream_id = event->parameters;
+
+	/* Check for request matching the streamid and delete the timer */
+	list_for_each_entry(req, &dep->started_list, list) {
+		if (req->request.stream_id == stream_id) {
+			if (timer_pending(&req->stream_timeout_timer))
+				del_timer(&req->stream_timeout_timer);
+			break;
+		}
+	}
+}
+
 static void dwc3_endpoint_interrupt(struct dwc3 *dwc,
 		const struct dwc3_event_depevt *event)
 {
@@ -2533,6 +2562,11 @@ static void dwc3_endpoint_interrupt(struct dwc3 *dwc,
 	}
 
 	switch (event->endpoint_event) {
+	case DWC3_DEPEVT_XFERCOMPLETE:
+		if (!dep->stream_capable)
+			break;
+		dep->flags &= ~DWC3_EP_TRANSFER_STARTED;
+		/* Fall Through */
 	case DWC3_DEPEVT_XFERINPROGRESS:
 		dwc3_gadget_endpoint_transfer_in_progress(dep, event);
 		break;
@@ -2540,23 +2574,8 @@ static void dwc3_endpoint_interrupt(struct dwc3 *dwc,
 		dwc3_gadget_endpoint_transfer_not_ready(dep, event);
 		break;
 	case DWC3_DEPEVT_STREAMEVT:
-		if (!usb_endpoint_xfer_bulk(dep->endpoint.desc)) {
-			dev_err(dwc->dev, "Stream event for non-Bulk %s\n",
-					dep->name);
-			return;
-		}
-
-		switch (event->status) {
-		case DEPEVT_STREAMEVT_FOUND:
-			del_timer(&dep->stream_timeout_timer);
-			dev_dbg(dwc->dev, "Stream %d found and started",
-				event->parameters);
-			break;
-		case DEPEVT_STREAMEVT_NOTFOUND:
-			/* FALLTHROUGH */
-		default:
-			dev_err(dwc->dev, "unable to find suitable stream");
-		}
+		if (event->status == DEPEVT_STREAMEVT_FOUND)
+			dwc3_endpoint_stream_event(dwc, event);
 		break;
 	case DWC3_DEPEVT_EPCMDCMPLT:
 		cmd = DEPEVT_PARAMETER_CMD(event->parameters);
@@ -2566,7 +2585,6 @@ static void dwc3_endpoint_interrupt(struct dwc3 *dwc,
 			wake_up(&dep->wait_end_transfer);
 		}
 		break;
-	case DWC3_DEPEVT_XFERCOMPLETE:
 	case DWC3_DEPEVT_RXTXFIFOEVT:
 		break;
 	}
