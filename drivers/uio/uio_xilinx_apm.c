@@ -273,6 +273,7 @@ static int xapm_probe(struct platform_device *pdev)
 	xapm->info.irq = irq;
 	xapm->info.handler = xapm_handler;
 	xapm->info.priv = xapm;
+	xapm->info.irq_flags = IRQF_SHARED;
 
 	memcpy(ptr, &xapm->param, sizeof(struct xapm_param));
 
