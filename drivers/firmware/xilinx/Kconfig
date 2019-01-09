@@ -21,4 +21,10 @@ config ZYNQMP_FIRMWARE_DEBUG
 	  Say yes to enable ZynqMP firmware interface debug APIs.
 	  If in doubt, say N.
 
+config ZYNQMP_FIRMWARE_SECURE
+	bool "Enable Xilinx Zynq MPSoC secure firmware loading APIs"
+	help
+	  Say yes to enable ZynqMP secure firmware loading APIs.
+	  In doubt, say N
+
 endmenu
