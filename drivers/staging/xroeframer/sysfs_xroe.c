@@ -428,6 +428,9 @@ int xroe_sysfs_init(void)
 	if (ret)
 		return ret;
 	ret = xroe_sysfs_udp_init();
+	if (ret)
+		return ret;
+	ret = xroe_sysfs_stats_init();
 	return ret;
 }
 
@@ -445,6 +448,7 @@ void xroe_sysfs_exit(void)
 	xroe_sysfs_ipv4_exit();
 	xroe_sysfs_ipv6_exit();
 	xroe_sysfs_udp_exit();
+	xroe_sysfs_stats_exit();
 	for (i = 0; i < MAX_NUM_ETH_PORTS; i++)
 		kobject_put(kobj_eth_ports[i]);
 	kobject_put(kobj_framer);
