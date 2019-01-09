@@ -60,10 +60,12 @@ int xroe_sysfs_init(void);
 int xroe_sysfs_ipv4_init(void);
 int xroe_sysfs_ipv6_init(void);
 int xroe_sysfs_udp_init(void);
+int xroe_sysfs_stats_init(void);
 void xroe_sysfs_exit(void);
 void xroe_sysfs_ipv4_exit(void);
 void xroe_sysfs_ipv6_exit(void);
 void xroe_sysfs_udp_exit(void);
+void xroe_sysfs_stats_exit(void);
 int utils_write32withmask(void __iomem *working_address, u32 value,
 			  u32 mask, u32 offset);
 int utils_check_address_offset(u32 offset, size_t device_size);
