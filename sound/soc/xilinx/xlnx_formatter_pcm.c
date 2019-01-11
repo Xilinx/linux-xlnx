@@ -787,7 +787,8 @@ static int xlnx_formatter_pcm_probe(struct platform_device *pdev)
 	    aud_drv_data->nodes[XLNX_CAPTURE])
 		aud_drv_data->pdev =
 			platform_device_register_resndata(&pdev->dev,
-							  "xlnx_snd_card", 0,
+							  "xlnx_snd_card",
+							  PLATFORM_DEVID_AUTO,
 							  NULL, 0,
 							  &aud_drv_data->nodes,
 							  pdata_size);
