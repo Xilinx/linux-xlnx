@@ -17,6 +17,7 @@ enum {
 struct pl_card_data {
 	u32 mclk_val;
 	u32 mclk_ratio;
+	int xlnx_snd_dev_id;
 	struct clk *mclk;
 };
 #endif /* _XLNX_SND_COMMON_H */
