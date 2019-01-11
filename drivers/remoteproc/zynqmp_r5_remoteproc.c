@@ -566,6 +566,54 @@ static void zynqmp_r5_mb_rx_cb(struct mbox_client *cl, void *mssg)
 }
 
 /**
+ * zynqmp_r5_setup_mbox() - Setup mailboxes
+ *
+ * @pdata: pointer to the ZynqMP R5 processor platform data
+ * @node: pointer of the device node
+ *
+ * Function to setup mailboxes to talk to RPU.
+ *
+ * Return: 0 for success, negative value for failure.
+ */
+static int zynqmp_r5_setup_mbox(struct zynqmp_r5_pdata *pdata,
+				struct device_node *node)
+{
+	struct device *dev = &pdata->dev;
+	struct mbox_client *mclient;
+
+	/* Setup TX mailbox channel client */
+	mclient = &pdata->tx_mc;
+	mclient->dev = dev;
+	mclient->rx_callback = NULL;
+	mclient->tx_block = false;
+	mclient->knows_txdone = false;
+
+	/* Setup TX mailbox channel client */
+	mclient = &pdata->rx_mc;
+	mclient->dev = dev;
+	mclient->rx_callback = zynqmp_r5_mb_rx_cb;
+	mclient->tx_block = false;
+	mclient->knows_txdone = false;
+
+	INIT_WORK(&pdata->workqueue, handle_event_notified);
+
+	/* Request TX and RX channels */
+	pdata->tx_chan = mbox_request_channel_byname(&pdata->tx_mc, "tx");
+	if (IS_ERR(pdata->tx_chan)) {
+		dev_err(dev, "failed to request mbox tx channel.\n");
+		pdata->tx_chan = NULL;
+		return -EINVAL;
+	}
+	pdata->rx_chan = mbox_request_channel_byname(&pdata->rx_mc, "rx");
+	if (IS_ERR(pdata->rx_chan)) {
+		dev_err(dev, "failed to request mbox rx channel.\n");
+		pdata->rx_chan = NULL;
+		return -EINVAL;
+	}
+	return 0;
+}
+
+/**
  * zynqmp_r5_probe() - Probes ZynqMP R5 processor device node
  * @pdata: pointer to the ZynqMP R5 processor platform data
  * @pdev: parent RPU domain platform device
@@ -582,7 +630,6 @@ static int zynqmp_r5_probe(struct zynqmp_r5_pdata *pdata,
 	struct device *dev = &pdata->dev;
 	struct rproc *rproc;
 	struct device_node *nc;
-	struct mbox_client *mclient;
 	int ret;
 
 	/* Create device for ZynqMP R5 device */
@@ -645,36 +692,12 @@ static int zynqmp_r5_probe(struct zynqmp_r5_pdata *pdata,
 	if (r5_is_running(pdata))
 		atomic_inc(&rproc->power);
 
-	/* Setup TX mailbox channel client */
-	mclient = &pdata->tx_mc;
-	mclient->dev = dev;
-	mclient->rx_callback = NULL;
-	mclient->tx_block = false;
-	mclient->knows_txdone = false;
-
-	/* Setup TX mailbox channel client */
-	mclient = &pdata->rx_mc;
-	mclient->dev = dev;
-	mclient->rx_callback = zynqmp_r5_mb_rx_cb;
-	mclient->tx_block = false;
-	mclient->knows_txdone = false;
-
-	INIT_WORK(&pdata->workqueue, handle_event_notified);
-
-	/* Request TX and RX channels */
-	pdata->tx_chan = mbox_request_channel_byname(&pdata->tx_mc, "tx");
-	if (IS_ERR(pdata->tx_chan)) {
-		dev_err(dev, "failed to request mbox tx channel.\n");
-		ret = -EINVAL;
-		pdata->tx_chan = NULL;
-		goto error;
-	}
-	pdata->rx_chan = mbox_request_channel_byname(&pdata->rx_mc, "rx");
-	if (IS_ERR(pdata->rx_chan)) {
-		dev_err(dev, "failed to request mbox rx channel.\n");
-		ret = -EINVAL;
-		pdata->rx_chan = NULL;
-		goto error;
+	if (!of_get_property(dev->of_node, "mboxes", NULL)) {
+		dev_info(dev, "no mailboxes.\n");
+	} else {
+		ret = zynqmp_r5_setup_mbox(pdata, node);
+		if (ret < 0)
+			goto error;
 	}
 
 	/* Add R5 remoteproc */
