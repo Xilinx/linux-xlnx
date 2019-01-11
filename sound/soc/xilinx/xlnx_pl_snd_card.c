@@ -6,6 +6,7 @@
  */
 
 #include <linux/clk.h>
+#include <linux/idr.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
@@ -15,6 +16,9 @@
 #include "xlnx_snd_common.h"
 
 #define I2S_CLOCK_RATIO 384
+#define XLNX_MAX_PL_SND_DEV 5
+
+static DEFINE_IDA(xlnx_snd_card_dev);
 
 enum {
 	I2S_AUDIO = 0,
@@ -22,6 +26,13 @@ enum {
 	SDI_AUDIO,
 	SPDIF_AUDIO,
 	XLNX_MAX_IFACE,
+};
+
+static const char *xlnx_snd_card_name[XLNX_MAX_IFACE] = {
+	[I2S_AUDIO]	= "xlnx-i2s-snd-card",
+	[HDMI_AUDIO]	= "xlnx-hdmi-snd-card",
+	[SDI_AUDIO]	= "xlnx-sdi-snd-card",
+	[SPDIF_AUDIO]	= "xlnx-spdif-snd-card",
 };
 
 static const char *dev_compat[][XLNX_MAX_IFACE] = {
@@ -40,10 +51,6 @@ static const char *dev_compat[][XLNX_MAX_IFACE] = {
 	},
 };
 
-static struct snd_soc_card xlnx_card = {
-	.name = "xilinx FPGA sound card",
-	.owner = THIS_MODULE,
-};
 
 static int xlnx_sdi_card_hw_params(struct snd_pcm_substream *substream,
 				   struct snd_pcm_hw_params *params)
@@ -265,20 +272,23 @@ static int find_link(struct device_node *node, int direction)
 static int xlnx_snd_probe(struct platform_device *pdev)
 {
 	u32 i;
+	size_t sz;
+	char *buf;
 	int ret, audio_interface;
 	struct snd_soc_dai_link *dai;
 	struct pl_card_data *prv;
 	struct platform_device *iface_pdev;
 
-	struct snd_soc_card *card = &xlnx_card;
+	struct snd_soc_card *card;
 	struct device_node **node = pdev->dev.platform_data;
 
-	/*
-	 * TODO:support multi instance of sound card later. currently,
-	 * single instance supported.
-	 */
-	if (!node || card->instantiated)
+	if (!node)
 		return -ENODEV;
+
+	card = devm_kzalloc(&pdev->dev, sizeof(struct snd_soc_card),
+			    GFP_KERNEL);
+	if (!card)
+		return -ENOMEM;
 
 	card->dev = &pdev->dev;
 
@@ -374,15 +384,48 @@ static int xlnx_snd_probe(struct platform_device *pdev)
 	}
 
 	if (card->num_links) {
+		/*
+		 *  Example : i2s card name = xlnx-i2s-snd-card-0
+		 *  length = number of chars in "xlnx-i2s-snd-card"
+		 *	    + 1 ('-'), + 1 (card instance num)
+		 *	    + 1 ('\0')
+		 */
+		sz = strlen(xlnx_snd_card_name[audio_interface]) + 3;
+		buf = devm_kzalloc(card->dev, sz, GFP_KERNEL);
+		if (!buf)
+			return -ENOMEM;
+
+		prv->xlnx_snd_dev_id = ida_simple_get(&xlnx_snd_card_dev, 0,
+						      XLNX_MAX_PL_SND_DEV,
+						      GFP_KERNEL);
+		if (prv->xlnx_snd_dev_id < 0)
+			return prv->xlnx_snd_dev_id;
+
+		snprintf(buf, sz, "%s-%d", xlnx_snd_card_name[audio_interface],
+			 prv->xlnx_snd_dev_id);
+		card->name = buf;
+
 		ret = devm_snd_soc_register_card(card->dev, card);
 		if (ret) {
 			dev_err(card->dev, "%s registration failed\n",
 				card->name);
+			ida_simple_remove(&xlnx_snd_card_dev,
+					  prv->xlnx_snd_dev_id);
 			return ret;
 		}
-	}
-	dev_info(card->dev, "%s registered\n", card->name);
 
+		dev_set_drvdata(card->dev, prv);
+		dev_info(card->dev, "%s registered\n", card->name);
+	}
+
+	return 0;
+}
+
+static int xlnx_snd_remove(struct platform_device *pdev)
+{
+	struct pl_card_data *pdata = dev_get_drvdata(&pdev->dev);
+
+	ida_simple_remove(&xlnx_snd_card_dev, pdata->xlnx_snd_dev_id);
 	return 0;
 }
 
@@ -391,6 +434,7 @@ static struct platform_driver xlnx_snd_driver = {
 		.name = "xlnx_snd_card",
 	},
 	.probe = xlnx_snd_probe,
+	.remove = xlnx_snd_remove,
 };
 
 module_platform_driver(xlnx_snd_driver);
