@@ -1,0 +1,22 @@
+The Xilinx framebuffer DMA engine supports two soft IP blocks: one IP
+block is used for reading video frame data from memory (FB Read) to the device
+and the other IP block is used for writing video frame data from the device
+to memory (FB Write).  Both the FB Read/Write IP blocks are aware of the
+format of the data being written to or read from memory including RGB and
+YUV in packed, planar, and semi-planar formats.  Because the FB Read/Write
+is format aware, only one buffer pointer is needed by the IP blocks even
+when planar or semi-planar format are used.
+
+Required properties:
+ - compatible: Should be "xlnx,ctrl-fbwr-1.0" for framebuffer Write OR
+	       "xlnx,ctrl-fbrd-1.0" for framebuffer Read.
+ - reg: Base address and size of the IP core.
+ - reset-gpios: gpio to reset the framebuffer IP
+
+Example:
+
+        fbwr@0xa0000000 {
+                compatible = "xlnx,ctrl-fbwr-1.0";
+                reg = <0x0 0xa0000000 0x0 0x10000>;
+                reset-gpios = <&gpio 82 1>;
+        };

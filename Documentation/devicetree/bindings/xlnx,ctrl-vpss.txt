@@ -1,0 +1,21 @@
+The Xilinx VPSS Scaler is a Video IP that supports up scaling, down scaling and
+no scaling functionailty along with color space conversion. This supports custom
+resolution values between 0 to 4096.
+
+Required properties:
+
+- compatible: Must be "xlnx,ctrl-xvpss-1.0".
+- reg: Base address and size of the IP core.
+- reset-gpios: gpio to reset the framebuffer IP
+- xlnx,vpss-taps: number of taps
+- xlnx,vpss-ppc: pixels per clock
+
+Example:
+
+        ctrlvpss: vpss@0xa0200000 {
+                compatible = "xlnx,ctrl-xvpss-1.0";
+                reg = <0x0 0xa0200000 0x0 0x30000>;
+                reset-gpios = <&gpio 80 1>;
+                xlnx,vpss-taps = <6>;
+                xlnx,vpss-ppc = <2>;
+        };
