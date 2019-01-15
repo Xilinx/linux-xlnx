@@ -527,12 +527,10 @@ void utils_sysfs_store_wrapper(u32 address, u32 offset, u32 mask, u32 value,
 {
 	int port;
 	void __iomem *working_address;
-	u32 buffer;
 
 	port = utils_sysfs_path_to_eth_port_num(kobj);
 	working_address = (void __iomem *)(lp->base_addr +
 			  (address + (0x100 * port)));
-	buffer = ioread32(working_address);
 	utils_write32withmask(working_address, value, mask, offset);
 }
 
