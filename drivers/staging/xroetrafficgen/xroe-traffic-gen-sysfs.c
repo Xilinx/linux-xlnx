@@ -348,6 +348,57 @@ static ssize_t dip_status_show(struct device *dev,
 static DEVICE_ATTR_RO(dip_status);
 
 /**
+ * sw_trigger_show - Returns the current SW trigger status
+ * @dev:	The device's structure
+ * @attr:	The attributes of the kernel object
+ * @buf:	The buffer containing the enable status
+ *
+ * Reads and writes the traffic gen's SW trigger status value to the sysfs entry
+ *
+ * Return: The number of characters printed on success
+ */
+static ssize_t sw_trigger_show(struct device *dev,
+			       struct device_attribute *attr,
+			       char *buf)
+{
+	u32 sw_trigger;
+
+	sw_trigger = utils_sysfs_show_wrapper(dev, RADIO_SW_TRIGGER_ADDR,
+					      RADIO_SW_TRIGGER_OFFSET,
+					      RADIO_SW_TRIGGER_MASK);
+	return sprintf(buf, "%d\n", sw_trigger);
+}
+
+/**
+ * sw_trigger_store - Writes to the SW trigger status register
+ * @dev:	The device's structure
+ * @attr:	The attributes of the kernel object
+ * @buf:	The buffer containing the timeout value
+ * @count:	The number of characters typed by the user
+ *
+ * Reads the user input and accordingly writes the traffic gens's SW trigger
+ * value to the sysfs entry
+ *
+ * Return: The number of characters of the entry (count) on success
+ */
+static ssize_t sw_trigger_store(struct device *dev,
+				struct device_attribute *attr,
+				const char *buf, size_t count)
+{
+	u32 sw_trigger;
+	int ret;
+
+	ret = kstrtouint(buf, 10, &sw_trigger);
+	if (ret)
+		return ret;
+	utils_sysfs_store_wrapper(dev, RADIO_SW_TRIGGER_ADDR,
+				  RADIO_SW_TRIGGER_OFFSET,
+				  RADIO_SW_TRIGGER_MASK, sw_trigger);
+	return count;
+}
+static DEVICE_ATTR_RW(sw_trigger);
+
+/**
  * radio_enable_show - Returns the current radio enable status
  * @dev:	The device's structure
  * @attr:	The attributes of the kernel object
@@ -422,6 +473,28 @@ static ssize_t radio_error_show(struct device *dev,
 	return sprintf(buf, "%d\n", radio_error);
 }
 static DEVICE_ATTR_RO(radio_error);
+
+/**
+ * radio_status_show - Returns the current radio status
+ * @dev:	The device's structure
+ * @attr:	The attributes of the kernel object
+ * @buf:	The buffer containing the status
+ *
+ * Reads and writes the traffic gen's radio status value to the sysfs entry
+ *
+ * Return: The number of characters printed on success
+ */
+static ssize_t radio_status_show(struct device *dev,
+				 struct device_attribute *attr, char *buf)
+{
+	u32 radio_status;
+
+	radio_status = utils_sysfs_show_wrapper(dev, RADIO_CDC_STATUS_ADDR,
+						RADIO_CDC_STATUS_OFFSET,
+						RADIO_CDC_STATUS_MASK);
+	return sprintf(buf, "%d\n", radio_status);
+}
+static DEVICE_ATTR_RO(radio_status);
 
 /**
  * radio_loopback_show - Returns the current radio loopback status
@@ -719,8 +792,10 @@ static struct attribute *xroe_traffic_gen_attrs[] = {
 	&dev_attr_ledmode.attr,
 	&dev_attr_ledgpio.attr,
 	&dev_attr_dip_status.attr,
+	&dev_attr_sw_trigger.attr,
 	&dev_attr_radio_enable.attr,
 	&dev_attr_radio_error.attr,
+	&dev_attr_radio_status.attr,
 	&dev_attr_radio_loopback.attr,
 	&dev_attr_radio_sink_enable.attr,
 	&dev_attr_antenna_status.attr,
