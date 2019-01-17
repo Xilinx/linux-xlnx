@@ -112,10 +112,7 @@ static ssize_t timeout_enable_show(struct device *dev,
 						  RADIO_TIMEOUT_ENABLE_ADDR,
 						  RADIO_TIMEOUT_ENABLE_OFFSET,
 						  RADIO_TIMEOUT_ENABLE_MASK);
-	if (timeout_enable)
-		return sprintf(buf, "true\n");
-
-	return sprintf(buf, "false\n");
+	return sprintf(buf, "%d\n", timeout_enable);
 }
 
 /**
@@ -167,10 +164,7 @@ static ssize_t timeout_status_show(struct device *dev,
 	timeout = utils_sysfs_show_wrapper(dev, RADIO_TIMEOUT_STATUS_ADDR,
 					   RADIO_TIMEOUT_STATUS_OFFSET,
 					   RADIO_TIMEOUT_STATUS_MASK);
-	if (timeout)
-		return sprintf(buf, "enabled\n");
-	else
-		return sprintf(buf, "disabled\n");
+	return sprintf(buf, "%d\n", timeout);
 }
 static DEVICE_ATTR_RO(timeout_status);
 
@@ -416,10 +410,7 @@ static ssize_t radio_enable_show(struct device *dev,
 	radio_enable = utils_sysfs_show_wrapper(dev, RADIO_CDC_ENABLE_ADDR,
 						RADIO_CDC_ENABLE_OFFSET,
 						RADIO_CDC_ENABLE_MASK);
-	if (radio_enable)
-		return sprintf(buf, "enabled\n");
-
-	return sprintf(buf, "disabled\n");
+	return sprintf(buf, "%d\n", radio_enable);
 }
 
 /**
@@ -515,10 +506,7 @@ static ssize_t radio_loopback_show(struct device *dev,
 						  RADIO_CDC_LOOPBACK_ADDR,
 						  RADIO_CDC_LOOPBACK_OFFSET,
 						  RADIO_CDC_LOOPBACK_MASK);
-	if (radio_loopback)
-		return sprintf(buf, "enabled\n");
-
-	return sprintf(buf, "disabled\n");
+	return sprintf(buf, "%d\n", radio_loopback);
 }
 
 /**
@@ -568,10 +556,7 @@ static ssize_t radio_sink_enable_show(struct device *dev,
 	sink_enable = utils_sysfs_show_wrapper(dev, RADIO_SINK_ENABLE_ADDR,
 					       RADIO_SINK_ENABLE_OFFSET,
 					       RADIO_SINK_ENABLE_MASK);
-	if (sink_enable)
-		return sprintf(buf, "enabled\n");
-
-	return sprintf(buf, "disabled\n");
+	return sprintf(buf, "%d\n", sink_enable);
 }
 
 /**
@@ -638,7 +623,7 @@ static ssize_t antenna_status_show(struct device *dev,
 				 RADIO_CDC_STATUS_127_96_OFFSET,
 				 lower_32_bits(RADIO_CDC_STATUS_127_96_MASK));
 
-	return sprintf(buf, "0x%08x\n0x%08x\n0x%08x\n0x%08x\n",
+	return sprintf(buf, "0x%08x 0x%08x 0x%08x 0x%08x\n",
 		       status_0_31, status_63_32, status_95_64, status_127_96);
 }
 static DEVICE_ATTR_RO(antenna_status);
@@ -678,7 +663,7 @@ static ssize_t antenna_error_show(struct device *dev,
 				 RADIO_CDC_ERROR_127_96_OFFSET,
 				 lower_32_bits(RADIO_CDC_ERROR_127_96_MASK));
 
-	return sprintf(buf, "0x%08x\n0x%08x\n0x%08x\n0x%08x\n",
+	return sprintf(buf, "0x%08x 0x%08x 0x%08x 0x%08x\n",
 		       error_0_31, error_63_32, error_95_64, error_127_96);
 }
 static DEVICE_ATTR_RO(antenna_error);
