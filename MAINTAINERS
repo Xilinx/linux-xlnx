@@ -3244,6 +3244,13 @@ S:	Supported
 F:	Documentation/filesystems/caching/cachefiles.txt
 F:	fs/cachefiles/
 
+CADENCE I2C DRIVER
+M:	Shubhrajyoti Datta <shubhrajyoti.datta@xilinx.com>
+R:	Venkata Visweswarachari Mallavarapu <vmallava@xilinx.com>
+L:	git@xilinx.com
+F:	drivers/i2c/busses/i2c-cadence.c
+W:	https://xilinx-wiki.atlassian.net/wiki/spaces/A/pages/18842160/Cadence+I2C+Driver
+
 CADENCE MIPI-CSI2 BRIDGES
 M:	Maxime Ripard <maxime.ripard@bootlin.com>
 L:	linux-media@vger.kernel.org
