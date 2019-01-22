@@ -16107,11 +16107,31 @@ L:	git@xilinx.com
 F:	Documentation/devicetree/bindings/sound/xlnx,audio-formatter.txt
 F:	sound/soc/xilinx/xlnx_formatter_pcm.c
 
+XILINX AXI DMAENGINE DRIVER
+M:	Radhey Shyam Pandey <radhey.shyam.pandey@xilinx.com>
+R:	Appana Durga Kedareswara rao <appana.durga.rao@xilinx.com>
+R:	Harini Katakam <harini.katakam@xilinx.com>
+S:	Maintained
+F:	drivers/dma/xilinx/xilinx_dma.c
+F:	Documentation/devicetree/bindings/dma/xilinx/xilinx_dma.txt
+
 XILINX AXI ETHERNET DRIVER
 M:	Anirudha Sarangi <anirudh@xilinx.com>
 M:	John Linn <John.Linn@xilinx.com>
+M:	Radhey Shyam Pandey <radhey.shyam.pandey@xilinx.com>
+R:	Appana Durga Kedareswara rao <appana.durga.rao@xilinx.com>
+R:	Harini Katakam <harini.katakam@xilinx.com>
 S:	Maintained
 F:	drivers/net/ethernet/xilinx/xilinx_axienet*
+F:	Documentation/devicetree/bindings/net/xilinx_axienet.txt
+
+XILINX EMACLITE DRIVER
+M:	Radhey Shyam Pandey <radhey.shyam.pandey@xilinx.com>
+R:	Appana Durga Kedareswara rao <appana.durga.rao@xilinx.com>
+R:	Harini Katakam <harini.katakam@xilinx.com>
+S:	Maintained
+F:	drivers/net/ethernet/xilinx/xilinx_emaclite.c
+F:	Documentation/devicetree/bindings/net/xilinx_emaclite.txt
 
 XILINX I2S AUDIO (ASoC) DRIVER
 M:	Maruthi Srinivas Bayyavarapu <maruthi.srinivas.bayyavarapu@xilinx.com>
