@@ -16130,6 +16130,13 @@ L:	git@xilinx.com
 F:	Documentation/devicetree/bindings/sound/xlnx,v-uhdsdi-audio.txt
 F:	sound/soc/xilinx/xlnx_sdi_audio.c
 
+XILINX SPDIF AUDIO (ASoC) DRIVER
+M:	Maruthi Srinivas Bayyavarapu <maruthi.srinivas.bayyavarapu@xilinx.com>
+R:	Vishal Sagar <vishal.sagar@xilinx.com>
+L:	git@xilinx.com
+F:	Documentation/devicetree/bindings/sound/xlnx,spdif.txt
+F:	sound/soc/xilinx/xlnx_spdif.c
+
 XILINX UARTLITE SERIAL DRIVER
 M:	Peter Korsgaard <jacmet@sunsite.dk>
 L:	linux-serial@vger.kernel.org
