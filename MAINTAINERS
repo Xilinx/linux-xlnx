@@ -2508,8 +2508,11 @@ F:	include/video/atmel_lcdc.h
 
 ATMEL MACB ETHERNET DRIVER
 M:	Nicolas Ferre <nicolas.ferre@microchip.com>
+R:	Harini Katakam <harini.katakam@xilinx.com>
+L:	git@xilinx.com
 S:	Supported
 F:	drivers/net/ethernet/cadence/
+W:	https://xilinx-wiki.atlassian.net/wiki/spaces/A/pages/18841740/Macb+Driver
 
 ATMEL MAXTOUCH DRIVER
 M:	Nick Dyer <nick@shmanahar.org>
