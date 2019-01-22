@@ -10,6 +10,16 @@ power and area savings versus implementations done in the FPGA fabric.
 
 Required properties:
 - compatible: Must be "xlnx,sd-fec-1.1”
+- clock-names : List of input clock names from the following:
+    - "core_clk", Main processing clock for processing core (required)
+    - "s_axi_aclk", AXI4-Lite memory-mapped slave interface clock (required)
+    - "s_axis_din_aclk", DIN AXI4-Stream Slave interface clock (optional)
+    - "s_axis_din_words-aclk", DIN_WORDS AXI4-Stream Slave interface clock (optional)
+    - "s_axis_ctrl_aclk",  Control input AXI4-Stream Slave interface clock (optional)
+    - "m_axis_dout_aclk", DOUT AXI4-Stream Master interface clock (optional)
+    - "m_axis_dout_words_aclk", DOUT_WORDS AXI4-Stream Master interface clock (optional)
+    - "m_axis_status_aclk", Status output AXI4-Stream Master interface clock (optional)
+- clocks : Clock phandles (see clock_bindings.txt for details).
 - reg: Should contain Xilinx SDFEC 16nm Hardened IP block registers
   location and length.
 - xlnx,sdfec-code : Should contain "ldpc" or "turbo" to describe the codes
@@ -35,6 +45,8 @@ Example
 ---------------------------------------
 	sd_fec_0: sd-fec@a0040000 {
 		compatible = "xlnx,sd-fec-1.1";
+    clock-names = "core_clk", "s_axi_aclk", "s_axis_ctrl_aclk", "s_axis_din_aclk", "m_axis_status_aclk", "m_axis_dout_aclk";
+    clocks = <&misc_clk_2>, <&misc_clk_0>, <&misc_clk_1>, <&misc_clk_1>, <&misc_clk_1>, <&misc_clk_1>;
 		reg = <0x0 0xa0040000 0x0 0x40000>;
 		interrupt-parent = <&gic>;
 		interrupts = <0 89 4>;
