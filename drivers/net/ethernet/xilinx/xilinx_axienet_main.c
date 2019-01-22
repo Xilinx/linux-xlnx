@@ -1841,13 +1841,29 @@ static int axienet_change_mtu(struct net_device *ndev, int new_mtu)
 static void axienet_poll_controller(struct net_device *ndev)
 {
 	struct axienet_local *lp = netdev_priv(ndev);
+	int i;
 
-	disable_irq(lp->tx_irq);
-	disable_irq(lp->rx_irq);
-	axienet_rx_irq(lp->tx_irq, ndev);
-	axienet_tx_irq(lp->rx_irq, ndev);
-	enable_irq(lp->tx_irq);
-	enable_irq(lp->rx_irq);
+	for_each_tx_dma_queue(lp, i)
+		disable_irq(lp->dq[i]->tx_irq);
+	for_each_rx_dma_queue(lp, i)
+		disable_irq(lp->dq[i]->rx_irq);
+
+	for_each_rx_dma_queue(lp, i)
+#ifdef CONFIG_AXIENET_HAS_MCDMA
+		axienet_mcdma_rx_irq(lp->dq[i]->rx_irq, ndev);
+#else
+		axienet_rx_irq(lp->dq[i]->rx_irq, ndev);
+#endif
+	for_each_tx_dma_queue(lp, i)
+#ifdef CONFIG_AXIENET_HAS_MCDMA
+		axienet_mcdma_tx_irq(lp->dq[i]->tx_irq, ndev);
+#else
+		axienet_tx_irq(lp->dq[i]->tx_irq, ndev);
+#endif
+	for_each_tx_dma_queue(lp, i)
+		enable_irq(lp->dq[i]->tx_irq);
+	for_each_rx_dma_queue(lp, i)
+		enable_irq(lp->dq[i]->rx_irq);
 }
 #endif
 
