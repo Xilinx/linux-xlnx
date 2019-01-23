@@ -1,0 +1,4 @@
+XILINX CONTROL DRIVER
+M:	Saurabh Sengar <saurabh.singh@xilinx.com>
+S:	Maintained
+F:	drivers/staging/xlnx_ctrl_driver
