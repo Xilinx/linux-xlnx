@@ -16254,6 +16254,28 @@ F:	Documentation/devicetree/bindings/media/xilinx/
 F:	drivers/media/platform/xilinx/
 F:	include/uapi/linux/xilinx-v4l2-controls.h
 
+XILINX ZYNQ FPGA MANAGER DRIVER
+M:	Nava Kishore Manne <nava.manne@xilinx.com>
+R:	Appana Durga Kedareswara rao <appana.durga.rao@xilinx.com>
+S:	Maintained
+F:	drivers/fpga/zynq-fpga.c
+F:	Documentation/devicetree/bindings/fpga/xilinx-zynq-fpga-mgr.txt
+
+XILINX ZYNQMP DMAENGINE DRIVER
+M:	Appana Durga Kedareswara rao <appana.durga.rao@xilinx.com>
+R:	Radhey Shyam Pandey <radhey.shyam.pandey@xilinx.com>
+R:	Harini Katakam <harini.katakam@xilinx.com>
+S:	Maintained
+F:	drivers/dma/xilinx/zynqmp_dma.c
+F:	Documentation/devicetree/bindings/dma/xilinx/zynqmp_dma.txt
+
+XILINX ZYNQMP FPGA MANAGER DRIVER
+M:	Nava Kishore Manne <nava.manne@xilinx.com>
+R:	Appana Durga Kedareswara rao <appana.durga.rao@xilinx.com>
+S:	Maintained
+F:	drivers/fpga/zynqmp-fpga.c
+F:	Documentation/devicetree/bindings/fpga/xilinx-zynqmp-fpga-mgr.txt
+
 XILLYBUS DRIVER
 M:	Eli Billauer <eli.billauer@gmail.com>
 L:	linux-kernel@vger.kernel.org
