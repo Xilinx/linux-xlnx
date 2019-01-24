@@ -3569,7 +3569,6 @@ static int macb_init(struct platform_device *pdev)
 				queue->RBQPH = GEM_RBQPH(hw_q - 1);
 			}
 #endif
-			queue->RBQP = GEM_RBQP(hw_q - 1);
 		} else {
 			/* queue0 uses legacy registers */
 			queue->ISR  = MACB_ISR;
@@ -3584,7 +3583,6 @@ static int macb_init(struct platform_device *pdev)
 				queue->RBQPH = MACB_RBQPH;
 			}
 #endif
-			queue->RBQP = MACB_RBQP;
 		}
 
 		/* get irq: here we use the linux queue index, not the hardware
