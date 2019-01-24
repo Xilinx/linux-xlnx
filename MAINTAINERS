@@ -16276,6 +16276,14 @@ S:	Maintained
 F:	drivers/fpga/zynq-fpga.c
 F:	Documentation/devicetree/bindings/fpga/xilinx-zynq-fpga-mgr.txt
 
+XILINX ZYNQMP AES DRIVER
+M:	Kalyani Akula <kalyani.akula@xilinx.com>
+M:	Nava Kishore Manne <nava.manne@xilinx.com>
+R:	Appana Durga Kedareswara rao <appana.durga.rao@xilinx.com>
+S:	Maintained
+F:	drivers/crypto/zynqmp-aes.c
+F:	Documentation/devicetree/bindings/crypto/xlnx,zynqmp-aes.txt
+
 XILINX ZYNQMP DMAENGINE DRIVER
 M:	Appana Durga Kedareswara rao <appana.durga.rao@xilinx.com>
 R:	Radhey Shyam Pandey <radhey.shyam.pandey@xilinx.com>
@@ -16296,6 +16304,22 @@ M:	Anurag Kumar Vulisha <anurag.kumar.vulisha@xilinx.com>
 S:	Maintained
 F:	drivers/phy/phy-zynqmp.c
 F:	Documentation/devicetree/bindings/phy/phy-zynqmp.txt
+
+XILINX ZYNQMP RSA DRIVER
+M:	Nava Kishore Manne <nava.manne@xilinx.com>
+M:	Kalyani Akula <kalyani.akula@xilinx.com>
+R:	Appana Durga Kedareswara rao <appana.durga.rao@xilinx.com>
+S:	Maintained
+F:	drivers/crypto/zynqmp-rsa.c
+F:	Documentation/devicetree/bindings/crypto/zynqmp-rsa.txt
+
+XILINX ZYNQMP SHA DRIVER
+M:	Nava Kishore Manne <nava.manne@xilinx.com>
+M:	Kalyani Akula <kalyani.akula@xilinx.com>
+R:	Appana Durga Kedareswara rao <appana.durga.rao@xilinx.com>
+S:	Maintained
+F:	drivers/crypto/zynqmp-sha.c
+F:	Documentation/devicetree/bindings/crypto/zynqmp-sha.txt
 
 XILLYBUS DRIVER
 M:	Eli Billauer <eli.billauer@gmail.com>
