@@ -3530,6 +3530,7 @@ F:	Documentation/translations/zh_CN/
 
 CHIPIDEA USB HIGH SPEED DUAL ROLE CONTROLLER
 M:	Peter Chen <Peter.Chen@nxp.com>
+R:	Anurag Kumar Vulisha <anurag.kumar.vulisha@xilinx.com>
 T:	git git://git.kernel.org/pub/scm/linux/kernel/git/peter.chen/usb.git
 L:	linux-usb@vger.kernel.org
 S:	Maintained
@@ -4250,6 +4251,7 @@ F:	drivers/usb/dwc2/
 
 DESIGNWARE USB3 DRD IP DRIVER
 M:	Felipe Balbi <balbi@kernel.org>
+R:	Anurag Kumar Vulisha <anurag.kumar.vulisha@xilinx.com>
 L:	linux-usb@vger.kernel.org
 T:	git git://git.kernel.org/pub/scm/linux/kernel/git/balbi/usb.git
 S:	Maintained
@@ -8313,6 +8315,12 @@ S:	Maintained
 F:	drivers/ata/pata_ftide010.c
 F:	drivers/ata/sata_gemini.c
 F:	drivers/ata/sata_gemini.h
+
+LIBATA SATA AHCI CEVA CONTROLLER DRIVER
+M:	Anurag Kumar Vulisha <anurag.kumar.vulisha@xilinx.com>
+S:	Maintained
+F:	drivers/ata/ahci_ceva.c
+F:	Documentation/devicetree/bindings/ata/ahci-ceva.txt
 
 LIBATA SATA AHCI PLATFORM devices support
 M:	Hans de Goede <hdegoede@redhat.com>
@@ -15356,6 +15364,7 @@ F:	drivers/net/wireless/rndis_wlan.c
 
 USB XHCI DRIVER
 M:	Mathias Nyman <mathias.nyman@intel.com>
+R:	Anurag Kumar Vulisha <anurag.kumar.vulisha@xilinx.com>
 L:	linux-usb@vger.kernel.org
 S:	Supported
 F:	drivers/usb/host/xhci*
@@ -16125,6 +16134,12 @@ S:	Maintained
 F:	drivers/net/ethernet/xilinx/xilinx_axienet*
 F:	Documentation/devicetree/bindings/net/xilinx_axienet.txt
 
+XILINX AXI USB DRIVER
+M:	Anurag Kumar Vulisha <anurag.kumar.vulisha@xilinx.com>
+S:	Maintained
+F:	drivers/usb/gadget/udc/udc-xilinx.c
+F:	Documentation/devicetree/bindings/usb/udc-xilinx.txt
+
 XILINX DMA FRAMEBUFFER READ/WRITE DRIVER
 M:	Vishal Sagar <vishal.sagar@xilinx.com>
 R:	Hyun Kwon <hyun.kwon@xilinx.com>
@@ -16275,6 +16290,12 @@ R:	Appana Durga Kedareswara rao <appana.durga.rao@xilinx.com>
 S:	Maintained
 F:	drivers/fpga/zynqmp-fpga.c
 F:	Documentation/devicetree/bindings/fpga/xilinx-zynqmp-fpga-mgr.txt
+
+XILINX ZYNQMP PHY DRIVER
+M:	Anurag Kumar Vulisha <anurag.kumar.vulisha@xilinx.com>
+S:	Maintained
+F:	drivers/phy/phy-zynqmp.c
+F:	Documentation/devicetree/bindings/phy/phy-zynqmp.txt
 
 XILLYBUS DRIVER
 M:	Eli Billauer <eli.billauer@gmail.com>
