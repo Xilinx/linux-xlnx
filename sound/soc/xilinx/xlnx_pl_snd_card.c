@@ -87,13 +87,11 @@ static int xlnx_hdmi_card_hw_params(struct snd_pcm_substream *substream,
 	case 32000:
 	case 44100:
 	case 48000:
+	case 88200:
 	case 96000:
 	case 176400:
 	case 192000:
-		prv->mclk_ratio = 768;
-		break;
-	case 88200:
-		prv->mclk_ratio = 192;
+		prv->mclk_ratio = 512;
 		break;
 	default:
 		return -EINVAL;
@@ -201,6 +199,7 @@ static struct snd_soc_dai_link xlnx_snd_dai[][XLNX_MAX_PATHS] = {
 			.codec_dai_name = "i2s-hifi",
 			.codec_name = "hdmi-audio-codec.0",
 			.cpu_dai_name = "snd-soc-dummy-dai",
+			.ops = &xlnx_hdmi_card_ops,
 		},
 		{
 			.name = "xilinx-hdmi-capture",
