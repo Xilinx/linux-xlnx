@@ -159,10 +159,13 @@ static int xlnx_i2s_card_hw_params(struct snd_pcm_substream *substream,
 		}
 	}
 
+	prv->mclk_val = prv->mclk_ratio * sample_rate;
 	clk_div = DIV_ROUND_UP(prv->mclk_ratio, 2 * ch * data_width);
 	ret = snd_soc_dai_set_clkdiv(cpu_dai, 0, clk_div);
+	if (ret)
+		return ret;
 
-	return ret;
+	return clk_set_rate(prv->mclk, prv->mclk_val);
 }
 
 static const struct snd_soc_ops xlnx_sdi_card_ops = {
