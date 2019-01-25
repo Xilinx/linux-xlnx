@@ -51,6 +51,18 @@ static const char *dev_compat[][XLNX_MAX_IFACE] = {
 	},
 };
 
+static int xlnx_spdif_card_hw_params(struct snd_pcm_substream *substream,
+				     struct snd_pcm_hw_params *params)
+{
+	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+	struct pl_card_data *prv = snd_soc_card_get_drvdata(rtd->card);
+	u32 sample_rate = params_rate(params);
+
+	/* mclk must be >=1024 * sampleing rate */
+	prv->mclk_val = 1024 * sample_rate;
+	prv->mclk_ratio = 1024;
+	return clk_set_rate(prv->mclk, prv->mclk_val);
+}
 
 static int xlnx_sdi_card_hw_params(struct snd_pcm_substream *substream,
 				   struct snd_pcm_hw_params *params)
@@ -178,6 +190,10 @@ static const struct snd_soc_ops xlnx_hdmi_card_ops = {
 	.hw_params = xlnx_hdmi_card_hw_params,
 };
 
+static const struct snd_soc_ops xlnx_spdif_card_ops = {
+	.hw_params = xlnx_spdif_card_hw_params,
+};
+
 SND_SOC_DAILINK_DEFS(xlnx_i2s,
 		     DAILINK_COMP_ARRAY(COMP_CPU("xilinx-i2s")),
 		     DAILINK_COMP_ARRAY(COMP_DUMMY()),
@@ -246,10 +262,12 @@ static struct snd_soc_dai_link xlnx_snd_dai[][XLNX_MAX_PATHS] = {
 		{
 			.name = "xilinx-spdif_playback",
 			SND_SOC_DAILINK_REG(xlnx_spdif),
+			.ops = &xlnx_spdif_card_ops,
 		},
 		{
 			.name = "xilinx-spdif_capture",
 			SND_SOC_DAILINK_REG(xlnx_spdif),
+			.ops = &xlnx_spdif_card_ops,
 		},
 	},
 
