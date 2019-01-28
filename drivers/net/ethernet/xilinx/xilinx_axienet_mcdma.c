@@ -743,7 +743,7 @@ int __maybe_unused axienet_mcdma_tx_probe(struct platform_device *pdev,
 
 		q->dma_regs = lp->mcdma_regs;
 		snprintf(dma_name, sizeof(dma_name), "mm2s_ch%d_introut",
-			 i + 1);
+			 q->chan_id);
 		q->tx_irq = platform_get_irq_byname(pdev, dma_name);
 		q->eth_hasdre = of_property_read_bool(np,
 						      "xlnx,include-dre");
@@ -768,7 +768,7 @@ int __maybe_unused axienet_mcdma_rx_probe(struct platform_device *pdev,
 
 		q->dma_regs = lp->mcdma_regs;
 		snprintf(dma_name, sizeof(dma_name), "s2mm_ch%d_introut",
-			 i + 1);
+			 q->chan_id);
 		q->rx_irq = platform_get_irq_byname(pdev, dma_name);
 
 		spin_lock_init(&q->rx_lock);
