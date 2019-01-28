@@ -1169,12 +1169,7 @@ struct macb {
 	u32	(*macb_reg_readl)(struct macb *bp, int offset);
 	void	(*macb_reg_writel)(struct macb *bp, int offset, u32 value);
 
-	unsigned int		rx_tail;
-	unsigned int		rx_prepared_head;
-	struct macb_dma_desc	*rx_ring;
 	struct macb_dma_desc	*rx_ring_tieoff;
-	struct sk_buff		**rx_skbuff;
-	void			*rx_buffers;
 	size_t			rx_buffer_size;
 
 	unsigned int		rx_ring_size;
@@ -1192,15 +1187,12 @@ struct macb {
 	struct clk		*rx_clk;
 	struct clk		*tsu_clk;
 	struct net_device	*dev;
-	struct napi_struct	napi;
 	union {
 		struct macb_stats	macb;
 		struct gem_stats	gem;
 	}			hw_stats;
 
-	dma_addr_t		rx_ring_dma;
 	dma_addr_t		rx_ring_tieoff_dma;
-	dma_addr_t		rx_buffers_dma;
 
 	struct macb_or_gem_ops	macbgem_ops;
 
