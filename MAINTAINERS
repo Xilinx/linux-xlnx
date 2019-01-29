@@ -16119,6 +16119,7 @@ F:	fs/xfs/
 XILINX AUDIO FORMATTER (ASoC) DRIVER
 M:	Maruthi Srinivas Bayyavarapu <maruthi.srinivas.bayyavarapu@xilinx.com>
 R:	Vishal Sagar <vishal.sagar@xilinx.com>
+S:	Maintained
 L:	git@xilinx.com
 F:	Documentation/devicetree/bindings/sound/xlnx,audio-formatter.txt
 F:	sound/soc/xilinx/xlnx_formatter_pcm.c
@@ -16150,8 +16151,8 @@ F:	Documentation/devicetree/bindings/usb/udc-xilinx.txt
 XILINX DMA FRAMEBUFFER READ/WRITE DRIVER
 M:	Vishal Sagar <vishal.sagar@xilinx.com>
 R:	Hyun Kwon <hyun.kwon@xilinx.com>
+S:	Maintained
 L:	git@xilinx.com
-S:	Supported
 F:	Documentation/devicetree/bindings/dma/xilinx/xilinx_frmbuf.txt
 F:	drivers/dma/xilinx/xilinx_frmbuf.c
 F:	include/linux/dma/xilinx_frmbuf.h
@@ -16167,6 +16168,7 @@ F:	Documentation/devicetree/bindings/net/xilinx_emaclite.txt
 XILINX I2S AUDIO (ASoC) DRIVER
 M:	Maruthi Srinivas Bayyavarapu <maruthi.srinivas.bayyavarapu@xilinx.com>
 R:	Vishal Sagar <vishal.sagar@xilinx.com>
+S:	Maintained
 L:	git@xilinx.com
 F:	Documentation/devicetree/bindings/sound/xlnx,i2s.txt
 F:	sound/soc/xilinx/xlnx_i2s.c
@@ -16174,8 +16176,8 @@ F:	sound/soc/xilinx/xlnx_i2s.c
 XILINX MEDIA AXIS SWITCH DRIVER
 M:	Vishal Sagar <vishal.sagar@xilinx.com>
 R:	Hyun Kwon <hyun.kwon@xilinx.com>
+S:	Maintained
 L:	git@xilinx.com
-S:	Supported
 F:	Documentation/devicetree/bindings/media/xilinx/xlnx,v-axi4s-switch.txt
 F:	drivers/media/platform/xilinx/xilinx-axis-switch.c
 
@@ -16183,7 +16185,7 @@ XILINX MEDIA CSI2RXSS DRIVER
 M:	Vishal Sagar <vishal.sagar@xilinx.com>
 R:	Hyun Kwon <hyun.kwon@xilinx.com>
 L:	git@xilinx.com
-S:	Supported
+S:	Maintained
 F:	Documentation/devicetree/bindings/media/xilinx/xlnx,csi2rxss.txt
 F:	drivers/media/platform/xilinx/xilinx-csi2rxss.c
 F:	include/uapi/linux/xilinx-csi2rxss.h
@@ -16192,15 +16194,15 @@ XILINX MEDIA DEMOSAIC DRIVER
 M:	Vishal Sagar <vishal.sagar@xilinx.com>
 R:	Hyun Kwon <hyun.kwon@xilinx.com>
 L:	git@xilinx.com
-S:	Supported
+S:	Maintained
 F:	Documentation/devicetree/bindings/media/xilinx/xlnx,v-demosaic.txt
 F:	drivers/media/platform/xilinx/xilinx-demosaic.c
 
 XILINX MEDIA GAMMA DRIVER
 M:	Vishal Sagar <vishal.sagar@xilinx.com>
 R:	Hyun Kwon <hyun.kwon@xilinx.com>
+S:	Maintained
 L:	git@xilinx.com
-S:	Supported
 F:	Documentation/devicetree/bindings/media/xilinx/xlnx,v-gamma-lut.txt
 F:	drivers/media/platform/xilinx/xilinx-gamma.c
 F:	drivers/media/platform/xilinx/xilinx-gamma-coeff.h
@@ -16208,6 +16210,7 @@ F:	drivers/media/platform/xilinx/xilinx-gamma-coeff.h
 XILINX MEDIA SDI RX DRIVER
 M:	Vishal Sagar <vishal.sagar@xilinx.com>
 R:	Hyun Kwon <hyun.kwon@xilinx.com>
+S:	Maintained
 L:	git@xilinx.com
 F:	Documentation/devicetree/bindings/media/xilinx/xlnx,sdirxss.txt
 F:	drivers/media/platform/xilinx/xilinx-sdirxss.c
@@ -16217,28 +16220,29 @@ XILINX MEDIA VPSS COLOR SPACE CONVERTER DRIVER
 M:	Vishal Sagar <vishal.sagar@xilinx.com>
 R:	Hyun Kwon <hyun.kwon@xilinx.com>
 L:	git@xilinx.com
-S:	Supported
+S:	Maintained
 F:	Documentation/devicetree/bindings/media/xilinx/xlnx,v-vpss-csc.txt
 F:	drivers/media/platform/xilinx/xilinx-vpss-csc.c
 
 XILINX MEDIA VPSS SCALER DRIVER
 M:	Vishal Sagar <vishal.sagar@xilinx.com>
 R:	Hyun Kwon <hyun.kwon@xilinx.com>
+S:	Maintained
 L:	git@xilinx.com
-S:	Supported
 F:	Documentation/devicetree/bindings/media/xilinx/xlnx,v-vpss-scaler.txt
 F:	drivers/media/platform/xilinx/xilinx-vpss-scaler.c
 
 XILINX PL SOUND CARD (ASoC) DRIVER
 M:	Maruthi Srinivas Bayyavarapu <maruthi.srinivas.bayyavarapu@xilinx.com>
 R:	Vishal Sagar <vishal.sagar@xilinx.com>
+S:	Maintained
 L:	git@xilinx.com
 F:	sound/soc/xilinx/xlnx_pl_snd_card.c
 
 XILINX SD-FEC IP CORES
 M:	Derek Kiernan <derek.kiernan@xilinx.com>
 M:	Dragan Cvetic <dragan.cvetic@xilinx.com>
-S:	Supported
+S:	Maintained
 F:	Documentation/devicetree/bindings/misc/xlnx,sd-fec.txt
 F:	Documentation/misc-devices/xilinx_sdfec.rst
 F:	drivers/misc/xilinx_sdfec.c
@@ -16249,6 +16253,7 @@ F:	include/uapi/misc/xilinx_sdfec.h
 XILINX SDI AUDIO (ASoC) DRIVER
 M:	Maruthi Srinivas Bayyavarapu <maruthi.srinivas.bayyavarapu@xilinx.com>
 R:	Vishal Sagar <vishal.sagar@xilinx.com>
+S:	Maintained
 L:	git@xilinx.com
 F:	Documentation/devicetree/bindings/sound/xlnx,v-uhdsdi-audio.txt
 F:	sound/soc/xilinx/xlnx_sdi_audio.c
@@ -16256,6 +16261,7 @@ F:	sound/soc/xilinx/xlnx_sdi_audio.c
 XILINX SPDIF AUDIO (ASoC) DRIVER
 M:	Maruthi Srinivas Bayyavarapu <maruthi.srinivas.bayyavarapu@xilinx.com>
 R:	Vishal Sagar <vishal.sagar@xilinx.com>
+S:	Maintained
 L:	git@xilinx.com
 F:	Documentation/devicetree/bindings/sound/xlnx,spdif.txt
 F:	sound/soc/xilinx/xlnx_spdif.c
