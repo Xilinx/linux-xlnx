@@ -132,7 +132,7 @@ static void __exit framer_exit(void)
 module_init(framer_init);
 module_exit(framer_exit);
 
-const static struct of_device_id framer_of_match[] = {
+static const struct of_device_id framer_of_match[] = {
 	{ .compatible = "xlnx,roe-framer-1.0", },
 	{ /* end of list */ },
 };
