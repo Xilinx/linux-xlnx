@@ -658,16 +658,14 @@
 #define MACB_CAPS_JUMBO				0x00000020
 #define MACB_CAPS_GEM_HAS_PTP			0x00000040
 #define MACB_CAPS_BD_RD_PREFETCH		0x00000080
+#define MACB_CAPS_NEEDS_RSTONUBR		0x00000100
 #define MACB_CAPS_PCS				0x00000400
-#define MACB_CAPS_PARTIAL_STORE_FORWARD		0x00000100
+#define MACB_CAPS_PARTIAL_STORE_FORWARD		0x00000800
 #define MACB_CAPS_WOL				0x00000200
 #define MACB_CAPS_FIFO_MODE			0x10000000
 #define MACB_CAPS_GIGABIT_MODE_AVAILABLE	0x20000000
 #define MACB_CAPS_SG_DISABLED			0x40000000
 #define MACB_CAPS_MACB_IS_GEM			0x80000000
-
-/* Errata mask bits */
-#define MACB_ERRATA_RXLOCKUP			0x00000001
 
 /* LSO settings */
 #define MACB_LSO_UFO_ENABLE			0x01
@@ -1106,7 +1104,6 @@ struct macb_config {
 			    struct clk **rx_clk, struct clk **tsu_clk);
 	int	(*init)(struct platform_device *pdev);
 	int	jumbo_max_len;
-	u32	errata;
 };
 
 struct tsu_incr {
@@ -1246,7 +1243,7 @@ struct macb {
 	int	rx_bd_rd_prefetch;
 	int	tx_bd_rd_prefetch;
 
-	u32 errata;
+	u32	rx_intr_mask;
 };
 
 #ifdef CONFIG_MACB_USE_HWSTAMP
