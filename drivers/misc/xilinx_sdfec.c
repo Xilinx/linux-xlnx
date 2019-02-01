@@ -475,8 +475,6 @@ static int xsdfec_set_turbo(struct xsdfec_dev *xsdfec, void __user *arg)
 			"%s: Unable to write Turbo to SDFEC%d check DT",
 			__func__, xsdfec->config.fec_id);
 		return -EIO;
-	} else if (xsdfec->config.code == XSDFEC_CODE_INVALID) {
-		xsdfec->config.code = XSDFEC_TURBO_CODE;
 	}
 
 	turbo_write = ((turbo.scale & XSDFEC_TURBO_SCALE_MASK)
@@ -927,18 +925,12 @@ static int xsdfec_start(struct xsdfec_dev *xsdfec)
 {
 	u32 regread;
 
-	/* Verify Code is loaded */
-	if (xsdfec->config.code == XSDFEC_CODE_INVALID) {
-		dev_err(xsdfec->dev, "%s : set code before start for SDFEC%d",
-			__func__, xsdfec->config.fec_id);
-		return -EINVAL;
-	}
 	regread = xsdfec_regread(xsdfec, XSDFEC_FEC_CODE_ADDR);
 	regread &= 0x1;
-	if (regread != (xsdfec->config.code - 1)) {
+	if (regread != xsdfec->config.code) {
 		dev_err(xsdfec->dev,
 			"%s SDFEC HW code does not match driver code, reg %d, code %d",
-			__func__, regread, (xsdfec->config.code - 1));
+			__func__, regread, xsdfec->config.code);
 		return -EINVAL;
 	}
 
@@ -1006,7 +998,7 @@ static int xsdfec_get_stats(struct xsdfec_dev *xsdfec, void __user *arg)
 static int xsdfec_set_default_config(struct xsdfec_dev *xsdfec)
 {
 	/* Ensure registers are aligned with core configuration */
-	xsdfec_regwrite(xsdfec, XSDFEC_FEC_CODE_ADDR, xsdfec->config.code - 1);
+	xsdfec_regwrite(xsdfec, XSDFEC_FEC_CODE_ADDR, xsdfec->config.code);
 	xsdfec_cfg_axi_streams(xsdfec);
 	update_config_from_hw(xsdfec);
 
@@ -1231,7 +1223,7 @@ static int xsdfec_parse_of(struct xsdfec_dev *xsdfec)
 	}
 
 	/* Write LDPC to CODE Register */
-	xsdfec_regwrite(xsdfec, XSDFEC_FEC_CODE_ADDR, xsdfec->config.code - 1);
+	xsdfec_regwrite(xsdfec, XSDFEC_FEC_CODE_ADDR, xsdfec->config.code);
 
 	xsdfec_cfg_axi_streams(xsdfec);
 

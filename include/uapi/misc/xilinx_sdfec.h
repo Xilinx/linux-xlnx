@@ -21,7 +21,6 @@
 
 /**
  * enum xsdfec_code - Code Type.
- * @XSDFEC_CODE_INVALID: Driver is in a invalid mode.
  * @XSDFEC_TURBO_CODE: Driver is configured for Turbo mode.
  * @XSDFEC_LDPC_CODE: Driver is configured for LDPC mode.
  *
@@ -30,8 +29,7 @@
  * changed by the driver.
  */
 enum xsdfec_code {
-	XSDFEC_CODE_INVALID = 0,
-	XSDFEC_TURBO_CODE,
+	XSDFEC_TURBO_CODE = 0,
 	XSDFEC_LDPC_CODE,
 };
 
