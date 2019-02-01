@@ -71,21 +71,8 @@ static int xlnx_sdi_card_hw_params(struct snd_pcm_substream *substream,
 	struct pl_card_data *prv = snd_soc_card_get_drvdata(rtd->card);
 	u32 sample_rate = params_rate(params);
 
-	switch (sample_rate) {
-	case 32000:
-		prv->mclk_ratio = 576;
-		break;
-	case 44100:
-		prv->mclk_ratio = 418;
-		break;
-	case 48000:
-		prv->mclk_ratio = 384;
-		break;
-	default:
-		return -EINVAL;
-	}
-
-	return 0;
+	prv->mclk_val = prv->mclk_ratio * sample_rate;
+	return clk_set_rate(prv->mclk, prv->mclk_val);
 }
 
 static int xlnx_hdmi_card_hw_params(struct snd_pcm_substream *substream,
@@ -252,6 +239,7 @@ static struct snd_soc_dai_link xlnx_snd_dai[][XLNX_MAX_PATHS] = {
 		{
 			.name = "xlnx-sdi-playback",
 			SND_SOC_DAILINK_REG(xlnx_sdi_tx),
+			.ops = &xlnx_sdi_card_ops,
 		},
 		{
 			.name = "xlnx-sdi-capture",
