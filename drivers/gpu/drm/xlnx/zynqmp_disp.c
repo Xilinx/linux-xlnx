@@ -2942,7 +2942,7 @@ zynqmp_disp_crtc_atomic_begin(struct drm_crtc *crtc,
 	drm_crtc_vblank_on(crtc);
 	/* Don't rely on vblank when disabling crtc */
 	spin_lock_irq(&crtc->dev->event_lock);
-	if (crtc->primary->state->fb && crtc->state->event) {
+	if (crtc->state->event) {
 		/* Consume the flip_done event from atomic helper */
 		crtc->state->event->pipe = drm_crtc_index(crtc);
 		WARN_ON(drm_crtc_vblank_get(crtc) != 0);
