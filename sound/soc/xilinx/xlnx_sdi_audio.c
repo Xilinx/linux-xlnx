@@ -245,15 +245,21 @@ static int xlnx_sdi_tx_hw_params(struct snd_pcm_substream *substream,
 		return -EINVAL;
 	}
 
-	/* map video properties */
+	/*
+	 * map video properties.
+	 * Note: 1920x1080 and 2048x1080 are the resolutions of sub images for
+	 * 3840x2160 and 4096x2160 resolutions respectively.
+	 */
 	switch (ctx->video_mode->hdisplay) {
 	case 1920:
+	case 3840:
 		val = SDI_TRANSPORT_FAMILY_1920;
 		break;
 	case 1280:
 		val |= SDI_TRANSPORT_FAMILY_1280;
 		break;
 	case 2048:
+	case 4096:
 		val |= SDI_TRANSPORT_FAMILY_2048;
 		break;
 	case 720:
