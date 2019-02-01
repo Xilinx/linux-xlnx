@@ -265,7 +265,7 @@ static void update_config_from_hw(struct xsdfec_dev *xsdfec)
 
 	/* Update the Order */
 	reg_value = xsdfec_regread(xsdfec, XSDFEC_ORDER_ADDR);
-	xsdfec->config.order = reg_value + 1;
+	xsdfec->config.order = reg_value;
 
 	update_bool_config_from_reg(xsdfec, XSDFEC_BYPASS_ADDR,
 				    0, /* Bit Number, maybe change to mask */
@@ -799,12 +799,12 @@ err_out:
 
 static int xsdfec_set_order(struct xsdfec_dev *xsdfec, void __user *arg)
 {
-	bool order_out_of_range;
+	bool order_invalid;
 	enum xsdfec_order order = *((enum xsdfec_order *)arg);
 
-	order_out_of_range =
-		(order <= XSDFEC_INVALID_ORDER) || (order >= XSDFEC_ORDER_MAX);
-	if (order_out_of_range) {
+	order_invalid = (order != XSDFEC_MAINTAIN_ORDER) &&
+			(order != XSDFEC_OUT_OF_ORDER);
+	if (order_invalid) {
 		dev_err(xsdfec->dev, "%s invalid order value %d for SDFEC%d",
 			__func__, order, xsdfec->config.fec_id);
 		return -EINVAL;
@@ -818,7 +818,7 @@ static int xsdfec_set_order(struct xsdfec_dev *xsdfec, void __user *arg)
 		return -EIO;
 	}
 
-	xsdfec_regwrite(xsdfec, XSDFEC_ORDER_ADDR, (order - 1));
+	xsdfec_regwrite(xsdfec, XSDFEC_ORDER_ADDR, order);
 
 	xsdfec->config.order = order;
 
@@ -931,13 +931,6 @@ static int xsdfec_start(struct xsdfec_dev *xsdfec)
 		dev_err(xsdfec->dev,
 			"%s SDFEC HW code does not match driver code, reg %d, code %d",
 			__func__, regread, xsdfec->config.code);
-		return -EINVAL;
-	}
-
-	/* Verify Order has been set */
-	if (xsdfec->config.order == XSDFEC_INVALID_ORDER) {
-		dev_err(xsdfec->dev, "%s : set order before starting SDFEC%d",
-			__func__, xsdfec->config.fec_id);
 		return -EINVAL;
 	}
 

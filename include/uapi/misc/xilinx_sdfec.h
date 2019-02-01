@@ -35,19 +35,15 @@ enum xsdfec_code {
 
 /**
  * enum xsdfec_order - Order
- * @XSDFEC_INVALID_ORDER: Invalid order value
  * @XSDFEC_MAINTAIN_ORDER: Maintain order execution of blocks.
  * @XSDFEC_OUT_OF_ORDER: Out-of-order execution of blocks.
- * @XSDFEC_ORDER_MAX: Used to indicate out of bound order values.
  *
  * This enum is used to indicate whether the order of blocks can change from
  * input to output.
  */
 enum xsdfec_order {
-	XSDFEC_INVALID_ORDER = 0,
-	XSDFEC_MAINTAIN_ORDER,
+	XSDFEC_MAINTAIN_ORDER = 0,
 	XSDFEC_OUT_OF_ORDER,
-	XSDFEC_ORDER_MAX,
 };
 
 /**
