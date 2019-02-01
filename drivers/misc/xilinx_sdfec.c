@@ -37,12 +37,8 @@ static atomic_t xsdfec_ndevs = ATOMIC_INIT(0);
 static dev_t xsdfec_devt;
 
 /* Xilinx SDFEC Register Map */
-/* AXI_WRI_PROTECT Register */
-#define XSDFEC_AXI_WR_PROTECT_ADDR (0x0)
 /* CODE_WRI_PROTECT Register */
 #define XSDFEC_CODE_WR_PROTECT_ADDR (0x4)
-#define XSDFEC_WRITE_PROTECT_ENABLE (1)
-#define XSDFEC_WRITE_PROTECT_DISABLE (0)
 
 /* ACTIVE Register */
 #define XSDFEC_ACTIVE_ADDR (0x8)
@@ -1302,7 +1298,7 @@ static void xsdfec_update_state_for_ecc_err(struct xsdfec_dev *xsdfec,
 	xsdfec->state_updated = true;
 }
 
-static int xsdfec_get_sbe_mask(struct xsdfec_dev *xsdfec, u32 ecc_err)
+static int xsdfec_get_sbe_mask(u32 ecc_err)
 {
 	u32 sbe_mask = XSDFEC_ECC_ISR_SBE_MASK;
 
@@ -1350,7 +1346,7 @@ static irqreturn_t xsdfec_irq_thread(int irq, void *dev_id)
 	 * Update SBE mask to remove events associated with MBE if present.
 	 * If no MBEs are present will return mask for all SBE bits
 	 */
-	sbe_mask = xsdfec_get_sbe_mask(xsdfec, err_value);
+	sbe_mask = xsdfec_get_sbe_mask(err_value);
 	err_value = ecc_err & sbe_mask;
 	if (err_value) {
 		dev_info(xsdfec->dev, "Correctable error on xsdfec%d",
