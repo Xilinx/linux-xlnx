@@ -2509,7 +2509,6 @@ static int zynqmp_disp_plane_mode_set(struct drm_plane *plane,
 {
 	struct zynqmp_disp_layer *layer = plane_to_layer(plane);
 	const struct drm_format_info *info = fb->format;
-	struct drm_format_name_buf format_name;
 	struct device *dev = layer->disp->dev;
 	dma_addr_t paddr;
 	unsigned int i;
