@@ -12,6 +12,7 @@ Required propertie(s):
 - xlnx,max-width	: Maximum number of supported column/width (64 - 3840)
 - xlnx,max-height	: Maximum number of supported row/height (64 - 2160)
 - xlnx,dma-addr-width	: dma address width (either 32 or 64)
+- xlnx,pixels-per-clock	: pixels per clock set in IP (1, 2 or 4)
 - xlnx,vid-formats	: A list of strings indicating what video memory
 			  formats the IP has been configured to support.
 			  See VIDEO FORMATS table below and examples.
@@ -85,6 +86,7 @@ v_multi_scaler_0: v_multi_scaler@a0000000 {
 	reset-gpios = <&gpio 78 1>;
 	xlnx,max-chan = <0x01>;
 	xlnx,dma-addr-width = <0x20>;
+	xlnx,pixels-per-clock = /bits/ 8 <2>;
 	xlnx,max-width = <3840>;
 	xlnx,max-height = <2160>;
 	xlnx,num-taps = <6>;
