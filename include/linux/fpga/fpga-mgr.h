@@ -13,6 +13,7 @@
 
 #define ENCRYPTED_KEY_LEN	64 /* Bytes */
 #define ENCRYPTED_IV_LEN	24 /* Bytes */
+#define PPK_HASH_LEN		96 /* Bytes */
 
 struct fpga_manager;
 struct sg_table;
@@ -86,6 +87,7 @@ enum fpga_mgr_states {
  * @firmware_name: name of FPGA image firmware file
  * @key: key value useful for Encrypted Bitstream loading to read the userkey
  * @iv: iv (or) initialization vector is useful for Encrypted Bitstream loading
+ * @ppkhash: ppk hash value useful for Authenticated Bitstream loading
  * @sgt: scatter/gather table containing FPGA image
  * @buf: contiguous buffer containing FPGA image
  * @count: size of buf
@@ -101,6 +103,7 @@ struct fpga_image_info {
 	char *firmware_name;
 	char key[ENCRYPTED_KEY_LEN];
 	char iv[ENCRYPTED_IV_LEN];
+	char ppkhash[PPK_HASH_LEN];
 	struct sg_table *sgt;
 	const char *buf;
 	size_t count;
@@ -168,6 +171,7 @@ struct fpga_compat_id {
  * @flags: flags determines the type of Bitstream
  * @key: key value useful for Encrypted Bitstream loading to read the userkey
  * @iv: iv (or) initialization vector is useful for Encrypted Bitstream loading
+ * @ppkhash: ppk hash value useful for Authenticated Bitstream loading
  * @dev: fpga manager device
  * @ref_mutex: only allows one reference to fpga manager
  * @state: state of fpga manager
@@ -181,6 +185,7 @@ struct fpga_manager {
 	long int flags;
 	char key[ENCRYPTED_KEY_LEN];
 	char iv[ENCRYPTED_IV_LEN];
+	char ppkhash[PPK_HASH_LEN];
 	struct device dev;
 	struct mutex ref_mutex;
 	enum fpga_mgr_states state;

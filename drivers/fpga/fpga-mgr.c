@@ -423,6 +423,7 @@ static ssize_t firmware_store(struct device *dev,
 	info.flags = mgr->flags;
 	memcpy(info.key, mgr->key, ENCRYPTED_KEY_LEN);
 	memcpy(info.iv, mgr->key, ENCRYPTED_IV_LEN);
+	memcpy(info.ppkhash, mgr->ppkhash, PPK_HASH_LEN);
 
 	/* lose terminating \n */
 	strcpy(image_name, buf);
@@ -433,6 +434,25 @@ static ssize_t firmware_store(struct device *dev,
 	ret = fpga_mgr_firmware_load(mgr, &info, image_name);
 	if (ret)
 		return ret;
+
+	return count;
+}
+
+static ssize_t ppkhash_show(struct device *dev,
+			    struct device_attribute *attr, char *buf)
+{
+	struct fpga_manager *mgr = to_fpga_manager(dev);
+
+	return snprintf(buf, PPK_HASH_LEN + 1, "%s\n", mgr->ppkhash);
+}
+
+static ssize_t ppkhash_store(struct device *dev,
+			     struct device_attribute *attr,
+			     const char *buf, size_t count)
+{
+	struct fpga_manager *mgr = to_fpga_manager(dev);
+
+	memcpy(mgr->ppkhash, buf, count);
 
 	return count;
 }
@@ -529,6 +549,7 @@ static DEVICE_ATTR_WO(firmware);
 static DEVICE_ATTR_RW(flags);
 static DEVICE_ATTR_RW(key);
 static DEVICE_ATTR_RW(iv);
+static DEVICE_ATTR_RW(ppkhash);
 static DEVICE_ATTR_RO(status);
 
 static struct attribute *fpga_mgr_attrs[] = {
@@ -538,6 +559,7 @@ static struct attribute *fpga_mgr_attrs[] = {
 	&dev_attr_flags.attr,
 	&dev_attr_key.attr,
 	&dev_attr_iv.attr,
+	&dev_attr_ppkhash.attr,
 	&dev_attr_status.attr,
 	NULL,
 };
