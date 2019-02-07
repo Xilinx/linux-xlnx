@@ -135,13 +135,13 @@ enum xm2msc_pix_fmt {
  * @name: human-readable device tree name for this entry
  * @fourcc: standard format identifier
  * @xm2msc_fmt: Xilinx Video Specific Color/Pixel Formats
- * @num_planes: number of planes supported by format
+ * @num_buffs: number of physically non-contiguous data planes/buffs
  */
 struct xm2msc_fmt {
 	char *name;
 	u32 fourcc;
 	enum xm2msc_pix_fmt xm2msc_fmt;
-	u32 num_planes;
+	u32 num_buffs;
 };
 
 static const struct xm2msc_fmt formats[] = {
@@ -149,97 +149,121 @@ static const struct xm2msc_fmt formats[] = {
 		.name = "xbgr8888",
 		.fourcc = V4L2_PIX_FMT_BGRX32,
 		.xm2msc_fmt = XILINX_M2MSC_FMT_RGBX8,
-		.num_planes = 1,
+		.num_buffs = 1,
 	},
 	{
 		.name = "xvuy8888",
 		.fourcc = V4L2_PIX_FMT_XVUY32,
 		.xm2msc_fmt = XILINX_M2MSC_FMT_YUVX8,
-		.num_planes = 1,
+		.num_buffs = 1,
 	},
 	{
 		.name = "yuyv",
 		.fourcc = V4L2_PIX_FMT_YUYV,
 		.xm2msc_fmt = XILINX_M2MSC_FMT_YUYV8,
-		.num_planes = 1,
+		.num_buffs = 1,
 	},
 	{
 		.name = "xbgr2101010",
 		.fourcc = V4L2_PIX_FMT_XBGR30,
 		.xm2msc_fmt = XILINX_M2MSC_FMT_RGBX10,
-		.num_planes = 1,
+		.num_buffs = 1,
 	},
 	{
 		.name = "yuvx2101010",
 		.fourcc = V4L2_PIX_FMT_XVUY10,
 		.xm2msc_fmt = XILINX_M2MSC_FMT_YUVX10,
-		.num_planes = 1,
+		.num_buffs = 1,
 	},
 	{
 		.name = "nv16",
 		.fourcc = V4L2_PIX_FMT_NV16M,
 		.xm2msc_fmt = XILINX_M2MSC_FMT_Y_UV8,
-		.num_planes = 2,
+		.num_buffs = 2,
+	},
+	{
+		.name = "nv16",
+		.fourcc = V4L2_PIX_FMT_NV16,
+		.xm2msc_fmt = XILINX_M2MSC_FMT_Y_UV8,
+		.num_buffs = 1,
 	},
 	{
 		.name = "nv12",
 		.fourcc = V4L2_PIX_FMT_NV12M,
 		.xm2msc_fmt = XILINX_M2MSC_FMT_Y_UV8_420,
-		.num_planes = 2,
+		.num_buffs = 2,
+	},
+	{
+		.name = "nv12",
+		.fourcc = V4L2_PIX_FMT_NV12,
+		.xm2msc_fmt = XILINX_M2MSC_FMT_Y_UV8_420,
+		.num_buffs = 1,
 	},
 	{
 		.name = "bgr888",
 		.fourcc = V4L2_PIX_FMT_RGB24,
 		.xm2msc_fmt = XILINX_M2MSC_FMT_RGB8,
-		.num_planes = 1,
+		.num_buffs = 1,
 	},
 	{
 		.name = "vuy888",
 		.fourcc = V4L2_PIX_FMT_VUY24,
 		.xm2msc_fmt = XILINX_M2MSC_FMT_YUV8,
-		.num_planes = 1,
+		.num_buffs = 1,
 	},
 	{
 		.name = "xv20",
 		.fourcc = V4L2_PIX_FMT_XV20M,
 		.xm2msc_fmt = XILINX_M2MSC_FMT_Y_UV10,
-		.num_planes = 2,
+		.num_buffs = 2,
+	},
+	{
+		.name = "xv20",
+		.fourcc = V4L2_PIX_FMT_XV20,
+		.xm2msc_fmt = XILINX_M2MSC_FMT_Y_UV10,
+		.num_buffs = 1,
 	},
 	{
 		.name = "xv15",
 		.fourcc = V4L2_PIX_FMT_XV15M,
 		.xm2msc_fmt = XILINX_M2MSC_FMT_Y_UV10_420,
-		.num_planes = 2,
+		.num_buffs = 2,
+	},
+	{
+		.name = "xv15",
+		.fourcc = V4L2_PIX_FMT_XV15,
+		.xm2msc_fmt = XILINX_M2MSC_FMT_Y_UV10_420,
+		.num_buffs = 1,
 	},
 	{
 		.name = "y8",
 		.fourcc = V4L2_PIX_FMT_GREY,
 		.xm2msc_fmt = XILINX_M2MSC_FMT_Y8,
-		.num_planes = 1,
+		.num_buffs = 1,
 	},
 	{
 		.name = "y10",
 		.fourcc = V4L2_PIX_FMT_Y10,
 		.xm2msc_fmt = XILINX_M2MSC_FMT_Y10,
-		.num_planes = 1,
+		.num_buffs = 1,
 	},
 	{
 		.name = "xrgb8888",
 		.fourcc = V4L2_PIX_FMT_XBGR32,
 		.xm2msc_fmt = XILINX_M2MSC_FMT_BGRX8,
-		.num_planes = 1,
+		.num_buffs = 1,
 	},
 	{
 		.name = "uyvy",
 		.fourcc = V4L2_PIX_FMT_UYVY,
 		.xm2msc_fmt = XILINX_M2MSC_FMT_UYVY8,
-		.num_planes = 1,
+		.num_buffs = 1,
 	},
 	{
 		.name = "rgb888",
 		.fourcc = V4L2_PIX_FMT_BGR24,
 		.xm2msc_fmt = XILINX_M2MSC_FMT_BGR8,
-		.num_planes = 1,
+		.num_buffs = 1,
 	},
 };
 
@@ -249,7 +273,7 @@ static const struct xm2msc_fmt formats[] = {
  * @width: frame width
  * @height: frame height
  * @stride: bytes per lines
- * @nplanes: Current number of planes
+ * @nbuffs: Current number of buffs
  * @bytesperline: bytes per line per plane
  * @sizeimage: image size per plane
  * @colorspace: supported colorspace
@@ -260,7 +284,7 @@ struct xm2msc_q_data {
 	unsigned int width;
 	unsigned int height;
 	unsigned int stride;
-	unsigned int nplanes;
+	unsigned int nbuffs;
 	unsigned int bytesperline[2];
 	unsigned int sizeimage[2];
 	enum v4l2_colorspace colorspace;
@@ -374,6 +398,20 @@ static inline void xm2msc_write64reg(void __iomem *addr, u64 value)
 static inline void xm2msc_writereg(void __iomem *addr, u32 value)
 {
 	iowrite32(value, addr);
+}
+
+static bool xm2msc_is_yuv_singlebuff(u32 fourcc)
+{
+	if (fourcc == V4L2_PIX_FMT_NV12 || fourcc == V4L2_PIX_FMT_XV15 ||
+	    fourcc ==  V4L2_PIX_FMT_NV16 || fourcc == V4L2_PIX_FMT_XV20)
+		return true;
+
+	return false;
+}
+
+static u32 xm2msc_yuv_1stplane_size(struct xm2msc_q_data *q_data)
+{
+	return	q_data->bytesperline[0] * q_data->height;
 }
 
 static struct xm2msc_q_data *get_q_data(struct xm2msc_chan_ctx *chan_ctx,
@@ -737,9 +775,9 @@ xm2msc_pr_q(struct device *dev, struct xm2msc_q_data *q, int chan,
 	dev_dbg(dev, "width height stride clrspace field planes\n");
 	dev_dbg(dev, "  %d  %d    %d     %d       %d    %d\n",
 		q->width, q->height, q->stride,
-		q->colorspace, q->field, q->nplanes);
+		q->colorspace, q->field, q->nbuffs);
 
-	for (i = 0; i < q->nplanes; i++) {
+	for (i = 0; i < q->nbuffs; i++) {
 		dev_dbg(dev, "[plane %d ] bytesperline sizeimage\n", i);
 		dev_dbg(dev, "                %d        %d\n",
 			q->bytesperline[i], q->sizeimage[i]);
@@ -1025,6 +1063,7 @@ static int xm2msc_set_bufaddr(struct xm2m_msc_dev *xm2msc)
 	struct xm2msc_chan_ctx *chan_ctx;
 	struct vb2_v4l2_buffer *src_vb, *dst_vb;
 	void __iomem *base;
+	struct xm2msc_q_data *q_data;
 	dma_addr_t src_luma, dst_luma;
 	dma_addr_t src_croma, dst_croma;
 
@@ -1047,15 +1086,27 @@ static int xm2msc_set_bufaddr(struct xm2m_msc_dev *xm2msc)
 		src_luma = vb2_dma_contig_plane_dma_addr(&src_vb->vb2_buf, 0);
 		dst_luma = vb2_dma_contig_plane_dma_addr(&dst_vb->vb2_buf, 0);
 
-		if (chan_ctx->q_data[XM2MSC_CHAN_OUT].nplanes == 2)
+		q_data = &chan_ctx->q_data[XM2MSC_CHAN_OUT];
+		if (chan_ctx->q_data[XM2MSC_CHAN_OUT].nbuffs == 2)
+			/* fmts having 2 planes 2 buffers */
 			src_croma =
-			    vb2_dma_contig_plane_dma_addr(&src_vb->vb2_buf, 1);
-		else
+				vb2_dma_contig_plane_dma_addr(&src_vb->vb2_buf,
+							      1);
+		else if (xm2msc_is_yuv_singlebuff(q_data->fmt->fourcc))
+			/* fmts having 2 planes 1 contiguous buffer */
+			src_croma = src_luma +
+				xm2msc_yuv_1stplane_size(q_data);
+		else /* fmts having 1 planes 1 contiguous buffer */
 			src_croma = 0;
 
-		if (chan_ctx->q_data[XM2MSC_CHAN_CAP].nplanes == 2)
+		q_data = &chan_ctx->q_data[XM2MSC_CHAN_CAP];
+		if (chan_ctx->q_data[XM2MSC_CHAN_CAP].nbuffs == 2)
 			dst_croma =
-			    vb2_dma_contig_plane_dma_addr(&dst_vb->vb2_buf, 1);
+				vb2_dma_contig_plane_dma_addr(&dst_vb->vb2_buf,
+							      1);
+		else if (xm2msc_is_yuv_singlebuff(q_data->fmt->fourcc))
+			dst_croma = dst_luma +
+				xm2msc_yuv_1stplane_size(q_data);
 		else
 			dst_croma = 0;
 
@@ -1287,6 +1338,37 @@ static int xm2msc_querybuf(struct file *file, void *fh,
 	return v4l2_m2m_querybuf(file, chan_ctx->m2m_ctx, buf);
 }
 
+static void
+xm2msc_cal_imagesize(struct xm2msc_q_data *q_data)
+{
+	unsigned int i;
+	u32 fourcc = q_data->fmt->fourcc;
+
+	for (i = 0; i < q_data->nbuffs; i++) {
+		q_data->bytesperline[i] = q_data->stride;
+		q_data->sizeimage[i] = q_data->stride * q_data->height;
+	}
+
+	switch (fourcc) {
+	case V4L2_PIX_FMT_NV12:
+	case V4L2_PIX_FMT_XV15:
+		/*
+		 * Adding chroma plane size as NV12/XV15
+		 * have a contiguous buffer for luma and chroma
+		 */
+		q_data->sizeimage[0] +=
+				q_data->stride * (q_data->height / 2);
+		break;
+	case V4L2_PIX_FMT_NV12M:
+	case V4L2_PIX_FMT_XV15M:
+		q_data->sizeimage[1] =
+				q_data->stride * (q_data->height / 2);
+		break;
+	default:
+		break;
+	}
+}
+
 static unsigned int
 xm2msc_cal_stride(unsigned int width, enum xm2msc_pix_fmt xfmt, u8 ppc)
 {
@@ -1416,22 +1498,13 @@ vidioc_s_fmt(struct xm2msc_chan_ctx *chan_ctx, struct v4l2_format *f)
 					   chan_ctx->xm2msc_dev->ppc);
 	q_data->colorspace = pix->colorspace;
 	q_data->field = pix->field;
-	q_data->nplanes = q_data->fmt->num_planes;
+	q_data->nbuffs = q_data->fmt->num_buffs;
 
-	for (i = 0; i < q_data->nplanes; i++) {
-		q_data->bytesperline[i] = q_data->stride;
+	xm2msc_cal_imagesize(q_data);
+
+	for (i = 0; i < q_data->nbuffs; i++) {
 		pix->plane_fmt[i].bytesperline = q_data->bytesperline[i];
-		q_data->sizeimage[i] = q_data->stride * q_data->height;
 		pix->plane_fmt[i].sizeimage = q_data->sizeimage[i];
-	}
-
-	/* Size of 2nd plane of Y_UV10_420 & Y_UV8_420 is half of 1st plane */
-	if (q_data->fmt->xm2msc_fmt == XILINX_M2MSC_FMT_Y_UV10_420 ||
-	    q_data->fmt->xm2msc_fmt == XILINX_M2MSC_FMT_Y_UV8_420) {
-		q_data->sizeimage[1] =
-			q_data->stride * (q_data->height / 2);
-		pix->plane_fmt[1].sizeimage =
-			q_data->stride * (q_data->height / 2);
 	}
 
 	xm2msc_pr_q(chan_ctx->xm2msc_dev->dev, q_data,
@@ -1501,7 +1574,7 @@ static int vidioc_g_fmt(struct xm2msc_chan_ctx *chan_ctx, struct v4l2_format *f)
 	pix->field = V4L2_FIELD_NONE;
 	pix->pixelformat = q_data->fmt->fourcc;
 	pix->colorspace = q_data->colorspace;
-	pix->num_planes = q_data->nplanes;
+	pix->num_planes = q_data->nbuffs;
 
 	for (i = 0; i < pix->num_planes; i++) {
 		pix->plane_fmt[i].bytesperline = q_data->bytesperline[i];
@@ -1601,14 +1674,14 @@ static int xm2msc_queue_setup(struct vb2_queue *vq,
 	if (!q_data)
 		return -EINVAL;
 
-	*nplanes = q_data->nplanes;
+	*nplanes = q_data->nbuffs;
 
 	for (i = 0; i < *nplanes; i++)
 		sizes[i] = q_data->sizeimage[i];
 
 	dev_dbg(chan_ctx->xm2msc_dev->dev, "get %d buffer(s) of size %d",
 		*nbuffers, sizes[0]);
-	if (q_data->nplanes == 2)
+	if (q_data->nbuffs == 2)
 		dev_dbg(chan_ctx->xm2msc_dev->dev, " and %d\n", sizes[1]);
 
 	return 0;
@@ -1619,14 +1692,14 @@ static int xm2msc_buf_prepare(struct vb2_buffer *vb)
 	struct xm2msc_chan_ctx *chan_ctx = vb2_get_drv_priv(vb->vb2_queue);
 	struct xm2m_msc_dev *xm2msc = chan_ctx->xm2msc_dev;
 	struct xm2msc_q_data *q_data;
-	unsigned int i, num_planes;
+	unsigned int i, num_buffs;
 
 	q_data = get_q_data(chan_ctx, vb->vb2_queue->type);
 	if (!q_data)
 		return -EINVAL;
-	num_planes = q_data->nplanes;
+	num_buffs = q_data->nbuffs;
 
-	for (i = 0; i < num_planes; i++) {
+	for (i = 0; i < num_buffs; i++) {
 		if (vb2_plane_size(vb, i) < q_data->sizeimage[i]) {
 			v4l2_err(&xm2msc->v4l2_dev, "data will not fit into plane ");
 				   v4l2_err(&xm2msc->v4l2_dev, "(%lu < %lu)\n",
@@ -1636,7 +1709,7 @@ static int xm2msc_buf_prepare(struct vb2_buffer *vb)
 		}
 	}
 
-	for (i = 0; i < num_planes; i++)
+	for (i = 0; i < num_buffs; i++)
 		vb2_set_plane_payload(vb, i, q_data->sizeimage[i]);
 
 	return 0;
