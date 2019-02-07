@@ -970,8 +970,8 @@ static bool xm2msc_alljob_ready(struct xm2m_msc_dev *xm2msc)
 		chan_ctx = &xm2msc->xm2msc_chan[chan];
 
 		if (!xm2msc_job_ready((void *)chan_ctx)) {
-			dev_info(xm2msc->dev, "chan %d not ready\n",
-				 chan_ctx->num);
+			dev_dbg(xm2msc->dev, "chan %d not ready\n",
+				chan_ctx->num);
 			return false;
 		}
 	}
