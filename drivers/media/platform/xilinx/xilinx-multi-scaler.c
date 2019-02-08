@@ -1294,7 +1294,6 @@ xm2msc_cal_stride(unsigned int width, enum xm2msc_pix_fmt xfmt, u8 ppc)
 	u32 align;
 
 	/* Stride in Bytes = (Width × Bytes per Pixel); */
-	/* TODO: The Width value must be a multiple of Pixels per Clock */
 	switch (xfmt) {
 	case XILINX_M2MSC_FMT_RGBX8:
 	case XILINX_M2MSC_FMT_YUVX8:
@@ -1348,6 +1347,15 @@ vidioc_try_fmt(struct xm2msc_chan_ctx *chan_ctx, struct v4l2_format *f)
 		dev_dbg(xm2msc->dev,
 			"Wrong input parameters %d, wxh: %dx%d.\n",
 			f->type, f->fmt.pix.width, f->fmt.pix.height);
+
+	/* The width value must be a multiple of pixels per clock */
+	if (pix->width % chan_ctx->xm2msc_dev->ppc) {
+		dev_info(xm2msc->dev,
+			 "Wrong align parameters %d, wxh: %dx%d.\n",
+			 f->type, f->fmt.pix.width, f->fmt.pix.height);
+		pix->width = ALIGN(pix->width, chan_ctx->xm2msc_dev->ppc);
+	}
+
 	/*
 	 * V4L2 specification suggests the driver corrects the
 	 * format struct if any of the dimensions is unsupported
