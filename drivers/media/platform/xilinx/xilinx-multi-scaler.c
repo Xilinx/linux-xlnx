@@ -108,6 +108,8 @@
 	min(ffz(x->out_streamed_chan),	\
 	    ffz(x->cap_streamed_chan)); })
 
+#define XM2MSC_ALIGN_MUL	8
+
 /* Xilinx Video Specific Color/Pixel Formats */
 enum xm2msc_pix_fmt {
 	XILINX_M2MSC_FMT_RGBX8		= 10,
@@ -307,6 +309,7 @@ struct xm2msc_chan_ctx {
  * @taps: number of taps set in HW
  * @supported_fmt: bitmap for all supported fmts by HW
  * @dma_addr_size: Size of dma address pointer in IP (either 32 or 64)
+ * @ppc: Pixels per clock set in IP (1, 2 or 4)
  * @rst_gpio: reset gpio handler
  * @opened_chan: bitmap for all open channel
  * @out_streamed_chan: bitmap for all out streamed channel
@@ -333,6 +336,7 @@ struct xm2m_msc_dev {
 	u32 taps;
 	u32 supported_fmt;
 	u32 dma_addr_size;
+	u8 ppc;
 	struct gpio_desc *rst_gpio;
 
 	u32 opened_chan;
@@ -1284,9 +1288,10 @@ static int xm2msc_querybuf(struct file *file, void *fh,
 }
 
 static unsigned int
-xm2msc_cal_stride(unsigned int width, enum xm2msc_pix_fmt xfmt)
+xm2msc_cal_stride(unsigned int width, enum xm2msc_pix_fmt xfmt, u8 ppc)
 {
 	unsigned int stride;
+	u32 align;
 
 	/* Stride in Bytes = (Width × Bytes per Pixel); */
 	/* TODO: The Width value must be a multiple of Pixels per Clock */
@@ -1321,6 +1326,10 @@ xm2msc_cal_stride(unsigned int width, enum xm2msc_pix_fmt xfmt)
 	default:
 		stride = 0;
 	}
+
+	/* The data size is 64*pixels per clock bits */
+	align = ppc * XM2MSC_ALIGN_MUL;
+	stride = ALIGN(stride, align);
 
 	return stride;
 }
@@ -1395,7 +1404,8 @@ vidioc_s_fmt(struct xm2msc_chan_ctx *chan_ctx, struct v4l2_format *f)
 	q_data->width = pix->width;
 	q_data->height = pix->height;
 	q_data->stride = xm2msc_cal_stride(pix->width,
-					   q_data->fmt->xm2msc_fmt);
+					   q_data->fmt->xm2msc_fmt,
+					   chan_ctx->xm2msc_dev->ppc);
 	q_data->colorspace = pix->colorspace;
 	q_data->field = pix->field;
 	q_data->nplanes = q_data->fmt->num_planes;
@@ -1974,6 +1984,13 @@ static int xm2msc_parse_of(struct platform_device *pdev,
 	if (ret || (xm2msc->dma_addr_size != 32 &&
 		    xm2msc->dma_addr_size != 64)) {
 		dev_err(dev, "missing/invalid addr width dts prop\n");
+		return -EINVAL;
+	}
+
+	ret = of_property_read_u8(node, "xlnx,pixels-per-clock",
+				  &xm2msc->ppc);
+	if (ret || (xm2msc->ppc != 1 && xm2msc->ppc != 2 && xm2msc->ppc != 4)) {
+		dev_err(dev, "missing or invalid pixels per clock dts prop\n");
 		return -EINVAL;
 	}
 
