@@ -85,7 +85,9 @@ enum pm_api_id {
 	PM_MMIO_WRITE,
 	PM_MMIO_READ,
 	PM_PM_INIT_FINALIZE,
-	PM_GET_CHIPID = 24,
+	PM_FPGA_LOAD,
+	PM_FPGA_GET_STATUS,
+	PM_GET_CHIPID,
 	/* ID 25 is been used by U-boot to process secure boot images */
 	/* Secure library generic API functions */
 	PM_SECURE_SHA = 26,
@@ -491,6 +493,8 @@ struct zynqmp_eemi_ops {
 			       const u32 capabilities,
 			       const u32 qos,
 			       const enum zynqmp_pm_request_ack ack);
+	int (*fpga_load)(const u64 address, const u32 size, const u32 flags);
+	int (*fpga_get_status)(u32 *value);
 	int (*sha_hash)(const u64 address, const u32 size, const u32 flags);
 	int (*rsa)(const u64 address, const u32 size, const u32 flags);
 	int (*request_suspend)(const u32 node,
