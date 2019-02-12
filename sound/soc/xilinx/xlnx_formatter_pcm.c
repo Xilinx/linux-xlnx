@@ -58,7 +58,9 @@
 #define CFG_S2MM_XFER_SHIFT	29
 #define CFG_S2MM_PKG_MASK	BIT(28)
 
+#define AUD_CTRL_DATA_WIDTH_MASK	GENMASK(18, 16)
 #define AUD_CTRL_DATA_WIDTH_SHIFT	16
+#define AUD_CTRL_ACTIVE_CH_MASK		GENMASK(22, 19)
 #define AUD_CTRL_ACTIVE_CH_SHIFT	19
 #define PERIOD_CFG_PERIODS_SHIFT	16
 
@@ -562,6 +564,7 @@ static int xlnx_formatter_pcm_hw_params(struct snd_pcm_substream *substream,
 	writel(high, stream_data->mmio + XLNX_AUD_BUFF_ADDR_MSB);
 
 	val = readl(stream_data->mmio + XLNX_AUD_CTRL);
+	val &= ~AUD_CTRL_DATA_WIDTH_MASK;
 	bits_per_sample = params_width(params);
 	switch (bits_per_sample) {
 	case 8:
@@ -581,6 +584,7 @@ static int xlnx_formatter_pcm_hw_params(struct snd_pcm_substream *substream,
 		break;
 	}
 
+	val &= ~AUD_CTRL_ACTIVE_CH_MASK;
 	val |= active_ch << AUD_CTRL_ACTIVE_CH_SHIFT;
 	writel(val, stream_data->mmio + XLNX_AUD_CTRL);
 
