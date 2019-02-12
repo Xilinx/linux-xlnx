@@ -242,7 +242,7 @@ static int zynqmp_r5_mem_release(struct rproc *rproc,
 			ret = eemi->release_node(priv->pnode_id[i]);
 			if (ret < 0) {
 				dev_err(dev,
-					"failed to request power node: %u\n",
+					"failed to release power node: %u\n",
 					priv->pnode_id[i]);
 				return ret;
 			}
