@@ -108,4 +108,10 @@ struct resource_table *rproc_find_loaded_rsc_table(struct rproc *rproc,
 	return NULL;
 }
 
+static inline
+bool rproc_allow_sysfs_kick(struct rproc *rproc)
+{
+	return (rproc->sysfs_kick) ? true : false;
+}
+
 #endif /* REMOTEPROC_INTERNAL_H */
