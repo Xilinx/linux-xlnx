@@ -16312,6 +16312,13 @@ S:	Maintained
 F:	drivers/fpga/zynqmp-fpga.c
 F:	Documentation/devicetree/bindings/fpga/xilinx-zynqmp-fpga-mgr.txt
 
+ZYNQMP IPI MAILBOX CONTROLLER DRIVER
+M:	Wendy Liang <wendy.liang@xilinx.com>
+S:	Maintained
+F:	drivers/mailbox/zynqmp-ipi-mailbox.c
+F:	include/linux/mailbox/zynqmp-ipi-message.h
+F:	Documentation/devicetree/bindings/mailbox/xlnx,zynqmp-ipi-mailbox.txt
+
 XILINX ZYNQMP PHY DRIVER
 M:	Anurag Kumar Vulisha <anurag.kumar.vulisha@xilinx.com>
 S:	Maintained
