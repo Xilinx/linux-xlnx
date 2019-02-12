@@ -130,4 +130,5 @@ void rproc_ack_remote_kick(struct rproc *rproc)
 		rproc->ops->ack_remote_kick(rproc);
 }
 
+int rproc_create_kick_sysfs(struct rproc *rproc);
 #endif /* REMOTEPROC_INTERNAL_H */
