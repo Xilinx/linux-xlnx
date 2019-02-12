@@ -33,6 +33,7 @@
 #include <linux/platform_device.h>
 #include <linux/remoteproc.h>
 #include <linux/slab.h>
+#include <linux/sysfs.h>
 
 #include "remoteproc_internal.h"
 
@@ -45,6 +46,7 @@
 #define PM_PROC_STATE_ACTIVE 1U
 
 static bool autoboot __read_mostly;
+static bool allow_sysfs_kick __read_mostly;
 
 struct zynqmp_rpu_domain_pdata;
 
@@ -380,6 +382,26 @@ static void zynqmp_r5_rproc_kick(struct rproc *rproc, int vqid)
 		dev_warn(dev, "Failed to kick remote.\n");
 }
 
+static bool zynqmp_r5_rproc_peek_remote_kick(struct rproc *rproc)
+{
+	struct device *dev = rproc->dev.parent;
+	struct zynqmp_r5_pdata *local = rproc->priv;
+
+	dev_dbg(dev, "Peek if remote has kicked\n");
+
+	return mbox_client_peek_data(local->rx_chan);
+}
+
+static void zynqmp_r5_rproc_ack_remote_kick(struct rproc *rproc)
+{
+	struct device *dev = rproc->dev.parent;
+	struct zynqmp_r5_pdata *local = rproc->priv;
+
+	dev_dbg(dev, "Ack remote\n");
+
+	(void)mbox_send_message(local->rx_chan, NULL);
+}
+
 static struct rproc_ops zynqmp_r5_rproc_ops = {
 	.start		= zynqmp_r5_rproc_start,
 	.stop		= zynqmp_r5_rproc_stop,
@@ -390,6 +412,8 @@ static struct rproc_ops zynqmp_r5_rproc_ops = {
 	.get_boot_addr	= rproc_elf_get_boot_addr,
 	.da_to_va	= zynqmp_r5_da_to_va,
 	.kick		= zynqmp_r5_rproc_kick,
+	.peek_remote_kick	= zynqmp_r5_rproc_peek_remote_kick,
+	.ack_remote_kick	= zynqmp_r5_rproc_ack_remote_kick,
 };
 
 /* zynqmp_r5_get_reserved_mems() - get reserved memories
@@ -540,6 +564,10 @@ static void handle_event_notified(struct work_struct *work)
 	local = container_of(work, struct zynqmp_r5_pdata, workqueue);
 
 	rproc = local->rproc;
+	if (rproc->sysfs_kick) {
+		sysfs_notify(&rproc->dev.kobj, NULL, "remote_kick");
+		return;
+	}
 	/*
 	 * We only use IPI for interrupt. The firmware side may or may
 	 * not write the notifyid when it trigger IPI.
@@ -707,6 +735,12 @@ static int zynqmp_r5_probe(struct zynqmp_r5_pdata *pdata,
 		goto error;
 	}
 
+	if (allow_sysfs_kick) {
+		dev_info(dev, "Trying to create remote sysfs entry.\n");
+		rproc->sysfs_kick = 1;
+		(void)rproc_create_kick_sysfs(rproc);
+	}
+
 	return 0;
 error:
 	if (pdata->rproc)
@@ -813,6 +847,9 @@ module_platform_driver(zynqmp_r5_remoteproc_driver);
 module_param_named(autoboot,  autoboot, bool, 0444);
 MODULE_PARM_DESC(autoboot,
 		 "enable | disable autoboot. (default: true)");
+module_param_named(allow_sysfs_kick, allow_sysfs_kick, bool, 0444);
+MODULE_PARM_DESC(allow_sysfs_kick,
+		 "enable | disable allow kick from sysfs. (default: false)");
 
 MODULE_AUTHOR("Jason Wu <j.wu@xilinx.com>");
 MODULE_LICENSE("GPL v2");
