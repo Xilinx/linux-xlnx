@@ -16318,6 +16318,12 @@ S:	Maintained
 F:	drivers/phy/phy-zynqmp.c
 F:	Documentation/devicetree/bindings/phy/phy-zynqmp.txt
 
+XILINX ZYNQMP R5 REMOTE PROCESSOR (REMOTEPROC) SUBSYSTEM
+M:	Wendy Liang <wendy.liang@xilinx.com>
+S:	Maintained
+F:	Documentation/devicetree/bindings/remoteproc/xilinx,zynqmp-r5-remoteproc.txt
+F:	drivers/remoteproc/zynqmp_r5_remoteproc.c
+
 XILINX ZYNQMP RSA DRIVER
 M:	Nava Kishore Manne <nava.manne@xilinx.com>
 M:	Kalyani Akula <kalyani.akula@xilinx.com>
