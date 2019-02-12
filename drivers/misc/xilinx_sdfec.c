@@ -730,6 +730,7 @@ static int xsdfec_add_ldpc(struct xsdfec_dev *xsdfec, void __user *arg)
 		dev_err(xsdfec->dev,
 			"%s: Unable to write LDPC to SDFEC%d check DT",
 			__func__, xsdfec->config.fec_id);
+		err = -EIO;
 		goto err_out;
 	}
 
@@ -738,14 +739,16 @@ static int xsdfec_add_ldpc(struct xsdfec_dev *xsdfec, void __user *arg)
 		dev_err(xsdfec->dev,
 			"%s attempting to write LDPC code while started for SDFEC%d",
 			__func__, xsdfec->config.fec_id);
-		return -EIO;
+		err = -EIO;
+		goto err_out;
 	}
 
 	if (xsdfec->config.code_wr_protect) {
 		dev_err(xsdfec->dev,
 			"%s writing LDPC code while Code Write Protection enabled for SDFEC%d",
 			__func__, xsdfec->config.fec_id);
-		return -EIO;
+		err = -EIO;
+		goto err_out;
 	}
 
 	/* Write Reg 0 */
@@ -786,12 +789,6 @@ static int xsdfec_add_ldpc(struct xsdfec_dev *xsdfec, void __user *arg)
 
 	err = xsdfec_qc_table_write(xsdfec, 4 * ldpc->qc_off, ldpc->qc_table,
 				    ldpc->nqc);
-	if (err < 0)
-		goto err_out;
-
-	kfree(ldpc);
-	return 0;
-	/* Error Path */
 err_out:
 	kfree(ldpc);
 	return err;
