@@ -454,6 +454,7 @@ struct rproc_dump_segment {
  * @has_iommu: flag to indicate if remote processor is behind an MMU
  * @dump_segments: list of segments in the firmware
  * @nb_vdev: number of vdev currently handled by rproc
+ * @sysfs_kick: allow kick remoteproc from sysfs
  */
 struct rproc {
 	struct list_head node;
@@ -487,6 +488,7 @@ struct rproc {
 	bool auto_boot;
 	struct list_head dump_segments;
 	int nb_vdev;
+	int sysfs_kick;
 };
 
 /**
