@@ -124,15 +124,20 @@ static dev_t xsdfec_devt;
 /* REG0 Register */
 #define XSDFEC_LDPC_CODE_REG0_ADDR_BASE (0x2000)
 #define XSDFEC_LDPC_CODE_REG0_ADDR_HIGH (0x27F0)
-#define XSDFEC_REG0_N_MASK (0xFFFF)
+#define XSDFEC_REG0_N_MIN (4)
+#define XSDFEC_REG0_N_MAX (32768)
+#define XSDFEC_REG0_N_MUL_P (256)
 #define XSDFEC_REG0_N_LSB (0)
-#define XSDFEC_REG0_K_MASK (0x7FFF0000)
+#define XSDFEC_REG0_K_MIN (2)
+#define XSDFEC_REG0_K_MAX (32766)
+#define XSDFEC_REG0_K_MUL_P (256)
 #define XSDFEC_REG0_K_LSB (16)
 
 /* REG1 Register */
 #define XSDFEC_LDPC_CODE_REG1_ADDR_BASE (0x2004)
 #define XSDFEC_LDPC_CODE_REG1_ADDR_HIGH (0x27f4)
-#define XSDFEC_REG1_PSIZE_MASK (0x1FF)
+#define XSDFEC_REG1_PSIZE_MIN (2)
+#define XSDFEC_REG1_PSIZE_MAX (512)
 #define XSDFEC_REG1_NO_PACKING_MASK (0x400)
 #define XSDFEC_REG1_NO_PACKING_LSB (10)
 #define XSDFEC_REG1_NM_MASK (0xFF800)
@@ -142,8 +147,8 @@ static dev_t xsdfec_devt;
 /* REG2 Register */
 #define XSDFEC_LDPC_CODE_REG2_ADDR_BASE (0x2008)
 #define XSDFEC_LDPC_CODE_REG2_ADDR_HIGH (0x27f8)
-#define XSDFEC_REG2_NLAYERS_MASK (0x1FF)
-#define XSDFEC_REG2_NLAYERS_LSB (0)
+#define XSDFEC_REG2_NLAYERS_MIN (1)
+#define XSDFEC_REG2_NLAYERS_MAX (256)
 #define XSDFEC_REG2_NNMQC_MASK (0xFFE00)
 #define XSDFEC_REG2_NMQC_LSB (9)
 #define XSDFEC_REG2_NORM_TYPE_MASK (0x100000)
@@ -513,21 +518,24 @@ static int xsdfec_get_turbo(struct xsdfec_dev *xsdfec, void __user *arg)
 	return err;
 }
 
-static int xsdfec_reg0_write(struct xsdfec_dev *xsdfec, u32 n, u32 k,
+static int xsdfec_reg0_write(struct xsdfec_dev *xsdfec, u32 n, u32 k, u32 psize,
 			     u32 offset)
 {
 	u32 wdata;
 
-	/* Use only lower 16 bits */
-	if (n & ~XSDFEC_REG0_N_MASK)
-		dev_err(xsdfec->dev, "N value is beyond 16 bits");
-	n &= XSDFEC_REG0_N_MASK;
+	if (n < XSDFEC_REG0_N_MIN || n > XSDFEC_REG0_N_MAX ||
+	    (n > XSDFEC_REG0_N_MUL_P * psize) || n <= k || ((n % psize) != 0)) {
+		dev_err(xsdfec->dev, "N value is not in range");
+		return -EINVAL;
+	}
 	n <<= XSDFEC_REG0_N_LSB;
 
-	if (k & XSDFEC_REG0_K_MASK)
-		dev_err(xsdfec->dev, "K value is beyond 16 bits");
-
-	k = ((k << XSDFEC_REG0_K_LSB) & XSDFEC_REG0_K_MASK);
+	if (k < XSDFEC_REG0_K_MIN || k > XSDFEC_REG0_K_MAX ||
+	    (k > XSDFEC_REG0_K_MUL_P * psize) || ((k % psize) != 0)) {
+		dev_err(xsdfec->dev, "K value is not in range");
+		return -EINVAL;
+	}
+	k = k << XSDFEC_REG0_K_LSB;
 	wdata = k | n;
 
 	if (XSDFEC_LDPC_CODE_REG0_ADDR_BASE + (offset * XSDFEC_LDPC_REG_JUMP) >
@@ -549,9 +557,10 @@ static int xsdfec_reg1_write(struct xsdfec_dev *xsdfec, u32 psize,
 {
 	u32 wdata;
 
-	if (psize & ~XSDFEC_REG1_PSIZE_MASK)
-		dev_err(xsdfec->dev, "Psize is beyond 10 bits");
-	psize &= XSDFEC_REG1_PSIZE_MASK;
+	if (psize < XSDFEC_REG1_PSIZE_MIN || psize > XSDFEC_REG1_PSIZE_MAX) {
+		dev_err(xsdfec->dev, "Psize is not in range");
+		return -EINVAL;
+	}
 
 	if (no_packing != 0 && no_packing != 1)
 		dev_err(xsdfec->dev, "No-packing bit register invalid");
@@ -583,9 +592,11 @@ static int xsdfec_reg2_write(struct xsdfec_dev *xsdfec, u32 nlayers, u32 nmqc,
 {
 	u32 wdata;
 
-	if (nlayers & ~(XSDFEC_REG2_NLAYERS_MASK >> XSDFEC_REG2_NLAYERS_LSB))
-		dev_err(xsdfec->dev, "Nlayers exceeds 9 bits");
-	nlayers &= XSDFEC_REG2_NLAYERS_MASK;
+	if (nlayers < XSDFEC_REG2_NLAYERS_MIN ||
+	    nlayers > XSDFEC_REG2_NLAYERS_MAX) {
+		dev_err(xsdfec->dev, "Nlayers is not in range");
+		return -EINVAL;
+	}
 
 	if (nmqc & ~(XSDFEC_REG2_NNMQC_MASK >> XSDFEC_REG2_NMQC_LSB))
 		dev_err(xsdfec->dev, "NMQC exceeds 11 bits");
@@ -752,7 +763,8 @@ static int xsdfec_add_ldpc(struct xsdfec_dev *xsdfec, void __user *arg)
 	}
 
 	/* Write Reg 0 */
-	err = xsdfec_reg0_write(xsdfec, ldpc->n, ldpc->k, ldpc->code_id);
+	err = xsdfec_reg0_write(xsdfec, ldpc->n, ldpc->k, ldpc->psize,
+				ldpc->code_id);
 	if (err)
 		goto err_out;
 
