@@ -652,7 +652,7 @@ static int xsdfec_reg3_write(struct xsdfec_dev *xsdfec, u8 sc_off, u8 la_off,
 static int xsdfec_sc_table_write(struct xsdfec_dev *xsdfec, u32 offset,
 				 u32 *sc_ptr, u32 len)
 {
-	int reg;
+	u32 reg;
 
 	/*
 	 * Writes that go beyond the length of
@@ -675,7 +675,7 @@ static int xsdfec_sc_table_write(struct xsdfec_dev *xsdfec, u32 offset,
 static int xsdfec_la_table_write(struct xsdfec_dev *xsdfec, u32 offset,
 				 u32 *la_ptr, u32 len)
 {
-	int reg;
+	u32 reg;
 
 	if (XSDFEC_REG_WIDTH_JUMP * (offset + len) > XSDFEC_LA_TABLE_DEPTH) {
 		dev_err(xsdfec->dev, "Write exceeds LA table length");
@@ -694,7 +694,7 @@ static int xsdfec_la_table_write(struct xsdfec_dev *xsdfec, u32 offset,
 static int xsdfec_qc_table_write(struct xsdfec_dev *xsdfec, u32 offset,
 				 u32 *qc_ptr, u32 len)
 {
-	int reg;
+	u32 reg;
 
 	if (XSDFEC_REG_WIDTH_JUMP * (offset + len) > XSDFEC_QC_TABLE_DEPTH) {
 		dev_err(xsdfec->dev, "Write exceeds QC table length");
