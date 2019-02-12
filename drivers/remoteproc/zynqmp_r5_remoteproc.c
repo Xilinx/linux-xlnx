@@ -770,6 +770,22 @@ static int zynqmp_r5_remoteproc_remove(struct platform_device *pdev)
 
 	for (i = 0; i < MAX_RPROCS; i++) {
 		struct zynqmp_r5_pdata *rpu = &local->rpus[i];
+		struct rproc *rproc;
+
+		rproc = rpu->rproc;
+		if (rproc) {
+			rproc_del(rproc);
+			rproc_free(rproc);
+			rpu->rproc = NULL;
+		}
+		if (rpu->tx_chan) {
+			mbox_free_channel(rpu->tx_chan);
+			rpu->tx_chan = NULL;
+		}
+		if (rpu->rx_chan) {
+			mbox_free_channel(rpu->rx_chan);
+			rpu->rx_chan = NULL;
+		}
 
 		device_unregister(&rpu->dev);
 	}
