@@ -832,7 +832,6 @@
 
 &serdes {
 	status = "okay";
-	no-1-8-v;
 };
 
 &uart0 {
