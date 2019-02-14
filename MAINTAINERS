@@ -16165,6 +16165,14 @@ S:	Maintained
 F:	drivers/net/ethernet/xilinx/xilinx_emaclite.c
 F:	Documentation/devicetree/bindings/net/xilinx_emaclite.txt
 
+XILINX GMII2RGMII DRIVER
+M:	Harini Katakam <harini.katakam@xilinx.com>
+R:	Radhey Shyam Pandey <radhey.shyam.pandey@xilinx.com>
+R:	Appana Durga Kedareswara rao <appana.durga.rao@xilinx.com>
+S:	Maintained
+F:	drivers/net/phy/xilinx_gmii2rgmii.c
+W:	https://xilinx-wiki.atlassian.net/wiki/spaces/A/pages/18842246/Xilinx+GMII2RGMII+convertor
+
 XILINX I2S AUDIO (ASoC) DRIVER
 M:	Maruthi Srinivas Bayyavarapu <maruthi.srinivas.bayyavarapu@xilinx.com>
 R:	Vishal Sagar <vishal.sagar@xilinx.com>
