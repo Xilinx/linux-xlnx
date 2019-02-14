@@ -984,14 +984,6 @@ int dwc3_core_init(struct dwc3 *dwc)
 		dwc->ulpi_ready = true;
 	}
 
-	ret = dwc3_config_soc_bus(dwc);
-	if (ret)
-		goto err0;
-
-	ret = dwc3_phy_setup(dwc);
-	if (ret)
-		goto err0a;
-
 	if (!dwc->phys_ready) {
 		ret = dwc3_core_get_phy(dwc);
 		if (ret)
@@ -1025,6 +1017,10 @@ int dwc3_core_init(struct dwc3 *dwc)
 	dwc3_frame_length_adjustment(dwc);
 
 	dwc3_set_incr_burst_type(dwc);
+
+	ret = dwc3_config_soc_bus(dwc);
+	if (ret)
+		goto err1;
 
 	usb_phy_set_suspend(dwc->usb2_phy, 0);
 	usb_phy_set_suspend(dwc->usb3_phy, 0);
