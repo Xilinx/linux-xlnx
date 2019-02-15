@@ -2008,6 +2008,8 @@ static int axienet_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 	case SIOCGMIIPHY:
 	case SIOCGMIIREG:
 	case SIOCSMIIREG:
+		if (!dev->phydev)
+			return -EOPNOTSUPP;
 		return phy_mii_ioctl(dev->phydev, rq, cmd);
 #if defined (CONFIG_XILINX_AXI_EMAC_HWTSTAMP) || defined (CONFIG_XILINX_TSN_PTP)
 	case SIOCSHWTSTAMP:
