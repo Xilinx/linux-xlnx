@@ -16148,6 +16148,12 @@ S:	Maintained
 F:	drivers/usb/gadget/udc/udc-xilinx.c
 F:	Documentation/devicetree/bindings/usb/udc-xilinx.txt
 
+XILINX AXI PERFORMANCE MONITOR DRIVER
+M:	Shubhrajyoti Datta <shubhrajyoti.datta@xilinx.com>
+S:	Maintained
+F:	drivers/uio/uio_xilinx_apm.c
+F:	Documentation/devicetree/bindings/uio/xilinx_apm.txt
+
 XILINX DMA FRAMEBUFFER READ/WRITE DRIVER
 M:	Vishal Sagar <vishal.sagar@xilinx.com>
 R:	Hyun Kwon <hyun.kwon@xilinx.com>
