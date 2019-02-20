@@ -34,6 +34,7 @@
 #define PM_SIP_SVC			0xC2000000
 #define PM_SET_SUSPEND_MODE		0xa02
 #define PM_GET_TRUSTZONE_VERSION	0xa03
+#define GET_CALLBACK_DATA		0xa01
 
 /* Number of 32bits values in payload */
 #define PAYLOAD_ARG_CNT	5U
@@ -283,9 +284,9 @@ enum zynqmp_pm_abort_reason {
 };
 
 enum zynqmp_pm_suspend_reason {
-	ZYNQMP_PM_SUSPEND_REASON_POWER_UNIT_REQUEST = 201,
-	ZYNQMP_PM_SUSPEND_REASON_ALERT,
-	ZYNQMP_PM_SUSPEND_REASON_SYSTEM_SHUTDOWN,
+	SUSPEND_POWER_REQUEST = 201,
+	SUSPEND_ALERT,
+	SUSPEND_SYSTEM_SHUTDOWN,
 };
 
 enum zynqmp_pm_ram_state {
