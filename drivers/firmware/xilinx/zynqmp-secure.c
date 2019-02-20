@@ -21,11 +21,12 @@ static u8 *keyptr;
 static size_t dma_size;
 static char *kbuf;
 
+static const struct zynqmp_eemi_ops *eemi_ops;
+
 static ssize_t secure_load_store(struct device *dev,
 				 struct device_attribute *attr,
 				 const char *buf, size_t count)
 {
-	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 	const struct firmware *fw;
 	char image_name[NAME_MAX];
 	u64 dst, ret;
@@ -128,6 +129,10 @@ static int securefw_probe(struct platform_device *pdev)
 {
 	int ret;
 	struct platform_device *securefw_pdev;
+
+	eemi_ops = zynqmp_pm_get_eemi_ops();
+	if (IS_ERR(eemi_ops))
+		return PTR_ERR(eemi_ops);
 
 	securefw_pdev = pdev;
 	arch_setup_dma_ops(&securefw_pdev->dev, 0, DMA_BIT_MASK(32),

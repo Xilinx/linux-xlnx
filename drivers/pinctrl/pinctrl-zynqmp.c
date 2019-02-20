@@ -188,7 +188,7 @@ static int zynqmp_pinmux_request_pin(struct pinctrl_dev *pctldev,
 {
 	int ret;
 
-	if (!eemi_ops || !eemi_ops->pinctrl_request)
+	if (!eemi_ops->pinctrl_request)
 		return -ENOTSUPP;
 
 	ret = eemi_ops->pinctrl_request(pin);
@@ -275,7 +275,7 @@ static int zynqmp_pinmux_set_mux(struct pinctrl_dev *pctldev,
 	const struct zynqmp_pctrl_group *pgrp = &pctrl->groups[group];
 	int ret, i;
 
-	if (!eemi_ops || !eemi_ops->pinctrl_set_function)
+	if (!eemi_ops->pinctrl_set_function)
 		return -ENOTSUPP;
 
 	for (i = 0; i < pgrp->npins; i++) {
@@ -306,7 +306,7 @@ static int zynqmp_pinmux_release_pin(struct pinctrl_dev *pctldev,
 {
 	int ret;
 
-	if (!eemi_ops || !eemi_ops->pinctrl_release)
+	if (!eemi_ops->pinctrl_release)
 		return -ENOTSUPP;
 
 	ret = eemi_ops->pinctrl_release(pin);
@@ -346,7 +346,7 @@ static int zynqmp_pinconf_cfg_get(struct pinctrl_dev *pctldev,
 	int ret;
 	unsigned int arg = 0, param = pinconf_to_config_param(*config);
 
-	if (!eemi_ops || !eemi_ops->pinctrl_get_config)
+	if (!eemi_ops->pinctrl_get_config)
 		return -ENOTSUPP;
 
 	if (pin >= zynqmp_desc.npins)
@@ -443,7 +443,7 @@ static int zynqmp_pinconf_cfg_set(struct pinctrl_dev *pctldev,
 {
 	int i, ret;
 
-	if (!eemi_ops || !eemi_ops->pinctrl_set_config)
+	if (!eemi_ops->pinctrl_set_config)
 		return -ENOTSUPP;
 
 	if (pin >= zynqmp_desc.npins)
@@ -1005,7 +1005,10 @@ static int zynqmp_pinctrl_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	eemi_ops = zynqmp_pm_get_eemi_ops();
-	if (!eemi_ops || !eemi_ops->query_data) {
+	if (IS_ERR(eemi_ops))
+		return PTR_ERR(eemi_ops);
+
+	if (!eemi_ops->query_data) {
 		dev_err(&pdev->dev, "%s: Firmware interface not available\n",
 			__func__);
 		ret = -ENOTSUPP;

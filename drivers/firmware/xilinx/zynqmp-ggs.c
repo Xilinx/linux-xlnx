@@ -22,7 +22,7 @@ static ssize_t read_register(char *buf, u32 ioctl_id, u32 reg)
 	u32 ret_payload[PAYLOAD_ARG_CNT];
 	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 
-	if (!eemi_ops || !eemi_ops->ioctl)
+	if (!eemi_ops->ioctl)
 		return -EFAULT;
 
 	ret = eemi_ops->ioctl(0, ioctl_id, reg, 0, ret_payload);
@@ -41,7 +41,7 @@ static ssize_t write_register(const char *buf, size_t count, u32 read_ioctl,
 	u32 ret_payload[PAYLOAD_ARG_CNT];
 	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 
-	if (!eemi_ops || !eemi_ops->ioctl)
+	if (!eemi_ops->ioctl)
 		return -EFAULT;
 
 	kern_buff = kzalloc(count, GFP_KERNEL);

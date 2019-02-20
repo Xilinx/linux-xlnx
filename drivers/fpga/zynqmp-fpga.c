@@ -38,6 +38,8 @@ MODULE_PARM_DESC(readback_type,
 		 "readback_type 0-configuration register read "
 		 "1- configuration data read (default: 0)");
 
+static const struct zynqmp_eemi_ops *eemi_ops;
+
 /**
  * struct zynqmp_configreg - Configuration register offsets
  * @reg:	Name of the configuration register.
@@ -112,9 +114,8 @@ static int zynqmp_fpga_ops_write(struct fpga_manager *mgr,
 	size_t dma_size = size;
 	dma_addr_t dma_addr;
 	int ret;
-	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 
-	if (!eemi_ops || !eemi_ops->fpga_load)
+	if (!eemi_ops->fpga_load)
 		return -ENXIO;
 
 	priv = mgr->priv;
@@ -176,9 +177,8 @@ static int zynqmp_fpga_ops_write_complete(struct fpga_manager *mgr,
 static enum fpga_mgr_states zynqmp_fpga_ops_state(struct fpga_manager *mgr)
 {
 	u32 status;
-	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 
-	if (!eemi_ops || !eemi_ops->fpga_get_status)
+	if (!eemi_ops->fpga_get_status)
 		return FPGA_MGR_STATE_UNKNOWN;
 
 	eemi_ops->fpga_get_status(&status);
@@ -191,7 +191,6 @@ static enum fpga_mgr_states zynqmp_fpga_ops_state(struct fpga_manager *mgr)
 static int zynqmp_fpga_read_cfgreg(struct fpga_manager *mgr,
 				   struct seq_file *s)
 {
-	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 	struct zynqmp_fpga_priv *priv = mgr->priv;
 	int ret, val;
 	unsigned int *buf;
@@ -232,7 +231,6 @@ disable_clk:
 static int zynqmp_fpga_read_cfgdata(struct fpga_manager *mgr,
 				    struct seq_file *s)
 {
-	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 	struct zynqmp_fpga_priv *priv;
 	int ret, data_offset;
 	unsigned int *buf;
@@ -290,11 +288,10 @@ prepare_clk:
 
 static int zynqmp_fpga_ops_read(struct fpga_manager *mgr, struct seq_file *s)
 {
-	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 	struct zynqmp_fpga_priv *priv = mgr->priv;
 	int ret;
 
-	if (!eemi_ops || !eemi_ops->fpga_read)
+	if (!eemi_ops->fpga_read)
 		return -ENXIO;
 
 	if (!mutex_trylock(&priv->lock))
@@ -323,6 +320,10 @@ static int zynqmp_fpga_probe(struct platform_device *pdev)
 	struct zynqmp_fpga_priv *priv;
 	int err, ret;
 	struct fpga_manager *mgr;
+
+	eemi_ops = zynqmp_pm_get_eemi_ops();
+	if (IS_ERR(eemi_ops))
+		return PTR_ERR(eemi_ops);
 
 	priv = devm_kzalloc(dev, sizeof(*priv), GFP_KERNEL);
 	if (!priv)

@@ -31,7 +31,10 @@ static int afi_fpga_probe(struct platform_device *pdev)
 	u32 reg, val;
 	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 
-	if (!eemi_ops || !eemi_ops->ioctl)
+	if (IS_ERR(eemi_ops))
+		return PTR_ERR(eemi_ops);
+
+	if (!eemi_ops->ioctl)
 		return -ENOTSUPP;
 
 	afi_fpga = devm_kzalloc(&pdev->dev, sizeof(*afi_fpga), GFP_KERNEL);

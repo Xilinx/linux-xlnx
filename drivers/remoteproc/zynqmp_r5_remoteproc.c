@@ -50,6 +50,8 @@ static bool allow_sysfs_kick __read_mostly;
 
 struct zynqmp_rpu_domain_pdata;
 
+static const struct zynqmp_eemi_ops *eemi_ops;
+
 /**
  * struct zynqmp_r5_mem - zynqmp rpu memory data
  * @pnode_id: TCM power domain ids
@@ -113,14 +115,13 @@ static int r5_set_mode(struct zynqmp_r5_pdata *pdata)
 	u32 val[PAYLOAD_ARG_CNT] = {0}, expect;
 	struct zynqmp_rpu_domain_pdata *parent;
 	struct device *dev = &pdata->dev;
-	const struct zynqmp_eemi_ops *eemi = zynqmp_pm_get_eemi_ops();
 	int ret;
 
 	if (pdata->is_r5_mode_set)
 		return 0;
 	parent = pdata->parent;
 	expect = (u32)parent->rpu_mode;
-	ret = eemi->ioctl(pdata->pnode_id, IOCTL_GET_RPU_OPER_MODE,
+	ret = eemi_ops->ioctl(pdata->pnode_id, IOCTL_GET_RPU_OPER_MODE,
 			  0, 0, val);
 	if (ret < 0) {
 		dev_err(dev, "failed to get RPU oper mode.\n");
@@ -129,7 +130,7 @@ static int r5_set_mode(struct zynqmp_r5_pdata *pdata)
 	if (val[0] == expect) {
 		dev_dbg(dev, "RPU mode matches: %x\n", val[0]);
 	} else {
-		ret = eemi->ioctl(pdata->pnode_id,
+		ret = eemi_ops->ioctl(pdata->pnode_id,
 				  IOCTL_SET_RPU_OPER_MODE,
 				  expect, 0, val);
 		if (ret < 0) {
@@ -142,7 +143,7 @@ static int r5_set_mode(struct zynqmp_r5_pdata *pdata)
 		expect = (u32)PM_RPU_TCM_COMB;
 	else
 		expect = (u32)PM_RPU_TCM_SPLIT;
-	ret = eemi->ioctl(pdata->pnode_id, IOCTL_TCM_COMB_CONFIG,
+	ret = eemi_ops->ioctl(pdata->pnode_id, IOCTL_TCM_COMB_CONFIG,
 			  expect, 0, val);
 	if (ret < 0) {
 		dev_err(dev, "failed to config TCM to %x.\n",
@@ -165,7 +166,6 @@ static bool r5_is_running(struct zynqmp_r5_pdata *pdata)
 {
 	u32 status, requirements, usage;
 	struct device *dev = &pdata->dev;
-	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 
 	if (eemi_ops->get_node_status(pdata->pnode_id,
 				      &status, &requirements, &usage)) {
@@ -194,12 +194,11 @@ static int r5_request_mem(struct rproc *rproc, struct zynqmp_r5_mem *mem)
 {
 	int i, ret;
 	struct device *dev = &rproc->dev;
-	const struct zynqmp_eemi_ops *eemi = zynqmp_pm_get_eemi_ops();
 	struct zynqmp_r5_pdata *local = rproc->priv;
 
 	for (i = 0; i < MAX_MEM_PNODES; i++) {
 		if (mem->pnode_id[i]) {
-			ret = eemi->request_node(mem->pnode_id[i],
+			ret = eemi_ops->request_node(mem->pnode_id[i],
 						 ZYNQMP_PM_CAPABILITY_ACCESS,
 						 0,
 						 ZYNQMP_PM_REQUEST_ACK_BLOCKING
@@ -232,7 +231,6 @@ static int zynqmp_r5_mem_release(struct rproc *rproc,
 	struct zynqmp_r5_mem *priv;
 	int i, ret;
 	struct device *dev = &rproc->dev;
-	const struct zynqmp_eemi_ops *eemi = zynqmp_pm_get_eemi_ops();
 
 	priv = mem->priv;
 	if (!priv)
@@ -241,7 +239,7 @@ static int zynqmp_r5_mem_release(struct rproc *rproc,
 		if (priv->pnode_id[i]) {
 			dev_dbg(dev, "%s, pnode %d\n",
 				__func__, priv->pnode_id[i]);
-			ret = eemi->release_node(priv->pnode_id[i]);
+			ret = eemi_ops->release_node(priv->pnode_id[i]);
 			if (ret < 0) {
 				dev_err(dev,
 					"failed to release power node: %u\n",
@@ -262,7 +260,6 @@ static int zynqmp_r5_rproc_start(struct rproc *rproc)
 {
 	struct device *dev = rproc->dev.parent;
 	struct zynqmp_r5_pdata *local = rproc->priv;
-	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 	enum rpu_boot_mem bootmem;
 	int ret;
 
@@ -291,7 +288,6 @@ static int zynqmp_r5_rproc_start(struct rproc *rproc)
 static int zynqmp_r5_rproc_stop(struct rproc *rproc)
 {
 	struct zynqmp_r5_pdata *local = rproc->priv;
-	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 	int ret;
 
 	ret = eemi_ops->force_powerdown(local->pnode_id,
@@ -758,6 +754,10 @@ static int zynqmp_r5_remoteproc_probe(struct platform_device *pdev)
 	struct zynqmp_rpu_domain_pdata *local;
 	struct device *dev = &pdev->dev;
 	struct device_node *nc;
+
+	eemi_ops = zynqmp_pm_get_eemi_ops();
+	if (IS_ERR(eemi_ops))
+		return PTR_ERR(eemi_ops);
 
 	local = devm_kzalloc(dev, sizeof(*local), GFP_KERNEL);
 	if (!local)

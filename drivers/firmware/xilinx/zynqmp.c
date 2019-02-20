@@ -26,6 +26,8 @@
 
 static unsigned long register_address;
 
+static const struct zynqmp_eemi_ops *eemi_ops_tbl;
+
 static const struct mfd_cell firmware_devs[] = {
 	{
 		.name = "zynqmp_power_controller",
@@ -1188,7 +1190,11 @@ static const struct zynqmp_eemi_ops eemi_ops = {
  */
 const struct zynqmp_eemi_ops *zynqmp_pm_get_eemi_ops(void)
 {
-	return &eemi_ops;
+	if (eemi_ops_tbl)
+		return eemi_ops_tbl;
+	else
+		return ERR_PTR(-EPROBE_DEFER);
+
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_get_eemi_ops);
 
@@ -1576,6 +1582,9 @@ static int zynqmp_firmware_probe(struct platform_device *pdev)
 
 	pr_info("%s Trustzone version v%d.%d\n", __func__,
 		pm_tz_version >> 16, pm_tz_version & 0xFFFF);
+
+	/* Assign eemi_ops_table */
+	eemi_ops_tbl = &eemi_ops;
 
 	ret = zynqmp_pm_sysfs_init();
 	if (ret) {

@@ -76,8 +76,8 @@ static int zynqmp_reset_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	eemi_ops = zynqmp_pm_get_eemi_ops();
-	if (!eemi_ops)
-		return -ENXIO;
+	if (IS_ERR(eemi_ops))
+		return PTR_ERR(eemi_ops);
 
 	platform_set_drvdata(pdev, zynqmp_reset);
 

@@ -312,6 +312,8 @@ struct xpsgtr_dev {
 	struct reset_control *gem3_rst;
 };
 
+static const struct zynqmp_eemi_ops *eemi_ops;
+
 int xpsgtr_override_deemph(struct phy *phy, u8 plvl, u8 vlvl)
 {
 	struct xpsgtr_phy *gtr_phy = phy_get_drvdata(phy);
@@ -906,9 +908,8 @@ static int xpsgtr_ulpi_reset(struct xpsgtr_phy *gtr_phy)
 	u32 node_id;
 	int ret = 0;
 	struct xpsgtr_dev *gtr_dev = gtr_phy->data;
-	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 
-	if (!eemi_ops || !eemi_ops->ioctl)
+	if (!eemi_ops->ioctl)
 		return -ENOTSUPP;
 
 	switch (gtr_phy->type) {
@@ -941,9 +942,8 @@ static int xpsgtr_set_sgmii_pcs(struct xpsgtr_phy *gtr_phy)
 	u32 node_id;
 	int ret = 0;
 	struct xpsgtr_dev *gtr_dev = gtr_phy->data;
-	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 
-	if (!eemi_ops || !eemi_ops->ioctl)
+	if (!eemi_ops->ioctl)
 		return -ENOTSUPP;
 
 	/* Set the PCS signal detect to 1 */
@@ -1439,6 +1439,10 @@ static int xpsgtr_probe(struct platform_device *pdev)
 
 	if (of_device_is_compatible(np, "xlnx,zynqmp-psgtr"))
 		dev_warn(&pdev->dev, "This binding is deprecated, please use new compatible binding\n");
+
+	eemi_ops = zynqmp_pm_get_eemi_ops();
+	if (IS_ERR(eemi_ops))
+		return PTR_ERR(eemi_ops);
 
 	gtr_dev = devm_kzalloc(&pdev->dev, sizeof(*gtr_dev), GFP_KERNEL);
 	if (!gtr_dev)

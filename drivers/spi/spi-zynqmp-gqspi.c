@@ -161,6 +161,7 @@
 
 #define SPI_AUTOSUSPEND_TIMEOUT		3000
 enum mode_type {GQSPI_MODE_IO, GQSPI_MODE_DMA};
+static const struct zynqmp_eemi_ops *eemi_ops;
 
 /**
  * struct zynqmp_qspi - Defines qspi driver instance
@@ -288,9 +289,8 @@ static void zynqmp_qspi_set_tapdelay(struct zynqmp_qspi *xqspi, u32 baudrateval)
 {
 	u32 lpbkdlyadj = 0, datadlyadj = 0, clk_rate;
 	u32 reqhz = 0;
-	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 
-	if (!eemi_ops || !eemi_ops->ioctl)
+	if (!eemi_ops->ioctl)
 		return;
 
 	clk_rate = clk_get_rate(xqspi->refclk);
@@ -1205,6 +1205,10 @@ static int zynqmp_qspi_probe(struct platform_device *pdev)
 	u32 num_cs;
 	u32 rx_bus_width;
 	u32 tx_bus_width;
+
+	eemi_ops = zynqmp_pm_get_eemi_ops();
+	if (IS_ERR(eemi_ops))
+		return PTR_ERR(eemi_ops);
 
 	master = spi_alloc_master(&pdev->dev, sizeof(*xqspi));
 	if (!master)

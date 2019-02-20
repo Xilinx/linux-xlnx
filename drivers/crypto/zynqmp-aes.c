@@ -70,6 +70,8 @@ static struct zynqmp_aes_drv zynqmp_aes = {
 	.lock = __SPIN_LOCK_UNLOCKED(zynqmp_aes.lock),
 };
 
+static const struct zynqmp_eemi_ops *eemi_ops;
+
 static struct zynqmp_aes_dev *zynqmp_aes_find_dev(struct zynqmp_aes_op *ctx)
 {
 	struct zynqmp_aes_dev *aes_dd = NULL;
@@ -119,7 +121,6 @@ static int zynqmp_aes_xcrypt(struct blkcipher_desc *desc,
 {
 	struct zynqmp_aes_op *op = crypto_blkcipher_ctx(desc->tfm);
 	struct zynqmp_aes_dev *dd = zynqmp_aes_find_dev(op);
-	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 	int err, ret, copy_bytes, src_data = 0, dst_data = 0;
 	dma_addr_t dma_addr, dma_addr_buf;
 	struct zynqmp_aes_data *abuf;
@@ -128,7 +129,7 @@ static int zynqmp_aes_xcrypt(struct blkcipher_desc *desc,
 	size_t dma_size;
 	char *kbuf;
 
-	if (!eemi_ops || !eemi_ops->aes)
+	if (!eemi_ops->aes)
 		return -ENOTSUPP;
 
 	if (op->keytype == ZYNQMP_AES_KUP_KEY)
@@ -270,6 +271,10 @@ static int zynqmp_aes_probe(struct platform_device *pdev)
 	struct zynqmp_aes_dev *aes_dd;
 	struct device *dev = &pdev->dev;
 	int ret;
+
+	eemi_ops = zynqmp_pm_get_eemi_ops();
+	if (IS_ERR(eemi_ops))
+		return PTR_ERR(eemi_ops);
 
 	aes_dd = devm_kzalloc(dev, sizeof(*aes_dd), GFP_KERNEL);
 	if (!aes_dd)

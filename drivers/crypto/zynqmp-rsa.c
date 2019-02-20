@@ -52,6 +52,8 @@ static struct zynqmp_rsa_drv zynqmp_rsa = {
 	.lock = __SPIN_LOCK_UNLOCKED(zynqmp_rsa.lock),
 };
 
+static const struct zynqmp_eemi_ops *eemi_ops;
+
 static struct zynqmp_rsa_dev *zynqmp_rsa_find_dev(struct zynqmp_rsa_op *ctx)
 {
 	struct zynqmp_rsa_dev *rsa_dd = NULL;
@@ -88,14 +90,13 @@ static int zynqmp_rsa_xcrypt(struct blkcipher_desc *desc,
 {
 	struct zynqmp_rsa_op *op = crypto_blkcipher_ctx(desc->tfm);
 	struct zynqmp_rsa_dev *dd = zynqmp_rsa_find_dev(op);
-	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 	int err, datasize, src_data = 0, dst_data = 0;
 	struct blkcipher_walk walk;
 	char *kbuf;
 	size_t dma_size;
 	dma_addr_t dma_addr;
 
-	if (!eemi_ops || !eemi_ops->rsa)
+	if (!eemi_ops->rsa)
 		return -ENOTSUPP;
 
 	dma_size = nbytes + op->keylen;
@@ -180,6 +181,10 @@ static int zynqmp_rsa_probe(struct platform_device *pdev)
 	struct zynqmp_rsa_dev *rsa_dd;
 	struct device *dev = &pdev->dev;
 	int ret;
+
+	eemi_ops = zynqmp_pm_get_eemi_ops();
+	if (IS_ERR(eemi_ops))
+		PTR_ERR(eemi_ops);
 
 	rsa_dd = devm_kzalloc(&pdev->dev, sizeof(*rsa_dd), GFP_KERNEL);
 	if (!rsa_dd)

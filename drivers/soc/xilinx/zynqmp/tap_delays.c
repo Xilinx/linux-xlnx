@@ -29,10 +29,10 @@
  */
 void arasan_zynqmp_set_tap_delay(u8 deviceid, u8 itap_delay, u8 otap_delay)
 {
-	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 	u32 node_id = (deviceid == 0) ? NODE_SD_0 : NODE_SD_1;
+	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 
-	if (!eemi_ops || !eemi_ops->ioctl)
+	if (!eemi_ops->ioctl)
 		return;
 
 	/* Set the Input Tap Delay */
@@ -55,7 +55,7 @@ void zynqmp_dll_reset(u8 deviceid)
 {
 	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 
-	if (!eemi_ops || !eemi_ops->ioctl)
+	if (!eemi_ops->ioctl)
 		return;
 
 	/* Issue DLL Reset */
