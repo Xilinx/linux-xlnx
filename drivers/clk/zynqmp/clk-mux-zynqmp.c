@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0+
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Zynq UltraScale+ MPSoC mux
  *
@@ -6,11 +6,8 @@
  */
 
 #include <linux/clk-provider.h>
-#include <linux/clk/zynqmp.h>
-#include <linux/module.h>
 #include <linux/slab.h>
-#include <linux/io.h>
-#include <linux/err.h>
+#include "clk-zynqmp.h"
 
 /*
  * DOC: basic adjustable multiplexer clock that cannot gate
@@ -25,9 +22,9 @@
 /**
  * struct zynqmp_clk_mux - multiplexer clock
  *
- * @hw: handle between common and hardware-specific interfaces
- * @flags: hardware-specific flags
- * @clk_id: Id of clock
+ * @hw:		handle between common and hardware-specific interfaces
+ * @flags:	hardware-specific flags
+ * @clk_id:	Id of clock
  */
 struct zynqmp_clk_mux {
 	struct clk_hw hw;
@@ -38,8 +35,8 @@ struct zynqmp_clk_mux {
 #define to_zynqmp_clk_mux(_hw) container_of(_hw, struct zynqmp_clk_mux, hw)
 
 /**
- * zynqmp_clk_mux_get_parent - Get parent of clock
- * @hw: handle between common and hardware-specific interfaces
+ * zynqmp_clk_mux_get_parent() - Get parent of clock
+ * @hw:		handle between common and hardware-specific interfaces
  *
  * Return: Parent index
  */
@@ -52,30 +49,21 @@ static u8 zynqmp_clk_mux_get_parent(struct clk_hw *hw)
 	int ret;
 	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 
-	if (!eemi_ops || !eemi_ops->clock_getparent)
-		return -ENXIO;
-
 	ret = eemi_ops->clock_getparent(clk_id, &val);
 
 	if (ret)
 		pr_warn_once("%s() getparent failed for clock: %s, ret = %d\n",
 			     __func__, clk_name, ret);
 
-	if (val && (mux->flags & CLK_MUX_INDEX_BIT))
-		val = ffs(val) - 1;
-
-	if (val && (mux->flags & CLK_MUX_INDEX_ONE))
-		val--;
-
 	return val;
 }
 
 /**
- * zynqmp_clk_mux_set_parent - Set parent of clock
- * @hw: handle between common and hardware-specific interfaces
- * @index: Parent index
+ * zynqmp_clk_mux_set_parent() - Set parent of clock
+ * @hw:		handle between common and hardware-specific interfaces
+ * @index:	Parent index
  *
- * Return: 0 always
+ * Return: 0 on success else error+reason
  */
 static int zynqmp_clk_mux_set_parent(struct clk_hw *hw, u8 index)
 {
@@ -85,105 +73,69 @@ static int zynqmp_clk_mux_set_parent(struct clk_hw *hw, u8 index)
 	int ret;
 	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 
-	if (!eemi_ops || !eemi_ops->clock_setparent)
-		return -ENXIO;
-
-	if (mux->flags & CLK_MUX_INDEX_BIT)
-		index = 1 << index;
-
-	if (mux->flags & CLK_MUX_INDEX_ONE)
-		index++;
-
 	ret = eemi_ops->clock_setparent(clk_id, index);
 
 	if (ret)
 		pr_warn_once("%s() set parent failed for clock: %s, ret = %d\n",
 			     __func__, clk_name, ret);
 
-	return 0;
+	return ret;
 }
 
-const struct clk_ops zynqmp_clk_mux_ops = {
+static const struct clk_ops zynqmp_clk_mux_ops = {
 	.get_parent = zynqmp_clk_mux_get_parent,
 	.set_parent = zynqmp_clk_mux_set_parent,
 	.determine_rate = __clk_mux_determine_rate,
 };
-EXPORT_SYMBOL_GPL(zynqmp_clk_mux_ops);
 
-const struct clk_ops zynqmp_clk_mux_ro_ops = {
+static const struct clk_ops zynqmp_clk_mux_ro_ops = {
 	.get_parent = zynqmp_clk_mux_get_parent,
 };
-EXPORT_SYMBOL_GPL(zynqmp_clk_mux_ro_ops);
 
 /**
- * zynqmp_clk_register_mux_table - register a mux table with the clock framework
- * @dev: device that is registering this clock
- * @name: name of this clock
- * @clk_id: Id of this clock
- * @parent_names: name of this clock's parents
- * @num_parents: number of parents
- * @flags: framework-specific flags for this clock
- * @clk_mux_flags: mux-specific flags for this clock
+ * zynqmp_clk_register_mux() - Register a mux table with the clock
+ *			       framework
+ * @name:		Name of this clock
+ * @clk_id:		Id of this clock
+ * @parents:		Name of this clock's parents
+ * @num_parents:	Number of parents
+ * @nodes:		Clock topology node
  *
- * Return: clock handle of the registered clock mux
+ * Return: clock hardware of the registered clock mux
  */
-struct clk *zynqmp_clk_register_mux_table(struct device *dev, const char *name,
-					  u32 clk_id,
-					  const char * const *parent_names,
-					  u8 num_parents,
-					  unsigned long flags,
-					  u8 clk_mux_flags)
+struct clk_hw *zynqmp_clk_register_mux(const char *name, u32 clk_id,
+				       const char * const *parents,
+				       u8 num_parents,
+				       const struct clock_topology *nodes)
 {
 	struct zynqmp_clk_mux *mux;
-	struct clk *clk;
+	struct clk_hw *hw;
 	struct clk_init_data init;
+	int ret;
 
-	/* allocate the mux */
 	mux = kzalloc(sizeof(*mux), GFP_KERNEL);
 	if (!mux)
 		return ERR_PTR(-ENOMEM);
 
 	init.name = name;
-	if (clk_mux_flags & CLK_MUX_READ_ONLY)
+	if (nodes->type_flag & CLK_MUX_READ_ONLY)
 		init.ops = &zynqmp_clk_mux_ro_ops;
 	else
 		init.ops = &zynqmp_clk_mux_ops;
-	init.flags = flags;
-	init.parent_names = parent_names;
+	init.flags = nodes->flag;
+	init.parent_names = parents;
 	init.num_parents = num_parents;
-
-	/* struct clk_mux assignments */
-	mux->flags = clk_mux_flags;
+	mux->flags = nodes->type_flag;
 	mux->hw.init = &init;
 	mux->clk_id = clk_id;
 
-	clk = clk_register(dev, &mux->hw);
+	hw = &mux->hw;
+	ret = clk_hw_register(NULL, hw);
+	if (ret) {
+		kfree(hw);
+		hw = ERR_PTR(ret);
+	}
 
-	if (IS_ERR(clk))
-		kfree(mux);
-
-	return clk;
-}
-EXPORT_SYMBOL_GPL(zynqmp_clk_register_mux_table);
-
-/**
- * zynqmp_clk_register_mux - register a mux clock with the clock framework
- * @dev: device that is registering this clock
- * @name: name of this clock
- * @clk_id: Id of this clock
- * @parent_names: name of this clock's parents
- * @num_parents: number of parents
- * @flags: framework-specific flags for this clock
- * @clk_mux_flags: mux-specific flags for this clock
- *
- * Return: clock handle of the registered clock mux
- */
-struct clk *zynqmp_clk_register_mux(struct device *dev, const char *name,
-				    u32 clk_id, const char **parent_names,
-				    u8 num_parents, unsigned long flags,
-				    u8 clk_mux_flags)
-{
-	return zynqmp_clk_register_mux_table(dev, name, clk_id, parent_names,
-					     num_parents, flags, clk_mux_flags);
+	return hw;
 }
 EXPORT_SYMBOL_GPL(zynqmp_clk_register_mux);

@@ -65,13 +65,6 @@
 #define	ZYNQMP_PM_CAPABILITY_WAKEUP	0x4U
 #define	ZYNQMP_PM_CAPABILITY_POWER	0x8U
 
-/* Clock APIs payload parameters */
-#define CLK_GET_NAME_RESP_LEN				16
-#define CLK_GET_TOPOLOGY_RESP_WORDS			3
-#define CLK_GET_FIXEDFACTOR_RESP_WORDS			2
-#define CLK_GET_PARENTS_RESP_WORDS			3
-#define CLK_GET_ATTR_RESP_WORDS				1
-
 enum pm_api_id {
 	/* Miscellaneous API functions: */
 	PM_GET_API_VERSION = 1,
@@ -506,16 +499,6 @@ enum dll_reset_type {
 	PM_DLL_RESET_PULSE,
 };
 
-enum topology_type {
-	TYPE_INVALID,
-	TYPE_MUX,
-	TYPE_PLL,
-	TYPE_FIXEDFACTOR,
-	TYPE_DIV1,
-	TYPE_DIV2,
-	TYPE_GATE,
-};
-
 enum pm_query_id {
 	PM_QID_INVALID,
 	PM_QID_CLOCK_GET_NAME,
@@ -529,6 +512,7 @@ enum pm_query_id {
 	PM_QID_PINCTRL_GET_FUNCTION_NAME,
 	PM_QID_PINCTRL_GET_FUNCTION_GROUPS,
 	PM_QID_PINCTRL_GET_PIN_GROUPS,
+	PM_QID_CLOCK_GET_NUM_CLOCKS,
 };
 
 enum pm_register_access_id {
