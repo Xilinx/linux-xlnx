@@ -8,7 +8,7 @@
 #include <linux/device.h>
 #include <linux/dma-mapping.h>
 #include <linux/firmware.h>
-#include <linux/firmware/xilinx/zynqmp/firmware.h>
+#include <linux/firmware/xlnx-zynqmp.h>
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>

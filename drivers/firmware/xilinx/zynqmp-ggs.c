@@ -14,7 +14,7 @@
 #include <linux/module.h>
 #include <linux/uaccess.h>
 #include <linux/slab.h>
-#include <linux/firmware/xilinx/zynqmp/firmware.h>
+#include <linux/firmware/xlnx-zynqmp.h>
 
 static ssize_t read_register(char *buf, u32 ioctl_id, u32 reg)
 {

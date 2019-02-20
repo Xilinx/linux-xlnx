@@ -21,7 +21,7 @@
 #include <linux/slab.h>
 #include <linux/suspend.h>
 #include <linux/uaccess.h>
-#include <linux/firmware/xilinx/zynqmp/firmware.h>
+#include <linux/firmware/xlnx-zynqmp.h>
 #include <linux/mailbox/zynqmp-ipi-message.h>
 
 /**

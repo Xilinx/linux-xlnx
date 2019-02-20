@@ -18,8 +18,8 @@
 #include <linux/slab.h>
 #include <linux/uaccess.h>
 
-#include <linux/firmware/xilinx/zynqmp/firmware.h>
-#include <linux/firmware/xilinx/zynqmp/firmware-debug.h>
+#include <linux/firmware/xlnx-zynqmp.h>
+#include "zynqmp-debug.h"
 
 static unsigned long register_address;
 

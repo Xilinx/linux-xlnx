@@ -5,7 +5,7 @@
  */
 
 #include <linux/err.h>
-#include <linux/firmware/xilinx/zynqmp/firmware.h>
+#include <linux/firmware/xlnx-zynqmp.h>
 #include <linux/io.h>
 #include <linux/module.h>
 #include <linux/of.h>

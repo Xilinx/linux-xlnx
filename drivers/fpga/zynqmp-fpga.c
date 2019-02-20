@@ -21,7 +21,7 @@
 #include <linux/of_address.h>
 #include <linux/string.h>
 #include <linux/seq_file.h>
-#include <linux/firmware/xilinx/zynqmp/firmware.h>
+#include <linux/firmware/xlnx-zynqmp.h>
 
 /* Constant Definitions */
 #define IXR_FPGA_DONE_MASK	0X00000008U

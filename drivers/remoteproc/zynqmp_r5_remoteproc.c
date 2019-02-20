@@ -17,7 +17,7 @@
 #include <linux/dma-mapping.h>
 #include <linux/delay.h>
 #include <linux/err.h>
-#include <linux/firmware/xilinx/zynqmp/firmware.h>
+#include <linux/firmware/xlnx-zynqmp.h>
 #include <linux/genalloc.h>
 #include <linux/idr.h>
 #include <linux/interrupt.h>

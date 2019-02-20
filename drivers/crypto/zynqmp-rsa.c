@@ -15,7 +15,7 @@
 #include <linux/platform_device.h>
 #include <linux/scatterlist.h>
 #include <crypto/scatterwalk.h>
-#include <linux/firmware/xilinx/zynqmp/firmware.h>
+#include <linux/firmware/xlnx-zynqmp.h>
 
 #define ZYNQMP_RSA_QUEUE_LENGTH	1
 #define ZYNQMP_RSA_MAX_KEY_SIZE	1024

@@ -10,7 +10,7 @@
  */
 
 #include <dt-bindings/pinctrl/pinctrl-zynqmp.h>
-#include <linux/firmware/xilinx/zynqmp/firmware.h>
+#include <linux/firmware/xlnx-zynqmp.h>
 #include <linux/init.h>
 #include <linux/of_address.h>
 #include <linux/platform_device.h>

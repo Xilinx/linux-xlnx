@@ -11,7 +11,7 @@
 #include <linux/of_device.h>
 #include <linux/scatterlist.h>
 #include <linux/spinlock.h>
-#include <linux/firmware/xilinx/zynqmp/firmware.h>
+#include <linux/firmware/xlnx-zynqmp.h>
 
 #define ZYNQMP_AES_QUEUE_LENGTH			1
 #define ZYNQMP_AES_IV_SIZE			12

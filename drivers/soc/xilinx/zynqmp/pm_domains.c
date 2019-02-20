@@ -16,7 +16,7 @@
 #include <linux/pm_domain.h>
 #include <linux/slab.h>
 #include <linux/list.h>
-#include <linux/firmware/xilinx/zynqmp/firmware.h>
+#include <linux/firmware/xlnx-zynqmp.h>
 #include <linux/soc/xilinx/zynqmp/power.h>
 
 #define DRIVER_NAME "zynqmp_gpd"

@@ -15,8 +15,8 @@
 #include <linux/slab.h>
 #include <linux/debugfs.h>
 #include <linux/uaccess.h>
-#include <linux/firmware/xilinx/zynqmp/firmware.h>
-#include <linux/firmware/xilinx/zynqmp/firmware-debug.h>
+#include <linux/firmware/xlnx-zynqmp.h>
+#include "zynqmp-debug.h"
 
 #define PM_API_NAME_LEN			50
 
