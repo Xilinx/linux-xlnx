@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0+
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Xilinx Zynq MPSoC Firmware layer
  *
@@ -12,9 +12,12 @@
 
 #include <linux/arm-smccc.h>
 #include <linux/compiler.h>
+#include <linux/device.h>
 #include <linux/init.h>
+#include <linux/mfd/core.h>
 #include <linux/module.h>
 #include <linux/of.h>
+#include <linux/of_platform.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
 
@@ -23,11 +26,17 @@
 
 static unsigned long register_address;
 
+static const struct mfd_cell firmware_devs[] = {
+	{
+		.name = "zynqmp_power_controller",
+	},
+};
+
 /**
- * zynqmp_pm_ret_code - Convert PMU-FW error codes to Linux error codes
+ * zynqmp_pm_ret_code() - Convert PMU-FW error codes to Linux error codes
  * @ret_status:		PMUFW return code
  *
- * Return:		corresponding Linux error code
+ * Return: corresponding Linux error code
  */
 static int zynqmp_pm_ret_code(u32 ret_status)
 {
@@ -60,15 +69,15 @@ static noinline int do_fw_call_fail(u64 arg0, u64 arg1, u64 arg2,
 static int (*do_fw_call)(u64, u64, u64, u32 *ret_payload) = do_fw_call_fail;
 
 /**
- * do_fw_call_smc - Call system-level platform management layer (SMC)
+ * do_fw_call_smc() - Call system-level platform management layer (SMC)
  * @arg0:		Argument 0 to SMC call
  * @arg1:		Argument 1 to SMC call
  * @arg2:		Argument 2 to SMC call
  * @ret_payload:	Returned value array
  *
- * Return:		Returns status, either success or error+reason
+ * Invoke platform management function via SMC call (no hypervisor present).
  *
- * Invoke platform management function via SMC call (no hypervisor present)
+ * Return: Returns status, either success or error+reason
  */
 static noinline int do_fw_call_smc(u64 arg0, u64 arg1, u64 arg2,
 				   u32 *ret_payload)
@@ -82,24 +91,23 @@ static noinline int do_fw_call_smc(u64 arg0, u64 arg1, u64 arg2,
 		ret_payload[1] = upper_32_bits(res.a0);
 		ret_payload[2] = lower_32_bits(res.a1);
 		ret_payload[3] = upper_32_bits(res.a1);
-		ret_payload[4] = lower_32_bits(res.a2);
 	}
 
 	return zynqmp_pm_ret_code((enum pm_ret_status)res.a0);
 }
 
 /**
- * do_fw_call_hvc - Call system-level platform management layer (HVC)
+ * do_fw_call_hvc() - Call system-level platform management layer (HVC)
  * @arg0:		Argument 0 to HVC call
  * @arg1:		Argument 1 to HVC call
  * @arg2:		Argument 2 to HVC call
  * @ret_payload:	Returned value array
  *
- * Return:		Returns status, either success or error+reason
- *
  * Invoke platform management function via HVC
  * HVC-based for communication through hypervisor
- * (no direct communication with ATF)
+ * (no direct communication with ATF).
+ *
+ * Return: Returns status, either success or error+reason
  */
 static noinline int do_fw_call_hvc(u64 arg0, u64 arg1, u64 arg2,
 				   u32 *ret_payload)
@@ -120,8 +128,8 @@ static noinline int do_fw_call_hvc(u64 arg0, u64 arg1, u64 arg2,
 }
 
 /**
- * zynqmp_pm_invoke_fn - Invoke the system-level platform management layer
- *			 caller function depending on the configuration
+ * zynqmp_pm_invoke_fn() - Invoke the system-level platform management layer
+ *			   caller function depending on the configuration
  * @pm_api_id:		Requested PM-API call
  * @arg0:		Argument 0 to requested PM-API call
  * @arg1:		Argument 1 to requested PM-API call
@@ -129,10 +137,8 @@ static noinline int do_fw_call_hvc(u64 arg0, u64 arg1, u64 arg2,
  * @arg3:		Argument 3 to requested PM-API call
  * @ret_payload:	Returned value array
  *
- * Return:		Returns status, either success or error+reason
- *
  * Invoke platform management function for SMC or HVC call, depending on
- * configuration
+ * configuration.
  * Following SMC Calling Convention (SMCCC) for SMC64:
  * Pm Function Identifier,
  * PM_SIP_SVC + PM_API_ID =
@@ -141,8 +147,10 @@ static noinline int do_fw_call_hvc(u64 arg0, u64 arg1, u64 arg2,
  *	((SIP_START) << FUNCID_OEN_SHIFT)
  *	((PM_API_ID) & FUNCID_NUM_MASK))
  *
- * PM_SIP_SVC	- Registered ZynqMP SIP Service Call
- * PM_API_ID	- Platform Management API ID
+ * PM_SIP_SVC	- Registered ZynqMP SIP Service Call.
+ * PM_API_ID	- Platform Management API ID.
+ *
+ * Return: Returns status, either success or error+reason
  */
 int zynqmp_pm_invoke_fn(u32 pm_api_id, u32 arg0, u32 arg1,
 			u32 arg2, u32 arg3, u32 *ret_payload)
@@ -164,10 +172,10 @@ static u32 pm_api_version;
 static u32 pm_tz_version;
 
 /**
- * zynqmp_pm_get_api_version - Get version number of PMU PM firmware
+ * zynqmp_pm_get_api_version() - Get version number of PMU PM firmware
  * @version:	Returned version value
  *
- * Return:	Returns status, either success or error+reason
+ * Return: Returns status, either success or error+reason
  */
 static int zynqmp_pm_get_api_version(u32 *version)
 {
@@ -189,10 +197,10 @@ static int zynqmp_pm_get_api_version(u32 *version)
 }
 
 /**
- * zynqmp_pm_get_trustzone_version - Get secure trustzone firmware version
+ * zynqmp_pm_get_trustzone_version() - Get secure trustzone firmware version
  * @version:	Returned version value
  *
- * Return:	Returns status, either success or error+reason
+ * Return: Returns status, either success or error+reason
  */
 static int zynqmp_pm_get_trustzone_version(u32 *version)
 {
@@ -215,35 +223,12 @@ static int zynqmp_pm_get_trustzone_version(u32 *version)
 }
 
 /**
- * zynqmp_pm_get_chipid - Get silicon ID registers
- * @idcode:	IDCODE register
- * @version:	version register
- *
- * Return:	Returns the status of the operation and the idcode and version
- *		registers in @idcode and @version.
- */
-static int zynqmp_pm_get_chipid(u32 *idcode, u32 *version)
-{
-	u32 ret_payload[PAYLOAD_ARG_CNT];
-	int ret;
-
-	if (!idcode || !version)
-		return -EINVAL;
-
-	ret = zynqmp_pm_invoke_fn(PM_GET_CHIPID, 0, 0, 0, 0, ret_payload);
-	*idcode = ret_payload[1];
-	*version = ret_payload[2];
-
-	return ret;
-}
-
-/**
- * get_set_conduit_method - Choose SMC or HVC based communication
+ * get_set_conduit_method() - Choose SMC or HVC based communication
  * @np:		Pointer to the device_node structure
  *
- * Use SMC or HVC-based functions to communicate with EL2/EL3
+ * Use SMC or HVC-based functions to communicate with EL2/EL3.
  *
- * Return:	Returns 0 on success or error code
+ * Return: Returns 0 on success or error code
  */
 static int get_set_conduit_method(struct device_node *np)
 {
@@ -268,12 +253,254 @@ static int get_set_conduit_method(struct device_node *np)
 }
 
 /**
+ * zynqmp_pm_query_data() - Get query data from firmware
+ * @qdata:	Variable to the zynqmp_pm_query_data structure
+ * @out:	Returned output value
+ *
+ * Return: Returns status, either success or error+reason
+ */
+static int zynqmp_pm_query_data(struct zynqmp_pm_query_data qdata, u32 *out)
+{
+	int ret;
+
+	ret = zynqmp_pm_invoke_fn(PM_QUERY_DATA, qdata.qid, qdata.arg1,
+				  qdata.arg2, qdata.arg3, out);
+
+	/*
+	 * For clock name query, all bytes in SMC response are clock name
+	 * characters and return code is always success. For invalid clocks,
+	 * clock name bytes would be zeros.
+	 */
+	return qdata.qid == PM_QID_CLOCK_GET_NAME ? 0 : ret;
+}
+
+/**
+ * zynqmp_pm_clock_enable() - Enable the clock for given id
+ * @clock_id:	ID of the clock to be enabled
+ *
+ * This function is used by master to enable the clock
+ * including peripherals and PLL clocks.
+ *
+ * Return: Returns status, either success or error+reason
+ */
+static int zynqmp_pm_clock_enable(u32 clock_id)
+{
+	return zynqmp_pm_invoke_fn(PM_CLOCK_ENABLE, clock_id, 0, 0, 0, NULL);
+}
+
+/**
+ * zynqmp_pm_clock_disable() - Disable the clock for given id
+ * @clock_id:	ID of the clock to be disable
+ *
+ * This function is used by master to disable the clock
+ * including peripherals and PLL clocks.
+ *
+ * Return: Returns status, either success or error+reason
+ */
+static int zynqmp_pm_clock_disable(u32 clock_id)
+{
+	return zynqmp_pm_invoke_fn(PM_CLOCK_DISABLE, clock_id, 0, 0, 0, NULL);
+}
+
+/**
+ * zynqmp_pm_clock_getstate() - Get the clock state for given id
+ * @clock_id:	ID of the clock to be queried
+ * @state:	1/0 (Enabled/Disabled)
+ *
+ * This function is used by master to get the state of clock
+ * including peripherals and PLL clocks.
+ *
+ * Return: Returns status, either success or error+reason
+ */
+static int zynqmp_pm_clock_getstate(u32 clock_id, u32 *state)
+{
+	u32 ret_payload[PAYLOAD_ARG_CNT];
+	int ret;
+
+	ret = zynqmp_pm_invoke_fn(PM_CLOCK_GETSTATE, clock_id, 0,
+				  0, 0, ret_payload);
+	*state = ret_payload[1];
+
+	return ret;
+}
+
+/**
+ * zynqmp_pm_clock_setdivider() - Set the clock divider for given id
+ * @clock_id:	ID of the clock
+ * @divider:	divider value
+ *
+ * This function is used by master to set divider for any clock
+ * to achieve desired rate.
+ *
+ * Return: Returns status, either success or error+reason
+ */
+static int zynqmp_pm_clock_setdivider(u32 clock_id, u32 divider)
+{
+	return zynqmp_pm_invoke_fn(PM_CLOCK_SETDIVIDER, clock_id, divider,
+				   0, 0, NULL);
+}
+
+/**
+ * zynqmp_pm_clock_getdivider() - Get the clock divider for given id
+ * @clock_id:	ID of the clock
+ * @divider:	divider value
+ *
+ * This function is used by master to get divider values
+ * for any clock.
+ *
+ * Return: Returns status, either success or error+reason
+ */
+static int zynqmp_pm_clock_getdivider(u32 clock_id, u32 *divider)
+{
+	u32 ret_payload[PAYLOAD_ARG_CNT];
+	int ret;
+
+	ret = zynqmp_pm_invoke_fn(PM_CLOCK_GETDIVIDER, clock_id, 0,
+				  0, 0, ret_payload);
+	*divider = ret_payload[1];
+
+	return ret;
+}
+
+/**
+ * zynqmp_pm_clock_setrate() - Set the clock rate for given id
+ * @clock_id:	ID of the clock
+ * @rate:	rate value in hz
+ *
+ * This function is used by master to set rate for any clock.
+ *
+ * Return: Returns status, either success or error+reason
+ */
+static int zynqmp_pm_clock_setrate(u32 clock_id, u64 rate)
+{
+	return zynqmp_pm_invoke_fn(PM_CLOCK_SETRATE, clock_id,
+				   lower_32_bits(rate),
+				   upper_32_bits(rate),
+				   0, NULL);
+}
+
+/**
+ * zynqmp_pm_clock_getrate() - Get the clock rate for given id
+ * @clock_id:	ID of the clock
+ * @rate:	rate value in hz
+ *
+ * This function is used by master to get rate
+ * for any clock.
+ *
+ * Return: Returns status, either success or error+reason
+ */
+static int zynqmp_pm_clock_getrate(u32 clock_id, u64 *rate)
+{
+	u32 ret_payload[PAYLOAD_ARG_CNT];
+	int ret;
+
+	ret = zynqmp_pm_invoke_fn(PM_CLOCK_GETRATE, clock_id, 0,
+				  0, 0, ret_payload);
+	*rate = ((u64)ret_payload[2] << 32) | ret_payload[1];
+
+	return ret;
+}
+
+/**
+ * zynqmp_pm_clock_setparent() - Set the clock parent for given id
+ * @clock_id:	ID of the clock
+ * @parent_id:	parent id
+ *
+ * This function is used by master to set parent for any clock.
+ *
+ * Return: Returns status, either success or error+reason
+ */
+static int zynqmp_pm_clock_setparent(u32 clock_id, u32 parent_id)
+{
+	return zynqmp_pm_invoke_fn(PM_CLOCK_SETPARENT, clock_id,
+				   parent_id, 0, 0, NULL);
+}
+
+/**
+ * zynqmp_pm_clock_getparent() - Get the clock parent for given id
+ * @clock_id:	ID of the clock
+ * @parent_id:	parent id
+ *
+ * This function is used by master to get parent index
+ * for any clock.
+ *
+ * Return: Returns status, either success or error+reason
+ */
+static int zynqmp_pm_clock_getparent(u32 clock_id, u32 *parent_id)
+{
+	u32 ret_payload[PAYLOAD_ARG_CNT];
+	int ret;
+
+	ret = zynqmp_pm_invoke_fn(PM_CLOCK_GETPARENT, clock_id, 0,
+				  0, 0, ret_payload);
+	*parent_id = ret_payload[1];
+
+	return ret;
+}
+
+/**
+ * zynqmp_is_valid_ioctl() - Check whether IOCTL ID is valid or not
+ * @ioctl_id:	IOCTL ID
+ *
+ * Return: 1 if IOCTL is valid else 0
+ */
+static inline int zynqmp_is_valid_ioctl(u32 ioctl_id)
+{
+	switch (ioctl_id) {
+	case IOCTL_SET_PLL_FRAC_MODE:
+	case IOCTL_GET_PLL_FRAC_MODE:
+	case IOCTL_SET_PLL_FRAC_DATA:
+	case IOCTL_GET_PLL_FRAC_DATA:
+	case IOCTL_GET_RPU_OPER_MODE:
+	case IOCTL_SET_RPU_OPER_MODE:
+	case IOCTL_RPU_BOOT_ADDR_CONFIG:
+	case IOCTL_TCM_COMB_CONFIG:
+	case IOCTL_SET_TAPDELAY_BYPASS:
+	case IOCTL_SET_SGMII_MODE:
+	case IOCTL_SD_DLL_RESET:
+	case IOCTL_SET_SD_TAPDELAY:
+	case IOCTL_WRITE_GGS:
+	case IOCTL_READ_GGS:
+	case IOCTL_WRITE_PGGS:
+	case IOCTL_READ_PGGS:
+	case IOCTL_ULPI_RESET:
+	case IOCTL_SET_BOOT_HEALTH_STATUS:
+	case IOCTL_AFI:
+		return 1;
+	default:
+		return 0;
+	}
+}
+
+/**
+ * zynqmp_pm_ioctl() - PM IOCTL API for device control and configs
+ * @node_id:	Node ID of the device
+ * @ioctl_id:	ID of the requested IOCTL
+ * @arg1:	Argument 1 to requested IOCTL call
+ * @arg2:	Argument 2 to requested IOCTL call
+ * @out:	Returned output value
+ *
+ * This function calls IOCTL to firmware for device control and configuration.
+ *
+ * Return: Returns status, either success or error+reason
+ */
+static int zynqmp_pm_ioctl(u32 node_id, u32 ioctl_id, u32 arg1, u32 arg2,
+			   u32 *out)
+{
+	if (!zynqmp_is_valid_ioctl(ioctl_id))
+		return -EINVAL;
+
+	return zynqmp_pm_invoke_fn(PM_IOCTL, node_id, ioctl_id,
+				   arg1, arg2, out);
+}
+
+/**
  * zynqmp_pm_reset_assert - Request setting of reset (1 - assert, 0 - release)
  * @reset:		Reset to be configured
  * @assert_flag:	Flag stating should reset be asserted (1) or
  *			released (0)
  *
- * Return:		Returns status, either success or error+reason
+ * Return: Returns status, either success or error+reason
  */
 static int zynqmp_pm_reset_assert(const enum zynqmp_pm_reset reset,
 				  const enum zynqmp_pm_reset_action assert_flag)
@@ -284,10 +511,10 @@ static int zynqmp_pm_reset_assert(const enum zynqmp_pm_reset reset,
 
 /**
  * zynqmp_pm_reset_get_status - Get status of the reset
- * @reset:	Reset whose status should be returned
- * @status:	Returned status
+ * @reset:      Reset whose status should be returned
+ * @status:     Returned status
  *
- * Return:	Returns status, either success or error+reason
+ * Return: Returns status, either success or error+reason
  */
 static int zynqmp_pm_reset_get_status(const enum zynqmp_pm_reset reset,
 				      u32 *status)
@@ -301,6 +528,111 @@ static int zynqmp_pm_reset_get_status(const enum zynqmp_pm_reset reset,
 	ret = zynqmp_pm_invoke_fn(PM_RESET_GET_STATUS, reset, 0,
 				  0, 0, ret_payload);
 	*status = ret_payload[1];
+
+	return ret;
+}
+
+/**
+ * zynqmp_pm_init_finalize() - PM call to inform firmware that the caller
+ *			       master has initialized its own power management
+ *
+ * This API function is to be used for notify the power management controller
+ * about the completed power management initialization.
+ *
+ * Return: Returns status, either success or error+reason
+ */
+static int zynqmp_pm_init_finalize(void)
+{
+	return zynqmp_pm_invoke_fn(PM_PM_INIT_FINALIZE, 0, 0, 0, 0, NULL);
+}
+
+/**
+ * zynqmp_pm_set_suspend_mode()	- Set system suspend mode
+ * @mode:	Mode to set for system suspend
+ *
+ * This API function is used to set mode of system suspend.
+ *
+ * Return: Returns status, either success or error+reason
+ */
+static int zynqmp_pm_set_suspend_mode(u32 mode)
+{
+	return zynqmp_pm_invoke_fn(PM_SET_SUSPEND_MODE, mode, 0, 0, 0, NULL);
+}
+
+/**
+ * zynqmp_pm_request_node() - Request a node with specific capabilities
+ * @node:		Node ID of the slave
+ * @capabilities:	Requested capabilities of the slave
+ * @qos:		Quality of service (not supported)
+ * @ack:		Flag to specify whether acknowledge is requested
+ *
+ * This function is used by master to request particular node from firmware.
+ * Every master must request node before using it.
+ *
+ * Return: Returns status, either success or error+reason
+ */
+static int zynqmp_pm_request_node(const u32 node, const u32 capabilities,
+				  const u32 qos,
+				  const enum zynqmp_pm_request_ack ack)
+{
+	return zynqmp_pm_invoke_fn(PM_REQUEST_NODE, node, capabilities,
+				   qos, ack, NULL);
+}
+
+/**
+ * zynqmp_pm_release_node() - Release a node
+ * @node:	Node ID of the slave
+ *
+ * This function is used by master to inform firmware that master
+ * has released node. Once released, master must not use that node
+ * without re-request.
+ *
+ * Return: Returns status, either success or error+reason
+ */
+static int zynqmp_pm_release_node(const u32 node)
+{
+	return zynqmp_pm_invoke_fn(PM_RELEASE_NODE, node, 0, 0, 0, NULL);
+}
+
+/**
+ * zynqmp_pm_set_requirement() - PM call to set requirement for PM slaves
+ * @node:		Node ID of the slave
+ * @capabilities:	Requested capabilities of the slave
+ * @qos:		Quality of service (not supported)
+ * @ack:		Flag to specify whether acknowledge is requested
+ *
+ * This API function is to be used for slaves a PU already has requested
+ * to change its capabilities.
+ *
+ * Return: Returns status, either success or error+reason
+ */
+static int zynqmp_pm_set_requirement(const u32 node, const u32 capabilities,
+				     const u32 qos,
+				     const enum zynqmp_pm_request_ack ack)
+{
+	return zynqmp_pm_invoke_fn(PM_SET_REQUIREMENT, node, capabilities,
+				   qos, ack, NULL);
+}
+
+/**
+ * zynqmp_pm_get_chipid - Get silicon ID registers
+ * @idcode:	IDCODE register
+ * @version:	version register
+ *
+ * Return:	Returns the status of the operation and the idcode and version
+ *		registers in @idcode and @version.
+ */
+static int zynqmp_pm_get_chipid(u32 *idcode, u32 *version)
+{
+	u32 ret_payload[PAYLOAD_ARG_CNT];
+	int ret;
+
+	if (!idcode || !version)
+		return -EINVAL;
+
+	ret = zynqmp_pm_invoke_fn(PM_GET_CHIPID, 0, 0, 0, 0, ret_payload);
+	*idcode = ret_payload[1];
+	*version = ret_payload[2];
 
 	return ret;
 }
@@ -388,6 +720,75 @@ static int zynqmp_pm_fpga_read(const u32 reg_numframes, const u64 phys_address,
 }
 
 /**
+ * zynqmp_pm_sha_hash - Access the SHA engine to calculate the hash
+ * @address:	Address of the data/ Address of output buffer where
+ *		hash should be stored.
+ * @size:	Size of the data.
+ * @flags:
+ *	BIT(0) - for initializing csudma driver and SHA3(Here address
+ *		 and size inputs can be NULL).
+ *	BIT(1) - to call Sha3_Update API which can be called multiple
+ *		 times when data is not contiguous.
+ *	BIT(2) - to get final hash of the whole updated data.
+ *		 Hash will be overwritten at provided address with
+ *		 48 bytes.
+ *
+ * Return:	Returns status, either success or error code.
+ */
+static int zynqmp_pm_sha_hash(const u64 address, const u32 size,
+			      const u32 flags)
+{
+	u32 lower_32_bits = (u32)address;
+	u32 upper_32_bits = (u32)(address >> 32);
+
+	return zynqmp_pm_invoke_fn(PM_SECURE_SHA, upper_32_bits, lower_32_bits,
+				   size, flags, NULL);
+}
+
+/**
+ * zynqmp_pm_rsa - Access RSA hardware to encrypt/decrypt the data with RSA.
+ * @address:	Address of the data
+ * @size:	Size of the data.
+ * @flags:
+ *		BIT(0) - Encryption/Decryption
+ *			 0 - RSA decryption with private key
+ *			 1 - RSA encryption with public key.
+ *
+ * Return:	Returns status, either success or error code.
+ */
+static int zynqmp_pm_rsa(const u64 address, const u32 size, const u32 flags)
+{
+	u32 lower_32_bits = (u32)address;
+	u32 upper_32_bits = (u32)(address >> 32);
+
+	return zynqmp_pm_invoke_fn(PM_SECURE_RSA, upper_32_bits, lower_32_bits,
+				   size, flags, NULL);
+}
+
+/**
+ * zynqmp_pm_aes - Access AES hardware to encrypt/decrypt the data using
+ * AES-GCM core.
+ * @address:	Address of the AesParams structure.
+ * @out:	Returned output value
+ *
+ * Return:	Returns status, either success or error code.
+ */
+static int zynqmp_pm_aes_engine(const u64 address, u32 *out)
+{
+	u32 ret_payload[PAYLOAD_ARG_CNT];
+	int ret;
+
+	if (!out)
+		return -EINVAL;
+
+	ret = zynqmp_pm_invoke_fn(PM_SECURE_AES, upper_32_bits(address),
+				  lower_32_bits(address),
+				  0, 0, ret_payload);
+	*out = ret_payload[1];
+	return ret;
+}
+
+/**
  * zynqmp_pm_request_suspend - PM call to request for another PU or subsystem to
  *					be suspended gracefully.
  * @node:	Node ID of the targeted PU or subsystem
@@ -467,53 +868,6 @@ static int zynqmp_pm_system_shutdown(const u32 type, const u32 subtype)
 {
 	return zynqmp_pm_invoke_fn(PM_SYSTEM_SHUTDOWN, type, subtype,
 				   0, 0, NULL);
-}
-
-/**
- * zynqmp_pm_request_node - PM call to request a node with specific capabilities
- * @node:		Node ID of the slave
- * @capabilities:	Requested capabilities of the slave
- * @qos:		Quality of service (not supported)
- * @ack:		Flag to specify whether acknowledge is requested
- *
- * Return:		Returns status, either success or error+reason
- */
-static int zynqmp_pm_request_node(const u32 node, const u32 capabilities,
-				  const u32 qos,
-				  const enum zynqmp_pm_request_ack ack)
-{
-	return zynqmp_pm_invoke_fn(PM_REQUEST_NODE, node, capabilities,
-				   qos, ack, NULL);
-}
-
-/**
- * zynqmp_pm_release_node - PM call to release a node
- * @node:	Node ID of the slave
- *
- * Return:	Returns status, either success or error+reason
- */
-static int zynqmp_pm_release_node(const u32 node)
-{
-	return zynqmp_pm_invoke_fn(PM_RELEASE_NODE, node, 0, 0, 0, NULL);
-}
-
-/**
- * zynqmp_pm_set_requirement - PM call to set requirement for PM slaves
- * @node:		Node ID of the slave
- * @capabilities:	Requested capabilities of the slave
- * @qos:		Quality of service (not supported)
- * @ack:		Flag to specify whether acknowledge is requested
- *
- * This API function is to be used for slaves a PU already has requested
- *
- * Return:		Returns status, either success or error+reason
- */
-static int zynqmp_pm_set_requirement(const u32 node, const u32 capabilities,
-				     const u32 qos,
-				     const enum zynqmp_pm_request_ack ack)
-{
-	return zynqmp_pm_invoke_fn(PM_SET_REQUIREMENT, node, capabilities,
-				   qos, ack, NULL);
 }
 
 /**
@@ -606,98 +960,6 @@ static int zynqmp_pm_get_operating_characteristic(const u32 node,
 	if (ret_payload[0] == XST_PM_SUCCESS)
 		*result = ret_payload[1];
 
-	return ret;
-}
-
-/**
- * zynqmp_pm_init_finalize - PM call to informi firmware that the caller master
- *				has initialized its own power management
- *
- * Return:	Returns status, either success or error+reason
- */
-static int zynqmp_pm_init_finalize(void)
-{
-	return zynqmp_pm_invoke_fn(PM_PM_INIT_FINALIZE, 0, 0, 0, 0, NULL);
-}
-
-/**
- * zynqmp_pm_set_suspend_mode	- Set system suspend mode
- *
- * @mode:	Mode to set for system suspend
- *
- * Return:	Returns status, either success or error+reason
- */
-static int zynqmp_pm_set_suspend_mode(u32 mode)
-{
-	return zynqmp_pm_invoke_fn(PM_SET_SUSPEND_MODE, mode, 0, 0, 0, NULL);
-}
-
-/**
- * zynqmp_pm_sha_hash - Access the SHA engine to calculate the hash
- * @address:	Address of the data/ Address of output buffer where
- *		hash should be stored.
- * @size:	Size of the data.
- * @flags:
- *	BIT(0) - for initializing csudma driver and SHA3(Here address
- *		 and size inputs can be NULL).
- *	BIT(1) - to call Sha3_Update API which can be called multiple
- *		 times when data is not contiguous.
- *	BIT(2) - to get final hash of the whole updated data.
- *		 Hash will be overwritten at provided address with
- *		 48 bytes.
- *
- * Return:	Returns status, either success or error code.
- */
-static int zynqmp_pm_sha_hash(const u64 address, const u32 size,
-			      const u32 flags)
-{
-	u32 lower_32_bits = (u32)address;
-	u32 upper_32_bits = (u32)(address >> 32);
-
-	return zynqmp_pm_invoke_fn(PM_SECURE_SHA, upper_32_bits, lower_32_bits,
-				   size, flags, NULL);
-}
-
-/**
- * zynqmp_pm_rsa - Access RSA hardware to encrypt/decrypt the data with RSA.
- * @address:	Address of the data
- * @size:	Size of the data.
- * @flags:
- *		BIT(0) - Encryption/Decryption
- *			 0 - RSA decryption with private key
- *			 1 - RSA encryption with public key.
- *
- * Return:	Returns status, either success or error code.
- */
-static int zynqmp_pm_rsa(const u64 address, const u32 size, const u32 flags)
-{
-	u32 lower_32_bits = (u32)address;
-	u32 upper_32_bits = (u32)(address >> 32);
-
-	return zynqmp_pm_invoke_fn(PM_SECURE_RSA, upper_32_bits, lower_32_bits,
-				   size, flags, NULL);
-}
-
-/**
- * zynqmp_pm_aes - Access AES hardware to encrypt/decrypt the data using
- * AES-GCM core.
- * @address:	Address of the AesParams structure.
- * @out:	Returned output value
- *
- * Return:	Returns status, either success or error code.
- */
-static int zynqmp_pm_aes_engine(const u64 address, u32 *out)
-{
-	u32 ret_payload[PAYLOAD_ARG_CNT];
-	int ret;
-
-	if (!out)
-		return -EINVAL;
-
-	ret = zynqmp_pm_invoke_fn(PM_SECURE_AES, upper_32_bits(address),
-				  lower_32_bits(address),
-				  0, 0, ret_payload);
-	*out = ret_payload[1];
 	return ret;
 }
 
@@ -810,25 +1072,6 @@ static int zynqmp_pm_pinctrl_set_config(const u32 pin, const u32 param,
 }
 
 /**
- * zynqmp_pm_ioctl - PM IOCTL API for device control and configs
- * @node_id:	Node ID of the device
- * @ioctl_id:	ID of the requested IOCTL
- * @arg1:	Argument 1 to requested IOCTL call
- * @arg2:	Argument 2 to requested IOCTL call
- * @out:	Returned output value
- *
- * This function calls IOCTL to firmware for device control and configuration.
- *
- * Return:	Returns status, either success or error+reason
- */
-static int zynqmp_pm_ioctl(u32 node_id, u32 ioctl_id, u32 arg1, u32 arg2,
-			   u32 *out)
-{
-	return zynqmp_pm_invoke_fn(PM_IOCTL, node_id, ioctl_id,
-				   arg1, arg2, out);
-}
-
-/**
  * zynqmp_pm_config_reg_access - PM Config API for Config register access
  * @register_access_id:	ID of the requested REGISTER_ACCESS
  * @address:		Address of the register to be accessed
@@ -846,176 +1089,6 @@ static int zynqmp_pm_config_reg_access(u32 register_access_id, u32 address,
 {
 	return zynqmp_pm_invoke_fn(PM_REGISTER_ACCESS, register_access_id,
 				   address, mask, value, out);
-}
-
-static int zynqmp_pm_query_data(struct zynqmp_pm_query_data qdata, u32 *out)
-{
-	return zynqmp_pm_invoke_fn(PM_QUERY_DATA, qdata.qid, qdata.arg1,
-				   qdata.arg2, qdata.arg3, out);
-}
-
-/**
- * zynqmp_pm_clock_enable - Enable the clock for given id
- * @clock_id:	ID of the clock to be enabled
- *
- * This function is used by master to enable the clock
- * including peripherals and PLL clocks.
- *
- * Return:	Returns status, either success or error+reason.
- */
-static int zynqmp_pm_clock_enable(u32 clock_id)
-{
-	return zynqmp_pm_invoke_fn(PM_CLOCK_ENABLE, clock_id, 0, 0, 0, NULL);
-}
-
-/**
- * zynqmp_pm_clock_disable - Disable the clock for given id
- * @clock_id:	ID of the clock to be disable
- *
- * This function is used by master to disable the clock
- * including peripherals and PLL clocks.
- *
- * Return:	Returns status, either success or error+reason.
- */
-static int zynqmp_pm_clock_disable(u32 clock_id)
-{
-	return zynqmp_pm_invoke_fn(PM_CLOCK_DISABLE, clock_id, 0, 0, 0, NULL);
-}
-
-/**
- * zynqmp_pm_clock_getstate - Get the clock state for given id
- * @clock_id:	ID of the clock to be queried
- * @state:	1/0 (Enabled/Disabled)
- *
- * This function is used by master to get the state of clock
- * including peripherals and PLL clocks.
- *
- * Return:	Returns status, either success or error+reason.
- */
-static int zynqmp_pm_clock_getstate(u32 clock_id, u32 *state)
-{
-	u32 ret_payload[PAYLOAD_ARG_CNT];
-	int ret;
-
-	ret = zynqmp_pm_invoke_fn(PM_CLOCK_GETSTATE, clock_id, 0,
-				  0, 0, ret_payload);
-	*state = ret_payload[1];
-
-	return ret;
-}
-
-/**
- * zynqmp_pm_clock_setdivider - Set the clock divider for given id
- * @clock_id:	ID of the clock
- * @divider:	divider value.
- *
- * This function is used by master to set divider for any clock
- * to achieve desired rate.
- *
- * Return:	Returns status, either success or error+reason.
- */
-static int zynqmp_pm_clock_setdivider(u32 clock_id, u32 divider)
-{
-	return zynqmp_pm_invoke_fn(PM_CLOCK_SETDIVIDER, clock_id, divider,
-				   0, 0, NULL);
-}
-
-/**
- * zynqmp_pm_clock_getdivider - Get the clock divider for given id
- * @clock_id:	ID of the clock
- * @divider:	divider value.
- *
- * This function is used by master to get divider values
- * for any clock.
- *
- * Return:	Returns status, either success or error+reason.
- */
-static int zynqmp_pm_clock_getdivider(u32 clock_id, u32 *divider)
-{
-	u32 ret_payload[PAYLOAD_ARG_CNT];
-	int ret;
-
-	ret = zynqmp_pm_invoke_fn(PM_CLOCK_GETDIVIDER, clock_id, 0,
-				  0, 0, ret_payload);
-	*divider = ret_payload[1];
-
-	return ret;
-}
-
-/**
- * zynqmp_pm_clock_setrate - Set the clock rate for given id
- * @clock_id:	ID of the clock
- * @rate:	rate value in hz
- *
- * This function is used by master to set rate for any clock.
- *
- * Return:	Returns status, either success or error+reason.
- */
-static int zynqmp_pm_clock_setrate(u32 clock_id, u64 rate)
-{
-	return zynqmp_pm_invoke_fn(PM_CLOCK_SETRATE, clock_id,
-				   rate & 0xFFFFFFFF,
-				   (rate >> 32) & 0xFFFFFFFF,
-				   0, NULL);
-}
-
-/**
- * zynqmp_pm_clock_getrate - Get the clock rate for given id
- * @clock_id:	ID of the clock
- * @rate:	rate value in hz
- *
- * This function is used by master to get rate
- * for any clock.
- *
- * Return:	Returns status, either success or error+reason.
- */
-static int zynqmp_pm_clock_getrate(u32 clock_id, u64 *rate)
-{
-	u32 ret_payload[PAYLOAD_ARG_CNT];
-	int ret;
-
-	ret = zynqmp_pm_invoke_fn(PM_CLOCK_GETRATE, clock_id, 0,
-				  0, 0, ret_payload);
-	*rate = ((u64)ret_payload[2] << 32) | ret_payload[1];
-
-	return ret;
-}
-
-/**
- * zynqmp_pm_clock_setparent - Set the clock parent for given id
- * @clock_id:	ID of the clock
- * @parent_id:	parent id
- *
- * This function is used by master to set parent for any clock.
- *
- * Return:	Returns status, either success or error+reason.
- */
-static int zynqmp_pm_clock_setparent(u32 clock_id, u32 parent_id)
-{
-	return zynqmp_pm_invoke_fn(PM_CLOCK_SETPARENT, clock_id,
-				   parent_id, 0, 0, NULL);
-}
-
-/**
- * zynqmp_pm_clock_getparent - Get the clock parent for given id
- * @clock_id:	ID of the clock
- * @parent_id:	parent id
- *
- * This function is used by master to get parent index
- * for any clock.
- *
- * Return:	Returns status, either success or error+reason.
- */
-static int zynqmp_pm_clock_getparent(u32 clock_id, u32 *parent_id)
-{
-	u32 ret_payload[PAYLOAD_ARG_CNT];
-	int ret;
-
-	ret = zynqmp_pm_invoke_fn(PM_CLOCK_GETPARENT, clock_id, 0,
-				  0, 0, ret_payload);
-	*parent_id = ret_payload[1];
-
-	return ret;
 }
 
 /**
@@ -1063,9 +1136,25 @@ static int zynqmp_pm_secure_load(const u64 src_addr, u64 key_addr,
 
 static const struct zynqmp_eemi_ops eemi_ops = {
 	.get_api_version = zynqmp_pm_get_api_version,
-	.get_chipid = zynqmp_pm_get_chipid,
+	.query_data = zynqmp_pm_query_data,
+	.clock_enable = zynqmp_pm_clock_enable,
+	.clock_disable = zynqmp_pm_clock_disable,
+	.clock_getstate = zynqmp_pm_clock_getstate,
+	.clock_setdivider = zynqmp_pm_clock_setdivider,
+	.clock_getdivider = zynqmp_pm_clock_getdivider,
+	.clock_setrate = zynqmp_pm_clock_setrate,
+	.clock_getrate = zynqmp_pm_clock_getrate,
+	.clock_setparent = zynqmp_pm_clock_setparent,
+	.clock_getparent = zynqmp_pm_clock_getparent,
+	.ioctl = zynqmp_pm_ioctl,
 	.reset_assert = zynqmp_pm_reset_assert,
 	.reset_get_status = zynqmp_pm_reset_get_status,
+	.init_finalize = zynqmp_pm_init_finalize,
+	.set_suspend_mode = zynqmp_pm_set_suspend_mode,
+	.request_node = zynqmp_pm_request_node,
+	.release_node = zynqmp_pm_release_node,
+	.set_requirement = zynqmp_pm_set_requirement,
+	.get_chipid = zynqmp_pm_get_chipid,
 	.fpga_load = zynqmp_pm_fpga_load,
 	.fpga_get_status = zynqmp_pm_fpga_get_status,
 	.fpga_read = zynqmp_pm_fpga_read,
@@ -1076,32 +1165,16 @@ static const struct zynqmp_eemi_ops eemi_ops = {
 	.request_wakeup = zynqmp_pm_request_wakeup,
 	.set_wakeup_source = zynqmp_pm_set_wakeup_source,
 	.system_shutdown = zynqmp_pm_system_shutdown,
-	.request_node = zynqmp_pm_request_node,
-	.release_node = zynqmp_pm_release_node,
-	.set_requirement = zynqmp_pm_set_requirement,
 	.set_max_latency = zynqmp_pm_set_max_latency,
 	.set_configuration = zynqmp_pm_set_configuration,
 	.get_node_status = zynqmp_pm_get_node_status,
 	.get_operating_characteristic = zynqmp_pm_get_operating_characteristic,
-	.init_finalize = zynqmp_pm_init_finalize,
-	.set_suspend_mode = zynqmp_pm_set_suspend_mode,
-	.ioctl = zynqmp_pm_ioctl,
-	.query_data = zynqmp_pm_query_data,
 	.pinctrl_request = zynqmp_pm_pinctrl_request,
 	.pinctrl_release = zynqmp_pm_pinctrl_release,
 	.pinctrl_get_function = zynqmp_pm_pinctrl_get_function,
 	.pinctrl_set_function = zynqmp_pm_pinctrl_set_function,
 	.pinctrl_get_config = zynqmp_pm_pinctrl_get_config,
 	.pinctrl_set_config = zynqmp_pm_pinctrl_set_config,
-	.clock_enable = zynqmp_pm_clock_enable,
-	.clock_disable = zynqmp_pm_clock_disable,
-	.clock_getstate = zynqmp_pm_clock_getstate,
-	.clock_setdivider = zynqmp_pm_clock_setdivider,
-	.clock_getdivider = zynqmp_pm_clock_getdivider,
-	.clock_setrate = zynqmp_pm_clock_setrate,
-	.clock_getrate = zynqmp_pm_clock_getrate,
-	.clock_setparent = zynqmp_pm_clock_setparent,
-	.clock_getparent = zynqmp_pm_clock_getparent,
 	.register_access = zynqmp_pm_config_reg_access,
 	.aes = zynqmp_pm_aes_engine,
 	.efuse_access = zynqmp_pm_efuse_access,
@@ -1111,7 +1184,7 @@ static const struct zynqmp_eemi_ops eemi_ops = {
 /**
  * zynqmp_pm_get_eemi_ops - Get eemi ops functions
  *
- * Return:	- pointer of eemi_ops structure
+ * Return: Pointer of eemi_ops structure
  */
 const struct zynqmp_eemi_ops *zynqmp_pm_get_eemi_ops(void)
 {
@@ -1463,28 +1536,20 @@ err:
 	return ret;
 }
 
-static int __init zynqmp_plat_init(void)
+static int zynqmp_firmware_probe(struct platform_device *pdev)
 {
+	struct device *dev = &pdev->dev;
 	struct device_node *np;
-	int ret = 0;
+	int ret;
 
 	np = of_find_compatible_node(NULL, NULL, "xlnx,zynqmp");
 	if (!np)
 		return 0;
 	of_node_put(np);
 
-	/* We're running on a ZynqMP machine, the PM node is mandatory. */
-	np = of_find_compatible_node(NULL, NULL, "xlnx,zynqmp-firmware");
-	if (!np) {
-		pr_warn("%s: pm node not found\n", __func__);
-		return -ENXIO;
-	}
-
-	ret = get_set_conduit_method(np);
-	if (ret) {
-		of_node_put(np);
+	ret = get_set_conduit_method(dev->of_node);
+	if (ret)
 		return ret;
-	}
 
 	/* Check PM API version number */
 	zynqmp_pm_get_api_version(&pm_api_version);
@@ -1512,16 +1577,6 @@ static int __init zynqmp_plat_init(void)
 	pr_info("%s Trustzone version v%d.%d\n", __func__,
 		pm_tz_version >> 16, pm_tz_version & 0xFFFF);
 
-	of_node_put(np);
-
-	return ret;
-}
-early_initcall(zynqmp_plat_init);
-
-static int zynqmp_firmware_init(void)
-{
-	int ret;
-
 	ret = zynqmp_pm_sysfs_init();
 	if (ret) {
 		pr_err("%s() sysfs init fail with error %d\n", __func__, ret);
@@ -1530,6 +1585,36 @@ static int zynqmp_firmware_init(void)
 
 	zynqmp_pm_api_debugfs_init();
 
-	return ret;
+	ret = mfd_add_devices(&pdev->dev, PLATFORM_DEVID_NONE, firmware_devs,
+			      ARRAY_SIZE(firmware_devs), NULL, 0, NULL);
+	if (ret) {
+		dev_err(&pdev->dev, "failed to add MFD devices %d\n", ret);
+		return ret;
+	}
+
+	return of_platform_populate(dev->of_node, NULL, NULL, dev);
 }
-device_initcall(zynqmp_firmware_init);
+
+static int zynqmp_firmware_remove(struct platform_device *pdev)
+{
+	mfd_remove_devices(&pdev->dev);
+	zynqmp_pm_api_debugfs_exit();
+
+	return 0;
+}
+
+static const struct of_device_id zynqmp_firmware_of_match[] = {
+	{.compatible = "xlnx,zynqmp-firmware"},
+	{},
+};
+MODULE_DEVICE_TABLE(of, zynqmp_firmware_of_match);
+
+static struct platform_driver zynqmp_firmware_driver = {
+	.driver = {
+		.name = "zynqmp_firmware",
+		.of_match_table = zynqmp_firmware_of_match,
+	},
+	.probe = zynqmp_firmware_probe,
+	.remove = zynqmp_firmware_remove,
+};
+module_platform_driver(zynqmp_firmware_driver);

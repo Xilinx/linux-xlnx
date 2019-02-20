@@ -1,4 +1,4 @@
-/* SPDX-License-Identifier: GPL-2.0+ */
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Xilinx Zynq MPSoC Firmware layer
  *
@@ -10,8 +10,8 @@
  *  Rajan Vaja <rajanv@xilinx.com>
  */
 
-#ifndef __SOC_ZYNQMP_FIRMWARE_H__
-#define __SOC_ZYNQMP_FIRMWARE_H__
+#ifndef __FIRMWARE_ZYNQMP_H__
+#define __FIRMWARE_ZYNQMP_H__
 
 #include <linux/device.h>
 
@@ -32,12 +32,12 @@
 
 /* SMC SIP service Call Function Identifier Prefix */
 #define PM_SIP_SVC			0xC2000000
-#define PM_SET_SUSPEND_MODE		0xa02
 #define PM_GET_TRUSTZONE_VERSION	0xa03
+#define PM_SET_SUSPEND_MODE		0xa02
 #define GET_CALLBACK_DATA		0xa01
 
 /* Number of 32bits values in payload */
-#define PAYLOAD_ARG_CNT	5U
+#define PAYLOAD_ARG_CNT	4U
 
 /* Number of arguments for a callback */
 #define CB_ARG_CNT	4
@@ -60,14 +60,13 @@
 #define PGGS_BASEADDR	(0xFFD80050U)
 #define PGSS_NUM_REGS	(4)
 
-/* Capabilities for RAM */
+/* Node capabilities */
 #define	ZYNQMP_PM_CAPABILITY_ACCESS	0x1U
 #define	ZYNQMP_PM_CAPABILITY_CONTEXT	0x2U
 #define	ZYNQMP_PM_CAPABILITY_WAKEUP	0x4U
 #define	ZYNQMP_PM_CAPABILITY_POWER	0x8U
 
 enum pm_api_id {
-	/* Miscellaneous API functions: */
 	PM_GET_API_VERSION = 1,
 	PM_SET_CONFIGURATION,
 	PM_GET_NODE_STATUS,
@@ -137,6 +136,48 @@ enum pm_ret_status {
 	XST_PM_INVALID_NODE,
 	XST_PM_DOUBLE_REQ,
 	XST_PM_ABORT_SUSPEND,
+};
+
+enum pm_ioctl_id {
+	IOCTL_GET_RPU_OPER_MODE,
+	IOCTL_SET_RPU_OPER_MODE,
+	IOCTL_RPU_BOOT_ADDR_CONFIG,
+	IOCTL_TCM_COMB_CONFIG,
+	IOCTL_SET_TAPDELAY_BYPASS,
+	IOCTL_SET_SGMII_MODE,
+	IOCTL_SD_DLL_RESET,
+	IOCTL_SET_SD_TAPDELAY,
+	/* Ioctl for clock driver */
+	IOCTL_SET_PLL_FRAC_MODE,
+	IOCTL_GET_PLL_FRAC_MODE,
+	IOCTL_SET_PLL_FRAC_DATA,
+	IOCTL_GET_PLL_FRAC_DATA,
+	IOCTL_WRITE_GGS,
+	IOCTL_READ_GGS,
+	IOCTL_WRITE_PGGS,
+	IOCTL_READ_PGGS,
+	/* IOCTL for ULPI reset */
+	IOCTL_ULPI_RESET,
+	/* Set healthy bit value*/
+	IOCTL_SET_BOOT_HEALTH_STATUS,
+	IOCTL_AFI,
+
+};
+
+enum pm_query_id {
+	PM_QID_INVALID,
+	PM_QID_CLOCK_GET_NAME,
+	PM_QID_CLOCK_GET_TOPOLOGY,
+	PM_QID_CLOCK_GET_FIXEDFACTOR_PARAMS,
+	PM_QID_CLOCK_GET_PARENTS,
+	PM_QID_CLOCK_GET_ATTRIBUTES,
+	PM_QID_PINCTRL_GET_NUM_PINS,
+	PM_QID_PINCTRL_GET_NUM_FUNCTIONS,
+	PM_QID_PINCTRL_GET_NUM_FUNCTION_GROUPS,
+	PM_QID_PINCTRL_GET_FUNCTION_NAME,
+	PM_QID_PINCTRL_GET_FUNCTION_GROUPS,
+	PM_QID_PINCTRL_GET_PIN_GROUPS,
+	PM_QID_CLOCK_GET_NUM_CLOCKS,
 };
 
 enum zynqmp_pm_reset_action {
@@ -432,30 +473,6 @@ enum pm_pinctrl_drive_strength {
 	PM_PINCTRL_DRIVE_STRENGTH_12MA,
 };
 
-enum pm_ioctl_id {
-	IOCTL_GET_RPU_OPER_MODE,
-	IOCTL_SET_RPU_OPER_MODE,
-	IOCTL_RPU_BOOT_ADDR_CONFIG,
-	IOCTL_TCM_COMB_CONFIG,
-	IOCTL_SET_TAPDELAY_BYPASS,
-	IOCTL_SET_SGMII_MODE,
-	IOCTL_SD_DLL_RESET,
-	IOCTL_SET_SD_TAPDELAY,
-	/* Ioctl for clock driver */
-	IOCTL_SET_PLL_FRAC_MODE,
-	IOCTL_GET_PLL_FRAC_MODE,
-	IOCTL_SET_PLL_FRAC_DATA,
-	IOCTL_GET_PLL_FRAC_DATA,
-	IOCTL_WRITE_GGS,
-	IOCTL_READ_GGS,
-	IOCTL_WRITE_PGGS,
-	IOCTL_READ_PGGS,
-	/* IOCTL for ULPI reset */
-	IOCTL_ULPI_RESET,
-	/* Set healthy bit value*/
-	IOCTL_SET_BOOT_HEALTH_STATUS,
-	IOCTL_AFI,
-};
 
 enum rpu_oper_mode {
 	PM_RPU_MODE_LOCKSTEP,
@@ -500,27 +517,18 @@ enum dll_reset_type {
 	PM_DLL_RESET_PULSE,
 };
 
-enum pm_query_id {
-	PM_QID_INVALID,
-	PM_QID_CLOCK_GET_NAME,
-	PM_QID_CLOCK_GET_TOPOLOGY,
-	PM_QID_CLOCK_GET_FIXEDFACTOR_PARAMS,
-	PM_QID_CLOCK_GET_PARENTS,
-	PM_QID_CLOCK_GET_ATTRIBUTES,
-	PM_QID_PINCTRL_GET_NUM_PINS,
-	PM_QID_PINCTRL_GET_NUM_FUNCTIONS,
-	PM_QID_PINCTRL_GET_NUM_FUNCTION_GROUPS,
-	PM_QID_PINCTRL_GET_FUNCTION_NAME,
-	PM_QID_PINCTRL_GET_FUNCTION_GROUPS,
-	PM_QID_PINCTRL_GET_PIN_GROUPS,
-	PM_QID_CLOCK_GET_NUM_CLOCKS,
-};
-
 enum pm_register_access_id {
 	CONFIG_REG_WRITE,
 	CONFIG_REG_READ,
 };
 
+/**
+ * struct zynqmp_pm_query_data - PM query data
+ * @qid:	query ID
+ * @arg1:	Argument 1 of query data
+ * @arg2:	Argument 2 of query data
+ * @arg3:	Argument 3 of query data
+ */
 struct zynqmp_pm_query_data {
 	u32 qid;
 	u32 arg1;
@@ -530,10 +538,32 @@ struct zynqmp_pm_query_data {
 
 struct zynqmp_eemi_ops {
 	int (*get_api_version)(u32 *version);
-	int (*get_chipid)(u32 *idcode, u32 *version);
+	int (*query_data)(struct zynqmp_pm_query_data qdata, u32 *out);
+	int (*clock_enable)(u32 clock_id);
+	int (*clock_disable)(u32 clock_id);
+	int (*clock_getstate)(u32 clock_id, u32 *state);
+	int (*clock_setdivider)(u32 clock_id, u32 divider);
+	int (*clock_getdivider)(u32 clock_id, u32 *divider);
+	int (*clock_setrate)(u32 clock_id, u64 rate);
+	int (*clock_getrate)(u32 clock_id, u64 *rate);
+	int (*clock_setparent)(u32 clock_id, u32 parent_id);
+	int (*clock_getparent)(u32 clock_id, u32 *parent_id);
+	int (*ioctl)(u32 node_id, u32 ioctl_id, u32 arg1, u32 arg2, u32 *out);
 	int (*reset_assert)(const enum zynqmp_pm_reset reset,
 			    const enum zynqmp_pm_reset_action assert_flag);
 	int (*reset_get_status)(const enum zynqmp_pm_reset reset, u32 *status);
+	int (*init_finalize)(void);
+	int (*set_suspend_mode)(u32 mode);
+	int (*request_node)(const u32 node,
+			    const u32 capabilities,
+			    const u32 qos,
+			    const enum zynqmp_pm_request_ack ack);
+	int (*release_node)(const u32 node);
+	int (*set_requirement)(const u32 node,
+			       const u32 capabilities,
+			       const u32 qos,
+			       const enum zynqmp_pm_request_ack ack);
+	int (*get_chipid)(u32 *idcode, u32 *version);
 	int (*fpga_load)(const u64 address, const u32 size, const u32 flags);
 	int (*fpga_get_status)(u32 *value);
 	int (*fpga_read)(const u32 reg_numframes, const u64 phys_address,
@@ -554,15 +584,6 @@ struct zynqmp_eemi_ops {
 				 const u32 wakeup_node,
 				 const u32 enable);
 	int (*system_shutdown)(const u32 type, const u32 subtype);
-	int (*request_node)(const u32 node,
-			    const u32 capabilities,
-			    const u32 qos,
-			    const enum zynqmp_pm_request_ack ack);
-	int (*release_node)(const u32 node);
-	int (*set_requirement)(const u32 node,
-			       const u32 capabilities,
-			       const u32 qos,
-			       const enum zynqmp_pm_request_ack ack);
 	int (*set_max_latency)(const u32 node, const u32 latency);
 	int (*set_configuration)(const u32 physical_addr);
 	int (*get_node_status)(const u32 node, u32 *const status,
@@ -570,36 +591,21 @@ struct zynqmp_eemi_ops {
 	int (*get_operating_characteristic)(const u32 node,
 					    const enum zynqmp_pm_opchar_type
 					    type, u32 *const result);
-	int (*init_finalize)(void);
-	int (*set_suspend_mode)(u32 mode);
-	int (*ioctl)(u32 node_id, u32 ioctl_id, u32 arg1, u32 arg2, u32 *out);
-	int (*query_data)(struct zynqmp_pm_query_data qdata, u32 *out);
 	int (*pinctrl_request)(const u32 pin);
 	int (*pinctrl_release)(const u32 pin);
 	int (*pinctrl_get_function)(const u32 pin, u32 *id);
 	int (*pinctrl_set_function)(const u32 pin, const u32 id);
 	int (*pinctrl_get_config)(const u32 pin, const u32 param, u32 *value);
 	int (*pinctrl_set_config)(const u32 pin, const u32 param, u32 value);
-	int (*clock_enable)(u32 clock_id);
-	int (*clock_disable)(u32 clock_id);
-	int (*clock_getstate)(u32 clock_id, u32 *state);
-	int (*clock_setdivider)(u32 clock_id, u32 divider);
-	int (*clock_getdivider)(u32 clock_id, u32 *divider);
-	int (*clock_setrate)(u32 clock_id, u64 rate);
-	int (*clock_getrate)(u32 clock_id, u64 *rate);
-	int (*clock_setparent)(u32 clock_id, u32 parent_id);
-	int (*clock_getparent)(u32 clock_id, u32 *parent_id);
 	int (*register_access)(u32 register_access_id, u32 address,
 			       u32 mask, u32 value, u32 *out);
 	int (*aes)(const u64 address, u32 *out);
 	int (*efuse_access)(const u64 address, u32 *out);
 	int (*secure_image)(const u64 src_addr, u64 key_addr,
 			    u64 *ret, u64 *dst);
+
 };
 
-/*
- * Internal functions
- */
 int zynqmp_pm_invoke_fn(u32 pm_api_id, u32 arg0, u32 arg1,
 			u32 arg2, u32 arg3, u32 *ret_payload);
 
@@ -614,4 +620,4 @@ static inline struct zynqmp_eemi_ops *zynqmp_pm_get_eemi_ops(void)
 }
 #endif
 
-#endif /* __SOC_ZYNQMP_FIRMWARE_H__ */
+#endif /* __FIRMWARE_ZYNQMP_H__ */

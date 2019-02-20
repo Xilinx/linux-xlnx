@@ -66,6 +66,8 @@ static struct pm_api_info pm_api_list[] = {
 	PM_API(PM_QUERY_DATA),
 };
 
+struct dentry *firmware_debugfs_root;
+
 /**
  * zynqmp_pm_self_suspend - PM call for master to suspend itself
  * @node:	Node ID of the master or subsystem
@@ -113,8 +115,8 @@ static int zynqmp_pm_register_notifier(const u32 node, const u32 event,
  * zynqmp_pm_argument_value - Extract argument value from a PM-API request
  * @arg:	Entered PM-API argument in string format
  *
- * Return:	Argument value in unsigned integer format on success
- *		0 otherwise
+ * Return: Argument value in unsigned integer format on success
+ *	   0 otherwise
  */
 static u64 zynqmp_pm_argument_value(char *arg)
 {
@@ -129,6 +131,13 @@ static u64 zynqmp_pm_argument_value(char *arg)
 	return 0;
 }
 
+/**
+ * get_pm_api_id() - Extract API-ID from a PM-API request
+ * @pm_api_req:		Entered PM-API argument in string format
+ * @pm_id:		API-ID
+ *
+ * Return: 0 on success else error code
+ */
 static int get_pm_api_id(char *pm_api_req, u32 *pm_id)
 {
 	int i;
@@ -154,6 +163,7 @@ static int process_api_request(u32 pm_id, u64 *pm_api_arg, u32 *pm_api_ret)
 	u32 pm_api_version;
 	u64 rate;
 	int ret;
+	struct zynqmp_pm_query_data qdata = {0};
 
 	if (!eemi_ops)
 		return -ENXIO;
@@ -349,22 +359,31 @@ static int process_api_request(u32 pm_id, u64 *pm_api_arg, u32 *pm_api_ret)
 				"Clock parent Index: %u\n", pm_api_ret[0]);
 		break;
 	case PM_QUERY_DATA:
-	{
-		struct zynqmp_pm_query_data qdata = {0};
-
 		qdata.qid = pm_api_arg[0];
 		qdata.arg1 = pm_api_arg[1];
 		qdata.arg2 = pm_api_arg[2];
 		qdata.arg3 = pm_api_arg[3];
 
 		ret = eemi_ops->query_data(qdata, pm_api_ret);
-		if (!ret)
+		if (ret)
+			break;
+
+		switch (qdata.qid) {
+		case PM_QID_CLOCK_GET_NAME:
+			sprintf(debugfs_buf, "Clock name = %s\n",
+				(char *)pm_api_ret);
+			break;
+		case PM_QID_CLOCK_GET_FIXEDFACTOR_PARAMS:
+			sprintf(debugfs_buf, "Multiplier = %d, Divider = %d\n",
+				pm_api_ret[1], pm_api_ret[2]);
+			break;
+		default:
 			sprintf(debugfs_buf,
 				"data[0] = 0x%08x\ndata[1] = 0x%08x\n data[2] = 0x%08x\ndata[3] = 0x%08x\n",
 				pm_api_ret[0], pm_api_ret[1],
 				pm_api_ret[2], pm_api_ret[3]);
+		}
 		break;
-	}
 	default:
 		sprintf(debugfs_buf, "Unsupported PM-API request\n");
 		ret = -EINVAL;
@@ -374,18 +393,18 @@ static int process_api_request(u32 pm_id, u64 *pm_api_arg, u32 *pm_api_ret)
 }
 
 /**
- * zynqmp_pm_debugfs_api_write - debugfs write function
- * @file:	User file structure
+ * zynqmp_pm_debugfs_api_write() - debugfs write function
+ * @file:	User file
  * @ptr:	User entered PM-API string
  * @len:	Length of the userspace buffer
  * @off:	Offset within the file
  *
- * Return:	Number of bytes copied if PM-API request succeeds,
- *		the corresponding error code otherwise
- *
  * Used for triggering pm api functions by writing
  * echo <pm_api_id>	> /sys/kernel/debug/zynqmp_pm/power or
  * echo <pm_api_name>	> /sys/kernel/debug/zynqmp_pm/power
+ *
+ * Return: Number of bytes copied if PM-API request succeeds,
+ *	   the corresponding error code otherwise
  */
 static ssize_t zynqmp_pm_debugfs_api_write(struct file *file,
 					   const char __user *ptr, size_t len,
@@ -443,14 +462,14 @@ err:
 }
 
 /**
- * zynqmp_pm_debugfs_api_read - debugfs read function
- * @file:	User file structure
+ * zynqmp_pm_debugfs_api_read() - debugfs read function
+ * @file:	User file
  * @ptr:	Requested pm_api_version string
  * @len:	Length of the userspace buffer
  * @off:	Offset within the file
  *
- * Return:	Length of the version string on success
- *		else error code.
+ * Return: Length of the version string on success
+ *	   else error code
  */
 static ssize_t zynqmp_pm_debugfs_api_read(struct file *file, char __user *ptr,
 					  size_t len, loff_t *off)
@@ -473,10 +492,18 @@ static const struct file_operations fops_zynqmp_pm_dbgfs = {
  */
 void zynqmp_pm_api_debugfs_init(void)
 {
-	struct dentry *root_dir;
-
 	/* Initialize debugfs interface */
-	root_dir = debugfs_create_dir("zynqmp-firmware", NULL);
-	debugfs_create_file("pm", 0660, root_dir, NULL,
+	firmware_debugfs_root = debugfs_create_dir("zynqmp-firmware", NULL);
+	debugfs_create_file("pm", 0660, firmware_debugfs_root, NULL,
 			    &fops_zynqmp_pm_dbgfs);
+}
+
+/**
+ * zynqmp_pm_api_debugfs_exit - Remove debugfs interface
+ *
+ * Return:	None
+ */
+void zynqmp_pm_api_debugfs_exit(void)
+{
+	debugfs_remove_recursive(firmware_debugfs_root);
 }
