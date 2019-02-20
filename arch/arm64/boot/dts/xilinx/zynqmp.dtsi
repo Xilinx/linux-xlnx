@@ -847,7 +847,7 @@
 		perf_monitor_ddr: perf-monitor@fd0b0000 {
 			compatible = "xlnx,axi-perf-monitor";
 			reg = <0x0 0xfd0b0000 0x0 0x10000>;
-			interrupts = <0 27 4>;
+			interrupts = <0 123 4>;
 			interrupt-parent = <&gic>;
 			xlnx,enable-profile = <0>;
 			xlnx,enable-trace = <0>;
@@ -865,7 +865,7 @@
 		perf_monitor_cci: perf-monitor@fd490000 {
 			compatible = "xlnx,axi-perf-monitor";
 			reg = <0x0 0xfd490000 0x0 0x10000>;
-			interrupts = <0 27 4>;
+			interrupts = <0 123 4>;
 			interrupt-parent = <&gic>;
 			xlnx,enable-profile = <0>;
 			xlnx,enable-trace = <0>;
