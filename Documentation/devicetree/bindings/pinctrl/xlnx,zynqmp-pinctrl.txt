@@ -230,30 +230,46 @@ a pin configuration subnode:
    arguments are 'PIN_INPUT_TYPE_SCHMITT' and 'PIN_INPUT_TYPE_CMOS'.
 
 Example:
-	pinctrl0: pinctrl@ff180000 {
-		compatible = "xlnx,zynqmp-pinctrl";
 
-		pinctrl_uart1_default: uart1-default {
-			mux {
-				groups = "uart0_4_grp";
-				function = "uart0";
-			};
+firmware {
+	zynqmp_firmware: zynqmp-firmware {
+		compatible = "xlnx,zynqmp-firmware";
+		method = "smc";
 
-			conf {
-				groups = "uart0_4_grp";
-				slew-rate = <SLEW_RATE_SLOW>;
-				io-standard = <IO_STANDARD_LVCMOS18>;
-			};
+		pinctrl0: pinctrl {
+			compatible = "xlnx,zynqmp-pinctrl";
 
-			conf-rx {
-				pins = "MIO18";
-				bias-high-impedance;
-			};
+			pinctrl_uart1_default: uart1-default {
+				mux {
+					groups = "uart0_4_grp";
+					function = "uart0";
+				};
 
-			conf-tx {
-				pins = "MIO19";
-				bias-disable;
-				schmitt-cmos = <PIN_INPUT_TYPE_CMOS>;
+				conf {
+					groups = "uart0_4_grp";
+					slew-rate = <SLEW_RATE_SLOW>;
+					io-standard = <IO_STANDARD_LVCMOS18>;
+				};
+
+				conf-rx {
+					pins = "MIO18";
+					bias-high-impedance;
+				};
+
+				conf-tx {
+					pins = "MIO19";
+					bias-disable;
+					schmitt-cmos = <PIN_INPUT_TYPE_CMOS>;
+				};
 			};
 		};
 	};
+};
+
+uart1 {
+	...
+        pinctrl-names = "default";
+        pinctrl-0 = <&pinctrl_uart1_default>;
+	...
+
+};
