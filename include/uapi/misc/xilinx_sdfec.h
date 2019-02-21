@@ -184,7 +184,9 @@ struct xsdfec_ldpc_params {
 
 /**
  * struct xsdfec_status - Status of SD-FEC core.
- * @fec_id: ID of SD-FEC instance
+ * @fec_id: ID of SD-FEC instance. ID is limited to the number of active
+ *          SD-FEC's in the FPGA and is related to the driver instance
+ *          Minor number.
  * @state: State of the SD-FEC core
  * @activity: Describes if the SD-FEC instance is Active
  */
@@ -206,7 +208,9 @@ struct xsdfec_irq {
 
 /**
  * struct xsdfec_config - Configuration of SD-FEC core.
- * @fec_id: ID of SD-FEC instance
+ * @fec_id: ID of SD-FEC instance. ID is limited to the number of active
+ *          SD-FEC's in the FPGA and is related to the driver instance
+ *          Minor number.
  * @code: The codes being used by the SD-FEC instance
  * @order: Order of Operation
  * @bypass: Is the core being bypassed
@@ -233,7 +237,8 @@ struct xsdfec_config {
 /**
  * struct xsdfec_stats - Stats retrived by ioctl XSDFEC_GET_STATS. Used
  *			 to buffer atomic_t variables from struct
- *			 xsdfec_dev.
+ *			 xsdfec_dev. Counts are accumulated until
+ *			 the user clears them.
  * @isr_err_count: Count of ISR errors
  * @cecc_count: Count of Correctable ECC errors (SBE)
  * @uecc_count: Count of Uncorrectable ECC errors (MBE)
