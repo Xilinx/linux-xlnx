@@ -41,7 +41,7 @@ int zynq_cpun_start(u32 address, int cpu)
 
 	/* MS: Expectation that SLCR are directly map and accessible */
 	/* Not possible to jump to non aligned address */
-	if (!(address & 3) && (!address || (address >= trampoline_code_size))) {
+	if (!(address & 2) && (!address || (address >= trampoline_code_size))) {
 		/* Store pointer to ioremap area which points to address 0x0 */
 		static u8 __iomem *zero;
 		u32 trampoline_size = &zynq_secondary_trampoline_jump -
