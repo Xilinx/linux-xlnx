@@ -230,7 +230,8 @@ static int xapm_probe(struct platform_device *pdev)
 
 	xapm->param.clk = devm_clk_get(&pdev->dev, NULL);
 	if (IS_ERR(xapm->param.clk)) {
-		dev_err(&pdev->dev, "axi clock error\n");
+		if (PTR_ERR(xapm->param.clk) != -EPROBE_DEFER)
+			dev_err(&pdev->dev, "axi clock error\n");
 		return PTR_ERR(xapm->param.clk);
 	}
 
