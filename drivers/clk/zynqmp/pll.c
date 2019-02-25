@@ -51,6 +51,7 @@ static inline enum pll_mode zynqmp_pll_get_mode(struct clk_hw *hw)
 	u32 ret_payload[PAYLOAD_ARG_CNT];
 	int ret;
 	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
+
 	ret = eemi_ops->ioctl(0, IOCTL_GET_PLL_FRAC_MODE, clk_id, 0,
 			      ret_payload);
 	if (ret)
@@ -311,6 +312,7 @@ struct clk_hw *zynqmp_clk_register_pll(const char *name, u32 clk_id,
 	init.flags = nodes->flag;
 	init.parent_names = parents;
 	init.num_parents = 1;
+
 	pll = kzalloc(sizeof(*pll), GFP_KERNEL);
 	if (!pll)
 		return ERR_PTR(-ENOMEM);
