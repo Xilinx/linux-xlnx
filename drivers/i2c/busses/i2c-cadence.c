@@ -1240,7 +1240,7 @@ static int __maybe_unused cdns_i2c_runtime_resume(struct device *dev)
 }
 
 /**
- * cdns_i2c_prepare_recovery - Withold recovery state
+ * cdns_i2c_prepare_recovery - Withhold recovery state
  * @adapter:    Pointer to i2c adapter
  *
  * This function is called to prepare for recovery.
