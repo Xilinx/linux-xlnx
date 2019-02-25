@@ -155,15 +155,6 @@ config MESON_EFUSE
 	  This driver can also be built as a module. If so, the module
 	  will be called nvmem_meson_efuse.
 
-config NVMEM_ZYNQMP
-	bool "Xilinx ZYNQMP SoC nvmem firmware support"
-	depends on ARCH_ZYNQMP
-	help
-	  This is a driver to access hardware related data like soc revision,
-	  IDCODE, efuse ... etc.
-
-	  If sure, say yes. If unsure, say no.
-
 config MESON_MX_EFUSE
 	tristate "Amlogic Meson6/Meson8/Meson8b eFuse Support"
 	depends on ARCH_MESON || COMPILE_TEST
@@ -200,5 +191,15 @@ config SC27XX_EFUSE
 
 	  This driver can also be built as a module. If so, the module
 	  will be called nvmem-sc27xx-efuse.
+
+config NVMEM_ZYNQMP
+	bool "Xilinx ZYNQMP SoC nvmem firmware support"
+	depends on ARCH_ZYNQMP
+	help
+	  This is a driver to access hardware related data like
+	  soc revision, IDCODE... etc by using the firmware
+	  interface.
+
+	  If sure, say yes. If unsure, say no.
 
 endif
