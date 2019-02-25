@@ -2,10 +2,9 @@
 /*
  * ARM PL353 SMC driver
  *
- * Copyright (C) 2012 Xilinx, Inc
+ * Copyright (C) 2012 - 2018 Xilinx, Inc
  * Author: Punnaiah Choudary Kalluri <punnaiah@xilinx.com>
  * Author: Naga Sureshkumar Relli <nagasure@xilinx.com>
- *
  */
 
 #include <linux/clk.h>
@@ -94,7 +93,7 @@ static void __iomem *pl353_smc_base;
 
 /**
  * pl353_smc_set_buswidth - Set memory buswidth
- * @bw:	Memory buswidth (8 | 16)
+ * @bw: Memory buswidth (8 | 16)
  * Return: 0 on success or negative errno.
  */
 int pl353_smc_set_buswidth(unsigned int bw)
@@ -158,7 +157,7 @@ EXPORT_SYMBOL_GPL(pl353_smc_ecc_is_busy);
 
 /**
  * pl353_smc_get_ecc_val - Read ecc_valueN registers
- * @ecc_reg:	Index of the ecc_value reg (0..3)
+ * @ecc_reg: Index of the ecc_value reg (0..3)
  * Return: the content of the requested ecc_value register.
  *
  * There are four valid ecc_value registers. The argument is truncated to stay
@@ -204,7 +203,7 @@ EXPORT_SYMBOL_GPL(pl353_smc_clr_nand_int);
 
 /**
  * pl353_smc_set_ecc_mode - Set SMC ECC mode
- * @mode:	ECC mode (BYPASS, APB, MEM)
+ * @mode: ECC mode (BYPASS, APB, MEM)
  * Return: 0 on success or negative errno.
  */
 int pl353_smc_set_ecc_mode(enum pl353_smc_ecc_mode mode)
@@ -233,7 +232,7 @@ EXPORT_SYMBOL_GPL(pl353_smc_set_ecc_mode);
 
 /**
  * pl353_smc_set_ecc_pg_size - Set SMC ECC page size
- * @pg_sz:	ECC page size
+ * @pg_sz: ECC page size
  * Return: 0 on success or negative errno.
  */
 int pl353_smc_set_ecc_pg_size(unsigned int pg_sz)
@@ -296,17 +295,19 @@ static int __maybe_unused pl353_smc_resume(struct device *dev)
 
 	return ret;
 }
+
 static struct amba_driver pl353_smc_driver;
+
 static SIMPLE_DEV_PM_OPS(pl353_smc_dev_pm_ops, pl353_smc_suspend,
 			 pl353_smc_resume);
 
 /**
  * pl353_smc_init_nand_interface - Initialize the NAND interface
- * @adev:	Pointer to the amba_device struct
- * @nand_node:	Pointer to the pl353_nand device_node struct
+ * @adev: Pointer to the amba_device struct
+ * @nand_node: Pointer to the pl353_nand device_node struct
  */
-void pl353_smc_init_nand_interface(struct amba_device *adev,
-					struct device_node *nand_node)
+static void pl353_smc_init_nand_interface(struct amba_device *adev,
+					  struct device_node *nand_node)
 {
 	unsigned long timeout;
 
@@ -352,8 +353,8 @@ static int pl353_smc_probe(struct amba_device *adev, const struct amba_id *id)
 	struct resource *res;
 	int err;
 	struct device_node *of_node = adev->dev.of_node;
-	void (*init)(struct amba_device *adev,
-		     struct device_node *nand_node);
+	static void (*init)(struct amba_device *adev,
+			    struct device_node *nand_node);
 	const struct of_device_id *match = NULL;
 
 	pl353_smc = devm_kzalloc(&adev->dev, sizeof(*pl353_smc), GFP_KERNEL);
@@ -435,12 +436,6 @@ static int pl353_smc_remove(struct amba_device *adev)
 	return 0;
 }
 
-/* Match table for device tree binding */
-static const struct of_device_id pl353_smc_of_match[] = {
-	{ .compatible = "arm,pl353-smc-r2p1" },
-	{ },
-};
-
 static const struct amba_id pl353_ids[] = {
 	{
 	.id = 0x00041353,
@@ -457,8 +452,8 @@ static struct amba_driver pl353_smc_driver = {
 		.pm = &pl353_smc_dev_pm_ops,
 	},
 	.id_table = pl353_ids,
-	.probe		= pl353_smc_probe,
-	.remove		= pl353_smc_remove,
+	.probe = pl353_smc_probe,
+	.remove = pl353_smc_remove,
 };
 
 module_amba_driver(pl353_smc_driver);
