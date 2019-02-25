@@ -104,7 +104,6 @@
 #define XTPG_MAX_HEIGHT			(7760)
 
 #define XTPG_MIN_PPC			1
-#define XTPG_MAX_PPC			8
 
 #define XTPG_MIN_FRM_INT		1
 
@@ -976,9 +975,8 @@ static int xtpg_parse_of(struct xtpg_device *xtpg)
 	if (ret < 0) {
 		xtpg->ppc = XTPG_MIN_PPC;
 		dev_dbg(dev, "failed to read ppc in dt\n");
-	} else if ((xtpg->ppc > XTPG_MAX_PPC)
-		|| (xtpg->ppc < XTPG_MIN_PPC)
-		|| (xtpg->ppc % 2)) {
+	} else if ((xtpg->ppc != 1) && (xtpg->ppc != 2) &&
+			(xtpg->ppc != 4) && (xtpg->ppc != 8)) {
 		dev_err(dev, "Invalid ppc config in dt\n");
 		return -EINVAL;
 	}
