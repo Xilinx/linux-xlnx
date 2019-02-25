@@ -1427,6 +1427,12 @@ static const struct flash_info spi_nor_ids[] = {
 	{ "is25wp128f", INFO(0x9d7018, 0, 64 * 1024, 256, SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ | SPI_NOR_HAS_LOCK) },
 	{ "is25lp256d", INFO(0x9d6019, 0, 64 * 1024, 512, SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ | SPI_NOR_HAS_LOCK) },
 	{ "is25wp256d", INFO(0x9d7019, 0, 64 * 1024, 512, SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ | SPI_NOR_HAS_LOCK) },
+	{ "is25lp512m", INFO(0x9d601a, 0, 64 * 1024, 1024,
+			SECT_4K | SPI_NOR_DUAL_READ |
+			SPI_NOR_QUAD_READ | SPI_NOR_HAS_LOCK) },
+	{ "is25wp512m", INFO(0x9d701a, 0, 64 * 1024, 1024,
+			SECT_4K | SPI_NOR_DUAL_READ |
+			SPI_NOR_QUAD_READ | SPI_NOR_HAS_LOCK) },
 	{ "is25cd512",  INFO(0x7f9d20, 0, 32 * 1024,   2, SECT_4K) },
 	{ "is25lq040b", INFO(0x9d4013, 0, 64 * 1024,   8,
 			SECT_4K | SPI_NOR_DUAL_READ | SPI_NOR_QUAD_READ) },
@@ -2994,6 +3000,11 @@ static int spi_nor_init_params(struct spi_nor *nor,
 			nor->addr_width = 0;
 			nor->mtd.erasesize = 0;
 		} else {
+			if ((JEDEC_MFR(info) == SNOR_MFR_ISSI) &&
+			    params->size >  OFFSET_16_MB) {
+				nor->addr_width = 4;
+				set_4byte(nor, info, 1);
+			}
 			memcpy(params, &sfdp_params, sizeof(*params));
 		}
 	}
