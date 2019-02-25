@@ -349,9 +349,9 @@ static int macb_mdio_read(struct mii_bus *bus, int mii_id, int regnum)
 	int value;
 	int err;
 
-	if (pm_runtime_status_suspended(&bp->pdev->dev) &&
-	    !device_may_wakeup(&bp->dev->dev))
-		return -EAGAIN;
+	err = pm_runtime_get_sync(&bp->pdev->dev);
+	if (err < 0)
+		return err;
 
 	err = macb_mdio_wait_for_idle(bp);
 	if (err < 0)
@@ -369,6 +369,8 @@ static int macb_mdio_read(struct mii_bus *bus, int mii_id, int regnum)
 
 	value = MACB_BFEXT(DATA, macb_readl(bp, MAN));
 
+	pm_runtime_mark_last_busy(&bp->pdev->dev);
+	pm_runtime_put_autosuspend(&bp->pdev->dev);
 	return value;
 }
 
@@ -378,9 +380,9 @@ static int macb_mdio_write(struct mii_bus *bus, int mii_id, int regnum,
 	struct macb *bp = bus->priv;
 	int err;
 
-	if (pm_runtime_status_suspended(&bp->pdev->dev) &&
-	    !device_may_wakeup(&bp->dev->dev))
-		return -EAGAIN;
+	err = pm_runtime_get_sync(&bp->pdev->dev);
+	if (err < 0)
+		return err;
 
 	err = macb_mdio_wait_for_idle(bp);
 	if (err < 0)
@@ -397,6 +399,8 @@ static int macb_mdio_write(struct mii_bus *bus, int mii_id, int regnum,
 	if (err < 0)
 		return err;
 
+	pm_runtime_mark_last_busy(&bp->pdev->dev);
+	pm_runtime_put_autosuspend(&bp->pdev->dev);
 	return 0;
 }
 
