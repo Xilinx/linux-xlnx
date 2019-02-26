@@ -16286,6 +16286,12 @@ L:	linux-serial@vger.kernel.org
 S:	Maintained
 F:	drivers/tty/serial/uartlite.c
 
+XILINX UARTPS DRIVER
+M:	Shubhrajyoti Datta <shubhrajyoti.datta@xilinx.com>
+S:	Maintained
+F:	drivers/tty/serial/xilinx_uartps.c
+F:	Documentation/devicetree/bindings/serial/cdns,uart.txt
+
 XILINX VIDEO IP CORES
 M:	Hyun Kwon <hyun.kwon@xilinx.com>
 M:	Laurent Pinchart <laurent.pinchart@ideasonboard.com>
