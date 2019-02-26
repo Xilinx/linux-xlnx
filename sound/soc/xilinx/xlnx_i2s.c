@@ -16,6 +16,8 @@
 #include <sound/pcm_params.h>
 #include <sound/soc.h>
 
+#define DRV_NAME "xlnx_i2s"
+
 #define I2S_CORE_CTRL_OFFSET		0x08
 #define I2S_I2STIM_OFFSET		0x20
 #define I2S_CH0_OFFSET			0x30
@@ -82,7 +84,7 @@ static const struct snd_soc_dai_ops xlnx_i2s_dai_ops = {
 };
 
 static const struct snd_soc_component_driver xlnx_i2s_component = {
-	.name = "xlnx_i2s",
+	.name = DRV_NAME,
 };
 
 static const struct of_device_id xlnx_i2s_of_match[] = {
@@ -170,7 +172,7 @@ static int xlnx_i2s_probe(struct platform_device *pdev)
 
 static struct platform_driver xlnx_i2s_aud_driver = {
 	.driver = {
-		.name = "xlnx_i2s",
+		.name = DRV_NAME,
 		.of_match_table = xlnx_i2s_of_match,
 	},
 	.probe = xlnx_i2s_probe,
@@ -179,5 +181,5 @@ static struct platform_driver xlnx_i2s_aud_driver = {
 module_platform_driver(xlnx_i2s_aud_driver);
 
 MODULE_LICENSE("GPL v2");
-MODULE_AUTHOR("Praveen Vuppala");
-MODULE_AUTHOR("Maruthi Srinivas Bayyavarapu");
+MODULE_AUTHOR("Praveen Vuppala  <praveenv@xilinx.com>");
+MODULE_AUTHOR("Maruthi Srinivas Bayyavarapu <maruthis@xilinx.com>");
