@@ -79,31 +79,31 @@ static dev_t xsdfec_devt;
 /* ECC Interrupt Status Register */
 #define XSDFEC_ECC_ISR_ADDR (0x2C)
 /* Single Bit Errors */
-#define XSDFEC_ECC_ISR_SBE (0x7FF)
+#define XSDFEC_ECC_ISR_SBE_MASK (0x7FF)
 /* PL Initialize Single Bit Errors */
-#define XSDFEC_PL_INIT_ECC_ISR_SBE (0x3C00000)
+#define XSDFEC_PL_INIT_ECC_ISR_SBE_MASK (0x3C00000)
 /* Multi Bit Errors */
-#define XSDFEC_ECC_ISR_MBE (0x3FF800)
+#define XSDFEC_ECC_ISR_MBE_MASK (0x3FF800)
 /* PL Initialize Multi Bit Errors */
-#define XSDFEC_PL_INIT_ECC_ISR_MBE (0x3C000000)
+#define XSDFEC_PL_INIT_ECC_ISR_MBE_MASK (0x3C000000)
 /* Multi Bit Error to Event Shift */
 #define XSDFEC_ECC_ISR_MBE_TO_EVENT_SHIFT (11)
 /* PL Initialize Multi Bit Error to Event Shift */
 #define XSDFEC_PL_INIT_ECC_ISR_MBE_TO_EVENT_SHIFT (4)
 /* ECC Interrupt Status Bit Mask */
-#define XSDFEC_ECC_ISR_MASK (XSDFEC_ECC_ISR_SBE | XSDFEC_ECC_ISR_MBE)
+#define XSDFEC_ECC_ISR_MASK (XSDFEC_ECC_ISR_SBE_MASK | XSDFEC_ECC_ISR_MBE_MASK)
 /* ECC Interrupt Status PL Initialize Bit Mask */
 #define XSDFEC_PL_INIT_ECC_ISR_MASK                                            \
-	(XSDFEC_PL_INIT_ECC_ISR_SBE | XSDFEC_PL_INIT_ECC_ISR_MBE)
+	(XSDFEC_PL_INIT_ECC_ISR_SBE_MASK | XSDFEC_PL_INIT_ECC_ISR_MBE_MASK)
 /* ECC Interrupt Status All Bit Mask */
 #define XSDFEC_ALL_ECC_ISR_MASK                                                \
 	(XSDFEC_ECC_ISR_MASK | XSDFEC_PL_INIT_ECC_ISR_MASK)
 /* ECC Interrupt Status Single Bit Errors Mask */
-#define XSDFEC_ECC_ISR_SBE_MASK                                                \
-	(XSDFEC_ECC_ISR_SBE | XSDFEC_PL_INIT_ECC_ISR_SBE)
+#define XSDFEC_ALL_ECC_ISR_SBE_MASK                                            \
+	(XSDFEC_ECC_ISR_SBE_MASK | XSDFEC_PL_INIT_ECC_ISR_SBE_MASK)
 /* ECC Interrupt Status Multi Bit Errors Mask */
-#define XSDFEC_ECC_ISR_MBE_MASK                                                \
-	(XSDFEC_ECC_ISR_MBE | XSDFEC_PL_INIT_ECC_ISR_MBE)
+#define XSDFEC_ALL_ECC_ISR_MBE_MASK                                            \
+	(XSDFEC_ECC_ISR_MBE_MASK | XSDFEC_PL_INIT_ECC_ISR_MBE_MASK)
 
 /* Write Only - ECC Interrupt Enable Register */
 #define XSDFEC_ECC_IER_ADDR (0x30)
@@ -1242,12 +1242,13 @@ static void xsdfec_count_and_clear_ecc_multi_errors(struct xsdfec_dev *xsdfec,
 	xsdfec->stats_updated = true;
 
 	/* Clear ECC errors */
-	xsdfec_regwrite(xsdfec, XSDFEC_ECC_ISR_ADDR, XSDFEC_ECC_ISR_MBE_MASK);
+	xsdfec_regwrite(xsdfec, XSDFEC_ECC_ISR_ADDR,
+			XSDFEC_ALL_ECC_ISR_MBE_MASK);
 	/* Clear ECC events */
-	if (uecc & XSDFEC_ECC_ISR_MBE) {
+	if (uecc & XSDFEC_ECC_ISR_MBE_MASK) {
 		uecc_event = uecc >> XSDFEC_ECC_ISR_MBE_TO_EVENT_SHIFT;
 		xsdfec_regwrite(xsdfec, XSDFEC_ECC_ISR_ADDR, uecc_event);
-	} else if (uecc & XSDFEC_PL_INIT_ECC_ISR_MBE) {
+	} else if (uecc & XSDFEC_PL_INIT_ECC_ISR_MBE_MASK) {
 		uecc_event = uecc >> XSDFEC_PL_INIT_ECC_ISR_MBE_TO_EVENT_SHIFT;
 		xsdfec_regwrite(xsdfec, XSDFEC_ECC_ISR_ADDR, uecc_event);
 	}
@@ -1284,9 +1285,9 @@ static void xsdfec_update_state_for_isr_err(struct xsdfec_dev *xsdfec)
 static void xsdfec_update_state_for_ecc_err(struct xsdfec_dev *xsdfec,
 					    u32 ecc_err)
 {
-	if (ecc_err & XSDFEC_ECC_ISR_MBE)
+	if (ecc_err & XSDFEC_ECC_ISR_MBE_MASK)
 		xsdfec->state = XSDFEC_NEEDS_RESET;
-	else if (ecc_err & XSDFEC_PL_INIT_ECC_ISR_MBE)
+	else if (ecc_err & XSDFEC_PL_INIT_ECC_ISR_MBE_MASK)
 		xsdfec->state = XSDFEC_PL_RECONFIGURE;
 
 	xsdfec->state_updated = true;
@@ -1294,13 +1295,13 @@ static void xsdfec_update_state_for_ecc_err(struct xsdfec_dev *xsdfec,
 
 static int xsdfec_get_sbe_mask(u32 ecc_err)
 {
-	u32 sbe_mask = XSDFEC_ECC_ISR_SBE_MASK;
+	u32 sbe_mask = XSDFEC_ALL_ECC_ISR_SBE_MASK;
 
-	if (ecc_err & XSDFEC_ECC_ISR_MBE) {
-		sbe_mask = (XSDFEC_ECC_ISR_MBE - ecc_err) >>
+	if (ecc_err & XSDFEC_ECC_ISR_MBE_MASK) {
+		sbe_mask = (XSDFEC_ECC_ISR_MBE_MASK - ecc_err) >>
 			   XSDFEC_ECC_ISR_MBE_TO_EVENT_SHIFT;
-	} else if (ecc_err & XSDFEC_PL_INIT_ECC_ISR_MBE)
-		sbe_mask = (XSDFEC_PL_INIT_ECC_ISR_MBE - ecc_err) >>
+	} else if (ecc_err & XSDFEC_PL_INIT_ECC_ISR_MBE_MASK)
+		sbe_mask = (XSDFEC_PL_INIT_ECC_ISR_MBE_MASK - ecc_err) >>
 			   XSDFEC_PL_INIT_ECC_ISR_MBE_TO_EVENT_SHIFT;
 
 	return sbe_mask;
@@ -1327,7 +1328,7 @@ static irqreturn_t xsdfec_irq_thread(int irq, void *dev_id)
 
 	spin_lock(&xsdfec->irq_lock);
 
-	err_value = ecc_err & XSDFEC_ECC_ISR_MBE_MASK;
+	err_value = ecc_err & XSDFEC_ALL_ECC_ISR_MBE_MASK;
 	if (err_value) {
 		dev_err(xsdfec->dev, "Multi-bit error on xsdfec%d",
 			xsdfec->config.fec_id);
