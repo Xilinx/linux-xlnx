@@ -725,14 +725,14 @@ static int xsdfec_qc_table_write(struct xsdfec_dev *xsdfec, u32 offset,
 static int xsdfec_add_ldpc(struct xsdfec_dev *xsdfec, void __user *arg)
 {
 	struct xsdfec_ldpc_params *ldpc;
-	int err;
+	int ret;
 
 	ldpc = kzalloc(sizeof(*ldpc), GFP_KERNEL);
 	if (!ldpc)
 		return -ENOMEM;
 
-	err = copy_from_user(ldpc, arg, sizeof(*ldpc));
-	if (err) {
+	ret = copy_from_user(ldpc, arg, sizeof(*ldpc));
+	if (ret) {
 		dev_err(xsdfec->dev, "%s failed to copy from user for SDFEC%d",
 			__func__, xsdfec->config.fec_id);
 		goto err_out;
@@ -741,7 +741,7 @@ static int xsdfec_add_ldpc(struct xsdfec_dev *xsdfec, void __user *arg)
 		dev_err(xsdfec->dev,
 			"%s: Unable to write LDPC to SDFEC%d check DT",
 			__func__, xsdfec->config.fec_id);
-		err = -EIO;
+		ret = -EIO;
 		goto err_out;
 	}
 
@@ -750,7 +750,7 @@ static int xsdfec_add_ldpc(struct xsdfec_dev *xsdfec, void __user *arg)
 		dev_err(xsdfec->dev,
 			"%s attempting to write LDPC code while started for SDFEC%d",
 			__func__, xsdfec->config.fec_id);
-		err = -EIO;
+		ret = -EIO;
 		goto err_out;
 	}
 
@@ -758,52 +758,54 @@ static int xsdfec_add_ldpc(struct xsdfec_dev *xsdfec, void __user *arg)
 		dev_err(xsdfec->dev,
 			"%s writing LDPC code while Code Write Protection enabled for SDFEC%d",
 			__func__, xsdfec->config.fec_id);
-		err = -EIO;
+		ret = -EIO;
 		goto err_out;
 	}
 
 	/* Write Reg 0 */
-	err = xsdfec_reg0_write(xsdfec, ldpc->n, ldpc->k, ldpc->psize,
+	ret = xsdfec_reg0_write(xsdfec, ldpc->n, ldpc->k, ldpc->psize,
 				ldpc->code_id);
-	if (err)
+	if (ret)
 		goto err_out;
 
 	/* Write Reg 1 */
-	err = xsdfec_reg1_write(xsdfec, ldpc->psize, ldpc->no_packing, ldpc->nm,
+	ret = xsdfec_reg1_write(xsdfec, ldpc->psize, ldpc->no_packing, ldpc->nm,
 				ldpc->code_id);
-	if (err)
+	if (ret)
 		goto err_out;
 
 	/* Write Reg 2 */
-	err = xsdfec_reg2_write(xsdfec, ldpc->nlayers, ldpc->nmqc,
+	ret = xsdfec_reg2_write(xsdfec, ldpc->nlayers, ldpc->nmqc,
 				ldpc->norm_type, ldpc->special_qc,
 				ldpc->no_final_parity, ldpc->max_schedule,
 				ldpc->code_id);
-	if (err)
+	if (ret)
 		goto err_out;
 
 	/* Write Reg 3 */
-	err = xsdfec_reg3_write(xsdfec, ldpc->sc_off, ldpc->la_off,
+	ret = xsdfec_reg3_write(xsdfec, ldpc->sc_off, ldpc->la_off,
 				ldpc->qc_off, ldpc->code_id);
-	if (err)
+	if (ret)
 		goto err_out;
 
 	/* Write Shared Codes */
-	err = xsdfec_sc_table_write(xsdfec, ldpc->sc_off, ldpc->sc_table,
+	ret = xsdfec_sc_table_write(xsdfec, ldpc->sc_off, ldpc->sc_table,
 				    ldpc->nlayers);
-	if (err < 0)
+	if (ret < 0)
 		goto err_out;
 
-	err = xsdfec_la_table_write(xsdfec, 4 * ldpc->la_off, ldpc->la_table,
+	ret = xsdfec_la_table_write(xsdfec, 4 * ldpc->la_off, ldpc->la_table,
 				    ldpc->nlayers);
-	if (err < 0)
+	if (ret < 0)
 		goto err_out;
 
-	err = xsdfec_qc_table_write(xsdfec, 4 * ldpc->qc_off, ldpc->qc_table,
+	ret = xsdfec_qc_table_write(xsdfec, 4 * ldpc->qc_off, ldpc->qc_table,
 				    ldpc->nqc);
+	if (ret > 0)
+		ret = 0;
 err_out:
 	kfree(ldpc);
-	return err;
+	return ret;
 }
 
 static int xsdfec_set_order(struct xsdfec_dev *xsdfec, void __user *arg)
