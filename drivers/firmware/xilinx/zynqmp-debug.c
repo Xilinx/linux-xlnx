@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: GPL-2.0+
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Xilinx Zynq MPSoC Firmware layer for debugfs APIs
  *
@@ -15,6 +15,7 @@
 #include <linux/slab.h>
 #include <linux/debugfs.h>
 #include <linux/uaccess.h>
+
 #include <linux/firmware/xlnx-zynqmp.h>
 #include "zynqmp-debug.h"
 
