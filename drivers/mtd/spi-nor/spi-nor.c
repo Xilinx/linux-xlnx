@@ -101,6 +101,19 @@ struct flash_info {
 
 static const struct flash_info *spi_nor_match_id(const char *name);
 
+bool update_stripe(const u8 opcode)
+{
+	if (opcode ==  SPINOR_OP_BE_4K ||
+	    opcode ==  SPINOR_OP_BE_32K ||
+	    opcode ==  SPINOR_OP_CHIP_ERASE ||
+	    opcode ==  SPINOR_OP_SE ||
+	    opcode ==  SPINOR_OP_BE_32K_4B ||
+	    opcode ==  SPINOR_OP_SE_4B ||
+	    opcode == SPINOR_OP_BE_4K_4B)
+		return false;
+
+	return true;
+}
 /*
  * Read the status register, returning its value in the location
  * Return the status register value.

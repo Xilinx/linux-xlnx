@@ -614,6 +614,10 @@ static int zynq_qspi_start_transfer(struct spi_master *master,
 	xqspi->bytes_to_transfer = transfer->len;
 	xqspi->bytes_to_receive = transfer->len;
 
+	if (!transfer->stripe)
+		xqspi->is_instr = true;
+	else
+		xqspi->is_instr = false;
 	zynq_qspi_setup_transfer(qspi, transfer);
 
 	zynq_qspi_fill_tx_fifo(xqspi, ZYNQ_QSPI_FIFO_DEPTH, true);

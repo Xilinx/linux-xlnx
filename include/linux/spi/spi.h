@@ -729,6 +729,7 @@ extern void spi_res_release(struct spi_controller *ctlr,
  * @transfer_list: transfers are sequenced through @spi_message.transfers
  * @tx_sg: Scatterlist for transmit, currently not for client use
  * @rx_sg: Scatterlist for receive, currently not for client use
+ * @stripe: true-> enable stripe, false-> disable stripe.
  *
  * SPI transfers always write the same number of bytes as they read.
  * Protocol drivers should always provide @rx_buf and/or @tx_buf.
@@ -809,7 +810,7 @@ struct spi_transfer {
 	u16		delay_usecs;
 	u32		speed_hz;
 	u32		dummy;
-
+	bool		stripe;
 	struct list_head transfer_list;
 };
 
@@ -1325,6 +1326,8 @@ spi_transfer_is_last(struct spi_controller *ctlr, struct spi_transfer *xfer)
 	return list_is_last(&xfer->transfer_list, &ctlr->cur_msg->transfers);
 }
 
+bool
+update_stripe(const u8 opcode);
 
 /* Compatibility layer */
 #define spi_master			spi_controller
