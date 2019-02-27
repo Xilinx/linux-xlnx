@@ -17,6 +17,7 @@
 #include <drm/drm_mipi_dsi.h>
 #include <drm/drm_panel.h>
 #include <drm/drm_probe_helper.h>
+#include <linux/clk.h>
 #include <linux/component.h>
 #include <linux/device.h>
 #include <linux/of_device.h>
@@ -68,6 +69,10 @@
 #define XDSI_VIDEO_MODE_SYNC_EVENT	0x1
 #define XDSI_VIDEO_MODE_BURST		0x2
 
+#define XDSI_DPHY_CLK_MIN	197000000000UL
+#define XDSI_DPHY_CLK_MAX	203000000000UL
+#define XDSI_DPHY_CLK_REQ	200000000000UL
+
 /**
  * struct xlnx_dsi - Core configuration DSI Tx subsystem device structure
  * @encoder: DRM encoder structure
@@ -103,6 +108,8 @@
  * @in_fmt_prop_val: configurable media bus format value
  * @out_fmt: configurable bridge output media format
  * @out_fmt_prop_val: configurable media bus format value
+ * @video_aclk: Video clock
+ * @dphy_clk_200M: 200MHz DPHY clock and AXI Lite clock
  */
 struct xlnx_dsi {
 	struct drm_encoder encoder;
@@ -138,6 +145,8 @@ struct xlnx_dsi {
 	u32 in_fmt_prop_val;
 	struct drm_property *out_fmt;
 	u32 out_fmt_prop_val;
+	struct clk *video_aclk;
+	struct clk *dphy_clk_200M;
 };
 
 #define host_to_dsi(host) container_of(host, struct xlnx_dsi, dsi_host)
@@ -683,6 +692,21 @@ static int xlnx_dsi_parse_dt(struct xlnx_dsi *dsi)
 	int ret;
 	u32 datatype;
 	static const int xdsi_mul_fact[XDSI_NUM_DATA_T] = {300, 225, 225, 200};
+
+	dsi->dphy_clk_200M = devm_clk_get(dev, "dphy_clk_200M");
+	if (IS_ERR(dsi->dphy_clk_200M)) {
+		ret = PTR_ERR(dsi->dphy_clk_200M);
+		dev_err(dev, "failed to get dphy_clk_200M %d\n", ret);
+		return ret;
+	}
+
+	dsi->video_aclk = devm_clk_get(dev, "s_axis_aclk");
+	if (IS_ERR(dsi->video_aclk)) {
+		ret = PTR_ERR(dsi->video_aclk);
+		dev_err(dev, "failed to get video_clk %d\n", ret);
+		return ret;
+	}
+
 	/*
 	 * Used as a multiplication factor for HACT based on used
 	 * DSI data type.
@@ -781,6 +805,7 @@ static int xlnx_dsi_probe(struct platform_device *pdev)
 	struct xlnx_dsi *dsi;
 	struct device_node *vpss_node;
 	int ret;
+	unsigned long rate;
 
 	dsi = devm_kzalloc(dev, sizeof(*dsi), GFP_KERNEL);
 	if (!dsi)
@@ -811,12 +836,51 @@ static int xlnx_dsi_probe(struct platform_device *pdev)
 		}
 	}
 
-	return component_add(dev, &xlnx_dsi_component_ops);
+	ret = clk_set_rate(dsi->dphy_clk_200M, XDSI_DPHY_CLK_REQ);
+	if (ret) {
+		dev_err(dev, "failed to set dphy clk rate %d\n", ret);
+		return ret;
+	}
+
+	ret = clk_prepare_enable(dsi->dphy_clk_200M);
+	if (ret) {
+		dev_err(dev, "failed to enable dphy clk %d\n", ret);
+		return ret;
+	}
+
+	rate = clk_get_rate(dsi->dphy_clk_200M);
+	if (rate < XDSI_DPHY_CLK_MIN && rate > XDSI_DPHY_CLK_MAX) {
+		dev_err(dev, "Error DPHY clock = %lu\n", rate);
+		ret = -EINVAL;
+		goto err_disable_dphy_clk;
+	}
+
+	ret = clk_prepare_enable(dsi->video_aclk);
+	if (ret) {
+		dev_err(dev, "failed to enable video clk %d\n", ret);
+		goto err_disable_dphy_clk;
+	}
+
+	ret = component_add(dev, &xlnx_dsi_component_ops);
+	if (ret < 0)
+		goto err_disable_video_clk;
+
+	return ret;
+
+err_disable_video_clk:
+	clk_disable_unprepare(dsi->video_aclk);
+err_disable_dphy_clk:
+	clk_disable_unprepare(dsi->dphy_clk_200M);
+	return ret;
 }
 
 static int xlnx_dsi_remove(struct platform_device *pdev)
 {
+	struct xlnx_dsi *dsi = platform_get_drvdata(pdev);
+
 	component_del(&pdev->dev, &xlnx_dsi_component_ops);
+	clk_disable_unprepare(dsi->video_aclk);
+	clk_disable_unprepare(dsi->dphy_clk_200M);
 
 	return 0;
 }
