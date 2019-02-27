@@ -15,10 +15,13 @@ Required properties:
 
 -reset-gpios: GPIO specifier to assert/de-assert the reset line.
 
+- clocks: phandle to IP clock.
+
 Example:
 	csc@a0040000 {
 		compatible = "xlnx,vpss-csc";
 		reg = <0x0 0xa0040000 0x0 0x10000>;
 		reset-gpios = <&gpio 0x0 GPIO_ACTIVE_LOW>;
 		xlnx,video-width = <8>;
+		clocks = <&misc_clk_0>;
 	}
