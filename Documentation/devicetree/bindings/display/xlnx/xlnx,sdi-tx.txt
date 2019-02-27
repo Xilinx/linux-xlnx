@@ -13,6 +13,9 @@ Required properties:
    Documentation/devicetree/bindings/graph.txt.
    Minimum one port is required. At max, 2 ports are present.
    The reg index for AXI4 stream port is 0 and for ancillary data is 1.
+ - clocks: List of phandles to AXI Lite, Video and SDI Tx Clock
+ - clock-names: Must contain "s_axi_aclk", "video_in_clk" and "sdi_tx_clk"
+   in same order as clocks listed in clocks property.
 
 Optional properties:
  - xlnx,vpss: vpss phandle
@@ -29,6 +32,8 @@ Example:
 		#address-cells = <1>;
 		#size-cells = <0>;
 		xlnx,vpss = <&v_proc_ss_0>;
+		clock-names = "s_axi_aclk", "video_in_clk", "sdi_tx_clk";
+		clocks = <&misc_clk_0>, <&misc_clk_1>, <&misc_clk_2>;
 		ports {
 			#address-cells = <1>;
 			#size-cells = <0>;
