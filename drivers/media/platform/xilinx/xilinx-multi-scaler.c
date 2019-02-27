@@ -111,6 +111,35 @@
 
 #define XM2MSC_ALIGN_MUL	8
 
+/*
+ * These are temporary variables. Once the stride and height
+ * alignment support added to plugin, these variables will
+ * be remove.
+ */
+static unsigned int output_stride_align[XM2MSC_MAX_CHAN] = {
+					1, 1, 1, 1, 1, 1, 1, 1 };
+module_param_array(output_stride_align, uint, NULL, 0644);
+MODULE_PARM_DESC(output_stride_align,
+		 "Per Cahnnel stride alignment requied at output.");
+
+static unsigned int capture_stride_align[XM2MSC_MAX_CHAN] = {
+					1, 1, 1, 1, 1, 1, 1, 1 };
+module_param_array(capture_stride_align, uint, NULL, 0644);
+MODULE_PARM_DESC(capture_stride_align,
+		 "Per channel stride alignment requied at capture.");
+
+static unsigned int output_height_align[XM2MSC_MAX_CHAN] = {
+					1, 1, 1, 1, 1, 1, 1, 1 };
+module_param_array(output_height_align, uint, NULL, 0644);
+MODULE_PARM_DESC(output_height_align,
+		 "Per Channel height alignment requied at output.");
+
+static unsigned int capture_height_align[XM2MSC_MAX_CHAN] = {
+					1, 1, 1, 1, 1, 1, 1, 1 };
+module_param_array(capture_height_align, uint, NULL, 0644);
+MODULE_PARM_DESC(capture_height_align,
+		 "Per channel height alignment requied at capture.");
+
 /* Xilinx Video Specific Color/Pixel Formats */
 enum xm2msc_pix_fmt {
 	XILINX_M2MSC_FMT_RGBX8		= 10,
@@ -299,6 +328,10 @@ struct xm2msc_q_data {
  * @xm2msc_dev: Pointer to struct xm2m_msc_dev
  * @num: HW Scaling Channel number
  * @minor: Minor number of the video device
+ * @output_stride_align: required align stride value at output pad
+ * @capture_stride_align: required align stride valure at capture pad
+ * @output_height_align: required align height value at output pad
+ * @capture_height_align: required align heigh value at capture pad
  * @status: channel status, CHAN_ATTACHED or CHAN_OPENED
  * @frames: number of frames processed
  * @vfd: V4L2 device
@@ -312,6 +345,10 @@ struct xm2msc_chan_ctx {
 	struct xm2m_msc_dev *xm2msc_dev;
 	u32 num;
 	u32 minor;
+	u32 output_stride_align;
+	u32 capture_stride_align;
+	u32 output_height_align;
+	u32 capture_height_align;
 	u8 status;
 	unsigned long frames;
 
@@ -412,9 +449,10 @@ static bool xm2msc_is_yuv_singlebuff(u32 fourcc)
 	return false;
 }
 
-static u32 xm2msc_yuv_1stplane_size(struct xm2msc_q_data *q_data)
+static inline u32 xm2msc_yuv_1stplane_size(struct xm2msc_q_data *q_data,
+					   u32 row_align)
 {
-	return	q_data->bytesperline[0] * q_data->height;
+	return	q_data->bytesperline[0] * ALIGN(q_data->height, row_align);
 }
 
 static struct xm2msc_q_data *get_q_data(struct xm2msc_chan_ctx *chan_ctx,
@@ -1063,6 +1101,7 @@ static void xm2msc_job_abort(void *priv)
 static int xm2msc_set_bufaddr(struct xm2m_msc_dev *xm2msc)
 {
 	unsigned int chan;
+	u32 row_align;
 	struct xm2msc_chan_ctx *chan_ctx;
 	struct vb2_v4l2_buffer *src_vb, *dst_vb;
 	void __iomem *base;
@@ -1090,6 +1129,7 @@ static int xm2msc_set_bufaddr(struct xm2m_msc_dev *xm2msc)
 		dst_luma = vb2_dma_contig_plane_dma_addr(&dst_vb->vb2_buf, 0);
 
 		q_data = &chan_ctx->q_data[XM2MSC_CHAN_OUT];
+		row_align = chan_ctx->output_height_align;
 		if (chan_ctx->q_data[XM2MSC_CHAN_OUT].nbuffs == 2)
 			/* fmts having 2 planes 2 buffers */
 			src_croma =
@@ -1098,18 +1138,19 @@ static int xm2msc_set_bufaddr(struct xm2m_msc_dev *xm2msc)
 		else if (xm2msc_is_yuv_singlebuff(q_data->fmt->fourcc))
 			/* fmts having 2 planes 1 contiguous buffer */
 			src_croma = src_luma +
-				xm2msc_yuv_1stplane_size(q_data);
+				xm2msc_yuv_1stplane_size(q_data, row_align);
 		else /* fmts having 1 planes 1 contiguous buffer */
 			src_croma = 0;
 
 		q_data = &chan_ctx->q_data[XM2MSC_CHAN_CAP];
+		row_align = chan_ctx->capture_height_align;
 		if (chan_ctx->q_data[XM2MSC_CHAN_CAP].nbuffs == 2)
 			dst_croma =
 				vb2_dma_contig_plane_dma_addr(&dst_vb->vb2_buf,
 							      1);
 		else if (xm2msc_is_yuv_singlebuff(q_data->fmt->fourcc))
 			dst_croma = dst_luma +
-				xm2msc_yuv_1stplane_size(q_data);
+				xm2msc_yuv_1stplane_size(q_data, row_align);
 		else
 			dst_croma = 0;
 
@@ -1342,14 +1383,21 @@ static int xm2msc_querybuf(struct file *file, void *fh,
 }
 
 static void
-xm2msc_cal_imagesize(struct xm2msc_q_data *q_data)
+xm2msc_cal_imagesize(struct xm2msc_chan_ctx *chan_ctx,
+		     struct xm2msc_q_data *q_data, u32 type)
 {
 	unsigned int i;
 	u32 fourcc = q_data->fmt->fourcc;
+	u32 height = q_data->height;
+
+	if (type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE)
+		height = ALIGN(height, chan_ctx->output_height_align);
+	else if (type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)
+		height = ALIGN(height, chan_ctx->capture_height_align);
 
 	for (i = 0; i < q_data->nbuffs; i++) {
 		q_data->bytesperline[i] = q_data->stride;
-		q_data->sizeimage[i] = q_data->stride * q_data->height;
+		q_data->sizeimage[i] = q_data->stride * height;
 	}
 
 	switch (fourcc) {
@@ -1360,12 +1408,12 @@ xm2msc_cal_imagesize(struct xm2msc_q_data *q_data)
 		 * have a contiguous buffer for luma and chroma
 		 */
 		q_data->sizeimage[0] +=
-				q_data->stride * (q_data->height / 2);
+				q_data->stride * (height / 2);
 		break;
 	case V4L2_PIX_FMT_NV12M:
 	case V4L2_PIX_FMT_XV15M:
 		q_data->sizeimage[1] =
-				q_data->stride * (q_data->height / 2);
+				q_data->stride * (height / 2);
 		break;
 	default:
 		break;
@@ -1485,12 +1533,46 @@ vidioc_try_fmt(struct xm2msc_chan_ctx *chan_ctx, struct v4l2_format *f)
 	return 0;
 }
 
+static void xm2msc_get_align(struct xm2msc_chan_ctx *chan_ctx)
+{
+	/*
+	 * TODO: This is a temporary solution, will be reverted once stride and
+	 * height align value come from application.
+	 */
+	chan_ctx->output_stride_align = output_stride_align[chan_ctx->num];
+	chan_ctx->capture_stride_align = capture_stride_align[chan_ctx->num];
+	chan_ctx->output_height_align = output_height_align[chan_ctx->num];
+	chan_ctx->capture_height_align = capture_height_align[chan_ctx->num];
+	if (output_stride_align[chan_ctx->num] != 1 ||
+	    capture_stride_align[chan_ctx->num] != 1 ||
+	    output_height_align[chan_ctx->num] != 1 ||
+	    capture_height_align[chan_ctx->num] != 1) {
+		dev_info(chan_ctx->xm2msc_dev->dev,
+			 "You entered values other than default values.\n");
+		dev_info(chan_ctx->xm2msc_dev->dev,
+			 "Please note this may not be available for longer");
+		dev_info(chan_ctx->xm2msc_dev->dev,
+			 "and align values will come from application\n");
+		dev_info(chan_ctx->xm2msc_dev->dev,
+			 "value entered are -\n"
+			 "output_stride_align = %d\n"
+			 "output_height_align = %d\n"
+			 "capture_stride_align = %d\n"
+			 "capture_height_align = %d\n",
+			chan_ctx->output_stride_align,
+			chan_ctx->output_height_align,
+			chan_ctx->capture_stride_align,
+			chan_ctx->capture_height_align);
+	}
+}
+
 static int
 vidioc_s_fmt(struct xm2msc_chan_ctx *chan_ctx, struct v4l2_format *f)
 {
 	struct v4l2_pix_format_mplane *pix = &f->fmt.pix_mp;
 	struct xm2msc_q_data *q_data = get_q_data(chan_ctx, f->type);
 	unsigned int i;
+	unsigned int align = 1;
 
 	q_data = get_q_data(chan_ctx, f->type);
 
@@ -1499,11 +1581,21 @@ vidioc_s_fmt(struct xm2msc_chan_ctx *chan_ctx, struct v4l2_format *f)
 	q_data->stride = xm2msc_cal_stride(pix->width,
 					   q_data->fmt->xm2msc_fmt,
 					   chan_ctx->xm2msc_dev->ppc);
+
+	xm2msc_get_align(chan_ctx);
+
+	if (f->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE)
+		align = chan_ctx->output_stride_align;
+	else if (f->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)
+		align = chan_ctx->capture_stride_align;
+
+	q_data->stride = ALIGN(q_data->stride, align);
+
 	q_data->colorspace = pix->colorspace;
 	q_data->field = pix->field;
 	q_data->nbuffs = q_data->fmt->num_buffs;
 
-	xm2msc_cal_imagesize(q_data);
+	xm2msc_cal_imagesize(chan_ctx, q_data, f->type);
 
 	for (i = 0; i < q_data->nbuffs; i++) {
 		pix->plane_fmt[i].bytesperline = q_data->bytesperline[i];
@@ -1912,6 +2004,10 @@ static int xm2msc_open(struct file *file)
 	chan_ctx->status |= CHAN_OPENED;
 	chan_ctx->xm2msc_dev = xm2msc;
 	chan_ctx->frames = 0;
+	chan_ctx->output_stride_align = 1;
+	chan_ctx->output_height_align = 1;
+	chan_ctx->capture_stride_align = 1;
+	chan_ctx->capture_height_align = 1;
 	xm2msc_set_chan(chan_ctx, true);
 
 	v4l2_info(&xm2msc->v4l2_dev, "Channel %d instance created\n", chan);
