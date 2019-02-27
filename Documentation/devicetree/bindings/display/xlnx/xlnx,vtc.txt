@@ -18,10 +18,15 @@ Required properties:
  - compatible: value should be "xlnx,bridge-v-tc-6.1"
  - reg: base address and size of the VTC IP
  - xlnx,pixels-per-clock: Pixels per clock of the stream. Can be 1, 2 or 4.
+ - clocks: List of phandles for AXI Lite and Video Clock
+ - clock-names: Must contain "s_axi_aclk" and "clk" in same order as clocks listed
+   in clocks property.
 
 Example:
 	v_tc_0: v_tc@80030000 {
 			compatible = "xlnx,bridge-v-tc-6.1";
 			reg = <0x0 0x80030000 0x0 0x10000>;
 			xlnx,pixels-per-clock = <2>;
+			clock-names = "s_axi_aclk", "clk";
+			clocks = <&misc_clk_0>, <&misc_clk_1>;
 	};
