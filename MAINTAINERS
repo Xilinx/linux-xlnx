@@ -16179,6 +16179,12 @@ S:	Maintained
 F:	drivers/net/phy/xilinx_gmii2rgmii.c
 W:	https://xilinx-wiki.atlassian.net/wiki/spaces/A/pages/18842246/Xilinx+GMII2RGMII+convertor
 
+XILINX GQSPI ZYNQMP SPI DRIVER
+M:	Naga Sureshkumar Relli <naga.sureshkumar.relli@xilinx.com>
+R:	Amit Kumar Mahapatra <amit.kumar-mahapatra@xilinx.com>
+F:	drivers/spi/spi-zynqmp-gqspi.c
+W:	https://xilinx-wiki.atlassian.net/wiki/spaces/A/pages/18841754/Zynqmp+QSPI+Driver
+
 XILINX I2S AUDIO (ASoC) DRIVER
 M:	Maruthi Srinivas Bayyavarapu <maruthi.srinivas.bayyavarapu@xilinx.com>
 R:	Vishal Sagar <vishal.sagar@xilinx.com>
@@ -16252,6 +16258,12 @@ R:	Vishal Sagar <vishal.sagar@xilinx.com>
 S:	Maintained
 L:	git@xilinx.com
 F:	sound/soc/xilinx/xlnx_pl_snd_card.c
+
+XILINX QSPI ZYNQ SPI DRIVER
+M:	Naga Sureshkumar Relli <naga.sureshkumar.relli@xilinx.com>
+R:	Amit Kumar Mahapatra <amit.kumar-mahapatra@xilinx.com>
+F:	drivers/spi/spi-zynq-qspi.c
+W:	https://xilinx-wiki.atlassian.net/wiki/spaces/A/pages/18842262/Zynq+QSPI+Driver
 
 XILINX SD-FEC IP CORES
 M:	Derek Kiernan <derek.kiernan@xilinx.com>
