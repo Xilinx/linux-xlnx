@@ -13,6 +13,7 @@
  */
 
 #include <drm/drmP.h>
+#include <linux/clk.h>
 #include <linux/device.h>
 #include <linux/err.h>
 #include <linux/io.h>
@@ -98,12 +99,16 @@
  * @dev: device structure
  * @base: base addr
  * @ppc: pixels per clock
+ * @axi_clk: AXI Lite clock
+ * @vid_clk: Video clock
  */
 struct xlnx_vtc {
 	struct xlnx_bridge bridge;
 	struct device *dev;
 	void __iomem *base;
 	u32 ppc;
+	struct clk *axi_clk;
+	struct clk *vid_clk;
 };
 
 static inline void xlnx_vtc_writel(void __iomem *base, int offset, u32 val)
@@ -357,6 +362,32 @@ static int xlnx_vtc_probe(struct platform_device *pdev)
 	}
 	dev_info(dev, "vtc ppc = %d\n", vtc->ppc);
 
+	vtc->axi_clk = devm_clk_get(vtc->dev, "s_axi_aclk");
+	if (IS_ERR(vtc->axi_clk)) {
+		ret = PTR_ERR(vtc->axi_clk);
+		dev_err(dev, "failed to get axi lite clk %d\n", ret);
+		return ret;
+	}
+
+	vtc->vid_clk = devm_clk_get(vtc->dev, "clk");
+	if (IS_ERR(vtc->vid_clk)) {
+		ret = PTR_ERR(vtc->vid_clk);
+		dev_err(dev, "failed to get video clk %d\n", ret);
+		return ret;
+	}
+
+	ret = clk_prepare_enable(vtc->axi_clk);
+	if (ret) {
+		dev_err(vtc->dev, "unable to enable axilite clk %d\n", ret);
+		return ret;
+	}
+
+	ret = clk_prepare_enable(vtc->vid_clk);
+	if (ret) {
+		dev_err(vtc->dev, "unable to enable video clk %d\n", ret);
+		goto err_axi_clk;
+	}
+
 	xlnx_vtc_reset(vtc);
 
 	vtc->bridge.enable = &xlnx_vtc_enable;
@@ -366,13 +397,19 @@ static int xlnx_vtc_probe(struct platform_device *pdev)
 	ret = xlnx_bridge_register(&vtc->bridge);
 	if (ret) {
 		dev_err(dev, "Bridge registration failed\n");
-		return ret;
+		goto err_vid_clk;
 	}
 
 	dev_info(dev, "Xilinx VTC IP version : 0x%08x\n",
 		 xlnx_vtc_readl(vtc->base, XVTC_VER));
 	dev_info(dev, "Xilinx VTC DRM Bridge driver probed\n");
 	return 0;
+
+err_vid_clk:
+	clk_disable_unprepare(vtc->vid_clk);
+err_axi_clk:
+	clk_disable_unprepare(vtc->axi_clk);
+	return ret;
 }
 
 static int xlnx_vtc_remove(struct platform_device *pdev)
@@ -380,6 +417,8 @@ static int xlnx_vtc_remove(struct platform_device *pdev)
 	struct xlnx_vtc *vtc = platform_get_drvdata(pdev);
 
 	xlnx_bridge_unregister(&vtc->bridge);
+	clk_disable_unprepare(vtc->vid_clk);
+	clk_disable_unprepare(vtc->axi_clk);
 
 	return 0;
 }
