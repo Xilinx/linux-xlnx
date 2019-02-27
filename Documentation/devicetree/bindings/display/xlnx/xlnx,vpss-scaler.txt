@@ -24,6 +24,11 @@ Required properties:
 
 - reset-gpios: GPIO specifier to assert/de-assert the reset line.
 
+- clocks: List of phandles to AXI Lite and Video clock
+
+- clock-names: Must contain "aclk_ctrl" and "aclk_axis" in same order as clocks
+  listed in clocks property.
+
 Example:
 	scaler@a0040000 {
 		compatible = "xlnx,vpss-scaler";
@@ -32,4 +37,6 @@ Example:
 		xlnx,num-hori-taps = <8>;
 		xlnx,num-vert-taps = <8>;
 		xlnx,pix-per-clk = <2>;
+		clock-names = "aclk_ctrl", "aclk_axis";
+		clocks = <&misc_clk_0>, <&misc_clk_1>;
 	}
