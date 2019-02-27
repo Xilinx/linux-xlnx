@@ -3,6 +3,7 @@ Xilinx mem2mem Multi Video Scaler (XM2MSC)
 
 Required propertie(s):
 - compatible		: Should be "xlnx,v-multi-scaler-v1.0"
+- clocks		: Input clock specifier. Refer to common clk bindings.
 - interrupt-parent	: Interrupt controller the interrupt is routed through
 - interrupts		: Should contain MultiScaler interrupt
 - reset-gpios		: Should contain GPIO reset phandle
@@ -76,7 +77,8 @@ Y_UV10_420	xv15		Semi-planar YUV 4:2:0 with 10 bits per component.
 
 Example
 
-v_multi_scaler_0: v_multi_scaler@a0000000 {
+v_multi_scaler_0: v_multi_scaler@a0000000 {\
+	clocks = <&clk 71>;
 	compatible = "xlnx,v-multi-scaler-v1.0";
 	interrupt-names = "interrupt";
 	interrupt-parent = <&gic>;
