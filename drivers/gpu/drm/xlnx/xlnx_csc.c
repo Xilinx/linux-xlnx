@@ -17,6 +17,7 @@
  * Should be integrated with plane
  */
 
+#include <linux/clk.h>
 #include <linux/device.h>
 #include <linux/err.h>
 #include <linux/gpio/consumer.h>
@@ -88,6 +89,7 @@ enum vpss_csc_color_fmt {
  * @width: width of the video
  * @height: height of video
  * @rst_gpio: Handle to GPIO specifier to assert/de-assert the reset line
+ * @aclk: IP clock struct
  */
 struct xilinx_csc {
 	void __iomem *base;
@@ -101,6 +103,7 @@ struct xilinx_csc {
 	u32 width;
 	u32 height;
 	struct gpio_desc *rst_gpio;
+	struct clk *aclk;
 };
 
 static inline void xilinx_csc_write(void __iomem *base, u32 offset, u32 val)
@@ -419,6 +422,13 @@ static int xcsc_parse_of(struct xilinx_csc *csc)
 	int ret;
 	struct device_node *node = csc->dev->of_node;
 
+	csc->aclk = devm_clk_get(csc->dev, NULL);
+	if (IS_ERR(csc->aclk)) {
+		ret = PTR_ERR(csc->aclk);
+		dev_err(csc->dev, "failed to get aclk %d\n", ret);
+		return ret;
+	}
+
 	ret = of_property_read_u32(node, "xlnx,video-width",
 				   &csc->color_depth);
 	if (ret < 0) {
@@ -462,6 +472,13 @@ static int xilinx_csc_probe(struct platform_device *pdev)
 	ret = xcsc_parse_of(csc);
 	if (ret < 0)
 		return ret;
+
+	ret = clk_prepare_enable(csc->aclk);
+	if (ret) {
+		dev_err(csc->dev, "failed to enable clock %d\n", ret);
+		return ret;
+	}
+
 	gpiod_set_value_cansleep(csc->rst_gpio, XCSC_RESET_DEASSERT);
 	csc->bridge.enable = &xilinx_csc_bridge_enable;
 	csc->bridge.disable = &xilinx_csc_bridge_disable;
@@ -474,12 +491,16 @@ static int xilinx_csc_probe(struct platform_device *pdev)
 	ret = xlnx_bridge_register(&csc->bridge);
 	if (ret) {
 		dev_info(csc->dev, "Bridge registration failed\n");
-		return ret;
+		goto err_clk;
 	}
 
 	dev_info(csc->dev, "Xilinx VPSS CSC DRM experimental driver probed\n");
 
 	return 0;
+
+err_clk:
+	clk_disable_unprepare(csc->aclk);
+	return ret;
 }
 
 static int xilinx_csc_remove(struct platform_device *pdev)
@@ -487,6 +508,7 @@ static int xilinx_csc_remove(struct platform_device *pdev)
 	struct xilinx_csc *csc = platform_get_drvdata(pdev);
 
 	xlnx_bridge_unregister(&csc->bridge);
+	clk_disable_unprepare(csc->aclk);
 
 	return 0;
 }
