@@ -12,6 +12,7 @@
  * Scaler Controller
  */
 
+#include <linux/clk.h>
 #include <linux/delay.h>
 #include <linux/fs.h>
 #include <linux/gpio/consumer.h>
@@ -327,6 +328,7 @@ struct xm2msc_chan_ctx {
  * @dev: pointer to struct device instance used by the driver
  * @regs: IO mapped base address of the HW/IP
  * @irq: interrupt number
+ * @clk: video core clock
  * @max_chan: maximum number of Scaling Channels
  * @max_ht: maximum number of rows in a plane
  * @max_wd: maximum number of column in a plane
@@ -354,6 +356,7 @@ struct xm2m_msc_dev {
 	struct device *dev;
 	void __iomem *regs;
 	int irq;
+	struct clk *clk;
 	u32 max_chan;
 	u32 max_ht;
 	u32 max_wd;
@@ -2011,6 +2014,13 @@ static int xm2msc_parse_of(struct platform_device *pdev,
 	int ret;
 	u32 i, j;
 
+	xm2msc->clk = devm_clk_get(dev, NULL);
+	if (IS_ERR(xm2msc->clk)) {
+		ret = PTR_ERR(xm2msc->clk);
+		dev_err(dev, "failed to get clk (%d)\n", ret);
+		return ret;
+	}
+
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	xm2msc->regs = devm_ioremap_resource(dev, res);
 	if (IS_ERR((__force void *)xm2msc->regs))
@@ -2173,13 +2183,19 @@ static int xm2m_msc_probe(struct platform_device *pdev)
 
 	xm2msc->dev = &pdev->dev;
 
+	ret = clk_prepare_enable(xm2msc->clk);
+	if (ret) {
+		dev_err(&pdev->dev, "failed to enable clk (%d)\n", ret);
+		return ret;
+	}
+
 	xm2msc_reset(xm2msc);
 
 	spin_lock_init(&xm2msc->lock);
 
 	ret = v4l2_device_register(&pdev->dev, &xm2msc->v4l2_dev);
 	if (ret)
-		return ret;
+		goto reg_dev_err;
 
 	for (chan = 0; chan < xm2msc->max_chan; chan++) {
 		chan_ctx = &xm2msc->xm2msc_chan[chan];
@@ -2245,6 +2261,8 @@ static int xm2m_msc_probe(struct platform_device *pdev)
  unreg_dev:
 	xm2msc_unreg_video_n_m2m(xm2msc);
 	v4l2_device_unregister(&xm2msc->v4l2_dev);
+reg_dev_err:
+	clk_disable_unprepare(xm2msc->clk);
 	return ret;
 }
 
@@ -2254,6 +2272,7 @@ static int xm2m_msc_remove(struct platform_device *pdev)
 
 	xm2msc_unreg_video_n_m2m(xm2msc);
 	v4l2_device_unregister(&xm2msc->v4l2_dev);
+	clk_disable_unprepare(xm2msc->clk);
 	return 0;
 }
 
