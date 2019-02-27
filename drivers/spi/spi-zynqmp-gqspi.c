@@ -965,10 +965,10 @@ static int zynqmp_qspi_start_transfer(struct spi_master *master,
 	genfifoentry |= xqspi->genfifocs;
 	genfifoentry |= xqspi->genfifobus;
 
-	if ((!xqspi->isinstr) &&
-		(master->flags & SPI_MASTER_DATA_STRIPE))
-		genfifoentry |= GQSPI_GENFIFO_STRIPE;
-
+	if (!xqspi->isinstr && (master->flags & SPI_MASTER_DATA_STRIPE)) {
+		if (transfer->stripe)
+			genfifoentry |= GQSPI_GENFIFO_STRIPE;
+	}
 	zynqmp_qspi_txrxsetup(xqspi, transfer, &genfifoentry);
 
 	if (xqspi->mode == GQSPI_MODE_DMA)
