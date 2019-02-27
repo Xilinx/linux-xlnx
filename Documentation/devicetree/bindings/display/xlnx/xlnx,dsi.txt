@@ -32,6 +32,11 @@ Required properties:
    value or has to be programmed to the same value that DSI Tx controller is
    configured to.
 
+ - clocks: List of phandles to Video and 200Mhz DPHY clocks.
+
+ - clock-names: Must contain "s_axis_aclk" and "dphy_clk_200M" in same order as
+   clocks listed in clocks property.
+
 Required simple_panel properties:
  - compatible: Value should be one of the panel names in
    Documentation/devicetree/bindings/display/panel/. e.g. "auo,b101uan01".
@@ -53,6 +58,8 @@ Example:
 		#address-cells = <1>;
 		#size-cells = <0>;
 		xlnx,vpss = <&v_proc_ss_0>;
+		clock-names = "dphy_clk_200M", "s_axis_aclk";
+		clocks = <&misc_clk_0>, <&misc_clk_1>;
 		encoder_dsi_port: port@0 {
 			reg = <0>;
 			dsi_encoder: endpoint {
