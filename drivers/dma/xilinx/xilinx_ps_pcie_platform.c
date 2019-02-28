@@ -195,16 +195,19 @@ enum PACKET_CONTEXT_AVAILABILITY {
 };
 
 struct ps_pcie_transfer_elements {
-	struct scatterlist *src_sgl;
-	unsigned int srcq_num_elemets;
-	struct scatterlist *dst_sgl;
-	unsigned int dstq_num_elemets;
+	struct list_head node;
+	dma_addr_t src_pa;
+	dma_addr_t dst_pa;
+	u32 transfer_bytes;
 };
 
 struct  ps_pcie_tx_segment {
 	struct list_head node;
 	struct dma_async_tx_descriptor async_tx;
-	struct ps_pcie_transfer_elements tx_elements;
+	struct list_head transfer_nodes;
+	u32 src_elements;
+	u32 dst_elements;
+	u32 total_transfer_bytes;
 };
 
 struct ps_pcie_intr_segment {
@@ -224,9 +227,7 @@ struct PACKET_TRANSFER_PARAMS {
 	enum PACKET_CONTEXT_AVAILABILITY availability_status;
 	u16 idx_sop;
 	u16 idx_eop;
-	struct scatterlist *sgl;
 	struct ps_pcie_tx_segment *seg;
-	u32 requested_bytes;
 };
 
 enum CHANNEL_STATE {
@@ -405,6 +406,7 @@ struct ps_pcie_dma_chan {
 	struct list_head active_interrupts_list;
 
 	mempool_t *transactions_pool;
+	mempool_t *tx_elements_pool;
 	mempool_t *intr_transactions_pool;
 
 	struct workqueue_struct *sw_intrs_wrkq;
@@ -538,10 +540,10 @@ static void xlnx_ps_pcie_dma_free_chan_resources(struct dma_chan *dchan);
 static int xlnx_ps_pcie_dma_alloc_chan_resources(struct dma_chan *dchan);
 static dma_cookie_t xilinx_dma_tx_submit(struct dma_async_tx_descriptor *tx);
 static dma_cookie_t xilinx_intr_tx_submit(struct dma_async_tx_descriptor *tx);
-static struct dma_async_tx_descriptor *xlnx_ps_pcie_dma_prep_dma_sg(
-		struct dma_chan *channel, struct scatterlist *dst_sg,
-		unsigned int dst_nents, struct scatterlist *src_sg,
-		unsigned int src_nents, unsigned long flags);
+static struct dma_async_tx_descriptor *
+xlnx_ps_pcie_dma_prep_memcpy(struct dma_chan *channel, dma_addr_t dma_dst,
+			     dma_addr_t dma_src, size_t len,
+			     unsigned long flags);
 static struct dma_async_tx_descriptor *xlnx_ps_pcie_dma_prep_slave_sg(
 		struct dma_chan *channel, struct scatterlist *sgl,
 		unsigned int sg_len, enum dma_transfer_direction direction,
@@ -953,8 +955,8 @@ static void update_channel_write_attribute(struct ps_pcie_dma_chan *chan)
 
 static int init_sw_components(struct ps_pcie_dma_chan *chan)
 {
-	if ((chan->ppkt_ctx_srcq) && (chan->psrc_sgl_bd) &&
-	    (chan->psrc_sta_bd)) {
+	if (chan->ppkt_ctx_srcq && chan->psrc_sgl_bd &&
+	    chan->psrc_sta_bd) {
 		memset(chan->ppkt_ctx_srcq, 0,
 		       sizeof(struct PACKET_TRANSFER_PARAMS)
 		       * chan->total_descriptors);
@@ -976,8 +978,8 @@ static int init_sw_components(struct ps_pcie_dma_chan *chan)
 		chan->idx_ctx_srcq_tail = 0;
 	}
 
-	if ((chan->ppkt_ctx_dstq) && (chan->pdst_sgl_bd) &&
-	    (chan->pdst_sta_bd)) {
+	if (chan->ppkt_ctx_dstq && chan->pdst_sgl_bd &&
+	    chan->pdst_sta_bd) {
 		memset(chan->ppkt_ctx_dstq, 0,
 		       sizeof(struct PACKET_TRANSFER_PARAMS)
 		       * chan->total_descriptors);
@@ -1040,14 +1042,14 @@ static void poll_completed_transactions(struct timer_list *t)
 static bool check_descriptors_for_two_queues(struct ps_pcie_dma_chan *chan,
 					     struct ps_pcie_tx_segment *seg)
 {
-	if (seg->tx_elements.src_sgl) {
+	if (seg->src_elements) {
 		if (chan->src_avail_descriptors >=
-		    seg->tx_elements.srcq_num_elemets) {
+		    seg->src_elements) {
 			return true;
 		}
-	} else if (seg->tx_elements.dst_sgl) {
+	} else if (seg->dst_elements) {
 		if (chan->dst_avail_descriptors >=
-		    seg->tx_elements.dstq_num_elemets) {
+		    seg->dst_elements) {
 			return true;
 		}
 	}
@@ -1058,10 +1060,10 @@ static bool check_descriptors_for_two_queues(struct ps_pcie_dma_chan *chan,
 static bool check_descriptors_for_all_queues(struct ps_pcie_dma_chan *chan,
 					     struct ps_pcie_tx_segment *seg)
 {
-	if ((chan->src_avail_descriptors >=
-		seg->tx_elements.srcq_num_elemets) &&
-	    (chan->dst_avail_descriptors >=
-		seg->tx_elements.dstq_num_elemets)) {
+	if (chan->src_avail_descriptors >=
+		seg->src_elements &&
+	    chan->dst_avail_descriptors >=
+		seg->dst_elements) {
 		return true;
 	}
 
@@ -1095,8 +1097,8 @@ static void xlnx_ps_pcie_update_srcq(struct ps_pcie_dma_chan *chan,
 {
 	struct SOURCE_DMA_DESCRIPTOR *pdesc;
 	struct PACKET_TRANSFER_PARAMS *pkt_ctx = NULL;
-	struct scatterlist *sgl_ptr;
-	unsigned int i;
+	struct ps_pcie_transfer_elements *ele = NULL;
+	u32 i = 0;
 
 	pkt_ctx = chan->ppkt_ctx_srcq + chan->idx_ctx_srcq_head;
 	if (pkt_ctx->availability_status == IN_USE) {
@@ -1108,7 +1110,6 @@ static void xlnx_ps_pcie_update_srcq(struct ps_pcie_dma_chan *chan,
 	}
 
 	pkt_ctx->availability_status = IN_USE;
-	pkt_ctx->sgl = seg->tx_elements.src_sgl;
 
 	if (chan->srcq_buffer_location == BUFFER_LOC_PCI)
 		pkt_ctx->seg = seg;
@@ -1118,30 +1119,30 @@ static void xlnx_ps_pcie_update_srcq(struct ps_pcie_dma_chan *chan,
 	pkt_ctx->idx_sop = chan->src_sgl_freeidx;
 
 	/* Build transactions using information in the scatter gather list */
-	for_each_sg(seg->tx_elements.src_sgl, sgl_ptr,
-		    seg->tx_elements.srcq_num_elemets, i) {
+	list_for_each_entry(ele, &seg->transfer_nodes, node) {
 		if (chan->xdev->dma_buf_ext_addr) {
 			pdesc->system_address =
-				(u64)sg_dma_address(sgl_ptr);
+				(u64)ele->src_pa;
 		} else {
 			pdesc->system_address =
-				(u32)sg_dma_address(sgl_ptr);
+				(u32)ele->src_pa;
 		}
 
-		pdesc->control_byte_count = (sg_dma_len(sgl_ptr) &
+		pdesc->control_byte_count = (ele->transfer_bytes &
 					    SOURCE_CONTROL_BD_BYTE_COUNT_MASK) |
 					    chan->read_attribute;
-		if (pkt_ctx->seg)
-			pkt_ctx->requested_bytes += sg_dma_len(sgl_ptr);
 
 		pdesc->user_handle = chan->idx_ctx_srcq_head;
 		pdesc->user_id = DEFAULT_UID;
 		/* Check if this is last descriptor */
-		if (i == (seg->tx_elements.srcq_num_elemets - 1)) {
+		if (i == (seg->src_elements - 1)) {
 			pkt_ctx->idx_eop = chan->src_sgl_freeidx;
-			pdesc->control_byte_count = pdesc->control_byte_count |
-						SOURCE_CONTROL_BD_EOP_BIT |
-						SOURCE_CONTROL_BD_INTR_BIT;
+			pdesc->control_byte_count |= SOURCE_CONTROL_BD_EOP_BIT;
+			if ((seg->async_tx.flags & DMA_PREP_INTERRUPT) ==
+						   DMA_PREP_INTERRUPT) {
+				pdesc->control_byte_count |=
+					SOURCE_CONTROL_BD_INTR_BIT;
+			}
 		}
 		chan->src_sgl_freeidx++;
 		if (chan->src_sgl_freeidx == chan->total_descriptors)
@@ -1150,6 +1151,7 @@ static void xlnx_ps_pcie_update_srcq(struct ps_pcie_dma_chan *chan,
 		spin_lock(&chan->src_desc_lock);
 		chan->src_avail_descriptors--;
 		spin_unlock(&chan->src_desc_lock);
+		i++;
 	}
 
 	chan->chan_base->src_q_limit = chan->src_sgl_freeidx;
@@ -1163,8 +1165,8 @@ static void xlnx_ps_pcie_update_dstq(struct ps_pcie_dma_chan *chan,
 {
 	struct DEST_DMA_DESCRIPTOR *pdesc;
 	struct PACKET_TRANSFER_PARAMS *pkt_ctx = NULL;
-	struct scatterlist *sgl_ptr;
-	unsigned int i;
+	struct ps_pcie_transfer_elements *ele = NULL;
+	u32 i = 0;
 
 	pkt_ctx = chan->ppkt_ctx_dstq + chan->idx_ctx_dstq_head;
 	if (pkt_ctx->availability_status == IN_USE) {
@@ -1177,7 +1179,6 @@ static void xlnx_ps_pcie_update_dstq(struct ps_pcie_dma_chan *chan,
 	}
 
 	pkt_ctx->availability_status = IN_USE;
-	pkt_ctx->sgl = seg->tx_elements.dst_sgl;
 
 	if (chan->dstq_buffer_location == BUFFER_LOC_PCI)
 		pkt_ctx->seg = seg;
@@ -1186,26 +1187,21 @@ static void xlnx_ps_pcie_update_dstq(struct ps_pcie_dma_chan *chan,
 	pkt_ctx->idx_sop = chan->dst_sgl_freeidx;
 
 	/* Build transactions using information in the scatter gather list */
-	for_each_sg(seg->tx_elements.dst_sgl, sgl_ptr,
-		    seg->tx_elements.dstq_num_elemets, i) {
+	list_for_each_entry(ele, &seg->transfer_nodes, node) {
 		if (chan->xdev->dma_buf_ext_addr) {
 			pdesc->system_address =
-				(u64)sg_dma_address(sgl_ptr);
+				(u64)ele->dst_pa;
 		} else {
 			pdesc->system_address =
-				(u32)sg_dma_address(sgl_ptr);
+				(u32)ele->dst_pa;
 		}
-
-		pdesc->control_byte_count = (sg_dma_len(sgl_ptr) &
+		pdesc->control_byte_count = (ele->transfer_bytes &
 					SOURCE_CONTROL_BD_BYTE_COUNT_MASK) |
 						chan->write_attribute;
 
-		if (pkt_ctx->seg)
-			pkt_ctx->requested_bytes += sg_dma_len(sgl_ptr);
-
 		pdesc->user_handle = chan->idx_ctx_dstq_head;
 		/* Check if this is last descriptor */
-		if (i == (seg->tx_elements.dstq_num_elemets - 1))
+		if (i == (seg->dst_elements - 1))
 			pkt_ctx->idx_eop = chan->dst_sgl_freeidx;
 		chan->dst_sgl_freeidx++;
 		if (chan->dst_sgl_freeidx == chan->total_descriptors)
@@ -1214,6 +1210,7 @@ static void xlnx_ps_pcie_update_dstq(struct ps_pcie_dma_chan *chan,
 		spin_lock(&chan->dst_desc_lock);
 		chan->dst_avail_descriptors--;
 		spin_unlock(&chan->dst_desc_lock);
+		i++;
 	}
 
 	chan->chan_base->dst_q_limit = chan->dst_sgl_freeidx;
@@ -1246,10 +1243,10 @@ static void ps_pcie_chan_program_work(struct work_struct *work)
 		list_del(&seg->node);
 		spin_unlock(&chan->active_list_lock);
 
-		if (seg->tx_elements.src_sgl)
+		if (seg->src_elements)
 			xlnx_ps_pcie_update_srcq(chan, seg);
 
-		if (seg->tx_elements.dst_sgl)
+		if (seg->dst_elements)
 			xlnx_ps_pcie_update_dstq(chan, seg);
 	}
 }
@@ -1274,6 +1271,7 @@ static void dst_cleanup_work(struct work_struct *work)
 	struct dmaengine_result rslt;
 	u32 completed_bytes;
 	u32 dstq_desc_idx;
+	struct ps_pcie_transfer_elements *ele, *ele_nxt;
 
 	psta_bd = chan->pdst_sta_bd + chan->dst_staprobe_idx;
 
@@ -1364,10 +1362,16 @@ static void dst_cleanup_work(struct work_struct *work)
 			dma_cookie_complete(&ppkt_ctx->seg->async_tx);
 			spin_unlock(&chan->cookie_lock);
 			rslt.result = DMA_TRANS_NOERROR;
-			rslt.residue = ppkt_ctx->requested_bytes -
+			rslt.residue = ppkt_ctx->seg->total_transfer_bytes -
 					completed_bytes;
 			dmaengine_desc_get_callback_invoke(&ppkt_ctx->seg->async_tx,
 							   &rslt);
+			list_for_each_entry_safe(ele, ele_nxt,
+						 &ppkt_ctx->seg->transfer_nodes,
+						 node) {
+				list_del(&ele->node);
+				mempool_free(ele, chan->tx_elements_pool);
+			}
 			mempool_free(ppkt_ctx->seg, chan->transactions_pool);
 		}
 		memset(ppkt_ctx, 0, sizeof(struct PACKET_TRANSFER_PARAMS));
@@ -1396,6 +1400,7 @@ static void src_cleanup_work(struct work_struct *work)
 	struct dmaengine_result rslt;
 	u32 completed_bytes;
 	u32 srcq_desc_idx;
+	struct ps_pcie_transfer_elements *ele, *ele_nxt;
 
 	psta_bd = chan->psrc_sta_bd + chan->src_staprobe_idx;
 
@@ -1483,10 +1488,16 @@ static void src_cleanup_work(struct work_struct *work)
 			dma_cookie_complete(&ppkt_ctx->seg->async_tx);
 			spin_unlock(&chan->cookie_lock);
 			rslt.result = DMA_TRANS_NOERROR;
-			rslt.residue = ppkt_ctx->requested_bytes -
+			rslt.residue = ppkt_ctx->seg->total_transfer_bytes -
 					completed_bytes;
 			dmaengine_desc_get_callback_invoke(&ppkt_ctx->seg->async_tx,
 							   &rslt);
+			list_for_each_entry_safe(ele, ele_nxt,
+						 &ppkt_ctx->seg->transfer_nodes,
+						 node) {
+				list_del(&ele->node);
+				mempool_free(ele, chan->tx_elements_pool);
+			}
 			mempool_free(ppkt_ctx->seg, chan->transactions_pool);
 		}
 		memset(ppkt_ctx, 0, sizeof(struct PACKET_TRANSFER_PARAMS));
@@ -1660,7 +1671,7 @@ static int read_epdma_config(struct platform_device *platform_dev,
 			xdev->bar_info[i].BAR_PHYS_ADDR =
 				pci_resource_start(pdev, i);
 			xdev->bar_info[i].BAR_VIRT_ADDR =
-				pci_iomap[i];
+				(void *)pci_iomap[i];
 		}
 	}
 
@@ -1833,7 +1844,7 @@ static int probe_channel_properties(struct platform_device *platform_dev,
 	(struct DMA_ENGINE_REGISTERS *)((__force char *)(xdev->reg_base) +
 				 (channel_number * DMA_CHANNEL_REGS_SIZE));
 
-	if (((channel->chan_base->dma_channel_status) &
+	if ((channel->chan_base->dma_channel_status &
 				DMA_STATUS_DMA_PRES_BIT) == 0) {
 		dev_err(&platform_dev->dev,
 			"Hardware reports channel not present\n");
@@ -1874,6 +1885,8 @@ static int probe_channel_properties(struct platform_device *platform_dev,
 static void xlnx_ps_pcie_destroy_mempool(struct ps_pcie_dma_chan *chan)
 {
 	mempool_destroy(chan->transactions_pool);
+
+	mempool_destroy(chan->tx_elements_pool);
 
 	mempool_destroy(chan->intr_transactions_pool);
 }
@@ -1961,7 +1974,7 @@ static int xlnx_ps_pcie_channel_activate(struct ps_pcie_dma_chan *chan)
 	spin_unlock(&chan->channel_lock);
 
 	/* Activate timer if required */
-	if ((chan->coalesce_count > 0) && !chan->poll_timer.function)
+	if (chan->coalesce_count > 0 && !chan->poll_timer.function)
 		xlnx_ps_pcie_alloc_poll_timer(chan);
 
 	return 0;
@@ -1974,7 +1987,7 @@ static void xlnx_ps_pcie_channel_quiesce(struct ps_pcie_dma_chan *chan)
 			     DMA_INTCNTRL_ENABLINTR_BIT);
 
 	/* Delete timer if it is created */
-	if ((chan->coalesce_count > 0) && (!chan->poll_timer.function))
+	if (chan->coalesce_count > 0 && !chan->poll_timer.function)
 		xlnx_ps_pcie_free_poll_timer(chan);
 
 	/* Flush descriptor cleaning work queues */
@@ -1997,19 +2010,6 @@ static void xlnx_ps_pcie_channel_quiesce(struct ps_pcie_dma_chan *chan)
 	spin_lock(&chan->channel_lock);
 	chan->state = CHANNEL_UNAVIALBLE;
 	spin_unlock(&chan->channel_lock);
-}
-
-static u32 total_bytes_in_sgl(struct scatterlist *sgl,
-			      unsigned int num_entries)
-{
-	u32 total_bytes = 0;
-	struct scatterlist *sgl_ptr;
-	unsigned int i;
-
-	for_each_sg(sgl, sgl_ptr, num_entries, i)
-		total_bytes += sg_dma_len(sgl_ptr);
-
-	return total_bytes;
 }
 
 static void ivk_cbk_intr_seg(struct ps_pcie_intr_segment *intr_seg,
@@ -2039,17 +2039,13 @@ static void ivk_cbk_seg(struct ps_pcie_tx_segment *seg,
 	spin_unlock(&chan->cookie_lock);
 
 	rslt.result = result;
-	if (seg->tx_elements.src_sgl &&
+	if (seg->src_elements &&
 	    chan->srcq_buffer_location == BUFFER_LOC_PCI) {
-		rslt.residue =
-			total_bytes_in_sgl(seg->tx_elements.src_sgl,
-					   seg->tx_elements.srcq_num_elemets);
+		rslt.residue = seg->total_transfer_bytes;
 		prslt = &rslt;
-	} else if (seg->tx_elements.dst_sgl &&
+	} else if (seg->dst_elements &&
 		   chan->dstq_buffer_location == BUFFER_LOC_PCI) {
-		rslt.residue =
-			total_bytes_in_sgl(seg->tx_elements.dst_sgl,
-					   seg->tx_elements.dstq_num_elemets);
+		rslt.residue = seg->total_transfer_bytes;
 		prslt = &rslt;
 	} else {
 		prslt = NULL;
@@ -2077,6 +2073,7 @@ static void ivk_cbk_for_pending(struct ps_pcie_dma_chan *chan)
 	struct PACKET_TRANSFER_PARAMS *ppkt_ctxt;
 	struct ps_pcie_tx_segment *seg, *seg_nxt;
 	struct ps_pcie_intr_segment *intr_seg, *intr_seg_next;
+	struct ps_pcie_transfer_elements *ele, *ele_nxt;
 
 	if (chan->ppkt_ctx_srcq) {
 		if (chan->idx_ctx_srcq_tail != chan->idx_ctx_srcq_head) {
@@ -2115,6 +2112,11 @@ static void ivk_cbk_for_pending(struct ps_pcie_dma_chan *chan)
 		spin_lock(&chan->active_list_lock);
 		list_del(&seg->node);
 		spin_unlock(&chan->active_list_lock);
+		list_for_each_entry_safe(ele, ele_nxt,
+					 &seg->transfer_nodes, node) {
+			list_del(&ele->node);
+			mempool_free(ele, chan->tx_elements_pool);
+		}
 		mempool_free(seg, chan->transactions_pool);
 	}
 
@@ -2123,6 +2125,11 @@ static void ivk_cbk_for_pending(struct ps_pcie_dma_chan *chan)
 		spin_lock(&chan->pending_list_lock);
 		list_del(&seg->node);
 		spin_unlock(&chan->pending_list_lock);
+		list_for_each_entry_safe(ele, ele_nxt,
+					 &seg->transfer_nodes, node) {
+			list_del(&ele->node);
+			mempool_free(ele, chan->tx_elements_pool);
+		}
 		mempool_free(seg, chan->transactions_pool);
 	}
 
@@ -2363,6 +2370,13 @@ static int xlnx_ps_pcie_alloc_mempool(struct ps_pcie_dma_chan *chan)
 	if (!chan->transactions_pool)
 		goto no_transactions_pool;
 
+	chan->tx_elements_pool =
+		mempool_create_kmalloc_pool(chan->total_descriptors,
+					    sizeof(struct ps_pcie_transfer_elements));
+
+	if (!chan->tx_elements_pool)
+		goto no_tx_elements_pool;
+
 	chan->intr_transactions_pool =
 	mempool_create_kmalloc_pool(MIN_SW_INTR_TRANSACTIONS,
 				    sizeof(struct ps_pcie_intr_segment));
@@ -2373,8 +2387,9 @@ static int xlnx_ps_pcie_alloc_mempool(struct ps_pcie_dma_chan *chan)
 	return 0;
 
 no_intr_transactions_pool:
+	mempool_destroy(chan->tx_elements_pool);
+no_tx_elements_pool:
 	mempool_destroy(chan->transactions_pool);
-
 no_transactions_pool:
 	return -ENOMEM;
 }
@@ -2707,21 +2722,28 @@ static dma_cookie_t xilinx_dma_tx_submit(struct dma_async_tx_descriptor *tx)
 	return cookie;
 }
 
-static struct dma_async_tx_descriptor *xlnx_ps_pcie_dma_prep_dma_sg(
-		struct dma_chan *channel, struct scatterlist *dst_sg,
-		unsigned int dst_nents, struct scatterlist *src_sg,
-		unsigned int src_nents, unsigned long flags)
+/**
+ * xlnx_ps_pcie_dma_prep_memcpy - prepare descriptors for a memcpy transaction
+ * @channel: DMA channel
+ * @dma_dst: destination address
+ * @dma_src: source address
+ * @len: transfer length
+ * @flags: transfer ack flags
+ *
+ * Return: Async transaction descriptor on success and NULL on failure
+ */
+static struct dma_async_tx_descriptor *
+xlnx_ps_pcie_dma_prep_memcpy(struct dma_chan *channel, dma_addr_t dma_dst,
+			     dma_addr_t dma_src, size_t len,
+			     unsigned long flags)
 {
 	struct ps_pcie_dma_chan *chan = to_xilinx_chan(channel);
 	struct ps_pcie_tx_segment *seg = NULL;
+	struct ps_pcie_transfer_elements *ele = NULL;
+	struct ps_pcie_transfer_elements *ele_nxt = NULL;
+	u32 i;
 
 	if (chan->state != CHANNEL_AVAILABLE)
-		return NULL;
-
-	if (dst_nents == 0 || src_nents == 0)
-		return NULL;
-
-	if (!dst_sg || !src_sg)
 		return NULL;
 
 	if (chan->num_queues != DEFAULT_DMA_QUEUES) {
@@ -2738,11 +2760,46 @@ static struct dma_async_tx_descriptor *xlnx_ps_pcie_dma_prep_dma_sg(
 	}
 
 	memset(seg, 0, sizeof(*seg));
+	INIT_LIST_HEAD(&seg->transfer_nodes);
 
-	seg->tx_elements.dst_sgl = dst_sg;
-	seg->tx_elements.dstq_num_elemets = dst_nents;
-	seg->tx_elements.src_sgl = src_sg;
-	seg->tx_elements.srcq_num_elemets = src_nents;
+	for (i = 0; i < len / MAX_TRANSFER_LENGTH; i++) {
+		ele = mempool_alloc(chan->tx_elements_pool, GFP_ATOMIC);
+		if (!ele) {
+			dev_err(chan->dev, "Tx element %d for channel %d\n",
+				i, chan->channel_number);
+			goto err_elements_prep_memcpy;
+		}
+		ele->src_pa = dma_src + (i * MAX_TRANSFER_LENGTH);
+		ele->dst_pa = dma_dst + (i * MAX_TRANSFER_LENGTH);
+		ele->transfer_bytes = MAX_TRANSFER_LENGTH;
+		list_add_tail(&ele->node, &seg->transfer_nodes);
+		seg->src_elements++;
+		seg->dst_elements++;
+		seg->total_transfer_bytes += ele->transfer_bytes;
+		ele = NULL;
+	}
+
+	if (len % MAX_TRANSFER_LENGTH) {
+		ele = mempool_alloc(chan->tx_elements_pool, GFP_ATOMIC);
+		if (!ele) {
+			dev_err(chan->dev, "Tx element %d for channel %d\n",
+				i, chan->channel_number);
+			goto err_elements_prep_memcpy;
+		}
+		ele->src_pa = dma_src + (i * MAX_TRANSFER_LENGTH);
+		ele->dst_pa = dma_dst + (i * MAX_TRANSFER_LENGTH);
+		ele->transfer_bytes = len % MAX_TRANSFER_LENGTH;
+		list_add_tail(&ele->node, &seg->transfer_nodes);
+		seg->src_elements++;
+		seg->dst_elements++;
+		seg->total_transfer_bytes += ele->transfer_bytes;
+	}
+
+	if (seg->src_elements > chan->total_descriptors) {
+		dev_err(chan->dev, "Insufficient descriptors in channel %d for dma transaction\n",
+			chan->channel_number);
+		goto err_elements_prep_memcpy;
+	}
 
 	dma_async_tx_descriptor_init(&seg->async_tx, &chan->common);
 	seg->async_tx.flags = flags;
@@ -2750,6 +2807,14 @@ static struct dma_async_tx_descriptor *xlnx_ps_pcie_dma_prep_dma_sg(
 	seg->async_tx.tx_submit = xilinx_dma_tx_submit;
 
 	return &seg->async_tx;
+
+err_elements_prep_memcpy:
+	list_for_each_entry_safe(ele, ele_nxt, &seg->transfer_nodes, node) {
+		list_del(&ele->node);
+		mempool_free(ele, chan->tx_elements_pool);
+	}
+	mempool_free(seg, chan->transactions_pool);
+	return NULL;
 }
 
 static struct dma_async_tx_descriptor *xlnx_ps_pcie_dma_prep_slave_sg(
@@ -2759,6 +2824,10 @@ static struct dma_async_tx_descriptor *xlnx_ps_pcie_dma_prep_slave_sg(
 {
 	struct ps_pcie_dma_chan *chan = to_xilinx_chan(channel);
 	struct ps_pcie_tx_segment *seg = NULL;
+	struct scatterlist *sgl_ptr;
+	struct ps_pcie_transfer_elements *ele = NULL;
+	struct ps_pcie_transfer_elements *ele_nxt = NULL;
+	u32 i, j;
 
 	if (chan->state != CHANNEL_AVAILABLE)
 		return NULL;
@@ -2770,7 +2839,7 @@ static struct dma_async_tx_descriptor *xlnx_ps_pcie_dma_prep_slave_sg(
 		return NULL;
 
 	if (chan->num_queues != TWO_DMA_QUEUES) {
-		dev_err(chan->dev, "Only prep_dma_sg is supported channel %d\n",
+		dev_err(chan->dev, "Only prep_dma_memcpy is supported channel %d\n",
 			chan->channel_number);
 		return NULL;
 	}
@@ -2784,16 +2853,56 @@ static struct dma_async_tx_descriptor *xlnx_ps_pcie_dma_prep_slave_sg(
 
 	memset(seg, 0, sizeof(*seg));
 
-	if (chan->direction == DMA_TO_DEVICE) {
-		seg->tx_elements.src_sgl = sgl;
-		seg->tx_elements.srcq_num_elemets = sg_len;
-		seg->tx_elements.dst_sgl = NULL;
-		seg->tx_elements.dstq_num_elemets = 0;
-	} else {
-		seg->tx_elements.src_sgl = NULL;
-		seg->tx_elements.srcq_num_elemets = 0;
-		seg->tx_elements.dst_sgl = sgl;
-		seg->tx_elements.dstq_num_elemets = sg_len;
+	for_each_sg(sgl, sgl_ptr, sg_len, j) {
+		for (i = 0; i < sg_dma_len(sgl_ptr) / MAX_TRANSFER_LENGTH; i++) {
+			ele = mempool_alloc(chan->tx_elements_pool, GFP_ATOMIC);
+			if (!ele) {
+				dev_err(chan->dev, "Tx element %d for channel %d\n",
+					i, chan->channel_number);
+				goto err_elements_prep_slave_sg;
+			}
+			if (chan->direction == DMA_TO_DEVICE) {
+				ele->src_pa = sg_dma_address(sgl_ptr) +
+						(i * MAX_TRANSFER_LENGTH);
+				seg->src_elements++;
+			} else {
+				ele->dst_pa = sg_dma_address(sgl_ptr) +
+						(i * MAX_TRANSFER_LENGTH);
+				seg->dst_elements++;
+			}
+			ele->transfer_bytes = MAX_TRANSFER_LENGTH;
+			list_add_tail(&ele->node, &seg->transfer_nodes);
+			seg->total_transfer_bytes += ele->transfer_bytes;
+			ele = NULL;
+		}
+		if (sg_dma_len(sgl_ptr) % MAX_TRANSFER_LENGTH) {
+			ele = mempool_alloc(chan->tx_elements_pool, GFP_ATOMIC);
+			if (!ele) {
+				dev_err(chan->dev, "Tx element %d for channel %d\n",
+					i, chan->channel_number);
+				goto err_elements_prep_slave_sg;
+			}
+			if (chan->direction == DMA_TO_DEVICE) {
+				ele->src_pa = sg_dma_address(sgl_ptr) +
+						(i * MAX_TRANSFER_LENGTH);
+				seg->src_elements++;
+			} else {
+				ele->dst_pa = sg_dma_address(sgl_ptr) +
+						(i * MAX_TRANSFER_LENGTH);
+				seg->dst_elements++;
+			}
+			ele->transfer_bytes = sg_dma_len(sgl_ptr) %
+						MAX_TRANSFER_LENGTH;
+			list_add_tail(&ele->node, &seg->transfer_nodes);
+			seg->total_transfer_bytes += ele->transfer_bytes;
+		}
+	}
+
+	if (max(seg->src_elements, seg->dst_elements) >
+		chan->total_descriptors) {
+		dev_err(chan->dev, "Insufficient descriptors in channel %d for dma transaction\n",
+			chan->channel_number);
+		goto err_elements_prep_slave_sg;
 	}
 
 	dma_async_tx_descriptor_init(&seg->async_tx, &chan->common);
@@ -2802,6 +2911,14 @@ static struct dma_async_tx_descriptor *xlnx_ps_pcie_dma_prep_slave_sg(
 	seg->async_tx.tx_submit = xilinx_dma_tx_submit;
 
 	return &seg->async_tx;
+
+err_elements_prep_slave_sg:
+	list_for_each_entry_safe(ele, ele_nxt, &seg->transfer_nodes, node) {
+		list_del(&ele->node);
+		mempool_free(ele, chan->tx_elements_pool);
+	}
+	mempool_free(seg, chan->transactions_pool);
+	return NULL;
 }
 
 static void xlnx_ps_pcie_dma_issue_pending(struct dma_chan *channel)
@@ -2952,8 +3069,8 @@ static int xlnx_pcie_dma_driver_probe(struct platform_device *platform_dev)
 
 	dma_cap_set(DMA_SLAVE, xdev->common.cap_mask);
 	dma_cap_set(DMA_PRIVATE, xdev->common.cap_mask);
-	dma_cap_set(DMA_SG, xdev->common.cap_mask);
 	dma_cap_set(DMA_INTERRUPT, xdev->common.cap_mask);
+	dma_cap_set(DMA_MEMCPY, xdev->common.cap_mask);
 
 	xdev->common.src_addr_widths = DMA_SLAVE_BUSWIDTH_UNDEFINED;
 	xdev->common.dst_addr_widths = DMA_SLAVE_BUSWIDTH_UNDEFINED;
@@ -2967,7 +3084,7 @@ static int xlnx_pcie_dma_driver_probe(struct platform_device *platform_dev)
 	xdev->common.device_issue_pending = xlnx_ps_pcie_dma_issue_pending;
 	xdev->common.device_prep_dma_interrupt =
 		xlnx_ps_pcie_dma_prep_interrupt;
-	xdev->common.device_prep_dma_sg = xlnx_ps_pcie_dma_prep_dma_sg;
+	xdev->common.device_prep_dma_memcpy = xlnx_ps_pcie_dma_prep_memcpy;
 	xdev->common.device_prep_slave_sg = xlnx_ps_pcie_dma_prep_slave_sg;
 	xdev->common.residue_granularity = DMA_RESIDUE_GRANULARITY_SEGMENT;
 
