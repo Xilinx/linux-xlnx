@@ -56,6 +56,7 @@ struct spdif_dev_data {
 	wait_queue_head_t chsts_q;
 	void __iomem *base;
 	struct clk *axi_clk;
+	struct clk *axis_clk;
 	struct clk *aud_clk;
 	u32 mode;
 	unsigned long aclk;
@@ -272,36 +273,37 @@ static int xlnx_spdif_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	ctx->aud_clk = devm_clk_get(dev, "aud_clk_i");
-	if (IS_ERR(ctx->aud_clk)) {
-		ret = PTR_ERR(ctx->aud_clk);
-		dev_err(dev, "failed to get aud_aclk(%d)\n", ret);
-		goto axi_clk_err;
-	}
-	ret = clk_prepare_enable(ctx->aud_clk);
-	if (ret) {
-		dev_err(dev, "failed to enable aud_aclk(%d)\n", ret);
-		goto axi_clk_err;
-	}
-
 	ctx->base = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(ctx->base)) {
 		ret = PTR_ERR(ctx->base);
-		goto clk_err;
+		goto axi_clk_err;
 	}
 	ret = of_property_read_u32(node, "xlnx,spdif-mode", &ctx->mode);
 	if (ret < 0) {
 		dev_err(dev, "cannot get SPDIF mode\n");
-		goto clk_err;
+		goto axi_clk_err;
 	}
 	if (ctx->mode) {
+		ctx->axis_clk = devm_clk_get(dev, "s_axis_aclk");
+		if (IS_ERR(ctx->axis_clk)) {
+			ret = PTR_ERR(ctx->axis_clk);
+			dev_err(dev, "failed to get s_axis_aclk(%d)\n", ret);
+			goto axi_clk_err;
+		}
 		dai_drv = &xlnx_spdif_tx_dai;
 	} else {
+		ctx->axis_clk = devm_clk_get(dev, "m_axis_aclk");
+		if (IS_ERR(ctx->axis_clk)) {
+			ret = PTR_ERR(ctx->axis_clk);
+			dev_err(dev, "failed to get m_axis_aclk(%d)\n", ret);
+			goto axi_clk_err;
+		}
+
 		res = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
 		if (!res) {
 			dev_err(dev, "No IRQ resource found\n");
 			ret = -ENODEV;
-			goto clk_err;
+			goto axi_clk_err;
 		}
 		ret = devm_request_irq(dev, res->start,
 				       xlnx_spdifrx_irq_handler,
@@ -309,11 +311,30 @@ static int xlnx_spdif_probe(struct platform_device *pdev)
 		if (ret) {
 			dev_err(dev, "spdif rx irq request failed\n");
 			ret = -ENODEV;
-			goto clk_err;
+			goto axi_clk_err;
 		}
 
 		init_waitqueue_head(&ctx->chsts_q);
 		dai_drv = &xlnx_spdif_rx_dai;
+	}
+
+	ctx->aud_clk = devm_clk_get(dev, "aud_clk_i");
+	if (IS_ERR(ctx->aud_clk)) {
+		ret = PTR_ERR(ctx->aud_clk);
+		dev_err(dev, "failed to get aud_aclk(%d)\n", ret);
+		goto axi_clk_err;
+	}
+
+	ret = clk_prepare_enable(ctx->axis_clk);
+	if (ret) {
+		dev_err(dev, "failed to enable axis_aclk(%d)\n", ret);
+		goto axi_clk_err;
+	}
+
+	ret = clk_prepare_enable(ctx->aud_clk);
+	if (ret) {
+		dev_err(dev, "failed to enable aud_aclk(%d)\n", ret);
+		goto axis_clk_err;
 	}
 
 	dev_set_drvdata(dev, ctx);
@@ -331,8 +352,11 @@ static int xlnx_spdif_probe(struct platform_device *pdev)
 
 clk_err:
 	clk_disable_unprepare(ctx->aud_clk);
+axis_clk_err:
+	clk_disable_unprepare(ctx->axis_clk);
 axi_clk_err:
 	clk_disable_unprepare(ctx->axi_clk);
+
 	return ret;
 }
 
@@ -341,6 +365,7 @@ static int xlnx_spdif_remove(struct platform_device *pdev)
 	struct spdif_dev_data *ctx = dev_get_drvdata(&pdev->dev);
 
 	clk_disable_unprepare(ctx->aud_clk);
+	clk_disable_unprepare(ctx->axis_clk);
 	clk_disable_unprepare(ctx->axi_clk);
 	return 0;
 }
