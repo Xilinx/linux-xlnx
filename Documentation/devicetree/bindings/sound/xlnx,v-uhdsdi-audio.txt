@@ -14,6 +14,10 @@ Required properties:
  - interrupts-parent: phandle for interrupt controller.
  - reg: Base address and size of the IP core instance.
  - xlnx,snd-pcm: reference to audio formatter block
+ - clock-names: List of input clocks.
+   Required elements for SDI Embed: "s_axi_aclk", "s_axis_clk", "sdi_embed_clk".
+   Required elements for SDI Extract: "s_axi_aclk", "sdi_extract_clk", "m_axis_clk".
+ - clocks: Input clock specifier. Refer to common clock bindings.
 
 SDI embed contains a output port to remote endpoint of SDI video Tx node.
 This pipeline should be described using the DT bindings defined in
@@ -23,6 +27,8 @@ Example:
 
 	audio_ss_0_v_uhdsdi_audio_extract_0: v_uhdsdi_audio@80080000 {
 		compatible = "xlnx,v-uhdsdi-audio-2.0";
+		clock-names = "s_axi_aclk", "sdi_extract_clk", "m_axis_clk";
+		clocks = <&misc_clk_0>, <&misc_clk_1>, <&misc_clk_0>;
 		interrupt-names = "interrupt";
 		interrupt-parent = <&gic>;
 		interrupts = <0 106 4>;
@@ -32,6 +38,8 @@ Example:
 
 	audio_ss_0_v_uhdsdi_audio_embed_0: v_uhdsdi_audio@80090000 {
 		compatible = "xlnx,v-uhdsdi-audio-2.0";
+		clock-names = "s_axi_aclk", "s_axis_clk", "sdi_embed_clk";
+		clocks = <&misc_clk_0>, <&misc_clk_0>, <&misc_clk_1>;
 		interrupt-names = "interrupt";
 		interrupt-parent = <&gic>;
 		interrupts = <0 107 4>;
