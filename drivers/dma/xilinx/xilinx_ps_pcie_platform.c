@@ -497,7 +497,7 @@ static int init_sw_components(struct ps_pcie_dma_chan *chan);
 static void update_channel_read_attribute(struct ps_pcie_dma_chan *chan);
 static void update_channel_write_attribute(struct ps_pcie_dma_chan *chan);
 static void ps_pcie_chan_reset(struct ps_pcie_dma_chan *chan);
-static void poll_completed_transactions(unsigned long arg);
+static void poll_completed_transactions(struct timer_list *t);
 static bool check_descriptors_for_two_queues(struct ps_pcie_dma_chan *chan,
 					     struct ps_pcie_tx_segment *seg);
 static bool check_descriptors_for_all_queues(struct ps_pcie_dma_chan *chan,
@@ -1022,12 +1022,12 @@ static void ps_pcie_chan_reset(struct ps_pcie_dma_chan *chan)
 /**
  * poll_completed_transactions - Function invoked by poll timer
  *
- * @arg: Pointer to PS PCIe DMA channel information
+ * @t: Pointer to timer triggering this callback
  * Return: void
  */
-static void poll_completed_transactions(unsigned long arg)
+static void poll_completed_transactions(struct timer_list *t)
 {
-	struct ps_pcie_dma_chan *chan = (struct ps_pcie_dma_chan *)arg;
+	struct ps_pcie_dma_chan *chan = from_timer(chan, t, poll_timer);
 
 	if (chan->state == CHANNEL_AVAILABLE) {
 		queue_work(chan->primary_desc_cleanup,
@@ -2169,10 +2169,8 @@ static void xlnx_ps_pcie_free_poll_timer(struct ps_pcie_dma_chan *chan)
 
 static int xlnx_ps_pcie_alloc_poll_timer(struct ps_pcie_dma_chan *chan)
 {
-	init_timer(&chan->poll_timer);
-	chan->poll_timer.function = poll_completed_transactions;
+	timer_setup(&chan->poll_timer, poll_completed_transactions, 0);
 	chan->poll_timer.expires = jiffies + chan->poll_timer_freq;
-	chan->poll_timer.data = (unsigned long)chan;
 
 	add_timer(&chan->poll_timer);
 
