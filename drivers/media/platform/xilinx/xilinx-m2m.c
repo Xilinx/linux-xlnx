@@ -8,6 +8,7 @@
  */
 
 #include <drm/drm_fourcc.h>
+#include <linux/delay.h>
 #include <linux/dma/xilinx_frmbuf.h>
 #include <linux/lcm.h>
 #include <linux/list.h>
@@ -20,6 +21,7 @@
 #include <media/v4l2-async.h>
 #include <media/v4l2-common.h>
 #include <media/v4l2-device.h>
+#include <media/v4l2-fwnode.h>
 #include <media/v4l2-ioctl.h>
 #include <media/v4l2-mem2mem.h>
 #include <media/videobuf2-dma-contig.h>
@@ -27,7 +29,7 @@
 #include "xilinx-vip.h"
 
 #define XVIP_M2M_NAME		"xilinx-mem2mem"
-#define XVIP_M2M_DEFAULT_FMT	V4L2_PIX_FMT_NV12
+#define XVIP_M2M_DEFAULT_FMT	V4L2_PIX_FMT_RGB24
 
 /* Minimum and maximum widths are expressed in bytes */
 #define XVIP_M2M_MIN_WIDTH	1U
@@ -38,10 +40,62 @@
 #define XVIP_M2M_DEF_WIDTH	1920
 #define XVIP_M2M_DEF_HEIGHT	1080
 
+#define XVIP_M2M_PAD_SINK	1
+#define XVIP_M2M_PAD_SOURCE	0
+
+/**
+ * struct xvip_graph_entity - Entity in the video graph
+ * @list: list entry in a graph entities list
+ * @node: the entity's DT node
+ * @entity: media entity, from the corresponding V4L2 subdev
+ * @asd: subdev asynchronous registration information
+ * @subdev: V4L2 subdev
+ * @streaming: status of the V4L2 subdev if streaming or not
+ */
+struct xvip_graph_entity {
+	struct list_head list;
+	struct device_node *node;
+	struct media_entity *entity;
+
+	struct v4l2_async_subdev asd;
+	struct v4l2_subdev *subdev;
+	bool streaming;
+};
+
+/**
+ * struct xvip_pipeline - Xilinx Video IP pipeline structure
+ * @pipe: media pipeline
+ * @lock: protects the pipeline @stream_count
+ * @use_count: number of DMA engines using the pipeline
+ * @stream_count: number of DMA engines currently streaming
+ * @num_dmas: number of DMA engines in the pipeline
+ * @xdev: Composite device the pipe belongs to
+ */
+struct xvip_pipeline {
+	struct media_pipeline pipe;
+
+	/* protects the pipeline @stream_count */
+	struct mutex lock;
+	unsigned int use_count;
+	unsigned int stream_count;
+
+	unsigned int num_dmas;
+	struct xvip_m2m_dev *xdev;
+};
+
+struct xventity_list {
+	struct list_head list;
+	struct media_entity *entity;
+};
+
 /**
  * struct xvip_m2m_dev - Xilinx Video mem2mem device structure
  * @v4l2_dev: V4L2 device
  * @dev: (OF) device
+ * @media_dev: media device
+ * @notifier: V4L2 asynchronous subdevs notifier
+ * @entities: entities in the graph as a list of xvip_graph_entity
+ * @num_subdevs: number of subdevs in the pipeline
  * @lock: This is to protect mem2mem context structure data
  * @queued_lock: This is to protect video buffer information
  * @dma: Video DMA channels
@@ -52,6 +106,11 @@ struct xvip_m2m_dev {
 	struct v4l2_device v4l2_dev;
 	struct device *dev;
 
+	struct media_device media_dev;
+	struct v4l2_async_notifier notifier;
+	struct list_head entities;
+	unsigned int num_subdevs;
+
 	/* Protects to m2m context data */
 	struct mutex lock;
 
@@ -61,6 +120,11 @@ struct xvip_m2m_dev {
 	struct v4l2_m2m_dev *m2m_dev;
 	u32 v4l2_caps;
 };
+
+static inline struct xvip_pipeline *to_xvip_pipeline(struct media_entity *e)
+{
+	return container_of(e->pipe, struct xvip_pipeline, pipe);
+}
 
 /**
  * struct xvip_m2m_dma - Video DMA channel
@@ -73,6 +137,8 @@ struct xvip_m2m_dev {
  * @outinfo: format information corresponding to the active @outfmt
  * @capinfo: format information corresponding to the active @capfmt
  * @align: transfer alignment required by the DMA channel (in bytes)
+ * @pads: media pads for the video M2M device entity
+ * @pipe: pipeline belonging to the DMA channel
  */
 struct xvip_m2m_dma {
 	struct video_device video;
@@ -84,6 +150,9 @@ struct xvip_m2m_dma {
 	const struct xvip_video_format *outinfo;
 	const struct xvip_video_format *capinfo;
 	u32 align;
+
+	struct media_pad pads[2];
+	struct xvip_pipeline pipe;
 };
 
 /**
@@ -103,6 +172,373 @@ struct xvip_m2m_ctx {
 static inline struct xvip_m2m_ctx *file2ctx(struct file *file)
 {
 	return container_of(file->private_data, struct xvip_m2m_ctx, fh);
+}
+
+static struct v4l2_subdev *
+xvip_dma_remote_subdev(struct media_pad *local, u32 *pad)
+{
+	struct media_pad *remote;
+
+	remote = media_entity_remote_pad(local);
+	if (!remote || !is_media_entity_v4l2_subdev(remote->entity))
+		return NULL;
+
+	if (pad)
+		*pad = remote->index;
+
+	return media_entity_to_v4l2_subdev(remote->entity);
+}
+
+static int xvip_dma_verify_format(struct xvip_m2m_dma *dma)
+{
+	struct v4l2_subdev_format fmt;
+	struct v4l2_subdev *subdev;
+	int ret;
+	int width, height;
+
+	subdev = xvip_dma_remote_subdev(&dma->pads[XVIP_PAD_SOURCE], &fmt.pad);
+	if (!subdev)
+		return -EPIPE;
+
+	fmt.which = V4L2_SUBDEV_FORMAT_ACTIVE;
+	ret = v4l2_subdev_call(subdev, pad, get_fmt, NULL, &fmt);
+	if (ret < 0)
+		return ret == -ENOIOCTLCMD ? -EINVAL : ret;
+
+	if (dma->outinfo->code != fmt.format.code)
+		return -EINVAL;
+
+	if (V4L2_TYPE_IS_MULTIPLANAR(dma->outfmt.type)) {
+		width = dma->outfmt.fmt.pix_mp.width;
+		height = dma->outfmt.fmt.pix_mp.height;
+	} else {
+		width = dma->outfmt.fmt.pix.width;
+		height = dma->outfmt.fmt.pix.height;
+	}
+
+	if (width != fmt.format.width || height != fmt.format.height)
+		return -EINVAL;
+
+	return 0;
+}
+
+#define to_xvip_dma(vdev)	container_of(vdev, struct xvip_m2m_dma, video)
+/* -----------------------------------------------------------------------------
+ * Pipeline Stream Management
+ */
+
+/**
+ * xvip_subdev_set_streaming - Find and update streaming status of subdev
+ * @xdev: Composite video device
+ * @subdev: V4L2 sub-device
+ * @enable: enable/disable streaming status
+ *
+ * Walk the xvip graph entities list and find if subdev is present. Returns
+ * streaming status of subdev and update the status as requested
+ *
+ * Return: streaming status (true or false) if successful or warn_on if subdev
+ * is not present and return false
+ */
+static bool xvip_subdev_set_streaming(struct xvip_m2m_dev *xdev,
+				      struct v4l2_subdev *subdev, bool enable)
+{
+	struct xvip_graph_entity *entity;
+
+	list_for_each_entry(entity, &xdev->entities, list)
+		if (entity->node == subdev->dev->of_node) {
+			bool status = entity->streaming;
+
+			entity->streaming = enable;
+			return status;
+		}
+
+	WARN(1, "Should never get here\n");
+	return false;
+}
+
+static int xvip_entity_start_stop(struct xvip_m2m_dev *xdev,
+				  struct media_entity *entity, bool start)
+{
+	struct v4l2_subdev *subdev;
+	bool is_streaming;
+	int ret = 0;
+
+	dev_dbg(xdev->dev, "%s entity %s\n",
+		start ? "Starting" : "Stopping", entity->name);
+	subdev = media_entity_to_v4l2_subdev(entity);
+
+	/* This is to maintain list of stream on/off devices */
+	is_streaming = xvip_subdev_set_streaming(xdev, subdev, start);
+
+	/*
+	 * start or stop the subdev only once in case if they are
+	 * shared between sub-graphs
+	 */
+	if (start && !is_streaming) {
+		/* power-on subdevice */
+		ret = v4l2_subdev_call(subdev, core, s_power, 1);
+		if (ret < 0 && ret != -ENOIOCTLCMD) {
+			dev_err(xdev->dev,
+				"s_power on failed on subdev\n");
+			xvip_subdev_set_streaming(xdev, subdev, 0);
+			return ret;
+		}
+
+		/* stream-on subdevice */
+		ret = v4l2_subdev_call(subdev, video, s_stream, 1);
+		if (ret < 0 && ret != -ENOIOCTLCMD) {
+			dev_err(xdev->dev,
+				"s_stream on failed on subdev\n");
+			v4l2_subdev_call(subdev, core, s_power, 0);
+			xvip_subdev_set_streaming(xdev, subdev, 0);
+		}
+	} else if (!start && is_streaming) {
+		/* stream-off subdevice */
+		ret = v4l2_subdev_call(subdev, video, s_stream, 0);
+		if (ret < 0 && ret != -ENOIOCTLCMD) {
+			dev_err(xdev->dev,
+				"s_stream off failed on subdev\n");
+			xvip_subdev_set_streaming(xdev, subdev, 1);
+		}
+
+		/* power-off subdevice */
+		ret = v4l2_subdev_call(subdev, core, s_power, 0);
+		if (ret < 0 && ret != -ENOIOCTLCMD)
+			dev_err(xdev->dev,
+				"s_power off failed on subdev\n");
+	}
+
+	return ret;
+}
+
+/**
+ * xvip_pipeline_start_stop - Start ot stop streaming on a pipeline
+ * @xdev: Composite video device
+ * @dma: xvip dma
+ * @start: Start (when true) or stop (when false) the pipeline
+ *
+ * Walk the entities chain starting @dma and start or stop all of them
+ *
+ * Return: 0 if successful, or the return value of the failed video::s_stream
+ * operation otherwise.
+ */
+static int xvip_pipeline_start_stop(struct xvip_m2m_dev *xdev,
+				    struct xvip_m2m_dma *dma, bool start)
+{
+	struct media_graph graph;
+	struct media_entity *entity = &dma->video.entity;
+	struct media_device *mdev = entity->graph_obj.mdev;
+	struct xventity_list *temp, *_temp;
+	LIST_HEAD(ent_list);
+	int ret = 0;
+
+	mutex_lock(&mdev->graph_mutex);
+
+	/* Walk the graph to locate the subdev nodes */
+	ret = media_graph_walk_init(&graph, mdev);
+	if (ret)
+		goto error;
+
+	media_graph_walk_start(&graph, entity);
+
+	/* get the list of entities */
+	while ((entity = media_graph_walk_next(&graph))) {
+		struct xventity_list *ele;
+
+		/* We want to stream on/off only subdevs */
+		if (!is_media_entity_v4l2_subdev(entity))
+			continue;
+
+		/* Maintain the pipeline sequence in a list */
+		ele = kzalloc(sizeof(*ele), GFP_KERNEL);
+		if (!ele) {
+			ret = -ENOMEM;
+			goto error;
+		}
+
+		ele->entity = entity;
+		list_add(&ele->list, &ent_list);
+	}
+
+	if (start) {
+		list_for_each_entry_safe(temp, _temp, &ent_list, list) {
+			/* Enable all subdevs from sink to source */
+			ret = xvip_entity_start_stop(xdev, temp->entity, start);
+			if (ret < 0) {
+				dev_err(xdev->dev, "ret = %d for entity %s\n",
+					ret, temp->entity->name);
+				break;
+			}
+		}
+	} else {
+		list_for_each_entry_safe_reverse(temp, _temp, &ent_list, list)
+			/* Enable all subdevs from source to sink */
+			xvip_entity_start_stop(xdev, temp->entity, start);
+	}
+
+	list_for_each_entry_safe(temp, _temp, &ent_list, list) {
+		list_del(&temp->list);
+		kfree(temp);
+	}
+
+error:
+	mutex_unlock(&mdev->graph_mutex);
+	media_graph_walk_cleanup(&graph);
+	return ret;
+}
+
+/**
+ * xvip_pipeline_set_stream - Enable/disable streaming on a pipeline
+ * @pipe: The pipeline
+ * @on: Turn the stream on when true or off when false
+ *
+ * The pipeline is shared between all DMA engines connect at its input and
+ * output. While the stream state of DMA engines can be controlled
+ * independently, pipelines have a shared stream state that enable or disable
+ * all entities in the pipeline. For this reason the pipeline uses a streaming
+ * counter that tracks the number of DMA engines that have requested the stream
+ * to be enabled. This will walk the graph starting from each DMA and enable or
+ * disable the entities in the path.
+ *
+ * When called with the @on argument set to true, this function will increment
+ * the pipeline streaming count. If the streaming count reaches the number of
+ * DMA engines in the pipeline it will enable all entities that belong to the
+ * pipeline.
+ *
+ * Similarly, when called with the @on argument set to false, this function will
+ * decrement the pipeline streaming count and disable all entities in the
+ * pipeline when the streaming count reaches zero.
+ *
+ * Return: 0 if successful, or the return value of the failed video::s_stream
+ * operation otherwise. Stopping the pipeline never fails. The pipeline state is
+ * not updated when the operation fails.
+ */
+static int xvip_pipeline_set_stream(struct xvip_pipeline *pipe, bool on)
+{
+	struct xvip_m2m_dev *xdev;
+	struct xvip_m2m_dma *dma;
+	int ret = 0;
+
+	mutex_lock(&pipe->lock);
+	xdev = pipe->xdev;
+	dma = xdev->dma;
+
+	if (on) {
+		ret = xvip_pipeline_start_stop(xdev, dma, true);
+		if (ret < 0)
+			goto done;
+		pipe->stream_count++;
+	} else {
+		if (--pipe->stream_count == 0)
+			xvip_pipeline_start_stop(xdev, dma, false);
+	}
+
+done:
+	mutex_unlock(&pipe->lock);
+	return ret;
+}
+
+static int xvip_pipeline_validate(struct xvip_pipeline *pipe,
+				  struct xvip_m2m_dma *start)
+{
+	struct media_graph graph;
+	struct media_entity *entity = &start->video.entity;
+	struct media_device *mdev = entity->graph_obj.mdev;
+	unsigned int num_inputs = 0;
+	unsigned int num_outputs = 0;
+	int ret;
+
+	mutex_lock(&mdev->graph_mutex);
+
+	/* Walk the graph to locate the video nodes. */
+	ret = media_graph_walk_init(&graph, mdev);
+	if (ret) {
+		mutex_unlock(&mdev->graph_mutex);
+		return ret;
+	}
+
+	media_graph_walk_start(&graph, entity);
+
+	while ((entity = media_graph_walk_next(&graph))) {
+		struct xvip_m2m_dma *dma;
+
+		if (entity->function != MEDIA_ENT_F_IO_V4L)
+			continue;
+
+		dma = to_xvip_dma(media_entity_to_video_device(entity));
+
+		num_outputs++;
+		num_inputs++;
+	}
+
+	mutex_unlock(&mdev->graph_mutex);
+
+	media_graph_walk_cleanup(&graph);
+
+	/* We need at least one DMA to proceed */
+	if (num_outputs == 0 && num_inputs == 0)
+		return -EPIPE;
+
+	pipe->num_dmas = num_inputs + num_outputs;
+	pipe->xdev = start->xdev;
+
+	return 0;
+}
+
+static void __xvip_pipeline_cleanup(struct xvip_pipeline *pipe)
+{
+	pipe->num_dmas = 0;
+}
+
+/**
+ * xvip_pipeline_cleanup - Cleanup the pipeline after streaming
+ * @pipe: the pipeline
+ *
+ * Decrease the pipeline use count and clean it up if we were the last user.
+ */
+static void xvip_pipeline_cleanup(struct xvip_pipeline *pipe)
+{
+	mutex_lock(&pipe->lock);
+
+	/* If we're the last user clean up the pipeline. */
+	if (--pipe->use_count == 0)
+		__xvip_pipeline_cleanup(pipe);
+
+	mutex_unlock(&pipe->lock);
+}
+
+/**
+ * xvip_pipeline_prepare - Prepare the pipeline for streaming
+ * @pipe: the pipeline
+ * @dma: DMA engine at one end of the pipeline
+ *
+ * Validate the pipeline if no user exists yet, otherwise just increase the use
+ * count.
+ *
+ * Return: 0 if successful or -EPIPE if the pipeline is not valid.
+ */
+static int xvip_pipeline_prepare(struct xvip_pipeline *pipe,
+				 struct xvip_m2m_dma *dma)
+{
+	int ret;
+
+	mutex_lock(&pipe->lock);
+
+	/* If we're the first user validate and initialize the pipeline. */
+	if (pipe->use_count == 0) {
+		ret = xvip_pipeline_validate(pipe, dma);
+		if (ret < 0) {
+			__xvip_pipeline_cleanup(pipe);
+			goto done;
+		}
+	}
+
+	pipe->use_count++;
+	ret = 0;
+
+done:
+	mutex_unlock(&pipe->lock);
+	return ret;
 }
 
 static void xvip_m2m_dma_callback_mem2dev(void *data)
@@ -211,21 +647,26 @@ static void xvip_m2m_buf_queue(struct vb2_buffer *vb)
 	v4l2_m2m_buf_queue(ctx->fh.m2m_ctx, vbuf);
 }
 
-static int xvip_m2m_start_streaming(struct vb2_queue *q, unsigned int count)
-{
-	return 0;
-}
-
 static void xvip_m2m_stop_streaming(struct vb2_queue *q)
 {
 	struct xvip_m2m_ctx *ctx = vb2_get_drv_priv(q);
 	struct xvip_m2m_dma *dma = ctx->xdev->dma;
+	struct xvip_pipeline *pipe = to_xvip_pipeline(&dma->video.entity);
 	struct vb2_v4l2_buffer *vbuf;
 
 	if (q->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE)
 		dmaengine_terminate_sync(dma->chan_tx);
 	else
 		dmaengine_terminate_sync(dma->chan_rx);
+
+	if (ctx->xdev->num_subdevs) {
+		/* Stop the pipeline. */
+		xvip_pipeline_set_stream(pipe, false);
+
+		/* Cleanup the pipeline and mark it as being stopped. */
+		xvip_pipeline_cleanup(pipe);
+		media_pipeline_stop(&dma->video.entity);
+	}
 
 	for (;;) {
 		if (q->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE)
@@ -235,10 +676,55 @@ static void xvip_m2m_stop_streaming(struct vb2_queue *q)
 
 		if (!vbuf)
 			return;
+
 		spin_lock(&ctx->xdev->queued_lock);
 		v4l2_m2m_buf_done(vbuf, VB2_BUF_STATE_ERROR);
 		spin_unlock(&ctx->xdev->queued_lock);
 	}
+}
+
+static int xvip_m2m_start_streaming(struct vb2_queue *q, unsigned int count)
+{
+	struct xvip_m2m_ctx *ctx = vb2_get_drv_priv(q);
+	struct xvip_m2m_dma *dma = ctx->xdev->dma;
+	struct xvip_m2m_dev *xdev = ctx->xdev;
+	struct xvip_pipeline *pipe;
+	int ret;
+
+	if (!xdev->num_subdevs)
+		return 0;
+
+	pipe = dma->video.entity.pipe
+	     ? to_xvip_pipeline(&dma->video.entity) : &dma->pipe;
+
+	ret = media_pipeline_start(&dma->video.entity, &pipe->pipe);
+	if (ret < 0)
+		goto error;
+
+	/* Verify that the configured format matches the output of the
+	 * connected subdev.
+	 */
+	ret = xvip_dma_verify_format(dma);
+	if (ret < 0)
+		goto error_stop;
+
+	ret = xvip_pipeline_prepare(pipe, dma);
+	if (ret < 0)
+		goto error_stop;
+
+	/* Start the pipeline. */
+	ret = xvip_pipeline_set_stream(pipe, true);
+	if (ret < 0)
+		goto error_stop;
+
+	return 0;
+error_stop:
+	media_pipeline_stop(&dma->video.entity);
+
+error:
+	xvip_m2m_stop_streaming(q);
+
+	return ret;
 }
 
 static const struct vb2_ops m2m_vb2_ops = {
@@ -304,14 +790,66 @@ xvip_m2m_enum_fmt(struct file *file, void *fh, struct v4l2_fmtdesc *f)
 {
 	struct xvip_m2m_ctx *ctx = file2ctx(file);
 	struct xvip_m2m_dma *dma = ctx->xdev->dma;
-	struct v4l2_format format = dma->capfmt;
 	const struct xvip_video_format *fmtinfo;
+	const struct xvip_video_format *fmt;
+	struct v4l2_subdev *subdev;
+	struct v4l2_subdev_format v4l_fmt;
+	struct xvip_m2m_dev *xdev = ctx->xdev;
+	u32 i, fmt_cnt, *fmts;
+	int ret;
 
-	/* This logic will just return one pix format */
+	if (f->type != V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE)
+		ret = xilinx_xdma_get_v4l2_vid_fmts(dma->chan_rx,
+						    &fmt_cnt, &fmts);
+	else
+		ret = xilinx_xdma_get_v4l2_vid_fmts(dma->chan_tx,
+						    &fmt_cnt, &fmts);
+	if (ret)
+		return ret;
+
+	if (f->index >= fmt_cnt)
+		return -EINVAL;
+
+	if (!xdev->num_subdevs) {
+		fmt = xvip_get_format_by_fourcc(fmts[f->index]);
+		if (IS_ERR(fmt))
+			return PTR_ERR(fmt);
+
+		f->pixelformat = fmt->fourcc;
+		return 0;
+	}
+
 	if (f->index > 0)
 		return -EINVAL;
 
-	fmtinfo = xvip_get_format_by_fourcc(format.fmt.pix_mp.pixelformat);
+	/* Establish media pad format */
+	if (f->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE)
+		subdev = xvip_dma_remote_subdev(&dma->pads[XVIP_PAD_SOURCE],
+						&v4l_fmt.pad);
+	else
+		subdev = xvip_dma_remote_subdev(&dma->pads[XVIP_PAD_SINK],
+						&v4l_fmt.pad);
+	if (!subdev)
+		return -EPIPE;
+
+	v4l_fmt.which = V4L2_SUBDEV_FORMAT_ACTIVE;
+	ret = v4l2_subdev_call(subdev, pad, get_fmt, NULL, &v4l_fmt);
+	if (ret < 0)
+		return ret == -ENOIOCTLCMD ? -EINVAL : ret;
+
+	for (i = 0; i < fmt_cnt; i++) {
+		fmt = xvip_get_format_by_fourcc(fmts[i]);
+		if (IS_ERR(fmt))
+			return PTR_ERR(fmt);
+
+		if (fmt->code == v4l_fmt.format.code)
+			break;
+	}
+
+	if (i >= fmt_cnt)
+		return -EINVAL;
+
+	fmtinfo = xvip_get_format_by_fourcc(fmts[i]);
 	f->pixelformat = fmtinfo->fourcc;
 
 	return 0;
@@ -346,10 +884,31 @@ static int __xvip_m2m_try_fmt(struct xvip_m2m_ctx *ctx, struct v4l2_format *f)
 	u32 padding_factor_nume, padding_factor_deno;
 	u32 bpl_nume, bpl_deno;
 	u32 i, plane_width, plane_height;
+	struct v4l2_subdev_format fmt;
+	struct v4l2_subdev *subdev;
+	struct xvip_m2m_dev *xdev = ctx->xdev;
+	int ret;
 
 	if (f->type != V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE &&
 	    f->type != V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)
 		return -EINVAL;
+
+	if (xdev->num_subdevs) {
+		if (f->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE)
+			subdev = xvip_dma_remote_subdev
+				(&dma->pads[XVIP_PAD_SOURCE], &fmt.pad);
+		else
+			subdev = xvip_dma_remote_subdev
+				(&dma->pads[XVIP_PAD_SINK], &fmt.pad);
+
+		if (!subdev)
+			return -EPIPE;
+
+		fmt.which = V4L2_SUBDEV_FORMAT_ACTIVE;
+		ret = v4l2_subdev_call(subdev, pad, get_fmt, NULL, &fmt);
+		if (ret < 0)
+			return -EINVAL;
+	}
 
 	pix_mp = &f->fmt.pix_mp;
 	plane_fmt = pix_mp->plane_fmt;
@@ -361,6 +920,22 @@ static int __xvip_m2m_try_fmt(struct xvip_m2m_ctx *ctx, struct v4l2_format *f)
 			dma->capinfo = info;
 	} else {
 		info = xvip_get_format_by_fourcc(XVIP_M2M_DEFAULT_FMT);
+	}
+
+	if (xdev->num_subdevs) {
+		if (info->code != fmt.format.code ||
+		    fmt.format.width != pix_mp->width ||
+		    fmt.format.height != pix_mp->height) {
+			dev_err(xdev->dev, "Failed to set format\n");
+			dev_info(xdev->dev,
+				 "Reqed Code = %d, Width = %d, Height = %d\n",
+				 info->code, pix_mp->width, pix_mp->height);
+			dev_info(xdev->dev,
+				 "Subdev Code = %d, Width = %d, Height = %d",
+				 fmt.format.code, fmt.format.width,
+				 fmt.format.height);
+			return -EINVAL;
+		}
 	}
 
 	xvip_width_padding_factor(info->fourcc, &padding_factor_nume,
@@ -784,12 +1359,14 @@ static int xvip_m2m_dma_init(struct xvip_m2m_dma *dma)
 
 	xdev = dma->xdev;
 	mutex_init(&xdev->lock);
+	mutex_init(&dma->pipe.lock);
 	spin_lock_init(&xdev->queued_lock);
 
 	/* Format info on capture port - NV12 is the default format */
 	dma->capinfo = xvip_get_format_by_fourcc(XVIP_M2M_DEFAULT_FMT);
 	pix_mp = &dma->capfmt.fmt.pix_mp;
 	pix_mp->pixelformat = dma->capinfo->fourcc;
+
 	pix_mp->field = V4L2_FIELD_NONE;
 	pix_mp->width = XVIP_M2M_DEF_WIDTH;
 	pix_mp->height = XVIP_M2M_DEF_HEIGHT;
@@ -838,6 +1415,13 @@ static int xvip_m2m_dma_init(struct xvip_m2m_dma *dma)
 	dma->video.v4l2_dev = &xdev->v4l2_dev;
 	dma->video.lock = &xdev->lock;
 
+	dma->pads[XVIP_PAD_SINK].flags = MEDIA_PAD_FL_SINK;
+	dma->pads[XVIP_PAD_SOURCE].flags = MEDIA_PAD_FL_SOURCE;
+
+	ret = media_entity_pads_init(&dma->video.entity, 2, dma->pads);
+	if (ret < 0)
+		goto error;
+
 	ret = video_register_device(&dma->video, VFL_TYPE_GRABBER, -1);
 	if (ret < 0) {
 		dev_err(xdev->dev, "Failed to register mem2mem video device\n");
@@ -851,7 +1435,7 @@ tx_rx:
 	dma_release_channel(dma->chan_rx);
 tx:
 	dma_release_channel(dma->chan_tx);
-
+error:
 	return ret;
 }
 
@@ -860,6 +1444,7 @@ static void xvip_m2m_dma_deinit(struct xvip_m2m_dma *dma)
 	if (video_is_registered(&dma->video))
 		video_unregister_device(&dma->video);
 
+	mutex_destroy(&dma->pipe.lock);
 	mutex_destroy(&dma->xdev->lock);
 	dma_release_channel(dma->chan_tx);
 	dma_release_channel(dma->chan_rx);
@@ -890,6 +1475,469 @@ static int xvip_m2m_dma_alloc_init(struct xvip_m2m_dev *xdev)
 /* -----------------------------------------------------------------------------
  * Platform Device Driver
  */
+static void xvip_composite_v4l2_cleanup(struct xvip_m2m_dev *xdev)
+{
+	v4l2_device_unregister(&xdev->v4l2_dev);
+	media_device_unregister(&xdev->media_dev);
+	media_device_cleanup(&xdev->media_dev);
+}
+
+static int xvip_composite_v4l2_init(struct xvip_m2m_dev *xdev)
+{
+	int ret;
+
+	xdev->media_dev.dev = xdev->dev;
+	strlcpy(xdev->media_dev.model, "Xilinx Videoi M2M Composite Device",
+		sizeof(xdev->media_dev.model));
+	xdev->media_dev.hw_revision = 0;
+
+	media_device_init(&xdev->media_dev);
+
+	xdev->v4l2_dev.mdev = &xdev->media_dev;
+	ret = v4l2_device_register(xdev->dev, &xdev->v4l2_dev);
+	if (ret < 0) {
+		dev_err(xdev->dev, "V4L2 device registration failed (%d)\n",
+			ret);
+		media_device_cleanup(&xdev->media_dev);
+		return ret;
+	}
+
+	return 0;
+}
+
+static struct xvip_graph_entity *
+xvip_graph_find_entity(struct xvip_m2m_dev *xdev,
+		       const struct device_node *node)
+{
+	struct xvip_graph_entity *entity;
+
+	list_for_each_entry(entity, &xdev->entities, list) {
+		if (entity->node == node)
+			return entity;
+	}
+
+	return NULL;
+}
+
+static int xvip_graph_build_one(struct xvip_m2m_dev *xdev,
+				struct xvip_graph_entity *entity)
+{
+	u32 link_flags = MEDIA_LNK_FL_ENABLED;
+	struct media_entity *local = entity->entity;
+	struct media_entity *remote;
+	struct media_pad *local_pad;
+	struct media_pad *remote_pad;
+	struct xvip_graph_entity *ent;
+	struct v4l2_fwnode_link link;
+	struct device_node *ep = NULL;
+	struct device_node *next;
+	int ret = 0;
+
+	dev_dbg(xdev->dev, "creating links for entity %s\n", local->name);
+
+	while (1) {
+		/* Get the next endpoint and parse its link. */
+		next = of_graph_get_next_endpoint(entity->node, ep);
+		if (!next)
+			break;
+
+		ep = next;
+
+		dev_dbg(xdev->dev, "processing endpoint %pOF\n", ep);
+
+		ret = v4l2_fwnode_parse_link(of_fwnode_handle(ep), &link);
+		if (ret < 0) {
+			dev_err(xdev->dev, "failed to parse link for %pOF\n",
+				ep);
+			continue;
+		}
+
+		/* Skip sink ports, they will be processed from the other end of
+		 * the link.
+		 */
+		if (link.local_port >= local->num_pads) {
+			dev_err(xdev->dev, "invalid port number %u for %pOF\n",
+				link.local_port,
+				to_of_node(link.local_node));
+			v4l2_fwnode_put_link(&link);
+			ret = -EINVAL;
+			break;
+		}
+
+		local_pad = &local->pads[link.local_port];
+
+		if (local_pad->flags & MEDIA_PAD_FL_SINK) {
+			dev_dbg(xdev->dev, "skipping sink port %pOF:%u\n",
+				to_of_node(link.local_node),
+				link.local_port);
+			v4l2_fwnode_put_link(&link);
+			continue;
+		}
+
+		/* Skip DMA engines, they will be processed separately. */
+		if (link.remote_node == of_fwnode_handle(xdev->dev->of_node)) {
+			dev_dbg(xdev->dev, "skipping DMA port %pOF:%u\n",
+				to_of_node(link.local_node),
+				link.local_port);
+			v4l2_fwnode_put_link(&link);
+			continue;
+		}
+
+		/* Find the remote entity. */
+		ent = xvip_graph_find_entity(xdev,
+					     to_of_node(link.remote_node));
+		if (!ent) {
+			dev_err(xdev->dev, "no entity found for %pOF\n",
+				to_of_node(link.remote_node));
+			v4l2_fwnode_put_link(&link);
+			ret = -ENODEV;
+			break;
+		}
+
+		remote = ent->entity;
+
+		if (link.remote_port >= remote->num_pads) {
+			dev_err(xdev->dev, "invalid port number %u on %pOF\n",
+				link.remote_port, to_of_node(link.remote_node));
+			v4l2_fwnode_put_link(&link);
+			ret = -EINVAL;
+			break;
+		}
+
+		remote_pad = &remote->pads[link.remote_port];
+
+		v4l2_fwnode_put_link(&link);
+
+		/* Create the media link. */
+		dev_dbg(xdev->dev, "creating %s:%u -> %s:%u link\n",
+			local->name, local_pad->index,
+			remote->name, remote_pad->index);
+
+		ret = media_create_pad_link(local, local_pad->index,
+					    remote, remote_pad->index,
+					    link_flags);
+		if (ret < 0) {
+			dev_err(xdev->dev,
+				"failed to create %s:%u -> %s:%u link\n",
+				local->name, local_pad->index,
+				remote->name, remote_pad->index);
+			break;
+		}
+	}
+
+	return ret;
+}
+
+static int xvip_graph_parse_one(struct xvip_m2m_dev *xdev,
+				struct device_node *node)
+{
+	struct xvip_graph_entity *entity;
+	struct device_node *remote;
+	struct device_node *ep = NULL;
+	int ret = 0;
+
+	dev_dbg(xdev->dev, "parsing node %pOF\n", node);
+
+	while (1) {
+		ep = of_graph_get_next_endpoint(node, ep);
+		if (!ep)
+			break;
+
+		dev_dbg(xdev->dev, "handling endpoint %pOF %s\n",
+			ep, ep->name);
+
+		remote = of_graph_get_remote_port_parent(ep);
+		if (!remote) {
+			ret = -EINVAL;
+			break;
+		}
+		dev_dbg(xdev->dev, "Remote endpoint %pOF %s\n",
+			remote, remote->name);
+
+		/* Skip entities that we have already processed. */
+		if (remote == xdev->dev->of_node ||
+		    xvip_graph_find_entity(xdev, remote)) {
+			of_node_put(remote);
+			continue;
+		}
+
+		entity = devm_kzalloc(xdev->dev, sizeof(*entity), GFP_KERNEL);
+		if (!entity) {
+			of_node_put(remote);
+			ret = -ENOMEM;
+			break;
+		}
+
+		entity->node = remote;
+		entity->asd.match_type = V4L2_ASYNC_MATCH_FWNODE;
+		entity->asd.match.fwnode = of_fwnode_handle(remote);
+		list_add_tail(&entity->list, &xdev->entities);
+		xdev->num_subdevs++;
+	}
+
+	of_node_put(ep);
+	return ret;
+}
+
+static int xvip_graph_parse(struct xvip_m2m_dev *xdev)
+{
+	struct xvip_graph_entity *entity;
+	int ret;
+
+	/*
+	 * Walk the links to parse the full graph. Start by parsing the
+	 * composite node and then parse entities in turn. The list_for_each
+	 * loop will handle entities added at the end of the list while walking
+	 * the links.
+	 */
+	ret = xvip_graph_parse_one(xdev, xdev->dev->of_node);
+	if (ret < 0)
+		return 0;
+
+	list_for_each_entry(entity, &xdev->entities, list) {
+		ret = xvip_graph_parse_one(xdev, entity->node);
+		if (ret < 0)
+			break;
+	}
+
+	return ret;
+}
+
+static int xvip_graph_build_dma(struct xvip_m2m_dev *xdev)
+{
+	u32 link_flags = MEDIA_LNK_FL_ENABLED;
+	struct device_node *node = xdev->dev->of_node;
+	struct media_entity *source;
+	struct media_entity *sink;
+	struct media_pad *source_pad;
+	struct media_pad *sink_pad;
+	struct xvip_graph_entity *ent;
+	struct v4l2_fwnode_link link;
+	struct device_node *ep = NULL;
+	struct device_node *next;
+	struct xvip_m2m_dma *dma = xdev->dma;
+	int ret = 0;
+
+	dev_dbg(xdev->dev, "creating links for DMA engines\n");
+
+	while (1) {
+		/* Get the next endpoint and parse its link. */
+		next = of_graph_get_next_endpoint(node, ep);
+		if (!next)
+			break;
+
+		ep = next;
+
+		dev_dbg(xdev->dev, "processing endpoint %pOF\n", ep);
+
+		ret = v4l2_fwnode_parse_link(of_fwnode_handle(ep), &link);
+		if (ret < 0) {
+			dev_err(xdev->dev, "failed to parse link for %pOF\n",
+				ep);
+			continue;
+		}
+
+		dev_dbg(xdev->dev, "creating link for DMA engine %s\n",
+			dma->video.name);
+
+		/* Find the remote entity. */
+		ent = xvip_graph_find_entity(xdev,
+					     to_of_node(link.remote_node));
+		if (!ent) {
+			dev_err(xdev->dev, "no entity found for %pOF\n",
+				to_of_node(link.remote_node));
+			v4l2_fwnode_put_link(&link);
+			ret = -ENODEV;
+			break;
+		}
+		if (link.remote_port >= ent->entity->num_pads) {
+			dev_err(xdev->dev, "invalid port number %u on %pOF\n",
+				link.remote_port,
+				to_of_node(link.remote_node));
+			v4l2_fwnode_put_link(&link);
+			ret = -EINVAL;
+			break;
+		}
+
+		dev_dbg(xdev->dev, "Entity %s %s\n", ent->node->name,
+			ent->node->full_name);
+		dev_dbg(xdev->dev, "port number %u on %pOF\n",
+			link.remote_port, to_of_node(link.remote_node));
+		dev_dbg(xdev->dev, "local port number %u on %pOF\n",
+			link.local_port, to_of_node(link.local_node));
+
+		if (link.local_port == XVIP_PAD_SOURCE) {
+			source = &dma->video.entity;
+			source_pad = &dma->pads[XVIP_PAD_SOURCE];
+			sink = ent->entity;
+			sink_pad = &sink->pads[XVIP_PAD_SINK];
+
+		} else {
+			source = ent->entity;
+			source_pad = &source->pads[XVIP_PAD_SOURCE];
+			sink = &dma->video.entity;
+			sink_pad = &dma->pads[XVIP_PAD_SINK];
+		}
+
+		v4l2_fwnode_put_link(&link);
+
+		/* Create the media link. */
+		dev_dbg(xdev->dev, "creating %s:%u -> %s:%u link\n",
+			source->name, source_pad->index,
+			sink->name, sink_pad->index);
+
+		ret = media_create_pad_link(source, source_pad->index,
+					    sink, sink_pad->index,
+					    link_flags);
+		if (ret < 0) {
+			dev_err(xdev->dev,
+				"failed to create %s:%u -> %s:%u link\n",
+				source->name, source_pad->index,
+				sink->name, sink_pad->index);
+			break;
+		}
+	}
+
+	return ret;
+}
+
+static int xvip_graph_notify_complete(struct v4l2_async_notifier *notifier)
+{
+	struct xvip_m2m_dev *xdev =
+		container_of(notifier, struct xvip_m2m_dev, notifier);
+	struct xvip_graph_entity *entity;
+	int ret;
+
+	dev_dbg(xdev->dev, "notify complete, all subdevs registered\n");
+
+	/* Create links for every entity. */
+	list_for_each_entry(entity, &xdev->entities, list) {
+		ret = xvip_graph_build_one(xdev, entity);
+		if (ret < 0)
+			return ret;
+	}
+
+	/* Create links for DMA channels. */
+	ret = xvip_graph_build_dma(xdev);
+	if (ret < 0)
+		return ret;
+
+	ret = v4l2_device_register_subdev_nodes(&xdev->v4l2_dev);
+	if (ret < 0)
+		dev_err(xdev->dev, "failed to register subdev nodes\n");
+
+	return media_device_register(&xdev->media_dev);
+}
+
+static int xvip_graph_notify_bound(struct v4l2_async_notifier *notifier,
+				   struct v4l2_subdev *subdev,
+				   struct v4l2_async_subdev *asd)
+{
+	struct xvip_m2m_dev *xdev =
+		container_of(notifier, struct xvip_m2m_dev, notifier);
+	struct xvip_graph_entity *entity;
+
+	/* Locate the entity corresponding to the bound subdev and store the
+	 * subdev pointer.
+	 */
+	list_for_each_entry(entity, &xdev->entities, list) {
+		if (entity->node != subdev->dev->of_node)
+			continue;
+
+		if (entity->subdev) {
+			dev_err(xdev->dev, "duplicate subdev for node %pOF\n",
+				entity->node);
+			return -EINVAL;
+		}
+
+		dev_dbg(xdev->dev, "subdev %s bound\n", subdev->name);
+		entity->entity = &subdev->entity;
+		entity->subdev = subdev;
+		return 0;
+	}
+
+	dev_err(xdev->dev, "no entity for subdev %s\n", subdev->name);
+	return -EINVAL;
+}
+
+static const struct v4l2_async_notifier_operations xvip_graph_notify_ops = {
+	.bound = xvip_graph_notify_bound,
+	.complete = xvip_graph_notify_complete,
+};
+
+static void xvip_graph_cleanup(struct xvip_m2m_dev *xdev)
+{
+	struct xvip_graph_entity *entityp;
+	struct xvip_graph_entity *entity;
+
+	v4l2_async_notifier_cleanup(&xdev->notifier);
+	v4l2_async_notifier_unregister(&xdev->notifier);
+
+	list_for_each_entry_safe(entity, entityp, &xdev->entities, list) {
+		of_node_put(entity->node);
+		list_del(&entity->list);
+	}
+}
+
+static int xvip_graph_init(struct xvip_m2m_dev *xdev)
+{
+	struct xvip_graph_entity *entity;
+	int ret;
+
+	/* Init the DMA channels. */
+	ret = xvip_m2m_dma_alloc_init(xdev);
+	if (ret < 0) {
+		dev_err(xdev->dev, "DMA initialization failed\n");
+		goto done;
+	}
+
+	/* Parse the graph to extract a list of subdevice DT nodes. */
+	ret = xvip_graph_parse(xdev);
+	if (ret < 0) {
+		dev_err(xdev->dev, "graph parsing failed\n");
+		goto done;
+	}
+	dev_dbg(xdev->dev, "Number of subdev = %d\n", xdev->num_subdevs);
+
+	if (!xdev->num_subdevs) {
+		dev_err(xdev->dev, "no subdev found in graph\n");
+		goto done;
+	}
+
+	/* Register the subdevices notifier. */
+	list_for_each_entry(entity, &xdev->entities, list) {
+		ret = v4l2_async_notifier_add_subdev(&xdev->notifier,
+						     &entity->asd);
+		if (ret)
+			goto done;
+	}
+
+	xdev->notifier.ops = &xvip_graph_notify_ops;
+
+	ret = v4l2_async_notifier_register(&xdev->v4l2_dev, &xdev->notifier);
+	if (ret < 0) {
+		dev_err(xdev->dev, "notifier registration failed\n");
+		goto done;
+	}
+
+	ret = 0;
+
+done:
+	if (ret < 0)
+		xvip_graph_cleanup(xdev);
+
+	return ret;
+}
+
+static int xvip_composite_remove(struct platform_device *pdev)
+{
+	struct xvip_m2m_dev *xdev = platform_get_drvdata(pdev);
+
+	xvip_graph_cleanup(xdev);
+	xvip_composite_v4l2_cleanup(xdev);
+
+	return 0;
+}
 
 static int xvip_m2m_probe(struct platform_device *pdev)
 {
@@ -901,13 +1949,14 @@ static int xvip_m2m_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	xdev->dev = &pdev->dev;
+	INIT_LIST_HEAD(&xdev->entities);
 
-	ret = v4l2_device_register(&pdev->dev, &xdev->v4l2_dev);
+	ret = xvip_composite_v4l2_init(xdev);
 	if (ret)
 		return -EINVAL;
 
-	ret = xvip_m2m_dma_alloc_init(xdev);
-	if (ret)
+	ret = xvip_graph_init(xdev);
+	if (ret < 0)
 		goto error;
 
 	ret = dma_set_coherent_mask(&pdev->dev, DMA_BIT_MASK(64));
@@ -938,9 +1987,7 @@ error:
 
 static int xvip_m2m_remove(struct platform_device *pdev)
 {
-	struct xvip_m2m_dev *xdev = platform_get_drvdata(pdev);
-
-	v4l2_device_unregister(&xdev->v4l2_dev);
+	xvip_composite_remove(pdev);
 	return 0;
 }
 
