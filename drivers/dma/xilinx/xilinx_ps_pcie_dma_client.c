@@ -131,9 +131,9 @@ struct xlnx_ps_pcie_dma_asynchronous_transaction {
 	struct page **cache_pages;
 	unsigned int num_pages;
 	struct sg_table *sg;
-	struct sg_table *ep_mem_desc_table;
 	struct xlnx_ps_pcie_dma_client_channel *chan;
 	struct xlnx_completed_info *buffer_info;
+	struct dma_async_tx_descriptor **txd;
 };
 
 static struct class *g_ps_pcie_dma_client_class; /* global device class */
@@ -195,22 +195,21 @@ static ssize_t initiate_sync_transfer(
 {
 	int offset;
 	unsigned int alloc_pages;
-	unsigned long first, last;
+	unsigned long first, last, nents = 1;
 	struct page **cache_pages;
 	struct dma_chan *chan = NULL;
 	struct dma_device *device;
-	struct dma_async_tx_descriptor *txd = NULL;
-	dma_cookie_t cookie;
-	enum dma_ctrl_flags flags;
+	struct dma_async_tx_descriptor **txd = NULL;
+	dma_cookie_t cookie = 0;
+	enum dma_ctrl_flags flags = 0;
 	int err;
 	struct sg_table *sg;
-	struct sg_table *ep_mem_desc_table = NULL;
-	struct sg_table *src_sg;
-	struct sg_table *dst_sg;
 	enum dma_transfer_direction d_direction;
 	int i;
 	struct completion *cmpl_ptr;
 	enum dma_status status;
+	struct scatterlist *selem;
+	size_t elem_len = 0;
 
 	chan = channel->chan;
 	device = chan->device;
@@ -274,69 +273,84 @@ static ssize_t initiate_sync_transfer(
 
 	init_completion(cmpl_ptr);
 
-	if (channel->mode == MEMORY_MAPPED) {
-		ep_mem_desc_table = devm_kzalloc(channel->dev,
-						 sizeof(struct sg_table),
-						 GFP_ATOMIC);
-		if (!ep_mem_desc_table) {
-			err = PTR_ERR(ep_mem_desc_table);
-			goto err_out_ep_mem_desc_table;
-		}
+	if (channel->mode == MEMORY_MAPPED)
+		nents = sg->nents;
 
-		/* EP side memory is assumed to spawn only one
-		 * descriptor always.
-		 */
-		err = sg_alloc_table(ep_mem_desc_table, 1, GFP_ATOMIC);
-		if (err < 0) {
-			dev_err(channel->dev,
-				"sg table for ep mem description failure\n");
-			goto err_out_sg_to_sgl_ep_mem;
-		}
-
-		sg_dma_address(ep_mem_desc_table->sgl) =
-					(dma_addr_t)(*f_offset);
-		sg_dma_len(ep_mem_desc_table->sgl) = length;
+	txd = devm_kzalloc(channel->dev, sizeof(*txd)
+					* nents, GFP_ATOMIC);
+	if (!txd) {
+		err = PTR_ERR(txd);
+		goto err_out_cmpl_ptr;
 	}
 
-	flags = DMA_CTRL_ACK | DMA_PREP_INTERRUPT;
 	if (channel->mode == MEMORY_MAPPED) {
-		if (direction == DMA_TO_DEVICE) {
-			src_sg = sg;
-			dst_sg = ep_mem_desc_table;
-		} else {
-			src_sg = ep_mem_desc_table;
-			dst_sg = sg;
-		}
-		txd = device->device_prep_dma_sg(chan, dst_sg->sgl,
-						 dst_sg->nents,
-						 src_sg->sgl,
-						 src_sg->nents, flags);
-		if (!txd) {
-			err = PTR_ERR(txd);
-			goto err_out_no_prep_sg_async_desc;
+		for (i = 0, selem = (sg->sgl); i < sg->nents; i++,
+		     selem = sg_next(selem)) {
+			if ((i + 1) == sg->nents)
+				flags = DMA_PREP_INTERRUPT | DMA_CTRL_ACK;
+
+			if (direction == DMA_TO_DEVICE) {
+				txd[i] = device->device_prep_dma_memcpy(chan,
+					(dma_addr_t)(*f_offset) + elem_len,
+					selem->dma_address, selem->length,
+					flags);
+			} else {
+				txd[i] = device->device_prep_dma_memcpy(chan,
+					selem->dma_address,
+					(dma_addr_t)(*f_offset) + elem_len,
+					selem->length, flags);
+			}
+
+			elem_len += selem->length;
+
+			if (!txd[i]) {
+				err = PTR_ERR(txd[i]);
+				goto err_out_no_prep_sg_async_desc;
+			}
 		}
 	} else {
 		if (direction == DMA_TO_DEVICE)
 			d_direction = DMA_MEM_TO_DEV;
 		else
 			d_direction = DMA_DEV_TO_MEM;
-		txd = device->device_prep_slave_sg(chan, sg->sgl, sg->nents,
+
+		flags = DMA_CTRL_ACK | DMA_PREP_INTERRUPT;
+
+		txd[0] = device->device_prep_slave_sg(chan, sg->sgl, sg->nents,
 						   d_direction, flags, NULL);
-		if (!txd) {
-			err = PTR_ERR(txd);
+		if (!txd[0]) {
+			err = PTR_ERR(txd[0]);
 			goto err_out_no_slave_sg_async_descriptor;
 		}
 	}
 
-	txd->callback = ps_pcie_dma_sync_transfer_cbk;
-	txd->callback_param = cmpl_ptr;
+	if (channel->mode == MEMORY_MAPPED) {
+		for (i = 0; i < sg->nents; i++) {
+			if ((i + 1) == sg->nents) {
+				txd[i]->callback =
+					ps_pcie_dma_sync_transfer_cbk;
+				txd[i]->callback_param = cmpl_ptr;
+			}
 
-	cookie = txd->tx_submit(txd);
-	if (dma_submit_error(cookie)) {
-		err = (int)cookie;
-		dev_err(channel->dev,
-			"Unable to submit transaction\n");
-		goto free_transaction;
+			cookie = txd[i]->tx_submit(txd[i]);
+			if (dma_submit_error(cookie)) {
+				err = (int)cookie;
+				dev_err(channel->dev,
+					"Unable to submit transaction\n");
+				goto free_transaction;
+			}
+		}
+	} else {
+		txd[0]->callback = ps_pcie_dma_sync_transfer_cbk;
+		txd[0]->callback_param = cmpl_ptr;
+
+		cookie = txd[0]->tx_submit(txd[0]);
+		if (dma_submit_error(cookie)) {
+			err = (int)cookie;
+			dev_err(channel->dev,
+				"Unable to submit transaction\n");
+			goto free_transaction;
+		}
 	}
 
 	dma_async_issue_pending(chan);
@@ -350,11 +364,8 @@ static ssize_t initiate_sync_transfer(
 		err = -1;
 
 	dma_unmap_sg(channel->dev, sg->sgl, sg->nents, direction);
-	if (ep_mem_desc_table)
-		sg_free_table(ep_mem_desc_table);
-	if (ep_mem_desc_table)
-		devm_kfree(channel->dev, ep_mem_desc_table);
 	devm_kfree(channel->dev, cmpl_ptr);
+	devm_kfree(channel->dev, txd);
 	sg_free_table(sg);
 	devm_kfree(channel->dev, sg);
 	for (i = 0; i < alloc_pages; i++)
@@ -365,14 +376,9 @@ static ssize_t initiate_sync_transfer(
 
 free_transaction:
 err_out_no_prep_sg_async_desc:
-	if (ep_mem_desc_table)
-		sg_free_table(ep_mem_desc_table);
-err_out_sg_to_sgl_ep_mem:
-	if (ep_mem_desc_table)
-		devm_kfree(channel->dev, ep_mem_desc_table);
-err_out_ep_mem_desc_table:
 err_out_no_slave_sg_async_descriptor:
 	devm_kfree(channel->dev, cmpl_ptr);
+	devm_kfree(channel->dev, txd);
 err_out_cmpl_ptr:
 	dma_unmap_sg(channel->dev, sg->sgl, sg->nents, direction);
 err_out_dma_map_sg:
@@ -535,13 +541,10 @@ static void ps_pcie_dma_async_transfer_cbk(void *data)
 		     trans->chan->direction);
 	sg_free_table(trans->sg);
 	devm_kfree(trans->chan->dev, trans->sg);
+	devm_kfree(trans->chan->dev, trans->txd);
 	for (i = 0; i < trans->num_pages; i++)
 		put_page(trans->cache_pages[i]);
 	devm_kfree(trans->chan->dev, trans->cache_pages);
-	if (trans->ep_mem_desc_table) {
-		sg_free_table(trans->ep_mem_desc_table);
-		devm_kfree(trans->chan->dev, trans->ep_mem_desc_table);
-	}
 
 	status = dmaengine_tx_status(trans->chan->chan, trans->cookie, &state);
 
@@ -578,21 +581,20 @@ static int initiate_async_transfer(
 {
 	int offset;
 	unsigned int alloc_pages;
-	unsigned long first, last;
+	unsigned long first, last, nents = 1;
 	struct page **cache_pages;
 	struct dma_chan *chan = NULL;
 	struct dma_device *device;
-	struct dma_async_tx_descriptor *txd = NULL;
+	struct dma_async_tx_descriptor **txd = NULL;
 	dma_cookie_t cookie;
-	enum dma_ctrl_flags flags;
+	enum dma_ctrl_flags flags = 0;
 	struct xlnx_ps_pcie_dma_asynchronous_transaction *trans;
 	int err;
 	struct sg_table *sg;
-	struct sg_table *ep_mem_desc_table = NULL;
-	struct sg_table *src_sg;
-	struct sg_table *dst_sg;
 	enum dma_transfer_direction d_direction;
 	int i;
+	struct scatterlist *selem;
+	size_t elem_len = 0;
 
 	chan = channel->chan;
 	device = chan->device;
@@ -661,55 +663,55 @@ static int initiate_async_transfer(
 		goto err_out_no_completion_info;
 	}
 
-	if (channel->mode == MEMORY_MAPPED) {
-		ep_mem_desc_table = devm_kzalloc(channel->dev,
-						 sizeof(struct sg_table),
-						 GFP_ATOMIC);
-		if (!ep_mem_desc_table) {
-			err = PTR_ERR(ep_mem_desc_table);
-			goto err_out_ep_mem_desc_table;
-		}
+	if (channel->mode == MEMORY_MAPPED)
+		nents = sg->nents;
 
-		/* EP side memory is assumed to spawn only one descriptor
-		 * always.
-		 */
-		err = sg_alloc_table(ep_mem_desc_table, 1, GFP_ATOMIC);
-		if (err < 0) {
-			dev_err(channel->dev,
-				"Sg tbl for ep memory description failure\n");
-			goto err_out_sg_to_sgl_ep_mem;
-		}
-
-		sg_dma_address(ep_mem_desc_table->sgl) =
-						(dma_addr_t)(*f_offset);
-		sg_dma_len(ep_mem_desc_table->sgl) = length;
+	txd = devm_kzalloc(channel->dev,
+			   sizeof(*txd) * nents, GFP_ATOMIC);
+	if (!txd) {
+		err = PTR_ERR(txd);
+		goto err_out_no_completion_info;
 	}
 
-	flags = DMA_CTRL_ACK | DMA_PREP_INTERRUPT;
+	trans->txd = txd;
+
 	if (channel->mode == MEMORY_MAPPED) {
-		if (direction == DMA_TO_DEVICE) {
-			src_sg = sg;
-			dst_sg = ep_mem_desc_table;
-		} else {
-			src_sg = ep_mem_desc_table;
-			dst_sg = sg;
-		}
-		txd = device->device_prep_dma_sg(chan, dst_sg->sgl,
-						 dst_sg->nents, src_sg->sgl,
-						 src_sg->nents, flags);
-		if (!txd) {
-			err = PTR_ERR(txd);
-			goto err_out_no_prep_sg_async_desc;
+		for (i = 0, selem = (sg->sgl); i < sg->nents; i++,
+		     selem = sg_next(selem)) {
+			if ((i + 1) == sg->nents)
+				flags = DMA_PREP_INTERRUPT | DMA_CTRL_ACK;
+
+			if (direction == DMA_TO_DEVICE) {
+				txd[i] = device->device_prep_dma_memcpy(chan,
+					(dma_addr_t)(*f_offset) + elem_len,
+					selem->dma_address, selem->length,
+					flags);
+			} else {
+				txd[i] = device->device_prep_dma_memcpy(chan,
+					selem->dma_address,
+					(dma_addr_t)(*f_offset) + elem_len,
+					selem->length, flags);
+			}
+
+			elem_len += selem->length;
+
+			if (!txd[i]) {
+				err = PTR_ERR(txd[i]);
+				goto err_out_no_prep_sg_async_desc;
+			}
 		}
 	} else {
 		if (direction == DMA_TO_DEVICE)
 			d_direction = DMA_MEM_TO_DEV;
 		else
 			d_direction = DMA_DEV_TO_MEM;
-		txd = device->device_prep_slave_sg(chan, sg->sgl, sg->nents,
+
+		flags = DMA_CTRL_ACK | DMA_PREP_INTERRUPT;
+
+		txd[0] = device->device_prep_slave_sg(chan, sg->sgl, sg->nents,
 						   d_direction, flags, NULL);
-		if (!txd) {
-			err = PTR_ERR(txd);
+		if (!txd[0]) {
+			err = PTR_ERR(txd[0]);
 			goto err_out_no_slave_sg_async_descriptor;
 		}
 	}
@@ -720,18 +722,39 @@ static int initiate_async_transfer(
 	trans->num_pages   = alloc_pages;
 	trans->chan = channel;
 	trans->sg = sg;
-	trans->ep_mem_desc_table = ep_mem_desc_table;
 
-	txd->callback = ps_pcie_dma_async_transfer_cbk;
-	txd->callback_param = trans;
+	if (channel->mode == MEMORY_MAPPED) {
+		for (i = 0; i < sg->nents; i++) {
+			cookie = txd[i]->tx_submit(txd[i]);
+			if (dma_submit_error(cookie)) {
+				err = (int)cookie;
+				dev_err(channel->dev,
+					"Unable to submit transaction\n");
+				goto free_transaction;
+			}
 
-	cookie = txd->tx_submit(txd);
-	if (dma_submit_error(cookie)) {
-		err = (int)cookie;
-		dev_err(channel->dev, "Unable to submit transaction\n");
-		goto free_transaction;
+			if ((i + 1) == sg->nents) {
+				txd[i]->callback =
+					ps_pcie_dma_async_transfer_cbk;
+				txd[i]->callback_param = trans;
+				trans->cookie = cookie;
+			}
+		}
+
+	} else {
+		txd[0]->callback = ps_pcie_dma_async_transfer_cbk;
+		txd[0]->callback_param = trans;
+
+		cookie = txd[0]->tx_submit(txd[0]);
+		if (dma_submit_error(cookie)) {
+			err = (int)cookie;
+			dev_err(channel->dev,
+				"Unable to submit transaction\n");
+			goto free_transaction;
+		}
+
+		trans->cookie = cookie;
 	}
-	trans->cookie = cookie;
 
 	dma_async_issue_pending(chan);
 
@@ -739,14 +762,9 @@ static int initiate_async_transfer(
 
 free_transaction:
 err_out_no_prep_sg_async_desc:
-	if (ep_mem_desc_table)
-		sg_free_table(ep_mem_desc_table);
-err_out_sg_to_sgl_ep_mem:
-	if (ep_mem_desc_table)
-		devm_kfree(channel->dev, ep_mem_desc_table);
-err_out_ep_mem_desc_table:
 err_out_no_slave_sg_async_descriptor:
 	devm_kfree(channel->dev, trans->buffer_info);
+	devm_kfree(channel->dev, txd);
 err_out_no_completion_info:
 	devm_kfree(channel->dev, trans);
 err_out_trans_ptr:
@@ -1035,15 +1053,13 @@ static void destroy_char_iface_for_dma(
 	struct xlnx_completed_info *entry, *next;
 
 	for (i = 0; i < MAX_ALLOWED_CHANNELS_IN_HW; i++) {
-		list_for_each_entry_safe(
-			entry,
-			next,
-			&xdev->pcie_dma_chan[i].completed.clist,
-			clist) {
-		spin_lock(&xdev->pcie_dma_chan[i].channel_lock);
-		list_del(&entry->clist);
-		spin_unlock(&xdev->pcie_dma_chan[i].channel_lock);
-		kfree(entry);
+		list_for_each_entry_safe(entry, next,
+					 &xdev->pcie_dma_chan[i].completed.clist,
+					 clist) {
+			spin_lock(&xdev->pcie_dma_chan[i].channel_lock);
+			list_del(&entry->clist);
+			spin_unlock(&xdev->pcie_dma_chan[i].channel_lock);
+			kfree(entry);
 		}
 		device_destroy(g_ps_pcie_dma_client_class,
 			       MKDEV(MAJOR(xdev->char_device), i));
@@ -1090,11 +1106,12 @@ static bool ps_pcie_dma_filter(struct dma_chan *chan, void *param)
 		(struct ps_pcie_dma_channel_match *)chan->private;
 
 	if (client_match && dma_channel_match) {
-		if ((client_match->pci_vendorid != 0) && (dma_channel_match->pci_vendorid != 0)) {
-			if ((client_match->pci_vendorid) == (dma_channel_match->pci_vendorid)) {
-				if (((client_match->pci_deviceid) == (dma_channel_match->pci_deviceid)) &&
-				    (client_match->channel_number == dma_channel_match->channel_number) &&
-				    (client_match->direction == dma_channel_match->direction)) {
+		if (client_match->pci_vendorid != 0 &&
+		    dma_channel_match->pci_vendorid != 0) {
+			if (client_match->pci_vendorid == dma_channel_match->pci_vendorid) {
+				if (client_match->pci_deviceid == dma_channel_match->pci_deviceid &&
+				    client_match->channel_number == dma_channel_match->channel_number &&
+				    client_match->direction == dma_channel_match->direction) {
 					return true;
 				}
 			}
