@@ -701,8 +701,13 @@ static int zynqmp_r5_probe(struct zynqmp_r5_pdata *pdata,
 	/* Set up DMA mask */
 	ret = dma_set_coherent_mask(dev, DMA_BIT_MASK(32));
 	if (ret) {
-		dev_err(dev, "dma_set_coherent_mask failed: %d\n", ret);
-		goto error;
+		dev_warn(dev, "dma_set_coherent_mask failed: %d\n", ret);
+		/* If DMA is not configured yet, try to configure it. */
+		ret = of_dma_configure(dev, node, true);
+		if (ret) {
+			dev_err(dev, "failed to configure DMA.\n");
+			goto error;
+		}
 	}
 
 	/* Get R5 power domain node */
