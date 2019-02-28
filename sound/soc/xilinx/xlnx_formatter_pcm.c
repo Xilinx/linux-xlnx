@@ -100,6 +100,9 @@ struct xlnx_pcm_drv_data {
 	struct platform_device *pdev;
 	struct device_node *nodes[XLNX_MAX_PATHS];
 	struct clk *axi_clk;
+	struct clk *mm2s_axis_clk;
+	struct clk *s2mm_axis_clk;
+	struct clk *aud_mclk;
 };
 
 /*
@@ -579,23 +582,49 @@ static int configure_mm2s(struct xlnx_pcm_drv_data *aud_drv_data,
 	int ret;
 	struct device *dev = &pdev->dev;
 
+	aud_drv_data->mm2s_axis_clk = devm_clk_get(dev, "m_axis_mm2s_aclk");
+	if (IS_ERR(aud_drv_data->mm2s_axis_clk)) {
+		ret = PTR_ERR(aud_drv_data->mm2s_axis_clk);
+		dev_err(dev, "failed to get m_axis_mm2s_aclk(%d)\n", ret);
+		return ret;
+	}
+	ret = clk_prepare_enable(aud_drv_data->mm2s_axis_clk);
+	if (ret) {
+		dev_err(dev, "failed to enable m_axis_mm2s_aclk(%d)\n", ret);
+		return ret;
+	}
+
+	aud_drv_data->aud_mclk = devm_clk_get(dev, "aud_mclk");
+	if (IS_ERR(aud_drv_data->aud_mclk)) {
+		ret = PTR_ERR(aud_drv_data->aud_mclk);
+		dev_err(dev, "failed to get aud_mclk(%d)\n", ret);
+		goto axis_clk_err;
+	}
+	ret = clk_prepare_enable(aud_drv_data->aud_mclk);
+	if (ret) {
+		dev_err(dev, "failed to enable aud_mclk(%d)\n", ret);
+		goto axis_clk_err;
+	}
+
 	aud_drv_data->mm2s_irq = platform_get_irq_byname(pdev,
 							 "irq_mm2s");
-	if (aud_drv_data->mm2s_irq < 0)
-		return aud_drv_data->mm2s_irq;
+	if (aud_drv_data->mm2s_irq < 0) {
+		ret = aud_drv_data->mm2s_irq;
+		goto mm2s_err;
+	}
 	ret = devm_request_irq(dev, aud_drv_data->mm2s_irq,
 			       xlnx_mm2s_irq_handler, 0,
 			       "xlnx_formatter_pcm_mm2s_irq",
 			       dev);
 	if (ret) {
 		dev_err(dev, "xlnx audio mm2s irq request failed\n");
-		return ret;
+		goto mm2s_err;
 	}
 	ret = xlnx_formatter_pcm_reset(aud_drv_data->mmio +
 				       XLNX_MM2S_OFFSET);
 	if (ret) {
 		dev_err(dev, "audio formatter reset failed\n");
-		return ret;
+		goto mm2s_err;
 	}
 	xlnx_formatter_disable_irqs(aud_drv_data->mmio +
 				    XLNX_MM2S_OFFSET,
@@ -613,6 +642,13 @@ static int configure_mm2s(struct xlnx_pcm_drv_data *aud_drv_data,
 
 	aud_drv_data->mm2s_presence = true;
 	return 0;
+
+mm2s_err:
+	clk_disable_unprepare(aud_drv_data->aud_mclk);
+axis_clk_err:
+	clk_disable_unprepare(aud_drv_data->mm2s_axis_clk);
+
+	return ret;
 }
 
 static int configure_s2mm(struct xlnx_pcm_drv_data *aud_drv_data,
@@ -621,23 +657,36 @@ static int configure_s2mm(struct xlnx_pcm_drv_data *aud_drv_data,
 	int ret;
 	struct device *dev = &pdev->dev;
 
-	aud_drv_data->s2mm_irq = platform_get_irq_byname(pdev,
-							 "irq_s2mm");
-	if (aud_drv_data->s2mm_irq < 0)
-		return aud_drv_data->s2mm_irq;
+	aud_drv_data->s2mm_axis_clk = devm_clk_get(dev, "s_axis_s2mm_aclk");
+	if (IS_ERR(aud_drv_data->s2mm_axis_clk)) {
+		ret = PTR_ERR(aud_drv_data->s2mm_axis_clk);
+		dev_err(dev, "failed to get s_axis_s2mm_aclk(%d)\n", ret);
+		return ret;
+	}
+	ret = clk_prepare_enable(aud_drv_data->s2mm_axis_clk);
+	if (ret) {
+		dev_err(dev, "failed to enable s_axis_s2mm_aclk(%d)\n", ret);
+		return ret;
+	}
+
+	aud_drv_data->s2mm_irq = platform_get_irq_byname(pdev, "irq_s2mm");
+	if (aud_drv_data->s2mm_irq < 0) {
+		ret = aud_drv_data->s2mm_irq;
+		goto s2mm_err;
+	}
 	ret = devm_request_irq(dev, aud_drv_data->s2mm_irq,
 			       xlnx_s2mm_irq_handler, 0,
 			       "xlnx_formatter_pcm_s2mm_irq",
 			       dev);
 	if (ret) {
 		dev_err(dev, "xlnx audio s2mm irq request failed\n");
-		return ret;
+		goto s2mm_err;
 	}
 	ret = xlnx_formatter_pcm_reset(aud_drv_data->mmio +
 				       XLNX_S2MM_OFFSET);
 	if (ret) {
 		dev_err(dev, "audio formatter reset failed\n");
-		return ret;
+		goto s2mm_err;
 	}
 	xlnx_formatter_disable_irqs(aud_drv_data->mmio +
 				    XLNX_S2MM_OFFSET,
@@ -648,13 +697,16 @@ static int configure_s2mm(struct xlnx_pcm_drv_data *aud_drv_data,
 	if (!aud_drv_data->nodes[XLNX_CAPTURE])
 		dev_err(dev, "rx node not found\n");
 	else
-		dev_info(dev,
-			 "sound card device will use DAI link: %s\n",
+		dev_info(dev, "sound card device will use DAI link: %s\n",
 			 (aud_drv_data->nodes[XLNX_CAPTURE])->name);
 	of_node_put(aud_drv_data->nodes[XLNX_CAPTURE]);
 
 	aud_drv_data->s2mm_presence = true;
 	return 0;
+
+s2mm_err:
+	clk_disable_unprepare(aud_drv_data->s2mm_axis_clk);
+	return ret;
 }
 
 static int xlnx_formatter_pcm_probe(struct platform_device *pdev)
