@@ -22,15 +22,19 @@
 #define I2S_CH0_OFFSET			0x30
 #define I2S_I2STIM_VALID_MASK		GENMASK(7, 0)
 
+struct xlnx_i2s_dev_data {
+	void __iomem *base;
+};
+
 static int xlnx_i2s_set_sclkout_div(struct snd_soc_dai *cpu_dai,
 				    int div_id, int div)
 {
-	void __iomem *base = snd_soc_dai_get_drvdata(cpu_dai);
+	struct xlnx_i2s_dev_data *dev_data = snd_soc_dai_get_drvdata(cpu_dai);
 
 	if (!div || (div & ~I2S_I2STIM_VALID_MASK))
 		return -EINVAL;
 
-	writel(div, base + I2S_I2STIM_OFFSET);
+	writel(div, dev_data->base + I2S_I2STIM_OFFSET);
 
 	return 0;
 }
@@ -40,13 +44,13 @@ static int xlnx_i2s_hw_params(struct snd_pcm_substream *substream,
 			      struct snd_soc_dai *i2s_dai)
 {
 	u32 reg_off, chan_id;
-	void __iomem *base = snd_soc_dai_get_drvdata(i2s_dai);
+	struct xlnx_i2s_dev_data *dev_data = snd_soc_dai_get_drvdata(i2s_dai);
 
 	chan_id = params_channels(params) / 2;
 
 	while (chan_id > 0) {
 		reg_off = I2S_CH0_OFFSET + ((chan_id - 1) * 4);
-		writel(chan_id, base + reg_off);
+		writel(chan_id, dev_data->base + reg_off);
 		chan_id--;
 	}
 
@@ -56,18 +60,18 @@ static int xlnx_i2s_hw_params(struct snd_pcm_substream *substream,
 static int xlnx_i2s_trigger(struct snd_pcm_substream *substream, int cmd,
 			    struct snd_soc_dai *i2s_dai)
 {
-	void __iomem *base = snd_soc_dai_get_drvdata(i2s_dai);
+	struct xlnx_i2s_dev_data *dev_data = snd_soc_dai_get_drvdata(i2s_dai);
 
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_START:
 	case SNDRV_PCM_TRIGGER_RESUME:
 	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
-		writel(1, base + I2S_CORE_CTRL_OFFSET);
+		writel(1, dev_data->base + I2S_CORE_CTRL_OFFSET);
 		break;
 	case SNDRV_PCM_TRIGGER_STOP:
 	case SNDRV_PCM_TRIGGER_SUSPEND:
 	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
-		writel(0, base + I2S_CORE_CTRL_OFFSET);
+		writel(0, dev_data->base + I2S_CORE_CTRL_OFFSET);
 		break;
 	default:
 		return -EINVAL;
@@ -95,8 +99,8 @@ MODULE_DEVICE_TABLE(of, xlnx_i2s_of_match);
 
 static int xlnx_i2s_probe(struct platform_device *pdev)
 {
-	void __iomem *base;
 	struct snd_soc_dai_driver *dai_drv;
+	struct xlnx_i2s_dev_data *dev_data;
 	int ret;
 	u32 ch, format, data_width;
 	struct device *dev = &pdev->dev;
@@ -106,9 +110,13 @@ static int xlnx_i2s_probe(struct platform_device *pdev)
 	if (!dai_drv)
 		return -ENOMEM;
 
-	base = devm_platform_ioremap_resource(pdev, 0);
-	if (IS_ERR(base))
-		return PTR_ERR(base);
+	dev_data = devm_kzalloc(&pdev->dev, sizeof(*dev_data), GFP_KERNEL);
+	if (!dev_data)
+		return -ENOMEM;
+
+	dev_data->base = devm_platform_ioremap_resource(pdev, 0);
+	if (IS_ERR(dev_data->base))
+		return PTR_ERR(dev_data->base);
 
 	ret = of_property_read_u32(node, "xlnx,num-channels", &ch);
 	if (ret < 0) {
@@ -153,7 +161,7 @@ static int xlnx_i2s_probe(struct platform_device *pdev)
 		return -ENODEV;
 	}
 
-	dev_set_drvdata(&pdev->dev, base);
+	dev_set_drvdata(&pdev->dev, dev_data->base);
 
 	ret = devm_snd_soc_register_component(&pdev->dev, &xlnx_i2s_component,
 					      dai_drv, 1);
