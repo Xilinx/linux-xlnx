@@ -12,11 +12,17 @@ Required property common to both I2S playback and capture:
  - xlnx,num-channels: Number of I2S streams. Can be any of 1, 2, 3, 4.
 		      supported channels = 2 * xlnx,num-channels
  - xlnx,snd-pcm: reference to audio formatter block
+ - clock-names: List of input clocks.
+   Required elements for I2S Tx: "s_axi_ctrl_aclk", "aud_mclk", "s_axis_aud_aclk".
+   Required elements for I2S Rx: "s_axi_ctrl_aclk", "aud_mclk", "m_axis_aud_aclk".
+ - clocks: Input clock specifier. Refer to common clock bindings.
 
 Example:
 
 	i2s_receiver@a0080000 {
 		compatible = "xlnx,i2s-receiver-1.0";
+		clock-names = "s_axi_ctrl_aclk", "aud_mclk", "m_axis_aud_aclk";
+		clocks = <&clk 71>, <&audio_ss_0_clk_wiz_0 0>, <&clk 71>;
 		reg = <0x0 0xa0080000 0x0 0x10000>;
 		xlnx,dwidth = <0x18>;
 		xlnx,num-channels = <1>;
@@ -24,6 +30,8 @@ Example:
 	};
 	i2s_transmitter@a0090000 {
 		compatible = "xlnx,i2s-transmitter-1.0";
+		clock-names = "s_axi_ctrl_aclk", "aud_mclk", "s_axis_aud_aclk";
+		clocks = <&clk 71>, <&audio_ss_0_clk_wiz_0 0>, <&audio_ss_0_clk_wiz_0 0>;
 		reg = <0x0 0xa0090000 0x0 0x10000>;
 		xlnx,dwidth = <0x18>;
 		xlnx,num-channels = <1>;
