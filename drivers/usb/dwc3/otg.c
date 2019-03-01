@@ -297,6 +297,7 @@ static int start_host(struct dwc3_otg *otg)
 	int flg;
 	u32 octl;
 	u32 osts;
+	u32 ocfg;
 	u32 dctl;
 	struct usb_hcd *hcd;
 	struct xhci_hcd *xhci;
@@ -305,6 +306,14 @@ static int start_host(struct dwc3_otg *otg)
 
 	if (!otg->otg.host)
 		return -ENODEV;
+
+	/*
+	 * Prevent the host USBCMD.HCRST from resetting OTG core by setting
+	 * OCFG.OTGSftRstMsk
+	 */
+	ocfg = otg_read(otg, OCFG);
+	ocfg |= DWC3_OCFG_SFTRSTMASK;
+	otg_write(otg, OCFG, ocfg);
 
 	dctl = otg_read(otg, DCTL);
 	if (dctl & DWC3_DCTL_RUN_STOP) {
@@ -497,10 +506,19 @@ static void start_peripheral(struct dwc3_otg *otg)
 {
 	struct usb_gadget *gadget = otg->otg.gadget;
 	struct dwc3 *dwc = otg->dwc;
+	u32 ocfg;
 
 	otg_dbg(otg, "\n");
 	if (!gadget)
 		return;
+
+	/*
+	 * Prevent the gadget DCTL.CSFTRST from resetting OTG core by setting
+	 * OCFG.OTGSftRstMsk
+	 */
+	ocfg = otg_read(otg, OCFG);
+	ocfg |= DWC3_OCFG_SFTRSTMASK;
+	otg_write(otg, OCFG, ocfg);
 
 	if (!set_peri_mode(otg, PERI_MODE_PERIPHERAL))
 		otg_err(otg, "Failed to set peripheral mode\n");
