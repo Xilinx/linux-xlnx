@@ -227,6 +227,11 @@ struct dwc3_otg {
 #define INITIAL_SRP			0x40
 	/** A-device connected event*/
 #define USER_A_CONN_EVENT		0x80
+	/** User initiated HNP END Session. This will make the A-device and
+	 *  B-device to return back to their previous roles before HNP got
+	 *  initiated
+	 */
+#define USER_HNP_END_SESSION		0x100
 
 	/* States */
 	enum usb_otg_state prev;
