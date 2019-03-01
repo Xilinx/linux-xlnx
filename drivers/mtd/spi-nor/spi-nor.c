@@ -1901,7 +1901,7 @@ static int spi_nor_write(struct mtd_info *mtd, loff_t to, size_t len,
 		if (nor->addr_width == 3)
 			write_ear(nor, offset);
 		if (nor->isstacked == 1) {
-			if (len <= rem_bank_len) {
+			if ((len - i) <= rem_bank_len) {
 				page_remain = min_t(size_t,
 					 nor->page_size - page_offset, len - i);
 			} else {
