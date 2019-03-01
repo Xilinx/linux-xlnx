@@ -2022,7 +2022,7 @@ fail:
 	return retval;
 }
 
-int dwc3_otg_init(struct dwc3 *dwc)
+void dwc3_otg_init(struct dwc3 *dwc)
 {
 	struct dwc3_otg *otg;
 	int err;
@@ -2042,12 +2042,14 @@ int dwc3_otg_init(struct dwc3 *dwc)
 		 * situation, just continue probe the dwc3 driver without otg.
 		 */
 		dev_dbg(dwc->dev, "dwc3_otg address space is not supported\n");
-		return 0;
+		return;
 	}
 
 	otg = kzalloc(sizeof(*otg), GFP_KERNEL);
-	if (!otg)
-		return -ENOMEM;
+	if (!otg) {
+		dev_err(otg->dev, "failed to allocate memroy\n");
+		return;
+	}
 
 	dwc->otg = otg;
 	otg->dev = dwc->dev;
@@ -2094,11 +2096,27 @@ int dwc3_otg_init(struct dwc3 *dwc)
 
 	dwc3_otg_enable_irq(otg);
 
-	return 0;
+	err = dwc3_gadget_init(dwc);
+	if (err) {
+		if (err != -EPROBE_DEFER)
+			dev_err(otg->otg.usb_phy->dev,
+				"failed to initialize gadget\n");
+		goto exit;
+	}
+
+	err = dwc3_host_init(dwc);
+	if (err) {
+		if (err != -EPROBE_DEFER)
+			dev_err(otg->otg.usb_phy->dev,
+				"failed to initialize host\n");
+		goto exit;
+	}
+
+	return;
+
 exit:
 	kfree(otg->otg.usb_phy);
 	kfree(otg);
-	return err;
 }
 
 void dwc3_otg_exit(struct dwc3 *dwc)
