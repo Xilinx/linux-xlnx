@@ -936,6 +936,7 @@ struct dwc3_scratchpad_array {
  * @fladj: frame length adjustment
  * @refclk_fladj: boolean to update GFLADJ_REFCLK_FLADJ field also
  * @irq_gadget: peripheral controller's IRQ number
+ * @otg: pointer to the dwc3_otg structure
  * @otg_irq: IRQ number for OTG IRQs
  * @current_otg_role: current role of operation while using the OTG block
  * @desired_otg_role: desired role of operation while using the OTG block
@@ -1070,6 +1071,8 @@ struct dwc3 {
 	int			num_clks;
 
 	struct reset_control	*reset;
+
+	struct dwc3_otg		*otg;
 
 	struct usb_phy		*usb2_phy;
 	struct usb_phy		*usb3_phy;

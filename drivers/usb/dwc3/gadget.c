@@ -1912,6 +1912,16 @@ static int __dwc3_gadget_start(struct dwc3 *dwc)
 
 	dwc3_gadget_setup_nump(dwc);
 
+	/* For OTG mode, check if the core is currently in Host mode.
+	 * This is not an error condition as there are times when the core is
+	 * working as host and kernel is told to initiate bind operation with
+	 * gadget class driver module.
+	 * The below remaining operations are handled in OTG driver whenever
+	 * required.
+	 */
+	if (dwc3_readl(dwc->regs, DWC3_GSTS) & DWC3_GSTS_CUR_MODE)
+		return 0;
+
 	/* Start with SuperSpeed Default */
 	dwc3_gadget_ep0_desc.wMaxPacketSize = cpu_to_le16(512);
 
@@ -3417,6 +3427,28 @@ int dwc3_gadget_init(struct dwc3 *dwc)
 	if (ret) {
 		dev_err(dwc->dev, "failed to register udc\n");
 		goto err4;
+	}
+
+	if (dwc->dr_mode == USB_DR_MODE_OTG) {
+		struct usb_phy *phy;
+
+		phy = usb_get_phy(USB_PHY_TYPE_USB3);
+		if (!IS_ERR(phy)) {
+			if (phy && phy->otg) {
+				ret = otg_set_peripheral(phy->otg,
+							 &dwc->gadget);
+				if (ret) {
+					dev_err(dwc->dev,
+						"otg_set_peripheral failed\n");
+					usb_put_phy(phy);
+					phy = NULL;
+					goto err4;
+				}
+			} else {
+				usb_put_phy(phy);
+				phy = NULL;
+			}
+		}
 	}
 
 	return 0;
