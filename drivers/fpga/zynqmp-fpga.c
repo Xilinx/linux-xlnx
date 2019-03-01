@@ -26,7 +26,6 @@
 /* Constant Definitions */
 #define IXR_FPGA_DONE_MASK	0X00000008U
 #define IXR_FPGA_ENCRYPTION_EN	0x00000008U
-#define IXR_FPGA_USER_PPK_EN	0x00000020U
 
 #define READ_DMA_SIZE		0x200
 #define DUMMY_FRAMES_SIZE	0x64
@@ -78,7 +77,6 @@ static struct zynqmp_configreg cfgreg[] = {
  * @dev:	Device data structure
  * @lock:	Mutex lock for device
  * @clk:	Clock resource for pcap controller
- * @ppkhash:	ppk hash value useful for Authenticated Bitstream loading
  * @flags:	flags which is used to identify the bitfile type
  * @size:	Size of the Bitstream used for readback
  */
@@ -87,7 +85,6 @@ struct zynqmp_fpga_priv {
 	struct mutex lock;
 	struct clk *clk;
 	char *key;
-	char *ppkhash;
 	u32 flags;
 	u32 size;
 };
@@ -101,7 +98,6 @@ static int zynqmp_fpga_ops_write_init(struct fpga_manager *mgr,
 	priv = mgr->priv;
 	priv->flags = info->flags;
 	priv->key = info->key;
-	priv->ppkhash = info->ppkhash;
 
 	return 0;
 }
@@ -111,7 +107,7 @@ static int zynqmp_fpga_ops_write(struct fpga_manager *mgr,
 {
 	struct zynqmp_fpga_priv *priv;
 	char *kbuf;
-	size_t dma_size = size;
+	size_t dma_size;
 	dma_addr_t dma_addr;
 	int ret;
 
@@ -129,9 +125,9 @@ static int zynqmp_fpga_ops_write(struct fpga_manager *mgr,
 		goto err_unlock;
 
 	if (priv->flags & IXR_FPGA_ENCRYPTION_EN)
-		dma_size += ENCRYPTED_KEY_LEN;
-	if (priv->flags & IXR_FPGA_USER_PPK_EN)
-		dma_size += PPK_HASH_LEN;
+		dma_size = size + ENCRYPTED_KEY_LEN;
+	else
+		dma_size = size;
 
 	kbuf = dma_alloc_coherent(priv->dev, dma_size, &dma_addr, GFP_KERNEL);
 	if (!kbuf) {
@@ -141,20 +137,12 @@ static int zynqmp_fpga_ops_write(struct fpga_manager *mgr,
 
 	memcpy(kbuf, buf, size);
 
-	if (priv->flags & IXR_FPGA_ENCRYPTION_EN) {
+	if (priv->flags & IXR_FPGA_ENCRYPTION_EN)
 		memcpy(kbuf + size, priv->key, ENCRYPTED_KEY_LEN);
-		if (priv->flags & IXR_FPGA_USER_PPK_EN)
-			memcpy(kbuf + size + ENCRYPTED_KEY_LEN, priv->ppkhash,
-			       PPK_HASH_LEN);
-	} else if (priv->flags & IXR_FPGA_USER_PPK_EN) {
-		memcpy(kbuf + size, priv->ppkhash, PPK_HASH_LEN);
-	}
-
 
 	wmb(); /* ensure all writes are done before initiate FW call */
 
-	if ((priv->flags & IXR_FPGA_ENCRYPTION_EN) ||
-	    (priv->flags & IXR_FPGA_USER_PPK_EN))
+	if (priv->flags & IXR_FPGA_ENCRYPTION_EN)
 		ret = eemi_ops->fpga_load(dma_addr, dma_addr + size,
 					  priv->flags);
 	else
