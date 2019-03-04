@@ -646,13 +646,13 @@ xlnx_sdi_drm_connector_create_property(struct drm_connector *base_connector)
 	struct drm_device *dev = base_connector->dev;
 	struct xlnx_sdi *sdi  = connector_to_sdi(base_connector);
 
-	sdi->is_frac_prop = drm_property_create_bool(dev, 1, "is_frac");
+	sdi->is_frac_prop = drm_property_create_bool(dev, 0, "is_frac");
 	sdi->sdi_mode = drm_property_create_range(dev, 0,
 						  "sdi_mode", 0, 5);
 	sdi->sdi_data_strm = drm_property_create_range(dev, 0,
 						       "sdi_data_stream", 2, 8);
-	sdi->sdi_420_in = drm_property_create_bool(dev, 1, "sdi_420_in");
-	sdi->sdi_420_out = drm_property_create_bool(dev, 1, "sdi_420_out");
+	sdi->sdi_420_in = drm_property_create_bool(dev, 0, "sdi_420_in");
+	sdi->sdi_420_out = drm_property_create_bool(dev, 0, "sdi_420_out");
 	sdi->height_out = drm_property_create_range(dev, 0,
 						    "height_out", 2, 4096);
 	sdi->width_out = drm_property_create_range(dev, 0,
@@ -662,9 +662,9 @@ xlnx_sdi_drm_connector_create_property(struct drm_connector *base_connector)
 	sdi->out_fmt = drm_property_create_range(dev, 0,
 						 "out_fmt", 0, 16384);
 	if (sdi->enable_st352_chroma) {
-		sdi->en_st352_c_prop = drm_property_create_bool(dev, 1,
+		sdi->en_st352_c_prop = drm_property_create_bool(dev, 0,
 								"en_st352_c");
-		sdi->use_ds2_3ga_prop = drm_property_create_bool(dev, 1,
+		sdi->use_ds2_3ga_prop = drm_property_create_bool(dev, 0,
 								 "use_ds2_3ga");
 	}
 }
