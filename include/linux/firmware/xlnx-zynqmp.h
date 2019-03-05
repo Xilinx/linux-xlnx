@@ -60,6 +60,10 @@
 #define	ZYNQMP_PM_CAPABILITY_WAKEUP	0x4U
 #define	ZYNQMP_PM_CAPABILITY_POWER	0x8U
 
+/* Feature check status */
+#define PM_FEATURE_INVALID		-1
+#define PM_FEATURE_UNCHECKED		0
+
 enum pm_api_id {
 	PM_GET_API_VERSION = 1,
 	PM_SET_CONFIGURATION,
@@ -119,11 +123,14 @@ enum pm_api_id {
 	/* PM_REGISTER_ACCESS API */
 	PM_REGISTER_ACCESS = 52,
 	PM_EFUSE_ACCESS,
+	PM_FEATURE_CHECK = 63,
+	PM_API_MAX,
 };
 
 /* PMU-FW return status codes */
 enum pm_ret_status {
 	XST_PM_SUCCESS = 0,
+	XST_PM_NO_FEATURE = 19,
 	XST_PM_INTERNAL = 2000,
 	XST_PM_CONFLICT,
 	XST_PM_NO_ACCESS,
