@@ -184,7 +184,7 @@ static int zynqmp_rsa_probe(struct platform_device *pdev)
 
 	eemi_ops = zynqmp_pm_get_eemi_ops();
 	if (IS_ERR(eemi_ops))
-		PTR_ERR(eemi_ops);
+		return PTR_ERR(eemi_ops);
 
 	rsa_dd = devm_kzalloc(&pdev->dev, sizeof(*rsa_dd), GFP_KERNEL);
 	if (!rsa_dd)
