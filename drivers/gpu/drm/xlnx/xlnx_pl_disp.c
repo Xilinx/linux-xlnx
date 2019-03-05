@@ -308,6 +308,7 @@ static inline struct xlnx_pl_disp *drm_crtc_to_dma(struct drm_crtc *crtc)
 static void xlnx_pl_disp_crtc_atomic_begin(struct drm_crtc *crtc,
 					   struct drm_crtc_state *old_state)
 {
+	drm_crtc_vblank_on(crtc);
 	spin_lock_irq(&crtc->dev->event_lock);
 	if (crtc->state->event) {
 		/* Consume the flip_done event from atomic helper */
@@ -359,6 +360,7 @@ static void xlnx_pl_disp_crtc_atomic_disable(struct drm_crtc *crtc,
 
 	xlnx_pl_disp_plane_disable(crtc->primary);
 	xlnx_pl_disp_clear_event(crtc);
+	drm_crtc_vblank_off(crtc);
 	xlnx_bridge_disable(xlnx_pl_disp->vtc_bridge);
 }
 
