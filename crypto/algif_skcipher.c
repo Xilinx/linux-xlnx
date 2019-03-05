@@ -323,12 +323,7 @@ static int skcipher_setkey(void *private, const u8 *key, unsigned int keylen)
 static int skcipher_setkeytype(void *private, const u8 *key,
 			       unsigned int keylen)
 {
-	struct skcipher_tfm *tfm = private;
-	int err;
-
-	err = crypto_skcipher_setkeytype(tfm->skcipher, key, keylen);
-
-	return err;
+	return crypto_skcipher_setkeytype(private, key, keylen);
 }
 
 static void skcipher_sock_destruct(struct sock *sk)

@@ -403,6 +403,12 @@ static inline int crypto_skcipher_setkey(struct crypto_skcipher *tfm,
 	return tfm->setkey(tfm, key, keylen);
 }
 
+static inline int crypto_skcipher_setkeytype(struct crypto_skcipher *tfm,
+					     const u8 *key, unsigned int keylen)
+{
+	return tfm->setkeytype(tfm, key, keylen);
+}
+
 static inline unsigned int crypto_skcipher_default_keysize(
 	struct crypto_skcipher *tfm)
 {
