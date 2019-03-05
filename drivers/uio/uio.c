@@ -24,6 +24,12 @@
 #include <linux/kobject.h>
 #include <linux/cdev.h>
 #include <linux/uio_driver.h>
+#include <linux/list.h>
+#include <linux/mutex.h>
+
+#include <uapi/linux/uio/uio.h>
+
+#include "uio_dmabuf.h"
 
 #define UIO_MAX_DEVICES		(1U << MINORBITS)
 
@@ -454,6 +460,8 @@ static irqreturn_t uio_interrupt(int irq, void *dev_id)
 struct uio_listener {
 	struct uio_device *dev;
 	s32 event_count;
+	struct list_head dbufs;
+	struct mutex dbufs_lock; /* protect @dbufs */
 };
 
 static int uio_open(struct inode *inode, struct file *filep)
@@ -500,6 +508,9 @@ static int uio_open(struct inode *inode, struct file *filep)
 	if (ret)
 		goto err_infoopen;
 
+	INIT_LIST_HEAD(&listener->dbufs);
+	mutex_init(&listener->dbufs_lock);
+
 	return 0;
 
 err_infoopen:
@@ -528,6 +539,10 @@ static int uio_release(struct inode *inode, struct file *filep)
 	int ret = 0;
 	struct uio_listener *listener = filep->private_data;
 	struct uio_device *idev = listener->dev;
+
+	ret = uio_dmabuf_cleanup(idev, &listener->dbufs, &listener->dbufs_lock);
+	if (ret)
+		dev_err(&idev->dev, "failed to clean up the dma bufs\n");
 
 	mutex_lock(&idev->info_lock);
 	if (idev->info && idev->info->release)
@@ -650,6 +665,33 @@ static ssize_t uio_write(struct file *filep, const char __user *buf,
 out:
 	mutex_unlock(&idev->info_lock);
 	return retval ? retval : sizeof(s32);
+}
+
+static long uio_ioctl(struct file *filep, unsigned int cmd, unsigned long arg)
+{
+	struct uio_listener *listener = filep->private_data;
+	struct uio_device *idev = listener->dev;
+	long ret;
+
+	if (!idev->info)
+		return -EIO;
+
+	switch (cmd) {
+	case UIO_IOC_MAP_DMABUF:
+		ret = uio_dmabuf_map(idev, &listener->dbufs,
+				     &listener->dbufs_lock, (void __user *)arg);
+		break;
+	case UIO_IOC_UNMAP_DMABUF:
+		ret = uio_dmabuf_unmap(idev, &listener->dbufs,
+				       &listener->dbufs_lock,
+				       (void __user *)arg);
+		break;
+	default:
+		ret = -EINVAL;
+		break;
+	}
+
+	return ret;
 }
 
 static int uio_find_mem_index(struct vm_area_struct *vma)
@@ -821,6 +863,7 @@ static const struct file_operations uio_fops = {
 	.write		= uio_write,
 	.mmap		= uio_mmap,
 	.poll		= uio_poll,
+	.unlocked_ioctl	= uio_ioctl,
 	.fasync		= uio_fasync,
 	.llseek		= noop_llseek,
 };
