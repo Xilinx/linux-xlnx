@@ -24,6 +24,7 @@ Optional properties for snps,dwc3:
 		Xilinx USB 3.0 IP - USB coherency register to enable CCI.
 - snps,enable-hibernation: Add this flag to enable hibernation support for
 		peripheral mode
+- interrupt-names: This property provides the names of the interrupt ids used
 
 Example device node:
 
@@ -41,6 +42,7 @@ Example device node:
 			dwc3@fe200000 {
 				compatible = "snps,dwc3";
 				reg = <0x0 0xfe200000 0x40000>;
+				interrupt-name = "dwc_usb3";
 				interrupts = <0x0 0x41 0x4>;
 				dr_mode = "host";
 				dma-coherent;
