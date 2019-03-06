@@ -14,6 +14,10 @@
 
 #include <linux/dmaengine.h>
 
+/* Modes to enable early callback */
+#define EARLY_CALLBACK			BIT(1) /* To avoid first frame delay */
+#define EARLY_CALLBACK_LOW_LATENCY	BIT(2) /* Low latency mode */
+
 /**
  * enum vid_frmwork_type - Linux video framework type
  * @XDMA_DRM: fourcc is of type DRM
