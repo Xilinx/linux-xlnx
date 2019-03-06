@@ -213,6 +213,13 @@
 /* Low latency mode */
 #define V4L2_CID_XILINX_LOW_LATENCY		(V4L2_CID_XILINX_VIP + 1)
 
+/* Control values to enable/disable low latency capture mode */
+#define XVIP_LOW_LATENCY_ENABLE		BIT(1)
+#define XVIP_LOW_LATENCY_DISABLE	BIT(2)
+
+/* Control value to start DMA */
+#define XVIP_START_DMA			BIT(3)
+
 /*
  * Xilinx SCD
  */
