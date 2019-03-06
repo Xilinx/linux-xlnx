@@ -673,8 +673,13 @@ enum axienet_tsn_ioctl {
  * @rx_ts_regs:	  Base address for the rx axififo device address space.
  * @tstamp_config: Hardware timestamp config structure.
  * @tx_ptpheader: Stores the tx ptp header.
- * @eth_clk: Clock resource for etherent mac.
- * @dma_clk: Clock resource for dma controller.
+ * @aclk: AXI4-Lite clock for ethernet and dma.
+ * @eth_sclk: AXI4-Stream interface clock.
+ * @eth_refclk: Stable clock used by signal delay primitives and transceivers.
+ * @eth_dclk: Dynamic Reconfiguration Port(DRP) clock.
+ * @dma_sg_clk: DMA Scatter Gather Clock.
+ * @dma_rx_clk: DMA S2MM Primary Clock.
+ * @dma_tx_clk: DMA MM2S Primary Clock.
  * @qnum:     Axi Ethernet queue number to be operate on.
  * @chan_num: MCDMA Channel number to be operate on.
  * @chan_id:  MCMDA Channel id used in conjunction with weight parameter.
@@ -750,8 +755,13 @@ struct axienet_local {
 	struct hwtstamp_config tstamp_config;
 	u8 *tx_ptpheader;
 #endif
-	struct clk *eth_clk;
-	struct clk *dma_clk;
+	struct clk *aclk;
+	struct clk *eth_sclk;
+	struct clk *eth_refclk;
+	struct clk *eth_dclk;
+	struct clk *dma_sg_clk;
+	struct clk *dma_rx_clk;
+	struct clk *dma_tx_clk;
 
 	/* MCDMA Fields */
 	int qnum[XAE_MAX_QUEUES];
@@ -856,6 +866,9 @@ enum axienet_ip_type {
 struct axienet_config {
 	enum axienet_ip_type mactype;
 	void (*setoptions)(struct net_device *ndev, u32 options);
+	int (*clk_init)(struct platform_device *pdev, struct clk **axi_aclk,
+			struct clk **axis_clk, struct clk **ref_clk,
+			struct clk **dclk);
 	u32 tx_ptplen;
 };
 
