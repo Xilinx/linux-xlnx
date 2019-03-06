@@ -179,7 +179,7 @@ static void xlnx_pl_disp_plane_enable(struct drm_plane *plane)
 	}
 	desc->callback = xlnx_pl_disp->callback;
 	desc->callback_param = xlnx_pl_disp->callback_param;
-	xilinx_xdma_set_earlycb(xlnx_dma_chan->dma_chan, desc, true);
+	xilinx_xdma_set_earlycb(xlnx_dma_chan->dma_chan, desc, EARLY_CALLBACK);
 
 	if (plane->state->fb->flags == DRM_MODE_FB_ALTERNATE_TOP ||
 	    plane->state->fb->flags == DRM_MODE_FB_ALTERNATE_BOTTOM) {
