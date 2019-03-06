@@ -102,6 +102,7 @@ struct xvip_dma {
 	struct data_chunk sgl[1];
 
 	u32 prev_fid;
+	u32 earlycb_mode;
 };
 
 #define to_xvip_dma(vdev)	container_of(vdev, struct xvip_dma, video)
