@@ -16,6 +16,7 @@
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/slab.h>
+#include <linux/xilinx-v4l2-controls.h>
 
 #include <media/v4l2-dev.h>
 #include <media/v4l2-fh.h>
@@ -626,6 +627,18 @@ static void xvip_dma_buffer_queue(struct vb2_buffer *vb)
 
 	xilinx_xdma_set_fid(dma->dma, desc, fid);
 
+	/* Set low latency capture mode */
+	if (dma->earlycb_mode) {
+		int ret;
+
+		ret = xilinx_xdma_set_earlycb(dma->dma, desc,
+					      dma->earlycb_mode);
+		if (ret < 0) {
+			dev_err(dma->xdev->dev,
+				"Failed enable low latency mode\n");
+		}
+	}
+
 	spin_lock_irq(&dma->queued_lock);
 	list_add_tail(&buf->queue, &dma->queued_bufs);
 	spin_unlock_irq(&dma->queued_lock);
@@ -1063,6 +1076,25 @@ xvip_dma_set_format(struct file *file, void *fh, struct v4l2_format *format)
 	return 0;
 }
 
+static int
+xvip_dma_set_ctrl(struct file *file, void *fh, struct v4l2_control *ctl)
+{
+	struct v4l2_fh *vfh = file->private_data;
+	struct xvip_dma *dma = to_xvip_dma(vfh->vdev);
+
+	if (vb2_is_busy(&dma->queue))
+		return -EBUSY;
+
+	if (ctl->id == V4L2_CID_XILINX_LOW_LATENCY) {
+		if (ctl->value)
+			dma->earlycb_mode = EARLY_CALLBACK_LOW_LATENCY;
+		else
+			dma->earlycb_mode = 0;
+	}
+
+	return 0;
+}
+
 static const struct v4l2_ioctl_ops xvip_dma_ioctl_ops = {
 	.vidioc_querycap		= xvip_dma_querycap,
 	.vidioc_enum_fmt_vid_cap	= xvip_dma_enum_format,
@@ -1075,6 +1107,7 @@ static const struct v4l2_ioctl_ops xvip_dma_ioctl_ops = {
 	.vidioc_s_fmt_vid_cap_mplane	= xvip_dma_set_format,
 	.vidioc_s_fmt_vid_out		= xvip_dma_set_format,
 	.vidioc_s_fmt_vid_out_mplane	= xvip_dma_set_format,
+	.vidioc_s_ctrl			= xvip_dma_set_ctrl,
 	.vidioc_try_fmt_vid_cap		= xvip_dma_try_format,
 	.vidioc_try_fmt_vid_cap_mplane	= xvip_dma_try_format,
 	.vidioc_try_fmt_vid_out		= xvip_dma_try_format,
