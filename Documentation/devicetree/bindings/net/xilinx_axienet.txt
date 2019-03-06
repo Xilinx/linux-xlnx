@@ -47,7 +47,13 @@ Optional properties:
 - xlnx,eth-hasptp	: Tells whether PTP is enabled in h/w or not.
 - axififo-connected	: Should contain the phandle of AXI stream fifo.
 - clocks		: Input clock specifier. Refer to common clock bindings.
-- clock-names		: Input clock name, should be ethernet_clk and dma_clk.
+- clock-names		: Input clock names. Refer to IP PG for signal description.
+			  1G/2.5G: s_axi_lite_clk, axis_clk and ref_clk.
+			  10G/25G and USXGMII: s_axi_aclk, rx_core_clk and dclk.
+			  10 Gigabit: s_axi_aclk and dclk.
+			  AXI DMA and MCDMA: m_axi_sg_aclk, m_axi_mm2s_aclk and
+			  m_axi_s2mm_aclk.
+
 Optional properties (When AxiEthernet is configured with MCDMA):
 - xlnx,num-queues	: Number of queues/channels configured in h/w.
 Optional properties (When USXGMII is in use):
