@@ -204,6 +204,16 @@
 #define V4L2_CID_XILINX_SDIRX_IS_3GB		(V4L2_CID_XILINX_SDIRX + 11)
 
 /*
+ * Xilinx VIP
+ */
+
+/* Base ID */
+#define V4L2_CID_XILINX_VIP			(V4L2_CID_USER_BASE + 0xc120)
+
+/* Low latency mode */
+#define V4L2_CID_XILINX_LOW_LATENCY		(V4L2_CID_XILINX_VIP + 1)
+
+/*
  * Xilinx SCD
  */
 
