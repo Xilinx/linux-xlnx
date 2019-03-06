@@ -14,6 +14,11 @@
 
 #include <linux/dmaengine.h>
 
+/* Modes to enable early callback */
+/* To avoid first frame delay */
+#define EARLY_CALLBACK			BIT(1)
+/* Give callback at start of descriptor processing */
+#define EARLY_CALLBACK_START_DESC	BIT(2)
 /**
  * enum vid_frmwork_type - Linux video framework type
  * @XDMA_DRM: fourcc is of type DRM
@@ -32,6 +37,18 @@ enum vid_frmwork_type {
 enum operation_mode {
 	DEFAULT = 0x0,
 	AUTO_RESTART = BIT(7),
+};
+
+/**
+ * enum fid_modes - FB IP fid mode register settings to select mode
+ * @FID_MODE_0: carries the fid value shared by application
+ * @FID_MODE_1: sets the fid after first frame
+ * @FID_MODE_2: sets the fid after second frame
+ */
+enum fid_modes {
+	FID_MODE_0 = 0,
+	FID_MODE_1 = 1,
+	FID_MODE_2 = 2,
 };
 
 #if IS_ENABLED(CONFIG_XILINX_FRMBUF)
@@ -125,29 +142,61 @@ int xilinx_xdma_set_fid(struct dma_chan *chan,
 			struct dma_async_tx_descriptor *async_tx, u32 fid);
 
 /**
+ * xilinx_xdma_get_fid_err_flag - Get the Field ID error flag.
+ *
+ * @chan: dma channel instance
+ * @fid_err_flag: Field id error detect flag. 0 - no error, 1 - error.
+ *
+ * Return: 0 on success, -EINVAL in case of invalid chan
+ */
+int xilinx_xdma_get_fid_err_flag(struct dma_chan *chan,
+				 u32 *fid_err_flag);
+
+/**
+ * xilinx_xdma_get_fid_out - Get the Field ID out signal value.
+ *
+ * @chan: dma channel instance
+ * @fid_out_val: Field id out signal value.
+ *
+ * Return: 0 on success, -EINVAL in case of invalid chan
+ */
+int xilinx_xdma_get_fid_out(struct dma_chan *chan,
+			    u32 *fid_out_val);
+
+/**:
  * xilinx_xdma_get_earlycb - Get info if early callback has been enabled.
  *
  * @chan: dma channel instance
  * @async_tx: descriptor whose parent structure contains fid.
- * @enable: Output param - Early callback enabled
+ * @earlycb: Output param - Early callback mode
  *
  * Return: 0 on success, -EINVAL in case of invalid chan
  */
 int xilinx_xdma_get_earlycb(struct dma_chan *chan,
 			    struct dma_async_tx_descriptor *async_tx,
-			    bool *enable);
+			    u32 *earlycb);
 
 /**
  * xilinx_xdma_set_earlycb - Enable/Disable early callback
  * @chan: dma channel instance
  * @async_tx: dma async tx descriptor for the buffer
- * @enable: Flag to enable or disable early callback for descriptor.
+ * @earlycb: Enable early callback mode for descriptor
  *
  * Return: 0 on success, -EINVAL in case of invalid chan
  */
 int xilinx_xdma_set_earlycb(struct dma_chan *chan,
 			    struct dma_async_tx_descriptor *async_tx,
-			    bool enable);
+			    u32 earlycb);
+/**
+ * xilinx_xdma_get_width_align - Get width alignment value
+ *
+ * @chan: dma channel instance
+ * @width_align: width alignment value
+ *
+ * Return: 0 on success, -ENODEV in case no framebuffer device found
+ */
+int xilinx_xdma_get_width_align(struct dma_chan *chan, u32 *width_align);
+
 #else
 static inline void xilinx_xdma_set_mode(struct dma_chan *chan,
 					enum operation_mode mode)
@@ -188,14 +237,19 @@ static inline int xilinx_xdma_set_fid(struct dma_chan *chan,
 
 static inline int xilinx_xdma_get_earlycb(struct dma_chan *chan,
 					  struct dma_async_tx_descriptor *atx,
-					  bool *enable)
+					  u32 *earlycb)
 {
 	return -ENODEV;
 }
 
 static inline int xilinx_xdma_set_earlycb(struct dma_chan *chan,
 					  struct dma_async_tx_descriptor *atx,
-					  bool enable)
+					  u32 earlycb)
+{
+	return -ENODEV;
+}
+
+static inline int xilinx_xdma_get_width_align(struct dma_chan *chan, u32 *width_align)
 {
 	return -ENODEV;
 }
