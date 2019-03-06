@@ -145,7 +145,7 @@ struct xilinx_frmbuf_tx_descriptor {
 	struct xilinx_frmbuf_desc_hw hw;
 	struct list_head node;
 	u32 fid;
-	bool earlycb;
+	u32 earlycb;
 };
 
 /**
@@ -802,7 +802,7 @@ EXPORT_SYMBOL(xilinx_xdma_set_fid);
 
 int xilinx_xdma_get_earlycb(struct dma_chan *chan,
 			    struct dma_async_tx_descriptor *async_tx,
-			    bool *enable)
+			    u32 *earlycb)
 {
 	struct xilinx_frmbuf_device *xdev;
 	struct xilinx_frmbuf_tx_descriptor *desc;
@@ -811,21 +811,21 @@ int xilinx_xdma_get_earlycb(struct dma_chan *chan,
 	if (IS_ERR(xdev))
 		return PTR_ERR(xdev);
 
-	if (!async_tx || !enable)
+	if (!async_tx || !earlycb)
 		return -EINVAL;
 
 	desc = to_dma_tx_descriptor(async_tx);
 	if (!desc)
 		return -EINVAL;
 
-	*enable = desc->earlycb;
+	*earlycb = desc->earlycb;
 	return 0;
 }
 EXPORT_SYMBOL(xilinx_xdma_get_earlycb);
 
 int xilinx_xdma_set_earlycb(struct dma_chan *chan,
 			    struct dma_async_tx_descriptor *async_tx,
-			    bool enable)
+			    u32 earlycb)
 {
 	struct xilinx_frmbuf_device *xdev;
 	struct xilinx_frmbuf_tx_descriptor *desc;
@@ -841,7 +841,7 @@ int xilinx_xdma_set_earlycb(struct dma_chan *chan,
 	if (!desc)
 		return -EINVAL;
 
-	desc->earlycb = enable;
+	desc->earlycb = earlycb;
 	return 0;
 }
 EXPORT_SYMBOL(xilinx_xdma_set_earlycb);
@@ -1164,7 +1164,7 @@ static irqreturn_t xilinx_frmbuf_irq_handler(int irq, void *data)
 
 	/* Check if callback function needs to be called early */
 	desc = chan->staged_desc;
-	if (desc && desc->earlycb) {
+	if (desc && desc->earlycb == EARLY_CALLBACK) {
 		callback = desc->async_tx.callback;
 		callback_param = desc->async_tx.callback_param;
 		if (callback) {
