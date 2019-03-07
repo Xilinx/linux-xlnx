@@ -8,14 +8,16 @@ is format aware, only one buffer pointer is needed by the IP blocks even
 when planar or semi-planar format are used.
 
 FB Read Required propertie(s):
-- compatible		: Should be "xlnx,axi-frmbuf-rd-v2.1". Older string
+- compatible		: Should be "xlnx,axi-frmbuf-rd-v2.1" or
+			  "xlnx,axi-frmbuf-rd-v2.2". Older string
 			  "xlnx,axi-frmbuf-rd-v2" is now deprecated.
 
 Note: Compatible string "xlnx,axi-frmbuf-rd" and the hardware it
 represented is no longer supported.
 
 FB Write Required propertie(s):
-- compatible		: Should be "xlnx,axi-frmbuf-wr-v2.1". Older string
+- compatible		: Should be "xlnx,axi-frmbuf-wr-v2.1" or
+			  "xlnx,axi-frmbuf-wr-v2.2". Older string
 			  "xlnx,axi-frmbuf-wr-v2" is now deprecated.
 
 Note: Compatible string "xlnx,axi-frmbuf-wr" and the hardware it
@@ -33,9 +35,13 @@ Required Properties Common to both FB Read and FB Write:
 			  See VIDEO FORMATS table below and examples.
 
 Required Properties Common to both FB Read and FB Write for v2.1:
-- xlnx,pixels-per-clock	: Pixels per clock set in IP (1, 2 or 4)
+- xlnx,pixels-per-clock	: Pixels per clock set in IP (1, 2, 4 or 8)
 - clocks: Reference to the AXI Streaming clock feeding the AP_CLK
 - clock-names: Must have "ap_clk"
+- xlnx,max-height	: Maximum number of lines.
+			  Valid range from 64 to 8640.
+- xlnx,max-width	: Maximum number of pixels in a line.
+			  Valid range from 64 to 15360.
 
 Optional Properties Common to both FB Read and FB Write for v2.1:
 - xlnx,dma-align	: DMA alignment required in bytes.
@@ -47,10 +53,6 @@ Optional Properties Common to both FB Read and FB Write for v2.1:
 			  1, 2 or 4.
 - xlnx,fid		: Field ID enabled for interlaced video support.
 			  Can be absent for progressive video.
-
-Optional properties:
-- xlnx,max-height	: Maximum number of lines.
-- xlnx,max-width	: Maximum number of pixels in a line.
 
 VIDEO FORMATS
 The following table describes the legal string values to be used for
@@ -67,14 +69,17 @@ RGBA8		abgr8888	<not supported>		DRM_FORMAT_ABGR8888
 BGRA8		argb8888	<not supported>		DRM_FORMAT_ARGB8888
 BGRX8		xrgb8888	V4L2_PIX_FMT_XBGR32	DRM_FORMAT_XRGB8888
 RGBX10		xbgr2101010	V4L2_PIX_FMT_XBGR30	DRM_FORMAT_XBGR2101010
+RGBX12		xbgr2121212	V4L2_PIX_FMT_XBGR40	<not supported>
+RGBX16		rgb16		V4L2_PIX_FMT_BGR40	<not supported>
 YUV8		vuy888		V4L2_PIX_FMT_VUY24	DRM_FORMAT_VUY888
 YUVX8		xvuy8888	V4L2_PIX_FMT_XVUY32	DRM_FORMAT_XVUY8888
+Y_U_V8		y_u_v8		V4L2_PIX_FMT_YUV444M	DRM_FORMAT_YUV444
 YUYV8		yuyv		V4L2_PIX_FMT_YUYV	DRM_FORMAT_YUYV
 UYVY8		uyvy		V4L2_PIX_FMT_UYVY	DRM_FORMAT_UYVY
 YUVA8		avuy8888	<not supported>		DRM_FORMAT_AVUY
 YUVX10		yuvx2101010	V4L2_PIX_FMT_XVUY10	DRM_FORMAT_XVUY2101010
 Y8		y8		V4L2_PIX_FMT_GREY	DRM_FORMAT_Y8
-Y10		y10		V4L2_PIX_FMT_Y10	DRM_FORMAT_Y10
+Y10		y10		V4L2_PIX_FMT_XY10	DRM_FORMAT_Y10
 Y_UV8		nv16		V4L2_PIX_FMT_NV16	DRM_FORMAT_NV16
 Y_UV8		nv16		V4L2_PIX_FMT_NV16M	DRM_FORMAT_NV16
 Y_UV8_420	nv12		V4L2_PIX_FMT_NV12	DRM_FORMAT_NV12
