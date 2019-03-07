@@ -95,7 +95,9 @@
 #define XILINX_FRMBUF_FMT_BGRA8			26
 #define XILINX_FRMBUF_FMT_BGRX8			27
 #define XILINX_FRMBUF_FMT_UYVY8			28
-#define XILINX_FRMBUF_FMT_BGR8				29
+#define XILINX_FRMBUF_FMT_BGR8			29
+#define XILINX_FRMBUF_FMT_RGBX12		30
+#define XILINX_FRMBUF_FMT_RGB16			35
 
 /* FID Register */
 #define XILINX_FRMBUF_FID_MASK			BIT(0)
@@ -446,6 +448,24 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.drm_fmt = DRM_FORMAT_AVUY,
 		.v4l2_fmt = 0,
 		.fmt_bitmask = BIT(21),
+	},
+	{
+		.dts_name = "xbgr4121212",
+		.id = XILINX_FRMBUF_FMT_RGBX12,
+		.bpw = 40,
+		.ppw = 1,
+		.num_planes = 1,
+		.v4l2_fmt = V4L2_PIX_FMT_XBGR40,
+		.fmt_bitmask = BIT(22),
+	},
+	{
+		.dts_name = "rgb16",
+		.id = XILINX_FRMBUF_FMT_RGB16,
+		.bpw = 48,
+		.ppw = 1,
+		.num_planes = 1,
+		.v4l2_fmt = V4L2_PIX_FMT_BGR48,
+		.fmt_bitmask = BIT(23),
 	},
 };
 
