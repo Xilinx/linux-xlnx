@@ -60,6 +60,10 @@ static const struct xvip_video_format xvip_video_formats[] = {
 	  4, 32, V4L2_PIX_FMT_XBGR32, 1, 1, 1, 1 },
 	{ XVIP_VF_XBGR, 10, NULL, MEDIA_BUS_FMT_RBG888_1X24,
 	  4, 32, V4L2_PIX_FMT_XBGR30, 1, 1, 1, 1 },
+	{ XVIP_VF_XBGR, 12, NULL, MEDIA_BUS_FMT_RBG121212_1X36,
+	  3, 40, V4L2_PIX_FMT_XBGR40, 1, 1, 1, 1 },
+	{ XVIP_VF_RBG, 16, NULL, MEDIA_BUS_FMT_RBG161616_1X48,
+	  6, 48, V4L2_PIX_FMT_BGR48, 1, 1, 1, 1 },
 	{ XVIP_VF_MONO_SENSOR, 8, "mono", MEDIA_BUS_FMT_Y8_1X8,
 	  1, 8, V4L2_PIX_FMT_GREY, 1, 1, 1, 1 },
 	{ XVIP_VF_Y_GREY, 10, NULL, MEDIA_BUS_FMT_Y10_1X10,
@@ -72,6 +76,22 @@ static const struct xvip_video_format xvip_video_formats[] = {
 	  1, 8, V4L2_PIX_FMT_SGBRG8, 1, 1, 1, 1 },
 	{ XVIP_VF_MONO_SENSOR, 8, "bggr", MEDIA_BUS_FMT_SBGGR8_1X8,
 	  1, 8, V4L2_PIX_FMT_SBGGR8, 1, 1, 1, 1 },
+	{ XVIP_VF_MONO_SENSOR, 12, "rggb", MEDIA_BUS_FMT_SRGGB12_1X12,
+	  1, 12, V4L2_PIX_FMT_SRGGB12, 1, 1, 1, 1 },
+	{ XVIP_VF_MONO_SENSOR, 12, "grbg", MEDIA_BUS_FMT_SGRBG12_1X12,
+	  1, 12, V4L2_PIX_FMT_SGRBG12, 1, 1, 1, 1 },
+	{ XVIP_VF_MONO_SENSOR, 12, "gbrg", MEDIA_BUS_FMT_SGBRG12_1X12,
+	  1, 12, V4L2_PIX_FMT_SGBRG12, 1, 1, 1, 1 },
+	{ XVIP_VF_MONO_SENSOR, 12, "bggr", MEDIA_BUS_FMT_SBGGR12_1X12,
+	  1, 12, V4L2_PIX_FMT_SBGGR12, 1, 1, 1, 1 },
+	{ XVIP_VF_MONO_SENSOR, 16, "rggb", MEDIA_BUS_FMT_SRGGB16_1X16,
+	  1, 16, V4L2_PIX_FMT_SRGGB16, 1, 1, 1, 1 },
+	{ XVIP_VF_MONO_SENSOR, 16, "grbg", MEDIA_BUS_FMT_SGRBG16_1X16,
+	  1, 12, V4L2_PIX_FMT_SGRBG16, 1, 1, 1, 1 },
+	{ XVIP_VF_MONO_SENSOR, 16, "gbrg", MEDIA_BUS_FMT_SGBRG16_1X16,
+	  1, 12, V4L2_PIX_FMT_SGBRG16, 1, 1, 1, 1 },
+	{ XVIP_VF_MONO_SENSOR, 16, "bggr", MEDIA_BUS_FMT_SBGGR12_1X12,
+	  1, 12, V4L2_PIX_FMT_SBGGR16, 1, 1, 1, 1 },
 };
 
 /**
@@ -138,6 +158,10 @@ void xvip_bpl_scaling_factor(u32 fourcc, u32 *numerator, u32 *denominator)
 		*numerator = 10;
 		*denominator = 8;
 		break;
+	case V4L2_PIX_FMT_XBGR40:
+		*numerator = 12;
+		*denominator = 8;
+		break;
 	default:
 		*numerator = 1;
 		*denominator = 1;
@@ -164,6 +188,10 @@ void xvip_width_padding_factor(u32 fourcc, u32 *numerator, u32 *denominator)
 		/* 32 bits are required per 30 bits of data */
 		*numerator = 32;
 		*denominator = 30;
+		break;
+	case V4L2_PIX_FMT_XBGR40:
+		*numerator = 40;
+		*denominator = 36;
 		break;
 	default:
 		*numerator = 1;
