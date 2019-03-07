@@ -72,7 +72,7 @@
 #define XM2MVSC_HFLTCOEFF_L	0x2800
 #define XM2MVSC_HFLTCOEFF(x)	(XM2MVSC_HFLTCOEFF_L + 0x2000 * (x))
 
-#define XM2MSC_CHAN_REGS_START(x)	(0x100 + 0x200 * x)
+#define XM2MSC_CHAN_REGS_START(x)	(0x100 + 0x200 * (x))
 
 /*
  * IP has reserved area between XM2MSC_DSTIMGBUF0 and
