@@ -94,7 +94,12 @@
 #define REG_PAGE_SIZE_16K	4
 
 #define TEMP_BUF_SIZE		1024
+#define NVDDR_MODE_PACKET_SIZE	8
 #define SDR_MODE_PACKET_SIZE	4
+
+#define ONFI_DATA_INTERFACE_NVDDR	BIT(4)
+#define NVDDR_MODE			BIT(9)
+#define NVDDR_TIMING_MODE_SHIFT		3
 
 #define SDR_MODE_DEFLT_FREQ	80000000
 #define COL_ROW_ADDR(pos, val)	(((val) & 0xFF) << (8 * (pos)))
@@ -1095,57 +1100,6 @@ static irqreturn_t anfc_irq_handler(int irq, void *ptr)
 	return IRQ_NONE;
 }
 
-static int anfc_setup_data_interface(struct mtd_info *mtd, int csline,
-				     const struct nand_data_interface *conf)
-{
-	struct nand_chip *chip = mtd_to_nand(mtd);
-	struct anfc_nand_controller *nfc = to_anfc(chip->controller);
-	struct anfc_nand_chip *achip = to_anfc_nand(chip);
-	int err;
-	const struct nand_sdr_timings *sdr;
-	u32 inftimeval;
-	bool change_sdr_clk = false;
-
-	if (csline == NAND_DATA_IFACE_CHECK_ONLY)
-		return 0;
-
-	/*
-	 * If the controller is already in the same mode as flash device
-	 * then no need to change the timing mode again.
-	 */
-	sdr = nand_get_sdr_timings(conf);
-	if (IS_ERR(sdr))
-		return PTR_ERR(sdr);
-
-	if (sdr->mode < 0)
-		return -ENOTSUPP;
-
-	inftimeval = sdr->mode & 7;
-	if (sdr->mode >= 2 && sdr->mode <= 5)
-		change_sdr_clk = true;
-	/*
-	 * SDR timing modes 2-5 will not work for the arasan nand when
-	 * freq > 90 MHz, so reduce the freq in SDR modes 2-5 to < 90Mhz
-	 */
-	if (change_sdr_clk) {
-		clk_disable_unprepare(nfc->clk_sys);
-		err = clk_set_rate(nfc->clk_sys, SDR_MODE_DEFLT_FREQ);
-		if (err) {
-			dev_err(nfc->dev, "Can't set the clock rate\n");
-			return err;
-		}
-		err = clk_prepare_enable(nfc->clk_sys);
-		if (err) {
-			dev_err(nfc->dev, "Unable to enable sys clock.\n");
-			clk_disable_unprepare(nfc->clk_sys);
-			return err;
-		}
-	}
-	achip->inftimeval = inftimeval;
-
-	return 0;
-}
-
 static int anfc_nand_attach_chip(struct nand_chip *chip)
 {
 	struct mtd_info *mtd = nand_to_mtd(chip);
@@ -1175,6 +1129,64 @@ static const struct nand_controller_ops anfc_nand_controller_ops = {
 	.attach_chip = anfc_nand_attach_chip,
 };
 
+static int anfc_init_timing_mode(struct anfc_nand_controller *nfc,
+				 struct anfc_nand_chip *achip)
+{
+	struct nand_chip *chip = &achip->chip;
+	struct mtd_info *mtd = nand_to_mtd(chip);
+	int mode, err;
+	unsigned int feature[2];
+	u32 inftimeval;
+	bool change_sdr_clk = false;
+
+	memset(feature, 0, NVDDR_MODE_PACKET_SIZE);
+	/* Get nvddr timing modes */
+	mode = onfi_get_sync_timing_mode(chip) & 0xff;
+	if (!mode) {
+		mode = fls(onfi_get_async_timing_mode(chip)) - 1;
+		inftimeval = mode;
+		if (mode >= 2 && mode <= 5)
+			change_sdr_clk = true;
+	} else {
+		mode = fls(mode) - 1;
+		inftimeval = NVDDR_MODE | (mode << NVDDR_TIMING_MODE_SHIFT);
+		mode |= ONFI_DATA_INTERFACE_NVDDR;
+	}
+
+	feature[0] = mode;
+	chip->select_chip(mtd, achip->csnum);
+	err = chip->set_features(mtd, chip, ONFI_FEATURE_ADDR_TIMING_MODE,
+				      (uint8_t *)feature);
+	chip->select_chip(mtd, -1);
+	if (err)
+		return err;
+
+	/*
+	 * SDR timing modes 2-5 will not work for the arasan nand when
+	 * freq > 90 MHz, so reduce the freq in SDR modes 2-5 to < 90Mhz
+	 */
+	if (change_sdr_clk) {
+		clk_disable_unprepare(nfc->clk_sys);
+		err = clk_set_rate(nfc->clk_sys, SDR_MODE_DEFLT_FREQ);
+		if (err) {
+			dev_err(nfc->dev, "Can't set the clock rate\n");
+			return err;
+		}
+		err = clk_prepare_enable(nfc->clk_sys);
+		if (err) {
+			dev_err(nfc->dev, "Unable to enable sys clock.\n");
+			clk_disable_unprepare(nfc->clk_sys);
+			return err;
+		}
+	}
+	achip->inftimeval = inftimeval;
+
+	if (mode & ONFI_DATA_INTERFACE_NVDDR)
+		achip->spktsize = NVDDR_MODE_PACKET_SIZE;
+
+	return 0;
+}
+
 static int anfc_nand_chip_init(struct anfc_nand_controller *nfc,
 			       struct anfc_nand_chip *anand_chip,
 			       struct device_node *np)
@@ -1197,7 +1209,6 @@ static int anfc_nand_chip_init(struct anfc_nand_controller *nfc,
 	chip->options = NAND_BUSWIDTH_AUTO | NAND_NO_SUBPAGE_WRITE;
 	chip->bbt_options = NAND_BBT_USE_FLASH;
 	chip->select_chip = anfc_select_chip;
-	chip->setup_data_interface = anfc_setup_data_interface;
 	chip->exec_op = anfc_exec_op;
 	nand_set_flash_node(chip, np);
 
@@ -1206,6 +1217,12 @@ static int anfc_nand_chip_init(struct anfc_nand_controller *nfc,
 	ret = nand_scan(mtd, 1);
 	if (ret) {
 		dev_err(nfc->dev, "nand_scan_tail for NAND failed\n");
+		return ret;
+	}
+
+	ret = anfc_init_timing_mode(nfc, anand_chip);
+	if (ret) {
+		dev_err(nfc->dev, "timing mode init failed\n");
 		return ret;
 	}
 
