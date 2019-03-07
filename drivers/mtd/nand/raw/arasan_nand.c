@@ -492,7 +492,7 @@ static int anfc_read_page_hwecc(struct mtd_info *mtd,
 							   NULL, 0,
 							   chip->ecc.strength);
 			if (stat < 0) {
-				mtd->ecc_stats.failed++;
+				stat = 0;
 			} else {
 				mtd->ecc_stats.corrected += stat;
 				max_bitflips = max_t(unsigned int, max_bitflips,
