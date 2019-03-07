@@ -146,15 +146,27 @@ xdmsc_is_format_bayer(struct xdmsc_dev *xdmsc, u32 code)
 {
 	switch (code) {
 	case MEDIA_BUS_FMT_SRGGB8_1X8:
+	case MEDIA_BUS_FMT_SRGGB10_1X10:
+	case MEDIA_BUS_FMT_SRGGB12_1X12:
+	case MEDIA_BUS_FMT_SRGGB16_1X16:
 		xdmsc->bayer_fmt = XDEMOSAIC_RGGB;
 		break;
 	case MEDIA_BUS_FMT_SGRBG8_1X8:
+	case MEDIA_BUS_FMT_SGRBG10_1X10:
+	case MEDIA_BUS_FMT_SGRBG12_1X12:
+	case MEDIA_BUS_FMT_SGRBG16_1X16:
 		xdmsc->bayer_fmt = XDEMOSAIC_GRBG;
 		break;
 	case MEDIA_BUS_FMT_SGBRG8_1X8:
+	case MEDIA_BUS_FMT_SGBRG10_1X10:
+	case MEDIA_BUS_FMT_SGBRG12_1X12:
+	case MEDIA_BUS_FMT_SGBRG16_1X16:
 		xdmsc->bayer_fmt = XDEMOSAIC_GBRG;
 		break;
 	case MEDIA_BUS_FMT_SBGGR8_1X8:
+	case MEDIA_BUS_FMT_SBGGR10_1X10:
+	case MEDIA_BUS_FMT_SBGGR12_1X12:
+	case MEDIA_BUS_FMT_SBGGR16_1X16:
 		xdmsc->bayer_fmt = XDEMOSAIC_BGGR;
 		break;
 	default:
@@ -180,7 +192,10 @@ static int xdmsc_set_format(struct v4l2_subdev *subdev,
 				   XDEMOSAIC_MIN_HEIGHT, xdmsc->max_height);
 
 	if (fmt->pad == XVIP_PAD_SOURCE) {
-		if (__format->code != MEDIA_BUS_FMT_RBG888_1X24) {
+		if (__format->code != MEDIA_BUS_FMT_RBG888_1X24 &&
+		    __format->code != MEDIA_BUS_FMT_RBG101010_1X30 &&
+		    __format->code != MEDIA_BUS_FMT_RBG121212_1X36 &&
+		    __format->code != MEDIA_BUS_FMT_RBG161616_1X48) {
 			dev_dbg(xdmsc->xvip.dev,
 				"%s : Unsupported source media bus code format",
 				__func__);
