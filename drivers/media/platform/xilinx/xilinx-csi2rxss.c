@@ -387,8 +387,8 @@ enum CSI_DataTypes {
 	MIPI_CSI_DT_RAW_10,
 	MIPI_CSI_DT_RAW_12,
 	MIPI_CSI_DT_RAW_14,
-	MIPI_CSI_DT_RAW_RSVD_2E,
-	MIPI_CSI_DT_RAW_RSVD_2F,
+	MIPI_CSI_DT_RAW_16,
+	MIPI_CSI_DT_RAW_20,
 	MIPI_CSI_DT_USER_30,
 	MIPI_CSI_DT_USER_31,
 	MIPI_CSI_DT_USER_32,
@@ -586,7 +586,9 @@ static const struct pixel_format pixel_formats[] = {
 	{ MIPI_CSI_DT_RAW_8, "RAW8" },
 	{ MIPI_CSI_DT_RAW_10, "RAW10" },
 	{ MIPI_CSI_DT_RAW_12, "RAW12" },
-	{ MIPI_CSI_DT_RAW_14, "RAW14 "}
+	{ MIPI_CSI_DT_RAW_14, "RAW14"},
+	{ MIPI_CSI_DT_RAW_16, "RAW16"},
+	{ MIPI_CSI_DT_RAW_20, "RAW20"}
 };
 
 static struct xcsi2rxss_event xcsi2rxss_events[] = {
@@ -1361,7 +1363,12 @@ static int xcsi2rxss_set_format(struct v4l2_subdev *sd,
 		((fmt->format.code == MEDIA_BUS_FMT_SBGGR12_1X12) ||
 		 (fmt->format.code == MEDIA_BUS_FMT_SGBRG12_1X12) ||
 		 (fmt->format.code == MEDIA_BUS_FMT_SGRBG12_1X12) ||
-		 (fmt->format.code == MEDIA_BUS_FMT_SRGGB12_1X12))))
+		 (fmt->format.code == MEDIA_BUS_FMT_SRGGB12_1X12))) ||
+	((core->datatype == MIPI_CSI_DT_RAW_16) &&
+		((fmt->format.code == MEDIA_BUS_FMT_SBGGR16_1X16) ||
+		 (fmt->format.code == MEDIA_BUS_FMT_SGBRG16_1X16) ||
+		 (fmt->format.code == MEDIA_BUS_FMT_SGRBG16_1X16) ||
+		 (fmt->format.code == MEDIA_BUS_FMT_SRGGB16_1X16))))
 
 		/* Copy over the format to be set */
 		*__format = fmt->format;
@@ -1633,7 +1640,7 @@ static int xcsi2rxss_parse_of(struct xcsi2rxss_state *xcsi2rxss)
 
 	core->datatype = xcsi2rxss_pxlfmtstrtodt(core->pxlformat);
 	if ((core->datatype < MIPI_CSI_DT_YUV_420_8B) ||
-		(core->datatype > MIPI_CSI_DT_RAW_14)) {
+		(core->datatype > MIPI_CSI_DT_RAW_20)) {
 		dev_err(core->dev, "Invalid xlnx,csi-pxl-format string\n");
 		return -EINVAL;
 	}
