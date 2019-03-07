@@ -596,7 +596,6 @@ static void anfc_parse_instructions(struct nand_chip *chip,
 	struct anfc_nand_controller *nfc = to_anfc(chip->controller);
 	unsigned int op_id;
 	int i = 0;
-	const u8 *addrs;
 
 	memset(nfc_op, 0, sizeof(struct anfc_op));
 	for (op_id = 0; op_id < subop->ninstrs; op_id++) {
@@ -617,7 +616,6 @@ static void anfc_parse_instructions(struct nand_chip *chip,
 			i = nand_subop_get_addr_start_off(subop, op_id);
 			naddrs = nand_subop_get_num_addr_cyc(subop,
 							     op_id);
-			addrs = &instr->ctx.addr.addrs[i];
 
 			for (; i < naddrs; i++) {
 				u8 val = instr->ctx.addr.addrs[i];
@@ -931,19 +929,14 @@ static int anfc_page_read_type_exec(struct nand_chip *chip,
 static int anfc_zero_len_page_write_type_exec(struct nand_chip *chip,
 					      const struct nand_subop *subop)
 {
-	const struct nand_op_instr *instr;
 	struct anfc_nand_chip *achip = to_anfc_nand(chip);
 	struct anfc_nand_controller *nfc = to_anfc(chip->controller);
-	unsigned int op_id;
 	struct anfc_op nfc_op = {};
 	struct mtd_info *mtd = nand_to_mtd(chip);
 	u32 addrcycles;
 
 	anfc_parse_instructions(chip, subop, &nfc_op);
 	nfc->prog = PROG_PGRD;
-	instr = nfc_op.data_instr;
-	op_id = nfc_op.data_instr_idx;
-
 	addrcycles = achip->raddr_cycles + achip->caddr_cycles;
 
 	anfc_prepare_cmd(nfc, nfc_op.cmds[0], NAND_CMD_PAGEPROG, 1,
