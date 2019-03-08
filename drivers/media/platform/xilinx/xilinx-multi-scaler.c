@@ -1947,6 +1947,58 @@ static const struct v4l2_ioctl_ops xm2msc_ioctl_ops = {
 	.vidioc_streamoff = xm2msc_streamoff,
 };
 
+static void xm2msc_set_q_data(struct xm2msc_chan_ctx *chan_ctx,
+			      const struct xm2msc_fmt *fmt,
+			      enum v4l2_buf_type type)
+{
+	struct xm2msc_q_data *q_data;
+	struct xm2m_msc_dev *xm2msc = chan_ctx->xm2msc_dev;
+
+	q_data = get_q_data(chan_ctx, type);
+
+	q_data->fmt = fmt;
+	q_data->width = xm2msc->max_wd;
+	q_data->height = xm2msc->max_ht;
+	q_data->field = V4L2_FIELD_NONE;
+	q_data->nbuffs = q_data->fmt->num_buffs;
+
+	q_data->stride = xm2msc_cal_stride(q_data->width,
+					   q_data->fmt->xm2msc_fmt,
+					   xm2msc->ppc);
+
+	xm2msc_cal_imagesize(chan_ctx, q_data, type);
+}
+
+static int xm2msc_set_chan_parm(struct xm2msc_chan_ctx *chan_ctx)
+{
+	int ret = 0;
+	unsigned int i;
+	struct xm2m_msc_dev *xm2msc = chan_ctx->xm2msc_dev;
+
+	chan_ctx->output_stride_align = 1;
+	chan_ctx->output_height_align = 1;
+	chan_ctx->capture_stride_align = 1;
+	chan_ctx->capture_height_align = 1;
+
+	for (i = 0; i < ARRAY_SIZE(formats); i++) {
+		if (xm2msc_chk_fmt(xm2msc, i))
+			break;
+	}
+
+	/* No supported format */
+	if (i == ARRAY_SIZE(formats)) {
+		dev_err(xm2msc->dev, "no supported format found\n");
+		return -EINVAL;
+	}
+
+	xm2msc_set_q_data(chan_ctx, &formats[i],
+			  V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE);
+	xm2msc_set_q_data(chan_ctx, &formats[i],
+			  V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE);
+
+	return ret;
+}
+
 static int xm2msc_open(struct file *file)
 {
 	struct xm2m_msc_dev *xm2msc = video_drvdata(file);
@@ -2004,10 +2056,7 @@ static int xm2msc_open(struct file *file)
 	chan_ctx->status |= CHAN_OPENED;
 	chan_ctx->xm2msc_dev = xm2msc;
 	chan_ctx->frames = 0;
-	chan_ctx->output_stride_align = 1;
-	chan_ctx->output_height_align = 1;
-	chan_ctx->capture_stride_align = 1;
-	chan_ctx->capture_height_align = 1;
+
 	xm2msc_set_chan(chan_ctx, true);
 
 	v4l2_info(&xm2msc->v4l2_dev, "Channel %d instance created\n", chan);
@@ -2335,6 +2384,12 @@ static int xm2m_msc_probe(struct platform_device *pdev)
 			chan_ctx->regs += XM2MSC_RESERVED_AREA;
 		chan_ctx->num = chan;
 		chan_ctx->minor = vfd->minor;
+
+		/* Set channel parameters to default values */
+		ret = xm2msc_set_chan_parm(chan_ctx);
+		if (ret)
+			goto unreg_dev;
+
 		xm2msc_pr_chanctx(chan_ctx, __func__);
 	}
 
@@ -2354,7 +2409,7 @@ static int xm2m_msc_probe(struct platform_device *pdev)
 
 	return 0;
 
- unreg_dev:
+unreg_dev:
 	xm2msc_unreg_video_n_m2m(xm2msc);
 	v4l2_device_unregister(&xm2msc->v4l2_dev);
 reg_dev_err:
