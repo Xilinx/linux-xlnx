@@ -718,8 +718,10 @@ static int zynqmp_r5_probe(struct zynqmp_r5_pdata *pdata,
 	}
 
 	/* Check if R5 is running */
-	if (r5_is_running(pdata))
+	if (r5_is_running(pdata)) {
 		atomic_inc(&rproc->power);
+		rproc->state = RPROC_RUNNING;
+	}
 
 	if (!of_get_property(dev->of_node, "mboxes", NULL)) {
 		dev_info(dev, "no mailboxes.\n");
