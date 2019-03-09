@@ -16154,6 +16154,14 @@ S:	Maintained
 F:	drivers/uio/uio_xilinx_apm.c
 F:	Documentation/devicetree/bindings/uio/xilinx_apm.txt
 
+XILINX CAN DRIVER
+M:	Shubhrajyoti Datta <shubhrajyoti.datta@xilinx.com>
+R:	Naga Sureshkumar Relli <naga.sureshkumar.relli@xilinx.com>
+R:	Appana Durga Kedareswara rao <appana.durga.rao@xilinx.com>
+S:	Maintained
+F:	drivers/net/can/xilinx_can.c
+F:	Documentation/devicetree/bindings/net/can/xilinx_can.txt
+
 XILINX DMA FRAMEBUFFER READ/WRITE DRIVER
 M:	Vishal Sagar <vishal.sagar@xilinx.com>
 R:	Hyun Kwon <hyun.kwon@xilinx.com>
