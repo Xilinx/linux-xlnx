@@ -1,0 +1,4 @@
+config ERNIC
+       tristate "Xilinx ERNIC driver"
+       help
+         Driver for the XILINX Embedded Remote DMA(RDMA) Enabled NIC.
