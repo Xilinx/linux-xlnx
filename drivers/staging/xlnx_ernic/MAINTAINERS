@@ -1,0 +1,4 @@
+XILINX EMBEDDED REMOTE DMA ENABLED NIC
+M:	Sandeep Dhanvada <sandeep.dhanvada@xilinx.com>
+S:	Maintained
+F:	drivers/staging/xlnx_ernic
