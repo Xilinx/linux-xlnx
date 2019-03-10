@@ -1,0 +1,29 @@
+Xilinx Embedded RDMA NIC (ERNIC)
+--------------------------------
+
+The Xilinx Embedded Remote DMA(RDMA) NIC is an implementation of
+RDMA over Converged Ethernet (RoCEv2) enabled NIC functionality.
+
+Supported features by ERNIC are:
+1. both IPv4 and IPv6.
+2. 100 Gb/s data path.
+3. Incoming and outgoing RDMA READ, RDMA WRITE and RDMA SEND.
+
+Required properties:
+- compatible : Must contain "xlnx,ernic-1.0".
+- interrupts: Contains the interrupt line numbers.
+- reg: Physical base address and length of the registers set for the device.
+
+ernic_0: ernic@84000000 {
+	compatible = "xlnx,ernic-1.0";
+	interrupts = <4 2
+			5 2
+			6 2
+			7 2
+			8 2
+			9 2
+			10 2
+			11 2
+			12 2>;
+	reg = <0x84000000 0x40000>;
+};
