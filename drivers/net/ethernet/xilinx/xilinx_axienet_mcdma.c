@@ -389,8 +389,8 @@ irqreturn_t __maybe_unused axienet_mcdma_tx_irq(int irq, void *_ndev)
 		return IRQ_NONE;
 	if (status & XMCDMA_IRQ_ERR_MASK) {
 		dev_err(&ndev->dev, "DMA Tx error 0x%x\n", status);
-		dev_err(&ndev->dev, "Current BD is at: 0x%x\n",
-			(q->txq_bd_v[q->tx_bd_ci]).phys);
+		dev_err(&ndev->dev, "Current BD is at: %pa\n",
+			&q->txq_bd_v[q->tx_bd_ci].phys);
 
 		cr = axienet_dma_in32(q, XMCDMA_CHAN_CR_OFFSET(q->chan_id));
 		/* Disable coalesce, delay timer and error interrupts */
@@ -463,8 +463,8 @@ irqreturn_t __maybe_unused axienet_mcdma_rx_irq(int irq, void *_ndev)
 
 	if (status & XMCDMA_IRQ_ERR_MASK) {
 		dev_err(&ndev->dev, "DMA Rx error 0x%x\n", status);
-		dev_err(&ndev->dev, "Current BD is at: 0x%x\n",
-			(q->rxq_bd_v[q->rx_bd_ci]).phys);
+		dev_err(&ndev->dev, "Current BD is at: %pa\n",
+			&q->rxq_bd_v[q->rx_bd_ci].phys);
 
 		cr = axienet_dma_in32(q, XMCDMA_CHAN_CR_OFFSET(q->chan_id));
 		/* Disable coalesce, delay timer and error interrupts */
