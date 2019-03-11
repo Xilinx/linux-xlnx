@@ -312,56 +312,38 @@ static void zynqmp_qspi_set_tapdelay(struct zynqmp_qspi *xqspi, u32 baudrateval)
 	reqhz = (clk_rate / (GQSPI_BAUD_DIV_SHIFT << baudrateval));
 
 	if (!xqspi->has_tapdelay) {
-		if (reqhz < GQSPI_FREQ_40MHZ) {
+		if (reqhz <= GQSPI_FREQ_40MHZ) {
 			eemi_ops->ioctl(NODE_QSPI, IOCTL_SET_TAPDELAY_BYPASS,
 					   PM_TAPDELAY_QSPI,
 					   PM_TAPDELAY_BYPASS_ENABLE,
 					   NULL);
-		} else if (reqhz < GQSPI_FREQ_100MHZ) {
+		} else if (reqhz <= GQSPI_FREQ_100MHZ) {
 			eemi_ops->ioctl(NODE_QSPI, IOCTL_SET_TAPDELAY_BYPASS,
 					   PM_TAPDELAY_QSPI,
 					   PM_TAPDELAY_BYPASS_ENABLE,
 					   NULL);
-			lpbkdlyadj = zynqmp_gqspi_read(xqspi,
-					GQSPI_LPBK_DLY_ADJ_OFST);
 			lpbkdlyadj |= (GQSPI_LPBK_DLY_ADJ_USE_LPBK_MASK);
-			datadlyadj = zynqmp_gqspi_read(xqspi,
-					GQSPI_DATA_DLY_ADJ_OFST);
 			datadlyadj |= ((GQSPI_USE_DATA_DLY <<
 					GQSPI_USE_DATA_DLY_SHIFT)
 					| (GQSPI_DATA_DLY_ADJ_VALUE <<
 						GQSPI_DATA_DLY_ADJ_SHIFT));
-		} else if (reqhz < GQSPI_FREQ_150MHZ) {
-			lpbkdlyadj = zynqmp_gqspi_read(xqspi,
-					GQSPI_LPBK_DLY_ADJ_OFST);
-			lpbkdlyadj |= ((GQSPI_LPBK_DLY_ADJ_USE_LPBK_MASK) |
-					GQSPI_LPBK_DLY_ADJ_DLY_0);
+		} else if (reqhz <= GQSPI_FREQ_150MHZ) {
+			lpbkdlyadj |= GQSPI_LPBK_DLY_ADJ_USE_LPBK_MASK;
 		}
 	} else {
-		if (reqhz < GQSPI_FREQ_40MHZ) {
-			tapdlybypass = zynqmp_gqspi_read(xqspi,
-					IOU_TAPDLY_BYPASS_OFST);
+		if (reqhz <= GQSPI_FREQ_40MHZ) {
 			tapdlybypass |= (TAP_DLY_BYPASS_LQSPI_RX_VALUE <<
 					TAP_DLY_BYPASS_LQSPI_RX_SHIFT);
-		} else if (reqhz < GQSPI_FREQ_100MHZ) {
-			tapdlybypass = zynqmp_gqspi_read(xqspi,
-					IOU_TAPDLY_BYPASS_OFST);
+		} else if (reqhz <= GQSPI_FREQ_100MHZ) {
 			tapdlybypass |= (TAP_DLY_BYPASS_LQSPI_RX_VALUE <<
 					TAP_DLY_BYPASS_LQSPI_RX_SHIFT);
-			lpbkdlyadj = zynqmp_gqspi_read(xqspi,
-					GQSPI_LPBK_DLY_ADJ_OFST);
 			lpbkdlyadj |= (GQSPI_LPBK_DLY_ADJ_USE_LPBK_MASK);
-			datadlyadj = zynqmp_gqspi_read(xqspi,
-					GQSPI_DATA_DLY_ADJ_OFST);
 			datadlyadj |= ((GQSPI_USE_DATA_DLY <<
 					GQSPI_USE_DATA_DLY_SHIFT)
 					| (GQSPI_DATA_DLY_ADJ_VALUE <<
 						GQSPI_DATA_DLY_ADJ_SHIFT));
-		} else if (reqhz < GQSPI_FREQ_150MHZ) {
-			lpbkdlyadj = zynqmp_gqspi_read(xqspi,
-					GQSPI_LPBK_DLY_ADJ_OFST);
-			lpbkdlyadj |= ((GQSPI_LPBK_DLY_ADJ_USE_LPBK_MASK) |
-					GQSPI_LPBK_DLY_ADJ_DLY_0);
+		} else if (reqhz <= GQSPI_FREQ_150MHZ) {
+			lpbkdlyadj |= GQSPI_LPBK_DLY_ADJ_USE_LPBK_MASK;
 		}
 		zynqmp_gqspi_write(xqspi,
 				IOU_TAPDLY_BYPASS_OFST, tapdlybypass);
