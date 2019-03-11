@@ -59,6 +59,9 @@ Optional properties (When AxiEthernet is configured with MCDMA):
 Optional properties (When USXGMII is in use):
 - xlnx,usxgmii-rate	: USXGMII PHY speed - can be 10, 100, 1000, 2500,
 			  5000 or 10000.
+Optional properties for connected DMA node:
+- xlnx,addrwidth	: Specify the width of the DMA address space in bits.
+			  Valid range is 32-64. Default is 32.
 
 NOTE: Time Sensitive Networking (TSN) related DT bindings are explained in [4].
 
