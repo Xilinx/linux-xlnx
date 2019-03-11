@@ -2381,6 +2381,13 @@ static int __maybe_unused axienet_mcdma_probe(struct platform_device *pdev,
 		return ret;
 	}
 
+	ret = of_property_read_u8(np, "xlnx,addrwidth", (u8 *)&lp->dma_mask);
+	if (ret < 0 || lp->dma_mask < XAE_DMA_MASK_MIN ||
+	    lp->dma_mask > XAE_DMA_MASK_MAX) {
+		dev_info(&pdev->dev, "missing/invalid xlnx,addrwidth property, using default\n");
+		lp->dma_mask = XAE_DMA_MASK_MIN;
+	}
+
 	lp->mcdma_regs = devm_ioremap_resource(&pdev->dev, &dmares);
 	if (IS_ERR(lp->mcdma_regs)) {
 		dev_err(&pdev->dev, "iormeap failed for the dma\n");
@@ -2432,6 +2439,14 @@ static int __maybe_unused axienet_dma_probe(struct platform_device *pdev,
 				return -ENODEV;
 			q->eth_hasdre = of_property_read_bool(np,
 							"xlnx,include-dre");
+			ret = of_property_read_u8(np, "xlnx,addrwidth",
+						  (u8 *)&lp->dma_mask);
+			if (ret <  0 || lp->dma_mask < XAE_DMA_MASK_MIN ||
+			    lp->dma_mask > XAE_DMA_MASK_MAX) {
+				dev_info(&pdev->dev, "missing/invalid xlnx,addrwidth property, using default\n");
+				lp->dma_mask = XAE_DMA_MASK_MIN;
+			}
+
 		} else {
 			return -EINVAL;
 		}
@@ -3024,6 +3039,14 @@ static int axienet_probe(struct platform_device *pdev)
 		if (ret) {
 			pr_err("Getting DMA resource failed\n");
 			goto free_netdev;
+		}
+
+		if (dma_set_mask_and_coherent(lp->dev, DMA_BIT_MASK(lp->dma_mask)) != 0) {
+			dev_warn(&pdev->dev, "default to %d-bit dma mask\n", XAE_DMA_MASK_MIN);
+			if (dma_set_mask_and_coherent(lp->dev, DMA_BIT_MASK(XAE_DMA_MASK_MIN)) != 0) {
+				dev_err(&pdev->dev, "dma_set_mask_and_coherent failed, aborting\n");
+				goto free_netdev;
+			}
 		}
 
 		ret = axienet_dma_clk_init(pdev);
