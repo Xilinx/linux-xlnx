@@ -35,6 +35,8 @@
 #define CLK_TYPE_FIELD_MASK		0xF
 #define CLK_FLAG_FIELD_MASK		GENMASK(21, 8)
 #define CLK_TYPE_FLAG_FIELD_MASK	GENMASK(31, 24)
+#define CLK_TYPE_FLAG2_FIELD_MASK	GENMASK(7, 4)
+#define CLK_TYPE_FLAG_BITS		8
 
 #define CLK_PARENTS_ID_LEN		16
 #define CLK_PARENTS_ID_MASK		0xFFFF
@@ -378,6 +380,9 @@ static int __zynqmp_clock_get_topology(struct clock_topology *topology,
 						   data[i]);
 		topology[*nnodes].type_flag =
 				FIELD_GET(CLK_TYPE_FLAG_FIELD_MASK, data[i]);
+		topology[*nnodes].type_flag |=
+			FIELD_GET(CLK_TYPE_FLAG2_FIELD_MASK, data[i]) <<
+			CLK_TYPE_FLAG_BITS;
 		(*nnodes)++;
 	}
 
