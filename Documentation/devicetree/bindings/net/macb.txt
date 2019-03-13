@@ -34,9 +34,6 @@ Optional properties for PHY child node:
 
 Optional properties:
 - tsu-clk: Time stamp unit clock frequency used.
-- phy-reset-gpio: GPIO number for phy reset.
-- phy-reset-duration: Reset duration in milliseconds.
-- phy-reset-active-low: Boolean flag to indicate if phy reset is active low.
 - rx-watermark: Set watermark value for pbuf_rxcutthru reg and enable
   rx partial store and forward, only when compatible = "cdns,zynqmp-gem".
   Value should be less than 0xFFF.
