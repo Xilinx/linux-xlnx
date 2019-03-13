@@ -162,7 +162,7 @@ static int zynqmp_pm_feature(u32 api_id)
 		return PM_FEATURE_INVALID;
 	}
 
-	zynqmp_pm_features[api_id] = ret_payload[0];
+	zynqmp_pm_features[api_id] = ret_payload[1];
 
 	return zynqmp_pm_features[api_id];
 }
