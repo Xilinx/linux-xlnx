@@ -532,7 +532,7 @@ static void xlnx_dsi_connector_create_property(struct drm_connector *connector)
 	struct drm_device *dev = connector->dev;
 	struct xlnx_dsi *dsi  = connector_to_dsi(connector);
 
-	dsi->eotp_prop = drm_property_create_bool(dev, 1, "eotp");
+	dsi->eotp_prop = drm_property_create_bool(dev, 0, "eotp");
 	dsi->video_mode_prop = drm_property_create_range(dev, 0, "video_mode",
 							 0, 2);
 	dsi->bllp_mode_prop = drm_property_create_bool(dev, 0, "bllp_mode");
