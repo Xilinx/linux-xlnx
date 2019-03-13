@@ -7,11 +7,13 @@
  * Author: Hyun Woo Kwon <hyun.kwon@xilinx.com>
  */
 
+#include <linux/mm.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
 #include <linux/platform_data/uio_dmem_genirq.h>
 #include <linux/platform_device.h>
+#include <linux/uio_driver.h>
 
 #define DRIVER_NAME "xilinx-aiengine"
 
@@ -23,6 +25,64 @@ static uint xilinx_ai_engine_mem_size = 32 * 1024 * 1024;
 module_param_named(mem_size, xilinx_ai_engine_mem_size, uint, 0444);
 MODULE_PARM_DESC(mem_size,
 		 "Dynamic memory allocation size in bytes (default: 32 MB)");
+
+static int xilinx_ai_engine_mem_index(struct uio_info *info,
+				      struct vm_area_struct *vma)
+{
+	if (vma->vm_pgoff < MAX_UIO_MAPS) {
+		if (info->mem[vma->vm_pgoff].size == 0)
+			return -1;
+		return (int)vma->vm_pgoff;
+	}
+	return -1;
+}
+
+static const struct vm_operations_struct xilinx_ai_engine_vm_ops = {
+#ifdef CONFIG_HAVE_IOREMAP_PROT
+	.access = generic_access_phys,
+#endif
+};
+
+static int xilinx_ai_engine_mmap(struct uio_info *info,
+				 struct vm_area_struct *vma)
+{
+	int mi = xilinx_ai_engine_mem_index(info, vma);
+	struct uio_mem *mem;
+
+	if (mi < 0)
+		return -EINVAL;
+	mem = info->mem + mi;
+
+	if (mem->addr & ~PAGE_MASK)
+		return -ENODEV;
+	if (vma->vm_end - vma->vm_start > mem->size)
+		return -EINVAL;
+
+	vma->vm_ops = &xilinx_ai_engine_vm_ops;
+	/*
+	 * Make the dynamic memory mapping as write-combined. Only first one
+	 * will be the mmio region, which will be mapped as noncached.
+	 */
+	if (mi < 1)
+		vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
+	else
+		vma->vm_page_prot = pgprot_writecombine(vma->vm_page_prot);
+
+	/*
+	 * We cannot use the vm_iomap_memory() helper here,
+	 * because vma->vm_pgoff is the map index we looked
+	 * up above in uio_find_mem_index(), rather than an
+	 * actual page offset into the mmap.
+	 *
+	 * So we just do the physical mmap without a page
+	 * offset.
+	 */
+	return remap_pfn_range(vma,
+			       vma->vm_start,
+			       mem->addr >> PAGE_SHIFT,
+			       vma->vm_end - vma->vm_start,
+			       vma->vm_page_prot);
+}
 
 static int xilinx_ai_engine_probe(struct platform_device *pdev)
 {
@@ -48,6 +108,7 @@ static int xilinx_ai_engine_probe(struct platform_device *pdev)
 	pdata->uioinfo.name = DRIVER_NAME;
 	pdata->uioinfo.version = "devicetree";
 	pdata->uioinfo.irq = UIO_IRQ_CUSTOM;
+	pdata->uioinfo.mmap = xilinx_ai_engine_mmap;
 	/* Set the offset value as it's map index for each memory */
 	for (i = 0; i < MAX_UIO_MAPS; i++)
 		pdata->uioinfo.mem[i].offs = i << PAGE_SHIFT;
