@@ -36,7 +36,7 @@
  */
 struct zynqmp_clk_divider {
 	struct clk_hw hw;
-	u8 flags;
+	u16 flags;
 	u32 clk_id;
 	u32 div_type;
 };
