@@ -25,7 +25,7 @@
 #define to_zynqmp_clk_divider(_hw)		\
 	container_of(_hw, struct zynqmp_clk_divider, hw)
 
-#define CLK_FRAC	BIT(13) /* has a fractional parent */
+#define CLK_FRAC	BIT(8) /* has a fractional parent */
 
 /**
  * struct zynqmp_clk_divider - adjustable divider clock
