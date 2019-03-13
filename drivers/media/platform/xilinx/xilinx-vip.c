@@ -32,6 +32,14 @@ static const struct xvip_video_format xvip_video_formats[] = {
 	  1, 12, V4L2_PIX_FMT_XV15, 2, 1, 2, 2 },
 	{ XVIP_VF_YUV_420, 10, NULL, MEDIA_BUS_FMT_VYYUYY8_1X24,
 	  1, 12, V4L2_PIX_FMT_XV15M, 2, 2, 1, 2 },
+	{ XVIP_VF_YUV_420, 12, NULL, MEDIA_BUS_FMT_UYYVYY12_4X24,
+	  1, 12, V4L2_PIX_FMT_X012, 2, 1, 2, 2 },
+	{ XVIP_VF_YUV_420, 12, NULL, MEDIA_BUS_FMT_UYYVYY12_4X24,
+	  1, 12, V4L2_PIX_FMT_X012M, 2, 2, 1, 2 },
+	{ XVIP_VF_YUV_420, 16, NULL, MEDIA_BUS_FMT_UYYVYY16_4X32,
+	  2, 12, V4L2_PIX_FMT_X016, 2, 1, 2, 2 },
+	{ XVIP_VF_YUV_420, 16, NULL, MEDIA_BUS_FMT_UYYVYY16_4X32,
+	  2, 12, V4L2_PIX_FMT_X016M, 2, 2, 1, 2 },
 	{ XVIP_VF_YUV_422, 8, NULL, MEDIA_BUS_FMT_UYVY8_1X16,
 	  2, 16, V4L2_PIX_FMT_YUYV, 1, 1, 2, 1 },
 	{ XVIP_VF_VUY_422, 8, NULL, MEDIA_BUS_FMT_UYVY8_1X16,
@@ -44,6 +52,14 @@ static const struct xvip_video_format xvip_video_formats[] = {
 	  1, 16, V4L2_PIX_FMT_XV20, 2, 1, 2, 1 },
 	{ XVIP_VF_YUV_422, 10, NULL, MEDIA_BUS_FMT_UYVY8_1X16,
 	  1, 16, V4L2_PIX_FMT_XV20M, 2, 2, 1, 1 },
+	{ XVIP_VF_YUV_422, 12, NULL, MEDIA_BUS_FMT_UYVY12_1X24,
+	  1, 16, V4L2_PIX_FMT_X212, 2, 1, 2, 1 },
+	{ XVIP_VF_YUV_422, 12, NULL, MEDIA_BUS_FMT_UYVY12_1X24,
+	  1, 16, V4L2_PIX_FMT_X212M, 2, 2, 1, 1 },
+	{ XVIP_VF_YUV_422, 16, NULL, MEDIA_BUS_FMT_UYVY12_1X24,
+	  2, 16, V4L2_PIX_FMT_X216, 2, 1, 2, 1 },
+	{ XVIP_VF_YUV_422, 16, NULL, MEDIA_BUS_FMT_UYVY12_1X24,
+	  2, 16, V4L2_PIX_FMT_X216M, 2, 2, 1, 1 },
 	{ XVIP_VF_YUV_444, 8, NULL, MEDIA_BUS_FMT_VUY8_1X24,
 	  3, 24, V4L2_PIX_FMT_VUY24, 1, 1, 1, 1 },
 	{ XVIP_VF_YUVX, 8, NULL, MEDIA_BUS_FMT_VUY8_1X24,
@@ -67,7 +83,11 @@ static const struct xvip_video_format xvip_video_formats[] = {
 	{ XVIP_VF_MONO_SENSOR, 8, "mono", MEDIA_BUS_FMT_Y8_1X8,
 	  1, 8, V4L2_PIX_FMT_GREY, 1, 1, 1, 1 },
 	{ XVIP_VF_Y_GREY, 10, NULL, MEDIA_BUS_FMT_Y10_1X10,
-	  4, 32, V4L2_PIX_FMT_Y10, 1, 1, 1, 1 },
+	  4, 32, V4L2_PIX_FMT_XY10, 1, 1, 1, 1 },
+	{ XVIP_VF_Y_GREY, 12, NULL, MEDIA_BUS_FMT_Y12_1X12,
+	  1, 12, V4L2_PIX_FMT_XY12, 1, 1, 1, 1 },
+	{ XVIP_VF_Y_GREY, 16, NULL, MEDIA_BUS_FMT_Y16_1X16,
+	  2, 16, V4L2_PIX_FMT_Y16, 1, 1, 1, 1 },
 	{ XVIP_VF_MONO_SENSOR, 8, "rggb", MEDIA_BUS_FMT_SRGGB8_1X8,
 	  1, 8, V4L2_PIX_FMT_SGRBG8, 1, 1, 1, 1 },
 	{ XVIP_VF_MONO_SENSOR, 8, "grbg", MEDIA_BUS_FMT_SGRBG8_1X8,
@@ -159,6 +179,11 @@ void xvip_bpl_scaling_factor(u32 fourcc, u32 *numerator, u32 *denominator)
 		*denominator = 8;
 		break;
 	case V4L2_PIX_FMT_XBGR40:
+	case V4L2_PIX_FMT_XY12:
+	case V4L2_PIX_FMT_X012:
+	case V4L2_PIX_FMT_X012M:
+	case V4L2_PIX_FMT_X212:
+	case V4L2_PIX_FMT_X212M:
 		*numerator = 12;
 		*denominator = 8;
 		break;
@@ -190,6 +215,11 @@ void xvip_width_padding_factor(u32 fourcc, u32 *numerator, u32 *denominator)
 		*denominator = 30;
 		break;
 	case V4L2_PIX_FMT_XBGR40:
+	case V4L2_PIX_FMT_XY12:
+	case V4L2_PIX_FMT_X012:
+	case V4L2_PIX_FMT_X012M:
+	case V4L2_PIX_FMT_X212:
+	case V4L2_PIX_FMT_X212M:
 		*numerator = 40;
 		*denominator = 36;
 		break;
