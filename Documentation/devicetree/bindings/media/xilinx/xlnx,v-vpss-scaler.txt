@@ -25,6 +25,12 @@ Required properties:
 - reset-gpios: Specifier for a GPIO that assert for VPSS Scaler reset.
   This property is mandatory for the Scaler
 
+- xlnx,max-height: Maximum number of lines.
+  Valid range from 64 to 4320.
+
+- xlnx,max-width: Maximum number of pixels in a line.
+  Valid range from 64 to 8192.
+
 - ports: Video ports, using the DT bindings defined in ../video-interfaces.txt.
   The scaler has an input port (0) and an output port (1).
 
@@ -41,11 +47,6 @@ Required port properties:
 
 - xlnx,video-width: Video width as defined in video.txt
 
-Optional properties:
-
-- xlnx,max-height: Maximum number of lines.
-- xlnx,max-width: Maximum number of pixels in a line.
-
 Example:
 
 	scaler_1:scaler@a0000000 {
@@ -57,6 +58,8 @@ Example:
 		xlnx,num-vert-taps = <8>;
 		xlnx,pix-per-clk = <2>;
 		reset-gpios = <&gpio 87 1>;
+		xlnx,max-width = <3840>;
+		xlnx,max-height = <2160>;
 
 		ports {
 			#address-cells = <1>;
