@@ -195,6 +195,32 @@ static ssize_t remote_kick_store(struct device *dev,
 }
 static DEVICE_ATTR_RW(remote_kick);
 
+/**
+ * remote_pending_message_show() - Show pending message sent from remote
+ * @dev: remoteproc device
+ * @attr: sysfs device attribute
+ * @buf: sysfs buffer
+ *
+ * It shows the pending message sent from remote
+ *
+ * Return: length of pending remote message.
+ */
+static ssize_t remote_pending_message_show(struct device *dev,
+					   struct device_attribute *attr,
+					   char *buf)
+{
+	struct rproc *rproc = to_rproc(dev);
+	size_t len;
+
+	if (rproc_peek_remote_kick(rproc, buf, &len)) {
+		buf[len] = '0';
+		return len;
+	} else {
+		return -EAGAIN;
+	}
+}
+static DEVICE_ATTR_RO(remote_pending_message);
+
 static struct attribute *rproc_attrs[] = {
 	&dev_attr_firmware.attr,
 	&dev_attr_state.attr,
@@ -237,8 +263,15 @@ int rproc_create_kick_sysfs(struct rproc *rproc)
 		return ret;
 	}
 	ret = sysfs_create_file(&dev->kobj, &dev_attr_remote_kick.attr);
-	if (ret)
+	if (ret) {
 		dev_err(dev, "failed to create sysfs for remote kick.\n");
+		return ret;
+	}
+	ret = sysfs_create_file(&dev->kobj,
+				&dev_attr_remote_pending_message.attr);
+	if (ret)
+		dev_err(dev,
+			"failed to create sysfs for remote pending message.\n");
 	return ret;
 }
 EXPORT_SYMBOL(rproc_create_kick_sysfs);
