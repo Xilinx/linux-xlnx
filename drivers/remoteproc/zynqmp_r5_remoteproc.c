@@ -24,6 +24,7 @@
 #include <linux/kernel.h>
 #include <linux/list.h>
 #include <linux/mailbox_client.h>
+#include <linux/mailbox/zynqmp-ipi-message.h>
 #include <linux/module.h>
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
@@ -32,6 +33,7 @@
 #include <linux/pfn.h>
 #include <linux/platform_device.h>
 #include <linux/remoteproc.h>
+#include <linux/skbuff.h>
 #include <linux/slab.h>
 #include <linux/sysfs.h>
 
@@ -77,6 +79,7 @@ struct zynqmp_r5_mem {
  * @tx_chan: tx mailbox channel
  * @rx_chan: rx mailbox channel
  * @workqueue: workqueue for the RPU remoteproc
+ * @tx_mc_skbs: socket buffers for tx mailbox client
  */
 struct zynqmp_r5_pdata {
 	struct device dev;
@@ -90,6 +93,7 @@ struct zynqmp_r5_pdata {
 	struct mbox_chan *tx_chan;
 	struct mbox_chan *rx_chan;
 	struct work_struct workqueue;
+	struct sk_buff_head tx_mc_skbs;
 };
 
 /**
@@ -369,13 +373,30 @@ static void zynqmp_r5_rproc_kick(struct rproc *rproc, int vqid)
 {
 	struct device *dev = rproc->dev.parent;
 	struct zynqmp_r5_pdata *local = rproc->priv;
+	struct zynqmp_ipi_message *mb_msg;
+	struct sk_buff *skb;
+	unsigned int skb_len;
 	int ret;
 
 	dev_dbg(dev, "KICK Firmware to start send messages vqid %d\n", vqid);
 
-	ret = mbox_send_message(local->tx_chan, NULL);
-	if (ret < 0)
+	skb_len = (unsigned int)(sizeof(vqid) + sizeof(mb_msg));
+	skb = alloc_skb(skb_len, GFP_ATOMIC);
+	if (!skb) {
+		dev_err(dev, "Failed to allocate skb to kick remote.\n");
+		return;
+	}
+	mb_msg = (struct zynqmp_ipi_message *)skb_put(skb, skb_len);
+	mb_msg->len = sizeof(vqid);
+	memcpy(mb_msg->data, &vqid, sizeof(vqid));
+	skb_queue_tail(&local->tx_mc_skbs, skb);
+	ret = mbox_send_message(local->tx_chan, mb_msg);
+	if (ret < 0) {
 		dev_warn(dev, "Failed to kick remote.\n");
+		skb_dequeue(&local->tx_mc_skbs);
+		kfree_skb(skb);
+	}
+
 }
 
 static bool zynqmp_r5_rproc_peek_remote_kick(struct rproc *rproc)
@@ -513,6 +534,7 @@ static void zynqmp_r5_release(struct device *dev)
 {
 	struct zynqmp_r5_pdata *pdata;
 	struct rproc *rproc;
+	struct sk_buff *skb;
 
 	pdata = dev_get_drvdata(dev);
 	rproc = pdata->rproc;
@@ -524,6 +546,12 @@ static void zynqmp_r5_release(struct device *dev)
 		mbox_free_channel(pdata->tx_chan);
 	if (pdata->rx_chan)
 		mbox_free_channel(pdata->rx_chan);
+	/* Discard all SKBs */
+	while (!skb_queue_empty(&pdata->tx_mc_skbs)) {
+		skb = skb_dequeue(&pdata->tx_mc_skbs);
+		kfree_skb(skb);
+	}
+
 	put_device(dev->parent);
 }
 
@@ -590,6 +618,26 @@ static void zynqmp_r5_mb_rx_cb(struct mbox_client *cl, void *mssg)
 }
 
 /**
+ * zynqmp_r5_mb_tx_done() - Request has been sent to the remote
+ * @cl: mailbox client
+ * @mssg: pointer to the message which has been sent
+ * @r: status of last TX - OK or error
+ *
+ * It will be called by the mailbox framework when the last TX has done.
+ */
+static void zynqmp_r5_mb_tx_done(struct mbox_client *cl, void *mssg, int r)
+{
+	struct zynqmp_r5_pdata *local;
+	struct sk_buff *skb;
+
+	if (!mssg)
+		return;
+	local = container_of(cl, struct zynqmp_r5_pdata, tx_mc);
+	skb = skb_dequeue(&local->tx_mc_skbs);
+	kfree_skb(skb);
+}
+
+/**
  * zynqmp_r5_setup_mbox() - Setup mailboxes
  *
  * @pdata: pointer to the ZynqMP R5 processor platform data
@@ -611,6 +659,7 @@ static int zynqmp_r5_setup_mbox(struct zynqmp_r5_pdata *pdata,
 	mclient->rx_callback = NULL;
 	mclient->tx_block = false;
 	mclient->knows_txdone = false;
+	mclient->tx_done = zynqmp_r5_mb_tx_done;
 
 	/* Setup TX mailbox channel client */
 	mclient = &pdata->rx_mc;
@@ -634,6 +683,7 @@ static int zynqmp_r5_setup_mbox(struct zynqmp_r5_pdata *pdata,
 		pdata->rx_chan = NULL;
 		return -EINVAL;
 	}
+	skb_queue_head_init(&pdata->tx_mc_skbs);
 	return 0;
 }
 
