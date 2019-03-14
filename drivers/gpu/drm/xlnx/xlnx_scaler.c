@@ -33,6 +33,8 @@
 #define XSCALER_MAX_WIDTH		(3840)
 #define XSCALER_MAX_HEIGHT		(2160)
 #define XSCALER_MAX_PHASES		(64)
+#define XSCALER_MIN_WIDTH		(64)
+#define XSCALER_MIN_HEIGHT		(64)
 
 /* Video subsytems block offset */
 #define S_AXIS_RESET_OFF		(0x00010000)
@@ -1418,6 +1420,28 @@ static int xilinx_scaler_parse_of(struct xilinx_scaler *scaler)
 		return PTR_ERR(scaler->rst_gpio);
 	}
 
+	ret = of_property_read_u32(node, "xlnx,max-height",
+				   &scaler->max_lines);
+	if (ret < 0) {
+		dev_err(scaler->dev, "xlnx,max-height is missing!");
+		return -EINVAL;
+	} else if (scaler->max_lines > XSCALER_MAX_HEIGHT ||
+		   scaler->max_lines < XSCALER_MIN_HEIGHT) {
+		dev_err(scaler->dev, "Invalid height in dt");
+		return -EINVAL;
+	}
+
+	ret = of_property_read_u32(node, "xlnx,max-width",
+				   &scaler->max_pixels);
+	if (ret < 0) {
+		dev_err(scaler->dev, "xlnx,max-width is missing!");
+		return -EINVAL;
+	} else if (scaler->max_pixels > XSCALER_MAX_WIDTH ||
+		   scaler->max_pixels < XSCALER_MIN_WIDTH) {
+		dev_err(scaler->dev, "Invalid width in dt");
+		return -EINVAL;
+	}
+
 	return 0;
 }
 
@@ -1663,8 +1687,6 @@ static int xilinx_scaler_probe(struct platform_device *pdev)
 	}
 
 	scaler->max_num_phases = XSCALER_MAX_PHASES;
-	scaler->max_lines = XSCALER_MAX_HEIGHT;
-	scaler->max_pixels = XSCALER_MAX_WIDTH;
 
 	/* Reset the Global IP Reset through a GPIO */
 	gpiod_set_value_cansleep(scaler->rst_gpio, XSCALER_RESET_DEASSERT);
