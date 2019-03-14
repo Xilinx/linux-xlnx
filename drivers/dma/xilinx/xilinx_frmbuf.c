@@ -1538,7 +1538,8 @@ static int xilinx_frmbuf_probe(struct platform_device *pdev)
 
 	err = of_property_read_u32(node, "xlnx,max-height", &xdev->max_height);
 	if (err < 0) {
-		xdev->max_height = XILINX_FRMBUF_MAX_HEIGHT;
+		dev_err(xdev->dev, "xlnx,max-height is missing!");
+		return -EINVAL;
 	} else if (xdev->max_height > XILINX_FRMBUF_MAX_HEIGHT ||
 		   xdev->max_height < XILINX_FRMBUF_MIN_HEIGHT) {
 		dev_err(&pdev->dev, "Invalid height in dt");
@@ -1547,7 +1548,8 @@ static int xilinx_frmbuf_probe(struct platform_device *pdev)
 
 	err = of_property_read_u32(node, "xlnx,max-width", &xdev->max_width);
 	if (err < 0) {
-		xdev->max_width = XILINX_FRMBUF_MAX_WIDTH;
+		dev_err(xdev->dev, "xlnx,max-width is missing!");
+		return -EINVAL;
 	} else if (xdev->max_width > XILINX_FRMBUF_MAX_WIDTH ||
 		   xdev->max_width < XILINX_FRMBUF_MIN_WIDTH) {
 		dev_err(&pdev->dev, "Invalid width in dt");
