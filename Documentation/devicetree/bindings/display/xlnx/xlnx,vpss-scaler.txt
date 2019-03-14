@@ -29,6 +29,12 @@ Required properties:
 - clock-names: Must contain "aclk_ctrl" and "aclk_axis" in same order as clocks
   listed in clocks property.
 
+- xlnx,max-width: Maximum number of pixels in a line.
+  Valid range from 64 to 8192.
+
+- xlnx,max-height: Maximum number of lines in a frame.
+  Valid range from 64 to 4320.
+
 Example:
 	scaler@a0040000 {
 		compatible = "xlnx,vpss-scaler";
@@ -39,4 +45,6 @@ Example:
 		xlnx,pix-per-clk = <2>;
 		clock-names = "aclk_ctrl", "aclk_axis";
 		clocks = <&misc_clk_0>, <&misc_clk_1>;
+		xlnx,max-width = <3840>;
+		xlnx,max-height = <2160>;
 	}
