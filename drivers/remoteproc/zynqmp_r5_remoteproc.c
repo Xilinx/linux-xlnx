@@ -13,6 +13,7 @@
  * Copyright (C) 2011 Google, Inc.
  */
 
+#include <linux/atomic.h>
 #include <linux/cpu.h>
 #include <linux/dma-mapping.h>
 #include <linux/delay.h>
@@ -47,6 +48,12 @@
 /* PM proc states */
 #define PM_PROC_STATE_ACTIVE 1U
 
+/* IPI buffer MAX length */
+#define IPI_BUF_LEN_MAX	32U
+/* RX mailbox client buffer max length */
+#define RX_MBOX_CLIENT_BUF_MAX	(IPI_BUF_LEN_MAX + \
+				 sizeof(struct zynqmp_ipi_message))
+
 static bool autoboot __read_mostly;
 static bool allow_sysfs_kick __read_mostly;
 
@@ -80,6 +87,8 @@ struct zynqmp_r5_mem {
  * @rx_chan: rx mailbox channel
  * @workqueue: workqueue for the RPU remoteproc
  * @tx_mc_skbs: socket buffers for tx mailbox client
+ * @rx_mc_buf: rx mailbox client buffer to save the rx message
+ * @remote_kick: flag to indicate if there is a kick from remote
  */
 struct zynqmp_r5_pdata {
 	struct device dev;
@@ -94,6 +103,8 @@ struct zynqmp_r5_pdata {
 	struct mbox_chan *rx_chan;
 	struct work_struct workqueue;
 	struct sk_buff_head tx_mc_skbs;
+	unsigned char rx_mc_buf[RX_MBOX_CLIENT_BUF_MAX];
+	atomic_t remote_kick;
 };
 
 /**
@@ -399,14 +410,26 @@ static void zynqmp_r5_rproc_kick(struct rproc *rproc, int vqid)
 
 }
 
-static bool zynqmp_r5_rproc_peek_remote_kick(struct rproc *rproc)
+static bool zynqmp_r5_rproc_peek_remote_kick(struct rproc *rproc,
+					     char *buf, size_t *len)
 {
 	struct device *dev = rproc->dev.parent;
 	struct zynqmp_r5_pdata *local = rproc->priv;
 
 	dev_dbg(dev, "Peek if remote has kicked\n");
 
-	return mbox_client_peek_data(local->rx_chan);
+	if (atomic_read(&local->remote_kick) != 0) {
+		if (buf && len) {
+			struct zynqmp_ipi_message *msg;
+
+			msg = (struct zynqmp_ipi_message *)local->rx_mc_buf;
+			memcpy(buf, msg->data, msg->len);
+			*len = (size_t)msg->len;
+		}
+		return true;
+	} else {
+		return false;
+	}
 }
 
 static void zynqmp_r5_rproc_ack_remote_kick(struct rproc *rproc)
@@ -416,6 +439,7 @@ static void zynqmp_r5_rproc_ack_remote_kick(struct rproc *rproc)
 
 	dev_dbg(dev, "Ack remote\n");
 
+	atomic_set(&local->remote_kick, 0);
 	(void)mbox_send_message(local->rx_chan, NULL);
 }
 
@@ -612,8 +636,19 @@ static void zynqmp_r5_mb_rx_cb(struct mbox_client *cl, void *mssg)
 {
 	struct zynqmp_r5_pdata *local;
 
-	(void)mssg;
 	local = container_of(cl, struct zynqmp_r5_pdata, rx_mc);
+	if (mssg) {
+		struct zynqmp_ipi_message *ipi_msg, *buf_msg;
+		size_t len;
+
+		ipi_msg = (struct zynqmp_ipi_message *)mssg;
+		buf_msg = (struct zynqmp_ipi_message *)local->rx_mc_buf;
+		len = (ipi_msg->len >= IPI_BUF_LEN_MAX) ?
+		      IPI_BUF_LEN_MAX : ipi_msg->len;
+		buf_msg->len = len;
+		memcpy(buf_msg->data, ipi_msg->data, len);
+	}
+	atomic_set(&local->remote_kick, 1);
 	schedule_work(&local->workqueue);
 }
 
@@ -670,6 +705,7 @@ static int zynqmp_r5_setup_mbox(struct zynqmp_r5_pdata *pdata,
 
 	INIT_WORK(&pdata->workqueue, handle_event_notified);
 
+	atomic_set(&pdata->remote_kick, 0);
 	/* Request TX and RX channels */
 	pdata->tx_chan = mbox_request_channel_byname(&pdata->tx_mc, "tx");
 	if (IS_ERR(pdata->tx_chan)) {
