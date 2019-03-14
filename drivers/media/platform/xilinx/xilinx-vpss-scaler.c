@@ -29,8 +29,6 @@
 #define XSCALER_MAX_WIDTH		(8192)
 #define XSCALER_MIN_HEIGHT		(64)
 #define XSCALER_MAX_HEIGHT		(4320)
-#define XSCALER_DEF_MAX_WIDTH		(3840)
-#define XSCALER_DEF_MAX_HEIGHT		(2160)
 #define XSCALER_MAX_PHASES		(64)
 
 /* Modify to defaults incase it is not configured from application */
@@ -1596,7 +1594,8 @@ static int xscaler_parse_of(struct xscaler_device *xscaler)
 	ret = of_property_read_u32(node, "xlnx,max-height",
 				   &xscaler->max_lines);
 	if (ret < 0) {
-		xscaler->max_lines = XSCALER_DEF_MAX_HEIGHT;
+		dev_err(dev, "xlnx,max-height is missing!");
+		return -EINVAL;
 	} else if (xscaler->max_lines > XSCALER_MAX_HEIGHT ||
 		   xscaler->max_lines < XSCALER_MIN_HEIGHT) {
 		dev_err(dev, "Invalid height in dt");
@@ -1606,7 +1605,8 @@ static int xscaler_parse_of(struct xscaler_device *xscaler)
 	ret = of_property_read_u32(node, "xlnx,max-width",
 				   &xscaler->max_pixels);
 	if (ret < 0) {
-		xscaler->max_pixels = XSCALER_DEF_MAX_WIDTH;
+		dev_err(dev, "xlnx,max-width is missing!");
+		return -EINVAL;
 	} else if (xscaler->max_pixels > XSCALER_MAX_WIDTH ||
 		   xscaler->max_pixels < XSCALER_MIN_WIDTH) {
 		dev_err(dev, "Invalid width in dt");
