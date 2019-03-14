@@ -12,6 +12,10 @@ Required properties:
 - clocks: Reference to the clock that drives the ap_clk
 	  signal of Video Gamma Lookup.
 
+- xlnx,max-height: Maximum number of lines. Valid range is 64 to 4320.
+
+- xlnx,max-width: Maximum number of pixels in a line. Valid range is 64 to 8192.
+
 - reset-gpios: Specifier for a GPIO that asserts Gamma IP (AP_RST_N) reset
 
 - ports: Video ports, using the DT bindings defined in ../video-interfaces.txt.
@@ -25,18 +29,15 @@ Required port properties:
 
 - xlnx,video-width: Video width as defined in video.txt. Can be either 8 or 10.
 
-Optional properties:
-
-- xlnx,max-height: Maximum number of lines.
-- xlnx,max-width: Maximum number of pixels in a line.
-
-Example :
+Example:
 
 	gamma_lut_1: gamma_lut_1@0xa0080000 {
 		compatible = "xlnx,v-gamma-lut";
 		reg = <0x0 0xa0080000 0x0 0x10000>;
 		clocks = <&vid_stream_clk>;
 		reset-gpios = <&gpio 83 1>;
+		xlnx,max-height = <2160>;
+		xlnx,max-width = <3840>;
 		ports {
 			#address-cells = <1>;
 			#size-cells = <0>;
