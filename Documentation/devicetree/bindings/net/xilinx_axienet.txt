@@ -42,8 +42,6 @@ Optional properties:
 - dma-coherent		: Present if dma operations are coherent.
 - xlnx,eth-hasnobuf	: Used when 1G MAC is configured in non-processor mode.
 - xlnx,rxtsfifo 	: Configures the axi fifo for receive timestamping.
-- xlnx,include-dre	: Tells whether DMA h/w is configured with data
-			  realignment engine(DRE) or not.
 - xlnx,eth-hasptp	: Tells whether PTP is enabled in h/w or not.
 - axififo-connected	: Should contain the phandle of AXI stream fifo.
 - clocks		: Input clock specifier. Refer to common clock bindings.
@@ -62,6 +60,8 @@ Optional properties (When USXGMII is in use):
 Optional properties for connected DMA node:
 - xlnx,addrwidth	: Specify the width of the DMA address space in bits.
 			  Valid range is 32-64. Default is 32.
+- xlnx,include-dre	: Tells whether DMA h/w is configured with data
+			  realignment engine(DRE) or not.
 
 NOTE: Time Sensitive Networking (TSN) related DT bindings are explained in [4].
 
