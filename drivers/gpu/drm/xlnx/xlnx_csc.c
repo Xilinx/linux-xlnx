@@ -61,6 +61,11 @@
 #define XCSC_RESET_ASSERT		(1)
 #define XCSC_RESET_DEASSERT		(0)
 
+#define XCSC_MIN_WIDTH			(64)
+#define XCSC_MAX_WIDTH			(8192)
+#define XCSC_MIN_HEIGHT			(64)
+#define XCSC_MAX_HEIGHT			(4320)
+
 static const u32 xilinx_csc_video_fmts[] = {
 	MEDIA_BUS_FMT_RGB888_1X24,
 	MEDIA_BUS_FMT_VUY8_1X24,
@@ -88,6 +93,8 @@ enum vpss_csc_color_fmt {
  * @clip_max: clipping maximum value
  * @width: width of the video
  * @height: height of video
+ * @max_width: maximum number of pixels in a line
+ * @max_height: maximum number of lines per frame
  * @rst_gpio: Handle to GPIO specifier to assert/de-assert the reset line
  * @aclk: IP clock struct
  */
@@ -102,6 +109,8 @@ struct xilinx_csc {
 	s32 clip_max;
 	u32 width;
 	u32 height;
+	u32 max_width;
+	u32 max_height;
 	struct gpio_desc *rst_gpio;
 	struct clk *aclk;
 };
@@ -303,6 +312,13 @@ static int xilinx_csc_bridge_set_input(struct xlnx_bridge *bridge, u32 width,
 	struct xilinx_csc *csc = bridge_to_layer(bridge);
 
 	xcsc_set_default_state(csc);
+
+	if (height > csc->max_height || height < XCSC_MIN_HEIGHT)
+		return -EINVAL;
+
+	if (width > csc->max_width || width < XCSC_MIN_WIDTH)
+		return -EINVAL;
+
 	csc->height = height;
 	csc->width = width;
 
@@ -446,6 +462,26 @@ static int xcsc_parse_of(struct xilinx_csc *csc)
 		if (PTR_ERR(csc->rst_gpio) != -EPROBE_DEFER)
 			dev_err(csc->dev, "Reset GPIO not setup in DT");
 		return PTR_ERR(csc->rst_gpio);
+	}
+
+	ret = of_property_read_u32(node, "xlnx,max-height", &csc->max_height);
+	if (ret < 0) {
+		dev_err(csc->dev, "xlnx,max-height is missing!");
+		return -EINVAL;
+	} else if (csc->max_height > XCSC_MAX_HEIGHT ||
+		   csc->max_height < XCSC_MIN_HEIGHT) {
+		dev_err(csc->dev, "Invalid height in dt");
+		return -EINVAL;
+	}
+
+	ret = of_property_read_u32(node, "xlnx,max-width", &csc->max_width);
+	if (ret < 0) {
+		dev_err(csc->dev, "xlnx,max-width is missing!");
+		return -EINVAL;
+	} else if (csc->max_width > XCSC_MAX_WIDTH ||
+		   csc->max_width < XCSC_MIN_WIDTH) {
+		dev_err(csc->dev, "Invalid width in dt");
+		return -EINVAL;
 	}
 
 	return 0;
