@@ -957,7 +957,8 @@ static int xcsc_parse_of(struct xcsc_dev *xcsc)
 
 	rval = of_property_read_u32(node, "xlnx,max-height", &xcsc->max_height);
 	if (rval < 0) {
-		xcsc->max_height = XV_CSC_MAX_HEIGHT;
+		dev_err(dev, "xlnx,max-height is missing!");
+		return -EINVAL;
 	} else if (xcsc->max_height > XV_CSC_MAX_HEIGHT ||
 		   xcsc->max_height < XV_CSC_MIN_HEIGHT) {
 		dev_err(dev, "Invalid height in dt");
@@ -966,7 +967,8 @@ static int xcsc_parse_of(struct xcsc_dev *xcsc)
 
 	rval = of_property_read_u32(node, "xlnx,max-width", &xcsc->max_width);
 	if (rval < 0) {
-		xcsc->max_width = XV_CSC_MAX_WIDTH;
+		dev_err(dev, "xlnx,max-width is missing!");
+		return -EINVAL;
 	} else if (xcsc->max_width > XV_CSC_MAX_WIDTH ||
 		   xcsc->max_width < XV_CSC_MIN_WIDTH) {
 		dev_err(dev, "Invalid width in dt");
