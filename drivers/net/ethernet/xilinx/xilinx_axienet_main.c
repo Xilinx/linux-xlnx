@@ -1001,7 +1001,8 @@ static int axienet_skb_tstsmp(struct sk_buff **__skb, struct axienet_dma_q *q,
 }
 #endif
 
-int axienet_queue_xmit(struct sk_buff *skb, struct net_device *ndev, u16 map)
+static int axienet_queue_xmit(struct sk_buff *skb,
+			      struct net_device *ndev, u16 map)
 {
 	u32 ii;
 	u32 num_frag;
@@ -1457,27 +1458,6 @@ static irqreturn_t axienet_err_irq(int irq, void *_ndev)
 	}
 
 	return IRQ_HANDLED;
-}
-
-/**
- * map_dma_q_irq - Map dma q based on interrupt number.
- * @irq:	irq number
- * @lp:		axienet local structure
- *
- * Return: DMA queue.
- *
- * This returns the DMA number on which interrupt has occurred.
- */
-int map_dma_q_irq(int irq, struct axienet_local *lp)
-{
-	int i;
-
-	for_each_rx_dma_queue(lp, i) {
-		if (irq == lp->dq[i]->tx_irq || irq == lp->dq[i]->rx_irq)
-			return i;
-	}
-	pr_err("Error mapping DMA irq\n");
-	return -ENODEV;
 }
 
 static int axienet_mii_init(struct net_device *ndev)
