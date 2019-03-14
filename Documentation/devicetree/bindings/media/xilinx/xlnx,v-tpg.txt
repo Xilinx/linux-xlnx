@@ -7,6 +7,7 @@ Required properties:
 
     "xlnx,v-tpg-5.0" (TPG version 5.0)
     "xlnx,v-tpg-7.0" (TPG version 7.0)
+    "xlnx,v-tpg-8.0" (TPG version 8.0)
 
   TPG versions backward-compatible with previous versions should list all
   compatible versions in the newer to older order.
@@ -33,11 +34,13 @@ Optional properties:
   video timings.
 
 - reset-gpios: Specifier for a GPIO that assert TPG (AP_RST_N) reset.
-  This property is mandatory for TPG v7.0.
+  This property is mandatory for TPG v7.0 and above.
 
 - xlnx,max-height: Maximum number of lines.
+  This property is mandatory for TPG v8.0. Value ranges from 64 to 7760.
 
 - xlnx,max-width: Maximum number of pixels in a line.
+  This property is mandatory for TPG v8.0. Value ranges from 64 to 10328.
 
 The xlnx,vtc and timing-gpios properties are mandatory when the TPG is
 synthesized with two ports and forbidden when synthesized with one port.
