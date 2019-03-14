@@ -459,6 +459,7 @@ static int xtpg_enum_frame_size(struct v4l2_subdev *subdev,
 				struct v4l2_subdev_frame_size_enum *fse)
 {
 	struct v4l2_mbus_framefmt *format;
+	struct xtpg_device *xtpg = to_tpg(subdev);
 
 	format = v4l2_subdev_get_try_format(subdev, cfg, fse->pad);
 
@@ -470,10 +471,10 @@ static int xtpg_enum_frame_size(struct v4l2_subdev *subdev,
 	 * the sink pad size.
 	 */
 	if (fse->pad == 0) {
-		fse->min_width = XVIP_MIN_WIDTH;
-		fse->max_width = XVIP_MAX_WIDTH;
-		fse->min_height = XVIP_MIN_HEIGHT;
-		fse->max_height = XVIP_MAX_HEIGHT;
+		fse->min_width = XTPG_MIN_WIDTH;
+		fse->max_width = xtpg->max_width;
+		fse->min_height = XTPG_MIN_HEIGHT;
+		fse->max_height = xtpg->max_height;
 	} else {
 		fse->min_width = format->width;
 		fse->max_width = format->width;
@@ -947,12 +948,16 @@ static int xtpg_parse_of(struct xtpg_device *xtpg)
 	bool has_endpoint = false;
 	int ret;
 
-	if (of_device_is_compatible(dev->of_node, "xlnx,v-tpg-7.0"))
+	if (!of_device_is_compatible(dev->of_node, "xlnx,v-tpg-5.0"))
 		xtpg->is_hls = true;
 
 	ret = of_property_read_u32(node, "xlnx,max-height",
 				   &xtpg->max_height);
 	if (ret < 0) {
+		if (of_device_is_compatible(dev->of_node, "xlnx,v-tpg-8.0")) {
+			dev_err(dev, "xlnx,max-height dt property is missing!");
+			return -EINVAL;
+		}
 		xtpg->max_height = XTPG_MAX_HEIGHT;
 	} else if (xtpg->max_height > XTPG_MAX_HEIGHT ||
 		   xtpg->max_height < XTPG_MIN_HEIGHT) {
@@ -963,6 +968,10 @@ static int xtpg_parse_of(struct xtpg_device *xtpg)
 	ret = of_property_read_u32(node, "xlnx,max-width",
 				   &xtpg->max_width);
 	if (ret < 0) {
+		if (of_device_is_compatible(dev->of_node, "xlnx,v-tpg-8.0")) {
+			dev_err(dev, "xlnx,max-width dt property is missing!");
+			return -EINVAL;
+		}
 		xtpg->max_width = XTPG_MAX_WIDTH;
 	} else if (xtpg->max_width > XTPG_MAX_WIDTH ||
 		   xtpg->max_width < XTPG_MIN_WIDTH) {
@@ -1237,6 +1246,7 @@ static SIMPLE_DEV_PM_OPS(xtpg_pm_ops, xtpg_pm_suspend, xtpg_pm_resume);
 static const struct of_device_id xtpg_of_id_table[] = {
 	{ .compatible = "xlnx,v-tpg-5.0" },
 	{ .compatible = "xlnx,v-tpg-7.0" },
+	{ .compatible = "xlnx,v-tpg-8.0" },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, xtpg_of_id_table);
