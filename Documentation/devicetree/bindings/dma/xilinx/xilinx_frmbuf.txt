@@ -36,6 +36,10 @@ Required Properties Common to both FB Read and FB Write for v2.1:
 - xlnx,pixels-per-clock	: Pixels per clock set in IP (1, 2 or 4)
 - clocks: Reference to the AXI Streaming clock feeding the AP_CLK
 - clock-names: Must have "ap_clk"
+- xlnx,max-height	: Maximum number of lines.
+			  Valid range from 64 to 4320.
+- xlnx,max-width	: Maximum number of pixels in a line.
+			  Valid range from 64 to 8192.
 
 Optional Properties Common to both FB Read and FB Write for v2.1:
 - xlnx,dma-align	: DMA alignment required in bytes.
@@ -47,10 +51,6 @@ Optional Properties Common to both FB Read and FB Write for v2.1:
 			  1, 2 or 4.
 - xlnx,fid		: Field ID enabled for interlaced video support.
 			  Can be absent for progressive video.
-
-Optional properties:
-- xlnx,max-height	: Maximum number of lines.
-- xlnx,max-width	: Maximum number of pixels in a line.
 
 VIDEO FORMATS
 The following table describes the legal string values to be used for
