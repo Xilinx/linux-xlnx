@@ -574,7 +574,14 @@ static int dwc3_config_soc_bus(struct dwc3 *dwc)
 			DWC3_GSBUSCFG0_DATWRREQINFO |
 			DWC3_GSBUSCFG0_DESWRREQINFO;
 		dwc3_writel(dwc->regs, DWC3_GSBUSCFG0, reg);
+	}
 
+	/*
+	 * This routes the usb dma traffic to go through CCI path instead
+	 * of reaching DDR directly. This traffic routing is needed to
+	 * to make SMMU and CCI work with USB dma.
+	 */
+	if (of_dma_is_coherent(dwc->dev->of_node) || dwc->dev->iommu_group) {
 		ret = dwc3_enable_hw_coherency(dwc->dev);
 		if (ret)
 			return ret;
