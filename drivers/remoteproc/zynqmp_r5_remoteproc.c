@@ -611,6 +611,7 @@ static void handle_event_notified(struct work_struct *work)
 
 	local = container_of(work, struct zynqmp_r5_pdata, workqueue);
 
+	(void)mbox_send_message(local->rx_chan, NULL);
 	rproc = local->rproc;
 	if (rproc->sysfs_kick) {
 		sysfs_notify(&rproc->dev.kobj, NULL, "remote_kick");
@@ -622,7 +623,6 @@ static void handle_event_notified(struct work_struct *work)
 	 * And thus, we scan through all the registered notifyids.
 	 */
 	idr_for_each(&rproc->notifyids, event_notified_idr_cb, rproc);
-	(void)mbox_send_message(local->rx_chan, NULL);
 }
 
 /**
