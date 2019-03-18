@@ -20,6 +20,7 @@
  *  - Add support for extended VLAN support.
  */
 
+#include <linux/circ_buf.h>
 #include <linux/delay.h>
 #include <linux/etherdevice.h>
 #include <linux/module.h>
@@ -803,11 +804,17 @@ static inline int axienet_check_tx_bd_space(struct axienet_dma_q *q,
 #ifdef CONFIG_AXIENET_HAS_MCDMA
 	struct aximcdma_bd *cur_p;
 
+	if (CIRC_SPACE(q->tx_bd_tail, q->tx_bd_ci, TX_BD_NUM) < (num_frag + 1))
+		return NETDEV_TX_BUSY;
+
 	cur_p = &q->txq_bd_v[(q->tx_bd_tail + num_frag) % TX_BD_NUM];
 	if (cur_p->sband_stats & XMCDMA_BD_STS_ALL_MASK)
 		return NETDEV_TX_BUSY;
 #else
 	struct axidma_bd *cur_p;
+
+	if (CIRC_SPACE(q->tx_bd_tail, q->tx_bd_ci, TX_BD_NUM) < (num_frag + 1))
+		return NETDEV_TX_BUSY;
 
 	cur_p = &q->tx_bd_v[(q->tx_bd_tail + num_frag) % TX_BD_NUM];
 	if (cur_p->status & XAXIDMA_BD_STS_ALL_MASK)
