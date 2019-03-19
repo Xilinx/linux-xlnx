@@ -384,30 +384,49 @@ static void zynqmp_r5_rproc_kick(struct rproc *rproc, int vqid)
 {
 	struct device *dev = rproc->dev.parent;
 	struct zynqmp_r5_pdata *local = rproc->priv;
-	struct zynqmp_ipi_message *mb_msg;
-	struct sk_buff *skb;
-	unsigned int skb_len;
-	int ret;
 
 	dev_dbg(dev, "KICK Firmware to start send messages vqid %d\n", vqid);
 
-	skb_len = (unsigned int)(sizeof(vqid) + sizeof(mb_msg));
-	skb = alloc_skb(skb_len, GFP_ATOMIC);
-	if (!skb) {
-		dev_err(dev, "Failed to allocate skb to kick remote.\n");
-		return;
-	}
-	mb_msg = (struct zynqmp_ipi_message *)skb_put(skb, skb_len);
-	mb_msg->len = sizeof(vqid);
-	memcpy(mb_msg->data, &vqid, sizeof(vqid));
-	skb_queue_tail(&local->tx_mc_skbs, skb);
-	ret = mbox_send_message(local->tx_chan, mb_msg);
-	if (ret < 0) {
-		dev_warn(dev, "Failed to kick remote.\n");
-		skb_dequeue(&local->tx_mc_skbs);
-		kfree_skb(skb);
-	}
+	if (vqid < 0) {
+		/* If vqid is negative, does not pass the vqid to
+		 * mailbox. As vqid is supposed to be 0 or possive.
+		 * It also gives a way to just kick instead but
+		 * not use the IPI buffer. It is better to provide
+		 * a proper way to pass the short message, which will
+		 * need to sync to upstream first, for now,
+		 * use negative vqid to assume no message will be
+		 * passed with IPI buffer, but just raise interrupt.
+		 * This will be faster as it doesn't need to copy the
+		 * message to the IPI buffer.
+		 *
+		 * It will ignore the return, as failure is due to
+		 * there already kicks in the mailbox queue.
+		 */
+		(void)mbox_send_message(local->tx_chan, NULL);
+	} else {
+		struct sk_buff *skb;
+		unsigned int skb_len;
+		struct zynqmp_ipi_message *mb_msg;
+		int ret;
 
+		skb_len = (unsigned int)(sizeof(vqid) + sizeof(mb_msg));
+		skb = alloc_skb(skb_len, GFP_ATOMIC);
+		if (!skb) {
+			dev_err(dev,
+				"Failed to allocate skb to kick remote.\n");
+			return;
+		}
+		mb_msg = (struct zynqmp_ipi_message *)skb_put(skb, skb_len);
+		mb_msg->len = sizeof(vqid);
+		memcpy(mb_msg->data, &vqid, sizeof(vqid));
+		skb_queue_tail(&local->tx_mc_skbs, skb);
+		ret = mbox_send_message(local->tx_chan, mb_msg);
+		if (ret < 0) {
+			dev_warn(dev, "Failed to kick remote.\n");
+			skb_dequeue_tail(&local->tx_mc_skbs);
+			kfree_skb(skb);
+		}
+	}
 }
 
 static bool zynqmp_r5_rproc_peek_remote_kick(struct rproc *rproc,
