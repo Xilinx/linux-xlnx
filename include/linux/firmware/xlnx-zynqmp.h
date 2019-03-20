@@ -52,13 +52,7 @@
 #define PM_USAGE_BOTH_MASTERS			(PM_USAGE_CURRENT_MASTER | \
 						 PM_USAGE_OTHER_MASTER)
 
-/* Global general storage register base address */
-#define GGS_BASEADDR	(0xFFD80030U)
 #define GSS_NUM_REGS	(4)
-
-/* Persistent global general storage register base address */
-#define PGGS_BASEADDR	(0xFFD80050U)
-#define PGSS_NUM_REGS	(4)
 
 /* Node capabilities */
 #define	ZYNQMP_PM_CAPABILITY_ACCESS	0x1U
