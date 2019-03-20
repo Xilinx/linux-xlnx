@@ -311,12 +311,6 @@ enum zynqmp_pm_reset {
 	ZYNQMP_PM_RESET_END
 };
 
-enum zynqmp_pm_request_ack {
-	ZYNQMP_PM_REQUEST_ACK_NO = 1,
-	ZYNQMP_PM_REQUEST_ACK_BLOCKING,
-	ZYNQMP_PM_REQUEST_ACK_NON_BLOCKING,
-};
-
 enum zynqmp_pm_abort_reason {
 	ZYNQMP_PM_ABORT_REASON_WAKEUP_EVENT = 100,
 	ZYNQMP_PM_ABORT_REASON_POWER_UNIT_BUSY,
@@ -328,6 +322,12 @@ enum zynqmp_pm_suspend_reason {
 	SUSPEND_POWER_REQUEST = 201,
 	SUSPEND_ALERT,
 	SUSPEND_SYSTEM_SHUTDOWN,
+};
+
+enum zynqmp_pm_request_ack {
+	ZYNQMP_PM_REQUEST_ACK_NO = 1,
+	ZYNQMP_PM_REQUEST_ACK_BLOCKING,
+	ZYNQMP_PM_REQUEST_ACK_NON_BLOCKING,
 };
 
 enum zynqmp_pm_ram_state {

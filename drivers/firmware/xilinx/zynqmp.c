@@ -240,6 +240,29 @@ static int zynqmp_pm_get_api_version(u32 *version)
 }
 
 /**
+ * zynqmp_pm_get_chipid - Get silicon ID registers
+ * @idcode:	IDCODE register
+ * @version:	version register
+ *
+ * Return:	Returns the status of the operation and the idcode and version
+ *		registers in @idcode and @version.
+ */
+static int zynqmp_pm_get_chipid(u32 *idcode, u32 *version)
+{
+	u32 ret_payload[PAYLOAD_ARG_CNT];
+	int ret;
+
+	if (!idcode || !version)
+		return -EINVAL;
+
+	ret = zynqmp_pm_invoke_fn(PM_GET_CHIPID, 0, 0, 0, 0, ret_payload);
+	*idcode = ret_payload[1];
+	*version = ret_payload[2];
+
+	return ret;
+}
+
+/**
  * zynqmp_pm_get_trustzone_version() - Get secure trustzone firmware version
  * @version:	Returned version value
  *
@@ -655,29 +678,6 @@ static int zynqmp_pm_set_requirement(const u32 node, const u32 capabilities,
 {
 	return zynqmp_pm_invoke_fn(PM_SET_REQUIREMENT, node, capabilities,
 				   qos, ack, NULL);
-}
-
-/**
- * zynqmp_pm_get_chipid - Get silicon ID registers
- * @idcode:	IDCODE register
- * @version:	version register
- *
- * Return:	Returns the status of the operation and the idcode and version
- *		registers in @idcode and @version.
- */
-static int zynqmp_pm_get_chipid(u32 *idcode, u32 *version)
-{
-	u32 ret_payload[PAYLOAD_ARG_CNT];
-	int ret;
-
-	if (!idcode || !version)
-		return -EINVAL;
-
-	ret = zynqmp_pm_invoke_fn(PM_GET_CHIPID, 0, 0, 0, 0, ret_payload);
-	*idcode = ret_payload[1];
-	*version = ret_payload[2];
-
-	return ret;
 }
 
 /**
