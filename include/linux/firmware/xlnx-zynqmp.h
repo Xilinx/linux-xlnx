@@ -103,6 +103,10 @@ enum pm_ioctl_id {
 	IOCTL_GET_PLL_FRAC_MODE,
 	IOCTL_SET_PLL_FRAC_DATA,
 	IOCTL_GET_PLL_FRAC_DATA,
+	IOCTL_WRITE_GGS,
+	IOCTL_READ_GGS,
+	IOCTL_WRITE_PGGS,
+	IOCTL_READ_PGGS,
 };
 
 enum pm_query_id {
@@ -392,6 +396,11 @@ enum dll_reset_type {
 	PM_DLL_RESET_ASSERT,
 	PM_DLL_RESET_RELEASE,
 	PM_DLL_RESET_PULSE,
+};
+
+enum pm_register_access_id {
+	CONFIG_REG_WRITE,
+	CONFIG_REG_READ,
 };
 
 /**
