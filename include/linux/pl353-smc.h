@@ -2,11 +2,11 @@
 /*
  * ARM PL353 SMC Driver Header
  *
- * Copyright (C) 2017 Xilinx, Inc
+ * Copyright (C) 2012 - 2018 Xilinx, Inc
  */
 
-#ifndef __LINUX_MEMORY_PL353_SMC_H
-#define __LINUX_MEMORY_PL353_SMC_H
+#ifndef __LINUX_PL353_SMC_H
+#define __LINUX_PL353_SMC_H
 
 enum pl353_smc_ecc_mode {
 	PL353_SMC_ECCMODE_BYPASS = 0,
