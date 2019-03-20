@@ -188,11 +188,11 @@ static int zynqmp_pm_get_api_version(u32 *version)
 
 /**
  * zynqmp_pm_get_chipid - Get silicon ID registers
- * @idcode:     IDCODE register
- * @version:    version register
+ * @idcode:	IDCODE register
+ * @version:	version register
  *
- * Return:      Returns the status of the operation and the idcode and version
- *              registers in @idcode and @version.
+ * Return:	Returns the status of the operation and the idcode and version
+ *		registers in @idcode and @version.
  */
 static int zynqmp_pm_get_chipid(u32 *idcode, u32 *version)
 {
