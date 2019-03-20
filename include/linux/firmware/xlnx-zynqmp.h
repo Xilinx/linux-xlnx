@@ -113,6 +113,7 @@ enum pm_api_id {
 	PM_CLOCK_GETRATE,
 	PM_CLOCK_SETPARENT,
 	PM_CLOCK_GETPARENT,
+	PM_SECURE_IMAGE,
 	PM_FPGA_READ = 46,
 	PM_SECURE_AES,
 	/* PM_REGISTER_ACCESS API */
@@ -532,6 +533,9 @@ struct zynqmp_eemi_ops {
 			       u32 mask, u32 value, u32 *out);
 	int (*aes)(const u64 address, u32 *out);
 	int (*efuse_access)(const u64 address, u32 *out);
+	int (*secure_image)(const u64 src_addr, u64 key_addr,
+			    u64 *ret, u64 *dst);
+
 };
 
 int zynqmp_pm_invoke_fn(u32 pm_api_id, u32 arg0, u32 arg1,
