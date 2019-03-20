@@ -42,7 +42,15 @@
 /* Payload size (consists of callback API ID + arguments) */
 #define CB_PAYLOAD_SIZE	(CB_ARG_CNT + 1)
 
+#define ZYNQMP_PM_MAX_LATENCY	(~0U)
 #define ZYNQMP_PM_MAX_QOS	100U
+
+/* Usage status, returned by PmGetNodeStatus */
+#define PM_USAGE_NO_MASTER			0x0U
+#define PM_USAGE_CURRENT_MASTER			0x1U
+#define PM_USAGE_OTHER_MASTER			0x2U
+#define PM_USAGE_BOTH_MASTERS			(PM_USAGE_CURRENT_MASTER | \
+						 PM_USAGE_OTHER_MASTER)
 
 #define GSS_NUM_REGS	(4)
 
@@ -54,12 +62,25 @@
 
 enum pm_api_id {
 	PM_GET_API_VERSION = 1,
+	PM_SET_CONFIGURATION,
+	PM_GET_NODE_STATUS,
+	PM_GET_OPERATING_CHARACTERISTIC,
+	PM_REGISTER_NOTIFIER,
+	/* API for suspending of PUs: */
+	PM_REQUEST_SUSPEND,
+	PM_SELF_SUSPEND,
+	PM_FORCE_POWERDOWN,
+	PM_ABORT_SUSPEND,
+	PM_REQUEST_WAKEUP,
+	PM_SET_WAKEUP_SOURCE,
+	PM_SYSTEM_SHUTDOWN,
 	/* API for managing PM slaves: */
-	PM_REQUEST_NODE = 13,
+	PM_REQUEST_NODE,
 	PM_RELEASE_NODE,
 	PM_SET_REQUIREMENT,
+	PM_SET_MAX_LATENCY,
 	/* Direct control API functions: */
-	PM_RESET_ASSERT = 17,
+	PM_RESET_ASSERT,
 	PM_RESET_GET_STATUS,
 	PM_MMIO_WRITE,
 	PM_MMIO_READ,
@@ -268,6 +289,13 @@ enum zynqmp_pm_reset {
 	ZYNQMP_PM_RESET_END = ZYNQMP_PM_RESET_PS_PL3
 };
 
+enum zynqmp_pm_abort_reason {
+	ZYNQMP_PM_ABORT_REASON_WAKEUP_EVENT = 100,
+	ZYNQMP_PM_ABORT_REASON_POWER_UNIT_BUSY,
+	ZYNQMP_PM_ABORT_REASON_NO_POWERDOWN,
+	ZYNQMP_PM_ABORT_REASON_UNKNOWN,
+};
+
 enum zynqmp_pm_suspend_reason {
 	SUSPEND_POWER_REQUEST = 201,
 	SUSPEND_ALERT,
@@ -278,6 +306,12 @@ enum zynqmp_pm_request_ack {
 	ZYNQMP_PM_REQUEST_ACK_NO = 1,
 	ZYNQMP_PM_REQUEST_ACK_BLOCKING,
 	ZYNQMP_PM_REQUEST_ACK_NON_BLOCKING,
+};
+
+enum zynqmp_pm_opchar_type {
+	ZYNQMP_PM_OPERATING_CHARACTERISTIC_POWER = 1,
+	ZYNQMP_PM_OPERATING_CHARACTERISTIC_ENERGY,
+	ZYNQMP_PM_OPERATING_CHARACTERISTIC_TEMPERATURE,
 };
 
 enum pm_node_id {
@@ -459,6 +493,27 @@ struct zynqmp_eemi_ops {
 			       const enum zynqmp_pm_request_ack ack);
 	int (*sha_hash)(const u64 address, const u32 size, const u32 flags);
 	int (*rsa)(const u64 address, const u32 size, const u32 flags);
+	int (*request_suspend)(const u32 node,
+			       const enum zynqmp_pm_request_ack ack,
+			       const u32 latency,
+			       const u32 state);
+	int (*force_powerdown)(const u32 target,
+			       const enum zynqmp_pm_request_ack ack);
+	int (*request_wakeup)(const u32 node,
+			      const bool set_addr,
+			      const u64 address,
+			      const enum zynqmp_pm_request_ack ack);
+	int (*set_wakeup_source)(const u32 target,
+				 const u32 wakeup_node,
+				 const u32 enable);
+	int (*system_shutdown)(const u32 type, const u32 subtype);
+	int (*set_max_latency)(const u32 node, const u32 latency);
+	int (*set_configuration)(const u32 physical_addr);
+	int (*get_node_status)(const u32 node, u32 *const status,
+			       u32 *const requirements, u32 *const usage);
+	int (*get_operating_characteristic)(const u32 node,
+					    const enum zynqmp_pm_opchar_type
+					    type, u32 *const result);
 	int (*pinctrl_request)(const u32 pin);
 	int (*pinctrl_release)(const u32 pin);
 	int (*pinctrl_get_function)(const u32 pin, u32 *id);
