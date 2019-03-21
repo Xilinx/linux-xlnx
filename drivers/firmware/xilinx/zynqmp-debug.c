@@ -113,7 +113,7 @@ static int zynqmp_pm_register_notifier(const u32 node, const u32 event,
 }
 
 /**
- * zynqmp_pm_argument_value - Extract argument value from a PM-API request
+ * zynqmp_pm_argument_value() - Extract argument value from a PM-API request
  * @arg:	Entered PM-API argument in string format
  *
  * Return: Argument value in unsigned integer format on success
