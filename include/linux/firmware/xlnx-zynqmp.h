@@ -162,7 +162,6 @@ enum pm_ioctl_id {
 	/* Set healthy bit value*/
 	IOCTL_SET_BOOT_HEALTH_STATUS,
 	IOCTL_AFI,
-
 };
 
 enum pm_query_id {
