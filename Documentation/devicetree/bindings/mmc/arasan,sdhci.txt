@@ -45,14 +45,14 @@ Optional Properties:
   - xlnx,fails-without-test-cd: when present, the controller doesn't work when
     the CD line is not connected properly, and the line is not connected
     properly. Test mode can be used to force the controller to function.
+  - xlnx,int-clock-stable-broken: when present, the controller always reports
+    that the internal clock is stable even when it is not.
  - pinctrl-0: pin control group to be used for this controller.
  - pinctrl-names: must contain a "default" entry.
 
 Optional Properties for "xlnx,zynqmp-8.9a":
  - nvmem-cells: list of phandle to the nvmem data cells.
  - nvmem-cell-names: Names for the each nvmem-cells specified.
- - xlnx,int-clock-stable-broken: when present, the controller always reports
-   that the internal clock is stable even when it is not.
  - xlnx,itap-delay-sd-hsd: Input Tap Delay for SD HS.
  - xlnx,itap-delay-sdr25: Input Tap Delay for SDR25.
  - xlnx,itap-delay-sdr50: Input Tap Delay for SDR50.
