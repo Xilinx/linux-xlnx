@@ -1039,7 +1039,7 @@ static int spi_transfer_one_message(struct spi_controller *ctlr,
 				ret = 0;
 				ms = 8LL * 1000LL * xfer->len;
 				do_div(ms, xfer->speed_hz);
-				ms += ms + 200; /* some tolerance */
+				ms += ms + 1000; /* some tolerance */
 
 				if (ms > UINT_MAX)
 					ms = UINT_MAX;
