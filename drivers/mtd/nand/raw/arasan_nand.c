@@ -658,6 +658,16 @@ static int anfc_reset_cmd_type_exec(struct nand_chip *chip,
 	struct anfc_nand_controller *nfc = to_anfc(chip->controller);
 
 	anfc_parse_instructions(chip, subop, &nfc_op);
+
+	/*
+	 * Do not execute commands other than NAND_CMD_RESET
+	 * Other commands have their own patterns
+	 * If there is no pattern match, that means controller
+	 * is not supporting that pattern.
+	 */
+	if (nfc_op.cmds[0] != NAND_CMD_RESET)
+		return 0;
+
 	anfc_prepare_cmd(nfc, nfc_op.cmds[0], 0, 0, 0, 0);
 	nfc->prog = PROG_RST;
 	anfc_enable_intrs(nfc, XFER_COMPLETE);
@@ -851,7 +861,6 @@ static int anfc_setfeature_type_exec(struct nand_chip *chip,
 	struct anfc_nand_controller *nfc = to_anfc(chip->controller);
 	unsigned int op_id, len;
 	struct anfc_op nfc_op = {};
-	struct mtd_info *mtd = nand_to_mtd(chip);
 
 	anfc_parse_instructions(chip, subop, &nfc_op);
 	nfc->prog = PROG_SET_FEATURE;
@@ -864,8 +873,7 @@ static int anfc_setfeature_type_exec(struct nand_chip *chip,
 		return 0;
 
 	len = nand_subop_get_data_len(subop, op_id);
-	memcpy(nfc->buf, (char *)instr->ctx.data.buf.out, len);
-	anfc_rw_pio_op(mtd, nfc->buf, roundup(len, 4), 0, nfc->prog, 1, 0);
+	anfc_write_data_op(chip, (char *)instr->ctx.data.buf.out, len, 1, 0);
 
 	return 0;
 }
@@ -981,6 +989,35 @@ static int anfc_page_write_type_exec(struct nand_chip *chip,
 	return 0;
 }
 
+static int anfc_page_write_nowait_type_exec(struct nand_chip *chip,
+					    const struct nand_subop *subop)
+{
+	const struct nand_op_instr *instr;
+	struct anfc_nand_chip *achip = to_anfc_nand(chip);
+	struct anfc_nand_controller *nfc = to_anfc(chip->controller);
+	struct anfc_op nfc_op = {};
+	struct mtd_info *mtd = nand_to_mtd(chip);
+	u32 addrcycles;
+
+	anfc_parse_instructions(chip, subop, &nfc_op);
+	instr = nfc_op.data_instr;
+	nfc->prog = PROG_PGPROG;
+
+	addrcycles = achip->raddr_cycles + achip->caddr_cycles;
+	anfc_prepare_cmd(nfc, nfc_op.cmds[0], NAND_CMD_PAGEPROG, 1,
+			 mtd->writesize, addrcycles);
+	anfc_setpagecoladdr(nfc, nfc_op.row, nfc_op.col);
+
+	if (!nfc_op.data_instr)
+		return 0;
+
+	anfc_write_data_op(chip, (char *)instr->ctx.data.buf.out,
+			   mtd->writesize, DIV_ROUND_UP(mtd->writesize,
+			   achip->pktsize), achip->pktsize);
+
+	return 0;
+}
+
 static const struct nand_op_parser anfc_op_parser = NAND_OP_PARSER(
 	/* Use a separate function for each pattern */
 	NAND_OP_PARSER_PATTERN(
@@ -1030,7 +1067,12 @@ static const struct nand_op_parser anfc_op_parser = NAND_OP_PARSER(
 		NAND_OP_PARSER_PAT_CMD_ELEM(false),
 		NAND_OP_PARSER_PAT_ADDR_ELEM(false, ANFC_MAX_ADDR_CYCLES),
 		NAND_OP_PARSER_PAT_DATA_OUT_ELEM(false, ANFC_MAX_CHUNK_SIZE),
-		NAND_OP_PARSER_PAT_WAITRDY_ELEM(true)),
+		NAND_OP_PARSER_PAT_WAITRDY_ELEM(false)),
+	NAND_OP_PARSER_PATTERN(
+		anfc_page_write_nowait_type_exec,
+		NAND_OP_PARSER_PAT_CMD_ELEM(false),
+		NAND_OP_PARSER_PAT_ADDR_ELEM(false, ANFC_MAX_ADDR_CYCLES),
+		NAND_OP_PARSER_PAT_DATA_OUT_ELEM(false, ANFC_MAX_CHUNK_SIZE)),
 	NAND_OP_PARSER_PATTERN(
 		anfc_read_param_get_feature_sp_read_type_exec,
 		NAND_OP_PARSER_PAT_CMD_ELEM(false),
