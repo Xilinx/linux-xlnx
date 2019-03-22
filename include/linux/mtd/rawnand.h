@@ -455,6 +455,7 @@ struct nand_jedec_params {
  * @src_sync_timing_mode: Supported synchronous timing mode
  * @vendor_revision: Vendor specific revision number
  * @vendor: Vendor specific data
+ * @jedec_id: Jedec ID of nand flash device
  */
 struct onfi_params {
 	int version;
@@ -466,6 +467,7 @@ struct onfi_params {
 	u16 src_sync_timing_mode;
 	u16 vendor_revision;
 	u8 vendor[88];
+	u8 jedec_id;
 };
 
 /**

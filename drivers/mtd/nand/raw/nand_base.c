@@ -4592,10 +4592,8 @@ static int nand_do_write_oob(struct mtd_info *mtd, loff_t to,
 	 * interface mode. This will be the problem for devices configured for
 	 * NVDDR modes. So, limiting the reset operation to Toshiba devices.
 	 */
-/*	if (chip->parameters.onfi.jedec_id == NAND_MFR_TOSHIBA) {
-		chip->cmdfunc(mtd, NAND_CMD_RESET, -1, -1);
+	if (chip->parameters.onfi->jedec_id == NAND_MFR_TOSHIBA)
 		nand_reset(chip, chipnr);
-	} FIMXE - broken by v4.17-rc6 merge */
 
 	chip->select_chip(mtd, chipnr);
 
@@ -5314,6 +5312,7 @@ static int nand_flash_detect_onfi(struct nand_chip *chip)
 	onfi->tCCS = le16_to_cpu(p->t_ccs);
 	onfi->async_timing_mode = le16_to_cpu(p->async_timing_mode);
 	onfi->src_sync_timing_mode = le16_to_cpu(p->src_sync_timing_mode);
+	onfi->jedec_id = le16_to_cpu(p->jedec_id);
 	onfi->vendor_revision = le16_to_cpu(p->vendor_revision);
 	memcpy(onfi->vendor, p->vendor, sizeof(p->vendor));
 	chip->parameters.onfi = onfi;
