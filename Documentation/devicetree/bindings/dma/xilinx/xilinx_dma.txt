@@ -41,7 +41,6 @@ Optional properties:
 - xlnx,include-sg: Tells configured for Scatter-mode in
 	the hardware.
 Optional properties for AXI DMA:
-- xlnx,mcdma: Tells whether configured for multi-channel mode in the hardware.
 - xlnx,sg-length-width: Should be set to the width of buffer length register as
 	configured in hardware. If this property is missing or has invalid width
 	i.e not in range of 8-26, maximum buffer length width (common to all IP
@@ -72,8 +71,6 @@ Optional child node properties for VDMA:
 	enabled/disabled in hardware.
 - xlnx,enable-vert-flip: Tells vertical flip is
 	enabled/disabled in hardware(S2MM path).
-Optional child node properties for AXI DMA:
--dma-channels: Number of dma channels in child node.
 
 Example:
 ++++++++
