@@ -29,9 +29,14 @@
 
 /* SMC SIP service Call Function Identifier Prefix */
 #define PM_SIP_SVC			0xC2000000
+
+/* ATF only commands */
 #define PM_GET_TRUSTZONE_VERSION	0xa03
 #define PM_SET_SUSPEND_MODE		0xa02
 #define GET_CALLBACK_DATA		0xa01
+
+/* Loader commands */
+#define PM_LOAD_PDI			0x701
 
 /* Number of 32bits values in payload */
 #define PAYLOAD_ARG_CNT	4U
@@ -595,6 +600,7 @@ struct zynqmp_eemi_ops {
 	int (*aes)(const u64 address, u32 *out);
 	int (*efuse_access)(const u64 address, u32 *out);
 	int (*secure_image)(const u64 src_addr, u64 key_addr, u64 *dst);
+	int (*pdi_load)(const u32 src, const u64 address);
 };
 
 int zynqmp_pm_invoke_fn(u32 pm_api_id, u32 arg0, u32 arg1,
