@@ -171,6 +171,7 @@ EXPORT_SYMBOL_GPL(xvip_get_format_by_fourcc);
 void xvip_bpl_scaling_factor(u32 fourcc, u32 *numerator, u32 *denominator)
 {
 	switch (fourcc) {
+	case V4L2_PIX_FMT_XY10:
 	case V4L2_PIX_FMT_XV15:
 	case V4L2_PIX_FMT_XV20:
 	case V4L2_PIX_FMT_XV15M:
@@ -206,6 +207,7 @@ EXPORT_SYMBOL_GPL(xvip_bpl_scaling_factor);
 void xvip_width_padding_factor(u32 fourcc, u32 *numerator, u32 *denominator)
 {
 	switch (fourcc) {
+	case V4L2_PIX_FMT_XY10:
 	case V4L2_PIX_FMT_XV15:
 	case V4L2_PIX_FMT_XV20:
 	case V4L2_PIX_FMT_XV15M:
