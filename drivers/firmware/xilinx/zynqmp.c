@@ -680,6 +680,22 @@ static int zynqmp_pm_set_requirement(const u32 node, const u32 capabilities,
 }
 
 /**
+ * zynqmp_pm_load_pdi - Load and process pdi
+ * @src:	Source device where PDI is located
+ * @address:	Pdi src address
+ *
+ * This function provides support to load pdi from linux
+ *
+ * Return: Returns status, either success or error+reason
+ */
+static int zynqmp_pm_load_pdi(const u32 src, const u64 address)
+{
+	return zynqmp_pm_invoke_fn(PM_LOAD_PDI, src,
+				   lower_32_bits(address),
+				   upper_32_bits(address), 0, NULL);
+}
+
+/**
  * zynqmp_pm_fpga_load - Perform the fpga load
  * @address:	Address to write to
  * @size:	pl bitstream size
@@ -1219,6 +1235,7 @@ static const struct zynqmp_eemi_ops eemi_ops = {
 	.aes = zynqmp_pm_aes_engine,
 	.efuse_access = zynqmp_pm_efuse_access,
 	.secure_image = zynqmp_pm_secure_load,
+	.pdi_load = zynqmp_pm_load_pdi,
 };
 
 /**
