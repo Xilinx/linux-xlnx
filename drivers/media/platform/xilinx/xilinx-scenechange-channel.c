@@ -115,6 +115,7 @@ static int xscd_set_format(struct v4l2_subdev *subdev,
 				XSCD_MIN_WIDTH, XSCD_MAX_WIDTH);
 	format->height = clamp_t(unsigned int, fmt->format.height,
 				 XSCD_MIN_HEIGHT, XSCD_MAX_HEIGHT);
+	format->code = fmt->format.code;
 	fmt->format = *format;
 
 	return 0;
@@ -122,27 +123,50 @@ static int xscd_set_format(struct v4l2_subdev *subdev,
 
 static int xscd_chan_get_vid_fmt(u32 media_bus_fmt, bool memory_based)
 {
-	/*
-	 * FIXME: We have same media bus codes for both 8bit and 10bit pixel
-	 * formats. So, there is no way to differentiate between 8bit and 10bit
-	 * formats based on media bus code. This will be fixed when we have
-	 * dedicated media bus code for each format.
-	 */
-	if (memory_based)
-		return XSCD_COLOR_FMT_Y8;
+	u32 vid_fmt;
 
+	if (memory_based) {
+		switch (media_bus_fmt) {
+		case MEDIA_BUS_FMT_VYYUYY8_1X24:
+		case MEDIA_BUS_FMT_UYVY8_1X16:
+		case MEDIA_BUS_FMT_VUY8_1X24:
+			vid_fmt = XSCD_COLOR_FMT_Y8;
+			break;
+		case MEDIA_BUS_FMT_VYYUYY10_4X20:
+		case MEDIA_BUS_FMT_UYVY10_1X20:
+		case MEDIA_BUS_FMT_VUY10_1X30:
+			vid_fmt = XSCD_COLOR_FMT_Y10;
+			break;
+		default:
+			vid_fmt = XSCD_COLOR_FMT_Y8;
+		}
+
+		return vid_fmt;
+	}
+
+	/* Streaming based */
 	switch (media_bus_fmt) {
 	case MEDIA_BUS_FMT_VYYUYY8_1X24:
-		return XSCD_COLOR_FMT_YUV_420;
+	case MEDIA_BUS_FMT_VYYUYY10_4X20:
+		vid_fmt = XSCD_COLOR_FMT_YUV_420;
+		break;
 	case MEDIA_BUS_FMT_UYVY8_1X16:
-		return XSCD_COLOR_FMT_YUV_422;
+	case MEDIA_BUS_FMT_UYVY10_1X20:
+		vid_fmt = XSCD_COLOR_FMT_YUV_422;
+		break;
 	case MEDIA_BUS_FMT_VUY8_1X24:
-		return XSCD_COLOR_FMT_YUV_444;
+	case MEDIA_BUS_FMT_VUY10_1X30:
+		vid_fmt = XSCD_COLOR_FMT_YUV_444;
+		break;
 	case MEDIA_BUS_FMT_RBG888_1X24:
-		return XSCD_COLOR_FMT_RGB;
+	case MEDIA_BUS_FMT_RBG101010_1X30:
+		vid_fmt = XSCD_COLOR_FMT_RGB;
+		break;
 	default:
-		return XSCD_COLOR_FMT_YUV_420;
+		vid_fmt = XSCD_COLOR_FMT_YUV_420;
 	}
+
+	return vid_fmt;
 }
 
 /**
