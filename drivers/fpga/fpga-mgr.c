@@ -657,6 +657,74 @@ static const struct file_operations fpga_mgr_ops_image = {
 	.open = fpga_mgr_read_open,
 	.read = seq_read,
 };
+
+/**
+ * fpga_mgr_debugfs_buf_load() - debugfs write function
+ * @file:	User file
+ * @ptr:	Fpga Image Address pointer
+ * @len:	Length of the image
+ * @off:	Offset within the file
+ *
+ * Return: Number of bytes if request succeeds,
+ *	   the corresponding error code otherwise
+ */
+static ssize_t fpga_mgr_debugfs_buf_load(struct file *file,
+					 const char __user *ptr, size_t len,
+					 loff_t *off)
+{
+	struct fpga_manager *mgr = file->private_data;
+	struct device *dev = &mgr->dev;
+	char *buf;
+	int ret = 0;
+
+	/* struct with information about the FPGA image to program. */
+	struct fpga_image_info info = {0};
+
+	/* flags indicates whether to do full or partial reconfiguration */
+	info.flags = mgr->flags;
+
+	ret = fpga_mgr_lock(mgr);
+	if (ret) {
+		dev_err(dev, "FPGA manager is busy\n");
+		return -EBUSY;
+	}
+
+	buf = vmalloc(len);
+	if (!buf) {
+		ret = -ENOMEM;
+		goto mgr_unlock;
+	}
+
+	if (copy_from_user(buf, ptr, len)) {
+		ret = -EFAULT;
+		goto free_buf;
+	}
+
+	info.buf = buf;
+	info.count = len;
+
+	ret = fpga_mgr_load(mgr, &info);
+	if (ret) {
+		dev_err(dev, "fpga_mgr_load returned with value %d\n\r", ret);
+		goto free_buf;
+	}
+
+free_buf:
+	vfree(buf);
+mgr_unlock:
+	fpga_mgr_unlock(mgr);
+
+	if (ret)
+		return ret;
+	else
+		return len;
+}
+
+static const struct file_operations fpga_mgr_ops_load = {
+	.open = simple_open,
+	.write = fpga_mgr_debugfs_buf_load,
+	.llseek = default_llseek,
+};
 #endif
 
 /**
@@ -807,6 +875,13 @@ int fpga_mgr_register(struct fpga_manager *mgr)
 	parent = d;
 	d = debugfs_create_file("image", 0644, parent, mgr,
 				&fpga_mgr_ops_image);
+	if (!d) {
+		debugfs_remove_recursive(mgr->dir);
+		goto error_device;
+	}
+
+	d = debugfs_create_file("load", 0644, parent, mgr,
+				&fpga_mgr_ops_load);
 	if (!d) {
 		debugfs_remove_recursive(mgr->dir);
 		goto error_device;
