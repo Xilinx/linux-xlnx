@@ -39,6 +39,7 @@
 #define DP83867_STRAP_STS1	0x006E
 #define DP83867_RGMIIDCTL	0x0086
 #define DP83867_IO_MUX_CFG	0x0170
+#define DP83867_SGMIITYPE	0x00D3
 
 #define DP83867_SW_RESET	BIT(15)
 #define DP83867_SW_RESTART	BIT(14)
@@ -105,6 +106,8 @@
 
 /* CFG4 bits */
 #define DP83867_CFG4_PORT_MIRROR_EN              BIT(0)
+/* SGMIICTL1 bits */
+#define DP83867_SGMIICLK_EN			BIT(14)
 
 enum {
 	DP83867_PORT_MIRROING_KEEP,
@@ -120,6 +123,7 @@ struct dp83867_private {
 	int port_mirroring;
 	bool rxctrl_strap_quirk;
 	int clk_output_sel;
+	bool wiremode_6;
 };
 
 static int dp83867_ack_interrupt(struct phy_device *phydev)
@@ -224,6 +228,8 @@ static int dp83867_of_init(struct phy_device *phydev)
 	if (of_property_read_bool(of_node, "enet-phy-lane-no-swap"))
 		dp83867->port_mirroring = DP83867_PORT_MIRROING_DIS;
 
+	dp83867->wiremode_6 = of_property_read_bool(of_node, "ti,6-wire-mode");
+
 	return of_property_read_u32(of_node, "ti,fifo-depth",
 				   &dp83867->fifo_depth);
 }
@@ -293,6 +299,11 @@ static int dp83867_config_init(struct phy_device *phydev)
 			return ret;
 
 	} else {
+		/* Set SGMIICTL1 6-wire mode */
+		if (dp83867->wiremode_6)
+			phy_write_mmd(phydev, DP83867_DEVADDR,
+				      DP83867_SGMIITYPE, DP83867_SGMIICLK_EN);
+
 		phy_write(phydev, MII_BMCR,
 			  (BMCR_ANENABLE | BMCR_FULLDPLX | BMCR_SPEED1000));
 
