@@ -308,15 +308,19 @@ static int xtpg_s_stream(struct v4l2_subdev *subdev, int enable)
 
 		switch (xtpg->vip_format->code) {
 		case MEDIA_BUS_FMT_VYYUYY8_1X24:
+		case MEDIA_BUS_FMT_VYYUYY10_4X20:
 			fmt = XTPG_HLS_COLOR_FORMAT_YUV_420;
 			break;
 		case MEDIA_BUS_FMT_UYVY8_1X16:
+		case MEDIA_BUS_FMT_UYVY10_1X20:
 			fmt = XTPG_HLS_COLOR_FORMAT_YUV_422;
 			break;
 		case MEDIA_BUS_FMT_VUY8_1X24:
+		case MEDIA_BUS_FMT_VUY10_1X30:
 			fmt = XTPG_HLS_COLOR_FORMAT_YUV_444;
 			break;
 		case MEDIA_BUS_FMT_RBG888_1X24:
+		case MEDIA_BUS_FMT_RBG101010_1X30:
 			fmt = XTPG_HLS_COLOR_FORMAT_RGB;
 			break;
 		}
