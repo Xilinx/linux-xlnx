@@ -458,18 +458,22 @@ static int xcsc_update_formats(struct xcsc_dev *xcsc)
 
 	switch (color_in) {
 	case MEDIA_BUS_FMT_RBG888_1X24:
+	case MEDIA_BUS_FMT_RBG101010_1X30:
 		dev_dbg(xcsc->xvip.dev, "Media Format In : RGB");
 		xcsc->cft_in = XVIDC_CSF_RGB;
 		break;
 	case MEDIA_BUS_FMT_VUY8_1X24:
+	case MEDIA_BUS_FMT_VUY10_1X30:
 		dev_dbg(xcsc->xvip.dev, "Media Format In : YUV 444");
 		xcsc->cft_in = XVIDC_CSF_YCRCB_444;
 		break;
 	case MEDIA_BUS_FMT_UYVY8_1X16:
+	case MEDIA_BUS_FMT_UYVY10_1X20:
 		dev_dbg(xcsc->xvip.dev, "Media Format In : YUV 422");
 		xcsc->cft_in = XVIDC_CSF_YCRCB_422;
 		break;
 	case MEDIA_BUS_FMT_VYYUYY8_1X24:
+	case MEDIA_BUS_FMT_VYYUYY10_4X20:
 		dev_dbg(xcsc->xvip.dev, "Media Format In : YUV 420");
 		xcsc->cft_in = XVIDC_CSF_YCRCB_420;
 		break;
@@ -477,6 +481,7 @@ static int xcsc_update_formats(struct xcsc_dev *xcsc)
 
 	switch (color_out) {
 	case MEDIA_BUS_FMT_RBG888_1X24:
+	case MEDIA_BUS_FMT_RBG101010_1X30:
 		xcsc->cft_out = XVIDC_CSF_RGB;
 		dev_dbg(xcsc->xvip.dev, "Media Format Out : RGB");
 		if (color_in != MEDIA_BUS_FMT_RBG888_1X24)
@@ -485,6 +490,7 @@ static int xcsc_update_formats(struct xcsc_dev *xcsc)
 			xcsc_set_unity_matrix(xcsc);
 		break;
 	case MEDIA_BUS_FMT_VUY8_1X24:
+	case MEDIA_BUS_FMT_VUY10_1X30:
 		xcsc->cft_out = XVIDC_CSF_YCRCB_444;
 		dev_dbg(xcsc->xvip.dev, "Media Format Out : YUV 444");
 		if (color_in == MEDIA_BUS_FMT_RBG888_1X24)
@@ -493,6 +499,7 @@ static int xcsc_update_formats(struct xcsc_dev *xcsc)
 			xcsc_set_unity_matrix(xcsc);
 		break;
 	case MEDIA_BUS_FMT_UYVY8_1X16:
+	case MEDIA_BUS_FMT_UYVY10_1X20:
 		xcsc->cft_out = XVIDC_CSF_YCRCB_422;
 		dev_dbg(xcsc->xvip.dev, "Media Format Out : YUV 422");
 		if (color_in == MEDIA_BUS_FMT_RBG888_1X24)
@@ -501,6 +508,7 @@ static int xcsc_update_formats(struct xcsc_dev *xcsc)
 			xcsc_set_unity_matrix(xcsc);
 		break;
 	case MEDIA_BUS_FMT_VYYUYY8_1X24:
+	case MEDIA_BUS_FMT_VYYUYY10_4X20:
 		xcsc->cft_out = XVIDC_CSF_YCRCB_420;
 		dev_dbg(xcsc->xvip.dev, "Media Format Out : YUV 420");
 		if (color_in ==  MEDIA_BUS_FMT_RBG888_1X24)
@@ -781,6 +789,9 @@ static int xcsc_set_format(struct v4l2_subdev *subdev,
 	case MEDIA_BUS_FMT_RBG888_1X24:
 	case MEDIA_BUS_FMT_UYVY8_1X16:
 	case MEDIA_BUS_FMT_VYYUYY8_1X24:
+	case MEDIA_BUS_FMT_VYYUYY10_4X20:
+	case MEDIA_BUS_FMT_UYVY10_1X20:
+	case MEDIA_BUS_FMT_VUY10_1X30:
 		break;
 	default:
 		/* Unsupported Format. Default to RGB */
