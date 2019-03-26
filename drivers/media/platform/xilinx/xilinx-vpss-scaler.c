@@ -1198,21 +1198,25 @@ xv_vscaler_setup_video_fmt(struct xscaler_device *xscaler, u32 code_in)
 
 	switch (code_in) {
 	case MEDIA_BUS_FMT_VYYUYY8_1X24:
+	case MEDIA_BUS_FMT_VYYUYY10_4X20:
 		dev_dbg(xscaler->xvip.dev,
 			"Vscaler Input Media Format YUV 420");
 		video_in = XVIDC_CSF_YCRCB_420;
 		break;
 	case MEDIA_BUS_FMT_UYVY8_1X16:
+	case MEDIA_BUS_FMT_UYVY10_1X20:
 		dev_dbg(xscaler->xvip.dev,
 			"Vscaler Input Media Format YUV 422");
 		video_in = XVIDC_CSF_YCRCB_422;
 		break;
 	case MEDIA_BUS_FMT_VUY8_1X24:
+	case MEDIA_BUS_FMT_VUY10_1X30:
 		dev_dbg(xscaler->xvip.dev,
 			"Vscaler Input Media Format YUV 444");
 		video_in = XVIDC_CSF_YCRCB_444;
 		break;
 	case MEDIA_BUS_FMT_RBG888_1X24:
+	case MEDIA_BUS_FMT_RBG101010_1X30:
 		dev_dbg(xscaler->xvip.dev,
 			"Vscaler Input Media Format RGB");
 		video_in = XVIDC_CSF_RGB;
@@ -1265,21 +1269,25 @@ static int xv_hscaler_setup_video_fmt(struct xscaler_device *xscaler,
 
 	switch (code_out) {
 	case MEDIA_BUS_FMT_VYYUYY8_1X24:
+	case MEDIA_BUS_FMT_VYYUYY10_4X20:
 		dev_dbg(xscaler->xvip.dev,
 			"Hscaler Output Media Format YUV 420\n");
 		video_out = XVIDC_CSF_YCRCB_420;
 		break;
 	case MEDIA_BUS_FMT_UYVY8_1X16:
+	case MEDIA_BUS_FMT_UYVY10_1X20:
 		dev_dbg(xscaler->xvip.dev,
 			"Hscaler Output Media Format YUV 422\n");
 		video_out = XVIDC_CSF_YCRCB_422;
 		break;
 	case MEDIA_BUS_FMT_VUY8_1X24:
+	case MEDIA_BUS_FMT_VUY10_1X30:
 		dev_dbg(xscaler->xvip.dev,
 			"Hscaler Output Media Format YUV 444\n");
 		video_out = XVIDC_CSF_YCRCB_444;
 		break;
 	case MEDIA_BUS_FMT_RBG888_1X24:
+	case MEDIA_BUS_FMT_RBG101010_1X30:
 		dev_dbg(xscaler->xvip.dev,
 			"Hscaler Output Media Format RGB\n");
 		video_out = XVIDC_CSF_RGB;
@@ -1501,6 +1509,7 @@ static int xscaler_set_format(struct v4l2_subdev *subdev,
 				XSCALER_MIN_WIDTH, xscaler->max_pixels);
 	format->height = clamp_t(unsigned int, fmt->format.height,
 				 XSCALER_MIN_HEIGHT, xscaler->max_lines);
+	format->code = fmt->format.code;
 	fmt->format = *format;
 	return 0;
 }
