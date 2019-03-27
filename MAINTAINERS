@@ -16142,6 +16142,13 @@ S:	Maintained
 F:	drivers/net/ethernet/xilinx/xilinx_axienet*
 F:	Documentation/devicetree/bindings/net/xilinx_axienet.txt
 
+XILINX AXI SPI DRIVER
+M:	Shubhrajyoti Datta <shubhrajyoti.datta@xilinx.com>
+R:	Naga Sureshkumar Relli <naga.sureshkumar.relli@xilinx.com>
+S:	Maintained
+F:	drivers/spi/spi-xilinx.c
+F:	Documentation/devicetree/bindings/spi/spi-xilinx.txt
+
 XILINX AXI USB DRIVER
 M:	Anurag Kumar Vulisha <anurag.kumar.vulisha@xilinx.com>
 S:	Maintained
