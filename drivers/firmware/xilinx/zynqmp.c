@@ -128,7 +128,6 @@ static noinline int do_fw_call_hvc(u64 arg0, u64 arg1, u64 arg2,
 		ret_payload[1] = upper_32_bits(res.a0);
 		ret_payload[2] = lower_32_bits(res.a1);
 		ret_payload[3] = upper_32_bits(res.a1);
-		ret_payload[4] = lower_32_bits(res.a2);
 	}
 
 	return zynqmp_pm_ret_code((enum pm_ret_status)res.a0);
