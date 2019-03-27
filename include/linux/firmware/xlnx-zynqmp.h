@@ -140,7 +140,11 @@ enum pm_ret_status {
 };
 
 enum pm_ioctl_id {
-	IOCTL_SET_TAPDELAY_BYPASS = 4,
+	IOCTL_GET_RPU_OPER_MODE,
+	IOCTL_SET_RPU_OPER_MODE,
+	IOCTL_RPU_BOOT_ADDR_CONFIG,
+	IOCTL_TCM_COMB_CONFIG,
+	IOCTL_SET_TAPDELAY_BYPASS,
 	IOCTL_SET_SGMII_MODE,
 	IOCTL_SD_DLL_RESET,
 	IOCTL_SET_SD_TAPDELAY,
@@ -461,6 +465,21 @@ enum pm_pinctrl_drive_strength {
 	PM_PINCTRL_DRIVE_STRENGTH_4MA,
 	PM_PINCTRL_DRIVE_STRENGTH_8MA,
 	PM_PINCTRL_DRIVE_STRENGTH_12MA,
+};
+
+enum rpu_oper_mode {
+	PM_RPU_MODE_LOCKSTEP,
+	PM_RPU_MODE_SPLIT,
+};
+
+enum rpu_boot_mem {
+	PM_RPU_BOOTMEM_LOVEC,
+	PM_RPU_BOOTMEM_HIVEC,
+};
+
+enum rpu_tcm_comb {
+	PM_RPU_TCM_SPLIT,
+	PM_RPU_TCM_COMB,
 };
 
 enum tap_delay_signal_type {
