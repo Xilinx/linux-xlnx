@@ -37,12 +37,12 @@
 #define PAYLOAD_ARG_CNT	4U
 
 /* Number of arguments for a callback */
-#define CB_ARG_CNT     4
+#define CB_ARG_CNT	4
 
 /* Payload size (consists of callback API ID + arguments) */
-#define CB_PAYLOAD_SIZE (CB_ARG_CNT + 1)
+#define CB_PAYLOAD_SIZE	(CB_ARG_CNT + 1)
 
-#define ZYNQMP_PM_MAX_QOS		100U
+#define ZYNQMP_PM_MAX_QOS	100U
 
 #define GSS_NUM_REGS	(4)
 
