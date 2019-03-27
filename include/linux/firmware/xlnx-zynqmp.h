@@ -140,7 +140,8 @@ enum pm_ret_status {
 };
 
 enum pm_ioctl_id {
-	IOCTL_SET_SGMII_MODE = 5,
+	IOCTL_SET_TAPDELAY_BYPASS = 4,
+	IOCTL_SET_SGMII_MODE,
 	IOCTL_SD_DLL_RESET,
 	IOCTL_SET_SD_TAPDELAY,
 	/* Ioctl for clock driver */
@@ -460,6 +461,18 @@ enum pm_pinctrl_drive_strength {
 	PM_PINCTRL_DRIVE_STRENGTH_4MA,
 	PM_PINCTRL_DRIVE_STRENGTH_8MA,
 	PM_PINCTRL_DRIVE_STRENGTH_12MA,
+};
+
+enum tap_delay_signal_type {
+	PM_TAPDELAY_NAND_DQS_IN,
+	PM_TAPDELAY_NAND_DQS_OUT,
+	PM_TAPDELAY_QSPI,
+	PM_TAPDELAY_MAX,
+};
+
+enum tap_delay_bypass_ctrl {
+	PM_TAPDELAY_BYPASS_DISABLE,
+	PM_TAPDELAY_BYPASS_ENABLE,
 };
 
 enum sgmii_mode {
