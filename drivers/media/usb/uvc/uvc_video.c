@@ -1466,7 +1466,7 @@ static void uvc_video_decode_bulk(struct uvc_urb *uvc_urb,
 }
 
 static void uvc_video_encode_bulk(struct uvc_urb *uvc_urb,
-		struct uvc_buffer *buf, struct uvc_buffer *meta_buf)
+	struct uvc_buffer *buf, struct uvc_buffer *meta_buf)
 {
 	struct urb *urb = uvc_urb->urb;
 	struct uvc_streaming *stream = uvc_urb->stream;
