@@ -467,7 +467,6 @@ enum pm_pinctrl_drive_strength {
 	PM_PINCTRL_DRIVE_STRENGTH_12MA,
 };
 
-
 enum rpu_oper_mode {
 	PM_RPU_MODE_LOCKSTEP,
 	PM_RPU_MODE_SPLIT,
