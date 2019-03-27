@@ -1,6 +1,6 @@
-// SPDX-License-Identifier: GPL-2.0
+// SPDX-License-Identifier: GPL-2.0+
 /*
- *  Copyright (C) 2011 - 2014 Xilinx
+ *  Copyright (C) 2011 - 2015 Xilinx
  *  Copyright (C) 2012 National Instruments Corp.
  */
 /dts-v1/;
@@ -14,7 +14,9 @@
 		ethernet0 = &gem0;
 		i2c0 = &i2c0;
 		serial0 = &uart1;
+		spi0 = &qspi;
 		mmc0 = &sdhci0;
+		usb0 = &usb0;
 	};
 
 	memory@0 {
@@ -56,9 +58,12 @@
 		};
 	};
 
-	usb_phy0: phy0 {
-		compatible = "usb-nop-xceiv";
+	usb_phy0: phy0@e0002000 {
+		compatible = "ulpi-phy";
 		#phy-cells = <0>;
+		reg = <0xe0002000 0x1000>;
+		view-port = <0x0170>;
+		drv-vbus;
 	};
 };
 
@@ -85,6 +90,8 @@
 	phy-handle = <&ethernet_phy>;
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_gem0_default>;
+	phy-reset-gpio = <&gpio0 11 0>;
+	phy-reset-active-low;
 
 	ethernet_phy: ethernet-phy@7 {
 		reg = <7>;
@@ -100,8 +107,11 @@
 &i2c0 {
 	status = "okay";
 	clock-frequency = <400000>;
-	pinctrl-names = "default";
+	pinctrl-names = "default", "gpio";
 	pinctrl-0 = <&pinctrl_i2c0_default>;
+	pinctrl-1 = <&pinctrl_i2c0_gpio>;
+	scl-gpios = <&gpio0 50 0>;
+	sda-gpios = <&gpio0 51 0>;
 
 	i2c-mux@74 {
 		compatible = "nxp,pca9548";
@@ -292,6 +302,19 @@
 		};
 	};
 
+	pinctrl_i2c0_gpio: i2c0-gpio {
+		mux {
+			groups = "gpio0_50_grp", "gpio0_51_grp";
+			function = "gpio0";
+		};
+
+		conf {
+			groups = "gpio0_50_grp", "gpio0_51_grp";
+			slew-rate = <0>;
+			io-standard = <1>;
+		};
+	};
+
 	pinctrl_sdhci0_default: sdhci0-default {
 		mux {
 			groups = "sdio0_2_grp";
@@ -380,13 +403,51 @@
 	};
 };
 
+&qspi {
+	u-boot,dm-pre-reloc;
+	status = "okay";
+	is-dual = <0>;
+	num-cs = <1>;
+	flash@0 {
+		compatible = "n25q128a11";
+		reg = <0x0>;
+		spi-tx-bus-width = <1>;
+		spi-rx-bus-width = <4>;
+		spi-max-frequency = <50000000>;
+		#address-cells = <1>;
+		#size-cells = <1>;
+		partition@qspi-fsbl-uboot {
+			label = "qspi-fsbl-uboot";
+			reg = <0x0 0x100000>;
+		};
+		partition@qspi-linux {
+			label = "qspi-linux";
+			reg = <0x100000 0x500000>;
+		};
+		partition@qspi-device-tree {
+			label = "qspi-device-tree";
+			reg = <0x600000 0x20000>;
+		};
+		partition@qspi-rootfs {
+			label = "qspi-rootfs";
+			reg = <0x620000 0x5E0000>;
+		};
+		partition@qspi-bitstream {
+			label = "qspi-bitstream";
+			reg = <0xC00000 0x400000>;
+		};
+	};
+};
+
 &sdhci0 {
+	u-boot,dm-pre-reloc;
 	status = "okay";
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_sdhci0_default>;
 };
 
 &uart1 {
+	u-boot,dm-pre-reloc;
 	status = "okay";
 	pinctrl-names = "default";
 	pinctrl-0 = <&pinctrl_uart1_default>;
