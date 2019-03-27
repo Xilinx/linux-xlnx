@@ -12,6 +12,7 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
+#include <linux/of_device.h>
 
 #define ZYNQMP_AES_KEY_SIZE	64
 
@@ -135,8 +136,15 @@ static int securefw_probe(struct platform_device *pdev)
 		return PTR_ERR(eemi_ops);
 
 	securefw_pdev = pdev;
-	arch_setup_dma_ops(&securefw_pdev->dev, 0, DMA_BIT_MASK(32),
-			   NULL, true);
+
+	securefw_pdev->dev.coherent_dma_mask = DMA_BIT_MASK(32);
+
+	ret = of_dma_configure(&securefw_pdev->dev, NULL, true);
+	if (ret < 0) {
+		dev_info(&securefw_pdev->dev, "Cannot setup DMA ops\r\n");
+		return ret;
+	}
+
 	ret = sysfs_create_groups(&securefw_pdev->dev.kobj, securefw_groups);
 	if (ret)
 		return ret;
