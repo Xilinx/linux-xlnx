@@ -54,9 +54,11 @@
 
 enum pm_api_id {
 	PM_GET_API_VERSION = 1,
+	/* API for managing PM slaves: */
 	PM_REQUEST_NODE = 13,
 	PM_RELEASE_NODE,
 	PM_SET_REQUIREMENT,
+	/* Direct control API functions: */
 	PM_RESET_ASSERT = 17,
 	PM_RESET_GET_STATUS,
 	PM_MMIO_WRITE,
@@ -74,8 +76,11 @@ enum pm_api_id {
 	PM_PINCTRL_SET_FUNCTION,
 	PM_PINCTRL_CONFIG_PARAM_GET,
 	PM_PINCTRL_CONFIG_PARAM_SET,
+	/* PM IOCTL API */
 	PM_IOCTL,
+	/* API to query information from firmware */
 	PM_QUERY_DATA,
+	/* Clock control API functions */
 	PM_CLOCK_ENABLE,
 	PM_CLOCK_DISABLE,
 	PM_CLOCK_GETSTATE,
@@ -105,6 +110,7 @@ enum pm_ret_status {
 enum pm_ioctl_id {
 	IOCTL_SD_DLL_RESET = 6,
 	IOCTL_SET_SD_TAPDELAY,
+	/* Ioctl for clock driver */
 	IOCTL_SET_PLL_FRAC_MODE,
 	IOCTL_GET_PLL_FRAC_MODE,
 	IOCTL_SET_PLL_FRAC_DATA,
