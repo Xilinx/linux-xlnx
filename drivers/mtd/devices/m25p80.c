@@ -37,9 +37,9 @@ static int m25p80_read_reg(struct spi_nor *nor, u8 code, u8 *val, int len)
 {
 	struct m25p *flash = nor->priv;
 	struct spi_mem_op op = SPI_MEM_OP(SPI_MEM_OP_CMD(code, 1),
-			SPI_MEM_OP_NO_ADDR,
-			SPI_MEM_OP_NO_DUMMY,
-			SPI_MEM_OP_DATA_IN(len, NULL, 1));
+					  SPI_MEM_OP_NO_ADDR,
+					  SPI_MEM_OP_NO_DUMMY,
+					  SPI_MEM_OP_DATA_IN(len, NULL, 1));
 	void *scratchbuf;
 	int ret;
 
@@ -64,11 +64,10 @@ static int m25p80_write_reg(struct spi_nor *nor, u8 opcode, u8 *buf, int len)
 {
 	struct m25p *flash = nor->priv;
 	struct spi_mem_op op = SPI_MEM_OP(SPI_MEM_OP_CMD(opcode, 1),
-			SPI_MEM_OP_NO_ADDR,
-			SPI_MEM_OP_NO_DUMMY,
-			SPI_MEM_OP_DATA_OUT(len, NULL, 1));
+					  SPI_MEM_OP_NO_ADDR,
+					  SPI_MEM_OP_NO_DUMMY,
+					  SPI_MEM_OP_DATA_OUT(len, NULL, 1));
 	void *scratchbuf;
-
 	int ret;
 
 	scratchbuf = kmemdup(buf, len, GFP_KERNEL);
@@ -88,9 +87,9 @@ static ssize_t m25p80_write(struct spi_nor *nor, loff_t to, size_t len,
 	struct m25p *flash = nor->priv;
 	struct spi_mem_op op =
 			SPI_MEM_OP(SPI_MEM_OP_CMD(nor->program_opcode, 1),
-				SPI_MEM_OP_ADDR(nor->addr_width, to, 1),
-				SPI_MEM_OP_DUMMY(0, 1),
-				SPI_MEM_OP_DATA_OUT(len, buf, 1));
+				   SPI_MEM_OP_ADDR(nor->addr_width, to, 1),
+				   SPI_MEM_OP_DUMMY(0, 1),
+				   SPI_MEM_OP_DATA_OUT(len, buf, 1));
 	size_t remaining = len;
 	int ret;
 
@@ -107,13 +106,16 @@ static ssize_t m25p80_write(struct spi_nor *nor, loff_t to, size_t len,
 		ret = spi_mem_adjust_op_size(flash->spimem, &op);
 		if (ret)
 			return ret;
+
 		ret = spi_mem_exec_op(flash->spimem, &op);
 		if (ret)
 			return ret;
+
 		op.addr.val += op.data.nbytes;
 		remaining -= op.data.nbytes;
 		op.data.buf.out += op.data.nbytes;
 	}
+
 	return len;
 }
 
@@ -141,18 +143,22 @@ static ssize_t m25p80_read(struct spi_nor *nor, loff_t from, size_t len,
 
 	/* convert the dummy cycles to the number of bytes */
 	op.dummy.nbytes = (nor->read_dummy * op.dummy.buswidth) / 8;
+
 	while (remaining) {
 		op.data.nbytes = remaining < UINT_MAX ? remaining : UINT_MAX;
 		ret = spi_mem_adjust_op_size(flash->spimem, &op);
 		if (ret)
 			return ret;
+
 		ret = spi_mem_exec_op(flash->spimem, &op);
 		if (ret)
 			return ret;
+
 		op.addr.val += op.data.nbytes;
 		remaining -= op.data.nbytes;
 		op.data.buf.in += op.data.nbytes;
 	}
+
 	return len;
 }
 
