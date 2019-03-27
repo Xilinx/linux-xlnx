@@ -59,7 +59,9 @@ enum pm_api_id {
 	PM_SET_REQUIREMENT,
 	PM_RESET_ASSERT = 17,
 	PM_RESET_GET_STATUS,
-	PM_PM_INIT_FINALIZE = 21,
+	PM_MMIO_WRITE,
+	PM_MMIO_READ,
+	PM_PM_INIT_FINALIZE,
 	PM_GET_CHIPID = 24,
 	/* ID 25 is been used by U-boot to process secure boot images */
 	/* Secure library generic API functions */
