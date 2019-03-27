@@ -14,6 +14,7 @@ Optional properties:
 - clock-names		: Can be one or more strings from "axi_clk", "axi4_clk"
 			  and "spi_clk" depending on IP configurations.
 - clocks		: Input clock specifier. Refer to common clock bindings.
+- xlnx,startup-block	: Indicates whether startup block is enabled or disabled.
 
 Example:
 	axi_quad_spi@41e00000 {
@@ -26,5 +27,6 @@ Example:
 			num-cs = <0x1>;
 			fifo-size = <256>;
 			bits-per-word = <8>;
+			xlnx,startup-block;
 	};
 
