@@ -27,9 +27,6 @@
 #define ZYNQMP_TZ_VERSION	((ZYNQMP_TZ_VERSION_MAJOR << 16) | \
 					ZYNQMP_TZ_VERSION_MINOR)
 
-#define ZYNQMP_PM_MAX_LATENCY	(~0U)
-#define ZYNQMP_PM_MAX_QOS	100U
-
 /* SMC SIP service Call Function Identifier Prefix */
 #define PM_SIP_SVC			0xC2000000
 #define PM_GET_TRUSTZONE_VERSION	0xa03
@@ -44,6 +41,9 @@
 
 /* Payload size (consists of callback API ID + arguments) */
 #define CB_PAYLOAD_SIZE	(CB_ARG_CNT + 1)
+
+#define ZYNQMP_PM_MAX_LATENCY	(~0U)
+#define ZYNQMP_PM_MAX_QOS	100U
 
 /* Usage status, returned by PmGetNodeStatus */
 #define PM_USAGE_NO_MASTER			0x0U
