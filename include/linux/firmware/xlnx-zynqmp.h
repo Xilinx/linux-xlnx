@@ -594,9 +594,7 @@ struct zynqmp_eemi_ops {
 			       u32 mask, u32 value, u32 *out);
 	int (*aes)(const u64 address, u32 *out);
 	int (*efuse_access)(const u64 address, u32 *out);
-	int (*secure_image)(const u64 src_addr, u64 key_addr,
-			    u64 *ret, u64 *dst);
-
+	int (*secure_image)(const u64 src_addr, u64 key_addr, u64 *dst);
 };
 
 int zynqmp_pm_invoke_fn(u32 pm_api_id, u32 arg0, u32 arg1,
