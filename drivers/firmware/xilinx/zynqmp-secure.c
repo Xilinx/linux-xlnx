@@ -66,13 +66,13 @@ static ssize_t secure_load_store(struct device *dev,
 	release_firmware(fw);
 
 	if (keyptr)
-		eemi_ops->secure_image(dma_addr, dma_addr + fw->size,
-				       &ret, &dst);
+		ret = eemi_ops->secure_image(dma_addr, dma_addr + fw->size,
+					     &dst);
 	else
-		eemi_ops->secure_image(dma_addr, 0, &ret, &dst);
+		ret = eemi_ops->secure_image(dma_addr, 0, &dst);
 
 	if (ret) {
-		dev_info(dev, "Failed: secure op status:0x%llx\n", ret);
+		dev_info(dev, "Failed to load secure image \r\n");
 		return ret;
 	}
 	dev_info(dev, "Verified image at 0x%llx\n", dst);
