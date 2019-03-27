@@ -84,7 +84,9 @@ enum pm_api_id {
 	PM_CLOCK_SETPARENT,
 	PM_CLOCK_GETPARENT,
 	PM_SECURE_AES = 47,
-	PM_EFUSE_ACCESS = 53,
+	/* PM_REGISTER_ACCESS API */
+	PM_REGISTER_ACCESS = 52,
+	PM_EFUSE_ACCESS,
 };
 
 /* PMU-FW return status codes */
@@ -455,6 +457,8 @@ struct zynqmp_eemi_ops {
 	int (*pinctrl_set_function)(const u32 pin, const u32 id);
 	int (*pinctrl_get_config)(const u32 pin, const u32 param, u32 *value);
 	int (*pinctrl_set_config)(const u32 pin, const u32 param, u32 value);
+	int (*register_access)(u32 register_access_id, u32 address,
+			       u32 mask, u32 value, u32 *out);
 	int (*aes)(const u64 address, u32 *out);
 	int (*efuse_access)(const u64 address, u32 *out);
 };

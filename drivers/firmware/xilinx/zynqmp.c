@@ -807,6 +807,26 @@ static int zynqmp_pm_pinctrl_set_config(const u32 pin, const u32 param,
 }
 
 /**
+ * zynqmp_pm_config_reg_access - PM Config API for Config register access
+ * @register_access_id:	ID of the requested REGISTER_ACCESS
+ * @address:		Address of the register to be accessed
+ * @mask:		Mask to be written to the register
+ * @value:		Value to be written to the register
+ * @out:		Returned output value
+ *
+ * This function calls REGISTER_ACCESS to configure CSU/PMU registers.
+ *
+ * Return:	Returns status, either success or error+reason
+ */
+
+static int zynqmp_pm_config_reg_access(u32 register_access_id, u32 address,
+				       u32 mask, u32 value, u32 *out)
+{
+	return zynqmp_pm_invoke_fn(PM_REGISTER_ACCESS, register_access_id,
+				   address, mask, value, out);
+}
+
+/**
  * zynqmp_pm_efuse_access - Provides access to efuse memory.
  * @address:	Address of the efuse params structure
  * @out:		Returned output value
@@ -857,6 +877,7 @@ static const struct zynqmp_eemi_ops eemi_ops = {
 	.pinctrl_set_function = zynqmp_pm_pinctrl_set_function,
 	.pinctrl_get_config = zynqmp_pm_pinctrl_get_config,
 	.pinctrl_set_config = zynqmp_pm_pinctrl_set_config,
+	.register_access = zynqmp_pm_config_reg_access,
 	.aes = zynqmp_pm_aes_engine,
 	.efuse_access = zynqmp_pm_efuse_access,
 };
