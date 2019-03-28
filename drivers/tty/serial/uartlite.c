@@ -955,7 +955,7 @@ err_out_clk_disable:
 	pm_runtime_set_suspended(&pdev->dev);
 	pm_runtime_dont_use_autosuspend(&pdev->dev);
 err_out_unregister_driver:
-	uart_unregister_driver(pdata->ulite_uart_driver);
+	uart_unregister_driver(ulite_uart_driver);
 err_out_id:
 	mutex_lock(&bitmap_lock);
 	clear_bit(pdata->id, bitmap);
