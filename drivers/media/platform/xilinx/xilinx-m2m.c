@@ -134,9 +134,11 @@ static inline struct xvip_pipeline *to_xvip_pipeline(struct media_entity *e)
  * @chan_rx: DMA engine channel for DEV2MEM transfer
  * @outfmt: active V4L2 OUTPUT port pixel format
  * @capfmt: active V4L2 CAPTURE port pixel format
+ * @r: crop rectangle parameters
  * @outinfo: format information corresponding to the active @outfmt
  * @capinfo: format information corresponding to the active @capfmt
  * @align: transfer alignment required by the DMA channel (in bytes)
+ * @crop: boolean flag to indicate if crop is requested
  * @pads: media pads for the video M2M device entity
  * @pipe: pipeline belonging to the DMA channel
  */
@@ -147,9 +149,11 @@ struct xvip_m2m_dma {
 	struct dma_chan *chan_rx;
 	struct v4l2_format outfmt;
 	struct v4l2_format capfmt;
+	struct v4l2_rect r;
 	const struct xvip_video_format *outinfo;
 	const struct xvip_video_format *capinfo;
 	u32 align;
+	bool crop;
 
 	struct media_pad pads[2];
 	struct xvip_pipeline pipe;
@@ -1041,6 +1045,69 @@ static int xvip_m2m_set_fmt(struct file *file, void *fh, struct v4l2_format *f)
 	return 0;
 }
 
+static int
+xvip_m2m_g_selection(struct file *file, void *fh, struct v4l2_selection *s)
+{
+	struct xvip_m2m_ctx *ctx = file2ctx(file);
+	struct xvip_m2m_dma *dma = ctx->xdev->dma;
+	int ret = 0;
+
+	if (s->type != V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE &&
+	    s->type != V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)
+		return -EINVAL;
+
+	switch (s->target) {
+	case V4L2_SEL_TGT_COMPOSE:
+		ret = -ENOTTY;
+		break;
+	case V4L2_SEL_TGT_CROP:
+		s->r.left = 0;
+		s->r.top = 0;
+		s->r.width = dma->r.width;
+		s->r.height = dma->r.height;
+		break;
+	default:
+		ret = -EINVAL;
+	}
+
+	return ret;
+}
+
+static int
+xvip_m2m_s_selection(struct file *file, void *fh, struct v4l2_selection *s)
+{
+	struct xvip_m2m_ctx *ctx = file2ctx(file);
+	struct xvip_m2m_dma *dma = ctx->xdev->dma;
+	u32 min_width, max_width;
+	int ret = 0;
+
+	if (s->type != V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE &&
+	    s->type != V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)
+		return -EINVAL;
+
+	switch (s->target) {
+	case V4L2_SEL_TGT_COMPOSE:
+		ret = -ENOTTY;
+		break;
+	case V4L2_SEL_TGT_CROP:
+		if (s->r.width > dma->outfmt.fmt.pix_mp.width ||
+		    s->r.height > dma->outfmt.fmt.pix_mp.height ||
+		    s->r.top != 0 || s->r.left != 0)
+			return -EINVAL;
+
+		dma->crop = true;
+		min_width = roundup(XVIP_M2M_MIN_WIDTH, dma->align);
+		max_width = rounddown(XVIP_M2M_MAX_WIDTH, dma->align);
+		dma->r.width = clamp(s->r.width, min_width, max_width);
+		dma->r.height = s->r.height;
+		break;
+	default:
+		ret = -EINVAL;
+	}
+
+	return ret;
+}
+
 static const struct v4l2_ioctl_ops xvip_m2m_ioctl_ops = {
 	.vidioc_querycap		= xvip_dma_querycap,
 
@@ -1053,6 +1120,8 @@ static const struct v4l2_ioctl_ops xvip_m2m_ioctl_ops = {
 	.vidioc_g_fmt_vid_out_mplane	= xvip_m2m_get_fmt,
 	.vidioc_try_fmt_vid_out_mplane	= xvip_m2m_try_fmt,
 	.vidioc_s_fmt_vid_out_mplane	= xvip_m2m_set_fmt,
+	.vidioc_s_selection		= xvip_m2m_s_selection,
+	.vidioc_g_selection		= xvip_m2m_g_selection,
 
 	.vidioc_reqbufs			= v4l2_m2m_ioctl_reqbufs,
 	.vidioc_querybuf		= v4l2_m2m_ioctl_querybuf,
