@@ -55,6 +55,8 @@
 
 #define XSCD_V_SUBSAMPLING		16
 #define XSCD_BYTE_ALIGN			16
+#define MULTIPLICATION_FACTOR		100
+#define SCENE_CHANGE_THRESHOLD		0.5
 
 #define XSCD_SCENE_CHANGE		1
 #define XSCD_NO_SCENE_CHANGE		0
@@ -342,14 +344,16 @@ static const struct media_entity_operations xscd_media_ops = {
 static void xscd_event_notify(struct xscd_chan *chan)
 {
 	u32 *eventdata;
-	u32 sad;
+	u32 sad, scd_threshold;
 
 	sad = xscd_read(chan->iomem, XSCD_SAD_OFFSET +
 			(chan->id * XILINX_XSCD_CHAN_OFFSET));
-	sad = (sad * 16) / (chan->format.width * chan->format.height);
+	sad = (sad * XSCD_V_SUBSAMPLING * MULTIPLICATION_FACTOR) /
+	       (chan->format.width * chan->format.height);
 	eventdata = (u32 *)&chan->event.u.data;
+	scd_threshold = SCENE_CHANGE_THRESHOLD * MULTIPLICATION_FACTOR;
 
-	if (sad >= 1)
+	if (sad > scd_threshold)
 		eventdata[0] = XSCD_SCENE_CHANGE;
 	else
 		eventdata[0] = XSCD_NO_SCENE_CHANGE;
