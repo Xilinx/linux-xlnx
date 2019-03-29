@@ -2677,6 +2677,9 @@ zynqmp_disp_plane_atomic_update(struct drm_plane *plane,
 	if (!plane->state->crtc || !plane->state->fb)
 		return;
 
+	if (plane->state->fb == old_state->fb)
+		return;
+
 	if (old_state->fb &&
 	    old_state->fb->format->format != plane->state->fb->format->format)
 		zynqmp_disp_plane_disable(plane);
@@ -2713,11 +2716,14 @@ static void
 zynqmp_disp_plane_atomic_async_update(struct drm_plane *plane,
 				      struct drm_plane_state *new_state)
 {
-	struct drm_plane_state *old_state =
-		drm_atomic_get_old_plane_state(new_state->state, plane);
+	int ret;
 
 	if (plane->state->fb == new_state->fb)
 		return;
+
+	if (plane->state->fb &&
+	    plane->state->fb->format->format != new_state->fb->format->format)
+		zynqmp_disp_plane_disable(plane);
 
 	 /* Update the current state with new configurations */
 	swap(plane->state->fb, new_state->fb);
@@ -2732,7 +2738,19 @@ zynqmp_disp_plane_atomic_async_update(struct drm_plane *plane,
 	plane->state->src_h = new_state->src_h;
 	plane->state->state = new_state->state;
 
-	zynqmp_disp_plane_atomic_update(plane, old_state);
+	ret = zynqmp_disp_plane_mode_set(plane, plane->state->fb,
+					 plane->state->crtc_x,
+					 plane->state->crtc_y,
+					 plane->state->crtc_w,
+					 plane->state->crtc_h,
+					 plane->state->src_x >> 16,
+					 plane->state->src_y >> 16,
+					 plane->state->src_w >> 16,
+					 plane->state->src_h >> 16);
+	if (ret)
+		return;
+
+	zynqmp_disp_plane_enable(plane);
 }
 
 static const struct drm_plane_helper_funcs zynqmp_disp_plane_helper_funcs = {
