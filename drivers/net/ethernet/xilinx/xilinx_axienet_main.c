@@ -2402,7 +2402,7 @@ static int __maybe_unused axienet_dma_probe(struct platform_device *pdev,
 #endif
 
 	for_each_rx_dma_queue(lp, i) {
-		q = kmalloc(sizeof(*q), GFP_KERNEL);
+		q = kzalloc(sizeof(*q), GFP_KERNEL);
 
 		/* parent */
 		q->lp = lp;
