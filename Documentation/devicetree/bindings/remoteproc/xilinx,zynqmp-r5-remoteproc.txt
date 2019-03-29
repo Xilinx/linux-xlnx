@@ -67,38 +67,25 @@ Required Properties:
 
 Example:
 --------
-	power-domains {
-		pd_r5_0: pd_r5_0 {
-			#power-domain-cells = <0x0>;
-			pd-id = <0x7>;
+	reserved-memory {
+		#address-cells = <2>;
+		#size-cells = <2>;
+		ranges;
+		/* R5 0 firmware memory in DDR */
+		rproc_0_fw_reserved: rproc@3ed000000 {
+			no-map;
+			reg = <0x0 0x3ed00000 0x0 0x40000>;
 		};
-		pd_tcm_0_a: pd_tcm_0_a {
-			#power-domain-cells = <0x0>;
-			pd-id = <0xf>;
+		/* DMA shared memory between APU and RPU */
+		rproc_0_dma_reserved: rproc@3ed400000 {
+			compatible = "shared-dma-pool";
+			no-map;
+			reg = <0x0 0x3ed40000 0x0 0x100000>;
 		};
-		pd_tcm_0_b: pd_tcm_0_b {
-			#power-domain-cells = <0x0>;
-			pd-id = <0x10>;
-		};
-	};
-
-	r5_0_tcm_a: tcm@ffe00000 {
-		compatible = "mmio-sram";
-		reg = <0x0 0xFFE00000 0x0 0x20000>;
-		pd-handle = <&pd_tcm_0_a>;
-	};
-	r5_0_tcm_b: tcm@ffe20000 {
-		compatible = "mmio-sram";
-		reg = <0x0 0xFFE20000 0x0 0x20000>;
-		pd-handle = <&pd_tcm_0_b>;
-	};
-	elf_ddr_0: ddr@3ed00000 {
-		compatible = "mmio-sram";
-		reg = <0x0 0x3ed00000 0x0 0x40000>;
 	};
 
 	zynqmp-r5-remoteproc@0 {
-		compatible = "xlnx,zynqmp-r5-remoteproc";
+		compatible = "xlnx,zynqmp-r5-remoteproc-1.0";
 		core_conf = "split";
 		#address-cells = <2>;
 		#size-cells = <2>;
@@ -107,7 +94,8 @@ Example:
 			#address-cells = <2>;
 			#size-cells = <2>;
 			ranges;
-			memory-region = <&rproc_0_reserved>;
+			memory-region = <&rproc_0_fw_reserved>,
+					<&rproc_0_dma_reserved>;
 			pnode-id = <0x7>;
 			mboxes = <&ipi_mailbox_rpu0 0>, <&ipi_mailbox_rpu0 1>;
 			mbox-names = "tx", "rx";
@@ -126,17 +114,17 @@ Example:
 		compatible = "xlnx,zynqmp-ipi-mailbox";
 		interrupt-parent = <&gic>;
 		interrupts = <0 29 4>;
-		xlnx,ipi-id = <0>;
+		xlnx,ipi-id = <7>;
 		#address-cells = <1>;
 		#size-cells = <1>;
 		ranges;
 
 		/* APU<->RPU0 IPI mailbox controller */
-		ipi_mailbox_rpu0: mailbox@ff90400 {
-			reg = <0xff990400 0x20>,
-			      <0xff990420 0x20>,
-			      <0xff990080 0x20>,
-			      <0xff9900a0 0x20>;
+		ipi_mailbox_rpu0: mailbox@ff90600 {
+			reg = <0xff990600 0x20>,
+			      <0xff990620 0x20>,
+			      <0xff9900c0 0x20>,
+			      <0xff9900e0 0x20>;
 			reg-names = "local_request_region",
 				    "local_response_region",
 				    "remote_request_region",
