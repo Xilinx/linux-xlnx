@@ -12,18 +12,17 @@
 #include <linux/string.h>
 #include <linux/firmware/xlnx-zynqmp.h>
 
+/* Constant Definitions */
+#define PDI_SOURCE_TYPE	0xF
+
 /**
  * struct versal_fpga_priv - Private data structure
  * @dev:	Device data structure
- * @source:	Source of the PDI Image DDR, OCM etc...
  * @flags:	flags which is used to identify the PL Image type
- * @source_attr: source sysfs attribute
  */
 struct versal_fpga_priv {
 	struct device *dev;
-	u32 source;
 	u32 flags;
-	struct device_attribute *source_attr;
 };
 
 static int versal_fpga_ops_write_init(struct fpga_manager *mgr,
@@ -60,7 +59,7 @@ static int versal_fpga_ops_write(struct fpga_manager *mgr,
 
 	wmb(); /* ensure all writes are done before initiate FW call */
 
-	ret = eemi_ops->pdi_load(priv->source, dma_addr);
+	ret = eemi_ops->pdi_load(PDI_SOURCE_TYPE, dma_addr);
 
 	dma_free_coherent(priv->dev, size, kbuf, dma_addr);
 
@@ -84,42 +83,6 @@ static const struct fpga_manager_ops versal_fpga_ops = {
 	.write = versal_fpga_ops_write,
 	.write_complete = versal_fpga_ops_write_complete,
 };
-
-static ssize_t source_store(struct device *dev, struct device_attribute *attr,
-			    const char *buf, size_t count)
-{
-	struct fpga_manager *mgr = to_fpga_manager(dev);
-	struct versal_fpga_priv *priv = mgr->priv;
-	int ret;
-
-	ret = kstrtou32(buf, 16, &priv->source);
-	if (ret)
-		return ret;
-
-	return count;
-}
-
-static struct device_attribute *
-versal_fpga_create_sysfs_entry(struct device *dev, char *name, int mode)
-{
-	struct device_attribute *attrs;
-	char *name_copy;
-
-	attrs = devm_kmalloc(dev, sizeof(struct device_attribute), GFP_KERNEL);
-	if (!attrs)
-		return NULL;
-
-	name_copy = devm_kstrdup(dev, name, GFP_KERNEL);
-	if (!name_copy)
-		return NULL;
-
-	attrs->attr.name = name_copy;
-	attrs->attr.mode = mode;
-	attrs->store = source_store;
-	sysfs_attr_init(&attrs->attr);
-
-	return attrs;
-}
 
 static int versal_fpga_probe(struct platform_device *pdev)
 {
@@ -153,24 +116,13 @@ static int versal_fpga_probe(struct platform_device *pdev)
 		return err;
 	}
 
-	priv->source_attr = versal_fpga_create_sysfs_entry(&mgr->dev, "source",
-							   0200);
-	if (!priv->source_attr) {
-		dev_err(dev, "unable to create source sysfs attribute");
-		fpga_mgr_unregister(mgr);
-		fpga_mgr_free(mgr);
-		return -ENOMEM;
-	}
-
-	return device_create_file(&mgr->dev, priv->source_attr);
+	return 0;
 }
 
 static int versal_fpga_remove(struct platform_device *pdev)
 {
 	struct fpga_manager *mgr = platform_get_drvdata(pdev);
-	struct versal_fpga_priv *priv = mgr->priv;
 
-	device_remove_file(&mgr->dev, priv->source_attr);
 	fpga_mgr_unregister(mgr);
 	fpga_mgr_free(mgr);
 
