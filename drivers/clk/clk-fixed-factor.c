@@ -171,6 +171,8 @@ static struct clk *_of_fixed_factor_clk_setup(struct device_node *node)
 
 	of_property_read_string(node, "clock-output-names", &clk_name);
 	parent_name = of_clk_get_parent_name(node, 0);
+	if (!parent_name)
+		return ERR_PTR(-EPROBE_DEFER);
 
 	if (of_match_node(set_rate_parent_matches, node))
 		flags |= CLK_SET_RATE_PARENT;
