@@ -991,16 +991,19 @@ static enum usb_otg_state do_a_peripheral(struct dwc3_otg *otg)
 {
 	int rc;
 	u32 otg_mask;
+	u32 user_mask;
 	u32 otg_events = 0;
+	u32 user_events = 0;
 
 	otg_dbg(otg, "");
 	otg_mask = OEVT_CONN_ID_STS_CHNG_EVNT |
 		OEVT_A_DEV_SESS_END_DET_EVNT |
 		OEVT_A_DEV_B_DEV_HOST_END_EVNT;
+	user_mask = USER_HNP_END_SESSION;
 
 	rc = sleep_until_event(otg,
-			otg_mask, 0,
-			&otg_events, NULL, 0);
+			otg_mask, user_mask,
+			&otg_events, &user_events, 0);
 	if (rc < 0)
 		return OTG_STATE_UNDEFINED;
 
@@ -1014,6 +1017,9 @@ static enum usb_otg_state do_a_peripheral(struct dwc3_otg *otg)
 
 	} else if (otg_events & OEVT_A_DEV_B_DEV_HOST_END_EVNT) {
 		otg_dbg(otg, "OEVT_A_DEV_B_DEV_HOST_END_EVNT\n");
+		return OTG_STATE_A_WAIT_VRISE;
+	} else if (user_events & USER_HNP_END_SESSION) {
+		otg_dbg(otg, "USER_HNP_END_SESSION\n");
 		return OTG_STATE_A_WAIT_VRISE;
 	}
 
@@ -1145,7 +1151,7 @@ static enum usb_otg_state do_b_wait_acon(struct dwc3_otg *otg)
 		OEVT_B_DEV_B_HOST_END_EVNT |
 		OEVT_B_DEV_VBUS_CHNG_EVNT |
 		OEVT_HOST_ROLE_REQ_INIT_EVNT;
-	user_mask = USER_A_CONN_EVENT;
+	user_mask = USER_A_CONN_EVENT | USER_HNP_END_SESSION;
 
 again:
 	rc = sleep_until_event(otg,
@@ -1173,6 +1179,9 @@ again:
 	} else if (user_events & USER_A_CONN_EVENT) {
 		otg_dbg(otg, "A-device connected\n");
 		return OTG_STATE_B_HOST;
+	} else if (user_events & USER_HNP_END_SESSION) {
+		otg_dbg(otg, "USER_HNP_END_SESSION\n");
+		return OTG_STATE_B_PERIPHERAL;
 	}
 
 	/* Invalid state */
@@ -1193,6 +1202,7 @@ static enum usb_otg_state do_b_host(struct dwc3_otg *otg)
 		OEVT_B_DEV_B_HOST_END_EVNT |
 		OEVT_B_DEV_VBUS_CHNG_EVNT |
 		OEVT_HOST_ROLE_REQ_INIT_EVNT;
+	user_mask = USER_HNP_END_SESSION;
 
 again:
 	rc = sleep_until_event(otg,
@@ -1217,6 +1227,9 @@ again:
 			otg_dbg(otg, "Session not valid\n");
 			return OTG_STATE_B_IDLE;
 		}
+	} else if (user_events & USER_HNP_END_SESSION) {
+		otg_dbg(otg, "USER_HNP_END_SESSION\n");
+		return OTG_STATE_B_PERIPHERAL;
 	}
 
 	/* Invalid state */
@@ -1975,6 +1988,39 @@ static ssize_t store_hnp(struct device *dev, struct device_attribute *attr,
 }
 static DEVICE_ATTR(hnp, 0220, NULL, store_hnp);
 
+static ssize_t store_hnp_end(struct device *dev, struct device_attribute *attr,
+			     const char *buf, size_t count)
+{
+	struct usb_phy *phy;
+	struct usb_otg *otg;
+	unsigned long flags;
+	struct dwc3_otg *dwc_otg;
+
+	phy = usb_get_phy(USB_PHY_TYPE_USB3);
+	if (IS_ERR(phy) || !phy) {
+		if (!IS_ERR(phy))
+			usb_put_phy(phy);
+		return count;
+	}
+
+	otg = phy->otg;
+	if (!otg) {
+		usb_put_phy(phy);
+		return count;
+	}
+
+	dwc_otg = otg_to_dwc3_otg(otg);
+
+	spin_lock_irqsave(&dwc_otg->lock, flags);
+	dwc_otg->user_events |= USER_HNP_END_SESSION;
+	wakeup_main_thread(dwc_otg);
+	spin_unlock_irqrestore(&dwc_otg->lock, flags);
+
+	usb_put_phy(phy);
+	return count;
+}
+static DEVICE_ATTR(hnp_end, 0220, NULL, store_hnp_end);
+
 static ssize_t store_a_hnp_reqd(struct device *dev,
 		struct device_attribute *attr, const char *buf, size_t count)
 {
@@ -2007,6 +2053,7 @@ void dwc_usb3_remove_dev_files(struct device *dev)
 	device_remove_file(dev, &dev_attr_end);
 	device_remove_file(dev, &dev_attr_srp);
 	device_remove_file(dev, &dev_attr_hnp);
+	device_remove_file(dev, &dev_attr_hnp_end);
 }
 
 int dwc3_otg_create_dev_files(struct device *dev)
@@ -2014,6 +2061,10 @@ int dwc3_otg_create_dev_files(struct device *dev)
 	int retval;
 
 	retval = device_create_file(dev, &dev_attr_hnp);
+	if (retval)
+		goto fail;
+
+	retval = device_create_file(dev, &dev_attr_hnp_end);
 	if (retval)
 		goto fail;
 
