@@ -382,6 +382,8 @@ static int dwc3_of_simple_remove(struct platform_device *pdev)
 	return 0;
 }
 
+#ifdef CONFIG_PM
+
 static void dwc3_simple_vbus(struct dwc3 *dwc, bool vbus_off)
 {
 	u32 reg, addr;
@@ -519,13 +521,28 @@ int dwc3_set_usb_core_power(struct dwc3 *dwc, bool on)
 }
 EXPORT_SYMBOL(dwc3_set_usb_core_power);
 
-static int __maybe_unused dwc3_of_simple_runtime_suspend(struct device *dev)
+#endif
+
+static int __maybe_unused dwc3_of_simple_resume(struct device *dev)
 {
 	struct dwc3_of_simple	*simple = dev_get_drvdata(dev);
+	int			ret;
 	int			i;
 
-	for (i = 0; i < simple->num_clocks; i++)
-		clk_disable(simple->clks[i]);
+	if (simple->wakeup_capable || simple->dwc->is_d3)
+		return 0;
+
+	for (i = 0; i < simple->num_clocks; i++) {
+		ret = clk_enable(simple->clks[i]);
+		if (ret < 0) {
+			while (--i >= 0)
+				clk_disable(simple->clks[i]);
+			return ret;
+		}
+
+		/* Ask ULPI to turn ON Vbus */
+		dwc3_simple_vbus(simple->dwc, false);
+	}
 
 	return 0;
 }
@@ -543,9 +560,6 @@ static int __maybe_unused dwc3_of_simple_runtime_resume(struct device *dev)
 				clk_disable(simple->clks[i]);
 			return ret;
 		}
-
-		/* Ask ULPI to turn ON Vbus */
-		dwc3_simple_vbus(simple->dwc, false);
 	}
 
 	return 0;
@@ -553,7 +567,7 @@ static int __maybe_unused dwc3_of_simple_runtime_resume(struct device *dev)
 
 static int __maybe_unused dwc3_of_simple_suspend(struct device *dev)
 {
-	struct dwc3_of_simple *simple = dev_get_drvdata(dev);
+	struct dwc3_of_simple	*simple = dev_get_drvdata(dev);
 	int			i;
 
 	if (!simple->wakeup_capable && !simple->dwc->is_d3) {
@@ -571,23 +585,13 @@ static int __maybe_unused dwc3_of_simple_suspend(struct device *dev)
 	return 0;
 }
 
-static int __maybe_unused dwc3_of_simple_resume(struct device *dev)
+static int __maybe_unused dwc3_of_simple_runtime_suspend(struct device *dev)
 {
-	struct dwc3_of_simple *simple = dev_get_drvdata(dev);
-	int			ret;
+	struct dwc3_of_simple	*simple = dev_get_drvdata(dev);
 	int			i;
 
-	if (simple->wakeup_capable || simple->dwc->is_d3)
-		return 0;
-
-	for (i = 0; i < simple->num_clocks; i++) {
-		ret = clk_enable(simple->clks[i]);
-		if (ret < 0) {
-			while (--i >= 0)
-				clk_disable(simple->clks[i]);
-			return ret;
-		}
-	}
+	for (i = 0; i < simple->num_clocks; i++)
+		clk_disable(simple->clks[i]);
 
 	if (simple->need_reset)
 		reset_control_deassert(simple->resets);
