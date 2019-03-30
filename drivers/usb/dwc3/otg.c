@@ -539,13 +539,13 @@ static void start_peripheral(struct dwc3_otg *otg)
 		spin_lock(&otg->lock);
 		dep = dwc->eps[0];
 
-		ret = __dwc3_gadget_ep_enable(dep, false, false);
+		ret = __dwc3_gadget_ep_enable(dep, DWC3_DEPCFG_ACTION_INIT);
 		if (ret)
 			goto err0;
 
 		dep = dwc->eps[1];
 
-		ret = __dwc3_gadget_ep_enable(dep, false, false);
+		ret = __dwc3_gadget_ep_enable(dep, DWC3_DEPCFG_ACTION_INIT);
 		if (ret)
 			goto err1;
 
