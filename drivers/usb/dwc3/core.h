@@ -885,6 +885,7 @@ struct dwc3_request {
 
 	unsigned		num_pending_sgs;
 	unsigned int		num_queued_sgs;
+	u8			first_trb_index;
 	unsigned		remaining;
 	u8			epnum;
 	struct dwc3_trb		*trb;
