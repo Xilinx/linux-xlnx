@@ -131,12 +131,12 @@ int dwc3_host_init(struct dwc3 *dwc)
 			  dev_name(dwc->dev));
 
 	if (dwc->dr_mode == USB_DR_MODE_OTG) {
-		struct usb_phy *phy;
-		phy = usb_get_phy(USB_PHY_TYPE_USB3);
+		struct usb_phy *phy = usb_get_phy(USB_PHY_TYPE_USB3);
+
 		if (!IS_ERR(phy)) {
 			if (phy && phy->otg)
 				otg_set_host(phy->otg,
-						(struct usb_bus *)(long)1);
+					     (struct usb_bus *)0xdeadbeef);
 			usb_put_phy(phy);
 		}
 	}

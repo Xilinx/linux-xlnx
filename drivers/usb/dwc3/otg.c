@@ -1769,7 +1769,7 @@ static int dwc3_otg_set_host(struct usb_otg *_otg, struct usb_bus *host)
 	otg = otg_to_dwc3_otg(_otg);
 	otg_dbg(otg, "\n");
 
-	if ((long)host == 1) {
+	if (host == (struct usb_bus *)0xdeadbeef) {
 		dwc3_otg_set_peripheral(_otg, 0);
 		return 0;
 	}
