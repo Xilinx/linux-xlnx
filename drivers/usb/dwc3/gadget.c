@@ -3303,7 +3303,7 @@ static irqreturn_t dwc3_interrupt(int irq, void *_evt)
 static int dwc3_gadget_get_irq(struct dwc3 *dwc)
 {
 	struct platform_device *dwc3_pdev = to_platform_device(dwc->dev);
-	int irq;
+	int irq, irq_hiber;
 
 	irq = platform_get_irq_byname(dwc3_pdev, "peripheral");
 	if (irq > 0)
@@ -3325,25 +3325,19 @@ static int dwc3_gadget_get_irq(struct dwc3 *dwc)
 
 	if (irq == -EPROBE_DEFER)
 		goto out;
-
+out:
 	/* look for wakeup interrupt if hibernation is supported */
 	if (dwc->has_hibernation) {
-		irq = platform_get_irq(dwc3_pdev, 2);
-		if (irq > 0)
-			dwc->irq_wakeup = irq;
-
-		if (irq == -EPROBE_DEFER)
-			goto out;
+		irq_hiber = platform_get_irq_byname(dwc3_pdev, "hiber");
+		if (irq_hiber > 0) {
+			dwc->irq_wakeup = irq_hiber;
+		} else {
+			irq_hiber = platform_get_irq(dwc3_pdev, 2);
+			if (irq_hiber > 0)
+				dwc->irq_wakeup = irq_hiber;
+		}
 	}
 
-	if (irq <= 0) {
-		if (irq != -EPROBE_DEFER)
-			dev_err(dwc->dev, "missing peripheral IRQ\n");
-
-		if (!irq)
-			irq = -EINVAL;
-	}
-out:
 	return irq;
 }
 
@@ -3363,6 +3357,8 @@ int dwc3_gadget_init(struct dwc3 *dwc)
 		ret = irq;
 		goto err0;
 	}
+
+	dwc->irq_gadget = irq;
 
 	dwc->ep0_trb = dma_alloc_coherent(dwc->sysdev,
 					  sizeof(*dwc->ep0_trb) * 2,
