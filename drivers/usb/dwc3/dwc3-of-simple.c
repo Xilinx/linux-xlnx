@@ -341,8 +341,6 @@ static int dwc3_of_simple_probe(struct platform_device *pdev)
 		goto err_resetc_assert;
 	}
 
-	platform_set_drvdata(pdev, simple);
-
 	pm_runtime_set_active(dev);
 	pm_runtime_enable(dev);
 	pm_runtime_get_sync(dev);
