@@ -94,6 +94,8 @@ int dwc3_gadget_ep0_queue(struct usb_ep *ep, struct usb_request *request,
 int __dwc3_gadget_ep_set_halt(struct dwc3_ep *dep, int value, int protocol);
 int __dwc3_gadget_ep_enable(struct dwc3_ep *dep, unsigned int action);
 int __dwc3_gadget_ep_disable(struct dwc3_ep *dep);
+int __dwc3_gadget_kick_transfer(struct dwc3_ep *dep);
+void dwc3_stop_active_transfer(struct dwc3_ep *dep, bool force);
 
 /**
  * dwc3_gadget_ep_get_transfer_index - Gets transfer index from HW
