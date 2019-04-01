@@ -48,6 +48,14 @@ struct dwc3;
 /* DEPXFERCFG parameter 0 */
 #define DWC3_DEPXFERCFG_NUM_XFER_RES(n)	((n) & 0xffff)
 
+/* Below used in hibernation */
+#define DWC3_NON_STICKY_RESTORE_RETRIES	500
+#define DWC3_NON_STICKY_SAVE_RETRIES	500
+#define DWC3_DEVICE_CTRL_READY_RETRIES	20000
+#define DWC3_NON_STICKY_RESTORE_DELAY	100
+#define DWC3_NON_STICKY_SAVE_DELAY	100
+#define DWC3_DEVICE_CTRL_READY_DELAY	5
+
 /* -------------------------------------------------------------------------- */
 
 #define to_dwc3_request(r)	(container_of(r, struct dwc3_request, request))
@@ -96,6 +104,10 @@ int __dwc3_gadget_ep_enable(struct dwc3_ep *dep, unsigned int action);
 int __dwc3_gadget_ep_disable(struct dwc3_ep *dep);
 int __dwc3_gadget_kick_transfer(struct dwc3_ep *dep);
 void dwc3_stop_active_transfer(struct dwc3_ep *dep, bool force);
+int dwc3_gadget_run_stop(struct dwc3 *dwc, int is_on, int suspend);
+dma_addr_t dwc3_trb_dma_offset(struct dwc3_ep *dep, struct dwc3_trb *trb);
+void gadget_hibernation_interrupt(struct dwc3 *dwc);
+void gadget_wakeup_interrupt(struct dwc3 *dwc);
 
 /**
  * dwc3_gadget_ep_get_transfer_index - Gets transfer index from HW
