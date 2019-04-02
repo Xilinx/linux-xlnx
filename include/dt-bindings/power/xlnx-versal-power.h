@@ -27,5 +27,14 @@
 #define PD_QSPI			0x1822402b
 #define PD_SDIO_0		0x1822402e
 #define PD_SDIO_1		0x1822402f
+#define PD_RTC			0x18224034
+#define PD_ADMA_0		0x18224035
+#define PD_ADMA_1		0x18224036
+#define PD_ADMA_2		0x18224037
+#define PD_ADMA_3		0x18224038
+#define PD_ADMA_4		0x18224039
+#define PD_ADMA_5		0x1822403a
+#define PD_ADMA_6		0x1822403b
+#define PD_ADMA_7		0x1822403c
 
 #endif
