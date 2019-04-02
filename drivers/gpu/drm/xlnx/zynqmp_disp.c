@@ -2802,6 +2802,7 @@ static int zynqmp_disp_crtc_mode_set(struct drm_crtc *crtc,
 	long diff;
 	int ret;
 
+    /*
 	zynqmp_disp_clk_disable(disp->pclk, &disp->pclk_en);
 	ret = clk_set_rate(disp->pclk, adjusted_mode->clock * 1000);
 	if (ret) {
@@ -2818,6 +2819,7 @@ static int zynqmp_disp_crtc_mode_set(struct drm_crtc *crtc,
 		dev_dbg(disp->dev, "request pixel rate: %d actual rate: %lu\n",
 			adjusted_mode->clock, rate);
 	}
+    */
 
 	/* The timing register should be programmed always */
 	zynqmp_dp_encoder_mode_set_stream(disp->dpsub->dp, adjusted_mode);
@@ -2837,11 +2839,13 @@ zynqmp_disp_crtc_atomic_enable(struct drm_crtc *crtc,
 				  adjusted_mode, crtc->x, crtc->y, NULL);
 
 	pm_runtime_get_sync(disp->dev);
+    /*
 	ret = zynqmp_disp_clk_enable(disp->pclk, &disp->pclk_en);
 	if (ret) {
 		dev_err(disp->dev, "failed to enable a pixel clock\n");
 		return;
 	}
+    */
 	zynqmp_disp_set_output_fmt(disp, disp->color);
 	zynqmp_disp_set_bg_color(disp, disp->bg_c0, disp->bg_c1, disp->bg_c2);
 	zynqmp_disp_enable(disp);
@@ -2857,7 +2861,7 @@ zynqmp_disp_crtc_atomic_disable(struct drm_crtc *crtc,
 {
 	struct zynqmp_disp *disp = crtc_to_disp(crtc);
 
-	zynqmp_disp_clk_disable(disp->pclk, &disp->pclk_en);
+	//zynqmp_disp_clk_disable(disp->pclk, &disp->pclk_en);
 	zynqmp_disp_plane_disable(crtc->primary);
 	zynqmp_disp_disable(disp, true);
 	pm_runtime_put_sync(disp->dev);
@@ -3173,8 +3177,8 @@ int zynqmp_disp_probe(struct platform_device *pdev)
 			return PTR_ERR(disp->_ps_pclk);
 		}
 		disp->pclk = disp->_ps_pclk;
-		ret = zynqmp_disp_clk_enable_disable(disp->pclk,
-						     &disp->pclk_en);
+		//ret = zynqmp_disp_clk_enable_disable(disp->pclk,
+		//				     &disp->pclk_en);
 		if (ret) {
 			dev_err(disp->dev, "failed to init any video clock\n");
 			return ret;
@@ -3239,7 +3243,7 @@ int zynqmp_disp_remove(struct platform_device *pdev)
 	if (disp->audclk)
 		zynqmp_disp_clk_disable(disp->audclk, &disp->audclk_en);
 	zynqmp_disp_clk_disable(disp->aclk, &disp->aclk_en);
-	zynqmp_disp_clk_disable(disp->pclk, &disp->pclk_en);
+	//zynqmp_disp_clk_disable(disp->pclk, &disp->pclk_en);
 	dpsub->disp = NULL;
 
 	return 0;
