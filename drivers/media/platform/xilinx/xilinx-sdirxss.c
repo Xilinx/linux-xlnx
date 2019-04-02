@@ -819,10 +819,10 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 
 	switch (sampling) {
 	case XST352_BYTE3_COLOR_FORMAT_420:
-		format->code = MEDIA_BUS_FMT_VYYUYY8_1X24;
+		format->code = MEDIA_BUS_FMT_VYYUYY10_4X20;
 		break;
 	case XST352_BYTE3_COLOR_FORMAT_422:
-		format->code = MEDIA_BUS_FMT_UYVY8_1X16;
+		format->code = MEDIA_BUS_FMT_UYVY10_1X20;
 		break;
 	default:
 		dev_err(core->dev, "Unsupported color format : %d\n", sampling);
