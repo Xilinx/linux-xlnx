@@ -27,24 +27,6 @@
 #include "xilinx-scenechange.h"
 
 /**
- * struct xscd_dma_device - Scene Change DMA device
- * @regs: I/O mapped base address
- * @dev: Device Structure
- * @common: DMA device structure
- * @chan: Driver specific DMA channel
- * @numchannels: Total number of channels
- * @memory_based: Memory based or streaming based
- */
-struct xscd_dma_device {
-	void __iomem *regs;
-	struct device *dev;
-	struct dma_device common;
-	struct xscd_dma_chan **chan;
-	u32 numchannels;
-	bool memory_based;
-};
-
-/**
  * xscd_dma_irq_handler - scdma Interrupt handler
  * @irq: IRQ number
  * @data: Pointer to the Xilinx scdma channel structure
@@ -120,8 +102,8 @@ xscd_dma_alloc_tx_descriptor(struct xscd_dma_chan *chan)
  */
 dma_cookie_t xscd_dma_tx_submit(struct dma_async_tx_descriptor *tx)
 {
-	struct xscd_dma_tx_descriptor *desc = to_dma_tx_descriptor(tx);
-	struct xscd_dma_chan *chan = to_xilinx_chan(tx->chan);
+	struct xscd_dma_tx_descriptor *desc = to_xscd_dma_tx_descriptor(tx);
+	struct xscd_dma_chan *chan = to_xscd_dma_chan(tx->chan);
 	dma_cookie_t cookie;
 	unsigned long flags;
 
@@ -290,7 +272,7 @@ xscd_dma_prep_interleaved(struct dma_chan *dchan,
 			  struct dma_interleaved_template *xt,
 			  unsigned long flags)
 {
-	struct xscd_dma_chan *chan = to_xilinx_chan(dchan);
+	struct xscd_dma_chan *chan = to_xscd_dma_chan(dchan);
 	struct xscd_dma_tx_descriptor *desc;
 	struct xscd_dma_desc *sw;
 
@@ -319,7 +301,7 @@ xscd_dma_prep_interleaved(struct dma_chan *dchan,
  */
 static int xscd_dma_terminate_all(struct dma_chan *dchan)
 {
-	struct xscd_dma_chan *chan = to_xilinx_chan(dchan);
+	struct xscd_dma_chan *chan = to_xscd_dma_chan(dchan);
 
 	xscd_dma_halt(chan);
 	xscd_dma_free_descriptors(chan);
@@ -337,7 +319,7 @@ static int xscd_dma_terminate_all(struct dma_chan *dchan)
  */
 static void xscd_dma_issue_pending(struct dma_chan *dchan)
 {
-	struct xscd_dma_chan *chan = to_xilinx_chan(dchan);
+	struct xscd_dma_chan *chan = to_xscd_dma_chan(dchan);
 	struct xscd_dma_device *dev = chan->xdev;
 	u32 chan_en = 0, id;
 
@@ -423,7 +405,7 @@ void xscd_dma_reset(struct xscd_dma_chan *chan)
  */
 static void xscd_dma_free_chan_resources(struct dma_chan *dchan)
 {
-	struct xscd_dma_chan *chan = to_xilinx_chan(dchan);
+	struct xscd_dma_chan *chan = to_xscd_dma_chan(dchan);
 
 	xscd_dma_free_descriptors(chan);
 }
