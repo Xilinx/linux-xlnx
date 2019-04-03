@@ -168,7 +168,7 @@ static void xscd_chan_configure_params(struct xscd_chan *chan,
 		   chan->format.width);
 
 	/* Stride is required only for memory based IP, not for streaming IP */
-	if (chan->xscd->shared_data.memory_based) {
+	if (chan->xscd->memory_based) {
 		stride = roundup(chan->format.width, XSCD_BYTE_ALIGN);
 		xscd_write(chan->iomem, XSCD_STRIDE_OFFSET + chan_offset,
 			   stride);
@@ -179,7 +179,7 @@ static void xscd_chan_configure_params(struct xscd_chan *chan,
 
 	/* Hardware video format */
 	vid_fmt = xscd_chan_get_vid_fmt(chan->format.code,
-					chan->xscd->shared_data.memory_based);
+					chan->xscd->memory_based);
 	xscd_write(chan->iomem, XSCD_VID_FMT_OFFSET + chan_offset, vid_fmt);
 
 	/*
@@ -197,33 +197,31 @@ static void xscd_chan_configure_params(struct xscd_chan *chan,
 static int xscd_s_stream(struct v4l2_subdev *subdev, int enable)
 {
 	struct xscd_chan *chan = to_xscd_chan(subdev);
-	struct xscd_shared_data *shared_data;
 	unsigned long flags;
 	u32 chan_offset;
 
 	/* TODO: Re-organise shared data in a better way */
-	shared_data = &chan->xscd->shared_data;
 	chan->dmachan.en = enable;
 
 	spin_lock_irqsave(&chan->dmachan.lock, flags);
 
-	if (shared_data->memory_based) {
+	if (chan->xscd->memory_based) {
 		chan_offset = chan->id * XSCD_CHAN_OFFSET;
 		xscd_chan_configure_params(chan, chan_offset);
 		if (enable) {
-			if (!shared_data->active_streams) {
+			if (!chan->xscd->active_streams) {
 				chan->dmachan.valid_interrupt = true;
-				shared_data->active_streams++;
+				chan->xscd->active_streams++;
 				xscd_dma_start_transfer(&chan->dmachan);
 				xscd_dma_reset(&chan->dmachan);
 				xscd_dma_chan_enable(&chan->dmachan,
 						     BIT(chan->id));
 				xscd_dma_start(&chan->dmachan);
 			} else {
-				shared_data->active_streams++;
+				chan->xscd->active_streams++;
 			}
 		} else {
-			shared_data->active_streams--;
+			chan->xscd->active_streams--;
 		}
 	} else {
 		/* Streaming based */
@@ -345,11 +343,10 @@ static void xscd_event_notify(struct xscd_chan *chan)
 
 void xscd_chan_irq_handler(struct xscd_chan *chan)
 {
-	struct xscd_shared_data *shared_data = &chan->xscd->shared_data;
 	spin_lock(&chan->dmachan.lock);
 
-	if ((shared_data->memory_based && chan->dmachan.valid_interrupt) ||
-	    !shared_data->memory_based) {
+	if ((chan->xscd->memory_based && chan->dmachan.valid_interrupt) ||
+	    !chan->xscd->memory_based) {
 		spin_unlock(&chan->dmachan.lock);
 		xscd_event_notify(chan);
 		return;
@@ -387,7 +384,7 @@ int xscd_chan_init(struct xscd_device *xscd, unsigned int chan_id,
 	chan->dmachan.id = chan->id;
 	chan->dmachan.iomem = chan->xscd->iomem;
 
-	xscd->shared_data.dma_chan_list[chan->id] = &chan->dmachan;
+	xscd->channels[chan->id] = &chan->dmachan;
 
 	/* Initialize V4L2 subdevice and media entity */
 	subdev = &chan->subdev;
@@ -407,7 +404,7 @@ int xscd_chan_init(struct xscd_device *xscd, unsigned int chan_id,
 	chan->format.height = XSCD_MAX_HEIGHT;
 
 	/* Initialize media pads */
-	num_pads = xscd->shared_data.memory_based ? 1 : 2;
+	num_pads = xscd->memory_based ? 1 : 2;
 	chan->pad = devm_kzalloc(chan->xscd->dev,
 				 sizeof(struct media_pad) * num_pads,
 				 GFP_KERNEL);
@@ -415,7 +412,7 @@ int xscd_chan_init(struct xscd_device *xscd, unsigned int chan_id,
 		return -ENOMEM;
 
 	chan->pad[XVIP_PAD_SINK].flags = MEDIA_PAD_FL_SINK;
-	if (!xscd->shared_data.memory_based)
+	if (!xscd->memory_based)
 		chan->pad[XVIP_PAD_SOURCE].flags = MEDIA_PAD_FL_SOURCE;
 
 	ret = media_entity_pads_init(&subdev->entity, num_pads, chan->pad);

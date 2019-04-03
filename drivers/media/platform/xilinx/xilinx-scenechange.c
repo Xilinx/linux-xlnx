@@ -25,7 +25,7 @@ static irqreturn_t xscd_irq_handler(int irq, void *data)
 
 	xscd_write(xscd->iomem, XSCD_ISR_OFFSET, XSCD_IE_AP_DONE);
 
-	for (i = 0; i < xscd->numstreams; ++i)
+	for (i = 0; i < xscd->num_streams; ++i)
 		xscd_chan_irq_handler(xscd->chans[i]);
 
 	xscd_dma_irq_handler(xscd);
@@ -57,8 +57,7 @@ static int xscd_parse_of(struct xscd_device *xscd)
 	struct device_node *node = xscd->dev->of_node;
 	int ret;
 
-	xscd->shared_data.memory_based =
-			of_property_read_bool(node, "xlnx,memorybased");
+	xscd->memory_based = of_property_read_bool(node, "xlnx,memorybased");
 	xscd->rst_gpio = devm_gpiod_get(dev, "reset", GPIOD_OUT_HIGH);
 	if (IS_ERR(xscd->rst_gpio)) {
 		if (PTR_ERR(xscd->rst_gpio) != -EPROBE_DEFER)
@@ -68,11 +67,11 @@ static int xscd_parse_of(struct xscd_device *xscd)
 	}
 
 	ret = of_property_read_u32(node, "xlnx,numstreams",
-				   &xscd->numstreams);
+				   &xscd->num_streams);
 	if (ret < 0)
 		return ret;
 
-	if (!xscd->shared_data.memory_based && xscd->numstreams != 1) {
+	if (!xscd->memory_based && xscd->num_streams != 1) {
 		dev_err(dev, "Stream-based mode only supports one stream\n");
 		return -EINVAL;
 	}
@@ -101,6 +100,7 @@ static int xscd_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	xscd->dev = &pdev->dev;
+	platform_set_drvdata(pdev, xscd);
 
 	ret = xscd_parse_of(xscd);
 	if (ret < 0)
@@ -114,16 +114,12 @@ static int xscd_probe(struct platform_device *pdev)
 	gpiod_set_value_cansleep(xscd->rst_gpio, XSCD_RESET_ASSERT);
 	gpiod_set_value_cansleep(xscd->rst_gpio, XSCD_RESET_DEASSERT);
 
-	xscd->shared_data.iomem = xscd->iomem;
-	xscd->shared_data.dma_chan_list = xscd->channels;
-	platform_set_drvdata(pdev, (void *)&xscd->shared_data);
-
 	id = 0;
 	for_each_child_of_node(xscd->dev->of_node, subdev_node) {
-		if (id >= xscd->numstreams) {
+		if (id >= xscd->num_streams) {
 			dev_warn(&pdev->dev,
 				 "Too many channels, limiting to %u\n",
-				 xscd->numstreams);
+				 xscd->num_streams);
 			of_node_put(subdev_node);
 			break;
 		}

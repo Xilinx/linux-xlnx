@@ -34,10 +34,10 @@ void xscd_dma_irq_handler(struct xscd_device *xscd)
 {
 	struct xscd_dma_chan *chan;
 
-	if (xscd->shared_data.memory_based) {
+	if (xscd->memory_based) {
 		u32 chan_en = 0, id;
 
-		for (id = 0; id < xscd->numchannels; id++) {
+		for (id = 0; id < xscd->num_streams; id++) {
 			chan = xscd->channels[id];
 			spin_lock(&chan->lock);
 			chan->idle = true;
@@ -59,7 +59,7 @@ void xscd_dma_irq_handler(struct xscd_device *xscd)
 			xscd_dma_start(chan);
 		}
 
-		for (id = 0; id < xscd->numchannels; id++) {
+		for (id = 0; id < xscd->num_streams; id++) {
 			chan = xscd->channels[id];
 			tasklet_schedule(&chan->tasklet);
 		}
@@ -317,7 +317,7 @@ static void xscd_dma_issue_pending(struct dma_chan *dchan)
 	struct xscd_device *xscd = chan->xscd;
 	u32 chan_en = 0, id;
 
-	for (id = 0; id < xscd->numchannels; id++) {
+	for (id = 0; id < xscd->num_streams; id++) {
 		chan = xscd->channels[id];
 		spin_lock(&chan->lock);
 		chan->idle = true;
@@ -355,7 +355,7 @@ void xscd_dma_halt(struct xscd_dma_chan *chan)
 {
 	struct xscd_device *xscd = chan->xscd;
 
-	if (xscd->shared_data.memory_based)
+	if (xscd->memory_based)
 		xscd_clr(chan->iomem, XSCD_CTRL_OFFSET, XSCD_CTRL_AP_START);
 	else
 		/* Streaming based */
@@ -373,7 +373,7 @@ void xscd_dma_start(struct xscd_dma_chan *chan)
 {
 	struct xscd_device *xscd = chan->xscd;
 
-	if (xscd->shared_data.memory_based)
+	if (xscd->memory_based)
 		xscd_set(chan->iomem, XSCD_CTRL_OFFSET, XSCD_CTRL_AP_START);
 	else
 		/* Streaming based */
@@ -440,7 +440,7 @@ static struct dma_chan *of_scdma_xilinx_xlate(struct of_phandle_args *dma_spec,
 	struct xscd_device *xscd = ofdma->of_dma_data;
 	u32 chan_id = dma_spec->args[0];
 
-	if (chan_id >= xscd->numchannels)
+	if (chan_id >= xscd->num_streams)
 		return NULL;
 
 	if (!xscd->channels[chan_id])
@@ -476,7 +476,6 @@ xscd_dma_chan_probe(struct xscd_device *xscd, int chan_id)
  */
 int xscd_dma_init(struct xscd_device *xscd)
 {
-	struct device_node *node = xscd->dev->of_node;
 	struct dma_device *ddev = &xscd->dma_device;
 	struct xscd_dma_chan *chan;
 	unsigned int chan_id;
@@ -485,9 +484,6 @@ int xscd_dma_init(struct xscd_device *xscd)
 	/* Initialize the DMA engine */
 	ddev->dev = xscd->dev;
 	dma_set_mask(xscd->dev, DMA_BIT_MASK(32));
-
-	ret = of_property_read_u32(node, "xlnx,numstreams",
-				   &xscd->numchannels);
 
 	INIT_LIST_HEAD(&ddev->channels);
 	dma_cap_set(DMA_SLAVE, ddev->cap_mask);
@@ -499,7 +495,7 @@ int xscd_dma_init(struct xscd_device *xscd)
 	ddev->device_terminate_all = xscd_dma_terminate_all;
 	ddev->device_prep_interleaved_dma = xscd_dma_prep_interleaved;
 
-	for (chan_id = 0; chan_id < xscd->numchannels; chan_id++) {
+	for (chan_id = 0; chan_id < xscd->num_streams; chan_id++) {
 		chan = xscd_dma_chan_probe(xscd, chan_id);
 		if (IS_ERR(chan)) {
 			dev_err(xscd->dev, "failed to probe a channel\n");
@@ -528,7 +524,7 @@ error_of_dma:
 	dma_async_device_unregister(ddev);
 
 error:
-	for (chan_id = 0; chan_id < xscd->numchannels; chan_id++) {
+	for (chan_id = 0; chan_id < xscd->num_streams; chan_id++) {
 		if (xscd->channels[chan_id])
 			xscd_dma_chan_remove(xscd->channels[chan_id]);
 	}
