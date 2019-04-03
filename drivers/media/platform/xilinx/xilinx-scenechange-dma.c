@@ -82,7 +82,7 @@ static irqreturn_t xscd_dma_irq_handler(int irq, void *data)
  *
  * Return: The allocated descriptor on success and NULL on failure.
  */
-struct xscd_dma_tx_descriptor *
+static struct xscd_dma_tx_descriptor *
 xscd_dma_alloc_tx_descriptor(struct xscd_dma_chan *chan)
 {
 	struct xscd_dma_tx_descriptor *desc;
@@ -100,7 +100,7 @@ xscd_dma_alloc_tx_descriptor(struct xscd_dma_chan *chan)
  *
  * Return: cookie value on success and failure value on error
  */
-dma_cookie_t xscd_dma_tx_submit(struct dma_async_tx_descriptor *tx)
+static dma_cookie_t xscd_dma_tx_submit(struct dma_async_tx_descriptor *tx)
 {
 	struct xscd_dma_tx_descriptor *desc = to_xscd_dma_tx_descriptor(tx);
 	struct xscd_dma_chan *chan = to_xscd_dma_chan(tx->chan);
@@ -183,8 +183,8 @@ void xscd_dma_start_transfer(struct xscd_dma_chan *chan)
  * @chan: Driver specific dma channel
  * @list: List to parse and delete the descriptor
  */
-void xscd_dma_free_desc_list(struct xscd_dma_chan *chan,
-			     struct list_head *list)
+static void xscd_dma_free_desc_list(struct xscd_dma_chan *chan,
+				    struct list_head *list)
 {
 	struct xscd_dma_tx_descriptor *desc, *next;
 
@@ -198,7 +198,7 @@ void xscd_dma_free_desc_list(struct xscd_dma_chan *chan,
  * xscd_dma_free_descriptors - Free channel descriptors
  * @chan: Driver specific dma channel
  */
-void xscd_dma_free_descriptors(struct xscd_dma_chan *chan)
+static void xscd_dma_free_descriptors(struct xscd_dma_chan *chan)
 {
 	unsigned long flags;
 
@@ -221,7 +221,7 @@ void xscd_dma_free_descriptors(struct xscd_dma_chan *chan)
  * scd_dma_chan_desc_cleanup - Clean channel descriptors
  * @chan: Driver specific dma channel
  */
-void xscd_dma_chan_desc_cleanup(struct xscd_dma_chan *chan)
+static void xscd_dma_chan_desc_cleanup(struct xscd_dma_chan *chan)
 {
 	struct xscd_dma_tx_descriptor *desc, *next;
 	unsigned long flags;
@@ -253,7 +253,7 @@ void xscd_dma_chan_desc_cleanup(struct xscd_dma_chan *chan)
  * xscd_dma_chan_remove - Per Channel remove function
  * @chan: Driver specific DMA channel
  */
-void xscd_dma_chan_remove(struct xscd_dma_chan *chan)
+static void xscd_dma_chan_remove(struct xscd_dma_chan *chan)
 {
 	list_del(&chan->common.device_node);
 }
