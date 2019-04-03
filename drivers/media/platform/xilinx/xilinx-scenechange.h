@@ -65,10 +65,6 @@
 #define XSCD_MAX_CHANNELS		8
 
 /****************************** PROTOTYPES ************************************/
-#define to_xilinx_chan(chan) \
-	container_of(chan, struct xscd_dma_chan, common)
-#define to_dma_tx_descriptor(tx) \
-	container_of(tx, struct xscd_dma_tx_descriptor, async_tx)
 
 /**
  * struct xscd_shared_data - Data to be shared among v4l subdev and DMA engine
@@ -136,6 +132,12 @@ struct xscd_dma_tx_descriptor {
 	struct list_head node;
 };
 
+static inline struct xscd_dma_tx_descriptor *
+to_xscd_dma_tx_descriptor(struct dma_async_tx_descriptor *tx)
+{
+	return container_of(tx, struct xscd_dma_tx_descriptor, async_tx);
+}
+
 /**
  * struct xscd_dma_chan - DMA Channel structure
  * @xdev: DMA engine driver specific device structure
@@ -174,6 +176,11 @@ struct xscd_dma_chan {
 	bool valid_interrupt;
 };
 
+static inline struct xscd_dma_chan *to_xscd_dma_chan(struct dma_chan *chan)
+{
+	return container_of(chan, struct xscd_dma_chan, common);
+}
+
 /**
  * struct xscd_chan - Video Stream structure
  * @irq: device IRQ
@@ -202,10 +209,28 @@ struct xscd_chan {
 	struct mutex lock;
 };
 
-static inline struct xscd_chan *to_chan(struct v4l2_subdev *subdev)
+static inline struct xscd_chan *to_xscd_chan(struct v4l2_subdev *subdev)
 {
 	return container_of(subdev, struct xscd_chan, subdev);
 }
+
+/**
+ * struct xscd_dma_device - Scene Change DMA device
+ * @regs: I/O mapped base address
+ * @dev: Device Structure
+ * @common: DMA device structure
+ * @chan: Driver specific DMA channel
+ * @numchannels: Total number of channels
+ * @memory_based: Memory based or streaming based
+ */
+struct xscd_dma_device {
+	void __iomem *regs;
+	struct device *dev;
+	struct dma_device common;
+	struct xscd_dma_chan **chan;
+	u32 numchannels;
+	u8 memory_based;
+};
 
 /*
  * Register related operations

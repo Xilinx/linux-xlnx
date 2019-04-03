@@ -82,7 +82,7 @@ static int xscd_get_format(struct v4l2_subdev *subdev,
 			   struct v4l2_subdev_pad_config *cfg,
 			   struct v4l2_subdev_format *fmt)
 {
-	struct xscd_chan *chan = to_chan(subdev);
+	struct xscd_chan *chan = to_xscd_chan(subdev);
 
 	fmt->format = *__xscd_get_pad_format(chan, cfg, fmt->pad, fmt->which);
 	return 0;
@@ -92,7 +92,7 @@ static int xscd_set_format(struct v4l2_subdev *subdev,
 			   struct v4l2_subdev_pad_config *cfg,
 			   struct v4l2_subdev_format *fmt)
 {
-	struct xscd_chan *chan = to_chan(subdev);
+	struct xscd_chan *chan = to_xscd_chan(subdev);
 	struct v4l2_mbus_framefmt *format;
 
 	format = __xscd_get_pad_format(chan, cfg, fmt->pad, fmt->which);
@@ -198,7 +198,7 @@ void xscd_chan_configure_params(struct xscd_chan *chan,
  */
 static int xscd_s_stream(struct v4l2_subdev *subdev, int enable)
 {
-	struct xscd_chan *chan = to_chan(subdev);
+	struct xscd_chan *chan = to_xscd_chan(subdev);
 	struct xscd_shared_data *shared_data;
 	unsigned long flags;
 	u32 chan_offset;
@@ -248,7 +248,7 @@ static int xscd_subscribe_event(struct v4l2_subdev *sd,
 				struct v4l2_event_subscription *sub)
 {
 	int ret;
-	struct xscd_chan *chan = to_chan(sd);
+	struct xscd_chan *chan = to_xscd_chan(sd);
 
 	mutex_lock(&chan->lock);
 
@@ -270,7 +270,7 @@ static int xscd_unsubscribe_event(struct v4l2_subdev *sd,
 				  struct v4l2_event_subscription *sub)
 {
 	int ret;
-	struct xscd_chan *chan = to_chan(sd);
+	struct xscd_chan *chan = to_xscd_chan(sd);
 
 	mutex_lock(&chan->lock);
 	ret = v4l2_event_unsubscribe(fh, sub);
