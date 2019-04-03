@@ -213,7 +213,7 @@ bool xvip_subdev_set_streaming(struct xvip_composite_device *xdev,
 	struct xvip_graph_entity *entity;
 
 	list_for_each_entry(entity, &xdev->entities, list)
-		if (entity->node == subdev->dev->of_node) {
+		if (of_fwnode_handle(entity->node) == subdev->fwnode) {
 			bool status = entity->streaming;
 
 			entity->streaming = enable;
@@ -362,7 +362,7 @@ static int xvip_graph_notify_bound(struct v4l2_async_notifier *notifier,
 	 * subdev pointer.
 	 */
 	list_for_each_entry(entity, &xdev->entities, list) {
-		if (entity->node != subdev->dev->of_node)
+		if (of_fwnode_handle(entity->node) != subdev->fwnode)
 			continue;
 
 		if (entity->subdev) {
