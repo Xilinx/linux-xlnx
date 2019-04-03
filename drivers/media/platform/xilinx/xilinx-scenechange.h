@@ -66,6 +66,8 @@
 
 /****************************** PROTOTYPES ************************************/
 
+struct xscd_device;
+
 /**
  * struct xscd_dma_desc - DMA channel
  * @luma_plane_addr: Luma plane buffer address
@@ -146,7 +148,7 @@ static inline struct xscd_dma_chan *to_xscd_dma_chan(struct dma_chan *chan)
  * @irq: device IRQ
  * @id: scene change channel ID
  * @iomem: device I/O register space remapped to kernel virtual memory
- * @dev: (OF) device
+ * @xscd: SCD device
  * @subdev: V4L2 subdevice
  * @pad: media pads
  * @format: active V4L2 media bus format for the pad
@@ -158,7 +160,7 @@ struct xscd_chan {
 	int irq;
 	int id;
 	void __iomem *iomem;
-	struct device *dev;
+	struct xscd_device *xscd;
 	struct v4l2_subdev subdev;
 	struct media_pad *pad;
 	struct v4l2_mbus_framefmt format;
@@ -217,7 +219,7 @@ struct xscd_shared_data {
  * @dma_device: DMA device pointer
  * @shared_data: Data Shared across devices
  * @dma_node: DMA device node
- * @subdevs: subdev device instance
+ * @chans: video stream instances
  */
 struct xscd_device {
 	void __iomem *iomem;
@@ -229,7 +231,7 @@ struct xscd_device {
 	struct platform_device *dma_device;
 	struct xscd_shared_data shared_data;
 	struct device_node *dma_node;
-	struct platform_device *subdevs[XSCD_MAX_CHANNELS];
+	struct xscd_chan *chans[XSCD_MAX_CHANNELS];
 };
 
 /*
@@ -260,4 +262,7 @@ void xscd_dma_start(struct xscd_dma_chan *chan);
 void xscd_dma_chan_enable(struct xscd_dma_chan *chan, int chan_en);
 void xscd_dma_reset(struct xscd_dma_chan *chan);
 void xscd_dma_halt(struct xscd_dma_chan *chan);
+
+int xscd_chan_init(struct xscd_device *xscd, unsigned int chan_id,
+		   struct device_node *node);
 #endif
