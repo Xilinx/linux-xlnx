@@ -26,22 +26,6 @@
 
 #include "xilinx-scenechange.h"
 
-/* SCD Registers */
-/* Register/Descriptor Offsets */
-#define XILINX_XSCD_CTRL_OFFSET		0x00
-#define XILINX_XSCD_GIE_OFFSET		0x04
-#define XILINX_XSCD_IE_OFFSET		0x08
-#define XILINX_XSCD_ADDR_OFFSET		0x40
-#define XILINX_XSCD_CHAN_EN_OFFSET	0x780
-
-/* Control Registers */
-#define XILINX_XSCD_CTRL_AP_START	BIT(0)
-#define XILINX_XSCD_CTRL_AP_DONE	BIT(1)
-#define XILINX_XSCD_CTRL_AP_IDLE	BIT(2)
-#define XILINX_XSCD_CTRL_AP_READY	BIT(3)
-#define XILINX_XSCD_CTRL_AUTO_RESTART	BIT(7)
-#define XILINX_XSCD_GIE_EN		BIT(0)
-
 /**
  * struct xscd_dma_device - Scene Change DMA device
  * @regs: I/O mapped base address
@@ -156,7 +140,7 @@ dma_cookie_t xscd_dma_tx_submit(struct dma_async_tx_descriptor *tx)
  */
 void xscd_dma_chan_enable(struct xscd_dma_chan *chan, int chan_en)
 {
-	xscd_write(chan->iomem, XILINX_XSCD_CHAN_EN_OFFSET, chan_en);
+	xscd_write(chan->iomem, XSCD_CHAN_EN_OFFSET, chan_en);
 }
 
 /**
@@ -180,7 +164,7 @@ static void xscd_dma_complete_descriptor(struct xscd_dma_chan *chan)
 void xscd_dma_start_transfer(struct xscd_dma_chan *chan)
 {
 	struct xscd_dma_tx_descriptor *desc;
-	u32 chanoffset = chan->id * XILINX_XSCD_CHAN_OFFSET;
+	u32 chanoffset = chan->id * XSCD_CHAN_OFFSET;
 
 	if (!chan->en)
 		return;
@@ -205,7 +189,7 @@ void xscd_dma_start_transfer(struct xscd_dma_chan *chan)
 				struct xscd_dma_tx_descriptor, node);
 
 	/* Start the transfer */
-	xscd_write(chan->iomem, XILINX_XSCD_ADDR_OFFSET + chanoffset,
+	xscd_write(chan->iomem, XSCD_ADDR_OFFSET + chanoffset,
 		   desc->sw.luma_plane_addr);
 
 	list_del(&desc->node);
@@ -396,13 +380,11 @@ void xscd_dma_halt(struct xscd_dma_chan *chan)
 	struct xscd_dma_device *xdev = chan->xdev;
 
 	if (xdev->memory_based)
-		xscd_clr(chan->iomem, XILINX_XSCD_CTRL_OFFSET,
-			 XILINX_XSCD_CTRL_AP_START);
+		xscd_clr(chan->iomem, XSCD_CTRL_OFFSET, XSCD_CTRL_AP_START);
 	else
 		/* Streaming based */
-		xscd_clr(chan->iomem, XILINX_XSCD_CTRL_OFFSET,
-			 XILINX_XSCD_CTRL_AP_START |
-			 XILINX_XSCD_CTRL_AUTO_RESTART);
+		xscd_clr(chan->iomem, XSCD_CTRL_OFFSET,
+			 XSCD_CTRL_AP_START | XSCD_CTRL_AUTO_RESTART);
 
 	chan->idle = true;
 }
@@ -416,13 +398,11 @@ void xscd_dma_start(struct xscd_dma_chan *chan)
 	struct xscd_dma_device *xdev = chan->xdev;
 
 	if (xdev->memory_based)
-		xscd_set(chan->iomem, XILINX_XSCD_CTRL_OFFSET,
-			 XILINX_XSCD_CTRL_AP_START);
+		xscd_set(chan->iomem, XSCD_CTRL_OFFSET, XSCD_CTRL_AP_START);
 	else
 		/* Streaming based */
-		xscd_set(chan->iomem, XILINX_XSCD_CTRL_OFFSET,
-			 XILINX_XSCD_CTRL_AP_START |
-			 XILINX_XSCD_CTRL_AUTO_RESTART);
+		xscd_set(chan->iomem, XSCD_CTRL_OFFSET,
+			 XSCD_CTRL_AP_START | XSCD_CTRL_AUTO_RESTART);
 
 	chan->idle = false;
 }
@@ -433,8 +413,8 @@ void xscd_dma_start(struct xscd_dma_chan *chan)
  */
 void xscd_dma_reset(struct xscd_dma_chan *chan)
 {
-	xscd_write(chan->iomem, XILINX_XSCD_IE_OFFSET, XILINX_XSCD_IE_AP_DONE);
-	xscd_write(chan->iomem, XILINX_XSCD_GIE_OFFSET, XILINX_XSCD_GIE_EN);
+	xscd_write(chan->iomem, XSCD_IE_OFFSET, XSCD_IE_AP_DONE);
+	xscd_write(chan->iomem, XSCD_GIE_OFFSET, XSCD_GIE_EN);
 }
 
 /**

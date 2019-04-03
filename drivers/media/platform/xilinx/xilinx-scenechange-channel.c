@@ -36,23 +36,6 @@
 #define XSCD_MIN_WIDTH		640
 #define XSCD_MIN_HEIGHT		480
 
-#define XSCD_WIDTH_OFFSET		0x10
-#define XSCD_HEIGHT_OFFSET		0x18
-#define XSCD_STRIDE_OFFSET		0x20
-#define XSCD_VID_FMT_OFFSET		0x28
-#define XSCD_SUBSAMPLE_OFFSET		0x30
-#define XSCD_SAD_OFFSET			0x38
-
-/* Hardware video formats for memory based IP */
-#define XSCD_COLOR_FMT_Y8		24
-#define XSCD_COLOR_FMT_Y10		25
-
-/* Hardware video formats for streaming based IP */
-#define XSCD_COLOR_FMT_RGB		0
-#define XSCD_COLOR_FMT_YUV_444		1
-#define XSCD_COLOR_FMT_YUV_422		2
-#define XSCD_COLOR_FMT_YUV_420		3
-
 #define XSCD_V_SUBSAMPLING		16
 #define XSCD_BYTE_ALIGN			16
 #define MULTIPLICATION_FACTOR		100
@@ -132,15 +115,15 @@ static int xscd_chan_get_vid_fmt(u32 media_bus_fmt, bool memory_based)
 		case MEDIA_BUS_FMT_VYYUYY8_1X24:
 		case MEDIA_BUS_FMT_UYVY8_1X16:
 		case MEDIA_BUS_FMT_VUY8_1X24:
-			vid_fmt = XSCD_COLOR_FMT_Y8;
+			vid_fmt = XSCD_VID_FMT_Y8;
 			break;
 		case MEDIA_BUS_FMT_VYYUYY10_4X20:
 		case MEDIA_BUS_FMT_UYVY10_1X20:
 		case MEDIA_BUS_FMT_VUY10_1X30:
-			vid_fmt = XSCD_COLOR_FMT_Y10;
+			vid_fmt = XSCD_VID_FMT_Y10;
 			break;
 		default:
-			vid_fmt = XSCD_COLOR_FMT_Y8;
+			vid_fmt = XSCD_VID_FMT_Y8;
 		}
 
 		return vid_fmt;
@@ -150,22 +133,22 @@ static int xscd_chan_get_vid_fmt(u32 media_bus_fmt, bool memory_based)
 	switch (media_bus_fmt) {
 	case MEDIA_BUS_FMT_VYYUYY8_1X24:
 	case MEDIA_BUS_FMT_VYYUYY10_4X20:
-		vid_fmt = XSCD_COLOR_FMT_YUV_420;
+		vid_fmt = XSCD_VID_FMT_YUV_420;
 		break;
 	case MEDIA_BUS_FMT_UYVY8_1X16:
 	case MEDIA_BUS_FMT_UYVY10_1X20:
-		vid_fmt = XSCD_COLOR_FMT_YUV_422;
+		vid_fmt = XSCD_VID_FMT_YUV_422;
 		break;
 	case MEDIA_BUS_FMT_VUY8_1X24:
 	case MEDIA_BUS_FMT_VUY10_1X30:
-		vid_fmt = XSCD_COLOR_FMT_YUV_444;
+		vid_fmt = XSCD_VID_FMT_YUV_444;
 		break;
 	case MEDIA_BUS_FMT_RBG888_1X24:
 	case MEDIA_BUS_FMT_RBG101010_1X30:
-		vid_fmt = XSCD_COLOR_FMT_RGB;
+		vid_fmt = XSCD_VID_FMT_RGB;
 		break;
 	default:
-		vid_fmt = XSCD_COLOR_FMT_YUV_420;
+		vid_fmt = XSCD_VID_FMT_YUV_420;
 	}
 
 	return vid_fmt;
@@ -227,7 +210,7 @@ static int xscd_s_stream(struct v4l2_subdev *subdev, int enable)
 	spin_lock_irqsave(&chan->dmachan.lock, flags);
 
 	if (shared_data->memory_based) {
-		chan_offset = chan->id * XILINX_XSCD_CHAN_OFFSET;
+		chan_offset = chan->id * XSCD_CHAN_OFFSET;
 		xscd_chan_configure_params(chan, shared_data, chan_offset);
 		if (enable) {
 			if (!shared_data->active_streams) {
@@ -347,7 +330,7 @@ static void xscd_event_notify(struct xscd_chan *chan)
 	u32 sad, scd_threshold;
 
 	sad = xscd_read(chan->iomem, XSCD_SAD_OFFSET +
-			(chan->id * XILINX_XSCD_CHAN_OFFSET));
+			(chan->id * XSCD_CHAN_OFFSET));
 	sad = (sad * XSCD_V_SUBSAMPLING * MULTIPLICATION_FACTOR) /
 	       (chan->format.width * chan->format.height);
 	eventdata = (u32 *)&chan->event.u.data;

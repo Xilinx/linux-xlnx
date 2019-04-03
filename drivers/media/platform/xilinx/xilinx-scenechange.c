@@ -18,11 +18,11 @@ static irqreturn_t xscd_irq_handler(int irq, void *data)
 	struct xscd_device *xscd = (struct xscd_device *)data;
 	u32 status;
 
-	status = xscd_read(xscd->iomem, XILINX_XSCD_ISR_OFFSET);
-	if (!(status & XILINX_XSCD_IE_AP_DONE))
+	status = xscd_read(xscd->iomem, XSCD_ISR_OFFSET);
+	if (!(status & XSCD_IE_AP_DONE))
 		return IRQ_NONE;
 
-	xscd_write(xscd->iomem, XILINX_XSCD_ISR_OFFSET, XILINX_XSCD_IE_AP_DONE);
+	xscd_write(xscd->iomem, XSCD_ISR_OFFSET, XSCD_IE_AP_DONE);
 	return IRQ_HANDLED;
 }
 
