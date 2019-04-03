@@ -28,6 +28,8 @@ static irqreturn_t xscd_irq_handler(int irq, void *data)
 	for (i = 0; i < xscd->numstreams; ++i)
 		xscd_chan_irq_handler(xscd->chans[i]);
 
+	xscd_dma_irq_handler(xscd);
+
 	return IRQ_HANDLED;
 }
 
