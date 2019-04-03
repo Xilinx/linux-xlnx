@@ -103,7 +103,7 @@ to_xscd_dma_tx_descriptor(struct dma_async_tx_descriptor *tx)
 /**
  * struct xscd_dma_chan - DMA Channel structure
  * @xscd: SCD device
- * @iomem: device I/O register space remapped to kernel virtual memory
+ * @iomem: I/O memory address of the channel registers
  * @lock: Descriptor operation lock
  * @chan_node: Member of a list of framebuffer channel instances
  * @pending_list: Descriptors waiting
@@ -144,7 +144,7 @@ static inline struct xscd_dma_chan *to_xscd_dma_chan(struct dma_chan *chan)
 /**
  * struct xscd_chan - Video Stream structure
  * @id: scene change channel ID
- * @iomem: device I/O register space remapped to kernel virtual memory
+ * @iomem: I/O memory address of the channel registers
  * @xscd: SCD device
  * @subdev: V4L2 subdevice
  * @pads: media pads
