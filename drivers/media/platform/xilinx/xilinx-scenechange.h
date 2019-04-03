@@ -30,12 +30,37 @@
 #include "../../../dma/dmaengine.h"
 
 /* Register/Descriptor Offsets */
-#define XILINX_XSCD_ISR_OFFSET		0x0c
-#define XILINX_XSCD_CHAN_OFFSET		0x100
+#define XSCD_CTRL_OFFSET		0x000
+#define XSCD_CTRL_AP_START		BIT(0)
+#define XSCD_CTRL_AP_DONE		BIT(1)
+#define XSCD_CTRL_AP_IDLE		BIT(2)
+#define XSCD_CTRL_AP_READY		BIT(3)
+#define XSCD_CTRL_AUTO_RESTART		BIT(7)
 
-/* Interrupt Status and Control */
-#define XILINX_XSCD_IE_AP_DONE		BIT(0)
-#define XILINX_XSCD_IE_AP_READY		BIT(1)
+#define XSCD_GIE_OFFSET			0x004
+#define XSCD_GIE_EN			BIT(0)
+
+#define XSCD_IE_OFFSET			0x008
+#define XSCD_IE_AP_DONE			BIT(0)
+#define XSCD_IE_AP_READY		BIT(1)
+
+#define XSCD_ISR_OFFSET			0x00c
+#define XSCD_WIDTH_OFFSET		0x010
+#define XSCD_HEIGHT_OFFSET		0x018
+#define XSCD_STRIDE_OFFSET		0x020
+#define XSCD_VID_FMT_OFFSET		0x028
+#define XSCD_VID_FMT_RGB		0
+#define XSCD_VID_FMT_YUV_444		1
+#define XSCD_VID_FMT_YUV_422		2
+#define XSCD_VID_FMT_YUV_420		3
+#define XSCD_VID_FMT_Y8			24
+#define XSCD_VID_FMT_Y10		25
+
+#define XSCD_SUBSAMPLE_OFFSET		0x030
+#define XSCD_SAD_OFFSET			0x038
+#define XSCD_ADDR_OFFSET		0x040
+#define XSCD_CHAN_OFFSET		0x100
+#define XSCD_CHAN_EN_OFFSET		0x780
 
 #define XSCD_MAX_CHANNELS		8
 
