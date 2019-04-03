@@ -242,15 +242,6 @@ static void xscd_dma_chan_desc_cleanup(struct xscd_dma_chan *chan)
 }
 
 /**
- * xscd_dma_chan_remove - Per Channel remove function
- * @chan: Driver specific DMA channel
- */
-static void xscd_dma_chan_remove(struct xscd_dma_chan *chan)
-{
-	list_del(&chan->common.device_node);
-}
-
-/**
  * xscd_dma_dma_prep_interleaved - prepare a descriptor for a
  * DMA_SLAVE transaction
  * @dchan: DMA channel
@@ -449,13 +440,16 @@ static struct dma_chan *of_scdma_xilinx_xlate(struct of_phandle_args *dma_spec,
 	return dma_get_slave_channel(&xscd->channels[chan_id]->common);
 }
 
-static struct xscd_dma_chan *
-xscd_dma_chan_probe(struct xscd_device *xscd, int chan_id)
+static void xscd_dma_chan_init(struct xscd_device *xscd, int chan_id)
 {
-	struct xscd_dma_chan *chan = xscd->channels[chan_id];
+	struct xscd_dma_chan *chan = &xscd->chans[chan_id]->dmachan;
 
+	chan->id = chan_id;
+	chan->iomem = xscd->iomem + chan->id * XSCD_CHAN_OFFSET;
 	chan->xscd = xscd;
 	chan->idle = true;
+
+	xscd->channels[chan->id] = chan;
 
 	spin_lock_init(&chan->lock);
 	INIT_LIST_HEAD(&chan->pending_list);
@@ -464,8 +458,15 @@ xscd_dma_chan_probe(struct xscd_device *xscd, int chan_id)
 		     (unsigned long)chan);
 	chan->common.device = &xscd->dma_device;
 	list_add_tail(&chan->common.device_node, &xscd->dma_device.channels);
+}
 
-	return chan;
+/**
+ * xscd_dma_chan_remove - Per Channel remove function
+ * @chan: Driver specific DMA channel
+ */
+static void xscd_dma_chan_remove(struct xscd_dma_chan *chan)
+{
+	list_del(&chan->common.device_node);
 }
 
 /**
@@ -477,7 +478,6 @@ xscd_dma_chan_probe(struct xscd_device *xscd, int chan_id)
 int xscd_dma_init(struct xscd_device *xscd)
 {
 	struct dma_device *ddev = &xscd->dma_device;
-	struct xscd_dma_chan *chan;
 	unsigned int chan_id;
 	int ret;
 
@@ -495,14 +495,8 @@ int xscd_dma_init(struct xscd_device *xscd)
 	ddev->device_terminate_all = xscd_dma_terminate_all;
 	ddev->device_prep_interleaved_dma = xscd_dma_prep_interleaved;
 
-	for (chan_id = 0; chan_id < xscd->num_streams; chan_id++) {
-		chan = xscd_dma_chan_probe(xscd, chan_id);
-		if (IS_ERR(chan)) {
-			dev_err(xscd->dev, "failed to probe a channel\n");
-			ret = PTR_ERR(chan);
-			goto error;
-		}
-	}
+	for (chan_id = 0; chan_id < xscd->num_streams; chan_id++)
+		xscd_dma_chan_init(xscd, chan_id);
 
 	ret = dma_async_device_register(ddev);
 	if (ret) {
@@ -524,10 +518,9 @@ error_of_dma:
 	dma_async_device_unregister(ddev);
 
 error:
-	for (chan_id = 0; chan_id < xscd->num_streams; chan_id++) {
-		if (xscd->channels[chan_id])
-			xscd_dma_chan_remove(xscd->channels[chan_id]);
-	}
+	for (chan_id = 0; chan_id < xscd->num_streams; chan_id++)
+		xscd_dma_chan_remove(xscd->channels[chan_id]);
+
 	return ret;
 }
 
