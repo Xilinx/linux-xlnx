@@ -11,22 +11,19 @@
 #ifndef _XILINX_SCENECHANGE_H_
 #define _XILINX_SCENECHANGE_H_
 
-#include <linux/clk.h>
-#include <linux/delay.h>
+#include <linux/bitops.h>
 #include <linux/dmaengine.h>
-#include <linux/gpio/consumer.h>
 #include <linux/interrupt.h>
-#include <linux/kernel.h>
-#include <linux/module.h>
-#include <linux/of.h>
-#include <linux/platform_device.h>
-#include <linux/xilinx-v4l2-controls.h>
+#include <linux/io.h>
+#include <linux/mutex.h>
+#include <linux/spinlock.h>
 
-#include <media/v4l2-async.h>
-#include <media/v4l2-ctrls.h>
-#include <media/v4l2-device.h>
 #include <media/v4l2-subdev.h>
-#include "../../../dma/dmaengine.h"
+
+struct clk;
+struct device;
+struct device_node;
+struct gpio_desc;
 
 /* Register/Descriptor Offsets */
 #define XSCD_CTRL_OFFSET		0x000
