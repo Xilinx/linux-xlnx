@@ -329,6 +329,11 @@ static int fpga_mgr_firmware_load(struct fpga_manager *mgr,
 
 	mgr->state = FPGA_MGR_STATE_FIRMWARE_REQ;
 
+	/* flags indicates whether to do full or partial reconfiguration */
+	info->flags = mgr->flags;
+	memcpy(info->key, mgr->key, ENCRYPTED_KEY_LEN);
+	memcpy(info->iv, mgr->key, ENCRYPTED_IV_LEN);
+
 	ret = request_firmware(&fw, image_name, dev);
 	if (ret) {
 		mgr->state = FPGA_MGR_STATE_FIRMWARE_REQ_ERR;
@@ -418,11 +423,6 @@ static ssize_t firmware_store(struct device *dev,
 
 	/* struct with information about the FPGA image to program. */
 	struct fpga_image_info info = {0};
-
-	/* flags indicates whether to do full or partial reconfiguration */
-	info.flags = mgr->flags;
-	memcpy(info.key, mgr->key, ENCRYPTED_KEY_LEN);
-	memcpy(info.iv, mgr->key, ENCRYPTED_IV_LEN);
 
 	/* lose terminating \n */
 	strcpy(image_name, buf);
