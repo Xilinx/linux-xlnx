@@ -16,6 +16,7 @@
 static irqreturn_t xscd_irq_handler(int irq, void *data)
 {
 	struct xscd_device *xscd = (struct xscd_device *)data;
+	unsigned int i;
 	u32 status;
 
 	status = xscd_read(xscd->iomem, XSCD_ISR_OFFSET);
@@ -23,6 +24,10 @@ static irqreturn_t xscd_irq_handler(int irq, void *data)
 		return IRQ_NONE;
 
 	xscd_write(xscd->iomem, XSCD_ISR_OFFSET, XSCD_IE_AP_DONE);
+
+	for (i = 0; i < xscd->numstreams; ++i)
+		xscd_chan_irq_handler(xscd->chans[i]);
+
 	return IRQ_HANDLED;
 }
 
