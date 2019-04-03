@@ -368,8 +368,8 @@ int xscd_chan_init(struct xscd_device *xscd, unsigned int chan_id,
 {
 	struct xscd_chan *chan;
 	struct v4l2_subdev *subdev;
+	unsigned int num_pads;
 	int ret;
-	u32 num_pads;
 
 	chan = devm_kzalloc(xscd->dev, sizeof(*chan), GFP_KERNEL);
 	if (!chan)
@@ -405,17 +405,12 @@ int xscd_chan_init(struct xscd_device *xscd, unsigned int chan_id,
 
 	/* Initialize media pads */
 	num_pads = xscd->memory_based ? 1 : 2;
-	chan->pad = devm_kzalloc(chan->xscd->dev,
-				 sizeof(struct media_pad) * num_pads,
-				 GFP_KERNEL);
-	if (!chan->pad)
-		return -ENOMEM;
 
-	chan->pad[XVIP_PAD_SINK].flags = MEDIA_PAD_FL_SINK;
+	chan->pads[XVIP_PAD_SINK].flags = MEDIA_PAD_FL_SINK;
 	if (!xscd->memory_based)
-		chan->pad[XVIP_PAD_SOURCE].flags = MEDIA_PAD_FL_SOURCE;
+		chan->pads[XVIP_PAD_SOURCE].flags = MEDIA_PAD_FL_SOURCE;
 
-	ret = media_entity_pads_init(&subdev->entity, num_pads, chan->pad);
+	ret = media_entity_pads_init(&subdev->entity, num_pads, chan->pads);
 	if (ret < 0)
 		goto error;
 
