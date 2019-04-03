@@ -43,6 +43,12 @@ static int xscd_init_resources(struct xscd_device *xscd)
 	if (IS_ERR(xscd->iomem))
 		return PTR_ERR(xscd->iomem);
 
+	xscd->irq = platform_get_irq(pdev, 0);
+	if (xscd->irq < 0) {
+		dev_err(xscd->dev, "No valid irq found\n");
+		return -EINVAL;
+	}
+
 	xscd->clk = devm_clk_get(xscd->dev, NULL);
 	if (IS_ERR(xscd->clk))
 		return PTR_ERR(xscd->clk);
@@ -75,15 +81,6 @@ static int xscd_parse_of(struct xscd_device *xscd)
 		dev_err(dev, "Stream-based mode only supports one stream\n");
 		return -EINVAL;
 	}
-
-	xscd->irq = irq_of_parse_and_map(node, 0);
-	if (!xscd->irq) {
-		dev_err(xscd->dev, "No valid irq found\n");
-		return -EINVAL;
-	}
-
-	ret = devm_request_irq(xscd->dev, xscd->irq, xscd_irq_handler,
-			       IRQF_SHARED, dev_name(xscd->dev), xscd);
 
 	return 0;
 }
@@ -137,6 +134,11 @@ static int xscd_probe(struct platform_device *pdev)
 	ret = xscd_dma_init(xscd);
 	if (ret < 0)
 		dev_err(&pdev->dev, "Failed to initialize the DMA\n");
+
+	ret = devm_request_irq(xscd->dev, xscd->irq, xscd_irq_handler,
+			       IRQF_SHARED, dev_name(xscd->dev), xscd);
+	if (ret < 0)
+		dev_err(&pdev->dev, "Failed to request IRQ\n");
 
 	dev_info(xscd->dev, "scene change detect device found!\n");
 	return 0;
