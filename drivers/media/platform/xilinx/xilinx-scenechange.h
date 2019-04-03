@@ -67,46 +67,6 @@
 /****************************** PROTOTYPES ************************************/
 
 /**
- * struct xscd_shared_data - Data to be shared among v4l subdev and DMA engine
- * @iomem: device I/O register space remapped to kernel virtual memory
- * @dma_chan_list: List of DMA channels available
- * @active_streams: Number of active streams
- * @memory_based: Flag to identify memory based mode
- */
-struct xscd_shared_data {
-	void __iomem *iomem;
-	struct xscd_dma_chan *dma_chan_list[XSCD_MAX_CHANNELS];
-	u8 active_streams;
-	bool memory_based;
-};
-
-/**
- * struct xscd_device - Xilinx Scene Change Detection device structure
- * @iomem: device I/O register space remapped to kernel virtual memory
- * @numstreams: Number of streams in the design
- * @irq: Device IRQ
- * @dev: (OF) device
- * @rst_gpio: reset GPIO
- * @clk: video core clock
- * @dma_device: DMA device pointer
- * @shared_data: Data Shared across devices
- * @dma_node: DMA device node
- * @subdevs: subdev device instance
- */
-struct xscd_device {
-	void __iomem *iomem;
-	int numstreams;
-	int irq;
-	struct device *dev;
-	struct gpio_desc *rst_gpio;
-	struct clk *clk;
-	struct platform_device *dma_device;
-	struct xscd_shared_data shared_data;
-	struct device_node *dma_node;
-	struct platform_device *subdevs[XSCD_MAX_CHANNELS];
-};
-
-/**
  * struct xscd_dma_desc - DMA channel
  * @luma_plane_addr: Luma plane buffer address
  * @vsize: width of the luma frame
@@ -230,6 +190,46 @@ struct xscd_dma_device {
 	struct xscd_dma_chan **chan;
 	u32 numchannels;
 	u8 memory_based;
+};
+
+/**
+ * struct xscd_shared_data - Data to be shared among v4l subdev and DMA engine
+ * @iomem: device I/O register space remapped to kernel virtual memory
+ * @dma_chan_list: List of DMA channels available
+ * @active_streams: Number of active streams
+ * @memory_based: Flag to identify memory based mode
+ */
+struct xscd_shared_data {
+	void __iomem *iomem;
+	struct xscd_dma_chan *dma_chan_list[XSCD_MAX_CHANNELS];
+	u8 active_streams;
+	u8 memory_based;
+};
+
+/**
+ * struct xscd_device - Xilinx Scene Change Detection device structure
+ * @iomem: device I/O register space remapped to kernel virtual memory
+ * @numstreams: Number of streams in the design
+ * @irq: Device IRQ
+ * @dev: (OF) device
+ * @rst_gpio: reset GPIO
+ * @clk: video core clock
+ * @dma_device: DMA device pointer
+ * @shared_data: Data Shared across devices
+ * @dma_node: DMA device node
+ * @subdevs: subdev device instance
+ */
+struct xscd_device {
+	void __iomem *iomem;
+	int numstreams;
+	int irq;
+	struct device *dev;
+	struct gpio_desc *rst_gpio;
+	struct clk *clk;
+	struct platform_device *dma_device;
+	struct xscd_shared_data shared_data;
+	struct device_node *dma_node;
+	struct platform_device *subdevs[XSCD_MAX_CHANNELS];
 };
 
 /*
