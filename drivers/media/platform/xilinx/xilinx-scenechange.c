@@ -8,6 +8,13 @@
  *          Satish Kumar Nagireddy <satish.nagireddy.nagireddy@xilinx.com>
  */
 
+#include <linux/clk.h>
+#include <linux/gpio/consumer.h>
+#include <linux/interrupt.h>
+#include <linux/module.h>
+#include <linux/of.h>
+#include <linux/platform_device.h>
+
 #include "xilinx-scenechange.h"
 
 #define XSCD_RESET_DEASSERT	(0)

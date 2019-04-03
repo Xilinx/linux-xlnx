@@ -8,23 +8,10 @@
  *          Satish Kumar Nagireddy <satish.nagireddy.nagireddy@xilinx.com>
  */
 
-#include <linux/clk.h>
-#include <linux/delay.h>
-#include <linux/dmaengine.h>
-#include <linux/module.h>
-#include <linux/gpio/consumer.h>
-#include <linux/interrupt.h>
-#include <linux/kernel.h>
-#include <linux/module.h>
 #include <linux/of.h>
-#include <linux/of_irq.h>
-#include <linux/platform_device.h>
-#include <linux/slab.h>
-#include <linux/xilinx-v4l2-controls.h>
 #include <linux/xilinx-v4l2-events.h>
+
 #include <media/v4l2-async.h>
-#include <media/v4l2-ctrls.h>
-#include <media/v4l2-device.h>
 #include <media/v4l2-event.h>
 #include <media/v4l2-subdev.h>
 
