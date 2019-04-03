@@ -102,7 +102,7 @@ to_xscd_dma_tx_descriptor(struct dma_async_tx_descriptor *tx)
 
 /**
  * struct xscd_dma_chan - DMA Channel structure
- * @xdev: DMA engine driver specific device structure
+ * @xscd: SCD device
  * @iomem: device I/O register space remapped to kernel virtual memory
  * @lock: Descriptor operation lock
  * @chan_node: Member of a list of framebuffer channel instances
@@ -111,7 +111,6 @@ to_xscd_dma_tx_descriptor(struct dma_async_tx_descriptor *tx)
  * @staged_desc: Next buffer to be programmed
  * @active_desc: Currently active buffer being read/written to
  * @common: DMA common channel
- * @dev: The dma device
  * @idle: Channel idle state
  * @tasklet: Cleanup work after irq
  * @id: scene change channel ID
@@ -119,7 +118,7 @@ to_xscd_dma_tx_descriptor(struct dma_async_tx_descriptor *tx)
  * @valid_interrupt: Valid interrupt for the channel
  */
 struct xscd_dma_chan {
-	struct xscd_dma_device *xdev;
+	struct xscd_device *xscd;
 	void __iomem *iomem;
 
 	/* Descriptor operation Lock */
@@ -130,7 +129,6 @@ struct xscd_dma_chan {
 	struct xscd_dma_tx_descriptor *staged_desc;
 	struct xscd_dma_tx_descriptor *active_desc;
 	struct dma_chan common;
-	struct device *dev;
 	bool idle;
 	struct tasklet_struct tasklet;
 	u8 id;
@@ -175,24 +173,6 @@ static inline struct xscd_chan *to_xscd_chan(struct v4l2_subdev *subdev)
 }
 
 /**
- * struct xscd_dma_device - Scene Change DMA device
- * @regs: I/O mapped base address
- * @dev: Device Structure
- * @common: DMA device structure
- * @chan: Driver specific DMA channel
- * @numchannels: Total number of channels
- * @memory_based: Memory based or streaming based
- */
-struct xscd_dma_device {
-	void __iomem *regs;
-	struct device *dev;
-	struct dma_device common;
-	struct xscd_dma_chan **chan;
-	u32 numchannels;
-	u8 memory_based;
-};
-
-/**
  * struct xscd_shared_data - Data to be shared among v4l subdev and DMA engine
  * @iomem: device I/O register space remapped to kernel virtual memory
  * @dma_chan_list: List of DMA channels available
@@ -201,7 +181,7 @@ struct xscd_dma_device {
  */
 struct xscd_shared_data {
 	void __iomem *iomem;
-	struct xscd_dma_chan *dma_chan_list[XSCD_MAX_CHANNELS];
+	struct xscd_dma_chan **dma_chan_list;
 	u8 active_streams;
 	u8 memory_based;
 };
@@ -214,10 +194,11 @@ struct xscd_shared_data {
  * @dev: (OF) device
  * @rst_gpio: reset GPIO
  * @clk: video core clock
- * @dma_device: DMA device pointer
  * @shared_data: Data Shared across devices
- * @dma_node: DMA device node
  * @chans: video stream instances
+ * @dma_device: DMA device structure
+ * @channels: DMA channels
+ * @numchannels: Total number of channels
  */
 struct xscd_device {
 	void __iomem *iomem;
@@ -226,10 +207,12 @@ struct xscd_device {
 	struct device *dev;
 	struct gpio_desc *rst_gpio;
 	struct clk *clk;
-	struct platform_device *dma_device;
 	struct xscd_shared_data shared_data;
-	struct device_node *dma_node;
 	struct xscd_chan *chans[XSCD_MAX_CHANNELS];
+
+	struct dma_device dma_device;
+	struct xscd_dma_chan *channels[XSCD_MAX_CHANNELS];
+	u32 numchannels;
 };
 
 /*
@@ -260,6 +243,7 @@ void xscd_dma_start(struct xscd_dma_chan *chan);
 void xscd_dma_chan_enable(struct xscd_dma_chan *chan, int chan_en);
 void xscd_dma_reset(struct xscd_dma_chan *chan);
 void xscd_dma_halt(struct xscd_dma_chan *chan);
+int xscd_dma_init(struct xscd_device *xscd);
 
 void xscd_chan_irq_handler(struct xscd_chan *chan);
 int xscd_chan_init(struct xscd_device *xscd, unsigned int chan_id,

@@ -31,34 +31,6 @@ static irqreturn_t xscd_irq_handler(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
-static
-struct platform_device *xilinx_scdma_device_init(struct platform_device *pdev,
-						 struct device_node *node)
-{
-	struct platform_device *dma;
-	int ret;
-
-	dma = platform_device_alloc("xlnx,scdma", 0);
-	if (!dma)
-		return ERR_PTR(-ENOMEM);
-
-	dma->dev.parent = &pdev->dev;
-	ret = platform_device_add(dma);
-	if (ret)
-		goto error;
-
-	return dma;
-
-error:
-	platform_device_unregister(dma);
-	return ERR_PTR(ret);
-}
-
-static void xilinx_scdma_device_exit(struct platform_device *dev)
-{
-	platform_device_unregister(dev);
-}
-
 static int xscd_init_resources(struct xscd_device *xscd)
 {
 	struct platform_device *pdev = to_platform_device(xscd->dev);
@@ -141,6 +113,7 @@ static int xscd_probe(struct platform_device *pdev)
 	gpiod_set_value_cansleep(xscd->rst_gpio, XSCD_RESET_DEASSERT);
 
 	xscd->shared_data.iomem = xscd->iomem;
+	xscd->shared_data.dma_chan_list = xscd->channels;
 	platform_set_drvdata(pdev, (void *)&xscd->shared_data);
 
 	id = 0;
@@ -163,8 +136,8 @@ static int xscd_probe(struct platform_device *pdev)
 		id++;
 	}
 
-	xscd->dma_device = xilinx_scdma_device_init(pdev, xscd->dma_node);
-	if (IS_ERR(xscd->dma_node))
+	ret = xscd_dma_init(xscd);
+	if (ret < 0)
 		dev_err(&pdev->dev, "Failed to initialize the DMA\n");
 
 	dev_info(xscd->dev, "scene change detect device found!\n");
@@ -174,9 +147,6 @@ static int xscd_probe(struct platform_device *pdev)
 static int xscd_remove(struct platform_device *pdev)
 {
 	struct xscd_device *xscd = platform_get_drvdata(pdev);
-
-	xilinx_scdma_device_exit(xscd->dma_device);
-	xscd->dma_node = NULL;
 
 	clk_disable_unprepare(xscd->clk);
 
