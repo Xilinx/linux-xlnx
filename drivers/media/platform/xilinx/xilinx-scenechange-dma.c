@@ -442,7 +442,7 @@ static struct dma_chan *of_scdma_xilinx_xlate(struct of_phandle_args *dma_spec,
 
 static void xscd_dma_chan_init(struct xscd_device *xscd, int chan_id)
 {
-	struct xscd_dma_chan *chan = &xscd->chans[chan_id]->dmachan;
+	struct xscd_dma_chan *chan = &xscd->chans[chan_id].dmachan;
 
 	chan->id = chan_id;
 	chan->iomem = xscd->iomem + chan->id * XSCD_CHAN_OFFSET;
@@ -511,7 +511,7 @@ int xscd_dma_init(struct xscd_device *xscd)
 		goto error_of_dma;
 	}
 
-	dev_info(xscd->dev, "Xilinx Scene Change DMA is probed!\n");
+	dev_info(xscd->dev, "Xilinx Scene Change DMA is initialized!\n");
 	return 0;
 
 error_of_dma:

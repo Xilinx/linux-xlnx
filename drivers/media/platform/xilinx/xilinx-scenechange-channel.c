@@ -357,16 +357,10 @@ void xscd_chan_irq_handler(struct xscd_chan *chan)
 int xscd_chan_init(struct xscd_device *xscd, unsigned int chan_id,
 		   struct device_node *node)
 {
-	struct xscd_chan *chan;
+	struct xscd_chan *chan = &xscd->chans[chan_id];
 	struct v4l2_subdev *subdev;
 	unsigned int num_pads;
 	int ret;
-
-	chan = devm_kzalloc(xscd->dev, sizeof(*chan), GFP_KERNEL);
-	if (!chan)
-		return -ENOMEM;
-
-	xscd->chans[chan_id] = chan;
 
 	mutex_init(&chan->lock);
 	chan->xscd = xscd;
