@@ -173,46 +173,34 @@ static inline struct xscd_chan *to_xscd_chan(struct v4l2_subdev *subdev)
 }
 
 /**
- * struct xscd_shared_data - Data to be shared among v4l subdev and DMA engine
- * @iomem: device I/O register space remapped to kernel virtual memory
- * @dma_chan_list: List of DMA channels available
- * @active_streams: Number of active streams
- * @memory_based: Flag to identify memory based mode
- */
-struct xscd_shared_data {
-	void __iomem *iomem;
-	struct xscd_dma_chan **dma_chan_list;
-	u8 active_streams;
-	u8 memory_based;
-};
-
-/**
  * struct xscd_device - Xilinx Scene Change Detection device structure
- * @iomem: device I/O register space remapped to kernel virtual memory
- * @numstreams: Number of streams in the design
- * @irq: Device IRQ
  * @dev: (OF) device
+ * @iomem: device I/O register space remapped to kernel virtual memory
  * @rst_gpio: reset GPIO
  * @clk: video core clock
- * @shared_data: Data Shared across devices
+ * @irq: Device IRQ
+ * @memory_based: Flag to identify memory based mode
+ * @num_streams: Number of streams in the design
  * @chans: video stream instances
  * @dma_device: DMA device structure
  * @channels: DMA channels
- * @numchannels: Total number of channels
+ * @active_streams: Number of active streams
  */
 struct xscd_device {
-	void __iomem *iomem;
-	int numstreams;
-	int irq;
 	struct device *dev;
+	void __iomem *iomem;
 	struct gpio_desc *rst_gpio;
 	struct clk *clk;
-	struct xscd_shared_data shared_data;
+	int irq;
+
+	u8 memory_based;
+	int num_streams;
+
 	struct xscd_chan *chans[XSCD_MAX_CHANNELS];
 
 	struct dma_device dma_device;
 	struct xscd_dma_chan *channels[XSCD_MAX_CHANNELS];
-	u32 numchannels;
+	u8 active_streams;
 };
 
 /*
