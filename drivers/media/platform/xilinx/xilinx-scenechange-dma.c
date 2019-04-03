@@ -146,9 +146,21 @@ void xscd_dma_enable_channel(struct xscd_dma_chan *chan, bool enable)
 {
 	struct xscd_device *xscd = chan->xscd;
 
-	spin_lock_irq(&chan->lock);
-	chan->enabled = enable;
-	spin_unlock_irq(&chan->lock);
+	if (enable) {
+		/*
+		 * FIXME: Don't set chan->enabled to false here, it will be
+		 * done in xscd_dma_terminate_all(). This works around a bug
+		 * introduced in commit 2e77607047c6 ("xilinx: v4l2: dma: Add
+		 * multiple output support") that stops all channels when the
+		 * first one is stopped, even though they are part of
+		 * independent pipelines. This workaround should be safe as
+		 * long as dmaengine_terminate_all() is called after
+		 * xvip_pipeline_set_stream().
+		 */
+		spin_lock_irq(&chan->lock);
+		chan->enabled = true;
+		spin_unlock_irq(&chan->lock);
+	}
 
 	if (xscd->memory_based) {
 		if (enable) {
