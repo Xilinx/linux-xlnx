@@ -181,7 +181,7 @@ static int xscd_s_stream(struct v4l2_subdev *subdev, int enable)
 	unsigned long flags;
 
 	/* TODO: Re-organise shared data in a better way */
-	chan->dmachan.en = enable;
+	chan->dmachan.enabled = enable;
 
 	spin_lock_irqsave(&chan->dmachan.lock, flags);
 
