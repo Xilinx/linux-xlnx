@@ -255,17 +255,9 @@ static inline void xscd_set(void __iomem *iomem, u32 addr, u32 set)
 	xscd_write(iomem, addr, xscd_read(iomem, addr) | set);
 }
 
-struct xscd_dma_tx_descriptor *
-xscd_dma_alloc_tx_descriptor(struct xscd_dma_chan *chan);
 void xscd_dma_start_transfer(struct xscd_dma_chan *chan);
 void xscd_dma_start(struct xscd_dma_chan *chan);
 void xscd_dma_chan_enable(struct xscd_dma_chan *chan, int chan_en);
 void xscd_dma_reset(struct xscd_dma_chan *chan);
 void xscd_dma_halt(struct xscd_dma_chan *chan);
-void xscd_dma_free_desc_list(struct xscd_dma_chan *chan,
-			     struct list_head *list);
-void xscd_dma_free_descriptors(struct xscd_dma_chan *chan);
-dma_cookie_t xscd_dma_tx_submit(struct dma_async_tx_descriptor *tx);
-void xscd_dma_chan_desc_cleanup(struct xscd_dma_chan *chan);
-void xscd_dma_chan_remove(struct xscd_dma_chan *chan);
 #endif
