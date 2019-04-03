@@ -343,53 +343,19 @@ static void xscd_event_notify(struct xscd_chan *chan)
 	v4l2_subdev_notify_event(&chan->subdev, &chan->event);
 }
 
-static irqreturn_t xscd_chan_irq_handler(int irq, void *data)
+void xscd_chan_irq_handler(struct xscd_chan *chan)
 {
-	struct xscd_chan *chan = (struct xscd_chan *)data;
-	struct xscd_shared_data *shared_data;
-
-	shared_data = &chan->xscd->shared_data;
+	struct xscd_shared_data *shared_data = &chan->xscd->shared_data;
 	spin_lock(&chan->dmachan.lock);
 
 	if ((shared_data->memory_based && chan->dmachan.valid_interrupt) ||
 	    !shared_data->memory_based) {
 		spin_unlock(&chan->dmachan.lock);
 		xscd_event_notify(chan);
-		return IRQ_HANDLED;
+		return;
 	}
 
 	spin_unlock(&chan->dmachan.lock);
-	return IRQ_NONE;
-}
-
-static int xscd_chan_parse_of(struct xscd_chan *chan)
-{
-	struct xscd_shared_data *shared_data;
-	int err;
-
-	shared_data = &chan->xscd->shared_data;
-	shared_data->dma_chan_list[chan->id] = &chan->dmachan;
-	chan->iomem = shared_data->iomem;
-
-	chan->irq = irq_of_parse_and_map(chan->xscd->dev->of_node, 0);
-	if (!chan->irq) {
-		dev_err(chan->xscd->dev, "No valid irq found\n");
-		return -EINVAL;
-	}
-
-	err = devm_request_irq(chan->xscd->dev, chan->irq,
-			       xscd_chan_irq_handler, IRQF_SHARED,
-			       dev_name(chan->xscd->dev), chan);
-	if (err) {
-		dev_err(chan->xscd->dev, "unable to request IRQ %d\n",
-			chan->irq);
-		return err;
-	}
-
-	chan->dmachan.iomem = shared_data->iomem;
-	chan->dmachan.id = chan->id;
-
-	return 0;
 }
 
 /**
@@ -417,9 +383,11 @@ int xscd_chan_init(struct xscd_device *xscd, unsigned int chan_id,
 	mutex_init(&chan->lock);
 	chan->xscd = xscd;
 	chan->id = chan_id;
-	ret = xscd_chan_parse_of(chan);
-	if (ret < 0)
-		return ret;
+	chan->iomem = chan->xscd->iomem;
+	chan->dmachan.id = chan->id;
+	chan->dmachan.iomem = chan->xscd->iomem;
+
+	xscd->shared_data.dma_chan_list[chan->id] = &chan->dmachan;
 
 	/* Initialize V4L2 subdevice and media entity */
 	subdev = &chan->subdev;
