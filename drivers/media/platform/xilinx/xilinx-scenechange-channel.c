@@ -178,43 +178,11 @@ static void xscd_chan_configure_params(struct xscd_chan *chan)
 static int xscd_s_stream(struct v4l2_subdev *subdev, int enable)
 {
 	struct xscd_chan *chan = to_xscd_chan(subdev);
-	unsigned long flags;
 
-	/* TODO: Re-organise shared data in a better way */
-	chan->dmachan.enabled = enable;
-
-	spin_lock_irqsave(&chan->dmachan.lock, flags);
-
-	if (chan->xscd->memory_based) {
+	if (enable)
 		xscd_chan_configure_params(chan);
-		if (enable) {
-			if (!chan->xscd->active_streams) {
-				chan->dmachan.valid_interrupt = true;
-				chan->xscd->active_streams++;
-				xscd_dma_start_transfer(&chan->dmachan);
-				xscd_dma_reset(&chan->dmachan);
-				xscd_dma_chan_enable(&chan->dmachan,
-						     BIT(chan->id));
-				xscd_dma_start(&chan->dmachan);
-			} else {
-				chan->xscd->active_streams++;
-			}
-		} else {
-			chan->xscd->active_streams--;
-		}
-	} else {
-		/* Streaming based */
-		if (enable) {
-			xscd_chan_configure_params(chan);
-			xscd_dma_reset(&chan->dmachan);
-			xscd_dma_chan_enable(&chan->dmachan, BIT(chan->id));
-			xscd_dma_start(&chan->dmachan);
-		} else {
-			xscd_dma_halt(&chan->dmachan);
-		}
-	}
 
-	spin_unlock_irqrestore(&chan->dmachan.lock, flags);
+	xscd_dma_enable_channel(&chan->dmachan, enable);
 	return 0;
 }
 
@@ -299,7 +267,7 @@ static const struct media_entity_operations xscd_media_ops = {
 	.link_validate = v4l2_subdev_link_validate,
 };
 
-static void xscd_event_notify(struct xscd_chan *chan)
+void xscd_chan_event_notify(struct xscd_chan *chan)
 {
 	u32 *eventdata;
 	u32 sad, scd_threshold;
@@ -317,20 +285,6 @@ static void xscd_event_notify(struct xscd_chan *chan)
 
 	chan->event.type = V4L2_EVENT_XLNXSCD;
 	v4l2_subdev_notify_event(&chan->subdev, &chan->event);
-}
-
-void xscd_chan_irq_handler(struct xscd_chan *chan)
-{
-	spin_lock(&chan->dmachan.lock);
-
-	if ((chan->xscd->memory_based && chan->dmachan.valid_interrupt) ||
-	    !chan->xscd->memory_based) {
-		spin_unlock(&chan->dmachan.lock);
-		xscd_event_notify(chan);
-		return;
-	}
-
-	spin_unlock(&chan->dmachan.lock);
 }
 
 /**
