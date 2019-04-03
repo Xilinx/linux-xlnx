@@ -23,7 +23,6 @@
 static irqreturn_t xscd_irq_handler(int irq, void *data)
 {
 	struct xscd_device *xscd = (struct xscd_device *)data;
-	unsigned int i;
 	u32 status;
 
 	status = xscd_read(xscd->iomem, XSCD_ISR_OFFSET);
@@ -32,10 +31,10 @@ static irqreturn_t xscd_irq_handler(int irq, void *data)
 
 	xscd_write(xscd->iomem, XSCD_ISR_OFFSET, XSCD_IE_AP_DONE);
 
-	for (i = 0; i < xscd->num_streams; ++i)
-		xscd_chan_irq_handler(&xscd->chans[i]);
-
-	xscd_dma_irq_handler(xscd);
+	if (xscd->memory_based)
+		xscd_dma_irq_handler(xscd);
+	else
+		xscd_chan_event_notify(&xscd->chans[0]);
 
 	return IRQ_HANDLED;
 }
@@ -102,6 +101,8 @@ static int xscd_probe(struct platform_device *pdev)
 	xscd = devm_kzalloc(&pdev->dev, sizeof(*xscd), GFP_KERNEL);
 	if (!xscd)
 		return -ENOMEM;
+
+	spin_lock_init(&xscd->lock);
 
 	xscd->dev = &pdev->dev;
 	platform_set_drvdata(pdev, xscd);
