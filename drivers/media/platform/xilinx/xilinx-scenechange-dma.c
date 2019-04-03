@@ -19,48 +19,190 @@
 #include "xilinx-scenechange.h"
 
 /**
+ * xscd_dma_start - Start the SCD core
+ * @xscd: The SCD device
+ * @channels: Bitmask of enabled channels
+ */
+static void xscd_dma_start(struct xscd_device *xscd, unsigned int channels)
+{
+	xscd_write(xscd->iomem, XSCD_IE_OFFSET, XSCD_IE_AP_DONE);
+	xscd_write(xscd->iomem, XSCD_GIE_OFFSET, XSCD_GIE_EN);
+	xscd_write(xscd->iomem, XSCD_CHAN_EN_OFFSET, channels);
+
+	xscd_set(xscd->iomem, XSCD_CTRL_OFFSET,
+		 xscd->memory_based ? XSCD_CTRL_AP_START
+				    : XSCD_CTRL_AP_START |
+				      XSCD_CTRL_AUTO_RESTART);
+
+	xscd->running = true;
+}
+
+/**
+ * xscd_dma_stop - Stop the SCD core
+ * @xscd: The SCD device
+ */
+static void xscd_dma_stop(struct xscd_device *xscd)
+{
+	xscd_clr(xscd->iomem, XSCD_CTRL_OFFSET,
+		 xscd->memory_based ? XSCD_CTRL_AP_START
+				    : XSCD_CTRL_AP_START |
+				      XSCD_CTRL_AUTO_RESTART);
+
+	xscd->running = false;
+}
+
+/**
+ * xscd_dma_setup_channel - Setup a channel for transfer
+ * @chan: Driver specific channel struct pointer
+ *
+ * Return: 1 if the channel starts to run for a new transfer. Otherwise, 0.
+ */
+static int xscd_dma_setup_channel(struct xscd_dma_chan *chan)
+{
+	struct xscd_dma_tx_descriptor *desc;
+
+	if (!chan->enabled)
+		return 0;
+
+	if (list_empty(&chan->pending_list))
+		return 0;
+
+	desc = list_first_entry(&chan->pending_list,
+				struct xscd_dma_tx_descriptor, node);
+	list_del(&desc->node);
+
+	xscd_write(chan->iomem, XSCD_ADDR_OFFSET, desc->sw.luma_plane_addr);
+	chan->active_desc = desc;
+
+	return 1;
+}
+
+/**
+ * xscd_dma_kick - Start a run of the SCD core if channels are ready
+ * @xscd: The SCD device
+ *
+ * This function starts a single run of the SCD core when all the following
+ * conditions are met:
+ *
+ * - The SCD is not currently running
+ * - At least one channel is enabled and has buffers available
+ *
+ * It can be used to start the SCD when a buffer is queued, when a channel
+ * starts streaming, or to start the next run. Calling this function is only
+ * valid for memory-based mode and is not permitted for stream-based mode.
+ *
+ * The running state for all channels is updated. Channels that are being
+ * stopped are signalled through the channel wait queue.
+ *
+ * The function must be called with the xscd_device lock held.
+ */
+static void xscd_dma_kick(struct xscd_device *xscd)
+{
+	unsigned int channels = 0;
+	unsigned int i;
+
+	lockdep_assert_held(&xscd->lock);
+
+	if (xscd->running)
+		return;
+
+	for (i = 0; i < xscd->num_streams; i++) {
+		struct xscd_dma_chan *chan = xscd->channels[i];
+		unsigned long flags;
+		unsigned int running;
+		bool stopped;
+
+		spin_lock_irqsave(&chan->lock, flags);
+		running = xscd_dma_setup_channel(chan);
+		stopped = chan->running && !running;
+		chan->running = running;
+		spin_unlock_irqrestore(&chan->lock, flags);
+
+		channels |= running << chan->id;
+		if (stopped)
+			wake_up(&chan->wait);
+	}
+
+	if (channels)
+		xscd_dma_start(xscd, channels);
+	else
+		xscd_dma_stop(xscd);
+}
+
+/**
+ * xscd_dma_enable_channel - Enable/disable a channel
+ * @chan: Driver specific channel struct pointer
+ * @enable: True to enable the channel, false to disable it
+ *
+ * This function enables or disable a channel. When operating in memory-based
+ * mode, enabling a channel kicks processing if buffers are available for any
+ * enabled channel and the SCD core is idle. When operating in stream-based
+ * mode, the SCD core is started or stopped synchronously when then channel is
+ * enabled or disabled.
+ *
+ * This function must be called in non-atomic, non-interrupt context.
+ */
+void xscd_dma_enable_channel(struct xscd_dma_chan *chan, bool enable)
+{
+	struct xscd_device *xscd = chan->xscd;
+
+	spin_lock_irq(&chan->lock);
+	chan->enabled = enable;
+	spin_unlock_irq(&chan->lock);
+
+	if (xscd->memory_based) {
+		if (enable) {
+			spin_lock_irq(&xscd->lock);
+			xscd_dma_kick(xscd);
+			spin_unlock_irq(&xscd->lock);
+		}
+	} else {
+		if (enable)
+			xscd_dma_start(xscd, BIT(chan->id));
+		else
+			xscd_dma_stop(xscd);
+	}
+}
+
+/**
  * xscd_dma_irq_handler - scdma Interrupt handler
  * @xscd: Pointer to the SCD device structure
  */
 void xscd_dma_irq_handler(struct xscd_device *xscd)
 {
-	struct xscd_dma_chan *chan;
+	unsigned int i;
 
-	if (xscd->memory_based) {
-		u32 chan_en = 0, id;
+	/*
+	 * Mark the active descriptors as complete, move them to the done list
+	 * and schedule the tasklet to clean them up.
+	 */
+	for (i = 0; i < xscd->num_streams; ++i) {
+		struct xscd_dma_chan *chan = xscd->channels[i];
+		struct xscd_dma_tx_descriptor *desc = chan->active_desc;
 
-		for (id = 0; id < xscd->num_streams; id++) {
-			chan = xscd->channels[id];
-			spin_lock(&chan->lock);
-			chan->idle = true;
+		if (!desc)
+			continue;
 
-			if (chan->enabled &&
-			    (!list_empty(&chan->pending_list))) {
-				chan_en |= 1 << chan->id;
-				chan->valid_interrupt = true;
-			} else {
-				chan->valid_interrupt = false;
-			}
+		dma_cookie_complete(&desc->async_tx);
+		xscd_chan_event_notify(&xscd->chans[i]);
 
-			xscd_dma_start_transfer(chan);
-			spin_unlock(&chan->lock);
-		}
+		spin_lock(&chan->lock);
+		list_add_tail(&desc->node, &chan->done_list);
+		chan->active_desc = NULL;
+		spin_unlock(&chan->lock);
 
-		if (chan_en) {
-			xscd_dma_reset(chan);
-			xscd_dma_chan_enable(chan, chan_en);
-			xscd_dma_start(chan);
-		}
-
-		for (id = 0; id < xscd->num_streams; id++) {
-			chan = xscd->channels[id];
-			tasklet_schedule(&chan->tasklet);
-		}
+		tasklet_schedule(&chan->tasklet);
 	}
+
+	/* Start the next run, if any. */
+	spin_lock(&xscd->lock);
+	xscd->running = false;
+	xscd_dma_kick(xscd);
+	spin_unlock(&xscd->lock);
 }
 
 /* -----------------------------------------------------------------------------
- * Descriptors alloc and free
+ * DMA Engine
  */
 
 /**
@@ -82,67 +224,6 @@ static dma_cookie_t xscd_dma_tx_submit(struct dma_async_tx_descriptor *tx)
 	spin_unlock_irqrestore(&chan->lock, flags);
 
 	return cookie;
-}
-
-/**
- * xscd_dma_chan_enable - Enable dma channel
- * @chan: Driver specific dma channel
- * @chan_en: Channels ready for transfer, it is a bitmap
- */
-void xscd_dma_chan_enable(struct xscd_dma_chan *chan, int chan_en)
-{
-	xscd_write(chan->xscd->iomem, XSCD_CHAN_EN_OFFSET, chan_en);
-}
-
-/**
- * xscd_dma_complete_descriptor - Mark the active descriptor as complete
- * This function is invoked with spinlock held
- * @chan : xilinx dma channel
- *
- */
-static void xscd_dma_complete_descriptor(struct xscd_dma_chan *chan)
-{
-	struct xscd_dma_tx_descriptor *desc = chan->active_desc;
-
-	dma_cookie_complete(&desc->async_tx);
-	list_add_tail(&desc->node, &chan->done_list);
-}
-
-/**
- * xscd_dma_start_transfer - Starts dma transfer
- * @chan: Driver specific channel struct pointer
- */
-void xscd_dma_start_transfer(struct xscd_dma_chan *chan)
-{
-	struct xscd_dma_tx_descriptor *desc;
-
-	if (!chan->enabled)
-		return;
-
-	if (!chan->idle)
-		return;
-
-	if (chan->active_desc) {
-		xscd_dma_complete_descriptor(chan);
-		chan->active_desc = NULL;
-	}
-
-	if (chan->staged_desc) {
-		chan->active_desc = chan->staged_desc;
-		chan->staged_desc = NULL;
-	}
-
-	if (list_empty(&chan->pending_list))
-		return;
-
-	desc = list_first_entry(&chan->pending_list,
-				struct xscd_dma_tx_descriptor, node);
-
-	/* Start the transfer */
-	xscd_write(chan->iomem, XSCD_ADDR_OFFSET, desc->sw.luma_plane_addr);
-
-	list_del(&desc->node);
-	chan->staged_desc = desc;
 }
 
 /**
@@ -174,9 +255,7 @@ static void xscd_dma_free_descriptors(struct xscd_dma_chan *chan)
 	xscd_dma_free_desc_list(chan, &chan->pending_list);
 	xscd_dma_free_desc_list(chan, &chan->done_list);
 	kfree(chan->active_desc);
-	kfree(chan->staged_desc);
 
-	chan->staged_desc = NULL;
 	chan->active_desc = NULL;
 	INIT_LIST_HEAD(&chan->pending_list);
 	INIT_LIST_HEAD(&chan->done_list);
@@ -251,6 +330,17 @@ xscd_dma_prep_interleaved(struct dma_chan *dchan,
 	return &desc->async_tx;
 }
 
+static bool xscd_dma_is_running(struct xscd_dma_chan *chan)
+{
+	bool running;
+
+	spin_lock_irq(&chan->lock);
+	running = chan->running;
+	spin_unlock_irq(&chan->lock);
+
+	return running;
+}
+
 /**
  * xscd_dma_terminate_all - Halt the channel and free descriptors
  * @dchan: Driver specific dma channel pointer
@@ -260,14 +350,18 @@ xscd_dma_prep_interleaved(struct dma_chan *dchan,
 static int xscd_dma_terminate_all(struct dma_chan *dchan)
 {
 	struct xscd_dma_chan *chan = to_xscd_dma_chan(dchan);
+	int ret;
 
-	xscd_dma_halt(chan);
+	spin_lock_irq(&chan->lock);
+	chan->enabled = false;
+	spin_unlock_irq(&chan->lock);
+
+	/* Wait for any on-going transfer to complete. */
+	ret = wait_event_timeout(chan->wait, !xscd_dma_is_running(chan),
+				 msecs_to_jiffies(100));
+	WARN_ON(ret == 0);
+
 	xscd_dma_free_descriptors(chan);
-
-	/* Worst case frame-to-frame boundary, ensure frame output complete */
-	msleep(50);
-	xscd_dma_reset(chan);
-
 	return 0;
 }
 
@@ -279,29 +373,11 @@ static void xscd_dma_issue_pending(struct dma_chan *dchan)
 {
 	struct xscd_dma_chan *chan = to_xscd_dma_chan(dchan);
 	struct xscd_device *xscd = chan->xscd;
-	u32 chan_en = 0, id;
+	unsigned long flags;
 
-	for (id = 0; id < xscd->num_streams; id++) {
-		chan = xscd->channels[id];
-		spin_lock(&chan->lock);
-		chan->idle = true;
-
-		if (chan->enabled && (!list_empty(&chan->pending_list))) {
-			chan_en |= 1 << chan->id;
-			chan->valid_interrupt = true;
-		} else {
-			chan->valid_interrupt = false;
-		}
-
-		xscd_dma_start_transfer(chan);
-		spin_unlock(&chan->lock);
-	}
-
-	if (chan_en) {
-		xscd_dma_reset(chan);
-		xscd_dma_chan_enable(chan, chan_en);
-		xscd_dma_start(chan);
-	}
+	spin_lock_irqsave(&xscd->lock, flags);
+	xscd_dma_kick(xscd);
+	spin_unlock_irqrestore(&xscd->lock, flags);
 }
 
 static enum dma_status xscd_dma_tx_status(struct dma_chan *dchan,
@@ -309,54 +385,6 @@ static enum dma_status xscd_dma_tx_status(struct dma_chan *dchan,
 					  struct dma_tx_state *txstate)
 {
 	return dma_cookie_status(dchan, cookie, txstate);
-}
-
-/**
- * xscd_dma_halt - Halt dma channel
- * @chan: Driver specific dma channel
- */
-void xscd_dma_halt(struct xscd_dma_chan *chan)
-{
-	struct xscd_device *xscd = chan->xscd;
-
-	if (xscd->memory_based)
-		xscd_clr(chan->xscd->iomem, XSCD_CTRL_OFFSET,
-			 XSCD_CTRL_AP_START);
-	else
-		/* Streaming based */
-		xscd_clr(chan->xscd->iomem, XSCD_CTRL_OFFSET,
-			 XSCD_CTRL_AP_START | XSCD_CTRL_AUTO_RESTART);
-
-	chan->idle = true;
-}
-
-/**
- * xscd_dma_start - Start dma channel
- * @chan: Driver specific dma channel
- */
-void xscd_dma_start(struct xscd_dma_chan *chan)
-{
-	struct xscd_device *xscd = chan->xscd;
-
-	if (xscd->memory_based)
-		xscd_set(chan->xscd->iomem, XSCD_CTRL_OFFSET,
-			 XSCD_CTRL_AP_START);
-	else
-		/* Streaming based */
-		xscd_set(chan->xscd->iomem, XSCD_CTRL_OFFSET,
-			 XSCD_CTRL_AP_START | XSCD_CTRL_AUTO_RESTART);
-
-	chan->idle = false;
-}
-
-/**
- * xscd_dma_reset - Reset dma channel and enable interrupts
- * @chan: Driver specific dma channel
- */
-void xscd_dma_reset(struct xscd_dma_chan *chan)
-{
-	xscd_write(chan->xscd->iomem, XSCD_IE_OFFSET, XSCD_IE_AP_DONE);
-	xscd_write(chan->xscd->iomem, XSCD_GIE_OFFSET, XSCD_GIE_EN);
 }
 
 /**
@@ -422,7 +450,6 @@ static void xscd_dma_chan_init(struct xscd_device *xscd, int chan_id)
 	chan->id = chan_id;
 	chan->iomem = xscd->iomem + chan->id * XSCD_CHAN_OFFSET;
 	chan->xscd = xscd;
-	chan->idle = true;
 
 	xscd->channels[chan->id] = chan;
 
@@ -431,6 +458,8 @@ static void xscd_dma_chan_init(struct xscd_device *xscd, int chan_id)
 	INIT_LIST_HEAD(&chan->done_list);
 	tasklet_init(&chan->tasklet, xscd_dma_do_tasklet,
 		     (unsigned long)chan);
+	init_waitqueue_head(&chan->wait);
+
 	chan->common.device = &xscd->dma_device;
 	list_add_tail(&chan->common.device_node, &xscd->dma_device.channels);
 }
