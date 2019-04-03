@@ -145,7 +145,6 @@ static inline struct xscd_dma_chan *to_xscd_dma_chan(struct dma_chan *chan)
 
 /**
  * struct xscd_chan - Video Stream structure
- * @irq: device IRQ
  * @id: scene change channel ID
  * @iomem: device I/O register space remapped to kernel virtual memory
  * @xscd: SCD device
@@ -157,7 +156,6 @@ static inline struct xscd_dma_chan *to_xscd_dma_chan(struct dma_chan *chan)
  * @lock: lock to protect active stream count variable
  */
 struct xscd_chan {
-	int irq;
 	int id;
 	void __iomem *iomem;
 	struct xscd_device *xscd;
@@ -263,6 +261,7 @@ void xscd_dma_chan_enable(struct xscd_dma_chan *chan, int chan_en);
 void xscd_dma_reset(struct xscd_dma_chan *chan);
 void xscd_dma_halt(struct xscd_dma_chan *chan);
 
+void xscd_chan_irq_handler(struct xscd_chan *chan);
 int xscd_chan_init(struct xscd_device *xscd, unsigned int chan_id,
 		   struct device_node *node);
 #endif
