@@ -116,7 +116,7 @@ static dma_cookie_t xscd_dma_tx_submit(struct dma_async_tx_descriptor *tx)
  */
 void xscd_dma_chan_enable(struct xscd_dma_chan *chan, int chan_en)
 {
-	xscd_write(chan->iomem, XSCD_CHAN_EN_OFFSET, chan_en);
+	xscd_write(chan->xscd->iomem, XSCD_CHAN_EN_OFFSET, chan_en);
 }
 
 /**
@@ -140,7 +140,6 @@ static void xscd_dma_complete_descriptor(struct xscd_dma_chan *chan)
 void xscd_dma_start_transfer(struct xscd_dma_chan *chan)
 {
 	struct xscd_dma_tx_descriptor *desc;
-	u32 chanoffset = chan->id * XSCD_CHAN_OFFSET;
 
 	if (!chan->en)
 		return;
@@ -165,8 +164,7 @@ void xscd_dma_start_transfer(struct xscd_dma_chan *chan)
 				struct xscd_dma_tx_descriptor, node);
 
 	/* Start the transfer */
-	xscd_write(chan->iomem, XSCD_ADDR_OFFSET + chanoffset,
-		   desc->sw.luma_plane_addr);
+	xscd_write(chan->iomem, XSCD_ADDR_OFFSET, desc->sw.luma_plane_addr);
 
 	list_del(&desc->node);
 	chan->staged_desc = desc;
@@ -356,10 +354,11 @@ void xscd_dma_halt(struct xscd_dma_chan *chan)
 	struct xscd_device *xscd = chan->xscd;
 
 	if (xscd->memory_based)
-		xscd_clr(chan->iomem, XSCD_CTRL_OFFSET, XSCD_CTRL_AP_START);
+		xscd_clr(chan->xscd->iomem, XSCD_CTRL_OFFSET,
+			 XSCD_CTRL_AP_START);
 	else
 		/* Streaming based */
-		xscd_clr(chan->iomem, XSCD_CTRL_OFFSET,
+		xscd_clr(chan->xscd->iomem, XSCD_CTRL_OFFSET,
 			 XSCD_CTRL_AP_START | XSCD_CTRL_AUTO_RESTART);
 
 	chan->idle = true;
@@ -374,10 +373,11 @@ void xscd_dma_start(struct xscd_dma_chan *chan)
 	struct xscd_device *xscd = chan->xscd;
 
 	if (xscd->memory_based)
-		xscd_set(chan->iomem, XSCD_CTRL_OFFSET, XSCD_CTRL_AP_START);
+		xscd_set(chan->xscd->iomem, XSCD_CTRL_OFFSET,
+			 XSCD_CTRL_AP_START);
 	else
 		/* Streaming based */
-		xscd_set(chan->iomem, XSCD_CTRL_OFFSET,
+		xscd_set(chan->xscd->iomem, XSCD_CTRL_OFFSET,
 			 XSCD_CTRL_AP_START | XSCD_CTRL_AUTO_RESTART);
 
 	chan->idle = false;
@@ -389,8 +389,8 @@ void xscd_dma_start(struct xscd_dma_chan *chan)
  */
 void xscd_dma_reset(struct xscd_dma_chan *chan)
 {
-	xscd_write(chan->iomem, XSCD_IE_OFFSET, XSCD_IE_AP_DONE);
-	xscd_write(chan->iomem, XSCD_GIE_OFFSET, XSCD_GIE_EN);
+	xscd_write(chan->xscd->iomem, XSCD_IE_OFFSET, XSCD_IE_AP_DONE);
+	xscd_write(chan->xscd->iomem, XSCD_GIE_OFFSET, XSCD_GIE_EN);
 }
 
 /**

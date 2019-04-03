@@ -157,38 +157,32 @@ static int xscd_chan_get_vid_fmt(u32 media_bus_fmt, bool memory_based)
 /**
  * xscd_chan_configure_params - Program parameters to HW registers
  * @chan: Driver specific channel struct pointer
- * @chan_offset: Register offset for a channel
  */
-static void xscd_chan_configure_params(struct xscd_chan *chan,
-				       u32 chan_offset)
+static void xscd_chan_configure_params(struct xscd_chan *chan)
 {
 	u32 vid_fmt, stride;
 
-	xscd_write(chan->iomem, XSCD_WIDTH_OFFSET + chan_offset,
-		   chan->format.width);
+	xscd_write(chan->iomem, XSCD_WIDTH_OFFSET, chan->format.width);
 
 	/* Stride is required only for memory based IP, not for streaming IP */
 	if (chan->xscd->memory_based) {
 		stride = roundup(chan->format.width, XSCD_BYTE_ALIGN);
-		xscd_write(chan->iomem, XSCD_STRIDE_OFFSET + chan_offset,
-			   stride);
+		xscd_write(chan->iomem, XSCD_STRIDE_OFFSET, stride);
 	}
 
-	xscd_write(chan->iomem, XSCD_HEIGHT_OFFSET + chan_offset,
-		   chan->format.height);
+	xscd_write(chan->iomem, XSCD_HEIGHT_OFFSET, chan->format.height);
 
 	/* Hardware video format */
 	vid_fmt = xscd_chan_get_vid_fmt(chan->format.code,
 					chan->xscd->memory_based);
-	xscd_write(chan->iomem, XSCD_VID_FMT_OFFSET + chan_offset, vid_fmt);
+	xscd_write(chan->iomem, XSCD_VID_FMT_OFFSET, vid_fmt);
 
 	/*
 	 * This is the vertical subsampling factor of the input image. Instead
 	 * of sampling every line to calculate the histogram, IP uses this
 	 * register value to sample only specific lines of the frame.
 	 */
-	xscd_write(chan->iomem, XSCD_SUBSAMPLE_OFFSET + chan_offset,
-		   XSCD_V_SUBSAMPLING);
+	xscd_write(chan->iomem, XSCD_SUBSAMPLE_OFFSET, XSCD_V_SUBSAMPLING);
 }
 
 /* -----------------------------------------------------------------------------
@@ -198,7 +192,6 @@ static int xscd_s_stream(struct v4l2_subdev *subdev, int enable)
 {
 	struct xscd_chan *chan = to_xscd_chan(subdev);
 	unsigned long flags;
-	u32 chan_offset;
 
 	/* TODO: Re-organise shared data in a better way */
 	chan->dmachan.en = enable;
@@ -206,8 +199,7 @@ static int xscd_s_stream(struct v4l2_subdev *subdev, int enable)
 	spin_lock_irqsave(&chan->dmachan.lock, flags);
 
 	if (chan->xscd->memory_based) {
-		chan_offset = chan->id * XSCD_CHAN_OFFSET;
-		xscd_chan_configure_params(chan, chan_offset);
+		xscd_chan_configure_params(chan);
 		if (enable) {
 			if (!chan->xscd->active_streams) {
 				chan->dmachan.valid_interrupt = true;
@@ -226,7 +218,7 @@ static int xscd_s_stream(struct v4l2_subdev *subdev, int enable)
 	} else {
 		/* Streaming based */
 		if (enable) {
-			xscd_chan_configure_params(chan, chan->id);
+			xscd_chan_configure_params(chan);
 			xscd_dma_reset(&chan->dmachan);
 			xscd_dma_chan_enable(&chan->dmachan, BIT(chan->id));
 			xscd_dma_start(&chan->dmachan);
@@ -325,8 +317,7 @@ static void xscd_event_notify(struct xscd_chan *chan)
 	u32 *eventdata;
 	u32 sad, scd_threshold;
 
-	sad = xscd_read(chan->iomem, XSCD_SAD_OFFSET +
-			(chan->id * XSCD_CHAN_OFFSET));
+	sad = xscd_read(chan->iomem, XSCD_SAD_OFFSET);
 	sad = (sad * XSCD_V_SUBSAMPLING * MULTIPLICATION_FACTOR) /
 	       (chan->format.width * chan->format.height);
 	eventdata = (u32 *)&chan->event.u.data;
@@ -380,9 +371,9 @@ int xscd_chan_init(struct xscd_device *xscd, unsigned int chan_id,
 	mutex_init(&chan->lock);
 	chan->xscd = xscd;
 	chan->id = chan_id;
-	chan->iomem = chan->xscd->iomem;
+	chan->iomem = chan->xscd->iomem + chan->id * XSCD_CHAN_OFFSET;
 	chan->dmachan.id = chan->id;
-	chan->dmachan.iomem = chan->xscd->iomem;
+	chan->dmachan.iomem = chan->iomem;
 
 	xscd->channels[chan->id] = &chan->dmachan;
 
