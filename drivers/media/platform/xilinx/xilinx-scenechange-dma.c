@@ -34,7 +34,8 @@ void xscd_dma_irq_handler(struct xscd_device *xscd)
 			spin_lock(&chan->lock);
 			chan->idle = true;
 
-			if (chan->en && (!list_empty(&chan->pending_list))) {
+			if (chan->enabled &&
+			    (!list_empty(&chan->pending_list))) {
 				chan_en |= 1 << chan->id;
 				chan->valid_interrupt = true;
 			} else {
@@ -115,7 +116,7 @@ void xscd_dma_start_transfer(struct xscd_dma_chan *chan)
 {
 	struct xscd_dma_tx_descriptor *desc;
 
-	if (!chan->en)
+	if (!chan->enabled)
 		return;
 
 	if (!chan->idle)
@@ -285,7 +286,7 @@ static void xscd_dma_issue_pending(struct dma_chan *dchan)
 		spin_lock(&chan->lock);
 		chan->idle = true;
 
-		if (chan->en && (!list_empty(&chan->pending_list))) {
+		if (chan->enabled && (!list_empty(&chan->pending_list))) {
 			chan_en |= 1 << chan->id;
 			chan->valid_interrupt = true;
 		} else {

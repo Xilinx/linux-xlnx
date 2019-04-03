@@ -100,35 +100,34 @@ to_xscd_dma_tx_descriptor(struct dma_async_tx_descriptor *tx)
  * struct xscd_dma_chan - DMA Channel structure
  * @xscd: SCD device
  * @iomem: I/O memory address of the channel registers
+ * @id: scene change channel ID
+ * @common: DMA common channel
+ * @tasklet: Cleanup work after irq
  * @lock: Descriptor operation lock
- * @chan_node: Member of a list of framebuffer channel instances
  * @pending_list: Descriptors waiting
  * @done_list: Complete descriptors
  * @staged_desc: Next buffer to be programmed
  * @active_desc: Currently active buffer being read/written to
- * @common: DMA common channel
  * @idle: Channel idle state
- * @tasklet: Cleanup work after irq
- * @id: scene change channel ID
- * @en: Channel is enabled
+ * @enabled: Channel is enabled
  * @valid_interrupt: Valid interrupt for the channel
  */
 struct xscd_dma_chan {
 	struct xscd_device *xscd;
 	void __iomem *iomem;
+	unsigned int id;
+
+	struct dma_chan common;
+	struct tasklet_struct tasklet;
 
 	/* Descriptor operation Lock */
 	spinlock_t lock;
-	struct list_head chan_node;
 	struct list_head pending_list;
 	struct list_head done_list;
 	struct xscd_dma_tx_descriptor *staged_desc;
 	struct xscd_dma_tx_descriptor *active_desc;
-	struct dma_chan common;
 	bool idle;
-	struct tasklet_struct tasklet;
-	u8 id;
-	bool en;
+	unsigned int enabled;
 	bool valid_interrupt;
 };
 
