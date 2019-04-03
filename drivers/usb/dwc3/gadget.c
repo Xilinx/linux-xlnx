@@ -1074,6 +1074,7 @@ static void dwc3_prepare_one_trb_sg(struct dwc3_ep *dep,
 	struct scatterlist *sg = req->start_sg;
 	struct scatterlist *s;
 	int		i;
+
 	unsigned int remaining = req->request.num_mapped_sgs
 		- req->num_queued_sgs;
 
@@ -1305,7 +1306,6 @@ static void __dwc3_gadget_start_isoc(struct dwc3_ep *dep)
 }
 
 static void dwc3_gadget_wakeup_interrupt(struct dwc3 *dwc);
-
 static int __dwc3_gadget_ep_queue(struct dwc3_ep *dep, struct dwc3_request *req)
 {
 	struct dwc3		*dwc = dep->dwc;
@@ -1370,7 +1370,6 @@ static int __dwc3_gadget_ep_queue(struct dwc3_ep *dep, struct dwc3_request *req)
 			}
 		}
 	}
-
 
 	return __dwc3_gadget_kick_transfer(dep);
 }

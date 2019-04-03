@@ -20,12 +20,12 @@
 #include <linux/of.h>
 #include <linux/of_platform.h>
 #include <linux/pm_runtime.h>
+#include <linux/reset.h>
 #include <linux/soc/xilinx/zynqmp/fw.h>
 #include <linux/slab.h>
 
 #include <linux/phy/phy-zynqmp.h>
 #include <linux/of_address.h>
-#include <linux/reset.h>
 
 #include "core.h"
 
