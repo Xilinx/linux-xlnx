@@ -26,36 +26,6 @@ static irqreturn_t xscd_irq_handler(int irq, void *data)
 	return IRQ_HANDLED;
 }
 
-static struct platform_device *xscd_chan_alloc(struct platform_device *pdev,
-					       struct device_node *subdev,
-					       int id)
-{
-	struct platform_device *xscd_chan_pdev;
-	int ret;
-
-	xscd_chan_pdev = platform_device_alloc("xlnx-scdchan", id);
-	if (!xscd_chan_pdev)
-		return ERR_PTR(-ENOMEM);
-
-	xscd_chan_pdev->dev.parent = &pdev->dev;
-	xscd_chan_pdev->dev.of_node = subdev;
-
-	ret = platform_device_add(xscd_chan_pdev);
-	if (ret)
-		goto error;
-
-	return xscd_chan_pdev;
-
-error:
-	platform_device_unregister(xscd_chan_pdev);
-	return ERR_PTR(ret);
-}
-
-static void xscd_chan_remove(struct platform_device *dev)
-{
-	platform_device_unregister(dev);
-}
-
 static
 struct platform_device *xilinx_scdma_device_init(struct platform_device *pdev,
 						 struct device_node *node)
@@ -123,6 +93,11 @@ static int xscd_parse_of(struct xscd_device *xscd)
 	if (ret < 0)
 		return ret;
 
+	if (!xscd->shared_data.memory_based && xscd->numstreams != 1) {
+		dev_err(dev, "Stream-based mode only supports one stream\n");
+		return -EINVAL;
+	}
+
 	xscd->irq = irq_of_parse_and_map(node, 0);
 	if (!xscd->irq) {
 		dev_err(xscd->dev, "No valid irq found\n");
@@ -138,17 +113,15 @@ static int xscd_parse_of(struct xscd_device *xscd)
 static int xscd_probe(struct platform_device *pdev)
 {
 	struct xscd_device *xscd;
+	struct device_node *subdev_node;
+	unsigned int id;
 	int ret;
-	u32 id = 0, i;
-	struct device_node *subdev_node, *node;
-	struct platform_device *subdev;
 
 	xscd = devm_kzalloc(&pdev->dev, sizeof(*xscd), GFP_KERNEL);
 	if (!xscd)
 		return -ENOMEM;
 
 	xscd->dev = &pdev->dev;
-	node = pdev->dev.of_node;
 
 	ret = xscd_parse_of(xscd);
 	if (ret < 0)
@@ -164,29 +137,25 @@ static int xscd_probe(struct platform_device *pdev)
 
 	xscd->shared_data.iomem = xscd->iomem;
 	platform_set_drvdata(pdev, (void *)&xscd->shared_data);
-	if (xscd->shared_data.memory_based) {
-		for_each_child_of_node(node, subdev_node) {
-			subdev = xscd_chan_alloc(pdev, subdev_node, id);
-			if (IS_ERR(subdev)) {
-				dev_err(&pdev->dev,
-					"Failed to initialize subdev@%d\n", id);
-				ret = PTR_ERR(subdev);
-				goto cleanup;
-			}
-			xscd->subdevs[id] = subdev;
-			id++;
+
+	id = 0;
+	for_each_child_of_node(xscd->dev->of_node, subdev_node) {
+		if (id >= xscd->numstreams) {
+			dev_warn(&pdev->dev,
+				 "Too many channels, limiting to %u\n",
+				 xscd->numstreams);
+			of_node_put(subdev_node);
+			break;
 		}
-	} else {
-		/* Streaming based */
-		subdev_node = of_get_next_child(node, NULL);
-		subdev = xscd_chan_alloc(pdev, subdev_node, id);
-		if (IS_ERR(subdev)) {
-			dev_err(&pdev->dev,
-				"Failed to initialize the subdev@%d\n", id);
-			ret = PTR_ERR(subdev);
-			goto cleanup;
+
+		ret = xscd_chan_init(xscd, id, subdev_node);
+		if (ret < 0) {
+			dev_err(&pdev->dev, "Failed to initialize channel %u\n",
+				id);
+			return ret;
 		}
-		xscd->subdevs[id] = subdev;
+
+		id++;
 	}
 
 	xscd->dma_device = xilinx_scdma_device_init(pdev, xscd->dma_node);
@@ -195,28 +164,17 @@ static int xscd_probe(struct platform_device *pdev)
 
 	dev_info(xscd->dev, "scene change detect device found!\n");
 	return 0;
-
-cleanup:
-	for (i = 0; i < xscd->numstreams; i++) {
-		if (xscd->subdevs[i])
-			xscd_chan_remove(xscd->subdevs[i]);
-	}
-
-	return ret;
 }
 
 static int xscd_remove(struct platform_device *pdev)
 {
 	struct xscd_device *xscd = platform_get_drvdata(pdev);
-	u32 i;
 
 	xilinx_scdma_device_exit(xscd->dma_device);
 	xscd->dma_node = NULL;
 
-	for (i = 0; i < xscd->numstreams; i++)
-		xscd_chan_remove(xscd->subdevs[i]);
-
 	clk_disable_unprepare(xscd->clk);
+
 	return 0;
 }
 

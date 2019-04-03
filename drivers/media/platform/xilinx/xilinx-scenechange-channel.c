@@ -157,12 +157,10 @@ static int xscd_chan_get_vid_fmt(u32 media_bus_fmt, bool memory_based)
 /**
  * xscd_chan_configure_params - Program parameters to HW registers
  * @chan: Driver specific channel struct pointer
- * @shared_data: Shared data
  * @chan_offset: Register offset for a channel
  */
-void xscd_chan_configure_params(struct xscd_chan *chan,
-				struct xscd_shared_data *shared_data,
-				u32 chan_offset)
+static void xscd_chan_configure_params(struct xscd_chan *chan,
+				       u32 chan_offset)
 {
 	u32 vid_fmt, stride;
 
@@ -170,7 +168,7 @@ void xscd_chan_configure_params(struct xscd_chan *chan,
 		   chan->format.width);
 
 	/* Stride is required only for memory based IP, not for streaming IP */
-	if (shared_data->memory_based) {
+	if (chan->xscd->shared_data.memory_based) {
 		stride = roundup(chan->format.width, XSCD_BYTE_ALIGN);
 		xscd_write(chan->iomem, XSCD_STRIDE_OFFSET + chan_offset,
 			   stride);
@@ -181,7 +179,7 @@ void xscd_chan_configure_params(struct xscd_chan *chan,
 
 	/* Hardware video format */
 	vid_fmt = xscd_chan_get_vid_fmt(chan->format.code,
-					shared_data->memory_based);
+					chan->xscd->shared_data.memory_based);
 	xscd_write(chan->iomem, XSCD_VID_FMT_OFFSET + chan_offset, vid_fmt);
 
 	/*
@@ -204,14 +202,14 @@ static int xscd_s_stream(struct v4l2_subdev *subdev, int enable)
 	u32 chan_offset;
 
 	/* TODO: Re-organise shared data in a better way */
-	shared_data = (struct xscd_shared_data *)chan->dev->parent->driver_data;
+	shared_data = &chan->xscd->shared_data;
 	chan->dmachan.en = enable;
 
 	spin_lock_irqsave(&chan->dmachan.lock, flags);
 
 	if (shared_data->memory_based) {
 		chan_offset = chan->id * XSCD_CHAN_OFFSET;
-		xscd_chan_configure_params(chan, shared_data, chan_offset);
+		xscd_chan_configure_params(chan, chan_offset);
 		if (enable) {
 			if (!shared_data->active_streams) {
 				chan->dmachan.valid_interrupt = true;
@@ -230,7 +228,7 @@ static int xscd_s_stream(struct v4l2_subdev *subdev, int enable)
 	} else {
 		/* Streaming based */
 		if (enable) {
-			xscd_chan_configure_params(chan, shared_data, chan->id);
+			xscd_chan_configure_params(chan, chan->id);
 			xscd_dma_reset(&chan->dmachan);
 			xscd_dma_chan_enable(&chan->dmachan, BIT(chan->id));
 			xscd_dma_start(&chan->dmachan);
@@ -350,7 +348,7 @@ static irqreturn_t xscd_chan_irq_handler(int irq, void *data)
 	struct xscd_chan *chan = (struct xscd_chan *)data;
 	struct xscd_shared_data *shared_data;
 
-	shared_data = (struct xscd_shared_data *)chan->dev->parent->driver_data;
+	shared_data = &chan->xscd->shared_data;
 	spin_lock(&chan->dmachan.lock);
 
 	if ((shared_data->memory_based && chan->dmachan.valid_interrupt) ||
@@ -366,25 +364,25 @@ static irqreturn_t xscd_chan_irq_handler(int irq, void *data)
 
 static int xscd_chan_parse_of(struct xscd_chan *chan)
 {
-	struct device_node *parent_node;
 	struct xscd_shared_data *shared_data;
 	int err;
 
-	parent_node = chan->dev->parent->of_node;
-	shared_data = (struct xscd_shared_data *)chan->dev->parent->driver_data;
+	shared_data = &chan->xscd->shared_data;
 	shared_data->dma_chan_list[chan->id] = &chan->dmachan;
 	chan->iomem = shared_data->iomem;
 
-	chan->irq = irq_of_parse_and_map(parent_node, 0);
+	chan->irq = irq_of_parse_and_map(chan->xscd->dev->of_node, 0);
 	if (!chan->irq) {
-		dev_err(chan->dev, "No valid irq found\n");
+		dev_err(chan->xscd->dev, "No valid irq found\n");
 		return -EINVAL;
 	}
 
-	err = devm_request_irq(chan->dev, chan->irq, xscd_chan_irq_handler,
-			       IRQF_SHARED, dev_name(chan->dev), chan);
+	err = devm_request_irq(chan->xscd->dev, chan->irq,
+			       xscd_chan_irq_handler, IRQF_SHARED,
+			       dev_name(chan->xscd->dev), chan);
 	if (err) {
-		dev_err(chan->dev, "unable to request IRQ %d\n", chan->irq);
+		dev_err(chan->xscd->dev, "unable to request IRQ %d\n",
+			chan->irq);
 		return err;
 	}
 
@@ -395,27 +393,30 @@ static int xscd_chan_parse_of(struct xscd_chan *chan)
 }
 
 /**
- * xscd_chan_probe - Driver probe function
- * @pdev: Pointer to the device structure
+ * xscd_chan_init - Initialize the V4L2 subdev for a channel
+ * @xscd: Pointer to the SCD device structure
+ * @chan_id: Channel id
+ * @node: device node
  *
  * Return: '0' on success and failure value on error
  */
-static int xscd_chan_probe(struct platform_device *pdev)
+int xscd_chan_init(struct xscd_device *xscd, unsigned int chan_id,
+		   struct device_node *node)
 {
 	struct xscd_chan *chan;
 	struct v4l2_subdev *subdev;
-	struct xscd_shared_data *shared_data;
 	int ret;
 	u32 num_pads;
 
-	shared_data = (struct xscd_shared_data *)pdev->dev.parent->driver_data;
-	chan = devm_kzalloc(&pdev->dev, sizeof(*chan), GFP_KERNEL);
+	chan = devm_kzalloc(xscd->dev, sizeof(*chan), GFP_KERNEL);
 	if (!chan)
 		return -ENOMEM;
 
+	xscd->chans[chan_id] = chan;
+
 	mutex_init(&chan->lock);
-	chan->dev = &pdev->dev;
-	chan->id = pdev->id;
+	chan->xscd = xscd;
+	chan->id = chan_id;
 	ret = xscd_chan_parse_of(chan);
 	if (ret < 0)
 		return ret;
@@ -423,9 +424,11 @@ static int xscd_chan_probe(struct platform_device *pdev)
 	/* Initialize V4L2 subdevice and media entity */
 	subdev = &chan->subdev;
 	v4l2_subdev_init(subdev, &xscd_ops);
-	subdev->dev = &pdev->dev;
+	subdev->dev = chan->xscd->dev;
+	subdev->fwnode = of_fwnode_handle(node);
 	subdev->internal_ops = &xscd_internal_ops;
-	strlcpy(subdev->name, dev_name(&pdev->dev), sizeof(subdev->name));
+	snprintf(subdev->name, sizeof(subdev->name), "xlnx-scdchan.%u",
+		 chan_id);
 	v4l2_set_subdevdata(subdev, chan);
 	subdev->flags |= V4L2_SUBDEV_FL_HAS_DEVNODE | V4L2_SUBDEV_FL_HAS_EVENTS;
 
@@ -436,15 +439,15 @@ static int xscd_chan_probe(struct platform_device *pdev)
 	chan->format.height = XSCD_MAX_HEIGHT;
 
 	/* Initialize media pads */
-	num_pads = shared_data->memory_based ? 1 : 2;
-	chan->pad = devm_kzalloc(&pdev->dev,
+	num_pads = xscd->shared_data.memory_based ? 1 : 2;
+	chan->pad = devm_kzalloc(chan->xscd->dev,
 				 sizeof(struct media_pad) * num_pads,
 				 GFP_KERNEL);
 	if (!chan->pad)
 		return -ENOMEM;
 
 	chan->pad[XVIP_PAD_SINK].flags = MEDIA_PAD_FL_SINK;
-	if (!shared_data->memory_based)
+	if (!xscd->shared_data.memory_based)
 		chan->pad[XVIP_PAD_SOURCE].flags = MEDIA_PAD_FL_SOURCE;
 
 	ret = media_entity_pads_init(&subdev->entity, num_pads, chan->pad);
@@ -454,45 +457,14 @@ static int xscd_chan_probe(struct platform_device *pdev)
 	subdev->entity.ops = &xscd_media_ops;
 	ret = v4l2_async_register_subdev(subdev);
 	if (ret < 0) {
-		dev_err(&pdev->dev, "failed to register subdev\n");
+		dev_err(chan->xscd->dev, "failed to register subdev\n");
 		goto error;
 	}
 
-	dev_info(chan->dev, "Scene change detection channel found!\n");
+	dev_info(chan->xscd->dev, "Scene change detection channel found!\n");
 	return 0;
 
 error:
 	media_entity_cleanup(&subdev->entity);
 	return ret;
 }
-
-static int xscd_chan_remove(struct platform_device *pdev)
-{
-	return 0;
-}
-
-static struct platform_driver xscd_chan_driver = {
-	.probe		= xscd_chan_probe,
-	.remove		= xscd_chan_remove,
-	.driver		= {
-		.name	= "xlnx-scdchan",
-	},
-};
-
-static int __init xscd_chan_init(void)
-{
-	platform_driver_register(&xscd_chan_driver);
-	return 0;
-}
-
-static void __exit xscd_chan_exit(void)
-{
-	platform_driver_unregister(&xscd_chan_driver);
-}
-
-module_init(xscd_chan_init);
-module_exit(xscd_chan_exit);
-
-MODULE_AUTHOR("Xilinx Inc.");
-MODULE_DESCRIPTION("Xilinx Scene Change Detection");
-MODULE_LICENSE("GPL v2");
