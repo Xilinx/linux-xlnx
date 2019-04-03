@@ -147,7 +147,7 @@ static inline struct xscd_dma_chan *to_xscd_dma_chan(struct dma_chan *chan)
  * @iomem: device I/O register space remapped to kernel virtual memory
  * @xscd: SCD device
  * @subdev: V4L2 subdevice
- * @pad: media pads
+ * @pads: media pads
  * @format: active V4L2 media bus format for the pad
  * @event: scene change event
  * @dmachan: dma channel part of the scenechange stream
@@ -158,7 +158,7 @@ struct xscd_chan {
 	void __iomem *iomem;
 	struct xscd_device *xscd;
 	struct v4l2_subdev subdev;
-	struct media_pad *pad;
+	struct media_pad pads[2];
 	struct v4l2_mbus_framefmt format;
 	struct v4l2_event event;
 	struct xscd_dma_chan dmachan;
