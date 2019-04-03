@@ -372,10 +372,6 @@ int xscd_chan_init(struct xscd_device *xscd, unsigned int chan_id,
 	chan->xscd = xscd;
 	chan->id = chan_id;
 	chan->iomem = chan->xscd->iomem + chan->id * XSCD_CHAN_OFFSET;
-	chan->dmachan.id = chan->id;
-	chan->dmachan.iomem = chan->iomem;
-
-	xscd->channels[chan->id] = &chan->dmachan;
 
 	/* Initialize V4L2 subdevice and media entity */
 	subdev = &chan->subdev;
