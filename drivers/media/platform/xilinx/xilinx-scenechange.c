@@ -26,7 +26,7 @@ static irqreturn_t xscd_irq_handler(int irq, void *data)
 	xscd_write(xscd->iomem, XSCD_ISR_OFFSET, XSCD_IE_AP_DONE);
 
 	for (i = 0; i < xscd->num_streams; ++i)
-		xscd_chan_irq_handler(xscd->chans[i]);
+		xscd_chan_irq_handler(&xscd->chans[i]);
 
 	xscd_dma_irq_handler(xscd);
 
@@ -111,6 +111,12 @@ static int xscd_probe(struct platform_device *pdev)
 	gpiod_set_value_cansleep(xscd->rst_gpio, XSCD_RESET_ASSERT);
 	gpiod_set_value_cansleep(xscd->rst_gpio, XSCD_RESET_DEASSERT);
 
+	/* Initialize the channels. */
+	xscd->chans = devm_kcalloc(xscd->dev, xscd->num_streams,
+				   sizeof(*xscd->chans), GFP_KERNEL);
+	if (!xscd->chans)
+		return -ENOMEM;
+
 	id = 0;
 	for_each_child_of_node(xscd->dev->of_node, subdev_node) {
 		if (id >= xscd->num_streams) {
@@ -131,6 +137,7 @@ static int xscd_probe(struct platform_device *pdev)
 		id++;
 	}
 
+	/* Initialize the DMA engine. */
 	ret = xscd_dma_init(xscd);
 	if (ret < 0)
 		dev_err(&pdev->dev, "Failed to initialize the DMA\n");
