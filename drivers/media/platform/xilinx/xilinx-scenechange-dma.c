@@ -71,24 +71,6 @@ void xscd_dma_irq_handler(struct xscd_device *xscd)
  */
 
 /**
- * xscd_dma_tx_descriptor - Allocate transaction descriptor
- * @chan: Driver specific dma channel
- *
- * Return: The allocated descriptor on success and NULL on failure.
- */
-static struct xscd_dma_tx_descriptor *
-xscd_dma_alloc_tx_descriptor(struct xscd_dma_chan *chan)
-{
-	struct xscd_dma_tx_descriptor *desc;
-
-	desc = kzalloc(sizeof(*desc), GFP_KERNEL);
-	if (!desc)
-		return NULL;
-
-	return desc;
-}
-
-/**
  * xscd_dma_tx_submit - Submit DMA transaction
  * @tx: Async transaction descriptor
  *
@@ -259,7 +241,7 @@ xscd_dma_prep_interleaved(struct dma_chan *dchan,
 	struct xscd_dma_tx_descriptor *desc;
 	struct xscd_dma_desc *sw;
 
-	desc = xscd_dma_alloc_tx_descriptor(chan);
+	desc = kzalloc(sizeof(*desc), GFP_KERNEL);
 	if (!desc)
 		return NULL;
 
