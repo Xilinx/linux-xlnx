@@ -28,14 +28,10 @@
 
 /**
  * xscd_dma_irq_handler - scdma Interrupt handler
- * @irq: IRQ number
- * @data: Pointer to the Xilinx scdma channel structure
- *
- * Return: IRQ_HANDLED/IRQ_NONE
+ * @xscd: Pointer to the SCD device structure
  */
-static irqreturn_t xscd_dma_irq_handler(int irq, void *data)
+void xscd_dma_irq_handler(struct xscd_device *xscd)
 {
-	struct xscd_device *xscd = data;
 	struct xscd_dma_chan *chan;
 
 	if (xscd->shared_data.memory_based) {
@@ -68,8 +64,6 @@ static irqreturn_t xscd_dma_irq_handler(int irq, void *data)
 			tasklet_schedule(&chan->tasklet);
 		}
 	}
-
-	return IRQ_HANDLED;
 }
 
 /* -----------------------------------------------------------------------------
@@ -485,7 +479,8 @@ int xscd_dma_init(struct xscd_device *xscd)
 	struct device_node *node = xscd->dev->of_node;
 	struct dma_device *ddev = &xscd->dma_device;
 	struct xscd_dma_chan *chan;
-	int  ret, irq_num, chan_id = 0;
+	unsigned int chan_id;
+	int ret;
 
 	/* Initialize the DMA engine */
 	ddev->dev = xscd->dev;
@@ -494,15 +489,6 @@ int xscd_dma_init(struct xscd_device *xscd)
 	ret = of_property_read_u32(node, "xlnx,numstreams",
 				   &xscd->numchannels);
 
-	irq_num = irq_of_parse_and_map(node, 0);
-	if (!irq_num) {
-		dev_err(xscd->dev, "No valid irq found\n");
-		return -EINVAL;
-	}
-
-	/* TODO: Clean up multiple interrupt handlers as there is one device */
-	ret = devm_request_irq(xscd->dev, irq_num, xscd_dma_irq_handler,
-			       IRQF_SHARED, "xilinx_scenechange DMA", xscd);
 	INIT_LIST_HEAD(&ddev->channels);
 	dma_cap_set(DMA_SLAVE, ddev->cap_mask);
 	dma_cap_set(DMA_PRIVATE, ddev->cap_mask);
