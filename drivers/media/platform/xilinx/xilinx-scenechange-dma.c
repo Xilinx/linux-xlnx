@@ -8,21 +8,13 @@
  *          Satish Kumar Nagireddy <satish.nagireddy.nagireddy@xilinx.com>
  */
 
-#include <linux/bitops.h>
-#include <linux/clk.h>
-#include <linux/dmaengine.h>
+#include <linux/delay.h>
 #include <linux/dma-mapping.h>
-#include <linux/init.h>
-#include <linux/interrupt.h>
-#include <linux/io.h>
-#include <linux/io-64-nonatomic-lo-hi.h>
-#include <linux/iopoll.h>
-#include <linux/module.h>
-#include <linux/of_address.h>
+#include <linux/dmaengine.h>
 #include <linux/of_dma.h>
-#include <linux/of_irq.h>
-#include <linux/platform_device.h>
 #include <linux/slab.h>
+
+#include "../../../dma/dmaengine.h"
 
 #include "xilinx-scenechange.h"
 
