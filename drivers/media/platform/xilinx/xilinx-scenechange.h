@@ -17,6 +17,7 @@
 #include <linux/io.h>
 #include <linux/mutex.h>
 #include <linux/spinlock.h>
+#include <linux/wait.h>
 
 #include <media/v4l2-subdev.h>
 
@@ -103,14 +104,13 @@ to_xscd_dma_tx_descriptor(struct dma_async_tx_descriptor *tx)
  * @id: scene change channel ID
  * @common: DMA common channel
  * @tasklet: Cleanup work after irq
- * @lock: Descriptor operation lock
+ * @lock: Protects pending_list, done_list, active_desc, enabled and running
  * @pending_list: Descriptors waiting
  * @done_list: Complete descriptors
- * @staged_desc: Next buffer to be programmed
  * @active_desc: Currently active buffer being read/written to
- * @idle: Channel idle state
  * @enabled: Channel is enabled
- * @valid_interrupt: Valid interrupt for the channel
+ * @running: Channel is running
+ * @wait: Wait queue to wait for the channel to stop
  */
 struct xscd_dma_chan {
 	struct xscd_device *xscd;
@@ -120,15 +120,13 @@ struct xscd_dma_chan {
 	struct dma_chan common;
 	struct tasklet_struct tasklet;
 
-	/* Descriptor operation Lock */
 	spinlock_t lock;
 	struct list_head pending_list;
 	struct list_head done_list;
-	struct xscd_dma_tx_descriptor *staged_desc;
 	struct xscd_dma_tx_descriptor *active_desc;
-	bool idle;
 	unsigned int enabled;
-	bool valid_interrupt;
+	unsigned int running;
+	wait_queue_head_t wait;
 };
 
 static inline struct xscd_dma_chan *to_xscd_dma_chan(struct dma_chan *chan)
@@ -179,7 +177,8 @@ static inline struct xscd_chan *to_xscd_chan(struct v4l2_subdev *subdev)
  * @chans: video stream instances
  * @dma_device: DMA device structure
  * @channels: DMA channels
- * @active_streams: Number of active streams
+ * @lock: Protects the running field
+ * @running: True when the SCD core is running
  */
 struct xscd_device {
 	struct device *dev;
@@ -195,7 +194,10 @@ struct xscd_device {
 
 	struct dma_device dma_device;
 	struct xscd_dma_chan *channels[XSCD_MAX_CHANNELS];
-	u8 active_streams;
+
+	/* This lock is to protect the running field */
+	spinlock_t lock;
+	u8 running;
 };
 
 /*
@@ -221,16 +223,12 @@ static inline void xscd_set(void __iomem *iomem, u32 addr, u32 set)
 	xscd_write(iomem, addr, xscd_read(iomem, addr) | set);
 }
 
-void xscd_dma_start_transfer(struct xscd_dma_chan *chan);
-void xscd_dma_start(struct xscd_dma_chan *chan);
-void xscd_dma_chan_enable(struct xscd_dma_chan *chan, int chan_en);
-void xscd_dma_reset(struct xscd_dma_chan *chan);
-void xscd_dma_halt(struct xscd_dma_chan *chan);
+void xscd_dma_enable_channel(struct xscd_dma_chan *chan, bool enable);
 void xscd_dma_irq_handler(struct xscd_device *xscd);
 int xscd_dma_init(struct xscd_device *xscd);
 void xscd_dma_cleanup(struct xscd_device *xscd);
 
-void xscd_chan_irq_handler(struct xscd_chan *chan);
+void xscd_chan_event_notify(struct xscd_chan *chan);
 int xscd_chan_init(struct xscd_device *xscd, unsigned int chan_id,
 		   struct device_node *node);
 #endif
