@@ -195,7 +195,7 @@ struct xscd_device {
 	u8 memory_based;
 	int num_streams;
 
-	struct xscd_chan *chans[XSCD_MAX_CHANNELS];
+	struct xscd_chan *chans;
 
 	struct dma_device dma_device;
 	struct xscd_dma_chan *channels[XSCD_MAX_CHANNELS];
