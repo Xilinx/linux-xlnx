@@ -548,3 +548,16 @@ error:
 	}
 	return ret;
 }
+
+/**
+ * xscd_dma_cleanup - Clean up the SCD DMA engine
+ * @xscd: Pointer to the SCD device structure
+ *
+ * This function is the counterpart of xscd_dma_init() and cleans up the
+ * resources related to the DMA engine.
+ */
+void xscd_dma_cleanup(struct xscd_device *xscd)
+{
+	dma_async_device_unregister(&xscd->dma_device);
+	of_dma_controller_free(xscd->dev->of_node);
+}
