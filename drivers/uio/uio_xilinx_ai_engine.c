@@ -139,7 +139,7 @@ static int xilinx_ai_engine_probe(struct platform_device *pdev)
 	return 0;
 
 err_out:
-	platform_device_put(pdev);
+	platform_device_put(uio);
 	dev_err(&pdev->dev,
 		"failed to probe Xilinx AI Engine UIO driver");
 	return ret;
