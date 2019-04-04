@@ -16,6 +16,7 @@
 #include <linux/uio_driver.h>
 
 #define DRIVER_NAME "xilinx-aiengine"
+#define XILINX_AI_ENGINE_MAX_IRQ	4
 
 static uint xilinx_ai_engine_mem_cnt = 1;
 module_param_named(mem_cnt, xilinx_ai_engine_mem_cnt, uint, 0444);
@@ -89,6 +90,10 @@ static int xilinx_ai_engine_probe(struct platform_device *pdev)
 	struct platform_device *uio;
 	struct uio_dmem_genirq_pdata *pdata;
 	unsigned int i;
+	static const char * const interrupt_names[] = { "interrupt0",
+							"interrupt1",
+							"interrupt2",
+							"interrupt3" };
 	int ret;
 
 	uio = platform_device_alloc(DRIVER_NAME, PLATFORM_DEVID_NONE);
@@ -107,11 +112,25 @@ static int xilinx_ai_engine_probe(struct platform_device *pdev)
 	pdata->dynamic_region_sizes = &xilinx_ai_engine_mem_size;
 	pdata->uioinfo.name = DRIVER_NAME;
 	pdata->uioinfo.version = "devicetree";
-	pdata->uioinfo.irq = UIO_IRQ_CUSTOM;
 	pdata->uioinfo.mmap = xilinx_ai_engine_mmap;
 	/* Set the offset value as it's map index for each memory */
 	for (i = 0; i < MAX_UIO_MAPS; i++)
 		pdata->uioinfo.mem[i].offs = i << PAGE_SHIFT;
+
+	/* TODO: Only one interrupt is supported out of 4 */
+	for (i  = 0; i < XILINX_AI_ENGINE_MAX_IRQ; i++) {
+		ret = platform_get_irq_byname(pdev, interrupt_names[i]);
+		if (ret >= 0) {
+			dev_info(&pdev->dev, "%s is used", interrupt_names[i]);
+			break;
+		}
+	}
+
+	/* Interrupt is optional */
+	if (ret < 0)
+		ret = UIO_IRQ_CUSTOM;
+	pdata->uioinfo.irq = ret;
+
 	ret = platform_device_add_data(uio, pdata, sizeof(*pdata));
 	if (ret)
 		goto err_out;
