@@ -1,0 +1,23 @@
+Xilinx AI Engine NPI
+--------------------
+
+The Xilinx AI Engine NPI space is where the privileged operations for AI Engine
+device are handled, such as reset and pll. The space is typically meant to be
+owned by platform management software, and this space is accessible only when
+the platform management software grants the access. Thus, this dt binding only
+works in such configuration, and in case the platform locks the access,
+the non-secure software fails to access the device.
+
+This is a temporary solution to allow direct access to NPI space.
+
+Required properties:
+
+- compatible: Must be "xlnx,ai-engine-npi"
+- reg: Physical base address and length of the registers set for the device.
+
+Example:
+
+	aie-npi@f70a0000 {
+		compatible = "xlnx,ai-engine-npi";
+		reg = <0x0 0xf70a0000 0x0 0x1000>;
+	};
