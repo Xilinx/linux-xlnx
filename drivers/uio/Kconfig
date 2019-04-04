@@ -179,6 +179,7 @@ config UIO_XILINX_APM
 
 config UIO_XILINX_AI_ENGINE
 	tristate "Xilinx AI Engine driver"
+	select IRQ_SIM
 	select UIO_DMEM_GENIRQ
 	help
 	  The driver for Xilinx AI Engine that utilizes the uio_dmem_genirq.
