@@ -133,6 +133,7 @@ static int xilinx_ai_engine_probe(struct platform_device *pdev)
 	if (ret)
 		goto err_out;
 	platform_set_drvdata(uio, pdata);
+	platform_set_drvdata(pdev, uio);
 
 	dev_info(&pdev->dev, "Xilinx AI Engine UIO driver probed");
 	return 0;
