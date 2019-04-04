@@ -244,6 +244,7 @@ void xscd_dma_chan_enable(struct xscd_dma_chan *chan, int chan_en);
 void xscd_dma_reset(struct xscd_dma_chan *chan);
 void xscd_dma_halt(struct xscd_dma_chan *chan);
 int xscd_dma_init(struct xscd_device *xscd);
+void xscd_dma_cleanup(struct xscd_device *xscd);
 
 void xscd_chan_irq_handler(struct xscd_chan *chan);
 int xscd_chan_init(struct xscd_device *xscd, unsigned int chan_id,
