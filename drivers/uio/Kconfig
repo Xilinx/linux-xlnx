@@ -171,6 +171,7 @@ config UIO_XILINX_AI_ENGINE
 	tristate "Xilinx AI Engine driver"
 	select IRQ_SIM
 	select UIO_DMEM_GENIRQ
+	select UIO_PDRV_GENIRQ
 	help
 	  The driver for Xilinx AI Engine that utilizes the uio_dmem_genirq.
 	  The userspace library will use this to interact with the AI Engine
