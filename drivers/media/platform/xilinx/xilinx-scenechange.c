@@ -148,6 +148,7 @@ static int xscd_remove(struct platform_device *pdev)
 {
 	struct xscd_device *xscd = platform_get_drvdata(pdev);
 
+	xscd_dma_cleanup(xscd);
 	clk_disable_unprepare(xscd->clk);
 
 	return 0;
