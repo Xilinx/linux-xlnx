@@ -17080,6 +17080,11 @@ F:	Documentation/driver-api/uio-howto.rst
 F:	drivers/uio/
 F:	include/linux/uio_driver.h
 
+USERSPACE I/O (UIO) DRIVER FOR XILINX AI ENGINE NPI
+M:	Hyun Kwon <hyun.kwon@xilinx.com>
+S:	Maintained
+F:	Documentation/devicetree/bindings/soc/xilinx/xlnx,ai-engine-npi.txt
+
 UTIL-LINUX PACKAGE
 M:	Karel Zak <kzak@redhat.com>
 L:	util-linux@vger.kernel.org
