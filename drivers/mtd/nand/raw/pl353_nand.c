@@ -1119,12 +1119,12 @@ static int pl353_nand_ecc_init(struct mtd_info *mtd, struct nand_ecc_ctrl *ecc,
 		container_of(chip, struct pl353_nand_controller, chip);
 	int err = 0;
 
-	ecc->write_page_raw = pl353_nand_write_page_raw;
-	ecc->read_page_raw = pl353_nand_read_page_raw;
 	ecc->read_oob = pl353_nand_read_oob;
 	ecc->write_oob = pl353_nand_write_oob;
 
 	if (ecc_mode == NAND_ECC_ON_DIE) {
+		ecc->write_page_raw = pl353_nand_write_page_raw;
+		ecc->read_page_raw = pl353_nand_read_page_raw;
 		pl353_smc_set_ecc_mode(PL353_SMC_ECCMODE_BYPASS);
 		/*
 		 * On-Die ECC spare bytes offset 8 is used for ECC codes
