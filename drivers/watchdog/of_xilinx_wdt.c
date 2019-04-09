@@ -37,6 +37,11 @@
 
 #define WATCHDOG_NAME     "Xilinx Watchdog"
 
+struct xwdt_devtype_data {
+	const struct watchdog_ops *xwdt_ops;
+	const struct watchdog_info *xwdt_info;
+};
+
 struct xwdt_device {
 	void __iomem *base;
 	u32 wdt_interval;
@@ -155,6 +160,20 @@ static u32 xwdt_selftest(struct xwdt_device *xdev)
 		return XWT_TIMER_FAILED;
 }
 
+static const struct xwdt_devtype_data xwdt_wdt_data = {
+	.xwdt_info = &xilinx_wdt_ident,
+	.xwdt_ops = &xilinx_wdt_ops,
+};
+
+static const struct of_device_id xwdt_of_match[] = {
+	{ .compatible = "xlnx,xps-timebase-wdt-1.00.a",
+		.data = &xwdt_wdt_data },
+	{ .compatible = "xlnx,xps-timebase-wdt-1.01.a",
+		.data = &xwdt_wdt_data },
+	{},
+};
+MODULE_DEVICE_TABLE(of, xwdt_of_match);
+
 static int xwdt_probe(struct platform_device *pdev)
 {
 	int rc;
@@ -162,14 +181,23 @@ static int xwdt_probe(struct platform_device *pdev)
 	struct resource *res;
 	struct xwdt_device *xdev;
 	struct watchdog_device *xilinx_wdt_wdd;
+	const struct of_device_id *of_id;
+	const struct xwdt_devtype_data *devtype;
 
 	xdev = devm_kzalloc(&pdev->dev, sizeof(*xdev), GFP_KERNEL);
 	if (!xdev)
 		return -ENOMEM;
 
 	xilinx_wdt_wdd = &xdev->xilinx_wdt_wdd;
-	xilinx_wdt_wdd->info = &xilinx_wdt_ident;
-	xilinx_wdt_wdd->ops = &xilinx_wdt_ops;
+
+	of_id = of_match_device(xwdt_of_match, &pdev->dev);
+	if (!of_id)
+		return -EINVAL;
+
+	devtype = of_id->data;
+
+	xilinx_wdt_wdd->info = devtype->xwdt_info;
+	xilinx_wdt_wdd->ops = devtype->xwdt_ops;
 	xilinx_wdt_wdd->parent = &pdev->dev;
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
@@ -273,9 +301,10 @@ static int xwdt_remove(struct platform_device *pdev)
 static int __maybe_unused xwdt_suspend(struct device *dev)
 {
 	struct xwdt_device *xdev = dev_get_drvdata(dev);
+	struct watchdog_device *xilinx_wdt_wdd = &xdev->xilinx_wdt_wdd;
 
-	if (watchdog_active(&xdev->xilinx_wdt_wdd))
-		xilinx_wdt_stop(&xdev->xilinx_wdt_wdd);
+	if (watchdog_active(xilinx_wdt_wdd))
+		xilinx_wdt_wdd->ops->stop(xilinx_wdt_wdd);
 
 	return 0;
 }
@@ -289,23 +318,16 @@ static int __maybe_unused xwdt_suspend(struct device *dev)
 static int __maybe_unused xwdt_resume(struct device *dev)
 {
 	struct xwdt_device *xdev = dev_get_drvdata(dev);
+	struct watchdog_device *xilinx_wdt_wdd = &xdev->xilinx_wdt_wdd;
 	int ret = 0;
 
-	if (watchdog_active(&xdev->xilinx_wdt_wdd))
-		ret = xilinx_wdt_start(&xdev->xilinx_wdt_wdd);
+	if (watchdog_active(xilinx_wdt_wdd))
+		ret = xilinx_wdt_wdd->ops->start(xilinx_wdt_wdd);
 
 	return ret;
 }
 
 static SIMPLE_DEV_PM_OPS(xwdt_pm_ops, xwdt_suspend, xwdt_resume);
-
-/* Match table for of_platform binding */
-static const struct of_device_id xwdt_of_match[] = {
-	{ .compatible = "xlnx,xps-timebase-wdt-1.00.a", },
-	{ .compatible = "xlnx,xps-timebase-wdt-1.01.a", },
-	{},
-};
-MODULE_DEVICE_TABLE(of, xwdt_of_match);
 
 static struct platform_driver xwdt_driver = {
 	.probe       = xwdt_probe,
