@@ -284,9 +284,43 @@ static void xlnx_pl_disp_plane_atomic_update(struct drm_plane *plane,
 	xlnx_pl_disp_plane_enable(plane);
 }
 
+static int
+xlnx_pl_disp_plane_atomic_check(struct drm_plane *plane,
+				struct drm_plane_state *new_plane_state)
+{
+	struct drm_atomic_state *state = new_plane_state->state;
+	const struct drm_plane_state *old_plane_state =
+		drm_atomic_get_old_plane_state(state, plane);
+	struct drm_crtc *crtc = new_plane_state->crtc ?: old_plane_state->crtc;
+	const struct drm_crtc_state *old_crtc_state;
+	struct drm_crtc_state *new_crtc_state;
+
+	if (!crtc)
+		return 0;
+
+	old_crtc_state = drm_atomic_get_old_crtc_state(state, crtc);
+	new_crtc_state = drm_atomic_get_new_crtc_state(state, crtc);
+
+	/* plane must be enabled when state is active */
+	if (new_crtc_state->active && !new_plane_state->crtc)
+		return -EINVAL;
+
+	/*
+	 * This check is required to call modeset if there is a change in color
+	 * format
+	 */
+	if (new_plane_state->fb && old_plane_state->fb &&
+	    new_plane_state->fb->format->format !=
+	    old_plane_state->fb->format->format)
+		new_crtc_state->mode_changed = true;
+
+	return 0;
+}
+
 static const struct drm_plane_helper_funcs xlnx_pl_disp_plane_helper_funcs = {
 	.atomic_update = xlnx_pl_disp_plane_atomic_update,
 	.atomic_disable = xlnx_pl_disp_plane_atomic_disable,
+	.atomic_check = xlnx_pl_disp_plane_atomic_check,
 };
 
 static struct drm_plane_funcs xlnx_pl_disp_plane_funcs = {
