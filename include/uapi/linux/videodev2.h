@@ -614,8 +614,10 @@ struct v4l2_pix_format {
 #define V4L2_PIX_FMT_XV15    v4l2_fourcc('X', 'V', '1', '5') /* 32  XY/UV 4:2:0 10-bit */
 #define V4L2_PIX_FMT_X012    v4l2_fourcc('X', '0', '1', '2') /* 40  XY/UV 4:2:0 12-bit 4-12-12-12 */
 #define V4L2_PIX_FMT_X212    v4l2_fourcc('X', '2', '1', '2') /* 40  XY/UV 4:2:2 12-bit 4-12-12-12 */
+#define V4L2_PIX_FMT_X412    v4l2_fourcc('X', '4', '1', '2') /* 40  XY/UV 4:4:4 12-bit 4-12-12-12 */
 #define V4L2_PIX_FMT_X016    v4l2_fourcc('X', '0', '1', '6') /* 32  XY/UV 4:2:0 16-bit */
 #define V4L2_PIX_FMT_X216    v4l2_fourcc('X', '2', '1', '6') /* 32  XY/UV 4:2:2 16-bit */
+#define V4L2_PIX_FMT_X416    v4l2_fourcc('X', '4', '1', '6') /* 32  XY/UV 4:4:4 16-bit */
 #define V4L2_PIX_FMT_HM12    v4l2_fourcc('H', 'M', '1', '2') /*  8  YUV 4:2:0 16x16 macroblocks */
 
 /* two non contiguous planes - one Y, one Cr + Cb interleaved  */
@@ -628,8 +630,10 @@ struct v4l2_pix_format {
 #define V4L2_PIX_FMT_XV15M   v4l2_fourcc('X', 'M', '1', '5') /* 32  XY/UV 4:2:0 10-bit */
 #define V4L2_PIX_FMT_X012M   v4l2_fourcc('M', '0', '1', '2') /* 40  XY/UV 4:2:0 12-bit 4-12-12-12 */
 #define V4L2_PIX_FMT_X212M   v4l2_fourcc('M', '2', '1', '2') /* 40  XY/UV 4:2:2 12-bit 4-12-12-12 */
+#define V4L2_PIX_FMT_X412M   v4l2_fourcc('M', '4', '1', '2') /* 40  XY/UV 4:4:4 12-bit 4-12-12-12 */
 #define V4L2_PIX_FMT_X016M   v4l2_fourcc('M', '0', '1', '6') /* 32  XY/UV 4:2:0 16-bit */
 #define V4L2_PIX_FMT_X216M   v4l2_fourcc('M', '2', '1', '6') /* 32  XY/UV 4:2:2 16-bit */
+#define V4L2_PIX_FMT_X416M   v4l2_fourcc('M', '4', '1', '6') /* 32  XY/UV 4:4:4 16-bit */
 #define V4L2_PIX_FMT_NV12MT_16X16 v4l2_fourcc('V', 'M', '1', '2') /* 12  Y/CbCr 4:2:0 16x16 macroblocks */
 
 /* three planes - Y Cb, Cr */
