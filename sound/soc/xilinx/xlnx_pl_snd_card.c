@@ -90,7 +90,7 @@ static int xlnx_hdmi_card_hw_params(struct snd_pcm_substream *substream,
 	case 96000:
 	case 176400:
 	case 192000:
-		prv->mclk_ratio = 768;
+		prv->mclk_ratio = 512;
 		break;
 	default:
 		return -EINVAL;
