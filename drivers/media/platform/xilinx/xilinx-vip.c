@@ -66,6 +66,14 @@ static const struct xvip_video_format xvip_video_formats[] = {
 	  4, 32, V4L2_PIX_FMT_XVUY32, 1, 1, 1, 1 },
 	{ XVIP_VF_YUVX, 10, NULL, MEDIA_BUS_FMT_VUY10_1X30,
 	  3, 32, V4L2_PIX_FMT_XVUY10, 1, 1, 1, 1 },
+	{ XVIP_VF_YUV_444, 12, NULL, MEDIA_BUS_FMT_VUY12_1X36,
+	  1, 24, V4L2_PIX_FMT_X412, 1, 1, 1, 1 },
+	{ XVIP_VF_YUV_444, 12, NULL, MEDIA_BUS_FMT_VUY12_1X36,
+	  1, 24, V4L2_PIX_FMT_X412M, 1, 1, 1, 1 },
+	{ XVIP_VF_YUV_444, 16, NULL, MEDIA_BUS_FMT_VUY16_1X48,
+	  2, 24, V4L2_PIX_FMT_X416, 1, 1, 1, 1 },
+	{ XVIP_VF_YUV_444, 16, NULL, MEDIA_BUS_FMT_VUY16_1X48,
+	  2, 24, V4L2_PIX_FMT_X416M, 1, 1, 1, 1 },
 	{ XVIP_VF_RBG, 8, NULL, MEDIA_BUS_FMT_RBG888_1X24,
 	  3, 24, V4L2_PIX_FMT_BGR24, 1, 1, 1, 1 },
 	{ XVIP_VF_RBG, 8, NULL, MEDIA_BUS_FMT_RBG888_1X24,
@@ -187,6 +195,8 @@ void xvip_bpl_scaling_factor(u32 fourcc, u32 *numerator, u32 *denominator)
 	case V4L2_PIX_FMT_X012M:
 	case V4L2_PIX_FMT_X212:
 	case V4L2_PIX_FMT_X212M:
+	case V4L2_PIX_FMT_X412:
+	case V4L2_PIX_FMT_X412M:
 		*numerator = 12;
 		*denominator = 8;
 		break;
@@ -226,6 +236,8 @@ void xvip_width_padding_factor(u32 fourcc, u32 *numerator, u32 *denominator)
 	case V4L2_PIX_FMT_X012M:
 	case V4L2_PIX_FMT_X212:
 	case V4L2_PIX_FMT_X212M:
+	case V4L2_PIX_FMT_X412:
+	case V4L2_PIX_FMT_X412M:
 		*numerator = 40;
 		*denominator = 36;
 		break;
