@@ -65,7 +65,7 @@ static const struct xvip_video_format xvip_video_formats[] = {
 	{ XVIP_VF_YUVX, 8, NULL, MEDIA_BUS_FMT_VUY8_1X24,
 	  4, 32, V4L2_PIX_FMT_XVUY32, 1, 1, 1, 1 },
 	{ XVIP_VF_YUVX, 10, NULL, MEDIA_BUS_FMT_VUY10_1X30,
-	  4, 32, V4L2_PIX_FMT_XVUY10, 1, 1, 1, 1 },
+	  3, 32, V4L2_PIX_FMT_XVUY10, 1, 1, 1, 1 },
 	{ XVIP_VF_RBG, 8, NULL, MEDIA_BUS_FMT_RBG888_1X24,
 	  3, 24, V4L2_PIX_FMT_BGR24, 1, 1, 1, 1 },
 	{ XVIP_VF_RBG, 8, NULL, MEDIA_BUS_FMT_RBG888_1X24,
@@ -75,7 +75,7 @@ static const struct xvip_video_format xvip_video_formats[] = {
 	{ XVIP_VF_XRGB, 8, NULL, MEDIA_BUS_FMT_RBG888_1X24,
 	  4, 32, V4L2_PIX_FMT_XBGR32, 1, 1, 1, 1 },
 	{ XVIP_VF_XBGR, 10, NULL, MEDIA_BUS_FMT_RBG101010_1X30,
-	  4, 32, V4L2_PIX_FMT_XBGR30, 1, 1, 1, 1 },
+	  3, 32, V4L2_PIX_FMT_XBGR30, 1, 1, 1, 1 },
 	{ XVIP_VF_XBGR, 12, NULL, MEDIA_BUS_FMT_RBG121212_1X36,
 	  3, 40, V4L2_PIX_FMT_XBGR40, 1, 1, 1, 1 },
 	{ XVIP_VF_RBG, 16, NULL, MEDIA_BUS_FMT_RBG161616_1X48,
@@ -176,6 +176,8 @@ void xvip_bpl_scaling_factor(u32 fourcc, u32 *numerator, u32 *denominator)
 	case V4L2_PIX_FMT_XV20:
 	case V4L2_PIX_FMT_XV15M:
 	case V4L2_PIX_FMT_XV20M:
+	case V4L2_PIX_FMT_XBGR30:
+	case V4L2_PIX_FMT_XVUY10:
 		*numerator = 10;
 		*denominator = 8;
 		break;
@@ -212,6 +214,8 @@ void xvip_width_padding_factor(u32 fourcc, u32 *numerator, u32 *denominator)
 	case V4L2_PIX_FMT_XV20:
 	case V4L2_PIX_FMT_XV15M:
 	case V4L2_PIX_FMT_XV20M:
+	case V4L2_PIX_FMT_XBGR30:
+	case V4L2_PIX_FMT_XVUY10:
 		/* 32 bits are required per 30 bits of data */
 		*numerator = 32;
 		*denominator = 30;
