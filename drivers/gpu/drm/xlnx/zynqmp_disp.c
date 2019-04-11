@@ -1028,6 +1028,15 @@ static const struct zynqmp_disp_fmt av_buf_gfx_fmts[] = {
 		.sf[1]		= ZYNQMP_DISP_AV_BUF_8BIT_SF,
 		.sf[2]		= ZYNQMP_DISP_AV_BUF_8BIT_SF,
 	}, {
+		.drm_fmt	= DRM_FORMAT_XRGB8888,
+		.disp_fmt	= ZYNQMP_DISP_AV_BUF_FMT_NL_GFX_RGBA8888,
+		.rgb		= true,
+		.swap		= true,
+		.chroma_sub	= false,
+		.sf[0]		= ZYNQMP_DISP_AV_BUF_8BIT_SF,
+		.sf[1]		= ZYNQMP_DISP_AV_BUF_8BIT_SF,
+		.sf[2]		= ZYNQMP_DISP_AV_BUF_8BIT_SF,
+	}, {
 		.drm_fmt	= DRM_FORMAT_RGBA8888,
 		.disp_fmt	= ZYNQMP_DISP_AV_BUF_FMT_NL_GFX_ABGR8888,
 		.rgb		= true,
