@@ -1303,6 +1303,7 @@ static void __dwc3_gadget_start_isoc(struct dwc3_ep *dep)
 
 	dep->frame_number = DWC3_ALIGN_FRAME(dep);
 	__dwc3_gadget_kick_transfer(dep);
+	dep->flags &= ~DWC3_EP_PENDING_REQUEST;
 }
 
 static void dwc3_gadget_wakeup_interrupt(struct dwc3 *dwc);
