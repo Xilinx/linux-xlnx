@@ -1,14 +1,16 @@
-Device-Tree bindings for Xilinx Video Mixer IP 3.0 core
+Device-Tree bindings for Xilinx Video Mixer IP core
 
 The IP core provides a flexible video processing block for alpha blending
 and compositing multiple video and/or graphics layers.
-Support for up to eight layers, with an optional logo layer, using a
-combination of video inputs from either frame buffer or streaming video
-cores (through AXI4-Stream interfaces) is provided.
+Support for up to sixteen layers based on IP version, with an optional logo
+layer, using a combination of video inputs from either frame buffer or
+streaming video cores (through AXI4-Stream interfaces) is provided.
 The Video Mixer always has one streaming input layer, known as master layer.
 
 Required properties:
- - compatible: Should be "xlnx,mixer-3.0".
+ - compatible: Must contain atleast one of
+	"xlnx,mixer-4.0" (MIXER 4.0 version)
+	"xlnx,mixer-3.0" (MIXER 3.0 version)
  - reg: Base address and size of the IP core.
  - interrupts: Interrupt number.
  - interrupts-parent: phandle for interrupt controller.
@@ -17,6 +19,8 @@ Required properties:
  - xlnx,bpc: bits per component for mixer
  - xlnx,ppc: pixel per clock for mixer
  - xlnx,num-layers: Total number of layers (excluding logo)
+   Value ranges from 1-9 for compatible string xlnx,mixer-3.0 and
+   Value ranges from 1-17 for comptaible string xlnx,mixer-4.0
  - layer_[x]: node for [x] layer
  - xlnx,layer-id: layer identifier number
  - xlnx,vformat: video format for layer. See list of supported formats below.
