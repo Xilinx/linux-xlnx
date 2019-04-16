@@ -823,6 +823,47 @@ static int xvip_xdma_enum_fmt(struct xvip_dma *dma, struct v4l2_fmtdesc *f,
 	return 0;
 }
 
+static int
+xvip_dma_enum_input(struct file *file, void *priv, struct v4l2_input *i)
+{
+	struct v4l2_fh *vfh = file->private_data;
+	struct xvip_dma *dma = to_xvip_dma(vfh->vdev);
+	struct v4l2_subdev *subdev;
+
+	if (i->index > 0)
+		return -EINVAL;
+
+	subdev = xvip_dma_remote_subdev(&dma->pad, NULL);
+	if (!subdev)
+		return -EPIPE;
+
+	/*
+	 * FIXME: right now only camera input type is handled.
+	 * There should be mechanism to distinguish other types of
+	 * input like V4L2_INPUT_TYPE_TUNER and V4L2_INPUT_TYPE_TOUCH.
+	 */
+	i->type = V4L2_INPUT_TYPE_CAMERA;
+	strlcpy(i->name, subdev->name, sizeof(i->name));
+
+	return 0;
+}
+
+static int
+xvip_dma_get_input(struct file *file, void *fh, unsigned int *i)
+{
+	*i = 0;
+	return 0;
+}
+
+static int
+xvip_dma_set_input(struct file *file, void *fh, unsigned int i)
+{
+	if (i > 0)
+		return -EINVAL;
+
+	return 0;
+}
+
 /* FIXME: without this callback function, some applications are not configured
  * with correct formats, and it results in frames in wrong format. Whether this
  * callback needs to be required is not clearly defined, so it should be
@@ -1120,6 +1161,9 @@ static const struct v4l2_ioctl_ops xvip_dma_ioctl_ops = {
 	.vidioc_expbuf			= vb2_ioctl_expbuf,
 	.vidioc_streamon		= vb2_ioctl_streamon,
 	.vidioc_streamoff		= vb2_ioctl_streamoff,
+	.vidioc_enum_input	= &xvip_dma_enum_input,
+	.vidioc_g_input		= &xvip_dma_get_input,
+	.vidioc_s_input		= &xvip_dma_set_input,
 };
 
 /* -----------------------------------------------------------------------------
