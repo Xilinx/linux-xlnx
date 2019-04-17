@@ -1053,8 +1053,8 @@ xvip_m2m_g_selection(struct file *file, void *fh, struct v4l2_selection *s)
 	struct xvip_m2m_dma *dma = ctx->xdev->dma;
 	int ret = 0;
 
-	if (s->type != V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE &&
-	    s->type != V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)
+	if (s->type != V4L2_BUF_TYPE_VIDEO_OUTPUT &&
+	    s->type != V4L2_BUF_TYPE_VIDEO_CAPTURE)
 		return -EINVAL;
 
 	switch (s->target) {
@@ -1082,8 +1082,8 @@ xvip_m2m_s_selection(struct file *file, void *fh, struct v4l2_selection *s)
 	u32 min_width, max_width;
 	int ret = 0;
 
-	if (s->type != V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE &&
-	    s->type != V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)
+	if (s->type != V4L2_BUF_TYPE_VIDEO_OUTPUT &&
+	    s->type != V4L2_BUF_TYPE_VIDEO_CAPTURE)
 		return -EINVAL;
 
 	switch (s->target) {
