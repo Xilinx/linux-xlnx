@@ -28,8 +28,8 @@
 #define XAE_MAX_JUMBO_FRAME_SIZE (XAE_JUMBO_MTU + XAE_HDR_SIZE + XAE_TRL_SIZE)
 
 /* Descriptors defines for Tx and Rx DMA - 2^n for the best performance */
-#define TX_BD_NUM		512
-#define RX_BD_NUM		512
+#define TX_BD_NUM		64
+#define RX_BD_NUM		128
 
 /* DMA address width min and max range */
 #define XAE_DMA_MASK_MIN	32
@@ -487,7 +487,7 @@
 #define XXV_TX_PTP_LEN		12
 
 /* Macros used when AXI DMA h/w is configured without DRE */
-#define XAE_TX_BUFFERS		TX_BD_NUM
+#define XAE_TX_BUFFERS		64
 #define XAE_MAX_PKT_LEN		8192
 
 /**
