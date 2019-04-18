@@ -1,5 +1,5 @@
 /*
- * Pseudo RTC Injector
+ * Pseudo RTC
  *
  * Copyright 2019 GROOVE X, Inc.
  *
@@ -48,7 +48,7 @@ static int pseudo_rtc_get_time(struct device *dev, struct rtc_time *tm)
 	rtc_time64_to_tm(prtc->last_time + (jiffies_to_msecs(diff) / 1000), tm);
 
 	if (rtc_valid_tm(tm)) {
-		dev_err(dev, "RTC Injector: invalid time!\n");
+		dev_err(dev, "invalid time!\n");
 		return -EINVAL;
 	}
 
@@ -133,5 +133,5 @@ module_exit(pseudo_rtc_exit);
 
 MODULE_AUTHOR("GROOVE X, Inc.");
 MODULE_LICENSE("GPL");
-MODULE_DESCRIPTION("Pseudo RTC injector");
+MODULE_DESCRIPTION("Pseudo RTC");
 MODULE_ALIAS("platform:rtc-pseudo");
