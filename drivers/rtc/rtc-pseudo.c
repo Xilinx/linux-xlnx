@@ -24,9 +24,9 @@
 
 static struct platform_device *_pdev = NULL;
 
-static long initial_time = 1552102779;
-module_param(initial_time, long, S_IRUGO);
-MODULE_PARM_DESC(initial_time, "Initial timestamp which the RTC provides.");
+static long timestamp = 1552102779;
+module_param(timestamp, long, S_IRUGO);
+MODULE_PARM_DESC(timestamp, "Initial timestamp which the RTC provides.");
 
 struct pseudo_rtc_dev {
 	struct rtc_device *rtc;
@@ -80,7 +80,7 @@ static int pseudo_rtc_probe(struct platform_device *dev)
 		return -ENOMEM;
 	platform_set_drvdata(dev, prtc_dev);
 
-	prtc_dev->last_time = (time64_t)initial_time;
+	prtc_dev->last_time = (time64_t)timestamp;
 	prtc_dev->last_jiffies = jiffies;
 
 	prtc_dev->rtc = devm_rtc_device_register(
