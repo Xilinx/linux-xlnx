@@ -158,7 +158,7 @@ static long zynqmp_clk_divider_round_rate(struct clk_hw *hw,
 	 * divider2 value based on compute value. div1 will  be automatically
 	 * set to optimum based on required total divider value.
 	 */
-	if (bestdiv > divider->max_div && div_type == TYPE_DIV2 &&
+	if (div_type == TYPE_DIV2 &&
 	    (clk_hw_get_flags(hw) & CLK_SET_RATE_PARENT)) {
 		zynqmp_compute_divider(hw, rate, *prate,
 				       divider->max_div, &bestdiv);
@@ -167,6 +167,8 @@ static long zynqmp_clk_divider_round_rate(struct clk_hw *hw,
 	if ((clk_hw_get_flags(hw) & CLK_SET_RATE_PARENT) &&
 	    (divider->flags & CLK_FRAC))
 		bestdiv = rate % *prate ? 1 : bestdiv;
+
+	bestdiv = min_t(u32, bestdiv, divider->max_div);
 	*prate = rate * bestdiv;
 
 	return rate;
