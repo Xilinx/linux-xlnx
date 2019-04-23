@@ -95,6 +95,11 @@ static int xgmiitorgmii_probe(struct mdio_device *mdiodev)
 		return -EPROBE_DEFER;
 	}
 
+	if (priv->phy_dev->priv) {
+		dev_err(dev, "phydev has a priv field, cannot attach\n");
+		return -EFAULT;
+	}
+
 	priv->mdio = mdiodev;
 	priv->phy_drv = priv->phy_dev->drv;
 	memcpy(&priv->conv_phy_drv, priv->phy_dev->drv,
