@@ -14,8 +14,8 @@
 #include "zynqmp-clk-ccf.dtsi"
 
 / {
-	model = "ZynqMP ZC1285 RevA";
-	compatible = "xlnx,zynqmp-zc1285-revA", "xlnx,zynqmp-zc1285", "xlnx,zynqmp";
+	model = "ZynqMP ZCU1285 RevA";
+	compatible = "xlnx,zynqmp-zcu1285-revA", "xlnx,zynqmp-zcu1285", "xlnx,zynqmp";
 
 	aliases {
 		serial0 = &uart0;
