@@ -233,7 +233,7 @@ static int mmci_validate_data(struct mmci_host *host,
 			      struct mmc_data *data)
 {
 	if (!data)
-		return 0;
+		return -ENOBUFS;
 
 	if (!is_power_of_2(data->blksz)) {
 		dev_err(mmc_dev(host->mmc),
