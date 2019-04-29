@@ -483,6 +483,11 @@ static void axienet_device_reset(struct net_device *ndev)
 					 XAXIFIFO_TXTS_RESET_MASK);
 			axienet_rxts_iow(lp, XAXIFIFO_TXTS_SRR,
 					 XAXIFIFO_TXTS_RESET_MASK);
+
+			axienet_txts_iow(lp, XAXIFIFO_TXTS_RDFR,
+					 XAXIFIFO_TXTS_RESET_MASK);
+			axienet_txts_iow(lp, XAXIFIFO_TXTS_SRR,
+					 XAXIFIFO_TXTS_RESET_MASK);
 		}
 #endif
 	}
