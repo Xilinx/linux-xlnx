@@ -620,6 +620,9 @@ void axienet_tx_hwtstamp(struct axienet_local *lp,
 	sec  = axienet_txts_ior(lp, XAXIFIFO_TXTS_RXFD);
 	val = axienet_txts_ior(lp, XAXIFIFO_TXTS_RXFD);
 	val = ((val & XAXIFIFO_TXTS_TAG_MASK) >> XAXIFIFO_TXTS_TAG_SHIFT);
+	dev_dbg(lp->dev, "tx_stamp:[%04x] %04x %u %9u\n",
+		cur_p->ptp_tx_ts_tag, val, sec, nsec);
+
 	if (val != cur_p->ptp_tx_ts_tag) {
 		count = axienet_txts_ior(lp, XAXIFIFO_TXTS_RFO);
 		while (count) {
@@ -628,6 +631,9 @@ void axienet_tx_hwtstamp(struct axienet_local *lp,
 			val = axienet_txts_ior(lp, XAXIFIFO_TXTS_RXFD);
 			val = ((val & XAXIFIFO_TXTS_TAG_MASK) >>
 				XAXIFIFO_TXTS_TAG_SHIFT);
+
+			dev_dbg(lp->dev, "tx_stamp:[%04x] %04x %u %9u\n",
+				cur_p->ptp_tx_ts_tag, val, sec, nsec);
 			if (val == cur_p->ptp_tx_ts_tag)
 				break;
 			count = axienet_txts_ior(lp, XAXIFIFO_TXTS_RFO);
@@ -999,6 +1005,8 @@ static int axienet_skb_tstsmp(struct sk_buff **__skb, struct axienet_dma_q *q,
 			   (lp->axienet_config->mactype == XAXIENET_10G_25G)) {
 			cur_p->ptp_tx_ts_tag = (prandom_u32() &
 						~XAXIFIFO_TXTS_TAG_MASK) + 1;
+			dev_dbg(lp->dev, "tx_tag:[%04x]\n",
+				cur_p->ptp_tx_ts_tag);
 			if (lp->tstamp_config.tx_type ==
 						HWTSTAMP_TX_ONESTEP_SYNC) {
 				axienet_create_tsheader(lp->tx_ptpheader,
@@ -1010,6 +1018,7 @@ static int axienet_skb_tstsmp(struct sk_buff **__skb, struct axienet_dma_q *q,
 				cur_p->ptp_tx_skb = (phys_addr_t)skb_get(skb);
 			}
 		} else if (lp->axienet_config->mactype == XAXIENET_10G_25G) {
+			dev_dbg(lp->dev, "tx_tag:NOOP\n");
 			axienet_create_tsheader(lp->tx_ptpheader,
 						TX_TS_OP_NOOP, q);
 		}
