@@ -1042,8 +1042,20 @@ static int axienet_queue_xmit(struct sk_buff *skb,
 	struct axidma_bd *cur_p;
 #endif
 	unsigned long flags;
-	u32 pad = 0;
 	struct axienet_dma_q *q;
+
+	if (lp->axienet_config->mactype == XAXIENET_10G_25G) {
+		/* Need to manually pad the small frames in case of XXV MAC
+		 * because the pad field is not added by the IP. We must present
+		 * a packet that meets the minimum length to the IP core.
+		 * When the IP core is configured to calculate and add the FCS
+		 * to the packet the minimum packet length is 60 bytes.
+		 */
+		if (eth_skb_pad(skb)) {
+			ndev->stats.tx_dropped++;
+			return NETDEV_TX_OK;
+		}
+	}
 
 #ifdef CONFIG_XILINX_TSN
 	if (unlikely(lp->is_tsn)) {
@@ -1086,13 +1098,6 @@ static int axienet_queue_xmit(struct sk_buff *skb,
 		return NETDEV_TX_BUSY;
 	}
 #endif
-	/* Work around for XXV MAC as MAC will drop the packets
-	 * of size less than 64 bytes we need to append data
-	 * to make packet length greater than or equal to 64
-	 */
-	if (skb->len < XXV_MAC_MIN_PKT_LEN &&
-	    (lp->axienet_config->mactype == XAXIENET_10G_25G))
-		pad = XXV_MAC_MIN_PKT_LEN - skb->len;
 
 	if (skb->ip_summed == CHECKSUM_PARTIAL && !lp->eth_hasnobuf &&
 	    (lp->axienet_config->mactype == XAXIENET_1G)) {
@@ -1112,21 +1117,11 @@ static int axienet_queue_xmit(struct sk_buff *skb,
 		cur_p->app0 |= 2; /* Tx Full Checksum Offload Enabled */
 	}
 
-	if (num_frag == 0) {
 #ifdef CONFIG_AXIENET_HAS_MCDMA
-		cur_p->cntrl = (skb_headlen(skb) |
-				XMCDMA_BD_CTRL_TXSOF_MASK) + pad;
+	cur_p->cntrl = (skb_headlen(skb) | XMCDMA_BD_CTRL_TXSOF_MASK);
 #else
-		cur_p->cntrl = (skb_headlen(skb) |
-				XAXIDMA_BD_CTRL_TXSOF_MASK) + pad;
+	cur_p->cntrl = (skb_headlen(skb) | XAXIDMA_BD_CTRL_TXSOF_MASK);
 #endif
-	} else {
-#ifdef CONFIG_AXIENET_HAS_MCDMA
-		cur_p->cntrl = (skb_headlen(skb) | XMCDMA_BD_CTRL_TXSOF_MASK);
-#else
-		cur_p->cntrl = (skb_headlen(skb) | XAXIDMA_BD_CTRL_TXSOF_MASK);
-#endif
-	}
 
 	if (!q->eth_hasdre &&
 	    (((phys_addr_t)skb->data & 0x3) || (num_frag > 0))) {
@@ -1163,9 +1158,6 @@ static int axienet_queue_xmit(struct sk_buff *skb,
 		cur_p->phys = skb_frag_dma_map(ndev->dev.parent, frag, 0, len,
 					       DMA_TO_DEVICE);
 		cur_p->cntrl = len;
-		/* Only add padding to the end of the last element */
-		if ((ii + 1) == num_frag)
-			cur_p->cntrl = len + pad;
 		cur_p->tx_desc_mapping = DESC_DMA_MAP_PAGE;
 	}
 
