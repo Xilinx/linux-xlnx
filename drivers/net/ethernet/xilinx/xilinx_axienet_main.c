@@ -604,7 +604,7 @@ void axienet_tx_hwtstamp(struct axienet_local *lp,
 
 	val = axienet_txts_ior(lp, XAXIFIFO_TXTS_ISR);
 	if (unlikely(!(val & XAXIFIFO_TXTS_INT_RC_MASK)))
-		dev_info(lp->dev, "Did't get FIFO rx interrupt %d\n", val);
+		dev_info(lp->dev, "Did't get FIFO tx interrupt %d\n", val);
 
 	/* If FIFO is configured in cut through Mode we will get Rx complete
 	 * interrupt even one byte is there in the fifo wait for the full packet
