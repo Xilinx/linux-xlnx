@@ -855,7 +855,9 @@ static void axienet_create_tsheader(u8 *buf, u8 msg_type,
 	cur_p = &q->tx_bd_v[q->tx_bd_tail];
 #endif
 
-	if (msg_type == TX_TS_OP_ONESTEP) {
+	if (msg_type == TX_TS_OP_NOOP) {
+		buf[0] = TX_TS_OP_NOOP;
+	} else if (msg_type == TX_TS_OP_ONESTEP) {
 		buf[0] = TX_TS_OP_ONESTEP;
 		buf[1] = TX_TS_CSUM_UPDATE;
 		buf[4] = TX_PTP_TS_OFFSET;
@@ -1007,6 +1009,9 @@ static int axienet_skb_tstsmp(struct sk_buff **__skb, struct axienet_dma_q *q,
 				skb_shinfo(skb)->tx_flags |= SKBTX_IN_PROGRESS;
 				cur_p->ptp_tx_skb = (phys_addr_t)skb_get(skb);
 			}
+		} else if (lp->axienet_config->mactype == XAXIENET_10G_25G) {
+			axienet_create_tsheader(lp->tx_ptpheader,
+						TX_TS_OP_NOOP, q);
 		}
 	}
 	return NETDEV_TX_OK;
