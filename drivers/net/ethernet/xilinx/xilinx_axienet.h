@@ -390,7 +390,6 @@
 #define XXV_MAX_JUM_MASK	GENMASK(10, 8)
 #define XXV_RX_BLKLCK_MASK	BIT(0)
 #define XXV_TICKREG_STATEN_MASK BIT(0)
-#define XXV_MAC_MIN_PKT_LEN	64
 
 /* USXGMII Register Mask Definitions  */
 #define USXGMII_AN_EN		BIT(5)
