@@ -334,7 +334,6 @@ struct xilinx_dma_tx_descriptor {
  * @desc_pendingcount: Descriptor pending count
  * @ext_addr: Indicates 64 bit addressing is supported by dma channel
  * @desc_submitcount: Descriptor h/w submitted count
- * @residue: Residue for AXI DMA
  * @seg_v: Statically allocated segments base
  * @seg_p: Physical allocated segments base
  * @cyclic_seg_v: Statically allocated segment base for cyclic transfers
@@ -370,7 +369,6 @@ struct xilinx_dma_chan {
 	u32 desc_pendingcount;
 	bool ext_addr;
 	u32 desc_submitcount;
-	u32 residue;
 	struct xilinx_axidma_tx_segment *seg_v;
 	dma_addr_t seg_p;
 	struct xilinx_axidma_tx_segment *cyclic_seg_v;
@@ -1032,11 +1030,11 @@ static enum dma_status xilinx_dma_tx_status(struct dma_chan *dchan,
 
 	desc = list_last_entry(&chan->active_list,
 			       struct xilinx_dma_tx_descriptor, node);
-	chan->residue = xilinx_dma_get_residue(chan, desc);
+	desc->residue = xilinx_dma_get_residue(chan, desc);
 
 	spin_unlock_irqrestore(&chan->lock, flags);
 
-	dma_set_residue(txstate, chan->residue);
+	dma_set_residue(txstate, desc->residue);
 
 	return ret;
 }
