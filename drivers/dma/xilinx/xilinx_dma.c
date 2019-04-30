@@ -1056,8 +1056,9 @@ static int xilinx_dma_stop_transfer(struct xilinx_dma_chan *chan)
 
 	/* Wait for the hardware to halt */
 	return xilinx_dma_poll_timeout(chan, XILINX_DMA_REG_DMASR, val,
-				       val & XILINX_DMA_DMASR_HALTED, 0,
-				       XILINX_DMA_LOOP_COUNT);
+				       val | (XILINX_DMA_DMASR_IDLE |
+					      XILINX_DMA_DMASR_HALTED),
+				       0, XILINX_DMA_LOOP_COUNT);
 }
 
 /**
