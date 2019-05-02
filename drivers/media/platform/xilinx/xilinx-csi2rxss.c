@@ -21,6 +21,7 @@
 #include <linux/compiler.h>
 #include <linux/delay.h>
 #include <linux/device.h>
+#include <linux/gpio/consumer.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/kernel.h>
@@ -452,6 +453,7 @@ struct xcsi2rxss_event {
  * @lite_aclk: AXI4-Lite interface clock
  * @video_aclk: Video clock
  * @dphy_clk_200M: 200MHz DPHY clock
+ * @rst_gpio: video_aresetn
  */
 struct xcsi2rxss_core {
 	struct device *dev;
@@ -475,6 +477,7 @@ struct xcsi2rxss_core {
 	struct clk *lite_aclk;
 	struct clk *video_aclk;
 	struct clk *dphy_clk_200M;
+	struct gpio_desc *rst_gpio;
 };
 
 /**
@@ -770,6 +773,12 @@ static int xcsi2rxss_reset(struct xcsi2rxss_core *core)
 	return 0;
 }
 
+static void xcsi2rxss_stop_stream(struct xcsi2rxss_state *xcsi2rxss)
+{
+	xcsi2rxss_interrupts_enable(&xcsi2rxss->core, false);
+	xcsi2rxss_enable(&xcsi2rxss->core, false);
+}
+
 /**
  * xcsi2rxss_irq_handler - Interrupt handler for CSI-2
  * @irq: IRQ number
@@ -818,6 +827,14 @@ static irqreturn_t xcsi2rxss_irq_handler(int irq, void *dev_id)
 
 	if (status & XCSI_ISR_SLBF_MASK) {
 		dev_alert(core->dev, "Stream Line Buffer Full!\n");
+		if (core->rst_gpio) {
+			gpiod_set_value(core->rst_gpio, 1);
+			/* minimum 40 dphy_clk_200M cycles */
+			ndelay(250);
+			gpiod_set_value(core->rst_gpio, 0);
+		}
+
+		xcsi2rxss_stop_stream(state);
 
 		memset(&state->event, 0, sizeof(state->event));
 
@@ -1215,11 +1232,6 @@ static int xcsi2rxss_start_stream(struct xcsi2rxss_state *xcsi2rxss)
 	return 0;
 }
 
-static void xcsi2rxss_stop_stream(struct xcsi2rxss_state *xcsi2rxss)
-{
-	xcsi2rxss_interrupts_enable(&xcsi2rxss->core, false);
-	xcsi2rxss_enable(&xcsi2rxss->core, false);
-}
 
 /**
  * xcsi2rxss_s_stream - It is used to start/stop the streaming.
@@ -1255,6 +1267,14 @@ static int xcsi2rxss_s_stream(struct v4l2_subdev *sd, int enable)
 		}
 	} else {
 		if (xcsi2rxss->streaming) {
+			struct gpio_desc *rst = xcsi2rxss->core.rst_gpio;
+
+			if (rst) {
+				gpiod_set_value_cansleep(rst, 1);
+				usleep_range(1, 2);
+				gpiod_set_value_cansleep(rst, 0);
+			}
+
 			xcsi2rxss_stop_stream(xcsi2rxss);
 			xcsi2rxss->streaming = false;
 		}
@@ -1761,6 +1781,15 @@ static int xcsi2rxss_parse_of(struct xcsi2rxss_state *xcsi2rxss)
 		return ret;
 	}
 
+	/* Reset GPIO */
+	core->rst_gpio = devm_gpiod_get_optional(core->dev, "reset",
+						 GPIOD_OUT_HIGH);
+	if (IS_ERR(core->rst_gpio)) {
+		if (PTR_ERR(core->rst_gpio) != -EPROBE_DEFER)
+			dev_err(core->dev, "Reset GPIO not setup in DT");
+		return PTR_ERR(core->rst_gpio);
+	}
+
 	return 0;
 }
 
@@ -1843,6 +1872,14 @@ static int xcsi2rxss_probe(struct platform_device *pdev)
 	/*
 	 * Reset and initialize the core.
 	 */
+
+	if (xcsi2rxss->core.rst_gpio) {
+		gpiod_set_value_cansleep(xcsi2rxss->core.rst_gpio, 1);
+		/* minimum of 40 dphy_clk_200M cycles */
+		usleep_range(1, 2);
+		gpiod_set_value_cansleep(xcsi2rxss->core.rst_gpio, 0);
+	}
+
 	xcsi2rxss_reset(&xcsi2rxss->core);
 
 	xcsi2rxss->core.events =  (struct xcsi2rxss_event *)&xcsi2rxss_events;
