@@ -69,6 +69,8 @@ Optional Properties
 
 - xlnx,en-vcx: When present, the max number of virtual channels can be 16 else 4.
 
+- reset-gpios: Optional specifier for a GPIO that asserts video_aresetn.
+
 Example:
 
 	csiss_1: csiss@a0020000 {
