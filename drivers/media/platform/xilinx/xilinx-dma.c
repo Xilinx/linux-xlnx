@@ -1253,6 +1253,13 @@ int xvip_dma_init(struct xvip_composite_device *xdev, struct xvip_dma *dma,
 	if (ret < 0)
 		goto error;
 
+	ret = v4l2_ctrl_handler_init(&dma->ctrl_handler, 0);
+	if (ret < 0) {
+		dev_err(dma->xdev->dev, "failed to initialize V4L2 ctrl\n");
+		goto error;
+	}
+	dma->video.ctrl_handler = &dma->ctrl_handler;
+
 	/* ... and the video node... */
 	dma->video.fops = &xvip_dma_fops;
 	dma->video.v4l2_dev = &xdev->v4l2_dev;
