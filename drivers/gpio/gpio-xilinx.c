@@ -445,7 +445,7 @@ static int xgpio_irq_setup(struct device_node *np, struct xgpio_instance *chip)
 
 	int ret = of_irq_to_resource(np, 0, &res);
 
-	if (!ret) {
+	if (ret <= 0) {
 		pr_info("GPIO IRQ not connected\n");
 		return 0;
 	}
