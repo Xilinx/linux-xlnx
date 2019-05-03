@@ -18,6 +18,7 @@
 #include <linux/videodev2.h>
 
 #include <media/media-entity.h>
+#include <media/v4l2-ctrls.h>
 #include <media/v4l2-dev.h>
 #include <media/videobuf2-v4l2.h>
 
@@ -56,6 +57,7 @@ static inline struct xvip_pipeline *to_xvip_pipeline(struct media_entity *e)
  * @video: V4L2 video device associated with the DMA channel
  * @pad: media pad for the video device entity
  * @remote_subdev_med_bus: media bus format of sub-device
+ * @ctrl_handler: V4L2 ctrl_handler for inheritance ctrls from subdev
  * @xdev: composite device the DMA channel belongs to
  * @pipe: pipeline belonging to the DMA channel
  * @port: composite device DT node port number for the DMA channel
@@ -79,6 +81,8 @@ struct xvip_dma {
 	struct video_device video;
 	struct media_pad pad;
 	u32 remote_subdev_med_bus;
+
+	struct v4l2_ctrl_handler ctrl_handler;
 
 	struct xvip_composite_device *xdev;
 	struct xvip_pipeline pipe;
