@@ -336,21 +336,21 @@ static irqreturn_t xilinx_spi_irq(int irq, void *dev_id)
  * xilinx_spi_startup_block - Perform a dummy read as a
  * work around for the startup block issue in the spi controller.
  * @xspi:	Pointer to the xilinx_spi structure
- * @num_cs:	Number of chip selects used.
+ * @cs_num:	chip select number.
  *
  * Perform a dummy read if startup block is enabled in the
  * spi controller.
  *
  * Return:	None
  */
-static void xilinx_spi_startup_block(struct xilinx_spi *xspi, int num_cs)
+static void xilinx_spi_startup_block(struct xilinx_spi *xspi, u32 cs_num)
 {
 	void __iomem *regs_base = xspi->regs;
 	u32 chip_sel, config_reg, status_reg;
 
 	/* Activate the chip select */
 	chip_sel = xspi->cs_inactive;
-	chip_sel ^= BIT(num_cs);
+	chip_sel ^= BIT(cs_num);
 	xspi->write_fn(chip_sel, regs_base + XSPI_SSR_OFFSET);
 
 	/* Write ReadId to the TXD register */
@@ -684,6 +684,7 @@ static int xilinx_spi_probe(struct platform_device *pdev)
 	struct xilinx_spi *xspi;
 	struct resource *res;
 	int ret, num_cs = 0, bits_per_word = 8;
+	u32 cs_num;
 	struct spi_master *master;
 	struct device_node *nc;
 	u32 tmp, rx_bus_width, fifo_size;
@@ -728,6 +729,12 @@ static int xilinx_spi_probe(struct platform_device *pdev)
 
 	xspi->rx_bus_width = XSPI_ONE_BITS_PER_WORD;
 	for_each_available_child_of_node(pdev->dev.of_node, nc) {
+		if (startup_block) {
+			ret = of_property_read_u32(nc, "reg",
+						   &cs_num);
+			if (ret < 0)
+				return -EINVAL;
+		}
 		ret = of_property_read_u32(nc, "spi-rx-bus-width",
 						&rx_bus_width);
 		if (!ret) {
@@ -870,7 +877,7 @@ static int xilinx_spi_probe(struct platform_device *pdev)
 	 * as QSPI provides command. So first command fails.
 	 */
 	if (startup_block)
-		xilinx_spi_startup_block(xspi, num_cs);
+		xilinx_spi_startup_block(xspi, cs_num);
 
 	ret = spi_register_master(master);
 	if (ret) {
