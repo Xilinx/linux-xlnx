@@ -61,7 +61,7 @@ static int wdt_timeout;
 module_param(wdt_timeout, int, 0644);
 MODULE_PARM_DESC(wdt_timeout,
 		 "Watchdog time in seconds. (default="
-		 __MODULE_STRING(XWDT_WWDT_DEFAULT_TIMEOUT) ")");
+		 __MODULE_STRING(XWT_WWDT_DEFAULT_TIMEOUT) ")");
 
 /**
  * enum xwdt_ip_type - WDT IP type.
