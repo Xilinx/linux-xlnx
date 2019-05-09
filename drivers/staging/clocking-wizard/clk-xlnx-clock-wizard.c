@@ -25,14 +25,14 @@
 #define WZRD_CLKFBOUT_FRAC_EN	BIT(26)
 
 #define WZRD_CLKFBOUT_MULT_SHIFT	8
-#define WZRD_CLKFBOUT_MULT_MASK		(0xff << WZRD_CLKFBOUT_MULT_SHIFT)
+#define WZRD_CLKFBOUT_MULT_MASK		0xff
 #define WZRD_CLKFBOUT_FRAC_SHIFT	16
-#define WZRD_CLKFBOUT_FRAC_MASK		(0x3ff << WZRD_CLKFBOUT_FRAC_SHIFT)
+#define WZRD_CLKFBOUT_FRAC_MASK		0x3ff
 #define WZRD_DIVCLK_DIVIDE_SHIFT	0
-#define WZRD_DIVCLK_DIVIDE_MASK		(0xff << WZRD_DIVCLK_DIVIDE_SHIFT)
+#define WZRD_DIVCLK_DIVIDE_MASK		0xff
 #define WZRD_CLKOUT_DIVIDE_SHIFT	0
 #define WZRD_CLKOUT_DIVIDE_WIDTH	8
-#define WZRD_CLKOUT_DIVIDE_MASK		(0xff << WZRD_DIVCLK_DIVIDE_SHIFT)
+#define WZRD_CLKOUT_DIVIDE_MASK		0xff
 #define WZRD_CLKOUT_FRAC_SHIFT		8
 #define WZRD_CLKOUT_FRAC_MASK		0x3ff
 
@@ -255,8 +255,9 @@ static int clk_wzrd_dynamic_reconfig_f(struct clk_hw *hw, unsigned long rate,
 	f = (u32)(pre - (clockout0_div * 1000));
 	f = f & WZRD_CLKOUT_FRAC_MASK;
 
-	value = ((f << WZRD_CLKOUT_DIVIDE_WIDTH) | (clockout0_div &
-			WZRD_CLKOUT_DIVIDE_MASK));
+	value = (f << WZRD_CLKOUT_DIVIDE_WIDTH) |
+		((clockout0_div >> WZRD_CLKOUT_DIVIDE_SHIFT) &
+		 WZRD_CLKOUT_DIVIDE_MASK);
 
 	/* Set divisor and clear phase offset */
 	writel(value, div_addr);
@@ -541,10 +542,10 @@ static int clk_wzrd_probe(struct platform_device *pdev)
 	}
 
 	/* register multiplier */
-	reg = (readl(clk_wzrd->base + WZRD_CLK_CFG_REG(0)) &
-		     WZRD_CLKFBOUT_MULT_MASK) >> WZRD_CLKFBOUT_MULT_SHIFT;
-	reg_f = (readl(clk_wzrd->base + WZRD_CLK_CFG_REG(0)) &
-		     WZRD_CLKFBOUT_FRAC_MASK) >> WZRD_CLKFBOUT_FRAC_SHIFT;
+	reg = (readl(clk_wzrd->base + WZRD_CLK_CFG_REG(0)) >>
+	       WZRD_CLKFBOUT_MULT_SHIFT) & WZRD_CLKFBOUT_MULT_MASK;
+	reg_f = (readl(clk_wzrd->base + WZRD_CLK_CFG_REG(0)) >>
+		 WZRD_CLKFBOUT_FRAC_SHIFT) & WZRD_CLKFBOUT_FRAC_MASK;
 
 	mult = ((reg * 1000) + reg_f);
 	clk_name = kasprintf(GFP_KERNEL, "%s_mul", dev_name(&pdev->dev));
@@ -564,8 +565,8 @@ static int clk_wzrd_probe(struct platform_device *pdev)
 	}
 
 	/* register div */
-	reg = (readl(clk_wzrd->base + WZRD_CLK_CFG_REG(0)) &
-			WZRD_DIVCLK_DIVIDE_MASK) >> WZRD_DIVCLK_DIVIDE_SHIFT;
+	reg = (readl(clk_wzrd->base + WZRD_CLK_CFG_REG(0)) >>
+	       WZRD_DIVCLK_DIVIDE_SHIFT) & WZRD_DIVCLK_DIVIDE_MASK;
 	clk_name = kasprintf(GFP_KERNEL, "%s_mul_div", dev_name(&pdev->dev));
 	if (!clk_name) {
 		ret = -ENOMEM;
