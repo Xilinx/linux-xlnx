@@ -14,6 +14,8 @@ Required properties:
  - clocks: Handle to input clock
  - clock-names: Tuple containing 'clk_in1' and 's_axi_aclk'
  - clock-output-names: Names for the output clocks
+ - set-vco-parent: When this is set the VCO rate will also
+		   be adjusted when setting clkout0
 
 Optional properties:
  - speed-grade: Speed grade of the device (valid values are 1..3)

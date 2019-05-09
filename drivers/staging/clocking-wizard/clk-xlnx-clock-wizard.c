@@ -6,6 +6,7 @@
  *
  *  Sören Brinkmann <soren.brinkmann@xilinx.com>
  */
+#define DEBUG
 
 #include <linux/platform_device.h>
 #include <linux/clk.h>
@@ -50,6 +51,17 @@
 /* Extract divider instance from clock hardware instance */
 #define to_clk_wzrd_divider(_hw) container_of(_hw, struct clk_wzrd_divider, hw)
 
+/* structure to store the hints as they are calculated and then used */
+struct clk_wzrd_vco_hints {
+	unsigned int req_rate;		/* requested rate */
+	unsigned int best_rate;		/* best rate we can get */
+	unsigned int vco_rate;		/* VCO rate used with hints */
+	unsigned int divclk_divide;
+	unsigned int clkfbout_mult_f;	/* mHz units */
+	unsigned int clkout_divide;	/* mHz units */
+	bool valid_rate;		/* indicates the hints calc is done */
+};
+
 /**
  * struct clk_wzrd - Clock wizard private data structure
  *
@@ -60,7 +72,8 @@
  * @axi_clk:		Handle to input clock 's_axi_aclk'
  * @num_out_clks	Read from devicetree
  * @clkout:		Output clocks
- * @vco_clk:		hw Voltage Controlled Oscilator clock
+ * @vco_clk_hw		hw Voltage Controlled Oscilator clock
+ * @hints		hints used for arbitrary frequency generation
  * @speed_grade:	Speed grade of the device
  * @suspended:		Flag indicating power state of the device
  */
@@ -74,6 +87,7 @@ struct clk_wzrd {
 	unsigned int num_out_clks;
 	struct clk *clkout[WZRD_MAX_OUTPUTS];
 	struct clk_hw vco_clk_hw;
+	struct clk_wzrd_vco_hints hints;
 	unsigned int speed_grade;
 	bool suspended;
 	spinlock_t *lock;  /* lock */
@@ -228,6 +242,17 @@ static unsigned long clk_wzrd_recalc_ratef(struct clk_hw *hw,
 	return ((parent_rate * 1000) / ((div * 1000) + frac));
 }
 
+#define DIVCLK_DIVIDE_MAX_HW	       106U
+#define MIN_IN_FREQ		  10000000U
+#define MIN_VCO_FREQ		 800000000ULL /* VCO calculation needs u64 */
+#define MAX_VCO_FREQ		1600000000ULL /* VCO calculation needs u64 */
+
+/* Units of mHz because clkbout is in units of mHz */
+#define CLKFBOUT_MULT_F_MIN	      2000U
+#define CLKFBOUT_MULT_F_MAX	    128000U
+
+#define CLKOUT_DIVIDE_F_MIN	      2000U
+#define CLKOUT_DIVIDE_F_MAX	    128000U
 static int clk_wzrd_dynamic_reconfig_f(struct clk_hw *hw, unsigned long rate,
 				       unsigned long parent_rate)
 {
@@ -237,24 +262,36 @@ static int clk_wzrd_dynamic_reconfig_f(struct clk_hw *hw, unsigned long rate,
 	unsigned long flags = 0;
 	unsigned long rate_div, f, clockout0_div;
 	struct clk_wzrd_divider *divider = to_clk_wzrd_divider(hw);
+	struct clk_hw *vco_clk = clk_hw_get_parent(hw);
+	struct clk_wzrd *clk_wzrd = container_of(vco_clk,
+						 struct clk_wzrd,
+						 vco_clk_hw);
+
 	void __iomem *div_addr =
-			(void __iomem *)((u64)divider->base + divider->offset);
+		       (void __iomem *)((u64)divider->base + divider->offset);
+
+	/* check to see if we can use hints */
+	if (clk_wzrd->hints.valid_rate &&
+	    clk_wzrd->hints.best_rate == rate) {
+		clockout0_div = clk_wzrd->hints.clkout_divide / 1000;
+		f = clk_wzrd->hints.clkout_divide % 1000;
+	} else { /* can't use hints, set the rate directly */
+		rate_div = ((parent_rate * 1000) / rate);
+		clockout0_div = rate_div / 1000;
+
+		pre = DIV_ROUND_CLOSEST((parent_rate * 1000), rate);
+		f = (u32)(pre - (clockout0_div * 1000));
+		f = f & WZRD_CLKOUT_FRAC_MASK;
+	}
+
+	value = (f << WZRD_CLKOUT_DIVIDE_WIDTH) |
+		((clockout0_div >> WZRD_CLKOUT_DIVIDE_SHIFT) &
+		WZRD_CLKOUT_DIVIDE_MASK);
 
 	if (divider->lock)
 		spin_lock_irqsave(divider->lock, flags);
 	else
 		__acquire(divider->lock);
-
-	rate_div = ((parent_rate * 1000) / rate);
-	clockout0_div = rate_div / 1000;
-
-	pre = DIV_ROUND_CLOSEST((parent_rate * 1000), rate);
-	f = (u32)(pre - (clockout0_div * 1000));
-	f = f & WZRD_CLKOUT_FRAC_MASK;
-
-	value = (f << WZRD_CLKOUT_DIVIDE_WIDTH) |
-		((clockout0_div >> WZRD_CLKOUT_DIVIDE_SHIFT) &
-		 WZRD_CLKOUT_DIVIDE_MASK);
 
 	/* Set divisor and clear phase offset */
 	writel(value, div_addr);
@@ -297,9 +334,115 @@ err_reconfig:
 	return err;
 }
 
+/* This is where all the magic happens. For arbitrary frequency generation
+ * applications all of the knobs for adjusting the frequency must be
+ * considered together. Nothing is set in this function we just provide
+ * hints for use by the actual set_rate functions (one for clkout0 and one
+ * for the vco). If things don't match up the hints can always be ignored
+ */
+static void clk_wzrd_calc_hints(struct clk_wzrd *clk_wzrd, unsigned long rate,
+				unsigned long in_rate)
+{
+	int i, j;
+
+	unsigned int divclk_divide_max, divclk_divide_max_calc;
+	unsigned int clkbout_min, clkbout_max;
+	unsigned int clkout_divide = 1;
+	unsigned int best_divclk = 1;
+	unsigned int best_clkfbout_mult_f = 1;
+	unsigned int best_clkout_divide = 1;
+	unsigned int best_vco_freq = 1, best_out_freq = 1;
+	u64 vco_freq;
+	u64 out_freq = 1;
+	u64 error;
+	u64 min_error = 100000000000;
+
+	clk_wzrd->hints.valid_rate = false;
+
+	divclk_divide_max_calc = in_rate / MIN_IN_FREQ;
+	divclk_divide_max = min(DIVCLK_DIVIDE_MAX_HW,
+				divclk_divide_max_calc);
+
+	/* first go through all possible DIVCLK_DIVIDE values */
+	for (i = 1; i <= divclk_divide_max; i++) {
+		/* 8*125 takes us to mHz */
+		clkbout_min = DIV_ROUND_UP(MIN_VCO_FREQ * i * 8, in_rate) * 125;
+		clkbout_max = (MAX_VCO_FREQ * i * 8 / in_rate) * 125;
+		clkbout_min = max(CLKFBOUT_MULT_F_MIN, clkbout_min);
+		clkbout_max = min(CLKFBOUT_MULT_F_MAX, clkbout_max);
+		/* second go through all CLKFBOUT_MULT values */
+		for (j = clkbout_min; j <= clkbout_max; j += 125) {
+			vco_freq = in_rate * j / i;
+			/* finally calculate out the CLKOUT_DIVIDE
+			 * there is no need to iterate here
+			 * just calculate the closest
+			 */
+			clkout_divide =
+				DIV_ROUND_CLOSEST(vco_freq,
+						  (u64)rate * 125) * 125;
+			clkout_divide = clamp(clkout_divide,
+					      CLKOUT_DIVIDE_F_MIN,
+					      CLKOUT_DIVIDE_F_MAX);
+			out_freq = in_rate * j / i / clkout_divide;
+			error = abs(rate - out_freq);
+			if (error < min_error) {
+				min_error = error;
+				best_vco_freq = vco_freq;
+				best_out_freq = out_freq;
+				best_divclk = i;
+				best_clkfbout_mult_f = j;
+				best_clkout_divide = clkout_divide;
+			}
+		}
+	}
+
+	clk_wzrd->hints.req_rate = rate;
+	clk_wzrd->hints.vco_rate = best_vco_freq;
+	clk_wzrd->hints.best_rate = best_out_freq;
+	clk_wzrd->hints.divclk_divide = best_divclk;
+	clk_wzrd->hints.clkfbout_mult_f = best_clkfbout_mult_f;
+	clk_wzrd->hints.clkout_divide = best_clkout_divide;
+	clk_wzrd->hints.valid_rate = true;
+
+#ifdef DEBUG
+	pr_info("clk_wzrd: calc results best match\n");
+	pr_info("clk_wzrd: divclk: %u, clkfbout_mult: %u clkout_divide: %u\n",
+		best_divclk, best_clkfbout_mult_f, best_clkout_divide);
+	pr_info("clk_wzrd: out_freq: %u\n", best_out_freq);
+#endif
+}
+
+/* This round_rate function of the divider is the first
+ * function that gets hit when a driver calls clk_set_rate(), so this
+ * is where ...calc_hints() is called from
+ */
 static long clk_wzrd_round_rate_f(struct clk_hw *hw, unsigned long rate,
 				  unsigned long *prate)
 {
+	if (clk_hw_get_flags(hw) & CLK_SET_RATE_PARENT) {
+		/* We need a reference to the clk_wzrd
+		 * to set the hints and get vco rate
+		 */
+		struct clk_hw *vco_clk = clk_hw_get_parent(hw);
+		struct clk_wzrd *clk_wzrd = container_of(vco_clk,
+							 struct clk_wzrd,
+							 vco_clk_hw);
+
+		/* during clock setup this could get called multiple times
+		 * but we only want to go through the calculation once
+		 */
+		if (!clk_wzrd->hints.valid_rate ||
+		    clk_wzrd->hints.req_rate != rate) {
+			unsigned long in_rate;
+
+			/* Actual input to the whole clocking wizard */
+			in_rate = clk_hw_get_rate(clk_hw_get_parent(vco_clk));
+			clk_wzrd_calc_hints(clk_wzrd, rate, in_rate);
+		}
+		*prate = clk_wzrd->hints.vco_rate;
+		return clk_wzrd->hints.best_rate;
+	}
+
 	return rate;
 }
 
@@ -310,7 +453,7 @@ static const struct clk_ops clk_wzrd_clk_divider_ops_f = {
 };
 
 static unsigned long clk_wzrd_vco_recalc_ratef(struct clk_hw *hw,
-					       unsigned long parent_rate)
+					   unsigned long parent_rate)
 {
 	u32 clk_cfg_reg0;
 	u32 divclk_divide, clkfbout_mult, clkfbout_frac;
@@ -335,8 +478,6 @@ static unsigned long clk_wzrd_vco_recalc_ratef(struct clk_hw *hw,
 	return (unsigned long)rate;
 }
 
-#define CLKFBOUT_MULT_F_MIN	      2000U
-#define CLKFBOUT_MULT_F_MAX	    128000U
 static int clk_wzrd_vco_dynamic_reconfig_f(struct clk_hw *hw,
 					   unsigned long rate,
 					   unsigned long parent_rate)
@@ -352,12 +493,18 @@ static int clk_wzrd_vco_dynamic_reconfig_f(struct clk_hw *hw,
 						 struct clk_wzrd,
 						 vco_clk_hw);
 
-	clk_cfg_reg0 = ioread32(clk_wzrd->base + WZRD_CLK_CFG_REG(0));
-	divclk_divide = (clk_cfg_reg0 >> WZRD_DIVCLK_DIVIDE_SHIFT &
-			 WZRD_DIVCLK_DIVIDE_MASK);
+	if (clk_wzrd->hints.valid_rate && clk_wzrd->hints.vco_rate == rate) {
+		/* divclk_divide gets set instead of being read */
+		divclk_divide = clk_wzrd->hints.divclk_divide;
+		new_mult = clk_wzrd->hints.clkfbout_mult_f;
+	} else {
+		clk_cfg_reg0 = ioread32(clk_wzrd->base + WZRD_CLK_CFG_REG(0));
+		divclk_divide = (clk_cfg_reg0 >> WZRD_DIVCLK_DIVIDE_SHIFT &
+				 WZRD_DIVCLK_DIVIDE_MASK);
 
-	/* The 8*125 give the x1000 that is needed */
-	new_mult = (rate * divclk_divide * 8 / parent_rate) * 125;
+		/* The 8*125 give the x1000 that is needed */
+		new_mult = (rate * divclk_divide * 8 / parent_rate) * 125;
+	}
 	new_mult = clamp(new_mult, CLKFBOUT_MULT_F_MIN, CLKFBOUT_MULT_F_MAX);
 
 	clkfbout_mult = new_mult / 1000;
@@ -368,7 +515,9 @@ static int clk_wzrd_vco_dynamic_reconfig_f(struct clk_hw *hw,
 		 divclk_divide << WZRD_DIVCLK_DIVIDE_SHIFT;
 
 	spin_lock_irqsave(clk_wzrd->lock, flags);
-	iowrite32(axival, clk_wzrd->base + WZRD_CLK_CFG_REG(0));
+
+	/* set new value */
+	writel(axival, clk_wzrd->base + WZRD_CLK_CFG_REG(0));
 
 	/* Initiate reconfiguration */
 	writel(WZRD_DR_BEGIN_DYNA_RECONF,
@@ -391,7 +540,7 @@ static int clk_wzrd_vco_dynamic_reconfig_f(struct clk_hw *hw,
 }
 
 static long clk_wzrd_vco_round_rate_f(struct clk_hw *hw, unsigned long rate,
-				      unsigned long *prate)
+				  unsigned long *prate)
 {
 	return rate;
 }
@@ -587,11 +736,15 @@ static int clk_wzrd_probe(struct platform_device *pdev)
 	const char *clk_in_name = NULL;
 	const char *clk_vco_name = NULL;
 	struct clk_init_data init;
+	unsigned long flags;
 
 	clk_wzrd = devm_kzalloc(&pdev->dev, sizeof(*clk_wzrd), GFP_KERNEL);
 	if (!clk_wzrd)
 		return -ENOMEM;
 	platform_set_drvdata(pdev, clk_wzrd);
+
+	/* hints start off as invalid */
+	clk_wzrd->hints.valid_rate = false;
 
 	mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	clk_wzrd->base = devm_ioremap_resource(&pdev->dev, mem);
@@ -663,6 +816,12 @@ static int clk_wzrd_probe(struct platform_device *pdev)
 	clk_wzrd->num_out_clks =
 		of_property_count_strings(np, "clock-output-names");
 
+	/* only allow propagating changes up to the VCO if this is set  */
+	if (of_property_read_bool(np, "set-vco-parent"))
+		flags = CLK_SET_RATE_PARENT;
+	else
+		flags = 0;
+
 	/* register div per output */
 	for (i = clk_wzrd->num_out_clks - 1; i >= 0 ; i--) {
 		const char *clkout_name;
@@ -677,7 +836,7 @@ static int clk_wzrd_probe(struct platform_device *pdev)
 		if (!i)
 			clk_wzrd->clkout[i] = clk_wzrd_register_divf
 				(&pdev->dev, clkout_name,
-				clk_vco_name, 0,
+				clk_vco_name, flags,
 				clk_wzrd->base, (WZRD_CLK_CFG_REG(2) + i * 12),
 				WZRD_CLKOUT_DIVIDE_SHIFT,
 				WZRD_CLKOUT_DIVIDE_WIDTH,
