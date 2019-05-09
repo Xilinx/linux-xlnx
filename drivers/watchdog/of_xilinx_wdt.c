@@ -430,10 +430,8 @@ static int xwdt_probe(struct platform_device *pdev)
 
 		rc = watchdog_init_timeout(xilinx_wdt_wdd,
 					   wdt_timeout, &pdev->dev);
-		if (rc) {
-			dev_err(&pdev->dev, "unable to set timeout value\n");
-			return rc;
-		}
+		if (rc)
+			dev_warn(&pdev->dev, "unable to set timeout value\n");
 	}
 
 	spin_lock_init(&xdev->spinlock);
