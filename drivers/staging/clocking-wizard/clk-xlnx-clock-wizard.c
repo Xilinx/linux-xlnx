@@ -16,7 +16,7 @@
 #include <linux/module.h>
 #include <linux/err.h>
 
-#define WZRD_NUM_OUTPUTS	8
+#define WZRD_MAX_OUTPUTS	8
 #define WZRD_ACLK_MAX_FREQ	250000000UL
 
 #define WZRD_CLK_CFG_REG(n)	(0x200 + 4 * (n))
@@ -58,6 +58,7 @@
  * @base:		Memory base
  * @clk_in1:		Handle to input clock 'clk_in1'
  * @axi_clk:		Handle to input clock 's_axi_aclk'
+ * @num_out_clks	Read from devicetree
  * @clkout:		Output clocks
  * @vco_clk:		hw Voltage Controlled Oscilator clock
  * @speed_grade:	Speed grade of the device
@@ -70,7 +71,8 @@ struct clk_wzrd {
 	struct clk *clk_in1;
 	struct clk *axi_clk;
 	struct clk *vco_clk;
-	struct clk *clkout[WZRD_NUM_OUTPUTS];
+	unsigned int num_out_clks;
+	struct clk *clkout[WZRD_MAX_OUTPUTS];
 	struct clk_hw vco_clk_hw;
 	unsigned int speed_grade;
 	bool suspended;
@@ -658,8 +660,11 @@ static int clk_wzrd_probe(struct platform_device *pdev)
 	clk_wzrd->vco_clk_hw.init = &init;
 	ret = clk_hw_register(&pdev->dev, &clk_wzrd->vco_clk_hw);
 
+	clk_wzrd->num_out_clks =
+		of_property_count_strings(np, "clock-output-names");
+
 	/* register div per output */
-	for (i = WZRD_NUM_OUTPUTS - 1; i >= 0 ; i--) {
+	for (i = clk_wzrd->num_out_clks - 1; i >= 0 ; i--) {
 		const char *clkout_name;
 
 		if (of_property_read_string_index(np, "clock-output-names", i,
@@ -690,7 +695,7 @@ static int clk_wzrd_probe(struct platform_device *pdev)
 		if (IS_ERR(clk_wzrd->clkout[i])) {
 			int j;
 
-			for (j = i + 1; j < WZRD_NUM_OUTPUTS; j++)
+			for (j = i + 1; j < clk_wzrd->num_out_clks; j++)
 				clk_unregister(clk_wzrd->clkout[j]);
 			dev_err(&pdev->dev,
 				"unable to register divider clock\n");
@@ -735,7 +740,7 @@ static int clk_wzrd_remove(struct platform_device *pdev)
 
 	of_clk_del_provider(pdev->dev.of_node);
 
-	for (i = 0; i < WZRD_NUM_OUTPUTS; i++)
+	for (i = 0; i < clk_wzrd->num_out_clks; i++)
 		clk_unregister(clk_wzrd->clkout[i]);
 
 	clk_unregister(clk_wzrd->vco_clk_hw.clk);
