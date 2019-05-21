@@ -62,6 +62,9 @@ Additional compatible strings:
 - Xilinx RFSoC chracterization kit zcu1275
   "xlnx,zynqmp-zcu1275-revA", "xlnx,zynqmp-zcu1275"
 
+- Xilinx RFSoC chracterization kit zcu1285
+  "xlnx,zynqmp-zcu1285-revA", "xlnx,zynqmp-zcu1285"
+
 - Xilinx internal board zc1751
   "xlnx,zynqmp-zc1751"
 
