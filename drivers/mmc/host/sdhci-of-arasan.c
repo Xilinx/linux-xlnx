@@ -56,26 +56,15 @@
 #define SDHCI_ITAPDLY_ENABLE		0x100
 #define SDHCI_OTAPDLY_ENABLE		0x40
 
-#define SDHCI_ITAPDLYSEL_SD_HSD		0x15
-#define SDHCI_ITAPDLYSEL_SDR25		0x15
-#define SDHCI_ITAPDLYSEL_SDR50		0x0
-#define SDHCI_ITAPDLYSEL_SDR104_B2	0x0
-#define SDHCI_ITAPDLYSEL_SDR104_B0	0x0
-#define SDHCI_ITAPDLYSEL_MMC_HSD	0x15
-#define SDHCI_ITAPDLYSEL_SD_DDR50	0x3D
-#define SDHCI_ITAPDLYSEL_MMC_DDR52	0x12
-#define SDHCI_ITAPDLYSEL_MMC_HS200_B2	0x0
-#define SDHCI_ITAPDLYSEL_MMC_HS200_B0	0x0
-#define SDHCI_OTAPDLYSEL_SD_HSD		0x05
-#define SDHCI_OTAPDLYSEL_SDR25		0x05
-#define SDHCI_OTAPDLYSEL_SDR50		0x03
-#define SDHCI_OTAPDLYSEL_SDR104_B0	0x03
-#define SDHCI_OTAPDLYSEL_SDR104_B2	0x02
-#define SDHCI_OTAPDLYSEL_MMC_HSD	0x06
-#define SDHCI_OTAPDLYSEL_SD_DDR50	0x04
-#define SDHCI_OTAPDLYSEL_MMC_DDR52	0x06
-#define SDHCI_OTAPDLYSEL_MMC_HS200_B0	0x03
-#define SDHCI_OTAPDLYSEL_MMC_HS200_B2	0x02
+#define ZYNQMP_ITAP_DELAYS {0x0, 0x15, 0x15, 0x0, 0x15, 0x0,\
+			    0x0, 0x3D, 0x12, 0x0, 0x0}
+#define ZYNQMP_OTAP_DELAYS {0x0, 0x5, 0x6, 0x0, 0x5, 0x3,\
+			    0x3, 0x4, 0x6, 0x3, 0x0}
+
+#define VERSAL_ITAP_DELAYS {0x0, 0x11, 0x11, 0x0, 0x11, 0x0,\
+			    0x0, 0xE, 0xE, 0x0, 0x0}
+#define VERSAL_OTAP_DELAYS {0x0, 0x5, 0x4, 0x0, 0x4, 0x3,\
+			    0x2, 0x3, 0x5, 0x2, 0x0}
 
 #define MMC_BANK2		0x2
 
@@ -1061,178 +1050,85 @@ cleanup:
 	return ret;
 }
 
+static void arasan_dt_read_tap_delay(struct device *dev, u32 *tapdly,
+				     u8 mode, const char *prop)
+{
+	struct device_node *np = dev->of_node;
+	/*
+	 * Read Tap Delay values from DT, if the DT does not contain the
+	 * Tap Values then use the pre-defined values
+	 */
+	if (of_property_read_u32(np, prop, &tapdly[mode])) {
+		dev_dbg(dev, "Using predefined tapdly for %s = %d\n",
+			prop, tapdly[mode]);
+	}
+}
+
 /**
- * arasan_zynqmp_dt_parse_tap_delays - Read Tap Delay values from DT
+ * arasan_dt_parse_tap_delays - Read Tap Delay values from DT
  *
  * Called at initialization to parse the values of Tap Delays.
  *
  * @dev:		Pointer to our struct device.
  */
-static void arasan_zynqmp_dt_parse_tap_delays(struct device *dev)
+static void arasan_dt_parse_tap_delays(struct device *dev)
 {
 	struct platform_device *pdev = to_platform_device(dev);
 	struct sdhci_host *host = platform_get_drvdata(pdev);
 	struct sdhci_pltfm_host *pltfm_host = sdhci_priv(host);
 	struct sdhci_arasan_data *sdhci_arasan = sdhci_pltfm_priv(pltfm_host);
-	struct device_node *np = dev->of_node;
-	u32 *itapdly = sdhci_arasan->itapdly;
-	u32 *otapdly = sdhci_arasan->otapdly;
-	int ret;
+	u32 *itapdly;
+	u32 *otapdly;
+	int i;
 
-	/*
-	 * Read Tap Delay values from DT, if the DT does not contain the
-	 * Tap Values then use the pre-defined values
-	 */
-	ret = of_property_read_u32(np, "xlnx,itap-delay-sd-hsd",
-				   &itapdly[MMC_TIMING_SD_HS]);
-	if (ret) {
-		dev_dbg(dev,
-			"Using predefined itapdly for MMC_TIMING_SD_HS\n");
-		itapdly[MMC_TIMING_SD_HS] = SDHCI_ITAPDLYSEL_SD_HSD;
-	}
-
-	ret = of_property_read_u32(np, "xlnx,otap-delay-sd-hsd",
-				   &otapdly[MMC_TIMING_SD_HS]);
-	if (ret) {
-		dev_dbg(dev,
-			"Using predefined otapdly for MMC_TIMING_SD_HS\n");
-		otapdly[MMC_TIMING_SD_HS] = SDHCI_OTAPDLYSEL_SD_HSD;
-	}
-
-	ret = of_property_read_u32(np, "xlnx,itap-delay-sdr25",
-				   &itapdly[MMC_TIMING_UHS_SDR25]);
-	if (ret) {
-		dev_dbg(dev,
-			"Using predefined itapdly for MMC_TIMING_UHS_SDR25\n");
-		itapdly[MMC_TIMING_UHS_SDR25] = SDHCI_ITAPDLYSEL_SDR25;
-	}
-
-	ret = of_property_read_u32(np, "xlnx,otap-delay-sdr25",
-				   &otapdly[MMC_TIMING_UHS_SDR25]);
-	if (ret) {
-		dev_dbg(dev,
-			"Using predefined otapdly for MMC_TIMING_UHS_SDR25\n");
-		otapdly[MMC_TIMING_UHS_SDR25] = SDHCI_OTAPDLYSEL_SDR25;
-	}
-
-	ret = of_property_read_u32(np, "xlnx,itap-delay-sdr50",
-				   &itapdly[MMC_TIMING_UHS_SDR50]);
-	if (ret) {
-		dev_dbg(dev,
-			"Using predefined itapdly for MMC_TIMING_UHS_SDR50\n");
-		itapdly[MMC_TIMING_UHS_SDR50] = SDHCI_ITAPDLYSEL_SDR50;
-	}
-
-	ret = of_property_read_u32(np, "xlnx,otap-delay-sdr50",
-				   &otapdly[MMC_TIMING_UHS_SDR50]);
-	if (ret) {
-		dev_dbg(dev,
-			"Using predefined otapdly for MMC_TIMING_UHS_SDR50\n");
-		otapdly[MMC_TIMING_UHS_SDR50] = SDHCI_OTAPDLYSEL_SDR50;
-	}
-
-	ret = of_property_read_u32(np, "xlnx,itap-delay-sd-ddr50",
-				   &itapdly[MMC_TIMING_UHS_DDR50]);
-	if (ret) {
-		dev_dbg(dev,
-			"Using predefined itapdly for MMC_TIMING_UHS_DDR50\n");
-		itapdly[MMC_TIMING_UHS_DDR50] = SDHCI_ITAPDLYSEL_SD_DDR50;
-	}
-
-	ret = of_property_read_u32(np, "xlnx,otap-delay-sd-ddr50",
-				   &otapdly[MMC_TIMING_UHS_DDR50]);
-	if (ret) {
-		dev_dbg(dev,
-			"Using predefined otapdly for MMC_TIMING_UHS_DDR50\n");
-		otapdly[MMC_TIMING_UHS_DDR50] = SDHCI_OTAPDLYSEL_SD_DDR50;
-	}
-
-	ret = of_property_read_u32(np, "xlnx,itap-delay-mmc-hsd",
-				   &itapdly[MMC_TIMING_MMC_HS]);
-	if (ret) {
-		dev_dbg(dev,
-			"Using predefined itapdly for MMC_TIMING_MMC_HS\n");
-		itapdly[MMC_TIMING_MMC_HS] = SDHCI_ITAPDLYSEL_MMC_HSD;
-	}
-
-	ret = of_property_read_u32(np, "xlnx,otap-delay-mmc-hsd",
-				   &otapdly[MMC_TIMING_MMC_HS]);
-	if (ret) {
-		dev_dbg(dev,
-			"Using predefined otapdly for MMC_TIMING_MMC_HS\n");
-		otapdly[MMC_TIMING_MMC_HS] = SDHCI_OTAPDLYSEL_MMC_HSD;
-	}
-
-	ret = of_property_read_u32(np, "xlnx,itap-delay-mmc-ddr52",
-				   &itapdly[MMC_TIMING_MMC_DDR52]);
-	if (ret) {
-		dev_dbg(dev,
-			"Using predefined itapdly for MMC_TIMING_MMC_DDR52\n");
-		itapdly[MMC_TIMING_MMC_DDR52] = SDHCI_ITAPDLYSEL_MMC_DDR52;
-	}
-
-	ret = of_property_read_u32(np, "xlnx,otap-delay-mmc-ddr52",
-				   &otapdly[MMC_TIMING_MMC_DDR52]);
-	if (ret) {
-		dev_dbg(dev,
-			"Using predefined otapdly for MMC_TIMING_MMC_DDR52\n");
-		otapdly[MMC_TIMING_MMC_DDR52] = SDHCI_OTAPDLYSEL_MMC_DDR52;
-	}
-
-	ret = of_property_read_u32(np, "xlnx,itap-delay-sdr104",
-				   &itapdly[MMC_TIMING_UHS_SDR104]);
-	if (ret) {
-		dev_dbg(dev,
-			"Using predefined itapdly for MMC_TIMING_UHS_SDR104\n");
+	if (of_device_is_compatible(pdev->dev.of_node, "xlnx,zynqmp-8.9a")) {
+		itapdly = (u32 [MMC_TIMING_MMC_HS400 + 1]) ZYNQMP_ITAP_DELAYS;
+		otapdly = (u32 [MMC_TIMING_MMC_HS400 + 1]) ZYNQMP_OTAP_DELAYS;
 		if (sdhci_arasan->mio_bank == MMC_BANK2) {
-			itapdly[MMC_TIMING_UHS_SDR104] =
-				SDHCI_ITAPDLYSEL_SDR104_B2;
-		} else {
-			itapdly[MMC_TIMING_UHS_SDR104] =
-				SDHCI_ITAPDLYSEL_SDR104_B0;
+			otapdly[MMC_TIMING_UHS_SDR104] = 0x2;
+			otapdly[MMC_TIMING_MMC_HS200] = 0x2;
 		}
+	} else {
+		itapdly = (u32 [MMC_TIMING_MMC_HS400 + 1]) VERSAL_ITAP_DELAYS;
+		otapdly = (u32 [MMC_TIMING_MMC_HS400 + 1]) VERSAL_OTAP_DELAYS;
 	}
 
-	ret = of_property_read_u32(np, "xlnx,otap-delay-sdr104",
-				   &otapdly[MMC_TIMING_UHS_SDR104]);
-	if (ret) {
-		dev_dbg(dev,
-			"Using predefined otapdly for MMC_TIMING_UHS_SDR104\n");
-		if (sdhci_arasan->mio_bank == MMC_BANK2) {
-			otapdly[MMC_TIMING_UHS_SDR104] =
-				SDHCI_OTAPDLYSEL_SDR104_B2;
-		} else {
-			otapdly[MMC_TIMING_UHS_SDR104] =
-				SDHCI_OTAPDLYSEL_SDR104_B0;
-		}
-	}
+	arasan_dt_read_tap_delay(dev, itapdly, MMC_TIMING_SD_HS,
+				 "xlnx,itap-delay-sd-hsd");
+	arasan_dt_read_tap_delay(dev, itapdly, MMC_TIMING_UHS_SDR25,
+				 "xlnx,itap-delay-sdr25");
+	arasan_dt_read_tap_delay(dev, itapdly, MMC_TIMING_UHS_SDR50,
+				 "xlnx,itap-delay-sdr50");
+	arasan_dt_read_tap_delay(dev, itapdly, MMC_TIMING_UHS_SDR104,
+				 "xlnx,itap-delay-sdr104");
+	arasan_dt_read_tap_delay(dev, itapdly, MMC_TIMING_UHS_DDR50,
+				 "xlnx,itap-delay-sd-ddr50");
+	arasan_dt_read_tap_delay(dev, itapdly, MMC_TIMING_MMC_HS,
+				 "xlnx,itap-delay-mmc-hsd");
+	arasan_dt_read_tap_delay(dev, itapdly, MMC_TIMING_MMC_DDR52,
+				 "xlnx,itap-delay-mmc-ddr52");
+	arasan_dt_read_tap_delay(dev, itapdly, MMC_TIMING_MMC_HS200,
+				 "xlnx,itap-delay-mmc-hs200");
+	arasan_dt_read_tap_delay(dev, otapdly, MMC_TIMING_SD_HS,
+				 "xlnx,otap-delay-sd-hsd");
+	arasan_dt_read_tap_delay(dev, otapdly, MMC_TIMING_UHS_SDR25,
+				 "xlnx,otap-delay-sdr25");
+	arasan_dt_read_tap_delay(dev, otapdly, MMC_TIMING_UHS_SDR50,
+				 "xlnx,otap-delay-sdr50");
+	arasan_dt_read_tap_delay(dev, otapdly, MMC_TIMING_UHS_SDR104,
+				 "xlnx,otap-delay-sdr104");
+	arasan_dt_read_tap_delay(dev, otapdly, MMC_TIMING_UHS_DDR50,
+				 "xlnx,otap-delay-sd-ddr50");
+	arasan_dt_read_tap_delay(dev, otapdly, MMC_TIMING_MMC_HS,
+				 "xlnx,otap-delay-mmc-hsd");
+	arasan_dt_read_tap_delay(dev, otapdly, MMC_TIMING_MMC_DDR52,
+				 "xlnx,otap-delay-mmc-ddr52");
+	arasan_dt_read_tap_delay(dev, otapdly, MMC_TIMING_MMC_HS200,
+				 "xlnx,otap-delay-mmc-hs200");
 
-	ret = of_property_read_u32(np, "xlnx,itap-delay-mmc-hs200",
-				   &itapdly[MMC_TIMING_MMC_HS200]);
-	if (ret) {
-		dev_dbg(dev,
-			"Using predefined itapdly for MMC_TIMING_MMC_HS200\n");
-		if (sdhci_arasan->mio_bank == MMC_BANK2) {
-			itapdly[MMC_TIMING_MMC_HS200] =
-				SDHCI_ITAPDLYSEL_MMC_HS200_B2;
-		} else {
-			itapdly[MMC_TIMING_MMC_HS200] =
-				SDHCI_ITAPDLYSEL_MMC_HS200_B0;
-		}
-	}
-
-	ret = of_property_read_u32(np, "xlnx,otap-delay-mmc-hs200",
-				   &otapdly[MMC_TIMING_MMC_HS200]);
-	if (ret) {
-		dev_dbg(dev,
-			"Using predefined otapdly for MMC_TIMING_MMC_HS200\n");
-		if (sdhci_arasan->mio_bank == MMC_BANK2) {
-			otapdly[MMC_TIMING_MMC_HS200] =
-				SDHCI_OTAPDLYSEL_MMC_HS200_B2;
-		} else {
-			otapdly[MMC_TIMING_MMC_HS200] =
-				SDHCI_OTAPDLYSEL_MMC_HS200_B0;
-		}
+	for (i = 0; i <= MMC_TIMING_MMC_HS400; i++) {
+		sdhci_arasan->itapdly[i] = itapdly[i];
+		sdhci_arasan->otapdly[i] = otapdly[i];
 	}
 }
 
@@ -1367,6 +1263,10 @@ static int sdhci_arasan_probe(struct platform_device *pdev)
 
 	if (of_device_is_compatible(pdev->dev.of_node, "xlnx,zynqmp-8.9a") ||
 	    of_device_is_compatible(pdev->dev.of_node, "xlnx,versal-8.9a")) {
+		arasan_dt_parse_tap_delays(&pdev->dev);
+	}
+
+	if (of_device_is_compatible(pdev->dev.of_node, "xlnx,zynqmp-8.9a")) {
 		ret = of_property_read_u32(pdev->dev.of_node, "xlnx,mio_bank",
 					   &sdhci_arasan->mio_bank);
 		if (ret < 0) {
@@ -1381,8 +1281,6 @@ static int sdhci_arasan_probe(struct platform_device *pdev)
 				"\"xlnx,device_id \" property is missing.\n");
 			goto clk_disable_all;
 		}
-
-		arasan_zynqmp_dt_parse_tap_delays(&pdev->dev);
 
 		sdhci_arasan_ops.platform_execute_tuning =
 			arasan_zynqmp_execute_tuning;
