@@ -2724,8 +2724,6 @@ static int spi_nor_parse_bfpt(struct spi_nor *nor,
 	}
 	params->size >>= 3; /* Convert to bytes. */
 
-	if (params->size > 0x1000000 && nor->addr_width == 3)
-		return -EINVAL;
 
 	/* Fast Read settings. */
 	for (i = 0; i < ARRAY_SIZE(sfdp_bfpt_reads); i++) {
@@ -2771,6 +2769,8 @@ static int spi_nor_parse_bfpt(struct spi_nor *nor,
 			mtd->erasesize = erasesize;
 		}
 	}
+	if (params->size > 0x1000000 && nor->addr_width == 3)
+		return -EINVAL;
 
 	/* Stop here if not JESD216 rev A or later. */
 	if (bfpt_header->length < BFPT_DWORD_MAX)
@@ -3128,14 +3128,7 @@ static int spi_nor_select_erase(struct spi_nor *nor,
 
 	/* Do nothing if already configured from SFDP. */
 
-	/*
-	 * For ISSI flashes with size > 16MB connected in dual
-	 * parallel mode, the erasesize is set to sector size but
-	 * erase_opcode is NULL, so to assign an erase_ opcode,
-	 * !nor->isparallel check is added.
-	 */
 	if (mtd->erasesize &&
-	    !nor->isparallel &&
 	    JEDEC_MFR(info) != SNOR_MFR_SPANSION)
 		return 0;
 
