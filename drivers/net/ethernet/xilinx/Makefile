@@ -1,6 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0
 #
-# Makefile for the Xilink network device drivers.
+# Makefile for the Xilinx network device drivers.
 #
 
 ll_temac-objs := ll_temac_main.o ll_temac_mdio.o
