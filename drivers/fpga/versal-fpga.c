@@ -46,7 +46,7 @@ static int versal_fpga_ops_write(struct fpga_manager *mgr,
 	char *kbuf;
 	int ret;
 
-	if (!eemi_ops || !eemi_ops->pdi_load)
+	if (IS_ERR(eemi_ops) || !eemi_ops->pdi_load)
 		return -ENXIO;
 
 	priv = mgr->priv;
