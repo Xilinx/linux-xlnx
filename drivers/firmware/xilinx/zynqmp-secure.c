@@ -33,7 +33,7 @@ static ssize_t secure_load_store(struct device *dev,
 	u64 dst, ret;
 	int len;
 
-	if (!eemi_ops || !eemi_ops->secure_image)
+	if (IS_ERR(eemi_ops) || !eemi_ops->secure_image)
 		return -EFAULT;
 
 	strncpy(image_name, buf, NAME_MAX);
