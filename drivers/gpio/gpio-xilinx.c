@@ -650,7 +650,7 @@ static int xgpio_of_probe(struct platform_device *pdev)
 
 	chip->clk = devm_clk_get(&pdev->dev, "s_axi_aclk");
 	if (IS_ERR(chip->clk)) {
-		if ((PTR_ERR(chip->clk) != -ENOENT) ||
+		if ((PTR_ERR(chip->clk) != -ENOENT) &&
 				(PTR_ERR(chip->clk) != -EPROBE_DEFER)) {
 			dev_err(&pdev->dev, "Input clock not found\n");
 			return PTR_ERR(chip->clk);
