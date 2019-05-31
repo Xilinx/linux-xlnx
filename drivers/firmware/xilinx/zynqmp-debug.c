@@ -314,7 +314,8 @@ static int process_api_request(u32 pm_id, u64 *pm_api_arg, u32 *pm_api_ret)
 			     pm_api_arg[1] == IOCTL_GET_PLL_FRAC_MODE ||
 			     pm_api_arg[1] == IOCTL_GET_PLL_FRAC_DATA ||
 			     pm_api_arg[1] == IOCTL_READ_GGS ||
-			     pm_api_arg[1] == IOCTL_READ_PGGS))
+			     pm_api_arg[1] == IOCTL_READ_PGGS ||
+			     pm_api_arg[1] == IOCTL_PROBE_COUNTER_READ))
 			sprintf(debugfs_buf, "IOCTL return value: %u\n",
 				pm_api_ret[1]);
 		break;
