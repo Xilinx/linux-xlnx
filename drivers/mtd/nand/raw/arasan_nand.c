@@ -1132,10 +1132,10 @@ static irqreturn_t anfc_irq_handler(int irq, void *ptr)
 
 	status = readl(nfc->base + INTR_STS_OFST);
 	if (status & EVENT_MASK) {
-		complete(&nfc->event);
 		writel(status & EVENT_MASK, nfc->base + INTR_STS_OFST);
 		writel(0, nfc->base + INTR_STS_EN_OFST);
 		writel(0, nfc->base + INTR_SIG_EN_OFST);
+		complete(&nfc->event);
 		return IRQ_HANDLED;
 	}
 
