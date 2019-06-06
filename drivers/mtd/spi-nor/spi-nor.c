@@ -3379,7 +3379,9 @@ int spi_nor_scan(struct spi_nor *nor, const char *name,
 	if ((of_property_match_string(np_spi, "compatible",
 		    "xlnx,zynq-qspi-1.0") >= 0) ||
 			(of_property_match_string(np_spi, "compatible",
-					"xlnx,zynqmp-qspi-1.0") >= 0)) {
+					"xlnx,zynqmp-qspi-1.0") >= 0) ||
+			(of_property_match_string(np_spi, "compatible",
+					"xlnx,versal-qspi-1.0") >= 0)) {
 			if (of_property_read_u32(np_spi, "is-dual",
 						 &is_dual) < 0) {
 				/* Default to single if prop not defined */
