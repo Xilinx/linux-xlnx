@@ -320,7 +320,7 @@ static int dp83867_config_init(struct phy_device *phydev)
 
 		phy_write(phydev, MII_DP83867_PHYCTRL,
 			  DP83867_PHYCTRL_SGMIIEN |
-			  (DP83867_MDI_CROSSOVER_MDIX << DP83867_MDI_CROSSOVER) |
+			  (DP83867_MDI_CROSSOVER_AUTO << DP83867_MDI_CROSSOVER) |
 			  (dp83867->fifo_depth << DP83867_PHYCTRL_RXFIFO_SHIFT) |
 			  (dp83867->fifo_depth  << DP83867_PHYCTRL_TXFIFO_SHIFT));
 		phy_write(phydev, MII_DP83867_BISCR, 0x0);
