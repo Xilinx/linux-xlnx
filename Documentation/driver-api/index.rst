@@ -53,6 +53,7 @@ available subsections can be seen below.
    slimbus
    soundwire/index
    fpga/index
+   xilinx/index
 
 .. only::  subproject and html
 
