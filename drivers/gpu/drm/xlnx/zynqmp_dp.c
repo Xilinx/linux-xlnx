@@ -1534,7 +1534,7 @@ static void zynqmp_dp_encoder_disable(struct drm_encoder *encoder)
 	dp->enabled = false;
 	cancel_delayed_work(&dp->hpd_work);
 	zynqmp_dp_write(iomem, ZYNQMP_DP_TX_ENABLE_MAIN_STREAM, 0);
-	drm_dp_dpcd_writeb(&dp->aux, DP_SET_POWER, DP_SET_POWER_D3);
+	//drm_dp_dpcd_writeb(&dp->aux, DP_SET_POWER, DP_SET_POWER_D3);
 	zynqmp_dp_write(iomem, ZYNQMP_DP_TX_PHY_POWER_DOWN,
 			ZYNQMP_DP_TX_PHY_POWER_DOWN_ALL);
 	if (zynqmp_disp_aud_enabled(dp->dpsub->disp))
@@ -1680,6 +1680,9 @@ int zynqmp_dp_bind(struct device *dev, struct device *master, void *data)
 				   ret ? ret : 8);
 	zynqmp_dp_update_bpp(dp);
 
+	if (!dp->num_lanes)
+		return 0;
+
 	/* This enables interrupts, so should be called after DRM init */
 	ret = zynqmp_dp_init_aux(dp);
 	if (ret) {
@@ -1704,13 +1707,16 @@ void zynqmp_dp_unbind(struct device *dev, struct device *master, void *data)
 	struct zynqmp_dpsub *dpsub = dev_get_drvdata(dev);
 	struct zynqmp_dp *dp = dpsub->dp;
 
-	cancel_delayed_work_sync(&dp->hpd_work);
 	disable_irq(dp->irq);
-	zynqmp_dp_exit_aux(dp);
 	drm_property_destroy(dp->drm, dp->bpc_prop);
 	drm_property_destroy(dp->drm, dp->sync_prop);
 	zynqmp_dp_connector_destroy(&dp->connector);
 	drm_encoder_cleanup(&dp->encoder);
+	if (!dp->num_lanes)
+		return;
+
+	cancel_delayed_work_sync(&dp->hpd_work);
+	zynqmp_dp_exit_aux(dp);
 }
 
 /*
@@ -1797,18 +1803,30 @@ int zynqmp_dp_probe(struct platform_device *pdev)
 		snprintf(phy_name, sizeof(phy_name), "dp-phy%d", i);
 		dp->phy[i] = devm_phy_get(dp->dev, phy_name);
 		if (IS_ERR(dp->phy[i])) {
-			/* 2nd lane is optional */
-			if (i == 0 || PTR_ERR(dp->phy[i]) != -ENODEV) {
-				if (PTR_ERR(dp->phy[i]) != -EPROBE_DEFER) {
-					dev_err(dp->dev,
-						"failed to get phy lane\n");
-				}
-				ret = PTR_ERR(dp->phy[i]);
-				dp->phy[i] = NULL;
-				return ret;
-			}
+			ret = PTR_ERR(dp->phy[i]);
 			dp->phy[i] = NULL;
-			dp->num_lanes = 1;
+
+			/* 2nd lane is optional */
+			if (i == 1 && ret == -ENODEV) {
+				dp->num_lanes = 1;
+				break;
+			}
+
+			/*
+			 * If no phy lane is assigned, the DP Tx gets disabled.
+			 * The display part of the DP subsystem can still be
+			 * used to drive the output to FPGA, thus let the DP
+			 * subsystem driver to proceed without this DP Tx.
+			 */
+			if (i == 0 && ret == -ENODEV) {
+				dp->num_lanes = 0;
+				goto out;
+			}
+
+			if (ret != -EPROBE_DEFER)
+				dev_err(dp->dev, "failed to get phy lane\n");
+
+			return ret;
 		}
 	}
 
@@ -1825,6 +1843,7 @@ int zynqmp_dp_probe(struct platform_device *pdev)
 		goto error;
 	}
 
+out:
 	irq = platform_get_irq(pdev, 0);
 	if (irq < 0) {
 		ret = irq;
@@ -1841,6 +1860,10 @@ int zynqmp_dp_probe(struct platform_device *pdev)
 	dpsub = platform_get_drvdata(pdev);
 	dpsub->dp = dp;
 	dp->dpsub = dpsub;
+
+	dev_dbg(dp->dev,
+		"ZynqMP DisplayPort Tx driver probed with %u phy lanes\n",
+		dp->num_lanes);
 
 	return 0;
 

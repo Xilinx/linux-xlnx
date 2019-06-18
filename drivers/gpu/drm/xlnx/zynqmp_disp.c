@@ -1028,6 +1028,15 @@ static const struct zynqmp_disp_fmt av_buf_gfx_fmts[] = {
 		.sf[1]		= ZYNQMP_DISP_AV_BUF_8BIT_SF,
 		.sf[2]		= ZYNQMP_DISP_AV_BUF_8BIT_SF,
 	}, {
+		.drm_fmt	= DRM_FORMAT_XRGB8888,
+		.disp_fmt	= ZYNQMP_DISP_AV_BUF_FMT_NL_GFX_RGBA8888,
+		.rgb		= true,
+		.swap		= true,
+		.chroma_sub	= false,
+		.sf[0]		= ZYNQMP_DISP_AV_BUF_8BIT_SF,
+		.sf[1]		= ZYNQMP_DISP_AV_BUF_8BIT_SF,
+		.sf[2]		= ZYNQMP_DISP_AV_BUF_8BIT_SF,
+	}, {
 		.drm_fmt	= DRM_FORMAT_RGBA8888,
 		.disp_fmt	= ZYNQMP_DISP_AV_BUF_FMT_NL_GFX_ABGR8888,
 		.rgb		= true,
@@ -2501,7 +2510,7 @@ static void zynqmp_disp_plane_destroy(struct drm_plane *plane)
 	struct zynqmp_disp_layer *layer = plane_to_layer(plane);
 
 	xlnx_bridge_unregister(&layer->bridge);
-	drm_plane_cleanup(plane);
+	//drm_plane_cleanup(plane);
 }
 
 static int
@@ -2802,6 +2811,7 @@ static int zynqmp_disp_crtc_mode_set(struct drm_crtc *crtc,
 	long diff;
 	int ret;
 
+    /*
 	zynqmp_disp_clk_disable(disp->pclk, &disp->pclk_en);
 	ret = clk_set_rate(disp->pclk, adjusted_mode->clock * 1000);
 	if (ret) {
@@ -2818,6 +2828,7 @@ static int zynqmp_disp_crtc_mode_set(struct drm_crtc *crtc,
 		dev_dbg(disp->dev, "request pixel rate: %d actual rate: %lu\n",
 			adjusted_mode->clock, rate);
 	}
+    */
 
 	/* The timing register should be programmed always */
 	zynqmp_dp_encoder_mode_set_stream(disp->dpsub->dp, adjusted_mode);
@@ -2837,11 +2848,13 @@ zynqmp_disp_crtc_atomic_enable(struct drm_crtc *crtc,
 				  adjusted_mode, crtc->x, crtc->y, NULL);
 
 	pm_runtime_get_sync(disp->dev);
+    /*
 	ret = zynqmp_disp_clk_enable(disp->pclk, &disp->pclk_en);
 	if (ret) {
 		dev_err(disp->dev, "failed to enable a pixel clock\n");
 		return;
 	}
+    */
 	zynqmp_disp_set_output_fmt(disp, disp->color);
 	zynqmp_disp_set_bg_color(disp, disp->bg_c0, disp->bg_c1, disp->bg_c2);
 	zynqmp_disp_enable(disp);
@@ -2857,7 +2870,7 @@ zynqmp_disp_crtc_atomic_disable(struct drm_crtc *crtc,
 {
 	struct zynqmp_disp *disp = crtc_to_disp(crtc);
 
-	zynqmp_disp_clk_disable(disp->pclk, &disp->pclk_en);
+	//zynqmp_disp_clk_disable(disp->pclk, &disp->pclk_en);
 	zynqmp_disp_plane_disable(crtc->primary);
 	zynqmp_disp_disable(disp, true);
 	pm_runtime_put_sync(disp->dev);
@@ -2895,7 +2908,7 @@ static struct drm_crtc_helper_funcs zynqmp_disp_crtc_helper_funcs = {
 static void zynqmp_disp_crtc_destroy(struct drm_crtc *crtc)
 {
 	zynqmp_disp_crtc_atomic_disable(crtc, NULL);
-	drm_crtc_cleanup(crtc);
+	//drm_crtc_cleanup(crtc);
 }
 
 static int zynqmp_disp_crtc_enable_vblank(struct drm_crtc *crtc)
@@ -3173,8 +3186,8 @@ int zynqmp_disp_probe(struct platform_device *pdev)
 			return PTR_ERR(disp->_ps_pclk);
 		}
 		disp->pclk = disp->_ps_pclk;
-		ret = zynqmp_disp_clk_enable_disable(disp->pclk,
-						     &disp->pclk_en);
+		//ret = zynqmp_disp_clk_enable_disable(disp->pclk,
+		//				     &disp->pclk_en);
 		if (ret) {
 			dev_err(disp->dev, "failed to init any video clock\n");
 			return ret;
@@ -3239,7 +3252,7 @@ int zynqmp_disp_remove(struct platform_device *pdev)
 	if (disp->audclk)
 		zynqmp_disp_clk_disable(disp->audclk, &disp->audclk_en);
 	zynqmp_disp_clk_disable(disp->aclk, &disp->aclk_en);
-	zynqmp_disp_clk_disable(disp->pclk, &disp->pclk_en);
+	//zynqmp_disp_clk_disable(disp->pclk, &disp->pclk_en);
 	dpsub->disp = NULL;
 
 	return 0;

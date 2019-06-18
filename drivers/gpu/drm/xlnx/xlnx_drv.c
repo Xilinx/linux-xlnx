@@ -314,7 +314,7 @@ static void xlnx_unbind(struct device *dev)
 	component_unbind_all(&xlnx_drm->master->dev, drm);
 	xlnx_crtc_helper_fini(drm, xlnx_drm->crtc);
 	drm_kms_helper_poll_fini(drm);
-	drm_mode_config_cleanup(drm);
+	//drm_mode_config_cleanup(drm);
 	drm_dev_unref(drm);
 }
 

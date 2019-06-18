@@ -1,0 +1,12 @@
+example for dts:
+
+		tas2557@4c {
+			#sound-dai-cells = <1>;
+			compatible = "ti,tas2557";
+			reg = <0x4c>;
+			ti,cdc-reset-gpio = <&msmgpio 73 0>;
+			ti,irq-gpio = <&msmgpio 59 0>;
+			ti,i2s-bits = <16>;   /* support 16, 24, 32 */
+			ti,bypass-tmax = <0>;   /* 0, not bypass; 1, bypass */
+			status = "ok";
+		};

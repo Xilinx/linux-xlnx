@@ -1797,4 +1797,9 @@ config RTC_DRV_GOLDFISH
 	  Goldfish is a code name for the virtual platform developed by Google
 	  for Android emulation.
 
+config RTC_DRV_PSEUDO
+	tristate "Pseudo RTC"
+	help
+	  Say yes here to enable pseudo RTC.
+
 endif # RTC_CLASS

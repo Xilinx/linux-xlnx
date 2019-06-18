@@ -236,3 +236,11 @@ config SND_AC97_POWER_SAVE_DEFAULT
 	  See SND_AC97_POWER_SAVE for more details.
 
 endif	# SND_DRIVERS
+
+config SND_XYLON_I2S
+	tristate "Xylon logiI2S driver"
+	select SND_PCM
+	default n
+	help
+	  Support for Xylon logiI2S sound driver.
+

@@ -1073,7 +1073,7 @@ static int __maybe_unused zynqmp_dma_runtime_suspend(struct device *dev)
 {
 	struct zynqmp_dma_device *zdev = dev_get_drvdata(dev);
 
-	clk_disable_unprepare(zdev->clk_main);
+	//clk_disable_unprepare(zdev->clk_main);
 	clk_disable_unprepare(zdev->clk_apb);
 
 	return 0;
