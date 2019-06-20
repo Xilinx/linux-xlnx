@@ -1687,7 +1687,8 @@ static int axienet_open(struct net_device *ndev)
 		if (err) {
 			netdev_err(ndev, "%s: USXGMII Block lock bit not set",
 				   __func__);
-			return -ENODEV;
+			ret = -ENODEV;
+			goto err_eth_irq;
 		}
 
 		err = readl_poll_timeout(lp->regs + XXV_USXGMII_AN_STS_OFFSET,
@@ -1696,7 +1697,8 @@ static int axienet_open(struct net_device *ndev)
 		if (err) {
 			netdev_err(ndev, "%s: USXGMII AN not complete",
 				   __func__);
-			return -ENODEV;
+			ret = -ENODEV;
+			goto err_eth_irq;
 		}
 
 		netdev_info(ndev, "USXGMII setup at %d\n", lp->usxgmii_rate);
