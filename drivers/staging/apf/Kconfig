@@ -15,5 +15,6 @@ config XILINX_DMA_APF
 	bool "Xilinx APF DMA engines support"
 	depends on XILINX_APF
 	select DMA_ENGINE
+	select DMADEVICES
 	help
 	  Enable support for the Xilinx APF DMA controllers.
