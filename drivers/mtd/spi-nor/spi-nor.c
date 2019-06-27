@@ -1519,6 +1519,11 @@ static const struct flash_info spi_nor_ids[] = {
 			SECT_4K | USE_FSR | SPI_NOR_OCTAL_READ |
 			SPI_NOR_OCTAL_WRITE | SPI_NOR_4B_OPCODES)
 	},
+	{
+		"mt35xu01g", INFO(0x2c5b1b, 0, 128 * 1024, 1024,
+			SECT_4K | USE_FSR | SPI_NOR_OCTAL_READ |
+			SPI_NOR_OCTAL_WRITE | SPI_NOR_4B_OPCODES)
+	},
 
 
 	/* PMC */
