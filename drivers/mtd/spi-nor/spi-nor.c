@@ -486,11 +486,12 @@ static int spi_nor_wait_till_ready_with_timeout(struct spi_nor *nor,
 	return -ETIMEDOUT;
 }
 
-static int spi_nor_wait_till_ready(struct spi_nor *nor)
+int spi_nor_wait_till_ready(struct spi_nor *nor)
 {
 	return spi_nor_wait_till_ready_with_timeout(nor,
 						    DEFAULT_READY_WAIT_JIFFIES);
 }
+EXPORT_SYMBOL_GPL(spi_nor_wait_till_ready);
 
 /*
  * Write status Register and configuration register with 2 bytes
