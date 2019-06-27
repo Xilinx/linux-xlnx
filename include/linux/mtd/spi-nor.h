@@ -462,4 +462,6 @@ void spi_nor_shutdown(struct spi_nor *nor);
  */
 void spi_nor_restore(struct spi_nor *nor);
 
+int spi_nor_wait_till_ready(struct spi_nor *nor);
+
 #endif
