@@ -99,7 +99,8 @@ void dwc3_set_simple_data(struct dwc3 *dwc)
 {
 	struct device_node *node = of_get_parent(dwc->dev->of_node);
 
-	if (node && of_device_is_compatible(node, "xlnx,zynqmp-dwc3")) {
+	if (node && (of_device_is_compatible(node, "xlnx,zynqmp-dwc3") ||
+		     of_device_is_compatible(node, "xlnx,versal-dwc3")))  {
 		struct platform_device *pdev_parent;
 		struct dwc3_of_simple   *simple;
 
