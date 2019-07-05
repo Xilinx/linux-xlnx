@@ -1395,7 +1395,7 @@ static const struct v4l2_ctrl_ops xsdirxss_ctrl_ops = {
 	.s_ctrl	= xsdirxss_s_ctrl
 };
 
-static struct v4l2_ctrl_config xsdirxss_edh_ctrls[] = {
+static const struct v4l2_ctrl_config xsdirxss_edh_ctrls[] = {
 	{
 		.ops	= &xsdirxss_ctrl_ops,
 		.id	= V4L2_CID_XILINX_SDIRX_EDH_ERRCNT_ENABLE,
@@ -1427,7 +1427,7 @@ static struct v4l2_ctrl_config xsdirxss_edh_ctrls[] = {
 	}
 };
 
-static struct v4l2_ctrl_config xsdirxss_ctrls[] = {
+static const struct v4l2_ctrl_config xsdirxss_ctrls[] = {
 	{
 		.ops	= &xsdirxss_ctrl_ops,
 		.id	= V4L2_CID_XILINX_SDIRX_FRAMER,
@@ -1512,17 +1512,17 @@ static const struct v4l2_subdev_core_ops xsdirxss_core_ops = {
 	.unsubscribe_event = xsdirxss_unsubscribe_event
 };
 
-static struct v4l2_subdev_video_ops xsdirxss_video_ops = {
+static const struct v4l2_subdev_video_ops xsdirxss_video_ops = {
 	.g_frame_interval = xsdirxss_g_frame_interval,
 	.s_stream = xsdirxss_s_stream
 };
 
-static struct v4l2_subdev_pad_ops xsdirxss_pad_ops = {
+static const struct v4l2_subdev_pad_ops xsdirxss_pad_ops = {
 	.get_fmt = xsdirxss_get_format,
 	.set_fmt = xsdirxss_set_format,
 };
 
-static struct v4l2_subdev_ops xsdirxss_ops = {
+static const struct v4l2_subdev_ops xsdirxss_ops = {
 	.core = &xsdirxss_core_ops,
 	.video = &xsdirxss_video_ops,
 	.pad = &xsdirxss_pad_ops
@@ -1720,7 +1720,7 @@ static int xsdirxss_probe(struct platform_device *pdev)
 
 	subdev->dev = &pdev->dev;
 	subdev->internal_ops = &xsdirxss_internal_ops;
-	strlcpy(subdev->name, dev_name(&pdev->dev), sizeof(subdev->name));
+	strscpy(subdev->name, dev_name(&pdev->dev), sizeof(subdev->name));
 
 	subdev->flags |= V4L2_SUBDEV_FL_HAS_EVENTS | V4L2_SUBDEV_FL_HAS_DEVNODE;
 
