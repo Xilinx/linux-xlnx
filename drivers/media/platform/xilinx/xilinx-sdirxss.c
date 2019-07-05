@@ -491,12 +491,12 @@ static inline void xsdirxss_set(struct xsdirxss_core *xsdirxss, u32 addr,
 	xsdirxss_write(xsdirxss, addr, xsdirxss_read(xsdirxss, addr) | set);
 }
 
-static void xsdirx_core_disable(struct xsdirxss_core *core)
+static inline void xsdirx_core_disable(struct xsdirxss_core *core)
 {
 	xsdirxss_clr(core, XSDIRX_RST_CTRL_REG, XSDIRX_RST_CTRL_SS_EN_MASK);
 }
 
-static void xsdirx_core_enable(struct xsdirxss_core *core)
+static inline void xsdirx_core_enable(struct xsdirxss_core *core)
 {
 	xsdirxss_set(core, XSDIRX_RST_CTRL_REG, XSDIRX_RST_CTRL_SS_EN_MASK);
 }
@@ -604,7 +604,7 @@ static void xsdirx_setedherrcnttrigger(struct xsdirxss_core *core, u32 enable)
 	xsdirxss_write(core, XSDIRX_EDH_ERRCNT_EN_REG, val);
 }
 
-static void xsdirx_setvidlockwindow(struct xsdirxss_core *core, u32 val)
+static inline void xsdirx_setvidlockwindow(struct xsdirxss_core *core, u32 val)
 {
 	/*
 	 * The video lock window is the amount of time for which the
@@ -614,12 +614,12 @@ static void xsdirx_setvidlockwindow(struct xsdirxss_core *core, u32 val)
 	xsdirxss_write(core, XSDIRX_VID_LOCK_WINDOW_REG, val);
 }
 
-static void xsdirx_disableintr(struct xsdirxss_core *core, u32 mask)
+static inline void xsdirx_disableintr(struct xsdirxss_core *core, u32 mask)
 {
 	xsdirxss_clr(core, XSDIRX_IER_REG, mask);
 }
 
-static void xsdirx_enableintr(struct xsdirxss_core *core, u32 mask)
+static inline void xsdirx_enableintr(struct xsdirxss_core *core, u32 mask)
 {
 	xsdirxss_set(core, XSDIRX_IER_REG, mask);
 }
@@ -634,12 +634,13 @@ static void xsdirx_globalintr(struct xsdirxss_core *core, bool flag)
 			     XSDIRX_GLBL_INTR_EN_MASK);
 }
 
-static void xsdirx_clearintr(struct xsdirxss_core *core, u32 mask)
+static inline void xsdirx_clearintr(struct xsdirxss_core *core, u32 mask)
 {
 	xsdirxss_set(core, XSDIRX_ISR_REG, mask);
 }
 
-static void xsdirx_vid_bridge_control(struct xsdirxss_core *core, bool enable)
+static void xsdirx_vid_bridge_control(struct xsdirxss_core *core,
+				      bool enable)
 {
 	if (enable)
 		xsdirxss_set(core, XSDIRX_RST_CTRL_REG,
@@ -649,7 +650,8 @@ static void xsdirx_vid_bridge_control(struct xsdirxss_core *core, bool enable)
 			     XSDIRX_RST_CTRL_SDIRX_BRIDGE_ENB_MASK);
 }
 
-static void xsdirx_axis4_bridge_control(struct xsdirxss_core *core, bool enable)
+static void xsdirx_axis4_bridge_control(struct xsdirxss_core *core,
+					bool enable)
 {
 	if (enable)
 		xsdirxss_set(core, XSDIRX_RST_CTRL_REG,
