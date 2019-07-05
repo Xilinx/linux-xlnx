@@ -871,7 +871,7 @@ static irqreturn_t xsdirxss_irq_handler(int irq, void *dev_id)
 		u32 val1, val2;
 
 		dev_dbg(core->dev, "video lock interrupt\n");
-		xsdirx_clearintr(core, XSDIRX_INTR_VIDLOCK_MASK);
+		xsdirxss_write(core, XSDIRX_ISR_REG, XSDIRX_INTR_VIDLOCK_MASK);
 
 		val1 = xsdirxss_read(core, XSDIRX_MODE_DET_STAT_REG);
 		val2 = xsdirxss_read(core, XSDIRX_TS_DET_STAT_REG);
@@ -913,7 +913,8 @@ static irqreturn_t xsdirxss_irq_handler(int irq, void *dev_id)
 
 	if (status & XSDIRX_INTR_VIDUNLOCK_MASK) {
 		dev_dbg(core->dev, "video unlock interrupt\n");
-		xsdirx_clearintr(core, XSDIRX_INTR_VIDUNLOCK_MASK);
+		xsdirxss_write(core, XSDIRX_ISR_REG,
+			       XSDIRX_INTR_VIDUNLOCK_MASK);
 		xsdirx_streamdowncb(core);
 
 		memset(&state->event, 0, sizeof(state->event));
@@ -925,7 +926,8 @@ static irqreturn_t xsdirxss_irq_handler(int irq, void *dev_id)
 
 	if (status & XSDIRX_INTR_UNDERFLOW_MASK) {
 		dev_dbg(core->dev, "Video in to AXI4 Stream core underflow interrupt\n");
-		xsdirx_clearintr(core, XSDIRX_INTR_UNDERFLOW_MASK);
+		xsdirxss_write(core, XSDIRX_ISR_REG,
+			       XSDIRX_INTR_UNDERFLOW_MASK);
 
 		memset(&state->event, 0, sizeof(state->event));
 		state->event.type = V4L2_EVENT_XLNXSDIRX_UNDERFLOW;
@@ -934,7 +936,7 @@ static irqreturn_t xsdirxss_irq_handler(int irq, void *dev_id)
 
 	if (status & XSDIRX_INTR_OVERFLOW_MASK) {
 		dev_dbg(core->dev, "Video in to AXI4 Stream core overflow interrupt\n");
-		xsdirx_clearintr(core, XSDIRX_INTR_OVERFLOW_MASK);
+		xsdirxss_write(core, XSDIRX_ISR_REG, XSDIRX_INTR_OVERFLOW_MASK);
 
 		memset(&state->event, 0, sizeof(state->event));
 		state->event.type = V4L2_EVENT_XLNXSDIRX_OVERFLOW;
