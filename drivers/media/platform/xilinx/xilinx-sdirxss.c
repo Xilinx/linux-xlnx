@@ -33,6 +33,7 @@
 #include <linux/spinlock.h>
 #include <linux/spinlock_types.h>
 #include <linux/types.h>
+#include <linux/v4l2-dv-timings.h>
 #include <linux/v4l2-subdev.h>
 #include <linux/xilinx-sdirxss.h>
 #include <linux/xilinx-v4l2-controls.h>
@@ -325,6 +326,139 @@ static const char * const xsdirxss_clks[] = {
 static const u32 xsdirxss_mbus_fmts[] = {
 	MEDIA_BUS_FMT_UYVY10_1X20,
 	MEDIA_BUS_FMT_VYYUYY10_4X20,
+};
+
+static const struct v4l2_dv_timings fmt_cap[] = {
+	V4L2_DV_BT_SDI_720X487I60,
+	V4L2_DV_BT_CEA_720X576I50,
+	V4L2_DV_BT_CEA_1280X720P24,
+	V4L2_DV_BT_CEA_1280X720P25,
+	V4L2_DV_BT_CEA_1280X720P30,
+	V4L2_DV_BT_CEA_1280X720P50,
+	V4L2_DV_BT_CEA_1280X720P60,
+	V4L2_DV_BT_CEA_1920X1080P24,
+	V4L2_DV_BT_CEA_1920X1080P30,
+	V4L2_DV_BT_CEA_1920X1080I50,
+	V4L2_DV_BT_CEA_1920X1080I60,
+	V4L2_DV_BT_CEA_1920X1080P50,
+	V4L2_DV_BT_CEA_1920X1080P60,
+	V4L2_DV_BT_CEA_3840X2160P24,
+	V4L2_DV_BT_CEA_3840X2160P30,
+	V4L2_DV_BT_CEA_3840X2160P50,
+	V4L2_DV_BT_CEA_3840X2160P60,
+	V4L2_DV_BT_CEA_4096X2160P24,
+	V4L2_DV_BT_CEA_4096X2160P25,
+	V4L2_DV_BT_CEA_4096X2160P30,
+	V4L2_DV_BT_CEA_4096X2160P50,
+	V4L2_DV_BT_CEA_4096X2160P60,
+};
+
+struct xsdirxss_dv_map {
+	u32 width;
+	u32 height;
+	u32 fps;
+	struct v4l2_dv_timings format;
+};
+
+static const struct xsdirxss_dv_map xsdirxss_dv_timings[] = {
+	/* SD - 720x487i60 */
+	{ 720, 243, 30, V4L2_DV_BT_SDI_720X487I60 },
+	/* SD - 720x576i50 */
+	{ 720, 288, 25, V4L2_DV_BT_CEA_720X576I50 },
+	/* HD - 1280x720p23.98 */
+	/* HD - 1280x720p24 */
+	{ 1280, 720, 24, V4L2_DV_BT_CEA_1280X720P24 },
+	/* HD - 1280x720p25 */
+	{ 1280, 720, 25, V4L2_DV_BT_CEA_1280X720P25 },
+	/* HD - 1280x720p29.97 */
+	/* HD - 1280x720p30 */
+	{ 1280, 720, 30, V4L2_DV_BT_CEA_1280X720P30 },
+	/* HD - 1280x720p50 */
+	{ 1280, 720, 50, V4L2_DV_BT_CEA_1280X720P50 },
+	/* HD - 1280x720p59.94 */
+	/* HD - 1280x720p60 */
+	{ 1280, 720, 60, V4L2_DV_BT_CEA_1280X720P60 },
+	/* HD - 1920x1080p23.98 */
+	/* HD - 1920x1080p24 */
+	{ 1920, 1080, 24, V4L2_DV_BT_CEA_1920X1080P24 },
+	/* HD - 1920x1080p25 */
+	{ 1920, 1080, 25, V4L2_DV_BT_CEA_1920X1080P25 },
+	/* HD - 1920x1080p29.97 */
+	/* HD - 1920x1080p30 */
+	{ 1920, 1080, 30, V4L2_DV_BT_CEA_1920X1080P30 },
+
+	/* TODO add below timings */
+	/* HD - 2048x1080p23.98 */
+	/* HD - 2048x1080p24 */
+	/* HD - 2048x1080p25 */
+	/* HD - 2048x1080p29.97 */
+	/* HD - 2048x1080p30 */
+	/* HD - 1920x1080i47.95 */
+	/* HD - 1920x1080i48 */
+
+	/* HD - 1920x1080i50 */
+	{ 1920, 540, 25, V4L2_DV_BT_CEA_1920X1080I50 },
+	/* HD - 1920x1080i59.94 */
+	/* HD - 1920x1080i60 */
+	{ 1920, 540, 30, V4L2_DV_BT_CEA_1920X1080I60 },
+
+	/* TODO add below timings */
+	/* HD - 2048x1080i47.95 */
+	/* HD - 2048x1080i48 */
+	/* HD - 2048x1080i50 */
+	/* HD - 2048x1080i59.94 */
+	/* HD - 2048x1080i60 */
+	/* 3G - 1920x1080p47.95 */
+	/* 3G - 1920x1080p48 */
+
+	/* 3G - 1920x1080p50 148.5 */
+	{ 1920, 1080, 50, V4L2_DV_BT_CEA_1920X1080P50 },
+	/* 3G - 1920x1080p59.94 148.5/1.001 */
+	/* 3G - 1920x1080p60 148.5 */
+	{ 1920, 1080, 60, V4L2_DV_BT_CEA_1920X1080P60 },
+
+	/* TODO add below timings */
+	/* 3G - 2048x1080p47.95 */
+	/* 3G - 2048x1080p48 */
+	/* 3G - 2048x1080p50 */
+	/* 3G - 2048x1080p59.94 */
+	/* 3G - 2048x1080p60 */
+
+	/* 6G - 3840X2160p23.98 */
+	/* 6G - 3840X2160p24 */
+	{ 3840, 2160, 24, V4L2_DV_BT_CEA_3840X2160P24 },
+	/* 6G - 3840X2160p25 */
+	{ 3840, 2160, 25, V4L2_DV_BT_CEA_3840X2160P25 },
+	/* 6G - 3840X2160p29.97 */
+	/* 6G - 3840X2160p30 */
+	{ 3840, 2160, 30, V4L2_DV_BT_CEA_3840X2160P30 },
+	/* 6G - 4096X2160p23.98 */
+	/* 6G - 4096X2160p24 */
+	{ 4096, 2160, 24, V4L2_DV_BT_CEA_4096X2160P24 },
+	/* 6G - 4096X2160p25 */
+	{ 4096, 2160, 25, V4L2_DV_BT_CEA_4096X2160P25 },
+	/* 6G - 4096X2160p29.97 */
+	/* 6G - 4096X2160p30 */
+	{ 4096, 2160, 30, V4L2_DV_BT_CEA_4096X2160P30 },
+	/* TODO add below timings */
+	/* 12G - 3840X2160p47.95 */
+	/* 12G - 3840X2160p48 */
+
+	/* 12G - 3840X2160p50 */
+	{ 3840, 2160, 50, V4L2_DV_BT_CEA_3840X2160P50 },
+	/* 12G - 3840X2160p59.94 */
+	/* 12G - 3840X2160p60 */
+	{ 3840, 2160, 60, V4L2_DV_BT_CEA_3840X2160P60 },
+
+	/* TODO add below timings */
+	/* 12G - 4096X2160p47.95 */
+	/* 12G - 4096X2160p48 */
+
+	/* 12G - 4096X2160p50 */
+	{ 4096, 2160, 50, V4L2_DV_BT_CEA_4096X2160P50 },
+	/* 12G - 4096X2160p59.94 */
+	/* 12G - 4096X2160p60 */
+	{ 4096, 2160, 60, V4L2_DV_BT_CEA_4096X2160P60 },
 };
 
 static inline struct xsdirxss_state *
@@ -867,11 +1001,16 @@ static irqreturn_t xsdirxss_irq_handler(int irq, void *dev_id)
 	if (!status)
 		return IRQ_NONE;
 
-	if (status & XSDIRX_INTR_VIDLOCK_MASK) {
+	xsdirxss_write(core, XSDIRX_ISR_REG, status);
+
+	if (status & XSDIRX_INTR_VIDLOCK_MASK ||
+	    status & XSDIRX_INTR_VIDUNLOCK_MASK) {
 		u32 val1, val2;
 
-		dev_dbg(core->dev, "video lock interrupt\n");
-		xsdirxss_write(core, XSDIRX_ISR_REG, XSDIRX_INTR_VIDLOCK_MASK);
+		dev_dbg(core->dev, "video lock/unlock interrupt\n");
+
+		xsdirx_streamdowncb(core);
+		state->streaming = false;
 
 		val1 = xsdirxss_read(core, XSDIRX_MODE_DET_STAT_REG);
 		val2 = xsdirxss_read(core, XSDIRX_TS_DET_STAT_REG);
@@ -881,7 +1020,7 @@ static irqreturn_t xsdirxss_irq_handler(int irq, void *dev_id)
 			u32 mask = XSDIRX_RST_CTRL_RST_CRC_ERRCNT_MASK |
 				   XSDIRX_RST_CTRL_RST_EDH_ERRCNT_MASK;
 
-			dev_dbg(core->dev, "mode & ts lock occurred\n");
+			dev_dbg(core->dev, "video lock interrupt\n");
 
 			xsdirxss_set(core, XSDIRX_RST_CTRL_REG, mask);
 			xsdirxss_clr(core, XSDIRX_RST_CTRL_REG, mask);
@@ -893,41 +1032,25 @@ static irqreturn_t xsdirxss_irq_handler(int irq, void *dev_id)
 			dev_dbg(core->dev, "st352 payload = 0x%08x\n", val2);
 
 			if (!xsdirx_get_stream_properties(state)) {
-				memset(&state->event, 0, sizeof(state->event));
-				state->event.type = V4L2_EVENT_SOURCE_CHANGE;
-				state->event.u.src_change.changes =
-					V4L2_EVENT_SRC_CH_RESOLUTION;
-				v4l2_subdev_notify_event(&state->subdev,
-							 &state->event);
-
 				state->vidlocked = true;
 			} else {
 				dev_err(core->dev, "Unable to get stream properties!\n");
 				state->vidlocked = false;
 			}
 		} else {
-			dev_dbg(core->dev, "video unlock before video lock!\n");
+			dev_dbg(core->dev, "video unlock interrupt\n");
 			state->vidlocked = false;
 		}
-	}
-
-	if (status & XSDIRX_INTR_VIDUNLOCK_MASK) {
-		dev_dbg(core->dev, "video unlock interrupt\n");
-		xsdirxss_write(core, XSDIRX_ISR_REG,
-			       XSDIRX_INTR_VIDUNLOCK_MASK);
-		xsdirx_streamdowncb(core);
 
 		memset(&state->event, 0, sizeof(state->event));
-		state->event.type = V4L2_EVENT_XLNXSDIRX_VIDUNLOCK;
+		state->event.type = V4L2_EVENT_SOURCE_CHANGE;
+		state->event.u.src_change.changes =
+			V4L2_EVENT_SRC_CH_RESOLUTION;
 		v4l2_subdev_notify_event(&state->subdev, &state->event);
-
-		state->vidlocked = false;
 	}
 
 	if (status & XSDIRX_INTR_UNDERFLOW_MASK) {
 		dev_dbg(core->dev, "Video in to AXI4 Stream core underflow interrupt\n");
-		xsdirxss_write(core, XSDIRX_ISR_REG,
-			       XSDIRX_INTR_UNDERFLOW_MASK);
 
 		memset(&state->event, 0, sizeof(state->event));
 		state->event.type = V4L2_EVENT_XLNXSDIRX_UNDERFLOW;
@@ -936,7 +1059,6 @@ static irqreturn_t xsdirxss_irq_handler(int irq, void *dev_id)
 
 	if (status & XSDIRX_INTR_OVERFLOW_MASK) {
 		dev_dbg(core->dev, "Video in to AXI4 Stream core overflow interrupt\n");
-		xsdirxss_write(core, XSDIRX_ISR_REG, XSDIRX_INTR_OVERFLOW_MASK);
 
 		memset(&state->event, 0, sizeof(state->event));
 		state->event.type = V4L2_EVENT_XLNXSDIRX_OVERFLOW;
@@ -962,7 +1084,6 @@ static int xsdirxss_subscribe_event(struct v4l2_subdev *sd,
 	struct xsdirxss_core *core = &xsdirxss->core;
 
 	switch (sub->type) {
-	case V4L2_EVENT_XLNXSDIRX_VIDUNLOCK:
 	case V4L2_EVENT_XLNXSDIRX_UNDERFLOW:
 	case V4L2_EVENT_XLNXSDIRX_OVERFLOW:
 		ret = v4l2_event_subscribe(fh, sub, XSDIRX_MAX_EVENTS, NULL);
@@ -1272,6 +1393,30 @@ static int xsdirxss_s_stream(struct v4l2_subdev *sd, int enable)
 	return 0;
 }
 
+/**
+ * xsdirxss_g_input_status - It is used to determine if the video signal
+ * is present / locked onto or not.
+ *
+ * @sd: V4L2 Sub device
+ * @status: status of signal locked
+ *
+ * This is used to determine if the video signal is present and locked onto
+ * by the SDI Rx core or not based on vidlocked flag.
+ *
+ * Return: zero on success
+ */
+static int xsdirxss_g_input_status(struct v4l2_subdev *sd, u32 *status)
+{
+	struct xsdirxss_state *xsdirxss = to_xsdirxssstate(sd);
+
+	if (!xsdirxss->vidlocked)
+		*status = V4L2_IN_ST_NO_SYNC | V4L2_IN_ST_NO_SIGNAL;
+	else
+		*status = 0;
+
+	return 0;
+}
+
 static struct v4l2_mbus_framefmt *
 __xsdirxss_get_pad_format(struct xsdirxss_state *xsdirxss,
 			  struct v4l2_subdev_pad_config *cfg,
@@ -1371,6 +1516,56 @@ static int xsdirxss_enum_mbus_code(struct v4l2_subdev *sd,
 	code->code = xsdirxss_mbus_fmts[code->index];
 
 	return 0;
+}
+
+/**
+ * xsdirxss_enum_dv_timings: Enumerate all the supported DV timings
+ * @sd: pointer to v4l2 subdev structure
+ * @timings: DV timings structure to be returned.
+ *
+ * Return: -EINVAL incase of invalid index and pad or zero on success
+ */
+static int xsdirxss_enum_dv_timings(struct v4l2_subdev *sd,
+				    struct v4l2_enum_dv_timings *timings)
+{
+	if (timings->index >= ARRAY_SIZE(fmt_cap))
+		return -EINVAL;
+
+	if (timings->pad != 0)
+		return -EINVAL;
+
+	timings->timings = fmt_cap[timings->index];
+	return 0;
+}
+
+/**
+ * xsdirxss_query_dv_timings: Query for the current DV timings
+ * @sd: pointer to v4l2 subdev structure
+ * @timings: DV timings structure to be returned.
+ *
+ * Return: -ENOLCK when video is not locked, -ERANGE when corresponding timing
+ * entry is not found or zero on success.
+ */
+static int xsdirxss_query_dv_timings(struct v4l2_subdev *sd,
+				     struct v4l2_dv_timings *timings)
+{
+	struct xsdirxss_state *state = to_xsdirxssstate(sd);
+	unsigned int i;
+
+	if (!state->vidlocked)
+		return -ENOLCK;
+
+	for (i = 0; i < ARRAY_SIZE(xsdirxss_dv_timings); i++) {
+		if (state->format.width == xsdirxss_dv_timings[i].width &&
+		    state->format.height == xsdirxss_dv_timings[i].height &&
+		    state->frame_interval.denominator ==
+		    (xsdirxss_dv_timings[i].fps * 1000)) {
+			*timings = xsdirxss_dv_timings[i].format;
+			return 0;
+		}
+	}
+
+	return -ERANGE;
 }
 
 /**
@@ -1541,13 +1736,16 @@ static const struct v4l2_subdev_core_ops xsdirxss_core_ops = {
 
 static const struct v4l2_subdev_video_ops xsdirxss_video_ops = {
 	.g_frame_interval = xsdirxss_g_frame_interval,
-	.s_stream = xsdirxss_s_stream
+	.s_stream = xsdirxss_s_stream,
+	.g_input_status = xsdirxss_g_input_status,
+	.query_dv_timings = xsdirxss_query_dv_timings,
 };
 
 static const struct v4l2_subdev_pad_ops xsdirxss_pad_ops = {
 	.get_fmt = xsdirxss_get_format,
 	.set_fmt = xsdirxss_set_format,
 	.enum_mbus_code = xsdirxss_enum_mbus_code,
+	.enum_dv_timings = xsdirxss_enum_dv_timings,
 };
 
 static const struct v4l2_subdev_ops xsdirxss_ops = {
