@@ -1999,6 +1999,8 @@ static int xsdirxss_probe(struct platform_device *pdev)
 error:
 	v4l2_ctrl_handler_free(&xsdirxss->ctrl_handler);
 	media_entity_cleanup(&subdev->entity);
+	xsdirx_globalintr(core, false);
+	xsdirx_disableintr(core, XSDIRX_INTR_ALL_MASK);
 clk_err:
 	clk_bulk_disable_unprepare(core->num_clks, core->clks);
 	return ret;
@@ -2013,6 +2015,12 @@ static int xsdirxss_remove(struct platform_device *pdev)
 	v4l2_async_unregister_subdev(subdev);
 	v4l2_ctrl_handler_free(&xsdirxss->ctrl_handler);
 	media_entity_cleanup(&subdev->entity);
+
+	xsdirx_globalintr(core, false);
+	xsdirx_disableintr(core, XSDIRX_INTR_ALL_MASK);
+	xsdirx_core_disable(core);
+	xsdirx_streamflow_control(core, false);
+
 	clk_bulk_disable_unprepare(core->num_clks, core->clks);
 
 	return 0;
