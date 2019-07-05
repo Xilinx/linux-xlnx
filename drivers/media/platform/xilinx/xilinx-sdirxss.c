@@ -275,9 +275,8 @@ enum sdi_family_enc {
  * @irq: requested irq number
  * @include_edh: EDH processor presence
  * @mode: 3G/6G/12G mode
- * @axi_clk: Axi lite interface clock
- * @sdirx_clk: SDI Rx GT clock
- * @vidout_clk: Video clock
+ * @clks: array of clocks
+ * @num_clks: number of clocks
  */
 struct xsdirxss_core {
 	struct device *dev;
@@ -285,9 +284,8 @@ struct xsdirxss_core {
 	int irq;
 	bool include_edh;
 	int mode;
-	struct clk *axi_clk;
-	struct clk *sdirx_clk;
-	struct clk *vidout_clk;
+	struct clk_bulk_data *clks;
+	int num_clks;
 };
 
 /**
@@ -320,6 +318,11 @@ struct xsdirxss_state {
 	bool streaming;
 	bool vidlocked;
 	bool ts_is_interlaced;
+};
+
+/* List of clocks required by UHD-SDI Rx subsystem */
+static const char * const xsdirxss_clks[] = {
+	"s_axi_aclk", "sdi_rx_clk", "video_out_clk",
 };
 
 static inline struct xsdirxss_state *
@@ -1643,44 +1646,22 @@ static int xsdirxss_probe(struct platform_device *pdev)
 	xsdirxss->core.dev = &pdev->dev;
 	core = &xsdirxss->core;
 
-	core->axi_clk = devm_clk_get(&pdev->dev, "s_axi_aclk");
-	if (IS_ERR(core->axi_clk)) {
-		ret = PTR_ERR(core->axi_clk);
-		dev_err(&pdev->dev, "failed to get s_axi_clk (%d)\n", ret);
+	core->num_clks = ARRAY_SIZE(xsdirxss_clks);
+	core->clks = devm_kcalloc(&pdev->dev, core->num_clks,
+				  sizeof(*core->clks), GFP_KERNEL);
+	if (!core->clks)
+		return -ENOMEM;
+
+	for (i = 0; i < core->num_clks; i++)
+		core->clks[i].id = xsdirxss_clks[i];
+
+	ret = devm_clk_bulk_get(&pdev->dev, core->num_clks, core->clks);
+	if (ret)
 		return ret;
-	}
 
-	core->sdirx_clk = devm_clk_get(&pdev->dev, "sdi_rx_clk");
-	if (IS_ERR(core->sdirx_clk)) {
-		ret = PTR_ERR(core->sdirx_clk);
-		dev_err(&pdev->dev, "failed to get sdi_rx_clk (%d)\n", ret);
+	ret = clk_bulk_prepare_enable(core->num_clks, core->clks);
+	if (ret)
 		return ret;
-	}
-
-	core->vidout_clk = devm_clk_get(&pdev->dev, "video_out_clk");
-	if (IS_ERR(core->vidout_clk)) {
-		ret = PTR_ERR(core->vidout_clk);
-		dev_err(&pdev->dev, "failed to get video_out_aclk (%d)\n", ret);
-		return ret;
-	}
-
-	ret = clk_prepare_enable(core->axi_clk);
-	if (ret) {
-		dev_err(&pdev->dev, "failed to enable axi_clk (%d)\n", ret);
-		return ret;
-	}
-
-	ret = clk_prepare_enable(core->sdirx_clk);
-	if (ret) {
-		dev_err(&pdev->dev, "failed to enable sdirx_clk (%d)\n", ret);
-		goto rx_clk_err;
-	}
-
-	ret = clk_prepare_enable(core->vidout_clk);
-	if (ret) {
-		dev_err(&pdev->dev, "failed to enable vidout_clk (%d)\n", ret);
-		goto vidout_clk_err;
-	}
 
 	ret = xsdirxss_parse_of(xsdirxss);
 	if (ret < 0)
@@ -1809,27 +1790,22 @@ static int xsdirxss_probe(struct platform_device *pdev)
 error:
 	v4l2_ctrl_handler_free(&xsdirxss->ctrl_handler);
 	media_entity_cleanup(&subdev->entity);
-
 clk_err:
-	clk_disable_unprepare(core->vidout_clk);
-vidout_clk_err:
-	clk_disable_unprepare(core->sdirx_clk);
-rx_clk_err:
-	clk_disable_unprepare(core->axi_clk);
+	clk_bulk_disable_unprepare(core->num_clks, core->clks);
 	return ret;
 }
 
 static int xsdirxss_remove(struct platform_device *pdev)
 {
 	struct xsdirxss_state *xsdirxss = platform_get_drvdata(pdev);
+	struct xsdirxss_core *core = &xsdirxss->core;
 	struct v4l2_subdev *subdev = &xsdirxss->subdev;
 
 	v4l2_async_unregister_subdev(subdev);
 	v4l2_ctrl_handler_free(&xsdirxss->ctrl_handler);
 	media_entity_cleanup(&subdev->entity);
-	clk_disable_unprepare(xsdirxss->core.vidout_clk);
-	clk_disable_unprepare(xsdirxss->core.sdirx_clk);
-	clk_disable_unprepare(xsdirxss->core.axi_clk);
+	clk_bulk_disable_unprepare(core->num_clks, core->clks);
+
 	return 0;
 }
 
