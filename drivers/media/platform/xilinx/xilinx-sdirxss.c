@@ -322,6 +322,11 @@ static const char * const xsdirxss_clks[] = {
 	"s_axi_aclk", "sdi_rx_clk", "video_out_clk",
 };
 
+static const u32 xsdirxss_mbus_fmts[] = {
+	MEDIA_BUS_FMT_UYVY10_1X20,
+	MEDIA_BUS_FMT_VYYUYY10_4X20,
+};
+
 static inline struct xsdirxss_state *
 to_xsdirxssstate(struct v4l2_subdev *subdev)
 {
@@ -1347,6 +1352,26 @@ static int xsdirxss_set_format(struct v4l2_subdev *sd,
 }
 
 /**
+ * xsdirxss_enum_mbus_code - Handle pixel format enumeration
+ * @sd: pointer to v4l2 subdev structure
+ * @cfg: V4L2 subdev pad configuration
+ * @code: pointer to v4l2_subdev_mbus_code_enum structure
+ *
+ * Return: -EINVAL or zero on success
+ */
+static int xsdirxss_enum_mbus_code(struct v4l2_subdev *sd,
+				   struct v4l2_subdev_pad_config *cfg,
+				   struct v4l2_subdev_mbus_code_enum *code)
+{
+	if (code->pad || code->index >= ARRAY_SIZE(xsdirxss_mbus_fmts))
+		return -EINVAL;
+
+	code->code = xsdirxss_mbus_fmts[code->index];
+
+	return 0;
+}
+
+/**
  * xsdirxss_open - Called on v4l2_open()
  * @sd: Pointer to V4L2 sub device structure
  * @fh: Pointer to V4L2 File handle
@@ -1520,6 +1545,7 @@ static const struct v4l2_subdev_video_ops xsdirxss_video_ops = {
 static const struct v4l2_subdev_pad_ops xsdirxss_pad_ops = {
 	.get_fmt = xsdirxss_get_format,
 	.set_fmt = xsdirxss_set_format,
+	.enum_mbus_code = xsdirxss_enum_mbus_code,
 };
 
 static const struct v4l2_subdev_ops xsdirxss_ops = {
