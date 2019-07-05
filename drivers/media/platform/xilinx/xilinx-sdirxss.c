@@ -190,9 +190,7 @@
 #define XSDIRX_MODE_12GI_MASK	0x5
 #define XSDIRX_MODE_12GF_MASK	0x6
 
-/*
- * Maximum number of events per file handle.
- */
+/* Maximum number of events per file handle. */
 #define XSDIRX_MAX_EVENTS	(128)
 
 /* ST352 related macros */
@@ -516,9 +514,9 @@ static int xsdirx_set_modedetect(struct xsdirxss_core *core, u16 mask)
 	dev_dbg(core->dev, "mask = 0x%x\n", mask);
 
 	val = xsdirxss_read(core, XSDIRX_MDL_CTRL_REG);
-	val &= ~(XSDIRX_MDL_CTRL_MODE_DET_EN_MASK);
-	val &= ~(XSDIRX_MDL_CTRL_MODE_AUTO_DET_MASK);
-	val &= ~(XSDIRX_MDL_CTRL_FORCED_MODE_MASK);
+	val &= ~XSDIRX_MDL_CTRL_MODE_DET_EN_MASK;
+	val &= ~XSDIRX_MDL_CTRL_MODE_AUTO_DET_MASK;
+	val &= ~XSDIRX_MDL_CTRL_FORCED_MODE_MASK;
 
 	if (hweight16(mask) > 1) {
 		/* Multi mode detection as more than 1 bit set in mask */
@@ -548,7 +546,7 @@ static int xsdirx_set_modedetect(struct xsdirxss_core *core, u16 mask)
 		val |= XSDIRX_MDL_CTRL_MODE_DET_EN_MASK;
 	} else {
 		/* Fixed Mode */
-		u32 forced_mode_mask = 0;
+		u32 forced_mode_mask;
 
 		dev_dbg(core->dev, "Detect fixed mode\n");
 
@@ -572,6 +570,8 @@ static int xsdirx_set_modedetect(struct xsdirxss_core *core, u16 mask)
 		case XSDIRX_MODE_12GF_OFFSET:
 			forced_mode_mask = XSDIRX_MODE_12GF_MASK;
 			break;
+		default:
+			forced_mode_mask = 0;
 		}
 		dev_dbg(core->dev, "Forced Mode Mask : 0x%x\n",
 			forced_mode_mask);
@@ -749,7 +749,7 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 
 	valid = xsdirxss_read(core, XSDIRX_ST352_VALID_REG);
 
-	if ((mode >= XSDIRX_MODE_3G_MASK) && !valid) {
+	if (mode >= XSDIRX_MODE_3G_MASK && !valid) {
 		dev_err(core->dev, "No valid ST352 payload present even for 3G mode and above\n");
 		return -EINVAL;
 	}
@@ -779,7 +779,7 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 	}
 
 	family = (val & XSDIRX_TS_DET_STAT_FAMILY_MASK) >>
-		  XSDIRX_TS_DET_STAT_FAMILY_OFFSET;
+			XSDIRX_TS_DET_STAT_FAMILY_OFFSET;
 	state->ts_is_interlaced = tscan ? false : true;
 
 	dev_dbg(core->dev, "ts_is_interlaced = %d, family = %d\n",
@@ -984,8 +984,7 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
  * @irq: IRQ number
  * @dev_id: Pointer to device state
  *
- * The SDI Rx interrupts are cleared by first setting and then clearing the bits
- * in the interrupt clear register. The interrupt status register is read only.
+ * The SDI Rx interrupts are cleared by writing 1 to corresponding bit.
  *
  * Return: IRQ_HANDLED after handling interrupts
  */
@@ -1298,10 +1297,12 @@ static int xsdirxss_log_status(struct v4l2_subdev *sd)
 {
 	struct xsdirxss_state *xsdirxss = to_xsdirxssstate(sd);
 	struct xsdirxss_core *core = &xsdirxss->core;
-	u32 data, i;
+	u32 i;
 
 	v4l2_info(sd, "***** SDI Rx subsystem reg dump start *****\n");
 	for (i = 0; i < 0x28; i++) {
+		u32 data;
+
 		data = xsdirxss_read(core, i * 4);
 		v4l2_info(sd, "offset 0x%08x data 0x%08x\n",
 			  i * 4, data);
@@ -1420,7 +1421,7 @@ static int xsdirxss_g_input_status(struct v4l2_subdev *sd, u32 *status)
 static struct v4l2_mbus_framefmt *
 __xsdirxss_get_pad_format(struct xsdirxss_state *xsdirxss,
 			  struct v4l2_subdev_pad_config *cfg,
-				unsigned int pad, u32 which)
+			  unsigned int pad, u32 which)
 {
 	switch (which) {
 	case V4L2_SUBDEV_FORMAT_TRY:
@@ -1444,7 +1445,7 @@ __xsdirxss_get_pad_format(struct xsdirxss_state *xsdirxss,
  */
 static int xsdirxss_get_format(struct v4l2_subdev *sd,
 			       struct v4l2_subdev_pad_config *cfg,
-					struct v4l2_subdev_format *fmt)
+			       struct v4l2_subdev_format *fmt)
 {
 	struct xsdirxss_state *xsdirxss = to_xsdirxssstate(sd);
 	struct xsdirxss_core *core = &xsdirxss->core;
@@ -1477,7 +1478,7 @@ static int xsdirxss_get_format(struct v4l2_subdev *sd,
  */
 static int xsdirxss_set_format(struct v4l2_subdev *sd,
 			       struct v4l2_subdev_pad_config *cfg,
-				struct v4l2_subdev_format *fmt)
+			       struct v4l2_subdev_format *fmt)
 {
 	struct v4l2_mbus_framefmt *__format;
 	struct xsdirxss_state *xsdirxss = to_xsdirxssstate(sd);
@@ -1777,8 +1778,7 @@ static int xsdirxss_parse_of(struct xsdirxss_state *xsdirxss)
 	dev_dbg(core->dev, "EDH property = %s\n",
 		core->include_edh ? "Present" : "Absent");
 
-	ret = of_property_read_string(node, "xlnx,line-rate",
-				      &sdi_std);
+	ret = of_property_read_string(node, "xlnx,line-rate", &sdi_std);
 	if (ret < 0) {
 		dev_err(core->dev, "xlnx,line-rate property not found\n");
 		return ret;
@@ -1819,7 +1819,8 @@ static int xsdirxss_parse_of(struct xsdirxss_state *xsdirxss)
 
 		if (format->vf_code != XVIP_VF_YUV_422 &&
 		    format->vf_code != XVIP_VF_YUV_420) {
-			dev_err(core->dev, "Incorrect UG934 video format set.\n");
+			dev_err(core->dev,
+				"Incorrect UG934 video format set.\n");
 			return -EINVAL;
 		}
 		xsdirxss->vip_format = format;
@@ -1977,8 +1978,6 @@ static int xsdirxss_probe(struct platform_device *pdev)
 				goto error;
 			}
 		}
-	} else {
-		dev_dbg(xsdirxss->core.dev, "Not registering the EDH controls as EDH is disabled in IP\n");
 	}
 
 	if (xsdirxss->ctrl_handler.error) {
