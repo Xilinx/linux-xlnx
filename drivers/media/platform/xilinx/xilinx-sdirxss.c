@@ -673,11 +673,6 @@ static void xsdirx_streamflow_control(struct xsdirxss_core *core, bool enable)
 	}
 }
 
-static void xsdirx_streamdowncb(struct xsdirxss_core *core)
-{
-	xsdirx_streamflow_control(core, false);
-}
-
 static void xsdirxss_get_framerate(struct v4l2_fract *frame_interval,
 				   u32 framerate)
 {
@@ -1010,7 +1005,7 @@ static irqreturn_t xsdirxss_irq_handler(int irq, void *dev_id)
 
 		dev_dbg(core->dev, "video lock/unlock interrupt\n");
 
-		xsdirx_streamdowncb(core);
+		xsdirx_streamflow_control(core, false);
 		state->streaming = false;
 
 		val1 = xsdirxss_read(core, XSDIRX_MODE_DET_STAT_REG);
@@ -1313,16 +1308,6 @@ static int xsdirxss_log_status(struct v4l2_subdev *sd)
 	return 0;
 }
 
-static void xsdirxss_start_stream(struct xsdirxss_state *xsdirxss)
-{
-	xsdirx_streamflow_control(&xsdirxss->core, true);
-}
-
-static void xsdirxss_stop_stream(struct xsdirxss_state *xsdirxss)
-{
-	xsdirx_streamflow_control(&xsdirxss->core, false);
-}
-
 /**
  * xsdirxss_g_frame_interval - Get the frame interval
  * @sd: V4L2 Sub device
@@ -1379,7 +1364,7 @@ static int xsdirxss_s_stream(struct v4l2_subdev *sd, int enable)
 			return -EINVAL;
 		}
 
-		xsdirxss_start_stream(xsdirxss);
+		xsdirx_streamflow_control(core, true);
 		xsdirxss->streaming = true;
 		dev_dbg(core->dev, "Streaming started\n");
 	} else {
@@ -1388,7 +1373,7 @@ static int xsdirxss_s_stream(struct v4l2_subdev *sd, int enable)
 			return -EINVAL;
 		}
 
-		xsdirxss_stop_stream(xsdirxss);
+		xsdirx_streamflow_control(core, false);
 		xsdirxss->streaming = false;
 		dev_dbg(core->dev, "Streaming stopped\n");
 	}
