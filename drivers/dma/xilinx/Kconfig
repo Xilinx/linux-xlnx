@@ -25,13 +25,6 @@ config XILINX_VDMATEST
 	  Simple DMA test client. Say N unless you're debugging a
 	  DMA Device driver.
 
-config XILINX_CDMATEST
-	tristate "DMA Test client for CDMA"
-	depends on XILINX_DMA
-	help
-	  Simple DMA test client. Say N unless you're debugging a
-	  DMA Device driver.
-
 config XILINX_DPDMA
 	tristate "Xilinx DPDMA Engine"
 	select DMA_ENGINE
