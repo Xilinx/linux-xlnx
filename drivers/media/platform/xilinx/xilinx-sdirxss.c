@@ -171,9 +171,6 @@
 #define XSDIRX_STAT_SB_RX_TDATA_GT_RESETDONE_MASK	BIT(2)
 #define XSDIRX_STAT_SB_RX_TDATA_GT_BITRATE_MASK		BIT(3)
 
-/* Number of media pads */
-#define XSDIRX_MEDIA_PADS	(1)
-
 #define XSDIRX_DEFAULT_WIDTH	(1920)
 #define XSDIRX_DEFAULT_HEIGHT	(1080)
 
@@ -294,11 +291,11 @@ struct xsdirxss_core {
  * @subdev: The v4l2 subdev structure
  * @ctrl_handler: control handler
  * @event: Holds the video unlock event
- * @formats: Active V4L2 formats on each pad
+ * @format: Active V4L2 format on source pad
  * @default_format: default V4L2 media bus format
  * @frame_interval: Captures the frame rate
  * @vip_format: format information corresponding to the active format
- * @pads: media pads
+ * @pad: source media pad
  * @streaming: Flag for storing streaming state
  * @vidlocked: Flag indicating SDI Rx has locked onto video stream
  * @ts_is_interlaced: Flag indicating Transport Stream is interlaced.
@@ -310,11 +307,11 @@ struct xsdirxss_state {
 	struct v4l2_subdev subdev;
 	struct v4l2_ctrl_handler ctrl_handler;
 	struct v4l2_event event;
-	struct v4l2_mbus_framefmt formats[XSDIRX_MEDIA_PADS];
+	struct v4l2_mbus_framefmt format;
 	struct v4l2_mbus_framefmt default_format;
 	struct v4l2_fract frame_interval;
 	const struct xvip_video_format *vip_format;
-	struct media_pad pads[XSDIRX_MEDIA_PADS];
+	struct media_pad pad;
 	bool streaming;
 	bool vidlocked;
 	bool ts_is_interlaced;
@@ -606,7 +603,7 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 	u32 mode, payload = 0, val, family, valid, tscan;
 	u8 byte1 = 0, active_luma = 0, pic_type = 0, framerate = 0;
 	u8 sampling = XST352_BYTE3_COLOR_FORMAT_422;
-	struct v4l2_mbus_framefmt *format = &state->formats[0];
+	struct v4l2_mbus_framefmt *format = &state->format;
 
 	mode = xsdirxss_read(core, XSDIRX_MODE_DET_STAT_REG);
 	mode &= XSDIRX_MODE_DET_STAT_RX_MODE_MASK;
@@ -1277,7 +1274,7 @@ __xsdirxss_get_pad_format(struct xsdirxss_state *xsdirxss,
 	case V4L2_SUBDEV_FORMAT_TRY:
 		return v4l2_subdev_get_try_format(&xsdirxss->subdev, cfg, pad);
 	case V4L2_SUBDEV_FORMAT_ACTIVE:
-		return &xsdirxss->formats[pad];
+		return &xsdirxss->format;
 	default:
 		return NULL;
 	}
@@ -1684,7 +1681,7 @@ static int xsdirxss_probe(struct platform_device *pdev)
 	xsdirxss_write(core, XSDIRX_CRC_ERRCNT_REG, 0xFFFF);
 
 	/* Initialize V4L2 subdevice and media entity */
-	xsdirxss->pads[0].flags = MEDIA_PAD_FL_SOURCE;
+	xsdirxss->pad.flags = MEDIA_PAD_FL_SOURCE;
 
 	/* Initialize the default format */
 	xsdirxss->default_format.code = xsdirxss->vip_format->code;
@@ -1693,7 +1690,7 @@ static int xsdirxss_probe(struct platform_device *pdev)
 	xsdirxss->default_format.width = XSDIRX_DEFAULT_WIDTH;
 	xsdirxss->default_format.height = XSDIRX_DEFAULT_HEIGHT;
 
-	xsdirxss->formats[0] = xsdirxss->default_format;
+	xsdirxss->format = xsdirxss->default_format;
 
 	/* Initialize V4L2 subdevice and media entity */
 	subdev = &xsdirxss->subdev;
@@ -1709,7 +1706,7 @@ static int xsdirxss_probe(struct platform_device *pdev)
 
 	v4l2_set_subdevdata(subdev, xsdirxss);
 
-	ret = media_entity_pads_init(&subdev->entity, 1, xsdirxss->pads);
+	ret = media_entity_pads_init(&subdev->entity, 1, &xsdirxss->pad);
 	if (ret < 0)
 		goto error;
 
