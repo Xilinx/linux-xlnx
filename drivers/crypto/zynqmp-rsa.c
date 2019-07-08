@@ -19,7 +19,7 @@
 
 #define ZYNQMP_RSA_QUEUE_LENGTH	1
 #define ZYNQMP_RSA_MAX_KEY_SIZE	1024
-#define ZYNQMP_BLOCKSIZE	64
+#define ZYNQMP_RSA_BLOCKSIZE	64
 
 struct zynqmp_rsa_dev;
 
@@ -111,8 +111,7 @@ static int zynqmp_rsa_xcrypt(struct blkcipher_desc *desc,
 		op->src = walk.src.virt.addr;
 		memcpy(kbuf + src_data, op->src, datasize);
 		src_data = src_data + datasize;
-		datasize &= (ZYNQMP_BLOCKSIZE - 1);
-		err = blkcipher_walk_done(desc, &walk, datasize);
+		err = blkcipher_walk_done(desc, &walk, 0);
 	}
 	memcpy(kbuf + nbytes, op->key, op->keylen);
 	eemi_ops->rsa(dma_addr, nbytes, flags);
@@ -123,8 +122,7 @@ static int zynqmp_rsa_xcrypt(struct blkcipher_desc *desc,
 	while ((datasize = walk.nbytes)) {
 		memcpy(walk.dst.virt.addr, kbuf + dst_data, datasize);
 		dst_data = dst_data + datasize;
-		datasize &= (ZYNQMP_BLOCKSIZE - 1);
-		err = blkcipher_walk_done(desc, &walk, datasize);
+		err = blkcipher_walk_done(desc, &walk, 0);
 	}
 	dma_free_coherent(dd->dev, dma_size, kbuf, dma_addr);
 	return err;
@@ -152,7 +150,7 @@ static struct crypto_alg zynqmp_alg = {
 	.cra_priority		=	400,
 	.cra_flags		=	CRYPTO_ALG_TYPE_BLKCIPHER |
 					CRYPTO_ALG_KERN_DRIVER_ONLY,
-	.cra_blocksize		=	ZYNQMP_BLOCKSIZE,
+	.cra_blocksize		=	ZYNQMP_RSA_BLOCKSIZE,
 	.cra_ctxsize		=	sizeof(struct zynqmp_rsa_op),
 	.cra_alignmask		=	15,
 	.cra_type		=	&crypto_blkcipher_type,
