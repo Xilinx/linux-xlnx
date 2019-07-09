@@ -700,6 +700,7 @@ static int zynqmp_ipi_probe(struct platform_device *pdev)
 		if (ret) {
 			dev_err(dev, "failed to probe subdev.\n");
 			ret = -EINVAL;
+			of_node_put(nc);
 			goto free_mbox_dev;
 		}
 		mbox++;
