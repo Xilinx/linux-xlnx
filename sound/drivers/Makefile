@@ -25,4 +25,4 @@ obj-$(CONFIG_SND_ML403_AC97CR) += snd-ml403-ac97cr.o
 
 obj-$(CONFIG_SND) += opl3/ opl4/ mpu401/ vx/ pcsp/
 
-obj=$(CONFIG_SND_XYLON_I2S) += xylon/
+obj-$(CONFIG_SND_XYLON_I2S) += xylon/
