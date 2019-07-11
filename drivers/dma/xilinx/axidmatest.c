@@ -73,6 +73,29 @@ static DECLARE_WAIT_QUEUE_HEAD(thread_wait);
 static LIST_HEAD(dmatest_channels);
 static unsigned int nr_channels;
 
+static unsigned long long dmatest_persec(s64 runtime, unsigned int val)
+{
+	unsigned long long per_sec = 1000000;
+
+	if (runtime <= 0)
+		return 0;
+
+	/* drop precision until runtime is 32-bits */
+	while (runtime > UINT_MAX) {
+		runtime >>= 1;
+		per_sec <<= 1;
+	}
+
+	per_sec *= val;
+	do_div(per_sec, runtime);
+	return per_sec;
+}
+
+static unsigned long long dmatest_KBs(s64 runtime, unsigned long long len)
+{
+	return dmatest_persec(runtime, len >> 10);
+}
+
 static bool is_threaded_test_run(struct dmatest_chan *tx_dtc,
 					struct dmatest_chan *rx_dtc)
 {
@@ -223,6 +246,11 @@ static int dmatest_slave_func(void *data)
 	int dst_cnt;
 	int bd_cnt = 11;
 	int i;
+	ktime_t	ktime, start, diff;
+	ktime_t	filltime = 0;
+	ktime_t	comparetime = 0;
+	s64 runtime = 0;
+	unsigned long long total_len = 0;
 	thread_name = current->comm;
 
 	ret = -ENOMEM;
@@ -256,6 +284,7 @@ static int dmatest_slave_func(void *data)
 
 	flags = DMA_CTRL_ACK | DMA_PREP_INTERRUPT;
 
+	ktime = ktime_get();
 	while (!kthread_should_stop()
 		&& !(iterations && total_tests >= iterations)) {
 		struct dma_device *tx_dev = tx_chan->device;
@@ -290,14 +319,18 @@ static int dmatest_slave_func(void *data)
 		len = (len >> align) << align;
 		if (!len)
 			len = 1 << align;
+		total_len += len;
 		src_off = dmatest_random() % (test_buf_size - len + 1);
 		dst_off = dmatest_random() % (test_buf_size - len + 1);
 
 		src_off = (src_off >> align) << align;
 		dst_off = (dst_off >> align) << align;
 
+		start = ktime_get();
 		dmatest_init_srcs(thread->srcs, src_off, len);
 		dmatest_init_dsts(thread->dsts, dst_off, len);
+		diff = ktime_sub(ktime_get(), start);
+		filltime = ktime_add(filltime, diff);
 
 		for (i = 0; i < src_cnt; i++) {
 			u8 *buf = thread->srcs[i] + src_off;
@@ -430,7 +463,7 @@ static int dmatest_slave_func(void *data)
 					test_buf_size, DMA_DEV_TO_MEM);
 
 		error_count = 0;
-
+		start = ktime_get();
 		pr_debug("%s: verifying source buffer...\n", thread_name);
 		error_count += dmatest_verify(thread->srcs, 0, src_off,
 				0, PATTERN_SRC, true);
@@ -451,6 +484,8 @@ static int dmatest_slave_func(void *data)
 		error_count += dmatest_verify(thread->dsts, dst_off + len,
 				test_buf_size, dst_off + len,
 				PATTERN_DST, false);
+		diff = ktime_sub(ktime_get(), start);
+		comparetime = ktime_add(comparetime, diff);
 
 		if (error_count) {
 			pr_warn("%s: #%u: %u errors with ",
@@ -466,6 +501,11 @@ static int dmatest_slave_func(void *data)
 		}
 	}
 
+	ktime = ktime_sub(ktime_get(), ktime);
+	ktime = ktime_sub(ktime, comparetime);
+	ktime = ktime_sub(ktime, filltime);
+	runtime = ktime_to_us(ktime);
+
 	ret = 0;
 	for (i = 0; thread->dsts[i]; i++)
 		kfree(thread->dsts[i]);
@@ -477,8 +517,10 @@ err_dsts:
 err_srcbuf:
 	kfree(thread->srcs);
 err_srcs:
-	pr_notice("%s: terminating after %u tests, %u failures (status %d)\n",
-			thread_name, total_tests, failed_tests, ret);
+	pr_notice("%s: terminating after %u tests, %u failures %llu iops %llu KB/s (status %d)\n",
+		  thread_name, total_tests, failed_tests,
+		  dmatest_persec(runtime, total_tests),
+		  dmatest_KBs(runtime, total_len), ret);
 
 	thread->done = true;
 	wake_up(&thread_wait);
