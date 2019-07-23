@@ -787,6 +787,7 @@ static int xcsc_set_format(struct v4l2_subdev *subdev,
 	switch (__format->code) {
 	case MEDIA_BUS_FMT_VUY8_1X24:
 	case MEDIA_BUS_FMT_RBG888_1X24:
+	case MEDIA_BUS_FMT_RBG101010_1X30:
 	case MEDIA_BUS_FMT_UYVY8_1X16:
 	case MEDIA_BUS_FMT_VYYUYY8_1X24:
 	case MEDIA_BUS_FMT_VYYUYY10_4X20:
