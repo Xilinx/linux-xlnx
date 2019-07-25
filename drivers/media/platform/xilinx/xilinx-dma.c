@@ -67,7 +67,6 @@ static int xvip_dma_verify_format(struct xvip_dma *dma)
 	struct v4l2_subdev_format fmt;
 	struct v4l2_subdev *subdev;
 	int ret;
-	int width, height;
 
 	subdev = xvip_dma_remote_subdev(&dma->pad, &fmt.pad);
 	if (!subdev)
@@ -81,15 +80,12 @@ static int xvip_dma_verify_format(struct xvip_dma *dma)
 	if (dma->fmtinfo->code != fmt.format.code)
 		return -EINVAL;
 
-	if (V4L2_TYPE_IS_MULTIPLANAR(dma->format.type)) {
-		width = dma->format.fmt.pix_mp.width;
-		height = dma->format.fmt.pix_mp.height;
-	} else {
-		width = dma->format.fmt.pix.width;
-		height = dma->format.fmt.pix.height;
-	}
-
-	if (width != fmt.format.width || height != fmt.format.height)
+	/*
+	 * Crop rectangle contains format resolution by default, and crop
+	 * rectangle if s_selection is executed.
+	 */
+	if (dma->r.width != fmt.format.width ||
+	    dma->r.height != fmt.format.height)
 		return -EINVAL;
 
 	return 0;
