@@ -63,6 +63,7 @@ static inline struct xvip_pipeline *to_xvip_pipeline(struct media_entity *e)
  * @port: composite device DT node port number for the DMA channel
  * @lock: protects the @format, @fmtinfo and @queue fields
  * @format: active V4L2 pixel format
+ * @r: crop rectangle parameters
  * @fmtinfo: format information corresponding to the active @format
  * @poss_v4l2_fmts: All possible v4l formats supported
  * @poss_v4l2_fmt_cnt: number of supported v4l formats
@@ -90,6 +91,7 @@ struct xvip_dma {
 
 	struct mutex lock;
 	struct v4l2_format format;
+	struct v4l2_rect r;
 	const struct xvip_video_format *fmtinfo;
 	u32 *poss_v4l2_fmts;
 	u32 poss_v4l2_fmt_cnt;
