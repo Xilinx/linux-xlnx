@@ -1142,6 +1142,106 @@ xvip_dma_set_ctrl(struct file *file, void *fh, struct v4l2_control *ctl)
 	return 0;
 }
 
+static int
+xvip_dma_g_selection(struct file *file, void *fh, struct v4l2_selection *sel)
+{
+	struct v4l2_fh *vfh = file->private_data;
+	struct xvip_dma *dma = to_xvip_dma(vfh->vdev);
+	u32 width, height;
+	bool crop_frame = false;
+
+	switch (sel->target) {
+	case V4L2_SEL_TGT_COMPOSE:
+		if (sel->type != V4L2_BUF_TYPE_VIDEO_CAPTURE)
+			return -EINVAL;
+
+		crop_frame = true;
+		break;
+	case V4L2_SEL_TGT_COMPOSE_BOUNDS:
+	case V4L2_SEL_TGT_COMPOSE_DEFAULT:
+		if (sel->type != V4L2_BUF_TYPE_VIDEO_CAPTURE)
+			return -EINVAL;
+		break;
+	case V4L2_SEL_TGT_CROP:
+		if (sel->type != V4L2_BUF_TYPE_VIDEO_OUTPUT)
+			return -EINVAL;
+
+		crop_frame = true;
+		break;
+	case V4L2_SEL_TGT_CROP_BOUNDS:
+	case V4L2_SEL_TGT_CROP_DEFAULT:
+		if (sel->type != V4L2_BUF_TYPE_VIDEO_OUTPUT)
+			return -EINVAL;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	sel->r.left = 0;
+	sel->r.top = 0;
+
+	if (crop_frame) {
+		sel->r.width = dma->r.width;
+		sel->r.height = dma->r.height;
+	} else {
+		if (V4L2_TYPE_IS_MULTIPLANAR(dma->format.type)) {
+			width = dma->format.fmt.pix_mp.width;
+			height = dma->format.fmt.pix_mp.height;
+		} else {
+			width = dma->format.fmt.pix.width;
+			height = dma->format.fmt.pix.height;
+		}
+
+		sel->r.width = width;
+		sel->r.height = height;
+	}
+
+	return 0;
+}
+
+static int
+xvip_dma_s_selection(struct file *file, void *fh, struct v4l2_selection *sel)
+{
+	struct v4l2_fh *vfh = file->private_data;
+	struct xvip_dma *dma = to_xvip_dma(vfh->vdev);
+	u32 width, height;
+
+	switch (sel->target) {
+	case V4L2_SEL_TGT_COMPOSE:
+		/* COMPOSE target is only valid for capture buftype */
+		if (sel->type != V4L2_BUF_TYPE_VIDEO_CAPTURE)
+			return -EINVAL;
+		break;
+	case V4L2_SEL_TGT_CROP:
+		/* CROP target is only valid for output buftype */
+		if (sel->type != V4L2_BUF_TYPE_VIDEO_OUTPUT)
+			return -EINVAL;
+		break;
+	default:
+		return -EINVAL;
+	}
+
+	if (V4L2_TYPE_IS_MULTIPLANAR(dma->format.type)) {
+		width = dma->format.fmt.pix_mp.width;
+		height = dma->format.fmt.pix_mp.height;
+	} else {
+		width = dma->format.fmt.pix.width;
+		height = dma->format.fmt.pix.height;
+	}
+
+	if (sel->r.width > width || sel->r.height > height ||
+	    sel->r.top != 0 || sel->r.left != 0)
+		return -EINVAL;
+
+	sel->r.width = roundup(max(XVIP_DMA_MIN_WIDTH, sel->r.width),
+			       dma->align);
+	sel->r.height = max(XVIP_DMA_MIN_HEIGHT, sel->r.height);
+	dma->r.width = sel->r.width;
+	dma->r.height = sel->r.height;
+
+	return 0;
+}
+
 static const struct v4l2_ioctl_ops xvip_dma_ioctl_ops = {
 	.vidioc_querycap		= xvip_dma_querycap,
 	.vidioc_enum_fmt_vid_cap	= xvip_dma_enum_format,
@@ -1159,6 +1259,8 @@ static const struct v4l2_ioctl_ops xvip_dma_ioctl_ops = {
 	.vidioc_try_fmt_vid_cap_mplane	= xvip_dma_try_format,
 	.vidioc_try_fmt_vid_out		= xvip_dma_try_format,
 	.vidioc_try_fmt_vid_out_mplane	= xvip_dma_try_format,
+	.vidioc_s_selection		= xvip_dma_s_selection,
+	.vidioc_g_selection		= xvip_dma_g_selection,
 	.vidioc_reqbufs			= vb2_ioctl_reqbufs,
 	.vidioc_querybuf		= vb2_ioctl_querybuf,
 	.vidioc_qbuf			= vb2_ioctl_qbuf,
