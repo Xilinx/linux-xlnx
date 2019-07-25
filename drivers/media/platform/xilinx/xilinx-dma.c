@@ -526,6 +526,7 @@ static void xvip_dma_buffer_queue(struct vb2_buffer *vb)
 	u32 luma_size;
 	u32 padding_factor_nume, padding_factor_deno, bpl_nume, bpl_deno;
 	u32 fid = ~0;
+	u32 bpl;
 
 	if (dma->queue.type == V4L2_BUF_TYPE_VIDEO_CAPTURE ||
 	    dma->queue.type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
@@ -551,6 +552,8 @@ static void xvip_dma_buffer_queue(struct vb2_buffer *vb)
 		struct v4l2_pix_format_mplane *pix_mp;
 
 		pix_mp = &dma->format.fmt.pix_mp;
+		bpl = pix_mp->plane_fmt[0].bytesperline;
+
 		xilinx_xdma_v4l2_config(dma->dma, pix_mp->pixelformat);
 		xvip_width_padding_factor(pix_mp->pixelformat,
 					  &padding_factor_nume,
@@ -558,12 +561,11 @@ static void xvip_dma_buffer_queue(struct vb2_buffer *vb)
 		xvip_bpl_scaling_factor(pix_mp->pixelformat, &bpl_nume,
 					&bpl_deno);
 		dma->xt.frame_size = dma->fmtinfo->num_planes;
-		dma->sgl[0].size = (pix_mp->width * dma->fmtinfo->bpl_factor *
+		dma->sgl[0].size = (dma->r.width * dma->fmtinfo->bpl_factor *
 				    padding_factor_nume * bpl_nume) /
 				    (padding_factor_deno * bpl_deno);
-		dma->sgl[0].icg = pix_mp->plane_fmt[0].bytesperline -
-							dma->sgl[0].size;
-		dma->xt.numf = pix_mp->height;
+		dma->sgl[0].icg = bpl - dma->sgl[0].size;
+		dma->xt.numf = dma->r.height;
 
 		/*
 		 * dst_icg is the number of bytes to jump after last luma addr
@@ -572,14 +574,14 @@ static void xvip_dma_buffer_queue(struct vb2_buffer *vb)
 
 		/* Handling contiguous data with mplanes */
 		if (dma->fmtinfo->buffers == 1) {
-			dma->sgl[0].dst_icg = 0;
+			dma->sgl[0].dst_icg = bpl *
+					      (pix_mp->height - dma->r.height);
 		} else {
 			/* Handling non-contiguous data with mplanes */
 			if (dma->fmtinfo->buffers == 2) {
 				dma_addr_t chroma_addr =
 					vb2_dma_contig_plane_dma_addr(vb, 1);
-				luma_size = pix_mp->plane_fmt[0].bytesperline *
-					    dma->xt.numf;
+				luma_size = bpl * dma->xt.numf;
 				if (chroma_addr > addr)
 					dma->sgl[0].dst_icg = chroma_addr -
 							      addr - luma_size;
@@ -589,6 +591,7 @@ static void xvip_dma_buffer_queue(struct vb2_buffer *vb)
 		struct v4l2_pix_format *pix;
 
 		pix = &dma->format.fmt.pix;
+		bpl = pix->bytesperline;
 		xilinx_xdma_v4l2_config(dma->dma, pix->pixelformat);
 		xvip_width_padding_factor(pix->pixelformat,
 					  &padding_factor_nume,
@@ -596,12 +599,13 @@ static void xvip_dma_buffer_queue(struct vb2_buffer *vb)
 		xvip_bpl_scaling_factor(pix->pixelformat, &bpl_nume,
 					&bpl_deno);
 		dma->xt.frame_size = dma->fmtinfo->num_planes;
-		dma->sgl[0].size = (pix->width * dma->fmtinfo->bpl_factor *
+		dma->sgl[0].size = (dma->r.width * dma->fmtinfo->bpl_factor *
 				    padding_factor_nume * bpl_nume) /
 				    (padding_factor_deno * bpl_deno);
-		dma->sgl[0].icg = pix->bytesperline - dma->sgl[0].size;
-		dma->xt.numf = pix->height;
+		dma->sgl[0].icg = bpl - dma->sgl[0].size;
+		dma->xt.numf = dma->r.height;
 		dma->sgl[0].dst_icg = 0;
+		dma->sgl[0].dst_icg = bpl * (pix->height - dma->r.height);
 	}
 
 	desc = dmaengine_prep_interleaved_dma(dma->dma, &dma->xt, flags);
