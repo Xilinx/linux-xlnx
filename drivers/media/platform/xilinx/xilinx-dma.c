@@ -1107,10 +1107,20 @@ xvip_dma_set_format(struct file *file, void *fh, struct v4l2_format *format)
 	if (vb2_is_busy(&dma->queue))
 		return -EBUSY;
 
-	if (V4L2_TYPE_IS_MULTIPLANAR(dma->format.type))
+	if (V4L2_TYPE_IS_MULTIPLANAR(dma->format.type)) {
 		dma->format.fmt.pix_mp = format->fmt.pix_mp;
-	else
+
+		/*
+		 * Save format resolution in crop rectangle. This will be
+		 * updated when s_slection is called.
+		 */
+		dma->r.width = format->fmt.pix_mp.width;
+		dma->r.height = format->fmt.pix_mp.height;
+	} else {
 		dma->format.fmt.pix = format->fmt.pix;
+		dma->r.width = format->fmt.pix.width;
+		dma->r.height = format->fmt.pix.height;
+	}
 
 	dma->fmtinfo = info;
 
