@@ -3050,7 +3050,8 @@ static int axienet_probe(struct platform_device *pdev)
 
 		ret = axienet_dma_clk_init(pdev);
 		if (ret) {
-			dev_err(&pdev->dev, "DMA clock init failed %d\n", ret);
+			if (ret != -EPROBE_DEFER)
+				dev_err(&pdev->dev, "DMA clock init failed %d\n", ret);
 			goto free_netdev;
 		}
 	}
@@ -3058,7 +3059,8 @@ static int axienet_probe(struct platform_device *pdev)
 	ret = axienet_clk_init(pdev, &lp->aclk, &lp->eth_sclk,
 			       &lp->eth_refclk, &lp->eth_dclk);
 	if (ret) {
-		dev_err(&pdev->dev, "Ethernet clock init failed %d\n", ret);
+		if (ret != -EPROBE_DEFER)
+			dev_err(&pdev->dev, "Ethernet clock init failed %d\n", ret);
 		goto err_disable_clk;
 	}
 
