@@ -2784,7 +2784,8 @@ static int xlnx_mix_remove(struct platform_device *pdev)
 {
 	struct xlnx_mix *mixer = platform_get_drvdata(pdev);
 
-	of_xlnx_bridge_put(mixer->vtc_bridge);
+	if (mixer->vtc_bridge)
+		of_xlnx_bridge_put(mixer->vtc_bridge);
 	xlnx_drm_pipeline_exit(mixer->master);
 	component_del(&pdev->dev, &xlnx_mix_component_ops);
 	return 0;
