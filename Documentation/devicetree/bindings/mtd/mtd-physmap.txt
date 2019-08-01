@@ -29,6 +29,8 @@ file systems on embedded devices.
  - use-advanced-sector-protection: boolean to enable support for the
    advanced sector protection (Spansion: PPB - Persistent Protection
    Bits) locking.
+ - multi-die : (optional) boolean to enable support for multiple die flash
+   device.
 
 For JEDEC compatible devices, the following additional properties
 are defined:
