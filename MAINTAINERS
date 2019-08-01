@@ -16285,6 +16285,13 @@ R:	Amit Kumar Mahapatra <amit.kumar-mahapatra@xilinx.com>
 F:	drivers/spi/spi-zynq-qspi.c
 W:	https://xilinx-wiki.atlassian.net/wiki/spaces/A/pages/18842262/Zynq+QSPI+Driver
 
+XILINX RTC ZYNQMP DRIVER
+M:	Neeli Srinivas <srinivas.neeli@xilinx.com>
+R:	Srinivas Goud <srinivas.goud@xilinx.com>
+R:	Shubhrajyoti Datta <shubhrajyoti.datta@xilinx.com>
+S:	Maintained
+F:	drivers/rtc/rtc-zynqmp.c
+
 XILINX SD-FEC IP CORES
 M:	Derek Kiernan <derek.kiernan@xilinx.com>
 M:	Dragan Cvetic <dragan.cvetic@xilinx.com>
