@@ -1701,13 +1701,14 @@ int zynqmp_dp_bind(struct device *dev, struct device *master, void *data)
 				   ret ? ret : 8);
 	zynqmp_dp_update_bpp(dp);
 
+	INIT_DELAYED_WORK(&dp->hpd_work, zynqmp_dp_hpd_work_func);
+
 	/* This enables interrupts, so should be called after DRM init */
 	ret = zynqmp_dp_init_aux(dp);
 	if (ret) {
 		dev_err(dp->dev, "failed to initialize DP aux");
 		goto error_prop;
 	}
-	INIT_DELAYED_WORK(&dp->hpd_work, zynqmp_dp_hpd_work_func);
 
 	return 0;
 
