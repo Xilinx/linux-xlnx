@@ -1773,7 +1773,7 @@ static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
 			 * for single and dual stacked mode and 32MB for dual
 			 * parallel mode.
 			 */
-			if (nor->spi->multi_die) {
+			if (nor->spi && nor->spi->multi_die) {
 				bank_size = (OFFSET_16_MB << nor->shift);
 				cur_bank = offset / bank_size;
 				nxt_bank = (offset + len) / bank_size;
