@@ -59,7 +59,7 @@ Optional properties (When USXGMII is in use):
 			  5000 or 10000.
 Optional properties for connected DMA node:
 - xlnx,addrwidth	: Specify the width of the DMA address space in bits.
-			  Valid range is 32-64. Default is 32.
+			  Value type is u8. Valid range is 32-64. Default is 32.
 - xlnx,include-dre	: Tells whether DMA h/w is configured with data
 			  realignment engine(DRE) or not.
 
@@ -75,6 +75,7 @@ Example: AXI 1G/2.5G Ethernet Subsystem + AXIDMA
 	axi_eth_0_dma: dma@80040000 {
 			#dma-cells = <1>;
 			compatible = "xlnx,eth-dma";
+			xlnx,addrwidth = /bits/ 8 <32>;
 			<snip>
 	};
 
