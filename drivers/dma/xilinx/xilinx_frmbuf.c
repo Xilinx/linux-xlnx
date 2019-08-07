@@ -1096,19 +1096,6 @@ static void xilinx_frmbuf_start_transfer(struct xilinx_frmbuf_chan *chan)
 				struct xilinx_frmbuf_tx_descriptor,
 				node);
 
-	if (desc->earlycb == EARLY_CALLBACK_LOW_LATENCY) {
-		dma_async_tx_callback callback;
-		void *callback_param;
-
-		callback = desc->async_tx.callback;
-		callback_param = desc->async_tx.callback_param;
-		if (callback) {
-			callback(callback_param);
-			desc->async_tx.callback = NULL;
-			chan->active_desc = desc;
-		}
-	}
-
 	/* Start the transfer */
 	chan->write_addr(chan, XILINX_FRMBUF_ADDR_OFFSET,
 			 desc->hw.luma_plane_addr);
