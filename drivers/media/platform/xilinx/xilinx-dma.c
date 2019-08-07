@@ -1131,19 +1131,34 @@ xvip_dma_set_ctrl(struct file *file, void *fh, struct v4l2_control *ctl)
 	struct xvip_dma *dma = to_xvip_dma(vfh->vdev);
 	int ret = 0;
 
-	if (vb2_is_busy(&dma->queue))
-		return -EBUSY;
-
 	switch (ctl->id)  {
 	case V4L2_CID_XILINX_LOW_LATENCY:
-		if (ctl->value == XVIP_LOW_LATENCY_ENABLE)
-			dma->low_latency_cap = true;
-		else if (ctl->value == XVIP_LOW_LATENCY_DISABLE)
-			dma->low_latency_cap = false;
-		else
-			ret = -EINVAL;
+		if (ctl->value == XVIP_LOW_LATENCY_ENABLE) {
+			if (vb2_is_busy(&dma->queue))
+				return -EBUSY;
 
-	break;
+			dma->low_latency_cap = true;
+		} else if (ctl->value == XVIP_LOW_LATENCY_DISABLE) {
+			if (vb2_is_busy(&dma->queue))
+				return -EBUSY;
+
+			dma->low_latency_cap = false;
+		} else if (ctl->value == XVIP_START_DMA) {
+			/*
+			 * In low latency capture, the driver allows application
+			 * to start dma when queue has buffers. That's why we
+			 * don't check for vb2_is_busy().
+			 */
+			if (dma->low_latency_cap &&
+			    vb2_is_streaming(&dma->queue))
+				dma_async_issue_pending(dma->dma);
+			else
+				ret = -EINVAL;
+		} else {
+			ret = -EINVAL;
+		}
+
+		break;
 	default:
 		ret = -EINVAL;
 	}
