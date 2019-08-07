@@ -627,18 +627,6 @@ static void xvip_dma_buffer_queue(struct vb2_buffer *vb)
 
 	xilinx_xdma_set_fid(dma->dma, desc, fid);
 
-	/* Set low latency capture mode */
-	if (dma->earlycb_mode) {
-		int ret;
-
-		ret = xilinx_xdma_set_earlycb(dma->dma, desc,
-					      dma->earlycb_mode);
-		if (ret < 0) {
-			dev_err(dma->xdev->dev,
-				"Failed enable low latency mode\n");
-		}
-	}
-
 	spin_lock_irq(&dma->queued_lock);
 	list_add_tail(&buf->queue, &dma->queued_bufs);
 	spin_unlock_irq(&dma->queued_lock);
@@ -1132,18 +1120,26 @@ xvip_dma_set_ctrl(struct file *file, void *fh, struct v4l2_control *ctl)
 {
 	struct v4l2_fh *vfh = file->private_data;
 	struct xvip_dma *dma = to_xvip_dma(vfh->vdev);
+	int ret = 0;
 
 	if (vb2_is_busy(&dma->queue))
 		return -EBUSY;
 
-	if (ctl->id == V4L2_CID_XILINX_LOW_LATENCY) {
-		if (ctl->value)
-			dma->earlycb_mode = EARLY_CALLBACK_LOW_LATENCY;
+	switch (ctl->id)  {
+	case V4L2_CID_XILINX_LOW_LATENCY:
+		if (ctl->value == XVIP_LOW_LATENCY_ENABLE)
+			dma->low_latency_cap = true;
+		else if (ctl->value == XVIP_LOW_LATENCY_DISABLE)
+			dma->low_latency_cap = false;
 		else
-			dma->earlycb_mode = 0;
+			ret = -EINVAL;
+
+	break;
+	default:
+		ret = -EINVAL;
 	}
 
-	return 0;
+	return ret;
 }
 
 static int

@@ -76,6 +76,7 @@ static inline struct xvip_pipeline *to_xvip_pipeline(struct media_entity *e)
  * @xt: dma interleaved template for dma configuration
  * @sgl: data chunk structure for dma_interleaved_template
  * @prev_fid: Previous Field ID
+ * @low_latency_cap: Low latency capture mode
  */
 struct xvip_dma {
 	struct list_head list;
@@ -108,7 +109,7 @@ struct xvip_dma {
 	struct data_chunk sgl[1];
 
 	u32 prev_fid;
-	u32 earlycb_mode;
+	u32 low_latency_cap;
 };
 
 #define to_xvip_dma(vdev)	container_of(vdev, struct xvip_dma, video)
