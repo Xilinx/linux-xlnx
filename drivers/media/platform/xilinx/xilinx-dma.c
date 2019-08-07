@@ -676,8 +676,11 @@ static int xvip_dma_start_streaming(struct vb2_queue *vq, unsigned int count)
 
 	/* Start the DMA engine. This must be done before starting the blocks
 	 * in the pipeline to avoid DMA synchronization issues.
+	 * We dont't want to start DMA in case of low latency capture mode,
+	 * applications will start DMA using S_CTRL at later point of time.
 	 */
-	dma_async_issue_pending(dma->dma);
+	if (!dma->low_latency_cap)
+		dma_async_issue_pending(dma->dma);
 
 	/* Start the pipeline. */
 	ret = xvip_pipeline_set_stream(pipe, true);
