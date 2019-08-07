@@ -216,4 +216,7 @@
 /* Control values to enable/disable low latency capture mode */
 #define XVIP_LOW_LATENCY_ENABLE		BIT(1)
 #define XVIP_LOW_LATENCY_DISABLE	BIT(2)
+
+/* Control value to start DMA */
+#define XVIP_START_DMA			BIT(3)
 #endif /* __UAPI_XILINX_V4L2_CONTROLS_H__ */
