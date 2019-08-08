@@ -476,7 +476,7 @@ static int xilinx_irq_domain_alloc(struct irq_domain *domain, unsigned int virq,
 {
 	struct xilinx_pcie_port *pcie = domain->host_data;
 	struct xilinx_msi *msi = &pcie->msi;
-	int bit, tst_bit;
+	int bit;
 	int i;
 
 	mutex_lock(&msi->lock);
