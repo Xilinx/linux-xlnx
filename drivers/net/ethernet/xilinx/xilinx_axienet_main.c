@@ -2431,11 +2431,14 @@ static int __maybe_unused axienet_dma_probe(struct platform_device *pdev,
 				      i);
 		if (np) {
 			ret = of_address_to_resource(np, 0, &dmares);
-			if (ret >= 0)
+			if (ret >= 0) {
 				q->dma_regs = devm_ioremap_resource(&pdev->dev,
 								&dmares);
-			else
+			} else {
+				dev_err(&pdev->dev, "unable to get DMA resource for %pOF\n",
+					np);
 				return -ENODEV;
+			}
 			q->eth_hasdre = of_property_read_bool(np,
 							"xlnx,include-dre");
 			ret = of_property_read_u8(np, "xlnx,addrwidth",
@@ -2447,6 +2450,7 @@ static int __maybe_unused axienet_dma_probe(struct platform_device *pdev,
 			}
 
 		} else {
+			dev_err(&pdev->dev, "missing axistream-connected property\n");
 			return -EINVAL;
 		}
 	}
