@@ -55,7 +55,12 @@
 #define XTG_MSTERR_INTR_OFFSET	0x10	/* Master error interrupt enable */
 #define XTG_CFG_STS_OFFSET	0x14	/* Config status */
 #define XTG_STREAM_CNTL_OFFSET	0x30	/* Streaming Control */
+#define XTG_STREAM_CFG_OFFSET	0x34	/* Streaming Control */
 #define XTG_STREAM_TL_OFFSET	0x38    /* Streaming Transfer Length */
+#define XTG_STREAM_TKTS1_OFFSET	0x40    /* Streaming tkeep tstrb set1*/
+#define XTG_STREAM_TKTS2_OFFSET	0x44    /* Streaming tkeep tstrb set2*/
+#define XTG_STREAM_TKTS3_OFFSET	0x48    /* Streaming tkeep tstrb set3*/
+#define XTG_STREAM_TKTS4_OFFSET	0x4C    /* Streaming tkeep tstrb set4*/
 #define XTG_STATIC_CNTL_OFFSET	0x60	/* Static Control */
 #define XTG_STATIC_LEN_OFFSET	0x64	/* Static Length */
 
@@ -321,6 +326,11 @@ struct xtg_dev_info {
  * @XTG_GET_STREAM_TRANSFERLEN: get streaming mode transfer length
  * @XTG_GET_STREAM_TRANSFERCNT: get streaming mode transfer count
  * @XTG_GET_MASTER_LOOP_EN: get master loop enable status
+ * @XTG_GET_STREAM_TKTS1: get stream tstrb and tkeep set1 values
+ * @XTG_GET_STREAM_TKTS2: get stream tstrb and tkeep set2 values
+ * @XTG_GET_STREAM_TKTS3: get stream tstrb and tkeep set3 values
+ * @XTG_GET_STREAM_TKTS4: get stream tstrb and tkeep set4 values
+ * @XTG_GET_STREAM_CFG: get stream configuration values
  * @XTG_START_MASTER_LOGIC: start master logic
  * @XTG_SET_SLV_CTRL_REG: set slave control
  * @XTG_CLEAR_ERRORS: clear errors
@@ -337,6 +347,11 @@ struct xtg_dev_info {
  * @XTG_SET_STREAM_DISABLE: disable streaming mode traffic genration
  * @XTG_SET_STREAM_TRANSFERLEN: set streaming mode transfer length
  * @XTG_SET_STREAM_TRANSFERCNT: set streaming mode transfer count
+ * @XTG_SET_STREAM_TKTS1: set stream tstrb and tkeep set1 values
+ * @XTG_SET_STREAM_TKTS2: set stream tstrb and tkeep set2 values
+ * @XTG_SET_STREAM_TKTS3: set stream tstrb and tkeep set3 values
+ * @XTG_SET_STREAM_TKTS4: set stream tstrb and tkeep set4 values
+ * @XTG_SET_STREAM_CFG: set stream configuration values
  * @XTG_MASTER_LOOP_EN: enable master loop
  */
 enum xtg_sysfs_ioctl_opcode {
@@ -353,6 +368,11 @@ enum xtg_sysfs_ioctl_opcode {
 	XTG_GET_STREAM_ENABLE,
 	XTG_GET_STREAM_TRANSFERLEN,
 	XTG_GET_MASTER_LOOP_EN,
+	XTG_GET_STREAM_TKTS1,
+	XTG_GET_STREAM_TKTS2,
+	XTG_GET_STREAM_TKTS3,
+	XTG_GET_STREAM_TKTS4,
+	XTG_GET_STREAM_CFG,
 	XTG_GET_STREAM_TRANSFERCNT,
 	XTG_START_MASTER_LOGIC,
 	XTG_SET_SLV_CTRL_REG,
@@ -370,6 +390,11 @@ enum xtg_sysfs_ioctl_opcode {
 	XTG_SET_STREAM_DISABLE,
 	XTG_SET_STREAM_TRANSFERLEN,
 	XTG_SET_STREAM_TRANSFERCNT,
+	XTG_SET_STREAM_TKTS1,
+	XTG_SET_STREAM_TKTS2,
+	XTG_SET_STREAM_TKTS3,
+	XTG_SET_STREAM_TKTS4,
+	XTG_SET_STREAM_CFG,
 	XTG_MASTER_LOOP_EN
 };
 
@@ -617,6 +642,23 @@ static ssize_t xtg_sysfs_ioctl(struct device *dev, const char *buf,
 				XTG_STREAM_TL_TCNT_SHIFT);
 		break;
 
+	case XTG_GET_STREAM_TKTS1:
+		rdval = readl(tg->regs + XTG_STREAM_TKTS1_OFFSET);
+		break;
+	case XTG_GET_STREAM_TKTS2:
+		rdval = readl(tg->regs + XTG_STREAM_TKTS2_OFFSET);
+		break;
+	case XTG_GET_STREAM_TKTS3:
+		rdval = readl(tg->regs + XTG_STREAM_TKTS3_OFFSET);
+		break;
+	case XTG_GET_STREAM_TKTS4:
+		rdval = readl(tg->regs + XTG_STREAM_TKTS4_OFFSET);
+		break;
+
+	case XTG_GET_STREAM_CFG:
+		rdval = (readl(tg->regs + XTG_STREAM_CFG_OFFSET));
+		break;
+
 	case XTG_START_MASTER_LOGIC:
 		if (wrval)
 			writel(readl(tg->regs + XTG_MCNTL_OFFSET) |
@@ -739,6 +781,23 @@ static ssize_t xtg_sysfs_ioctl(struct device *dev, const char *buf,
 		rdval = rdval & ~XTG_STREAM_TL_TCNT_MASK;
 		writel(rdval | wrval,
 		       tg->regs + XTG_STREAM_TL_OFFSET);
+		break;
+
+	case XTG_SET_STREAM_TKTS1:
+		writel(wrval, tg->regs + XTG_STREAM_TKTS1_OFFSET);
+		break;
+	case XTG_SET_STREAM_TKTS2:
+		writel(wrval, tg->regs + XTG_STREAM_TKTS2_OFFSET);
+		break;
+	case XTG_SET_STREAM_TKTS3:
+		writel(wrval, tg->regs + XTG_STREAM_TKTS3_OFFSET);
+		break;
+	case XTG_SET_STREAM_TKTS4:
+		writel(wrval, tg->regs + XTG_STREAM_TKTS4_OFFSET);
+		break;
+
+	case XTG_SET_STREAM_CFG:
+		writel(wrval, tg->regs + XTG_STREAM_CFG_OFFSET);
 		break;
 
 	default:
@@ -915,6 +974,96 @@ static ssize_t static_burstlen_store(struct device *dev,
 	return size;
 }
 static DEVICE_ATTR_RW(static_burstlen);
+
+static ssize_t stream_cfg_show(struct device *dev,
+			       struct device_attribute *attr, char *buf)
+{
+	ssize_t rdval = xtg_sysfs_ioctl(dev, buf, XTG_GET_STREAM_CFG);
+
+	return snprintf(buf, PAGE_SIZE, "%zd\n", rdval);
+}
+
+static ssize_t stream_cfg_store(struct device *dev,
+				struct device_attribute *attr, const char *buf,
+				size_t size)
+{
+	xtg_sysfs_ioctl(dev, buf, XTG_SET_STREAM_CFG);
+
+	return size;
+}
+static DEVICE_ATTR_RW(stream_cfg);
+
+static ssize_t stream_tkts4_show(struct device *dev,
+				 struct device_attribute *attr, char *buf)
+{
+	ssize_t rdval = xtg_sysfs_ioctl(dev, buf, XTG_GET_STREAM_TKTS4);
+
+	return snprintf(buf, PAGE_SIZE, "%zd\n", rdval);
+}
+
+static ssize_t stream_tkts4_store(struct device *dev,
+				  struct device_attribute *attr,
+				  const char *buf, size_t size)
+{
+	xtg_sysfs_ioctl(dev, buf, XTG_SET_STREAM_TKTS4);
+
+	return size;
+}
+static DEVICE_ATTR_RW(stream_tkts4);
+
+static ssize_t stream_tkts3_show(struct device *dev,
+				 struct device_attribute *attr, char *buf)
+{
+	ssize_t rdval = xtg_sysfs_ioctl(dev, buf, XTG_GET_STREAM_TKTS3);
+
+	return snprintf(buf, PAGE_SIZE, "%zd\n", rdval);
+}
+
+static ssize_t stream_tkts3_store(struct device *dev,
+				  struct device_attribute *attr,
+				  const char *buf, size_t size)
+{
+	xtg_sysfs_ioctl(dev, buf, XTG_SET_STREAM_TKTS3);
+
+	return size;
+}
+static DEVICE_ATTR_RW(stream_tkts3);
+
+static ssize_t stream_tkts2_show(struct device *dev,
+				 struct device_attribute *attr, char *buf)
+{
+	ssize_t rdval = xtg_sysfs_ioctl(dev, buf, XTG_GET_STREAM_TKTS2);
+
+	return snprintf(buf, PAGE_SIZE, "%zd\n", rdval);
+}
+
+static ssize_t stream_tkts2_store(struct device *dev,
+				  struct device_attribute *attr,
+				  const char *buf, size_t size)
+{
+	xtg_sysfs_ioctl(dev, buf, XTG_SET_STREAM_TKTS2);
+
+	return size;
+}
+static DEVICE_ATTR_RW(stream_tkts2);
+
+static ssize_t stream_tkts1_show(struct device *dev,
+				 struct device_attribute *attr, char *buf)
+{
+	ssize_t rdval = xtg_sysfs_ioctl(dev, buf, XTG_GET_STREAM_TKTS1);
+
+	return snprintf(buf, PAGE_SIZE, "%zd\n", rdval);
+}
+
+static ssize_t stream_tkts1_store(struct device *dev,
+				  struct device_attribute *attr,
+				  const char *buf, size_t size)
+{
+	xtg_sysfs_ioctl(dev, buf, XTG_SET_STREAM_TKTS1);
+
+	return size;
+}
+static DEVICE_ATTR_RW(stream_tkts1);
 
 static ssize_t static_transferdone_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
@@ -1285,6 +1434,11 @@ static const struct attribute *xtg_attrs[] = {
 	&dev_attr_static_transferdone.attr,
 	&dev_attr_stream_transfercnt.attr,
 	&dev_attr_stream_transferlen.attr,
+	&dev_attr_stream_tkts1.attr,
+	&dev_attr_stream_tkts2.attr,
+	&dev_attr_stream_tkts3.attr,
+	&dev_attr_stream_tkts4.attr,
+	&dev_attr_stream_cfg.attr,
 	&dev_attr_stream_enable.attr,
 	&dev_attr_reset_static_transferdone.attr,
 	&dev_attr_loop_enable.attr,
