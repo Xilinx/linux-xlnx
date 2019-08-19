@@ -159,6 +159,7 @@
 /* set to differentiate versal from zynqmp, 1=versal, 0=zynqmp */
 #define QSPI_QUIRK_HAS_TAPDELAY	BIT(0)
 
+#define GQSPI_FREQ_37_5MHZ	37500000
 #define GQSPI_FREQ_40MHZ	40000000
 #define GQSPI_FREQ_100MHZ	100000000
 #define GQSPI_FREQ_150MHZ	150000000
@@ -331,19 +332,19 @@ static void zynqmp_qspi_set_tapdelay(struct zynqmp_qspi *xqspi, u32 baudrateval)
 			lpbkdlyadj |= GQSPI_LPBK_DLY_ADJ_USE_LPBK_MASK;
 		}
 	} else {
-		if (reqhz <= GQSPI_FREQ_40MHZ) {
+		if (reqhz <= GQSPI_FREQ_37_5MHZ) {
 			tapdlybypass |= (TAP_DLY_BYPASS_LQSPI_RX_VALUE <<
 					TAP_DLY_BYPASS_LQSPI_RX_SHIFT);
 		} else if (reqhz <= GQSPI_FREQ_100MHZ) {
 			tapdlybypass |= (TAP_DLY_BYPASS_LQSPI_RX_VALUE <<
 					TAP_DLY_BYPASS_LQSPI_RX_SHIFT);
 			lpbkdlyadj |= (GQSPI_LPBK_DLY_ADJ_USE_LPBK_MASK);
-			datadlyadj |= ((GQSPI_USE_DATA_DLY <<
-					GQSPI_USE_DATA_DLY_SHIFT)
-					| (GQSPI_DATA_DLY_ADJ_VALUE <<
-						GQSPI_DATA_DLY_ADJ_SHIFT));
+			datadlyadj |= (GQSPI_USE_DATA_DLY <<
+					GQSPI_USE_DATA_DLY_SHIFT);
 		} else if (reqhz <= GQSPI_FREQ_150MHZ) {
-			lpbkdlyadj |= GQSPI_LPBK_DLY_ADJ_USE_LPBK_MASK;
+			lpbkdlyadj |= (GQSPI_LPBK_DLY_ADJ_USE_LPBK_MASK
+				       | (GQSPI_LPBK_DLY_ADJ_DLY_1 <<
+					       GQSPI_LPBK_DLY_ADJ_DLY_1_SHIFT));
 		}
 		zynqmp_gqspi_write(xqspi,
 				IOU_TAPDLY_BYPASS_OFST, tapdlybypass);
