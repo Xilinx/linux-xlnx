@@ -1,0 +1,24 @@
+* Xilinx Flexnoc Performance Monitor driver
+
+The FlexNoc Performance Monitor has counters for monitoring
+the read and the write transaction counter.
+
+Required properties:
+- compatible: "xlnx,flexnoc-pm-2.7"
+- reg : Address and length of register sets for each device in
+	"reg-names"
+- reg-names : The names of the register addresses corresponding to the
+		registers filled in "reg"
+		- funnel: base address of the funnel registers
+		- baselpd: base address of the LPD PM registers
+		- basefpd: base address FPD PM registers
+
+Example:
+++++++++
+performance-monitor@f0920000 {
+	compatible = "xlnx,flexnoc-pm-2.7";
+	reg-names = "funnel", "baselpd", "basefpd";
+	reg = <0x0 0xf0920000 0x0 0x1000>,
+		<0x0 0xf0980000 0x0 0x9000>,
+		<0x0 0xf0b80000 0x0 0x9000>;
+};
