@@ -551,6 +551,7 @@ static int dmatest_add_slave_threads(struct dmatest_chan *tx_dtc,
 	struct dmatest_slave_thread *thread;
 	struct dma_chan *tx_chan = tx_dtc->chan;
 	struct dma_chan *rx_chan = rx_dtc->chan;
+	int ret;
 
 	thread = kzalloc(sizeof(struct dmatest_slave_thread), GFP_KERNEL);
 	if (!thread) {
@@ -565,11 +566,12 @@ static int dmatest_add_slave_threads(struct dmatest_chan *tx_dtc,
 	smp_wmb();
 	thread->task = kthread_run(dmatest_slave_func, thread, "%s-%s",
 		dma_chan_name(tx_chan), dma_chan_name(rx_chan));
+	ret = PTR_ERR(thread->task);
 	if (IS_ERR(thread->task)) {
 		pr_warn("dmatest: Failed to run thread %s-%s\n",
 				dma_chan_name(tx_chan), dma_chan_name(rx_chan));
 		kfree(thread);
-		return PTR_ERR(thread->task);
+		return ret;
 	}
 
 	/* srcbuf and dstbuf are allocated by the thread itself */
