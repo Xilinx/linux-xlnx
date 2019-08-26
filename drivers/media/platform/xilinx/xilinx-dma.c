@@ -631,12 +631,13 @@ static void xvip_dma_buffer_queue(struct vb2_buffer *vb)
 	list_add_tail(&buf->queue, &dma->queued_bufs);
 	spin_unlock_irq(&dma->queued_lock);
 
-	/* Low latency capture: Early release of buffers to application */
-	if (dma->low_latency_cap) {
-		desc->callback = NULL;
-		xvip_dma_complete(buf);
-	}
-
+	/*
+	 * Low latency capture: Give descriptor callback at start of
+	 * processing the descriptor
+	 */
+	if (dma->low_latency_cap)
+		xilinx_xdma_set_earlycb(dma->dma, desc,
+					EARLY_CALLBACK_START_DESC);
 	dmaengine_submit(desc);
 
 	if (vb2_is_streaming(&dma->queue))
