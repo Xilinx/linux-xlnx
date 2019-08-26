@@ -175,30 +175,35 @@
 			u60: ina226@40 { /* u60 */
 				compatible = "ti,ina226";
 				#io-channel-cells = <1>;
+				label = "ina226-u60";
 				reg = <0x40>;
 				shunt-resistor = <1000>;
 			};
 			u61: ina226@41 { /* u61 */
 				compatible = "ti,ina226";
 				#io-channel-cells = <1>;
+				label = "ina226-u61";
 				reg = <0x41>;
 				shunt-resistor = <1000>;
 			};
 			u63: ina226@42 { /* u63 */
 				compatible = "ti,ina226";
 				#io-channel-cells = <1>;
+				label = "ina226-u63";
 				reg = <0x42>;
 				shunt-resistor = <1000>;
 			};
 			u65: ina226@43 { /* u65 */
 				compatible = "ti,ina226";
 				#io-channel-cells = <1>;
+				label = "ina226-u65";
 				reg = <0x43>;
 				shunt-resistor = <1000>;
 			};
 			u64: ina226@44 { /* u64 */
 				compatible = "ti,ina226";
 				#io-channel-cells = <1>;
+				label = "ina226-u64";
 				reg = <0x44>;
 				shunt-resistor = <1000>;
 			};
