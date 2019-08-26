@@ -1096,7 +1096,7 @@ static void xilinx_frmbuf_start_transfer(struct xilinx_frmbuf_chan *chan)
 				struct xilinx_frmbuf_tx_descriptor,
 				node);
 
-	if (desc->earlycb == EARLY_CALLBACK_LOW_LATENCY) {
+	if (desc->earlycb == EARLY_CALLBACK_START_DESC) {
 		dma_async_tx_callback callback;
 		void *callback_param;
 
