@@ -36,6 +36,27 @@
 		device_type = "memory";
 		reg = <0x0 0x0 0x0 0x80000000>;
 	};
+
+	ina226-u60 {
+		compatible = "iio-hwmon";
+		io-channels = <&u60 0>, <&u60 1>, <&u60 2>, <&u60 3>;
+	};
+	ina226-u61 {
+		compatible = "iio-hwmon";
+		io-channels = <&u61 0>, <&u61 1>, <&u61 2>, <&u61 3>;
+	};
+	ina226-u63 {
+		compatible = "iio-hwmon";
+		io-channels = <&u63 0>, <&u63 1>, <&u63 2>, <&u63 3>;
+	};
+	ina226-u65 {
+		compatible = "iio-hwmon";
+		io-channels = <&u65 0>, <&u65 1>, <&u65 2>, <&u65 3>;
+	};
+	ina226-u64 {
+		compatible = "iio-hwmon";
+		io-channels = <&u64 0>, <&u64 1>, <&u64 2>, <&u64 3>;
+	};
 };
 
 &dcc {
@@ -151,28 +172,33 @@
 			#size-cells = <0>;
 			reg = <5>;
 			/* ANALOG_PMBUS */
-			ina226@40 { /* u60 */
+			u60: ina226@40 { /* u60 */
 				compatible = "ti,ina226";
+				#io-channel-cells = <1>;
 				reg = <0x40>;
 				shunt-resistor = <1000>;
 			};
-			ina226@41 { /* u61 */
+			u61: ina226@41 { /* u61 */
 				compatible = "ti,ina226";
+				#io-channel-cells = <1>;
 				reg = <0x41>;
 				shunt-resistor = <1000>;
 			};
-			ina226@42 { /* u63 */
+			u63: ina226@42 { /* u63 */
 				compatible = "ti,ina226";
+				#io-channel-cells = <1>;
 				reg = <0x42>;
 				shunt-resistor = <1000>;
 			};
-			ina226@43 { /* u65 */
+			u65: ina226@43 { /* u65 */
 				compatible = "ti,ina226";
+				#io-channel-cells = <1>;
 				reg = <0x43>;
 				shunt-resistor = <1000>;
 			};
-			ina226@44 { /* u64 */
+			u64: ina226@44 { /* u64 */
 				compatible = "ti,ina226";
+				#io-channel-cells = <1>;
 				reg = <0x44>;
 				shunt-resistor = <1000>;
 			};
