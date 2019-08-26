@@ -18,7 +18,9 @@
 #include <linux/mutex.h>
 #include <linux/spinlock.h>
 #include <linux/wait.h>
+#include <linux/xilinx-v4l2-controls.h>
 
+#include <media/v4l2-ctrls.h>
 #include <media/v4l2-subdev.h>
 
 struct clk;
@@ -137,9 +139,11 @@ static inline struct xscd_dma_chan *to_xscd_dma_chan(struct dma_chan *chan)
 /**
  * struct xscd_chan - Video Stream structure
  * @id: scene change channel ID
+ * @threshold: scene change detection threshold
  * @iomem: I/O memory address of the channel registers
  * @xscd: SCD device
  * @subdev: V4L2 subdevice
+ * @ctrl_handler: V4L2 control handler
  * @pads: media pads
  * @format: active V4L2 media bus format for the pad
  * @event: scene change event
@@ -148,9 +152,11 @@ static inline struct xscd_dma_chan *to_xscd_dma_chan(struct dma_chan *chan)
  */
 struct xscd_chan {
 	int id;
+	int threshold;
 	void __iomem *iomem;
 	struct xscd_device *xscd;
 	struct v4l2_subdev subdev;
+	struct v4l2_ctrl_handler ctrl_handler;
 	struct media_pad pads[2];
 	struct v4l2_mbus_framefmt format;
 	struct v4l2_event event;
