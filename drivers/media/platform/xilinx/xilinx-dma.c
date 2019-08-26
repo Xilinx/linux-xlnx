@@ -1148,11 +1148,18 @@ xvip_dma_set_ctrl(struct file *file, void *fh, struct v4l2_control *ctl)
 				return -EBUSY;
 
 			dma->low_latency_cap = true;
+			/*
+			 * Don't use auto-restart for low latency
+			 * to avoid extra one frame delay between
+			 * programming and actual writing of data
+			 */
+			xilinx_xdma_set_mode(dma->dma, DEFAULT);
 		} else if (ctl->value == XVIP_LOW_LATENCY_DISABLE) {
 			if (vb2_is_busy(&dma->queue))
 				return -EBUSY;
 
 			dma->low_latency_cap = false;
+			xilinx_xdma_set_mode(dma->dma, AUTO_RESTART);
 		} else if (ctl->value == XVIP_START_DMA) {
 			/*
 			 * In low latency capture, the driver allows application
