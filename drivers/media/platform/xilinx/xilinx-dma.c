@@ -686,8 +686,17 @@ static int xvip_dma_start_streaming(struct vb2_queue *vq, unsigned int count)
 	 * We dont't want to start DMA in case of low latency capture mode,
 	 * applications will start DMA using S_CTRL at later point of time.
 	 */
-	if (!dma->low_latency_cap)
+	if (!dma->low_latency_cap) {
 		dma_async_issue_pending(dma->dma);
+	} else {
+		/* For low latency capture, return the first buffer early
+		 * so that consumer can initialize until we start DMA.
+		 */
+		buf = list_first_entry(&dma->queued_bufs,
+				       struct xvip_dma_buffer, queue);
+		xvip_dma_complete(buf);
+		buf->desc->callback = NULL;
+	}
 
 	/* Start the pipeline. */
 	ret = xvip_pipeline_set_stream(pipe, true);
