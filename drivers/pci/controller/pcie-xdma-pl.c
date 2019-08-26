@@ -678,57 +678,61 @@ static int xilinx_pcie_parse_dt(struct xilinx_pcie_port *port)
 	const char *type;
 	int err, mode_val, val;
 
-	type = of_get_property(node, "device_type", NULL);
-	if (!type || strcmp(type, "pci")) {
-		dev_err(dev, "invalid \"device_type\" %s\n", type);
-		return -EINVAL;
-	}
-
-	err = of_address_to_resource(node, 0, &regs);
-	if (err) {
-		dev_err(dev, "missing \"reg\" property\n");
-		return err;
-	}
-
-	port->reg_base = devm_ioremap_resource(dev, &regs);
-	if (IS_ERR(port->reg_base))
-		return PTR_ERR(port->reg_base);
-
-	val = pcie_read(port, XILINX_PCIE_REG_BIR);
-	val = (val >> XILINX_PCIE_FIFO_SHIFT) & MSI_DECD_MODE;
-	mode_val = pcie_read(port, XILINX_PCIE_REG_VSEC) &
-			XILINX_PCIE_VSEC_REV_MASK;
-	mode_val = mode_val >> XILINX_PCIE_VSEC_REV_SHIFT;
-	if (mode_val && !val) {
-		port->msi_mode = MSI_DECD_MODE;
-		dev_info(dev, "Using MSI Decode mode\n");
-	} else {
-		port->msi_mode = MSI_FIFO_MODE;
-		dev_info(dev, "Using MSI FIFO mode\n");
-	}
-
-	if (port->msi_mode == MSI_DECD_MODE) {
-		err = xilinx_request_misc_irq(port);
-		if (err)
-			return err;
-
-		err = xilinx_request_msi_irq(port);
-		if (err)
-			return err;
-
-	} else if (port->msi_mode == MSI_FIFO_MODE) {
-		port->irq = irq_of_parse_and_map(node, 0);
-		if (!port->irq) {
-			dev_err(dev, "Unable to find IRQ line\n");
-			return -ENXIO;
+	if (of_device_is_compatible(node, "xlnx,xdma-host-3.00")) {
+		type = of_get_property(node, "device_type", NULL);
+		if (!type || strcmp(type, "pci")) {
+			dev_err(dev, "invalid \"device_type\" %s\n", type);
+			return -EINVAL;
 		}
 
-		err = devm_request_irq(dev, port->irq, xilinx_pcie_intr_handler,
-				       IRQF_SHARED | IRQF_NO_THREAD,
-				       "xilinx-pcie", port);
+		err = of_address_to_resource(node, 0, &regs);
 		if (err) {
-			dev_err(dev, "unable to request irq %d\n", port->irq);
+			dev_err(dev, "missing \"reg\" property\n");
 			return err;
+		}
+
+		port->reg_base = devm_ioremap_resource(dev, &regs);
+		if (IS_ERR(port->reg_base))
+			return PTR_ERR(port->reg_base);
+
+		val = pcie_read(port, XILINX_PCIE_REG_BIR);
+		val = (val >> XILINX_PCIE_FIFO_SHIFT) & MSI_DECD_MODE;
+		mode_val = pcie_read(port, XILINX_PCIE_REG_VSEC) &
+				XILINX_PCIE_VSEC_REV_MASK;
+		mode_val = mode_val >> XILINX_PCIE_VSEC_REV_SHIFT;
+		if (mode_val && !val) {
+			port->msi_mode = MSI_DECD_MODE;
+			dev_info(dev, "Using MSI Decode mode\n");
+		} else {
+			port->msi_mode = MSI_FIFO_MODE;
+			dev_info(dev, "Using MSI FIFO mode\n");
+		}
+
+		if (port->msi_mode == MSI_DECD_MODE) {
+			err = xilinx_request_misc_irq(port);
+			if (err)
+				return err;
+
+			err = xilinx_request_msi_irq(port);
+			if (err)
+				return err;
+
+		} else if (port->msi_mode == MSI_FIFO_MODE) {
+			port->irq = irq_of_parse_and_map(node, 0);
+			if (!port->irq) {
+				dev_err(dev, "Unable to find IRQ line\n");
+				return -ENXIO;
+			}
+
+			err = devm_request_irq(dev, port->irq,
+					       xilinx_pcie_intr_handler,
+					       IRQF_SHARED | IRQF_NO_THREAD,
+					       "xilinx-pcie", port);
+			if (err) {
+				dev_err(dev, "unable to request irq %d\n",
+					port->irq);
+				return err;
+			}
 		}
 	}
 
