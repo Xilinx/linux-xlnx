@@ -26,7 +26,6 @@
 #define XSCD_V_SUBSAMPLING		16
 #define XSCD_BYTE_ALIGN			16
 #define MULTIPLICATION_FACTOR		100
-#define SCENE_CHANGE_THRESHOLD		0.5
 
 #define XSCD_SCENE_CHANGE		1
 #define XSCD_NO_SCENE_CHANGE		0
@@ -175,6 +174,25 @@ static void xscd_chan_configure_params(struct xscd_chan *chan)
 /* -----------------------------------------------------------------------------
  * V4L2 Subdevice Operations
  */
+
+static int xscd_s_ctrl(struct v4l2_ctrl *ctrl)
+{
+	int ret = 0;
+	struct xscd_chan *chan = container_of(ctrl->handler, struct xscd_chan,
+					      ctrl_handler);
+
+	switch (ctrl->id) {
+	case V4L2_CID_XILINX_SCD_THRESHOLD:
+		chan->threshold = ctrl->val;
+		break;
+	default:
+		ret = -EINVAL;
+		break;
+	}
+
+	return ret;
+}
+
 static int xscd_s_stream(struct v4l2_subdev *subdev, int enable)
 {
 	struct xscd_chan *chan = to_xscd_chan(subdev);
@@ -232,6 +250,23 @@ static int xscd_close(struct v4l2_subdev *subdev, struct v4l2_subdev_fh *fh)
 	return 0;
 }
 
+static const struct v4l2_ctrl_ops xscd_ctrl_ops = {
+	.s_ctrl	= xscd_s_ctrl
+};
+
+static const struct v4l2_ctrl_config xscd_ctrls[] = {
+	{
+		.ops = &xscd_ctrl_ops,
+		.id = V4L2_CID_XILINX_SCD_THRESHOLD,
+		.name = "Threshold Value",
+		.type = V4L2_CTRL_TYPE_INTEGER,
+		.min = 0,
+		.max = 100,
+		.step = 1,
+		.def = 50,
+	}
+};
+
 static const struct v4l2_subdev_core_ops xscd_core_ops = {
 	.subscribe_event = xscd_subscribe_event,
 	.unsubscribe_event = xscd_unsubscribe_event
@@ -270,15 +305,14 @@ static const struct media_entity_operations xscd_media_ops = {
 void xscd_chan_event_notify(struct xscd_chan *chan)
 {
 	u32 *eventdata;
-	u32 sad, scd_threshold;
+	u32 sad;
 
 	sad = xscd_read(chan->iomem, XSCD_SAD_OFFSET);
 	sad = (sad * XSCD_V_SUBSAMPLING * MULTIPLICATION_FACTOR) /
 	       (chan->format.width * chan->format.height);
 	eventdata = (u32 *)&chan->event.u.data;
-	scd_threshold = SCENE_CHANGE_THRESHOLD * MULTIPLICATION_FACTOR;
 
-	if (sad > scd_threshold)
+	if (sad > chan->threshold)
 		eventdata[0] = XSCD_SCENE_CHANGE;
 	else
 		eventdata[0] = XSCD_NO_SCENE_CHANGE;
@@ -302,6 +336,7 @@ int xscd_chan_init(struct xscd_device *xscd, unsigned int chan_id,
 	struct v4l2_subdev *subdev;
 	unsigned int num_pads;
 	int ret;
+	unsigned int i;
 
 	mutex_init(&chan->lock);
 	chan->xscd = xscd;
@@ -334,19 +369,54 @@ int xscd_chan_init(struct xscd_device *xscd, unsigned int chan_id,
 
 	ret = media_entity_pads_init(&subdev->entity, num_pads, chan->pads);
 	if (ret < 0)
-		goto error;
+		goto media_init_error;
 
 	subdev->entity.ops = &xscd_media_ops;
+
+	/* Initialize V4L2 Control Handler */
+	v4l2_ctrl_handler_init(&chan->ctrl_handler, ARRAY_SIZE(xscd_ctrls));
+
+	for (i = 0; i < ARRAY_SIZE(xscd_ctrls); i++) {
+		struct v4l2_ctrl *ctrl;
+
+		dev_dbg(chan->xscd->dev, "%d ctrl = 0x%x\n", i,
+			xscd_ctrls[i].id);
+		ctrl = v4l2_ctrl_new_custom(&chan->ctrl_handler, &xscd_ctrls[i],
+					    NULL);
+		if (!ctrl) {
+			dev_err(chan->xscd->dev, "Failed for %s ctrl\n",
+				xscd_ctrls[i].name);
+			goto ctrl_handler_error;
+		}
+	}
+
+	if (chan->ctrl_handler.error) {
+		dev_err(chan->xscd->dev, "failed to add controls\n");
+		ret = chan->ctrl_handler.error;
+		goto ctrl_handler_error;
+	}
+
+	subdev->ctrl_handler = &chan->ctrl_handler;
+
+	ret = v4l2_ctrl_handler_setup(&chan->ctrl_handler);
+	if (ret < 0) {
+		dev_err(chan->xscd->dev, "failed to set controls\n");
+		goto ctrl_handler_error;
+	}
+
 	ret = v4l2_async_register_subdev(subdev);
 	if (ret < 0) {
 		dev_err(chan->xscd->dev, "failed to register subdev\n");
-		goto error;
+		goto ctrl_handler_error;
 	}
 
 	dev_info(chan->xscd->dev, "Scene change detection channel found!\n");
 	return 0;
 
-error:
+ctrl_handler_error:
+	v4l2_ctrl_handler_free(&chan->ctrl_handler);
+media_init_error:
 	media_entity_cleanup(&subdev->entity);
+	mutex_destroy(&chan->lock);
 	return ret;
 }
