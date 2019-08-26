@@ -237,4 +237,6 @@ void xscd_dma_cleanup(struct xscd_device *xscd);
 void xscd_chan_event_notify(struct xscd_chan *chan);
 int xscd_chan_init(struct xscd_device *xscd, unsigned int chan_id,
 		   struct device_node *node);
+void xscd_chan_cleanup(struct xscd_device *xscd, unsigned int chan_id,
+		       struct device_node *node);
 #endif
