@@ -420,3 +420,21 @@ media_init_error:
 	mutex_destroy(&chan->lock);
 	return ret;
 }
+
+/**
+ * xscd_chan_cleanup - Clean up the V4L2 subdev for a channel
+ * @xscd: Pointer to the SCD device structure
+ * @chan_id: Channel id
+ * @node: device node
+ */
+void xscd_chan_cleanup(struct xscd_device *xscd, unsigned int chan_id,
+		       struct device_node *node)
+{
+	struct xscd_chan *chan = &xscd->chans[chan_id];
+	struct v4l2_subdev *subdev = &chan->subdev;
+
+	v4l2_async_unregister_subdev(subdev);
+	v4l2_ctrl_handler_free(&chan->ctrl_handler);
+	media_entity_cleanup(&subdev->entity);
+	mutex_destroy(&chan->lock);
+}
