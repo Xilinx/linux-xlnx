@@ -104,6 +104,12 @@
 #define XILINX_NUM_MSI_IRQS		64
 #define INTX_NUM                        4
 
+/* For CPM Versal */
+#define CPM_BRIDGE_BASE_OFF		0xCD8
+#define XILINX_PCIE_MISC_IR_STATUS	0x00000340
+#define XILINX_PCIE_MISC_IR_ENABLE	0x00000348
+#define XILINX_PCIE_MISC_IR_LOCAL	BIT(1)
+
 enum msi_mode {
 	MSI_DECD_MODE = 1,
 	MSI_FIFO_MODE,
@@ -122,6 +128,7 @@ struct xilinx_msi {
 /**
  * struct xilinx_pcie_port - PCIe port information
  * @reg_base: IO Mapped Register Base
+ * @cpm_base: CPM SLCR Register Base
  * @irq: Interrupt number
  * @root_busno: Root Bus number
  * @dev: Device pointer
@@ -133,6 +140,7 @@ struct xilinx_msi {
  */
 struct xilinx_pcie_port {
 	void __iomem *reg_base;
+	void __iomem *cpm_base;
 	u32 irq;
 	u8 root_busno;
 	struct device *dev;
@@ -145,12 +153,18 @@ struct xilinx_pcie_port {
 
 static inline u32 pcie_read(struct xilinx_pcie_port *port, u32 reg)
 {
-	return readl(port->reg_base + reg);
+	if (!port->cpm_base)
+		return readl(port->reg_base + reg);
+	else
+		return readl(port->reg_base + reg + CPM_BRIDGE_BASE_OFF);
 }
 
 static inline void pcie_write(struct xilinx_pcie_port *port, u32 val, u32 reg)
 {
-	writel(val, port->reg_base + reg);
+	if (!port->cpm_base)
+		writel(val, port->reg_base + reg);
+	else
+		writel(val, port->reg_base + reg + CPM_BRIDGE_BASE_OFF);
 }
 
 static inline bool xilinx_pcie_link_is_up(struct xilinx_pcie_port *port)
@@ -429,6 +443,12 @@ static irqreturn_t xilinx_pcie_intr_handler(int irq, void *data)
 error:
 	/* Clear the Interrupt Decode register */
 	pcie_write(port, status, XILINX_PCIE_REG_IDR);
+	if (port->cpm_base) {
+		val = readl(port->cpm_base + XILINX_PCIE_MISC_IR_STATUS);
+		if (val)
+			writel(val,
+			       port->cpm_base + XILINX_PCIE_MISC_IR_STATUS);
+	}
 
 	return IRQ_HANDLED;
 }
@@ -610,6 +630,11 @@ static void xilinx_pcie_init_port(struct xilinx_pcie_port *port)
 	pcie_write(port, pcie_read(port, XILINX_PCIE_REG_RPSC) |
 			 XILINX_PCIE_REG_RPSC_BEN,
 		   XILINX_PCIE_REG_RPSC);
+
+	if (port->cpm_base) {
+		writel(XILINX_PCIE_MISC_IR_LOCAL,
+		       port->cpm_base + XILINX_PCIE_MISC_IR_ENABLE);
+	}
 }
 
 static int xilinx_request_misc_irq(struct xilinx_pcie_port *port)
@@ -734,6 +759,24 @@ static int xilinx_pcie_parse_dt(struct xilinx_pcie_port *port)
 				return err;
 			}
 		}
+	} else if (of_device_is_compatible(node, "xlnx,versal-cpm-host-1.00")) {
+		struct resource *res;
+		struct platform_device *pdev = to_platform_device(dev);
+
+		res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "cfg");
+		port->reg_base = devm_ioremap_resource(dev, res);
+		if (IS_ERR(port->reg_base))
+			return PTR_ERR(port->reg_base);
+
+		res = platform_get_resource_byname(pdev, IORESOURCE_MEM,
+						   "cpm_slcr");
+		port->cpm_base = devm_ioremap_resource(dev, res);
+		if (IS_ERR(port->cpm_base))
+			return PTR_ERR(port->cpm_base);
+
+		err = xilinx_request_misc_irq(port);
+		if (err)
+			return err;
 	}
 
 	return 0;
@@ -816,6 +859,7 @@ error:
 
 static const struct of_device_id xilinx_pcie_of_match[] = {
 	{ .compatible = "xlnx,xdma-host-3.00", },
+	{ .compatible = "xlnx,versal-cpm-host-1.00", },
 	{}
 };
 
