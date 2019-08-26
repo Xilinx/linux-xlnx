@@ -343,16 +343,7 @@ static int dmatest_slave_func(void *data)
 			dma_dsts[i] = dma_map_single(rx_dev->dev,
 							thread->dsts[i],
 							test_buf_size,
-							DMA_MEM_TO_DEV);
-
-			dma_unmap_single(rx_dev->dev, dma_dsts[i],
-							test_buf_size,
-							DMA_MEM_TO_DEV);
-
-			dma_dsts[i] = dma_map_single(rx_dev->dev,
-							thread->dsts[i],
-							test_buf_size,
-							DMA_DEV_TO_MEM);
+							DMA_BIDIRECTIONAL);
 		}
 
 		sg_init_table(tx_sg, bd_cnt);
@@ -380,7 +371,7 @@ static int dmatest_slave_func(void *data)
 			for (i = 0; i < dst_cnt; i++)
 				dma_unmap_single(rx_dev->dev, dma_dsts[i],
 						test_buf_size,
-						DMA_DEV_TO_MEM);
+						DMA_BIDIRECTIONAL);
 			pr_warn(
 			"%s: #%u: prep error with src_off=0x%x ",
 				thread_name, total_tests - 1, src_off);
@@ -460,7 +451,7 @@ static int dmatest_slave_func(void *data)
 		/* Unmap by myself */
 		for (i = 0; i < dst_cnt; i++)
 			dma_unmap_single(rx_dev->dev, dma_dsts[i],
-					test_buf_size, DMA_DEV_TO_MEM);
+					test_buf_size, DMA_BIDIRECTIONAL);
 
 		error_count = 0;
 		start = ktime_get();
