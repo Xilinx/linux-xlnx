@@ -612,6 +612,30 @@ static void xilinx_pcie_init_port(struct xilinx_pcie_port *port)
 		   XILINX_PCIE_REG_RPSC);
 }
 
+static int xilinx_request_misc_irq(struct xilinx_pcie_port *port)
+{
+	struct device *dev = port->dev;
+	struct platform_device *pdev = to_platform_device(dev);
+	int err;
+
+	port->irq_misc = platform_get_irq_byname(pdev, "misc");
+	if (port->irq_misc <= 0) {
+		dev_err(dev, "Unable to find misc IRQ line\n");
+		return port->irq_misc;
+	}
+	err = devm_request_irq(dev, port->irq_misc,
+			       xilinx_pcie_intr_handler,
+			       IRQF_SHARED | IRQF_NO_THREAD,
+			       "xilinx-pcie", port);
+	if (err) {
+		dev_err(dev, "unable to request misc IRQ line %d\n",
+			port->irq_misc);
+		return err;
+	}
+
+	return 0;
+}
+
 /**
  * xilinx_pcie_parse_dt - Parse Device tree
  * @port: PCIe port information
@@ -657,20 +681,9 @@ static int xilinx_pcie_parse_dt(struct xilinx_pcie_port *port)
 	}
 
 	if (port->msi_mode == MSI_DECD_MODE) {
-		port->irq_misc = platform_get_irq_byname(pdev, "misc");
-		if (port->irq_misc <= 0) {
-			dev_err(dev, "Unable to find misc IRQ line\n");
-			return port->irq_misc;
-		}
-		err = devm_request_irq(dev, port->irq_misc,
-				       xilinx_pcie_intr_handler,
-				       IRQF_SHARED | IRQF_NO_THREAD,
-				       "xilinx-pcie", port);
-		if (err) {
-			dev_err(dev, "unable to request misc IRQ line %d\n",
-				port->irq);
+		err = xilinx_request_misc_irq(port);
+		if (err)
 			return err;
-		}
 
 		port->msi.irq_msi0 = platform_get_irq_byname(pdev, "msi0");
 		if (port->msi.irq_msi0 <= 0) {
