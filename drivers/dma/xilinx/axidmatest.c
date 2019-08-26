@@ -684,7 +684,6 @@ static const struct of_device_id xilinx_axidmatest_of_ids[] = {
 static struct platform_driver xilinx_axidmatest_driver = {
 	.driver = {
 		.name = "xilinx_axidmatest",
-		.owner = THIS_MODULE,
 		.of_match_table = xilinx_axidmatest_of_ids,
 	},
 	.probe = xilinx_axidmatest_probe,
