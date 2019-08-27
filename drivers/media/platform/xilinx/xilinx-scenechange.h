@@ -63,6 +63,9 @@ struct gpio_desc;
 
 #define XSCD_MAX_CHANNELS		8
 
+#define XSCD_RESET_DEASSERT		(0)
+#define XSCD_RESET_ASSERT		(1)
+
 /****************************** PROTOTYPES ************************************/
 
 struct xscd_device;
