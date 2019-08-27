@@ -8,6 +8,7 @@
  *          Satish Kumar Nagireddy <satish.nagireddy.nagireddy@xilinx.com>
  */
 
+#include <linux/gpio/consumer.h>
 #include <linux/of.h>
 #include <linux/xilinx-v4l2-events.h>
 
@@ -196,11 +197,22 @@ static int xscd_s_ctrl(struct v4l2_ctrl *ctrl)
 static int xscd_s_stream(struct v4l2_subdev *subdev, int enable)
 {
 	struct xscd_chan *chan = to_xscd_chan(subdev);
+	struct xscd_device *xscd = chan->xscd;
 
 	if (enable)
 		xscd_chan_configure_params(chan);
 
 	xscd_dma_enable_channel(&chan->dmachan, enable);
+
+	/*
+	 * Resolution change doesn't work in stream based mode unless
+	 * the device is reset.
+	 */
+	if (!enable && !xscd->memory_based) {
+		gpiod_set_value_cansleep(xscd->rst_gpio, XSCD_RESET_ASSERT);
+		gpiod_set_value_cansleep(xscd->rst_gpio, XSCD_RESET_DEASSERT);
+	}
+
 	return 0;
 }
 
