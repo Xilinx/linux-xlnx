@@ -17,9 +17,6 @@
 
 #include "xilinx-scenechange.h"
 
-#define XSCD_RESET_DEASSERT	(0)
-#define XSCD_RESET_ASSERT	(1)
-
 static irqreturn_t xscd_irq_handler(int irq, void *data)
 {
 	struct xscd_device *xscd = (struct xscd_device *)data;
