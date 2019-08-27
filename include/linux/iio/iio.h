@@ -556,6 +556,7 @@ struct iio_dev {
 	struct list_head		channel_attr_list;
 	struct attribute_group		chan_attr_group;
 	const char			*name;
+	const char			*label;
 	const struct iio_info		*info;
 	clockid_t			clock_id;
 	struct mutex			info_exist_lock;
