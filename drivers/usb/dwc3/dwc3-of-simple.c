@@ -289,8 +289,8 @@ static int dwc3_of_simple_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, simple);
 	simple->dev = dev;
 
-	if (of_device_is_compatible(pdev->dev.of_node,
-				    "xlnx,zynqmp-dwc3")) {
+	if (of_device_is_compatible(pdev->dev.of_node, "xlnx,zynqmp-dwc3") ||
+	    of_device_is_compatible(pdev->dev.of_node, "xlnx,versal-dwc3")) {
 
 		struct resource		*res;
 		void __iomem		*regs;
