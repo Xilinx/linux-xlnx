@@ -234,6 +234,44 @@ static int dwc3_of_simple_clk_init(struct dwc3_of_simple *simple, int count)
 	return 0;
 }
 
+static int dwc3_dis_u3phy_suspend(struct platform_device *pdev,
+				  struct dwc3_of_simple *simple)
+{
+	char *soc_rev;
+
+	/* The below is only valid for ZynqMP SOC */
+	if (of_device_is_compatible(pdev->dev.of_node,
+				    "xlnx,zynqmp-dwc3")) {
+		/* read Silicon version using nvmem driver */
+		soc_rev = zynqmp_nvmem_get_silicon_version(&pdev->dev,
+							   "soc_revision");
+
+		if (PTR_ERR(soc_rev) == -EPROBE_DEFER)
+			/* Do a deferred probe */
+			return -EPROBE_DEFER;
+		else if (!IS_ERR(soc_rev) && *soc_rev < ZYNQMP_SILICON_V4)
+			/* Add snps,dis_u3_susphy_quirk
+			 * for SOC revison less than v4
+			 */
+			simple->dis_u3_susphy_quirk = true;
+
+		if (!IS_ERR(soc_rev)) {
+			/* Update soc_rev to simple for future use */
+			simple->soc_rev = *soc_rev;
+
+			/* Clean soc_rev if got a valid pointer from nvmem
+			 * driver else we may end up in kernel panic
+			 */
+			kfree(soc_rev);
+		} else {
+			/* Return error */
+			return PTR_ERR(soc_rev);
+		}
+	}
+
+	return 0;
+}
+
 static int dwc3_of_simple_probe(struct platform_device *pdev)
 {
 	struct dwc3_of_simple	*simple;
@@ -254,7 +292,6 @@ static int dwc3_of_simple_probe(struct platform_device *pdev)
 	if (of_device_is_compatible(pdev->dev.of_node,
 				    "xlnx,zynqmp-dwc3")) {
 
-		char			*soc_rev;
 		struct resource		*res;
 		void __iomem		*regs;
 
@@ -268,30 +305,13 @@ static int dwc3_of_simple_probe(struct platform_device *pdev)
 		/* Store the usb control regs into simple for further usage */
 		simple->regs = regs;
 
-		/* read Silicon version using nvmem driver */
-		soc_rev = zynqmp_nvmem_get_silicon_version(&pdev->dev,
-						   "soc_revision");
-
-		if (PTR_ERR(soc_rev) == -EPROBE_DEFER) {
-			/* Do a deferred probe */
-			return -EPROBE_DEFER;
-
-		} else if (!IS_ERR(soc_rev) &&
-					(*soc_rev < ZYNQMP_SILICON_V4)) {
-			/* Add snps,dis_u3_susphy_quirk
-			 * for SOC revison less than v4
-			 */
-			simple->dis_u3_susphy_quirk = true;
-		}
-
-		/* Update soc_rev to simple for future use */
-		simple->soc_rev = *soc_rev;
-
-		/* Clean soc_rev if got a valid pointer from nvmem driver
-		 * else we may end up in kernel panic
+		/*
+		 * ZynqMP silicon revision lesser than 4.0 needs to disable
+		 * suspend of usb 3.0 phy.
 		 */
-		if (!IS_ERR(soc_rev))
-			kfree(soc_rev);
+		ret = dwc3_dis_u3phy_suspend(pdev, simple);
+		if (ret)
+			return ret;
 	}
 
 	/* Set phy data for future use */
