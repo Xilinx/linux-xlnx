@@ -1448,7 +1448,7 @@ static int cqspi_setdlldelay(struct spi_nor *nor)
 	u8 j;
 	int ret = 1;
 	u8 id[CQSPI_READ_ID_LEN];
-	bool rxtapfound = 0;
+	bool rxtapfound = false;
 	u8 min_rxtap = 0;
 	u8 max_rxtap = 0;
 	u8 avg_rxtap;
@@ -1463,7 +1463,7 @@ static int cqspi_setdlldelay(struct spi_nor *nor)
 	max_tap = ((TERA_MACRO / cqspi->master_ref_clk_hz) / 160);
 	for (dummy_incr = 0; dummy_incr <= 1; dummy_incr++) {
 		if (dummy_incr)
-			cqspi->extra_dummy = 1;
+			cqspi->extra_dummy = true;
 		for (i = 0; i <= max_tap; i++) {
 			writel((txtap | i), cqspi->iobase +
 			       CQSPI_REG_PHY_CONFIG);
@@ -1476,10 +1476,10 @@ static int cqspi_setdlldelay(struct spi_nor *nor)
 					"error %d reading JEDEC ID\n", ret);
 				return ret;
 			}
-			id_matched = 1;
+			id_matched = true;
 			for (j = 0; j < CQSPI_READ_ID_LEN; j++) {
 				if (nor->device_id[j] != id[j]) {
-					id_matched = 0;
+					id_matched = false;
 					break;
 				}
 			}
@@ -1487,7 +1487,7 @@ static int cqspi_setdlldelay(struct spi_nor *nor)
 				if (!rxtapfound) {
 					min_rxtap = i;
 					max_rxtap = i;
-					rxtapfound = 1;
+					rxtapfound = true;
 				} else {
 					max_rxtap = i;
 				}
@@ -1501,18 +1501,18 @@ static int cqspi_setdlldelay(struct spi_nor *nor)
 						avg_rxtap = (max_rxtap +
 								min_rxtap) / 2;
 					}
-					rxtapfound = 0;
+					rxtapfound = false;
 				}
 			}
 		}
 		if (!dummy_incr) {
-			rxtapfound = 0;
+			rxtapfound = false;
 			min_rxtap = 0;
 			max_rxtap = 0;
 		}
 	}
 	if (!dummy_flag)
-		cqspi->extra_dummy = 0;
+		cqspi->extra_dummy = false;
 	if (max_windowsize < 3)
 		return ret;
 
@@ -1946,14 +1946,14 @@ static int cqspi_probe(struct platform_device *pdev)
 		cqspi->read_dma = true;
 	}
 
-	cqspi->stig_write = 0;
+	cqspi->stig_write = false;
 	if (of_device_is_compatible(pdev->dev.of_node,
 				    "xlnx,versal-ospi-1.0") &&
 				    cqspi->read_dma) {
 		cqspi->indirect_read_dma = cqspi_versal_indirect_read_dma;
 		cqspi->flash_reset = cqspi_versal_flash_reset;
 		if (ddata && (ddata->quirks & CQSPI_STIG_WRITE)) {
-			cqspi->stig_write = 1;
+			cqspi->stig_write = true;
 		}
 		cqspi->eemi_ops = zynqmp_pm_get_eemi_ops();
 		if (IS_ERR(cqspi->eemi_ops))
@@ -1971,7 +1971,7 @@ static int cqspi_probe(struct platform_device *pdev)
 	cqspi_controller_init(cqspi);
 	cqspi->current_cs = -1;
 	cqspi->sclk = 0;
-	cqspi->extra_dummy = 0;
+	cqspi->extra_dummy = false;
 	cqspi->edge_mode = CQSPI_EDGE_MODE_SDR;
 
 	ret = cqspi_setup_flash(cqspi, np);
