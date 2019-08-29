@@ -309,7 +309,7 @@ struct cqspi_driver_platdata {
 #define CQSPI_MIO_NODE_ID_12		0x14108027
 #define CQSPI_READ_ID			0x9F
 #define CQSPI_READ_ID_LEN		6
-#define TERA_MACRO			1000000000000
+#define TERA_MACRO			1000000000000l
 
 #define CQSPI_RESET_TYPE_HWPIN		0
 
