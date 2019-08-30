@@ -12,8 +12,10 @@ Xilinx AXI CDMA engine, it does transfers between memory-mapped source
 address and a memory-mapped destination address.
 
 Required properties:
-- compatible: Should be "xlnx,axi-vdma-1.00.a" or "xlnx,axi-dma-1.00.a" or
-	      "xlnx,axi-cdma-1.00.a""
+- compatible: Should be one of-
+		"xlnx,axi-vdma-1.00.a"
+		"xlnx,axi-dma-1.00.a"
+		"xlnx,axi-cdma-1.00.a"
 - #dma-cells: Should be <1>, see "dmas" property below
 - reg: Should contain DMA registers location and length.
 - xlnx,addrwidth: Should be the vdma addressing size in bits(ex: 32 bits).
@@ -29,17 +31,17 @@ Required properties:
 			   "m_axis_mm2s_aclk", "s_axis_s2mm_aclk"
 	For CDMA:
 	Required elements: "s_axi_lite_aclk", "m_axi_aclk"
-	FOR AXIDMA:
+	For AXIDMA:
 	Required elements: "s_axi_lite_aclk"
 	Optional elements: "m_axi_mm2s_aclk", "m_axi_s2mm_aclk",
 			   "m_axi_sg_aclk"
 
 Required properties for VDMA:
-- xlnx,num-fstores: Should be the number of framebuffers as configured in h/w.
+- xlnx,num-fstores: Should be the number of framebuffers as configured in
+	the hardware.
 
 Optional properties:
-- xlnx,include-sg: Tells configured for Scatter-mode in
-	the hardware.
+- xlnx,include-sg: Tells configured for Scatter-mode in the hardware.
 Optional properties for AXI DMA:
 - xlnx,sg-length-width: Should be set to the width of buffer length register as
 	configured in hardware. If this property is missing or has invalid width
@@ -64,8 +66,7 @@ Required child node properties:
 	{32,64...1024}.
 
 Optional child node properties:
-- xlnx,include-dre: Tells hardware is configured for Data
-	Realignment Engine.
+- xlnx,include-dre: Tells hardware is configured for Data Realignment Engine.
 Optional child node properties for VDMA:
 - xlnx,genlock-mode: Tells Genlock synchronization is
 	enabled/disabled in hardware.
