@@ -5,14 +5,15 @@
 menuconfig XILINX_DMA_ENGINES
 	bool "Xilinx DMA Engines"
 	help
-	  Enable support for the Xilinx DMA controllers. It supports three DMA
-	  engines: Axi Central DMA (memory to memory transfer), Axi DMA (memory and
-	  device transfer), and Axi VDMA (memory and video device transfer).
+	  Enable support for the Xilinx DMA controllers. It supports four DMA
+	  engines: Axi Central DMA (memory to memory transfer), Axi DMA (memory
+	  and device transfer), Axi MCDMA (memory and device transfer) and Axi
+	  VDMA (memory and video device transfer).
 
 if XILINX_DMA_ENGINES
 
 config XILINX_DMATEST
-	tristate "DMA Test client for AXI DMA"
+	tristate "DMA Test client for AXI DMA and MCDMA"
 	depends on XILINX_DMA
 	help
 	  Simple DMA test client. Say N unless you're debugging a
