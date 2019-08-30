@@ -22,6 +22,7 @@
 #include <linux/pm_runtime.h>
 #include <linux/reset.h>
 #include <linux/soc/xilinx/zynqmp/fw.h>
+#include <linux/firmware/xlnx-zynqmp.h>
 #include <linux/slab.h>
 
 #include <linux/phy/phy-zynqmp.h>
@@ -58,7 +59,12 @@
 #define DWC3_PWR_STATE_RETRIES          1000
 #define DWC3_PWR_TIMEOUT		100
 
+/* Versal USB Node ID */
+#define VERSAL_USB_NODE_ID		0x18224018
+
 #define DWC3_OF_ADDRESS(ADDR)		((ADDR) - DWC3_GLOBALS_REGS_START)
+
+static const struct zynqmp_eemi_ops *eemi_ops;
 
 struct dwc3_of_simple {
 	struct device		*dev;
@@ -325,6 +331,12 @@ static int dwc3_of_simple_probe(struct platform_device *pdev)
 	if (!simple)
 		return -ENOMEM;
 
+	eemi_ops = zynqmp_pm_get_eemi_ops();
+	if (IS_ERR(eemi_ops)) {
+		dev_err(dev, "Failed to get eemi_ops\n");
+		return PTR_ERR(eemi_ops);
+	}
+
 	platform_set_drvdata(pdev, simple);
 	simple->dev = dev;
 
@@ -484,17 +496,13 @@ void dwc3_usb2phycfg(struct dwc3 *dwc, bool suspend)
 	}
 }
 
-int dwc3_set_usb_core_power(struct dwc3 *dwc, bool on)
+static int dwc3_zynqmp_power_req(struct dwc3 *dwc, bool on)
 {
 	u32 reg, retries;
 	void __iomem *reg_base;
 	struct platform_device *pdev_parent;
 	struct dwc3_of_simple *simple;
 	struct device_node *node = of_get_parent(dwc->dev->of_node);
-
-	/* this is for Xilinx devices only */
-	if (!of_device_is_compatible(node, "xlnx,zynqmp-dwc3"))
-		return 0;
 
 	pdev_parent = of_find_device_by_node(node);
 	simple = platform_get_drvdata(pdev_parent);
@@ -578,6 +586,62 @@ int dwc3_set_usb_core_power(struct dwc3 *dwc, bool on)
 	}
 
 	return 0;
+}
+
+static int dwc3_versal_power_req(struct dwc3 *dwc, bool on)
+{
+	int ret;
+	struct platform_device *pdev_parent;
+	struct dwc3_of_simple *simple;
+	struct device_node *node = of_get_parent(dwc->dev->of_node);
+
+	pdev_parent = of_find_device_by_node(node);
+	simple = platform_get_drvdata(pdev_parent);
+
+	if (!eemi_ops->ioctl)
+		return -ENOMEM;
+
+	if (on) {
+		dev_dbg(dwc->dev, "Trying to set power state to D0....\n");
+
+		ret = eemi_ops->ioctl(VERSAL_USB_NODE_ID, IOCTL_USB_SET_STATE,
+				      XLNX_REQ_PWR_STATE_D0,
+				      DWC3_PWR_STATE_RETRIES, NULL);
+		if (ret < 0)
+			dev_err(simple->dev, "failed to enter D0 state\n");
+
+		dwc->is_d3 = false;
+	} else {
+		dev_dbg(dwc->dev, "Trying to set power state to D3...\n");
+
+		ret = eemi_ops->ioctl(VERSAL_USB_NODE_ID, IOCTL_USB_SET_STATE,
+				      XLNX_REQ_PWR_STATE_D3,
+				      DWC3_PWR_STATE_RETRIES, NULL);
+		if (ret < 0)
+			dev_err(simple->dev, "failed to enter D3 state\n");
+
+		dwc->is_d3 = true;
+	}
+
+	return ret;
+}
+
+int dwc3_set_usb_core_power(struct dwc3 *dwc, bool on)
+{
+	int ret;
+	struct device_node *node = of_get_parent(dwc->dev->of_node);
+
+	if (of_device_is_compatible(node, "xlnx,zynqmp-dwc3"))
+		/* Set D3/D0 state for ZynqMP */
+		ret = dwc3_zynqmp_power_req(dwc, on);
+	else if (of_device_is_compatible(node, "xlnx,versal-dwc3"))
+		/* Set D3/D0 state for Versal */
+		ret = dwc3_versal_power_req(dwc, on);
+	else
+		/* This is only for Xilinx devices */
+		return 0;
+
+	return ret;
 }
 EXPORT_SYMBOL(dwc3_set_usb_core_power);
 
