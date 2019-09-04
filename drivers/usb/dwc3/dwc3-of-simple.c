@@ -614,7 +614,8 @@ static int dwc3_versal_power_req(struct dwc3 *dwc, bool on)
 
 		ret = eemi_ops->ioctl(VERSAL_USB_NODE_ID, IOCTL_USB_SET_STATE,
 				      XLNX_REQ_PWR_STATE_D0,
-				      DWC3_PWR_STATE_RETRIES, NULL);
+				      DWC3_PWR_STATE_RETRIES * DWC3_PWR_TIMEOUT,
+				      NULL);
 		if (ret < 0)
 			dev_err(simple->dev, "failed to enter D0 state\n");
 
@@ -635,7 +636,8 @@ static int dwc3_versal_power_req(struct dwc3 *dwc, bool on)
 
 		ret = eemi_ops->ioctl(VERSAL_USB_NODE_ID, IOCTL_USB_SET_STATE,
 				      XLNX_REQ_PWR_STATE_D3,
-				      DWC3_PWR_STATE_RETRIES, NULL);
+				      DWC3_PWR_STATE_RETRIES * DWC3_PWR_TIMEOUT,
+				      NULL);
 		if (ret < 0)
 			dev_err(simple->dev, "failed to enter D3 state\n");
 
