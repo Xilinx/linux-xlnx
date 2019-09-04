@@ -62,6 +62,9 @@
 /* Versal USB Node ID */
 #define VERSAL_USB_NODE_ID		0x18224018
 
+/* Versal USB Reset ID */
+#define VERSAL_USB_RESET_ID		0xC104036
+
 #define DWC3_OF_ADDRESS(ADDR)		((ADDR) - DWC3_GLOBALS_REGS_START)
 
 static const struct zynqmp_eemi_ops *eemi_ops;
@@ -599,11 +602,15 @@ static int dwc3_versal_power_req(struct dwc3 *dwc, bool on)
 	pdev_parent = of_find_device_by_node(node);
 	simple = platform_get_drvdata(pdev_parent);
 
-	if (!eemi_ops->ioctl)
+	if (!eemi_ops->ioctl || !eemi_ops->reset_assert)
 		return -ENOMEM;
 
 	if (on) {
 		dev_dbg(dwc->dev, "Trying to set power state to D0....\n");
+		ret = eemi_ops->reset_assert(VERSAL_USB_RESET_ID,
+					     PM_RESET_ACTION_RELEASE);
+		if (ret < 0)
+			dev_err(simple->dev, "failed to De-assert Reset\n");
 
 		ret = eemi_ops->ioctl(VERSAL_USB_NODE_ID, IOCTL_USB_SET_STATE,
 				      XLNX_REQ_PWR_STATE_D0,
@@ -620,6 +627,11 @@ static int dwc3_versal_power_req(struct dwc3 *dwc, bool on)
 				      DWC3_PWR_STATE_RETRIES, NULL);
 		if (ret < 0)
 			dev_err(simple->dev, "failed to enter D3 state\n");
+
+		ret = eemi_ops->reset_assert(VERSAL_USB_RESET_ID,
+					     PM_RESET_ACTION_ASSERT);
+		if (ret < 0)
+			dev_err(simple->dev, "failed to assert Reset\n");
 
 		dwc->is_d3 = true;
 	}
