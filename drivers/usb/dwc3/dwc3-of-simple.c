@@ -479,7 +479,7 @@ static void dwc3_simple_vbus(struct dwc3 *dwc, bool vbus_off)
 	writel(reg, dwc->regs + addr);
 }
 
-void dwc3_usb2phycfg(struct dwc3 *dwc, bool suspend)
+static void dwc3_usb2phycfg(struct dwc3 *dwc, bool suspend)
 {
 	u32 addr, reg;
 
@@ -619,8 +619,19 @@ static int dwc3_versal_power_req(struct dwc3 *dwc, bool on)
 			dev_err(simple->dev, "failed to enter D0 state\n");
 
 		dwc->is_d3 = false;
+
+		/* Clear Suspend PHY bit if dis_u2_susphy_quirk is set */
+		if (dwc->dis_u2_susphy_quirk)
+			dwc3_usb2phycfg(dwc, false);
 	} else {
 		dev_dbg(dwc->dev, "Trying to set power state to D3...\n");
+
+		/*
+		 * Set Suspend PHY bit before entering D3 if
+		 * dis_u2_susphy_quirk is set
+		 */
+		if (dwc->dis_u2_susphy_quirk)
+			dwc3_usb2phycfg(dwc, true);
 
 		ret = eemi_ops->ioctl(VERSAL_USB_NODE_ID, IOCTL_USB_SET_STATE,
 				      XLNX_REQ_PWR_STATE_D3,
