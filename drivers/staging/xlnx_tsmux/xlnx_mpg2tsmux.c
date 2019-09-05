@@ -37,7 +37,6 @@
 #define XTSMUX_NUM_STREAM_IDTBL		0x48
 #define XTSMUX_NUM_DESC			0x70
 #define XTSMUX_STREAM_IDTBL_ADDR	0x78
-#define XTSMUX_NUM_STREAM_IDTBL		0x48
 #define XTSMUX_CONTEXT_DATA_SIZE	64
 
 #define XTSMUX_RST_CTRL_START_MASK	BIT(0)
@@ -63,13 +62,18 @@
  * @is_pcr_stream: flag for pcr(programmable clock recovery) stream
  * @stream_id: stream identification number
  * @extended_stream_id: extended stream id
- * @reserved1: reserved
+ * @reserved1: reserved for hardware alignment
  * @pid: packet id number
- * @dmabuf_id: dma buf id
+ * @dmabuf_id: 0 for buf allocated by driver, nonzero for external buf
  * @size_data_in: size in bytes of input buffer
  * @pts: presentation time stamp
  * @dts: display time stamp
  * @in_buf_pointer: physical address of src buf address
+ * @reserved2: reserved for hardware alignment
+ * @insert_pcr: inserting pcr in stream context
+ * @reserved3: reserved for hardware alignment
+ * @pcr_extension: pcr extension number
+ * @pcr_base: pcr base number
  */
 struct stream_context {
 	enum ts_mux_command command;
@@ -83,6 +87,11 @@ struct stream_context {
 	u64 pts;
 	u64 dts;
 	u64 in_buf_pointer;
+	u32 reserved2;
+	u8 insert_pcr;
+	u8 reserved3;
+	u16 pcr_extension;
+	u64 pcr_base;
 };
 
 /**
@@ -119,19 +128,22 @@ enum stream_errors {
  * @node_status: status of stream node
  * @element: stream context info
  * @error_code: error codes
+ * @reserved1: reserved bits for hardware align
  * @tail_pointer: physical address of next stream node in linked list
  * @strm_phy_addr: physical address of stream context
  * @node: struct of linked list head
- * @reserved1: reserved
+ * @reserved2: reserved for hardware align
  */
 struct stream_context_node {
-	struct stream_context element;
-	struct list_head node;
-	u64 tail_pointer;
-	u64 strm_phy_addr;
 	u32 node_number;
 	enum node_status_info node_status;
+	struct stream_context element;
 	enum stream_errors error_code;
+	u32 reserved1;
+	u64 tail_pointer;
+	u64 strm_phy_addr;
+	struct list_head node;
+	u64 reserved2;
 };
 
 /**
@@ -158,10 +170,7 @@ enum mux_op_errs {
 /**
  * struct muxer_context - struct to describe mux node in linked list
  * @node_status: status of mux node
- * @insert_pcr: inserting pcr in stream context
- * @dmabuf_id: 0 for buf allocated by driver, nonzero for external buf
- * @pcr_extension: pcr extension number
- * @pcr_base: pcr base number
+ * @reserved: reserved for hardware align
  * @dst_buf_start_addr: physical address of dst buf
  * @dst_buf_size: size of the output buffer
  * @dst_buf_written: size of data written in dst buf
@@ -172,10 +181,7 @@ enum mux_op_errs {
  */
 struct muxer_context {
 	enum node_status_info node_status;
-	u8 insert_pcr;
-	u8 dmabuf_id;
-	u16 pcr_extension;
-	u64 pcr_base;
+	u32 reserved;
 	u64 dst_buf_start_addr;
 	u32 dst_buf_size;
 	u32 dst_buf_written;
@@ -237,6 +243,7 @@ struct xlnx_tsmux_dmabufintl {
  * @src_dmabufintl: array of src DMA buf allocated by user
  * @dst_dmabufintl: array of src DMA buf allocated by user
  * @outbuf_written: size in bytes written in output buffer
+ * @stream_count: stream count
  */
 struct xlnx_tsmux {
 	struct device *dev;
@@ -272,6 +279,7 @@ struct xlnx_tsmux {
 	struct xlnx_tsmux_dmabufintl src_dmabufintl[XTSMUX_MAXIN_STRM];
 	struct xlnx_tsmux_dmabufintl dst_dmabufintl[XTSMUX_MAXOUT_STRM];
 	s32 outbuf_written;
+	atomic_t stream_count;
 };
 
 static inline u32 xlnx_tsmux_read(const struct xlnx_tsmux *mpgmuxts,
@@ -322,8 +330,7 @@ static int xlnx_tsmux_start_muxer(struct xlnx_tsmux *mpgmuxts)
 
 	xlnx_tsmux_write64(mpgmuxts, XTSMUX_STREAM_IDTBL_ADDR,
 			   (u64)mpgmuxts->intn_strmtbl_addrs);
-	xlnx_tsmux_write(mpgmuxts, XTSMUX_NUM_STREAM_IDTBL,
-			 mpgmuxts->num_strmnodes);
+	xlnx_tsmux_write(mpgmuxts, XTSMUX_NUM_STREAM_IDTBL, 1);
 	xlnx_tsmux_write(mpgmuxts, XTSMUX_GLBL_IER,
 			 XTSMUX_GLBL_IER_ENABLE_MASK);
 	xlnx_tsmux_write(mpgmuxts, XTSMUX_IER_STAT,
@@ -635,6 +642,8 @@ static int xlnx_tsmux_enqueue_stream_context(struct xlnx_tsmux *mpgmuxts,
 	if (!new_strm_node)
 		return -ENOMEM;
 
+	/* update the stream context node */
+	wmb();
 	new_strm_node->element.command = stream_data->command;
 	new_strm_node->element.is_pcr_stream = stream_data->is_pcr_stream;
 	new_strm_node->element.stream_id = stream_data->stream_id;
@@ -644,6 +653,9 @@ static int xlnx_tsmux_enqueue_stream_context(struct xlnx_tsmux *mpgmuxts,
 	new_strm_node->element.size_data_in = stream_data->size_data_in;
 	new_strm_node->element.pts = stream_data->pts;
 	new_strm_node->element.dts = stream_data->dts;
+	new_strm_node->element.insert_pcr = stream_data->insert_pcr;
+	new_strm_node->element.pcr_base = stream_data->pcr_base;
+	new_strm_node->element.pcr_extension = stream_data->pcr_extension;
 
 	/* Check for external dma buffer */
 	if (!stream_data->is_dmabuf) {
@@ -667,9 +679,6 @@ static int xlnx_tsmux_enqueue_stream_context(struct xlnx_tsmux *mpgmuxts,
 		if (i == XTSMUX_MAXIN_STRM) {
 			dev_err(mpgmuxts->dev, "No DMA buffer with %d",
 				stream_data->srcbuf_id);
-			dma_pool_free(mpgmuxts->strm_ctx_pool,
-				      kaddr_strm_node, strm_phy_addr);
-			new_strm_node = NULL;
 			return -ENOMEM;
 		}
 	}
@@ -691,8 +700,10 @@ static int xlnx_tsmux_enqueue_stream_context(struct xlnx_tsmux *mpgmuxts,
 						 node);
 		prev_strm_node->tail_pointer = new_strm_node->strm_phy_addr;
 	}
-
+	/* update the list and stream count */
+	wmb();
 	list_add_tail(&new_strm_node->node, &mpgmuxts->strm_node);
+	atomic_inc(&mpgmuxts->stream_count);
 	spin_unlock_irqrestore(&mpgmuxts->lock, flags);
 
 	return 0;
@@ -758,6 +769,7 @@ static enum xlnx_tsmux_status xlnx_tsmux_get_device_status(struct xlnx_tsmux *
 static int xlnx_tsmux_ioctl_start(struct xlnx_tsmux *mpgmuxts)
 {
 	enum xlnx_tsmux_status ip_stat;
+	int cnt;
 
 	/* get IP status */
 	ip_stat = xlnx_tsmux_get_device_status(mpgmuxts);
@@ -771,6 +783,9 @@ static int xlnx_tsmux_ioctl_start(struct xlnx_tsmux *mpgmuxts)
 		dev_err(mpgmuxts->dev, "No stream or mux to start device");
 		return -EIO;
 	}
+
+	cnt = atomic_read(&mpgmuxts->stream_count);
+	atomic_set(&mpgmuxts->intn_stream_count, cnt);
 
 	return xlnx_tsmux_start_muxer(mpgmuxts);
 }
@@ -867,18 +882,14 @@ static int xlnx_tsmux_enqueue_mux_context(struct xlnx_tsmux *mpgmuxts,
 		return -EAGAIN;
 
 	new_mux_node->node_status = UPDATED_BY_DRIVER;
-	new_mux_node->insert_pcr = mux_data->insert_pcr;
-	new_mux_node->pcr_base = mux_data->pcr_base;
-	new_mux_node->pcr_extension = mux_data->pcr_extension;
 	new_mux_node->mux_phy_addr = (u64)mux_phy_addr;
 
 	/* Check for external dma buffer */
 	if (!mux_data->is_dmabuf) {
-		out_index = atomic_read(&mpgmuxts->outbuf_idx);
+		out_index = 0;
 		new_mux_node->dst_buf_start_addr =
 			(u64)mpgmuxts->dstbuf_addrs[out_index];
 		new_mux_node->dst_buf_size = mpgmuxts->dstbuf_size;
-		new_mux_node->dmabuf_id = 0;
 		if (out_index)
 			atomic_set(&mpgmuxts->outbuf_idx, 0);
 		else
@@ -889,8 +900,6 @@ static int xlnx_tsmux_enqueue_mux_context(struct xlnx_tsmux *mpgmuxts,
 			   mpgmuxts->dst_dmabufintl[i].dmabuf_fd) {
 				new_mux_node->dst_buf_start_addr =
 					mpgmuxts->dst_dmabufintl[i].dmabuf_addr;
-				new_mux_node->dmabuf_id =
-					mpgmuxts->dst_dmabufintl[i].buf_id;
 				break;
 			}
 		}
@@ -913,23 +922,24 @@ static int xlnx_tsmux_enqueue_mux_context(struct xlnx_tsmux *mpgmuxts,
 static int xlnx_tsmux_set_mux_desc(struct xlnx_tsmux *mpgmuxts,
 				   void __user *arg)
 {
+	struct muxer_context_in *mux_data;
 	int ret = 0;
-	struct muxer_context_in *pmux;
 
-	pmux = kzalloc(sizeof(*pmux), GFP_KERNEL);
-	if (!pmux)
+	mux_data = kzalloc(sizeof(*mux_data), GFP_KERNEL);
+	if (!mux_data)
 		return -ENOMEM;
 
-	ret = copy_from_user(pmux, arg, sizeof(struct muxer_context));
+	ret = copy_from_user(mux_data, arg,
+			     sizeof(struct muxer_context_in));
 	if (ret) {
-		dev_err(mpgmuxts->dev, "failed to copy memory");
+		dev_err(mpgmuxts->dev, "failed to copy muxer data from user");
 		goto kmem_free;
 	}
 
-	xlnx_tsmux_enqueue_mux_context(mpgmuxts, pmux);
+	return xlnx_tsmux_enqueue_mux_context(mpgmuxts, mux_data);
 
 kmem_free:
-	kfree(pmux);
+	kfree(mux_data);
 
 	return ret;
 }
@@ -960,7 +970,8 @@ static int xlnx_tsmux_ioctl_verify_dmabuf(struct xlnx_tsmux *mpgmuxts,
 	if (!dbuf_info)
 		return -ENOMEM;
 
-	ret = copy_from_user(dbuf_info, arg, sizeof(*dbuf_info));
+	ret = copy_from_user(dbuf_info, arg,
+			     sizeof(struct xlnx_tsmux_dmabuf_info));
 	if (ret) {
 		dev_err(mpgmuxts->dev, "Failed to copy from user");
 		goto dmak_free;
@@ -1136,7 +1147,7 @@ static long xlnx_tsmux_ioctl(struct file *fptr,
 		return -EINVAL;
 	}
 	if (ret < 0)
-		dev_err(mpgmuxts->dev, "ioctl %u failed\n", cmd);
+		dev_err(mpgmuxts->dev, "ioctl %d failed\n", cmd);
 
 	return ret;
 }
@@ -1186,7 +1197,7 @@ static int xlnx_tsmux_mmap(struct file *fp, struct vm_area_struct *vma)
 		dev_err(mpgmuxts->dev, "Wrong buffer id -> %d buf", buf_id);
 		return -EINVAL;
 	}
-
+	fp->private_data = mpgmuxts;
 	return 0;
 }
 
@@ -1236,6 +1247,8 @@ static int xlnx_tsmux_update_complete(struct xlnx_tsmux *mpgmuxts)
 	unsigned long flags;
 
 	num_strm_node = xlnx_tsmux_read(mpgmuxts, XTSMUX_LAST_NODE_PROCESSED);
+	if (num_strm_node == 0)
+		return -1;
 
 	/* Removing completed stream nodes from the list  */
 	spin_lock_irqsave(&mpgmuxts->lock, flags);
@@ -1245,6 +1258,7 @@ static int xlnx_tsmux_update_complete(struct xlnx_tsmux *mpgmuxts)
 			list_first_entry(&mpgmuxts->strm_node,
 					 struct stream_context_node, node);
 		list_del(&tstrm_node->node);
+		atomic_dec(&mpgmuxts->stream_count);
 		if (tstrm_node->element.dmabuf_id)
 			xlnx_tsmux_free_dmabufintl
 				(mpgmuxts->src_dmabufintl,
@@ -1255,8 +1269,6 @@ static int xlnx_tsmux_update_complete(struct xlnx_tsmux *mpgmuxts)
 				      tstrm_node->strm_phy_addr);
 			break;
 		}
-		dma_pool_free(mpgmuxts->strm_ctx_pool, tstrm_node,
-			      tstrm_node->strm_phy_addr);
 	}
 
 	/* Removing completed mux nodes from the list  */
@@ -1265,12 +1277,6 @@ static int xlnx_tsmux_update_complete(struct xlnx_tsmux *mpgmuxts)
 	mpgmuxts->outbuf_written = temp_mux->dst_buf_written;
 
 	list_del(&temp_mux->node);
-	if (temp_mux->dmabuf_id)
-		xlnx_tsmux_free_dmabufintl(mpgmuxts->dst_dmabufintl,
-					   temp_mux->dmabuf_id,
-					   DMA_FROM_MPG2MUX);
-	dma_pool_free(mpgmuxts->mux_ctx_pool, temp_mux,
-		      temp_mux->mux_phy_addr);
 	spin_unlock_irqrestore(&mpgmuxts->lock, flags);
 
 	return 0;
@@ -1282,10 +1288,13 @@ static irqreturn_t xlnx_tsmux_intr_handler(int irq, void *ctx)
 	struct xlnx_tsmux *mpgmuxts = (struct xlnx_tsmux *)ctx;
 
 	status = xlnx_tsmux_read(mpgmuxts, XTSMUX_ISR_STAT);
+	status &= XTSMUX_IER_ENABLE_MASK;
+
 	if (status) {
-		wake_up_interruptible(&mpgmuxts->waitq);
-		/* TODO: Move to bottom halve */
+		xlnx_tsmux_write(mpgmuxts, XTSMUX_ISR_STAT, status);
 		xlnx_tsmux_update_complete(mpgmuxts);
+		if (mpgmuxts->outbuf_written)
+			wake_up_interruptible(&mpgmuxts->waitq);
 		return IRQ_HANDLED;
 	}
 
@@ -1299,7 +1308,6 @@ static int xlnx_tsmux_probe(struct platform_device *pdev)
 	struct device *dev_crt;
 	struct resource *dev_resrc;
 	int ret = -1;
-	int stc_sz;
 	unsigned long flags;
 
 	/* DRIVER_MAX_DEV is to limit the number of instances, but
@@ -1355,10 +1363,11 @@ static int xlnx_tsmux_probe(struct platform_device *pdev)
 		return -ENOMEM;
 	}
 
-	stc_sz = sizeof(struct muxer_context);
 	mpgmuxts->mux_ctx_pool = dma_pool_create("muxcxt_pool", mpgmuxts->dev,
-						 stc_sz, XTSMUX_POOL_SIZE,
-						 stc_sz * XTSMUX_MAXIN_TLSTRM);
+						 XTSMUX_POOL_SIZE,
+						 XTSMUX_POOL_SIZE,
+						 XTSMUX_POOL_SIZE *
+						 XTSMUX_MAXIN_TLSTRM);
 
 	if (!mpgmuxts->mux_ctx_pool) {
 		dev_err(mpgmuxts->dev, "Allocation fail for mux ctx pool");

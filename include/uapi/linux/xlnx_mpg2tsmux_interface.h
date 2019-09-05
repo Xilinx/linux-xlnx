@@ -44,10 +44,13 @@ enum ts_mux_command {
  * @is_valid_dts: flag for valid dts
  * @is_dmabuf: flag to set if external src buffer is DMA allocated
  * @pid: packet id number
- * @srcbuf_id: source buffer id after mmap
  * @size_data_in: size in bytes of input buffer
  * @pts: presentation time stamp
  * @dts: display time stamp
+ * @srcbuf_id: source buffer id after mmap
+ * @insert_pcr: flag for inserting pcr in stream context
+ * @pcr_extension: pcr extension number
+ * @pcr_base: pcr base number
  */
 struct stream_context_in {
 	enum ts_mux_command command;
@@ -58,28 +61,25 @@ struct stream_context_in {
 	u8 is_valid_dts;
 	u8 is_dmabuf;
 	u16 pid;
-	u32 srcbuf_id;
 	u64 size_data_in;
 	u64 pts;
 	u64 dts;
+	u32 srcbuf_id;
+	u8 insert_pcr;
+	u16 pcr_extension;
+	u64 pcr_base;
 };
 
 /**
  * struct mux_context_in - struct to enqueue a mux context descriptor
- * @pcr_base: pcr base number
+ * @is_dmabuf: flag to set if external src buffer is DMA allocated
  * @dstbuf_id: destination buffer id after mmap
  * @dmabuf_size: size in bytes of output buffer
- * @pcr_extension: pcr extension number
- * @insert_pcr: flag for inserting pcr in stream context
- * @is_dmabuf: flag to set if external dst buffer is DMA allocated
  */
 struct muxer_context_in {
-	u64 pcr_base;
+	u8 is_dmabuf;
 	u32 dstbuf_id;
 	u32 dmabuf_size;
-	u16 pcr_extension;
-	u8 insert_pcr;
-	u8 is_dmabuf;
 };
 
 /**
