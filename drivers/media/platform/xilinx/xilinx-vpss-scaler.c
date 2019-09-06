@@ -87,6 +87,7 @@ enum xscaler_vid_reg_fmts {
 /* Video IP PPC */
 #define XSCALER_PPC_1			(1)
 #define XSCALER_PPC_2			(2)
+#define XSCALER_PPC_4			(4)
 
 #define XV_HSCALER_MAX_H_TAPS           (12)
 #define XV_HSCALER_MAX_H_PHASES         (64)
@@ -114,6 +115,7 @@ enum xscaler_vid_reg_fmts {
 #define XHSC_STEP_PRECISION_SHIFT	(16)
 #define XHSC_HPHASE_SHIFT_BY_6		(6)
 #define XHSC_HPHASE_MULTIPLIER		(9)
+#define XHSC_HPHASE_MUL_4PPC		(10)
 
 /* Mask definitions for Low and high 16 bits in a 32 bit number */
 #define XVSC_MASK_LOW_16BITS            GENMASK(15, 0)
@@ -760,7 +762,7 @@ struct xscaler_device {
 	u32 pix_per_clk;
 	u32 max_pixels;
 	u32 max_lines;
-	u32 H_phases[XV_HSCALER_MAX_LINE_WIDTH];
+	u64 H_phases[XV_HSCALER_MAX_LINE_WIDTH];
 	short hscaler_coeff[XV_HSCALER_MAX_H_PHASES][XV_HSCALER_MAX_H_TAPS];
 	short vscaler_coeff[XV_VSCALER_MAX_V_PHASES][XV_VSCALER_MAX_V_TAPS];
 	bool is_polyphase;
@@ -804,7 +806,7 @@ xv_hscaler_calculate_phases(struct xscaler_device *xscaler,
 	bool output_write_en;
 	bool get_new_pix;
 	u64 phaseH;
-	u32 array_idx = 0;
+	u64 array_idx = 0;
 	int nr_rds;
 	int nr_rds_clck;
 	unsigned int nphases = xscaler->max_num_phases;
@@ -835,16 +837,32 @@ xv_hscaler_calculate_phases(struct xscaler_device *xscaler,
 				xwrite_pos++;
 			}
 
-			/* Needs updates for 4 PPC */
-			xscaler->H_phases[x] |= (phaseH <<
-						(s * XHSC_HPHASE_MULTIPLIER));
-			xscaler->H_phases[x] |= (array_idx <<
-						(XHSC_HPHASE_SHIFT_BY_6 +
-						(s * XHSC_HPHASE_MULTIPLIER)));
-			if (output_write_en) {
+			if (nppc == XSCALER_PPC_4) {
 				xscaler->H_phases[x] |=
-				(XV_HSCALER_PHASESH_V_OUTPUT_WR_EN <<
-				(s * XHSC_HPHASE_MULTIPLIER));
+					((u64)phaseH <<
+					 (s * XHSC_HPHASE_MUL_4PPC));
+				xscaler->H_phases[x] |=
+					((u64)array_idx <<
+					 (XHSC_HPHASE_SHIFT_BY_6 +
+					  (s * XHSC_HPHASE_MUL_4PPC)));
+				if (output_write_en)
+					xscaler->H_phases[x] |=
+						((u64)1 <<
+						 (XHSC_HPHASE_MULTIPLIER + s *
+						  XHSC_HPHASE_MUL_4PPC));
+			} else {
+				xscaler->H_phases[x] |=
+					(phaseH <<
+					 (s * XHSC_HPHASE_MULTIPLIER));
+				xscaler->H_phases[x] |=
+					(array_idx <<
+					 (XHSC_HPHASE_SHIFT_BY_6 +
+					  (s * XHSC_HPHASE_MULTIPLIER)));
+
+				if (output_write_en)
+					xscaler->H_phases[x] |=
+						(XV_HSCALER_PHASESH_V_OUTPUT_WR_EN <<
+						 (s * XHSC_HPHASE_MULTIPLIER));
 			}
 
 			if (get_new_pix)
@@ -1308,8 +1326,9 @@ static void
 xv_hscaler_set_phases(struct xscaler_device *xscaler)
 {
 	u32 loop_width;
-	u32 index, val;
-	u32 offset, i, lsb, msb;
+	u32 index = 0, val;
+	u32 offset, i, j = 0, lsb, msb;
+	u64 phasehdata;
 
 	loop_width = xscaler->max_pixels / xscaler->pix_per_clk;
 	offset = V_HSCALER_OFF + XV_HSCALER_CTRL_ADDR_HWREG_PHASESH_V_BASE;
@@ -1323,10 +1342,11 @@ xv_hscaler_set_phases(struct xscaler_device *xscaler)
 		 * into IP registers (i is array loc and index is
 		 * address offset)
 		 */
-		index = 0;
 		for (i = 0; i < loop_width; i += 2) {
-			lsb = xscaler->H_phases[i] & XHSC_MASK_LOW_16BITS;
-			msb = xscaler->H_phases[i + 1] & XHSC_MASK_LOW_16BITS;
+			lsb = lower_32_bits(xscaler->H_phases[i] &
+					    XHSC_MASK_LOW_16BITS);
+			msb = lower_32_bits(xscaler->H_phases[i + 1] &
+					    XHSC_MASK_LOW_16BITS);
 			val = (msb << 16 | lsb);
 			xvip_write(&xscaler->xvip, offset + (index * 4), val);
 			++index;
@@ -1340,13 +1360,34 @@ xv_hscaler_set_phases(struct xscaler_device *xscaler)
 		 * Need 1 32b write to get each entry into IP registers
 		 */
 		for (i = 0; i < loop_width; i++) {
-			val = (xscaler->H_phases[i] &
-					XHSC_MASK_LOW_32BITS);
+			val = lower_32_bits(xscaler->H_phases[i] &
+					    XHSC_MASK_LOW_32BITS);
 			xvip_write(&xscaler->xvip, offset + (i * 4), val);
 		}
 		dev_dbg(xscaler->xvip.dev,
 			"%s : Operating in 2 PPC design", __func__);
 		return;
+	case XSCALER_PPC_4:
+		/*
+		 * PhaseH is 64bits and each entry has valid 32b MSB & LSB
+		 * Need 2 32b writes to get each entry into IP registers
+		 * (index is array loc and offset is address offset)
+		 */
+		for (i = 0; i < loop_width; i++) {
+			phasehdata = xscaler->H_phases[index++];
+			lsb = (u32)(phasehdata & XHSC_MASK_LOW_32BITS);
+			msb = (u32)((phasehdata >> 32) & XHSC_MASK_LOW_32BITS);
+			xvip_write(&xscaler->xvip, offset + (j * 4), lsb);
+			xvip_write(&xscaler->xvip, offset + ((j + 1) * 4), msb);
+			j += 2;
+		}
+		dev_dbg(xscaler->xvip.dev,
+			"%s : Operating in 4 PPC design", __func__);
+		return;
+	default:
+		dev_warn(xscaler->xvip.dev, "%s : %d unsupported ppc design!!!\n",
+			 __func__, xscaler->pix_per_clk);
+
 	}
 }
 
@@ -1708,7 +1749,8 @@ static int xscaler_parse_of(struct xscaler_device *xscaler)
 		return ret;
 
 	/* Driver only supports 1 PPC and 2 PPC */
-	if (dt_ppc != XSCALER_PPC_1 && dt_ppc != XSCALER_PPC_2) {
+	if (dt_ppc != XSCALER_PPC_1 && dt_ppc != XSCALER_PPC_2 &&
+	    dt_ppc != XSCALER_PPC_4) {
 		dev_err(xscaler->xvip.dev,
 			"Unsupported xlnx,pix-per-clk(%d) value in DT", dt_ppc);
 		return -EINVAL;
