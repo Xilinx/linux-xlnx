@@ -58,6 +58,7 @@
 #define XLNXSYNC_CTRL_ENCDEC_MASK	BIT(0)
 #define XLNXSYNC_CTRL_ENABLE_MASK	BIT(1)
 #define XLNXSYNC_CTRL_INTR_EN_MASK	BIT(2)
+#define XLNXSYNC_CTRL_SOFTRESET		BIT(3)
 
 #define XLNXSYNC_ISR_SYNC_FAIL_MASK	BIT(0)
 #define XLNXSYNC_ISR_WDG_ERR_MASK	BIT(1)
@@ -224,30 +225,8 @@ static bool xlnxsync_is_buf_done(struct xlnxsync_device *dev,
 
 static void xlnxsync_reset_chan(struct xlnxsync_device *dev, u32 chan)
 {
-	u32 i;
-
-	xlnxsync_write(dev, chan, XLNXSYNC_CTRL_REG, 0);
-	xlnxsync_write(dev, chan, XLNXSYNC_IER_REG, 0);
-	for (i = 0; i < XLNXSYNC_BUF_PER_CHAN; i++) {
-		xlnxsync_write(dev, chan,
-			       XLNXSYNC_PL_START_LO_REG + (i << 3), 0);
-		xlnxsync_write(dev, chan,
-			       XLNXSYNC_PL_START_HI_REG + (i << 3), 0);
-		xlnxsync_write(dev, chan,
-			       XLNXSYNC_PC_START_LO_REG + (i << 3), 0);
-		xlnxsync_write(dev, chan,
-			       XLNXSYNC_PC_START_HI_REG + (i << 3), 0);
-		xlnxsync_write(dev, chan,
-			       XLNXSYNC_PL_END_LO_REG + (i << 3), 0);
-		xlnxsync_write(dev, chan,
-			       XLNXSYNC_PL_END_HI_REG + (i << 3), 0);
-		xlnxsync_write(dev, chan,
-			       XLNXSYNC_PC_END_LO_REG + (i << 3), 0);
-		xlnxsync_write(dev, chan,
-			       XLNXSYNC_PC_END_HI_REG + (i << 3), 0);
-	}
-	xlnxsync_write(dev, chan, XLNXSYNC_L_MARGIN_REG, 0);
-	xlnxsync_write(dev, chan, XLNXSYNC_C_MARGIN_REG, 0);
+	xlnxsync_set(dev, chan, XLNXSYNC_CTRL_REG, XLNXSYNC_CTRL_SOFTRESET);
+	xlnxsync_clr(dev, chan, XLNXSYNC_CTRL_REG, XLNXSYNC_CTRL_SOFTRESET);
 }
 
 static int xlnxsync_config_channel(struct xlnxsync_device *dev,
