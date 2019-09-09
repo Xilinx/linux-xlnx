@@ -336,10 +336,10 @@ static int xlnxsync_config_channel(struct xlnxsync_device *dev,
 			c_start_reg = XLNXSYNC_PC_START_LO_REG;
 			c_end_reg = XLNXSYNC_PC_END_LO_REG;
 		} else {
-			l_start_reg = XLNXSYNC_PL_START_LO_REG;
-			l_end_reg = XLNXSYNC_PL_END_LO_REG;
-			c_start_reg = XLNXSYNC_PC_START_LO_REG;
-			c_end_reg = XLNXSYNC_PC_END_LO_REG;
+			l_start_reg = XLNXSYNC_CL_START_LO_REG;
+			l_end_reg = XLNXSYNC_CL_END_LO_REG;
+			c_start_reg = XLNXSYNC_CC_START_LO_REG;
+			c_end_reg = XLNXSYNC_CC_END_LO_REG;
 		}
 
 		/* Start Address */
@@ -362,7 +362,7 @@ static int xlnxsync_config_channel(struct xlnxsync_device *dev,
 			       XLNXSYNC_L_MARGIN_REG + (i << 2),
 			       cfg.luma_margin);
 
-		if (!cfg.ismono) {
+		if (!cfg.ismono[j]) {
 			dev_dbg(dev->dev, "%s : Not monochrome. Program Chroma\n",
 				__func__);
 
