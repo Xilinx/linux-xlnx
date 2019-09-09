@@ -1001,24 +1001,24 @@ static int xlnxsync_clk_setup(struct xlnxsync_device *xlnxsync)
 {
 	int ret;
 
-	xlnxsync->axi_clk = devm_clk_get(xlnxsync->dev, "s_axi_ctrl");
+	xlnxsync->axi_clk = devm_clk_get(xlnxsync->dev, "s_axi_ctrl_aclk");
 	if (IS_ERR(xlnxsync->axi_clk)) {
 		ret = PTR_ERR(xlnxsync->axi_clk);
 		dev_err(xlnxsync->dev, "failed to get axi_aclk (%d)\n", ret);
 		return ret;
 	}
 
-	xlnxsync->p_clk = devm_clk_get(xlnxsync->dev, "s_axi_mm_p");
+	xlnxsync->p_clk = devm_clk_get(xlnxsync->dev, "s_axi_mm_p_aclk");
 	if (IS_ERR(xlnxsync->p_clk)) {
 		ret = PTR_ERR(xlnxsync->p_clk);
 		dev_err(xlnxsync->dev, "failed to get p_aclk (%d)\n", ret);
 		return ret;
 	}
 
-	xlnxsync->c_clk = devm_clk_get(xlnxsync->dev, "s_axi_mm_c");
+	xlnxsync->c_clk = devm_clk_get(xlnxsync->dev, "s_axi_mm_aclk");
 	if (IS_ERR(xlnxsync->c_clk)) {
 		ret = PTR_ERR(xlnxsync->c_clk);
-		dev_err(xlnxsync->dev, "failed to get c_aclk (%d)\n", ret);
+		dev_err(xlnxsync->dev, "failed to get axi_mm (%d)\n", ret);
 		return ret;
 	}
 
@@ -1036,7 +1036,7 @@ static int xlnxsync_clk_setup(struct xlnxsync_device *xlnxsync)
 
 	ret = clk_prepare_enable(xlnxsync->c_clk);
 	if (ret) {
-		dev_err(xlnxsync->dev, "failed to enable c_clk (%d)\n", ret);
+		dev_err(xlnxsync->dev, "failed to enable axi_mm (%d)\n", ret);
 		goto err_cclk;
 	}
 
@@ -1166,8 +1166,7 @@ static int xlnxsync_remove(struct platform_device *pdev)
 }
 
 static const struct of_device_id xlnxsync_of_match[] = {
-	/* TODO : Change as per dt */
-	{ .compatible = "xlnx,sync-1.0", },
+	{ .compatible = "xlnx,sync-ip-1.0", },
 	{ /* end of table*/ }
 };
 MODULE_DEVICE_TABLE(of, xlnxsync_of_match);
