@@ -14,6 +14,7 @@
 #include <linux/cdev.h>
 #include <linux/clk.h>
 #include <linux/device.h>
+#include <linux/dma-buf.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/ioctl.h>
@@ -255,17 +256,84 @@ static void xlnxsync_reset(struct xlnxsync_device *dev)
 		xlnxsync_reset_chan(dev, i);
 }
 
+static dma_addr_t xlnxsync_get_phy_addr(struct xlnxsync_device *dev,
+					u32 fd)
+{
+	struct dma_buf *dbuf;
+	struct dma_buf_attachment *attach;
+	struct sg_table *sgt;
+	dma_addr_t phy_addr = 0;
+
+	dbuf = dma_buf_get(fd);
+	if (IS_ERR(dbuf)) {
+		dev_err(dev->dev, "%s : Failed to get dma buf\n", __func__);
+		goto get_phy_addr_err;
+	}
+
+	attach = dma_buf_attach(dbuf, dev->dev);
+	if (IS_ERR(attach)) {
+		dev_err(dev->dev, "%s : Failed to attach buf\n", __func__);
+		goto fail_attach;
+	}
+
+	sgt = dma_buf_map_attachment(attach, DMA_BIDIRECTIONAL);
+	if (IS_ERR(sgt)) {
+		dev_err(dev->dev, "%s : Failed to attach map\n", __func__);
+		goto fail_map;
+	}
+
+	phy_addr = sg_dma_address(sgt->sgl);
+	dma_buf_unmap_attachment(attach, sgt, DMA_BIDIRECTIONAL);
+
+fail_map:
+	dma_buf_detach(dbuf, attach);
+fail_attach:
+	dma_buf_put(dbuf);
+get_phy_addr_err:
+	return phy_addr;
+}
+
 static int xlnxsync_config_channel(struct xlnxsync_device *dev,
 				   void __user *arg)
 {
 	struct xlnxsync_chan_config cfg;
 	int ret, i = 0, j;
+	dma_addr_t phy_start_address;
+	u64 luma_start_address[XLNXSYNC_IO];
+	u64 chroma_start_address[XLNXSYNC_IO];
+	u64 luma_end_address[XLNXSYNC_IO];
+	u64 chroma_end_address[XLNXSYNC_IO];
 
 	ret = copy_from_user(&cfg, arg, sizeof(cfg));
 	if (ret) {
 		dev_err(dev->dev, "%s : Failed to copy from user\n", __func__);
 		return ret;
 	}
+
+	/* Calculate luma/chroma physical addresses */
+	phy_start_address = xlnxsync_get_phy_addr(dev, cfg.dma_fd);
+	if (!phy_start_address) {
+		dev_err(dev->dev, "%s : Failed to obtain physical address\n",
+			__func__);
+		return -EINVAL;
+	}
+
+	luma_start_address[XLNXSYNC_PROD] =
+		cfg.luma_start_offset[XLNXSYNC_PROD] + phy_start_address;
+	luma_start_address[XLNXSYNC_CONS] =
+		cfg.luma_start_offset[XLNXSYNC_CONS] + phy_start_address;
+	chroma_start_address[XLNXSYNC_PROD] =
+		cfg.chroma_start_offset[XLNXSYNC_PROD] + phy_start_address;
+	chroma_start_address[XLNXSYNC_CONS] =
+		cfg. chroma_start_offset[XLNXSYNC_CONS] + phy_start_address;
+	luma_end_address[XLNXSYNC_PROD] =
+		cfg.luma_end_offset[XLNXSYNC_PROD] + phy_start_address;
+	luma_end_address[XLNXSYNC_CONS] =
+		cfg.luma_end_offset[XLNXSYNC_CONS] + phy_start_address;
+	chroma_end_address[XLNXSYNC_PROD] =
+		cfg.chroma_end_offset[XLNXSYNC_PROD] + phy_start_address;
+	chroma_end_address[XLNXSYNC_CONS] =
+		cfg.chroma_end_offset[XLNXSYNC_CONS] + phy_start_address;
 
 	if (cfg.channel_id >= dev->config.max_channels) {
 		dev_err(dev->dev, "%s : Incorrect channel id %d\n",
@@ -276,20 +344,20 @@ static int xlnxsync_config_channel(struct xlnxsync_device *dev,
 	dev_dbg(dev->dev, "Channel id = %d", cfg.channel_id);
 	dev_dbg(dev->dev, "Producer address\n");
 	dev_dbg(dev->dev, "Luma Start Addr = 0x%llx End Addr = 0x%llx Margin = 0x%08x\n",
-		cfg.luma_start_address[XLNXSYNC_PROD],
-		cfg.luma_end_address[XLNXSYNC_PROD], cfg.luma_margin);
+		luma_start_address[XLNXSYNC_PROD],
+		luma_end_address[XLNXSYNC_PROD], cfg.luma_margin);
 	dev_dbg(dev->dev, "Chroma Start Addr = 0x%llx End Addr = 0x%llx Margin = 0x%08x\n",
-		cfg.chroma_start_address[XLNXSYNC_PROD],
-		cfg.chroma_end_address[XLNXSYNC_PROD], cfg.chroma_margin);
+		chroma_start_address[XLNXSYNC_PROD],
+		chroma_end_address[XLNXSYNC_PROD], cfg.chroma_margin);
 	dev_dbg(dev->dev, "FB id = %d IsMono = %d\n",
 		cfg.fb_id[XLNXSYNC_PROD], cfg.ismono[XLNXSYNC_PROD]);
 	dev_dbg(dev->dev, "Consumer address\n");
 	dev_dbg(dev->dev, "Luma Start Addr = 0x%llx End Addr = 0x%llx\n",
-		cfg.luma_start_address[XLNXSYNC_CONS],
-		cfg.luma_end_address[XLNXSYNC_CONS]);
+		luma_start_address[XLNXSYNC_CONS],
+		luma_end_address[XLNXSYNC_CONS]);
 	dev_dbg(dev->dev, "Chroma Start Addr = 0x%llx End Addr = 0x%llx\n",
-		cfg.chroma_start_address[XLNXSYNC_CONS],
-		cfg.chroma_end_address[XLNXSYNC_CONS]);
+		chroma_start_address[XLNXSYNC_CONS],
+		chroma_end_address[XLNXSYNC_CONS]);
 	dev_dbg(dev->dev, "FB id = %d IsMono = %d\n",
 		cfg.fb_id[XLNXSYNC_CONS], cfg.ismono[XLNXSYNC_CONS]);
 
@@ -348,18 +416,18 @@ static int xlnxsync_config_channel(struct xlnxsync_device *dev,
 
 		/* Start Address */
 		xlnxsync_write(dev, cfg.channel_id, l_start_reg + (i << 3),
-			       lower_32_bits(cfg.luma_start_address[j]));
+			       lower_32_bits(luma_start_address[j]));
 
 		xlnxsync_write(dev, cfg.channel_id,
 			       (l_start_reg + 4) + (i << 3),
-			       upper_32_bits(cfg.luma_start_address[j]) &
+			       upper_32_bits(luma_start_address[j]) &
 			       XLNXSYNC_FB_HI_ADDR_MASK);
 
 		/* End Address */
 		xlnxsync_write(dev, cfg.channel_id, l_end_reg + (i << 3),
-			       lower_32_bits(cfg.luma_end_address[j]));
+			       lower_32_bits(luma_end_address[j]));
 		xlnxsync_write(dev, cfg.channel_id, l_end_reg + 4 + (i << 3),
-			       upper_32_bits(cfg.luma_end_address[j]));
+			       upper_32_bits(luma_end_address[j]));
 
 		/* Set margin */
 		xlnxsync_write(dev, cfg.channel_id,
@@ -373,21 +441,21 @@ static int xlnxsync_config_channel(struct xlnxsync_device *dev,
 			/* Chroma Start Address */
 			xlnxsync_write(dev, cfg.channel_id,
 				       c_start_reg + (i << 3),
-				       lower_32_bits(cfg.chroma_start_address[j]));
+				       lower_32_bits(chroma_start_address[j]));
 
 			xlnxsync_write(dev, cfg.channel_id,
 				       c_start_reg + 4 + (i << 3),
-				       upper_32_bits(cfg.chroma_start_address[j]) &
+				       upper_32_bits(chroma_start_address[j]) &
 				       XLNXSYNC_FB_HI_ADDR_MASK);
 
 			/* Chroma End Address */
 			xlnxsync_write(dev, cfg.channel_id,
 				       c_end_reg + (i << 3),
-				       lower_32_bits(cfg.chroma_end_address[j]));
+				       lower_32_bits(chroma_end_address[j]));
 
 			xlnxsync_write(dev, cfg.channel_id,
 				       c_end_reg + 4 + (i << 3),
-				       upper_32_bits(cfg.chroma_end_address[j]));
+				       upper_32_bits(chroma_end_address[j]));
 
 			/* Chroma Margin */
 			xlnxsync_write(dev, cfg.channel_id,
@@ -432,6 +500,8 @@ static int xlnxsync_get_channel_status(struct xlnxsync_device *dev,
 			for (k = 0; k < XLNXSYNC_IO; k++) {
 				if (xlnxsync_is_buf_done(dev, i, j, k))
 					status.fbdone[i][j][k] = true;
+				else
+					status.fbdone[i][j][k] = false;
 			}
 		}
 
