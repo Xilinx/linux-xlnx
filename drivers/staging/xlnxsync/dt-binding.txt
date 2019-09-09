@@ -10,7 +10,7 @@ It can work on the encode path with max 4 channels or on decode path with
 max 2 channels.
 
 Required properties:
-- compatible : Must contain "xlnx,sync-1.0"
+- compatible : Must contain "xlnx,sync-ip-1.0"
 - reg: Physical base address and length of the registers set for the device.
 - interrupts: Contains the interrupt line number.
 - interrupt-parent: phandle to interrupt controller.
@@ -23,11 +23,11 @@ Optional properties:
 - xlnx,encode: Present if IP configured for encoding path, else absent.
 
 v_sync_vcu: subframe_sync_vcu@a00e0000 {
-	compatible = "xlnx,sync-1.0";
+	compatible = "xlnx,sync-ip-1.0";
 	reg = <0x0 0xa00e0000 0x0 0x10000>;
 	interrupt-parent = <&gic>;
 	interrupts = <0 96 4>;
-	clock-names = "s_axi_ctrl", "s_axi_mm_p", "s_axi_mm_c";
+	clock-names = "s_axi_ctrl_aclk", "s_axi_mm_p_aclk", "s_axi_mm_aclk";
 	clocks = <&vid_s_axi_clk>, <&vid_stream_clk>, <&vid_stream_clk>;
 	xlnx,num-chan = <4>;
 	xlnx,encode;
