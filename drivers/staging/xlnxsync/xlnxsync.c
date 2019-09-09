@@ -638,7 +638,7 @@ static long xlnxsync_ioctl(struct file *fptr, unsigned int cmd,
 
 static __poll_t xlnxsync_poll(struct file *fptr, poll_table *wait)
 {
-	u32 i, j;
+	u32 i, j, k;
 	bool err_event, framedone_event;
 	__poll_t ret = 0;
 	unsigned long flags;
@@ -658,15 +658,22 @@ static __poll_t xlnxsync_poll(struct file *fptr, poll_table *wait)
 	err_event = false;
 	for (i = 0; i < dev->config.max_channels && !err_event; i++) {
 		if (dev->sync_err[i] || dev->wdg_err[i] ||
-		    dev->ldiff_err[i] || dev->cdiff_err[i])
+		    dev->ldiff_err[i] || dev->cdiff_err[i]) {
 			err_event = true;
+			break;
+		}
 	}
 
 	framedone_event = false;
 	for (i = 0; i < dev->config.max_channels && !framedone_event; i++) {
 		for (j = 0; j < XLNXSYNC_BUF_PER_CHAN; j++) {
-			if (dev->l_done[i][j] && dev->c_done[i][j])
-				framedone_event = true;
+			for (k = 0; k < XLNXSYNC_IO; k++) {
+				if (dev->l_done[i][j][k] &&
+				    dev->c_done[i][j][k]) {
+					framedone_event = true;
+					break;
+				}
+			}
 		}
 	}
 	spin_unlock_irqrestore(&dev->irq_lock, flags);
