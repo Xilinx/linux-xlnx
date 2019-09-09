@@ -11,12 +11,12 @@
  * This is done by monitoring the address lines for specific values.
  */
 
+#include <linux/cdev.h>
 #include <linux/clk.h>
 #include <linux/device.h>
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/ioctl.h>
-#include <linux/miscdevice.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_irq.h>
@@ -28,6 +28,7 @@
 /* Register offsets and bit masks */
 #define XLNXSYNC_CTRL_REG		0x00
 #define XLNXSYNC_ISR_REG		0x04
+/* Producer Luma/Chroma Start/End Address */
 #define XLNXSYNC_PL_START_LO_REG	0x08
 #define XLNXSYNC_PL_START_HI_REG	0x0C
 #define XLNXSYNC_PC_START_LO_REG	0x20
@@ -118,12 +119,15 @@
 
 #define XLNXSYNC_DEV_MAX		256
 
+/* Module Parameters */
+static struct class *xlnxsync_class;
+static dev_t xlnxsync_devt;
 /* Used to keep track of sync devices */
 static DEFINE_IDA(xs_ida);
 
 /**
  * struct xlnxsync_device - Xilinx Synchronizer struct
- * @miscdev: Miscellaneous device struct
+ * @chdev: Character device driver struct
  * @config: IP config struct
  * @dev: Pointer to device
  * @iomem: Pointer to the register space
@@ -131,6 +135,7 @@ static DEFINE_IDA(xs_ida);
  * @irq_lock: Spinlock used to protect access to all errors
  * @wq_fbdone: wait queue for frame buffer done events
  * @wq_error: wait queue for error events
+ * @user_count: Usage count
  * @sync_err: Capture synchronization error per channel
  * @wdg_err: Capture watchdog error per channel
  * @ldiff_err: Luma buffer diff > 1
@@ -146,7 +151,7 @@ static DEFINE_IDA(xs_ida);
  * This structure contains the device driver related parameters
  */
 struct xlnxsync_device {
-	struct miscdevice miscdev;
+	struct cdev chdev;
 	struct xlnxsync_config config;
 	struct device *dev;
 	void __iomem *iomem;
@@ -155,6 +160,7 @@ struct xlnxsync_device {
 	spinlock_t irq_lock;
 	wait_queue_head_t wq_fbdone;
 	wait_queue_head_t wq_error;
+	atomic_t user_count;
 	bool sync_err[XLNXSYNC_MAX_ENC_CHAN];
 	bool wdg_err[XLNXSYNC_MAX_ENC_CHAN];
 	bool ldiff_err[XLNXSYNC_MAX_ENC_CHAN];
@@ -167,13 +173,6 @@ struct xlnxsync_device {
 	bool reserved[XLNXSYNC_MAX_ENC_CHAN];
 	int minor;
 };
-
-static inline struct xlnxsync_device *to_xlnxsync_device(struct file *file)
-{
-	struct miscdevice *miscdev = file->private_data;
-
-	return container_of(miscdev, struct xlnxsync_device, miscdev);
-}
 
 static inline u32 xlnxsync_read(struct xlnxsync_device *dev, u32 chan, u32 reg)
 {
@@ -231,6 +230,14 @@ static void xlnxsync_reset_chan(struct xlnxsync_device *dev, u32 chan)
 {
 	xlnxsync_set(dev, chan, XLNXSYNC_CTRL_REG, XLNXSYNC_CTRL_SOFTRESET);
 	xlnxsync_clr(dev, chan, XLNXSYNC_CTRL_REG, XLNXSYNC_CTRL_SOFTRESET);
+}
+
+static void xlnxsync_reset(struct xlnxsync_device *dev)
+{
+	u32 i;
+
+	for (i = 0; i < dev->config.max_channels; i++)
+		xlnxsync_reset_chan(dev, i);
 }
 
 static int xlnxsync_config_channel(struct xlnxsync_device *dev,
@@ -613,7 +620,12 @@ static long xlnxsync_ioctl(struct file *fptr, unsigned int cmd,
 	int ret = -EINVAL;
 	u32 channel = data;
 	void __user *arg = (void __user *)data;
-	struct xlnxsync_device *xlnxsync_dev = to_xlnxsync_device(fptr);
+	struct xlnxsync_device *xlnxsync_dev = fptr->private_data;
+
+	if (!xlnxsync_dev) {
+		pr_err("%s: File op error\n", __func__);
+		return -EIO;
+	}
 
 	dev_dbg(xlnxsync_dev->dev, "ioctl = 0x%08x\n", cmd);
 
@@ -659,7 +671,12 @@ static __poll_t xlnxsync_poll(struct file *fptr, poll_table *wait)
 	bool err_event, framedone_event;
 	__poll_t ret = 0, req_events;
 	unsigned long flags;
-	struct xlnxsync_device *dev = to_xlnxsync_device(fptr);
+	struct xlnxsync_device *dev = fptr->private_data;
+
+	if (!dev) {
+		pr_err("%s: File op error\n", __func__);
+		return -EIO;
+	}
 
 	req_events = poll_requested_events(wait);
 
@@ -709,7 +726,51 @@ static __poll_t xlnxsync_poll(struct file *fptr, poll_table *wait)
 	return ret;
 }
 
+static int xlnxsync_open(struct inode *iptr, struct file *fptr)
+{
+	struct xlnxsync_device *xlnxsync;
+
+	xlnxsync = container_of(iptr->i_cdev, struct xlnxsync_device, chdev);
+	if (!xlnxsync) {
+		pr_err("%s: failed to get xlnxsync driver handle\n", __func__);
+		return -EAGAIN;
+	}
+
+	fptr->private_data = xlnxsync;
+
+	atomic_inc(&xlnxsync->user_count);
+	dev_dbg(xlnxsync->dev, "%s: tid=%d Opened with user count = %d\n",
+		__func__, current->pid, atomic_read(&xlnxsync->user_count));
+
+	return 0;
+}
+
+static int xlnxsync_release(struct inode *iptr, struct file *fptr)
+{
+	struct xlnxsync_device *xlnxsync;
+
+	xlnxsync = container_of(iptr->i_cdev, struct xlnxsync_device, chdev);
+	if (!xlnxsync) {
+		pr_err("%s: failed to get xlnxsync driver handle", __func__);
+		return -EAGAIN;
+	}
+
+	dev_dbg(xlnxsync->dev, "%s: tid=%d user count = %d\n",
+		__func__, current->pid, atomic_read(&xlnxsync->user_count));
+
+	if (atomic_dec_and_test(&xlnxsync->user_count)) {
+		xlnxsync_reset(xlnxsync);
+		dev_dbg(xlnxsync->dev,
+			"%s: tid=%d Stopping and clearing device",
+			__func__, current->pid);
+	}
+
+	return 0;
+}
+
 static const struct file_operations xlnxsync_fops = {
+	.open = xlnxsync_open,
+	.release = xlnxsync_release,
 	.unlocked_ioctl = xlnxsync_ioctl,
 	.poll = xlnxsync_poll,
 };
@@ -886,13 +947,18 @@ err_pclk:
 static int xlnxsync_probe(struct platform_device *pdev)
 {
 	struct xlnxsync_device *xlnxsync;
-	/* struct device *dc; */
+	struct device *dc;
 	struct resource *res;
 	int ret;
 
 	xlnxsync = devm_kzalloc(&pdev->dev, sizeof(*xlnxsync), GFP_KERNEL);
 	if (!xlnxsync)
 		return -ENOMEM;
+
+	xlnxsync->minor = ida_simple_get(&xs_ida, 0, XLNXSYNC_DEV_MAX,
+					 GFP_KERNEL);
+	if (xlnxsync->minor < 0)
+		return xlnxsync->minor;
 
 	xlnxsync->dev = &pdev->dev;
 
@@ -938,42 +1004,40 @@ static int xlnxsync_probe(struct platform_device *pdev)
 	init_waitqueue_head(&xlnxsync->wq_error);
 	spin_lock_init(&xlnxsync->irq_lock);
 
-	xlnxsync->miscdev.minor = MISC_DYNAMIC_MINOR;
-	xlnxsync->miscdev.name = devm_kzalloc(&pdev->dev, XLNXSYNC_DEVNAME_LEN,
-					      GFP_KERNEL);
-	if (!xlnxsync->miscdev.name) {
-		ret = -ENOMEM;
-		goto clk_err;
-	}
-
-	xlnxsync->minor = ida_simple_get(&xs_ida, 0, XLNXSYNC_DEV_MAX,
-					 GFP_KERNEL);
-	if (xlnxsync->minor < 0) {
-		ret = xlnxsync->minor;
-		goto clk_err;
-	}
-
-	snprintf((char *)xlnxsync->miscdev.name, XLNXSYNC_DEVNAME_LEN, "%s%d",
-		 "xlnxsync", xlnxsync->minor);
-	xlnxsync->miscdev.fops = &xlnxsync_fops;
-	ret = misc_register(&xlnxsync->miscdev);
+	cdev_init(&xlnxsync->chdev, &xlnxsync_fops);
+	xlnxsync->chdev.owner = THIS_MODULE;
+	ret = cdev_add(&xlnxsync->chdev,
+		       MKDEV(MAJOR(xlnxsync_devt), xlnxsync->minor), 1);
 	if (ret < 0) {
-		dev_err(xlnxsync->dev, "driver registration failed!\n");
-		goto ida_err;
+		dev_err(xlnxsync->dev, "cdev_add failed");
+		goto clk_err;
+	}
+
+	if (!xlnxsync_class) {
+		dev_err(xlnxsync->dev, "xvfsync device class not created");
+		goto cdev_err;
+	}
+	dc = device_create(xlnxsync_class, xlnxsync->dev,
+			   MKDEV(MAJOR(xlnxsync_devt), xlnxsync->minor),
+			   xlnxsync, "xlnxsync%d", xlnxsync->minor);
+	if (IS_ERR(dc)) {
+		ret = PTR_ERR(dc);
+		dev_err(xlnxsync->dev, "Unable to create device");
+		goto cdev_err;
 	}
 
 	platform_set_drvdata(pdev, xlnxsync);
-
 	dev_info(xlnxsync->dev, "Xilinx Synchronizer probe successful!\n");
 
 	return 0;
 
-ida_err:
-	ida_simple_remove(&xs_ida, xlnxsync->minor);
+cdev_err:
+	cdev_del(&xlnxsync->chdev);
 clk_err:
 	clk_disable_unprepare(xlnxsync->c_clk);
 	clk_disable_unprepare(xlnxsync->p_clk);
 	clk_disable_unprepare(xlnxsync->axi_clk);
+	ida_simple_remove(&xs_ida, xlnxsync->minor);
 
 	return ret;
 }
@@ -982,11 +1046,14 @@ static int xlnxsync_remove(struct platform_device *pdev)
 {
 	struct xlnxsync_device *xlnxsync = platform_get_drvdata(pdev);
 
-	misc_deregister(&xlnxsync->miscdev);
-	ida_simple_remove(&xs_ida, xlnxsync->minor);
+	if (!xlnxsync || !xlnxsync_class)
+		return -EIO;
+
+	cdev_del(&xlnxsync->chdev);
 	clk_disable_unprepare(xlnxsync->c_clk);
 	clk_disable_unprepare(xlnxsync->p_clk);
 	clk_disable_unprepare(xlnxsync->axi_clk);
+	ida_simple_remove(&xs_ida, xlnxsync->minor);
 
 	return 0;
 }
@@ -1007,7 +1074,44 @@ static struct platform_driver xlnxsync_driver = {
 	.remove = xlnxsync_remove,
 };
 
-module_platform_driver(xlnxsync_driver);
+static int __init xlnxsync_init_mod(void)
+{
+	int err;
+
+	xlnxsync_class = class_create(THIS_MODULE, XLNXSYNC_DRIVER_NAME);
+	if (IS_ERR(xlnxsync_class)) {
+		pr_err("%s : Unable to create xlnxsync class", __func__);
+		return PTR_ERR(xlnxsync_class);
+	}
+	err = alloc_chrdev_region(&xlnxsync_devt, 0,
+				  XLNXSYNC_DEV_MAX, XLNXSYNC_DRIVER_NAME);
+	if (err < 0) {
+		pr_err("%s: Unable to get major number for xlnxsync", __func__);
+		goto err_class;
+	}
+	err = platform_driver_register(&xlnxsync_driver);
+	if (err < 0) {
+		pr_err("%s: Unable to register %s driver",
+		       __func__, XLNXSYNC_DRIVER_NAME);
+		goto err_pdrv;
+	}
+	return 0;
+err_pdrv:
+	unregister_chrdev_region(xlnxsync_devt, XLNXSYNC_DEV_MAX);
+err_class:
+	class_destroy(xlnxsync_class);
+	return err;
+}
+
+static void __exit xlnxsync_cleanup_mod(void)
+{
+	platform_driver_unregister(&xlnxsync_driver);
+	unregister_chrdev_region(xlnxsync_devt, XLNXSYNC_DEV_MAX);
+	class_destroy(xlnxsync_class);
+	xlnxsync_class = NULL;
+}
+module_init(xlnxsync_init_mod);
+module_exit(xlnxsync_cleanup_mod);
 
 MODULE_AUTHOR("Vishal Sagar");
 MODULE_DESCRIPTION("Xilinx Synchronizer IP Driver");
