@@ -50,6 +50,11 @@
 #define XLNXSYNC_CC_END_LO_REG		0xD0
 #define XLNXSYNC_CC_END_HI_REG		0xD4
 
+/* Luma/Chroma Core offset registers */
+#define XLNXSYNC_LCOREOFF_REG		0x400
+#define XLNXSYNC_CCOREOFF_REG		0x410
+#define XLNXSYNC_COREOFF_NEXT		0x4
+
 #define XLNXSYNC_CTRL_ENCDEC_MASK	BIT(0)
 #define XLNXSYNC_CTRL_ENABLE_MASK	BIT(1)
 #define XLNXSYNC_CTRL_INTR_EN_MASK	BIT(2)
@@ -415,6 +420,16 @@ static int xlnxsync_config_channel(struct xlnxsync_device *dev,
 		/* Set the Valid bit */
 		xlnxsync_set(dev, cfg.channel_id, l_start_reg + 4 + (i << 3),
 			     XLNXSYNC_FB_VALID_MASK);
+	}
+
+	for (i = 0; i < XLNXSYNC_MAX_CORES; i++) {
+		iowrite32(cfg.luma_core_offset[i],
+			  dev->iomem + XLNXSYNC_LCOREOFF_REG +
+			  (i * XLNXSYNC_COREOFF_NEXT));
+
+		iowrite32(cfg.chroma_core_offset[i],
+			  dev->iomem + XLNXSYNC_CCOREOFF_REG +
+			  (i * XLNXSYNC_COREOFF_NEXT));
 	}
 
 	return 0;
