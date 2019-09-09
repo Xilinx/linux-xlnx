@@ -140,6 +140,7 @@ static DEFINE_IDA(xs_ida);
  * @axi_clk: Pointer to clock structure for axilite clock
  * @p_clk: Pointer to clock structure for producer clock
  * @c_clk: Pointer to clock structure for consumer clock
+ * @reserved: Channel reserved status
  * @minor: device id count
  *
  * This structure contains the device driver related parameters
@@ -163,6 +164,7 @@ struct xlnxsync_device {
 	struct clk *axi_clk;
 	struct clk *p_clk;
 	struct clk *c_clk;
+	bool reserved[XLNXSYNC_MAX_ENC_CHAN];
 	int minor;
 };
 
@@ -243,8 +245,7 @@ static int xlnxsync_config_channel(struct xlnxsync_device *dev,
 		return ret;
 	}
 
-	if (cfg.channel_id >= dev->config.max_channels &&
-	    cfg.channel_id != XLNXSYNC_AUTO_SEARCH) {
+	if (cfg.channel_id >= dev->config.max_channels) {
 		dev_err(dev->dev, "%s : Incorrect channel id %d\n",
 			__func__, cfg.channel_id);
 		return -EINVAL;
@@ -269,27 +270,6 @@ static int xlnxsync_config_channel(struct xlnxsync_device *dev,
 		cfg.chroma_end_address[XLNXSYNC_CONS]);
 	dev_dbg(dev->dev, "FB id = %d IsMono = %d\n",
 		cfg.fb_id[XLNXSYNC_CONS], cfg.ismono[XLNXSYNC_CONS]);
-
-	if (cfg.channel_id == XLNXSYNC_AUTO_SEARCH) {
-		ret = -EBUSY;
-		for (i = 0; i < dev->config.max_channels; i++) {
-			u32 val;
-
-			val = xlnxsync_read(dev, i, XLNXSYNC_CTRL_REG);
-			if (!(val & XLNXSYNC_CTRL_ENABLE_MASK)) {
-				cfg.channel_id = i;
-				ret = 0;
-				dev_dbg(dev->dev,
-					"Channel id auto assigned = %d\n", i);
-				break;
-			}
-		}
-
-		if (ret) {
-			dev_dbg(dev->dev, "Unable to find free channel\n");
-			return ret;
-		}
-	}
 
 	for (j = 0; j < XLNXSYNC_IO; j++) {
 		u32 l_start_reg, l_end_reg, c_start_reg, c_end_reg;
@@ -478,6 +458,7 @@ static int xlnxsync_enable(struct xlnxsync_device *dev, u32 channel,
 			     XLNXSYNC_CTRL_INTR_EN_MASK);
 		xlnxsync_clr(dev, channel, XLNXSYNC_IER_REG,
 			     XLNXSYNC_IER_ALL_MASK);
+		dev->reserved[channel] = false;
 	}
 
 	return 0;
@@ -595,6 +576,37 @@ static int xlnxsync_clr_fbdone_status(struct xlnxsync_device *dev,
 	return 0;
 }
 
+static int xlnxsync_reserve_get_channel(struct xlnxsync_device *dev,
+					void __user *arg)
+{
+	int ret;
+	u8 i;
+
+	for (i = 0; i < dev->config.max_channels; i++) {
+		if (!dev->reserved[i])
+			break;
+	}
+
+	if (i == dev->config.max_channels) {
+		ret = -EBUSY;
+		dev_dbg(dev->dev, "No channel is free!\n");
+		return ret;
+	}
+
+	dev_dbg(dev->dev, "Reserving channel %d\n", i);
+
+	xlnxsync_reset_chan(dev, i);
+	dev->reserved[i] = true;
+	ret = copy_to_user(arg, &i, sizeof(i));
+	if (ret) {
+		dev_err(dev->dev, "%s: failed to copy result data to user\n",
+			__func__);
+		ret = -EFAULT;
+	}
+
+	return ret;
+}
+
 static long xlnxsync_ioctl(struct file *fptr, unsigned int cmd,
 			   unsigned long data)
 {
@@ -632,6 +644,9 @@ static long xlnxsync_ioctl(struct file *fptr, unsigned int cmd,
 		break;
 	case XLNXSYNC_CLR_CHAN_FBDONE_STAT:
 		ret = xlnxsync_clr_fbdone_status(xlnxsync_dev, arg);
+		break;
+	case XLNXSYNC_RESERVE_GET_CHAN_ID:
+		ret = xlnxsync_reserve_get_channel(xlnxsync_dev, arg);
 		break;
 	}
 

@@ -4,9 +4,9 @@
 #define __XLNXSYNC_H__
 
 /*
- * This is set in the fb_id or channel_id of struct xlnxsync_chan_config when
- * configuring the channel. This makes the driver auto search for the free
- * framebuffer or channel slot.
+ * This is set in the fb_id of struct xlnxsync_chan_config when
+ * configuring the channel. This makes the driver auto search for
+ * a free framebuffer slot.
  */
 #define XLNXSYNC_AUTO_SEARCH		0xFF
 
@@ -129,5 +129,7 @@ struct xlnxsync_stat {
 /* This is used to clear the framebuffer done status for a channel */
 #define XLNXSYNC_CLR_CHAN_FBDONE_STAT	_IOW(XLNXSYNC_MAGIC, 8,\
 					     struct xlnxsync_fbdone *)
+/* Reserve channel */
+#define XLNXSYNC_RESERVE_GET_CHAN_ID	_IOR(XLNXSYNC_MAGIC, 9, u8 *)
 
 #endif
