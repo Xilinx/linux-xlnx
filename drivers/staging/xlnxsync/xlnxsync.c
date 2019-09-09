@@ -132,7 +132,8 @@ static DEFINE_IDA(xs_ida);
  * @dev: Pointer to device
  * @iomem: Pointer to the register space
  * @irq: IRQ number
- * @irq_lock: Spinlock used to protect access to all errors
+ * @irq_lock: Spinlock used to protect access to sync and watchdog error
+ * @sync_mutex: Mutex used to serialize ioctl calls
  * @wq_fbdone: wait queue for frame buffer done events
  * @wq_error: wait queue for error events
  * @user_count: Usage count
@@ -158,6 +159,8 @@ struct xlnxsync_device {
 	int irq;
 	/* irq_lock is used to protect access to all errors */
 	spinlock_t irq_lock;
+	/* sync_mutex is used to serialize ioctl calls */
+	struct mutex sync_mutex;
 	wait_queue_head_t wq_fbdone;
 	wait_queue_head_t wq_error;
 	atomic_t user_count;
@@ -629,6 +632,8 @@ static long xlnxsync_ioctl(struct file *fptr, unsigned int cmd,
 
 	dev_dbg(xlnxsync_dev->dev, "ioctl = 0x%08x\n", cmd);
 
+	mutex_lock(&xlnxsync_dev->sync_mutex);
+
 	switch (cmd) {
 	case XLNXSYNC_GET_CFG:
 		ret = xlnxsync_get_config(xlnxsync_dev, arg);
@@ -658,6 +663,8 @@ static long xlnxsync_ioctl(struct file *fptr, unsigned int cmd,
 		ret = xlnxsync_reserve_get_channel(xlnxsync_dev, arg);
 		break;
 	}
+
+	mutex_unlock(&xlnxsync_dev->sync_mutex);
 
 	return ret;
 }
@@ -1000,6 +1007,7 @@ static int xlnxsync_probe(struct platform_device *pdev)
 	init_waitqueue_head(&xlnxsync->wq_fbdone);
 	init_waitqueue_head(&xlnxsync->wq_error);
 	spin_lock_init(&xlnxsync->irq_lock);
+	mutex_init(&xlnxsync->sync_mutex);
 
 	cdev_init(&xlnxsync->chdev, &xlnxsync_fops);
 	xlnxsync->chdev.owner = THIS_MODULE;
