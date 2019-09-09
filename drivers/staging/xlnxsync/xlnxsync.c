@@ -126,6 +126,8 @@ static DEFINE_IDA(xs_ida);
  * @wait_event: wait queue for error events
  * @sync_err: Capture synchronization error per channel
  * @wdg_err: Capture watchdog error per channel
+ * @ldiff_err: Luma buffer diff > 1
+ * @cdiff_err: Chroma buffer diff > 1
  * @l_done: Luma done result array
  * @c_done: Chroma done result array
  * @axi_clk: Pointer to clock structure for axilite clock
@@ -144,10 +146,12 @@ struct xlnxsync_device {
 	/* irq_lock is used to protect access to sync_err and wdg_err */
 	spinlock_t irq_lock;
 	wait_queue_head_t wait_event;
-	bool sync_err[XLNXSYNC_MAX_ENC_CHANNEL];
-	bool wdg_err[XLNXSYNC_MAX_ENC_CHANNEL];
-	bool l_done[XLNXSYNC_MAX_ENC_CHANNEL][XLNXSYNC_BUF_PER_CHANNEL];
-	bool c_done[XLNXSYNC_MAX_ENC_CHANNEL][XLNXSYNC_BUF_PER_CHANNEL];
+	bool sync_err[XLNXSYNC_MAX_ENC_CHAN];
+	bool wdg_err[XLNXSYNC_MAX_ENC_CHAN];
+	bool ldiff_err[XLNXSYNC_MAX_ENC_CHAN];
+	bool cdiff_err[XLNXSYNC_MAX_ENC_CHAN];
+	bool l_done[XLNXSYNC_MAX_ENC_CHAN][XLNXSYNC_BUF_PER_CHAN][XLNXSYNC_IO];
+	bool c_done[XLNXSYNC_MAX_ENC_CHAN][XLNXSYNC_BUF_PER_CHAN][XLNXSYNC_IO];
 	struct clk *axi_clk;
 	struct clk *p_clk;
 	struct clk *c_clk;
@@ -185,15 +189,27 @@ static inline void xlnxsync_set(struct xlnxsync_device *dev, u32 chan, u32 reg,
 }
 
 static bool xlnxsync_is_buf_done(struct xlnxsync_device *dev,
-				 u32 channel, u32 buf)
+				 u32 channel, u32 buf, u32 io)
 {
 	u32 luma_valid, chroma_valid;
+	u32 reg_laddr, reg_caddr;
 
-	luma_valid = xlnxsync_read(dev, channel,
-				   XLNXSYNC_PL_START_HI_REG + (buf << 3)) &
+	switch (io) {
+	case XLNXSYNC_PROD:
+		reg_laddr = XLNXSYNC_PL_START_HI_REG;
+		reg_caddr = XLNXSYNC_PC_START_HI_REG;
+		break;
+	case XLNXSYNC_CONS:
+		reg_laddr = XLNXSYNC_CL_START_HI_REG;
+		reg_caddr = XLNXSYNC_CC_START_HI_REG;
+		break;
+	default:
+		return false;
+	}
+
+	luma_valid = xlnxsync_read(dev, channel, reg_laddr + (buf << 3)) &
 				   XLNXSYNC_FB_VALID_MASK;
-	chroma_valid = xlnxsync_read(dev, channel,
-				     XLNXSYNC_PC_START_HI_REG + (buf << 3)) &
+	chroma_valid = xlnxsync_read(dev, channel, reg_caddr + (buf << 3)) &
 				     XLNXSYNC_FB_VALID_MASK;
 	if (!luma_valid && !chroma_valid)
 		return true;
@@ -207,7 +223,7 @@ static void xlnxsync_reset_chan(struct xlnxsync_device *dev, u32 chan)
 
 	xlnxsync_write(dev, chan, XLNXSYNC_CTRL_REG, 0);
 	xlnxsync_write(dev, chan, XLNXSYNC_IER_REG, 0);
-	for (i = 0; i < XLNXSYNC_BUF_PER_CHANNEL; i++) {
+	for (i = 0; i < XLNXSYNC_BUF_PER_CHAN; i++) {
 		xlnxsync_write(dev, chan,
 			       XLNXSYNC_PL_START_LO_REG + (i << 3), 0);
 		xlnxsync_write(dev, chan,
@@ -233,7 +249,7 @@ static int xlnxsync_config_channel(struct xlnxsync_device *dev,
 				   void __user *arg)
 {
 	struct xlnxsync_chan_config cfg;
-	int ret, i = 0;
+	int ret, i = 0, j;
 
 	ret = copy_from_user(&cfg, arg, sizeof(cfg));
 	if (ret) {
@@ -248,14 +264,25 @@ static int xlnxsync_config_channel(struct xlnxsync_device *dev,
 		return -EINVAL;
 	}
 
-	dev_dbg(dev->dev, "Channel id = %d, FB id = %d IsMono = %d\n",
-		cfg.channel_id, cfg.fb_id, cfg.ismono);
+	dev_dbg(dev->dev, "Channel id = %d", cfg.channel_id);
+	dev_dbg(dev->dev, "Producer address\n");
 	dev_dbg(dev->dev, "Luma Start Addr = 0x%llx End Addr = 0x%llx Margin = 0x%08x\n",
-		cfg.prod_luma_start_address, cfg.prod_luma_end_address,
-		cfg.luma_margin);
+		cfg.luma_start_address[XLNXSYNC_PROD],
+		cfg.luma_end_address[XLNXSYNC_PROD], cfg.luma_margin);
 	dev_dbg(dev->dev, "Chroma Start Addr = 0x%llx End Addr = 0x%llx Margin = 0x%08x\n",
-		cfg.prod_chroma_start_address, cfg.prod_chroma_end_address,
-		cfg.chroma_margin);
+		cfg.chroma_start_address[XLNXSYNC_PROD],
+		cfg.chroma_end_address[XLNXSYNC_PROD], cfg.chroma_margin);
+	dev_dbg(dev->dev, "FB id = %d IsMono = %d\n",
+		cfg.fb_id[XLNXSYNC_PROD], cfg.ismono[XLNXSYNC_PROD]);
+	dev_dbg(dev->dev, "Consumer address\n");
+	dev_dbg(dev->dev, "Luma Start Addr = 0x%llx End Addr = 0x%llx\n",
+		cfg.luma_start_address[XLNXSYNC_CONS],
+		cfg.luma_end_address[XLNXSYNC_CONS]);
+	dev_dbg(dev->dev, "Chroma Start Addr = 0x%llx End Addr = 0x%llx\n",
+		cfg.chroma_start_address[XLNXSYNC_CONS],
+		cfg.chroma_end_address[XLNXSYNC_CONS]);
+	dev_dbg(dev->dev, "FB id = %d IsMono = %d\n",
+		cfg.fb_id[XLNXSYNC_CONS], cfg.ismono[XLNXSYNC_CONS]);
 
 	if (cfg.channel_id == XLNXSYNC_AUTO_SEARCH) {
 		ret = -EBUSY;
@@ -278,90 +305,117 @@ static int xlnxsync_config_channel(struct xlnxsync_device *dev,
 		}
 	}
 
-	if (cfg.fb_id == XLNXSYNC_AUTO_SEARCH) {
-		/* When fb_id is 0xFF auto search for free fb in a channel */
-		dev_dbg(dev->dev, "%s : auto search free fb\n", __func__);
-		for (i = 0; i < XLNXSYNC_BUF_PER_CHANNEL; i++) {
-			if (xlnxsync_is_buf_done(dev, cfg.channel_id, i))
-				break;
-			dev_dbg(dev->dev, "Channel %d FB %d is busy\n",
-				cfg.channel_id, i);
+	for (j = 0; j < XLNXSYNC_IO; j++) {
+		u32 l_start_reg, l_end_reg, c_start_reg, c_end_reg;
+
+		if (cfg.fb_id[j] == XLNXSYNC_AUTO_SEARCH) {
+			/*
+			 * When fb_id is 0xFF auto search for free fb
+			 * in a channel
+			 */
+			dev_dbg(dev->dev, "%s : auto search free fb\n",
+				__func__);
+			for (i = 0; i < XLNXSYNC_BUF_PER_CHAN; i++) {
+				if (xlnxsync_is_buf_done(dev, cfg.channel_id, i,
+							 j))
+					break;
+				dev_dbg(dev->dev, "Channel %d %s FB %d is busy\n",
+					cfg.channel_id, j ? "prod" : "cons", i);
+			}
+
+			if (i == XLNXSYNC_BUF_PER_CHAN)
+				return -EBUSY;
+
+		} else if (cfg.fb_id[j] >= 0 &&
+			   cfg.fb_id[j] < XLNXSYNC_BUF_PER_CHAN) {
+			/* If fb_id is specified, check its availability */
+			if (!(xlnxsync_is_buf_done(dev, cfg.channel_id,
+						   cfg.fb_id[j], j))) {
+				dev_dbg(dev->dev,
+					"%s : %s FB %d in channel %d is busy!\n",
+					__func__, j ? "prod" : "cons",
+					i, cfg.channel_id);
+				return -EBUSY;
+			}
+			dev_dbg(dev->dev, "%s : Configure fb %d\n",
+				__func__, i);
+		} else {
+			/* Invalid fb_id passed */
+			dev_err(dev->dev, "Invalid FB id %d for configuration!\n",
+				cfg.fb_id[j]);
+			return -EINVAL;
 		}
 
-		if (i == XLNXSYNC_BUF_PER_CHANNEL)
-			return -EBUSY;
-
-	} else if (cfg.fb_id < XLNXSYNC_BUF_PER_CHANNEL) {
-		/* If fb_id is specified, check its availability */
-		if (!(xlnxsync_is_buf_done(dev, cfg.channel_id, cfg.fb_id))) {
-			dev_dbg(dev->dev,
-				"%s : FB %d in channel %d is busy!\n",
-				__func__, i, cfg.channel_id);
-			return -EBUSY;
+		if (j == XLNXSYNC_PROD) {
+			l_start_reg = XLNXSYNC_PL_START_LO_REG;
+			l_end_reg = XLNXSYNC_PL_END_LO_REG;
+			c_start_reg = XLNXSYNC_PC_START_LO_REG;
+			c_end_reg = XLNXSYNC_PC_END_LO_REG;
+		} else {
+			l_start_reg = XLNXSYNC_PL_START_LO_REG;
+			l_end_reg = XLNXSYNC_PL_END_LO_REG;
+			c_start_reg = XLNXSYNC_PC_START_LO_REG;
+			c_end_reg = XLNXSYNC_PC_END_LO_REG;
 		}
-		i = cfg.fb_id;
-		dev_dbg(dev->dev, "%s : Configure fb %d\n", __func__, i);
-	} else {
-		/* Invalid fb_id passed */
-		dev_err(dev->dev, "Invalid FB id %d for configuration!\n",
-			cfg.fb_id);
-		return -EINVAL;
-	}
 
-	/* Start Address */
-	xlnxsync_write(dev, cfg.channel_id,
-		       XLNXSYNC_PL_START_LO_REG + (i << 3),
-		       lower_32_bits(cfg.prod_luma_start_address));
-	xlnxsync_write(dev, cfg.channel_id,
-		       XLNXSYNC_PL_START_HI_REG + (i << 3),
-		       upper_32_bits(cfg.prod_luma_start_address) &
-		       XLNXSYNC_FB_HI_ADDR_MASK);
+		/* Start Address */
+		xlnxsync_write(dev, cfg.channel_id, l_start_reg + (i << 3),
+			       lower_32_bits(cfg.luma_start_address[j]));
 
-	/* End Address */
-	xlnxsync_write(dev, cfg.channel_id,
-		       XLNXSYNC_PL_END_LO_REG + (i << 3),
-		       lower_32_bits(cfg.prod_luma_end_address));
-	xlnxsync_write(dev, cfg.channel_id,
-		       XLNXSYNC_PL_END_HI_REG + (i << 3),
-		       upper_32_bits(cfg.prod_luma_end_address));
-
-	/* Set margin */
-	xlnxsync_write(dev, cfg.channel_id,
-		       XLNXSYNC_L_MARGIN_REG + (i << 2),
-		       cfg.luma_margin);
-
-	if (!cfg.ismono) {
-		dev_dbg(dev->dev, "%s : Not monochrome. Program Chroma\n",
-			__func__);
-		/* Chroma Start Address */
 		xlnxsync_write(dev, cfg.channel_id,
-			       XLNXSYNC_PC_START_LO_REG + (i << 3),
-			       lower_32_bits(cfg.prod_chroma_start_address));
-		xlnxsync_write(dev, cfg.channel_id,
-			       XLNXSYNC_PC_START_HI_REG + (i << 3),
-			       upper_32_bits(cfg.prod_chroma_start_address) &
+			       (l_start_reg + 4) + (i << 3),
+			       upper_32_bits(cfg.luma_start_address[j]) &
 			       XLNXSYNC_FB_HI_ADDR_MASK);
-		/* Chroma End Address */
+
+		/* End Address */
+		xlnxsync_write(dev, cfg.channel_id, l_end_reg + (i << 3),
+			       lower_32_bits(cfg.luma_end_address[j]));
+		xlnxsync_write(dev, cfg.channel_id, l_end_reg + 4 + (i << 3),
+			       upper_32_bits(cfg.luma_end_address[j]));
+
+		/* Set margin */
 		xlnxsync_write(dev, cfg.channel_id,
-			       XLNXSYNC_PC_END_LO_REG + (i << 3),
-			       lower_32_bits(cfg.prod_chroma_end_address));
-		xlnxsync_write(dev, cfg.channel_id,
-			       XLNXSYNC_PC_END_HI_REG + (i << 3),
-			       upper_32_bits(cfg.prod_chroma_end_address));
-		/* Chroma Margin */
-		xlnxsync_write(dev, cfg.channel_id,
-			       XLNXSYNC_C_MARGIN_REG + (i << 2),
-			       cfg.chroma_margin);
+			       XLNXSYNC_L_MARGIN_REG + (i << 2),
+			       cfg.luma_margin);
+
+		if (!cfg.ismono) {
+			dev_dbg(dev->dev, "%s : Not monochrome. Program Chroma\n",
+				__func__);
+
+			/* Chroma Start Address */
+			xlnxsync_write(dev, cfg.channel_id,
+				       c_start_reg + (i << 3),
+				       lower_32_bits(cfg.chroma_start_address[j]));
+
+			xlnxsync_write(dev, cfg.channel_id,
+				       c_start_reg + 4 + (i << 3),
+				       upper_32_bits(cfg.chroma_start_address[j]) &
+				       XLNXSYNC_FB_HI_ADDR_MASK);
+
+			/* Chroma End Address */
+			xlnxsync_write(dev, cfg.channel_id,
+				       c_end_reg + (i << 3),
+				       lower_32_bits(cfg.chroma_end_address[j]));
+
+			xlnxsync_write(dev, cfg.channel_id,
+				       c_end_reg + 4 + (i << 3),
+				       upper_32_bits(cfg.chroma_end_address[j]));
+
+			/* Chroma Margin */
+			xlnxsync_write(dev, cfg.channel_id,
+				       XLNXSYNC_C_MARGIN_REG + (i << 2),
+				       cfg.chroma_margin);
+
+			/* Set the Valid bit */
+			xlnxsync_set(dev, cfg.channel_id,
+				     c_start_reg + 4 + (i << 3),
+				     XLNXSYNC_FB_VALID_MASK);
+		}
+
 		/* Set the Valid bit */
-		xlnxsync_set(dev, cfg.channel_id,
-			     XLNXSYNC_PC_START_HI_REG + (i << 3),
+		xlnxsync_set(dev, cfg.channel_id, l_start_reg + 4 + (i << 3),
 			     XLNXSYNC_FB_VALID_MASK);
 	}
-
-	/* Set the Valid bit */
-	xlnxsync_set(dev, cfg.channel_id,
-		     XLNXSYNC_PL_START_HI_REG + (i << 3),
-		     XLNXSYNC_FB_VALID_MASK);
 
 	return 0;
 }
@@ -370,42 +424,37 @@ static int xlnxsync_get_channel_status(struct xlnxsync_device *dev,
 				       void __user *arg)
 {
 	int ret;
-	u32 mask = 0, i, j;
+	u32 i, j, k;
 	unsigned long flags;
+	struct xlnxsync_stat status;
 
 	for (i = 0; i < dev->config.max_channels; i++) {
 		/* Update Buffers status */
-		for (j = 0; j < XLNXSYNC_BUF_PER_CHANNEL; j++) {
-			if (xlnxsync_is_buf_done(dev, i, j)) {
-				mask |= 1 << ((i << XLNXSYNC_BUF_PER_CHANNEL)
-					      + j);
+		for (j = 0; j < XLNXSYNC_BUF_PER_CHAN; j++) {
+			for (k = 0; k < XLNXSYNC_IO; k++) {
+				if (xlnxsync_is_buf_done(dev, i, j, k))
+					status.fbdone[i][j][k] = true;
 			}
 		}
 
 		/* Update channel enable status */
 		if (xlnxsync_read(dev, i, XLNXSYNC_CTRL_REG) &
 		    XLNXSYNC_CTRL_ENABLE_MASK)
-			mask |= XLNXSYNC_CHX_ENB_MASK(i);
+			status.enable[i] = true;
 
 		/* Update channel error status */
 		spin_lock_irqsave(&dev->irq_lock, flags);
-
-		if (dev->sync_err[i])
-			mask |= XLNXSYNC_CHX_SYNC_ERR_MASK(i);
-
-		if (dev->wdg_err[i])
-			mask |= XLNXSYNC_CHX_WDG_ERR_MASK(i);
-
+		status.sync_err[i] = dev->sync_err[i];
+		status.wdg_err[i] = dev->wdg_err[i];
+		status.ldiff_err[i] = dev->ldiff_err[i];
+		status.cdiff_err[i] = dev->cdiff_err[i];
 		spin_unlock_irqrestore(&dev->irq_lock, flags);
 	}
 
-	ret = copy_to_user(arg, &mask, sizeof(mask));
-	if (ret) {
+	ret = copy_to_user(arg, &status, sizeof(status));
+	if (ret)
 		dev_err(dev->dev, "%s: failed to copy result data to user\n",
 			__func__);
-		return ret;
-	}
-	dev_dbg(dev->dev, "%s - Channel status = 0x%08x\n", __func__, mask);
 	return ret;
 }
 
@@ -487,6 +536,12 @@ static int xlnxsync_clr_chan_err(struct xlnxsync_device *dev,
 	if (dev->wdg_err[errcfg.channel_id])
 		dev->wdg_err[errcfg.channel_id] = false;
 
+	if (dev->ldiff_err[errcfg.channel_id])
+		dev->ldiff_err[errcfg.channel_id] = false;
+
+	if (dev->cdiff_err[errcfg.channel_id])
+		dev->cdiff_err[errcfg.channel_id] = false;
+
 	spin_unlock_irqrestore(&dev->irq_lock, flags);
 
 	return 0;
@@ -496,12 +551,14 @@ static int xlnxsync_get_fbdone_status(struct xlnxsync_device *dev,
 				      void __user *arg)
 {
 	struct xlnxsync_fbdone fbdone_stat;
-	int ret, i, j;
+	int ret, i, j, k;
 
 	for (i = 0; i < dev->config.max_channels; i++)
-		for (j = 0; j < XLNXSYNC_BUF_PER_CHANNEL; j++)
-			if (dev->l_done[i][j] && dev->c_done[i][j])
-				fbdone_stat.status[i][j] = true;
+		for (j = 0; j < XLNXSYNC_BUF_PER_CHAN; j++)
+			for (k = 0; k < XLNXSYNC_IO; k++)
+				if (dev->l_done[i][j][k] &&
+				    dev->c_done[i][j][k])
+					fbdone_stat.status[i][j][k] = true;
 
 	ret = copy_to_user(arg, &fbdone_stat, sizeof(fbdone_stat));
 	if (ret)
@@ -515,7 +572,7 @@ static int xlnxsync_clr_fbdone_status(struct xlnxsync_device *dev,
 				      void __user *arg)
 {
 	struct xlnxsync_fbdone fbd;
-	int ret, i, j;
+	int ret, i, j, k;
 	unsigned long flags;
 
 	ret = copy_from_user(&fbd, arg, sizeof(fbd));
@@ -528,11 +585,11 @@ static int xlnxsync_clr_fbdone_status(struct xlnxsync_device *dev,
 	spin_lock_irqsave(&dev->irq_lock, flags);
 
 	for (i = 0; i < dev->config.max_channels; i++) {
-		for (j = 0; j < XLNXSYNC_BUF_PER_CHANNEL; j++) {
-			if (fbd.status[i][j]) {
-				dev->l_done[i][j] = false;
-				dev->c_done[i][j] = false;
-				fbd.status[i][j] = false;
+		for (j = 0; j < XLNXSYNC_BUF_PER_CHAN; j++) {
+			for (k = 0; k < XLNXSYNC_IO; k++) {
+				fbd.status[i][j][k] = false;
+				dev->l_done[i][j][k] = false;
+				dev->c_done[i][j][k] = false;
 			}
 		}
 	}
@@ -606,13 +663,14 @@ static __poll_t xlnxsync_poll(struct file *fptr, poll_table *wait)
 	spin_lock_irqsave(&dev->irq_lock, flags);
 	err_event = false;
 	for (i = 0; i < dev->config.max_channels && !err_event; i++) {
-		if (dev->sync_err[i] || dev->wdg_err[i])
+		if (dev->sync_err[i] || dev->wdg_err[i] ||
+		    dev->ldiff_err[i] || dev->cdiff_err[i])
 			err_event = true;
 	}
 
 	framedone_event = false;
 	for (i = 0; i < dev->config.max_channels && !framedone_event; i++) {
-		for (j = 0; j < XLNXSYNC_BUF_PER_CHANNEL; j++) {
+		for (j = 0; j < XLNXSYNC_BUF_PER_CHAN; j++) {
 			if (dev->l_done[i][j] && dev->c_done[i][j])
 				framedone_event = true;
 		}
@@ -651,7 +709,7 @@ static irqreturn_t xlnxsync_irq_handler(int irq, void *data)
 	err_event = false;
 	framedone_event = false;
 	for (i = 0; i < xlnxsync->config.max_channels; i++) {
-		u32 j, buf_index;
+		u32 j, k;
 
 		val = xlnxsync_read(xlnxsync, i, XLNXSYNC_ISR_REG);
 		xlnxsync_write(xlnxsync, i, XLNXSYNC_ISR_REG, val);
@@ -660,26 +718,49 @@ static irqreturn_t xlnxsync_irq_handler(int irq, void *data)
 			xlnxsync->sync_err[i] = true;
 		if (val & XLNXSYNC_ISR_WDG_ERR_MASK)
 			xlnxsync->wdg_err[i] = true;
-		if (xlnxsync->sync_err[i] || xlnxsync->wdg_err[i])
+		if (val & XLNXSYNC_ISR_LDIFF)
+			xlnxsync->ldiff_err[i] = true;
+		if (val & XLNXSYNC_ISR_CDIFF)
+			xlnxsync->cdiff_err[i] = true;
+		if (xlnxsync->sync_err[i] || xlnxsync->wdg_err[i] ||
+		    xlnxsync->ldiff_err[i] || xlnxsync->cdiff_err[i])
 			err_event = true;
 
 		if (val & XLNXSYNC_ISR_PLDONE_MASK) {
-			buf_index = (val & XLNXSYNC_ISR_PLDONE_MASK) >>
+			j = (val & XLNXSYNC_ISR_PLDONE_MASK) >>
 				XLNXSYNC_ISR_PLDONE_SHIFT;
 
-			xlnxsync->l_done[i][buf_index] = true;
+			xlnxsync->l_done[i][j][XLNXSYNC_PROD] = true;
 		}
 
 		if (val & XLNXSYNC_ISR_PCDONE_MASK) {
-			buf_index = (val & XLNXSYNC_ISR_PCDONE_MASK) >>
-			     XLNXSYNC_ISR_PCDONE_SHIFT;
+			j = (val & XLNXSYNC_ISR_PCDONE_MASK) >>
+				XLNXSYNC_ISR_PCDONE_SHIFT;
 
-			xlnxsync->c_done[i][buf_index] = true;
+			xlnxsync->c_done[i][j][XLNXSYNC_PROD] = true;
 		}
 
-		for (j = 0; j < XLNXSYNC_BUF_PER_CHANNEL; j++)
-			if (xlnxsync->l_done[i][j] && xlnxsync->c_done[i][j])
-				framedone_event = true;
+		if (val & XLNXSYNC_ISR_CLDONE_MASK) {
+			j = (val & XLNXSYNC_ISR_CLDONE_MASK) >>
+			     XLNXSYNC_ISR_CLDONE_SHIFT;
+
+			xlnxsync->l_done[i][j][XLNXSYNC_CONS] = true;
+		}
+
+		if (val & XLNXSYNC_ISR_CCDONE_MASK) {
+			j = (val & XLNXSYNC_ISR_CCDONE_MASK) >>
+			     XLNXSYNC_ISR_CCDONE_SHIFT;
+
+			xlnxsync->c_done[i][j][XLNXSYNC_CONS] = true;
+		}
+
+		for (j = 0; j < XLNXSYNC_BUF_PER_CHAN; j++) {
+			for (k = 0; k < XLNXSYNC_IO; k++) {
+				if (xlnxsync->l_done[i][j][k] &&
+				    xlnxsync->c_done[i][j][k])
+					framedone_event = true;
+			}
+		}
 	}
 	spin_unlock_irqrestore(&xlnxsync->irq_lock, flags);
 
@@ -710,7 +791,7 @@ static int xlnxsync_parse_dt_prop(struct xlnxsync_device *xlnxsync)
 		xlnxsync->config.max_channels);
 
 	if (xlnxsync->config.max_channels == 0 ||
-	    xlnxsync->config.max_channels > XLNXSYNC_MAX_ENC_CHANNEL) {
+	    xlnxsync->config.max_channels > XLNXSYNC_MAX_ENC_CHAN) {
 		dev_err(xlnxsync->dev, "Number of channels should be 1 to 4.\n");
 		dev_err(xlnxsync->dev, "Invalid number of channels : %d\n",
 			xlnxsync->config.max_channels);
@@ -718,7 +799,7 @@ static int xlnxsync_parse_dt_prop(struct xlnxsync_device *xlnxsync)
 	}
 
 	if (!xlnxsync->config.encode &&
-	    xlnxsync->config.max_channels > XLNXSYNC_MAX_DEC_CHANNEL) {
+	    xlnxsync->config.max_channels > XLNXSYNC_MAX_DEC_CHAN) {
 		dev_err(xlnxsync->dev, "Decode can't have more than 2 channels.\n");
 		return -EINVAL;
 	}
