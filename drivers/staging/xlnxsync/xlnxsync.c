@@ -128,8 +128,9 @@ static DEFINE_IDA(xs_ida);
  * @dev: Pointer to device
  * @iomem: Pointer to the register space
  * @irq: IRQ number
- * @irq_lock: Spinlock used to protect access to sync and watchdog error
- * @wait_event: wait queue for error events
+ * @irq_lock: Spinlock used to protect access to all errors
+ * @wq_fbdone: wait queue for frame buffer done events
+ * @wq_error: wait queue for error events
  * @sync_err: Capture synchronization error per channel
  * @wdg_err: Capture watchdog error per channel
  * @ldiff_err: Luma buffer diff > 1
@@ -149,9 +150,10 @@ struct xlnxsync_device {
 	struct device *dev;
 	void __iomem *iomem;
 	int irq;
-	/* irq_lock is used to protect access to sync_err and wdg_err */
+	/* irq_lock is used to protect access to all errors */
 	spinlock_t irq_lock;
-	wait_queue_head_t wait_event;
+	wait_queue_head_t wq_fbdone;
+	wait_queue_head_t wq_error;
 	bool sync_err[XLNXSYNC_MAX_ENC_CHAN];
 	bool wdg_err[XLNXSYNC_MAX_ENC_CHAN];
 	bool ldiff_err[XLNXSYNC_MAX_ENC_CHAN];
@@ -640,54 +642,53 @@ static __poll_t xlnxsync_poll(struct file *fptr, poll_table *wait)
 {
 	u32 i, j, k;
 	bool err_event, framedone_event;
-	__poll_t ret = 0;
+	__poll_t ret = 0, req_events;
 	unsigned long flags;
 	struct xlnxsync_device *dev = to_xlnxsync_device(fptr);
 
-	ret = poll_requested_events(wait);
+	req_events = poll_requested_events(wait);
 
 	dev_dbg_ratelimited(dev->dev, "%s : entered req_events = 0x%x!\n",
 			    __func__, ret);
 
-	if (!(ret & (POLLPRI | POLLIN)))
+	if (!(req_events & (POLLPRI | POLLIN)))
 		return 0;
 
-	poll_wait(fptr, &dev->wait_event, wait);
-
-	spin_lock_irqsave(&dev->irq_lock, flags);
-	err_event = false;
-	for (i = 0; i < dev->config.max_channels && !err_event; i++) {
-		if (dev->sync_err[i] || dev->wdg_err[i] ||
-		    dev->ldiff_err[i] || dev->cdiff_err[i]) {
-			err_event = true;
-			break;
+	if (req_events & EPOLLPRI) {
+		poll_wait(fptr, &dev->wq_error, wait);
+		spin_lock_irqsave(&dev->irq_lock, flags);
+		err_event = false;
+		for (i = 0; i < dev->config.max_channels && !err_event; i++) {
+			if (dev->sync_err[i] || dev->wdg_err[i] ||
+			    dev->ldiff_err[i] || dev->cdiff_err[i])
+				err_event = true;
 		}
+		spin_unlock_irqrestore(&dev->irq_lock, flags);
+		dev_dbg_ratelimited(dev->dev, "%s : error event occurred!\n",
+				    __func__);
+		if (err_event)
+			ret |= POLLPRI;
 	}
 
-	framedone_event = false;
-	for (i = 0; i < dev->config.max_channels && !framedone_event; i++) {
-		for (j = 0; j < XLNXSYNC_BUF_PER_CHAN; j++) {
-			for (k = 0; k < XLNXSYNC_IO; k++) {
-				if (dev->l_done[i][j][k] &&
-				    dev->c_done[i][j][k]) {
-					framedone_event = true;
-					break;
+	if (req_events & EPOLLIN) {
+		poll_wait(fptr, &dev->wq_fbdone, wait);
+		spin_lock_irqsave(&dev->irq_lock, flags);
+		framedone_event = false;
+		for (i = 0; i < dev->config.max_channels && !framedone_event;
+		     i++) {
+			for (j = 0; j < XLNXSYNC_BUF_PER_CHAN; j++) {
+				for (k = 0; k < XLNXSYNC_IO; k++) {
+					if (dev->l_done[i][j][k] &&
+					    dev->c_done[i][j][k])
+						framedone_event = true;
 				}
 			}
 		}
-	}
-	spin_unlock_irqrestore(&dev->irq_lock, flags);
-
-	if (err_event) {
-		dev_dbg_ratelimited(dev->dev, "%s : error event occurred!\n",
-				    __func__);
-		ret |= POLLPRI;
-	}
-
-	if (framedone_event) {
+		spin_unlock_irqrestore(&dev->irq_lock, flags);
 		dev_dbg_ratelimited(dev->dev, "%s : framedone event occurred!\n",
 				    __func__);
-		ret |= POLLIN;
+		if (framedone_event)
+			ret |= POLLIN;
 	}
 
 	return ret;
@@ -765,10 +766,16 @@ static irqreturn_t xlnxsync_irq_handler(int irq, void *data)
 	}
 	spin_unlock_irqrestore(&xlnxsync->irq_lock, flags);
 
-	if (err_event || framedone_event) {
+	if (err_event) {
 		dev_dbg_ratelimited(xlnxsync->dev, "%s : error occurred\n",
 				    __func__);
-		wake_up_interruptible(&xlnxsync->wait_event);
+		wake_up_interruptible(&xlnxsync->wq_error);
+	}
+
+	if (framedone_event) {
+		dev_dbg_ratelimited(xlnxsync->dev, "%s : framedone occurred\n",
+				    __func__);
+		wake_up_interruptible(&xlnxsync->wq_fbdone);
 	}
 
 	return IRQ_HANDLED;
@@ -912,7 +919,8 @@ static int xlnxsync_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	init_waitqueue_head(&xlnxsync->wait_event);
+	init_waitqueue_head(&xlnxsync->wq_fbdone);
+	init_waitqueue_head(&xlnxsync->wq_error);
 	spin_lock_init(&xlnxsync->irq_lock);
 
 	xlnxsync->miscdev.minor = MISC_DYNAMIC_MINOR;
