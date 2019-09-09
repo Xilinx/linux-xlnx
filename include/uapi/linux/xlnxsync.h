@@ -18,6 +18,7 @@
 #define XLNXSYNC_CONS			1
 #define XLNXSYNC_IO			2
 
+#define XLNXSYNC_MAX_CORES		4
 /**
  * struct xlnxsync_chan_config - Synchronizer channel configuration struct
  * @luma_start_address: Start address of Luma buffer
@@ -26,6 +27,8 @@
  * @chroma_end_address: End address of Chroma buffer
  * @luma_margin: Margin for Luma buffer
  * @chroma_margin: Margin for Chroma buffer
+ * @luma_core_offset: Array of 4 offsets for luma
+ * @chroma_core_offset: Array of 4 offsets for chroma
  * @fb_id: Framebuffer index. Valid values 0/1/2/XLNXSYNC_AUTO_SEARCH
  * @ismono: Flag to indicate if buffer is Luma only.
  * @channel_id: Channel index to be configured.
@@ -41,6 +44,8 @@ struct xlnxsync_chan_config {
 	u64 chroma_end_address[XLNXSYNC_IO];
 	u32 luma_margin;
 	u32 chroma_margin;
+	u32 luma_core_offset[XLNXSYNC_MAX_CORES];
+	u32 chroma_core_offset[XLNXSYNC_MAX_CORES];
 	u8 fb_id[XLNXSYNC_IO];
 	u8 ismono[XLNXSYNC_IO];
 	u8 channel_id;
