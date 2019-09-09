@@ -28,14 +28,14 @@
 /* Register offsets and bit masks */
 #define XLNXSYNC_CTRL_REG		0x00
 #define XLNXSYNC_ISR_REG		0x04
-#define XLNXSYNC_L_START_LO_REG		0x08
-#define XLNXSYNC_L_START_HI_REG		0x0C
-#define XLNXSYNC_C_START_LO_REG		0x20
-#define XLNXSYNC_C_START_HI_REG		0x24
-#define XLNXSYNC_L_END_LO_REG		0x38
-#define XLNXSYNC_L_END_HI_REG		0x3C
-#define XLNXSYNC_C_END_LO_REG		0x50
-#define XLNXSYNC_C_END_HI_REG		0x54
+#define XLNXSYNC_PL_START_LO_REG	0x08
+#define XLNXSYNC_PL_START_HI_REG	0x0C
+#define XLNXSYNC_PC_START_LO_REG	0x20
+#define XLNXSYNC_PC_START_HI_REG	0x24
+#define XLNXSYNC_PL_END_LO_REG		0x38
+#define XLNXSYNC_PL_END_HI_REG		0x3C
+#define XLNXSYNC_PC_END_LO_REG		0x50
+#define XLNXSYNC_PC_END_HI_REG		0x54
 #define XLNXSYNC_L_MARGIN_REG		0x68
 #define XLNXSYNC_C_MARGIN_REG		0x74
 #define XLNXSYNC_IER_REG		0x80
@@ -47,14 +47,15 @@
 
 #define XLNXSYNC_ISR_SYNC_FAIL_MASK	BIT(0)
 #define XLNXSYNC_ISR_WDG_ERR_MASK	BIT(1)
-#define XLNXSYNC_ISR_LDONE_SHIFT	(2)
-#define XLNXSYNC_ISR_LDONE_MASK		GENMASK(3, 2)
-#define XLNXSYNC_ISR_LSKIP_MASK		BIT(4)
-#define XLNXSYNC_ISR_LVALID_MASK	BIT(5)
-#define XLNXSYNC_ISR_CDONE_SHIFT	(6)
-#define XLNXSYNC_ISR_CDONE_MASK		GENMASK(7, 6)
-#define XLNXSYNC_ISR_CSKIP_MASK		BIT(8)
-#define XLNXSYNC_ISR_CVALID_MASK	BIT(9)
+/* Producer related */
+#define XLNXSYNC_ISR_PLDONE_SHIFT	(2)
+#define XLNXSYNC_ISR_PLDONE_MASK	GENMASK(3, 2)
+#define XLNXSYNC_ISR_PLSKIP_MASK	BIT(4)
+#define XLNXSYNC_ISR_PLVALID_MASK	BIT(5)
+#define XLNXSYNC_ISR_PCDONE_SHIFT	(6)
+#define XLNXSYNC_ISR_PCDONE_MASK	GENMASK(7, 6)
+#define XLNXSYNC_ISR_PCSKIP_MASK	BIT(8)
+#define XLNXSYNC_ISR_PCVALID_MASK	BIT(9)
 
 /* bit 44 of start address */
 #define XLNXSYNC_FB_VALID_MASK		BIT(12)
@@ -157,10 +158,10 @@ static bool xlnxsync_is_buf_done(struct xlnxsync_device *dev,
 	u32 luma_valid, chroma_valid;
 
 	luma_valid = xlnxsync_read(dev, channel,
-				   XLNXSYNC_L_START_HI_REG + (buf << 3)) &
+				   XLNXSYNC_PL_START_HI_REG + (buf << 3)) &
 				   XLNXSYNC_FB_VALID_MASK;
 	chroma_valid = xlnxsync_read(dev, channel,
-				     XLNXSYNC_C_START_HI_REG + (buf << 3)) &
+				     XLNXSYNC_PC_START_HI_REG + (buf << 3)) &
 				     XLNXSYNC_FB_VALID_MASK;
 	if (!luma_valid && !chroma_valid)
 		return true;
@@ -176,21 +177,21 @@ static void xlnxsync_reset_chan(struct xlnxsync_device *dev, u32 chan)
 	xlnxsync_write(dev, chan, XLNXSYNC_IER_REG, 0);
 	for (i = 0; i < XLNXSYNC_BUF_PER_CHANNEL; i++) {
 		xlnxsync_write(dev, chan,
-			       XLNXSYNC_L_START_LO_REG + (i << 3), 0);
+			       XLNXSYNC_PL_START_LO_REG + (i << 3), 0);
 		xlnxsync_write(dev, chan,
-			       XLNXSYNC_L_START_HI_REG + (i << 3), 0);
+			       XLNXSYNC_PL_START_HI_REG + (i << 3), 0);
 		xlnxsync_write(dev, chan,
-			       XLNXSYNC_C_START_LO_REG + (i << 3), 0);
+			       XLNXSYNC_PC_START_LO_REG + (i << 3), 0);
 		xlnxsync_write(dev, chan,
-			       XLNXSYNC_C_START_HI_REG + (i << 3), 0);
+			       XLNXSYNC_PC_START_HI_REG + (i << 3), 0);
 		xlnxsync_write(dev, chan,
-			       XLNXSYNC_L_END_LO_REG + (i << 3), 0);
+			       XLNXSYNC_PL_END_LO_REG + (i << 3), 0);
 		xlnxsync_write(dev, chan,
-			       XLNXSYNC_L_END_HI_REG + (i << 3), 0);
+			       XLNXSYNC_PL_END_HI_REG + (i << 3), 0);
 		xlnxsync_write(dev, chan,
-			       XLNXSYNC_C_END_LO_REG + (i << 3), 0);
+			       XLNXSYNC_PC_END_LO_REG + (i << 3), 0);
 		xlnxsync_write(dev, chan,
-			       XLNXSYNC_C_END_HI_REG + (i << 3), 0);
+			       XLNXSYNC_PC_END_HI_REG + (i << 3), 0);
 	}
 	xlnxsync_write(dev, chan, XLNXSYNC_L_MARGIN_REG, 0);
 	xlnxsync_write(dev, chan, XLNXSYNC_C_MARGIN_REG, 0);
@@ -218,9 +219,10 @@ static int xlnxsync_config_channel(struct xlnxsync_device *dev,
 	dev_dbg(dev->dev, "Channel id = %d, FB id = %d IsMono = %d\n",
 		cfg.channel_id, cfg.fb_id, cfg.ismono);
 	dev_dbg(dev->dev, "Luma Start Addr = 0x%llx End Addr = 0x%llx Margin = 0x%08x\n",
-		cfg.luma_start_address, cfg.luma_end_address, cfg.luma_margin);
+		cfg.prod_luma_start_address, cfg.prod_luma_end_address,
+		cfg.luma_margin);
 	dev_dbg(dev->dev, "Chroma Start Addr = 0x%llx End Addr = 0x%llx Margin = 0x%08x\n",
-		cfg.chroma_start_address, cfg.chroma_end_address,
+		cfg.prod_chroma_start_address, cfg.prod_chroma_end_address,
 		cfg.chroma_margin);
 
 	if (cfg.channel_id == XLNXSYNC_AUTO_SEARCH) {
@@ -276,20 +278,20 @@ static int xlnxsync_config_channel(struct xlnxsync_device *dev,
 
 	/* Start Address */
 	xlnxsync_write(dev, cfg.channel_id,
-		       XLNXSYNC_L_START_LO_REG + (i << 3),
-		       lower_32_bits(cfg.luma_start_address));
+		       XLNXSYNC_PL_START_LO_REG + (i << 3),
+		       lower_32_bits(cfg.prod_luma_start_address));
 	xlnxsync_write(dev, cfg.channel_id,
-		       XLNXSYNC_L_START_HI_REG + (i << 3),
-		       upper_32_bits(cfg.luma_start_address) &
+		       XLNXSYNC_PL_START_HI_REG + (i << 3),
+		       upper_32_bits(cfg.prod_luma_start_address) &
 		       XLNXSYNC_FB_HI_ADDR_MASK);
 
 	/* End Address */
 	xlnxsync_write(dev, cfg.channel_id,
-		       XLNXSYNC_L_END_LO_REG + (i << 3),
-		       lower_32_bits(cfg.luma_end_address));
+		       XLNXSYNC_PL_END_LO_REG + (i << 3),
+		       lower_32_bits(cfg.prod_luma_end_address));
 	xlnxsync_write(dev, cfg.channel_id,
-		       XLNXSYNC_L_END_HI_REG + (i << 3),
-		       upper_32_bits(cfg.luma_end_address));
+		       XLNXSYNC_PL_END_HI_REG + (i << 3),
+		       upper_32_bits(cfg.prod_luma_end_address));
 
 	/* Set margin */
 	xlnxsync_write(dev, cfg.channel_id,
@@ -301,32 +303,32 @@ static int xlnxsync_config_channel(struct xlnxsync_device *dev,
 			__func__);
 		/* Chroma Start Address */
 		xlnxsync_write(dev, cfg.channel_id,
-			       XLNXSYNC_C_START_LO_REG + (i << 3),
-			       lower_32_bits(cfg.chroma_start_address));
+			       XLNXSYNC_PC_START_LO_REG + (i << 3),
+			       lower_32_bits(cfg.prod_chroma_start_address));
 		xlnxsync_write(dev, cfg.channel_id,
-			       XLNXSYNC_C_START_HI_REG + (i << 3),
-			       upper_32_bits(cfg.chroma_start_address) &
+			       XLNXSYNC_PC_START_HI_REG + (i << 3),
+			       upper_32_bits(cfg.prod_chroma_start_address) &
 			       XLNXSYNC_FB_HI_ADDR_MASK);
 		/* Chroma End Address */
 		xlnxsync_write(dev, cfg.channel_id,
-			       XLNXSYNC_C_END_LO_REG + (i << 3),
-			       lower_32_bits(cfg.chroma_end_address));
+			       XLNXSYNC_PC_END_LO_REG + (i << 3),
+			       lower_32_bits(cfg.prod_chroma_end_address));
 		xlnxsync_write(dev, cfg.channel_id,
-			       XLNXSYNC_C_END_HI_REG + (i << 3),
-			       upper_32_bits(cfg.chroma_end_address));
+			       XLNXSYNC_PC_END_HI_REG + (i << 3),
+			       upper_32_bits(cfg.prod_chroma_end_address));
 		/* Chroma Margin */
 		xlnxsync_write(dev, cfg.channel_id,
 			       XLNXSYNC_C_MARGIN_REG + (i << 2),
 			       cfg.chroma_margin);
 		/* Set the Valid bit */
 		xlnxsync_set(dev, cfg.channel_id,
-			     XLNXSYNC_C_START_HI_REG + (i << 3),
+			     XLNXSYNC_PC_START_HI_REG + (i << 3),
 			     XLNXSYNC_FB_VALID_MASK);
 	}
 
 	/* Set the Valid bit */
 	xlnxsync_set(dev, cfg.channel_id,
-		     XLNXSYNC_L_START_HI_REG + (i << 3),
+		     XLNXSYNC_PL_START_HI_REG + (i << 3),
 		     XLNXSYNC_FB_VALID_MASK);
 
 	return 0;
@@ -629,16 +631,16 @@ static irqreturn_t xlnxsync_irq_handler(int irq, void *data)
 		if (xlnxsync->sync_err[i] || xlnxsync->wdg_err[i])
 			err_event = true;
 
-		if (val & XLNXSYNC_ISR_LDONE_MASK) {
-			buf_index = (val & XLNXSYNC_ISR_LDONE_MASK) >>
-				XLNXSYNC_ISR_LDONE_SHIFT;
+		if (val & XLNXSYNC_ISR_PLDONE_MASK) {
+			buf_index = (val & XLNXSYNC_ISR_PLDONE_MASK) >>
+				XLNXSYNC_ISR_PLDONE_SHIFT;
 
 			xlnxsync->l_done[i][buf_index] = true;
 		}
 
-		if (val & XLNXSYNC_ISR_CDONE_MASK) {
-			buf_index = (val & XLNXSYNC_ISR_CDONE_MASK) >>
-			     XLNXSYNC_ISR_CDONE_SHIFT;
+		if (val & XLNXSYNC_ISR_PCDONE_MASK) {
+			buf_index = (val & XLNXSYNC_ISR_PCDONE_MASK) >>
+			     XLNXSYNC_ISR_PCDONE_SHIFT;
 
 			xlnxsync->c_done[i][buf_index] = true;
 		}

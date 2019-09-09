@@ -25,10 +25,10 @@
 
 /**
  * struct xlnxsync_chan_config - Synchronizer channel configuration struct
- * @luma_start_address: Start address of Luma buffer
- * @chroma_start_address: Start address of Chroma buffer
- * @luma_end_address: End address of Luma buffer
- * @chroma_end_address: End address of Chroma buffer
+ * @prod_luma_start_address: Start address of Luma buffer
+ * @prod_chroma_start_address: Start address of Chroma buffer
+ * @prod_luma_end_address: End address of Luma buffer
+ * @prod_chroma_end_address: End address of Chroma buffer
  * @luma_margin: Margin for Luma buffer
  * @chroma_margin: Margin for Chroma buffer
  * @fb_id: Framebuffer index. Valid values 0/1/2/XLNXSYNC_AUTO_SEARCH
@@ -40,10 +40,10 @@
  * framebuffer on a particular channel.
  */
 struct xlnxsync_chan_config {
-	u64 luma_start_address;
-	u64 chroma_start_address;
-	u64 luma_end_address;
-	u64 chroma_end_address;
+	u64 prod_luma_start_address;
+	u64 prod_chroma_start_address;
+	u64 prod_luma_end_address;
+	u64 prod_chroma_end_address;
 	u32 luma_margin;
 	u32 chroma_margin;
 	u8 fb_id;
