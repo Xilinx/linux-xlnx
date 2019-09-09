@@ -3,6 +3,8 @@
 #ifndef __XLNXSYNC_H__
 #define __XLNXSYNC_H__
 
+#define XLNXSYNC_IOCTL_HDR_VER		0x10001
+
 /*
  * This is set in the fb_id of struct xlnxsync_chan_config when
  * configuring the channel. This makes the driver auto search for
@@ -21,6 +23,7 @@
 #define XLNXSYNC_MAX_CORES		4
 /**
  * struct xlnxsync_chan_config - Synchronizer channel configuration struct
+ * @hdr_ver: IOCTL header version
  * @luma_start_offset: Start offset of Luma buffer
  * @chroma_start_offset: Start offset of Chroma buffer
  * @luma_end_offset: End offset of Luma buffer
@@ -39,6 +42,7 @@
  * framebuffer on a particular channel.
  */
 struct xlnxsync_chan_config {
+	u64 hdr_ver;
 	u64 luma_start_offset[XLNXSYNC_IO];
 	u64 chroma_start_offset[XLNXSYNC_IO];
 	u64 luma_end_offset[XLNXSYNC_IO];
@@ -55,6 +59,7 @@ struct xlnxsync_chan_config {
 
 /**
  * struct xlnxsync_clr_err - Clear channel error
+ * @hdr_ver: IOCTL header version
  * @channel_id: Channel id whose error needs to be cleared
  * @sync_err: Set this to clear sync error
  * @wdg_err: Set this to clear watchdog error
@@ -62,6 +67,7 @@ struct xlnxsync_chan_config {
  * @cdiff_err: Set this to clear chroma difference error
  */
 struct xlnxsync_clr_err {
+	u64 hdr_ver;
 	u8 channel_id;
 	u8 sync_err;
 	u8 wdg_err;
@@ -71,24 +77,29 @@ struct xlnxsync_clr_err {
 
 /**
  * struct xlnxsync_fbdone - Framebuffer Done
+ * @hdr_ver: IOCTL header version
  * @status: Framebuffer Done status
  */
 struct xlnxsync_fbdone {
+	u64 hdr_ver;
 	u8 status[XLNXSYNC_MAX_ENC_CHAN][XLNXSYNC_BUF_PER_CHAN][XLNXSYNC_IO];
 };
 
 /**
  * struct xlnxsync_config - Synchronizer IP configuration
+ * @hdr_ver: IOCTL header version
  * @encode: true if encoder type, false for decoder type
  * @max_channels: Maximum channels this IP supports
  */
 struct xlnxsync_config {
+	u64	hdr_ver;
 	u8	encode;
 	u8	max_channels;
 };
 
 /**
  * struct xlnxsync_stat - Sync IP status
+ * @hdr_ver: IOCTL header version
  * @fbdone: for every pair of luma/chroma buffer for every producer/consumer
  * @enable: channel enable
  * @sync_err: Synchronization error
@@ -97,6 +108,7 @@ struct xlnxsync_config {
  * @cdiff_err: Chroma difference > 1 for channel
  */
 struct xlnxsync_stat {
+	u64 hdr_ver;
 	u8 fbdone[XLNXSYNC_MAX_ENC_CHAN][XLNXSYNC_BUF_PER_CHAN][XLNXSYNC_IO];
 	u8 enable[XLNXSYNC_MAX_ENC_CHAN];
 	u8 sync_err[XLNXSYNC_MAX_ENC_CHAN];

@@ -117,6 +117,7 @@
 #define XLNXSYNC_DEVNAME_LEN		(32)
 
 #define XLNXSYNC_DRIVER_NAME		"xlnxsync"
+#define XLNXSYNC_DRIVER_VERSION		"0.1"
 
 #define XLNXSYNC_DEV_MAX		256
 
@@ -308,6 +309,14 @@ static int xlnxsync_config_channel(struct xlnxsync_device *dev,
 	if (ret) {
 		dev_err(dev->dev, "%s : Failed to copy from user\n", __func__);
 		return ret;
+	}
+
+	if (cfg.hdr_ver != XLNXSYNC_IOCTL_HDR_VER) {
+		dev_err(dev->dev, "%s : ioctl version mismatch\n", __func__);
+		dev_err(dev->dev,
+			"ioctl ver = 0x%llx expected ver = 0x%llx\n",
+			cfg.hdr_ver, (u64)XLNXSYNC_IOCTL_HDR_VER);
+		return -EINVAL;
 	}
 
 	/* Calculate luma/chroma physical addresses */
@@ -519,6 +528,8 @@ static int xlnxsync_get_channel_status(struct xlnxsync_device *dev,
 		spin_unlock_irqrestore(&dev->irq_lock, flags);
 	}
 
+	status.hdr_ver = XLNXSYNC_IOCTL_HDR_VER;
+
 	ret = copy_to_user(arg, &status, sizeof(status));
 	if (ret)
 		dev_err(dev->dev, "%s: failed to copy result data to user\n",
@@ -529,6 +540,11 @@ static int xlnxsync_get_channel_status(struct xlnxsync_device *dev,
 static int xlnxsync_enable(struct xlnxsync_device *dev, u32 channel,
 			   bool enable)
 {
+	if (dev->config.hdr_ver != XLNXSYNC_IOCTL_HDR_VER) {
+		dev_err(dev->dev, "ioctl not supported!\n");
+		return -EINVAL;
+	}
+
 	/* check channel v/s max from dt */
 	if (channel >= dev->config.max_channels) {
 		dev_err(dev->dev, "Invalid channel %d. Max channels = %d!\n",
@@ -563,9 +579,11 @@ static int xlnxsync_get_config(struct xlnxsync_device *dev, void __user *arg)
 
 	cfg.encode = dev->config.encode;
 	cfg.max_channels = dev->config.max_channels;
+	cfg.hdr_ver = XLNXSYNC_IOCTL_HDR_VER;
 
 	dev_dbg(dev->dev, "IP Config : encode = %d max_channels = %d\n",
 		cfg.encode, cfg.max_channels);
+	dev_dbg(dev->dev, "ioctl version = 0x%llx\n", cfg.hdr_ver);
 	ret = copy_to_user(arg, &cfg, sizeof(cfg));
 	if (ret) {
 		dev_err(dev->dev, "%s: failed to copy result data to user\n",
@@ -587,6 +605,14 @@ static int xlnxsync_clr_chan_err(struct xlnxsync_device *dev,
 	if (ret) {
 		dev_err(dev->dev, "%s : Failed to copy from user\n", __func__);
 		return ret;
+	}
+
+	if (errcfg.hdr_ver != XLNXSYNC_IOCTL_HDR_VER) {
+		dev_err(dev->dev, "%s : ioctl version mismatch\n", __func__);
+		dev_err(dev->dev,
+			"ioctl ver = 0x%llx expected ver = 0x%llx\n",
+			errcfg.hdr_ver, (u64)XLNXSYNC_IOCTL_HDR_VER);
+		return -EINVAL;
 	}
 
 	if (errcfg.channel_id >= dev->config.max_channels) {
@@ -622,6 +648,8 @@ static int xlnxsync_get_fbdone_status(struct xlnxsync_device *dev,
 	struct xlnxsync_fbdone fbdone_stat;
 	int ret, i, j, k;
 
+	fbdone_stat.hdr_ver = XLNXSYNC_IOCTL_HDR_VER;
+
 	for (i = 0; i < dev->config.max_channels; i++)
 		for (j = 0; j < XLNXSYNC_BUF_PER_CHAN; j++)
 			for (k = 0; k < XLNXSYNC_IO; k++)
@@ -650,6 +678,14 @@ static int xlnxsync_clr_fbdone_status(struct xlnxsync_device *dev,
 		return ret;
 	}
 
+	if (fbd.hdr_ver != XLNXSYNC_IOCTL_HDR_VER) {
+		dev_err(dev->dev, "%s : ioctl version mismatch\n", __func__);
+		dev_err(dev->dev,
+			"ioctl ver = 0x%llx expected ver = 0x%llx\n",
+			fbd.hdr_ver, (u64)XLNXSYNC_IOCTL_HDR_VER);
+		return -EINVAL;
+	}
+
 	/* Clear channel error status */
 	spin_lock_irqsave(&dev->irq_lock, flags);
 
@@ -673,6 +709,11 @@ static int xlnxsync_reserve_get_channel(struct xlnxsync_device *dev,
 {
 	int ret;
 	u8 i;
+
+	if (dev->config.hdr_ver != XLNXSYNC_IOCTL_HDR_VER) {
+		dev_err(dev->dev, "ioctl not supported!\n");
+		return -EINVAL;
+	}
 
 	for (i = 0; i < dev->config.max_channels; i++) {
 		if (!dev->reserved[i])
@@ -1085,6 +1126,10 @@ static int xlnxsync_probe(struct platform_device *pdev)
 	if (ret < 0)
 		return ret;
 
+	xlnxsync->config.hdr_ver = XLNXSYNC_IOCTL_HDR_VER;
+	dev_info(xlnxsync->dev, "ioctl header version = 0x%llx\n",
+		 xlnxsync->config.hdr_ver);
+
 	xlnxsync->irq = irq_of_parse_and_map(xlnxsync->dev->of_node, 0);
 	if (!xlnxsync->irq) {
 		dev_err(xlnxsync->dev, "Unable to parse and get irq.\n");
@@ -1222,3 +1267,4 @@ module_exit(xlnxsync_cleanup_mod);
 MODULE_AUTHOR("Vishal Sagar");
 MODULE_DESCRIPTION("Xilinx Synchronizer IP Driver");
 MODULE_LICENSE("GPL v2");
+MODULE_VERSION(XLNXSYNC_DRIVER_VERSION);
