@@ -644,9 +644,6 @@ static long xlnxsync_ioctl(struct file *fptr, unsigned int cmd,
 		break;
 	case XLNXSYNC_CHAN_DISABLE:
 		ret = xlnxsync_enable(xlnxsync_dev, channel, false);
-		if (ret < 0)
-			return ret;
-		xlnxsync_reset_chan(xlnxsync_dev, channel);
 		break;
 	case XLNXSYNC_CLR_CHAN_ERR:
 		ret = xlnxsync_clr_chan_err(xlnxsync_dev, arg);
