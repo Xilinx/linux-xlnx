@@ -129,53 +129,53 @@ static DEFINE_IDA(xs_ida);
 /**
  * struct xlnxsync_device - Xilinx Synchronizer struct
  * @chdev: Character device driver struct
- * @config: IP config struct
  * @dev: Pointer to device
  * @iomem: Pointer to the register space
- * @irq: IRQ number
- * @irq_lock: Spinlock used to protect access to sync and watchdog error
  * @sync_mutex: Mutex used to serialize ioctl calls
  * @wq_fbdone: wait queue for frame buffer done events
  * @wq_error: wait queue for error events
- * @user_count: Usage count
+ * @l_done: Luma done result array
+ * @c_done: Chroma done result array
  * @sync_err: Capture synchronization error per channel
  * @wdg_err: Capture watchdog error per channel
  * @ldiff_err: Luma buffer diff > 1
  * @cdiff_err: Chroma buffer diff > 1
- * @l_done: Luma done result array
- * @c_done: Chroma done result array
  * @axi_clk: Pointer to clock structure for axilite clock
  * @p_clk: Pointer to clock structure for producer clock
  * @c_clk: Pointer to clock structure for consumer clock
+ * @user_count: Usage count
  * @reserved: Channel reserved status
+ * @irq: IRQ number
+ * @irq_lock: Spinlock used to protect access to sync and watchdog error
  * @minor: device id count
+ * @config: IP config struct
  *
  * This structure contains the device driver related parameters
  */
 struct xlnxsync_device {
 	struct cdev chdev;
-	struct xlnxsync_config config;
 	struct device *dev;
 	void __iomem *iomem;
-	int irq;
-	/* irq_lock is used to protect access to all errors */
-	spinlock_t irq_lock;
 	/* sync_mutex is used to serialize ioctl calls */
 	struct mutex sync_mutex;
 	wait_queue_head_t wq_fbdone;
 	wait_queue_head_t wq_error;
-	atomic_t user_count;
+	bool l_done[XLNXSYNC_MAX_ENC_CHAN][XLNXSYNC_BUF_PER_CHAN][XLNXSYNC_IO];
+	bool c_done[XLNXSYNC_MAX_ENC_CHAN][XLNXSYNC_BUF_PER_CHAN][XLNXSYNC_IO];
 	bool sync_err[XLNXSYNC_MAX_ENC_CHAN];
 	bool wdg_err[XLNXSYNC_MAX_ENC_CHAN];
 	bool ldiff_err[XLNXSYNC_MAX_ENC_CHAN];
 	bool cdiff_err[XLNXSYNC_MAX_ENC_CHAN];
-	bool l_done[XLNXSYNC_MAX_ENC_CHAN][XLNXSYNC_BUF_PER_CHAN][XLNXSYNC_IO];
-	bool c_done[XLNXSYNC_MAX_ENC_CHAN][XLNXSYNC_BUF_PER_CHAN][XLNXSYNC_IO];
 	struct clk *axi_clk;
 	struct clk *p_clk;
 	struct clk *c_clk;
+	atomic_t user_count;
 	bool reserved[XLNXSYNC_MAX_ENC_CHAN];
+	int irq;
+	/* irq_lock is used to protect access to sync_err and wdg_err */
+	spinlock_t irq_lock;
 	int minor;
+	struct xlnxsync_config config;
 };
 
 /**
@@ -756,7 +756,7 @@ static __poll_t xlnxsync_poll(struct file *fptr, poll_table *wait)
 {
 	u32 j, k;
 	bool err_event, framedone_event;
-	__poll_t ret = 0, req_events;
+	__poll_t ret = 0, req_events = poll_requested_events(wait);
 	unsigned long flags;
 	struct xlnxsync_ctx *ctx = fptr->private_data;
 	struct xlnxsync_device *dev;
@@ -767,10 +767,8 @@ static __poll_t xlnxsync_poll(struct file *fptr, poll_table *wait)
 		return -EIO;
 	}
 
-	req_events = poll_requested_events(wait);
-
 	dev_dbg_ratelimited(dev->dev, "%s : entered req_events = 0x%x!\n",
-			    __func__, ret);
+			    __func__, req_events);
 
 	if (!(req_events & (POLLPRI | POLLIN)))
 		return 0;
