@@ -3502,6 +3502,7 @@ int spi_nor_scan(struct spi_nor *nor, const char *name,
 	mtd->size = params.size;
 	mtd->_erase = spi_nor_erase;
 	mtd->_read = spi_nor_read;
+	nor->page_size = params.page_size;
 #ifdef CONFIG_OF
 	np_spi = of_get_next_parent(np);
 	if ((of_property_match_string(np_spi, "compatible",
@@ -3522,6 +3523,7 @@ int spi_nor_scan(struct spi_nor *nor, const char *name,
 					nor->shift = 1;
 					info->sector_size <<= nor->shift;
 					info->page_size <<= nor->shift;
+					nor->page_size = info->page_size;
 					mtd->size <<= nor->shift;
 					nor->isparallel = 1;
 					nor->isstacked = 0;
@@ -3620,7 +3622,6 @@ int spi_nor_scan(struct spi_nor *nor, const char *name,
 
 	nor->jedec_id = info->id[0];
 	mtd->dev.parent = dev;
-	nor->page_size = params.page_size;
 	mtd->writebufsize = nor->page_size;
 
 	if (np) {
