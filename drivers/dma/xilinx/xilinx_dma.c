@@ -1578,7 +1578,12 @@ static void append_desc_queue(struct xilinx_dma_chan *chan,
 	 */
 append:
 	list_add_tail(&desc->node, &chan->pending_list);
-	chan->desc_pendingcount++;
+	/*
+	 * In CDMA each segment is considered as a descriptor, so increment
+	 * pending count in prep_slave_* implementation.
+	 */
+	if (chan->xdev->dma_config->dmatype != XDMA_TYPE_CDMA)
+		chan->desc_pendingcount++;
 
 	if (chan->has_sg && (chan->xdev->dma_config->dmatype == XDMA_TYPE_VDMA)
 	    && unlikely(chan->desc_pendingcount > chan->num_frms)) {
@@ -1758,6 +1763,7 @@ xilinx_cdma_prep_memcpy(struct dma_chan *dchan, dma_addr_t dma_dst,
 
 	/* Insert the segment into the descriptor segments list. */
 	list_add_tail(&segment->node, &desc->segments);
+	chan->desc_pendingcount++;
 
 	desc->async_tx.phys = segment->phys;
 	hw->next_desc = segment->phys;
@@ -1842,6 +1848,7 @@ static struct dma_async_tx_descriptor *xilinx_cdma_prep_sg(
 		dst_avail -= len;
 		src_avail -= len;
 		list_add_tail(&segment->node, &desc->segments);
+		chan->desc_pendingcount++;
 
 fetch:
 		/* Fetch the next dst scatterlist entry */
