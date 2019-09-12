@@ -785,6 +785,15 @@ static int zynqmp_r5_probe(struct zynqmp_r5_pdata *pdata,
 	pdata->rproc = rproc;
 	rproc->priv = pdata;
 
+	/*
+	 * The device has not been spawned from a device tree, so
+	 * arch_setup_dma_ops has not been not called, thus leaving
+	 * the device with dummy DMA ops.
+	 * Fix this by inheriting the parent's DMA ops and mask.
+	 */
+	rproc->dev.dma_mask = pdev->dev.dma_mask;
+	set_dma_ops(&rproc->dev, get_dma_ops(&pdev->dev));
+
 	/* Probe R5 memory devices */
 	INIT_LIST_HEAD(&pdata->mems);
 	for_each_available_child_of_node(node, nc) {
