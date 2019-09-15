@@ -183,7 +183,7 @@ static int zynq_rproc_stop(struct rproc *rproc)
 static void *zynq_rproc_da_to_va(struct rproc *rproc, u64 da, int len)
 {
 	struct rproc_mem_entry *mem;
-	void *va = 0;
+	void *va = NULL;
 	struct zynq_rproc_pdata *local = rproc->priv;
 
 	list_for_each_entry(mem, &local->mems, node) {
