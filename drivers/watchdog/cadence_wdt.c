@@ -364,9 +364,8 @@ static int cdns_wdt_probe(struct platform_device *pdev)
 	}
 	platform_set_drvdata(pdev, wdt);
 
-	dev_info(&pdev->dev, "Xilinx Watchdog Timer at %p with timeout %ds%s\n",
-		 wdt->regs, cdns_wdt_device->timeout,
-		 nowayout ? ", nowayout" : "");
+	dev_info(&pdev->dev, "Xilinx Watchdog Timer with timeout %ds%s\n",
+		 cdns_wdt_device->timeout, nowayout ? ", nowayout" : "");
 
 	return 0;
 
