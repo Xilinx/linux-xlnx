@@ -13,6 +13,7 @@
 
 #include <linux/cdev.h>
 #include <linux/clk.h>
+#include <linux/delay.h>
 #include <linux/device.h>
 #include <linux/dma-buf.h>
 #include <linux/interrupt.h>
@@ -245,8 +246,16 @@ static bool xlnxsync_is_buf_done(struct xlnxsync_device *dev,
 
 static void xlnxsync_reset_chan(struct xlnxsync_device *dev, u32 chan)
 {
+	u8 num_retries = 50;
+
 	xlnxsync_set(dev, chan, XLNXSYNC_CTRL_REG, XLNXSYNC_CTRL_SOFTRESET);
-	xlnxsync_clr(dev, chan, XLNXSYNC_CTRL_REG, XLNXSYNC_CTRL_SOFTRESET);
+	/* Wait for a maximum of ~100ms to flush pending transactions */
+	while (num_retries--) {
+		if (!(xlnxsync_read(dev, chan, XLNXSYNC_CTRL_REG) &
+				XLNXSYNC_CTRL_SOFTRESET))
+			break;
+		usleep_range(2000, 2100);
+	}
 }
 
 static void xlnxsync_reset(struct xlnxsync_device *dev)
