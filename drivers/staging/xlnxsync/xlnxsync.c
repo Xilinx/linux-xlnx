@@ -561,6 +561,7 @@ static int xlnxsync_enable(struct xlnxsync_device *dev, u32 channel,
 			     XLNXSYNC_CTRL_INTR_EN_MASK);
 	} else {
 		dev_dbg(dev->dev, "Disabling %d channel\n", channel);
+		xlnxsync_reset_chan(dev, channel);
 		xlnxsync_clr(dev, channel, XLNXSYNC_CTRL_REG,
 			     XLNXSYNC_CTRL_ENABLE_MASK |
 			     XLNXSYNC_CTRL_INTR_EN_MASK);
@@ -891,7 +892,6 @@ static int xlnxsync_release(struct inode *iptr, struct file *fptr)
 		__func__, current->pid, atomic_read(&xlnxsync->user_count),
 		ctx->chan_id);
 
-	xlnxsync_reset_chan(xlnxsync, ctx->chan_id);
 	xlnxsync->reserved[ctx->chan_id] = false;
 	xlnxsync->sync_err[ctx->chan_id] = false;
 	xlnxsync->wdg_err[ctx->chan_id] = false;
