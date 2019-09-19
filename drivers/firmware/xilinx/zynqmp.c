@@ -1547,7 +1547,7 @@ static ssize_t config_reg_store(struct kobject *kobj,
 		goto err;
 	}
 	ret = kstrtol(tok, 16, &value);
-	if (!tok) {
+	if (ret) {
 		ret = -EFAULT;
 		goto err;
 	}
