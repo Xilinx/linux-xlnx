@@ -1724,6 +1724,7 @@ static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
 	u8 cur_bank;
 	u8 nxt_bank;
 	u32 bank_size;
+	u_char *ptr;
 
 #define OFFSET_16_MB 0x1000000
 
@@ -1734,6 +1735,12 @@ static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
 		from = (loff_t)(from - 1);
 		len = (size_t)(len + 1);
 		is_ofst_odd = 1;
+		ptr = kmalloc(len, GFP_KERNEL);
+		if (!ptr)
+			return -ENOMEM;
+
+	} else {
+		ptr = buf;
 	}
 
 	ret = spi_nor_lock_and_prep(nor, SPI_NOR_OPS_READ);
@@ -1806,8 +1813,8 @@ static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
 
 		if (nor->flags & SNOR_F_S3AN_ADDR_DEFAULT)
 			addr = spi_nor_s3an_addr_convert(nor, offset);
+		ret = nor->read(nor, offset, read_len, ptr);
 
-		ret = nor->read(nor, offset, read_len, buf);
 		if (ret == 0) {
 			/* We shouldn't see 0-length reads */
 			ret = -EIO;
@@ -1818,7 +1825,7 @@ static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
 
 		WARN_ON(ret > len);
 		if (is_ofst_odd == 1) {
-			memcpy(buf, (buf + 1), (len - 1));
+			memcpy(buf, (ptr + 1), (len - 1));
 			*retlen += (ret - 1);
 		} else {
 			*retlen += ret;
@@ -1830,6 +1837,10 @@ static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
 	ret = 0;
 
 read_err:
+
+	if (is_ofst_odd == 1)
+		kfree(ptr);
+
 	spi_nor_unlock_and_unprep(nor, SPI_NOR_OPS_READ);
 	return ret;
 }
