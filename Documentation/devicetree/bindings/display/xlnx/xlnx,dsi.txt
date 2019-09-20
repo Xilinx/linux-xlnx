@@ -46,6 +46,7 @@ Required simple_panel properties:
 Optional properties:
  - xlnx,vpss: vpss phandle
    This handle is required only when VPSS is connected to DSI as bridge.
+ - xlnx,dsi-cmd-mode: denotes command mode enable.
 
 Example:
 
