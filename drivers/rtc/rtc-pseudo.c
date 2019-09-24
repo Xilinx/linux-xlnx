@@ -24,6 +24,10 @@
 
 static struct platform_device *_pdev = NULL;
 
+static int enable = 0;
+module_param(enable, int, S_IRUGO);
+MODULE_PARM_DESC(enable, "1 for enable, 0 for disable.");
+
 static long timestamp = 1552102779;
 module_param(timestamp, long, S_IRUGO);
 MODULE_PARM_DESC(timestamp, "Initial timestamp which the RTC provides.");
@@ -107,6 +111,10 @@ static struct platform_driver pseudo_rtc_driver = {
 
 static int __init pseudo_rtc_init(void)
 {
+	if (!enable) {
+		return -EINVAL;
+	}
+
 	_pdev = platform_device_alloc("rtc-pseudo", 0);
 	if (!_pdev) {
 		return -ENOMEM;
