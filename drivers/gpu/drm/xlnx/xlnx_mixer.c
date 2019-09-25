@@ -2545,7 +2545,15 @@ static void
 xlnx_mix_crtc_atomic_enable(struct drm_crtc *crtc,
 			    struct drm_crtc_state *old_crtc_state)
 {
+	struct drm_display_mode *adjusted_mode = &crtc->state->adjusted_mode;
+	int vrefresh;
+
 	xlnx_mix_crtc_dpms(crtc, DRM_MODE_DPMS_ON);
+
+	/* Delay of 3 vblank interval for timing gen to be stable */
+	vrefresh = ((adjusted_mode->clock * 1000) /
+		    (adjusted_mode->vtotal * adjusted_mode->htotal));
+	msleep(3 * 1000 / vrefresh);
 }
 
 /**
