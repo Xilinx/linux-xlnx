@@ -3,7 +3,7 @@
 
 Required properties:
 
-- compatible: Must be "xlnx,v-vpss-scaler-1.0".
+- compatible: Must be "xlnx,v-vpss-scaler-2.2" or "xlnx,v-vpss-scaler-1.0".
   The older string "xlnx,v-vpss-scaler" will be deprecated.
 
 - reg: Physical base address and length of the registers set for the device.
