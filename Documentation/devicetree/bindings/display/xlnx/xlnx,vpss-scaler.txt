@@ -6,7 +6,7 @@ resolution values between 0 to 4096.
 
 Required properties:
 
-- compatible: Must be "xlnx,vpss-scaler".
+- compatible: Must be "xlnx,vpss-scaler-2.2" or "xlnx,vpss-scaler".
 
 - reg: Physical base address and length of registers set for the device.
 
