@@ -423,6 +423,7 @@ xhsc_coeff_taps12[XV_HSCALER_MAX_H_PHASES][XV_HSCALER_TAPS_12] = {
 #define XV_HSCALER_CTRL_ADDR_HWREG_PHASESH_V_HIGH		(0x3fff)
 #define XV_HSCALER_CTRL_WIDTH_HWREG_PHASESH_V			(18)
 #define XV_HSCALER_CTRL_DEPTH_HWREG_PHASESH_V			(1920)
+#define XV_HSCALER_CTRL_ADDR_HWREG_PHASEH_FIX			(0x4000)
 
 /* H-scaler masks */
 #define XV_HSCALER_PHASESH_V_OUTPUT_WR_EN			BIT(8)
@@ -716,7 +717,9 @@ xvsc_coeff_taps12[XV_VSCALER_MAX_V_PHASES][XV_VSCALER_TAPS_12] = {
 #define XV_VSCALER_CTRL_WIDTH_HWREG_VFLTCOEFF		(16)
 #define XV_VSCALER_CTRL_DEPTH_HWREG_VFLTCOEFF		(384)
 
+/* These bits are for xscaler feature flags */
 #define XSCALER_CLK_PROP	BIT(0)
+#define XSCALER_HPHASE_FIX	BIT(1)
 
 /**
  * struct xscaler_feature - dt or IP property structure
@@ -773,6 +776,10 @@ struct xscaler_device {
 	struct clk *aclk_ctrl;
 };
 
+static const struct xscaler_feature xlnx_scaler_v2_2 = {
+	.flags = XSCALER_CLK_PROP | XSCALER_HPHASE_FIX,
+};
+
 static const struct xscaler_feature xlnx_scaler_v1_0 = {
 	.flags = XSCALER_CLK_PROP,
 };
@@ -786,6 +793,8 @@ static const struct of_device_id xscaler_of_id_table[] = {
 		.data = &xlnx_scaler},
 	{ .compatible = "xlnx,v-vpss-scaler-1.0",
 		.data = &xlnx_scaler_v1_0},
+	{ .compatible = "xlnx,v-vpss-scaler-2.2",
+		.data = &xlnx_scaler_v2_2},
 	{ /* end of table */ }
 };
 MODULE_DEVICE_TABLE(of, xscaler_of_id_table);
@@ -1331,7 +1340,14 @@ xv_hscaler_set_phases(struct xscaler_device *xscaler)
 	u64 phasehdata;
 
 	loop_width = xscaler->max_pixels / xscaler->pix_per_clk;
-	offset = V_HSCALER_OFF + XV_HSCALER_CTRL_ADDR_HWREG_PHASESH_V_BASE;
+
+	if (xscaler->cfg->flags & XSCALER_HPHASE_FIX) {
+		offset = V_HSCALER_OFF +
+			XV_HSCALER_CTRL_ADDR_HWREG_PHASEH_FIX;
+	} else {
+		offset = V_HSCALER_OFF +
+			XV_HSCALER_CTRL_ADDR_HWREG_PHASESH_V_BASE;
+	}
 
 	switch (xscaler->pix_per_clk) {
 	case XSCALER_PPC_1:
