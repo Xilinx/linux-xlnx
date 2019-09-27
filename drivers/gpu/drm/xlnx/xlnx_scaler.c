@@ -121,6 +121,7 @@
 #define XV_HSCALER_CTRL_ADDR_HWREG_PHASESH_V_HIGH	(0x3fff)
 #define XV_HSCALER_CTRL_WIDTH_HWREG_PHASESH_V		(18)
 #define XV_HSCALER_CTRL_DEPTH_HWREG_PHASESH_V		(1920)
+#define XV_HSCALER_CTRL_ADDR_HWREG_PHASEH_FIX		(0x4000)
 
 /* H-scaler masks */
 #define XV_HSCALER_PHASESH_V_OUTPUT_WR_EN		BIT(8)
@@ -698,6 +699,17 @@ static const u32 xilinx_scaler_video_fmts[] = {
 	MEDIA_BUS_FMT_VYYUYY8_1X24,
 };
 
+/* This bit is for xscaler feature flag */
+#define XSCALER_HPHASE_FIX	BIT(0)
+
+/**
+ * struct xscaler_feature - dt or IP property structure
+ * @flags: Bitmask of properties enabled in IP or dt
+ */
+struct xscaler_feature {
+	u32 flags;
+};
+
 /**
  * struct xilinx_scaler - Core configuration of scaler device structure
  * @base: pointer to register base address
@@ -722,6 +734,7 @@ static const u32 xilinx_scaler_video_fmts[] = {
  * @rst_gpio: GPIO reset line to bring VPSS Scaler out of reset
  * @ctrl_clk: AXI Lite clock
  * @axis_clk: Video Clock
+ * @cfg: Pointer to scaler config structure
  */
 struct xilinx_scaler {
 	void __iomem *base;
@@ -746,6 +759,7 @@ struct xilinx_scaler {
 	struct gpio_desc *rst_gpio;
 	struct clk *ctrl_clk;
 	struct clk *axis_clk;
+	const struct xscaler_feature *cfg;
 };
 
 static inline void xilinx_scaler_write(void __iomem *base, u32 offset, u32 val)
@@ -1209,7 +1223,13 @@ xv_hscaler_set_phases(struct xilinx_scaler *scaler)
 	u32 offset, i, lsb, msb;
 
 	loop_width = scaler->max_pixels / scaler->pix_per_clk;
-	offset = V_HSCALER_OFF + XV_HSCALER_CTRL_ADDR_HWREG_PHASESH_V_BASE;
+	if (scaler->cfg->flags & XSCALER_HPHASE_FIX) {
+		offset = V_HSCALER_OFF +
+			XV_HSCALER_CTRL_ADDR_HWREG_PHASEH_FIX;
+	} else {
+		offset = V_HSCALER_OFF +
+			XV_HSCALER_CTRL_ADDR_HWREG_PHASESH_V_BASE;
+	}
 
 	switch (scaler->pix_per_clk) {
 	case XSCALER_PPC_1:
@@ -1649,17 +1669,44 @@ static int xilinx_scaler_bridge_get_output_fmts(struct xlnx_bridge *bridge,
 	return 0;
 }
 
+static const struct xscaler_feature xlnx_scaler_v2_2 = {
+	.flags = XSCALER_HPHASE_FIX,
+};
+
+static const struct xscaler_feature xlnx_scaler = {
+	.flags = 0,
+};
+
+static const struct of_device_id xilinx_scaler_of_match[] = {
+	{ .compatible = "xlnx,vpss-scaler",
+		.data = &xlnx_scaler},
+	{ .compatible = "xlnx,vpss-scaler-2.2",
+		.data = &xlnx_scaler_v2_2},
+	{ }
+};
+
+MODULE_DEVICE_TABLE(of, xilinx_scaler_of_match);
+
 static int xilinx_scaler_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	struct resource *res;
 	struct xilinx_scaler *scaler;
+	const struct of_device_id *match;
+	struct device_node *node = pdev->dev.of_node;
 	int ret;
 
 	scaler = devm_kzalloc(dev, sizeof(*scaler), GFP_KERNEL);
 	if (!scaler)
 		return -ENOMEM;
 	scaler->dev = dev;
+
+	match = of_match_node(xilinx_scaler_of_match, node);
+	if (!match)
+		return -ENODEV;
+
+	scaler->cfg = match->data;
+
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	scaler->base = devm_ioremap_resource(dev, res);
 	if (IS_ERR(scaler->base)) {
@@ -1725,12 +1772,6 @@ static int xilinx_scaler_remove(struct platform_device *pdev)
 	clk_disable_unprepare(scaler->ctrl_clk);
 	return 0;
 }
-
-static const struct of_device_id xilinx_scaler_of_match[] = {
-	{ .compatible = "xlnx,vpss-scaler"},
-	{ }
-};
-MODULE_DEVICE_TABLE(of, xilinx_scaler_of_match);
 
 static struct platform_driver scaler_bridge_driver = {
 	.probe = xilinx_scaler_probe,
