@@ -901,6 +901,17 @@ static int xlnxsync_release(struct inode *iptr, struct file *fptr)
 		__func__, current->pid, atomic_read(&xlnxsync->user_count),
 		ctx->chan_id);
 
+	if (xlnxsync_read(xlnxsync, ctx->chan_id, XLNXSYNC_CTRL_REG) &
+	    XLNXSYNC_CTRL_ENABLE_MASK) {
+		dev_dbg(xlnxsync->dev, "Disabling %d channel\n", ctx->chan_id);
+		xlnxsync_reset_chan(xlnxsync, ctx->chan_id);
+		xlnxsync_clr(xlnxsync, ctx->chan_id, XLNXSYNC_CTRL_REG,
+			     XLNXSYNC_CTRL_ENABLE_MASK |
+			     XLNXSYNC_CTRL_INTR_EN_MASK);
+		xlnxsync_clr(xlnxsync, ctx->chan_id, XLNXSYNC_IER_REG,
+			     XLNXSYNC_IER_ALL_MASK);
+	}
+
 	xlnxsync->reserved[ctx->chan_id] = false;
 	xlnxsync->sync_err[ctx->chan_id] = false;
 	xlnxsync->wdg_err[ctx->chan_id] = false;
