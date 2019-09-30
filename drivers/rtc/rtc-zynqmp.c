@@ -51,6 +51,10 @@
 #define RTC_CALIB_MASK		0x1FFFFF
 #define RTC_SEC_MAX_VAL		0xFFFFFFFF
 
+static int enable = 0;
+module_param(enable, int, S_IRUGO);
+MODULE_PARM_DESC(enable, "1 for enable, 0 for disable.");
+
 struct xlnx_rtc_dev {
 	struct rtc_device	*rtc;
 	void __iomem		*reg_base;
@@ -215,6 +219,10 @@ static int xlnx_rtc_probe(struct platform_device *pdev)
 	struct xlnx_rtc_dev *xrtcdev;
 	struct resource *res;
 	int ret;
+
+	if (!enable) {
+		return -EINVAL;
+	}
 
 	xrtcdev = devm_kzalloc(&pdev->dev, sizeof(*xrtcdev), GFP_KERNEL);
 	if (!xrtcdev)
