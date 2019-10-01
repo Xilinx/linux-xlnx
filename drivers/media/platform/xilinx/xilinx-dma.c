@@ -1317,6 +1317,27 @@ static int xvip_dma_s_ctrl(struct v4l2_ctrl *ctl)
 	return ret;
 }
 
+static int xvip_dma_open(struct file *file)
+{
+	int ret;
+
+	ret = v4l2_fh_open(file);
+	if (ret)
+		return ret;
+
+	/* Disable the low latency mode as default */
+	if (v4l2_fh_is_singular_file(file)) {
+		struct xvip_dma *dma = video_drvdata(file);
+
+		mutex_lock(&dma->lock);
+		dma->low_latency_cap = false;
+		xilinx_xdma_set_mode(dma->dma, AUTO_RESTART);
+		mutex_unlock(&dma->lock);
+	}
+
+	return 0;
+}
+
 static const struct v4l2_ctrl_ops xvip_dma_ctrl_ops = {
 	.s_ctrl = xvip_dma_s_ctrl,
 };
@@ -1341,7 +1362,7 @@ static const struct v4l2_ctrl_config xvip_dma_ctrls[] = {
 static const struct v4l2_file_operations xvip_dma_fops = {
 	.owner		= THIS_MODULE,
 	.unlocked_ioctl	= video_ioctl2,
-	.open		= v4l2_fh_open,
+	.open		= xvip_dma_open,
 	.release	= vb2_fop_release,
 	.poll		= vb2_fop_poll,
 	.mmap		= vb2_fop_mmap,
