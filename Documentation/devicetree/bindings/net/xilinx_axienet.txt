@@ -27,7 +27,6 @@ Required properties:
 - interrupts	: Should be a list of two interrupt, TX and RX.
 - interrupt-parent	: Must be core interrupt controller.
 - phy-handle	: See ethernet.txt [2].
-- local-mac-address	: See ethernet.txt [2].
 - phy-mode		: See ethernet.txt [2].
 - axistream-connected	: Should contain phandle of DMA node.
 Required properties (When AxiEthernet is configured with MCDMA):
@@ -35,6 +34,8 @@ Required properties (When AxiEthernet is configured with MCDMA):
 - interrupt-names	: Should contain the interrupt names.
 
 Optional properties:
+- local-mac-address	: See ethernet.txt [2].
+			  If absent, random mac address is selected.
 - xlnx,rxmem		: Max Rx Memory size.
 - xlnx,txcsum		: Tx checksum mode (Full, Partial and None).
 - xlnx,rxcsum		: Rx checksum mode (Full, Partial and None).

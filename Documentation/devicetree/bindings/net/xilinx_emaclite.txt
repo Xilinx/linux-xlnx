@@ -14,9 +14,10 @@ Required properties:
 			  number.
 - interrupt-parent	: Must be core interrupt controller.
 - phy-handle		: See ethernet.txt file in the same directory.
-- local-mac-address	: See ethernet.txt file in the same directory.
 
 Optional properties:
+- local-mac-address	: See ethernet.txt file in the same directory.
+			  If absent, random mac address is selected.
 - xlnx,tx-ping-pong	: If present, hardware supports tx ping pong buffer.
 - xlnx,rx-ping-pong	: If present, hardware supports rx ping pong buffer.
 
