@@ -335,7 +335,8 @@ static void temac_do_set_mac_address(struct net_device *ndev)
 
 static int temac_init_mac_address(struct net_device *ndev, const void *address)
 {
-	memcpy(ndev->dev_addr, address, ETH_ALEN);
+	if (address)
+		memcpy(ndev->dev_addr, address, ETH_ALEN);
 	if (!is_valid_ether_addr(ndev->dev_addr))
 		eth_hw_addr_random(ndev);
 	temac_do_set_mac_address(ndev);
@@ -1077,11 +1078,8 @@ static int temac_of_probe(struct platform_device *op)
 
 	/* Retrieve the MAC address */
 	addr = of_get_mac_address(op->dev.of_node);
-	if (!addr) {
-		dev_err(&op->dev, "could not find MAC address\n");
-		rc = -ENODEV;
-		goto err_iounmap_2;
-	}
+	if (!addr)
+		dev_warn(&op->dev, "No MAC address found, using random\n");
 	temac_init_mac_address(ndev, addr);
 
 	lp->phy_node = of_parse_phandle(op->dev.of_node, "phy-handle", 0);
