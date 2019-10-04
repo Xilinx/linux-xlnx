@@ -196,7 +196,7 @@ struct xcan_devtype_data {
  */
 struct xcan_priv {
 	struct can_priv can;
-	spinlock_t tx_lock;	/* To protect tx path */
+	spinlock_t tx_lock; /* Lock for synchronizing TX interrupt handling */
 	unsigned int tx_head;
 	unsigned int tx_tail;
 	unsigned int tx_max;
