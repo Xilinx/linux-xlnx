@@ -1232,6 +1232,7 @@ static void xvip_m2m_prep_submit_dev2mem_desc(struct xvip_m2m_ctx *ctx,
 	u32 luma_size;
 	u32 flags = DMA_PREP_INTERRUPT | DMA_CTRL_ACK;
 	enum operation_mode mode = DEFAULT;
+	u32 bpl, dst_width, dst_height;
 
 	p_out = vb2_dma_contig_plane_dma_addr(&dst_buf->vb2_buf, 0);
 
@@ -1247,6 +1248,15 @@ static void xvip_m2m_prep_submit_dev2mem_desc(struct xvip_m2m_ctx *ctx,
 	ctx->xt.dst_start = p_out;
 
 	pix_mp = &dma->capfmt.fmt.pix_mp;
+	bpl = pix_mp->plane_fmt[0].bytesperline;
+	if (dma->crop) {
+		dst_width = dma->r.width;
+		dst_height = dma->r.height;
+	} else {
+		dst_width = pix_mp->width;
+		dst_height = pix_mp->height;
+	}
+
 	info = dma->capinfo;
 	xilinx_xdma_set_mode(dma->chan_rx, mode);
 	xilinx_xdma_v4l2_config(dma->chan_rx, pix_mp->pixelformat);
@@ -1255,11 +1265,11 @@ static void xvip_m2m_prep_submit_dev2mem_desc(struct xvip_m2m_ctx *ctx,
 	xvip_bpl_scaling_factor(pix_mp->pixelformat, &bpl_nume, &bpl_deno);
 
 	ctx->xt.frame_size = info->num_planes;
-	ctx->sgl[0].size = (pix_mp->width * info->bpl_factor *
+	ctx->sgl[0].size = (dst_width * info->bpl_factor *
 			    padding_factor_nume * bpl_nume) /
 			    (padding_factor_deno * bpl_deno);
-	ctx->sgl[0].icg = pix_mp->plane_fmt[0].bytesperline - ctx->sgl[0].size;
-	ctx->xt.numf = pix_mp->height;
+	ctx->sgl[0].icg = bpl - ctx->sgl[0].size;
+	ctx->xt.numf = dst_height;
 
 	/*
 	 * dst_icg is the number of bytes to jump after last luma addr
@@ -1270,6 +1280,9 @@ static void xvip_m2m_prep_submit_dev2mem_desc(struct xvip_m2m_ctx *ctx,
 	if (info->buffers == 1) {
 		/* Handling contiguous data with mplanes */
 		ctx->sgl[0].dst_icg = 0;
+		if (dma->crop)
+			ctx->sgl[0].dst_icg = bpl *
+					      (pix_mp->height - dst_height);
 	} else {
 		/* Handling non-contiguous data with mplanes */
 		if (info->buffers == 2) {
