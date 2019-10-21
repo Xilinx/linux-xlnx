@@ -158,6 +158,16 @@ MODULE_PARM_DESC(rx_timeout, "Rx timeout, 1-255");
 #define CDNS_UART_MODEMCR_DTR	0x00000001 /* Data Terminal Ready */
 
 /*
+ * Modem Status register:
+ * The read/write Modem Status register reports the interface with the modem
+ * or data set, or a peripheral device emulating a modem.
+ */
+#define CDNS_UART_MODEMSR_DCD	BIT(7) /* Data Carrier Detect */
+#define CDNS_UART_MODEMSR_RI	BIT(6) /* Ting Indicator */
+#define CDNS_UART_MODEMSR_DSR	BIT(5) /* Data Set Ready */
+#define CDNS_UART_MODEMSR_CTS	BIT(4) /* Clear To Send */
+
+/*
  * Channel Status Register:
  * The channel status register (CSR) is provided to enable the control logic
  * to monitor the status of bits in the channel interrupt status register,
@@ -1010,7 +1020,24 @@ static void cdns_uart_config_port(struct uart_port *port, int flags)
  */
 static unsigned int cdns_uart_get_mctrl(struct uart_port *port)
 {
-	return TIOCM_CTS | TIOCM_DSR | TIOCM_CAR;
+	u32 val;
+	unsigned int mctrl = 0;
+	struct cdns_uart *cdns_uart_data = port->private_data;
+
+	if (cdns_uart_data->cts_override)
+		return TIOCM_CTS | TIOCM_DSR | TIOCM_CAR;
+
+	val = readl(port->membase + CDNS_UART_MODEMSR);
+	if (val & CDNS_UART_MODEMSR_CTS)
+		mctrl |= TIOCM_CTS;
+	if (val & CDNS_UART_MODEMSR_DSR)
+		mctrl |= TIOCM_DSR;
+	if (val & CDNS_UART_MODEMSR_RI)
+		mctrl |= TIOCM_RNG;
+	if (val & CDNS_UART_MODEMSR_DCD)
+		mctrl |= TIOCM_CAR;
+
+	return mctrl;
 }
 
 static void cdns_uart_set_mctrl(struct uart_port *port, unsigned int mctrl)
