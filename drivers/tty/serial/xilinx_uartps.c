@@ -1010,11 +1010,6 @@ static void cdns_uart_config_port(struct uart_port *port, int flags)
  */
 static unsigned int cdns_uart_get_mctrl(struct uart_port *port)
 {
-	struct cdns_uart *cdns_uart_data = port->private_data;
-
-	if (cdns_uart_data->cts_override)
-		return 0;
-
 	return TIOCM_CTS | TIOCM_DSR | TIOCM_CAR;
 }
 
