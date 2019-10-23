@@ -797,7 +797,7 @@ xilinx_dpdma_chan_alloc_tx_desc(struct xilinx_dpdma_chan *chan)
 {
 	struct xilinx_dpdma_tx_desc *tx_desc;
 
-	tx_desc = kzalloc(sizeof(*tx_desc), GFP_KERNEL);
+	tx_desc = kzalloc(sizeof(*tx_desc), GFP_ATOMIC);
 	if (!tx_desc)
 		return NULL;
 
