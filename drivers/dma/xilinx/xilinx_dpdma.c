@@ -1744,7 +1744,9 @@ static void xilinx_dpdma_chan_handle_err(struct xilinx_dpdma_chan *chan)
 	switch (chan->active_desc->status) {
 	case ERRORED:
 		dev_dbg(dev, "repeated error on desc\n");
+		/* fall-through */
 	case ACTIVE:
+		/* fall-through */
 	case PREPARED:
 		/* Reschedule if there's no new descriptor */
 		if (!chan->pending_desc && !chan->submitted_desc) {
