@@ -17,8 +17,10 @@
 #include <linux/spi/spi.h>
 #include <video/mipi_display.h>
 
+#include <drm/drm_drv.h>
 #include <drm/drm_fb_helper.h>
 #include <drm/drm_gem_framebuffer_helper.h>
+#include <drm/drm_gem_shmem_helper.h>
 #include <drm/tinydrm/mipi-dbi.h>
 #include <drm/tinydrm/tinydrm-helpers.h>
 
@@ -88,9 +90,10 @@ static void st7586_xrgb8888_to_gray332(u8 *dst, void *vaddr,
 static int st7586_buf_copy(void *dst, struct drm_framebuffer *fb,
 			   struct drm_clip_rect *clip)
 {
-	struct drm_gem_cma_object *cma_obj = drm_fb_cma_get_gem_obj(fb, 0);
-	struct dma_buf_attachment *import_attach = cma_obj->base.import_attach;
-	void *src = cma_obj->vaddr;
+	struct drm_gem_object *gem = drm_gem_fb_get_obj(fb, 0);
+	struct dma_buf_attachment *import_attach = gem->import_attach;
+	struct drm_gem_shmem_object *shmem = to_drm_gem_shmem_obj(gem);
+	void *src = shmem->vaddr;
 	int ret = 0;
 
 	if (import_attach) {
@@ -156,7 +159,7 @@ static int st7586_fb_dirty(struct drm_framebuffer *fb,
 }
 
 static const struct drm_framebuffer_funcs st7586_fb_funcs = {
-	.destroy	= drm_gem_fb_destroy,
+	.destroy	= tinydrm_fb_destroy,
 	.create_handle	= drm_gem_fb_create_handle,
 	.dirty		= tinydrm_fb_dirty,
 };
@@ -297,7 +300,7 @@ static const struct drm_display_mode st7586_mode = {
 	TINYDRM_MODE(178, 128, 37, 27),
 };
 
-DEFINE_DRM_GEM_CMA_FOPS(st7586_fops);
+DEFINE_DRM_GEM_SHMEM_FOPS(st7586_fops);
 
 static struct drm_driver st7586_driver = {
 	.driver_features	= DRIVER_GEM | DRIVER_MODESET | DRIVER_PRIME |

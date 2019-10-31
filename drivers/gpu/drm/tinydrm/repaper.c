@@ -26,7 +26,9 @@
 #include <linux/spi/spi.h>
 #include <linux/thermal.h>
 
+#include <drm/drm_drv.h>
 #include <drm/drm_gem_framebuffer_helper.h>
+#include <drm/drm_gem_shmem_helper.h>
 #include <drm/tinydrm/tinydrm.h>
 #include <drm/tinydrm/tinydrm-helpers.h>
 
@@ -526,8 +528,9 @@ static int repaper_fb_dirty(struct drm_framebuffer *fb,
 			    struct drm_clip_rect *clips,
 			    unsigned int num_clips)
 {
-	struct drm_gem_cma_object *cma_obj = drm_fb_cma_get_gem_obj(fb, 0);
-	struct dma_buf_attachment *import_attach = cma_obj->base.import_attach;
+	struct drm_gem_object *gem = drm_gem_fb_get_obj(fb, 0);
+	struct drm_gem_shmem_object *shmem = to_drm_gem_shmem_obj(gem);
+	struct dma_buf_attachment *import_attach = gem->import_attach;
 	struct tinydrm_device *tdev = fb->dev->dev_private;
 	struct repaper_epd *epd = epd_from_tinydrm(tdev);
 	struct drm_clip_rect clip;
@@ -559,7 +562,7 @@ static int repaper_fb_dirty(struct drm_framebuffer *fb,
 			goto out_free;
 	}
 
-	tinydrm_xrgb8888_to_gray8(buf, cma_obj->vaddr, fb, &clip);
+	tinydrm_xrgb8888_to_gray8(buf, shmem->vaddr, fb, &clip);
 
 	if (import_attach) {
 		ret = dma_buf_end_cpu_access(import_attach->dmabuf,
@@ -624,7 +627,7 @@ out_free:
 }
 
 static const struct drm_framebuffer_funcs repaper_fb_funcs = {
-	.destroy	= drm_gem_fb_destroy,
+	.destroy	= tinydrm_fb_destroy,
 	.create_handle	= drm_gem_fb_create_handle,
 	.dirty		= tinydrm_fb_dirty,
 };
@@ -876,13 +879,13 @@ static const struct drm_display_mode repaper_e2271cs021_mode = {
 static const u8 repaper_e2271cs021_cs[] = { 0x00, 0x00, 0x00, 0x7f,
 					    0xff, 0xfe, 0x00, 0x00 };
 
-DEFINE_DRM_GEM_CMA_FOPS(repaper_fops);
+DEFINE_DRM_GEM_SHMEM_FOPS(repaper_fops);
 
 static struct drm_driver repaper_driver = {
 	.driver_features	= DRIVER_GEM | DRIVER_MODESET | DRIVER_PRIME |
 				  DRIVER_ATOMIC,
 	.fops			= &repaper_fops,
-	TINYDRM_GEM_DRIVER_OPS,
+	DRM_GEM_SHMEM_DRIVER_OPS,
 	.name			= "repaper",
 	.desc			= "Pervasive Displays RePaper e-ink panels",
 	.date			= "20170405",
@@ -927,15 +930,6 @@ static int repaper_probe(struct spi_device *spi)
 	} else {
 		spi_id = spi_get_device_id(spi);
 		model = spi_id->driver_data;
-	}
-
-	/* The SPI device is used to allocate dma memory */
-	if (!dev->coherent_dma_mask) {
-		ret = dma_coerce_mask_and_coherent(dev, DMA_BIT_MASK(32));
-		if (ret) {
-			dev_warn(dev, "Failed to set dma mask %d\n", ret);
-			return ret;
-		}
 	}
 
 	epd = devm_kzalloc(dev, sizeof(*epd), GFP_KERNEL);

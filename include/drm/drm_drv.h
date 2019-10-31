@@ -479,6 +479,8 @@ struct drm_driver {
 	 * @gem_prime_import:
 	 *
 	 * import dmabuf -> GEM
+   *
+   * This defaults to drm_gem_prime_import() if not set.
 	 */
 	struct drm_gem_object * (*gem_prime_import)(struct drm_device *dev,
 				struct dma_buf *dma_buf);

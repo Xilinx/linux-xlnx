@@ -12,6 +12,7 @@
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_fb_helper.h>
 #include <drm/drm_gem_framebuffer_helper.h>
+#include <drm/drm_gem_shmem_helper.h>
 #include <drm/tinydrm/tinydrm.h>
 #include <linux/device.h>
 #include <linux/dma-buf.h>
@@ -23,7 +24,7 @@
  *
  * It is based on &drm_simple_display_pipe coupled with a &drm_connector which
  * has only one fixed &drm_display_mode. The framebuffers are backed by the
- * cma helper and have support for framebuffer flushing (dirty).
+ * shmem buffers and have support for framebuffer flushing (dirty).
  * fbdev support is also included.
  *
  */
@@ -37,84 +38,41 @@
  */
 
 /**
- * tinydrm_gem_cma_prime_import_sg_table - Produce a CMA GEM object from
- *     another driver's scatter/gather table of pinned pages
- * @drm: DRM device to import into
- * @attach: DMA-BUF attachment
- * @sgt: Scatter/gather table of pinned pages
+ * tinydrm_fb_destroy - Destroy framebuffer
+ * @fb: Framebuffer
  *
- * This function imports a scatter/gather table exported via DMA-BUF by
- * another driver using drm_gem_cma_prime_import_sg_table(). It sets the
- * kernel virtual address on the CMA object. Drivers should use this as their
- * &drm_driver->gem_prime_import_sg_table callback if they need the virtual
- * address. tinydrm_gem_cma_free_object() should be used in combination with
- * this function.
- *
- * Returns:
- * A pointer to a newly created GEM object or an ERR_PTR-encoded negative
- * error code on failure.
+ * This function unmaps the virtual address on the backing buffer and destroys the framebuffer.
+ * Drivers should use this as their &drm_framebuffer_funcs->destroy callback.
  */
-struct drm_gem_object *
-tinydrm_gem_cma_prime_import_sg_table(struct drm_device *drm,
-				      struct dma_buf_attachment *attach,
-				      struct sg_table *sgt)
+void tinydrm_fb_destroy(struct drm_framebuffer *fb)
 {
-	struct drm_gem_cma_object *cma_obj;
-	struct drm_gem_object *obj;
-	void *vaddr;
+	struct drm_gem_object *gem = drm_gem_fb_get_obj(fb, 0);
+	struct drm_gem_shmem_object *shmem = to_drm_gem_shmem_obj(gem);
 
-	vaddr = dma_buf_vmap(attach->dmabuf);
-	if (!vaddr) {
-		DRM_ERROR("Failed to vmap PRIME buffer\n");
-		return ERR_PTR(-ENOMEM);
-	}
-
-	obj = drm_gem_cma_prime_import_sg_table(drm, attach, sgt);
-	if (IS_ERR(obj)) {
-		dma_buf_vunmap(attach->dmabuf, vaddr);
-		return obj;
-	}
-
-	cma_obj = to_drm_gem_cma_obj(obj);
-	cma_obj->vaddr = vaddr;
-
-	return obj;
+	drm_gem_vunmap(gem, shmem->vaddr);
+	drm_gem_fb_destroy(fb);
 }
-EXPORT_SYMBOL(tinydrm_gem_cma_prime_import_sg_table);
-
-/**
- * tinydrm_gem_cma_free_object - Free resources associated with a CMA GEM
- *                               object
- * @gem_obj: GEM object to free
- *
- * This function frees the backing memory of the CMA GEM object, cleans up the
- * GEM object state and frees the memory used to store the object itself using
- * drm_gem_cma_free_object(). It also handles PRIME buffers which has the kernel
- * virtual address set by tinydrm_gem_cma_prime_import_sg_table(). Drivers
- * can use this as their &drm_driver->gem_free_object_unlocked callback.
- */
-void tinydrm_gem_cma_free_object(struct drm_gem_object *gem_obj)
-{
-	if (gem_obj->import_attach) {
-		struct drm_gem_cma_object *cma_obj;
-
-		cma_obj = to_drm_gem_cma_obj(gem_obj);
-		dma_buf_vunmap(gem_obj->import_attach->dmabuf, cma_obj->vaddr);
-		cma_obj->vaddr = NULL;
-	}
-
-	drm_gem_cma_free_object(gem_obj);
-}
-EXPORT_SYMBOL_GPL(tinydrm_gem_cma_free_object);
+EXPORT_SYMBOL(tinydrm_fb_destroy);
 
 static struct drm_framebuffer *
 tinydrm_fb_create(struct drm_device *drm, struct drm_file *file_priv,
 		  const struct drm_mode_fb_cmd2 *mode_cmd)
 {
 	struct tinydrm_device *tdev = drm->dev_private;
+	struct drm_framebuffer *fb;
+	void *vaddr;
 
-	return drm_gem_fb_create_with_funcs(drm, file_priv, mode_cmd,
-					    tdev->fb_funcs);
+	fb = drm_gem_fb_create_with_funcs(drm, file_priv, mode_cmd, tdev->fb_funcs);
+	if (IS_ERR(fb))
+		return fb;
+
+	vaddr = drm_gem_vmap(drm_gem_fb_get_obj(fb, 0));
+	if (IS_ERR(vaddr)) {
+		drm_gem_fb_destroy(fb);
+		return ERR_CAST(vaddr);
+	}
+
+	return fb;
 }
 
 static const struct drm_mode_config_funcs tinydrm_mode_config_funcs = {

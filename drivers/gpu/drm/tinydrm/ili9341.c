@@ -15,8 +15,10 @@
 #include <linux/property.h>
 #include <linux/spi/spi.h>
 
+#include <drm/drm_drv.h>
 #include <drm/drm_fb_helper.h>
 #include <drm/drm_gem_framebuffer_helper.h>
+#include <drm/drm_gem_shmem_helper.h>
 #include <drm/drm_modeset_helper.h>
 #include <drm/tinydrm/mipi-dbi.h>
 #include <drm/tinydrm/tinydrm-helpers.h>
@@ -139,12 +141,12 @@ static const struct drm_display_mode yx240qv29_mode = {
 	TINYDRM_MODE(240, 320, 37, 49),
 };
 
-DEFINE_DRM_GEM_CMA_FOPS(ili9341_fops);
+DEFINE_DRM_GEM_SHMEM_FOPS(ili9341_fops);
 
 static struct drm_driver ili9341_driver = {
 	.driver_features	= DRIVER_GEM | DRIVER_MODESET | DRIVER_PRIME | DRIVER_ATOMIC,
 	.fops			= &ili9341_fops,
-	TINYDRM_GEM_DRIVER_OPS,
+	DRM_GEM_SHMEM_DRIVER_OPS,
 	.debugfs_init		= mipi_dbi_debugfs_init,
 	.name			= "ili9341",
 	.desc			= "Ilitek ILI9341",

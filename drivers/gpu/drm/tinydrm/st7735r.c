@@ -14,8 +14,10 @@
 #include <linux/spi/spi.h>
 #include <video/mipi_display.h>
 
+#include <drm/drm_drv.h>
 #include <drm/drm_fb_helper.h>
 #include <drm/drm_gem_framebuffer_helper.h>
+#include <drm/drm_gem_shmem_helper.h>
 #include <drm/tinydrm/mipi-dbi.h>
 #include <drm/tinydrm/tinydrm-helpers.h>
 
@@ -113,13 +115,13 @@ static const struct drm_display_mode jd_t18003_t01_mode = {
 	TINYDRM_MODE(128, 160, 28, 35),
 };
 
-DEFINE_DRM_GEM_CMA_FOPS(st7735r_fops);
+DEFINE_DRM_GEM_SHMEM_FOPS(st7735r_fops);
 
 static struct drm_driver st7735r_driver = {
 	.driver_features	= DRIVER_GEM | DRIVER_MODESET | DRIVER_PRIME |
 				  DRIVER_ATOMIC,
 	.fops			= &st7735r_fops,
-	TINYDRM_GEM_DRIVER_OPS,
+	DRM_GEM_SHMEM_DRIVER_OPS,
 	.debugfs_init		= mipi_dbi_debugfs_init,
 	.name			= "st7735r",
 	.desc			= "Sitronix ST7735R",
