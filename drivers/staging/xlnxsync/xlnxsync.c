@@ -765,7 +765,8 @@ static long xlnxsync_ioctl(struct file *fptr, unsigned int cmd,
 
 	dev_dbg(xlnxsync_dev->dev, "ioctl = 0x%08x\n", cmd);
 
-	mutex_lock(&xlnxsync_dev->sync_mutex);
+	if (mutex_lock_interruptible(&xlnxsync_dev->sync_mutex))
+		return -ERESTARTSYS;
 
 	switch (cmd) {
 	case XLNXSYNC_GET_CFG:
