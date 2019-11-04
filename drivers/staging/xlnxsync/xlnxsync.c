@@ -948,9 +948,12 @@ static irqreturn_t xlnxsync_irq_handler(int irq, void *data)
 	u32 val, i;
 	bool err_event;
 	bool framedone_event;
-	unsigned long flags;
 
-	spin_lock_irqsave(&xlnxsync->irq_lock, flags);
+	/*
+	 * Use simple spin_lock (instead of spin_lock_irqsave) as interrupt
+	 * is registered with irqf_oneshot and !irqf_shared
+	 */
+	spin_lock(&xlnxsync->irq_lock);
 	err_event = false;
 	framedone_event = false;
 	for (i = 0; i < xlnxsync->config.max_channels; i++) {
@@ -1007,7 +1010,7 @@ static irqreturn_t xlnxsync_irq_handler(int irq, void *data)
 			}
 		}
 	}
-	spin_unlock_irqrestore(&xlnxsync->irq_lock, flags);
+	spin_unlock(&xlnxsync->irq_lock);
 
 	if (err_event) {
 		dev_dbg_ratelimited(xlnxsync->dev, "%s : error occurred\n",
