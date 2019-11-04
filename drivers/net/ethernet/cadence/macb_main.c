@@ -77,7 +77,7 @@
 /* Graceful stop timeouts in us. We should allow up to
  * 1 frame time (10 Mbits/s, full-duplex, ignoring collisions)
  */
-#define MACB_HALT_TIMEOUT	1230
+#define MACB_HALT_TIMEOUT	14000
 #define MACB_PM_TIMEOUT  100 /* ms */
 
 /* DMA buffer descriptor might be different size
