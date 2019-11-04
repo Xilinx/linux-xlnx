@@ -3,6 +3,9 @@
 #ifndef _LINUX_ZYNQMP_IPI_MESSAGE_H_
 #define _LINUX_ZYNQMP_IPI_MESSAGE_H_
 
+/* IPI buffer MAX length */
+#define IPI_BUF_LEN_MAX 32U
+
 /**
  * struct zynqmp_ipi_message - ZynqMP IPI message structure
  * @len:  Length of message

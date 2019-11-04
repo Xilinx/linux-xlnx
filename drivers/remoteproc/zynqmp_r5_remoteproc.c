@@ -48,8 +48,6 @@
 /* PM proc states */
 #define PM_PROC_STATE_ACTIVE 1U
 
-/* IPI buffer MAX length */
-#define IPI_BUF_LEN_MAX	32U
 /* RX mailbox client buffer max length */
 #define RX_MBOX_CLIENT_BUF_MAX	(IPI_BUF_LEN_MAX + \
 				 sizeof(struct zynqmp_ipi_message))

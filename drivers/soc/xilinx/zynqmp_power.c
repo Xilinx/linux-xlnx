@@ -88,7 +88,7 @@ static irqreturn_t zynqmp_pm_isr(int irq, void *data)
 static void ipi_receive_callback(struct mbox_client *cl, void *data)
 {
 	struct zynqmp_ipi_message *msg = (struct zynqmp_ipi_message *)data;
-	u32 payload[msg->len];
+	u32 payload[IPI_BUF_LEN_MAX];
 	int ret;
 
 	memcpy(payload, msg->data, sizeof(msg->len));
