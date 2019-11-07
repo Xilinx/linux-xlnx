@@ -4247,8 +4247,7 @@ static int macb_probe(struct platform_device *pdev)
 	}
 	bp->num_queues = num_queues;
 	bp->queue_mask = queue_mask;
-	if (macb_config)
-		bp->dma_burst_length = macb_config->dma_burst_length;
+	bp->dma_burst_length = macb_config->dma_burst_length;
 	bp->pclk = pclk;
 	bp->hclk = hclk;
 	bp->tx_clk = tx_clk;
@@ -4257,8 +4256,7 @@ static int macb_probe(struct platform_device *pdev)
 	if (tsu_clk)
 		bp->tsu_rate = clk_get_rate(tsu_clk);
 
-	if (macb_config)
-		bp->jumbo_max_len = macb_config->jumbo_max_len;
+	bp->jumbo_max_len = macb_config->jumbo_max_len;
 
 	spin_lock_init(&bp->lock);
 
