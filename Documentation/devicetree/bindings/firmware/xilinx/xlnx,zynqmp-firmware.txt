@@ -13,7 +13,7 @@ services.
 Required properties:
  - compatible:	Must contain any of below:
 		"xlnx,zynqmp-firmware" for Zynq Ultrascale+ MPSoC
-		"xlnx,versal-firmware-wip" for Versal
+		"xlnx,versal-firmware" for Versal
  - method:	The method of calling the PM-API firmware layer.
 		Permitted values are:
 		  - "smc" : SMC #0, following the SMCCC
@@ -37,7 +37,7 @@ Versal
 ------
 firmware {
 	versal_firmware: versal-firmware {
-		compatible = "xlnx,versal-firmware-wip";
+		compatible = "xlnx,versal-firmware";
 		method = "smc";
 		...
 	};
