@@ -4,7 +4,7 @@ resolution values between 0 to 4096.
 
 Required properties:
 
-- compatible: Must be "xlnx,ctrl-xvpss-1.0".
+- compatible: Must be "xlnx,ctrl-xvpss-1.1" for IP version 2.2 or "xlnx,ctrl-xvpss-1.0".
 - reg: Base address and size of the IP core.
 - reset-gpios: gpio to reset the framebuffer IP
 - xlnx,vpss-taps: number of taps
