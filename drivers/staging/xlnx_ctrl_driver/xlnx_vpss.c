@@ -67,6 +67,7 @@
 #define XVPSS_H_HFLTCOEFF_HIGH			(0x0bff)
 #define XVPSS_H_PHASESH_V_BASE			(0x2000)
 #define XVPSS_H_PHASESH_V_HIGH			(0x3fff)
+#define XVPSS_H_PHASESH_V_BASE_FIX		(0x4000)
 
 /* H-scaler masks */
 #define XVPSS_PHASESH_WR_EN			BIT(8)
@@ -88,6 +89,8 @@
 #define XVPSS_GPIO_VIDEO_IN			BIT(0)
 #define XVPSS_RST_IP_AXIS			BIT(1)
 #define XVPSS_GPIO_MASK_ALL	(XVPSS_GPIO_VIDEO_IN | XVPSS_RST_IP_AXIS)
+
+#define XVPSS_HPHASE_FIX			BIT(0)
 
 enum xvpss_color {
 	XVPSS_YUV_RGB,
@@ -177,6 +180,7 @@ xvpss_coeff_taps6[XVPSS_PHASES][XVPSS_TAPS_6] = {
  * @vpss_coeff: The complete array of H-scaler/V-scaler coefficients
  * @H_phases: The phases needed to program the H-scaler for different taps
  * @reset_gpio: GPIO reset line to bring VPSS Scaler out of reset
+ * @flags: Pointer to fixes flag
  */
 struct xvpss_struct {
 	struct device *dev;
@@ -188,6 +192,7 @@ struct xvpss_struct {
 	short vpss_coeff[XVPSS_PHASES][XVPSS_MAX_TAPS];
 	u32 H_phases[XVPSS_MAX_WIDTH];
 	struct gpio_desc *reset_gpio;
+	const u32 *flags;
 };
 
 struct xvpss_data {
@@ -199,9 +204,15 @@ struct xvpss_data {
 	u32 color_out;
 };
 
+static const u32 xvpss_v2_0_flag;
+static const u32 xvpss_v2_2_flag = XVPSS_HPHASE_FIX;
+
 /* Match table for of_platform binding */
 static const struct of_device_id xvpss_of_match[] = {
-	{ .compatible = "xlnx,ctrl-xvpss-1.0", },
+	{ .compatible = "xlnx,ctrl-xvpss-1.0",
+		.data = &xvpss_v2_0_flag},
+	{ .compatible = "xlnx,ctrl-xvpss-1.1",
+		.data = &xvpss_v2_2_flag},
 	{},
 };
 MODULE_DEVICE_TABLE(of, xvpss_of_match);
@@ -408,7 +419,13 @@ static void xvpss_h_set_phases(struct xvpss_struct *xvpss_g)
 	u32 loop_width, index, val, offset, i, lsb, msb;
 
 	loop_width = XVPSS_MAX_WIDTH / xvpss_g->ppc;
-	offset = XHSCALER_OFFSET + XVPSS_H_PHASESH_V_BASE;
+
+	offset = XHSCALER_OFFSET;
+
+	if (*xvpss_g->flags & XVPSS_HPHASE_FIX)
+		offset += XVPSS_H_PHASESH_V_BASE_FIX;
+	else
+		offset += XVPSS_H_PHASESH_V_BASE;
 
 	switch (xvpss_g->ppc) {
 	case XVPSS_PPC_1:
@@ -503,11 +520,17 @@ static int xvpss_probe(struct platform_device *pdev)
 	int ret;
 	struct resource *res;
 	struct xvpss_struct *xvpss_g;
-	struct device_node *node;
+	struct device_node *node = pdev->dev.of_node;
+	const struct of_device_id *match;
 
 	xvpss_g = devm_kzalloc(&pdev->dev, sizeof(*xvpss_g), GFP_KERNEL);
 	if (!xvpss_g)
 		return -ENOMEM;
+
+	match = of_match_node(xvpss_of_match, node);
+	if (!match)
+		return -ENODEV;
+	xvpss_g->flags = match->data;
 
 	xvpss_g->reset_gpio = devm_gpiod_get(&pdev->dev, "reset",
 					     GPIOD_OUT_LOW);
@@ -528,7 +551,6 @@ static int xvpss_probe(struct platform_device *pdev)
 	if (IS_ERR(xvpss_g->regs))
 		return PTR_ERR(xvpss_g->regs);
 
-	node = pdev->dev.of_node;
 	ret = of_property_read_u32(node, "xlnx,vpss-taps", &xvpss_g->n_taps);
 	if (ret < 0) {
 		dev_err(xvpss_g->dev, "taps not present in DT\n");
