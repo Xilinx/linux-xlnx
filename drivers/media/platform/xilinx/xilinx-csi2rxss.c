@@ -501,7 +501,7 @@ struct xcsi2rxss_state {
 	struct xcsi2rxss_core core;
 	struct v4l2_subdev subdev;
 	struct v4l2_ctrl_handler ctrl_handler;
-	struct v4l2_mbus_framefmt formats[2];
+	struct v4l2_mbus_framefmt formats;
 	struct v4l2_mbus_framefmt default_format;
 	const struct xvip_video_format *vip_format;
 	struct v4l2_event event;
@@ -1293,7 +1293,7 @@ __xcsi2rxss_get_pad_format(struct xcsi2rxss_state *xcsi2rxss,
 	case V4L2_SUBDEV_FORMAT_TRY:
 		return v4l2_subdev_get_try_format(&xcsi2rxss->subdev, cfg, pad);
 	case V4L2_SUBDEV_FORMAT_ACTIVE:
-		return &xcsi2rxss->formats[pad];
+		return &xcsi2rxss->formats;
 	default:
 		return NULL;
 	}
@@ -1358,6 +1358,15 @@ static int xcsi2rxss_set_format(struct v4l2_subdev *sd,
 	__format = __xcsi2rxss_get_pad_format(xcsi2rxss, cfg,
 						fmt->pad, fmt->which);
 
+	/*
+	 * If trying to set format on source pad, then
+	 * return the format set on sink pad
+	 */
+	if (fmt->pad == 0) {
+		fmt->format = *__format;
+		goto unlock_set_fmt;
+	}
+
 	/* Save the pad format code */
 	code = __format->code;
 
@@ -1400,6 +1409,7 @@ static int xcsi2rxss_set_format(struct v4l2_subdev *sd,
 		__format->height = fmt->format.height;
 	}
 
+unlock_set_fmt:
 	mutex_unlock(&xcsi2rxss->lock);
 
 	return 0;
@@ -1914,8 +1924,7 @@ static int xcsi2rxss_probe(struct platform_device *pdev)
 	xcsi2rxss->default_format.width = XCSI_DEFAULT_WIDTH;
 	xcsi2rxss->default_format.height = XCSI_DEFAULT_HEIGHT;
 
-	xcsi2rxss->formats[0] = xcsi2rxss->default_format;
-	xcsi2rxss->formats[1] = xcsi2rxss->default_format;
+	xcsi2rxss->formats = xcsi2rxss->default_format;
 
 	/* Initialize V4L2 subdevice and media entity */
 	subdev = &xcsi2rxss->subdev;
