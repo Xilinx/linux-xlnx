@@ -187,6 +187,28 @@ static int xvsw_set_format(struct v4l2_subdev *subdev,
 		return xvsw_get_format(subdev, cfg, fmt);
 	}
 
+	if (xvsw->nsinks == 1 && fmt->pad != 0) {
+		struct v4l2_mbus_framefmt *sinkformat;
+
+		/*
+		 * in tdest routing if there is only one sink then all the
+		 * source pads will have same property as sink pad, assuming
+		 * streams going to each source pad will have same
+		 * properties.
+		 */
+
+		/* get sink pad format */
+		sinkformat = xvsw_get_pad_format(xvsw, cfg, 0, fmt->which);
+
+		fmt->format = *sinkformat;
+
+		/* set sink pad format on source pad */
+		format = xvsw_get_pad_format(xvsw, cfg, fmt->pad, fmt->which);
+		*format = *sinkformat;
+
+		return 0;
+	}
+
 	/*
 	 * In TDEST routing mode, one can set any format on the pad as
 	 * it can't be checked which pad's data will travel to
