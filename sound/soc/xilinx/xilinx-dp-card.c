@@ -37,11 +37,13 @@ static const struct snd_soc_ops xilinx_dp_ops = {
 static struct snd_soc_dai_link xilinx_dp_dai_links[] = {
 	{
 		.name		= "xilinx-dp0",
+		.stream_name	= "xilinx-dp0",
 		.codec_dai_name	= "xilinx-dp-snd-codec-dai",
 		.ops		= &xilinx_dp_ops,
 	},
 	{
 		.name		= "xilinx-dp1",
+		.stream_name	= "xilinx-dp1",
 		.codec_dai_name	= "xilinx-dp-snd-codec-dai",
 		.ops		= &xilinx_dp_ops,
 	},
