@@ -1968,6 +1968,8 @@ static int xcsi2rxss_probe(struct platform_device *pdev)
 			if (xcsi2rxss->core.enable_active_lanes) {
 				xcsi2rxss_ctrls[i].max =
 					xcsi2rxss->core.max_num_lanes;
+				xcsi2rxss_ctrls[i].def =
+					xcsi2rxss->core.max_num_lanes;
 			} else {
 				/* Don't register control */
 				dev_dbg(xcsi2rxss->core.dev,
