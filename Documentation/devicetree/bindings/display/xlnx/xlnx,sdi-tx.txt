@@ -21,6 +21,8 @@ Optional properties:
  - xlnx,vpss: vpss phandle
    This handle is required only when VPSS is connected to SDI as bridge.
  - xlnx,tx-insert-c-str-st352: Insert ST352 payload in Chroma stream.
+ - interrupt-names: Should be "sdi_tx_irq". This is only required when
+   multiple interrupts are connected in the hardware design.
 
 Example:
 
@@ -29,6 +31,7 @@ Example:
 		reg = <0x0 0x80000000 0x0 0x10000>;
 		interrupt-parent = <&gic>;
 		interrupts = <0 90 4>;
+		interrupt-names = "sdi_tx_irq";
 		#address-cells = <1>;
 		#size-cells = <0>;
 		xlnx,vpss = <&v_proc_ss_0>;
