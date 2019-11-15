@@ -1144,10 +1144,17 @@ static int xlnx_sdi_probe(struct platform_device *pdev)
 
 	/* disable interrupt */
 	xlnx_sdi_writel(sdi->base, XSDI_TX_GLBL_IER, 0);
-	irq = platform_get_irq(pdev, 0);
+	irq = platform_get_irq_byname(pdev, "sdi_tx_irq");
 	if (irq < 0) {
-		ret = irq;
-		goto err_disable_vidin_clk;
+		/*
+		 * If there is no IRQ with this name, try to get the first
+		 * IRQ defined in the device tree.
+		 */
+		irq = platform_get_irq(pdev, 0);
+		if (irq < 0) {
+			ret = irq;
+			goto err_disable_vidin_clk;
+		}
 	}
 
 	ret = devm_request_threaded_irq(sdi->dev, irq, NULL,
