@@ -524,6 +524,7 @@ static inline int zynqmp_is_valid_ioctl(u32 ioctl_id)
 	case IOCTL_WRITE_PGGS:
 	case IOCTL_READ_PGGS:
 	case IOCTL_ULPI_RESET:
+	case IOCTL_SET_BOOT_HEALTH_STATUS:
 	case IOCTL_AFI:
 		return 1;
 	default:
@@ -1341,6 +1342,45 @@ static ssize_t shutdown_scope_store(struct kobject *kobj,
 static struct kobj_attribute zynqmp_attr_shutdown_scope =
 						__ATTR_RW(shutdown_scope);
 
+/**
+ * health_status_store - Store health_status sysfs attribute
+ * @kobj:	Kobject structure
+ * @attr:	Kobject attribute structure
+ * @buf:	User entered health_status attribute string
+ * @count:	Buffer size
+ *
+ * User-space interface for setting the boot health status.
+ * Usage: echo <value> > /sys/firmware/zynqmp/health_status
+ *
+ * Value:
+ *	1 - Set healthy bit to 1
+ *	0 - Unset healthy bit
+ *
+ * Return:	count argument if request succeeds, the corresponding error
+ *		code otherwise
+ */
+static ssize_t health_status_store(struct kobject *kobj,
+				   struct kobj_attribute *attr,
+				   const char *buf, size_t count)
+{
+	int ret;
+	unsigned int value;
+
+	ret = kstrtouint(buf, 10, &value);
+	if (ret)
+		return ret;
+
+	ret = zynqmp_pm_ioctl(0, IOCTL_SET_BOOT_HEALTH_STATUS, value, 0, NULL);
+	if (ret) {
+		pr_err("unable to set healthy bit value to %u\n", value);
+		return ret;
+	}
+
+	return count;
+}
+
+static struct kobj_attribute zynqmp_attr_health_status =
+						__ATTR_WO(health_status);
 
 /**
  * config_reg_store - Write config_reg sysfs attribute
@@ -1468,6 +1508,7 @@ static struct kobj_attribute zynqmp_attr_config_reg =
 
 static struct attribute *attrs[] = {
 	&zynqmp_attr_shutdown_scope.attr,
+	&zynqmp_attr_health_status.attr,
 	&zynqmp_attr_config_reg.attr,
 	NULL,
 };
