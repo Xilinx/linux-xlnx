@@ -506,6 +506,34 @@ static int zynqmp_pm_clock_getparent(u32 clock_id, u32 *parent_id)
 }
 
 /**
+ * versal_is_valid_ioctl() - Check whether IOCTL ID is valid or not for versal
+ * @ioctl_id:	IOCTL ID
+ *
+ * Return: 1 if IOCTL is valid else 0
+ */
+static inline int versal_is_valid_ioctl(u32 ioctl_id)
+{
+	switch (ioctl_id) {
+	case IOCTL_GET_RPU_OPER_MODE:
+	case IOCTL_SET_RPU_OPER_MODE:
+	case IOCTL_RPU_BOOT_ADDR_CONFIG:
+	case IOCTL_TCM_COMB_CONFIG:
+	case IOCTL_SET_TAPDELAY_BYPASS:
+	case IOCTL_WRITE_GGS:
+	case IOCTL_READ_GGS:
+	case IOCTL_WRITE_PGGS:
+	case IOCTL_READ_PGGS:
+	case IOCTL_SET_BOOT_HEALTH_STATUS:
+	case IOCTL_PROBE_COUNTER_READ:
+	case IOCTL_PROBE_COUNTER_WRITE:
+	case IOCTL_USB_SET_STATE:
+		return 1;
+	default:
+		return 0;
+	}
+}
+
+/**
  * zynqmp_is_valid_ioctl() - Check whether IOCTL ID is valid or not
  * @ioctl_id:	IOCTL ID
  *
@@ -531,8 +559,6 @@ static inline int zynqmp_is_valid_ioctl(u32 ioctl_id)
 	case IOCTL_ULPI_RESET:
 	case IOCTL_SET_BOOT_HEALTH_STATUS:
 	case IOCTL_AFI:
-	case IOCTL_PROBE_COUNTER_READ:
-	case IOCTL_PROBE_COUNTER_WRITE:
 		return 1;
 	default:
 		return 0;
@@ -554,8 +580,13 @@ static inline int zynqmp_is_valid_ioctl(u32 ioctl_id)
 static int zynqmp_pm_ioctl(u32 node_id, u32 ioctl_id, u32 arg1, u32 arg2,
 			   u32 *out)
 {
-	if (!zynqmp_is_valid_ioctl(ioctl_id))
-		return -EINVAL;
+	if (of_find_compatible_node(NULL, NULL, "xlnx,versal")) {
+		if (!versal_is_valid_ioctl(ioctl_id))
+			return -EINVAL;
+	} else {
+		if (!zynqmp_is_valid_ioctl(ioctl_id))
+			return -EINVAL;
+	}
 
 	return zynqmp_pm_invoke_fn(PM_IOCTL, node_id, ioctl_id,
 				   arg1, arg2, out);
