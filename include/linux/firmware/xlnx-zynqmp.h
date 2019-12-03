@@ -71,7 +71,14 @@ enum pm_api_id {
 	PM_FPGA_LOAD,
 	PM_FPGA_GET_STATUS,
 	PM_GET_CHIPID = 24,
-	PM_IOCTL = 34,
+	/* Pin control API functions */
+	PM_PINCTRL_REQUEST = 28,
+	PM_PINCTRL_RELEASE,
+	PM_PINCTRL_GET_FUNCTION,
+	PM_PINCTRL_SET_FUNCTION,
+	PM_PINCTRL_CONFIG_PARAM_GET,
+	PM_PINCTRL_CONFIG_PARAM_SET,
+	PM_IOCTL,
 	PM_QUERY_DATA,
 	PM_CLOCK_ENABLE,
 	PM_CLOCK_DISABLE,
@@ -114,7 +121,13 @@ enum pm_query_id {
 	PM_QID_CLOCK_GET_FIXEDFACTOR_PARAMS,
 	PM_QID_CLOCK_GET_PARENTS,
 	PM_QID_CLOCK_GET_ATTRIBUTES,
-	PM_QID_CLOCK_GET_NUM_CLOCKS = 12,
+	PM_QID_PINCTRL_GET_NUM_PINS,
+	PM_QID_PINCTRL_GET_NUM_FUNCTIONS,
+	PM_QID_PINCTRL_GET_NUM_FUNCTION_GROUPS,
+	PM_QID_PINCTRL_GET_FUNCTION_NAME,
+	PM_QID_PINCTRL_GET_FUNCTION_GROUPS,
+	PM_QID_PINCTRL_GET_PIN_GROUPS,
+	PM_QID_CLOCK_GET_NUM_CLOCKS,
 	PM_QID_CLOCK_GET_MAX_DIVISOR,
 };
 
@@ -261,6 +274,49 @@ enum zynqmp_pm_request_ack {
 	ZYNQMP_PM_REQUEST_ACK_NON_BLOCKING,
 };
 
+enum pm_pinctrl_config_param {
+	PM_PINCTRL_CONFIG_SLEW_RATE,
+	PM_PINCTRL_CONFIG_BIAS_STATUS,
+	PM_PINCTRL_CONFIG_PULL_CTRL,
+	PM_PINCTRL_CONFIG_SCHMITT_CMOS,
+	PM_PINCTRL_CONFIG_DRIVE_STRENGTH,
+	PM_PINCTRL_CONFIG_VOLTAGE_STATUS,
+	PM_PINCTRL_CONFIG_TRI_STATE,
+	PM_PINCTRL_CONFIG_MAX,
+};
+
+enum pm_pinctrl_slew_rate {
+	PM_PINCTRL_SLEW_RATE_FAST,
+	PM_PINCTRL_SLEW_RATE_SLOW,
+};
+
+enum pm_pinctrl_bias_status {
+	PM_PINCTRL_BIAS_DISABLE,
+	PM_PINCTRL_BIAS_ENABLE,
+};
+
+enum pm_pinctrl_pull_ctrl {
+	PM_PINCTRL_BIAS_PULL_DOWN,
+	PM_PINCTRL_BIAS_PULL_UP,
+};
+
+enum pm_pinctrl_schmitt_cmos {
+	PM_PINCTRL_INPUT_TYPE_CMOS,
+	PM_PINCTRL_INPUT_TYPE_SCHMITT,
+};
+
+enum pm_pinctrl_drive_strength {
+	PM_PINCTRL_DRIVE_STRENGTH_2MA,
+	PM_PINCTRL_DRIVE_STRENGTH_4MA,
+	PM_PINCTRL_DRIVE_STRENGTH_8MA,
+	PM_PINCTRL_DRIVE_STRENGTH_12MA,
+};
+
+enum pm_pinctrl_tri_state {
+	PM_PINCTRL_TRI_STATE_DISABLE = 0,
+	PM_PINCTRL_TRI_STATE_ENABLE,
+};
+
 /**
  * struct zynqmp_pm_query_data - PM query data
  * @qid:	query ID
@@ -305,6 +361,12 @@ struct zynqmp_eemi_ops {
 			       const u32 capabilities,
 			       const u32 qos,
 			       const enum zynqmp_pm_request_ack ack);
+	int (*pinctrl_request)(const u32 pin);
+	int (*pinctrl_release)(const u32 pin);
+	int (*pinctrl_get_function)(const u32 pin, u32 *id);
+	int (*pinctrl_set_function)(const u32 pin, const u32 id);
+	int (*pinctrl_get_config)(const u32 pin, const u32 param, u32 *value);
+	int (*pinctrl_set_config)(const u32 pin, const u32 param, u32 value);
 	int (*efuse_access)(const u64 address, u32 *out);
 };
 
