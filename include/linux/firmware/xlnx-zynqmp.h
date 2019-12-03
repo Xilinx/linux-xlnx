@@ -188,6 +188,10 @@ enum pm_ioctl_id {
 	IOCTL_PROBE_COUNTER_READ = 19,
 	IOCTL_PROBE_COUNTER_WRITE = 20,
 	IOCTL_OSPI_MUX_SELECT = 21,
+	/* IOCTL for USB power request */
+	IOCTL_USB_SET_STATE = 22,
+	/* AI engine NPI ISR clear */
+	IOCTL_AIE_ISR_CLEAR = 24,
 	/* Register SGI to ATF */
 	IOCTL_REGISTER_SGI = 25,
 	/* Runtime feature configuration */
@@ -597,6 +601,7 @@ int zynqmp_pm_read_ggs(u32 index, u32 *value);
 int zynqmp_pm_write_pggs(u32 index, u32 value);
 int zynqmp_pm_read_pggs(u32 index, u32 *value);
 int zynqmp_pm_set_tapdelay_bypass(u32 index, u32 value);
+int zynqmp_pm_usb_set_state(u32 node, u32 state, u32 value);
 int zynqmp_pm_afi(u32 index, u32 value);
 int zynqmp_pm_set_sgmii_mode(u32 enable);
 int zynqmp_pm_ulpi_reset(void);
@@ -824,6 +829,11 @@ static inline int zynqmp_pm_read_pggs(u32 index, u32 *value)
 }
 
 static inline int zynqmp_pm_set_tapdelay_bypass(u32 index, u32 value)
+{
+	return -ENODEV;
+}
+
+static inline int zynqmp_pm_usb_set_state(u32 node, u32 state, u32 value)
 {
 	return -ENODEV;
 }
