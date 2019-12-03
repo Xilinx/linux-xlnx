@@ -170,6 +170,7 @@ enum pm_ioctl_id {
 	/* Probe counter read/write */
 	IOCTL_PROBE_COUNTER_READ,
 	IOCTL_PROBE_COUNTER_WRITE,
+	IOCTL_OSPI_MUX_SELECT,
 };
 
 enum pm_query_id {
