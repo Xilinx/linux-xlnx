@@ -152,7 +152,9 @@ enum pm_ioctl_id {
 	IOCTL_READ_GGS,
 	IOCTL_WRITE_PGGS,
 	IOCTL_READ_PGGS,
-	IOCTL_AFI = 16,
+	/* IOCTL for ULPI reset */
+	IOCTL_ULPI_RESET,
+	IOCTL_AFI,
 };
 
 enum pm_query_id {
