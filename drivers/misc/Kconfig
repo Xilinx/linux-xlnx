@@ -444,6 +444,15 @@ config XILINX_SDFEC
 
 	  If unsure, say N.
 
+config XILINX_FLEX_PM
+	tristate "Xilinx Flexnoc Performance Monitor"
+	help
+	  This option enables support for the Xilinx Flex Noc Performance Monitor driver.
+	  It monitors the read and write transactions. It has counters for the LPD and
+	  FPD domains.
+
+	  If unsure, say N
+
 config MISC_RTSX
 	tristate
 	default MISC_RTSX_PCI || MISC_RTSX_USB
