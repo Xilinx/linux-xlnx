@@ -161,6 +161,8 @@ enum pm_ioctl_id {
 	IOCTL_READ_GGS = 13,
 	IOCTL_WRITE_PGGS = 14,
 	IOCTL_READ_PGGS = 15,
+	/* IOCTL for ULPI reset */
+	IOCTL_ULPI_RESET = 16,
 	/* Set healthy bit value */
 	IOCTL_SET_BOOT_HEALTH_STATUS = 17,
 	IOCTL_AFI = 18,
@@ -509,6 +511,7 @@ int zynqmp_pm_read_ggs(u32 index, u32 *value);
 int zynqmp_pm_write_pggs(u32 index, u32 value);
 int zynqmp_pm_read_pggs(u32 index, u32 *value);
 int zynqmp_pm_afi(u32 index, u32 value);
+int zynqmp_pm_ulpi_reset(void);
 int zynqmp_pm_system_shutdown(const u32 type, const u32 subtype);
 int zynqmp_pm_set_boot_health_status(u32 value);
 int zynqmp_pm_force_pwrdwn(const u32 target,
@@ -704,6 +707,11 @@ static inline int zynqmp_pm_read_pggs(u32 index, u32 *value)
 }
 
 static inline int zynqmp_pm_afi(u32 index, u32 value)
+{
+	return -ENODEV;
+}
+
+static inline int zynqmp_pm_ulpi_reset(void)
 {
 	return -ENODEV;
 }
