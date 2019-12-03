@@ -97,6 +97,8 @@ enum pm_api_id {
 	PM_CLOCK_SETPARENT,
 	PM_CLOCK_GETPARENT,
 	PM_SECURE_AES = 47,
+	/* PM_REGISTER_ACCESS API */
+	PM_REGISTER_ACCESS = 52,
 	PM_EFUSE_ACCESS = 53,
 	PM_FEATURE_CHECK = 63,
 	PM_API_MAX,
@@ -381,6 +383,11 @@ enum zynqmp_pm_shutdown_subtype {
 	ZYNQMP_PM_SHUTDOWN_SUBTYPE_SYSTEM,
 };
 
+enum pm_register_access_id {
+	CONFIG_REG_WRITE,
+	CONFIG_REG_READ,
+};
+
 /**
  * struct zynqmp_pm_query_data - PM query data
  * @qid:	query ID
@@ -432,6 +439,8 @@ int zynqmp_pm_aes_engine(const u64 address, u32 *out);
 int zynqmp_pm_efuse_access(const u64 address, u32 *out);
 int zynqmp_pm_sha_hash(const u64 address, const u32 size, const u32 flags);
 int zynqmp_pm_rsa(const u64 address, const u32 size, const u32 flags);
+int zynqmp_pm_config_reg_access(u32 register_access_id, u32 address, u32 mask,
+				u32 value, u32 *out);
 int zynqmp_pm_fpga_load(const u64 address, const u32 size, const u32 flags);
 int zynqmp_pm_fpga_get_status(u32 *value);
 int zynqmp_pm_write_ggs(u32 index, u32 value);
@@ -721,6 +730,13 @@ static inline int zynqmp_pm_sha_hash(const u64 address, const u32 size,
 }
 static inline int zynqmp_pm_rsa(const u64 address, const u32 size,
 				const u32 flags)
+{
+	return -ENODEV;
+}
+
+static inline int zynqmp_pm_config_reg_access(u32 register_access_id,
+					      u32 address, u32 mask, u32 value,
+					      u32 *out)
 {
 	return -ENODEV;
 }
