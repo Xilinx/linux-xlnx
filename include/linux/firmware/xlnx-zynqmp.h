@@ -94,6 +94,8 @@ enum pm_api_id {
 	PM_CLOCK_SETPARENT,
 	PM_CLOCK_GETPARENT,
 	PM_SECURE_AES = 47,
+	/* PM_REGISTER_ACCESS API */
+	PM_REGISTER_ACCESS = 52,
 	PM_EFUSE_ACCESS = 53,
 	PM_FEATURE_CHECK = 63,
 	PM_API_MAX,
@@ -322,6 +324,11 @@ enum pm_pinctrl_tri_state {
 	PM_PINCTRL_TRI_STATE_ENABLE,
 };
 
+enum pm_register_access_id {
+	CONFIG_REG_WRITE,
+	CONFIG_REG_READ,
+};
+
 /**
  * struct zynqmp_pm_query_data - PM query data
  * @qid:	query ID
@@ -374,6 +381,8 @@ struct zynqmp_eemi_ops {
 	int (*pinctrl_set_function)(const u32 pin, const u32 id);
 	int (*pinctrl_get_config)(const u32 pin, const u32 param, u32 *value);
 	int (*pinctrl_set_config)(const u32 pin, const u32 param, u32 value);
+	int (*register_access)(u32 register_access_id, u32 address,
+			       u32 mask, u32 value, u32 *out);
 	int (*aes)(const u64 address, u32 *out);
 	int (*efuse_access)(const u64 address, u32 *out);
 };
