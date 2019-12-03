@@ -167,6 +167,9 @@ enum pm_ioctl_id {
 	/* Set healthy bit value*/
 	IOCTL_SET_BOOT_HEALTH_STATUS,
 	IOCTL_AFI,
+	/* Probe counter read/write */
+	IOCTL_PROBE_COUNTER_READ,
+	IOCTL_PROBE_COUNTER_WRITE,
 };
 
 enum pm_query_id {

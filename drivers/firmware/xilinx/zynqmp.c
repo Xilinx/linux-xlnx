@@ -531,6 +531,8 @@ static inline int zynqmp_is_valid_ioctl(u32 ioctl_id)
 	case IOCTL_ULPI_RESET:
 	case IOCTL_SET_BOOT_HEALTH_STATUS:
 	case IOCTL_AFI:
+	case IOCTL_PROBE_COUNTER_READ:
+	case IOCTL_PROBE_COUNTER_WRITE:
 		return 1;
 	default:
 		return 0;
