@@ -852,6 +852,12 @@ int zynqmp_pm_set_tapdelay_bypass(u32 index, u32 value)
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_set_tapdelay_bypass);
 
+int zynqmp_pm_ulpi_reset(void)
+{
+	return zynqmp_pm_invoke_fn(PM_IOCTL, 0, IOCTL_ULPI_RESET, 0, 0, NULL);
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_ulpi_reset);
+
 int zynqmp_pm_afi(u32 index, u32 value)
 {
 	return zynqmp_pm_invoke_fn(PM_IOCTL, 0, IOCTL_AFI, index, value,
