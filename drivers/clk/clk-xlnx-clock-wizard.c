@@ -345,7 +345,7 @@ static struct clk *clk_wzrd_register_divf(struct device *dev,
 	else
 		init.ops = &clk_wzrd_clk_divider_ops_f;
 
-	init.flags = flags | CLK_IS_BASIC;
+	init.flags = flags;
 	init.parent_names = (parent_name ? &parent_name : NULL);
 	init.num_parents = (parent_name ? 1 : 0);
 
@@ -402,7 +402,7 @@ static struct clk *clk_wzrd_register_divider(struct device *dev,
 		init.ops = &clk_divider_ro_ops;
 	else
 		init.ops = &clk_wzrd_clk_divider_ops;
-	init.flags = flags | CLK_IS_BASIC;
+	init.flags = flags;
 	init.parent_names = (parent_name ? &parent_name : NULL);
 	init.num_parents = (parent_name ? 1 : 0);
 
