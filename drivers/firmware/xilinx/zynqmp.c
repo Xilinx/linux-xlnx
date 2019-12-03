@@ -754,6 +754,29 @@ static int zynqmp_pm_rsa(const u64 address, const u32 size, const u32 flags)
 }
 
 /**
+ * zynqmp_pm_aes - Access AES hardware to encrypt/decrypt the data using
+ * AES-GCM core.
+ * @address:	Address of the AesParams structure.
+ * @out:	Returned output value
+ *
+ * Return:	Returns status, either success or error code.
+ */
+static int zynqmp_pm_aes_engine(const u64 address, u32 *out)
+{
+	u32 ret_payload[PAYLOAD_ARG_CNT];
+	int ret;
+
+	if (!out)
+		return -EINVAL;
+
+	ret = zynqmp_pm_invoke_fn(PM_SECURE_AES, upper_32_bits(address),
+				  lower_32_bits(address),
+				  0, 0, ret_payload);
+	*out = ret_payload[1];
+	return ret;
+}
+
+/**
  * zynqmp_pm_pinctrl_request - Request Pin from firmware
  * @pin:	Pin number to request
  *
@@ -914,6 +937,7 @@ static const struct zynqmp_eemi_ops eemi_ops = {
 	.pinctrl_set_function = zynqmp_pm_pinctrl_set_function,
 	.pinctrl_get_config = zynqmp_pm_pinctrl_get_config,
 	.pinctrl_set_config = zynqmp_pm_pinctrl_set_config,
+	.aes = zynqmp_pm_aes_engine,
 	.efuse_access = zynqmp_pm_efuse_access,
 };
 
