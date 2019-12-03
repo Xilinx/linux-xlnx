@@ -522,6 +522,7 @@ static inline int zynqmp_is_valid_ioctl(u32 ioctl_id)
 	case IOCTL_READ_GGS:
 	case IOCTL_WRITE_PGGS:
 	case IOCTL_READ_PGGS:
+	case IOCTL_AFI:
 		return 1;
 	default:
 		return 0;
