@@ -167,6 +167,7 @@ enum pm_ioctl_id {
 	/* Probe counter read/write */
 	IOCTL_PROBE_COUNTER_READ = 19,
 	IOCTL_PROBE_COUNTER_WRITE = 20,
+	IOCTL_OSPI_MUX_SELECT = 21,
 	/* AI engine NPI ISR clear */
 	IOCTL_AIE_ISR_CLEAR = 24,
 };
@@ -527,6 +528,7 @@ int zynqmp_pm_set_sgmii_mode(u32 enable);
 int zynqmp_pm_ulpi_reset(void);
 int zynqmp_pm_probe_counter_read(u32 domain, u32 reg, u32 *value);
 int zynqmp_pm_probe_counter_write(u32 domain, u32 reg, u32 value);
+int zynqmp_pm_ospi_mux_select(u32 dev_id, u32 select);
 int zynqmp_pm_system_shutdown(const u32 type, const u32 subtype);
 int zynqmp_pm_set_boot_health_status(u32 value);
 int zynqmp_pm_force_pwrdwn(const u32 target,
@@ -902,6 +904,11 @@ static inline int zynqmp_pm_probe_counter_read(u32 deviceid, u32 reg, u32 *value
 	return -ENODEV;
 }
 static inline int zynqmp_pm_probe_counter_write(u32 reg, u32 value)
+{
+	return -ENODEV;
+}
+
+static inline int zynqmp_pm_ospi_mux_select(u32 dev_id, u32 select)
 {
 	return -ENODEV;
 }
