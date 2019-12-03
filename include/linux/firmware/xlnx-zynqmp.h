@@ -168,6 +168,9 @@ enum pm_ioctl_id {
 	/* Set healthy bit value */
 	IOCTL_SET_BOOT_HEALTH_STATUS = 17,
 	IOCTL_AFI = 18,
+	/* Probe counter read/write */
+	IOCTL_PROBE_COUNTER_READ = 19,
+	IOCTL_PROBE_COUNTER_WRITE = 20,
 	IOCTL_OSPI_MUX_SELECT = 21,
 	/* AI engine NPI ISR clear */
 	IOCTL_AIE_ISR_CLEAR = 24,
@@ -533,6 +536,8 @@ int zynqmp_pm_afi(u32 index, u32 value);
 int zynqmp_pm_set_tapdelay_bypass(u32 index, u32 value);
 int zynqmp_pm_set_sgmii_mode(u32 enable);
 int zynqmp_pm_ulpi_reset(void);
+int zynqmp_pm_probe_counter_read(u32 domain, u32 reg, u32 *value);
+int zynqmp_pm_probe_counter_write(u32 domain, u32 reg, u32 value);
 int zynqmp_pm_system_shutdown(const u32 type, const u32 subtype);
 int zynqmp_pm_set_boot_health_status(u32 value);
 int zynqmp_pm_force_pwrdwn(const u32 target,
@@ -906,6 +911,16 @@ static inline int zynqmp_pm_set_wakeup_source(const u32 target,
 static inline int zynqmp_pm_fpga_read(const u32 reg_numframes,
 				      const u64 phys_address, u32 readback_type,
 				      u32 *value)
+{
+	return -ENODEV;
+}
+
+static inline int zynqmp_pm_probe_counter_read(u32 deviceid, u32 reg, u32 *value)
+{
+	return -ENODEV;
+}
+
+static inline int zynqmp_pm_probe_counter_write(u32 domain, u32 reg, u32 value)
 {
 	return -ENODEV;
 }
