@@ -708,6 +708,52 @@ static int zynqmp_pm_set_requirement(const u32 node, const u32 capabilities,
 }
 
 /**
+ * zynqmp_pm_sha_hash - Access the SHA engine to calculate the hash
+ * @address:	Address of the data/ Address of output buffer where
+ *		hash should be stored.
+ * @size:	Size of the data.
+ * @flags:
+ *	BIT(0) - for initializing csudma driver and SHA3(Here address
+ *		 and size inputs can be NULL).
+ *	BIT(1) - to call Sha3_Update API which can be called multiple
+ *		 times when data is not contiguous.
+ *	BIT(2) - to get final hash of the whole updated data.
+ *		 Hash will be overwritten at provided address with
+ *		 48 bytes.
+ *
+ * Return:	Returns status, either success or error code.
+ */
+static int zynqmp_pm_sha_hash(const u64 address, const u32 size,
+			      const u32 flags)
+{
+	u32 lower_32_bits = (u32)address;
+	u32 upper_32_bits = (u32)(address >> 32);
+
+	return zynqmp_pm_invoke_fn(PM_SECURE_SHA, upper_32_bits, lower_32_bits,
+				   size, flags, NULL);
+}
+
+/**
+ * zynqmp_pm_rsa - Access RSA hardware to encrypt/decrypt the data with RSA.
+ * @address:	Address of the data
+ * @size:	Size of the data.
+ * @flags:
+ *		BIT(0) - Encryption/Decryption
+ *			 0 - RSA decryption with private key
+ *			 1 - RSA encryption with public key.
+ *
+ * Return:	Returns status, either success or error code.
+ */
+static int zynqmp_pm_rsa(const u64 address, const u32 size, const u32 flags)
+{
+	u32 lower_32_bits = (u32)address;
+	u32 upper_32_bits = (u32)(address >> 32);
+
+	return zynqmp_pm_invoke_fn(PM_SECURE_RSA, upper_32_bits, lower_32_bits,
+				   size, flags, NULL);
+}
+
+/**
  * zynqmp_pm_pinctrl_request - Request Pin from firmware
  * @pin:	Pin number to request
  *
@@ -860,6 +906,8 @@ static const struct zynqmp_eemi_ops eemi_ops = {
 	.set_requirement = zynqmp_pm_set_requirement,
 	.fpga_load = zynqmp_pm_fpga_load,
 	.fpga_get_status = zynqmp_pm_fpga_get_status,
+	.sha_hash = zynqmp_pm_sha_hash,
+	.rsa = zynqmp_pm_rsa,
 	.pinctrl_request = zynqmp_pm_pinctrl_request,
 	.pinctrl_release = zynqmp_pm_pinctrl_release,
 	.pinctrl_get_function = zynqmp_pm_pinctrl_get_function,
