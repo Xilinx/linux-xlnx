@@ -30,9 +30,14 @@
 
 /* SMC SIP service Call Function Identifier Prefix */
 #define PM_SIP_SVC			0xC2000000
+
+/* ATF only commands */
 #define PM_GET_TRUSTZONE_VERSION	0xa03
 #define PM_SET_SUSPEND_MODE		0xa02
 #define GET_CALLBACK_DATA		0xa01
+
+/* Loader commands */
+#define PM_LOAD_PDI			0x701
 
 /* Number of 32bits values in payload */
 #define PAYLOAD_ARG_CNT	4U
@@ -492,6 +497,7 @@ int zynqmp_pm_set_requirement(const u32 node, const u32 capabilities,
 			      const enum zynqmp_pm_request_ack ack);
 int zynqmp_pm_aes_engine(const u64 address, u32 *out);
 int zynqmp_pm_efuse_access(const u64 address, u32 *out);
+int zynqmp_pm_load_pdi(const u32 src, const u64 address);
 int zynqmp_pm_fpga_read(const u32 reg_numframes, const u64 phys_address, u32 readback_type, u32 *value);
 int zynqmp_pm_sha_hash(const u64 address, const u32 size, const u32 flags);
 int zynqmp_pm_rsa(const u64 address, const u32 size, const u32 flags);
@@ -877,6 +883,11 @@ static inline int zynqmp_pm_set_wakeup_source(const u32 target,
 static inline int zynqmp_pm_fpga_read(const u32 reg_numframes,
 				      const u64 phys_address, u32 readback_type,
 				      u32 *value)
+{
+	return -ENODEV;
+}
+
+static inline int zynqmp_pm_load_pdi(const u32 src, const u64 address)
 {
 	return -ENODEV;
 }
