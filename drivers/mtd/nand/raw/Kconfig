@@ -544,4 +544,11 @@ config MTD_NAND_DISKONCHIP_BBTWRITE
 	  load time (assuming you build diskonchip as a module) with the module
 	  parameter "inftl_bbt_write=1".
 
+config MTD_NAND_ARASAN
+	tristate "Support for Arasan Nand Flash controller"
+	depends on HAS_IOMEM &&  HAS_DMA
+	help
+	  Enables the driver for the Arasan Nand Flash controller on
+	  Zynq Ultrascale+ MPSoC.
+
 endif # MTD_RAW_NAND
