@@ -151,6 +151,18 @@
 		#clock-cells = <0>;
 		clock-frequency = <114285000>;
 	};
+
+	dpcon {
+		compatible = "dp-connector";
+		label = "P11";
+		type = "full-size";
+
+		port {
+			dpcon_in: endpoint {
+				remote-endpoint = <&dpsub_dp_out>;
+			};
+		};
+	};
 };
 
 &can1 {
@@ -611,7 +623,26 @@
 			#address-cells = <1>;
 			#size-cells = <0>;
 			reg = <4>;
-			/* SI5328 - u20 */
+			si5328: clock-generator@69 {/* SI5328 - u20 */
+				compatible = "silabs,si5328";
+				reg = <0x69>;
+				/*
+				 * Chip has interrupt present connected to PL
+				 * interrupt-parent = <&>;
+				 * interrupts = <>;
+				 */
+				#address-cells = <1>;
+				#size-cells = <0>;
+				#clock-cells = <1>;
+				clocks = <&refhdmi>;
+				clock-names = "xtal";
+				clock-output-names = "si5328";
+
+				si5328_clk: clk0@0 {
+					reg = <0>;
+					clock-frequency = <27000000>;
+				};
+			};
 		};
 		/* 5 - 7 unconnected */
 	};
@@ -953,14 +984,32 @@
 
 &qspi {
 	status = "okay";
+	num-cs = <2>;
 	flash@0 {
-		compatible = "m25p80", "jedec,spi-nor"; /* 16MB + 16MB */
+		compatible = "m25p80", "jedec,spi-nor"; /* 32MB */
 		#address-cells = <1>;
 		#size-cells = <1>;
-		reg = <0x0>;
+		reg = <0>, <1>;
+		parallel-memories = /bits/ 64 <0x4000000 0x4000000>; /* 64MB */
 		spi-tx-bus-width = <4>;
 		spi-rx-bus-width = <4>; /* FIXME also DUAL configuration possible */
 		spi-max-frequency = <108000000>; /* Based on DC1 spec */
+		partition@0 { /* for testing purpose */
+			label = "qspi-fsbl-uboot";
+			reg = <0x0 0x100000>;
+		};
+		partition@100000 { /* for testing purpose */
+			label = "qspi-linux";
+			reg = <0x100000 0x500000>;
+		};
+		partition@600000 { /* for testing purpose */
+			label = "qspi-device-tree";
+			reg = <0x600000 0x20000>;
+		};
+		partition@620000 { /* for testing purpose */
+			label = "qspi-rootfs";
+			reg = <0x620000 0x5E0000>;
+		};
 	};
 };
 
@@ -1044,4 +1093,12 @@
 	status = "okay";
 	phy-names = "dp-phy0";
 	phys = <&psgtr 1 PHY_TYPE_DP 0 3>;
+
+	ports {
+		port@5 {
+			dpsub_dp_out: endpoint {
+				remote-endpoint = <&dpcon_in>;
+			};
+		};
+	};
 };

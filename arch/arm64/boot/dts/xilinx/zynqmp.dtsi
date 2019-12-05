@@ -284,10 +284,6 @@
 				compatible = "xlnx,zynqmp-pcap-fpga";
 			};
 
-			xlnx_aes: zynqmp-aes {
-				compatible = "xlnx,zynqmp-aes";
-			};
-
 			zynqmp_reset: reset-controller {
 				compatible = "xlnx,zynqmp-reset";
 				#reset-cells = <1>;
@@ -323,82 +319,9 @@
 		ranges;
 	};
 
-	rproc_lockstep: remoteproc@ffe00000 {
-		compatible = "xlnx,zynqmp-r5fss";
-		xlnx,cluster-mode = <1>;
-		xlnx,tcm-mode = <1>;
-
-		#address-cells = <2>;
-		#size-cells = <2>;
-
-		ranges = <0x0 0x0 0x0 0xffe00000 0x0 0x10000>,
-			 <0x0 0x20000 0x0 0xffe20000 0x0 0x10000>,
-			 <0x0 0x10000 0x0 0xffe10000 0x0 0x10000>,
-			 <0x0 0x30000 0x0 0xffe30000 0x0 0x10000>;
-
-		r5f@0 {
-			compatible = "xlnx,zynqmp-r5f";
-			reg = <0x0 0x0 0x0 0x10000>,
-			      <0x0 0x20000 0x0 0x10000>,
-			      <0x0 0x10000 0x0 0x10000>,
-			      <0x0 0x30000 0x0 0x10000>;
-			reg-names = "atcm0", "btcm0", "atcm1", "btcm1";
-			power-domains = <&zynqmp_firmware PD_RPU_0>,
-					<&zynqmp_firmware PD_R5_0_ATCM>,
-					<&zynqmp_firmware PD_R5_0_BTCM>,
-					<&zynqmp_firmware PD_R5_1_ATCM>,
-					<&zynqmp_firmware PD_R5_1_BTCM>;
-			memory-region = <&rproc_0_fw_image>;
-		};
-
-		r5f@1 {
-			compatible = "xlnx,zynqmp-r5f";
-			reg = <0x1 0x0 0x0 0x10000>, <0x1 0x20000 0x0 0x10000>;
-			reg-names = "atcm0", "btcm0";
-			power-domains = <&zynqmp_firmware PD_RPU_1>,
-					<&zynqmp_firmware PD_R5_1_ATCM>,
-					<&zynqmp_firmware PD_R5_1_BTCM>;
-			memory-region = <&rproc_1_fw_image>;
-		};
-	};
-
-	rproc_split: remoteproc-split@ffe00000 {
-		status = "disabled";
-		compatible = "xlnx,zynqmp-r5fss";
-		xlnx,cluster-mode = <0>;
-		xlnx,tcm-mode = <0>;
-
-		#address-cells = <2>;
-		#size-cells = <2>;
-
-		ranges = <0x0 0x0 0x0 0xffe00000 0x0 0x10000>,
-			 <0x0 0x20000 0x0 0xffe20000 0x0 0x10000>,
-			 <0x1 0x0 0x0 0xffe90000 0x0 0x10000>,
-			 <0x1 0x20000 0x0 0xffeb0000 0x0 0x10000>;
-
-		r5f@0 {
-			compatible = "xlnx,zynqmp-r5f";
-			reg = <0x0 0x0 0x0 0x10000>, <0x0 0x20000 0x0 0x10000>;
-			reg-names = "atcm0", "btcm0";
-			power-domains = <&zynqmp_firmware PD_RPU_0>,
-					<&zynqmp_firmware PD_R5_0_ATCM>,
-					<&zynqmp_firmware PD_R5_0_BTCM>;
-			memory-region = <&rproc_0_fw_image>;
-		};
-
-		r5f@1 {
-			compatible = "xlnx,zynqmp-r5f";
-			reg = <0x1 0x0 0x0 0x10000>, <0x1 0x20000 0x0 0x10000>;
-			reg-names = "atcm0", "btcm0";
-			power-domains = <&zynqmp_firmware PD_RPU_1>,
-					<&zynqmp_firmware PD_R5_1_ATCM>,
-					<&zynqmp_firmware PD_R5_1_BTCM>;
-			memory-region = <&rproc_1_fw_image>;
-		};
-	};
-
-	ams {
+	ams: ams {
 		compatible = "iio-hwmon";
+		status = "disabled";
 		io-channels = <&xilinx_ams 0>, <&xilinx_ams 1>, <&xilinx_ams 2>,
 			<&xilinx_ams 3>, <&xilinx_ams 4>, <&xilinx_ams 5>,
 			<&xilinx_ams 6>, <&xilinx_ams 7>, <&xilinx_ams 8>,
@@ -932,6 +855,78 @@
 			reg = <0x0 0xff960000 0x0 0x1000>;
 			interrupt-parent = <&gic>;
 			interrupts = <GIC_SPI 10 IRQ_TYPE_LEVEL_HIGH>;
+		};
+
+		perf_monitor_ocm: perf-monitor@ffa00000 {
+			compatible = "xlnx,axi-perf-monitor";
+			reg = <0x0 0xffa00000 0x0 0x10000>;
+			interrupts = <GIC_SPI 25 IRQ_TYPE_LEVEL_HIGH>;
+			interrupt-parent = <&gic>;
+			xlnx,enable-profile = <0>;
+			xlnx,enable-trace = <0>;
+			xlnx,num-monitor-slots = <1>;
+			xlnx,enable-event-count = <1>;
+			xlnx,enable-event-log = <1>;
+			xlnx,have-sampled-metric-cnt = <1>;
+			xlnx,num-of-counters = <8>;
+			xlnx,metric-count-width = <32>;
+			xlnx,metrics-sample-count-width = <32>;
+			xlnx,global-count-width = <32>;
+			xlnx,metric-count-scale = <1>;
+		};
+
+		perf_monitor_ddr: perf-monitor@fd0b0000 {
+			compatible = "xlnx,axi-perf-monitor";
+			reg = <0x0 0xfd0b0000 0x0 0x10000>;
+			interrupts = <GIC_SPI 123 IRQ_TYPE_LEVEL_HIGH>;
+			interrupt-parent = <&gic>;
+			xlnx,enable-profile = <0>;
+			xlnx,enable-trace = <0>;
+			xlnx,num-monitor-slots = <6>;
+			xlnx,enable-event-count = <1>;
+			xlnx,enable-event-log = <0>;
+			xlnx,have-sampled-metric-cnt = <1>;
+			xlnx,num-of-counters = <10>;
+			xlnx,metric-count-width = <32>;
+			xlnx,metrics-sample-count-width = <32>;
+			xlnx,global-count-width = <32>;
+			xlnx,metric-count-scale = <1>;
+		};
+
+		perf_monitor_cci: perf-monitor@fd490000 {
+			compatible = "xlnx,axi-perf-monitor";
+			reg = <0x0 0xfd490000 0x0 0x10000>;
+			interrupts = <GIC_SPI 123 IRQ_TYPE_LEVEL_HIGH>;
+			interrupt-parent = <&gic>;
+			xlnx,enable-profile = <0>;
+			xlnx,enable-trace = <0>;
+			xlnx,num-monitor-slots = <1>;
+			xlnx,enable-event-count = <1>;
+			xlnx,enable-event-log = <0>;
+			xlnx,have-sampled-metric-cnt = <1>;
+			xlnx,num-of-counters = <8>;
+			xlnx,metric-count-width = <32>;
+			xlnx,metrics-sample-count-width = <32>;
+			xlnx,global-count-width = <32>;
+			xlnx,metric-count-scale = <1>;
+		};
+
+		perf_monitor_lpd: perf-monitor@ffa10000 {
+			compatible = "xlnx,axi-perf-monitor";
+			reg = <0x0 0xffa10000 0x0 0x10000>;
+			interrupts = <GIC_SPI 25 IRQ_TYPE_LEVEL_HIGH>;
+			interrupt-parent = <&gic>;
+			xlnx,enable-profile = <0>;
+			xlnx,enable-trace = <0>;
+			xlnx,num-monitor-slots = <1>;
+			xlnx,enable-event-count = <1>;
+			xlnx,enable-event-log = <1>;
+			xlnx,have-sampled-metric-cnt = <1>;
+			xlnx,num-of-counters = <8>;
+			xlnx,metric-count-width = <32>;
+			xlnx,metrics-sample-count-width = <32>;
+			xlnx,global-count-width = <32>;
+			xlnx,metric-count-scale = <1>;
 		};
 
 		pcie: pcie@fd0e0000 {
