@@ -171,6 +171,7 @@ struct onfi_params {
 	u16 tR;
 	u16 tCCS;
 	u16 async_timing_mode;
+	u16 src_sync_timing_mode;
 	u16 vendor_revision;
 	u8 vendor[88];
 };
