@@ -172,6 +172,10 @@
 	clocks = <&clk100>;
 };
 
+&nand0 {
+	clocks = <&clk100 &clk100>;
+};
+
 &sata {
 	clocks = <&clk250>;
 };
