@@ -1276,6 +1276,24 @@ static inline bool nand_is_slc(struct nand_chip *chip)
 	return nanddev_bits_per_cell(&chip->base) == 1;
 }
 
+/* return the supported asynchronous timing mode. */
+static inline int onfi_get_async_timing_mode(struct nand_chip *chip)
+{
+	if (!chip->parameters.onfi)
+		return ONFI_TIMING_MODE_UNKNOWN;
+
+	return chip->parameters.onfi->async_timing_mode;
+}
+
+/* return the supported synchronous timing mode. */
+static inline int onfi_get_sync_timing_mode(struct nand_chip *chip)
+{
+	if (!chip->parameters.onfi)
+		return ONFI_TIMING_MODE_UNKNOWN;
+
+	return le16_to_cpu(chip->parameters.onfi->src_sync_timing_mode);
+}
+
 /**
  * Check if the opcode's address should be sent only on the lower 8 bits
  * @command: opcode to check
