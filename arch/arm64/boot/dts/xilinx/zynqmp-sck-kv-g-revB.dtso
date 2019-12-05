@@ -16,6 +16,14 @@
 /dts-v1/;
 /plugin/;
 
+&{/} {
+	compatible = "xlnx,zynqmp-sk-kv260-rev2",
+		     "xlnx,zynqmp-sk-kv260-rev1",
+		     "xlnx,zynqmp-sk-kv260-revB",
+		     "xlnx,zynqmp-sk-kv260", "xlnx,zynqmp";
+	model = "ZynqMP KV260 revB";
+};
+
 &i2c1 { /* I2C_SCK C23/C24 - MIO from SOM */
 	#address-cells = <1>;
 	#size-cells = <0>;
@@ -25,12 +33,22 @@
 	scl-gpios = <&gpio 24 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>;
 	sda-gpios = <&gpio 25 (GPIO_ACTIVE_HIGH | GPIO_OPEN_DRAIN)>;
 
-	/* u14 - 0x40 - ina260 */
-	/* u43 - 0x2d - usb5744 */
+	u14: ina260@40 { /* u14 */
+		compatible = "ti,ina260";
+		#io-channel-cells = <1>;
+		label = "ina260-u14";
+		reg = <0x40>;
+	};
+	/* u43 - 0x2d - USB hub */
 	/* u27 - 0xe0 - STDP4320 DP/HDMI splitter */
 };
 
 &amba {
+	ina260-u14 {
+		compatible = "iio-hwmon";
+		io-channels = <&u14 0>, <&u14 1>, <&u14 2>;
+	};
+
 	si5332_0: si5332_0 { /* u17 */
 		compatible = "fixed-clock";
 		#clock-cells = <0>;
@@ -94,6 +112,14 @@
 	pinctrl-0 = <&pinctrl_usb0_default>;
 	phy-names = "usb3-phy";
 	phys = <&psgtr 2 PHY_TYPE_USB3 0 1>;
+	assigned-clock-rates = <250000000>, <20000000>;
+
+	usb5744: usb-hub { /* u43 */
+		status = "okay";
+		compatible = "microchip,usb5744";
+		i2c-bus = <&i2c1>;
+		reset-gpios = <&gpio 44 GPIO_ACTIVE_LOW>;
+	};
 };
 
 &dwc3_0 {
@@ -168,6 +194,7 @@
 		conf-tx {
 			pins = "MIO36";
 			bias-disable;
+			output-enable;
 		};
 
 		mux {
@@ -219,6 +246,7 @@
 		conf-bootstrap {
 			pins = "MIO71", "MIO73", "MIO75";
 			bias-disable;
+			output-enable;
 			low-power-disable;
 		};
 
@@ -226,6 +254,7 @@
 			pins = "MIO64", "MIO65", "MIO66",
 				"MIO67", "MIO68", "MIO69";
 			bias-disable;
+			output-enable;
 			low-power-enable;
 		};
 
@@ -234,6 +263,7 @@
 			slew-rate = <SLEW_RATE_SLOW>;
 			power-source = <IO_STANDARD_LVCMOS18>;
 			bias-disable;
+			output-enable;
 		};
 
 		mux-mdio {
@@ -264,6 +294,7 @@
 			pins = "MIO54", "MIO56", "MIO57", "MIO58", "MIO59",
 			"MIO60", "MIO61", "MIO62", "MIO63";
 			bias-disable;
+			output-enable;
 			drive-strength = <4>;
 			slew-rate = <SLEW_RATE_SLOW>;
 		};
