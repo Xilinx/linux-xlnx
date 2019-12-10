@@ -57,7 +57,7 @@ MODULE_PARM_DESC(fbdev_vres,
  * @fb: DRM fb helper
  * @master: logical master device for pipeline
  * @suspend_state: atomic state for suspend / resume
- * @is_master: A flag to indicate if this instance is fake master
+ * @master_count: Counter to track number of fake master instances
  */
 struct xlnx_drm {
 	struct drm_device *drm;
@@ -65,7 +65,7 @@ struct xlnx_drm {
 	struct drm_fb_helper *fb;
 	struct platform_device *master;
 	struct drm_atomic_state *suspend_state;
-	bool is_master;
+	u32 master_count;
 };
 
 /**
@@ -145,7 +145,7 @@ static int xlnx_drm_open(struct drm_device *dev, struct drm_file *file)
 	if (!(drm_is_primary_client(file) && !dev->master) &&
 	    !file->is_master && capable(CAP_SYS_ADMIN)) {
 		file->is_master = 1;
-		xlnx_drm->is_master = true;
+		xlnx_drm->master_count++;
 	}
 
 	return 0;
@@ -158,8 +158,8 @@ static int xlnx_drm_release(struct inode *inode, struct file *filp)
 	struct drm_device *drm = minor->dev;
 	struct xlnx_drm *xlnx_drm = drm->dev_private;
 
-	if (xlnx_drm->is_master) {
-		xlnx_drm->is_master = false;
+	if (file->is_master && xlnx_drm->master_count) {
+		xlnx_drm->master_count--;
 		file->is_master = 0;
 	}
 
