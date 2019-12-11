@@ -2677,7 +2677,15 @@ zynqmp_disp_plane_atomic_update(struct drm_plane *plane,
 	if (!plane->state->crtc || !plane->state->fb)
 		return;
 
-	if (plane->state->fb == old_state->fb)
+	if (plane->state->fb == old_state->fb &&
+	    plane->state->crtc_x == old_state->crtc_x &&
+	    plane->state->crtc_y == old_state->crtc_y &&
+	    plane->state->crtc_w == old_state->crtc_w &&
+	    plane->state->crtc_h == old_state->crtc_h &&
+	    plane->state->src_x == old_state->src_x &&
+	    plane->state->src_y == old_state->src_y &&
+	    plane->state->src_w == old_state->src_w &&
+	    plane->state->src_h == old_state->src_h)
 		return;
 
 	if (old_state->fb &&
