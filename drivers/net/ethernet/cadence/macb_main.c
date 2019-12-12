@@ -641,6 +641,8 @@ static int macb_mii_init(struct macb *bp)
 		err = of_mdiobus_register(bp->mii_bus, mdio_np);
 		if (err)
 			goto err_out_free_mdiobus;
+	} else if (np && of_phy_is_fixed_link(np)) {
+		err = mdiobus_register(bp->mii_bus);
 	} else if (np) {
 		/* try dt phy registration */
 		err = of_mdiobus_register(bp->mii_bus, np);
