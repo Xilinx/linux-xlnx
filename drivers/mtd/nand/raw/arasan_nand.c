@@ -1284,10 +1284,9 @@ static int anfc_probe(struct platform_device *pdev)
 	if (IS_ERR(nfc->base))
 		return PTR_ERR(nfc->base);
 	nfc->irq = platform_get_irq(pdev, 0);
-	if (nfc->irq < 0) {
-		dev_err(&pdev->dev, "platform_get_irq failed\n");
+	if (nfc->irq < 0)
 		return -ENXIO;
-	}
+
 	dma_set_mask(&pdev->dev, DMA_BIT_MASK(64));
 	err = devm_request_irq(&pdev->dev, nfc->irq, anfc_irq_handler,
 			       0, "arasannfc", nfc);
