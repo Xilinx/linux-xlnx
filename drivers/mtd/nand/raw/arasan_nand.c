@@ -754,12 +754,9 @@ static int anfc_erase_and_zero_len_page_read_type_exec(struct nand_chip *chip,
 	if (nfc_op.cmds[0] == NAND_CMD_ERASE1) {
 		nfc->prog = PROG_ERASE;
 		addrcycles = achip->raddr_cycles;
-		write_size = 0;
-		dma_mode = 0;
 		nfc_op.col = nfc_op.row & 0xffff;
 		nfc_op.row = (nfc_op.row >> PG_ADDR_SHIFT) & 0xffff;
-	}
-	if (nfc_op.cmds[0] == NAND_CMD_READ0) {
+	} else if (nfc_op.cmds[0] == NAND_CMD_READ0) {
 		nfc->prog = PROG_PGRD;
 		addrcycles = achip->raddr_cycles + achip->caddr_cycles;
 		write_size = mtd->writesize;
@@ -795,7 +792,7 @@ static int anfc_read_param_get_feature_sp_read_type_exec(struct nand_chip *chip,
 	struct anfc_op nfc_op = {};
 	struct mtd_info *mtd = nand_to_mtd(chip);
 	struct anfc_nand_chip *achip = to_anfc_nand(chip);
-	u32 dma_mode, addrcycles, write_size;
+	u32 dma_mode = 0, addrcycles = 1, write_size = 0;
 
 	anfc_parse_instructions(chip, subop, &nfc_op);
 	instr = nfc_op.data_instr;
@@ -803,17 +800,9 @@ static int anfc_read_param_get_feature_sp_read_type_exec(struct nand_chip *chip,
 
 	if (nfc_op.cmds[0] == NAND_CMD_PARAM) {
 		nfc->prog = PROG_RDPARAM;
-		dma_mode = 0;
-		addrcycles = 1;
-		write_size = 0;
-	}
-	if (nfc_op.cmds[0] == NAND_CMD_GET_FEATURES) {
+	} else if (nfc_op.cmds[0] == NAND_CMD_GET_FEATURES) {
 		nfc->prog = PROG_GET_FEATURE;
-		dma_mode = 0;
-		addrcycles = 1;
-		write_size = 0;
-	}
-	if (nfc_op.cmds[0] == NAND_CMD_READ0) {
+	} else if (nfc_op.cmds[0] == NAND_CMD_READ0) {
 		nfc->prog = PROG_PGRD;
 		addrcycles = achip->raddr_cycles + achip->caddr_cycles;
 		write_size = mtd->writesize;
