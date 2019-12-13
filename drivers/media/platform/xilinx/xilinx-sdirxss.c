@@ -79,6 +79,9 @@
 #define XSDIRX_RST_CTRL_RST_EDH_ERRCNT_MASK		BIT(3)
 #define XSDIRX_RST_CTRL_SDIRX_BRIDGE_ENB_MASK		BIT(8)
 #define XSDIRX_RST_CTRL_VIDIN_AXI4S_MOD_ENB_MASK	BIT(9)
+#define XSDIRX_RST_CTRL_BRIDGE_CH_FMT_OFFSET		10
+#define XSDIRX_RST_CTRL_BRIDGE_CH_FMT_MASK		GENMASK(12, 10)
+#define XSDIRX_RST_CTRL_BRIDGE_CH_FMT_YUV444		1
 
 #define XSDIRX_MDL_CTRL_FRM_EN_MASK		BIT(4)
 #define XSDIRX_MDL_CTRL_MODE_DET_EN_MASK	BIT(5)
@@ -242,6 +245,7 @@
 #define XST352_BYTE3_COLOR_FORMAT_MASK		GENMASK(19, 16)
 #define XST352_BYTE3_COLOR_FORMAT_OFFSET	16
 #define XST352_BYTE3_COLOR_FORMAT_422		0x0
+#define XST352_BYTE3_COLOR_FORMAT_YUV444	0x1
 #define XST352_BYTE3_COLOR_FORMAT_420		0x3
 
 /**
@@ -642,12 +646,18 @@ static inline void xsdirx_clearintr(struct xsdirxss_core *core, u32 mask)
 static void xsdirx_vid_bridge_control(struct xsdirxss_core *core,
 				      bool enable)
 {
+	struct xsdirxss_state *state =
+		container_of(core, struct xsdirxss_state, core);
+	u32 mask = XSDIRX_RST_CTRL_SDIRX_BRIDGE_ENB_MASK;
+
+	if (state->format.code == MEDIA_BUS_FMT_VUY10_1X30)
+		mask |= (XSDIRX_RST_CTRL_BRIDGE_CH_FMT_YUV444 <<
+			 XSDIRX_RST_CTRL_BRIDGE_CH_FMT_OFFSET);
+
 	if (enable)
-		xsdirxss_set(core, XSDIRX_RST_CTRL_REG,
-			     XSDIRX_RST_CTRL_SDIRX_BRIDGE_ENB_MASK);
+		xsdirxss_set(core, XSDIRX_RST_CTRL_REG, mask);
 	else
-		xsdirxss_clr(core, XSDIRX_RST_CTRL_REG,
-			     XSDIRX_RST_CTRL_SDIRX_BRIDGE_ENB_MASK);
+		xsdirxss_clr(core, XSDIRX_RST_CTRL_REG, mask);
 }
 
 static void xsdirx_axis4_bridge_control(struct xsdirxss_core *core,
@@ -959,6 +969,9 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 		break;
 	case XST352_BYTE3_COLOR_FORMAT_422:
 		format->code = MEDIA_BUS_FMT_UYVY10_1X20;
+		break;
+	case XST352_BYTE3_COLOR_FORMAT_YUV444:
+		format->code = MEDIA_BUS_FMT_VUY10_1X30;
 		break;
 	default:
 		dev_err(core->dev, "Unsupported color format : %d\n", sampling);
