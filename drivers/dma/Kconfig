@@ -706,4 +706,11 @@ config XILINX_DMATEST
 	  Simple DMA test client. Say N unless you're debugging a
 	  DMA Device driver.
 
+config XILINX_VDMATEST
+	tristate "DMA Test client for VDMA"
+	depends on XILINX_DMA
+	help
+	  Simple xilinx VDMA test client. Say N unless you're debugging a
+	  DMA Device driver.
+
 endif
