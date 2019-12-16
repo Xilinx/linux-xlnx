@@ -699,4 +699,11 @@ config DMATEST
 config DMA_ENGINE_RAID
 	bool
 
+config XILINX_DMATEST
+	tristate "DMA Test client for AXI DMA"
+	depends on XILINX_DMA
+	help
+	  Simple DMA test client. Say N unless you're debugging a
+	  DMA Device driver.
+
 endif
