@@ -1,0 +1,38 @@
+* Xilinx AXI DMA Test client
+
+Required properties:
+- compatible: Should be "xlnx,axi-dma-test-1.00.a"
+- dmas: a list of <[DMA device phandle] [Channel ID]> pairs,
+	where Channel ID is '0' for write/tx and '1' for read/rx
+	channel.
+- dma-names: a list of DMA channel names, one per "dmas" entry
+
+Example:
+++++++++
+
+dmatest_0: dmatest@0 {
+	compatible ="xlnx,axi-dma-test-1.00.a";
+	dmas = <&axi_dma_0 0
+		&axi_dma_0 1>;
+	dma-names = "axidma0", "axidma1";
+} ;
+
+
+Xilinx AXI DMA Device Node Example
+++++++++++++++++++++++++++++++++++++
+
+axi_dma_0: axidma@40400000 {
+	compatible = "xlnx,axi-dma-1.00.a";
+	#dma-cells = <1>;
+	reg = < 0x40400000 0x10000 >;
+	dma-channel@40400000 {
+		compatible = "xlnx,axi-dma-mm2s-channel";
+		interrupts = < 0 59 4 >;
+		xlnx,datawidth = <0x40>;
+	} ;
+	dma-channel@40400030 {
+		compatible = "xlnx,axi-dma-s2mm-channel";
+		interrupts = < 0 58 4 >;
+		xlnx,datawidth = <0x40>;
+	} ;
+} ;
