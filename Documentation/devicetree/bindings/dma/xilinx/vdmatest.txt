@@ -1,0 +1,39 @@
+* Xilinx Video DMA Test client
+
+Required properties:
+- compatible: Should be "xlnx,axi-vdma-test-1.00.a"
+- dmas: a list of <[Video DMA device phandle] [Channel ID]> pairs,
+	where Channel ID is '0' for write/tx and '1' for read/rx
+	channel.
+- dma-names: a list of DMA channel names, one per "dmas" entry
+- xlnx,num-fstores: Should be the number of framebuffers as configured in
+	VDMA device node.
+
+Example:
+++++++++
+
+vdmatest_0: vdmatest@0 {
+	compatible ="xlnx,axi-vdma-test-1.00.a";
+	dmas = <&axi_vdma_0 0
+		&axi_vdma_0 1>;
+	dma-names = "vdma0", "vdma1";
+	xlnx,num-fstores = <0x8>;
+} ;
+
+
+Xilinx Video DMA Device Node Example
+++++++++++++++++++++++++++++++++++++
+axi_vdma_0: axivdma@44A40000 {
+	compatible = "xlnx,axi-vdma-1.00.a";
+	...
+	dma-channel@44A40000 {
+		...
+		xlnx,num-fstores = <0x8>;
+		...
+	} ;
+	dma-channel@44A40030 {
+		...
+		xlnx,num-fstores = <0x8>;
+		...
+	} ;
+} ;
