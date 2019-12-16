@@ -2072,17 +2072,37 @@ sbsa_uart_set_termios(struct uart_port *port, struct ktermios *termios,
 	struct uart_amba_port *uap =
 	    container_of(port, struct uart_amba_port, port);
 	unsigned long flags;
+	unsigned int lcr_h, old_cr;
 
 	tty_termios_encode_baud_rate(termios, uap->fixed_baud, uap->fixed_baud);
-
 	/* The SBSA UART only supports 8n1 without hardware flow control. */
-	termios->c_cflag &= ~(CSIZE | CSTOPB | PARENB | PARODD);
+	termios->c_cflag &= ~(CSTOPB | PARENB | PARODD);
 	termios->c_cflag &= ~(CMSPAR | CRTSCTS);
-	termios->c_cflag |= CS8 | CLOCAL;
+	switch (termios->c_cflag & CSIZE) {
+	case CS5:
+		lcr_h = UART01x_LCRH_WLEN_5;
+		break;
+	case CS6:
+		lcr_h = UART01x_LCRH_WLEN_6;
+		break;
+	case CS7:
+		lcr_h = UART01x_LCRH_WLEN_7;
+		break;
+	default:
+		lcr_h = UART01x_LCRH_WLEN_8;
+		break;
+	}
+	if (uap->fifosize > 1)
+		lcr_h |= UART01x_LCRH_FEN;
 
 	spin_lock_irqsave(&port->lock, flags);
 	uart_update_timeout(port, CS8, uap->fixed_baud);
 	pl011_setup_status_masks(port, termios);
+	/* first, disable everything */
+	old_cr = pl011_read(uap, REG_CR);
+	pl011_write(0, uap, REG_CR);
+	pl011_write_lcr_h(uap, lcr_h);
+	pl011_write(old_cr, uap, REG_CR);
 	spin_unlock_irqrestore(&port->lock, flags);
 }
 
