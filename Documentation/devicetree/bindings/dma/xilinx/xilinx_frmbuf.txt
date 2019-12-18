@@ -33,7 +33,7 @@ Required Properties Common to both FB Read and FB Write:
 			  See VIDEO FORMATS table below and examples.
 
 Required Properties Common to both FB Read and FB Write for v2.1:
-- xlnx,pixels-per-clock	: Pixels per clock set in IP (1, 2 or 4)
+- xlnx,pixels-per-clock	: Pixels per clock set in IP (1, 2, 4 or 8)
 - clocks: Reference to the AXI Streaming clock feeding the AP_CLK
 - clock-names: Must have "ap_clk"
 - xlnx,max-height	: Maximum number of lines.
