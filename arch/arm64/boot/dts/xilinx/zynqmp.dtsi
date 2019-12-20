@@ -94,6 +94,11 @@
 			opp-microvolt = <1000000>;
 			clock-latency-ns = <500000>;
 		};
+		opp04 {
+			opp-hz = /bits/ 64 <1333333320>;
+			opp-microvolt = <1000000>;
+			clock-latency-ns = <500000>;
+		};
 	};
 
 	dcc: dcc {
