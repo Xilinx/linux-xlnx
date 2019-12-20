@@ -63,8 +63,6 @@ static int pseudo_rtc_set_time(struct device *dev, struct rtc_time *tm)
 {
 	struct pseudo_rtc_dev *prtc = dev_get_drvdata(dev);
 
-	dev_info(dev, "got new time: %04d/%02d/%02d %02d:%02d:%02d\n",
-		tm->tm_year + 1900, tm->tm_mon + 1, tm->tm_mday + 1, tm->tm_hour, tm->tm_min, tm->tm_sec);
 	prtc->last_time = rtc_tm_to_time64(tm);
 	prtc->last_jiffies = jiffies;
 	return 0;
