@@ -27,6 +27,7 @@
 #include <linux/reset.h>
 #include <linux/firmware/xlnx-zynqmp.h>
 #include <linux/sched.h>
+#include <linux/of_gpio.h>
 #include <linux/spi/spi.h>
 #include <linux/timer.h>
 
@@ -37,6 +38,7 @@
 #define CQSPI_NEEDS_WR_DELAY		BIT(0)
 #define CQSPI_HAS_DMA			BIT(1)
 #define CQSPI_STIG_WRITE		BIT(2)
+#define CQSPI_SUPPORT_RESET		BIT(3)
 
 /* Capabilities mask */
 #define CQSPI_BASE_HWCAPS_MASK					\
@@ -100,6 +102,8 @@ struct cqspi_st {
 	bool			stig_write;
 	int (*indirect_read_dma)(struct spi_nor *nor, u_char *rxbuf,
 				 loff_t from_addr, size_t n_rx);
+	int (*flash_reset)(struct cqspi_st *cqspi, u8 reset_type);
+	const struct zynqmp_eemi_ops *eemi_ops;
 };
 
 struct cqspi_driver_platdata {
@@ -283,6 +287,9 @@ struct cqspi_driver_platdata {
 					 CQSPI_REG_IRQ_UNDERFLOW)
 
 #define CQSPI_IRQ_STATUS_MASK		0x1FFFF
+#define CQSPI_MIO_NODE_ID_12		0x14108027
+
+#define CQSPI_RESET_TYPE_HWPIN		0
 
 static int cqspi_wait_for_bit(void __iomem *reg, const u32 mask, bool clr)
 {
@@ -1398,6 +1405,57 @@ static void cqspi_controller_init(struct cqspi_st *cqspi)
 	cqspi_controller_enable(cqspi, 1);
 }
 
+static int cqspi_versal_flash_reset(struct cqspi_st *cqspi, u8 reset_type)
+{
+	struct platform_device *pdev = cqspi->pdev;
+	int ret;
+	int gpio;
+	enum of_gpio_flags flags;
+
+	if (reset_type == CQSPI_RESET_TYPE_HWPIN) {
+		gpio = of_get_named_gpio_flags(pdev->dev.of_node,
+					       "reset-gpios", 0, &flags);
+		if (!gpio_is_valid(gpio))
+			return -EIO;
+		ret = devm_gpio_request_one(&pdev->dev, gpio, flags,
+					    "flash-reset");
+		if (ret) {
+			dev_err(&pdev->dev,
+				"failed to get reset-gpios: %d\n", ret);
+			return -EIO;
+		}
+
+		/* Request for PIN */
+		cqspi->eemi_ops->pinctrl_request(CQSPI_MIO_NODE_ID_12);
+
+		/* Enable hysteresis in cmos receiver */
+		cqspi->eemi_ops->pinctrl_set_config(CQSPI_MIO_NODE_ID_12,
+			PM_PINCTRL_CONFIG_SCHMITT_CMOS,
+			PM_PINCTRL_INPUT_TYPE_SCHMITT);
+
+		/* Set the direction as output and enable the output */
+		gpio_direction_output(gpio, 1);
+
+		/* Disable Tri-state */
+		cqspi->eemi_ops->pinctrl_set_config(CQSPI_MIO_NODE_ID_12,
+			PM_PINCTRL_CONFIG_TRI_STATE,
+			PM_PINCTRL_TRI_STATE_DISABLE);
+		udelay(1);
+
+		/* Set value 0 to pin */
+		gpio_set_value(gpio, 0);
+		udelay(1);
+
+		/* Set value 1 to pin */
+		gpio_set_value(gpio, 1);
+		udelay(1);
+	} else {
+		ret = -EINVAL;
+	}
+
+	return ret;
+}
+
 static int cqspi_versal_indirect_read_dma(struct spi_nor *nor, u_char *rxbuf,
 					  loff_t from_addr, size_t n_rx)
 {
@@ -1561,6 +1619,13 @@ static int cqspi_setup_flash(struct cqspi_st *cqspi, struct device_node *np)
 			goto err;
 		}
 
+		if (ddata->quirks & CQSPI_SUPPORT_RESET) {
+			ret = cqspi->flash_reset(cqspi,
+						 CQSPI_RESET_TYPE_HWPIN);
+			if (ret)
+				goto err;
+		}
+
 		ret = spi_nor_scan(nor, NULL, &hwcaps);
 		if (ret)
 			goto err;
@@ -1699,9 +1764,13 @@ static int cqspi_probe(struct platform_device *pdev)
 				    "xlnx,versal-ospi-1.0") &&
 				    cqspi->read_dma) {
 		cqspi->indirect_read_dma = cqspi_versal_indirect_read_dma;
+		cqspi->flash_reset = cqspi_versal_flash_reset;
 		if (ddata && (ddata->quirks & CQSPI_STIG_WRITE)) {
 			cqspi->stig_write = true;
 		}
+		cqspi->eemi_ops = zynqmp_pm_get_eemi_ops();
+		if (IS_ERR(cqspi->eemi_ops))
+			return PTR_ERR(cqspi->eemi_ops);
 	}
 
 	ret = devm_request_irq(dev, irq, cqspi_irq_handler, 0,
@@ -1799,7 +1868,7 @@ static const struct cqspi_driver_platdata am654_ospi = {
 static const struct cqspi_driver_platdata versal_ospi = {
 	.hwcaps_mask = (SNOR_HWCAPS_READ | SNOR_HWCAPS_READ_FAST |
 			SNOR_HWCAPS_PP | SNOR_HWCAPS_READ_1_1_8),
-	.quirks = CQSPI_HAS_DMA | CQSPI_STIG_WRITE,
+	.quirks = CQSPI_HAS_DMA | CQSPI_STIG_WRITE | CQSPI_SUPPORT_RESET,
 };
 
 static const struct of_device_id cqspi_dt_ids[] = {
