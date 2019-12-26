@@ -67,6 +67,7 @@
 #define SPINOR_OP_CLFSR		0x50	/* Clear flag status register */
 #define SPINOR_OP_RDEAR		0xc8	/* Read Extended Address Register */
 #define SPINOR_OP_WREAR		0xc5	/* Write Extended Address Register */
+#define SPINOR_OP_WRCR		0x81	/* Write Configuration register */
 
 /* 4-byte address opcodes - used on Spansion and some Macronix flashes. */
 #define SPINOR_OP_READ_4B	0x13	/* Read data bytes (low frequency) */
@@ -122,6 +123,9 @@
 /* Used for Micron flashes only. */
 #define SPINOR_OP_RD_EVCR      0x65    /* Read EVCR register */
 #define SPINOR_OP_WD_EVCR      0x61    /* Write EVCR register */
+
+/* For Micron flashes only */
+#define SPINOR_VCR_OCTAL_DDR	0xE7	/* VCR BYTE0 value for Octal DDR mode */
 
 /* Status Register bits. */
 #define SR_WIP			BIT(0)	/* Write in progress */
@@ -244,6 +248,8 @@ static inline u8 spi_nor_get_protocol_width(enum spi_nor_protocol proto)
 	return spi_nor_get_protocol_data_nbits(proto);
 }
 
+#define SPI_NOR_MAX_ID_LEN	6
+
 enum spi_nor_ops {
 	SPI_NOR_OPS_READ = 0,
 	SPI_NOR_OPS_WRITE,
@@ -262,6 +268,7 @@ enum spi_nor_option_flags {
 	SNOR_F_4B_OPCODES	= BIT(6),
 	SNOR_F_HAS_4BAIT	= BIT(7),
 	SNOR_F_HAS_LOCK		= BIT(8),
+	SNOR_F_BROKEN_OCTAL_DDR = BIT(9),
 };
 
 /**
@@ -616,6 +623,7 @@ struct spi_nor {
 	bool			isparallel;
 	bool                    isstacked;
 	bool			is_lock;
+	u8			device_id[SPI_NOR_MAX_ID_LEN];
 
 	int (*prepare)(struct spi_nor *nor, enum spi_nor_ops ops);
 	void (*unprepare)(struct spi_nor *nor, enum spi_nor_ops ops);
