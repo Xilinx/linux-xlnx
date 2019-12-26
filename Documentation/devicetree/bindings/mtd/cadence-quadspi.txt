@@ -15,6 +15,7 @@ Required properties:
 - cdns,fifo-depth : Size of the data FIFO in words.
 - cdns,fifo-width : Bus width of the data FIFO in bytes.
 - cdns,trigger-address : 32-bit indirect AHB trigger address.
+- reset-gpios : GPIO to be used to reset the OSPI flash device.
 
 Optional properties:
 - cdns,is-decoded-cs : Flag to indicate whether decoder is used or not.
