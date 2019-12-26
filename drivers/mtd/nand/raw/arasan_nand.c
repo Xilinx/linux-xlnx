@@ -227,6 +227,32 @@ static const struct mtd_ooblayout_ops anfc_ooblayout_ops = {
 	.free = anfc_ooblayout_free,
 };
 
+/* Generic flash bbt decriptors */
+static u8 bbt_pattern[] = { 'B', 'b', 't', '0' };
+static u8 mirror_pattern[] = { '1', 't', 'b', 'B' };
+
+static struct nand_bbt_descr bbt_main_descr = {
+	.options = NAND_BBT_LASTBLOCK | NAND_BBT_CREATE | NAND_BBT_WRITE
+		| NAND_BBT_2BIT | NAND_BBT_VERSION | NAND_BBT_PERCHIP |
+		NAND_BBM_SECONDPAGE,
+	.offs = 4,
+	.len = 4,
+	.veroffs = 20,
+	.maxblocks = 4,
+	.pattern = bbt_pattern
+};
+
+static struct nand_bbt_descr bbt_mirror_descr = {
+	.options = NAND_BBT_LASTBLOCK | NAND_BBT_CREATE | NAND_BBT_WRITE
+		| NAND_BBT_2BIT | NAND_BBT_VERSION | NAND_BBT_PERCHIP |
+		NAND_BBM_SECONDPAGE,
+	.offs = 4,
+	.len = 4,
+	.veroffs = 20,
+	.maxblocks = 4,
+	.pattern = mirror_pattern
+};
+
 static inline struct anfc_nand_chip *to_anfc_nand(struct nand_chip *nand)
 {
 	return container_of(nand, struct anfc_nand_chip, chip);
@@ -438,6 +464,47 @@ static void anfc_write_data_op(struct nand_chip *chip, const u8 *buf,
 			       pktsize);
 }
 
+static int anfc_read_page(struct nand_chip *chip, uint8_t *buf,
+			  int oob_required, int page)
+{
+	u32 ret;
+	struct mtd_info *mtd = nand_to_mtd(chip);
+	struct anfc_nand_chip *achip = to_anfc_nand(chip);
+
+	ret = nand_read_page_op(chip, page, 0, NULL, 0);
+	if (ret)
+		return ret;
+
+	anfc_read_data_op(chip, buf, mtd->writesize,
+			  DIV_ROUND_UP(mtd->writesize, achip->pktsize),
+			  achip->pktsize);
+	if (oob_required)
+		chip->ecc.read_oob(chip, page);
+
+	return 0;
+}
+
+static int anfc_write_page(struct nand_chip *chip, const uint8_t *buf,
+			   int oob_required, int page)
+{
+	u32 ret;
+	struct mtd_info *mtd = nand_to_mtd(chip);
+	struct anfc_nand_chip *achip = to_anfc_nand(chip);
+
+	ret = nand_prog_page_begin_op(chip, page, 0, NULL, 0);
+	if (ret)
+		return ret;
+
+	anfc_write_data_op(chip, buf, mtd->writesize,
+			   DIV_ROUND_UP(mtd->writesize, achip->pktsize),
+			   achip->pktsize);
+
+	if (oob_required)
+		chip->ecc.write_oob(chip, page);
+
+	return 0;
+}
+
 static int anfc_read_page_hwecc(struct nand_chip *chip, u8 *buf,
 				int oob_required, int page)
 {
@@ -548,45 +615,57 @@ static int anfc_ecc_init(struct mtd_info *mtd,
 	unsigned int ecc_strength, steps;
 	struct nand_chip *chip = mtd_to_nand(mtd);
 	struct anfc_nand_chip *achip = to_anfc_nand(chip);
+	struct anfc_nand_controller *nfc = to_anfc(chip->controller);
 
-	ecc->mode = NAND_ECC_HW;
-	ecc->read_page = anfc_read_page_hwecc;
-	ecc->write_page = anfc_write_page_hwecc;
+	if (ecc_mode == NAND_ECC_ON_DIE) {
+		anfc_config_ecc(nfc, 0);
+		ecc->strength = 1;
+		ecc->bytes = 0;
+		ecc->size = mtd->writesize;
+		ecc->read_page = anfc_read_page;
+		ecc->write_page = anfc_write_page;
+		chip->bbt_td = &bbt_main_descr;
+		chip->bbt_md = &bbt_mirror_descr;
+	} else {
+		ecc->mode = NAND_ECC_HW;
+		ecc->read_page = anfc_read_page_hwecc;
+		ecc->write_page = anfc_write_page_hwecc;
 
-	mtd_set_ooblayout(mtd, &anfc_ooblayout_ops);
-	steps = mtd->writesize / chip->base.eccreq.step_size;
+		mtd_set_ooblayout(mtd, &anfc_ooblayout_ops);
+		steps = mtd->writesize / chip->base.eccreq.step_size;
 
-	switch (chip->base.eccreq.strength) {
-	case 12:
-		ecc_strength = 0x1;
-		break;
-	case 8:
-		ecc_strength = 0x2;
-		break;
-	case 4:
-		ecc_strength = 0x3;
-		break;
-	case 24:
-		ecc_strength = 0x4;
-		break;
-	default:
-		ecc_strength = 0x0;
+		switch (chip->base.eccreq.strength) {
+		case 12:
+			ecc_strength = 0x1;
+			break;
+		case 8:
+			ecc_strength = 0x2;
+			break;
+		case 4:
+			ecc_strength = 0x3;
+			break;
+		case 24:
+			ecc_strength = 0x4;
+			break;
+		default:
+			ecc_strength = 0x0;
+		}
+		if (!ecc_strength)
+			ecc->total = 3 * steps;
+		else
+			ecc->total =
+			     DIV_ROUND_UP(fls(8 * chip->base.eccreq.step_size) *
+				 chip->base.eccreq.strength * steps, 8);
+		ecc->strength = chip->base.eccreq.strength;
+		ecc->size = chip->base.eccreq.step_size;
+		ecc->bytes = ecc->total / steps;
+		ecc->steps = steps;
+		achip->ecc_strength = ecc_strength;
+		achip->strength = achip->ecc_strength;
+		ecc_addr = mtd->writesize + (mtd->oobsize - ecc->total);
+		achip->eccval = ecc_addr | (ecc->total << ECC_SIZE_SHIFT) |
+				(achip->strength << BCH_EN_SHIFT);
 	}
-	if (!ecc_strength)
-		ecc->total = 3 * steps;
-	else
-		ecc->total =
-		     DIV_ROUND_UP(fls(8 * chip->base.eccreq.step_size) *
-			 chip->base.eccreq.strength * steps, 8);
-	ecc->strength = chip->base.eccreq.strength;
-	ecc->size = chip->base.eccreq.step_size;
-	ecc->bytes = ecc->total / steps;
-	ecc->steps = steps;
-	achip->ecc_strength = ecc_strength;
-	achip->strength = achip->ecc_strength;
-	ecc_addr = mtd->writesize + (mtd->oobsize - ecc->total);
-	achip->eccval = ecc_addr | (ecc->total << ECC_SIZE_SHIFT) |
-			(achip->strength << BCH_EN_SHIFT);
 
 	if (chip->base.eccreq.step_size >= 1024)
 		achip->pktsize = 1024;
