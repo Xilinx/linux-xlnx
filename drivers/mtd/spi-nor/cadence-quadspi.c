@@ -36,6 +36,7 @@
 /* Quirks */
 #define CQSPI_NEEDS_WR_DELAY		BIT(0)
 #define CQSPI_HAS_DMA			BIT(1)
+#define CQSPI_STIG_WRITE		BIT(2)
 
 /* Capabilities mask */
 #define CQSPI_BASE_HWCAPS_MASK					\
@@ -96,6 +97,7 @@ struct cqspi_st {
 	int			bytes_to_dma;
 	loff_t			addr;
 	dma_addr_t		dma_addr;
+	bool			stig_write;
 	int (*indirect_read_dma)(struct spi_nor *nor, u_char *rxbuf,
 				 loff_t from_addr, size_t n_rx);
 };
@@ -711,6 +713,69 @@ static int cqspi_write_setup(struct spi_nor *nor)
 	return 0;
 }
 
+static int cqspi_stig_write(struct spi_nor *nor, loff_t addr,
+			    const u8 *txbuf, unsigned int n_tx)
+{
+	struct cqspi_flash_pdata *f_pdata = nor->priv;
+	struct cqspi_st *cqspi = f_pdata->cqspi;
+	void __iomem *reg_base = cqspi->iobase;
+	unsigned int reg;
+	unsigned int data;
+	int ret;
+	unsigned int pgmlen = 0, wr_len;
+
+	if (n_tx && !txbuf) {
+		dev_err(nor->dev,
+			"Invalid input argument, cmdlen %d txbuf 0x%p\n",
+			n_tx, txbuf);
+		return -EINVAL;
+	}
+	pgmlen = n_tx;
+	if (n_tx > 8)
+		n_tx = 8;
+
+	while (pgmlen) {
+		ret = nor->write_reg(nor, SPINOR_OP_WREN, NULL, 0);
+		if (ret)
+			return ret;
+
+		reg = nor->program_opcode << CQSPI_REG_CMDCTRL_OPCODE_LSB;
+		reg |= (0x1 << CQSPI_REG_CMDCTRL_WR_EN_LSB);
+		reg |= ((n_tx - 1) & CQSPI_REG_CMDCTRL_WR_BYTES_MASK) <<
+			CQSPI_REG_CMDCTRL_WR_BYTES_LSB;
+		reg |= (0x1 << CQSPI_REG_CMDCTRL_ADDR_EN_LSB);
+		reg |= ((nor->addr_width - 1) &
+			CQSPI_REG_CMDCTRL_ADD_BYTES_MASK) <<
+			CQSPI_REG_CMDCTRL_ADD_BYTES_LSB;
+		writel(addr, reg_base + CQSPI_REG_CMDADDRESS);
+
+		wr_len = n_tx > 4 ? 4 : n_tx;
+		data = 0;
+		memcpy(&data, txbuf, wr_len);
+		writel(data, reg_base + CQSPI_REG_CMDWRITEDATALOWER);
+		if (n_tx > 4) {
+			txbuf += wr_len;
+			wr_len = n_tx - wr_len;
+			data = 0;
+			memcpy(&data, txbuf, wr_len);
+			writel(data, reg_base + CQSPI_REG_CMDWRITEDATAUPPER);
+		}
+
+		txbuf += wr_len;
+		pgmlen -= n_tx;
+		addr += n_tx;
+		n_tx = pgmlen > 8 ? 8 : pgmlen;
+		ret = cqspi_exec_flash_cmd(cqspi, reg);
+		if (ret)
+			return ret;
+
+		ret = spi_nor_wait_till_ready(nor);
+		if (ret)
+			return ret;
+	}
+	return 0;
+}
+
 static int cqspi_indirect_write_execute(struct spi_nor *nor, loff_t to_addr,
 					const u8 *txbuf, const size_t n_tx)
 {
@@ -1064,6 +1129,8 @@ static ssize_t cqspi_write(struct spi_nor *nor, loff_t to,
 	if (f_pdata->use_direct_mode) {
 		memcpy_toio(cqspi->ahb_base + to, buf, len);
 		ret = cqspi_wait_idle(cqspi);
+	} else if (cqspi->stig_write) {
+		ret = cqspi_stig_write(nor, to, buf, len);
 	} else {
 		ret = cqspi_indirect_write_execute(nor, to, buf, len);
 	}
@@ -1627,10 +1694,14 @@ static int cqspi_probe(struct platform_device *pdev)
 		cqspi->read_dma = true;
 	}
 
+	cqspi->stig_write = false;
 	if (of_device_is_compatible(pdev->dev.of_node,
 				    "xlnx,versal-ospi-1.0") &&
 				    cqspi->read_dma) {
 		cqspi->indirect_read_dma = cqspi_versal_indirect_read_dma;
+		if (ddata && (ddata->quirks & CQSPI_STIG_WRITE)) {
+			cqspi->stig_write = true;
+		}
 	}
 
 	ret = devm_request_irq(dev, irq, cqspi_irq_handler, 0,
@@ -1728,7 +1799,7 @@ static const struct cqspi_driver_platdata am654_ospi = {
 static const struct cqspi_driver_platdata versal_ospi = {
 	.hwcaps_mask = (SNOR_HWCAPS_READ | SNOR_HWCAPS_READ_FAST |
 			SNOR_HWCAPS_PP | SNOR_HWCAPS_READ_1_1_8),
-	.quirks = CQSPI_HAS_DMA,
+	.quirks = CQSPI_HAS_DMA | CQSPI_STIG_WRITE,
 };
 
 static const struct of_device_id cqspi_dt_ids[] = {
