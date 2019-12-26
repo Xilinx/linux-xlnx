@@ -499,8 +499,10 @@ static int micron_nand_init(struct nand_chip *chip)
 		chip->ecc.size = 512;
 		chip->ecc.strength = chip->base.eccreq.strength;
 		chip->ecc.algo = NAND_ECC_BCH;
-		chip->ecc.read_page = micron_nand_read_page_on_die_ecc;
-		chip->ecc.write_page = micron_nand_write_page_on_die_ecc;
+		if (!chip->ecc.read_page)
+			chip->ecc.read_page = micron_nand_read_page_on_die_ecc;
+		if (!chip->ecc.write_page)
+			chip->ecc.write_page = micron_nand_write_page_on_die_ecc;
 
 		if (ondie == MICRON_ON_DIE_MANDATORY) {
 			chip->ecc.read_page_raw = nand_read_page_raw_notsupp;
