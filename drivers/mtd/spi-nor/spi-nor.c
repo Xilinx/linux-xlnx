@@ -38,7 +38,6 @@
  */
 #define CHIP_ERASE_2MB_READY_WAIT_JIFFIES	(40UL * HZ)
 
-#define SPI_NOR_MAX_ID_LEN	6
 #define SPI_NOR_MAX_ADDR_WIDTH	4
 
 struct sfdp_parameter_header {
@@ -2723,6 +2722,9 @@ static const struct flash_info *spi_nor_read_id(struct spi_nor *nor)
 		return ERR_PTR(tmp);
 	}
 
+	for (tmp = 0; tmp < SPI_NOR_MAX_ID_LEN; tmp++)
+		nor->device_id[tmp] = id[tmp];
+
 	for (tmp = 0; tmp < ARRAY_SIZE(spi_nor_ids) - 1; tmp++) {
 		info = &spi_nor_ids[tmp];
 		if (info->id_len) {
@@ -4705,6 +4707,12 @@ static int spi_nor_default_setup(struct spi_nor *nor,
 		 * Yet another reason to switch to spi-mem.
 		 */
 		ignored_mask = SNOR_HWCAPS_X_X_X;
+		if (!(nor->flags & SNOR_F_BROKEN_OCTAL_DDR)) {
+			if (hwcaps->mask & SNOR_HWCAPS_READ_8_8_8)
+				ignored_mask &= ~SNOR_HWCAPS_READ_8_8_8;
+			if (hwcaps->mask & SNOR_HWCAPS_PP_8_8_8)
+				ignored_mask &= ~SNOR_HWCAPS_PP_8_8_8;
+		}
 		if (shared_mask & ignored_mask) {
 			dev_dbg(nor->dev,
 				"SPI n-n-n protocols are not supported.\n");
@@ -4746,6 +4754,28 @@ static int spi_nor_setup(struct spi_nor *nor,
 		return 0;
 
 	return nor->params.setup(nor, hwcaps);
+}
+
+static int spi_nor_switch_micron_octal_ddr(struct spi_nor *nor)
+{
+	u8 cr = SPINOR_VCR_OCTAL_DDR;
+	int ret;
+	u8 program_opcode;
+
+	program_opcode = nor->program_opcode;
+	write_enable(nor);
+	nor->program_opcode = SPINOR_OP_WRCR;
+	nor->addr_width = 3;
+	ret = nor->write(nor, 0x0, 1, &cr);
+	nor->program_opcode = program_opcode;
+	nor->addr_width = 4;
+	if (ret < 0) {
+		dev_err(nor->dev,
+			"error while writing configuration register\n");
+		return -EINVAL;
+	}
+
+	return 0;
 }
 
 static void macronix_set_default_init(struct spi_nor *nor)
@@ -4879,6 +4909,12 @@ static void spi_nor_info_init_params(struct spi_nor *nor)
 		spi_nor_set_read_settings(&params->reads[SNOR_CMD_READ_1_1_8],
 					  0, 8, SPINOR_OP_READ_1_1_8,
 					  SNOR_PROTO_1_1_8);
+		if (!(nor->flags & SNOR_F_BROKEN_OCTAL_DDR)) {
+			params->hwcaps.mask |= SNOR_HWCAPS_READ_8_8_8;
+			spi_nor_set_read_settings(&params->reads[SNOR_CMD_READ_8_8_8],
+						  0, 16, SPINOR_OP_READ_1_1_8,
+						  SNOR_PROTO_8_8_8);
+		}
 	}
 
 	/* Page Program settings. */
@@ -4890,6 +4926,12 @@ static void spi_nor_info_init_params(struct spi_nor *nor)
 		params->hwcaps.mask |= SNOR_HWCAPS_PP_1_1_8;
 		spi_nor_set_pp_settings(&params->page_programs[SNOR_CMD_PP_1_1_8],
 					SPINOR_OP_PP_1_1_8, SNOR_PROTO_1_1_8);
+		if (!(nor->flags & SNOR_F_BROKEN_OCTAL_DDR)) {
+			params->hwcaps.mask |= SNOR_HWCAPS_PP_8_8_8;
+			spi_nor_set_pp_settings(&params->page_programs[SNOR_CMD_PP_8_8_8],
+						SPINOR_OP_PP_1_1_8,
+						SNOR_PROTO_8_8_8);
+		}
 	}
 
 	/*
@@ -5293,6 +5335,9 @@ int spi_nor_scan(struct spi_nor *nor, const char *name,
 	if (info->flags & SPI_NOR_HAS_LOCK)
 		nor->flags |= SNOR_F_HAS_LOCK;
 
+	if ((u16)JEDEC_MFR(nor->info) != SNOR_MFR_MICRON)
+		nor->flags |= SNOR_F_BROKEN_OCTAL_DDR;
+
 	/*
 	 * Atmel, SST, Intel/Numonyx, and others serial NOR tend to power up
 	 * with the software protection bits set.
@@ -5453,6 +5498,14 @@ int spi_nor_scan(struct spi_nor *nor, const char *name,
 		".erasesize = 0x%.8x (%uKiB) .numeraseregions = %d\n",
 		mtd->name, (long long)mtd->size, (long long)(mtd->size >> 20),
 		mtd->erasesize, mtd->erasesize / 1024, mtd->numeraseregions);
+
+	if (hwcaps->mask & (SNOR_HWCAPS_READ_8_8_8 | SNOR_HWCAPS_PP_8_8_8)) {
+		if (!(nor->flags & SNOR_F_BROKEN_OCTAL_DDR)) {
+			ret = spi_nor_switch_micron_octal_ddr(nor);
+			if (ret)
+				return ret;
+		}
+	}
 
 	if (mtd->numeraseregions)
 		for (i = 0; i < mtd->numeraseregions; i++)
