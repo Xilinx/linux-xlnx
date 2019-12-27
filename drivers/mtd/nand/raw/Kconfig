@@ -556,4 +556,11 @@ config MTD_NAND_DISKONCHIP_BBTWRITE
 	  load time (assuming you build diskonchip as a module) with the module
 	  parameter "inftl_bbt_write=1".
 
+config MTD_NAND_PL353
+	tristate "ARM PL353 NAND Flash driver"
+	depends on MTD_RAW_NAND && ARM
+	depends on PL353_SMC
+	help
+	  Enables support for PrimeCell Static Memory Controller PL353
+
 endif # MTD_RAW_NAND
