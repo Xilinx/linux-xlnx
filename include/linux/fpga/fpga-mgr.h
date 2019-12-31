@@ -11,6 +11,8 @@
 #include <linux/mutex.h>
 #include <linux/platform_device.h>
 
+#define ENCRYPTED_KEY_LEN	64 /* Bytes */
+
 struct fpga_manager;
 struct sg_table;
 
@@ -62,17 +64,22 @@ enum fpga_mgr_states {
  *
  * %FPGA_MGR_EXTERNAL_CONFIG: FPGA has been configured prior to Linux booting
  *
- * %FPGA_MGR_ENCRYPTED_BITSTREAM: indicates bitstream is encrypted
+ * %FPGA_MGR_ENCRYPTED_BITSTREAM: indicates bitstream is encrypted with
+ *				  device key
  *
  * %FPGA_MGR_BITSTREAM_LSB_FIRST: SPI bitstream bit order is LSB first
  *
  * %FPGA_MGR_COMPRESSED_BITSTREAM: FPGA bitstream is compressed
+ *
+ * %FPGA_MGR_USERKEY_ENCRYPTED_BITSTREAM: indicates bitstream is encrypted with
+ *					  user key
  */
 #define FPGA_MGR_PARTIAL_RECONFIG	BIT(0)
 #define FPGA_MGR_EXTERNAL_CONFIG	BIT(1)
 #define FPGA_MGR_ENCRYPTED_BITSTREAM	BIT(2)
 #define FPGA_MGR_BITSTREAM_LSB_FIRST	BIT(3)
 #define FPGA_MGR_COMPRESSED_BITSTREAM	BIT(4)
+#define FPGA_MGR_USERKEY_ENCRYPTED_BITSTREAM	BIT(5)
 
 /**
  * struct fpga_image_info - information specific to a FPGA image
@@ -82,6 +89,7 @@ enum fpga_mgr_states {
  * @config_complete_timeout_us: maximum time for FPGA to switch to operating
  *	   status in the write_complete op.
  * @firmware_name: name of FPGA image firmware file
+ * @key: key value useful for Encrypted Bitstream loading to read the userkey
  * @sgt: scatter/gather table containing FPGA image
  * @buf: contiguous buffer containing FPGA image
  * @count: size of buf
@@ -95,6 +103,7 @@ struct fpga_image_info {
 	u32 disable_timeout_us;
 	u32 config_complete_timeout_us;
 	char *firmware_name;
+	char key[ENCRYPTED_KEY_LEN];
 	struct sg_table *sgt;
 	const char *buf;
 	size_t count;
@@ -158,6 +167,7 @@ struct fpga_compat_id {
  * struct fpga_manager - fpga manager structure
  * @name: name of low level fpga manager
  * @flags: flags determines the type of Bitstream
+ * @key: key value useful for Encrypted Bitstream loading to read the userkey
  * @dev: fpga manager device
  * @ref_mutex: only allows one reference to fpga manager
  * @state: state of fpga manager
@@ -168,6 +178,7 @@ struct fpga_compat_id {
 struct fpga_manager {
 	const char *name;
 	unsigned long flags;
+	char key[ENCRYPTED_KEY_LEN + 1];
 	struct device dev;
 	struct mutex ref_mutex;
 	enum fpga_mgr_states state;
