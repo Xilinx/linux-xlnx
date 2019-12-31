@@ -433,6 +433,21 @@ static ssize_t status_show(struct device *dev,
 		len += sprintf(buf + len, "reconfig IP protocol error\n");
 	if (status & FPGA_MGR_STATUS_FIFO_OVERFLOW_ERR)
 		len += sprintf(buf + len, "reconfig fifo overflow error\n");
+	if (status & FPGA_MGR_STATUS_SECURITY_ERR)
+		len += sprintf(buf + len, "reconfig security error\n");
+	if (status & FPGA_MGR_STATUS_DEVICE_INIT_ERR)
+		len += sprintf(buf + len,
+			       "initialization has not finished\n");
+	if (status & FPGA_MGR_STATUS_SIGNAL_ERR)
+		len += sprintf(buf + len, "device internal signal error\n");
+	if (status & FPGA_MGR_STATUS_HIGH_Z_STATE_ERR)
+		len += sprintf(buf + len,
+			       "all I/Os are placed in High-Z state\n");
+	if (status & FPGA_MGR_STATUS_EOS_ERR)
+		len += sprintf(buf + len,
+			       "start-up sequence has not finished\n");
+	if (status & FPGA_MGR_STATUS_FIRMWARE_REQ_ERR)
+		len += sprintf(buf + len, "firmware request error\n");
 
 	return len;
 }
