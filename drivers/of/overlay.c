@@ -1069,6 +1069,7 @@ out_unlock:
 }
 EXPORT_SYMBOL_GPL(of_overlay_fdt_apply);
 
+#ifndef CONFIG_OF_FPGA_REGION
 /*
  * Find @np in @tree.
  *
@@ -1145,6 +1146,7 @@ static int overlay_removal_is_ok(struct overlay_changeset *remove_ovcs)
 
 	return 1;
 }
+#endif
 
 /**
  * of_overlay_remove() - Revert and free an overlay changeset
@@ -1200,10 +1202,12 @@ int of_overlay_remove(int *ovcs_id)
 		goto err_unlock;
 	}
 
+#ifndef CONFIG_OF_FPGA_REGION
 	if (!overlay_removal_is_ok(ovcs)) {
 		ret = -EBUSY;
 		goto err_unlock;
 	}
+#endif
 
 	ret = overlay_notify(ovcs, OF_OVERLAY_PRE_REMOVE);
 	if (ret)
