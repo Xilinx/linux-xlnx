@@ -49,40 +49,15 @@ static int create_overlay(struct cfs_overlay_item *overlay, void *blob)
 {
 	int err;
 
-	/* unflatten the tree */
-	overlay->mem = of_fdt_unflatten_tree(blob, NULL, &overlay->overlay);
-	if (!overlay->overlay) {
-		pr_err("%s: failed to unflatten tree\n", __func__);
-		return -EINVAL;
-	}
-	pr_debug("%s: unflattened OK\n", __func__);
-
-	/* mark it as detached */
-	of_node_set_flag(overlay->overlay, OF_DETACHED);
-
-	/* Lock while resolving phandles and applying overlay */
-	mutex_lock(&overlay_lock);
-
-	/* perform resolution */
-	err = of_resolve_phandles(overlay->overlay);
-	if (err != 0) {
-		mutex_unlock(&overlay_lock);
-		pr_err("%s: Failed to resolve tree\n", __func__);
-		return err;
-	}
-	pr_debug("%s: resolved OK\n", __func__);
-
-	err = of_overlay_create(overlay->overlay);
-	mutex_unlock(&overlay_lock);
-
+	/* FIXME */
+	err = of_overlay_fdt_apply(blob, overlay->dtbo_size, &overlay->ov_id);
 	if (err < 0) {
 		pr_err("%s: Failed to create overlay (err=%d)\n",
 		       __func__, err);
 		return err;
 	}
-	overlay->ov_id = err;
 
-	return 0;
+	return err;
 }
 
 static inline struct cfs_overlay_item
@@ -123,6 +98,7 @@ static ssize_t cfs_overlay_item_path_store(struct config_item *item,
 	if (err != 0)
 		goto out_err;
 
+	overlay->dtbo_size = overlay->fw->size;
 	err = create_overlay(overlay, (void *)overlay->fw->data);
 	if (err < 0)
 		goto out_err;
@@ -220,7 +196,7 @@ static void cfs_overlay_release(struct config_item *item)
 	struct cfs_overlay_item *overlay = to_cfs_overlay_item(item);
 
 	if (overlay->ov_id >= 0)
-		of_overlay_destroy(overlay->ov_id);
+		of_overlay_remove(&overlay->ov_id);
 	if (overlay->fw)
 		release_firmware(overlay->fw);
 	/* kfree with NULL is safe */
