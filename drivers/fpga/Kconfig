@@ -12,6 +12,16 @@ menuconfig FPGA
 
 if FPGA
 
+config FPGA_MGR_DEBUG_FS
+	tristate "FPGA debug fs"
+	select DEBUG_FS
+	help
+	  Say Y here if you want to expose a DebugFS interface for the
+	  FPGA Manager Framework. FPGA manager DebugFS provides a user
+	  interface to read the fpga specific configuration information.
+
+	  If unsure, say N.
+
 config FPGA_MGR_SOCFPGA
 	tristate "Altera SOCFPGA FPGA Manager"
 	depends on ARCH_INTEL_SOCFPGA || COMPILE_TEST
