@@ -377,6 +377,9 @@ static int fpga_mgr_firmware_load(struct fpga_manager *mgr,
 
 	mgr->state = FPGA_MGR_STATE_FIRMWARE_REQ;
 
+	/* flags indicates whether to do full or partial reconfiguration */
+	info->flags = mgr->flags;
+
 	ret = request_firmware(&fw, image_name, dev);
 	if (ret) {
 		mgr->state = FPGA_MGR_STATE_FIRMWARE_REQ_ERR;
@@ -478,14 +481,41 @@ static ssize_t status_show(struct device *dev,
 	return len;
 }
 
+static ssize_t firmware_store(struct device *dev,
+			      struct device_attribute *attr,
+			      const char *buf, size_t count)
+{
+	struct fpga_manager *mgr = to_fpga_manager(dev);
+	unsigned int len;
+	char image_name[NAME_MAX];
+	int ret;
+
+	/* struct with information about the FPGA image to program. */
+	struct fpga_image_info info = {0};
+
+	/* lose terminating \n */
+	strcpy(image_name, buf);
+	len = strlen(image_name);
+	if (image_name[len - 1] == '\n')
+		image_name[len - 1] = 0;
+
+	ret = fpga_mgr_firmware_load(mgr, &info, image_name);
+	if (ret)
+		return ret;
+
+	return count;
+}
+
 static DEVICE_ATTR_RO(name);
 static DEVICE_ATTR_RO(state);
 static DEVICE_ATTR_RO(status);
+static DEVICE_ATTR_WO(firmware);
 
 static struct attribute *fpga_mgr_attrs[] = {
 	&dev_attr_name.attr,
 	&dev_attr_state.attr,
 	&dev_attr_status.attr,
+	&dev_attr_firmware.attr,
 	NULL,
 };
 ATTRIBUTE_GROUPS(fpga_mgr);
