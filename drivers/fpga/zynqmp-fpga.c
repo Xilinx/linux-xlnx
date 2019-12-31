@@ -19,6 +19,19 @@
 #define READ_DMA_SIZE		0x200
 #define DUMMY_FRAMES_SIZE	0x64
 
+/* Error Register */
+#define IXR_FPGA_ERR_CRC_ERR		BIT(0)
+#define IXR_FPGA_ERR_SECURITY_ERR	BIT(16)
+
+/* Signal Status Register */
+#define IXR_FPGA_END_OF_STARTUP		BIT(4)
+#define IXR_FPGA_GST_CFG_B		BIT(5)
+#define IXR_FPGA_INIT_B_INTERNAL	BIT(11)
+#define IXR_FPGA_DONE_INTERNAL_SIGNAL	BIT(13)
+
+#define IXR_FPGA_CONFIG_STAT_OFFSET	7U
+#define IXR_FPGA_READ_CONFIG_TYPE	0U
+
 static bool readback_type;
 module_param(readback_type, bool, 0644);
 MODULE_PARM_DESC(readback_type,
@@ -140,6 +153,44 @@ static enum fpga_mgr_states zynqmp_fpga_ops_state(struct fpga_manager *mgr)
 	return FPGA_MGR_STATE_UNKNOWN;
 }
 
+static u64 zynqmp_fpga_ops_status(struct fpga_manager *mgr)
+{
+	unsigned int *buf, reg_val;
+	dma_addr_t dma_addr = 0;
+	u64 status = 0;
+	int ret;
+
+	buf = dma_alloc_coherent(mgr->dev.parent, READ_DMA_SIZE,
+				 &dma_addr, GFP_KERNEL);
+	if (!buf)
+		return FPGA_MGR_STATUS_FIRMWARE_REQ_ERR;
+
+	ret = zynqmp_pm_fpga_read(IXR_FPGA_CONFIG_STAT_OFFSET, dma_addr,
+				  IXR_FPGA_READ_CONFIG_TYPE, &reg_val);
+	if (ret) {
+		status = FPGA_MGR_STATUS_FIRMWARE_REQ_ERR;
+		goto free_dmabuf;
+	}
+
+	if (reg_val & IXR_FPGA_ERR_CRC_ERR)
+		status |= FPGA_MGR_STATUS_CRC_ERR;
+	if (reg_val & IXR_FPGA_ERR_SECURITY_ERR)
+		status |= FPGA_MGR_STATUS_SECURITY_ERR;
+	if (!(reg_val & IXR_FPGA_INIT_B_INTERNAL))
+		status |= FPGA_MGR_STATUS_DEVICE_INIT_ERR;
+	if (!(reg_val & IXR_FPGA_DONE_INTERNAL_SIGNAL))
+		status |= FPGA_MGR_STATUS_SIGNAL_ERR;
+	if (!(reg_val & IXR_FPGA_GST_CFG_B))
+		status |= FPGA_MGR_STATUS_HIGH_Z_STATE_ERR;
+	if (!(reg_val & IXR_FPGA_END_OF_STARTUP))
+		status |= FPGA_MGR_STATUS_EOS_ERR;
+
+free_dmabuf:
+	dma_free_coherent(mgr->dev.parent, READ_DMA_SIZE, buf, dma_addr);
+
+	return status;
+}
+
 static int zynqmp_fpga_read_cfgreg(struct fpga_manager *mgr,
 				   struct seq_file *s)
 {
@@ -218,6 +269,7 @@ static int zynqmp_fpga_ops_read(struct fpga_manager *mgr, struct seq_file *s)
 
 static const struct fpga_manager_ops zynqmp_fpga_ops = {
 	.state = zynqmp_fpga_ops_state,
+	.status = zynqmp_fpga_ops_status,
 	.write_init = zynqmp_fpga_ops_write_init,
 	.write = zynqmp_fpga_ops_write,
 	.read = zynqmp_fpga_ops_read,
