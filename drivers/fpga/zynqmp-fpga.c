@@ -128,6 +128,11 @@ static int zynqmp_fpga_ops_write(struct fpga_manager *mgr,
 
 	wmb(); /* ensure all writes are done before initiate FW call */
 
+	if (priv->flags & FPGA_MGR_DDR_MEM_AUTH_BITSTREAM)
+		eemi_flags |= XILINX_ZYNQMP_PM_FPGA_AUTHENTICATION_DDR;
+	else if (priv->flags & FPGA_MGR_SECURE_MEM_AUTH_BITSTREAM)
+		eemi_flags |= XILINX_ZYNQMP_PM_FPGA_AUTHENTICATION_OCM;
+
 	if (priv->flags & FPGA_MGR_PARTIAL_RECONFIG)
 		eemi_flags |= XILINX_ZYNQMP_PM_FPGA_PARTIAL;
 
