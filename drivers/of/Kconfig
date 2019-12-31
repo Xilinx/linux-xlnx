@@ -94,4 +94,15 @@ config OF_DMA_DEFAULT_COHERENT
 	# arches should select this if DMA is coherent by default for OF devices
 	bool
 
+config OF_CONFIGFS
+	bool "Device Tree Overlay ConfigFS interface"
+	select CONFIGFS_FS
+	depends on OF_OVERLAY
+	help
+	  Select this option to enable simple user-space driven DT overlay
+	  interface to support device tree manipulated at runtime.
+	  Say Y here to include this support.
+
+	  If unsure, say N.
+
 endif # OF
