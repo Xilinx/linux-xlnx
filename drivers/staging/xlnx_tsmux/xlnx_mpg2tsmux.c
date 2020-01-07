@@ -77,7 +77,7 @@
  */
 struct stream_context {
 	enum ts_mux_command command;
-	u8 is_pcr_stream;
+	bool is_pcr_stream;
 	u8 stream_id;
 	u8 extended_stream_id;
 	u8 reserved1;
@@ -88,8 +88,8 @@ struct stream_context {
 	u64 dts;
 	u64 in_buf_pointer;
 	u32 reserved2;
-	u8 insert_pcr;
-	u8 reserved3;
+	bool insert_pcr;
+	bool reserved3;
 	u16 pcr_extension;
 	u64 pcr_base;
 };
@@ -156,7 +156,7 @@ struct stream_context_node {
 struct stream_info {
 	u16 pid;
 	u8 continuity_counter;
-	u8 usageflag;
+	bool usageflag;
 	enum strmtbl_cnxt strmtbl_update;
 };
 

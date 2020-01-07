@@ -56,16 +56,16 @@ struct stream_context_in {
 	enum ts_mux_command command;
 	u8 stream_id;
 	u8 extended_stream_id;
-	u8 is_pcr_stream;
-	u8 is_valid_pts;
-	u8 is_valid_dts;
-	u8 is_dmabuf;
+	bool is_pcr_stream;
+	bool is_valid_pts;
+	bool is_valid_dts;
+	bool is_dmabuf;
 	u16 pid;
 	u64 size_data_in;
 	u64 pts;
 	u64 dts;
 	u32 srcbuf_id;
-	u8 insert_pcr;
+	bool insert_pcr;
 	u16 pcr_extension;
 	u64 pcr_base;
 };
@@ -77,7 +77,7 @@ struct stream_context_in {
  * @dmabuf_size: size in bytes of output buffer
  */
 struct muxer_context_in {
-	u8 is_dmabuf;
+	bool is_dmabuf;
 	u32 dstbuf_id;
 	u32 dmabuf_size;
 };
