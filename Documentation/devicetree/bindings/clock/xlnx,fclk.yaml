@@ -1,0 +1,33 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/clock/xlnx,fclk.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Xilinx PL clocks
+
+maintainers:
+  - Shubhrajyoti Datta <shubhrajyoti.datta@amd.com>
+
+description:
+  The clock consumer driver used for handle clocks between PS/PL but also
+  provide a way to control clock from System Controller to DUT.
+
+properties:
+  compatible:
+    const: xlnx,fclk
+
+  clocks:
+    maxItems: 1
+
+required:
+  - clocks
+
+additionalProperties: false
+
+examples:
+  -
+    clk {
+      compatible = "xlnx,fclk";
+      clocks = <&clkc 71>;
+    };
