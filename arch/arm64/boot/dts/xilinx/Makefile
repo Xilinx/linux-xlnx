@@ -18,3 +18,5 @@ dtb-$(CONFIG_ARCH_ZYNQMP) += zynqmp-zcu111-revA.dtb
 dtb-$(CONFIG_ARCH_ZYNQMP) += zynqmp-zcu1275-revA.dtb
 dtb-$(CONFIG_ARCH_ZYNQMP) += zynqmp-zcu1275-revB.dtb
 dtb-$(CONFIG_ARCH_ZYNQMP) += zynqmp-zcu1285-revA.dtb
+dtb-$(CONFIG_ARCH_ZYNQMP) += zynqmp-zcu208-revA.dtb
+dtb-$(CONFIG_ARCH_ZYNQMP) += zynqmp-zcu216-revA.dtb
