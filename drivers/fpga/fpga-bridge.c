@@ -13,6 +13,12 @@
 #include <linux/slab.h>
 #include <linux/spinlock.h>
 
+/* For enabling manual bridge set(enable/disable) function */
+#ifdef CONFIG_DEBUG_KERNEL
+#undef DEBUG
+#define DEBUG
+#endif
+
 static DEFINE_IDA(fpga_bridge_ida);
 static struct class *fpga_bridge_class;
 
@@ -304,9 +310,33 @@ static ssize_t state_show(struct device *dev,
 static DEVICE_ATTR_RO(name);
 static DEVICE_ATTR_RO(state);
 
+#ifdef DEBUG
+static ssize_t set_store(struct device *dev,
+			 struct device_attribute *attr,
+			 const char *buf, size_t count)
+{
+	struct fpga_bridge *bridge = to_fpga_bridge(dev);
+	long enable;
+	int ret;
+
+	ret = kstrtol(buf, 16, &enable);
+	if (ret)
+		return ret;
+
+	if (bridge->br_ops && bridge->br_ops->enable_set)
+		enable = bridge->br_ops->enable_set(bridge, !!enable);
+
+	return count;
+}
+static DEVICE_ATTR_WO(set);
+#endif
+
 static struct attribute *fpga_bridge_attrs[] = {
 	&dev_attr_name.attr,
 	&dev_attr_state.attr,
+#ifdef DEBUG
+	&dev_attr_set.attr,
+#endif
 	NULL,
 };
 ATTRIBUTE_GROUPS(fpga_bridge);
