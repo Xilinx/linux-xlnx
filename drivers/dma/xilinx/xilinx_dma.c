@@ -127,7 +127,9 @@
 #define XILINX_VDMA_ENABLE_VERTICAL_FLIP	BIT(0)
 
 /* HW specific definitions */
-#define XILINX_DMA_MAX_CHANS_PER_DEVICE	0x20
+#define XILINX_MCDMA_MAX_CHANS_PER_DEVICE	0x20
+#define XILINX_DMA_MAX_CHANS_PER_DEVICE		0x2
+#define XILINX_CDMA_MAX_CHANS_PER_DEVICE	0x1
 
 #define XILINX_DMA_DMAXR_ALL_IRQ_MASK	\
 		(XILINX_DMA_DMASR_FRM_CNT_IRQ | \
@@ -482,6 +484,7 @@ struct xilinx_dma_config {
 			struct clk **tx_clk, struct clk **txs_clk,
 			struct clk **rx_clk, struct clk **rxs_clk);
 	irqreturn_t (*irq_handler)(int irq, void *data);
+	const int max_channels;
 };
 
 /**
@@ -509,7 +512,7 @@ struct xilinx_dma_device {
 	void __iomem *regs;
 	struct device *dev;
 	struct dma_device common;
-	struct xilinx_dma_chan *chan[XILINX_DMA_MAX_CHANS_PER_DEVICE];
+	struct xilinx_dma_chan *chan[XILINX_MCDMA_MAX_CHANS_PER_DEVICE];
 	bool has_sg;
 	u32 flush_on_fsync;
 	bool ext_addr;
@@ -3062,23 +3065,27 @@ static const struct xilinx_dma_config axidma_config = {
 	.dmatype = XDMA_TYPE_AXIDMA,
 	.clk_init = axidma_clk_init,
 	.irq_handler = xilinx_dma_irq_handler,
+	.max_channels = XILINX_DMA_MAX_CHANS_PER_DEVICE,
 };
 
 static const struct xilinx_dma_config aximcdma_config = {
 	.dmatype = XDMA_TYPE_AXIMCDMA,
 	.clk_init = axidma_clk_init,
 	.irq_handler = xilinx_mcdma_irq_handler,
+	.max_channels = XILINX_MCDMA_MAX_CHANS_PER_DEVICE,
 };
 static const struct xilinx_dma_config axicdma_config = {
 	.dmatype = XDMA_TYPE_CDMA,
 	.clk_init = axicdma_clk_init,
 	.irq_handler = xilinx_dma_irq_handler,
+	.max_channels = XILINX_CDMA_MAX_CHANS_PER_DEVICE,
 };
 
 static const struct xilinx_dma_config axivdma_config = {
 	.dmatype = XDMA_TYPE_VDMA,
 	.clk_init = axivdma_clk_init,
 	.irq_handler = xilinx_dma_irq_handler,
+	.max_channels = XILINX_DMA_MAX_CHANS_PER_DEVICE,
 };
 
 static const struct of_device_id xilinx_dma_of_ids[] = {
