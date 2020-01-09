@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * dts file for Xilinx ZynqMP ZC1285 RevA
+ * dts file for Xilinx ZynqMP ZCU1285 RevA
  *
  * (C) Copyright 2018 - 2019, Xilinx, Inc.
  *
@@ -15,7 +15,8 @@
 
 / {
 	model = "ZynqMP ZCU1285 RevA";
-	compatible = "xlnx,zynqmp-zcu1285-revA", "xlnx,zynqmp-zcu1285", "xlnx,zynqmp";
+	compatible = "xlnx,zynqmp-zcu1285-revA", "xlnx,zynqmp-zcu1285",
+		     "xlnx,zynqmp";
 
 	aliases {
 		serial0 = &uart0;
