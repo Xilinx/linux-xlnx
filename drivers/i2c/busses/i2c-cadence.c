@@ -25,12 +25,14 @@
 #define CDNS_I2C_DATA_OFFSET		0x0C /* I2C Data Register, RW */
 #define CDNS_I2C_ISR_OFFSET		0x10 /* IRQ Status Register, RW */
 #define CDNS_I2C_XFER_SIZE_OFFSET	0x14 /* Transfer Size Register, RW */
+#define CDNS_I2C_SLV_PAUSE_OFFSET	0x18 /* Transfer Size Register, RW */
 #define CDNS_I2C_TIME_OUT_OFFSET	0x1C /* Time Out Register, RW */
 #define CDNS_I2C_IMR_OFFSET		0x20 /* IRQ Mask Register, RO */
 #define CDNS_I2C_IER_OFFSET		0x24 /* IRQ Enable Register, WO */
 #define CDNS_I2C_IDR_OFFSET		0x28 /* IRQ Disable Register, WO */
 
 /* Control Register Bit mask definitions */
+#define CDNS_I2C_CR_SLVMON		BIT(5) /* Slave monitor mode bit */
 #define CDNS_I2C_CR_HOLD		BIT(4) /* Hold Bus bit */
 #define CDNS_I2C_CR_ACK_EN		BIT(3)
 #define CDNS_I2C_CR_NEA			BIT(2)
@@ -551,6 +553,23 @@ static irqreturn_t cdns_i2c_master_isr(void *ptr)
 		status = IRQ_HANDLED;
 	}
 
+	/* Handling Slave monitor mode interrupt */
+	if (isr_status & CDNS_I2C_IXR_SLV_RDY) {
+		unsigned int ctrl_reg;
+		/* Read control register */
+		ctrl_reg = cdns_i2c_readreg(CDNS_I2C_CR_OFFSET);
+
+		/* Disable slave monitor mode */
+		ctrl_reg &= ~CDNS_I2C_CR_SLVMON;
+		cdns_i2c_writereg(ctrl_reg, CDNS_I2C_CR_OFFSET);
+
+		/* Clear interrupt flag for slvmon mode */
+		cdns_i2c_writereg(CDNS_I2C_IXR_SLV_RDY, CDNS_I2C_IDR_OFFSET);
+
+		done_flag = 1;
+		status = IRQ_HANDLED;
+	}
+
 	/* Update the status for errors */
 	id->err_status |= isr_status & CDNS_I2C_IXR_ERR_INTR_MASK;
 	if (id->err_status)
@@ -706,6 +725,40 @@ static void cdns_i2c_msend(struct cdns_i2c *id)
 }
 
 /**
+ * cdns_i2c_slvmon - Handling Slav monitor mode feature
+ * @id:		pointer to the i2c device
+ */
+static void cdns_i2c_slvmon(struct cdns_i2c *id)
+{
+	unsigned int ctrl_reg;
+	unsigned int isr_status;
+
+	id->p_recv_buf = NULL;
+	id->p_send_buf = id->p_msg->buf;
+	id->send_count = id->p_msg->len;
+
+	/* Clear the interrupts in interrupt status register. */
+	isr_status = cdns_i2c_readreg(CDNS_I2C_ISR_OFFSET);
+	cdns_i2c_writereg(isr_status, CDNS_I2C_ISR_OFFSET);
+
+	/* Enable slvmon control reg */
+	ctrl_reg = cdns_i2c_readreg(CDNS_I2C_CR_OFFSET);
+	ctrl_reg |=  CDNS_I2C_CR_MS | CDNS_I2C_CR_NEA | CDNS_I2C_CR_SLVMON
+			| CDNS_I2C_CR_CLR_FIFO;
+	ctrl_reg &= ~(CDNS_I2C_CR_RW);
+	cdns_i2c_writereg(ctrl_reg, CDNS_I2C_CR_OFFSET);
+
+	/* Initialize slvmon reg */
+	cdns_i2c_writereg(0xF, CDNS_I2C_SLV_PAUSE_OFFSET);
+
+	/* Set the slave address to start the slave address transmission */
+	cdns_i2c_writereg(id->p_msg->addr, CDNS_I2C_ADDR_OFFSET);
+
+	/* Setup slvmon interrupt flag */
+	cdns_i2c_writereg(CDNS_I2C_IXR_SLV_RDY, CDNS_I2C_IER_OFFSET);
+}
+
+/**
  * cdns_i2c_master_reset - Reset the interface
  * @adap:	pointer to the i2c adapter driver instance
  *
@@ -721,7 +774,7 @@ static void cdns_i2c_master_reset(struct i2c_adapter *adap)
 	cdns_i2c_writereg(CDNS_I2C_IXR_ALL_INTR_MASK, CDNS_I2C_IDR_OFFSET);
 	/* Clear the hold bit and fifos */
 	regval = cdns_i2c_readreg(CDNS_I2C_CR_OFFSET);
-	regval &= ~CDNS_I2C_CR_HOLD;
+	regval &= ~(CDNS_I2C_CR_HOLD | CDNS_I2C_CR_SLVMON);
 	regval |= CDNS_I2C_CR_CLR_FIFO;
 	cdns_i2c_writereg(regval, CDNS_I2C_CR_OFFSET);
 	/* Update the transfercount register to zero */
@@ -755,9 +808,11 @@ static int cdns_i2c_process_msg(struct cdns_i2c *id, struct i2c_msg *msg,
 			cdns_i2c_writereg(reg | CDNS_I2C_CR_NEA,
 					CDNS_I2C_CR_OFFSET);
 	}
-
-	/* Check for the R/W flag on each msg */
-	if (msg->flags & I2C_M_RD)
+	/* Check for zero length - Slave monitor mode */
+	if (msg->len == 0)
+		cdns_i2c_slvmon(id);
+	 /* Check for the R/W flag on each msg */
+	else if (msg->flags & I2C_M_RD)
 		cdns_i2c_mrecv(id);
 	else
 		cdns_i2c_msend(id);
@@ -822,10 +877,11 @@ static int cdns_i2c_master_xfer(struct i2c_adapter *adap, struct i2c_msg *msgs,
 #endif
 
 	/* Check if the bus is free */
-	if (cdns_i2c_readreg(CDNS_I2C_SR_OFFSET) & CDNS_I2C_SR_BA) {
-		ret = -EAGAIN;
-		goto out;
-	}
+	if (msgs->len)
+		if (cdns_i2c_readreg(CDNS_I2C_SR_OFFSET) & CDNS_I2C_SR_BA) {
+			ret = -EAGAIN;
+			goto out;
+		}
 
 	hold_quirk = !!(id->quirks & CDNS_I2C_BROKEN_HOLD_BIT);
 	/*
