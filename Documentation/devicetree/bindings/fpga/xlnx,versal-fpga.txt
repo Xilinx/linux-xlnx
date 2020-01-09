@@ -1,0 +1,10 @@
+Device Tree versal-fpga bindings for the Versal SOC, Controlled
+using Versal SoC firmware interface.
+
+Required properties:
+- compatible: should contain "xlnx,versal-fpga"
+
+Example:
+	versal_fpga: fpga {
+		compatible = "xlnx,versal-fpga";
+	};
