@@ -1,0 +1,116 @@
+# SPDX-License-Identifier: GPL-2.0-or-later OR BSD-2-Clause
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/perf/xilinx-apm.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Xilinx Axi Performance Monitor device tree bindings
+
+maintainers:
+  - Shubhrajyoti Datta <shubhrajyoti.datta@xilinx.com>
+
+properties:
+  compatible:
+      enum:
+          - xlnx,axi-perf-monitor
+
+  reg:
+    maxItems: 1
+
+  clocks:
+    maxItems: 1
+
+  interrupts:
+    maxItems: 1
+
+  xlnx,enable-profile:
+    description: Enables the profile mode.
+    maxItems: 1
+
+  xlnx,enable-trace:
+    description: Enables trace mode.
+    maxItems: 1
+
+  xlnx,num-monitor-slots:
+    description: Maximum number of slots in APM.
+        items:
+          minimum: 1
+          maximum: 8
+
+  xlnx,enable-event-count:
+    description: Enable event count.
+    oneOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [0, 1]
+
+  xlnx,enable-event-log:
+    description: Enable event log.
+    oneOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [0, 1]
+
+  xlnx,have-sampled-metric-cnt:
+    description: Sampled metric counters enabled in APM.
+    oneOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [32, 64]
+
+  xlnx,metric-count-width:
+    description: Metric Counter width.
+    oneOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [32, 64]
+
+  xlnx,num-of-counters:
+    description: Number of counters in APM.
+        items:
+          minimum: 1
+          maximum: 9
+
+  xlnx,metrics-sample-count-width:
+    description: Sampled metric counter width.
+    oneOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [32, 64]
+
+  xlnx,global-count-width:
+    description: Global Clock counter width.
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [32, 64]
+
+  xlnx,metrics-sample-count-width:
+    description: Global Clock counter width.
+    maxItems: 1
+
+  xlnx,id-filter-32bit:
+    description: APM is in 32-bit mode.
+    type: boolean
+
+required:
+  - compatible
+  - reg
+  - clocks
+  - interrupts
+
+examples:
+  - |
+    apm@44a00000 {
+        compatible = "xlnx,axi-perf-monitor";
+        interrupt-parent = <&axi_intc_1>;
+        interrupts = <1 2>;
+        reg = <0x44a00000 0x1000>;
+        clocks = <&clkc 15>;
+        xlnx,enable-profile = <0>;
+        xlnx,enable-trace = <0>;
+        xlnx,num-monitor-slots = <4>;
+        xlnx,enable-event-count = <1>;
+        xlnx,enable-event-log = <1>;
+        xlnx,have-sampled-metric-cnt = <1>;
+        xlnx,num-of-counters = <8>;
+        xlnx,metric-count-width = <32>;
+        xlnx,metrics-sample-count-width = <32>;
+        xlnx,global-count-width = <32>;
+        xlnx,metric-count-scale = <1>;
+        xlnx,id-filter-32bit;
+    };
