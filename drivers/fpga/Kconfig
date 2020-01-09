@@ -101,6 +101,15 @@ config FPGA_MGR_TS73XX
 	  FPGA manager driver support for the Altera Cyclone II FPGA
 	  present on the TS-73xx SBC boards.
 
+config FPGA_MGR_ZYNQ_AFI_FPGA
+	bool "Xilinx AFI FPGA"
+	depends on FPGA_MGR_ZYNQ_FPGA
+	help
+	  Zynq AFI driver support for writing to the AFI registers
+	  for configuring the PS_PL interface. For some of the bitstream
+	  or designs to work the PS to PL interfaces need to be configured
+	  like the data bus-width etc.
+
 config XILINX_AFI_FPGA
 	bool "Xilinx AFI FPGA"
 	depends on FPGA_MGR_ZYNQMP_FPGA || COMPILE_TEST
