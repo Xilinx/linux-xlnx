@@ -27,7 +27,6 @@
 #define ULITE_NAME		"ttyUL"
 #define ULITE_MAJOR		204
 #define ULITE_MINOR		187
-#define ULITE_NR_UARTS		CONFIG_SERIAL_UARTLITE_NR_UARTS
 
 /* ---------------------------------------------------------------------
  * Register definitions
@@ -65,6 +64,7 @@ static struct uart_port *console_port;
 struct uartlite_data {
 	const struct uartlite_reg_ops *reg_ops;
 	struct clk *clk;
+	int id;
 	struct uart_driver *ulite_uart_driver;
 };
 
@@ -117,7 +117,6 @@ static inline void uart_out32(u32 val, u32 offset, struct uart_port *port)
 	pdata->reg_ops->out(val, port->membase + offset);
 }
 
-static struct uart_port ulite_ports[ULITE_NR_UARTS];
 
 /* ---------------------------------------------------------------------
  * Core UART driver operations
@@ -535,18 +534,6 @@ static int ulite_console_setup(struct console *co, char *options)
 	return uart_set_options(port, co, baud, parity, bits, flow);
 }
 
-static struct uart_driver ulite_uart_driver;
-
-static struct console ulite_console = {
-	.name	= ULITE_NAME,
-	.write	= ulite_console_write,
-	.device	= uart_console_device,
-	.setup	= ulite_console_setup,
-	.flags	= CON_PRINTBUFFER,
-	.index	= -1, /* Specified on the cmdline (e.g. console=ttyUL0 ) */
-	.data	= &ulite_uart_driver,
-};
-
 static void early_uartlite_putc(struct uart_port *port, int c)
 {
 	/*
@@ -590,18 +577,6 @@ OF_EARLYCON_DECLARE(uartlite_a, "xlnx,xps-uartlite-1.00.a", early_uartlite_setup
 
 #endif /* CONFIG_SERIAL_UARTLITE_CONSOLE */
 
-static struct uart_driver ulite_uart_driver = {
-	.owner		= THIS_MODULE,
-	.driver_name	= "uartlite",
-	.dev_name	= ULITE_NAME,
-	.major		= ULITE_MAJOR,
-	.minor		= ULITE_MINOR,
-	.nr		= ULITE_NR_UARTS,
-#ifdef CONFIG_SERIAL_UARTLITE_CONSOLE
-	.cons		= &ulite_console,
-#endif
-};
-
 /* ---------------------------------------------------------------------
  * Port assignment functions (mapping devices to uart_port structures)
  */
@@ -622,24 +597,9 @@ static int ulite_assign(struct device *dev, int id, u32 base, int irq,
 	struct uart_port *port;
 	int rc;
 
-	/* if id = -1; then scan for a free id and use that */
-	if (id < 0) {
-		for (id = 0; id < ULITE_NR_UARTS; id++)
-			if (ulite_ports[id].mapbase == 0)
-				break;
-	}
-	if (id < 0 || id >= ULITE_NR_UARTS) {
-		dev_err(dev, "%s%i too large\n", ULITE_NAME, id);
-		return -EINVAL;
-	}
-
-	if ((ulite_ports[id].mapbase) && (ulite_ports[id].mapbase != base)) {
-		dev_err(dev, "cannot assign to %s%i; it is already in use\n",
-			ULITE_NAME, id);
-		return -EBUSY;
-	}
-
-	port = &ulite_ports[id];
+	port = devm_kzalloc(dev, sizeof(*port), GFP_KERNEL);
+	if (!port)
+		return -ENOMEM;
 
 	spin_lock_init(&port->lock);
 	port->fifosize = 16;
@@ -653,7 +613,6 @@ static int ulite_assign(struct device *dev, int id, u32 base, int irq,
 	port->flags = UPF_BOOT_AUTOCONF;
 	port->dev = dev;
 	port->type = PORT_UNKNOWN;
-	port->line = id;
 	port->private_data = pdata;
 
 	dev_set_drvdata(dev, port);
@@ -783,11 +742,24 @@ static const struct of_device_id ulite_of_match[] = {
 MODULE_DEVICE_TABLE(of, ulite_of_match);
 #endif /* CONFIG_OF */
 
-static int ulite_probe(struct platform_device *pdev)
+/*
+ * Maximum number of instances without alias IDs but if there is alias
+ * which target "< MAX_UART_INSTANCES" range this ID can't be used.
+ */
+#define MAX_UART_INSTANCES	256
+
+/* Stores static aliases list */
+static DECLARE_BITMAP(alias_bitmap, MAX_UART_INSTANCES);
+static int alias_bitmap_initialized;
+
+/* Stores actual bitmap of allocated IDs with alias IDs together */
+static DECLARE_BITMAP(bitmap, MAX_UART_INSTANCES);
+/* Protect bitmap operations to have unique IDs */
+static DEFINE_MUTEX(bitmap_lock);
+
+static int ulite_get_id(struct platform_device *pdev)
 {
-	struct resource *res;
-	struct uartlite_data *pdata;
-	int irq, ret;
+	int ret;
 	int id = pdev->id;
 #ifdef CONFIG_OF
 	const __be32 *prop;
@@ -796,39 +768,158 @@ static int ulite_probe(struct platform_device *pdev)
 	if (prop)
 		id = be32_to_cpup(prop);
 #endif
-	if (id < 0) {
-		/* Look for a serialN alias */
-		id = of_alias_get_id(pdev->dev.of_node, "serial");
-		if (id < 0)
-			id = 0;
-	}
 
-	if (!ulite_uart_driver.state) {
-		dev_dbg(&pdev->dev, "uartlite: calling uart_register_driver()\n");
-		ret = uart_register_driver(&ulite_uart_driver);
-		if (ret < 0) {
-			dev_err(&pdev->dev, "Failed to register driver\n");
+	mutex_lock(&bitmap_lock);
+
+	/* Alias list is stable that's why get alias bitmap only once */
+	if (!alias_bitmap_initialized) {
+		ret = of_alias_get_alias_list(of_match_ptr(ulite_of_match), "serial",
+					      alias_bitmap, MAX_UART_INSTANCES);
+		if (ret) {
+			mutex_unlock(&bitmap_lock);
 			return ret;
 		}
+
+		alias_bitmap_initialized++;
 	}
+
+	/* Make sure that alias ID is not taken by instance without alias */
+	bitmap_or(bitmap, bitmap, alias_bitmap, MAX_UART_INSTANCES);
+
+	dev_dbg(&pdev->dev, "Alias bitmap: %*pb\n",
+		MAX_UART_INSTANCES, bitmap);
+
+	/* Look for a serialN alias */
+	if (id < 0)
+		id = of_alias_get_id(pdev->dev.of_node, "serial");
+
+	if (id < 0) {
+		dev_warn(&pdev->dev,
+			 "No serial alias passed. Using the first free id\n");
+
+		/*
+		 * Start with id 0 and check if there is no serial0 alias
+		 * which points to device which is compatible with this driver.
+		 * If alias exists then try next free position.
+		 */
+		id = 0;
+
+		for (;;) {
+			dev_info(&pdev->dev, "Checking id %d\n", id);
+			id = find_next_zero_bit(bitmap, MAX_UART_INSTANCES, id);
+
+			/* No free empty instance */
+			if (id == MAX_UART_INSTANCES) {
+				dev_err(&pdev->dev, "No free ID\n");
+				mutex_unlock(&bitmap_lock);
+				return -EINVAL;
+			}
+
+			dev_dbg(&pdev->dev, "The empty id is %d\n", id);
+			/* Check if ID is empty */
+			if (!test_and_set_bit(id, bitmap)) {
+				/* Break the loop if bit is taken */
+				dev_dbg(&pdev->dev,
+					"Selected ID %d allocation passed\n",
+					id);
+				break;
+			}
+			dev_dbg(&pdev->dev,
+				"Selected ID %d allocation failed\n", id);
+			/* if taking bit fails then try next one */
+			id++;
+		}
+	}
+
+	mutex_unlock(&bitmap_lock);
+
+	return id;
+}
+
+static int ulite_probe(struct platform_device *pdev)
+{
+	struct resource *res;
+	struct uartlite_data *pdata;
+	int irq, ret;
+	struct uart_driver *ulite_uart_driver;
+	char *driver_name;
+#ifdef CONFIG_SERIAL_UARTLITE_CONSOLE
+	struct console *ulite_console;
+#endif
 
 	pdata = devm_kzalloc(&pdev->dev, sizeof(struct uartlite_data),
 			     GFP_KERNEL);
 	if (!pdata)
 		return -ENOMEM;
 
+	ulite_uart_driver = devm_kzalloc(&pdev->dev,
+					 sizeof(*ulite_uart_driver),
+					 GFP_KERNEL);
+	if (!ulite_uart_driver)
+		return -ENOMEM;
+
+	pdata->id = ulite_get_id(pdev);
+	if (pdata->id < 0)
+		return pdata->id;
+
+	/* There is a need to use unique driver name */
+	driver_name = devm_kasprintf(&pdev->dev, GFP_KERNEL, "%s%d",
+				     ULITE_NAME, pdata->id);
+	if (!driver_name) {
+		ret = -ENOMEM;
+		goto err_out_id;
+	}
+
+	ulite_uart_driver->owner = THIS_MODULE;
+	ulite_uart_driver->driver_name = driver_name;
+	ulite_uart_driver->dev_name = ULITE_NAME;
+	ulite_uart_driver->major = ULITE_MAJOR;
+	ulite_uart_driver->minor = pdata->id;
+	ulite_uart_driver->nr = 1;
+#ifdef CONFIG_SERIAL_UARTLITE_CONSOLE
+	ulite_console = devm_kzalloc(&pdev->dev, sizeof(*ulite_console),
+				     GFP_KERNEL);
+	if (!ulite_console) {
+		ret = -ENOMEM;
+		goto err_out_id;
+	}
+
+	strncpy(ulite_console->name, ULITE_NAME,
+		sizeof(ulite_console->name));
+	ulite_console->index = pdata->id;
+	ulite_console->write = ulite_console_write;
+	ulite_console->device = uart_console_device;
+	ulite_console->setup = ulite_console_setup;
+	ulite_console->flags = CON_PRINTBUFFER;
+	ulite_uart_driver->cons = ulite_console;
+	ulite_console->data = ulite_uart_driver;
+#endif
+
+	dev_dbg(&pdev->dev, "uartlite: calling uart_register_driver()\n");
+	ret = uart_register_driver(ulite_uart_driver);
+	if (ret < 0) {
+		dev_err(&pdev->dev, "Failed to register driver\n");
+		goto err_out_id;
+	}
+
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	if (!res)
-		return -ENODEV;
+	if (!res) {
+		ret = -ENODEV;
+		goto err_out_unregister_driver;
+	}
 
 	irq = platform_get_irq(pdev, 0);
-	if (irq <= 0)
-		return -ENXIO;
+	if (irq <= 0) {
+		ret = -ENXIO;
+		goto err_out_unregister_driver;
+	}
 
 	pdata->clk = devm_clk_get(&pdev->dev, "s_axi_aclk");
 	if (IS_ERR(pdata->clk)) {
-		if (PTR_ERR(pdata->clk) != -ENOENT)
-			return PTR_ERR(pdata->clk);
+		if (PTR_ERR(pdata->clk) != -ENOENT) {
+			ret = PTR_ERR(pdata->clk);
+			goto err_out_unregister_driver;
+		}
 
 		/*
 		 * Clock framework support is optional, continue on
@@ -837,11 +928,10 @@ static int ulite_probe(struct platform_device *pdev)
 		pdata->clk = NULL;
 	}
 
-	pdata->ulite_uart_driver = &ulite_uart_driver;
 	ret = clk_prepare_enable(pdata->clk);
 	if (ret) {
 		dev_err(&pdev->dev, "Failed to prepare clock\n");
-		return ret;
+		goto err_out_unregister_driver;
 	}
 
 	pm_runtime_use_autosuspend(&pdev->dev);
@@ -849,10 +939,27 @@ static int ulite_probe(struct platform_device *pdev)
 	pm_runtime_set_active(&pdev->dev);
 	pm_runtime_enable(&pdev->dev);
 
-	ret = ulite_assign(&pdev->dev, id, res->start, irq, pdata);
+	ulite_uart_driver->tty_driver->name_base = pdata->id;
+	pdata->ulite_uart_driver = ulite_uart_driver;
+	ret = ulite_assign(&pdev->dev, pdata->id, res->start, irq, pdata);
+	if (ret < 0)
+		goto err_out_clk_disable;
 
 	pm_runtime_mark_last_busy(&pdev->dev);
 	pm_runtime_put_autosuspend(&pdev->dev);
+	return 0;
+
+err_out_clk_disable:
+	clk_disable_unprepare(pdata->clk);
+	pm_runtime_disable(&pdev->dev);
+	pm_runtime_set_suspended(&pdev->dev);
+	pm_runtime_dont_use_autosuspend(&pdev->dev);
+err_out_unregister_driver:
+	uart_unregister_driver(ulite_uart_driver);
+err_out_id:
+	mutex_lock(&bitmap_lock);
+	clear_bit(pdata->id, bitmap);
+	mutex_unlock(&bitmap_lock);
 
 	return ret;
 }
@@ -865,11 +972,16 @@ static int ulite_remove(struct platform_device *pdev)
 
 	clk_unprepare(pdata->clk);
 	rc = ulite_release(&pdev->dev);
+	mutex_lock(&bitmap_lock);
+	clear_bit(pdata->id, bitmap);
+	mutex_unlock(&bitmap_lock);
+
 #ifdef CONFIG_SERIAL_UARTLITE_CONSOLE
 	if (console_port == port)
 		console_port = NULL;
 #endif
 
+	uart_unregister_driver(pdata->ulite_uart_driver);
 	pm_runtime_disable(&pdev->dev);
 	pm_runtime_set_suspended(&pdev->dev);
 	pm_runtime_dont_use_autosuspend(&pdev->dev);
@@ -903,8 +1015,6 @@ static int __init ulite_init(void)
 static void __exit ulite_exit(void)
 {
 	platform_driver_unregister(&ulite_platform_driver);
-	if (ulite_uart_driver.state)
-		uart_unregister_driver(&ulite_uart_driver);
 }
 
 module_init(ulite_init);
