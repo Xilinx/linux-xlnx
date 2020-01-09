@@ -1,0 +1,61 @@
+Xilinx ZynqMp AFI interface Manager
+
+The Zynq UltraScale+ MPSoC Processing System core provides access from PL
+masters to PS internal peripherals, and memory through AXI FIFO interface
+(AFI) interfaces.
+
+Required properties:
+-compatible:		Should contain "xlnx,afi-fpga"
+-config-afi:		Pairs of  <regid value >
+
+The possible values of regid and values are
+ regid:		Regids of the register to be written possible values
+		0- AFIFM0_RDCTRL
+		1- AFIFM0_WRCTRL
+		2- AFIFM1_RDCTRL
+		3- AFIFM1_WRCTRL
+		4- AFIFM2_RDCTRL
+		5- AFIFM2_WRCTRL
+		6- AFIFM3_RDCTRL
+		7- AFIFM3_WRCTRL
+		8- AFIFM4_RDCTRL
+		9- AFIFM4_WRCTRL
+		10- AFIFM5_RDCTRL
+		11- AFIFM5_WRCTRL
+		12- AFIFM6_RDCTRL
+		13- AFIFM6_WRCTRL
+		14- AFIFS
+		15- AFIFS_SS2
+- value:	Array of values to be written.
+		for FM0_RDCTRL(0) the valid values-fabric width   2: 32-bit,1 : 64-bit ,0: 128-bit enabled
+		for FM0_WRCTRL(1) the valid values-fabric width   2: 32-bit,1 : 64-bit ,0: 128-bit enabled
+		for FM1_RDCTRL(2) the valid values-fabric width   2: 32-bit,1 : 64-bit ,0: 128-bit enabled
+		for FM1_WRCTRL(3) the valid values-fabric width   2: 32-bit,1 : 64-bit ,0: 128-bit enabled
+		for FM2_RDCTRL(4) the valid values-fabric width   2: 32-bit,1 : 64-bit ,0: 128-bit enabled
+		for FM2_WRCTRL(5) the valid values-fabric width   2: 32-bit,1 : 64-bit ,0: 128-bit enabled
+		for FM3_RDCTRL(6) the valid values-fabric width   2: 32-bit,1 : 64-bit ,0: 128-bit enabled
+		for FM3_WRCTRL(7) the valid values-fabric width   2: 32-bit,1 : 64-bit ,0: 128-bit enabled
+		for FM4_RDCTRL(8) the valid values-fabric width   2: 32-bit,1 : 64-bit ,0: 128-bit enabled
+		for FM4_WRCTRL(9) the valid values-fabric width   2: 32-bit,1 : 64-bit ,0: 128-bit enabled
+		for FM5_RDCTRL(10) the valid values-fabric width   2: 32-bit,1 : 64-bit ,0: 128-bit enabled
+		for FM5_WRCTRL(11) the valid values-fabric width   2: 32-bit,1 : 64-bit ,0: 128-bit enabled
+		for FM6_RDCTRL(12) the valid values-fabric width   2: 32-bit,1 : 64-bit ,0: 128-bit enabled
+		for FM6_WRCTRL(13) the valid values-fabric width   2: 32-bit,1 : 64-bit ,0: 128-bit enabled
+		for AFI_FA(14)
+			dw_ss1_sel	bits (11:10)
+			dw_ss0_sel	bits (9:8)
+				0x0: 32-bit AXI data width),
+				0x1: 64-bit AXI data width,
+				0x2: 128-bit AXI data
+		All other bits are 0 write ignored.
+
+		for AFI_FA(15)  selects for ss2AXI data width valid values
+					0x000: 32-bit AXI data width),
+					0x100: 64-bit AXI data width,
+					0x200: 128-bit AXI data
+
+Example:
+afi0: afi0 {
+	compatible = "xlnx,afi-fpga";
+	config-afi = <0 2>, <1 1>, <2 1>;
+};
