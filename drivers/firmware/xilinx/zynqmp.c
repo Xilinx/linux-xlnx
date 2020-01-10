@@ -519,6 +519,8 @@ static inline int versal_is_valid_ioctl(u32 ioctl_id)
 	case IOCTL_RPU_BOOT_ADDR_CONFIG:
 	case IOCTL_TCM_COMB_CONFIG:
 	case IOCTL_SET_TAPDELAY_BYPASS:
+	case IOCTL_SD_DLL_RESET:
+	case IOCTL_SET_SD_TAPDELAY:
 	case IOCTL_WRITE_GGS:
 	case IOCTL_READ_GGS:
 	case IOCTL_WRITE_PGGS:
@@ -552,6 +554,8 @@ static inline int zynqmp_is_valid_ioctl(u32 ioctl_id)
 	case IOCTL_TCM_COMB_CONFIG:
 	case IOCTL_SET_TAPDELAY_BYPASS:
 	case IOCTL_SET_SGMII_MODE:
+	case IOCTL_SD_DLL_RESET:
+	case IOCTL_SET_SD_TAPDELAY:
 	case IOCTL_WRITE_GGS:
 	case IOCTL_READ_GGS:
 	case IOCTL_WRITE_PGGS:
