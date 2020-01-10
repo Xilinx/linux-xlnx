@@ -1150,6 +1150,13 @@ static struct uart_driver cdns_uart_uart_driver;
  */
 static void cdns_uart_console_putchar(struct uart_port *port, int ch)
 {
+	unsigned int ctrl_reg;
+
+	ctrl_reg = readl(port->membase + CDNS_UART_CR);
+	while (ctrl_reg & CDNS_UART_CR_TX_DIS) {
+		ctrl_reg = readl(port->membase + CDNS_UART_CR);
+		cpu_relax();
+	}
 	while (readl(port->membase + CDNS_UART_SR) & CDNS_UART_SR_TXFULL)
 		cpu_relax();
 	writel(ch, port->membase + CDNS_UART_FIFO);
