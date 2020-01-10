@@ -158,7 +158,8 @@ enum pm_ioctl_id {
 	IOCTL_TCM_COMB_CONFIG,
 	IOCTL_SET_TAPDELAY_BYPASS,
 	IOCTL_SET_SGMII_MODE,
-	IOCTL_SET_SD_TAPDELAY = 7,
+	IOCTL_SD_DLL_RESET,
+	IOCTL_SET_SD_TAPDELAY,
 	IOCTL_SET_PLL_FRAC_MODE,
 	IOCTL_GET_PLL_FRAC_MODE,
 	IOCTL_SET_PLL_FRAC_DATA,
@@ -350,6 +351,12 @@ enum zynqmp_pm_request_ack {
 enum tap_delay_type {
 	PM_TAPDELAY_INPUT = 0,
 	PM_TAPDELAY_OUTPUT,
+};
+
+enum dll_reset_type {
+	PM_DLL_RESET_ASSERT,
+	PM_DLL_RESET_RELEASE,
+	PM_DLL_RESET_PULSE,
 };
 
 enum pm_pinctrl_config_param {
