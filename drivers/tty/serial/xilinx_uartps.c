@@ -232,6 +232,13 @@ static void cdns_uart_handle_rx(void *dev_id, unsigned int isrstatus)
 
 	is_rxbs_support = cdns_uart->quirks & CDNS_UART_RXBS_SUPPORT;
 
+	/*
+	 * RXEMPTY will never be set if RX is disabled as read bytes
+	 * will not be removed from the FIFO
+	 */
+	if (readl(port->membase + CDNS_UART_CR) & CDNS_UART_CR_RX_DIS)
+		return;
+
 	while ((readl(port->membase + CDNS_UART_SR) &
 		CDNS_UART_SR_RXEMPTY) != CDNS_UART_SR_RXEMPTY) {
 		if (is_rxbs_support)
