@@ -17,6 +17,8 @@
 extern char _ssbss[], _esbss[];
 extern unsigned long __ivt_start[], __ivt_end[];
 
+extern char __initramfs_end[];
+
 extern u32 _fdt_start[], _fdt_end[];
 
 # endif /* !__ASSEMBLY__ */
