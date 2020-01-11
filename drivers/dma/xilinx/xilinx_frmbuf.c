@@ -1559,7 +1559,7 @@ static int xilinx_frmbuf_probe(struct platform_device *pdev)
 	/* Initialize the DMA engine */
 	if (xdev->cfg->flags & XILINX_PPC_PROP) {
 		err = of_property_read_u32(node, "xlnx,pixels-per-clock", &ppc);
-		if (err || (ppc != 1 && ppc != 2 && ppc != 4)) {
+		if (err || (ppc != 1 && ppc != 2 && ppc != 4 && ppc != 8)) {
 			dev_err(&pdev->dev, "missing or invalid pixels per clock dts prop\n");
 			return err;
 		}
