@@ -10,13 +10,14 @@ extracts the packet data. This data is taken in by the Video Format Bridge
 (VFB) if selected and converted into AXI4 Stream video data at selected
 pixels per clock as per AXI4-Stream Video IP and System Design UG934.
 
-For more details, please refer to PG232 MIPI CSI-2 Receiver Subsystem v2.0
+For more details, please refer to PG232 MIPI CSI-2 Receiver Subsystem v4.1
 
 Required properties:
 
-- compatible: Must contain "xlnx,mipi-csi2-rx-subsystem-4.0". The older strings
-  "xlnx,mipi-csi2-rx-subsystem-2.0" and "xlnx,mipi-csi2-rx-subsystem-3.0" are
-  deprecated.
+- compatible: Must contain "xlnx,mipi-csi2-rx-subsystem-4.1" or
+  "xlnx,mipi-csi2-rx-subsystem-4.0".
+  The older strings "xlnx,mipi-csi2-rx-subsystem-2.0" and
+  "xlnx,mipi-csi2-rx-subsystem-3.0" are deprecated.
 
 - reg: Physical base address and length of the registers set for the device.
 
@@ -24,12 +25,6 @@ Required properties:
 
 - xlnx,en-active-lanes: Enable Active lanes configuration in Protocol
   Configuration Register.
-
-- xlnx,dphy-present: This is equivalent to whether DPHY register interface is
-  enabled or not.
-
-- xlnx,iic-present: This shows whether subsystem's IIC is present or not. This
-  affects the base address of the DPHY.
 
 - xlnx,vc: Virtual Channel, specifies virtual channel number to be filtered.
   If this is 4 then all virtual channels are allowed.
@@ -71,10 +66,17 @@ Optional Properties
 
 - reset-gpios: Optional specifier for a GPIO that asserts video_aresetn.
 
+- xlnx,dphy-present: Boolean to indicate whether DPHY register interface is
+  enabled or not.
+
+- xlnx,iic-present: Boolean to show whether subsystem's IIC is present or not.
+  This affects the base address of the DPHY. This can't be present when the
+  compatible string is "xlnx,mipi-csi2-rx-subsystem-4.1".
+
 Example:
 
 	csiss_1: csiss@a0020000 {
-		compatible = "xlnx,mipi-csi2-rx-subsystem-4.0";
+		compatible = "xlnx,mipi-csi2-rx-subsystem-4.1";
 		reg = <0x0 0xa0020000 0x0 0x20000>;
 		interrupt-parent = <&gic>;
 		interrupts = <0 95 4>;
