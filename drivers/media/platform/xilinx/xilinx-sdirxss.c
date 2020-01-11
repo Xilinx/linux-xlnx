@@ -248,6 +248,8 @@
 #define XST352_BYTE3_COLOR_FORMAT_YUV444	0x1
 #define XST352_BYTE3_COLOR_FORMAT_420		0x3
 
+#define CLK_INT		148500000UL
+
 /**
  * enum sdi_family_enc - SDI Transport Video Format Detected with Active Pixels
  * @XSDIRX_SMPTE_ST_274: SMPTE ST 274 detected with AP 1920x1080
@@ -503,6 +505,46 @@ static inline void xsdirx_core_disable(struct xsdirxss_core *core)
 static inline void xsdirx_core_enable(struct xsdirxss_core *core)
 {
 	xsdirxss_set(core, XSDIRX_RST_CTRL_REG, XSDIRX_RST_CTRL_SS_EN_MASK);
+}
+
+static void xsdirxss_set_gtclk(struct xsdirxss_state *state)
+{
+	struct clk *gtclk;
+	unsigned long clkrate;
+	int ret = -1, is_frac;
+	struct xsdirxss_core *core = &state->core;
+	u32 mode;
+
+	mode = xsdirxss_read(core, XSDIRX_MODE_DET_STAT_REG);
+	mode &= XSDIRX_MODE_DET_STAT_RX_MODE_MASK;
+
+	/*
+	 * TODO: For now, don't change the clock rate for any mode except 12G.
+	 * In future, configure gt clock for all modes and enable clock only
+	 * when needed (stream on/off).
+	 */
+	if (mode != XSDIRX_MODE_12GI_MASK && mode != XSDIRX_MODE_12GF_MASK)
+		return;
+
+	/* get sdi_rx_clk */
+	gtclk = core->clks[1].clk;
+	clkrate = clk_get_rate(gtclk);
+	is_frac = state->frame_interval.numerator == 1001 ? 1 : 0;
+
+	/* calcualte clkrate */
+	if (!is_frac)
+		clkrate = CLK_INT;
+	else
+		clkrate = (CLK_INT * 1000) / 1001;
+
+	ret = clk_set_rate(gtclk, clkrate);
+	if (ret)
+		dev_err(core->dev, "failed to set clk rate = %d\n", ret);
+
+	clkrate = clk_get_rate(gtclk);
+
+	dev_dbg(core->dev, "clkrate = %lu is_frac = %d\n",
+		clkrate, is_frac);
 }
 
 static int xsdirx_set_modedetect(struct xsdirxss_core *core, u16 mask)
@@ -1042,6 +1084,7 @@ static irqreturn_t xsdirxss_irq_handler(int irq, void *dev_id)
 
 			if (!xsdirx_get_stream_properties(state)) {
 				state->vidlocked = true;
+				xsdirxss_set_gtclk(state);
 			} else {
 				dev_err(core->dev, "Unable to get stream properties!\n");
 				state->vidlocked = false;
@@ -1842,9 +1885,9 @@ static int xsdirxss_parse_of(struct xsdirxss_state *xsdirxss)
 
 	/* Register interrupt handler */
 	core->irq = irq_of_parse_and_map(node, 0);
-
-	ret = devm_request_irq(core->dev, core->irq, xsdirxss_irq_handler,
-			       IRQF_SHARED, "xilinx-sdirxss", xsdirxss);
+	ret = devm_request_threaded_irq(core->dev, core->irq, NULL,
+					xsdirxss_irq_handler, IRQF_ONESHOT,
+					"xilinx-sdirxss", xsdirxss);
 	if (ret) {
 		dev_err(core->dev, "Err = %d Interrupt handler reg failed!\n",
 			ret);
@@ -2004,9 +2047,9 @@ static int xsdirxss_probe(struct platform_device *pdev)
 
 	xsdirxss->streaming = false;
 
-	dev_info(xsdirxss->core.dev, "Xilinx SDI Rx Subsystem device found!\n");
-
 	xsdirx_core_enable(core);
+
+	dev_info(xsdirxss->core.dev, "Xilinx SDI Rx Subsystem device found!\n");
 
 	return 0;
 error:
