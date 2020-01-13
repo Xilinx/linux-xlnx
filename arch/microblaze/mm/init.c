@@ -363,7 +363,8 @@ void __init *early_get_page(void)
 	 * because of mem mapping from head.S
 	 */
 	return memblock_alloc_try_nid_raw(PAGE_SIZE, PAGE_SIZE,
-				MEMBLOCK_LOW_LIMIT, memory_start + kernel_tlb,
+				memory_start,
+				(phys_addr_t)__virt_to_phys(_end_tlb_mapping),
 				NUMA_NO_NODE);
 }
 
