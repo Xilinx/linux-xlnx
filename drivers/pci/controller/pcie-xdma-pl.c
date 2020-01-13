@@ -45,8 +45,6 @@
 
 /* Interrupt registers definitions */
 #define XILINX_PCIE_INTR_LINK_DOWN	BIT(0)
-#define XILINX_PCIE_INTR_ECRC_ERR	BIT(1)
-#define XILINX_PCIE_INTR_STR_ERR	BIT(2)
 #define XILINX_PCIE_INTR_HOT_RESET	BIT(3)
 #define XILINX_PCIE_INTR_CFG_TIMEOUT	BIT(8)
 #define XILINX_PCIE_INTR_CORRECTABLE	BIT(9)
@@ -62,8 +60,7 @@
 #define XILINX_PCIE_INTR_SLV_ILLBUR	BIT(25)
 #define XILINX_PCIE_INTR_MST_DECERR	BIT(26)
 #define XILINX_PCIE_INTR_MST_SLVERR	BIT(27)
-#define XILINX_PCIE_INTR_MST_ERRP	BIT(28)
-#define XILINX_PCIE_IMR_ALL_MASK	0x1FF30FED
+#define XILINX_PCIE_IMR_ALL_MASK	0x0FF30FE9
 #define XILINX_PCIE_IDR_ALL_MASK	0xFFFFFFFF
 #define XILINX_PCIE_IDRN_MASK           GENMASK(19, 16)
 
@@ -348,12 +345,6 @@ static irqreturn_t xilinx_pcie_intr_handler(int irq, void *data)
 	if (status & XILINX_PCIE_INTR_LINK_DOWN)
 		dev_warn(port->dev, "Link Down\n");
 
-	if (status & XILINX_PCIE_INTR_ECRC_ERR)
-		dev_warn(port->dev, "ECRC failed\n");
-
-	if (status & XILINX_PCIE_INTR_STR_ERR)
-		dev_warn(port->dev, "Streaming error\n");
-
 	if (status & XILINX_PCIE_INTR_HOT_RESET)
 		dev_info(port->dev, "Hot reset\n");
 
@@ -436,9 +427,6 @@ static irqreturn_t xilinx_pcie_intr_handler(int irq, void *data)
 
 	if (status & XILINX_PCIE_INTR_MST_SLVERR)
 		dev_warn(port->dev, "Master slave error\n");
-
-	if (status & XILINX_PCIE_INTR_MST_ERRP)
-		dev_warn(port->dev, "Master error poison\n");
 
 error:
 	/* Clear the Interrupt Decode register */
