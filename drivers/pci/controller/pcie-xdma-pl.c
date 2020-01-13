@@ -326,7 +326,10 @@ static irqreturn_t xilinx_pcie_intr_handler(int irq, void *data)
 
 			if (IS_ENABLED(CONFIG_PCI_MSI)) {
 				/* Handle MSI Interrupt */
-				generic_handle_irq(msi_data);
+				val = irq_find_mapping(port->msi.dev_domain,
+						       msi_data);
+				if (val)
+					generic_handle_irq(val);
 			}
 		}
 	}
@@ -388,7 +391,7 @@ static void xilinx_compose_msi_msg(struct irq_data *data, struct msi_msg *msg)
 	msi_addr = virt_to_phys((void *)msi->msi_pages);
 	msg->address_lo = lower_32_bits(msi_addr);
 	msg->address_hi = upper_32_bits(msi_addr);
-	msg->data = data->irq;
+	msg->data = data->hwirq;
 }
 
 static int xilinx_msi_set_affinity(struct irq_data *irq_data,
