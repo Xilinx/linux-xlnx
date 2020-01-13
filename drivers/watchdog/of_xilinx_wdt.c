@@ -18,6 +18,7 @@
 #include <linux/of_device.h>
 #include <linux/of_address.h>
 
+#define XWT_WWDT_DEFAULT_TIMEOUT	10
 #define XWT_WWDT_MIN_TIMEOUT		1
 #define XWT_WWDT_MAX_TIMEOUT		80
 
@@ -54,6 +55,13 @@
 #define XWT_TIMER_FAILED            0xFFFFFFFF
 
 #define WATCHDOG_NAME     "Xilinx Watchdog"
+
+static int wdt_timeout;
+
+module_param(wdt_timeout, int, 0644);
+MODULE_PARM_DESC(wdt_timeout,
+		 "Watchdog time in seconds. (default="
+		 __MODULE_STRING(XWT_WWDT_DEFAULT_TIMEOUT) ")");
 
 /**
  * enum xwdt_ip_type - WDT IP type.
@@ -416,6 +424,15 @@ static int xwdt_probe(struct platform_device *pdev)
 			xilinx_wdt_wdd->timeout =
 				2 * ((1 << xdev->wdt_interval) /
 					pfreq);
+	} else {
+		xilinx_wdt_wdd->timeout = XWT_WWDT_DEFAULT_TIMEOUT;
+		xilinx_wdt_wdd->min_timeout = XWT_WWDT_MIN_TIMEOUT;
+		xilinx_wdt_wdd->max_timeout = XWT_WWDT_MAX_TIMEOUT;
+
+		rc = watchdog_init_timeout(xilinx_wdt_wdd,
+					   wdt_timeout, &pdev->dev);
+		if (rc)
+			dev_warn(&pdev->dev, "unable to set timeout value\n");
 	}
 
 	spin_lock_init(&xdev->spinlock);
