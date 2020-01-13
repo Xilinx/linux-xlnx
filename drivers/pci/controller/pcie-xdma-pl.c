@@ -411,7 +411,7 @@ static int xilinx_irq_domain_alloc(struct irq_domain *domain, unsigned int virq,
 {
 	struct xilinx_pcie_port *pcie = domain->host_data;
 	struct xilinx_msi *msi = &pcie->msi;
-	int bit;
+	int bit, tst_bit;
 	int i;
 
 	mutex_lock(&msi->lock);
@@ -421,6 +421,15 @@ static int xilinx_irq_domain_alloc(struct irq_domain *domain, unsigned int virq,
 		mutex_unlock(&msi->lock);
 		return -ENOSPC;
 	}
+
+	if ((bit % nr_irqs) == 0) {
+		bit = bit;
+	} else if (nr_irqs > 1) {
+		tst_bit = bit & ((1 << ilog2(nr_irqs)) - 1);
+		bit = bit - tst_bit;
+		bit = bit + nr_irqs;
+	}
+
 	bitmap_set(msi->bitmap, bit, nr_irqs);
 
 	for (i = 0; i < nr_irqs; i++) {
