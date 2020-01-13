@@ -480,22 +480,12 @@ static int xilinx_irq_domain_alloc(struct irq_domain *domain, unsigned int virq,
 	int i;
 
 	mutex_lock(&msi->lock);
-	bit = bitmap_find_next_zero_area(msi->bitmap, XILINX_NUM_MSI_IRQS, 0,
-					 nr_irqs, 0);
-	if (bit >= XILINX_NUM_MSI_IRQS) {
+	bit = bitmap_find_free_region(msi->bitmap, XILINX_NUM_MSI_IRQS,
+				      get_count_order(nr_irqs));
+	if (bit < 0) {
 		mutex_unlock(&msi->lock);
 		return -ENOSPC;
 	}
-
-	if ((bit % nr_irqs) == 0) {
-		bit = bit;
-	} else if (nr_irqs > 1) {
-		tst_bit = bit & ((1 << ilog2(nr_irqs)) - 1);
-		bit = bit - tst_bit;
-		bit = bit + nr_irqs;
-	}
-
-	bitmap_set(msi->bitmap, bit, nr_irqs);
 
 	for (i = 0; i < nr_irqs; i++) {
 		irq_domain_set_info(domain, virq + i, bit + i, &xilinx_irq_chip,
@@ -514,7 +504,8 @@ static void xilinx_irq_domain_free(struct irq_domain *domain, unsigned int virq,
 	struct xilinx_msi *msi = &pcie->msi;
 
 	mutex_lock(&msi->lock);
-	bitmap_clear(msi->bitmap, data->hwirq, nr_irqs);
+	bitmap_release_region(msi->bitmap, data->hwirq,
+			      get_count_order(nr_irqs));
 	mutex_unlock(&msi->lock);
 }
 
