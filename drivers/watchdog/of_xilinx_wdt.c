@@ -37,7 +37,17 @@
 
 #define WATCHDOG_NAME     "Xilinx Watchdog"
 
+/**
+ * enum xwdt_ip_type - WDT IP type.
+ *
+ * @XWDT_WDT: Soft wdt ip.
+ */
+enum xwdt_ip_type {
+	XWDT_WDT = 0,
+};
+
 struct xwdt_devtype_data {
+	enum xwdt_ip_type wdttype;
 	const struct watchdog_ops *xwdt_ops;
 	const struct watchdog_info *xwdt_info;
 };
@@ -166,6 +176,7 @@ static void xwdt_clk_disable_unprepare(void *data)
 }
 
 static const struct xwdt_devtype_data xwdt_wdt_data = {
+	.wdttype = XWDT_WDT,
 	.xwdt_info = &xilinx_wdt_ident,
 	.xwdt_ops = &xilinx_wdt_ops,
 };
@@ -188,6 +199,7 @@ static int xwdt_probe(struct platform_device *pdev)
 	struct watchdog_device *xilinx_wdt_wdd;
 	const struct of_device_id *of_id;
 	const struct xwdt_devtype_data *devtype;
+	enum xwdt_ip_type wdttype;
 
 	xdev = devm_kzalloc(dev, sizeof(*xdev), GFP_KERNEL);
 	if (!xdev)
@@ -201,6 +213,8 @@ static int xwdt_probe(struct platform_device *pdev)
 
 	devtype = of_id->data;
 
+	wdttype = devtype->wdttype;
+
 	xilinx_wdt_wdd->info = devtype->xwdt_info;
 	xilinx_wdt_wdd->ops = devtype->xwdt_ops;
 	xilinx_wdt_wdd->parent = dev;
@@ -209,18 +223,20 @@ static int xwdt_probe(struct platform_device *pdev)
 	if (IS_ERR(xdev->base))
 		return PTR_ERR(xdev->base);
 
-	rc = of_property_read_u32(dev->of_node, "xlnx,wdt-interval",
-				  &xdev->wdt_interval);
-	if (rc)
-		dev_warn(dev, "Parameter \"xlnx,wdt-interval\" not found\n");
+	if (wdttype == XWDT_WDT) {
+		rc = of_property_read_u32(dev->of_node, "xlnx,wdt-interval",
+					  &xdev->wdt_interval);
+		if (rc)
+			dev_warn(dev, "Parameter \"xlnx,wdt-interval\" not found\n");
 
-	rc = of_property_read_u32(dev->of_node, "xlnx,wdt-enable-once",
-				  &enable_once);
-	if (rc)
-		dev_warn(dev,
-			 "Parameter \"xlnx,wdt-enable-once\" not found\n");
+		rc = of_property_read_u32(dev->of_node, "xlnx,wdt-enable-once",
+					  &enable_once);
+		if (rc)
+			dev_warn(dev,
+				 "Parameter \"xlnx,wdt-enable-once\" not found\n");
 
-	watchdog_set_nowayout(xilinx_wdt_wdd, enable_once);
+		watchdog_set_nowayout(xilinx_wdt_wdd, enable_once);
+	}
 
 	xdev->clk = devm_clk_get(dev, NULL);
 	if (IS_ERR(xdev->clk)) {
@@ -242,13 +258,17 @@ static int xwdt_probe(struct platform_device *pdev)
 		pfreq = clk_get_rate(xdev->clk);
 	}
 
-	/*
-	 * Twice of the 2^wdt_interval / freq  because the first wdt overflow is
-	 * ignored (interrupt), reset is only generated at second wdt overflow
-	 */
-	if (pfreq && xdev->wdt_interval)
-		xilinx_wdt_wdd->timeout = 2 * ((1 << xdev->wdt_interval) /
-					  pfreq);
+	if (wdttype == XWDT_WDT) {
+		/*
+		 * Twice of the 2^wdt_interval / freq  because
+		 * the first wdt overflow is ignored (interrupt),
+		 * reset is only generated at second wdt overflow
+		 */
+		if (pfreq && xdev->wdt_interval)
+			xilinx_wdt_wdd->timeout =
+				2 * ((1 << xdev->wdt_interval) /
+					pfreq);
+	}
 
 	spin_lock_init(&xdev->spinlock);
 	watchdog_set_drvdata(xilinx_wdt_wdd, xdev);
@@ -263,10 +283,12 @@ static int xwdt_probe(struct platform_device *pdev)
 	if (rc)
 		return rc;
 
-	rc = xwdt_selftest(xdev);
-	if (rc == XWT_TIMER_FAILED) {
-		dev_err(dev, "SelfTest routine error\n");
-		return rc;
+	if (wdttype == XWDT_WDT) {
+		rc = xwdt_selftest(xdev);
+		if (rc == XWT_TIMER_FAILED) {
+			dev_err(dev, "SelfTest routine error\n");
+			return rc;
+		}
 	}
 
 	rc = devm_watchdog_register_device(dev, xilinx_wdt_wdd);
