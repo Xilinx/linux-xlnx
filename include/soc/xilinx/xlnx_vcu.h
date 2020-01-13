@@ -17,6 +17,7 @@
  * struct xvcu_device - Xilinx VCU init device structure
  * @dev: Platform device
  * @pll_ref: pll ref clock source
+ * @reset_gpio: vcu reset gpio
  * @aclk: axi clock source
  * @logicore_reg_ba: logicore reg base address
  * @vcu_slcr_ba: vcu_slcr Register base address
@@ -25,6 +26,7 @@ struct xvcu_device {
 	struct device *dev;
 	struct clk *pll_ref;
 	struct clk *aclk;
+	struct gpio_desc *reset_gpio;
 	void __iomem *logicore_reg_ba;
 	void __iomem *vcu_slcr_ba;
 };
