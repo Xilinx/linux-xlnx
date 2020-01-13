@@ -14,6 +14,8 @@
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
 
+#include <soc/xilinx/xlnx_vcu.h>
+
 /* Address map for different registers implemented in the VCU LogiCORE IP. */
 #define VCU_ECODER_ENABLE		0x00
 #define VCU_DECODER_ENABLE		0x04
@@ -275,6 +277,32 @@ static void xvcu_write_field_reg(void __iomem *iomem, int offset,
 
 	xvcu_write(iomem, offset, val);
 }
+
+/**
+ * xvcu_get_color_depth - read the color depth register
+ * @xvcu:	Pointer to the xvcu_device structure
+ *
+ * Return:	Returns 32bit value
+ *
+ */
+u32 xvcu_get_color_depth(struct xvcu_device *xvcu)
+{
+	return xvcu_read(xvcu->logicore_reg_ba, VCU_ENC_COLOR_DEPTH);
+}
+EXPORT_SYMBOL_GPL(xvcu_get_color_depth);
+
+/**
+ * xvcu_get_memory_depth - read the memory depth register
+ * @xvcu:	Pointer to the xvcu_device structure
+ *
+ * Return:	Returns 32bit value
+ *
+ */
+u32 xvcu_get_memory_depth(struct xvcu_device *xvcu)
+{
+	return xvcu_read(xvcu->logicore_reg_ba, VCU_MEMORY_DEPTH);
+}
+EXPORT_SYMBOL_GPL(xvcu_get_memory_depth);
 
 /**
  * xvcu_set_vcu_pll_info - Set the VCU PLL info
@@ -571,6 +599,11 @@ static int xvcu_probe(struct platform_device *pdev)
 
 	dev_set_drvdata(&pdev->dev, xvcu);
 
+	ret = of_platform_populate(xvcu->dev->of_node, NULL, NULL, &pdev->dev);
+	if (ret) {
+		dev_err(&pdev->dev, "Failed to register allegro codecs\n");
+		goto error_pll_ref;
+	}
 	dev_info(&pdev->dev, "%s: Probed successfully\n", __func__);
 
 	return 0;
@@ -583,7 +616,7 @@ error_aclk:
 }
 
 /**
- * xvcu_remove - Insert gasket isolation
+ * xvcu_remove - Depopulate the child nodes, Insert gasket isolation
  *			and disable the clock
  * @pdev:	Pointer to the platform_device structure
  *
@@ -597,6 +630,8 @@ static int xvcu_remove(struct platform_device *pdev)
 	xvcu = platform_get_drvdata(pdev);
 	if (!xvcu)
 		return -ENODEV;
+
+	of_platform_depopulate(&pdev->dev);
 
 	/* Add the the Gasket isolation and put the VCU in reset. */
 	xvcu_write(xvcu->logicore_reg_ba, VCU_GASKET_INIT, 0);
