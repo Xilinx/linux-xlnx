@@ -107,6 +107,15 @@
 #define XILINX_PCIE_MISC_IR_ENABLE	0x00000348
 #define XILINX_PCIE_MISC_IR_LOCAL	BIT(1)
 
+/* CPM versal Interrupt registers */
+#define XILINX_PCIE_INTR_CFG_PCIE_TIMEOUT	BIT(4)
+#define XILINX_PCIE_INTR_CFG_ERR_POISON		BIT(12)
+#define XILINX_PCIE_INTR_PME_TO_ACK_RCVD	BIT(15)
+#define XILINX_PCIE_INTR_PM_PME_RCVD		BIT(17)
+#define XILINX_PCIE_INTR_SLV_PCIE_TIMEOUT	BIT(28)
+
+#define XILINX_PCIE_IMR_ALL_MASK_CPM		0x1FF39FF9
+
 enum msi_mode {
 	MSI_DECD_MODE = 1,
 	MSI_FIFO_MODE,
@@ -377,7 +386,7 @@ static irqreturn_t xilinx_pcie_intr_handler(int irq, void *data)
 	}
 
 	if (port->msi_mode == MSI_FIFO_MODE &&
-	    (status & XILINX_PCIE_INTR_MSI)) {
+	    (status & XILINX_PCIE_INTR_MSI) && (!port->cpm_base)) {
 		/* MSI Interrupt */
 		val = pcie_read(port, XILINX_PCIE_REG_RPIFR1);
 
@@ -427,6 +436,23 @@ static irqreturn_t xilinx_pcie_intr_handler(int irq, void *data)
 
 	if (status & XILINX_PCIE_INTR_MST_SLVERR)
 		dev_warn(port->dev, "Master slave error\n");
+
+	if (port->cpm_base) {
+		if (status & XILINX_PCIE_INTR_CFG_PCIE_TIMEOUT)
+			dev_warn(port->dev, "PCIe ECAM access timeout\n");
+
+		if (status & XILINX_PCIE_INTR_CFG_ERR_POISON)
+			dev_warn(port->dev, "ECAM poisoned completion received\n");
+
+		if (status & XILINX_PCIE_INTR_PME_TO_ACK_RCVD)
+			dev_warn(port->dev, "PME_TO_ACK message received\n");
+
+		if (status & XILINX_PCIE_INTR_PM_PME_RCVD)
+			dev_warn(port->dev, "PM_PME message received\n");
+
+		if (status & XILINX_PCIE_INTR_SLV_PCIE_TIMEOUT)
+			dev_warn(port->dev, "PCIe completion timeout received\n");
+	}
 
 error:
 	/* Clear the Interrupt Decode register */
@@ -606,7 +632,9 @@ static void xilinx_pcie_init_port(struct xilinx_pcie_port *port)
 		   XILINX_PCIE_REG_IDR);
 
 	/* Enable all interrupts */
-	pcie_write(port, XILINX_PCIE_IMR_ALL_MASK, XILINX_PCIE_REG_IMR);
+	if (!port->cpm_base)
+		pcie_write(port, XILINX_PCIE_IMR_ALL_MASK,
+			   XILINX_PCIE_REG_IMR);
 	pcie_write(port, XILINX_PCIE_IDRN_MASK, XILINX_PCIE_REG_IDRN_MASK);
 	if (port->msi_mode == MSI_DECD_MODE) {
 		pcie_write(port, XILINX_PCIE_IDR_ALL_MASK,
@@ -622,6 +650,8 @@ static void xilinx_pcie_init_port(struct xilinx_pcie_port *port)
 	if (port->cpm_base) {
 		writel(XILINX_PCIE_MISC_IR_LOCAL,
 		       port->cpm_base + XILINX_PCIE_MISC_IR_ENABLE);
+		pcie_write(port, XILINX_PCIE_IMR_ALL_MASK_CPM,
+			   XILINX_PCIE_REG_IMR);
 	}
 }
 
