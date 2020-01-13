@@ -636,6 +636,34 @@ static int xilinx_request_misc_irq(struct xilinx_pcie_port *port)
 	return 0;
 }
 
+static int xilinx_request_msi_irq(struct xilinx_pcie_port *port)
+{
+	struct device *dev = port->dev;
+	struct platform_device *pdev = to_platform_device(dev);
+
+	port->msi.irq_msi0 = platform_get_irq_byname(pdev, "msi0");
+	if (port->msi.irq_msi0 <= 0) {
+		dev_err(dev, "Unable to find msi0 IRQ line\n");
+		return port->msi.irq_msi0;
+	}
+
+	irq_set_chained_handler_and_data(port->msi.irq_msi0,
+					 xilinx_pcie_msi_handler_low,
+					 port);
+
+	port->msi.irq_msi1 = platform_get_irq_byname(pdev, "msi1");
+	if (port->msi.irq_msi1 <= 0) {
+		dev_err(dev, "Unable to find msi1 IRQ line\n");
+		return port->msi.irq_msi1;
+	}
+
+	irq_set_chained_handler_and_data(port->msi.irq_msi1,
+					 xilinx_pcie_msi_handler_high,
+					 port);
+
+	return 0;
+}
+
 /**
  * xilinx_pcie_parse_dt - Parse Device tree
  * @port: PCIe port information
@@ -646,7 +674,6 @@ static int xilinx_pcie_parse_dt(struct xilinx_pcie_port *port)
 {
 	struct device *dev = port->dev;
 	struct device_node *node = dev->of_node;
-	struct platform_device *pdev = to_platform_device(dev);
 	struct resource regs;
 	const char *type;
 	int err, mode_val, val;
@@ -685,25 +712,9 @@ static int xilinx_pcie_parse_dt(struct xilinx_pcie_port *port)
 		if (err)
 			return err;
 
-		port->msi.irq_msi0 = platform_get_irq_byname(pdev, "msi0");
-		if (port->msi.irq_msi0 <= 0) {
-			dev_err(dev, "Unable to find msi0 IRQ line\n");
-			return port->msi.irq_msi0;
-		}
-
-		irq_set_chained_handler_and_data(port->msi.irq_msi0,
-						 xilinx_pcie_msi_handler_low,
-						 port);
-
-		port->msi.irq_msi1 = platform_get_irq_byname(pdev, "msi1");
-		if (port->msi.irq_msi1 <= 0) {
-			dev_err(dev, "Unable to find msi1 IRQ line\n");
-			return port->msi.irq_msi1;
-		}
-
-		irq_set_chained_handler_and_data(port->msi.irq_msi1,
-						 xilinx_pcie_msi_handler_high,
-						 port);
+		err = xilinx_request_msi_irq(port);
+		if (err)
+			return err;
 
 	} else if (port->msi_mode == MSI_FIFO_MODE) {
 		port->irq = irq_of_parse_and_map(node, 0);
