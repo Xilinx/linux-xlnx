@@ -22,6 +22,8 @@
 #include <linux/platform_device.h>
 #include <linux/irqchip/chained_irq.h>
 
+#include "../pci.h"
+
 /* Register definitions */
 #define XILINX_PCIE_REG_VSEC		0x0000012c
 #define XILINX_PCIE_REG_BIR		0x00000130
