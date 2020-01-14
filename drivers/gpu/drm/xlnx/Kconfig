@@ -33,6 +33,8 @@ config DRM_XLNX_BRIDGE_DEBUG_FS
 config DRM_ZYNQMP_DPSUB
 	tristate "ZynqMP DP Subsystem Driver"
 	depends on ARCH_ZYNQMP && OF && DRM_XLNX && COMMON_CLK
+	select DMADEVICES
+	select XILINX_DMA_ENGINES
 	select XILINX_DPDMA
 	select GENERIC_PHY
 	help
