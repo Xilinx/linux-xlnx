@@ -119,4 +119,27 @@ struct resource_table *rproc_find_loaded_rsc_table(struct rproc *rproc,
 	return NULL;
 }
 
+static inline
+bool rproc_allow_sysfs_kick(struct rproc *rproc)
+{
+	return (rproc->sysfs_kick) ? true : false;
+}
+
+static inline
+bool rproc_peek_remote_kick(struct rproc *rproc)
+{
+	if (rproc->ops->peek_remote_kick)
+		return rproc->ops->peek_remote_kick(rproc);
+	else
+		return false;
+}
+
+static inline
+void rproc_ack_remote_kick(struct rproc *rproc)
+{
+	if (rproc->ops->ack_remote_kick)
+		rproc->ops->ack_remote_kick(rproc);
+}
+
+int rproc_create_kick_sysfs(struct rproc *rproc);
 #endif /* REMOTEPROC_INTERNAL_H */
