@@ -141,7 +141,7 @@ static int xilinx_timer_set_periodic(struct clock_event_device *evt)
 	return 0;
 }
 
-static struct clock_event_device clockevent_xilinx_timer = {
+static DEFINE_PER_CPU(struct clock_event_device, clockevent_xilinx_timer) = {
 	.name			= "xilinx_clockevent",
 	.features		= CLOCK_EVT_FEAT_ONESHOT |
 				  CLOCK_EVT_FEAT_PERIODIC,
@@ -159,25 +159,25 @@ static inline void timer_ack(void)
 
 static irqreturn_t timer_interrupt(int irq, void *dev_id)
 {
-	struct clock_event_device *evt = &clockevent_xilinx_timer;
+	struct clock_event_device *evt = dev_id;
+
 	timer_ack();
 	evt->event_handler(evt);
 	return IRQ_HANDLED;
 }
 
-static __init int xilinx_clockevent_init(void)
+static __init int xilinx_clockevent_init(int cpu)
 {
-	clockevent_xilinx_timer.mult =
-		div_sc(timer_clock_freq, NSEC_PER_SEC,
-				clockevent_xilinx_timer.shift);
-	clockevent_xilinx_timer.max_delta_ns =
-		clockevent_delta2ns((u32)~0, &clockevent_xilinx_timer);
-	clockevent_xilinx_timer.max_delta_ticks = (u32)~0;
-	clockevent_xilinx_timer.min_delta_ns =
-		clockevent_delta2ns(1, &clockevent_xilinx_timer);
-	clockevent_xilinx_timer.min_delta_ticks = 1;
-	clockevent_xilinx_timer.cpumask = cpumask_of(0);
-	clockevents_register_device(&clockevent_xilinx_timer);
+	struct clock_event_device *ce = per_cpu_ptr(&clockevent_xilinx_timer,
+						    cpu);
+
+	ce->mult = div_sc(timer_clock_freq, NSEC_PER_SEC, ce->shift);
+	ce->max_delta_ns = clockevent_delta2ns((u32)~0, ce);
+	ce->max_delta_ticks = (u32)~0;
+	ce->min_delta_ns = clockevent_delta2ns(1, ce);
+	ce->min_delta_ticks = 1;
+	ce->cpumask = cpumask_of(cpu);
+	clockevents_register_device(ce);
 
 	return 0;
 }
@@ -185,17 +185,18 @@ static __init int xilinx_clockevent_init(void)
 static int microblaze_timer_starting(unsigned int cpu)
 {
 	int ret;
+	struct clock_event_device *ce = per_cpu_ptr(&clockevent_xilinx_timer,
+						    cpu);
 
 	pr_debug("%s: cpu %d\n", __func__, cpu);
 
-	ret = request_irq(irq, timer_interrupt, IRQF_TIMER,
-				 "timer", &clockevent_xilinx_timer);
+	ret = request_irq(irq, timer_interrupt, IRQF_TIMER,  "timer", ce);
 	if (ret) {
 		pr_err("%s: request_irq failed\n", __func__);
 		return ret;
 	}
 
-	return xilinx_clockevent_init();
+	return xilinx_clockevent_init(cpu);
 }
 
 static int microblaze_timer_dying(unsigned int cpu)
