@@ -25,6 +25,8 @@
 static void __iomem *timer_baseaddr;
 static void __iomem *clocksource_baseaddr;
 
+static u32 irq;
+
 static unsigned int freq_div_hz;
 static unsigned int timer_clock_freq;
 
@@ -182,7 +184,16 @@ static __init int xilinx_clockevent_init(void)
 
 static int microblaze_timer_starting(unsigned int cpu)
 {
+	int ret;
+
 	pr_debug("%s: cpu %d\n", __func__, cpu);
+
+	ret = request_irq(irq, timer_interrupt, IRQF_TIMER,
+				 "timer", &clockevent_xilinx_timer);
+	if (ret) {
+		pr_err("%s: request_irq failed\n", __func__);
+		return ret;
+	}
 
 	return xilinx_clockevent_init();
 }
@@ -260,7 +271,6 @@ static int __init xilinx_timer_init(struct device_node *timer)
 {
 	struct clk *clk;
 	static int initialized;
-	u32 irq;
 	u32 timer_num = 1;
 	int ret;
 	bool clocksource = true;
@@ -327,13 +337,6 @@ static int __init xilinx_timer_init(struct device_node *timer)
 	}
 
 	freq_div_hz = timer_clock_freq / HZ;
-
-	ret = request_irq(irq, timer_interrupt, IRQF_TIMER, "timer",
-			  &clockevent_xilinx_timer);
-	if (ret) {
-		pr_err("Failed to setup IRQ");
-		return ret;
-	}
 
 	ret = cpuhp_setup_state(CPUHP_AP_MICROBLAZE_TIMER_STARTING,
 				"clockevents/microblaze/arch_timer:starting",
