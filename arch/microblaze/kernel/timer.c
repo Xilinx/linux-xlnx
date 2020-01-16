@@ -22,6 +22,7 @@
 #include <asm/cpuinfo.h>
 
 static void __iomem *timer_baseaddr;
+static void __iomem *clocksource_baseaddr;
 
 static unsigned int freq_div_hz;
 static unsigned int timer_clock_freq;
@@ -187,7 +188,7 @@ static __init int xilinx_clockevent_init(void)
 
 static u64 xilinx_clock_read(void)
 {
-	return read_fn(timer_baseaddr + TCR1);
+	return read_fn(clocksource_baseaddr + TCR0);
 }
 
 static u64 xilinx_read(struct clocksource *cs)
@@ -241,10 +242,10 @@ static int __init xilinx_clocksource_init(void)
 	}
 
 	/* stop timer1 */
-	write_fn(read_fn(timer_baseaddr + TCSR1) & ~TCSR_ENT,
-		 timer_baseaddr + TCSR1);
+	write_fn(read_fn(clocksource_baseaddr + TCSR0) & ~TCSR_ENT,
+		 clocksource_baseaddr + TCSR0);
 	/* start timer1 - up counting without interrupt */
-	write_fn(TCSR_TINT|TCSR_ENT|TCSR_ARHT, timer_baseaddr + TCSR1);
+	write_fn(TCSR_TINT|TCSR_ENT|TCSR_ARHT, clocksource_baseaddr + TCSR0);
 
 	/* register timecounter - for ftrace support */
 	return init_xilinx_timecounter();
@@ -257,6 +258,7 @@ static int __init xilinx_timer_init(struct device_node *timer)
 	u32 irq;
 	u32 timer_num = 1;
 	int ret;
+	bool clocksource = true;
 
 	if (initialized)
 		return -EINVAL;
@@ -307,6 +309,18 @@ static int __init xilinx_timer_init(struct device_node *timer)
 		return -EINVAL;
 	}
 
+	if (clocksource) {
+		/* At this point we know that clocksource timer is second one */
+		clocksource_baseaddr = timer_baseaddr + TCSR1;
+		pr_info("%s: Timer base: 0x%x, Clocksource base: 0x%x\n",
+			__func__, (u32)timer_baseaddr,
+			(u32)clocksource_baseaddr);
+
+		ret = xilinx_clocksource_init();
+		if (ret)
+			return ret;
+	}
+
 	freq_div_hz = timer_clock_freq / HZ;
 
 	ret = setup_irq(irq, &timer_irqaction);
@@ -314,10 +328,6 @@ static int __init xilinx_timer_init(struct device_node *timer)
 		pr_err("Failed to setup IRQ");
 		return ret;
 	}
-
-	ret = xilinx_clocksource_init();
-	if (ret)
-		return ret;
 
 	ret = xilinx_clockevent_init();
 	if (ret)
