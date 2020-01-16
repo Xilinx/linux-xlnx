@@ -362,6 +362,8 @@ enum rsc_handling_status {
  * @stop:	power off the device
  * @attach:	attach to a device that his already powered up
  * @kick:	kick a virtqueue (virtqueue id given as a parameter)
+ * @peek_remote_kick: check if remote has kicked
+ * @ack_remote_kick: ack remote kick
  * @da_to_va:	optional platform hook to perform address translations
  * @parse_fw:	parse firmware to extract information (e.g. resource table)
  * @handle_rsc:	optional platform hook to handle vendor resources. Should return
@@ -383,7 +385,9 @@ struct rproc_ops {
 	int (*stop)(struct rproc *rproc);
 	int (*attach)(struct rproc *rproc);
 	void (*kick)(struct rproc *rproc, int vqid);
-	void * (*da_to_va)(struct rproc *rproc, u64 da, size_t len);
+	bool (*peek_remote_kick)(struct rproc *rproc);
+	void (*ack_remote_kick)(struct rproc *rproc);
+	void * (*da_to_va)(struct rproc *rproc, u64 da, int len);
 	int (*parse_fw)(struct rproc *rproc, const struct firmware *fw);
 	int (*handle_rsc)(struct rproc *rproc, u32 rsc_type, void *rsc,
 			  int offset, int avail);
@@ -510,6 +514,7 @@ struct rproc_dump_segment {
  * @autonomous: true if an external entity has booted the remote processor
  * @dump_segments: list of segments in the firmware
  * @nb_vdev: number of vdev currently handled by rproc
+ * @sysfs_kick: allow kick remoteproc from sysfs
  * @char_dev: character device of the rproc
  * @cdev_put_on_release: flag to indicate if remoteproc should be shutdown on @char_dev release
  */
@@ -547,6 +552,7 @@ struct rproc {
 	bool autonomous;
 	struct list_head dump_segments;
 	int nb_vdev;
+	int sysfs_kick;
 	u8 elf_class;
 	u16 elf_machine;
 	struct cdev cdev;
