@@ -26,7 +26,9 @@
 #include <linux/dma-mapping.h>
 #include <linux/remoteproc.h>
 #include <linux/interrupt.h>
+#include <linux/of_address.h>
 #include <linux/of_irq.h>
+#include <linux/of_reserved_mem.h>
 #include <linux/smp.h>
 #include <linux/irqchip/arm-gic.h>
 #include <asm/outercache.h>
@@ -55,21 +57,28 @@ struct ipi_info {
 	bool pending;
 };
 
-/* On-chip memory pool element */
-struct mem_pool_st {
+/**
+ * struct zynq_mem_res - zynq memory resource for firmware memory
+ * @res: memory resource
+ * @node: list node
+ */
+struct zynq_mem_res {
+	struct resource res;
 	struct list_head node;
-	struct gen_pool *pool;
 };
 
-/* Private data */
+/**
+ * struct zynq_rproc_data - zynq rproc private data
+ * @irqs: inter processor soft IRQs
+ * @rproc: pointer to remoteproc instance
+ * @ipis: interrupt processor interrupts statistics
+ * @fw_mems: list of firmware memories
+ */
 struct zynq_rproc_pdata {
 	struct irq_list irqs;
 	struct rproc *rproc;
 	struct ipi_info ipis[MAX_NUM_VRINGS];
-	struct list_head mem_pools;
-	struct list_head mems;
-	u32 mem_start;
-	u32 mem_end;
+	struct list_head fw_mems;
 };
 
 static bool autoboot __read_mostly;
@@ -182,26 +191,44 @@ static int zynq_rproc_stop(struct rproc *rproc)
 
 static void *zynq_rproc_da_to_va(struct rproc *rproc, u64 da, int len)
 {
-	struct rproc_mem_entry *mem;
-	void *va = 0;
 	struct zynq_rproc_pdata *local = rproc->priv;
+	struct zynq_mem_res *mem_res;
+	struct device *dev;
 
-	list_for_each_entry(mem, &local->mems, node) {
-		int offset = da - mem->da;
+	dev = rproc->dev.parent;
+	list_for_each_entry(mem_res, &local->fw_mems, node) {
+		/* This function will only get called if
+		 * the reserved firmware memory is not yet
+		 * added to the carved out list.
+		 */
+		struct rproc_mem_entry *mem;
+		struct resource *res = &mem_res->res;
+		u64 res_da = (u64)res->start;
+		resource_size_t size;
+		int offset;
+		void *va;
+		dma_addr_t dma;
 
-		/* try next carveout if da is too small */
+		size = resource_size(res);
+		offset = (int)(da - res_da);
 		if (offset < 0)
 			continue;
-
-		/* try next carveout if da is too large */
-		if (offset + len > mem->len)
+		if (da > (res_da + size))
 			continue;
-
-		va = mem->va + offset;
-
-		break;
+		va = devm_ioremap_wc(dev, res->start, size);
+		dma = (dma_addr_t)res->start;
+		mem = rproc_mem_entry_init(dev, va, dma, (int)size,
+					   (u32)res->start,
+					   NULL, NULL, res->name);
+		if (!mem)
+			return NULL;
+		dev_dbg(dev, "%s: %s, va = %p, da = 0x%x dma = 0x%x\n",
+			__func__, mem->name, mem->va,
+			mem->da, mem->dma);
+		rproc_add_carveout(rproc, mem);
+		return (char *)va + offset;
 	}
-	return va;
+	return NULL;
 }
 
 static struct rproc_ops zynq_rproc_ops = {
@@ -253,35 +280,51 @@ static void clear_irq(struct rproc *rproc)
 
 static int zynq_rproc_add_mems(struct zynq_rproc_pdata *pdata)
 {
-	struct mem_pool_st *mem_node;
-	size_t mem_size;
-	struct gen_pool *mem_pool;
-	struct rproc_mem_entry *mem;
-	dma_addr_t dma;
-	void *va;
+	int num_mems, i;
 	struct device *dev = pdata->rproc->dev.parent;
+	struct device_node *np = dev->of_node;
 
-	list_for_each_entry(mem_node, &pdata->mem_pools, node) {
-		mem_pool = mem_node->pool;
-		mem_size = gen_pool_size(mem_pool);
-		mem  = devm_kzalloc(dev, sizeof(struct rproc_mem_entry),
-				GFP_KERNEL);
-		if (!mem)
-			return -ENOMEM;
+	INIT_LIST_HEAD(&pdata->fw_mems);
+	num_mems = of_count_phandle_with_args(np, "memory-region", NULL);
+	if (num_mems <= 0)
+		return 0;
+	for (i = 0; i < num_mems; i++) {
+		struct device_node *node;
+		struct zynq_mem_res *mem_res;
+		int ret;
 
-		va = gen_pool_dma_alloc(mem_pool, mem_size, &dma);
-		if (!va) {
-			dev_err(dev, "Failed to allocate dma carveout mem.\n");
-			return -ENOMEM;
+		node = of_parse_phandle(np, "memory-region", i);
+		ret = of_device_is_compatible(node, "shared-dma-pool");
+		if (ret) {
+			/* it is DMA memory. */
+			ret = of_reserved_mem_device_init_by_idx(dev, np, i);
+			if (ret) {
+				dev_err(dev, "unable to reserve DMA mem.\n");
+				return ret;
+			}
+			dev_dbg(dev, "%s, dma memory %s.\n",
+				__func__, of_node_full_name(node));
+			continue;
 		}
-		mem->priv = (void *)mem_pool;
-		mem->va = va;
-		mem->len = mem_size;
-		mem->dma = dma;
-		mem->da = dma;
-		dev_dbg(dev, "%s: va = %p, da = 0x%x dma = 0x%x\n",
-			__func__, va, mem->da, mem->dma);
-		list_add_tail(&mem->node, &pdata->mems);
+		/*
+		 * It is non-DMA memory, used for firmware loading.
+		 * It will be added to the remoteproc carveouts later while
+		 * loading the firmware.
+		 * It needs to keep track of the memory resource here and
+		 * add it to carveouts when loading firmware because
+		 * the carveouts will be removed when rproc stops the processor.
+		 */
+		mem_res = devm_kzalloc(dev, sizeof(*mem_res), GFP_KERNEL);
+		if (!mem_res)
+			return -ENOMEM;
+		ret = of_address_to_resource(node, 0, &mem_res->res);
+		if (ret) {
+			dev_err(dev, "unable to resolve memory region.\n");
+			return ret;
+		}
+		list_add_tail(&mem_res->node, &pdata->fw_mems);
+		dev_dbg(dev, "%s, non-dma mem %s\n",
+			__func__, of_node_full_name(node));
 	}
 	return 0;
 }
@@ -292,9 +335,6 @@ static int zynq_remoteproc_probe(struct platform_device *pdev)
 	struct irq_list *tmp;
 	int count = 0;
 	struct zynq_rproc_pdata *local;
-	struct gen_pool *mem_pool = NULL;
-	struct mem_pool_st *mem_node = NULL;
-	int i;
 
 	rproc = rproc_alloc(&pdev->dev, dev_name(&pdev->dev),
 		&zynq_rproc_ops, NULL,
@@ -382,25 +422,6 @@ static int zynq_remoteproc_probe(struct platform_device *pdev)
 	}
 
 	/* Find on-chip memory */
-	INIT_LIST_HEAD(&local->mem_pools);
-	INIT_LIST_HEAD(&local->mems);
-	for (i = 0; ; i++) {
-		char *srams_name = "srams";
-
-		mem_pool = of_gen_pool_get(pdev->dev.of_node,
-					   srams_name, i);
-		if (mem_pool) {
-			mem_node = devm_kzalloc(&pdev->dev,
-					sizeof(struct mem_pool_st),
-					GFP_KERNEL);
-			if (!mem_node)
-				goto ipi_fault;
-			mem_node->pool = mem_pool;
-			list_add_tail(&mem_node->node, &local->mem_pools);
-		} else {
-			break;
-		}
-	}
 	ret = zynq_rproc_add_mems(local);
 	if (ret) {
 		dev_err(&pdev->dev, "rproc failed to add mems\n");
@@ -433,7 +454,6 @@ static int zynq_remoteproc_remove(struct platform_device *pdev)
 {
 	struct rproc *rproc = platform_get_drvdata(pdev);
 	struct zynq_rproc_pdata *local = rproc->priv;
-	struct rproc_mem_entry *mem;
 
 	dev_info(&pdev->dev, "%s\n", __func__);
 
@@ -442,12 +462,7 @@ static int zynq_remoteproc_remove(struct platform_device *pdev)
 	clear_ipi_handler(local->ipis[0].irq);
 	clear_irq(rproc);
 
-	list_for_each_entry(mem, &local->mems, node) {
-		if (mem->priv)
-			gen_pool_free((struct gen_pool *)mem->priv,
-				      (unsigned long)mem->va, mem->len);
-	}
-
+	of_reserved_mem_device_release(&pdev->dev);
 	rproc_free(rproc);
 
 	return 0;
