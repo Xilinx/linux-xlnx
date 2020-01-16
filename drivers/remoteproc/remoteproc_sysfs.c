@@ -220,6 +220,85 @@ static ssize_t state_store(struct device *dev,
 }
 static DEVICE_ATTR_RW(state);
 
+/**
+ * kick_store() - Kick remote from sysfs.
+ * @dev: remoteproc device
+ * @attr: sysfs device attribute
+ * @buf: sysfs buffer
+ * @count: size of the contents in buf
+ *
+ * It will just raise a signal, no content is expected for now.
+ *
+ * Return: the input count if it allows kick from sysfs,
+ * as it is always expected to succeed.
+ */
+static ssize_t kick_store(struct device *dev,
+			  struct device_attribute *attr,
+			  const char *buf, size_t count)
+{
+	struct rproc *rproc = to_rproc(dev);
+	int id;
+	size_t cpy_len;
+
+	(void)attr;
+	cpy_len = count <= sizeof(id) ? count : sizeof(id);
+	memcpy((char *)(&id), buf, cpy_len);
+
+	if (rproc->ops->kick)
+		rproc->ops->kick(rproc, id);
+	else
+		count = -EINVAL;
+	return count;
+}
+static DEVICE_ATTR_WO(kick);
+
+/**
+ * remote_kick_show() - Check if remote has kicked
+ * @dev: remoteproc device
+ * @attr: sysfs device attribute
+ * @buf: sysfs buffer
+ *
+ * It will check if the remote has kicked.
+ *
+ * Return: always 2, and the value in the sysfs buffer
+ * shows if the remote has kicked. '0' - not kicked, '1' - kicked.
+ */
+static ssize_t remote_kick_show(struct device *dev,
+				struct device_attribute *attr,
+				char *buf)
+{
+	struct rproc *rproc = to_rproc(dev);
+
+	buf[0] = '0';
+	buf[1] = '\n';
+	if (rproc_peek_remote_kick(rproc, NULL, NULL))
+		buf[0] = '1';
+	return 2;
+}
+
+/**
+ * remote_kick_store() - Ack the kick from remote
+ * @dev: remoteproc device
+ * @attr: sysfs device attribute
+ * @buf: sysfs buffer
+ * @count: size of the contents in buf
+ *
+ * It will ack the remote, no response contents is expected.
+ *
+ * Return: the input count if it allows kick from sysfs,
+ * as it is always expected to succeed.
+ */
+static ssize_t remote_kick_store(struct device *dev,
+				 struct device_attribute *attr,
+				 const char *buf, size_t count)
+{
+	struct rproc *rproc = to_rproc(dev);
+
+	rproc_ack_remote_kick(rproc);
+	return count;
+}
+static DEVICE_ATTR_RW(remote_kick);
+
 /* Expose the name of the remote processor via sysfs */
 static ssize_t name_show(struct device *dev, struct device_attribute *attr,
 			 char *buf)
@@ -252,6 +331,34 @@ struct class rproc_class = {
 	.name		= "remoteproc",
 	.dev_groups	= rproc_devgroups,
 };
+
+/**
+ * rproc_create_kick_sysfs() - create kick remote sysfs entry
+ * @rproc: remoteproc
+ *
+ * It will create kick remote sysfs entry if kick remote
+ * from sysfs is allowed.
+ *
+ * Return: 0 for success, and negative value for failure.
+ */
+int rproc_create_kick_sysfs(struct rproc *rproc)
+{
+	struct device *dev = &rproc->dev;
+	int ret;
+
+	if (!rproc_allow_sysfs_kick(rproc))
+		return -EINVAL;
+	ret = sysfs_create_file(&dev->kobj, &dev_attr_kick.attr);
+	if (ret) {
+		dev_err(dev, "failed to create sysfs for kick.\n");
+		return ret;
+	}
+	ret = sysfs_create_file(&dev->kobj, &dev_attr_remote_kick.attr);
+	if (ret)
+		dev_err(dev, "failed to create sysfs for remote kick.\n");
+	return ret;
+}
+EXPORT_SYMBOL(rproc_create_kick_sysfs);
 
 int __init rproc_init_sysfs(void)
 {

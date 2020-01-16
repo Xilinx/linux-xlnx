@@ -196,4 +196,27 @@ bool rproc_u64_fit_in_size_t(u64 val)
 	return (val <= (size_t) -1);
 }
 
+static inline
+bool rproc_allow_sysfs_kick(struct rproc *rproc)
+{
+	return (rproc->sysfs_kick) ? true : false;
+}
+
+static inline
+bool rproc_peek_remote_kick(struct rproc *rproc, char *buf, size_t *len)
+{
+	if (rproc->ops->peek_remote_kick)
+		return rproc->ops->peek_remote_kick(rproc, buf, len);
+	else
+		return false;
+}
+
+static inline
+void rproc_ack_remote_kick(struct rproc *rproc)
+{
+	if (rproc->ops->ack_remote_kick)
+		rproc->ops->ack_remote_kick(rproc);
+}
+
+int rproc_create_kick_sysfs(struct rproc *rproc);
 #endif /* REMOTEPROC_INTERNAL_H */
