@@ -193,10 +193,10 @@ bool rproc_allow_sysfs_kick(struct rproc *rproc)
 }
 
 static inline
-bool rproc_peek_remote_kick(struct rproc *rproc)
+bool rproc_peek_remote_kick(struct rproc *rproc, char *buf, size_t *len)
 {
 	if (rproc->ops->peek_remote_kick)
-		return rproc->ops->peek_remote_kick(rproc);
+		return rproc->ops->peek_remote_kick(rproc, buf, len);
 	else
 		return false;
 }

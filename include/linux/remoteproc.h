@@ -385,7 +385,7 @@ struct rproc_ops {
 	int (*stop)(struct rproc *rproc);
 	int (*attach)(struct rproc *rproc);
 	void (*kick)(struct rproc *rproc, int vqid);
-	bool (*peek_remote_kick)(struct rproc *rproc);
+	bool (*peek_remote_kick)(struct rproc *rproc, char *buf, size_t *len);
 	void (*ack_remote_kick)(struct rproc *rproc);
 	void * (*da_to_va)(struct rproc *rproc, u64 da, int len);
 	int (*parse_fw)(struct rproc *rproc, const struct firmware *fw);
