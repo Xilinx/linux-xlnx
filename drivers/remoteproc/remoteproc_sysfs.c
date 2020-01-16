@@ -130,12 +130,15 @@ static ssize_t kick_store(struct device *dev,
 			  const char *buf, size_t count)
 {
 	struct rproc *rproc = to_rproc(dev);
+	int id;
+	size_t cpy_len;
 
 	(void)attr;
-	(void)buf;
+	cpy_len = count <= sizeof(id) ? count : sizeof(id);
+	memcpy((char *)(&id), buf, cpy_len);
 
 	if (rproc->ops->kick)
-		rproc->ops->kick(rproc, 0);
+		rproc->ops->kick(rproc, id);
 	else
 		count = -EINVAL;
 	return count;
