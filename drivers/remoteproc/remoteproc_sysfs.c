@@ -164,7 +164,7 @@ static ssize_t remote_kick_show(struct device *dev,
 
 	buf[0] = '0';
 	buf[1] = '\n';
-	if (rproc_peek_remote_kick(rproc))
+	if (rproc_peek_remote_kick(rproc, NULL, NULL))
 		buf[0] = '1';
 	return 2;
 }
