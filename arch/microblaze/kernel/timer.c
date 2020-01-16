@@ -212,16 +212,6 @@ static struct cyclecounter xilinx_cc = {
 	.shift = 8,
 };
 
-static int __init init_xilinx_timecounter(void)
-{
-	xilinx_cc.mult = div_sc(timer_clock_freq, NSEC_PER_SEC,
-				xilinx_cc.shift);
-
-	timecounter_init(&xilinx_tc, &xilinx_cc, sched_clock());
-
-	return 0;
-}
-
 static struct clocksource clocksource_microblaze = {
 	.name		= "xilinx_clocksource",
 	.rating		= 300,
@@ -248,7 +238,14 @@ static int __init xilinx_clocksource_init(unsigned int timer_clock_freq)
 	write_fn(TCSR_TINT|TCSR_ENT|TCSR_ARHT, clocksource_baseaddr + TCSR0);
 
 	/* register timecounter - for ftrace support */
-	return init_xilinx_timecounter();
+	xilinx_cc.mult = div_sc(timer_clock_freq, NSEC_PER_SEC,
+				xilinx_cc.shift);
+
+	timecounter_init(&xilinx_tc, &xilinx_cc, sched_clock());
+
+	sched_clock_register(xilinx_clock_read, 32, timer_clock_freq);
+
+	return 0;
 }
 
 static int __init xilinx_timer_init(struct device_node *timer)
@@ -332,8 +329,6 @@ static int __init xilinx_timer_init(struct device_node *timer)
 	ret = xilinx_clockevent_init();
 	if (ret)
 		return ret;
-
-	sched_clock_register(xilinx_clock_read, 32, timer_clock_freq);
 
 	return 0;
 }
