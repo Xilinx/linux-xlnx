@@ -380,9 +380,7 @@ struct irq_desc *irq_to_desc(unsigned int irq)
 {
 	return mtree_load(&sparse_irqs, irq);
 }
-#ifdef CONFIG_KVM_BOOK3S_64_HV_MODULE
 EXPORT_SYMBOL_GPL(irq_to_desc);
-#endif
 
 #ifdef CONFIG_SMP
 static void free_masks(struct irq_desc *desc)
