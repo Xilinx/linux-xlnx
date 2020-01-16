@@ -196,6 +196,16 @@ config ST_REMOTEPROC
 	  processor framework.
 	  This can be either built-in or a loadable module.
 
+config ZYNQ_REMOTEPROC
+	tristate "Support ZYNQ remoteproc"
+	depends on ARCH_ZYNQ && SMP && !DEBUG_SG
+	select RPMSG_VIRTIO
+	select HOTPLUG_CPU
+	select SRAM
+	help
+	  Say y here to support Xilinx ZynQ remote processors (the second
+	  ARM CORTEX-A9 cpu) via the remote processor framework.
+
 config ST_SLIM_REMOTEPROC
 	tristate
 
