@@ -13,6 +13,7 @@
  * Copyright (C) 2011 Google, Inc.
  */
 
+#include <linux/atomic.h>
 #include <linux/cpu.h>
 #include <linux/dma-mapping.h>
 #include <linux/delay.h>
@@ -47,10 +48,14 @@
 /* PM proc states */
 #define PM_PROC_STATE_ACTIVE 1U
 
+/* IPI buffer MAX length */
+#define IPI_BUF_LEN_MAX	32U
+/* RX mailbox client buffer max length */
+#define RX_MBOX_CLIENT_BUF_MAX	(IPI_BUF_LEN_MAX + \
+				 sizeof(struct zynqmp_ipi_message))
+
 static bool autoboot __read_mostly;
 static bool allow_sysfs_kick __read_mostly;
-
-struct zynqmp_rpu_domain_pdata;
 
 static const struct zynqmp_eemi_ops *eemi_ops;
 
@@ -80,6 +85,8 @@ struct zynqmp_r5_mem {
  * @rx_chan: rx mailbox channel
  * @workqueue: workqueue for the RPU remoteproc
  * @tx_mc_skbs: socket buffers for tx mailbox client
+ * @rx_mc_buf: rx mailbox client buffer to save the rx message
+ * @remote_kick: flag to indicate if there is a kick from remote
  */
 struct zynqmp_r5_pdata {
 	struct device dev;
@@ -94,6 +101,8 @@ struct zynqmp_r5_pdata {
 	struct mbox_chan *rx_chan;
 	struct work_struct workqueue;
 	struct sk_buff_head tx_mc_skbs;
+	unsigned char rx_mc_buf[RX_MBOX_CLIENT_BUF_MAX];
+	atomic_t remote_kick;
 };
 
 /**
@@ -185,47 +194,6 @@ static bool r5_is_running(struct zynqmp_r5_pdata *pdata)
 	return true;
 }
 
-/**
- * r5_request_mem - request RPU memory
- * @rproc: pointer to remoteproc instance
- * @mem: pointer to RPU memory
- *
- * Request RPU memory resource to make it accessible by the kernel.
- *
- * Return: 0 if success, negative value for failure.
- */
-static int r5_request_mem(struct rproc *rproc, struct zynqmp_r5_mem *mem)
-{
-	int i, ret;
-	struct device *dev = &rproc->dev;
-	struct zynqmp_r5_pdata *local = rproc->priv;
-
-	for (i = 0; i < MAX_MEM_PNODES; i++) {
-		if (mem->pnode_id[i]) {
-			ret = eemi_ops->request_node(mem->pnode_id[i],
-						 ZYNQMP_PM_CAPABILITY_ACCESS,
-						 0,
-						 ZYNQMP_PM_REQUEST_ACK_BLOCKING
-						);
-			if (ret < 0) {
-				dev_err(dev,
-					"failed to request power node: %u\n",
-					mem->pnode_id[i]);
-				return ret;
-			}
-		} else {
-			break;
-		}
-	}
-
-	ret = r5_set_mode(local);
-	if (ret < 0) {
-		dev_err(dev, "failed to set R5 operation mode.\n");
-		return ret;
-	}
-	return 0;
-}
-
 /*
  * ZynqMP R5 remoteproc memory release function
  */
@@ -304,9 +272,115 @@ static int zynqmp_r5_rproc_stop(struct rproc *rproc)
 	return 0;
 }
 
+
 static int zynqmp_r5_parse_fw(struct rproc *rproc, const struct firmware *fw)
 {
 	int ret;
+	struct zynqmp_r5_pdata *pdata = rproc->priv;
+	struct zynqmp_r5_mem *zynqmp_mem;
+	struct device *dev = &pdata->dev;
+	struct device_node *np = dev->of_node;
+	int num_mems;
+	int i, dma_pool_index = 0;
+	struct reserved_mem *rmem;
+	struct rproc_mem_entry *mem;
+
+	num_mems = of_count_phandle_with_args(np, "memory-region", NULL);
+	if (num_mems <= 0)
+		return 0;
+	for (i = 0; i < num_mems; i++) {
+		struct device_node *node;
+		int ret;
+
+		node = of_parse_phandle(np, "memory-region", i);
+		rmem = of_reserved_mem_lookup(node);
+		if (!rmem) {
+			dev_err(dev, "unable to acquire memory-region\n");
+			return -EINVAL;
+		}
+		if (strstr(node->name, "vdev") &&
+			strstr(node->name, "buffer")) {
+			/* Register DMA region */
+			mem = rproc_mem_entry_init(dev, NULL,
+						   (dma_addr_t)rmem->base,
+						   rmem->size, rmem->base,
+						   NULL, NULL,
+						   node->name);
+			rproc_add_carveout(rproc, mem);
+			continue;
+		} else {
+			mem = rproc_of_resm_mem_entry_init(dev, i,
+							rmem->size,
+							rmem->base,
+							node->name);
+			mem->va = devm_ioremap_wc(dev, rmem->base, rmem->size);
+			rproc_add_carveout(rproc, mem);
+		}
+		if (!mem)
+			return -ENOMEM;
+
+
+		/*
+		 * It is non-DMA memory, used for firmware loading.
+		 * It will be added to the R5 remoteproc mappings later.
+		 */
+		zynqmp_mem = devm_kzalloc(dev, sizeof(*zynqmp_mem), GFP_KERNEL);
+		if (!zynqmp_mem)
+			return -ENOMEM;
+		ret = of_address_to_resource(node, 0, &zynqmp_mem->res);
+		if (ret) {
+			dev_err(dev, "unable to resolve memory region.\n");
+			return ret;
+		}
+		list_add_tail(&zynqmp_mem->node, &pdata->mems);
+		dev_dbg(dev, "%s, non-dma mem %s\n",
+			__func__, of_node_full_name(node));
+	}
+
+	/* map TCM memories */
+	struct device_node *child;
+	struct resource rsc;
+
+	for_each_available_child_of_node(np, child) {
+		ret = of_address_to_resource(child, 0, &rsc);
+		struct property *prop;
+		const __be32 *cur;
+		u32 pnode_id;
+		void *va;
+		dma_addr_t dma;
+		resource_size_t size;
+
+		i = 0;
+		of_property_for_each_u32(child, "pnode-id", prop, cur,
+								pnode_id) {
+			ret = eemi_ops->request_node(pnode_id,
+						ZYNQMP_PM_CAPABILITY_ACCESS, 0,
+						ZYNQMP_PM_REQUEST_ACK_BLOCKING);
+			if (ret < 0) {
+				dev_err(dev, "failed to request power node: %u\n",
+						pnode_id);
+				return ret;
+			}
+			ret = r5_set_mode(pdata);
+			if (ret < 0) {
+				dev_err(dev, "failed to set R5 operation mode.\n");
+				return ret;
+			}
+		}
+		size = resource_size(&rsc);
+
+		va = devm_ioremap_wc(dev, rsc.start, size);
+		/* zero out tcm base address */
+		if (rsc.start & 0xffe00000)
+			rsc.start &= 0x1fffff;
+		dma = (dma_addr_t)rsc.start;
+		mem = rproc_mem_entry_init(dev, va, dma, (int)size, rsc.start,
+						 NULL, zynqmp_r5_mem_release,
+						 rsc.name);
+		if (!mem)
+			return NULL;
+		rproc_add_carveout(rproc, mem);
+	}
 
 	ret = rproc_elf_load_rsc_table(rproc, fw);
 	if (ret == -EINVAL)
@@ -314,99 +388,76 @@ static int zynqmp_r5_parse_fw(struct rproc *rproc, const struct firmware *fw)
 	return ret;
 }
 
-static void *zynqmp_r5_da_to_va(struct rproc *rproc, u64 da, int len)
-{
-	struct zynqmp_r5_pdata *local = rproc->priv;
-	struct zynqmp_r5_mem *mem;
-	struct device *dev;
-
-	dev = &local->dev;
-	list_for_each_entry(mem, &local->mems, node) {
-		struct rproc_mem_entry *rproc_mem;
-		struct resource *res = &mem->res;
-		u64 res_da = (u64)res->start;
-		resource_size_t size;
-		int offset, ret;
-		void *va;
-		dma_addr_t dma;
-
-		if ((res_da & 0xfff00000) == 0xffe00000) {
-			res_da &= 0x000fffff;
-			if (res_da & 0x80000)
-				res_da -= 0x90000;
-		}
-
-		offset = (int)(da - res_da);
-		if (offset < 0)
-			continue;
-		size = resource_size(res);
-		if (offset + len > (int)size)
-			continue;
-
-		ret = r5_request_mem(rproc, mem);
-		if (ret < 0) {
-			dev_err(dev, "failed to request memory %pad.\n",
-				&res->start);
-			return NULL;
-		}
-
-		va = devm_ioremap_wc(dev, res->start, size);
-		dma = (dma_addr_t)res->start;
-		da = (u32)res_da;
-		rproc_mem = rproc_mem_entry_init(dev, va, dma, (int)size, da,
-						 NULL, zynqmp_r5_mem_release,
-						 res->name);
-		if (!rproc_mem)
-			return NULL;
-		rproc_mem->priv = mem;
-		dev_dbg(dev, "%s: %s, va = %p, da = 0x%x dma = 0x%llx\n",
-			__func__, rproc_mem->name, rproc_mem->va,
-			rproc_mem->da, rproc_mem->dma);
-		rproc_add_carveout(rproc, rproc_mem);
-		return (char *)va + offset;
-	}
-	return NULL;
-}
-
 /* kick a firmware */
 static void zynqmp_r5_rproc_kick(struct rproc *rproc, int vqid)
 {
 	struct device *dev = rproc->dev.parent;
 	struct zynqmp_r5_pdata *local = rproc->priv;
-	struct zynqmp_ipi_message *mb_msg;
-	struct sk_buff *skb;
-	unsigned int skb_len;
-	int ret;
 
 	dev_dbg(dev, "KICK Firmware to start send messages vqid %d\n", vqid);
 
-	skb_len = (unsigned int)(sizeof(vqid) + sizeof(mb_msg));
-	skb = alloc_skb(skb_len, GFP_ATOMIC);
-	if (!skb) {
-		dev_err(dev, "Failed to allocate skb to kick remote.\n");
-		return;
-	}
-	mb_msg = (struct zynqmp_ipi_message *)skb_put(skb, skb_len);
-	mb_msg->len = sizeof(vqid);
-	memcpy(mb_msg->data, &vqid, sizeof(vqid));
-	skb_queue_tail(&local->tx_mc_skbs, skb);
-	ret = mbox_send_message(local->tx_chan, mb_msg);
-	if (ret < 0) {
-		dev_warn(dev, "Failed to kick remote.\n");
-		skb_dequeue(&local->tx_mc_skbs);
-		kfree_skb(skb);
-	}
+	if (vqid < 0) {
+		/* If vqid is negative, does not pass the vqid to
+		 * mailbox. As vqid is supposed to be 0 or possive.
+		 * It also gives a way to just kick instead but
+		 * not use the IPI buffer. It is better to provide
+		 * a proper way to pass the short message, which will
+		 * need to sync to upstream first, for now,
+		 * use negative vqid to assume no message will be
+		 * passed with IPI buffer, but just raise interrupt.
+		 * This will be faster as it doesn't need to copy the
+		 * message to the IPI buffer.
+		 *
+		 * It will ignore the return, as failure is due to
+		 * there already kicks in the mailbox queue.
+		 */
+		(void)mbox_send_message(local->tx_chan, NULL);
+	} else {
+		struct sk_buff *skb;
+		unsigned int skb_len;
+		struct zynqmp_ipi_message *mb_msg;
+		int ret;
 
+		skb_len = (unsigned int)(sizeof(vqid) + sizeof(mb_msg));
+		skb = alloc_skb(skb_len, GFP_ATOMIC);
+		if (!skb) {
+			dev_err(dev,
+				"Failed to allocate skb to kick remote.\n");
+			return;
+		}
+		mb_msg = (struct zynqmp_ipi_message *)skb_put(skb, skb_len);
+		mb_msg->len = sizeof(vqid);
+		memcpy(mb_msg->data, &vqid, sizeof(vqid));
+		skb_queue_tail(&local->tx_mc_skbs, skb);
+		ret = mbox_send_message(local->tx_chan, mb_msg);
+		if (ret < 0) {
+			dev_warn(dev, "Failed to kick remote.\n");
+			skb_dequeue_tail(&local->tx_mc_skbs);
+			kfree_skb(skb);
+		}
+	}
 }
 
-static bool zynqmp_r5_rproc_peek_remote_kick(struct rproc *rproc)
+static bool zynqmp_r5_rproc_peek_remote_kick(struct rproc *rproc,
+					     char *buf, size_t *len)
 {
 	struct device *dev = rproc->dev.parent;
 	struct zynqmp_r5_pdata *local = rproc->priv;
 
 	dev_dbg(dev, "Peek if remote has kicked\n");
 
-	return mbox_client_peek_data(local->rx_chan);
+	if (atomic_read(&local->remote_kick) != 0) {
+		if (buf && len) {
+			struct zynqmp_ipi_message *msg;
+
+			msg = (struct zynqmp_ipi_message *)local->rx_mc_buf;
+			memcpy(buf, msg->data, msg->len);
+			*len = (size_t)msg->len;
+		}
+		return true;
+	} else {
+		return false;
+	}
 }
 
 static void zynqmp_r5_rproc_ack_remote_kick(struct rproc *rproc)
@@ -416,6 +467,7 @@ static void zynqmp_r5_rproc_ack_remote_kick(struct rproc *rproc)
 
 	dev_dbg(dev, "Ack remote\n");
 
+	atomic_set(&local->remote_kick, 0);
 	(void)mbox_send_message(local->rx_chan, NULL);
 }
 
@@ -427,64 +479,10 @@ static struct rproc_ops zynqmp_r5_rproc_ops = {
 	.find_loaded_rsc_table = rproc_elf_find_loaded_rsc_table,
 	.sanity_check	= rproc_elf_sanity_check,
 	.get_boot_addr	= rproc_elf_get_boot_addr,
-	.da_to_va	= zynqmp_r5_da_to_va,
 	.kick		= zynqmp_r5_rproc_kick,
 	.peek_remote_kick	= zynqmp_r5_rproc_peek_remote_kick,
 	.ack_remote_kick	= zynqmp_r5_rproc_ack_remote_kick,
 };
-
-/* zynqmp_r5_get_reserved_mems() - get reserved memories
- * @pdata: pointer to the RPU remoteproc private data
- *
- * Function to retrieve the memories resources from memory-region
- * property.
- */
-static int zynqmp_r5_get_reserved_mems(struct zynqmp_r5_pdata *pdata)
-{
-	struct device *dev = &pdata->dev;
-	struct device_node *np = dev->of_node;
-	int num_mems;
-	int i;
-
-	num_mems = of_count_phandle_with_args(np, "memory-region", NULL);
-	if (num_mems <= 0)
-		return 0;
-	for (i = 0; i < num_mems; i++) {
-		struct device_node *node;
-		struct zynqmp_r5_mem *mem;
-		int ret;
-
-		node = of_parse_phandle(np, "memory-region", i);
-		ret = of_device_is_compatible(node, "shared-dma-pool");
-		if (ret) {
-			/* it is DMA memory. */
-			ret = of_reserved_mem_device_init_by_idx(dev, np, i);
-			if (ret) {
-				dev_err(dev, "unable to reserve DMA mem.\n");
-				return ret;
-			}
-			dev_dbg(dev, "%s, dma memory %s.\n",
-				__func__, of_node_full_name(node));
-		} else {
-			/*
-			 * It is non-DMA memory, used for firmware loading.
-			 * It will be added to the R5 remoteproc mappings later.
-			 */
-			mem = devm_kzalloc(dev, sizeof(*mem), GFP_KERNEL);
-			if (!mem)
-				return -ENOMEM;
-			ret = of_address_to_resource(node, 0, &mem->res);
-			if (ret) {
-				dev_err(dev, "unable to resolve memory region.\n");
-				return ret;
-			}
-			list_add_tail(&mem->node, &pdata->mems);
-			dev_dbg(dev, "%s, non-dma mem %s\n",
-				__func__, of_node_full_name(node));
-		}
-	}
-	return 0;
-}
 
 /* zynqmp_r5_mem_probe() - probes RPU TCM memory device
  * @pdata: pointer to the RPU remoteproc private data
@@ -587,6 +585,7 @@ static void handle_event_notified(struct work_struct *work)
 
 	local = container_of(work, struct zynqmp_r5_pdata, workqueue);
 
+	(void)mbox_send_message(local->rx_chan, NULL);
 	rproc = local->rproc;
 	if (rproc->sysfs_kick) {
 		sysfs_notify(&rproc->dev.kobj, NULL, "remote_kick");
@@ -598,7 +597,6 @@ static void handle_event_notified(struct work_struct *work)
 	 * And thus, we scan through all the registered notifyids.
 	 */
 	idr_for_each(&rproc->notifyids, event_notified_idr_cb, rproc);
-	(void)mbox_send_message(local->rx_chan, NULL);
 }
 
 /**
@@ -612,8 +610,19 @@ static void zynqmp_r5_mb_rx_cb(struct mbox_client *cl, void *mssg)
 {
 	struct zynqmp_r5_pdata *local;
 
-	(void)mssg;
 	local = container_of(cl, struct zynqmp_r5_pdata, rx_mc);
+	if (mssg) {
+		struct zynqmp_ipi_message *ipi_msg, *buf_msg;
+		size_t len;
+
+		ipi_msg = (struct zynqmp_ipi_message *)mssg;
+		buf_msg = (struct zynqmp_ipi_message *)local->rx_mc_buf;
+		len = (ipi_msg->len >= IPI_BUF_LEN_MAX) ?
+		      IPI_BUF_LEN_MAX : ipi_msg->len;
+		buf_msg->len = len;
+		memcpy(buf_msg->data, ipi_msg->data, len);
+	}
+	atomic_set(&local->remote_kick, 1);
 	schedule_work(&local->workqueue);
 }
 
@@ -670,6 +679,7 @@ static int zynqmp_r5_setup_mbox(struct zynqmp_r5_pdata *pdata,
 
 	INIT_WORK(&pdata->workqueue, handle_event_notified);
 
+	atomic_set(&pdata->remote_kick, 0);
 	/* Request TX and RX channels */
 	pdata->tx_chan = mbox_request_channel_byname(&pdata->tx_mc, "tx");
 	if (IS_ERR(pdata->tx_chan)) {
@@ -730,6 +740,15 @@ static int zynqmp_r5_probe(struct zynqmp_r5_pdata *pdata,
 	pdata->rproc = rproc;
 	rproc->priv = pdata;
 
+	/*
+	 * The device has not been spawned from a device tree, so
+	 * arch_setup_dma_ops has not been not called, thus leaving
+	 * the device with dummy DMA ops.
+	 * Fix this by inheriting the parent's DMA ops and mask.
+	 */
+	rproc->dev.dma_mask = pdev->dev.dma_mask;
+	set_dma_ops(&rproc->dev, get_dma_ops(&pdev->dev));
+
 	/* Probe R5 memory devices */
 	INIT_LIST_HEAD(&pdata->mems);
 	for_each_available_child_of_node(node, nc) {
@@ -739,13 +758,6 @@ static int zynqmp_r5_probe(struct zynqmp_r5_pdata *pdata,
 				of_node_full_name(nc));
 			goto error;
 		}
-	}
-
-	/* Probe reserved system memories used by R5 */
-	ret = zynqmp_r5_get_reserved_mems(pdata);
-	if (ret) {
-		dev_err(dev, "failed to get reserved memory.\n");
-		goto error;
 	}
 
 	/* Set up DMA mask */
