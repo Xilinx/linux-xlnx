@@ -82,6 +82,7 @@ obj-$(CONFIG_ARCH_BERLIN)		+= berlin/
 obj-$(CONFIG_ARCH_DAVINCI)		+= davinci/
 obj-$(CONFIG_H8300)			+= h8300/
 obj-$(CONFIG_ARCH_HISI)			+= hisilicon/
+obj-$(CONFIG_COMMON_CLK_IDT8T49N24X)	+= idt/
 obj-y					+= imgtec/
 obj-y					+= imx/
 obj-y					+= ingenic/
