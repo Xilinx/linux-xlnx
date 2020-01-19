@@ -612,6 +612,16 @@ static u8 spi_nor_convert_3to4_erase(u8 opcode)
 
 static void spi_nor_set_4byte_opcodes(struct spi_nor *nor)
 {
+	/* Do some manufacturer fixups first */
+	switch (JEDEC_MFR(nor->info)) {
+	case SNOR_MFR_SPANSION:
+		/* No small sector erase for 4-byte command set */
+		nor->erase_opcode = SPINOR_OP_SE;
+		nor->mtd.erasesize = nor->info->sector_size;
+		break;
+	default:
+		break;
+	}
 	nor->read_opcode = spi_nor_convert_3to4_read(nor->read_opcode);
 	nor->program_opcode = spi_nor_convert_3to4_program(nor->program_opcode);
 	nor->erase_opcode = spi_nor_convert_3to4_erase(nor->erase_opcode);
@@ -966,7 +976,8 @@ static int erase_chip(struct spi_nor *nor)
 				   SPI_MEM_OP_NO_DUMMY,
 				   SPI_MEM_OP_NO_DATA);
 		if (nor->isstacked)
-			ret = spi_mem_exec_op(nor->spimem, &op);
+			nor->spi->master->flags &= ~SPI_MASTER_U_PAGE;
+		ret = spi_mem_exec_op(nor->spimem, &op);
 		if (ret)
 			return ret;
 
@@ -975,7 +986,7 @@ static int erase_chip(struct spi_nor *nor)
 			ret = spi_nor_wait_till_ready(nor);
 			if (ret)
 				return ret;
-
+			nor->spi->master->flags |= SPI_MASTER_U_PAGE;
 			ret = spi_mem_exec_op(nor->spimem, &op);
 		}
 		return ret;
@@ -1406,8 +1417,14 @@ static int spi_nor_erase(struct mtd_info *mtd, struct erase_info *instr)
 			if (nor->isparallel == 1)
 				offset /= 2;
 			if (nor->isstacked == 1) {
-				if (offset >= (mtd->size / 2))
+				if (offset >= (mtd->size / 2)) {
 					offset = offset - (mtd->size / 2);
+					nor->spi->master->flags |=
+						SPI_MASTER_U_PAGE;
+				} else {
+					nor->spi->master->flags &=
+						~SPI_MASTER_U_PAGE;
+				}
 			}
 			if (nor->addr_width == 3) {
 				/* Update Extended Address Register */
@@ -1752,8 +1769,12 @@ static int spi_nor_lock(struct mtd_info *mtd, loff_t ofs, uint64_t len)
 		ofs = ofs >> nor->shift;
 
 	if (nor->isstacked == 1) {
-		if (ofs >= (mtd->size / 2))
+		if (ofs >= (mtd->size / 2)) {
 			ofs = ofs - (mtd->size / 2);
+			nor->spi->master->flags |= SPI_MASTER_U_PAGE;
+		} else {
+			nor->spi->master->flags &= ~SPI_MASTER_U_PAGE;
+		}
 	}
 	ret = nor->params.locking_ops->lock(nor, ofs, len);
 
@@ -2718,9 +2739,15 @@ static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
 			offset /= 2;
 		if (nor->isstacked == 1) {
 			stack_shift = 1;
-			if (offset >= (mtd->size / 2))
+			if (offset >= (mtd->size / 2)) {
 				offset = offset - (mtd->size / 2);
+				nor->spi->master->flags |= SPI_MASTER_U_PAGE;
+			} else {
+				nor->spi->master->flags &= ~SPI_MASTER_U_PAGE;
+			}
 		}
+		rem_bank_len = (mtd->size >> stack_shift) -
+					(offset << nor->shift);
 		if (nor->addr_width == 3)
 			write_ear(nor, offset);
 		if (len < rem_bank_len)
@@ -2912,8 +2939,12 @@ static int spi_nor_write(struct mtd_info *mtd, loff_t to, size_t len,
 
 		if (nor->isstacked == 1) {
 			stack_shift = 1;
-			if (offset >= (mtd->size / 2))
+			if (offset >= (mtd->size / 2)) {
 				offset = offset - (mtd->size / 2);
+				nor->spi->master->flags |= SPI_MASTER_U_PAGE;
+			} else {
+				nor->spi->master->flags &= ~SPI_MASTER_U_PAGE;
+			}
 		}
 
 		/* Die cross over issue is not handled */
@@ -4961,7 +4992,8 @@ static int spi_nor_init(struct spi_nor *nor)
 		return err;
 	}
 
-	if (nor->addr_width == 4 && !(nor->flags & SNOR_F_4B_OPCODES)) {
+	if (nor->addr_width == 4 && !(nor->info->flags & SNOR_F_4B_OPCODES) &&
+	    (JEDEC_MFR(nor->info) != SNOR_MFR_SPANSION)) {
 		/*
 		 * If the RESET# pin isn't hooked up properly, or the system
 		 * otherwise doesn't perform a reset command in the boot
@@ -4993,8 +5025,10 @@ static void spi_nor_resume(struct mtd_info *mtd)
 void spi_nor_restore(struct spi_nor *nor)
 {
 	/* restore the addressing mode */
-	if (nor->addr_width == 4 && !(nor->flags & SNOR_F_4B_OPCODES) &&
-	    nor->flags & SNOR_F_BROKEN_RESET)
+	if (nor->addr_width == 4 && !(nor->info->flags & SNOR_F_4B_OPCODES) &&
+	    (nor->flags & SNOR_F_BROKEN_RESET) &&
+	    (JEDEC_MFR(nor->info) != SNOR_MFR_SPANSION) &&
+	    !(nor->info->flags & SPI_NOR_4B_OPCODES))
 		nor->params.set_4byte(nor, false);
 }
 EXPORT_SYMBOL_GPL(spi_nor_restore);
@@ -5035,8 +5069,24 @@ static int spi_nor_set_addr_width(struct spi_nor *nor)
 				nor->curbank = status & EAR_SEGMENT_MASK;
 		} else {
 #endif
-		/* enable 4-byte addressing if the device exceeds 16MiB */
+			/*
+			 * enable 4-byte addressing if the
+			 * device exceeds 16MiB
+			 */
 			nor->addr_width = 4;
+			if (JEDEC_MFR(nor->info) == SNOR_MFR_SPANSION ||
+			    nor->info->flags & SPI_NOR_4B_OPCODES) {
+				spi_nor_set_4byte_opcodes(nor);
+			} else {
+				nor->params.set_4byte(nor, true);
+				if (nor->isstacked) {
+					nor->spi->master->flags |=
+						SPI_MASTER_U_PAGE;
+					nor->params.set_4byte(nor, true);
+					nor->spi->master->flags &=
+						~SPI_MASTER_U_PAGE;
+				}
+			}
 #ifdef CONFIG_OF
 		}
 #endif
@@ -5198,8 +5248,12 @@ int spi_nor_scan(struct spi_nor *nor, const char *name,
 	nor->page_size = params->page_size;
 #ifdef CONFIG_OF
 	np_spi = of_get_next_parent(np);
-	if (of_property_match_string(np_spi, "compatible",
-				     "xlnx,zynq-qspi-1.0") >= 0) {
+	if (((of_property_match_string(np_spi, "compatible",
+				       "xlnx,zynq-qspi-1.0") >= 0) ||
+		(of_property_match_string(np_spi, "compatible",
+				"xlnx,zynqmp-qspi-1.0") >= 0)) ||
+		(of_property_match_string(np_spi, "compatible",
+				"xlnx,versal-qspi-1.0") >= 0)) {
 		if (of_property_read_u32(np_spi, "is-dual",
 					 &is_dual) < 0) {
 			/* Default to single if prop not defined */
@@ -5217,7 +5271,8 @@ int spi_nor_scan(struct spi_nor *nor, const char *name,
 				nor->isparallel = 1;
 				nor->isstacked = 0;
 				nor->spi->master->flags |=
-						SPI_MASTER_BOTH_CS;
+						(SPI_MASTER_DATA_STRIPE
+						| SPI_MASTER_BOTH_CS);
 			} else {
 #ifdef CONFIG_SPI_ZYNQ_QSPI_DUAL_STACKED
 				/* dual stacked */
