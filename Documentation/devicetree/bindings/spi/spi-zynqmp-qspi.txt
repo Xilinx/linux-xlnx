@@ -2,7 +2,8 @@ Xilinx Zynq UltraScale+ MPSoC GQSPI controller Device Tree Bindings
 -------------------------------------------------------------------
 
 Required properties:
-- compatible		: Should be "xlnx,zynqmp-qspi-1.0".
+- compatible		: Should be "xlnx,zynqmp-qspi-1.0" for zynqmp or
+			  "xlnx,versal-qspi-1.0" for versal.
 - reg			: Physical base address and size of GQSPI registers map.
 - interrupts		: Property with a value describing the interrupt
 			  number.
@@ -12,6 +13,14 @@ Required properties:
 
 Optional properties:
 - num-cs		: Number of chip selects used.
+- has-io-mode		: boolean property describes the controller operating
+			  mode. if exists controller will operate in IO mode
+			  else dma mode.
+- is-dual		: zynqmp qspi support for dual-parallel mode configuration
+			  value should be 1.
+- is-stacked		: zynqmp qspi support for stacked mode configuration.
+			  to enable this mode, is-dual should be 0 and is-stacked
+			  should be 1.
 
 Example:
 	qspi: spi@ff0f0000 {
