@@ -865,10 +865,18 @@ config SPI_XTENSA_XTFPGA
 config SPI_ZYNQ_QSPI
 	tristate "Xilinx Zynq QSPI controller"
 	depends on ARCH_ZYNQ || COMPILE_TEST
+	depends on SPI_MASTER
 	help
 	  This enables support for the Zynq Quad SPI controller
 	  in master mode.
-	  This controller only supports SPI memory interface.
+
+config SPI_ZYNQ_QSPI_DUAL_STACKED
+	bool "Xilinx Zynq QSPI Dual stacked configuration"
+	depends on SPI_ZYNQ_QSPI
+	help
+	  This selects the Xilinx ZYNQ Quad SPI controller in dual stacked mode.
+	  Enable this option if your hw design is using dual stacked
+	  configuration.
 
 config SPI_ZYNQMP_GQSPI
 	tristate "Xilinx ZynqMP GQSPI controller"

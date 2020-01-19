@@ -466,6 +466,13 @@ struct spi_controller {
 
 #define SPI_MASTER_GPIO_SS		BIT(5)	/* GPIO CS must select slave */
 
+#define SPI_MASTER_QUAD_MODE	BIT(6) /* support quad mode */
+	/*
+	 * Controller may support asserting more than one chip select at once.
+	 * This flag will enable that feature.
+	 */
+#define SPI_MASTER_BOTH_CS	BIT(8)		/* assert both chip selects */
+#define SPI_MASTER_U_PAGE	BIT(9)		/* select upper flash */
 	/* flag indicating this is an SPI slave controller */
 	bool			slave;
 
@@ -734,6 +741,7 @@ extern void spi_res_release(struct spi_controller *ctlr,
  * @len: size of rx and tx buffers (in bytes)
  * @speed_hz: Select a speed other than the device default for this
  *      transfer. If 0 the default (from @spi_device) is used.
+ * @dummy: number of dummy cycles.
  * @bits_per_word: select a bits_per_word other than the device default
  *      for this transfer. If 0 the default (from @spi_device) is used.
  * @cs_change: affects chipselect after this transfer completes
@@ -753,6 +761,7 @@ extern void spi_res_release(struct spi_controller *ctlr,
  * @transfer_list: transfers are sequenced through @spi_message.transfers
  * @tx_sg: Scatterlist for transmit, currently not for client use
  * @rx_sg: Scatterlist for receive, currently not for client use
+ * @stripe: true-> enable stripe, false-> disable stripe.
  *
  * SPI transfers always write the same number of bytes as they read.
  * Protocol drivers should always provide @rx_buf and/or @tx_buf.
@@ -838,6 +847,8 @@ struct spi_transfer {
 #define SPI_DELAY_UNIT_NSECS	1
 #define SPI_DELAY_UNIT_SCK	2
 	u32		speed_hz;
+	u32		dummy;
+	bool		stripe;
 	u16		word_delay;
 
 	u32		effective_speed_hz;
