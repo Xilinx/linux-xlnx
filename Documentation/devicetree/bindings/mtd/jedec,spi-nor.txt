@@ -78,6 +78,14 @@ Optional properties:
 		   cannot reboot properly if the flash is left in the "wrong"
 		   state. This boolean flag can be used on such systems, to
 		   denote the absence of a reliable reset mechanism.
+ - multi-die 	:  Some flash devices have multiple dies in it. Read operation
+		   in these devices is bounded by its die segment. In a
+		   continuous read, across multiple dies, when the last byte of
+		   the selected die segment is read, the next byte read is the
+		   first byte of the same die segment. So to handle this issue,
+		   split a read transaction, that spans across multiple banks,
+		   into one read per bank.This boolean flag can be used for such
+		   flash devices, to denote the presence of multiple dies.
 
 Example:
 
