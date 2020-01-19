@@ -468,6 +468,14 @@ struct spi_controller {
 
 #define SPI_MASTER_QUAD_MODE	BIT(6) /* support quad mode */
 	/*
+	 * Controller may support data stripe feature when more than one
+	 * chips are present.
+	 * Setting data stripe will send data in following manner:
+	 * -> even bytes i.e. 0, 2, 4,... are transmitted on lower data bus
+	 * -> odd bytes i.e. 1, 3, 5,.. are transmitted on upper data bus
+	 */
+#define SPI_MASTER_DATA_STRIPE BIT(7)          /* support data stripe */
+	/*
 	 * Controller may support asserting more than one chip select at once.
 	 * This flag will enable that feature.
 	 */
