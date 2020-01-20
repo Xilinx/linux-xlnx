@@ -218,7 +218,8 @@ static int microblaze_timer_starting(unsigned int cpu)
 		return -EINVAL;
 	}
 
-	ret = request_irq(timer->irq, timer_interrupt, IRQF_TIMER,
+	ret = request_irq(timer->irq, timer_interrupt, IRQF_TIMER |
+			  IRQF_PERCPU | IRQF_NOBALANCING,
 			  "timer", ce);
 	if (ret) {
 		pr_err("%s: request_irq failed\n", __func__);
@@ -305,10 +306,30 @@ static int __init xilinx_timer_init(struct device_node *timer)
 	int ret = 0, cpu_id = 0;
 	void __iomem *timer_baseaddr;
 	unsigned int timer_clock_freq;
-	bool clocksource = true;
-	bool clockevent = true;
+	bool clocksource = false;
+	bool clockevent = false;
 
-	of_property_read_u32(timer, "cpu_id", &cpu_id);
+	ret = of_property_read_u32(timer, "cpu-id", &cpu_id);
+	if (!ret && NR_CPUS > 1) {
+		/* cpu_id will say if this is clocksource or clockevent */
+		if (cpu_id >= NR_CPUS)
+			clocksource = true;
+		else
+			clockevent = true;
+	} else {
+		/* No cpu_id property continue to work in old style */
+		clocksource = true;
+		clockevent = true;
+	}
+
+	if (clocksource) {
+		/* TODO Add support for clocksource from one timer only */
+		of_property_read_u32(timer, "xlnx,one-timer-only", &timer_num);
+		if (timer_num) {
+			pr_err("%pOF: Please enable two timers in HW\n", timer);
+			return -EINVAL;
+		}
+	}
 
 	timer_baseaddr = of_iomap(timer, 0);
 	if (!timer_baseaddr) {
@@ -323,12 +344,6 @@ static int __init xilinx_timer_init(struct device_node *timer)
 	if (!(read_fn(timer_baseaddr + TCSR0) & TCSR_MDT)) {
 		write_fn = timer_write32_be;
 		read_fn = timer_read32_be;
-	}
-
-	of_property_read_u32(timer, "xlnx,one-timer-only", &timer_num);
-	if (timer_num) {
-		pr_err("Please enable two timers in HW\n");
-		return -EINVAL;
 	}
 
 	clk = of_clk_get(timer, 0);
