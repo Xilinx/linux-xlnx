@@ -302,7 +302,7 @@ static int __init xilinx_timer_init(struct device_node *timer)
 	struct clk *clk;
 	static int initialized;
 	u32 timer_num = 1;
-	int ret = 0;
+	int ret = 0, cpu_id = 0;
 	void __iomem *timer_baseaddr;
 	unsigned int timer_clock_freq;
 	bool clocksource = true;
@@ -312,6 +312,8 @@ static int __init xilinx_timer_init(struct device_node *timer)
 		return -EINVAL;
 
 	initialized = 1;
+
+	of_property_read_u32(timer, "cpu_id", &cpu_id);
 
 	timer_baseaddr = of_iomap(timer, 0);
 	if (!timer_baseaddr) {
@@ -365,7 +367,7 @@ static int __init xilinx_timer_init(struct device_node *timer)
 		struct xilinx_timer *timer_st;
 
 		/* Record what we know already */
-		timer_st = per_cpu_ptr(&timer_priv, 0);
+		timer_st = per_cpu_ptr(&timer_priv, cpu_id);
 		timer_st->timer_baseaddr = timer_baseaddr;
 
 		timer_st->irq = irq_of_parse_and_map(timer, 0);
@@ -374,13 +376,16 @@ static int __init xilinx_timer_init(struct device_node *timer)
 			return -EINVAL;
 		}
 
-		pr_info("%pOF: irq=%d\n", timer, timer_st->irq);
+		pr_info("%pOF: irq=%d, cpu_id %d\n",
+			timer, timer_st->irq, cpu_id);
 
 		timer_st->timer_clock_freq = timer_clock_freq;
 
 		timer_st->freq_div_hz = timer_clock_freq / HZ;
 
-		ret = cpuhp_setup_state(CPUHP_AP_MICROBLAZE_TIMER_STARTING,
+		/* Can't call it several times */
+		if (!cpu_id)
+			ret = cpuhp_setup_state(CPUHP_AP_MICROBLAZE_TIMER_STARTING,
 					"clockevents/microblaze/arch_timer:starting",
 					microblaze_timer_starting,
 					microblaze_timer_dying);
