@@ -308,11 +308,6 @@ static int __init xilinx_timer_init(struct device_node *timer)
 	bool clocksource = true;
 	bool clockevent = true;
 
-	if (initialized)
-		return -EINVAL;
-
-	initialized = 1;
-
 	of_property_read_u32(timer, "cpu_id", &cpu_id);
 
 	timer_baseaddr = of_iomap(timer, 0);
@@ -352,6 +347,12 @@ static int __init xilinx_timer_init(struct device_node *timer)
 	}
 
 	if (clocksource) {
+		if (clocksource_baseaddr) {
+			pr_err("%s: cpu %d has already clocksource timer\n",
+			       __func__, cpu_id);
+			return -EINVAL;
+		}
+
 		/* At this point we know that clocksource timer is second one */
 		clocksource_baseaddr = timer_baseaddr + TCSR1;
 		pr_info("%s: Timer base: 0x%x, Clocksource base: 0x%x\n",
@@ -368,6 +369,12 @@ static int __init xilinx_timer_init(struct device_node *timer)
 
 		/* Record what we know already */
 		timer_st = per_cpu_ptr(&timer_priv, cpu_id);
+		if (timer_st->timer_baseaddr) {
+			pr_err("%s: cpu %d has already clockevent timer\n",
+			       __func__, cpu_id);
+			return -EINVAL;
+		}
+
 		timer_st->timer_baseaddr = timer_baseaddr;
 
 		timer_st->irq = irq_of_parse_and_map(timer, 0);
@@ -384,11 +391,14 @@ static int __init xilinx_timer_init(struct device_node *timer)
 		timer_st->freq_div_hz = timer_clock_freq / HZ;
 
 		/* Can't call it several times */
-		if (!cpu_id)
+		if (!initialized && !cpu_id) {
 			ret = cpuhp_setup_state(CPUHP_AP_MICROBLAZE_TIMER_STARTING,
 					"clockevents/microblaze/arch_timer:starting",
 					microblaze_timer_starting,
 					microblaze_timer_dying);
+			if (!ret)
+				initialized++;
+		}
 	}
 
 	return ret;
