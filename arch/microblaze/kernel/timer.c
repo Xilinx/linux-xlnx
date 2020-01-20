@@ -302,11 +302,11 @@ static int __init xilinx_timer_init(struct device_node *timer)
 	struct clk *clk;
 	static int initialized;
 	u32 timer_num = 1;
-	int ret;
-	struct xilinx_timer *timer_st;
+	int ret = 0;
 	void __iomem *timer_baseaddr;
 	unsigned int timer_clock_freq;
 	bool clocksource = true;
+	bool clockevent = true;
 
 	if (initialized)
 		return -EINVAL;
@@ -328,19 +328,11 @@ static int __init xilinx_timer_init(struct device_node *timer)
 		read_fn = timer_read32_be;
 	}
 
-	timer_st->irq = irq_of_parse_and_map(timer, 0);
-	if (timer_st->irq <= 0) {
-		pr_err("Failed to parse and map irq");
-		return -EINVAL;
-	}
-
 	of_property_read_u32(timer, "xlnx,one-timer-only", &timer_num);
 	if (timer_num) {
 		pr_err("Please enable two timers in HW\n");
 		return -EINVAL;
 	}
-
-	pr_info("%pOF: irq=%d\n", timer, timer_st->irq);
 
 	clk = of_clk_get(timer, 0);
 	if (IS_ERR(clk)) {
@@ -369,18 +361,31 @@ static int __init xilinx_timer_init(struct device_node *timer)
 			return ret;
 	}
 
-	/* Record what we know already */
-	timer_st = per_cpu_ptr(&timer_priv, 0);
-	timer_st->timer_baseaddr = timer_baseaddr;
+	if (clockevent) {
+		struct xilinx_timer *timer_st;
 
-	timer_st->timer_clock_freq = timer_clock_freq;
+		/* Record what we know already */
+		timer_st = per_cpu_ptr(&timer_priv, 0);
+		timer_st->timer_baseaddr = timer_baseaddr;
 
-	timer_st->freq_div_hz = timer_clock_freq / HZ;
+		timer_st->irq = irq_of_parse_and_map(timer, 0);
+		if (timer_st->irq <= 0) {
+			pr_err("Failed to parse and map irq");
+			return -EINVAL;
+		}
 
-	ret = cpuhp_setup_state(CPUHP_AP_MICROBLAZE_TIMER_STARTING,
-				"clockevents/microblaze/arch_timer:starting",
-				microblaze_timer_starting,
-				microblaze_timer_dying);
+		pr_info("%pOF: irq=%d\n", timer, timer_st->irq);
+
+		timer_st->timer_clock_freq = timer_clock_freq;
+
+		timer_st->freq_div_hz = timer_clock_freq / HZ;
+
+		ret = cpuhp_setup_state(CPUHP_AP_MICROBLAZE_TIMER_STARTING,
+					"clockevents/microblaze/arch_timer:starting",
+					microblaze_timer_starting,
+					microblaze_timer_dying);
+	}
+
 	return ret;
 }
 
