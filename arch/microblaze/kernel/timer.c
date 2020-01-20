@@ -211,6 +211,13 @@ static int microblaze_timer_starting(unsigned int cpu)
 
 	pr_debug("%s: cpu %d\n", __func__, cpu);
 
+	if (!timer->timer_baseaddr) {
+		/* It should never fail */
+		pr_err("%s: clockevent timer for cpu %d failed\n",
+		       __func__, cpu);
+		return -EINVAL;
+	}
+
 	ret = request_irq(timer->irq, timer_interrupt, IRQF_TIMER,
 			  "timer", ce);
 	if (ret) {
