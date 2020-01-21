@@ -9,6 +9,7 @@
 #define _LINUX_FPGA_MGR_H
 
 #include <linux/mutex.h>
+#include <linux/miscdevice.h>
 #include <linux/platform_device.h>
 
 #define ENCRYPTED_KEY_LEN	64 /* Bytes */
@@ -90,6 +91,7 @@ enum fpga_mgr_states {
 #define FPGA_MGR_USERKEY_ENCRYPTED_BITSTREAM	BIT(5)
 #define FPGA_MGR_DDR_MEM_AUTH_BITSTREAM		BIT(6)
 #define FPGA_MGR_SECURE_MEM_AUTH_BITSTREAM	BIT(7)
+#define FPGA_MGR_CONFIG_DMA_BUF			BIT(8)
 
 /**
  * struct fpga_image_info - information specific to an FPGA image
@@ -234,6 +236,8 @@ struct fpga_manager {
 	unsigned long flags;
 	char key[ENCRYPTED_KEY_LEN + 1];
 	struct device dev;
+	struct miscdevice miscdev;
+	struct dma_buf *dmabuf;
 	struct mutex ref_mutex;
 	enum fpga_mgr_states state;
 	struct fpga_compat_id *compat_id;
@@ -274,5 +278,7 @@ devm_fpga_mgr_register_full(struct device *parent, const struct fpga_manager_inf
 struct fpga_manager *
 devm_fpga_mgr_register(struct device *parent, const char *name,
 		       const struct fpga_manager_ops *mops, void *priv);
+
+#define FPGA_IOCTL_LOAD_DMA_BUFF	_IOWR('R', 1, __u32)
 
 #endif /*_LINUX_FPGA_MGR_H */
