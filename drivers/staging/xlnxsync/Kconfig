@@ -1,0 +1,11 @@
+config XLNX_SYNC
+	tristate "Xilinx Synchronizer"
+	depends on ARCH_ZYNQMP
+	help
+	  This driver is developed for Xilinx Synchronizer IP. It is used to
+	  monitor the AXI addresses of the producer and initiate the
+	  consumer to start earlier, thereby reducing the latency to process
+	  the data.
+
+	  To compile this driver as a module, choose M here.
+	  If unsure, choose N
