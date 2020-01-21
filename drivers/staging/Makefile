@@ -42,4 +42,5 @@ obj-$(CONFIG_FIELDBUS_DEV)     += fieldbus/
 obj-$(CONFIG_QLGE)		+= qlge/
 obj-$(CONFIG_WFX)		+= wfx/
 obj-$(CONFIG_XILINX_FCLK)	+= fclk/
+obj-$(CONFIG_XLNX_SYNC)		+= xlnxsync/
 obj-$(CONFIG_XROE_FRAMER)	+= xroeframer/

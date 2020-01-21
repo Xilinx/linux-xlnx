@@ -104,6 +104,8 @@ source "drivers/staging/wfx/Kconfig"
 
 source "drivers/staging/fclk/Kconfig"
 
+source "drivers/staging/xlnxsync/Kconfig"
+
 source "drivers/staging/xroeframer/Kconfig"
 
 source "drivers/staging/xroetrafficgen/Kconfig"
