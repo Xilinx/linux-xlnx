@@ -8,6 +8,8 @@
  * With code from the mailing list:
  * Copyright (C) 2013 Xilinx, Inc.
  */
+#include <linux/dma-buf.h>
+#include <linux/dma-map-ops.h>
 #include <linux/kernel.h>
 #include <linux/firmware.h>
 #include <linux/fpga/fpga-mgr.h>
@@ -303,6 +305,39 @@ static int fpga_mgr_buf_load(struct fpga_manager *mgr,
 	return rc;
 }
 
+static int fpga_dmabuf_load(struct fpga_manager *mgr,
+			    struct fpga_image_info *info)
+{
+	struct dma_buf_attachment *attach;
+	struct sg_table *sgt;
+	int ret;
+
+	/* create attachment for dmabuf with the user device */
+	attach = dma_buf_attach(mgr->dmabuf, &mgr->dev);
+	if (IS_ERR(attach)) {
+		pr_err("failed to attach dmabuf\n");
+		ret = PTR_ERR(attach);
+		goto fail_put;
+	}
+
+	sgt = dma_buf_map_attachment(attach, DMA_BIDIRECTIONAL);
+	if (IS_ERR(sgt)) {
+		ret = PTR_ERR(sgt);
+		goto fail_detach;
+	}
+
+	info->sgt = sgt;
+	ret = fpga_mgr_buf_load_sg(mgr, info, info->sgt);
+	dma_buf_unmap_attachment(attach, sgt, DMA_BIDIRECTIONAL);
+
+fail_detach:
+	dma_buf_detach(mgr->dmabuf, attach);
+fail_put:
+	dma_buf_put(mgr->dmabuf);
+
+	return ret;
+}
+
 /**
  * fpga_mgr_firmware_load - request firmware and load to fpga
  * @mgr:	fpga manager
@@ -359,6 +394,8 @@ static int fpga_mgr_firmware_load(struct fpga_manager *mgr,
  */
 int fpga_mgr_load(struct fpga_manager *mgr, struct fpga_image_info *info)
 {
+	if (info->flags & FPGA_MGR_CONFIG_DMA_BUF)
+		return fpga_dmabuf_load(mgr, info);
 	if (info->sgt)
 		return fpga_mgr_buf_load_sg(mgr, info, info->sgt);
 	if (info->buf && info->count)
@@ -646,6 +683,62 @@ static const struct file_operations fpga_mgr_ops_image = {
 };
 #endif
 
+static int fpga_dmabuf_fd_get(struct file *file, char __user *argp)
+{
+	struct fpga_manager *mgr =  (struct fpga_manager *)(file->private_data);
+	int buffd;
+
+	if (copy_from_user(&buffd, argp, sizeof(buffd)))
+		return -EFAULT;
+
+	mgr->dmabuf = dma_buf_get(buffd);
+	if (IS_ERR_OR_NULL(mgr->dmabuf))
+		return -EINVAL;
+
+	return 0;
+}
+
+static int fpga_device_open(struct inode *inode, struct file *file)
+{
+	struct miscdevice *miscdev = file->private_data;
+	struct fpga_manager *mgr = container_of(miscdev,
+						struct fpga_manager, miscdev);
+
+	file->private_data = mgr;
+
+	return 0;
+}
+
+static int fpga_device_release(struct inode *inode, struct file *file)
+{
+	return 0;
+}
+
+static long fpga_device_ioctl(struct file *file, unsigned int cmd,
+			      unsigned long arg)
+{
+	char __user *argp = (char __user *)arg;
+	int err;
+
+	switch (cmd) {
+	case FPGA_IOCTL_LOAD_DMA_BUFF:
+		err = fpga_dmabuf_fd_get(file, argp);
+		break;
+	default:
+		err = -ENOTTY;
+	}
+
+	return err;
+}
+
+static const struct file_operations fpga_fops = {
+	.owner		= THIS_MODULE,
+	.open		= fpga_device_open,
+	.release	= fpga_device_release,
+	.unlocked_ioctl	= fpga_device_ioctl,
+	.compat_ioctl	= fpga_device_ioctl,
+};
+
 /**
  * fpga_mgr_lock - Lock FPGA manager for exclusive use
  * @mgr:	fpga manager
@@ -699,8 +792,7 @@ struct fpga_manager *fpga_mgr_create(struct device *dev, const char *name,
 	int id, ret;
 
 	if (!mops || !mops->write_complete || !mops->state ||
-	    !mops->write_init || (!mops->write && !mops->write_sg) ||
-	    (mops->write && mops->write_sg)) {
+	    !mops->write_init || (!mops->write && !mops->write_sg)) {
 		dev_err(dev, "Attempt to register without fpga_manager_ops\n");
 		return NULL;
 	}
@@ -731,9 +823,27 @@ struct fpga_manager *fpga_mgr_create(struct device *dev, const char *name,
 	mgr->dev.of_node = dev->of_node;
 	mgr->dev.id = id;
 
+	/* Make device dma capable by inheriting from parent's */
+	set_dma_ops(&mgr->dev, get_dma_ops(dev));
+	ret = dma_coerce_mask_and_coherent(&mgr->dev, dma_get_mask(dev));
+	if (ret) {
+		dev_warn(dev,
+		"Failed to set DMA mask %llx. Trying to continue... %x\n",
+		dma_get_mask(dev), ret);
+	}
+
 	ret = dev_set_name(&mgr->dev, "fpga%d", id);
 	if (ret)
 		goto error_device;
+
+	mgr->miscdev.minor = MISC_DYNAMIC_MINOR;
+	mgr->miscdev.name = kobject_name(&mgr->dev.kobj);
+	mgr->miscdev.fops = &fpga_fops;
+	ret = misc_register(&mgr->miscdev);
+	if (ret) {
+		pr_err("fpga: failed to register misc device.\n");
+		goto error_device;
+	}
 
 	return mgr;
 
