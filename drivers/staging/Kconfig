@@ -120,4 +120,6 @@ source "drivers/staging/hikey9xx/Kconfig"
 
 source "drivers/staging/fclk/Kconfig"
 
+source "drivers/staging/xlnxsync/Kconfig"
+
 endif # STAGING
