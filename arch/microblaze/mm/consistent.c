@@ -35,7 +35,7 @@ void arch_dma_prep_coherent(struct page *page, size_t size)
  * I have to use dcache values because I can't relate on ram size:
  */
 #ifdef CONFIG_XILINX_UNCACHED_SHADOW
-#define UNCACHED_SHADOW_MASK (cpuinfo.dcache_high - cpuinfo.dcache_base + 1)
+#define UNCACHED_SHADOW_MASK (cpuinfo->dcache_high - cpuinfo->dcache_base + 1)
 #else
 #define UNCACHED_SHADOW_MASK 0
 #endif /* CONFIG_XILINX_UNCACHED_SHADOW */
@@ -43,9 +43,11 @@ void arch_dma_prep_coherent(struct page *page, size_t size)
 void *uncached_kernel_address(void *ptr)
 {
 	unsigned long addr = (unsigned long)ptr;
+	unsigned int cpu = smp_processor_id();
+	struct cpuinfo *cpuinfo = per_cpu_ptr(&cpu_info, cpu);
 
 	addr |= UNCACHED_SHADOW_MASK;
-	if (addr > cpuinfo.dcache_base && addr < cpuinfo.dcache_high)
+	if (addr > cpuinfo->dcache_base && addr < cpuinfo->dcache_high)
 		pr_warn("ERROR: Your cache coherent area is CACHED!!!\n");
 	return (void *)addr;
 }
@@ -53,6 +55,8 @@ void *uncached_kernel_address(void *ptr)
 void *cached_kernel_address(void *ptr)
 {
 	unsigned long addr = (unsigned long)ptr;
+	unsigned int cpu = smp_processor_id();
+	struct cpuinfo *cpuinfo = per_cpu_ptr(&cpu_info, cpu);
 
 	return (void *)(addr & ~UNCACHED_SHADOW_MASK);
 }
