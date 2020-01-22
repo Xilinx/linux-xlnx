@@ -300,12 +300,17 @@ static int zynqmp_r5_parse_fw(struct rproc *rproc, const struct firmware *fw)
 		}
 		if (strstr(node->name, "vdev") &&
 			strstr(node->name, "buffer")) {
+			int id;
+			char name[16];
+
+			id = node->name[8] - 48;
+			snprintf(name, sizeof(name), "vdev%dbuffer", id);
 			/* Register DMA region */
 			mem = rproc_mem_entry_init(dev, NULL,
 						   (dma_addr_t)rmem->base,
 						   rmem->size, rmem->base,
 						   NULL, NULL,
-						   node->name);
+						   name);
 			rproc_add_carveout(rproc, mem);
 			continue;
 		} else {
@@ -371,8 +376,13 @@ static int zynqmp_r5_parse_fw(struct rproc *rproc, const struct firmware *fw)
 
 		va = devm_ioremap_wc(dev, rsc.start, size);
 		/* zero out tcm base address */
-		if (rsc.start & 0xffe00000)
-			rsc.start &= 0x1fffff;
+		if (rsc.start & 0xffe00000) {
+				rsc.start &= 0x000fffff;
+		/* handle tcm banks 1 a and b (0xffe9000 and oxffeb0000) */
+				if (rsc.start & 0x80000)
+					rsc.start -= 0x90000;
+		}
+
 		dma = (dma_addr_t)rsc.start;
 		mem = rproc_mem_entry_init(dev, va, dma, (int)size, rsc.start,
 						 NULL, zynqmp_r5_mem_release,
