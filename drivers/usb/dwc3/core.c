@@ -245,6 +245,9 @@ static int dwc3_core_soft_reset(struct dwc3 *dwc)
 	 * XHCI driver will reset the host block. If dwc3 was configured for
 	 * host-only mode, then we can return early.
 	 */
+	if (dwc->dr_mode == USB_DR_MODE_HOST || dwc->is_hibernated == true)
+		return 0;
+
 	if (dwc->current_dr_role == DWC3_GCTL_PRTCAP_HOST)
 		return 0;
 
@@ -380,7 +383,7 @@ static struct dwc3_event_buffer *dwc3_alloc_one_event_buffer(struct dwc3 *dwc,
  * dwc3_free_event_buffers - frees all allocated event buffers
  * @dwc: Pointer to our controller context structure
  */
-static void dwc3_free_event_buffers(struct dwc3 *dwc)
+void dwc3_free_event_buffers(struct dwc3 *dwc)
 {
 	struct dwc3_event_buffer	*evt;
 
@@ -397,7 +400,7 @@ static void dwc3_free_event_buffers(struct dwc3 *dwc)
  * Returns 0 on success otherwise negative errno. In the error case, dwc
  * may contain some buffers allocated but not all which were requested.
  */
-static int dwc3_alloc_event_buffers(struct dwc3 *dwc, unsigned length)
+int dwc3_alloc_event_buffers(struct dwc3 *dwc, unsigned length)
 {
 	struct dwc3_event_buffer *evt;
 
@@ -818,8 +821,15 @@ static void dwc3_core_setup_global_control(struct dwc3 *dwc)
 			reg &= ~DWC3_GCTL_DSBLCLKGTNG;
 		break;
 	case DWC3_GHWPARAMS1_EN_PWROPT_HIB:
+		if (!device_property_read_bool(dwc->dev,
+					       "snps,enable-hibernation")) {
+			dev_dbg(dwc->dev, "Hibernation not enabled\n");
+			break;
+		}
+
 		/* enable hibernation here */
 		dwc->nr_scratch = DWC3_GHWPARAMS4_HIBER_SCRATCHBUFS(hwparams4);
+		dwc->has_hibernation = 1;
 
 		/*
 		 * REVISIT Enabling this bit so that host-mode hibernation
@@ -964,7 +974,7 @@ static void dwc3_set_incr_burst_type(struct dwc3 *dwc)
  *
  * Returns 0 on success otherwise negative errno.
  */
-static int dwc3_core_init(struct dwc3 *dwc)
+int dwc3_core_init(struct dwc3 *dwc)
 {
 	u32			reg;
 	int			ret;
