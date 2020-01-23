@@ -3091,7 +3091,7 @@ static void dwc3_gadget_hibernation_interrupt(struct dwc3 *dwc,
 	 * STAR#9000546576: Device Mode Hibernation: Issue in USB 2.0
 	 * Device Fallback from SuperSpeed
 	 */
-	if (is_ss ^ (dwc->speed == USB_SPEED_SUPER))
+	if (!!is_ss ^ (dwc->speed >= DWC3_DSTS_SUPERSPEED))
 		return;
 
 	/* enter hibernation here */
