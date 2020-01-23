@@ -370,6 +370,9 @@
 #define DWC3_GFLADJ_30MHZ_SDBND_SEL		BIT(7)
 #define DWC3_GFLADJ_30MHZ_MASK			0x3f
 
+/* Global User Control Register 1 */
+#define DWC3_GUCTL1_RESUME_QUIRK		(1 << 10)
+
 /* Global User Control Register 2 */
 #define DWC3_GUCTL2_RST_ACTBITLATER		BIT(14)
 
@@ -1024,6 +1027,8 @@ struct dwc3_scratchpad_array {
  *			provide a free-running PHY clock.
  * @dis_del_phy_power_chg_quirk: set if we disable delay phy power
  *			change quirk.
+ * @enable_guctl1_resume_quirk: Set if we enable quirk for fixing improper crc
+ *			generation after resume from suspend.
  * @dis_tx_ipgap_linecheck_quirk: set if we disable u2mac linestate
  *			check during HS transmit.
  * @tx_de_emphasis_quirk: set if we enable Tx de-emphasis quirk
@@ -1216,6 +1221,7 @@ struct dwc3 {
 	unsigned		dis_rxdet_inp3_quirk:1;
 	unsigned		dis_u2_freeclk_exists_quirk:1;
 	unsigned		dis_del_phy_power_chg_quirk:1;
+	unsigned		enable_guctl1_resume_quirk:1;
 	unsigned		dis_tx_ipgap_linecheck_quirk:1;
 
 	unsigned		tx_de_emphasis_quirk:1;
