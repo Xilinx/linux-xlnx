@@ -207,6 +207,9 @@ void dwc3_gadget_giveback(struct dwc3_ep *dep, struct dwc3_request *req,
 {
 	struct dwc3			*dwc = dep->dwc;
 
+	if (dep->stream_capable && timer_pending(&req->stream_timeout_timer))
+		del_timer(&req->stream_timeout_timer);
+
 	dwc3_gadget_del_and_unmap_request(dep, req, status);
 	req->status = DWC3_REQUEST_STATUS_COMPLETED;
 
@@ -534,6 +537,20 @@ static int dwc3_gadget_start_config(struct dwc3_ep *dep)
 	}
 
 	return 0;
+}
+
+static void stream_timeout_function(struct timer_list *arg)
+{
+	struct dwc3_request	*req = from_timer(req, arg,
+						stream_timeout_timer);
+	struct dwc3_ep		*dep = req->dep;
+	struct dwc3		*dwc = dep->dwc;
+	unsigned long		flags;
+
+	spin_lock_irqsave(&dwc->lock, flags);
+	dwc3_stop_active_transfer(dep, true, true);
+	__dwc3_gadget_kick_transfer(dep);
+	spin_unlock_irqrestore(&dwc->lock, flags);
 }
 
 static int dwc3_gadget_set_ep_config(struct dwc3_ep *dep, unsigned int action)
@@ -1270,6 +1287,13 @@ int __dwc3_gadget_kick_transfer(struct dwc3_ep *dep)
 		return ret;
 	}
 
+	if (starting && dep->stream_capable) {
+		req->stream_timeout_timer.expires = jiffies +
+				msecs_to_jiffies(STREAM_TIMEOUT_MS);
+		mod_timer(&req->stream_timeout_timer,
+			  req->stream_timeout_timer.expires);
+	}
+
 	return 0;
 }
 
@@ -1453,6 +1477,10 @@ static int __dwc3_gadget_ep_queue(struct dwc3_ep *dep, struct dwc3_request *req)
 	req->request.actual	= 0;
 	req->request.status	= -EINPROGRESS;
 
+	if (dep->stream_capable)
+		timer_setup(&req->stream_timeout_timer,
+			    stream_timeout_function, 0);
+
 	trace_dwc3_ep_queue(req);
 
 	list_add_tail(&req->list, &dep->pending_list);
@@ -1567,6 +1595,9 @@ static int dwc3_gadget_ep_dequeue(struct usb_ep *ep,
 	trace_dwc3_ep_dequeue(req);
 
 	spin_lock_irqsave(&dwc->lock, flags);
+
+	if (dep->stream_capable && timer_pending(&req->stream_timeout_timer))
+		del_timer(&req->stream_timeout_timer);
 
 	list_for_each_entry(r, &dep->pending_list, list) {
 		if (r == req)
@@ -2668,6 +2699,28 @@ static void dwc3_gadget_endpoint_transfer_not_ready(struct dwc3_ep *dep,
 	(void) __dwc3_gadget_start_isoc(dep);
 }
 
+static void dwc3_endpoint_stream_event(struct dwc3 *dwc,
+				       const struct dwc3_event_depevt *event)
+{
+	struct dwc3_ep		*dep;
+	struct dwc3_request	*req;
+	u8			epnum = event->endpoint_number;
+	u8			stream_id;
+
+	dep = dwc->eps[epnum];
+
+	stream_id = event->parameters;
+
+	/* Check for request matching the streamid and delete the timer */
+	list_for_each_entry(req, &dep->started_list, list) {
+		if (req->request.stream_id == stream_id) {
+			if (timer_pending(&req->stream_timeout_timer))
+				del_timer(&req->stream_timeout_timer);
+			break;
+		}
+	}
+}
+
 static void dwc3_endpoint_interrupt(struct dwc3 *dwc,
 		const struct dwc3_event_depevt *event)
 {
@@ -2692,11 +2745,20 @@ static void dwc3_endpoint_interrupt(struct dwc3 *dwc,
 	}
 
 	switch (event->endpoint_event) {
+	case DWC3_DEPEVT_XFERCOMPLETE:
+		if (!dep->stream_capable)
+			break;
+		dep->flags &= ~DWC3_EP_TRANSFER_STARTED;
+		/* Fall Through */
 	case DWC3_DEPEVT_XFERINPROGRESS:
 		dwc3_gadget_endpoint_transfer_in_progress(dep, event);
 		break;
 	case DWC3_DEPEVT_XFERNOTREADY:
 		dwc3_gadget_endpoint_transfer_not_ready(dep, event);
+		break;
+	case DWC3_DEPEVT_STREAMEVT:
+		if (event->status == DEPEVT_STREAMEVT_FOUND)
+			dwc3_endpoint_stream_event(dwc, event);
 		break;
 	case DWC3_DEPEVT_EPCMDCMPLT:
 		cmd = DEPEVT_PARAMETER_CMD(event->parameters);
@@ -2706,8 +2768,6 @@ static void dwc3_endpoint_interrupt(struct dwc3 *dwc,
 			dwc3_gadget_ep_cleanup_cancelled_requests(dep);
 		}
 		break;
-	case DWC3_DEPEVT_STREAMEVT:
-	case DWC3_DEPEVT_XFERCOMPLETE:
 	case DWC3_DEPEVT_RXTXFIFOEVT:
 		break;
 	}
