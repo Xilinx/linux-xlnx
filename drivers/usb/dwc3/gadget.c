@@ -1478,10 +1478,20 @@ static int __dwc3_gadget_ep_queue(struct dwc3_ep *dep, struct dwc3_request *req)
 				!(dep->flags & DWC3_EP_TRANSFER_STARTED))
 			return 0;
 
-		if ((dep->flags & DWC3_EP_PENDING_REQUEST)) {
-			if (!(dep->flags & DWC3_EP_TRANSFER_STARTED)) {
-				return __dwc3_gadget_start_isoc(dep);
+		if (dep->flags & DWC3_EP_PENDING_REQUEST) {
+			if (dep->flags & DWC3_EP_TRANSFER_STARTED) {
+				/*
+				 * If there are not entries in request list
+				 * then PENDING flag would be set, so that END
+				 * TRANSFER is issued when an entry is added
+				 * into request list.
+				 */
+				dwc3_stop_active_transfer(dep, true, true);
+				dep->flags = DWC3_EP_ENABLED;
 			}
+
+			/* Rest is taken care by DWC3_DEPEVT_XFERNOTREADY */
+			return 0;
 		}
 	}
 
@@ -2585,7 +2595,8 @@ static void dwc3_gadget_endpoint_transfer_in_progress(struct dwc3_ep *dep,
 	if (event->status & DEPEVT_STATUS_BUSERR)
 		status = -ECONNRESET;
 
-	if (event->status & DEPEVT_STATUS_MISSED_ISOC) {
+	if ((event->status & DEPEVT_STATUS_MISSED_ISOC) &&
+	    usb_endpoint_xfer_isoc(dep->endpoint.desc)) {
 		status = -EXDEV;
 
 		if (list_empty(&dep->started_list))
@@ -2593,6 +2604,23 @@ static void dwc3_gadget_endpoint_transfer_in_progress(struct dwc3_ep *dep,
 	}
 
 	dwc3_gadget_ep_cleanup_completed_requests(dep, event, status);
+
+	if (dep->stream_capable && !list_empty(&dep->started_list))
+		__dwc3_gadget_kick_transfer(dep);
+
+	if (usb_endpoint_xfer_isoc(dep->endpoint.desc) &&
+	    list_empty(&dep->started_list)) {
+		if (list_empty(&dep->pending_list))
+			/*
+			 * If there is no entry in request list then do
+			 * not issue END TRANSFER now. Just set PENDING
+			 * flag, so that END TRANSFER is issued when an
+			 * entry is added into request list.
+			 */
+			dep->flags |= DWC3_EP_PENDING_REQUEST;
+		else
+			stop = true;
+	}
 
 	if (stop) {
 		dwc3_stop_active_transfer(dep, true, true);
