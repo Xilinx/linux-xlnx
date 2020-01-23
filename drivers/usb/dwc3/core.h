@@ -199,6 +199,12 @@
 #define DWC3_EVENTQ		7
 #define DWC3_AUXEVENTQ		8
 
+/* Global SoC Bus Configuration Register */
+#define DWC3_GSBUSCFG0_DATRDREQINFO	(0xf << 28)
+#define DWC3_GSBUSCFG0_DESRDREQINFO	(0xf << 24)
+#define DWC3_GSBUSCFG0_DATWRREQINFO	(0xf << 20)
+#define DWC3_GSBUSCFG0_DESWRREQINFO	(0xf << 16)
+
 /* Global RX Threshold Configuration Register */
 #define DWC3_GRXTHRCFG_MAXRXBURSTSIZE(n) (((n) & 0x1f) << 19)
 #define DWC3_GRXTHRCFG_RXPKTCNT(n) (((n) & 0xf) << 24)
@@ -1399,6 +1405,13 @@ static inline bool dwc3_is_usb31(struct dwc3 *dwc)
 {
 	return !!(dwc->revision & DWC3_REVISION_IS_DWC31);
 }
+
+#if IS_ENABLED(CONFIG_USB_DWC3_OF_SIMPLE)
+int dwc3_enable_hw_coherency(struct device *dev);
+#else
+static inline int dwc3_enable_hw_coherency(struct device *dev)
+{ return 1; }
+#endif
 
 bool dwc3_has_imod(struct dwc3 *dwc);
 
