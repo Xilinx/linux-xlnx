@@ -421,6 +421,9 @@ int dwc3_event_buffers_setup(struct dwc3 *dwc)
 {
 	struct dwc3_event_buffer	*evt;
 
+	if (dwc->dr_mode == USB_DR_MODE_HOST)
+		return 0;
+
 	evt = dwc->ev_buf;
 	evt->lpos = 0;
 	dwc3_writel(dwc->regs, DWC3_GEVNTADRLO(0),
@@ -451,6 +454,9 @@ void dwc3_event_buffers_cleanup(struct dwc3 *dwc)
 
 static int dwc3_alloc_scratch_buffers(struct dwc3 *dwc)
 {
+	if (dwc->dr_mode == USB_DR_MODE_HOST)
+		return 0;
+
 	if (!dwc->has_hibernation)
 		return 0;
 
@@ -470,6 +476,9 @@ static int dwc3_setup_scratch_buffers(struct dwc3 *dwc)
 	dma_addr_t scratch_addr;
 	u32 param;
 	int ret;
+
+	if (dwc->dr_mode == USB_DR_MODE_HOST)
+		return 0;
 
 	if (!dwc->has_hibernation)
 		return 0;
@@ -1749,7 +1758,12 @@ static int dwc3_suspend_common(struct dwc3 *dwc, pm_message_t msg)
 	/* Put the core into D3 state */
 	dwc3_set_usb_core_power(dwc, false);
 
-	dwc3_core_exit(dwc);
+	/*
+	 * To avoid reinit of phy during resume, prevent calling the
+	 * dwc3_core_exit() when in D3 state
+	 */
+	if (!dwc->is_d3)
+		dwc3_core_exit(dwc);
 
 	return 0;
 }
