@@ -245,7 +245,6 @@ static int bot_send_write_request(struct usbg_cmd *cmd)
 {
 	struct f_uas *fu = cmd->fu;
 	struct se_cmd *se_cmd = &cmd->se_cmd;
-	struct usb_gadget *gadget = fuas_to_gadget(fu);
 	int ret;
 
 	init_completion(&cmd->write_complete);
@@ -255,22 +254,6 @@ static int bot_send_write_request(struct usbg_cmd *cmd)
 		cmd->csw_code = US_BULK_STAT_PHASE;
 		return -EINVAL;
 	}
-
-	if (!gadget->sg_supported) {
-		cmd->data_buf = kmalloc(se_cmd->data_length, GFP_KERNEL);
-		if (!cmd->data_buf)
-			return -ENOMEM;
-
-		fu->bot_req_out->buf = cmd->data_buf;
-	} else {
-		fu->bot_req_out->buf = NULL;
-		fu->bot_req_out->num_sgs = se_cmd->t_data_nents;
-		fu->bot_req_out->sg = se_cmd->t_data_sg;
-	}
-
-	fu->bot_req_out->complete = usbg_data_write_cmpl;
-	fu->bot_req_out->length = se_cmd->data_length;
-	fu->bot_req_out->context = cmd;
 
 	ret = usbg_prepare_w_request(cmd, fu->bot_req_out);
 	if (ret)
@@ -952,6 +935,56 @@ static int get_cmd_dir(const unsigned char *cdb)
 	return ret;
 }
 
+static void recover_w_length_with_maxpacket(struct usbg_cmd *cmd,
+					    struct usb_request *req)
+{
+	struct se_cmd *se_cmd = &cmd->se_cmd;
+	struct f_uas *fu = cmd->fu;
+	struct usb_gadget *gadget = fuas_to_gadget(fu);
+	int rem;
+
+	rem = se_cmd->data_length % fu->ep_out->maxpacket;
+	if (rem) {
+		/* recover paded data length */
+		cmd->data_len -= fu->ep_out->maxpacket - rem;
+
+		if (gadget->sg_supported) {
+			struct scatterlist *s = sg_last(se_cmd->t_data_sg,
+					se_cmd->t_data_nents);
+
+			s->length -= fu->ep_out->maxpacket - rem;
+		}
+	}
+}
+
+static void adjust_w_length_with_maxpacket(struct usbg_cmd *cmd,
+					   struct usb_request *req)
+{
+	struct se_cmd *se_cmd = &cmd->se_cmd;
+	struct f_uas *fu = cmd->fu;
+	struct usb_gadget *gadget = fuas_to_gadget(fu);
+	int rem;
+
+	cmd->data_len = se_cmd->data_length;
+	rem = cmd->data_len % fu->ep_out->maxpacket;
+	if (rem) {
+		/* pad data length so that transfer size can be in multiple of
+		 * max packet size
+		 */
+		cmd->data_len += fu->ep_out->maxpacket - rem;
+
+		if (gadget->sg_supported) {
+			/* if sg is supported and data length in page also need
+			 * to be adjusted as multiple of max packet size.
+			 */
+			struct scatterlist *s = sg_last(se_cmd->t_data_sg,
+					se_cmd->t_data_nents);
+
+			s->length += fu->ep_out->maxpacket - rem;
+		}
+	}
+}
+
 static void usbg_data_write_cmpl(struct usb_ep *ep, struct usb_request *req)
 {
 	struct usbg_cmd *cmd = req->context;
@@ -961,6 +994,8 @@ static void usbg_data_write_cmpl(struct usb_ep *ep, struct usb_request *req)
 		pr_err("%s() state %d transfer failed\n", __func__, cmd->state);
 		goto cleanup;
 	}
+
+	recover_w_length_with_maxpacket(cmd, req);
 
 	if (req->num_sgs == 0) {
 		sg_copy_from_buffer(se_cmd->t_data_sg,
@@ -982,8 +1017,10 @@ static int usbg_prepare_w_request(struct usbg_cmd *cmd, struct usb_request *req)
 	struct f_uas *fu = cmd->fu;
 	struct usb_gadget *gadget = fuas_to_gadget(fu);
 
+	adjust_w_length_with_maxpacket(cmd, req);
+
 	if (!gadget->sg_supported) {
-		cmd->data_buf = kmalloc(se_cmd->data_length, GFP_ATOMIC);
+		cmd->data_buf = kmalloc(cmd->data_len, GFP_ATOMIC);
 		if (!cmd->data_buf)
 			return -ENOMEM;
 
@@ -996,7 +1033,7 @@ static int usbg_prepare_w_request(struct usbg_cmd *cmd, struct usb_request *req)
 
 	req->is_last = 1;
 	req->complete = usbg_data_write_cmpl;
-	req->length = se_cmd->data_length;
+	req->length = cmd->data_len;
 	req->context = cmd;
 	return 0;
 }
