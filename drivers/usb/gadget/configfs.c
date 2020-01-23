@@ -231,6 +231,47 @@ static ssize_t gadget_dev_desc_bcdUSB_store(struct config_item *item,
 	return len;
 }
 
+static ssize_t gadget_dev_desc_max_speed_show(struct config_item *item,
+					      char *page)
+{
+	struct gadget_info *gi = to_gadget_info(item);
+	enum usb_device_speed max_speed = gi->composite.gadget_driver.max_speed;
+
+	return sprintf(page, "%s\n", usb_speed_string(max_speed));
+}
+
+static ssize_t gadget_dev_desc_max_speed_store(struct config_item *item,
+					       const char *page, size_t len)
+{
+	struct gadget_info *gi = to_gadget_info(item);
+	char *name;
+	int ret;
+	const char * const speed_names[] = {
+		[USB_SPEED_UNKNOWN] = "UNKNOWN",
+		[USB_SPEED_LOW] = "low-speed",
+		[USB_SPEED_FULL] = "full-speed",
+		[USB_SPEED_HIGH] = "high-speed",
+		[USB_SPEED_WIRELESS] = "wireless",
+		[USB_SPEED_SUPER] = "super-speed",
+		[USB_SPEED_SUPER_PLUS] = "super-speed-plus",
+	};
+
+	name = kstrdup(page, GFP_KERNEL);
+	if (!name)
+		return -ENOMEM;
+	if (name[len - 1] == '\n')
+		name[len - 1] = '\0';
+
+	ret = match_string(speed_names, ARRAY_SIZE(speed_names), name);
+
+	if (ret != -EINVAL) {
+		gi->composite.gadget_driver.max_speed = ret;
+		return len;
+	}
+
+	return ret;
+}
+
 static ssize_t gadget_dev_desc_UDC_show(struct config_item *item, char *page)
 {
 	char *udc_name = to_gadget_info(item)->composite.gadget_driver.udc_name;
@@ -301,6 +342,7 @@ CONFIGFS_ATTR(gadget_dev_desc_, idVendor);
 CONFIGFS_ATTR(gadget_dev_desc_, idProduct);
 CONFIGFS_ATTR(gadget_dev_desc_, bcdDevice);
 CONFIGFS_ATTR(gadget_dev_desc_, bcdUSB);
+CONFIGFS_ATTR(gadget_dev_desc_, max_speed);
 CONFIGFS_ATTR(gadget_dev_desc_, UDC);
 
 static struct configfs_attribute *gadget_root_attrs[] = {
@@ -312,6 +354,7 @@ static struct configfs_attribute *gadget_root_attrs[] = {
 	&gadget_dev_desc_attr_idProduct,
 	&gadget_dev_desc_attr_bcdDevice,
 	&gadget_dev_desc_attr_bcdUSB,
+	&gadget_dev_desc_attr_max_speed,
 	&gadget_dev_desc_attr_UDC,
 	NULL,
 };
@@ -1542,7 +1585,7 @@ static struct config_group *gadgets_make(
 	gi->composite.unbind = configfs_do_nothing;
 	gi->composite.suspend = NULL;
 	gi->composite.resume = NULL;
-	gi->composite.max_speed = USB_SPEED_SUPER;
+	gi->composite.max_speed = gi->composite.gadget_driver.max_speed;
 
 	mutex_init(&gi->lock);
 	INIT_LIST_HEAD(&gi->string_list);
