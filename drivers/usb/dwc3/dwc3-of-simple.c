@@ -31,6 +31,10 @@
 #include "core.h"
 #include "io.h"
 
+/* USB phy reset mask register */
+#define XLNX_USB_PHY_RST		0x001C
+#define XLNX_PHY_RST_MASK		0x1
+
 /* Xilinx USB 3.0 IP Register */
 #define XLNX_USB_COHERENCY		0x005C
 #define XLNX_USB_COHERENCY_ENABLE	0x1
@@ -104,6 +108,41 @@ int dwc3_enable_hw_coherency(struct device *dev)
 	return 0;
 }
 EXPORT_SYMBOL(dwc3_enable_hw_coherency);
+
+void dwc3_mask_phy_reset(struct device *dev, bool mask)
+{
+	struct device_node *node = of_get_parent(dev->of_node);
+
+	/* This is only valid for versal platforms */
+	if (of_device_is_compatible(node, "xlnx,versal-dwc3")) {
+		struct platform_device *pdev_parent;
+		struct dwc3_of_simple *simple;
+		u32 reg;
+
+		pdev_parent = of_find_device_by_node(node);
+		simple = platform_get_drvdata(pdev_parent);
+
+		reg = readl(simple->regs + XLNX_USB_PHY_RST);
+
+		if (mask)
+			/*
+			 * Mask the phy reset signal from comtroller
+			 * reaching ULPI phy. This can be done by
+			 * writing 0 into usb2_phy_reset register
+			 */
+			reg &= ~XLNX_PHY_RST_MASK;
+		else
+			/*
+			 * Allow phy reset signal from controller to
+			 * reset ULPI phy. This can be done by writing
+			 * 0x1 into usb2_phy_reset register
+			 */
+			reg |= XLNX_PHY_RST_MASK;
+
+		writel(reg, simple->regs + XLNX_USB_PHY_RST);
+	}
+}
+EXPORT_SYMBOL(dwc3_mask_phy_reset);
 
 void dwc3_set_simple_data(struct dwc3 *dwc)
 {
