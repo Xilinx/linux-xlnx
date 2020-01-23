@@ -689,8 +689,6 @@ out:
 	return 0;
 }
 
-static void dwc3_stop_active_transfer(struct dwc3_ep *dep, bool force,
-		bool interrupt);
 static void dwc3_remove_requests(struct dwc3 *dwc, struct dwc3_ep *dep)
 {
 	struct dwc3_request		*req;
@@ -1222,7 +1220,7 @@ static void dwc3_prepare_trbs(struct dwc3_ep *dep)
 	}
 }
 
-static int __dwc3_gadget_kick_transfer(struct dwc3_ep *dep)
+int __dwc3_gadget_kick_transfer(struct dwc3_ep *dep)
 {
 	struct dwc3_gadget_ep_cmd_params params;
 	struct dwc3_request		*req;
@@ -2754,8 +2752,8 @@ static void dwc3_reset_gadget(struct dwc3 *dwc)
 	}
 }
 
-static void dwc3_stop_active_transfer(struct dwc3_ep *dep, bool force,
-	bool interrupt)
+void dwc3_stop_active_transfer(struct dwc3_ep *dep, bool force,
+			bool interrupt)
 {
 	struct dwc3 *dwc = dep->dwc;
 	struct dwc3_gadget_ep_cmd_params params;
@@ -3541,8 +3539,7 @@ int dwc3_gadget_init(struct dwc3 *dwc)
 						&dwc->gadget);
 				if (ret) {
 					dev_err(dwc->dev,
-					"%s otg_set_peripheral failed\n",
-							__func__);
+						"otg_set_peripheral failed\n");
 					usb_put_phy(phy);
 					phy = NULL;
 					goto err4;
