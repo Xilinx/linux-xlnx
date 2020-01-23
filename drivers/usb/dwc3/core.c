@@ -442,7 +442,7 @@ static int dwc3_alloc_scratch_buffers(struct dwc3 *dwc)
 	if (!dwc->nr_scratch)
 		return 0;
 
-	dwc->scratchbuf = kmalloc_array(dwc->nr_scratch,
+	dwc->scratchbuf = kcalloc(dwc->nr_scratch,
 			DWC3_SCRATCHBUF_SIZE, GFP_KERNEL);
 	if (!dwc->scratchbuf)
 		return -ENOMEM;
@@ -463,7 +463,7 @@ static int dwc3_setup_scratch_buffers(struct dwc3 *dwc)
 		return 0;
 
 	 /* should never fall here */
-	if (!WARN_ON(dwc->scratchbuf))
+	if (WARN_ON(!dwc->scratchbuf))
 		return 0;
 
 	scratch_addr = dma_map_single(dwc->sysdev, dwc->scratchbuf,
@@ -510,7 +510,7 @@ static void dwc3_free_scratch_buffers(struct dwc3 *dwc)
 		return;
 
 	 /* should never fall here */
-	if (!WARN_ON(dwc->scratchbuf))
+	if (WARN_ON(!dwc->scratchbuf))
 		return;
 
 	dma_unmap_single(dwc->sysdev, dwc->scratch_addr, dwc->nr_scratch *
@@ -943,9 +943,20 @@ static int dwc3_core_init(struct dwc3 *dwc)
 	dwc3_core_setup_global_control(dwc);
 	dwc3_core_num_eps(dwc);
 
+	if (dwc->scratchbuf == NULL) {
+		ret = dwc3_alloc_scratch_buffers(dwc);
+		if (ret) {
+			dev_err(dwc->dev,
+				"Not enough memory for scratch buffers\n");
+			goto err1;
+		}
+	}
+
 	ret = dwc3_setup_scratch_buffers(dwc);
-	if (ret)
+	if (ret) {
+		dev_err(dwc->dev, "Failed to setup scratch buffers: %d\n", ret);
 		goto err1;
+	}
 
 	/* Adjust Frame Length */
 	dwc3_frame_length_adjustment(dwc);
@@ -1491,10 +1502,6 @@ static int dwc3_probe(struct platform_device *pdev)
 	}
 
 	ret = dwc3_get_dr_mode(dwc);
-	if (ret)
-		goto err3;
-
-	ret = dwc3_alloc_scratch_buffers(dwc);
 	if (ret)
 		goto err3;
 
