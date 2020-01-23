@@ -332,11 +332,15 @@ int uvcg_video_pump(struct uvc_video *video)
 
 		video->encode(req, video, buf);
 
+		spin_unlock_irqrestore(&queue->irqlock, flags);
+
 		/* Queue the USB request */
 		ret = uvcg_video_ep_queue(video, req);
 		spin_unlock_irqrestore(&queue->irqlock, flags);
 
 		if (ret < 0) {
+			printk(KERN_INFO "Failed to queue request (%d)\n", ret);
+			usb_ep_set_halt(video->ep);
 			uvcg_queue_cancel(queue, 0);
 			break;
 		}
