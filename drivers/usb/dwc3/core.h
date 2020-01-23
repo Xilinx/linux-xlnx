@@ -1423,6 +1423,7 @@ int dwc3_enable_hw_coherency(struct device *dev);
 void dwc3_simple_wakeup_capable(struct device *dev, bool wakeup);
 void dwc3_set_simple_data(struct dwc3 *dwc);
 void dwc3_simple_check_quirks(struct dwc3 *dwc);
+int dwc3_set_usb_core_power(struct dwc3 *dwc, bool on);
 #else
 static inline int dwc3_enable_hw_coherency(struct device *dev)
 { return 1; }
@@ -1431,6 +1432,8 @@ void dwc3_simple_wakeup_capable(struct device *dev, bool wakeup)
 void dwc3_set_simple_data(struct dwc3 *dwc)
 { ; }
 void dwc3_simple_check_quirks(struct dwc3 *dwc)
+{ ; }
+int dwc3_set_usb_core_power(struct dwc3 *dwc, bool on)
 { ; }
 #endif
 

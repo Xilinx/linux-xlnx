@@ -22,6 +22,7 @@
 #include <linux/pm_runtime.h>
 #include <linux/reset.h>
 #include <linux/soc/xilinx/zynqmp/fw.h>
+#include <linux/firmware/xlnx-zynqmp.h>
 #include <linux/slab.h>
 
 #include <linux/phy/phy-zynqmp.h>
@@ -39,7 +40,31 @@
 #define ULPI_OTG_CTRL_CLEAR		0XC
 #define OTG_CTRL_DRVVBUS_OFFSET		5
 
+#define XLNX_USB_CUR_PWR_STATE          0x0000
+#define XLNX_CUR_PWR_STATE_D0           0x00
+#define XLNX_CUR_PWR_STATE_D3           0x0F
+#define XLNX_CUR_PWR_STATE_BITMASK      0x0F
+
+#define XLNX_USB_PME_ENABLE             0x0034
+#define XLNX_PME_ENABLE_SIG_GEN         0x01
+
+#define XLNX_USB_REQ_PWR_STATE          0x003c
+#define XLNX_REQ_PWR_STATE_D0           0x00
+#define XLNX_REQ_PWR_STATE_D3           0x03
+
+/* Number of retries for USB operations */
+#define DWC3_PWR_STATE_RETRIES          1000
+#define DWC3_PWR_TIMEOUT		100
+
+/* Versal USB Node ID */
+#define VERSAL_USB_NODE_ID		0x18224018
+
+/* Versal USB Reset ID */
+#define VERSAL_USB_RESET_ID		0xC104036
+
 #define DWC3_OF_ADDRESS(ADDR)		((ADDR) - DWC3_GLOBALS_REGS_START)
+
+static const struct zynqmp_eemi_ops *eemi_ops;
 
 struct dwc3_of_simple {
 	struct device		*dev;
@@ -51,6 +76,7 @@ struct dwc3_of_simple {
 	bool			wakeup_capable;
 	bool			dis_u3_susphy_quirk;
 	bool			enable_d3_suspend;
+	char			soc_rev;
 	struct reset_control	*resets;
 	bool			pulse_resets;
 	bool			need_reset;
@@ -187,6 +213,12 @@ static int dwc3_of_simple_probe(struct platform_device *pdev)
 	if (!simple)
 		return -ENOMEM;
 
+	eemi_ops = zynqmp_pm_get_eemi_ops();
+	if (IS_ERR(eemi_ops)) {
+		dev_err(dev, "Failed to get eemi_ops\n");
+		return PTR_ERR(eemi_ops);
+	}
+
 	platform_set_drvdata(pdev, simple);
 	simple->dev = dev;
 
@@ -295,6 +327,198 @@ static void dwc3_simple_vbus(struct dwc3 *dwc, bool vbus_off)
 	addr = DWC3_OF_ADDRESS(DWC3_GUSB2PHYACC(0));
 	writel(reg, dwc->regs + addr);
 }
+
+static void dwc3_usb2phycfg(struct dwc3 *dwc, bool suspend)
+{
+	u32 addr, reg;
+
+	addr = DWC3_OF_ADDRESS(DWC3_GUSB2PHYCFG(0));
+
+	if (suspend) {
+		reg = readl(dwc->regs + addr);
+		if (!(reg & DWC3_GUSB2PHYCFG_SUSPHY)) {
+			reg |= DWC3_GUSB2PHYCFG_SUSPHY;
+			writel(reg, (dwc->regs + addr));
+		}
+	} else {
+		reg = readl(dwc->regs + addr);
+		if ((reg & DWC3_GUSB2PHYCFG_SUSPHY)) {
+			reg &= ~DWC3_GUSB2PHYCFG_SUSPHY;
+			writel(reg, (dwc->regs + addr));
+		}
+	}
+}
+
+static int dwc3_zynqmp_power_req(struct dwc3 *dwc, bool on)
+{
+	u32 reg, retries;
+	void __iomem *reg_base;
+	struct platform_device *pdev_parent;
+	struct dwc3_of_simple *simple;
+	struct device_node *node = of_get_parent(dwc->dev->of_node);
+
+	pdev_parent = of_find_device_by_node(node);
+	simple = platform_get_drvdata(pdev_parent);
+	reg_base = simple->regs;
+
+	/* Check if entering into D3 state is allowed during suspend */
+	if ((simple->soc_rev < ZYNQMP_SILICON_V4) || !simple->enable_d3_suspend)
+		return 0;
+
+	if (!simple->phy)
+		return 0;
+
+	if (on) {
+		dev_dbg(dwc->dev, "trying to set power state to D0....\n");
+
+		/* Release USB core reset , which was assert during D3 entry */
+		xpsgtr_usb_crst_release(simple->phy);
+
+		/* change power state to D0 */
+		writel(XLNX_REQ_PWR_STATE_D0,
+		       reg_base + XLNX_USB_REQ_PWR_STATE);
+
+		/* wait till current state is changed to D0 */
+		retries = DWC3_PWR_STATE_RETRIES;
+		do {
+			reg = readl(reg_base + XLNX_USB_CUR_PWR_STATE);
+			if ((reg & XLNX_CUR_PWR_STATE_BITMASK) ==
+			     XLNX_CUR_PWR_STATE_D0)
+				break;
+
+			udelay(DWC3_PWR_TIMEOUT);
+		} while (--retries);
+
+		if (!retries) {
+			dev_err(dwc->dev, "Failed to set power state to D0\n");
+			return -EIO;
+		}
+
+		dwc->is_d3 = false;
+
+		/* Clear Suspend PHY bit if dis_u2_susphy_quirk is set */
+		if (dwc->dis_u2_susphy_quirk)
+			dwc3_usb2phycfg(dwc, false);
+	} else {
+		dev_dbg(dwc->dev, "Trying to set power state to D3...\n");
+
+		/*
+		 * Set Suspend PHY bit before entering D3 if
+		 * dis_u2_susphy_quirk is set
+		 */
+		if (dwc->dis_u2_susphy_quirk)
+			dwc3_usb2phycfg(dwc, true);
+
+		/* enable PME to wakeup from hibernation */
+		writel(XLNX_PME_ENABLE_SIG_GEN, reg_base + XLNX_USB_PME_ENABLE);
+
+		/* change power state to D3 */
+		writel(XLNX_REQ_PWR_STATE_D3,
+		       reg_base + XLNX_USB_REQ_PWR_STATE);
+
+		/* wait till current state is changed to D3 */
+		retries = DWC3_PWR_STATE_RETRIES;
+		do {
+			reg = readl(reg_base + XLNX_USB_CUR_PWR_STATE);
+			if ((reg & XLNX_CUR_PWR_STATE_BITMASK) ==
+					XLNX_CUR_PWR_STATE_D3)
+				break;
+
+			udelay(DWC3_PWR_TIMEOUT);
+		} while (--retries);
+
+		if (!retries) {
+			dev_err(dwc->dev, "Failed to set power state to D3\n");
+			return -EIO;
+		}
+
+		/* Assert USB core reset after entering D3 state */
+		xpsgtr_usb_crst_assert(simple->phy);
+
+		dwc->is_d3 = true;
+	}
+
+	return 0;
+}
+
+static int dwc3_versal_power_req(struct dwc3 *dwc, bool on)
+{
+	int ret;
+	struct platform_device *pdev_parent;
+	struct dwc3_of_simple *simple;
+	struct device_node *node = of_get_parent(dwc->dev->of_node);
+
+	pdev_parent = of_find_device_by_node(node);
+	simple = platform_get_drvdata(pdev_parent);
+
+	if (!eemi_ops->ioctl || !eemi_ops->reset_assert)
+		return -ENOMEM;
+
+	if (on) {
+		dev_dbg(dwc->dev, "Trying to set power state to D0....\n");
+		ret = eemi_ops->reset_assert(VERSAL_USB_RESET_ID,
+					     PM_RESET_ACTION_RELEASE);
+		if (ret < 0)
+			dev_err(simple->dev, "failed to De-assert Reset\n");
+
+		ret = eemi_ops->ioctl(VERSAL_USB_NODE_ID, IOCTL_USB_SET_STATE,
+				      XLNX_REQ_PWR_STATE_D0,
+				      DWC3_PWR_STATE_RETRIES * DWC3_PWR_TIMEOUT,
+				      NULL);
+		if (ret < 0)
+			dev_err(simple->dev, "failed to enter D0 state\n");
+
+		dwc->is_d3 = false;
+
+		/* Clear Suspend PHY bit if dis_u2_susphy_quirk is set */
+		if (dwc->dis_u2_susphy_quirk)
+			dwc3_usb2phycfg(dwc, false);
+	} else {
+		dev_dbg(dwc->dev, "Trying to set power state to D3...\n");
+
+		/*
+		 * Set Suspend PHY bit before entering D3 if
+		 * dis_u2_susphy_quirk is set
+		 */
+		if (dwc->dis_u2_susphy_quirk)
+			dwc3_usb2phycfg(dwc, true);
+
+		ret = eemi_ops->ioctl(VERSAL_USB_NODE_ID, IOCTL_USB_SET_STATE,
+				      XLNX_REQ_PWR_STATE_D3,
+				      DWC3_PWR_STATE_RETRIES * DWC3_PWR_TIMEOUT,
+				      NULL);
+		if (ret < 0)
+			dev_err(simple->dev, "failed to enter D3 state\n");
+
+		ret = eemi_ops->reset_assert(VERSAL_USB_RESET_ID,
+					     PM_RESET_ACTION_ASSERT);
+		if (ret < 0)
+			dev_err(simple->dev, "failed to assert Reset\n");
+
+		dwc->is_d3 = true;
+	}
+
+	return ret;
+}
+
+int dwc3_set_usb_core_power(struct dwc3 *dwc, bool on)
+{
+	int ret;
+	struct device_node *node = of_get_parent(dwc->dev->of_node);
+
+	if (of_device_is_compatible(node, "xlnx,zynqmp-dwc3"))
+		/* Set D3/D0 state for ZynqMP */
+		ret = dwc3_zynqmp_power_req(dwc, on);
+	else if (of_device_is_compatible(node, "xlnx,versal-dwc3"))
+		/* Set D3/D0 state for Versal */
+		ret = dwc3_versal_power_req(dwc, on);
+	else
+		/* This is only for Xilinx devices */
+		return 0;
+
+	return ret;
+}
+EXPORT_SYMBOL(dwc3_set_usb_core_power);
 
 #endif
 
