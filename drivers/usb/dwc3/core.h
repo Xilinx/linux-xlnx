@@ -951,6 +951,7 @@ struct dwc3_scratchpad_array {
  * @fladj: frame length adjustment
  * @refclk_fladj: boolean to update GFLADJ_REFCLK_FLADJ field also
  * @irq_gadget: peripheral controller's IRQ number
+ * @otg: pointer to the dwc3_otg structure
  * @otg_irq: IRQ number for OTG IRQs
  * @current_otg_role: current role of operation while using the OTG block
  * @desired_otg_role: desired role of operation while using the OTG block
@@ -1092,6 +1093,8 @@ struct dwc3 {
 	int			num_clks;
 
 	struct reset_control	*reset;
+
+	struct dwc3_otg		*otg;
 
 	struct usb_phy		*usb2_phy;
 	struct usb_phy		*usb3_phy;
@@ -1457,7 +1460,8 @@ bool dwc3_has_imod(struct dwc3 *dwc);
 int dwc3_event_buffers_setup(struct dwc3 *dwc);
 void dwc3_event_buffers_cleanup(struct dwc3 *dwc);
 
-#if IS_ENABLED(CONFIG_USB_DWC3_HOST) || IS_ENABLED(CONFIG_USB_DWC3_DUAL_ROLE)
+#if IS_ENABLED(CONFIG_USB_DWC3_HOST) || IS_ENABLED(CONFIG_USB_DWC3_DUAL_ROLE)\
+	 || IS_ENABLED(CONFIG_USB_DWC3_OTG)
 int dwc3_host_init(struct dwc3 *dwc);
 void dwc3_host_exit(struct dwc3 *dwc);
 #else
@@ -1467,7 +1471,8 @@ static inline void dwc3_host_exit(struct dwc3 *dwc)
 { }
 #endif
 
-#if IS_ENABLED(CONFIG_USB_DWC3_GADGET) || IS_ENABLED(CONFIG_USB_DWC3_DUAL_ROLE)
+#if IS_ENABLED(CONFIG_USB_DWC3_GADGET) || IS_ENABLED(CONFIG_USB_DWC3_DUAL_ROLE)\
+	 || IS_ENABLED(CONFIG_USB_DWC3_OTG)
 int dwc3_gadget_init(struct dwc3 *dwc);
 void dwc3_gadget_exit(struct dwc3 *dwc);
 int dwc3_gadget_set_test_mode(struct dwc3 *dwc, int mode);
@@ -1498,21 +1503,25 @@ static inline int dwc3_send_gadget_generic_command(struct dwc3 *dwc,
 { return 0; }
 #endif
 
+#if IS_ENABLED(CONFIG_USB_DWC3_OTG) || IS_ENABLED(CONFIG_USB_DWC3_DUAL_ROLE)
+void dwc3_otg_init(struct dwc3 *dwc);
+void dwc3_otg_exit(struct dwc3 *dwc);
+#else
+static inline void dwc3_otg_init(struct dwc3 *dwc)
+{ }
+static inline void dwc3_otg_exit(struct dwc3 *dwc)
+{ }
+#endif
+
 #if IS_ENABLED(CONFIG_USB_DWC3_DUAL_ROLE)
 int dwc3_drd_init(struct dwc3 *dwc);
 void dwc3_drd_exit(struct dwc3 *dwc);
-void dwc3_otg_init(struct dwc3 *dwc);
-void dwc3_otg_exit(struct dwc3 *dwc);
 void dwc3_otg_update(struct dwc3 *dwc, bool ignore_idstatus);
 void dwc3_otg_host_init(struct dwc3 *dwc);
 #else
 static inline int dwc3_drd_init(struct dwc3 *dwc)
 { return 0; }
 static inline void dwc3_drd_exit(struct dwc3 *dwc)
-{ }
-static inline void dwc3_otg_init(struct dwc3 *dwc)
-{ }
-static inline void dwc3_otg_exit(struct dwc3 *dwc)
 { }
 static inline void dwc3_otg_update(struct dwc3 *dwc, bool ignore_idstatus)
 { }
