@@ -122,4 +122,6 @@ source "drivers/staging/fclk/Kconfig"
 
 source "drivers/staging/xlnxsync/Kconfig"
 
+source "drivers/staging/xlnx_tsmux/Kconfig"
+
 endif # STAGING
