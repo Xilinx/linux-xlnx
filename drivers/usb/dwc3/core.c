@@ -454,6 +454,8 @@ void dwc3_event_buffers_cleanup(struct dwc3 *dwc)
 
 static int dwc3_alloc_scratch_buffers(struct dwc3 *dwc)
 {
+	u32 size;
+
 	if (dwc->dr_mode == USB_DR_MODE_HOST)
 		return 0;
 
@@ -463,17 +465,29 @@ static int dwc3_alloc_scratch_buffers(struct dwc3 *dwc)
 	if (!dwc->nr_scratch)
 		return 0;
 
-	dwc->scratchbuf = kcalloc(dwc->nr_scratch,
-			DWC3_SCRATCHBUF_SIZE, GFP_KERNEL);
+	/* Allocate only if scratchbuf is NULL */
+	if (dwc->scratchbuf)
+		return 0;
+
+	size = dwc->nr_scratch * DWC3_SCRATCHBUF_SIZE;
+
+	dwc->scratchbuf = kzalloc(size, GFP_KERNEL);
+
 	if (!dwc->scratchbuf)
 		return -ENOMEM;
+
+	dwc->scratch_addr = dma_map_single(dwc->dev, dwc->scratchbuf, size,
+					   DMA_BIDIRECTIONAL);
+	if (dma_mapping_error(dwc->dev, dwc->scratch_addr)) {
+		dev_err(dwc->dev, "failed to map scratch buffer\n");
+		return -EFAULT;
+	}
 
 	return 0;
 }
 
 static int dwc3_setup_scratch_buffers(struct dwc3 *dwc)
 {
-	dma_addr_t scratch_addr;
 	u32 param;
 	int ret;
 
@@ -490,25 +504,14 @@ static int dwc3_setup_scratch_buffers(struct dwc3 *dwc)
 	if (WARN_ON(!dwc->scratchbuf))
 		return 0;
 
-	scratch_addr = dma_map_single(dwc->sysdev, dwc->scratchbuf,
-			dwc->nr_scratch * DWC3_SCRATCHBUF_SIZE,
-			DMA_BIDIRECTIONAL);
-	if (dma_mapping_error(dwc->sysdev, scratch_addr)) {
-		dev_err(dwc->sysdev, "failed to map scratch buffer\n");
-		ret = -EFAULT;
-		goto err0;
-	}
-
-	dwc->scratch_addr = scratch_addr;
-
-	param = lower_32_bits(scratch_addr);
+	param = lower_32_bits(dwc->scratch_addr);
 
 	ret = dwc3_send_gadget_generic_command(dwc,
 			DWC3_DGCMD_SET_SCRATCHPAD_ADDR_LO, param);
 	if (ret < 0)
 		goto err1;
 
-	param = upper_32_bits(scratch_addr);
+	param = upper_32_bits(dwc->scratch_addr);
 
 	ret = dwc3_send_gadget_generic_command(dwc,
 			DWC3_DGCMD_SET_SCRATCHPAD_ADDR_HI, param);
@@ -521,7 +524,6 @@ err1:
 	dma_unmap_single(dwc->sysdev, dwc->scratch_addr, dwc->nr_scratch *
 			DWC3_SCRATCHBUF_SIZE, DMA_BIDIRECTIONAL);
 
-err0:
 	return ret;
 }
 
