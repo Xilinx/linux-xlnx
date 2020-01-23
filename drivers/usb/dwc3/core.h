@@ -1049,6 +1049,7 @@ struct dwc3_scratchpad_array {
  * @dis_metastability_quirk: set to disable metastability quirk.
  * @imod_interval: set the interrupt moderation interval in 250ns
  *                 increments or 0 to disable.
+ * @is_d3: set if the controller is in d3 state
  */
 struct dwc3 {
 	struct work_struct	drd_work;
@@ -1240,6 +1241,7 @@ struct dwc3 {
 	unsigned		dis_metastability_quirk:1;
 
 	u16			imod_interval;
+	bool			is_d3;
 };
 
 #define INCRX_BURST_MODE 0
@@ -1421,6 +1423,7 @@ int dwc3_enable_hw_coherency(struct device *dev);
 void dwc3_simple_wakeup_capable(struct device *dev, bool wakeup);
 void dwc3_set_simple_data(struct dwc3 *dwc);
 void dwc3_simple_check_quirks(struct dwc3 *dwc);
+int dwc3_set_usb_core_power(struct dwc3 *dwc, bool on);
 #else
 static inline int dwc3_enable_hw_coherency(struct device *dev)
 { return 1; }
@@ -1429,6 +1432,8 @@ void dwc3_simple_wakeup_capable(struct device *dev, bool wakeup)
 void dwc3_set_simple_data(struct dwc3 *dwc)
 { ; }
 void dwc3_simple_check_quirks(struct dwc3 *dwc)
+{ ; }
+int dwc3_set_usb_core_power(struct dwc3 *dwc, bool on)
 { ; }
 #endif
 
