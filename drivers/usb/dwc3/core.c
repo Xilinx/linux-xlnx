@@ -302,7 +302,7 @@ static const struct clk_bulk_data dwc3_core_clks[] = {
  */
 static void dwc3_frame_length_adjustment(struct dwc3 *dwc)
 {
-	u32 reg;
+	u32 reg, gfladj;
 	u32 dft;
 
 	if (dwc->revision < DWC3_REVISION_250A)
@@ -311,13 +311,27 @@ static void dwc3_frame_length_adjustment(struct dwc3 *dwc)
 	if (dwc->fladj == 0)
 		return;
 
+	/* Save the initial DWC3_GFLADJ register value */
 	reg = dwc3_readl(dwc->regs, DWC3_GFLADJ);
+	gfladj = reg;
+
+	if (dwc->refclk_fladj) {
+		if ((reg & DWC3_GFLADJ_REFCLK_FLADJ) !=
+				    (dwc->fladj & DWC3_GFLADJ_REFCLK_FLADJ)) {
+			reg &= ~DWC3_GFLADJ_REFCLK_FLADJ;
+			reg |= (dwc->fladj & DWC3_GFLADJ_REFCLK_FLADJ);
+		}
+	}
+
 	dft = reg & DWC3_GFLADJ_30MHZ_MASK;
 	if (dft != dwc->fladj) {
 		reg &= ~DWC3_GFLADJ_30MHZ_MASK;
 		reg |= DWC3_GFLADJ_30MHZ_SDBND_SEL | dwc->fladj;
-		dwc3_writel(dwc->regs, DWC3_GFLADJ, reg);
 	}
+
+	/* Update DWC3_GFLADJ if there is any change from initial value */
+	if (reg != gfladj)
+		dwc3_writel(dwc->regs, DWC3_GFLADJ, reg);
 }
 
 /**
@@ -1392,6 +1406,8 @@ static void dwc3_get_properties(struct dwc3 *dwc)
 	device_property_read_u32(dev, "snps,quirk-frame-length-adjustment",
 				 &dwc->fladj);
 
+	dwc->refclk_fladj = device_property_read_bool(dev,
+						      "snps,refclk_fladj");
 	dwc->enable_guctl1_resume_quirk = device_property_read_bool(dev,
 				"snps,enable_guctl1_resume_quirk");
 	dwc->enable_guctl1_ipd_quirk = device_property_read_bool(dev,
