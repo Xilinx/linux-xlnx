@@ -3385,23 +3385,26 @@ static int dwc3_gadget_get_irq(struct dwc3 *dwc)
 	if (irq > 0)
 		dwc->irq_gadget = irq;
 
+	if (irq == -EPROBE_DEFER)
+		goto out;
+
 	/* look for wakeup interrupt if hibernation is supported */
 	if (dwc->has_hibernation) {
 		irq = platform_get_irq(dwc3_pdev, 2);
-		if (irq <= 0) {
-			if (irq != -EPROBE_DEFER)
-				dev_err(dwc->dev, "missing wakeup IRQ\n");
-			if (!irq)
-				irq = -EINVAL;
-			return irq;
-		}
+		if (irq > 0)
+			dwc->irq_wakeup = irq;
 
-		dwc->irq_wakeup = irq;
+		if (irq == -EPROBE_DEFER)
+			goto out;
 	}
 
-	if (!irq)
-		irq = -EINVAL;
+	if (irq <= 0) {
+		if (irq != -EPROBE_DEFER)
+			dev_err(dwc->dev, "missing peripheral IRQ\n");
 
+		if (!irq)
+			irq = -EINVAL;
+	}
 out:
 	return irq;
 }
