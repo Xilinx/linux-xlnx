@@ -460,6 +460,7 @@
 
 /* Device Status Register */
 #define DWC3_DSTS_DCNRD			BIT(29)
+#define DWC3_DSTS_SRE			BIT(28)
 
 /* This applies for core versions 1.87a and earlier */
 #define DWC3_DSTS_PWRUPREQ		BIT(24)
@@ -1043,6 +1044,7 @@ struct dwc3_scratchpad_array {
  * @dis_tx_ipgap_linecheck_quirk: set if we disable u2mac linestate
  *			check during HS transmit.
  * @tx_de_emphasis_quirk: set if we enable Tx de-emphasis quirk
+ * @is_hibernated: true when dwc3 is hibernated; abort processing events
  * @tx_de_emphasis: Tx de-emphasis value
  * 	0	- -6dB de-emphasis
  * 	1	- -3.5dB de-emphasis
@@ -1052,6 +1054,11 @@ struct dwc3_scratchpad_array {
  * @imod_interval: set the interrupt moderation interval in 250ns
  *                 increments or 0 to disable.
  * @is_d3: set if the controller is in d3 state
+ * @saved_regs: registers to be saved/restored during hibernation/wakeup events
+ * @irq_wakeup: wakeup IRQ number, triggered when host asks to wakeup from
+ *              hibernation
+ * @force_hiber_wake: flag set when the gadget driver is forcefully triggering
+		a hibernation wakeup event
  */
 struct dwc3 {
 	struct work_struct	drd_work;
@@ -1240,11 +1247,15 @@ struct dwc3 {
 
 	unsigned		tx_de_emphasis_quirk:1;
 	unsigned		tx_de_emphasis:2;
+	unsigned		is_hibernated:1;
 
 	unsigned		dis_metastability_quirk:1;
 
 	u16			imod_interval;
 	bool			is_d3;
+	u32			*saved_regs;
+	u32			irq_wakeup;
+	bool			force_hiber_wake;
 };
 
 #define INCRX_BURST_MODE 0
@@ -1464,6 +1475,7 @@ int dwc3_gadget_set_link_state(struct dwc3 *dwc, enum dwc3_link_state state);
 int dwc3_send_gadget_ep_cmd(struct dwc3_ep *dep, unsigned cmd,
 		struct dwc3_gadget_ep_cmd_params *params);
 int dwc3_send_gadget_generic_command(struct dwc3 *dwc, unsigned cmd, u32 param);
+int dwc3_core_init(struct dwc3 *dwc);
 #else
 static inline int dwc3_gadget_init(struct dwc3 *dwc)
 { return 0; }
