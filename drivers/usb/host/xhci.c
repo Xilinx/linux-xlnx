@@ -1679,8 +1679,21 @@ static int xhci_urb_dequeue(struct usb_hcd *hcd, struct urb *urb, int status)
 		goto err_giveback;
 	}
 
+	ep_index = xhci_get_endpoint_index(&urb->ep->desc);
+	ep = &xhci->devs[urb->dev->slot_id]->eps[ep_index];
+	ep_ring = xhci_urb_to_transfer_ring(xhci, urb);
+	if (!ep_ring) {
+		ret = -EINVAL;
+		goto done;
+	}
+
+	/* Delete the stream timer */
+	if ((xhci->quirks & XHCI_STREAM_QUIRK) && (urb->stream_id > 0))
+		del_timer(&ep_ring->stream_timer);
+
 	i = urb_priv->num_tds_done;
 	if (i < urb_priv->num_tds)
+
 		xhci_dbg_trace(xhci, trace_xhci_dbg_cancel_urb,
 				"Cancel URB %p, dev %s, ep 0x%x, "
 				"starting at offset 0x%llx",
