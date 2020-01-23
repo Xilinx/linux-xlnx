@@ -19,6 +19,7 @@
 #include <linux/slab.h>
 #include <linux/acpi.h>
 #include <linux/usb/of.h>
+#include <linux/usb/otg.h>
 
 #include "xhci.h"
 #include "xhci-plat.h"
@@ -152,6 +153,35 @@ static const struct of_device_id usb_xhci_of_match[] = {
 };
 MODULE_DEVICE_TABLE(of, usb_xhci_of_match);
 #endif
+
+static int usb_otg_set_host(struct device *dev, struct usb_hcd *hcd, bool yes)
+{
+	int ret = 0;
+
+	hcd->usb_phy = usb_get_phy(USB_PHY_TYPE_USB3);
+	if (!IS_ERR_OR_NULL(hcd->usb_phy) && hcd->usb_phy->otg) {
+		if (yes) {
+			if (otg_set_host(hcd->usb_phy->otg, &hcd->self)) {
+				usb_put_phy(hcd->usb_phy);
+				goto disable_phy;
+			}
+		} else {
+			ret = otg_set_host(hcd->usb_phy->otg, NULL);
+			usb_put_phy(hcd->usb_phy);
+			goto disable_phy;
+		}
+
+	} else {
+		goto disable_phy;
+	}
+
+	return 0;
+
+disable_phy:
+	hcd->usb_phy = NULL;
+
+	return ret;
+}
 
 static int xhci_plat_probe(struct platform_device *pdev)
 {
@@ -318,6 +348,10 @@ static int xhci_plat_probe(struct platform_device *pdev)
 	if (ret)
 		goto dealloc_usb2_hcd;
 
+	ret = usb_otg_set_host(&pdev->dev, hcd, true);
+	if (ret)
+		goto dealloc_usb2_hcd;
+
 	device_enable_async_suspend(&pdev->dev);
 	pm_runtime_put_noidle(&pdev->dev);
 
@@ -368,6 +402,8 @@ static int xhci_plat_remove(struct platform_device *dev)
 	usb_remove_hcd(shared_hcd);
 	xhci->shared_hcd = NULL;
 	usb_phy_shutdown(hcd->usb_phy);
+
+	usb_otg_set_host(&dev->dev, hcd, false);
 
 	usb_remove_hcd(hcd);
 	usb_put_hcd(shared_hcd);
