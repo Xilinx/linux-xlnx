@@ -824,12 +824,12 @@ static void dwc3_core_setup_global_control(struct dwc3 *dwc)
 		if (!device_property_read_bool(dwc->dev,
 					       "snps,enable-hibernation")) {
 			dev_dbg(dwc->dev, "Hibernation not enabled\n");
-			break;
+		} else {
+			/* enable hibernation here */
+			dwc->nr_scratch =
+				DWC3_GHWPARAMS4_HIBER_SCRATCHBUFS(hwparams4);
+			dwc->has_hibernation = 1;
 		}
-
-		/* enable hibernation here */
-		dwc->nr_scratch = DWC3_GHWPARAMS4_HIBER_SCRATCHBUFS(hwparams4);
-		dwc->has_hibernation = 1;
 
 		/*
 		 * REVISIT Enabling this bit so that host-mode hibernation
