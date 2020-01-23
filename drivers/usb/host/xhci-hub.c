@@ -1754,6 +1754,13 @@ int xhci_bus_resume(struct usb_hcd *hcd)
 		}
 	}
 
+	/* After resuming back from suspend, the controller may not initiate
+	 * LFPS.U3_exit signalling if not given a delay after updating the
+	 * link from U3->U0. So, lets wait for atleast 1ms
+	 */
+	if (next_state == XDEV_U0)
+		mdelay(1);
+
 	/* poll for U0 link state complete, both USB2 and USB3 */
 	for_each_set_bit(port_index, &bus_state->bus_suspended, BITS_PER_LONG) {
 		sret = xhci_handshake(ports[port_index]->addr, PORT_PLC,
