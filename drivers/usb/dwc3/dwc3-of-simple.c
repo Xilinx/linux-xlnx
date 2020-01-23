@@ -63,6 +63,9 @@
 /* Versal USB Node ID */
 #define VERSAL_USB_NODE_ID		0x18224018
 
+/* Versal USB Reset ID */
+#define VERSAL_USB_RESET_ID		0xC104036
+
 #define DWC3_OF_ADDRESS(ADDR)		((ADDR) - DWC3_GLOBALS_REGS_START)
 
 static const struct zynqmp_eemi_ops *eemi_ops;
@@ -73,6 +76,7 @@ struct dwc3_of_simple {
 	int			num_clocks;
 	void __iomem		*regs;
 	struct dwc3		*dwc;
+	struct phy		*phy;
 	bool			wakeup_capable;
 	bool			dis_u3_susphy_quirk;
 	bool			enable_d3_suspend;
