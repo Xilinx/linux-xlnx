@@ -2554,10 +2554,13 @@ static int dwc3_gadget_ep_cleanup_completed_request(struct dwc3_ep *dep,
 
 	req->request.actual = req->request.length - req->remaining;
 
-	if (!dwc3_gadget_ep_request_completed(req) &&
-			req->num_pending_sgs) {
-		__dwc3_gadget_kick_transfer(dep);
-		goto out;
+	if ((!dwc3_gadget_ep_request_completed(req) &&
+	     req->num_pending_sgs) || req->num_pending_sgs) {
+		if (!(event->status &
+			(DEPEVT_STATUS_SHORT | DEPEVT_STATUS_LST))) {
+			__dwc3_gadget_kick_transfer(dep);
+			goto out;
+		}
 	}
 
 	dwc3_gadget_giveback(dep, req, status);
