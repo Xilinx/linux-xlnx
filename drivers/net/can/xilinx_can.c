@@ -26,6 +26,7 @@
 #include <linux/can/error.h>
 #include <linux/can/led.h>
 #include <linux/pm_runtime.h>
+#include <linux/iopoll.h>
 
 #define DRIVER_NAME	"xilinx_can"
 
@@ -53,6 +54,7 @@ enum xcan_reg {
 					  */
 	XCAN_F_BTR_OFFSET	= 0x08C, /* Data Phase Bit Timing */
 	XCAN_TRR_OFFSET		= 0x0090, /* TX Buffer Ready Request */
+	XCAN_TCR_OFFSET		= 0x0098, /* TX Buffer Clear Request */
 	XCAN_AFR_EXT_OFFSET	= 0x00E0, /* Acceptance Filter */
 	XCAN_FSR_OFFSET		= 0x00E8, /* RX FIFO Status */
 	XCAN_TXMSG_BASE_OFFSET	= 0x0100, /* TX Message Space */
@@ -159,6 +161,7 @@ enum xcan_reg {
  */
 #define XCAN_FLAG_RX_FIFO_MULTI	0x0010
 #define XCAN_FLAG_CANFD_2	0x0020
+#define XCANFD_TIMEOUT		1000
 
 enum xcan_ip_type {
 	XAXI_CAN = 0,
@@ -995,6 +998,7 @@ static void xcan_err_interrupt(struct net_device *ndev, u32 isr)
 	struct can_frame *cf;
 	struct sk_buff *skb;
 	u32 err_status;
+	u32 val, mask;
 
 	skb = alloc_can_err_skb(ndev, &cf);
 
@@ -1046,8 +1050,15 @@ static void xcan_err_interrupt(struct net_device *ndev, u32 isr)
 		}
 	}
 
-	if (isr & XCAN_IXR_PEE_MASK)
+	if (isr & XCAN_IXR_PEE_MASK) {
 		stats->rx_dropped++;
+		mask  = priv->read_reg(priv, XCAN_TRR_OFFSET);
+		priv->write_reg(priv, XCAN_TCR_OFFSET, mask);
+		if (readl_poll_timeout(priv + XCAN_TRR_OFFSET,
+				       val, !val, 0, XCANFD_TIMEOUT))
+			netdev_err(ndev, "PEE re-transmission error\n");
+		priv->write_reg(priv, XCAN_TRR_OFFSET, mask);
+	}
 
 	/* Check for error interrupt */
 	if (isr & XCAN_IXR_ERROR_MASK) {
