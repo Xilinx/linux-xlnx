@@ -116,6 +116,7 @@ enum xcan_reg {
 #define XCAN_IXR_TXFLL_MASK		0x00000004 /* Tx FIFO Full intr */
 #define XCAN_IXR_TXOK_MASK		0x00000002 /* TX successful intr */
 #define XCAN_IXR_ARBLST_MASK		0x00000001 /* Arbitration lost intr */
+#define XCAN_IXR_PEE_MASK		0x00000004 /* PEE interrupt */
 #define XCAN_IDR_ID1_MASK		0xFFE00000 /* Standard msg identifier */
 #define XCAN_IDR_SRR_MASK		0x00100000 /* Substitute remote TXreq */
 #define XCAN_IDR_IDE_MASK		0x00080000 /* Identifier extension */
@@ -478,7 +479,8 @@ static int xcan_chip_start(struct net_device *ndev)
 	ier = XCAN_IXR_TXOK_MASK | XCAN_IXR_BSOFF_MASK |
 		XCAN_IXR_WKUP_MASK | XCAN_IXR_SLP_MASK |
 		XCAN_IXR_ERROR_MASK | XCAN_IXR_RXOFLW_MASK |
-		XCAN_IXR_ARBLST_MASK | xcan_rx_int_mask(priv);
+		XCAN_IXR_ARBLST_MASK | xcan_rx_int_mask(priv) |
+		XCAN_IXR_PEE_MASK;
 
 	if (priv->devtype.flags & XCAN_FLAG_RXMNF)
 		ier |= XCAN_IXR_RXMNF_MASK;
@@ -1044,6 +1046,9 @@ static void xcan_err_interrupt(struct net_device *ndev, u32 isr)
 		}
 	}
 
+	if (isr & XCAN_IXR_PEE_MASK)
+		stats->rx_dropped++;
+
 	/* Check for error interrupt */
 	if (isr & XCAN_IXR_ERROR_MASK) {
 		if (skb)
@@ -1343,7 +1348,7 @@ static irqreturn_t xcan_interrupt(int irq, void *dev_id)
 	/* Check for the type of error interrupt and Processing it */
 	isr_errors = isr & (XCAN_IXR_ERROR_MASK | XCAN_IXR_RXOFLW_MASK |
 			    XCAN_IXR_BSOFF_MASK | XCAN_IXR_ARBLST_MASK |
-			    XCAN_IXR_RXMNF_MASK);
+			    XCAN_IXR_RXMNF_MASK | XCAN_IXR_PEE_MASK);
 	if (isr_errors) {
 		priv->write_reg(priv, XCAN_ICR_OFFSET, isr_errors);
 		xcan_err_interrupt(ndev, isr);
