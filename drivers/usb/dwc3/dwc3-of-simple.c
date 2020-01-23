@@ -49,6 +49,7 @@ struct dwc3_of_simple {
 	struct dwc3		*dwc;
 	struct phy		*phy;
 	bool			wakeup_capable;
+	bool			dis_u3_susphy_quirk;
 	bool			enable_d3_suspend;
 	struct reset_control	*resets;
 	bool			pulse_resets;
@@ -95,6 +96,24 @@ void dwc3_set_simple_data(struct dwc3 *dwc)
 	}
 }
 EXPORT_SYMBOL(dwc3_set_simple_data);
+
+void dwc3_simple_check_quirks(struct dwc3 *dwc)
+{
+	struct device_node *node = of_get_parent(dwc->dev->of_node);
+
+	if (node && of_device_is_compatible(node, "xlnx,zynqmp-dwc3")) {
+		struct platform_device *pdev_parent;
+		struct dwc3_of_simple   *simple;
+
+		pdev_parent = of_find_device_by_node(node);
+		simple = platform_get_drvdata(pdev_parent);
+
+		/* Add snps,dis_u3_susphy_quirk */
+		dwc->dis_u3_susphy_quirk = simple->dis_u3_susphy_quirk;
+
+	}
+}
+EXPORT_SYMBOL(dwc3_simple_check_quirks);
 
 void dwc3_simple_wakeup_capable(struct device *dev, bool wakeup)
 {
