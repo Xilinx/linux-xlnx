@@ -29,6 +29,13 @@ config XILINX_AXI_EMAC
 	---help---
 	  This driver supports the 10/100/1000 Ethernet from Xilinx for the
 	  AXI bus interface used in Xilinx Virtex FPGAs and Soc's.
+config XILINX_AXI_EMAC_HWTSTAMP
+	bool "Generate hardware packet timestamps"
+	depends on XILINX_AXI_EMAC
+	select PTP_1588_CLOCK
+	default n
+	---help---
+	  Generate hardare packet timestamps. This is to facilitate IEE 1588.
 
 config XILINX_LL_TEMAC
 	tristate "Xilinx LL TEMAC (LocalLink Tri-mode Ethernet MAC) driver"
