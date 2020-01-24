@@ -21,7 +21,7 @@
 #define DEFAULT_HOST_CLOCK	150000000 /* 150 MHz */
 
 /* Wait till MDIO interface is ready to accept a new transaction.*/
-static int axienet_mdio_wait_until_ready(struct axienet_local *lp)
+int axienet_mdio_wait_until_ready(struct axienet_local *lp)
 {
 	u32 val;
 
