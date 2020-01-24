@@ -399,9 +399,9 @@
 /**
  * struct axidma_bd - Axi Dma buffer descriptor layout
  * @next:         MM2S/S2MM Next Descriptor Pointer
- * @reserved1:    Reserved and not used
+ * @reserved1:    Reserved and not used for 32-bit
  * @phys:         MM2S/S2MM Buffer Address
- * @reserved2:    Reserved and not used
+ * @reserved2:    Reserved and not used for 32-bit
  * @reserved3:    Reserved and not used
  * @reserved4:    Reserved and not used
  * @cntrl:        MM2S/S2MM Control value
@@ -418,10 +418,14 @@
  * @tx_skb:	  Transmit skb address
  */
 struct axidma_bd {
-	u32 next;	/* Physical address of next buffer descriptor */
+	phys_addr_t next;	/* Physical address of next buffer descriptor */
+#ifndef CONFIG_PHYS_ADDR_T_64BIT
 	u32 reserved1;
-	u32 phys;
+#endif
+	phys_addr_t phys;
+#ifndef CONFIG_PHYS_ADDR_T_64BIT
 	u32 reserved2;
+#endif
 	u32 reserved3;
 	u32 reserved4;
 	u32 cntrl;
