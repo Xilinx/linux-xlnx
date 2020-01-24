@@ -122,7 +122,7 @@
 /* Default TX/RX Threshold and waitbound values for SGDMA mode */
 #define XAXIDMA_DFT_TX_THRESHOLD	24
 #define XAXIDMA_DFT_TX_WAITBOUND	254
-#define XAXIDMA_DFT_RX_THRESHOLD	24
+#define XAXIDMA_DFT_RX_THRESHOLD	1
 #define XAXIDMA_DFT_RX_WAITBOUND	254
 
 #define XAXIDMA_BD_CTRL_TXSOF_MASK	0x08000000 /* First tx packet */
@@ -342,6 +342,7 @@
 /* Xilinx PCS/PMA PHY register for switching 1000BaseX or SGMII */
 #define XLNX_MII_STD_SELECT_REG		0x11
 #define XLNX_MII_STD_SELECT_SGMII	BIT(0)
+#define XAXIENET_NAPI_WEIGHT		64
 
 /**
  * struct axidma_bd - Axi Dma buffer descriptor layout
@@ -395,6 +396,9 @@ struct axidma_bd {
  * @regs:	Base address for the axienet_local device address space
  * @dma_regs:	Base address for the axidma device address space
  * @dma_err_task: Work structure to process Axi DMA errors
+ * @dma_err_tasklet: Tasklet structure to process Axi DMA errors
+ * @rx_lock:	Spin lock for tx path
+ * @napi:	NAPI Structure
  * @tx_irq:	Axidma TX IRQ number
  * @rx_irq:	Axidma RX IRQ number
  * @eth_irq:	Ethernet core IRQ number
@@ -448,6 +452,9 @@ struct axienet_local {
 	void __iomem *dma_regs;
 
 	struct work_struct dma_err_task;
+	struct tasklet_struct dma_err_tasklet;
+	spinlock_t rx_lock;		/* Spin lock */
+	struct napi_struct napi;	/* NAPI Structure */
 
 	int tx_irq;
 	int rx_irq;
