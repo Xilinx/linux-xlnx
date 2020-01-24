@@ -275,6 +275,7 @@
 #define XAE_EMMC_LINKSPD_10	0x00000000 /* Link Speed mask for 10 Mbit */
 #define XAE_EMMC_LINKSPD_100	0x40000000 /* Link Speed mask for 100 Mbit */
 #define XAE_EMMC_LINKSPD_1000	0x80000000 /* Link Speed mask for 1000 Mbit */
+#define XAE_EMMC_LINKSPD_2500	0x80000000 /* Link Speed mask for 2500 Mbit */
 
 /* Bit masks for Axi Ethernet PHYC register */
 #define XAE_PHYC_SGMIILINKSPEED_MASK	0xC0000000 /* SGMII link speed mask*/
@@ -480,10 +481,12 @@ struct axienet_local {
  * enum axienet_ip_type - AXIENET IP/MAC type.
  *
  * @XAXIENET_1G:	 IP is 1G MAC
+ * @XAXIENET_2_5G:	 IP type is 2.5G MAC.
  *
  */
 enum axienet_ip_type {
 	XAXIENET_1G = 0,
+	XAXIENET_2_5G,
 };
 
 struct axienet_config {
