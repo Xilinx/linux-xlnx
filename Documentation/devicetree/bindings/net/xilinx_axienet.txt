@@ -37,6 +37,9 @@ Required properties:
 - phy-handle	: Should point to the external phy device.
 		  See ethernet.txt file in the same directory.
 - xlnx,rxmem	: Set to allocated memory buffer for Rx/Tx in the hardware
+Required properties (When AxiEthernet is configured with MCDMA):
+- xlnx,channel-ids	: Queue Identifier associated with the MCDMA Channel.
+- interrupt-names	: Should contain the interrupt names.
 
 Optional properties:
 - phy-mode	: See ethernet.txt
@@ -69,6 +72,9 @@ Optional properties for connected DMA node:
 Optional properties (When USXGMII is in use):
 - xlnx,usxgmii-rate	: USXGMII PHY speed - can be 10, 100, 1000, 2500,
 			  5000 or 10000.
+
+Optional properties (When AxiEthernet is configured with MCDMA):
+- xlnx,num-queues	: Number of queues h/w configured for.
 
 NOTE: Time Sensitive Networking (TSN) related DT bindings are explained in [4].
 
