@@ -41,7 +41,7 @@ struct xintc_irq_chip {
 	u32		nr_irq;
 };
 
-static struct xintc_irq_chip *primary_intc;
+static DEFINE_PER_CPU(struct xintc_irq_chip, primary_intc);
 
 static void xintc_write(struct xintc_irq_chip *irqc, int reg, u32 data)
 {
@@ -112,12 +112,13 @@ static struct irq_chip intc_dev = {
 
 unsigned int xintc_get_irq(void)
 {
-	unsigned int irq = -1;
-	u32 hwirq;
+	int hwirq, irq = -1;
+	unsigned int cpu_id = smp_processor_id();
+	struct xintc_irq_chip *irqc = per_cpu_ptr(&primary_intc, cpu_id);
 
-	hwirq = xintc_read(primary_intc, IVR);
+	hwirq = xintc_read(irqc, IVR);
 	if (hwirq != -1U)
-		irq = irq_find_mapping(primary_intc->root_domain, hwirq);
+		irq = irq_find_mapping(irqc->root_domain, hwirq);
 
 	pr_debug("irq-xilinx: hwirq=%d, irq=%d\n", hwirq, irq);
 
@@ -169,10 +170,26 @@ static int __init xilinx_intc_of_init(struct device_node *intc,
 {
 	struct xintc_irq_chip *irqc;
 	int ret, irq;
+	u32 cpu_id = 0;
 
-	irqc = kzalloc(sizeof(*irqc), GFP_KERNEL);
-	if (!irqc)
-		return -ENOMEM;
+	ret = of_property_read_u32(intc, "cpu-id", &cpu_id);
+	if (ret < 0)
+		pr_err("%s: %pOF: cpu_id not found\n", __func__, intc);
+
+	/* No parent means it is primary intc */
+	if (!parent) {
+		irqc = per_cpu_ptr(&primary_intc, cpu_id);
+		if (irqc->base) {
+			pr_err("%pOF: %s: cpu %d has already irq controller\n",
+				intc, __func__, cpu_id);
+			return -EINVAL;
+		}
+	} else {
+		irqc = kzalloc(sizeof(*irqc), GFP_KERNEL);
+		if (!irqc)
+			return -ENOMEM;
+	}
+
 	irqc->base = of_iomap(intc, 0);
 	BUG_ON(!irqc->base);
 
@@ -231,15 +248,15 @@ static int __init xilinx_intc_of_init(struct device_node *intc,
 			goto error;
 		}
 	} else {
-		primary_intc = irqc;
-		irq_set_default_host(primary_intc->root_domain);
+		irq_set_default_host(irqc->root_domain);
 	}
 
 	return 0;
 
 error:
 	iounmap(irqc->base);
-	kfree(irqc);
+	if (parent)
+		kfree(irqc);
 	return ret;
 
 }
