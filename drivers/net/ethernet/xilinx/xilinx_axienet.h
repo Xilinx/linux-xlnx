@@ -482,11 +482,13 @@ struct axienet_local {
  *
  * @XAXIENET_1G:	 IP is 1G MAC
  * @XAXIENET_2_5G:	 IP type is 2.5G MAC.
+ * @XAXIENET_LEGACY_10G: IP type is legacy 10G MAC.
  *
  */
 enum axienet_ip_type {
 	XAXIENET_1G = 0,
 	XAXIENET_2_5G,
+	XAXIENET_LEGACY_10G,
 };
 
 struct axienet_config {
