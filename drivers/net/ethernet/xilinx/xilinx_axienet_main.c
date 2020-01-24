@@ -105,8 +105,8 @@ static struct axienet_option axienet_options[] = {
 		.m_or = XAE_FCC_FCTX_MASK,
 	}, { /* Turn on promiscuous frame filtering */
 		.opt = XAE_OPTION_PROMISC,
-		.reg = XAE_FMI_OFFSET,
-		.m_or = XAE_FMI_PM_MASK,
+		.reg = XAE_FMC_OFFSET,
+		.m_or = XAE_FMC_PM_MASK,
 	}, { /* Enable transmitter */
 		.opt = XAE_OPTION_TXEN,
 		.reg = XAE_TC_OFFSET,
@@ -286,9 +286,9 @@ void axienet_set_multicast_list(struct net_device *ndev)
 		 * the flag is already set. If not we set it.
 		 */
 		ndev->flags |= IFF_PROMISC;
-		reg = axienet_ior(lp, XAE_FMI_OFFSET);
-		reg |= XAE_FMI_PM_MASK;
-		axienet_iow(lp, XAE_FMI_OFFSET, reg);
+		reg = axienet_ior(lp, XAE_FMC_OFFSET);
+		reg |= XAE_FMC_PM_MASK;
+		axienet_iow(lp, XAE_FMC_OFFSET, reg);
 		dev_info(&ndev->dev, "Promiscuous mode enabled.\n");
 	} else if (!netdev_mc_empty(ndev)) {
 		struct netdev_hw_addr *ha;
@@ -306,25 +306,25 @@ void axienet_set_multicast_list(struct net_device *ndev)
 			af1reg = (ha->addr[4]);
 			af1reg |= (ha->addr[5] << 8);
 
-			reg = axienet_ior(lp, XAE_FMI_OFFSET) & 0xFFFFFF00;
+			reg = axienet_ior(lp, XAE_FMC_OFFSET) & 0xFFFFFF00;
 			reg |= i;
 
-			axienet_iow(lp, XAE_FMI_OFFSET, reg);
+			axienet_iow(lp, XAE_FMC_OFFSET, reg);
 			axienet_iow(lp, XAE_AF0_OFFSET, af0reg);
 			axienet_iow(lp, XAE_AF1_OFFSET, af1reg);
 			i++;
 		}
 	} else {
-		reg = axienet_ior(lp, XAE_FMI_OFFSET);
-		reg &= ~XAE_FMI_PM_MASK;
+		reg = axienet_ior(lp, XAE_FMC_OFFSET);
+		reg &= ~XAE_FMC_PM_MASK;
 
-		axienet_iow(lp, XAE_FMI_OFFSET, reg);
+		axienet_iow(lp, XAE_FMC_OFFSET, reg);
 
 		for (i = 0; i < XAE_MULTICAST_CAM_TABLE_NUM; i++) {
-			reg = axienet_ior(lp, XAE_FMI_OFFSET) & 0xFFFFFF00;
+			reg = axienet_ior(lp, XAE_FMC_OFFSET) & 0xFFFFFF00;
 			reg |= i;
 
-			axienet_iow(lp, XAE_FMI_OFFSET, reg);
+			axienet_iow(lp, XAE_FMC_OFFSET, reg);
 			axienet_iow(lp, XAE_AF0_OFFSET, 0);
 			axienet_iow(lp, XAE_AF1_OFFSET, 0);
 		}
@@ -1950,18 +1950,18 @@ static void axienet_ethtools_get_regs(struct net_device *ndev,
 	data[15] = axienet_ior(lp, XAE_TC_OFFSET);
 	data[16] = axienet_ior(lp, XAE_FCC_OFFSET);
 	data[17] = axienet_ior(lp, XAE_EMMC_OFFSET);
-	data[18] = axienet_ior(lp, XAE_PHYC_OFFSET);
+	data[18] = axienet_ior(lp, XAE_RMFC_OFFSET);
 	data[19] = axienet_ior(lp, XAE_MDIO_MC_OFFSET);
 	data[20] = axienet_ior(lp, XAE_MDIO_MCR_OFFSET);
 	data[21] = axienet_ior(lp, XAE_MDIO_MWD_OFFSET);
 	data[22] = axienet_ior(lp, XAE_MDIO_MRD_OFFSET);
-	data[23] = axienet_ior(lp, XAE_MDIO_MIS_OFFSET);
-	data[24] = axienet_ior(lp, XAE_MDIO_MIP_OFFSET);
-	data[25] = axienet_ior(lp, XAE_MDIO_MIE_OFFSET);
-	data[26] = axienet_ior(lp, XAE_MDIO_MIC_OFFSET);
+	data[23] = axienet_ior(lp, XAE_TEMAC_IS_OFFSET);
+	data[24] = axienet_ior(lp, XAE_TEMAC_IP_OFFSET);
+	data[25] = axienet_ior(lp, XAE_TEMAC_IE_OFFSET);
+	data[26] = axienet_ior(lp, XAE_TEMAC_IC_OFFSET);
 	data[27] = axienet_ior(lp, XAE_UAW0_OFFSET);
 	data[28] = axienet_ior(lp, XAE_UAW1_OFFSET);
-	data[29] = axienet_ior(lp, XAE_FMI_OFFSET);
+	data[29] = axienet_ior(lp, XAE_FMC_OFFSET);
 	data[30] = axienet_ior(lp, XAE_AF0_OFFSET);
 	data[31] = axienet_ior(lp, XAE_AF1_OFFSET);
 	/* Support only single DMA queue */
