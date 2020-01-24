@@ -46,11 +46,13 @@ Optional properties:
 		  1 to enable partial TX checksum offload,
 		  2 to enable full TX checksum offload
 - xlnx,rxcsum	: Same values as xlnx,txcsum but for RX checksum offload
-- clocks	: AXI bus clock for the device. Refer to common clock bindings.
-		  Used to calculate MDIO clock divisor. If not specified, it is
-		  auto-detected from the CPU clock (but only on platforms where
-		  this is possible). New device trees should specify this - the
-		  auto detection is only for backward compatibility.
+- clocks		: Input clock specifier. Refer to common clock bindings.
+- clock-names		: Input clock names. Refer to IP PG for signal description.
+			  1G/2.5G: s_axi_lite_clk, axis_clk and ref_clk.
+			  10G/25G and USXGMII: s_axi_aclk, rx_core_clk and dclk.
+			  10 Gigabit: s_axi_aclk and dclk.
+			  AXI DMA and MCDMA: m_axi_sg_aclk, m_axi_mm2s_aclk and
+			  m_axi_s2mm_aclk.
  - mdio		: Child node for MDIO bus. Must be defined if PHY access is
 		  required through the core's MDIO interface (i.e. always,
 		  unless the PHY is accessed through a different bus).
