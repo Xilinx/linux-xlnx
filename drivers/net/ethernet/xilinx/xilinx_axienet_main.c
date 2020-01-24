@@ -1846,8 +1846,8 @@ static int axienet_probe(struct platform_device *pdev)
 	struct device_node *np;
 	struct axienet_local *lp;
 	struct net_device *ndev;
-	struct resource *ethres;
 	u8 mac_addr[ETH_ALEN];
+	struct resource *ethres, dmares;
 	int addr_width = 32;
 	u32 value;
 
@@ -2001,20 +2001,14 @@ static int axienet_probe(struct platform_device *pdev)
 
 	/* Find the DMA node, map the DMA registers, and decode the DMA IRQs */
 	np = of_parse_phandle(pdev->dev.of_node, "axistream-connected", 0);
-	if (np) {
-		struct resource dmares;
-
-		ret = of_address_to_resource(np, 0, &dmares);
-		if (ret) {
-			dev_err(&pdev->dev,
-				"unable to get DMA resource\n");
-			of_node_put(np);
-			goto cleanup_clk;
-		}
-		lp->dma_regs = devm_ioremap_resource(&pdev->dev,
-						     &dmares);
-		lp->rx_irq = irq_of_parse_and_map(np, 1);
-		lp->tx_irq = irq_of_parse_and_map(np, 0);
+	if (!np) {
+		dev_err(&pdev->dev, "could not find DMA node\n");
+		ret = -ENODEV;
+		goto free_netdev;
+	}
+	ret = of_address_to_resource(np, 0, &dmares);
+	if (ret) {
+		dev_err(&pdev->dev, "unable to get DMA resource\n");
 		of_node_put(np);
 		lp->eth_irq = platform_get_irq_optional(pdev, 0);
 	} else {
@@ -2024,11 +2018,16 @@ static int axienet_probe(struct platform_device *pdev)
 		lp->tx_irq = platform_get_irq(pdev, 0);
 		lp->eth_irq = platform_get_irq_optional(pdev, 2);
 	}
+	lp->dma_regs = devm_ioremap_resource(&pdev->dev, &dmares);
 	if (IS_ERR(lp->dma_regs)) {
 		dev_err(&pdev->dev, "could not map DMA regs\n");
 		ret = PTR_ERR(lp->dma_regs);
 		goto cleanup_clk;
 	}
+	lp->rx_irq = irq_of_parse_and_map(np, 1);
+	lp->tx_irq = irq_of_parse_and_map(np, 0);
+	lp->eth_irq = irq_of_parse_and_map(np, 2);
+	of_node_put(np);
 	if ((lp->rx_irq <= 0) || (lp->tx_irq <= 0)) {
 		dev_err(&pdev->dev, "could not determine irqs\n");
 		ret = -ENOMEM;
