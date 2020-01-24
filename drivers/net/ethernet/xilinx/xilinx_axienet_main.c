@@ -360,6 +360,9 @@ static void axienet_set_multicast_list(struct net_device *ndev)
 	u32 reg, af0reg, af1reg;
 	struct axienet_local *lp = netdev_priv(ndev);
 
+	if (lp->eth_hasnobuf)
+		return;
+
 	if (ndev->flags & (IFF_ALLMULTI | IFF_PROMISC) ||
 	    netdev_mc_count(ndev) > XAE_MULTICAST_CAM_TABLE_NUM) {
 		/* We must make the kernel realize we had to move into
@@ -505,9 +508,12 @@ static void axienet_device_reset(struct net_device *ndev)
 	axienet_status &= ~XAE_RCW1_RX_MASK;
 	axienet_iow(lp, XAE_RCW1_OFFSET, axienet_status);
 
-	axienet_status = axienet_ior(lp, XAE_IP_OFFSET);
-	if (axienet_status & XAE_INT_RXRJECT_MASK)
-		axienet_iow(lp, XAE_IS_OFFSET, XAE_INT_RXRJECT_MASK);
+	if (!lp->eth_hasnobuf) {
+		axienet_status = axienet_ior(lp, XAE_IP_OFFSET);
+		if (axienet_status & XAE_INT_RXRJECT_MASK)
+			axienet_iow(lp, XAE_IS_OFFSET, XAE_INT_RXRJECT_MASK);
+	}
+
 	axienet_iow(lp, XAE_IE_OFFSET, lp->eth_irq > 0 ?
 		    XAE_INT_RECV_ERROR_MASK : 0);
 
@@ -651,7 +657,7 @@ axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 		netif_wake_queue(ndev);
 	}
 
-	if (skb->ip_summed == CHECKSUM_PARTIAL) {
+	if (skb->ip_summed == CHECKSUM_PARTIAL && !lp->eth_hasnobuf) {
 		if (lp->features & XAE_FEATURE_FULL_TX_CSUM) {
 			/* Tx Full Checksum Offload Enabled */
 			cur_p->app0 |= 2;
@@ -662,7 +668,8 @@ axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 			cur_p->app0 |= 1;
 			cur_p->app1 = (csum_start_off << 16) | csum_index_off;
 		}
-	} else if (skb->ip_summed == CHECKSUM_UNNECESSARY) {
+	} else if (skb->ip_summed == CHECKSUM_UNNECESSARY &&
+		   !lp->eth_hasnobuf) {
 		cur_p->app0 |= 2; /* Tx Full Checksum Offload Enabled */
 	}
 
@@ -736,7 +743,11 @@ static int axienet_recv(struct net_device *ndev, int budget)
 
 		skb = cur_p->skb;
 		cur_p->skb = NULL;
-		length = cur_p->app4 & 0x0000FFFF;
+
+		if (lp->eth_hasnobuf)
+			length = cur_p->status & XAXIDMA_BD_STS_ACTUAL_LEN_MASK;
+		else
+			length = cur_p->app4 & 0x0000FFFF;
 
 		skb_put(skb, length);
 		skb->protocol = eth_type_trans(skb, ndev);
@@ -744,7 +755,8 @@ static int axienet_recv(struct net_device *ndev, int budget)
 		skb->ip_summed = CHECKSUM_NONE;
 
 		/* if we're doing Rx csum offload, set it up */
-		if (lp->features & XAE_FEATURE_FULL_RX_CSUM) {
+		if (lp->features & XAE_FEATURE_FULL_RX_CSUM &&
+		    !lp->eth_hasnobuf) {
 			csumstatus = (cur_p->app2 &
 				      XAE_FULL_CSUM_STATUS_MASK) >> 3;
 			if ((csumstatus == XAE_IP_TCP_CSUM_VALIDATED) ||
@@ -753,7 +765,7 @@ static int axienet_recv(struct net_device *ndev, int budget)
 			}
 		} else if ((lp->features & XAE_FEATURE_PARTIAL_RX_CSUM) != 0 &&
 			   skb->protocol == htons(ETH_P_IP) &&
-			   skb->len > 64) {
+			   skb->len > 64 && !lp->eth_hasnobuf) {
 			skb->csum = be32_to_cpu(cur_p->app3 & 0xFFFF);
 			skb->ip_summed = CHECKSUM_COMPLETE;
 		}
@@ -1704,11 +1716,15 @@ static void axienet_dma_err_handler(unsigned long data)
 	axienet_status &= ~XAE_RCW1_RX_MASK;
 	axienet_iow(lp, XAE_RCW1_OFFSET, axienet_status);
 
-	axienet_status = axienet_ior(lp, XAE_IP_OFFSET);
-	if (axienet_status & XAE_INT_RXRJECT_MASK)
-		axienet_iow(lp, XAE_IS_OFFSET, XAE_INT_RXRJECT_MASK);
+	if (!lp->eth_hasnobuf) {
+		axienet_status = axienet_ior(lp, XAE_IP_OFFSET);
+		if (axienet_status & XAE_INT_RXRJECT_MASK)
+			axienet_iow(lp, XAE_IS_OFFSET, XAE_INT_RXRJECT_MASK);
+	}
+
 	axienet_iow(lp, XAE_IE_OFFSET, lp->eth_irq > 0 ?
 		    XAE_INT_RECV_ERROR_MASK : 0);
+
 	axienet_iow(lp, XAE_FCC_OFFSET, XAE_FCC_FCRX_MASK);
 
 	/* Sync default options with HW but leave receiver and
@@ -1855,6 +1871,9 @@ static int axienet_probe(struct platform_device *pdev)
 			goto free_netdev;
 		}
 	}
+
+	lp->eth_hasnobuf = of_property_read_bool(pdev->dev.of_node,
+						 "xlnx,eth-hasnobuf");
 
 	/* Find the DMA node, map the DMA registers, and decode the DMA IRQs */
 	np = of_parse_phandle(pdev->dev.of_node, "axistream-connected", 0);

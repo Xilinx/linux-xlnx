@@ -416,6 +416,7 @@ struct axidma_bd {
  * @csum_offload_on_rx_path:	Stores the checksum selection on RX side.
  * @coalesce_count_rx:	Store the irq coalesce on RX side.
  * @coalesce_count_tx:	Store the irq coalesce on TX side.
+ * @eth_hasnobuf: Ethernet is configured in Non buf mode.
  */
 struct axienet_local {
 	struct net_device *ndev;
@@ -470,6 +471,7 @@ struct axienet_local {
 
 	u32 coalesce_count_rx;
 	u32 coalesce_count_tx;
+	bool eth_hasnobuf;
 };
 
 /**
