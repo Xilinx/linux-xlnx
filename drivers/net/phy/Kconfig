@@ -339,6 +339,14 @@ config VITESSE_PHY
 	help
 	  Currently supports the vsc8244
 
+config XILINX_PHY
+	tristate "Drivers for xilinx PHYs"
+	help
+	  This module provides a driver for the Xilinx PCS/PMA Core.
+	  The supported PHY modes include SGMII and 1000BaseX.
+	  This can be used an Ethernet controller, for example Xilinx
+	  Axi Ethernet or Cadence GEM in Xilinx devices.
+
 config XILINX_GMII2RGMII
 	tristate "Xilinx GMII2RGMII converter driver"
 	help
