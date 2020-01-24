@@ -419,12 +419,21 @@ static void axienet_device_reset(struct net_device *ndev)
 	struct axienet_dma_q *q;
 	u32 i;
 
+	if (lp->axienet_config->mactype == XAXIENET_10G_25G) {
+		/* Reset the XXV MAC */
+		val = axienet_ior(lp, XXV_GT_RESET_OFFSET);
+		val |= XXV_GT_RESET_MASK;
+		axienet_iow(lp, XXV_GT_RESET_OFFSET, val);
+		/* Wait for 1ms for GT reset to complete as per spec */
+		mdelay(1);
+		val = axienet_ior(lp, XXV_GT_RESET_OFFSET);
+		val &= ~XXV_GT_RESET_MASK;
+		axienet_iow(lp, XXV_GT_RESET_OFFSET, val);
+	}
+
 	for_each_rx_dma_queue(lp, i) {
 		q = lp->dq[i];
 		__axienet_device_reset(q);
-#ifndef CONFIG_AXIENET_HAS_MCDMA
-		__axienet_device_reset(q);
-#endif
 	}
 
 	lp->max_frm_size = XAE_MAX_VLAN_FRAME_SIZE;
@@ -1391,6 +1400,7 @@ static int axienet_open(struct net_device *ndev)
 	int ret = 0, i;
 	struct axienet_local *lp = netdev_priv(ndev);
 	struct axienet_dma_q *q;
+	u32 reg, err;
 
 	dev_dbg(&ndev->dev, "axienet_open()\n");
 
@@ -1464,6 +1474,78 @@ static int axienet_open(struct net_device *ndev)
 		if (ret)
 			goto err_rx_irq;
 #endif
+	}
+
+	if (lp->phy_mode == PHY_INTERFACE_MODE_USXGMII) {
+		netdev_dbg(ndev, "RX reg: 0x%x\n",
+			   axienet_ior(lp, XXV_RCW1_OFFSET));
+		/* USXGMII setup at selected speed */
+		reg = axienet_ior(lp, XXV_USXGMII_AN_OFFSET);
+		reg &= ~USXGMII_RATE_MASK;
+		netdev_dbg(ndev, "usxgmii_rate %d\n", lp->usxgmii_rate);
+		switch (lp->usxgmii_rate) {
+		case SPEED_1000:
+			reg |= USXGMII_RATE_1G;
+			break;
+		case SPEED_2500:
+			reg |= USXGMII_RATE_2G5;
+			break;
+		case SPEED_10:
+			reg |= USXGMII_RATE_10M;
+			break;
+		case SPEED_100:
+			reg |= USXGMII_RATE_100M;
+			break;
+		case SPEED_5000:
+			reg |= USXGMII_RATE_5G;
+			break;
+		case SPEED_10000:
+			reg |= USXGMII_RATE_10G;
+			break;
+		default:
+			reg |= USXGMII_RATE_1G;
+		}
+		reg |= USXGMII_FD;
+		reg |= (USXGMII_EN | USXGMII_LINK_STS);
+		axienet_iow(lp, XXV_USXGMII_AN_OFFSET, reg);
+		reg |= USXGMII_AN_EN;
+		axienet_iow(lp, XXV_USXGMII_AN_OFFSET, reg);
+		/* AN Restart bit should be reset, set and then reset as per
+		 * spec with a 1 ms delay for a raising edge trigger
+		 */
+		axienet_iow(lp, XXV_USXGMII_AN_OFFSET,
+			    reg & ~USXGMII_AN_RESTART);
+		mdelay(1);
+		axienet_iow(lp, XXV_USXGMII_AN_OFFSET,
+			    reg | USXGMII_AN_RESTART);
+		mdelay(1);
+		axienet_iow(lp, XXV_USXGMII_AN_OFFSET,
+			    reg & ~USXGMII_AN_RESTART);
+
+		/* Check block lock bit to make sure RX path is ok with
+		 * USXGMII initialization.
+		 */
+		err = readl_poll_timeout(lp->regs + XXV_STATRX_BLKLCK_OFFSET,
+					 reg, (reg & XXV_RX_BLKLCK_MASK),
+					 100, DELAY_OF_ONE_MILLISEC);
+		if (err) {
+			netdev_err(ndev, "%s: USXGMII Block lock bit not set",
+				   __func__);
+			ret = -ENODEV;
+			goto err_eth_irq;
+		}
+
+		err = readl_poll_timeout(lp->regs + XXV_USXGMII_AN_STS_OFFSET,
+					 reg, (reg & USXGMII_AN_STS_COMP_MASK),
+					 1000000, DELAY_OF_ONE_MILLISEC);
+		if (err) {
+			netdev_err(ndev, "%s: USXGMII AN not complete",
+				   __func__);
+			ret = -ENODEV;
+			goto err_eth_irq;
+		}
+
+		netdev_info(ndev, "USXGMII setup at %d\n", lp->usxgmii_rate);
 	}
 
 	/* Enable interrupts for Axi Ethernet core (if defined) */
@@ -2688,6 +2770,13 @@ static const struct axienet_config axienet_10g25g_config = {
 	.tx_ptplen = XXV_TX_PTP_LEN,
 };
 
+static const struct axienet_config axienet_usxgmii_config = {
+	.mactype = XAXIENET_10G_25G,
+	.setoptions = xxvenet_setoptions,
+	.clk_init = xxvenet_clk_init,
+	.tx_ptplen = 0,
+};
+
 /* Match table for of_platform binding */
 static const struct of_device_id axienet_of_match[] = {
 	{ .compatible = "xlnx,axi-ethernet-1.00.a", .data = &axienet_1g_config},
@@ -2698,6 +2787,8 @@ static const struct of_device_id axienet_of_match[] = {
 	{ .compatible = "xlnx,ten-gig-eth-mac", .data = &axienet_10g_config},
 	{ .compatible = "xlnx,xxv-ethernet-1.0",
 						.data = &axienet_10g25g_config},
+	{ .compatible = "xlnx,xxv-usxgmii-ethernet-1.0",
+					.data = &axienet_usxgmii_config},
 	{},
 };
 
@@ -2857,6 +2948,9 @@ static int axienet_probe(struct platform_device *pdev)
 		case XAE_PHY_TYPE_1000BASE_X:
 			lp->phy_mode = PHY_INTERFACE_MODE_1000BASEX;
 			break;
+		case XXE_PHY_TYPE_USXGMII:
+			lp->phy_mode = PHY_INTERFACE_MODE_USXGMII;
+			break;
 		default:
 			/* Don't error out as phy-type is an optional property */
 			break;
@@ -2867,6 +2961,11 @@ static int axienet_probe(struct platform_device *pdev)
 			dev_warn(&pdev->dev, "couldn't find phy i/f\n");
 		}
 	}
+
+	/* Set default USXGMII rate */
+	lp->usxgmii_rate = SPEED_1000;
+	of_property_read_u32(pdev->dev.of_node, "xlnx,usxgmii-rate",
+			     &lp->usxgmii_rate);
 
 	lp->eth_hasnobuf = of_property_read_bool(pdev->dev.of_node,
 						 "xlnx,eth-hasnobuf");
