@@ -687,12 +687,14 @@ axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
  * axienet_recv - Is called from Axi DMA Rx Isr to complete the received
  *		  BD processing.
  * @ndev:	Pointer to net_device structure.
+ * @budget:	NAPI budget
  *
- * This function is invoked from the Axi DMA Rx isr to process the Rx BDs. It
- * does minimal processing and invokes "netif_rx" to complete further
- * processing.
+ * This function is invoked from the Axi DMA Rx isr(poll) to process the Rx BDs
+ * It does minimal processing and invokes "netif_receive_skb" to complete
+ * further processing.
+ * Return: Number of BD's processed.
  */
-static void axienet_recv(struct net_device *ndev)
+static int axienet_recv(struct net_device *ndev, int budget)
 {
 	u32 length;
 	u32 csumstatus;
@@ -702,10 +704,12 @@ static void axienet_recv(struct net_device *ndev)
 	struct axienet_local *lp = netdev_priv(ndev);
 	struct sk_buff *skb, *new_skb;
 	struct axidma_bd *cur_p;
+	unsigned int numbdfree = 0;
 
 	cur_p = &lp->rx_bd_v[lp->rx_bd_ci];
 
-	while ((cur_p->status & XAXIDMA_BD_STS_COMPLETE_MASK)) {
+	while ((numbdfree < budget) &&
+	       (cur_p->status & XAXIDMA_BD_STS_COMPLETE_MASK)) {
 		tail_p = lp->rx_bd_p + sizeof(*lp->rx_bd_v) * lp->rx_bd_ci;
 
 		dma_unmap_single(ndev->dev.parent, cur_p->phys,
@@ -736,14 +740,16 @@ static void axienet_recv(struct net_device *ndev)
 			skb->ip_summed = CHECKSUM_COMPLETE;
 		}
 
-		netif_rx(skb);
+		netif_receive_skb(skb);
 
 		size += length;
 		packets++;
 
 		new_skb = netdev_alloc_skb_ip_align(ndev, lp->max_frm_size);
-		if (!new_skb)
-			return;
+		if (new_skb == NULL) {
+			dev_err(lp->dev, "No memory for new_skb\n\r");
+			break;
+		}
 
 		cur_p->phys = dma_map_single(ndev->dev.parent, new_skb->data,
 					     lp->max_frm_size,
@@ -755,6 +761,7 @@ static void axienet_recv(struct net_device *ndev)
 		if (++lp->rx_bd_ci >= lp->rx_bd_num)
 			lp->rx_bd_ci = 0;
 		cur_p = &lp->rx_bd_v[lp->rx_bd_ci];
+		numbdfree++;
 	}
 
 	ndev->stats.rx_packets += packets;
@@ -762,6 +769,50 @@ static void axienet_recv(struct net_device *ndev)
 
 	if (tail_p)
 		axienet_dma_out32(lp, XAXIDMA_RX_TDESC_OFFSET, tail_p);
+
+	return numbdfree;
+}
+
+/**
+ * xaxienet_rx_poll - Poll routine for rx packets (NAPI)
+ * @napi:	napi structure pointer
+ * @quota:	Max number of rx packets to be processed.
+ *
+ * This is the poll routine for rx part.
+ * It will process the packets maximux quota value.
+ *
+ * Return: number of packets received
+ */
+static int xaxienet_rx_poll(struct napi_struct *napi, int quota)
+{
+	struct axienet_local *lp = container_of(napi,
+					struct axienet_local, napi);
+	int work_done = 0;
+	unsigned int status, cr;
+
+	spin_lock(&lp->rx_lock);
+	status = axienet_dma_in32(lp, XAXIDMA_RX_SR_OFFSET);
+	while ((status & (XAXIDMA_IRQ_IOC_MASK | XAXIDMA_IRQ_DELAY_MASK)) &&
+	       (work_done < quota)) {
+		axienet_dma_out32(lp, XAXIDMA_RX_SR_OFFSET, status);
+		if (status & XAXIDMA_IRQ_ERROR_MASK) {
+			dev_err(lp->dev, "Rx error 0x%x\n\r", status);
+			break;
+		}
+		work_done += axienet_recv(lp->ndev, quota - work_done);
+		status = axienet_dma_in32(lp, XAXIDMA_RX_SR_OFFSET);
+	}
+	spin_unlock(&lp->rx_lock);
+
+	if (work_done < quota) {
+		napi_complete(napi);
+		/* Enable the interrupts again */
+		cr = axienet_dma_in32(lp, XAXIDMA_RX_CR_OFFSET);
+		cr |= (XAXIDMA_IRQ_IOC_MASK | XAXIDMA_IRQ_DELAY_MASK);
+		axienet_dma_out32(lp, XAXIDMA_RX_CR_OFFSET, cr);
+	}
+
+	return work_done;
 }
 
 /**
@@ -832,9 +883,10 @@ static irqreturn_t axienet_rx_irq(int irq, void *_ndev)
 
 	status = axienet_dma_in32(lp, XAXIDMA_RX_SR_OFFSET);
 	if (status & (XAXIDMA_IRQ_IOC_MASK | XAXIDMA_IRQ_DELAY_MASK)) {
-		axienet_dma_out32(lp, XAXIDMA_RX_SR_OFFSET, status);
-		axienet_recv(lp->ndev);
-		goto out;
+		cr = axienet_dma_in32(lp, XAXIDMA_RX_CR_OFFSET);
+		cr &= ~(XAXIDMA_IRQ_IOC_MASK | XAXIDMA_IRQ_DELAY_MASK);
+		axienet_dma_out32(lp, XAXIDMA_RX_CR_OFFSET, cr);
+		napi_schedule(&lp->napi);
 	}
 	if (!(status & XAXIDMA_IRQ_ALL_MASK))
 		return IRQ_NONE;
@@ -858,7 +910,7 @@ static irqreturn_t axienet_rx_irq(int irq, void *_ndev)
 		tasklet_schedule(&lp->dma_err_tasklet);
 		axienet_dma_out32(lp, XAXIDMA_RX_SR_OFFSET, status);
 	}
-out:
+
 	return IRQ_HANDLED;
 }
 
@@ -939,6 +991,14 @@ static int axienet_open(struct net_device *ndev)
 	tasklet_init(&lp->dma_err_tasklet, axienet_dma_err_handler,
 		     (unsigned long) lp);
 
+	/* Enable NAPI scheduling before enabling Axi DMA Rx IRQ, or you
+	 * might run into a race condition; the RX ISR disables IRQ processing
+	 * before scheduling the NAPI function to complete the processing.
+	 * If NAPI scheduling is (still) disabled at that time, no more RX IRQs
+	 * will be processed as only the NAPI function re-enables them!
+	 */
+	napi_enable(&lp->napi);
+
 	/* Enable interrupts for Axi DMA Tx */
 	ret = request_irq(lp->tx_irq, axienet_tx_irq, IRQF_SHARED,
 			  ndev->name, ndev);
@@ -964,6 +1024,7 @@ err_eth_irq:
 err_rx_irq:
 	free_irq(lp->tx_irq, ndev);
 err_tx_irq:
+	napi_disable(&lp->napi);
 	phylink_stop(lp->phylink);
 	phylink_disconnect_phy(lp->phylink);
 	tasklet_kill(&lp->dma_err_tasklet);
@@ -1025,6 +1086,7 @@ static int axienet_stop(struct net_device *ndev)
 	axienet_mdio_enable(lp);
 	mutex_unlock(&lp->mii_bus->mdio_lock);
 
+	napi_disable(&lp->napi);
 	tasklet_kill(&lp->dma_err_tasklet);
 
 	if (lp->eth_irq > 0)
@@ -1801,6 +1863,8 @@ static int axienet_probe(struct platform_device *pdev)
 	if (lp->eth_irq <= 0)
 		dev_info(&pdev->dev, "Ethernet core IRQ not defined\n");
 
+	spin_lock_init(&lp->rx_lock);
+
 	/* Retrieve the MAC address */
 	mac_addr = of_get_mac_address(pdev->dev.of_node);
 	if (IS_ERR(mac_addr)) {
@@ -1847,6 +1911,8 @@ static int axienet_probe(struct platform_device *pdev)
 		goto free_netdev;
 	}
 
+	netif_napi_add(ndev, &lp->napi, xaxienet_rx_poll, XAXIENET_NAPI_WEIGHT);
+
 	ret = register_netdev(lp->ndev);
 	if (ret) {
 		dev_err(lp->dev, "register_netdev() error (%i)\n", ret);
@@ -1866,6 +1932,7 @@ static int axienet_remove(struct platform_device *pdev)
 	struct net_device *ndev = platform_get_drvdata(pdev);
 	struct axienet_local *lp = netdev_priv(ndev);
 
+	netif_napi_del(&lp->napi);
 	unregister_netdev(ndev);
 
 	if (lp->phylink)
