@@ -1,0 +1,15 @@
+Xilinx PCS/PMA PHY bindings
+
+Required properties:
+	- reg - The ID number for the phy, usually a small integer
+
+Optional properties:
+	- xlnx,phy-type - Describes type 1000BaseX (set to 0x5) or
+			  SGMII (set to 0x4)
+
+Example:
+
+	ethernet-phy@9 {
+		reg = <9>;
+		xlnx,phy-type = <0x5>;
+	};
