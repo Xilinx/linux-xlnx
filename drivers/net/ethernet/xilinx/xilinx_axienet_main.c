@@ -266,7 +266,7 @@ static int axienet_dma_bd_init(struct net_device *ndev)
 				      sizeof(*lp->rx_bd_v) *
 				      ((i + 1) % lp->rx_bd_num);
 
-		skb = netdev_alloc_skb_ip_align(ndev, lp->max_frm_size);
+		skb = netdev_alloc_skb(ndev, lp->max_frm_size);
 		if (!skb)
 			goto out;
 
@@ -1163,7 +1163,7 @@ static int axienet_recv(struct net_device *ndev, int budget)
 		size += length;
 		packets++;
 
-		new_skb = netdev_alloc_skb_ip_align(ndev, lp->max_frm_size);
+		new_skb = netdev_alloc_skb(ndev, lp->max_frm_size);
 		if (new_skb == NULL) {
 			dev_err(lp->dev, "No memory for new_skb\n\r");
 			break;
