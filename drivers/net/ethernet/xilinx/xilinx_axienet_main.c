@@ -53,16 +53,6 @@
 
 #define AXIENET_REGS_N		40
 
-/* Match table for of_platform binding */
-static const struct of_device_id axienet_of_match[] = {
-	{ .compatible = "xlnx,axi-ethernet-1.00.a", },
-	{ .compatible = "xlnx,axi-ethernet-1.01.a", },
-	{ .compatible = "xlnx,axi-ethernet-2.01.a", },
-	{},
-};
-
-MODULE_DEVICE_TABLE(of, axienet_of_match);
-
 /* Option table for setting up Axi Ethernet hardware options */
 static struct axienet_option axienet_options[] = {
 	/* Turn on jumbo packet support for both Rx and Tx */
@@ -1737,6 +1727,21 @@ static void axienet_dma_err_handler(unsigned long data)
 	axienet_setoptions(ndev, lp->options);
 }
 
+static const struct axienet_config axienet_1g_config = {
+	.mactype = XAXIENET_1G,
+	.setoptions = axienet_setoptions,
+};
+
+/* Match table for of_platform binding */
+static const struct of_device_id axienet_of_match[] = {
+	{ .compatible = "xlnx,axi-ethernet-1.00.a", .data = &axienet_1g_config},
+	{ .compatible = "xlnx,axi-ethernet-1.01.a", .data = &axienet_1g_config},
+	{ .compatible = "xlnx,axi-ethernet-2.01.a", .data = &axienet_1g_config},
+	{},
+};
+
+MODULE_DEVICE_TABLE(of, axienet_of_match);
+
 /**
  * axienet_probe - Axi Ethernet probe function.
  * @pdev:	Pointer to platform device structure.
@@ -1793,6 +1798,14 @@ static int axienet_probe(struct platform_device *pdev)
 
 	/* Setup checksum offload, but default to off if not specified */
 	lp->features = 0;
+
+	if (pdev->dev.of_node) {
+		const struct of_device_id *match;
+
+		match = of_match_node(axienet_of_match, pdev->dev.of_node);
+		if (match && match->data)
+			lp->axienet_config = match->data;
+	}
 
 	ret = of_property_read_u32(pdev->dev.of_node, "xlnx,txcsum", &value);
 	if (!ret) {
