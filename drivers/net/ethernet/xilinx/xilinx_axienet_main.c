@@ -302,6 +302,10 @@ static void axienet_set_mac_address(struct net_device *ndev,
 	if (!is_valid_ether_addr(ndev->dev_addr))
 		eth_hw_addr_random(ndev);
 
+	if (lp->axienet_config->mactype != XAXIENET_1G &&
+	    lp->axienet_config->mactype != XAXIENET_2_5G)
+		return;
+
 	/* Set up unicast MAC address filter set its mac address */
 	axienet_iow(lp, XAE_UAW0_OFFSET,
 		    (ndev->dev_addr[0]) |
@@ -350,7 +354,7 @@ static void axienet_set_multicast_list(struct net_device *ndev)
 	u32 reg, af0reg, af1reg;
 	struct axienet_local *lp = netdev_priv(ndev);
 
-	if (lp->eth_hasnobuf)
+	if ((lp->axienet_config->mactype != XAXIENET_1G) || lp->eth_hasnobuf)
 		return;
 
 	if (ndev->flags & (IFF_ALLMULTI | IFF_PROMISC) ||
@@ -647,7 +651,8 @@ axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 		netif_wake_queue(ndev);
 	}
 
-	if (skb->ip_summed == CHECKSUM_PARTIAL && !lp->eth_hasnobuf) {
+	if (skb->ip_summed == CHECKSUM_PARTIAL && !lp->eth_hasnobuf &&
+	    (lp->axienet_config->mactype == XAXIENET_1G)) {
 		if (lp->features & XAE_FEATURE_FULL_TX_CSUM) {
 			/* Tx Full Checksum Offload Enabled */
 			cur_p->app0 |= 2;
@@ -659,7 +664,8 @@ axienet_start_xmit(struct sk_buff *skb, struct net_device *ndev)
 			cur_p->app1 = (csum_start_off << 16) | csum_index_off;
 		}
 	} else if (skb->ip_summed == CHECKSUM_UNNECESSARY &&
-		   !lp->eth_hasnobuf) {
+		   !lp->eth_hasnobuf &&
+		   (lp->axienet_config->mactype == XAXIENET_1G)) {
 		cur_p->app0 |= 2; /* Tx Full Checksum Offload Enabled */
 	}
 
@@ -734,7 +740,8 @@ static int axienet_recv(struct net_device *ndev, int budget)
 		skb = cur_p->skb;
 		cur_p->skb = NULL;
 
-		if (lp->eth_hasnobuf)
+		if (lp->eth_hasnobuf ||
+		    (lp->axienet_config->mactype != XAXIENET_1G))
 			length = cur_p->status & XAXIDMA_BD_STS_ACTUAL_LEN_MASK;
 		else
 			length = cur_p->app4 & 0x0000FFFF;
@@ -746,6 +753,7 @@ static int axienet_recv(struct net_device *ndev, int budget)
 
 		/* if we're doing Rx csum offload, set it up */
 		if (lp->features & XAE_FEATURE_FULL_RX_CSUM &&
+		    (lp->axienet_config->mactype == XAXIENET_1G) &&
 		    !lp->eth_hasnobuf) {
 			csumstatus = (cur_p->app2 &
 				      XAE_FULL_CSUM_STATUS_MASK) >> 3;
@@ -755,7 +763,8 @@ static int axienet_recv(struct net_device *ndev, int budget)
 			}
 		} else if ((lp->features & XAE_FEATURE_PARTIAL_RX_CSUM) != 0 &&
 			   skb->protocol == htons(ETH_P_IP) &&
-			   skb->len > 64 && !lp->eth_hasnobuf) {
+			   skb->len > 64 && !lp->eth_hasnobuf &&
+			   (lp->axienet_config->mactype == XAXIENET_1G)) {
 			skb->csum = be32_to_cpu(cur_p->app3 & 0xFFFF);
 			skb->ip_summed = CHECKSUM_COMPLETE;
 		}
@@ -1007,13 +1016,15 @@ static int axienet_open(struct net_device *ndev)
 	if (ret < 0)
 		return ret;
 
-	ret = phylink_of_phy_connect(lp->phylink, lp->dev->of_node, 0);
-	if (ret) {
-		dev_err(lp->dev, "phylink_of_phy_connect() failed: %d\n", ret);
-		return ret;
-	}
+	if (lp->phylink) {
+		ret = phylink_of_phy_connect(lp->phylink, lp->dev->of_node, 0);
+		if (ret) {
+			dev_err(lp->dev, "phylink_of_phy_connect() failed: %d\n", ret);
+			return ret;
+		}
 
-	phylink_start(lp->phylink);
+		phylink_start(lp->phylink);
+	}
 
 	/* Enable tasklets for Axi DMA error handling */
 	tasklet_init(&lp->dma_err_tasklet, axienet_dma_err_handler,
@@ -1053,8 +1064,10 @@ err_rx_irq:
 	free_irq(lp->tx_irq, ndev);
 err_tx_irq:
 	napi_disable(&lp->napi);
-	phylink_stop(lp->phylink);
-	phylink_disconnect_phy(lp->phylink);
+	if (lp->phylink) {
+		phylink_stop(lp->phylink);
+		phylink_disconnect_phy(lp->phylink);
+	}
 	tasklet_kill(&lp->dma_err_tasklet);
 	dev_err(lp->dev, "request_irq() failed\n");
 	return ret;
@@ -1078,8 +1091,10 @@ static int axienet_stop(struct net_device *ndev)
 
 	dev_dbg(&ndev->dev, "axienet_close()\n");
 
-	phylink_stop(lp->phylink);
-	phylink_disconnect_phy(lp->phylink);
+	if (lp->phylink) {
+		phylink_stop(lp->phylink);
+		phylink_disconnect_phy(lp->phylink);
+	}
 
 	axienet_setoptions(ndev, lp->options &
 			   ~(XAE_OPTION_TXEN | XAE_OPTION_RXEN));
@@ -1328,7 +1343,8 @@ axienet_ethtools_get_pauseparam(struct net_device *ndev,
 {
 	struct axienet_local *lp = netdev_priv(ndev);
 
-	phylink_ethtool_get_pauseparam(lp->phylink, epauseparm);
+	if (lp->phylink)
+		phylink_ethtool_get_pauseparam(lp->phylink, epauseparm);
 }
 
 /**
@@ -1348,6 +1364,9 @@ axienet_ethtools_set_pauseparam(struct net_device *ndev,
 				struct ethtool_pauseparam *epauseparm)
 {
 	struct axienet_local *lp = netdev_priv(ndev);
+
+	if (!lp->phylink)
+		return -EOPNOTSUPP;
 
 	return phylink_ethtool_set_pauseparam(lp->phylink, epauseparm);
 }
@@ -1434,6 +1453,9 @@ axienet_ethtools_get_link_ksettings(struct net_device *ndev,
 {
 	struct axienet_local *lp = netdev_priv(ndev);
 
+	if (!lp->phylink)
+		return -EOPNOTSUPP;
+
 	return phylink_ethtool_ksettings_get(lp->phylink, cmd);
 }
 
@@ -1442,6 +1464,9 @@ axienet_ethtools_set_link_ksettings(struct net_device *ndev,
 				    const struct ethtool_link_ksettings *cmd)
 {
 	struct axienet_local *lp = netdev_priv(ndev);
+
+	if (!lp->phylink)
+		return -EOPNOTSUPP;
 
 	return phylink_ethtool_ksettings_set(lp->phylink, cmd);
 }
@@ -1740,6 +1765,11 @@ static const struct axienet_config axienet_2_5g_config = {
 	.setoptions = axienet_setoptions,
 };
 
+static const struct axienet_config axienet_10g_config = {
+	.mactype = XAXIENET_LEGACY_10G,
+	.setoptions = axienet_setoptions,
+};
+
 /* Match table for of_platform binding */
 static const struct of_device_id axienet_of_match[] = {
 	{ .compatible = "xlnx,axi-ethernet-1.00.a", .data = &axienet_1g_config},
@@ -1747,6 +1777,7 @@ static const struct of_device_id axienet_of_match[] = {
 	{ .compatible = "xlnx,axi-ethernet-2.01.a", .data = &axienet_1g_config},
 	{ .compatible = "xlnx,axi-2_5-gig-ethernet-1.0",
 						.data = &axienet_2_5g_config},
+	{ .compatible = "xlnx,ten-gig-eth-mac", .data = &axienet_10g_config},
 	{},
 };
 
@@ -1966,18 +1997,18 @@ static int axienet_probe(struct platform_device *pdev)
 		if (ret)
 			dev_warn(&pdev->dev,
 				 "error registering MDIO bus: %d\n", ret);
-	}
 
-	lp->phylink_config.dev = &ndev->dev;
-	lp->phylink_config.type = PHYLINK_NETDEV;
+		lp->phylink_config.dev = &ndev->dev;
+		lp->phylink_config.type = PHYLINK_NETDEV;
 
-	lp->phylink = phylink_create(&lp->phylink_config, pdev->dev.fwnode,
-				     lp->phy_mode,
-				     &axienet_phylink_ops);
-	if (IS_ERR(lp->phylink)) {
-		ret = PTR_ERR(lp->phylink);
-		dev_err(&pdev->dev, "phylink_create error (%i)\n", ret);
-		goto free_netdev;
+		lp->phylink = phylink_create(&lp->phylink_config, pdev->dev.fwnode,
+					     lp->phy_mode,
+					     &axienet_phylink_ops);
+		if (IS_ERR(lp->phylink)) {
+			ret = PTR_ERR(lp->phylink);
+			dev_err(&pdev->dev, "phylink_create error (%i)\n", ret);
+			goto free_netdev;
+		}
 	}
 
 	netif_napi_add(ndev, &lp->napi, xaxienet_rx_poll, XAXIENET_NAPI_WEIGHT);
@@ -2007,7 +2038,8 @@ static int axienet_remove(struct platform_device *pdev)
 	if (lp->phylink)
 		phylink_destroy(lp->phylink);
 
-	axienet_mdio_teardown(lp);
+	if (lp->mii_bus)
+		axienet_mdio_teardown(lp);
 
 	if (lp->clk)
 		clk_disable_unprepare(lp->clk);
