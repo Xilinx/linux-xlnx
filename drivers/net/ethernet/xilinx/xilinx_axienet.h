@@ -14,6 +14,7 @@
 #include <linux/interrupt.h>
 #include <linux/if_vlan.h>
 #include <linux/phylink.h>
+#include <linux/net_tstamp.h>
 
 /* Packet size info */
 #define XAE_HDR_SIZE			14 /* Size of Ethernet header */
@@ -141,6 +142,22 @@
 
 #define XAXIDMA_BD_MINIMUM_ALIGNMENT	0x40
 
+/* AXI Tx Timestamp Stream FIFO Register Definitions */
+#define XAXIFIFO_TXTS_ISR	0x00000000 /* Interrupt Status Register */
+#define XAXIFIFO_TXTS_TXFD	0x00000010 /* Tx Data Write Port */
+#define XAXIFIFO_TXTS_TLR	0x00000014 /* Transmit Length Register */
+#define XAXIFIFO_TXTS_RFO	0x0000001C /* Rx Fifo Occupancy */
+#define XAXIFIFO_TXTS_RDFR	0x00000018 /* Rx Fifo reset */
+#define XAXIFIFO_TXTS_RXFD	0x00000020 /* Rx Data Read Port */
+#define XAXIFIFO_TXTS_RLR	0x00000024 /* Receive Length Register */
+#define XAXIFIFO_TXTS_SRR	0x00000028 /* AXI4-Stream Reset */
+
+#define XAXIFIFO_TXTS_INT_RC_MASK	0x04000000
+#define XAXIFIFO_TXTS_RXFD_MASK		0x7FFFFFFF
+#define XAXIFIFO_TXTS_RESET_MASK	0x000000A5
+#define XAXIFIFO_TXTS_TAG_MASK		0xFFFF0000
+#define XAXIFIFO_TXTS_TAG_SHIFT		16
+
 /* Axi Ethernet registers definition */
 #define XAE_RAF_OFFSET		0x00000000 /* Reset and Address filter */
 #define XAE_TPF_OFFSET		0x00000004 /* Tx Pause Frame */
@@ -229,6 +246,7 @@
 #define XAE_TPID_3_MASK		0xFFFF0000 /* TPID 1 */
 
 /* Bit masks for Axi Ethernet RCW1 register */
+#define XAE_RCW1_INBAND1588_MASK 0x00400000 /* Inband 1588 Enable */
 #define XAE_RCW1_RST_MASK	0x80000000 /* Reset */
 #define XAE_RCW1_JUM_MASK	0x40000000 /* Jumbo frame enable */
 /* In-Band FCS enable (FCS not stripped) */
@@ -245,6 +263,7 @@
 #define XAE_RCW1_PAUSEADDR_MASK 0x0000FFFF
 
 /* Bit masks for Axi Ethernet TC register */
+#define XAE_TC_INBAND1588_MASK 0x00400000 /* Inband 1588 Enable */
 #define XAE_TC_RST_MASK		0x80000000 /* Reset */
 #define XAE_TC_JUM_MASK		0x40000000 /* Jumbo frame enable */
 /* In-Band FCS enable (FCS not generated) */
@@ -345,6 +364,14 @@
 #define XLNX_MII_STD_SELECT_SGMII	BIT(0)
 #define XAXIENET_NAPI_WEIGHT		64
 
+/* Definition of 1588 PTP in Axi Ethernet IP */
+#define TX_TS_OP_NOOP           0x0
+#define TX_TS_OP_ONESTEP        0x1
+#define TX_TS_OP_TWOSTEP        0x2
+#define TX_TS_CSUM_UPDATE       0x1
+#define TX_PTP_CSUM_OFFSET      0x28
+#define TX_PTP_TS_OFFSET        0x4C
+
 /* XXV MAC Register Definitions */
 #define XXV_TC_OFFSET			0x0000000C
 #define XXV_RCW1_OFFSET			0x00000014
@@ -363,6 +390,10 @@
 #define XXV_TICKREG_STATEN_MASK BIT(0)
 #define XXV_MAC_MIN_PKT_LEN	64
 
+/* PTP Packet length */
+#define XAE_TX_PTP_LEN		16
+#define XXV_TX_PTP_LEN		12
+
 /**
  * struct axidma_bd - Axi Dma buffer descriptor layout
  * @next:         MM2S/S2MM Next Descriptor Pointer
@@ -378,6 +409,11 @@
  * @app2:         MM2S/S2MM User Application Field 2.
  * @app3:         MM2S/S2MM User Application Field 3.
  * @app4:         MM2S/S2MM User Application Field 4.
+ * @ptp_tx_skb:   If timestamping is enabled used for timestamping skb
+ *		  Otherwise reserved.
+ * @ptp_tx_ts_tag: Tag value of 2 step timestamping if timestamping is enabled
+ *		   Otherwise reserved.
+ * @tx_skb:	  Transmit skb address
  */
 struct axidma_bd {
 	u32 next;	/* Physical address of next buffer descriptor */
@@ -394,6 +430,9 @@ struct axidma_bd {
 	u32 app3;
 	u32 app4;   /* Last field used by HW */
 	struct sk_buff *skb;
+	phys_addr_t ptp_tx_skb;
+	u32 ptp_tx_ts_tag;
+	phys_addr_t tx_skb;
 } __aligned(XAXIDMA_BD_MINIMUM_ALIGNMENT);
 
 #define XAE_NUM_MISC_CLOCKS 3
@@ -448,7 +487,12 @@ struct axidma_bd {
  * @coalesce_count_rx:	Store the irq coalesce on RX side.
  * @coalesce_count_tx:	Store the irq coalesce on TX side.
  * @eth_hasnobuf: Ethernet is configured in Non buf mode.
+ * @eth_hasptp: Ethernet is configured for ptp.
  * @axienet_config: Ethernet config structure
+ * @tx_ts_regs:	  Base address for the axififo device address space.
+ * @rx_ts_regs:	  Base address for the rx axififo device address space.
+ * @tstamp_config: Hardware timestamp config structure.
+ * @tx_ptpheader: Stores the tx ptp header.
  */
 struct axienet_local {
 	struct net_device *ndev;
@@ -506,7 +550,15 @@ struct axienet_local {
 	u32 coalesce_count_rx;
 	u32 coalesce_count_tx;
 	bool eth_hasnobuf;
+	bool eth_hasptp;
 	const struct axienet_config *axienet_config;
+
+#ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
+	void __iomem *tx_ts_regs;
+	void __iomem *rx_ts_regs;
+	struct hwtstamp_config tstamp_config;
+	u8 *tx_ptpheader;
+#endif
 };
 
 /**
@@ -528,6 +580,7 @@ enum axienet_ip_type {
 struct axienet_config {
 	enum axienet_ip_type mactype;
 	void (*setoptions)(struct net_device *ndev, u32 options);
+	u32 tx_ptplen;
 };
 
 /**
@@ -593,6 +646,62 @@ static inline void axienet_iow(struct axienet_local *lp, off_t offset,
 {
 	iowrite32(value, lp->regs + offset);
 }
+
+#ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
+/**
+ * axienet_txts_ior - Memory mapped AXI FIFO MM S register read
+ * @lp:         Pointer to axienet_local structure
+ * @reg:     Address offset from the base address of AXI FIFO MM S
+ *              core
+ *
+ * Return: the contents of the AXI FIFO MM S register
+ */
+
+static inline u32 axienet_txts_ior(struct axienet_local *lp, off_t reg)
+{
+	return ioread32(lp->tx_ts_regs + reg);
+}
+
+/**
+ * axienet_txts_iow - Memory mapper AXI FIFO MM S register write
+ * @lp:         Pointer to axienet_local structure
+ * @reg:     Address offset from the base address of AXI FIFO MM S
+ *              core.
+ * @value:      Value to be written into the AXI FIFO MM S register
+ */
+static inline void axienet_txts_iow(struct  axienet_local *lp, off_t reg,
+				    u32 value)
+{
+	iowrite32(value, (lp->tx_ts_regs + reg));
+}
+
+/**
+ * axienet_rxts_ior - Memory mapped AXI FIFO MM S register read
+ * @lp:         Pointer to axienet_local structure
+ * @reg:     Address offset from the base address of AXI FIFO MM S
+ *              core
+ *
+ * Return: the contents of the AXI FIFO MM S register
+ */
+
+static inline u32 axienet_rxts_ior(struct axienet_local *lp, off_t reg)
+{
+	return ioread32(lp->rx_ts_regs + reg);
+}
+
+/**
+ * axienet_rxts_iow - Memory mapper AXI FIFO MM S register write
+ * @lp:         Pointer to axienet_local structure
+ * @reg:     Address offset from the base address of AXI FIFO MM S
+ *              core.
+ * @value:      Value to be written into the AXI FIFO MM S register
+ */
+static inline void axienet_rxts_iow(struct  axienet_local *lp, off_t reg,
+				    u32 value)
+{
+	iowrite32(value, (lp->rx_ts_regs + reg));
+}
+#endif
 
 /* Function prototypes visible in xilinx_axienet_mdio.c for other files */
 int axienet_mdio_enable(struct axienet_local *lp);
