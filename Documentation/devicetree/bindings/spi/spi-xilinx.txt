@@ -6,16 +6,27 @@ Required properties:
 - reg			: Physical base address and size of SPI registers map.
 - interrupts		: Property with a value describing the interrupt
 			  number.
+- fifo-size		: Depth of TX/RX Fifos
 
 Optional properties:
-- xlnx,num-ss-bits	: Number of chip selects used.
+- num-cs		: Number of chip selects used.
+- bits-per-word		: Number of bits per word.
+- clock-names		: Can be one or more strings from "axi_clk", "axi4_clk"
+			  and "spi_clk" depending on IP configurations.
+- clocks		: Input clock specifier. Refer to common clock bindings.
+- xlnx,startup-block	: Indicates whether startup block is enabled or disabled.
 
 Example:
 	axi_quad_spi@41e00000 {
 			compatible = "xlnx,xps-spi-2.00.a";
+			clock-names = "axi_clk", "axi4_clk", "spi_clk";
+			clocks = <&clkc 71>, <&clkc 72>, <&clkc 73>;
 			interrupt-parent = <&intc>;
 			interrupts = <0 31 1>;
 			reg = <0x41e00000 0x10000>;
-			xlnx,num-ss-bits = <0x1>;
+			num-cs = <0x1>;
+			fifo-size = <256>;
+			bits-per-word = <8>;
+			xlnx,startup-block;
 	};
 
