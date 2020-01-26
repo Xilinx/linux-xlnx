@@ -688,7 +688,36 @@ static int spansion_set_4byte(struct spi_nor *nor, bool enable)
 
 static int spi_nor_write_ear(struct spi_nor *nor, u8 ear)
 {
-	nor->bouncebuf[0] = ear;
+	u8 code;
+	u8 addr;
+	int ret;
+	struct mtd_info *mtd = &nor->mtd;
+
+	/* Wait until finished previous write command. */
+	if (spi_nor_wait_till_ready(nor))
+		return 1;
+
+	if (mtd->size <= (0x1000000) << nor->shift)
+		return 0;
+
+	ear = ear % (u32)mtd->size;
+	addr = ear >> 24;
+
+	if (!nor->isstacked && addr == nor->curbank)
+		return 0;
+
+	if (nor->isstacked && mtd->size <= 0x2000000)
+		return 0;
+
+	if (nor->jedec_id == CFI_MFR_AMD)
+		code = SPINOR_OP_BRWR;
+	if (nor->jedec_id == CFI_MFR_ST ||
+	    nor->jedec_id == CFI_MFR_MACRONIX ||
+	    nor->jedec_id == SNOR_MFR_ISSI) {
+		write_enable(nor);
+		code = SPINOR_OP_WREAR;
+	}
+	nor->bouncebuf[0] = addr;
 
 	if (nor->spimem) {
 		struct spi_mem_op op =
@@ -697,10 +726,13 @@ static int spi_nor_write_ear(struct spi_nor *nor, u8 ear)
 				   SPI_MEM_OP_NO_DUMMY,
 				   SPI_MEM_OP_DATA_OUT(1, nor->bouncebuf, 1));
 
-		return spi_mem_exec_op(nor->spimem, &op);
+		ret = spi_mem_exec_op(nor->spimem, &op);
+	} else {
+		ret =  nor->write_reg(nor, SPINOR_OP_WREAR, nor->bouncebuf, 1);
 	}
+	nor->curbank = addr;
 
-	return nor->write_reg(nor, SPINOR_OP_WREAR, nor->bouncebuf, 1);
+	return ret;
 }
 
 static int winbond_set_4byte(struct spi_nor *nor, bool enable)
@@ -917,48 +949,6 @@ int spi_nor_wait_till_ready(struct spi_nor *nor)
 						    DEFAULT_READY_WAIT_JIFFIES);
 }
 EXPORT_SYMBOL_GPL(spi_nor_wait_till_ready);
-
-static int write_ear(struct spi_nor *nor, u32 addr)
-{
-	u8 code;
-	u8 ear;
-	int ret;
-	struct mtd_info *mtd = &nor->mtd;
-
-	/* Wait until finished previous write command. */
-	if (spi_nor_wait_till_ready(nor))
-		return 1;
-
-	if (mtd->size <= (0x1000000) << nor->shift)
-		return 0;
-
-	addr = addr % (u32)mtd->size;
-	ear = addr >> 24;
-
-	if (!nor->isstacked && ear == nor->curbank)
-		return 0;
-
-	if (nor->isstacked && mtd->size <= 0x2000000)
-		return 0;
-
-	if (nor->jedec_id == CFI_MFR_AMD)
-		code = SPINOR_OP_BRWR;
-	if (nor->jedec_id == CFI_MFR_ST ||
-	    nor->jedec_id == CFI_MFR_MACRONIX ||
-	    nor->jedec_id == SNOR_MFR_ISSI) {
-		write_enable(nor);
-		code = SPINOR_OP_WREAR;
-	}
-	nor->bouncebuf[0] = ear;
-
-	ret = nor->write_reg(nor, code, nor->bouncebuf, 1);
-	if (ret < 0)
-		return ret;
-
-	nor->curbank = ear;
-
-	return 0;
-}
 
 /*
  * Erase the whole flash memory
@@ -1429,7 +1419,7 @@ static int spi_nor_erase(struct mtd_info *mtd, struct erase_info *instr)
 			}
 			if (nor->addr_width == 3) {
 				/* Update Extended Address Register */
-				ret = write_ear(nor, offset);
+				ret = spi_nor_write_ear(nor, offset);
 				if (ret)
 					goto erase_err;
 			}
@@ -2822,8 +2812,13 @@ static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
 						(offset << nor->shift);
 			}
 		}
-		if (nor->addr_width == 3)
-			write_ear(nor, offset);
+		if (nor->addr_width == 3) {
+			ret = spi_nor_write_ear(nor, offset);
+			if (ret) {
+				dev_err(nor->dev, "While writing ear register\n");
+				goto read_err;
+			}
+		}
 		if (len < rem_bank_len)
 			read_len = len;
 		else
@@ -3025,7 +3020,7 @@ static int spi_nor_write(struct mtd_info *mtd, loff_t to, size_t len,
 		if (nor->addr_width == 4)
 			rem_bank_len = (mtd->size >> stack_shift) - offset;
 		if (nor->addr_width == 3) {
-			ret = write_ear(nor, offset);
+			ret = spi_nor_write_ear(nor, offset);
 			if (ret) {
 				dev_err(nor->dev, "While writing ear register\n");
 				goto write_err;
@@ -5603,7 +5598,7 @@ static void spi_nor_shutdown(struct spi_mem *spimem)
 
 	if (nor->addr_width == 3 &&
 	    (nor->mtd.size >> nor->shift) > 0x1000000)
-		write_ear(nor, 0);
+		spi_nor_write_ear(nor, 0);
 	spi_nor_restore(nor);
 }
 
