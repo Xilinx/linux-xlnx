@@ -67,6 +67,15 @@ source "drivers/phy/rockchip/Kconfig"
 source "drivers/phy/samsung/Kconfig"
 source "drivers/phy/socionext/Kconfig"
 source "drivers/phy/st/Kconfig"
+
+config PHY_XILINX_ZYNQMP
+	tristate "Xilinx ZynqMP PHY driver"
+	depends on ARCH_ZYNQMP
+	select GENERIC_PHY
+	help
+	  Enable this to support ZynqMP High Speed Gigabit Transceiver
+	  that is part of ZynqMP SoC.
+
 source "drivers/phy/tegra/Kconfig"
 source "drivers/phy/ti/Kconfig"
 
