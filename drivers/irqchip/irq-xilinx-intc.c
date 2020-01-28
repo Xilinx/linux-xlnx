@@ -119,7 +119,7 @@ static unsigned int xintc_get_irq_local(struct xintc_irq_chip *local_intc)
 	return irq;
 }
 
-unsigned int xintc_get_irq(void)
+static unsigned int xintc_get_irq(void)
 {
 	int hwirq, irq = -1;
 	unsigned int cpu_id = smp_processor_id();
@@ -171,6 +171,25 @@ static void xil_intc_irq_handler(struct irq_desc *desc)
 		generic_handle_irq(pending);
 	} while (true);
 	chained_irq_exit(chip, desc);
+}
+
+static u32 concurrent_irq;
+
+static void xil_intc_handle_irq(struct pt_regs *regs)
+{
+	unsigned int irq;
+
+	irq = xintc_get_irq();
+next_irq:
+	BUG_ON(!irq);
+	generic_handle_irq(irq);
+
+	irq = xintc_get_irq();
+	if (irq != -1U) {
+		pr_debug("next irq: %d\n", irq);
+		++concurrent_irq;
+		goto next_irq;
+	}
 }
 
 static int __init xilinx_intc_of_init(struct device_node *intc,
@@ -273,6 +292,7 @@ static int __init xilinx_intc_of_init(struct device_node *intc,
 		}
 	} else {
 		irq_set_default_host(irqc->root_domain);
+		set_handle_irq(xil_intc_handle_irq);
 	}
 
 	return 0;
