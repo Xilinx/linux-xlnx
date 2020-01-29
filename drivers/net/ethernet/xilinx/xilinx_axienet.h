@@ -13,8 +13,8 @@
 #include <linux/spinlock.h>
 #include <linux/interrupt.h>
 #include <linux/if_vlan.h>
-#include <linux/phylink.h>
 #include <linux/net_tstamp.h>
+#include <linux/phy.h>
 #include <linux/of_platform.h>
 
 /* Packet size info */
@@ -611,6 +611,8 @@ struct aximcdma_bd {
  * @csum_offload_on_rx_path:	Stores the checksum selection on RX side.
  * @coalesce_count_rx:	Store the irq coalesce on RX side.
  * @coalesce_count_tx:	Store the irq coalesce on TX side.
+ * @phy_interface: Phy interface type.
+ * @phy_flags:	Phy interface flags.
  * @eth_hasnobuf: Ethernet is configured in Non buf mode.
  * @eth_hasptp: Ethernet is configured for ptp.
  * @axienet_config: Ethernet config structure
@@ -639,9 +641,6 @@ struct axienet_local {
 	/* Connection to PHY device */
 	struct device_node *phy_node;
 
-	struct phylink *phylink;
-	struct phylink_config phylink_config;
-
 	/* Clock for AXI bus */
 	struct clk *clk;
 
@@ -664,6 +663,7 @@ struct axienet_local {
 	int eth_irq;
 
 	u32 options;			/* Current options word */
+	u32 last_link;
 	u32 features;
 
 	u32 tx_bd_num;
@@ -677,6 +677,8 @@ struct axienet_local {
 
 	u32 coalesce_count_rx;
 	u32 coalesce_count_tx;
+	u32 phy_interface;
+	u32 phy_flags;
 	bool eth_hasnobuf;
 	bool eth_hasptp;
 	const struct axienet_config *axienet_config;
