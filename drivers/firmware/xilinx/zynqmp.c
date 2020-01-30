@@ -1893,6 +1893,26 @@ int zynqmp_pm_efuse_access(const u64 address, u32 *out)
 }
 EXPORT_SYMBOL_GPL(zynqmp_pm_efuse_access);
 
+int zynqmp_pm_secure_load(const u64 src_addr, u64 key_addr, u64 *dst)
+{
+	u32 ret_payload[PAYLOAD_ARG_CNT];
+	int ret_value;
+
+	if (!dst)
+		return -EINVAL;
+
+	ret_value = zynqmp_pm_invoke_fn(PM_SECURE_IMAGE,
+					lower_32_bits(src_addr),
+					upper_32_bits(src_addr),
+					lower_32_bits(key_addr),
+					upper_32_bits(key_addr),
+					0, ret_payload);
+	*dst = ((u64)ret_payload[1] << 32) | ret_payload[2];
+
+	return ret_value;
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_secure_load);
+
 /**
  * zynqmp_pm_register_notifier() - PM API for register a subsystem
  *                                to be notified about specific
