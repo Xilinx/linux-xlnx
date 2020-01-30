@@ -124,6 +124,7 @@ enum pm_api_id {
 	PM_CLOCK_GETRATE,
 	PM_CLOCK_SETPARENT,
 	PM_CLOCK_GETPARENT,
+	PM_SECURE_IMAGE = 45,
 	PM_FPGA_READ = 46,
 	PM_SECURE_AES = 47,
 	/* PM_REGISTER_ACCESS API */
@@ -580,6 +581,7 @@ int zynqmp_pm_set_requirement(const u32 node, const u32 capabilities,
 			      const enum zynqmp_pm_request_ack ack);
 int zynqmp_pm_aes_engine(const u64 address, u32 *out);
 int zynqmp_pm_efuse_access(const u64 address, u32 *out);
+int zynqmp_pm_secure_load(const u64 src_addr, u64 key_addr, u64 *dst);
 int zynqmp_pm_load_pdi(const u32 src, const u64 address);
 int zynqmp_pm_fpga_read(const u32 reg_numframes, const u64 phys_address, u32 readback_type, u32 *value);
 int zynqmp_pm_sha_hash(const u64 address, const u32 size, const u32 flags);
@@ -994,6 +996,11 @@ static inline int zynqmp_pm_probe_counter_write(u32 reg, u32 value)
 }
 
 static inline int zynqmp_pm_ospi_mux_select(u32 dev_id, u32 select)
+{
+	return -ENODEV;
+}
+
+static inline int zynqmp_pm_secure_load(const u64 src_addr, u64 key_addr, u64 *dst)
 {
 	return -ENODEV;
 }
