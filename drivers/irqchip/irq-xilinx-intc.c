@@ -18,6 +18,7 @@
 #include <linux/jump_label.h>
 #include <linux/bug.h>
 #include <linux/of_irq.h>
+#include <linux/cpuhotplug.h>
 
 /* No one else should require these constants, so define them locally here. */
 #define ISR 0x00			/* Interrupt Status Register */
@@ -185,6 +186,24 @@ static void xil_intc_irq_handler(struct irq_desc *desc)
 	chained_irq_exit(chip, desc);
 }
 
+static int xil_intc_start(unsigned int cpu)
+{
+	struct xintc_irq_chip *irqc = per_cpu_ptr(&primary_intc, cpu);
+
+	pr_debug("%s: intc cpu %d\n", __func__, cpu);
+
+	xil_intc_initial_setup(irqc);
+
+	return 0;
+}
+
+static int xil_intc_stop(unsigned int cpu)
+{
+	pr_debug("%s: intc cpu %d\n", __func__, cpu);
+
+	return 0;
+}
+
 static void xil_intc_handle_irq(struct pt_regs *regs)
 {
 	int ret;
@@ -262,6 +281,12 @@ static int __init xilinx_intc_of_init(struct device_node *intc,
 	pr_info("irq-xilinx: %pOF: num_irq=%d, sw_irq=%d, edge=0x%x\n",
 		intc, irqc->nr_irq, irqc->sw_irq, irqc->intr_mask);
 
+	/* Right now enable only SW IRQs on that IP and wait */
+	if (cpu_id) {
+		xil_intc_initial_setup(irqc);
+		return 0;
+	}
+
 	intc_dev = kzalloc(sizeof(*intc_dev), GFP_KERNEL);
 	if (!intc_dev) {
 		ret = -ENOMEM;
@@ -294,14 +319,18 @@ static int __init xilinx_intc_of_init(struct device_node *intc,
 			ret = -EINVAL;
 			goto err_alloc;
 		}
-	} else {
-		irq_set_default_host(irqc->domain);
-		set_handle_irq(xil_intc_handle_irq);
+		xil_intc_initial_setup(irqc);
+		return 0;
 	}
 
-	xil_intc_initial_setup(irqc);
+	irq_set_default_host(irqc->domain);
+	set_handle_irq(xil_intc_handle_irq);
 
-	return 0;
+	ret = cpuhp_setup_state(CPUHP_AP_IRQ_XILINX_STARTING,
+				"microblaze/arch_intc:starting",
+				xil_intc_start, xil_intc_stop);
+
+	return ret;
 
 err_alloc:
 	kfree(intc_dev);
