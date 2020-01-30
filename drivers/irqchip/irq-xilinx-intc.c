@@ -15,6 +15,7 @@
 #include <linux/irqchip/chained_irq.h>
 #include <linux/of_address.h>
 #include <linux/io.h>
+#include <linux/jump_label.h>
 #include <linux/bug.h>
 #include <linux/of_irq.h>
 
@@ -38,30 +39,26 @@ struct xintc_irq_chip {
 	struct			irq_chip *intc_dev;
 	u32				nr_irq;
 	u32				sw_irq;
-	unsigned int	(*read_fn)(void __iomem *addr);
-	void			(*write_fn)(void __iomem *addr, u32);
 };
+
+static DEFINE_STATIC_KEY_FALSE(xintc_is_be);
 
 static DEFINE_PER_CPU(struct xintc_irq_chip, primary_intc);
 
-static void xintc_write(void __iomem *addr, u32 data)
+static void xintc_write(struct xintc_irq_chip *irqc, int reg, u32 data)
 {
-		iowrite32(data, addr);
+	if (static_branch_unlikely(&xintc_is_be))
+		iowrite32be(data, irqc->base + reg);
+	else
+		iowrite32(data, irqc->base + reg);
 }
 
-static unsigned int xintc_read(void __iomem *addr)
+static unsigned int xintc_read(struct xintc_irq_chip *irqc, int reg)
 {
-		return ioread32(addr);
-}
-
-static void xintc_write_be(void __iomem *addr, u32 data)
-{
-		iowrite32be(data, addr);
-}
-
-static unsigned int xintc_read_be(void __iomem *addr)
-{
-		return ioread32be(addr);
+	if (static_branch_unlikely(&xintc_is_be))
+		return ioread32be(irqc->base + reg);
+	else
+		return ioread32(irqc->base + reg);
 }
 
 static void intc_enable_or_unmask(struct irq_data *d)
@@ -76,9 +73,9 @@ static void intc_enable_or_unmask(struct irq_data *d)
 	 * acks the irq before calling the interrupt handler
 	 */
 	if (irqd_is_level_type(d))
-		local_intc->write_fn(local_intc->base + IAR, mask);
+		xintc_write(local_intc, IAR, mask);
 
-	local_intc->write_fn(local_intc->base + SIE, mask);
+	xintc_write(local_intc, SIE, mask);
 }
 
 static void intc_disable_or_mask(struct irq_data *d)
@@ -86,7 +83,7 @@ static void intc_disable_or_mask(struct irq_data *d)
 	struct xintc_irq_chip *local_intc = irq_data_get_irq_chip_data(d);
 
 	pr_debug("irq-xilinx: disable: %ld\n", d->hwirq);
-	local_intc->write_fn(local_intc->base + CIE, 1 << d->hwirq);
+	xintc_write(local_intc, CIE, 1 << d->hwirq);
 }
 
 static void intc_ack(struct irq_data *d)
@@ -94,7 +91,7 @@ static void intc_ack(struct irq_data *d)
 	struct xintc_irq_chip *local_intc = irq_data_get_irq_chip_data(d);
 
 	pr_debug("irq-xilinx: ack: %ld\n", d->hwirq);
-	local_intc->write_fn(local_intc->base + IAR, 1 << d->hwirq);
+	xintc_write(local_intc, IAR, 1 << d->hwirq);
 }
 
 static void intc_mask_ack(struct irq_data *d)
@@ -103,15 +100,15 @@ static void intc_mask_ack(struct irq_data *d)
 	struct xintc_irq_chip *local_intc = irq_data_get_irq_chip_data(d);
 
 	pr_debug("irq-xilinx: disable_and_ack: %ld\n", d->hwirq);
-	local_intc->write_fn(local_intc->base + CIE, mask);
-	local_intc->write_fn(local_intc->base + IAR, mask);
+	xintc_write(local_intc, CIE, mask);
+	xintc_write(local_intc, IAR, mask);
 }
 
 static unsigned int xintc_get_irq_local(struct xintc_irq_chip *local_intc)
 {
 	int hwirq, irq = -1;
 
-	hwirq = local_intc->read_fn(local_intc->base + IVR);
+	hwirq = xintc_read(local_intc, IVR);
 	if (hwirq != -1U)
 		irq = irq_find_mapping(local_intc->root_domain, hwirq);
 
@@ -151,24 +148,23 @@ static void xil_intc_initial_setup(struct xintc_irq_chip *irqc)
 	 * Disable all external interrupts until they are
 	 * explicity requested.
 	 */
-	irqc->write_fn(irqc->base + IER, 0);
+	xintc_write(irqc, IER, 0);
 
 	/* Acknowledge any pending interrupts just in case. */
-	irqc->write_fn(irqc->base + IAR, 0xffffffff);
+	xintc_write(irqc, IAR, 0xffffffff);
 
 	/* Turn on the Master Enable. */
-	irqc->write_fn(irqc->base + MER, MER_HIE | MER_ME);
-	if (!(irqc->read_fn(irqc->base + MER) & (MER_HIE | MER_ME))) {
-		irqc->write_fn = xintc_write_be;
-		irqc->read_fn = xintc_read_be;
-		irqc->write_fn(irqc->base + MER, MER_HIE | MER_ME);
+	xintc_write(irqc, MER, MER_HIE | MER_ME);
+	if (!(xintc_read(irqc, MER) & (MER_HIE | MER_ME))) {
+		static_branch_enable(&xintc_is_be);
+		xintc_write(irqc, MER, MER_HIE | MER_ME);
 	}
 
 	/* Enable all SW IRQs */
 	for (i = 0; i < irqc->sw_irq; i++) {
 		mask = 1 << (i + irqc->nr_irq);
-		irqc->write_fn(irqc->base + IAR, mask);
-		irqc->write_fn(irqc->base + SIE, mask);
+		xintc_write(irqc, IAR, mask);
+		xintc_write(irqc, SIE, mask);
 	}
 }
 
@@ -196,12 +192,12 @@ static void xil_intc_handle_irq(struct pt_regs *regs)
 	struct xintc_irq_chip *irqc = per_cpu_ptr(&primary_intc, cpu_id);
 
 	do {
-		hwirq = irqc->read_fn(irqc->base + IVR);
+		hwirq = xintc_read(irqc, IVR);
 		if (hwirq != -1U) {
 			if (hwirq >= irqc->nr_irq) {
 				WARN_ONCE(1, "SW interrupt not handled\n");
 				/* ACK is necessary */
-				irqc->write_fn(irqc->base + IAR, 1 << hwirq);
+				xintc_write(irqc, IAR, 1 << hwirq);
 				continue;
 			} else {
 				ret = handle_domain_irq(irqc->root_domain,
@@ -278,9 +274,6 @@ static int __init xilinx_intc_of_init(struct device_node *intc,
 	intc_dev->irq_ack = intc_ack,
 	intc_dev->irq_mask_ack = intc_mask_ack,
 	irqc->intc_dev = intc_dev;
-
-	irqc->write_fn = xintc_write;
-	irqc->read_fn = xintc_read;
 
 	irqc->root_domain = irq_domain_add_linear(intc, irqc->nr_irq,
 						  &xintc_irq_domain_ops, irqc);
