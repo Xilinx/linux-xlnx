@@ -132,6 +132,25 @@ static const struct irq_domain_ops xintc_irq_domain_ops = {
 	.map = xintc_map,
 };
 
+static void xil_intc_initial_setup(struct xintc_irq_chip *irqc)
+{
+	/*
+	 * Disable all external interrupts until they are
+	 * explicity requested.
+	 */
+	xintc_write(irqc, IER, 0);
+
+	/* Acknowledge any pending interrupts just in case. */
+	xintc_write(irqc, IAR, 0xffffffff);
+
+	/* Turn on the Master Enable. */
+	xintc_write(irqc, MER, MER_HIE | MER_ME);
+	if (!(xintc_read(irqc, MER) & (MER_HIE | MER_ME))) {
+		static_branch_enable(&xintc_is_be);
+		xintc_write(irqc, MER, MER_HIE | MER_ME);
+	}
+}
+
 static void xil_intc_irq_handler(struct irq_desc *desc)
 {
 	struct irq_chip *chip = irq_desc_get_chip(desc);
@@ -215,23 +234,6 @@ static int __init xilinx_intc_of_init(struct device_node *intc,
 	pr_info("irq-xilinx: %pOF: num_irq=%d, edge=0x%x\n",
 		intc, irqc->nr_irq, irqc->intr_mask);
 
-
-	/*
-	 * Disable all external interrupts until they are
-	 * explicitly requested.
-	 */
-	xintc_write(irqc, IER, 0);
-
-	/* Acknowledge any pending interrupts just in case. */
-	xintc_write(irqc, IAR, 0xffffffff);
-
-	/* Turn on the Master Enable. */
-	xintc_write(irqc, MER, MER_HIE | MER_ME);
-	if (xintc_read(irqc, MER) != (MER_HIE | MER_ME)) {
-		static_branch_enable(&xintc_is_be);
-		xintc_write(irqc, MER, MER_HIE | MER_ME);
-	}
-
 	irqc->root_domain = irq_domain_add_linear(intc, irqc->nr_irq,
 						  &xintc_irq_domain_ops, irqc);
 	if (!irqc->root_domain) {
@@ -255,6 +257,8 @@ static int __init xilinx_intc_of_init(struct device_node *intc,
 		irq_set_default_host(irqc->root_domain);
 		set_handle_irq(xil_intc_handle_irq);
 	}
+
+	xil_intc_initial_setup(irqc);
 
 	return 0;
 
