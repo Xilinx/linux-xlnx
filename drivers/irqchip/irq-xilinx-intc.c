@@ -110,21 +110,6 @@ static struct irq_chip intc_dev = {
 	.irq_mask_ack = intc_mask_ack,
 };
 
-static unsigned int xintc_get_irq(void)
-{
-	int hwirq, irq = -1;
-	unsigned int cpu_id = smp_processor_id();
-	struct xintc_irq_chip *irqc = per_cpu_ptr(&primary_intc, cpu_id);
-
-	hwirq = xintc_read(irqc, IVR);
-	if (hwirq != -1U)
-		irq = irq_find_mapping(irqc->root_domain, hwirq);
-
-	pr_debug("irq-xilinx: hwirq=%d, irq=%d\n", hwirq, irq);
-
-	return irq;
-}
-
 static int xintc_map(struct irq_domain *d, unsigned int irq, irq_hw_number_t hw)
 {
 	struct xintc_irq_chip *irqc = d->host_data;
@@ -165,23 +150,23 @@ static void xil_intc_irq_handler(struct irq_desc *desc)
 	chained_irq_exit(chip, desc);
 }
 
-static u32 concurrent_irq;
-
 static void xil_intc_handle_irq(struct pt_regs *regs)
 {
-	unsigned int irq;
+	int ret;
+	unsigned int hwirq, cpu_id = smp_processor_id();
+	struct xintc_irq_chip *irqc = per_cpu_ptr(&primary_intc, cpu_id);
 
-	irq = xintc_get_irq();
-next_irq:
-	BUG_ON(!irq);
-	generic_handle_irq(irq);
+	do {
+		hwirq = xintc_read(irqc, IVR);
+		if (hwirq != -1U) {
+			ret = handle_domain_irq(irqc->root_domain, hwirq, regs);
+			WARN_ONCE(ret, "cpu %d: Unhandled HWIRQ %d\n",
+				  cpu_id, hwirq);
+			continue;
+		}
 
-	irq = xintc_get_irq();
-	if (irq != -1U) {
-		pr_debug("next irq: %d\n", irq);
-		++concurrent_irq;
-		goto next_irq;
-	}
+		break;
+	} while (1);
 }
 
 static int __init xilinx_intc_of_init(struct device_node *intc,

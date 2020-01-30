@@ -22,13 +22,8 @@
 
 void __irq_entry do_IRQ(struct pt_regs *regs)
 {
-	struct pt_regs *old_regs = set_irq_regs(regs);
 	trace_hardirqs_off();
-
-	irq_enter();
 	handle_arch_irq(regs);
-	irq_exit();
-	set_irq_regs(old_regs);
 	trace_hardirqs_on();
 }
 
