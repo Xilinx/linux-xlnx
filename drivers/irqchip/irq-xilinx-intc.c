@@ -34,7 +34,7 @@
 
 struct xintc_irq_chip {
 	void		__iomem *base;
-	struct		irq_domain *root_domain;
+	struct		irq_domain *domain;
 	u32		intr_mask;
 	struct			irq_chip *intc_dev;
 	u32				nr_irq;
@@ -110,7 +110,7 @@ static unsigned int xintc_get_irq_local(struct xintc_irq_chip *local_intc)
 
 	hwirq = xintc_read(local_intc, IVR);
 	if (hwirq != -1U)
-		irq = irq_find_mapping(local_intc->root_domain, hwirq);
+		irq = irq_find_mapping(local_intc->domain, hwirq);
 
 	pr_debug("irq-xilinx: hwirq=%d, irq=%d\n", hwirq, irq);
 
@@ -200,7 +200,7 @@ static void xil_intc_handle_irq(struct pt_regs *regs)
 				xintc_write(irqc, IAR, 1 << hwirq);
 				continue;
 			} else {
-				ret = handle_domain_irq(irqc->root_domain,
+				ret = handle_domain_irq(irqc->domain,
 							hwirq, regs);
 				WARN_ONCE(ret, "cpu %d: Unhandled HWIRQ %d\n",
 					  cpu_id, hwirq);
@@ -275,9 +275,9 @@ static int __init xilinx_intc_of_init(struct device_node *intc,
 	intc_dev->irq_mask_ack = intc_mask_ack,
 	irqc->intc_dev = intc_dev;
 
-	irqc->root_domain = irq_domain_add_linear(intc, irqc->nr_irq,
+	irqc->domain = irq_domain_add_linear(intc, irqc->nr_irq,
 						  &xintc_irq_domain_ops, irqc);
-	if (!irqc->root_domain) {
+	if (!irqc->domain) {
 		pr_err("irq-xilinx: Unable to create IRQ domain\n");
 		ret = -EINVAL;
 		goto err_alloc;
@@ -295,7 +295,7 @@ static int __init xilinx_intc_of_init(struct device_node *intc,
 			goto err_alloc;
 		}
 	} else {
-		irq_set_default_host(irqc->root_domain);
+		irq_set_default_host(irqc->domain);
 		set_handle_irq(xil_intc_handle_irq);
 	}
 
