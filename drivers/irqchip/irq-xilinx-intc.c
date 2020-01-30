@@ -39,6 +39,11 @@ struct xintc_irq_chip {
 	struct		irq_domain *root_domain;
 	u32		intr_mask;
 	u32		nr_irq;
+	struct			irq_chip *intc_dev;
+	u32				nr_irq;
+	u32				sw_irq;
+	unsigned int	(*read_fn)(void __iomem *addr);
+	void			(*write_fn)(void __iomem *addr, u32);
 };
 
 static DEFINE_PER_CPU(struct xintc_irq_chip, primary_intc);
@@ -148,6 +153,9 @@ static const struct irq_domain_ops xintc_irq_domain_ops = {
 
 static void xil_intc_initial_setup(struct xintc_irq_chip *irqc)
 {
+	int i;
+	u32 mask;
+
 	/*
 	 * Disable all external interrupts until they are
 	 * explicity requested.
@@ -163,6 +171,13 @@ static void xil_intc_initial_setup(struct xintc_irq_chip *irqc)
 		irqc->write_fn = xintc_write_be;
 		irqc->read_fn = xintc_read_be;
 		irqc->write_fn(irqc->base + MER, MER_HIE | MER_ME);
+	}
+
+	/* Enable all SW IRQs */
+	for (i = 0; i < irqc->sw_irq; i++) {
+		mask = 1 << (i + irqc->nr_irq);
+		irqc->write_fn(irqc->base + IAR, mask);
+		irqc->write_fn(irqc->base + SIE, mask);
 	}
 }
 
@@ -192,10 +207,18 @@ static void xil_intc_handle_irq(struct pt_regs *regs)
 	do {
 		hwirq = irqc->read_fn(irqc->base + IVR);
 		if (hwirq != -1U) {
-			ret = handle_domain_irq(irqc->root_domain, hwirq, regs);
-			WARN_ONCE(ret, "cpu %d: Unhandled HWIRQ %d\n",
-				  cpu_id, hwirq);
-			continue;
+			if (hwirq >= irqc->nr_irq) {
+				WARN_ONCE(1, "SW interrupt not handled\n");
+				/* ACK is necessary */
+				irqc->write_fn(irqc->base + IAR, 1 << hwirq);
+				continue;
+			} else {
+				ret = handle_domain_irq(irqc->root_domain,
+							hwirq, regs);
+				WARN_ONCE(ret, "cpu %d: Unhandled HWIRQ %d\n",
+					  cpu_id, hwirq);
+				continue;
+			}
 		}
 
 		break;
@@ -245,8 +268,11 @@ static int __init xilinx_intc_of_init(struct device_node *intc,
 	if (irqc->intr_mask >> irqc->nr_irq)
 		pr_warn("irq-xilinx: mismatch in kind-of-intr param\n");
 
-	pr_info("irq-xilinx: %pOF: num_irq=%d, edge=0x%x\n",
-		intc, irqc->nr_irq, irqc->intr_mask);
+	/* sw irqs are optinal */
+	of_property_read_u32(intc, "xlnx,num-sw-intr", &irqc->sw_irq);
+
+	pr_info("irq-xilinx: %pOF: num_irq=%d, sw_irq=%d, edge=0x%x\n",
+		intc, irqc->nr_irq, irqc->sw_irq, irqc->intr_mask);
 
 	irqc->write_fn = xintc_write;
 	irqc->read_fn = xintc_read;
