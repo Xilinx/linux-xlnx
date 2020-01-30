@@ -21,4 +21,12 @@ config ZYNQMP_FIRMWARE_DEBUG
 	  Say yes to enable ZynqMP firmware interface debug APIs.
 	  If in doubt, say N.
 
+config ZYNQMP_FIRMWARE_SECURE
+	bool "Enable Xilinx Zynq MPSoC secure firmware loading APIs"
+	help
+	  Firmware secure driver is used as an interface to load
+	  Authenticated and/or Encrypted firmware with single loadable
+	  partition. Say yes to enable ZynqMP secure firmware loading
+	  APIs.If in doubt, say N
+
 endmenu
