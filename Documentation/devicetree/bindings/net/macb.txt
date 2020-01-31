@@ -39,12 +39,18 @@ Optional properties for PHY child node:
   up via magic packet.
 - phy-handle : see ethernet.txt file in the same directory
 
+Optional properties:
+- rx-watermark: Set watermark value for pbuf_rxcutthru reg and enable
+  rx partial store and forward, only when compatible = "cdns,zynqmp-gem".
+  Value should be less than 0xFFF.
+
 Examples:
 
 	macb0: ethernet@fffc4000 {
 		compatible = "cdns,at32ap7000-macb";
 		reg = <0xfffc4000 0x4000>;
 		interrupts = <21>;
+		rx-watermark = /bits/ 16 <0x44>;
 		phy-mode = "rmii";
 		local-mac-address = [3a 0e 03 04 05 06];
 		clock-names = "pclk", "hclk", "tx_clk";
