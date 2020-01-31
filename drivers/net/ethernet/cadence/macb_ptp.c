@@ -465,7 +465,7 @@ int gem_set_hwtst(struct net_device *dev, struct ifreq *ifr, int cmd)
 			return -ERANGE;
 		fallthrough;
 	case HWTSTAMP_TX_ON:
-		tx_bd_control = TSTAMP_ALL_FRAMES;
+		tx_bd_control = TSTAMP_ALL_PTP_FRAMES;
 		break;
 	default:
 		return -ERANGE;
