@@ -909,6 +909,7 @@ static void macb_tx_error_task(struct work_struct *work)
 	struct sk_buff		*skb;
 	unsigned int		tail;
 	unsigned long		flags;
+	bool			halt_timeout = false;
 
 	netdev_vdbg(bp->dev, "macb_tx_error_task: q = %u, t = %u, h = %u\n",
 		    (unsigned int)(queue - bp->queues),
@@ -929,9 +930,11 @@ static void macb_tx_error_task(struct work_struct *work)
 	 * (in case we have just queued new packets)
 	 * macb/gem must be halted to write TBQP register
 	 */
-	if (macb_halt_tx(bp))
-		/* Just complain for now, reinitializing TX path can be good */
+	if (macb_halt_tx(bp)) {
 		netdev_err(bp->dev, "BUG: halt tx timed out\n");
+		macb_writel(bp, NCR, macb_readl(bp, NCR) & (~MACB_BIT(TE)));
+		halt_timeout = true;
+	}
 
 	/* Treat frames in TX queue including the ones that caused the error.
 	 * Free transmit buffers in upper layer.
@@ -1001,6 +1004,9 @@ static void macb_tx_error_task(struct work_struct *work)
 	/* Housework before enabling TX IRQ */
 	macb_writel(bp, TSR, macb_readl(bp, TSR));
 	queue_writel(queue, IER, MACB_TX_INT_FLAGS);
+
+	if (halt_timeout)
+		macb_writel(bp, NCR, macb_readl(bp, NCR) | MACB_BIT(TE));
 
 	/* Now we are ready to start transmission again */
 	netif_tx_start_all_queues(bp->dev);
