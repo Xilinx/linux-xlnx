@@ -385,11 +385,14 @@ void gem_ptp_init(struct net_device *dev)
 void gem_ptp_remove(struct net_device *ndev)
 {
 	struct macb *bp = netdev_priv(ndev);
+	unsigned long flags;
 
 	if (bp->ptp_clock)
 		ptp_clock_unregister(bp->ptp_clock);
 
+	spin_lock_irqsave(&bp->tsu_clk_lock, flags);
 	gem_ptp_clear_timer(bp);
+	spin_unlock_irqrestore(&bp->tsu_clk_lock, flags);
 
 	dev_info(&bp->pdev->dev, "%s ptp clock unregistered.\n",
 		 GEM_PTP_TIMER_NAME);
