@@ -575,7 +575,7 @@ static int macb_mii_probe(struct net_device *dev)
 
 static int macb_mii_init(struct macb *bp)
 {
-	struct device_node *np;
+	struct device_node *np, *mdio_np;
 	int err = -ENXIO;
 
 	/* Enable management port */
@@ -593,12 +593,18 @@ static int macb_mii_init(struct macb *bp)
 	snprintf(bp->mii_bus->id, MII_BUS_ID_SIZE, "%s-%x",
 		 bp->pdev->name, bp->pdev->id);
 	bp->mii_bus->priv = bp;
-	bp->mii_bus->parent = &bp->pdev->dev;
+	bp->mii_bus->parent = &bp->dev->dev;
 
 	dev_set_drvdata(&bp->dev->dev, bp->mii_bus);
 
 	np = bp->pdev->dev.of_node;
-	if (np && of_phy_is_fixed_link(np)) {
+	mdio_np = of_get_child_by_name(np, "mdio");
+	if (mdio_np) {
+		of_node_put(mdio_np);
+		err = of_mdiobus_register(bp->mii_bus, mdio_np);
+		if (err)
+			goto err_out_free_mdiobus;
+	} else if (np && of_phy_is_fixed_link(np)) {
 		if (of_phy_register_fixed_link(np) < 0) {
 			dev_err(&bp->pdev->dev,
 				"broken fixed-link specification %pOF\n", np);
