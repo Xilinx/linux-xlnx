@@ -4499,7 +4499,7 @@ static int macb_probe(struct platform_device *pdev)
 	struct net_device *dev;
 	struct resource *regs;
 	void __iomem *mem;
-	const char *mac;
+	const u8 *mac;
 	struct macb *bp;
 	int err, val;
 
