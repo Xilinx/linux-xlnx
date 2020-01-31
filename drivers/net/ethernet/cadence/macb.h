@@ -1191,6 +1191,7 @@ struct macb {
 	u32	(*macb_reg_readl)(struct macb *bp, int offset);
 	void	(*macb_reg_writel)(struct macb *bp, int offset, u32 value);
 
+	struct macb_dma_desc	*rx_ring_tieoff;
 	size_t			rx_buffer_size;
 
 	unsigned int		rx_ring_size;
@@ -1212,6 +1213,8 @@ struct macb {
 		struct macb_stats	macb;
 		struct gem_stats	gem;
 	}			hw_stats;
+
+	dma_addr_t		rx_ring_tieoff_dma;
 
 	struct macb_or_gem_ops	macbgem_ops;
 
