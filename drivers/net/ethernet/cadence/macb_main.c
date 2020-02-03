@@ -1717,7 +1717,7 @@ static netdev_features_t macb_features_check(struct sk_buff *skb,
 	/* Validate LSO compatibility */
 
 	/* there is only one buffer */
-	if (!skb_is_nonlinear(skb))
+	if (!skb_is_nonlinear(skb) || (ip_hdr(skb)->protocol != IPPROTO_UDP))
 		return features;
 
 	/* length of header */
