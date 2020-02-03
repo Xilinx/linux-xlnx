@@ -162,6 +162,10 @@
 			xlnx_aes: zynqmp_aes {
 				compatible = "xlnx,zynqmp-aes";
 			};
+
+			xlnx_keccak_384: sha384 {
+				compatible = "xlnx,zynqmp-keccak-384";
+			};
 		};
 	};
 
