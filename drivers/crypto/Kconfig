@@ -769,6 +769,17 @@ config CRYPTO_DEV_ZYNQMP_SHA3
 	  Select this if you want to use the ZynqMP module for
 	  Keccak-SHA384 algorithms.
 
+config CRYPTO_DEV_XILINX_RSA
+	tristate "Support for Xilinx ZynqMP RSA hw accelerator"
+	depends on ARCH_ZYNQMP || COMPILE_TEST
+	select CRYPTO_AES
+	select CRYPTO_BLKCIPHER
+	help
+	  Xilinx processors have RSA hw accelerator used for signature
+	  generation and verification. This driver interfaces with RSA
+	  hw accelerator. Select this if you want to use the ZynqMP module
+	  for RSA algorithms.
+
 config CRYPTO_DEV_ZYNQMP_AES
 	tristate "Support for Xilinx ZynqMP AES hw accelerator"
 	depends on ZYNQMP_FIRMWARE || COMPILE_TEST
