@@ -1,0 +1,12 @@
+Xilinx ZynqMP RSA hw acceleration support
+
+The zynqmp PS-RSA hw accelerator is used to encrypt/decrypt
+the given user data.
+
+Required properties:
+- compatible:	should contain "xlnx,zynqmp-rsa"
+
+Example:
+	xlnx_rsa: zynqmp_rsa {
+		compatible = "xlnx,zynqmp-rsa";
+	};
