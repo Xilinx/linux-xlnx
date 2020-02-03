@@ -193,6 +193,10 @@
 				compatible = "xlnx,zynqmp-reset";
 				#reset-cells = <1>;
 			};
+
+			xlnx_keccak_384: sha384 {
+				compatible = "xlnx,zynqmp-keccak-384";
+			};
 		};
 	};
 
