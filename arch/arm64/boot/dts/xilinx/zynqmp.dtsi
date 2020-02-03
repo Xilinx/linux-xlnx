@@ -158,6 +158,10 @@
 					      "aux_ref_clk",
 					      "gt_crx_ref_clk";
 			};
+
+			xlnx_aes: zynqmp_aes {
+				compatible = "xlnx,zynqmp-aes";
+			};
 		};
 	};
 
