@@ -254,6 +254,8 @@ struct ablkcipher_alg {
 struct blkcipher_alg {
 	int (*setkey)(struct crypto_tfm *tfm, const u8 *key,
 	              unsigned int keylen);
+	int (*setkeytype)(struct crypto_tfm *tfm, const u8 *keytype,
+			  unsigned int keylen);
 	int (*encrypt)(struct blkcipher_desc *desc,
 		       struct scatterlist *dst, struct scatterlist *src,
 		       unsigned int nbytes);
@@ -731,6 +733,8 @@ struct blkcipher_tfm {
 	void *iv;
 	int (*setkey)(struct crypto_tfm *tfm, const u8 *key,
 		      unsigned int keylen);
+	int (*setkeytype)(struct crypto_tfm *tfm, const u8 *key,
+			  unsigned int keylen);
 	int (*encrypt)(struct blkcipher_desc *desc, struct scatterlist *dst,
 		       struct scatterlist *src, unsigned int nbytes);
 	int (*decrypt)(struct blkcipher_desc *desc, struct scatterlist *dst,
@@ -1461,6 +1465,14 @@ static inline int crypto_blkcipher_setkey(struct crypto_blkcipher *tfm,
 {
 	return crypto_blkcipher_crt(tfm)->setkey(crypto_blkcipher_tfm(tfm),
 						 key, keylen);
+}
+
+static inline int crypto_blkcipher_setkeytype(struct crypto_blkcipher *tfm,
+					      const u8 *key,
+					      unsigned int keylen)
+{
+	return crypto_blkcipher_crt(tfm)->setkeytype(crypto_blkcipher_tfm(tfm),
+						     key, keylen);
 }
 
 /**

@@ -316,6 +316,12 @@ static int skcipher_setkey(void *private, const u8 *key, unsigned int keylen)
 	return crypto_skcipher_setkey(private, key, keylen);
 }
 
+static int skcipher_setkeytype(void *private, const u8 *key,
+			       unsigned int keylen)
+{
+	return crypto_skcipher_setkeytype(private, key, keylen);
+}
+
 static void skcipher_sock_destruct(struct sock *sk)
 {
 	struct alg_sock *ask = alg_sk(sk);
@@ -380,6 +386,7 @@ static const struct af_alg_type algif_type_skcipher = {
 	.bind		=	skcipher_bind,
 	.release	=	skcipher_release,
 	.setkey		=	skcipher_setkey,
+	.setkeytype	=	skcipher_setkeytype,
 	.accept		=	skcipher_accept_parent,
 	.accept_nokey	=	skcipher_accept_parent_nokey,
 	.ops		=	&algif_skcipher_ops,

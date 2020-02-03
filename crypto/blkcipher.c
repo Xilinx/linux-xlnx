@@ -403,6 +403,14 @@ static int setkey(struct crypto_tfm *tfm, const u8 *key, unsigned int keylen)
 	return cipher->setkey(tfm, key, keylen);
 }
 
+static int setkeytype(struct crypto_tfm *tfm, const u8 *key,
+		      unsigned int keylen)
+{
+	struct blkcipher_alg *cipher = &tfm->__crt_alg->cra_blkcipher;
+
+	return cipher->setkeytype(tfm, key, keylen);
+}
+
 static int async_setkey(struct crypto_ablkcipher *tfm, const u8 *key,
 			unsigned int keylen)
 {
@@ -473,6 +481,7 @@ static int crypto_init_blkcipher_ops_sync(struct crypto_tfm *tfm)
 	unsigned long addr;
 
 	crt->setkey = setkey;
+	crt->setkeytype = setkeytype;
 	crt->encrypt = alg->encrypt;
 	crt->decrypt = alg->decrypt;
 
