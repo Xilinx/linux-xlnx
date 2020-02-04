@@ -19,6 +19,7 @@
 #include <linux/bug.h>
 #include <linux/of_irq.h>
 #include <linux/cpuhotplug.h>
+#include <linux/smp.h>
 
 /* No one else should require these constants, so define them locally here. */
 #define ISR 0x00			/* Interrupt Status Register */
@@ -48,6 +49,9 @@ static DEFINE_PER_CPU(struct xintc_irq_chip, primary_intc);
 
 static void xintc_write(struct xintc_irq_chip *irqc, int reg, u32 data)
 {
+	if (!irqc)
+		irqc = per_cpu_ptr(&primary_intc, smp_processor_id());
+
 	if (static_branch_unlikely(&xintc_is_be))
 		iowrite32be(data, irqc->base + reg);
 	else
@@ -61,6 +65,26 @@ static unsigned int xintc_read(struct xintc_irq_chip *irqc, int reg)
 	else
 		return ioread32(irqc->base + reg);
 }
+
+#if defined(CONFIG_SMP) && defined(CONFIG_MICROBLAZE)
+static DEFINE_RAW_SPINLOCK(ipi_lock);
+
+static void send_ipi(unsigned int cpu, unsigned int ipi_number)
+{
+	unsigned long flags;
+	struct xintc_irq_chip *irqc = per_cpu_ptr(&primary_intc, cpu);
+	u32 sw_irq = 1 << (ipi_number + irqc->nr_irq);
+
+	pr_debug("%s: cpu: %u, sends IPI: %d to cpu: %u, sw_irq %x\n",
+		 __func__, smp_processor_id(), ipi_number, cpu, sw_irq);
+
+	raw_spin_lock_irqsave(&ipi_lock, flags);
+
+	xintc_write(irqc, ISR, sw_irq);
+
+	raw_spin_unlock_irqrestore(&ipi_lock, flags);
+}
+#endif
 
 static void intc_enable_or_unmask(struct irq_data *d)
 {
@@ -121,17 +145,49 @@ static unsigned int xintc_get_irq_local(struct xintc_irq_chip *local_intc)
 static int xintc_map(struct irq_domain *d, unsigned int irq, irq_hw_number_t hw)
 {
 	struct xintc_irq_chip *local_intc = d->host_data;
+	u32 edge = local_intc->intr_mask & (1 << hw);
 
-	if (local_intc->intr_mask & (1 << hw)) {
+	/*
+	 * Find out which irq_domain this IRQ is assigned to. If it is assigned
+	 * to root domain then do not fill chip_data and set it up in the code
+	 */
+	if (irq_get_default_host() != d)
+		irq_set_chip_data(irq, local_intc);
+	else {
+		local_intc = per_cpu_ptr(&primary_intc, 0);
+		irq_set_chip_data(irq, NULL);
+	}
+
+	if (edge) {
+#if defined(CONFIG_SMP) && defined(CONFIG_MICROBLAZE)
+		irq_set_chip_and_handler_name(irq, local_intc->intc_dev,
+			handle_percpu_irq, "percpu");
+#else
 		irq_set_chip_and_handler_name(irq, local_intc->intc_dev,
 						handle_edge_irq, "edge");
+#endif
 		irq_clear_status_flags(irq, IRQ_LEVEL);
 	} else {
+#if defined(CONFIG_SMP) && defined(CONFIG_MICROBLAZE)
+		irq_set_chip_and_handler_name(irq, local_intc->intc_dev,
+			handle_percpu_irq, "percpu");
+#else
 		irq_set_chip_and_handler_name(irq, local_intc->intc_dev,
 						handle_level_irq, "level");
+#endif
 		irq_set_status_flags(irq, IRQ_LEVEL);
 	}
-	irq_set_chip_data(irq, local_intc);
+
+	/*
+	 * Setup all IRQs to be per CPU because servicing it by different
+	 * cpu is not implemented yet. And for uniprocessor system this flag
+	 * is nop all time time.
+	 */
+	irq_set_status_flags(irq, IRQ_PER_CPU);
+
+	pr_debug("cpu: %u, xintc_map: hwirq=%u, irq=%u, edge=%u\n",
+		 smp_processor_id(), (u32)hw, irq, edge);
+
 	return 0;
 }
 
@@ -214,7 +270,11 @@ static void xil_intc_handle_irq(struct pt_regs *regs)
 		hwirq = xintc_read(irqc, IVR);
 		if (hwirq != -1U) {
 			if (hwirq >= irqc->nr_irq) {
+#if defined(CONFIG_SMP) && defined(CONFIG_MICROBLAZE)
+				handle_IPI(hwirq - irqc->nr_irq, regs);
+#else
 				WARN_ONCE(1, "SW interrupt not handled\n");
+#endif
 				/* ACK is necessary */
 				xintc_write(irqc, IAR, 1 << hwirq);
 				continue;
@@ -323,12 +383,20 @@ static int __init xilinx_intc_of_init(struct device_node *intc,
 		return 0;
 	}
 
+	/*
+	 * Set default domain here because for other root intc
+	 * irq_find_mapping() will use irq_default_domain as fallback
+	 */
 	irq_set_default_host(irqc->domain);
 	set_handle_irq(xil_intc_handle_irq);
 
 	ret = cpuhp_setup_state(CPUHP_AP_IRQ_XILINX_STARTING,
 				"microblaze/arch_intc:starting",
 				xil_intc_start, xil_intc_stop);
+
+#if defined(CONFIG_SMP) && defined(CONFIG_MICROBLAZE)
+	set_smp_cross_call(send_ipi);
+#endif
 
 	return ret;
 
@@ -339,7 +407,6 @@ error:
 	if (parent)
 		kfree(irqc);
 	return ret;
-
 }
 
 IRQCHIP_DECLARE(xilinx_intc_xps, "xlnx,xps-intc-1.00.a", xilinx_intc_of_init);
