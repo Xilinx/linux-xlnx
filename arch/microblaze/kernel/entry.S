@@ -252,15 +252,19 @@ syscall_debug_table:
 	mts	rmsr , r11;						\
 	RESTORE_REGS_GP
 
+#define LOAD_PER_CPU(reg, addr)		lwi reg, r0, TOPHYS(PER_CPU(addr));
+#define STORE_PER_CPU(reg, addr)	swi reg, r0, TOPHYS(PER_CPU(addr));
+#define STORE_PER_CPU_VM(reg, addr)	swi reg, r0, PER_CPU(addr);
+
 #define SAVE_STATE	\
-	swi	r1, r0, TOPHYS(PER_CPU(ENTRY_SP)); /* save stack */	\
+	STORE_PER_CPU(r1, ENTRY_SP) /* save stack */			\
 	/* See if already in kernel mode.*/				\
 	mfs	r1, rmsr;						\
 	andi	r1, r1, MSR_UMS;					\
 	bnei	r1, 1f;						\
 	/* Kernel-mode state save.  */					\
 	/* Reload kernel stack-ptr. */					\
-	lwi	r1, r0, TOPHYS(PER_CPU(ENTRY_SP));			\
+	LOAD_PER_CPU(r1, ENTRY_SP)					\
 	/* FIXME: I can add these two lines to one */			\
 	/* tophys(r1,r1); */						\
 	/* addik	r1, r1, -PT_SIZE; */				\
@@ -269,7 +273,7 @@ syscall_debug_table:
 	brid	2f;							\
 	swi	r1, r1, PT_MODE; 	 				\
 1:	/* User-mode state save.  */					\
-	lwi	r1, r0, TOPHYS(PER_CPU(CURRENT_SAVE)); /* get saved current */\
+	LOAD_PER_CPU(r1, CURRENT_SAVE)	/* get saved current */		\
 	tophys(r1,r1);							\
 	lwi	r1, r1, TS_THREAD_INFO;	/* get the thread info */	\
 	/* MS these three instructions can be added to one */		\
@@ -278,12 +282,12 @@ syscall_debug_table:
 	/* addik	r1, r1, -PT_SIZE; */			\
 	addik r1, r1, THREAD_SIZE + CONFIG_KERNEL_BASE_ADDR - CONFIG_KERNEL_START - PT_SIZE; \
 	SAVE_REGS							\
-	lwi	r11, r0, TOPHYS(PER_CPU(ENTRY_SP));			\
+	LOAD_PER_CPU(r11, ENTRY_SP)					\
 	swi	r11, r1, PT_R1; /* Store user SP.  */		\
 	swi	r0, r1, PT_MODE; /* Was in user-mode.  */		\
 	/* MS: I am clearing UMS even in case when I come from kernel space */ \
 	clear_ums; 							\
-2:	lwi	CURRENT_TASK, r0, TOPHYS(PER_CPU(CURRENT_SAVE));
+2:	LOAD_PER_CPU(CURRENT_TASK, CURRENT_SAVE)
 
 .text
 
@@ -300,10 +304,10 @@ syscall_debug_table:
  * are masked. This is nice, means we don't have to CLI before state save
  */
 C_ENTRY(_user_exception):
-	swi	r1, r0, TOPHYS(PER_CPU(ENTRY_SP)) /* save stack */
+	STORE_PER_CPU(r1, ENTRY_SP) /* save stack */
 	addi	r14, r14, 4	/* return address is 4 byte after call */
 
-	lwi	r1, r0, TOPHYS(PER_CPU(CURRENT_SAVE)); /* get saved current */
+	LOAD_PER_CPU(r1, CURRENT_SAVE); /* get saved current */
 	tophys(r1,r1);
 	lwi	r1, r1, TS_THREAD_INFO;	/* get stack from task_struct */
 /* calculate kernel stack pointer from task struct 8k */
@@ -316,10 +320,10 @@ C_ENTRY(_user_exception):
 	swi	r0, r1, PT_R4
 
 	swi	r0, r1, PT_MODE;			/* Was in user-mode. */
-	lwi	r11, r0, TOPHYS(PER_CPU(ENTRY_SP));
+	LOAD_PER_CPU(r11, ENTRY_SP);
 	swi	r11, r1, PT_R1;		/* Store user SP.  */
 	clear_ums;
-2:	lwi	CURRENT_TASK, r0, TOPHYS(PER_CPU(CURRENT_SAVE));
+2:	LOAD_PER_CPU(CURRENT_TASK, CURRENT_SAVE);
 	/* Save away the syscall number.  */
 	swi	r12, r1, PT_R0;
 	tovirt(r1,r1)
@@ -434,8 +438,8 @@ C_ENTRY(ret_from_trap):
 
 /* Finally, return to user state.  */
 4:	set_bip;			/*  Ints masked for state restore */
-	swi	CURRENT_TASK, r0, PER_CPU(CURRENT_SAVE); /* save current */
 	VM_OFF;
+	STORE_PER_CPU(CURRENT_TASK, CURRENT_SAVE); /* save current */
 	tophys(r1,r1);
 	RESTORE_REGS_RTBD;
 	addik	r1, r1, PT_SIZE		/* Clean up stack space.  */
@@ -462,8 +466,8 @@ TRAP_return:		/* Make global symbol for debugging */
    saved context).  */
 C_ENTRY(ret_from_fork):
 	bralid	r15, schedule_tail; /* ...which is schedule_tail's arg */
-	add	r5, r3, r0;	/* switch_thread returns the prev task */
-				/* ( in the delay slot ) */
+	add	r5, r3, r0;	/* Arg 0: _switch_to places prev task struct */
+				/* pointer in r3 in the delay slot ) */
 	brid	ret_from_trap;	/* Do normal trap return */
 	add	r3, r0, r0;	/* Child's fork call should return 0. */
 
@@ -519,11 +523,11 @@ C_ENTRY(unaligned_data_trap):
 	 * are used and they use r0 instead of r11.
 	 * I am using ENTRY_SP which should be primary used only for stack
 	 * pointer saving. */
-	swi	r11, r0, TOPHYS(PER_CPU(ENTRY_SP));
+	STORE_PER_CPU(r11, ENTRY_SP);
 	set_bip;        /* equalize initial state for all possible entries */
 	clear_eip;
 	set_ee;
-	lwi	r11, r0, TOPHYS(PER_CPU(ENTRY_SP));
+	LOAD_PER_CPU(r11, ENTRY_SP);
 	SAVE_STATE		/* Save registers.*/
 	/* PC, before IRQ/trap - this is one instruction above */
 	swi	r17, r1, PT_PC;
@@ -618,8 +622,8 @@ C_ENTRY(ret_from_exc):
 
 /* Finally, return to user state.  */
 4:	set_bip;			/* Ints masked for state restore */
-	swi	CURRENT_TASK, r0, PER_CPU(CURRENT_SAVE); /* save current */
 	VM_OFF;
+	STORE_PER_CPU(CURRENT_TASK, CURRENT_SAVE); /* save current */
 	tophys(r1,r1);
 
 	RESTORE_REGS_RTBD;
@@ -653,7 +657,7 @@ EXC_return:		/* Make global symbol for debugging */
 C_ENTRY(_interrupt):
 /* MS: we are in physical address */
 /* Save registers, switch to proper stack, convert SP to virtual.*/
-	swi	r1, r0, TOPHYS(PER_CPU(ENTRY_SP))
+	STORE_PER_CPU(r1, ENTRY_SP)
 	/* MS: See if already in kernel mode. */
 	mfs	r1, rmsr
 	nop
@@ -661,7 +665,7 @@ C_ENTRY(_interrupt):
 	bnei	r1, 1f
 
 /* Kernel-mode state save. */
-	lwi	r1, r0, TOPHYS(PER_CPU(ENTRY_SP))
+	LOAD_PER_CPU(r1, ENTRY_SP)
 	tophys(r1,r1); /* MS: I have in r1 physical address where stack is */
 	/* save registers */
 /* MS: Make room on the stack -> activation record */
@@ -672,7 +676,7 @@ C_ENTRY(_interrupt):
 1:
 /* User-mode state save. */
  /* MS: get the saved current */
-	lwi	r1, r0, TOPHYS(PER_CPU(CURRENT_SAVE));
+	LOAD_PER_CPU(r1, CURRENT_SAVE);
 	tophys(r1,r1);
 	lwi	r1, r1, TS_THREAD_INFO;
 	addik	r1, r1, THREAD_SIZE;
@@ -682,11 +686,11 @@ C_ENTRY(_interrupt):
 	SAVE_REGS
 	/* calculate mode */
 	swi	r0, r1, PT_MODE;
-	lwi	r11, r0, TOPHYS(PER_CPU(ENTRY_SP));
+	LOAD_PER_CPU(r11, ENTRY_SP);
 	swi	r11, r1, PT_R1;
 	clear_ums;
 2:
-	lwi	CURRENT_TASK, r0, TOPHYS(PER_CPU(CURRENT_SAVE));
+	LOAD_PER_CPU(CURRENT_TASK, CURRENT_SAVE);
 	tovirt(r1,r1)
 	addik	r15, r0, irq_call;
 irq_call:rtbd	r0, do_IRQ;
@@ -719,8 +723,8 @@ ret_from_irq:
 no_intr_resched:
     /* Disable interrupts, we are now committed to the state restore */
 	disable_irq
-	swi	CURRENT_TASK, r0, PER_CPU(CURRENT_SAVE);
 	VM_OFF;
+	STORE_PER_CPU(CURRENT_TASK, CURRENT_SAVE);
 	tophys(r1,r1);
 	RESTORE_REGS
 	addik	r1, r1, PT_SIZE /* MS: Clean up stack space. */
@@ -759,14 +763,14 @@ IRQ_return: /* MS: Make global symbol for debugging */
  */
 C_ENTRY(_debug_exception):
 	/* BIP bit is set on entry, no interrupts can occur */
-	swi	r1, r0, TOPHYS(PER_CPU(ENTRY_SP))
+	STORE_PER_CPU(r1, ENTRY_SP)
 
 	mfs	r1, rmsr
 	nop
 	andi	r1, r1, MSR_UMS
 	bnei	r1, 1f
 /* MS: Kernel-mode state save - kgdb */
-	lwi	r1, r0, TOPHYS(PER_CPU(ENTRY_SP)); /* Reload kernel stack-ptr*/
+	LOAD_PER_CPU(r1, ENTRY_SP); /* Reload kernel stack-ptr*/
 
 	/* BIP bit is set on entry, no interrupts can occur */
 	addik   r1, r1, CONFIG_KERNEL_BASE_ADDR - CONFIG_KERNEL_START - PT_SIZE;
@@ -800,7 +804,7 @@ C_ENTRY(_debug_exception):
 	bri 0
 
 /* MS: User-mode state save - gdb */
-1:	lwi	r1, r0, TOPHYS(PER_CPU(CURRENT_SAVE)); /* get saved current */
+1:	LOAD_PER_CPU(r1, CURRENT_SAVE); /* get saved current */
 	tophys(r1,r1);
 	lwi	r1, r1, TS_THREAD_INFO;	/* get the thread info */
 	addik	r1, r1, THREAD_SIZE;	/* calculate kernel stack pointer */
@@ -810,9 +814,9 @@ C_ENTRY(_debug_exception):
 	SAVE_REGS;
 	swi	r16, r1, PT_PC;	/* Save LP */
 	swi	r0, r1, PT_MODE; /* Was in user-mode.  */
-	lwi	r11, r0, TOPHYS(PER_CPU(ENTRY_SP));
+	LOAD_PER_CPU(r11, ENTRY_SP);
 	swi	r11, r1, PT_R1; /* Store user SP.  */
-	lwi	CURRENT_TASK, r0, TOPHYS(PER_CPU(CURRENT_SAVE));
+	LOAD_PER_CPU(CURRENT_TASK, CURRENT_SAVE);
 	tovirt(r1,r1)
 	set_vms;
 	addik	r5, r1, 0;
@@ -848,8 +852,8 @@ dbtrap_call: /* Return point for kernel/user entry + 8 because of rtsd r15, 8 */
 	bri	1b
 
 /* Finally, return to user state.  */
-4:	swi	CURRENT_TASK, r0, PER_CPU(CURRENT_SAVE); /* save current */
-	VM_OFF;
+4:	VM_OFF;
+	STORE_PER_CPU(CURRENT_TASK, CURRENT_SAVE); /* save current */
 	tophys(r1,r1);
 	/* MS: Restore all regs */
 	RESTORE_REGS_RTBD
@@ -918,7 +922,7 @@ ENTRY(_switch_to)
 	/* update r31, the current-give me pointer to task which will be next */
 	lwi	CURRENT_TASK, r6, TI_TASK
 	/* stored it to current_save too */
-	swi	CURRENT_TASK, r0, PER_CPU(CURRENT_SAVE)
+	STORE_PER_CPU_VM(CURRENT_TASK, CURRENT_SAVE)
 
 	/* get new process' cpu context and restore */
 	/* give me start where start context of next task */
