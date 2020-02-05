@@ -28,6 +28,7 @@
 #include <linux/pci.h>
 #include <linux/cache.h>
 #include <linux/of.h>
+#include <linux/smp.h>
 #include <linux/dma-mapping.h>
 #include <asm/cacheflush.h>
 #include <asm/entry.h>
@@ -35,11 +36,23 @@
 
 #include <asm/pgtable.h>
 
+#ifdef CONFIG_SMP
+static void __init smp_setup_cpu_maps(void)
+{
+	int i;
+
+	for (i = 0; i < NR_CPUS; i++) {
+		set_cpu_present(i, true);
+		set_cpu_possible(i, true);
+	}
+}
+#else
 DEFINE_PER_CPU(unsigned int, KSP);	/* Saved kernel stack pointer */
 DEFINE_PER_CPU(unsigned int, KM);	/* Kernel/user mode */
 DEFINE_PER_CPU(unsigned int, ENTRY_SP);	/* Saved SP on kernel entry */
 DEFINE_PER_CPU(unsigned int, R11_SAVE);	/* Temp variable for entry */
 DEFINE_PER_CPU(unsigned int, CURRENT_SAVE);	/* Saved current pointer */
+#endif /* CONFIG_SMP */
 
 /*
  * Placed cmd_line to .data section because can be initialized from
@@ -63,6 +76,10 @@ void __init setup_arch(char **cmdline_p)
 	microblaze_cache_init();
 
 	xilinx_pci_init();
+
+#ifdef CONFIG_SMP
+	smp_setup_cpu_maps();
+#endif
 
 #if defined(CONFIG_DUMMY_CONSOLE)
 	conswitchp = &dummy_con;
@@ -173,8 +190,10 @@ void __init machine_early_init(const char *cmdline, unsigned int ram,
 		*dst = *src;
 
 	/* Initialize global data */
+#ifndef CONFIG_SMP
 	per_cpu(KM, 0) = 0x1;	/* We start in kernel mode */
 	per_cpu(CURRENT_SAVE, 0) = (unsigned long)current;
+#endif
 }
 
 void __init time_init(void)

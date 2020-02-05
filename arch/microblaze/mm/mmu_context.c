@@ -36,8 +36,70 @@
 
 static unsigned int next_context, nr_free_contexts;
 static unsigned long context_map[LAST_CONTEXT / BITS_PER_LONG + 1];
+#ifdef CONFIG_SMP
+static unsigned long stale_map[LAST_CONTEXT / BITS_PER_LONG + 1][NR_CPUS];
+#endif
 static struct mm_struct *context_mm[LAST_CONTEXT + 1];
 static DEFINE_RAW_SPINLOCK(context_lock);
+
+/*
+ * Steal a context from a task that has one at the moment.
+ *
+ * This is used when we are running out of available PID numbers
+ * on the processors.
+ *
+ * This isn't an LRU system, it just frees up each context in
+ * turn (sort-of pseudo-random replacement :).  This would be the
+ * place to implement an LRU scheme if anyone were motivated to do it.
+ *
+ * For context stealing, we use a slightly different approach for
+ * SMP and UP. Basically, the UP one is simpler and doesn't use
+ * the stale map as we can just flush the local CPU.
+ */
+#ifdef CONFIG_SMP
+static unsigned int steal_context_smp(unsigned int id)
+{
+	struct mm_struct *mm;
+	unsigned int cpu, max;
+
+	max = LAST_CONTEXT - FIRST_CONTEXT;
+
+	/* Attempt to free next_context first and then loop until we manage */
+	while (max--) {
+		/* Pick up the victim mm */
+		mm = context_mm[id];
+
+		/* We have a candidate victim, check if it's active, on SMP
+		 * we cannot steal active contexts
+		 */
+		if (mm->context.active) {
+			id++;
+			if (id > LAST_CONTEXT)
+				id = FIRST_CONTEXT;
+			continue;
+		}
+
+		/* Mark this mm has having no context anymore */
+		mm->context.id = MMU_NO_CONTEXT;
+
+		/* Mark it stale on all CPUs that used this mm. */
+		for_each_cpu(cpu, mm_cpumask(mm)) {
+			__set_bit(id, stale_map[cpu]);
+		}
+		return id;
+	}
+
+	/* This will happen if you have more CPUs than available contexts,
+	 * all we can do here is wait a bit and try again
+	 */
+	raw_spin_unlock(&context_lock);
+	cpu_relax();
+	raw_spin_lock(&context_lock);
+
+	/* This will cause the caller to try again */
+	return MMU_NO_CONTEXT;
+}
+#endif  /* CONFIG_SMP */
 
 /*
  * Note that this will also be called on SMP if all other CPUs are
@@ -61,16 +123,35 @@ static unsigned int steal_context_up(unsigned int id)
 	/* Mark this mm has having no context anymore */
 	mm->context.id = MMU_NO_CONTEXT;
 
+	/* TODO: This clear should ultimately be part of local_flush_tlb_mm */
+#ifdef CONFIG_SMP
+	__clear_bit(id, stale_map[cpu]);
+#endif
+
 	return id;
 }
 
 void switch_mmu_context(struct mm_struct *prev, struct mm_struct *next)
 {
-	unsigned int id, cpu = smp_processor_id();
+	unsigned int id;
+#ifdef CONFIG_SMP
+	unsigned int cpu = smp_processor_id();
+#endif
 	unsigned long *map;
 
 	/* No lockless fast path .. yet */
 	raw_spin_lock(&context_lock);
+
+#ifdef CONFIG_SMP
+	/* Mark us active and the previous one not anymore */
+	next->context.active++;
+	if (prev) {
+		WARN_ON(prev->context.active < 1);
+		prev->context.active--;
+	}
+
+ again:
+#endif /* CONFIG_SMP */
 
 	/* If we already have a valid assigned context, skip all that */
 	id = next->context.id;
@@ -85,6 +166,14 @@ void switch_mmu_context(struct mm_struct *prev, struct mm_struct *next)
 
 	/* No more free contexts, let's try to steal one */
 	if (nr_free_contexts == 0) {
+#ifdef CONFIG_SMP
+		if (num_online_cpus() > 1) {
+			id = steal_context_smp(id);
+			if (id == MMU_NO_CONTEXT)
+				goto again;
+			goto stolen;
+		}
+#endif /* CONFIG_SMP */
 		id = steal_context_up(id);
 		goto stolen;
 	}
@@ -102,6 +191,21 @@ void switch_mmu_context(struct mm_struct *prev, struct mm_struct *next)
 	next->context.id = id;
 
  ctxt_ok:
+
+	/* If that context got marked stale on this CPU, then flush the
+	 * local TLB for it and unmark it before we use it
+	 */
+#ifdef CONFIG_SMP
+	if (test_bit(id, stale_map[cpu])) {
+		local_flush_tlb_mm(next);
+
+		/*
+		 * TODO: This clear should ultimately be part of
+		 * local_flush_tlb_mm
+		 */
+		__clear_bit(id, stale_map[cpu]);
+	}
+#endif
 
 	/* Flick the MMU and release lock */
 	set_context(id, next->pgd);
@@ -137,6 +241,7 @@ void destroy_context(struct mm_struct *mm)
 	if (id != MMU_NO_CONTEXT) {
 		__clear_bit(id, context_map);
 		mm->context.id = MMU_NO_CONTEXT;
+		mm->context.active = 0;
 		context_mm[id] = NULL;
 		nr_free_contexts++;
 	}
