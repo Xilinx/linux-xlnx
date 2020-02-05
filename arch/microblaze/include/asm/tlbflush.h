@@ -17,6 +17,8 @@
 #include <asm/page.h>
 #include <asm/pgalloc.h>
 
+#define MMU_NO_CONTEXT		((unsigned int)-1)
+
 extern void _tlbie(unsigned long address);
 extern void _tlbia(void);
 
