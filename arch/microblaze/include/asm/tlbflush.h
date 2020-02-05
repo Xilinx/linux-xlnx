@@ -14,6 +14,8 @@
 #include <asm/mmu.h>
 #include <asm/page.h>
 
+#define MMU_NO_CONTEXT		((unsigned int)-1)
+
 extern void _tlbie(unsigned long address);
 extern void _tlbia(void);
 
