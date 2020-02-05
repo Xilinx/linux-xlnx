@@ -67,6 +67,33 @@ config CPU_LITTLE_ENDIAN
 
 endchoice
 
+config SMP
+	bool "SMP support (EXPERIMENTAL)"
+	default n
+	help
+	  This option enables SMP support for MicroBlaze. Every CPU has its own
+	  BRAM connected via LMB. The BRAM is used as CPU private memory, which
+	  is one reason CPU hotplug is not yet supported.
+	  Timers and interrupt controllers are placed on the same bus and
+	  accessible by all CPUs, but every CPU is assigned one timer and one
+	  interrupt controller. There is also one free running clock source
+	  timer for the whole system. The boot CPU wakes up other CPUs by
+	  sending a wake-up software Interrupt to a specific CPU that is
+	  sleeping. Wake-up will cause a jump to DDR start address where it is
+	  assumed that the kernel is placed. There is currently no support for
+	  placing the kernel at a different location.
+
+config GENERIC_LOCKBREAK
+	bool
+	default y
+	depends on SMP && PREEMPT
+
+config NR_CPUS
+	int "Maximum number of CPUs (2-8)"
+	range 2 8
+	depends on SMP
+	default "2"
+
 config ZONE_DMA
 	def_bool y
 

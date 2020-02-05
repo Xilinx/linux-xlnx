@@ -42,6 +42,11 @@ syscall_debug_table:
 	.space	(__NR_syscalls * 4)
 #endif /* DEBUG */
 
+#ifdef CONFIG_SMP
+#define CURRENT_SAVE	CURRENT_SAVE_ADDR
+#define ENTRY_SP	ENTRY_SP_ADDR
+#endif /* CONFIG_SMP */
+
 #define C_ENTRY(name)	.globl name; .align 4; name
 
 /*
@@ -90,6 +95,10 @@ syscall_debug_table:
 
 	.macro	clear_vms_ums
 	msrclr	r0, MSR_VMS | MSR_UMS
+	.endm
+
+	.macro	save_clear_vm
+	msrclr	r11, MSR_VM
 	.endm
 #else
 	.macro	clear_bip
@@ -151,6 +160,12 @@ syscall_debug_table:
 	.macro	clear_vms_ums
 	mfs	r11, rmsr
 	andni	r11, r11, (MSR_VMS|MSR_UMS)
+	mts	rmsr,r11
+	.endm
+
+	.macro	save_clear_vm
+	mfs	r11, rmsr
+	andni	r11, r11, MSR_VM
 	mts	rmsr,r11
 	.endm
 #endif
@@ -252,9 +267,22 @@ syscall_debug_table:
 	mts	rmsr , r11;						\
 	RESTORE_REGS_GP
 
+#ifndef CONFIG_SMP
 #define LOAD_PER_CPU(reg, addr)		lwi reg, r0, TOPHYS(PER_CPU(addr));
 #define STORE_PER_CPU(reg, addr)	swi reg, r0, TOPHYS(PER_CPU(addr));
 #define STORE_PER_CPU_VM(reg, addr)	swi reg, r0, PER_CPU(addr);
+#else
+#define LOAD_PER_CPU(reg, addr)		lwi reg, r0, PER_CPU(addr);
+#define STORE_PER_CPU(reg, addr)	swi reg, r0, PER_CPU(addr);
+#define STORE_PER_CPU_VM(reg, addr)	\
+	save_clear_vm;			\
+	bri	TOPHYS(1f);		\
+1:					\
+	swi	reg, r0, PER_CPU(addr);	\
+	mts	rmsr, r11;		\
+	bri	__phys_to_virt(2f);	\
+2:
+#endif /* CONFIG_SMP */
 
 #define SAVE_STATE	\
 	STORE_PER_CPU(r1, ENTRY_SP) /* save stack */			\
