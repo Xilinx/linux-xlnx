@@ -35,7 +35,7 @@ Required Properties:
 
 Optional Properties:
 --------------------
- - memory-region: reversed memory which will be used by R5 processor
+ - memory-region: reserved memory which will be used by R5 processor
 
 
 ZynqMP R5 Remoteproc Device Node:
@@ -50,7 +50,7 @@ Required Properties:
 
 Optional Properties:
 --------------------
- - memory-region:	reversed memory which will be used by R5 processor
+ - memory-region:	reserved memory which will be used by R5 processor
  - mboxes:		Specify tx and rx mailboxes
  - mbox-names:		List of identifier strings for tx/rx mailbox channel.
 

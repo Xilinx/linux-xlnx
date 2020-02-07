@@ -19,7 +19,7 @@ Required properties:
 
 Optional Properties:
 --------------------
- - memory-region: reversed memory which will be used by R5 processor
+ - memory-region: reserved memory which will be used by R5 processor
 
 Example:
 --------
