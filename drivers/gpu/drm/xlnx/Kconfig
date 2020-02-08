@@ -36,7 +36,7 @@ config DRM_ZYNQMP_DPSUB
 	select DMADEVICES
 	select XILINX_DMA_ENGINES
 	select XILINX_DPDMA
-	select GENERIC_PHY
+	select PHY_XILINX_ZYNQMP
 	help
 	  DRM KMS driver for ZynqMP DP Subsystem controller. Choose
 	  this option if you have a Xilinx ZynqMP SoC with DisplayPort
