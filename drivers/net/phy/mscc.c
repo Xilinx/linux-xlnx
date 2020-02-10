@@ -152,6 +152,7 @@
 #define MSCC_PHY_RGMII_CNTL		  20
 #define RGMII_RX_CLK_DELAY_MASK		  0x0070
 #define RGMII_RX_CLK_DELAY_POS		  4
+#define RGMII_TX_CLK_DELAY_MASK		  0x0007
 
 #define MSCC_PHY_WOL_LOWER_MAC_ADDR	  21
 #define MSCC_PHY_WOL_MID_MAC_ADDR	  22
@@ -245,6 +246,7 @@
 #define PHY_ID_VSC8514			  0x00070670
 #define PHY_ID_VSC8530			  0x00070560
 #define PHY_ID_VSC8531			  0x00070570
+#define PHY_ID_VSC8531_02		  0x00070572
 #define PHY_ID_VSC8540			  0x00070760
 #define PHY_ID_VSC8541			  0x00070770
 #define PHY_ID_VSC8574			  0x000704a0
@@ -405,6 +407,8 @@ struct vsc8531_private {
 	 * package.
 	 */
 	unsigned int base_addr;
+	u32 rx_delay;
+	u32 tx_delay;
 };
 
 #ifdef CONFIG_OF_MDIO
@@ -835,15 +839,17 @@ static int vsc85xx_default_config(struct phy_device *phydev)
 {
 	int rc;
 	u16 reg_val;
+	struct vsc8531_private *vsc8531 = phydev->priv;
 
 	phydev->mdix_ctrl = ETH_TP_MDI_AUTO;
 	mutex_lock(&phydev->lock);
 
-	reg_val = VSC8531_RGMII_CLK_DELAY_1_1_NS << RGMII_RX_CLK_DELAY_POS;
+	reg_val = (vsc8531->rx_delay << RGMII_RX_CLK_DELAY_POS) |
+		  vsc8531->tx_delay;
 
 	rc = phy_modify_paged(phydev, MSCC_PHY_PAGE_EXTENDED_2,
-			      MSCC_PHY_RGMII_CNTL, RGMII_RX_CLK_DELAY_MASK,
-			      reg_val);
+			      MSCC_PHY_RGMII_CNTL, (RGMII_RX_CLK_DELAY_MASK |
+			      RGMII_TX_CLK_DELAY_MASK), reg_val);
 
 	mutex_unlock(&phydev->lock);
 
@@ -1725,6 +1731,17 @@ static int vsc85xx_config_init(struct phy_device *phydev)
 {
 	int rc, i, phy_id;
 	struct vsc8531_private *vsc8531 = phydev->priv;
+	struct device_node *of_node = phydev->mdio.dev.of_node;
+
+	rc = of_property_read_u32(of_node, "vsc8531,rx-delay",
+				  &vsc8531->rx_delay);
+	if (rc < 0)
+		vsc8531->rx_delay = VSC8531_RGMII_CLK_DELAY_1_1_NS;
+
+	rc = of_property_read_u32(of_node, "vsc8531,tx-delay",
+				  &vsc8531->tx_delay);
+	if (rc < 0)
+		vsc8531->tx_delay = VSC8531_RGMII_CLK_DELAY_0_2_NS;
 
 	rc = vsc85xx_default_config(phydev);
 	if (rc)
@@ -2384,6 +2401,31 @@ static struct phy_driver vsc85xx_driver[] = {
 	.get_stats      = &vsc85xx_get_stats,
 },
 {
+	.phy_id		= PHY_ID_VSC8531_02,
+	.name		= "Microsemi VSC8531-02",
+	.phy_id_mask	= 0xfffffff0,
+	/* PHY_GBIT_FEATURES */
+	.soft_reset	= &genphy_soft_reset,
+	.config_init	= &vsc85xx_config_init,
+	.config_aneg	= &vsc85xx_config_aneg,
+	.aneg_done	= &genphy_aneg_done,
+	.read_status	= &vsc85xx_read_status,
+	.ack_interrupt	= &vsc85xx_ack_interrupt,
+	.config_intr	= &vsc85xx_config_intr,
+	.suspend	= &genphy_suspend,
+	.resume		= &genphy_resume,
+	.probe		= &vsc85xx_probe,
+	.set_wol	= &vsc85xx_wol_set,
+	.get_wol	= &vsc85xx_wol_get,
+	.get_tunable	= &vsc85xx_get_tunable,
+	.set_tunable	= &vsc85xx_set_tunable,
+	.read_page	= &vsc85xx_phy_read_page,
+	.write_page	= &vsc85xx_phy_write_page,
+	.get_sset_count = &vsc85xx_get_sset_count,
+	.get_strings	= &vsc85xx_get_strings,
+	.get_stats	= &vsc85xx_get_stats,
+},
+{
 	.phy_id		= PHY_ID_VSC8540,
 	.name		= "Microsemi FE VSC8540 SyncE",
 	.phy_id_mask	= 0xfffffff0,
@@ -2492,6 +2534,7 @@ static struct mdio_device_id __maybe_unused vsc85xx_tbl[] = {
 	{ PHY_ID_VSC8514, 0xfffffff0, },
 	{ PHY_ID_VSC8530, 0xfffffff0, },
 	{ PHY_ID_VSC8531, 0xfffffff0, },
+	{ PHY_ID_VSC8531_02, 0xfffffff0, },
 	{ PHY_ID_VSC8540, 0xfffffff0, },
 	{ PHY_ID_VSC8541, 0xfffffff0, },
 	{ PHY_ID_VSC8574, 0xfffffff0, },
