@@ -31,7 +31,14 @@ Optional properties:
 			  VSC8531_LINK_100_ACTIVITY (2),
 			  VSC8531_LINK_ACTIVITY (0) and
 			  VSC8531_DUPLEX_COLLISION (8).
-
+- vsc8531,rx-delay	: RGMII RX delay. Allowed values are defined in
+			  "include/dt-bindings/net/mscc-phy-vsc8531.h".
+			  Default value, set by the driver is
+			  VSC8531_RGMII_CLK_DELAY_1_1_NS.
+- vsc8531,tx-delay	: RGMII TX delay. Allowed values are defined in
+			  "include/dt-bindings/net/mscc-phy-vsc8531.h".
+			  Default value, set by the driver is
+			  VSC8531_RGMII_CLK_DELAY_0_2_NS.
 
 Table: 1 - Edge rate change
 ----------------------------------------------------------------|
