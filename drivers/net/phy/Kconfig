@@ -239,7 +239,8 @@ config MICROSEMI_PHY
 	depends on PTP_1588_CLOCK_OPTIONAL || !NETWORK_PHY_TIMESTAMPING
 	select CRYPTO_LIB_AES if MACSEC
 	help
-	  Currently supports VSC8514, VSC8530, VSC8531, VSC8540 and VSC8541 PHYs
+	  Currently supports VSC8514, VSC8530, VSC8531, VSC8531_02, VSC8540 and
+	  VSC8541 PHYs
 
 config MOTORCOMM_PHY
 	tristate "Motorcomm PHYs"
