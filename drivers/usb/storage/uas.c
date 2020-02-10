@@ -297,7 +297,8 @@ static void uas_workaround_cmplt(struct urb *urb)
 }
 
 static struct urb *uas_workaround_cmnd(struct uas_dev_info *devinfo, gfp_t gfp,
-				       struct scsi_cmnd *cmnd) {
+				       struct scsi_cmnd *cmnd)
+{
 	struct scsi_device *sdev = cmnd->device;
 	struct urb *urb;
 	int err;
@@ -325,7 +326,8 @@ free:
 }
 
 static struct urb *uas_workaround_data(struct uas_dev_info *devinfo, gfp_t gfp,
-				       struct scsi_cmnd *cmnd) {
+				       struct scsi_cmnd *cmnd)
+{
 	struct scsi_device *sdev = cmnd->device;
 	struct usb_device *udev = devinfo->udev;
 	struct uas_cmd_info *cmdinfo = (void *)&cmnd->SCp;
@@ -373,7 +375,8 @@ free:
 }
 
 static struct urb *uas_workaround_sense(struct uas_dev_info *devinfo, gfp_t gfp,
-				       struct scsi_cmnd *cmnd) {
+				       struct scsi_cmnd *cmnd)
+{
 	struct scsi_device *sdev = cmnd->device;
 	struct usb_device *udev = devinfo->udev;
 	struct uas_cmd_info *cmdinfo = (void *)&cmnd->SCp;
