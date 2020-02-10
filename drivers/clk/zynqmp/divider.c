@@ -119,21 +119,30 @@ static void zynqmp_compute_divider(struct clk_hw *hw,
 	int div2;
 	long error = LONG_MAX;
 	struct clk_hw *parent_hw = clk_hw_get_parent(hw);
+	struct zynqmp_clk_divider *divider = to_zynqmp_clk_divider(hw);
 	struct zynqmp_clk_divider *pdivider = to_zynqmp_clk_divider(parent_hw);
 
 	if (!pdivider)
 		return;
 
 	*bestdiv = 1;
-	for (div1 = 1; div1 <= pdivider->max_div; div1++) {
-		for (div2 = 1; div2 <= max_div; div2++) {
+	for (div1 = 1; div1 <= pdivider->max_div;) {
+		for (div2 = 1; div2 <= max_div;) {
 			long new_error = ((parent_rate / div1) / div2) - rate;
 
 			if (abs(new_error) < abs(error)) {
 				*bestdiv = div2;
 				error = new_error;
 			}
+			if (divider->flags & CLK_DIVIDER_POWER_OF_TWO)
+				div2 = div2 << 1;
+			else
+				div2++;
 		}
+		if (pdivider->flags & CLK_DIVIDER_POWER_OF_TWO)
+			div1 = div1 << 1;
+		else
+			div1++;
 	}
 }
 
