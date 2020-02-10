@@ -2076,7 +2076,6 @@ sbsa_uart_set_termios(struct uart_port *port, struct ktermios *termios,
 
 	tty_termios_encode_baud_rate(termios, uap->fixed_baud, uap->fixed_baud);
 	/* The SBSA UART only supports 8n1 without hardware flow control. */
-	termios->c_cflag &= ~(CSTOPB | PARENB | PARODD);
 	termios->c_cflag &= ~(CMSPAR | CRTSCTS);
 	switch (termios->c_cflag & CSIZE) {
 	case CS5:
@@ -2091,6 +2090,15 @@ sbsa_uart_set_termios(struct uart_port *port, struct ktermios *termios,
 	default:
 		lcr_h = UART01x_LCRH_WLEN_8;
 		break;
+	}
+	if (termios->c_cflag & CSTOPB)
+		lcr_h |= UART01x_LCRH_STP2;
+	if (termios->c_cflag & PARENB) {
+		lcr_h |= UART01x_LCRH_PEN;
+		if (!(termios->c_cflag & PARODD))
+			lcr_h |= UART01x_LCRH_EPS;
+		if (termios->c_cflag & CMSPAR)
+			lcr_h |= UART011_LCRH_SPS;
 	}
 	if (uap->fifosize > 1)
 		lcr_h |= UART01x_LCRH_FEN;
