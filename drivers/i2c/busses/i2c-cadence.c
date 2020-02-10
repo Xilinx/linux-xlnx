@@ -1001,13 +1001,13 @@ static int cdns_unreg_slave(struct i2c_client *slave)
 	struct cdns_i2c *id = container_of(slave->adapter, struct cdns_i2c,
 									adap);
 
-	pm_runtime_put(id->dev);
-
 	/* Remove slave information */
 	id->slave = NULL;
 
 	/* Enable I2C master */
 	cdns_i2c_set_mode(CDNS_I2C_MODE_MASTER, id);
+
+	pm_runtime_put(id->dev);
 
 	return 0;
 }
