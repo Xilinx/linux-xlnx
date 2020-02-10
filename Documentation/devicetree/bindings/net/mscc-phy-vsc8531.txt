@@ -33,7 +33,14 @@ Optional properties:
 			  VSC8531_DUPLEX_COLLISION (8).
 - load-save-gpios	: GPIO used for the load/save operation of the PTP
 			  hardware clock (PHC).
-
+- vsc8531,rx-delay	: RGMII RX delay. Allowed values are defined in
+			  "include/dt-bindings/net/mscc-phy-vsc8531.h".
+			  Default value, set by the driver is
+			  VSC8531_RGMII_CLK_DELAY_1_1_NS.
+- vsc8531,tx-delay	: RGMII TX delay. Allowed values are defined in
+			  "include/dt-bindings/net/mscc-phy-vsc8531.h".
+			  Default value, set by the driver is
+			  VSC8531_RGMII_CLK_DELAY_0_2_NS.
 
 Table: 1 - Edge rate change
 ----------------------------------------------------------------|
