@@ -127,8 +127,6 @@ static struct device_driver zynqmp_ipi_mbox_driver = {
 
 static void zynqmp_ipi_fw_call(struct zynqmp_ipi_mbox *ipi_mbox,
 			       unsigned long a0, unsigned long a3,
-			       unsigned long a4, unsigned long a5,
-			       unsigned long a6, unsigned long a7,
 			       struct arm_smccc_res *res)
 {
 	struct zynqmp_ipi_pdata *pdata = ipi_mbox->pdata;
@@ -137,9 +135,9 @@ static void zynqmp_ipi_fw_call(struct zynqmp_ipi_mbox *ipi_mbox,
 	a1 = pdata->local_id;
 	a2 = ipi_mbox->remote_id;
 	if (pdata->method == USE_SMC)
-		arm_smccc_smc(a0, a1, a2, a3, a4, a5, a6, a7, res);
+		arm_smccc_smc(a0, a1, a2, a3, 0, 0, 0, 0, res);
 	else
-		arm_smccc_hvc(a0, a1, a2, a3, a4, a5, a6, a7, res);
+		arm_smccc_hvc(a0, a1, a2, a3, 0, 0, 0, 0, res);
 }
 
 /**
@@ -170,7 +168,7 @@ static irqreturn_t zynqmp_ipi_interrupt(int irq, void *data)
 		ipi_mbox = &pdata->ipi_mboxes[i];
 		mchan = &ipi_mbox->mchans[IPI_MB_CHNL_RX];
 		chan = &ipi_mbox->mbox.chans[IPI_MB_CHNL_RX];
-		zynqmp_ipi_fw_call(ipi_mbox, arg0, arg3, 0, 0, 0, 0, &res);
+		zynqmp_ipi_fw_call(ipi_mbox, arg0, arg3, &res);
 		ret = (int)(res.a0 & 0xFFFFFFFF);
 		if (ret > 0 && ret & IPI_MB_STATUS_RECV_PENDING) {
 			if (mchan->is_opened) {
@@ -208,7 +206,7 @@ static bool zynqmp_ipi_peek_data(struct mbox_chan *chan)
 	}
 
 	arg0 = SMC_IPI_MAILBOX_STATUS_ENQUIRY;
-	zynqmp_ipi_fw_call(ipi_mbox, arg0, 0, 0, 0, 0, 0, &res);
+	zynqmp_ipi_fw_call(ipi_mbox, arg0, 0, &res);
 	ret = (int)(res.a0 & 0xFFFFFFFF);
 
 	if (mchan->chan_type == IPI_MB_CHNL_TX) {
@@ -253,7 +251,7 @@ static bool zynqmp_ipi_last_tx_done(struct mbox_chan *chan)
 		 * by the remote in the TX channel
 		 */
 		arg0 = SMC_IPI_MAILBOX_STATUS_ENQUIRY;
-		zynqmp_ipi_fw_call(ipi_mbox, arg0, 0, 0, 0, 0, 0, &res);
+		zynqmp_ipi_fw_call(ipi_mbox, arg0, 0, &res);
 		/* Check the SMC call status, a0 of the result */
 		ret = (int)(res.a0 & 0xFFFFFFFF);
 		if (ret < 0 || ret & IPI_MB_STATUS_SEND_PENDING)
@@ -307,8 +305,7 @@ static int zynqmp_ipi_send_data(struct mbox_chan *chan, void *data)
 		if (msg && msg->len) {
 			timeout = 10;
 			do {
-				zynqmp_ipi_fw_call(ipi_mbox, arg0,
-						   0, 0, 0, 0, 0, &res);
+				zynqmp_ipi_fw_call(ipi_mbox, arg0, 0, &res);
 				ret = res.a0 & 0xFFFFFFFF;
 				if (ret >= 0 &&
 				    !(ret & IPI_MB_STATUS_SEND_PENDING))
@@ -325,7 +322,7 @@ static int zynqmp_ipi_send_data(struct mbox_chan *chan, void *data)
 		}
 		/* Kick IPI mailbox to send message */
 		arg0 = SMC_IPI_MAILBOX_NOTIFY;
-		zynqmp_ipi_fw_call(ipi_mbox, arg0, 0, 0, 0, 0, 0, &res);
+		zynqmp_ipi_fw_call(ipi_mbox, arg0, 0, &res);
 	} else {
 		/* Send response message */
 		if (msg && msg->len > mchan->resp_buf_size) {
@@ -339,7 +336,7 @@ static int zynqmp_ipi_send_data(struct mbox_chan *chan, void *data)
 		arg0 = SMC_IPI_MAILBOX_NOTIFY;
 		arg0 = SMC_IPI_MAILBOX_ACK;
 		zynqmp_ipi_fw_call(ipi_mbox, arg0, IPI_SMC_ACK_EIRQ_MASK,
-				   0, 0, 0, 0, &res);
+				   &res);
 	}
 	return 0;
 }
@@ -368,7 +365,7 @@ static int zynqmp_ipi_startup(struct mbox_chan *chan)
 	nchan_type = (mchan->chan_type + 1) % 2;
 	if (!ipi_mbox->mchans[nchan_type].is_opened) {
 		arg0 = SMC_IPI_MAILBOX_OPEN;
-		zynqmp_ipi_fw_call(ipi_mbox, arg0, 0, 0, 0, 0, 0, &res);
+		zynqmp_ipi_fw_call(ipi_mbox, arg0, 0, &res);
 		/* Check the SMC call status, a0 of the result */
 		ret = (int)(res.a0 & 0xFFFFFFFF);
 		if (ret < 0) {
@@ -381,7 +378,7 @@ static int zynqmp_ipi_startup(struct mbox_chan *chan)
 	/* If it is RX channel, enable the IPI notification interrupt */
 	if (mchan->chan_type == IPI_MB_CHNL_RX) {
 		arg0 = SMC_IPI_MAILBOX_ENABLE_IRQ;
-		zynqmp_ipi_fw_call(ipi_mbox, arg0, 0, 0, 0, 0, 0, &res);
+		zynqmp_ipi_fw_call(ipi_mbox, arg0, 0, &res);
 	}
 	mchan->is_opened = 1;
 
@@ -409,13 +406,13 @@ static void zynqmp_ipi_shutdown(struct mbox_chan *chan)
 	chan_type = mchan->chan_type;
 	if (chan_type == IPI_MB_CHNL_RX) {
 		arg0 = SMC_IPI_MAILBOX_DISABLE_IRQ;
-		zynqmp_ipi_fw_call(ipi_mbox, arg0, 0, 0, 0, 0, 0, &res);
+		zynqmp_ipi_fw_call(ipi_mbox, arg0, 0, &res);
 	}
 	/* Release IPI mailbox if no other channel is opened */
 	chan_type = (chan_type + 1) % 2;
 	if (!ipi_mbox->mchans[chan_type].is_opened) {
 		arg0 = SMC_IPI_MAILBOX_RELEASE;
-		zynqmp_ipi_fw_call(ipi_mbox, arg0, 0, 0, 0, 0, 0, &res);
+		zynqmp_ipi_fw_call(ipi_mbox, arg0, 0, &res);
 	}
 
 	mchan->is_opened = 0;
