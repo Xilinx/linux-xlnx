@@ -1,14 +1,13 @@
 // SPDX-License-Identifier: GPL-2.0
 /* Copyright (c) 2010, 2014 The Linux Foundation. All rights reserved.  */
 
+#include <linux/console.h>
 #include <linux/init.h>
+#include <linux/serial.h>
+#include <linux/serial_core.h>
 
 #include <asm/dcc.h>
 #include <asm/processor.h>
-
-#include <linux/serial.h>
-#include <linux/console.h>
-#include <linux/serial_core.h>
 
 #include "hvc_console.h"
 
@@ -32,12 +31,13 @@ static void dcc_early_write(struct console *con, const char *s, unsigned n)
 }
 
 static int __init dcc_early_console_setup(struct earlycon_device *device,
-                                         const char *opt)
+					  const char *opt)
 {
 	device->con->write = dcc_early_write;
 
 	return 0;
 }
+
 EARLYCON_DECLARE(dcc, dcc_early_console_setup);
 
 static int hvc_dcc_put_chars(uint32_t vt, const char *buf, int count)
