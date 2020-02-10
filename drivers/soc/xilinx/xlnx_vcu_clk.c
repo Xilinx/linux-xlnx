@@ -261,7 +261,7 @@ static unsigned long xvcu_divider_recalc_rate(struct clk_hw *hw,
 	struct clk_divider *divider = to_clk_divider(hw);
 	unsigned int val;
 
-	val = clk_readl(divider->reg) >> divider->shift;
+	val = readl(divider->reg) >> divider->shift;
 	val &= div_mask(divider->width);
 
 	return divider_recalc_rate(hw, parent_rate, val, divider->table,
@@ -294,10 +294,10 @@ static int xvcu_divider_set_rate(struct clk_hw *hw, unsigned long rate,
 	if (value < 0)
 		return value;
 
-	val = clk_readl(divider->reg);
+	val = readl(divider->reg);
 	val &= ~(div_mask(divider->width) << divider->shift);
 	val |= (u32)value << divider->shift;
-	clk_writel(val, divider->reg);
+	writel(val, divider->reg);
 
 	return 0;
 }
@@ -380,12 +380,12 @@ static void xvcu_pll_bypass_ctrl(struct vcu_pll *pll, bool enable)
 {
 	u32 reg;
 
-	reg = clk_readl(pll->pll_ctrl);
+	reg = readl(pll->pll_ctrl);
 	if (enable)
 		reg |= VCU_PLL_CTRL_BYPASS_MASK;
 	else
 		reg &= ~VCU_PLL_CTRL_BYPASS_MASK;
-	clk_writel(reg, pll->pll_ctrl);
+	writel(reg, pll->pll_ctrl);
 }
 
 /**
@@ -400,7 +400,7 @@ static void xvcu_pll_config(struct vcu_pll *pll)
 	unsigned int fbdiv, reg;
 	int i;
 
-	reg = clk_readl(pll->pll_ctrl);
+	reg = readl(pll->pll_ctrl);
 	fbdiv = (reg >> VCU_PLL_CTRL_FBDIV_SHIFT) & VCU_PLL_CTRL_FBDIV_MASK;
 
 	for (i = ARRAY_SIZE(xvcu_pll_cfg) - 1; i >= 0; i--) {
@@ -413,7 +413,7 @@ static void xvcu_pll_config(struct vcu_pll *pll)
 		      (xvcu_pll_cfg[i].lfhf << VCU_PLL_CFG_LFHF_SHIFT) |
 		      (xvcu_pll_cfg[i].lock_cnt << VCU_PLL_CFG_LOCK_CNT_SHIFT) |
 		      (xvcu_pll_cfg[i].lock_dly << VCU_PLL_CFG_LOCK_DLY_SHIFT);
-		clk_writel(reg, pll->pll_cfg);
+		writel(reg, pll->pll_cfg);
 	}
 }
 
@@ -430,14 +430,14 @@ static void xvcu_pll_enable_disable(struct vcu_pll *pll, bool enable)
 {
 	u32 reg;
 
-	reg = clk_readl(pll->pll_ctrl);
+	reg = readl(pll->pll_ctrl);
 	if (enable)
 		reg &= ~(VCU_PLL_CTRL_RESET_MASK | VCU_PLL_CTRL_POR_IN_MASK |
 				VCU_PLL_CTRL_PWR_POR_MASK);
 	else
 		reg |= (VCU_PLL_CTRL_RESET_MASK | VCU_PLL_CTRL_POR_IN_MASK |
 				VCU_PLL_CTRL_PWR_POR_MASK);
-	clk_writel(reg, pll->pll_ctrl);
+	writel(reg, pll->pll_ctrl);
 }
 
 /**
@@ -454,7 +454,7 @@ static int xvcu_pll_is_enabled(struct clk_hw *hw)
 	struct vcu_pll *pll = to_vcu_pll(hw);
 	u32 reg;
 
-	reg = clk_readl(pll->pll_ctrl);
+	reg = readl(pll->pll_ctrl);
 
 	return !(reg & (VCU_PLL_CTRL_RESET_MASK | VCU_PLL_CTRL_POR_IN_MASK |
 		 VCU_PLL_CTRL_PWR_POR_MASK));
@@ -533,7 +533,7 @@ static inline enum pll_mode xvcu_pll_frac_get_mode(struct clk_hw *hw)
 	struct vcu_pll *clk = to_vcu_pll(hw);
 	u32 reg;
 
-	reg = clk_readl(clk->pll_ctrl + FRAC_OFFSET);
+	reg = readl(clk->pll_ctrl + FRAC_OFFSET);
 
 	reg = reg & PLLFCFG_FRAC_EN;
 	return reg ? PLL_MODE_FRAC : PLL_MODE_INT;
@@ -556,9 +556,9 @@ static inline void xvcu_pll_frac_set_mode(struct clk_hw *hw, bool on)
 	if (on)
 		reg = PLLFCFG_FRAC_EN;
 
-	reg = clk_readl(clk->pll_ctrl + FRAC_OFFSET);
+	reg = readl(clk->pll_ctrl + FRAC_OFFSET);
 	reg |= PLLFCFG_FRAC_EN;
-	clk_writel(reg, (clk->pll_ctrl + FRAC_OFFSET));
+	writel(reg, (clk->pll_ctrl + FRAC_OFFSET));
 }
 
 static long vcu_pll_round_rate(struct clk_hw *hw, unsigned long rate,
@@ -596,12 +596,12 @@ static unsigned long vcu_pll_recalc_rate(struct clk_hw *hw,
 	u32 fbdiv, data, reg;
 	unsigned long rate, frac;
 
-	reg = clk_readl(pll->pll_ctrl);
+	reg = readl(pll->pll_ctrl);
 	fbdiv = (reg >> VCU_PLL_CTRL_FBDIV_SHIFT) & VCU_PLL_CTRL_FBDIV_MASK;
 
 	rate = parent_rate * fbdiv;
 	if (xvcu_pll_frac_get_mode(hw) == PLL_MODE_FRAC) {
-		data = (clk_readl(pll->pll_ctrl + FRAC_OFFSET) & 0xFFFF);
+		data = (readl(pll->pll_ctrl + FRAC_OFFSET) & 0xFFFF);
 		frac = (parent_rate * data) / FRAC_DIV;
 		rate = rate + frac;
 	}
@@ -623,25 +623,25 @@ static int vcu_pll_set_rate(struct clk_hw *hw, unsigned long rate,
 		m = clamp_t(u32, m, (PLL_FBDIV_MIN), (PLL_FBDIV_MAX));
 		rate = parent_rate * m;
 		frac = (parent_rate * f) / FRAC_DIV;
-		reg = clk_readl(pll->pll_ctrl);
+		reg = readl(pll->pll_ctrl);
 		reg &= ~(VCU_PLL_CTRL_FBDIV_MASK << VCU_PLL_CTRL_FBDIV_SHIFT);
 		reg |= m << VCU_PLL_CTRL_FBDIV_SHIFT;
-		clk_writel(reg, pll->pll_ctrl);
+		writel(reg, pll->pll_ctrl);
 
-		reg = clk_readl(pll->pll_ctrl + FRAC_OFFSET);
+		reg = readl(pll->pll_ctrl + FRAC_OFFSET);
 		reg &= ~0xFFFF;
 		reg |= (f & 0xFFFF);
-		clk_writel(reg, pll->pll_ctrl + FRAC_OFFSET);
+		writel(reg, pll->pll_ctrl + FRAC_OFFSET);
 
 		return (rate + frac);
 	}
 
 	fbdiv = DIV_ROUND_CLOSEST(rate, parent_rate);
 	fbdiv = clamp_t(u32, fbdiv, PLL_FBDIV_MIN, PLL_FBDIV_MAX);
-	reg = clk_readl(pll->pll_ctrl);
+	reg = readl(pll->pll_ctrl);
 	reg &= ~(VCU_PLL_CTRL_FBDIV_MASK << VCU_PLL_CTRL_FBDIV_SHIFT);
 	reg |= fbdiv << VCU_PLL_CTRL_FBDIV_SHIFT;
-	clk_writel(reg, pll->pll_ctrl);
+	writel(reg, pll->pll_ctrl);
 
 	return parent_rate * fbdiv;
 }
@@ -820,7 +820,7 @@ static int xvcu_clock_init(struct device *dev, void __iomem *reg_base)
 	 * The divide-by-2 should be always enabled (== 1) to meet the timing
 	 * in the design. Otherwise, it's an error
 	 */
-	vcu_pll_ctrl = clk_readl(reg_base + VCU_PLL_CTRL);
+	vcu_pll_ctrl = readl(reg_base + VCU_PLL_CTRL);
 	clkoutdiv = vcu_pll_ctrl >> VCU_PLL_CTRL_CLKOUTDIV_SHIFT;
 	clkoutdiv = clkoutdiv & VCU_PLL_CTRL_CLKOUTDIV_MASK;
 	if (clkoutdiv != 1) {
