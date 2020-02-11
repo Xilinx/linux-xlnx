@@ -17,8 +17,8 @@
 
 #define to_xflex_dev_info(n)	((struct xflex_dev_info *)dev_get_drvdata(n))
 
-#define FPM_LAR_OFFSET				0xFB0
-#define FPM_UNLOCK				0xC5ACCE55
+#define FPM_LAR_OFFSET			0xFB0
+#define FPM_UNLOCK			0xC5ACCE55
 
 #define FPM_RD_REQ_OFFSET		0x1000
 #define FPM_RD_RES_OFFSET		0x2000
@@ -572,7 +572,7 @@ ATTRIBUTE_GROUPS(xflex);
  * @pdev: Pointer to the platform_device structure
  *
  * This is the driver probe routine. It does all the memory
- * allocation and creates sysfs entires for the device.
+ * allocation and creates sysfs entries for the device.
  *
  * Return: 0 on success and failure value on error
  */
