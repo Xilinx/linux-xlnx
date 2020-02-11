@@ -9,6 +9,7 @@
 #include <linux/interrupt.h>
 #include <linux/io.h>
 #include <linux/module.h>
+#include <linux/mutex.h>
 #include <linux/of_platform.h>
 #include <linux/of_address.h>
 #include <linux/platform_device.h>
@@ -71,6 +72,7 @@
  * @funnel: Iomapped funnel register base address
  * @counterid_lpd: LPD counter id
  * @counterid_fpd: FPD counter id
+ * @lock: Per device mutex for avoiding parallel access
  */
 struct xflex_dev_info {
 	struct device *dev;
@@ -79,6 +81,7 @@ struct xflex_dev_info {
 	void __iomem *funnel;
 	u32 counterid_fpd;
 	u32 counterid_lpd;
+	struct mutex lock; /* avoid parallel access to device */
 };
 
 /**
@@ -179,7 +182,7 @@ static int xflex_sysfs_cmd(struct device *dev, const char *buf,
 				      reg, 0, &pm_api_ret[0]);
 		if (ret < 0) {
 			dev_err(dev, "Counter read error %d\n", ret);
-			return ret;
+			goto exit_unlock;
 		}
 
 		rdval = pm_api_ret[1];
@@ -191,7 +194,7 @@ static int xflex_sysfs_cmd(struct device *dev, const char *buf,
 				      reg, 0, &pm_api_ret[0]);
 		if (ret < 0) {
 			dev_err(dev, "Counter read error %d\n", ret);
-			return ret;
+			goto exit_unlock;
 		}
 
 		rdval = pm_api_ret[1];
@@ -203,7 +206,7 @@ static int xflex_sysfs_cmd(struct device *dev, const char *buf,
 				      reg, 0, &pm_api_ret[0]);
 		if (ret < 0) {
 			dev_err(dev, "Counter read error %d\n", ret);
-			return ret;
+			goto exit_unlock;
 		}
 
 		rdval = pm_api_ret[1];
@@ -215,7 +218,7 @@ static int xflex_sysfs_cmd(struct device *dev, const char *buf,
 				      reg, 0, &pm_api_ret[0]);
 		if (ret < 0) {
 			dev_err(dev, "Counter read error %d\n", ret);
-			return ret;
+			goto exit_unlock;
 		}
 
 		rdval = pm_api_ret[1];
@@ -224,7 +227,7 @@ static int xflex_sysfs_cmd(struct device *dev, const char *buf,
 	case XFLEX_SET_COUNTER_LPD:
 		ret = kstrtou32(buf, 0, &val);
 		if (ret < 0)
-			return ret;
+			goto exit_unlock;
 
 		flexpm->counterid_lpd = val;
 		reset_default(dev, val, FPM_LPD);
@@ -233,7 +236,7 @@ static int xflex_sysfs_cmd(struct device *dev, const char *buf,
 	case XFLEX_SET_PORT_COUNTER_FPD:
 		ret = kstrtou32(buf, 0, &val);
 		if (ret < 0)
-			return ret;
+			goto exit_unlock;
 
 		counter = flexpm->counterid_fpd * FPM_COUNTER_OFFSET;
 		offset = FPM_PORT_SEL_OFFSET + counter * FPM_COUNTER_OFFSET;
@@ -243,7 +246,7 @@ static int xflex_sysfs_cmd(struct device *dev, const char *buf,
 	case XFLEX_SET_PORT_COUNTER_LPD:
 		ret = kstrtou32(buf, 0, &val);
 		if (ret < 0)
-			return ret;
+			goto exit_unlock;
 
 		counter = flexpm->counterid_lpd * FPM_COUNTER_OFFSET;
 		offset = FPM_PORT_SEL_OFFSET + counter * FPM_COUNTER_OFFSET;
@@ -255,7 +258,7 @@ static int xflex_sysfs_cmd(struct device *dev, const char *buf,
 		domain = FPM_LPD;
 		ret = kstrtou32(buf, 0, &val);
 		if (ret < 0)
-			return ret;
+			goto exit_unlock;
 
 		for (src = 0; src < FPM_NUM_COUNTERS; src++) {
 			reg = reg | FPM_SRC | (src << FPM_PROBE_SHIFT);
@@ -263,7 +266,7 @@ static int xflex_sysfs_cmd(struct device *dev, const char *buf,
 					      reg, val, NULL);
 			if (ret < 0) {
 				dev_err(dev, "Counter write error %d\n", ret);
-				return ret;
+				goto exit_unlock;
 			}
 		}
 		break;
@@ -273,7 +276,7 @@ static int xflex_sysfs_cmd(struct device *dev, const char *buf,
 		domain = FPM_FPD;
 		ret = kstrtou32(buf, 0, &val);
 		if (ret < 0)
-			return ret;
+			goto exit_unlock;
 
 		for (src = 0; src < FPM_NUM_COUNTERS; src++) {
 			reg = reg | FPM_SRC | (src << FPM_PROBE_SHIFT);
@@ -281,7 +284,7 @@ static int xflex_sysfs_cmd(struct device *dev, const char *buf,
 					      reg, val, NULL);
 			if (ret < 0) {
 				dev_err(dev, "Counter write error %d\n", ret);
-				return ret;
+				goto exit_unlock;
 			}
 		}
 		break;
@@ -289,7 +292,7 @@ static int xflex_sysfs_cmd(struct device *dev, const char *buf,
 	case XFLEX_SET_COUNTER_FPD:
 		ret = kstrtou32(buf, 0, &val);
 		if (ret < 0)
-			return ret;
+			goto exit_unlock;
 
 		flexpm->counterid_fpd = val;
 		reset_default(dev, val, FPM_FPD);
@@ -301,7 +304,7 @@ static int xflex_sysfs_cmd(struct device *dev, const char *buf,
 				      reg, 0, &pm_api_ret[0]);
 		if (ret < 0) {
 			dev_err(dev, "Counter read error %d\n", ret);
-			return ret;
+			goto exit_unlock;
 		}
 
 		rdval = pm_api_ret[1];
@@ -313,7 +316,7 @@ static int xflex_sysfs_cmd(struct device *dev, const char *buf,
 				      reg, 0, &pm_api_ret[0]);
 		if (ret < 0) {
 			dev_err(dev, "Counter read error %d\n", ret);
-			return ret;
+			goto exit_unlock;
 		}
 
 		rdval = pm_api_ret[1];
@@ -325,7 +328,7 @@ static int xflex_sysfs_cmd(struct device *dev, const char *buf,
 				      reg, 0, &pm_api_ret[0]);
 		if (ret < 0) {
 			dev_err(dev, "Counter read error %d\n", ret);
-			return ret;
+			goto exit_unlock;
 		}
 
 		rdval = pm_api_ret[1];
@@ -337,7 +340,7 @@ static int xflex_sysfs_cmd(struct device *dev, const char *buf,
 				      reg, 0, &pm_api_ret[0]);
 		if (ret < 0) {
 			dev_err(dev, "Counter read error %d\n", ret);
-			return ret;
+			goto exit_unlock;
 		}
 
 		rdval = pm_api_ret[1];
@@ -349,6 +352,10 @@ static int xflex_sysfs_cmd(struct device *dev, const char *buf,
 	}
 
 	return rdval;
+
+exit_unlock:
+	mutex_unlock(&flexpm->lock);
+	return ret;
 }
 
 /* Sysfs functions */
@@ -595,6 +602,7 @@ static int xflex_probe(struct platform_device *pdev)
 	if (IS_ERR(flexpm->funnel))
 		return PTR_ERR(flexpm->funnel);
 
+	mutex_init(&flexpm->lock);
 	writel(FPM_UNLOCK, flexpm->funnel + FPM_LAR_OFFSET);
 	writel(FPM_UNLOCK, flexpm->baselpd + FPM_LAR_OFFSET);
 
