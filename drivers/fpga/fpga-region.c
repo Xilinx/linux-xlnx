@@ -14,7 +14,6 @@
 #include <linux/module.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
-#include <linux/reset.h>
 
 static DEFINE_IDA(fpga_region_ida);
 static struct class *fpga_region_class;
@@ -99,7 +98,6 @@ int fpga_region_program_fpga(struct fpga_region *region)
 	struct device *dev = &region->dev;
 	struct fpga_image_info *info = region->info;
 	int ret;
-	struct reset_control *rstc;
 
 	region = fpga_region_get(region);
 	if (IS_ERR(region)) {
@@ -142,13 +140,6 @@ int fpga_region_program_fpga(struct fpga_region *region)
 		dev_err(dev, "failed to enable region bridges\n");
 		goto err_put_br;
 	}
-
-	rstc = of_reset_control_array_get(info->overlay, false, true);
-	if (IS_ERR(rstc))
-		goto err_put_br;
-
-	reset_control_reset(rstc);
-	reset_control_put(rstc);
 
 	fpga_mgr_unlock(region->mgr);
 
