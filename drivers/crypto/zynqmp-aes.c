@@ -283,7 +283,7 @@ static int zynqmp_aes_probe(struct platform_device *pdev)
 	aes_dd->dev = dev;
 	platform_set_drvdata(pdev, aes_dd);
 
-	ret = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(44));
+	ret = dma_set_mask_and_coherent(dev, DMA_BIT_MASK(32));
 	if (ret < 0) {
 		dev_err(dev, "no usable DMA configuration");
 		return ret;

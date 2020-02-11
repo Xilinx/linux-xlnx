@@ -248,7 +248,7 @@ static int zynqmp_sha_probe(struct platform_device *pdev)
 	list_add_tail(&sha_dd->list, &zynqmp_sha.dev_list);
 	spin_unlock(&zynqmp_sha.lock);
 
-	err = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(44));
+	err = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(32));
 	if (err < 0)
 		dev_err(dev, "no usable DMA configuration");
 

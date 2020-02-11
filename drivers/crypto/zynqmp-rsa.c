@@ -191,7 +191,7 @@ static int zynqmp_rsa_probe(struct platform_device *pdev)
 	rsa_dd->dev = dev;
 	platform_set_drvdata(pdev, rsa_dd);
 
-	ret = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(44));
+	ret = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(32));
 	if (ret < 0)
 		dev_err(dev, "no usable DMA configuration");
 
