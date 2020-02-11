@@ -130,8 +130,6 @@ source "drivers/staging/axis-fifo/Kconfig"
 
 source "drivers/staging/erofs/Kconfig"
 
-source "drivers/staging/xlnx_ctrl_driver/Kconfig"
-
 source "drivers/staging/xlnx_ernic/Kconfig"
 
 source "drivers/staging/xroeframer/Kconfig"
