@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * phy-zynqmp.c - PHY driver for Xilinx ZynqMP GT.
  *
@@ -5,15 +6,6 @@
  *
  * Author: Subbaraya Sundeep <sbhatta@xilinx.com>
  * Author: Anurag Kumar Vulisha <anuragku@xilinx.com>
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2  of
- * the License as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  *
  * This driver is tested for USB and SATA currently.
  * Other controllers PCIe, Display Port and SGMII should also
@@ -293,7 +285,7 @@ struct xpsgtr_dev {
 	struct device *dev;
 	void __iomem *serdes;
 	void __iomem *siou;
-	struct mutex gtr_mutex;
+	struct mutex gtr_mutex; /* mutex for locking */
 	struct xpsgtr_phy **phys;
 	bool tx_term_fix;
 	unsigned int saved_icm_cfg0;

@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0 */
 /*
  * Xilinx ZynqMP PHY header
  *
@@ -5,15 +6,6 @@
  *
  * Author: Anurag Kumar Vulisha <anuragku@xilinx.com>
  * Author: Hyun Woo Kwon <hyunk@xilinx.com>
- *
- * This software is licensed under the terms of the GNU General Public
- * License version 2, as published by the Free Software Foundation, and
- * may be copied, distributed, and modified under those terms.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
 #ifndef _PHY_ZYNQMP_H_
