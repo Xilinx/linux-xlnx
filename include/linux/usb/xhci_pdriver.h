@@ -1,15 +1,12 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
+ * Xilinx Zynq MPSoC Firmware layer
  *
- * This program is distributed in the hope that it will be useful, but
- * WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY
- * or FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License
- * for more details.
+ *  Copyright (C) 2018-2020 Xilinx, Inc.
  *
+ *  Michal Simek <michal.simek@xilinx.com>
+ *  Anurag Kumar Vulisha <anuragku@xilinx.com>
  */
-
 #ifndef __USB_CORE_XHCI_PDRIVER_H
 #define __USB_CORE_XHCI_PDRIVER_H
 
