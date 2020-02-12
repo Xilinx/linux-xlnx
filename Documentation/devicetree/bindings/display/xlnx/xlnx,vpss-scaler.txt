@@ -48,4 +48,3 @@ Example:
 		xlnx,max-width = <3840>;
 		xlnx,max-height = <2160>;
 	}
-

@@ -15,7 +15,7 @@
 		(IS_REACHABLE(CONFIG_USB_DWC3_OF_SIMPLE) && \
 			!IS_REACHABLE(CONFIG_USB_DWC3_GADGET)))
 
- /* Let the dwc3 driver know about device wakeup capability */
+/* Let the dwc3 driver know about device wakeup capability */
 void dwc3_host_wakeup_capable(struct device *dev, bool wakeup);
 
 #else

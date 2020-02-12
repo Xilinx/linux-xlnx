@@ -318,8 +318,8 @@ static DEVICE_ATTR_RO(state);
 
 #ifdef DEBUG
 static ssize_t set_store(struct device *dev,
-			struct device_attribute *attr,
-			const char *buf, size_t count)
+			 struct device_attribute *attr,
+			 const char *buf, size_t count)
 {
 	struct fpga_bridge *bridge = to_fpga_bridge(dev);
 	long enable;
