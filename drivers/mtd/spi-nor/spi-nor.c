@@ -2848,6 +2848,8 @@ static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
 			*retlen += ret;
 		}
 		buf += ret;
+		if (!is_ofst_odd)
+			ptr += ret;
 		from += ret;
 		len -= ret;
 	}
