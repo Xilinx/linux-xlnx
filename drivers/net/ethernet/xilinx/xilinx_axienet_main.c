@@ -2081,6 +2081,22 @@ static int axienet_ioctl(struct net_device *dev, struct ifreq *rq, int cmd)
 	case SIOC_GET_SCHED:
 		return axienet_get_schedule(dev, rq->ifr_data);
 #endif
+#ifdef CONFIG_XILINX_TSN_QBR
+	case SIOC_PREEMPTION_CFG:
+		return axienet_preemption(dev, rq->ifr_data);
+	case SIOC_PREEMPTION_CTRL:
+		return axienet_preemption_ctrl(dev, rq->ifr_data);
+	case SIOC_PREEMPTION_STS:
+		return axienet_preemption_sts(dev, rq->ifr_data);
+	case SIOC_PREEMPTION_COUNTER:
+		return axienet_preemption_cnt(dev, rq->ifr_data);
+#ifdef CONFIG_XILINX_TSN_QBV
+	case SIOC_QBU_USER_OVERRIDE:
+		return axienet_qbu_user_override(dev, rq->ifr_data);
+	case SIOC_QBU_STS:
+		return axienet_qbu_sts(dev, rq->ifr_data);
+#endif
+#endif
 
 	default:
 		return -EOPNOTSUPP;

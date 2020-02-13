@@ -94,4 +94,11 @@ config XILINX_TSN_CB
 	---help---
 	  Enable TSN CB protocol support.
 
+config XILINX_TSN_QBR
+       bool "Support QBR protocol in TSN"
+       depends on XILINX_TSN_SWITCH
+       default y
+       ---help---
+         Enable TSN QBR protocol support.
+
 endif # NET_VENDOR_XILINX
