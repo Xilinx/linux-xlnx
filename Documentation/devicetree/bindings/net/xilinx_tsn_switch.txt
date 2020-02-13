@@ -1,0 +1,23 @@
+Xilinx TSN (time sensitive networking) Switch Driver (xilinx_tsn_switch)
+-----------------------------------------------------------------------------
+
+Required properties:
+- compatible		: Should be "xlnx,tsn-switch"
+- reg			: Physical base address and size of the TSN registers map.
+
+Optional properties:
+- xlnx,num-tc		: Number of traffic class supported in current design,
+			  range is 2,3 and default value is 3. It denotes
+			  the traffic classes based on VLAN-PCP value.
+- xlnx,has-hwaddr-learning	: Denotes hardware address learning support
+- xlnx,has-inband-mgmt-tag	: Denotes inband management support
+
+Example:
+
+	epswitch: tsn_switch@80078000 {
+		compatible = "xlnx,tsn-switch";
+		reg = <0x0 0x80078000 0x0 0x4000>;
+		xlnx,num-tc = <0x3>;
+		xlnx,has-hwaddr-learning ;
+		xlnx,has-inband-mgmt-tag ;
+	};
