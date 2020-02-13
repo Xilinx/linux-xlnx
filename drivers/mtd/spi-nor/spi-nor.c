@@ -5109,7 +5109,7 @@ static int spi_nor_init(struct spi_nor *nor)
 		return err;
 	}
 
-	if (nor->addr_width == 4 && !(nor->info->flags & SNOR_F_4B_OPCODES) &&
+	if (nor->addr_width == 4 && !(nor->flags & SNOR_F_4B_OPCODES) &&
 	    (JEDEC_MFR(nor->info) != SNOR_MFR_SPANSION)) {
 		/*
 		 * If the RESET# pin isn't hooked up properly, or the system
@@ -5142,7 +5142,7 @@ static void spi_nor_resume(struct mtd_info *mtd)
 void spi_nor_restore(struct spi_nor *nor)
 {
 	/* restore the addressing mode */
-	if (nor->addr_width == 4 && !(nor->info->flags & SNOR_F_4B_OPCODES) &&
+	if (nor->addr_width == 4 && !(nor->flags & SNOR_F_4B_OPCODES) &&
 	    (nor->flags & SNOR_F_BROKEN_RESET) &&
 	    (JEDEC_MFR(nor->info) != SNOR_MFR_SPANSION) &&
 	    !(nor->info->flags & SPI_NOR_4B_OPCODES))
