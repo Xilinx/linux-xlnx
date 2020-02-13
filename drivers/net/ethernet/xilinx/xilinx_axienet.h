@@ -597,6 +597,12 @@ struct aximcdma_bd {
 enum axienet_tsn_ioctl {
 	SIOCCHIOCTL = SIOCDEVPRIVATE,
 	SIOC_GET_SCHED,
+	SIOC_PREEMPTION_CFG,
+	SIOC_PREEMPTION_CTRL,
+	SIOC_PREEMPTION_STS,
+	SIOC_PREEMPTION_COUNTER,
+	SIOC_QBU_USER_OVERRIDE,
+	SIOC_QBU_STS,
 };
 
 /**
@@ -1027,6 +1033,18 @@ void axienet_qbv_remove(struct net_device *ndev);
 int axienet_set_schedule(struct net_device *ndev, void __user *useraddr);
 int axienet_get_schedule(struct net_device *ndev, void __user *useraddr);
 #endif
+
+#ifdef CONFIG_XILINX_TSN_QBR
+int axienet_preemption(struct net_device *ndev, void __user *useraddr);
+int axienet_preemption_ctrl(struct net_device *ndev, void __user *useraddr);
+int axienet_preemption_sts(struct net_device *ndev, void __user *useraddr);
+int axienet_preemption_cnt(struct net_device *ndev, void __user *useraddr);
+#ifdef CONFIG_XILINX_TSN_QBV
+int axienet_qbu_user_override(struct net_device *ndev, void __user *useraddr);
+int axienet_qbu_sts(struct net_device *ndev, void __user *useraddr);
+#endif
+#endif
+
 int axienet_mdio_wait_until_ready(struct axienet_local *lp);
 void __maybe_unused axienet_bd_free(struct net_device *ndev,
 				    struct axienet_dma_q *q);
