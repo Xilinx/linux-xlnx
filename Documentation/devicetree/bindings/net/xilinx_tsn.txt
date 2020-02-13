@@ -1,0 +1,14 @@
+Xilinx TSN (time sensitive networking) IP driver (xilinx_tsn_ip)
+-----------------------------------------------------------------------
+
+Required properties:
+- compatible		: Should be one of "xlnx,tsn-endpoint-ethernet-mac-1.0",
+			  "xlnx,tsn-endpoint-ethernet-mac-2.0" for TSN.
+- reg			: Physical base address and size of the TSN registers map.
+
+Example:
+
+	tsn_endpoint_ip_0: tsn_endpoint_ip_0 {
+		compatible = "xlnx,tsn-endpoint-ethernet-mac-2.0";
+		reg = <0x0 0x80040000 0x0 0x40000>;
+	};
