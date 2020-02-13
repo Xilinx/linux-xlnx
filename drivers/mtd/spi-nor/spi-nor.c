@@ -693,9 +693,6 @@ static int spi_nor_write_ear(struct spi_nor *nor, u8 ear)
 	int ret;
 	struct mtd_info *mtd = &nor->mtd;
 
-	/* Wait until finished previous write command. */
-	if (spi_nor_wait_till_ready(nor))
-		return 1;
 
 	if (mtd->size <= (0x1000000) << nor->shift)
 		return 0;
