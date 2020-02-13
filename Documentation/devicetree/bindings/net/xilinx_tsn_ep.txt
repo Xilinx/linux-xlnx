@@ -1,0 +1,35 @@
+Xilinx TSN (time sensitive networking) EndPoint Driver (xilinx_tsn_ep)
+-------------------------------------------------------------------------------
+
+Required properties:
+- compatible		: Should be "xlnx,tsn-ep"
+- reg			: Physical base address and size of the TSN Endpoint
+				registers map
+- interrupts		: Property with a value describing the interrupt
+- interrupts-names	: Property denotes the interrupt names.
+- interrupt-parent	: Must be core interrupt controller.
+- local-mac-address	: See ethernet.txt [1].
+
+Optional properties:
+- xlnx,num-tc		: Number of traffic class supported in current design,
+			  range is 2,3 and default value is 3. It denotes
+			  the traffic classes based on VLAN-PCP value.
+- xlnx,channel-ids 	: Queue Identifier associated with the MCDMA Channel, range
+			  is Tx: "1 to 2" and Rx: "2 to 5", default value is "1 to 5".
+- xlnx,eth-hasnobuf	: Used when 1G MAC is configured in non processor mode.
+
+[1] Documentation/devicetree/bindings/net/ethernet.txt
+
+Example:
+
+	tsn_ep: tsn_ep@80056000 {
+		compatible = "xlnx,tsn-ep";
+		reg = <0x0 0x80056000 0x0 0xA000>;
+		xlnx,num-tc = <0x3>;
+		interrupt-names = "tsn_ep_scheduler_irq";
+		interrupt-parent = <&gic>;
+		interrupts = <0 111 4>;
+		local-mac-address = [00 0A 35 00 01 10];
+		xlnx,channel-ids = "1","2","3","4","5";
+		xlnx,eth-hasnobuf ;
+	};
