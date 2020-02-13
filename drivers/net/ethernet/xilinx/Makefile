@@ -9,6 +9,7 @@ obj-$(CONFIG_XILINX_EMACLITE) += xilinx_emaclite.o
 obj-$(CONFIG_XILINX_TSN) += xilinx_tsn_ep.o
 obj-$(CONFIG_XILINX_TSN_PTP) += xilinx_tsn_ptp_xmit.o xilinx_tsn_ptp_clock.o
 obj-$(CONFIG_XILINX_TSN_QBV) += xilinx_tsn_shaper.o
+obj-$(CONFIG_XILINX_TSN_QCI) += xilinx_tsn_qci.o
 obj-$(CONFIG_XILINX_TSN_SWITCH) += xilinx_tsn_switch.o
 xilinx_emac-objs := xilinx_axienet_main.o xilinx_axienet_mdio.o xilinx_axienet_dma.o
 obj-$(CONFIG_XILINX_AXI_EMAC) += xilinx_emac.o
