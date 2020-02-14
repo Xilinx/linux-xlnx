@@ -4758,10 +4758,11 @@ static int spi_nor_switch_micron_octal_ddr(struct spi_nor *nor)
 
 	program_opcode = nor->program_opcode;
 	write_enable(nor);
-	nor->program_opcode = SPINOR_OP_WRCR;
 	nor->addr_width = 3;
-	ret = nor->write(nor, 0x0, 1, &cr);
-	nor->program_opcode = program_opcode;
+	nor->is_addrvalid = true;
+	nor->reg_addr = 0x0;
+	ret = nor->write_reg(nor, SPINOR_OP_WRCR, &cr, 1);
+	nor->is_addrvalid = false;
 	nor->addr_width = 4;
 	if (ret < 0) {
 		dev_err(nor->dev,

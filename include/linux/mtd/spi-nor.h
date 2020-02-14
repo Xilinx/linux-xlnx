@@ -163,7 +163,6 @@
 
 /* Extended/Bank Address Register bits */
 #define EAR_SEGMENT_MASK	0x7 /* 128 Mb segment mask */
-
 enum read_mode {
 	SPI_NOR_NORMAL = 0,
 	SPI_NOR_FAST,
@@ -624,6 +623,8 @@ struct spi_nor {
 	bool                    isstacked;
 	bool			is_lock;
 	u8			device_id[SPI_NOR_MAX_ID_LEN];
+	bool			is_addrvalid;
+	loff_t			reg_addr;
 
 	int (*prepare)(struct spi_nor *nor, enum spi_nor_ops ops);
 	void (*unprepare)(struct spi_nor *nor, enum spi_nor_ops ops);
