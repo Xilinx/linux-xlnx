@@ -52,6 +52,8 @@ Optional Properties:
     properly. Test mode can be used to force the controller to function.
   - xlnx,int-clock-stable-broken: when present, the controller always reports
     that the internal clock is stable even when it is not.
+  - pinctrl-0: pin control group to be used for this controller.
+  - pinctrl-names: must contain a "default" entry.
 
   - xlnx,mio-bank: When specified, this will indicate the MIO bank number in
     which the command and data lines are configured. If not specified, driver
