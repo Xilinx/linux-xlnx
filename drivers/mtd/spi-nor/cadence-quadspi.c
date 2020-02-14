@@ -101,6 +101,7 @@ struct cqspi_st {
 	u8			edge_mode;
 	bool			extra_dummy;
 	u8			access_mode;
+	bool			unalined_byte_cnt;
 	int (*indirect_read_dma)(struct spi_nor *nor, u_char *rxbuf,
 				 loff_t from_addr, size_t n_rx);
 	int (*flash_reset)(struct cqspi_st *cqspi, u8 reset_type);
@@ -672,8 +673,10 @@ static int cqspi_indirect_read_execute(struct spi_nor *nor, u8 *rxbuf,
 	unsigned int mod_bytes = n_rx % 4;
 	unsigned int bytes_to_read = 0;
 	u8 *rxbuf_end = rxbuf + n_rx;
+	u8 *rxbuf_start = rxbuf;
 	int ret = 0;
 	u32 reg;
+	u8 extra_bytes = 0;
 
 	reg = readl(cqspi->iobase + CQSPI_REG_CONFIG);
 	reg &= ~CQSPI_REG_CONFIG_DMA_MASK;
@@ -688,7 +691,18 @@ static int cqspi_indirect_read_execute(struct spi_nor *nor, u8 *rxbuf,
 	}
 
 	writel(from_addr, reg_base + CQSPI_REG_INDIRECTRDSTARTADDR);
-	writel(remaining, reg_base + CQSPI_REG_INDIRECTRDBYTES);
+	if (cqspi->edge_mode == CQSPI_EDGE_MODE_DDR &&
+	    ((from_addr % 2) != 0) && !cqspi->unalined_byte_cnt) {
+		if (!cqspi->unalined_byte_cnt) {
+			extra_bytes = 2;
+			mod_bytes += 1;
+		} else if (((n_rx + 1) % 4) != 0) {
+			mod_bytes += 1;
+		}
+	}
+
+	writel(remaining + cqspi->unalined_byte_cnt +
+		extra_bytes, reg_base + CQSPI_REG_INDIRECTRDBYTES);
 
 	/* Clear all interrupts. */
 	writel(CQSPI_IRQ_STATUS_MASK, reg_base + CQSPI_REG_IRQSTATUS);
@@ -720,12 +734,26 @@ static int cqspi_indirect_read_execute(struct spi_nor *nor, u8 *rxbuf,
 			bytes_to_read = round_down(bytes_to_read, 4);
 			/* Read 4 byte word chunks then single bytes */
 			if (bytes_to_read) {
-				ioread32_rep(ahb_base, rxbuf,
-					     (bytes_to_read / 4));
+				u8 offset = 0;
+
+				if (cqspi->edge_mode == CQSPI_EDGE_MODE_DDR &&
+				    ((from_addr % 2) != 0) && rxbuf ==
+				    rxbuf_start) {
+					unsigned int temp = ioread32(ahb_base);
+
+					temp >>= 8;
+					memcpy(rxbuf, &temp, 3);
+					bytes_to_read -= 1;
+					offset = 3;
+				}
+				if (bytes_to_read >= 4)
+					ioread32_rep(ahb_base, rxbuf + offset,
+						     (bytes_to_read / 4));
 			} else if (!word_remain && mod_bytes) {
 				unsigned int temp = ioread32(ahb_base);
 
-				bytes_to_read = mod_bytes;
+				bytes_to_read = remaining > mod_bytes ?
+						remaining : mod_bytes;
 				memcpy(rxbuf, &temp, min((unsigned int)
 							 (rxbuf_end - rxbuf),
 							 bytes_to_read));
@@ -813,7 +841,8 @@ static int cqspi_indirect_write_execute(struct spi_nor *nor, loff_t to_addr,
 	}
 
 	writel(to_addr, reg_base + CQSPI_REG_INDIRECTWRSTARTADDR);
-	writel(remaining, reg_base + CQSPI_REG_INDIRECTWRBYTES);
+	writel(remaining + cqspi->unalined_byte_cnt,
+	       reg_base + CQSPI_REG_INDIRECTWRBYTES);
 
 	/* Clear all interrupts. */
 	writel(CQSPI_IRQ_STATUS_MASK, reg_base + CQSPI_REG_IRQSTATUS);
@@ -1160,6 +1189,12 @@ static ssize_t cqspi_write(struct spi_nor *nor, loff_t to,
 	if (ret)
 		return ret;
 
+	cqspi->unalined_byte_cnt = false;
+	if (cqspi->edge_mode == CQSPI_EDGE_MODE_DDR &&
+	    ((len % 2) != 0)) {
+		cqspi->unalined_byte_cnt = true;
+	}
+
 	if (f_pdata->use_direct_mode) {
 		memcpy_toio(cqspi->ahb_base + to, buf, len);
 		ret = cqspi_wait_idle(cqspi);
@@ -1241,7 +1276,9 @@ static ssize_t cqspi_read(struct spi_nor *nor, loff_t from,
 {
 	struct cqspi_flash_pdata *f_pdata = nor->priv;
 	struct cqspi_st *cqspi = f_pdata->cqspi;
+	u64 dma_align = (u64)(uintptr_t)buf;
 	int ret;
+	bool use_dma = true;
 
 	ret = cqspi_set_protocol(nor, 1);
 	if (ret)
@@ -1251,10 +1288,19 @@ static ssize_t cqspi_read(struct spi_nor *nor, loff_t from,
 	if (ret)
 		return ret;
 
+	cqspi->unalined_byte_cnt = false;
+	if (cqspi->edge_mode == CQSPI_EDGE_MODE_DDR) {
+		if ((len % 2) != 0)
+			cqspi->unalined_byte_cnt = true;
+		if ((from % 2) != 0)
+			use_dma = 0;
+	}
+
 	if (f_pdata->use_direct_mode) {
 		ret = cqspi_direct_read_execute(nor, buf, from, len);
-	} else if (cqspi->read_dma && virt_addr_valid(buf) &&
-		   cqspi->indirect_read_dma) {
+	} else if (cqspi->read_dma && virt_addr_valid(buf) && use_dma &&
+		   cqspi->indirect_read_dma && len >= 4 &&
+		   ((dma_align & 0x3) == 0) && !is_vmalloc_addr(buf)) {
 		ret = cqspi->indirect_read_dma(nor, buf, from, len);
 	} else {
 		ret = cqspi_indirect_read_execute(nor, buf, from, len);
@@ -1983,6 +2029,7 @@ static int cqspi_probe(struct platform_device *pdev)
 	cqspi->sclk = 0;
 	cqspi->extra_dummy = false;
 	cqspi->edge_mode = CQSPI_EDGE_MODE_SDR;
+	cqspi->unalined_byte_cnt = false;
 
 	ret = cqspi_setup_flash(cqspi, np);
 	if (ret) {
