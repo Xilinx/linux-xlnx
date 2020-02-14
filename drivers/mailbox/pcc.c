@@ -1,16 +1,7 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  *	Copyright (C) 2014 Linaro Ltd.
  *	Author:	Ashwin Chaugule <ashwin.chaugule@linaro.org>
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
  *
  *  PCC (Platform Communication Channel) is defined in the ACPI 5.0+
  *  specification. It is a mailbox like mechanism to allow clients
@@ -382,7 +373,7 @@ static const struct mbox_chan_ops pcc_chan_ops = {
  *
  * This gets called for each entry in the PCC table.
  */
-static int parse_pcc_subspace(struct acpi_subtable_header *header,
+static int parse_pcc_subspace(union acpi_subtable_headers *header,
 		const unsigned long end)
 {
 	struct acpi_pcct_subspace *ss = (struct acpi_pcct_subspace *) header;
@@ -461,8 +452,11 @@ static int __init acpi_pcc_probe(void)
 	count = acpi_table_parse_entries_array(ACPI_SIG_PCCT,
 			sizeof(struct acpi_table_pcct), proc,
 			ACPI_PCCT_TYPE_RESERVED, MAX_PCC_SUBSPACES);
-	if (count == 0 || count > MAX_PCC_SUBSPACES) {
-		pr_warn("Invalid PCCT: %d PCC subspaces\n", count);
+	if (count <= 0 || count > MAX_PCC_SUBSPACES) {
+		if (count < 0)
+			pr_warn("Error parsing PCC subspaces from PCCT\n");
+		else
+			pr_warn("Invalid PCCT: %d PCC subspaces\n", count);
 		return -EINVAL;
 	}
 

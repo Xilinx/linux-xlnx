@@ -1,22 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /******************************************************************************
 
   Copyright(c) 2003 - 2006 Intel Corporation. All rights reserved.
 
-  This program is free software; you can redistribute it and/or modify it
-  under the terms of version 2 of the GNU General Public License as
-  published by the Free Software Foundation.
-
-  This program is distributed in the hope that it will be useful, but WITHOUT
-  ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
-  FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
-  more details.
-
-  You should have received a copy of the GNU General Public License along with
-  this program; if not, write to the Free Software Foundation, Inc., 59
-  Temple Place - Suite 330, Boston, MA  02111-1307, USA.
-
-  The full GNU General Public License is included in this distribution in the
-  file called LICENSE.
 
   Contact Information:
   Intel Linux Wireless <ilw@linux.intel.com>
@@ -4427,7 +4413,7 @@ static void ipw2100_kill_works(struct ipw2100_priv *priv)
 
 static int ipw2100_tx_allocate(struct ipw2100_priv *priv)
 {
-	int i, j, err = -EINVAL;
+	int i, j, err;
 	void *v;
 	dma_addr_t p;
 
@@ -5603,12 +5589,8 @@ static void shim__set_security(struct net_device *dev,
 
 	if ((sec->flags & SEC_ACTIVE_KEY) &&
 	    priv->ieee->sec.active_key != sec->active_key) {
-		if (sec->active_key <= 3) {
-			priv->ieee->sec.active_key = sec->active_key;
-			priv->ieee->sec.flags |= SEC_ACTIVE_KEY;
-		} else
-			priv->ieee->sec.flags &= ~SEC_ACTIVE_KEY;
-
+		priv->ieee->sec.active_key = sec->active_key;
+		priv->ieee->sec.flags |= SEC_ACTIVE_KEY;
 		priv->status |= STATUS_SECURITY_UPDATED;
 	}
 
@@ -8370,7 +8352,7 @@ static int ipw2100_mod_firmware_load(struct ipw2100_fw *fw)
 	if (IPW2100_FW_MAJOR(h->version) != IPW2100_FW_MAJOR_VERSION) {
 		printk(KERN_WARNING DRV_NAME ": Firmware image not compatible "
 		       "(detected version id of %u). "
-		       "See Documentation/networking/README.ipw2100\n",
+		       "See Documentation/networking/device_drivers/intel/ipw2100.txt\n",
 		       h->version);
 		return 1;
 	}

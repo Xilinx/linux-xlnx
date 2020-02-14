@@ -1,12 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * Freescale eSPI controller driver.
  *
  * Copyright 2010 Freescale Semiconductor, Inc.
- *
- * This program is free software; you can redistribute  it and/or modify it
- * under  the terms of  the GNU General  Public License as published by the
- * Free Software Foundation;  either version 2 of the  License, or (at your
- * option) any later version.
  */
 #include <linux/delay.h>
 #include <linux/err.h>
@@ -798,10 +794,8 @@ static int of_fsl_espi_suspend(struct device *dev)
 	int ret;
 
 	ret = spi_master_suspend(master);
-	if (ret) {
-		dev_warn(dev, "cannot suspend master\n");
+	if (ret)
 		return ret;
-	}
 
 	return pm_runtime_force_suspend(dev);
 }

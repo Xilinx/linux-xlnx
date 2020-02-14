@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Configfs entries for device-tree
  *
@@ -52,15 +53,15 @@ static int create_overlay(struct cfs_overlay_item *overlay, void *blob)
 	err = of_overlay_fdt_apply(blob, overlay->dtbo_size, &overlay->ov_id);
 	if (err < 0) {
 		pr_err("%s: Failed to create overlay (err=%d)\n",
-				__func__, err);
+		       __func__, err);
 		return err;
 	}
 
 	return err;
 }
 
-static inline struct cfs_overlay_item *to_cfs_overlay_item(
-		struct config_item *item)
+static inline struct cfs_overlay_item
+		*to_cfs_overlay_item(struct config_item *item)
 {
 	return item ? container_of(item, struct cfs_overlay_item, item) : NULL;
 }
@@ -71,7 +72,7 @@ static ssize_t cfs_overlay_item_path_show(struct config_item *item, char *page)
 }
 
 static ssize_t cfs_overlay_item_path_store(struct config_item *item,
-		const char *page, size_t count)
+					   const char *page, size_t count)
 {
 	struct cfs_overlay_item *overlay = to_cfs_overlay_item(item);
 	const char *p = page;
@@ -115,7 +116,7 @@ out_err:
 }
 
 static ssize_t cfs_overlay_item_status_show(struct config_item *item,
-		char *page)
+					    char *page)
 {
 	return sprintf(page, "%s\n", to_cfs_overlay_item(item)->ov_id >= 0 ?
 					"applied" : "unapplied");
@@ -130,19 +131,18 @@ static struct configfs_attribute *cfs_overlay_attrs[] = {
 	NULL,
 };
 
-ssize_t cfs_overlay_item_dtbo_read(struct config_item *item, void *buf,
-		size_t max_count)
+ssize_t cfs_overlay_item_dtbo_read(struct config_item *item,
+				   void *buf, size_t max_count)
 {
 	struct cfs_overlay_item *overlay = to_cfs_overlay_item(item);
 
-	pr_debug("%s: buf=%p max_count=%zu\n", __func__,
-			buf, max_count);
+	pr_debug("%s: buf=%p max_count=%zu\n", __func__, buf, max_count);
 
-	if (overlay->dtbo == NULL)
+	if (!overlay->dtbo)
 		return 0;
 
 	/* copy if buffer provided */
-	if (buf != NULL) {
+	if (buf) {
 		/* the buffer must be large enough */
 		if (overlay->dtbo_size > max_count)
 			return -ENOSPC;
@@ -153,8 +153,8 @@ ssize_t cfs_overlay_item_dtbo_read(struct config_item *item, void *buf,
 	return overlay->dtbo_size;
 }
 
-ssize_t cfs_overlay_item_dtbo_write(struct config_item *item, const void *buf,
-		size_t count)
+ssize_t cfs_overlay_item_dtbo_write(struct config_item *item,
+				    const void *buf, size_t count)
 {
 	struct cfs_overlay_item *overlay = to_cfs_overlay_item(item);
 	int err;
@@ -165,7 +165,7 @@ ssize_t cfs_overlay_item_dtbo_write(struct config_item *item, const void *buf,
 
 	/* copy the contents */
 	overlay->dtbo = kmemdup(buf, count, GFP_KERNEL);
-	if (overlay->dtbo == NULL)
+	if (!overlay->dtbo)
 		return -ENOMEM;
 
 	overlay->dtbo_size = count;
@@ -216,8 +216,9 @@ static struct config_item_type cfs_overlay_type = {
 	.ct_owner	= THIS_MODULE,
 };
 
-static struct config_item *cfs_overlay_group_make_item(
-		struct config_group *group, const char *name)
+static struct config_item
+	*cfs_overlay_group_make_item(struct config_group *group,
+				     const char *name)
 {
 	struct cfs_overlay_item *overlay;
 
@@ -225,13 +226,13 @@ static struct config_item *cfs_overlay_group_make_item(
 	if (!overlay)
 		return ERR_PTR(-ENOMEM);
 	overlay->ov_id = -1;
-
 	config_item_init_type_name(&overlay->item, name, &cfs_overlay_type);
+
 	return &overlay->item;
 }
 
 static void cfs_overlay_group_drop_item(struct config_group *group,
-		struct config_item *item)
+					struct config_item *item)
 {
 	struct cfs_overlay_item *overlay = to_cfs_overlay_item(item);
 
@@ -277,9 +278,9 @@ static int __init of_cfs_init(void)
 
 	config_group_init(&of_cfs_subsys.su_group);
 	config_group_init_type_name(&of_cfs_overlay_group, "overlays",
-			&overlays_type);
+				    &overlays_type);
 	configfs_add_default_group(&of_cfs_overlay_group,
-			&of_cfs_subsys.su_group);
+				   &of_cfs_subsys.su_group);
 
 	ret = configfs_register_subsystem(&of_cfs_subsys);
 	if (ret != 0) {

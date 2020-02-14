@@ -30,7 +30,6 @@ obj-$(CONFIG_EDAC_I5400)		+= i5400_edac.o
 obj-$(CONFIG_EDAC_I7300)		+= i7300_edac.o
 obj-$(CONFIG_EDAC_I7CORE)		+= i7core_edac.o
 obj-$(CONFIG_EDAC_SBRIDGE)		+= sb_edac.o
-obj-$(CONFIG_EDAC_SKX)			+= skx_edac.o
 obj-$(CONFIG_EDAC_PND2)			+= pnd2_edac.o
 obj-$(CONFIG_EDAC_E7XXX)		+= e7xxx_edac.o
 obj-$(CONFIG_EDAC_E752X)		+= e752x_edac.o
@@ -58,6 +57,12 @@ obj-$(CONFIG_EDAC_MPC85XX)		+= mpc85xx_edac_mod.o
 layerscape_edac_mod-y			:= fsl_ddr_edac.o layerscape_edac.o
 obj-$(CONFIG_EDAC_LAYERSCAPE)		+= layerscape_edac_mod.o
 
+skx_edac-y				:= skx_common.o skx_base.o
+obj-$(CONFIG_EDAC_SKX)			+= skx_edac.o
+
+i10nm_edac-y				:= skx_common.o i10nm_base.o
+obj-$(CONFIG_EDAC_I10NM)		+= i10nm_edac.o
+
 obj-$(CONFIG_EDAC_MV64X60)		+= mv64x60_edac.o
 obj-$(CONFIG_EDAC_CELL)			+= cell_edac.o
 obj-$(CONFIG_EDAC_PPC4XX)		+= ppc4xx_edac.o
@@ -75,8 +80,13 @@ obj-$(CONFIG_EDAC_THUNDERX)		+= thunderx_edac.o
 
 obj-$(CONFIG_EDAC_ALTERA)		+= altera_edac.o
 obj-$(CONFIG_EDAC_PL310_L2)		+= pl310_edac_l2.o
+obj-$(CONFIG_EDAC_SIFIVE)		+= sifive_edac.o
+obj-$(CONFIG_EDAC_ARMADA_XP)		+= armada_xp_edac.o
 obj-$(CONFIG_EDAC_SYNOPSYS)		+= synopsys_edac.o
 obj-$(CONFIG_EDAC_XGENE)		+= xgene_edac.o
 obj-$(CONFIG_EDAC_CORTEX_ARM64)		+= cortex_arm64_edac.o
 obj-$(CONFIG_EDAC_ZYNQMP_OCM)		+= zynqmp_ocm_edac.o
 obj-$(CONFIG_EDAC_TI)			+= ti_edac.o
+obj-$(CONFIG_EDAC_QCOM)			+= qcom_edac.o
+obj-$(CONFIG_EDAC_ASPEED)		+= aspeed_edac.o
+obj-$(CONFIG_EDAC_BLUEFIELD)		+= bluefield_edac.o

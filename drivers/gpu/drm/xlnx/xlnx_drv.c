@@ -23,14 +23,15 @@
 #include <drm/drm_fb_helper.h>
 #include <drm/drm_gem_cma_helper.h>
 #include <drm/drm_of.h>
+#include <drm/drm_probe_helper.h>
 
 #include <linux/component.h>
 #include <linux/device.h>
 #include <linux/dma-buf.h>
+#include <linux/dma-resv.h>
 #include <linux/module.h>
 #include <linux/of_graph.h>
 #include <linux/platform_device.h>
-#include <linux/reservation.h>
 
 #include "xlnx_bridge.h"
 #include "xlnx_crtc.h"
@@ -189,7 +190,7 @@ static const struct file_operations xlnx_fops = {
 
 static struct drm_driver xlnx_drm_driver = {
 	.driver_features		= DRIVER_MODESET | DRIVER_GEM |
-					  DRIVER_ATOMIC | DRIVER_PRIME,
+					  DRIVER_ATOMIC,
 	.open				= xlnx_drm_open,
 	.lastclose			= xlnx_lastclose,
 
@@ -299,7 +300,7 @@ err_crtc:
 err_xlnx_drm:
 	drm_mode_config_cleanup(drm);
 err_drm:
-	drm_dev_unref(drm);
+	drm_dev_put(drm);
 	return ret;
 }
 
@@ -315,7 +316,7 @@ static void xlnx_unbind(struct device *dev)
 	xlnx_crtc_helper_fini(drm, xlnx_drm->crtc);
 	drm_kms_helper_poll_fini(drm);
 	drm_mode_config_cleanup(drm);
-	drm_dev_unref(drm);
+	drm_dev_put(drm);
 }
 
 static const struct component_master_ops xlnx_master_ops = {

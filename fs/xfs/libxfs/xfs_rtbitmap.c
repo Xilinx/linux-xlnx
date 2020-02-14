@@ -13,15 +13,7 @@
 #include "xfs_mount.h"
 #include "xfs_inode.h"
 #include "xfs_bmap.h"
-#include "xfs_bmap_util.h"
-#include "xfs_bmap_btree.h"
-#include "xfs_alloc.h"
-#include "xfs_error.h"
 #include "xfs_trans.h"
-#include "xfs_trans_space.h"
-#include "xfs_trace.h"
-#include "xfs_buf.h"
-#include "xfs_icache.h"
 #include "xfs_rtalloc.h"
 
 
@@ -505,6 +497,12 @@ xfs_rtmodify_summary_int(
 		uint first = (uint)((char *)sp - (char *)bp->b_addr);
 
 		*sp += delta;
+		if (mp->m_rsum_cache) {
+			if (*sp == 0 && log == mp->m_rsum_cache[bbno])
+				mp->m_rsum_cache[bbno]++;
+			if (*sp != 0 && log < mp->m_rsum_cache[bbno])
+				mp->m_rsum_cache[bbno] = log;
+		}
 		xfs_trans_log_buf(tp, bp, first, first + sizeof(*sp) - 1);
 	}
 	if (sum)

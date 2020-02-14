@@ -344,7 +344,7 @@ static struct clk_hw *xvcu_register_divider(struct device *dev,
 
 	init.name = name;
 	init.ops = &xvcu_divider_ops;
-	init.flags = flags | CLK_IS_BASIC;
+	init.flags = flags;
 	init.parent_names = (parent_name ? &parent_name : NULL);
 	init.num_parents = (parent_name ? 1 : 0);
 
@@ -734,7 +734,7 @@ static struct clk_hw *register_vcu_leaf_clocks(struct device *dev,
 
 	clk_mux = devm_kasprintf(dev, GFP_KERNEL, "%s%s", name, "_mux");
 	hw = clk_hw_register_mux(dev, clk_mux, parents, nparents,
-				 CLK_SET_RATE_PARENT | CLK_IS_BASIC |
+				 CLK_SET_RATE_PARENT |
 				 CLK_SET_RATE_NO_REPARENT,
 				 reg, VCU_SRCSEL_SHIFT, 1, 0, lock);
 
@@ -743,16 +743,17 @@ static struct clk_hw *register_vcu_leaf_clocks(struct device *dev,
 
 	clk_div = devm_kasprintf(dev, GFP_KERNEL, "%s%s", name, "_div");
 	xvcu_register_divider(dev, clk_div, clk_mux,
-			      CLK_IS_BASIC | CLK_SET_RATE_PARENT |
+			      CLK_SET_RATE_PARENT |
 			      CLK_SET_RATE_NO_REPARENT,
 			      reg, VCU_PLL_DIVISOR_SHIFT, 6,
-			      CLK_DIVIDER_ONE_BASED | CLK_DIVIDER_ALLOW_ZERO |
+			      CLK_DIVIDER_ONE_BASED |
+			      CLK_DIVIDER_ALLOW_ZERO |
 			      CLK_DIVIDER_ROUND_CLOSEST,
 			      lock);
 
 	return clk_hw_register_gate(dev, name, clk_div,
-				    CLK_SET_RATE_PARENT | CLK_IS_BASIC,
-				    reg, 12, 0, lock);
+				    CLK_SET_RATE_PARENT, reg, 12, 0,
+				    lock);
 }
 
 /**

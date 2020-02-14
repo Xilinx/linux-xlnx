@@ -37,6 +37,7 @@
 #define DWC3_EP0_SETUP_SIZE	512
 #define DWC3_ENDPOINTS_NUM	32
 #define DWC3_XHCI_RESOURCES_NUM	2
+#define DWC3_ISOC_MAX_RETRIES	5
 
 #define DWC3_SCRATCHBUF_SIZE	4096	/* each buffer is assumed to be 4KiB */
 #define DWC3_EVENT_BUFFERS_SIZE	4096
@@ -177,13 +178,19 @@
 #define DWC3_GSBUSCFG0_INCRBRSTENA	(1 << 0) /* undefined length enable */
 #define DWC3_GSBUSCFG0_INCRBRST_MASK	0xff
 
+/* Global Debug LSP MUX Select */
+#define DWC3_GDBGLSPMUX_ENDBC		BIT(15)	/* Host only */
+#define DWC3_GDBGLSPMUX_HOSTSELECT(n)	((n) & 0x3fff)
+#define DWC3_GDBGLSPMUX_DEVSELECT(n)	(((n) & 0xf) << 4)
+#define DWC3_GDBGLSPMUX_EPSELECT(n)	((n) & 0xf)
+
 /* Global Debug Queue/FIFO Space Available Register */
 #define DWC3_GDBGFIFOSPACE_NUM(n)	((n) & 0x1f)
 #define DWC3_GDBGFIFOSPACE_TYPE(n)	(((n) << 5) & 0x1e0)
 #define DWC3_GDBGFIFOSPACE_SPACE_AVAILABLE(n) (((n) >> 16) & 0xffff)
 
-#define DWC3_TXFIFOQ		0
-#define DWC3_RXFIFOQ		1
+#define DWC3_TXFIFO		0
+#define DWC3_RXFIFO		1
 #define DWC3_TXREQQ		2
 #define DWC3_RXREQQ		3
 #define DWC3_RXINFOQ		4
@@ -262,6 +269,9 @@
 #define DWC3_GSTS_DEVICE_IP	BIT(6)
 #define DWC3_GSTS_CSR_TIMEOUT	BIT(5)
 #define DWC3_GSTS_BUS_ERR_ADDR_VLD	BIT(4)
+#define DWC3_GSTS_CURMOD(n)	((n) & 0x3)
+#define DWC3_GSTS_CURMOD_DEVICE	0
+#define DWC3_GSTS_CURMOD_HOST	1
 
 /* Global USB2 PHY Configuration Register */
 #define DWC3_GUSB2PHYCFG_PHYSOFTRST	BIT(31)
@@ -330,6 +340,7 @@
 #define DWC3_GHWPARAMS1_EN_PWROPT_HIB	2
 #define DWC3_GHWPARAMS1_PWROPT(n)	((n) << 24)
 #define DWC3_GHWPARAMS1_PWROPT_MASK	DWC3_GHWPARAMS1_PWROPT(3)
+#define DWC3_GHWPARAMS1_ENDBC		BIT(31)
 
 /* Global HWPARAMS3 Register */
 #define DWC3_GHWPARAMS3_SSPHY_IFC(n)		((n) & 3)
@@ -409,8 +420,7 @@
 #define DWC3_DCTL_TRGTULST_SS_INACT	(DWC3_DCTL_TRGTULST(6))
 
 /* These apply for core versions 1.94a and later */
-#define DWC3_DCTL_LPM_ERRATA_MASK	DWC3_DCTL_LPM_ERRATA(0xf)
-#define DWC3_DCTL_LPM_ERRATA(n)		((n) << 20)
+#define DWC3_DCTL_NYET_THRES(n)		(((n) & 0xf) << 20)
 
 #define DWC3_DCTL_KEEP_CONNECT		BIT(19)
 #define DWC3_DCTL_L1_HIBER_EN		BIT(18)
@@ -654,10 +664,9 @@ struct dwc3_event_buffer {
 /**
  * struct dwc3_ep - device side endpoint representation
  * @endpoint: usb endpoint
+ * @cancelled_list: list of cancelled requests for this endpoint
  * @pending_list: list of pending requests for this endpoint
  * @started_list: list of started requests on this endpoint
- * @wait_end_transfer: wait_queue_head_t for waiting on End Transfer complete
- * @lock: spinlock for endpoint request queue traversal
  * @regs: pointer to first endpoint register
  * @trb_pool: array of transaction buffers
  * @trb_pool_dma: dma address of @trb_pool
@@ -674,15 +683,17 @@ struct dwc3_event_buffer {
  * @name: a human readable name e.g. ep1out-bulk
  * @direction: true for TX, false for RX
  * @stream_capable: true when streams are enabled
+ * @combo_num: the test combination BIT[15:14] of the frame number to test
+ *		isochronous START TRANSFER command failure workaround
+ * @start_cmd_status: the status of testing START TRANSFER command with
+ *		combo_num = 'b00
  */
 struct dwc3_ep {
 	struct usb_ep		endpoint;
+	struct list_head	cancelled_list;
 	struct list_head	pending_list;
 	struct list_head	started_list;
 
-	wait_queue_head_t	wait_end_transfer;
-
-	spinlock_t		lock;
 	void __iomem		*regs;
 
 	struct dwc3_trb		*trb_pool;
@@ -696,7 +707,7 @@ struct dwc3_ep {
 #define DWC3_EP_WEDGE		BIT(2)
 #define DWC3_EP_TRANSFER_STARTED BIT(3)
 #define DWC3_EP_PENDING_REQUEST	BIT(5)
-#define DWC3_EP_END_TRANSFER_PENDING	BIT(7)
+#define DWC3_EP_END_TRANSFER_PENDING    BIT(7)
 
 	/* This last one is specific to EP0 */
 #define DWC3_EP0_DIR_IN		BIT(31)
@@ -723,6 +734,10 @@ struct dwc3_ep {
 
 	unsigned		direction:1;
 	unsigned		stream_capable:1;
+
+	/* For isochronous START TRANSFER workaround only */
+	u8			combo_num;
+	int			start_cmd_status;
 };
 
 enum dwc3_phy {
@@ -784,6 +799,7 @@ enum dwc3_link_state {
 #define DWC3_TRB_CTRL_ISP_IMI		BIT(10)
 #define DWC3_TRB_CTRL_IOC		BIT(11)
 #define DWC3_TRB_CTRL_SID_SOFN(n)	(((n) & 0xffff) << 14)
+#define DWC3_TRB_CTRL_GET_SID_SOFN(n)	(((n) & (0xffff << 14)) >> 14)
 
 #define DWC3_TRBCTL_TYPE(n)		((n) & (0x3f << 4))
 #define DWC3_TRBCTL_NORMAL		DWC3_TRB_CTRL_TRBCTL(1)
@@ -862,9 +878,13 @@ struct dwc3_hwparams {
  * @num_pending_sgs: counter to pending sgs
  * @num_queued_sgs: counter to the number of sgs which already got queued
  * @remaining: amount of data remaining
+ * @status: internal dwc3 request status tracking
  * @epnum: endpoint number to which this request refers
  * @trb: pointer to struct dwc3_trb
  * @trb_dma: DMA address of @trb
+ * @num_trbs: number of TRBs used by this request
+ * @needs_extra_trb: true when request needs one extra TRB (either due to ZLP
+ *	or unaligned OUT)
  * @stream_timeout_timer: Some endpoints may go out of sync with host and
  *	enter into deadlock. For example, stream capable endpoints may enter
  *	into deadlock where the host waits on gadget to issue ERDY and gadget
@@ -873,8 +893,6 @@ struct dwc3_hwparams {
  * @unaligned: true for OUT endpoints with length not divisible by maxp
  * @direction: IN or OUT direction flag
  * @mapped: true when request has been dma-mapped
- * @started: request is started
- * @zero: wants a ZLP
  */
 struct dwc3_request {
 	struct usb_request	request;
@@ -887,16 +905,24 @@ struct dwc3_request {
 	unsigned int		num_queued_sgs;
 	u8			first_trb_index;
 	unsigned		remaining;
+
+	unsigned int		status;
+#define DWC3_REQUEST_STATUS_QUEUED	0
+#define DWC3_REQUEST_STATUS_STARTED	1
+#define DWC3_REQUEST_STATUS_CANCELLED	2
+#define DWC3_REQUEST_STATUS_COMPLETED	3
+#define DWC3_REQUEST_STATUS_UNKNOWN	-1
+
 	u8			epnum;
 	struct dwc3_trb		*trb;
 	dma_addr_t		trb_dma;
 	struct timer_list	stream_timeout_timer;
 
-	unsigned		unaligned:1;
+	unsigned		num_trbs;
+
+	unsigned		needs_extra_trb:1;
 	unsigned		direction:1;
 	unsigned		mapped:1;
-	unsigned		started:1;
-	unsigned		zero:1;
 };
 
 /*
@@ -945,6 +971,7 @@ struct dwc3_scratchpad_array {
  * @u1u2: only used on revisions <1.83a for workaround
  * @maximum_speed: maximum speed requested (mainly for testing purposes)
  * @revision: revision register contents
+ * @version_type: VERSIONTYPE register contents, a sub release of a revision
  * @dr_mode: requested mode of operation
  * @current_dr_role: current role of operation when in dual-role mode
  * @desired_dr_role: desired role of operation when in dual-role mode
@@ -972,6 +999,7 @@ struct dwc3_scratchpad_array {
  * @hwparams: copy of hwparams registers
  * @root: debugfs root folder pointer
  * @regset: debugfs pointer to regdump file
+ * @dbg_lsp_select: current debug lsp mux register selection
  * @test_mode: true when we're entering a USB test mode
  * @test_mode_nr: test feature selector
  * @lpm_nyet_threshold: LPM NYET response threshold
@@ -997,7 +1025,10 @@ struct dwc3_scratchpad_array {
  * @pullups_connected: true when Run/Stop bit is set
  * @setup_packet_pending: true when there's a Setup Packet in FIFO. Workaround
  * @three_stage_setup: set if we perform a three phase setup
+ * @dis_start_transfer_quirk: set if start_transfer failure SW workaround is
+ *			not needed for DWC_usb31 version 1.70a-ea06 and below
  * @usb3_lpm_capable: set if hadrware supports Link Power Management
+ * @usb2_lpm_disable: set to disable usb2 lpm
  * @remote_wakeup: set if host supports Remote Wakeup from Peripheral
  * @disable_scramble_quirk: set if we enable the disable scramble quirk
  * @u2exit_lfps_quirk: set if we enable u2exit lfps quirk
@@ -1139,6 +1170,7 @@ struct dwc3 {
 #define DWC3_REVISION_290A	0x5533290a
 #define DWC3_REVISION_300A	0x5533300a
 #define DWC3_REVISION_310A	0x5533310a
+#define DWC3_REVISION_330A	0x5533330a
 
 /*
  * NOTICE: we're using bit 31 as a "is usb 3.1" flag. This is really
@@ -1147,6 +1179,19 @@ struct dwc3 {
 #define DWC3_REVISION_IS_DWC31		0x80000000
 #define DWC3_USB31_REVISION_110A	(0x3131302a | DWC3_REVISION_IS_DWC31)
 #define DWC3_USB31_REVISION_120A	(0x3132302a | DWC3_REVISION_IS_DWC31)
+#define DWC3_USB31_REVISION_160A	(0x3136302a | DWC3_REVISION_IS_DWC31)
+#define DWC3_USB31_REVISION_170A	(0x3137302a | DWC3_REVISION_IS_DWC31)
+#define DWC3_USB31_REVISION_180A	(0x3138302a | DWC3_REVISION_IS_DWC31)
+#define DWC3_USB31_REVISION_190A	(0x3139302a | DWC3_REVISION_IS_DWC31)
+
+	u32			version_type;
+
+#define DWC31_VERSIONTYPE_EA01		0x65613031
+#define DWC31_VERSIONTYPE_EA02		0x65613032
+#define DWC31_VERSIONTYPE_EA03		0x65613033
+#define DWC31_VERSIONTYPE_EA04		0x65613034
+#define DWC31_VERSIONTYPE_EA05		0x65613035
+#define DWC31_VERSIONTYPE_EA06		0x65613036
 
 	enum dwc3_ep0_next	ep0_next_event;
 	enum dwc3_ep0_state	ep0state;
@@ -1164,6 +1209,8 @@ struct dwc3 {
 	struct dwc3_hwparams	hwparams;
 	struct dentry		*root;
 	struct debugfs_regset32	*regset;
+
+	u32			dbg_lsp_select;
 
 	u8			test_mode;
 	u8			test_mode_nr;
@@ -1189,9 +1236,10 @@ struct dwc3 {
 	unsigned		pullups_connected:1;
 	unsigned		setup_packet_pending:1;
 	unsigned		three_stage_setup:1;
+	unsigned		dis_start_transfer_quirk:1;
 	unsigned		usb3_lpm_capable:1;
+	unsigned		usb2_lpm_disable:1;
 	unsigned                remote_wakeup:1;
-
 	unsigned		disable_scramble_quirk:1;
 	unsigned		u2exit_lfps_quirk:1;
 	unsigned		u2ss_inp3_quirk:1;
@@ -1423,6 +1471,7 @@ void dwc3_mask_phy_reset(struct device *dev, bool mask)
 #endif
 
 bool dwc3_has_imod(struct dwc3 *dwc);
+
 int dwc3_event_buffers_setup(struct dwc3 *dwc);
 void dwc3_event_buffers_cleanup(struct dwc3 *dwc);
 
@@ -1525,7 +1574,6 @@ static inline int dwc3_ulpi_init(struct dwc3 *dwc)
 static inline void dwc3_ulpi_exit(struct dwc3 *dwc)
 { }
 #endif
-
 int dwc3_alloc_event_buffers(struct dwc3 *dwc, unsigned length);
 void dwc3_free_event_buffers(struct dwc3 *dwc);
 int dwc3_event_buffers_setup(struct dwc3 *dwc);

@@ -345,7 +345,7 @@ static struct clk *clk_wzrd_register_divf(struct device *dev,
 	else
 		init.ops = &clk_wzrd_clk_divider_ops_f;
 
-	init.flags = flags | CLK_IS_BASIC;
+	init.flags = flags;
 	init.parent_names = (parent_name ? &parent_name : NULL);
 	init.num_parents = (parent_name ? 1 : 0);
 
@@ -402,7 +402,7 @@ static struct clk *clk_wzrd_register_divider(struct device *dev,
 		init.ops = &clk_divider_ro_ops;
 	else
 		init.ops = &clk_wzrd_clk_divider_ops;
-	init.flags = flags | CLK_IS_BASIC;
+	init.flags = flags;
 	init.parent_names = (parent_name ? &parent_name : NULL);
 	init.num_parents = (parent_name ? 1 : 0);
 
@@ -555,12 +555,9 @@ static int clk_wzrd_probe(struct platform_device *pdev)
 		ret = -ENOMEM;
 		goto err_disable_clk;
 	}
-	outputs = of_property_count_strings(np, "clock-output-names");
-	if (outputs == 1)
-		flags = CLK_SET_RATE_PARENT;
-	clk_wzrd->clks_internal[wzrd_clk_mul] = clk_register_fixed_factor(
-			&pdev->dev, clk_name,
-			__clk_get_name(clk_wzrd->clk_in1),
+	clk_wzrd->clks_internal[wzrd_clk_mul] = clk_register_fixed_factor
+			(&pdev->dev, clk_name,
+			 __clk_get_name(clk_wzrd->clk_in1),
 			0, mult, 1000);
 	kfree(clk_name);
 	if (IS_ERR(clk_wzrd->clks_internal[wzrd_clk_mul])) {
@@ -569,16 +566,20 @@ static int clk_wzrd_probe(struct platform_device *pdev)
 		goto err_disable_clk;
 	}
 
+	outputs = of_property_count_strings(np, "clock-output-names");
+	if (outputs == 1)
+		flags = CLK_SET_RATE_PARENT;
 	clk_name = kasprintf(GFP_KERNEL, "%s_mul_div", dev_name(&pdev->dev));
 	if (!clk_name) {
 		ret = -ENOMEM;
 		goto err_rm_int_clk;
 	}
+
 	ctrl_reg = clk_wzrd->base + WZRD_CLK_CFG_REG(0);
 	/* register div */
 	clk_wzrd->clks_internal[wzrd_clk_mul_div] = clk_register_divider
 			(&pdev->dev, clk_name,
-			__clk_get_name(clk_wzrd->clks_internal[wzrd_clk_mul]),
+			 __clk_get_name(clk_wzrd->clks_internal[wzrd_clk_mul]),
 			flags, ctrl_reg, 0, 8, CLK_DIVIDER_ONE_BASED |
 			CLK_DIVIDER_ALLOW_ZERO, &clkwzrd_lock);
 	if (IS_ERR(clk_wzrd->clks_internal[wzrd_clk_mul_div])) {
@@ -586,6 +587,7 @@ static int clk_wzrd_probe(struct platform_device *pdev)
 		ret = PTR_ERR(clk_wzrd->clks_internal[wzrd_clk_mul_div]);
 		goto err_rm_int_clk;
 	}
+
 	/* register div per output */
 	for (i = outputs - 1; i >= 0 ; i--) {
 		const char *clkout_name;

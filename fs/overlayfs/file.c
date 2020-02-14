@@ -1,9 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (C) 2017 Red Hat, Inc.
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License version 2 as published by
- * the Free Software Foundation.
  */
 
 #include <linux/cred.h>
@@ -11,6 +8,7 @@
 #include <linux/mount.h>
 #include <linux/xattr.h>
 #include <linux/uio.h>
+#include <linux/uaccess.h>
 #include "overlayfs.h"
 
 static char ovl_whatisit(struct inode *inode, struct inode *realinode)
@@ -29,10 +27,11 @@ static struct file *ovl_open_realfile(const struct file *file,
 	struct inode *inode = file_inode(file);
 	struct file *realfile;
 	const struct cred *old_cred;
+	int flags = file->f_flags | O_NOATIME | FMODE_NONOTIFY;
 
 	old_cred = ovl_override_creds(inode->i_sb);
-	realfile = open_with_fake_path(&file->f_path, file->f_flags | O_NOATIME,
-				       realinode, current_cred());
+	realfile = open_with_fake_path(&file->f_path, flags, realinode,
+				       current_cred());
 	revert_creds(old_cred);
 
 	pr_debug("open(%p[%pD2/%c], 0%o) -> (%p, 0%o)\n",
@@ -50,7 +49,7 @@ static int ovl_change_flags(struct file *file, unsigned int flags)
 	int err;
 
 	/* No atime modificaton on underlying */
-	flags |= O_NOATIME;
+	flags |= O_NOATIME | FMODE_NONOTIFY;
 
 	/* If some flag changed that cannot be changed then something's amiss */
 	if (WARN_ON((file->f_flags ^ flags) & ~OVL_SETFL_MASK))
@@ -116,11 +115,10 @@ static int ovl_real_fdget(const struct file *file, struct fd *real)
 
 static int ovl_open(struct inode *inode, struct file *file)
 {
-	struct dentry *dentry = file_dentry(file);
 	struct file *realfile;
 	int err;
 
-	err = ovl_open_maybe_copy_up(dentry, file->f_flags);
+	err = ovl_maybe_copy_up(file_dentry(file), file->f_flags);
 	if (err)
 		return err;
 
@@ -145,11 +143,47 @@ static int ovl_release(struct inode *inode, struct file *file)
 
 static loff_t ovl_llseek(struct file *file, loff_t offset, int whence)
 {
-	struct inode *realinode = ovl_inode_real(file_inode(file));
+	struct inode *inode = file_inode(file);
+	struct fd real;
+	const struct cred *old_cred;
+	ssize_t ret;
 
-	return generic_file_llseek_size(file, offset, whence,
-					realinode->i_sb->s_maxbytes,
-					i_size_read(realinode));
+	/*
+	 * The two special cases below do not need to involve real fs,
+	 * so we can optimizing concurrent callers.
+	 */
+	if (offset == 0) {
+		if (whence == SEEK_CUR)
+			return file->f_pos;
+
+		if (whence == SEEK_SET)
+			return vfs_setpos(file, 0, 0);
+	}
+
+	ret = ovl_real_fdget(file, &real);
+	if (ret)
+		return ret;
+
+	/*
+	 * Overlay file f_pos is the master copy that is preserved
+	 * through copy up and modified on read/write, but only real
+	 * fs knows how to SEEK_HOLE/SEEK_DATA and real fs may impose
+	 * limitations that are more strict than ->s_maxbytes for specific
+	 * files, so we use the real file to perform seeks.
+	 */
+	inode_lock(inode);
+	real.file->f_pos = file->f_pos;
+
+	old_cred = ovl_override_creds(inode->i_sb);
+	ret = vfs_llseek(real.file, offset, whence);
+	revert_creds(old_cred);
+
+	file->f_pos = real.file->f_pos;
+	inode_unlock(inode);
+
+	fdput(real);
+
+	return ret;
 }
 
 static void ovl_file_accessed(struct file *file)
@@ -372,34 +406,118 @@ static long ovl_real_ioctl(struct file *file, unsigned int cmd,
 	return ret;
 }
 
-static long ovl_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
+static long ovl_ioctl_set_flags(struct file *file, unsigned int cmd,
+				unsigned long arg, unsigned int iflags)
 {
 	long ret;
 	struct inode *inode = file_inode(file);
+	unsigned int old_iflags;
+
+	if (!inode_owner_or_capable(inode))
+		return -EACCES;
+
+	ret = mnt_want_write_file(file);
+	if (ret)
+		return ret;
+
+	inode_lock(inode);
+
+	/* Check the capability before cred override */
+	ret = -EPERM;
+	old_iflags = READ_ONCE(inode->i_flags);
+	if (((iflags ^ old_iflags) & (S_APPEND | S_IMMUTABLE)) &&
+	    !capable(CAP_LINUX_IMMUTABLE))
+		goto unlock;
+
+	ret = ovl_maybe_copy_up(file_dentry(file), O_WRONLY);
+	if (ret)
+		goto unlock;
+
+	ret = ovl_real_ioctl(file, cmd, arg);
+
+	ovl_copyflags(ovl_inode_real(inode), inode);
+unlock:
+	inode_unlock(inode);
+
+	mnt_drop_write_file(file);
+
+	return ret;
+
+}
+
+static unsigned int ovl_fsflags_to_iflags(unsigned int flags)
+{
+	unsigned int iflags = 0;
+
+	if (flags & FS_SYNC_FL)
+		iflags |= S_SYNC;
+	if (flags & FS_APPEND_FL)
+		iflags |= S_APPEND;
+	if (flags & FS_IMMUTABLE_FL)
+		iflags |= S_IMMUTABLE;
+	if (flags & FS_NOATIME_FL)
+		iflags |= S_NOATIME;
+
+	return iflags;
+}
+
+static long ovl_ioctl_set_fsflags(struct file *file, unsigned int cmd,
+				  unsigned long arg)
+{
+	unsigned int flags;
+
+	if (get_user(flags, (int __user *) arg))
+		return -EFAULT;
+
+	return ovl_ioctl_set_flags(file, cmd, arg,
+				   ovl_fsflags_to_iflags(flags));
+}
+
+static unsigned int ovl_fsxflags_to_iflags(unsigned int xflags)
+{
+	unsigned int iflags = 0;
+
+	if (xflags & FS_XFLAG_SYNC)
+		iflags |= S_SYNC;
+	if (xflags & FS_XFLAG_APPEND)
+		iflags |= S_APPEND;
+	if (xflags & FS_XFLAG_IMMUTABLE)
+		iflags |= S_IMMUTABLE;
+	if (xflags & FS_XFLAG_NOATIME)
+		iflags |= S_NOATIME;
+
+	return iflags;
+}
+
+static long ovl_ioctl_set_fsxflags(struct file *file, unsigned int cmd,
+				   unsigned long arg)
+{
+	struct fsxattr fa;
+
+	memset(&fa, 0, sizeof(fa));
+	if (copy_from_user(&fa, (void __user *) arg, sizeof(fa)))
+		return -EFAULT;
+
+	return ovl_ioctl_set_flags(file, cmd, arg,
+				   ovl_fsxflags_to_iflags(fa.fsx_xflags));
+}
+
+static long ovl_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
+{
+	long ret;
 
 	switch (cmd) {
 	case FS_IOC_GETFLAGS:
+	case FS_IOC_FSGETXATTR:
 		ret = ovl_real_ioctl(file, cmd, arg);
 		break;
 
 	case FS_IOC_SETFLAGS:
-		if (!inode_owner_or_capable(inode))
-			return -EACCES;
+		ret = ovl_ioctl_set_fsflags(file, cmd, arg);
+		break;
 
-		ret = mnt_want_write_file(file);
-		if (ret)
-			return ret;
-
-		ret = ovl_copy_up_with_data(file_dentry(file));
-		if (!ret) {
-			ret = ovl_real_ioctl(file, cmd, arg);
-
-			inode_lock(inode);
-			ovl_copyflags(ovl_inode_real(inode), inode);
-			inode_unlock(inode);
-		}
-
-		mnt_drop_write_file(file);
+	case FS_IOC_FSSETXATTR:
+		ret = ovl_ioctl_set_fsxflags(file, cmd, arg);
 		break;
 
 	default:
@@ -434,14 +552,14 @@ enum ovl_copyop {
 	OVL_DEDUPE,
 };
 
-static ssize_t ovl_copyfile(struct file *file_in, loff_t pos_in,
+static loff_t ovl_copyfile(struct file *file_in, loff_t pos_in,
 			    struct file *file_out, loff_t pos_out,
-			    u64 len, unsigned int flags, enum ovl_copyop op)
+			    loff_t len, unsigned int flags, enum ovl_copyop op)
 {
 	struct inode *inode_out = file_inode(file_out);
 	struct fd real_in, real_out;
 	const struct cred *old_cred;
-	ssize_t ret;
+	loff_t ret;
 
 	ret = ovl_real_fdget(file_out, &real_out);
 	if (ret)
@@ -462,12 +580,13 @@ static ssize_t ovl_copyfile(struct file *file_in, loff_t pos_in,
 
 	case OVL_CLONE:
 		ret = vfs_clone_file_range(real_in.file, pos_in,
-					   real_out.file, pos_out, len);
+					   real_out.file, pos_out, len, flags);
 		break;
 
 	case OVL_DEDUPE:
 		ret = vfs_dedupe_file_range_one(real_in.file, pos_in,
-						real_out.file, pos_out, len);
+						real_out.file, pos_out, len,
+						flags);
 		break;
 	}
 	revert_creds(old_cred);
@@ -489,26 +608,31 @@ static ssize_t ovl_copy_file_range(struct file *file_in, loff_t pos_in,
 			    OVL_COPY);
 }
 
-static int ovl_clone_file_range(struct file *file_in, loff_t pos_in,
-				struct file *file_out, loff_t pos_out, u64 len)
+static loff_t ovl_remap_file_range(struct file *file_in, loff_t pos_in,
+				   struct file *file_out, loff_t pos_out,
+				   loff_t len, unsigned int remap_flags)
 {
-	return ovl_copyfile(file_in, pos_in, file_out, pos_out, len, 0,
-			    OVL_CLONE);
-}
+	enum ovl_copyop op;
 
-static int ovl_dedupe_file_range(struct file *file_in, loff_t pos_in,
-				 struct file *file_out, loff_t pos_out, u64 len)
-{
+	if (remap_flags & ~(REMAP_FILE_DEDUP | REMAP_FILE_ADVISORY))
+		return -EINVAL;
+
+	if (remap_flags & REMAP_FILE_DEDUP)
+		op = OVL_DEDUPE;
+	else
+		op = OVL_CLONE;
+
 	/*
 	 * Don't copy up because of a dedupe request, this wouldn't make sense
 	 * most of the time (data would be duplicated instead of deduplicated).
 	 */
-	if (!ovl_inode_upper(file_inode(file_in)) ||
-	    !ovl_inode_upper(file_inode(file_out)))
+	if (op == OVL_DEDUPE &&
+	    (!ovl_inode_upper(file_inode(file_in)) ||
+	     !ovl_inode_upper(file_inode(file_out))))
 		return -EPERM;
 
-	return ovl_copyfile(file_in, pos_in, file_out, pos_out, len, 0,
-			    OVL_DEDUPE);
+	return ovl_copyfile(file_in, pos_in, file_out, pos_out, len,
+			    remap_flags, op);
 }
 
 const struct file_operations ovl_file_operations = {
@@ -525,6 +649,5 @@ const struct file_operations ovl_file_operations = {
 	.compat_ioctl	= ovl_compat_ioctl,
 
 	.copy_file_range	= ovl_copy_file_range,
-	.clone_file_range	= ovl_clone_file_range,
-	.dedupe_file_range	= ovl_dedupe_file_range,
+	.remap_file_range	= ovl_remap_file_range,
 };

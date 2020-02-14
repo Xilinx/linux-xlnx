@@ -42,10 +42,10 @@
 #define PAYLOAD_ARG_CNT	4U
 
 /* Number of arguments for a callback */
-#define CB_ARG_CNT	4
+#define CB_ARG_CNT     4
 
 /* Payload size (consists of callback API ID + arguments) */
-#define CB_PAYLOAD_SIZE	(CB_ARG_CNT + 1)
+#define CB_PAYLOAD_SIZE (CB_ARG_CNT + 1)
 
 #define ZYNQMP_PM_MAX_LATENCY	(~0U)
 #define ZYNQMP_PM_MAX_QOS	100U
@@ -63,11 +63,23 @@
 #define	ZYNQMP_PM_CAPABILITY_ACCESS	0x1U
 #define	ZYNQMP_PM_CAPABILITY_CONTEXT	0x2U
 #define	ZYNQMP_PM_CAPABILITY_WAKEUP	0x4U
-#define ZYNQMP_PM_CAPABILITY_UNUSABLE	0x8U
+#define	ZYNQMP_PM_CAPABILITY_UNUSABLE	0x8U
 
 /* Feature check status */
 #define PM_FEATURE_INVALID		-1
 #define PM_FEATURE_UNCHECKED		0
+
+/*
+ * Firmware FPGA Manager flags
+ * XILINX_ZYNQMP_PM_FPGA_FULL:	FPGA full reconfiguration
+ * XILINX_ZYNQMP_PM_FPGA_PARTIAL: FPGA partial reconfiguration
+ */
+#define XILINX_ZYNQMP_PM_FPGA_FULL	0x0U
+#define XILINX_ZYNQMP_PM_FPGA_PARTIAL	BIT(0)
+#define XILINX_ZYNQMP_PM_FPGA_AUTHENTICATION_DDR	BIT(1)
+#define XILINX_ZYNQMP_PM_FPGA_AUTHENTICATION_OCM	BIT(2)
+#define XILINX_ZYNQMP_PM_FPGA_ENCRYPTION_USERKEY	BIT(3)
+#define XILINX_ZYNQMP_PM_FPGA_ENCRYPTION_DEVKEY		BIT(4)
 
 enum pm_api_id {
 	PM_GET_API_VERSION = 1,
@@ -75,7 +87,7 @@ enum pm_api_id {
 	PM_GET_NODE_STATUS,
 	PM_GET_OPERATING_CHARACTERISTIC,
 	PM_REGISTER_NOTIFIER,
-	/* API for suspending of PUs: */
+	/* API for suspending */
 	PM_REQUEST_SUSPEND,
 	PM_SELF_SUSPEND,
 	PM_FORCE_POWERDOWN,
@@ -91,12 +103,10 @@ enum pm_api_id {
 	/* Direct control API functions: */
 	PM_RESET_ASSERT,
 	PM_RESET_GET_STATUS,
-	PM_MMIO_WRITE,
-	PM_MMIO_READ,
-	PM_PM_INIT_FINALIZE,
+	PM_PM_INIT_FINALIZE = 21,
 	PM_FPGA_LOAD,
 	PM_FPGA_GET_STATUS,
-	PM_GET_CHIPID,
+	PM_GET_CHIPID = 24,
 	/* ID 25 is been used by U-boot to process secure boot images */
 	/* Secure library generic API functions */
 	PM_SECURE_SHA = 26,
@@ -108,11 +118,8 @@ enum pm_api_id {
 	PM_PINCTRL_SET_FUNCTION,
 	PM_PINCTRL_CONFIG_PARAM_GET,
 	PM_PINCTRL_CONFIG_PARAM_SET,
-	/* PM IOCTL API */
 	PM_IOCTL,
-	/* API to query information from firmware */
 	PM_QUERY_DATA,
-	/* Clock control API functions */
 	PM_CLOCK_ENABLE,
 	PM_CLOCK_DISABLE,
 	PM_CLOCK_GETSTATE,
@@ -127,7 +134,7 @@ enum pm_api_id {
 	PM_SECURE_AES,
 	/* PM_REGISTER_ACCESS API */
 	PM_REGISTER_ACCESS = 52,
-	PM_EFUSE_ACCESS,
+	PM_EFUSE_ACCESS = 53,
 	PM_FEATURE_CHECK = 63,
 	PM_API_MAX,
 };
@@ -154,7 +161,6 @@ enum pm_ioctl_id {
 	IOCTL_SET_SGMII_MODE,
 	IOCTL_SD_DLL_RESET,
 	IOCTL_SET_SD_TAPDELAY,
-	/* Ioctl for clock driver */
 	IOCTL_SET_PLL_FRAC_MODE,
 	IOCTL_GET_PLL_FRAC_MODE,
 	IOCTL_SET_PLL_FRAC_DATA,
@@ -343,10 +349,64 @@ enum zynqmp_pm_request_ack {
 	ZYNQMP_PM_REQUEST_ACK_NON_BLOCKING,
 };
 
+enum tap_delay_type {
+	PM_TAPDELAY_INPUT = 0,
+	PM_TAPDELAY_OUTPUT,
+};
+
+enum dll_reset_type {
+	PM_DLL_RESET_ASSERT,
+	PM_DLL_RESET_RELEASE,
+	PM_DLL_RESET_PULSE,
+};
+
+enum pm_pinctrl_config_param {
+	PM_PINCTRL_CONFIG_SLEW_RATE,
+	PM_PINCTRL_CONFIG_BIAS_STATUS,
+	PM_PINCTRL_CONFIG_PULL_CTRL,
+	PM_PINCTRL_CONFIG_SCHMITT_CMOS,
+	PM_PINCTRL_CONFIG_DRIVE_STRENGTH,
+	PM_PINCTRL_CONFIG_VOLTAGE_STATUS,
+	PM_PINCTRL_CONFIG_TRI_STATE,
+	PM_PINCTRL_CONFIG_MAX,
+};
+
+enum pm_pinctrl_slew_rate {
+	PM_PINCTRL_SLEW_RATE_FAST,
+	PM_PINCTRL_SLEW_RATE_SLOW,
+};
+
+enum pm_pinctrl_bias_status {
+	PM_PINCTRL_BIAS_DISABLE,
+	PM_PINCTRL_BIAS_ENABLE,
+};
+
+enum pm_pinctrl_pull_ctrl {
+	PM_PINCTRL_BIAS_PULL_DOWN,
+	PM_PINCTRL_BIAS_PULL_UP,
+};
+
+enum pm_pinctrl_schmitt_cmos {
+	PM_PINCTRL_INPUT_TYPE_CMOS,
+	PM_PINCTRL_INPUT_TYPE_SCHMITT,
+};
+
 enum zynqmp_pm_opchar_type {
 	ZYNQMP_PM_OPERATING_CHARACTERISTIC_POWER = 1,
 	ZYNQMP_PM_OPERATING_CHARACTERISTIC_ENERGY,
 	ZYNQMP_PM_OPERATING_CHARACTERISTIC_TEMPERATURE,
+};
+
+enum pm_pinctrl_drive_strength {
+	PM_PINCTRL_DRIVE_STRENGTH_2MA,
+	PM_PINCTRL_DRIVE_STRENGTH_4MA,
+	PM_PINCTRL_DRIVE_STRENGTH_8MA,
+	PM_PINCTRL_DRIVE_STRENGTH_12MA,
+};
+
+enum pm_pinctrl_tri_state {
+	PM_PINCTRL_TRI_STATE_DISABLE = 0,
+	PM_PINCTRL_TRI_STATE_ENABLE,
 };
 
 enum zynqmp_pm_shutdown_type {
@@ -359,6 +419,49 @@ enum zynqmp_pm_shutdown_subtype {
 	ZYNQMP_PM_SHUTDOWN_SUBTYPE_SUBSYSTEM,
 	ZYNQMP_PM_SHUTDOWN_SUBTYPE_PS_ONLY,
 	ZYNQMP_PM_SHUTDOWN_SUBTYPE_SYSTEM,
+};
+
+enum rpu_oper_mode {
+	PM_RPU_MODE_LOCKSTEP,
+	PM_RPU_MODE_SPLIT,
+};
+
+enum rpu_boot_mem {
+	PM_RPU_BOOTMEM_LOVEC,
+	PM_RPU_BOOTMEM_HIVEC,
+};
+
+enum rpu_tcm_comb {
+	PM_RPU_TCM_SPLIT,
+	PM_RPU_TCM_COMB,
+};
+
+enum tap_delay_signal_type {
+	PM_TAPDELAY_NAND_DQS_IN,
+	PM_TAPDELAY_NAND_DQS_OUT,
+	PM_TAPDELAY_QSPI,
+	PM_TAPDELAY_MAX,
+};
+
+enum tap_delay_bypass_ctrl {
+	PM_TAPDELAY_BYPASS_DISABLE,
+	PM_TAPDELAY_BYPASS_ENABLE,
+};
+
+enum sgmii_mode {
+	PM_SGMII_DISABLE,
+	PM_SGMII_ENABLE,
+};
+
+enum pm_register_access_id {
+	CONFIG_REG_WRITE,
+	CONFIG_REG_READ,
+};
+
+enum ospi_mux_select_type {
+	PM_OSPI_MUX_SEL_DMA,
+	PM_OSPI_MUX_SEL_LINEAR,
+	PM_OSPI_MUX_GET_MODE,
 };
 
 enum pm_node_id {
@@ -443,97 +546,6 @@ enum pm_node_id {
 	NODE_MAX,
 };
 
-enum pm_pinctrl_config_param {
-	PM_PINCTRL_CONFIG_SLEW_RATE,
-	PM_PINCTRL_CONFIG_BIAS_STATUS,
-	PM_PINCTRL_CONFIG_PULL_CTRL,
-	PM_PINCTRL_CONFIG_SCHMITT_CMOS,
-	PM_PINCTRL_CONFIG_DRIVE_STRENGTH,
-	PM_PINCTRL_CONFIG_VOLTAGE_STATUS,
-	PM_PINCTRL_CONFIG_TRI_STATE,
-	PM_PINCTRL_CONFIG_MAX,
-};
-
-enum pm_pinctrl_slew_rate {
-	PM_PINCTRL_SLEW_RATE_FAST,
-	PM_PINCTRL_SLEW_RATE_SLOW,
-};
-
-enum pm_pinctrl_bias_status {
-	PM_PINCTRL_BIAS_DISABLE,
-	PM_PINCTRL_BIAS_ENABLE,
-};
-
-enum pm_pinctrl_pull_ctrl {
-	PM_PINCTRL_BIAS_PULL_DOWN,
-	PM_PINCTRL_BIAS_PULL_UP,
-};
-
-enum pm_pinctrl_schmitt_cmos {
-	PM_PINCTRL_INPUT_TYPE_CMOS,
-	PM_PINCTRL_INPUT_TYPE_SCHMITT,
-};
-
-enum pm_pinctrl_drive_strength {
-	PM_PINCTRL_DRIVE_STRENGTH_2MA,
-	PM_PINCTRL_DRIVE_STRENGTH_4MA,
-	PM_PINCTRL_DRIVE_STRENGTH_8MA,
-	PM_PINCTRL_DRIVE_STRENGTH_12MA,
-};
-
-enum pm_pinctrl_tri_state {
-	PM_PINCTRL_TRI_STATE_DISABLE = 0,
-	PM_PINCTRL_TRI_STATE_ENABLE,
-};
-
-enum rpu_oper_mode {
-	PM_RPU_MODE_LOCKSTEP,
-	PM_RPU_MODE_SPLIT,
-};
-
-enum rpu_boot_mem {
-	PM_RPU_BOOTMEM_LOVEC,
-	PM_RPU_BOOTMEM_HIVEC,
-};
-
-enum rpu_tcm_comb {
-	PM_RPU_TCM_SPLIT,
-	PM_RPU_TCM_COMB,
-};
-
-enum tap_delay_signal_type {
-	PM_TAPDELAY_NAND_DQS_IN,
-	PM_TAPDELAY_NAND_DQS_OUT,
-	PM_TAPDELAY_QSPI,
-	PM_TAPDELAY_MAX,
-};
-
-enum tap_delay_bypass_ctrl {
-	PM_TAPDELAY_BYPASS_DISABLE,
-	PM_TAPDELAY_BYPASS_ENABLE,
-};
-
-enum sgmii_mode {
-	PM_SGMII_DISABLE,
-	PM_SGMII_ENABLE,
-};
-
-enum tap_delay_type {
-	PM_TAPDELAY_INPUT,
-	PM_TAPDELAY_OUTPUT,
-};
-
-enum dll_reset_type {
-	PM_DLL_RESET_ASSERT,
-	PM_DLL_RESET_RELEASE,
-	PM_DLL_RESET_PULSE,
-};
-
-enum pm_register_access_id {
-	CONFIG_REG_WRITE,
-	CONFIG_REG_READ,
-};
-
 /**
  * struct zynqmp_pm_query_data - PM query data
  * @qid:	query ID
@@ -551,6 +563,8 @@ struct zynqmp_pm_query_data {
 struct zynqmp_eemi_ops {
 	int (*get_api_version)(u32 *version);
 	int (*get_chipid)(u32 *idcode, u32 *version);
+	int (*fpga_load)(const u64 address, const u32 size, const u32 flags);
+	int (*fpga_get_status)(u32 *value);
 	int (*query_data)(struct zynqmp_pm_query_data qdata, u32 *out);
 	int (*clock_enable)(u32 clock_id);
 	int (*clock_disable)(u32 clock_id);
@@ -576,8 +590,6 @@ struct zynqmp_eemi_ops {
 			       const u32 capabilities,
 			       const u32 qos,
 			       const enum zynqmp_pm_request_ack ack);
-	int (*fpga_load)(const u64 address, const u32 size, const u32 flags);
-	int (*fpga_get_status)(u32 *value);
 	int (*fpga_read)(const u32 reg_numframes, const u64 phys_address,
 			 u32 readback_type, u32 *value);
 	int (*sha_hash)(const u64 address, const u32 size, const u32 flags);

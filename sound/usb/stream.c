@@ -1,17 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
- *   This program is free software; you can redistribute it and/or modify
- *   it under the terms of the GNU General Public License as published by
- *   the Free Software Foundation; either version 2 of the License, or
- *   (at your option) any later version.
- *
- *   This program is distributed in the hope that it will be useful,
- *   but WITHOUT ANY WARRANTY; without even the implied warranty of
- *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *   GNU General Public License for more details.
- *
- *   You should have received a copy of the GNU General Public License
- *   along with this program; if not, write to the Free Software
- *   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
  */
 
 
@@ -38,6 +26,15 @@
 #include "clock.h"
 #include "stream.h"
 #include "power.h"
+#include "media.h"
+
+static void audioformat_free(struct audioformat *fp)
+{
+	list_del(&fp->list); /* unlink for avoiding double-free */
+	kfree(fp->rate_table);
+	kfree(fp->chmap);
+	kfree(fp);
+}
 
 /*
  * free a substream
@@ -48,13 +45,11 @@ static void free_substream(struct snd_usb_substream *subs)
 
 	if (!subs->num_formats)
 		return; /* not initialized */
-	list_for_each_entry_safe(fp, n, &subs->fmt_list, list) {
-		kfree(fp->rate_table);
-		kfree(fp->chmap);
-		kfree(fp);
-	}
+	list_for_each_entry_safe(fp, n, &subs->fmt_list, list)
+		audioformat_free(fp);
 	kfree(subs->rate_list.list);
 	kfree(subs->str_pd);
+	snd_media_stream_delete(subs);
 }
 
 
@@ -596,12 +591,8 @@ static int parse_uac_endpoint_attributes(struct snd_usb_audio *chip,
 		csep = snd_usb_find_desc(alts->extra, alts->extralen, NULL, USB_DT_CS_ENDPOINT);
 
 	if (!csep || csep->bLength < 7 ||
-	    csep->bDescriptorSubtype != UAC_EP_GENERAL) {
-		usb_audio_warn(chip,
-			       "%u:%d : no or invalid class specific endpoint descriptor\n",
-			       iface_no, altsd->bAlternateSetting);
-		return 0;
-	}
+	    csep->bDescriptorSubtype != UAC_EP_GENERAL)
+		goto error;
 
 	if (protocol == UAC_VERSION_1) {
 		attributes = csep->bmAttributes;
@@ -609,6 +600,8 @@ static int parse_uac_endpoint_attributes(struct snd_usb_audio *chip,
 		struct uac2_iso_endpoint_descriptor *csep2 =
 			(struct uac2_iso_endpoint_descriptor *) csep;
 
+		if (csep2->bLength < sizeof(*csep2))
+			goto error;
 		attributes = csep->bmAttributes & UAC_EP_CS_ATTR_FILL_MAX;
 
 		/* emulate the endpoint attributes of a v1 device */
@@ -618,12 +611,20 @@ static int parse_uac_endpoint_attributes(struct snd_usb_audio *chip,
 		struct uac3_iso_endpoint_descriptor *csep3 =
 			(struct uac3_iso_endpoint_descriptor *) csep;
 
+		if (csep3->bLength < sizeof(*csep3))
+			goto error;
 		/* emulate the endpoint attributes of a v1 device */
 		if (le32_to_cpu(csep3->bmControls) & UAC2_CONTROL_PITCH)
 			attributes |= UAC_EP_CS_ATTR_PITCH_CONTROL;
 	}
 
 	return attributes;
+
+ error:
+	usb_audio_warn(chip,
+		       "%u:%d : no or invalid class specific endpoint descriptor\n",
+		       iface_no, altsd->bAlternateSetting);
+	return 0;
 }
 
 /* find an input terminal descriptor (either UAC1 or UAC2) with the given
@@ -631,13 +632,15 @@ static int parse_uac_endpoint_attributes(struct snd_usb_audio *chip,
  */
 static void *
 snd_usb_find_input_terminal_descriptor(struct usb_host_interface *ctrl_iface,
-					       int terminal_id)
+				       int terminal_id, int protocol)
 {
 	struct uac2_input_terminal_descriptor *term = NULL;
 
 	while ((term = snd_usb_find_csint_desc(ctrl_iface->extra,
 					       ctrl_iface->extralen,
 					       term, UAC_INPUT_TERMINAL))) {
+		if (!snd_usb_validate_audio_desc(term, protocol))
+			continue;
 		if (term->bTerminalID == terminal_id)
 			return term;
 	}
@@ -647,7 +650,7 @@ snd_usb_find_input_terminal_descriptor(struct usb_host_interface *ctrl_iface,
 
 static void *
 snd_usb_find_output_terminal_descriptor(struct usb_host_interface *ctrl_iface,
-					int terminal_id)
+					int terminal_id, int protocol)
 {
 	/* OK to use with both UAC2 and UAC3 */
 	struct uac2_output_terminal_descriptor *term = NULL;
@@ -655,6 +658,8 @@ snd_usb_find_output_terminal_descriptor(struct usb_host_interface *ctrl_iface,
 	while ((term = snd_usb_find_csint_desc(ctrl_iface->extra,
 					       ctrl_iface->extralen,
 					       term, UAC_OUTPUT_TERMINAL))) {
+		if (!snd_usb_validate_audio_desc(term, protocol))
+			continue;
 		if (term->bTerminalID == terminal_id)
 			return term;
 	}
@@ -729,7 +734,8 @@ snd_usb_get_audioformat_uac12(struct snd_usb_audio *chip,
 		format = le16_to_cpu(as->wFormatTag); /* remember the format value */
 
 		iterm = snd_usb_find_input_terminal_descriptor(chip->ctrl_intf,
-							     as->bTerminalLink);
+							       as->bTerminalLink,
+							       protocol);
 		if (iterm) {
 			num_channels = iterm->bNrChannels;
 			chconfig = le16_to_cpu(iterm->wChannelConfig);
@@ -764,7 +770,8 @@ snd_usb_get_audioformat_uac12(struct snd_usb_audio *chip,
 		 * to extract the clock
 		 */
 		input_term = snd_usb_find_input_terminal_descriptor(chip->ctrl_intf,
-								    as->bTerminalLink);
+								    as->bTerminalLink,
+								    protocol);
 		if (input_term) {
 			clock = input_term->bCSourceID;
 			if (!chconfig && (num_channels == input_term->bNrChannels))
@@ -773,7 +780,8 @@ snd_usb_get_audioformat_uac12(struct snd_usb_audio *chip,
 		}
 
 		output_term = snd_usb_find_output_terminal_descriptor(chip->ctrl_intf,
-								      as->bTerminalLink);
+								      as->bTerminalLink,
+								      protocol);
 		if (output_term) {
 			clock = output_term->bCSourceID;
 			goto found_clock;
@@ -829,8 +837,7 @@ found_clock:
 	/* ok, let's parse further... */
 	if (snd_usb_parse_audio_format(chip, fp, format,
 					fmt, stream) < 0) {
-		kfree(fp->rate_table);
-		kfree(fp);
+		audioformat_free(fp);
 		return NULL;
 	}
 
@@ -998,14 +1005,16 @@ snd_usb_get_audioformat_uac3(struct snd_usb_audio *chip,
 	 * to extract the clock
 	 */
 	input_term = snd_usb_find_input_terminal_descriptor(chip->ctrl_intf,
-							    as->bTerminalLink);
+							    as->bTerminalLink,
+							    UAC_VERSION_3);
 	if (input_term) {
 		clock = input_term->bCSourceID;
 		goto found_clock;
 	}
 
 	output_term = snd_usb_find_output_terminal_descriptor(chip->ctrl_intf,
-							     as->bTerminalLink);
+							      as->bTerminalLink,
+							      UAC_VERSION_3);
 	if (output_term) {
 		clock = output_term->bCSourceID;
 		goto found_clock;
@@ -1039,8 +1048,7 @@ found_clock:
 
 		pd = kzalloc(sizeof(*pd), GFP_KERNEL);
 		if (!pd) {
-			kfree(fp->rate_table);
-			kfree(fp);
+			audioformat_free(fp);
 			return NULL;
 		}
 		pd->pd_id = (stream == SNDRV_PCM_STREAM_PLAYBACK) ?
@@ -1059,9 +1067,7 @@ found_clock:
 		/* ok, let's parse further... */
 		if (snd_usb_parse_audio_format_v3(chip, fp, as, stream) < 0) {
 			kfree(pd);
-			kfree(fp->chmap);
-			kfree(fp->rate_table);
-			kfree(fp);
+			audioformat_free(fp);
 			return NULL;
 		}
 	}
@@ -1072,7 +1078,9 @@ found_clock:
 	return fp;
 }
 
-int snd_usb_parse_audio_interface(struct snd_usb_audio *chip, int iface_no)
+static int __snd_usb_parse_audio_interface(struct snd_usb_audio *chip,
+					   int iface_no,
+					   bool *has_non_pcm, bool non_pcm)
 {
 	struct usb_device *dev;
 	struct usb_interface *iface;
@@ -1173,6 +1181,16 @@ int snd_usb_parse_audio_interface(struct snd_usb_audio *chip, int iface_no)
 		else if (IS_ERR(fp))
 			return PTR_ERR(fp);
 
+		if (fp->fmt_type != UAC_FORMAT_TYPE_I)
+			*has_non_pcm = true;
+		if ((fp->fmt_type == UAC_FORMAT_TYPE_I) == non_pcm) {
+			audioformat_free(fp);
+			kfree(pd);
+			fp = NULL;
+			pd = NULL;
+			continue;
+		}
+
 		dev_dbg(&dev->dev, "%u:%d: add audio endpoint %#x\n", iface_no, altno, fp->endpoint);
 		if (protocol == UAC_VERSION_3)
 			err = snd_usb_add_audio_stream_v3(chip, stream, fp, pd);
@@ -1180,11 +1198,8 @@ int snd_usb_parse_audio_interface(struct snd_usb_audio *chip, int iface_no)
 			err = snd_usb_add_audio_stream(chip, stream, fp);
 
 		if (err < 0) {
-			list_del(&fp->list); /* unlink for avoiding double-free */
+			audioformat_free(fp);
 			kfree(pd);
-			kfree(fp->rate_table);
-			kfree(fp->chmap);
-			kfree(fp);
 			return err;
 		}
 		/* try to set the interface... */
@@ -1192,6 +1207,26 @@ int snd_usb_parse_audio_interface(struct snd_usb_audio *chip, int iface_no)
 		snd_usb_init_pitch(chip, iface_no, alts, fp);
 		snd_usb_init_sample_rate(chip, iface_no, alts, fp, fp->rate_max);
 	}
+	return 0;
+}
+
+int snd_usb_parse_audio_interface(struct snd_usb_audio *chip, int iface_no)
+{
+	int err;
+	bool has_non_pcm = false;
+
+	/* parse PCM formats */
+	err = __snd_usb_parse_audio_interface(chip, iface_no, &has_non_pcm, false);
+	if (err < 0)
+		return err;
+
+	if (has_non_pcm) {
+		/* parse non-PCM formats */
+		err = __snd_usb_parse_audio_interface(chip, iface_no, &has_non_pcm, true);
+		if (err < 0)
+			return err;
+	}
+
 	return 0;
 }
 

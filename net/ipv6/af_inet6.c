@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  *	PF_INET6 socket protocol family
  *	Linux INET6 implementation
@@ -11,11 +12,6 @@
  *	piggy, Karl Knutson	:	Socket protocol table
  *	Hideaki YOSHIFUJI	:	sin6_scope_id support
  *	Arnaldo Melo		:	check proc_net_create return, cleanups
- *
- *	This program is free software; you can redistribute it and/or
- *	modify it under the terms of the GNU General Public License
- *	as published by the Free Software Foundation; either version
- *	2 of the License, or (at your option) any later version.
  */
 
 #define pr_fmt(fmt) "IPv6: " fmt
@@ -56,6 +52,7 @@
 #include <net/transp_v6.h>
 #include <net/ip6_route.h>
 #include <net/addrconf.h>
+#include <net/ipv6_stubs.h>
 #include <net/ndisc.h>
 #ifdef CONFIG_IPV6_TUNNEL
 #include <net/ip6_tunnel.h>
@@ -209,8 +206,9 @@ lookup_protocol:
 	np->hop_limit	= -1;
 	np->mcast_hops	= IPV6_DEFAULT_MCASTHOPS;
 	np->mc_loop	= 1;
+	np->mc_all	= 1;
 	np->pmtudisc	= IPV6_PMTUDISC_WANT;
-	np->repflow	= net->ipv6.sysctl.flowlabel_reflect;
+	np->repflow	= net->ipv6.sysctl.flowlabel_reflect & FLOWLABEL_REFLECT_ESTABLISHED;
 	sk->sk_ipv6only	= net->ipv6.sysctl.bindv6only;
 
 	/* Init the ipv4 part of the socket since we can have sockets
@@ -309,6 +307,7 @@ static int __inet6_bind(struct sock *sk, struct sockaddr *uaddr, int addr_len,
 
 	/* Check if the address belongs to the host. */
 	if (addr_type == IPV6_ADDR_MAPPED) {
+		struct net_device *dev = NULL;
 		int chk_addr_ret;
 
 		/* Binding to v4-mapped address on a v6-only socket
@@ -319,9 +318,20 @@ static int __inet6_bind(struct sock *sk, struct sockaddr *uaddr, int addr_len,
 			goto out;
 		}
 
+		rcu_read_lock();
+		if (sk->sk_bound_dev_if) {
+			dev = dev_get_by_index_rcu(net, sk->sk_bound_dev_if);
+			if (!dev) {
+				err = -ENODEV;
+				goto out_unlock;
+			}
+		}
+
 		/* Reproduce AF_INET checks to make the bindings consistent */
 		v4addr = addr->sin6_addr.s6_addr32[3];
-		chk_addr_ret = inet_addr_type(net, v4addr);
+		chk_addr_ret = inet_addr_type_dev_table(net, dev, v4addr);
+		rcu_read_unlock();
+
 		if (!inet_can_nonlocal_bind(net, inet) &&
 		    v4addr != htonl(INADDR_ANY) &&
 		    chk_addr_ret != RTN_LOCAL &&
@@ -349,6 +359,9 @@ static int __inet6_bind(struct sock *sk, struct sockaddr *uaddr, int addr_len,
 					err = -EINVAL;
 					goto out_unlock;
 				}
+			}
+
+			if (sk->sk_bound_dev_if) {
 				dev = dev_get_by_index_rcu(net, sk->sk_bound_dev_if);
 				if (!dev) {
 					err = -ENODEV;
@@ -467,12 +480,10 @@ void inet6_destroy_sock(struct sock *sk)
 	/* Release rx options */
 
 	skb = xchg(&np->pktoptions, NULL);
-	if (skb)
-		kfree_skb(skb);
+	kfree_skb(skb);
 
 	skb = xchg(&np->rxpmtu, NULL);
-	if (skb)
-		kfree_skb(skb);
+	kfree_skb(skb);
 
 	/* Free flowlabels */
 	fl6_free_socklist(sk);
@@ -532,12 +543,6 @@ int inet6_ioctl(struct socket *sock, unsigned int cmd, unsigned long arg)
 	struct net *net = sock_net(sk);
 
 	switch (cmd) {
-	case SIOCGSTAMP:
-		return sock_get_timestamp(sk, (struct timeval __user *)arg);
-
-	case SIOCGSTAMPNS:
-		return sock_get_timestampns(sk, (struct timespec __user *)arg);
-
 	case SIOCADDRT:
 	case SIOCDELRT:
 
@@ -559,6 +564,39 @@ int inet6_ioctl(struct socket *sock, unsigned int cmd, unsigned long arg)
 }
 EXPORT_SYMBOL(inet6_ioctl);
 
+INDIRECT_CALLABLE_DECLARE(int udpv6_sendmsg(struct sock *, struct msghdr *,
+					    size_t));
+int inet6_sendmsg(struct socket *sock, struct msghdr *msg, size_t size)
+{
+	struct sock *sk = sock->sk;
+
+	if (unlikely(inet_send_prepare(sk)))
+		return -EAGAIN;
+
+	return INDIRECT_CALL_2(sk->sk_prot->sendmsg, tcp_sendmsg, udpv6_sendmsg,
+			       sk, msg, size);
+}
+
+INDIRECT_CALLABLE_DECLARE(int udpv6_recvmsg(struct sock *, struct msghdr *,
+					    size_t, int, int, int *));
+int inet6_recvmsg(struct socket *sock, struct msghdr *msg, size_t size,
+		  int flags)
+{
+	struct sock *sk = sock->sk;
+	int addr_len = 0;
+	int err;
+
+	if (likely(!(flags & MSG_ERRQUEUE)))
+		sock_rps_record_flow(sk);
+
+	err = INDIRECT_CALL_2(sk->sk_prot->recvmsg, tcp_recvmsg, udpv6_recvmsg,
+			      sk, msg, size, flags & MSG_DONTWAIT,
+			      flags & ~MSG_DONTWAIT, &addr_len);
+	if (err >= 0)
+		msg->msg_namelen = addr_len;
+	return err;
+}
+
 const struct proto_ops inet6_stream_ops = {
 	.family		   = PF_INET6,
 	.owner		   = THIS_MODULE,
@@ -570,12 +608,13 @@ const struct proto_ops inet6_stream_ops = {
 	.getname	   = inet6_getname,
 	.poll		   = tcp_poll,			/* ok		*/
 	.ioctl		   = inet6_ioctl,		/* must change  */
+	.gettstamp	   = sock_gettstamp,
 	.listen		   = inet_listen,		/* ok		*/
 	.shutdown	   = inet_shutdown,		/* ok		*/
 	.setsockopt	   = sock_common_setsockopt,	/* ok		*/
 	.getsockopt	   = sock_common_getsockopt,	/* ok		*/
-	.sendmsg	   = inet_sendmsg,		/* ok		*/
-	.recvmsg	   = inet_recvmsg,		/* ok		*/
+	.sendmsg	   = inet6_sendmsg,		/* retpoline's sake */
+	.recvmsg	   = inet6_recvmsg,		/* retpoline's sake */
 #ifdef CONFIG_MMU
 	.mmap		   = tcp_mmap,
 #endif
@@ -603,12 +642,13 @@ const struct proto_ops inet6_dgram_ops = {
 	.getname	   = inet6_getname,
 	.poll		   = udp_poll,			/* ok		*/
 	.ioctl		   = inet6_ioctl,		/* must change  */
+	.gettstamp	   = sock_gettstamp,
 	.listen		   = sock_no_listen,		/* ok		*/
 	.shutdown	   = inet_shutdown,		/* ok		*/
 	.setsockopt	   = sock_common_setsockopt,	/* ok		*/
 	.getsockopt	   = sock_common_getsockopt,	/* ok		*/
-	.sendmsg	   = inet_sendmsg,		/* ok		*/
-	.recvmsg	   = inet_recvmsg,		/* ok		*/
+	.sendmsg	   = inet6_sendmsg,		/* retpoline's sake */
+	.recvmsg	   = inet6_recvmsg,		/* retpoline's sake */
 	.mmap		   = sock_no_mmap,
 	.sendpage	   = sock_no_sendpage,
 	.set_peek_off	   = sk_set_peek_off,
@@ -833,6 +873,17 @@ static int __net_init inet6_net_init(struct net *net)
 	net->ipv6.sysctl.bindv6only = 0;
 	net->ipv6.sysctl.icmpv6_time = 1*HZ;
 	net->ipv6.sysctl.icmpv6_echo_ignore_all = 0;
+	net->ipv6.sysctl.icmpv6_echo_ignore_multicast = 0;
+	net->ipv6.sysctl.icmpv6_echo_ignore_anycast = 0;
+
+	/* By default, rate limit error messages.
+	 * Except for pmtu discovery, it would break it.
+	 * proc_do_large_bitmap needs pointer to the bitmap.
+	 */
+	bitmap_set(net->ipv6.sysctl.icmpv6_ratemask, 0, ICMPV6_ERRMSG_MAX + 1);
+	bitmap_clear(net->ipv6.sysctl.icmpv6_ratemask, ICMPV6_PKT_TOOBIG, 1);
+	net->ipv6.sysctl.icmpv6_ratemask_ptr = net->ipv6.sysctl.icmpv6_ratemask;
+
 	net->ipv6.sysctl.flowlabel_consistency = 1;
 	net->ipv6.sysctl.auto_flowlabels = IP6_DEFAULT_AUTO_FLOW_LABELS;
 	net->ipv6.sysctl.idgen_retries = 3;
@@ -886,15 +937,27 @@ static struct pernet_operations inet6_net_ops = {
 	.exit = inet6_net_exit,
 };
 
+static int ipv6_route_input(struct sk_buff *skb)
+{
+	ip6_route_input(skb);
+	return skb_dst(skb)->error;
+}
+
 static const struct ipv6_stub ipv6_stub_impl = {
 	.ipv6_sock_mc_join = ipv6_sock_mc_join,
 	.ipv6_sock_mc_drop = ipv6_sock_mc_drop,
 	.ipv6_dst_lookup   = ip6_dst_lookup,
+	.ipv6_route_input  = ipv6_route_input,
 	.fib6_get_table	   = fib6_get_table,
 	.fib6_table_lookup = fib6_table_lookup,
 	.fib6_lookup       = fib6_lookup,
-	.fib6_multipath_select = fib6_multipath_select,
+	.fib6_select_path  = fib6_select_path,
 	.ip6_mtu_from_fib6 = ip6_mtu_from_fib6,
+	.fib6_nh_init	   = fib6_nh_init,
+	.fib6_nh_release   = fib6_nh_release,
+	.fib6_update_sernum = fib6_update_sernum_stub,
+	.fib6_rt_update	   = fib6_rt_update,
+	.ip6_del_rt	   = ip6_del_rt,
 	.udpv6_encap_enable = udpv6_encap_enable,
 	.ndisc_send_na = ndisc_send_na,
 	.nd_tbl	= &nd_tbl,
@@ -902,6 +965,7 @@ static const struct ipv6_stub ipv6_stub_impl = {
 
 static const struct ipv6_bpf_stub ipv6_bpf_stub_impl = {
 	.inet6_bind = __inet6_bind,
+	.udp6_lib_lookup = __udp6_lib_lookup,
 };
 
 static int __init inet6_init(void)
@@ -1001,6 +1065,9 @@ static int __init inet6_init(void)
 	err = ip6_flowlabel_init();
 	if (err)
 		goto ip6_flowlabel_fail;
+	err = ipv6_anycast_init();
+	if (err)
+		goto ipv6_anycast_fail;
 	err = addrconf_init();
 	if (err)
 		goto addrconf_fail;
@@ -1091,6 +1158,8 @@ ipv6_frag_fail:
 ipv6_exthdrs_fail:
 	addrconf_cleanup();
 addrconf_fail:
+	ipv6_anycast_cleanup();
+ipv6_anycast_fail:
 	ip6_flowlabel_cleanup();
 ip6_flowlabel_fail:
 	ndisc_late_cleanup();

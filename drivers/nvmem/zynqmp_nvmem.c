@@ -198,16 +198,8 @@ static int zynqmp_nvmem_probe(struct platform_device *pdev)
 	return 0;
 }
 
-static int zynqmp_nvmem_remove(struct platform_device *pdev)
-{
-	struct nvmem_device *nvmem = platform_get_drvdata(pdev);
-
-	return nvmem_unregister(nvmem);
-}
-
 static struct platform_driver zynqmp_nvmem_driver = {
 	.probe = zynqmp_nvmem_probe,
-	.remove = zynqmp_nvmem_remove,
 	.driver = {
 		.name = "zynqmp-nvmem",
 		.of_match_table = zynqmp_nvmem_match,

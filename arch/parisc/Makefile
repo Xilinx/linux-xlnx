@@ -19,8 +19,6 @@
 
 KBUILD_IMAGE := vmlinuz
 
-KBUILD_DEFCONFIG := default_defconfig
-
 NM		= sh $(srctree)/arch/parisc/nm
 CHECKFLAGS	+= -D__hppa__=1
 LIBGCC		= $(shell $(CC) $(KBUILD_CFLAGS) -print-libgcc-file-name)
@@ -47,6 +45,24 @@ ifneq ($(SUBARCH),$(UTS_MACHINE))
 	endif
 endif
 
+ifdef CONFIG_DYNAMIC_FTRACE
+ifdef CONFIG_64BIT
+NOP_COUNT := 8
+else
+NOP_COUNT := 5
+endif
+
+export CC_USING_RECORD_MCOUNT:=1
+export CC_USING_PATCHABLE_FUNCTION_ENTRY:=1
+
+KBUILD_AFLAGS += -DCC_USING_PATCHABLE_FUNCTION_ENTRY=1
+KBUILD_CFLAGS += -DCC_USING_PATCHABLE_FUNCTION_ENTRY=1 \
+		 -DFTRACE_PATCHABLE_FUNCTION_SIZE=$(NOP_COUNT)
+
+CC_FLAGS_FTRACE := -fpatchable-function-entry=$(NOP_COUNT),$(shell echo $$(($(NOP_COUNT)-1)))
+KBUILD_LDS_MODULE += $(srctree)/arch/parisc/kernel/module.lds
+endif
+
 OBJCOPY_FLAGS =-O binary -R .note -R .comment -S
 
 cflags-y	:= -pipe
@@ -69,6 +85,13 @@ cflags-y	+= -mdisable-fpregs
 # link a too big vmlinux executable). Not enabled for building modules.
 ifdef CONFIG_MLONGCALLS
 KBUILD_CFLAGS_KERNEL += -mlong-calls
+endif
+
+# Without this, "ld -r" results in .text sections that are too big (> 0x40000)
+# for branches to reach stubs. And multiple .text sections trigger a warning
+# when creating the sysfs module information section.
+ifndef CONFIG_64BIT
+KBUILD_CFLAGS_MODULE += -ffunction-sections
 endif
 
 # select which processor to optimise for
@@ -95,8 +118,8 @@ PALO := $(shell if (which palo 2>&1); then : ; \
 	elif [ -x /sbin/palo ]; then echo /sbin/palo; \
 	fi)
 
-PALOCONF := $(shell if [ -f $(src)/palo.conf ]; then echo $(src)/palo.conf; \
-	else echo $(obj)/palo.conf; \
+PALOCONF := $(shell if [ -f $(srctree)/palo.conf ]; then echo $(srctree)/palo.conf; \
+	else echo $(objtree)/palo.conf; \
 	fi)
 
 palo lifimage: vmlinuz
@@ -106,8 +129,8 @@ palo lifimage: vmlinuz
 		false; \
 	fi
 	@if test ! -f "$(PALOCONF)"; then \
-		cp $(src)/arch/parisc/defpalo.conf $(obj)/palo.conf; \
-		echo 'A generic palo config file ($(obj)/palo.conf) has been created for you.'; \
+		cp $(srctree)/arch/parisc/defpalo.conf $(objtree)/palo.conf; \
+		echo 'A generic palo config file ($(objree)/palo.conf) has been created for you.'; \
 		echo 'You should check it and re-run "make palo".'; \
 		echo 'WARNING: the "lifimage" file is now placed in this directory by default!'; \
 		false; \
@@ -137,10 +160,10 @@ vmlinuz: vmlinux
 endif
 
 install:
-	$(CONFIG_SHELL) $(src)/arch/parisc/install.sh \
+	$(CONFIG_SHELL) $(srctree)/arch/parisc/install.sh \
 			$(KERNELRELEASE) vmlinux System.map "$(INSTALL_PATH)"
 zinstall:
-	$(CONFIG_SHELL) $(src)/arch/parisc/install.sh \
+	$(CONFIG_SHELL) $(srctree)/arch/parisc/install.sh \
 			$(KERNELRELEASE) vmlinuz System.map "$(INSTALL_PATH)"
 
 CLEAN_FILES	+= lifimage
@@ -157,11 +180,8 @@ define archhelp
 	@echo  '  zinstall	- Install compressed vmlinuz kernel'
 endef
 
-# we require gcc 3.3 or above to compile the kernel
-archprepare: checkbin
-checkbin:
-	@if test "$(cc-version)" -lt "0303"; then \
-		echo -n "Sorry, GCC v3.3 or above is required to build " ; \
-		echo "the kernel." ; \
-		false ; \
-	fi
+archclean:
+	$(Q)$(MAKE) $(clean)=$(boot)
+
+archheaders:
+	$(Q)$(MAKE) $(build)=arch/parisc/kernel/syscalls all

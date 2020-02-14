@@ -141,37 +141,37 @@ void get_frer_static_counter(struct frer_static_counter *data)
 								offset + 0x4);
 
 	data->disc_frames_in_portid.lsb = axienet_ior(&lp,
-				FRER_DISCARD_INGS_FLTR_OFFSET + offset);
+						      FRER_DISCARD_INGS_FLTR_OFFSET + offset);
 	data->disc_frames_in_portid.msb = axienet_ior(&lp,
-				FRER_DISCARD_INGS_FLTR_OFFSET + offset + 0x4);
+						      FRER_DISCARD_INGS_FLTR_OFFSET + offset + 0x4);
 
 	data->pass_frames_ind_recv.lsb = axienet_ior(&lp,
-				FRER_PASS_FRAMES_INDV_OFFSET + offset);
+						     FRER_PASS_FRAMES_INDV_OFFSET + offset);
 	data->pass_frames_ind_recv.msb = axienet_ior(&lp,
-				FRER_PASS_FRAMES_INDV_OFFSET + offset + 0x4);
+						     FRER_PASS_FRAMES_INDV_OFFSET + offset + 0x4);
 
 	data->disc_frames_ind_recv.lsb = axienet_ior(&lp,
-				FRER_DISCARD_FRAMES_INDV_OFFSET + offset);
+						     FRER_DISCARD_FRAMES_INDV_OFFSET + offset);
 	data->disc_frames_ind_recv.msb = axienet_ior(&lp,
-				FRER_DISCARD_FRAMES_INDV_OFFSET + offset + 0x4);
+						     FRER_DISCARD_FRAMES_INDV_OFFSET + offset + 0x4);
 
 	data->pass_frames_seq_recv.lsb = axienet_ior(&lp,
-				FRER_PASS_FRAMES_SEQ_OFFSET + offset);
+						     FRER_PASS_FRAMES_SEQ_OFFSET + offset);
 	data->pass_frames_seq_recv.msb = axienet_ior(&lp,
-				FRER_PASS_FRAMES_SEQ_OFFSET + offset + 0x4);
+						     FRER_PASS_FRAMES_SEQ_OFFSET + offset + 0x4);
 
 	data->disc_frames_seq_recv.lsb = axienet_ior(&lp,
-				FRER_DISCARD_FRAMES_SEQ_OFFSET + offset);
+						     FRER_DISCARD_FRAMES_SEQ_OFFSET + offset);
 	data->disc_frames_seq_recv.msb = axienet_ior(&lp,
-				FRER_DISCARD_FRAMES_SEQ_OFFSET + offset + 0x4);
+						     FRER_DISCARD_FRAMES_SEQ_OFFSET + offset + 0x4);
 
 	data->rogue_frames_seq_recv.lsb = axienet_ior(&lp,
-				FRER_ROGUE_FRAMES_SEQ_OFFSET + offset);
+						      FRER_ROGUE_FRAMES_SEQ_OFFSET + offset);
 	data->rogue_frames_seq_recv.msb = axienet_ior(&lp,
-				FRER_ROGUE_FRAMES_SEQ_OFFSET + offset + 0x4);
+						      FRER_ROGUE_FRAMES_SEQ_OFFSET + offset + 0x4);
 
 	data->seq_recv_rst.lsb = axienet_ior(&lp,
-				SEQ_RECV_RESETS_OFFSET + offset);
+					     SEQ_RECV_RESETS_OFFSET + offset);
 	data->seq_recv_rst.msb = axienet_ior(&lp,
-				SEQ_RECV_RESETS_OFFSET + offset + 0x4);
+					     SEQ_RECV_RESETS_OFFSET + offset + 0x4);
 }

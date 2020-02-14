@@ -19,6 +19,9 @@
 #include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
+#include <linux/delay.h>
+#include <linux/mtd/nand_bch.h>
+#include "internals.h"
 #include <linux/pm_runtime.h>
 
 #define EVENT_TIMEOUT_MSEC	1000
@@ -100,9 +103,16 @@
 #define ONFI_DATA_INTERFACE_NVDDR	BIT(4)
 #define NVDDR_MODE			BIT(9)
 #define NVDDR_TIMING_MODE_SHIFT		3
-
 #define SDR_MODE_DEFLT_FREQ	80000000
 #define COL_ROW_ADDR(pos, val)	(((val) & 0xFF) << (8 * (pos)))
+
+/*
+ * Arasan NAND controller can't detect errors beyond 24-bit in BCH
+ * For an erased page we observed that multibit error count as 16
+ * with 24-bit ECC. so if the count is equal to or greater than 16
+ * then we can say that its an uncorrectable ECC error.
+ */
+#define MULTI_BIT_ERR_CNT 16
 
 struct anfc_op {
 	u32 cmds[4];
@@ -217,6 +227,32 @@ static const struct mtd_ooblayout_ops anfc_ooblayout_ops = {
 	.free = anfc_ooblayout_free,
 };
 
+/* Generic flash bbt decriptors */
+static u8 bbt_pattern[] = { 'B', 'b', 't', '0' };
+static u8 mirror_pattern[] = { '1', 't', 'b', 'B' };
+
+static struct nand_bbt_descr bbt_main_descr = {
+	.options = NAND_BBT_LASTBLOCK | NAND_BBT_CREATE | NAND_BBT_WRITE
+		| NAND_BBT_2BIT | NAND_BBT_VERSION | NAND_BBT_PERCHIP |
+		NAND_BBM_SECONDPAGE,
+	.offs = 4,
+	.len = 4,
+	.veroffs = 20,
+	.maxblocks = 4,
+	.pattern = bbt_pattern
+};
+
+static struct nand_bbt_descr bbt_mirror_descr = {
+	.options = NAND_BBT_LASTBLOCK | NAND_BBT_CREATE | NAND_BBT_WRITE
+		| NAND_BBT_2BIT | NAND_BBT_VERSION | NAND_BBT_PERCHIP |
+		NAND_BBM_SECONDPAGE,
+	.offs = 4,
+	.len = 4,
+	.veroffs = 20,
+	.maxblocks = 4,
+	.pattern = mirror_pattern
+};
+
 static inline struct anfc_nand_chip *to_anfc_nand(struct nand_chip *nand)
 {
 	return container_of(nand, struct anfc_nand_chip, chip);
@@ -312,11 +348,12 @@ static void anfc_setpagecoladdr(struct anfc_nand_controller *nfc, u32 page,
 	writel(val, nfc->base + MEM_ADDR2_OFST);
 }
 
-static void anfc_prepare_cmd(struct anfc_nand_controller *nfc, u8 cmd1,
+static void anfc_prepare_cmd(struct nand_chip *chip, u8 cmd1,
 			     u8 cmd2, u8 dmamode,
 			     u32 pagesize, u8 addrcycles)
 {
 	u32 regval;
+	struct anfc_nand_controller *nfc = to_anfc(chip->controller);
 
 	regval = cmd1 | (cmd2 << CMD2_SHIFT);
 	if (dmamode)
@@ -347,7 +384,6 @@ static void anfc_rw_dma_op(struct mtd_info *mtd, u8 *buf, int len,
 		dir = DMA_FROM_DEVICE;
 	else
 		dir = DMA_TO_DEVICE;
-
 	paddr = dma_map_single(nfc->dev, buf, len, dir);
 	if (dma_mapping_error(nfc->dev, paddr)) {
 		dev_err(nfc->dev, "Read buffer mapping error");
@@ -384,7 +420,6 @@ static void anfc_rw_pio_op(struct mtd_info *mtd, u8 *buf, int len,
 		intr |= READ_READY;
 	else
 		intr |= WRITE_READY;
-
 	anfc_enable_intrs(nfc, intr);
 	writel(prog, nfc->base + PROG_OFST);
 	while (cnt < pktcount) {
@@ -429,12 +464,53 @@ static void anfc_write_data_op(struct nand_chip *chip, const u8 *buf,
 			       pktsize);
 }
 
-static int anfc_read_page_hwecc(struct mtd_info *mtd,
-				struct nand_chip *chip, u8 *buf,
+static int anfc_read_page(struct nand_chip *chip, uint8_t *buf,
+			  int oob_required, int page)
+{
+	u32 ret;
+	struct mtd_info *mtd = nand_to_mtd(chip);
+	struct anfc_nand_chip *achip = to_anfc_nand(chip);
+
+	ret = nand_read_page_op(chip, page, 0, NULL, 0);
+	if (ret)
+		return ret;
+
+	anfc_read_data_op(chip, buf, mtd->writesize,
+			  DIV_ROUND_UP(mtd->writesize, achip->pktsize),
+			  achip->pktsize);
+	if (oob_required)
+		chip->ecc.read_oob(chip, page);
+
+	return 0;
+}
+
+static int anfc_write_page(struct nand_chip *chip, const uint8_t *buf,
+			   int oob_required, int page)
+{
+	u32 ret;
+	struct mtd_info *mtd = nand_to_mtd(chip);
+	struct anfc_nand_chip *achip = to_anfc_nand(chip);
+
+	ret = nand_prog_page_begin_op(chip, page, 0, NULL, 0);
+	if (ret)
+		return ret;
+
+	anfc_write_data_op(chip, buf, mtd->writesize,
+			   DIV_ROUND_UP(mtd->writesize, achip->pktsize),
+			   achip->pktsize);
+
+	if (oob_required)
+		chip->ecc.write_oob(chip, page);
+
+	return 0;
+}
+
+static int anfc_read_page_hwecc(struct nand_chip *chip, u8 *buf,
 				int oob_required, int page)
 {
 	struct anfc_nand_controller *nfc = to_anfc(chip->controller);
 	struct anfc_nand_chip *achip = to_anfc_nand(chip);
+	struct mtd_info *mtd = nand_to_mtd(chip);
 	u8 *ecc_code = chip->ecc.code_buf;
 	u8 *p;
 	int eccsize = chip->ecc.size;
@@ -442,13 +518,12 @@ static int anfc_read_page_hwecc(struct mtd_info *mtd,
 	int stat = 0, i;
 	u32 ret;
 	unsigned int max_bitflips = 0;
-	u32 eccsteps;
+	u32 eccsteps = chip->ecc.steps;
 	u32 one_bit_err = 0, multi_bit_err = 0;
 
 	ret = nand_read_page_op(chip, page, 0, NULL, 0);
 	if (ret)
 		return ret;
-
 	anfc_set_eccsparecmd(nfc, achip, NAND_CMD_RNDOUT, NAND_CMD_RNDOUTSTART);
 	anfc_config_ecc(nfc, true);
 	anfc_read_data_op(chip, buf, mtd->writesize,
@@ -465,30 +540,28 @@ static int anfc_read_page_hwecc(struct mtd_info *mtd,
 	} else {
 		/*
 		 * In Hamming mode Arasan NAND controller can correct ECC upto
-		 * 1-bit and can detect upto 4-bit errors.
+		 * 1-bit and can detect upto 2-bit errors.
 		 */
 		one_bit_err = readl(nfc->base + ECC_ERR_CNT_1BIT_OFST);
 		multi_bit_err = readl(nfc->base + ECC_ERR_CNT_2BIT_OFST);
-
 		/* Clear ecc error count register 1Bit, 2Bit */
 		writel(0x0, nfc->base + ECC_ERR_CNT_1BIT_OFST);
 		writel(0x0, nfc->base + ECC_ERR_CNT_2BIT_OFST);
 	}
 
 	anfc_config_ecc(nfc, false);
-
 	if (oob_required)
-		chip->ecc.read_oob(mtd, chip, page);
+		chip->ecc.read_oob(chip, page);
 
 	if (multi_bit_err || one_bit_err) {
 		if (!oob_required)
-			chip->ecc.read_oob(mtd, chip, page);
+			chip->ecc.read_oob(chip, page);
 
 		mtd_ooblayout_get_eccbytes(mtd, ecc_code, chip->oob_poi, 0,
 					   chip->ecc.total);
 		eccsteps = chip->ecc.steps;
 		p = buf;
-		for (i = 0 ; eccsteps; eccsteps--, i += eccbytes,
+		for (i = 0; eccsteps; eccsteps--, i += eccbytes,
 		     p += eccsize) {
 			stat = nand_check_erased_ecc_chunk(p,
 							   chip->ecc.size,
@@ -509,13 +582,13 @@ static int anfc_read_page_hwecc(struct mtd_info *mtd,
 	return max_bitflips;
 }
 
-static int anfc_write_page_hwecc(struct mtd_info *mtd,
-				 struct nand_chip *chip, const u8 *buf,
+static int anfc_write_page_hwecc(struct nand_chip *chip, const u8 *buf,
 				 int oob_required, int page)
 {
 	int ret;
 	struct anfc_nand_controller *nfc = to_anfc(chip->controller);
 	struct anfc_nand_chip *achip = to_anfc_nand(chip);
+	struct mtd_info *mtd = nand_to_mtd(chip);
 
 	ret = nand_prog_page_begin_op(chip, page, 0, NULL, 0);
 	if (ret)
@@ -528,7 +601,7 @@ static int anfc_write_page_hwecc(struct mtd_info *mtd,
 			   achip->pktsize);
 
 	if (oob_required)
-		chip->ecc.write_oob(mtd, chip, page);
+		chip->ecc.write_oob(chip, page);
 
 	anfc_config_ecc(nfc, false);
 
@@ -542,49 +615,59 @@ static int anfc_ecc_init(struct mtd_info *mtd,
 	unsigned int ecc_strength, steps;
 	struct nand_chip *chip = mtd_to_nand(mtd);
 	struct anfc_nand_chip *achip = to_anfc_nand(chip);
+	struct anfc_nand_controller *nfc = to_anfc(chip->controller);
 
-	ecc->mode = NAND_ECC_HW;
-	ecc->read_page = anfc_read_page_hwecc;
-	ecc->write_page = anfc_write_page_hwecc;
+	if (ecc_mode == NAND_ECC_ON_DIE) {
+		anfc_config_ecc(nfc, 0);
+		ecc->strength = 1;
+		ecc->bytes = 0;
+		ecc->size = mtd->writesize;
+		ecc->read_page = anfc_read_page;
+		ecc->write_page = anfc_write_page;
+		chip->bbt_td = &bbt_main_descr;
+		chip->bbt_md = &bbt_mirror_descr;
+	} else {
+		ecc->mode = NAND_ECC_HW;
+		ecc->read_page = anfc_read_page_hwecc;
+		ecc->write_page = anfc_write_page_hwecc;
 
-	mtd_set_ooblayout(mtd, &anfc_ooblayout_ops);
+		mtd_set_ooblayout(mtd, &anfc_ooblayout_ops);
+		steps = mtd->writesize / chip->base.eccreq.step_size;
 
-	steps = mtd->writesize / chip->ecc_step_ds;
-
-	switch (chip->ecc_strength_ds) {
-	case 12:
-		ecc_strength = 0x1;
-		break;
-	case 8:
-		ecc_strength = 0x2;
-		break;
-	case 4:
-		ecc_strength = 0x3;
-		break;
-	case 24:
-		ecc_strength = 0x4;
-		break;
-	default:
-		ecc_strength = 0x0;
+		switch (chip->base.eccreq.strength) {
+		case 12:
+			ecc_strength = 0x1;
+			break;
+		case 8:
+			ecc_strength = 0x2;
+			break;
+		case 4:
+			ecc_strength = 0x3;
+			break;
+		case 24:
+			ecc_strength = 0x4;
+			break;
+		default:
+			ecc_strength = 0x0;
+		}
+		if (!ecc_strength)
+			ecc->total = 3 * steps;
+		else
+			ecc->total =
+			     DIV_ROUND_UP(fls(8 * chip->base.eccreq.step_size) *
+				 chip->base.eccreq.strength * steps, 8);
+		ecc->strength = chip->base.eccreq.strength;
+		ecc->size = chip->base.eccreq.step_size;
+		ecc->bytes = ecc->total / steps;
+		ecc->steps = steps;
+		achip->ecc_strength = ecc_strength;
+		achip->strength = achip->ecc_strength;
+		ecc_addr = mtd->writesize + (mtd->oobsize - ecc->total);
+		achip->eccval = ecc_addr | (ecc->total << ECC_SIZE_SHIFT) |
+				(achip->strength << BCH_EN_SHIFT);
 	}
-	if (!ecc_strength)
-		ecc->total = 3 * steps;
-	else
-		ecc->total =
-		     DIV_ROUND_UP(fls(8 * chip->ecc_step_ds) *
-			 chip->ecc_strength_ds * steps, 8);
 
-	ecc->strength = chip->ecc_strength_ds;
-	ecc->size = chip->ecc_step_ds;
-	ecc->bytes = ecc->total / steps;
-	ecc->steps = steps;
-	achip->ecc_strength = ecc_strength;
-	achip->strength = achip->ecc_strength;
-	ecc_addr = mtd->writesize + (mtd->oobsize - ecc->total);
-	achip->eccval = ecc_addr | (ecc->total << ECC_SIZE_SHIFT) |
-			(achip->strength << BCH_EN_SHIFT);
-
-	if (chip->ecc_step_ds >= 1024)
+	if (chip->base.eccreq.step_size >= 1024)
 		achip->pktsize = 1024;
 	else
 		achip->pktsize = 512;
@@ -614,7 +697,6 @@ static void anfc_parse_instructions(struct nand_chip *chip,
 			else
 				nfc_op->cmds[0] = instr->ctx.cmd.opcode;
 			nfc->curr_cmd = nfc_op->cmds[0];
-
 			break;
 
 		case NAND_OP_ADDR_INSTR:
@@ -668,7 +750,7 @@ static int anfc_reset_cmd_type_exec(struct nand_chip *chip,
 	if (nfc_op.cmds[0] != NAND_CMD_RESET)
 		return 0;
 
-	anfc_prepare_cmd(nfc, nfc_op.cmds[0], 0, 0, 0, 0);
+	anfc_prepare_cmd(chip, nfc_op.cmds[0], 0, 0, 0, 0);
 	nfc->prog = PROG_RST;
 	anfc_enable_intrs(nfc, XFER_COMPLETE);
 	writel(nfc->prog, nfc->base + PROG_OFST);
@@ -690,7 +772,7 @@ static int anfc_read_id_type_exec(struct nand_chip *chip,
 	instr = nfc_op.data_instr;
 	op_id = nfc_op.data_instr_idx;
 	len = nand_subop_get_data_len(subop, op_id);
-	anfc_prepare_cmd(nfc, nfc_op.cmds[0], 0, 0, 0, 1);
+	anfc_prepare_cmd(chip, nfc_op.cmds[0], 0, 0, 0, 1);
 	anfc_setpagecoladdr(nfc, nfc_op.row, nfc_op.col);
 	nfc->prog = PROG_RDID;
 	anfc_rw_pio_op(mtd, nfc->buf, roundup(len, 4), 1, PROG_RDID, 1, 0);
@@ -712,7 +794,7 @@ static int anfc_read_status_exec(struct nand_chip *chip,
 	instr = nfc_op.data_instr;
 	op_id = nfc_op.data_instr_idx;
 
-	anfc_prepare_cmd(nfc, nfc_op.cmds[0], 0, 0, 0, 0);
+	anfc_prepare_cmd(chip, nfc_op.cmds[0], 0, 0, 0, 0);
 	anfc_setpktszcnt(nfc, achip->spktsize / 4, 1);
 	anfc_setpagecoladdr(nfc, nfc_op.row, nfc_op.col);
 	nfc->prog = PROG_STATUS;
@@ -736,9 +818,8 @@ static int anfc_read_status_exec(struct nand_chip *chip,
 	return 0;
 }
 
-static int anfc_erase_and_zero_len_page_read_type_exec(struct nand_chip *chip,
-						       const struct nand_subop
-						       *subop)
+static int anfc_erase_zerolenpg_read_type_exec(struct nand_chip *chip,
+					       const struct nand_subop *subop)
 {
 	const struct nand_op_instr *instr;
 	struct anfc_nand_chip *achip = to_anfc_nand(chip);
@@ -763,7 +844,7 @@ static int anfc_erase_and_zero_len_page_read_type_exec(struct nand_chip *chip,
 		dma_mode = 1;
 	}
 
-	anfc_prepare_cmd(nfc, nfc_op.cmds[0], nfc_op.cmds[1], dma_mode,
+	anfc_prepare_cmd(chip, nfc_op.cmds[0], nfc_op.cmds[1], dma_mode,
 			 write_size, addrcycles);
 	anfc_setpagecoladdr(nfc, nfc_op.row, nfc_op.col);
 
@@ -809,7 +890,7 @@ static int anfc_read_param_get_feature_sp_read_type_exec(struct nand_chip *chip,
 		dma_mode = 1;
 	}
 
-	anfc_prepare_cmd(nfc, nfc_op.cmds[0], 0, dma_mode, write_size,
+	anfc_prepare_cmd(chip, nfc_op.cmds[0], 0, dma_mode, write_size,
 			 addrcycles);
 	anfc_setpagecoladdr(nfc, nfc_op.row, nfc_op.col);
 
@@ -855,7 +936,7 @@ static int anfc_setfeature_type_exec(struct nand_chip *chip,
 	nfc->prog = PROG_SET_FEATURE;
 	instr = nfc_op.data_instr;
 	op_id = nfc_op.data_instr_idx;
-	anfc_prepare_cmd(nfc, nfc_op.cmds[0], 0, 0, 0, 1);
+	anfc_prepare_cmd(chip, nfc_op.cmds[0], 0, 0, 0, 1);
 	anfc_setpagecoladdr(nfc, nfc_op.row, nfc_op.col);
 
 	if (!nfc_op.data_instr)
@@ -881,7 +962,7 @@ static int anfc_change_read_column_type_exec(struct nand_chip *chip,
 	instr = nfc_op.data_instr;
 	op_id = nfc_op.data_instr_idx;
 
-	anfc_prepare_cmd(nfc, nfc_op.cmds[0], nfc_op.cmds[1], 1,
+	anfc_prepare_cmd(chip, nfc_op.cmds[0], nfc_op.cmds[1], 1,
 			 mtd->writesize, 2);
 	anfc_setpagecoladdr(nfc, nfc_op.row, nfc_op.col);
 
@@ -913,7 +994,7 @@ static int anfc_page_read_type_exec(struct nand_chip *chip,
 
 	addrcycles = achip->raddr_cycles + achip->caddr_cycles;
 
-	anfc_prepare_cmd(nfc, nfc_op.cmds[0], nfc_op.cmds[1], 1,
+	anfc_prepare_cmd(chip, nfc_op.cmds[0], nfc_op.cmds[1], 1,
 			 mtd->writesize, addrcycles);
 	anfc_setpagecoladdr(nfc, nfc_op.row, nfc_op.col);
 
@@ -941,7 +1022,7 @@ static int anfc_zero_len_page_write_type_exec(struct nand_chip *chip,
 	nfc->prog = PROG_PGRD;
 	addrcycles = achip->raddr_cycles + achip->caddr_cycles;
 
-	anfc_prepare_cmd(nfc, nfc_op.cmds[0], NAND_CMD_PAGEPROG, 1,
+	anfc_prepare_cmd(chip, nfc_op.cmds[0], NAND_CMD_PAGEPROG, 1,
 			 mtd->writesize, addrcycles);
 	anfc_setpagecoladdr(nfc, nfc_op.row, nfc_op.col);
 
@@ -965,10 +1046,9 @@ static int anfc_page_write_type_exec(struct nand_chip *chip,
 	nfc->prog = PROG_PGPROG;
 
 	addrcycles = achip->raddr_cycles + achip->caddr_cycles;
-	anfc_prepare_cmd(nfc, nfc_op.cmds[0], nfc_op.cmds[1], 1,
+	anfc_prepare_cmd(chip, nfc_op.cmds[0], nfc_op.cmds[1], 1,
 			 mtd->writesize, addrcycles);
 	anfc_setpagecoladdr(nfc, nfc_op.row, nfc_op.col);
-
 	if (!nfc_op.data_instr)
 		return 0;
 
@@ -993,7 +1073,7 @@ static int anfc_page_write_nowait_type_exec(struct nand_chip *chip,
 	nfc->prog = PROG_PGPROG;
 
 	addrcycles = achip->raddr_cycles + achip->caddr_cycles;
-	anfc_prepare_cmd(nfc, nfc_op.cmds[0], NAND_CMD_PAGEPROG, 1,
+	anfc_prepare_cmd(chip, nfc_op.cmds[0], NAND_CMD_PAGEPROG, 1,
 			 mtd->writesize, addrcycles);
 	anfc_setpagecoladdr(nfc, nfc_op.row, nfc_op.col);
 
@@ -1038,7 +1118,7 @@ static const struct nand_op_parser anfc_op_parser = NAND_OP_PARSER(
 		NAND_OP_PARSER_PAT_ADDR_ELEM(false, ANFC_MAX_ADDR_CYCLES),
 		NAND_OP_PARSER_PAT_DATA_IN_ELEM(false, ANFC_MAX_CHUNK_SIZE)),
 	NAND_OP_PARSER_PATTERN(
-		anfc_erase_and_zero_len_page_read_type_exec,
+		anfc_erase_zerolenpg_read_type_exec,
 		NAND_OP_PARSER_PAT_CMD_ELEM(false),
 		NAND_OP_PARSER_PAT_ADDR_ELEM(false, ANFC_MAX_ADDR_CYCLES),
 		NAND_OP_PARSER_PAT_CMD_ELEM(false),
@@ -1074,19 +1154,10 @@ static const struct nand_op_parser anfc_op_parser = NAND_OP_PARSER(
 		NAND_OP_PARSER_PAT_ADDR_ELEM(false, ANFC_MAX_ADDR_CYCLES)),
 	);
 
-static int anfc_exec_op(struct nand_chip *chip,
-			const struct nand_operation *op,
-			bool check_only)
-{
-	return nand_op_parser_exec_op(chip, &anfc_op_parser,
-				      op, check_only);
-}
-
-static void anfc_select_chip(struct mtd_info *mtd, int num)
+static void anfc_select_chip(struct nand_chip *chip, int num)
 {
 	u32 val;
 	int ret;
-	struct nand_chip *chip = mtd_to_nand(mtd);
 	struct anfc_nand_chip *achip = to_anfc_nand(chip);
 	struct anfc_nand_controller *nfc = to_anfc(chip->controller);
 
@@ -1112,6 +1183,15 @@ static void anfc_select_chip(struct mtd_info *mtd, int num)
 	nfc->csnum = achip->csnum;
 	writel(achip->eccval, nfc->base + ECC_OFST);
 	writel(achip->inftimeval, nfc->base + DATA_INTERFACE_OFST);
+}
+
+static int anfc_exec_op(struct nand_chip *chip,
+			const struct nand_operation *op,
+			bool check_only)
+{
+	anfc_select_chip(chip, op->cs);
+	return nand_op_parser_exec_op(chip, &anfc_op_parser,
+				      op, check_only);
 }
 
 static irqreturn_t anfc_irq_handler(int irq, void *ptr)
@@ -1158,19 +1238,19 @@ static int anfc_nand_attach_chip(struct nand_chip *chip)
 
 static const struct nand_controller_ops anfc_nand_controller_ops = {
 	.attach_chip = anfc_nand_attach_chip,
+	.exec_op = anfc_exec_op,
 };
 
 static int anfc_init_timing_mode(struct anfc_nand_controller *nfc,
 				 struct anfc_nand_chip *achip)
 {
 	struct nand_chip *chip = &achip->chip;
-	struct mtd_info *mtd = nand_to_mtd(chip);
 	int mode, err;
-	unsigned int feature[2];
+	u8 feature[ONFI_SUBFEATURE_PARAM_LEN];
 	u32 inftimeval;
 	bool change_sdr_clk = false;
 
-	memset(feature, 0, NVDDR_MODE_PACKET_SIZE);
+	memset(feature, 0, sizeof(feature));
 	/* Get nvddr timing modes */
 	mode = onfi_get_sync_timing_mode(chip) & 0xff;
 	if (!mode) {
@@ -1185,12 +1265,12 @@ static int anfc_init_timing_mode(struct anfc_nand_controller *nfc,
 	}
 
 	feature[0] = mode;
-	chip->select_chip(mtd, achip->csnum);
-	err = chip->set_features(mtd, chip, ONFI_FEATURE_ADDR_TIMING_MODE,
-				      (uint8_t *)feature);
-	chip->select_chip(mtd, -1);
-	if (err)
-		return err;
+	nand_select_target(chip, achip->csnum);
+	anfc_prepare_cmd(chip, NAND_CMD_SET_FEATURES, 0, 0, 0, 1);
+	anfc_setpagecoladdr(nfc, 0x0, ONFI_FEATURE_ADDR_TIMING_MODE);
+
+	anfc_write_data_op(chip, feature, sizeof(feature), 1, 0);
+	nand_deselect_target(chip);
 
 	/*
 	 * SDR timing modes 2-5 will not work for the arasan nand when
@@ -1234,23 +1314,19 @@ static int anfc_nand_chip_init(struct anfc_nand_controller *nfc,
 	mtd->name = devm_kasprintf(nfc->dev, GFP_KERNEL, "arasan_nand.%d",
 				   anand_chip->csnum);
 	mtd->dev.parent = nfc->dev;
-
-	chip->chip_delay = 30;
 	chip->controller = &nfc->controller;
 	chip->options = NAND_BUSWIDTH_AUTO | NAND_NO_SUBPAGE_WRITE;
 	chip->bbt_options = NAND_BBT_USE_FLASH;
-	chip->select_chip = anfc_select_chip;
-	chip->exec_op = anfc_exec_op;
+	chip->legacy.select_chip = anfc_select_chip;
 	nand_set_flash_node(chip, np);
 
 	anand_chip->spktsize = SDR_MODE_PACKET_SIZE;
 
-	ret = nand_scan(mtd, 1);
+	ret = nand_scan(chip, 1);
 	if (ret) {
 		dev_err(nfc->dev, "nand_scan_tail for NAND failed\n");
 		return ret;
 	}
-
 	ret = anfc_init_timing_mode(nfc, anand_chip);
 	if (ret) {
 		dev_err(nfc->dev, "timing mode init failed\n");
@@ -1343,7 +1419,7 @@ static int anfc_probe(struct platform_device *pdev)
 
 nandchip_clean_up:
 	list_for_each_entry(anand_chip, &nfc->chips, node)
-		nand_release(nand_to_mtd(&anand_chip->chip));
+		nand_release(&anand_chip->chip);
 	pm_runtime_disable(&pdev->dev);
 	pm_runtime_set_suspended(&pdev->dev);
 	clk_disable_unprepare(nfc->clk_flash);
@@ -1359,8 +1435,7 @@ static int anfc_remove(struct platform_device *pdev)
 	struct anfc_nand_chip *anand_chip;
 
 	list_for_each_entry(anand_chip, &nfc->chips, node)
-		nand_release(nand_to_mtd(&anand_chip->chip));
-
+		nand_release(&anand_chip->chip);
 	pm_runtime_disable(&pdev->dev);
 	pm_runtime_set_suspended(&pdev->dev);
 	pm_runtime_dont_use_autosuspend(&pdev->dev);
@@ -1436,7 +1511,6 @@ static const struct dev_pm_ops anfc_pm_ops = {
 	.runtime_suspend = anfc_runtime_suspend,
 	.runtime_idle = anfc_runtime_idle,
 };
-
 static struct platform_driver anfc_driver = {
 	.driver = {
 		.name = "arasan-nand-controller",

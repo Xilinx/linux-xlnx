@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-only
 SUBDIRS := ion
 
 TEST_PROGS := run.sh
@@ -6,7 +7,7 @@ TEST_PROGS := run.sh
 
 include ../lib.mk
 
-all: khdr
+all:
 	@for DIR in $(SUBDIRS); do		\
 		BUILD_TARGET=$(OUTPUT)/$$DIR;	\
 		mkdir $$BUILD_TARGET  -p;	\

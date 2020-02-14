@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-2.0
 // Copyright (c) 2017-2018, The Linux Foundation. All rights reserved.
 
+#include <linux/acpi.h>
 #include <linux/clk.h>
 #include <linux/slab.h>
 #include <linux/dma-mapping.h>
@@ -215,6 +216,16 @@ static void geni_se_io_init(void __iomem *base)
 	writel_relaxed(FORCE_DEFAULT, base + GENI_FORCE_DEFAULT_REG);
 }
 
+static void geni_se_irq_clear(struct geni_se *se)
+{
+	writel_relaxed(0, se->base + SE_GSI_EVENT_EN);
+	writel_relaxed(0xffffffff, se->base + SE_GENI_M_IRQ_CLEAR);
+	writel_relaxed(0xffffffff, se->base + SE_GENI_S_IRQ_CLEAR);
+	writel_relaxed(0xffffffff, se->base + SE_DMA_TX_IRQ_CLR);
+	writel_relaxed(0xffffffff, se->base + SE_DMA_RX_IRQ_CLR);
+	writel_relaxed(0xffffffff, se->base + SE_IRQ_EN);
+}
+
 /**
  * geni_se_init() - Initialize the GENI serial engine
  * @se:		Pointer to the concerned serial engine.
@@ -228,6 +239,7 @@ void geni_se_init(struct geni_se *se, u32 rx_wm, u32 rx_rfr)
 {
 	u32 val;
 
+	geni_se_irq_clear(se);
 	geni_se_io_init(se->base);
 	geni_se_io_set_mode(se->base);
 
@@ -249,12 +261,7 @@ static void geni_se_select_fifo_mode(struct geni_se *se)
 	u32 proto = geni_se_read_proto(se);
 	u32 val;
 
-	writel_relaxed(0, se->base + SE_GSI_EVENT_EN);
-	writel_relaxed(0xffffffff, se->base + SE_GENI_M_IRQ_CLEAR);
-	writel_relaxed(0xffffffff, se->base + SE_GENI_S_IRQ_CLEAR);
-	writel_relaxed(0xffffffff, se->base + SE_DMA_TX_IRQ_CLR);
-	writel_relaxed(0xffffffff, se->base + SE_DMA_RX_IRQ_CLR);
-	writel_relaxed(0xffffffff, se->base + SE_IRQ_EN);
+	geni_se_irq_clear(se);
 
 	val = readl_relaxed(se->base + SE_GENI_M_IRQ_EN);
 	if (proto != GENI_SE_UART) {
@@ -277,12 +284,7 @@ static void geni_se_select_dma_mode(struct geni_se *se)
 {
 	u32 val;
 
-	writel_relaxed(0, se->base + SE_GSI_EVENT_EN);
-	writel_relaxed(0xffffffff, se->base + SE_GENI_M_IRQ_CLEAR);
-	writel_relaxed(0xffffffff, se->base + SE_GENI_S_IRQ_CLEAR);
-	writel_relaxed(0xffffffff, se->base + SE_DMA_TX_IRQ_CLR);
-	writel_relaxed(0xffffffff, se->base + SE_DMA_RX_IRQ_CLR);
-	writel_relaxed(0xffffffff, se->base + SE_IRQ_EN);
+	geni_se_irq_clear(se);
 
 	val = readl_relaxed(se->base + SE_GENI_DMA_MODE_EN);
 	val |= GENI_DMA_MODE_EN;
@@ -449,6 +451,9 @@ int geni_se_resources_off(struct geni_se *se)
 {
 	int ret;
 
+	if (has_acpi_companion(se->dev))
+		return 0;
+
 	ret = pinctrl_pm_select_sleep_state(se->dev);
 	if (ret)
 		return ret;
@@ -486,6 +491,9 @@ int geni_se_resources_on(struct geni_se *se)
 {
 	int ret;
 
+	if (has_acpi_companion(se->dev))
+		return 0;
+
 	ret = geni_se_clks_on(se);
 	if (ret)
 		return ret;
@@ -513,7 +521,7 @@ EXPORT_SYMBOL(geni_se_resources_on);
  */
 int geni_se_clk_tbl_get(struct geni_se *se, unsigned long **tbl)
 {
-	unsigned long freq = 0;
+	long freq = 0;
 	int i;
 
 	if (se->clk_perf_tbl) {
@@ -529,7 +537,7 @@ int geni_se_clk_tbl_get(struct geni_se *se, unsigned long **tbl)
 
 	for (i = 0; i < MAX_CLK_PERF_LEVEL; i++) {
 		freq = clk_round_rate(se->clk, freq + 1);
-		if (!freq || freq == se->clk_perf_tbl[i - 1])
+		if (freq <= 0 || freq == se->clk_perf_tbl[i - 1])
 			break;
 		se->clk_perf_tbl[i] = freq;
 	}
@@ -544,16 +552,17 @@ EXPORT_SYMBOL(geni_se_clk_tbl_get);
  * @se:		Pointer to the concerned serial engine.
  * @req_freq:	Requested clock frequency.
  * @index:	Index of the resultant frequency in the table.
- * @res_freq:	Resultant frequency which matches or is closer to the
- *		requested frequency.
+ * @res_freq:	Resultant frequency of the source clock.
  * @exact:	Flag to indicate exact multiple requirement of the requested
  *		frequency.
  *
- * This function is called by the protocol drivers to determine the matching
- * or exact multiple of the requested frequency, as provided by the serial
- * engine clock in order to meet the performance requirements. If there is
- * no matching or exact multiple of the requested frequency found, then it
- * selects the closest floor frequency, if exact flag is not set.
+ * This function is called by the protocol drivers to determine the best match
+ * of the requested frequency as provided by the serial engine clock in order
+ * to meet the performance requirements.
+ *
+ * If we return success:
+ * - if @exact is true  then @res_freq / <an_integer> == @req_freq
+ * - if @exact is false then @res_freq / <an_integer> <= @req_freq
  *
  * Return: 0 on success, standard Linux error codes on failure.
  */
@@ -564,6 +573,9 @@ int geni_se_clk_freq_match(struct geni_se *se, unsigned long req_freq,
 	unsigned long *tbl;
 	int num_clk_levels;
 	int i;
+	unsigned long best_delta;
+	unsigned long new_delta;
+	unsigned int divider;
 
 	num_clk_levels = geni_se_clk_tbl_get(se, &tbl);
 	if (num_clk_levels < 0)
@@ -572,18 +584,21 @@ int geni_se_clk_freq_match(struct geni_se *se, unsigned long req_freq,
 	if (num_clk_levels == 0)
 		return -EINVAL;
 
-	*res_freq = 0;
+	best_delta = ULONG_MAX;
 	for (i = 0; i < num_clk_levels; i++) {
-		if (!(tbl[i] % req_freq)) {
+		divider = DIV_ROUND_UP(tbl[i], req_freq);
+		new_delta = req_freq - tbl[i] / divider;
+		if (new_delta < best_delta) {
+			/* We have a new best! */
 			*index = i;
 			*res_freq = tbl[i];
-			return 0;
-		}
 
-		if (!(*res_freq) || ((tbl[i] > *res_freq) &&
-				     (tbl[i] < req_freq))) {
-			*index = i;
-			*res_freq = tbl[i];
+			/* If the new best is exact then we're done */
+			if (new_delta == 0)
+				return 0;
+
+			/* Record how close we got */
+			best_delta = new_delta;
 		}
 	}
 
@@ -614,6 +629,9 @@ int geni_se_tx_dma_prep(struct geni_se *se, void *buf, size_t len,
 {
 	struct geni_wrapper *wrapper = se->wrapper;
 	u32 val;
+
+	if (!wrapper)
+		return -EINVAL;
 
 	*iova = dma_map_single(wrapper->dev, buf, len, DMA_TO_DEVICE);
 	if (dma_mapping_error(wrapper->dev, *iova))
@@ -647,6 +665,9 @@ int geni_se_rx_dma_prep(struct geni_se *se, void *buf, size_t len,
 {
 	struct geni_wrapper *wrapper = se->wrapper;
 	u32 val;
+
+	if (!wrapper)
+		return -EINVAL;
 
 	*iova = dma_map_single(wrapper->dev, buf, len, DMA_FROM_DEVICE);
 	if (dma_mapping_error(wrapper->dev, *iova))
@@ -716,12 +737,14 @@ static int geni_se_probe(struct platform_device *pdev)
 	if (IS_ERR(wrapper->base))
 		return PTR_ERR(wrapper->base);
 
-	wrapper->ahb_clks[0].id = "m-ahb";
-	wrapper->ahb_clks[1].id = "s-ahb";
-	ret = devm_clk_bulk_get(dev, NUM_AHB_CLKS, wrapper->ahb_clks);
-	if (ret) {
-		dev_err(dev, "Err getting AHB clks %d\n", ret);
-		return ret;
+	if (!has_acpi_companion(&pdev->dev)) {
+		wrapper->ahb_clks[0].id = "m-ahb";
+		wrapper->ahb_clks[1].id = "s-ahb";
+		ret = devm_clk_bulk_get(dev, NUM_AHB_CLKS, wrapper->ahb_clks);
+		if (ret) {
+			dev_err(dev, "Err getting AHB clks %d\n", ret);
+			return ret;
+		}
 	}
 
 	dev_set_drvdata(dev, wrapper);

@@ -609,6 +609,10 @@ qed_sp_update_accept_mode(struct qed_hwfn *p_hwfn,
 			  (!!(accept_filter & QED_ACCEPT_MCAST_MATCHED) &&
 			   !!(accept_filter & QED_ACCEPT_MCAST_UNMATCHED)));
 
+		SET_FIELD(state, ETH_VPORT_TX_MODE_UCAST_ACCEPT_ALL,
+			  (!!(accept_filter & QED_ACCEPT_UCAST_MATCHED) &&
+			   !!(accept_filter & QED_ACCEPT_UCAST_UNMATCHED)));
+
 		SET_FIELD(state, ETH_VPORT_TX_MODE_BCAST_ACCEPT_ALL,
 			  !!(accept_filter & QED_ACCEPT_BCAST));
 
@@ -740,9 +744,13 @@ int qed_sp_vport_update(struct qed_hwfn *p_hwfn,
 
 	rc = qed_sp_vport_update_rss(p_hwfn, p_ramrod, p_rss_params);
 	if (rc) {
-		/* Return spq entry which is taken in qed_sp_init_request()*/
-		qed_spq_return_entry(p_hwfn, p_ent);
+		qed_sp_destroy_request(p_hwfn, p_ent);
 		return rc;
+	}
+
+	if (p_params->update_ctl_frame_check) {
+		p_cmn->ctl_frame_mac_check_en = p_params->mac_chk_en;
+		p_cmn->ctl_frame_ethtype_check_en = p_params->ethtype_chk_en;
 	}
 
 	/* Update mcast bins for VFs, PF doesn't use this functionality */
@@ -1355,6 +1363,7 @@ qed_filter_ucast_common(struct qed_hwfn *p_hwfn,
 			DP_NOTICE(p_hwfn,
 				  "%d is not supported yet\n",
 				  p_filter_cmd->opcode);
+			qed_sp_destroy_request(p_hwfn, *pp_ent);
 			return -EINVAL;
 		}
 
@@ -1622,10 +1631,9 @@ static void __qed_get_vport_pstats_addrlen(struct qed_hwfn *p_hwfn,
 	}
 }
 
-static void __qed_get_vport_pstats(struct qed_hwfn *p_hwfn,
-				   struct qed_ptt *p_ptt,
-				   struct qed_eth_stats *p_stats,
-				   u16 statistics_bin)
+static noinline_for_stack void
+__qed_get_vport_pstats(struct qed_hwfn *p_hwfn, struct qed_ptt *p_ptt,
+		       struct qed_eth_stats *p_stats, u16 statistics_bin)
 {
 	struct eth_pstorm_per_queue_stat pstats;
 	u32 pstats_addr = 0, pstats_len = 0;
@@ -1652,10 +1660,9 @@ static void __qed_get_vport_pstats(struct qed_hwfn *p_hwfn,
 	    HILO_64_REGPAIR(pstats.error_drop_pkts);
 }
 
-static void __qed_get_vport_tstats(struct qed_hwfn *p_hwfn,
-				   struct qed_ptt *p_ptt,
-				   struct qed_eth_stats *p_stats,
-				   u16 statistics_bin)
+static noinline_for_stack void
+__qed_get_vport_tstats(struct qed_hwfn *p_hwfn, struct qed_ptt *p_ptt,
+		       struct qed_eth_stats *p_stats, u16 statistics_bin)
 {
 	struct tstorm_per_port_stat tstats;
 	u32 tstats_addr, tstats_len;
@@ -1700,10 +1707,9 @@ static void __qed_get_vport_ustats_addrlen(struct qed_hwfn *p_hwfn,
 	}
 }
 
-static void __qed_get_vport_ustats(struct qed_hwfn *p_hwfn,
-				   struct qed_ptt *p_ptt,
-				   struct qed_eth_stats *p_stats,
-				   u16 statistics_bin)
+static noinline_for_stack
+void __qed_get_vport_ustats(struct qed_hwfn *p_hwfn, struct qed_ptt *p_ptt,
+			    struct qed_eth_stats *p_stats, u16 statistics_bin)
 {
 	struct eth_ustorm_per_queue_stat ustats;
 	u32 ustats_addr = 0, ustats_len = 0;
@@ -1742,10 +1748,9 @@ static void __qed_get_vport_mstats_addrlen(struct qed_hwfn *p_hwfn,
 	}
 }
 
-static void __qed_get_vport_mstats(struct qed_hwfn *p_hwfn,
-				   struct qed_ptt *p_ptt,
-				   struct qed_eth_stats *p_stats,
-				   u16 statistics_bin)
+static noinline_for_stack void
+__qed_get_vport_mstats(struct qed_hwfn *p_hwfn, struct qed_ptt *p_ptt,
+		       struct qed_eth_stats *p_stats, u16 statistics_bin)
 {
 	struct eth_mstorm_per_queue_stat mstats;
 	u32 mstats_addr = 0, mstats_len = 0;
@@ -1771,9 +1776,9 @@ static void __qed_get_vport_mstats(struct qed_hwfn *p_hwfn,
 	    HILO_64_REGPAIR(mstats.tpa_coalesced_bytes);
 }
 
-static void __qed_get_vport_port_stats(struct qed_hwfn *p_hwfn,
-				       struct qed_ptt *p_ptt,
-				       struct qed_eth_stats *p_stats)
+static noinline_for_stack void
+__qed_get_vport_port_stats(struct qed_hwfn *p_hwfn, struct qed_ptt *p_ptt,
+			   struct qed_eth_stats *p_stats)
 {
 	struct qed_eth_stats_common *p_common = &p_stats->common;
 	struct port_stats port_stats;
@@ -1889,6 +1894,7 @@ static void _qed_get_vport_stats(struct qed_dev *cdev,
 		struct qed_hwfn *p_hwfn = &cdev->hwfns[i];
 		struct qed_ptt *p_ptt = IS_PF(cdev) ? qed_ptt_acquire(p_hwfn)
 						    :  NULL;
+		bool b_get_port_stats;
 
 		if (IS_PF(cdev)) {
 			/* The main vport index is relative first */
@@ -1903,8 +1909,9 @@ static void _qed_get_vport_stats(struct qed_dev *cdev,
 			continue;
 		}
 
+		b_get_port_stats = IS_PF(cdev) && IS_LEAD_HWFN(p_hwfn);
 		__qed_get_vport_stats(p_hwfn, p_ptt, stats, fw_vport,
-				      IS_PF(cdev) ? true : false);
+				      b_get_port_stats);
 
 out:
 		if (IS_PF(cdev) && p_ptt)
@@ -2056,13 +2063,13 @@ qed_configure_rfs_ntuple_filter(struct qed_hwfn *p_hwfn,
 	} else {
 		rc = qed_fw_vport(p_hwfn, p_params->vport_id, &abs_vport_id);
 		if (rc)
-			return rc;
+			goto err;
 
 		if (p_params->qid != QED_RFS_NTUPLE_QID_RSS) {
 			rc = qed_fw_l2_queue(p_hwfn, p_params->qid,
 					     &abs_rx_q_id);
 			if (rc)
-				return rc;
+				goto err;
 
 			p_ramrod->rx_qid_valid = 1;
 			p_ramrod->rx_qid = cpu_to_le16(abs_rx_q_id);
@@ -2083,6 +2090,10 @@ qed_configure_rfs_ntuple_filter(struct qed_hwfn *p_hwfn,
 		   (u64)p_params->addr, p_params->length);
 
 	return qed_spq_post(p_hwfn, p_ent, NULL);
+
+err:
+	qed_sp_destroy_request(p_hwfn, p_ent);
+	return rc;
 }
 
 int qed_get_rxq_coalesce(struct qed_hwfn *p_hwfn,
@@ -2096,7 +2107,7 @@ int qed_get_rxq_coalesce(struct qed_hwfn *p_hwfn,
 
 	rc = qed_dmae_grc2host(p_hwfn, p_ptt, CAU_REG_SB_VAR_MEMORY +
 			       p_cid->sb_igu_id * sizeof(u64),
-			       (u64)(uintptr_t)&sb_entry, 2, 0);
+			       (u64)(uintptr_t)&sb_entry, 2, NULL);
 	if (rc) {
 		DP_ERR(p_hwfn, "dmae_grc2host failed %d\n", rc);
 		return rc;
@@ -2129,7 +2140,7 @@ int qed_get_txq_coalesce(struct qed_hwfn *p_hwfn,
 
 	rc = qed_dmae_grc2host(p_hwfn, p_ptt, CAU_REG_SB_VAR_MEMORY +
 			       p_cid->sb_igu_id * sizeof(u64),
-			       (u64)(uintptr_t)&sb_entry, 2, 0);
+			       (u64)(uintptr_t)&sb_entry, 2, NULL);
 	if (rc) {
 		DP_ERR(p_hwfn, "dmae_grc2host failed %d\n", rc);
 		return rc;
@@ -2203,7 +2214,7 @@ static int qed_fill_eth_dev_info(struct qed_dev *cdev,
 			u16 num_queues = 0;
 
 			/* Since the feature controls only queue-zones,
-			 * make sure we have the contexts [rx, tx, xdp] to
+			 * make sure we have the contexts [rx, xdp, tcs] to
 			 * match.
 			 */
 			for_each_hwfn(cdev, i) {
@@ -2213,7 +2224,8 @@ static int qed_fill_eth_dev_info(struct qed_dev *cdev,
 				u16 cids;
 
 				cids = hwfn->pf_params.eth_pf_params.num_cons;
-				num_queues += min_t(u16, l2_queues, cids / 3);
+				cids /= (2 + info->num_tc);
+				num_queues += min_t(u16, l2_queues, cids);
 			}
 
 			/* queues might theoretically be >256, but interrupts'
@@ -2684,7 +2696,8 @@ static int qed_configure_filter_rx_mode(struct qed_dev *cdev,
 	if (type == QED_FILTER_RX_MODE_TYPE_PROMISC) {
 		accept_flags.rx_accept_filter |= QED_ACCEPT_UCAST_UNMATCHED |
 						 QED_ACCEPT_MCAST_UNMATCHED;
-		accept_flags.tx_accept_filter |= QED_ACCEPT_MCAST_UNMATCHED;
+		accept_flags.tx_accept_filter |= QED_ACCEPT_UCAST_UNMATCHED |
+						 QED_ACCEPT_MCAST_UNMATCHED;
 	} else if (type == QED_FILTER_RX_MODE_TYPE_MULTI_PROMISC) {
 		accept_flags.rx_accept_filter |= QED_ACCEPT_MCAST_UNMATCHED;
 		accept_flags.tx_accept_filter |= QED_ACCEPT_MCAST_UNMATCHED;
@@ -2856,7 +2869,8 @@ static int qed_get_coalesce(struct qed_dev *cdev, u16 *coal, void *handle)
 	p_hwfn = p_cid->p_owner;
 	rc = qed_get_queue_coalesce(p_hwfn, coal, handle);
 	if (rc)
-		DP_NOTICE(p_hwfn, "Unable to read queue coalescing\n");
+		DP_VERBOSE(cdev, QED_MSG_DEBUG,
+			   "Unable to read queue coalescing\n");
 
 	return rc;
 }

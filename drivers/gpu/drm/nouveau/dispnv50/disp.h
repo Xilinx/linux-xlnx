@@ -41,9 +41,12 @@ struct nv50_disp_interlock {
 		NV50_DISP_INTERLOCK__SIZE
 	} type;
 	u32 data;
+	u32 wimm;
 };
 
 void corec37d_ntfy_init(struct nouveau_bo *, u32);
+
+void head907d_olut_load(struct drm_color_lut *, int size, void __iomem *);
 
 struct nv50_chan {
 	struct nvif_object user;

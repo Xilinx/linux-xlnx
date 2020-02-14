@@ -821,8 +821,6 @@ xvip_m2m_enum_fmt(struct file *file, void *fh, struct v4l2_fmtdesc *f)
 			return PTR_ERR(fmt);
 
 		f->pixelformat = fmt->fourcc;
-		strlcpy(f->description, fmt->description,
-			sizeof(f->description));
 		return 0;
 	}
 
@@ -858,7 +856,6 @@ xvip_m2m_enum_fmt(struct file *file, void *fh, struct v4l2_fmtdesc *f)
 
 	fmtinfo = xvip_get_format_by_fourcc(fmts[i]);
 	f->pixelformat = fmtinfo->fourcc;
-	strlcpy(f->description, fmtinfo->description, sizeof(f->description));
 
 	return 0;
 }
@@ -1115,12 +1112,12 @@ xvip_m2m_s_selection(struct file *file, void *fh, struct v4l2_selection *s)
 static const struct v4l2_ioctl_ops xvip_m2m_ioctl_ops = {
 	.vidioc_querycap		= xvip_dma_querycap,
 
-	.vidioc_enum_fmt_vid_cap_mplane	= xvip_m2m_enum_fmt,
+	.vidioc_enum_fmt_vid_cap	= xvip_m2m_enum_fmt,
 	.vidioc_g_fmt_vid_cap_mplane	= xvip_m2m_get_fmt,
 	.vidioc_try_fmt_vid_cap_mplane	= xvip_m2m_try_fmt,
 	.vidioc_s_fmt_vid_cap_mplane	= xvip_m2m_set_fmt,
 
-	.vidioc_enum_fmt_vid_out_mplane	= xvip_m2m_enum_fmt,
+	.vidioc_enum_fmt_vid_out	= xvip_m2m_enum_fmt,
 	.vidioc_g_fmt_vid_out_mplane	= xvip_m2m_get_fmt,
 	.vidioc_try_fmt_vid_out_mplane	= xvip_m2m_try_fmt,
 	.vidioc_s_fmt_vid_out_mplane	= xvip_m2m_set_fmt,
@@ -1968,6 +1965,7 @@ static void xvip_graph_cleanup(struct xvip_m2m_dev *xdev)
 	struct xvip_graph_entity *entityp;
 	struct xvip_graph_entity *entity;
 
+	v4l2_async_notifier_cleanup(&xdev->notifier);
 	v4l2_async_notifier_unregister(&xdev->notifier);
 
 	list_for_each_entry_safe(entity, entityp, &xdev->entities, list) {
@@ -1979,9 +1977,6 @@ static void xvip_graph_cleanup(struct xvip_m2m_dev *xdev)
 static int xvip_graph_init(struct xvip_m2m_dev *xdev)
 {
 	struct xvip_graph_entity *entity;
-	struct v4l2_async_subdev **subdevs = NULL;
-	unsigned int num_subdevs;
-	unsigned int i;
 	int ret;
 
 	/* Init the DMA channels. */
@@ -2005,20 +2000,13 @@ static int xvip_graph_init(struct xvip_m2m_dev *xdev)
 	}
 
 	/* Register the subdevices notifier. */
-	num_subdevs = xdev->num_subdevs;
-	subdevs = devm_kzalloc(xdev->dev, sizeof(*subdevs) * num_subdevs,
-			       GFP_KERNEL);
-	if (!subdevs) {
-		ret = -ENOMEM;
-		goto done;
+	list_for_each_entry(entity, &xdev->entities, list) {
+		ret = v4l2_async_notifier_add_subdev(&xdev->notifier,
+						     &entity->asd);
+		if (ret)
+			goto done;
 	}
 
-	i = 0;
-	list_for_each_entry(entity, &xdev->entities, list)
-		subdevs[i++] = &entity->asd;
-
-	xdev->notifier.subdevs = subdevs;
-	xdev->notifier.num_subdevs = num_subdevs;
 	xdev->notifier.ops = &xvip_graph_notify_ops;
 
 	ret = v4l2_async_notifier_register(&xdev->v4l2_dev, &xdev->notifier);

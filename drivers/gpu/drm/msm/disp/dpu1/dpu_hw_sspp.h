@@ -1,13 +1,5 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (c) 2015-2018, The Linux Foundation. All rights reserved.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 and
- * only version 2 as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
 #ifndef _DPU_HW_SSPP_H
@@ -390,16 +382,6 @@ struct dpu_hw_pipe {
 	/* Ops */
 	struct dpu_hw_sspp_ops ops;
 };
-
-/**
- * dpu_hw_pipe - convert base object dpu_hw_base to container
- * @hw: Pointer to base hardware block
- * return: Pointer to hardware block container
- */
-static inline struct dpu_hw_pipe *to_dpu_hw_pipe(struct dpu_hw_blk *hw)
-{
-	return container_of(hw, struct dpu_hw_pipe, base);
-}
 
 /**
  * dpu_hw_sspp_init - initializes the sspp hw driver object.

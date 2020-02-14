@@ -21,19 +21,23 @@
  *
  * Authors: Alex Deucher
  */
+
 #include <linux/firmware.h>
 #include <linux/slab.h>
 #include <linux/module.h>
-#include <drm/drmP.h>
+
+#include <drm/drm_pci.h>
+#include <drm/drm_vblank.h>
+#include <drm/radeon_drm.h>
+
+#include "atom.h"
+#include "clearstate_si.h"
 #include "radeon.h"
 #include "radeon_asic.h"
 #include "radeon_audio.h"
-#include <drm/radeon_drm.h>
-#include "sid.h"
-#include "atom.h"
-#include "si_blit_shaders.h"
-#include "clearstate_si.h"
 #include "radeon_ucode.h"
+#include "si_blit_shaders.h"
+#include "sid.h"
 
 
 MODULE_FIRMWARE("radeon/TAHITI_pfp.bin");
@@ -7183,7 +7187,7 @@ static void si_pcie_gen3_enable(struct radeon_device *rdev)
 				tmp |= LC_REDO_EQ;
 				WREG32_PCIE_PORT(PCIE_LC_CNTL4, tmp);
 
-				mdelay(100);
+				msleep(100);
 
 				/* linkctl */
 				pci_read_config_word(root, bridge_pos + PCI_EXP_LNKCTL, &tmp16);

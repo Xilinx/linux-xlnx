@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /* SCTP kernel implementation
  * Copyright (c) 1999-2000 Cisco, Inc.
  * Copyright (c) 1999-2001 Motorola, Inc.
@@ -10,22 +11,6 @@
  * This module provides the abstraction for an SCTP tranport representing
  * a remote transport address.  For local transport addresses, we just use
  * union sctp_addr.
- *
- * This SCTP implementation is free software;
- * you can redistribute it and/or modify it under the terms of
- * the GNU General Public License as published by
- * the Free Software Foundation; either version 2, or (at your option)
- * any later version.
- *
- * This SCTP implementation is distributed in the hope that it
- * will be useful, but WITHOUT ANY WARRANTY; without even the implied
- *                 ************************
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See the GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with GNU CC; see the file COPYING.  If not, see
- * <http://www.gnu.org/licenses/>.
  *
  * Please send any bug reports or fixes you make to the
  * email address(es):
@@ -58,8 +43,8 @@ static struct sctp_transport *sctp_transport_init(struct net *net,
 						  gfp_t gfp)
 {
 	/* Copy in the address.  */
-	peer->ipaddr = *addr;
 	peer->af_specific = sctp_get_af_specific(addr->sa.sa_family);
+	memcpy(&peer->ipaddr, addr, peer->af_specific->sockaddr_len);
 	memset(&peer->saddr, 0, sizeof(union sctp_addr));
 
 	peer->sack_generation = 0;
@@ -207,7 +192,8 @@ void sctp_transport_reset_hb_timer(struct sctp_transport *transport)
 
 	/* When a data chunk is sent, reset the heartbeat interval.  */
 	expires = jiffies + sctp_transport_timeout(transport);
-	if (time_before(transport->hb_timer.expires, expires) &&
+	if ((time_before(transport->hb_timer.expires, expires) ||
+	     !timer_pending(&transport->hb_timer)) &&
 	    !mod_timer(&transport->hb_timer,
 		       expires + prandom_u32_max(transport->rto)))
 		sctp_transport_hold(transport);

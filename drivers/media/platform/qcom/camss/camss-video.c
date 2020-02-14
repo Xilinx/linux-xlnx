@@ -521,8 +521,8 @@ static int video_querycap(struct file *file, void *fh,
 {
 	struct camss_video *video = video_drvdata(file);
 
-	strlcpy(cap->driver, "qcom-camss", sizeof(cap->driver));
-	strlcpy(cap->card, "Qualcomm Camera Subsystem", sizeof(cap->card));
+	strscpy(cap->driver, "qcom-camss", sizeof(cap->driver));
+	strscpy(cap->card, "Qualcomm Camera Subsystem", sizeof(cap->card));
 	snprintf(cap->bus_info, sizeof(cap->bus_info), "platform:%s",
 		 dev_name(video->camss->dev));
 
@@ -683,7 +683,7 @@ static int video_enum_input(struct file *file, void *fh,
 	if (input->index > 0)
 		return -EINVAL;
 
-	strlcpy(input->name, "camera", sizeof(input->name));
+	strscpy(input->name, "camera", sizeof(input->name));
 	input->type = V4L2_INPUT_TYPE_CAMERA;
 
 	return 0;
@@ -703,7 +703,7 @@ static int video_s_input(struct file *file, void *fh, unsigned int input)
 
 static const struct v4l2_ioctl_ops msm_vid_ioctl_ops = {
 	.vidioc_querycap		= video_querycap,
-	.vidioc_enum_fmt_vid_cap_mplane	= video_enum_fmt,
+	.vidioc_enum_fmt_vid_cap	= video_enum_fmt,
 	.vidioc_g_fmt_vid_cap_mplane	= video_g_fmt,
 	.vidioc_s_fmt_vid_cap_mplane	= video_s_fmt,
 	.vidioc_try_fmt_vid_cap_mplane	= video_try_fmt,
@@ -919,7 +919,7 @@ int msm_video_register(struct camss_video *video, struct v4l2_device *v4l2_dev,
 	vdev->vfl_dir = VFL_DIR_RX;
 	vdev->queue = &video->vb2_q;
 	vdev->lock = &video->lock;
-	strlcpy(vdev->name, name, sizeof(vdev->name));
+	strscpy(vdev->name, name, sizeof(vdev->name));
 
 	ret = video_register_device(vdev, VFL_TYPE_GRABBER, -1);
 	if (ret < 0) {

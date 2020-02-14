@@ -58,7 +58,7 @@ static int of_platform_serial_setup(struct platform_device *ofdev,
 	struct resource resource;
 	struct device_node *np = ofdev->dev.of_node;
 	u32 clk, spd, prop;
-	int ret;
+	int ret, irq;
 
 	memset(port, 0, sizeof *port);
 
@@ -70,9 +70,10 @@ static int of_platform_serial_setup(struct platform_device *ofdev,
 		/* Get clk rate through clk driver if present */
 		info->clk = devm_clk_get(&ofdev->dev, NULL);
 		if (IS_ERR(info->clk)) {
-			dev_warn(&ofdev->dev,
-				"clk or clock-frequency not defined\n");
 			ret = PTR_ERR(info->clk);
+			if (ret != -EPROBE_DEFER)
+				dev_warn(&ofdev->dev,
+					 "failed to get clock: %d\n", ret);
 			goto err_pmruntime;
 		}
 
@@ -132,6 +133,10 @@ static int of_platform_serial_setup(struct platform_device *ofdev,
 		port->flags |= UPF_IOREMAP;
 	}
 
+	/* Compatibility with the deprecated pxa driver and 8250_pxa drivers. */
+	if (of_device_is_compatible(np, "mrvl,mmp-uart"))
+		port->regshift = 2;
+
 	/* Check for registers offset within the devices address range */
 	if (of_property_read_u32(np, "reg-shift", &prop) == 0)
 		port->regshift = prop;
@@ -145,21 +150,27 @@ static int of_platform_serial_setup(struct platform_device *ofdev,
 	if (ret >= 0)
 		port->line = ret;
 
-	port->irq = irq_of_parse_and_map(np, 0);
-	if (!port->irq) {
-		ret = -EPROBE_DEFER;
-		goto err_unprepare;
+	irq = of_irq_get(np, 0);
+	if (irq < 0) {
+		if (irq == -EPROBE_DEFER) {
+			ret = -EPROBE_DEFER;
+			goto err_unprepare;
+		}
+		/* IRQ support not mandatory */
+		irq = 0;
 	}
+
+	port->irq = irq;
 
 	info->rst = devm_reset_control_get_optional_shared(&ofdev->dev, NULL);
 	if (IS_ERR(info->rst)) {
 		ret = PTR_ERR(info->rst);
-		goto err_dispose;
+		goto err_unprepare;
 	}
 
 	ret = reset_control_deassert(info->rst);
 	if (ret)
-		goto err_dispose;
+		goto err_unprepare;
 
 	port->type = type;
 	port->uartclk = clk;
@@ -186,8 +197,6 @@ static int of_platform_serial_setup(struct platform_device *ofdev,
 		port->handle_irq = fsl8250_handle_irq;
 
 	return 0;
-err_dispose:
-	irq_dispose_mapping(port->irq);
 err_unprepare:
 	clk_disable_unprepare(info->clk);
 err_pmruntime:
@@ -199,18 +208,16 @@ err_pmruntime:
 /*
  * Try to register a serial port
  */
-static const struct of_device_id of_platform_serial_table[];
 static int of_platform_serial_probe(struct platform_device *ofdev)
 {
-	const struct of_device_id *match;
 	struct of_serial_info *info;
 	struct uart_8250_port port8250;
+	unsigned int port_type;
 	u32 tx_threshold;
-	int port_type;
 	int ret;
 
-	match = of_match_device(of_platform_serial_table, &ofdev->dev);
-	if (!match)
+	port_type = (unsigned long)of_device_get_match_data(&ofdev->dev);
+	if (port_type == PORT_UNKNOWN)
 		return -EINVAL;
 
 	if (of_property_read_bool(ofdev->dev.of_node, "used-by-rtas"))
@@ -220,7 +227,6 @@ static int of_platform_serial_probe(struct platform_device *ofdev)
 	if (info == NULL)
 		return -ENOMEM;
 
-	port_type = (unsigned long)match->data;
 	memset(&port8250, 0, sizeof(port8250));
 	ret = of_platform_serial_setup(ofdev, port_type, &port8250.port, info);
 	if (ret)
@@ -237,6 +243,11 @@ static int of_platform_serial_probe(struct platform_device *ofdev)
 
 	if (of_property_read_bool(ofdev->dev.of_node, "auto-flow-control"))
 		port8250.capabilities |= UART_CAP_AFE;
+
+	if (of_property_read_u32(ofdev->dev.of_node,
+			"overrun-throttle-ms",
+			&port8250.overrun_backoff_time_ms) != 0)
+		port8250.overrun_backoff_time_ms = 0;
 
 	ret = serial8250_register_8250_port(&port8250);
 	if (ret < 0)
@@ -320,6 +331,7 @@ static const struct of_device_id of_platform_serial_table[] = {
 	{ .compatible = "nvidia,tegra20-uart", .data = (void *)PORT_TEGRA, },
 	{ .compatible = "nxp,lpc3220-uart", .data = (void *)PORT_LPC3220, },
 	{ .compatible = "ralink,rt2880-uart", .data = (void *)PORT_RT2880, },
+	{ .compatible = "intel,xscale-uart", .data = (void *)PORT_XSCALE, },
 	{ .compatible = "altr,16550-FIFO32",
 		.data = (void *)PORT_ALTR_16550_F32, },
 	{ .compatible = "altr,16550-FIFO64",

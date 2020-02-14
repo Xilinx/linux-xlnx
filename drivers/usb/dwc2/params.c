@@ -71,6 +71,14 @@ static void dwc2_set_his_params(struct dwc2_hsotg *hsotg)
 	p->power_down = false;
 }
 
+static void dwc2_set_s3c6400_params(struct dwc2_hsotg *hsotg)
+{
+	struct dwc2_core_params *p = &hsotg->params;
+
+	p->power_down = 0;
+	p->phy_utmi_width = 8;
+}
+
 static void dwc2_set_rk_params(struct dwc2_hsotg *hsotg)
 {
 	struct dwc2_core_params *p = &hsotg->params;
@@ -81,6 +89,7 @@ static void dwc2_set_rk_params(struct dwc2_hsotg *hsotg)
 	p->host_perio_tx_fifo_size = 256;
 	p->ahbcfg = GAHBCFG_HBSTLEN_INCR16 <<
 		GAHBCFG_HBSTLEN_SHIFT;
+	p->power_down = 0;
 }
 
 static void dwc2_set_ltq_params(struct dwc2_hsotg *hsotg)
@@ -110,6 +119,17 @@ static void dwc2_set_amlogic_params(struct dwc2_hsotg *hsotg)
 	p->phy_type = DWC2_PHY_TYPE_PARAM_UTMI;
 	p->ahbcfg = GAHBCFG_HBSTLEN_INCR8 <<
 		GAHBCFG_HBSTLEN_SHIFT;
+	p->power_down = DWC2_POWER_DOWN_PARAM_NONE;
+}
+
+static void dwc2_set_amlogic_g12a_params(struct dwc2_hsotg *hsotg)
+{
+	struct dwc2_core_params *p = &hsotg->params;
+
+	p->lpm = false;
+	p->lpm_clock_gating = false;
+	p->besl = false;
+	p->hird_threshold_en = false;
 }
 
 static void dwc2_set_amcc_params(struct dwc2_hsotg *hsotg)
@@ -150,13 +170,16 @@ const struct of_device_id dwc2_of_match_table[] = {
 	{ .compatible = "lantiq,arx100-usb", .data = dwc2_set_ltq_params },
 	{ .compatible = "lantiq,xrx200-usb", .data = dwc2_set_ltq_params },
 	{ .compatible = "snps,dwc2" },
-	{ .compatible = "samsung,s3c6400-hsotg" },
+	{ .compatible = "samsung,s3c6400-hsotg",
+	  .data = dwc2_set_s3c6400_params },
 	{ .compatible = "amlogic,meson8-usb",
 	  .data = dwc2_set_amlogic_params },
 	{ .compatible = "amlogic,meson8b-usb",
 	  .data = dwc2_set_amlogic_params },
 	{ .compatible = "amlogic,meson-gxbb-usb",
 	  .data = dwc2_set_amlogic_params },
+	{ .compatible = "amlogic,meson-g12a-usb",
+	  .data = dwc2_set_amlogic_g12a_params },
 	{ .compatible = "amcc,dwc-otg", .data = dwc2_set_amcc_params },
 	{ .compatible = "st,stm32f4x9-fsotg",
 	  .data = dwc2_set_stm32f4x9_fsotg_params },
@@ -231,6 +254,15 @@ static void dwc2_set_param_phy_utmi_width(struct dwc2_hsotg *hsotg)
 	val = (hsotg->hw_params.utmi_phy_data_width ==
 	       GHWCFG4_UTMI_PHY_DATA_WIDTH_8) ? 8 : 16;
 
+	if (hsotg->phy) {
+		/*
+		 * If using the generic PHY framework, check if the PHY bus
+		 * width is 8-bit and set the phyif appropriately.
+		 */
+		if (phy_get_bus_width(hsotg->phy) == 8)
+			val = 8;
+	}
+
 	hsotg->params.phy_utmi_width = val;
 }
 
@@ -263,6 +295,23 @@ static void dwc2_set_param_power_down(struct dwc2_hsotg *hsotg)
 	hsotg->params.power_down = val;
 }
 
+static void dwc2_set_param_lpm(struct dwc2_hsotg *hsotg)
+{
+	struct dwc2_core_params *p = &hsotg->params;
+
+	p->lpm = hsotg->hw_params.lpm_mode;
+	if (p->lpm) {
+		p->lpm_clock_gating = true;
+		p->besl = true;
+		p->hird_threshold_en = true;
+		p->hird_threshold = 4;
+	} else {
+		p->lpm_clock_gating = false;
+		p->besl = false;
+		p->hird_threshold_en = false;
+	}
+}
+
 /**
  * dwc2_set_default_params() - Set all core parameters to their
  * auto-detected default values.
@@ -281,6 +330,7 @@ static void dwc2_set_default_params(struct dwc2_hsotg *hsotg)
 	dwc2_set_param_speed(hsotg);
 	dwc2_set_param_phy_utmi_width(hsotg);
 	dwc2_set_param_power_down(hsotg);
+	dwc2_set_param_lpm(hsotg);
 	p->phy_ulpi_ddr = false;
 	p->phy_ulpi_ext_vbus = false;
 
@@ -293,15 +343,13 @@ static void dwc2_set_default_params(struct dwc2_hsotg *hsotg)
 	p->reload_ctl = (hw->snpsid >= DWC2_CORE_REV_2_92a);
 	p->uframe_sched = true;
 	p->external_id_pin_ctl = false;
-	p->lpm = true;
-	p->lpm_clock_gating = true;
-	p->besl = true;
-	p->hird_threshold_en = true;
-	p->hird_threshold = 4;
 	p->ipg_isoc_en = false;
+	p->service_interval = false;
 	p->max_packet_count = hw->max_packet_count;
 	p->max_transfer_size = hw->max_transfer_size;
 	p->ahbcfg = GAHBCFG_HBSTLEN_INCR << GAHBCFG_HBSTLEN_SHIFT;
+	p->ref_clk_per = 33333;
+	p->sof_cnt_wkup_alert = 100;
 
 	if ((hsotg->dr_mode == USB_DR_MODE_HOST) ||
 	    (hsotg->dr_mode == USB_DR_MODE_OTG)) {
@@ -356,10 +404,7 @@ static void dwc2_get_device_properties(struct dwc2_hsotg *hsotg)
 		device_property_read_u32(hsotg->dev, "g-np-tx-fifo-size",
 					 &p->g_np_tx_fifo_size);
 
-		num = device_property_read_u32_array(hsotg->dev,
-						     "g-tx-fifo-size",
-						     NULL, 0);
-
+		num = device_property_count_u32(hsotg->dev, "g-tx-fifo-size");
 		if (num > 0) {
 			num = min(num, 15);
 			memset(p->g_tx_fifo_size, 0,
@@ -592,6 +637,7 @@ static void dwc2_check_params(struct dwc2_hsotg *hsotg)
 	CHECK_BOOL(besl, (hsotg->hw_params.snpsid >= DWC2_CORE_REV_3_00a));
 	CHECK_BOOL(hird_threshold_en, hsotg->params.lpm);
 	CHECK_RANGE(hird_threshold, 0, hsotg->params.besl ? 12 : 7, 0);
+	CHECK_BOOL(service_interval, hw->service_interval_mode);
 	CHECK_RANGE(max_packet_count,
 		    15, hw->max_packet_count,
 		    hw->max_packet_count);
@@ -780,6 +826,8 @@ int dwc2_get_hwparams(struct dwc2_hsotg *hsotg)
 				  GHWCFG4_UTMI_PHY_DATA_WIDTH_SHIFT;
 	hw->acg_enable = !!(hwcfg4 & GHWCFG4_ACG_SUPPORTED);
 	hw->ipg_isoc_en = !!(hwcfg4 & GHWCFG4_IPG_ISOC_SUPPORTED);
+	hw->service_interval_mode = !!(hwcfg4 &
+				       GHWCFG4_SERVICE_INTERVAL_SUPPORTED);
 
 	/* fifo sizes */
 	hw->rx_fifo_size = (grxfsiz & GRXFSIZ_DEPTH_MASK) >>

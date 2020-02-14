@@ -27,7 +27,7 @@
  *         mapping->i_mmap_rwsem
  *           anon_vma->rwsem
  *             mm->page_table_lock or pte_lock
- *               zone_lru_lock (in mark_page_accessed, isolate_lru_page)
+ *               pgdat->lru_lock (in mark_page_accessed, isolate_lru_page)
  *               swap_lock (in swap_duplicate, swap_info_get)
  *                 mmlist_lock (in mmput, drain_mmlist and others)
  *                 mapping->private_lock (in __set_page_dirty_buffers)
@@ -61,6 +61,7 @@
 #include <linux/mmu_notifier.h>
 #include <linux/migrate.h>
 #include <linux/hugetlb.h>
+#include <linux/huge_mm.h>
 #include <linux/backing-dev.h>
 #include <linux/page_idle.h>
 #include <linux/memremap.h>
@@ -850,7 +851,7 @@ int page_referenced(struct page *page,
 	};
 
 	*vm_flags = 0;
-	if (!page_mapped(page))
+	if (!pra.mapcount)
 		return 0;
 
 	if (!page_rmapping(page))
@@ -889,21 +890,22 @@ static bool page_mkclean_one(struct page *page, struct vm_area_struct *vma,
 		.address = address,
 		.flags = PVMW_SYNC,
 	};
-	unsigned long start = address, end;
+	struct mmu_notifier_range range;
 	int *cleaned = arg;
 
 	/*
 	 * We have to assume the worse case ie pmd for invalidation. Note that
 	 * the page can not be free from this function.
 	 */
-	end = min(vma->vm_end, start + (PAGE_SIZE << compound_order(page)));
-	mmu_notifier_invalidate_range_start(vma->vm_mm, start, end);
+	mmu_notifier_range_init(&range, MMU_NOTIFY_PROTECTION_PAGE,
+				0, vma, vma->vm_mm, address,
+				min(vma->vm_end, address + page_size(page)));
+	mmu_notifier_invalidate_range_start(&range);
 
 	while (page_vma_mapped_walk(&pvmw)) {
-		unsigned long cstart;
 		int ret = 0;
 
-		cstart = address = pvmw.address;
+		address = pvmw.address;
 		if (pvmw.pte) {
 			pte_t entry;
 			pte_t *pte = pvmw.pte;
@@ -926,11 +928,10 @@ static bool page_mkclean_one(struct page *page, struct vm_area_struct *vma,
 				continue;
 
 			flush_cache_page(vma, address, page_to_pfn(page));
-			entry = pmdp_huge_clear_flush(vma, address, pmd);
+			entry = pmdp_invalidate(vma, address, pmd);
 			entry = pmd_wrprotect(entry);
 			entry = pmd_mkclean(entry);
 			set_pmd_at(vma->vm_mm, address, pmd, entry);
-			cstart &= PMD_MASK;
 			ret = 1;
 #else
 			/* unexpected pmd-mapped page? */
@@ -949,7 +950,7 @@ static bool page_mkclean_one(struct page *page, struct vm_area_struct *vma,
 			(*cleaned)++;
 	}
 
-	mmu_notifier_invalidate_range_end(vma->vm_mm, start, end);
+	mmu_notifier_invalidate_range_end(&range);
 
 	return true;
 }
@@ -1017,7 +1018,7 @@ void page_move_anon_rmap(struct page *page, struct vm_area_struct *vma)
 
 /**
  * __page_set_anon_rmap - set up new anonymous rmap
- * @page:	Page to add to rmap	
+ * @page:	Page or Hugepage to add to rmap
  * @vma:	VM area to add page to.
  * @address:	User virtual address of the mapping	
  * @exclusive:	the page is exclusively owned by the current process
@@ -1189,8 +1190,10 @@ void page_add_file_rmap(struct page *page, bool compound)
 		}
 		if (!atomic_inc_and_test(compound_mapcount_ptr(page)))
 			goto out;
-		VM_BUG_ON_PAGE(!PageSwapBacked(page), page);
-		__inc_node_page_state(page, NR_SHMEM_PMDMAPPED);
+		if (PageSwapBacked(page))
+			__inc_node_page_state(page, NR_SHMEM_PMDMAPPED);
+		else
+			__inc_node_page_state(page, NR_FILE_PMDMAPPED);
 	} else {
 		if (PageTransCompound(page) && page_mapping(page)) {
 			VM_WARN_ON_ONCE(!PageLocked(page));
@@ -1229,8 +1232,10 @@ static void page_remove_file_rmap(struct page *page, bool compound)
 		}
 		if (!atomic_add_negative(-1, compound_mapcount_ptr(page)))
 			goto out;
-		VM_BUG_ON_PAGE(!PageSwapBacked(page), page);
-		__dec_node_page_state(page, NR_SHMEM_PMDMAPPED);
+		if (PageSwapBacked(page))
+			__dec_node_page_state(page, NR_SHMEM_PMDMAPPED);
+		else
+			__dec_node_page_state(page, NR_FILE_PMDMAPPED);
 	} else {
 		if (!atomic_add_negative(-1, &page->_mapcount))
 			goto out;
@@ -1345,7 +1350,7 @@ static bool try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
 	pte_t pteval;
 	struct page *subpage;
 	bool ret = true;
-	unsigned long start = address, end;
+	struct mmu_notifier_range range;
 	enum ttu_flags flags = (enum ttu_flags)arg;
 
 	/* munlock has nothing to gain from examining un-locked vmas */
@@ -1369,15 +1374,18 @@ static bool try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
 	 * Note that the page can not be free in this function as call of
 	 * try_to_unmap() must hold a reference on the page.
 	 */
-	end = min(vma->vm_end, start + (PAGE_SIZE << compound_order(page)));
+	mmu_notifier_range_init(&range, MMU_NOTIFY_CLEAR, 0, vma, vma->vm_mm,
+				address,
+				min(vma->vm_end, address + page_size(page)));
 	if (PageHuge(page)) {
 		/*
 		 * If sharing is possible, start and end will be adjusted
 		 * accordingly.
 		 */
-		adjust_range_if_pmd_sharing_possible(vma, &start, &end);
+		adjust_range_if_pmd_sharing_possible(vma, &range.start,
+						     &range.end);
 	}
-	mmu_notifier_invalidate_range_start(vma->vm_mm, start, end);
+	mmu_notifier_invalidate_range_start(&range);
 
 	while (page_vma_mapped_walk(&pvmw)) {
 #ifdef CONFIG_ARCH_ENABLE_THP_MIGRATION
@@ -1428,9 +1436,10 @@ static bool try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
 				 * we must flush them all.  start/end were
 				 * already adjusted above to cover this range.
 				 */
-				flush_cache_range(vma, start, end);
-				flush_tlb_range(vma, start, end);
-				mmu_notifier_invalidate_range(mm, start, end);
+				flush_cache_range(vma, range.start, range.end);
+				flush_tlb_range(vma, range.start, range.end);
+				mmu_notifier_invalidate_range(mm, range.start,
+							      range.end);
 
 				/*
 				 * The ref count of the PMD page was dropped
@@ -1467,7 +1476,15 @@ static bool try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
 			/*
 			 * No need to invalidate here it will synchronize on
 			 * against the special swap migration pte.
+			 *
+			 * The assignment to subpage above was computed from a
+			 * swap PTE which results in an invalid pointer.
+			 * Since only PAGE_SIZE pages can currently be
+			 * migrated, just set it to page. This will need to be
+			 * changed when hugepage migrations to device private
+			 * memory are supported.
 			 */
+			subpage = page;
 			goto discard;
 		}
 
@@ -1508,8 +1525,7 @@ static bool try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
 		if (PageHWPoison(page) && !(flags & TTU_IGNORE_HWPOISON)) {
 			pteval = swp_entry_to_pte(make_hwpoison_entry(subpage));
 			if (PageHuge(page)) {
-				int nr = 1 << compound_order(page);
-				hugetlb_count_sub(nr, mm);
+				hugetlb_count_sub(compound_nr(page), mm);
 				set_huge_swap_pte_at(mm, address,
 						     pvmw.pte, pteval,
 						     vma_mmu_pagesize(vma));
@@ -1627,16 +1643,9 @@ static bool try_to_unmap_one(struct page *page, struct vm_area_struct *vma,
 						      address + PAGE_SIZE);
 		} else {
 			/*
-			 * We should not need to notify here as we reach this
-			 * case only from freeze_page() itself only call from
-			 * split_huge_page_to_list() so everything below must
-			 * be true:
-			 *   - page is not anonymous
-			 *   - page is locked
-			 *
-			 * So as it is a locked file back page thus it can not
-			 * be remove from the page cache and replace by a new
-			 * page before mmu_notifier_invalidate_range_end so no
+			 * This is a locked file-backed page, thus it cannot
+			 * be removed from the page cache and replaced by a new
+			 * page before mmu_notifier_invalidate_range_end, so no
 			 * concurrent thread might update its page table to
 			 * point at new page while a device still is using this
 			 * page.
@@ -1657,7 +1666,7 @@ discard:
 		put_page(page);
 	}
 
-	mmu_notifier_invalidate_range_end(vma->vm_mm, start, end);
+	mmu_notifier_invalidate_range_end(&range);
 
 	return ret;
 }
@@ -1917,27 +1926,10 @@ void rmap_walk_locked(struct page *page, struct rmap_walk_control *rwc)
 
 #ifdef CONFIG_HUGETLB_PAGE
 /*
- * The following three functions are for anonymous (private mapped) hugepages.
+ * The following two functions are for anonymous (private mapped) hugepages.
  * Unlike common anonymous pages, anonymous hugepages have no accounting code
  * and no lru code, because we handle hugepages differently from common pages.
  */
-static void __hugepage_set_anon_rmap(struct page *page,
-	struct vm_area_struct *vma, unsigned long address, int exclusive)
-{
-	struct anon_vma *anon_vma = vma->anon_vma;
-
-	BUG_ON(!anon_vma);
-
-	if (PageAnon(page))
-		return;
-	if (!exclusive)
-		anon_vma = anon_vma->root;
-
-	anon_vma = (void *) anon_vma + PAGE_MAPPING_ANON;
-	page->mapping = (struct address_space *) anon_vma;
-	page->index = linear_page_index(vma, address);
-}
-
 void hugepage_add_anon_rmap(struct page *page,
 			    struct vm_area_struct *vma, unsigned long address)
 {
@@ -1949,7 +1941,7 @@ void hugepage_add_anon_rmap(struct page *page,
 	/* address might be in next vma when migration races vma_adjust */
 	first = atomic_inc_and_test(compound_mapcount_ptr(page));
 	if (first)
-		__hugepage_set_anon_rmap(page, vma, address, 0);
+		__page_set_anon_rmap(page, vma, address, 0);
 }
 
 void hugepage_add_new_anon_rmap(struct page *page,
@@ -1957,6 +1949,6 @@ void hugepage_add_new_anon_rmap(struct page *page,
 {
 	BUG_ON(address < vma->vm_start || address >= vma->vm_end);
 	atomic_set(compound_mapcount_ptr(page), 0);
-	__hugepage_set_anon_rmap(page, vma, address, 1);
+	__page_set_anon_rmap(page, vma, address, 1);
 }
 #endif /* CONFIG_HUGETLB_PAGE */

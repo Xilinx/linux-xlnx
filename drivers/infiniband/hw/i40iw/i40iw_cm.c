@@ -404,7 +404,7 @@ static struct i40iw_puda_buf *i40iw_form_cm_frame(struct i40iw_cm_node *cm_node,
 	if (pdata)
 		pd_len = pdata->size;
 
-	if (cm_node->vlan_id < VLAN_TAG_PRESENT)
+	if (cm_node->vlan_id <= VLAN_VID_MASK)
 		eth_hlen += 4;
 
 	if (cm_node->ipv4)
@@ -433,7 +433,7 @@ static struct i40iw_puda_buf *i40iw_form_cm_frame(struct i40iw_cm_node *cm_node,
 
 		ether_addr_copy(ethh->h_dest, cm_node->rem_mac);
 		ether_addr_copy(ethh->h_source, cm_node->loc_mac);
-		if (cm_node->vlan_id < VLAN_TAG_PRESENT) {
+		if (cm_node->vlan_id <= VLAN_VID_MASK) {
 			((struct vlan_ethhdr *)ethh)->h_vlan_proto = htons(ETH_P_8021Q);
 			vtag = (cm_node->user_pri << VLAN_PRIO_SHIFT) | cm_node->vlan_id;
 			((struct vlan_ethhdr *)ethh)->h_vlan_TCI = htons(vtag);
@@ -463,7 +463,7 @@ static struct i40iw_puda_buf *i40iw_form_cm_frame(struct i40iw_cm_node *cm_node,
 
 		ether_addr_copy(ethh->h_dest, cm_node->rem_mac);
 		ether_addr_copy(ethh->h_source, cm_node->loc_mac);
-		if (cm_node->vlan_id < VLAN_TAG_PRESENT) {
+		if (cm_node->vlan_id <= VLAN_VID_MASK) {
 			((struct vlan_ethhdr *)ethh)->h_vlan_proto = htons(ETH_P_8021Q);
 			vtag = (cm_node->user_pri << VLAN_PRIO_SHIFT) | cm_node->vlan_id;
 			((struct vlan_ethhdr *)ethh)->h_vlan_TCI = htons(vtag);
@@ -1689,7 +1689,7 @@ static enum i40iw_status_code i40iw_add_mqh_6(struct i40iw_device *iwdev,
 	unsigned long flags;
 
 	rtnl_lock();
-	for_each_netdev_rcu(&init_net, ip_dev) {
+	for_each_netdev(&init_net, ip_dev) {
 		if ((((rdma_vlan_dev_vlan_id(ip_dev) < I40IW_NO_VLAN) &&
 		      (rdma_vlan_dev_real_dev(ip_dev) == iwdev->netdev)) ||
 		     (ip_dev == iwdev->netdev)) && (ip_dev->flags & IFF_UP)) {
@@ -1773,8 +1773,11 @@ static enum i40iw_status_code i40iw_add_mqh_4(
 		if ((((rdma_vlan_dev_vlan_id(dev) < I40IW_NO_VLAN) &&
 		      (rdma_vlan_dev_real_dev(dev) == iwdev->netdev)) ||
 		    (dev == iwdev->netdev)) && (dev->flags & IFF_UP)) {
+			const struct in_ifaddr *ifa;
+
 			idev = in_dev_get(dev);
-			for_ifa(idev) {
+
+			in_dev_for_each_ifa_rtnl(ifa, idev) {
 				i40iw_debug(&iwdev->sc_dev,
 					    I40IW_DEBUG_CM,
 					    "Allocating child CM Listener forIP=%pI4, vlan_id=%d, MAC=%pM\n",
@@ -1819,7 +1822,7 @@ static enum i40iw_status_code i40iw_add_mqh_4(
 					cm_parent_listen_node->cm_core->stats_listen_nodes_created--;
 				}
 			}
-			endfor_ifa(idev);
+
 			in_dev_put(idev);
 		}
 	}
@@ -3237,7 +3240,7 @@ void i40iw_receive_ilq(struct i40iw_sc_vsi *vsi, struct i40iw_puda_buf *rbuf)
  * core
  * @iwdev: iwarp device structure
  */
-void i40iw_setup_cm_core(struct i40iw_device *iwdev)
+int i40iw_setup_cm_core(struct i40iw_device *iwdev)
 {
 	struct i40iw_cm_core *cm_core = &iwdev->cm_core;
 
@@ -3256,9 +3259,19 @@ void i40iw_setup_cm_core(struct i40iw_device *iwdev)
 
 	cm_core->event_wq = alloc_ordered_workqueue("iwewq",
 						    WQ_MEM_RECLAIM);
+	if (!cm_core->event_wq)
+		goto error;
 
 	cm_core->disconn_wq = alloc_ordered_workqueue("iwdwq",
 						      WQ_MEM_RECLAIM);
+	if (!cm_core->disconn_wq)
+		goto error;
+
+	return 0;
+error:
+	i40iw_cleanup_cm_core(&iwdev->cm_core);
+
+	return -ENOMEM;
 }
 
 /**
@@ -3278,8 +3291,10 @@ void i40iw_cleanup_cm_core(struct i40iw_cm_core *cm_core)
 		del_timer_sync(&cm_core->tcp_timer);
 	spin_unlock_irqrestore(&cm_core->ht_lock, flags);
 
-	destroy_workqueue(cm_core->event_wq);
-	destroy_workqueue(cm_core->disconn_wq);
+	if (cm_core->event_wq)
+		destroy_workqueue(cm_core->event_wq);
+	if (cm_core->disconn_wq)
+		destroy_workqueue(cm_core->disconn_wq);
 }
 
 /**
@@ -3323,7 +3338,7 @@ static void i40iw_init_tcp_ctx(struct i40iw_cm_node *cm_node,
 
 	tcp_info->flow_label = 0;
 	tcp_info->snd_mss = cpu_to_le32(((u32)cm_node->tcp_cntxt.mss));
-	if (cm_node->vlan_id < VLAN_TAG_PRESENT) {
+	if (cm_node->vlan_id <= VLAN_VID_MASK) {
 		tcp_info->insert_vlan_tag = true;
 		tcp_info->vlan_tag = cpu_to_le16(((u16)cm_node->user_pri << I40IW_VLAN_PRIO_SHIFT) |
 						  cm_node->vlan_id);
@@ -3478,7 +3493,8 @@ static void i40iw_qp_disconnect(struct i40iw_qp *iwqp)
 		/* Need to free the Last Streaming Mode Message */
 		if (iwqp->ietf_mem.va) {
 			if (iwqp->lsmm_mr)
-				iwibdev->ibdev.dereg_mr(iwqp->lsmm_mr);
+				iwibdev->ibdev.ops.dereg_mr(iwqp->lsmm_mr,
+							    NULL);
 			i40iw_free_dma_mem(iwdev->sc_dev.hw, &iwqp->ietf_mem);
 		}
 	}
@@ -4263,11 +4279,11 @@ static void i40iw_qhash_ctrl(struct i40iw_device *iwdev,
 	/* if not found then add a child listener if interface is going up */
 	if (!ifup)
 		return;
-	child_listen_node = kzalloc(sizeof(*child_listen_node), GFP_ATOMIC);
+	child_listen_node = kmemdup(parent_listen_node,
+			sizeof(*child_listen_node), GFP_ATOMIC);
 	if (!child_listen_node)
 		return;
 	node_allocated = true;
-	memcpy(child_listen_node, parent_listen_node, sizeof(*child_listen_node));
 
 	memcpy(child_listen_node->loc_addr, ipaddr,  ipv4 ? 4 : 16);
 

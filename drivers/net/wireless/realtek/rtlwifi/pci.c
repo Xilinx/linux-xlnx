@@ -1,27 +1,5 @@
-/******************************************************************************
- *
- * Copyright(c) 2009-2012  Realtek Corporation.
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of version 2 of the GNU General Public License as
- * published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
- * more details.
- *
- * The full GNU General Public License is included in this distribution in the
- * file called LICENSE.
- *
- * Contact Information:
- * wlanfae <wlanfae@realtek.com>
- * Realtek Corporation, No. 2, Innovation Road II, Hsinchu Science Park,
- * Hsinchu 300, Taiwan.
- *
- * Larry Finger <Larry.Finger@lwfinger.net>
- *
- *****************************************************************************/
+// SPDX-License-Identifier: GPL-2.0
+/* Copyright(c) 2009-2012  Realtek Corporation.*/
 
 #include "wifi.h"
 #include "core.h"
@@ -521,16 +499,16 @@ static void _rtl_pci_tx_chk_waitq(struct ieee80211_hw *hw)
 
 			memset(&tcb_desc, 0, sizeof(struct rtl_tcb_desc));
 
-			spin_lock_bh(&rtlpriv->locks.waitq_lock);
+			spin_lock(&rtlpriv->locks.waitq_lock);
 			if (!skb_queue_empty(&mac->skb_waitq[tid]) &&
 			    (ring->entries - skb_queue_len(&ring->queue) >
 			     rtlhal->max_earlymode_num)) {
 				skb = skb_dequeue(&mac->skb_waitq[tid]);
 			} else {
-				spin_unlock_bh(&rtlpriv->locks.waitq_lock);
+				spin_unlock(&rtlpriv->locks.waitq_lock);
 				break;
 			}
-			spin_unlock_bh(&rtlpriv->locks.waitq_lock);
+			spin_unlock(&rtlpriv->locks.waitq_lock);
 
 			/* Some macaddr can't do early mode. like
 			 * multicast/broadcast/no_qos data
@@ -844,7 +822,7 @@ static void _rtl_pci_rx_interrupt(struct ieee80211_hw *hw)
 		hdr = rtl_get_hdr(skb);
 		fc = rtl_get_fc(skb);
 
-		if (!stats.crc && !stats.hwerror) {
+		if (!stats.crc && !stats.hwerror && (skb->len > FCS_LEN)) {
 			memcpy(IEEE80211_SKB_RXCB(skb), &rx_status,
 			       sizeof(rx_status));
 
@@ -881,6 +859,7 @@ static void _rtl_pci_rx_interrupt(struct ieee80211_hw *hw)
 				_rtl_pci_rx_to_mac80211(hw, skb, rx_status);
 			}
 		} else {
+			/* drop packets with errors or those too short */
 			dev_kfree_skb_any(skb);
 		}
 new_trx_end:
@@ -1815,6 +1794,8 @@ static int rtl_pci_start(struct ieee80211_hw *hw)
 	if (err) {
 		RT_TRACE(rtlpriv, COMP_INIT, DBG_DMESG,
 			 "Failed to config hardware!\n");
+		kfree(rtlpriv->btcoexist.btc_context);
+		kfree(rtlpriv->btcoexist.wifi_only_context);
 		return err;
 	}
 	rtlpriv->cfg->ops->set_hw_reg(hw, HW_VAR_RETRY_LIMIT,
@@ -2431,8 +2412,7 @@ EXPORT_SYMBOL(rtl_pci_disconnect);
  ****************************************/
 int rtl_pci_suspend(struct device *dev)
 {
-	struct pci_dev *pdev = to_pci_dev(dev);
-	struct ieee80211_hw *hw = pci_get_drvdata(pdev);
+	struct ieee80211_hw *hw = dev_get_drvdata(dev);
 	struct rtl_priv *rtlpriv = rtl_priv(hw);
 
 	rtlpriv->cfg->ops->hw_suspend(hw);
@@ -2444,8 +2424,7 @@ EXPORT_SYMBOL(rtl_pci_suspend);
 
 int rtl_pci_resume(struct device *dev)
 {
-	struct pci_dev *pdev = to_pci_dev(dev);
-	struct ieee80211_hw *hw = pci_get_drvdata(pdev);
+	struct ieee80211_hw *hw = dev_get_drvdata(dev);
 	struct rtl_priv *rtlpriv = rtl_priv(hw);
 
 	rtlpriv->cfg->ops->hw_resume(hw);

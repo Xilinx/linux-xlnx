@@ -468,13 +468,12 @@ static void acm_read_bulk_callback(struct urb *urb)
 {
 	struct acm_rb *rb = urb->context;
 	struct acm *acm = rb->instance;
-	unsigned long flags;
 	int status = urb->status;
+	bool stopped = false;
+	bool stalled = false;
 
 	dev_vdbg(&acm->data->dev, "got urb %d, len %d, status %d\n",
 		rb->index, urb->actual_length, status);
-
-	set_bit(rb->index, &acm->read_urbs_free);
 
 	if (!acm->dev) {
 		dev_dbg(&acm->data->dev, "%s - disconnected\n", __func__);
@@ -488,15 +487,16 @@ static void acm_read_bulk_callback(struct urb *urb)
 		break;
 	case -EPIPE:
 		set_bit(EVENT_RX_STALL, &acm->flags);
-		schedule_work(&acm->work);
-		return;
+		stalled = true;
+		break;
 	case -ENOENT:
 	case -ECONNRESET:
 	case -ESHUTDOWN:
 		dev_dbg(&acm->data->dev,
 			"%s - urb shutting down with status: %d\n",
 			__func__, status);
-		return;
+		stopped = true;
+		break;
 	default:
 		dev_dbg(&acm->data->dev,
 			"%s - nonzero urb status received: %d\n",
@@ -505,20 +505,29 @@ static void acm_read_bulk_callback(struct urb *urb)
 	}
 
 	/*
-	 * Unthrottle may run on another CPU which needs to see events
-	 * in the same order. Submission has an implict barrier
+	 * Make sure URB processing is done before marking as free to avoid
+	 * racing with unthrottle() on another CPU. Matches the barriers
+	 * implied by the test_and_clear_bit() in acm_submit_read_urb().
 	 */
 	smp_mb__before_atomic();
+	set_bit(rb->index, &acm->read_urbs_free);
+	/*
+	 * Make sure URB is marked as free before checking the throttled flag
+	 * to avoid racing with unthrottle() on another CPU. Matches the
+	 * smp_mb() in unthrottle().
+	 */
+	smp_mb__after_atomic();
 
-	/* throttle device if requested by tty */
-	spin_lock_irqsave(&acm->read_lock, flags);
-	acm->throttled = acm->throttle_req;
-	if (!acm->throttled) {
-		spin_unlock_irqrestore(&acm->read_lock, flags);
-		acm_submit_read_urb(acm, rb->index, GFP_ATOMIC);
-	} else {
-		spin_unlock_irqrestore(&acm->read_lock, flags);
+	if (stopped || stalled) {
+		if (stalled)
+			schedule_work(&acm->work);
+		return;
 	}
+
+	if (test_bit(ACM_THROTTLED, &acm->flags))
+		return;
+
+	acm_submit_read_urb(acm, rb->index, GFP_ATOMIC);
 }
 
 /* data interface wrote those outgoing bytes */
@@ -558,10 +567,8 @@ static void acm_softint(struct work_struct *work)
 		clear_bit(EVENT_RX_STALL, &acm->flags);
 	}
 
-	if (test_bit(EVENT_TTY_WAKEUP, &acm->flags)) {
+	if (test_and_clear_bit(EVENT_TTY_WAKEUP, &acm->flags))
 		tty_port_tty_wakeup(&acm->port);
-		clear_bit(EVENT_TTY_WAKEUP, &acm->flags);
-	}
 }
 
 /*
@@ -580,6 +587,13 @@ static int acm_tty_install(struct tty_driver *driver, struct tty_struct *tty)
 	retval = tty_standard_install(driver, tty);
 	if (retval)
 		goto error_init_termios;
+
+	/*
+	 * Suppress initial echoing for some devices which might send data
+	 * immediately after acm driver has been installed.
+	 */
+	if (acm->quirks & DISABLE_ECHO)
+		tty->termios.c_lflag &= ~ECHO;
 
 	tty->driver_data = acm;
 
@@ -650,10 +664,7 @@ static int acm_port_activate(struct tty_port *port, struct tty_struct *tty)
 	/*
 	 * Unthrottle device in case the TTY was closed while throttled.
 	 */
-	spin_lock_irq(&acm->read_lock);
-	acm->throttled = 0;
-	acm->throttle_req = 0;
-	spin_unlock_irq(&acm->read_lock);
+	clear_bit(ACM_THROTTLED, &acm->flags);
 
 	retval = acm_submit_read_urbs(acm, GFP_KERNEL);
 	if (retval)
@@ -821,24 +832,19 @@ static void acm_tty_throttle(struct tty_struct *tty)
 {
 	struct acm *acm = tty->driver_data;
 
-	spin_lock_irq(&acm->read_lock);
-	acm->throttle_req = 1;
-	spin_unlock_irq(&acm->read_lock);
+	set_bit(ACM_THROTTLED, &acm->flags);
 }
 
 static void acm_tty_unthrottle(struct tty_struct *tty)
 {
 	struct acm *acm = tty->driver_data;
-	unsigned int was_throttled;
 
-	spin_lock_irq(&acm->read_lock);
-	was_throttled = acm->throttled;
-	acm->throttled = 0;
-	acm->throttle_req = 0;
-	spin_unlock_irq(&acm->read_lock);
+	clear_bit(ACM_THROTTLED, &acm->flags);
 
-	if (was_throttled)
-		acm_submit_read_urbs(acm, GFP_KERNEL);
+	/* Matches the smp_mb__after_atomic() in acm_read_bulk_callback(). */
+	smp_mb();
+
+	acm_submit_read_urbs(acm, GFP_KERNEL);
 }
 
 static int acm_tty_break_ctl(struct tty_struct *tty, int state)
@@ -884,37 +890,28 @@ static int acm_tty_tiocmset(struct tty_struct *tty,
 	return acm_set_control(acm, acm->ctrlout = newctrl);
 }
 
-static int get_serial_info(struct acm *acm, struct serial_struct __user *info)
+static int get_serial_info(struct tty_struct *tty, struct serial_struct *ss)
 {
-	struct serial_struct tmp;
+	struct acm *acm = tty->driver_data;
 
-	memset(&tmp, 0, sizeof(tmp));
-	tmp.xmit_fifo_size = acm->writesize;
-	tmp.baud_base = le32_to_cpu(acm->line.dwDTERate);
-	tmp.close_delay	= acm->port.close_delay / 10;
-	tmp.closing_wait = acm->port.closing_wait == ASYNC_CLOSING_WAIT_NONE ?
+	ss->xmit_fifo_size = acm->writesize;
+	ss->baud_base = le32_to_cpu(acm->line.dwDTERate);
+	ss->close_delay	= acm->port.close_delay / 10;
+	ss->closing_wait = acm->port.closing_wait == ASYNC_CLOSING_WAIT_NONE ?
 				ASYNC_CLOSING_WAIT_NONE :
 				acm->port.closing_wait / 10;
-
-	if (copy_to_user(info, &tmp, sizeof(tmp)))
-		return -EFAULT;
-	else
-		return 0;
+	return 0;
 }
 
-static int set_serial_info(struct acm *acm,
-				struct serial_struct __user *newinfo)
+static int set_serial_info(struct tty_struct *tty, struct serial_struct *ss)
 {
-	struct serial_struct new_serial;
+	struct acm *acm = tty->driver_data;
 	unsigned int closing_wait, close_delay;
 	int retval = 0;
 
-	if (copy_from_user(&new_serial, newinfo, sizeof(new_serial)))
-		return -EFAULT;
-
-	close_delay = new_serial.close_delay * 10;
-	closing_wait = new_serial.closing_wait == ASYNC_CLOSING_WAIT_NONE ?
-			ASYNC_CLOSING_WAIT_NONE : new_serial.closing_wait * 10;
+	close_delay = ss->close_delay * 10;
+	closing_wait = ss->closing_wait == ASYNC_CLOSING_WAIT_NONE ?
+			ASYNC_CLOSING_WAIT_NONE : ss->closing_wait * 10;
 
 	mutex_lock(&acm->port.mutex);
 
@@ -999,12 +996,6 @@ static int acm_tty_ioctl(struct tty_struct *tty,
 	int rv = -ENOIOCTLCMD;
 
 	switch (cmd) {
-	case TIOCGSERIAL: /* gets serial port data */
-		rv = get_serial_info(acm, (struct serial_struct __user *) arg);
-		break;
-	case TIOCSSERIAL:
-		rv = set_serial_info(acm, (struct serial_struct __user *) arg);
-		break;
 	case TIOCMIWAIT:
 		rv = usb_autopm_get_interface(acm->control);
 		if (rv < 0) {
@@ -1310,10 +1301,6 @@ made_compressed_probe:
 	tty_port_init(&acm->port);
 	acm->port.ops = &acm_port_ops;
 
-	minor = acm_alloc_minor(acm);
-	if (minor < 0)
-		goto alloc_fail1;
-
 	ctrlsize = usb_endpoint_maxp(epctrl);
 	readsize = usb_endpoint_maxp(epread) *
 				(quirks == SINGLE_RX_URB ? 1 : 2);
@@ -1321,6 +1308,13 @@ made_compressed_probe:
 	acm->writesize = usb_endpoint_maxp(epwrite) * 20;
 	acm->control = control_interface;
 	acm->data = data_interface;
+
+	usb_get_intf(acm->control); /* undone in destruct() */
+
+	minor = acm_alloc_minor(acm);
+	if (minor < 0)
+		goto alloc_fail1;
+
 	acm->minor = minor;
 	acm->dev = usb_dev;
 	if (h.usb_cdc_acm_descriptor)
@@ -1467,7 +1461,6 @@ skip_countries:
 	usb_driver_claim_interface(&acm_driver, data_interface, acm);
 	usb_set_intfdata(data_interface, acm);
 
-	usb_get_intf(control_interface);
 	tty_dev = tty_port_register_device(&acm->port, acm_tty_driver, minor,
 			&control_interface->dev);
 	if (IS_ERR(tty_dev)) {
@@ -1672,6 +1665,9 @@ static const struct usb_device_id acm_ids[] = {
 	{ USB_DEVICE(0x0e8d, 0x0003), /* FIREFLY, MediaTek Inc; andrey.arapov@gmail.com */
 	.driver_info = NO_UNION_NORMAL, /* has no union descriptor */
 	},
+	{ USB_DEVICE(0x0e8d, 0x2000), /* MediaTek Inc Preloader */
+	.driver_info = DISABLE_ECHO, /* DISABLE ECHO in termios flag */
+	},
 	{ USB_DEVICE(0x0e8d, 0x3329), /* MediaTek Inc GPS */
 	.driver_info = NO_UNION_NORMAL, /* has no union descriptor */
 	},
@@ -1709,6 +1705,9 @@ static const struct usb_device_id acm_ids[] = {
 	.driver_info = NO_UNION_NORMAL, /* has no union descriptor */
 	},
 	{ USB_DEVICE(0x0572, 0x1328), /* Shiro / Aztech USB MODEM UM-3100 */
+	.driver_info = NO_UNION_NORMAL, /* has no union descriptor */
+	},
+	{ USB_DEVICE(0x0572, 0x1349), /* Hiro (Conexant) USB MODEM H50228 */
 	.driver_info = NO_UNION_NORMAL, /* has no union descriptor */
 	},
 	{ USB_DEVICE(0x20df, 0x0001), /* Simtec Electronics Entropy Key */
@@ -1867,6 +1866,13 @@ static const struct usb_device_id acm_ids[] = {
 	.driver_info = IGNORE_DEVICE,
 	},
 
+	{ USB_DEVICE(0x1bc7, 0x0021), /* Telit 3G ACM only composition */
+	.driver_info = SEND_ZERO_PACKET,
+	},
+	{ USB_DEVICE(0x1bc7, 0x0023), /* Telit 3G ACM + ECM composition */
+	.driver_info = SEND_ZERO_PACKET,
+	},
+
 	/* control interfaces without any protocol set */
 	{ USB_INTERFACE_INFO(USB_CLASS_COMM, USB_CDC_SUBCLASS_ACM,
 		USB_CDC_PROTO_NONE) },
@@ -1931,6 +1937,8 @@ static const struct tty_operations acm_ops = {
 	.set_termios =		acm_tty_set_termios,
 	.tiocmget =		acm_tty_tiocmget,
 	.tiocmset =		acm_tty_tiocmset,
+	.get_serial =		get_serial_info,
+	.set_serial =		set_serial_info,
 	.get_icount =		acm_tty_get_icount,
 };
 

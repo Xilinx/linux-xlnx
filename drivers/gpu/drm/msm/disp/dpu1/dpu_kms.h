@@ -1,37 +1,26 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Copyright (c) 2015-2018, The Linux Foundation. All rights reserved.
  * Copyright (C) 2013 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License version 2 as published by
- * the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
- * more details.
- *
- * You should have received a copy of the GNU General Public License along with
- * this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #ifndef __DPU_KMS_H__
 #define __DPU_KMS_H__
 
+#include <drm/drm_drv.h>
+
 #include "msm_drv.h"
 #include "msm_kms.h"
 #include "msm_mmu.h"
 #include "msm_gem.h"
-#include "dpu_dbg.h"
 #include "dpu_hw_catalog.h"
 #include "dpu_hw_ctl.h"
 #include "dpu_hw_lm.h"
 #include "dpu_hw_interrupts.h"
 #include "dpu_hw_top.h"
+#include "dpu_io_util.h"
 #include "dpu_rm.h"
-#include "dpu_power_handle.h"
-#include "dpu_irq.h"
 #include "dpu_core_perf.h"
 
 #define DRMID(x) ((x) ? (x)->base.id : -1)
@@ -75,9 +64,6 @@
 
 #define DPU_NAME_SIZE  12
 
-/* timeout in frames waiting for frame done */
-#define DPU_FRAME_DONE_TIMEOUT	60
-
 /*
  * struct dpu_irq_callback - IRQ callback handlers
  * @list: list to callback
@@ -104,7 +90,6 @@ struct dpu_irq {
 	atomic_t *enable_counts;
 	atomic_t *irq_counts;
 	spinlock_t cb_lock;
-	struct dentry *debugfs_file;
 };
 
 struct dpu_kms {
@@ -112,15 +97,6 @@ struct dpu_kms {
 	struct drm_device *dev;
 	int core_rev;
 	struct dpu_mdss_cfg *catalog;
-
-	struct dpu_power_handle phandle;
-	struct dpu_power_client *core_client;
-	struct dpu_power_event *power_event;
-
-	/* directory entry for debugfs */
-	struct dentry *debugfs_root;
-	struct dentry *debugfs_danger;
-	struct dentry *debugfs_vbif;
 
 	/* io/register spaces: */
 	void __iomem *mmio, *vbif[VBIF_MAX], *reg_dma;
@@ -135,10 +111,6 @@ struct dpu_kms {
 
 	struct dpu_core_perf perf;
 
-	/* saved atomic state during system suspend */
-	struct drm_atomic_state *suspend_state;
-	bool suspend_block;
-
 	struct dpu_rm rm;
 	bool rm_init;
 
@@ -150,6 +122,14 @@ struct dpu_kms {
 	struct platform_device *pdev;
 	bool rpm_enabled;
 	struct dss_module_power mp;
+
+	/* reference count bandwidth requests, so we know when we can
+	 * release bandwidth.  Each atomic update increments, and frame-
+	 * done event decrements.  Additionally, for video mode, the
+	 * reference is incremented when crtc is enabled, and decremented
+	 * when disabled.
+	 */
+	atomic_t bandwidth_ref;
 };
 
 struct vsync_info {
@@ -162,33 +142,6 @@ struct vsync_info {
 /* get struct msm_kms * from drm_device * */
 #define ddev_to_msm_kms(D) ((D) && (D)->dev_private ? \
 		((struct msm_drm_private *)((D)->dev_private))->kms : NULL)
-
-/**
- * dpu_kms_is_suspend_state - whether or not the system is pm suspended
- * @dev: Pointer to drm device
- * Return: Suspend status
- */
-static inline bool dpu_kms_is_suspend_state(struct drm_device *dev)
-{
-	if (!ddev_to_msm_kms(dev))
-		return false;
-
-	return to_dpu_kms(ddev_to_msm_kms(dev))->suspend_state != NULL;
-}
-
-/**
- * dpu_kms_is_suspend_blocked - whether or not commits are blocked due to pm
- *				suspend status
- * @dev: Pointer to drm device
- * Return: True if commits should be rejected due to pm suspend
- */
-static inline bool dpu_kms_is_suspend_blocked(struct drm_device *dev)
-{
-	if (!dpu_kms_is_suspend_state(dev))
-		return false;
-
-	return to_dpu_kms(ddev_to_msm_kms(dev))->suspend_block;
-}
 
 /**
  * Debugfs functions - extra helper functions for debugfs support
@@ -243,12 +196,8 @@ void dpu_debugfs_setup_regset32(struct dpu_debugfs_regset32 *regset,
  * @mode:   File mode within debugfs
  * @parent: Parent directory entry within debugfs, can be NULL
  * @regset: Pointer to persistent register block definition
- *
- * Return: dentry pointer for newly created file, use either debugfs_remove()
- *         or debugfs_remove_recursive() (on a parent directory) to remove the
- *         file
  */
-void *dpu_debugfs_create_regset32(const char *name, umode_t mode,
+void dpu_debugfs_create_regset32(const char *name, umode_t mode,
 		void *parent, struct dpu_debugfs_regset32 *regset);
 
 /**

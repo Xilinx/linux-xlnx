@@ -23,7 +23,7 @@
 #include <linux/mm.h>
 #include <linux/types.h>
 #include <linux/spinlock.h>
-#include <linux/bootmem.h>
+#include <linux/memblock.h>
 #include <linux/ioport.h>
 #include <linux/mc146818rtc.h>
 #include <linux/efi.h>
@@ -84,13 +84,15 @@ pgd_t * __init efi_call_phys_prolog(void)
 
 	if (!efi_enabled(EFI_OLD_MEMMAP)) {
 		efi_switch_mm(&efi_mm);
-		return NULL;
+		return efi_mm.pgd;
 	}
 
 	early_code_mapping_set_exec(1);
 
 	n_pgds = DIV_ROUND_UP((max_pfn << PAGE_SHIFT), PGDIR_SIZE);
 	save_pgd = kmalloc_array(n_pgds, sizeof(*save_pgd), GFP_KERNEL);
+	if (!save_pgd)
+		return NULL;
 
 	/*
 	 * Build 1:1 identity mapping for efi=old_map usage. Note that
@@ -138,10 +140,11 @@ pgd_t * __init efi_call_phys_prolog(void)
 		pgd_offset_k(pgd * PGDIR_SIZE)->pgd &= ~_PAGE_NX;
 	}
 
-out:
 	__flush_tlb_all();
-
 	return save_pgd;
+out:
+	efi_call_phys_epilog(save_pgd);
+	return NULL;
 }
 
 void __init efi_call_phys_epilog(pgd_t *save_pgd)
@@ -619,18 +622,16 @@ void __init efi_dump_pagetable(void)
 
 /*
  * Makes the calling thread switch to/from efi_mm context. Can be used
- * for SetVirtualAddressMap() i.e. current->active_mm == init_mm as well
- * as during efi runtime calls i.e current->active_mm == current_mm.
- * We are not mm_dropping()/mm_grabbing() any mm, because we are not
- * losing/creating any references.
+ * in a kernel thread and user context. Preemption needs to remain disabled
+ * while the EFI-mm is borrowed. mmgrab()/mmdrop() is not used because the mm
+ * can not change under us.
+ * It should be ensured that there are no concurent calls to this function.
  */
 void efi_switch_mm(struct mm_struct *mm)
 {
-	task_lock(current);
 	efi_scratch.prev_mm = current->active_mm;
 	current->active_mm = mm;
 	switch_mm(efi_scratch.prev_mm, mm, NULL);
-	task_unlock(current);
 }
 
 #ifdef CONFIG_EFI_MIXED

@@ -1,31 +1,23 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2015, The Linux Foundation. All rights reserved.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 and
- * only version 2 as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
 #include <linux/clk.h>
 #include <linux/delay.h>
+#include <linux/dma-mapping.h>
 #include <linux/err.h>
-#include <linux/gpio.h>
 #include <linux/gpio/consumer.h>
 #include <linux/interrupt.h>
+#include <linux/mfd/syscon.h>
 #include <linux/of_device.h>
-#include <linux/of_gpio.h>
+#include <linux/of_graph.h>
 #include <linux/of_irq.h>
 #include <linux/pinctrl/consumer.h>
-#include <linux/of_graph.h>
+#include <linux/regmap.h>
 #include <linux/regulator/consumer.h>
 #include <linux/spinlock.h>
-#include <linux/mfd/syscon.h>
-#include <linux/regmap.h>
+
 #include <video/mipi_display.h>
 
 #include "dsi.h"
@@ -33,6 +25,8 @@
 #include "sfpb.xml.h"
 #include "dsi_cfg.h"
 #include "msm_kms.h"
+
+#define DSI_RESET_TOGGLE_DELAY_MS 20
 
 static int dsi_get_version(const void __iomem *base, u32 *major, u32 *minor)
 {
@@ -429,15 +423,15 @@ static int dsi_clk_init(struct msm_dsi_host *msm_host)
 	}
 
 	msm_host->byte_clk_src = clk_get_parent(msm_host->byte_clk);
-	if (!msm_host->byte_clk_src) {
-		ret = -ENODEV;
+	if (IS_ERR(msm_host->byte_clk_src)) {
+		ret = PTR_ERR(msm_host->byte_clk_src);
 		pr_err("%s: can't find byte_clk clock. ret=%d\n", __func__, ret);
 		goto exit;
 	}
 
 	msm_host->pixel_clk_src = clk_get_parent(msm_host->pixel_clk);
-	if (!msm_host->pixel_clk_src) {
-		ret = -ENODEV;
+	if (IS_ERR(msm_host->pixel_clk_src)) {
+		ret = PTR_ERR(msm_host->pixel_clk_src);
 		pr_err("%s: can't find pixel_clk clock. ret=%d\n", __func__, ret);
 		goto exit;
 	}
@@ -994,7 +988,7 @@ static void dsi_sw_reset(struct msm_dsi_host *msm_host)
 	wmb(); /* clocks need to be enabled before reset */
 
 	dsi_write(msm_host, REG_DSI_RESET, 1);
-	wmb(); /* make sure reset happen */
+	msleep(DSI_RESET_TOGGLE_DELAY_MS); /* make sure reset happen */
 	dsi_write(msm_host, REG_DSI_RESET, 0);
 }
 
@@ -1049,8 +1043,8 @@ static void dsi_wait4video_done(struct msm_dsi_host *msm_host)
 	ret = wait_for_completion_timeout(&msm_host->video_comp,
 			msecs_to_jiffies(70));
 
-	if (ret <= 0)
-		dev_err(dev, "wait for video done timed out\n");
+	if (ret == 0)
+		DRM_DEV_ERROR(dev, "wait for video done timed out\n");
 
 	dsi_intr_ctrl(msm_host, DSI_IRQ_MASK_VIDEO_DONE, 0);
 }
@@ -1082,6 +1076,8 @@ int dsi_tx_buf_alloc_6g(struct msm_dsi_host *msm_host, int size)
 		msm_host->tx_gem_obj = NULL;
 		return PTR_ERR(data);
 	}
+
+	msm_gem_object_set_name(msm_host->tx_gem_obj, "tx_gem");
 
 	msm_host->tx_size = msm_host->tx_gem_obj->size;
 
@@ -1118,7 +1114,7 @@ static void dsi_tx_buf_free(struct msm_dsi_host *msm_host)
 
 	priv = dev->dev_private;
 	if (msm_host->tx_gem_obj) {
-		msm_gem_put_iova(msm_host->tx_gem_obj, priv->kms->aspace);
+		msm_gem_unpin_iova(msm_host->tx_gem_obj, priv->kms->aspace);
 		drm_gem_object_put_unlocked(msm_host->tx_gem_obj);
 		msm_host->tx_gem_obj = NULL;
 	}
@@ -1248,7 +1244,7 @@ int dsi_dma_base_get_6g(struct msm_dsi_host *msm_host, uint64_t *dma_base)
 	if (!dma_base)
 		return -EINVAL;
 
-	return msm_gem_get_iova(msm_host->tx_gem_obj,
+	return msm_gem_get_and_pin_iova(msm_host->tx_gem_obj,
 				priv->kms->aspace, dma_base);
 }
 
@@ -1402,7 +1398,7 @@ static void dsi_sw_reset_restore(struct msm_dsi_host *msm_host)
 
 	/* dsi controller can only be reset while clocks are running */
 	dsi_write(msm_host, REG_DSI_RESET, 1);
-	wmb();	/* make sure reset happen */
+	msleep(DSI_RESET_TOGGLE_DELAY_MS); /* make sure reset happen */
 	dsi_write(msm_host, REG_DSI_RESET, 0);
 	wmb();	/* controller out of reset */
 	dsi_write(msm_host, REG_DSI_CTRL, data0);
@@ -1596,8 +1592,6 @@ static int dsi_host_attach(struct mipi_dsi_host *host,
 	msm_host->format = dsi->format;
 	msm_host->mode_flags = dsi->mode_flags;
 
-	msm_dsi_manager_attach_dsi_device(msm_host->id, dsi->mode_flags);
-
 	/* Some gpios defined in panel DT need to be controlled by host */
 	ret = dsi_host_init_panel_gpios(msm_host, &dsi->dev);
 	if (ret)
@@ -1673,7 +1667,7 @@ static int dsi_host_parse_lane_data(struct msm_dsi_host *msm_host,
 
 	prop = of_find_property(ep, "data-lanes", &len);
 	if (!prop) {
-		dev_dbg(dev,
+		DRM_DEV_DEBUG(dev,
 			"failed to find data lane mapping, using default\n");
 		return 0;
 	}
@@ -1681,7 +1675,7 @@ static int dsi_host_parse_lane_data(struct msm_dsi_host *msm_host,
 	num_lanes = len / sizeof(u32);
 
 	if (num_lanes < 1 || num_lanes > 4) {
-		dev_err(dev, "bad number of data lanes\n");
+		DRM_DEV_ERROR(dev, "bad number of data lanes\n");
 		return -EINVAL;
 	}
 
@@ -1690,7 +1684,7 @@ static int dsi_host_parse_lane_data(struct msm_dsi_host *msm_host,
 	ret = of_property_read_u32_array(ep, "data-lanes", lane_map,
 					 num_lanes);
 	if (ret) {
-		dev_err(dev, "failed to read lane data\n");
+		DRM_DEV_ERROR(dev, "failed to read lane data\n");
 		return ret;
 	}
 
@@ -1711,7 +1705,7 @@ static int dsi_host_parse_lane_data(struct msm_dsi_host *msm_host,
 		 */
 		for (j = 0; j < num_lanes; j++) {
 			if (lane_map[j] < 0 || lane_map[j] > 3)
-				dev_err(dev, "bad physical lane entry %u\n",
+				DRM_DEV_ERROR(dev, "bad physical lane entry %u\n",
 					lane_map[j]);
 
 			if (swap[lane_map[j]] != j)
@@ -1742,21 +1736,23 @@ static int dsi_host_parse_dt(struct msm_dsi_host *msm_host)
 	 */
 	endpoint = of_graph_get_endpoint_by_regs(np, 1, -1);
 	if (!endpoint) {
-		dev_dbg(dev, "%s: no endpoint\n", __func__);
+		DRM_DEV_DEBUG(dev, "%s: no endpoint\n", __func__);
 		return 0;
 	}
 
 	ret = dsi_host_parse_lane_data(msm_host, endpoint);
 	if (ret) {
-		dev_err(dev, "%s: invalid lane configuration %d\n",
+		DRM_DEV_ERROR(dev, "%s: invalid lane configuration %d\n",
 			__func__, ret);
+		ret = -EINVAL;
 		goto err;
 	}
 
 	/* Get panel node from the output port's endpoint data */
 	device_node = of_graph_get_remote_node(np, 1, 0);
 	if (!device_node) {
-		dev_dbg(dev, "%s: no valid device\n", __func__);
+		DRM_DEV_DEBUG(dev, "%s: no valid device\n", __func__);
+		ret = -ENODEV;
 		goto err;
 	}
 
@@ -1766,7 +1762,7 @@ static int dsi_host_parse_dt(struct msm_dsi_host *msm_host)
 		msm_host->sfpb = syscon_regmap_lookup_by_phandle(np,
 					"syscon-sfpb");
 		if (IS_ERR(msm_host->sfpb)) {
-			dev_err(dev, "%s: failed to get sfpb regmap\n",
+			DRM_DEV_ERROR(dev, "%s: failed to get sfpb regmap\n",
 				__func__);
 			ret = PTR_ERR(msm_host->sfpb);
 		}
@@ -1916,7 +1912,7 @@ int msm_dsi_host_modeset_init(struct mipi_dsi_host *host,
 	msm_host->irq = irq_of_parse_and_map(pdev->dev.of_node, 0);
 	if (msm_host->irq < 0) {
 		ret = msm_host->irq;
-		dev_err(dev->dev, "failed to get irq: %d\n", ret);
+		DRM_DEV_ERROR(dev->dev, "failed to get irq: %d\n", ret);
 		return ret;
 	}
 
@@ -1924,7 +1920,7 @@ int msm_dsi_host_modeset_init(struct mipi_dsi_host *host,
 			dsi_host_irq, IRQF_TRIGGER_HIGH | IRQF_ONESHOT,
 			"dsi_isr", msm_host);
 	if (ret < 0) {
-		dev_err(&pdev->dev, "failed to request IRQ%u: %d\n",
+		DRM_DEV_ERROR(&pdev->dev, "failed to request IRQ%u: %d\n",
 				msm_host->irq, ret);
 		return ret;
 	}
@@ -2420,7 +2416,7 @@ unlock_ret:
 }
 
 int msm_dsi_host_set_display_mode(struct mipi_dsi_host *host,
-					struct drm_display_mode *mode)
+				  const struct drm_display_mode *mode)
 {
 	struct msm_dsi_host *msm_host = to_msm_dsi_host(host);
 
@@ -2438,17 +2434,14 @@ int msm_dsi_host_set_display_mode(struct mipi_dsi_host *host,
 	return 0;
 }
 
-struct drm_panel *msm_dsi_host_get_panel(struct mipi_dsi_host *host,
-				unsigned long *panel_flags)
+struct drm_panel *msm_dsi_host_get_panel(struct mipi_dsi_host *host)
 {
-	struct msm_dsi_host *msm_host = to_msm_dsi_host(host);
-	struct drm_panel *panel;
+	return of_drm_find_panel(to_msm_dsi_host(host)->device_node);
+}
 
-	panel = of_drm_find_panel(msm_host->device_node);
-	if (panel_flags)
-			*panel_flags = msm_host->mode_flags;
-
-	return panel;
+unsigned long msm_dsi_host_get_mode_flags(struct mipi_dsi_host *host)
+{
+	return to_msm_dsi_host(host)->mode_flags;
 }
 
 struct drm_bridge *msm_dsi_host_get_bridge(struct mipi_dsi_host *host)

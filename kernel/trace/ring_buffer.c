@@ -128,16 +128,7 @@ int ring_buffer_print_entry_header(struct trace_seq *s)
 #define RB_ALIGNMENT		4U
 #define RB_MAX_SMALL_DATA	(RB_ALIGNMENT * RINGBUF_TYPE_DATA_TYPE_LEN_MAX)
 #define RB_EVNT_MIN_SIZE	8U	/* two 32bit words */
-
-#ifndef CONFIG_HAVE_64BIT_ALIGNED_ACCESS
-# define RB_FORCE_8BYTE_ALIGNMENT	0
-# define RB_ARCH_ALIGNMENT		RB_ALIGNMENT
-#else
-# define RB_FORCE_8BYTE_ALIGNMENT	1
-# define RB_ARCH_ALIGNMENT		8U
-#endif
-
-#define RB_ALIGN_DATA		__aligned(RB_ARCH_ALIGNMENT)
+#define RB_ALIGN_DATA		__aligned(RB_ALIGNMENT)
 
 /* define RINGBUF_TYPE_DATA for 'case RINGBUF_TYPE_DATA:' */
 #define RINGBUF_TYPE_DATA 0 ... RINGBUF_TYPE_DATA_TYPE_LEN_MAX
@@ -353,20 +344,6 @@ static void rb_init_page(struct buffer_data_page *bpage)
 	local_set(&bpage->commit, 0);
 }
 
-/**
- * ring_buffer_page_len - the size of data on the page.
- * @page: The page to read
- *
- * Returns the amount of data on the page, including buffer page header.
- */
-size_t ring_buffer_page_len(void *page)
-{
-	struct buffer_data_page *bpage = page;
-
-	return (local_read(&bpage->commit) & ~RB_MISSED_FLAGS)
-		+ BUF_PAGE_HDR_SIZE;
-}
-
 /*
  * Also stolen from mm/slob.c. Thanks to Mathieu Desnoyers for pointing
  * this issue out.
@@ -487,6 +464,10 @@ struct ring_buffer_per_cpu {
 	local_t				dropped_events;
 	local_t				committing;
 	local_t				commits;
+	local_t				pages_touched;
+	local_t				pages_read;
+	long				last_pages_touch;
+	size_t				shortest_full;
 	unsigned long			read;
 	unsigned long			read_bytes;
 	u64				write_stamp;
@@ -529,6 +510,41 @@ struct ring_buffer_iter {
 	u64				read_stamp;
 };
 
+/**
+ * ring_buffer_nr_pages - get the number of buffer pages in the ring buffer
+ * @buffer: The ring_buffer to get the number of pages from
+ * @cpu: The cpu of the ring_buffer to get the number of pages from
+ *
+ * Returns the number of pages used by a per_cpu buffer of the ring buffer.
+ */
+size_t ring_buffer_nr_pages(struct ring_buffer *buffer, int cpu)
+{
+	return buffer->buffers[cpu]->nr_pages;
+}
+
+/**
+ * ring_buffer_nr_pages_dirty - get the number of used pages in the ring buffer
+ * @buffer: The ring_buffer to get the number of pages from
+ * @cpu: The cpu of the ring_buffer to get the number of pages from
+ *
+ * Returns the number of pages that have content in the ring buffer.
+ */
+size_t ring_buffer_nr_dirty_pages(struct ring_buffer *buffer, int cpu)
+{
+	size_t read;
+	size_t cnt;
+
+	read = local_read(&buffer->buffers[cpu]->pages_read);
+	cnt = local_read(&buffer->buffers[cpu]->pages_touched);
+	/* The reader can read an empty page, but not more than that */
+	if (cnt < read) {
+		WARN_ON_ONCE(read > cnt + 1);
+		return 0;
+	}
+
+	return cnt - read;
+}
+
 /*
  * rb_wake_up_waiters - wake up tasks waiting for ring buffer input
  *
@@ -556,7 +572,7 @@ static void rb_wake_up_waiters(struct irq_work *work)
  * as data is added to any of the @buffer's cpu buffers. Otherwise
  * it will wait for data to be added to a specific cpu buffer.
  */
-int ring_buffer_wait(struct ring_buffer *buffer, int cpu, bool full)
+int ring_buffer_wait(struct ring_buffer *buffer, int cpu, int full)
 {
 	struct ring_buffer_per_cpu *uninitialized_var(cpu_buffer);
 	DEFINE_WAIT(wait);
@@ -571,7 +587,7 @@ int ring_buffer_wait(struct ring_buffer *buffer, int cpu, bool full)
 	if (cpu == RING_BUFFER_ALL_CPUS) {
 		work = &buffer->irq_work;
 		/* Full only makes sense on per cpu reads */
-		full = false;
+		full = 0;
 	} else {
 		if (!cpumask_test_cpu(cpu, buffer->cpumask))
 			return -ENODEV;
@@ -623,15 +639,22 @@ int ring_buffer_wait(struct ring_buffer *buffer, int cpu, bool full)
 		    !ring_buffer_empty_cpu(buffer, cpu)) {
 			unsigned long flags;
 			bool pagebusy;
+			size_t nr_pages;
+			size_t dirty;
 
 			if (!full)
 				break;
 
 			raw_spin_lock_irqsave(&cpu_buffer->reader_lock, flags);
 			pagebusy = cpu_buffer->reader_page == cpu_buffer->commit_page;
+			nr_pages = cpu_buffer->nr_pages;
+			dirty = ring_buffer_nr_dirty_pages(buffer, cpu);
+			if (!cpu_buffer->shortest_full ||
+			    cpu_buffer->shortest_full < full)
+				cpu_buffer->shortest_full = full;
 			raw_spin_unlock_irqrestore(&cpu_buffer->reader_lock, flags);
-
-			if (!pagebusy)
+			if (!pagebusy &&
+			    (!nr_pages || (dirty * 100) > full * nr_pages))
 				break;
 		}
 
@@ -730,7 +753,7 @@ u64 ring_buffer_time_stamp(struct ring_buffer *buffer, int cpu)
 
 	preempt_disable_notrace();
 	time = rb_time_stamp(buffer);
-	preempt_enable_no_resched_notrace();
+	preempt_enable_notrace();
 
 	return time;
 }
@@ -1054,6 +1077,7 @@ static void rb_tail_page_update(struct ring_buffer_per_cpu *cpu_buffer,
 	old_write = local_add_return(RB_WRITE_INTCNT, &next_page->write);
 	old_entries = local_add_return(RB_WRITE_INTCNT, &next_page->entries);
 
+	local_inc(&cpu_buffer->pages_touched);
 	/*
 	 * Just make sure we have seen our old_write and synchronize
 	 * with any interrupts that come in.
@@ -1834,7 +1858,7 @@ int ring_buffer_resize(struct ring_buffer *buffer, unsigned long size,
 		 * There could have been a race between checking
 		 * record_disable and incrementing it.
 		 */
-		synchronize_sched();
+		synchronize_rcu();
 		for_each_buffer_cpu(buffer, cpu) {
 			cpu_buffer = buffer->buffers[cpu];
 			rb_check_pages(cpu_buffer);
@@ -2340,7 +2364,7 @@ rb_update_event(struct ring_buffer_per_cpu *cpu_buffer,
 
 	event->time_delta = delta;
 	length -= RB_EVNT_HDR_SIZE;
-	if (length > RB_MAX_SMALL_DATA || RB_FORCE_8BYTE_ALIGNMENT) {
+	if (length > RB_MAX_SMALL_DATA) {
 		event->type_len = 0;
 		event->array[0] = length;
 	} else
@@ -2355,11 +2379,11 @@ static unsigned rb_calculate_event_length(unsigned length)
 	if (!length)
 		length++;
 
-	if (length > RB_MAX_SMALL_DATA || RB_FORCE_8BYTE_ALIGNMENT)
+	if (length > RB_MAX_SMALL_DATA)
 		length += sizeof(event.array[0]);
 
 	length += RB_EVNT_HDR_SIZE;
-	length = ALIGN(length, RB_ARCH_ALIGNMENT);
+	length = ALIGN(length, RB_ALIGNMENT);
 
 	/*
 	 * In case the time delta is larger than the 27 bits for it
@@ -2586,7 +2610,9 @@ static void rb_commit(struct ring_buffer_per_cpu *cpu_buffer,
 static __always_inline void
 rb_wakeups(struct ring_buffer *buffer, struct ring_buffer_per_cpu *cpu_buffer)
 {
-	bool pagebusy;
+	size_t nr_pages;
+	size_t dirty;
+	size_t full;
 
 	if (buffer->irq_work.waiters_pending) {
 		buffer->irq_work.waiters_pending = false;
@@ -2600,14 +2626,27 @@ rb_wakeups(struct ring_buffer *buffer, struct ring_buffer_per_cpu *cpu_buffer)
 		irq_work_queue(&cpu_buffer->irq_work.work);
 	}
 
-	pagebusy = cpu_buffer->reader_page == cpu_buffer->commit_page;
+	if (cpu_buffer->last_pages_touch == local_read(&cpu_buffer->pages_touched))
+		return;
 
-	if (!pagebusy && cpu_buffer->irq_work.full_waiters_pending) {
-		cpu_buffer->irq_work.wakeup_full = true;
-		cpu_buffer->irq_work.full_waiters_pending = false;
-		/* irq_work_queue() supplies it's own memory barriers */
-		irq_work_queue(&cpu_buffer->irq_work.work);
-	}
+	if (cpu_buffer->reader_page == cpu_buffer->commit_page)
+		return;
+
+	if (!cpu_buffer->irq_work.full_waiters_pending)
+		return;
+
+	cpu_buffer->last_pages_touch = local_read(&cpu_buffer->pages_touched);
+
+	full = cpu_buffer->shortest_full;
+	nr_pages = cpu_buffer->nr_pages;
+	dirty = ring_buffer_nr_dirty_pages(buffer, cpu_buffer->cpu);
+	if (full && nr_pages && (dirty * 100) <= full * nr_pages)
+		return;
+
+	cpu_buffer->irq_work.wakeup_full = true;
+	cpu_buffer->irq_work.full_waiters_pending = false;
+	/* irq_work_queue() supplies it's own memory barriers */
+	irq_work_queue(&cpu_buffer->irq_work.work);
 }
 
 /*
@@ -3151,7 +3190,7 @@ static bool rb_per_cpu_empty(struct ring_buffer_per_cpu *cpu_buffer)
  * This prevents all writes to the buffer. Any attempt to write
  * to the buffer after this will fail and return NULL.
  *
- * The caller should call synchronize_sched() after this.
+ * The caller should call synchronize_rcu() after this.
  */
 void ring_buffer_record_disable(struct ring_buffer *buffer)
 {
@@ -3253,7 +3292,7 @@ bool ring_buffer_record_is_set_on(struct ring_buffer *buffer)
  * This prevents all writes to the buffer. Any attempt to write
  * to the buffer after this will fail and return NULL.
  *
- * The caller should call synchronize_sched() after this.
+ * The caller should call synchronize_rcu() after this.
  */
 void ring_buffer_record_disable_cpu(struct ring_buffer *buffer, int cpu)
 {
@@ -3732,12 +3771,14 @@ rb_get_reader_page(struct ring_buffer_per_cpu *cpu_buffer)
 		goto spin;
 
 	/*
-	 * Yeah! We succeeded in replacing the page.
+	 * Yay! We succeeded in replacing the page.
 	 *
 	 * Now make the new head point back to the reader page.
 	 */
 	rb_list_head(reader->list.next)->prev = &cpu_buffer->reader_page->list;
 	rb_inc_page(cpu_buffer, &cpu_buffer->head_page);
+
+	local_inc(&cpu_buffer->pages_read);
 
 	/* Finally update the reader page to the new head */
 	cpu_buffer->reader_page = reader;
@@ -4141,6 +4182,7 @@ EXPORT_SYMBOL_GPL(ring_buffer_consume);
  * ring_buffer_read_prepare - Prepare for a non consuming read of the buffer
  * @buffer: The ring buffer to read from
  * @cpu: The cpu buffer to iterate over
+ * @flags: gfp flags to use for memory allocation
  *
  * This performs the initial preparations necessary to iterate
  * through the buffer.  Memory is allocated, buffer recording
@@ -4158,7 +4200,7 @@ EXPORT_SYMBOL_GPL(ring_buffer_consume);
  * This overall must be paired with ring_buffer_read_finish.
  */
 struct ring_buffer_iter *
-ring_buffer_read_prepare(struct ring_buffer *buffer, int cpu)
+ring_buffer_read_prepare(struct ring_buffer *buffer, int cpu, gfp_t flags)
 {
 	struct ring_buffer_per_cpu *cpu_buffer;
 	struct ring_buffer_iter *iter;
@@ -4166,7 +4208,7 @@ ring_buffer_read_prepare(struct ring_buffer *buffer, int cpu)
 	if (!cpumask_test_cpu(cpu, buffer->cpumask))
 		return NULL;
 
-	iter = kmalloc(sizeof(*iter), GFP_KERNEL);
+	iter = kmalloc(sizeof(*iter), flags);
 	if (!iter)
 		return NULL;
 
@@ -4191,7 +4233,7 @@ EXPORT_SYMBOL_GPL(ring_buffer_read_prepare);
 void
 ring_buffer_read_prepare_sync(void)
 {
-	synchronize_sched();
+	synchronize_rcu();
 }
 EXPORT_SYMBOL_GPL(ring_buffer_read_prepare_sync);
 
@@ -4334,6 +4376,10 @@ rb_reset_cpu(struct ring_buffer_per_cpu *cpu_buffer)
 	local_set(&cpu_buffer->entries, 0);
 	local_set(&cpu_buffer->committing, 0);
 	local_set(&cpu_buffer->commits, 0);
+	local_set(&cpu_buffer->pages_touched, 0);
+	local_set(&cpu_buffer->pages_read, 0);
+	cpu_buffer->last_pages_touch = 0;
+	cpu_buffer->shortest_full = 0;
 	cpu_buffer->read = 0;
 	cpu_buffer->read_bytes = 0;
 
@@ -4363,7 +4409,7 @@ void ring_buffer_reset_cpu(struct ring_buffer *buffer, int cpu)
 	atomic_inc(&cpu_buffer->record_disabled);
 
 	/* Make sure all commits have finished */
-	synchronize_sched();
+	synchronize_rcu();
 
 	raw_spin_lock_irqsave(&cpu_buffer->reader_lock, flags);
 
@@ -4496,7 +4542,7 @@ int ring_buffer_swap_cpu(struct ring_buffer *buffer_a,
 		goto out;
 
 	/*
-	 * We can't do a synchronize_sched here because this
+	 * We can't do a synchronize_rcu here because this
 	 * function can be called in atomic context.
 	 * Normally this will be called from the same CPU as cpu.
 	 * If not it's up to the caller to protect this.
@@ -4924,7 +4970,7 @@ static __init int rb_write_something(struct rb_test_data *data, bool nested)
 	cnt = data->cnt + (nested ? 27 : 0);
 
 	/* Multiply cnt by ~e, to make some unique increment */
-	size = (data->cnt * 68 / 25) % (sizeof(rb_string) - 1);
+	size = (cnt * 68 / 25) % (sizeof(rb_string) - 1);
 
 	len = size + sizeof(struct rb_item);
 

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /**
  * gadget_hibernation.c - DesignWare USB3 DRD Controller gadget hibernation file
  *
@@ -338,7 +339,7 @@ void gadget_hibernation_interrupt(struct dwc3 *dwc)
 			continue;
 
 		if (dep->flags & DWC3_EP_TRANSFER_STARTED)
-			dwc3_stop_active_transfer(dep, false);
+			dwc3_stop_active_transfer(dep, false, false);
 
 		save_endpoint_state(dep);
 	}

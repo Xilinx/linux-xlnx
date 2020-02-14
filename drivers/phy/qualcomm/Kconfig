@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-only
 #
 # Phy drivers for Qualcomm and Atheros platforms
 #
@@ -24,6 +25,14 @@ config PHY_QCOM_IPQ806X_SATA
 	depends on OF
 	select GENERIC_PHY
 
+config PHY_QCOM_PCIE2
+	tristate "Qualcomm PCIe Gen2 PHY Driver"
+	depends on OF && COMMON_CLK && (ARCH_QCOM || COMPILE_TEST)
+	select GENERIC_PHY
+	help
+	  Enable this to support the Qualcomm PCIe PHY, used with the Synopsys
+	  based PCIe controller.
+
 config PHY_QCOM_QMP
 	tristate "Qualcomm QMP PHY Driver"
 	depends on OF && COMMON_CLK && (ARCH_QCOM || COMPILE_TEST)
@@ -49,6 +58,23 @@ config PHY_QCOM_UFS
 	select GENERIC_PHY
 	help
 	  Support for UFS PHY on QCOM chipsets.
+
+if PHY_QCOM_UFS
+
+config PHY_QCOM_UFS_14NM
+	tristate
+	default PHY_QCOM_UFS
+	help
+	  Support for 14nm UFS QMP phy present on QCOM chipsets.
+
+config PHY_QCOM_UFS_20NM
+	tristate
+	default PHY_QCOM_UFS
+	depends on BROKEN
+	help
+	  Support for 20nm UFS QMP phy present on QCOM chipsets.
+
+endif
 
 config PHY_QCOM_USB_HS
 	tristate "Qualcomm USB HS PHY module"

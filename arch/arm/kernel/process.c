@@ -1,12 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  *  linux/arch/arm/kernel/process.c
  *
  *  Copyright (C) 1996-2000 Russell King - Converted to ARM.
  *  Original Copyright (C) 1995  Linus Torvalds
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
  */
 #include <stdarg.h>
 
@@ -39,7 +36,7 @@
 #include <asm/tls.h>
 #include <asm/vdso.h>
 
-#ifdef CONFIG_STACKPROTECTOR
+#if defined(CONFIG_STACKPROTECTOR) && !defined(CONFIG_STACKPROTECTOR_PER_TASK)
 #include <linux/stackprotector.h>
 unsigned long __stack_chk_guard __read_mostly;
 EXPORT_SYMBOL(__stack_chk_guard);
@@ -150,7 +147,7 @@ void __show_regs(struct pt_regs *regs)
 		if ((domain & domain_mask(DOMAIN_USER)) ==
 		    domain_val(DOMAIN_USER, DOMAIN_NOACCESS))
 			segment = "none";
-		else if (fs == get_ds())
+		else if (fs == KERNEL_DS)
 			segment = "kernel";
 		else
 			segment = "user";
@@ -267,6 +264,10 @@ copy_thread(unsigned long clone_flags, unsigned long stack_start,
 
 	thread_notify(THREAD_NOTIFY_COPY, thread);
 
+#ifdef CONFIG_STACKPROTECTOR_PER_TASK
+	thread->stack_canary = p->stack_canary;
+#endif
+
 	return 0;
 }
 
@@ -316,11 +317,6 @@ unsigned long get_wchan(struct task_struct *p)
 			return frame.pc;
 	} while (count ++ < 16);
 	return 0;
-}
-
-unsigned long arch_randomize_brk(struct mm_struct *mm)
-{
-	return randomize_page(mm->brk, 0x02000000);
 }
 
 #ifdef CONFIG_MMU

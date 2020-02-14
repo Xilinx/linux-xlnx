@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Driver for MT9V022, MT9V024, MT9V032, and MT9V034 CMOS Image Sensors
  *
@@ -6,10 +7,6 @@
  * Based on the MT9M001 driver,
  *
  * Copyright (C) 2008, Guennadi Liakhovetski <kernel@pengutronix.de>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
  */
 
 #include <linux/clk.h>
@@ -989,7 +986,7 @@ static struct mt9v032_platform_data *
 mt9v032_get_pdata(struct i2c_client *client)
 {
 	struct mt9v032_platform_data *pdata = NULL;
-	struct v4l2_fwnode_endpoint endpoint;
+	struct v4l2_fwnode_endpoint endpoint = { .bus_type = 0 };
 	struct device_node *np;
 	struct property *prop;
 

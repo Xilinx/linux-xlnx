@@ -12,6 +12,7 @@
 #define pr_fmt(fmt) fmt
 
 #include <linux/workqueue.h>
+#include <linux/security.h>
 #include <linux/spinlock.h>
 #include <linux/kthread.h>
 #include <linux/tracefs.h>
@@ -69,14 +70,6 @@ static int system_refcount_dec(struct event_subsystem *system)
 
 #define while_for_each_event_file()		\
 	}
-
-static struct list_head *
-trace_get_fields(struct trace_event_call *event_call)
-{
-	if (!event_call->class->get_fields)
-		return &event_call->class->fields;
-	return event_call->class->get_fields(event_call);
-}
 
 static struct ftrace_event_field *
 __find_event_field(struct list_head *head, char *name)
@@ -263,12 +256,12 @@ void *trace_event_buffer_reserve(struct trace_event_buffer *fbuffer,
 	local_save_flags(fbuffer->flags);
 	fbuffer->pc = preempt_count();
 	/*
-	 * If CONFIG_PREEMPT is enabled, then the tracepoint itself disables
+	 * If CONFIG_PREEMPTION is enabled, then the tracepoint itself disables
 	 * preemption (adding one to the preempt_count). Since we are
 	 * interested in the preempt_count at the time the tracepoint was
 	 * hit, we need to subtract one to offset the increment.
 	 */
-	if (IS_ENABLED(CONFIG_PREEMPT))
+	if (IS_ENABLED(CONFIG_PREEMPTION))
 		fbuffer->pc--;
 	fbuffer->trace_file = trace_file;
 
@@ -795,7 +788,7 @@ static int __ftrace_set_clr_event(struct trace_array *tr, const char *match,
 	return ret;
 }
 
-static int ftrace_set_clr_event(struct trace_array *tr, char *buf, int set)
+int ftrace_set_clr_event(struct trace_array *tr, char *buf, int set)
 {
 	char *event = NULL, *sub = NULL, *match;
 	int ret;
@@ -832,6 +825,7 @@ static int ftrace_set_clr_event(struct trace_array *tr, char *buf, int set)
 
 	return ret;
 }
+EXPORT_SYMBOL_GPL(ftrace_set_clr_event);
 
 /**
  * trace_set_clr_event - enable or disable an event
@@ -1251,7 +1245,7 @@ static int f_show(struct seq_file *m, void *v)
 	 */
 	array_descriptor = strchr(field->type, '[');
 
-	if (!strncmp(field->type, "__data_loc", 10))
+	if (str_has_prefix(field->type, "__data_loc"))
 		array_descriptor = NULL;
 
 	if (!array_descriptor)
@@ -1301,6 +1295,8 @@ static int trace_format_open(struct inode *inode, struct file *file)
 	struct seq_file *m;
 	int ret;
 
+	/* Do we want to hide event format files on tracefs lockdown? */
+
 	ret = seq_open(file, &trace_format_seq_ops);
 	if (ret < 0)
 		return ret;
@@ -1317,9 +1313,6 @@ event_id_read(struct file *filp, char __user *ubuf, size_t cnt, loff_t *ppos)
 	int id = (long)event_file_data(filp);
 	char buf[32];
 	int len;
-
-	if (*ppos)
-		return 0;
 
 	if (unlikely(!id))
 		return -ENODEV;
@@ -1450,28 +1443,17 @@ static int system_tr_open(struct inode *inode, struct file *filp)
 	struct trace_array *tr = inode->i_private;
 	int ret;
 
-	if (tracing_is_disabled())
-		return -ENODEV;
-
-	if (trace_array_get(tr) < 0)
-		return -ENODEV;
-
 	/* Make a temporary dir that has no system but points to tr */
 	dir = kzalloc(sizeof(*dir), GFP_KERNEL);
-	if (!dir) {
-		trace_array_put(tr);
+	if (!dir)
 		return -ENOMEM;
-	}
 
-	dir->tr = tr;
-
-	ret = tracing_open_generic(inode, filp);
+	ret = tracing_open_generic_tr(inode, filp);
 	if (ret < 0) {
-		trace_array_put(tr);
 		kfree(dir);
 		return ret;
 	}
-
+	dir->tr = tr;
 	filp->private_data = dir;
 
 	return 0;
@@ -1781,6 +1763,10 @@ ftrace_event_open(struct inode *inode, struct file *file,
 	struct seq_file *m;
 	int ret;
 
+	ret = security_locked_down(LOCKDOWN_TRACEFS);
+	if (ret)
+		return ret;
+
 	ret = seq_open(file, seq_ops);
 	if (ret < 0)
 		return ret;
@@ -1805,6 +1791,7 @@ ftrace_event_avail_open(struct inode *inode, struct file *file)
 {
 	const struct seq_operations *seq_ops = &show_event_seq_ops;
 
+	/* Checks for tracefs lockdown */
 	return ftrace_event_open(inode, file, seq_ops);
 }
 
@@ -1815,8 +1802,9 @@ ftrace_event_set_open(struct inode *inode, struct file *file)
 	struct trace_array *tr = inode->i_private;
 	int ret;
 
-	if (trace_array_get(tr) < 0)
-		return -ENODEV;
+	ret = tracing_check_open_get_tr(tr);
+	if (ret)
+		return ret;
 
 	if ((file->f_mode & FMODE_WRITE) &&
 	    (file->f_flags & O_TRUNC))
@@ -1835,8 +1823,9 @@ ftrace_event_set_pid_open(struct inode *inode, struct file *file)
 	struct trace_array *tr = inode->i_private;
 	int ret;
 
-	if (trace_array_get(tr) < 0)
-		return -ENODEV;
+	ret = tracing_check_open_get_tr(tr);
+	if (ret)
+		return ret;
 
 	if ((file->f_mode & FMODE_WRITE) &&
 	    (file->f_flags & O_TRUNC))
@@ -2309,7 +2298,8 @@ static void __add_event_to_tracers(struct trace_event_call *call);
 int trace_add_event_call(struct trace_event_call *call)
 {
 	int ret;
-	mutex_lock(&event_mutex);
+	lockdep_assert_held(&event_mutex);
+
 	mutex_lock(&trace_types_lock);
 
 	ret = __register_event(call, NULL);
@@ -2317,7 +2307,6 @@ int trace_add_event_call(struct trace_event_call *call)
 		__add_event_to_tracers(call);
 
 	mutex_unlock(&trace_types_lock);
-	mutex_unlock(&event_mutex);
 	return ret;
 }
 
@@ -2371,13 +2360,13 @@ int trace_remove_event_call(struct trace_event_call *call)
 {
 	int ret;
 
-	mutex_lock(&event_mutex);
+	lockdep_assert_held(&event_mutex);
+
 	mutex_lock(&trace_types_lock);
 	down_write(&trace_event_sem);
 	ret = probe_remove_event_call(call);
 	up_write(&trace_event_sem);
 	mutex_unlock(&trace_types_lock);
-	mutex_unlock(&event_mutex);
 
 	return ret;
 }
@@ -3192,7 +3181,7 @@ void __init trace_event_init(void)
 	event_trace_enable();
 }
 
-#ifdef CONFIG_FTRACE_STARTUP_TEST
+#ifdef CONFIG_EVENT_TRACE_STARTUP_TEST
 
 static DEFINE_SPINLOCK(test_spinlock);
 static DEFINE_SPINLOCK(test_spinlock_irq);

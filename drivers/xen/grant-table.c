@@ -33,7 +33,7 @@
 
 #define pr_fmt(fmt) "xen:" KBUILD_MODNAME ": " fmt
 
-#include <linux/bootmem.h>
+#include <linux/memblock.h>
 #include <linux/sched.h>
 #include <linux/mm.h>
 #include <linux/slab.h>
@@ -914,7 +914,7 @@ int gnttab_dma_free_pages(struct gnttab_dma_alloc_args *args)
 
 	ret = xenmem_reservation_increase(args->nr_pages, args->frames);
 	if (ret != args->nr_pages) {
-		pr_debug("Failed to decrease reservation for DMA buffer\n");
+		pr_debug("Failed to increase reservation for DMA buffer\n");
 		ret = -EFAULT;
 	} else {
 		ret = 0;
@@ -1363,8 +1363,7 @@ static int gnttab_setup(void)
 	if (xen_feature(XENFEAT_auto_translated_physmap) && gnttab_shared.addr == NULL) {
 		gnttab_shared.addr = xen_auto_xlat_grant_frames.vaddr;
 		if (gnttab_shared.addr == NULL) {
-			pr_warn("gnttab share frames (addr=0x%08lx) is not mapped!\n",
-				(unsigned long)xen_auto_xlat_grant_frames.vaddr);
+			pr_warn("gnttab share frames is not mapped!\n");
 			return -ENOMEM;
 		}
 	}

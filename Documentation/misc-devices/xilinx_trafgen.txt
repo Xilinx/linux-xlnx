@@ -77,6 +77,13 @@ static_transferdone
 reset_static_transferdone
 	RO - resets the static transferdone bit.
 
+stream_cfg
+	RW - sets the stream configuration parameters like delay.
+
+stream_tktsn
+	RW - TSTRB/TKEEP value for the last beat of the
+transfer set n. N can be 1 to 4.
+
 stream_enable
 	RO - enables the streaming mode.
 
@@ -85,3 +92,6 @@ stream_transferlen
 
 stream_transfercnt
 	RW - get/set the streaming mode transfer count.
+
+loop_enable
+	RW - get/set loop enable value.

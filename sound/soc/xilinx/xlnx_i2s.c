@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: GPL-2.0
-/*
- * Xilinx ASoC I2S audio support
- *
- * Copyright (C) 2018 Xilinx, Inc.
- *
- * Author: Praveen Vuppala <praveenv@xilinx.com>
- * Author: Maruthi Srinivas Bayyavarapu <maruthis@xilinx.com>
- */
+//
+// Xilinx ASoC I2S audio support
+//
+// Copyright (C) 2018 Xilinx, Inc.
+//
+// Author: Praveen Vuppala <praveenv@xilinx.com>
+// Author: Maruthi Srinivas Bayyavarapu <maruthis@xilinx.com>
 
 #include <linux/clk.h>
 #include <linux/io.h>
@@ -104,7 +103,6 @@ MODULE_DEVICE_TABLE(of, xlnx_i2s_of_match);
 
 static int xlnx_i2s_probe(struct platform_device *pdev)
 {
-	struct resource *res;
 	struct snd_soc_dai_driver *dai_drv;
 	struct xlnx_i2s_dev_data *dev_data;
 	int ret;
@@ -216,8 +214,7 @@ static int xlnx_i2s_probe(struct platform_device *pdev)
 		goto err_aud_mclk;
 	}
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	dev_data->base = devm_ioremap_resource(&pdev->dev, res);
+	dev_data->base = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(dev_data->base)) {
 		ret = PTR_ERR(dev_data->base);
 		goto clk_err;

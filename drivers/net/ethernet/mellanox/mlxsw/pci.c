@@ -102,6 +102,7 @@ struct mlxsw_pci_queue_type_group {
 struct mlxsw_pci {
 	struct pci_dev *pdev;
 	u8 __iomem *hw_addr;
+	u64 free_running_clock_offset;
 	struct mlxsw_pci_queue_type_group queues[MLXSW_PCI_QUEUE_TYPE_COUNT];
 	u32 doorbell_offset;
 	struct mlxsw_core *core;
@@ -507,17 +508,28 @@ static void mlxsw_pci_cqe_sdq_handle(struct mlxsw_pci *mlxsw_pci,
 {
 	struct pci_dev *pdev = mlxsw_pci->pdev;
 	struct mlxsw_pci_queue_elem_info *elem_info;
+	struct mlxsw_tx_info tx_info;
 	char *wqe;
 	struct sk_buff *skb;
 	int i;
 
 	spin_lock(&q->lock);
 	elem_info = mlxsw_pci_queue_elem_info_consumer_get(q);
+	tx_info = mlxsw_skb_cb(elem_info->u.sdq.skb)->tx_info;
 	skb = elem_info->u.sdq.skb;
 	wqe = elem_info->elem;
 	for (i = 0; i < MLXSW_PCI_WQE_SG_ENTRIES; i++)
 		mlxsw_pci_wqe_frag_unmap(mlxsw_pci, wqe, i, DMA_TO_DEVICE);
-	dev_kfree_skb_any(skb);
+
+	if (unlikely(!tx_info.is_emad &&
+		     skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP)) {
+		mlxsw_core_ptp_transmitted(mlxsw_pci->core, skb,
+					   tx_info.local_port);
+		skb = NULL;
+	}
+
+	if (skb)
+		dev_kfree_skb_any(skb);
 	elem_info->u.sdq.skb = NULL;
 
 	if (q->consumer_counter++ != consumer_counter_limit)
@@ -604,29 +616,31 @@ static void mlxsw_pci_cq_tasklet(unsigned long data)
 		u16 wqe_counter = mlxsw_pci_cqe_wqe_counter_get(cqe);
 		u8 sendq = mlxsw_pci_cqe_sr_get(q->u.cq.v, cqe);
 		u8 dqn = mlxsw_pci_cqe_dqn_get(q->u.cq.v, cqe);
+		char ncqe[MLXSW_PCI_CQE_SIZE_MAX];
+
+		memcpy(ncqe, cqe, q->elem_size);
+		mlxsw_pci_queue_doorbell_consumer_ring(mlxsw_pci, q);
 
 		if (sendq) {
 			struct mlxsw_pci_queue *sdq;
 
 			sdq = mlxsw_pci_sdq_get(mlxsw_pci, dqn);
 			mlxsw_pci_cqe_sdq_handle(mlxsw_pci, sdq,
-						 wqe_counter, cqe);
+						 wqe_counter, ncqe);
 			q->u.cq.comp_sdq_count++;
 		} else {
 			struct mlxsw_pci_queue *rdq;
 
 			rdq = mlxsw_pci_rdq_get(mlxsw_pci, dqn);
 			mlxsw_pci_cqe_rdq_handle(mlxsw_pci, rdq,
-						 wqe_counter, q->u.cq.v, cqe);
+						 wqe_counter, q->u.cq.v, ncqe);
 			q->u.cq.comp_rdq_count++;
 		}
 		if (++items == credits)
 			break;
 	}
-	if (items) {
-		mlxsw_pci_queue_doorbell_consumer_ring(mlxsw_pci, q);
+	if (items)
 		mlxsw_pci_queue_doorbell_arm_consumer_ring(mlxsw_pci, q);
-	}
 }
 
 static u16 mlxsw_pci_cq_elem_count(const struct mlxsw_pci_queue *q)
@@ -833,7 +847,6 @@ static int mlxsw_pci_queue_init(struct mlxsw_pci *mlxsw_pci, char *mbox,
 					     &mem_item->mapaddr);
 	if (!mem_item->buf)
 		return -ENOMEM;
-	memset(mem_item->buf, 0, mem_item->size);
 
 	q->elem_info = kcalloc(q->count, sizeof(*q->elem_info), GFP_KERNEL);
 	if (!q->elem_info) {
@@ -1035,42 +1048,6 @@ mlxsw_pci_config_profile_swid_config(struct mlxsw_pci *mlxsw_pci,
 		mask |= 2;
 	}
 	mlxsw_cmd_mbox_config_profile_swid_config_mask_set(mbox, index, mask);
-}
-
-static int mlxsw_pci_resources_query(struct mlxsw_pci *mlxsw_pci, char *mbox,
-				     struct mlxsw_res *res)
-{
-	int index, i;
-	u64 data;
-	u16 id;
-	int err;
-
-	if (!res)
-		return 0;
-
-	mlxsw_cmd_mbox_zero(mbox);
-
-	for (index = 0; index < MLXSW_CMD_QUERY_RESOURCES_MAX_QUERIES;
-	     index++) {
-		err = mlxsw_cmd_query_resources(mlxsw_pci->core, mbox, index);
-		if (err)
-			return err;
-
-		for (i = 0; i < MLXSW_CMD_QUERY_RESOURCES_PER_QUERY; i++) {
-			id = mlxsw_cmd_mbox_query_resource_id_get(mbox, i);
-			data = mlxsw_cmd_mbox_query_resource_data_get(mbox, i);
-
-			if (id == MLXSW_CMD_QUERY_RESOURCES_TABLE_END_ID)
-				return 0;
-
-			mlxsw_res_parse(res, id, data);
-		}
-	}
-
-	/* If after MLXSW_RESOURCES_QUERY_MAX_QUERIES we still didn't get
-	 * MLXSW_RESOURCES_TABLE_END_ID, something went bad in the FW.
-	 */
-	return -EIO;
 }
 
 static int
@@ -1365,10 +1342,10 @@ static int mlxsw_pci_sw_reset(struct mlxsw_pci *mlxsw_pci,
 		u32 val = mlxsw_pci_read32(mlxsw_pci, FW_READY);
 
 		if ((val & MLXSW_PCI_FW_READY_MASK) == MLXSW_PCI_FW_READY_MAGIC)
-			break;
+			return 0;
 		cond_resched();
 	} while (time_before(jiffies, end));
-	return 0;
+	return -EBUSY;
 }
 
 static int mlxsw_pci_alloc_irq_vectors(struct mlxsw_pci *mlxsw_pci)
@@ -1448,6 +1425,15 @@ static int mlxsw_pci_init(void *bus_priv, struct mlxsw_core *mlxsw_core,
 	mlxsw_pci->doorbell_offset =
 		mlxsw_cmd_mbox_query_fw_doorbell_page_offset_get(mbox);
 
+	if (mlxsw_cmd_mbox_query_fw_fr_rn_clk_bar_get(mbox) != 0) {
+		dev_err(&pdev->dev, "Unsupported free running clock BAR queried from hw\n");
+		err = -EINVAL;
+		goto err_fr_rn_clk_bar;
+	}
+
+	mlxsw_pci->free_running_clock_offset =
+		mlxsw_cmd_mbox_query_fw_free_running_clock_offset_get(mbox);
+
 	num_pages = mlxsw_cmd_mbox_query_fw_fw_pages_get(mbox);
 	err = mlxsw_pci_fw_area_init(mlxsw_pci, mbox, num_pages);
 	if (err)
@@ -1457,7 +1443,7 @@ static int mlxsw_pci_init(void *bus_priv, struct mlxsw_core *mlxsw_core,
 	if (err)
 		goto err_boardinfo;
 
-	err = mlxsw_pci_resources_query(mlxsw_pci, mbox, res);
+	err = mlxsw_core_resources_query(mlxsw_core, mbox, res);
 	if (err)
 		goto err_query_resources;
 
@@ -1503,6 +1489,7 @@ err_query_resources:
 err_boardinfo:
 	mlxsw_pci_fw_area_fini(mlxsw_pci);
 err_fw_area_init:
+err_fr_rn_clk_bar:
 err_doorbell_page_bar:
 err_iface_rev:
 err_query_fw:
@@ -1571,6 +1558,7 @@ static int mlxsw_pci_skb_transmit(void *bus_priv, struct sk_buff *skb,
 		err = -EAGAIN;
 		goto unlock;
 	}
+	mlxsw_skb_cb(skb)->tx_info = *tx_info;
 	elem_info->u.sdq.skb = skb;
 
 	wqe = elem_info->elem;
@@ -1593,6 +1581,9 @@ static int mlxsw_pci_skb_transmit(void *bus_priv, struct sk_buff *skb,
 		if (err)
 			goto unmap_frags;
 	}
+
+	if (unlikely(skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP))
+		skb_shinfo(skb)->tx_flags |= SKBTX_IN_PROGRESS;
 
 	/* Set unused sq entries byte count to zero. */
 	for (i++; i < MLXSW_PCI_WQE_SG_ENTRIES; i++)
@@ -1706,6 +1697,24 @@ static int mlxsw_pci_cmd_exec(void *bus_priv, u16 opcode, u8 opcode_mod,
 	return err;
 }
 
+static u32 mlxsw_pci_read_frc_h(void *bus_priv)
+{
+	struct mlxsw_pci *mlxsw_pci = bus_priv;
+	u64 frc_offset;
+
+	frc_offset = mlxsw_pci->free_running_clock_offset;
+	return mlxsw_pci_read32(mlxsw_pci, FREE_RUNNING_CLOCK_H(frc_offset));
+}
+
+static u32 mlxsw_pci_read_frc_l(void *bus_priv)
+{
+	struct mlxsw_pci *mlxsw_pci = bus_priv;
+	u64 frc_offset;
+
+	frc_offset = mlxsw_pci->free_running_clock_offset;
+	return mlxsw_pci_read32(mlxsw_pci, FREE_RUNNING_CLOCK_L(frc_offset));
+}
+
 static const struct mlxsw_bus mlxsw_pci_bus = {
 	.kind			= "pci",
 	.init			= mlxsw_pci_init,
@@ -1713,6 +1722,8 @@ static const struct mlxsw_bus mlxsw_pci_bus = {
 	.skb_transmit_busy	= mlxsw_pci_skb_transmit_busy,
 	.skb_transmit		= mlxsw_pci_skb_transmit,
 	.cmd_exec		= mlxsw_pci_cmd_exec,
+	.read_frc_h		= mlxsw_pci_read_frc_h,
+	.read_frc_l		= mlxsw_pci_read_frc_l,
 	.features		= MLXSW_BUS_F_TXRX | MLXSW_BUS_F_RESET,
 };
 
@@ -1720,7 +1731,6 @@ static int mlxsw_pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 {
 	const char *driver_name = pdev->driver->name;
 	struct mlxsw_pci *mlxsw_pci;
-	bool called_again = false;
 	int err;
 
 	mlxsw_pci = kzalloc(sizeof(*mlxsw_pci), GFP_KERNEL);
@@ -1775,20 +1785,13 @@ static int mlxsw_pci_probe(struct pci_dev *pdev, const struct pci_device_id *id)
 	mlxsw_pci->bus_info.device_kind = driver_name;
 	mlxsw_pci->bus_info.device_name = pci_name(mlxsw_pci->pdev);
 	mlxsw_pci->bus_info.dev = &pdev->dev;
+	mlxsw_pci->bus_info.read_frc_capable = true;
 	mlxsw_pci->id = id;
 
-again:
 	err = mlxsw_core_bus_device_register(&mlxsw_pci->bus_info,
 					     &mlxsw_pci_bus, mlxsw_pci, false,
 					     NULL);
-	/* -EAGAIN is returned in case the FW was updated. FW needs
-	 * a reset, so lets try to call mlxsw_core_bus_device_register()
-	 * again.
-	 */
-	if (err == -EAGAIN && !called_again) {
-		called_again = true;
-		goto again;
-	} else if (err) {
+	if (err) {
 		dev_err(&pdev->dev, "cannot register bus device\n");
 		goto err_bus_device_register;
 	}

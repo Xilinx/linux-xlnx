@@ -37,13 +37,6 @@
 #define SMC_IPI_MAILBOX_DISABLE_IRQ	0x82001006U
 
 /* IPI SMC Macros */
-#define IPI_SMC_OPEN_IRQ_MASK		0x00000001UL /* IRQ enable bit in IPI
-						      * open SMC call
-						      */
-#define IPI_SMC_NOTIFY_BLOCK_MASK	0x00000001UL /* Flag to indicate if
-						      * IPI notification needs
-						      * to be blocking.
-						      */
 #define IPI_SMC_ENQUIRY_DIRQ_MASK	0x00000001UL /* Flag to indicate if
 						      * notification interrupt
 						      * to be disabled.
@@ -239,7 +232,6 @@ static bool zynqmp_ipi_last_tx_done(struct mbox_chan *chan)
 	int ret;
 	u64 arg0;
 	struct arm_smccc_res res;
-	struct zynqmp_ipi_message *msg;
 
 	if (WARN_ON(!ipi_mbox)) {
 		dev_err(dev, "no platform drv data??\n");
@@ -256,11 +248,6 @@ static bool zynqmp_ipi_last_tx_done(struct mbox_chan *chan)
 		ret = (int)(res.a0 & 0xFFFFFFFF);
 		if (ret < 0 || ret & IPI_MB_STATUS_SEND_PENDING)
 			return false;
-
-		msg = mchan->rx_buf;
-		msg->len = mchan->resp_buf_size;
-		memcpy_fromio(msg->data, mchan->resp_buf, msg->len);
-		mbox_chan_received_data(chan, (void *)msg);
 		return true;
 	}
 	/* Always true for the response message in RX channel */
@@ -283,8 +270,6 @@ static int zynqmp_ipi_send_data(struct mbox_chan *chan, void *data)
 	struct zynqmp_ipi_message *msg = data;
 	u64 arg0;
 	struct arm_smccc_res res;
-	u32 timeout;
-	int ret;
 
 	if (WARN_ON(!ipi_mbox)) {
 		dev_err(dev, "no platform drv data??\n");
@@ -299,27 +284,8 @@ static int zynqmp_ipi_send_data(struct mbox_chan *chan, void *data)
 				mchan->req_buf_size);
 			return -EINVAL;
 		}
-		/* Enquire if the mailbox is free to send message */
-		arg0 = SMC_IPI_MAILBOX_STATUS_ENQUIRY;
-		timeout = 10;
-		if (msg && msg->len) {
-			timeout = 10;
-			do {
-				zynqmp_ipi_fw_call(ipi_mbox, arg0, 0, &res);
-				ret = res.a0 & 0xFFFFFFFF;
-				if (ret >= 0 &&
-				    !(ret & IPI_MB_STATUS_SEND_PENDING))
-					break;
-				usleep_range(1, 2);
-				timeout--;
-			} while (timeout);
-			if (!timeout) {
-				dev_warn(dev, "chan %d sending msg timeout.\n",
-					 ipi_mbox->remote_id);
-				return -ETIME;
-			}
+		if (msg && msg->len)
 			memcpy_toio(mchan->req_buf, msg->data, msg->len);
-		}
 		/* Kick IPI mailbox to send message */
 		arg0 = SMC_IPI_MAILBOX_NOTIFY;
 		zynqmp_ipi_fw_call(ipi_mbox, arg0, 0, &res);
@@ -333,7 +299,6 @@ static int zynqmp_ipi_send_data(struct mbox_chan *chan, void *data)
 		}
 		if (msg && msg->len)
 			memcpy_toio(mchan->resp_buf, msg->data, msg->len);
-		arg0 = SMC_IPI_MAILBOX_NOTIFY;
 		arg0 = SMC_IPI_MAILBOX_ACK;
 		zynqmp_ipi_fw_call(ipi_mbox, arg0, IPI_SMC_ACK_EIRQ_MASK,
 				   &res);
@@ -633,12 +598,13 @@ static int zynqmp_ipi_mbox_probe(struct zynqmp_ipi_mbox *ipi_mbox,
 	chans[IPI_MB_CHNL_RX].con_priv = &ipi_mbox->mchans[IPI_MB_CHNL_RX];
 	ipi_mbox->mchans[IPI_MB_CHNL_TX].chan_type = IPI_MB_CHNL_TX;
 	ipi_mbox->mchans[IPI_MB_CHNL_RX].chan_type = IPI_MB_CHNL_RX;
-	ret = mbox_controller_register(mbox);
+	ret = devm_mbox_controller_register(mdev, mbox);
 	if (ret)
 		dev_err(mdev,
 			"Failed to register mbox_controller(%d)\n", ret);
 	else
-		dev_info(mdev, "Probed ZynqMP IPI Mailbox driver.\n");
+		dev_info(mdev,
+			 "Registered ZynqMP IPI mbox with TX/RX channels.\n");
 	return ret;
 }
 
@@ -668,12 +634,10 @@ static int zynqmp_ipi_probe(struct platform_device *pdev)
 	struct device_node *nc, *np = pdev->dev.of_node;
 	struct zynqmp_ipi_pdata *pdata;
 	struct zynqmp_ipi_mbox *mbox;
-	int i, ret = -EINVAL;
+	int num_mboxes, ret = -EINVAL;
 
-	i = 0;
-	for_each_available_child_of_node(np, nc)
-		i++;
-	pdata = devm_kzalloc(dev, sizeof(*pdata) + (i * sizeof(*mbox)),
+	num_mboxes = of_get_child_count(np);
+	pdata = devm_kzalloc(dev, sizeof(*pdata) + (num_mboxes * sizeof(*mbox)),
 			     GFP_KERNEL);
 	if (!pdata)
 		return -ENOMEM;
@@ -686,7 +650,7 @@ static int zynqmp_ipi_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	pdata->num_mboxes = i;
+	pdata->num_mboxes = num_mboxes;
 	pdata->ipi_mboxes = (struct zynqmp_ipi_mbox *)
 			    ((char *)pdata + sizeof(*pdata));
 
@@ -697,7 +661,6 @@ static int zynqmp_ipi_probe(struct platform_device *pdev)
 		if (ret) {
 			dev_err(dev, "failed to probe subdev.\n");
 			ret = -EINVAL;
-			of_node_put(nc);
 			goto free_mbox_dev;
 		}
 		mbox++;

@@ -24,5 +24,14 @@ extern struct snd_soc_acpi_mach snd_soc_acpi_intel_kbl_machines[];
 extern struct snd_soc_acpi_mach snd_soc_acpi_intel_bxt_machines[];
 extern struct snd_soc_acpi_mach snd_soc_acpi_intel_glk_machines[];
 extern struct snd_soc_acpi_mach snd_soc_acpi_intel_cnl_machines[];
+extern struct snd_soc_acpi_mach snd_soc_acpi_intel_icl_machines[];
+extern struct snd_soc_acpi_mach snd_soc_acpi_intel_tgl_machines[];
+extern struct snd_soc_acpi_mach snd_soc_acpi_intel_ehl_machines[];
+
+/*
+ * generic table used for HDA codec-based platforms, possibly with
+ * additional ACPI-enumerated codecs
+ */
+extern struct snd_soc_acpi_mach snd_soc_acpi_intel_hda_machines[];
 
 #endif

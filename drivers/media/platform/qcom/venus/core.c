@@ -1,16 +1,7 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (c) 2012-2016, The Linux Foundation. All rights reserved.
  * Copyright (C) 2017 Linaro Ltd.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 and
- * only version 2 as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
  */
 #include <linux/clk.h>
 #include <linux/init.h>
@@ -76,7 +67,7 @@ static void venus_sys_error_handler(struct work_struct *work)
 	hfi_core_deinit(core, true);
 	hfi_destroy(core);
 	mutex_lock(&core->lock);
-	venus_shutdown(core->dev);
+	venus_shutdown(core);
 
 	pm_runtime_put_sync(core->dev);
 
@@ -84,7 +75,7 @@ static void venus_sys_error_handler(struct work_struct *work)
 
 	pm_runtime_get_sync(core->dev);
 
-	ret |= venus_boot(core->dev, core->res->fwname);
+	ret |= venus_boot(core);
 
 	ret |= hfi_core_resume(core, true);
 
@@ -207,7 +198,7 @@ static int venus_enumerate_codecs(struct venus_core *core, u32 type)
 		goto err;
 
 	for (i = 0; i < MAX_CODEC_NUM; i++) {
-		codec = (1 << i) & codecs;
+		codec = (1UL << i) & codecs;
 		if (!codec)
 			continue;
 
@@ -264,6 +255,14 @@ static int venus_probe(struct platform_device *pdev)
 	if (ret)
 		return ret;
 
+	if (!dev->dma_parms) {
+		dev->dma_parms = devm_kzalloc(dev, sizeof(*dev->dma_parms),
+					      GFP_KERNEL);
+		if (!dev->dma_parms)
+			return -ENOMEM;
+	}
+	dma_set_max_seg_size(dev, DMA_BIT_MASK(32));
+
 	INIT_LIST_HEAD(&core->instances);
 	mutex_init(&core->lock);
 	INIT_DELAYED_WORK(&core->work, venus_sys_error_handler);
@@ -284,7 +283,15 @@ static int venus_probe(struct platform_device *pdev)
 	if (ret < 0)
 		goto err_runtime_disable;
 
-	ret = venus_boot(dev, core->res->fwname);
+	ret = of_platform_populate(dev->of_node, NULL, NULL, dev);
+	if (ret)
+		goto err_runtime_disable;
+
+	ret = venus_firmware_init(core);
+	if (ret)
+		goto err_runtime_disable;
+
+	ret = venus_boot(core);
 	if (ret)
 		goto err_runtime_disable;
 
@@ -308,10 +315,6 @@ static int venus_probe(struct platform_device *pdev)
 	if (ret)
 		goto err_core_deinit;
 
-	ret = of_platform_populate(dev->of_node, NULL, NULL, dev);
-	if (ret)
-		goto err_dev_unregister;
-
 	ret = pm_runtime_put_sync(dev);
 	if (ret)
 		goto err_dev_unregister;
@@ -323,7 +326,7 @@ err_dev_unregister:
 err_core_deinit:
 	hfi_core_deinit(core, false);
 err_venus_shutdown:
-	venus_shutdown(dev);
+	venus_shutdown(core);
 err_runtime_disable:
 	pm_runtime_set_suspended(dev);
 	pm_runtime_disable(dev);
@@ -344,8 +347,10 @@ static int venus_remove(struct platform_device *pdev)
 	WARN_ON(ret);
 
 	hfi_destroy(core);
-	venus_shutdown(dev);
+	venus_shutdown(core);
 	of_platform_depopulate(dev);
+
+	venus_firmware_deinit(core);
 
 	pm_runtime_put_sync(dev);
 	pm_runtime_disable(dev);
@@ -451,10 +456,12 @@ static const struct venus_resources msm8996_res = {
 };
 
 static const struct freq_tbl sdm845_freq_table[] = {
-	{ 1944000, 380000000 },	/* 4k UHD @ 60 */
-	{  972000, 320000000 },	/* 4k UHD @ 30 */
-	{  489600, 200000000 },	/* 1080p @ 60 */
-	{  244800, 100000000 },	/* 1080p @ 30 */
+	{ 3110400, 533000000 },	/* 4096x2160@90 */
+	{ 2073600, 444000000 },	/* 4096x2160@60 */
+	{ 1944000, 404000000 },	/* 3840x2160@60 */
+	{  972000, 330000000 },	/* 3840x2160@30 */
+	{  489600, 200000000 },	/* 1920x1080@60 */
+	{  244800, 100000000 },	/* 1920x1080@30 */
 };
 
 static const struct venus_resources sdm845_res = {
@@ -462,7 +469,7 @@ static const struct venus_resources sdm845_res = {
 	.freq_tbl_size = ARRAY_SIZE(sdm845_freq_table),
 	.clks = {"core", "iface", "bus" },
 	.clks_num = 3,
-	.max_load = 2563200,
+	.max_load = 3110400,	/* 4096x2160@90 */
 	.hfi_version = HFI_VERSION_4XX,
 	.vmem_id = VIDC_RESOURCE_NONE,
 	.vmem_size = 0,

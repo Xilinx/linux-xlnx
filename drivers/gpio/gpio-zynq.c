@@ -1,12 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * Xilinx Zynq GPIO device driver
  *
  * Copyright (C) 2009 - 2014 Xilinx, Inc.
- *
- * This program is free software; you can redistribute it and/or modify it under
- * the terms of the GNU General Public License as published by the Free Software
- * Foundation; either version 2 of the License, or (at your option) any later
- * version.
  */
 
 #include <linux/bitops.h>
@@ -134,7 +130,7 @@ struct zynq_gpio {
 	int irq;
 	const struct zynq_platform_data *p_data;
 	struct gpio_regs context;
-	spinlock_t dirlock;
+	spinlock_t dirlock; /*lock used for direction in/out synchronization */
 };
 
 /**
@@ -768,8 +764,7 @@ static int __maybe_unused zynq_gpio_resume(struct device *dev)
 
 static int __maybe_unused zynq_gpio_runtime_suspend(struct device *dev)
 {
-	struct platform_device *pdev = to_platform_device(dev);
-	struct zynq_gpio *gpio = platform_get_drvdata(pdev);
+	struct zynq_gpio *gpio = dev_get_drvdata(dev);
 
 	clk_disable_unprepare(gpio->clk);
 
@@ -778,8 +773,7 @@ static int __maybe_unused zynq_gpio_runtime_suspend(struct device *dev)
 
 static int __maybe_unused zynq_gpio_runtime_resume(struct device *dev)
 {
-	struct platform_device *pdev = to_platform_device(dev);
-	struct zynq_gpio *gpio = platform_get_drvdata(pdev);
+	struct zynq_gpio *gpio = dev_get_drvdata(dev);
 
 	return clk_prepare_enable(gpio->clk);
 }
@@ -892,7 +886,7 @@ static int zynq_gpio_probe(struct platform_device *pdev)
 	int ret, bank_num;
 	struct zynq_gpio *gpio;
 	struct gpio_chip *chip;
-	struct resource *res;
+	struct gpio_irq_chip *girq;
 	const struct of_device_id *match;
 
 	gpio = devm_kzalloc(&pdev->dev, sizeof(*gpio), GFP_KERNEL);
@@ -907,16 +901,13 @@ static int zynq_gpio_probe(struct platform_device *pdev)
 	gpio->p_data = match->data;
 	platform_set_drvdata(pdev, gpio);
 
-	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	gpio->base_addr = devm_ioremap_resource(&pdev->dev, res);
+	gpio->base_addr = devm_platform_ioremap_resource(pdev, 0);
 	if (IS_ERR(gpio->base_addr))
 		return PTR_ERR(gpio->base_addr);
 
 	gpio->irq = platform_get_irq(pdev, 0);
-	if (gpio->irq < 0) {
-		dev_err(&pdev->dev, "invalid IRQ\n");
+	if (gpio->irq < 0)
 		return gpio->irq;
-	}
 
 	/* configure the gpio chip */
 	chip = &gpio->chip;
@@ -954,13 +945,6 @@ static int zynq_gpio_probe(struct platform_device *pdev)
 	if (ret < 0)
 		goto err_pm_dis;
 
-	/* report a bug if gpio chip registration fails */
-	ret = gpiochip_add_data(chip, gpio);
-	if (ret) {
-		dev_err(&pdev->dev, "Failed to add gpio chip\n");
-		goto err_pm_put;
-	}
-
 	/* disable interrupts for all banks */
 	for (bank_num = 0; bank_num < gpio->p_data->max_bank; bank_num++) {
 		writel_relaxed(ZYNQ_GPIO_IXR_DISABLE_ALL, gpio->base_addr +
@@ -969,15 +953,28 @@ static int zynq_gpio_probe(struct platform_device *pdev)
 			bank_num = bank_num + VERSAL_UNUSED_BANKS;
 	}
 
-	ret = gpiochip_irqchip_add(chip, &zynq_gpio_edge_irqchip, 0,
-				   handle_level_irq, IRQ_TYPE_NONE);
-	if (ret) {
-		dev_err(&pdev->dev, "Failed to add irq chip\n");
-		goto err_rm_gpiochip;
+	/* Set up the GPIO irqchip */
+	girq = &chip->irq;
+	girq->chip = &zynq_gpio_edge_irqchip;
+	girq->parent_handler = zynq_gpio_irqhandler;
+	girq->num_parents = 1;
+	girq->parents = devm_kcalloc(&pdev->dev, 1,
+				     sizeof(*girq->parents),
+				     GFP_KERNEL);
+	if (!girq->parents) {
+		ret = -ENOMEM;
+		goto err_pm_put;
 	}
+	girq->parents[0] = gpio->irq;
+	girq->default_type = IRQ_TYPE_NONE;
+	girq->handler = handle_level_irq;
 
-	gpiochip_set_chained_irqchip(chip, &zynq_gpio_edge_irqchip, gpio->irq,
-				     zynq_gpio_irqhandler);
+	/* report a bug if gpio chip registration fails */
+	ret = gpiochip_add_data(chip, gpio);
+	if (ret) {
+		dev_err(&pdev->dev, "Failed to add gpio chip\n");
+		goto err_pm_put;
+	}
 
 	irq_set_status_flags(gpio->irq, IRQ_DISABLE_UNLAZY);
 	device_init_wakeup(&pdev->dev, 1);
@@ -985,8 +982,6 @@ static int zynq_gpio_probe(struct platform_device *pdev)
 
 	return 0;
 
-err_rm_gpiochip:
-	gpiochip_remove(chip);
 err_pm_put:
 	pm_runtime_put(&pdev->dev);
 err_pm_dis:

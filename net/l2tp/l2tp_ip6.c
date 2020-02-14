@@ -1,12 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * L2TPv3 IP encapsulation support for IPv6
  *
  * Copyright (c) 2012 Katalix Systems Ltd
- *
- *	This program is free software; you can redistribute it and/or
- *	modify it under the terms of the GNU General Public License
- *	as published by the Free Software Foundation; either version
- *	2 of the License, or (at your option) any later version.
  */
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
@@ -178,6 +174,9 @@ static int l2tp_ip6_recv(struct sk_buff *skb)
 		print_hex_dump_bytes("", DUMP_PREFIX_OFFSET, ptr, length);
 	}
 
+	if (l2tp_v3_ensure_opt_in_linear(session, skb, &ptr, &optr))
+		goto discard_sess;
+
 	l2tp_recv_common(session, skb, ptr, optr, 0, skb->len);
 	l2tp_session_dec_refcount(session);
 
@@ -207,7 +206,7 @@ pass_up:
 	if (!xfrm6_policy_check(sk, XFRM_POLICY_IN, skb))
 		goto discard_put;
 
-	nf_reset(skb);
+	nf_reset_ct(skb);
 
 	return sk_receive_skb(sk, skb, 1);
 
@@ -537,7 +536,7 @@ static int l2tp_ip6_sendmsg(struct sock *sk, struct msghdr *msg, size_t len)
 			fl6.flowlabel = lsa->l2tp_flowinfo & IPV6_FLOWINFO_MASK;
 			if (fl6.flowlabel&IPV6_FLOWLABEL_MASK) {
 				flowlabel = fl6_sock_lookup(sk, fl6.flowlabel);
-				if (flowlabel == NULL)
+				if (IS_ERR(flowlabel))
 					return -EINVAL;
 			}
 		}
@@ -578,7 +577,7 @@ static int l2tp_ip6_sendmsg(struct sock *sk, struct msghdr *msg, size_t len)
 		}
 		if ((fl6.flowlabel & IPV6_FLOWLABEL_MASK) && !flowlabel) {
 			flowlabel = fl6_sock_lookup(sk, fl6.flowlabel);
-			if (flowlabel == NULL)
+			if (IS_ERR(flowlabel))
 				return -EINVAL;
 		}
 		if (!(opt->opt_nflen|opt->opt_flen))
@@ -671,9 +670,6 @@ static int l2tp_ip6_recvmsg(struct sock *sk, struct msghdr *msg, size_t len,
 	if (flags & MSG_OOB)
 		goto out;
 
-	if (addr_len)
-		*addr_len = sizeof(*lsa);
-
 	if (flags & MSG_ERRQUEUE)
 		return ipv6_recv_error(sk, msg, len, addr_len);
 
@@ -703,6 +699,7 @@ static int l2tp_ip6_recvmsg(struct sock *sk, struct msghdr *msg, size_t len,
 		lsa->l2tp_conn_id = 0;
 		if (ipv6_addr_type(&lsa->l2tp_addr) & IPV6_ADDR_LINKLOCAL)
 			lsa->l2tp_scope_id = inet6_iif(skb);
+		*addr_len = sizeof(*lsa);
 	}
 
 	if (np->rxopt.all)
@@ -751,6 +748,7 @@ static const struct proto_ops l2tp_ip6_ops = {
 	.getname	   = l2tp_ip6_getname,
 	.poll		   = datagram_poll,
 	.ioctl		   = inet6_ioctl,
+	.gettstamp	   = sock_gettstamp,
 	.listen		   = sock_no_listen,
 	.shutdown	   = inet_shutdown,
 	.setsockopt	   = sock_common_setsockopt,

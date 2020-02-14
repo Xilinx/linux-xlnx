@@ -7,7 +7,6 @@
 #ifndef CONFIG_DYNAMIC_FTRACE
 extern void (*ftrace_trace_function)(unsigned long, unsigned long,
 				     struct ftrace_ops*, struct pt_regs*);
-extern int ftrace_graph_entry_stub(struct ftrace_graph_ent *trace);
 extern void ftrace_graph_caller(void);
 
 noinline void __naked ftrace_stub(unsigned long ip, unsigned long parent_ip,
@@ -211,29 +210,15 @@ void prepare_ftrace_return(unsigned long *parent, unsigned long self_addr,
 			   unsigned long frame_pointer)
 {
 	unsigned long return_hooker = (unsigned long)&return_to_handler;
-	struct ftrace_graph_ent trace;
 	unsigned long old;
-	int err;
 
 	if (unlikely(atomic_read(&current->tracing_graph_pause)))
 		return;
 
 	old = *parent;
 
-	trace.func = self_addr;
-	trace.depth = current->curr_ret_stack + 1;
-
-	/* Only trace if the calling function expects to */
-	if (!ftrace_graph_entry(&trace))
-		return;
-
-	err = ftrace_push_return_trace(old, self_addr, &trace.depth,
-				       frame_pointer, NULL);
-
-	if (err == -EBUSY)
-		return;
-
-	*parent = return_hooker;
+	if (!function_graph_enter(old, self_addr, frame_pointer, NULL))
+		*parent = return_hooker;
 }
 
 noinline void ftrace_graph_caller(void)

@@ -72,7 +72,6 @@
  * @funnel: Iomapped funnel register base address
  * @counterid_lpd: LPD counter id
  * @counterid_fpd: FPD counter id
- * @lock: Per device mutex for avoiding parallel access
  */
 struct xflex_dev_info {
 	struct device *dev;
@@ -81,7 +80,7 @@ struct xflex_dev_info {
 	void __iomem *funnel;
 	u32 counterid_fpd;
 	u32 counterid_lpd;
-	struct mutex lock; /* avoid parallel access to device */
+	struct mutex mutex; /* avoid parallel access to device */
 };
 
 /**

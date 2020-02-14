@@ -61,6 +61,8 @@ struct usb_ep;
  *	invalidated by the error may first be dequeued.
  * @context: For use by the completion callback
  * @list: For use by the gadget driver.
+ * @frame_number: Reports the interval number in (micro)frame in which the
+ *	isochronous transfer was transmitted or received.
  * @status: Reports completion code, zero or a negative errno.
  *	Normally, faults block the transfer queue from advancing until
  *	the completion callback returns.
@@ -111,6 +113,8 @@ struct usb_request {
 					struct usb_request *req);
 	void			*context;
 	struct list_head	list;
+
+	unsigned		frame_number;		/* ISO ONLY */
 
 	int			status;
 	unsigned		actual;
@@ -287,6 +291,9 @@ struct usb_dcd_config_params {
 #define USB_DEFAULT_U1_DEV_EXIT_LAT	0x01	/* Less then 1 microsec */
 	__le16 bU2DevExitLat;	/* U2 Device exit Latency */
 #define USB_DEFAULT_U2_DEV_EXIT_LAT	0x1F4	/* Less then 500 microsec */
+	__u8 besl_baseline;	/* Recommended baseline BESL (0-15) */
+	__u8 besl_deep;		/* Recommended deep BESL (0-15) */
+#define USB_DEFAULT_BESL_UNSPECIFIED	0xFF	/* No recommended value */
 };
 
 

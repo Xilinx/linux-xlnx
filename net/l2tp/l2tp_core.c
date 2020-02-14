@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * L2TP core.
  *
@@ -12,10 +13,6 @@
  *		Michal Ostrowski <mostrows@speakeasy.net>
  *		Arnaldo Carvalho de Melo <acme@xconectiva.com.br>
  *		David S. Miller (davem@redhat.com)
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
  */
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
@@ -83,8 +80,7 @@
 #define L2TP_SLFLAG_S	   0x40000000
 #define L2TP_SL_SEQ_MASK   0x00ffffff
 
-#define L2TP_HDR_SIZE_SEQ		10
-#define L2TP_HDR_SIZE_NOSEQ		6
+#define L2TP_HDR_SIZE_MAX		14
 
 /* Default trace flags */
 #define L2TP_DEFAULT_DEBUG_FLAGS	0
@@ -170,8 +166,8 @@ struct l2tp_tunnel *l2tp_tunnel_get(const struct net *net, u32 tunnel_id)
 
 	rcu_read_lock_bh();
 	list_for_each_entry_rcu(tunnel, &pn->l2tp_tunnel_list, list) {
-		if (tunnel->tunnel_id == tunnel_id) {
-			l2tp_tunnel_inc_refcount(tunnel);
+		if (tunnel->tunnel_id == tunnel_id &&
+		    refcount_inc_not_zero(&tunnel->ref_count)) {
 			rcu_read_unlock_bh();
 
 			return tunnel;
@@ -191,8 +187,8 @@ struct l2tp_tunnel *l2tp_tunnel_get_nth(const struct net *net, int nth)
 
 	rcu_read_lock_bh();
 	list_for_each_entry_rcu(tunnel, &pn->l2tp_tunnel_list, list) {
-		if (++count > nth) {
-			l2tp_tunnel_inc_refcount(tunnel);
+		if (++count > nth &&
+		    refcount_inc_not_zero(&tunnel->ref_count)) {
 			rcu_read_unlock_bh();
 			return tunnel;
 		}
@@ -808,7 +804,7 @@ static int l2tp_udp_recv_core(struct l2tp_tunnel *tunnel, struct sk_buff *skb)
 	__skb_pull(skb, sizeof(struct udphdr));
 
 	/* Short packet? */
-	if (!pskb_may_pull(skb, L2TP_HDR_SIZE_SEQ)) {
+	if (!pskb_may_pull(skb, L2TP_HDR_SIZE_MAX)) {
 		l2tp_info(tunnel, L2TP_MSG_DATA,
 			  "%s: recv short packet (len=%d)\n",
 			  tunnel->name, skb->len);
@@ -884,6 +880,10 @@ static int l2tp_udp_recv_core(struct l2tp_tunnel *tunnel, struct sk_buff *skb)
 		goto error;
 	}
 
+	if (tunnel->version == L2TP_HDR_VER_3 &&
+	    l2tp_v3_ensure_opt_in_linear(session, skb, &ptr, &optr))
+		goto error;
+
 	l2tp_recv_common(session, skb, ptr, optr, hdrflags, length);
 	l2tp_session_dec_refcount(session);
 
@@ -906,7 +906,7 @@ int l2tp_udp_encap_recv(struct sock *sk, struct sk_buff *skb)
 {
 	struct l2tp_tunnel *tunnel;
 
-	tunnel = l2tp_tunnel(sk);
+	tunnel = rcu_dereference_sk_user_data(sk);
 	if (tunnel == NULL)
 		goto pass_up;
 
@@ -1078,7 +1078,7 @@ int l2tp_xmit_skb(struct l2tp_session *session, struct sk_buff *skb, int hdr_len
 	memset(&(IPCB(skb)->opt), 0, sizeof(IPCB(skb)->opt));
 	IPCB(skb)->flags &= ~(IPSKB_XFRM_TUNNEL_SIZE | IPSKB_XFRM_TRANSFORMED |
 			      IPSKB_REROUTED);
-	nf_reset(skb);
+	nf_reset_ct(skb);
 
 	bh_lock_sock(sk);
 	if (sock_owned_by_user(sk)) {
@@ -1490,12 +1490,7 @@ int l2tp_tunnel_register(struct l2tp_tunnel *tunnel, struct net *net,
 			goto err_sock;
 	}
 
-	sk = sock->sk;
-
-	sock_hold(sk);
-	tunnel->sock = sk;
 	tunnel->l2tp_net = net;
-
 	pn = l2tp_pernet(net);
 
 	spin_lock_bh(&pn->l2tp_tunnel_list_lock);
@@ -1509,6 +1504,10 @@ int l2tp_tunnel_register(struct l2tp_tunnel *tunnel, struct net *net,
 	}
 	list_add_rcu(&tunnel->list, &pn->l2tp_tunnel_list);
 	spin_unlock_bh(&pn->l2tp_tunnel_list_lock);
+
+	sk = sock->sk;
+	sock_hold(sk);
+	tunnel->sock = sk;
 
 	if (tunnel->encap == L2TP_ENCAPTYPE_UDP) {
 		struct udp_tunnel_sock_cfg udp_cfg = {
@@ -1733,7 +1732,8 @@ static __net_exit void l2tp_exit_net(struct net *net)
 	}
 	rcu_read_unlock_bh();
 
-	flush_workqueue(l2tp_wq);
+	if (l2tp_wq)
+		flush_workqueue(l2tp_wq);
 	rcu_barrier();
 
 	for (hash = 0; hash < L2TP_HASH_SIZE_2; hash++)

@@ -9,7 +9,7 @@ power and area savings versus implementations done in the FPGA fabric.
 
 
 Required properties:
-- compatible: Must be "xlnx,sd-fec-1.1”
+- compatible: Must be "xlnx,sd-fec-1.1"
 - clock-names : List of input clock names from the following:
     - "core_clk", Main processing clock for processing core (required)
     - "s_axi_aclk", AXI4-Lite memory-mapped slave interface clock (required)
@@ -45,11 +45,11 @@ Example
 ---------------------------------------
 	sd_fec_0: sd-fec@a0040000 {
 		compatible = "xlnx,sd-fec-1.1";
-    clock-names = "core_clk", "s_axi_aclk", "s_axis_ctrl_aclk", "s_axis_din_aclk", "m_axis_status_aclk", "m_axis_dout_aclk";
-    clocks = <&misc_clk_2>, <&misc_clk_0>, <&misc_clk_1>, <&misc_clk_1>, <&misc_clk_1>, <&misc_clk_1>;
+		clock-names = "core_clk","s_axi_aclk","s_axis_ctrl_aclk","s_axis_din_aclk","m_axis_status_aclk","m_axis_dout_aclk";
+		clocks = <&misc_clk_2>,<&misc_clk_0>,<&misc_clk_1>,<&misc_clk_1>,<&misc_clk_1>, <&misc_clk_1>;
 		reg = <0x0 0xa0040000 0x0 0x40000>;
-		interrupt-parent = <&gic>;
-		interrupts = <0 89 4>;
+		interrupt-parent = <&axi_intc>;
+		interrupts = <1 0>;
 		xlnx,sdfec-code = "ldpc";
 		xlnx,sdfec-din-words = <0>;
 		xlnx,sdfec-din-width = <2>;

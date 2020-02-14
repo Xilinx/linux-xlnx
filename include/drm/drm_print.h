@@ -30,6 +30,9 @@
 #include <linux/printk.h>
 #include <linux/seq_file.h>
 #include <linux/device.h>
+#include <linux/debugfs.h>
+
+#include <drm/drm.h>
 
 /**
  * DOC: print
@@ -84,6 +87,7 @@ void __drm_printfn_debug(struct drm_printer *p, struct va_format *vaf);
 __printf(2, 3)
 void drm_printf(struct drm_printer *p, const char *f, ...);
 void drm_puts(struct drm_printer *p, const char *str);
+void drm_print_regset32(struct drm_printer *p, struct debugfs_regset32 *regset);
 
 __printf(2, 0)
 /**
@@ -381,7 +385,7 @@ void drm_err(const char *format, ...);
 
 #define	DRM_DEV_DEBUG_DP(dev, fmt, ...)					\
 	drm_dev_dbg(dev, DRM_UT_DP, fmt, ## __VA_ARGS__)
-#define DRM_DEBUG_DP(dev, fmt, ...)					\
+#define DRM_DEBUG_DP(fmt, ...)						\
 	drm_dbg(DRM_UT_DP, fmt, ## __VA_ARGS__)
 
 #define _DRM_DEV_DEFINE_DEBUG_RATELIMITED(dev, category, fmt, ...)	\

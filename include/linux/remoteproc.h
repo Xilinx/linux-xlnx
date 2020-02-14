@@ -100,7 +100,9 @@ struct fw_rsc_hdr {
  *		    the remote processor will be writing logs.
  * @RSC_VDEV:       declare support for a virtio device, and serve as its
  *		    virtio header.
- * @RSC_LAST:       just keep this one at the end
+ * @RSC_LAST:       just keep this one at the end of standard resources
+ * @RSC_VENDOR_START:	start of the vendor specific resource types range
+ * @RSC_VENDOR_END:	end of the vendor specific resource types range
  *
  * For more details regarding a specific resource type, please see its
  * dedicated structure below.
@@ -111,11 +113,13 @@ struct fw_rsc_hdr {
  * please update it as needed.
  */
 enum fw_resource_type {
-	RSC_CARVEOUT	= 0,
-	RSC_DEVMEM	= 1,
-	RSC_TRACE	= 2,
-	RSC_VDEV	= 3,
-	RSC_LAST	= 4,
+	RSC_CARVEOUT		= 0,
+	RSC_DEVMEM		= 1,
+	RSC_TRACE		= 2,
+	RSC_VDEV		= 3,
+	RSC_LAST		= 4,
+	RSC_VENDOR_START	= 128,
+	RSC_VENDOR_END		= 512,
 };
 
 #define FW_RSC_ADDR_ANY (-1)
@@ -340,6 +344,16 @@ struct rproc_mem_entry {
 struct firmware;
 
 /**
+ * enum rsc_handling_status - return status of rproc_ops handle_rsc hook
+ * @RSC_HANDLED:	resource was handled
+ * @RSC_IGNORED:	resource was ignored
+ */
+enum rsc_handling_status {
+	RSC_HANDLED	= 0,
+	RSC_IGNORED	= 1,
+};
+
+/**
  * struct rproc_ops - platform-specific device handlers
  * @start:	power on the device and boot it
  * @stop:	power off the device
@@ -347,9 +361,13 @@ struct firmware;
  * @peek_remote_kick: check if remote has kicked
  * @ack_remote_kick: ack remote kick
  * @da_to_va:	optional platform hook to perform address translations
+ * @parse_fw:	parse firmware to extract information (e.g. resource table)
+ * @handle_rsc:	optional platform hook to handle vendor resources. Should return
+ * RSC_HANDLED if resource was handled, RSC_IGNORED if not handled and a
+ * negative value on error
  * @load_rsc_table:	load resource table from firmware image
  * @find_loaded_rsc_table: find the loaded resouce table
- * @load:		load firmeware to memory, where the remote processor
+ * @load:		load firmware to memory, where the remote processor
  *			expects to find it
  * @sanity_check:	sanity check the fw image
  * @get_boot_addr:	get boot address to entry point specified in firmware
@@ -362,6 +380,8 @@ struct rproc_ops {
 	void (*ack_remote_kick)(struct rproc *rproc);
 	void * (*da_to_va)(struct rproc *rproc, u64 da, int len);
 	int (*parse_fw)(struct rproc *rproc, const struct firmware *fw);
+	int (*handle_rsc)(struct rproc *rproc, u32 rsc_type, void *rsc,
+			  int offset, int avail);
 	struct resource_table *(*find_loaded_rsc_table)(
 				struct rproc *rproc, const struct firmware *fw);
 	int (*load)(struct rproc *rproc, const struct firmware *fw);
@@ -416,6 +436,9 @@ enum rproc_crash_type {
  * @node:	list node related to the rproc segment list
  * @da:		device address of the segment
  * @size:	size of the segment
+ * @priv:	private data associated with the dump_segment
+ * @dump:	custom dump function to fill device memory segment associated
+ *		with coredump
  */
 struct rproc_dump_segment {
 	struct list_head node;
@@ -423,6 +446,9 @@ struct rproc_dump_segment {
 	dma_addr_t da;
 	size_t size;
 
+	void *priv;
+	void (*dump)(struct rproc *rproc, struct rproc_dump_segment *segment,
+		     void *dest);
 	loff_t offset;
 };
 
@@ -456,6 +482,7 @@ struct rproc_dump_segment {
  * @cached_table: copy of the resource table
  * @table_sz: size of @cached_table
  * @has_iommu: flag to indicate if remote processor is behind an MMU
+ * @auto_boot: flag to indicate if remote processor should be auto-started
  * @dump_segments: list of segments in the firmware
  * @nb_vdev: number of vdev currently handled by rproc
  * @sysfs_kick: allow kick remoteproc from sysfs
@@ -553,11 +580,11 @@ struct rproc_vdev {
 	struct kref refcount;
 
 	struct rproc_subdev subdev;
+	struct device dev;
 
 	unsigned int id;
 	struct list_head node;
 	struct rproc *rproc;
-	struct virtio_device vdev;
 	struct rproc_vring vring[RVDEV_NUM_VRINGS];
 	u32 rsc_offset;
 	u32 index;
@@ -591,10 +618,16 @@ int rproc_boot(struct rproc *rproc);
 void rproc_shutdown(struct rproc *rproc);
 void rproc_report_crash(struct rproc *rproc, enum rproc_crash_type type);
 int rproc_coredump_add_segment(struct rproc *rproc, dma_addr_t da, size_t size);
+int rproc_coredump_add_custom_segment(struct rproc *rproc,
+				      dma_addr_t da, size_t size,
+				      void (*dumpfn)(struct rproc *rproc,
+						     struct rproc_dump_segment *segment,
+						     void *dest),
+				      void *priv);
 
 static inline struct rproc_vdev *vdev_to_rvdev(struct virtio_device *vdev)
 {
-	return container_of(vdev, struct rproc_vdev, vdev);
+	return container_of(vdev->dev.parent, struct rproc_vdev, dev);
 }
 
 static inline struct rproc *vdev_to_rproc(struct virtio_device *vdev)

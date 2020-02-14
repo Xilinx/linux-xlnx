@@ -512,7 +512,8 @@ dma_chan_prep_dma_memcpy(struct dma_chan *dchan, dma_addr_t dst_adr,
 	return vchan_tx_prep(&chan->vc, &first->vd, flags);
 
 err_desc_get:
-	axi_desc_put(first);
+	if (first)
+		axi_desc_put(first);
 	return NULL;
 }
 
@@ -934,7 +935,7 @@ static int dw_probe(struct platform_device *pdev)
 
 	pm_runtime_put(chip->dev);
 
-	ret = dma_async_device_register(&dw->dma);
+	ret = dmaenginem_async_device_register(&dw->dma);
 	if (ret)
 		goto err_pm_disable;
 
@@ -976,8 +977,6 @@ static int dw_remove(struct platform_device *pdev)
 		list_del(&chan->vc.chan.device_node);
 		tasklet_kill(&chan->vc.task);
 	}
-
-	dma_async_device_unregister(&dw->dma);
 
 	return 0;
 }

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * (C) COPYRIGHT 2012-2013 ARM Limited. All rights reserved.
  *
@@ -6,12 +7,6 @@
  * Copyright (c) 2006-2008 Intel Corporation
  * Copyright (c) 2007 Dave Airlie <airlied@linux.ie>
  * Copyright (C) 2011 Texas Instruments
- *
- * This program is free software and is provided to you under the terms of the
- * GNU General Public License version 2 as published by the Free Software
- * Foundation, and any use by you of this program is subject to the terms of
- * such GNU licence.
- *
  */
 
 /**
@@ -53,25 +48,26 @@
 
 #include <linux/amba/bus.h>
 #include <linux/amba/clcd-regs.h>
-#include <linux/version.h>
-#include <linux/shmem_fs.h>
 #include <linux/dma-buf.h>
 #include <linux/module.h>
-#include <linux/slab.h>
 #include <linux/of.h>
 #include <linux/of_graph.h>
 #include <linux/of_reserved_mem.h>
+#include <linux/shmem_fs.h>
+#include <linux/slab.h>
+#include <linux/version.h>
 
-#include <drm/drmP.h>
 #include <drm/drm_atomic_helper.h>
-#include <drm/drm_crtc_helper.h>
+#include <drm/drm_bridge.h>
+#include <drm/drm_drv.h>
+#include <drm/drm_fb_cma_helper.h>
+#include <drm/drm_fb_helper.h>
 #include <drm/drm_gem_cma_helper.h>
 #include <drm/drm_gem_framebuffer_helper.h>
-#include <drm/drm_fb_helper.h>
-#include <drm/drm_fb_cma_helper.h>
 #include <drm/drm_of.h>
-#include <drm/drm_bridge.h>
 #include <drm/drm_panel.h>
+#include <drm/drm_probe_helper.h>
+#include <drm/drm_vblank.h>
 
 #include "pl111_drm.h"
 #include "pl111_versatile.h"
@@ -194,8 +190,6 @@ static int pl111_modeset_init(struct drm_device *dev)
 
 	drm_mode_config_reset(dev);
 
-	drm_fb_cma_fbdev_init(dev, priv->variant->fb_bpp, 0);
-
 	drm_kms_helper_poll_init(dev);
 
 	goto finish;
@@ -231,8 +225,7 @@ DEFINE_DRM_GEM_CMA_FOPS(drm_fops);
 
 static struct drm_driver pl111_drm_driver = {
 	.driver_features =
-		DRIVER_MODESET | DRIVER_GEM | DRIVER_PRIME | DRIVER_ATOMIC,
-	.lastclose = drm_fb_helper_lastclose,
+		DRIVER_MODESET | DRIVER_GEM | DRIVER_ATOMIC,
 	.ioctls = NULL,
 	.fops = &drm_fops,
 	.name = "pl111",
@@ -246,9 +239,7 @@ static struct drm_driver pl111_drm_driver = {
 	.gem_vm_ops = &drm_gem_cma_vm_ops,
 	.prime_handle_to_fd = drm_gem_prime_handle_to_fd,
 	.prime_fd_to_handle = drm_gem_prime_fd_to_handle,
-	.gem_prime_import = drm_gem_prime_import,
 	.gem_prime_import_sg_table = pl111_gem_import_sg_table,
-	.gem_prime_export = drm_gem_prime_export,
 	.gem_prime_get_sg_table	= drm_gem_cma_prime_get_sg_table,
 	.gem_prime_mmap = drm_gem_cma_prime_mmap,
 	.gem_prime_vmap = drm_gem_cma_prime_vmap,
@@ -332,6 +323,8 @@ static int pl111_amba_probe(struct amba_device *amba_dev,
 	if (ret < 0)
 		goto dev_put;
 
+	drm_fbdev_generic_setup(drm, priv->variant->fb_bpp);
+
 	return 0;
 
 dev_put:
@@ -348,7 +341,6 @@ static int pl111_amba_remove(struct amba_device *amba_dev)
 	struct pl111_drm_dev_private *priv = drm->dev_private;
 
 	drm_dev_unregister(drm);
-	drm_fb_cma_fbdev_fini(drm);
 	if (priv->panel)
 		drm_panel_bridge_remove(priv->bridge);
 	drm_mode_config_cleanup(drm);

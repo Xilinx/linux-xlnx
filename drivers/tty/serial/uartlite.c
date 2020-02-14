@@ -960,6 +960,7 @@ err_out_id:
 	mutex_lock(&bitmap_lock);
 	clear_bit(pdata->id, bitmap);
 	mutex_unlock(&bitmap_lock);
+
 	return ret;
 }
 
@@ -1006,6 +1007,7 @@ static struct platform_driver ulite_platform_driver = {
 
 static int __init ulite_init(void)
 {
+
 	pr_debug("uartlite: calling platform_driver_register()\n");
 	return platform_driver_register(&ulite_platform_driver);
 }

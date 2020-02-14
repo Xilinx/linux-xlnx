@@ -14,6 +14,7 @@
  *	      serial8250_register_8250_port() ports
  */
 
+#include <linux/acpi.h>
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/ioport.h>
@@ -130,12 +131,8 @@ static irqreturn_t serial8250_interrupt(int irq, void *dev_id)
 
 		l = l->next;
 
-		if (l == i->head && pass_counter++ > PASS_LIMIT) {
-			/* If we hit this, we're dead. */
-			printk_ratelimited(KERN_ERR
-				"serial8250: too much work for irq%d\n", irq);
+		if (l == i->head && pass_counter++ > PASS_LIMIT)
 			break;
-		}
 	} while (l != end);
 
 	spin_unlock(&i->lock);
@@ -946,6 +943,21 @@ static struct uart_8250_port *serial8250_find_match_or_unused(struct uart_port *
 	return NULL;
 }
 
+static void serial_8250_overrun_backoff_work(struct work_struct *work)
+{
+	struct uart_8250_port *up =
+	    container_of(to_delayed_work(work), struct uart_8250_port,
+			 overrun_backoff);
+	struct uart_port *port = &up->port;
+	unsigned long flags;
+
+	spin_lock_irqsave(&port->lock, flags);
+	up->ier |= UART_IER_RLSI | UART_IER_RDI;
+	up->port.read_status_mask |= UART_LSR_DR;
+	serial_out(up, UART_IER, up->ier);
+	spin_unlock_irqrestore(&port->lock, flags);
+}
+
 /**
  *	serial8250_register_8250_port - register a serial port
  *	@up: serial port template
@@ -971,6 +983,8 @@ int serial8250_register_8250_port(struct uart_8250_port *up)
 
 	uart = serial8250_find_match_or_unused(&up->port);
 	if (uart && uart->port.type != PORT_8250_CIR) {
+		struct mctrl_gpios *gpios;
+
 		if (uart->port.dev)
 			uart_remove_one_port(&serial8250_reg, &uart->port);
 
@@ -1004,6 +1018,20 @@ int serial8250_register_8250_port(struct uart_8250_port *up)
 
 		if (up->port.flags & UPF_FIXED_TYPE)
 			uart->port.type = up->port.type;
+
+		/*
+		 * Only call mctrl_gpio_init(), if the device has no ACPI
+		 * companion device
+		 */
+		if (!has_acpi_companion(uart->port.dev)) {
+			gpios = mctrl_gpio_init(&uart->port, 0);
+			if (IS_ERR(gpios)) {
+				ret = PTR_ERR(gpios);
+				goto out_unlock;
+			} else {
+				uart->gpios = gpios;
+			}
+		}
 
 		serial8250_set_defaults(uart);
 
@@ -1059,7 +1087,19 @@ int serial8250_register_8250_port(struct uart_8250_port *up)
 
 			ret = 0;
 		}
+
+		/* Initialise interrupt backoff work if required */
+		if (up->overrun_backoff_time_ms > 0) {
+			uart->overrun_backoff_time_ms =
+				up->overrun_backoff_time_ms;
+			INIT_DELAYED_WORK(&uart->overrun_backoff,
+					serial_8250_overrun_backoff_work);
+		} else {
+			uart->overrun_backoff_time_ms = 0;
+		}
 	}
+
+out_unlock:
 	mutex_unlock(&serial_mutex);
 
 	return ret;

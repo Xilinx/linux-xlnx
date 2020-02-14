@@ -1,17 +1,16 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright 2002-2005, Instant802 Networks, Inc.
  * Copyright 2005-2006, Devicescape Software, Inc.
  * Copyright 2006-2007	Jiri Benc <jbenc@suse.cz>
  * Copyright 2013-2014  Intel Mobile Communications GmbH
  * Copyright (C) 2017     Intel Deutschland GmbH
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
+ * Copyright (C) 2018 - 2019 Intel Corporation
  */
 
 #include <net/mac80211.h>
 #include <linux/module.h>
+#include <linux/fips.h>
 #include <linux/init.h>
 #include <linux/netdevice.h>
 #include <linux/types.h>
@@ -353,11 +352,11 @@ static int ieee80211_ifa_changed(struct notifier_block *nb,
 	sdata_lock(sdata);
 
 	/* Copy the addresses to the bss_conf list */
-	ifa = idev->ifa_list;
+	ifa = rtnl_dereference(idev->ifa_list);
 	while (ifa) {
 		if (c < IEEE80211_BSS_ARP_ADDR_LIST_LEN)
 			bss_conf->arp_addr_list[c] = ifa->ifa_address;
-		ifa = ifa->ifa_next;
+		ifa = rtnl_dereference(ifa->ifa_next);
 		c++;
 	}
 
@@ -477,6 +476,8 @@ static const struct ieee80211_ht_cap mac80211_ht_capa_mod_mask = {
 				IEEE80211_HT_CAP_MAX_AMSDU |
 				IEEE80211_HT_CAP_SGI_20 |
 				IEEE80211_HT_CAP_SGI_40 |
+				IEEE80211_HT_CAP_TX_STBC |
+				IEEE80211_HT_CAP_RX_STBC |
 				IEEE80211_HT_CAP_LDPC_CODING |
 				IEEE80211_HT_CAP_40MHZ_INTOLERANT),
 	.mcs = {
@@ -610,6 +611,18 @@ struct ieee80211_hw *ieee80211_alloc_hw_nm(size_t priv_data_len,
 	local->ops = ops;
 	local->use_chanctx = use_chanctx;
 
+	/*
+	 * We need a bit of data queued to build aggregates properly, so
+	 * instruct the TCP stack to allow more than a single ms of data
+	 * to be queued in the stack. The value is a bit-shift of 1
+	 * second, so 7 is ~8ms of queued data. Only affects local TCP
+	 * sockets.
+	 * This is the default, anyhow - drivers may need to override it
+	 * for local reasons (longer buffers, longer completion time, or
+	 * similar).
+	 */
+	local->hw.tx_sk_pacing_shift = 7;
+
 	/* set up some defaults */
 	local->hw.queues = 1;
 	local->hw.max_rates = 1;
@@ -626,6 +639,7 @@ struct ieee80211_hw *ieee80211_alloc_hw_nm(size_t priv_data_len,
 					 IEEE80211_RADIOTAP_VHT_KNOWN_BANDWIDTH;
 	local->hw.uapsd_queues = IEEE80211_DEFAULT_UAPSD_QUEUES;
 	local->hw.uapsd_max_sp_len = IEEE80211_DEFAULT_MAX_SP_LEN;
+	local->hw.max_mtu = IEEE80211_MAX_DATA_LEN;
 	local->user_power_level = IEEE80211_UNSET_POWER_LEVEL;
 	wiphy->ht_capa_mod_mask = &mac80211_ht_capa_mod_mask;
 	wiphy->vht_capa_mod_mask = &mac80211_vht_capa_mod_mask;
@@ -649,6 +663,12 @@ struct ieee80211_hw *ieee80211_alloc_hw_nm(size_t priv_data_len,
 	spin_lock_init(&local->filter_lock);
 	spin_lock_init(&local->rx_path_lock);
 	spin_lock_init(&local->queue_stop_reason_lock);
+
+	for (i = 0; i < IEEE80211_NUM_ACS; i++) {
+		INIT_LIST_HEAD(&local->active_txqs[i]);
+		spin_lock_init(&local->active_txq_lock[i]);
+	}
+	local->airtime_flags = AIRTIME_USE_TX | AIRTIME_USE_RX;
 
 	INIT_LIST_HEAD(&local->chanctx_list);
 	mutex_init(&local->chanctx_mtx);
@@ -684,6 +704,10 @@ struct ieee80211_hw *ieee80211_alloc_hw_nm(size_t priv_data_len,
 	tasklet_init(&local->tx_pending_tasklet, ieee80211_tx_pending,
 		     (unsigned long)local);
 
+	if (ops->wake_tx_queue)
+		tasklet_init(&local->wake_txqs_tasklet, ieee80211_wake_txqs,
+			     (unsigned long)local);
+
 	tasklet_init(&local->tasklet,
 		     ieee80211_tasklet_handler,
 		     (unsigned long) local);
@@ -708,8 +732,7 @@ EXPORT_SYMBOL(ieee80211_alloc_hw_nm);
 
 static int ieee80211_init_cipher_suites(struct ieee80211_local *local)
 {
-	bool have_wep = !(IS_ERR(local->wep_tx_tfm) ||
-			  IS_ERR(local->wep_rx_tfm));
+	bool have_wep = !fips_enabled; /* FIPS does not permit the use of RC4 */
 	bool have_mfp = ieee80211_hw_check(&local->hw, MFP_CAPABLE);
 	int n_suites = 0, r = 0, w = 0;
 	u32 *suites;
@@ -1026,6 +1049,16 @@ int ieee80211_register_hw(struct ieee80211_hw *hw)
 		}
 	}
 
+	/* Mac80211 and therefore all drivers using SW crypto only
+	 * are able to handle PTK rekeys and Extended Key ID.
+	 */
+	if (!local->ops->set_key) {
+		wiphy_ext_feature_set(local->hw.wiphy,
+				      NL80211_EXT_FEATURE_CAN_REPLACE_PTK0);
+		wiphy_ext_feature_set(local->hw.wiphy,
+				      NL80211_EXT_FEATURE_EXT_KEY_ID);
+	}
+
 	/*
 	 * Calculate scan IE length -- we need this to alloc
 	 * memory and to subtract from the driver limit. It
@@ -1087,6 +1120,17 @@ int ieee80211_register_hw(struct ieee80211_hw *hw)
 	if (ieee80211_hw_check(&local->hw, CHANCTX_STA_CSA))
 		local->ext_capa[0] |= WLAN_EXT_CAPA1_EXT_CHANNEL_SWITCHING;
 
+	/* mac80211 supports multi BSSID, if the driver supports it */
+	if (ieee80211_hw_check(&local->hw, SUPPORTS_MULTI_BSSID)) {
+		local->hw.wiphy->support_mbssid = true;
+		if (ieee80211_hw_check(&local->hw,
+				       SUPPORTS_ONLY_HE_MULTI_BSSID))
+			local->hw.wiphy->support_only_he_mbssid = true;
+		else
+			local->ext_capa[2] |=
+				WLAN_EXT_CAPA3_MULTI_BSSID_SUPPORT;
+	}
+
 	local->hw.wiphy->max_num_csa_counters = IEEE80211_MAX_CSA_COUNTERS_NUM;
 
 	result = wiphy_register(local->hw.wiphy);
@@ -1131,6 +1175,9 @@ int ieee80211_register_hw(struct ieee80211_hw *hw)
 	if (!local->hw.max_nan_de_entries)
 		local->hw.max_nan_de_entries = IEEE80211_MAX_NAN_INSTANCE_ID;
 
+	if (!local->hw.weight_multiplier)
+		local->hw.weight_multiplier = 1;
+
 	result = ieee80211_wep_init(local);
 	if (result < 0)
 		wiphy_debug(local->hw.wiphy, "Failed to initialize wep: %d\n",
@@ -1154,11 +1201,60 @@ int ieee80211_register_hw(struct ieee80211_hw *hw)
 		goto fail_rate;
 	}
 
+	if (local->rate_ctrl) {
+		clear_bit(IEEE80211_HW_SUPPORTS_VHT_EXT_NSS_BW, hw->flags);
+		if (local->rate_ctrl->ops->capa & RATE_CTRL_CAPA_VHT_EXT_NSS_BW)
+			ieee80211_hw_set(hw, SUPPORTS_VHT_EXT_NSS_BW);
+	}
+
+	/*
+	 * If the VHT capabilities don't have IEEE80211_VHT_EXT_NSS_BW_CAPABLE,
+	 * or have it when we don't, copy the sband structure and set/clear it.
+	 * This is necessary because rate scaling algorithms could be switched
+	 * and have different support values.
+	 * Print a message so that in the common case the reallocation can be
+	 * avoided.
+	 */
+	BUILD_BUG_ON(NUM_NL80211_BANDS > 8 * sizeof(local->sband_allocated));
+	for (band = 0; band < NUM_NL80211_BANDS; band++) {
+		struct ieee80211_supported_band *sband;
+		bool local_cap, ie_cap;
+
+		local_cap = ieee80211_hw_check(hw, SUPPORTS_VHT_EXT_NSS_BW);
+
+		sband = local->hw.wiphy->bands[band];
+		if (!sband || !sband->vht_cap.vht_supported)
+			continue;
+
+		ie_cap = !!(sband->vht_cap.vht_mcs.tx_highest &
+			    cpu_to_le16(IEEE80211_VHT_EXT_NSS_BW_CAPABLE));
+
+		if (local_cap == ie_cap)
+			continue;
+
+		sband = kmemdup(sband, sizeof(*sband), GFP_KERNEL);
+		if (!sband) {
+			result = -ENOMEM;
+			goto fail_rate;
+		}
+
+		wiphy_dbg(hw->wiphy, "copying sband (band %d) due to VHT EXT NSS BW flag\n",
+			  band);
+
+		sband->vht_cap.vht_mcs.tx_highest ^=
+			cpu_to_le16(IEEE80211_VHT_EXT_NSS_BW_CAPABLE);
+
+		local->hw.wiphy->bands[band] = sband;
+		local->sband_allocated |= BIT(band);
+	}
+
 	/* add one default STA interface if supported */
 	if (local->hw.wiphy->interface_modes & BIT(NL80211_IFTYPE_STATION) &&
 	    !ieee80211_hw_check(hw, NO_AUTO_VIF)) {
+		struct vif_params params = {0};
+
 		result = ieee80211_if_add(local, "wlan%d", NET_NAME_ENUM, NULL,
-					  NL80211_IFTYPE_STATION, NULL);
+					  NL80211_IFTYPE_STATION, &params);
 		if (result)
 			wiphy_warn(local->hw.wiphy,
 				   "Failed to add default virtual iface\n");
@@ -1196,10 +1292,8 @@ int ieee80211_register_hw(struct ieee80211_hw *hw)
 	ieee80211_remove_interfaces(local);
  fail_rate:
 	rtnl_unlock();
-	ieee80211_led_exit(local);
-	ieee80211_wep_free(local);
-	ieee80211_txq_teardown_flows(local);
  fail_flows:
+	ieee80211_led_exit(local);
 	destroy_workqueue(local->workqueue);
  fail_workqueue:
 	wiphy_unregister(local->hw.wiphy);
@@ -1224,7 +1318,6 @@ void ieee80211_unregister_hw(struct ieee80211_hw *hw)
 #if IS_ENABLED(CONFIG_IPV6)
 	unregister_inet6addr_notifier(&local->ifa6_notifier);
 #endif
-	ieee80211_txq_teardown_flows(local);
 
 	rtnl_lock();
 
@@ -1256,7 +1349,6 @@ void ieee80211_unregister_hw(struct ieee80211_hw *hw)
 
 	destroy_workqueue(local->workqueue);
 	wiphy_unregister(local->hw.wiphy);
-	ieee80211_wep_free(local);
 	ieee80211_led_exit(local);
 	kfree(local->int_scan_req);
 }
@@ -1272,6 +1364,7 @@ static int ieee80211_free_ack_frame(int id, void *p, void *data)
 void ieee80211_free_hw(struct ieee80211_hw *hw)
 {
 	struct ieee80211_local *local = hw_to_local(hw);
+	enum nl80211_band band;
 
 	mutex_destroy(&local->iflist_mtx);
 	mutex_destroy(&local->mtx);
@@ -1286,6 +1379,12 @@ void ieee80211_free_hw(struct ieee80211_hw *hw)
 	sta_info_stop(local);
 
 	ieee80211_free_led_names(local);
+
+	for (band = 0; band < NUM_NL80211_BANDS; band++) {
+		if (!(local->sband_allocated & BIT(band)))
+			continue;
+		kfree(local->hw.wiphy->bands[band]);
+	}
 
 	wiphy_free(local->hw.wiphy);
 }
@@ -1304,18 +1403,12 @@ static int __init ieee80211_init(void)
 	if (ret)
 		return ret;
 
-	ret = rc80211_minstrel_ht_init();
-	if (ret)
-		goto err_minstrel;
-
 	ret = ieee80211_iface_init();
 	if (ret)
 		goto err_netdev;
 
 	return 0;
  err_netdev:
-	rc80211_minstrel_ht_exit();
- err_minstrel:
 	rc80211_minstrel_exit();
 
 	return ret;
@@ -1323,7 +1416,6 @@ static int __init ieee80211_init(void)
 
 static void __exit ieee80211_exit(void)
 {
-	rc80211_minstrel_ht_exit();
 	rc80211_minstrel_exit();
 
 	ieee80211s_stop();

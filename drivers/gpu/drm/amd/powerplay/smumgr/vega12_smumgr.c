@@ -37,11 +37,12 @@
  * @param   hwmgr    the address of the HW manager
  * @param   table_id    the driver's table ID to copy from
  */
-int vega12_copy_table_from_smc(struct pp_hwmgr *hwmgr,
-		uint8_t *table, int16_t table_id)
+static int vega12_copy_table_from_smc(struct pp_hwmgr *hwmgr,
+				      uint8_t *table, int16_t table_id)
 {
 	struct vega12_smumgr *priv =
 			(struct vega12_smumgr *)(hwmgr->smu_backend);
+	struct amdgpu_device *adev = hwmgr->adev;
 
 	PP_ASSERT_WITH_CODE(table_id < TABLE_COUNT,
 			"Invalid SMU Table ID!", return -EINVAL);
@@ -64,6 +65,9 @@ int vega12_copy_table_from_smc(struct pp_hwmgr *hwmgr,
 			"[CopyTableFromSMC] Attempt to Transfer Table From SMU Failed!",
 			return -EINVAL);
 
+	/* flush hdp cache */
+	adev->nbio_funcs->hdp_flush(adev, NULL);
+
 	memcpy(table, priv->smu_tables.entry[table_id].table,
 			priv->smu_tables.entry[table_id].size);
 
@@ -75,8 +79,8 @@ int vega12_copy_table_from_smc(struct pp_hwmgr *hwmgr,
  * @param   hwmgr    the address of the HW manager
  * @param   table_id    the table to copy from
  */
-int vega12_copy_table_to_smc(struct pp_hwmgr *hwmgr,
-		uint8_t *table, int16_t table_id)
+static int vega12_copy_table_to_smc(struct pp_hwmgr *hwmgr,
+				    uint8_t *table, int16_t table_id)
 {
 	struct vega12_smumgr *priv =
 			(struct vega12_smumgr *)(hwmgr->smu_backend);
@@ -287,8 +291,26 @@ static int vega12_smu_init(struct pp_hwmgr *hwmgr)
 	priv->smu_tables.entry[TABLE_OVERDRIVE].version = 0x01;
 	priv->smu_tables.entry[TABLE_OVERDRIVE].size = sizeof(OverDriveTable_t);
 
+	/* allocate space for SMU_METRICS table */
+	ret = amdgpu_bo_create_kernel((struct amdgpu_device *)hwmgr->adev,
+				      sizeof(SmuMetrics_t),
+				      PAGE_SIZE,
+				      AMDGPU_GEM_DOMAIN_VRAM,
+				      &priv->smu_tables.entry[TABLE_SMU_METRICS].handle,
+				      &priv->smu_tables.entry[TABLE_SMU_METRICS].mc_addr,
+				      &priv->smu_tables.entry[TABLE_SMU_METRICS].table);
+	if (ret)
+		goto err4;
+
+	priv->smu_tables.entry[TABLE_SMU_METRICS].version = 0x01;
+	priv->smu_tables.entry[TABLE_SMU_METRICS].size = sizeof(SmuMetrics_t);
+
 	return 0;
 
+err4:
+	amdgpu_bo_free_kernel(&priv->smu_tables.entry[TABLE_OVERDRIVE].handle,
+				&priv->smu_tables.entry[TABLE_OVERDRIVE].mc_addr,
+				&priv->smu_tables.entry[TABLE_OVERDRIVE].table);
 err3:
 	amdgpu_bo_free_kernel(&priv->smu_tables.entry[TABLE_AVFS_FUSE_OVERRIDE].handle,
 				&priv->smu_tables.entry[TABLE_AVFS_FUSE_OVERRIDE].mc_addr,
@@ -334,6 +356,9 @@ static int vega12_smu_fini(struct pp_hwmgr *hwmgr)
 		amdgpu_bo_free_kernel(&priv->smu_tables.entry[TABLE_OVERDRIVE].handle,
 				      &priv->smu_tables.entry[TABLE_OVERDRIVE].mc_addr,
 				      &priv->smu_tables.entry[TABLE_OVERDRIVE].table);
+		amdgpu_bo_free_kernel(&priv->smu_tables.entry[TABLE_SMU_METRICS].handle,
+				      &priv->smu_tables.entry[TABLE_SMU_METRICS].mc_addr,
+				      &priv->smu_tables.entry[TABLE_SMU_METRICS].table);
 		kfree(hwmgr->smu_backend);
 		hwmgr->smu_backend = NULL;
 	}
@@ -351,7 +376,21 @@ static int vega12_start_smu(struct pp_hwmgr *hwmgr)
 	return 0;
 }
 
+static int vega12_smc_table_manager(struct pp_hwmgr *hwmgr, uint8_t *table,
+				    uint16_t table_id, bool rw)
+{
+	int ret;
+
+	if (rw)
+		ret = vega12_copy_table_from_smc(hwmgr, table, table_id);
+	else
+		ret = vega12_copy_table_to_smc(hwmgr, table, table_id);
+
+	return ret;
+}
+
 const struct pp_smumgr_func vega12_smu_funcs = {
+	.name = "vega12_smu",
 	.smu_init = &vega12_smu_init,
 	.smu_fini = &vega12_smu_fini,
 	.start_smu = &vega12_start_smu,
@@ -362,4 +401,5 @@ const struct pp_smumgr_func vega12_smu_funcs = {
 	.upload_pptable_settings = NULL,
 	.is_dpm_running = vega12_is_dpm_running,
 	.get_argument = smu9_get_argument,
+	.smc_table_manager = vega12_smc_table_manager,
 };

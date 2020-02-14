@@ -66,7 +66,7 @@ __be32 nfs4_callback_getattr(void *argp, void *resp,
 out_iput:
 	rcu_read_unlock();
 	trace_nfs4_cb_getattr(cps->clp, &args->fh, inode, -ntohl(res->status));
-	iput(inode);
+	nfs_iput_and_deactive(inode);
 out:
 	dprintk("%s: exit with status = %d\n", __func__, ntohl(res->status));
 	return res->status;
@@ -108,7 +108,7 @@ __be32 nfs4_callback_recall(void *argp, void *resp,
 	}
 	trace_nfs4_cb_recall(cps->clp, &args->fh, inode,
 			&args->stateid, -ntohl(res));
-	iput(inode);
+	nfs_iput_and_deactive(inode);
 out:
 	dprintk("%s: exit with status = %d\n", __func__, ntohl(res));
 	return res;
@@ -414,27 +414,39 @@ static __be32
 validate_seqid(const struct nfs4_slot_table *tbl, const struct nfs4_slot *slot,
 		const struct cb_sequenceargs * args)
 {
+	__be32 ret;
+
+	ret = cpu_to_be32(NFS4ERR_BADSLOT);
 	if (args->csa_slotid > tbl->server_highest_slotid)
-		return htonl(NFS4ERR_BADSLOT);
+		goto out_err;
 
 	/* Replay */
 	if (args->csa_sequenceid == slot->seq_nr) {
+		ret = cpu_to_be32(NFS4ERR_DELAY);
 		if (nfs4_test_locked_slot(tbl, slot->slot_nr))
-			return htonl(NFS4ERR_DELAY);
+			goto out_err;
+
 		/* Signal process_op to set this error on next op */
+		ret = cpu_to_be32(NFS4ERR_RETRY_UNCACHED_REP);
 		if (args->csa_cachethis == 0)
-			return htonl(NFS4ERR_RETRY_UNCACHED_REP);
+			goto out_err;
 
 		/* Liar! We never allowed you to set csa_cachethis != 0 */
-		return htonl(NFS4ERR_SEQ_FALSE_RETRY);
+		ret = cpu_to_be32(NFS4ERR_SEQ_FALSE_RETRY);
+		goto out_err;
 	}
 
 	/* Note: wraparound relies on seq_nr being of type u32 */
-	if (likely(args->csa_sequenceid == slot->seq_nr + 1))
-		return htonl(NFS4_OK);
-
 	/* Misordered request */
-	return htonl(NFS4ERR_SEQ_MISORDERED);
+	ret = cpu_to_be32(NFS4ERR_SEQ_MISORDERED);
+	if (args->csa_sequenceid != slot->seq_nr + 1)
+		goto out_err;
+
+	return cpu_to_be32(NFS4_OK);
+
+out_err:
+	trace_nfs4_cb_seqid_err(args, ret);
+	return ret;
 }
 
 /*
@@ -686,20 +698,24 @@ __be32 nfs4_callback_offload(void *data, void *dummy,
 {
 	struct cb_offloadargs *args = data;
 	struct nfs_server *server;
-	struct nfs4_copy_state *copy;
+	struct nfs4_copy_state *copy, *tmp_copy;
 	bool found = false;
+
+	copy = kzalloc(sizeof(struct nfs4_copy_state), GFP_NOFS);
+	if (!copy)
+		return htonl(NFS4ERR_SERVERFAULT);
 
 	spin_lock(&cps->clp->cl_lock);
 	rcu_read_lock();
 	list_for_each_entry_rcu(server, &cps->clp->cl_superblocks,
 				client_link) {
-		list_for_each_entry(copy, &server->ss_copies, copies) {
+		list_for_each_entry(tmp_copy, &server->ss_copies, copies) {
 			if (memcmp(args->coa_stateid.other,
-					copy->stateid.other,
+					tmp_copy->stateid.other,
 					sizeof(args->coa_stateid.other)))
 				continue;
-			nfs4_copy_cb_args(copy, args);
-			complete(&copy->completion);
+			nfs4_copy_cb_args(tmp_copy, args);
+			complete(&tmp_copy->completion);
 			found = true;
 			goto out;
 		}
@@ -707,15 +723,11 @@ __be32 nfs4_callback_offload(void *data, void *dummy,
 out:
 	rcu_read_unlock();
 	if (!found) {
-		copy = kzalloc(sizeof(struct nfs4_copy_state), GFP_NOFS);
-		if (!copy) {
-			spin_unlock(&cps->clp->cl_lock);
-			return htonl(NFS4ERR_SERVERFAULT);
-		}
 		memcpy(&copy->stateid, &args->coa_stateid, NFS4_STATEID_SIZE);
 		nfs4_copy_cb_args(copy, args);
 		list_add_tail(&copy->copies, &cps->clp->pending_cb_stateids);
-	}
+	} else
+		kfree(copy);
 	spin_unlock(&cps->clp->cl_lock);
 
 	return 0;

@@ -56,7 +56,7 @@
 	};
 
 	chosen {
-		bootargs = "ignore_loglevel rw root=/dev/nfs ip=dhcp";
+		bootargs = "ignore_loglevel rw root=/dev/nfs ip=on";
 		stdout-path = "serial0:115200n8";
 	};
 
@@ -479,8 +479,6 @@
 };
 
 &lvds0 {
-	status = "okay";
-
 	ports {
 		port@1 {
 			lvds_connector: endpoint {
@@ -539,6 +537,11 @@
 
 	phy1_pins: phy1 {
 		groups = "intc_irq0";
+		function = "intc";
+	};
+
+	pmic_irq_pins: pmicirq {
+		groups = "intc_irq2";
 		function = "intc";
 	};
 
@@ -778,6 +781,8 @@
 };
 
 &i2c6 {
+	pinctrl-names = "default";
+	pinctrl-0 = <&pmic_irq_pins>;
 	status = "okay";
 	clock-frequency = <100000>;
 

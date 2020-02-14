@@ -22,3 +22,6 @@ Linux Tracing Technologies
    hwlat_detector
    intel_th
    stm
+   sys-t
+   coresight
+   coresight-cpu-debug

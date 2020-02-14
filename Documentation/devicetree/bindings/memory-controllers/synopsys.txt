@@ -1,12 +1,13 @@
 Binding for Synopsys IntelliDDR Multi Protocol Memory Controller
 
-Synopsys EDAC driver, it does reports the DDR ECC single bit errors
-that are corrected and double bit ecc errors that are detected by the DDR
-ECC controller.
+The ZynqMP DDR ECC controller has an optional ECC support in 64-bit and 32-bit
+bus width configurations.
 
 The Zynq DDR ECC controller has an optional ECC support in half-bus width
-(16-bit) configuration. The ECC controller corrects one bit error and detects
-two bit errors.
+(16-bit) configuration.
+
+These both ECC controllers correct single bit ECC errors and detect double bit
+ECC errors.
 
 Required properties:
  - compatible: One of:
@@ -15,7 +16,6 @@ Required properties:
  - reg: Should contain DDR controller registers location and length.
 
 Required properties for "xlnx,zynqmp-ddrc-2.40a":
- - interrupt-parent: Should be core interrupt controller.
  - interrupts: Property with a value describing the interrupt number.
 
 Example:

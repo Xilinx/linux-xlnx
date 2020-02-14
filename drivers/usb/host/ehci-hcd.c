@@ -559,7 +559,7 @@ static int ehci_init(struct usb_hcd *hcd)
 	ehci->command = temp;
 
 	/* Accept arbitrarily long scatter-gather lists */
-	if (!(hcd->driver->flags & HCD_LOCAL_MEM))
+	if (!hcd->localmem_pool)
 		hcd->self.sg_tablesize = ~0;
 
 	/* Prepare for unlinking active QHs */
@@ -730,9 +730,9 @@ static irqreturn_t ehci_irq (struct usb_hcd *hcd)
 	/* normal [4.15.1.2] or error [4.15.1.1] completion */
 	if (likely ((status & (STS_INT|STS_ERR)) != 0)) {
 		if (likely ((status & STS_ERR) == 0))
-			COUNT (ehci->stats.normal);
+			INCR(ehci->stats.normal);
 		else
-			COUNT (ehci->stats.error);
+			INCR(ehci->stats.error);
 		bh = 1;
 	}
 
@@ -756,7 +756,7 @@ static irqreturn_t ehci_irq (struct usb_hcd *hcd)
 		if (cmd & CMD_IAAD)
 			ehci_dbg(ehci, "IAA with IAAD still set?\n");
 		if (ehci->iaa_in_progress)
-			COUNT(ehci->stats.iaa);
+			INCR(ehci->stats.iaa);
 		end_iaa_cycle(ehci);
 	}
 
@@ -1193,7 +1193,7 @@ static const struct hc_driver ehci_hc_driver = {
 	 * generic hardware linkage
 	 */
 	.irq =			ehci_irq,
-	.flags =		HCD_MEMORY | HCD_USB2 | HCD_BH,
+	.flags =		HCD_MEMORY | HCD_DMA | HCD_USB2 | HCD_BH,
 
 	/*
 	 * basic lifecycle operations
@@ -1284,11 +1284,6 @@ MODULE_LICENSE ("GPL");
 #ifdef CONFIG_SPARC_LEON
 #include "ehci-grlib.c"
 #define PLATFORM_DRIVER		ehci_grlib_driver
-#endif
-
-#ifdef CONFIG_USB_EHCI_MV
-#include "ehci-mv.c"
-#define        PLATFORM_DRIVER         ehci_mv_driver
 #endif
 
 static int __init ehci_hcd_init(void)

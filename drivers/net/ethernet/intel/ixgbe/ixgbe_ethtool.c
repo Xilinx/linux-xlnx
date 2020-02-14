@@ -136,6 +136,8 @@ static const char ixgbe_gstrings_test[][ETH_GSTRING_LEN] = {
 static const char ixgbe_priv_flags_strings[][ETH_GSTRING_LEN] = {
 #define IXGBE_PRIV_FLAGS_LEGACY_RX	BIT(0)
 	"legacy-rx",
+#define IXGBE_PRIV_FLAGS_VF_IPSEC_EN	BIT(1)
+	"vf-ipsec",
 };
 
 #define IXGBE_PRIV_FLAGS_STR_LEN ARRAY_SIZE(ixgbe_priv_flags_strings)
@@ -2204,7 +2206,8 @@ static int ixgbe_set_wol(struct net_device *netdev, struct ethtool_wolinfo *wol)
 {
 	struct ixgbe_adapter *adapter = netdev_priv(netdev);
 
-	if (wol->wolopts & (WAKE_PHY | WAKE_ARP | WAKE_MAGICSECURE))
+	if (wol->wolopts & (WAKE_PHY | WAKE_ARP | WAKE_MAGICSECURE |
+			    WAKE_FILTER))
 		return -EOPNOTSUPP;
 
 	if (ixgbe_wol_exclusion(adapter, wol))
@@ -3223,7 +3226,8 @@ static int ixgbe_get_module_info(struct net_device *dev,
 		page_swap = true;
 	}
 
-	if (sff8472_rev == IXGBE_SFF_SFF_8472_UNSUP || page_swap) {
+	if (sff8472_rev == IXGBE_SFF_SFF_8472_UNSUP || page_swap ||
+	    !(addr_mode & IXGBE_SFF_DDM_IMPLEMENTED)) {
 		/* We have a SFP, but it does not support SFF-8472 */
 		modinfo->type = ETH_MODULE_SFF_8079;
 		modinfo->eeprom_len = ETH_MODULE_SFF_8079_LEN;
@@ -3409,6 +3413,9 @@ static u32 ixgbe_get_priv_flags(struct net_device *netdev)
 	if (adapter->flags2 & IXGBE_FLAG2_RX_LEGACY)
 		priv_flags |= IXGBE_PRIV_FLAGS_LEGACY_RX;
 
+	if (adapter->flags2 & IXGBE_FLAG2_VF_IPSEC_ENABLED)
+		priv_flags |= IXGBE_PRIV_FLAGS_VF_IPSEC_EN;
+
 	return priv_flags;
 }
 
@@ -3420,6 +3427,10 @@ static int ixgbe_set_priv_flags(struct net_device *netdev, u32 priv_flags)
 	flags2 &= ~IXGBE_FLAG2_RX_LEGACY;
 	if (priv_flags & IXGBE_PRIV_FLAGS_LEGACY_RX)
 		flags2 |= IXGBE_FLAG2_RX_LEGACY;
+
+	flags2 &= ~IXGBE_FLAG2_VF_IPSEC_ENABLED;
+	if (priv_flags & IXGBE_PRIV_FLAGS_VF_IPSEC_EN)
+		flags2 |= IXGBE_FLAG2_VF_IPSEC_ENABLED;
 
 	if (flags2 != adapter->flags2) {
 		adapter->flags2 = flags2;

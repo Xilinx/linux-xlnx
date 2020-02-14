@@ -30,7 +30,7 @@
  * not do like this.
  */
 #define _INTEL_BIOS_PRIVATE
-#include "intel_vbt_defs.h"
+#include "display/intel_vbt_defs.h"
 
 #define OPREGION_SIGNATURE "IntelGraphicsMem"
 #define MBOX_VBT      (1<<3)
@@ -214,7 +214,6 @@ static void virt_vbt_generation(struct vbt *v)
 /**
  * intel_vgpu_init_opregion - initialize the stuff used to emulate opregion
  * @vgpu: a vGPU
- * @gpa: guest physical address of opregion
  *
  * Returns:
  * Zero on success, negative error code if failed.

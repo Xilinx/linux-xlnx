@@ -1,12 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
 /*
  * Copyright 2009 Paul Mackerras, IBM Corporation.
  * Copyright 2013 Michael Ellerman, IBM Corporation.
  * Copyright 2016 Madhavan Srinivasan, IBM Corporation.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version
- * 2 of the License, or any later version.
  */
 
 #ifndef _LINUX_POWERPC_PERF_ISA207_COMMON_H_
@@ -134,6 +130,11 @@
 #define CNST_SAMPLE_VAL(v)	(((v) & EVENT_SAMPLE_MASK) << 16)
 #define CNST_SAMPLE_MASK	CNST_SAMPLE_VAL(EVENT_SAMPLE_MASK)
 
+#define CNST_CACHE_GROUP_VAL(v)	(((v) & 0xffull) << 55)
+#define CNST_CACHE_GROUP_MASK	CNST_CACHE_GROUP_VAL(0xff)
+#define CNST_CACHE_PMC4_VAL	(1ull << 54)
+#define CNST_CACHE_PMC4_MASK	CNST_CACHE_PMC4_VAL
+
 /*
  * For NC we are counting up to 4 events. This requires three bits, and we need
  * the fifth event to overflow and set the 4th bit. To achieve that we bias the
@@ -163,8 +164,8 @@
 #define MMCR1_COMBINE_SHIFT(pmc)	(35 - ((pmc) - 1))
 #define MMCR1_PMCSEL_SHIFT(pmc)		(24 - (((pmc) - 1)) * 8)
 #define MMCR1_FAB_SHIFT			36
-#define MMCR1_DC_QUAL_SHIFT		47
-#define MMCR1_IC_QUAL_SHIFT		46
+#define MMCR1_DC_IC_QUAL_MASK		0x3
+#define MMCR1_DC_IC_QUAL_SHIFT		46
 
 /* MMCR1 Combine bits macro for power9 */
 #define p9_MMCR1_COMBINE_SHIFT(pmc)	(38 - ((pmc - 1) * 2))

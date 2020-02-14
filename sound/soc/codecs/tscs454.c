@@ -22,7 +22,6 @@
 
 #include "tscs454.h"
 
-static const unsigned int PLL_48K_RATE = (48000 * 256);
 static const unsigned int PLL_44_1K_RATE = (44100 * 256);
 
 #define COEFF_SIZE 3
@@ -3459,7 +3458,7 @@ static int tscs454_i2c_probe(struct i2c_client *i2c,
 	/* Sync pg sel reg with cache */
 	regmap_write(tscs454->regmap, R_PAGESEL, 0x00);
 
-	ret = snd_soc_register_component(&i2c->dev, &soc_component_dev_tscs454,
+	ret = devm_snd_soc_register_component(&i2c->dev, &soc_component_dev_tscs454,
 			tscs454_dais, ARRAY_SIZE(tscs454_dais));
 	if (ret) {
 		dev_err(&i2c->dev, "Failed to register component (%d)\n", ret);

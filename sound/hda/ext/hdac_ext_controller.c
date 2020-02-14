@@ -1,18 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  *  hdac-ext-controller.c - HD-audio extended controller functions.
  *
  *  Copyright (C) 2014-2015 Intel Corp
  *  Author: Jeeja KP <jeeja.kp@intel.com>
  *  ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; version 2 of the License.
- *
- *  This program is distributed in the hope that it will be useful, but
- *  WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
- *  General Public License for more details.
  *
  * ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
  */
@@ -48,9 +40,11 @@ void snd_hdac_ext_bus_ppcap_enable(struct hdac_bus *bus, bool enable)
 	}
 
 	if (enable)
-		snd_hdac_updatel(bus->ppcap, AZX_REG_PP_PPCTL, 0, AZX_PPCTL_GPROCEN);
+		snd_hdac_updatel(bus->ppcap, AZX_REG_PP_PPCTL,
+				 AZX_PPCTL_GPROCEN, AZX_PPCTL_GPROCEN);
 	else
-		snd_hdac_updatel(bus->ppcap, AZX_REG_PP_PPCTL, AZX_PPCTL_GPROCEN, 0);
+		snd_hdac_updatel(bus->ppcap, AZX_REG_PP_PPCTL,
+				 AZX_PPCTL_GPROCEN, 0);
 }
 EXPORT_SYMBOL_GPL(snd_hdac_ext_bus_ppcap_enable);
 
@@ -68,9 +62,11 @@ void snd_hdac_ext_bus_ppcap_int_enable(struct hdac_bus *bus, bool enable)
 	}
 
 	if (enable)
-		snd_hdac_updatel(bus->ppcap, AZX_REG_PP_PPCTL, 0, AZX_PPCTL_PIE);
+		snd_hdac_updatel(bus->ppcap, AZX_REG_PP_PPCTL,
+				 AZX_PPCTL_PIE, AZX_PPCTL_PIE);
 	else
-		snd_hdac_updatel(bus->ppcap, AZX_REG_PP_PPCTL, AZX_PPCTL_PIE, 0);
+		snd_hdac_updatel(bus->ppcap, AZX_REG_PP_PPCTL,
+				 AZX_PPCTL_PIE, 0);
 }
 EXPORT_SYMBOL_GPL(snd_hdac_ext_bus_ppcap_int_enable);
 
@@ -194,7 +190,8 @@ static int check_hdac_link_power_active(struct hdac_ext_link *link, bool enable)
  */
 int snd_hdac_ext_bus_link_power_up(struct hdac_ext_link *link)
 {
-	snd_hdac_updatel(link->ml_addr, AZX_REG_ML_LCTL, 0, AZX_MLCTL_SPA);
+	snd_hdac_updatel(link->ml_addr, AZX_REG_ML_LCTL,
+			 AZX_MLCTL_SPA, AZX_MLCTL_SPA);
 
 	return check_hdac_link_power_active(link, true);
 }
@@ -222,8 +219,8 @@ int snd_hdac_ext_bus_link_power_up_all(struct hdac_bus *bus)
 	int ret;
 
 	list_for_each_entry(hlink, &bus->hlink_list, list) {
-		snd_hdac_updatel(hlink->ml_addr,
-				AZX_REG_ML_LCTL, 0, AZX_MLCTL_SPA);
+		snd_hdac_updatel(hlink->ml_addr, AZX_REG_ML_LCTL,
+				 AZX_MLCTL_SPA, AZX_MLCTL_SPA);
 		ret = check_hdac_link_power_active(hlink, true);
 		if (ret < 0)
 			return ret;
@@ -243,7 +240,8 @@ int snd_hdac_ext_bus_link_power_down_all(struct hdac_bus *bus)
 	int ret;
 
 	list_for_each_entry(hlink, &bus->hlink_list, list) {
-		snd_hdac_updatel(hlink->ml_addr, AZX_REG_ML_LCTL, AZX_MLCTL_SPA, 0);
+		snd_hdac_updatel(hlink->ml_addr, AZX_REG_ML_LCTL,
+				 AZX_MLCTL_SPA, 0);
 		ret = check_hdac_link_power_active(hlink, false);
 		if (ret < 0)
 			return ret;
@@ -272,6 +270,11 @@ int snd_hdac_ext_bus_link_get(struct hdac_bus *bus,
 
 		ret = snd_hdac_ext_bus_link_power_up(link);
 
+		/*
+		 * clear the register to invalidate all the output streams
+		 */
+		snd_hdac_updatew(link->ml_addr, AZX_REG_ML_LOSIDV,
+				 ML_LOSIDV_STREAM_MASK, 0);
 		/*
 		 *  wait for 521usec for codec to report status
 		 *  HDA spec section 4.3 - Codec Discovery

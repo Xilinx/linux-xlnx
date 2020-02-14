@@ -1,13 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Overlayfs NFS export support.
  *
  * Amir Goldstein <amir73il@gmail.com>
  *
  * Copyright (C) 2017-2018 CTERA Networks. All Rights Reserved.
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License version 2 as published by
- * the Free Software Foundation.
  */
 
 #include <linux/fs.h>
@@ -230,9 +227,8 @@ static int ovl_d_to_fh(struct dentry *dentry, char *buf, int buflen)
 	/* Encode an upper or lower file handle */
 	fh = ovl_encode_real_fh(enc_lower ? ovl_dentry_lower(dentry) :
 				ovl_dentry_upper(dentry), !enc_lower);
-	err = PTR_ERR(fh);
 	if (IS_ERR(fh))
-		goto fail;
+		return PTR_ERR(fh);
 
 	err = -EOVERFLOW;
 	if (fh->len > buflen)
@@ -398,7 +394,7 @@ static struct dentry *ovl_lookup_real_one(struct dentry *connected,
 	 * pointer because we hold no lock on the real dentry.
 	 */
 	take_dentry_name_snapshot(&name, real);
-	this = lookup_one_len(name.name, connected, strlen(name.name));
+	this = lookup_one_len(name.name.name, connected, name.name.len);
 	err = PTR_ERR(this);
 	if (IS_ERR(this)) {
 		goto fail;
@@ -754,9 +750,8 @@ static struct dentry *ovl_lower_fh_to_d(struct super_block *sb,
 		goto out;
 	}
 
-	/* Otherwise, get a connected non-upper dir or disconnected non-dir */
-	if (d_is_dir(origin.dentry) &&
-	    (origin.dentry->d_flags & DCACHE_DISCONNECTED)) {
+	/* Find origin.dentry again with ovl_acceptable() layer check */
+	if (d_is_dir(origin.dentry)) {
 		dput(origin.dentry);
 		origin.dentry = NULL;
 		err = ovl_check_origin_fh(ofs, fh, true, NULL, &stack);
@@ -769,6 +764,7 @@ static struct dentry *ovl_lower_fh_to_d(struct super_block *sb,
 			goto out_err;
 	}
 
+	/* Get a connected non-upper dir or disconnected non-dir */
 	dentry = ovl_get_dentry(sb, NULL, &origin, index);
 
 out:

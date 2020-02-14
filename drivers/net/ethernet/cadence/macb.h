@@ -1,11 +1,8 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 /*
  * Atmel MACB Ethernet Controller driver
  *
  * Copyright (C) 2004-2006 Atmel Corporation
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
  */
 #ifndef _MACB_H
 #define _MACB_H
@@ -486,6 +483,7 @@
 #define GEM_TX_PKT_BUFF_OFFSET			21
 #define GEM_TX_PKT_BUFF_SIZE			1
 
+
 /* Bitfields in DCFG5. */
 #define GEM_TSU_OFFSET				8
 #define GEM_TSU_SIZE				1
@@ -741,6 +739,8 @@
 			__v = macb_readl((__bp), __reg); \
 		__v; \
 	})
+
+#define MACB_READ_NSR(bp)	macb_readl(bp, NSR)
 
 /* struct macb_dma_desc - Hardware DMA descriptor
  * @addr: DMA address of data buffer
@@ -1091,7 +1091,8 @@ struct macb_or_gem_ops {
 	int	(*mog_alloc_rx_buffers)(struct macb *bp);
 	void	(*mog_free_rx_buffers)(struct macb *bp);
 	void	(*mog_init_rings)(struct macb *bp);
-	int	(*mog_rx)(struct macb_queue *queue, int budget);
+	int	(*mog_rx)(struct macb_queue *queue, struct napi_struct *napi,
+			  int budget);
 };
 
 /* MACB-PTP interface: adapt to platform needs. */
@@ -1106,6 +1107,11 @@ struct macb_ptp_info {
 			 struct ifreq *ifr);
 	int (*set_hwtst)(struct net_device *netdev,
 			 struct ifreq *ifr, int cmd);
+};
+
+struct macb_pm_data {
+	u32 scrt2;
+	u32 usrio;
 };
 
 struct macb_config {
@@ -1254,6 +1260,8 @@ struct macb {
 	int	tx_bd_rd_prefetch;
 
 	u32	rx_intr_mask;
+
+	struct macb_pm_data pm_data;
 };
 
 #ifdef CONFIG_MACB_USE_HWSTAMP

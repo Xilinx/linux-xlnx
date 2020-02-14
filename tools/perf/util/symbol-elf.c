@@ -2,24 +2,53 @@
 #include <fcntl.h>
 #include <stdio.h>
 #include <errno.h>
+#include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
 #include <inttypes.h>
 
+#include "dso.h"
+#include "map.h"
+#include "map_groups.h"
 #include "symbol.h"
+#include "symsrc.h"
 #include "demangle-java.h"
 #include "demangle-rust.h"
 #include "machine.h"
 #include "vdso.h"
 #include "debug.h"
-#include "sane_ctype.h"
+#include "util/copyfile.h"
+#include <linux/ctype.h>
+#include <linux/kernel.h>
+#include <linux/zalloc.h>
 #include <symbol/kallsyms.h>
+#include <internal/lib.h>
 
 #ifndef EM_AARCH64
 #define EM_AARCH64	183  /* ARM 64 bit */
 #endif
 
+#ifndef ELF32_ST_VISIBILITY
+#define ELF32_ST_VISIBILITY(o)	((o) & 0x03)
+#endif
+
+/* For ELF64 the definitions are the same.  */
+#ifndef ELF64_ST_VISIBILITY
+#define ELF64_ST_VISIBILITY(o)	ELF32_ST_VISIBILITY (o)
+#endif
+
+/* How to extract information held in the st_other field.  */
+#ifndef GELF_ST_VISIBILITY
+#define GELF_ST_VISIBILITY(val)	ELF64_ST_VISIBILITY (val)
+#endif
+
 typedef Elf64_Nhdr GElf_Nhdr;
+
+#ifndef DMGL_PARAMS
+#define DMGL_NO_OPTS     0              /* For readability... */
+#define DMGL_PARAMS      (1 << 0)       /* Include function args */
+#define DMGL_ANSI        (1 << 1)       /* Include const, volatile, etc */
+#endif
 
 #ifdef HAVE_CPLUS_DEMANGLE_SUPPORT
 extern char *cplus_demangle(const char *, int);
@@ -87,6 +116,11 @@ static inline uint8_t elf_sym__type(const GElf_Sym *sym)
 	return GELF_ST_TYPE(sym->st_info);
 }
 
+static inline uint8_t elf_sym__visibility(const GElf_Sym *sym)
+{
+	return GELF_ST_VISIBILITY(sym->st_other);
+}
+
 #ifndef STT_GNU_IFUNC
 #define STT_GNU_IFUNC 10
 #endif
@@ -111,7 +145,9 @@ static inline int elf_sym__is_label(const GElf_Sym *sym)
 	return elf_sym__type(sym) == STT_NOTYPE &&
 		sym->st_name != 0 &&
 		sym->st_shndx != SHN_UNDEF &&
-		sym->st_shndx != SHN_ABS;
+		sym->st_shndx != SHN_ABS &&
+		elf_sym__visibility(sym) != STV_HIDDEN &&
+		elf_sym__visibility(sym) != STV_INTERNAL;
 }
 
 static bool elf_sym__filter(GElf_Sym *sym)
@@ -324,7 +360,17 @@ int dso__synthesize_plt_symbols(struct dso *dso, struct symsrc *ss)
 			plt_entry_size = 16;
 			break;
 
-		default: /* FIXME: s390/alpha/mips/parisc/poperpc/sh/sparc/xtensa need to be checked */
+		case EM_SPARC:
+			plt_header_size = 48;
+			plt_entry_size = 12;
+			break;
+
+		case EM_SPARCV9:
+			plt_header_size = 128;
+			plt_entry_size = 32;
+			break;
+
+		default: /* FIXME: s390/alpha/mips/parisc/poperpc/sh/xtensa need to be checked */
 			plt_header_size = shdr_plt.sh_entsize;
 			plt_entry_size = shdr_plt.sh_entsize;
 			break;
@@ -666,7 +712,6 @@ bool __weak elf__needs_adjust_symbols(GElf_Ehdr ehdr)
 int symsrc__init(struct symsrc *ss, struct dso *dso, const char *name,
 		 enum dso_binary_type type)
 {
-	int err = -1;
 	GElf_Ehdr ehdr;
 	Elf *elf;
 	int fd;
@@ -760,7 +805,7 @@ out_elf_end:
 	elf_end(elf);
 out_close:
 	close(fd);
-	return err;
+	return -1;
 }
 
 /**
@@ -1443,7 +1488,7 @@ static void kcore_copy__free_phdrs(struct kcore_copy_info *kci)
 	struct phdr_data *p, *tmp;
 
 	list_for_each_entry_safe(p, tmp, &kci->phdrs, node) {
-		list_del(&p->node);
+		list_del_init(&p->node);
 		free(p);
 	}
 }
@@ -1466,7 +1511,7 @@ static void kcore_copy__free_syms(struct kcore_copy_info *kci)
 	struct sym_data *s, *tmp;
 
 	list_for_each_entry_safe(s, tmp, &kci->syms, node) {
-		list_del(&s->node);
+		list_del_init(&s->node);
 		free(s);
 	}
 }
@@ -1947,6 +1992,34 @@ void kcore_extract__delete(struct kcore_extract *kce)
 }
 
 #ifdef HAVE_GELF_GETNOTE_SUPPORT
+
+static void sdt_adjust_loc(struct sdt_note *tmp, GElf_Addr base_off)
+{
+	if (!base_off)
+		return;
+
+	if (tmp->bit32)
+		tmp->addr.a32[SDT_NOTE_IDX_LOC] =
+			tmp->addr.a32[SDT_NOTE_IDX_LOC] + base_off -
+			tmp->addr.a32[SDT_NOTE_IDX_BASE];
+	else
+		tmp->addr.a64[SDT_NOTE_IDX_LOC] =
+			tmp->addr.a64[SDT_NOTE_IDX_LOC] + base_off -
+			tmp->addr.a64[SDT_NOTE_IDX_BASE];
+}
+
+static void sdt_adjust_refctr(struct sdt_note *tmp, GElf_Addr base_addr,
+			      GElf_Addr base_off)
+{
+	if (!base_off)
+		return;
+
+	if (tmp->bit32 && tmp->addr.a32[SDT_NOTE_IDX_REFCTR])
+		tmp->addr.a32[SDT_NOTE_IDX_REFCTR] -= (base_addr - base_off);
+	else if (tmp->addr.a64[SDT_NOTE_IDX_REFCTR])
+		tmp->addr.a64[SDT_NOTE_IDX_REFCTR] -= (base_addr - base_off);
+}
+
 /**
  * populate_sdt_note : Parse raw data and identify SDT note
  * @elf: elf of the opened file
@@ -1964,7 +2037,6 @@ static int populate_sdt_note(Elf **elf, const char *data, size_t len,
 	const char *provider, *name, *args;
 	struct sdt_note *tmp = NULL;
 	GElf_Ehdr ehdr;
-	GElf_Addr base_off = 0;
 	GElf_Shdr shdr;
 	int ret = -EINVAL;
 
@@ -2060,27 +2132,22 @@ static int populate_sdt_note(Elf **elf, const char *data, size_t len,
 	 * base address in the description of the SDT note. If its different,
 	 * then accordingly, adjust the note location.
 	 */
-	if (elf_section_by_name(*elf, &ehdr, &shdr, SDT_BASE_SCN, NULL)) {
-		base_off = shdr.sh_offset;
-		if (base_off) {
-			if (tmp->bit32)
-				tmp->addr.a32[0] = tmp->addr.a32[0] + base_off -
-					tmp->addr.a32[1];
-			else
-				tmp->addr.a64[0] = tmp->addr.a64[0] + base_off -
-					tmp->addr.a64[1];
-		}
-	}
+	if (elf_section_by_name(*elf, &ehdr, &shdr, SDT_BASE_SCN, NULL))
+		sdt_adjust_loc(tmp, shdr.sh_offset);
+
+	/* Adjust reference counter offset */
+	if (elf_section_by_name(*elf, &ehdr, &shdr, SDT_PROBES_SCN, NULL))
+		sdt_adjust_refctr(tmp, shdr.sh_addr, shdr.sh_offset);
 
 	list_add_tail(&tmp->note_list, sdt_notes);
 	return 0;
 
 out_free_args:
-	free(tmp->args);
+	zfree(&tmp->args);
 out_free_name:
-	free(tmp->name);
+	zfree(&tmp->name);
 out_free_prov:
-	free(tmp->provider);
+	zfree(&tmp->provider);
 out_free_note:
 	free(tmp);
 out_err:
@@ -2195,9 +2262,9 @@ int cleanup_sdt_note_list(struct list_head *sdt_notes)
 	int nr_free = 0;
 
 	list_for_each_entry_safe(pos, tmp, sdt_notes, note_list) {
-		list_del(&pos->note_list);
-		free(pos->name);
-		free(pos->provider);
+		list_del_init(&pos->note_list);
+		zfree(&pos->name);
+		zfree(&pos->provider);
 		free(pos);
 		nr_free++;
 	}

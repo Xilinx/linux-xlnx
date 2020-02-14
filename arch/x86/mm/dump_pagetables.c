@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Debug helper to dump the current kernel pagetables of the system
  * so that we can see what the various memory ranges are set to.
@@ -5,11 +6,6 @@
  * (C) Copyright 2008 Intel Corporation
  *
  * Author: Arjan van de Ven <arjan@linux.intel.com>
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; version 2
- * of the License.
  */
 
 #include <linux/debugfs.h>
@@ -19,7 +15,9 @@
 #include <linux/sched.h>
 #include <linux/seq_file.h>
 #include <linux/highmem.h>
+#include <linux/pci.h>
 
+#include <asm/e820/types.h>
 #include <asm/pgtable.h>
 
 /*
@@ -53,10 +51,10 @@ struct addr_marker {
 enum address_markers_idx {
 	USER_SPACE_NR = 0,
 	KERNEL_SPACE_NR,
-	LOW_KERNEL_NR,
-#if defined(CONFIG_MODIFY_LDT_SYSCALL) && defined(CONFIG_X86_5LEVEL)
+#ifdef CONFIG_MODIFY_LDT_SYSCALL
 	LDT_NR,
 #endif
+	LOW_KERNEL_NR,
 	VMALLOC_START_NR,
 	VMEMMAP_START_NR,
 #ifdef CONFIG_KASAN
@@ -64,9 +62,6 @@ enum address_markers_idx {
 	KASAN_SHADOW_END_NR,
 #endif
 	CPU_ENTRY_AREA_NR,
-#if defined(CONFIG_MODIFY_LDT_SYSCALL) && !defined(CONFIG_X86_5LEVEL)
-	LDT_NR,
-#endif
 #ifdef CONFIG_X86_ESPFIX64
 	ESPFIX_START_NR,
 #endif
@@ -241,6 +236,30 @@ static unsigned long normalize_addr(unsigned long u)
 	return (signed long)(u << shift) >> shift;
 }
 
+static void note_wx(struct pg_state *st)
+{
+	unsigned long npages;
+
+	npages = (st->current_address - st->start_address) / PAGE_SIZE;
+
+#ifdef CONFIG_PCI_BIOS
+	/*
+	 * If PCI BIOS is enabled, the PCI BIOS area is forced to WX.
+	 * Inform about it, but avoid the warning.
+	 */
+	if (pcibios_enabled && st->start_address >= PAGE_OFFSET + BIOS_BEGIN &&
+	    st->current_address <= PAGE_OFFSET + BIOS_END) {
+		pr_warn_once("x86/mm: PCI BIOS W+X mapping %lu pages\n", npages);
+		return;
+	}
+#endif
+	/* Account the WX pages */
+	st->wx_pages += npages;
+	WARN_ONCE(__supported_pte_mask & _PAGE_NX,
+		  "x86/mm: Found insecure W+X mapping at address %pS\n",
+		  (void *)st->start_address);
+}
+
 /*
  * This function gets called on a break in a continuous series
  * of PTE entries; the next one is different so we need to
@@ -276,14 +295,8 @@ static void note_page(struct seq_file *m, struct pg_state *st,
 		unsigned long delta;
 		int width = sizeof(unsigned long) * 2;
 
-		if (st->check_wx && (eff & _PAGE_RW) && !(eff & _PAGE_NX)) {
-			WARN_ONCE(1,
-				  "x86/mm: Found insecure W+X mapping at address %p/%pS\n",
-				  (void *)st->start_address,
-				  (void *)st->start_address);
-			st->wx_pages += (st->current_address -
-					 st->start_address) / PAGE_SIZE;
-		}
+		if (st->check_wx && (eff & _PAGE_RW) && !(eff & _PAGE_NX))
+			note_wx(st);
 
 		/*
 		 * Now print the actual finished series
@@ -361,7 +374,7 @@ static void walk_pte_level(struct seq_file *m, struct pg_state *st, pmd_t addr,
 
 /*
  * This is an optimization for KASAN=y case. Since all kasan page tables
- * eventually point to the kasan_zero_page we could call note_page()
+ * eventually point to the kasan_early_shadow_page we could call note_page()
  * right away without walking through lower level page tables. This saves
  * us dozens of seconds (minutes for 5-level config) while checking for
  * W+X mapping or reading kernel_page_tables debugfs file.
@@ -369,10 +382,11 @@ static void walk_pte_level(struct seq_file *m, struct pg_state *st, pmd_t addr,
 static inline bool kasan_page_table(struct seq_file *m, struct pg_state *st,
 				void *pt)
 {
-	if (__pa(pt) == __pa(kasan_zero_pmd) ||
-	    (pgtable_l5_enabled() && __pa(pt) == __pa(kasan_zero_p4d)) ||
-	    __pa(pt) == __pa(kasan_zero_pud)) {
-		pgprotval_t prot = pte_flags(kasan_zero_pte[0]);
+	if (__pa(pt) == __pa(kasan_early_shadow_pmd) ||
+	    (pgtable_l5_enabled() &&
+			__pa(pt) == __pa(kasan_early_shadow_p4d)) ||
+	    __pa(pt) == __pa(kasan_early_shadow_pud)) {
+		pgprotval_t prot = pte_flags(kasan_early_shadow_pte[0]);
 		note_page(m, st, __pgprot(prot), 0, 5);
 		return true;
 	}
@@ -427,7 +441,6 @@ static void walk_pud_level(struct seq_file *m, struct pg_state *st, p4d_t addr,
 	int i;
 	pud_t *start, *pud_start;
 	pgprotval_t prot, eff;
-	pud_t *prev_pud = NULL;
 
 	pud_start = start = (pud_t *)p4d_page_vaddr(addr);
 
@@ -445,7 +458,6 @@ static void walk_pud_level(struct seq_file *m, struct pg_state *st, p4d_t addr,
 		} else
 			note_page(m, st, __pgprot(0), 0, 3);
 
-		prev_pud = start;
 		start++;
 	}
 }
@@ -493,11 +505,11 @@ static inline bool is_hypervisor_range(int idx)
 {
 #ifdef CONFIG_X86_64
 	/*
-	 * ffff800000000000 - ffff87ffffffffff is reserved for
-	 * the hypervisor.
+	 * A hole in the beginning of kernel address space reserved
+	 * for a hypervisor.
 	 */
-	return	(idx >= pgd_index(__PAGE_OFFSET) - 16) &&
-		(idx <  pgd_index(__PAGE_OFFSET));
+	return	(idx >= pgd_index(GUARD_HOLE_BASE_ADDR)) &&
+		(idx <  pgd_index(GUARD_HOLE_END_ADDR));
 #else
 	return false;
 #endif
@@ -562,7 +574,7 @@ void ptdump_walk_pgd_level(struct seq_file *m, pgd_t *pgd)
 void ptdump_walk_pgd_level_debugfs(struct seq_file *m, pgd_t *pgd, bool user)
 {
 #ifdef CONFIG_PAGE_TABLE_ISOLATION
-	if (user && static_cpu_has(X86_FEATURE_PTI))
+	if (user && boot_cpu_has(X86_FEATURE_PTI))
 		pgd = kernel_to_user_pgdp(pgd);
 #endif
 	ptdump_walk_pgd_level_core(m, pgd, false, false);
@@ -575,7 +587,7 @@ void ptdump_walk_user_pgd_level_checkwx(void)
 	pgd_t *pgd = INIT_PGD;
 
 	if (!(__supported_pte_mask & _PAGE_NX) ||
-	    !static_cpu_has(X86_FEATURE_PTI))
+	    !boot_cpu_has(X86_FEATURE_PTI))
 		return;
 
 	pr_info("x86/mm: Checking user space page tables\n");

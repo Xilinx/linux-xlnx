@@ -19,6 +19,7 @@
 #include <drm/drmP.h>
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
+#include <drm/drm_atomic_uapi.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_fb_cma_helper.h>
@@ -2733,7 +2734,7 @@ zynqmp_disp_plane_atomic_async_update(struct drm_plane *plane,
 		zynqmp_disp_plane_disable(plane);
 
 	 /* Update the current state with new configurations */
-	drm_atomic_set_fb_for_plane(plane->state, new_state->fb);
+	swap(plane->state->fb, new_state->fb);
 	plane->state->crtc = new_state->crtc;
 	plane->state->crtc_x = new_state->crtc_x;
 	plane->state->crtc_y = new_state->crtc_y;

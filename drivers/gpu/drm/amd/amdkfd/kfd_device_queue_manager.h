@@ -31,9 +31,6 @@
 #include "kfd_priv.h"
 #include "kfd_mqd_manager.h"
 
-#define KFD_UNMAP_LATENCY_MS			(4000)
-#define QUEUE_PREEMPT_DEFAULT_TIMEOUT_MS (2 * KFD_UNMAP_LATENCY_MS + 1000)
-#define KFD_SDMA_QUEUES_PER_ENGINE		(2)
 
 struct device_process_node {
 	struct qcm_process_device *qpd;
@@ -48,8 +45,6 @@ struct device_process_node {
  * @destroy_queue: Queue destruction routine.
  *
  * @update_queue: Queue update routine.
- *
- * @get_mqd_manager: Returns the mqd manager according to the mqd type.
  *
  * @exeute_queues: Dispatches the queues list to the H/W.
  *
@@ -82,6 +77,8 @@ struct device_process_node {
  *
  * @restore_process_queues: Restore all evicted queues queues of a process
  *
+ * @get_wave_state: Retrieves context save state and optionally copies the
+ * control stack, if kept in the MQD, to the given userspace address.
  */
 
 struct device_queue_manager_ops {
@@ -95,10 +92,6 @@ struct device_queue_manager_ops {
 
 	int	(*update_queue)(struct device_queue_manager *dqm,
 				struct queue *q);
-
-	struct mqd_manager * (*get_mqd_manager)
-					(struct device_queue_manager *dqm,
-					enum KFD_MQD_TYPE type);
 
 	int	(*register_process)(struct device_queue_manager *dqm,
 					struct qcm_process_device *qpd);
@@ -137,6 +130,12 @@ struct device_queue_manager_ops {
 				    struct qcm_process_device *qpd);
 	int (*restore_process_queues)(struct device_queue_manager *dqm,
 				      struct qcm_process_device *qpd);
+
+	int	(*get_wave_state)(struct device_queue_manager *dqm,
+				  struct queue *q,
+				  void __user *ctl_stack,
+				  u32 *ctl_stack_used_size,
+				  u32 *save_area_used_size);
 };
 
 struct device_queue_manager_asic_ops {
@@ -151,6 +150,8 @@ struct device_queue_manager_asic_ops {
 	void	(*init_sdma_vm)(struct device_queue_manager *dqm,
 				struct queue *q,
 				struct qcm_process_device *qpd);
+	struct mqd_manager *	(*mqd_manager_init)(enum KFD_MQD_TYPE type,
+				 struct kfd_dev *dev);
 };
 
 /**
@@ -178,10 +179,12 @@ struct device_queue_manager {
 	unsigned int		processes_count;
 	unsigned int		queue_count;
 	unsigned int		sdma_queue_count;
+	unsigned int		xgmi_sdma_queue_count;
 	unsigned int		total_queue_count;
 	unsigned int		next_pipe_to_allocate;
 	unsigned int		*allocated_queues;
-	unsigned int		sdma_bitmap;
+	uint64_t		sdma_bitmap;
+	uint64_t		xgmi_sdma_bitmap;
 	unsigned int		vmid_bitmap;
 	uint64_t		pipelines_addr;
 	struct kfd_mem_obj	*pipeline_mem;
@@ -194,6 +197,7 @@ struct device_queue_manager {
 	/* hw exception  */
 	bool			is_hws_hang;
 	struct work_struct	hw_exception_work;
+	struct kfd_mem_obj	hiq_sdma_mqd;
 };
 
 void device_queue_manager_init_cik(
@@ -206,12 +210,15 @@ void device_queue_manager_init_vi_tonga(
 		struct device_queue_manager_asic_ops *asic_ops);
 void device_queue_manager_init_v9(
 		struct device_queue_manager_asic_ops *asic_ops);
+void device_queue_manager_init_v10_navi10(
+		struct device_queue_manager_asic_ops *asic_ops);
 void program_sh_mem_settings(struct device_queue_manager *dqm,
 					struct qcm_process_device *qpd);
 unsigned int get_queues_num(struct device_queue_manager *dqm);
 unsigned int get_queues_per_pipe(struct device_queue_manager *dqm);
 unsigned int get_pipes_per_mec(struct device_queue_manager *dqm);
 unsigned int get_num_sdma_queues(struct device_queue_manager *dqm);
+unsigned int get_num_xgmi_sdma_queues(struct device_queue_manager *dqm);
 
 static inline unsigned int get_sh_mem_bases_32(struct kfd_process_device *pdd)
 {

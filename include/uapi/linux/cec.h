@@ -144,6 +144,7 @@ static inline void cec_msg_set_reply_to(struct cec_msg *msg,
 
 /* cec_msg flags field */
 #define CEC_MSG_FL_REPLY_TO_FOLLOWERS	(1 << 0)
+#define CEC_MSG_FL_RAW			(1 << 1)
 
 /* cec_msg tx/rx_status field */
 #define CEC_TX_STATUS_OK		(1 << 0)
@@ -152,10 +153,13 @@ static inline void cec_msg_set_reply_to(struct cec_msg *msg,
 #define CEC_TX_STATUS_LOW_DRIVE		(1 << 3)
 #define CEC_TX_STATUS_ERROR		(1 << 4)
 #define CEC_TX_STATUS_MAX_RETRIES	(1 << 5)
+#define CEC_TX_STATUS_ABORTED		(1 << 6)
+#define CEC_TX_STATUS_TIMEOUT		(1 << 7)
 
 #define CEC_RX_STATUS_OK		(1 << 0)
 #define CEC_RX_STATUS_TIMEOUT		(1 << 1)
 #define CEC_RX_STATUS_FEATURE_ABORT	(1 << 2)
+#define CEC_RX_STATUS_ABORTED		(1 << 3)
 
 static inline int cec_msg_status_is_ok(const struct cec_msg *msg)
 {

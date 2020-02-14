@@ -1,19 +1,28 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (C) 2012 Avionic Design GmbH
  * Copyright (C) 2012-2016 NVIDIA CORPORATION.  All rights reserved.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
  */
 
 #include <linux/bitops.h>
 #include <linux/host1x.h>
 #include <linux/idr.h>
 #include <linux/iommu.h>
+#include <linux/module.h>
+#include <linux/platform_device.h>
 
 #include <drm/drm_atomic.h>
 #include <drm/drm_atomic_helper.h>
+#include <drm/drm_debugfs.h>
+#include <drm/drm_drv.h>
+#include <drm/drm_fourcc.h>
+#include <drm/drm_ioctl.h>
+#include <drm/drm_prime.h>
+#include <drm/drm_vblank.h>
+
+#if IS_ENABLED(CONFIG_ARM_DMA_USE_IOMMU)
+#include <asm/dma-iommu.h>
+#endif
 
 #include "drm.h"
 #include "gem.h"
@@ -88,10 +97,6 @@ static int tegra_drm_load(struct drm_device *drm, unsigned long flags)
 		return -ENOMEM;
 
 	if (iommu_present(&platform_bus_type)) {
-		u64 carveout_start, carveout_end, gem_start, gem_end;
-		struct iommu_domain_geometry *geometry;
-		unsigned long order;
-
 		tegra->domain = iommu_domain_alloc(&platform_bus_type);
 		if (!tegra->domain) {
 			err = -ENOMEM;
@@ -101,27 +106,6 @@ static int tegra_drm_load(struct drm_device *drm, unsigned long flags)
 		err = iova_cache_get();
 		if (err < 0)
 			goto domain;
-
-		geometry = &tegra->domain->geometry;
-		gem_start = geometry->aperture_start;
-		gem_end = geometry->aperture_end - CARVEOUT_SZ;
-		carveout_start = gem_end + 1;
-		carveout_end = geometry->aperture_end;
-
-		order = __ffs(tegra->domain->pgsize_bitmap);
-		init_iova_domain(&tegra->carveout.domain, 1UL << order,
-				 carveout_start >> order);
-
-		tegra->carveout.shift = iova_shift(&tegra->carveout.domain);
-		tegra->carveout.limit = carveout_end >> tegra->carveout.shift;
-
-		drm_mm_init(&tegra->mm, gem_start, gem_end - gem_start + 1);
-		mutex_init(&tegra->mm_lock);
-
-		DRM_DEBUG("IOMMU apertures:\n");
-		DRM_DEBUG("  GEM: %#llx-%#llx\n", gem_start, gem_end);
-		DRM_DEBUG("  Carveout: %#llx-%#llx\n", carveout_start,
-			  carveout_end);
 	}
 
 	mutex_init(&tegra->clients_lock);
@@ -154,6 +138,36 @@ static int tegra_drm_load(struct drm_device *drm, unsigned long flags)
 	err = host1x_device_init(device);
 	if (err < 0)
 		goto fbdev;
+
+	if (tegra->domain) {
+		u64 carveout_start, carveout_end, gem_start, gem_end;
+		u64 dma_mask = dma_get_mask(&device->dev);
+		dma_addr_t start, end;
+		unsigned long order;
+
+		start = tegra->domain->geometry.aperture_start & dma_mask;
+		end = tegra->domain->geometry.aperture_end & dma_mask;
+
+		gem_start = start;
+		gem_end = end - CARVEOUT_SZ;
+		carveout_start = gem_end + 1;
+		carveout_end = end;
+
+		order = __ffs(tegra->domain->pgsize_bitmap);
+		init_iova_domain(&tegra->carveout.domain, 1UL << order,
+				 carveout_start >> order);
+
+		tegra->carveout.shift = iova_shift(&tegra->carveout.domain);
+		tegra->carveout.limit = carveout_end >> tegra->carveout.shift;
+
+		drm_mm_init(&tegra->mm, gem_start, gem_end - gem_start + 1);
+		mutex_init(&tegra->mm_lock);
+
+		DRM_DEBUG("IOMMU apertures:\n");
+		DRM_DEBUG("  GEM: %#llx-%#llx\n", gem_start, gem_end);
+		DRM_DEBUG("  Carveout: %#llx-%#llx\n", carveout_start,
+			  carveout_end);
+	}
 
 	if (tegra->hub) {
 		err = tegra_display_hub_prepare(tegra->hub);
@@ -882,33 +896,33 @@ static int tegra_gem_get_flags(struct drm_device *drm, void *data,
 static const struct drm_ioctl_desc tegra_drm_ioctls[] = {
 #ifdef CONFIG_DRM_TEGRA_STAGING
 	DRM_IOCTL_DEF_DRV(TEGRA_GEM_CREATE, tegra_gem_create,
-			  DRM_UNLOCKED | DRM_RENDER_ALLOW),
+			  DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(TEGRA_GEM_MMAP, tegra_gem_mmap,
-			  DRM_UNLOCKED | DRM_RENDER_ALLOW),
+			  DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(TEGRA_SYNCPT_READ, tegra_syncpt_read,
-			  DRM_UNLOCKED | DRM_RENDER_ALLOW),
+			  DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(TEGRA_SYNCPT_INCR, tegra_syncpt_incr,
-			  DRM_UNLOCKED | DRM_RENDER_ALLOW),
+			  DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(TEGRA_SYNCPT_WAIT, tegra_syncpt_wait,
-			  DRM_UNLOCKED | DRM_RENDER_ALLOW),
+			  DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(TEGRA_OPEN_CHANNEL, tegra_open_channel,
-			  DRM_UNLOCKED | DRM_RENDER_ALLOW),
+			  DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(TEGRA_CLOSE_CHANNEL, tegra_close_channel,
-			  DRM_UNLOCKED | DRM_RENDER_ALLOW),
+			  DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(TEGRA_GET_SYNCPT, tegra_get_syncpt,
-			  DRM_UNLOCKED | DRM_RENDER_ALLOW),
+			  DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(TEGRA_SUBMIT, tegra_submit,
-			  DRM_UNLOCKED | DRM_RENDER_ALLOW),
+			  DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(TEGRA_GET_SYNCPT_BASE, tegra_get_syncpt_base,
-			  DRM_UNLOCKED | DRM_RENDER_ALLOW),
+			  DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(TEGRA_GEM_SET_TILING, tegra_gem_set_tiling,
-			  DRM_UNLOCKED | DRM_RENDER_ALLOW),
+			  DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(TEGRA_GEM_GET_TILING, tegra_gem_get_tiling,
-			  DRM_UNLOCKED | DRM_RENDER_ALLOW),
+			  DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(TEGRA_GEM_SET_FLAGS, tegra_gem_set_flags,
-			  DRM_UNLOCKED | DRM_RENDER_ALLOW),
+			  DRM_RENDER_ALLOW),
 	DRM_IOCTL_DEF_DRV(TEGRA_GEM_GET_FLAGS, tegra_gem_get_flags,
-			  DRM_UNLOCKED | DRM_RENDER_ALLOW),
+			  DRM_RENDER_ALLOW),
 #endif
 };
 
@@ -998,7 +1012,7 @@ static int tegra_debugfs_init(struct drm_minor *minor)
 #endif
 
 static struct drm_driver tegra_drm_driver = {
-	.driver_features = DRIVER_MODESET | DRIVER_GEM | DRIVER_PRIME |
+	.driver_features = DRIVER_MODESET | DRIVER_GEM |
 			   DRIVER_ATOMIC | DRIVER_RENDER,
 	.load = tegra_drm_load,
 	.unload = tegra_drm_unload,
@@ -1037,6 +1051,7 @@ int tegra_drm_register_client(struct tegra_drm *tegra,
 {
 	mutex_lock(&tegra->clients_lock);
 	list_add_tail(&client->list, &tegra->clients);
+	client->drm = tegra;
 	mutex_unlock(&tegra->clients_lock);
 
 	return 0;
@@ -1047,6 +1062,7 @@ int tegra_drm_unregister_client(struct tegra_drm *tegra,
 {
 	mutex_lock(&tegra->clients_lock);
 	list_del_init(&client->list);
+	client->drm = NULL;
 	mutex_unlock(&tegra->clients_lock);
 
 	return 0;
@@ -1068,6 +1084,14 @@ struct iommu_group *host1x_client_iommu_attach(struct host1x_client *client,
 		}
 
 		if (!shared || (shared && (group != tegra->group))) {
+#if IS_ENABLED(CONFIG_ARM_DMA_USE_IOMMU)
+			if (client->dev->archdata.mapping) {
+				struct dma_iommu_mapping *mapping =
+					to_dma_iommu_mapping(client->dev);
+				arm_iommu_detach_device(client->dev);
+				arm_iommu_release_mapping(mapping);
+			}
+#endif
 			err = iommu_attach_group(tegra->domain, group);
 			if (err < 0) {
 				iommu_group_put(group);
@@ -1187,14 +1211,18 @@ static int host1x_drm_probe(struct host1x_device *dev)
 
 	dev_set_drvdata(&dev->dev, drm);
 
+	err = drm_fb_helper_remove_conflicting_framebuffers(NULL, "tegradrmfb", false);
+	if (err < 0)
+		goto put;
+
 	err = drm_dev_register(drm, 0);
 	if (err < 0)
-		goto unref;
+		goto put;
 
 	return 0;
 
-unref:
-	drm_dev_unref(drm);
+put:
+	drm_dev_put(drm);
 	return err;
 }
 
@@ -1203,7 +1231,7 @@ static int host1x_drm_remove(struct host1x_device *dev)
 	struct drm_device *drm = dev_get_drvdata(&dev->dev);
 
 	drm_dev_unregister(drm);
-	drm_dev_unref(drm);
+	drm_dev_put(drm);
 
 	return 0;
 }
@@ -1212,31 +1240,15 @@ static int host1x_drm_remove(struct host1x_device *dev)
 static int host1x_drm_suspend(struct device *dev)
 {
 	struct drm_device *drm = dev_get_drvdata(dev);
-	struct tegra_drm *tegra = drm->dev_private;
 
-	drm_kms_helper_poll_disable(drm);
-	tegra_drm_fb_suspend(drm);
-
-	tegra->state = drm_atomic_helper_suspend(drm);
-	if (IS_ERR(tegra->state)) {
-		tegra_drm_fb_resume(drm);
-		drm_kms_helper_poll_enable(drm);
-		return PTR_ERR(tegra->state);
-	}
-
-	return 0;
+	return drm_mode_config_helper_suspend(drm);
 }
 
 static int host1x_drm_resume(struct device *dev)
 {
 	struct drm_device *drm = dev_get_drvdata(dev);
-	struct tegra_drm *tegra = drm->dev_private;
 
-	drm_atomic_helper_resume(drm, tegra->state);
-	tegra_drm_fb_resume(drm);
-	drm_kms_helper_poll_enable(drm);
-
-	return 0;
+	return drm_mode_config_helper_resume(drm);
 }
 #endif
 
@@ -1271,6 +1283,10 @@ static const struct of_device_id host1x_drm_subdevs[] = {
 	{ .compatible = "nvidia,tegra186-sor", },
 	{ .compatible = "nvidia,tegra186-sor1", },
 	{ .compatible = "nvidia,tegra186-vic", },
+	{ .compatible = "nvidia,tegra194-display", },
+	{ .compatible = "nvidia,tegra194-dc", },
+	{ .compatible = "nvidia,tegra194-sor", },
+	{ .compatible = "nvidia,tegra194-vic", },
 	{ /* sentinel */ }
 };
 

@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (C) 2005-2010 IBM Corporation
  *
@@ -5,17 +6,13 @@
  * Mimi Zohar <zohar@us.ibm.com>
  * Kylene Hall <kjhall@us.ibm.com>
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation, version 2 of the License.
- *
  * File: evm_crypto.c
  *	 Using root's kernel master key (kmk), calculate the HMAC
  */
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
 
-#include <linux/module.h>
+#include <linux/export.h>
 #include <linux/crypto.h>
 #include <linux/xattr.h>
 #include <linux/evm.h>
@@ -27,7 +24,7 @@
 #define EVMKEY "evm-key"
 #define MAX_KEY_SIZE 128
 static unsigned char evmkey[MAX_KEY_SIZE];
-static int evmkey_len = MAX_KEY_SIZE;
+static const int evmkey_len = MAX_KEY_SIZE;
 
 struct crypto_shash *hmac_tfm;
 static struct crypto_shash *evm_tfm[HASH_ALGO__LAST];
@@ -38,7 +35,7 @@ static DEFINE_MUTEX(mutex);
 
 static unsigned long evm_set_key_flags;
 
-static char * const evm_hmac = "hmac(sha1)";
+static const char evm_hmac[] = "hmac(sha1)";
 
 /**
  * evm_set_key() - set EVM HMAC key from the kernel
@@ -89,6 +86,9 @@ static struct shash_desc *init_desc(char type, uint8_t hash_algo)
 		tfm = &hmac_tfm;
 		algo = evm_hmac;
 	} else {
+		if (hash_algo >= HASH_ALGO__LAST)
+			return ERR_PTR(-EINVAL);
+
 		tfm = &evm_tfm[hash_algo];
 		algo = hash_algo_name[hash_algo];
 	}
@@ -97,8 +97,7 @@ static struct shash_desc *init_desc(char type, uint8_t hash_algo)
 		mutex_lock(&mutex);
 		if (*tfm)
 			goto out;
-		*tfm = crypto_alloc_shash(algo, 0,
-					  CRYPTO_ALG_ASYNC | CRYPTO_NOLOAD);
+		*tfm = crypto_alloc_shash(algo, 0, CRYPTO_NOLOAD);
 		if (IS_ERR(*tfm)) {
 			rc = PTR_ERR(*tfm);
 			pr_err("Can not allocate %s (reason: %ld)\n", algo, rc);
@@ -125,7 +124,6 @@ out:
 		return ERR_PTR(-ENOMEM);
 
 	desc->tfm = *tfm;
-	desc->flags = CRYPTO_TFM_REQ_MAY_SLEEP;
 
 	rc = crypto_shash_init(desc);
 	if (rc) {
@@ -174,8 +172,7 @@ static void hmac_add_misc(struct shash_desc *desc, struct inode *inode,
 	crypto_shash_update(desc, (const u8 *)&hmac_misc, sizeof(hmac_misc));
 	if ((evm_hmac_attrs & EVM_ATTR_FSUUID) &&
 	    type != EVM_XATTR_PORTABLE_DIGSIG)
-		crypto_shash_update(desc, &inode->i_sb->s_uuid.b[0],
-				    sizeof(inode->i_sb->s_uuid));
+		crypto_shash_update(desc, (u8 *)&inode->i_sb->s_uuid, UUID_SIZE);
 	crypto_shash_final(desc, digest);
 }
 

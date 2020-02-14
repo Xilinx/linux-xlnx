@@ -1,22 +1,16 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (C) 2013-2016 Red Hat
  * Author: Rob Clark <robdclark@gmail.com>
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms of the GNU General Public License version 2 as published by
- * the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
- * more details.
- *
- * You should have received a copy of the GNU General Public License along with
- * this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
 #ifdef CONFIG_DEBUG_FS
+
 #include <linux/debugfs.h>
+
+#include <drm/drm_debugfs.h>
+#include <drm/drm_file.h>
+
 #include "msm_drv.h"
 #include "msm_gpu.h"
 #include "msm_kms.h"
@@ -75,7 +69,7 @@ static int msm_gpu_open(struct inode *inode, struct file *file)
 	struct msm_gpu_show_priv *show_priv;
 	int ret;
 
-	if (!gpu)
+	if (!gpu || !gpu->funcs->gpu_state_get)
 		return -ENODEV;
 
 	show_priv = kmalloc(sizeof(*show_priv), GFP_KERNEL);
@@ -84,7 +78,7 @@ static int msm_gpu_open(struct inode *inode, struct file *file)
 
 	ret = mutex_lock_interruptible(&dev->struct_mutex);
 	if (ret)
-		return ret;
+		goto free_priv;
 
 	pm_runtime_get_sync(&gpu->pdev->dev);
 	show_priv->state = gpu->funcs->gpu_state_get(gpu);
@@ -94,13 +88,20 @@ static int msm_gpu_open(struct inode *inode, struct file *file)
 
 	if (IS_ERR(show_priv->state)) {
 		ret = PTR_ERR(show_priv->state);
-		kfree(show_priv);
-		return ret;
+		goto free_priv;
 	}
 
 	show_priv->dev = dev;
 
-	return single_open(file, msm_gpu_show, show_priv);
+	ret = single_open(file, msm_gpu_show, show_priv);
+	if (ret)
+		goto free_priv;
+
+	return 0;
+
+free_priv:
+	kfree(show_priv);
+	return ret;
 }
 
 static const struct file_operations msm_gpu_fops = {
@@ -194,13 +195,13 @@ static int late_init_minor(struct drm_minor *minor)
 
 	ret = msm_rd_debugfs_init(minor);
 	if (ret) {
-		dev_err(minor->dev->dev, "could not install rd debugfs\n");
+		DRM_DEV_ERROR(minor->dev->dev, "could not install rd debugfs\n");
 		return ret;
 	}
 
 	ret = msm_perf_debugfs_init(minor);
 	if (ret) {
-		dev_err(minor->dev->dev, "could not install perf debugfs\n");
+		DRM_DEV_ERROR(minor->dev->dev, "could not install perf debugfs\n");
 		return ret;
 	}
 
@@ -228,14 +229,14 @@ int msm_debugfs_init(struct drm_minor *minor)
 			minor->debugfs_root, minor);
 
 	if (ret) {
-		dev_err(dev->dev, "could not install msm_debugfs_list\n");
+		DRM_DEV_ERROR(dev->dev, "could not install msm_debugfs_list\n");
 		return ret;
 	}
 
 	debugfs_create_file("gpu", S_IRUSR, minor->debugfs_root,
 		dev, &msm_gpu_fops);
 
-	if (priv->kms->funcs->debugfs_init) {
+	if (priv->kms && priv->kms->funcs->debugfs_init) {
 		ret = priv->kms->funcs->debugfs_init(priv->kms, minor);
 		if (ret)
 			return ret;

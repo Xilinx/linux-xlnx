@@ -1,3 +1,4 @@
+/* SPDX-License-Identifier: GPL-2.0-or-later */
 /*
  * INET		An implementation of the TCP/IP protocol suite for the LINUX
  *		operating system.  INET is implemented using the  BSD Socket
@@ -8,11 +9,6 @@
  * Version:	@(#)tcp.h	1.0.2	04/28/93
  *
  * Author:	Fred N. van Kempen, <waltje@uWalt.NL.Mugnet.ORG>
- *
- *		This program is free software; you can redistribute it and/or
- *		modify it under the terms of the GNU General Public License
- *		as published by the Free Software Foundation; either version
- *		2 of the License, or (at your option) any later version.
  */
 #ifndef _LINUX_TCP_H
 #define _LINUX_TCP_H
@@ -62,12 +58,7 @@ static inline unsigned int tcp_optlen(const struct sk_buff *skb)
 
 /* TCP Fast Open Cookie as stored in memory */
 struct tcp_fastopen_cookie {
-	union {
-		u8	val[TCP_FASTOPEN_COOKIE_MAX];
-#if IS_ENABLED(CONFIG_IPV6)
-		struct in6_addr addr;
-#endif
-	};
+	__le64	val[DIV_ROUND_UP(TCP_FASTOPEN_COOKIE_MAX, sizeof(u64))];
 	s8	len;
 	bool	exp;	/* In RFC6994 experimental option format */
 };
@@ -196,6 +187,7 @@ struct tcp_sock {
 	u32	rcv_tstamp;	/* timestamp of last received ACK (for keepalives) */
 	u32	lsndtime;	/* timestamp of last sent data packet (for restart window) */
 	u32	last_oow_ack_time;  /* timestamp of last out-of-window ACK */
+	u32	compressed_ack_rcv_nxt;
 
 	u32	tsoffset;	/* timestamp offset */
 
@@ -247,6 +239,10 @@ struct tcp_sock {
 		is_cwnd_limited:1,/* forward progress limited by snd_cwnd? */
 		syn_smc:1;	/* SYN includes SMC */
 	u32	tlp_high_seq;	/* snd_nxt at the time of TLP retransmit. */
+
+	u32	tcp_tx_delay;	/* delay (in usec) added to TX packets */
+	u64	tcp_wstamp_ns;	/* departure time for next sent data packet */
+	u64	tcp_clock_cache; /* cache last tcp_clock_ns() (see tcp_mstamp_refresh()) */
 
 /* RTT measurement */
 	u64	tcp_mstamp;	/* most recent packet received/sent */
@@ -358,6 +354,8 @@ struct tcp_sock {
 #define BPF_SOCK_OPS_TEST_FLAG(TP, ARG) 0
 #endif
 
+	u32 rcv_ooopack; /* Received out-of-order packets, for tcpinfo */
+
 /* Receiver side RTT estimation */
 	u32 rcv_rtt_last_tsecr;
 	struct {
@@ -395,7 +393,7 @@ struct tcp_sock {
 	/* fastopen_rsk points to request_sock that resulted in this big
 	 * socket. Used to retransmit SYNACKs etc.
 	 */
-	struct request_sock *fastopen_rsk;
+	struct request_sock __rcu *fastopen_rsk;
 	u32	*saved_syn;
 };
 
@@ -436,6 +434,7 @@ struct tcp_timewait_sock {
 	u32			  tw_last_oow_ack_time;
 
 	int			  tw_ts_recent_stamp;
+	u32			  tw_tx_delay;
 #ifdef CONFIG_TCP_MD5SIG
 	struct tcp_md5sig_key	  *tw_md5_key;
 #endif
@@ -448,8 +447,8 @@ static inline struct tcp_timewait_sock *tcp_twsk(const struct sock *sk)
 
 static inline bool tcp_passive_fastopen(const struct sock *sk)
 {
-	return (sk->sk_state == TCP_SYN_RECV &&
-		tcp_sk(sk)->fastopen_rsk != NULL);
+	return sk->sk_state == TCP_SYN_RECV &&
+	       rcu_access_pointer(tcp_sk(sk)->fastopen_rsk) != NULL;
 }
 
 static inline void fastopen_queue_tune(struct sock *sk, int backlog)
@@ -484,4 +483,8 @@ static inline u16 tcp_mss_clamp(const struct tcp_sock *tp, u16 mss)
 
 	return (user_mss && user_mss < mss) ? user_mss : mss;
 }
+
+int tcp_skb_shift(struct sk_buff *to, struct sk_buff *from, int pcount,
+		  int shiftlen);
+
 #endif	/* _LINUX_TCP_H */

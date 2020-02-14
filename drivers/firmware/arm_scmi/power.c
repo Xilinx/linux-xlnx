@@ -96,7 +96,7 @@ scmi_power_domain_attributes_get(const struct scmi_handle *handle, u32 domain,
 	if (ret)
 		return ret;
 
-	*(__le32 *)t->tx.buf = cpu_to_le32(domain);
+	put_unaligned_le32(domain, t->tx.buf);
 	attr = t->rx.buf;
 
 	ret = scmi_do_xfer(handle, t);
@@ -106,7 +106,7 @@ scmi_power_domain_attributes_get(const struct scmi_handle *handle, u32 domain,
 		dom_info->state_set_notify = SUPPORTS_STATE_SET_NOTIFY(flags);
 		dom_info->state_set_async = SUPPORTS_STATE_SET_ASYNC(flags);
 		dom_info->state_set_sync = SUPPORTS_STATE_SET_SYNC(flags);
-		memcpy(dom_info->name, attr->name, SCMI_MAX_STR_SIZE);
+		strlcpy(dom_info->name, attr->name, SCMI_MAX_STR_SIZE);
 	}
 
 	scmi_xfer_put(handle, t);
@@ -147,11 +147,11 @@ scmi_power_state_get(const struct scmi_handle *handle, u32 domain, u32 *state)
 	if (ret)
 		return ret;
 
-	*(__le32 *)t->tx.buf = cpu_to_le32(domain);
+	put_unaligned_le32(domain, t->tx.buf);
 
 	ret = scmi_do_xfer(handle, t);
 	if (!ret)
-		*state = le32_to_cpu(*(__le32 *)t->rx.buf);
+		*state = get_unaligned_le32(t->rx.buf);
 
 	scmi_xfer_put(handle, t);
 	return ret;

@@ -110,7 +110,7 @@ static int vivid_fb_get_fix(struct vivid_dev *dev, struct fb_fix_screeninfo *fix
 {
 	dprintk(dev, 1, "vivid_fb_get_fix\n");
 	memset(fix, 0, sizeof(struct fb_fix_screeninfo));
-	strlcpy(fix->id, "vioverlay fb", sizeof(fix->id));
+	strscpy(fix->id, "vioverlay fb", sizeof(fix->id));
 	fix->smem_start = dev->video_pbase;
 	fix->smem_len = dev->video_buffer_size;
 	fix->type = FB_TYPE_PACKED_PIXELS;
@@ -155,7 +155,7 @@ static int _vivid_fb_check_var(struct fb_var_screeninfo *var, struct vivid_dev *
 	var->nonstd = 0;
 
 	var->vmode &= ~FB_VMODE_MASK;
-	var->vmode = FB_VMODE_NONINTERLACED;
+	var->vmode |= FB_VMODE_NONINTERLACED;
 
 	/* Dummy values */
 	var->hsync_len = 24;

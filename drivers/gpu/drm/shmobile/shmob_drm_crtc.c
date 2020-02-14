@@ -1,25 +1,23 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * shmob_drm_crtc.c  --  SH Mobile DRM CRTCs
  *
  * Copyright (C) 2012 Renesas Electronics Corporation
  *
  * Laurent Pinchart (laurent.pinchart@ideasonboard.com)
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
  */
 
 #include <linux/backlight.h>
 #include <linux/clk.h>
 
-#include <drm/drmP.h>
 #include <drm/drm_crtc.h>
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_fb_cma_helper.h>
+#include <drm/drm_fourcc.h>
 #include <drm/drm_gem_cma_helper.h>
 #include <drm/drm_plane_helper.h>
+#include <drm/drm_probe_helper.h>
+#include <drm/drm_vblank.h>
 
 #include "shmob_drm_backlight.h"
 #include "shmob_drm_crtc.h"

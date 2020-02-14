@@ -1925,12 +1925,12 @@ static int queue_init(void *priv, struct vb2_queue *src_vq,
 static const struct v4l2_ioctl_ops xm2msc_ioctl_ops = {
 	.vidioc_querycap = xm2msc_querycap,
 
-	.vidioc_enum_fmt_vid_cap_mplane = xm2msc_enum_fmt_vid_cap,
+	.vidioc_enum_fmt_vid_cap = xm2msc_enum_fmt_vid_cap,
 	.vidioc_g_fmt_vid_cap_mplane = xm2msc_g_fmt_vid_cap,
 	.vidioc_try_fmt_vid_cap_mplane = xm2msc_try_fmt_vid_cap,
 	.vidioc_s_fmt_vid_cap_mplane = xm2msc_s_fmt_vid_cap,
 
-	.vidioc_enum_fmt_vid_out_mplane = xm2msc_enum_fmt_vid_out,
+	.vidioc_enum_fmt_vid_out = xm2msc_enum_fmt_vid_out,
 	.vidioc_g_fmt_vid_out_mplane = xm2msc_g_fmt_vid_out,
 	.vidioc_try_fmt_vid_out_mplane = xm2msc_try_fmt_vid_out,
 	.vidioc_s_fmt_vid_out_mplane = xm2msc_s_fmt_vid_out,
@@ -2349,6 +2349,7 @@ static int xm2m_msc_probe(struct platform_device *pdev)
 		*vfd = xm2msc_videodev;
 		vfd->lock = &xm2msc->dev_mutex;
 		vfd->v4l2_dev = &xm2msc->v4l2_dev;
+		vfd->device_caps = V4L2_CAP_VIDEO_M2M_MPLANE;
 
 		ret = video_register_device(vfd, VFL_TYPE_GRABBER, chan);
 		if (ret) {

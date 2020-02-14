@@ -1,17 +1,14 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  *  Copyright (C) 2014 Free Electrons
  *
  *  Author: Boris BREZILLON <boris.brezillon@free-electrons.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
- *
  */
 #include <linux/kernel.h>
 #include <linux/err.h>
 #include <linux/export.h>
-#include <linux/mtd/rawnand.h>
+
+#include "internals.h"
 
 #define ONFI_DYN_TIMING_MAX U16_MAX
 
@@ -56,7 +53,6 @@ static const struct nand_data_interface onfi_sdr_timings[] = {
 			.tWHR_min = 120000,
 			.tWP_min = 50000,
 			.tWW_min = 100000,
-			.mode = 0,
 		},
 	},
 	/* Mode 1 */
@@ -99,7 +95,6 @@ static const struct nand_data_interface onfi_sdr_timings[] = {
 			.tWHR_min = 80000,
 			.tWP_min = 25000,
 			.tWW_min = 100000,
-			.mode = 1,
 		},
 	},
 	/* Mode 2 */
@@ -142,7 +137,6 @@ static const struct nand_data_interface onfi_sdr_timings[] = {
 			.tWHR_min = 80000,
 			.tWP_min = 17000,
 			.tWW_min = 100000,
-			.mode = 2,
 		},
 	},
 	/* Mode 3 */
@@ -185,7 +179,6 @@ static const struct nand_data_interface onfi_sdr_timings[] = {
 			.tWHR_min = 80000,
 			.tWP_min = 15000,
 			.tWW_min = 100000,
-			.mode = 3,
 		},
 	},
 	/* Mode 4 */
@@ -228,7 +221,6 @@ static const struct nand_data_interface onfi_sdr_timings[] = {
 			.tWHR_min = 80000,
 			.tWP_min = 12000,
 			.tWW_min = 100000,
-			.mode = 4,
 		},
 	},
 	/* Mode 5 */
@@ -271,24 +263,9 @@ static const struct nand_data_interface onfi_sdr_timings[] = {
 			.tWHR_min = 80000,
 			.tWP_min = 10000,
 			.tWW_min = 100000,
-			.mode = 5,
 		},
 	},
 };
-
-/**
- * onfi_async_timing_mode_to_sdr_timings - [NAND Interface] Retrieve NAND
- * timings according to the given ONFI timing mode
- * @mode: ONFI timing mode
- */
-const struct nand_sdr_timings *onfi_async_timing_mode_to_sdr_timings(int mode)
-{
-	if (mode < 0 || mode >= ARRAY_SIZE(onfi_sdr_timings))
-		return ERR_PTR(-EINVAL);
-
-	return &onfi_sdr_timings[mode].timings.sdr;
-}
-EXPORT_SYMBOL(onfi_async_timing_mode_to_sdr_timings);
 
 /**
  * onfi_fill_data_interface - [NAND Interface] Initialize a data interface from
@@ -345,4 +322,3 @@ int onfi_fill_data_interface(struct nand_chip *chip,
 
 	return 0;
 }
-EXPORT_SYMBOL(onfi_fill_data_interface);

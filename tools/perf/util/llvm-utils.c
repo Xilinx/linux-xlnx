@@ -8,7 +8,10 @@
 #include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <linux/err.h>
+#include <linux/string.h>
+#include <linux/zalloc.h>
 #include "debug.h"
 #include "llvm-utils.h"
 #include "config.h"
@@ -19,7 +22,7 @@
 #define CLANG_BPF_CMD_DEFAULT_TEMPLATE				\
 		"$CLANG_EXEC -D__KERNEL__ -D__NR_CPUS__=$NR_CPUS "\
 		"-DLINUX_VERSION_CODE=$LINUX_VERSION_CODE "	\
-		"$CLANG_OPTIONS $KERNEL_INC_OPTIONS $PERF_BPF_INC_OPTIONS " \
+		"$CLANG_OPTIONS $PERF_BPF_INC_OPTIONS $KERNEL_INC_OPTIONS " \
 		"-Wno-unused-value -Wno-pointer-sign "		\
 		"-working-directory $WORKING_DIR "		\
 		"-c \"$CLANG_SOURCE\" -target bpf $CLANG_EMIT_LLVM -O2 -o - $LLVM_OPTIONS_PIPE"
@@ -230,14 +233,14 @@ static int detect_kbuild_dir(char **kbuild_dir)
 	const char *prefix_dir = "";
 	const char *suffix_dir = "";
 
+	/* _UTSNAME_LENGTH is 65 */
+	char release[128];
+
 	char *autoconf_path;
 
 	int err;
 
 	if (!test_dir) {
-		/* _UTSNAME_LENGTH is 65 */
-		char release[128];
-
 		err = fetch_kernel_version(NULL, release,
 					   sizeof(release));
 		if (err)
@@ -352,8 +355,7 @@ void llvm__get_kbuild_opts(char **kbuild_dir, char **kbuild_include_opts)
 "     \toption in [llvm] to \"\" to suppress this detection.\n\n",
 			*kbuild_dir);
 
-		free(*kbuild_dir);
-		*kbuild_dir = NULL;
+		zfree(kbuild_dir);
 		goto errout;
 	}
 

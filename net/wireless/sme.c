@@ -642,11 +642,15 @@ static bool cfg80211_is_all_idle(void)
 	 * All devices must be idle as otherwise if you are actively
 	 * scanning some new beacon hints could be learned and would
 	 * count as new regulatory hints.
+	 * Also if there is any other active beaconing interface we
+	 * need not issue a disconnect hint and reset any info such
+	 * as chan dfs state, etc.
 	 */
 	list_for_each_entry(rdev, &cfg80211_rdev_list, list) {
 		list_for_each_entry(wdev, &rdev->wiphy.wdev_list, list) {
 			wdev_lock(wdev);
-			if (wdev->conn || wdev->current_bss)
+			if (wdev->conn || wdev->current_bss ||
+			    cfg80211_beaconing_iface_active(wdev))
 				is_all_idle = false;
 			wdev_unlock(wdev);
 		}
@@ -663,7 +667,7 @@ static void disconnect_work(struct work_struct *work)
 	rtnl_unlock();
 }
 
-static DECLARE_WORK(cfg80211_disconnect_work, disconnect_work);
+DECLARE_WORK(cfg80211_disconnect_work, disconnect_work);
 
 
 /*
@@ -792,12 +796,36 @@ void cfg80211_connect_done(struct net_device *dev,
 	u8 *next;
 
 	if (params->bss) {
-		/* Make sure the bss entry provided by the driver is valid. */
 		struct cfg80211_internal_bss *ibss = bss_from_pub(params->bss);
 
-		if (WARN_ON(list_empty(&ibss->list))) {
-			cfg80211_put_bss(wdev->wiphy, params->bss);
-			return;
+		if (list_empty(&ibss->list)) {
+			struct cfg80211_bss *found = NULL, *tmp = params->bss;
+
+			found = cfg80211_get_bss(wdev->wiphy, NULL,
+						 params->bss->bssid,
+						 wdev->ssid, wdev->ssid_len,
+						 wdev->conn_bss_type,
+						 IEEE80211_PRIVACY_ANY);
+			if (found) {
+				/* The same BSS is already updated so use it
+				 * instead, as it has latest info.
+				 */
+				params->bss = found;
+			} else {
+				/* Update with BSS provided by driver, it will
+				 * be freshly added and ref cnted, we can free
+				 * the old one.
+				 *
+				 * signal_valid can be false, as we are not
+				 * expecting the BSS to be found.
+				 *
+				 * keep the old timestamp to avoid confusion
+				 */
+				cfg80211_bss_update(rdev, ibss, false,
+						    ibss->ts);
+			}
+
+			cfg80211_put_bss(wdev->wiphy, tmp);
 		}
 	}
 
@@ -1171,6 +1199,8 @@ int cfg80211_connect(struct cfg80211_registered_device *rdev,
 
 	cfg80211_oper_and_ht_capa(&connect->ht_capa_mask,
 				  rdev->wiphy.ht_capa_mod_mask);
+	cfg80211_oper_and_vht_capa(&connect->vht_capa_mask,
+				   rdev->wiphy.vht_capa_mod_mask);
 
 	if (connkeys && connkeys->def >= 0) {
 		int idx;

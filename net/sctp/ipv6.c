@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /* SCTP kernel implementation
  * (C) Copyright IBM Corp. 2002, 2004
  * Copyright (c) 2001 Nokia, Inc.
@@ -7,22 +8,6 @@
  * This file is part of the SCTP kernel implementation
  *
  * SCTP over IPv6.
- *
- * This SCTP implementation is free software;
- * you can redistribute it and/or modify it under the terms of
- * the GNU General Public License as published by
- * the Free Software Foundation; either version 2, or (at your option)
- * any later version.
- *
- * This SCTP implementation is distributed in the hope that it
- * will be useful, but WITHOUT ANY WARRANTY; without even the implied
- *		   ************************
- * warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
- * See the GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with GNU CC; see the file COPYING.  If not, see
- * <http://www.gnu.org/licenses/>.
  *
  * Please send any bug reports or fixes you make to the
  * email address(es):
@@ -97,10 +82,9 @@ static int sctp_inet6addr_event(struct notifier_block *this, unsigned long ev,
 
 	switch (ev) {
 	case NETDEV_UP:
-		addr = kmalloc(sizeof(struct sctp_sockaddr_entry), GFP_ATOMIC);
+		addr = kzalloc(sizeof(*addr), GFP_ATOMIC);
 		if (addr) {
 			addr->a.v6.sin6_family = AF_INET6;
-			addr->a.v6.sin6_port = 0;
 			addr->a.v6.sin6_addr = ifa->addr;
 			addr->a.v6.sin6_scope_id = ifa->idev->dev->ifindex;
 			addr->valid = 1;
@@ -138,7 +122,7 @@ static struct notifier_block sctp_inet6addr_notifier = {
 };
 
 /* ICMP error handler. */
-static void sctp_v6_err(struct sk_buff *skb, struct inet6_skb_parm *opt,
+static int sctp_v6_err(struct sk_buff *skb, struct inet6_skb_parm *opt,
 			u8 type, u8 code, int offset, __be32 info)
 {
 	struct inet6_dev *idev;
@@ -147,7 +131,7 @@ static void sctp_v6_err(struct sk_buff *skb, struct inet6_skb_parm *opt,
 	struct sctp_transport *transport;
 	struct ipv6_pinfo *np;
 	__u16 saveip, savesctp;
-	int err;
+	int err, ret = 0;
 	struct net *net = dev_net(skb->dev);
 
 	idev = in6_dev_get(skb->dev);
@@ -163,6 +147,7 @@ static void sctp_v6_err(struct sk_buff *skb, struct inet6_skb_parm *opt,
 	skb->transport_header = savesctp;
 	if (!sk) {
 		__ICMP6_INC_STATS(net, idev, ICMP6_MIB_INERRORS);
+		ret = -ENOENT;
 		goto out;
 	}
 
@@ -202,6 +187,8 @@ out_unlock:
 out:
 	if (likely(idev != NULL))
 		in6_dev_put(idev);
+
+	return ret;
 }
 
 static int sctp_v6_xmit(struct sk_buff *skb, struct sctp_transport *transport)
@@ -228,7 +215,7 @@ static int sctp_v6_xmit(struct sk_buff *skb, struct sctp_transport *transport)
 
 	rcu_read_lock();
 	res = ip6_xmit(sk, skb, fl6, sk->sk_mark, rcu_dereference(np->opt),
-		       tclass);
+		       tclass, sk->sk_priority);
 	rcu_read_unlock();
 	return res;
 }
@@ -266,7 +253,7 @@ static void sctp_v6_get_dst(struct sctp_transport *t, union sctp_addr *saddr,
 		struct ip6_flowlabel *flowlabel;
 
 		flowlabel = fl6_sock_lookup(sk, fl6->flowlabel);
-		if (!flowlabel)
+		if (IS_ERR(flowlabel))
 			goto out;
 		fl6_sock_release(flowlabel);
 	}
@@ -278,7 +265,8 @@ static void sctp_v6_get_dst(struct sctp_transport *t, union sctp_addr *saddr,
 
 	if (saddr) {
 		fl6->saddr = saddr->v6.sin6_addr;
-		fl6->fl6_sport = saddr->v6.sin6_port;
+		if (!fl6->fl6_sport)
+			fl6->fl6_sport = saddr->v6.sin6_port;
 
 		pr_debug("src=%pI6 - ", &fl6->saddr);
 	}
@@ -430,7 +418,6 @@ static void sctp_v6_copy_addrlist(struct list_head *addrlist,
 		addr = kzalloc(sizeof(*addr), GFP_ATOMIC);
 		if (addr) {
 			addr->a.v6.sin6_family = AF_INET6;
-			addr->a.v6.sin6_port = 0;
 			addr->a.v6.sin6_addr = ifp->addr;
 			addr->a.v6.sin6_scope_id = dev->ifindex;
 			addr->valid = 1;
@@ -1028,6 +1015,7 @@ static const struct proto_ops inet6_seqpacket_ops = {
 	.getname	   = sctp_getname,
 	.poll		   = sctp_poll,
 	.ioctl		   = inet6_ioctl,
+	.gettstamp	   = sock_gettstamp,
 	.listen		   = sctp_inet_listen,
 	.shutdown	   = inet_shutdown,
 	.setsockopt	   = sock_common_setsockopt,

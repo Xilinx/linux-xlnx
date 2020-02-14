@@ -1,18 +1,6 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright(c) 2007 - 2008 Intel Corporation. All rights reserved.
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms and conditions of the GNU General Public License,
- * version 2, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
- * more details.
- *
- * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
  *
  * Maintained at www.Open-FCoE.org
  */
@@ -140,6 +128,7 @@ EXPORT_SYMBOL(fc_rport_lookup);
 struct fc_rport_priv *fc_rport_create(struct fc_lport *lport, u32 port_id)
 {
 	struct fc_rport_priv *rdata;
+	size_t rport_priv_size = sizeof(*rdata);
 
 	lockdep_assert_held(&lport->disc.disc_mutex);
 
@@ -147,7 +136,9 @@ struct fc_rport_priv *fc_rport_create(struct fc_lport *lport, u32 port_id)
 	if (rdata)
 		return rdata;
 
-	rdata = kzalloc(sizeof(*rdata) + lport->rport_priv_size, GFP_KERNEL);
+	if (lport->rport_priv_size > 0)
+		rport_priv_size = lport->rport_priv_size;
+	rdata = kzalloc(rport_priv_size, GFP_KERNEL);
 	if (!rdata)
 		return NULL;
 
@@ -184,7 +175,6 @@ void fc_rport_destroy(struct kref *kref)
 	struct fc_rport_priv *rdata;
 
 	rdata = container_of(kref, struct fc_rport_priv, kref);
-	WARN_ON(!list_empty(&rdata->peers));
 	kfree_rcu(rdata, rcu);
 }
 EXPORT_SYMBOL(fc_rport_destroy);
@@ -860,7 +850,6 @@ static void fc_rport_enter_flogi(struct fc_rport_priv *rdata)
 static void fc_rport_recv_flogi_req(struct fc_lport *lport,
 				    struct fc_frame *rx_fp)
 {
-	struct fc_disc *disc;
 	struct fc_els_flogi *flp;
 	struct fc_rport_priv *rdata;
 	struct fc_frame *fp = rx_fp;
@@ -871,7 +860,6 @@ static void fc_rport_recv_flogi_req(struct fc_lport *lport,
 
 	FC_RPORT_ID_DBG(lport, sid, "Received FLOGI request\n");
 
-	disc = &lport->disc;
 	if (!lport->point_to_multipoint) {
 		rjt_data.reason = ELS_RJT_UNSUP;
 		rjt_data.explan = ELS_EXPL_NONE;
@@ -1038,8 +1026,11 @@ static void fc_rport_plogi_resp(struct fc_seq *sp, struct fc_frame *fp,
 		struct fc_els_ls_rjt *rjt;
 
 		rjt = fc_frame_payload_get(fp, sizeof(*rjt));
-		FC_RPORT_DBG(rdata, "PLOGI ELS rejected, reason %x expl %x\n",
-			     rjt->er_reason, rjt->er_explan);
+		if (!rjt)
+			FC_RPORT_DBG(rdata, "PLOGI bad response\n");
+		else
+			FC_RPORT_DBG(rdata, "PLOGI ELS rejected, reason %x expl %x\n",
+				     rjt->er_reason, rjt->er_explan);
 		fc_rport_error_retry(rdata, -FC_EX_ELS_RJT);
 	}
 out:
@@ -1158,8 +1149,10 @@ static void fc_rport_prli_resp(struct fc_seq *sp, struct fc_frame *fp,
 	op = fc_frame_payload_op(fp);
 	if (op == ELS_LS_ACC) {
 		pp = fc_frame_payload_get(fp, sizeof(*pp));
-		if (!pp)
+		if (!pp) {
+			fc_rport_error_retry(rdata, -FC_EX_SEQ_ERR);
 			goto out;
+		}
 
 		resp_code = (pp->spp.spp_flags & FC_SPP_RESP_MASK);
 		FC_RPORT_DBG(rdata, "PRLI spp_flags = 0x%x spp_type 0x%x\n",
@@ -1172,8 +1165,10 @@ static void fc_rport_prli_resp(struct fc_seq *sp, struct fc_frame *fp,
 				fc_rport_error_retry(rdata, -FC_EX_SEQ_ERR);
 			goto out;
 		}
-		if (pp->prli.prli_spp_len < sizeof(pp->spp))
+		if (pp->prli.prli_spp_len < sizeof(pp->spp)) {
+			fc_rport_error_retry(rdata, -FC_EX_SEQ_ERR);
 			goto out;
+		}
 
 		fcp_parm = ntohl(pp->spp.spp_params);
 		if (fcp_parm & FCP_SPPF_RETRY)
@@ -1211,8 +1206,11 @@ static void fc_rport_prli_resp(struct fc_seq *sp, struct fc_frame *fp,
 
 	} else {
 		rjt = fc_frame_payload_get(fp, sizeof(*rjt));
-		FC_RPORT_DBG(rdata, "PRLI ELS rejected, reason %x expl %x\n",
-			     rjt->er_reason, rjt->er_explan);
+		if (!rjt)
+			FC_RPORT_DBG(rdata, "PRLI bad response\n");
+		else
+			FC_RPORT_DBG(rdata, "PRLI ELS rejected, reason %x expl %x\n",
+				     rjt->er_reason, rjt->er_explan);
 		fc_rport_error_retry(rdata, FC_EX_ELS_RJT);
 	}
 
@@ -1714,6 +1712,7 @@ static void fc_rport_recv_els_req(struct fc_lport *lport, struct fc_frame *fp)
 			kref_put(&rdata->kref, fc_rport_destroy);
 			goto busy;
 		}
+		/* fall through */
 	default:
 		FC_RPORT_DBG(rdata,
 			     "Reject ELS 0x%02x while in state %s\n",
@@ -2154,7 +2153,6 @@ static void fc_rport_recv_logo_req(struct fc_lport *lport, struct fc_frame *fp)
 		FC_RPORT_DBG(rdata, "Received LOGO request while in state %s\n",
 			     fc_rport_state(rdata));
 
-		rdata->flags &= ~FC_RP_STARTED;
 		fc_rport_enter_delete(rdata, RPORT_EV_STOP);
 		mutex_unlock(&rdata->rp_mutex);
 		kref_put(&rdata->kref, fc_rport_destroy);

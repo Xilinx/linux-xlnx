@@ -154,6 +154,10 @@ int xilinx_xdma_set_earlycb(struct dma_chan *chan,
 			    struct dma_async_tx_descriptor *async_tx,
 			    u32 earlycb);
 #else
+static inline void xilinx_xdma_set_mode(struct dma_chan *chan,
+					enum operation_mode mode)
+{ }
+
 static inline void xilinx_xdma_drm_config(struct dma_chan *chan, u32 drm_fourcc)
 { }
 
@@ -161,14 +165,14 @@ static inline void xilinx_xdma_v4l2_config(struct dma_chan *chan,
 					   u32 v4l2_fourcc)
 { }
 
-static int xilinx_xdma_get_drm_vid_fmts(struct dma_chan *chan, u32 *fmt_cnt,
-					u32 **fmts)
+static inline int xilinx_xdma_get_drm_vid_fmts(struct dma_chan *chan,
+					       u32 *fmt_cnt, u32 **fmts)
 {
 	return -ENODEV;
 }
 
-static int xilinx_xdma_get_v4l2_vid_fmts(struct dma_chan *chan, u32 *fmt_cnt,
-					 u32 **fmts)
+static inline int xilinx_xdma_get_v4l2_vid_fmts(struct dma_chan *chan,
+						u32 *fmt_cnt,u32 **fmts)
 {
 	return -ENODEV;
 }

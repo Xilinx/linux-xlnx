@@ -1,16 +1,7 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (C) 2015 Shaohua Li <shli@fb.com>
  * Copyright (C) 2016 Song Liu <songliubraving@fb.com>
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms and conditions of the GNU General Public License,
- * version 2, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
- * more details.
- *
  */
 #include <linux/kernel.h>
 #include <linux/wait.h>
@@ -1935,12 +1926,14 @@ out:
 }
 
 static struct stripe_head *
-r5c_recovery_alloc_stripe(struct r5conf *conf,
-			  sector_t stripe_sect)
+r5c_recovery_alloc_stripe(
+		struct r5conf *conf,
+		sector_t stripe_sect,
+		int noblock)
 {
 	struct stripe_head *sh;
 
-	sh = raid5_get_active_stripe(conf, stripe_sect, 0, 1, 0);
+	sh = raid5_get_active_stripe(conf, stripe_sect, 0, noblock, 0);
 	if (!sh)
 		return NULL;  /* no more stripe available */
 
@@ -2150,7 +2143,7 @@ r5c_recovery_analyze_meta_block(struct r5l_log *log,
 						stripe_sect);
 
 		if (!sh) {
-			sh = r5c_recovery_alloc_stripe(conf, stripe_sect);
+			sh = r5c_recovery_alloc_stripe(conf, stripe_sect, 1);
 			/*
 			 * cannot get stripe from raid5_get_active_stripe
 			 * try replay some stripes
@@ -2159,20 +2152,29 @@ r5c_recovery_analyze_meta_block(struct r5l_log *log,
 				r5c_recovery_replay_stripes(
 					cached_stripe_list, ctx);
 				sh = r5c_recovery_alloc_stripe(
-					conf, stripe_sect);
+					conf, stripe_sect, 1);
 			}
 			if (!sh) {
+				int new_size = conf->min_nr_stripes * 2;
 				pr_debug("md/raid:%s: Increasing stripe cache size to %d to recovery data on journal.\n",
 					mdname(mddev),
-					conf->min_nr_stripes * 2);
-				raid5_set_cache_size(mddev,
-						     conf->min_nr_stripes * 2);
-				sh = r5c_recovery_alloc_stripe(conf,
-							       stripe_sect);
+					new_size);
+				ret = raid5_set_cache_size(mddev, new_size);
+				if (conf->min_nr_stripes <= new_size / 2) {
+					pr_err("md/raid:%s: Cannot increase cache size, ret=%d, new_size=%d, min_nr_stripes=%d, max_nr_stripes=%d\n",
+						mdname(mddev),
+						ret,
+						new_size,
+						conf->min_nr_stripes,
+						conf->max_nr_stripes);
+					return -ENOMEM;
+				}
+				sh = r5c_recovery_alloc_stripe(
+					conf, stripe_sect, 0);
 			}
 			if (!sh) {
 				pr_err("md/raid:%s: Cannot get enough stripes due to memory pressure. Recovery failed.\n",
-				       mdname(mddev));
+					mdname(mddev));
 				return -ENOMEM;
 			}
 			list_add_tail(&sh->lru, cached_stripe_list);
@@ -3151,8 +3153,6 @@ int r5l_init_log(struct r5conf *conf, struct md_rdev *rdev)
 	set_bit(MD_HAS_JOURNAL, &conf->mddev->flags);
 	return 0;
 
-	rcu_assign_pointer(conf->log, NULL);
-	md_unregister_thread(&log->reclaim_thread);
 reclaim_thread:
 	mempool_exit(&log->meta_pool);
 out_mempool:

@@ -1,17 +1,25 @@
-Device Tree zynqmp-fpga bindings for the Zynq Ultrascale+ MPSoC controlled
-using ZynqMP SoC firmware interface
-For Bitstream configuration on ZynqMp Soc uses processor configuration
-port(PCAP) to configure the programmable logic(PL) through PS by using
-FW interface.
+Devicetree bindings for Zynq Ultrascale MPSoC FPGA Manager.
+The ZynqMP SoC uses the PCAP (Processor configuration Port) to configure the
+Programmable Logic (PL). The configuration uses  the firmware interface.
 
 Required properties:
 - compatible: should contain "xlnx,zynqmp-pcap-fpga"
-- clocks: phandle for clocks required operation
-- clock-names: name for the clock, should be "ref_clk"
 
-Example:
-	zynqmp_pcap: pcap {
-		compatible = "xlnx,zynqmp-pcap-fpga";
-		clocks = <&clkc 41>;
-		clock-names = "ref_clk";
+Example for full FPGA configuration:
+
+	fpga-region0 {
+		compatible = "fpga-region";
+		fpga-mgr = <&zynqmp_pcap>;
+		#address-cells = <0x1>;
+		#size-cells = <0x1>;
+	};
+
+	firmware {
+		zynqmp_firmware: zynqmp-firmware {
+			compatible = "xlnx,zynqmp-firmware";
+			method = "smc";
+			zynqmp_pcap: pcap {
+				compatible = "xlnx,zynqmp-pcap-fpga";
+			};
+		};
 	};

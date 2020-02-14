@@ -700,7 +700,7 @@ static void kvp_get_ipconfig_info(char *if_name,
 
 
 	/*
-	 * Gather the DNS  state.
+	 * Gather the DNS state.
 	 * Since there is no standard way to get this information
 	 * across various distributions of interest; we just invoke
 	 * an external script that needs to be ported across distros
@@ -809,7 +809,7 @@ kvp_get_ip_info(int family, char *if_name, int op,
 	int sn_offset = 0;
 	int error = 0;
 	char *buffer;
-	struct hv_kvp_ipaddr_value *ip_buffer;
+	struct hv_kvp_ipaddr_value *ip_buffer = NULL;
 	char cidr_mask[5]; /* /xyz */
 	int weight;
 	int i;
@@ -1051,7 +1051,7 @@ static int parse_ip_val_buffer(char *in_buf, int *offset,
 	char *start;
 
 	/*
-	 * in_buf has sequence of characters that are seperated by
+	 * in_buf has sequence of characters that are separated by
 	 * the character ';'. The last sequence does not have the
 	 * terminating ";" character.
 	 */
@@ -1178,6 +1178,7 @@ static int kvp_set_ip_info(char *if_name, struct hv_kvp_ipaddr_value *new_val)
 	FILE *file;
 	char cmd[PATH_MAX];
 	char *mac_addr;
+	int str_len;
 
 	/*
 	 * Set the configuration for the specified interface with
@@ -1301,8 +1302,18 @@ static int kvp_set_ip_info(char *if_name, struct hv_kvp_ipaddr_value *new_val)
 	 * invoke the external script to do its magic.
 	 */
 
-	snprintf(cmd, sizeof(cmd), KVP_SCRIPTS_PATH "%s %s",
-		 "hv_set_ifconfig", if_file);
+	str_len = snprintf(cmd, sizeof(cmd), KVP_SCRIPTS_PATH "%s %s",
+			   "hv_set_ifconfig", if_file);
+	/*
+	 * This is a little overcautious, but it's necessary to suppress some
+	 * false warnings from gcc 8.0.1.
+	 */
+	if (str_len <= 0 || (unsigned int)str_len >= sizeof(cmd)) {
+		syslog(LOG_ERR, "Cmd '%s' (len=%d) may be too long",
+		       cmd, str_len);
+		return HV_E_FAIL;
+	}
+
 	if (system(cmd)) {
 		syslog(LOG_ERR, "Failed to execute cmd '%s'; error: %d %s",
 				cmd, errno, strerror(errno));
@@ -1375,6 +1386,8 @@ int main(int argc, char *argv[])
 			daemonize = 0;
 			break;
 		case 'h':
+			print_usage(argv);
+			exit(0);
 		default:
 			print_usage(argv);
 			exit(EXIT_FAILURE);
@@ -1479,7 +1492,7 @@ int main(int argc, char *argv[])
 		case KVP_OP_GET_IP_INFO:
 			kvp_ip_val = &hv_msg->body.kvp_ip_val;
 
-			error =  kvp_mac_to_ip(kvp_ip_val);
+			error = kvp_mac_to_ip(kvp_ip_val);
 
 			if (error)
 				hv_msg->error = error;

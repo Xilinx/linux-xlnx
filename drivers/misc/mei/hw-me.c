@@ -1,17 +1,7 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
- *
+ * Copyright (c) 2003-2018, Intel Corporation. All rights reserved.
  * Intel Management Engine Interface (Intel MEI) Linux driver
- * Copyright (c) 2003-2012, Intel Corporation.
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms and conditions of the GNU General Public License,
- * version 2, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
- * more details.
- *
  */
 
 #include <linux/pci.h>
@@ -350,9 +340,6 @@ static void mei_me_hw_reset_release(struct mei_device *dev)
 	hcsr |= H_IG;
 	hcsr &= ~H_RST;
 	mei_hcsr_set(dev, hcsr);
-
-	/* complete this write before we set host ready on another CPU */
-	mmiowb();
 }
 
 /**
@@ -1368,6 +1355,8 @@ static bool mei_me_fw_type_sps(struct pci_dev *pdev)
 #define MEI_CFG_FW_SPS                           \
 	.quirk_probe = mei_me_fw_type_sps
 
+#define MEI_CFG_FW_VER_SUPP                     \
+	.fw_ver_supported = 1
 
 #define MEI_CFG_ICH_HFS                      \
 	.fw_status.count = 0
@@ -1405,31 +1394,41 @@ static const struct mei_cfg mei_me_ich10_cfg = {
 	MEI_CFG_ICH10_HFS,
 };
 
-/* PCH devices */
-static const struct mei_cfg mei_me_pch_cfg = {
+/* PCH6 devices */
+static const struct mei_cfg mei_me_pch6_cfg = {
 	MEI_CFG_PCH_HFS,
+};
+
+/* PCH7 devices */
+static const struct mei_cfg mei_me_pch7_cfg = {
+	MEI_CFG_PCH_HFS,
+	MEI_CFG_FW_VER_SUPP,
 };
 
 /* PCH Cougar Point and Patsburg with quirk for Node Manager exclusion */
 static const struct mei_cfg mei_me_pch_cpt_pbg_cfg = {
 	MEI_CFG_PCH_HFS,
+	MEI_CFG_FW_VER_SUPP,
 	MEI_CFG_FW_NM,
 };
 
 /* PCH8 Lynx Point and newer devices */
 static const struct mei_cfg mei_me_pch8_cfg = {
 	MEI_CFG_PCH8_HFS,
+	MEI_CFG_FW_VER_SUPP,
 };
 
 /* PCH8 Lynx Point with quirk for SPS Firmware exclusion */
 static const struct mei_cfg mei_me_pch8_sps_cfg = {
 	MEI_CFG_PCH8_HFS,
+	MEI_CFG_FW_VER_SUPP,
 	MEI_CFG_FW_SPS,
 };
 
 /* Cannon Lake and newer devices */
 static const struct mei_cfg mei_me_pch12_cfg = {
 	MEI_CFG_PCH8_HFS,
+	MEI_CFG_FW_VER_SUPP,
 	MEI_CFG_DMA_128,
 };
 
@@ -1441,7 +1440,8 @@ static const struct mei_cfg *const mei_cfg_list[] = {
 	[MEI_ME_UNDEF_CFG] = NULL,
 	[MEI_ME_ICH_CFG] = &mei_me_ich_cfg,
 	[MEI_ME_ICH10_CFG] = &mei_me_ich10_cfg,
-	[MEI_ME_PCH_CFG] = &mei_me_pch_cfg,
+	[MEI_ME_PCH6_CFG] = &mei_me_pch6_cfg,
+	[MEI_ME_PCH7_CFG] = &mei_me_pch7_cfg,
 	[MEI_ME_PCH_CPT_PBG_CFG] = &mei_me_pch_cpt_pbg_cfg,
 	[MEI_ME_PCH8_CFG] = &mei_me_pch8_cfg,
 	[MEI_ME_PCH8_SPS_CFG] = &mei_me_pch8_sps_cfg,
@@ -1471,15 +1471,23 @@ struct mei_device *mei_me_dev_init(struct pci_dev *pdev,
 {
 	struct mei_device *dev;
 	struct mei_me_hw *hw;
+	int i;
 
 	dev = devm_kzalloc(&pdev->dev, sizeof(struct mei_device) +
 			   sizeof(struct mei_me_hw), GFP_KERNEL);
 	if (!dev)
 		return NULL;
+
 	hw = to_me_hw(dev);
+
+	for (i = 0; i < DMA_DSCR_NUM; i++)
+		dev->dr_dscr[i].size = cfg->dma_size[i];
 
 	mei_device_init(dev, &pdev->dev, &mei_me_hw_ops);
 	hw->cfg = cfg;
+
+	dev->fw_f_fw_ver_supported = cfg->fw_ver_supported;
+
 	return dev;
 }
 

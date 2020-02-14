@@ -54,7 +54,7 @@ static __always_inline void arch_atomic_add(int i, atomic_t *v)
 {
 	asm volatile(LOCK_PREFIX "addl %1,%0"
 		     : "+m" (v->counter)
-		     : "ir" (i));
+		     : "ir" (i) : "memory");
 }
 
 /**
@@ -68,7 +68,7 @@ static __always_inline void arch_atomic_sub(int i, atomic_t *v)
 {
 	asm volatile(LOCK_PREFIX "subl %1,%0"
 		     : "+m" (v->counter)
-		     : "ir" (i));
+		     : "ir" (i) : "memory");
 }
 
 /**
@@ -82,7 +82,7 @@ static __always_inline void arch_atomic_sub(int i, atomic_t *v)
  */
 static __always_inline bool arch_atomic_sub_and_test(int i, atomic_t *v)
 {
-	GEN_BINARY_RMWcc(LOCK_PREFIX "subl", v->counter, "er", i, "%0", e);
+	return GEN_BINARY_RMWcc(LOCK_PREFIX "subl", v->counter, e, "er", i);
 }
 #define arch_atomic_sub_and_test arch_atomic_sub_and_test
 
@@ -95,7 +95,7 @@ static __always_inline bool arch_atomic_sub_and_test(int i, atomic_t *v)
 static __always_inline void arch_atomic_inc(atomic_t *v)
 {
 	asm volatile(LOCK_PREFIX "incl %0"
-		     : "+m" (v->counter));
+		     : "+m" (v->counter) :: "memory");
 }
 #define arch_atomic_inc arch_atomic_inc
 
@@ -108,7 +108,7 @@ static __always_inline void arch_atomic_inc(atomic_t *v)
 static __always_inline void arch_atomic_dec(atomic_t *v)
 {
 	asm volatile(LOCK_PREFIX "decl %0"
-		     : "+m" (v->counter));
+		     : "+m" (v->counter) :: "memory");
 }
 #define arch_atomic_dec arch_atomic_dec
 
@@ -122,7 +122,7 @@ static __always_inline void arch_atomic_dec(atomic_t *v)
  */
 static __always_inline bool arch_atomic_dec_and_test(atomic_t *v)
 {
-	GEN_UNARY_RMWcc(LOCK_PREFIX "decl", v->counter, "%0", e);
+	return GEN_UNARY_RMWcc(LOCK_PREFIX "decl", v->counter, e);
 }
 #define arch_atomic_dec_and_test arch_atomic_dec_and_test
 
@@ -136,7 +136,7 @@ static __always_inline bool arch_atomic_dec_and_test(atomic_t *v)
  */
 static __always_inline bool arch_atomic_inc_and_test(atomic_t *v)
 {
-	GEN_UNARY_RMWcc(LOCK_PREFIX "incl", v->counter, "%0", e);
+	return GEN_UNARY_RMWcc(LOCK_PREFIX "incl", v->counter, e);
 }
 #define arch_atomic_inc_and_test arch_atomic_inc_and_test
 
@@ -151,7 +151,7 @@ static __always_inline bool arch_atomic_inc_and_test(atomic_t *v)
  */
 static __always_inline bool arch_atomic_add_negative(int i, atomic_t *v)
 {
-	GEN_BINARY_RMWcc(LOCK_PREFIX "addl", v->counter, "er", i, "%0", s);
+	return GEN_BINARY_RMWcc(LOCK_PREFIX "addl", v->counter, s, "er", i);
 }
 #define arch_atomic_add_negative arch_atomic_add_negative
 

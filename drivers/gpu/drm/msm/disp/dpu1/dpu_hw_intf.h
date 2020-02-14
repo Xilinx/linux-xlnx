@@ -1,13 +1,5 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (c) 2015-2018, The Linux Foundation. All rights reserved.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 and
- * only version 2 as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
 #ifndef _DPU_HW_INTF_H
@@ -59,8 +51,6 @@ struct intf_status {
  * @ setup_prog_fetch : enables/disables the programmable fetch logic
  * @ enable_timing: enable/disable timing engine
  * @ get_status: returns if timing engine is enabled or not
- * @ setup_misr: enables/disables MISR in HW register
- * @ collect_misr: reads and stores MISR data from HW register
  * @ get_line_count: reads current vertical line counter
  */
 struct dpu_hw_intf_ops {
@@ -77,11 +67,6 @@ struct dpu_hw_intf_ops {
 	void (*get_status)(struct dpu_hw_intf *intf,
 			struct intf_status *status);
 
-	void (*setup_misr)(struct dpu_hw_intf *intf,
-			bool enable, u32 frame_count);
-
-	u32 (*collect_misr)(struct dpu_hw_intf *intf);
-
 	u32 (*get_line_count)(struct dpu_hw_intf *intf);
 };
 
@@ -97,16 +82,6 @@ struct dpu_hw_intf {
 	/* ops */
 	struct dpu_hw_intf_ops ops;
 };
-
-/**
- * to_dpu_hw_intf - convert base object dpu_hw_base to container
- * @hw: Pointer to base hardware block
- * return: Pointer to hardware block container
- */
-static inline struct dpu_hw_intf *to_dpu_hw_intf(struct dpu_hw_blk *hw)
-{
-	return container_of(hw, struct dpu_hw_intf, base);
-}
 
 /**
  * dpu_hw_intf_init(): Initializes the intf driver for the passed

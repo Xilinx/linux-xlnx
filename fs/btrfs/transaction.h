@@ -12,13 +12,13 @@
 #include "ctree.h"
 
 enum btrfs_trans_state {
-	TRANS_STATE_RUNNING		= 0,
-	TRANS_STATE_BLOCKED		= 1,
-	TRANS_STATE_COMMIT_START	= 2,
-	TRANS_STATE_COMMIT_DOING	= 3,
-	TRANS_STATE_UNBLOCKED		= 4,
-	TRANS_STATE_COMPLETED		= 5,
-	TRANS_STATE_MAX			= 6,
+	TRANS_STATE_RUNNING,
+	TRANS_STATE_BLOCKED,
+	TRANS_STATE_COMMIT_START,
+	TRANS_STATE_COMMIT_DOING,
+	TRANS_STATE_UNBLOCKED,
+	TRANS_STATE_COMPLETED,
+	TRANS_STATE_MAX,
 };
 
 #define BTRFS_TRANS_HAVE_FREE_BGS	0
@@ -39,7 +39,6 @@ struct btrfs_transaction {
 	 */
 	atomic_t num_writers;
 	refcount_t use_count;
-	atomic_t pending_ordered;
 
 	unsigned long flags;
 
@@ -51,9 +50,8 @@ struct btrfs_transaction {
 	time64_t start_time;
 	wait_queue_head_t writer_wait;
 	wait_queue_head_t commit_wait;
-	wait_queue_head_t pending_wait;
 	struct list_head pending_snapshots;
-	struct list_head pending_chunks;
+	struct list_head dev_update_list;
 	struct list_head switch_commits;
 	struct list_head dirty_bgs;
 
@@ -82,7 +80,6 @@ struct btrfs_transaction {
 	 */
 	struct mutex cache_write_mutex;
 	spinlock_t dirty_bgs_lock;
-	unsigned int num_dirty_bgs;
 	/* Protected by spin lock fs_info->unused_bgs_lock. */
 	struct list_head deleted_bgs;
 	spinlock_t dropped_roots_lock;
@@ -97,11 +94,13 @@ struct btrfs_transaction {
 #define __TRANS_JOIN		(1U << 11)
 #define __TRANS_JOIN_NOLOCK	(1U << 12)
 #define __TRANS_DUMMY		(1U << 13)
+#define __TRANS_JOIN_NOSTART	(1U << 14)
 
 #define TRANS_START		(__TRANS_START | __TRANS_FREEZABLE)
 #define TRANS_ATTACH		(__TRANS_ATTACH)
 #define TRANS_JOIN		(__TRANS_JOIN | __TRANS_FREEZABLE)
 #define TRANS_JOIN_NOLOCK	(__TRANS_JOIN_NOLOCK)
+#define TRANS_JOIN_NOSTART	(__TRANS_JOIN_NOSTART)
 
 #define TRANS_EXTWRITERS	(__TRANS_START | __TRANS_ATTACH)
 
@@ -122,7 +121,6 @@ struct btrfs_trans_handle {
 	bool allocating_chunk;
 	bool can_flush_pending_bgs;
 	bool reloc_reserved;
-	bool sync;
 	bool dirty;
 	struct btrfs_root *root;
 	struct btrfs_fs_info *fs_info;
@@ -187,6 +185,7 @@ struct btrfs_trans_handle *btrfs_start_transaction_fallback_global_rsv(
 					int min_factor);
 struct btrfs_trans_handle *btrfs_join_transaction(struct btrfs_root *root);
 struct btrfs_trans_handle *btrfs_join_transaction_nolock(struct btrfs_root *root);
+struct btrfs_trans_handle *btrfs_join_transaction_nostart(struct btrfs_root *root);
 struct btrfs_trans_handle *btrfs_attach_transaction(struct btrfs_root *root);
 struct btrfs_trans_handle *btrfs_attach_transaction_barrier(
 					struct btrfs_root *root);
@@ -228,5 +227,6 @@ void btrfs_put_transaction(struct btrfs_transaction *transaction);
 void btrfs_apply_pending_changes(struct btrfs_fs_info *fs_info);
 void btrfs_add_dropped_root(struct btrfs_trans_handle *trans,
 			    struct btrfs_root *root);
+void btrfs_trans_release_chunk_metadata(struct btrfs_trans_handle *trans);
 
 #endif

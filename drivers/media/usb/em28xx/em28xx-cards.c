@@ -1958,7 +1958,7 @@ const struct em28xx_board em28xx_boards[] = {
 		} },
 	},
 	[EM2882_BOARD_TERRATEC_HYBRID_XS] = {
-		.name         = "Terratec Cinnergy Hybrid T USB XS (em2882)",
+		.name         = "Terratec Cinergy Hybrid T USB XS (em2882)",
 		.tuner_type   = TUNER_XC2028,
 		.tuner_gpio   = default_tuner_gpio,
 		.mts_firmware = 1,
@@ -2141,13 +2141,13 @@ const struct em28xx_board em28xx_boards[] = {
 		.input           = { {
 			.type     = EM28XX_VMUX_COMPOSITE,
 			.vmux     = TVP5150_COMPOSITE1,
-			.amux     = EM28XX_AUDIO_SRC_LINE,
+			.amux     = EM28XX_AMUX_LINE_IN,
 			.gpio     = terratec_av350_unmute_gpio,
 
 		}, {
 			.type     = EM28XX_VMUX_SVIDEO,
 			.vmux     = TVP5150_SVIDEO,
-			.amux     = EM28XX_AUDIO_SRC_LINE,
+			.amux     = EM28XX_AMUX_LINE_IN,
 			.gpio     = terratec_av350_unmute_gpio,
 		} },
 	},
@@ -3039,6 +3039,9 @@ static int em28xx_hint_board(struct em28xx *dev)
 
 static void em28xx_card_setup(struct em28xx *dev)
 {
+	int i, j, idx;
+	bool duplicate_entry;
+
 	/*
 	 * If the device can be a webcam, seek for a sensor.
 	 * If sensor is not found, then it isn't a webcam.
@@ -3195,6 +3198,32 @@ static void em28xx_card_setup(struct em28xx *dev)
 	/* Allow override tuner type by a module parameter */
 	if (tuner >= 0)
 		dev->tuner_type = tuner;
+
+	/*
+	 * Dynamically generate a list of valid audio inputs for this
+	 * specific board, mapping them via enum em28xx_amux.
+	 */
+
+	idx = 0;
+	for (i = 0; i < MAX_EM28XX_INPUT; i++) {
+		if (!INPUT(i)->type)
+			continue;
+
+		/* Skip already mapped audio inputs */
+		duplicate_entry = false;
+		for (j = 0; j < idx; j++) {
+			if (INPUT(i)->amux == dev->amux_map[j]) {
+				duplicate_entry = true;
+				break;
+			}
+		}
+		if (duplicate_entry)
+			continue;
+
+		dev->amux_map[idx++] = INPUT(i)->amux;
+	}
+	for (; idx < MAX_EM28XX_INPUT; idx++)
+		dev->amux_map[idx] = EM28XX_AMUX_UNUSED;
 }
 
 void em28xx_setup_xc3028(struct em28xx *dev, struct xc2028_ctrl *ctl)
@@ -3537,13 +3566,12 @@ static int em28xx_init_dev(struct em28xx *dev, struct usb_device *udev,
 static int em28xx_duplicate_dev(struct em28xx *dev)
 {
 	int nr;
-	struct em28xx *sec_dev = kzalloc(sizeof(*sec_dev), GFP_KERNEL);
+	struct em28xx *sec_dev = kmemdup(dev, sizeof(*sec_dev), GFP_KERNEL);
 
 	if (!sec_dev) {
 		dev->dev_next = NULL;
 		return -ENOMEM;
 	}
-	memcpy(sec_dev, dev, sizeof(*sec_dev));
 	/* Check to see next free device and mark as used */
 	do {
 		nr = find_first_zero_bit(em28xx_devused, EM28XX_MAXBOARDS);
@@ -3991,7 +4019,6 @@ static void em28xx_usb_disconnect(struct usb_interface *intf)
 		dev->dev_next->disconnected = 1;
 		dev_info(&dev->intf->dev, "Disconnecting %s\n",
 			 dev->dev_next->name);
-		flush_request_modules(dev->dev_next);
 	}
 
 	dev->disconnected = 1;

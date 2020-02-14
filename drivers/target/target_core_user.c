@@ -1,21 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * Copyright (C) 2013 Shaohua Li <shli@kernel.org>
  * Copyright (C) 2014 Red Hat, Inc.
  * Copyright (C) 2015 Arrikto, Inc.
  * Copyright (C) 2017 Chinamobile, Inc.
- *
- * This program is free software; you can redistribute it and/or modify it
- * under the terms and conditions of the GNU General Public License,
- * version 2, as published by the Free Software Foundation.
- *
- * This program is distributed in the hope it will be useful, but WITHOUT
- * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
- * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
- * more details.
- *
- * You should have received a copy of the GNU General Public License along with
- * this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin St - Fifth Floor, Boston, MA 02110-1301 USA.
  */
 
 #include <linux/spinlock.h>
@@ -148,7 +136,7 @@ struct tcmu_dev {
 	size_t ring_size;
 
 	struct mutex cmdr_lock;
-	struct list_head cmdr_queue;
+	struct list_head qfull_queue;
 
 	uint32_t dbi_max;
 	uint32_t dbi_thresh;
@@ -159,6 +147,7 @@ struct tcmu_dev {
 
 	struct timer_list cmd_timer;
 	unsigned int cmd_time_out;
+	struct list_head inflight_queue;
 
 	struct timer_list qfull_timer;
 	int qfull_time_out;
@@ -179,7 +168,7 @@ struct tcmu_dev {
 struct tcmu_cmd {
 	struct se_cmd *se_cmd;
 	struct tcmu_dev *tcmu_dev;
-	struct list_head cmdr_queue_entry;
+	struct list_head queue_entry;
 
 	uint16_t cmd_id;
 
@@ -192,6 +181,7 @@ struct tcmu_cmd {
 	unsigned long deadline;
 
 #define TCMU_CMD_BIT_EXPIRED 0
+#define TCMU_CMD_BIT_INFLIGHT 1
 	unsigned long flags;
 };
 /*
@@ -439,26 +429,26 @@ static int tcmu_genl_set_features(struct sk_buff *skb, struct genl_info *info)
 static const struct genl_ops tcmu_genl_ops[] = {
 	{
 		.cmd	= TCMU_CMD_SET_FEATURES,
+		.validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
 		.flags	= GENL_ADMIN_PERM,
-		.policy	= tcmu_attr_policy,
 		.doit	= tcmu_genl_set_features,
 	},
 	{
 		.cmd	= TCMU_CMD_ADDED_DEVICE_DONE,
+		.validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
 		.flags	= GENL_ADMIN_PERM,
-		.policy	= tcmu_attr_policy,
 		.doit	= tcmu_genl_add_dev_done,
 	},
 	{
 		.cmd	= TCMU_CMD_REMOVED_DEVICE_DONE,
+		.validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
 		.flags	= GENL_ADMIN_PERM,
-		.policy	= tcmu_attr_policy,
 		.doit	= tcmu_genl_rm_dev_done,
 	},
 	{
 		.cmd	= TCMU_CMD_RECONFIG_DEVICE_DONE,
+		.validate = GENL_DONT_VALIDATE_STRICT | GENL_DONT_VALIDATE_DUMP,
 		.flags	= GENL_ADMIN_PERM,
-		.policy	= tcmu_attr_policy,
 		.doit	= tcmu_genl_reconfig_dev_done,
 	},
 };
@@ -470,6 +460,7 @@ static struct genl_family tcmu_genl_family __ro_after_init = {
 	.name = "TCM-USER",
 	.version = 2,
 	.maxattr = TCMU_ATTR_MAX,
+	.policy = tcmu_attr_policy,
 	.mcgrps = tcmu_mcgrps,
 	.n_mcgrps = ARRAY_SIZE(tcmu_mcgrps),
 	.netnsok = true,
@@ -586,7 +577,7 @@ static struct tcmu_cmd *tcmu_alloc_cmd(struct se_cmd *se_cmd)
 	if (!tcmu_cmd)
 		return NULL;
 
-	INIT_LIST_HEAD(&tcmu_cmd->cmdr_queue_entry);
+	INIT_LIST_HEAD(&tcmu_cmd->queue_entry);
 	tcmu_cmd->se_cmd = se_cmd;
 	tcmu_cmd->tcmu_dev = udev;
 
@@ -915,11 +906,13 @@ setup_timer:
 		return 0;
 
 	tcmu_cmd->deadline = round_jiffies_up(jiffies + msecs_to_jiffies(tmo));
-	mod_timer(timer, tcmu_cmd->deadline);
+	if (!timer_pending(timer))
+		mod_timer(timer, tcmu_cmd->deadline);
+
 	return 0;
 }
 
-static int add_to_cmdr_queue(struct tcmu_cmd *tcmu_cmd)
+static int add_to_qfull_queue(struct tcmu_cmd *tcmu_cmd)
 {
 	struct tcmu_dev *udev = tcmu_cmd->tcmu_dev;
 	unsigned int tmo;
@@ -942,7 +935,7 @@ static int add_to_cmdr_queue(struct tcmu_cmd *tcmu_cmd)
 	if (ret)
 		return ret;
 
-	list_add_tail(&tcmu_cmd->cmdr_queue_entry, &udev->cmdr_queue);
+	list_add_tail(&tcmu_cmd->queue_entry, &udev->qfull_queue);
 	pr_debug("adding cmd %u on dev %s to ring space wait queue\n",
 		 tcmu_cmd->cmd_id, udev->name);
 	return 0;
@@ -958,7 +951,7 @@ static int add_to_cmdr_queue(struct tcmu_cmd *tcmu_cmd)
  *  0 success
  *  1 internally queued to wait for ring memory to free.
  */
-static sense_reason_t queue_cmd_ring(struct tcmu_cmd *tcmu_cmd, int *scsi_err)
+static int queue_cmd_ring(struct tcmu_cmd *tcmu_cmd, sense_reason_t *scsi_err)
 {
 	struct tcmu_dev *udev = tcmu_cmd->tcmu_dev;
 	struct se_cmd *se_cmd = tcmu_cmd->se_cmd;
@@ -999,7 +992,7 @@ static sense_reason_t queue_cmd_ring(struct tcmu_cmd *tcmu_cmd, int *scsi_err)
 	base_command_size = tcmu_cmd_get_base_cmd_size(tcmu_cmd->dbi_cnt);
 	command_size = tcmu_cmd_get_cmd_size(tcmu_cmd, base_command_size);
 
-	if (!list_empty(&udev->cmdr_queue))
+	if (!list_empty(&udev->qfull_queue))
 		goto queue;
 
 	mb = udev->mb_addr;
@@ -1096,13 +1089,16 @@ static sense_reason_t queue_cmd_ring(struct tcmu_cmd *tcmu_cmd, int *scsi_err)
 	UPDATE_HEAD(mb->cmd_head, command_size, udev->cmdr_size);
 	tcmu_flush_dcache_range(mb, sizeof(*mb));
 
+	list_add_tail(&tcmu_cmd->queue_entry, &udev->inflight_queue);
+	set_bit(TCMU_CMD_BIT_INFLIGHT, &tcmu_cmd->flags);
+
 	/* TODO: only if FLUSH and FUA? */
 	uio_event_notify(&udev->uio_info);
 
 	return 0;
 
 queue:
-	if (add_to_cmdr_queue(tcmu_cmd)) {
+	if (add_to_qfull_queue(tcmu_cmd)) {
 		*scsi_err = TCM_OUT_OF_RESOURCES;
 		return -1;
 	}
@@ -1136,14 +1132,18 @@ static void tcmu_handle_completion(struct tcmu_cmd *cmd, struct tcmu_cmd_entry *
 	struct se_cmd *se_cmd = cmd->se_cmd;
 	struct tcmu_dev *udev = cmd->tcmu_dev;
 	bool read_len_valid = false;
-	uint32_t read_len = se_cmd->data_length;
+	uint32_t read_len;
 
 	/*
 	 * cmd has been completed already from timeout, just reclaim
 	 * data area space and free cmd
 	 */
-	if (test_bit(TCMU_CMD_BIT_EXPIRED, &cmd->flags))
+	if (test_bit(TCMU_CMD_BIT_EXPIRED, &cmd->flags)) {
+		WARN_ON_ONCE(se_cmd);
 		goto out;
+	}
+
+	list_del_init(&cmd->queue_entry);
 
 	tcmu_cmd_reset_dbi_cur(cmd);
 
@@ -1154,6 +1154,7 @@ static void tcmu_handle_completion(struct tcmu_cmd *cmd, struct tcmu_cmd_entry *
 		goto done;
 	}
 
+	read_len = se_cmd->data_length;
 	if (se_cmd->data_direction == DMA_FROM_DEVICE &&
 	    (entry->hdr.uflags & TCMU_UFLAG_READ_LEN) && entry->rsp.read_len) {
 		read_len_valid = true;
@@ -1194,9 +1195,29 @@ out:
 	tcmu_free_cmd(cmd);
 }
 
+static void tcmu_set_next_deadline(struct list_head *queue,
+				   struct timer_list *timer)
+{
+	struct tcmu_cmd *tcmu_cmd, *tmp_cmd;
+	unsigned long deadline = 0;
+
+	list_for_each_entry_safe(tcmu_cmd, tmp_cmd, queue, queue_entry) {
+		if (!time_after(jiffies, tcmu_cmd->deadline)) {
+			deadline = tcmu_cmd->deadline;
+			break;
+		}
+	}
+
+	if (deadline)
+		mod_timer(timer, deadline);
+	else
+		del_timer(timer);
+}
+
 static unsigned int tcmu_handle_completions(struct tcmu_dev *udev)
 {
 	struct tcmu_mailbox *mb;
+	struct tcmu_cmd *cmd;
 	int handled = 0;
 
 	if (test_bit(TCMU_DEV_BIT_BROKEN, &udev->flags)) {
@@ -1210,7 +1231,6 @@ static unsigned int tcmu_handle_completions(struct tcmu_dev *udev)
 	while (udev->cmdr_last_cleaned != READ_ONCE(mb->cmd_tail)) {
 
 		struct tcmu_cmd_entry *entry = (void *) mb + CMDR_OFF + udev->cmdr_last_cleaned;
-		struct tcmu_cmd *cmd;
 
 		tcmu_flush_dcache_range(entry, sizeof(*entry));
 
@@ -1243,7 +1263,7 @@ static unsigned int tcmu_handle_completions(struct tcmu_dev *udev)
 		/* no more pending commands */
 		del_timer(&udev->cmd_timer);
 
-		if (list_empty(&udev->cmdr_queue)) {
+		if (list_empty(&udev->qfull_queue)) {
 			/*
 			 * no more pending or waiting commands so try to
 			 * reclaim blocks if needed.
@@ -1252,6 +1272,8 @@ static unsigned int tcmu_handle_completions(struct tcmu_dev *udev)
 			    tcmu_global_max_blocks)
 				schedule_delayed_work(&tcmu_unmap_work, 0);
 		}
+	} else if (udev->cmd_time_out) {
+		tcmu_set_next_deadline(&udev->inflight_queue, &udev->cmd_timer);
 	}
 
 	return handled;
@@ -1271,7 +1293,7 @@ static int tcmu_check_expired_cmd(int id, void *p, void *data)
 	if (!time_after(jiffies, cmd->deadline))
 		return 0;
 
-	is_running = list_empty(&cmd->cmdr_queue_entry);
+	is_running = test_bit(TCMU_CMD_BIT_INFLIGHT, &cmd->flags);
 	se_cmd = cmd->se_cmd;
 
 	if (is_running) {
@@ -1287,9 +1309,10 @@ static int tcmu_check_expired_cmd(int id, void *p, void *data)
 		 * target_complete_cmd will translate this to LUN COMM FAILURE
 		 */
 		scsi_status = SAM_STAT_CHECK_CONDITION;
+		list_del_init(&cmd->queue_entry);
+		cmd->se_cmd = NULL;
 	} else {
-		list_del_init(&cmd->cmdr_queue_entry);
-
+		list_del_init(&cmd->queue_entry);
 		idr_remove(&udev->commands, id);
 		tcmu_free_cmd(cmd);
 		scsi_status = SAM_STAT_TASK_SET_FULL;
@@ -1372,7 +1395,8 @@ static struct se_device *tcmu_alloc_device(struct se_hba *hba, const char *name)
 
 	INIT_LIST_HEAD(&udev->node);
 	INIT_LIST_HEAD(&udev->timedout_entry);
-	INIT_LIST_HEAD(&udev->cmdr_queue);
+	INIT_LIST_HEAD(&udev->qfull_queue);
+	INIT_LIST_HEAD(&udev->inflight_queue);
 	idr_init(&udev->commands);
 
 	timer_setup(&udev->qfull_timer, tcmu_qfull_timedout, 0);
@@ -1383,7 +1407,7 @@ static struct se_device *tcmu_alloc_device(struct se_hba *hba, const char *name)
 	return &udev->se_dev;
 }
 
-static bool run_cmdr_queue(struct tcmu_dev *udev, bool fail)
+static bool run_qfull_queue(struct tcmu_dev *udev, bool fail)
 {
 	struct tcmu_cmd *tcmu_cmd, *tmp_cmd;
 	LIST_HEAD(cmds);
@@ -1391,15 +1415,15 @@ static bool run_cmdr_queue(struct tcmu_dev *udev, bool fail)
 	sense_reason_t scsi_ret;
 	int ret;
 
-	if (list_empty(&udev->cmdr_queue))
+	if (list_empty(&udev->qfull_queue))
 		return true;
 
 	pr_debug("running %s's cmdr queue forcefail %d\n", udev->name, fail);
 
-	list_splice_init(&udev->cmdr_queue, &cmds);
+	list_splice_init(&udev->qfull_queue, &cmds);
 
-	list_for_each_entry_safe(tcmu_cmd, tmp_cmd, &cmds, cmdr_queue_entry) {
-		list_del_init(&tcmu_cmd->cmdr_queue_entry);
+	list_for_each_entry_safe(tcmu_cmd, tmp_cmd, &cmds, queue_entry) {
+		list_del_init(&tcmu_cmd->queue_entry);
 
 	        pr_debug("removing cmd %u on dev %s from queue\n",
 		         tcmu_cmd->cmd_id, udev->name);
@@ -1437,14 +1461,13 @@ static bool run_cmdr_queue(struct tcmu_dev *udev, bool fail)
 			 * cmd was requeued, so just put all cmds back in
 			 * the queue
 			 */
-			list_splice_tail(&cmds, &udev->cmdr_queue);
+			list_splice_tail(&cmds, &udev->qfull_queue);
 			drained = false;
-			goto done;
+			break;
 		}
 	}
-	if (list_empty(&udev->cmdr_queue))
-		del_timer(&udev->qfull_timer);
-done:
+
+	tcmu_set_next_deadline(&udev->qfull_queue, &udev->qfull_timer);
 	return drained;
 }
 
@@ -1454,7 +1477,7 @@ static int tcmu_irqcontrol(struct uio_info *info, s32 irq_on)
 
 	mutex_lock(&udev->cmdr_lock);
 	tcmu_handle_completions(udev);
-	run_cmdr_queue(udev, false);
+	run_qfull_queue(udev, false);
 	mutex_unlock(&udev->cmdr_lock);
 
 	return 0;
@@ -1633,7 +1656,7 @@ static void tcmu_dev_kref_release(struct kref *kref)
 	WARN_ON(!all_expired);
 
 	tcmu_blocks_release(&udev->data_blocks, 0, udev->dbi_max + 1);
-	kfree(udev->data_bitmap);
+	bitmap_free(udev->data_bitmap);
 	mutex_unlock(&udev->cmdr_lock);
 
 	call_rcu(&dev->rcu_head, tcmu_dev_call_rcu);
@@ -1687,6 +1710,24 @@ static int tcmu_init_genl_cmd_reply(struct tcmu_dev *udev, int cmd)
 
 	mutex_unlock(&tcmu_nl_cmd_mutex);
 	return 0;
+}
+
+static void tcmu_destroy_genl_cmd_reply(struct tcmu_dev *udev)
+{
+	struct tcmu_nl_cmd *nl_cmd = &udev->curr_nl_cmd;
+
+	if (!tcmu_kern_cmd_reply_supported)
+		return;
+
+	if (udev->nl_reply_supported <= 0)
+		return;
+
+	mutex_lock(&tcmu_nl_cmd_mutex);
+
+	list_del(&nl_cmd->nl_list);
+	memset(nl_cmd, 0, sizeof(*nl_cmd));
+
+	mutex_unlock(&tcmu_nl_cmd_mutex);
 }
 
 static int tcmu_wait_genl_cmd_reply(struct tcmu_dev *udev)
@@ -1764,11 +1805,14 @@ static int tcmu_netlink_event_send(struct tcmu_dev *udev,
 
 	ret = genlmsg_multicast_allns(&tcmu_genl_family, skb, 0,
 				      TCMU_MCGRP_CONFIG, GFP_KERNEL);
-	/* We don't care if no one is listening */
-	if (ret == -ESRCH)
-		ret = 0;
-	if (!ret)
-		ret = tcmu_wait_genl_cmd_reply(udev);
+
+	/* Wait during an add as the listener may not be up yet */
+	if (ret == 0 ||
+	   (ret == -ESRCH && cmd == TCMU_CMD_ADDED_DEVICE))
+		return tcmu_wait_genl_cmd_reply(udev);
+	else
+		tcmu_destroy_genl_cmd_reply(udev);
+
 	return ret;
 }
 
@@ -1804,20 +1848,18 @@ static int tcmu_update_uio_info(struct tcmu_dev *udev)
 {
 	struct tcmu_hba *hba = udev->hba->hba_ptr;
 	struct uio_info *info;
-	size_t size, used;
 	char *str;
 
 	info = &udev->uio_info;
-	size = snprintf(NULL, 0, "tcm-user/%u/%s/%s", hba->host_id, udev->name,
-			udev->dev_config);
-	size += 1; /* for \0 */
-	str = kmalloc(size, GFP_KERNEL);
+
+	if (udev->dev_config[0])
+		str = kasprintf(GFP_KERNEL, "tcm-user/%u/%s/%s", hba->host_id,
+				udev->name, udev->dev_config);
+	else
+		str = kasprintf(GFP_KERNEL, "tcm-user/%u/%s", hba->host_id,
+				udev->name);
 	if (!str)
 		return -ENOMEM;
-
-	used = snprintf(str, size, "tcm-user/%u/%s", hba->host_id, udev->name);
-	if (udev->dev_config[0])
-		snprintf(str + used, size - used, "/%s", udev->dev_config);
 
 	/* If the old string exists, free it */
 	kfree(info->name);
@@ -1840,9 +1882,7 @@ static int tcmu_configure_device(struct se_device *dev)
 	info = &udev->uio_info;
 
 	mutex_lock(&udev->cmdr_lock);
-	udev->data_bitmap = kcalloc(BITS_TO_LONGS(udev->max_blocks),
-				    sizeof(unsigned long),
-				    GFP_KERNEL);
+	udev->data_bitmap = bitmap_zalloc(udev->max_blocks, GFP_KERNEL);
 	mutex_unlock(&udev->cmdr_lock);
 	if (!udev->data_bitmap) {
 		ret = -ENOMEM;
@@ -1929,7 +1969,7 @@ err_register:
 	vfree(udev->mb_addr);
 	udev->mb_addr = NULL;
 err_vzalloc:
-	kfree(udev->data_bitmap);
+	bitmap_free(udev->data_bitmap);
 	udev->data_bitmap = NULL;
 err_bitmap_alloc:
 	kfree(info->name);
@@ -1982,7 +2022,7 @@ static void tcmu_block_dev(struct tcmu_dev *udev)
 	/* complete IO that has executed successfully */
 	tcmu_handle_completions(udev);
 	/* fail IO waiting to be queued */
-	run_cmdr_queue(udev, true);
+	run_qfull_queue(udev, true);
 
 unlock:
 	mutex_unlock(&udev->cmdr_lock);
@@ -1997,7 +2037,7 @@ static void tcmu_reset_ring(struct tcmu_dev *udev, u8 err_level)
 	mutex_lock(&udev->cmdr_lock);
 
 	idr_for_each_entry(&udev->commands, cmd, i) {
-		if (!list_empty(&cmd->cmdr_queue_entry))
+		if (!test_bit(TCMU_CMD_BIT_INFLIGHT, &cmd->flags))
 			continue;
 
 		pr_debug("removing cmd %u on dev %s from ring (is expired %d)\n",
@@ -2006,6 +2046,8 @@ static void tcmu_reset_ring(struct tcmu_dev *udev, u8 err_level)
 
 		idr_remove(&udev->commands, i);
 		if (!test_bit(TCMU_CMD_BIT_EXPIRED, &cmd->flags)) {
+			WARN_ON(!cmd->se_cmd);
+			list_del_init(&cmd->queue_entry);
 			if (err_level == 1) {
 				/*
 				 * Userspace was not able to start the
@@ -2666,6 +2708,10 @@ static void check_timedout_devices(void)
 
 		mutex_lock(&udev->cmdr_lock);
 		idr_for_each(&udev->commands, tcmu_check_expired_cmd, NULL);
+
+		tcmu_set_next_deadline(&udev->inflight_queue, &udev->cmd_timer);
+		tcmu_set_next_deadline(&udev->qfull_queue, &udev->qfull_timer);
+
 		mutex_unlock(&udev->cmdr_lock);
 
 		spin_lock_bh(&timed_out_udevs_lock);

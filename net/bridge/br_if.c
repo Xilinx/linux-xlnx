@@ -1,14 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  *	Userspace interface
  *	Linux ethernet bridge
  *
  *	Authors:
  *	Lennert Buytenhek		<buytenh@gnu.org>
- *
- *	This program is free software; you can redistribute it and/or
- *	modify it under the terms of the GNU General Public License
- *	as published by the Free Software Foundation; either version
- *	2 of the License, or (at your option) any later version.
  */
 
 #include <linux/kernel.h>
@@ -179,7 +175,7 @@ int nbp_backup_change(struct net_bridge_port *p,
 	ASSERT_RTNL();
 
 	if (backup_dev) {
-		if (!br_port_exists(backup_dev))
+		if (!netif_is_bridge_port(backup_dev))
 			return -ENOENT;
 
 		backup_p = br_port_get_rtnl(backup_dev);
@@ -394,8 +390,7 @@ static int find_portno(struct net_bridge *br)
 	struct net_bridge_port *p;
 	unsigned long *inuse;
 
-	inuse = kcalloc(BITS_TO_LONGS(BR_MAX_PORTS), sizeof(unsigned long),
-			GFP_KERNEL);
+	inuse = bitmap_zalloc(BR_MAX_PORTS, GFP_KERNEL);
 	if (!inuse)
 		return -ENOMEM;
 
@@ -404,7 +399,7 @@ static int find_portno(struct net_bridge *br)
 		set_bit(p->port_no, inuse);
 	}
 	index = find_first_zero_bit(inuse, BR_MAX_PORTS);
-	kfree(inuse);
+	bitmap_free(inuse);
 
 	return (index >= BR_MAX_PORTS) ? -EXFULL : index;
 }
@@ -509,14 +504,14 @@ void br_mtu_auto_adjust(struct net_bridge *br)
 	ASSERT_RTNL();
 
 	/* if the bridge MTU was manually configured don't mess with it */
-	if (br->mtu_set_by_user)
+	if (br_opt_get(br, BROPT_MTU_SET_BY_USER))
 		return;
 
 	/* change to the minimum MTU and clear the flag which was set by
 	 * the bridge ndo_change_mtu callback
 	 */
 	dev_set_mtu(br->dev, br_mtu_min(br));
-	br->mtu_set_by_user = false;
+	br_opt_toggle(br, BROPT_MTU_SET_BY_USER, false);
 }
 
 static void br_set_gso_limits(struct net_bridge *br)
@@ -603,13 +598,15 @@ int br_add_if(struct net_bridge *br, struct net_device *dev,
 	call_netdevice_notifiers(NETDEV_JOIN, dev);
 
 	err = dev_set_allmulti(dev, 1);
-	if (err)
-		goto put_back;
+	if (err) {
+		kfree(p);	/* kobject not yet init'd, manually free */
+		goto err1;
+	}
 
 	err = kobject_init_and_add(&p->kobj, &brport_ktype, &(dev->dev.kobj),
 				   SYSFS_BRIDGE_PORT_ATTR);
 	if (err)
-		goto err1;
+		goto err2;
 
 	err = br_sysfs_addif(p);
 	if (err)
@@ -651,7 +648,16 @@ int br_add_if(struct net_bridge *br, struct net_device *dev,
 	if (br_fdb_insert(br, p, dev->dev_addr, 0))
 		netdev_err(dev, "failed insert local address bridge forwarding table\n");
 
-	err = nbp_vlan_init(p);
+	if (br->dev->addr_assign_type != NET_ADDR_SET) {
+		/* Ask for permission to use this MAC address now, even if we
+		 * don't end up choosing it below.
+		 */
+		err = dev_pre_changeaddr_notify(br->dev, dev->dev_addr, extack);
+		if (err)
+			goto err7;
+	}
+
+	err = nbp_vlan_init(p, extack);
 	if (err) {
 		netdev_err(dev, "failed to initialize vlan filtering on this port\n");
 		goto err7;
@@ -692,12 +698,9 @@ err3:
 	sysfs_remove_link(br->ifobj, p->dev->name);
 err2:
 	kobject_put(&p->kobj);
-	p = NULL; /* kobject_put frees */
-err1:
 	dev_set_allmulti(dev, -1);
-put_back:
+err1:
 	dev_put(dev);
-	kfree(p);
 	return err;
 }
 
@@ -742,3 +745,15 @@ void br_port_flags_change(struct net_bridge_port *p, unsigned long mask)
 	if (mask & BR_NEIGH_SUPPRESS)
 		br_recalculate_neigh_suppress_enabled(br);
 }
+
+bool br_port_flag_is_set(const struct net_device *dev, unsigned long flag)
+{
+	struct net_bridge_port *p;
+
+	p = br_port_get_rtnl_rcu(dev);
+	if (!p)
+		return false;
+
+	return p->flags & flag;
+}
+EXPORT_SYMBOL_GPL(br_port_flag_is_set);

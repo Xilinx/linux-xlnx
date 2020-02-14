@@ -1,3 +1,5 @@
+# SPDX-License-Identifier: GPL-2.0
+
 xilinx-scd-objs += xilinx-scenechange.o xilinx-scenechange-channel.o \
 		   xilinx-scenechange-dma.o
 xilinx-video-objs += xilinx-dma.o xilinx-vip.o xilinx-vipp.o

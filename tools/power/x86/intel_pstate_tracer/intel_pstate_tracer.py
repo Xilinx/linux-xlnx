@@ -1,4 +1,5 @@
 #!/usr/bin/python
+# SPDX-License-Identifier: GPL-2.0-only
 # -*- coding: utf-8 -*-
 #
 """ This utility can be used to debug and tune the performance of the
@@ -585,9 +586,9 @@ current_max_cpu = 0
 
 read_trace_data(filename)
 
-clear_trace_file()
-# Free the memory
 if interval:
+    clear_trace_file()
+    # Free the memory
     free_trace_buffer()
 
 if graph_data_present == False:

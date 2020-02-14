@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /**
  * 1588 PTP support for Cadence GEM device.
  *
@@ -5,18 +6,6 @@
  *
  * Authors: Rafal Ozieblo <rafalo@cadence.com>
  *          Bartosz Folta <bfolta@cadence.com>
- *
- * This program is free software: you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2  of
- * the License as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 #include <linux/kernel.h>
 #include <linux/types.h>
@@ -379,6 +368,7 @@ void gem_ptp_init(struct net_device *dev)
 	bp->ptp_clock_info = gem_ptp_caps_template;
 
 	/* nominal frequency and maximum adjustment in ppb */
+	bp->tsu_rate = bp->ptp_info->get_tsu_rate(bp);
 	bp->ptp_clock_info.max_adj = bp->ptp_info->get_ptp_max_adj();
 	gem_ptp_init_timer(bp);
 	bp->ptp_clock = ptp_clock_register(&bp->ptp_clock_info, &dev->dev);

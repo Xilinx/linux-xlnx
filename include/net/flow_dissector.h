@@ -4,6 +4,7 @@
 
 #include <linux/types.h>
 #include <linux/in6.h>
+#include <linux/siphash.h>
 #include <uapi/linux/if_ether.h>
 
 /**
@@ -46,6 +47,7 @@ struct flow_dissector_key_tags {
 
 struct flow_dissector_key_vlan {
 	u16	vlan_id:12,
+		vlan_dei:1,
 		vlan_priority:3;
 	__be16	vlan_tpid;
 };
@@ -199,6 +201,28 @@ struct flow_dissector_key_ip {
 	__u8	ttl;
 };
 
+/**
+ * struct flow_dissector_key_meta:
+ * @ingress_ifindex: ingress ifindex
+ */
+struct flow_dissector_key_meta {
+	int ingress_ifindex;
+};
+
+/**
+ * struct flow_dissector_key_ct:
+ * @ct_state: conntrack state after converting with map
+ * @ct_mark: conttrack mark
+ * @ct_zone: conntrack zone
+ * @ct_labels: conntrack labels
+ */
+struct flow_dissector_key_ct {
+	u16	ct_state;
+	u16	ct_zone;
+	u32	ct_mark;
+	u32	ct_labels[4];
+};
+
 enum flow_dissector_key_id {
 	FLOW_DISSECTOR_KEY_CONTROL, /* struct flow_dissector_key_control */
 	FLOW_DISSECTOR_KEY_BASIC, /* struct flow_dissector_key_basic */
@@ -209,8 +233,8 @@ enum flow_dissector_key_id {
 	FLOW_DISSECTOR_KEY_ETH_ADDRS, /* struct flow_dissector_key_eth_addrs */
 	FLOW_DISSECTOR_KEY_TIPC, /* struct flow_dissector_key_tipc */
 	FLOW_DISSECTOR_KEY_ARP, /* struct flow_dissector_key_arp */
-	FLOW_DISSECTOR_KEY_VLAN, /* struct flow_dissector_key_flow_vlan */
-	FLOW_DISSECTOR_KEY_FLOW_LABEL, /* struct flow_dissector_key_flow_tags */
+	FLOW_DISSECTOR_KEY_VLAN, /* struct flow_dissector_key_vlan */
+	FLOW_DISSECTOR_KEY_FLOW_LABEL, /* struct flow_dissector_key_tags */
 	FLOW_DISSECTOR_KEY_GRE_KEYID, /* struct flow_dissector_key_keyid */
 	FLOW_DISSECTOR_KEY_MPLS_ENTROPY, /* struct flow_dissector_key_keyid */
 	FLOW_DISSECTOR_KEY_ENC_KEYID, /* struct flow_dissector_key_keyid */
@@ -221,17 +245,18 @@ enum flow_dissector_key_id {
 	FLOW_DISSECTOR_KEY_MPLS, /* struct flow_dissector_key_mpls */
 	FLOW_DISSECTOR_KEY_TCP, /* struct flow_dissector_key_tcp */
 	FLOW_DISSECTOR_KEY_IP, /* struct flow_dissector_key_ip */
-	FLOW_DISSECTOR_KEY_CVLAN, /* struct flow_dissector_key_flow_vlan */
+	FLOW_DISSECTOR_KEY_CVLAN, /* struct flow_dissector_key_vlan */
 	FLOW_DISSECTOR_KEY_ENC_IP, /* struct flow_dissector_key_ip */
 	FLOW_DISSECTOR_KEY_ENC_OPTS, /* struct flow_dissector_key_enc_opts */
+	FLOW_DISSECTOR_KEY_META, /* struct flow_dissector_key_meta */
+	FLOW_DISSECTOR_KEY_CT, /* struct flow_dissector_key_ct */
 
 	FLOW_DISSECTOR_KEY_MAX,
 };
 
 #define FLOW_DISSECTOR_F_PARSE_1ST_FRAG		BIT(0)
-#define FLOW_DISSECTOR_F_STOP_AT_L3		BIT(1)
-#define FLOW_DISSECTOR_F_STOP_AT_FLOW_LABEL	BIT(2)
-#define FLOW_DISSECTOR_F_STOP_AT_ENCAP		BIT(3)
+#define FLOW_DISSECTOR_F_STOP_AT_FLOW_LABEL	BIT(1)
+#define FLOW_DISSECTOR_F_STOP_AT_ENCAP		BIT(2)
 
 struct flow_dissector_key {
 	enum flow_dissector_key_id key_id;
@@ -252,7 +277,7 @@ struct flow_keys_basic {
 struct flow_keys {
 	struct flow_dissector_key_control control;
 #define FLOW_KEYS_HASH_START_FIELD basic
-	struct flow_dissector_key_basic basic;
+	struct flow_dissector_key_basic basic __aligned(SIPHASH_ALIGNMENT);
 	struct flow_dissector_key_tags tags;
 	struct flow_dissector_key_vlan vlan;
 	struct flow_dissector_key_vlan cvlan;
@@ -304,5 +329,12 @@ static inline void *skb_flow_dissector_target(struct flow_dissector *flow_dissec
 {
 	return ((char *)target_container) + flow_dissector->offset[key_id];
 }
+
+struct bpf_flow_dissector {
+	struct bpf_flow_keys	*flow_keys;
+	const struct sk_buff	*skb;
+	void			*data;
+	void			*data_end;
+};
 
 #endif

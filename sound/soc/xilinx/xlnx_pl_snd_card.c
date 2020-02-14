@@ -181,60 +181,80 @@ static const struct snd_soc_ops xlnx_spdif_card_ops = {
 	.hw_params = xlnx_spdif_card_hw_params,
 };
 
+SND_SOC_DAILINK_DEFS(xlnx_i2s,
+		     DAILINK_COMP_ARRAY(COMP_CPU("xilinx-i2s")),
+		     DAILINK_COMP_ARRAY(COMP_DUMMY()),
+		     DAILINK_COMP_ARRAY(COMP_PLATFORM(NULL)));
+
+SND_SOC_DAILINK_DEFS(xlnx_hdmi_tx,
+		     DAILINK_COMP_ARRAY(COMP_DUMMY()),
+		     DAILINK_COMP_ARRAY(COMP_CODEC("hdmi-audio-codec.0", "i2s-hifi")),
+		     DAILINK_COMP_ARRAY(COMP_PLATFORM(NULL)));
+
+SND_SOC_DAILINK_DEFS(xlnx_hdmi_rx,
+		     DAILINK_COMP_ARRAY(COMP_DUMMY()),
+		     DAILINK_COMP_ARRAY(COMP_CODEC(NULL, "xlnx_hdmi_rx")),
+		     DAILINK_COMP_ARRAY(COMP_PLATFORM(NULL)));
+
+SND_SOC_DAILINK_DEFS(xlnx_sdi_tx,
+		     DAILINK_COMP_ARRAY(COMP_DUMMY()),
+		     DAILINK_COMP_ARRAY(COMP_CODEC(NULL, "xlnx_sdi_tx")),
+		     DAILINK_COMP_ARRAY(COMP_PLATFORM(NULL)));
+
+SND_SOC_DAILINK_DEFS(xlnx_sdi_rx,
+		     DAILINK_COMP_ARRAY(COMP_DUMMY()),
+		     DAILINK_COMP_ARRAY(COMP_CODEC(NULL, "xlnx_sdi_rx")),
+		     DAILINK_COMP_ARRAY(COMP_PLATFORM(NULL)));
+
+SND_SOC_DAILINK_DEFS(xlnx_spdif,
+		     DAILINK_COMP_ARRAY(COMP_DUMMY()),
+		     DAILINK_COMP_ARRAY(COMP_DUMMY()),
+		     DAILINK_COMP_ARRAY(COMP_PLATFORM(NULL)));
+
 static struct snd_soc_dai_link xlnx_snd_dai[][XLNX_MAX_PATHS] = {
 	[I2S_AUDIO] = {
 		{
 			.name = "xilinx-i2s_playback",
-			.codec_dai_name = "snd-soc-dummy-dai",
-			.codec_name = "snd-soc-dummy",
+			SND_SOC_DAILINK_REG(xlnx_i2s),
 			.ops = &xlnx_i2s_card_ops,
 		},
 		{
 			.name = "xilinx-i2s_capture",
-			.codec_dai_name = "snd-soc-dummy-dai",
-			.codec_name = "snd-soc-dummy",
+			SND_SOC_DAILINK_REG(xlnx_i2s),
 			.ops = &xlnx_i2s_card_ops,
 		},
 	},
 	[HDMI_AUDIO] = {
 		{
 			.name = "xilinx-hdmi-playback",
-			.codec_dai_name = "i2s-hifi",
-			.codec_name = "hdmi-audio-codec.0",
-			.cpu_dai_name = "snd-soc-dummy-dai",
+			SND_SOC_DAILINK_REG(xlnx_hdmi_tx),
 			.ops = &xlnx_hdmi_card_ops,
 		},
 		{
 			.name = "xilinx-hdmi-capture",
-			.codec_dai_name = "xlnx_hdmi_rx",
-			.cpu_dai_name = "snd-soc-dummy-dai",
+			SND_SOC_DAILINK_REG(xlnx_hdmi_rx),
 		},
 	},
 	[SDI_AUDIO] = {
 		{
 			.name = "xlnx-sdi-playback",
-			.codec_dai_name = "xlnx_sdi_tx",
-			.cpu_dai_name = "snd-soc-dummy-dai",
+			SND_SOC_DAILINK_REG(xlnx_sdi_tx),
 			.ops = &xlnx_sdi_card_ops,
 		},
 		{
 			.name = "xlnx-sdi-capture",
-			.codec_dai_name = "xlnx_sdi_rx",
-			.cpu_dai_name = "snd-soc-dummy-dai",
+			SND_SOC_DAILINK_REG(xlnx_sdi_rx),
 		},
-
 	},
 	[SPDIF_AUDIO] = {
 		{
 			.name = "xilinx-spdif_playback",
-			.codec_dai_name = "snd-soc-dummy-dai",
-			.codec_name = "snd-soc-dummy",
+			SND_SOC_DAILINK_REG(xlnx_spdif),
 			.ops = &xlnx_spdif_card_ops,
 		},
 		{
 			.name = "xilinx-spdif_capture",
-			.codec_dai_name = "snd-soc-dummy-dai",
-			.codec_name = "snd-soc-dummy",
+			SND_SOC_DAILINK_REG(xlnx_spdif),
 			.ops = &xlnx_spdif_card_ops,
 		},
 	},
@@ -325,8 +345,8 @@ static int xlnx_snd_probe(struct platform_device *pdev)
 		switch (audio_interface) {
 		case I2S_AUDIO:
 			*dai = xlnx_snd_dai[I2S_AUDIO][i];
-			dai->platform_of_node = pnode;
-			dai->cpu_of_node = node[i];
+			dai->platforms->of_node = pnode;
+			dai->cpus->of_node = node[i];
 			card->num_links++;
 			snd_soc_card_set_drvdata(card, prv);
 			dev_dbg(card->dev, "%s registered\n",
@@ -334,9 +354,9 @@ static int xlnx_snd_probe(struct platform_device *pdev)
 			break;
 		case HDMI_AUDIO:
 			*dai = xlnx_snd_dai[HDMI_AUDIO][i];
-			dai->platform_of_node = pnode;
+			dai->platforms->of_node = pnode;
 			if (i == XLNX_CAPTURE)
-				dai->codec_of_node = node[i];
+				dai->codecs->of_node = node[i];
 			card->num_links++;
 			/* TODO: support multiple sampling rates */
 			prv->mclk_ratio = 384;
@@ -346,8 +366,8 @@ static int xlnx_snd_probe(struct platform_device *pdev)
 			break;
 		case SDI_AUDIO:
 			*dai = xlnx_snd_dai[SDI_AUDIO][i];
-			dai->platform_of_node = pnode;
-			dai->codec_of_node = node[i];
+			dai->platforms->of_node = pnode;
+			dai->codecs->of_node = node[i];
 			card->num_links++;
 			/* TODO: support multiple sampling rates */
 			prv->mclk_ratio = 384;
@@ -357,8 +377,8 @@ static int xlnx_snd_probe(struct platform_device *pdev)
 			break;
 		case SPDIF_AUDIO:
 			*dai = xlnx_snd_dai[SPDIF_AUDIO][i];
-			dai->platform_of_node = pnode;
-			dai->cpu_of_node = node[i];
+			dai->platforms->of_node = pnode;
+			dai->codecs->of_node = node[i];
 			card->num_links++;
 			prv->mclk_ratio = 384;
 			snd_soc_card_set_drvdata(card, prv);

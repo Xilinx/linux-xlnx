@@ -205,15 +205,21 @@ static void __of_attach_node(struct device_node *np)
 	const __be32 *phandle;
 	int sz;
 
-	np->name = __of_get_property(np, "name", NULL) ? : "<NULL>";
-	np->type = __of_get_property(np, "device_type", NULL) ? : "<NULL>";
+	if (!of_node_check_flag(np, OF_OVERLAY)) {
+		np->name = __of_get_property(np, "name", NULL);
+		if (!np->name)
+			np->name = "<NULL>";
 
-	phandle = __of_get_property(np, "phandle", &sz);
-	if (!phandle)
-		phandle = __of_get_property(np, "linux,phandle", &sz);
-	if (IS_ENABLED(CONFIG_PPC_PSERIES) && !phandle)
-		phandle = __of_get_property(np, "ibm,phandle", &sz);
-	np->phandle = (phandle && (sz >= 4)) ? be32_to_cpup(phandle) : 0;
+		phandle = __of_get_property(np, "phandle", &sz);
+		if (!phandle)
+			phandle = __of_get_property(np, "linux,phandle", &sz);
+		if (IS_ENABLED(CONFIG_PPC_PSERIES) && !phandle)
+			phandle = __of_get_property(np, "ibm,phandle", &sz);
+		if (phandle && (sz >= 4))
+			np->phandle = be32_to_cpup(phandle);
+		else
+			np->phandle = 0;
+	}
 
 	np->child = NULL;
 	np->sibling = np->parent->child;
@@ -268,13 +274,13 @@ void __of_detach_node(struct device_node *np)
 	}
 
 	of_node_set_flag(np, OF_DETACHED);
+
+	/* race with of_find_node_by_phandle() prevented by devtree_lock */
+	__of_free_phandle_cache_entry(np->phandle);
 }
 
 /**
  * of_detach_node() - "Unplug" a node from the device tree.
- *
- * The caller must hold a reference to the node.  The memory associated with
- * the node is not freed until its refcount goes to zero.
  */
 int of_detach_node(struct device_node *np)
 {
@@ -329,6 +335,25 @@ void of_node_release(struct kobject *kobj)
 	}
 	if (!of_node_check_flag(node, OF_DYNAMIC))
 		return;
+
+	if (of_node_check_flag(node, OF_OVERLAY)) {
+
+		if (!of_node_check_flag(node, OF_OVERLAY_FREE_CSET)) {
+			/* premature refcount of zero, do not free memory */
+			pr_err("ERROR: memory leak before free overlay changeset,  %pOF\n",
+			       node);
+			return;
+		}
+
+		/*
+		 * If node->properties non-empty then properties were added
+		 * to this node either by different overlay that has not
+		 * yet been removed, or by a non-overlay mechanism.
+		 */
+		if (node->properties)
+			pr_err("ERROR: %s(), unexpected properties in %pOF\n",
+			       __func__, node);
+	}
 
 	property_list_free(node->properties);
 	property_list_free(node->deadprops);
@@ -434,6 +459,16 @@ struct device_node *__of_node_dup(const struct device_node *np,
 
 static void __of_changeset_entry_destroy(struct of_changeset_entry *ce)
 {
+	if (ce->action == OF_RECONFIG_ATTACH_NODE &&
+	    of_node_check_flag(ce->np, OF_OVERLAY)) {
+		if (kref_read(&ce->np->kobj.kref) > 1) {
+			pr_err("ERROR: memory leak, expected refcount 1 instead of %d, of_node_get()/of_node_put() unbalanced - destroy cset entry: attach overlay node %pOF\n",
+			       kref_read(&ce->np->kobj.kref), ce->np);
+		} else {
+			of_node_set_flag(ce->np, OF_OVERLAY_FREE_CSET);
+		}
+	}
+
 	of_node_put(ce->np);
 	list_del(&ce->node);
 	kfree(ce);
@@ -892,176 +927,3 @@ int of_changeset_action(struct of_changeset *ocs, unsigned long action,
 	return 0;
 }
 EXPORT_SYMBOL_GPL(of_changeset_action);
-
-/* changeset helpers */
-
-/**
- * __of_changeset_add_property_copy - Create/update a new property copying
- *                                    name & value
- *
- * @ocs:	changeset pointer
- * @np:		device node pointer
- * @name:	name of the property
- * @value:	pointer to the value data
- * @length:	length of the value in bytes
- * @update:	True on update operation
- *
- * Adds/updates a property to the changeset by making copies of the name & value
- * entries. The @update parameter controls whether an add or update takes place.
- *
- * Returns zero on success, a negative error value otherwise.
- */
-int __of_changeset_add_update_property_copy(struct of_changeset *ocs,
-		struct device_node *np, const char *name, const void *value,
-		int length, bool update)
-{
-	struct property *prop;
-	char *new_name;
-	void *new_value;
-	int ret = -ENOMEM;
-
-	prop = kzalloc(sizeof(*prop), GFP_KERNEL);
-	if (!prop)
-		return -ENOMEM;
-
-	new_name = kstrdup(name, GFP_KERNEL);
-	if (!new_name)
-		goto out_err;
-
-	/*
-	 * NOTE: There is no check for zero length value.
-	 * In case of a boolean property, this will allocate a value
-	 * of zero bytes. We do this to work around the use
-	 * of of_get_property() calls on boolean values.
-	 */
-	new_value = kmemdup(value, length, GFP_KERNEL);
-	if (!new_value)
-		goto out_err;
-
-	of_property_set_flag(prop, OF_DYNAMIC);
-
-	prop->name = new_name;
-	prop->value = new_value;
-	prop->length = length;
-
-	if (!update)
-		ret = of_changeset_add_property(ocs, np, prop);
-	else
-		ret = of_changeset_update_property(ocs, np, prop);
-
-	if (!ret)
-		return 0;
-
-out_err:
-	kfree(prop->value);
-	kfree(prop->name);
-	kfree(prop);
-	return ret;
-}
-EXPORT_SYMBOL_GPL(__of_changeset_add_update_property_copy);
-
-/**
- * of_changeset_add_property_stringf - Create a new formatted string property
- *
- * @ocs:	changeset pointer
- * @np:		device node pointer
- * @name:	name of the property
- * @fmt:	format of string property
- * ...		arguments of the format string
- *
- * Adds a string property to the changeset by making copies of the name
- * and the formatted value.
- *
- * Returns zero on success, a negative error value otherwise.
- */
-__printf(4, 5) int of_changeset_add_property_stringf(
-		struct of_changeset *ocs, struct device_node *np,
-		const char *name, const char *fmt, ...)
-{
-	va_list vargs;
-	int ret;
-
-	va_start(vargs, fmt);
-	ret = __of_changeset_add_update_property_stringv(ocs, np, name, fmt,
-			vargs, false);
-	va_end(vargs);
-	return ret;
-}
-EXPORT_SYMBOL_GPL(of_changeset_add_property_stringf);
-
-/**
- * of_changeset_update_property_stringf - Update formatted string property
- *
- * @ocs:	changeset pointer
- * @np:		device node pointer
- * @name:	name of the property
- * @fmt:	format of string property
- * ...		arguments of the format string
- *
- * Updates a string property to the changeset by making copies of the name
- * and the formatted value.
- *
- * Returns zero on success, a negative error value otherwise.
- */
-int of_changeset_update_property_stringf(
-	struct of_changeset *ocs, struct device_node *np,
-	const char *name, const char *fmt, ...)
-{
-	va_list vargs;
-	int ret;
-
-	va_start(vargs, fmt);
-	ret = __of_changeset_add_update_property_stringv(ocs, np, name, fmt,
-			vargs, true);
-	va_end(vargs);
-	return ret;
-}
-EXPORT_SYMBOL_GPL(of_changeset_update_property_stringf);
-
-/**
- * __of_changeset_add_update_property_string_list - Create/update a string
- *                                                  list property
- *
- * @ocs:	changeset pointer
- * @np:		device node pointer
- * @name:	name of the property
- * @strs:	pointer to the string list
- * @count:	string count
- * @update:	True on update operation
- *
- * Adds a string list property to the changeset.
- *
- * Returns zero on success, a negative error value otherwise.
- */
-int __of_changeset_add_update_property_string_list(
-		struct of_changeset *ocs, struct device_node *np,
-		const char *name, const char **strs, int count, bool update)
-{
-	int total = 0, i, ret;
-	char *value, *s;
-
-	for (i = 0; i < count; i++) {
-		/* check if  it's NULL */
-		if (!strs[i])
-			return -EINVAL;
-		total += strlen(strs[i]) + 1;
-	}
-
-	value = kmalloc(total, GFP_KERNEL);
-	if (!value)
-		return -ENOMEM;
-
-	for (i = 0, s = value; i < count; i++) {
-		/* no need to check for NULL, check above */
-		strcpy(s, strs[i]);
-		s += strlen(strs[i]) + 1;
-	}
-
-	ret = __of_changeset_add_update_property_copy(ocs, np, name, value,
-			total, update);
-
-	kfree(value);
-
-	return ret;
-}
-EXPORT_SYMBOL_GPL(__of_changeset_add_update_property_string_list);

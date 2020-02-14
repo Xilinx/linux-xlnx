@@ -1,13 +1,5 @@
+/* SPDX-License-Identifier: GPL-2.0-only */
 /* Copyright (c) 2015-2018, The Linux Foundation. All rights reserved.
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 and
- * only version 2 as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
 #ifndef _DPU_HW_PINGPONG_H
@@ -103,16 +95,6 @@ struct dpu_hw_pingpong {
 	/* ops */
 	struct dpu_hw_pingpong_ops ops;
 };
-
-/**
- * dpu_hw_pingpong - convert base object dpu_hw_base to container
- * @hw: Pointer to base hardware block
- * return: Pointer to hardware block container
- */
-static inline struct dpu_hw_pingpong *to_dpu_hw_pingpong(struct dpu_hw_blk *hw)
-{
-	return container_of(hw, struct dpu_hw_pingpong, base);
-}
 
 /**
  * dpu_hw_pingpong_init - initializes the pingpong driver for the passed

@@ -48,6 +48,12 @@ struct dwc3;
 /* DEPXFERCFG parameter 0 */
 #define DWC3_DEPXFERCFG_NUM_XFER_RES(n)	((n) & 0xffff)
 
+/* U1 Device exit Latency */
+#define DWC3_DEFAULT_U1_DEV_EXIT_LAT	0x0A	/* Less then 10 microsec */
+
+/* U2 Device exit Latency */
+#define DWC3_DEFAULT_U2_DEV_EXIT_LAT	0x1FF	/* Less then 511 microsec */
+
 /* Below used in hibernation */
 #define DWC3_NON_STICKY_RESTORE_RETRIES	500
 #define DWC3_NON_STICKY_SAVE_RETRIES	500
@@ -55,12 +61,6 @@ struct dwc3;
 #define DWC3_NON_STICKY_RESTORE_DELAY	100
 #define DWC3_NON_STICKY_SAVE_DELAY	100
 #define DWC3_DEVICE_CTRL_READY_DELAY	5
-
-/* U1 Device exit Latency */
-#define DWC3_DEFAULT_U1_DEV_EXIT_LAT	0x0A	/* Less then 10 microsec */
-
-/* U2 Device exit Latency */
-#define DWC3_DEFAULT_U2_DEV_EXIT_LAT	0x1FF	/* Less then 511 microsec */
 
 /* -------------------------------------------------------------------------- */
 
@@ -89,8 +89,23 @@ static inline void dwc3_gadget_move_started_request(struct dwc3_request *req)
 {
 	struct dwc3_ep		*dep = req->dep;
 
-	req->started = true;
+	req->status = DWC3_REQUEST_STATUS_STARTED;
 	list_move_tail(&req->list, &dep->started_list);
+}
+
+/**
+ * dwc3_gadget_move_cancelled_request - move @req to the cancelled_list
+ * @req: the request to be moved
+ *
+ * Caller should take care of locking. This function will move @req from its
+ * current list to the endpoint's cancelled_list.
+ */
+static inline void dwc3_gadget_move_cancelled_request(struct dwc3_request *req)
+{
+	struct dwc3_ep		*dep = req->dep;
+
+	req->status = DWC3_REQUEST_STATUS_CANCELLED;
+	list_move_tail(&req->list, &dep->cancelled_list);
 }
 
 void dwc3_gadget_giveback(struct dwc3_ep *dep, struct dwc3_request *req,
@@ -109,7 +124,8 @@ int __dwc3_gadget_ep_set_halt(struct dwc3_ep *dep, int value, int protocol);
 int __dwc3_gadget_ep_enable(struct dwc3_ep *dep, unsigned int action);
 int __dwc3_gadget_ep_disable(struct dwc3_ep *dep);
 int __dwc3_gadget_kick_transfer(struct dwc3_ep *dep);
-void dwc3_stop_active_transfer(struct dwc3_ep *dep, bool force);
+void dwc3_stop_active_transfer(struct dwc3_ep *dep, bool force,
+		bool interrupt);
 int dwc3_gadget_run_stop(struct dwc3 *dwc, int is_on, int suspend);
 dma_addr_t dwc3_trb_dma_offset(struct dwc3_ep *dep, struct dwc3_trb *trb);
 void gadget_hibernation_interrupt(struct dwc3 *dwc);

@@ -1,23 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * Universal Interface for Intel High Definition Audio Codec
  *
  * Generic widget tree parser
  *
  * Copyright (c) 2004 Takashi Iwai <tiwai@suse.de>
- *
- *  This driver is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
- *
- *  This driver is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA
  */
 
 #include <linux/init.h>
@@ -29,10 +16,11 @@
 #include <linux/string.h>
 #include <linux/bitops.h>
 #include <linux/module.h>
+#include <linux/leds.h>
 #include <sound/core.h>
 #include <sound/jack.h>
 #include <sound/tlv.h>
-#include "hda_codec.h"
+#include <sound/hda_codec.h>
 #include "hda_local.h"
 #include "hda_auto_parser.h"
 #include "hda_jack.h"
@@ -4035,6 +4023,36 @@ int snd_hda_gen_add_micmute_led(struct hda_codec *codec,
 }
 EXPORT_SYMBOL_GPL(snd_hda_gen_add_micmute_led);
 
+#if IS_REACHABLE(CONFIG_LEDS_TRIGGER_AUDIO)
+static void call_ledtrig_micmute(struct hda_codec *codec)
+{
+	struct hda_gen_spec *spec = codec->spec;
+
+	ledtrig_audio_set(LED_AUDIO_MICMUTE,
+			  spec->micmute_led.led_value ? LED_ON : LED_OFF);
+}
+#endif
+
+/**
+ * snd_hda_gen_fixup_micmute_led - A fixup for mic-mute LED trigger
+ *
+ * Pass this function to the quirk entry if another driver supports the
+ * audio mic-mute LED trigger.  Then this will bind the mixer capture switch
+ * change with the LED.
+ *
+ * Note that this fixup has to be called after other fixup that sets
+ * cap_sync_hook.  Otherwise the chaining wouldn't work.
+ */
+void snd_hda_gen_fixup_micmute_led(struct hda_codec *codec,
+				   const struct hda_fixup *fix, int action)
+{
+#if IS_REACHABLE(CONFIG_LEDS_TRIGGER_AUDIO)
+	if (action == HDA_FIXUP_ACT_PROBE)
+		snd_hda_gen_add_micmute_led(codec, call_ledtrig_micmute);
+#endif
+}
+EXPORT_SYMBOL_GPL(snd_hda_gen_fixup_micmute_led);
+
 /*
  * parse digital I/Os and set up NIDs in BIOS auto-parse mode
  */
@@ -5991,7 +6009,8 @@ int snd_hda_gen_init(struct hda_codec *codec)
 	if (spec->init_hook)
 		spec->init_hook(codec);
 
-	snd_hda_apply_verbs(codec);
+	if (!spec->skip_verbs)
+		snd_hda_apply_verbs(codec);
 
 	init_multi_out(codec);
 	init_extra_out(codec);
@@ -6033,6 +6052,24 @@ void snd_hda_gen_free(struct hda_codec *codec)
 }
 EXPORT_SYMBOL_GPL(snd_hda_gen_free);
 
+/**
+ * snd_hda_gen_reboot_notify - Make codec enter D3 before rebooting
+ * @codec: the HDA codec
+ *
+ * This can be put as patch_ops reboot_notify function.
+ */
+void snd_hda_gen_reboot_notify(struct hda_codec *codec)
+{
+	/* Make the codec enter D3 to avoid spurious noises from the internal
+	 * speaker during (and after) reboot
+	 */
+	snd_hda_codec_set_power_to_all(codec, codec->core.afg, AC_PWRST_D3);
+	snd_hda_codec_write(codec, codec->core.afg, 0,
+			    AC_VERB_SET_POWER_STATE, AC_PWRST_D3);
+	msleep(10);
+}
+EXPORT_SYMBOL_GPL(snd_hda_gen_reboot_notify);
+
 #ifdef CONFIG_PM
 /**
  * snd_hda_gen_check_power_status - check the loopback power save state
@@ -6060,6 +6097,7 @@ static const struct hda_codec_ops generic_patch_ops = {
 	.init = snd_hda_gen_init,
 	.free = snd_hda_gen_free,
 	.unsol_event = snd_hda_jack_unsol_event,
+	.reboot_notify = snd_hda_gen_reboot_notify,
 #ifdef CONFIG_PM
 	.check_power_status = snd_hda_gen_check_power_status,
 #endif
@@ -6082,7 +6120,7 @@ static int snd_hda_parse_generic_codec(struct hda_codec *codec)
 
 	err = snd_hda_parse_pin_defcfg(codec, &spec->autocfg, NULL, 0);
 	if (err < 0)
-		return err;
+		goto error;
 
 	err = snd_hda_gen_parse_auto_config(codec, &spec->autocfg);
 	if (err < 0)

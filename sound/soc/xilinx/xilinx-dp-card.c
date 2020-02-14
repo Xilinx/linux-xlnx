@@ -34,17 +34,20 @@ static const struct snd_soc_ops xilinx_dp_ops = {
 	.startup	= xilinx_dp_startup,
 };
 
+SND_SOC_DAILINK_DEFS(xilinx_dp,
+		DAILINK_COMP_ARRAY(COMP_CPU("xilinx-dp-snd-codec-dai")),
+		DAILINK_COMP_ARRAY(COMP_CODEC(NULL, "xilinx-dp-snd-codec-dai")),
+		DAILINK_COMP_ARRAY(COMP_PLATFORM(NULL)));
+
 static struct snd_soc_dai_link xilinx_dp_dai_links[] = {
 	{
 		.name		= "xilinx-dp0",
-		.stream_name	= "xilinx-dp0",
-		.codec_dai_name	= "xilinx-dp-snd-codec-dai",
+		SND_SOC_DAILINK_REG(xilinx_dp),
 		.ops		= &xilinx_dp_ops,
 	},
 	{
 		.name		= "xilinx-dp1",
-		.stream_name	= "xilinx-dp1",
-		.codec_dai_name	= "xilinx-dp-snd-codec-dai",
+		SND_SOC_DAILINK_REG(xilinx_dp),
 		.ops		= &xilinx_dp_ops,
 	},
 
@@ -73,16 +76,16 @@ static int xilinx_dp_probe(struct platform_device *pdev)
 	pcm = of_parse_phandle(node, "xlnx,dp-snd-pcm", 0);
 	if (!pcm)
 		return -ENODEV;
-	xilinx_dp_dai_links[0].platform_of_node = pcm;
-	xilinx_dp_dai_links[0].cpu_of_node = codec;
-	xilinx_dp_dai_links[0].codec_of_node = codec;
+	xilinx_dp_dai_links[0].platforms->of_node = pcm;
+	xilinx_dp_dai_links[0].cpus->of_node = codec;
+	xilinx_dp_dai_links[0].codecs->of_node = codec;
 
 	pcm = of_parse_phandle(node, "xlnx,dp-snd-pcm", 1);
 	if (!pcm)
 		return -ENODEV;
-	xilinx_dp_dai_links[1].platform_of_node = pcm;
-	xilinx_dp_dai_links[1].cpu_of_node = codec;
-	xilinx_dp_dai_links[1].codec_of_node = codec;
+	xilinx_dp_dai_links[1].platforms->of_node = pcm;
+	xilinx_dp_dai_links[1].cpus->of_node = codec;
+	xilinx_dp_dai_links[1].codecs->of_node = codec;
 
 	ret = devm_snd_soc_register_card(&pdev->dev, card);
 	if (ret)

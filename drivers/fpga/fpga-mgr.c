@@ -8,6 +8,7 @@
  * With code from the mailing list:
  * Copyright (C) 2013 Xilinx, Inc.
  */
+#include <linux/dma-buf.h>
 #include <linux/kernel.h>
 #include <linux/firmware.h>
 #include <linux/fpga/fpga-mgr.h>
@@ -303,6 +304,39 @@ static int fpga_mgr_buf_load(struct fpga_manager *mgr,
 	return rc;
 }
 
+static int fpga_dmabuf_load(struct fpga_manager *mgr,
+			    struct fpga_image_info *info)
+{
+	struct dma_buf_attachment *attach;
+	struct sg_table *sgt;
+	int ret;
+
+	/* create attachment for dmabuf with the user device */
+	attach = dma_buf_attach(mgr->dmabuf, &mgr->dev);
+	if (IS_ERR(attach)) {
+		pr_err("failed to attach dmabuf\n");
+		ret = PTR_ERR(attach);
+		goto fail_put;
+	}
+
+	sgt = dma_buf_map_attachment(attach, DMA_BIDIRECTIONAL);
+	if (IS_ERR(sgt)) {
+		ret = PTR_ERR(sgt);
+		goto fail_detach;
+	}
+
+	info->sgt = sgt;
+	ret = fpga_mgr_buf_load_sg(mgr, info, info->sgt);
+	dma_buf_unmap_attachment(attach, sgt, DMA_BIDIRECTIONAL);
+
+fail_detach:
+	dma_buf_detach(mgr->dmabuf, attach);
+fail_put:
+	dma_buf_put(mgr->dmabuf);
+
+	return ret;
+}
+
 /**
  * fpga_mgr_firmware_load - request firmware and load to fpga
  * @mgr:	fpga manager
@@ -332,7 +366,6 @@ static int fpga_mgr_firmware_load(struct fpga_manager *mgr,
 	/* flags indicates whether to do full or partial reconfiguration */
 	info->flags = mgr->flags;
 	memcpy(info->key, mgr->key, ENCRYPTED_KEY_LEN);
-	memcpy(info->iv, mgr->key, ENCRYPTED_IV_LEN);
 
 	ret = request_firmware(&fw, image_name, dev);
 	if (ret) {
@@ -360,6 +393,8 @@ static int fpga_mgr_firmware_load(struct fpga_manager *mgr,
  */
 int fpga_mgr_load(struct fpga_manager *mgr, struct fpga_image_info *info)
 {
+	if (info->flags & FPGA_MGR_CONFIG_DMA_BUF)
+		return fpga_dmabuf_load(mgr, info);
 	if (info->sgt)
 		return fpga_mgr_buf_load_sg(mgr, info, info->sgt);
 	if (info->buf && info->count)
@@ -412,91 +447,6 @@ static ssize_t state_show(struct device *dev,
 	return sprintf(buf, "%s\n", state_str[mgr->state]);
 }
 
-static ssize_t firmware_store(struct device *dev,
-			      struct device_attribute *attr,
-			      const char *buf, size_t count)
-{
-	struct fpga_manager *mgr = to_fpga_manager(dev);
-	unsigned int len;
-	char image_name[NAME_MAX];
-	int ret;
-
-	/* struct with information about the FPGA image to program. */
-	struct fpga_image_info info = {0};
-
-	/* lose terminating \n */
-	strcpy(image_name, buf);
-	len = strlen(image_name);
-	if (image_name[len - 1] == '\n')
-		image_name[len - 1] = 0;
-
-	ret = fpga_mgr_firmware_load(mgr, &info, image_name);
-	if (ret)
-		return ret;
-
-	return count;
-}
-
-static ssize_t key_show(struct device *dev,
-			struct device_attribute *attr, char *buf)
-{
-	struct fpga_manager *mgr = to_fpga_manager(dev);
-
-	return snprintf(buf, ENCRYPTED_KEY_LEN + 1, "%s\n", mgr->key);
-}
-
-static ssize_t key_store(struct device *dev,
-			struct device_attribute *attr,
-			const char *buf, size_t count)
-{
-	struct fpga_manager *mgr = to_fpga_manager(dev);
-
-	memcpy(mgr->key, buf, count);
-
-	return count;
-}
-
-static ssize_t iv_show(struct device *dev,
-			struct device_attribute *attr, char *buf)
-{
-	struct fpga_manager *mgr = to_fpga_manager(dev);
-
-	return snprintf(buf, ENCRYPTED_IV_LEN + 1, "%s\r\n", mgr->iv);
-}
-
-static ssize_t iv_store(struct device *dev,
-			struct device_attribute *attr,
-			const char *buf, size_t count)
-{
-	struct fpga_manager *mgr = to_fpga_manager(dev);
-
-	memcpy(mgr->iv, buf, count);
-
-	return count;
-}
-
-static ssize_t flags_show(struct device *dev,
-			struct device_attribute *attr, char *buf)
-{
-	struct fpga_manager *mgr = to_fpga_manager(dev);
-
-	return sprintf(buf, "%lx\n", mgr->flags);
-}
-
-static ssize_t flags_store(struct device *dev,
-			struct device_attribute *attr,
-			const char *buf, size_t count)
-{
-	struct fpga_manager *mgr = to_fpga_manager(dev);
-	int ret;
-
-	ret = kstrtol(buf, 16, &mgr->flags);
-	if (ret)
-		return ret;
-
-	return count;
-}
-
 static ssize_t status_show(struct device *dev,
 			   struct device_attribute *attr, char *buf)
 {
@@ -538,22 +488,86 @@ static ssize_t status_show(struct device *dev,
 	return len;
 }
 
+static ssize_t firmware_store(struct device *dev,
+			      struct device_attribute *attr,
+			      const char *buf, size_t count)
+{
+	struct fpga_manager *mgr = to_fpga_manager(dev);
+	unsigned int len;
+	char image_name[NAME_MAX];
+	int ret;
+
+	/* struct with information about the FPGA image to program. */
+	struct fpga_image_info info = {0};
+
+	/* lose terminating \n */
+	strcpy(image_name, buf);
+	len = strlen(image_name);
+	if (image_name[len - 1] == '\n')
+		image_name[len - 1] = 0;
+
+	ret = fpga_mgr_firmware_load(mgr, &info, image_name);
+	if (ret)
+		return ret;
+
+	return count;
+}
+
+static ssize_t key_show(struct device *dev,
+			struct device_attribute *attr, char *buf)
+{
+	struct fpga_manager *mgr = to_fpga_manager(dev);
+
+	return snprintf(buf, ENCRYPTED_KEY_LEN + 1, "%s\n", mgr->key);
+}
+
+static ssize_t key_store(struct device *dev,
+			 struct device_attribute *attr,
+			 const char *buf, size_t count)
+{
+	struct fpga_manager *mgr = to_fpga_manager(dev);
+
+	memcpy(mgr->key, buf, count);
+
+	return count;
+}
+
+static ssize_t flags_show(struct device *dev,
+			  struct device_attribute *attr, char *buf)
+{
+	struct fpga_manager *mgr = to_fpga_manager(dev);
+
+	return sprintf(buf, "%lx\n", mgr->flags);
+}
+
+static ssize_t flags_store(struct device *dev,
+			   struct device_attribute *attr,
+			   const char *buf, size_t count)
+{
+	struct fpga_manager *mgr = to_fpga_manager(dev);
+	int ret;
+
+	ret = kstrtol(buf, 16, &mgr->flags);
+	if (ret)
+		return ret;
+
+	return count;
+}
+
 static DEVICE_ATTR_RO(name);
 static DEVICE_ATTR_RO(state);
+static DEVICE_ATTR_RO(status);
 static DEVICE_ATTR_WO(firmware);
 static DEVICE_ATTR_RW(flags);
 static DEVICE_ATTR_RW(key);
-static DEVICE_ATTR_RW(iv);
-static DEVICE_ATTR_RO(status);
 
 static struct attribute *fpga_mgr_attrs[] = {
 	&dev_attr_name.attr,
 	&dev_attr_state.attr,
+	&dev_attr_status.attr,
 	&dev_attr_firmware.attr,
 	&dev_attr_flags.attr,
 	&dev_attr_key.attr,
-	&dev_attr_iv.attr,
-	&dev_attr_status.attr,
 	NULL,
 };
 ATTRIBUTE_GROUPS(fpga_mgr);
@@ -596,11 +610,6 @@ struct fpga_manager *fpga_mgr_get(struct device *dev)
 }
 EXPORT_SYMBOL_GPL(fpga_mgr_get);
 
-static int fpga_mgr_of_node_match(struct device *dev, const void *data)
-{
-	return dev->of_node == data;
-}
-
 /**
  * of_fpga_mgr_get - Given a device node, get a reference to a fpga mgr.
  *
@@ -612,8 +621,7 @@ struct fpga_manager *of_fpga_mgr_get(struct device_node *node)
 {
 	struct device *dev;
 
-	dev = class_find_device(fpga_mgr_class, NULL, node,
-				fpga_mgr_of_node_match);
+	dev = class_find_device_by_of_node(fpga_mgr_class, node);
 	if (!dev)
 		return ERR_PTR(-ENODEV);
 
@@ -672,75 +680,63 @@ static const struct file_operations fpga_mgr_ops_image = {
 	.open = fpga_mgr_read_open,
 	.read = seq_read,
 };
+#endif
 
-/**
- * fpga_mgr_debugfs_buf_load() - debugfs write function
- * @file:	User file
- * @ptr:	Fpga Image Address pointer
- * @len:	Length of the image
- * @off:	Offset within the file
- *
- * Return: Number of bytes if request succeeds,
- *	   the corresponding error code otherwise
- */
-static ssize_t fpga_mgr_debugfs_buf_load(struct file *file,
-					 const char __user *ptr, size_t len,
-					 loff_t *off)
+static int fpga_dmabuf_fd_get(struct file *file, char __user *argp)
 {
-	struct fpga_manager *mgr = file->private_data;
-	struct device *dev = &mgr->dev;
-	char *buf;
-	int ret = 0;
+	struct fpga_manager *mgr =  (struct fpga_manager *)(file->private_data);
+	int buffd;
 
-	/* struct with information about the FPGA image to program. */
-	struct fpga_image_info info = {0};
+	if (copy_from_user(&buffd, argp, sizeof(buffd)))
+		return -EFAULT;
 
-	/* flags indicates whether to do full or partial reconfiguration */
-	info.flags = mgr->flags;
+	mgr->dmabuf = dma_buf_get(buffd);
+	if (IS_ERR_OR_NULL(mgr->dmabuf))
+		return -EINVAL;
 
-	ret = fpga_mgr_lock(mgr);
-	if (ret) {
-		dev_err(dev, "FPGA manager is busy\n");
-		return -EBUSY;
-	}
-
-	buf = vmalloc(len);
-	if (!buf) {
-		ret = -ENOMEM;
-		goto mgr_unlock;
-	}
-
-	if (copy_from_user(buf, ptr, len)) {
-		ret = -EFAULT;
-		goto free_buf;
-	}
-
-	info.buf = buf;
-	info.count = len;
-
-	ret = fpga_mgr_load(mgr, &info);
-	if (ret) {
-		dev_err(dev, "fpga_mgr_load returned with value %d\n\r", ret);
-		goto free_buf;
-	}
-
-free_buf:
-	vfree(buf);
-mgr_unlock:
-	fpga_mgr_unlock(mgr);
-
-	if (ret)
-		return ret;
-	else
-		return len;
+	return 0;
 }
 
-static const struct file_operations fpga_mgr_ops_load = {
-	.open = simple_open,
-	.write = fpga_mgr_debugfs_buf_load,
-	.llseek = default_llseek,
+static int fpga_device_open(struct inode *inode, struct file *file)
+{
+	struct miscdevice *miscdev = file->private_data;
+	struct fpga_manager *mgr = container_of(miscdev,
+						struct fpga_manager, miscdev);
+
+	file->private_data = mgr;
+
+	return 0;
+}
+
+static int fpga_device_release(struct inode *inode, struct file *file)
+{
+	return 0;
+}
+
+static long fpga_device_ioctl(struct file *file, unsigned int cmd,
+			      unsigned long arg)
+{
+	char __user *argp = (char __user *)arg;
+	int err;
+
+	switch (cmd) {
+	case FPGA_IOCTL_LOAD_DMA_BUFF:
+		err = fpga_dmabuf_fd_get(file, argp);
+		break;
+	default:
+		err = -ENOTTY;
+	}
+
+	return err;
+}
+
+static const struct file_operations fpga_fops = {
+	.owner		= THIS_MODULE,
+	.open		= fpga_device_open,
+	.release	= fpga_device_release,
+	.unlocked_ioctl	= fpga_device_ioctl,
+	.compat_ioctl	= fpga_device_ioctl,
 };
-#endif
 
 /**
  * fpga_mgr_lock - Lock FPGA manager for exclusive use
@@ -782,6 +778,9 @@ EXPORT_SYMBOL_GPL(fpga_mgr_unlock);
  * @mops:	pointer to structure of fpga manager ops
  * @priv:	fpga manager private data
  *
+ * The caller of this function is responsible for freeing the struct with
+ * fpga_mgr_free().  Using devm_fpga_mgr_create() instead is recommended.
+ *
  * Return: pointer to struct fpga_manager or NULL
  */
 struct fpga_manager *fpga_mgr_create(struct device *dev, const char *name,
@@ -792,8 +791,7 @@ struct fpga_manager *fpga_mgr_create(struct device *dev, const char *name,
 	int id, ret;
 
 	if (!mops || !mops->write_complete || !mops->state ||
-	    !mops->write_init || (!mops->write && !mops->write_sg) ||
-	    (mops->write && mops->write_sg)) {
+	    !mops->write_init || (!mops->write && !mops->write_sg)) {
 		dev_err(dev, "Attempt to register without fpga_manager_ops\n");
 		return NULL;
 	}
@@ -826,9 +824,27 @@ struct fpga_manager *fpga_mgr_create(struct device *dev, const char *name,
 	mgr->dev.of_node = dev->of_node;
 	mgr->dev.id = id;
 
+	/* Make device dma capable by inheriting from parent's */
+	set_dma_ops(&mgr->dev, get_dma_ops(dev));
+	ret = dma_coerce_mask_and_coherent(&mgr->dev, dma_get_mask(dev));
+	if (ret) {
+		dev_warn(dev,
+		"Failed to set DMA mask %llx. Trying to continue... %x\n",
+		dma_get_mask(dev), ret);
+	}
+
 	ret = dev_set_name(&mgr->dev, "fpga%d", id);
 	if (ret)
 		goto error_device;
+
+	mgr->miscdev.minor = MISC_DYNAMIC_MINOR;
+	mgr->miscdev.name = kobject_name(&mgr->dev.kobj);
+	mgr->miscdev.fops = &fpga_fops;
+	ret = misc_register(&mgr->miscdev);
+	if (ret) {
+		pr_err("fpga: failed to register misc device.\n");
+		goto error_device;
+	}
 
 	return mgr;
 
@@ -842,8 +858,8 @@ error_kfree:
 EXPORT_SYMBOL_GPL(fpga_mgr_create);
 
 /**
- * fpga_mgr_free - deallocate a FPGA manager
- * @mgr:	fpga manager struct created by fpga_mgr_create
+ * fpga_mgr_free - free a FPGA manager created with fpga_mgr_create()
+ * @mgr:	fpga manager struct
  */
 void fpga_mgr_free(struct fpga_manager *mgr)
 {
@@ -852,9 +868,55 @@ void fpga_mgr_free(struct fpga_manager *mgr)
 }
 EXPORT_SYMBOL_GPL(fpga_mgr_free);
 
+static void devm_fpga_mgr_release(struct device *dev, void *res)
+{
+	struct fpga_manager *mgr = *(struct fpga_manager **)res;
+
+	fpga_mgr_free(mgr);
+}
+
+/**
+ * devm_fpga_mgr_create - create and initialize a managed FPGA manager struct
+ * @dev:	fpga manager device from pdev
+ * @name:	fpga manager name
+ * @mops:	pointer to structure of fpga manager ops
+ * @priv:	fpga manager private data
+ *
+ * This function is intended for use in a FPGA manager driver's probe function.
+ * After the manager driver creates the manager struct with
+ * devm_fpga_mgr_create(), it should register it with fpga_mgr_register().  The
+ * manager driver's remove function should call fpga_mgr_unregister().  The
+ * manager struct allocated with this function will be freed automatically on
+ * driver detach.  This includes the case of a probe function returning error
+ * before calling fpga_mgr_register(), the struct will still get cleaned up.
+ *
+ * Return: pointer to struct fpga_manager or NULL
+ */
+struct fpga_manager *devm_fpga_mgr_create(struct device *dev, const char *name,
+					  const struct fpga_manager_ops *mops,
+					  void *priv)
+{
+	struct fpga_manager **ptr, *mgr;
+
+	ptr = devres_alloc(devm_fpga_mgr_release, sizeof(*ptr), GFP_KERNEL);
+	if (!ptr)
+		return NULL;
+
+	mgr = fpga_mgr_create(dev, name, mops, priv);
+	if (!mgr) {
+		devres_free(ptr);
+	} else {
+		*ptr = mgr;
+		devres_add(dev, ptr);
+	}
+
+	return mgr;
+}
+EXPORT_SYMBOL_GPL(devm_fpga_mgr_create);
+
 /**
  * fpga_mgr_register - register a FPGA manager
- * @mgr:	fpga manager struct created by fpga_mgr_create
+ * @mgr: fpga manager struct
  *
  * Return: 0 on success, negative error code otherwise.
  */
@@ -895,13 +957,6 @@ int fpga_mgr_register(struct fpga_manager *mgr)
 		debugfs_remove_recursive(mgr->dir);
 		goto error_device;
 	}
-
-	d = debugfs_create_file("load", 0644, parent, mgr,
-				&fpga_mgr_ops_load);
-	if (!d) {
-		debugfs_remove_recursive(mgr->dir);
-		goto error_device;
-	}
 #endif
 	dev_info(&mgr->dev, "%s registered\n", mgr->name);
 
@@ -915,8 +970,10 @@ error_device:
 EXPORT_SYMBOL_GPL(fpga_mgr_register);
 
 /**
- * fpga_mgr_unregister - unregister and free a FPGA manager
- * @mgr:	fpga manager struct
+ * fpga_mgr_unregister - unregister a FPGA manager
+ * @mgr: fpga manager struct
+ *
+ * This function is intended for use in a FPGA manager driver's remove function.
  */
 void fpga_mgr_unregister(struct fpga_manager *mgr)
 {
@@ -939,9 +996,6 @@ EXPORT_SYMBOL_GPL(fpga_mgr_unregister);
 
 static void fpga_mgr_dev_release(struct device *dev)
 {
-	struct fpga_manager *mgr = to_fpga_manager(dev);
-
-	fpga_mgr_free(mgr);
 }
 
 static int __init fpga_mgr_class_init(void)

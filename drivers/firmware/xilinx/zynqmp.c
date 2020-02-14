@@ -242,11 +242,11 @@ static int zynqmp_pm_get_api_version(u32 *version)
 
 /**
  * zynqmp_pm_get_chipid - Get silicon ID registers
- * @idcode:	IDCODE register
- * @version:	version register
+ * @idcode:     IDCODE register
+ * @version:    version register
  *
- * Return:	Returns the status of the operation and the idcode and version
- *		registers in @idcode and @version.
+ * Return:      Returns the status of the operation and the idcode and version
+ *              registers in @idcode and @version.
  */
 static int zynqmp_pm_get_chipid(u32 *idcode, u32 *version)
 {
@@ -529,6 +529,7 @@ static inline int versal_is_valid_ioctl(u32 ioctl_id)
 	case IOCTL_PROBE_COUNTER_READ:
 	case IOCTL_PROBE_COUNTER_WRITE:
 	case IOCTL_USB_SET_STATE:
+	case IOCTL_OSPI_MUX_SELECT:
 		return 1;
 	default:
 		return 0;
@@ -563,8 +564,6 @@ static inline int zynqmp_is_valid_ioctl(u32 ioctl_id)
 	case IOCTL_ULPI_RESET:
 	case IOCTL_SET_BOOT_HEALTH_STATUS:
 	case IOCTL_AFI:
-	case IOCTL_PROBE_COUNTER_READ:
-	case IOCTL_PROBE_COUNTER_WRITE:
 		return 1;
 	default:
 		return 0;
@@ -632,6 +631,49 @@ static int zynqmp_pm_reset_get_status(const enum zynqmp_pm_reset reset,
 	ret = zynqmp_pm_invoke_fn(PM_RESET_GET_STATUS, reset, 0,
 				  0, 0, ret_payload);
 	*status = ret_payload[1];
+
+	return ret;
+}
+
+/**
+ * zynqmp_pm_fpga_load - Perform the fpga load
+ * @address:	Address to write to
+ * @size:	pl bitstream size
+ * @flags:	Bitstream type
+ *	-XILINX_ZYNQMP_PM_FPGA_FULL:  FPGA full reconfiguration
+ *	-XILINX_ZYNQMP_PM_FPGA_PARTIAL: FPGA partial reconfiguration
+ *
+ * This function provides access to pmufw. To transfer
+ * the required bitstream into PL.
+ *
+ * Return: Returns status, either success or error+reason
+ */
+static int zynqmp_pm_fpga_load(const u64 address, const u32 size,
+			       const u32 flags)
+{
+	return zynqmp_pm_invoke_fn(PM_FPGA_LOAD, lower_32_bits(address),
+				   upper_32_bits(address), size, flags, NULL);
+}
+
+/**
+ * zynqmp_pm_fpga_get_status - Read value from PCAP status register
+ * @value: Value to read
+ *
+ * This function provides access to the pmufw to get the PCAP
+ * status
+ *
+ * Return: Returns status, either success or error+reason
+ */
+static int zynqmp_pm_fpga_get_status(u32 *value)
+{
+	u32 ret_payload[PAYLOAD_ARG_CNT];
+	int ret;
+
+	if (!value)
+		return -EINVAL;
+
+	ret = zynqmp_pm_invoke_fn(PM_FPGA_GET_STATUS, 0, 0, 0, 0, ret_payload);
+	*value = ret_payload[1];
 
 	return ret;
 }
@@ -732,58 +774,6 @@ static int zynqmp_pm_load_pdi(const u32 src, const u64 address)
 	return zynqmp_pm_invoke_fn(PM_LOAD_PDI, src,
 				   lower_32_bits(address),
 				   upper_32_bits(address), 0, NULL);
-}
-
-/**
- * zynqmp_pm_fpga_load - Perform the fpga load
- * @address:	Address to write to
- * @size:	pl bitstream size
- * @flags:
- *	BIT(0) - Bitstream type.
- *		 0 - Full Bitstream.
- *		 1 - Partial Bitstream.
- *	BIT(1) - Authentication.
- *		 1 - Enable.
- *		 0 - Disable.
- *	BIT(2) - Encryption.
- *		 1 - Enable.
- *		 0 - Disable.
- * NOTE -
- *	The current implementation supports only Full Bit-stream.
- *
- * This function provides access to xilfpga library to transfer
- * the required bitstream into PL.
- *
- * Return:	Returns status, either success or error+reason
- */
-static int zynqmp_pm_fpga_load(const u64 address, const u32 size,
-			       const u32 flags)
-{
-	return zynqmp_pm_invoke_fn(PM_FPGA_LOAD, (u32)address,
-				   ((u32)(address >> 32)), size, flags, NULL);
-}
-
-/**
- * zynqmp_pm_fpga_get_status - Read value from PCAP status register
- * @value:	Value to read
- *
- * This function provides access to the xilfpga library to get
- * the PCAP status
- *
- * Return:	Returns status, either success or error+reason
- */
-static int zynqmp_pm_fpga_get_status(u32 *value)
-{
-	u32 ret_payload[PAYLOAD_ARG_CNT];
-	int ret;
-
-	if (!value)
-		return -EINVAL;
-
-	ret = zynqmp_pm_invoke_fn(PM_FPGA_GET_STATUS, 0, 0, 0, 0, ret_payload);
-	*value = ret_payload[1];
-
-	return ret;
 }
 
 /**
@@ -1273,8 +1263,8 @@ static const struct zynqmp_eemi_ops eemi_ops = {
 	.register_access = zynqmp_pm_config_reg_access,
 	.aes = zynqmp_pm_aes_engine,
 	.efuse_access = zynqmp_pm_efuse_access,
-	.secure_image = zynqmp_pm_secure_load,
 	.pdi_load = zynqmp_pm_load_pdi,
+	.secure_image = zynqmp_pm_secure_load,
 };
 
 /**

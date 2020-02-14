@@ -23,11 +23,12 @@
  * Authors: Dave Airlie
  *          Alex Deucher
  */
-#include <drm/drmP.h>
+
 #include <drm/drm_crtc_helper.h>
 #include <drm/amdgpu_drm.h>
 #include "amdgpu.h"
 #include "amdgpu_connectors.h"
+#include "amdgpu_display.h"
 #include "atom.h"
 #include "atombios_encoders.h"
 

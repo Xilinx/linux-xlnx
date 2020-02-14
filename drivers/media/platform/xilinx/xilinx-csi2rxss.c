@@ -1713,7 +1713,7 @@ static int xcsi2rxss_parse_of(struct xcsi2rxss_state *xcsi2rxss)
 		int ret;
 		const struct xvip_video_format *format;
 		struct device_node *endpoint;
-		struct v4l2_fwnode_endpoint v4lendpoint;
+		struct v4l2_fwnode_endpoint v4lendpoint = { 0 };
 
 		if (!port->name || of_node_cmp(port->name, "port"))
 			continue;
@@ -1773,7 +1773,7 @@ static int xcsi2rxss_parse_of(struct xcsi2rxss_state *xcsi2rxss)
 		dev_dbg(core->dev, "%s : port %d bus type = %d\n",
 				__func__, nports, v4lendpoint.bus_type);
 
-		if (v4lendpoint.bus_type == V4L2_MBUS_CSI2) {
+		if (v4lendpoint.bus_type == V4L2_MBUS_CSI2_DPHY) {
 			dev_dbg(core->dev, "%s : base.port = %d base.id = %d\n",
 					__func__,
 					v4lendpoint.base.port,

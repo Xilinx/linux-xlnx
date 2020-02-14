@@ -2,21 +2,17 @@
 /*
  * Xilinx Zynq MPSoC Power Management
  *
- *  Copyright (C) 2014-2018 Xilinx, Inc.
+ *  Copyright (C) 2014-2019 Xilinx, Inc.
  *
  *  Davorin Mista <davorin.mista@aggios.com>
  *  Jolly Shah <jollys@xilinx.com>
  *  Rajan Vaja <rajan.vaja@xilinx.com>
  */
 
-#include <linux/compiler.h>
-#include <linux/interrupt.h>
 #include <linux/mailbox_client.h>
 #include <linux/module.h>
-#include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/reboot.h>
-#include <linux/slab.h>
 #include <linux/suspend.h>
 
 #include <linux/firmware/xlnx-zynqmp.h>
@@ -88,7 +84,7 @@ static irqreturn_t zynqmp_pm_isr(int irq, void *data)
 static void ipi_receive_callback(struct mbox_client *cl, void *data)
 {
 	struct zynqmp_ipi_message *msg = (struct zynqmp_ipi_message *)data;
-	u32 payload[IPI_BUF_LEN_MAX];
+	u32 payload[CB_PAYLOAD_SIZE];
 	int ret;
 
 	memcpy(payload, msg->data, sizeof(msg->len));

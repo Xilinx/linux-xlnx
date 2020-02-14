@@ -337,8 +337,6 @@ static void xennet_alloc_rx_buffers(struct netfront_queue *queue)
 		return;
 	}
 
-	wmb();		/* barrier so backend seens requests */
-
 	RING_PUSH_REQUESTS_AND_CHECK_NOTIFY(&queue->rx, notify);
 	if (notify)
 		notify_remote_via_irq(queue->rx_irq);
@@ -533,7 +531,7 @@ static int xennet_count_skb_slots(struct sk_buff *skb)
 	for (i = 0; i < frags; i++) {
 		skb_frag_t *frag = skb_shinfo(skb)->frags + i;
 		unsigned long size = skb_frag_size(frag);
-		unsigned long offset = frag->page_offset;
+		unsigned long offset = skb_frag_off(frag);
 
 		/* Skip unused frames from start of page */
 		offset &= ~PAGE_MASK;
@@ -545,8 +543,7 @@ static int xennet_count_skb_slots(struct sk_buff *skb)
 }
 
 static u16 xennet_select_queue(struct net_device *dev, struct sk_buff *skb,
-			       struct net_device *sb_dev,
-			       select_queue_fallback_t fallback)
+			       struct net_device *sb_dev)
 {
 	unsigned int num_queues = dev->real_num_tx_queues;
 	u32 hash;
@@ -677,8 +674,8 @@ static netdev_tx_t xennet_start_xmit(struct sk_buff *skb, struct net_device *dev
 	/* Requests for all the frags. */
 	for (i = 0; i < skb_shinfo(skb)->nr_frags; i++) {
 		skb_frag_t *frag = &skb_shinfo(skb)->frags[i];
-		tx = xennet_make_txreqs(queue, tx, skb,
-					skb_frag_page(frag), frag->page_offset,
+		tx = xennet_make_txreqs(queue, tx, skb, skb_frag_page(frag),
+					skb_frag_off(frag),
 					skb_frag_size(frag));
 	}
 
@@ -890,9 +887,9 @@ static int xennet_set_skb_gso(struct sk_buff *skb,
 	return 0;
 }
 
-static RING_IDX xennet_fill_frags(struct netfront_queue *queue,
-				  struct sk_buff *skb,
-				  struct sk_buff_head *list)
+static int xennet_fill_frags(struct netfront_queue *queue,
+			     struct sk_buff *skb,
+			     struct sk_buff_head *list)
 {
 	RING_IDX cons = queue->rx.rsp_cons;
 	struct sk_buff *nskb;
@@ -905,13 +902,13 @@ static RING_IDX xennet_fill_frags(struct netfront_queue *queue,
 		if (skb_shinfo(skb)->nr_frags == MAX_SKB_FRAGS) {
 			unsigned int pull_to = NETFRONT_SKB_CB(skb)->pull_to;
 
-			BUG_ON(pull_to <= skb_headlen(skb));
+			BUG_ON(pull_to < skb_headlen(skb));
 			__pskb_pull_tail(skb, pull_to - skb_headlen(skb));
 		}
 		if (unlikely(skb_shinfo(skb)->nr_frags >= MAX_SKB_FRAGS)) {
-			queue->rx.rsp_cons = ++cons;
+			queue->rx.rsp_cons = ++cons + skb_queue_len(list);
 			kfree_skb(nskb);
-			return ~0U;
+			return -ENOENT;
 		}
 
 		skb_add_rx_frag(skb, skb_shinfo(skb)->nr_frags,
@@ -922,7 +919,9 @@ static RING_IDX xennet_fill_frags(struct netfront_queue *queue,
 		kfree_skb(nskb);
 	}
 
-	return cons;
+	queue->rx.rsp_cons = cons;
+
+	return 0;
 }
 
 static int checksum_setup(struct net_device *dev, struct sk_buff *skb)
@@ -1043,13 +1042,12 @@ err:
 		if (NETFRONT_SKB_CB(skb)->pull_to > RX_COPY_THRESHOLD)
 			NETFRONT_SKB_CB(skb)->pull_to = RX_COPY_THRESHOLD;
 
-		skb_shinfo(skb)->frags[0].page_offset = rx->offset;
+		skb_frag_off_set(&skb_shinfo(skb)->frags[0], rx->offset);
 		skb_frag_size_set(&skb_shinfo(skb)->frags[0], rx->status);
 		skb->data_len = rx->status;
 		skb->len += rx->status;
 
-		i = xennet_fill_frags(queue, skb, &tmpq);
-		if (unlikely(i == ~0U))
+		if (unlikely(xennet_fill_frags(queue, skb, &tmpq)))
 			goto err;
 
 		if (rx->flags & XEN_NETRXF_csum_blank)
@@ -1059,7 +1057,7 @@ err:
 
 		__skb_queue_tail(&rxq, skb);
 
-		queue->rx.rsp_cons = ++i;
+		i = ++queue->rx.rsp_cons;
 		work_done++;
 	}
 
@@ -2040,7 +2038,7 @@ static void netback_changed(struct xenbus_device *dev,
 	case XenbusStateClosed:
 		if (dev->state == XenbusStateClosed)
 			break;
-		/* Missed the backend's CLOSING state -- fallthrough */
+		/* Fall through - Missed the backend's CLOSING state. */
 	case XenbusStateClosing:
 		xenbus_frontend_closed(dev);
 		break;

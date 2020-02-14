@@ -1,21 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  * Driver for the National Semiconductor DP83640 PHYTER
  *
  * Copyright (C) 2010 OMICRON electronics GmbH
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
@@ -482,6 +469,19 @@ static int ptp_dp83640_enable(struct ptp_clock_info *ptp,
 
 	switch (rq->type) {
 	case PTP_CLK_REQ_EXTTS:
+		/* Reject requests with unsupported flags */
+		if (rq->extts.flags & ~(PTP_ENABLE_FEATURE |
+					PTP_RISING_EDGE |
+					PTP_FALLING_EDGE |
+					PTP_STRICT_FLAGS))
+			return -EOPNOTSUPP;
+
+		/* Reject requests to enable time stamping on both edges. */
+		if ((rq->extts.flags & PTP_STRICT_FLAGS) &&
+		    (rq->extts.flags & PTP_ENABLE_FEATURE) &&
+		    (rq->extts.flags & PTP_EXTTS_EDGES) == PTP_EXTTS_EDGES)
+			return -EOPNOTSUPP;
+
 		index = rq->extts.index;
 		if (index >= N_EXT_TS)
 			return -EINVAL;
@@ -504,6 +504,9 @@ static int ptp_dp83640_enable(struct ptp_clock_info *ptp,
 		return 0;
 
 	case PTP_CLK_REQ_PEROUT:
+		/* Reject requests with unsupported flags */
+		if (rq->perout.flags)
+			return -EOPNOTSUPP;
 		if (rq->perout.index >= N_PER_OUT)
 			return -EINVAL;
 		return periodic_output(clock, rq, on, rq->perout.index);
@@ -553,16 +556,17 @@ static void enable_status_frames(struct phy_device *phydev, bool on)
 	mutex_unlock(&clock->extreg_lock);
 
 	if (!phydev->attached_dev) {
-		pr_warn("expected to find an attached netdevice\n");
+		phydev_warn(phydev,
+			    "expected to find an attached netdevice\n");
 		return;
 	}
 
 	if (on) {
 		if (dev_mc_add(phydev->attached_dev, status_frame_dst))
-			pr_warn("failed to add mc address\n");
+			phydev_warn(phydev, "failed to add mc address\n");
 	} else {
 		if (dev_mc_del(phydev->attached_dev, status_frame_dst))
-			pr_warn("failed to delete mc address\n");
+			phydev_warn(phydev, "failed to delete mc address\n");
 	}
 }
 
@@ -686,9 +690,9 @@ static void recalibrate(struct dp83640_clock *clock)
 	 * read out and correct offsets
 	 */
 	val = ext_read(master, PAGE4, PTP_STS);
-	pr_info("master PTP_STS  0x%04hx\n", val);
+	phydev_info(master, "master PTP_STS  0x%04hx\n", val);
 	val = ext_read(master, PAGE4, PTP_ESTS);
-	pr_info("master PTP_ESTS 0x%04hx\n", val);
+	phydev_info(master, "master PTP_ESTS 0x%04hx\n", val);
 	event_ts.ns_lo  = ext_read(master, PAGE4, PTP_EDATA);
 	event_ts.ns_hi  = ext_read(master, PAGE4, PTP_EDATA);
 	event_ts.sec_lo = ext_read(master, PAGE4, PTP_EDATA);
@@ -698,15 +702,16 @@ static void recalibrate(struct dp83640_clock *clock)
 	list_for_each(this, &clock->phylist) {
 		tmp = list_entry(this, struct dp83640_private, list);
 		val = ext_read(tmp->phydev, PAGE4, PTP_STS);
-		pr_info("slave  PTP_STS  0x%04hx\n", val);
+		phydev_info(tmp->phydev, "slave  PTP_STS  0x%04hx\n", val);
 		val = ext_read(tmp->phydev, PAGE4, PTP_ESTS);
-		pr_info("slave  PTP_ESTS 0x%04hx\n", val);
+		phydev_info(tmp->phydev, "slave  PTP_ESTS 0x%04hx\n", val);
 		event_ts.ns_lo  = ext_read(tmp->phydev, PAGE4, PTP_EDATA);
 		event_ts.ns_hi  = ext_read(tmp->phydev, PAGE4, PTP_EDATA);
 		event_ts.sec_lo = ext_read(tmp->phydev, PAGE4, PTP_EDATA);
 		event_ts.sec_hi = ext_read(tmp->phydev, PAGE4, PTP_EDATA);
 		diff = now - (s64) phy2txts(&event_ts);
-		pr_info("slave offset %lld nanoseconds\n", diff);
+		phydev_info(tmp->phydev, "slave offset %lld nanoseconds\n",
+			    diff);
 		diff += ADJTIME_FIX;
 		ts = ns_to_timespec64(diff);
 		tdr_write(0, tmp->phydev, &ts, PTP_STEP_CLK);
@@ -896,14 +901,14 @@ static void decode_txts(struct dp83640_private *dp83640,
 			struct phy_txts *phy_txts)
 {
 	struct skb_shared_hwtstamps shhwtstamps;
+	struct dp83640_skb_info *skb_info;
 	struct sk_buff *skb;
-	u64 ns;
 	u8 overflow;
+	u64 ns;
 
 	/* We must already have the skb that triggered this. */
-
+again:
 	skb = skb_dequeue(&dp83640->tx_queue);
-
 	if (!skb) {
 		pr_debug("have timestamp but tx_queue empty\n");
 		return;
@@ -917,6 +922,11 @@ static void decode_txts(struct dp83640_private *dp83640,
 			skb = skb_dequeue(&dp83640->tx_queue);
 		}
 		return;
+	}
+	skb_info = (struct dp83640_skb_info *)skb->cb;
+	if (time_after(jiffies, skb_info->tmo)) {
+		kfree_skb(skb);
+		goto again;
 	}
 
 	ns = phy2txts(phy_txts);
@@ -1470,6 +1480,7 @@ static bool dp83640_rxtstamp(struct phy_device *phydev,
 static void dp83640_txtstamp(struct phy_device *phydev,
 			     struct sk_buff *skb, int type)
 {
+	struct dp83640_skb_info *skb_info = (struct dp83640_skb_info *)skb->cb;
 	struct dp83640_private *dp83640 = phydev->priv;
 
 	switch (dp83640->hwts_tx_en) {
@@ -1482,6 +1493,7 @@ static void dp83640_txtstamp(struct phy_device *phydev,
 		/* fall through */
 	case HWTSTAMP_TX_ON:
 		skb_shinfo(skb)->tx_flags |= SKBTX_IN_PROGRESS;
+		skb_info->tmo = jiffies + SKB_TIMESTAMP_TIMEOUT;
 		skb_queue_tail(&dp83640->tx_queue, skb);
 		break;
 
@@ -1518,8 +1530,7 @@ static struct phy_driver dp83640_driver = {
 	.phy_id		= DP83640_PHY_ID,
 	.phy_id_mask	= 0xfffffff0,
 	.name		= "NatSemi DP83640",
-	.features	= PHY_BASIC_FEATURES,
-	.flags		= PHY_HAS_INTERRUPT,
+	/* PHY_BASIC_FEATURES */
 	.probe		= dp83640_probe,
 	.remove		= dp83640_remove,
 	.soft_reset	= dp83640_soft_reset,

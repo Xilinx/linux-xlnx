@@ -1,12 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /* Peer event handling, typically ICMP messages.
  *
  * Copyright (C) 2007 Red Hat, Inc. All Rights Reserved.
  * Written by David Howells (dhowells@redhat.com)
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version
- * 2 of the License, or (at your option) any later version.
  */
 
 #include <linux/module.h>
@@ -47,6 +43,8 @@ static struct rxrpc_peer *rxrpc_lookup_peer_icmp_rcu(struct rxrpc_local *local,
 	 */
 	switch (srx->transport.family) {
 	case AF_INET:
+		srx->transport_len = sizeof(srx->transport.sin);
+		srx->transport.family = AF_INET;
 		srx->transport.sin.sin_port = serr->port;
 		switch (serr->ee.ee_origin) {
 		case SO_EE_ORIGIN_ICMP:
@@ -70,20 +68,20 @@ static struct rxrpc_peer *rxrpc_lookup_peer_icmp_rcu(struct rxrpc_local *local,
 
 #ifdef CONFIG_AF_RXRPC_IPV6
 	case AF_INET6:
-		srx->transport.sin6.sin6_port = serr->port;
 		switch (serr->ee.ee_origin) {
 		case SO_EE_ORIGIN_ICMP6:
 			_net("Rx ICMP6");
+			srx->transport.sin6.sin6_port = serr->port;
 			memcpy(&srx->transport.sin6.sin6_addr,
 			       skb_network_header(skb) + serr->addr_offset,
 			       sizeof(struct in6_addr));
 			break;
 		case SO_EE_ORIGIN_ICMP:
 			_net("Rx ICMP on v6 sock");
-			srx->transport.sin6.sin6_addr.s6_addr32[0] = 0;
-			srx->transport.sin6.sin6_addr.s6_addr32[1] = 0;
-			srx->transport.sin6.sin6_addr.s6_addr32[2] = htonl(0xffff);
-			memcpy(srx->transport.sin6.sin6_addr.s6_addr + 12,
+			srx->transport_len = sizeof(srx->transport.sin);
+			srx->transport.family = AF_INET;
+			srx->transport.sin.sin_port = serr->port;
+			memcpy(&srx->transport.sin.sin_addr,
 			       skb_network_header(skb) + serr->addr_offset,
 			       sizeof(struct in_addr));
 			break;
@@ -149,32 +147,44 @@ void rxrpc_error_report(struct sock *sk)
 {
 	struct sock_exterr_skb *serr;
 	struct sockaddr_rxrpc srx;
-	struct rxrpc_local *local = sk->sk_user_data;
+	struct rxrpc_local *local;
 	struct rxrpc_peer *peer;
 	struct sk_buff *skb;
 
+	rcu_read_lock();
+	local = rcu_dereference_sk_user_data(sk);
+	if (unlikely(!local)) {
+		rcu_read_unlock();
+		return;
+	}
 	_enter("%p{%d}", sk, local->debug_id);
+
+	/* Clear the outstanding error value on the socket so that it doesn't
+	 * cause kernel_sendmsg() to return it later.
+	 */
+	sock_error(sk);
 
 	skb = sock_dequeue_err_skb(sk);
 	if (!skb) {
+		rcu_read_unlock();
 		_leave("UDP socket errqueue empty");
 		return;
 	}
-	rxrpc_new_skb(skb, rxrpc_skb_rx_received);
+	rxrpc_new_skb(skb, rxrpc_skb_received);
 	serr = SKB_EXT_ERR(skb);
 	if (!skb->len && serr->ee.ee_origin == SO_EE_ORIGIN_TIMESTAMPING) {
 		_leave("UDP empty message");
-		rxrpc_free_skb(skb, rxrpc_skb_rx_freed);
+		rcu_read_unlock();
+		rxrpc_free_skb(skb, rxrpc_skb_freed);
 		return;
 	}
 
-	rcu_read_lock();
 	peer = rxrpc_lookup_peer_icmp_rcu(local, skb, &srx);
 	if (peer && !rxrpc_get_peer_maybe(peer))
 		peer = NULL;
 	if (!peer) {
 		rcu_read_unlock();
-		rxrpc_free_skb(skb, rxrpc_skb_rx_freed);
+		rxrpc_free_skb(skb, rxrpc_skb_freed);
 		_leave(" [no peer]");
 		return;
 	}
@@ -186,7 +196,7 @@ void rxrpc_error_report(struct sock *sk)
 	     serr->ee.ee_code == ICMP_FRAG_NEEDED)) {
 		rxrpc_adjust_mtu(peer, serr);
 		rcu_read_unlock();
-		rxrpc_free_skb(skb, rxrpc_skb_rx_freed);
+		rxrpc_free_skb(skb, rxrpc_skb_freed);
 		rxrpc_put_peer(peer);
 		_leave(" [MTU update]");
 		return;
@@ -194,7 +204,7 @@ void rxrpc_error_report(struct sock *sk)
 
 	rxrpc_store_error(peer, serr);
 	rcu_read_unlock();
-	rxrpc_free_skb(skb, rxrpc_skb_rx_freed);
+	rxrpc_free_skb(skb, rxrpc_skb_freed);
 	rxrpc_put_peer(peer);
 
 	_leave("");
@@ -375,7 +385,7 @@ static void rxrpc_peer_keepalive_dispatch(struct rxrpc_net *rxnet,
 		spin_lock_bh(&rxnet->peer_hash_lock);
 		list_add_tail(&peer->keepalive_link,
 			      &rxnet->peer_keepalive[slot & mask]);
-		rxrpc_put_peer(peer);
+		rxrpc_put_peer_locked(peer);
 	}
 
 	spin_unlock_bh(&rxnet->peer_hash_lock);

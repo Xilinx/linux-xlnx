@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * CPU Microcode Update Driver for Linux
  *
@@ -12,11 +13,6 @@
  *		  (C) 2015 Borislav Petkov <bp@alien8.de>
  *
  * This driver allows to upgrade microcode on x86 processors.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version
- * 2 of the License, or (at your option) any later version.
  */
 
 #define pr_fmt(fmt) "microcode: " fmt
@@ -418,8 +414,9 @@ static int do_microcode_update(const void __user *buf, size_t size)
 		if (ustate == UCODE_ERROR) {
 			error = -1;
 			break;
-		} else if (ustate == UCODE_OK)
+		} else if (ustate == UCODE_NEW) {
 			apply_microcode_on_target(cpu);
+		}
 	}
 
 	return error;
@@ -427,16 +424,17 @@ static int do_microcode_update(const void __user *buf, size_t size)
 
 static int microcode_open(struct inode *inode, struct file *file)
 {
-	return capable(CAP_SYS_RAWIO) ? nonseekable_open(inode, file) : -EPERM;
+	return capable(CAP_SYS_RAWIO) ? stream_open(inode, file) : -EPERM;
 }
 
 static ssize_t microcode_write(struct file *file, const char __user *buf,
 			       size_t len, loff_t *ppos)
 {
 	ssize_t ret = -EINVAL;
+	unsigned long nr_pages = totalram_pages();
 
-	if ((len >> PAGE_SHIFT) > totalram_pages) {
-		pr_err("too much data (max %ld pages)\n", totalram_pages);
+	if ((len >> PAGE_SHIFT) > nr_pages) {
+		pr_err("too much data (max %ld pages)\n", nr_pages);
 		return ret;
 	}
 
@@ -607,6 +605,8 @@ static int microcode_reload_late(void)
 	if (ret > 0)
 		microcode_check();
 
+	pr_info("Reload completed, microcode revision: 0x%x\n", boot_cpu_data.microcode);
+
 	return ret;
 }
 
@@ -666,8 +666,8 @@ static ssize_t pf_show(struct device *dev,
 }
 
 static DEVICE_ATTR_WO(reload);
-static DEVICE_ATTR(version, 0400, version_show, NULL);
-static DEVICE_ATTR(processor_flags, 0400, pf_show, NULL);
+static DEVICE_ATTR(version, 0444, version_show, NULL);
+static DEVICE_ATTR(processor_flags, 0444, pf_show, NULL);
 
 static struct attribute *mc_default_attrs[] = {
 	&dev_attr_version.attr,
@@ -789,13 +789,16 @@ static struct syscore_ops mc_syscore_ops = {
 	.resume			= mc_bp_resume,
 };
 
-static int mc_cpu_online(unsigned int cpu)
+static int mc_cpu_starting(unsigned int cpu)
 {
-	struct device *dev;
-
-	dev = get_cpu_device(cpu);
 	microcode_update_cpu(cpu);
 	pr_debug("CPU%d added\n", cpu);
+	return 0;
+}
+
+static int mc_cpu_online(unsigned int cpu)
+{
+	struct device *dev = get_cpu_device(cpu);
 
 	if (sysfs_create_group(&dev->kobj, &mc_attr_group))
 		pr_err("Failed to create group for CPU%d\n", cpu);
@@ -872,6 +875,8 @@ int __init microcode_init(void)
 		goto out_ucode_group;
 
 	register_syscore_ops(&mc_syscore_ops);
+	cpuhp_setup_state_nocalls(CPUHP_AP_MICROCODE_LOADER, "x86/microcode:starting",
+				  mc_cpu_starting, NULL);
 	cpuhp_setup_state_nocalls(CPUHP_AP_ONLINE_DYN, "x86/microcode:online",
 				  mc_cpu_online, mc_cpu_down_prep);
 

@@ -301,6 +301,8 @@ define_show_state_str_function(name)
 define_show_state_str_function(desc)
 define_show_state_ull_function(disable)
 define_store_state_ull_function(disable)
+define_show_state_ull_function(above)
+define_show_state_ull_function(below)
 
 define_one_state_ro(name, show_state_name);
 define_one_state_ro(desc, show_state_desc);
@@ -310,6 +312,8 @@ define_one_state_ro(power, show_state_power_usage);
 define_one_state_ro(usage, show_state_usage);
 define_one_state_ro(time, show_state_time);
 define_one_state_rw(disable, show_state_disable, store_state_disable);
+define_one_state_ro(above, show_state_above);
+define_one_state_ro(below, show_state_below);
 
 static struct attribute *cpuidle_state_default_attrs[] = {
 	&attr_name.attr,
@@ -320,6 +324,8 @@ static struct attribute *cpuidle_state_default_attrs[] = {
 	&attr_usage.attr,
 	&attr_time.attr,
 	&attr_disable.attr,
+	&attr_above.attr,
+	&attr_below.attr,
 	NULL
 };
 
@@ -328,6 +334,7 @@ struct cpuidle_state_kobj {
 	struct cpuidle_state_usage *state_usage;
 	struct completion kobj_unregister;
 	struct kobject kobj;
+	struct cpuidle_device *device;
 };
 
 #ifdef CONFIG_SUSPEND
@@ -385,6 +392,7 @@ static inline void cpuidle_remove_s2idle_attr_group(struct cpuidle_state_kobj *k
 #define kobj_to_state_obj(k) container_of(k, struct cpuidle_state_kobj, kobj)
 #define kobj_to_state(k) (kobj_to_state_obj(k)->state)
 #define kobj_to_state_usage(k) (kobj_to_state_obj(k)->state_usage)
+#define kobj_to_device(k) (kobj_to_state_obj(k)->device)
 #define attr_to_stateattr(a) container_of(a, struct cpuidle_state_attr, attr)
 
 static ssize_t cpuidle_state_show(struct kobject *kobj, struct attribute *attr,
@@ -408,9 +416,13 @@ static ssize_t cpuidle_state_store(struct kobject *kobj, struct attribute *attr,
 	struct cpuidle_state *state = kobj_to_state(kobj);
 	struct cpuidle_state_usage *state_usage = kobj_to_state_usage(kobj);
 	struct cpuidle_state_attr *cattr = attr_to_stateattr(attr);
+	struct cpuidle_device *dev = kobj_to_device(kobj);
 
 	if (cattr->store)
 		ret = cattr->store(state, state_usage, buf, size);
+
+	/* reset poll time cache */
+	dev->poll_limit_ns = 0;
 
 	return ret;
 }
@@ -462,6 +474,7 @@ static int cpuidle_add_state_sysfs(struct cpuidle_device *device)
 		}
 		kobj->state = &drv->states[i];
 		kobj->state_usage = &device->states_usage[i];
+		kobj->device = device;
 		init_completion(&kobj->kobj_unregister);
 
 		ret = kobject_init_and_add(&kobj->kobj, &ktype_state_cpuidle,

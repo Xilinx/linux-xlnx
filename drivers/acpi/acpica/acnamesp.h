@@ -3,7 +3,7 @@
  *
  * Name: acnamesp.h - Namespace subcomponent prototypes and defines
  *
- * Copyright (C) 2000 - 2018, Intel Corp.
+ * Copyright (C) 2000 - 2019, Intel Corp.
  *
  *****************************************************************************/
 
@@ -34,6 +34,7 @@
 #define ACPI_NS_TEMPORARY           0x0040
 #define ACPI_NS_OVERRIDE_IF_FOUND   0x0080
 #define ACPI_NS_EARLY_INIT          0x0100
+#define ACPI_NS_PREFIX_MUST_EXIST   0x0200
 
 /* Flags for acpi_ns_walk_namespace */
 
@@ -205,8 +206,6 @@ acpi_ns_dump_object_paths(acpi_object_type type,
  * nseval - Namespace evaluation functions
  */
 acpi_status acpi_ns_evaluate(struct acpi_evaluate_info *info);
-
-void acpi_ns_exec_module_code_list(void);
 
 /*
  * nsarguments - Argument count/type checking for predefined/reserved names

@@ -1,19 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0+
 /*
  *  Intel HID event & 5 button array driver
  *
  *  Copyright (C) 2015 Alex Hung <alex.hung@canonical.com>
  *  Copyright (C) 2015 Andrew Lutomirski <luto@kernel.org>
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
  */
 
 #include <linux/acpi.h>
@@ -263,35 +253,45 @@ static void intel_button_array_enable(struct device *device, bool enable)
 
 static int intel_hid_pm_prepare(struct device *device)
 {
+	if (device_may_wakeup(device)) {
+		struct intel_hid_priv *priv = dev_get_drvdata(device);
+
+		priv->wakeup_mode = true;
+	}
+	return 0;
+}
+
+static void intel_hid_pm_complete(struct device *device)
+{
 	struct intel_hid_priv *priv = dev_get_drvdata(device);
 
-	priv->wakeup_mode = true;
-	return 0;
+	priv->wakeup_mode = false;
 }
 
 static int intel_hid_pl_suspend_handler(struct device *device)
 {
-	if (pm_suspend_via_firmware()) {
+	intel_button_array_enable(device, false);
+
+	if (!pm_suspend_no_platform())
 		intel_hid_set_enable(device, false);
-		intel_button_array_enable(device, false);
-	}
+
 	return 0;
 }
 
 static int intel_hid_pl_resume_handler(struct device *device)
 {
-	struct intel_hid_priv *priv = dev_get_drvdata(device);
+	intel_hid_pm_complete(device);
 
-	priv->wakeup_mode = false;
-	if (pm_resume_via_firmware()) {
+	if (!pm_suspend_no_platform())
 		intel_hid_set_enable(device, true);
-		intel_button_array_enable(device, true);
-	}
+
+	intel_button_array_enable(device, true);
 	return 0;
 }
 
 static const struct dev_pm_ops intel_hid_pl_pm_ops = {
 	.prepare = intel_hid_pm_prepare,
+	.complete = intel_hid_pm_complete,
 	.freeze  = intel_hid_pl_suspend_handler,
 	.thaw  = intel_hid_pl_resume_handler,
 	.restore  = intel_hid_pl_resume_handler,
@@ -373,7 +373,7 @@ wakeup:
 	 * the 5-button array, but still send notifies with power button
 	 * event code to this device object on power button actions.
 	 *
-	 * Report the power button press; catch and ignore the button release.
+	 * Report the power button press and release.
 	 */
 	if (!priv->array) {
 		if (event == 0xce) {
@@ -382,8 +382,11 @@ wakeup:
 			return;
 		}
 
-		if (event == 0xcf)
+		if (event == 0xcf) {
+			input_report_key(priv->input_dev, KEY_POWER, 0);
+			input_sync(priv->input_dev);
 			return;
+		}
 	}
 
 	/* 0xC0 is for HID events, other values are for 5 button array */
@@ -498,6 +501,12 @@ static int intel_hid_probe(struct platform_device *device)
 	}
 
 	device_init_wakeup(&device->dev, true);
+	/*
+	 * In order for system wakeup to work, the EC GPE has to be marked as
+	 * a wakeup one, so do that here (this setting will persist, but it has
+	 * no effect until the wakeup mask is set for the EC GPE).
+	 */
+	acpi_ec_mark_gpe_for_wake();
 	return 0;
 
 err_remove_notify:

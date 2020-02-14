@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Xilinx Video DMA
  *
@@ -6,10 +7,6 @@
  *
  * Contacts: Hyun Kwon <hyun.kwon@xilinx.com>
  *           Laurent Pinchart <laurent.pinchart@ideasonboard.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
  */
 
 #include <linux/dma/xilinx_dma.h>
@@ -769,30 +766,13 @@ xvip_dma_querycap(struct file *file, void *fh, struct v4l2_capability *cap)
 	struct v4l2_fh *vfh = file->private_data;
 	struct xvip_dma *dma = to_xvip_dma(vfh->vdev);
 
-	cap->device_caps = V4L2_CAP_STREAMING;
+	cap->capabilities = dma->xdev->v4l2_caps | V4L2_CAP_STREAMING |
+			    V4L2_CAP_DEVICE_CAPS;
 
-	switch (dma->queue.type) {
-	case V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE:
-		cap->device_caps |= V4L2_CAP_VIDEO_CAPTURE_MPLANE;
-		break;
-	case V4L2_BUF_TYPE_VIDEO_CAPTURE:
-		cap->device_caps |= V4L2_CAP_VIDEO_CAPTURE;
-		break;
-	case V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE:
-		cap->device_caps |= V4L2_CAP_VIDEO_OUTPUT_MPLANE;
-		break;
-	case V4L2_BUF_TYPE_VIDEO_OUTPUT:
-		cap->device_caps |= V4L2_CAP_VIDEO_OUTPUT;
-		break;
-	}
-
-	cap->capabilities = cap->device_caps | V4L2_CAP_DEVICE_CAPS
-			  | dma->xdev->v4l2_caps;
-
-	strlcpy(cap->driver, "xilinx-vipp", sizeof(cap->driver));
-	strlcpy(cap->card, dma->video.name, sizeof(cap->card));
-	snprintf(cap->bus_info, sizeof(cap->bus_info), "platform:%s:%u",
-		 dma->xdev->dev->of_node->name, dma->port);
+	strscpy(cap->driver, "xilinx-vipp", sizeof(cap->driver));
+	strscpy(cap->card, dma->video.name, sizeof(cap->card));
+	snprintf(cap->bus_info, sizeof(cap->bus_info), "platform:%pOFn:%u",
+		 dma->xdev->dev->of_node, dma->port);
 
 	return 0;
 }
@@ -846,8 +826,6 @@ static int xvip_xdma_enum_fmt(struct xvip_dma *dma, struct v4l2_fmtdesc *f,
 		return PTR_ERR(fmt);
 
 	f->pixelformat = fmt->fourcc;
-	strlcpy(f->description, fmt->description,
-		sizeof(f->description));
 
 	return 0;
 }
@@ -940,8 +918,6 @@ xvip_dma_enum_format(struct file *file, void *fh, struct v4l2_fmtdesc *f)
 		return PTR_ERR(fmt);
 
 	f->pixelformat = fmt->fourcc;
-	strlcpy(f->description, fmt->description,
-		sizeof(f->description));
 
 	return 0;
 }
@@ -1261,9 +1237,7 @@ xvip_dma_s_selection(struct file *file, void *fh, struct v4l2_selection *sel)
 static const struct v4l2_ioctl_ops xvip_dma_ioctl_ops = {
 	.vidioc_querycap		= xvip_dma_querycap,
 	.vidioc_enum_fmt_vid_cap	= xvip_dma_enum_format,
-	.vidioc_enum_fmt_vid_cap_mplane	= xvip_dma_enum_format,
 	.vidioc_enum_fmt_vid_out	= xvip_dma_enum_format,
-	.vidioc_enum_fmt_vid_out_mplane	= xvip_dma_enum_format,
 	.vidioc_g_fmt_vid_cap		= xvip_dma_get_format,
 	.vidioc_g_fmt_vid_cap_mplane	= xvip_dma_get_format,
 	.vidioc_g_fmt_vid_out		= xvip_dma_get_format,
@@ -1506,8 +1480,8 @@ int xvip_dma_init(struct xvip_composite_device *xdev, struct xvip_dma *dma,
 	dma->video.fops = &xvip_dma_fops;
 	dma->video.v4l2_dev = &xdev->v4l2_dev;
 	dma->video.queue = &dma->queue;
-	snprintf(dma->video.name, sizeof(dma->video.name), "%s %s %u",
-		 xdev->dev->of_node->name,
+	snprintf(dma->video.name, sizeof(dma->video.name), "%pOFn %s %u",
+		 xdev->dev->of_node,
 		 (type == V4L2_BUF_TYPE_VIDEO_CAPTURE ||
 		  type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)
 					? "output" : "input",
@@ -1523,6 +1497,21 @@ int xvip_dma_init(struct xvip_composite_device *xdev, struct xvip_dma *dma,
 	dma->video.release = video_device_release_empty;
 	dma->video.ioctl_ops = &xvip_dma_ioctl_ops;
 	dma->video.lock = &dma->lock;
+	dma->video.device_caps = V4L2_CAP_STREAMING;
+	switch (dma->format.type) {
+	case V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE:
+		dma->video.device_caps |= V4L2_CAP_VIDEO_CAPTURE_MPLANE;
+		break;
+	case V4L2_BUF_TYPE_VIDEO_CAPTURE:
+		dma->video.device_caps |= V4L2_CAP_VIDEO_CAPTURE;
+		break;
+	case V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE:
+		dma->video.device_caps |= V4L2_CAP_VIDEO_OUTPUT_MPLANE;
+		break;
+	case V4L2_BUF_TYPE_VIDEO_OUTPUT:
+		dma->video.device_caps |= V4L2_CAP_VIDEO_OUTPUT;
+		break;
+	}
 
 	video_set_drvdata(&dma->video, dma);
 

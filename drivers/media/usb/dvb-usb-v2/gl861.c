@@ -1,8 +1,5 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /* DVB USB compliant linux driver for GL861 USB2.0 devices.
- *
- *	This program is free software; you can redistribute it and/or modify it
- *	under the terms of the GNU General Public License as published by the
- *	Free Software Foundation, version 2.
  *
  * see Documentation/media/dvb-drivers/dvb-usb.rst for more information
  */
@@ -200,11 +197,10 @@ gl861_i2c_write_ex(struct dvb_usb_device *d, u8 addr, u8 *wbuf, u16 wlen)
 	u8 *buf;
 	int ret;
 
-	buf = kmalloc(wlen, GFP_KERNEL);
+	buf = kmemdup(wbuf, wlen, GFP_KERNEL);
 	if (!buf)
 		return -ENOMEM;
 
-	memcpy(buf, wbuf, wlen);
 	ret = usb_control_msg(d->udev, usb_sndctrlpipe(d->udev, 0),
 				 GL861_REQ_I2C_RAW, GL861_WRITE,
 				 addr << (8 + 1), 0x0100, buf, wlen, 2000);
@@ -357,7 +353,7 @@ static int friio_ext_ctl(struct dvb_usb_device *d,
 	ret += i2c_transfer(&d->i2c_adap, &msg, 1);
 
 	/* send 32bit(satur, R, G, B) data in serial */
-	mask = 1 << 31;
+	mask = 1UL << 31;
 	for (i = 0; i < 32; i++) {
 		buf[1] = power | FRIIO_CTL_STROBE;
 		if (sat_color & mask)
@@ -507,7 +503,7 @@ static int friio_frontend_attach(struct dvb_usb_adapter *adap)
 	priv->i2c_client_demod = cl;
 	priv->tuner_adap.algo = &friio_tuner_i2c_algo;
 	priv->tuner_adap.dev.parent = &d->udev->dev;
-	strlcpy(priv->tuner_adap.name, d->name, sizeof(priv->tuner_adap.name));
+	strscpy(priv->tuner_adap.name, d->name, sizeof(priv->tuner_adap.name));
 	strlcat(priv->tuner_adap.name, "-tuner", sizeof(priv->tuner_adap.name));
 	priv->demod_sub_i2c = &priv->tuner_adap;
 	i2c_set_adapdata(&priv->tuner_adap, d);

@@ -44,6 +44,7 @@
 #define SERV6_V4MAPPED_IP	"::ffff:192.168.0.4"
 #define SRC6_IP			"::1"
 #define SRC6_REWRITE_IP		"::6"
+#define WILDCARD6_IP		"::"
 #define SERV6_PORT		6060
 #define SERV6_REWRITE_PORT	6666
 
@@ -75,6 +76,7 @@ struct sock_addr_test {
 	enum {
 		LOAD_REJECT,
 		ATTACH_REJECT,
+		ATTACH_OKAY,
 		SYSCALL_EPERM,
 		SYSCALL_ENOTSUPP,
 		SUCCESS,
@@ -85,12 +87,18 @@ static int bind4_prog_load(const struct sock_addr_test *test);
 static int bind6_prog_load(const struct sock_addr_test *test);
 static int connect4_prog_load(const struct sock_addr_test *test);
 static int connect6_prog_load(const struct sock_addr_test *test);
+static int sendmsg_allow_prog_load(const struct sock_addr_test *test);
 static int sendmsg_deny_prog_load(const struct sock_addr_test *test);
+static int recvmsg_allow_prog_load(const struct sock_addr_test *test);
+static int recvmsg_deny_prog_load(const struct sock_addr_test *test);
 static int sendmsg4_rw_asm_prog_load(const struct sock_addr_test *test);
+static int recvmsg4_rw_asm_prog_load(const struct sock_addr_test *test);
 static int sendmsg4_rw_c_prog_load(const struct sock_addr_test *test);
 static int sendmsg6_rw_asm_prog_load(const struct sock_addr_test *test);
+static int recvmsg6_rw_asm_prog_load(const struct sock_addr_test *test);
 static int sendmsg6_rw_c_prog_load(const struct sock_addr_test *test);
 static int sendmsg6_rw_v4mapped_prog_load(const struct sock_addr_test *test);
+static int sendmsg6_rw_wildcard_prog_load(const struct sock_addr_test *test);
 
 static struct sock_addr_test tests[] = {
 	/* bind */
@@ -463,6 +471,34 @@ static struct sock_addr_test tests[] = {
 		SYSCALL_ENOTSUPP,
 	},
 	{
+		"sendmsg6: set dst IP = [::] (BSD'ism)",
+		sendmsg6_rw_wildcard_prog_load,
+		BPF_CGROUP_UDP6_SENDMSG,
+		BPF_CGROUP_UDP6_SENDMSG,
+		AF_INET6,
+		SOCK_DGRAM,
+		SERV6_IP,
+		SERV6_PORT,
+		SERV6_REWRITE_IP,
+		SERV6_REWRITE_PORT,
+		SRC6_REWRITE_IP,
+		SUCCESS,
+	},
+	{
+		"sendmsg6: preserve dst IP = [::] (BSD'ism)",
+		sendmsg_allow_prog_load,
+		BPF_CGROUP_UDP6_SENDMSG,
+		BPF_CGROUP_UDP6_SENDMSG,
+		AF_INET6,
+		SOCK_DGRAM,
+		WILDCARD6_IP,
+		SERV6_PORT,
+		SERV6_REWRITE_IP,
+		SERV6_PORT,
+		SRC6_IP,
+		SUCCESS,
+	},
+	{
 		"sendmsg6: deny call",
 		sendmsg_deny_prog_load,
 		BPF_CGROUP_UDP6_SENDMSG,
@@ -475,6 +511,92 @@ static struct sock_addr_test tests[] = {
 		SERV6_REWRITE_PORT,
 		SRC6_REWRITE_IP,
 		SYSCALL_EPERM,
+	},
+
+	/* recvmsg */
+	{
+		"recvmsg4: return code ok",
+		recvmsg_allow_prog_load,
+		BPF_CGROUP_UDP4_RECVMSG,
+		BPF_CGROUP_UDP4_RECVMSG,
+		AF_INET,
+		SOCK_DGRAM,
+		NULL,
+		0,
+		NULL,
+		0,
+		NULL,
+		ATTACH_OKAY,
+	},
+	{
+		"recvmsg4: return code !ok",
+		recvmsg_deny_prog_load,
+		BPF_CGROUP_UDP4_RECVMSG,
+		BPF_CGROUP_UDP4_RECVMSG,
+		AF_INET,
+		SOCK_DGRAM,
+		NULL,
+		0,
+		NULL,
+		0,
+		NULL,
+		LOAD_REJECT,
+	},
+	{
+		"recvmsg6: return code ok",
+		recvmsg_allow_prog_load,
+		BPF_CGROUP_UDP6_RECVMSG,
+		BPF_CGROUP_UDP6_RECVMSG,
+		AF_INET6,
+		SOCK_DGRAM,
+		NULL,
+		0,
+		NULL,
+		0,
+		NULL,
+		ATTACH_OKAY,
+	},
+	{
+		"recvmsg6: return code !ok",
+		recvmsg_deny_prog_load,
+		BPF_CGROUP_UDP6_RECVMSG,
+		BPF_CGROUP_UDP6_RECVMSG,
+		AF_INET6,
+		SOCK_DGRAM,
+		NULL,
+		0,
+		NULL,
+		0,
+		NULL,
+		LOAD_REJECT,
+	},
+	{
+		"recvmsg4: rewrite IP & port (asm)",
+		recvmsg4_rw_asm_prog_load,
+		BPF_CGROUP_UDP4_RECVMSG,
+		BPF_CGROUP_UDP4_RECVMSG,
+		AF_INET,
+		SOCK_DGRAM,
+		SERV4_REWRITE_IP,
+		SERV4_REWRITE_PORT,
+		SERV4_REWRITE_IP,
+		SERV4_REWRITE_PORT,
+		SERV4_IP,
+		SUCCESS,
+	},
+	{
+		"recvmsg6: rewrite IP & port (asm)",
+		recvmsg6_rw_asm_prog_load,
+		BPF_CGROUP_UDP6_RECVMSG,
+		BPF_CGROUP_UDP6_RECVMSG,
+		AF_INET6,
+		SOCK_DGRAM,
+		SERV6_REWRITE_IP,
+		SERV6_REWRITE_PORT,
+		SERV6_REWRITE_IP,
+		SERV6_REWRITE_PORT,
+		SERV6_IP,
+		SUCCESS,
 	},
 };
 
@@ -574,24 +696,44 @@ static int bind4_prog_load(const struct sock_addr_test *test)
 		/* if (sk.family == AF_INET && */
 		BPF_LDX_MEM(BPF_W, BPF_REG_7, BPF_REG_6,
 			    offsetof(struct bpf_sock_addr, family)),
-		BPF_JMP_IMM(BPF_JNE, BPF_REG_7, AF_INET, 16),
+		BPF_JMP_IMM(BPF_JNE, BPF_REG_7, AF_INET, 24),
 
 		/*     (sk.type == SOCK_DGRAM || sk.type == SOCK_STREAM) && */
 		BPF_LDX_MEM(BPF_W, BPF_REG_7, BPF_REG_6,
 			    offsetof(struct bpf_sock_addr, type)),
 		BPF_JMP_IMM(BPF_JNE, BPF_REG_7, SOCK_DGRAM, 1),
 		BPF_JMP_A(1),
-		BPF_JMP_IMM(BPF_JNE, BPF_REG_7, SOCK_STREAM, 12),
+		BPF_JMP_IMM(BPF_JNE, BPF_REG_7, SOCK_STREAM, 20),
 
 		/*     1st_byte_of_user_ip4 == expected && */
 		BPF_LDX_MEM(BPF_B, BPF_REG_7, BPF_REG_6,
 			    offsetof(struct bpf_sock_addr, user_ip4)),
-		BPF_JMP_IMM(BPF_JNE, BPF_REG_7, ip4.u4_addr8[0], 10),
+		BPF_JMP_IMM(BPF_JNE, BPF_REG_7, ip4.u4_addr8[0], 18),
+
+		/*     2nd_byte_of_user_ip4 == expected && */
+		BPF_LDX_MEM(BPF_B, BPF_REG_7, BPF_REG_6,
+			    offsetof(struct bpf_sock_addr, user_ip4) + 1),
+		BPF_JMP_IMM(BPF_JNE, BPF_REG_7, ip4.u4_addr8[1], 16),
+
+		/*     3rd_byte_of_user_ip4 == expected && */
+		BPF_LDX_MEM(BPF_B, BPF_REG_7, BPF_REG_6,
+			    offsetof(struct bpf_sock_addr, user_ip4) + 2),
+		BPF_JMP_IMM(BPF_JNE, BPF_REG_7, ip4.u4_addr8[2], 14),
+
+		/*     4th_byte_of_user_ip4 == expected && */
+		BPF_LDX_MEM(BPF_B, BPF_REG_7, BPF_REG_6,
+			    offsetof(struct bpf_sock_addr, user_ip4) + 3),
+		BPF_JMP_IMM(BPF_JNE, BPF_REG_7, ip4.u4_addr8[3], 12),
 
 		/*     1st_half_of_user_ip4 == expected && */
 		BPF_LDX_MEM(BPF_H, BPF_REG_7, BPF_REG_6,
 			    offsetof(struct bpf_sock_addr, user_ip4)),
-		BPF_JMP_IMM(BPF_JNE, BPF_REG_7, ip4.u4_addr16[0], 8),
+		BPF_JMP_IMM(BPF_JNE, BPF_REG_7, ip4.u4_addr16[0], 10),
+
+		/*     2nd_half_of_user_ip4 == expected && */
+		BPF_LDX_MEM(BPF_H, BPF_REG_7, BPF_REG_6,
+			    offsetof(struct bpf_sock_addr, user_ip4) + 2),
+		BPF_JMP_IMM(BPF_JNE, BPF_REG_7, ip4.u4_addr16[1], 8),
 
 		/*     whole_user_ip4 == expected) { */
 		BPF_LDX_MEM(BPF_W, BPF_REG_7, BPF_REG_6,
@@ -694,6 +836,7 @@ static int load_path(const struct sock_addr_test *test, const char *path)
 	attr.file = path;
 	attr.prog_type = BPF_PROG_TYPE_CGROUP_SOCK_ADDR;
 	attr.expected_attach_type = test->expected_attach_type;
+	attr.prog_flags = BPF_F_TEST_RND_HI32;
 
 	if (bpf_prog_load_xattr(&attr, &obj, &prog_fd)) {
 		if (test->expected_result != LOAD_REJECT)
@@ -714,14 +857,35 @@ static int connect6_prog_load(const struct sock_addr_test *test)
 	return load_path(test, CONNECT6_PROG_PATH);
 }
 
-static int sendmsg_deny_prog_load(const struct sock_addr_test *test)
+static int xmsg_ret_only_prog_load(const struct sock_addr_test *test,
+				   int32_t rc)
 {
 	struct bpf_insn insns[] = {
-		/* return 0 */
-		BPF_MOV64_IMM(BPF_REG_0, 0),
+		/* return rc */
+		BPF_MOV64_IMM(BPF_REG_0, rc),
 		BPF_EXIT_INSN(),
 	};
 	return load_insns(test, insns, sizeof(insns) / sizeof(struct bpf_insn));
+}
+
+static int sendmsg_allow_prog_load(const struct sock_addr_test *test)
+{
+	return xmsg_ret_only_prog_load(test, /*rc*/ 1);
+}
+
+static int sendmsg_deny_prog_load(const struct sock_addr_test *test)
+{
+	return xmsg_ret_only_prog_load(test, /*rc*/ 0);
+}
+
+static int recvmsg_allow_prog_load(const struct sock_addr_test *test)
+{
+	return xmsg_ret_only_prog_load(test, /*rc*/ 1);
+}
+
+static int recvmsg_deny_prog_load(const struct sock_addr_test *test)
+{
+	return xmsg_ret_only_prog_load(test, /*rc*/ 0);
 }
 
 static int sendmsg4_rw_asm_prog_load(const struct sock_addr_test *test)
@@ -764,6 +928,47 @@ static int sendmsg4_rw_asm_prog_load(const struct sock_addr_test *test)
 
 		/*      user_port = dst4_rw_addr.sin_port */
 		BPF_MOV32_IMM(BPF_REG_7, dst4_rw_addr.sin_port),
+		BPF_STX_MEM(BPF_W, BPF_REG_6, BPF_REG_7,
+			    offsetof(struct bpf_sock_addr, user_port)),
+		/* } */
+
+		/* return 1 */
+		BPF_MOV64_IMM(BPF_REG_0, 1),
+		BPF_EXIT_INSN(),
+	};
+
+	return load_insns(test, insns, sizeof(insns) / sizeof(struct bpf_insn));
+}
+
+static int recvmsg4_rw_asm_prog_load(const struct sock_addr_test *test)
+{
+	struct sockaddr_in src4_rw_addr;
+
+	if (mk_sockaddr(AF_INET, SERV4_IP, SERV4_PORT,
+			(struct sockaddr *)&src4_rw_addr,
+			sizeof(src4_rw_addr)) == -1)
+		return -1;
+
+	struct bpf_insn insns[] = {
+		BPF_MOV64_REG(BPF_REG_6, BPF_REG_1),
+
+		/* if (sk.family == AF_INET && */
+		BPF_LDX_MEM(BPF_W, BPF_REG_7, BPF_REG_6,
+			    offsetof(struct bpf_sock_addr, family)),
+		BPF_JMP_IMM(BPF_JNE, BPF_REG_7, AF_INET, 6),
+
+		/*     sk.type == SOCK_DGRAM)  { */
+		BPF_LDX_MEM(BPF_W, BPF_REG_7, BPF_REG_6,
+			    offsetof(struct bpf_sock_addr, type)),
+		BPF_JMP_IMM(BPF_JNE, BPF_REG_7, SOCK_DGRAM, 4),
+
+		/*      user_ip4 = src4_rw_addr.sin_addr */
+		BPF_MOV32_IMM(BPF_REG_7, src4_rw_addr.sin_addr.s_addr),
+		BPF_STX_MEM(BPF_W, BPF_REG_6, BPF_REG_7,
+			    offsetof(struct bpf_sock_addr, user_ip4)),
+
+		/*      user_port = src4_rw_addr.sin_port */
+		BPF_MOV32_IMM(BPF_REG_7, src4_rw_addr.sin_port),
 		BPF_STX_MEM(BPF_W, BPF_REG_6, BPF_REG_7,
 			    offsetof(struct bpf_sock_addr, user_port)),
 		/* } */
@@ -839,9 +1044,47 @@ static int sendmsg6_rw_asm_prog_load(const struct sock_addr_test *test)
 	return sendmsg6_rw_dst_asm_prog_load(test, SERV6_REWRITE_IP);
 }
 
+static int recvmsg6_rw_asm_prog_load(const struct sock_addr_test *test)
+{
+	struct sockaddr_in6 src6_rw_addr;
+
+	if (mk_sockaddr(AF_INET6, SERV6_IP, SERV6_PORT,
+			(struct sockaddr *)&src6_rw_addr,
+			sizeof(src6_rw_addr)) == -1)
+		return -1;
+
+	struct bpf_insn insns[] = {
+		BPF_MOV64_REG(BPF_REG_6, BPF_REG_1),
+
+		/* if (sk.family == AF_INET6) { */
+		BPF_LDX_MEM(BPF_W, BPF_REG_7, BPF_REG_6,
+			    offsetof(struct bpf_sock_addr, family)),
+		BPF_JMP_IMM(BPF_JNE, BPF_REG_7, AF_INET6, 10),
+
+		STORE_IPV6(user_ip6, src6_rw_addr.sin6_addr.s6_addr32),
+
+		/*      user_port = dst6_rw_addr.sin6_port */
+		BPF_MOV32_IMM(BPF_REG_7, src6_rw_addr.sin6_port),
+		BPF_STX_MEM(BPF_W, BPF_REG_6, BPF_REG_7,
+			    offsetof(struct bpf_sock_addr, user_port)),
+		/* } */
+
+		/* return 1 */
+		BPF_MOV64_IMM(BPF_REG_0, 1),
+		BPF_EXIT_INSN(),
+	};
+
+	return load_insns(test, insns, sizeof(insns) / sizeof(struct bpf_insn));
+}
+
 static int sendmsg6_rw_v4mapped_prog_load(const struct sock_addr_test *test)
 {
 	return sendmsg6_rw_dst_asm_prog_load(test, SERV6_V4MAPPED_IP);
+}
+
+static int sendmsg6_rw_wildcard_prog_load(const struct sock_addr_test *test)
+{
+	return sendmsg6_rw_dst_asm_prog_load(test, WILDCARD6_IP);
 }
 
 static int sendmsg6_rw_c_prog_load(const struct sock_addr_test *test)
@@ -1215,13 +1458,13 @@ out:
 	return err;
 }
 
-static int run_sendmsg_test_case(const struct sock_addr_test *test)
+static int run_xmsg_test_case(const struct sock_addr_test *test, int max_cmsg)
 {
 	socklen_t addr_len = sizeof(struct sockaddr_storage);
-	struct sockaddr_storage expected_src_addr;
-	struct sockaddr_storage requested_addr;
 	struct sockaddr_storage expected_addr;
-	struct sockaddr_storage real_src_addr;
+	struct sockaddr_storage server_addr;
+	struct sockaddr_storage sendmsg_addr;
+	struct sockaddr_storage recvmsg_addr;
 	int clientfd = -1;
 	int servfd = -1;
 	int set_cmsg;
@@ -1230,20 +1473,19 @@ static int run_sendmsg_test_case(const struct sock_addr_test *test)
 	if (test->type != SOCK_DGRAM)
 		goto err;
 
-	if (init_addrs(test, &requested_addr, &expected_addr,
-		       &expected_src_addr))
+	if (init_addrs(test, &sendmsg_addr, &server_addr, &expected_addr))
 		goto err;
 
 	/* Prepare server to sendmsg to */
-	servfd = start_server(test->type, &expected_addr, addr_len);
+	servfd = start_server(test->type, &server_addr, addr_len);
 	if (servfd == -1)
 		goto err;
 
-	for (set_cmsg = 0; set_cmsg <= 1; ++set_cmsg) {
+	for (set_cmsg = 0; set_cmsg <= max_cmsg; ++set_cmsg) {
 		if (clientfd >= 0)
 			close(clientfd);
 
-		clientfd = sendmsg_to_server(test->type, &requested_addr,
+		clientfd = sendmsg_to_server(test->type, &sendmsg_addr,
 					     addr_len, set_cmsg, /*flags*/0,
 					     &err);
 		if (err)
@@ -1263,10 +1505,10 @@ static int run_sendmsg_test_case(const struct sock_addr_test *test)
 		 * specific packet may differ from the one used by default and
 		 * returned by getsockname(2).
 		 */
-		if (recvmsg_from_client(servfd, &real_src_addr) == -1)
+		if (recvmsg_from_client(servfd, &recvmsg_addr) == -1)
 			goto err;
 
-		if (cmp_addr(&real_src_addr, &expected_src_addr, /*cmp_port*/0))
+		if (cmp_addr(&recvmsg_addr, &expected_addr, /*cmp_port*/0))
 			goto err;
 	}
 
@@ -1299,6 +1541,9 @@ static int run_test_case(int cgfd, const struct sock_addr_test *test)
 		goto out;
 	} else if (test->expected_result == ATTACH_REJECT || err) {
 		goto err;
+	} else if (test->expected_result == ATTACH_OKAY) {
+		err = 0;
+		goto out;
 	}
 
 	switch (test->attach_type) {
@@ -1312,7 +1557,11 @@ static int run_test_case(int cgfd, const struct sock_addr_test *test)
 		break;
 	case BPF_CGROUP_UDP4_SENDMSG:
 	case BPF_CGROUP_UDP6_SENDMSG:
-		err = run_sendmsg_test_case(test);
+		err = run_xmsg_test_case(test, 1);
+		break;
+	case BPF_CGROUP_UDP4_RECVMSG:
+	case BPF_CGROUP_UDP6_RECVMSG:
+		err = run_xmsg_test_case(test, 0);
 		break;
 	default:
 		goto err;
@@ -1375,7 +1624,7 @@ int main(int argc, char **argv)
 		goto err;
 
 	cgfd = create_and_get_cgroup(CG_PATH);
-	if (!cgfd)
+	if (cgfd < 0)
 		goto err;
 
 	if (join_cgroup(CG_PATH))

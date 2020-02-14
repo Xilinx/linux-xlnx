@@ -4,8 +4,13 @@
 
 #include "msm_gem.h"
 #include "msm_mmu.h"
+#include "msm_gpu_trace.h"
 #include "a6xx_gpu.h"
 #include "a6xx_gmu.xml.h"
+
+#include <linux/devfreq.h>
+
+#define GPU_PAS_ID 13
 
 static inline bool _a6xx_check_idle(struct msm_gpu *gpu)
 {
@@ -65,12 +70,35 @@ static void a6xx_flush(struct msm_gpu *gpu, struct msm_ringbuffer *ring)
 	gpu_write(gpu, REG_A6XX_CP_RB_WPTR, wptr);
 }
 
+static void get_stats_counter(struct msm_ringbuffer *ring, u32 counter,
+		u64 iova)
+{
+	OUT_PKT7(ring, CP_REG_TO_MEM, 3);
+	OUT_RING(ring, counter | (1 << 30) | (2 << 18));
+	OUT_RING(ring, lower_32_bits(iova));
+	OUT_RING(ring, upper_32_bits(iova));
+}
+
 static void a6xx_submit(struct msm_gpu *gpu, struct msm_gem_submit *submit,
 	struct msm_file_private *ctx)
 {
+	unsigned int index = submit->seqno % MSM_GPU_SUBMIT_STATS_COUNT;
 	struct msm_drm_private *priv = gpu->dev->dev_private;
+	struct adreno_gpu *adreno_gpu = to_adreno_gpu(gpu);
+	struct a6xx_gpu *a6xx_gpu = to_a6xx_gpu(adreno_gpu);
 	struct msm_ringbuffer *ring = submit->ring;
 	unsigned int i;
+
+	get_stats_counter(ring, REG_A6XX_RBBM_PERFCTR_CP_0_LO,
+		rbmemptr_stats(ring, index, cpcycles_start));
+
+	/*
+	 * For PM4 the GMU register offsets are calculated from the base of the
+	 * GPU registers so we need to add 0x1a800 to the register value on A630
+	 * to get the right value from PM4.
+	 */
+	get_stats_counter(ring, REG_A6XX_GMU_ALWAYS_ON_COUNTER_L + 0x1a800,
+		rbmemptr_stats(ring, index, alwayson_start));
 
 	/* Invalidate CCU depth and color */
 	OUT_PKT7(ring, CP_EVENT_WRITE, 1);
@@ -87,6 +115,7 @@ static void a6xx_submit(struct msm_gpu *gpu, struct msm_gem_submit *submit,
 		case MSM_SUBMIT_CMD_CTX_RESTORE_BUF:
 			if (priv->lastctx == ctx)
 				break;
+			/* fall-thru */
 		case MSM_SUBMIT_CMD_BUF:
 			OUT_PKT7(ring, CP_INDIRECT_BUFFER_PFE, 3);
 			OUT_RING(ring, lower_32_bits(submit->cmd[i].iova));
@@ -95,6 +124,11 @@ static void a6xx_submit(struct msm_gpu *gpu, struct msm_gem_submit *submit,
 			break;
 		}
 	}
+
+	get_stats_counter(ring, REG_A6XX_RBBM_PERFCTR_CP_0_LO,
+		rbmemptr_stats(ring, index, cpcycles_end));
+	get_stats_counter(ring, REG_A6XX_GMU_ALWAYS_ON_COUNTER_L + 0x1a800,
+		rbmemptr_stats(ring, index, alwayson_end));
 
 	/* Write the fence to the scratch register */
 	OUT_PKT4(ring, REG_A6XX_CP_SCRATCH_REG(2), 1);
@@ -109,6 +143,10 @@ static void a6xx_submit(struct msm_gpu *gpu, struct msm_gem_submit *submit,
 	OUT_RING(ring, lower_32_bits(rbmemptr(ring, fence)));
 	OUT_RING(ring, upper_32_bits(rbmemptr(ring, fence)));
 	OUT_RING(ring, submit->seqno);
+
+	trace_msm_gpu_submit_flush(submit,
+		gmu_read64(&a6xx_gpu->gmu, REG_A6XX_GMU_ALWAYS_ON_COUNTER_L,
+			REG_A6XX_GMU_ALWAYS_ON_COUNTER_H));
 
 	a6xx_flush(gpu, ring);
 }
@@ -298,12 +336,28 @@ static int a6xx_ucode_init(struct msm_gpu *gpu)
 
 			return ret;
 		}
+
+		msm_gem_object_set_name(a6xx_gpu->sqe_bo, "sqefw");
 	}
 
 	gpu_write64(gpu, REG_A6XX_CP_SQE_INSTR_BASE_LO,
 		REG_A6XX_CP_SQE_INSTR_BASE_HI, a6xx_gpu->sqe_iova);
 
 	return 0;
+}
+
+static int a6xx_zap_shader_init(struct msm_gpu *gpu)
+{
+	static bool loaded;
+	int ret;
+
+	if (loaded)
+		return 0;
+
+	ret = adreno_zap_shader_load(gpu, GPU_PAS_ID);
+
+	loaded = !ret;
+	return ret;
 }
 
 #define A6XX_INT_MASK (A6XX_RBBM_INT_0_MASK_CP_AHB_ERROR | \
@@ -337,6 +391,20 @@ static int a6xx_hw_init(struct msm_gpu *gpu)
 	gpu_write64(gpu, REG_A6XX_RBBM_SECVID_TSB_TRUSTED_BASE_LO,
 		REG_A6XX_RBBM_SECVID_TSB_TRUSTED_BASE_HI, 0x00000000);
 	gpu_write(gpu, REG_A6XX_RBBM_SECVID_TSB_TRUSTED_SIZE, 0x00000000);
+
+	/* Turn on 64 bit addressing for all blocks */
+	gpu_write(gpu, REG_A6XX_CP_ADDR_MODE_CNTL, 0x1);
+	gpu_write(gpu, REG_A6XX_VSC_ADDR_MODE_CNTL, 0x1);
+	gpu_write(gpu, REG_A6XX_GRAS_ADDR_MODE_CNTL, 0x1);
+	gpu_write(gpu, REG_A6XX_RB_ADDR_MODE_CNTL, 0x1);
+	gpu_write(gpu, REG_A6XX_PC_ADDR_MODE_CNTL, 0x1);
+	gpu_write(gpu, REG_A6XX_HLSQ_ADDR_MODE_CNTL, 0x1);
+	gpu_write(gpu, REG_A6XX_VFD_ADDR_MODE_CNTL, 0x1);
+	gpu_write(gpu, REG_A6XX_VPC_ADDR_MODE_CNTL, 0x1);
+	gpu_write(gpu, REG_A6XX_UCHE_ADDR_MODE_CNTL, 0x1);
+	gpu_write(gpu, REG_A6XX_SP_ADDR_MODE_CNTL, 0x1);
+	gpu_write(gpu, REG_A6XX_TPL1_ADDR_MODE_CNTL, 0x1);
+	gpu_write(gpu, REG_A6XX_RBBM_SECVID_TSB_ADDR_MODE_CNTL, 0x1);
 
 	/* enable hardware clockgating */
 	a6xx_set_hwcg(gpu, true);
@@ -385,14 +453,6 @@ static int a6xx_hw_init(struct msm_gpu *gpu)
 	/* Select CP0 to always count cycles */
 	gpu_write(gpu, REG_A6XX_CP_PERFCTR_CP_SEL_0, PERF_CP_ALWAYS_COUNT);
 
-	/* FIXME: not sure if this should live here or in a6xx_gmu.c */
-	gmu_write(&a6xx_gpu->gmu,  REG_A6XX_GPU_GMU_AO_GPU_CX_BUSY_MASK,
-		0xff000000);
-	gmu_rmw(&a6xx_gpu->gmu, REG_A6XX_GMU_CX_GMU_POWER_COUNTER_SELECT_0,
-		0xff, 0x20);
-	gmu_write(&a6xx_gpu->gmu, REG_A6XX_GMU_CX_GMU_POWER_COUNTER_ENABLE,
-		0x01);
-
 	gpu_write(gpu, REG_A6XX_RB_NC_MODE_CNTL, 2 << 1);
 	gpu_write(gpu, REG_A6XX_TPL1_NC_MODE_CNTL, 2 << 1);
 	gpu_write(gpu, REG_A6XX_SP_NC_MODE_CNTL, 2 << 1);
@@ -438,10 +498,8 @@ static int a6xx_hw_init(struct msm_gpu *gpu)
 	gpu_write(gpu, REG_A6XX_CP_PROTECT(22), A6XX_PROTECT_RW(0x900, 0x4d));
 	gpu_write(gpu, REG_A6XX_CP_PROTECT(23), A6XX_PROTECT_RW(0x98d, 0x76));
 	gpu_write(gpu, REG_A6XX_CP_PROTECT(24),
-			A6XX_PROTECT_RDONLY(0x8d0, 0x23));
-	gpu_write(gpu, REG_A6XX_CP_PROTECT(25),
 			A6XX_PROTECT_RDONLY(0x980, 0x4));
-	gpu_write(gpu, REG_A6XX_CP_PROTECT(26), A6XX_PROTECT_RW(0xa630, 0x0));
+	gpu_write(gpu, REG_A6XX_CP_PROTECT(25), A6XX_PROTECT_RW(0xa630, 0x0));
 
 	/* Enable interrupts */
 	gpu_write(gpu, REG_A6XX_RBBM_INT_0_MASK, A6XX_INT_MASK);
@@ -464,7 +522,28 @@ static int a6xx_hw_init(struct msm_gpu *gpu)
 	if (ret)
 		goto out;
 
-	gpu_write(gpu, REG_A6XX_RBBM_SECVID_TRUST_CNTL, 0x0);
+	/*
+	 * Try to load a zap shader into the secure world. If successful
+	 * we can use the CP to switch out of secure mode. If not then we
+	 * have no resource but to try to switch ourselves out manually. If we
+	 * guessed wrong then access to the RBBM_SECVID_TRUST_CNTL register will
+	 * be blocked and a permissions violation will soon follow.
+	 */
+	ret = a6xx_zap_shader_init(gpu);
+	if (!ret) {
+		OUT_PKT7(gpu->rb[0], CP_SET_SECURE_MODE, 1);
+		OUT_RING(gpu->rb[0], 0x00000000);
+
+		a6xx_flush(gpu, gpu->rb[0]);
+		if (!a6xx_idle(gpu, gpu->rb[0]))
+			return -EINVAL;
+	} else {
+		/* Print a warning so if we die, we know why */
+		dev_warn_once(gpu->dev->dev,
+			"Zap shader not enabled - using SECVID_TRUST_CNTL instead\n");
+		gpu_write(gpu, REG_A6XX_RBBM_SECVID_TRUST_CNTL, 0x0);
+		ret = 0;
+	}
 
 out:
 	/*
@@ -481,7 +560,7 @@ out:
 
 static void a6xx_dump(struct msm_gpu *gpu)
 {
-	dev_info(&gpu->pdev->dev, "status:   %08x\n",
+	DRM_DEV_INFO(&gpu->pdev->dev, "status:   %08x\n",
 			gpu_read(gpu, REG_A6XX_RBBM_STATUS));
 	adreno_dump(gpu);
 }
@@ -498,7 +577,7 @@ static void a6xx_recover(struct msm_gpu *gpu)
 	adreno_dump_info(gpu);
 
 	for (i = 0; i < 8; i++)
-		dev_info(&gpu->pdev->dev, "CP_SCRATCH_REG%d: %u\n", i,
+		DRM_DEV_INFO(&gpu->pdev->dev, "CP_SCRATCH_REG%d: %u\n", i,
 			gpu_read(gpu, REG_A6XX_CP_SCRATCH_REG(i)));
 
 	if (hang_debug)
@@ -645,44 +724,21 @@ static const u32 a6xx_register_offsets[REG_ADRENO_REGISTER_MAX] = {
 	REG_ADRENO_DEFINE(REG_ADRENO_CP_RB_CNTL, REG_A6XX_CP_RB_CNTL),
 };
 
-static const u32 a6xx_registers[] = {
-	0x0000, 0x0002, 0x0010, 0x0010, 0x0012, 0x0012, 0x0018, 0x001b,
-	0x001e, 0x0032, 0x0038, 0x003c, 0x0042, 0x0042, 0x0044, 0x0044,
-	0x0047, 0x0047, 0x0056, 0x0056, 0x00ad, 0x00ae, 0x00b0, 0x00fb,
-	0x0100, 0x011d, 0x0200, 0x020d, 0x0210, 0x0213, 0x0218, 0x023d,
-	0x0400, 0x04f9, 0x0500, 0x0500, 0x0505, 0x050b, 0x050e, 0x0511,
-	0x0533, 0x0533, 0x0540, 0x0555, 0x0800, 0x0808, 0x0810, 0x0813,
-	0x0820, 0x0821, 0x0823, 0x0827, 0x0830, 0x0833, 0x0840, 0x0843,
-	0x084f, 0x086f, 0x0880, 0x088a, 0x08a0, 0x08ab, 0x08c0, 0x08c4,
-	0x08d0, 0x08dd, 0x08f0, 0x08f3, 0x0900, 0x0903, 0x0908, 0x0911,
-	0x0928, 0x093e, 0x0942, 0x094d, 0x0980, 0x0984, 0x098d, 0x0996,
-	0x0998, 0x099e, 0x09a0, 0x09a6, 0x09a8, 0x09ae, 0x09b0, 0x09b1,
-	0x09c2, 0x09c8, 0x0a00, 0x0a03, 0x0c00, 0x0c04, 0x0c06, 0x0c06,
-	0x0c10, 0x0cd9, 0x0e00, 0x0e0e, 0x0e10, 0x0e13, 0x0e17, 0x0e19,
-	0x0e1c, 0x0e2b, 0x0e30, 0x0e32, 0x0e38, 0x0e39, 0x8600, 0x8601,
-	0x8610, 0x861b, 0x8620, 0x8620, 0x8628, 0x862b, 0x8630, 0x8637,
-	0x8e01, 0x8e01, 0x8e04, 0x8e05, 0x8e07, 0x8e08, 0x8e0c, 0x8e0c,
-	0x8e10, 0x8e1c, 0x8e20, 0x8e25, 0x8e28, 0x8e28, 0x8e2c, 0x8e2f,
-	0x8e3b, 0x8e3e, 0x8e40, 0x8e43, 0x8e50, 0x8e5e, 0x8e70, 0x8e77,
-	0x9600, 0x9604, 0x9624, 0x9637, 0x9e00, 0x9e01, 0x9e03, 0x9e0e,
-	0x9e11, 0x9e16, 0x9e19, 0x9e19, 0x9e1c, 0x9e1c, 0x9e20, 0x9e23,
-	0x9e30, 0x9e31, 0x9e34, 0x9e34, 0x9e70, 0x9e72, 0x9e78, 0x9e79,
-	0x9e80, 0x9fff, 0xa600, 0xa601, 0xa603, 0xa603, 0xa60a, 0xa60a,
-	0xa610, 0xa617, 0xa630, 0xa630,
-	~0
-};
-
 static int a6xx_pm_resume(struct msm_gpu *gpu)
 {
 	struct adreno_gpu *adreno_gpu = to_adreno_gpu(gpu);
 	struct a6xx_gpu *a6xx_gpu = to_a6xx_gpu(adreno_gpu);
 	int ret;
 
-	ret = a6xx_gmu_resume(a6xx_gpu);
-
 	gpu->needs_hw_init = true;
 
-	return ret;
+	ret = a6xx_gmu_resume(a6xx_gpu);
+	if (ret)
+		return ret;
+
+	msm_gpu_resume_devfreq(gpu);
+
+	return 0;
 }
 
 static int a6xx_pm_suspend(struct msm_gpu *gpu)
@@ -690,17 +746,7 @@ static int a6xx_pm_suspend(struct msm_gpu *gpu)
 	struct adreno_gpu *adreno_gpu = to_adreno_gpu(gpu);
 	struct a6xx_gpu *a6xx_gpu = to_a6xx_gpu(adreno_gpu);
 
-	/*
-	 * Make sure the GMU is idle before continuing (because some transitions
-	 * may use VBIF
-	 */
-	a6xx_gmu_wait_for_idle(a6xx_gpu);
-
-	/* Clear the VBIF pipe before shutting down */
-	/* FIXME: This accesses the GPU - do we need to make sure it is on? */
-	gpu_write(gpu, REG_A6XX_VBIF_XIN_HALT_CTRL0, 0xf);
-	spin_until((gpu_read(gpu, REG_A6XX_VBIF_XIN_HALT_CTRL1) & 0xf) == 0xf);
-	gpu_write(gpu, REG_A6XX_VBIF_XIN_HALT_CTRL0, 0);
+	devfreq_suspend_device(gpu->devfreq.devfreq);
 
 	return a6xx_gmu_stop(a6xx_gpu);
 }
@@ -720,14 +766,6 @@ static int a6xx_get_timestamp(struct msm_gpu *gpu, uint64_t *value)
 	return 0;
 }
 
-#if defined(CONFIG_DEBUG_FS) || defined(CONFIG_DEV_COREDUMP)
-static void a6xx_show(struct msm_gpu *gpu, struct msm_gpu_state *state,
-		struct drm_printer *p)
-{
-	adreno_show(gpu, state, p);
-}
-#endif
-
 static struct msm_ringbuffer *a6xx_active_ring(struct msm_gpu *gpu)
 {
 	struct adreno_gpu *adreno_gpu = to_adreno_gpu(gpu);
@@ -742,15 +780,35 @@ static void a6xx_destroy(struct msm_gpu *gpu)
 	struct a6xx_gpu *a6xx_gpu = to_a6xx_gpu(adreno_gpu);
 
 	if (a6xx_gpu->sqe_bo) {
-		if (a6xx_gpu->sqe_iova)
-			msm_gem_put_iova(a6xx_gpu->sqe_bo, gpu->aspace);
-		drm_gem_object_unreference_unlocked(a6xx_gpu->sqe_bo);
+		msm_gem_unpin_iova(a6xx_gpu->sqe_bo, gpu->aspace);
+		drm_gem_object_put_unlocked(a6xx_gpu->sqe_bo);
 	}
 
 	a6xx_gmu_remove(a6xx_gpu);
 
 	adreno_gpu_cleanup(adreno_gpu);
 	kfree(a6xx_gpu);
+}
+
+static unsigned long a6xx_gpu_busy(struct msm_gpu *gpu)
+{
+	struct adreno_gpu *adreno_gpu = to_adreno_gpu(gpu);
+	struct a6xx_gpu *a6xx_gpu = to_a6xx_gpu(adreno_gpu);
+	u64 busy_cycles, busy_time;
+
+	busy_cycles = gmu_read64(&a6xx_gpu->gmu,
+			REG_A6XX_GMU_CX_GMU_POWER_COUNTER_XOCLK_0_L,
+			REG_A6XX_GMU_CX_GMU_POWER_COUNTER_XOCLK_0_H);
+
+	busy_time = (busy_cycles - gpu->devfreq.busy_cycles) * 10;
+	do_div(busy_time, 192);
+
+	gpu->devfreq.busy_cycles = busy_cycles;
+
+	if (WARN_ON(busy_time > ~0LU))
+		return ~0LU;
+
+	return (unsigned long)busy_time;
 }
 
 static const struct adreno_gpu_funcs funcs = {
@@ -765,8 +823,15 @@ static const struct adreno_gpu_funcs funcs = {
 		.active_ring = a6xx_active_ring,
 		.irq = a6xx_irq,
 		.destroy = a6xx_destroy,
-#if defined(CONFIG_DEBUG_FS) || defined(CONFIG_DEV_COREDUMP)
+#if defined(CONFIG_DRM_MSM_GPU_STATE)
 		.show = a6xx_show,
+#endif
+		.gpu_busy = a6xx_gpu_busy,
+		.gpu_get_freq = a6xx_gmu_get_freq,
+		.gpu_set_freq = a6xx_gmu_set_freq,
+#if defined(CONFIG_DRM_MSM_GPU_STATE)
+		.gpu_state_get = a6xx_gpu_state_get,
+		.gpu_state_put = a6xx_gpu_state_put,
 #endif
 	},
 	.get_timestamp = a6xx_get_timestamp,
@@ -789,7 +854,7 @@ struct msm_gpu *a6xx_gpu_init(struct drm_device *dev)
 	adreno_gpu = &a6xx_gpu->base;
 	gpu = &adreno_gpu->base;
 
-	adreno_gpu->registers = a6xx_registers;
+	adreno_gpu->registers = NULL;
 	adreno_gpu->reg_offsets = a6xx_register_offsets;
 
 	ret = adreno_gpu_init(dev, pdev, adreno_gpu, &funcs, 1);
@@ -799,12 +864,12 @@ struct msm_gpu *a6xx_gpu_init(struct drm_device *dev)
 	}
 
 	/* Check if there is a GMU phandle and set it up */
-	node = of_parse_phandle(pdev->dev.of_node, "gmu", 0);
+	node = of_parse_phandle(pdev->dev.of_node, "qcom,gmu", 0);
 
 	/* FIXME: How do we gracefully handle this? */
 	BUG_ON(!node);
 
-	ret = a6xx_gmu_probe(a6xx_gpu, node);
+	ret = a6xx_gmu_init(a6xx_gpu, node);
 	if (ret) {
 		a6xx_destroy(&(a6xx_gpu->base.base));
 		return ERR_PTR(ret);

@@ -93,8 +93,8 @@ struct xlnx_pcm_drv_data {
 	void __iomem *mmio;
 	bool s2mm_presence;
 	bool mm2s_presence;
-	unsigned int s2mm_irq;
-	unsigned int mm2s_irq;
+	int s2mm_irq;
+	int mm2s_irq;
 	struct snd_pcm_substream *play_stream;
 	struct snd_pcm_substream *capture_stream;
 	struct platform_device *pdev;
@@ -563,10 +563,11 @@ static int xlnx_formatter_pcm_new(struct snd_soc_pcm_runtime *rtd)
 {
 	struct snd_soc_component *component = snd_soc_rtdcom_lookup(rtd,
 								    DRV_NAME);
-	return snd_pcm_lib_preallocate_pages_for_all(rtd->pcm,
+	snd_pcm_lib_preallocate_pages_for_all(rtd->pcm,
 			SNDRV_DMA_TYPE_DEV, component->dev,
 			xlnx_pcm_hardware.buffer_bytes_max,
 			xlnx_pcm_hardware.buffer_bytes_max);
+	return 0;
 }
 
 static const struct snd_pcm_ops xlnx_formatter_pcm_ops = {
@@ -618,7 +619,6 @@ static int configure_mm2s(struct xlnx_pcm_drv_data *aud_drv_data,
 	aud_drv_data->mm2s_irq = platform_get_irq_byname(pdev,
 							 "irq_mm2s");
 	if (aud_drv_data->mm2s_irq < 0) {
-		dev_err(dev, "xlnx audio mm2s irq resource failed\n");
 		ret = aud_drv_data->mm2s_irq;
 		goto mm2s_err;
 	}
@@ -681,7 +681,6 @@ static int configure_s2mm(struct xlnx_pcm_drv_data *aud_drv_data,
 
 	aud_drv_data->s2mm_irq = platform_get_irq_byname(pdev, "irq_s2mm");
 	if (aud_drv_data->s2mm_irq < 0) {
-		dev_err(dev, "xlnx audio s2mm irq resource failed\n");
 		ret = aud_drv_data->s2mm_irq;
 		goto s2mm_err;
 	}

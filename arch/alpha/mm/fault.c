@@ -78,7 +78,7 @@ __load_new_mm_context(struct mm_struct *next_mm)
 /* Macro for exception fixup code to access integer registers.  */
 #define dpf_reg(r)							\
 	(((unsigned long *)regs)[(r) <= 8 ? (r) : (r) <= 15 ? (r)-16 :	\
-				 (r) <= 18 ? (r)+8 : (r)-10])
+				 (r) <= 18 ? (r)+10 : (r)-10])
 
 asmlinkage void
 do_page_fault(unsigned long address, unsigned long mmcsr,
@@ -221,13 +221,13 @@ retry:
 	up_read(&mm->mmap_sem);
 	/* Send a sigbus, regardless of whether we were in kernel
 	   or user mode.  */
-	force_sig_fault(SIGBUS, BUS_ADRERR, (void __user *) address, 0, current);
+	force_sig_fault(SIGBUS, BUS_ADRERR, (void __user *) address, 0);
 	if (!user_mode(regs))
 		goto no_context;
 	return;
 
  do_sigsegv:
-	force_sig_fault(SIGSEGV, si_code, (void __user *) address, 0, current);
+	force_sig_fault(SIGSEGV, si_code, (void __user *) address, 0);
 	return;
 
 #ifdef CONFIG_ALPHA_LARGE_VMALLOC

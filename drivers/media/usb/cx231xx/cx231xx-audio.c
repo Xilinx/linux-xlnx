@@ -1,19 +1,9 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  *  Conexant Cx231xx audio extension
  *
  *  Copyright (C) 2008 <srinivasa.deevi at conexant dot com>
  *       Based on em28xx driver
- *
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License as published by
- *  the Free Software Foundation; either version 2 of the License, or
- *  (at your option) any later version.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
  */
 
 #include "cx231xx.h"
@@ -679,10 +669,10 @@ static int cx231xx_audio_init(struct cx231xx *dev)
 			&snd_cx231xx_pcm_capture);
 	pcm->info_flags = 0;
 	pcm->private_data = dev;
-	strcpy(pcm->name, "Conexant cx231xx Capture");
-	strcpy(card->driver, "Cx231xx-Audio");
-	strcpy(card->shortname, "Cx231xx Audio");
-	strcpy(card->longname, "Conexant cx231xx Audio");
+	strscpy(pcm->name, "Conexant cx231xx Capture", sizeof(pcm->name));
+	strscpy(card->driver, "Cx231xx-Audio", sizeof(card->driver));
+	strscpy(card->shortname, "Cx231xx Audio", sizeof(card->shortname));
+	strscpy(card->longname, "Conexant cx231xx Audio", sizeof(card->longname));
 
 	INIT_WORK(&dev->wq_trigger, audio_trigger);
 

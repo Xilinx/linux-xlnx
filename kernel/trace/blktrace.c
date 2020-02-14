@@ -512,8 +512,6 @@ static int do_blk_trace_setup(struct request_queue *q, char *name, dev_t dev,
 	dir = debugfs_lookup(buts->name, blk_debugfs_root);
 	if (!dir)
 		bt->dir = dir = debugfs_create_dir(buts->name, blk_debugfs_root);
-	if (!dir)
-		goto err;
 
 	bt->dev = dev;
 	atomic_set(&bt->dropped, 0);
@@ -522,12 +520,8 @@ static int do_blk_trace_setup(struct request_queue *q, char *name, dev_t dev,
 	ret = -EIO;
 	bt->dropped_file = debugfs_create_file("dropped", 0444, dir, bt,
 					       &blk_dropped_fops);
-	if (!bt->dropped_file)
-		goto err;
 
 	bt->msg_file = debugfs_create_file("msg", 0222, dir, bt, &blk_msg_fops);
-	if (!bt->msg_file)
-		goto err;
 
 	bt->rchan = relay_open("trace", dir, buts->buf_size,
 				buts->buf_nr, &blk_relay_callbacks, bt);
@@ -723,6 +717,7 @@ int blk_trace_ioctl(struct block_device *bdev, unsigned cmd, char __user *arg)
 #endif
 	case BLKTRACESTART:
 		start = 1;
+		/* fall through */
 	case BLKTRACESTOP:
 		ret = __blk_trace_startstop(q, start);
 		break;
@@ -764,9 +759,9 @@ blk_trace_bio_get_cgid(struct request_queue *q, struct bio *bio)
 	if (!bt || !(blk_tracer_flags.val & TRACE_BLK_OPT_CGROUP))
 		return NULL;
 
-	if (!bio->bi_css)
+	if (!bio->bi_blkg)
 		return NULL;
-	return cgroup_get_kernfs_id(bio->bi_css->cgroup);
+	return cgroup_get_kernfs_id(bio_blkcg(bio)->css.cgroup);
 }
 #else
 static union kernfs_node_id *

@@ -1,12 +1,8 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /* RxRPC packet transmission
  *
  * Copyright (C) 2007 Red Hat, Inc. All Rights Reserved.
  * Written by David Howells (dhowells@redhat.com)
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * as published by the Free Software Foundation; either version
- * 2 of the License, or (at your option) any later version.
  */
 
 #define pr_fmt(fmt) KBUILD_MODNAME ": " fmt
@@ -33,6 +29,21 @@ struct rxrpc_abort_buffer {
 };
 
 static const char rxrpc_keepalive_string[] = "";
+
+/*
+ * Increase Tx backoff on transmission failure and clear it on success.
+ */
+static void rxrpc_tx_backoff(struct rxrpc_call *call, int ret)
+{
+	if (ret < 0) {
+		u16 tx_backoff = READ_ONCE(call->tx_backoff);
+
+		if (tx_backoff < HZ)
+			WRITE_ONCE(call->tx_backoff, tx_backoff + 1);
+	} else {
+		WRITE_ONCE(call->tx_backoff, 0);
+	}
+}
 
 /*
  * Arrange for a keepalive ping a certain time after we last transmitted.  This
@@ -76,7 +87,7 @@ static size_t rxrpc_fill_out_ack(struct rxrpc_connection *conn,
 	*_top = top;
 
 	pkt->ack.bufferSpace	= htons(8);
-	pkt->ack.maxSkew	= htons(call->ackr_skew);
+	pkt->ack.maxSkew	= htons(0);
 	pkt->ack.firstPacket	= htonl(hard_ack + 1);
 	pkt->ack.previousPacket	= htonl(call->ackr_prev_seq);
 	pkt->ack.serial		= htonl(serial);
@@ -210,15 +221,15 @@ int rxrpc_send_ack_packet(struct rxrpc_call *call, bool ping,
 	else
 		trace_rxrpc_tx_packet(call->debug_id, &pkt->whdr,
 				      rxrpc_tx_point_call_ack);
+	rxrpc_tx_backoff(call, ret);
 
 	if (call->state < RXRPC_CALL_COMPLETE) {
 		if (ret < 0) {
 			if (ping)
 				clear_bit(RXRPC_CALL_PINGING, &call->flags);
 			rxrpc_propose_ACK(call, pkt->ack.reason,
-					  ntohs(pkt->ack.maxSkew),
 					  ntohl(pkt->ack.serial),
-					  true, true,
+					  false, true,
 					  rxrpc_propose_ack_retry_tx);
 		} else {
 			spin_lock_bh(&call->lock);
@@ -300,7 +311,7 @@ int rxrpc_send_abort_packet(struct rxrpc_call *call)
 	else
 		trace_rxrpc_tx_packet(call->debug_id, &pkt.whdr,
 				      rxrpc_tx_point_call_abort);
-
+	rxrpc_tx_backoff(call, ret);
 
 	rxrpc_put_connection(conn);
 	return ret;
@@ -319,7 +330,6 @@ int rxrpc_send_data_packet(struct rxrpc_call *call, struct sk_buff *skb,
 	struct kvec iov[2];
 	rxrpc_serial_t serial;
 	size_t len;
-	bool lost = false;
 	int ret, opt;
 
 	_enter(",{%d}", skb->len);
@@ -377,12 +387,14 @@ int rxrpc_send_data_packet(struct rxrpc_call *call, struct sk_buff *skb,
 		static int lose;
 		if ((lose++ & 7) == 7) {
 			ret = 0;
-			lost = true;
+			trace_rxrpc_tx_data(call, sp->hdr.seq, serial,
+					    whdr.flags, retrans, true);
 			goto done;
 		}
 	}
 
-	_proto("Tx DATA %%%u { #%u }", serial, sp->hdr.seq);
+	trace_rxrpc_tx_data(call, sp->hdr.seq, serial, whdr.flags, retrans,
+			    false);
 
 	/* send the packet with the don't fragment bit set if we currently
 	 * think it's small enough */
@@ -411,12 +423,11 @@ int rxrpc_send_data_packet(struct rxrpc_call *call, struct sk_buff *skb,
 	else
 		trace_rxrpc_tx_packet(call->debug_id, &whdr,
 				      rxrpc_tx_point_call_data_nofrag);
+	rxrpc_tx_backoff(call, ret);
 	if (ret == -EMSGSIZE)
 		goto send_fragmentable;
 
 done:
-	trace_rxrpc_tx_data(call, sp->hdr.seq, serial, whdr.flags,
-			    retrans, lost);
 	if (ret >= 0) {
 		if (whdr.flags & RXRPC_REQUEST_ACK) {
 			call->peer->rtt_last_req = skb->tstamp;
@@ -445,9 +456,18 @@ done:
 			rxrpc_reduce_call_timer(call, expect_rx_by, nowj,
 						rxrpc_timer_set_for_normal);
 		}
-	}
 
-	rxrpc_set_keepalive(call);
+		rxrpc_set_keepalive(call);
+	} else {
+		/* Cancel the call if the initial transmission fails,
+		 * particularly if that's due to network routing issues that
+		 * aren't going away anytime soon.  The layer above can arrange
+		 * the retransmission.
+		 */
+		if (!test_and_set_bit(RXRPC_CALL_BEGAN_RX_TIMER, &call->flags))
+			rxrpc_set_call_completion(call, RXRPC_CALL_LOCAL_ERROR,
+						  RX_USER_ABORT, ret);
+	}
 
 	_leave(" = %d [%u]", ret, call->peer->maxdata);
 	return ret;
@@ -498,6 +518,9 @@ send_fragmentable:
 		}
 		break;
 #endif
+
+	default:
+		BUG();
 	}
 
 	if (ret < 0)
@@ -506,6 +529,7 @@ send_fragmentable:
 	else
 		trace_rxrpc_tx_packet(call->debug_id, &whdr,
 				      rxrpc_tx_point_call_data_frag);
+	rxrpc_tx_backoff(call, ret);
 
 	up_write(&conn->params.local->defrag_sem);
 	goto done;
@@ -541,7 +565,7 @@ void rxrpc_reject_packets(struct rxrpc_local *local)
 	memset(&whdr, 0, sizeof(whdr));
 
 	while ((skb = skb_dequeue(&local->reject_queue))) {
-		rxrpc_see_skb(skb, rxrpc_skb_rx_seen);
+		rxrpc_see_skb(skb, rxrpc_skb_seen);
 		sp = rxrpc_skb(skb);
 
 		switch (skb->mark) {
@@ -557,11 +581,11 @@ void rxrpc_reject_packets(struct rxrpc_local *local)
 			ioc = 2;
 			break;
 		default:
-			rxrpc_free_skb(skb, rxrpc_skb_rx_freed);
+			rxrpc_free_skb(skb, rxrpc_skb_freed);
 			continue;
 		}
 
-		if (rxrpc_extract_addr_from_skb(local, &srx, skb) == 0) {
+		if (rxrpc_extract_addr_from_skb(&srx, skb) == 0) {
 			msg.msg_namelen = srx.transport_len;
 
 			whdr.epoch	= htonl(sp->hdr.epoch);
@@ -582,7 +606,7 @@ void rxrpc_reject_packets(struct rxrpc_local *local)
 						      rxrpc_tx_point_reject);
 		}
 
-		rxrpc_free_skb(skb, rxrpc_skb_rx_freed);
+		rxrpc_free_skb(skb, rxrpc_skb_freed);
 	}
 
 	_leave("");

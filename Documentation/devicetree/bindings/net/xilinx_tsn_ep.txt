@@ -8,10 +8,9 @@ Required properties:
 - interrupts		: Property with a value describing the interrupt
 - interrupts-names	: Property denotes the interrupt names.
 - interrupt-parent	: Must be core interrupt controller.
+- local-mac-address	: See ethernet.txt [1].
 
 Optional properties:
-- local-mac-address	: See ethernet.txt [1].
-			  If absent, random mac address is selected.
 - xlnx,num-tc		: Number of traffic class supported in current design,
 			  range is 2,3 and default value is 3. It denotes
 			  the traffic classes based on VLAN-PCP value.

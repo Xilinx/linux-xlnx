@@ -107,15 +107,17 @@ static struct axienet_stat axienet_get_rx_strings_stats[] = {
 void __maybe_unused axienet_mcdma_tx_bd_free(struct net_device *ndev,
 					     struct axienet_dma_q *q)
 {
+	struct axienet_local *lp = netdev_priv(ndev);
+
 	if (q->txq_bd_v) {
 		dma_free_coherent(ndev->dev.parent,
-				  sizeof(*q->txq_bd_v) * TX_BD_NUM,
+				  sizeof(*q->txq_bd_v) * lp->tx_bd_num,
 				  q->txq_bd_v,
 				  q->tx_bd_p);
 	}
 	if (q->tx_bufs) {
 		dma_free_coherent(ndev->dev.parent,
-				  XAE_MAX_PKT_LEN * TX_BD_NUM,
+				  XAE_MAX_PKT_LEN * lp->tx_bd_num,
 				  q->tx_bufs,
 				  q->tx_bufs_dma);
 	}
@@ -135,7 +137,7 @@ void __maybe_unused axienet_mcdma_rx_bd_free(struct net_device *ndev,
 	int i;
 	struct axienet_local *lp = netdev_priv(ndev);
 
-	for (i = 0; i < RX_BD_NUM; i++) {
+	for (i = 0; i < lp->rx_bd_num; i++) {
 		dma_unmap_single(ndev->dev.parent, q->rxq_bd_v[i].phys,
 				 lp->max_frm_size, DMA_FROM_DEVICE);
 		dev_kfree_skb((struct sk_buff *)
@@ -144,7 +146,7 @@ void __maybe_unused axienet_mcdma_rx_bd_free(struct net_device *ndev,
 
 	if (q->rxq_bd_v) {
 		dma_free_coherent(ndev->dev.parent,
-				  sizeof(*q->rxq_bd_v) * RX_BD_NUM,
+				  sizeof(*q->rxq_bd_v) * lp->rx_bd_num,
 				  q->rxq_bd_v,
 				  q->rx_bd_p);
 	}
@@ -170,28 +172,28 @@ int __maybe_unused axienet_mcdma_tx_q_init(struct net_device *ndev,
 	q->tx_bd_ci = 0;
 	q->tx_bd_tail = 0;
 
-	q->txq_bd_v = dma_zalloc_coherent(ndev->dev.parent,
-					  sizeof(*q->txq_bd_v) * TX_BD_NUM,
-					  &q->tx_bd_p, GFP_KERNEL);
+	q->txq_bd_v = dma_alloc_coherent(ndev->dev.parent,
+					 sizeof(*q->txq_bd_v) * lp->tx_bd_num,
+					 &q->tx_bd_p, GFP_KERNEL);
 	if (!q->txq_bd_v)
 		goto out;
 
 	if (!q->eth_hasdre) {
-		q->tx_bufs = dma_zalloc_coherent(ndev->dev.parent,
-						 XAE_MAX_PKT_LEN * TX_BD_NUM,
-						 &q->tx_bufs_dma,
-						 GFP_KERNEL);
+		q->tx_bufs = dma_alloc_coherent(ndev->dev.parent,
+						XAE_MAX_PKT_LEN * lp->tx_bd_num,
+						&q->tx_bufs_dma,
+						GFP_KERNEL);
 		if (!q->tx_bufs)
 			goto out;
 
-		for (i = 0; i < TX_BD_NUM; i++)
+		for (i = 0; i < lp->tx_bd_num; i++)
 			q->tx_buf[i] = &q->tx_bufs[i * XAE_MAX_PKT_LEN];
 	}
 
-	for (i = 0; i < TX_BD_NUM; i++) {
+	for (i = 0; i < lp->tx_bd_num; i++) {
 		q->txq_bd_v[i].next = q->tx_bd_p +
 				      sizeof(*q->txq_bd_v) *
-				      ((i + 1) % TX_BD_NUM);
+				      ((i + 1) % lp->tx_bd_num);
 	}
 
 	/* Start updating the Tx channel control register */
@@ -252,16 +254,16 @@ int __maybe_unused axienet_mcdma_rx_q_init(struct net_device *ndev,
 	q->rx_bd_ci = 0;
 	q->rx_offset = XMCDMA_CHAN_RX_OFFSET;
 
-	q->rxq_bd_v = dma_zalloc_coherent(ndev->dev.parent,
-					  sizeof(*q->rxq_bd_v) * RX_BD_NUM,
-					  &q->rx_bd_p, GFP_KERNEL);
+	q->rxq_bd_v = dma_alloc_coherent(ndev->dev.parent,
+					 sizeof(*q->rxq_bd_v) * lp->rx_bd_num,
+					 &q->rx_bd_p, GFP_KERNEL);
 	if (!q->rxq_bd_v)
 		goto out;
 
-	for (i = 0; i < RX_BD_NUM; i++) {
+	for (i = 0; i < lp->rx_bd_num; i++) {
 		q->rxq_bd_v[i].next = q->rx_bd_p +
 				      sizeof(*q->rxq_bd_v) *
-				      ((i + 1) % RX_BD_NUM);
+				      ((i + 1) % lp->rx_bd_num);
 
 		skb = netdev_alloc_skb(ndev, lp->max_frm_size);
 		if (!skb)
@@ -309,7 +311,7 @@ int __maybe_unused axienet_mcdma_rx_q_init(struct net_device *ndev,
 			  cr | XMCDMA_CR_RUNSTOP_MASK);
 	axienet_dma_bdout(q, XMCDMA_CHAN_TAILDESC_OFFSET(q->chan_id) +
 			    q->rx_offset, q->rx_bd_p + (sizeof(*q->rxq_bd_v) *
-			    (RX_BD_NUM - 1)));
+			    (lp->rx_bd_num - 1)));
 	chan_en = axienet_dma_in32(q, XMCDMA_CHEN_OFFSET + q->rx_offset);
 	chan_en |= (1 << (q->chan_id - 1));
 	axienet_dma_out32(q, XMCDMA_CHEN_OFFSET + q->rx_offset, chan_en);
@@ -580,7 +582,6 @@ void __maybe_unused axienet_mcdma_err_handler(unsigned long data)
 {
 	u32 axienet_status;
 	u32 cr, i, chan_en;
-	int mdio_mcreg = 0;
 	struct axienet_dma_q *q = (struct axienet_dma_q *)data;
 	struct axienet_local *lp = q->lp;
 	struct net_device *ndev = lp->ndev;
@@ -590,26 +591,26 @@ void __maybe_unused axienet_mcdma_err_handler(unsigned long data)
 				       ~(XAE_OPTION_TXEN | XAE_OPTION_RXEN));
 
 	if (lp->axienet_config->mactype != XAXIENET_10G_25G) {
-		mdio_mcreg = axienet_ior(lp, XAE_MDIO_MC_OFFSET);
-		axienet_mdio_wait_until_ready(lp);
+		mutex_lock(&lp->mii_bus->mdio_lock);
 		/* Disable the MDIO interface till Axi Ethernet Reset is
 		 * Completed. When we do an Axi Ethernet reset, it resets the
 		 * Complete core including the MDIO. So if MDIO is not disabled
 		 * When the reset process is started,
 		 * MDIO will be broken afterwards.
 		 */
-		axienet_iow(lp, XAE_MDIO_MC_OFFSET, (mdio_mcreg &
-			    ~XAE_MDIO_MC_MDIOEN_MASK));
-	}
-
-	__axienet_device_reset(q, XAXIDMA_TX_CR_OFFSET);
-
-	if (lp->axienet_config->mactype != XAXIENET_10G_25G) {
-		axienet_iow(lp, XAE_MDIO_MC_OFFSET, mdio_mcreg);
+		axienet_mdio_disable(lp);
 		axienet_mdio_wait_until_ready(lp);
 	}
 
-	for (i = 0; i < TX_BD_NUM; i++) {
+	__axienet_device_reset(q);
+
+	if (lp->axienet_config->mactype != XAXIENET_10G_25G) {
+		axienet_mdio_enable(lp);
+		axienet_mdio_wait_until_ready(lp);
+		mutex_unlock(&lp->mii_bus->mdio_lock);
+	}
+
+	for (i = 0; i < lp->tx_bd_num; i++) {
 		cur_p = &q->txq_bd_v[i];
 		if (cur_p->phys)
 			dma_unmap_single(ndev->dev.parent, cur_p->phys,
@@ -630,7 +631,7 @@ void __maybe_unused axienet_mcdma_err_handler(unsigned long data)
 		cur_p->tx_skb = 0;
 	}
 
-	for (i = 0; i < RX_BD_NUM; i++) {
+	for (i = 0; i < lp->rx_bd_num; i++) {
 		cur_p = &q->rxq_bd_v[i];
 		cur_p->status = 0;
 		cur_p->app0 = 0;
@@ -686,7 +687,7 @@ void __maybe_unused axienet_mcdma_err_handler(unsigned long data)
 			  cr | XMCDMA_CR_RUNSTOP_MASK);
 	axienet_dma_bdout(q, XMCDMA_CHAN_TAILDESC_OFFSET(q->chan_id) +
 			    q->rx_offset, q->rx_bd_p + (sizeof(*q->rxq_bd_v) *
-			    (RX_BD_NUM - 1)));
+			    (lp->rx_bd_num - 1)));
 	chan_en = axienet_dma_in32(q, XMCDMA_CHEN_OFFSET + q->rx_offset);
 	chan_en |= (1 << (q->chan_id - 1));
 	axienet_dma_out32(q, XMCDMA_CHEN_OFFSET + q->rx_offset, chan_en);
@@ -1040,4 +1041,3 @@ void axeinet_mcdma_remove_sysfs(struct kobject *kobj)
 {
 	sysfs_remove_group(kobj, &mcdma_attributes);
 }
-

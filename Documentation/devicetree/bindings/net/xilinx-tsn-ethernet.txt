@@ -9,11 +9,10 @@ Required properties:
 - interrupts-names	: Property denotes the interrupt names.
 - interrupt-parent	: Must be core interrupt controller.
 - phy-handle		: See ethernet.txt file [1].
+- local-mac-address	: See ethernet.txt file [1].
 - phy-mode		: see ethernet.txt file [1].
 
 Optional properties:
-- local-mac-address	: See ethernet.txt file [1].
-			  If absent, random mac address is selected.
 - xlnx,tsn		: Denotes a ethernet with TSN capabilities.
 - xlnx,tsn-slave	: Denotes a TSN slave port.
 - xlnx,txcsum		: Tx checksum mode (Full, Partial and None).

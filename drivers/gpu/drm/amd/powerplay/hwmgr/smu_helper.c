@@ -20,6 +20,9 @@
  * OTHER DEALINGS IN THE SOFTWARE.
  *
  */
+
+#include <linux/pci.h>
+
 #include "hwmgr.h"
 #include "pp_debug.h"
 #include "ppatomctrl.h"
@@ -37,6 +40,50 @@ uint8_t convert_to_vid(uint16_t vddc)
 uint16_t convert_to_vddc(uint8_t vid)
 {
 	return (uint16_t) ((6200 - (vid * 25)) / VOLTAGE_SCALE);
+}
+
+int phm_copy_clock_limits_array(
+	struct pp_hwmgr *hwmgr,
+	uint32_t **pptable_info_array,
+	const uint32_t *pptable_array,
+	uint32_t power_saving_clock_count)
+{
+	uint32_t array_size, i;
+	uint32_t *table;
+
+	array_size = sizeof(uint32_t) * power_saving_clock_count;
+	table = kzalloc(array_size, GFP_KERNEL);
+	if (NULL == table)
+		return -ENOMEM;
+
+	for (i = 0; i < power_saving_clock_count; i++)
+		table[i] = le32_to_cpu(pptable_array[i]);
+
+	*pptable_info_array = table;
+
+	return 0;
+}
+
+int phm_copy_overdrive_settings_limits_array(
+	struct pp_hwmgr *hwmgr,
+	uint32_t **pptable_info_array,
+	const uint32_t *pptable_array,
+	uint32_t od_setting_count)
+{
+	uint32_t array_size, i;
+	uint32_t *table;
+
+	array_size = sizeof(uint32_t) * od_setting_count;
+	table = kzalloc(array_size, GFP_KERNEL);
+	if (NULL == table)
+		return -ENOMEM;
+
+	for (i = 0; i < od_setting_count; i++)
+		table[i] = le32_to_cpu(pptable_array[i]);
+
+	*pptable_info_array = table;
+
+	return 0;
 }
 
 uint32_t phm_set_field_to_u32(u32 offset, u32 original_data, u32 field, u32 size)
@@ -545,7 +592,7 @@ int phm_irq_process(struct amdgpu_device *adev,
 	uint32_t client_id = entry->client_id;
 	uint32_t src_id = entry->src_id;
 
-	if (client_id == AMDGPU_IH_CLIENTID_LEGACY) {
+	if (client_id == AMDGPU_IRQ_CLIENTID_LEGACY) {
 		if (src_id == VISLANDS30_IV_SRCID_CG_TSS_THERMAL_LOW_TO_HIGH)
 			pr_warn("GPU over temperature range detected on PCIe %d:%d.%d!\n",
 						PCI_BUS_NUM(adev->pdev->devfn),
@@ -669,20 +716,20 @@ int smu_set_watermarks_for_clocks_ranges(void *wt_table,
 	for (i = 0; i < wm_with_clock_ranges->num_wm_dmif_sets; i++) {
 		table->WatermarkRow[1][i].MinClock =
 			cpu_to_le16((uint16_t)
-			(wm_with_clock_ranges->wm_dmif_clocks_ranges[i].wm_min_dcfclk_clk_in_khz) /
-			1000);
+			(wm_with_clock_ranges->wm_dmif_clocks_ranges[i].wm_min_dcfclk_clk_in_khz /
+			1000));
 		table->WatermarkRow[1][i].MaxClock =
 			cpu_to_le16((uint16_t)
-			(wm_with_clock_ranges->wm_dmif_clocks_ranges[i].wm_max_dcfclk_clk_in_khz) /
-			100);
+			(wm_with_clock_ranges->wm_dmif_clocks_ranges[i].wm_max_dcfclk_clk_in_khz /
+			1000));
 		table->WatermarkRow[1][i].MinUclk =
 			cpu_to_le16((uint16_t)
-			(wm_with_clock_ranges->wm_dmif_clocks_ranges[i].wm_min_mem_clk_in_khz) /
-			1000);
+			(wm_with_clock_ranges->wm_dmif_clocks_ranges[i].wm_min_mem_clk_in_khz /
+			1000));
 		table->WatermarkRow[1][i].MaxUclk =
 			cpu_to_le16((uint16_t)
-			(wm_with_clock_ranges->wm_dmif_clocks_ranges[i].wm_max_mem_clk_in_khz) /
-			1000);
+			(wm_with_clock_ranges->wm_dmif_clocks_ranges[i].wm_max_mem_clk_in_khz /
+			1000));
 		table->WatermarkRow[1][i].WmSetting = (uint8_t)
 				wm_with_clock_ranges->wm_dmif_clocks_ranges[i].wm_set_id;
 	}
@@ -690,20 +737,20 @@ int smu_set_watermarks_for_clocks_ranges(void *wt_table,
 	for (i = 0; i < wm_with_clock_ranges->num_wm_mcif_sets; i++) {
 		table->WatermarkRow[0][i].MinClock =
 			cpu_to_le16((uint16_t)
-			(wm_with_clock_ranges->wm_mcif_clocks_ranges[i].wm_min_socclk_clk_in_khz) /
-			1000);
+			(wm_with_clock_ranges->wm_mcif_clocks_ranges[i].wm_min_socclk_clk_in_khz /
+			1000));
 		table->WatermarkRow[0][i].MaxClock =
 			cpu_to_le16((uint16_t)
-			(wm_with_clock_ranges->wm_mcif_clocks_ranges[i].wm_max_socclk_clk_in_khz) /
-			1000);
+			(wm_with_clock_ranges->wm_mcif_clocks_ranges[i].wm_max_socclk_clk_in_khz /
+			1000));
 		table->WatermarkRow[0][i].MinUclk =
 			cpu_to_le16((uint16_t)
-			(wm_with_clock_ranges->wm_mcif_clocks_ranges[i].wm_min_mem_clk_in_khz) /
-			1000);
+			(wm_with_clock_ranges->wm_mcif_clocks_ranges[i].wm_min_mem_clk_in_khz /
+			1000));
 		table->WatermarkRow[0][i].MaxUclk =
 			cpu_to_le16((uint16_t)
-			(wm_with_clock_ranges->wm_mcif_clocks_ranges[i].wm_max_mem_clk_in_khz) /
-			1000);
+			(wm_with_clock_ranges->wm_mcif_clocks_ranges[i].wm_max_mem_clk_in_khz /
+			1000));
 		table->WatermarkRow[0][i].WmSetting = (uint8_t)
 				wm_with_clock_ranges->wm_mcif_clocks_ranges[i].wm_set_id;
 	}

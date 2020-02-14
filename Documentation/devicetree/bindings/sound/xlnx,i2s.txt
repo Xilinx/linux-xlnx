@@ -39,4 +39,3 @@ Example:
 	};
 	Documentation of "audio_ss_0_audio_formatter_0" node is located
 	at Documentation/devicetree/bindings/sound/xlnx,audio-formatter.txt
-

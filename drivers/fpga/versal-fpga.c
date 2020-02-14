@@ -102,8 +102,8 @@ static int versal_fpga_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	mgr = fpga_mgr_create(dev, "Xilinx Versal FPGA Manager",
-			      &versal_fpga_ops, priv);
+	mgr = devm_fpga_mgr_create(dev, "Xilinx Versal FPGA Manager",
+				   &versal_fpga_ops, priv);
 	if (!mgr)
 		return -ENOMEM;
 

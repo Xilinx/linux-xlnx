@@ -1,10 +1,12 @@
-// SPDX-License-Identifier: GPL-2.0+
+// SPDX-License-Identifier: GPL-2.0-or-later
 /* Xilinx CAN device driver
  *
  * Copyright (C) 2012 - 2014 Xilinx, Inc.
  * Copyright (C) 2009 PetaLogix. All rights reserved.
  * Copyright (C) 2017 - 2018 Sandvik Mining and Construction Oy
  *
+ * Description:
+ * This driver is developed for Axi CAN IP and for Zynq CANPS Controller.
  */
 
 #include <linux/clk.h>
@@ -26,7 +28,6 @@
 #include <linux/can/error.h>
 #include <linux/can/led.h>
 #include <linux/pm_runtime.h>
-#include <linux/iopoll.h>
 
 #define DRIVER_NAME	"xilinx_can"
 
@@ -54,7 +55,6 @@ enum xcan_reg {
 					  */
 	XCAN_F_BTR_OFFSET	= 0x08C, /* Data Phase Bit Timing */
 	XCAN_TRR_OFFSET		= 0x0090, /* TX Buffer Ready Request */
-	XCAN_TCR_OFFSET		= 0x0098, /* TX Buffer Clear Request */
 	XCAN_AFR_EXT_OFFSET	= 0x00E0, /* Acceptance Filter */
 	XCAN_FSR_OFFSET		= 0x00E8, /* RX FIFO Status */
 	XCAN_TXMSG_BASE_OFFSET	= 0x0100, /* TX Message Space */
@@ -118,7 +118,6 @@ enum xcan_reg {
 #define XCAN_IXR_TXFLL_MASK		0x00000004 /* Tx FIFO Full intr */
 #define XCAN_IXR_TXOK_MASK		0x00000002 /* TX successful intr */
 #define XCAN_IXR_ARBLST_MASK		0x00000001 /* Arbitration lost intr */
-#define XCAN_IXR_PEE_MASK		0x00000004 /* PEE interrupt */
 #define XCAN_IDR_ID1_MASK		0xFFE00000 /* Standard msg identifier */
 #define XCAN_IDR_SRR_MASK		0x00100000 /* Substitute remote TXreq */
 #define XCAN_IDR_IDE_MASK		0x00080000 /* Identifier extension */
@@ -161,7 +160,6 @@ enum xcan_reg {
  */
 #define XCAN_FLAG_RX_FIFO_MULTI	0x0010
 #define XCAN_FLAG_CANFD_2	0x0020
-#define XCANFD_TIMEOUT		1000
 
 enum xcan_ip_type {
 	XAXI_CAN = 0,
@@ -195,8 +193,6 @@ struct xcan_devtype_data {
  * @bus_clk:			Pointer to struct clk
  * @can_clk:			Pointer to struct clk
  * @devtype:			Device type specific constants
- * @cfd:			Variable to struct canfd_frame
- * @is_canfd:			For checking canfd or not
  */
 struct xcan_priv {
 	struct can_priv can;
@@ -214,8 +210,6 @@ struct xcan_priv {
 	struct clk *bus_clk;
 	struct clk *can_clk;
 	struct xcan_devtype_data devtype;
-	struct canfd_frame cfd;
-	bool is_canfd;
 };
 
 /* CAN Bittiming constants as per Xilinx CAN specs */
@@ -482,8 +476,7 @@ static int xcan_chip_start(struct net_device *ndev)
 	ier = XCAN_IXR_TXOK_MASK | XCAN_IXR_BSOFF_MASK |
 		XCAN_IXR_WKUP_MASK | XCAN_IXR_SLP_MASK |
 		XCAN_IXR_ERROR_MASK | XCAN_IXR_RXOFLW_MASK |
-		XCAN_IXR_ARBLST_MASK | xcan_rx_int_mask(priv) |
-		XCAN_IXR_PEE_MASK;
+		XCAN_IXR_ARBLST_MASK | xcan_rx_int_mask(priv);
 
 	if (priv->devtype.flags & XCAN_FLAG_RXMNF)
 		ier |= XCAN_IXR_RXMNF_MASK;
@@ -546,15 +539,17 @@ static int xcan_do_set_mode(struct net_device *ndev, enum can_mode mode)
 
 /**
  * xcan_write_frame - Write a frame to HW
- * @priv:		Driver private data structure
- * @cf:			canfd_frame pointer that contains data to be Txed
+ * @ndev:		Pointer to net_device structure
+ * @skb:		sk_buff pointer that contains data to be Txed
  * @frame_offset:	Register offset to write the frame to
  */
-static void xcan_write_frame(struct xcan_priv *priv, struct canfd_frame *cf,
+static void xcan_write_frame(struct net_device *ndev, struct sk_buff *skb,
 			     int frame_offset)
 {
 	u32 id, dlc, data[2] = {0, 0};
+	struct canfd_frame *cf = (struct canfd_frame *)skb->data;
 	u32 ramoff, dwindex = 0, i;
+	struct xcan_priv *priv = netdev_priv(ndev);
 
 	/* Watch carefully on the bit sequence */
 	if (cf->can_id & CAN_EFF_FLAG) {
@@ -584,11 +579,19 @@ static void xcan_write_frame(struct xcan_priv *priv, struct canfd_frame *cf,
 	}
 
 	dlc = can_len2dlc(cf->len) << XCAN_DLCR_DLC_SHIFT;
-	if (priv->is_canfd) {
+	if (can_is_canfd_skb(skb)) {
 		if (cf->flags & CANFD_BRS)
 			dlc |= XCAN_DLCR_BRS_MASK;
 		dlc |= XCAN_DLCR_EDL_MASK;
 	}
+
+	if (!(priv->devtype.flags & XCAN_FLAG_TX_MAILBOXES) &&
+	    (priv->devtype.flags & XCAN_FLAG_TXFEMP))
+		can_put_echo_skb(skb, ndev, priv->tx_head % priv->tx_max);
+	else
+		can_put_echo_skb(skb, ndev, 0);
+
+	priv->tx_head++;
 
 	priv->write_reg(priv, XCAN_FRAME_ID_OFFSET(frame_offset), id);
 	/* If the CAN frame is RTR frame this write triggers transmission
@@ -636,21 +639,14 @@ static int xcan_start_xmit_fifo(struct sk_buff *skb, struct net_device *ndev)
 	struct xcan_priv *priv = netdev_priv(ndev);
 	unsigned long flags;
 
-	priv->cfd = *((struct canfd_frame *)skb->data);
-	priv->is_canfd = can_is_canfd_skb(skb);
-
 	/* Check if the TX buffer is full */
 	if (unlikely(priv->read_reg(priv, XCAN_SR_OFFSET) &
 			XCAN_SR_TXFLL_MASK))
 		return -ENOSPC;
 
-	can_put_echo_skb(skb, ndev, priv->tx_head % priv->tx_max);
-
 	spin_lock_irqsave(&priv->tx_lock, flags);
 
-	priv->tx_head++;
-
-	xcan_write_frame(priv, &priv->cfd, XCAN_TXFIFO_OFFSET);
+	xcan_write_frame(ndev, skb, XCAN_TXFIFO_OFFSET);
 
 	/* Clear TX-FIFO-empty interrupt for xcan_tx_interrupt() */
 	if (priv->tx_max > 1)
@@ -677,20 +673,13 @@ static int xcan_start_xmit_mailbox(struct sk_buff *skb, struct net_device *ndev)
 	struct xcan_priv *priv = netdev_priv(ndev);
 	unsigned long flags;
 
-	priv->cfd = *((struct canfd_frame *)skb->data);
-	priv->is_canfd = can_is_canfd_skb(skb);
-
 	if (unlikely(priv->read_reg(priv, XCAN_TRR_OFFSET) &
 		     BIT(XCAN_TX_MAILBOX_IDX)))
 		return -ENOSPC;
 
-	can_put_echo_skb(skb, ndev, 0);
-
 	spin_lock_irqsave(&priv->tx_lock, flags);
 
-	priv->tx_head++;
-
-	xcan_write_frame(priv, &priv->cfd,
+	xcan_write_frame(ndev, skb,
 			 XCAN_TXMSG_FRAME_OFFSET(XCAN_TX_MAILBOX_IDX));
 
 	/* Mark buffer as ready for transmit */
@@ -998,7 +987,6 @@ static void xcan_err_interrupt(struct net_device *ndev, u32 isr)
 	struct can_frame *cf;
 	struct sk_buff *skb;
 	u32 err_status;
-	u32 val, mask;
 
 	skb = alloc_can_err_skb(ndev, &cf);
 
@@ -1050,16 +1038,6 @@ static void xcan_err_interrupt(struct net_device *ndev, u32 isr)
 		}
 	}
 
-	if (isr & XCAN_IXR_PEE_MASK) {
-		stats->rx_dropped++;
-		mask  = priv->read_reg(priv, XCAN_TRR_OFFSET);
-		priv->write_reg(priv, XCAN_TCR_OFFSET, mask);
-		if (readl_poll_timeout(priv + XCAN_TRR_OFFSET,
-				       val, !val, 0, XCANFD_TIMEOUT))
-			netdev_err(ndev, "PEE re-transmission error\n");
-		priv->write_reg(priv, XCAN_TRR_OFFSET, mask);
-	}
-
 	/* Check for error interrupt */
 	if (isr & XCAN_IXR_ERROR_MASK) {
 		if (skb)
@@ -1109,7 +1087,7 @@ static void xcan_err_interrupt(struct net_device *ndev, u32 isr)
 				cf->data[3] = CAN_ERR_PROT_LOC_CRC_SEQ;
 			}
 		}
-			priv->can.can_stats.bus_error++;
+		priv->can.can_stats.bus_error++;
 	}
 
 	if (skb) {
@@ -1359,7 +1337,7 @@ static irqreturn_t xcan_interrupt(int irq, void *dev_id)
 	/* Check for the type of error interrupt and Processing it */
 	isr_errors = isr & (XCAN_IXR_ERROR_MASK | XCAN_IXR_RXOFLW_MASK |
 			    XCAN_IXR_BSOFF_MASK | XCAN_IXR_ARBLST_MASK |
-			    XCAN_IXR_RXMNF_MASK | XCAN_IXR_PEE_MASK);
+			    XCAN_IXR_RXMNF_MASK);
 	if (isr_errors) {
 		priv->write_reg(priv, XCAN_ICR_OFFSET, isr_errors);
 		xcan_err_interrupt(ndev, isr);
@@ -1624,7 +1602,6 @@ static const struct xcan_devtype_data xcan_zynq_data = {
 
 static const struct xcan_devtype_data xcan_axi_data = {
 	.cantype = XAXI_CAN,
-	.flags = XCAN_FLAG_TXFEMP,
 	.bittiming_const = &xcan_bittiming_const,
 	.btr_ts2_shift = XCAN_BTR_TS2_SHIFT,
 	.btr_sjw_shift = XCAN_BTR_SJW_SHIFT,

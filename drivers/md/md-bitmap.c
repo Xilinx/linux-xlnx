@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0-only
 /*
  * bitmap.c two-level bitmap (C) Peter T. Breuer (ptb@ot.uc3m.es) 2003
  *
@@ -490,10 +491,10 @@ void md_bitmap_print_sb(struct bitmap *bitmap)
 	pr_debug("         magic: %08x\n", le32_to_cpu(sb->magic));
 	pr_debug("       version: %d\n", le32_to_cpu(sb->version));
 	pr_debug("          uuid: %08x.%08x.%08x.%08x\n",
-		 le32_to_cpu(*(__u32 *)(sb->uuid+0)),
-		 le32_to_cpu(*(__u32 *)(sb->uuid+4)),
-		 le32_to_cpu(*(__u32 *)(sb->uuid+8)),
-		 le32_to_cpu(*(__u32 *)(sb->uuid+12)));
+		 le32_to_cpu(*(__le32 *)(sb->uuid+0)),
+		 le32_to_cpu(*(__le32 *)(sb->uuid+4)),
+		 le32_to_cpu(*(__le32 *)(sb->uuid+8)),
+		 le32_to_cpu(*(__le32 *)(sb->uuid+12)));
 	pr_debug("        events: %llu\n",
 		 (unsigned long long) le64_to_cpu(sb->events));
 	pr_debug("events cleared: %llu\n",
@@ -1789,6 +1790,8 @@ void md_bitmap_destroy(struct mddev *mddev)
 		return;
 
 	md_bitmap_wait_behind_writes(mddev);
+	mempool_destroy(mddev->wb_info_pool);
+	mddev->wb_info_pool = NULL;
 
 	mutex_lock(&mddev->bitmap_info.mutex);
 	spin_lock(&mddev->lock);
@@ -1899,9 +1902,13 @@ int md_bitmap_load(struct mddev *mddev)
 	sector_t start = 0;
 	sector_t sector = 0;
 	struct bitmap *bitmap = mddev->bitmap;
+	struct md_rdev *rdev;
 
 	if (!bitmap)
 		goto out;
+
+	rdev_for_each(rdev, mddev)
+		mddev_create_wb_pool(mddev, rdev, true);
 
 	if (mddev_is_clustered(mddev))
 		md_cluster_ops->load_bitmaps(mddev, mddev->bitmap_info.nodes);
@@ -2288,9 +2295,9 @@ location_store(struct mddev *mddev, const char *buf, size_t len)
 			goto out;
 		}
 		if (mddev->pers) {
-			mddev->pers->quiesce(mddev, 1);
+			mddev_suspend(mddev);
 			md_bitmap_destroy(mddev);
-			mddev->pers->quiesce(mddev, 0);
+			mddev_resume(mddev);
 		}
 		mddev->bitmap_info.offset = 0;
 		if (mddev->bitmap_info.file) {
@@ -2327,8 +2334,8 @@ location_store(struct mddev *mddev, const char *buf, size_t len)
 			mddev->bitmap_info.offset = offset;
 			if (mddev->pers) {
 				struct bitmap *bitmap;
-				mddev->pers->quiesce(mddev, 1);
 				bitmap = md_bitmap_create(mddev, -1);
+				mddev_suspend(mddev);
 				if (IS_ERR(bitmap))
 					rv = PTR_ERR(bitmap);
 				else {
@@ -2337,11 +2344,12 @@ location_store(struct mddev *mddev, const char *buf, size_t len)
 					if (rv)
 						mddev->bitmap_info.offset = 0;
 				}
-				mddev->pers->quiesce(mddev, 0);
 				if (rv) {
 					md_bitmap_destroy(mddev);
+					mddev_resume(mddev);
 					goto out;
 				}
+				mddev_resume(mddev);
 			}
 		}
 	}
@@ -2460,12 +2468,26 @@ static ssize_t
 backlog_store(struct mddev *mddev, const char *buf, size_t len)
 {
 	unsigned long backlog;
+	unsigned long old_mwb = mddev->bitmap_info.max_write_behind;
 	int rv = kstrtoul(buf, 10, &backlog);
 	if (rv)
 		return rv;
 	if (backlog > COUNTER_MAX)
 		return -EINVAL;
 	mddev->bitmap_info.max_write_behind = backlog;
+	if (!backlog && mddev->wb_info_pool) {
+		/* wb_info_pool is not needed if backlog is zero */
+		mempool_destroy(mddev->wb_info_pool);
+		mddev->wb_info_pool = NULL;
+	} else if (backlog && !mddev->wb_info_pool) {
+		/* wb_info_pool is needed since backlog is not zero */
+		struct md_rdev *rdev;
+
+		rdev_for_each(rdev, mddev)
+			mddev_create_wb_pool(mddev, rdev, false);
+	}
+	if (old_mwb != backlog)
+		md_bitmap_update_sb(mddev->bitmap);
 	return len;
 }
 

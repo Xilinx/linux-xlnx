@@ -1,23 +1,10 @@
+// SPDX-License-Identifier: GPL-2.0-or-later
 /*
  * SPU file system -- file contents
  *
  * (C) Copyright IBM Deutschland Entwicklung GmbH 2005
  *
  * Author: Arnd Bergmann <arndb@de.ibm.com>
- *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2, or (at your option)
- * any later version.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
- *
- * You should have received a copy of the GNU General Public License
- * along with this program; if not, write to the Free Software
- * Foundation, Inc., 675 Mass Ave, Cambridge, MA 02139, USA.
  */
 
 #undef DEBUG
@@ -459,7 +446,7 @@ static const struct file_operations spufs_cntl_fops = {
 	.release = spufs_cntl_release,
 	.read = simple_attr_read,
 	.write = simple_attr_write,
-	.llseek	= generic_file_llseek,
+	.llseek	= no_llseek,
 	.mmap = spufs_cntl_mmap,
 };
 
@@ -588,7 +575,7 @@ static int spufs_pipe_open(struct inode *inode, struct file *file)
 	struct spufs_inode_info *i = SPUFS_I(inode);
 	file->private_data = i->i_ctx;
 
-	return nonseekable_open(inode, file);
+	return stream_open(inode, file);
 }
 
 /*
@@ -609,7 +596,7 @@ static ssize_t spufs_mbox_read(struct file *file, char __user *buf,
 	if (len < 4)
 		return -EINVAL;
 
-	if (!access_ok(VERIFY_WRITE, buf, len))
+	if (!access_ok(buf, len))
 		return -EFAULT;
 
 	udata = (void __user *)buf;
@@ -717,7 +704,7 @@ static ssize_t spufs_ibox_read(struct file *file, char __user *buf,
 	if (len < 4)
 		return -EINVAL;
 
-	if (!access_ok(VERIFY_WRITE, buf, len))
+	if (!access_ok(buf, len))
 		return -EFAULT;
 
 	udata = (void __user *)buf;
@@ -856,7 +843,7 @@ static ssize_t spufs_wbox_write(struct file *file, const char __user *buf,
 		return -EINVAL;
 
 	udata = (void __user *)buf;
-	if (!access_ok(VERIFY_READ, buf, len))
+	if (!access_ok(buf, len))
 		return -EFAULT;
 
 	if (__get_user(wbox_data, udata))
@@ -1994,7 +1981,7 @@ static ssize_t spufs_mbox_info_read(struct file *file, char __user *buf,
 	int ret;
 	struct spu_context *ctx = file->private_data;
 
-	if (!access_ok(VERIFY_WRITE, buf, len))
+	if (!access_ok(buf, len))
 		return -EFAULT;
 
 	ret = spu_acquire_saved(ctx);
@@ -2034,7 +2021,7 @@ static ssize_t spufs_ibox_info_read(struct file *file, char __user *buf,
 	struct spu_context *ctx = file->private_data;
 	int ret;
 
-	if (!access_ok(VERIFY_WRITE, buf, len))
+	if (!access_ok(buf, len))
 		return -EFAULT;
 
 	ret = spu_acquire_saved(ctx);
@@ -2077,7 +2064,7 @@ static ssize_t spufs_wbox_info_read(struct file *file, char __user *buf,
 	struct spu_context *ctx = file->private_data;
 	int ret;
 
-	if (!access_ok(VERIFY_WRITE, buf, len))
+	if (!access_ok(buf, len))
 		return -EFAULT;
 
 	ret = spu_acquire_saved(ctx);
@@ -2129,7 +2116,7 @@ static ssize_t spufs_dma_info_read(struct file *file, char __user *buf,
 	struct spu_context *ctx = file->private_data;
 	int ret;
 
-	if (!access_ok(VERIFY_WRITE, buf, len))
+	if (!access_ok(buf, len))
 		return -EFAULT;
 
 	ret = spu_acquire_saved(ctx);
@@ -2160,7 +2147,7 @@ static ssize_t __spufs_proxydma_info_read(struct spu_context *ctx,
 	if (len < ret)
 		return -EINVAL;
 
-	if (!access_ok(VERIFY_WRITE, buf, len))
+	if (!access_ok(buf, len))
 		return -EFAULT;
 
 	info.proxydma_info_type = ctx->csa.prob.dma_querytype_RW;
@@ -2338,9 +2325,8 @@ static int spufs_switch_log_open(struct inode *inode, struct file *file)
 		goto out;
 	}
 
-	ctx->switch_log = kmalloc(sizeof(struct switch_log) +
-		SWITCH_LOG_BUFSIZE * sizeof(struct switch_log_entry),
-		GFP_KERNEL);
+	ctx->switch_log = kmalloc(struct_size(ctx->switch_log, log,
+				  SWITCH_LOG_BUFSIZE), GFP_KERNEL);
 
 	if (!ctx->switch_log) {
 		rc = -ENOMEM;

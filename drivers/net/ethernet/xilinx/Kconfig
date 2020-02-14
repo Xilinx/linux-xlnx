@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: GPL-2.0-only
 #
 # Xilinx device configuration
 #
@@ -5,7 +6,6 @@
 config NET_VENDOR_XILINX
 	bool "Xilinx devices"
 	default y
-	depends on PPC || PPC32 || MICROBLAZE || ARCH_ZYNQ || MIPS || ARCH_ZYNQMP
 	---help---
 	  If you have a network (Ethernet) card belonging to this class, say Y.
 
@@ -18,27 +18,24 @@ if NET_VENDOR_XILINX
 
 config XILINX_EMACLITE
 	tristate "Xilinx 10/100 Ethernet Lite support"
-	depends on PPC32 || MICROBLAZE || ARCH_ZYNQ || MIPS || ARCH_ZYNQMP
 	select PHYLIB
+	depends on HAS_IOMEM
 	---help---
 	  This driver supports the 10/100 Ethernet Lite from Xilinx.
 
 config XILINX_AXI_EMAC
-	tristate "Xilinx AXI Ethernet support"
-	depends on (MICROBLAZE || ARCH_ZYNQ || ARCH_ZYNQMP)
+	tristate "Xilinx 10/100/1000 AXI Ethernet support"
 	select PHYLIB
 	---help---
-	  This driver supports the Xilinx AXI 1G/2.5G, 10 Gigabit,
-	  10G/25G High Speed and USXGMII Ethernet Subsystem.
-
+	  This driver supports the 10/100/1000 Ethernet from Xilinx for the
+	  AXI bus interface used in Xilinx Virtex FPGAs and Soc's.
 config XILINX_AXI_EMAC_HWTSTAMP
 	bool "Generate hardware packet timestamps"
 	depends on XILINX_AXI_EMAC
-	depends on PTP_1588_CLOCK
+	select PTP_1588_CLOCK
 	default n
 	---help---
-	  Generate hardware packet timestamps. This is to facilitate IEEE 1588.
-
+	  Generate hardware packet timestamps. This is to facilitate IEE 1588.
 config  AXIENET_HAS_MCDMA
 	bool "AXI Ethernet is configured with MCDMA"
 	depends on XILINX_AXI_EMAC
@@ -48,8 +45,7 @@ config  AXIENET_HAS_MCDMA
 
 config XILINX_LL_TEMAC
 	tristate "Xilinx LL TEMAC (LocalLink Tri-mode Ethernet MAC) driver"
-	depends on (PPC || MICROBLAZE)
-	depends on !64BIT || BROKEN
+	depends on PPC || MICROBLAZE || X86 || COMPILE_TEST
 	select PHYLIB
 	---help---
 	  This driver supports the Xilinx 10/100/1000 LocalLink TEMAC
@@ -64,15 +60,15 @@ config XILINX_TSN
 config XILINX_TSN_PTP
 	bool "Generate hardware packet timestamps using Xilinx's TSN IP"
 	depends on XILINX_TSN
-	depends on PTP_1588_CLOCK
+	select PTP_1588_CLOCK
 	default y
 	---help---
-	  Generate hardware packet timestamps. This is to facilitate IEEE 1588.
+	  Generate hardare packet timestamps. This is to facilitate IEE 1588.
 
 config XILINX_TSN_QBV
 	bool "Support Qbv protocol in TSN"
 	depends on XILINX_TSN_PTP
-	depends on PTP_1588_CLOCK
+	select PTP_1588_CLOCK
 	default y
 	---help---
 	  Enables TSN Qbv protocol.
