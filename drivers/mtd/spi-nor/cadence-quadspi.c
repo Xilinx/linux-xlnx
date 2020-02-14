@@ -561,6 +561,13 @@ static int cqspi_command_write(struct spi_nor *nor, const u8 opcode,
 		reg |= (0x1 << CQSPI_REG_CMDCTRL_WR_EN_LSB);
 		reg |= ((n_tx - 1) & CQSPI_REG_CMDCTRL_WR_BYTES_MASK)
 			<< CQSPI_REG_CMDCTRL_WR_BYTES_LSB;
+		if (nor->is_addrvalid) {
+			reg |= (0x1 << CQSPI_REG_CMDCTRL_ADDR_EN_LSB);
+			reg |= ((nor->addr_width - 1) &
+				CQSPI_REG_CMDCTRL_ADD_BYTES_MASK) <<
+				CQSPI_REG_CMDCTRL_ADD_BYTES_LSB;
+			writel(nor->reg_addr, reg_base + CQSPI_REG_CMDADDRESS);
+		}
 		data = 0;
 		write_len = (n_tx > 4) ? 4 : n_tx;
 		memcpy(&data, txbuf, write_len);
