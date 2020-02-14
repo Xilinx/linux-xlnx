@@ -23,6 +23,7 @@
 #include <linux/regmap.h>
 #include <linux/of.h>
 #include <linux/firmware/xlnx-zynqmp.h>
+#include <linux/pinctrl/consumer.h>
 
 #include "cqhci.h"
 #include "sdhci-pltfm.h"
@@ -122,6 +123,8 @@ struct sdhci_arasan_zynqmp_clk_data {
  * @clk_data:		Struct for the Arasan Controller Clock Data.
  * @soc_ctl_base:	Pointer to regmap for syscon for soc_ctl registers.
  * @soc_ctl_map:	Map to get offsets into soc_ctl registers.
+ * @pinctrl:		Per-device pin control state holder.
+ * @pins_default:	Pinctrl state for a device.
  */
 struct sdhci_arasan_data {
 	struct sdhci_host *host;
@@ -134,6 +137,8 @@ struct sdhci_arasan_data {
 
 	struct regmap	*soc_ctl_base;
 	const struct sdhci_arasan_soc_ctl_map *soc_ctl_map;
+	struct pinctrl *pinctrl;
+	struct pinctrl_state *pins_default;
 	unsigned int	quirks; /* Arasan deviations from spec */
 
 /* Controller does not have CD wired and will not function normally without */
@@ -1487,6 +1492,20 @@ static int sdhci_arasan_probe(struct platform_device *pdev)
 		if (ret != -EPROBE_DEFER)
 			dev_err(&pdev->dev, "parsing dt failed (%d)\n", ret);
 		goto unreg_clk;
+	}
+
+	sdhci_arasan->pinctrl = devm_pinctrl_get(&pdev->dev);
+	if (!IS_ERR(sdhci_arasan->pinctrl)) {
+		sdhci_arasan->pins_default =
+			pinctrl_lookup_state(sdhci_arasan->pinctrl,
+					     PINCTRL_STATE_DEFAULT);
+		if (IS_ERR(sdhci_arasan->pins_default)) {
+			dev_err(&pdev->dev, "Missing default pinctrl config\n");
+			return IS_ERR(sdhci_arasan->pins_default);
+		}
+
+		pinctrl_select_state(sdhci_arasan->pinctrl,
+				     sdhci_arasan->pins_default);
 	}
 
 	sdhci_arasan->phy = ERR_PTR(-ENODEV);
