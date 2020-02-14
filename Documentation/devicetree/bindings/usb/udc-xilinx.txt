@@ -6,7 +6,11 @@ Required properties:
 			  device registers map.
 - interrupts		: Should contain single irq line of USB2 device
 			  controller
-- xlnx,has-builtin-dma	: if DMA is included
+- xlnx,has-builtin-dma	: If DMA is included
+
+Optional properties:
+- clock-names		: Should be  "s_axi_aclk"
+- clocks		: Input clock specifier. Refer to common clock bindings.
 
 Example:
  		axi-usb2-device@42e00000 {
