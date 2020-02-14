@@ -299,6 +299,7 @@ struct cqspi_driver_platdata {
 #define CQSPI_IRQ_STATUS_MASK		0x1FFFF
 #define CQSPI_MIO_NODE_ID_12		0x14108027
 #define CQSPI_READ_ID			0x9F
+#define CQSPI_FAST_READ                 0x0C
 #define CQSPI_READ_ID_LEN		6
 #define TERA_MACRO			1000000000000l
 
@@ -428,7 +429,18 @@ static void process_dma_irq(struct cqspi_st *cqspi)
 		cqspi->rxbuf += cqspi->bytes_to_dma;
 		writel(cqspi->addr + cqspi->bytes_to_dma,
 		       cqspi->iobase + CQSPI_REG_CMDADDRESS);
-		opcode = (u8)readl(cqspi->iobase + CQSPI_REG_RD_INSTR);
+		if (cqspi->edge_mode == CQSPI_EDGE_MODE_DDR) {
+			opcode = (u8)readl(cqspi->iobase + CQSPI_REG_RD_INSTR);
+			dummy_cycles = (readl(cqspi->iobase +
+					CQSPI_REG_RD_INSTR) >>
+					CQSPI_REG_RD_INSTR_DUMMY_LSB) &
+					CQSPI_REG_RD_INSTR_DUMMY_MASK;
+		} else {
+			opcode = CQSPI_FAST_READ;
+			dummy_cycles = 8;
+			writel((dummy_cycles << CQSPI_REG_RD_INSTR_DUMMY_LSB) |
+				opcode, cqspi->iobase + CQSPI_REG_RD_INSTR);
+		}
 		addr_bytes = readl(cqspi->iobase + CQSPI_REG_SIZE) &
 				CQSPI_REG_SIZE_ADDRESS_MASK;
 		reg = opcode << CQSPI_REG_CMDCTRL_OPCODE_LSB;
@@ -436,14 +448,17 @@ static void process_dma_irq(struct cqspi_st *cqspi)
 		reg |= (0x1 << CQSPI_REG_CMDCTRL_ADDR_EN_LSB);
 		reg |= (addr_bytes & CQSPI_REG_CMDCTRL_ADD_BYTES_MASK) <<
 			CQSPI_REG_CMDCTRL_ADD_BYTES_LSB;
-		dummy_cycles = (readl(cqspi->iobase + CQSPI_REG_RD_INSTR) >>
-			CQSPI_REG_RD_INSTR_DUMMY_LSB) &
-			CQSPI_REG_RD_INSTR_DUMMY_MASK;
 		reg |= (dummy_cycles & CQSPI_REG_CMDCTRL_DUMMY_BYTES_MASK) <<
 			CQSPI_REG_CMDCTRL_DUMMY_BYTES_LSB;
+		cqspi->unalined_byte_cnt = false;
+		if (cqspi->edge_mode == CQSPI_EDGE_MODE_DDR &&
+		    ((rem % 2) != 0)) {
+			cqspi->unalined_byte_cnt = true;
+		}
 		/* 0 means 1 byte. */
-		reg |= (((rem - 1) & CQSPI_REG_CMDCTRL_RD_BYTES_MASK)
-			<< CQSPI_REG_CMDCTRL_RD_BYTES_LSB);
+		reg |= (((rem - 1 + cqspi->unalined_byte_cnt) &
+			CQSPI_REG_CMDCTRL_RD_BYTES_MASK) <<
+			CQSPI_REG_CMDCTRL_RD_BYTES_LSB);
 		cqspi_exec_flash_cmd(cqspi, reg);
 		data = readl(cqspi->iobase + CQSPI_REG_CMDREADDATALOWER);
 
@@ -460,20 +475,21 @@ static irqreturn_t cqspi_irq_handler(int this_irq, void *dev)
 
 	/* Read interrupt status */
 	irq_status = readl(cqspi->iobase + CQSPI_REG_IRQSTATUS);
-
-	/* Clear interrupt */
-	writel(irq_status, cqspi->iobase + CQSPI_REG_IRQSTATUS);
-
-	if (cqspi->read_dma) {
-		dma_status = readl(cqspi->iobase + CQSPI_REG_DMA_DTS_I_STS);
-		writel(dma_status, cqspi->iobase + CQSPI_REG_DMA_DTS_I_STS);
-		if (dma_status)
-			process_dma_irq(cqspi);
-	}
-
 	irq_status &= CQSPI_IRQ_MASK_RD | CQSPI_IRQ_MASK_WR;
 
-	if (irq_status || (cqspi->read_dma && dma_status))
+	/* Clear interrupt */
+	if (irq_status)
+		writel(irq_status, cqspi->iobase + CQSPI_REG_IRQSTATUS);
+
+	/* Read DMA interrupt status */
+	dma_status = readl(cqspi->iobase + CQSPI_REG_DMA_DTS_I_STS);
+	dma_status &= CQSPI_REG_DMA_DST_I_EN_DONE;
+
+	/* Clear DMA interrupt */
+	if (dma_status)
+		writel(dma_status, cqspi->iobase + CQSPI_REG_DMA_DTS_I_STS);
+
+	if (irq_status || dma_status)
 		complete(&cqspi->transfer_complete);
 
 	return IRQ_HANDLED;
@@ -1582,6 +1598,7 @@ static void cqspi_controller_init(struct cqspi_st *cqspi)
 
 	/* Disable all interrupts. */
 	writel(0, cqspi->iobase + CQSPI_REG_IRQMASK);
+	writel(0, cqspi->iobase + CQSPI_REG_DMA_DST_I_DIS);
 
 	/* Configure the SRAM split to 1:1 . */
 	writel(cqspi->fifo_depth / 2, cqspi->iobase + CQSPI_REG_SRAMPARTITION);
@@ -1761,6 +1778,17 @@ static int cqspi_versal_indirect_read_dma(struct spi_nor *nor, u_char *rxbuf,
 		ret = -ETIMEDOUT;
 		goto failrd;
 	}
+
+	/* Check indirect done status */
+	ret = cqspi_wait_for_bit(reg_base + CQSPI_REG_INDIRECTRD,
+				 CQSPI_REG_INDIRECTRD_DONE_MASK, 0);
+	if (ret) {
+		dev_err(nor->dev,
+			"Indirect read completion error (%i)\n", ret);
+		goto failrd;
+	}
+
+	process_dma_irq(cqspi);
 
 	return 0;
 
