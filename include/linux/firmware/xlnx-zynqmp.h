@@ -532,6 +532,12 @@ enum pm_register_access_id {
 	CONFIG_REG_READ,
 };
 
+enum ospi_mux_select_type {
+	PM_OSPI_MUX_SEL_DMA = 0,
+	PM_OSPI_MUX_SEL_LINEAR = 1,
+	PM_OSPI_MUX_GET_MODE = 2,
+};
+
 /**
  * struct zynqmp_pm_query_data - PM query data
  * @qid:	query ID
