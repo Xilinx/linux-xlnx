@@ -458,6 +458,12 @@ enum pm_register_access_id {
 	CONFIG_REG_READ,
 };
 
+enum ospi_mux_select_type {
+	PM_OSPI_MUX_SEL_DMA,
+	PM_OSPI_MUX_SEL_LINEAR,
+	PM_OSPI_MUX_GET_MODE,
+};
+
 enum pm_node_id {
 	NODE_UNKNOWN = 0,
 	NODE_APU,

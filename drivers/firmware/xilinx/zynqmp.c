@@ -529,6 +529,7 @@ static inline int versal_is_valid_ioctl(u32 ioctl_id)
 	case IOCTL_PROBE_COUNTER_READ:
 	case IOCTL_PROBE_COUNTER_WRITE:
 	case IOCTL_USB_SET_STATE:
+	case IOCTL_OSPI_MUX_SELECT:
 		return 1;
 	default:
 		return 0;
