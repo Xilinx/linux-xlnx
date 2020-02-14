@@ -102,6 +102,7 @@ struct cqspi_st {
 	u8			edge_mode;
 	bool			extra_dummy;
 	bool			stig_write;
+	u8			access_mode;
 	int (*indirect_read_dma)(struct spi_nor *nor, u_char *rxbuf,
 				 loff_t from_addr, size_t n_rx);
 	int (*flash_reset)(struct cqspi_st *cqspi, u8 reset_type);
@@ -304,6 +305,11 @@ struct cqspi_driver_platdata {
 
 #define CQSPI_RESET_TYPE_HWPIN		0
 
+#define CQSPI_DMA_MODE		0
+#define CQSPI_LINEAR_MODE	1
+
+#define RESET_OSPI		0xc10402e
+#define DEV_OSPI		0x1822402a
 static int cqspi_wait_for_bit(void __iomem *reg, const u32 mask, bool clr)
 {
 	u32 val;
@@ -675,6 +681,14 @@ static int cqspi_indirect_read_execute(struct spi_nor *nor, u8 *rxbuf,
 	reg &= ~CQSPI_REG_CONFIG_DMA_MASK;
 	writel(reg, cqspi->iobase + CQSPI_REG_CONFIG);
 
+	if (cqspi->eemi_ops && cqspi->access_mode == CQSPI_DMA_MODE) {
+		cqspi_wait_idle(cqspi);
+		cqspi->eemi_ops->ioctl(DEV_OSPI, IOCTL_OSPI_MUX_SELECT,
+				       PM_OSPI_MUX_SEL_LINEAR, 0, NULL);
+		cqspi->access_mode = CQSPI_LINEAR_MODE;
+		cqspi_wait_idle(cqspi);
+	}
+
 	writel(from_addr, reg_base + CQSPI_REG_INDIRECTRDSTARTADDR);
 	writel(remaining, reg_base + CQSPI_REG_INDIRECTRDBYTES);
 
@@ -856,6 +870,14 @@ static int cqspi_indirect_write_execute(struct spi_nor *nor, loff_t to_addr,
 	reg = readl(cqspi->iobase + CQSPI_REG_CONFIG);
 	reg &= ~CQSPI_REG_CONFIG_DMA_MASK;
 	writel(reg, cqspi->iobase + CQSPI_REG_CONFIG);
+
+	if (cqspi->eemi_ops && cqspi->access_mode == CQSPI_DMA_MODE) {
+		cqspi_wait_idle(cqspi);
+		cqspi->eemi_ops->ioctl(DEV_OSPI, IOCTL_OSPI_MUX_SELECT,
+				       PM_OSPI_MUX_SEL_LINEAR, 0, NULL);
+		cqspi->access_mode = CQSPI_LINEAR_MODE;
+		cqspi_wait_idle(cqspi);
+	}
 
 	writel(to_addr, reg_base + CQSPI_REG_INDIRECTWRSTARTADDR);
 	writel(remaining, reg_base + CQSPI_REG_INDIRECTWRBYTES);
@@ -1515,7 +1537,7 @@ static int cqspi_setdlldelay(struct spi_nor *nor)
 	if (!dummy_flag)
 		cqspi->extra_dummy = false;
 	if (max_windowsize < 3)
-		return ret;
+		return -EINVAL;
 
 	writel((txtap | avg_rxtap), cqspi->iobase + CQSPI_REG_PHY_CONFIG);
 	writel((CQSPI_REG_PHY_CONFIG_RESYNC_FLD_MASK | txtap | avg_rxtap),
@@ -1524,12 +1546,11 @@ static int cqspi_setdlldelay(struct spi_nor *nor)
 	return 0;
 }
 
-static int cqspi_setup_edgemode(struct spi_nor *nor)
+static void cqspi_setup_ddrmode(struct spi_nor *nor)
 {
 	struct cqspi_flash_pdata *f_pdata = nor->priv;
 	struct cqspi_st *cqspi = f_pdata->cqspi;
 	u32 reg;
-	int ret;
 
 	cqspi_controller_enable(cqspi, 0);
 
@@ -1556,6 +1577,13 @@ static int cqspi_setup_edgemode(struct spi_nor *nor)
 	cqspi->edge_mode = CQSPI_EDGE_MODE_DDR;
 
 	cqspi_controller_enable(cqspi, 1);
+}
+
+static int cqspi_setup_edgemode(struct spi_nor *nor)
+{
+	int ret;
+
+	cqspi_setup_ddrmode(nor);
 
 	ret = cqspi_setdlldelay(nor);
 
@@ -1673,6 +1701,38 @@ static int cqspi_versal_indirect_read_dma(struct spi_nor *nor, u_char *rxbuf,
 	cqspi->bytes_to_dma = (n_rx - rx_rem);
 	cqspi->addr = from_addr;
 	cqspi->rxbuf = rxbuf;
+
+	if (cqspi->eemi_ops && cqspi->access_mode == CQSPI_LINEAR_MODE) {
+		cqspi_wait_idle(cqspi);
+		reg = readl(cqspi->iobase + CQSPI_REG_PHY_CONFIG);
+
+		/* Issue controller reset */
+		cqspi->eemi_ops->reset_assert(RESET_OSPI,
+					      PM_RESET_ACTION_ASSERT);
+		cqspi->eemi_ops->ioctl(DEV_OSPI, IOCTL_OSPI_MUX_SELECT,
+				       PM_OSPI_MUX_SEL_DMA, 0, NULL);
+		cqspi->access_mode = CQSPI_DMA_MODE;
+		cqspi->eemi_ops->reset_assert(RESET_OSPI,
+					      PM_RESET_ACTION_RELEASE);
+
+		cqspi_controller_init(cqspi);
+		cqspi->current_cs = -1;
+		cqspi->sclk = 0;
+
+		ret = cqspi_set_protocol(nor, 1);
+		if (ret)
+			return ret;
+
+		if (cqspi->edge_mode == CQSPI_EDGE_MODE_DDR) {
+			cqspi_setup_ddrmode(nor);
+			writel(CQSPI_REG_PHY_CONFIG_RESYNC_FLD_MASK | reg,
+			       cqspi->iobase + CQSPI_REG_PHY_CONFIG);
+		}
+
+		ret = cqspi_read_setup(nor);
+		if (ret)
+			return ret;
+	}
 
 	reg = readl(cqspi->iobase + CQSPI_REG_CONFIG);
 	reg |= CQSPI_REG_CONFIG_DMA_MASK;
@@ -1969,16 +2029,15 @@ static int cqspi_probe(struct platform_device *pdev)
 
 	cqspi->stig_write = false;
 	if (of_device_is_compatible(pdev->dev.of_node,
-				    "xlnx,versal-ospi-1.0") &&
-				    cqspi->read_dma) {
-		cqspi->indirect_read_dma = cqspi_versal_indirect_read_dma;
-		cqspi->flash_reset = cqspi_versal_flash_reset;
-		if (ddata && (ddata->quirks & CQSPI_STIG_WRITE)) {
-			cqspi->stig_write = true;
-		}
+				    "xlnx,versal-ospi-1.0")) {
 		cqspi->eemi_ops = zynqmp_pm_get_eemi_ops();
 		if (IS_ERR(cqspi->eemi_ops))
 			return PTR_ERR(cqspi->eemi_ops);
+		if (cqspi->read_dma)
+			cqspi->indirect_read_dma =
+				cqspi_versal_indirect_read_dma;
+		cqspi->flash_reset = cqspi_versal_flash_reset;
+		cqspi->access_mode = CQSPI_DMA_MODE;
 	}
 
 	ret = devm_request_irq(dev, irq, cqspi_irq_handler, 0,
