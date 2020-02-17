@@ -82,6 +82,7 @@
 #define DP83867_PHYCR_FIFO_DEPTH_MAX		0x03
 #define DP83867_PHYCR_FIFO_DEPTH_MASK		GENMASK(15, 14)
 #define DP83867_PHYCR_RESERVED_MASK		BIT(11)
+#define DP83867_PHYCR_FORCE_LINK_GOOD		BIT(10)
 #define DP83867_MDI_CROSSOVER		5
 #define DP83867_MDI_CROSSOVER_AUTO		0b10
 #define DP83867_PHYCTRL_SGMIIEN			0x0800
@@ -493,7 +494,12 @@ static int dp83867_phy_reset(struct phy_device *phydev)
 
 	usleep_range(10, 20);
 
-	return 0;
+	/* After reset FORCE_LINK_GOOD bit is set. Although the
+	 * default value should be unset. Disable FORCE_LINK_GOOD
+	 * for the phy to work properly.
+	 */
+	return phy_modify(phydev, MII_DP83867_PHYCTRL,
+			 DP83867_PHYCR_FORCE_LINK_GOOD, 0);
 }
 
 static struct phy_driver dp83867_driver[] = {
