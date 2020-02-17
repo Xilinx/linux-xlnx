@@ -5352,8 +5352,18 @@ int spi_nor_scan(struct spi_nor *nor, const char *name,
 		write_sr(nor, 0);
 		if (info->flags & SST_GLOBAL_PROT_UNLK) {
 			write_enable(nor);
-			/* Unlock global write protection bits */
-			nor->write_reg(nor, GLOBAL_BLKPROT_UNLK, NULL, 0);
+			if (nor->spimem) {
+				struct spi_mem_op op =
+					SPI_MEM_OP(SPI_MEM_OP_CMD(GLOBAL_BLKPROT_UNLK, 1),
+						   SPI_MEM_OP_NO_ADDR,
+						   SPI_MEM_OP_NO_DUMMY,
+						   SPI_MEM_OP_NO_DATA);
+
+				spi_mem_exec_op(nor->spimem, &op);
+			} else {
+				/* Unlock global write protection bits */
+				nor->write_reg(nor, GLOBAL_BLKPROT_UNLK, NULL, 0);
+			}
 		}
 		spi_nor_wait_till_ready(nor);
 	}
