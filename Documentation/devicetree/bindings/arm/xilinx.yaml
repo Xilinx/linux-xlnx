@@ -58,12 +58,6 @@ properties:
           - const: xlnx,zynqmp-zc1254
           - const: xlnx,zynqmp
 
-      - description: Xilinx internal board zc1275
-        items:
-          - const: xlnx,zynqmp-zc1275-revA
-          - const: xlnx,zynqmp-zc1275
-          - const: xlnx,zynqmp
-
       - description: Xilinx 96boards compatible board zcu100
         items:
           - const: xlnx,zynqmp-zcu100-revC
@@ -91,6 +85,7 @@ properties:
         items:
           - enum:
               - xlnx,zynqmp-zcu104-revA
+              - xlnx,zynqmp-zcu104-revC
               - xlnx,zynqmp-zcu104-rev1.0
           - const: xlnx,zynqmp-zcu104
           - const: xlnx,zynqmp
@@ -107,8 +102,41 @@ properties:
         items:
           - enum:
               - xlnx,zynqmp-zcu111-revA
-              - xlnx,zynqmp-zcu11-rev1.0
+              - xlnx,zynqmp-zcu111-rev1.0
           - const: xlnx,zynqmp-zcu111
+          - const: xlnx,zynqmp
+
+      - description: Xilinx evaluation board zcu208
+        items:
+          - enum:
+              - xlnx,zynqmp-zcu208-revA
+              - xlnx,zynqmp-zcu208-rev1.0
+          - const: xlnx,zynqmp-zcu208
+          - const: xlnx,zynqmp
+
+      - description: Xilinx evaluation board zcu216
+        items:
+          - enum:
+              - xlnx,zynqmp-zcu216-revA
+              - xlnx,zynqmp-zcu216-rev1.0
+          - const: xlnx,zynqmp-zcu216
+          - const: xlnx,zynqmp
+
+      - description: Xilinx evaluation board zcu1275
+        items:
+          - enum:
+              - xlnx,zynqmp-zcu1275-revA
+              - xlnx,zynqmp-zcu1275-revB
+              - xlnx,zynqmp-zcu1275-rev1.0
+          - const: xlnx,zynqmp-zcu1275
+          - const: xlnx,zynqmp
+
+      - description: Xilinx evaluation board zcu1285
+        items:
+          - enum:
+              - xlnx,zynqmp-zcu1285-revA
+              - xlnx,zynqmp-zcu1285-rev1.0
+          - const: xlnx,zynqmp-zcu1285
           - const: xlnx,zynqmp
 
 additionalProperties: true
