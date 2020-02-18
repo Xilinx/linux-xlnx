@@ -24,7 +24,6 @@
 		spi0 = &qspi;
 		mmc0 = &sdhci1;
 		ethernet0 = &gem1; /* EMIO */
-		ethernet1 = &gem3; /* PS ethernet */
 		i2c = &i2c0; /* EMIO */
 	};
 
@@ -243,15 +242,6 @@
 			txd2-skew-ps = <900>; /* Skew control of TXD2 pad input */
 			txd3-skew-ps = <900>; /* Skew control of TXD3 pad input */
 		};
-	};
-};
-
-&gem3 {
-	status = "okay";
-	phy-mode = "rgmii";
-	phy-handle = <&phy2>;
-	phy2: ethernet-phy@1 {
-		reg = <1>; /* KSZ9031RNXIC */
 	};
 };
 
