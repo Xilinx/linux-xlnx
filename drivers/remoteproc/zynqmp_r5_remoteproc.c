@@ -275,22 +275,22 @@ static int zynqmp_r5_rproc_stop(struct rproc *rproc)
 
 static int zynqmp_r5_parse_fw(struct rproc *rproc, const struct firmware *fw)
 {
-	int ret;
+	int num_mems, i, ret;
 	struct zynqmp_r5_pdata *pdata = rproc->priv;
-	struct zynqmp_r5_mem *zynqmp_mem;
 	struct device *dev = &pdata->dev;
 	struct device_node *np = dev->of_node;
-	int num_mems;
-	int i, dma_pool_index = 0;
-	struct reserved_mem *rmem;
 	struct rproc_mem_entry *mem;
+	struct device_node *child;
+	struct resource rsc;
 
 	num_mems = of_count_phandle_with_args(np, "memory-region", NULL);
 	if (num_mems <= 0)
 		return 0;
+
 	for (i = 0; i < num_mems; i++) {
 		struct device_node *node;
-		int ret;
+		struct zynqmp_r5_mem *zynqmp_mem;
+		struct reserved_mem *rmem;
 
 		node = of_parse_phandle(np, "memory-region", i);
 		rmem = of_reserved_mem_lookup(node);
@@ -343,17 +343,15 @@ static int zynqmp_r5_parse_fw(struct rproc *rproc, const struct firmware *fw)
 	}
 
 	/* map TCM memories */
-	struct device_node *child;
-	struct resource rsc;
-
 	for_each_available_child_of_node(np, child) {
-		ret = of_address_to_resource(child, 0, &rsc);
 		struct property *prop;
 		const __be32 *cur;
 		u32 pnode_id;
 		void *va;
 		dma_addr_t dma;
 		resource_size_t size;
+
+		ret = of_address_to_resource(child, 0, &rsc);
 
 		i = 0;
 		of_property_for_each_u32(child, "pnode-id", prop, cur,
@@ -388,7 +386,8 @@ static int zynqmp_r5_parse_fw(struct rproc *rproc, const struct firmware *fw)
 						 NULL, zynqmp_r5_mem_release,
 						 rsc.name);
 		if (!mem)
-			return NULL;
+			return -ENOMEM;
+
 		rproc_add_carveout(rproc, mem);
 	}
 
