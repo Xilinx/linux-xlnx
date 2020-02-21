@@ -311,6 +311,12 @@ static int zynqmp_r5_parse_fw(struct rproc *rproc, const struct firmware *fw)
 						   rmem->size, rmem->base,
 						   NULL, NULL,
 						   name);
+			if (!mem) {
+				dev_err(dev, "unable to initialize memory-region %s \n",
+						name);
+				return -ENOMEM;
+			}
+
 			rproc_add_carveout(rproc, mem);
 			continue;
 		} else {
@@ -318,7 +324,15 @@ static int zynqmp_r5_parse_fw(struct rproc *rproc, const struct firmware *fw)
 							rmem->size,
 							rmem->base,
 							node->name);
+			if (!mem) {
+				dev_err(dev, "unable to initialize memory-region %s \n",
+						node->name);
+				return -ENOMEM;
+			}
 			mem->va = devm_ioremap_wc(dev, rmem->base, rmem->size);
+			if (!mem->va)
+				return -ENOMEM;
+
 			rproc_add_carveout(rproc, mem);
 		}
 		if (!mem)
@@ -373,6 +387,9 @@ static int zynqmp_r5_parse_fw(struct rproc *rproc, const struct firmware *fw)
 		size = resource_size(&rsc);
 
 		va = devm_ioremap_wc(dev, rsc.start, size);
+		if (!va)
+			return -ENOMEM;
+
 		/* zero out tcm base address */
 		if (rsc.start & 0xffe00000) {
 				rsc.start &= 0x000fffff;
