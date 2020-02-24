@@ -133,24 +133,18 @@ static DEFINE_IDA(xs_ida);
  * @chdev: Character device driver struct
  * @dev: Pointer to device
  * @iomem: Pointer to the register space
- * @sync_mutex: Mutex used to serialize ioctl calls
- * @wq_fbdone: wait queue for frame buffer done events
- * @wq_error: wait queue for error events
- * @l_done: Luma done result array
- * @c_done: Chroma done result array
- * @sync_err: Capture synchronization error per channel
- * @wdg_err: Capture watchdog error per channel
- * @ldiff_err: Luma buffer diff > 1
- * @cdiff_err: Chroma buffer diff > 1
+ * @sync_mutex: Serialize general device specific ioctl calls
  * @axi_clk: Pointer to clock structure for axilite clock
  * @p_clk: Pointer to clock structure for producer clock
  * @c_clk: Pointer to clock structure for consumer clock
  * @user_count: Usage count
- * @reserved: Channel reserved status
  * @irq: IRQ number
  * @irq_lock: Spinlock used to protect access to sync and watchdog error
- * @minor: device id count
+ * @minor: Device id count
  * @config: IP config struct
+ * @channels: List head for syncip channel linked list
+ * @chan_count : Active channel number count
+ * @reserved : Bitmap to track reserved channels
  *
  * This structure contains the device driver related parameters
  */
@@ -158,38 +152,57 @@ struct xlnxsync_device {
 	struct cdev chdev;
 	struct device *dev;
 	void __iomem *iomem;
-	/* sync_mutex is used to serialize ioctl calls */
+	/* sync_mutex is used to serialize general device ioctl calls */
 	struct mutex sync_mutex;
-	wait_queue_head_t wq_fbdone;
-	wait_queue_head_t wq_error;
-	bool l_done[XLNXSYNC_MAX_ENC_CHAN][XLNXSYNC_BUF_PER_CHAN][XLNXSYNC_IO];
-	bool c_done[XLNXSYNC_MAX_ENC_CHAN][XLNXSYNC_BUF_PER_CHAN][XLNXSYNC_IO];
-	bool sync_err[XLNXSYNC_MAX_ENC_CHAN];
-	bool wdg_err[XLNXSYNC_MAX_ENC_CHAN];
-	bool ldiff_err[XLNXSYNC_MAX_ENC_CHAN];
-	bool cdiff_err[XLNXSYNC_MAX_ENC_CHAN];
 	struct clk *axi_clk;
 	struct clk *p_clk;
 	struct clk *c_clk;
 	atomic_t user_count;
-	bool reserved[XLNXSYNC_MAX_ENC_CHAN];
-	int irq;
+	unsigned int irq;
 	/* irq_lock is used to protect access to sync_err and wdg_err */
 	spinlock_t irq_lock;
-	int minor;
+	u32 minor;
 	struct xlnxsync_config config;
+	struct list_head channels;
+	u8 chan_count;
+	unsigned long reserved;
 };
 
 /**
- * struct xlnxsync_ctx - Synchronizer context struct
+ * struct xlnxsync_channel - Synchronizer context struct
  * @dev: Xilinx synchronizer device struct
- * @chan_id: Channel id
+ * @mutex: Serialize channel specific ioctl calls
+ * @id: Channel id
+ * @channel: list entry into syncip channel lists
+ * @wq_fbdone: Wait queue for frame buffer done events
+ * @wq_error: Wait queue for error events
+ * @l_done: Luma done result array
+ * @c_done: Chroma done result array
+ * @sync_err: Capture synchronization error per channel
+ * @wdg_err: Capture watchdog error per channel
+ * @ldiff_err: Luma buffer diff > 1
+ * @cdiff_err: Chroma buffer diff > 1
+ * @err_event: Error event per channel
+ * @framedone_event: Framebuffer done event per channel
  *
- * This structure contains the device driver related parameters
+ * This structure contains the syncip channel specific parameters
  */
-struct xlnxsync_ctx {
+struct xlnxsync_channel {
 	struct xlnxsync_device *dev;
-	u32 chan_id;
+	/* Serialize channel specific ioctl calls */
+	struct mutex mutex;
+	u32 id;
+	struct list_head channel;
+	wait_queue_head_t wq_fbdone;
+	wait_queue_head_t wq_error;
+	u8 l_done[XLNXSYNC_BUF_PER_CHAN][XLNXSYNC_IO];
+	u8 c_done[XLNXSYNC_BUF_PER_CHAN][XLNXSYNC_IO];
+	u8 sync_err : 1;
+	u8 wdg_err : 1;
+	u8 ldiff_err : 1;
+	u8 cdiff_err : 1;
+	u8 err_event : 1;
+	u8 framedone_event : 1;
 };
 
 static inline u32 xlnxsync_read(struct xlnxsync_device *dev, u32 chan, u32 reg)
@@ -303,8 +316,8 @@ get_phy_addr_err:
 	return phy_addr;
 }
 
-static int xlnxsync_config_channel(struct xlnxsync_device *dev,
-				   void __user *arg)
+static int xlnxsync_chan_config(struct xlnxsync_channel *channel,
+				void __user *arg)
 {
 	struct xlnxsync_chan_config cfg;
 	int ret, i = 0, j;
@@ -313,6 +326,7 @@ static int xlnxsync_config_channel(struct xlnxsync_device *dev,
 	u64 chroma_start_address[XLNXSYNC_IO];
 	u64 luma_end_address[XLNXSYNC_IO];
 	u64 chroma_end_address[XLNXSYNC_IO];
+	struct xlnxsync_device *dev = channel->dev;
 
 	ret = copy_from_user(&cfg, arg, sizeof(cfg));
 	if (ret) {
@@ -353,13 +367,7 @@ static int xlnxsync_config_channel(struct xlnxsync_device *dev,
 	chroma_end_address[XLNXSYNC_CONS] =
 		cfg.chroma_end_offset[XLNXSYNC_CONS] + phy_start_address;
 
-	if (cfg.channel_id >= dev->config.max_channels) {
-		dev_err(dev->dev, "%s : Incorrect channel id %d\n",
-			__func__, cfg.channel_id);
-		return -EINVAL;
-	}
-
-	dev_dbg(dev->dev, "Channel id = %d", cfg.channel_id);
+	dev_dbg(dev->dev, "Channel id = %d", channel->id);
 	dev_dbg(dev->dev, "Producer address\n");
 	dev_dbg(dev->dev, "Luma Start Addr = 0x%llx End Addr = 0x%llx Margin = 0x%08x\n",
 		luma_start_address[XLNXSYNC_PROD],
@@ -390,11 +398,11 @@ static int xlnxsync_config_channel(struct xlnxsync_device *dev,
 			dev_dbg(dev->dev, "%s : auto search free fb\n",
 				__func__);
 			for (i = 0; i < XLNXSYNC_BUF_PER_CHAN; i++) {
-				if (xlnxsync_is_buf_done(dev, cfg.channel_id, i,
+				if (xlnxsync_is_buf_done(dev, channel->id, i,
 							 j))
 					break;
 				dev_dbg(dev->dev, "Channel %d %s FB %d is busy\n",
-					cfg.channel_id, j ? "prod" : "cons", i);
+					channel->id, j ? "prod" : "cons", i);
 			}
 
 			if (i == XLNXSYNC_BUF_PER_CHAN)
@@ -403,12 +411,12 @@ static int xlnxsync_config_channel(struct xlnxsync_device *dev,
 		} else if (cfg.fb_id[j] >= 0 &&
 			   cfg.fb_id[j] < XLNXSYNC_BUF_PER_CHAN) {
 			/* If fb_id is specified, check its availability */
-			if (!(xlnxsync_is_buf_done(dev, cfg.channel_id,
+			if (!(xlnxsync_is_buf_done(dev, channel->id,
 						   cfg.fb_id[j], j))) {
 				dev_dbg(dev->dev,
 					"%s : %s FB %d in channel %d is busy!\n",
 					__func__, j ? "prod" : "cons",
-					i, cfg.channel_id);
+					i, channel->id);
 				return -EBUSY;
 			}
 			dev_dbg(dev->dev, "%s : Configure fb %d\n",
@@ -433,22 +441,22 @@ static int xlnxsync_config_channel(struct xlnxsync_device *dev,
 		}
 
 		/* Start Address */
-		xlnxsync_write(dev, cfg.channel_id, l_start_reg + (i << 3),
+		xlnxsync_write(dev, channel->id, l_start_reg + (i << 3),
 			       lower_32_bits(luma_start_address[j]));
 
-		xlnxsync_write(dev, cfg.channel_id,
+		xlnxsync_write(dev, channel->id,
 			       (l_start_reg + 4) + (i << 3),
 			       upper_32_bits(luma_start_address[j]) &
 			       XLNXSYNC_FB_HI_ADDR_MASK);
 
 		/* End Address */
-		xlnxsync_write(dev, cfg.channel_id, l_end_reg + (i << 3),
+		xlnxsync_write(dev, channel->id, l_end_reg + (i << 3),
 			       lower_32_bits(luma_end_address[j]));
-		xlnxsync_write(dev, cfg.channel_id, l_end_reg + 4 + (i << 3),
+		xlnxsync_write(dev, channel->id, l_end_reg + 4 + (i << 3),
 			       upper_32_bits(luma_end_address[j]));
 
 		/* Set margin */
-		xlnxsync_write(dev, cfg.channel_id,
+		xlnxsync_write(dev, channel->id,
 			       XLNXSYNC_L_MARGIN_REG + (i << 2),
 			       cfg.luma_margin);
 
@@ -457,37 +465,37 @@ static int xlnxsync_config_channel(struct xlnxsync_device *dev,
 				__func__);
 
 			/* Chroma Start Address */
-			xlnxsync_write(dev, cfg.channel_id,
+			xlnxsync_write(dev, channel->id,
 				       c_start_reg + (i << 3),
 				       lower_32_bits(chroma_start_address[j]));
 
-			xlnxsync_write(dev, cfg.channel_id,
+			xlnxsync_write(dev, channel->id,
 				       c_start_reg + 4 + (i << 3),
 				       upper_32_bits(chroma_start_address[j]) &
 				       XLNXSYNC_FB_HI_ADDR_MASK);
 
 			/* Chroma End Address */
-			xlnxsync_write(dev, cfg.channel_id,
+			xlnxsync_write(dev, channel->id,
 				       c_end_reg + (i << 3),
 				       lower_32_bits(chroma_end_address[j]));
 
-			xlnxsync_write(dev, cfg.channel_id,
+			xlnxsync_write(dev, channel->id,
 				       c_end_reg + 4 + (i << 3),
 				       upper_32_bits(chroma_end_address[j]));
 
 			/* Chroma Margin */
-			xlnxsync_write(dev, cfg.channel_id,
+			xlnxsync_write(dev, channel->id,
 				       XLNXSYNC_C_MARGIN_REG + (i << 2),
 				       cfg.chroma_margin);
 
 			/* Set the Valid bit */
-			xlnxsync_set(dev, cfg.channel_id,
+			xlnxsync_set(dev, channel->id,
 				     c_start_reg + 4 + (i << 3),
 				     XLNXSYNC_FB_VALID_MASK);
 		}
 
 		/* Set the Valid bit */
-		xlnxsync_set(dev, cfg.channel_id, l_start_reg + 4 + (i << 3),
+		xlnxsync_set(dev, channel->id, l_start_reg + 4 + (i << 3),
 			     XLNXSYNC_FB_VALID_MASK);
 	}
 
@@ -504,38 +512,37 @@ static int xlnxsync_config_channel(struct xlnxsync_device *dev,
 	return 0;
 }
 
-static int xlnxsync_get_channel_status(struct xlnxsync_device *dev,
-				       void __user *arg)
+static int xlnxsync_chan_get_status(struct xlnxsync_channel *channel,
+				    void __user *arg)
 {
 	int ret;
-	u32 i, j, k;
+	u32 i, j;
 	unsigned long flags;
 	struct xlnxsync_stat status;
+	struct xlnxsync_device *dev = channel->dev;
 
-	for (i = 0; i < dev->config.max_channels; i++) {
-		/* Update Buffers status */
-		for (j = 0; j < XLNXSYNC_BUF_PER_CHAN; j++) {
-			for (k = 0; k < XLNXSYNC_IO; k++) {
-				if (xlnxsync_is_buf_done(dev, i, j, k))
-					status.fbdone[i][j][k] = true;
-				else
-					status.fbdone[i][j][k] = false;
-			}
+	/* Update Buffers status */
+	for (i = 0; i < XLNXSYNC_BUF_PER_CHAN; i++) {
+		for (j = 0; j < XLNXSYNC_IO; j++) {
+			if (xlnxsync_is_buf_done(dev, channel->id, i, j))
+				status.fbdone[i][j] = true;
+			else
+				status.fbdone[i][j] = false;
 		}
-
-		/* Update channel enable status */
-		if (xlnxsync_read(dev, i, XLNXSYNC_CTRL_REG) &
-		    XLNXSYNC_CTRL_ENABLE_MASK)
-			status.enable[i] = true;
-
-		/* Update channel error status */
-		spin_lock_irqsave(&dev->irq_lock, flags);
-		status.sync_err[i] = dev->sync_err[i];
-		status.wdg_err[i] = dev->wdg_err[i];
-		status.ldiff_err[i] = dev->ldiff_err[i];
-		status.cdiff_err[i] = dev->cdiff_err[i];
-		spin_unlock_irqrestore(&dev->irq_lock, flags);
 	}
+
+	/* Update channel enable status */
+	if (xlnxsync_read(dev, channel->id, XLNXSYNC_CTRL_REG) &
+	    XLNXSYNC_CTRL_ENABLE_MASK)
+		status.enable = true;
+
+	/* Update channel error status */
+	spin_lock_irqsave(&dev->irq_lock, flags);
+	status.sync_err = channel->sync_err;
+	status.wdg_err = channel->wdg_err;
+	status.ldiff_err = channel->ldiff_err;
+	status.cdiff_err = channel->cdiff_err;
+	spin_unlock_irqrestore(&dev->irq_lock, flags);
 
 	status.hdr_ver = XLNXSYNC_IOCTL_HDR_VER;
 
@@ -546,53 +553,70 @@ static int xlnxsync_get_channel_status(struct xlnxsync_device *dev,
 	return ret;
 }
 
-static int xlnxsync_enable(struct xlnxsync_device *dev, u32 channel,
-			   bool enable)
+static int xlnxsync_chan_enable(struct xlnxsync_channel *channel, bool enable)
 {
+	struct xlnxsync_device *dev = channel->dev;
+	unsigned int i, j;
+
 	if (dev->config.hdr_ver != XLNXSYNC_IOCTL_HDR_VER) {
 		dev_err(dev->dev, "ioctl not supported!\n");
 		return -EINVAL;
 	}
 
 	/* check channel v/s max from dt */
-	if (channel >= dev->config.max_channels) {
+	if (channel->id >= dev->config.max_channels) {
 		dev_err(dev->dev, "Invalid channel %d. Max channels = %d!\n",
-			channel, dev->config.max_channels);
+			channel->id, dev->config.max_channels);
 		return -EINVAL;
 	}
 
 	if (enable) {
-		dev_dbg(dev->dev, "Enabling %d channel\n", channel);
-		xlnxsync_set(dev, channel, XLNXSYNC_IER_REG,
+		dev_dbg(dev->dev, "Enabling %d channel\n", channel->id);
+		xlnxsync_set(dev, channel->id, XLNXSYNC_IER_REG,
 			     XLNXSYNC_IER_ALL_MASK);
-		xlnxsync_set(dev, channel, XLNXSYNC_CTRL_REG,
+		xlnxsync_set(dev, channel->id, XLNXSYNC_CTRL_REG,
 			     XLNXSYNC_CTRL_ENABLE_MASK |
 			     XLNXSYNC_CTRL_INTR_EN_MASK);
 	} else {
-		dev_dbg(dev->dev, "Disabling %d channel\n", channel);
-		xlnxsync_reset_chan(dev, channel);
-		xlnxsync_clr(dev, channel, XLNXSYNC_CTRL_REG,
+		dev_dbg(dev->dev, "Disabling %d channel\n", channel->id);
+		xlnxsync_reset_chan(dev, channel->id);
+		xlnxsync_clr(dev, channel->id, XLNXSYNC_CTRL_REG,
 			     XLNXSYNC_CTRL_ENABLE_MASK |
 			     XLNXSYNC_CTRL_INTR_EN_MASK);
-		xlnxsync_clr(dev, channel, XLNXSYNC_IER_REG,
+		xlnxsync_clr(dev, channel->id, XLNXSYNC_IER_REG,
 			     XLNXSYNC_IER_ALL_MASK);
-		dev->reserved[channel] = false;
+		channel->sync_err = false;
+		channel->wdg_err = false;
+		channel->ldiff_err = false;
+		channel->cdiff_err = false;
+
+		for (i = 0; i < XLNXSYNC_BUF_PER_CHAN; i++) {
+			for (j = 0; j < XLNXSYNC_IO; j++) {
+				channel->l_done[i][j] = false;
+				channel->c_done[i][j] = false;
+			}
+		}
 	}
 
 	return 0;
 }
 
-static int xlnxsync_get_config(struct xlnxsync_device *dev, void __user *arg)
+static int xlnxsync_get_config(struct xlnxsync_channel *channel,
+			       void __user *arg)
 {
 	struct xlnxsync_config cfg;
 	int ret;
+	struct xlnxsync_device *dev = channel->dev;
 
 	cfg.encode = dev->config.encode;
 	cfg.max_channels = dev->config.max_channels;
+	cfg.active_channels = dev->chan_count;
 	cfg.hdr_ver = XLNXSYNC_IOCTL_HDR_VER;
-
+	cfg.reserved_id = channel->id;
 	dev_dbg(dev->dev, "IP Config : encode = %d max_channels = %d\n",
 		cfg.encode, cfg.max_channels);
+	dev_dbg(dev->dev, "IP Config : active channels = %d reserved id = %d\n",
+		cfg.active_channels, cfg.reserved_id);
 	dev_dbg(dev->dev, "ioctl version = 0x%llx\n", cfg.hdr_ver);
 	ret = copy_to_user(arg, &cfg, sizeof(cfg));
 	if (ret) {
@@ -604,12 +628,13 @@ static int xlnxsync_get_config(struct xlnxsync_device *dev, void __user *arg)
 	return 0;
 }
 
-static int xlnxsync_clr_chan_err(struct xlnxsync_device *dev,
+static int xlnxsync_chan_clr_err(struct xlnxsync_channel *channel,
 				 void __user *arg)
 {
 	struct xlnxsync_clr_err errcfg;
 	int ret;
 	unsigned long flags;
+	struct xlnxsync_device *dev = channel->dev;
 
 	ret = copy_from_user(&errcfg, arg, sizeof(errcfg));
 	if (ret) {
@@ -625,47 +650,49 @@ static int xlnxsync_clr_chan_err(struct xlnxsync_device *dev,
 		return -EINVAL;
 	}
 
-	if (errcfg.channel_id >= dev->config.max_channels) {
-		dev_err(dev->dev, "%s : Incorrect channel id %d\n",
-			__func__, errcfg.channel_id);
-		return -EINVAL;
-	}
-
 	dev_dbg(dev->dev, "%s : Clearing %d channel errors\n",
-		__func__, errcfg.channel_id);
+		__func__, channel->id);
 	/* Clear channel error status */
 	spin_lock_irqsave(&dev->irq_lock, flags);
-	if (dev->sync_err[errcfg.channel_id])
-		dev->sync_err[errcfg.channel_id] = false;
+	if (channel->sync_err) {
+		dev_dbg(dev->dev, "Clearing sync err\n");
+		channel->sync_err = false;
+	}
 
-	if (dev->wdg_err[errcfg.channel_id])
-		dev->wdg_err[errcfg.channel_id] = false;
+	if (channel->wdg_err) {
+		dev_dbg(dev->dev, "Clearing wdg err\n");
+		channel->wdg_err = false;
+	}
 
-	if (dev->ldiff_err[errcfg.channel_id])
-		dev->ldiff_err[errcfg.channel_id] = false;
+	if (channel->ldiff_err) {
+		dev_dbg(dev->dev, "Clearing ldiff_err err\n");
+		channel->ldiff_err = false;
+	}
 
-	if (dev->cdiff_err[errcfg.channel_id])
-		dev->cdiff_err[errcfg.channel_id] = false;
+	if (channel->cdiff_err) {
+		dev_dbg(dev->dev, "Clearing cdiff_err err\n");
+		channel->cdiff_err = false;
+	}
 
 	spin_unlock_irqrestore(&dev->irq_lock, flags);
 
 	return 0;
 }
 
-static int xlnxsync_get_fbdone_status(struct xlnxsync_device *dev,
-				      void __user *arg)
+static int xlnxsync_chan_get_fbdone_status(struct xlnxsync_channel *channel,
+					   void __user *arg)
 {
 	struct xlnxsync_fbdone fbdone_stat;
-	int ret, i, j, k;
+	int ret, i, j;
+	struct xlnxsync_device *dev = channel->dev;
 
 	fbdone_stat.hdr_ver = XLNXSYNC_IOCTL_HDR_VER;
 
-	for (i = 0; i < dev->config.max_channels; i++)
-		for (j = 0; j < XLNXSYNC_BUF_PER_CHAN; j++)
-			for (k = 0; k < XLNXSYNC_IO; k++)
-				if (dev->l_done[i][j][k] &&
-				    dev->c_done[i][j][k])
-					fbdone_stat.status[i][j][k] = true;
+	for (i = 0; i < XLNXSYNC_BUF_PER_CHAN; i++)
+		for (j = 0; j < XLNXSYNC_IO; j++)
+			if (channel->l_done[i][j] &&
+			    channel->c_done[i][j])
+				fbdone_stat.status[i][j] = true;
 
 	ret = copy_to_user(arg, &fbdone_stat, sizeof(fbdone_stat));
 	if (ret)
@@ -675,12 +702,13 @@ static int xlnxsync_get_fbdone_status(struct xlnxsync_device *dev,
 	return ret;
 }
 
-static int xlnxsync_clr_fbdone_status(struct xlnxsync_device *dev,
-				      void __user *arg)
+static int xlnxsync_chan_clr_fbdone_status(struct xlnxsync_channel *channel,
+					   void __user *arg)
 {
 	struct xlnxsync_fbdone fbd;
-	int ret, i, j, k;
+	int ret, i, j;
 	unsigned long flags;
+	struct xlnxsync_device *dev = channel->dev;
 
 	ret = copy_from_user(&fbd, arg, sizeof(fbd));
 	if (ret) {
@@ -698,66 +726,28 @@ static int xlnxsync_clr_fbdone_status(struct xlnxsync_device *dev,
 
 	/* Clear channel error status */
 	spin_lock_irqsave(&dev->irq_lock, flags);
-
-	for (i = 0; i < dev->config.max_channels; i++) {
-		for (j = 0; j < XLNXSYNC_BUF_PER_CHAN; j++) {
-			for (k = 0; k < XLNXSYNC_IO; k++) {
-				fbd.status[i][j][k] = false;
-				dev->l_done[i][j][k] = false;
-				dev->c_done[i][j][k] = false;
-			}
+	for (i = 0; i < XLNXSYNC_BUF_PER_CHAN; i++) {
+		for (j = 0; j < XLNXSYNC_IO; j++) {
+			fbd.status[i][j] = false;
+			channel->l_done[i][j] = false;
+			channel->c_done[i][j] = false;
 		}
 	}
-
 	spin_unlock_irqrestore(&dev->irq_lock, flags);
 
 	return 0;
 }
 
-static int xlnxsync_reserve_get_channel(struct xlnxsync_device *dev,
-					void __user *arg)
-{
-	int ret;
-	u8 i;
-
-	if (dev->config.hdr_ver != XLNXSYNC_IOCTL_HDR_VER) {
-		dev_err(dev->dev, "ioctl not supported!\n");
-		return -EINVAL;
-	}
-
-	for (i = 0; i < dev->config.max_channels; i++) {
-		if (!dev->reserved[i])
-			break;
-	}
-
-	if (i == dev->config.max_channels) {
-		ret = -EBUSY;
-		dev_dbg(dev->dev, "No channel is free!\n");
-		return ret;
-	}
-
-	dev_dbg(dev->dev, "Reserving channel %d\n", i);
-	dev->reserved[i] = true;
-	ret = copy_to_user(arg, &i, sizeof(i));
-	if (ret) {
-		dev_err(dev->dev, "%s: failed to copy result data to user\n",
-			__func__);
-		ret = -EFAULT;
-	}
-
-	return ret;
-}
 
 static long xlnxsync_ioctl(struct file *fptr, unsigned int cmd,
 			   unsigned long data)
 {
 	int ret = -EINVAL;
-	u32 channel = data;
 	void __user *arg = (void __user *)data;
-	struct xlnxsync_ctx *ctx = fptr->private_data;
+	struct xlnxsync_channel *channel = fptr->private_data;
 	struct xlnxsync_device *xlnxsync_dev;
 
-	xlnxsync_dev = ctx->dev;
+	xlnxsync_dev = channel->dev;
 	if (!xlnxsync_dev) {
 		pr_err("%s: File op error\n", __func__);
 		return -EIO;
@@ -765,55 +755,68 @@ static long xlnxsync_ioctl(struct file *fptr, unsigned int cmd,
 
 	dev_dbg(xlnxsync_dev->dev, "ioctl = 0x%08x\n", cmd);
 
-	if (mutex_lock_interruptible(&xlnxsync_dev->sync_mutex))
-		return -ERESTARTSYS;
-
 	switch (cmd) {
 	case XLNXSYNC_GET_CFG:
-		ret = xlnxsync_get_config(xlnxsync_dev, arg);
+		if (mutex_lock_interruptible(&channel->mutex))
+			return -ERESTARTSYS;
+		ret = xlnxsync_get_config(channel, arg);
+		mutex_unlock(&channel->mutex);
 		break;
-	case XLNXSYNC_GET_CHAN_STATUS:
-		ret = xlnxsync_get_channel_status(xlnxsync_dev, arg);
+	case XLNXSYNC_CHAN_GET_STATUS:
+		if (mutex_lock_interruptible(&channel->mutex))
+			return -ERESTARTSYS;
+		ret = xlnxsync_chan_get_status(channel, arg);
+		mutex_unlock(&channel->mutex);
 		break;
-	case XLNXSYNC_SET_CHAN_CONFIG:
-		ret = xlnxsync_config_channel(xlnxsync_dev, arg);
+	case XLNXSYNC_CHAN_SET_CONFIG:
+		if (mutex_lock_interruptible(&channel->mutex))
+			return -ERESTARTSYS;
+		ret = xlnxsync_chan_config(channel, arg);
+		mutex_unlock(&channel->mutex);
 		break;
 	case XLNXSYNC_CHAN_ENABLE:
-		ctx->chan_id = channel;
-		ret = xlnxsync_enable(xlnxsync_dev, channel, true);
+		if (mutex_lock_interruptible(&channel->mutex))
+			return -ERESTARTSYS;
+		ret = xlnxsync_chan_enable(channel, true);
+		mutex_unlock(&channel->mutex);
 		break;
 	case XLNXSYNC_CHAN_DISABLE:
-		ret = xlnxsync_enable(xlnxsync_dev, channel, false);
+		if (mutex_lock_interruptible(&channel->mutex))
+			return -ERESTARTSYS;
+		ret = xlnxsync_chan_enable(channel, false);
+		mutex_unlock(&channel->mutex);
 		break;
-	case XLNXSYNC_CLR_CHAN_ERR:
-		ret = xlnxsync_clr_chan_err(xlnxsync_dev, arg);
+	case XLNXSYNC_CHAN_CLR_ERR:
+		if (mutex_lock_interruptible(&channel->mutex))
+			return -ERESTARTSYS;
+		ret = xlnxsync_chan_clr_err(channel, arg);
+		mutex_unlock(&channel->mutex);
 		break;
-	case XLNXSYNC_GET_CHAN_FBDONE_STAT:
-		ret = xlnxsync_get_fbdone_status(xlnxsync_dev, arg);
+	case XLNXSYNC_CHAN_GET_FBDONE_STAT:
+		if (mutex_lock_interruptible(&channel->mutex))
+			return -ERESTARTSYS;
+		ret = xlnxsync_chan_get_fbdone_status(channel, arg);
+		mutex_unlock(&channel->mutex);
 		break;
-	case XLNXSYNC_CLR_CHAN_FBDONE_STAT:
-		ret = xlnxsync_clr_fbdone_status(xlnxsync_dev, arg);
-		break;
-	case XLNXSYNC_RESERVE_GET_CHAN_ID:
-		ret = xlnxsync_reserve_get_channel(xlnxsync_dev, arg);
+	case XLNXSYNC_CHAN_CLR_FBDONE_STAT:
+		if (mutex_lock_interruptible(&channel->mutex))
+			return -ERESTARTSYS;
+		ret = xlnxsync_chan_clr_fbdone_status(channel, arg);
+		mutex_unlock(&channel->mutex);
 		break;
 	}
-
-	mutex_unlock(&xlnxsync_dev->sync_mutex);
 
 	return ret;
 }
 
 static __poll_t xlnxsync_poll(struct file *fptr, poll_table *wait)
 {
-	u32 j, k;
-	bool err_event, framedone_event;
 	__poll_t ret = 0, req_events = poll_requested_events(wait);
-	unsigned long flags;
-	struct xlnxsync_ctx *ctx = fptr->private_data;
+	struct xlnxsync_channel *channel = fptr->private_data;
 	struct xlnxsync_device *dev;
+	unsigned long flags;
 
-	dev = ctx->dev;
+	dev = channel->dev;
 	if (!dev) {
 		pr_err("%s: File op error\n", __func__);
 		return -EIO;
@@ -826,36 +829,29 @@ static __poll_t xlnxsync_poll(struct file *fptr, poll_table *wait)
 		return 0;
 
 	if (req_events & EPOLLPRI) {
-		poll_wait(fptr, &dev->wq_error, wait);
+		poll_wait(fptr, &channel->wq_error, wait);
 		spin_lock_irqsave(&dev->irq_lock, flags);
-		err_event = false;
-		if (dev->sync_err[ctx->chan_id] || dev->wdg_err[ctx->chan_id] ||
-		    dev->ldiff_err[ctx->chan_id] ||
-		    dev->cdiff_err[ctx->chan_id])
-			err_event = true;
-		spin_unlock_irqrestore(&dev->irq_lock, flags);
-		dev_dbg_ratelimited(dev->dev, "%s : error event occurred!\n",
-				    __func__);
-		if (err_event)
+		if (channel->err_event) {
+			dev_dbg_ratelimited(dev->dev,
+					    "%s : error event in chan = %d!\n",
+					     __func__, channel->id);
 			ret |= POLLPRI;
+			channel->err_event = false;
+		}
+		spin_unlock_irqrestore(&dev->irq_lock, flags);
 	}
 
 	if (req_events & EPOLLIN) {
-		poll_wait(fptr, &dev->wq_fbdone, wait);
+		poll_wait(fptr, &channel->wq_fbdone, wait);
 		spin_lock_irqsave(&dev->irq_lock, flags);
-		framedone_event = false;
-		for (j = 0; j < XLNXSYNC_BUF_PER_CHAN; j++) {
-			for (k = 0; k < XLNXSYNC_IO; k++) {
-				if (dev->l_done[ctx->chan_id][j][k] &&
-				    dev->c_done[ctx->chan_id][j][k])
-					framedone_event = true;
-			}
+		if (channel->framedone_event) {
+			dev_dbg_ratelimited(dev->dev,
+					    "%s : fbdone event in chan = %d!\n",
+					    __func__, channel->id);
+			ret |= POLLIN;
+			channel->framedone_event = false;
 		}
 		spin_unlock_irqrestore(&dev->irq_lock, flags);
-		dev_dbg_ratelimited(dev->dev, "%s : framedone event occurred!\n",
-				    __func__);
-		if (framedone_event)
-			ret |= POLLIN;
 	}
 
 	return ret;
@@ -863,76 +859,88 @@ static __poll_t xlnxsync_poll(struct file *fptr, poll_table *wait)
 
 static int xlnxsync_open(struct inode *iptr, struct file *fptr)
 {
-	struct xlnxsync_device *xlnxsync;
-	struct xlnxsync_ctx *ctx;
+	struct xlnxsync_device *dev;
+	struct xlnxsync_channel *chan;
+	unsigned int i;
 
-	xlnxsync = container_of(iptr->i_cdev, struct xlnxsync_device, chdev);
-	if (!xlnxsync) {
+	dev = container_of(iptr->i_cdev, struct xlnxsync_device, chdev);
+	if (!dev) {
 		pr_err("%s: failed to get xlnxsync driver handle\n", __func__);
 		return -EAGAIN;
 	}
 
-	ctx = kzalloc(sizeof(*ctx), GFP_KERNEL);
-	if (!ctx)
+	chan = devm_kzalloc(dev->dev, sizeof(*chan), GFP_KERNEL);
+	if (!chan)
 		return -ENOMEM;
 
-	ctx->dev = xlnxsync;
-	fptr->private_data = ctx;
-
-	atomic_inc(&xlnxsync->user_count);
-	dev_dbg(xlnxsync->dev, "%s: tid=%d Opened with user count = %d\n",
-		__func__, current->pid, atomic_read(&xlnxsync->user_count));
+	if (mutex_lock_interruptible(&dev->sync_mutex))
+		return -ERESTARTSYS;
+	i = find_first_zero_bit_le(&dev->reserved, dev->config.max_channels);
+	if (i >= dev->config.max_channels) {
+		dev_err(dev->dev, "No free channel available\n");
+		mutex_unlock(&dev->sync_mutex);
+		return -ENOSPC;
+	}
+	dev_dbg(dev->dev, "Reserving channel %d\n", i);
+	set_bit(i, &dev->reserved);
+	chan->id = i;
+	list_add_tail(&chan->channel, &dev->channels);
+	chan->dev = dev;
+	fptr->private_data = chan;
+	mutex_init(&chan->mutex);
+	init_waitqueue_head(&chan->wq_fbdone);
+	init_waitqueue_head(&chan->wq_error);
+	dev->chan_count++;
+	atomic_inc(&dev->user_count);
+	dev_dbg(dev->dev, "%s: tid=%d Opened with user count = %d\n",
+		__func__, current->pid, atomic_read(&dev->user_count));
+	mutex_unlock(&dev->sync_mutex);
 
 	return 0;
 }
 
 static int xlnxsync_release(struct inode *iptr, struct file *fptr)
 {
-	struct xlnxsync_device *xlnxsync;
-	struct xlnxsync_ctx *ctx = fptr->private_data;
-	unsigned int i, j;
+	struct xlnxsync_device *dev;
+	struct xlnxsync_channel *channel = fptr->private_data;
 
-	xlnxsync = container_of(iptr->i_cdev, struct xlnxsync_device, chdev);
-	if (!xlnxsync) {
+	dev = container_of(iptr->i_cdev, struct xlnxsync_device, chdev);
+	if (!dev) {
 		pr_err("%s: failed to get xlnxsync driver handle", __func__);
 		return -EAGAIN;
 	}
 
-	dev_dbg(xlnxsync->dev, "%s: tid=%d user count = %d chan_id = %d\n",
-		__func__, current->pid, atomic_read(&xlnxsync->user_count),
-		ctx->chan_id);
+	dev_dbg(dev->dev, "%s: tid=%d user count = %d id = %d\n",
+		__func__, current->pid, atomic_read(&dev->user_count),
+		channel->id);
 
-	if (xlnxsync_read(xlnxsync, ctx->chan_id, XLNXSYNC_CTRL_REG) &
-	    XLNXSYNC_CTRL_ENABLE_MASK) {
-		dev_dbg(xlnxsync->dev, "Disabling %d channel\n", ctx->chan_id);
-		xlnxsync_reset_chan(xlnxsync, ctx->chan_id);
-		xlnxsync_clr(xlnxsync, ctx->chan_id, XLNXSYNC_CTRL_REG,
+	if (xlnxsync_read(dev, channel->id, XLNXSYNC_CTRL_REG) &
+			XLNXSYNC_CTRL_ENABLE_MASK) {
+		dev_dbg(dev->dev, "Disabling %d channel\n", channel->id);
+		xlnxsync_reset_chan(dev, channel->id);
+		xlnxsync_clr(dev, channel->id, XLNXSYNC_CTRL_REG,
 			     XLNXSYNC_CTRL_ENABLE_MASK |
 			     XLNXSYNC_CTRL_INTR_EN_MASK);
-		xlnxsync_clr(xlnxsync, ctx->chan_id, XLNXSYNC_IER_REG,
+		xlnxsync_clr(dev, channel->id, XLNXSYNC_IER_REG,
 			     XLNXSYNC_IER_ALL_MASK);
+
 	}
 
-	xlnxsync->reserved[ctx->chan_id] = false;
-	xlnxsync->sync_err[ctx->chan_id] = false;
-	xlnxsync->wdg_err[ctx->chan_id] = false;
-	xlnxsync->ldiff_err[ctx->chan_id] = false;
-	xlnxsync->cdiff_err[ctx->chan_id] = false;
-	for (i = 0; i < XLNXSYNC_BUF_PER_CHAN; i++) {
-		for (j = 0; j < XLNXSYNC_IO; j++) {
-			xlnxsync->l_done[ctx->chan_id][i][j] = false;
-			xlnxsync->c_done[ctx->chan_id][i][j] = false;
-		}
-	}
+	if (mutex_lock_interruptible(&dev->sync_mutex))
+		return -ERESTARTSYS;
+	clear_bit(channel->id, &dev->reserved);
+	dev->chan_count--;
+	list_del(&channel->channel);
+	mutex_unlock(&dev->sync_mutex);
+	devm_kfree(dev->dev, channel);
 
-	if (atomic_dec_and_test(&xlnxsync->user_count)) {
-		xlnxsync_reset(xlnxsync);
-		dev_dbg(xlnxsync->dev,
+	if (atomic_dec_and_test(&dev->user_count)) {
+		xlnxsync_reset(dev);
+		dev_dbg(dev->dev,
 			"%s: tid=%d Stopping and clearing device",
 			__func__, current->pid);
 	}
 
-	kfree(ctx);
 	return 0;
 }
 
@@ -946,84 +954,83 @@ static const struct file_operations xlnxsync_fops = {
 static irqreturn_t xlnxsync_irq_handler(int irq, void *data)
 {
 	struct xlnxsync_device *xlnxsync = (struct xlnxsync_device *)data;
-	u32 val, i;
-	bool err_event;
-	bool framedone_event;
+	u32 val;
+	struct xlnxsync_channel *chan;
 
 	/*
 	 * Use simple spin_lock (instead of spin_lock_irqsave) as interrupt
 	 * is registered with irqf_oneshot and !irqf_shared
 	 */
 	spin_lock(&xlnxsync->irq_lock);
-	err_event = false;
-	framedone_event = false;
-	for (i = 0; i < xlnxsync->config.max_channels; i++) {
-		u32 j, k;
+	list_for_each_entry(chan, &xlnxsync->channels, channel) {
+		u32 i, j;
 
-		val = xlnxsync_read(xlnxsync, i, XLNXSYNC_ISR_REG);
-		xlnxsync_write(xlnxsync, i, XLNXSYNC_ISR_REG, val);
+		val = xlnxsync_read(xlnxsync, chan->id, XLNXSYNC_ISR_REG);
+		xlnxsync_write(xlnxsync, chan->id, XLNXSYNC_ISR_REG, val);
 
 		if (val & XLNXSYNC_ISR_SYNC_FAIL_MASK)
-			xlnxsync->sync_err[i] = true;
+			chan->sync_err = true;
 		if (val & XLNXSYNC_ISR_WDG_ERR_MASK)
-			xlnxsync->wdg_err[i] = true;
+			chan->wdg_err = true;
 		if (val & XLNXSYNC_ISR_LDIFF)
-			xlnxsync->ldiff_err[i] = true;
+			chan->ldiff_err = true;
 		if (val & XLNXSYNC_ISR_CDIFF)
-			xlnxsync->cdiff_err[i] = true;
-		if (xlnxsync->sync_err[i] || xlnxsync->wdg_err[i] ||
-		    xlnxsync->ldiff_err[i] || xlnxsync->cdiff_err[i])
-			err_event = true;
+			chan->cdiff_err = true;
+		if (chan->sync_err || chan->wdg_err ||
+		    chan->ldiff_err || chan->cdiff_err)
+			chan->err_event = true;
 
 		if (val & XLNXSYNC_ISR_PLDONE_MASK) {
-			j = (val & XLNXSYNC_ISR_PLDONE_MASK) >>
+			i = (val & XLNXSYNC_ISR_PLDONE_MASK) >>
 				XLNXSYNC_ISR_PLDONE_SHIFT;
 
-			xlnxsync->l_done[i][j][XLNXSYNC_PROD] = true;
+			chan->l_done[i][XLNXSYNC_PROD] = true;
 		}
 
 		if (val & XLNXSYNC_ISR_PCDONE_MASK) {
-			j = (val & XLNXSYNC_ISR_PCDONE_MASK) >>
+			i = (val & XLNXSYNC_ISR_PCDONE_MASK) >>
 				XLNXSYNC_ISR_PCDONE_SHIFT;
 
-			xlnxsync->c_done[i][j][XLNXSYNC_PROD] = true;
+			chan->c_done[i][XLNXSYNC_PROD] = true;
 		}
 
 		if (val & XLNXSYNC_ISR_CLDONE_MASK) {
-			j = (val & XLNXSYNC_ISR_CLDONE_MASK) >>
-			     XLNXSYNC_ISR_CLDONE_SHIFT;
+			i = (val & XLNXSYNC_ISR_CLDONE_MASK) >>
+				XLNXSYNC_ISR_CLDONE_SHIFT;
 
-			xlnxsync->l_done[i][j][XLNXSYNC_CONS] = true;
+			chan->l_done[i][XLNXSYNC_CONS] = true;
 		}
 
 		if (val & XLNXSYNC_ISR_CCDONE_MASK) {
-			j = (val & XLNXSYNC_ISR_CCDONE_MASK) >>
-			     XLNXSYNC_ISR_CCDONE_SHIFT;
+			i = (val & XLNXSYNC_ISR_CCDONE_MASK) >>
+				XLNXSYNC_ISR_CCDONE_SHIFT;
 
-			xlnxsync->c_done[i][j][XLNXSYNC_CONS] = true;
+			chan->c_done[i][XLNXSYNC_CONS] = true;
 		}
 
-		for (j = 0; j < XLNXSYNC_BUF_PER_CHAN; j++) {
-			for (k = 0; k < XLNXSYNC_IO; k++) {
-				if (xlnxsync->l_done[i][j][k] &&
-				    xlnxsync->c_done[i][j][k])
-					framedone_event = true;
+		for (i = 0; i < XLNXSYNC_BUF_PER_CHAN; i++) {
+			for (j = 0; j < XLNXSYNC_IO; j++) {
+				if (chan->l_done[i][j] &&
+				    chan->c_done[i][j])
+					chan->framedone_event = true;
 			}
 		}
+
+		if (chan->err_event) {
+			dev_dbg(xlnxsync->dev, "%s : error occurred at channel->id = %d\n",
+				__func__, chan->id);
+			wake_up_interruptible(&chan->wq_error);
+		}
+
+		if (chan->framedone_event) {
+			dev_dbg_ratelimited(xlnxsync->dev, "%s : framedone occurred\n",
+					    __func__);
+			wake_up_interruptible(&chan->wq_fbdone);
+		}
+
 	}
+
 	spin_unlock(&xlnxsync->irq_lock);
-
-	if (err_event) {
-		dev_dbg_ratelimited(xlnxsync->dev, "%s : error occurred\n",
-				    __func__);
-		wake_up_interruptible(&xlnxsync->wq_error);
-	}
-
-	if (framedone_event) {
-		dev_dbg_ratelimited(xlnxsync->dev, "%s : framedone occurred\n",
-				    __func__);
-		wake_up_interruptible(&xlnxsync->wq_fbdone);
-	}
 
 	return IRQ_HANDLED;
 }
@@ -1151,8 +1158,8 @@ static int xlnxsync_probe(struct platform_device *pdev)
 		return ret;
 
 	xlnxsync->config.hdr_ver = XLNXSYNC_IOCTL_HDR_VER;
-	dev_info(xlnxsync->dev, "ioctl header version = 0x%llx\n",
-		 xlnxsync->config.hdr_ver);
+	dev_dbg(xlnxsync->dev, "ioctl header version = 0x%llx\n",
+		xlnxsync->config.hdr_ver);
 
 	xlnxsync->irq = irq_of_parse_and_map(xlnxsync->dev->of_node, 0);
 	if (!xlnxsync->irq) {
@@ -1175,9 +1182,9 @@ static int xlnxsync_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	init_waitqueue_head(&xlnxsync->wq_fbdone);
-	init_waitqueue_head(&xlnxsync->wq_error);
+	INIT_LIST_HEAD(&xlnxsync->channels);
 	spin_lock_init(&xlnxsync->irq_lock);
+
 	mutex_init(&xlnxsync->sync_mutex);
 
 	cdev_init(&xlnxsync->chdev, &xlnxsync_fops);
