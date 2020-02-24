@@ -1483,9 +1483,9 @@ vidioc_try_fmt(struct xm2msc_chan_ctx *chan_ctx, struct v4l2_format *f)
 
 	/* The width value must be a multiple of pixels per clock */
 	if (pix->width % chan_ctx->xm2msc_dev->ppc) {
-		dev_info(xm2msc->dev,
-			 "Wrong align parameters %d, wxh: %dx%d.\n",
-			 f->type, f->fmt.pix.width, f->fmt.pix.height);
+		dev_dbg(xm2msc->dev,
+			"Wrong align parameters %d, wxh: %dx%d.\n",
+			f->type, f->fmt.pix.width, f->fmt.pix.height);
 		pix->width = ALIGN(pix->width, chan_ctx->xm2msc_dev->ppc);
 	}
 
