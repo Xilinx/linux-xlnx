@@ -288,6 +288,8 @@ struct cqspi_driver_platdata {
 #define CQSPI_REG_DMA_DST_I_EN_DONE		BIT(1)
 
 #define CQSPI_REG_DMA_DST_I_DIS			0x181C
+#define CQSPI_REG_DMA_DST_I_DIS_DONE	BIT(1)
+#define CQSPI_REG_DMA_DST_ALL_I_DIS_MASK	0xFE
 #define CQSPI_REG_DMA_DST_I_MASK		0x1820
 #define CQSPI_REG_DMA_DST_ADDR_MSB		0x1828
 
@@ -437,7 +439,8 @@ static void process_dma_irq(struct cqspi_st *cqspi)
 	u8 dummy_cycles;
 
 	/* Disable DMA interrupt */
-	writel(0x0, cqspi->iobase + CQSPI_REG_DMA_DST_I_DIS);
+	writel(CQSPI_REG_DMA_DST_I_DIS_DONE,
+	       cqspi->iobase + CQSPI_REG_DMA_DST_I_DIS);
 
 	/* Clear indirect completion status */
 	writel(CQSPI_REG_INDIRECTRD_DONE_MASK,
@@ -1770,7 +1773,8 @@ static void cqspi_controller_init(struct cqspi_st *cqspi)
 
 	/* Disable all interrupts. */
 	writel(0, cqspi->iobase + CQSPI_REG_IRQMASK);
-	writel(0, cqspi->iobase + CQSPI_REG_DMA_DST_I_DIS);
+	writel(CQSPI_REG_DMA_DST_ALL_I_DIS_MASK,
+	       cqspi->iobase + CQSPI_REG_DMA_DST_I_DIS);
 
 	/* Configure the SRAM split to 1:1 . */
 	writel(cqspi->fifo_depth / 2, cqspi->iobase + CQSPI_REG_SRAMPARTITION);
@@ -1973,7 +1977,8 @@ static int cqspi_versal_indirect_read_dma(struct spi_nor *nor, u_char *rxbuf,
 
 failrd:
 	/* Disable DMA interrupt */
-	writel(0x0, reg_base + CQSPI_REG_DMA_DST_I_DIS);
+	writel(CQSPI_REG_DMA_DST_I_DIS_DONE,
+	       reg_base + CQSPI_REG_DMA_DST_I_DIS);
 
 	dma_unmap_single(nor->dev, cqspi->dma_addr, cqspi->bytes_to_dma,
 			 DMA_DEV_TO_MEM);
