@@ -625,6 +625,7 @@ struct spi_nor {
 	u8			device_id[SPI_NOR_MAX_ID_LEN];
 	bool			is_addrvalid;
 	loff_t			reg_addr;
+	struct delayed_work	complete_work;
 
 	int (*prepare)(struct spi_nor *nor, enum spi_nor_ops ops);
 	void (*unprepare)(struct spi_nor *nor, enum spi_nor_ops ops);
