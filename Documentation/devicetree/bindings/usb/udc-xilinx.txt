@@ -12,10 +12,6 @@ Optional properties:
 - clock-names		: Should be  "s_axi_aclk"
 - clocks		: Input clock specifier. Refer to common clock bindings.
 
-Optional properties:
-- clock-names		: Should be  "s_axi_aclk"
-- clocks		: Input clock specifier. Refer to common clock bindings.
-
 Example:
 		axi-usb2-device@42e00000 {
 			compatible = "xlnx,usb2-device-4.00.a";
