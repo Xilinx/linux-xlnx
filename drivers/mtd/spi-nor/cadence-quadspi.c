@@ -30,6 +30,7 @@
 #include <linux/of_gpio.h>
 #include <linux/spi/spi.h>
 #include <linux/timer.h>
+#include <linux/workqueue.h>
 
 #define CQSPI_NAME			"cadence-qspi"
 #define CQSPI_MAX_CHIPSELECT		16
@@ -103,6 +104,8 @@ struct cqspi_st {
 	u8			access_mode;
 	bool			unalined_byte_cnt;
 	u8			dll_mode;
+	struct completion	tuning_complete;
+	struct completion	request_complete;
 	int (*indirect_read_dma)(struct spi_nor *nor, u_char *rxbuf,
 				 loff_t from_addr, size_t n_rx);
 	int (*flash_reset)(struct cqspi_st *cqspi, u8 reset_type);
@@ -117,6 +120,8 @@ struct cqspi_driver_platdata {
 /* Operation timeout value */
 #define CQSPI_TIMEOUT_MS			500
 #define CQSPI_READ_TIMEOUT_MS			10
+#define CQSPI_TUNING_TIMEOUT_MS			5000
+#define CQSPI_TUNING_PERIODICITY_MS		300000
 
 /* Instruction type */
 #define CQSPI_INST_TYPE_SINGLE			0
@@ -1214,6 +1219,16 @@ static ssize_t cqspi_write(struct spi_nor *nor, loff_t to,
 	struct cqspi_st *cqspi = f_pdata->cqspi;
 	int ret;
 
+	if (cqspi->edge_mode == CQSPI_EDGE_MODE_DDR &&
+	    !delayed_work_pending(&nor->complete_work)) {
+		if (!wait_for_completion_timeout(&cqspi->tuning_complete,
+			msecs_to_jiffies(CQSPI_TUNING_TIMEOUT_MS))) {
+			return -ETIMEDOUT;
+		}
+	}
+
+	reinit_completion(&cqspi->request_complete);
+
 	ret = cqspi_set_protocol(nor, 0);
 	if (ret)
 		return ret;
@@ -1313,6 +1328,16 @@ static ssize_t cqspi_read(struct spi_nor *nor, loff_t from,
 	int ret;
 	bool use_dma = true;
 
+	if (cqspi->edge_mode == CQSPI_EDGE_MODE_DDR &&
+	    !delayed_work_pending(&nor->complete_work)) {
+		if (!wait_for_completion_timeout(&cqspi->tuning_complete,
+			msecs_to_jiffies(CQSPI_TUNING_TIMEOUT_MS))) {
+			return -ETIMEDOUT;
+		}
+	}
+
+	reinit_completion(&cqspi->request_complete);
+
 	ret = cqspi_set_protocol(nor, 1);
 	if (ret)
 		return ret;
@@ -1341,12 +1366,26 @@ static ssize_t cqspi_read(struct spi_nor *nor, loff_t from,
 	if (ret)
 		return ret;
 
+	complete(&cqspi->request_complete);
+
 	return len;
 }
 
 static int cqspi_erase(struct spi_nor *nor, loff_t offs)
 {
+	struct cqspi_flash_pdata *f_pdata = nor->priv;
+	struct cqspi_st *cqspi = f_pdata->cqspi;
 	int ret;
+
+	if (cqspi->edge_mode == CQSPI_EDGE_MODE_DDR &&
+	    !delayed_work_pending(&nor->complete_work)) {
+		if (!wait_for_completion_timeout(&cqspi->tuning_complete,
+			msecs_to_jiffies(CQSPI_TUNING_TIMEOUT_MS))) {
+			return -ETIMEDOUT;
+		}
+	}
+
+	reinit_completion(&cqspi->request_complete);
 
 	ret = cqspi_set_protocol(nor, 0);
 	if (ret)
@@ -1388,22 +1427,54 @@ static int cqspi_read_reg(struct spi_nor *nor, u8 opcode, u8 *buf, int len)
 	struct cqspi_st *cqspi = f_pdata->cqspi;
 	int ret;
 
+	if (cqspi->edge_mode == CQSPI_EDGE_MODE_DDR &&
+	    cqspi->request_complete.done &&
+	    !delayed_work_pending(&nor->complete_work)) {
+		if (!wait_for_completion_timeout(&cqspi->tuning_complete,
+			msecs_to_jiffies(CQSPI_TUNING_TIMEOUT_MS))) {
+			return -ETIMEDOUT;
+		}
+	}
+
+	reinit_completion(&cqspi->request_complete);
+
 	ret = cqspi_set_protocol(nor, 0);
 	if (!ret) {
 		if (cqspi->edge_mode == CQSPI_EDGE_MODE_DDR)
 			len = ((len % 2) != 0) ? (len + 1) : len;
 		ret = cqspi_command_read(nor, &opcode, 1, buf, len);
 	}
+
+	if ((opcode == SPINOR_OP_RDFSR && ((FSR_READY & buf[0]) != 0)) ||
+		(SPINOR_OP_RDSR != opcode && SPINOR_OP_RDFSR != opcode)) {
+		complete(&cqspi->request_complete);
+	}
+
 	return ret;
 }
 
 static int cqspi_write_reg(struct spi_nor *nor, u8 opcode, u8 *buf, int len)
 {
+	struct cqspi_flash_pdata *f_pdata = nor->priv;
+	struct cqspi_st *cqspi = f_pdata->cqspi;
 	int ret;
+
+	if (cqspi->edge_mode == CQSPI_EDGE_MODE_DDR &&
+	    cqspi->request_complete.done &&
+	    !delayed_work_pending(&nor->complete_work)) {
+		if (!wait_for_completion_timeout(&cqspi->tuning_complete,
+			msecs_to_jiffies(CQSPI_TUNING_TIMEOUT_MS))) {
+			return -ETIMEDOUT;
+		}
+	}
+
+	reinit_completion(&cqspi->request_complete);
 
 	ret = cqspi_set_protocol(nor, 0);
 	if (!ret)
 		ret = cqspi_command_write(nor, opcode, buf, len);
+
+	complete(&cqspi->request_complete);
 
 	return ret;
 }
@@ -1615,6 +1686,29 @@ static int cqspi_setdlldelay(struct spi_nor *nor)
 	}
 
 	return 0;
+}
+
+static void cqspi_periodictuning(struct work_struct *work)
+{
+	struct delayed_work *d = to_delayed_work(work);
+	struct spi_nor *nor = container_of(d, struct spi_nor, complete_work);
+	struct cqspi_flash_pdata *f_pdata = nor->priv;
+	struct cqspi_st *cqspi = f_pdata->cqspi;
+	int ret;
+
+	if (!cqspi->request_complete.done)
+		wait_for_completion(&cqspi->request_complete);
+	reinit_completion(&cqspi->tuning_complete);
+
+	ret = cqspi_setdlldelay(nor);
+	complete_all(&cqspi->tuning_complete);
+	if (ret) {
+		dev_err(nor->dev,
+			"Setting dll delay error (%i)\n", ret);
+	} else {
+		schedule_delayed_work(&nor->complete_work,
+			msecs_to_jiffies(CQSPI_TUNING_PERIODICITY_MS));
+	}
 }
 
 static void cqspi_setup_ddrmode(struct spi_nor *nor)
@@ -2002,6 +2096,9 @@ static int cqspi_setup_flash(struct cqspi_st *cqspi, struct device_node *np)
 		ret = cqspi_setup_edgemode(nor);
 		if (ret)
 			goto err;
+		INIT_DELAYED_WORK(&nor->complete_work, cqspi_periodictuning);
+		schedule_delayed_work(&nor->complete_work,
+				msecs_to_jiffies(CQSPI_TUNING_PERIODICITY_MS));
 	}
 
 	return 0;
@@ -2068,6 +2165,8 @@ static int cqspi_probe(struct platform_device *pdev)
 	cqspi->ahb_size = resource_size(res_ahb);
 
 	init_completion(&cqspi->transfer_complete);
+	init_completion(&cqspi->tuning_complete);
+	init_completion(&cqspi->request_complete);
 
 	/* Obtain IRQ line. */
 	irq = platform_get_irq(pdev, 0);
