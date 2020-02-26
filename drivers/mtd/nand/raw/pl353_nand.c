@@ -913,6 +913,9 @@ static const struct nand_op_parser pl353_nfc_op_parser = NAND_OP_PARSER(
 		NAND_OP_PARSER_PAT_DATA_OUT_ELEM(true, PL353_MAX_CHUNK_SIZE),
 		NAND_OP_PARSER_PAT_CMD_ELEM(true),
 		NAND_OP_PARSER_PAT_WAITRDY_ELEM(true)),
+	NAND_OP_PARSER_PATTERN(pl353_nand_exec_op_cmd,
+		NAND_OP_PARSER_PAT_DATA_OUT_ELEM(false, PL353_MAX_CHUNK_SIZE),
+		NAND_OP_PARSER_PAT_WAITRDY_ELEM(true)),
 	);
 
 static int pl353_nfc_exec_op(struct nand_chip *chip,
