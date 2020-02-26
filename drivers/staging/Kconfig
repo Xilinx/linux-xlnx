@@ -135,6 +135,4 @@ source "drivers/staging/xroeframer/Kconfig"
 
 source "drivers/staging/xroetrafficgen/Kconfig"
 
-source "drivers/staging/xlnx_ernic/Kconfig"
-
 endif # STAGING
