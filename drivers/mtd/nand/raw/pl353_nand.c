@@ -815,14 +815,15 @@ static int pl353_nand_exec_op_cmd(struct nand_chip *chip,
 			i = nand_subop_get_addr_start_off(subop, op_id);
 			naddrs = nand_subop_get_num_addr_cyc(subop,
 							     op_id);
-			for (; i < naddrs; i++) {
-				val = instr->ctx.addr.addrs[i];
+			val = instr->ctx.addr.addrs[i];
+			for (i = 0; i < min_t(unsigned int, 4, naddrs); i++)
+				col |= instr->ctx.addr.addrs[i] << (8 * i);
 
-				if (i < 2)
-					col |= GET_ADDR(i, val);
-				else
-					row |= GET_ADDR(i - 2, val);
-			}
+			if (naddrs >= 5)
+				row = instr->ctx.addr.addrs[4];
+
+			if (naddrs >= 6)
+				row |= (instr->ctx.addr.addrs[5] << 8);
 
 			break;
 
