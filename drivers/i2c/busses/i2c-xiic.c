@@ -59,6 +59,8 @@ enum xiic_endian {
  * @rx_pos:	Position within current RX message
  * @endianness: big/little-endian byte order
  * @clk:	Pointer to struct clk
+ * @dynamic: Mode of controller
+ * @repeated_start: Repeated start operation
  */
 struct xiic_i2c {
 	struct device		*dev;
@@ -74,6 +76,8 @@ struct xiic_i2c {
 	int			rx_pos;
 	enum xiic_endian	endianness;
 	struct clk *clk;
+	bool dynamic;
+	bool repeated_start;
 };
 
 
@@ -141,6 +145,9 @@ struct xiic_i2c {
  */
 #define XIIC_TX_DYN_START_MASK            0x0100 /* 1 = Set dynamic start */
 #define XIIC_TX_DYN_STOP_MASK             0x0200 /* 1 = Set dynamic stop */
+
+/* Dynamic mode constants */
+#define MAX_READ_LENGTH_DYNAMIC		255 /* Max length for dynamic read */
 
 /*
  * The following constants define the register offsets for the Interrupt
@@ -309,13 +316,14 @@ static void xiic_deinit(struct xiic_i2c *i2c)
 
 static void xiic_read_rx(struct xiic_i2c *i2c)
 {
-	u8 bytes_in_fifo;
+	u8 bytes_in_fifo, cr = 0, bytes_to_read = 0;
+	u32 bytes_rem = 0;
 	int i;
 
 	bytes_in_fifo = xiic_getreg8(i2c, XIIC_RFO_REG_OFFSET) + 1;
 
 	dev_dbg(i2c->adap.dev.parent,
-		"%s entry, bytes in fifo: %d, msg: %d, SR: 0x%x, CR: 0x%x\n",
+		"%s entry, bytes in fifo: %d, rem: %d, SR: 0x%x, CR: 0x%x\n",
 		__func__, bytes_in_fifo, xiic_rx_space(i2c),
 		xiic_getreg8(i2c, XIIC_SR_REG_OFFSET),
 		xiic_getreg8(i2c, XIIC_CR_REG_OFFSET));
@@ -323,13 +331,53 @@ static void xiic_read_rx(struct xiic_i2c *i2c)
 	if (bytes_in_fifo > xiic_rx_space(i2c))
 		bytes_in_fifo = xiic_rx_space(i2c);
 
-	for (i = 0; i < bytes_in_fifo; i++)
+	bytes_to_read = bytes_in_fifo;
+
+	if (!i2c->dynamic) {
+		bytes_rem = xiic_rx_space(i2c) - bytes_in_fifo;
+
+		if (bytes_rem > IIC_RX_FIFO_DEPTH) {
+			bytes_to_read = bytes_in_fifo;
+		} else if (bytes_rem > 1) {
+			bytes_to_read = bytes_rem - 1;
+		} else if (bytes_rem == 1) {
+			bytes_to_read = 1;
+			/* Set NACK in CR to indicate slave transmitter */
+			cr = xiic_getreg8(i2c, XIIC_CR_REG_OFFSET);
+			xiic_setreg8(i2c, XIIC_CR_REG_OFFSET, cr |
+				     XIIC_CR_NO_ACK_MASK);
+		} else if (bytes_rem == 0) {
+			bytes_to_read = bytes_in_fifo;
+
+			/* Generate stop on the bus if it is last message */
+			if (i2c->nmsgs == 1) {
+				cr = xiic_getreg8(i2c, XIIC_CR_REG_OFFSET);
+				xiic_setreg8(i2c, XIIC_CR_REG_OFFSET, cr &
+					     ~XIIC_CR_MSMS_MASK);
+			}
+
+			/* Make TXACK=0, clean up for next transaction */
+			cr = xiic_getreg8(i2c, XIIC_CR_REG_OFFSET);
+			xiic_setreg8(i2c, XIIC_CR_REG_OFFSET, cr &
+				     ~XIIC_CR_NO_ACK_MASK);
+		}
+	}
+
+	/* Read the fifo */
+	for (i = 0; i < bytes_to_read; i++) {
 		i2c->rx_msg->buf[i2c->rx_pos++] =
 			xiic_getreg8(i2c, XIIC_DRR_REG_OFFSET);
+	}
 
-	xiic_setreg8(i2c, XIIC_RFD_REG_OFFSET,
-		(xiic_rx_space(i2c) > IIC_RX_FIFO_DEPTH) ?
-		IIC_RX_FIFO_DEPTH - 1 :  xiic_rx_space(i2c) - 1);
+	if (i2c->dynamic) {
+		u8 bytes;
+
+		/* Receive remaining bytes if less than fifo depth */
+		bytes = min_t(u8, xiic_rx_space(i2c), IIC_RX_FIFO_DEPTH);
+		bytes--;
+
+		xiic_setreg8(i2c, XIIC_RFD_REG_OFFSET, bytes);
+	}
 }
 
 static int xiic_tx_fifo_space(struct xiic_i2c *i2c)
@@ -355,6 +403,56 @@ static void xiic_fill_tx_fifo(struct xiic_i2c *i2c)
 			data |= XIIC_TX_DYN_STOP_MASK;
 			dev_dbg(i2c->adap.dev.parent, "%s TX STOP\n", __func__);
 		}
+		xiic_setreg16(i2c, XIIC_DTR_REG_OFFSET, data);
+	}
+}
+
+static void xiic_std_fill_tx_fifo(struct xiic_i2c *i2c)
+{
+	u8 fifo_space = xiic_tx_fifo_space(i2c);
+	u16 data = 0;
+	int len = xiic_tx_space(i2c);
+
+	dev_dbg(i2c->adap.dev.parent, "%s entry, len: %d, fifo space: %d\n",
+		__func__, len, fifo_space);
+
+	if (len > fifo_space)
+		len = fifo_space;
+	else if (len && !(i2c->repeated_start))
+		len--;
+
+	while (len--) {
+		data = i2c->tx_msg->buf[i2c->tx_pos++];
+		xiic_setreg16(i2c, XIIC_DTR_REG_OFFSET, data);
+	}
+}
+
+static void xiic_send_tx(struct xiic_i2c *i2c)
+{
+	dev_dbg(i2c->adap.dev.parent,
+		"%s entry, rem: %d, SR: 0x%x, CR: 0x%x\n",
+		__func__, xiic_tx_space(i2c),
+		xiic_getreg8(i2c, XIIC_SR_REG_OFFSET),
+		xiic_getreg8(i2c, XIIC_CR_REG_OFFSET));
+
+	if (xiic_tx_space(i2c) > 1) {
+		xiic_std_fill_tx_fifo(i2c);
+		return;
+	}
+
+	if ((xiic_tx_space(i2c) == 1)) {
+		u16 data;
+
+		if (i2c->nmsgs == 1) {
+			u8 cr;
+
+			/* Write to CR to stop */
+			cr = xiic_getreg8(i2c, XIIC_CR_REG_OFFSET);
+			xiic_setreg8(i2c, XIIC_CR_REG_OFFSET, cr &
+				     ~XIIC_CR_MSMS_MASK);
+		}
+		/* Send last byte */
+		data = i2c->tx_msg->buf[i2c->tx_pos++];
 		xiic_setreg16(i2c, XIIC_DTR_REG_OFFSET, data);
 	}
 }
@@ -389,7 +487,9 @@ static irqreturn_t xiic_process(int irq, void *dev_id)
 	dev_dbg(i2c->adap.dev.parent, "%s: SR: 0x%x, msg: %p, nmsgs: %d\n",
 		__func__, xiic_getreg8(i2c, XIIC_SR_REG_OFFSET),
 		i2c->tx_msg, i2c->nmsgs);
-
+	dev_dbg(i2c->adap.dev.parent, "%s, ISR: 0x%x, CR: 0x%x\n",
+		__func__, xiic_getreg32(i2c, XIIC_IISR_OFFSET),
+		xiic_getreg8(i2c, XIIC_CR_REG_OFFSET));
 
 	/* Service requesting interrupt */
 	if ((pend & XIIC_INTR_ARB_LOST_MASK) ||
@@ -463,7 +563,10 @@ static irqreturn_t xiic_process(int irq, void *dev_id)
 			goto out;
 		}
 
-		xiic_fill_tx_fifo(i2c);
+		if (i2c->dynamic)
+			xiic_fill_tx_fifo(i2c);
+		else
+			xiic_send_tx(i2c);
 
 		/* current message sent and there is space in the fifo */
 		if (!xiic_tx_space(i2c) && xiic_tx_fifo_space(i2c) >= 2) {
@@ -543,35 +646,100 @@ static int xiic_busy(struct xiic_i2c *i2c)
 
 static void xiic_start_recv(struct xiic_i2c *i2c)
 {
-	u8 rx_watermark;
+	u8 rx_watermark, cr = 0, rfd_set = 0;
 	struct i2c_msg *msg = i2c->rx_msg = i2c->tx_msg;
 	unsigned long flags;
 
-	/* Clear and enable Rx full interrupt. */
-	xiic_irq_clr_en(i2c, XIIC_INTR_RX_FULL_MASK | XIIC_INTR_TX_ERROR_MASK);
+	dev_dbg(i2c->adap.dev.parent, "%s entry, ISR: 0x%x, CR: 0x%x\n",
+		__func__, xiic_getreg32(i2c, XIIC_IISR_OFFSET),
+		xiic_getreg8(i2c, XIIC_CR_REG_OFFSET));
 
-	/* we want to get all but last byte, because the TX_ERROR IRQ is used
-	 * to inidicate error ACK on the address, and negative ack on the last
-	 * received byte, so to not mix them receive all but last.
-	 * In the case where there is only one byte to receive
-	 * we can check if ERROR and RX full is set at the same time
-	 */
-	rx_watermark = msg->len;
-	if (rx_watermark > IIC_RX_FIFO_DEPTH)
-		rx_watermark = IIC_RX_FIFO_DEPTH;
-	xiic_setreg8(i2c, XIIC_RFD_REG_OFFSET, rx_watermark - 1);
+	/* Disable Tx interrupts */
+	xiic_irq_dis(i2c, XIIC_INTR_TX_HALF_MASK | XIIC_INTR_TX_EMPTY_MASK);
 
-	local_irq_save(flags);
-	if (!(msg->flags & I2C_M_NOSTART))
-		/* write the address */
+	if (i2c->dynamic) {
+		u8 bytes;
+		u16 val;
+
+		/* Clear and enable Rx full interrupt. */
+		xiic_irq_clr_en(i2c, XIIC_INTR_RX_FULL_MASK |
+				XIIC_INTR_TX_ERROR_MASK);
+
+		/*
+		 * We want to get all but last byte, because the TX_ERROR IRQ
+		 * is used to indicate error ACK on the address, and
+		 * negative ack on the last received byte, so to not mix
+		 * them receive all but last.
+		 * In the case where there is only one byte to receive
+		 * we can check if ERROR and RX full is set at the same time
+		 */
+		rx_watermark = msg->len;
+		bytes = min_t(u8, rx_watermark, IIC_RX_FIFO_DEPTH);
+		bytes--;
+
+		xiic_setreg8(i2c, XIIC_RFD_REG_OFFSET, bytes);
+
+		local_irq_save(flags);
+		if (!(msg->flags & I2C_M_NOSTART))
+			/* write the address */
+			xiic_setreg16(i2c, XIIC_DTR_REG_OFFSET,
+				      i2c_8bit_addr_from_msg(msg) |
+				      XIIC_TX_DYN_START_MASK);
+
+		xiic_irq_clr_en(i2c, XIIC_INTR_BNB_MASK);
+
+		/* If last message, include dynamic stop bit with length */
+		val = (i2c->nmsgs == 1) ? XIIC_TX_DYN_STOP_MASK : 0;
+		val |= msg->len;
+
+		xiic_setreg16(i2c, XIIC_DTR_REG_OFFSET, val);
+		local_irq_restore(flags);
+	} else {
+		cr = xiic_getreg8(i2c, XIIC_CR_REG_OFFSET);
+
+		/* Set Receive fifo depth */
+		rx_watermark = msg->len;
+		if (rx_watermark > IIC_RX_FIFO_DEPTH) {
+			rfd_set = IIC_RX_FIFO_DEPTH - 1;
+		} else if ((rx_watermark == 1) || (rx_watermark == 0)) {
+			rfd_set = rx_watermark - 1;
+			/* Handle single byte transfer separately */
+			cr |= XIIC_CR_NO_ACK_MASK;
+		} else {
+			rfd_set = rx_watermark - 2;
+		}
+
+		/* Check if RSTA should be set */
+		if (cr & XIIC_CR_MSMS_MASK) {
+			i2c->repeated_start = true;
+			/* Already a master, RSTA should be set */
+			xiic_setreg8(i2c, XIIC_CR_REG_OFFSET, (cr |
+				     XIIC_CR_REPEATED_START_MASK) &
+				     ~(XIIC_CR_DIR_IS_TX_MASK));
+		}
+
+		xiic_setreg8(i2c, XIIC_RFD_REG_OFFSET, rfd_set);
+
+		/* Clear and enable Rx full and transmit complete interrupts */
+		xiic_irq_clr_en(i2c, XIIC_INTR_RX_FULL_MASK |
+				XIIC_INTR_TX_ERROR_MASK);
+
+		/* Write the address */
 		xiic_setreg16(i2c, XIIC_DTR_REG_OFFSET,
-			i2c_8bit_addr_from_msg(msg) | XIIC_TX_DYN_START_MASK);
+			      i2c_8bit_addr_from_msg(msg));
 
-	xiic_irq_clr_en(i2c, XIIC_INTR_BNB_MASK);
+		/* Write to Control Register,to start transaction in Rx mode */
+		if ((cr & XIIC_CR_MSMS_MASK) == 0) {
+			i2c->repeated_start = false;
+			xiic_setreg8(i2c, XIIC_CR_REG_OFFSET, (cr |
+				     XIIC_CR_MSMS_MASK)
+				     & ~(XIIC_CR_DIR_IS_TX_MASK));
+		}
 
-	xiic_setreg16(i2c, XIIC_DTR_REG_OFFSET,
-		msg->len | ((i2c->nmsgs == 1) ? XIIC_TX_DYN_STOP_MASK : 0));
-	local_irq_restore(flags);
+		dev_dbg(i2c->adap.dev.parent, "%s end, ISR: 0x%x, CR: 0x%x\n",
+			__func__, xiic_getreg32(i2c, XIIC_IISR_OFFSET),
+			xiic_getreg8(i2c, XIIC_CR_REG_OFFSET));
+	}
 
 	if (i2c->nmsgs == 1)
 		/* very last, enable bus not busy as well */
@@ -579,10 +747,15 @@ static void xiic_start_recv(struct xiic_i2c *i2c)
 
 	/* the message is tx:ed */
 	i2c->tx_pos = msg->len;
+
+	/* Enable interrupts */
+	xiic_setreg32(i2c, XIIC_DGIER_OFFSET, XIIC_GINTR_ENABLE_MASK);
 }
 
 static void xiic_start_send(struct xiic_i2c *i2c)
 {
+	u8 cr = 0;
+	u16 data;
 	struct i2c_msg *msg = i2c->tx_msg;
 
 	xiic_irq_clr(i2c, XIIC_INTR_TX_ERROR_MASK);
@@ -593,22 +766,58 @@ static void xiic_start_send(struct xiic_i2c *i2c)
 		__func__, xiic_getreg32(i2c, XIIC_IISR_OFFSET),
 		xiic_getreg8(i2c, XIIC_CR_REG_OFFSET));
 
-	if (!(msg->flags & I2C_M_NOSTART)) {
-		/* write the address */
-		u16 data = i2c_8bit_addr_from_msg(msg) |
-			XIIC_TX_DYN_START_MASK;
-		if ((i2c->nmsgs == 1) && msg->len == 0)
-			/* no data and last message -> add STOP */
-			data |= XIIC_TX_DYN_STOP_MASK;
+	if (i2c->dynamic) {
+		if (!(msg->flags & I2C_M_NOSTART)) {
+			/* write the address */
+			data = i2c_8bit_addr_from_msg(msg) |
+				XIIC_TX_DYN_START_MASK;
 
+			if (i2c->nmsgs == 1 && msg->len == 0)
+				/* no data and last message -> add STOP */
+				data |= XIIC_TX_DYN_STOP_MASK;
+
+			xiic_setreg16(i2c, XIIC_DTR_REG_OFFSET, data);
+		}
+
+		xiic_fill_tx_fifo(i2c);
+
+		/* Clear any pending Tx empty, Tx Error and then enable them */
+		xiic_irq_clr_en(i2c, (XIIC_INTR_TX_EMPTY_MASK |
+				      XIIC_INTR_TX_ERROR_MASK |
+				      XIIC_INTR_BNB_MASK));
+	} else {
+		/* Check if RSTA should be set */
+		cr = xiic_getreg8(i2c, XIIC_CR_REG_OFFSET);
+		if (cr & XIIC_CR_MSMS_MASK) {
+			i2c->repeated_start = true;
+			/* Already a master, RSTA should be set */
+			xiic_setreg8(i2c, XIIC_CR_REG_OFFSET, (cr |
+				     XIIC_CR_REPEATED_START_MASK |
+				     XIIC_CR_DIR_IS_TX_MASK) &
+				     ~(XIIC_CR_NO_ACK_MASK));
+		}
+
+		/* Write address to FIFO */
+		data = i2c_8bit_addr_from_msg(msg);
 		xiic_setreg16(i2c, XIIC_DTR_REG_OFFSET, data);
+		/* Fill fifo */
+		xiic_std_fill_tx_fifo(i2c);
+
+		if ((cr & XIIC_CR_MSMS_MASK) == 0) {
+			i2c->repeated_start = false;
+
+			/* Start Tx by writing to CR */
+			cr = xiic_getreg8(i2c, XIIC_CR_REG_OFFSET);
+			xiic_setreg8(i2c, XIIC_CR_REG_OFFSET, cr |
+				     XIIC_CR_MSMS_MASK |
+				     XIIC_CR_DIR_IS_TX_MASK);
+		}
+
+		/* Clear any pending Tx empty, Tx Error and then enable them */
+		xiic_irq_clr_en(i2c, XIIC_INTR_TX_EMPTY_MASK |
+				XIIC_INTR_TX_ERROR_MASK |
+				XIIC_INTR_BNB_MASK);
 	}
-
-	xiic_fill_tx_fifo(i2c);
-
-	/* Clear any pending Tx empty, Tx Error and then enable them. */
-	xiic_irq_clr_en(i2c, XIIC_INTR_TX_EMPTY_MASK | XIIC_INTR_TX_ERROR_MASK |
-		XIIC_INTR_BNB_MASK);
 }
 
 static irqreturn_t xiic_isr(int irq, void *dev_id)
@@ -708,6 +917,32 @@ static int xiic_xfer(struct i2c_adapter *adap, struct i2c_msg *msgs, int num)
 	i2c->tx_msg = msgs;
 	i2c->nmsgs = num;
 
+	/* Decide standard mode or Dynamic mode */
+	i2c->dynamic = true;
+
+	/*
+	 * If number of messages is 1 and read length is > 255 bytes,
+	 * enter standard mode
+	 */
+	if (i2c->nmsgs == 1 && (i2c->tx_msg->flags & I2C_M_RD) &&
+	    i2c->tx_msg->len > MAX_READ_LENGTH_DYNAMIC) {
+		i2c->dynamic = false;
+	} else if (i2c->nmsgs > 1) {
+		int count;
+
+		/*
+		 * If number of messages is more than 1 and one of them is
+		 * a read message, enter standard mode. Since repeated start
+		 * operation in dynamic mode read is not happenning
+		 */
+		for (count = 0; count < i2c->nmsgs; count++) {
+			if (i2c->tx_msg[count].flags & I2C_M_RD) {
+				i2c->dynamic = false;
+				break;
+			}
+		}
+	}
+
 	err = xiic_start_xfer(i2c);
 	if (err < 0) {
 		dev_err(adap->dev.parent, "Error xiic_start_xfer\n");
@@ -741,16 +976,11 @@ static const struct i2c_algorithm xiic_algorithm = {
 	.functionality = xiic_func,
 };
 
-static const struct i2c_adapter_quirks xiic_quirks = {
-	.max_read_len = 255,
-};
-
 static const struct i2c_adapter xiic_adapter = {
 	.owner = THIS_MODULE,
 	.name = DRIVER_NAME,
 	.class = I2C_CLASS_DEPRECATED,
 	.algo = &xiic_algorithm,
-	.quirks = &xiic_quirks,
 };
 
 
