@@ -69,7 +69,7 @@ MODULE_PARM_DESC(drm_fbdev_overalloc,
  * This module_param *should* be removed as soon as possible and be
  * considered as a broken and legacy behaviour from a modern fbdev device.
  */
-static bool drm_leak_fbdev_smem;
+static bool drm_leak_fbdev_smem = true;
 #if IS_ENABLED(CONFIG_DRM_FBDEV_LEAK_PHYS_SMEM)
 module_param_unsafe(drm_leak_fbdev_smem, bool, 0600);
 MODULE_PARM_DESC(drm_leak_fbdev_smem,
