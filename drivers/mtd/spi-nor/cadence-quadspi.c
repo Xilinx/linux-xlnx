@@ -654,13 +654,8 @@ static int cqspi_read_setup(struct spi_nor *nor)
 	struct cqspi_flash_pdata *f_pdata = nor->priv;
 	struct cqspi_st *cqspi = f_pdata->cqspi;
 	void __iomem *reg_base = cqspi->iobase;
-	struct platform_device *pdev = cqspi->pdev;
-	struct device *dev = &pdev->dev;
-	struct cqspi_driver_platdata *ddata;
 	unsigned int dummy_clk = 0;
 	unsigned int reg;
-
-	ddata = (struct cqspi_driver_platdata *)of_device_get_match_data(dev);
 
 	reg = nor->read_opcode << CQSPI_REG_RD_INSTR_OPCODE_LSB;
 	reg |= cqspi_calc_rdreg(nor, nor->read_opcode);
@@ -2175,10 +2170,8 @@ static int cqspi_probe(struct platform_device *pdev)
 
 	/* Obtain IRQ line. */
 	irq = platform_get_irq(pdev, 0);
-	if (irq < 0) {
-		dev_err(dev, "Cannot obtain IRQ.\n");
+	if (irq < 0)
 		return -ENXIO;
-	}
 
 	pm_runtime_enable(dev);
 	ret = pm_runtime_get_sync(dev);
