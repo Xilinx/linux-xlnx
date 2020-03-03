@@ -947,6 +947,46 @@ static int spi_nor_wait_till_ready(struct spi_nor *nor)
 }
 
 /*
+ * Write status Register and configuration register with 2 bytes
+ * The first byte will be written to the status register, while the
+ * second byte will be written to the configuration register.
+ * Return negative if error occurred.
+ */
+static int write_sr_cr(struct spi_nor *nor, u8 *sr_cr)
+{
+	int ret;
+
+	write_enable(nor);
+
+	if (nor->spimem) {
+		struct spi_mem_op op =
+			SPI_MEM_OP(SPI_MEM_OP_CMD(SPINOR_OP_WRSR, 1),
+				   SPI_MEM_OP_NO_ADDR,
+				   SPI_MEM_OP_NO_DUMMY,
+				   SPI_MEM_OP_DATA_OUT(2, sr_cr, 1));
+
+		ret = spi_mem_exec_op(nor->spimem, &op);
+	} else {
+		ret = nor->write_reg(nor, SPINOR_OP_WRSR, sr_cr, 2);
+	}
+
+	if (ret < 0) {
+		dev_err(nor->dev,
+			"error while writing configuration register\n");
+		return -EINVAL;
+	}
+
+	ret = spi_nor_wait_till_ready(nor);
+	if (ret) {
+		dev_err(nor->dev,
+			"timeout while writing configuration register\n");
+		return ret;
+	}
+
+	return 0;
+}
+
+/*
  * Erase the whole flash memory
  *
  * Returns 0 if successful, non-zero otherwise.
@@ -1451,6 +1491,118 @@ erase_err:
 	return ret;
 }
 
+static inline u16 min_lockable_sectors(struct spi_nor *nor,
+				       u16 n_sectors)
+{
+	u16 lock_granularity;
+
+	/*
+	 * Revisit - SST (not used by us) has the same JEDEC ID as micron but
+	 * protected area table is similar to that of spansion.
+	 */
+	lock_granularity = max(1, n_sectors / M25P_MAX_LOCKABLE_SECTORS);
+	if (nor->jedec_id == CFI_MFR_ST)	/* Micron */
+		lock_granularity = 1;
+
+	return lock_granularity;
+}
+
+static inline uint32_t get_protected_area_start(struct spi_nor *nor,
+						u8 lock_bits)
+{
+	u16 n_sectors;
+	u32 sector_size;
+	u64 mtd_size;
+	struct mtd_info *mtd = &nor->mtd;
+
+	n_sectors = nor->n_sectors;
+	sector_size = nor->sector_size;
+	mtd_size = mtd->size;
+
+	if (nor->isparallel) {
+		sector_size = (nor->sector_size >> 1);
+		mtd_size = (mtd->size >> 1);
+	}
+	if (nor->isstacked) {
+		n_sectors = (nor->n_sectors >> 1);
+		mtd_size = (mtd->size >> 1);
+	}
+
+	return mtd_size - (1 << (lock_bits - 1)) *
+		min_lockable_sectors(nor, n_sectors) * sector_size;
+}
+
+static u8 min_protected_area_including_offset(struct spi_nor *nor,
+					      uint32_t offset)
+{
+	u8 lock_bits, lockbits_limit;
+
+	/*
+	 * Revisit - SST (not used by us) has the same JEDEC ID as micron but
+	 * protected area table is similar to that of spansion.
+	 * Mircon has 4 block protect bits.
+	 */
+	lockbits_limit = 7;
+	if (nor->jedec_id == CFI_MFR_ST)	/* Micron */
+		lockbits_limit = 15;
+
+	for (lock_bits = 1; lock_bits < lockbits_limit; lock_bits++) {
+		if (offset >= get_protected_area_start(nor, lock_bits))
+			break;
+	}
+	return lock_bits;
+}
+
+static int write_sr_modify_protection(struct spi_nor *nor, u8 status,
+				      u8 lock_bits)
+{
+	u8 status_new, bp_mask;
+	u8 val[2];
+
+	status_new = status & ~SR_BP_BIT_MASK;
+	bp_mask = (lock_bits << SR_BP_BIT_OFFSET) & SR_BP_BIT_MASK;
+
+	/* Micron */
+	if (nor->jedec_id == CFI_MFR_ST) {
+		/* To support chips with more than 896 sectors (56MB) */
+		status_new &= ~SR_BP3;
+
+		/* Protected area starts from top */
+		status_new &= ~SR_BP_TB;
+
+		if (lock_bits > 7)
+			bp_mask |= SR_BP3;
+	}
+
+	if (nor->is_lock)
+		status_new |= bp_mask;
+
+	write_enable(nor);
+
+	/* For spansion flashes */
+	if (nor->jedec_id == CFI_MFR_AMD) {
+		val[1] = read_cr(nor) << 8;
+		val[0] |= status_new;
+		if (write_sr_cr(nor, val) < 0)
+			return 1;
+	} else {
+		if (write_sr(nor, status_new) < 0)
+			return 1;
+	}
+	return 0;
+}
+
+static u8 bp_bits_from_sr(struct spi_nor *nor, u8 status)
+{
+	u8 ret;
+
+	ret = (((status) & SR_BP_BIT_MASK) >> SR_BP_BIT_OFFSET);
+	if (nor->jedec_id == 0x20)
+		ret |= ((status & SR_BP3) >> (SR_BP_BIT_OFFSET + 1));
+
+	return ret;
+}
+
 /* Write status register and ensure bits in mask match written values */
 static int write_sr_and_check(struct spi_nor *nor, u8 status_new, u8 mask)
 {
@@ -1747,6 +1899,8 @@ static int spi_nor_lock(struct mtd_info *mtd, loff_t ofs, uint64_t len)
 {
 	struct spi_nor *nor = mtd_to_spi_nor(mtd);
 	int ret;
+	u8 status;
+	u8 lock_bits;
 
 	ret = spi_nor_lock_and_prep(nor, SPI_NOR_OPS_LOCK);
 	if (ret)
@@ -1764,7 +1918,23 @@ static int spi_nor_lock(struct mtd_info *mtd, loff_t ofs, uint64_t len)
 		}
 	}
 	ret = nor->params.locking_ops->lock(nor, ofs, len);
+	/* Wait until finished previous command */
+	ret = spi_nor_wait_till_ready(nor);
+	if (ret)
+		goto err;
 
+	status = read_sr(nor);
+
+	lock_bits = min_protected_area_including_offset(nor, ofs);
+
+	/* Only modify protection if it will not unlock other areas */
+	if (lock_bits > bp_bits_from_sr(nor, status)) {
+		nor->is_lock = 1;
+		ret = write_sr_modify_protection(nor, status, lock_bits);
+	} else {
+		dev_err(nor->dev, "trying to unlock already locked area\n");
+	}
+err:
 	spi_nor_unlock_and_unprep(nor, SPI_NOR_OPS_UNLOCK);
 	return ret;
 }
@@ -1773,13 +1943,42 @@ static int spi_nor_unlock(struct mtd_info *mtd, loff_t ofs, uint64_t len)
 {
 	struct spi_nor *nor = mtd_to_spi_nor(mtd);
 	int ret;
+	u8 status;
+	u8 lock_bits;
 
 	ret = spi_nor_lock_and_prep(nor, SPI_NOR_OPS_UNLOCK);
 	if (ret)
 		return ret;
 
-	ret = nor->params.locking_ops->unlock(nor, ofs, len);
+	if (nor->isparallel == 1)
+		ofs = ofs >> nor->shift;
 
+	if (nor->isstacked == 1) {
+		if (ofs >= (mtd->size / 2)) {
+			ofs = ofs - (mtd->size / 2);
+			nor->spi->master->flags |= SPI_MASTER_U_PAGE;
+		} else {
+			nor->spi->master->flags &= ~SPI_MASTER_U_PAGE;
+		}
+	}
+	ret = nor->params.locking_ops->unlock(nor, ofs, len);
+	/* Wait until finished previous command */
+	ret = spi_nor_wait_till_ready(nor);
+	if (ret)
+		goto err;
+
+	status = read_sr(nor);
+
+	lock_bits = min_protected_area_including_offset(nor, ofs + len) - 1;
+
+	/* Only modify protection if it will not lock other areas */
+	if (lock_bits < bp_bits_from_sr(nor, status)) {
+		nor->is_lock = 0;
+		ret = write_sr_modify_protection(nor, status, lock_bits);
+	} else {
+		dev_err(nor->dev, "trying to lock already unlocked area\n");
+	}
+err:
 	spi_nor_unlock_and_unprep(nor, SPI_NOR_OPS_LOCK);
 	return ret;
 }
@@ -1797,46 +1996,6 @@ static int spi_nor_is_locked(struct mtd_info *mtd, loff_t ofs, uint64_t len)
 
 	spi_nor_unlock_and_unprep(nor, SPI_NOR_OPS_LOCK);
 	return ret;
-}
-
-/*
- * Write status Register and configuration register with 2 bytes
- * The first byte will be written to the status register, while the
- * second byte will be written to the configuration register.
- * Return negative if error occurred.
- */
-static int write_sr_cr(struct spi_nor *nor, u8 *sr_cr)
-{
-	int ret;
-
-	write_enable(nor);
-
-	if (nor->spimem) {
-		struct spi_mem_op op =
-			SPI_MEM_OP(SPI_MEM_OP_CMD(SPINOR_OP_WRSR, 1),
-				   SPI_MEM_OP_NO_ADDR,
-				   SPI_MEM_OP_NO_DUMMY,
-				   SPI_MEM_OP_DATA_OUT(2, sr_cr, 1));
-
-		ret = spi_mem_exec_op(nor->spimem, &op);
-	} else {
-		ret = nor->write_reg(nor, SPINOR_OP_WRSR, sr_cr, 2);
-	}
-
-	if (ret < 0) {
-		dev_err(nor->dev,
-			"error while writing configuration register\n");
-		return -EINVAL;
-	}
-
-	ret = spi_nor_wait_till_ready(nor);
-	if (ret) {
-		dev_err(nor->dev,
-			"timeout while writing configuration register\n");
-		return ret;
-	}
-
-	return 0;
 }
 
 /**
