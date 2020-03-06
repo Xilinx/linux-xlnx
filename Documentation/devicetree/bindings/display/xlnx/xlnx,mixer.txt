@@ -9,18 +9,21 @@ The Video Mixer always has one streaming input layer, known as master layer.
 
 Required properties:
  - compatible: Must contain atleast one of
+	"xlnx,mixer-5.0" (MIXER 5.0 version)
 	"xlnx,mixer-4.0" (MIXER 4.0 version)
 	"xlnx,mixer-3.0" (MIXER 3.0 version)
  - reg: Base address and size of the IP core.
  - interrupts: Interrupt number.
  - interrupts-parent: phandle for interrupt controller.
  - reset-gpio: gpio to reset the mixer IP
+ - xlnx,enable-csc-coefficient-register: denotes colorimetry
+   coefficients can be programmed, valid for mixer 5.0 version only.
  - xlnx,dma-addr-width: dma address width, valid values are 32 and 64
  - xlnx,bpc: bits per component for mixer
  - xlnx,ppc: pixel per clock for mixer
  - xlnx,num-layers: Total number of layers (excluding logo)
    Value ranges from 1-9 for compatible string xlnx,mixer-3.0 and
-   Value ranges from 1-17 for comptaible string xlnx,mixer-4.0
+   Value ranges from 1-17 for comptaible string xlnx,mixer-4.0 and above
  - layer_[x]: node for [x] layer
  - xlnx,layer-id: layer identifier number
  - xlnx,vformat: video format for layer. See list of supported formats below.
