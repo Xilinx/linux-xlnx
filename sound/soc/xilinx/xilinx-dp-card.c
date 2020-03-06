@@ -34,7 +34,12 @@ static const struct snd_soc_ops xilinx_dp_ops = {
 	.startup	= xilinx_dp_startup,
 };
 
-SND_SOC_DAILINK_DEFS(xilinx_dp,
+SND_SOC_DAILINK_DEFS(xilinx_dp0,
+		DAILINK_COMP_ARRAY(COMP_CPU("xilinx-dp-snd-codec-dai")),
+		DAILINK_COMP_ARRAY(COMP_CODEC(NULL, "xilinx-dp-snd-codec-dai")),
+		DAILINK_COMP_ARRAY(COMP_PLATFORM(NULL)));
+
+SND_SOC_DAILINK_DEFS(xilinx_dp1,
 		DAILINK_COMP_ARRAY(COMP_CPU("xilinx-dp-snd-codec-dai")),
 		DAILINK_COMP_ARRAY(COMP_CODEC(NULL, "xilinx-dp-snd-codec-dai")),
 		DAILINK_COMP_ARRAY(COMP_PLATFORM(NULL)));
@@ -42,12 +47,14 @@ SND_SOC_DAILINK_DEFS(xilinx_dp,
 static struct snd_soc_dai_link xilinx_dp_dai_links[] = {
 	{
 		.name		= "xilinx-dp0",
-		SND_SOC_DAILINK_REG(xilinx_dp),
+		.stream_name	= "xilinx-dp0",
+		SND_SOC_DAILINK_REG(xilinx_dp0),
 		.ops		= &xilinx_dp_ops,
 	},
 	{
 		.name		= "xilinx-dp1",
-		SND_SOC_DAILINK_REG(xilinx_dp),
+		.stream_name	= "xilinx-dp1",
+		SND_SOC_DAILINK_REG(xilinx_dp1),
 		.ops		= &xilinx_dp_ops,
 	},
 
