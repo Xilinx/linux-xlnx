@@ -42,6 +42,18 @@
 #define XVMIX_BACKGROUND_U_G_DATA	0x00030
 #define XVMIX_BACKGROUND_V_B_DATA	0x00038
 #define XVMIX_LAYERENABLE_DATA		0x00040
+#define XVMIX_K00_1			0x00048
+#define XVMIX_K01_1			0x00050
+#define XVMIX_K02_1			0x00058
+#define XVMIX_K10_1			0x00060
+#define XVMIX_K11_1			0x00068
+#define XVMIX_K12_1			0x00070
+#define XVMIX_K20_1			0x00078
+#define XVMIX_K21_1			0x00080
+#define XVMIX_K22_1			0x00088
+#define XVMIX_Y_DATA			0x00090
+#define XVMIX_U_DATA			0x00098
+#define XVMIX_V_DATA			0x000A0
 #define XVMIX_LAYERALPHA_0_DATA		0x00100
 #define XVMIX_LAYERSTARTX_0_DATA	0x00108
 #define XVMIX_LAYERSTARTY_0_DATA	0x00110
@@ -50,6 +62,18 @@
 #define XVMIX_LAYERHEIGHT_0_DATA	0x00128
 #define XVMIX_LAYERSCALE_0_DATA		0x00130
 #define XVMIX_LAYERVIDEOFORMAT_0_DATA	0x00138
+#define XVMIX_K00_2			0x00140
+#define XVMIX_K01_2			0x00148
+#define XVMIX_K02_2			0x00150
+#define XVMIX_K10_2			0x00158
+#define XVMIX_K11_2			0x00160
+#define XVMIX_K12_2			0x00168
+#define XVMIX_K20_2			0x00170
+#define XVMIX_K21_2			0x00178
+#define XVMIX_K22_2			0x00180
+#define XVMIX_R_DATA			0x00188
+#define XVMIX_G_DATA			0x00190
+#define XVMIX_B_DATA			0x00198
 #define XVMIX_LAYER1_BUF1_V_DATA	0x00240
 #define XVMIX_LAYER1_BUF2_V_DATA	0x0024c
 #define XVMIX_LOGOSTARTX_DATA		0x01000
@@ -101,8 +125,94 @@
 #define	XVMIX_SCALE_FACTOR_4X		2
 #define	XVMIX_SCALE_FACTOR_INVALID	3
 #define	XVMIX_BASE_ALIGN		8
+#define XVMIX_CSC_MAX_ROWS		(3)
+#define XVMIX_CSC_MAX_COLS		(3)
+#define XVMIX_CSC_MATRIX_SIZE	(XVMIX_CSC_MAX_ROWS * XVMIX_CSC_MAX_COLS)
+#define XVMIX_CSC_COEFF_SIZE		(12)
+#define XVMIX_CSC_SCALE_FACTOR		(4096)
+#define XVMIX_CSC_DIVISOR		(10000)
 
 /*************************** STATIC DATA  ************************************/
+static const s16
+xlnx_mix_yuv2rgb_coeffs[][DRM_COLOR_ENCODING_MAX][XVMIX_CSC_COEFF_SIZE] = {
+	[DRM_COLOR_YCBCR_BT601][DRM_COLOR_YCBCR_LIMITED_RANGE] = {
+		10000, 0, 13669,
+		10000, -3367, -6986,
+		10000, 17335, 0,
+		-175, 132, -222
+	},
+	[DRM_COLOR_YCBCR_BT601][DRM_COLOR_YCBCR_FULL_RANGE] = {
+		10479, 0, 13979,
+		10479, -3443, -7145,
+		10479, 17729, 0,
+		-179, 136, -227
+	},
+	[DRM_COLOR_YCBCR_BT709][DRM_COLOR_YCBCR_LIMITED_RANGE] = {
+		10000, 0, 15406,
+		10000, -1832, -4579,
+		10000, 18153, 0,
+		-197, 82, -232
+	},
+	[DRM_COLOR_YCBCR_BT709][DRM_COLOR_YCBCR_FULL_RANGE] = {
+		10233, 0, 15756,
+		10233, -1873, -4683,
+		10233, 18566, 0,
+		-202, 84, -238
+	},
+	[DRM_COLOR_YCBCR_BT2020][DRM_COLOR_YCBCR_LIMITED_RANGE] = {
+		10000, 0, 14426,
+		10000, -1609, -5589,
+		10000, 18406, 0,
+		-185, 92, -236
+	},
+	[DRM_COLOR_YCBCR_BT2020][DRM_COLOR_YCBCR_FULL_RANGE] = {
+		10233, 0, 14754,
+		10233, -1646, -5716,
+		10233, 18824, 0,
+		-189, 94, -241
+	}
+};
+
+static const s16
+xlnx_mix_rgb2yuv_coeffs[][DRM_COLOR_ENCODING_MAX][XVMIX_CSC_COEFF_SIZE] = {
+	[DRM_COLOR_YCBCR_BT601][DRM_COLOR_YCBCR_LIMITED_RANGE] = {
+		2990, 5870, 1440,
+		-1720, -3390, 5110,
+		5110, -4280, -830,
+		0, 128, 128
+	},
+	[DRM_COLOR_YCBCR_BT601][DRM_COLOR_YCBCR_FULL_RANGE] = {
+		2921, 5735, 1113,
+		-1686, -3310, 4393,
+		4393, -4184, -812,
+		0, 128, 128
+	},
+	[DRM_COLOR_YCBCR_BT709][DRM_COLOR_YCBCR_LIMITED_RANGE] = {
+		2120, 7150, 720,
+		-1170, -3940, 5110,
+		5110, -4640, -470,
+		0, 128, 128
+	},
+	[DRM_COLOR_YCBCR_BT709][DRM_COLOR_YCBCR_FULL_RANGE] = {
+		2077, 6988, 705,
+		-1144, -3582, 4997,
+		4997, -4538, -458,
+		0, 128, 128
+	},
+	[DRM_COLOR_YCBCR_BT2020][DRM_COLOR_YCBCR_LIMITED_RANGE] = {
+		2625, 6775, 592,
+		-1427, -3684, 5110,
+		5110, -4699, -410,
+		0, 128, 128
+	},
+	[DRM_COLOR_YCBCR_BT2020][DRM_COLOR_YCBCR_FULL_RANGE] = {
+		2566, 6625, 579,
+		-1396, -3602, 4997,
+		4997, -4595, -401,
+		0, 128, 128
+	}
+};
+
 static const u32 color_table[] = {
 	DRM_FORMAT_BGR888,
 	DRM_FORMAT_RGB888,
@@ -243,6 +353,7 @@ struct xlnx_mix_layer_data {
  * @logo_layer_en: Indicates logo layer is enabled in hardware
  * @logo_pixel_alpha_enabled: Indicates that per-pixel alpha supported for logo
  *  layer
+ * @csc_enabled: Indicates that colorimetry coefficients are programmable
  * @max_layer_width: Max possible width for any layer on this Mixer
  * @max_layer_height: Max possible height for any layer on this Mixer
  * @max_logo_layer_width: Min possible width for any layer on this Mixer
@@ -273,6 +384,7 @@ struct xlnx_mix_hw {
 	void __iomem        *base;
 	bool                logo_layer_en;
 	bool                logo_pixel_alpha_enabled;
+	u32		    csc_enabled;
 	u32                 max_layer_width;
 	u32                 max_layer_height;
 	u32                 max_logo_layer_width;
@@ -463,6 +575,60 @@ static inline void xlnx_mix_clear_intr_status(struct xlnx_mix_hw *mixer,
 					      uint32_t intr)
 {
 	reg_writel(mixer->base, XVMIX_ISR, intr);
+}
+
+/**
+ * xlnx_mix_set_yuv2_rgb_coeff - Programs yuv to rgb coeffiecients
+ * @plane: Xilinx drm plane object
+ * @enc: Colorimetry encoding scheme
+ * @range: Colorimetry range
+ * Programs the colorimetry coefficients required for yuv to rgb
+ * conversion.
+ */
+static void xlnx_mix_set_yuv2_rgb_coeff(struct xlnx_mix_plane *plane,
+					enum drm_color_encoding enc,
+					enum drm_color_range range)
+{
+	struct xlnx_mix *mixer = plane->mixer;
+	u32 i;
+	u32 bpc_scale = 1 << (mixer->mixer_hw.bg_layer_bpc - 8);
+
+	for (i = 0; i < XVMIX_CSC_MATRIX_SIZE; i++)
+		reg_writel(mixer->mixer_hw.base, XVMIX_K00_1 + i * 8,
+			   xlnx_mix_yuv2rgb_coeffs[enc][range][i] *
+			   XVMIX_CSC_SCALE_FACTOR / XVMIX_CSC_DIVISOR);
+
+	for (i = XVMIX_CSC_MATRIX_SIZE; i < XVMIX_CSC_COEFF_SIZE; i++)
+		reg_writel(mixer->mixer_hw.base, XVMIX_K00_1 + i * 8,
+			   (xlnx_mix_yuv2rgb_coeffs[enc][range][i] *
+			    bpc_scale));
+}
+
+/**
+ * xlnx_mix_set_rgb2_yuv_coeff - Programs rgb to yuv coeffiecients
+ * @plane: Xilinx drm plane object
+ * @enc: Colorimetry encoding scheme
+ * @range: Colorimetry range
+ * Programs the colorimetry coefficients required for rgb to yuv
+ * conversion.
+ */
+static void xlnx_mix_set_rgb2_yuv_coeff(struct xlnx_mix_plane *plane,
+					enum drm_color_encoding enc,
+					enum drm_color_range range)
+{
+	struct xlnx_mix *mixer = plane->mixer;
+	u32 i;
+	u32 bpc_scale = 1 << (mixer->mixer_hw.bg_layer_bpc - 8);
+
+	for (i = 0; i < XVMIX_CSC_MATRIX_SIZE; i++)
+		reg_writel(mixer->mixer_hw.base, XVMIX_K00_2 + i * 8,
+			   xlnx_mix_rgb2yuv_coeffs[enc][range][i] *
+			   XVMIX_CSC_SCALE_FACTOR / XVMIX_CSC_DIVISOR);
+
+	for (i = XVMIX_CSC_MATRIX_SIZE; i < XVMIX_CSC_COEFF_SIZE; i++)
+		reg_writel(mixer->mixer_hw.base, XVMIX_K00_2 + i * 8,
+			   (xlnx_mix_rgb2yuv_coeffs[enc][range][i] *
+			    bpc_scale));
 }
 
 /**
@@ -826,6 +992,20 @@ static void xlnx_mix_attach_plane_prop(struct xlnx_mix_plane *plane)
 	if (plane->mixer_layer->hw_config.can_alpha)
 		drm_object_attach_property(base, mixer->alpha_prop,
 					   XVMIX_ALPHA_MAX);
+	if (mixer->mixer_hw.csc_enabled) {
+		u32 supported_encodings = BIT(DRM_COLOR_YCBCR_BT601) |
+					  BIT(DRM_COLOR_YCBCR_BT709) |
+					  BIT(DRM_COLOR_YCBCR_BT2020);
+		u32 supported_ranges = BIT(DRM_COLOR_YCBCR_LIMITED_RANGE) |
+				       BIT(DRM_COLOR_YCBCR_FULL_RANGE);
+		enum drm_color_encoding encoding = DRM_COLOR_YCBCR_BT709;
+		enum drm_color_range range = DRM_COLOR_YCBCR_LIMITED_RANGE;
+
+		drm_plane_create_color_properties(&plane->base,
+						  supported_encodings,
+						  supported_ranges,
+						  encoding, range);
+	}
 }
 
 static int xlnx_mix_mark_layer_active(struct xlnx_mix_plane *plane)
@@ -1702,6 +1882,7 @@ static int xlnx_mix_plane_mode_set(struct drm_plane *base_plane,
 				   u32 src_w, uint32_t src_h)
 {
 	struct xlnx_mix_plane *plane = to_xlnx_plane(base_plane);
+	struct xlnx_mix_hw *mixer_hw = to_mixer_hw(plane);
 	const struct drm_format_info *info = fb->format;
 	size_t i = 0;
 	dma_addr_t luma_paddr;
@@ -1746,6 +1927,25 @@ static int xlnx_mix_plane_mode_set(struct drm_plane *base_plane,
 		plane->dma[0].sgl[0].src_icg = plane->dma[1].xt.src_start -
 				plane->dma[0].xt.src_start -
 				(plane->dma[0].xt.numf * stride);
+	}
+
+	if (mixer_hw->csc_enabled) {
+		/**
+		 * magic numbers of coefficient table for colorimetry
+		 * and range are derived from the following references:
+		 * [1] Rec. ITU-R BT.601-6
+		 * [2] Rec. ITU-R BT.709-5
+		 * [3] Rec. ITU-R BT.2020
+		 * [4] http://en.wikipedia.org/wiki/YCbCr
+		 * coefficient table supports BT601 / BT709 / BT2020 encoding
+		 * schemes and 16-235(limited) / 16-240(full) range.
+		 */
+		xlnx_mix_set_yuv2_rgb_coeff(plane,
+					    base_plane->state->color_encoding,
+					    base_plane->state->color_range);
+		xlnx_mix_set_rgb2_yuv_coeff(plane,
+					    base_plane->state->color_encoding,
+					    base_plane->state->color_range);
 	}
 
 	ret = xlnx_mix_set_plane(plane, fb, crtc_x, crtc_y, src_x, src_y,
@@ -2064,7 +2264,8 @@ static int xlnx_mix_dt_parse(struct device *dev, struct xlnx_mix *mixer)
 		dev_err(dev, "Failed to map io mem space for mixer\n");
 		return PTR_ERR(mixer_hw->base);
 	}
-	if (of_device_is_compatible(dev->of_node, "xlnx,mixer-4.0")) {
+	if (of_device_is_compatible(dev->of_node, "xlnx,mixer-4.0") ||
+	    of_device_is_compatible(dev->of_node, "xlnx,mixer-5.0")) {
 		mixer_hw->max_layers = 18;
 		mixer_hw->logo_en_mask = BIT(23);
 		mixer_hw->enable_all_mask = (GENMASK(16, 0) |
@@ -2074,6 +2275,11 @@ static int xlnx_mix_dt_parse(struct device *dev, struct xlnx_mix *mixer)
 		mixer_hw->logo_en_mask = BIT(15);
 		mixer_hw->enable_all_mask = (GENMASK(8, 0) |
 						mixer_hw->logo_en_mask);
+	}
+	if (of_device_is_compatible(dev->of_node, "xlnx,mixer-5.0")) {
+		const char *prop_name = "xlnx,enable-csc-coefficient-register";
+
+		mixer_hw->csc_enabled = of_property_read_bool(node, prop_name);
 	}
 
 	ret = of_property_read_u32(node, "xlnx,num-layers",
@@ -2810,6 +3016,7 @@ static int xlnx_mix_remove(struct platform_device *pdev)
 static const struct of_device_id xlnx_mix_of_match[] = {
 	{ .compatible = "xlnx,mixer-3.0", },
 	{ .compatible = "xlnx,mixer-4.0", },
+	{ .compatible = "xlnx,mixer-5.0", },
 	{ /* end of table */ },
 };
 MODULE_DEVICE_TABLE(of, xlnx_mix_of_match);
