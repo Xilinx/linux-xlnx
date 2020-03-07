@@ -1552,7 +1552,7 @@ static int xsdirxss_s_stream(struct v4l2_subdev *sd, int enable)
 	} else {
 		if (!xsdirxss->streaming) {
 			dev_dbg(core->dev, "Stopped streaming already\n");
-			return -EINVAL;
+			return 0;
 		}
 
 		xsdirx_streamflow_control(core, false);
