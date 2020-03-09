@@ -436,10 +436,10 @@ static int xlnx_tsmux_ioctl_srcbuf_alloc(struct xlnx_tsmux *mpgmuxts,
 	 */
 	for (i = 0; i < mpgmuxts->num_inbuf; i++) {
 		mpgmuxts->src_kaddrs[i] =
-			dma_zalloc_coherent(mpgmuxts->dev,
-					    mpgmuxts->srcbuf_size,
-					    &mpgmuxts->srcbuf_addrs[i],
-					    GFP_KERNEL | GFP_DMA32);
+			dma_alloc_coherent(mpgmuxts->dev,
+					   mpgmuxts->srcbuf_size,
+					   &mpgmuxts->srcbuf_addrs[i],
+					   GFP_KERNEL | GFP_DMA32);
 		if (!mpgmuxts->src_kaddrs[i]) {
 			dev_dbg(mpgmuxts->dev, "dma alloc fail %d buffer", i);
 			goto exit_free;
@@ -495,10 +495,10 @@ static int xlnx_tsmux_ioctl_dstbuf_alloc(struct xlnx_tsmux *mpgmuxts,
 	/* buf_size & num_buf boundary conditions are handled in application*/
 	for (i = 0; i < mpgmuxts->num_outbuf; i++) {
 		mpgmuxts->dst_kaddrs[i] =
-			dma_zalloc_coherent(mpgmuxts->dev,
-					    mpgmuxts->dstbuf_size,
-					    &mpgmuxts->dstbuf_addrs[i],
-					    GFP_KERNEL | GFP_DMA32);
+			dma_alloc_coherent(mpgmuxts->dev,
+					   mpgmuxts->dstbuf_size,
+					   &mpgmuxts->dstbuf_addrs[i],
+					   GFP_KERNEL | GFP_DMA32);
 		if (!mpgmuxts->dst_kaddrs[i]) {
 			dev_dbg(mpgmuxts->dev, "dmamem alloc fail for %d", i);
 			goto exit_free;
@@ -550,9 +550,9 @@ static int xlnx_tsmux_ioctl_strmtbl_alloc(struct xlnx_tsmux *mpgmuxts,
 	buf_size = sizeof(struct stream_info) * mpgmuxts->num_strmnodes;
 
 	mpgmuxts->strmtbl_kaddrs =
-		dma_zalloc_coherent(mpgmuxts->dev,
-				    buf_size, &mpgmuxts->strmtbl_addrs,
-				    GFP_KERNEL | GFP_DMA32);
+		dma_alloc_coherent(mpgmuxts->dev,
+				   buf_size, &mpgmuxts->strmtbl_addrs,
+				   GFP_KERNEL | GFP_DMA32);
 	if (!mpgmuxts->strmtbl_kaddrs) {
 		dev_dbg(mpgmuxts->dev, "dmamem alloc fail for strm table");
 		return -ENOMEM;
@@ -560,9 +560,9 @@ static int xlnx_tsmux_ioctl_strmtbl_alloc(struct xlnx_tsmux *mpgmuxts,
 
 	/* Allocating memory for internal streamid table */
 	mpgmuxts->intn_strmtbl_kaddrs =
-		dma_zalloc_coherent(mpgmuxts->dev,
-				    buf_size, &mpgmuxts->intn_strmtbl_addrs,
-				    GFP_KERNEL | GFP_DMA32);
+		dma_alloc_coherent(mpgmuxts->dev,
+				   buf_size, &mpgmuxts->intn_strmtbl_addrs,
+				   GFP_KERNEL | GFP_DMA32);
 
 	if (!mpgmuxts->intn_strmtbl_kaddrs) {
 		dev_dbg(mpgmuxts->dev, "dmamem alloc fail for intr strm table");
