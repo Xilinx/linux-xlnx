@@ -1000,6 +1000,13 @@ __xvip_dma_try_format(struct xvip_dma *dma,
 	 * it back to pixels.
 	 */
 	align = lcm(dma->align, info->bpp >> 3);
+	if (!align) {
+		dev_err(dma->xdev->dev,
+			"transfer alignment is 0: dma->align = %x, bpp = %u\n",
+			dma->align, info->bpp);
+		return;
+	}
+
 	min_width = roundup(XVIP_DMA_MIN_WIDTH, align);
 	max_width = rounddown(XVIP_DMA_MAX_WIDTH, align);
 
