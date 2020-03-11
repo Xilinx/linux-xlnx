@@ -76,6 +76,22 @@ xvip_graph_find_entity(struct xvip_composite_device *xdev,
 	return NULL;
 }
 
+static struct xvip_graph_entity *
+xvip_graph_find_entity_from_media(struct xvip_composite_device *xdev,
+				  struct media_entity *entity)
+{
+	struct xvip_graph_entity *xvip_entity;
+	struct v4l2_async_subdev *asd;
+
+	list_for_each_entry(asd, &xdev->notifier.asd_list, asd_list) {
+		xvip_entity = to_xvip_entity(asd);
+		if (xvip_entity->entity == entity)
+			return xvip_entity;
+	}
+
+	return NULL;
+}
+
 static int xvip_graph_build_one(struct xvip_composite_device *xdev,
 				struct xvip_graph_entity *entity)
 {
@@ -224,25 +240,21 @@ static bool xvip_subdev_set_streaming(struct xvip_composite_device *xdev,
 	return false;
 }
 
-int xvip_entity_start_stop(struct xvip_composite_device *xdev,
-			   struct media_entity *entity, bool on)
+static int xvip_entity_start_stop(struct xvip_composite_device *xdev,
+				  struct media_entity *entity, bool on)
 {
 	struct v4l2_subdev *subdev;
-	bool is_streaming;
 	int ret = 0;
 
 	dev_dbg(xdev->dev, "%s entity %s\n",
 		on ? "Starting" : "Stopping", entity->name);
 	subdev = media_entity_to_v4l2_subdev(entity);
 
-	/* This is to maintain list of stream on/off devices */
-	is_streaming = xvip_subdev_set_streaming(xdev, subdev, on);
-
 	/*
 	 * start or stop the subdev only once in case if they are
 	 * shared between sub-graphs
 	 */
-	if (on && !is_streaming) {
+	if (on) {
 		/* power-on subdevice */
 		ret = v4l2_subdev_call(subdev, core, s_power, 1);
 		if (ret < 0 && ret != -ENOIOCTLCMD) {
@@ -260,7 +272,7 @@ int xvip_entity_start_stop(struct xvip_composite_device *xdev,
 			v4l2_subdev_call(subdev, core, s_power, 0);
 			xvip_subdev_set_streaming(xdev, subdev, 0);
 		}
-	} else if (!on && is_streaming) {
+	} else {
 		/* stream-off subdevice */
 		ret = v4l2_subdev_call(subdev, video, s_stream, 0);
 		if (ret < 0 && ret != -ENOIOCTLCMD) {
@@ -274,6 +286,105 @@ int xvip_entity_start_stop(struct xvip_composite_device *xdev,
 		if (ret < 0 && ret != -ENOIOCTLCMD)
 			dev_err(xdev->dev,
 				"s_power off failed on subdev\n");
+	}
+
+	if (ret == -ENOIOCTLCMD)
+		ret = 0;
+
+	return ret;
+}
+
+/**
+ * xvip_graph_entity_dependencies_ready - Check if all dependencies are ready
+ * @xdev: composite device
+ * @entity: entity to check
+ * @on: boolean flag. true for enable and false for disable
+ *
+ * Check if all immediate dependencies are ready dependeing on 'on' flag.
+ * If enabling, check all source pads. Sink pads for disabling.
+ *
+ * Return: true if all dependecies are ready. false otherwise.
+ */
+static bool
+xvip_graph_entity_dependencies_ready(struct xvip_composite_device *xdev,
+				     struct xvip_graph_entity *entity,
+				     bool on)
+{
+	unsigned long pad_flag = on ? MEDIA_PAD_FL_SOURCE : MEDIA_PAD_FL_SINK;
+	unsigned int i;
+
+	for (i = 0; i < entity->entity->num_pads; i++) {
+		struct xvip_graph_entity *remote;
+		struct media_pad *pad;
+
+		if (!(entity->entity->pads[i].flags & pad_flag))
+			continue;
+
+		/* skipping not connected pads */
+		pad = media_entity_remote_pad(&entity->entity->pads[i]);
+		if (!pad || !pad->entity)
+			continue;
+
+		/*
+		 * Skip if there is no remote. This entity is at the end,
+		 * such as DMA, sensor, or other type.
+		 */
+		remote = xvip_graph_find_entity_from_media(xdev, pad->entity);
+		if (!remote)
+			continue;
+
+		/* the dependency state doesn't meet */
+		if (remote->streaming != on)
+			return false;
+	}
+
+	return true;
+}
+
+/**
+ * xvip_graph_start_stop - start or stop the entire graph
+ * @xdev: composite device
+ * @on: boolean flag. true for enable and false for disable
+ *
+ * Enable or disable the entire graph by checking dependencies and
+ * repeating iterations until all sub-devices are handled.
+ *
+ * Return: 0 for success, otherwise error code
+ */
+int xvip_graph_start_stop(struct xvip_composite_device *xdev, bool on)
+{
+	struct v4l2_async_subdev *asd;
+	bool updated = true;
+	int ret = 0;
+
+	while (updated) {
+		updated = false;
+		list_for_each_entry(asd, &xdev->notifier.asd_list, asd_list) {
+			struct xvip_graph_entity *entity;
+			struct v4l2_subdev *subdev;
+			bool state;
+
+			entity = to_xvip_entity(asd);
+
+			state = xvip_graph_entity_dependencies_ready(xdev,
+								     entity,
+								     on);
+			if (!state)
+				continue;
+
+			subdev = media_entity_to_v4l2_subdev(entity->entity);
+			state = xvip_subdev_set_streaming(xdev, subdev, on);
+			if (state == on)
+				continue;
+
+			ret = xvip_entity_start_stop(xdev, entity->entity, on);
+			if (ret < 0) {
+				dev_err(xdev->dev, "ret = %d for entity %s\n",
+					ret, entity->entity->name);
+				break;
+			}
+			updated = true;
+		}
 	}
 
 	return ret;
