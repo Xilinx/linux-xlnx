@@ -41,7 +41,6 @@ struct xvip_composite_device {
 	struct mutex lock; /* lock to protect xvip pipeline instance */
 };
 
-int xvip_entity_start_stop(struct xvip_composite_device *xdev,
-			   struct media_entity *entity, bool on);
+int xvip_graph_start_stop(struct xvip_composite_device *xdev, bool on);
 
 #endif /* __XILINX_VIPP_H__ */
