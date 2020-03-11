@@ -95,83 +95,6 @@ static int xvip_dma_verify_format(struct xvip_dma *dma)
  * Pipeline Stream Management
  */
 
-
-/**
- * xvip_pipeline_start_stop - Start ot stop streaming on a pipeline
- * @xdev: Composite video device
- * @dma: xvip dma
- * @start: Start (when true) or stop (when false) the pipeline
- *
- * Walk the entities chain starting @dma and start or stop all of them
- *
- * Return: 0 if successful, or the return value of the failed video::s_stream
- * operation otherwise.
- */
-static int xvip_pipeline_start_stop(struct xvip_composite_device *xdev,
-				    struct xvip_dma *dma, bool start)
-{
-	struct media_graph graph;
-	struct media_entity *entity = &dma->video.entity;
-	struct media_device *mdev = entity->graph_obj.mdev;
-	struct xventity_list *temp, *_temp;
-	LIST_HEAD(ent_list);
-	int ret = 0;
-
-	mutex_lock(&mdev->graph_mutex);
-
-	/* Walk the graph to locate the subdev nodes */
-	ret = media_graph_walk_init(&graph, mdev);
-	if (ret)
-		goto error;
-
-	media_graph_walk_start(&graph, entity);
-
-	/* get the list of entities */
-	while ((entity = media_graph_walk_next(&graph))) {
-		struct xventity_list *ele;
-
-		/* We want to stream on/off only subdevs */
-		if (!is_media_entity_v4l2_subdev(entity))
-			continue;
-
-		/* Maintain the pipeline sequence in a list */
-		ele = kzalloc(sizeof(*ele), GFP_KERNEL);
-		if (!ele) {
-			ret = -ENOMEM;
-			goto error;
-		}
-
-		ele->entity = entity;
-		list_add(&ele->list, &ent_list);
-	}
-
-	if (start) {
-		list_for_each_entry_safe(temp, _temp, &ent_list, list) {
-			/* Enable all subdevs from sink to source */
-			ret = xvip_entity_start_stop(xdev, temp->entity, start);
-			if (ret < 0) {
-				dev_err(xdev->dev, "ret = %d for entity %s\n",
-					ret, temp->entity->name);
-				break;
-			}
-		}
-	} else {
-		list_for_each_entry_safe_reverse(temp, _temp, &ent_list, list)
-			/* Enable all subdevs from source to sink */
-			xvip_entity_start_stop(xdev, temp->entity, start);
-	}
-
-	list_for_each_entry_safe(temp, _temp, &ent_list, list) {
-		list_del(&temp->list);
-		kfree(temp);
-	}
-
-error:
-	mutex_unlock(&mdev->graph_mutex);
-	media_graph_walk_cleanup(&graph);
-	return ret;
-}
-
 /**
  * xvip_pipeline_set_stream - Enable/disable streaming on a pipeline
  * @pipe: The pipeline
@@ -201,7 +124,6 @@ error:
 static int xvip_pipeline_set_stream(struct xvip_pipeline *pipe, bool on)
 {
 	struct xvip_composite_device *xdev;
-	struct xvip_dma *dma;
 	int ret = 0;
 
 	mutex_lock(&pipe->lock);
@@ -209,22 +131,14 @@ static int xvip_pipeline_set_stream(struct xvip_pipeline *pipe, bool on)
 
 	if (on) {
 		if (pipe->stream_count == pipe->num_dmas - 1) {
-			/*
-			 * This will iterate the DMAs and the stream-on of
-			 * subdevs may not be sequential due to multiple
-			 * sub-graph path
-			 */
-			list_for_each_entry(dma, &xdev->dmas, list) {
-				ret = xvip_pipeline_start_stop(xdev, dma, true);
-				if (ret < 0)
-					goto done;
-			}
+			ret = xvip_graph_start_stop(xdev, true);
+			if (ret < 0)
+				goto done;
 		}
 		pipe->stream_count++;
 	} else {
 		if (--pipe->stream_count == 0)
-			list_for_each_entry(dma, &xdev->dmas, list)
-				xvip_pipeline_start_stop(xdev, dma, false);
+			xvip_graph_start_stop(xdev, false);
 	}
 
 done:
