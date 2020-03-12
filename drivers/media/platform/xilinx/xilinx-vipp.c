@@ -295,23 +295,31 @@ static int xvip_entity_start_stop(struct xvip_composite_device *xdev,
 }
 
 /**
- * xvip_graph_entity_dependencies_ready - Check if all dependencies are ready
+ * xvip_graph_entity_start_stop - start / stop the graph entity
  * @xdev: composite device
  * @entity: entity to check
  * @on: boolean flag. true for enable and false for disable
  *
  * Check if all immediate dependencies are ready dependeing on 'on' flag.
- * If enabling, check all source pads. Sink pads for disabling.
+ * If enabling, check all source pads. Sink pads for disabling. Once all
+ * dependencies are ready, set the streaming state on the entity. If the state
+ * is already set, optimize it by skipping checks.
  *
- * Return: true if all dependecies are ready. false otherwise.
+ * Return: true if all dependecies are ready and there's a state change.
+ * false otherwise.
  */
-static bool
-xvip_graph_entity_dependencies_ready(struct xvip_composite_device *xdev,
-				     struct xvip_graph_entity *entity,
-				     bool on)
+static bool xvip_graph_entity_start_stop(struct xvip_composite_device *xdev,
+					 struct xvip_graph_entity *entity,
+					 bool on)
 {
 	unsigned long pad_flag = on ? MEDIA_PAD_FL_SOURCE : MEDIA_PAD_FL_SINK;
 	unsigned int i;
+	struct v4l2_subdev *subdev;
+	bool state;
+	int ret;
+
+	if (entity->streaming == on)
+		return false;
 
 	for (i = 0; i < entity->entity->num_pads; i++) {
 		struct xvip_graph_entity *remote;
@@ -338,6 +346,22 @@ xvip_graph_entity_dependencies_ready(struct xvip_composite_device *xdev,
 			return false;
 	}
 
+	/* set state and report if state is changed or not */
+	subdev = media_entity_to_v4l2_subdev(entity->entity);
+	state = xvip_subdev_set_streaming(xdev, subdev, on);
+	/* This shouldn't happen as check is already above */
+	if (state == on) {
+		WARN(1, "Should never get here\n");
+		return false;
+	}
+
+	ret = xvip_entity_start_stop(xdev, entity->entity, on);
+	if (ret < 0) {
+		dev_err(xdev->dev, "ret = %d for entity %s\n",
+			ret, entity->entity->name);
+		return false;
+	}
+
 	return true;
 }
 
@@ -355,39 +379,24 @@ int xvip_graph_start_stop(struct xvip_composite_device *xdev, bool on)
 {
 	struct v4l2_async_subdev *asd;
 	bool updated = true;
-	int ret = 0;
 
 	while (updated) {
 		updated = false;
 		list_for_each_entry(asd, &xdev->notifier.asd_list, asd_list) {
 			struct xvip_graph_entity *entity;
-			struct v4l2_subdev *subdev;
 			bool state;
 
 			entity = to_xvip_entity(asd);
 
-			state = xvip_graph_entity_dependencies_ready(xdev,
-								     entity,
-								     on);
+			state = xvip_graph_entity_start_stop(xdev, entity, on);
 			if (!state)
 				continue;
 
-			subdev = media_entity_to_v4l2_subdev(entity->entity);
-			state = xvip_subdev_set_streaming(xdev, subdev, on);
-			if (state == on)
-				continue;
-
-			ret = xvip_entity_start_stop(xdev, entity->entity, on);
-			if (ret < 0) {
-				dev_err(xdev->dev, "ret = %d for entity %s\n",
-					ret, entity->entity->name);
-				break;
-			}
 			updated = true;
 		}
 	}
 
-	return ret;
+	return 0;
 }
 
 static int xvip_graph_build_dma(struct xvip_composite_device *xdev)
