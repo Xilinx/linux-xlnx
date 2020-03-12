@@ -209,35 +209,23 @@ xvip_graph_find_dma(struct xvip_composite_device *xdev, unsigned int port)
 }
 
 /**
- * xvip_subdev_set_streaming - Find and update streaming status of subdev
+ * xvip_graph_entity_set_streaming - Update the streaming status
  * @xdev: Composite video device
- * @subdev: V4L2 sub-device
+ * @entity: graph entity to update
  * @enable: enable/disable streaming status
  *
- * Walk the xvip graph entities list and find if subdev is present. Returns
- * streaming status of subdev and update the status as requested
+ * Update the streaming status of given entity.
  *
- * Return: streaming status (true or false) if successful or warn_on if subdev
- * is not present and return false
+ * Return: previous streaming status (true or false)
  */
-static bool xvip_subdev_set_streaming(struct xvip_composite_device *xdev,
-				      struct v4l2_subdev *subdev, bool enable)
+static bool xvip_graph_entity_set_streaming(struct xvip_composite_device *xdev,
+					    struct xvip_graph_entity *entity,
+					    bool enable)
 {
-	struct xvip_graph_entity *entity;
-	struct v4l2_async_subdev *asd;
+	bool status = entity->streaming;
 
-	list_for_each_entry(asd, &xdev->notifier.asd_list, asd_list) {
-		entity = to_xvip_entity(asd);
-		if (entity->asd.match.fwnode == subdev->fwnode) {
-			bool status = entity->streaming;
-
-			entity->streaming = enable;
-			return status;
-		}
-	}
-
-	WARN(1, "Should never get here\n");
-	return false;
+	entity->streaming = enable;
+	return status;
 }
 
 static int
@@ -261,7 +249,7 @@ xvip_graph_entity_start_stop_subdev(struct xvip_composite_device *xdev,
 		if (ret < 0 && ret != -ENOIOCTLCMD) {
 			dev_err(xdev->dev,
 				"s_power on failed on subdev\n");
-			xvip_subdev_set_streaming(xdev, subdev, 0);
+			xvip_graph_entity_set_streaming(xdev, entity, 0);
 			return ret;
 		}
 
@@ -271,7 +259,7 @@ xvip_graph_entity_start_stop_subdev(struct xvip_composite_device *xdev,
 			dev_err(xdev->dev,
 				"s_stream on failed on subdev\n");
 			v4l2_subdev_call(subdev, core, s_power, 0);
-			xvip_subdev_set_streaming(xdev, subdev, 0);
+			xvip_graph_entity_set_streaming(xdev, entity, 0);
 		}
 	} else {
 		/* stream-off subdevice */
@@ -279,7 +267,7 @@ xvip_graph_entity_start_stop_subdev(struct xvip_composite_device *xdev,
 		if (ret < 0 && ret != -ENOIOCTLCMD) {
 			dev_err(xdev->dev,
 				"s_stream off failed on subdev\n");
-			xvip_subdev_set_streaming(xdev, subdev, 1);
+			xvip_graph_entity_set_streaming(xdev, entity, 1);
 		}
 
 		/* power-off subdevice */
@@ -351,7 +339,7 @@ static bool xvip_graph_entity_start_stop(struct xvip_composite_device *xdev,
 
 	/* set state and report if state is changed or not */
 	subdev = media_entity_to_v4l2_subdev(entity->entity);
-	state = xvip_subdev_set_streaming(xdev, subdev, on);
+	state = xvip_graph_entity_set_streaming(xdev, entity, on);
 	/* This shouldn't happen as check is already above */
 	if (state == on) {
 		WARN(1, "Should never get here\n");
