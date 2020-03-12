@@ -240,15 +240,16 @@ static bool xvip_subdev_set_streaming(struct xvip_composite_device *xdev,
 	return false;
 }
 
-static int xvip_entity_start_stop(struct xvip_composite_device *xdev,
-				  struct media_entity *entity, bool on)
+static int
+xvip_graph_entity_start_stop_subdev(struct xvip_composite_device *xdev,
+				    struct xvip_graph_entity *entity, bool on)
 {
 	struct v4l2_subdev *subdev;
 	int ret = 0;
 
 	dev_dbg(xdev->dev, "%s entity %s\n",
-		on ? "Starting" : "Stopping", entity->name);
-	subdev = media_entity_to_v4l2_subdev(entity);
+		on ? "Starting" : "Stopping", entity->entity->name);
+	subdev = media_entity_to_v4l2_subdev(entity->entity);
 
 	/*
 	 * start or stop the subdev only once in case if they are
@@ -357,7 +358,7 @@ static bool xvip_graph_entity_start_stop(struct xvip_composite_device *xdev,
 		return true;
 	}
 
-	ret = xvip_entity_start_stop(xdev, entity->entity, on);
+	ret = xvip_graph_entity_start_stop_subdev(xdev, entity, on);
 	if (ret < 0) {
 		dev_err(xdev->dev, "ret = %d for entity %s\n",
 			ret, entity->entity->name);
