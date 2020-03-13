@@ -660,7 +660,8 @@ static int xiic_busy(struct xiic_i2c *i2c)
 
 static void xiic_start_recv(struct xiic_i2c *i2c)
 {
-	u8 rx_watermark, cr = 0, rfd_set = 0;
+	u16 rx_watermark;
+	u8 cr = 0, rfd_set = 0;
 	struct i2c_msg *msg = i2c->rx_msg = i2c->tx_msg;
 	unsigned long flags;
 
