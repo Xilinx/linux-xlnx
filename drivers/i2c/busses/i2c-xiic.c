@@ -61,6 +61,7 @@ enum xiic_endian {
  * @clk:	Pointer to struct clk
  * @dynamic: Mode of controller
  * @repeated_start: Repeated start operation
+ * @prev_msg_tx: Previous message is Tx
  */
 struct xiic_i2c {
 	struct device		*dev;
@@ -78,6 +79,7 @@ struct xiic_i2c {
 	struct clk *clk;
 	bool dynamic;
 	bool repeated_start;
+	bool prev_msg_tx;
 };
 
 #define XIIC_MSB_OFFSET 0
@@ -270,6 +272,24 @@ static int xiic_clear_rx_fifo(struct xiic_i2c *i2c)
 		xiic_getreg8(i2c, XIIC_DRR_REG_OFFSET);
 		if (time_after(jiffies, timeout)) {
 			dev_err(i2c->dev, "Failed to clear rx fifo\n");
+			return -ETIMEDOUT;
+		}
+	}
+
+	return 0;
+}
+
+static int xiic_wait_tx_empty(struct xiic_i2c *i2c)
+{
+	u8 isr;
+	unsigned long timeout;
+
+	timeout = jiffies + XIIC_I2C_TIMEOUT;
+	for (isr = xiic_getreg32(i2c, XIIC_IISR_OFFSET);
+			!(isr & XIIC_INTR_TX_EMPTY_MASK);
+			isr = xiic_getreg32(i2c, XIIC_IISR_OFFSET)) {
+		if (time_after(jiffies, timeout)) {
+			dev_err(i2c->dev, "Timeout waiting at Tx empty\n");
 			return -ETIMEDOUT;
 		}
 	}
@@ -699,6 +719,20 @@ static void xiic_start_recv(struct xiic_i2c *i2c)
 		xiic_setreg16(i2c, XIIC_DTR_REG_OFFSET, val);
 		local_irq_restore(flags);
 	} else {
+		/*
+		 * If previous message is Tx, make sure that Tx FIFO is empty
+		 * before starting a new transfer as the repeated start in
+		 * standard mode can corrupt the transaction if there are
+		 * still bytes to be transmitted in FIFO
+		 */
+		if (i2c->prev_msg_tx) {
+			int status;
+
+			status = xiic_wait_tx_empty(i2c);
+			if (status)
+				return;
+		}
+
 		cr = xiic_getreg8(i2c, XIIC_CR_REG_OFFSET);
 
 		/* Set Receive fifo depth */
@@ -754,6 +788,8 @@ static void xiic_start_recv(struct xiic_i2c *i2c)
 
 	/* Enable interrupts */
 	xiic_setreg32(i2c, XIIC_DGIER_OFFSET, XIIC_GINTR_ENABLE_MASK);
+
+	i2c->prev_msg_tx = false;
 }
 
 static void xiic_start_send(struct xiic_i2c *i2c)
@@ -790,6 +826,20 @@ static void xiic_start_send(struct xiic_i2c *i2c)
 				      XIIC_INTR_TX_ERROR_MASK |
 				      XIIC_INTR_BNB_MASK));
 	} else {
+		/*
+		 * If previous message is Tx, make sure that Tx FIFO is empty
+		 * before starting a new transfer as the repeated start in
+		 * standard mode can corrupt the transaction if there are
+		 * still bytes to be transmitted in FIFO
+		 */
+		if (i2c->prev_msg_tx) {
+			int status;
+
+			status = xiic_wait_tx_empty(i2c);
+			if (status)
+				return;
+		}
+
 		/* Check if RSTA should be set */
 		cr = xiic_getreg8(i2c, XIIC_CR_REG_OFFSET);
 		if (cr & XIIC_CR_MSMS_MASK) {
@@ -822,6 +872,7 @@ static void xiic_start_send(struct xiic_i2c *i2c)
 				XIIC_INTR_TX_ERROR_MASK |
 				XIIC_INTR_BNB_MASK);
 	}
+	i2c->prev_msg_tx = true;
 }
 
 static irqreturn_t xiic_isr(int irq, void *dev_id)
@@ -925,6 +976,9 @@ static int xiic_xfer(struct i2c_adapter *adap, struct i2c_msg *msgs, int num)
 
 	/* Decide standard mode or Dynamic mode */
 	i2c->dynamic = true;
+
+	/* Initialize prev message type */
+	i2c->prev_msg_tx = false;
 
 	/* Enter standard mode only when read length is > 255 bytes */
 	for (count = 0; count < i2c->nmsgs; count++) {
