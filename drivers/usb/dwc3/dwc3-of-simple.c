@@ -25,6 +25,14 @@
 #include <linux/phy/phy-zynqmp.h>
 
 #include "core.h"
+#include "io.h"
+
+/* ULPI control registers */
+#define ULPI_OTG_CTRL_SET		0xB
+#define ULPI_OTG_CTRL_CLEAR		0XC
+#define OTG_CTRL_DRVVBUS_OFFSET		5
+
+#define DWC3_OF_ADDRESS(ADDR)		((ADDR) - DWC3_GLOBALS_REGS_START)
 
 struct dwc3_of_simple {
 	struct device		*dev;
@@ -39,6 +47,24 @@ struct dwc3_of_simple {
 	bool			pulse_resets;
 	bool			need_reset;
 };
+
+void dwc3_set_simple_data(struct dwc3 *dwc)
+{
+	struct device_node *node = of_get_parent(dwc->dev->of_node);
+
+	if (node && (of_device_is_compatible(node, "xlnx,zynqmp-dwc3") ||
+		     of_device_is_compatible(node, "xlnx,versal-dwc3")))  {
+		struct platform_device *pdev_parent;
+		struct dwc3_of_simple   *simple;
+
+		pdev_parent = of_find_device_by_node(node);
+		simple = platform_get_drvdata(pdev_parent);
+
+		/* Set (struct dwc3 *) to simple->dwc for future use */
+		simple->dwc =  dwc;
+	}
+}
+EXPORT_SYMBOL(dwc3_set_simple_data);
 
 void dwc3_simple_wakeup_capable(struct device *dev, bool wakeup)
 {
@@ -201,6 +227,28 @@ static int dwc3_of_simple_remove(struct platform_device *pdev)
 	return 0;
 }
 
+#ifdef CONFIG_PM
+
+static void dwc3_simple_vbus(struct dwc3 *dwc, bool vbus_off)
+{
+	u32 reg, addr;
+	u8  val;
+
+	if (vbus_off)
+		addr = ULPI_OTG_CTRL_CLEAR;
+	else
+		addr = ULPI_OTG_CTRL_SET;
+
+	val = (1 << OTG_CTRL_DRVVBUS_OFFSET);
+
+	reg = DWC3_GUSB2PHYACC_NEWREGREQ | DWC3_GUSB2PHYACC_ADDR(addr);
+	reg |= DWC3_GUSB2PHYACC_WRITE | val;
+	addr = DWC3_OF_ADDRESS(DWC3_GUSB2PHYACC(0));
+	writel(reg, dwc->regs + addr);
+}
+
+#endif
+
 static int __maybe_unused dwc3_of_simple_runtime_suspend(struct device *dev)
 {
 	struct dwc3_of_simple	*simple = dev_get_drvdata(dev);
@@ -221,6 +269,9 @@ static int __maybe_unused dwc3_of_simple_suspend(struct device *dev)
 {
 	struct dwc3_of_simple *simple = dev_get_drvdata(dev);
 
+	/* Ask ULPI to turn OFF Vbus */
+	dwc3_simple_vbus(simple->dwc, true);
+
 	if (simple->need_reset)
 		reset_control_assert(simple->resets);
 
@@ -236,6 +287,9 @@ static int __maybe_unused dwc3_of_simple_resume(struct device *dev)
 
 	if (simple->need_reset)
 		reset_control_deassert(simple->resets);
+
+	/* Ask ULPI to turn ON Vbus */
+	dwc3_simple_vbus(simple->dwc, false);
 
 	return 0;
 }

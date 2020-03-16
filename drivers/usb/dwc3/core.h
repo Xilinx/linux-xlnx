@@ -1414,8 +1414,11 @@ static inline bool dwc3_is_usb31(struct dwc3 *dwc)
 
 #if IS_ENABLED(CONFIG_USB_DWC3_OF_SIMPLE)
 void dwc3_simple_wakeup_capable(struct device *dev, bool wakeup);
+void dwc3_set_simple_data(struct dwc3 *dwc);
 #else
 void dwc3_simple_wakeup_capable(struct device *dev, bool wakeup)
+{ ; }
+void dwc3_set_simple_data(struct dwc3 *dwc)
 { ; }
 #endif
 
