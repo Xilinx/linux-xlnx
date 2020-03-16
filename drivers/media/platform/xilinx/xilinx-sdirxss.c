@@ -301,9 +301,13 @@ struct xsdirxss_core {
  * @frame_interval: Captures the frame rate
  * @vip_format: format information corresponding to the active format
  * @pad: source media pad
+ * @vidlockwin: Video lock window value set by control
+ * @edhmask: EDH mask set by control
+ * @searchmask: Search mask set by control
  * @streaming: Flag for storing streaming state
  * @vidlocked: Flag indicating SDI Rx has locked onto video stream
  * @ts_is_interlaced: Flag indicating Transport Stream is interlaced.
+ * @framer_enable: Flag for framer enabled or not set by control
  *
  * This structure contains the device driver related parameters
  */
@@ -317,9 +321,13 @@ struct xsdirxss_state {
 	struct v4l2_fract frame_interval;
 	const struct xvip_video_format *vip_format;
 	struct media_pad pad;
+	u32 vidlockwin;
+	u32 edhmask;
+	u16 searchmask;
 	bool streaming;
 	bool vidlocked;
 	bool ts_is_interlaced;
+	bool framer_enable;
 };
 
 /* List of clocks required by UHD-SDI Rx subsystem */
@@ -633,45 +641,6 @@ static inline void xsdirx_core_enable(struct xsdirxss_core *core)
 	xsdirxss_set(core, XSDIRX_RST_CTRL_REG, XSDIRX_RST_CTRL_SS_EN_MASK);
 }
 
-static void xsdirxss_set_gtclk(struct xsdirxss_state *state)
-{
-	struct clk *gtclk;
-	unsigned long clkrate;
-	int ret = -1, is_frac;
-	struct xsdirxss_core *core = &state->core;
-	u32 mode;
-
-	mode = xsdirxss_read(core, XSDIRX_MODE_DET_STAT_REG);
-	mode &= XSDIRX_MODE_DET_STAT_RX_MODE_MASK;
-
-	/*
-	 * TODO: For now, don't change the clock rate for any mode except 12G.
-	 * In future, configure gt clock for all modes and enable clock only
-	 * when needed (stream on/off).
-	 */
-	if (mode != XSDIRX_MODE_12GI_MASK && mode != XSDIRX_MODE_12GF_MASK)
-		return;
-
-	/* get sdi_rx_clk */
-	gtclk = core->clks[1].clk;
-	clkrate = clk_get_rate(gtclk);
-	is_frac = state->frame_interval.numerator == 1001 ? 1 : 0;
-
-	/* calcualte clkrate */
-	if (!is_frac)
-		clkrate = CLK_INT;
-	else
-		clkrate = (CLK_INT * 1000) / 1001;
-
-	ret = clk_set_rate(gtclk, clkrate);
-	if (ret)
-		dev_err(core->dev, "failed to set clk rate = %d\n", ret);
-
-	clkrate = clk_get_rate(gtclk);
-
-	dev_dbg(core->dev, "clkrate = %lu is_frac = %d\n",
-		clkrate, is_frac);
-}
 
 static int xsdirx_set_modedetect(struct xsdirxss_core *core, u16 mask)
 {
@@ -901,6 +870,57 @@ static void xsdirxss_get_framerate(struct v4l2_fract *frame_interval,
 	}
 }
 
+static void xsdirxss_set_gtclk(struct xsdirxss_state *state)
+{
+	struct clk *gtclk;
+	unsigned long clkrate;
+	int ret, is_frac;
+	struct xsdirxss_core *core = &state->core;
+	u32 mode;
+
+	mode = xsdirxss_read(core, XSDIRX_MODE_DET_STAT_REG);
+	mode &= XSDIRX_MODE_DET_STAT_RX_MODE_MASK;
+
+	/*
+	 * TODO: For now, don't change the clock rate for any mode except 12G.
+	 * In future, configure gt clock for all modes and enable clock only
+	 * when needed (stream on/off).
+	 */
+	if (mode != XSDIRX_MODE_12GI_MASK && mode != XSDIRX_MODE_12GF_MASK)
+		return;
+
+	xsdirx_core_disable(core);
+	xsdirx_globalintr(core, false);
+	xsdirx_disableintr(core, XSDIRX_INTR_ALL_MASK);
+
+	/* get sdi_rx_clk */
+	gtclk = core->clks[1].clk;
+	clkrate = clk_get_rate(gtclk);
+	is_frac = state->frame_interval.numerator == 1001 ? 1 : 0;
+
+	/* calcualte clkrate */
+	if (!is_frac)
+		clkrate = CLK_INT;
+	else
+		clkrate = (CLK_INT * 1000) / 1001;
+
+	ret = clk_set_rate(gtclk, clkrate);
+	if (ret)
+		dev_err(core->dev, "failed to set clk rate = %d\n", ret);
+
+	clkrate = clk_get_rate(gtclk);
+
+	dev_dbg(core->dev, "clkrate = %lu is_frac = %d\n",
+		clkrate, is_frac);
+
+	xsdirx_framer(core, state->framer_enable);
+	xsdirx_setedherrcnttrigger(core, state->edhmask);
+	xsdirx_setvidlockwindow(core, state->vidlockwin);
+	xsdirx_set_modedetect(core, state->searchmask);
+	xsdirx_enableintr(core, XSDIRX_INTR_ALL_MASK);
+	xsdirx_globalintr(core, true);
+	xsdirx_core_enable(core);
+}
 /**
  * xsdirx_get_stream_properties - Get SDI Rx stream properties
  * @state: pointer to driver state
@@ -1324,12 +1344,15 @@ static int xsdirxss_s_ctrl(struct v4l2_ctrl *ctrl)
 	switch (ctrl->id) {
 	case V4L2_CID_XILINX_SDIRX_FRAMER:
 		xsdirx_framer(core, ctrl->val);
+		xsdirxss->framer_enable = ctrl->val;
 		break;
 	case V4L2_CID_XILINX_SDIRX_VIDLOCK_WINDOW:
 		xsdirx_setvidlockwindow(core, ctrl->val);
+		xsdirxss->vidlockwin = ctrl->val;
 		break;
 	case V4L2_CID_XILINX_SDIRX_EDH_ERRCNT_ENABLE:
 		xsdirx_setedherrcnttrigger(core, ctrl->val);
+		xsdirxss->edhmask = ctrl->val;
 		break;
 	case V4L2_CID_XILINX_SDIRX_SEARCH_MODES:
 		if (ctrl->val) {
@@ -1347,6 +1370,8 @@ static int xsdirxss_s_ctrl(struct v4l2_ctrl *ctrl)
 			}
 
 			ret = xsdirx_set_modedetect(core, ctrl->val);
+			if (!ret)
+				xsdirxss->searchmask = ctrl->val;
 		} else {
 			dev_err(core->dev, "Select at least one mode!\n");
 			return -EINVAL;
