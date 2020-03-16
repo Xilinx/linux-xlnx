@@ -39,6 +39,8 @@ Optional properties:
 
 - reset_gt-gpios: contains GPIO reset phandle for FMC init done pin in GT.
   This pin is active low.
+- xlnx,bpp: This denotes the bit depth as 10 or 12 based on IP configuration.
+  The default value is 10 for backward compatibility.
 
 Example:
 		v_smpte_uhdsdi_rx_ss: v_smpte_uhdsdi_rx_ss@80000000 {
