@@ -279,6 +279,7 @@ enum sdi_family_enc {
  * @mode: 3G/6G/12G mode
  * @clks: array of clocks
  * @num_clks: number of clocks
+ * @rst_gt_gpio: reset gt gpio (fmc init done)
  */
 struct xsdirxss_core {
 	struct device *dev;
@@ -288,6 +289,7 @@ struct xsdirxss_core {
 	int mode;
 	struct clk_bulk_data *clks;
 	int num_clks;
+	struct gpio_desc *rst_gt_gpio;
 };
 
 /**
@@ -641,6 +643,12 @@ static inline void xsdirx_core_enable(struct xsdirxss_core *core)
 	xsdirxss_set(core, XSDIRX_RST_CTRL_REG, XSDIRX_RST_CTRL_SS_EN_MASK);
 }
 
+static void xsdirxss_gt_reset(struct xsdirxss_core *core)
+{
+	gpiod_set_value(core->rst_gt_gpio, 0x1);
+	udelay(1);
+	gpiod_set_value(core->rst_gt_gpio, 0x0);
+}
 
 static int xsdirx_set_modedetect(struct xsdirxss_core *core, u16 mask)
 {
@@ -2064,6 +2072,15 @@ static int xsdirxss_probe(struct platform_device *pdev)
 	xsdirxss->core.dev = &pdev->dev;
 	core = &xsdirxss->core;
 
+	core->rst_gt_gpio = devm_gpiod_get_optional(&pdev->dev, "reset_gt",
+						    GPIOD_OUT_HIGH);
+	if (IS_ERR(core->rst_gt_gpio)) {
+		ret = PTR_ERR(core->rst_gt_gpio);
+		if (ret != -EPROBE_DEFER)
+			dev_err(&pdev->dev, "Reset GT GPIO not setup in DT\n");
+		return ret;
+	}
+
 	core->num_clks = ARRAY_SIZE(xsdirxss_clks);
 	core->clks = devm_kcalloc(&pdev->dev, core->num_clks,
 				  sizeof(*core->clks), GFP_KERNEL);
@@ -2199,6 +2216,7 @@ static int xsdirxss_probe(struct platform_device *pdev)
 	xsdirxss->streaming = false;
 
 	xsdirx_core_enable(core);
+	xsdirxss_gt_reset(core);
 
 	dev_info(xsdirxss->core.dev, "Xilinx SDI Rx Subsystem device found!\n");
 
