@@ -1192,6 +1192,21 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 			format->field = V4L2_FIELD_NONE;
 		else
 			format->field = V4L2_FIELD_ALTERNATE;
+
+		if (format->height == 1080 && pic_type && !tscan)
+			format->field = V4L2_FIELD_ALTERNATE;
+
+		/*
+		 * In 3GB DL pSF mode the video is similar to interlaced.
+		 * So though it is a progressive video, its transport is
+		 * interlaced and is sent as two width x (height/2) buffers.
+		 */
+		if (byte1 == XST352_BYTE1_ST372_DL_3GB) {
+			if (state->ts_is_interlaced)
+				format->field = V4L2_FIELD_ALTERNATE;
+			else
+				format->field = V4L2_FIELD_NONE;
+		}
 	}
 
 	if (format->field == V4L2_FIELD_ALTERNATE)
