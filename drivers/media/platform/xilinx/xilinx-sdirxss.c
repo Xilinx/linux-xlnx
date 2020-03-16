@@ -247,6 +247,12 @@
 #define XST352_BYTE3_COLOR_FORMAT_422		0x0
 #define XST352_BYTE3_COLOR_FORMAT_YUV444	0x1
 #define XST352_BYTE3_COLOR_FORMAT_420		0x3
+#define XST352_BYTE3_COLOR_FORMAT_GBR		0x2
+
+#define XST352_BYTE4_BIT_DEPTH_MASK		GENMASK(25, 24)
+#define XST352_BYTE4_BIT_DEPTH_OFFSET		24
+#define XST352_BYTE4_BIT_DEPTH_10		0x1
+#define XST352_BYTE4_BIT_DEPTH_12		0x2
 
 #define CLK_INT		148500000UL
 
@@ -280,6 +286,7 @@ enum sdi_family_enc {
  * @clks: array of clocks
  * @num_clks: number of clocks
  * @rst_gt_gpio: reset gt gpio (fmc init done)
+ * @bpc: Bits per component, can be 10 or 12
  */
 struct xsdirxss_core {
 	struct device *dev;
@@ -290,6 +297,7 @@ struct xsdirxss_core {
 	struct clk_bulk_data *clks;
 	int num_clks;
 	struct gpio_desc *rst_gt_gpio;
+	u32 bpc;
 };
 
 /**
@@ -337,9 +345,18 @@ static const char * const xsdirxss_clks[] = {
 	"s_axi_aclk", "sdi_rx_clk", "video_out_clk",
 };
 
-static const u32 xsdirxss_mbus_fmts[] = {
+static const u32 xsdirxss_10bpc_mbus_fmts[] = {
 	MEDIA_BUS_FMT_UYVY10_1X20,
 	MEDIA_BUS_FMT_VYYUYY10_4X20,
+	MEDIA_BUS_FMT_VUY10_1X30,
+	MEDIA_BUS_FMT_RBG101010_1X30,
+};
+
+static const u32 xsdirxss_12bpc_mbus_fmts[] = {
+	MEDIA_BUS_FMT_UYVY12_1X24,
+	MEDIA_BUS_FMT_UYYVYY12_4X24,
+	MEDIA_BUS_FMT_VUY12_1X36,
+	MEDIA_BUS_FMT_RBG121212_1X36,
 };
 
 #define XLNX_V4L2_DV_BT_2048X1080P24 { \
@@ -795,7 +812,10 @@ static void xsdirx_vid_bridge_control(struct xsdirxss_core *core,
 		container_of(core, struct xsdirxss_state, core);
 	u32 mask = XSDIRX_RST_CTRL_SDIRX_BRIDGE_ENB_MASK;
 
-	if (state->format.code == MEDIA_BUS_FMT_VUY10_1X30)
+	if (state->format.code == MEDIA_BUS_FMT_VUY10_1X30 ||
+	    state->format.code == MEDIA_BUS_FMT_RBG101010_1X30 ||
+	    state->format.code == MEDIA_BUS_FMT_RBG121212_1X36 ||
+	    state->format.code == MEDIA_BUS_FMT_VUY12_1X36)
 		mask |= (XSDIRX_RST_CTRL_BRIDGE_CH_FMT_YUV444 <<
 			 XSDIRX_RST_CTRL_BRIDGE_CH_FMT_OFFSET);
 
@@ -946,6 +966,7 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 	u8 byte1 = 0, active_luma = 0, pic_type = 0, framerate = 0;
 	u8 sampling = XST352_BYTE3_COLOR_FORMAT_422;
 	struct v4l2_mbus_framefmt *format = &state->format;
+	u32 bpc = XST352_BYTE4_BIT_DEPTH_10;
 
 	mode = xsdirxss_read(core, XSDIRX_MODE_DET_STAT_REG);
 	mode &= XSDIRX_MODE_DET_STAT_RX_MODE_MASK;
@@ -972,6 +993,8 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 				XST352_BYTE2_TS_TYPE_OFFSET;
 		sampling = (payload & XST352_BYTE3_COLOR_FORMAT_MASK) >>
 			   XST352_BYTE3_COLOR_FORMAT_OFFSET;
+		bpc = (payload & XST352_BYTE4_BIT_DEPTH_MASK) >>
+			XST352_BYTE4_BIT_DEPTH_OFFSET;
 	} else {
 		dev_dbg(core->dev, "No ST352 payload available : Mode = %d\n",
 			mode);
@@ -979,6 +1002,13 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 				XSDIRX_TS_DET_STAT_RATE_OFFSET;
 		tscan = (val & XSDIRX_TS_DET_STAT_SCAN_MASK) >>
 				XSDIRX_TS_DET_STAT_SCAN_OFFSET;
+	}
+
+	if ((bpc == XST352_BYTE4_BIT_DEPTH_10 && core->bpc != 10) ||
+	    (bpc == XST352_BYTE4_BIT_DEPTH_12 && core->bpc != 12)) {
+		dev_dbg(core->dev, "Bit depth not supported. bpc = %d core->bpc = %d\n",
+			bpc, core->bpc);
+		return -EINVAL;
 	}
 
 	family = (val & XSDIRX_TS_DET_STAT_FAMILY_MASK) >>
@@ -1161,13 +1191,28 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 
 	switch (sampling) {
 	case XST352_BYTE3_COLOR_FORMAT_420:
-		format->code = MEDIA_BUS_FMT_VYYUYY10_4X20;
+		if (core->bpc == 10)
+			format->code = MEDIA_BUS_FMT_VYYUYY10_4X20;
+		else
+			format->code = MEDIA_BUS_FMT_UYYVYY12_4X24;
 		break;
 	case XST352_BYTE3_COLOR_FORMAT_422:
-		format->code = MEDIA_BUS_FMT_UYVY10_1X20;
+		if (core->bpc == 10)
+			format->code = MEDIA_BUS_FMT_UYVY10_1X20;
+		else
+			format->code = MEDIA_BUS_FMT_UYVY12_1X24;
 		break;
 	case XST352_BYTE3_COLOR_FORMAT_YUV444:
-		format->code = MEDIA_BUS_FMT_VUY10_1X30;
+		if (core->bpc == 10)
+			format->code = MEDIA_BUS_FMT_VUY10_1X30;
+		else
+			format->code = MEDIA_BUS_FMT_VUY12_1X36;
+		break;
+	case XST352_BYTE3_COLOR_FORMAT_GBR:
+		if (core->bpc == 10)
+			format->code = MEDIA_BUS_FMT_RBG101010_1X30;
+		else
+			format->code = MEDIA_BUS_FMT_RBG121212_1X36;
 		break;
 	default:
 		dev_err(core->dev, "Unsupported color format : %d\n", sampling);
@@ -1713,10 +1758,16 @@ static int xsdirxss_enum_mbus_code(struct v4l2_subdev *sd,
 				   struct v4l2_subdev_pad_config *cfg,
 				   struct v4l2_subdev_mbus_code_enum *code)
 {
-	if (code->pad || code->index >= ARRAY_SIZE(xsdirxss_mbus_fmts))
+	struct xsdirxss_state *xsdirxss = to_xsdirxssstate(sd);
+	u32 index = code->index;
+
+	if (code->pad || index >= 4)
 		return -EINVAL;
 
-	code->code = xsdirxss_mbus_fmts[code->index];
+	if (xsdirxss->core.bpc == 12)
+		code->code = xsdirxss_12bpc_mbus_fmts[index];
+	else
+		code->code = xsdirxss_10bpc_mbus_fmts[index];
 
 	return 0;
 }
@@ -1999,6 +2050,26 @@ static int xsdirxss_parse_of(struct xsdirxss_state *xsdirxss)
 	dev_dbg(core->dev, "SDI Rx Line Rate = %s, mode = %d\n", sdi_std,
 		core->mode);
 
+	ret = of_property_read_u32(node, "xlnx,bpp", &core->bpc);
+	if (ret < 0) {
+		if (ret != -EINVAL) {
+			dev_err(core->dev, "failed to get xlnx,bpp\n");
+			return ret;
+		}
+
+		/*
+		 * For backward compatibility, set default bpc as 10
+		 * in case xlnx,bpp is not present.
+		 */
+		core->bpc = 10;
+	}
+
+	if (core->bpc != 10 && core->bpc != 12) {
+		dev_err(core->dev, "bits per component=%u. Can be 10 or 12 only\n",
+			core->bpc);
+		return -EINVAL;
+	}
+
 	ports = of_get_child_by_name(node, "ports");
 	if (!ports)
 		ports = node;
@@ -2020,7 +2091,11 @@ static int xsdirxss_parse_of(struct xsdirxss_state *xsdirxss)
 			format->vf_code, format->width, format->bpp);
 
 		if (format->vf_code != XVIP_VF_YUV_422 &&
-		    format->vf_code != XVIP_VF_YUV_420 && format->width != 10) {
+		    format->vf_code != XVIP_VF_YUV_420 &&
+		    format->vf_code != XVIP_VF_YUV_444 &&
+		    format->vf_code != XVIP_VF_RBG &&
+		    (core->bpc == 10 && format->width != 10) &&
+		    (core->bpc == 12 && format->width != 12)) {
 			dev_err(core->dev,
 				"Incorrect UG934 video format set.\n");
 			return -EINVAL;
