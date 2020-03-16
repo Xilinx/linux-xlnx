@@ -35,6 +35,11 @@ Required properties:
   video.txt. Please note that the video format is fixed to either YUV422 or YUV420
   and the video-width is 10.
 
+Optional properties:
+
+- reset_gt-gpios: contains GPIO reset phandle for FMC init done pin in GT.
+  This pin is active low.
+
 Example:
 		v_smpte_uhdsdi_rx_ss: v_smpte_uhdsdi_rx_ss@80000000 {
 			compatible = "xlnx,v-smpte-uhdsdi-rx-ss";
@@ -47,6 +52,7 @@ Example:
 			xlnx,line-rate = "12G_SDI_8DS";
 			clocks = <&clk_1>, <&si570_1>, <&clk_2>;
 			clock-names = "s_axi_aclk", "sdi_rx_clk", "video_out_clk";
+			reset_gt-gpios = <&axi_gpio_0 0 0 GPIO_ACTIVE_LOW>;
 
 			ports {
 				#address-cells = <1>;
