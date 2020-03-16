@@ -25,6 +25,7 @@
 #include <linux/of.h>
 #include <linux/acpi.h>
 #include <linux/pinctrl/consumer.h>
+#include <linux/of_address.h>
 #include <linux/reset.h>
 
 #include <linux/usb/ch9.h>
@@ -540,6 +541,45 @@ static void dwc3_cache_hwparams(struct dwc3 *dwc)
 	parms->hwparams8 = dwc3_readl(dwc->regs, DWC3_GHWPARAMS8);
 }
 
+static int dwc3_config_soc_bus(struct dwc3 *dwc)
+{
+	int ret;
+
+	/*
+	 * Check if CCI is enabled for USB. Returns true
+	 * if the node has property 'dma-coherent'. Otherwise
+	 * returns false.
+	 */
+	if (of_dma_is_coherent(dwc->dev->of_node)) {
+		u32 reg;
+
+		reg = dwc3_readl(dwc->regs, DWC3_GSBUSCFG0);
+		reg |= DWC3_GSBUSCFG0_DATRDREQINFO |
+			DWC3_GSBUSCFG0_DESRDREQINFO |
+			DWC3_GSBUSCFG0_DATWRREQINFO |
+			DWC3_GSBUSCFG0_DESWRREQINFO;
+		dwc3_writel(dwc->regs, DWC3_GSBUSCFG0, reg);
+	}
+
+	/*
+	 * This routes the usb dma traffic to go through CCI path instead
+	 * of reaching DDR directly. This traffic routing is needed to
+	 * to make SMMU and CCI work with USB dma.
+	 */
+	if (of_dma_is_coherent(dwc->dev->of_node) || dwc->dev->iommu_group) {
+		ret = dwc3_enable_hw_coherency(dwc->dev);
+		if (ret)
+			return ret;
+	}
+
+	/* Send struct dwc3 to dwc3-of-simple for configuring VBUS
+	 * during suspend/resume
+	 */
+	dwc3_set_simple_data(dwc);
+
+	return 0;
+}
+
 static int dwc3_core_ulpi_init(struct dwc3 *dwc)
 {
 	int intf;
@@ -962,6 +1002,10 @@ static int dwc3_core_init(struct dwc3 *dwc)
 	dwc3_frame_length_adjustment(dwc);
 
 	dwc3_set_incr_burst_type(dwc);
+
+	ret = dwc3_config_soc_bus(dwc);
+	if (ret)
+		goto err1;
 
 	usb_phy_set_suspend(dwc->usb2_phy, 0);
 	usb_phy_set_suspend(dwc->usb3_phy, 0);
