@@ -31,11 +31,43 @@ struct dwc3_of_simple {
 	struct clk_bulk_data	*clks;
 	int			num_clocks;
 	void __iomem		*regs;
+	struct dwc3		*dwc;
 	struct phy		*phy;
+	bool			wakeup_capable;
+	bool			enable_d3_suspend;
 	struct reset_control	*resets;
 	bool			pulse_resets;
 	bool			need_reset;
 };
+
+void dwc3_simple_wakeup_capable(struct device *dev, bool wakeup)
+{
+	struct device_node *node = of_node_get(dev->parent->of_node);
+
+	/* check for valid parent node */
+	while (node) {
+		if (!of_device_is_compatible(node, "xlnx,zynqmp-dwc3") ||
+		    !of_device_is_compatible(node, "xlnx,versal-dwc3"))
+			node = of_get_next_parent(node);
+		else
+			break;
+	}
+
+	if (node)  {
+		struct platform_device *pdev_parent;
+		struct dwc3_of_simple   *simple;
+
+		pdev_parent = of_find_device_by_node(node);
+		simple = platform_get_drvdata(pdev_parent);
+
+		/* Set wakeup capable as true or false */
+		simple->wakeup_capable = wakeup;
+
+		/* Allow D3 state if wakeup capable only */
+		simple->enable_d3_suspend = wakeup;
+	}
+}
+EXPORT_SYMBOL(dwc3_simple_wakeup_capable);
 
 static int dwc3_simple_set_phydata(struct dwc3_of_simple *simple)
 {
@@ -198,6 +230,9 @@ static int __maybe_unused dwc3_of_simple_suspend(struct device *dev)
 static int __maybe_unused dwc3_of_simple_resume(struct device *dev)
 {
 	struct dwc3_of_simple *simple = dev_get_drvdata(dev);
+
+	if (simple->wakeup_capable || simple->dwc->is_d3)
+		return 0;
 
 	if (simple->need_reset)
 		reset_control_deassert(simple->resets);

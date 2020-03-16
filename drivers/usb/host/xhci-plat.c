@@ -20,6 +20,7 @@
 #include <linux/acpi.h>
 #include <linux/usb/of.h>
 #include <linux/usb/otg.h>
+#include <linux/usb/xhci_pdriver.h>
 
 #include "xhci.h"
 #include "xhci-plat.h"
@@ -429,6 +430,14 @@ static int __maybe_unused xhci_plat_suspend(struct device *dev)
 {
 	struct usb_hcd	*hcd = dev_get_drvdata(dev);
 	struct xhci_hcd	*xhci = hcd_to_xhci(hcd);
+
+#if IS_ENABLED(CONFIG_USB_DWC3_OF_SIMPLE)
+	/* Inform dwc3 driver about the device wakeup capability */
+	if (device_may_wakeup(dev))
+		dwc3_host_wakeup_capable(dev, true);
+	else
+		dwc3_host_wakeup_capable(dev, false);
+#endif
 
 	/*
 	 * xhci_suspend() needs `do_wakeup` to know whether host is allowed
