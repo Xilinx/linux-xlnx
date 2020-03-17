@@ -333,6 +333,7 @@
 
 #define XCSI_CLK_PROP		BIT(0)
 #define XCSI_DPHY_PROP		BIT(1)
+#define XCSI_DPHY_ADDR_PROP	BIT(2)
 
 /**
  * struct xcsi2rxss_feature - dt or IP property structure
@@ -513,6 +514,10 @@ struct xcsi2rxss_state {
 	bool suspended;
 };
 
+static const struct xcsi2rxss_feature xlnx_csi2rxss_v5_0 = {
+	.flags = XCSI_CLK_PROP | XCSI_DPHY_PROP | XCSI_DPHY_ADDR_PROP,
+};
+
 static const struct xcsi2rxss_feature xlnx_csi2rxss_v4_1 = {
 	.flags = XCSI_CLK_PROP | XCSI_DPHY_PROP,
 };
@@ -534,6 +539,8 @@ static const struct of_device_id xcsi2rxss_of_id_table[] = {
 		.data = &xlnx_csi2rxss_v4_0 },
 	{ .compatible = "xlnx,mipi-csi2-rx-subsystem-4.1",
 		.data = &xlnx_csi2rxss_v4_1 },
+	{ .compatible = "xlnx,mipi-csi2-rx-subsystem-5.0",
+		.data = &xlnx_csi2rxss_v5_0 },
 	{ }
 };
 MODULE_DEVICE_TABLE(of, xcsi2rxss_of_id_table);
@@ -1640,10 +1647,14 @@ static int xcsi2rxss_parse_of(struct xcsi2rxss_state *xcsi2rxss)
 	}
 
 	if (core->dphy_present) {
-		if (iic_present)
+		if (iic_present) {
 			core->dphy_offset = 0x20000;
-		else
-			core->dphy_offset = 0x10000;
+		} else {
+			if (core->cfg->flags & XCSI_DPHY_ADDR_PROP)
+				core->dphy_offset = 0x1000;
+			else
+				core->dphy_offset = 0x10000;
+		}
 	}
 
 	ret = of_property_read_u32(node, "xlnx,max-lanes",
