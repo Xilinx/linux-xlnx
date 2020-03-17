@@ -14,8 +14,8 @@ For more details, please refer to PG232 MIPI CSI-2 Receiver Subsystem v4.1
 
 Required properties:
 
-- compatible: Must contain "xlnx,mipi-csi2-rx-subsystem-4.1" or
-  "xlnx,mipi-csi2-rx-subsystem-4.0".
+- compatible: Must contain "xlnx,mipi-csi2-rx-subsystem-5.0" or
+  "xlnx,mipi-csi2-rx-subsystem-4.1" or "xlnx,mipi-csi2-rx-subsystem-4.0".
   The older strings "xlnx,mipi-csi2-rx-subsystem-2.0" and
   "xlnx,mipi-csi2-rx-subsystem-3.0" are deprecated.
 
@@ -67,16 +67,18 @@ Optional Properties
 - reset-gpios: Optional specifier for a GPIO that asserts video_aresetn.
 
 - xlnx,dphy-present: Boolean to indicate whether DPHY register interface is
-  enabled or not.
+  enabled or not. When this is present and compatible string is
+  xlnx,mipi-csi2-rx-subsystem-5.0 then DPHY offset is 0x1000 (4K) else
+  it is 0x1_0000 (64K).
 
 - xlnx,iic-present: Boolean to show whether subsystem's IIC is present or not.
   This affects the base address of the DPHY. This can't be present when the
-  compatible string is "xlnx,mipi-csi2-rx-subsystem-4.1".
+  compatible string is "xlnx,mipi-csi2-rx-subsystem-4.1" or later.
 
 Example:
 
 	csiss_1: csiss@a0020000 {
-		compatible = "xlnx,mipi-csi2-rx-subsystem-4.1";
+		compatible = "xlnx,mipi-csi2-rx-subsystem-5.0";
 		reg = <0x0 0xa0020000 0x0 0x20000>;
 		interrupt-parent = <&gic>;
 		interrupts = <0 95 4>;
