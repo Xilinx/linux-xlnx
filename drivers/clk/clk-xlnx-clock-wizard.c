@@ -122,7 +122,7 @@ static unsigned long clk_wzrd_recalc_rate(struct clk_hw *hw,
 {
 	struct clk_wzrd_divider *divider = to_clk_wzrd_divider(hw);
 	void __iomem *div_addr =
-			(void __iomem *)((u64)divider->base + divider->offset);
+			(void __iomem *)(divider->base + divider->offset);
 	unsigned int val;
 
 	val = readl(div_addr) >> divider->shift;
@@ -141,7 +141,7 @@ static int clk_wzrd_dynamic_reconfig(struct clk_hw *hw, unsigned long rate,
 	unsigned long flags = 0;
 	struct clk_wzrd_divider *divider = to_clk_wzrd_divider(hw);
 	void __iomem *div_addr =
-			(void __iomem *)((u64)divider->base + divider->offset);
+			(void __iomem *)(divider->base + divider->offset);
 
 	if (divider->lock)
 		spin_lock_irqsave(divider->lock, flags);
