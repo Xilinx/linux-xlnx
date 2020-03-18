@@ -146,13 +146,11 @@ static void zynq_rproc_kick(struct rproc *rproc, int vqid)
 	struct device *dev = rproc->dev.parent;
 	struct zynq_rproc_pdata *local = rproc->priv;
 	struct rproc_vdev *rvdev, *rvtmp;
-	struct fw_rsc_vdev *rsc;
 	int i;
 
 	dev_dbg(dev, "KICK Firmware to start send messages vqid %d\n", vqid);
 
 	list_for_each_entry_safe(rvdev, rvtmp, &rproc->rvdevs, node) {
-		rsc = (void *)rproc->table_ptr + rvdev->rsc_offset;
 		for (i = 0; i < MAX_NUM_VRINGS; i++) {
 			struct rproc_vring *rvring = &rvdev->vring[i];
 
@@ -169,7 +167,6 @@ static void zynq_rproc_kick(struct rproc *rproc, int vqid)
 					local->ipis[i].pending = true;
 			}
 		}
-
 	}
 }
 
