@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: GPL-2.0
 /*
  * Zynq Remote Processor driver
  *
@@ -8,15 +9,6 @@
  *
  * Copyright (C) 2011 Texas Instruments, Inc.
  * Copyright (C) 2011 Google, Inc.
- *
- * This program is free software; you can redistribute it and/or
- * modify it under the terms of the GNU General Public License
- * version 2 as published by the Free Software Foundation.
- *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
  */
 
 #include <linux/kernel.h>
@@ -109,7 +101,7 @@ static void kick_pending_ipi(struct rproc *rproc)
 
 	for (i = 0; i < MAX_NUM_VRINGS; i++) {
 		/* Send swirq to firmware */
-		if (local->ipis[i].pending == true) {
+		if (local->ipis[i].pending) {
 			gic_raise_softirq(cpumask_of(1),
 					  local->ipis[i].irq);
 			local->ipis[i].pending = false;
@@ -362,7 +354,7 @@ static int zynq_remoteproc_probe(struct platform_device *pdev)
 		if (irq == -ENXIO || irq == -EINVAL)
 			break;
 
-		tmp = kzalloc(sizeof(struct irq_list), GFP_KERNEL);
+		tmp = kzalloc(sizeof(*tmp), GFP_KERNEL);
 		if (!tmp) {
 			ret = -ENOMEM;
 			goto irq_fault;
@@ -390,7 +382,7 @@ static int zynq_remoteproc_probe(struct platform_device *pdev)
 		 * MS: Comment if you want to count IRQs on Linux
 		 */
 		gic_set_cpu(1, tmp->irq);
-		list_add(&(tmp->list), &(local->irqs.list));
+		list_add(&tmp->list, &local->irqs.list);
 	}
 
 	/* Allocate free IPI number */
