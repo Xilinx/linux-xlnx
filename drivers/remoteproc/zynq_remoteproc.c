@@ -108,11 +108,10 @@ static void kick_pending_ipi(struct rproc *rproc)
 	int i;
 
 	for (i = 0; i < MAX_NUM_VRINGS; i++) {
-
 		/* Send swirq to firmware */
 		if (local->ipis[i].pending == true) {
 			gic_raise_softirq(cpumask_of(1),
-					local->ipis[i].irq);
+					  local->ipis[i].irq);
 			local->ipis[i].pending = false;
 		}
 	}
@@ -162,7 +161,7 @@ static void zynq_rproc_kick(struct rproc *rproc, int vqid)
 				 */
 				if (rproc->state == RPROC_RUNNING)
 					gic_raise_softirq(cpumask_of(1),
-						local->ipis[i].irq);
+							  local->ipis[i].irq);
 				else
 					local->ipis[i].pending = true;
 			}
@@ -334,7 +333,7 @@ static int zynq_remoteproc_probe(struct platform_device *pdev)
 	struct zynq_rproc_pdata *local;
 
 	rproc = rproc_alloc(&pdev->dev, dev_name(&pdev->dev),
-		&zynq_rproc_ops, NULL,
+			    &zynq_rproc_ops, NULL,
 		sizeof(struct zynq_rproc_pdata));
 	if (!rproc) {
 		dev_err(&pdev->dev, "rproc allocation failed\n");
@@ -377,10 +376,10 @@ static int zynq_remoteproc_probe(struct platform_device *pdev)
 		 * use these IRQs
 		 */
 		ret = request_irq(tmp->irq, zynq_remoteproc_interrupt, 0,
-					dev_name(&pdev->dev), &pdev->dev);
+				  dev_name(&pdev->dev), &pdev->dev);
 		if (ret) {
 			dev_err(&pdev->dev, "IRQ %d already allocated\n",
-								tmp->irq);
+				tmp->irq);
 			goto irq_fault;
 		}
 
@@ -397,14 +396,14 @@ static int zynq_remoteproc_probe(struct platform_device *pdev)
 	/* Allocate free IPI number */
 	/* Read vring0 ipi number */
 	ret = of_property_read_u32(pdev->dev.of_node, "vring0",
-				&local->ipis[0].irq);
+				   &local->ipis[0].irq);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "unable to read property");
 		goto irq_fault;
 	}
 
 	ret = set_ipi_handler(local->ipis[0].irq, ipi_kick,
-			"Firmware kick");
+			      "Firmware kick");
 	if (ret) {
 		dev_err(&pdev->dev, "IPI handler already registered\n");
 		goto irq_fault;
@@ -412,7 +411,7 @@ static int zynq_remoteproc_probe(struct platform_device *pdev)
 
 	/* Read vring1 ipi number */
 	ret = of_property_read_u32(pdev->dev.of_node, "vring1",
-				&local->ipis[1].irq);
+				   &local->ipis[1].irq);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "unable to read property");
 		goto ipi_fault;
