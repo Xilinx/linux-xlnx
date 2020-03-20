@@ -346,7 +346,7 @@ static const struct regmap_config idt24x_regmap_config = {
 	.reg_bits = 16,
 	.val_bits = 8,
 	.cache_type = REGCACHE_RBTREE,
-	.max_register = 0xff,
+	.max_register = 0xffff,
 	.writeable_reg = idt24x_regmap_is_writeable,
 	.volatile_reg = idt24x_regmap_is_volatile,
 };
