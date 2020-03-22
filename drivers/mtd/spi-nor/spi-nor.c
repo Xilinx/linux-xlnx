@@ -686,9 +686,9 @@ static int spansion_set_4byte(struct spi_nor *nor, bool enable)
 	return nor->write_reg(nor, SPINOR_OP_BRWR, nor->bouncebuf, 1);
 }
 
-static int spi_nor_write_ear(struct spi_nor *nor, u8 ear)
+static int spi_nor_write_ear(struct spi_nor *nor, u32 ear)
 {
-	u8 code;
+	u8 code = SPINOR_OP_WREAR;
 	u8 addr;
 	int ret;
 	struct mtd_info *mtd = &nor->mtd;
@@ -718,14 +718,14 @@ static int spi_nor_write_ear(struct spi_nor *nor, u8 ear)
 
 	if (nor->spimem) {
 		struct spi_mem_op op =
-			SPI_MEM_OP(SPI_MEM_OP_CMD(SPINOR_OP_WREAR, 1),
+			SPI_MEM_OP(SPI_MEM_OP_CMD(code, 1),
 				   SPI_MEM_OP_NO_ADDR,
 				   SPI_MEM_OP_NO_DUMMY,
 				   SPI_MEM_OP_DATA_OUT(1, nor->bouncebuf, 1));
 
 		ret = spi_mem_exec_op(nor->spimem, &op);
 	} else {
-		ret =  nor->write_reg(nor, SPINOR_OP_WREAR, nor->bouncebuf, 1);
+		ret =  nor->write_reg(nor, code, nor->bouncebuf, 1);
 	}
 	nor->curbank = addr;
 
@@ -770,6 +770,7 @@ static int spi_nor_xread_sr(struct spi_nor *nor, u8 *sr)
 /**
  * read_ear - Get the extended/bank address register value
  * @nor:	Pointer to the flash control structure
+ * @info:	Pointer to the flash info structure
  *
  * This routine reads the Extended/bank address register value
  *
@@ -2895,7 +2896,6 @@ static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
 	u32 rem_bank_len = 0;
 	u8 bank;
 	u8 is_ofst_odd = 0;
-	loff_t addr = 0;
 	u8 cur_bank;
 	u8 nxt_bank;
 	u32 bank_size;
@@ -2917,8 +2917,11 @@ static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
 		ptr = buf;
 	}
 	ret = spi_nor_lock_and_prep(nor, SPI_NOR_OPS_READ);
-	if (ret)
+	if (ret) {
+		if (is_ofst_odd == 1)
+			kfree(ptr);
 		return ret;
+	}
 
 	while (len) {
 		if (nor->addr_width == 3) {
@@ -2986,7 +2989,7 @@ static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
 		if (ret)
 			goto read_err;
 
-		addr = spi_nor_convert_addr(nor, offset);
+		offset = spi_nor_convert_addr(nor, offset);
 
 		ret = spi_nor_read_data(nor, (offset), read_len, ptr);
 		if (ret == 0) {
@@ -4914,9 +4917,7 @@ static int spi_nor_switch_micron_octal_ddr(struct spi_nor *nor)
 {
 	u8 cr = SPINOR_VCR_OCTAL_DDR;
 	int ret;
-	u8 program_opcode;
 
-	program_opcode = nor->program_opcode;
 	write_enable(nor);
 	nor->addr_width = 3;
 	nor->is_addrvalid = true;
