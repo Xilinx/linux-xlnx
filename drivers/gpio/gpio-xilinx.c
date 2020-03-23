@@ -782,19 +782,7 @@ static struct platform_driver xilinx_gpio_driver = {
 	},
 };
 
-static int __init xgpio_init(void)
-{
-	return platform_driver_register(&xilinx_gpio_driver);
-}
-
-/* Make sure we get initialized before anyone else tries to use us */
-subsys_initcall(xgpio_init);
-
-static void __exit xgpio_exit(void)
-{
-	platform_driver_unregister(&xilinx_gpio_driver);
-}
-module_exit(xgpio_exit);
+module_platform_driver(xilinx_gpio_driver);
 
 MODULE_AUTHOR("Xilinx, Inc.");
 MODULE_DESCRIPTION("Xilinx GPIO driver");
