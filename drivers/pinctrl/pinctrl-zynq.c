@@ -8,6 +8,7 @@
  */
 #include <linux/io.h>
 #include <linux/mfd/syscon.h>
+#include <linux/module.h>
 #include <linux/init.h>
 #include <linux/of.h>
 #include <linux/platform_device.h>
@@ -1208,8 +1209,4 @@ static struct platform_driver zynq_pinctrl_driver = {
 	.probe = zynq_pinctrl_probe,
 };
 
-static int __init zynq_pinctrl_init(void)
-{
-	return platform_driver_register(&zynq_pinctrl_driver);
-}
-arch_initcall(zynq_pinctrl_init);
+module_platform_driver(zynq_pinctrl_driver);
