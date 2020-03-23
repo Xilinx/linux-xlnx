@@ -146,8 +146,8 @@ static inline int xlnx_bridge_get_output_fmts(struct xlnx_bridge *bridge,
 	return 0;
 }
 
-static int xlnx_bridge_set_timing(struct xlnx_bridge *bridge,
-				  struct videomode *vm)
+static inline int xlnx_bridge_set_timing(struct xlnx_bridge *bridge,
+					 struct videomode *vm)
 {
 	if (bridge)
 		return -ENODEV;
