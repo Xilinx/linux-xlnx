@@ -647,8 +647,13 @@ static int __maybe_unused dwc3_of_simple_suspend(struct device *dev)
 {
 	struct dwc3_of_simple *simple = dev_get_drvdata(dev);
 
-	/* Ask ULPI to turn OFF Vbus */
-	dwc3_simple_vbus(simple->dwc, true);
+	if (!simple->wakeup_capable && !simple->dwc->is_d3) {
+		/* Ask ULPI to turn OFF Vbus */
+		dwc3_simple_vbus(simple->dwc, true);
+
+		/* Disable the clocks */
+		clk_bulk_disable(simple->num_clocks, simple->clks);
+	}
 
 	if (simple->need_reset)
 		reset_control_assert(simple->resets);
