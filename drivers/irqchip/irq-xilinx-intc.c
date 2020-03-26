@@ -301,7 +301,7 @@ static int __init xilinx_intc_of_init(struct device_node *intc,
 
 	ret = of_property_read_u32(intc, "cpu-id", &cpu_id);
 	if (ret < 0)
-		pr_err("%s: %pOF: cpu_id not found\n", __func__, intc);
+		pr_debug("%s: %pOF: cpu_id not found\n", __func__, intc);
 
 	/* No parent means it is primary intc */
 	if (!parent) {
