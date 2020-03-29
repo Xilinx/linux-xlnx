@@ -2171,7 +2171,7 @@ static int xm2msc_parse_of(struct platform_device *pdev,
 	if (IS_ERR((__force void *)xm2msc->regs))
 		return PTR_ERR((__force const void *)xm2msc->regs);
 
-	dev_dbg(dev, "IO Mem 0x%llx mapped at %p\n", res->start, xm2msc->regs);
+	dev_dbg(dev, "IO Mem %pa mapped at %p\n", &res->start, xm2msc->regs);
 
 	ret = of_property_read_u32(node, "xlnx,max-chan",
 				   &xm2msc->max_chan);
