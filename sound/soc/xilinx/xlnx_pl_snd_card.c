@@ -181,8 +181,13 @@ static const struct snd_soc_ops xlnx_spdif_card_ops = {
 	.hw_params = xlnx_spdif_card_hw_params,
 };
 
-SND_SOC_DAILINK_DEFS(xlnx_i2s,
-		     DAILINK_COMP_ARRAY(COMP_CPU("xilinx-i2s")),
+SND_SOC_DAILINK_DEFS(xlnx_i2s_capture,
+		     DAILINK_COMP_ARRAY(COMP_CPU("xlnx_i2s_capture")),
+		     DAILINK_COMP_ARRAY(COMP_DUMMY()),
+		     DAILINK_COMP_ARRAY(COMP_PLATFORM(NULL)));
+
+SND_SOC_DAILINK_DEFS(xlnx_i2s_playback,
+		     DAILINK_COMP_ARRAY(COMP_CPU("xlnx_i2s_playback")),
 		     DAILINK_COMP_ARRAY(COMP_DUMMY()),
 		     DAILINK_COMP_ARRAY(COMP_PLATFORM(NULL)));
 
@@ -215,12 +220,12 @@ static struct snd_soc_dai_link xlnx_snd_dai[][XLNX_MAX_PATHS] = {
 	[I2S_AUDIO] = {
 		{
 			.name = "xilinx-i2s_playback",
-			SND_SOC_DAILINK_REG(xlnx_i2s),
+			SND_SOC_DAILINK_REG(xlnx_i2s_playback),
 			.ops = &xlnx_i2s_card_ops,
 		},
 		{
 			.name = "xilinx-i2s_capture",
-			SND_SOC_DAILINK_REG(xlnx_i2s),
+			SND_SOC_DAILINK_REG(xlnx_i2s_capture),
 			.ops = &xlnx_i2s_card_ops,
 		},
 	},
