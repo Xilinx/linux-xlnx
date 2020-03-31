@@ -303,7 +303,7 @@ static int zynqmp_r5_parse_fw(struct rproc *rproc, const struct firmware *fw)
 			int id;
 			char name[16];
 
-			id = node->name[8] - 48;
+			id = node->name[8] - '0';
 			snprintf(name, sizeof(name), "vdev%dbuffer", id);
 			/* Register DMA region */
 			mem = rproc_mem_entry_init(dev, NULL,
@@ -312,11 +312,39 @@ static int zynqmp_r5_parse_fw(struct rproc *rproc, const struct firmware *fw)
 						   NULL, NULL,
 						   name);
 			if (!mem) {
-				dev_err(dev, "unable to initialize memory-region %s \n",
-						name);
+				dev_err(dev, "unable to initialize memory-region %s\n",
+						node->name);
 				return -ENOMEM;
 			}
+			dev_dbg(dev, "parsed %s at  %llx\r\n", mem->name,
+				mem->dma);
+			rproc_add_carveout(rproc, mem);
+			continue;
+		} else if (strstr(node->name, "vdev") &&
+				    strstr(node->name, "vring")) {
+			int id, vring_id;
+			char name[16];
 
+			id = node->name[8] - '0';
+			vring_id = node->name[14] - '0';
+			snprintf(name, sizeof(name), "vdev%dvring%d", id,
+				 vring_id);
+			/* Register vring */
+			mem = rproc_mem_entry_init(dev, NULL,
+						   (dma_addr_t)rmem->base,
+						   rmem->size, rmem->base,
+						   NULL, NULL,
+						   name);
+			mem->va = devm_ioremap_wc(dev, rmem->base, rmem->size);
+			if (!mem->va)
+				return -ENOMEM;
+			if (!mem) {
+				dev_err(dev, "unable to initialize memory-region %s\n",
+						node->name);
+				return -ENOMEM;
+			}
+			dev_dbg(dev, "parsed %s at %llx\r\n", mem->name,
+				mem->dma);
 			rproc_add_carveout(rproc, mem);
 			continue;
 		} else {
