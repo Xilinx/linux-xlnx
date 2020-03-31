@@ -427,7 +427,13 @@ config COMMON_CLK_XLNX_CLKWZRD
 	depends on COMMON_CLK && OF
 	help
 	  Support for the Xilinx Clocking Wizard IP core clock generator.
-	  Adds support for clocking wizard and compatible.
+
+config COMMON_CLK_XLNX_CLKWZRD_V
+	tristate "Xilinx Versal Clocking Wizard"
+	depends on COMMON_CLK && OF
+	help
+	  Support for the Versal Xilinx Clocking Wizard IP core clock generator.
+	  Adds support for Versal clocking wizard 1.0 and compatible.
 	  This driver supports the Xilinx clocking wizard programmable clock
 	  synthesizer. The number of output is configurable in the design.
 
