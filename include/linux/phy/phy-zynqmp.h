@@ -13,7 +13,7 @@
 
 struct phy;
 
-#if defined(CONFIG_PHY_XILINX_ZYNQMP)
+#if IS_ENABLED(CONFIG_PHY_XILINX_ZYNQMP)
 
 extern int xpsgtr_override_deemph(struct phy *phy, u8 plvl, u8 vlvl);
 extern int xpsgtr_margining_factor(struct phy *phy, u8 plvl, u8 vlvl);
