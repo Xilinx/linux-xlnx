@@ -72,6 +72,7 @@
  * @funnel: Iomapped funnel register base address
  * @counterid_lpd: LPD counter id
  * @counterid_fpd: FPD counter id
+ * @mutex: avoid parallel access to device
  */
 struct xflex_dev_info {
 	struct device *dev;
@@ -173,6 +174,8 @@ static int xflex_sysfs_cmd(struct device *dev, const char *buf,
 
 	if (!eemi_ops->ioctl)
 		return -ENOTSUPP;
+
+	mutex_lock(&flexpm->mutex);
 
 	switch (cmd) {
 	case XFLEX_GET_COUNTER_LPD_WRRSP:
@@ -350,10 +353,11 @@ static int xflex_sysfs_cmd(struct device *dev, const char *buf,
 		break;
 	}
 
+	mutex_unlock(&flexpm->mutex);
 	return rdval;
 
 exit_unlock:
-	mutex_unlock(&flexpm->lock);
+	mutex_unlock(&flexpm->mutex);
 	return ret;
 }
 
@@ -601,7 +605,7 @@ static int xflex_probe(struct platform_device *pdev)
 	if (IS_ERR(flexpm->funnel))
 		return PTR_ERR(flexpm->funnel);
 
-	mutex_init(&flexpm->lock);
+	mutex_init(&flexpm->mutex);
 	writel(FPM_UNLOCK, flexpm->funnel + FPM_LAR_OFFSET);
 	writel(FPM_UNLOCK, flexpm->baselpd + FPM_LAR_OFFSET);
 
