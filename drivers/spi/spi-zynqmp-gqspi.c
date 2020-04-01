@@ -721,7 +721,7 @@ static void zynqmp_qspi_preparedummy(struct zynqmp_qspi *xqspi,
 	*genfifoentry &= ~GQSPI_GENFIFO_IMM_DATA_MASK;
 
 	if (transfer->dummy)
-		*genfifoentry |= transfer->dummy;
+		*genfifoentry |= (transfer->dummy / transfer->tx_nbits);
 }
 
 /**
