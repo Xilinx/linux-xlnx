@@ -11,7 +11,8 @@ maintainers:
 
 properties:
   compatible:
-      enum:
+    items:
+      - enum:
           - xlnx,axi-perf-monitor
 
   reg:
@@ -24,64 +25,75 @@ properties:
     maxItems: 1
 
   xlnx,enable-profile:
-    description: Enables the profile mode.
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [0, 1]
+    description:
+      Enables the profile mode.
     maxItems: 1
 
   xlnx,enable-trace:
-    description: Enables trace mode.
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [0, 1]
+    description:
+      Enables trace mode.
     maxItems: 1
 
   xlnx,num-monitor-slots:
-    description: Maximum number of slots in APM.
-        items:
-          minimum: 1
-          maximum: 8
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - minimum: 1
+      - maximum: 8
+    description:
+      Number of monitor slots.
 
   xlnx,enable-event-count:
-    description: Enable event count.
-    oneOf:
+    allOf:
       - $ref: /schemas/types.yaml#/definitions/uint32
       - enum: [0, 1]
+    description:
+      Enable event count.
 
   xlnx,enable-event-log:
-    description: Enable event log.
-    oneOf:
+    allOf:
       - $ref: /schemas/types.yaml#/definitions/uint32
       - enum: [0, 1]
+    description:
+      Enable event log.
 
   xlnx,have-sampled-metric-cnt:
-    description: Sampled metric counters enabled in APM.
-    oneOf:
+    allOf:
       - $ref: /schemas/types.yaml#/definitions/uint32
-      - enum: [32, 64]
+    description:
+      Sampled metric counters enabled in APM.
 
   xlnx,metric-count-width:
-    description: Metric Counter width.
-    oneOf:
-      - $ref: /schemas/types.yaml#/definitions/uint32
-      - enum: [32, 64]
-
-  xlnx,num-of-counters:
-    description: Number of counters in APM.
-        items:
-          minimum: 1
-          maximum: 9
-
-  xlnx,metrics-sample-count-width:
-    description: Sampled metric counter width.
-    oneOf:
-      - $ref: /schemas/types.yaml#/definitions/uint32
-      - enum: [32, 64]
-
-  xlnx,global-count-width:
-    description: Global Clock counter width.
     allOf:
       - $ref: /schemas/types.yaml#/definitions/uint32
       - enum: [32, 64]
+    description:
+      Metric Counter width.
+
+  xlnx,num-of-counters:
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+    description:
+      Number of counters in APM.
 
   xlnx,metrics-sample-count-width:
-    description: Global Clock counter width.
-    maxItems: 1
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [32, 64]
+    description:
+      Sampled metric counter width.
+
+  xlnx,global-count-width:
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [32, 64]
+    description:
+      Global Clock counter width.
 
   xlnx,id-filter-32bit:
     description: APM is in 32-bit mode.
