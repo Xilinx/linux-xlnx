@@ -1720,7 +1720,6 @@ static void dwc3_otg_set_peripheral(struct usb_otg *_otg, int yes)
 
 	set_peri_mode(otg, yes);
 }
-EXPORT_SYMBOL(dwc3_otg_set_peripheral);
 
 static int dwc3_otg_set_periph(struct usb_otg *_otg, struct usb_gadget *gadget)
 {
@@ -1861,7 +1860,6 @@ static int otg_end_session(struct usb_otg *otg)
 {
 	return dwc3_otg_end_session(otg);
 }
-EXPORT_SYMBOL(otg_end_session);
 
 static int dwc3_otg_received_host_release(struct usb_otg *x)
 {
