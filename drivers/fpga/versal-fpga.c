@@ -96,7 +96,7 @@ static int versal_fpga_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	priv->dev = dev;
-	ret = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(44));
+	ret = dma_set_mask_and_coherent(&pdev->dev, DMA_BIT_MASK(32));
 	if (ret < 0) {
 		dev_err(dev, "no usable DMA configuration");
 		return ret;
