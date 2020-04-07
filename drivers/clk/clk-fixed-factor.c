@@ -163,6 +163,7 @@ static struct clk_hw *_of_fixed_factor_clk_setup(struct device_node *node)
 {
 	struct clk_hw *hw;
 	const char *clk_name = node->name;
+	const char *parent_name = NULL;
 	unsigned long flags = 0;
 	u32 div, mult;
 	int ret;
@@ -180,6 +181,9 @@ static struct clk_hw *_of_fixed_factor_clk_setup(struct device_node *node)
 	}
 
 	of_property_read_string(node, "clock-output-names", &clk_name);
+	parent_name = of_clk_get_parent_name(node, 0);
+	if (!parent_name)
+		return ERR_PTR(-EPROBE_DEFER);
 
 	if (of_match_node(set_rate_parent_matches, node))
 		flags |= CLK_SET_RATE_PARENT;
@@ -212,8 +216,8 @@ void __init of_fixed_factor_clk_setup(struct device_node *node)
 {
 	_of_fixed_factor_clk_setup(node);
 }
-CLK_OF_DECLARE(fixed_factor_clk, "fixed-factor-clock",
-		of_fixed_factor_clk_setup);
+CLK_OF_DECLARE_DRIVER(fixed_factor_clk, "fixed-factor-clock",
+		      of_fixed_factor_clk_setup);
 
 static int of_fixed_factor_clk_remove(struct platform_device *pdev)
 {
