@@ -664,9 +664,14 @@ static int __maybe_unused dwc3_of_simple_suspend(struct device *dev)
 static int __maybe_unused dwc3_of_simple_resume(struct device *dev)
 {
 	struct dwc3_of_simple *simple = dev_get_drvdata(dev);
+	int ret;
 
 	if (simple->wakeup_capable || simple->dwc->is_d3)
 		return 0;
+
+	ret = clk_bulk_enable(simple->num_clocks, simple->clks);
+	if (ret)
+		return ret;
 
 	if (simple->need_reset)
 		reset_control_deassert(simple->resets);
