@@ -452,7 +452,7 @@ static int xgpio_irq_setup(struct device_node *np, struct xgpio_instance *chip)
 
 	chip->mmchip.gc.to_irq = xgpio_to_irq;
 
-	chip->irq_base = irq_alloc_descs(-1, 0, chip->mmchip.gc.ngpio, 0);
+	chip->irq_base = irq_alloc_descs(-1, 1, chip->mmchip.gc.ngpio, 0);
 	if (chip->irq_base < 0) {
 		pr_err("Couldn't allocate IRQ numbers\n");
 		return -1;
