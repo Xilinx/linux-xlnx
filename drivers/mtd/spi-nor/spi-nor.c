@@ -2964,9 +2964,9 @@ static int spi_nor_read(struct mtd_info *mtd, loff_t from, size_t len,
 				cur_bank = offset / bank_size;
 				nxt_bank = (offset + len) / bank_size;
 				if (cur_bank != nxt_bank)
-					rem_bank_len = (bank_size *
+					rem_bank_len = ((bank_size *
 							(cur_bank + 1)) -
-							offset;
+							offset) << nor->shift;
 				else
 					rem_bank_len = (mtd->size >>
 							stack_shift) -
