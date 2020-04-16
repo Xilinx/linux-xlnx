@@ -10,7 +10,6 @@ Required properties:
 
 Optional properties:
 - num-cs		: Number of chip selects used.
-- xlnx,num-ss-bits	: Number of chip selects used.
 - bits-per-word		: Number of bits per word.
 - clock-names		: Can be one or more strings from "axi_clk", "axi4_clk"
 			  and "spi_clk" depending on IP configurations.
@@ -27,7 +26,6 @@ Example:
 			reg = <0x41e00000 0x10000>;
 			num-cs = <0x1>;
 			fifo-size = <256>;
-			xlnx,num-ss-bits = <0x1>;
 			bits-per-word = <8>;
 			xlnx,startup-block;
 	};
