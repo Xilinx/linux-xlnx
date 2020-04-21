@@ -2587,6 +2587,14 @@ static const struct flash_info spi_nor_ids[] = {
 			SECT_4K | SPI_NOR_DUAL_READ |
 			SPI_NOR_QUAD_READ | SPI_NOR_HAS_LOCK |
 			SPI_NOR_4B_OPCODES) },
+	{ "is25lp01g", INFO(0x9d601b, 0, 64 * 1024, 2048,
+			SECT_4K | SPI_NOR_DUAL_READ |
+			SPI_NOR_QUAD_READ | SPI_NOR_HAS_LOCK |
+			SPI_NOR_4B_OPCODES) },
+	{ "is25wp01g", INFO(0x9d701b, 0, 64 * 1024, 2048,
+			SECT_4K | SPI_NOR_DUAL_READ |
+			SPI_NOR_QUAD_READ | SPI_NOR_HAS_LOCK |
+			SPI_NOR_4B_OPCODES) },
 
 	/* Macronix */
 	{ "mx25l512e",   INFO(0xc22010, 0, 64 * 1024,   1, SECT_4K) },
@@ -5254,6 +5262,18 @@ static int spi_nor_init(struct spi_nor *nor)
 {
 	int err;
 
+	/*
+	 * Atmel, SST, Intel/Numonyx, and others serial NOR tend to power up
+	 * with the software protection bits set
+	 */
+	if (JEDEC_MFR(nor->info) == SNOR_MFR_ATMEL ||
+	    JEDEC_MFR(nor->info) == SNOR_MFR_INTEL ||
+	    JEDEC_MFR(nor->info) == SNOR_MFR_SST ||
+	    nor->flags & SNOR_F_HAS_LOCK) {
+		write_enable(nor);
+		write_sr(nor, 0);
+		spi_nor_wait_till_ready(nor);
+	}
 	if (nor->clear_sr_bp) {
 		if (nor->params.quad_enable == spansion_quad_enable)
 			nor->clear_sr_bp = spi_nor_spansion_clear_sr_bp;
@@ -5308,7 +5328,7 @@ void spi_nor_restore(struct spi_nor *nor)
 	if (nor->addr_width == 4 && !(nor->flags & SNOR_F_4B_OPCODES) &&
 	    (nor->flags & SNOR_F_BROKEN_RESET) &&
 	    (JEDEC_MFR(nor->info) != SNOR_MFR_SPANSION) &&
-	    !(nor->info->flags & SPI_NOR_4B_OPCODES))
+	    !(nor->flags & SNOR_F_4B_OPCODES))
 		nor->params.set_4byte(nor, false);
 }
 EXPORT_SYMBOL_GPL(spi_nor_restore);
@@ -5355,7 +5375,7 @@ static int spi_nor_set_addr_width(struct spi_nor *nor)
 			 */
 			nor->addr_width = 4;
 			if (JEDEC_MFR(nor->info) == SNOR_MFR_SPANSION ||
-			    nor->info->flags & SPI_NOR_4B_OPCODES) {
+			    nor->flags & SNOR_F_4B_OPCODES) {
 				spi_nor_set_4byte_opcodes(nor);
 			} else {
 				np_spi = of_get_next_parent(np);
@@ -5513,7 +5533,7 @@ int spi_nor_scan(struct spi_nor *nor, const char *name,
 	if (JEDEC_MFR(nor->info) == SNOR_MFR_ATMEL ||
 	    JEDEC_MFR(nor->info) == SNOR_MFR_INTEL ||
 	    JEDEC_MFR(nor->info) == SNOR_MFR_SST ||
-	    nor->info->flags & SPI_NOR_HAS_LOCK) {
+	    nor->flags & SNOR_F_HAS_LOCK) {
 		write_enable(nor);
 		write_sr(nor, 0);
 		if (info->flags & SST_GLOBAL_PROT_UNLK) {
