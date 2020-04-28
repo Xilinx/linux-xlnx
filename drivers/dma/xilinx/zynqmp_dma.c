@@ -453,6 +453,7 @@ static void zynqmp_dma_free_desc_list(struct zynqmp_dma_chan *chan,
 
 	list_for_each_entry_safe(desc, next, list, node)
 		zynqmp_dma_free_descriptor(chan, desc);
+	INIT_LIST_HEAD(list);
 }
 
 /**
