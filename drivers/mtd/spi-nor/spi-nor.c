@@ -2679,6 +2679,11 @@ static const struct flash_info spi_nor_ids[] = {
 			     SECT_4K | USE_FSR | SPI_NOR_OCTAL_READ |
 			     SPI_NOR_OCTAL_WRITE | SPI_NOR_4B_OPCODES) },
 
+	/* Cypress */
+	{ "GD25LX256E",  INFO(0xc86819, 0, 64 * 1024, 512,
+			     SECT_4K | USE_FSR | SPI_NOR_OCTAL_READ |
+			     SPI_NOR_OCTAL_WRITE | SPI_NOR_4B_OPCODES) },
+
 	/* PMC */
 	{ "pm25lv512",   INFO(0,        0, 32 * 1024,    2, SECT_4K_PMC) },
 	{ "pm25lv010",   INFO(0,        0, 32 * 1024,    4, SECT_4K_PMC) },
@@ -5523,7 +5528,8 @@ int spi_nor_scan(struct spi_nor *nor, const char *name,
 	if (info->flags & SPI_NOR_HAS_LOCK)
 		nor->flags |= SNOR_F_HAS_LOCK;
 
-	if ((u16)JEDEC_MFR(nor->info) != SNOR_MFR_MICRON)
+	if (((u16)JEDEC_MFR(nor->info) != SNOR_MFR_MICRON) &&
+	    ((u16)JEDEC_MFR(nor->info) != SNOR_MFR_CYPRESS))
 		nor->flags |= SNOR_F_BROKEN_OCTAL_DDR;
 
 	/*
