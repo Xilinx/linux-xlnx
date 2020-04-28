@@ -27,6 +27,7 @@
 #define SNOR_MFR_SST		CFI_MFR_SST
 #define SNOR_MFR_WINBOND	0xef /* Also used by some Spansion */
 #define SNOR_MFR_ISSI		CFI_MFR_PMC
+#define SNOR_MFR_CYPRESS	CFI_MFR_CYPRESS
 
 /*
  * Note on opcode nomenclature: some opcodes have a format like

@@ -373,6 +373,7 @@ struct cfi_fixup {
 #define CFI_MFR_MICRON		0x002C /* Micron */
 #define CFI_MFR_TOSHIBA		0x0098
 #define CFI_MFR_WINBOND		0x00DA
+#define CFI_MFR_CYPRESS		0x00C8
 
 void cfi_fixup(struct mtd_info *mtd, struct cfi_fixup* fixups);
 
