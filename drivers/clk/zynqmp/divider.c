@@ -256,6 +256,11 @@ static const struct clk_ops zynqmp_clk_divider_ops = {
 	.set_rate = zynqmp_clk_divider_set_rate,
 };
 
+static const struct clk_ops zynqmp_clk_divider_ro_ops = {
+	.recalc_rate = zynqmp_clk_divider_recalc_rate,
+	.round_rate = zynqmp_clk_divider_round_rate,
+};
+
 /**
  * zynqmp_clk_get_max_divisor() - Get maximum supported divisor from firmware.
  * @clk_id:		Id of clock
@@ -311,7 +316,10 @@ struct clk_hw *zynqmp_clk_register_divider(const char *name,
 		return ERR_PTR(-ENOMEM);
 
 	init.name = name;
-	init.ops = &zynqmp_clk_divider_ops;
+	if (nodes->type_flag & CLK_DIVIDER_READ_ONLY)
+		init.ops = &zynqmp_clk_divider_ro_ops;
+	else
+		init.ops = &zynqmp_clk_divider_ops;
 	/* CLK_FRAC is not defined in the common clk framework */
 	init.flags = nodes->flag & ~CLK_FRAC;
 	init.parent_names = parents;
