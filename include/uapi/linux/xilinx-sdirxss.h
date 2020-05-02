@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
+
 #ifndef __UAPI_XILINX_SDIRXSS_H__
 #define __UAPI_XILINX_SDIRXSS_H__
 
