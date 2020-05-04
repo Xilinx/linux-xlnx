@@ -524,6 +524,7 @@ static void xlnx_pl_disp_unbind(struct device *dev, struct device *master,
 {
 	struct xlnx_pl_disp *xlnx_pl_disp = dev_get_drvdata(dev);
 
+	xlnx_crtc_unregister(xlnx_pl_disp->drm, &xlnx_pl_disp->xlnx_crtc);
 	drm_plane_cleanup(&xlnx_pl_disp->plane);
 	drm_crtc_cleanup(&xlnx_pl_disp->xlnx_crtc.crtc);
 }
