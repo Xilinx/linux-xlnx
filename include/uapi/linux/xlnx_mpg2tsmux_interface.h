@@ -1,4 +1,5 @@
-/* SPDX-License-Identifier: GPL-2.0 */
+/* SPDX-License-Identifier: GPL-2.0 WITH Linux-syscall-note */
+
 /*
  * Xilinx mpeg2 transport stream muxer ioctl calls
  *
