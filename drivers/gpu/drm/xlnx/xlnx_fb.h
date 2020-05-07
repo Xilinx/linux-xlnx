@@ -24,10 +24,29 @@ struct drm_fb_helper;
 struct drm_framebuffer *
 xlnx_fb_create(struct drm_device *drm, struct drm_file *file_priv,
 	       const struct drm_mode_fb_cmd2 *mode_cmd);
+
+#ifdef CONFIG_DRM_FBDEV_EMULATION
+
 struct drm_fb_helper *
 xlnx_fb_init(struct drm_device *drm, int preferred_bpp,
 	     unsigned int max_conn_count, unsigned int align,
 	     unsigned int vres_mult);
 void xlnx_fb_fini(struct drm_fb_helper *fb_helper);
+
+#else /* CONFIG_DRM_FBDEV_EMULATION */
+
+static inline struct drm_fb_helper *
+xlnx_fb_init(struct drm_device *drm, int preferred_bpp,
+	     unsigned int max_conn_count, unsigned int align,
+	     unsigned int vres_mult)
+{
+	return NULL;
+}
+
+static inline void xlnx_fb_fini(struct drm_fb_helper *fb_helper)
+{
+}
+
+#endif /* CONFIG_DRM_FBDEV_EMULATION */
 
 #endif /* _XLNX_FB_H_ */
