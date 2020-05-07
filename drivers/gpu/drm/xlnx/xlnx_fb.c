@@ -32,7 +32,33 @@
 #include "xlnx_drv.h"
 #include "xlnx_fb.h"
 
-#define XLNX_MAX_PLANES	4
+static struct drm_framebuffer_funcs xlnx_fb_funcs = {
+	.destroy	= drm_gem_fb_destroy,
+	.create_handle	= drm_gem_fb_create_handle,
+};
+
+/**
+ * xlnx_fb_create - (struct drm_mode_config_funcs *)->fb_create callback
+ * @drm: DRM device
+ * @file_priv: drm file private data
+ * @mode_cmd: mode command for fb creation
+ *
+ * This functions creates a drm_framebuffer with xlnx_fb_funcs for given mode
+ * @mode_cmd. This functions is intended to be used for the fb_create callback
+ * function of drm_mode_config_funcs.
+ *
+ * Return: a drm_framebuffer object if successful, or
+ * ERR_PTR from drm_gem_fb_create_with_funcs().
+ */
+struct drm_framebuffer *
+xlnx_fb_create(struct drm_device *drm, struct drm_file *file_priv,
+	       const struct drm_mode_fb_cmd2 *mode_cmd)
+{
+	return drm_gem_fb_create_with_funcs(drm, file_priv, mode_cmd,
+					    &xlnx_fb_funcs);
+}
+
+#ifdef CONFIG_DRM_FBDEV_EMULATION
 
 struct xlnx_fbdev {
 	struct drm_fb_helper fb_helper;
@@ -45,11 +71,6 @@ static inline struct xlnx_fbdev *to_fbdev(struct drm_fb_helper *fb_helper)
 {
 	return container_of(fb_helper, struct xlnx_fbdev, fb_helper);
 }
-
-static struct drm_framebuffer_funcs xlnx_fb_funcs = {
-	.destroy	= drm_gem_fb_destroy,
-	.create_handle	= drm_gem_fb_create_handle,
-};
 
 static int
 xlnx_fb_ioctl(struct fb_info *info, unsigned int cmd, unsigned long arg)
@@ -328,23 +349,4 @@ void xlnx_fb_fini(struct drm_fb_helper *fb_helper)
 	kfree(fbdev);
 }
 
-/**
- * xlnx_fb_create - (struct drm_mode_config_funcs *)->fb_create callback
- * @drm: DRM device
- * @file_priv: drm file private data
- * @mode_cmd: mode command for fb creation
- *
- * This functions creates a drm_framebuffer with xlnx_fb_funcs for given mode
- * @mode_cmd. This functions is intended to be used for the fb_create callback
- * function of drm_mode_config_funcs.
- *
- * Return: a drm_framebuffer object if successful, or
- * ERR_PTR from drm_gem_fb_create_with_funcs().
- */
-struct drm_framebuffer *
-xlnx_fb_create(struct drm_device *drm, struct drm_file *file_priv,
-	       const struct drm_mode_fb_cmd2 *mode_cmd)
-{
-	return drm_gem_fb_create_with_funcs(drm, file_priv, mode_cmd,
-					    &xlnx_fb_funcs);
-}
+#endif /* CONFIG_DRM_FBDEV_EMULATION */
