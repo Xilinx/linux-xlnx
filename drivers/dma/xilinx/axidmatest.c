@@ -49,6 +49,8 @@ MODULE_PARM_DESC(iterations,
 #define PATTERN_OVERWRITE	0x20
 #define PATTERN_COUNT_MASK	0x1f
 
+#define XILINX_DMATEST_BD_CNT	11
+
 struct dmatest_slave_thread {
 	struct list_head node;
 	struct task_struct *task;
@@ -241,7 +243,7 @@ static int dmatest_slave_func(void *data)
 	int ret;
 	int src_cnt;
 	int dst_cnt;
-	int bd_cnt = 11;
+	int bd_cnt = XILINX_DMATEST_BD_CNT;
 	int i;
 
 	ktime_t	ktime, start, diff;
@@ -291,16 +293,16 @@ static int dmatest_slave_func(void *data)
 		struct dma_device *rx_dev = rx_chan->device;
 		struct dma_async_tx_descriptor *txd = NULL;
 		struct dma_async_tx_descriptor *rxd = NULL;
-		dma_addr_t dma_srcs[src_cnt];
-		dma_addr_t dma_dsts[dst_cnt];
+		dma_addr_t dma_srcs[XILINX_DMATEST_BD_CNT];
+		dma_addr_t dma_dsts[XILINX_DMATEST_BD_CNT];
 		struct completion rx_cmp;
 		struct completion tx_cmp;
 		unsigned long rx_tmo =
 				msecs_to_jiffies(300000); /* RX takes longer */
 		unsigned long tx_tmo = msecs_to_jiffies(30000);
 		u8 align = 0;
-		struct scatterlist tx_sg[bd_cnt];
-		struct scatterlist rx_sg[bd_cnt];
+		struct scatterlist tx_sg[XILINX_DMATEST_BD_CNT];
+		struct scatterlist rx_sg[XILINX_DMATEST_BD_CNT];
 
 		total_tests++;
 
