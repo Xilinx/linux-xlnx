@@ -1228,7 +1228,8 @@ static int xtpg_probe(struct platform_device *pdev)
 
 	platform_set_drvdata(pdev, xtpg);
 
-	xvip_print_version(&xtpg->xvip);
+	if (!xtpg->is_hls)
+		xvip_print_version(&xtpg->xvip);
 
 	/* Initialize default frame interval */
 	xtpg->fi_n = 1;
