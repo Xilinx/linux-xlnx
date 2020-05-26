@@ -178,7 +178,7 @@ static void xspi_fill_tx_fifo_##size(struct xilinx_spi *xqspi)		\
 	u32 data = 0;							\
 	for (i = 0; i < count; i += (size / 8)) {			\
 		if (xqspi->tx_ptr)					\
-			data = (type)((u8 *)xqspi->tx_ptr)[i];		\
+			data = *(type *)&xqspi->tx_ptr[i];		\
 		writel_relaxed(data, (xqspi->regs + XSPI_TXD_OFFSET));	\
 	}								\
 	xqspi->bytes_to_transfer -= count;				\
