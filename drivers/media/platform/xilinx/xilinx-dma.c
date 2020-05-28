@@ -1337,7 +1337,6 @@ int xvip_dma_init(struct xvip_composite_device *xdev, struct xvip_dma *dma,
 		goto error;
 	}
 
-	dma->video.ctrl_handler = &dma->ctrl_handler;
 	ret = v4l2_ctrl_handler_setup(&dma->ctrl_handler);
 	if (ret < 0) {
 		dev_err(dma->xdev->dev, "failed to set controls\n");
@@ -1347,6 +1346,7 @@ int xvip_dma_init(struct xvip_composite_device *xdev, struct xvip_dma *dma,
 	/* ... and the video node... */
 	dma->video.fops = &xvip_dma_fops;
 	dma->video.v4l2_dev = &xdev->v4l2_dev;
+	dma->video.v4l2_dev->ctrl_handler = &dma->ctrl_handler;
 	dma->video.queue = &dma->queue;
 	snprintf(dma->video.name, sizeof(dma->video.name), "%pOFn %s %u",
 		 xdev->dev->of_node,
