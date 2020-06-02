@@ -54,7 +54,7 @@
 #endif
 /* Descriptors defines for Tx and Rx DMA */
 #define TX_BD_NUM_DEFAULT		64
-#define RX_BD_NUM_DEFAULT		1024
+#define RX_BD_NUM_DEFAULT		128
 #define TX_BD_NUM_MAX			4096
 #define RX_BD_NUM_MAX			4096
 
