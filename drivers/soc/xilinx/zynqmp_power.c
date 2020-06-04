@@ -185,10 +185,9 @@ static int zynqmp_pm_probe(struct platform_device *pdev)
 	if (IS_ERR(eemi_ops))
 		return PTR_ERR(eemi_ops);
 
-	if (!eemi_ops->get_api_version || !eemi_ops->init_finalize)
+	if (!eemi_ops->get_api_version)
 		return -ENXIO;
 
-	eemi_ops->init_finalize();
 	eemi_ops->get_api_version(&pm_api_version);
 
 	/* Check PM API version number */
@@ -255,6 +254,16 @@ static int zynqmp_pm_remove(struct platform_device *pdev)
 
 	return 0;
 }
+
+static int __init do_init_finalize(void)
+{
+	if (!eemi_ops || IS_ERR(eemi_ops) || !eemi_ops->init_finalize)
+		return -ENXIO;
+
+	return eemi_ops->init_finalize();
+}
+
+late_initcall_sync(do_init_finalize);
 
 static const struct of_device_id pm_of_match[] = {
 	{ .compatible = "xlnx,zynqmp-power", },
