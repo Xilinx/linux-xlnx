@@ -657,6 +657,13 @@ struct drm_connector_state {
 	 * DRM blob property for HDR output metadata
 	 */
 	struct drm_property_blob *hdr_output_metadata;
+
+	/**
+	 * @gen_hdr_output_metadata:
+	 * DRM blob property for Generic HDR output metadata
+	 */
+	struct drm_property_blob *gen_hdr_output_metadata;
+
 };
 
 /**
