@@ -1091,6 +1091,14 @@ static const struct drm_prop_enum_list hdmi_colorspaces[] = {
  *	hdmi_drm_infoframe_pack() to pack the infoframe as per spec, in case of
  *	HDMI encoder.
  *
+ * GEN_HDR_OUTPUT_METADATA:
+ *  This connector property is functionally the same as HDR_OUTPUT_METADATA.
+ *  However, the existing structures for HDR_OUTPUT_METADATA are not flexible
+ *  enough for dynamic HDR or other connectivity devices like SDI. So, this
+ *  property was created to utilize more generic structures that would be
+ *  scalable in the future. This is currently experimental and may possibly
+ *  be merged with the original HDR_OUTPUT_METADATA property in the future.
+ *
  * max bpc:
  *	This range property is used by userspace to limit the bit depth. When
  *	used the driver would limit the bpc in accordance with the valid range
@@ -1191,6 +1199,12 @@ int drm_connector_create_standard_properties(struct drm_device *dev)
 	if (!prop)
 		return -ENOMEM;
 	dev->mode_config.hdr_output_metadata_property = prop;
+
+	prop = drm_property_create(dev, DRM_MODE_PROP_BLOB,
+				   "GEN_HDR_OUTPUT_METADATA", 0);
+	if (!prop)
+		return -ENOMEM;
+	dev->mode_config.gen_hdr_output_metadata_property = prop;
 
 	return 0;
 }
