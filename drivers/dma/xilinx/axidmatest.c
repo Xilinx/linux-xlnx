@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-or-later
 /*
- * XILINX AXI DMA Engine test module
+ * XILINX AXI DMA and MCDMA Engine test module
  *
  * Copyright (C) 2010 Xilinx, Inc. All rights reserved.
  *
