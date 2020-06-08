@@ -269,6 +269,7 @@ enum spi_nor_option_flags {
 	SNOR_F_HAS_4BAIT	= BIT(7),
 	SNOR_F_HAS_LOCK		= BIT(8),
 	SNOR_F_BROKEN_OCTAL_DDR = BIT(9),
+	SNOR_F_UPPER_CS		= BIT(10),
 };
 
 /**

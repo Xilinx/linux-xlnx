@@ -334,6 +334,9 @@ struct cqspi_driver_platdata {
 #define CQSPI_TX_TAP_MASTER	0x19
 #define CQSPI_MAX_DLL_TAPS	128
 
+#define CQSPI_CS0	0
+#define CQSPI_CS1	1
+
 static int cqspi_wait_for_bit(void __iomem *reg, const u32 mask, bool clr)
 {
 	u32 val;
@@ -1154,6 +1157,11 @@ static int cqspi_set_protocol(struct spi_nor *nor, const int read)
 	f_pdata->inst_width = CQSPI_INST_TYPE_SINGLE;
 	f_pdata->addr_width = CQSPI_INST_TYPE_SINGLE;
 	f_pdata->data_width = CQSPI_INST_TYPE_SINGLE;
+
+	if (nor->flags & SNOR_F_UPPER_CS)
+		f_pdata->cs = CQSPI_CS1;
+	else
+		f_pdata->cs = CQSPI_CS0;
 
 	if (read) {
 		switch (nor->read_proto) {
