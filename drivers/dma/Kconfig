@@ -714,7 +714,7 @@ config DMA_ENGINE_RAID
 	bool
 
 config XILINX_DMATEST
-	tristate "DMA Test client for AXI DMA"
+	tristate "DMA Test client for AXI DMA and MCDMA"
 	depends on XILINX_DMA
 	help
 	  Simple DMA test client. Say N unless you're debugging a
