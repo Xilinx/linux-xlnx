@@ -138,6 +138,7 @@
 #define XSDIRX_TS_DET_STAT_RATE_OFFSET		(8)
 
 #define XSDIRX_TS_DET_STAT_RATE_NONE		0x0
+#define XSDIRX_TS_DET_STAT_RATE_96HZ		0x1
 #define XSDIRX_TS_DET_STAT_RATE_23_98HZ		0x2
 #define XSDIRX_TS_DET_STAT_RATE_24HZ		0x3
 #define XSDIRX_TS_DET_STAT_RATE_47_95HZ		0x4
@@ -148,6 +149,10 @@
 #define XSDIRX_TS_DET_STAT_RATE_50HZ		0x9
 #define XSDIRX_TS_DET_STAT_RATE_59_94HZ		0xA
 #define XSDIRX_TS_DET_STAT_RATE_60HZ		0xB
+#define XSDIRX_TS_DET_STAT_RATE_95_90HZ		0xC
+#define XSDIRX_TS_DET_STAT_RATE_100HZ		0xD
+#define XSDIRX_TS_DET_STAT_RATE_120HZ		0xE
+#define XSDIRX_TS_DET_STAT_RATE_119_88HZ	0xF
 
 #define XSDIRX_EDH_STAT_EDH_AP_MASK	BIT(0)
 #define XSDIRX_EDH_STAT_EDH_FF_MASK	BIT(1)
@@ -224,6 +229,7 @@
 
 #define XST352_BYTE2_FPS_MASK			0xF
 #define XST352_BYTE2_FPS_SHIFT			8
+#define XST352_BYTE2_FPS_96F			0x1
 #define XST352_BYTE2_FPS_24F			0x2
 #define XST352_BYTE2_FPS_24			0x3
 #define XST352_BYTE2_FPS_48F			0x4
@@ -464,6 +470,54 @@ static const u32 xsdirxss_12bpc_mbus_fmts[] = {
 		V4L2_DV_BT_STD_SDI) \
 }
 
+#define XLNX_V4L2_DV_BT_1920X1080P96 { \
+	.type = V4L2_DV_BT_656_1120, \
+	V4L2_INIT_BT_TIMINGS(1920, 1080, 0, \
+		V4L2_DV_HSYNC_POS_POL | V4L2_DV_VSYNC_POS_POL, \
+		297000000, 638, 44, 148, 4, 5, 36, 0, 0, 0, \
+		V4L2_DV_BT_STD_SDI) \
+}
+
+#define XLNX_V4L2_DV_BT_1920X1080P100 { \
+	.type = V4L2_DV_BT_656_1120, \
+	V4L2_INIT_BT_TIMINGS(1920, 1080, 0, \
+		V4L2_DV_HSYNC_POS_POL | V4L2_DV_VSYNC_POS_POL, \
+		297000000, 528, 44, 148, 4, 5, 36, 0, 0, 0, \
+		V4L2_DV_BT_STD_SDI) \
+}
+
+#define XLNX_V4L2_DV_BT_1920X1080P120 { \
+	.type = V4L2_DV_BT_656_1120, \
+	V4L2_INIT_BT_TIMINGS(1920, 1080, 0, \
+		V4L2_DV_HSYNC_POS_POL | V4L2_DV_VSYNC_POS_POL, \
+		297000000, 88, 44, 148, 4, 5, 36, 0, 0, 0, \
+		V4L2_DV_BT_STD_SDI) \
+}
+
+#define XLNX_V4L2_DV_BT_2048X1080P96 { \
+	.type = V4L2_DV_BT_656_1120, \
+	V4L2_INIT_BT_TIMINGS(2048, 1080, 0, \
+		V4L2_DV_HSYNC_POS_POL | V4L2_DV_VSYNC_POS_POL, \
+		297000000, 510, 44, 148, 4, 5, 36, 0, 0, 0, \
+		V4L2_DV_BT_STD_SDI) \
+}
+
+#define XLNX_V4L2_DV_BT_2048X1080P100 { \
+	.type = V4L2_DV_BT_656_1120, \
+	V4L2_INIT_BT_TIMINGS(2048, 1080, 0, \
+		V4L2_DV_HSYNC_POS_POL | V4L2_DV_VSYNC_POS_POL, \
+		297000000, 400, 44, 148, 4, 5, 36, 0, 0, 0, \
+		V4L2_DV_BT_STD_SDI) \
+}
+
+#define XLNX_V4L2_DV_BT_2048X1080P120 { \
+	.type = V4L2_DV_BT_656_1120, \
+	V4L2_INIT_BT_TIMINGS(2048, 1080, 0, \
+		V4L2_DV_HSYNC_POS_POL | V4L2_DV_VSYNC_POS_POL, \
+		297000000, 88, 44, 20, 4, 5, 36, 0, 0, 0, \
+		V4L2_DV_BT_STD_SDI) \
+}
+
 static const struct v4l2_dv_timings fmt_cap[] = {
 	V4L2_DV_BT_SDI_720X487I60,
 	V4L2_DV_BT_CEA_720X576I50,
@@ -501,6 +555,14 @@ static const struct v4l2_dv_timings fmt_cap[] = {
 	XLNX_V4L2_DV_BT_1920X1080I48,
 	XLNX_V4L2_DV_BT_3840X2160P48,
 	XLNX_V4L2_DV_BT_4096X2160P48,
+
+	/* HFR */
+	XLNX_V4L2_DV_BT_1920X1080P96,
+	XLNX_V4L2_DV_BT_1920X1080P100,
+	XLNX_V4L2_DV_BT_1920X1080P120,
+	XLNX_V4L2_DV_BT_2048X1080P96,
+	XLNX_V4L2_DV_BT_2048X1080P100,
+	XLNX_V4L2_DV_BT_2048X1080P120,
 };
 
 struct xsdirxss_dv_map {
@@ -617,6 +679,14 @@ static const struct xsdirxss_dv_map xsdirxss_dv_timings[] = {
 	/* 12G - 4096X2160p59.94 */
 	/* 12G - 4096X2160p60 */
 	{ 4096, 2160, 60, V4L2_DV_BT_CEA_4096X2160P60 },
+
+	/* 6G/12G HFR */
+	{ 1920, 1080, 96, XLNX_V4L2_DV_BT_1920X1080P96 },
+	{ 1920, 1080, 100, XLNX_V4L2_DV_BT_1920X1080P100 },
+	{ 1920, 1080, 120, XLNX_V4L2_DV_BT_1920X1080P120 },
+	{ 2048, 1080, 96, XLNX_V4L2_DV_BT_2048X1080P96 },
+	{ 2048, 1080, 100, XLNX_V4L2_DV_BT_2048X1080P100 },
+	{ 2048, 1080, 120, XLNX_V4L2_DV_BT_2048X1080P120 },
 };
 
 static inline struct xsdirxss_state *
@@ -892,6 +962,26 @@ static void xsdirxss_get_framerate(struct v4l2_fract *frame_interval,
 	case XSDIRX_TS_DET_STAT_RATE_60HZ:
 		frame_interval->numerator = 1000;
 		frame_interval->denominator = 60000;
+		break;
+	case XSDIRX_TS_DET_STAT_RATE_95_90HZ:
+		frame_interval->numerator = 1001;
+		frame_interval->denominator = 96000;
+		break;
+	case XSDIRX_TS_DET_STAT_RATE_96HZ:
+		frame_interval->numerator = 1000;
+		frame_interval->denominator = 96000;
+		break;
+	case XSDIRX_TS_DET_STAT_RATE_100HZ:
+		frame_interval->numerator = 1000;
+		frame_interval->denominator = 100000;
+		break;
+	case XSDIRX_TS_DET_STAT_RATE_119_88HZ:
+		frame_interval->numerator = 1001;
+		frame_interval->denominator = 120000;
+		break;
+	case XSDIRX_TS_DET_STAT_RATE_120HZ:
+		frame_interval->numerator = 1000;
+		frame_interval->denominator = 120000;
 		break;
 	default:
 		frame_interval->numerator = 1;
