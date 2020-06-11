@@ -11,6 +11,7 @@
 #include <linux/bitfield.h>
 #include <linux/cdev.h>
 #include <linux/device.h>
+#include <linux/fpga/fpga-bridge.h>
 #include <linux/io.h>
 #include <linux/list.h>
 #include <linux/mutex.h>
@@ -35,6 +36,8 @@ enum aie_tile_type {
 						AIE_REGS_ATTR_TILE_TYPE_SHIFT)
 #define AIE_REGS_ATTR_PERM_MASK		GENMASK(15, \
 						AIE_REGS_ATTR_PERM_SHIFT)
+
+#define AIE_PART_STATUS_BRIDGE_DISABLED	0x1U
 
 /**
  * struct aie_tile_regs - contiguous range of AI engine register
@@ -112,9 +115,20 @@ struct aie_device {
 };
 
 /**
+ * struct aie_part_bridge - AI engine FPGA bridge
+ * @name: name of the FPGA bridge
+ * @br: pointer to FPGA bridge
+ */
+struct aie_part_bridge {
+	char name[32];
+	struct fpga_bridge *br;
+};
+
+/**
  * struct aie_partition - AI engine partition structure
  * @node: list node
  * @adev: pointer to AI device instance
+ * @br: AI engine FPGA bridge
  * @range: range of partition
  * @mlock: protection for AI engine partition operations
  * @dev: device for the AI engine partition
@@ -124,6 +138,7 @@ struct aie_device {
  */
 struct aie_partition {
 	struct list_head node;
+	struct aie_part_bridge br;
 	struct aie_device *adev;
 	struct aie_range range;
 	struct mutex mlock; /* protection for AI engine partition operations */
@@ -203,6 +218,9 @@ struct aie_partition *aie_request_partition_from_id(struct aie_device *adev,
 struct aie_partition *of_aie_part_probe(struct aie_device *adev,
 					struct device_node *nc);
 void aie_part_remove(struct aie_partition *apart);
+
+int aie_fpga_create_bridge(struct aie_partition *apart);
+void aie_fpga_free_bridge(struct aie_partition *apart);
 
 int aiev1_device_init(struct aie_device *adev);
 #endif /* AIE_INTERNAL_H */

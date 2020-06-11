@@ -468,6 +468,7 @@ config XILINX_TRAFGEN
 config XILINX_AIE
 	tristate "Xilinx AI engine"
 	depends on ARM64 || COMPILE_TEST
+	select FPGA_BRIDGE
 	help
 	  This option enables support for the Xilinx AI engine driver.
 	  One Xilinx AI engine device can have multiple partitions (groups of
