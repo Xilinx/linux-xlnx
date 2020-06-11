@@ -1,0 +1,89 @@
+# SPDX-License-Identifier: GPL-2.0
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/soc/xilinx/xlnx,ai-engine.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Xilinux AI Engine
+
+maintainers:
+ - Wendy Liang <wendy.liang@xilinx.com>
+
+description: |+
+  The Xilinx AI Engine is a tile processor with many cores (up to 400) that
+  can run in parallel. The data routing between cores is configured through
+  internal switches, and shim tiles interface with external interconnect, such
+  as memory or PL.
+
+properties:
+  compatible:
+    const: xlnx,ai-engine-v1.0
+
+  reg:
+    description: |
+      Physical base address and length of the device registers.
+      The AI engine address space assigned to Linux is defined by Xilinx
+      platform design tool.
+
+  '#address-cells':
+    enum: [2]
+    description: |
+      size of cell to describe AI engine range of tiles address.
+      It is the location of the starting tile of the range.
+      As the AI engine tiles are 2D array, the location of a tile
+      is presented as (column, row), the address cell is 2.
+
+  '#size-cells':
+    enum: [2]
+    description: |
+      size of cell to describe AI engine range of tiles size.
+      As the AI engine tiles are 2D array, the size cell is 2.
+
+required:
+  - compatible
+  - reg
+  - '#address-cells'
+  - '#size-cells'
+
+patternProperties:
+  "^partition[0-9]@[0-9]+$":
+    type: object
+    description: |
+      AI engine partition which is a group of column based tiles of the AI
+      engine device. Each AI engine partition is isolated from the other
+      AI engine partitions. An AI engine partition is defined by Xilinx
+      platform design tools.
+
+    properties:
+      reg:
+        description: |
+          It describes the group of tiles of the AI engine partition. The format
+          is defined by the parent AI engine device node's '#address-cells' and
+          '#size-cells' properties.
+
+      label:
+        maxItems: 1
+
+      xlnx,partition-id:
+        $ref: /schemas/types.yaml#/definitions/uint32
+        description: |
+          AI engine partition ID, which is defined by Xilinx platform design
+          tool to identify the AI engine partition in the system.
+
+    required:
+      - reg
+      - xlnx,partition-id
+
+examples:
+  - |
+    ai_engine: ai-engine@20000000000 {
+      compatible = "xlnx,ai-engine-v1.0";
+      reg = <0x200 0x0 0x1 0x0>;
+      #address-cells = <2>;
+      #size-cells = <2>;
+
+      aie_partition0: aie-partition@0 {
+        reg = <0 0 50 8>;
+        xlnx,partition-id = <1>;
+      };
+    };
