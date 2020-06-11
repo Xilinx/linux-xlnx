@@ -403,6 +403,7 @@ static void aie_part_release_device(struct device *dev)
 				apart->range.size.col);
 	list_del(&apart->node);
 	mutex_unlock(&adev->mlock);
+	aie_fpga_free_bridge(apart);
 	put_device(apart->dev.parent);
 }
 
@@ -532,7 +533,13 @@ of_aie_part_probe(struct aie_device *adev, struct device_node *nc)
 
 	of_node_get(nc);
 	apart->dev.of_node = nc;
+	apart->dev.driver = adev->dev.parent->driver;
 	apart->partition_id = partition_id;
+
+	/* Create FPGA bridge for AI engine partition */
+	ret = aie_fpga_create_bridge(apart);
+	if (ret < 0)
+		dev_warn(&apart->dev, "failed to create fpga region.\n");
 
 	dev_info(&adev->dev,
 		 "AI engine part(%u,%u),(%u,%u), id %u is probed successfully.\n",
