@@ -477,6 +477,20 @@ config XILINX_TRAFGEN
 
 	  If unsure, say N
 
+config XILINX_AIE
+	tristate "Xilinx AI engine"
+	depends on ARM64 || COMPILE_TEST
+	depends on ZYNQMP_FIRMWARE
+	select FPGA_BRIDGE
+	help
+	  This option enables support for the Xilinx AI engine driver.
+	  One Xilinx AI engine device can have multiple partitions (groups of
+	  AI engine tiles). Xilinx AI engine device driver instance manages
+	  AI engine partitions. User application access its partitions through
+	  AI engine partition instance file operations.
+
+	  If unsure, say N
+
 config MISC_RTSX
 	tristate
 	default MISC_RTSX_PCI || MISC_RTSX_USB

@@ -61,4 +61,5 @@ obj-$(CONFIG_HISI_HIKEY_USB)	+= hisi_hikey_usb.o
 obj-$(CONFIG_XILINX_FLEX_PM)	+= xilinx_flex_pm.o
 obj-$(CONFIG_XILINX_TRAFGEN)	+= xilinx_trafgen.o
 obj-$(CONFIG_XILINX_JESD204B)	+= jesd204b/
+obj-$(CONFIG_XILINX_AIE)	+= xilinx-ai-engine/
 obj-$(CONFIG_HI6421V600_IRQ)	+= hi6421v600-irq.o
