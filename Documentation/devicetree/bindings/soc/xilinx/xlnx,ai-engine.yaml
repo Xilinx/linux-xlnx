@@ -1,0 +1,184 @@
+# SPDX-License-Identifier: GPL-2.0
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/soc/xilinx/xlnx,ai-engine.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Xilinx AI Engine
+
+maintainers:
+  - Wendy Liang <wendy.liang@xilinx.com>
+
+description: |+
+  The Xilinx AI Engine is a tile processor with many cores (up to 400) that
+  can run in parallel. The data routing between cores is configured through
+  internal switches, and shim tiles interface with external interconnect, such
+  as memory or PL. One AI engine device can have multiple apertures, each
+  has its own address space and interrupt. At runtime application can create
+  multiple partitions within an aperture which are groups of columns of AI
+  engine tiles. Each AI engine partition is the minimum resetable unit for an
+  AI engine application.
+
+properties:
+  compatible:
+    enum:
+      - xlnx,ai-engine-v2.0
+      - xlnx,ai-engine-v1.0 # deprecated
+
+  reg:
+    deprecated: true
+    description: |
+      Physical base address and length of the device registers.
+      The AI engine address space assigned to Linux is defined by Xilinx
+      platform design tool.
+
+  '#address-cells':
+    enum: [2]
+    description: |
+      size of cell to describe AI engine range of tiles address.
+      It is the location of the starting tile of the range.
+      As the AI engine tiles are 2D array, the location of a tile
+      is presented as (column, row), the address cell is 2.
+
+  '#size-cells':
+    enum: [2]
+    description: |
+      size of cell to describe AI engine range of tiles size.
+      As the AI engine tiles are 2D array, the size cell is 2.
+
+  interrupts:
+    deprecated: true
+    maxItems: 3
+
+  interrupt-names:
+    deprecated: true
+    description: |
+      Should be "interrupt1", "interrupt2" or "interrupt3".
+
+  ranges: true
+
+  xlnx,shim-rows:
+    $ref: /schemas/types.yaml#/definitions/uint8-array
+    description: |
+      start row and the number of rows of SHIM tiles of the AI engine device
+
+  xlnx,core-rows:
+    $ref: /schemas/types.yaml#/definitions/uint8-array
+    description: |
+      start row and the number of rows of core tiles of the AI engine device
+
+required:
+  - compatible
+  - '#address-cells'
+  - '#size-cells'
+  - ranges
+  - power-domains
+  - xlnx,shim-rows
+  - xlnx,core-rows
+
+patternProperties:
+  "^aperture@[0-9]+$":
+    type: object
+    description: |
+      AI engine aperture which is a group of column based tiles of the
+      AI engine device. Each AI engine apertures isolated from the
+      other AI engine apertures. An AI engine aperture is defined by
+      Xilinx platform design tools.
+
+    properties:
+      reg:
+        description: |
+          Physical base address and length of the aperture registers.
+          The AI engine address space assigned to Linux is defined by Xilinx
+          platform design tool.
+
+      xlnx,columns:
+        $ref: /schemas/types.yaml#/definitions/uint32-array
+        description:
+          It describes the location of the aperture. It specifies the start
+          column and the number of columns. E.g. an aperture starts from
+          column 0 and there are 50 columns, it will be presented as <0 50>.
+
+      interrupts:
+        maxItems: 3
+
+      interrupt-names:
+        description: |
+          Should be "interrupt1", "interrupt2" or "interrupt3".
+
+      xlnx,node-id:
+        $ref: /schemas/types.yaml#/definitions/uint32
+        description: |
+          AI engine aperture node ID, which is defined by Xilinx platform design
+          tool to identify the AI engine aperture in the firmware.
+
+    required:
+      - reg
+      - xlnx,columns
+      - xlnx,node-id
+
+  "^partition[0-9]@[0-9]+$":
+    deprecated: true
+    type: object
+    description: |
+      AI engine partition which is a group of column based tiles of the AI
+      engine device. Each AI engine partition is isolated from the other
+      AI engine partitions. An AI engine partition is defined by Xilinx
+      platform design tools.
+      AI engine partition driver will create a FPGA bridge when probes the
+      AI engine partition. The AI engine SHIM row of the partition is the
+      bridge to connect AI engine partition, FPGA and PS.
+
+    properties:
+      reg:
+        description: |
+          It describes the group of tiles of the AI engine partition. It needs
+          to include the SHIM row. The format is defined by the parent AI engine
+          device node's '#address-cells' and '#size-cells' properties. e.g. a v1
+          AI engine device has 2D tiles array, the first row is SHIM row. A
+          partition which has 50 columns and 8 rows of core tiles and 1 row of
+          SHIM tiles will be presented as <0 0 50 9>.
+
+      label:
+        maxItems: 1
+
+      xlnx,partition-id:
+        $ref: /schemas/types.yaml#/definitions/uint32
+        description: |
+          AI engine partition ID, which is defined by Xilinx platform design
+          tool to identify the AI engine partition in the system.
+
+    required:
+      - reg
+      - xlnx,partition-id
+
+additionalProperties: true
+
+examples:
+  - |
+    #include <dt-bindings/power/xlnx-versal-power.h>
+    bus {
+      #address-cells = <2>;
+      #size-cells = <2>;
+      ai_engine: ai_engine {
+        compatible = "xlnx,ai-engine-v2.0";
+        xlnx,shim-rows = /bits/ 8 <0 1>;
+        xlnx,core-rows = /bits/ 8 <1 8>;
+        power-domains = <&versal_firmware PM_DEV_AI>;
+        #address-cells = <2>;
+        #size-cells = <2>;
+        ranges;
+
+        aperture0: aperture@0 {
+          /* 50 columns and 8 core tile rows + 1 SHIM row */
+          reg = <0x200 0x0 0x1 0x0>;
+          xlnx,columns = <0 50>;
+          xlnx,node-id = <1>;
+          interrupt-parent = <&gic>;
+          interrupts = <0x0 0x94 0x4>,
+                       <0x0 0x95 0x4>,
+                       <0x0 0x96 0x4>;
+          interrupt-names = "interrupt1", "interrupt2", "interrupt3";
+        };
+      };
+    };
