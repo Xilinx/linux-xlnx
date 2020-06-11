@@ -3882,6 +3882,14 @@ F:	drivers/char/
 F:	drivers/misc/
 F:	include/linux/miscdevice.h
 
+CHAR and MISC XILINX AI ENGINE DRIVER
+M:	Wendy Liang <wendy.liang@xilinx.com>
+M:	Hyun Kwon <hyun.kwon@xilinx.com>
+S:	Maintained
+F:	Documentation/devicetree/bindings/soc/xilinx/xlnx,ai-engine.yaml
+F:	drivers/misc/xilinx-ai-engine/
+F:	include/uapi/linux/xlnx-ai-engine.h
+
 CHECKPATCH
 M:	Andy Whitcroft <apw@canonical.com>
 M:	Joe Perches <joe@perches.com>
