@@ -53,6 +53,9 @@ patternProperties:
       engine device. Each AI engine partition is isolated from the other
       AI engine partitions. An AI engine partition is defined by Xilinx
       platform design tools.
+      AI engine partition driver will create a FPGA bridge when probes the
+      AI engine partition. The AI engine SHIM row of the partition is the
+      bridge to connect AI engine partition, FPGA and PS.
 
     properties:
       reg:
@@ -85,5 +88,22 @@ examples:
       aie_partition0: aie-partition@0 {
         reg = <0 0 50 8>;
         xlnx,partition-id = <1>;
+      };
+    };
+
+  - |
+    /*
+     * Device tree overlay example to for FPGA partial configuration which
+     * connects to AI engine partition.
+     */
+    fpga_region0: fpga_region0 {
+      fpga-bridges = <&aie_partition0>;
+    };
+    fragment@0 {
+      target = <&fpga_region0>;
+      #address-cells = <1>;
+      #size-cells = <1>;
+      __overlay__ {
+        firmware-name = "partition.pdi";
       };
     };
