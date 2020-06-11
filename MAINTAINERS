@@ -5269,6 +5269,15 @@ S:	Maintained
 F:	Documentation/hwmon/powerz.rst
 F:	drivers/hwmon/powerz.c
 
+CHAR and MISC XILINX AI ENGINE DRIVER
+M:	Gregory Williams <gregory.williams@amd.com>
+M:	Govindarajulu Varadarajan <govindarajulu.varadarajan@amd.com>
+S:	Maintained
+F:	Documentation/devicetree/bindings/soc/xilinx/xlnx,ai-engine.yaml
+F:	drivers/misc/xilinx-ai-engine/
+F:	include/linux/xlnx-ai-engine.h
+F:	include/uapi/linux/xlnx-ai-engine.h
+
 CHECKPATCH
 M:	Andy Whitcroft <apw@canonical.com>
 M:	Joe Perches <joe@perches.com>
