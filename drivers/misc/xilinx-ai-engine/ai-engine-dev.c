@@ -390,7 +390,7 @@ static struct platform_driver xilinx_ai_engine_driver = {
 	.probe			= xilinx_ai_engine_probe,
 	.remove			= xilinx_ai_engine_remove,
 	.driver			= {
-		.name		= "xilinx-aiengine",
+		.name		= "xilinx-ai-engine",
 		.of_match_table	= xilinx_ai_engine_of_match,
 	},
 };
