@@ -123,7 +123,19 @@ struct clk_hw *zynqmp_clk_register_mux(const char *name, u32 clk_id,
 	init.flags = nodes->flag;
 	init.parent_names = parents;
 	init.num_parents = num_parents;
-	mux->flags = nodes->type_flag;
+	mux->flags = 0;
+	mux->flags |= (nodes->type_flag & ZYNQMP_CLK_MUX_INDEX_ONE) ?
+		      CLK_MUX_INDEX_ONE : 0;
+	mux->flags |= (nodes->type_flag & ZYNQMP_CLK_MUX_INDEX_BIT) ?
+		      CLK_MUX_INDEX_BIT : 0;
+	mux->flags |= (nodes->type_flag & ZYNQMP_CLK_MUX_HIWORD_MASK) ?
+		      CLK_MUX_HIWORD_MASK : 0;
+	mux->flags |= (nodes->type_flag & ZYNQMP_CLK_MUX_READ_ONLY) ?
+		      CLK_MUX_READ_ONLY : 0;
+	mux->flags |= (nodes->type_flag & ZYNQMP_CLK_MUX_ROUND_CLOSEST) ?
+		      CLK_MUX_ROUND_CLOSEST : 0;
+	mux->flags |= (nodes->type_flag & ZYNQMP_CLK_MUX_BIG_ENDIAN) ?
+		      CLK_MUX_BIG_ENDIAN : 0;
 	mux->hw.init = &init;
 	mux->clk_id = clk_id;
 
