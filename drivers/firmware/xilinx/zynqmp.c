@@ -2,7 +2,7 @@
 /*
  * Xilinx Zynq MPSoC Firmware layer
  *
- *  Copyright (C) 2014-2018 Xilinx, Inc.
+ *  Copyright (C) 2014-2020 Xilinx, Inc.
  *
  *  Michal Simek <michal.simek@xilinx.com>
  *  Davorin Mista <davorin.mista@aggios.com>
@@ -530,6 +530,7 @@ static inline int versal_is_valid_ioctl(u32 ioctl_id)
 	case IOCTL_PROBE_COUNTER_WRITE:
 	case IOCTL_USB_SET_STATE:
 	case IOCTL_OSPI_MUX_SELECT:
+	case IOCTL_GET_LAST_RESET_REASON:
 		return 1;
 	default:
 		return 0;
@@ -1218,6 +1219,26 @@ static int zynqmp_pm_secure_load(const u64 src_addr, u64 key_addr, u64 *dst)
 
 	return ret_value;
 }
+
+/**
+ * zynqmp_pm_get_last_reset_reason() - PM API for getting last reset reason
+ *
+ * @reset_reason:	last reset reason
+ *
+ * This function returns last reset reason
+ *
+ * Return: Returns status, either success or error+reason
+ */
+int zynqmp_pm_get_last_reset_reason(u32 *reset_reason)
+{
+	if (!reset_reason)
+		return -EINVAL;
+
+	return zynqmp_pm_invoke_fn(PM_IOCTL, 0,
+				   IOCTL_GET_LAST_RESET_REASON,
+				   0, 0, reset_reason);
+}
+EXPORT_SYMBOL_GPL(zynqmp_pm_get_last_reset_reason);
 
 static const struct zynqmp_eemi_ops eemi_ops = {
 	.get_api_version = zynqmp_pm_get_api_version,
