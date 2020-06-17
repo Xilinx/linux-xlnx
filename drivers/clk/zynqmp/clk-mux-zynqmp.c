@@ -49,8 +49,10 @@ static u8 zynqmp_clk_mux_get_parent(struct clk_hw *hw)
 	int ret;
 	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 
-	ret = eemi_ops->clock_getparent(clk_id, &val);
+	if (IS_ERR(eemi_ops))
+		return PTR_ERR(eemi_ops);
 
+	ret = eemi_ops->clock_getparent(clk_id, &val);
 	if (ret)
 		pr_warn_once("%s() getparent failed for clock: %s, ret = %d\n",
 			     __func__, clk_name, ret);
@@ -73,8 +75,10 @@ static int zynqmp_clk_mux_set_parent(struct clk_hw *hw, u8 index)
 	int ret;
 	const struct zynqmp_eemi_ops *eemi_ops = zynqmp_pm_get_eemi_ops();
 
-	ret = eemi_ops->clock_setparent(clk_id, index);
+	if (IS_ERR(eemi_ops))
+		return PTR_ERR(eemi_ops);
 
+	ret = eemi_ops->clock_setparent(clk_id, index);
 	if (ret)
 		pr_warn_once("%s() set parent failed for clock: %s, ret = %d\n",
 			     __func__, clk_name, ret);
