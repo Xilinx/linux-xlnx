@@ -175,6 +175,8 @@ enum pm_ioctl_id {
 	IOCTL_OSPI_MUX_SELECT = 21,
 	/* IOCTL for USB power request */
 	IOCTL_USB_SET_STATE = 22,
+	/* IOCTL to get last reset reason */
+	IOCTL_GET_LAST_RESET_REASON = 23,
 	/* AI engine NPI ISR clear */
 	IOCTL_AIE_ISR_CLEAR = 24,
 };
@@ -617,6 +619,7 @@ int zynqmp_pm_ulpi_reset(void);
 int zynqmp_pm_probe_counter_read(u32 domain, u32 reg, u32 *value);
 int zynqmp_pm_probe_counter_write(u32 domain, u32 reg, u32 value);
 int zynqmp_pm_ospi_mux_select(u32 dev_id, u32 select);
+int zynqmp_pm_get_last_reset_reason(u32 *reset_reason);
 int zynqmp_pm_system_shutdown(const u32 type, const u32 subtype);
 int zynqmp_pm_set_boot_health_status(u32 value);
 int zynqmp_pm_force_pwrdwn(const u32 target,
@@ -1007,6 +1010,11 @@ static inline int zynqmp_pm_ospi_mux_select(u32 dev_id, u32 select)
 }
 
 static inline int zynqmp_pm_secure_load(const u64 src_addr, u64 key_addr, u64 *dst)
+{
+	return -ENODEV;
+}
+
+static inline int zynqmp_pm_get_last_reset_reason(u32 *reset_reason)
 {
 	return -ENODEV;
 }
