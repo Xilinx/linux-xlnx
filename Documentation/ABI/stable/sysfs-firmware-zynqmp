@@ -101,3 +101,16 @@ Description:
 		# echo 0 > /sys/firmware/zynqmp/health_status
 
 Users:		Xilinx
+
+What:		/sys/firmware/zynqmp/last_reset_reason
+Date:		June 2020
+KernelVersion:	5.4.0
+Contact:	"Tejas Patel" <tejasp@xilinx.com>
+Description:
+		This sysfs interface allows to get last reset reason.
+
+		Usage:
+		Get last reset reason
+		# cat /sys/firmware/zynqmp/last_reset_reason
+
+Users:		Xilinx
