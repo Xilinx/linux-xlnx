@@ -267,31 +267,36 @@ static int xvcu_probe(struct platform_device *pdev)
 
 	xvcu->pll_ref = devm_clk_get(pdev->dev.parent, "pll_ref");
 	if (IS_ERR(xvcu->pll_ref)) {
-		dev_err(&pdev->dev, "Could not get pll_ref clock\n");
+		if (PTR_ERR(xvcu->pll_ref) != -EPROBE_DEFER)
+			dev_err(&pdev->dev, "Could not get pll_ref clock\n");
 		return PTR_ERR(xvcu->pll_ref);
 	}
 
 	xvcu->core_enc = devm_clk_get(pdev->dev.parent, "vcu_core_enc");
 	if (IS_ERR(xvcu->core_enc)) {
-		dev_err(&pdev->dev, "Could not get core_enc clock\n");
+		if (PTR_ERR(xvcu->core_enc) != -EPROBE_DEFER)
+			dev_err(&pdev->dev, "Could not get core_enc clock\n");
 		return PTR_ERR(xvcu->core_enc);
 	}
 
 	xvcu->core_dec = devm_clk_get(pdev->dev.parent, "vcu_core_dec");
 	if (IS_ERR(xvcu->core_dec)) {
-		dev_err(&pdev->dev, "Could not get vcu_core_dec clock\n");
+		if (PTR_ERR(xvcu->core_dec) != -EPROBE_DEFER)
+			dev_err(&pdev->dev, "Could not get core_dec clock\n");
 		return PTR_ERR(xvcu->core_dec);
 	}
 
 	xvcu->mcu_enc = devm_clk_get(pdev->dev.parent, "vcu_mcu_enc");
 	if (IS_ERR(xvcu->mcu_enc)) {
-		dev_err(&pdev->dev, "Could not get mcu_enc clock\n");
+		if (PTR_ERR(xvcu->mcu_enc) != -EPROBE_DEFER)
+			dev_err(&pdev->dev, "Could not get mcu_enc clock\n");
 		return PTR_ERR(xvcu->mcu_enc);
 	}
 
 	xvcu->mcu_dec = devm_clk_get(pdev->dev.parent, "vcu_mcu_dec");
 	if (IS_ERR(xvcu->mcu_dec)) {
-		dev_err(&pdev->dev, "Could not get mcu_dec clock\n");
+		if (PTR_ERR(xvcu->mcu_dec) != -EPROBE_DEFER)
+			dev_err(&pdev->dev, "Could not get mcu_dec clock\n");
 		return PTR_ERR(xvcu->mcu_dec);
 	}
 
