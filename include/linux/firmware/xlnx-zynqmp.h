@@ -180,6 +180,8 @@ enum pm_ioctl_id {
 	IOCTL_OSPI_MUX_SELECT,
 	/* IOCTL for USB power request */
 	IOCTL_USB_SET_STATE,
+	/* IOCTL to get last reset reason */
+	IOCTL_GET_LAST_RESET_REASON,
 };
 
 enum pm_query_id {
@@ -636,10 +638,16 @@ int zynqmp_pm_ggs_init(struct kobject *parent_kobj);
 
 #if IS_REACHABLE(CONFIG_ARCH_ZYNQMP)
 const struct zynqmp_eemi_ops *zynqmp_pm_get_eemi_ops(void);
+int zynqmp_pm_get_last_reset_reason(u32 *reset_reason);
 #else
 static inline struct zynqmp_eemi_ops *zynqmp_pm_get_eemi_ops(void)
 {
 	return ERR_PTR(-ENODEV);
+}
+
+static inline int zynqmp_pm_get_last_reset_reason(u32 *reset_reason)
+{
+	return -ENODEV;
 }
 #endif
 
