@@ -394,6 +394,8 @@ static int __zynqmp_clock_get_topology(struct clock_topology *topology,
 		topology[*nnodes].type = type;
 		flag = FIELD_GET(CLK_TOPOLOGY_FLAGS, response->topology[i]);
 		topology[*nnodes].flag = 0;
+		topology[*nnodes].flag |= (flag & ZYNQMP_CLK_SET_RATE_GATE) ?
+					  CLK_SET_RATE_GATE : 0;
 		topology[*nnodes].flag |= (flag & ZYNQMP_CLK_SET_RATE_PARENT) ?
 					   CLK_SET_RATE_PARENT : 0;
 		topology[*nnodes].flag |= (flag & ZYNQMP_CLK_IGNORE_UNUSED) ?
