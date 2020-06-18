@@ -10,6 +10,8 @@
 #ifndef _HDR_CTRLS_H_
 #define _HDR_CTRLS_H_
 
+#include <linux/types.h>
+
 #define V4L2_CTRL_CLASS_METADATA 0x00b00000
 
 #define V4L2_CID_METADATA_BASE (V4L2_CTRL_CLASS_METADATA | 0x900)
