@@ -203,36 +203,6 @@ static ssize_t jesd204b_syncreg_read(struct device *dev,
 
 static DEVICE_ATTR(sync_status, 0400, jesd204b_syncreg_read, NULL);
 
-static unsigned int long jesd204b_clk_recalc_rate(struct clk_hw *hw,
-					      unsigned long parent_rate)
-{
-	return parent_rate;
-}
-
-static int jesd204b_clk_enable(struct clk_hw *hw)
-{
-	to_clk_priv(hw)->enabled = true;
-
-	return 0;
-}
-
-static void jesd204b_clk_disable(struct clk_hw *hw)
-{
-	to_clk_priv(hw)->enabled = false;
-}
-
-static int jesd204b_clk_is_enabled(struct clk_hw *hw)
-{
-	return to_clk_priv(hw)->enabled;
-}
-
-static const struct clk_ops clkout_ops = {
-	.recalc_rate = jesd204b_clk_recalc_rate,
-	.enable = jesd204b_clk_enable,
-	.disable = jesd204b_clk_disable,
-	.is_enabled = jesd204b_clk_is_enabled,
-};
-
 /* Match table for of_platform binding */
 static const struct of_device_id jesd204b_of_match[] = {
 	{ .compatible = "xlnx,jesd204-5.1",},
