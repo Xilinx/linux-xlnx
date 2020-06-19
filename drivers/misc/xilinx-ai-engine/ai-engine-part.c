@@ -65,13 +65,13 @@ static int aie_part_reg_validation(struct aie_partition *apart, size_t offset,
 	adev = apart->adev;
 	if (offset % sizeof(u32)) {
 		dev_err(&apart->dev,
-			"Invalid reg off(0x%lx), not 32bit aligned.\n",
+			"Invalid reg off(0x%zx), not 32bit aligned.\n",
 			offset);
 		return -EINVAL;
 	}
 
 	if (len % sizeof(u32)) {
-		dev_err(&apart->dev, "Invalid reg operation len %lu.\n", len);
+		dev_err(&apart->dev, "Invalid reg operation len %zu.\n", len);
 		return -EINVAL;
 	}
 
@@ -79,7 +79,7 @@ static int aie_part_reg_validation(struct aie_partition *apart, size_t offset,
 	regend64 = regoff + len;
 	if (regend64 >= BIT_ULL(adev->row_shift)) {
 		dev_err(&apart->dev,
-			"Invalid reg operation len %lu.\n", len);
+			"Invalid reg operation len %zu.\n", len);
 		return -EINVAL;
 	}
 
@@ -113,7 +113,7 @@ static int aie_part_reg_validation(struct aie_partition *apart, size_t offset,
 		    (regend32 >= regs->soff && regend32 <= regs->eoff)) {
 			if (!writable) {
 				dev_err(&apart->dev,
-					"reg 0x%lx,0x%lx not writable.\n",
+					"reg 0x%zx,0x%zx not writable.\n",
 					offset, len);
 				return -EINVAL;
 			}
@@ -150,7 +150,7 @@ static int aie_part_write_register(struct aie_partition *apart, size_t offset,
 
 	ret = aie_part_reg_validation(apart, offset, len, 1);
 	if (ret < 0) {
-		dev_err(&apart->dev, "failed to write to 0x%lx,0x%lx.\n",
+		dev_err(&apart->dev, "failed to write to 0x%zx,0x%zx.\n",
 			offset, len);
 		return ret;
 	}
@@ -190,7 +190,7 @@ static int aie_part_read_register(struct aie_partition *apart, size_t offset,
 
 	ret = aie_part_reg_validation(apart, offset, len, 0);
 	if (ret) {
-		dev_err(&apart->dev, "Invalid read request 0x%lx,0x%lx.\n",
+		dev_err(&apart->dev, "Invalid read request 0x%zx,0x%zx.\n",
 			offset, len);
 		return -EINVAL;
 	}
