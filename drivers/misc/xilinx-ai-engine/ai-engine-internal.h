@@ -213,8 +213,8 @@ const struct file_operations *aie_part_get_fops(void);
 u8 aie_part_in_use(struct aie_partition *apart);
 struct aie_partition *aie_get_partition_from_id(struct aie_device *adev,
 						u32 partition_id);
-struct aie_partition *aie_request_partition_from_id(struct aie_device *adev,
-						    u32 partition_id);
+struct aie_partition *aie_request_partition(struct aie_device *adev,
+					    struct aie_partition_req *req);
 struct aie_partition *of_aie_part_probe(struct aie_device *adev,
 					struct device_node *nc);
 void aie_part_remove(struct aie_partition *apart);

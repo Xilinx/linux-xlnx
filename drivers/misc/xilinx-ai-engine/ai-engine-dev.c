@@ -149,35 +149,42 @@ struct aie_partition *aie_get_partition_from_id(struct aie_device *adev,
 }
 
 /**
- * aie_request_partition_from_id() - request AI engine partition from id
+ * aie_request_partition() - request AI engine partition
  * @adev: AI engine device
- * @partition_id: partition id
+ * @req: partition request, includes the requested AI engine information
+ *	 such as partition node ID and the UID of the image which is
+ *	 loaded on the partition.
  * @return: partition pointer if partition exists, otherwise, NULL.
  *
  * This function finds a defined partition which matches the specified
  * partition id, request it by increasing the refcount, and returns it.
  */
-struct aie_partition *aie_request_partition_from_id(struct aie_device *adev,
-						    u32 partition_id)
+struct aie_partition *aie_request_partition(struct aie_device *adev,
+					    struct aie_partition_req *req)
 {
 	struct aie_partition *apart;
 
 	mutex_lock_interruptible(&adev->mlock);
-	apart = aie_get_partition_from_id(adev, partition_id);
+	apart = aie_get_partition_from_id(adev, req->partition_id);
 	if (!apart) {
 		dev_err(&adev->dev,
 			"request partition %u failed, not exist.\n",
-			partition_id);
+			req->partition_id);
 		mutex_unlock(&adev->mlock);
 		return ERR_PTR(-EINVAL);
 	}
+	/*
+	 * TODO: It will check image UID too to see if the user matches
+	 * what's loaded in the AI engine partition. And check the meta
+	 * data to see which resources used by application.
+	 */
 
 	mutex_lock_interruptible(&apart->mlock);
 	if (apart->status & XAIE_PART_STATUS_INUSE) {
 		mutex_unlock(&apart->mlock);
 		dev_err(&adev->dev,
 			"request partition %u failed, partition in use.\n",
-			partition_id);
+			req->partition_id);
 		apart = ERR_PTR(-EBUSY);
 	} else {
 		/*
@@ -224,12 +231,12 @@ static long xilinx_ai_engine_ioctl(struct file *filp, unsigned int cmd,
 	}
 	case AIE_REQUEST_PART_IOCTL:
 	{
-		u32 partition_id;
+		struct aie_partition_req req;
 		struct aie_partition *apart;
 
-		if (copy_from_user(&partition_id, argp, sizeof(partition_id)))
+		if (copy_from_user(&req, argp, sizeof(req)))
 			return -EFAULT;
-		apart = aie_request_partition_from_id(adev, partition_id);
+		apart = aie_request_partition(adev, &req);
 		if (IS_ERR(apart))
 			return PTR_ERR(apart);
 		ret = aie_get_partition_fd(apart);

@@ -78,12 +78,30 @@ struct aie_partition_query {
 	__u32 partition_cnt;
 };
 
+/**
+ * struct aie_partition_req - AIE request partition arguments
+ * @partition_id: partition node id. It is used to identify the AI engine
+ *		  partition in the system.
+ * @uid: image identifier loaded on the AI engine partition
+ * @meta_data: meta data to indicate which resources used by application.
+ * @flag: used for application to indicate particular driver requirements
+ *	  application wants to have for the partition. e.g. do not clean
+ *	  resource when closing the partition.
+ */
+struct aie_partition_req {
+	__u32 partition_id;
+	__u32 uid;
+	__u64 meta_data;
+	__u32 flag;
+};
+
 #define AIE_IOCTL_BASE 'A'
 
 /* AI engine device IOCTL operations */
 #define AIE_ENQUIRE_PART_IOCTL		_IOWR(AIE_IOCTL_BASE, 0x1, \
 					      struct aie_partition_query)
-#define AIE_REQUEST_PART_IOCTL		_IOR(AIE_IOCTL_BASE, 0x2, __u32)
+#define AIE_REQUEST_PART_IOCTL		_IOR(AIE_IOCTL_BASE, 0x2, \
+					     struct aie_partition_req)
 
 /* AI engine partition IOCTL operations */
 #define AIE_REG_IOCTL			_IOWR(AIE_IOCTL_BASE, 0x8, \
