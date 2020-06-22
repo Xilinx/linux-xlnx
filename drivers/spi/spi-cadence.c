@@ -341,7 +341,8 @@ static irqreturn_t cdns_spi_irq(int irq, void *dev_id)
 {
 	struct spi_master *master = dev_id;
 	struct cdns_spi *xspi = spi_master_get_devdata(master);
-	u32 intr_status, status;
+	u32 intr_status;
+	irqreturn_t status;
 
 	status = IRQ_NONE;
 	intr_status = cdns_spi_read(xspi, CDNS_SPI_ISR);
