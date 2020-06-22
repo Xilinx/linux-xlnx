@@ -475,7 +475,7 @@ static int cdns_spi_probe(struct platform_device *pdev)
 	int ret = 0, irq;
 	struct spi_master *master;
 	struct cdns_spi *xspi;
-	u32 num_cs;
+	u32 num_cs = 0;
 
 	master = spi_alloc_master(&pdev->dev, sizeof(*xspi));
 	if (!master)
