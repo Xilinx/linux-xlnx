@@ -245,12 +245,16 @@ static int aie_part_access_regs(struct aie_partition *apart, u32 num_reqs,
 static int aie_part_release(struct inode *inode, struct file *filp)
 {
 	struct aie_partition *apart = filp->private_data;
+	int ret;
 
 	/*
 	 * TODO: It will need to reset the SHIM columns and gate the
 	 * the tiles of the partition.
 	 */
-	mutex_lock_interruptible(&apart->mlock);
+	ret = mutex_lock_interruptible(&apart->mlock);
+	if (ret)
+		return ret;
+
 	apart->status = 0;
 	mutex_unlock(&apart->mlock);
 
@@ -273,7 +277,13 @@ static ssize_t aie_part_write_iter(struct kiocb *iocb, struct iov_iter *from)
 		kfree(buf);
 		return -EFAULT;
 	}
-	mutex_lock_interruptible(&apart->mlock);
+
+	ret = mutex_lock_interruptible(&apart->mlock);
+	if (ret) {
+		kfree(buf);
+		return ret;
+	}
+
 	ret = aie_part_write_register(apart, (size_t)offset, len, buf, 0);
 	mutex_unlock(&apart->mlock);
 	kfree(buf);
@@ -293,7 +303,13 @@ static ssize_t aie_part_read_iter(struct kiocb *iocb, struct iov_iter *to)
 	buf = kzalloc(len, GFP_KERNEL);
 	if (!buf)
 		return -ENOMEM;
-	mutex_lock_interruptible(&apart->mlock);
+
+	ret = mutex_lock_interruptible(&apart->mlock);
+	if (ret) {
+		kfree(buf);
+		return ret;
+	}
+
 	ret = aie_part_read_register(apart, (size_t)offset, len, buf);
 	mutex_unlock(&apart->mlock);
 	if (ret > 0) {
@@ -363,7 +379,11 @@ static long aie_part_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 
 		if (copy_from_user(&raccess, argp, sizeof(raccess)))
 			return -EFAULT;
-		mutex_lock_interruptible(&apart->mlock);
+
+		ret = mutex_lock_interruptible(&apart->mlock);
+		if (ret)
+			return ret;
+
 		ret = aie_part_access_regs(apart, 1, &raccess);
 		mutex_unlock(&apart->mlock);
 		break;
@@ -397,8 +417,14 @@ static void aie_part_release_device(struct device *dev)
 {
 	struct aie_partition *apart = dev_to_aiepart(dev);
 	struct aie_device *adev = apart->adev;
+	int ret;
 
-	mutex_lock_interruptible(&adev->mlock);
+	ret = mutex_lock_interruptible(&adev->mlock);
+	if (ret) {
+		dev_warn(&apart->dev,
+			 "getting adev->mlock is interrupted by signal\n");
+	}
+
 	aie_resource_put_region(&adev->cols_res, apart->range.start.col,
 				apart->range.size.col);
 	list_del(&apart->node);
@@ -427,7 +453,10 @@ static struct aie_partition *aie_create_partition(struct aie_device *adev,
 	char devname[32];
 	int ret;
 
-	mutex_lock_interruptible(&adev->mlock);
+	ret = mutex_lock_interruptible(&adev->mlock);
+	if (ret)
+		return ERR_PTR(ret);
+
 	ret = aie_resource_check_region(&adev->cols_res, range->start.col,
 					range->size.col);
 	if (ret != range->start.col) {
@@ -474,7 +503,12 @@ static struct aie_partition *aie_create_partition(struct aie_device *adev,
 		return ERR_PTR(ret);
 	}
 
-	mutex_lock_interruptible(&adev->mlock);
+	ret = mutex_lock_interruptible(&adev->mlock);
+	if (ret) {
+		put_device(dev);
+		return ERR_PTR(ret);
+	}
+
 	list_add_tail(&apart->node, &adev->partitions);
 	mutex_unlock(&adev->mlock);
 	get_device(&adev->dev);
@@ -512,7 +546,10 @@ of_aie_part_probe(struct aie_device *adev, struct device_node *nc)
 		return ERR_PTR(ret);
 	}
 
-	mutex_lock_interruptible(&adev->mlock);
+	ret = mutex_lock_interruptible(&adev->mlock);
+	if (ret)
+		return ERR_PTR(ret);
+
 	apart = aie_get_partition_from_id(adev, partition_id);
 	mutex_unlock(&adev->mlock);
 	if (apart) {

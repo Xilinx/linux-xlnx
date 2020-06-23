@@ -10,6 +10,7 @@
 static int aie_fpga_bridge_enable_set(struct fpga_bridge *bridge, bool enable)
 {
 	struct aie_partition *apart = bridge->priv;
+	int ret;
 
 	/*
 	 * TBD:
@@ -18,7 +19,10 @@ static int aie_fpga_bridge_enable_set(struct fpga_bridge *bridge, bool enable)
 	 * until SHIM DMA stops, and disable SHIM
 	 * to PL streams within partition.
 	 */
-	mutex_lock_interruptible(&apart->mlock);
+	ret = mutex_lock_interruptible(&apart->mlock);
+	if (ret)
+		return ret;
+
 	if (enable)
 		apart->status |= XAIE_PART_STATUS_BRIDGE_ENABLED;
 	else
@@ -32,7 +36,10 @@ static int aie_fpga_bridge_enable_show(struct fpga_bridge *bridge)
 	struct aie_partition *apart = bridge->priv;
 	int ret;
 
-	mutex_lock_interruptible(&apart->mlock);
+	ret = mutex_lock_interruptible(&apart->mlock);
+	if (ret)
+		return ret;
+
 	if (apart->status & XAIE_PART_STATUS_BRIDGE_ENABLED)
 		ret = 1;
 	else
