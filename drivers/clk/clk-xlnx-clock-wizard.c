@@ -82,7 +82,33 @@ struct clk_wzrd_vco_hints {
 	bool valid_rate;		/* indicates the hints calc is done */
 };
 
-/**
+/*
+ *         MMCM Block Diagram
+ *
+ *         +----------------+  +-----------------+
+ * input ->| vco_clk_div_hw |->| vco_clk_mul_hw  |--+
+ * rate    | (int divide)   |  | (frac multiply) |  |
+ *         +----------------+  +-----------------+  |
+ *                                                  |
+ *      +--------------------------------VCO-rate---+
+ *      |
+ *      |  +----------------+
+ *      +->| clkout[0]      |-> output0 rate
+ *      |  | (frac divide)  |
+ *      |  +----------------+
+ *      |
+ *      |  +----------------+
+ *      +->| clkout[1]      |-> output1 rate
+ *      |  | (int divide)   |
+ *      |  +----------------+
+ *      |
+ *     ...
+ *      |
+ *      |  +----------------+
+ *      +->| clkout[1]      |-> output6 rate
+ *         | (int divide)   |
+ *         +----------------+
+ *
  * struct clk_wzrd - Clock wizard private data structure
  *
  * @clk_data:		Clock data
