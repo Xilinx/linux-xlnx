@@ -78,6 +78,7 @@ static int aie_enquire_partitions(struct aie_device *adev,
 {
 	struct aie_partition *apart;
 	u32 partition_cnt, i = 0;
+	int ret;
 
 	if (!query->partitions) {
 		/*
@@ -94,7 +95,10 @@ static int aie_enquire_partitions(struct aie_device *adev,
 	if (!partition_cnt)
 		return 0;
 
-	mutex_lock_interruptible(&adev->mlock);
+	ret = mutex_lock_interruptible(&adev->mlock);
+	if (ret)
+		return ret;
+
 	list_for_each_entry(apart, &adev->partitions, node) {
 		struct aie_range_args part;
 
@@ -163,8 +167,12 @@ struct aie_partition *aie_request_partition(struct aie_device *adev,
 					    struct aie_partition_req *req)
 {
 	struct aie_partition *apart;
+	int ret;
 
-	mutex_lock_interruptible(&adev->mlock);
+	ret = mutex_lock_interruptible(&adev->mlock);
+	if (ret)
+		return ERR_PTR(ret);
+
 	apart = aie_get_partition_from_id(adev, req->partition_id);
 	if (!apart) {
 		dev_err(&adev->dev,
@@ -179,7 +187,10 @@ struct aie_partition *aie_request_partition(struct aie_device *adev,
 	 * data to see which resources used by application.
 	 */
 
-	mutex_lock_interruptible(&apart->mlock);
+	ret = mutex_lock_interruptible(&apart->mlock);
+	if (ret)
+		return ERR_PTR(ret);
+
 	if (apart->status & XAIE_PART_STATUS_INUSE) {
 		mutex_unlock(&apart->mlock);
 		dev_err(&adev->dev,
