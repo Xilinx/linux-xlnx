@@ -39,6 +39,32 @@ struct aie_range {
 };
 
 /**
+ * struct aie_mem - AIE memory information
+ * @range: range of tiles of the memory
+ * @offset: register offset within a tile of the memory
+ * @size: of a the memory in one tile
+ * @fd: file descriptor of the memory
+ */
+struct aie_mem {
+	struct aie_range range;
+	size_t offset;
+	size_t size;
+	int fd;
+};
+
+/**
+ * struct aie_mem_args - AIE memory enquiry arguments
+ * @num_mems: number of "struct aie_mem" elements
+ *	      e.g. two memory information elements, one for tile core memory,
+ *	      and the other for tile data memory.
+ * @mems: array of AI engine memory information elements
+ */
+struct aie_mem_args {
+	unsigned int num_mems;
+	struct aie_mem *mems;
+};
+
+/**
  * struct aie_reg_args - AIE access register arguments
  * @op: if this request is to read, write or poll register
  * @mask: mask for mask write, 0 for not mask write
@@ -106,4 +132,23 @@ struct aie_partition_req {
 /* AI engine partition IOCTL operations */
 #define AIE_REG_IOCTL			_IOWR(AIE_IOCTL_BASE, 0x8, \
 					      struct aie_reg_args)
+/**
+ * DOC: AIE_GET_MEM_IOCTL - enquire information of memories in the AI engine
+ *			    partition
+ * This ioctl is used to get the information of all the different types of
+ * memories in the AI engine partition. Application can get the memories
+ * information in two steps:
+ * 1. passing 0 as @num_mems in struct aie_mem_args to enquire the number of
+ *    different memories in the partition, the value will be returned in
+ *    @num_mems.
+ * 2. passing the number of memories in @num_mems and valid pointer as @mems of
+ *    struct aie_mem_args to store the details information of different
+ *    memories. The driver will create DMA buf for each type of memories, and
+ *    will return the memory addressing information along with the DMA buf file
+ *    descriptors in @mems.
+ * After getting the memories information, user can use mmap() with the DMA buf
+ * file descriptor to enable access the memories from userspace.
+ */
+#define AIE_GET_MEM_IOCTL		_IOWR(AIE_IOCTL_BASE, 0x9, \
+					      struct aie_mem_args)
 #endif

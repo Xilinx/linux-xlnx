@@ -388,6 +388,8 @@ static long aie_part_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 		mutex_unlock(&apart->mlock);
 		break;
 	}
+	case AIE_GET_MEM_IOCTL:
+		return aie_mem_get_info(apart, arg);
 	default:
 		dev_err(&apart->dev, "Invalid ioctl command %u.\n", cmd);
 		ret = -EINVAL;
@@ -431,6 +433,41 @@ static void aie_part_release_device(struct device *dev)
 	mutex_unlock(&adev->mlock);
 	aie_fpga_free_bridge(apart);
 	put_device(apart->dev.parent);
+}
+
+/**
+ * aie_part_create_mems_info() - creates array to store the AI engine partition
+ *				 different memories types information
+ * @apart: AI engine partition
+ * @return: 0 for success, negative value for failure
+ *
+ * This function will create array to store the information of different
+ * memories types in the partition. This array is stored in @apart->pmems.
+ */
+static int aie_part_create_mems_info(struct aie_partition *apart)
+{
+	unsigned int i, num_mems;
+
+	num_mems = apart->adev->ops->get_mem_info(&apart->range, NULL);
+	if (!num_mems)
+		return 0;
+
+	apart->pmems = devm_kcalloc(&apart->dev, num_mems,
+				    sizeof(struct aie_part_mem),
+				    GFP_KERNEL);
+	if (!apart->pmems)
+		return -ENOMEM;
+
+	apart->adev->ops->get_mem_info(&apart->range, apart->pmems);
+	for (i = 0; i < num_mems; i++) {
+		struct aie_mem *mem = &apart->pmems[i].mem;
+
+		apart->pmems[i].apart = apart;
+		apart->pmems[i].size = mem->size *
+				       mem->range.size.col *
+				       mem->range.size.row;
+	}
+	return 0;
 }
 
 /**
@@ -503,12 +540,21 @@ static struct aie_partition *aie_create_partition(struct aie_device *adev,
 		return ERR_PTR(ret);
 	}
 
-	ret = mutex_lock_interruptible(&adev->mlock);
+	/*
+	 * Create array to keep the information of the different types of tile
+	 * memories information of the AI engine partition.
+	 */
+	ret = aie_part_create_mems_info(apart);
 	if (ret) {
 		put_device(dev);
 		return ERR_PTR(ret);
 	}
 
+	ret = mutex_lock_interruptible(&adev->mlock);
+	if (ret) {
+		put_device(dev);
+		return ERR_PTR(ret);
+	}
 	list_add_tail(&apart->node, &adev->partitions);
 	mutex_unlock(&adev->mlock);
 	get_device(&adev->dev);

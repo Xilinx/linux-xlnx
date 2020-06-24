@@ -57,14 +57,36 @@ struct aie_device;
 struct aie_partition;
 
 /**
+ * struct aie_part_mem - AI engine partition memory information structure
+ * @apart: AI engine partition
+ * @mem: memory information of a type of memory
+ * @size: size of the total memories in the partition
+ *
+ * This structure is to keep the information of a type of memory in a
+ * partition. The memory information will be stored in @mem property.
+ * The following information will be keep:
+ *  * memory start address offset within a tile
+ *  * memory size
+ *  * what tiles contain this type of memory
+ */
+struct aie_part_mem {
+	struct aie_partition *apart;
+	struct aie_mem mem;
+	size_t size;
+};
+
+/**
  * struct aie_tile_operations - AI engine device operations
  * @get_tile_type: get type of tile based on tile operation
+ * @get_mem_info: get different types of memories information
  *
  * Different AI engine device version has its own device
  * operation.
  */
 struct aie_tile_operations {
 	u32 (*get_tile_type)(struct aie_location *loc);
+	unsigned int (*get_mem_info)(struct aie_range *range,
+				     struct aie_part_mem *pmem);
 };
 
 /**
@@ -128,6 +150,7 @@ struct aie_part_bridge {
  * struct aie_partition - AI engine partition structure
  * @node: list node
  * @adev: pointer to AI device instance
+ * @pmems: pointer to partition memories types
  * @br: AI engine FPGA bridge
  * @range: range of partition
  * @mlock: protection for AI engine partition operations
@@ -140,6 +163,7 @@ struct aie_partition {
 	struct list_head node;
 	struct aie_part_bridge br;
 	struct aie_device *adev;
+	struct aie_part_mem *pmems;
 	struct aie_range range;
 	struct mutex mlock; /* protection for AI engine partition operations */
 	struct device dev;
@@ -221,6 +245,8 @@ void aie_part_remove(struct aie_partition *apart);
 
 int aie_fpga_create_bridge(struct aie_partition *apart);
 void aie_fpga_free_bridge(struct aie_partition *apart);
+
+int aie_mem_get_info(struct aie_partition *apart, unsigned long arg);
 
 int aiev1_device_init(struct aie_device *adev);
 #endif /* AIE_INTERNAL_H */

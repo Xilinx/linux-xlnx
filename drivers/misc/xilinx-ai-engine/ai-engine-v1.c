@@ -9,9 +9,13 @@
 
 #include "ai-engine-internal.h"
 
+#define KBYTES(n)	((n) * 1024)
+
 #define AIE_ARRAY_SHIFT		30U
 #define AIE_COL_SHIFT		23U
 #define AIE_ROW_SHIFT		18U
+
+#define NUM_MEMS_PER_TILE	2U
 
 static const struct aie_tile_regs aiev1_kernel_regs[] = {
 	/* SHIM AXI MM Config */
@@ -62,8 +66,40 @@ static u32 aiev1_get_tile_type(struct aie_location *loc)
 	return AIE_TILE_TYPE_SHIMNOC;
 }
 
+static unsigned int aiev1_get_mem_info(struct aie_range *range,
+				       struct aie_part_mem *pmem)
+{
+	unsigned int i;
+
+	if (range->start.row + range->size.row <= 1) {
+		/* SHIM row only, no memories in this range */
+		return 0;
+	}
+	if (!pmem)
+		return NUM_MEMS_PER_TILE;
+
+	for (i = 0; i < NUM_MEMS_PER_TILE; i++) {
+		struct aie_mem *mem = &pmem[i].mem;
+
+		memcpy(&mem->range, range, sizeof(*range));
+		if (!mem->range.start.row) {
+			mem->range.start.row = 1;
+			mem->range.size.row--;
+		}
+	}
+	/* Setup tile data memory information */
+	pmem[0].mem.offset = 0;
+	pmem[0].mem.size = KBYTES(32);
+	/* Setup program memory information */
+	pmem[1].mem.offset = 0x20000;
+	pmem[1].mem.size = KBYTES(16);
+
+	return NUM_MEMS_PER_TILE;
+}
+
 static const struct aie_tile_operations aiev1_ops = {
 	.get_tile_type = aiev1_get_tile_type,
+	.get_mem_info = aiev1_get_mem_info,
 };
 
 /**
