@@ -1555,7 +1555,7 @@ static int cqspi_setdlldelay(struct spi_nor *nor)
 	struct cqspi_st *cqspi = f_pdata->cqspi;
 	int i;
 	u8 j;
-	int ret = 1;
+	int ret;
 	u8 id[CQSPI_READ_ID_LEN];
 	bool rxtapfound = false;
 	u8 min_rxtap = 0;
