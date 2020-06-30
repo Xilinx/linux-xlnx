@@ -649,8 +649,9 @@ static int xilinx_spi_probe(struct platform_device *pdev)
 	u32 tmp, rx_bus_width, fifo_size;
 	bool startup_block;
 
-	of_property_read_u32(pdev->dev.of_node, "num-cs",
-				&num_cs);
+	if (of_property_read_u32(pdev->dev.of_node, "num-cs", &num_cs))
+		dev_info(&pdev->dev,
+			 "Missing num-cs optional property, assuming default as <1>\n");
 	if (!num_cs)
 		num_cs = 1;
 
@@ -681,8 +682,10 @@ static int xilinx_spi_probe(struct platform_device *pdev)
 			"Missing fifo size\n");
 		return -EINVAL;
 	}
-	of_property_read_u32(pdev->dev.of_node, "bits-per-word",
-			     &bits_per_word);
+	if (of_property_read_u32(pdev->dev.of_node, "bits-per-word",
+				 &bits_per_word))
+		dev_info(&pdev->dev,
+			 "Missing bits-per-word optional property, assuming default as <8>\n");
 
 	xspi->rx_bus_width = XSPI_ONE_BITS_PER_WORD;
 	for_each_available_child_of_node(pdev->dev.of_node, nc) {
