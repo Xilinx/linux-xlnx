@@ -642,7 +642,8 @@ static int xilinx_spi_probe(struct platform_device *pdev)
 {
 	struct xilinx_spi *xspi;
 	struct resource *res;
-	int ret, num_cs = 0, bits_per_word = 8;
+	int ret;
+	u32 num_cs = 0, bits_per_word = 8;
 	u32 cs_num;
 	struct spi_master *master;
 	struct device_node *nc;
