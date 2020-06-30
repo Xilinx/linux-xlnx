@@ -615,7 +615,7 @@ static irqreturn_t xilinx_spi_irq(int irq, void *dev_id)
 	struct spi_master *master = dev_id;
 	struct xilinx_spi *xspi = spi_master_get_devdata(dev_id);
 	u32 ipif_isr;
-	int status = IRQ_NONE;
+	irqreturn_t status = IRQ_NONE;
 
 	/* Get the IPIF interrupts, and clear them immediately */
 	ipif_isr = xspi->read_fn(xspi->regs + XIPIF_V123B_IISR_OFFSET);
