@@ -806,7 +806,7 @@ static const struct clk_ops zynqmp_sampleclk_ops = {
  *
  * @hw:			Pointer to the hardware clock structure.
  * @degrees		The clock phase shift between 0 - 359.
- * Return: 0 on success and error value on error
+ * Return: 0
  */
 static int sdhci_versal_sdcardclk_set_phase(struct clk_hw *hw, int degrees)
 {
@@ -816,7 +816,6 @@ static int sdhci_versal_sdcardclk_set_phase(struct clk_hw *hw, int degrees)
 		container_of(clk_data, struct sdhci_arasan_data, clk_data);
 	struct sdhci_host *host = sdhci_arasan->host;
 	u8 tap_delay, tap_max = 0;
-	int ret;
 
 	/*
 	 * This is applicable for SDHCI_SPEC_300 and above
@@ -862,7 +861,7 @@ static int sdhci_versal_sdcardclk_set_phase(struct clk_hw *hw, int degrees)
 		sdhci_writel(host, regval, SDHCI_ARASAN_OTAPDLY_REGISTER);
 	}
 
-	return ret;
+	return 0;
 }
 
 static const struct clk_ops versal_sdcardclk_ops = {
@@ -877,7 +876,7 @@ static const struct clk_ops versal_sdcardclk_ops = {
  *
  * @hw:			Pointer to the hardware clock structure.
  * @degrees		The clock phase shift between 0 - 359.
- * Return: 0 on success and error value on error
+ * Return: 0
  */
 static int sdhci_versal_sampleclk_set_phase(struct clk_hw *hw, int degrees)
 {
@@ -887,7 +886,6 @@ static int sdhci_versal_sampleclk_set_phase(struct clk_hw *hw, int degrees)
 		container_of(clk_data, struct sdhci_arasan_data, clk_data);
 	struct sdhci_host *host = sdhci_arasan->host;
 	u8 tap_delay, tap_max = 0;
-	int ret;
 
 	/*
 	 * This is applicable for SDHCI_SPEC_300 and above
@@ -937,7 +935,7 @@ static int sdhci_versal_sampleclk_set_phase(struct clk_hw *hw, int degrees)
 		sdhci_writel(host, regval, SDHCI_ARASAN_ITAPDLY_REGISTER);
 	}
 
-	return ret;
+	return 0;
 }
 
 static const struct clk_ops versal_sampleclk_ops = {
