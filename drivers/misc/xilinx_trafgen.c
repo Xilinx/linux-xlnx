@@ -1187,6 +1187,8 @@ static ssize_t xtg_pram_write(struct file *filp, struct kobject *kobj,
 	struct xtg_dev_info *tg =
 		to_xtg_dev_info(container_of(kobj, struct device, kobj));
 	u32 *data = (u32 *)buf;
+	struct xtg_pram *cmdp = (struct xtg_pram *)buf;
+	u32 param_word;
 
 	if (off >= XTG_PARAM_RAM_SIZE) {
 		pr_err("Requested Write len exceeds 2K PRAM size\n");
@@ -1198,8 +1200,6 @@ static ssize_t xtg_pram_write(struct file *filp, struct kobject *kobj,
 
 	/* Program each command */
 	if (count == sizeof(struct xtg_pram)) {
-		struct xtg_pram *cmdp = (struct xtg_pram *)buf;
-		u32 param_word;
 
 		if (!cmdp)
 			return -EINVAL;
@@ -1278,6 +1278,8 @@ static ssize_t xtg_cram_write(struct file *filp, struct kobject *kobj,
 	struct xtg_dev_info *tg =
 		to_xtg_dev_info(container_of(kobj, struct device, kobj));
 	u32 *data = (u32 *)buf;
+	struct xtg_cram *cmdp = (struct xtg_cram *)buf;
+	u32 cmd_words[CMD_WDS + EXT_WDS];
 
 	if (off >= XTG_COMMAND_RAM_SIZE) {
 		pr_err("Requested Write len exceeds 8K CRAM size\n");
@@ -1286,8 +1288,6 @@ static ssize_t xtg_cram_write(struct file *filp, struct kobject *kobj,
 
 	/* Program each command */
 	if (count == sizeof(struct xtg_cram)) {
-		struct xtg_cram *cmdp = (struct xtg_cram *)buf;
-		u32 cmd_words[CMD_WDS + EXT_WDS];
 
 		if (!cmdp)
 			return -EINVAL;
