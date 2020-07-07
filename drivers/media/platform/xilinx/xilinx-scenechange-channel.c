@@ -90,6 +90,14 @@ static int xscd_set_format(struct v4l2_subdev *subdev,
 	format->height = clamp_t(unsigned int, fmt->format.height,
 				 XSCD_MIN_HEIGHT, XSCD_MAX_HEIGHT);
 	format->code = fmt->format.code;
+	/*
+	 * If memory based, SCD can support interlaced alternate mode because
+	 * SCD is agnostic to field. If stream based, SCD does not have a fid
+	 * pin so interlaced alternate mode is not supported there.
+	 */
+	if (chan->xscd->memory_based)
+		format->field = fmt->format.field;
+
 	fmt->format = *format;
 
 	return 0;
