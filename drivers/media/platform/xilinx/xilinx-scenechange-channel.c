@@ -19,10 +19,12 @@
 #include "xilinx-scenechange.h"
 #include "xilinx-vip.h"
 
-#define XSCD_MAX_WIDTH		3840
-#define XSCD_MAX_HEIGHT		2160
-#define XSCD_MIN_WIDTH		640
-#define XSCD_MIN_HEIGHT		480
+#define XSCD_DEFAULT_WIDTH	3840
+#define XSCD_DEFAULT_HEIGHT	2160
+#define XSCD_MAX_WIDTH		8192
+#define XSCD_MAX_HEIGHT		4320
+#define XSCD_MIN_WIDTH		64
+#define XSCD_MIN_HEIGHT		64
 
 #define XSCD_V_SUBSAMPLING		16
 #define XSCD_BYTE_ALIGN			16
@@ -369,8 +371,8 @@ int xscd_chan_init(struct xscd_device *xscd, unsigned int chan_id,
 	/* Initialize default format */
 	chan->format.code = MEDIA_BUS_FMT_VYYUYY8_1X24;
 	chan->format.field = V4L2_FIELD_NONE;
-	chan->format.width = XSCD_MAX_WIDTH;
-	chan->format.height = XSCD_MAX_HEIGHT;
+	chan->format.width = XSCD_DEFAULT_WIDTH;
+	chan->format.height = XSCD_DEFAULT_HEIGHT;
 
 	/* Initialize media pads */
 	num_pads = xscd->memory_based ? 1 : 2;
