@@ -1684,6 +1684,8 @@ static int xilinx_frmbuf_remove(struct platform_device *pdev)
 {
 	struct xilinx_frmbuf_device *xdev = platform_get_drvdata(pdev);
 
+	of_dma_controller_free(pdev->dev.of_node);
+
 	dma_async_device_unregister(&xdev->common);
 	xilinx_frmbuf_chan_remove(&xdev->chan);
 	clk_disable_unprepare(xdev->ap_clk);
