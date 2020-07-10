@@ -1,0 +1,175 @@
+# SPDX-License-Identifier: GPL-2.0
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/media/xilinx/xlnx,v-dprxss.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Xilinx DisplayPort Receiver Subsystem
+
+maintainers:
+  - Rajesh Gugulothu <gugulothu.rajesh@xilinx.com>
+
+description: |
+  The DisplayPort subsystem is a full feature, hierarchically packaged
+  subsystem with a DisplayPort sink(RX). DP RX subsystem can capture
+  video data in different formats at different resolutions.
+  For more details, please refer to PG233 at https://www.xilinx.com/support/documentation/ip_documentation/dp_rx_subsystem/v2_1/pg233-displayport-rx-subsystem.pdf
+
+properties:
+  compatible:
+    items:
+      - enum:
+          - xlnx,v-dprxss-2.1
+
+  reg:
+    maxItems: 2
+    items:
+      - description: DisplayPort Receiver Subsystem registers
+      - description: EDID IP block registers
+
+  reg-names:
+    items:
+      - const: dp_base
+      - const: edid_base
+
+  interrupts:
+    maxItems: 1
+
+  clocks:
+    description: List of clock specifiers
+    items:
+      - description: AXI Lite clock
+      - description: Link clock
+      - description: Video clock
+
+  clock-names:
+    items:
+      - const: s_axi_aclk
+      - const: rx_lnk_clk
+      - const: rx_vid_clk
+
+  phys:
+    description: This denotes phandles for phy lanes registered for DP
+                 protocol. Number of phy lanes registered are depends on
+                 the xlnx,lane-count property.
+
+  phy-names:
+    items:
+      - const: dp-phy0
+      - const: dp-phy1
+      - const: dp-phy2
+      - const: dp-phy3
+
+  xlnx,link-rate:
+    description: |
+      Max link rate that IP configured with.Possible values are as below -
+      0x6  - 1.62 Gb/s
+      0xa  - 2.7 Gb/s
+      0x14 - 5.4 Gb/s
+      0x1e - 8.1 Gb/s
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [0x6, 0xa, 0x14, 0x1e]
+
+  xlnx,lane-count:
+    description: Max number of lanes that IP configured with.
+                 Possible values are 1, 2, 4.
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [1, 2, 4]
+
+  xlnx,bpc:
+    description: |
+      Max BPC value that IP configured with. For example if IP is
+      configured
+      with 10 BPC means it supports (6, 8, 10) up to 10bpc.
+      Possible values are 6, 8, 10, 12, 16.
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [6, 8, 10, 12, 16]
+
+  xlnx,audio-channels:
+    description: |
+      This denotes number of audio channels enabled in the IP
+      configuration. Possible values are 2, 3, 4, 5, 6, 7, 8.
+    allOf:
+      - $ref: /schemas/types.yaml#/definitions/uint32
+      - enum: [2, 3, 4, 5, 6, 7, 8]
+
+  ports:
+    type: object
+
+    properties:
+      port@0:
+        type: object
+        description: |
+          Output / source port node, endpoint describing modules
+          connected the DisplayPort receiver
+
+        properties:
+          reg:
+            const: 0
+
+          endpoint:
+            type: object
+
+            properties:
+
+              remote-endpoint: true
+
+            required:
+              - remote-endpoint
+
+            additionalProperties: false
+
+        additionalProperties: false
+
+required:
+  - clock-names
+  - clocks
+  - compatible
+  - interrupts
+  - reg
+  - reg-names
+  - link-rate
+  - bpc
+  - lane-count
+  - phy-names
+  - phys
+  - ports
+
+examples:
+ - |
+   v_dp_rxss1@a0040000 {
+       clock-names = "s_axi_aclk", "rx_lnk_clk", "rx_vid_clk" ;
+       clocks = <&zynqmp_clk 71>, <&zynqmp_clk 72>;
+       compatible = "xlnx,v-dp-rxss-2.1";
+       interrupt-names = "dprxss_dp_irq";
+       interrupt-parent = <&gic>;
+       interrupts = <0 89 4>;
+       reg = <0x0 0xa0040000 0x0 0x40000>,<0x0 0xa0010000 0x0 0x1000>;
+       reg-names = "dp_base", "edid_base";
+       xlnx,link-rate = <0x1e>;
+       xlnx,audio-enable;
+       xlnx,audio-channels = <2>;
+       xlnx,bpc = <10>;
+       xlnx,hdcp22-enable;
+       xlnx,hdcp-enable;
+       xlnx,lane-count = <4>;
+       phy-names = "dp-phy0", "dp-phy1", "dp-phy2", "dp-phy3";
+       phys = <&vphy_lane0 0 1 1 0>, <&vphy_lane1 0 1 1 0>,
+              <&vphy_lane2 0 1 1 0>, <&vphy_lane3 0 1 1 0>;
+
+       ports {
+           #address-cells = <1>;
+           #size-cells = <0>;
+
+           port@0 {
+               reg = <0>;
+               dp_rxss_out: endpoint {
+                   remote-endpoint = <&remap0_in>;
+               };
+           };
+       };
+   };
+...
