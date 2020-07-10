@@ -137,6 +137,15 @@ config VIDEO_XILINX_CSI2RXSS
 	---help---
 	  Driver for Xilinx MIPI CSI2 Rx Subsystem
 
+config VIDEO_XILINX_DPRXSS
+	tristate "Xilinx DP Rx Subsystem"
+	depends on VIDEO_XILINX
+	help
+	  Driver for Xilinx DisplayPort Rx Subsystem. This is a V4L sub-device
+	  based driver for the DisplayPort receiver subsystem IP. It captures
+	  AXI-Stream video data and output to video IPs. Choose this driver
+	  in a platform where the DisplayPort rx subsystem can be instantiated.
+
 config VIDEO_XILINX_SCD
 	tristate "Xilinx Scene Change Detect"
 	depends on VIDEO_XILINX
