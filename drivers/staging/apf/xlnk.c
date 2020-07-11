@@ -69,7 +69,6 @@ static ssize_t xlnk_dev_size;
 static int xlnk_dev_vmas;
 
 #define XLNK_BUF_POOL_SIZE	4096
-static unsigned int xlnk_bufpool_size = XLNK_BUF_POOL_SIZE;
 static void *xlnk_bufpool[XLNK_BUF_POOL_SIZE];
 static void *xlnk_bufpool_alloc_point[XLNK_BUF_POOL_SIZE];
 static xlnk_intptr_type xlnk_userbuf[XLNK_BUF_POOL_SIZE];
@@ -296,7 +295,7 @@ static int xlnk_buf_findnull(void)
 {
 	int i;
 
-	for (i = 1; i < xlnk_bufpool_size; i++) {
+	for (i = 1; i < XLNK_BUF_POOL_SIZE; i++) {
 		if (!xlnk_bufpool[i])
 			return i;
 	}
@@ -308,7 +307,7 @@ static int xlnk_buf_find_by_phys_addr(xlnk_intptr_type addr)
 {
 	int i;
 
-	for (i = 1; i < xlnk_bufpool_size; i++) {
+	for (i = 1; i < XLNK_BUF_POOL_SIZE; i++) {
 		if (xlnk_bufpool[i] &&
 		    xlnk_phyaddr[i] <= addr &&
 		    xlnk_phyaddr[i] + xlnk_buflen[i] > addr)
@@ -322,7 +321,7 @@ static int xlnk_buf_find_by_user_addr(xlnk_intptr_type addr, int pid)
 {
 	int i;
 
-	for (i = 1; i < xlnk_bufpool_size; i++) {
+	for (i = 1; i < XLNK_BUF_POOL_SIZE; i++) {
 		if (xlnk_bufpool[i] &&
 		    xlnk_buf_process[i] == pid &&
 		    xlnk_userbuf[i] <= addr &&
@@ -385,7 +384,7 @@ static int xlnk_init_bufpool(void)
 	}
 
 	xlnk_bufpool[0] = xlnk_dev_buf;
-	for (i = 1; i < xlnk_bufpool_size; i++)
+	for (i = 1; i < XLNK_BUF_POOL_SIZE; i++)
 		xlnk_bufpool[i] = NULL;
 
 	return 0;
@@ -718,7 +717,7 @@ static int xlnk_freebuf(int id)
 	int cacheable;
 	unsigned long attrs;
 
-	if (id <= 0 || id >= xlnk_bufpool_size)
+	if (id <= 0 || id >= XLNK_BUF_POOL_SIZE)
 		return -ENOMEM;
 
 	if (!xlnk_bufpool[id])
@@ -750,7 +749,7 @@ static void xlnk_free_all_buf(void)
 {
 	int i;
 
-	for (i = 1; i < xlnk_bufpool_size; i++)
+	for (i = 1; i < XLNK_BUF_POOL_SIZE; i++)
 		xlnk_freebuf(i);
 }
 
