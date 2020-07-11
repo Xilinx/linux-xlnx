@@ -71,6 +71,7 @@ static int xlnk_buf_process[XLNK_BUF_POOL_SIZE];
 static dma_addr_t xlnk_phyaddr[XLNK_BUF_POOL_SIZE];
 static size_t xlnk_buflen[XLNK_BUF_POOL_SIZE];
 static unsigned int xlnk_bufcacheable[XLNK_BUF_POOL_SIZE];
+static struct file *xlnk_buf_filp[XLNK_BUF_POOL_SIZE];
 static spinlock_t xlnk_buf_lock;
 
 #define XLNK_IRQ_POOL_SIZE 256
@@ -226,7 +227,8 @@ static int xlnk_buf_find_by_user_addr(xlnk_intptr_type addr, int pid)
  * allocate and return an id
  * id must be a positve number
  */
-static int xlnk_allocbuf(unsigned int len, unsigned int cacheable)
+static int xlnk_allocbuf(struct file *filp, unsigned int len,
+			 unsigned int cacheable)
 {
 	int id;
 	void *kaddr;
@@ -251,6 +253,7 @@ static int xlnk_allocbuf(unsigned int len, unsigned int cacheable)
 		xlnk_buflen[id] = len;
 		xlnk_bufcacheable[id] = cacheable;
 		xlnk_phyaddr[id] = phys_addr_anchor;
+		xlnk_buf_filp[id] = filp;
 	}
 	spin_unlock(&xlnk_buf_lock);
 
@@ -447,7 +450,7 @@ static int xlnk_allocbuf_ioctl(struct file *filp,
 	if (status)
 		return -ENOMEM;
 
-	id = xlnk_allocbuf(temp_args.allocbuf.len,
+	id = xlnk_allocbuf(filp, temp_args.allocbuf.len,
 			   temp_args.allocbuf.cacheable);
 
 	if (id <= 0)
@@ -483,6 +486,7 @@ static int xlnk_freebuf(int id)
 	xlnk_bufpool[id] = NULL;
 	xlnk_phyaddr[id] = (dma_addr_t)NULL;
 	xlnk_buflen[id] = 0;
+	xlnk_buf_filp[id] = NULL;
 	cacheable = xlnk_bufcacheable[id];
 	xlnk_bufcacheable[id] = 0;
 	spin_unlock(&xlnk_buf_lock);
@@ -1350,6 +1354,13 @@ static ssize_t xlnk_read(struct file *filp,
  */
 static int xlnk_release(struct inode *ip, struct file *filp)
 {
+	unsigned int i;
+
+	for (i = 1; i < XLNK_BUF_POOL_SIZE; i++) {
+		if (xlnk_buf_filp[i] == filp)
+			xlnk_freebuf(i);
+	}
+
 	return 0;
 }
 
