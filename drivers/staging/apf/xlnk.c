@@ -717,8 +717,9 @@ static int xlnk_dmasubmit_ioctl(struct file *filp, unsigned int code,
 			return -EFAULT;
 	}
 	return status;
-#endif
+#else
 	return -ENOMEM;
+#endif
 }
 
 static int xlnk_dmawait_ioctl(struct file *filp,
