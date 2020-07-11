@@ -16,40 +16,31 @@
 
 /*  ----------------------------------- Host OS */
 
+#include <asm/cacheflush.h>
+
+#include <linux/cdev.h>
+#include <linux/completion.h>
+#include <linux/device.h>
+#include <linux/dma-buf.h>
+#include <linux/dma-mapping.h>
+#include <linux/errno.h>
+#include <linux/fs.h>
+#include <linux/gfp.h>
+#include <linux/io.h>
+#include <linux/list.h>
+#include <linux/mm.h>
 #include <linux/module.h>
-#include <linux/types.h>
+#include <linux/of.h>
+#include <linux/pagemap.h>
 #include <linux/platform_device.h>
 #include <linux/pm.h>
-#include <linux/fs.h>
-#include <linux/slab.h>
-#include <linux/gfp.h>
-#include <linux/mm.h>
-#include <asm/cacheflush.h>
-#include <linux/io.h>
-#include <linux/dma-buf.h>
-
-#include <linux/string.h>
-
-#include <linux/uaccess.h>
-
-#include <linux/dmaengine.h>
-#include <linux/completion.h>
-#include <linux/wait.h>
-
-#include <linux/device.h>
-#include <linux/init.h>
-#include <linux/cdev.h>
-
 #include <linux/sched.h>
-#include <linux/pagemap.h>
-#include <linux/errno.h>	/* error codes */
-#include <linux/dma-mapping.h>  /* dma */
-#include <linux/of.h>
-#include <linux/list.h>
-#include <linux/dma/xilinx_dma.h>
-#include <linux/uio_driver.h>
-#include <asm/cacheflush.h>
 #include <linux/semaphore.h>
+#include <linux/slab.h>
+#include <linux/types.h>
+#include <linux/uaccess.h>
+#include <linux/uio_driver.h>
+#include <linux/wait.h>
 
 #include "xlnk-ioctl.h"
 #include "xlnk-sysdef.h"
