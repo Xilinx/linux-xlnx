@@ -50,7 +50,6 @@
 #endif
 
 #define DRIVER_NAME  "xlnk"
-#define DRIVER_VERSION  "0.2"
 
 static struct platform_device *xlnk_pdev;
 static struct device *xlnk_dev;
@@ -61,11 +60,8 @@ static struct class *xlnk_class;
 
 static s32 driver_major;
 
-static char *driver_name = DRIVER_NAME;
-
 static void *xlnk_dev_buf;
 static ssize_t xlnk_dev_size;
-static int xlnk_dev_vmas;
 
 #define XLNK_BUF_POOL_SIZE	4096
 static void *xlnk_bufpool[XLNK_BUF_POOL_SIZE];
@@ -1267,21 +1263,6 @@ static long xlnk_ioctl(struct file *filp,
 	}
 }
 
-static void xlnk_vma_open(struct vm_area_struct *vma)
-{
-	xlnk_dev_vmas++;
-}
-
-static void xlnk_vma_close(struct vm_area_struct *vma)
-{
-	xlnk_dev_vmas--;
-}
-
-static const struct vm_operations_struct xlnk_vm_ops = {
-	.open = xlnk_vma_open,
-	.close = xlnk_vma_close,
-};
-
 /* This function maps kernel space memory to user space memory. */
 static int xlnk_mmap(struct file *filp, struct vm_area_struct *vma)
 {
@@ -1315,8 +1296,6 @@ static int xlnk_mmap(struct file *filp, struct vm_area_struct *vma)
 		return status;
 	}
 
-	xlnk_vma_open(vma);
-	vma->vm_ops = &xlnk_vm_ops;
 	vma->vm_private_data = xlnk_bufpool[bufid];
 
 	return 0;
@@ -1395,9 +1374,6 @@ static const struct file_operations xlnk_fops = {
 	.mmap = xlnk_mmap,
 };
 
-#define XLNK_SUSPEND NULL
-#define XLNK_RESUME NULL
-
 static int xlnk_remove(struct platform_device *pdev)
 {
 	dev_t devno;
@@ -1455,10 +1431,9 @@ static int xlnk_probe(struct platform_device *pdev)
 
 	xlnk_dev_buf = NULL;
 	xlnk_dev_size = 0;
-	xlnk_dev_vmas = 0;
 
 	/* use 2.6 device model */
-	err = alloc_chrdev_region(&dev, 0, 1, driver_name);
+	err = alloc_chrdev_region(&dev, 0, 1, DRIVER_NAME);
 	if (err) {
 		dev_err(&pdev->dev, "%s: Can't get major %d\n",
 			__func__, driver_major);
@@ -1533,8 +1508,6 @@ static struct platform_driver xlnk_driver = {
 	},
 	.probe = xlnk_probe,
 	.remove = xlnk_remove,
-	.suspend = XLNK_SUSPEND,
-	.resume = XLNK_RESUME,
 };
 
 module_platform_driver(xlnk_driver);
