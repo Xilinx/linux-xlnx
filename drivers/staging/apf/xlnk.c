@@ -90,7 +90,6 @@ struct xlnk_device_pack {
 	char name[64];
 	struct platform_device pdev;
 	struct resource res[8];
-	struct uio_info *io_ptr;
 	int refs;
 
 #ifdef CONFIG_XILINX_DMA_APF
@@ -180,12 +179,7 @@ static void xlnk_devpacks_free_all(void)
 	for (i = 0; i < MAX_XLNK_DMAS; i++) {
 		devpack = xlnk_devpacks[i];
 		if (devpack) {
-			if (devpack->io_ptr) {
-				uio_unregister_device(devpack->io_ptr);
-				kfree(devpack->io_ptr);
-			} else {
-				platform_device_unregister(&devpack->pdev);
-			}
+			platform_device_unregister(&devpack->pdev);
 			xlnk_devpacks_delete(devpack);
 			kfree(devpack);
 		}
@@ -312,7 +306,6 @@ static int xlnk_devregister(char *name,
 			pr_err("Failed to allocate device %s\n", name);
 			return -ENOMEM;
 		}
-		devpack->io_ptr = NULL;
 		strcpy(devpack->name, name);
 		devpack->pdev.name = devpack->name;
 
@@ -388,8 +381,6 @@ static int xlnk_dmaregister(char *name,
 		}
 		strcpy(devpack->name, name);
 		devpack->pdev.name = "xilinx-axidma";
-
-		devpack->io_ptr = NULL;
 
 		devpack->dma_chan_cfg[0].include_dre = chan0_include_dre;
 		devpack->dma_chan_cfg[0].datawidth = chan0_data_width;
