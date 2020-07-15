@@ -3609,12 +3609,10 @@ int dwc3_gadget_init(struct dwc3 *dwc)
 					dev_err(dwc->dev,
 						"otg_set_peripheral failed\n");
 					usb_put_phy(phy);
-					phy = NULL;
 					goto err4;
 				}
 			} else {
 				usb_put_phy(phy);
-				phy = NULL;
 			}
 		}
 	}
