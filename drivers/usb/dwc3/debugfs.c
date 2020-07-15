@@ -611,7 +611,7 @@ static ssize_t dwc3_link_state_write(struct file *file,
 		return -EINVAL;
 	}
 
-	dwc3_gadget_set_link_state(dwc, state);
+	(void)dwc3_gadget_set_link_state(dwc, state);
 	spin_unlock_irqrestore(&dwc->lock, flags);
 
 	return count;
@@ -646,6 +646,7 @@ static ssize_t dwc3_hiber_enable_write(struct file *file,
 	struct seq_file		*s = file->private_data;
 	struct dwc3		*dwc = s->private;
 	char			buf[32];
+	int			ret;
 
 	if (copy_from_user(&buf, ubuf, min_t(size_t, sizeof(buf) - 1, count)))
 		return -EFAULT;
@@ -654,11 +655,16 @@ static ssize_t dwc3_hiber_enable_write(struct file *file,
 	if (!strncmp(buf, "Enable", 6)) {
 		dwc3_gadget_exit(dwc);
 		dwc->has_hibernation = 1;
-		dwc3_gadget_init(dwc);
+		ret = dwc3_gadget_init(dwc);
+		if (ret)
+			return -EINVAL;
+
 	} else if (!strncmp(buf, "Disable", 6)) {
 		dwc3_gadget_exit(dwc);
 		dwc->has_hibernation = 0;
-		dwc3_gadget_init(dwc);
+		ret = dwc3_gadget_init(dwc);
+		if (ret)
+			return -EINVAL;
 	} else {
 		return -EINVAL;
 	}

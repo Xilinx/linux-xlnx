@@ -373,7 +373,12 @@ static int dwc3_of_simple_probe(struct platform_device *pdev)
 
 	pm_runtime_set_active(dev);
 	pm_runtime_enable(dev);
-	pm_runtime_get_sync(dev);
+
+	ret = pm_runtime_get_sync(dev);
+	if (ret < 0) {
+		dev_err(dev, "pm_runtime_get_sync failed, error %d\n", ret);
+		return ret;
+	}
 
 	return 0;
 
@@ -463,7 +468,15 @@ static int dwc3_zynqmp_power_req(struct dwc3 *dwc, bool on)
 	struct device_node *node = of_get_parent(dwc->dev->of_node);
 
 	pdev_parent = of_find_device_by_node(node);
+	if (!pdev_parent) {
+		dev_err(dwc->dev, "Failed to get device parent\n");
+		return -EINVAL;
+	}
+
 	simple = platform_get_drvdata(pdev_parent);
+	if (!simple)
+		return -ENOMEM;
+
 	reg_base = simple->regs;
 
 	/* Check if entering into D3 state is allowed during suspend */
@@ -554,7 +567,13 @@ static int dwc3_versal_power_req(struct dwc3 *dwc, bool on)
 	struct device_node *node = of_get_parent(dwc->dev->of_node);
 
 	pdev_parent = of_find_device_by_node(node);
+	if (!pdev_parent) {
+		dev_err(dwc->dev, "Failed to get device node\n");
+		return -EINVAL;
+	}
 	simple = platform_get_drvdata(pdev_parent);
+	if (!simple)
+		return -ENOMEM;
 
 	if (!eemi_ops->ioctl || !eemi_ops->reset_assert)
 		return -ENOMEM;
