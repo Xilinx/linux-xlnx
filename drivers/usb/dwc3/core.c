@@ -524,8 +524,10 @@ static int dwc3_setup_scratch_buffers(struct dwc3 *dwc)
 	return 0;
 
 err1:
-	dma_unmap_single(dwc->sysdev, dwc->scratch_addr, dwc->nr_scratch *
-			DWC3_SCRATCHBUF_SIZE, DMA_BIDIRECTIONAL);
+	dma_unmap_single(dwc->sysdev, dwc->scratch_addr,
+			(size_t)(dwc->nr_scratch *
+			(size_t)DWC3_SCRATCHBUF_SIZE),
+			DMA_BIDIRECTIONAL);
 
 	return ret;
 }
@@ -542,8 +544,10 @@ static void dwc3_free_scratch_buffers(struct dwc3 *dwc)
 	if (WARN_ON(!dwc->scratchbuf))
 		return;
 
-	dma_unmap_single(dwc->sysdev, dwc->scratch_addr, dwc->nr_scratch *
-			DWC3_SCRATCHBUF_SIZE, DMA_BIDIRECTIONAL);
+	dma_unmap_single(dwc->sysdev, dwc->scratch_addr,
+			(size_t)(dwc->nr_scratch *
+			(size_t)DWC3_SCRATCHBUF_SIZE),
+			DMA_BIDIRECTIONAL);
 	kfree(dwc->scratchbuf);
 }
 
