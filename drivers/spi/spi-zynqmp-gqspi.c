@@ -1296,6 +1296,12 @@ static int zynqmp_qspi_probe(struct platform_device *pdev)
 		goto clk_dis_pclk;
 	}
 
+	master->max_speed_hz = clk_get_rate(xqspi->refclk) / 2;
+	xqspi->speed_hz = master->max_speed_hz;
+
+	/* QSPI controller initializations */
+	zynqmp_qspi_init_hw(xqspi);
+
 	pm_runtime_use_autosuspend(&pdev->dev);
 	pm_runtime_set_autosuspend_delay(&pdev->dev, SPI_AUTOSUSPEND_TIMEOUT);
 	pm_runtime_set_active(&pdev->dev);
@@ -1357,18 +1363,13 @@ static int zynqmp_qspi_probe(struct platform_device *pdev)
 	master->prepare_transfer_hardware = zynqmp_prepare_transfer_hardware;
 	master->unprepare_transfer_hardware =
 					zynqmp_unprepare_transfer_hardware;
-	master->max_speed_hz = clk_get_rate(xqspi->refclk) / 2;
 	master->bits_per_word_mask = SPI_BPW_MASK(8);
 	master->mode_bits = SPI_CPOL | SPI_CPHA | SPI_RX_DUAL | SPI_RX_QUAD |
 			    SPI_TX_DUAL | SPI_TX_QUAD;
-	xqspi->speed_hz = master->max_speed_hz;
 	master->auto_runtime_pm = true;
 
 	if (master->dev.parent == NULL)
 		master->dev.parent = &master->dev;
-
-	/* QSPI controller initializations */
-	zynqmp_qspi_init_hw(xqspi);
 
 	ret = spi_register_master(master);
 	if (ret)
