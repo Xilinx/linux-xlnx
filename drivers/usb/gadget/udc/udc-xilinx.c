@@ -2205,10 +2205,14 @@ static int xudc_resume(struct device *dev)
 	struct xusb_udc *udc;
 	u32 crtlreg;
 	unsigned long flags;
+	int ret;
 
 	udc = dev_get_drvdata(dev);
 
-	clk_enable(udc->clk);
+	ret = clk_enable(udc->clk);
+	if (ret < 0)
+		return ret;
+
 	spin_lock_irqsave(&udc->lock, flags);
 
 	crtlreg = udc->read_fn(udc->addr + XUSB_CONTROL_OFFSET);
