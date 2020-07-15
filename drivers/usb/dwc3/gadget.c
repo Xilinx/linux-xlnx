@@ -526,7 +526,7 @@ static int dwc3_gadget_start_config(struct dwc3_ep *dep)
 		return ret;
 
 	for (i = 0; i < DWC3_ENDPOINTS_NUM; i++) {
-		struct dwc3_ep *dep = dwc->eps[i];
+		dep = dwc->eps[i];
 
 		if (!dep)
 			continue;
@@ -1368,6 +1368,7 @@ static int dwc3_gadget_start_isoc_quirk(struct dwc3_ep *dep)
 
 		params.param0 = upper_32_bits(dep->dwc->bounce_addr);
 		params.param1 = lower_32_bits(dep->dwc->bounce_addr);
+		params.param2 = 0;
 
 		cmd = DWC3_DEPCMD_STARTTRANSFER;
 		cmd |= DWC3_DEPCMD_PARAM(test_frame_number);
