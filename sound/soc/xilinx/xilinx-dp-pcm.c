@@ -47,6 +47,7 @@ static int xilinx_dp_pcm_probe(struct platform_device *pdev)
 	int ret;
 
 	dev_set_name(&pdev->dev, pdev->dev.of_node->name);
+	pdev->name = dev_name(&pdev->dev);
 	ret = devm_snd_dmaengine_pcm_register(&pdev->dev,
 					      &xilinx_dmaengine_pcm_config, 0);
 	if (ret)
