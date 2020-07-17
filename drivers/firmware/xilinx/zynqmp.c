@@ -810,7 +810,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_clear_aie_npi_isr);
  *
  * Return: Returns status, either success or error+reason
  */
-int zynqmp_pm_reset_assert(const enum zynqmp_pm_reset reset,
+int zynqmp_pm_reset_assert(const u32 reset,
 			   const enum zynqmp_pm_reset_action assert_flag)
 {
 	return zynqmp_pm_invoke_fn(PM_RESET_ASSERT, reset, assert_flag,
@@ -825,7 +825,7 @@ EXPORT_SYMBOL_GPL(zynqmp_pm_reset_assert);
  *
  * Return: Returns status, either success or error+reason
  */
-int zynqmp_pm_reset_get_status(const enum zynqmp_pm_reset reset, u32 *status)
+int zynqmp_pm_reset_get_status(const u32 reset, u32 *status)
 {
 	u32 ret_payload[PAYLOAD_ARG_CNT];
 	int ret;
