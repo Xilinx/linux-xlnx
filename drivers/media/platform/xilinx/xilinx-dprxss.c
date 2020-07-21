@@ -836,9 +836,8 @@ static int xdprxss_init_cfg(struct v4l2_subdev *sd,
 {
 	struct xdprxss_state *xdprxss = to_xdprxssstate(sd);
 	struct v4l2_mbus_framefmt *format;
-	unsigned int i;
 
-	format = v4l2_subdev_get_try_format(sd, cfg, i);
+	format = v4l2_subdev_get_try_format(sd, cfg, 0);
 
 	if (!xdprxss->valid_stream)
 		*format = xdprxss->format;
@@ -1107,7 +1106,7 @@ static int xdprxss_probe(struct platform_device *pdev)
 	struct device *dev = &pdev->dev;
 	struct resource *res;
 	int ret, irq;
-	unsigned int i, j;
+	unsigned int i = 0, j;
 
 	xdprxss = devm_kzalloc(dev, sizeof(*xdprxss), GFP_KERNEL);
 	if (!xdprxss)
