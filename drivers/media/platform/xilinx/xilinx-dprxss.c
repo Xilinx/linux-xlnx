@@ -1027,7 +1027,8 @@ static const struct v4l2_subdev_ops xdprxss_ops = {
 static int xdprxss_parse_of(struct xdprxss_state *xdprxss)
 {
 	struct device_node *node = xdprxss->dev->of_node;
-	u32 val, ret;
+	u32 val;
+	int ret;
 
 	ret = of_property_read_u32(node, "xlnx,bpc", &xdprxss->bpc);
 	if (ret < 0) {
