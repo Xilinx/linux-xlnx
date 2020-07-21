@@ -444,10 +444,9 @@ static int xdprxss_get_stream_properties(struct xdprxss_state *state)
 	struct v4l2_mbus_framefmt *format = &state->format;
 	struct v4l2_bt_timings *bt = &state->detected_timings.bt;
 
-	static const u8 bpc[] = { 6, 8, 10, 12, 16 };
 	u32 rxmsa_mvid, rxmsa_nvid, rxmsa_misc, recv_clk_freq, linkrate;
 	u16 vres_total, hres_total, framerate, lanecount;
-	u8 rxmsa_bpc, pixel_width, fmt;
+	u8 pixel_width, fmt;
 	u16 read_val;
 
 	rxmsa_mvid = xdprxss_read(state, XDPRX_MSA_MVID_REG);
@@ -482,7 +481,6 @@ static int xdprxss_get_stream_properties(struct xdprxss_state *state)
 	read_val = xdprxss_read(state, XDPRX_DTG_REG);
 	xdprxss_write(state, XDPRX_DTG_REG, (read_val | 0x1));
 	fmt = FIELD_GET(XDPRX_MSA_FMT_MASK, rxmsa_misc);
-	rxmsa_bpc = FIELD_GET(XDPRX_MSA_BPC_MASK, rxmsa_misc);
 
 	switch (fmt) {
 	case XDPRX_COLOR_FORMAT_422:
