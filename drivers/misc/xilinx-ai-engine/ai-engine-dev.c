@@ -591,18 +591,19 @@ static int __init xilinx_ai_engine_init(void)
 		return PTR_ERR(aie_class);
 	}
 
+	platform_driver_register(&xilinx_ai_engine_driver);
+
 	return 0;
 }
 postcore_initcall(xilinx_ai_engine_init);
 
 static void __exit xilinx_ai_engine_exit(void)
 {
+	platform_driver_unregister(&xilinx_ai_engine_driver);
 	class_destroy(aie_class);
 	unregister_chrdev_region(aie_major, AIE_DEV_MAX);
 }
 module_exit(xilinx_ai_engine_exit);
-
-module_platform_driver(xilinx_ai_engine_driver);
 
 MODULE_AUTHOR("Xilinx, Inc.");
 MODULE_LICENSE("GPL v2");
