@@ -11,6 +11,7 @@
 #include <linux/bitfield.h>
 #include <linux/cdev.h>
 #include <linux/device.h>
+#include <linux/file.h>
 #include <linux/fpga/fpga-bridge.h>
 #include <linux/io.h>
 #include <linux/list.h>
@@ -150,6 +151,7 @@ struct aie_part_bridge {
  * struct aie_partition - AI engine partition structure
  * @node: list node
  * @adev: pointer to AI device instance
+ * @filep: pointer to file for refcount on the users of the partition
  * @pmems: pointer to partition memories types
  * @br: AI engine FPGA bridge
  * @range: range of partition
@@ -163,6 +165,7 @@ struct aie_partition {
 	struct list_head node;
 	struct aie_part_bridge br;
 	struct aie_device *adev;
+	struct file *filep;
 	struct aie_part_mem *pmems;
 	struct aie_range range;
 	struct mutex mlock; /* protection for AI engine partition operations */
@@ -237,8 +240,6 @@ const struct file_operations *aie_part_get_fops(void);
 u8 aie_part_in_use(struct aie_partition *apart);
 struct aie_partition *aie_get_partition_from_id(struct aie_device *adev,
 						u32 partition_id);
-struct aie_partition *aie_request_partition(struct aie_device *adev,
-					    struct aie_partition_req *req);
 struct aie_partition *of_aie_part_probe(struct aie_device *adev,
 					struct device_node *nc);
 void aie_part_remove(struct aie_partition *apart);
