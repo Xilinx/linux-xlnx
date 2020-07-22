@@ -22,7 +22,7 @@
 struct zynqmp_dp;
 struct drm_display_mode;
 
-const int zynqmp_dp_set_color(struct zynqmp_dp *dp, const char *color);
+int zynqmp_dp_set_color(struct zynqmp_dp *dp, const char *color);
 void zynqmp_dp_enable_vblank(struct zynqmp_dp *dp);
 void zynqmp_dp_disable_vblank(struct zynqmp_dp *dp);
 void zynqmp_dp_encoder_mode_set_stream(struct zynqmp_dp *dp,
