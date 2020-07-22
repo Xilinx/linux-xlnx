@@ -141,7 +141,7 @@ static int zynqmp_dpsub_remove(struct platform_device *pdev)
 
 	pm_runtime_disable(&pdev->dev);
 
-	return err;
+	return ret;
 }
 
 static int __maybe_unused zynqmp_dpsub_pm_suspend(struct device *dev)

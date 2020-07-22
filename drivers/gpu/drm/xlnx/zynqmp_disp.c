@@ -3071,10 +3071,9 @@ static void zynqmp_disp_create_crtc(struct zynqmp_disp *disp)
 {
 	struct drm_plane *plane = &disp->layers[ZYNQMP_DISP_LAYER_GFX].plane;
 	struct drm_mode_object *obj = &disp->xlnx_crtc.crtc.base;
-	int ret;
 
-	ret = drm_crtc_init_with_planes(disp->drm, &disp->xlnx_crtc.crtc, plane,
-					NULL, &zynqmp_disp_crtc_funcs, NULL);
+	drm_crtc_init_with_planes(disp->drm, &disp->xlnx_crtc.crtc, plane,
+				  NULL, &zynqmp_disp_crtc_funcs, NULL);
 	drm_crtc_helper_add(&disp->xlnx_crtc.crtc,
 			    &zynqmp_disp_crtc_helper_funcs);
 	drm_object_attach_property(obj, disp->color_prop, 0);
