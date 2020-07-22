@@ -21,6 +21,7 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
+#include <linux/xlnx-ai-engine.h>
 #include <uapi/linux/xlnx-ai-engine.h>
 
 #include "ai-engine-internal.h"
@@ -34,35 +35,27 @@ static DEFINE_IDA(aie_device_ida);
 static DEFINE_IDA(aie_minor_ida);
 
 /**
- * aie_get_partition_fd() - Get AI engine partition file descriptor
+ * aie_partition_fd() - returns a file descriptor for the given AI engine
+ *			partition device
  * @apart: AI engine partition
- * @return: file descriptor for AI engine partition for success, or negative
- *	    value for failure.
+ * @return: file descriptor of the AI engine partition for success,
+ *	    negative value for failure.
  *
- * This function gets a file descriptor for the AI engine partition.
+ * This function allocate a file descriptor for the AI engine partition
+ * export file.
  */
-static int aie_get_partition_fd(struct aie_partition *apart)
+static int aie_partition_fd(struct aie_partition *apart)
 {
-	struct file *filep;
 	int ret;
 
-	/*
-	 * We can't use anon_inode_getfd() because we need to modify
-	 * the f_mode flags directly to allow more than just ioctls
-	 */
 	ret = get_unused_fd_flags(O_CLOEXEC);
-	if (ret < 0)
-		return ret;
-
-	filep = anon_inode_getfile(dev_name(&apart->dev), &aie_part_fops,
-				   apart, O_RDWR);
-	if (IS_ERR(filep)) {
-		put_unused_fd(ret);
-		ret = PTR_ERR(filep);
+	if (ret < 0) {
+		dev_err(&apart->dev,
+			"Failed to get fd for partition %u.\n",
+			apart->partition_id);
 		return ret;
 	}
-	filep->f_mode |= (FMODE_LSEEK | FMODE_PREAD | FMODE_PWRITE);
-	fd_install(ret, filep);
+	fd_install(ret, apart->filep);
 
 	return ret;
 }
@@ -153,18 +146,78 @@ struct aie_partition *aie_get_partition_from_id(struct aie_device *adev,
 }
 
 /**
- * aie_request_partition() - request AI engine partition
+ * aie_partition_get() - Request the specified AI engine partition
+ *
+ * @apart: AI engine partition
+ * @req: AI engine partition request information which includes image UID.
+ *	 flag to indicate if the partition will cleanup or not when releasing
+ *	 the partition.
+ * @return: 0 for success, and negative value for failure.
+ *
+ * This function will check if the specified partition can be requested, it
+ * will check if the partition has been loaded with an image, if no, as long
+ * as it is not in use, the partition request will be granted. If there is
+ * image loaded, it will check if the given UID from @req matches the image UID
+ * loaded on the partition, if they match, the partition request will be
+ * granted. A file will be created for the requested partition.
+ */
+static int aie_partition_get(struct aie_partition *apart,
+			     struct aie_partition_req *req)
+{
+	struct file *filep;
+
+	(void)req;
+
+	if (apart->status & XAIE_PART_STATUS_INUSE) {
+		dev_err(&apart->dev,
+			"request partition %u failed, partition in use.\n",
+			apart->partition_id);
+		return -EBUSY;
+	}
+	/*
+	 * TODO:
+	 * 1. It will check image UID too to see if the user matches what's
+	 *    loaded in the AI engine partition. And check the meta data to see
+	 *    which resources used by application.
+	 * 2. scan to see which tiles have been clock gated.
+	 * 3. set the partition cleanup flag to indicate if it needs to clean
+	 *    up AI engine partition resource when no one is using the AI
+	 *    engine partition.
+	 */
+
+	/* Get a file for the partition */
+	filep = anon_inode_getfile(dev_name(&apart->dev), &aie_part_fops,
+				   apart, O_RDWR);
+	if (IS_ERR(filep)) {
+		dev_err(&apart->dev,
+			"Failed to request partition %u, failed to get file.\n",
+			apart->partition_id);
+		return PTR_ERR(filep);
+	}
+
+	filep->f_mode |= (FMODE_LSEEK | FMODE_PREAD | FMODE_PWRITE);
+	apart->filep = filep;
+
+	apart->status = XAIE_PART_STATUS_INUSE;
+	return 0;
+}
+
+/**
+ * aie_partition_request_from_adev() - request AI engine partition from AI
+ *				       engine device
  * @adev: AI engine device
  * @req: partition request, includes the requested AI engine information
- *	 such as partition node ID and the UID of the image which is
- *	 loaded on the partition.
- * @return: partition pointer if partition exists, otherwise, NULL.
+ *	 such as partition node ID and the UID of the image which is used
+ *	 to describe the partition to request.
+ * @return: pointer to the AI engine partition for success, and negative
+ *	    value for failure.
  *
  * This function finds a defined partition which matches the specified
- * partition id, request it by increasing the refcount, and returns it.
+ * partition id, and request it.
  */
-struct aie_partition *aie_request_partition(struct aie_device *adev,
-					    struct aie_partition_req *req)
+static struct aie_partition *
+aie_partition_request_from_adev(struct aie_device *adev,
+				struct aie_partition_req *req)
 {
 	struct aie_partition *apart;
 	int ret;
@@ -181,37 +234,18 @@ struct aie_partition *aie_request_partition(struct aie_device *adev,
 		mutex_unlock(&adev->mlock);
 		return ERR_PTR(-EINVAL);
 	}
-	/*
-	 * TODO: It will check image UID too to see if the user matches
-	 * what's loaded in the AI engine partition. And check the meta
-	 * data to see which resources used by application.
-	 */
+	mutex_unlock(&adev->mlock);
 
 	ret = mutex_lock_interruptible(&apart->mlock);
 	if (ret)
 		return ERR_PTR(ret);
 
-	if (apart->status & XAIE_PART_STATUS_INUSE) {
-		mutex_unlock(&apart->mlock);
-		dev_err(&adev->dev,
-			"request partition %u failed, partition in use.\n",
-			req->partition_id);
-		apart = ERR_PTR(-EBUSY);
-	} else {
-		/*
-		 * TBD:
-		 * 1. setup NOC AXI MM config to only generate error events
-		 *    for slave error and decode error.
-		 * 2. scan to see which tiles have been clock gated.
-		 *
-		 * This needs to be done before the AI engine partition is
-		 * exported for user to access.
-		 */
-		apart->status = XAIE_PART_STATUS_INUSE;
-		mutex_unlock(&apart->mlock);
-	}
-	mutex_unlock(&adev->mlock);
+	ret = aie_partition_get(apart, req);
 
+	mutex_unlock(&apart->mlock);
+
+	if (ret)
+		apart = ERR_PTR(ret);
 	return apart;
 }
 
@@ -247,12 +281,15 @@ static long xilinx_ai_engine_ioctl(struct file *filp, unsigned int cmd,
 
 		if (copy_from_user(&req, argp, sizeof(req)))
 			return -EFAULT;
-		apart = aie_request_partition(adev, &req);
+
+		apart = aie_partition_request_from_adev(adev, &req);
 		if (IS_ERR(apart))
 			return PTR_ERR(apart);
-		ret = aie_get_partition_fd(apart);
+
+		/* Allocate fd */
+		ret = aie_partition_fd(apart);
 		if (ret < 0) {
-			dev_err(&apart->dev, "failed to get fd.\n");
+			fput(apart->filep);
 			break;
 		}
 		break;
@@ -412,6 +449,130 @@ static struct platform_driver xilinx_ai_engine_driver = {
 		.of_match_table	= xilinx_ai_engine_of_match,
 	},
 };
+
+/**
+ * aie_partition_dev_match() - check if AI engine partition matches partition ID
+ *
+ * @dev: pointer to the AI engine partition device
+ * @data: partition_id
+ * @return: 1 if partition matches, otherwise 0.
+ */
+static int aie_partition_dev_match(struct device *dev, const void *data)
+{
+	struct aie_partition *apart;
+	u32 partition_id = (u32)(uintptr_t)data;
+
+	if (strncmp(dev_name(dev), "aiepart", strlen("aiepart")))
+		return 0;
+
+	apart = dev_to_aiepart(dev);
+	if (apart->partition_id == partition_id)
+		return 1;
+	return 0;
+}
+
+/**
+ * aie_class_find_partition_from_id() - Find the AI engine partition whose ID
+ *					matches.
+ * @partition_id: AI engine partition ID
+ * @return: pointer to the AI engine partition if partition is found, otherwise
+ *	    NULL.
+ *
+ * This function looks up all the devices of the AI engine class to check if
+ * the device is AI engine partition device if if the partition ID matches.
+ */
+static struct aie_partition *aie_class_find_partition_from_id(u32 partition_id)
+{
+	struct device *dev;
+
+	dev = class_find_device(aie_class, NULL,
+				(void *)(uintptr_t)partition_id,
+				aie_partition_dev_match);
+	if (!dev)
+		return NULL;
+	return dev_to_aiepart(dev);
+}
+
+/**
+ * aie_partition_request() - Request an AI engine partition
+ * @req: AI engine partition requesting arguments
+ * @return: pointer to the AI engine partition device, error value for failure.
+ *
+ * This function looks up the AI engine class devices to find the AI engine
+ * partition whose partition ID matches the given partition ID in @req. If
+ * the partition can be found, it will try to request it. It will get a file
+ * for the requested AI engine partition. User can only use the AI engine
+ * partition after it is successfully requested.
+ */
+struct device *aie_partition_request(struct aie_partition_req *req)
+{
+	struct aie_partition *apart;
+	int ret;
+
+	if (!req)
+		return ERR_PTR(-EINVAL);
+
+	apart = aie_class_find_partition_from_id(req->partition_id);
+	if (!apart)
+		return ERR_PTR(-ENODEV);
+
+	ret = mutex_lock_interruptible(&apart->mlock);
+	if (ret)
+		return ERR_PTR(ret);
+
+	ret = aie_partition_get(apart, req);
+	mutex_unlock(&apart->mlock);
+	if (ret)
+		return ERR_PTR(ret);
+
+	return &apart->dev;
+}
+EXPORT_SYMBOL_GPL(aie_partition_request);
+
+/**
+ * aie_partition_get_fd() - get AI engine partition file descriptor
+ * @dev: AI engine partition device pointer
+ * @return: file descriptor for the AI engine partition for success, and
+ *	    negative value for failure.
+ *
+ * This function allocate a file descriptor for the AI engine requested
+ * partition, and increase the reference count to the AI engine partition file.
+ */
+int aie_partition_get_fd(struct device *dev)
+{
+	struct aie_partition *apart;
+	int ret;
+
+	if (!dev)
+		return -EINVAL;
+
+	apart = dev_to_aiepart(dev);
+
+	ret = aie_partition_fd(apart);
+	if (ret < 0)
+		return ret;
+
+	get_file(apart->filep);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(aie_partition_get_fd);
+
+/**
+ * aie_partition_release() - Recrease refcount of the AI engine partition
+ * @dev: AI engine partition device
+ */
+void aie_partition_release(struct device *dev)
+{
+	struct aie_partition *apart;
+
+	if (WARN_ON(!dev))
+		return;
+
+	apart = dev_to_aiepart(dev);
+	fput(apart->filep);
+}
+EXPORT_SYMBOL_GPL(aie_partition_release);
 
 static int __init xilinx_ai_engine_init(void)
 {
