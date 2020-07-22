@@ -3888,6 +3888,7 @@ M:	Hyun Kwon <hyun.kwon@xilinx.com>
 S:	Maintained
 F:	Documentation/devicetree/bindings/soc/xilinx/xlnx,ai-engine.yaml
 F:	drivers/misc/xilinx-ai-engine/
+F:	include/linux/xlnx-ai-engine.h
 F:	include/uapi/linux/xlnx-ai-engine.h
 
 CHECKPATCH
