@@ -36,6 +36,7 @@
 #include <linux/uaccess.h>
 
 #include "zynqmp_disp.h"
+#include "zynqmp_dp.h"
 #include "zynqmp_dpsub.h"
 
 static uint zynqmp_dp_aux_timeout_ms = 50;
