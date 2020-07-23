@@ -131,3 +131,37 @@ Example:
 			interrupt-controller ;
 		};
 	};
+
+Versal PL PCIe host Bridge DT description.
+
+The properties and their meanings are identical to those described in
+above Xilinx XDMA PL PCIe Root Port Bridge description.
+The IP supports only MSI DECODE mode.
+
+Properties that differ are:
+- compatible: Should contain "xlnx,pcie-dma-versal-2.0"
+
+Example:
+	pcie_dma_versal_0: axi-pcie@80000000 {
+		#address-cells = <3>;
+		#interrupt-cells = <1>;
+		#size-cells = <2>;
+		compatible = "xlnx,pcie-dma-versal-2.0";
+		device_type = "pci";
+		interrupt-map = <0 0 0 1 &psv_pcie_intc_0 1>,
+				<0 0 0 2 &psv_pcie_intc_0 2>,
+				<0 0 0 3 &psv_pcie_intc_0 3>,
+				<0 0 0 4 &psv_pcie_intc_0 4>;
+		interrupt-map-mask = <0 0 0 7>;
+		interrupt-names = "misc", "msi0", "msi1";
+		interrupt-parent = <&gic>;
+		interrupts = <0 84 4 0 85 4 0 86 4>;
+		ranges = <0x02000000 0x00000000 0xB0000000 0x0 0xB0000000 0x00000000 0x10000000>,
+			 <0x43000000 0x00000005 0x00000000 0x00000005 0x00000000 0x00000000 0x01000000>;
+		reg = <0x0 0x80000000 0x0 0x10000000>;
+		psv_pcie_intc_0: interrupt-controller {
+			#address-cells = <0>;
+			#interrupt-cells = <1>;
+			interrupt-controller ;
+		};
+	};
