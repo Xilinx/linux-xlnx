@@ -118,6 +118,12 @@ enum msi_mode {
 	MSI_FIFO_MODE,
 };
 
+enum xdma_config {
+	XDMA_ZYNQMP_PL = 1,
+	XDMA_VERSAL_CPM,
+	XDMA_VERSAL_PL,
+};
+
 struct xilinx_msi {
 	struct irq_domain *msi_domain;
 	unsigned long *bitmap;
@@ -140,6 +146,7 @@ struct xilinx_msi {
  * @msi: MSI information
  * @irq_misc: Legacy and error interrupt number
  * @msi_mode: MSI mode
+ * @xdma_config: XDMA IP configuration
  */
 struct xilinx_pcie_port {
 	void __iomem *reg_base;
@@ -152,11 +159,12 @@ struct xilinx_pcie_port {
 	struct xilinx_msi msi;
 	int irq_misc;
 	u8 msi_mode;
+	u8 xdma_config;
 };
 
 static inline u32 pcie_read(struct xilinx_pcie_port *port, u32 reg)
 {
-	if (!port->cpm_base)
+	if (port->xdma_config == XDMA_ZYNQMP_PL)
 		return readl(port->reg_base + reg);
 	else
 		return readl(port->reg_base + reg + CPM_BRIDGE_BASE_OFF);
@@ -164,7 +172,7 @@ static inline u32 pcie_read(struct xilinx_pcie_port *port, u32 reg)
 
 static inline void pcie_write(struct xilinx_pcie_port *port, u32 val, u32 reg)
 {
-	if (!port->cpm_base)
+	if (port->xdma_config == XDMA_ZYNQMP_PL)
 		writel(val, port->reg_base + reg);
 	else
 		writel(val, port->reg_base + reg + CPM_BRIDGE_BASE_OFF);
@@ -718,7 +726,15 @@ static int xilinx_pcie_parse_dt(struct xilinx_pcie_port *port)
 	const char *type;
 	int err, mode_val, val;
 
-	if (of_device_is_compatible(node, "xlnx,xdma-host-3.00")) {
+	if (of_device_is_compatible(node, "xlnx,xdma-host-3.00"))
+		port->xdma_config = XDMA_ZYNQMP_PL;
+	else if (of_device_is_compatible(node, "xlnx,pcie-dma-versal-2.0"))
+		port->xdma_config = XDMA_VERSAL_PL;
+	else if (of_device_is_compatible(node, "xlnx,versal-cpm-host-1.00"))
+		port->xdma_config = XDMA_VERSAL_CPM;
+
+	if (port->xdma_config == XDMA_ZYNQMP_PL ||
+	    port->xdma_config == XDMA_VERSAL_PL) {
 		type = of_get_property(node, "device_type", NULL);
 		if (!type || strcmp(type, "pci")) {
 			dev_err(dev, "invalid \"device_type\" %s\n", type);
@@ -735,18 +751,23 @@ static int xilinx_pcie_parse_dt(struct xilinx_pcie_port *port)
 		if (IS_ERR(port->reg_base))
 			return PTR_ERR(port->reg_base);
 
-		val = pcie_read(port, XILINX_PCIE_REG_BIR);
-		val = (val >> XILINX_PCIE_FIFO_SHIFT) & MSI_DECD_MODE;
-		mode_val = pcie_read(port, XILINX_PCIE_REG_VSEC) &
-				XILINX_PCIE_VSEC_REV_MASK;
-		mode_val = mode_val >> XILINX_PCIE_VSEC_REV_SHIFT;
-		if (mode_val && !val) {
-			port->msi_mode = MSI_DECD_MODE;
-			dev_info(dev, "Using MSI Decode mode\n");
-		} else {
-			port->msi_mode = MSI_FIFO_MODE;
-			dev_info(dev, "Using MSI FIFO mode\n");
+		if (port->xdma_config == XDMA_ZYNQMP_PL) {
+			val = pcie_read(port, XILINX_PCIE_REG_BIR);
+			val = (val >> XILINX_PCIE_FIFO_SHIFT) & MSI_DECD_MODE;
+			mode_val = pcie_read(port, XILINX_PCIE_REG_VSEC) &
+					XILINX_PCIE_VSEC_REV_MASK;
+			mode_val = mode_val >> XILINX_PCIE_VSEC_REV_SHIFT;
+			if (mode_val && !val) {
+				port->msi_mode = MSI_DECD_MODE;
+				dev_info(dev, "Using MSI Decode mode\n");
+			} else {
+				port->msi_mode = MSI_FIFO_MODE;
+				dev_info(dev, "Using MSI FIFO mode\n");
+			}
 		}
+
+		if (port->xdma_config == XDMA_VERSAL_PL)
+			port->msi_mode = MSI_DECD_MODE;
 
 		if (port->msi_mode == MSI_DECD_MODE) {
 			err = xilinx_request_misc_irq(port);
@@ -774,7 +795,7 @@ static int xilinx_pcie_parse_dt(struct xilinx_pcie_port *port)
 				return err;
 			}
 		}
-	} else if (of_device_is_compatible(node, "xlnx,versal-cpm-host-1.00")) {
+	} else if (port->xdma_config == XDMA_VERSAL_CPM) {
 		struct resource *res;
 		struct platform_device *pdev = to_platform_device(dev);
 
@@ -875,6 +896,7 @@ error:
 static const struct of_device_id xilinx_pcie_of_match[] = {
 	{ .compatible = "xlnx,xdma-host-3.00", },
 	{ .compatible = "xlnx,versal-cpm-host-1.00", },
+	{ .compatible = "xlnx,pcie-dma-versal-2.0", },
 	{}
 };
 
