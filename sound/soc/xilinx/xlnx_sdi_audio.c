@@ -339,8 +339,7 @@ static int xlnx_sdi_tx_hw_params(struct snd_pcm_substream *substream,
 
 	writel(val, base + XSDIAUD_AUD_CNTRL_REG_OFFSET);
 
-	/* TODO: support more channels, currently only 2. */
-	writel(CHAN_ID_1 | CHAN_ID_0, base + XSDIAUD_CH_VALID_REG_OFFSET);
+	writel(BIT(num_channels) - 1, base + XSDIAUD_CH_VALID_REG_OFFSET);
 
 	return 0;
 }
@@ -371,7 +370,7 @@ static struct snd_soc_dai_driver xlnx_sdi_rx_dai = {
 	.capture = {
 		.stream_name = "Capture",
 		.channels_min = 2,
-		.channels_max = 2,
+		.channels_max = 8,
 		.rates = SNDRV_PCM_RATE_32000 | SNDRV_PCM_RATE_44100 |
 			SNDRV_PCM_RATE_48000,
 		.formats = SNDRV_PCM_FMTBIT_S24_LE,
@@ -390,7 +389,7 @@ static struct snd_soc_dai_driver xlnx_sdi_tx_dai = {
 	.playback = {
 		.stream_name = "Playback",
 		.channels_min = 2,
-		.channels_max = 2,
+		.channels_max = 8,
 		.rates = SNDRV_PCM_RATE_32000 | SNDRV_PCM_RATE_44100 |
 			SNDRV_PCM_RATE_48000,
 		.formats = SNDRV_PCM_FMTBIT_S24_LE,
