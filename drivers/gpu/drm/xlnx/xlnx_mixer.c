@@ -788,7 +788,7 @@ static void xlnx_mix_disp_layer_enable(struct xlnx_mix_plane *plane)
 	mixer_hw = to_mixer_hw(plane);
 	l_data = plane->mixer_layer;
 	id = l_data->id;
-	if (id < XVMIX_LAYER_MASTER  || id > mixer_hw->logo_layer_id) {
+	if (id > mixer_hw->logo_layer_id) {
 		DRM_DEBUG_KMS("Attempt to activate invalid layer: %d\n", id);
 		return;
 	}
@@ -847,8 +847,7 @@ static void xlnx_mix_disp_layer_disable(struct xlnx_mix_plane *plane)
 	else
 		return;
 	layer_id = plane->mixer_layer->id;
-	if (layer_id < XVMIX_LAYER_MASTER  ||
-	    layer_id > mixer_hw->logo_layer_id)
+	if (layer_id > mixer_hw->logo_layer_id)
 		return;
 
 	xlnx_mix_layer_disable(mixer_hw, layer_id);
@@ -1292,7 +1291,7 @@ static int xlnx_mix_set_layer_scale(struct xlnx_mix_plane *plane,
 
 	if (!layer || !layer->hw_config.can_scale)
 		return -ENODEV;
-	if (val > XVMIX_SCALE_FACTOR_4X || val < XVMIX_SCALE_FACTOR_1X) {
+	if (val > XVMIX_SCALE_FACTOR_4X) {
 		DRM_ERROR("Mixer layer scale value illegal.\n");
 		return -EINVAL;
 	}
@@ -1369,7 +1368,7 @@ static int xlnx_mix_disp_set_layer_alpha(struct xlnx_mix_plane *plane,
 
 	if (!layer || !layer->hw_config.can_alpha)
 		return -ENODEV;
-	if (val > XVMIX_ALPHA_MAX || val < XVMIX_ALPHA_MIN) {
+	if (val > XVMIX_ALPHA_MAX) {
 		DRM_ERROR("Mixer layer alpha dts value illegal.\n");
 		return -EINVAL;
 	}
