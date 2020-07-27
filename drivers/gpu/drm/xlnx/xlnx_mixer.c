@@ -1636,7 +1636,7 @@ static int xlnx_mix_logo_load(struct xlnx_mix_hw *mixer, u32 logo_w, u32 logo_h,
 	u32 rword, gword, bword, aword;
 	u32 pixel_cnt = logo_w * logo_h;
 	u32 unaligned_pix_cnt = pixel_cnt % 4;
-	u32 width, height, curr_x_pos, curr_y_pos;
+	u32 curr_x_pos, curr_y_pos;
 	u32 rbase_addr, gbase_addr, bbase_addr, abase_addr;
 
 	layer_data = xlnx_mix_get_layer_data(mixer, mixer->logo_layer_id);
@@ -1657,8 +1657,6 @@ static int xlnx_mix_logo_load(struct xlnx_mix_hw *mixer, u32 logo_w, u32 logo_h,
 	    logo_h <= layer_data->hw_config.max_height))
 		return -EINVAL;
 
-	width  = logo_w;
-	height = logo_h;
 	rbase_addr = XVMIX_LOGOR_V_BASE;
 	gbase_addr = XVMIX_LOGOG_V_BASE;
 	bbase_addr = XVMIX_LOGOB_V_BASE;
@@ -1695,9 +1693,6 @@ static int xlnx_mix_update_logo_img(struct xlnx_mix_plane *plane,
 	struct xlnx_mix_layer_data *logo_layer = plane->mixer_layer;
 	struct xlnx_mix_hw *mixer = to_mixer_hw(plane);
 	size_t pixel_cnt = src_h * src_w;
-	/* color comp defaults to offset in RG24 buffer */
-	u32 pix_cmp_cnt;
-	u32 logo_cmp_cnt;
 	bool per_pixel_alpha = false;
 	u32 max_width = logo_layer->hw_config.max_width;
 	u32 max_height = logo_layer->hw_config.max_height;
@@ -1738,8 +1733,6 @@ static int xlnx_mix_update_logo_img(struct xlnx_mix_plane *plane,
 		ret = -ENOMEM;
 		goto free;
 	}
-	pix_cmp_cnt = per_pixel_alpha ? 4 : 3;
-	logo_cmp_cnt = pixel_cnt * pix_cmp_cnt;
 	/* ensure buffer attributes have changed to indicate new logo
 	 * has been created
 	 */
@@ -2830,13 +2823,9 @@ static struct drm_crtc_helper_funcs xlnx_mix_crtc_helper_funcs = {
 static int xlnx_mix_crtc_create(struct xlnx_mix *mixer)
 {
 	struct xlnx_crtc *crtc;
-	struct drm_plane *primary_plane = NULL;
-	struct drm_plane *cursor_plane = NULL;
 	int ret, i;
 
 	crtc = &mixer->crtc;
-	primary_plane = &mixer->drm_primary_layer->base;
-	cursor_plane = &mixer->hw_logo_layer->base;
 
 	for (i = 0; i < mixer->num_planes; i++)
 		xlnx_mix_attach_plane_prop(&mixer->planes[i]);
