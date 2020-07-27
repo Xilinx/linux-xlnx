@@ -314,13 +314,11 @@ xlnx_pl_disp_plane_atomic_check(struct drm_plane *plane,
 	const struct drm_plane_state *old_plane_state =
 		drm_atomic_get_old_plane_state(state, plane);
 	struct drm_crtc *crtc = new_plane_state->crtc ?: old_plane_state->crtc;
-	const struct drm_crtc_state *old_crtc_state;
 	struct drm_crtc_state *new_crtc_state;
 
 	if (!crtc)
 		return 0;
 
-	old_crtc_state = drm_atomic_get_old_crtc_state(state, crtc);
 	new_crtc_state = drm_atomic_get_new_crtc_state(state, crtc);
 
 	/* plane must be enabled when state is active */
