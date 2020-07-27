@@ -2781,6 +2781,7 @@ xlnx_mix_crtc_atomic_disable(struct drm_crtc *crtc,
 {
 	xlnx_mix_crtc_dpms(crtc, DRM_MODE_DPMS_OFF);
 	xlnx_mix_clear_event(crtc);
+	drm_crtc_vblank_off(crtc);
 }
 
 static void xlnx_mix_crtc_mode_set_nofb(struct drm_crtc *crtc)
@@ -2797,6 +2798,7 @@ static void
 xlnx_mix_crtc_atomic_begin(struct drm_crtc *crtc,
 			   struct drm_crtc_state *old_crtc_state)
 {
+	drm_crtc_vblank_on(crtc);
 	/* Don't rely on vblank when disabling crtc */
 	if (crtc->state->event) {
 		struct xlnx_crtc *xcrtc = to_xlnx_crtc(crtc);
