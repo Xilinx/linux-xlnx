@@ -1,7 +1,8 @@
 Xilinx VPSS Color Space Converter (CSC)
 -----------------------------------------
 The Xilinx VPSS Color Space Converter (CSC) is a Video IP that supports
-color space conversion from RGB input to YUV output.
+color space conversion from RGB or YUV(444, 422, 420)input to RGB or
+YUV(444, 422, 420) output.
 
 Required properties:
 
