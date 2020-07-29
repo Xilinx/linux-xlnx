@@ -141,6 +141,9 @@ int aie_part_clean(struct aie_partition *apart)
 	struct aie_device *adev = apart->adev;
 	int ret;
 
+	if (apart->cntrflag & XAIE_PART_NOT_RST_ON_RELEASE)
+		return 0;
+
 	aie_part_set_cols_reset(apart, true);
 
 	ret = apart->adev->ops->reset_shim(adev, &apart->range);
