@@ -18,6 +18,12 @@ enum aie_reg_op {
 /* AI engine partition bridge is enabled */
 #define XAIE_PART_STATUS_BRIDGE_ENABLED	(1U << 1)
 
+/*
+ * AI engine partition control flags
+ */
+/* Not reset when release AI engine partition */
+#define XAIE_PART_NOT_RST_ON_RELEASE	0x00000001U
+
 /**
  * struct aie_location - AIE location information
  * @col: column id
