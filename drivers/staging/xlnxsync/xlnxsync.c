@@ -966,7 +966,6 @@ static irqreturn_t xlnxsync_irq_handler(int irq, void *data)
 		u32 i, j;
 
 		val = xlnxsync_read(xlnxsync, chan->id, XLNXSYNC_ISR_REG);
-		xlnxsync_write(xlnxsync, chan->id, XLNXSYNC_ISR_REG, val);
 
 		if (val & XLNXSYNC_ISR_SYNC_FAIL_MASK)
 			chan->sync_err = true;
