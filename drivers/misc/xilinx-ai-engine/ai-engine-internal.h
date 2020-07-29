@@ -176,6 +176,8 @@ struct aie_part_bridge {
  * @partition_id: partition id. Partition ID is the identifier
  *		  of the AI engine partition in the system.
  * @status: indicate if the partition is in use
+ * @cntrflag: partition control flag. e.g. whether to reset columns when
+ *	      the partition is released
  */
 struct aie_partition {
 	struct list_head node;
@@ -188,6 +190,7 @@ struct aie_partition {
 	struct device dev;
 	u32 partition_id;
 	u32 status;
+	u32 cntrflag;
 };
 
 extern struct class *aie_class;
