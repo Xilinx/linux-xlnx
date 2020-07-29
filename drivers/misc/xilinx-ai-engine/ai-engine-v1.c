@@ -31,6 +31,7 @@
 #define AIE_SHIMPL_L1INTR_MASK_A_REGOFF		0x00035000U
 #define AIE_SHIMPL_L1INTR_BLOCK_NORTH_B_REGOFF	0x00035050U
 #define AIE_SHIMPL_CLKCNTR_REGOFF		0x00036040U
+#define AIE_SHIMPL_COLRESET_REGOFF		0x00036048U
 #define AIE_SHIMPL_RESET_REGOFF			0x0003604cU
 #define AIE_TILE_CORE_CLKCNTR_REGOFF		0x00036040U
 
@@ -38,6 +39,8 @@
  * Register masks
  */
 #define AIE_SHIMPL_SHIMRST_MASK			0x1U
+#define AIE_SHIMPL_COLRST_MASK			0x1U
+#define AIE_SHIMPL_CLKCNTR_COLBUF_MASK		0x1U
 
 /*
  * AI engine SHIM reset ID.
@@ -68,6 +71,11 @@ static const struct aie_tile_regs aiev1_kernel_regs[] = {
 	 .soff = AIE_SHIMPL_L1INTR_MASK_A_REGOFF,
 	 .eoff = AIE_SHIMPL_L1INTR_BLOCK_NORTH_B_REGOFF,
 	},
+	/* SHIM column reset */
+	{.attribute = AIE_TILE_TYPE_SHIMPL << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
+	 .soff = AIE_SHIMPL_COLRESET_REGOFF,
+	 .eoff = AIE_SHIMPL_COLRESET_REGOFF,
+	},
 	/* SHIM reset Enable */
 	{.attribute = AIE_TILE_TYPE_SHIMPL << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
 	 .soff = AIE_SHIMPL_RESET_REGOFF,
@@ -83,6 +91,16 @@ static const struct aie_tile_regs aiev1_kernel_regs[] = {
 	 .soff = AIE_TILE_CORE_CLKCNTR_REGOFF,
 	 .eoff = AIE_TILE_CORE_CLKCNTR_REGOFF,
 	},
+};
+
+static const struct aie_single_reg_field aiev1_col_rst = {
+	.mask = AIE_SHIMPL_COLRST_MASK,
+	.regoff = AIE_SHIMPL_COLRESET_REGOFF,
+};
+
+static const struct aie_single_reg_field aiev1_col_clkbuf = {
+	.mask = AIE_SHIMPL_CLKCNTR_COLBUF_MASK,
+	.regoff = AIE_SHIMPL_CLKCNTR_REGOFF,
 };
 
 static const struct zynqmp_eemi_ops *eemi_ops;
@@ -209,6 +227,8 @@ int aiev1_device_init(struct aie_device *adev)
 	adev->ops = &aiev1_ops;
 	adev->num_kernel_regs = ARRAY_SIZE(aiev1_kernel_regs);
 	adev->kernel_regs = aiev1_kernel_regs;
+	adev->col_rst = &aiev1_col_rst;
+	adev->col_clkbuf = &aiev1_col_clkbuf;
 
 	eemi_ops = zynqmp_pm_get_eemi_ops();
 	if (IS_ERR(eemi_ops) || !eemi_ops->reset_assert) {

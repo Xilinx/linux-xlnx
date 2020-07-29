@@ -247,13 +247,11 @@ static int aie_part_release(struct inode *inode, struct file *filp)
 	struct aie_partition *apart = filp->private_data;
 	int ret;
 
-	/*
-	 * TODO: It will need to reset the SHIM columns and gate the
-	 * the tiles of the partition.
-	 */
 	ret = mutex_lock_interruptible(&apart->mlock);
 	if (ret)
 		return ret;
+
+	aie_part_clean(apart);
 
 	apart->status = 0;
 	mutex_unlock(&apart->mlock);
