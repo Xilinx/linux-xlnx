@@ -199,6 +199,7 @@ static int aie_partition_get(struct aie_partition *apart,
 	apart->filep = filep;
 
 	apart->status = XAIE_PART_STATUS_INUSE;
+	apart->cntrflag = req->flag;
 	return 0;
 }
 
