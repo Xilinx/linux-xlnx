@@ -80,6 +80,7 @@ struct aie_part_mem {
  * struct aie_tile_operations - AI engine device operations
  * @get_tile_type: get type of tile based on tile operation
  * @get_mem_info: get different types of memories information
+ * @reset_shim: reset shim, it will assert and then release SHIM reset
  *
  * Different AI engine device version has its own device
  * operation.
@@ -88,6 +89,7 @@ struct aie_tile_operations {
 	u32 (*get_tile_type)(struct aie_location *loc);
 	unsigned int (*get_mem_info)(struct aie_range *range,
 				     struct aie_part_mem *pmem);
+	int (*reset_shim)(struct aie_device *adev, struct aie_range *range);
 };
 
 /**
@@ -205,6 +207,21 @@ extern const struct file_operations aie_part_fops;
 
 #define aie_cal_tile_reg(adev, regoff) ( \
 	aie_tile_reg_field_get(aie_tile_reg_mask(adev), 0, regoff))
+
+/**
+ * aie_cal_regoff() - calculate register offset to the whole AI engine
+ *		      device start address
+ * @adev: AI engine device
+ * @loc: AI engine tile location
+ * @regoff_intile: register offset within a tile
+ * @return: register offset to the whole AI engine device start address
+ */
+static inline u32 aie_cal_regoff(struct aie_device *adev,
+				 struct aie_location loc, u32 regoff_intile)
+{
+	return regoff_intile + (loc.col << adev->col_shift) +
+	       (loc.row << adev->row_shift);
+}
 
 /**
  * aie_validate_location() - validate tile location within an AI engine
