@@ -54,6 +54,16 @@ struct aie_tile_regs {
 	u32 attribute;
 };
 
+/**
+ * struct aie_single_reg_field - AI engine single field register attribute
+ * @mask: field mask
+ * @regoff: register offset of the field
+ */
+struct aie_single_reg_field {
+	u32 mask;
+	u32 regoff;
+};
+
 struct aie_device;
 struct aie_partition;
 
@@ -112,6 +122,8 @@ struct aie_resource {
  * @res: memory resource of AI engine device
  * @kernel_regs: array of kernel only registers
  * @ops: tile operations
+ * @col_rst: column reset attribute
+ * @col_clkbuf: column clock buffer attribute
  * @size: size of the AI engine address space
  * @array_shift: array address shift
  * @col_shift: column address shift
@@ -130,6 +142,8 @@ struct aie_device {
 	struct resource *res;
 	const struct aie_tile_regs *kernel_regs;
 	const struct aie_tile_operations *ops;
+	const struct aie_single_reg_field *col_rst;
+	const struct aie_single_reg_field *col_clkbuf;
 	size_t size;
 	struct aie_resource cols_res;
 	u32 array_shift;
@@ -209,6 +223,20 @@ extern const struct file_operations aie_part_fops;
 	aie_tile_reg_field_get(aie_tile_reg_mask(adev), 0, regoff))
 
 /**
+ * aie_get_field_val() - calculate value of an AI engine register field
+ * @field: a field in a register
+ * @val: value of the field
+ * @return: value of a register field
+ */
+static inline u32 aie_get_field_val(const struct aie_single_reg_field *field,
+				    u32 val)
+{
+	long long mask = (long long)field->mask & 0x00000000ffffffff;
+
+	return (val << __bf_shf(mask)) & field->mask;
+}
+
+/**
  * aie_cal_regoff() - calculate register offset to the whole AI engine
  *		      device start address
  * @adev: AI engine device
@@ -260,6 +288,7 @@ struct aie_partition *aie_get_partition_from_id(struct aie_device *adev,
 struct aie_partition *of_aie_part_probe(struct aie_device *adev,
 					struct device_node *nc);
 void aie_part_remove(struct aie_partition *apart);
+int aie_part_clean(struct aie_partition *apart);
 
 int aie_fpga_create_bridge(struct aie_partition *apart);
 void aie_fpga_free_bridge(struct aie_partition *apart);
