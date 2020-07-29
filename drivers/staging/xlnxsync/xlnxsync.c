@@ -979,28 +979,28 @@ static irqreturn_t xlnxsync_irq_handler(int irq, void *data)
 		    chan->ldiff_err || chan->cdiff_err)
 			chan->err_event = true;
 
-		if (val & XLNXSYNC_ISR_PLDONE_MASK) {
+		if (val & XLNXSYNC_ISR_PLVALID_MASK) {
 			i = (val & XLNXSYNC_ISR_PLDONE_MASK) >>
 				XLNXSYNC_ISR_PLDONE_SHIFT;
 
 			chan->l_done[i][XLNXSYNC_PROD] = true;
 		}
 
-		if (val & XLNXSYNC_ISR_PCDONE_MASK) {
+		if (val & XLNXSYNC_ISR_PCVALID_MASK) {
 			i = (val & XLNXSYNC_ISR_PCDONE_MASK) >>
 				XLNXSYNC_ISR_PCDONE_SHIFT;
 
 			chan->c_done[i][XLNXSYNC_PROD] = true;
 		}
 
-		if (val & XLNXSYNC_ISR_CLDONE_MASK) {
+		if (val & XLNXSYNC_ISR_CLVALID_MASK) {
 			i = (val & XLNXSYNC_ISR_CLDONE_MASK) >>
 				XLNXSYNC_ISR_CLDONE_SHIFT;
 
 			chan->l_done[i][XLNXSYNC_CONS] = true;
 		}
 
-		if (val & XLNXSYNC_ISR_CCDONE_MASK) {
+		if (val & XLNXSYNC_ISR_CCVALID_MASK) {
 			i = (val & XLNXSYNC_ISR_CCDONE_MASK) >>
 				XLNXSYNC_ISR_CCDONE_SHIFT;
 
