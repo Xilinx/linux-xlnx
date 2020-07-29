@@ -103,8 +103,10 @@
 #define XVMIX_REG_OFFSET                0x100
 #define XVMIX_MASTER_LAYER_IDX		0x0
 #define XVMIX_LOGO_LAYER_IDX		0x1
-#define XVMIX_DISP_MAX_WIDTH		4096
-#define XVMIX_DISP_MAX_HEIGHT		2160
+#define XVMIX_DISP_MAX_WIDTH		8192
+#define XVMIX_DISP_MAX_HEIGHT		4320
+#define XVMIX_DISP_MIN_WIDTH		64
+#define XVMIX_DISP_MIN_HEIGHT		64
 #define XVMIX_MAX_OVERLAY_LAYERS	16
 #define XVMIX_MAX_BPC			16
 #define XVMIX_ALPHA_MIN			0
@@ -2150,13 +2152,23 @@ static int xlnx_mix_parse_dt_bg_video_fmt(struct device_node *node,
 				 &layer->hw_config.max_width)) {
 		DRM_ERROR("Failed to get screen width prop\n");
 		return -EINVAL;
+	} else if (layer->hw_config.max_width > XVMIX_DISP_MAX_WIDTH ||
+		   layer->hw_config.max_width < XVMIX_DISP_MIN_WIDTH) {
+		DRM_ERROR("Invalid width in dt");
+		return -EINVAL;
 	}
+
 	mixer_hw->max_layer_width = layer->hw_config.max_width;
 	if (of_property_read_u32(layer_node, "xlnx,layer-max-height",
 				 &layer->hw_config.max_height)) {
 		DRM_ERROR("Failed to get screen height prop\n");
 		return -EINVAL;
+	} else if (layer->hw_config.max_height > XVMIX_DISP_MAX_HEIGHT ||
+		   layer->hw_config.max_height < XVMIX_DISP_MIN_HEIGHT) {
+		DRM_ERROR("Invalid height in dt");
+		return -EINVAL;
 	}
+
 	mixer_hw->max_layer_height = layer->hw_config.max_height;
 	layer->id = XVMIX_LAYER_MASTER;
 
@@ -2503,8 +2515,9 @@ static int xlnx_mix_plane_create(struct device *dev, struct xlnx_mix *mixer)
 		return ret;
 	}
 
-	mixer->max_width = XVMIX_DISP_MAX_WIDTH;
-	mixer->max_height = XVMIX_DISP_MAX_HEIGHT;
+	mixer->max_width = mixer_hw->max_layer_width;
+	mixer->max_height = mixer_hw->max_layer_height;
+
 	if (mixer->hw_logo_layer) {
 		layer_data = &mixer_hw->layer_data[XVMIX_LOGO_LAYER_IDX];
 		mixer->max_cursor_width = layer_data->hw_config.max_width;
