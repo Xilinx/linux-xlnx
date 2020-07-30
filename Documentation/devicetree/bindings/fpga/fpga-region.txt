@@ -187,6 +187,12 @@ Optional properties:
 - external-fpga-config : boolean, set if the FPGA has already been configured
 	prior to OS boot up.
 - encrypted-fpga-config : boolean, set if the bitstream is encrypted
+- userkey-encrypted-fpga-config: boolean, set if the bitstream is encrypted with
+	user key.
+- ddrmem-authenticated-fpga-config: boolean, if set do bitstream authentication
+	using DDR memory.
+- securemem-authenticated-fpga-config: boolean, if set do bitstream
+	authenticated using secure memory.
 - region-unfreeze-timeout-us : The maximum time in microseconds to wait for
 	bridges to successfully become enabled after the region has been
 	programmed.
