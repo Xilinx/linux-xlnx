@@ -6,6 +6,7 @@
  * Author: <benjamin.gaignard@linaro.org> for ST-Ericsson.
  */
 
+#include <linux/dma-mapping.h>
 #include <linux/device.h>
 #include <linux/slab.h>
 #include <linux/errno.h>
@@ -22,6 +23,22 @@ struct ion_cma_heap {
 };
 
 #define to_cma_heap(x) container_of(x, struct ion_cma_heap, heap)
+
+static void ion_pages_sync_for_device(struct page *page, size_t size,
+				      enum dma_data_direction dir)
+{
+	struct scatterlist sg;
+	struct device dev = {0};
+
+	/* Use dummy device */
+	arch_setup_dma_ops(&dev, 0, 0, NULL, false);
+
+	sg_init_table(&sg, 1);
+	sg_set_page(&sg, page, size, 0);
+	/* Use phys address for dma address */
+	sg_dma_address(&sg) = page_to_phys(page);
+	dma_sync_sg_for_device(&dev, &sg, 1, dir);
+}
 
 /* ION CMA heap operations functions */
 static int ion_cma_allocate(struct ion_heap *heap, struct ion_buffer *buffer,
@@ -58,6 +75,9 @@ static int ion_cma_allocate(struct ion_heap *heap, struct ion_buffer *buffer,
 	} else {
 		memset(page_address(pages), 0, size);
 	}
+
+	if (!(buffer->flags & ION_FLAG_CACHED))
+		ion_pages_sync_for_device(pages, size, DMA_BIDIRECTIONAL);
 
 	table = kmalloc(sizeof(*table), GFP_KERNEL);
 	if (!table)
