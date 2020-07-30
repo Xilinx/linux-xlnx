@@ -37,6 +37,18 @@ static int versal_fpga_ops_write_init(struct fpga_manager *mgr,
 	return 0;
 }
 
+static int versal_fpga_ops_write_sg(struct fpga_manager *mgr,
+				    struct sg_table *sgt)
+{
+	dma_addr_t dma_addr;
+	int ret;
+
+	dma_addr = sg_dma_address(sgt->sgl);
+	ret = zynqmp_pm_load_pdi(PDI_SOURCE_TYPE, dma_addr);
+
+	return ret;
+}
+
 static int versal_fpga_ops_write(struct fpga_manager *mgr,
 				 const char *buf, size_t size)
 {
@@ -77,6 +89,7 @@ static const struct fpga_manager_ops versal_fpga_ops = {
 	.state = versal_fpga_ops_state,
 	.write_init = versal_fpga_ops_write_init,
 	.write = versal_fpga_ops_write,
+	.write_sg = versal_fpga_ops_write_sg,
 	.write_complete = versal_fpga_ops_write_complete,
 };
 
