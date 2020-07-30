@@ -147,6 +147,64 @@ static int zynqmp_fpga_ops_write(struct fpga_manager *mgr,
 	return ret;
 }
 
+static unsigned long zynqmp_fpga_get_contiguous_size(struct sg_table *sgt)
+{
+	dma_addr_t expected = sg_dma_address(sgt->sgl);
+	unsigned long size = 0;
+	struct scatterlist *s;
+	unsigned int i;
+
+	for_each_sg(sgt->sgl, s, sgt->nents, i) {
+		if (sg_dma_address(s) != expected)
+			break;
+		expected = sg_dma_address(s) + sg_dma_len(s);
+		size += sg_dma_len(s);
+	}
+
+	return size;
+}
+
+static int zynqmp_fpga_ops_write_sg(struct fpga_manager *mgr,
+				    struct sg_table *sgt)
+{
+	dma_addr_t dma_addr, key_addr = 0;
+	struct zynqmp_fpga_priv *priv;
+	unsigned long contig_size;
+	u32 eemi_flags = 0;
+	char *kbuf;
+	int ret;
+
+	priv = mgr->priv;
+
+	dma_addr = sg_dma_address(sgt->sgl);
+	contig_size = zynqmp_fpga_get_contiguous_size(sgt);
+
+	if (priv->flags & FPGA_MGR_PARTIAL_RECONFIG)
+		eemi_flags |= XILINX_ZYNQMP_PM_FPGA_PARTIAL;
+	if (priv->flags & FPGA_MGR_USERKEY_ENCRYPTED_BITSTREAM)
+		eemi_flags |= XILINX_ZYNQMP_PM_FPGA_ENCRYPTION_USERKEY;
+	else if (priv->flags & FPGA_MGR_ENCRYPTED_BITSTREAM)
+		eemi_flags |= XILINX_ZYNQMP_PM_FPGA_ENCRYPTION_DEVKEY;
+	if (priv->flags & FPGA_MGR_DDR_MEM_AUTH_BITSTREAM)
+		eemi_flags |= XILINX_ZYNQMP_PM_FPGA_AUTHENTICATION_DDR;
+	else if (priv->flags & FPGA_MGR_SECURE_MEM_AUTH_BITSTREAM)
+		eemi_flags |= XILINX_ZYNQMP_PM_FPGA_AUTHENTICATION_OCM;
+
+	if (priv->flags & FPGA_MGR_USERKEY_ENCRYPTED_BITSTREAM) {
+		kbuf = dma_alloc_coherent(priv->dev, ENCRYPTED_KEY_LEN,
+					  &key_addr, GFP_KERNEL);
+		if (!kbuf)
+			return -ENOMEM;
+		memcpy(kbuf, mgr->key, ENCRYPTED_KEY_LEN);
+		ret = zynqmp_pm_fpga_load(dma_addr, key_addr, eemi_flags);
+		dma_free_coherent(priv->dev, ENCRYPTED_KEY_LEN, kbuf, key_addr);
+	} else {
+		ret = zynqmp_pm_fpga_load(dma_addr, contig_size, eemi_flags);
+	}
+
+	return ret;
+}
+
 static enum fpga_mgr_states zynqmp_fpga_ops_state(struct fpga_manager *mgr)
 {
 	u32 status = 0;
@@ -277,6 +335,7 @@ static const struct fpga_manager_ops zynqmp_fpga_ops = {
 	.status = zynqmp_fpga_ops_status,
 	.write_init = zynqmp_fpga_ops_write_init,
 	.write = zynqmp_fpga_ops_write,
+	.write_sg = zynqmp_fpga_ops_write_sg,
 	.read = zynqmp_fpga_ops_read,
 };
 
