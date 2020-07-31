@@ -411,6 +411,9 @@ static void xgpio_irqhandler(struct irq_desc *desc)
 	int offset;
 	unsigned long val;
 
+	if (!chip)
+		return;
+
 	chained_irq_enter(irqchip, desc);
 
 	val = xgpio_readreg(mm_gc->regs + chip->offset);
