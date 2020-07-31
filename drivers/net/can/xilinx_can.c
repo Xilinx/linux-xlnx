@@ -402,7 +402,7 @@ static int xcan_set_bittiming(struct net_device *ndev)
 				XCAN_SR_CONFIG_MASK;
 	if (!is_config_mode) {
 		netdev_alert(ndev,
-		     "BUG! Cannot set bittiming - CAN is not in config mode\n");
+			     "BUG! Cannot set bittiming - CAN is not in config mode\n");
 		return -EPERM;
 	}
 
