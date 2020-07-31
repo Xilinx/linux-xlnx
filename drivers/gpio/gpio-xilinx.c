@@ -601,7 +601,7 @@ static int xgpio_of_probe(struct platform_device *pdev)
 	struct xgpio_instance *chip, *chip_dual;
 	int status = 0;
 	const u32 *tree_info;
-	u32 ngpio;
+	u32 ngpio = 0;
 	u32 cells = 2;
 
 	chip = devm_kzalloc(&pdev->dev, sizeof(*chip), GFP_KERNEL);
