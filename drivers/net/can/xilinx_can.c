@@ -484,11 +484,10 @@ static int xcan_chip_start(struct net_device *ndev)
 	priv->write_reg(priv, XCAN_IER_OFFSET, ier);
 
 	/* Check whether it is loopback mode or normal mode  */
-	if (priv->can.ctrlmode & CAN_CTRLMODE_LOOPBACK) {
+	if (priv->can.ctrlmode & CAN_CTRLMODE_LOOPBACK)
 		reg_msr = XCAN_MSR_LBACK_MASK;
-	} else {
+	else
 		reg_msr = 0x0;
-	}
 
 	/* enable the first extended filter, if any, as cores with extended
 	 * filtering default to non-receipt if all filters are disabled
