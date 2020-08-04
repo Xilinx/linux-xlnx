@@ -67,27 +67,31 @@ static const struct aie_tile_regs aiev1_kernel_regs[] = {
 	 .eoff = AIE_SHIMNOC_L2INTR_INTR_REGOFF,
 	},
 	/* SHIM 1st level interrupt controller */
-	{.attribute = AIE_TILE_TYPE_SHIMPL << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
+	{.attribute = (AIE_TILE_TYPE_SHIMPL | AIE_TILE_TYPE_SHIMNOC) <<
+		      AIE_REGS_ATTR_TILE_TYPE_SHIFT,
 	 .soff = AIE_SHIMPL_L1INTR_MASK_A_REGOFF,
 	 .eoff = AIE_SHIMPL_L1INTR_BLOCK_NORTH_B_REGOFF,
 	},
 	/* SHIM column reset */
-	{.attribute = AIE_TILE_TYPE_SHIMPL << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
+	{.attribute = (AIE_TILE_TYPE_SHIMPL | AIE_TILE_TYPE_SHIMNOC) <<
+		      AIE_REGS_ATTR_TILE_TYPE_SHIFT,
 	 .soff = AIE_SHIMPL_COLRESET_REGOFF,
 	 .eoff = AIE_SHIMPL_COLRESET_REGOFF,
 	},
 	/* SHIM reset Enable */
-	{.attribute = AIE_TILE_TYPE_SHIMPL << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
+	{.attribute = (AIE_TILE_TYPE_SHIMPL | AIE_TILE_TYPE_SHIMNOC) <<
+		      AIE_REGS_ATTR_TILE_TYPE_SHIFT,
 	 .soff = AIE_SHIMPL_RESET_REGOFF,
 	 .eoff = AIE_SHIMPL_RESET_REGOFF,
 	},
 	/* SHIM clock control */
-	{.attribute = AIE_TILE_TYPE_SHIMPL << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
+	{.attribute = (AIE_TILE_TYPE_SHIMPL | AIE_TILE_TYPE_SHIMNOC) <<
+		      AIE_REGS_ATTR_TILE_TYPE_SHIFT,
 	 .soff = AIE_SHIMPL_CLKCNTR_REGOFF,
 	 .eoff = AIE_SHIMPL_CLKCNTR_REGOFF,
 	},
 	/* Tile clock control */
-	{.attribute = AIE_TILE_TYPE_SHIMPL << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
+	{.attribute = AIE_TILE_TYPE_TILE << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
 	 .soff = AIE_TILE_CORE_CLKCNTR_REGOFF,
 	 .eoff = AIE_TILE_CORE_CLKCNTR_REGOFF,
 	},
