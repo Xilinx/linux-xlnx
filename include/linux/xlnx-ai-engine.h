@@ -16,10 +16,16 @@
 struct device;
 
 #ifdef CONFIG_XILINX_AIE
+bool aie_partition_is_available(struct aie_partition_req *req);
 struct device *aie_partition_request(struct aie_partition_req *req);
 int aie_partition_get_fd(struct device *dev);
 void aie_partition_release(struct device *dev);
 #else
+static inline bool aie_partition_is_available(struct aie_partition_req *req)
+{
+	return false;
+}
+
 static inline struct device *
 aie_partition_request(struct aie_partition_req *req)
 {
