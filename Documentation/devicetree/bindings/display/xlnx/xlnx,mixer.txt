@@ -29,9 +29,9 @@ Required properties:
  - xlnx,vformat: video format for layer. See list of supported formats below.
  - xlnx,layer-max-width: max layer width, mandatory for master layer
    for overlay layers if scaling is alowed then this is mandatory otherwise
-   not required for overlay layers
+   not required for overlay layers. Valid range is 64 to 8192
  - xlnx,layer-max-height: max layer height, mandatory for master layer
-   Not required for overlay layers
+   Not required for overlay layers. Valid range is 64 to 4320
  - xlnx,layer-primary: denotes the primary layer, should be mentioned in node
    of layer which is expected to be constructing the primary plane
 
