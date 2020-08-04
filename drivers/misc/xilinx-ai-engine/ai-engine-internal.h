@@ -9,6 +9,7 @@
 #define AIE_INTERNAL_H
 
 #include <linux/bitfield.h>
+#include <linux/bits.h>
 #include <linux/cdev.h>
 #include <linux/device.h>
 #include <linux/file.h>
@@ -20,11 +21,13 @@
 #include <linux/of_device.h>
 #include <uapi/linux/xlnx-ai-engine.h>
 
-enum aie_tile_type {
-	AIE_TILE_TYPE_TILE = 1,
-	AIE_TILE_TYPE_SHIMPL,
-	AIE_TILE_TYPE_SHIMNOC
-};
+/*
+ * Macros for AI engine tile type bitmasks
+ */
+#define AIE_TILE_TYPE_TILE	BIT(0)
+#define AIE_TILE_TYPE_SHIMPL	BIT(1)
+/* SHIM NOC tile includes SHIM PL and SHIM NOC modules */
+#define AIE_TILE_TYPE_SHIMNOC	BIT(2)
 
 /*
  * Macros for attribute property of AI engine registers accessed by kernel
