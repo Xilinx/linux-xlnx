@@ -495,6 +495,52 @@ static struct aie_partition *aie_class_find_partition_from_id(u32 partition_id)
 }
 
 /**
+ * aie_partition_is_available() - Check if an AI engine partition is available
+ * @req: AI engine partition requesting arguments
+ * @return: true if the AI engine partition is not in use, otherwise, false
+ *
+ * This function looks up the AI engine class devices to find the AI engine
+ * partition whose partition ID matches the given partition ID in @req. If
+ * the partition can be found, if will check if the partition is in use.
+ *
+ * In case the AI engine release function is called from kernel context, the
+ * release() will be scheduled when the AI engine partition reference count is
+ * reduced to 0 instead of get called synchronously, and thus, this is a helper
+ * function for another kernel module to check if the partitions is released
+ * after calling release function from kernel context
+ *
+ * However, if closing the partition is from user context, it will not return
+ * until the release is complete when there is no reference to the AI engine
+ * partition file. In this case, user doesn't need to call this function to
+ * check if the partition is released.
+ */
+bool aie_partition_is_available(struct aie_partition_req *req)
+{
+	struct aie_partition *apart;
+	int ret;
+
+	if (!req)
+		return false;
+
+	apart = aie_class_find_partition_from_id(req->partition_id);
+	if (!apart)
+		return false;
+
+	ret = mutex_lock_interruptible(&apart->mlock);
+	if (ret)
+		return false;
+
+	if (apart->status & XAIE_PART_STATUS_INUSE) {
+		mutex_unlock(&apart->mlock);
+		return false;
+	}
+
+	mutex_unlock(&apart->mlock);
+	return true;
+}
+EXPORT_SYMBOL_GPL(aie_partition_is_available);
+
+/**
  * aie_partition_request() - Request an AI engine partition
  * @req: AI engine partition requesting arguments
  * @return: pointer to the AI engine partition device, error value for failure.
