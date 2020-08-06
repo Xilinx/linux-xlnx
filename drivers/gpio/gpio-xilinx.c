@@ -612,18 +612,21 @@ static int xgpio_of_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	/* Update GPIO state shadow register with default value */
-	of_property_read_u32(np, "xlnx,dout-default", &chip->gpio_state);
+	if (of_property_read_u32(np, "xlnx,dout-default", &chip->gpio_state))
+		dev_dbg(&pdev->dev, "Missing xlnx,dout-default property\n");
 
 	/* By default, all pins are inputs */
 	chip->gpio_dir = 0xFFFFFFFF;
 
 	/* Update GPIO direction shadow register with default value */
-	of_property_read_u32(np, "xlnx,tri-default", &chip->gpio_dir);
+	if (of_property_read_u32(np, "xlnx,tri-default", &chip->gpio_dir))
+		dev_dbg(&pdev->dev, "Missing xlnx,tri-default property\n");
 
 	chip->no_init = of_property_read_bool(np, "xlnx,no-init");
 
 	/* Update cells with gpio-cells value */
-	of_property_read_u32(np, "#gpio-cells", &cells);
+	if (of_property_read_u32(np, "#gpio-cells", &cells))
+		dev_dbg(&pdev->dev, "Missing gpio-cells property\n");
 
 	/*
 	 * Check device node and parent device node for device width
