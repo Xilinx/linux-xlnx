@@ -74,7 +74,7 @@ struct aie_mem_args {
  * struct aie_reg_args - AIE access register arguments
  * @op: if this request is to read, write or poll register
  * @mask: mask for mask write, 0 for not mask write
- * @offset: offset of register in the AIE device
+ * @offset: offset of register to the start of an AI engine partition
  * @val: value to write or get
  */
 struct aie_reg_args {

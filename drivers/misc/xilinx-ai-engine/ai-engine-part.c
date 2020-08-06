@@ -148,6 +148,8 @@ static int aie_part_write_register(struct aie_partition *apart, size_t offset,
 		return -EINVAL;
 	}
 
+	/* offset is expected to be relative to the start of the partition */
+	offset += aie_cal_regoff(apart->adev, apart->range.start, 0);
 	ret = aie_part_reg_validation(apart, offset, len, 1);
 	if (ret < 0) {
 		dev_err(&apart->dev, "failed to write to 0x%zx,0x%zx.\n",
@@ -188,6 +190,8 @@ static int aie_part_read_register(struct aie_partition *apart, size_t offset,
 	void __iomem *va;
 	int ret;
 
+	/* offset is expected to be relative to the start of the partition */
+	offset += aie_cal_regoff(apart->adev, apart->range.start, 0);
 	ret = aie_part_reg_validation(apart, offset, len, 0);
 	if (ret) {
 		dev_err(&apart->dev, "Invalid read request 0x%zx,0x%zx.\n",
