@@ -8,6 +8,7 @@
 #include <linux/cdev.h>
 #include <linux/delay.h>
 #include <linux/device.h>
+#include <linux/dma-mapping.h>
 #include <linux/fs.h>
 #include <linux/kernel.h>
 #include <linux/list.h>
@@ -255,6 +256,7 @@ static int aie_part_release(struct inode *inode, struct file *filp)
 	if (ret)
 		return ret;
 
+	aie_part_release_dmabufs(apart);
 	aie_part_clean(apart);
 
 	apart->status = 0;
@@ -392,6 +394,12 @@ static long aie_part_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 	}
 	case AIE_GET_MEM_IOCTL:
 		return aie_mem_get_info(apart, arg);
+	case AIE_ATTACH_DMABUF_IOCTL:
+		return aie_part_attach_dmabuf_req(apart, argp);
+	case AIE_DETACH_DMABUF_IOCTL:
+		return aie_part_detach_dmabuf_req(apart, argp);
+	case AIE_SET_SHIMDMA_BD_IOCTL:
+		return aie_part_set_bd(apart, argp);
 	default:
 		dev_err(&apart->dev, "Invalid ioctl command %u.\n", cmd);
 		ret = -EINVAL;
@@ -521,6 +529,7 @@ static struct aie_partition *aie_create_partition(struct aie_device *adev,
 		return ERR_PTR(-ENOMEM);
 
 	apart->adev = adev;
+	INIT_LIST_HEAD(&apart->dbufs);
 	memcpy(&apart->range, range, sizeof(*range));
 	mutex_init(&apart->mlock);
 
@@ -541,6 +550,10 @@ static struct aie_partition *aie_create_partition(struct aie_device *adev,
 		put_device(dev);
 		return ERR_PTR(ret);
 	}
+
+	/* Set up the DMA mask */
+	dev->coherent_dma_mask = DMA_BIT_MASK(48);
+	dev->dma_mask = &dev->coherent_dma_mask;
 
 	/*
 	 * Create array to keep the information of the different types of tile
@@ -620,6 +633,10 @@ of_aie_part_probe(struct aie_device *adev, struct device_node *nc)
 	apart->dev.of_node = nc;
 	apart->dev.driver = adev->dev.parent->driver;
 	apart->partition_id = partition_id;
+
+	ret = of_dma_configure(&apart->dev, nc, true);
+	if (ret)
+		dev_warn(&apart->dev, "Failed to configure DMA.\n");
 
 	/* Create FPGA bridge for AI engine partition */
 	ret = aie_fpga_create_bridge(apart);

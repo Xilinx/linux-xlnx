@@ -90,6 +90,24 @@ struct aie_part_mem {
 };
 
 /**
+ * struct aie_dma_attr - AI engine DMA attributes structure
+ * @laddr: low address field attributes
+ * @haddr: high address field attributes
+ * @buflen: buffer length field attributes
+ * @bd_regoff: SHIM DMA buffer descriptors register offset
+ * @num_bds: number of buffer descriptors
+ * @bd_len: length of a buffer descriptor in bytes
+ */
+struct aie_dma_attr {
+	struct aie_single_reg_field laddr;
+	struct aie_single_reg_field haddr;
+	struct aie_single_reg_field buflen;
+	u32 bd_regoff;
+	u32 num_bds;
+	u32 bd_len;
+};
+
+/**
  * struct aie_tile_operations - AI engine device operations
  * @get_tile_type: get type of tile based on tile operation
  * @get_mem_info: get different types of memories information
@@ -127,6 +145,7 @@ struct aie_resource {
  * @ops: tile operations
  * @col_rst: column reset attribute
  * @col_clkbuf: column clock buffer attribute
+ * @shim_dma: SHIM DMA attribute
  * @size: size of the AI engine address space
  * @array_shift: array address shift
  * @col_shift: column address shift
@@ -147,6 +166,7 @@ struct aie_device {
 	const struct aie_tile_operations *ops;
 	const struct aie_single_reg_field *col_rst;
 	const struct aie_single_reg_field *col_clkbuf;
+	const struct aie_dma_attr *shim_dma;
 	size_t size;
 	struct aie_resource cols_res;
 	u32 array_shift;
@@ -169,6 +189,7 @@ struct aie_part_bridge {
 /**
  * struct aie_partition - AI engine partition structure
  * @node: list node
+ * @dbufs: dmabufs list
  * @adev: pointer to AI device instance
  * @filep: pointer to file for refcount on the users of the partition
  * @pmems: pointer to partition memories types
@@ -184,6 +205,7 @@ struct aie_part_bridge {
  */
 struct aie_partition {
 	struct list_head node;
+	struct list_head dbufs;
 	struct aie_part_bridge br;
 	struct aie_device *adev;
 	struct file *filep;
@@ -240,6 +262,20 @@ static inline u32 aie_get_field_val(const struct aie_single_reg_field *field,
 	long long mask = (long long)field->mask & 0x00000000ffffffff;
 
 	return (val << __bf_shf(mask)) & field->mask;
+}
+
+/**
+ * aie_get_reg_field() - get value from a field from a register valuer
+ * @field: a field in a register
+ * @regval: register value
+ * @return: value of a register field
+ */
+static inline u32 aie_get_reg_field(const struct aie_single_reg_field *field,
+				    u32 regval)
+{
+	long long mask64 = (long long)field->mask & 0x00000000ffffffff;
+
+	return (regval & field->mask) >> __bf_shf(mask64);
 }
 
 /**
@@ -300,6 +336,13 @@ int aie_fpga_create_bridge(struct aie_partition *apart);
 void aie_fpga_free_bridge(struct aie_partition *apart);
 
 int aie_mem_get_info(struct aie_partition *apart, unsigned long arg);
+
+long aie_part_attach_dmabuf_req(struct aie_partition *apart,
+				void __user *user_args);
+long aie_part_detach_dmabuf_req(struct aie_partition *apart,
+				void __user *user_args);
+long aie_part_set_bd(struct aie_partition *apart, void __user *user_args);
+void aie_part_release_dmabufs(struct aie_partition *apart);
 
 int aiev1_device_init(struct aie_device *adev);
 #endif /* AIE_INTERNAL_H */

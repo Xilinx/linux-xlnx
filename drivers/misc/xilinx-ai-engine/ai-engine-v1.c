@@ -107,6 +107,24 @@ static const struct aie_single_reg_field aiev1_col_clkbuf = {
 	.regoff = AIE_SHIMPL_CLKCNTR_REGOFF,
 };
 
+static const struct aie_dma_attr aiev1_shimdma = {
+	.laddr = {
+		.mask = 0xffffffffU,
+		.regoff = 0U,
+	},
+	.haddr = {
+		.mask = 0xffff0000U,
+		.regoff = 0x8U,
+	},
+	.buflen = {
+		.mask = 0xffffffffU,
+		.regoff = 0x4U,
+	},
+	.bd_regoff = 0x0001d000U,
+	.num_bds = 16,
+	.bd_len = 0x14U,
+};
+
 static u32 aiev1_get_tile_type(struct aie_location *loc)
 {
 	if (loc->row)
@@ -231,6 +249,7 @@ int aiev1_device_init(struct aie_device *adev)
 	adev->kernel_regs = aiev1_kernel_regs;
 	adev->col_rst = &aiev1_col_rst;
 	adev->col_clkbuf = &aiev1_col_clkbuf;
+	adev->shim_dma = &aiev1_shimdma;
 
 	/* Get the columns resource */
 	/* Get number of columns from AI engine memory resource */
