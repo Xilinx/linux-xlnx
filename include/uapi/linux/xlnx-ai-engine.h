@@ -127,6 +127,20 @@ struct aie_partition_req {
 	__u32 flag;
 };
 
+/**
+ * struct aie_dma_bd - AIE DMA buffer descriptor information
+ * @bd: DMA buffer descriptor
+ * @data_va: virtual address of the data
+ * @loc: Tile location relative to the start of a partition
+ * @bd_id: buffer descriptor id
+ */
+struct aie_dma_bd_args {
+	u32 *bd;
+	__u64 data_va;
+	struct aie_location loc;
+	__u32 bd_id;
+};
+
 #define AIE_IOCTL_BASE 'A'
 
 /* AI engine device IOCTL operations */
@@ -157,4 +171,27 @@ struct aie_partition_req {
  */
 #define AIE_GET_MEM_IOCTL		_IOWR(AIE_IOCTL_BASE, 0x9, \
 					      struct aie_mem_args)
+/**
+ * DOC: AIE_ATTACH_DMABUF_IOCTL - attach a dmabuf to AI engine partition
+ *
+ * This ioctl is used to attach a dmabuf to the AI engine partition. AI engine
+ * partition will return the number of scatter gather list elements of the
+ * dmabuf.
+ */
+#define AIE_ATTACH_DMABUF_IOCTL		_IOR(AIE_IOCTL_BASE, 0xa, int)
+
+/**
+ * DOC: AIE_DETACH_DMABUF_IOCTL - dettach a dmabuf from AI engine partition
+ *
+ * This ioctl is used to detach a dmabuf from the AI engine partition
+ */
+#define AIE_DETACH_DMABUF_IOCTL		_IOR(AIE_IOCTL_BASE, 0xb, int)
+
+/**
+ * DOC: AIE_SET_DMABUF_BD_IOCTL - set buffer descriptor to SHIM DMA
+ *
+ * This ioctl is used to set the buffer descriptor to SHIM DMA
+ */
+#define AIE_SET_SHIMDMA_BD_IOCTL	_IOW(AIE_IOCTL_BASE, 0xd, \
+					     struct aie_dma_bd_args)
 #endif
