@@ -5,7 +5,11 @@
 
 obj-$(CONFIG_XILINX_AIE)	+= xilinx-aie.o
 
-xilinx-aie-$(CONFIG_XILINX_AIE) := ai-engine-dev.o ai-engine-fpga.o \
-				   ai-engine-mem.o ai-engine-part.o \
-				   ai-engine-res.o ai-engine-reset.o \
+xilinx-aie-$(CONFIG_XILINX_AIE) := ai-engine-dev.o \
+				   ai-engine-dma.o \
+				   ai-engine-fpga.o \
+				   ai-engine-mem.o \
+				   ai-engine-part.o \
+				   ai-engine-res.o \
+				   ai-engine-reset.o \
 				   ai-engine-v1.o
