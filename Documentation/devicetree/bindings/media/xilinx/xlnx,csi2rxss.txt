@@ -32,7 +32,8 @@ Required properties:
 - xlnx,csi-pxl-format: This denotes the CSI Data type selected in hw design.
   Packets other than this data type (except for RAW8 and User defined data
   types) will be filtered out. Possible values are RAW6, RAW7, RAW8, RAW10,
-  RAW12, RAW14, RAW16, RAW20, RGB444, RGB555, RGB565, RGB666, RGB888 and YUV4228bit.
+  RAW12, RAW14, RAW16, RAW20, RGB444, RGB555, RGB565, RGB666, RGB888,
+  YUV4228bit and YUV420_8bit.
 
 - xlnx,vfb: Video Format Bridge, Denotes if Video Format Bridge is selected
   so that output is as per AXI stream documented in UG934.
