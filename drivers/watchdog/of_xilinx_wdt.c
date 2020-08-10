@@ -181,10 +181,12 @@ static int xilinx_wwdt_start(struct watchdog_device *wdd)
 	struct xwdt_device *xdev = watchdog_get_drvdata(wdd);
 	struct watchdog_device *xilinx_wdt_wdd = &xdev->xilinx_wdt_wdd;
 
-	unsigned long clock_f = clk_get_rate(xdev->clk);
+	count = clk_get_rate(xdev->clk);
+	if (!count)
+		return -EINVAL;
 
 	/* Calculate timeout count */
-	count = wdd->timeout * clock_f;
+	count *= wdd->timeout;
 	ret  = clk_enable(xdev->clk);
 	if (ret) {
 		dev_err(wdd->parent, "Failed to enable clock\n");
