@@ -135,7 +135,7 @@ struct aie_partition_req {
  * @bd_id: buffer descriptor id
  */
 struct aie_dma_bd_args {
-	u32 *bd;
+	__u32 *bd;
 	__u64 data_va;
 	struct aie_location loc;
 	__u32 bd_id;
