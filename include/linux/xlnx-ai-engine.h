@@ -8,14 +8,14 @@
 #ifndef _XLNX_AI_ENGINE_H_
 #define _XLNX_AI_ENGINE_H_
 
-#ifndef CONFIG_XILINX_AIE
+#if !IS_ENABLED(CONFIG_XILINX_AIE)
 #include <linux/errno.h>
 #endif
 #include <uapi/linux/xlnx-ai-engine.h>
 
 struct device;
 
-#ifdef CONFIG_XILINX_AIE
+#if IS_ENABLED(CONFIG_XILINX_AIE)
 bool aie_partition_is_available(struct aie_partition_req *req);
 struct device *aie_partition_request(struct aie_partition_req *req);
 int aie_partition_get_fd(struct device *dev);
