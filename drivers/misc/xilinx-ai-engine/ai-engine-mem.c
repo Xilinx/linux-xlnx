@@ -106,8 +106,8 @@ static int aie_mem_mmap(struct dma_buf *dmabuf, struct vm_area_struct *vma)
 					      len, vma->vm_page_prot);
 			if (ret) {
 				dev_err(&apart->dev,
-					"failed to mmap (%u,%u)memory, remap failed, 0x%llx, 0x%lx.\n",
-					loc.col, loc.row, mempa, len);
+					"failed to mmap (%u,%u)memory, remap failed, 0x%pa, 0x%lx.\n",
+					loc.col, loc.row, &mempa, len);
 				return ret;
 			}
 			addr += len;
