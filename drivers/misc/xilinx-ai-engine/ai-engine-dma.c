@@ -80,7 +80,7 @@ static dma_addr_t aie_part_get_dmabuf_da(struct aie_partition *apart,
 
 	vma = find_vma(current->mm, va_start);
 	if (!vma) {
-		dev_err(&apart->dev, "failed to find vma for %p, 0x%lx.\n",
+		dev_err(&apart->dev, "failed to find vma for %p, 0x%zx.\n",
 			va, len);
 		return 0;
 	}
@@ -100,7 +100,7 @@ static dma_addr_t aie_part_get_dmabuf_da(struct aie_partition *apart,
 	 */
 	if (va_off + len >= adbuf->attach->dmabuf->size) {
 		dev_err(&apart->dev,
-			"failed to get dma address for %p, 0x%lx.\n", va, len);
+			"failed to get dma address for %p, 0x%zx.\n", va, len);
 		return 0;
 	}
 
