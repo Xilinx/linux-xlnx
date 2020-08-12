@@ -6,6 +6,10 @@
 #ifndef _UAPI_AI_ENGINE_H_
 #define _UAPI_AI_ENGINE_H_
 
+#ifndef __KERNEL__
+#include <stdlib.h>
+#endif
+
 #include <linux/ioctl.h>
 #include <linux/types.h>
 
