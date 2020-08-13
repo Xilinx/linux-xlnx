@@ -131,14 +131,14 @@ static int xvip_pipeline_set_stream(struct xvip_pipeline *pipe, bool on)
 
 	if (on) {
 		if (pipe->stream_count == pipe->num_dmas - 1) {
-			ret = xvip_graph_start_stop(xdev, true);
+			ret = xvip_graph_pipeline_start_stop(xdev, pipe, true);
 			if (ret < 0)
 				goto done;
 		}
 		pipe->stream_count++;
 	} else {
 		if (--pipe->stream_count == 0)
-			xvip_graph_start_stop(xdev, false);
+			xvip_graph_pipeline_start_stop(xdev, pipe, false);
 	}
 
 done:
