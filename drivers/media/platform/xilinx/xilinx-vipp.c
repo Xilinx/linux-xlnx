@@ -302,7 +302,6 @@ static bool xvip_graph_entity_start_stop(struct xvip_composite_device *xdev,
 {
 	unsigned long pad_flag = on ? MEDIA_PAD_FL_SOURCE : MEDIA_PAD_FL_SINK;
 	unsigned int i;
-	struct v4l2_subdev *subdev;
 	bool state;
 	int ret;
 
@@ -338,7 +337,6 @@ static bool xvip_graph_entity_start_stop(struct xvip_composite_device *xdev,
 	}
 
 	/* set state and report if state is changed or not */
-	subdev = media_entity_to_v4l2_subdev(entity->entity);
 	state = xvip_graph_entity_set_streaming(xdev, entity, on);
 	/* This shouldn't happen as check is already above */
 	if (state == on) {
