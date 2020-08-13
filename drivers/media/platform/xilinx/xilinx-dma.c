@@ -38,11 +38,6 @@
 #define XVIP_DMA_MIN_HEIGHT		1U
 #define XVIP_DMA_MAX_HEIGHT		8191U
 
-struct xventity_list {
-	struct list_head list;
-	struct media_entity *entity;
-};
-
 /* -----------------------------------------------------------------------------
  * Helper functions
  */
