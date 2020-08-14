@@ -406,7 +406,7 @@ static const struct xilinx_frmbuf_format_desc xilinx_frmbuf_formats[] = {
 		.ppw = 3,
 		.num_planes = 1,
 		.drm_fmt = DRM_FORMAT_Y10,
-		.v4l2_fmt = V4L2_PIX_FMT_Y10,
+		.v4l2_fmt = V4L2_PIX_FMT_XY10,
 		.fmt_bitmask = BIT(17),
 	},
 	{
