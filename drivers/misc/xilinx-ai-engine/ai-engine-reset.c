@@ -128,6 +128,7 @@ static void aie_part_clear_mems(struct aie_partition *apart)
  * @return: 0 for success and negative value for failure
  *
  * This function will:
+ *  * gate all the columns
  *  * reset AI engine partition columns
  *  * reset AI engine shims
  *  * clear the memories
@@ -144,6 +145,7 @@ int aie_part_clean(struct aie_partition *apart)
 	if (apart->cntrflag & XAIE_PART_NOT_RST_ON_RELEASE)
 		return 0;
 
+	aie_part_set_cols_clkbuf(apart, false);
 	aie_part_set_cols_reset(apart, true);
 
 	ret = apart->adev->ops->reset_shim(adev, &apart->range);
