@@ -1763,6 +1763,7 @@ static int xcsi2rxss_parse_of(struct xcsi2rxss_state *xcsi2rxss)
 
 		if (core->vfb &&
 			(format->vf_code != XVIP_VF_YUV_422) &&
+			(format->vf_code != XVIP_VF_YUV_420) &&
 			(format->vf_code != XVIP_VF_RBG) &&
 			(format->vf_code != XVIP_VF_MONO_SENSOR)) {
 			dev_err(core->dev, "Invalid UG934 video format set.\n");
