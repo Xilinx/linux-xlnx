@@ -43,6 +43,15 @@ config DRM_ZYNQMP_DPSUB
 	  subsystem. The driver provides the kernel mode setting
 	  functionalities for ZynqMP DP subsystem.
 
+config DRM_XLNX_DPTX
+	tristate "Xilinx DRM DisplayPort Subsystem Driver"
+	depends on DRM_XLNX
+	help
+	  DRM driver for Xilinx DisplayPort Tx Subsystem for FPGA. Choose
+	  this option if you have a FPGA display pipeline that includes
+	  the Xilinx DisplayPort Tx Subsystem IP. The driver provides
+	  the kernel mode setting functionalities for the IP.
+
 config DRM_XLNX_DSI
 	tristate "Xilinx DRM DSI Subsystem Driver"
 	depends on DRM_XLNX

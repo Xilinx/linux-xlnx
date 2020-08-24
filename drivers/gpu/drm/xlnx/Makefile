@@ -8,6 +8,8 @@ obj-$(CONFIG_DRM_XLNX_BRIDGE_SCALER) += xlnx_scaler.o
 
 obj-$(CONFIG_DRM_XLNX_BRIDGE_VTC) += xlnx_vtc.o
 
+obj-$(CONFIG_DRM_XLNX_DPTX) += xlnx_dptx.o
+
 obj-$(CONFIG_DRM_XLNX_DSI) += xlnx_dsi.o
 
 obj-$(CONFIG_DRM_XLNX_MIXER) += xlnx_mixer.o
