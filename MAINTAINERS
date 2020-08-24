@@ -25486,6 +25486,13 @@ S:	Maintained
 F:	Documentation/devicetree/bindings/media/xilinx/xlnx,v-dprxss.yaml
 F:	drivers/media/platform/xilinx/xilinx-dprxss.c
 
+XILINX DISPLAYPORT TX DRIVER
+M:	Lakshmi Prasanna Eachuri <lakshmi.prasanna.eachuri@amd.com>
+R:	Vishal Sagar <vishal.sagar@amd.com>
+S:	Maintained
+F:	Documentation/devicetree/bindings/display/xlnx/xlnx,dp-tx.yaml
+F:	drivers/gpu/drm/xlnx/xlnx_dptx.c
+
 XILINX EVENT MANAGEMENT DRIVER
 M:	Michal Simek <michal.simek@amd.com>
 S:	Maintained
