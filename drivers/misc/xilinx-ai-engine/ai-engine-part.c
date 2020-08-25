@@ -94,6 +94,27 @@ static int aie_part_reg_validation(struct aie_partition *apart, size_t offset,
 		return -EINVAL;
 	}
 
+	/*
+	 * We check if a tile is gated before trying to access the tile.
+	 * As we mmap() the registers as read only to enable faster status
+	 * enquiry, and mmap() memories as write/read to faster memory access,
+	 * user can still access the clock gated tiles from userspace by
+	 * accessing the mmapped space.
+	 * Accessing the gated tiles can cause decode error. With PDI flow,
+	 * the PDI sets up the SHIM NOC AXI MM to only generate AI engine error
+	 * even instead of generating the NSU error. but for non PDI flow, as
+	 * the AXI MM register are protected register, until we have EEMI API
+	 * to update the AXI MM register, access the gated tiles can cause NSU
+	 * errors.
+	 * TODO: To solve this, we need to either request EEMI to configure
+	 * AXI MM or split the mmapped space into tiles based lists.
+	 */
+	if (!aie_part_check_clk_enable_loc(apart, &loc)) {
+		dev_err(&apart->dev,
+			"Tile(%u,%d) is gated.\n", loc.col, loc.row);
+		return -EINVAL;
+	}
+
 	if (!is_write)
 		return 0;
 
@@ -400,6 +421,10 @@ static long aie_part_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 		return aie_part_detach_dmabuf_req(apart, argp);
 	case AIE_SET_SHIMDMA_BD_IOCTL:
 		return aie_part_set_bd(apart, argp);
+	case AIE_REQUEST_TILES_IOCTL:
+		return aie_part_request_tiles_from_user(apart, argp);
+	case AIE_RELEASE_TILES_IOCTL:
+		return aie_part_release_tiles_from_user(apart, argp);
 	default:
 		dev_err(&apart->dev, "Invalid ioctl command %u.\n", cmd);
 		ret = -EINVAL;
