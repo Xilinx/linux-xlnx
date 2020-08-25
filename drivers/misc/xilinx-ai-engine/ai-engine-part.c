@@ -442,6 +442,7 @@ static void aie_part_release_device(struct device *dev)
 	list_del(&apart->node);
 	mutex_unlock(&adev->mlock);
 	aie_fpga_free_bridge(apart);
+	aie_resource_uninitialize(&apart->cores_clk_state);
 	put_device(apart->dev.parent);
 }
 
@@ -560,6 +561,12 @@ static struct aie_partition *aie_create_partition(struct aie_device *adev,
 	 * memories information of the AI engine partition.
 	 */
 	ret = aie_part_create_mems_info(apart);
+	if (ret) {
+		put_device(dev);
+		return ERR_PTR(ret);
+	}
+
+	ret = adev->ops->init_part_clk_state(apart);
 	if (ret) {
 		put_device(dev);
 		return ERR_PTR(ret);
