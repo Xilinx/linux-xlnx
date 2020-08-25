@@ -368,5 +368,12 @@ long aie_part_detach_dmabuf_req(struct aie_partition *apart,
 long aie_part_set_bd(struct aie_partition *apart, void __user *user_args);
 void aie_part_release_dmabufs(struct aie_partition *apart);
 
+int aie_part_scan_clk_state(struct aie_partition *apart);
+bool aie_part_check_clk_enable_loc(struct aie_partition *apart,
+				   struct aie_location *loc);
+int aie_part_request_tiles_from_user(struct aie_partition *apart,
+				     void __user *user_args);
+int aie_part_release_tiles_from_user(struct aie_partition *apart,
+				     void __user *user_args);
 int aiev1_device_init(struct aie_device *adev);
 #endif /* AIE_INTERNAL_H */
