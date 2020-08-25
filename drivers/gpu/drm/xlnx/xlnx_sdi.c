@@ -105,6 +105,7 @@
 #define	XSDI_MODE_12G			5
 
 #define SDI_TIMING_PARAMS_SIZE		48
+#define CLK_RATE			148500000UL
 
 /**
  * enum payload_line_1 - Payload Ids Line 1 number
@@ -871,6 +872,8 @@ static void xlnx_sdi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 	struct videomode vm;
 	u32 payload, i;
 	u32 sditx_blank, vtc_blank;
+	unsigned long clkrate;
+	int ret;
 
 	/* Set timing parameters as per bridge output parameters */
 	xlnx_bridge_set_input(sdi->bridge, adjusted_mode->hdisplay,
@@ -897,6 +900,25 @@ static void xlnx_sdi_encoder_atomic_mode_set(struct drm_encoder *encoder,
 		}
 	}
 
+	/*
+	 * For the transceiver TX, for integer and fractional frame rate, the
+	 * PLL ref clock must be a different frequency. Other than SD mode
+	 * its 148.5MHz for an integer & 148.5/1.001 for fractional framerate.
+	 */
+	if (sdi->is_frac_prop_val && sdi->sdi_mod_prop_val != XSDI_MODE_SD)
+		clkrate = (CLK_RATE * 1000) / 1001;
+	else
+		clkrate = CLK_RATE;
+
+	ret = clk_set_rate(sdi->sditx_clk, clkrate);
+	if (ret)
+		dev_err(sdi->dev, "failed to set clk rate = %lu\n", clkrate);
+
+	clkrate = clk_get_rate(sdi->sditx_clk);
+	dev_dbg(sdi->dev, "clkrate = %lu is_frac = %d\n", clkrate,
+		sdi->is_frac_prop_val);
+
+	xlnx_sdi_gt_picxo_reset(sdi);
 	xlnx_sdi_setup(sdi);
 	xlnx_sdi_set_config_parameters(sdi);
 
