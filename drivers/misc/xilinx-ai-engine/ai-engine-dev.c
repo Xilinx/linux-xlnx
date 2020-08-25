@@ -165,6 +165,7 @@ static int aie_partition_get(struct aie_partition *apart,
 			     struct aie_partition_req *req)
 {
 	struct file *filep;
+	int ret;
 
 	(void)req;
 
@@ -179,11 +180,12 @@ static int aie_partition_get(struct aie_partition *apart,
 	 * 1. It will check image UID too to see if the user matches what's
 	 *    loaded in the AI engine partition. And check the meta data to see
 	 *    which resources used by application.
-	 * 2. scan to see which tiles have been clock gated.
-	 * 3. set the partition cleanup flag to indicate if it needs to clean
-	 *    up AI engine partition resource when no one is using the AI
-	 *    engine partition.
 	 */
+
+	/* scan to setup the initial clock state for tiles */
+	ret = aie_part_scan_clk_state(apart);
+	if (ret)
+		return ret;
 
 	/* Get a file for the partition */
 	filep = anon_inode_getfile(dev_name(&apart->dev), &aie_part_fops,
