@@ -371,8 +371,8 @@ static int xilinx_ai_engine_probe(struct platform_device *pdev)
 		return PTR_ERR(adev->base);
 	}
 
-	/* For now only AI engine v1 device is supported */
-	ret = aiev1_device_init(adev);
+	/* Initialize AIE device specific instance. */
+	ret = aie_device_init(adev);
 	if (ret < 0) {
 		dev_err(&pdev->dev, "failed to initialize device instance.\n");
 		return ret;
