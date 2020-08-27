@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Xilinx AI Engine driver v1 specific implementation
+ * Xilinx AI Engine driver AIE device specific implementation
  *
  * Copyright (C) 2020 Xilinx, Inc.
  */
@@ -53,7 +53,7 @@
  */
 #define VERSAL_PM_RST_AIE_SHIM_ID			0xc10405fU
 
-static const struct aie_tile_regs aiev1_kernel_regs[] = {
+static const struct aie_tile_regs aie_kernel_regs[] = {
 	/* SHIM AXI MM Config */
 	{.attribute = AIE_TILE_TYPE_SHIMNOC << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
 	 .soff = AIE_SHIMNOC_AXIMM_REGOFF,
@@ -100,17 +100,17 @@ static const struct aie_tile_regs aiev1_kernel_regs[] = {
 	},
 };
 
-static const struct aie_single_reg_field aiev1_col_rst = {
+static const struct aie_single_reg_field aie_col_rst = {
 	.mask = AIE_SHIMPL_COLRST_MASK,
 	.regoff = AIE_SHIMPL_COLRESET_REGOFF,
 };
 
-static const struct aie_single_reg_field aiev1_col_clkbuf = {
+static const struct aie_single_reg_field aie_col_clkbuf = {
 	.mask = AIE_SHIMPL_CLKCNTR_COLBUF_MASK,
 	.regoff = AIE_SHIMPL_CLKCNTR_REGOFF,
 };
 
-static const struct aie_dma_attr aiev1_shimdma = {
+static const struct aie_dma_attr aie_shimdma = {
 	.laddr = {
 		.mask = 0xffffffffU,
 		.regoff = 0U,
@@ -130,7 +130,7 @@ static const struct aie_dma_attr aiev1_shimdma = {
 
 static const struct zynqmp_eemi_ops *eemi_ops;
 
-static u32 aiev1_get_tile_type(struct aie_location *loc)
+static u32 aie_get_tile_type(struct aie_location *loc)
 {
 	if (loc->row)
 		return AIE_TILE_TYPE_TILE;
@@ -141,8 +141,8 @@ static u32 aiev1_get_tile_type(struct aie_location *loc)
 	return AIE_TILE_TYPE_SHIMNOC;
 }
 
-static unsigned int aiev1_get_mem_info(struct aie_range *range,
-				       struct aie_part_mem *pmem)
+static unsigned int aie_get_mem_info(struct aie_range *range,
+				     struct aie_part_mem *pmem)
 {
 	unsigned int i;
 
@@ -173,13 +173,13 @@ static unsigned int aiev1_get_mem_info(struct aie_range *range,
 }
 
 /**
- * aiev1_set_shim_reset() - Set AI engine SHIM reset
+ * aie_set_shim_reset() - Set AI engine SHIM reset
  * @adev: AI engine device
  * @range: range of AI engine tiles
  * @assert: true to set reset, false to unset reset
  */
-static void aiev1_set_shim_reset(struct aie_device *adev,
-				 struct aie_range *range, bool assert)
+static void aie_set_shim_reset(struct aie_device *adev,
+			       struct aie_range *range, bool assert)
 {
 	u32 c;
 	u32 val;
@@ -197,12 +197,12 @@ static void aiev1_set_shim_reset(struct aie_device *adev,
 	}
 }
 
-static int aiev1_reset_shim(struct aie_device *adev, struct aie_range *range)
+static int aie_reset_shim(struct aie_device *adev, struct aie_range *range)
 {
 	int ret;
 
 	/* Enable shim reset of each column */
-	aiev1_set_shim_reset(adev, range, true);
+	aie_set_shim_reset(adev, range, true);
 
 	/* Assert shim reset of AI engine array */
 	ret = eemi_ops->reset_assert(VERSAL_PM_RST_AIE_SHIM_ID,
@@ -221,12 +221,12 @@ static int aiev1_reset_shim(struct aie_device *adev, struct aie_range *range)
 	}
 
 	/* Disable shim reset of each column */
-	aiev1_set_shim_reset(adev, range, false);
+	aie_set_shim_reset(adev, range, false);
 
 	return 0;
 }
 
-static int aiev1_init_part_clk_state(struct aie_partition *apart)
+static int aie_init_part_clk_state(struct aie_partition *apart)
 {
 	int ret, num_tiles;
 
@@ -242,7 +242,7 @@ static int aiev1_init_part_clk_state(struct aie_partition *apart)
 	return 0;
 }
 
-static int aiev1_scan_part_clocks(struct aie_partition *apart)
+static int aie_scan_part_clocks(struct aie_partition *apart)
 {
 	struct aie_device *adev = apart->adev;
 	struct aie_range *range = &apart->range;
@@ -267,7 +267,7 @@ static int aiev1_scan_part_clocks(struct aie_partition *apart)
 			 */
 			nbitpos = loc.col * (range->size.row - 1) + loc.row;
 
-			if (aiev1_get_tile_type(&loc) != AIE_TILE_TYPE_TILE) {
+			if (aie_get_tile_type(&loc) != AIE_TILE_TYPE_TILE) {
 				/* Checks shim tile for next core tile */
 				va = adev->base +
 				     aie_cal_regoff(adev, loc,
@@ -306,7 +306,7 @@ static int aiev1_scan_part_clocks(struct aie_partition *apart)
 	return 0;
 }
 
-static int aiev1_set_part_clocks(struct aie_partition *apart)
+static int aie_set_part_clocks(struct aie_partition *apart)
 {
 	struct aie_device *adev = apart->adev;
 	struct aie_range *range = &apart->range;
@@ -391,38 +391,38 @@ static int aiev1_set_part_clocks(struct aie_partition *apart)
 	return 0;
 }
 
-static const struct aie_tile_operations aiev1_ops = {
-	.get_tile_type = aiev1_get_tile_type,
-	.get_mem_info = aiev1_get_mem_info,
-	.reset_shim = aiev1_reset_shim,
-	.init_part_clk_state = aiev1_init_part_clk_state,
-	.scan_part_clocks = aiev1_scan_part_clocks,
-	.set_part_clocks = aiev1_set_part_clocks,
+static const struct aie_tile_operations aie_ops = {
+	.get_tile_type = aie_get_tile_type,
+	.get_mem_info = aie_get_mem_info,
+	.reset_shim = aie_reset_shim,
+	.init_part_clk_state = aie_init_part_clk_state,
+	.scan_part_clocks = aie_scan_part_clocks,
+	.set_part_clocks = aie_set_part_clocks,
 };
 
 /**
- * aiev1_device_init() - Initialize AI engine device struct v1 specific
+ * aie_device_init() - Initialize AI engine device struct AIE specific
  * @adev: AI engine device
  * @return: 0 for success, negative value for failure.
  *
  * This function initialize the AI engine device structure device version
  * specific elements such as register addressing related array shift,
- * column shift, and row shift; v1 specific device operations, device
+ * column shift, and row shift; AIE device specific device operations, device
  * columns resource.
  */
-int aiev1_device_init(struct aie_device *adev)
+int aie_device_init(struct aie_device *adev)
 {
 	int ret;
 
 	adev->array_shift = AIE_ARRAY_SHIFT;
 	adev->col_shift = AIE_COL_SHIFT;
 	adev->row_shift = AIE_ROW_SHIFT;
-	adev->ops = &aiev1_ops;
-	adev->num_kernel_regs = ARRAY_SIZE(aiev1_kernel_regs);
-	adev->kernel_regs = aiev1_kernel_regs;
-	adev->col_rst = &aiev1_col_rst;
-	adev->col_clkbuf = &aiev1_col_clkbuf;
-	adev->shim_dma = &aiev1_shimdma;
+	adev->ops = &aie_ops;
+	adev->num_kernel_regs = ARRAY_SIZE(aie_kernel_regs);
+	adev->kernel_regs = aie_kernel_regs;
+	adev->col_rst = &aie_col_rst;
+	adev->col_clkbuf = &aie_col_clkbuf;
+	adev->shim_dma = &aie_shimdma;
 
 	eemi_ops = zynqmp_pm_get_eemi_ops();
 	if (IS_ERR(eemi_ops) || !eemi_ops->reset_assert) {
