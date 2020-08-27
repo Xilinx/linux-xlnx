@@ -91,7 +91,7 @@ static const struct xvip_video_format xvip_video_formats[] = {
 	{ XVIP_VF_MONO_SENSOR, 8, "mono", MEDIA_BUS_FMT_Y8_1X8,
 	  1, 8, V4L2_PIX_FMT_GREY, 1, 1, 1, 1 },
 	{ XVIP_VF_Y_GREY, 10, NULL, MEDIA_BUS_FMT_Y10_1X10,
-	  4, 32, V4L2_PIX_FMT_XY10, 1, 1, 1, 1 },
+	  1, 32, V4L2_PIX_FMT_XY10, 1, 1, 1, 1 },
 	{ XVIP_VF_Y_GREY, 12, NULL, MEDIA_BUS_FMT_Y12_1X12,
 	  1, 12, V4L2_PIX_FMT_XY12, 1, 1, 1, 1 },
 	{ XVIP_VF_Y_GREY, 16, NULL, MEDIA_BUS_FMT_Y16_1X16,
