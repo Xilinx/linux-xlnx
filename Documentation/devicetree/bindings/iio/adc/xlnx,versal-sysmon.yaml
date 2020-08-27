@@ -1,0 +1,144 @@
+# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
+# Copyright 2019 - 2020 Xilinx Inc.
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/iio/adc/xlnx,versal-sysmon.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Xilinx Versal Sysmon Linux Driver
+
+maintainers:
+  - Anand Ashok Dumbre <anand.ashok.dumbre@xilinx.com>
+
+description: |
+  Sysmon Driver uses Linux IIO framework which was used to abstract the supply
+  voltages and temperatures across the chip as Voltage and Temperature
+  Channels in the framework. Since there are only 160 supply voltage registers
+  and 184 measurement points, there is no constant mapping of supply voltage
+  registers and the measurement points. User has to select the voltages to
+  monitor in design tool. Depending on the selection, a voltage supply gets
+  mapped to one of the supply registers. So, this mapping information is
+  provided to the driver via a device tree. Depending on the number of supplies
+  enabled in the design, the device tree will contain the information of name
+  of the supply enabled and the supply register it maps to.
+
+properties:
+  compatible:
+    items:
+      - enum:
+         - xlnx,versal-sysmon
+
+  reg:
+    description: Sysmon Registers
+    maxItems: 1
+
+  interrupts:
+    description: interrupt line for Sysmon
+    maxItems: 1
+
+  '#address-cells':
+    const: 1
+
+  '#size-cells':
+    const: 0
+
+  xlnx,numchannels:
+    $ref: /schemas/types.yaml#/definitions/uint8
+    maxItems: 1
+    description: |
+      Number of supply channels enabled in the design.
+      Possible values 0 - 160. Based on this value, child supply nodes will
+      be created
+
+patternProperties:
+  "^supply@([0-9]{1,2}|1[0-5][0-9])$":
+    type: object
+    description: |
+      Represents the supplies configured in the design.
+
+    properties:
+      reg:
+        $ref: /schemas/types.yaml#/definitions/uint32
+        minimum: 0
+        maximum: 159
+        description:
+          The supply number associated with the voltage.
+
+      xlnx,name:
+        $ref: /schemas/types.yaml#/definitions/string
+        description:
+          Name of the supply enabled
+
+      xlnx,bipolar:
+        $ref: /schemas/types.yaml#/definitions/flag
+        description:
+          If the supply has a bipolar type and the output will be signed
+
+    required:
+      - reg
+      - xlnx,name
+
+required:
+  - compatible
+  - reg
+  - interrupts
+  - xlnx,numchannels
+
+additionalProperties: false
+
+examples:
+  - |
+    bus {
+        #address-cells = <2>;
+        #size-cells = <2>;
+
+        sysmon@f1270000 {
+            compatible = "xlnx,versal-sysmon";
+            reg = <0 0xf1270000 0 0x4000>;
+            interrupts = <0 0x90 0x4>;
+            xlnx,numchannels = /bits/8 <8>;
+            #address-cells = <1>;
+            #size-cells = <0>;
+            supply@0 {
+                    reg = <0>;
+                    xlnx,name = "vccint";
+            };
+
+            supply@31 {
+                    reg = <31>;
+                    xlnx,name = "vccsoc";
+            };
+
+            supply@32 {
+                    reg = <32>;
+                    xlnx,bipolar;
+                    xlnx,name = "vccram";
+            };
+
+            supply@63 {
+                    reg = <63>;
+                    xlnx,bipolar;
+                    xlnx,name = "vccaux";
+            };
+
+            supply@64 {
+                    reg = <64>;
+                    xlnx,name = "vccbram";
+            };
+
+            supply@95 {
+                    reg = <95>;
+                    xlnx,name = "gt_avaux";
+            };
+
+            supply@96 {
+                    reg = <96>;
+                    xlnx,name = "gt_vccaux";
+            };
+
+            supply@159 {
+                    reg = <159>;
+                    xlnx,name = "vccint_ir";
+            };
+        };
+    };
