@@ -25482,6 +25482,16 @@ S:	Maintained
 F:	Documentation/devicetree/bindings/clock/xlnx,vcu.yaml
 F:	drivers/clk/xilinx/xlnx_vcu.c
 
+XILINX VERSAL SYSMON DRIVER
+M:	Salih Erim <salih.erim@amd.com>
+R:	Dragan Cvetic <dragan.cvetic@amd.com>
+L:	git@xilinx.com
+S:	Maintained
+F:	Documentation/devicetree/bindings/iio/adc/xlnx,versal-sysmon.yaml
+F:	drivers/iio/adc/versal-sysmon.c
+F:	drivers/iio/adc/versal-sysmon.h
+F:	include/linux/iio/adc/versal-sysmon-events.h
+
 XILINX UARTLITE SERIAL DRIVER
 M:	Peter Korsgaard <jacmet@sunsite.dk>
 L:	linux-serial@vger.kernel.org
