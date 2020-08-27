@@ -1233,4 +1233,15 @@ config XILINX_AMS
          The driver can also be build as a module. If so, the module will be called
          xilinx-ams.
 
+config VERSAL_SYSMON
+	tristate "Xilinx Sysmon driver for Versal"
+	depends on HAS_IOMEM
+	help
+	  Say yes here to have support for the Xilinx Sysmon.
+	  The driver will enable users to monitor temperature and voltage on the
+	  Xilinx Versal platform.
+	  The HW also supports I2C access but it is not supported by the driver.
+
+	  The driver can also be build as a module. If so, the module will be called
+	  versal-sysmon.
 endmenu
