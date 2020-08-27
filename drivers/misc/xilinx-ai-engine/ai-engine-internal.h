@@ -375,5 +375,5 @@ int aie_part_request_tiles_from_user(struct aie_partition *apart,
 				     void __user *user_args);
 int aie_part_release_tiles_from_user(struct aie_partition *apart,
 				     void __user *user_args);
-int aiev1_device_init(struct aie_device *adev);
+int aie_device_init(struct aie_device *adev);
 #endif /* AIE_INTERNAL_H */
