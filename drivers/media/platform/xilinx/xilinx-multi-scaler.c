@@ -743,12 +743,17 @@ static void xm2mvsc_initialize_coeff_banks(struct xm2msc_chan_ctx *chan_ctx)
 		ntaps, chan_ctx->num);
 }
 
-static void xm2msc_set_chan_params(struct xm2msc_chan_ctx *chan_ctx,
-				   enum v4l2_buf_type type)
+static int xm2msc_set_chan_params(struct xm2msc_chan_ctx *chan_ctx,
+				  enum v4l2_buf_type type)
 {
 	struct xm2msc_q_data *q_data = get_q_data(chan_ctx, type);
-	const struct xm2msc_fmt *fmt = q_data->fmt;
+	const struct xm2msc_fmt *fmt;
 	void __iomem *base = chan_ctx->regs;
+
+	if (!q_data)
+		return -EINVAL;
+
+	fmt = q_data->fmt;
 
 	if (type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
 		xm2msc_writereg(base + XM2MSC_WIDTHIN, q_data->width);
@@ -761,6 +766,8 @@ static void xm2msc_set_chan_params(struct xm2msc_chan_ctx *chan_ctx,
 		xm2msc_writereg(base + XM2MSC_OUTPIXELFMT, fmt->xm2msc_fmt);
 		xm2msc_writereg(base + XM2MSC_OUTSTRIDE, q_data->stride);
 	}
+
+	return 0;
 }
 
 static void xm2msc_set_chan_com_params(struct xm2msc_chan_ctx *chan_ctx)
@@ -782,21 +789,28 @@ static void xm2msc_set_chan_com_params(struct xm2msc_chan_ctx *chan_ctx)
 	xm2msc_writereg(base + XM2MSC_LINERATE, line_rate);
 }
 
-static void xm2msc_program_allchan(struct xm2m_msc_dev *xm2msc)
+static int xm2msc_program_allchan(struct xm2m_msc_dev *xm2msc)
 {
 	u32 chan;
 
 	for (chan = 0; chan < xm2msc->running_chan; chan++) {
 		struct xm2msc_chan_ctx *chan_ctx;
+		enum v4l2_buf_type type;
+		int ret;
 
 		chan_ctx = &xm2msc->xm2msc_chan[chan];
+		type = V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE;
+		ret = xm2msc_set_chan_params(chan_ctx, type);
+		if (ret)
+			return ret;
 
-		xm2msc_set_chan_params(chan_ctx,
-				       V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE);
-		xm2msc_set_chan_params(chan_ctx,
-				       V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE);
+		type = V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
+		ret = xm2msc_set_chan_params(chan_ctx, type);
+		if (ret)
+			return ret;
 		xm2msc_set_chan_com_params(chan_ctx);
 	}
+	return 0;
 }
 
 static void
@@ -1072,12 +1086,14 @@ static void xm2msc_chan_abort_bufs(struct xm2msc_chan_ctx *chan_ctx)
 
 	while (v4l2_m2m_num_src_bufs_ready(chan_ctx->m2m_ctx) > 0) {
 		src_vb = v4l2_m2m_src_buf_remove(chan_ctx->m2m_ctx);
-		v4l2_m2m_buf_done(src_vb, VB2_BUF_STATE_ERROR);
+		if (src_vb)
+			v4l2_m2m_buf_done(src_vb, VB2_BUF_STATE_ERROR);
 	}
 
 	while (v4l2_m2m_num_dst_bufs_ready(chan_ctx->m2m_ctx) > 0) {
 		dst_vb = v4l2_m2m_dst_buf_remove(chan_ctx->m2m_ctx);
-		v4l2_m2m_buf_done(dst_vb, VB2_BUF_STATE_ERROR);
+		if (dst_vb)
+			v4l2_m2m_buf_done(dst_vb, VB2_BUF_STATE_ERROR);
 	}
 
 	v4l2_m2m_job_finish(chan_ctx->m2m_dev, chan_ctx->m2m_ctx);
@@ -1247,7 +1263,12 @@ static void xm2msc_device_run(void *priv)
 		/* IP need reset for updating of XM2MSC_NUM_OUT */
 		xm2msc_reset(xm2msc);
 		xm2msc_writereg(base + XM2MSC_NUM_OUTS, xm2msc->running_chan);
-		xm2msc_program_allchan(xm2msc);
+		ret = xm2msc_program_allchan(xm2msc);
+		if (ret) {
+			spin_unlock_irqrestore(&xm2msc->lock, flags);
+			xm2msc->device_busy = false;
+			return;
+		}
 	}
 	spin_unlock_irqrestore(&xm2msc->lock, flags);
 
@@ -1575,6 +1596,8 @@ vidioc_s_fmt(struct xm2msc_chan_ctx *chan_ctx, struct v4l2_format *f)
 	unsigned int align = 1;
 
 	q_data = get_q_data(chan_ctx, (enum v4l2_buf_type)f->type);
+	if (!q_data)
+		return -EINVAL;
 
 	q_data->width = pix->width;
 	q_data->height = pix->height;
@@ -1844,13 +1867,16 @@ static int xm2msc_start_streaming(struct vb2_queue *q, unsigned int count)
 	struct xm2msc_chan_ctx *chan_ctx = vb2_get_drv_priv(q);
 	static struct xm2msc_q_data *q_data;
 	int type;
+	int ret;
 
 	if (V4L2_TYPE_IS_OUTPUT(q->type))
 		xm2msc_set_chan_stream(chan_ctx, true, XM2MSC_CHAN_OUT);
 	else
 		xm2msc_set_chan_stream(chan_ctx, true, XM2MSC_CHAN_CAP);
 
-	xm2msc_set_chan_params(chan_ctx, (enum v4l2_buf_type)q->type);
+	ret = xm2msc_set_chan_params(chan_ctx, (enum v4l2_buf_type)q->type);
+	if (ret)
+		return ret;
 
 	if (xm2msc_chk_chan_stream(chan_ctx, XM2MSC_CHAN_CAP) &&
 	    xm2msc_chk_chan_stream(chan_ctx, XM2MSC_CHAN_OUT))
@@ -1948,14 +1974,17 @@ static const struct v4l2_ioctl_ops xm2msc_ioctl_ops = {
 	.vidioc_streamoff = xm2msc_streamoff,
 };
 
-static void xm2msc_set_q_data(struct xm2msc_chan_ctx *chan_ctx,
-			      const struct xm2msc_fmt *fmt,
-			      enum v4l2_buf_type type)
+static int xm2msc_set_q_data(struct xm2msc_chan_ctx *chan_ctx,
+			     const struct xm2msc_fmt *fmt,
+			     enum v4l2_buf_type type)
 {
 	struct xm2msc_q_data *q_data;
 	struct xm2m_msc_dev *xm2msc = chan_ctx->xm2msc_dev;
 
 	q_data = get_q_data(chan_ctx, type);
+
+	if (!q_data)
+		return -EINVAL;
 
 	q_data->fmt = fmt;
 	q_data->width = xm2msc->max_wd;
@@ -1964,10 +1993,12 @@ static void xm2msc_set_q_data(struct xm2msc_chan_ctx *chan_ctx,
 	q_data->nbuffs = q_data->fmt->num_buffs;
 
 	q_data->stride = xm2msc_cal_stride(q_data->width,
-					   q_data->fmt->xm2msc_fmt,
-					   xm2msc->ppc);
+				q_data->fmt->xm2msc_fmt,
+				xm2msc->ppc);
 
 	xm2msc_cal_imagesize(chan_ctx, q_data, type);
+
+	return 0;
 }
 
 static int xm2msc_set_chan_parm(struct xm2msc_chan_ctx *chan_ctx)
@@ -1992,12 +2023,13 @@ static int xm2msc_set_chan_parm(struct xm2msc_chan_ctx *chan_ctx)
 		return -EINVAL;
 	}
 
-	xm2msc_set_q_data(chan_ctx, &formats[i],
-			  V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE);
-	xm2msc_set_q_data(chan_ctx, &formats[i],
-			  V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE);
+	ret = xm2msc_set_q_data(chan_ctx, &formats[i],
+				V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE);
+	if (ret)
+		return ret;
 
-	return ret;
+	return xm2msc_set_q_data(chan_ctx, &formats[i],
+				 V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE);
 }
 
 static int xm2msc_open(struct file *file)
