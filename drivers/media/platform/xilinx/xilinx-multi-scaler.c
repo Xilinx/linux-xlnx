@@ -600,7 +600,7 @@ xm2msc_select_hcoeff(struct xm2msc_chan_ctx *chan_ctx, const short **coeff)
 	u16 hscale_ratio;
 	u32 width_in = chan_ctx->q_data[XM2MSC_CHAN_OUT].width;
 	u32 width_out = chan_ctx->q_data[XM2MSC_CHAN_CAP].width;
-	u32 ntaps = chan_ctx->xm2msc_dev->taps;
+	u32 ntaps;
 
 	if (width_out < width_in) {
 		hscale_ratio = (width_in * 10) / width_out;
@@ -664,7 +664,7 @@ xm2msc_select_vcoeff(struct xm2msc_chan_ctx *chan_ctx, const short **coeff)
 	u16 vscale_ratio;
 	u32 height_in = chan_ctx->q_data[XM2MSC_CHAN_OUT].height;
 	u32 height_out = chan_ctx->q_data[XM2MSC_CHAN_CAP].height;
-	u32 ntaps = chan_ctx->xm2msc_dev->taps;
+	u32 ntaps;
 
 	if (height_out < height_in) {
 		vscale_ratio = (height_in * 10) / height_out;
@@ -1570,7 +1570,7 @@ static int
 vidioc_s_fmt(struct xm2msc_chan_ctx *chan_ctx, struct v4l2_format *f)
 {
 	struct v4l2_pix_format_mplane *pix = &f->fmt.pix_mp;
-	struct xm2msc_q_data *q_data = get_q_data(chan_ctx, f->type);
+	struct xm2msc_q_data *q_data;
 	unsigned int i;
 	unsigned int align = 1;
 
