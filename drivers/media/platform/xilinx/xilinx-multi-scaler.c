@@ -1503,11 +1503,11 @@ vidioc_try_fmt(struct xm2msc_chan_ctx *chan_ctx, struct v4l2_format *f)
 	else if (pix->width > xm2msc->max_wd)
 		pix->width = xm2msc->max_wd;
 
-	vq = v4l2_m2m_get_vq(chan_ctx->m2m_ctx, f->type);
+	vq = v4l2_m2m_get_vq(chan_ctx->m2m_ctx, (enum v4l2_buf_type)f->type);
 	if (!vq)
 		return -EINVAL;
 
-	q_data = get_q_data(chan_ctx, f->type);
+	q_data = get_q_data(chan_ctx, (enum v4l2_buf_type)f->type);
 	if (!q_data)
 		return -EINVAL;
 
@@ -1574,7 +1574,7 @@ vidioc_s_fmt(struct xm2msc_chan_ctx *chan_ctx, struct v4l2_format *f)
 	unsigned int i;
 	unsigned int align = 1;
 
-	q_data = get_q_data(chan_ctx, f->type);
+	q_data = get_q_data(chan_ctx, (enum v4l2_buf_type)f->type);
 
 	q_data->width = pix->width;
 	q_data->height = pix->height;
@@ -1591,8 +1591,8 @@ vidioc_s_fmt(struct xm2msc_chan_ctx *chan_ctx, struct v4l2_format *f)
 
 	q_data->stride = ALIGN(q_data->stride, align);
 
-	q_data->colorspace = pix->colorspace;
-	q_data->field = pix->field;
+	q_data->colorspace = (enum v4l2_colorspace)pix->colorspace;
+	q_data->field = (enum v4l2_field)pix->field;
 	q_data->nbuffs = q_data->fmt->num_buffs;
 
 	xm2msc_cal_imagesize(chan_ctx, q_data, f->type);
@@ -1656,11 +1656,11 @@ static int vidioc_g_fmt(struct xm2msc_chan_ctx *chan_ctx, struct v4l2_format *f)
 	struct v4l2_pix_format_mplane *pix = &f->fmt.pix_mp;
 	unsigned int i;
 
-	vq = v4l2_m2m_get_vq(chan_ctx->m2m_ctx, f->type);
+	vq = v4l2_m2m_get_vq(chan_ctx->m2m_ctx, (enum v4l2_buf_type)f->type);
 	if (!vq)
 		return -EINVAL;
 
-	q_data = get_q_data(chan_ctx, f->type);
+	q_data = get_q_data(chan_ctx, (enum v4l2_buf_type)f->type);
 	if (!q_data)
 		return -EINVAL;
 
@@ -1765,7 +1765,7 @@ static int xm2msc_queue_setup(struct vb2_queue *vq,
 	struct xm2msc_chan_ctx *chan_ctx = vb2_get_drv_priv(vq);
 	struct xm2msc_q_data *q_data;
 
-	q_data = get_q_data(chan_ctx, vq->type);
+	q_data = get_q_data(chan_ctx, (enum v4l2_buf_type)vq->type);
 	if (!q_data)
 		return -EINVAL;
 
@@ -1789,7 +1789,7 @@ static int xm2msc_buf_prepare(struct vb2_buffer *vb)
 	struct xm2msc_q_data *q_data;
 	unsigned int i, num_buffs;
 
-	q_data = get_q_data(chan_ctx, vb->vb2_queue->type);
+	q_data = get_q_data(chan_ctx, (enum v4l2_buf_type)vb->vb2_queue->type);
 	if (!q_data)
 		return -EINVAL;
 	num_buffs = q_data->nbuffs;
@@ -1849,7 +1849,7 @@ static int xm2msc_start_streaming(struct vb2_queue *q, unsigned int count)
 	else
 		xm2msc_set_chan_stream(chan_ctx, true, XM2MSC_CHAN_CAP);
 
-	xm2msc_set_chan_params(chan_ctx, q->type);
+	xm2msc_set_chan_params(chan_ctx, (enum v4l2_buf_type)q->type);
 
 	if (xm2msc_chk_chan_stream(chan_ctx, XM2MSC_CHAN_CAP) &&
 	    xm2msc_chk_chan_stream(chan_ctx, XM2MSC_CHAN_OUT))
@@ -1858,7 +1858,7 @@ static int xm2msc_start_streaming(struct vb2_queue *q, unsigned int count)
 	type = V4L2_TYPE_IS_OUTPUT(q->type) ?
 		V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE :
 		V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
-	q_data = get_q_data(chan_ctx, type);
+	q_data = get_q_data(chan_ctx, (enum v4l2_buf_type)type);
 	xm2msc_pr_q(chan_ctx->xm2msc_dev->dev, q_data, chan_ctx->num,
 		    type, __func__);
 	xm2msc_pr_status(chan_ctx->xm2msc_dev, __func__);
