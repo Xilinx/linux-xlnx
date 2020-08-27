@@ -22637,6 +22637,16 @@ S:	Maintained
 F:	drivers/pwm/pwm-xilinx.c
 F:	include/clocksource/timer-xilinx.h
 
+XILINX VERSAL SYSMON DRIVER
+M:	Anand Ashok Dumbre <anand.ashok.dumbre@xilinx.com>
+R:	Dragan Cvetic <dragan.cvetic@xilinx.com>
+L:	git@xilinx.com
+S:	Maintained
+F:	Documentation/devicetree/bindings/iio/adc/xlnx,versal-sysmon.yaml
+F:	drivers/iio/adc/versal-sysmon.c
+F:	drivers/iio/adc/versal-sysmon.h
+F:	include/linux/iio/adc/versal-sysmon-events.h
+
 XILINX UARTLITE SERIAL DRIVER
 M:	Peter Korsgaard <jacmet@sunsite.dk>
 L:	linux-serial@vger.kernel.org
