@@ -1711,7 +1711,7 @@ static int enum_fmt(struct xm2m_msc_dev *xm2msc, struct v4l2_fmtdesc *f)
 
 	/* Format found */
 	fmt = &formats[i];
-	strlcpy(f->description, fmt->name,
+	strlcpy((char *)f->description, (char *)fmt->name,
 		sizeof(f->description));
 	f->pixelformat = fmt->fourcc;
 
@@ -1743,9 +1743,10 @@ static int xm2msc_enum_fmt_vid_out(struct file *file, void *fh,
 static int xm2msc_querycap(struct file *file, void *fh,
 			   struct v4l2_capability *cap)
 {
-	strncpy(cap->driver, XM2MSC_DRIVER_NAME, sizeof(cap->driver) - 1);
-	strncpy(cap->card, XM2MSC_DRIVER_NAME, sizeof(cap->card) - 1);
-	snprintf(cap->bus_info, sizeof(cap->bus_info),
+	strncpy((char *)cap->driver, XM2MSC_DRIVER_NAME,
+		sizeof(cap->driver) - 1);
+	strncpy((char *)cap->card, XM2MSC_DRIVER_NAME, sizeof(cap->card) - 1);
+	snprintf((char *)cap->bus_info, sizeof(cap->bus_info),
 		 "platform:%s", XM2MSC_DRIVER_NAME);
 	/*
 	 * This is only a mem-to-mem video device. The STREAMING
