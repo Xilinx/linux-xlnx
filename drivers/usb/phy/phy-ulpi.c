@@ -316,11 +316,23 @@ static int ulpi_phy_probe(struct platform_device *pdev)
 		return -ENOMEM;
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
+	if (!res) {
+		dev_err(&pdev->dev, "no phy I/O memory resource defined\n");
+		return -ENODEV;
+	}
+
 	uphy->regs = devm_ioremap(&pdev->dev, res->start, resource_size(res));
+	if (!uphy->regs) {
+		dev_err(&pdev->dev, "failed to map phy I/O memory\n");
+		return -EFAULT;
+	}
+
 	if (IS_ERR(uphy->regs))
 		return PTR_ERR(uphy->regs);
 
-	ret = of_property_read_u32(np, "view-port", &uphy->vp_offset);
+	if (of_property_read_u32(np, "view-port", &uphy->vp_offset))
+		dev_dbg(&pdev->dev, "Missing view-port property\n");
+
 	if (IS_ERR(uphy->regs)) {
 		dev_err(&pdev->dev, "view-port register not specified\n");
 		return PTR_ERR(uphy->regs);
