@@ -165,6 +165,7 @@ static int hw_wait_vbus_lower_bsv(struct ci_hdrc *ci)
 static void ci_handle_id_switch(struct ci_hdrc *ci)
 {
 	enum ci_role role = ci_otg_role(ci);
+	int ret;
 
 	if (role != ci->role) {
 		dev_dbg(ci->dev, "switching from %s to %s\n",
@@ -183,7 +184,10 @@ static void ci_handle_id_switch(struct ci_hdrc *ci)
 			 */
 			hw_wait_vbus_lower_bsv(ci);
 
-		ci_role_start(ci, role);
+		ret = ci_role_start(ci, role);
+		if (ret < 0)
+			dev_dbg(ci->dev, "switching err %d\n", ret);
+
 		/* vbus change may have already occurred */
 		if (role == CI_ROLE_GADGET)
 			ci_handle_vbus_change(ci);
