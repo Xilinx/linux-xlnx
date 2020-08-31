@@ -303,14 +303,25 @@ static void zynq_qspi_txfifo_op(struct zynq_qspi *xqspi, unsigned int size)
  *
  * This function enables SPI master controller.
  *
- * Return:	Always 0
+ * Return:	0 on success and error value on error
  */
 static int zynq_prepare_transfer_hardware(struct spi_master *master)
 {
+	struct device *dev = &master->dev;
 	struct zynq_qspi *xqspi = spi_master_get_devdata(master);
+	int ret = 0;
 
-	clk_enable(xqspi->refclk);
-	clk_enable(xqspi->pclk);
+	ret = clk_enable(xqspi->refclk);
+	if (ret) {
+		dev_err(dev, "Cannot enable device clock.\n");
+		return ret;
+	}
+	ret = clk_enable(xqspi->pclk);
+	if (ret) {
+		dev_err(dev, "Cannot enable APB clock.\n");
+		clk_disable(xqspi->refclk);
+		return ret;
+	}
 	zynq_qspi_write(xqspi, ZYNQ_QSPI_ENABLE_OFFSET,
 			ZYNQ_QSPI_ENABLE_ENABLE_MASK);
 
