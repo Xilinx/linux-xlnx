@@ -695,13 +695,16 @@ static int ci_get_platdata(struct device *dev,
 	if (usb_get_maximum_speed(dev) == USB_SPEED_FULL)
 		platdata->flags |= CI_HDRC_FORCE_FULLSPEED;
 
-	of_property_read_u32(dev->of_node, "phy-clkgate-delay-us",
-				     &platdata->phy_clkgate_delay_us);
+	if (of_property_read_u32(dev->of_node, "phy-clkgate-delay-us",
+				 &platdata->phy_clkgate_delay_us))
+		dev_dbg(dev, "Missing phy-clkgate-delay-us property\n");
 
 	platdata->itc_setting = 1;
 
-	of_property_read_u32(dev->of_node, "itc-setting",
-					&platdata->itc_setting);
+	if (of_property_read_u32(dev->of_node, "itc-setting",
+				 &platdata->itc_setting))
+		dev_dbg(dev, "Missing itc-setting property\n");
+
 
 	ret = of_property_read_u32(dev->of_node, "ahb-burst-config",
 				&platdata->ahb_burst_config);
