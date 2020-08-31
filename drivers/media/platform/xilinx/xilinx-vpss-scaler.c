@@ -1976,8 +1976,7 @@ static int xscaler_probe(struct platform_device *pdev)
 	if (!match)
 		return -ENODEV;
 
-	if (!strncmp(match->compatible, xscaler_of_id_table[0].compatible,
-		     strlen(xscaler_of_id_table[0].compatible))) {
+	if (!strcmp(xscaler_of_id_table[0].compatible, match->compatible)) {
 		dev_warn(&pdev->dev,
 			 "%s - compatible string is getting deprecated!\n",
 			 match->compatible);
