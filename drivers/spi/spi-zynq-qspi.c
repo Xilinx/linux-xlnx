@@ -381,11 +381,7 @@ static void zynq_qspi_chipselect(struct spi_device *spi, bool is_high)
 	} else {
 		/* Select the slave */
 		config_reg &= ~ZYNQ_QSPI_CONFIG_SSCTRL_MASK;
-		if (gpio_is_valid(spi->cs_gpio)) {
-			config_reg |= (((~(BIT(0))) <<
-					ZYNQ_QSPI_SS_SHIFT) &
-					ZYNQ_QSPI_CONFIG_SSCTRL_MASK);
-		} else {
+		if (!gpio_is_valid(spi->cs_gpio)) {
 			config_reg |= (((~(BIT(spi->chip_select))) <<
 					ZYNQ_QSPI_SS_SHIFT) &
 					ZYNQ_QSPI_CONFIG_SSCTRL_MASK);
