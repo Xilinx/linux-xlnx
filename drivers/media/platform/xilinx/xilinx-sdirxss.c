@@ -37,6 +37,7 @@
 #include <linux/v4l2-subdev.h>
 #include <linux/xilinx-sdirxss.h>
 #include <linux/xilinx-v4l2-controls.h>
+#include <media/hdr-ctrls.h>
 #include <media/media-entity.h>
 #include <media/v4l2-common.h>
 #include <media/v4l2-ctrls.h>
@@ -246,6 +247,13 @@
 #define XST352_BYTE2_FPS_120			0xE
 #define XST352_BYTE2_FPS_120F			0xF
 
+/* Electro Optical Transfer Function Byte 2 bit[5:4] */
+#define XST352_BYTE2_EOTF_MASK			GENMASK(13, 12)
+#define XST352_BYTE2_EOTF_OFFSET		12
+#define XST352_BYTE2_EOTF_SDRTV			0x0
+#define XST352_BYTE2_EOTF_HLG			0x1
+#define XST352_BYTE2_EOTF_SMPTE2084		0x2
+
 #define XST352_BYTE3_ACT_LUMA_COUNT_MASK	BIT(22)
 #define XST352_BYTE3_ACT_LUMA_COUNT_OFFSET	22
 
@@ -318,6 +326,7 @@ struct xsdirxss_core {
  * @frame_interval: Captures the frame rate
  * @vip_format: format information corresponding to the active format
  * @pad: source media pad
+ * @static_hdr: static hdr payload
  * @vidlockwin: Video lock window value set by control
  * @edhmask: EDH mask set by control
  * @searchmask: Search mask set by control
@@ -338,6 +347,7 @@ struct xsdirxss_state {
 	struct v4l2_fract frame_interval;
 	const struct xvip_video_format *vip_format;
 	struct media_pad pad;
+	struct v4l2_hdr10_payload static_hdr;
 	u32 vidlockwin;
 	u32 edhmask;
 	u16 searchmask;
@@ -1334,6 +1344,29 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 
 	xsdirxss_get_framerate(&state->frame_interval, framerate);
 
+	memset(&state->static_hdr, 0, sizeof(state->static_hdr));
+
+	state->static_hdr.eotf = V4L2_EOTF_TRADITIONAL_GAMMA_SDR;
+
+	if (mode != XSDIRX_MODE_SD_MASK) {
+		u8 eotf = (payload & XST352_BYTE2_EOTF_MASK) >>
+			XST352_BYTE2_EOTF_OFFSET;
+
+		/* Get the EOTF function */
+		switch (eotf) {
+		case XST352_BYTE2_EOTF_SDRTV:
+			state->static_hdr.eotf =
+				V4L2_EOTF_TRADITIONAL_GAMMA_SDR;
+			break;
+		case XST352_BYTE2_EOTF_SMPTE2084:
+			state->static_hdr.eotf = V4L2_EOTF_SMPTE_ST2084;
+			break;
+		case XST352_BYTE2_EOTF_HLG:
+			state->static_hdr.eotf = V4L2_EOTF_BT_2100_HLG;
+			break;
+		}
+	}
+
 	dev_dbg(core->dev, "Stream width = %d height = %d Field = %d payload = 0x%08x ts = 0x%08x\n",
 		format->width, format->height, format->field, payload, val);
 	dev_dbg(core->dev, "frame rate numerator = %d denominator = %d\n",
@@ -1565,6 +1598,7 @@ static int xsdirxss_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
 		container_of(ctrl->handler,
 			     struct xsdirxss_state, ctrl_handler);
 	struct xsdirxss_core *core = &xsdirxss->core;
+	struct v4l2_metadata_hdr *hdr_ptr;
 
 	switch (ctrl->id) {
 	case V4L2_CID_XILINX_SDIRX_MODE_DETECT:
@@ -1645,6 +1679,17 @@ static int xsdirxss_g_volatile_ctrl(struct v4l2_ctrl *ctrl)
 		val = xsdirxss_read(core, XSDIRX_MODE_DET_STAT_REG);
 		val &= XSDIRX_MODE_DET_STAT_LVLB_3G_MASK;
 		ctrl->val = val ? true : false;
+		break;
+	case V4L2_CID_METADATA_HDR:
+		if (!xsdirxss->vidlocked) {
+			dev_err(core->dev, "Can't get values when video not locked!\n");
+			return -EINVAL;
+		}
+		hdr_ptr = (struct v4l2_metadata_hdr *)ctrl->p_new.p;
+		hdr_ptr->metadata_type = V4L2_HDR_TYPE_HDR10;
+		hdr_ptr->size = sizeof(struct v4l2_hdr10_payload);
+		memcpy(hdr_ptr->payload, &xsdirxss->static_hdr,
+		       hdr_ptr->size);
 		break;
 	default:
 		dev_err(core->dev, "Get Invalid control id 0x%0x\n", ctrl->id);
@@ -2092,7 +2137,19 @@ static const struct v4l2_ctrl_config xsdirxss_ctrls[] = {
 		.def	= false,
 		.step	= 1,
 		.flags  = V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_READ_ONLY,
-	}
+	}, {
+		.ops	= &xsdirxss_ctrl_ops,
+		.id	= V4L2_CID_METADATA_HDR,
+		.name	= "HDR Controls",
+		.type	= 0x0106,
+		.min	= 0x8000000000000000,
+		.max	= 0x7FFFFFFFFFFFFFFF,
+		.step	= 1,
+		.def	= 0,
+		.elem_size = sizeof(struct v4l2_metadata_hdr),
+		.flags	= V4L2_CTRL_FLAG_VOLATILE | V4L2_CTRL_FLAG_HAS_PAYLOAD |
+			V4L2_CTRL_FLAG_READ_ONLY,
+	},
 };
 
 static const struct v4l2_subdev_core_ops xsdirxss_core_ops = {
