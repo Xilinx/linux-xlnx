@@ -421,6 +421,8 @@ static long aie_part_ioctl(struct file *fp, unsigned int cmd, unsigned long arg)
 		return aie_part_detach_dmabuf_req(apart, argp);
 	case AIE_SET_SHIMDMA_BD_IOCTL:
 		return aie_part_set_bd(apart, argp);
+	case AIE_SET_SHIMDMA_DMABUF_BD_IOCTL:
+		return aie_part_set_dmabuf_bd(apart, argp);
 	case AIE_REQUEST_TILES_IOCTL:
 		return aie_part_request_tiles_from_user(apart, argp);
 	case AIE_RELEASE_TILES_IOCTL:
