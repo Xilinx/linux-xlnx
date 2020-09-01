@@ -2381,7 +2381,8 @@ static int xm2m_msc_probe(struct platform_device *pdev)
 		*vfd = xm2msc_videodev;
 		vfd->lock = &xm2msc->dev_mutex;
 		vfd->v4l2_dev = &xm2msc->v4l2_dev;
-		vfd->device_caps = V4L2_CAP_VIDEO_M2M_MPLANE;
+		vfd->device_caps = V4L2_CAP_VIDEO_M2M_MPLANE |
+				   V4L2_CAP_STREAMING;
 
 		ret = video_register_device(vfd, VFL_TYPE_VIDEO, chan);
 		if (ret) {
