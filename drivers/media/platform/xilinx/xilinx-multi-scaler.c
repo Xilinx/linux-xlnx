@@ -1766,18 +1766,17 @@ static int xm2msc_enum_fmt_vid_out(struct file *file, void *fh,
 static int xm2msc_querycap(struct file *file, void *fh,
 			   struct v4l2_capability *cap)
 {
+	struct xm2msc_chan_ctx *chan_ctx = fh_to_chanctx(fh);
+	struct video_device *vfd = &chan_ctx->vfd;
+
 	strncpy((char *)cap->driver, XM2MSC_DRIVER_NAME,
 		sizeof(cap->driver) - 1);
 	strncpy((char *)cap->card, XM2MSC_DRIVER_NAME, sizeof(cap->card) - 1);
 	snprintf((char *)cap->bus_info, sizeof(cap->bus_info),
 		 "platform:%s", XM2MSC_DRIVER_NAME);
-	/*
-	 * This is only a mem-to-mem video device. The STREAMING
-	 * device capability flags are left only for compatibility
-	 * and are scheduled for removal.
-	 */
-	cap->device_caps = V4L2_CAP_VIDEO_M2M_MPLANE;
+	cap->device_caps = vfd->device_caps;
 	cap->capabilities = cap->device_caps | V4L2_CAP_DEVICE_CAPS;
+
 	return 0;
 }
 
