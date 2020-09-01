@@ -366,6 +366,8 @@ long aie_part_attach_dmabuf_req(struct aie_partition *apart,
 long aie_part_detach_dmabuf_req(struct aie_partition *apart,
 				void __user *user_args);
 long aie_part_set_bd(struct aie_partition *apart, void __user *user_args);
+long aie_part_set_dmabuf_bd(struct aie_partition *apart,
+			    void __user *user_args);
 void aie_part_release_dmabufs(struct aie_partition *apart);
 
 int aie_part_scan_clk_state(struct aie_partition *apart);

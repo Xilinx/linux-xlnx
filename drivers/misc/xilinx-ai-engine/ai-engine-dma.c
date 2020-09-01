@@ -29,6 +29,30 @@ struct aie_dmabuf {
 };
 
 /**
+ * aie_part_find_dmabuf() - find a attached dmabuf
+ * @apart: AI engine partition
+ * @dmabuf: pointer to dmabuf
+ * @return: pointer to AI engine dmabuf struct of the found dmabuf, if dmabuf
+ *	    is not found, returns NULL.
+ *
+ * This function scans all the attached dmabufs to see the input dmabuf is
+ * in the list. if it is attached, return the corresponding struct aie_dmabuf
+ * pointer.
+ */
+static struct aie_dmabuf *
+aie_part_find_dmabuf(struct aie_partition *apart, struct dma_buf *dmabuf)
+{
+	struct aie_dmabuf *adbuf;
+
+	list_for_each_entry(adbuf, &apart->dbufs, node) {
+		if (dmabuf == adbuf->attach->dmabuf)
+			return adbuf;
+	}
+
+	return NULL;
+}
+
+/**
  * aie_part_find_dmabuf_from_file() - find a attached dmabuf from file
  * @apart: AI engine partition
  * @file: file which belongs to a dmabuf
@@ -46,7 +70,7 @@ aie_part_find_dmabuf_from_file(struct aie_partition *apart,
 	struct aie_dmabuf *adbuf;
 
 	list_for_each_entry(adbuf, &apart->dbufs, node) {
-		if (file ==  adbuf->attach->dmabuf->file)
+		if (file == adbuf->attach->dmabuf->file)
 			return adbuf;
 	}
 
@@ -69,7 +93,6 @@ static dma_addr_t aie_part_get_dmabuf_da(struct aie_partition *apart,
 	struct vm_area_struct *vma;
 	struct aie_dmabuf *adbuf;
 	unsigned long va_start, va_off;
-	dma_addr_t da;
 
 	va_start = (unsigned long)((uintptr_t)va);
 	if (!current->mm) {
@@ -104,8 +127,52 @@ static dma_addr_t aie_part_get_dmabuf_da(struct aie_partition *apart,
 		return 0;
 	}
 
-	da = sg_dma_address(adbuf->sgt->sgl) + va_off;
-	return da;
+	return sg_dma_address(adbuf->sgt->sgl) + va_off;
+}
+
+/**
+ * aie_part_get_dmabuf_da_from_off() - get DMA address from offset to a dmabuf
+ * @apart: AI engine partition
+ * @dmabuf_fd: dmabuf file descriptor
+ * @off: offset to the start of a dmabuf
+ * @len: memory length
+ * @return: dma address, or 0 if @off or @len is invalid, or if @dmabuf_fd is
+ *	    not attached.
+ *
+ * This function returns DMA address if has been mapped to a dmabuf which has
+ * been attached to the AI engine partition.
+ */
+static dma_addr_t
+aie_part_get_dmabuf_da_from_off(struct aie_partition *apart, int dmabuf_fd,
+				u64 off, size_t len)
+{
+	struct dma_buf *dbuf = dma_buf_get(dmabuf_fd);
+	struct aie_dmabuf *adbuf;
+
+	if (IS_ERR(dbuf)) {
+		dev_err(&apart->dev,
+			"failed to get dma address, not able to get dmabuf from %d.\n",
+			dmabuf_fd);
+		return 0;
+	}
+
+	adbuf = aie_part_find_dmabuf(apart, dbuf);
+	dma_buf_put(dbuf);
+	if (!adbuf) {
+		dev_err(&apart->dev,
+			"failed to get dma address, dmabuf %d not attached.\n",
+			dmabuf_fd);
+		return 0;
+	}
+
+	if (off >= dbuf->size || off + len >= dbuf->size) {
+		dev_err(&apart->dev,
+			"failed to get dma address from buf %d, off=0x%llx, len=0x%zx.\n",
+			dmabuf_fd, off, len);
+		return 0;
+	}
+
+	return sg_dma_address(adbuf->sgt->sgl) + off;
 }
 
 /**
@@ -338,7 +405,7 @@ long aie_part_attach_dmabuf_req(struct aie_partition *apart,
 		return ret;
 	}
 
-	adbuf = aie_part_find_dmabuf_from_file(apart, dbuf->file);
+	adbuf = aie_part_find_dmabuf(apart, dbuf);
 	if (!adbuf)
 		adbuf = aie_part_attach_dmabuf(apart, dbuf);
 	else
@@ -388,7 +455,7 @@ long aie_part_detach_dmabuf_req(struct aie_partition *apart,
 		return ret;
 	}
 
-	adbuf = aie_part_find_dmabuf_from_file(apart, dbuf->file);
+	adbuf = aie_part_find_dmabuf(apart, dbuf);
 	dma_buf_put(dbuf);
 	if (!adbuf) {
 		dev_err(&apart->dev, "failed to find dmabuf %d.\n", dmabuf_fd);
@@ -431,14 +498,9 @@ long aie_part_set_bd(struct aie_partition *apart, void __user *user_args)
 		return -EINVAL;
 	}
 
-	bd = kzalloc(shim_dma->bd_len, GFP_KERNEL);
-	if (!bd)
-		return -ENOMEM;
-
-	if (copy_from_user(bd, (void __user *)args.bd, shim_dma->bd_len)) {
-		kfree(bd);
-		return -EFAULT;
-	}
+	bd = memdup_user((void __user *)args.bd, shim_dma->bd_len);
+	if (IS_ERR(bd))
+		return PTR_ERR(bd);
 
 	regval = bd[shim_dma->buflen.regoff / sizeof(u32)];
 	buf_len = aie_get_reg_field(&shim_dma->buflen, regval);
@@ -460,6 +522,94 @@ long aie_part_set_bd(struct aie_partition *apart, void __user *user_args)
 	if (!addr) {
 		dev_err(&apart->dev, "invalid buffer 0x%llx, 0x%x.\n",
 			args.data_va, buf_len);
+		mutex_unlock(&apart->mlock);
+		kfree(bd);
+		return -EINVAL;
+	}
+
+	/* Set low 32bit address */
+	laddr = lower_32_bits(addr);
+	tmpbd = (u32 *)((char *)bd + shim_dma->laddr.regoff);
+	*tmpbd &= ~shim_dma->laddr.mask;
+	*tmpbd |= aie_get_field_val(&shim_dma->laddr, laddr);
+
+	/* Set high 32bit address */
+	haddr = upper_32_bits(addr);
+	tmpbd = (u32 *)((char *)bd + shim_dma->haddr.regoff);
+	*tmpbd &= ~shim_dma->haddr.mask;
+	*tmpbd |= aie_get_field_val(&shim_dma->haddr, haddr);
+
+	ret = aie_part_set_shimdma_bd(apart, args.loc, args.bd_id, bd);
+	mutex_unlock(&apart->mlock);
+	if (ret)
+		dev_err(&apart->dev, "failed to set to shim dma bd.\n");
+
+	kfree(bd);
+	return ret;
+}
+
+/**
+ * aie_part_set_dmabuf_bd() - Set AI engine SHIM DMA dmabuf buffer descriptor
+ * @apart: AI engine partition
+ * @user_args: user AI engine dmabuf argument
+ *
+ * @return: 0 for success, negative value for failure
+ *
+ * This function set the user specified buffer descriptor into the SHIM DMA
+ * buffer descriptor. The buffer descriptor contained in the @user_args has the
+ * offset to the start of the buffer descriptor.
+ */
+long aie_part_set_dmabuf_bd(struct aie_partition *apart,
+			    void __user *user_args)
+{
+	struct aie_device *adev = apart->adev;
+	const struct aie_dma_attr *shim_dma = adev->shim_dma;
+	struct aie_dmabuf_bd_args args;
+	u32 *bd, *tmpbd, len, laddr, haddr, regval;
+	u64 off;
+	dma_addr_t addr;
+	int ret;
+
+	if (copy_from_user(&args, user_args, sizeof(args)))
+		return -EFAULT;
+
+	ret = aie_part_validate_bdloc(apart, args.loc, args.bd_id);
+	if (ret) {
+		dev_err(&apart->dev, "invalid SHIM DMA BD reg address.\n");
+		return -EINVAL;
+	}
+
+	bd = memdup_user((void __user *)args.bd, shim_dma->bd_len);
+	if (IS_ERR(bd))
+		return PTR_ERR(bd);
+
+	regval = bd[shim_dma->buflen.regoff / sizeof(u32)];
+	len = aie_get_reg_field(&shim_dma->buflen, regval);
+	if (!len) {
+		dev_err(&apart->dev, "no buf length from shim dma bd.\n");
+		kfree(bd);
+		return -EINVAL;
+	}
+
+	/* Get low 32bit address offset */
+	tmpbd = (u32 *)((char *)bd + shim_dma->laddr.regoff);
+	laddr = *tmpbd & shim_dma->laddr.mask;
+	/* Get high 32bit address offset */
+	tmpbd = (u32 *)((char *)bd + shim_dma->haddr.regoff);
+	haddr = *tmpbd & shim_dma->haddr.mask;
+	off = laddr | ((u64)haddr << 32);
+
+	ret = mutex_lock_interruptible(&apart->mlock);
+	if (ret) {
+		kfree(bd);
+		return ret;
+	}
+
+	/* Get device address from offset */
+	addr = aie_part_get_dmabuf_da_from_off(apart, args.buf_fd, off, len);
+	if (!addr) {
+		dev_err(&apart->dev, "invalid buffer 0x%llx, 0x%x.\n",
+			off, len);
 		mutex_unlock(&apart->mlock);
 		kfree(bd);
 		return -EINVAL;
