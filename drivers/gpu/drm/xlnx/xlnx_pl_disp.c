@@ -572,7 +572,8 @@ static int xlnx_pl_disp_probe(struct platform_device *pdev)
 		xlnx_pl_disp->vtc_bridge = of_xlnx_bridge_get(vtc_node);
 		if (!xlnx_pl_disp->vtc_bridge) {
 			dev_info(dev, "Didn't get vtc bridge instance\n");
-			return -EPROBE_DEFER;
+			ret = -EPROBE_DEFER;
+			goto err_dma;
 		}
 	} else {
 		dev_info(dev, "vtc bridge property not present\n");
