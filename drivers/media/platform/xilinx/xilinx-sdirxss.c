@@ -1355,6 +1355,7 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 
 	state->static_hdr.eotf = V4L2_EOTF_TRADITIONAL_GAMMA_SDR;
 	format->colorspace = V4L2_COLORSPACE_SMPTE170M;
+	format->xfer_func = V4L2_XFER_FUNC_709;
 
 	if (mode != XSDIRX_MODE_SD_MASK) {
 		u8 eotf = (payload & XST352_BYTE2_EOTF_MASK) >>
@@ -1371,9 +1372,11 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 			break;
 		case XST352_BYTE2_EOTF_SMPTE2084:
 			state->static_hdr.eotf = V4L2_EOTF_SMPTE_ST2084;
+			format->xfer_func = V4L2_XFER_FUNC_SMPTE2084;
 			break;
 		case XST352_BYTE2_EOTF_HLG:
 			state->static_hdr.eotf = V4L2_EOTF_BT_2100_HLG;
+			format->xfer_func = V4L2_XFER_FUNC_HLG;
 			break;
 		}
 
@@ -1391,6 +1394,7 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 			 * are currently not supported
 			 */
 			format->colorspace = V4L2_COLORSPACE_DEFAULT;
+			format->xfer_func = V4L2_XFER_FUNC_DEFAULT;
 			break;
 		}
 	}
