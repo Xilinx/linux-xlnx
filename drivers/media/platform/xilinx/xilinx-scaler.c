@@ -696,6 +696,7 @@ MODULE_DEVICE_TABLE(of, xscaler_of_id_table);
 static struct platform_driver xscaler_driver = {
 	.driver			= {
 		.name		= "xilinx-scaler",
+		.pm		= &xscaler_pm_ops,
 		.of_match_table	= xscaler_of_id_table,
 	},
 	.probe			= xscaler_probe,
