@@ -107,6 +107,8 @@ whole range, 0-255, dividing the angular value by 1.41. The enum
       - Use the DCI-P3 transfer function.
     * - ``V4L2_XFER_FUNC_SMPTE2084``
       - Use the SMPTE 2084 transfer function. See :ref:`xf-smpte-2084`.
+    * - ``V4L2_XFER_FUNC_HLG``
+      - Use the Hybrid Log Gamma(HLG) transfer function. See :ref:`xf-hlg`.
 
 
 

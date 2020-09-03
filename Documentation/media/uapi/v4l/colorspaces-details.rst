@@ -811,3 +811,34 @@ luminance values over 100 cd/m\ :sup:`2` to 100 cd/m\ :sup:`2`.
 
 There are better methods, see e.g. :ref:`colimg` for more in-depth information
 about this.
+
+
+.. _xf-hlg:
+
+Transfer Function HLG (V4L2_XFER_FUNC_HLG)
+=======================================================
+
+The :ref:`itu2100` defines the transfer function used.
+
+Constants:
+
+.. math::
+    a = 0.17883277
+
+    b = 1 - 4 * a = 0.28466892
+
+    c = 0.5 - a * \ln (4 * a) = 0.55991073
+
+Transfer function:
+
+.. math::
+
+     E' = \begin{cases}\sqrt(3 * E) & 0 \leq E \leq \frac{1}{12}
+     \\ a * \ln(12 * E - b) + c & \frac{1}{12} \le E \leq 1\end{cases}
+
+Inverse Transfer function:
+
+.. math::
+
+     x' =\begin{cases}x^{2} / 3  & 0 \leq x \leq \frac{1}{12}
+     \\(exp((x - c) / a) + b) / 12 & \frac{1}{12} \le x \leq 1\end{cases}
