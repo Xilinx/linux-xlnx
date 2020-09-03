@@ -254,6 +254,13 @@
 #define XST352_BYTE2_EOTF_HLG			0x1
 #define XST352_BYTE2_EOTF_SMPTE2084		0x2
 
+#define XST352_BYTE2_COLORIMETRY_MASK		GENMASK(21, 20)
+#define XST352_BYTE2_COLORIMETRY_OFFSET		20
+#define XST352_BYTE2_COLORIMETRY_BT709		0
+#define XST352_BYTE2_COLORIMETRY_VANC		1
+#define XST352_BYTE2_COLORIMETRY_UHDTV		2
+#define XST352_BYTE2_COLORIMETRY_UNKNOWN	3
+
 #define XST352_BYTE3_ACT_LUMA_COUNT_MASK	BIT(22)
 #define XST352_BYTE3_ACT_LUMA_COUNT_OFFSET	22
 
@@ -1347,10 +1354,14 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 	memset(&state->static_hdr, 0, sizeof(state->static_hdr));
 
 	state->static_hdr.eotf = V4L2_EOTF_TRADITIONAL_GAMMA_SDR;
+	format->colorspace = V4L2_COLORSPACE_SMPTE170M;
 
 	if (mode != XSDIRX_MODE_SD_MASK) {
 		u8 eotf = (payload & XST352_BYTE2_EOTF_MASK) >>
 			XST352_BYTE2_EOTF_OFFSET;
+
+		u8 colorimetry = (payload & XST352_BYTE2_COLORIMETRY_MASK) >>
+			XST352_BYTE2_COLORIMETRY_OFFSET;
 
 		/* Get the EOTF function */
 		switch (eotf) {
@@ -1363,6 +1374,23 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 			break;
 		case XST352_BYTE2_EOTF_HLG:
 			state->static_hdr.eotf = V4L2_EOTF_BT_2100_HLG;
+			break;
+		}
+
+		/* Get the colorimetry data */
+		switch (colorimetry) {
+		case XST352_BYTE2_COLORIMETRY_BT709:
+			format->colorspace = V4L2_COLORSPACE_REC709;
+			break;
+		case XST352_BYTE2_COLORIMETRY_UHDTV:
+			format->colorspace = V4L2_COLORSPACE_BT2020;
+			break;
+		default:
+			/*
+			 * Modes which will have VANC and Unknown colorimetery
+			 * are currently not supported
+			 */
+			format->colorspace = V4L2_COLORSPACE_DEFAULT;
 			break;
 		}
 	}
