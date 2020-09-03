@@ -276,6 +276,9 @@
 #define XST352_BYTE4_BIT_DEPTH_10		0x1
 #define XST352_BYTE4_BIT_DEPTH_12		0x2
 
+/* Refer Table 3 ST2082-10:2018 */
+#define XST352_BYTE4_LUM_COL_DIFF_MASK		BIT(28)
+
 #define CLK_INT		148500000UL
 
 /**
@@ -1356,6 +1359,7 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 	state->static_hdr.eotf = V4L2_EOTF_TRADITIONAL_GAMMA_SDR;
 	format->colorspace = V4L2_COLORSPACE_SMPTE170M;
 	format->xfer_func = V4L2_XFER_FUNC_709;
+	format->ycbcr_enc = V4L2_YCBCR_ENC_601;
 
 	if (mode != XSDIRX_MODE_SD_MASK) {
 		u8 eotf = (payload & XST352_BYTE2_EOTF_MASK) >>
@@ -1384,9 +1388,11 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 		switch (colorimetry) {
 		case XST352_BYTE2_COLORIMETRY_BT709:
 			format->colorspace = V4L2_COLORSPACE_REC709;
+			format->ycbcr_enc = V4L2_YCBCR_ENC_709;
 			break;
 		case XST352_BYTE2_COLORIMETRY_UHDTV:
 			format->colorspace = V4L2_COLORSPACE_BT2020;
+			format->ycbcr_enc = V4L2_YCBCR_ENC_BT2020;
 			break;
 		default:
 			/*
@@ -1396,6 +1402,22 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 			format->colorspace = V4L2_COLORSPACE_DEFAULT;
 			format->xfer_func = V4L2_XFER_FUNC_DEFAULT;
 			break;
+		}
+	}
+
+	/* Refer to Table 3 ST 2082-10:2018 */
+	if (mode == XSDIRX_MODE_12GI_OFFSET ||
+	    mode == XSDIRX_MODE_12GF_OFFSET) {
+		switch (sampling) {
+		case XST352_BYTE3_COLOR_FORMAT_420:
+		case XST352_BYTE3_COLOR_FORMAT_422:
+		case XST352_BYTE3_COLOR_FORMAT_YUV444:
+			if (payload & XST352_BYTE4_LUM_COL_DIFF_MASK)
+				format->ycbcr_enc =
+					V4L2_YCBCR_ENC_BT2020_CONST_LUM;
+			else
+				format->ycbcr_enc =
+					V4L2_YCBCR_ENC_BT2020;
 		}
 	}
 
