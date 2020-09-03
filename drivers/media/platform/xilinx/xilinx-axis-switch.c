@@ -385,7 +385,7 @@ static int xvsw_parse_of(struct xvswitch_device *xvsw)
 	}
 
 	ret = of_property_read_u32(node, "xlnx,routing-mode", &routing_mode);
-	if (ret < 0 || routing_mode < 0 || routing_mode > 1) {
+	if (ret < 0 || routing_mode > 1) {
 		dev_err(xvsw->dev, "missing or invalid xlnx,routing property\n");
 		return ret;
 	}
