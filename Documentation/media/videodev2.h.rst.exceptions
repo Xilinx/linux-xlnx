@@ -81,6 +81,7 @@ replace symbol V4L2_XFER_FUNC_NONE :c:type:`v4l2_xfer_func`
 replace symbol V4L2_XFER_FUNC_SMPTE2084 :c:type:`v4l2_xfer_func`
 replace symbol V4L2_XFER_FUNC_SMPTE240M :c:type:`v4l2_xfer_func`
 replace symbol V4L2_XFER_FUNC_SRGB :c:type:`v4l2_xfer_func`
+replace symbol V4L2_XFER_FUNC_HLG :c:type:`v4l2_xfer_func`
 
 # Documented enum v4l2_ycbcr_encoding
 replace symbol V4L2_YCBCR_ENC_601 :c:type:`v4l2_ycbcr_encoding`
