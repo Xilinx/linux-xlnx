@@ -1360,6 +1360,7 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 	format->colorspace = V4L2_COLORSPACE_SMPTE170M;
 	format->xfer_func = V4L2_XFER_FUNC_709;
 	format->ycbcr_enc = V4L2_YCBCR_ENC_601;
+	format->quantization = V4L2_QUANTIZATION_LIM_RANGE;
 
 	if (mode != XSDIRX_MODE_SD_MASK) {
 		u8 eotf = (payload & XST352_BYTE2_EOTF_MASK) >>
@@ -1420,6 +1421,11 @@ static int xsdirx_get_stream_properties(struct xsdirxss_state *state)
 					V4L2_YCBCR_ENC_BT2020;
 		}
 	}
+
+	/* Set quantization range */
+	if (sampling == XST352_BYTE3_COLOR_FORMAT_GBR &&
+	    format->colorspace != V4L2_COLORSPACE_BT2020)
+		format->quantization = V4L2_QUANTIZATION_FULL_RANGE;
 
 	dev_dbg(core->dev, "Stream width = %d height = %d Field = %d payload = 0x%08x ts = 0x%08x\n",
 		format->width, format->height, format->field, payload, val);
