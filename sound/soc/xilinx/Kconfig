@@ -48,9 +48,7 @@ config SND_SOC_XILINX_SPDIF
 
 config SND_SOC_XILINX_PL_SND_CARD
 	tristate "Audio support for the the Xilinx PL sound card"
-	depends on SND_SOC_XILINX_AUDIO_FORMATTER
-	depends on SND_SOC_XILINX_I2S
-	depends on SND_SOC_XILINX_SDI
+	depends on SND_SOC_XILINX_AUDIO_FORMATTER || SND_SOC_XILINX_I2S || SND_SOC_XILINX_SDI
 	select SND_SOC_HDMI_CODEC
 	help
 	  Select this option to enable Xilinx PL sound card
