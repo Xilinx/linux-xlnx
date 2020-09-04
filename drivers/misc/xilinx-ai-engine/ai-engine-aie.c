@@ -272,7 +272,6 @@ static int aie_scan_part_clocks(struct aie_partition *apart)
 				va = adev->base +
 				     aie_cal_regoff(adev, loc,
 						    AIE_SHIMPL_CLKCNTR_REGOFF);
-				va = adev->base + AIE_SHIMPL_CLKCNTR_REGOFF;
 				val = ioread32(va);
 
 				/*
@@ -296,10 +295,14 @@ static int aie_scan_part_clocks(struct aie_partition *apart)
 					    AIE_TILE_CORE_CLKCNTR_REGOFF);
 			val = ioread32(va);
 
-			if (val & AIE_TILE_CLKCNTR_NEXTCLK_MASK) {
-				aie_resource_set(&apart->cores_clk_state,
-						 nbitpos, 1);
-			}
+			/*
+			 * If the next tile is gated, skip the rest of the
+			 * column.
+			 */
+			if (!(val & AIE_TILE_CLKCNTR_NEXTCLK_MASK))
+				break;
+
+			aie_resource_set(&apart->cores_clk_state, nbitpos, 1);
 		}
 	}
 
