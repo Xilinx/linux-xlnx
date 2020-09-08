@@ -406,6 +406,7 @@ static void xvip_dma_buffer_queue(struct vb2_buffer *vb)
 	 */
 	if (V4L2_TYPE_IS_MULTIPLANAR(dma->format.type)) {
 		struct v4l2_pix_format_mplane *pix_mp;
+		size_t size;
 
 		pix_mp = &dma->format.fmt.pix_mp;
 		bpl = pix_mp->plane_fmt[0].bytesperline;
@@ -417,9 +418,12 @@ static void xvip_dma_buffer_queue(struct vb2_buffer *vb)
 		xvip_bpl_scaling_factor(pix_mp->pixelformat, &bpl_nume,
 					&bpl_deno);
 		dma->xt.frame_size = dma->fmtinfo->num_planes;
-		dma->sgl[0].size = (dma->r.width * dma->fmtinfo->bpl_factor *
-				    padding_factor_nume * bpl_nume) /
-				    (padding_factor_deno * bpl_deno);
+
+		size = ((size_t)dma->r.width * dma->fmtinfo->bpl_factor *
+			padding_factor_nume * bpl_nume) /
+			((size_t)padding_factor_deno * bpl_deno);
+		dma->sgl[0].size = size;
+
 		dma->sgl[0].icg = bpl - dma->sgl[0].size;
 		dma->xt.numf = dma->r.height;
 
@@ -430,7 +434,7 @@ static void xvip_dma_buffer_queue(struct vb2_buffer *vb)
 
 		/* Handling contiguous data with mplanes */
 		if (dma->fmtinfo->buffers == 1) {
-			dma->sgl[0].dst_icg = bpl *
+			dma->sgl[0].dst_icg = (size_t)bpl *
 					      (pix_mp->height - dma->r.height);
 		} else {
 			/* Handling non-contiguous data with mplanes */
@@ -445,6 +449,8 @@ static void xvip_dma_buffer_queue(struct vb2_buffer *vb)
 		}
 	} else {
 		struct v4l2_pix_format *pix;
+		size_t size;
+		size_t dst_icg;
 
 		pix = &dma->format.fmt.pix;
 		bpl = pix->bytesperline;
@@ -455,13 +461,15 @@ static void xvip_dma_buffer_queue(struct vb2_buffer *vb)
 		xvip_bpl_scaling_factor(pix->pixelformat, &bpl_nume,
 					&bpl_deno);
 		dma->xt.frame_size = dma->fmtinfo->num_planes;
-		dma->sgl[0].size = (dma->r.width * dma->fmtinfo->bpl_factor *
-				    padding_factor_nume * bpl_nume) /
-				    (padding_factor_deno * bpl_deno);
+		size = ((size_t)dma->r.width * dma->fmtinfo->bpl_factor *
+			padding_factor_nume * bpl_nume) /
+			((size_t)padding_factor_deno * bpl_deno);
+		dma->sgl[0].size = size;
 		dma->sgl[0].icg = bpl - dma->sgl[0].size;
 		dma->xt.numf = dma->r.height;
 		dma->sgl[0].dst_icg = 0;
-		dma->sgl[0].dst_icg = bpl * (pix->height - dma->r.height);
+		dst_icg = (size_t)bpl * (pix->height - dma->r.height);
+		dma->sgl[0].dst_icg = dst_icg;
 	}
 
 	desc = dmaengine_prep_interleaved_dma(dma->dma, &dma->xt, flags);
