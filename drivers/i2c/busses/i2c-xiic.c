@@ -61,7 +61,6 @@ enum xiic_endian {
  * @state: See STATE_
  * @singlemaster: Indicates bus is single master
  * @dynamic: Mode of controller
- * @repeated_start: Repeated start operation
  * @prev_msg_tx: Previous message is Tx
  */
 struct xiic_i2c {
@@ -80,7 +79,6 @@ struct xiic_i2c {
 	enum xilinx_i2c_state state;
 	bool singlemaster;
 	bool dynamic;
-	bool repeated_start;
 	bool prev_msg_tx;
 };
 
@@ -443,7 +441,7 @@ static void xiic_std_fill_tx_fifo(struct xiic_i2c *i2c)
 
 	if (len > fifo_space)
 		len = fifo_space;
-	else if (len && !(i2c->repeated_start))
+	else if (len && !(i2c->nmsgs > 1))
 		len--;
 
 	while (len--) {
@@ -766,7 +764,6 @@ static void xiic_start_recv(struct xiic_i2c *i2c)
 
 		/* Check if RSTA should be set */
 		if (cr & XIIC_CR_MSMS_MASK) {
-			i2c->repeated_start = true;
 			/* Already a master, RSTA should be set */
 			xiic_setreg8(i2c, XIIC_CR_REG_OFFSET, (cr |
 				     XIIC_CR_REPEATED_START_MASK) &
@@ -785,7 +782,6 @@ static void xiic_start_recv(struct xiic_i2c *i2c)
 
 		/* Write to Control Register,to start transaction in Rx mode */
 		if ((cr & XIIC_CR_MSMS_MASK) == 0) {
-			i2c->repeated_start = false;
 			xiic_setreg8(i2c, XIIC_CR_REG_OFFSET, (cr |
 				     XIIC_CR_MSMS_MASK)
 				     & ~(XIIC_CR_DIR_IS_TX_MASK));
@@ -860,7 +856,6 @@ static void xiic_start_send(struct xiic_i2c *i2c)
 		/* Check if RSTA should be set */
 		cr = xiic_getreg8(i2c, XIIC_CR_REG_OFFSET);
 		if (cr & XIIC_CR_MSMS_MASK) {
-			i2c->repeated_start = true;
 			/* Already a master, RSTA should be set */
 			xiic_setreg8(i2c, XIIC_CR_REG_OFFSET, (cr |
 				     XIIC_CR_REPEATED_START_MASK |
@@ -875,7 +870,6 @@ static void xiic_start_send(struct xiic_i2c *i2c)
 		xiic_std_fill_tx_fifo(i2c);
 
 		if ((cr & XIIC_CR_MSMS_MASK) == 0) {
-			i2c->repeated_start = false;
 
 			/* Start Tx by writing to CR */
 			cr = xiic_getreg8(i2c, XIIC_CR_REG_OFFSET);
