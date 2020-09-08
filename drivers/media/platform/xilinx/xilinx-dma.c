@@ -323,7 +323,7 @@ xvip_dma_queue_setup(struct vb2_queue *vq,
 		     unsigned int sizes[], struct device *alloc_devs[])
 {
 	struct xvip_dma *dma = vb2_get_drv_priv(vq);
-	u8 i;
+	unsigned int i;
 	int sizeimage;
 
 	/* Multi planar case: Make sure the image size is large enough */
