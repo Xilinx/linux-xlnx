@@ -633,10 +633,10 @@ xvip_dma_querycap(struct file *file, void *fh, struct v4l2_capability *cap)
 	cap->capabilities = dma->xdev->v4l2_caps | V4L2_CAP_STREAMING |
 			    V4L2_CAP_DEVICE_CAPS;
 
-	strscpy(cap->driver, "xilinx-vipp", sizeof(cap->driver));
-	strscpy(cap->card, dma->video.name, sizeof(cap->card));
-	snprintf(cap->bus_info, sizeof(cap->bus_info), "platform:%pOFn:%u",
-		 dma->xdev->dev->of_node, dma->port);
+	strscpy((char *)cap->driver, "xilinx-vipp", sizeof(cap->driver));
+	strscpy((char *)cap->card, (char *)dma->video.name, sizeof(cap->card));
+	snprintf((char *)cap->bus_info, sizeof(cap->bus_info),
+		 "platform:%pOFn:%u", dma->xdev->dev->of_node, dma->port);
 
 	return 0;
 }
@@ -714,7 +714,7 @@ xvip_dma_enum_input(struct file *file, void *priv, struct v4l2_input *i)
 	 * input like V4L2_INPUT_TYPE_TUNER and V4L2_INPUT_TYPE_TOUCH.
 	 */
 	i->type = V4L2_INPUT_TYPE_CAMERA;
-	strlcpy(i->name, subdev->name, sizeof(i->name));
+	strlcpy((char *)i->name, (char *)subdev->name, sizeof(i->name));
 
 	return 0;
 }
