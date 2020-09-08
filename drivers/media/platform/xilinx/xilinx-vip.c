@@ -263,9 +263,9 @@ EXPORT_SYMBOL_GPL(xvip_width_padding_factor);
 const struct xvip_video_format *xvip_of_get_format(struct device_node *node)
 {
 	const char *pattern = "mono";
-	unsigned int vf_code;
+	unsigned int vf_code = 0;
 	unsigned int i;
-	u32 width;
+	u32 width = 0;
 	int ret;
 
 	ret = of_property_read_u32(node, "xlnx,video-format", &vf_code);
