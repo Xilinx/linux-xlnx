@@ -294,8 +294,13 @@ const struct xvip_video_format *xvip_of_get_format(struct device_node *node)
 	if (ret < 0)
 		return ERR_PTR(ret);
 
-	if (vf_code == XVIP_VF_MONO_SENSOR)
-		of_property_read_string(node, "xlnx,cfa-pattern", &pattern);
+	if (vf_code == XVIP_VF_MONO_SENSOR) {
+		ret = of_property_read_string(node,
+					      "xlnx,cfa-pattern",
+					      &pattern);
+		if (ret < 0)
+			return ERR_PTR(ret);
+	}
 
 	for (i = 0; i < ARRAY_SIZE(xvip_video_formats); ++i) {
 		const struct xvip_video_format *format = &xvip_video_formats[i];
@@ -393,8 +398,7 @@ int xvip_init_resources(struct xvip_device *xvip)
 	if (IS_ERR(xvip->clk))
 		return PTR_ERR(xvip->clk);
 
-	clk_prepare_enable(xvip->clk);
-	return 0;
+	return clk_prepare_enable(xvip->clk);
 }
 EXPORT_SYMBOL_GPL(xvip_init_resources);
 
