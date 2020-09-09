@@ -199,6 +199,7 @@ enum pm_query_id {
 	PM_QID_PINCTRL_GET_PIN_GROUPS,
 	PM_QID_CLOCK_GET_NUM_CLOCKS,
 	PM_QID_CLOCK_GET_MAX_DIVISOR,
+	PM_QID_PLD_GET_PARENT,
 };
 
 enum zynqmp_pm_reset_action {
