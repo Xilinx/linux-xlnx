@@ -94,22 +94,27 @@ patternProperties:
 examples:
   - |
     #include <dt-bindings/power/xlnx-versal-power.h>
-    ai_engine: ai-engine@20000000000 {
-      compatible = "xlnx,ai-engine-v1.0";
-      reg = <0x200 0x0 0x1 0x0>;
+    bus {
       #address-cells = <2>;
       #size-cells = <2>;
-      power-domains = <&versal_firmware PM_DEV_AI>;
-      interrupt-parent = <&gic>;
-      interrupts = <0x0 0x94 0x4>,
-                   <0x0 0x95 0x4>,
-                   <0x0 0x96 0x4>;
-      interrupt-names = "interrupt1", "interrupt2", "interrupt3";
 
-      aie_partition0: aie-partition@0 {
-        /* 50 columns and 8 core tile rows + 1 SHIM row */
-        reg = <0 0 50 9>;
-        xlnx,partition-id = <1>;
+      ai_engine: ai-engine@20000000000 {
+        compatible = "xlnx,ai-engine-v1.0";
+        reg = <0x200 0x0 0x1 0x0>;
+        #address-cells = <2>;
+        #size-cells = <2>;
+        power-domains = <&versal_firmware PM_DEV_AI>;
+        interrupt-parent = <&gic>;
+        interrupts = <0x0 0x94 0x4>,
+                        <0x0 0x95 0x4>,
+                        <0x0 0x96 0x4>;
+        interrupt-names = "interrupt1", "interrupt2", "interrupt3";
+
+        aie_partition0: aie-partition@0 {
+                /* 50 columns and 8 core tile rows + 1 SHIM row */
+                reg = <0 0 50 9>;
+                xlnx,partition-id = <1>;
+        };
       };
     };
 
