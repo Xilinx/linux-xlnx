@@ -187,7 +187,6 @@ static int zynqmp_pm_probe(struct platform_device *pdev)
 	u32 pm_api_version;
 	struct mbox_client *client;
 
-	zynqmp_pm_init_finalize();
 	zynqmp_pm_get_api_version(&pm_api_version);
 
 	/* Check PM API version number */
@@ -285,6 +284,23 @@ static int zynqmp_pm_remove(struct platform_device *pdev)
 
 	return 0;
 }
+
+static int __init do_init_finalize(void)
+{
+	struct device_node *np;
+
+	np = of_find_compatible_node(NULL, NULL, "xlnx,zynqmp");
+	if (!np) {
+		np = of_find_compatible_node(NULL, NULL, "xlnx,versal");
+		if (!np)
+			return 0;
+	}
+	of_node_put(np);
+
+	return zynqmp_pm_init_finalize();
+}
+
+late_initcall_sync(do_init_finalize);
 
 static const struct of_device_id pm_of_match[] = {
 	{ .compatible = "xlnx,zynqmp-power", },
