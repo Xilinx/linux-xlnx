@@ -196,6 +196,7 @@ enum pm_query_id {
 	PM_QID_PINCTRL_GET_PIN_GROUPS = 11,
 	PM_QID_CLOCK_GET_NUM_CLOCKS = 12,
 	PM_QID_CLOCK_GET_MAX_DIVISOR,
+	PM_QID_PLD_GET_PARENT,
 };
 
 enum rpu_oper_mode {
