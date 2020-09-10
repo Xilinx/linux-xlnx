@@ -33,7 +33,10 @@
 #define AIE_SHIMPL_CLKCNTR_REGOFF		0x00036040U
 #define AIE_SHIMPL_COLRESET_REGOFF		0x00036048U
 #define AIE_SHIMPL_RESET_REGOFF			0x0003604cU
+#define AIE_SHIMPL_GROUP_ERROR_REGOFF		0x0003450cU
 #define AIE_TILE_CORE_CLKCNTR_REGOFF		0x00036040U
+#define AIE_TILE_CORE_GROUP_ERROR_REGOFF	0x00034510U
+#define AIE_TILE_MEM_GROUP_ERROR_REGOFF		0x00014514U
 
 /*
  * Register masks
@@ -93,10 +96,26 @@ static const struct aie_tile_regs aie_kernel_regs[] = {
 	 .soff = AIE_SHIMPL_CLKCNTR_REGOFF,
 	 .eoff = AIE_SHIMPL_CLKCNTR_REGOFF,
 	},
+	/* SHIM group error enable */
+	{.attribute = (AIE_TILE_TYPE_SHIMPL | AIE_TILE_TYPE_SHIMNOC) <<
+		      AIE_REGS_ATTR_TILE_TYPE_SHIFT,
+	 .soff = AIE_SHIMPL_GROUP_ERROR_REGOFF,
+	 .eoff = AIE_SHIMPL_GROUP_ERROR_REGOFF,
+	},
 	/* Tile clock control */
 	{.attribute = AIE_TILE_TYPE_TILE << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
 	 .soff = AIE_TILE_CORE_CLKCNTR_REGOFF,
 	 .eoff = AIE_TILE_CORE_CLKCNTR_REGOFF,
+	},
+	/* Tile group error for core module */
+	{.attribute = AIE_TILE_TYPE_TILE << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
+	 .soff = AIE_TILE_CORE_GROUP_ERROR_REGOFF,
+	 .eoff = AIE_TILE_CORE_GROUP_ERROR_REGOFF,
+	},
+	/* Tile group error for memory module */
+	{.attribute = AIE_TILE_TYPE_TILE << AIE_REGS_ATTR_TILE_TYPE_SHIFT,
+	 .soff = AIE_TILE_MEM_GROUP_ERROR_REGOFF,
+	 .eoff = AIE_TILE_MEM_GROUP_ERROR_REGOFF,
 	},
 };
 
@@ -126,6 +145,103 @@ static const struct aie_dma_attr aie_shimdma = {
 	.bd_regoff = 0x0001d000U,
 	.num_bds = 16,
 	.bd_len = 0x14U,
+};
+
+static const struct aie_event_attr aie_pl_event = {
+	.bc_event = {
+		.mask = GENMASK(6, 0),
+		.regoff = 0x0U,
+	},
+	.group_error = {
+		.mask = GENMASK(10, 0),
+		.regoff = 0xcU,
+	},
+	.bc_regoff = 0x34010U,
+	.status_regoff = 0x34200U,
+	.group_regoff = 0x34500U,
+	.base_error_event = 62U,
+	.num_broadcasts = 16U,
+	.base_bc_event = 107U,
+	.num_events = 128U,
+};
+
+static const struct aie_event_attr aie_mem_event = {
+	.bc_event = {
+		.mask = GENMASK(6, 0),
+		.regoff = 0x0U,
+	},
+	.group_error = {
+		.mask = GENMASK(13, 0),
+		.regoff = 0x14U,
+	},
+	.bc_regoff = 0x14010U,
+	.status_regoff = 0x14200U,
+	.group_regoff = 0x14500U,
+	.base_error_event = 87U,
+	.num_broadcasts = 16U,
+	.base_bc_event = 107U,
+	.num_events = 128U,
+};
+
+static const struct aie_event_attr aie_core_event = {
+	.bc_event = {
+		.mask = GENMASK(6, 0),
+		.regoff = 0x0U,
+	},
+	.group_error = {
+		.mask = GENMASK(21, 0),
+		.regoff = 0x10U,
+	},
+	.bc_regoff = 0x34010U,
+	.status_regoff = 0x34200U,
+	.group_regoff = 0x34500U,
+	.base_error_event = 48U,
+	.num_broadcasts = 16U,
+	.base_bc_event = 107U,
+	.num_events = 128U,
+};
+
+static const struct aie_l1_intr_ctrl_attr aie_l1_intr_ctrl = {
+	.swa_status = {
+		.mask = GENMASK(19, 0),
+		.regoff = 0xcU,
+	},
+	.swb_status = {
+		.mask = GENMASK(19, 0),
+		.regoff = 0x3cU,
+	},
+	.swa_event = {
+		.mask = GENMASK(6, 0),
+		.regoff = 0x14U,
+	},
+	.swb_event = {
+		.mask = GENMASK(6, 0),
+		.regoff = 0x44U,
+	},
+	.regoff = 0x35000U,
+	.event_lsb = 8,
+	.num_broadcasts = 0x14U,
+};
+
+static const struct aie_l2_intr_ctrl_attr aie_l2_intr_ctrl = {
+	.mask = {
+		.mask = GENMASK(15, 0),
+		.regoff = 0x0U,
+	},
+	.enable = {
+		.mask = GENMASK(15, 0),
+		.regoff = 0x4U,
+	},
+	.disable = {
+		.mask = GENMASK(15, 0),
+		.regoff = 0x8U,
+	},
+	.status = {
+		.mask = GENMASK(15, 0),
+		.regoff = 0xcU,
+	},
+	.regoff = 0x15000U,
+	.num_broadcasts = 0x10U,
 };
 
 static u32 aie_get_tile_type(struct aie_location *loc)
@@ -424,6 +540,11 @@ int aie_device_init(struct aie_device *adev)
 	adev->col_rst = &aie_col_rst;
 	adev->col_clkbuf = &aie_col_clkbuf;
 	adev->shim_dma = &aie_shimdma;
+	adev->pl_events = &aie_pl_event;
+	adev->mem_events = &aie_mem_event;
+	adev->core_events = &aie_core_event;
+	adev->l1_ctrl = &aie_l1_intr_ctrl;
+	adev->l2_ctrl = &aie_l2_intr_ctrl;
 
 	/* Get the columns resource */
 	/* Get number of columns from AI engine memory resource */
