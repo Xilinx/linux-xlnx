@@ -20,6 +20,7 @@ select:
         enum:
           - arm,pl011
           - zte,zx296702-uart
+          - arm,xlnx-sbsa-uart
   required:
     - compatible
 
@@ -32,6 +33,10 @@ properties:
       - items:
           - const: zte,zx296702-uart
           - const: arm,primecell
+      - items:
+          - const: arm,xlnx-sbsa-uart
+          - const: arm,primecell
+
 
   reg:
     maxItems: 1
