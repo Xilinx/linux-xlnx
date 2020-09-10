@@ -4,10 +4,18 @@
  *
  * Copyright (C) 2020 Xilinx, Inc.
  */
+#include <linux/bitmap.h>
+#include <linux/firmware/xlnx-zynqmp.h>
+#include <linux/interrupt.h>
 #include <linux/io.h>
+#include <linux/slab.h>
+#include <linux/workqueue.h>
 
 #include "ai-engine-internal.h"
 #include "linux/xlnx-ai-engine.h"
+
+#define AIE_ARRAY_TILE_ERROR_BC_ID		0U
+#define AIE_SHIM_TILE_ERROR_IRQ_ID		16U
 
 /**
  * aie_get_broadcast_event() - get event ID being broadcast on given
@@ -324,4 +332,274 @@ static void aie_disable_l2_ctrl(struct aie_partition *apart,
 
 	bit_map &= intr_ctrl->disable.mask;
 	iowrite32(bit_map, apart->adev->base + regoff);
+}
+
+/**
+ * aie_tile_backtrack() - if error was asserted on a broadcast line in
+ *			  the given array tile,
+ *				* disable the error from the group errors
+ * @apart: AIE partition pointer.
+ * @loc: tile location.
+ * @module: module type.
+ * @sw: switch type.
+ * @bc_id: broadcast ID.
+ * @return: true if error was asserted, else return false.
+ */
+static bool aie_tile_backtrack(struct aie_partition *apart,
+			       struct aie_location loc,
+			       enum aie_module_type module,
+			       enum aie_shim_switch_type sw, u8 bc_id)
+{
+	unsigned long grenabled;
+	u32 status[4];
+	u8 n, grevent, eevent;
+	bool ret = false;
+
+	if (module == AIE_PL_MOD)
+		grevent = aie_get_l1_event(apart, &loc, sw, bc_id);
+	else
+		grevent = aie_get_broadcast_event(apart, &loc, module, bc_id);
+
+	aie_read_event_status(apart, &loc, module, status);
+
+	if (!(status[grevent / 32] & BIT(grevent % 32)))
+		return ret;
+
+	grenabled = aie_check_group_errors_enabled(apart, &loc, module);
+	for_each_set_bit(n, &grenabled, 32) {
+		eevent = aie_get_error_event(apart, &loc, module, n);
+		if (!(status[eevent / 32] & BIT(eevent % 32)))
+			continue;
+		grenabled &= ~BIT(n);
+		ret = true;
+		dev_err_ratelimited(&apart->adev->dev,
+				    "Asserted tile error event %d at col %d row %d\n",
+				    eevent, loc.col, loc.row);
+	}
+	aie_set_error_event(apart, &loc, module, grenabled);
+
+	return ret;
+}
+
+/**
+ * aie_map_l2_to_l1() - map the status bit set in level 2 interrupt controller
+ *		        to a level 1 interrupt controller.
+ * @apart: AIE partition pointer.
+ * @set_pos: position of level 2 set bit.
+ * @l2_col: level 2 interrupt controller column ID.
+ * @l1_col: pointer to return corresponding level 1 column ID.
+ * @sw: pointer to return the level 1 interrupt controller switch ID.
+ *
+ * This API implementation is tightly coupled with the level 2 to level 1
+ * static mapping created when AIE application CDOs are generated.
+ */
+static void aie_map_l2_to_l1(struct aie_partition *apart, u32 set_pos,
+			     u32 l2_col, u32 *l1_col,
+			     enum aie_shim_switch_type *sw)
+{
+	if (l2_col + 3 >= apart->range.start.col + apart->range.size.col) {
+		*l1_col = l2_col + (set_pos % 6) / 2;
+		*sw = (set_pos % 6) % 2;
+	} else if (l2_col % 2 == 0) {
+		/* set bit position could be 0 - 5 */
+		*l1_col = l2_col - (2 - (set_pos % 6) / 2);
+		*sw = (set_pos % 6) % 2;
+	} else {
+		/* set bit position could be 0 - 1 */
+		*l1_col = l2_col;
+		*sw = set_pos;
+	}
+}
+
+/**
+ * aie_l1_backtrack() - backtrack AIE array tiles or shim tile based on
+ *			the level 2 status bit set.
+ * @apart: AIE partition pointer.
+ * @loc: tile location of level 2 interrupt controller.
+ * @set_pos: set bit position in level 2 controller status.
+ * @return: true if error was asserted, else return false.
+ */
+static bool aie_l1_backtrack(struct aie_partition *apart,
+			     struct aie_location loc, u32 set_pos)
+{
+	struct aie_location l1_ctrl;
+	enum aie_shim_switch_type sw;
+	unsigned long status;
+	u32 srow = apart->range.start.row + 1;
+	u32 erow = apart->range.start.row + apart->range.size.row;
+	bool ret = false;
+
+	/*
+	 * Based on the set status bit find which level 1 interrupt
+	 * controller has generated an interrupt
+	 */
+	l1_ctrl.row = 0;
+	aie_map_l2_to_l1(apart, set_pos, loc.col, &l1_ctrl.col, &sw);
+
+	status = aie_get_l1_status(apart, &l1_ctrl, sw);
+
+	/* For now, support error broadcasts only */
+	if (status & BIT(AIE_ARRAY_TILE_ERROR_BC_ID)) {
+		struct aie_location temp;
+		enum aie_module_type module;
+		u32 bc_event;
+
+		if (sw == AIE_SHIM_SWITCH_A)
+			module = AIE_CORE_MOD;
+		else
+			module = AIE_MEM_MOD;
+
+		aie_clear_l1_intr(apart, &l1_ctrl, sw,
+				  AIE_ARRAY_TILE_ERROR_BC_ID);
+
+		temp.row = srow;
+		temp.col = l1_ctrl.col;
+		bc_event = aie_get_bc_event(apart, &temp, module,
+					    AIE_ARRAY_TILE_ERROR_BC_ID);
+		for (; temp.row < erow; temp.row++) {
+			u32 reg[4];
+
+			if (!aie_part_check_clk_enable_loc(apart, &temp))
+				break;
+
+			if (aie_tile_backtrack(apart, temp, module, sw,
+					       AIE_ARRAY_TILE_ERROR_BC_ID))
+				ret = true;
+
+			aie_read_event_status(apart, &temp, module, reg);
+			if (!(reg[bc_event / 32] & BIT(bc_event % 32)))
+				break;
+		}
+	}
+
+	if (status & BIT(AIE_SHIM_TILE_ERROR_IRQ_ID)) {
+		aie_clear_l1_intr(apart, &l1_ctrl, sw,
+				  AIE_SHIM_TILE_ERROR_IRQ_ID);
+		if (aie_tile_backtrack(apart, l1_ctrl, AIE_PL_MOD, sw,
+				       AIE_SHIM_TILE_ERROR_IRQ_ID))
+			ret = true;
+	}
+	return ret;
+}
+
+/**
+ * aie_l2_backtrack() - iterate through each level 2 interrupt controller
+ *			in a given partition and backtrack its
+ *			corresponding level 1 interrupt controller.
+ * @apart: AIE partition pointer
+ */
+static void aie_l2_backtrack(struct aie_partition *apart)
+{
+	struct aie_location loc;
+	unsigned long status;
+	u32 n, ttype, l2_mask;
+	int ret;
+
+	ret = mutex_lock_interruptible(&apart->mlock);
+	if (ret) {
+		dev_err_ratelimited(&apart->dev,
+				    "Failed to acquire lock. Process was interrupted by fatal signals\n");
+		return;
+	}
+
+	for (loc.col = apart->range.start.col, loc.row = 0;
+	     loc.col < apart->range.start.col + apart->range.size.col;
+	     loc.col++) {
+		ttype = apart->adev->ops->get_tile_type(&loc);
+		if (ttype == AIE_TILE_TYPE_SHIMNOC) {
+			l2_mask = aie_get_l2_mask(apart, &loc);
+			aie_disable_l2_ctrl(apart, &loc, l2_mask);
+
+			status = aie_get_l2_status(apart, &loc);
+			aie_clear_l2_intr(apart, &loc, status);
+			for_each_set_bit(n, &status,
+					 apart->adev->l2_ctrl->num_broadcasts)
+				ret = aie_l1_backtrack(apart, loc, n);
+			aie_enable_l2_ctrl(apart, &loc, l2_mask);
+		}
+	}
+
+	/*
+	 * Level 2 interrupt registers are edge-triggered. As a result,
+	 * re-enabling level 2 won't trigger an interrupt for the already
+	 * latched interrupts at level 1 controller.
+	 */
+	for (loc.col = apart->range.start.col, loc.row = 0;
+	     loc.col < apart->range.start.col + apart->range.size.col;
+	     loc.col++) {
+		if (aie_get_l1_status(apart, &loc, AIE_SHIM_SWITCH_A) ||
+		    aie_get_l1_status(apart, &loc, AIE_SHIM_SWITCH_B)) {
+			schedule_work(&apart->adev->backtrack);
+			break;
+		}
+	}
+	mutex_unlock(&apart->mlock);
+}
+
+/**
+ * aie_part_backtrack() - backtrack a individual.
+ * @apart: AIE partition pointer.
+ */
+static void aie_part_backtrack(struct aie_partition *apart)
+{
+	aie_l2_backtrack(apart);
+}
+
+/**
+ * aie_array_backtrack() - backtrack each partition to find the source of error
+ *			   interrupt.
+ * @work: pointer to the work structure.
+ *
+ * This task will re-enable IRQ after errors in all partitions has been
+ * serviced.
+ */
+void aie_array_backtrack(struct work_struct *work)
+{
+	struct aie_device *adev;
+	struct aie_partition *apart;
+	int ret;
+
+	adev = container_of(work, struct aie_device, backtrack);
+
+	ret = mutex_lock_interruptible(&adev->mlock);
+	if (ret) {
+		dev_err_ratelimited(&adev->dev,
+				    "Failed to acquire lock. Process was interrupted by fatal signals\n");
+		return;
+	}
+
+	list_for_each_entry(apart, &adev->partitions, node)
+		aie_part_backtrack(apart);
+
+	/* For ES1 silicon, interrupts are latched in NPI */
+	if (adev->version == VERSAL_ES1_REV_ID) {
+		ret = adev->eemi_ops->ioctl(adev->pm_node_id,
+					    IOCTL_AIE_ISR_CLEAR,
+					    AIE_NPI_ERROR_ID, 0, NULL);
+		if (ret < 0) {
+			dev_err_ratelimited(&adev->dev,
+					    "Failed to clear NPI ISR\n");
+		}
+	}
+	mutex_unlock(&adev->mlock);
+	enable_irq(adev->irq);
+}
+
+/**
+ * aie_interrupt() - interrupt handler for AIE.
+ * @irq: Interrupt number.
+ * @data: AI engine device structure.
+ * @return: IRQ_HANDLED.
+ *
+ * This function disables IRQ and schedules a task in workqueue to backtrack
+ * the source of error interrupt. Disabled interrupts are re-enabled after
+ * successful completion of bottom half.
+ */
+irqreturn_t aie_interrupt(int irq, void *data)
+{
+	struct aie_device *adev = data;
+
+	disable_irq_nosync(irq);
+	schedule_work(&adev->backtrack);
+	return IRQ_HANDLED;
 }
