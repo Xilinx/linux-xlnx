@@ -19,6 +19,7 @@ select:
       contains:
         enum:
           - arm,pl011
+          - arm,xlnx-sbsa-uart
   required:
     - compatible
 
@@ -29,8 +30,8 @@ properties:
           - const: arm,pl011
           - const: arm,primecell
       - items:
-          - const: arm,pl011
-          - const: arm,xlnx-uart # xilinx uart as platform device
+          - const: arm,xlnx-sbsa-uart
+          - const: arm,primecell
 
   reg:
     maxItems: 1
