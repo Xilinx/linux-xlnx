@@ -335,9 +335,82 @@ static void aie_disable_l2_ctrl(struct aie_partition *apart,
 }
 
 /**
+ * aie_part_set_event_bitmap() - set the status of event in local event
+ *				 bitmap.
+ * @apart: AIE partition pointer.
+ * @loc: tile location.
+ * @module: module type.
+ * @event: event ID to be logged.
+ */
+static void aie_part_set_event_bitmap(struct aie_partition *apart,
+				      struct aie_location loc,
+				      enum aie_module_type module, u8 event)
+{
+	u8 row, col, mod_num_events;
+	struct aie_resource *event_sts;
+	u32 offset;
+
+	if (module == AIE_CORE_MOD) {
+		event_sts = &apart->core_event_status;
+		mod_num_events = apart->adev->core_events->num_events;
+		row = loc.row - apart->range.start.row - 1;
+	} else if (module == AIE_MEM_MOD) {
+		event_sts = &apart->mem_event_status;
+		mod_num_events = apart->adev->mem_events->num_events;
+		row = loc.row - apart->range.start.row - 1;
+	} else {
+		event_sts = &apart->pl_event_status;
+		mod_num_events = apart->adev->pl_events->num_events;
+		row = loc.row;
+	}
+
+	col = loc.col - apart->range.start.col;
+
+	offset = (col + row * apart->range.size.col) * mod_num_events + event;
+	aie_resource_set(event_sts, offset, 1);
+}
+
+/**
+ * aie_check_error_bitmap() - check the status of event in local event bitmap.
+ * @apart: AIE partition pointer.
+ * @loc: tile location.
+ * @module: module type.
+ * @event: event ID to check.
+ * @return: true if event has happened, else false.
+ */
+static bool aie_check_error_bitmap(struct aie_partition *apart,
+				   struct aie_location loc,
+				   enum aie_module_type module, u8 event)
+{
+	struct aie_resource *event_sts;
+	u32 offset;
+	u8 row, col, mod_num_events;
+
+	if (module == AIE_CORE_MOD) {
+		event_sts = &apart->core_event_status;
+		mod_num_events = apart->adev->core_events->num_events;
+		row = loc.row - apart->range.start.row - 1;
+	} else if (module == AIE_MEM_MOD) {
+		event_sts = &apart->mem_event_status;
+		mod_num_events = apart->adev->mem_events->num_events;
+		row = loc.row - apart->range.start.row - 1;
+	} else {
+		event_sts = &apart->pl_event_status;
+		mod_num_events = apart->adev->pl_events->num_events;
+		row = loc.row;
+	}
+
+	col = loc.col - apart->range.start.col;
+
+	offset = (col + row * apart->range.size.col) * mod_num_events + event;
+	return aie_resource_testbit(event_sts, offset);
+}
+
+/**
  * aie_tile_backtrack() - if error was asserted on a broadcast line in
  *			  the given array tile,
  *				* disable the error from the group errors
+ *				* record the error event in local bitmap
  * @apart: AIE partition pointer.
  * @loc: tile location.
  * @module: module type.
@@ -371,6 +444,7 @@ static bool aie_tile_backtrack(struct aie_partition *apart,
 		if (!(status[eevent / 32] & BIT(eevent % 32)))
 			continue;
 		grenabled &= ~BIT(n);
+		aie_part_set_event_bitmap(apart, loc, module, eevent);
 		ret = true;
 		dev_err_ratelimited(&apart->adev->dev,
 				    "Asserted tile error event %d at col %d row %d\n",
