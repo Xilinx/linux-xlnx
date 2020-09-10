@@ -9,6 +9,7 @@
 #include <linux/firmware/xlnx-zynqmp.h>
 #include <linux/io.h>
 #include <linux/slab.h>
+#include <linux/xlnx-ai-engine.h>
 
 #include "ai-engine-internal.h"
 
@@ -242,6 +243,278 @@ static const struct aie_l2_intr_ctrl_attr aie_l2_intr_ctrl = {
 	},
 	.regoff = 0x15000U,
 	.num_broadcasts = 0x10U,
+};
+
+static const struct aie_event_prop aie_core_stream_error_prop[] = {
+	{
+		.event = 54U,
+		.event_str = "CORE: TLAST in WSS words 0-2",
+	},
+	{
+		.event = 57U,
+		.event_str = "CORE: Control packet error",
+	},
+	{
+		.event = 56U,
+		.event_str = "CORE: Stream packet parity error",
+	},
+};
+
+static const struct aie_event_prop aie_core_inst_error_prop[] = {
+	{
+		.event = 59U,
+		.event_str = "CORE: Instruction decompression error",
+	},
+};
+
+static const struct aie_event_prop aie_core_ecc_error_prop[] = {
+	{
+		.event = 64U,
+		.event_str = "CORE: PM ECC error 2-bit",
+	},
+	{
+		.event = 62U,
+		.event_str = "CORE: PM ECC error scrub 2-bit",
+	},
+};
+
+static const struct aie_event_prop aie_core_access_error_prop[] = {
+	{
+		.event = 55U,
+		.event_str = "CORE: PM reg access failure",
+	},
+	{
+		.event = 66U,
+		.event_str = "CORE: DM access to unavailable",
+	},
+	{
+		.event = 65U,
+		.event_str = "CORE: PM address out of range",
+	},
+	{
+		.event = 60U,
+		.event_str = "CORE: DM address out of range",
+	},
+};
+
+static const struct aie_event_prop aie_core_lock_error_prop[] = {
+	{
+		.event = 67U,
+		.event_str = "CORE: Lock access to unavailable",
+	},
+};
+
+static const struct aie_event_prop aie_core_bus_error_prop[] = {
+	{
+		.event = 58U,
+		.event_str = "CORE: AXI-MM slave error",
+	},
+};
+
+static const struct aie_event_prop aie_mem_ecc_error_prop[] = {
+	{
+		.event = 88U,
+		.event_str = "MEM: DM ECC error scrub 2-bit",
+	},
+	{
+		.event = 90U,
+		.event_str = "MEM: DM ECC error 2-bit",
+	},
+};
+
+static const struct aie_event_prop aie_mem_parity_error_prop[] = {
+	{
+		.event = 91U,
+		.event_str = " MEM: DM parity error bank 2",
+	},
+	{
+		.event = 92U,
+		.event_str = " MEM: DM parity error bank 3",
+	},
+	{
+		.event = 93U,
+		.event_str = " MEM: DM parity error bank 4",
+	},
+	{
+		.event = 94U,
+		.event_str = " MEM: DM parity error bank 5",
+	},
+	{
+		.event = 95U,
+		.event_str = " MEM: DM parity error bank 6",
+	},
+	{
+		.event = 96U,
+		.event_str = " MEM: DM parity error bank 7",
+	},
+};
+
+static const struct aie_event_prop aie_mem_dma_error_prop[] = {
+	{
+		.event = 97U,
+		.event_str = " MEM: DMA S2MM 0 error",
+	},
+	{
+		.event = 98U,
+		.event_str = " MEM: DMA S2MM 1 error",
+	},
+	{
+		.event = 99U,
+		.event_str = " MEM: DMA MM2S 0 error",
+	},
+	{
+		.event = 100U,
+		.event_str = " MEM: DMA MM2S 1 error",
+	},
+};
+
+static const struct aie_event_prop aie_shim_bus_error_prop[] = {
+	{
+		.event = 62U,
+		.event_str = "SHIM: AXI-MM slave tile error",
+	},
+};
+
+static const struct aie_event_prop aie_shim_stream_error_prop[] = {
+	{
+		.event = 63U,
+		.event_str = "SHIM: Control packet error",
+	},
+	{
+		.event = 64U,
+		.event_str = "SHIM: AXI-MM decode NSU error",
+	},
+	{
+		.event = 65U,
+		.event_str = "SHIM: AXI-MM slave NSU error",
+	},
+	{
+		.event = 66U,
+		.event_str = "SHIM: AXI-MM unsupported traffic",
+	},
+	{
+		.event = 67U,
+		.event_str = "SHIM: AXI-MM unsecure access in secure mode",
+	},
+	{
+		.event = 68U,
+		.event_str = "SHIM: AXI-MM byte strobe error",
+	},
+};
+
+static const struct aie_event_prop aie_shim_dma_error_prop[] = {
+	{
+		.event = 69U,
+		.event_str = "SHIM: DMA S2MM 0 error",
+	},
+	{
+		.event = 70U,
+		.event_str = "SHIM: DMA S2MM 1 error",
+	},
+	{
+		.event = 71U,
+		.event_str = "SHIM: DMA MM2S 0 error",
+	},
+	{
+		.event = 72U,
+		.event_str = "SHIM: DMA MM2S 1 error",
+	},
+};
+
+static const struct aie_err_category aie_core_err_category[] = {
+	{
+		/* AIE_ERROR_CATEGORY_STREAM */
+		.err_category = AIE_ERROR_CATEGORY_STREAM,
+		.num_events = ARRAY_SIZE(aie_core_stream_error_prop),
+		.prop = aie_core_stream_error_prop,
+	},
+	{
+		/* AIE_ERROR_CATEGORY_ACCESS */
+		.err_category = AIE_ERROR_CATEGORY_ACCESS,
+		.num_events = ARRAY_SIZE(aie_core_access_error_prop),
+		.prop = aie_core_access_error_prop,
+	},
+	{
+		/* AIE_ERROR_CATEGORY_BUS */
+		.err_category = AIE_ERROR_CATEGORY_BUS,
+		.num_events = ARRAY_SIZE(aie_core_bus_error_prop),
+		.prop = aie_core_bus_error_prop,
+	},
+	{
+		/* AIE_ERROR_CATEGORY_INSTRUCTION */
+		.err_category = AIE_ERROR_CATEGORY_INSTRUCTION,
+		.num_events = ARRAY_SIZE(aie_core_inst_error_prop),
+		.prop = aie_core_inst_error_prop,
+	},
+	{
+		/* AIE_ERROR_CATEGORY_ECC */
+		.err_category = AIE_ERROR_CATEGORY_ECC,
+		.num_events = ARRAY_SIZE(aie_core_ecc_error_prop),
+		.prop = aie_core_ecc_error_prop,
+	},
+	{
+		/* AIE_ERROR_CATEGORY_LOCK */
+		.err_category = AIE_ERROR_CATEGORY_LOCK,
+		.num_events = ARRAY_SIZE(aie_core_lock_error_prop),
+		.prop = aie_core_lock_error_prop,
+	},
+};
+
+static const struct aie_err_category aie_mem_err_category[] = {
+	{
+		/* AIE_ERROR_CATEGORY_ECC */
+		.err_category = AIE_ERROR_CATEGORY_ECC,
+		.num_events = ARRAY_SIZE(aie_mem_ecc_error_prop),
+		.prop = aie_mem_ecc_error_prop,
+	},
+	{
+		/* AIE_ERROR_CATEGORY_MEM_PARITY */
+		.err_category = AIE_ERROR_CATEGORY_MEM_PARITY,
+		.num_events = ARRAY_SIZE(aie_mem_parity_error_prop),
+		.prop = aie_mem_parity_error_prop,
+	},
+	{
+		/* AIE_ERROR_CATEGORY_DMA */
+		.err_category = AIE_ERROR_CATEGORY_DMA,
+		.num_events = ARRAY_SIZE(aie_mem_dma_error_prop),
+		.prop = aie_mem_dma_error_prop,
+	},
+};
+
+static const struct aie_err_category aie_shim_err_category[] = {
+	{
+		/* AIE_ERROR_CATEGORY_BUS */
+		.err_category = AIE_ERROR_CATEGORY_BUS,
+		.num_events = ARRAY_SIZE(aie_shim_bus_error_prop),
+		.prop = aie_shim_bus_error_prop,
+	},
+	{
+		/* AIE_ERROR_CATEGORY_STREAM */
+		.err_category = AIE_ERROR_CATEGORY_STREAM,
+		.num_events = ARRAY_SIZE(aie_shim_stream_error_prop),
+		.prop = aie_shim_stream_error_prop,
+	},
+	{
+		/* AIE_ERROR_CATEGORY_DMA */
+		.err_category = AIE_ERROR_CATEGORY_DMA,
+		.num_events = ARRAY_SIZE(aie_shim_dma_error_prop),
+		.prop = aie_shim_dma_error_prop,
+	},
+};
+
+static const struct aie_error_attr aie_core_error = {
+	.num_err_categories = ARRAY_SIZE(aie_core_err_category),
+	.err_category = aie_core_err_category,
+};
+
+static const struct aie_error_attr aie_mem_error = {
+	.num_err_categories = ARRAY_SIZE(aie_mem_err_category),
+	.err_category = aie_mem_err_category,
+};
+
+static const struct aie_error_attr aie_shim_error = {
+	.num_err_categories = ARRAY_SIZE(aie_shim_err_category),
+	.err_category = aie_shim_err_category,
 };
 
 static u32 aie_get_tile_type(struct aie_location *loc)
@@ -545,6 +818,9 @@ int aie_device_init(struct aie_device *adev)
 	adev->core_events = &aie_core_event;
 	adev->l1_ctrl = &aie_l1_intr_ctrl;
 	adev->l2_ctrl = &aie_l2_intr_ctrl;
+	adev->core_errors = &aie_core_error;
+	adev->mem_errors = &aie_mem_error;
+	adev->shim_errors = &aie_shim_error;
 
 	/* Get the columns resource */
 	/* Get number of columns from AI engine memory resource */

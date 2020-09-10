@@ -268,6 +268,58 @@ static int aie_part_access_regs(struct aie_partition *apart, u32 num_reqs,
 	return 0;
 }
 
+/**
+ * aie_part_create_event_bitmap() - create event bitmap for all modules in a
+ *				    given partition.
+ * @apart: AI engine partition
+ * @return: 0 for success, and negative value for failure.
+ */
+static int aie_part_create_event_bitmap(struct aie_partition *apart)
+{
+	struct aie_range range = apart->range;
+	u32 bitmap_sz;
+	u32 num_aie_module = range.size.col * (range.size.row - 1);
+	int ret;
+
+	bitmap_sz = num_aie_module * apart->adev->core_events->num_events;
+	ret = aie_resource_initialize(&apart->core_event_status, bitmap_sz);
+	if (ret) {
+		dev_err(&apart->dev,
+			"failed to initialize event status resource.\n");
+		return -ENOMEM;
+	}
+
+	bitmap_sz = num_aie_module * apart->adev->mem_events->num_events;
+	ret = aie_resource_initialize(&apart->mem_event_status, bitmap_sz);
+	if (ret) {
+		dev_err(&apart->dev,
+			"failed to initialize event status resource.\n");
+		return -ENOMEM;
+	}
+
+	bitmap_sz = range.size.col * apart->adev->pl_events->num_events;
+	ret = aie_resource_initialize(&apart->pl_event_status, bitmap_sz);
+	if (ret) {
+		dev_err(&apart->dev,
+			"failed to initialize event status resource.\n");
+		return -ENOMEM;
+	}
+	return 0;
+}
+
+/**
+ * aie_part_release_event_bitmap() - Deallocates event bitmap for all modules
+ *				     in a given partition.
+ * @apart: AI engine partition
+ * @return: 0 for success, and negative value for failure.
+ */
+static void aie_part_release_event_bitmap(struct aie_partition *apart)
+{
+	aie_resource_uninitialize(&apart->core_event_status);
+	aie_resource_uninitialize(&apart->mem_event_status);
+	aie_resource_uninitialize(&apart->pl_event_status);
+}
+
 static int aie_part_release(struct inode *inode, struct file *filp)
 {
 	struct aie_partition *apart = filp->private_data;
@@ -466,6 +518,7 @@ static void aie_part_release_device(struct device *dev)
 
 	aie_resource_put_region(&adev->cols_res, apart->range.start.col,
 				apart->range.size.col);
+	aie_part_release_event_bitmap(apart);
 	list_del(&apart->node);
 	mutex_unlock(&adev->mlock);
 	aie_fpga_free_bridge(apart);
@@ -595,6 +648,17 @@ static struct aie_partition *aie_create_partition(struct aie_device *adev,
 
 	ret = adev->ops->init_part_clk_state(apart);
 	if (ret) {
+		put_device(dev);
+		return ERR_PTR(ret);
+	}
+
+	/*
+	 * Create bitmap to record event status for each module in a
+	 * partition
+	 */
+	ret = aie_part_create_event_bitmap(apart);
+	if (ret < 0) {
+		dev_err(&apart->dev, "Failed to allocate event bitmap.\n");
 		put_device(dev);
 		return ERR_PTR(ret);
 	}
