@@ -47,6 +47,14 @@
 #define VERSAL_ES1_REV_ID		0x0
 #define VERSAL_ES2_REV_ID		0x1
 
+/*
+ * enum aie_shim_switch_type - identifies different switches in shim tile.
+ */
+enum aie_shim_switch_type {
+	AIE_SHIM_SWITCH_A,
+	AIE_SHIM_SWITCH_B
+};
+
 /**
  * struct aie_tile_regs - contiguous range of AI engine register
  *			  within an AI engine tile
@@ -157,6 +165,75 @@ struct aie_resource {
 };
 
 /**
+ * struct aie_event_attr - AI Engine event attributes structure.
+ * @bc_event: broadcast event attribute to capture event mask value and
+ *	      register offset from @bc_regoff.
+ * @group_error: group error attribute to capture error group mask value and
+ *		 register offset value from @group_regoff.
+ * @bc_regoff: base broadcast register offset.
+ * @status_regoff: base status register offset.
+ * @group_regoff: base group error register offset.
+ * @base_error_event: event ID of first error event in a group error.
+ * @num_broadcasts: total number of broadcast events.
+ * @base_bc_event: broadcast 0 vent ID
+ * @num_events: total number of events.
+ */
+struct aie_event_attr {
+	struct aie_single_reg_field bc_event;
+	struct aie_single_reg_field group_error;
+	u32 bc_regoff;
+	u32 status_regoff;
+	u32 group_regoff;
+	u32 base_error_event;
+	u32 num_broadcasts;
+	u32 base_bc_event;
+	u32 num_events;
+};
+
+/**
+ * struct aie_l1_intr_ctrl_attr - AI engine level 1 interrupt controller
+ *				  attributes structure.
+ * @mask: level 1 interrupt controller mask attribute.
+ * @swa_status: switch A level 1 interrupt controller status attribute.
+ * @swb_status: switch A level 1 interrupt controller status attribute.
+ * @swa_event: switch A level 1 interrupt controller event attribute.
+ * @swb_event: switch A level 1 interrupt controller event attribute.
+ * @regoff: base level 1 interrupt controller register offset.
+ * @event_lsb: lsb of IRQ event within IRQ event switch register.
+ * @num_broadcasts: total number of broadcast signals to level 1 interrupt
+ *		    controller.
+ */
+struct aie_l1_intr_ctrl_attr {
+	struct aie_single_reg_field swa_status;
+	struct aie_single_reg_field swb_status;
+	struct aie_single_reg_field swa_event;
+	struct aie_single_reg_field swb_event;
+	u32 regoff;
+	u32 event_lsb;
+	u32 num_broadcasts;
+};
+
+/**
+ * struct aie_l2_intr_ctrl_attr - AI engine level 2 interrupt controller
+ *				  attributes structure.
+ * @mask: level 2 interrupt controller mask attribute.
+ * @enable: level 2 interrupt controller enable attribute.
+ * @disable: level 2 interrupt controller disable attribute.
+ * @status: level 2 interrupt controller status attribute.
+ * @regoff: level 2 interrupt controller register offset.
+ * @num_broadcasts: total number of broadcast signals to level 2 interrupt
+ *		    controller.
+ */
+struct aie_l2_intr_ctrl_attr {
+	struct aie_single_reg_field mask;
+	struct aie_single_reg_field enable;
+	struct aie_single_reg_field disable;
+	struct aie_single_reg_field status;
+	u32 regoff;
+	u32 num_broadcasts;
+};
+
+/**
  * struct aie_device - AI engine device structure
  * @partitions: list of partitions requested
  * @cdev: cdev for the AI engine
@@ -170,6 +247,11 @@ struct aie_resource {
  * @col_rst: column reset attribute
  * @col_clkbuf: column clock buffer attribute
  * @shim_dma: SHIM DMA attribute
+ * @pl_events: pl module event attribute
+ * @mem_events: memory module event attribute
+ * @core_events: core module event attribute
+ * @l1_ctrl: level 1 interrupt controller attribute
+ * @l2_ctrl: level 2 interrupt controller attribute
  * @size: size of the AI engine address space
  * @array_shift: array address shift
  * @col_shift: column address shift
@@ -193,6 +275,11 @@ struct aie_device {
 	const struct aie_single_reg_field *col_rst;
 	const struct aie_single_reg_field *col_clkbuf;
 	const struct aie_dma_attr *shim_dma;
+	const struct aie_event_attr *pl_events;
+	const struct aie_event_attr *mem_events;
+	const struct aie_event_attr *core_events;
+	const struct aie_l1_intr_ctrl_attr *l1_ctrl;
+	const struct aie_l2_intr_ctrl_attr *l2_ctrl;
 	size_t size;
 	struct aie_resource cols_res;
 	u32 array_shift;
