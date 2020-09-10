@@ -237,6 +237,49 @@ struct aie_l2_intr_ctrl_attr {
 };
 
 /**
+ * struct aie_error_cb - AI engine error callback struct.
+ * @cb: pointer to callback function.
+ * @priv: data to be passed to the callback function.
+ */
+struct aie_error_cb {
+	void (*cb)(void *priv);
+	void *priv;
+};
+
+/**
+ * struct aie_event_prop - AI engine event property.
+ * @event: error event ID.
+ * @event_str: error string.
+ */
+struct aie_event_prop {
+	u32 event;
+	char *event_str;
+};
+
+/**
+ * struct aie_err_category - AI engine errors category.
+ * @err_category: category of error.
+ * @num_events: number of event IDs in a category.
+ * @prop: pointer to an array event properties.
+ */
+struct aie_err_category {
+	u32 err_category;
+	u32 num_events;
+	const struct aie_event_prop *prop;
+};
+
+/**
+ * struct aie_error_attr - AI engine error attribute.
+ * @num_err_categories: number of possible error categories valid for a given
+ *			module.
+ * @err_category: pointer to an array of error categories.
+ */
+struct aie_error_attr {
+	u32 num_err_categories;
+	const struct aie_err_category *err_category;
+};
+
+/**
  * struct aie_device - AI engine device structure
  * @partitions: list of partitions requested
  * @cdev: cdev for the AI engine
@@ -255,6 +298,9 @@ struct aie_l2_intr_ctrl_attr {
  * @core_events: core module event attribute
  * @l1_ctrl: level 1 interrupt controller attribute
  * @l2_ctrl: level 2 interrupt controller attribute
+ * @core_errors: core module error attribute
+ * @mem_errors: memory module error attribute
+ * @shim_errors: shim tile error attribute
  * @size: size of the AI engine address space
  * @array_shift: array address shift
  * @col_shift: column address shift
@@ -285,6 +331,9 @@ struct aie_device {
 	const struct aie_event_attr *core_events;
 	const struct aie_l1_intr_ctrl_attr *l1_ctrl;
 	const struct aie_l2_intr_ctrl_attr *l2_ctrl;
+	const struct aie_error_attr *core_errors;
+	const struct aie_error_attr *mem_errors;
+	const struct aie_error_attr *shim_errors;
 	size_t size;
 	struct aie_resource cols_res;
 	u32 array_shift;
@@ -319,6 +368,10 @@ struct aie_part_bridge {
  * @mlock: protection for AI engine partition operations
  * @dev: device for the AI engine partition
  * @cores_clk_state: bitmap to indicate the power state of core modules
+ * @error_cb: error callback
+ * @core_event_status: core module event bitmap
+ * @mem_event_status: memory module event bitmap
+ * @pl_event_status: pl module event bitmap
  * @partition_id: partition id. Partition ID is the identifier
  *		  of the AI engine partition in the system.
  * @status: indicate if the partition is in use
@@ -336,6 +389,10 @@ struct aie_partition {
 	struct mutex mlock; /* protection for AI engine partition operations */
 	struct device dev;
 	struct aie_resource cores_clk_state;
+	struct aie_error_cb error_cb;
+	struct aie_resource core_event_status;
+	struct aie_resource mem_event_status;
+	struct aie_resource pl_event_status;
 	u32 partition_id;
 	u32 status;
 	u32 cntrflag;
