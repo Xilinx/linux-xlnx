@@ -126,6 +126,8 @@ int axienet_tsn_probe(struct platform_device *pdev,
 	char irq_name[32];
 	bool slave = false;
 	u8     temac_no;
+	u32 qbv_addr, qbv_size;
+	u32 abl_reg;
 	struct device_node *ep_node;
 	struct axienet_local *ep_lp;
 
@@ -165,7 +167,26 @@ int axienet_tsn_probe(struct platform_device *pdev,
 
 	lp->master = of_find_net_device_by_node(ep_node);
 #ifdef CONFIG_XILINX_TSN_QBV
-	ret = axienet_qbv_init(ndev);
+	lp->qbv_regs = 0;
+	abl_reg = axienet_ior(lp, XAE_TSN_ABL_OFFSET);
+	if (!(abl_reg & TSN_BRIDGEEP_EPONLY)) {
+		if (of_property_read_u32(pdev->dev.of_node,
+					 "xlnx,qbv-addr", &qbv_addr) == 0) {
+			if ((of_property_read_u32(pdev->dev.of_node,
+						  "xlnx,qbv-size", &qbv_size) ==
+			     0) && qbv_size) {
+				lp->qbv_regs = devm_ioremap(&pdev->dev,
+							    qbv_addr, qbv_size);
+				if (IS_ERR(lp->qbv_regs)) {
+					dev_err(&pdev->dev,
+						"ioremap failed for the qbv\n");
+					ret = PTR_ERR(lp->qbv_regs);
+					return ret;
+				}
+				ret = axienet_qbv_init(ndev);
+			}
+		}
+	}
 #endif
 	/* EP+Switch */
 	/* store the slaves to master(ep) */
