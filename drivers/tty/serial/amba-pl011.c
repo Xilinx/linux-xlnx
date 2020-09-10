@@ -2072,6 +2072,27 @@ sbsa_uart_set_termios(struct uart_port *port, struct ktermios *termios,
 	struct uart_amba_port *uap =
 	    container_of(port, struct uart_amba_port, port);
 	unsigned long flags;
+
+	tty_termios_encode_baud_rate(termios, uap->fixed_baud, uap->fixed_baud);
+
+	/* The SBSA UART only supports 8n1 without hardware flow control. */
+	termios->c_cflag &= ~(CSIZE | CSTOPB | PARENB | PARODD);
+	termios->c_cflag &= ~(CMSPAR | CRTSCTS);
+	termios->c_cflag |= CS8 | CLOCAL;
+
+	spin_lock_irqsave(&port->lock, flags);
+	uart_update_timeout(port, CS8, uap->fixed_baud);
+	pl011_setup_status_masks(port, termios);
+	spin_unlock_irqrestore(&port->lock, flags);
+}
+
+static void
+xlnx_sbsa_uart_set_termios(struct uart_port *port, struct ktermios *termios,
+			   struct ktermios *old)
+{
+	struct uart_amba_port *uap =
+	    container_of(port, struct uart_amba_port, port);
+	unsigned long flags;
 	unsigned int lcr_h, old_cr;
 
 	tty_termios_encode_baud_rate(termios, uap->fixed_baud, uap->fixed_baud);
@@ -2208,6 +2229,28 @@ static const struct uart_ops sbsa_uart_pops = {
 	.startup	= sbsa_uart_startup,
 	.shutdown	= sbsa_uart_shutdown,
 	.set_termios	= sbsa_uart_set_termios,
+	.type		= pl011_type,
+	.release_port	= pl011_release_port,
+	.request_port	= pl011_request_port,
+	.config_port	= pl011_config_port,
+	.verify_port	= pl011_verify_port,
+#ifdef CONFIG_CONSOLE_POLL
+	.poll_init     = pl011_hwinit,
+	.poll_get_char = pl011_get_poll_char,
+	.poll_put_char = pl011_put_poll_char,
+#endif
+};
+
+static const struct uart_ops xlnx_sbsa_uart_pops = {
+	.tx_empty	= pl011_tx_empty,
+	.set_mctrl	= sbsa_uart_set_mctrl,
+	.get_mctrl	= sbsa_uart_get_mctrl,
+	.stop_tx	= pl011_stop_tx,
+	.start_tx	= pl011_start_tx,
+	.stop_rx	= pl011_stop_rx,
+	.startup	= sbsa_uart_startup,
+	.shutdown	= sbsa_uart_shutdown,
+	.set_termios	= xlnx_sbsa_uart_set_termios,
 	.type		= pl011_type,
 	.release_port	= pl011_release_port,
 	.request_port	= pl011_request_port,
@@ -2761,7 +2804,10 @@ static int sbsa_uart_probe(struct platform_device *pdev)
 	uap->reg_offset	= uap->vendor->reg_offset;
 	uap->fifosize	= 32;
 	uap->port.iotype = uap->vendor->access_32b ? UPIO_MEM32 : UPIO_MEM;
-	uap->port.ops	= &sbsa_uart_pops;
+	if (of_device_is_compatible(pdev->dev.of_node, "arm,xlnx-sbsa-uart"))
+		uap->port.ops	= &xlnx_sbsa_uart_pops;
+	else
+		uap->port.ops	= &sbsa_uart_pops;
 	uap->fixed_baud = baudrate;
 
 	snprintf(uap->type, sizeof(uap->type), "SBSA");
@@ -2788,6 +2834,7 @@ static int sbsa_uart_remove(struct platform_device *pdev)
 
 static const struct of_device_id sbsa_uart_of_match[] = {
 	{ .compatible = "arm,sbsa-uart", },
+	{ .compatible = "arm,xlnx-sbsa-uart", },
 	{},
 };
 MODULE_DEVICE_TABLE(of, sbsa_uart_of_match);
