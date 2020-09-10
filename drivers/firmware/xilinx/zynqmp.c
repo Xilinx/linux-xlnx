@@ -531,6 +531,7 @@ static inline int versal_is_valid_ioctl(u32 ioctl_id)
 	case IOCTL_USB_SET_STATE:
 	case IOCTL_OSPI_MUX_SELECT:
 	case IOCTL_GET_LAST_RESET_REASON:
+	case IOCTL_AIE_ISR_CLEAR:
 		return 1;
 	default:
 		return 0;

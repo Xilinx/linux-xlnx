@@ -182,6 +182,8 @@ enum pm_ioctl_id {
 	IOCTL_USB_SET_STATE,
 	/* IOCTL to get last reset reason */
 	IOCTL_GET_LAST_RESET_REASON,
+	/* AIE ISR Clear */
+	IOCTL_AIE_ISR_CLEAR,
 };
 
 enum pm_query_id {
