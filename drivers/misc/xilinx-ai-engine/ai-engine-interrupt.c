@@ -608,6 +608,10 @@ static void aie_l2_backtrack(struct aie_partition *apart)
 		}
 	}
 	mutex_unlock(&apart->mlock);
+
+	/* If error was assert, then notify the application */
+	if (ret && apart->error_cb.cb)
+		apart->error_cb.cb(apart->error_cb.priv);
 }
 
 /**
@@ -677,3 +681,429 @@ irqreturn_t aie_interrupt(int irq, void *data)
 	schedule_work(&adev->backtrack);
 	return IRQ_HANDLED;
 }
+
+/**
+ * aie_get_module_error_count() - get the total count of errors in a module
+ *				  from local bitmap.
+ * @apart: AIE partition pointer.
+ * @loc: tile location.
+ * @module: module type.
+ * @err_attr: error attribute for given module type.
+ * @return: total number of errors found.
+ */
+static u32 aie_get_module_error_count(struct aie_partition *apart,
+				      struct aie_location loc,
+				      enum aie_module_type module,
+				      const struct aie_error_attr *err_attr)
+{
+	u32 count = 0;
+	u8 i, j;
+
+	for (i = 0; i < err_attr->num_err_categories; i++) {
+		for (j = 0; j < err_attr->err_category[i].num_events; j++) {
+			u8 event = err_attr->err_category[i].prop[j].event;
+
+			if (aie_check_error_bitmap(apart, loc, module, event))
+				count++;
+		}
+	}
+	return count;
+}
+
+/**
+ * aie_get_error_count() - get the total count of errors in a partition from
+ *			   local bitmap.
+ * @apart: AIE partition pointer.
+ * @return: total number of errors found.
+ */
+static u32 aie_get_error_count(struct aie_partition *apart)
+{
+	const struct aie_error_attr *core_errors = apart->adev->core_errors;
+	const struct aie_error_attr *mem_errors = apart->adev->mem_errors;
+	const struct aie_error_attr *shim_errors = apart->adev->shim_errors;
+	struct aie_location loc;
+	u32 count = 0;
+
+	for (loc.col = 0; loc.col < apart->range.size.col; loc.col++) {
+		loc.row = 0;
+		count += aie_get_module_error_count(apart, loc, AIE_PL_MOD,
+						    shim_errors);
+
+		for (; loc.row < apart->range.size.row - 1; loc.row++) {
+			count += aie_get_module_error_count(apart, loc,
+							    AIE_CORE_MOD,
+							    core_errors);
+			count += aie_get_module_error_count(apart, loc,
+							    AIE_MEM_MOD,
+							    mem_errors);
+		}
+	}
+	return count;
+}
+
+/**
+ * aie_get_errors_from_bitmap() - get status of errors from local bitmap.
+ * @apart: AIE partition pointer.
+ * @loc: tile location.
+ * @module: module type.
+ * @err_attr: error attribute for given module type.
+ * @aie_err: pointer to array of error structure.
+ * @return: total number of errors found.
+ *
+ * This function parses local bitmaps and initializes @aie_err structures with
+ * the tile location of error event, module type and, its event ID.
+ */
+static u32 aie_get_errors_from_bitmap(struct aie_partition *apart,
+				      struct aie_location loc,
+				      enum aie_module_type module,
+				      const struct aie_error_attr *err_attr,
+				      struct aie_error *aie_err)
+{
+	u8 i, j;
+	u32 num_err = 0;
+
+	for (i = 0; i < err_attr->num_err_categories; i++) {
+		for (j = 0; j < err_attr->err_category[i].num_events; j++) {
+			u8 event = err_attr->err_category[i].prop[j].event;
+
+			if (!aie_check_error_bitmap(apart, loc, module, event))
+				continue;
+
+			aie_err[num_err].loc.col = loc.col;
+			aie_err[num_err].loc.row = loc.row;
+			aie_err[num_err].module = module;
+			aie_err[num_err].error_id = event;
+			num_err++;
+		}
+	}
+	return num_err;
+}
+
+/**
+ * aie_get_module_errors() - get errors for a given module type
+ *			     in a partition.
+ * @apart: AIE partition pointer.
+ * @module: module type.
+ * @aie_err: pointer to array of error structure.
+ * @return: total number of errors found.
+ *
+ * This function parses local bitmaps and initializes @aie_err structures.
+ */
+static u32 aie_get_module_errors(struct aie_partition *apart,
+				 enum aie_module_type module,
+				 struct aie_error *aie_err)
+{
+	const struct aie_error_attr *err_attr;
+	struct aie_location loc;
+	u32 srow, erow, scol, ecol, num_err = 0;
+
+	if (module == AIE_CORE_MOD) {
+		err_attr = apart->adev->core_errors;
+		srow = apart->range.start.row + 1;
+		erow = srow + apart->range.size.row - 1;
+	} else if (module == AIE_MEM_MOD) {
+		err_attr = apart->adev->mem_errors;
+		srow = apart->range.start.row + 1;
+		erow = srow + apart->range.size.row - 1;
+	} else {
+		err_attr = apart->adev->shim_errors;
+		srow = 0;
+		erow = 0;
+	}
+
+	scol = apart->range.start.col;
+	ecol = apart->range.start.col + apart->range.size.col - 1;
+
+	for (loc.col = scol; loc.col <= ecol; loc.col++) {
+		for (loc.row = srow; loc.row <= erow; loc.row++) {
+			num_err +=
+				aie_get_errors_from_bitmap(apart, loc,
+							   module, err_attr,
+							   &aie_err[num_err]);
+		}
+	}
+	return num_err;
+}
+
+/**
+ * aie_register_error_notification() - register a callback for error
+ *				       notification.
+ * @dev: AIE partition device.
+ * @cb: pointer to a function that accepts pointer to private data as an
+ *	argument. callbacks are called in the bottom half without locks.
+ * @priv: private data to be passed to the callback.
+ * @return: 0 for success, and negative value for failure.
+ */
+int aie_register_error_notification(struct device *dev,
+				    void (*cb)(void *priv), void *priv)
+{
+	struct aie_partition *apart;
+	int ret;
+
+	if (!cb || !dev)
+		return -EINVAL;
+
+	apart = container_of(dev, struct aie_partition, dev);
+
+	ret = mutex_lock_interruptible(&apart->mlock);
+	if (ret) {
+		dev_err(&apart->dev,
+			"Failed to acquire lock. Process was interrupted by fatal signals\n");
+		return ret;
+	}
+
+	if (apart->error_cb.cb) {
+		dev_err(&apart->dev,
+			"Error callback already registered. Unregister the existing callback to register a new one.\n");
+		ret = -EINVAL;
+		goto exit;
+	}
+
+	apart->error_cb.cb = cb;
+	apart->error_cb.priv = priv;
+
+	/*
+	 * Errors during configuration are logged even for the partitions
+	 * which are not requested. Such errors must be reported back to the
+	 * application when a valid callback is registered.
+	 */
+	if (aie_get_error_count(apart))
+		schedule_work(&apart->adev->backtrack);
+
+exit:
+	mutex_unlock(&apart->mlock);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(aie_register_error_notification);
+
+/**
+ * aie_unregister_error_notification() - Unregister the callback for error
+ *					 notification.
+ * @dev: AIE partition device.
+ * @return: 0 for success, and negative value for failure.
+ */
+int aie_unregister_error_notification(struct device *dev)
+{
+	struct aie_partition *apart;
+	int ret;
+
+	if (!dev)
+		return -EINVAL;
+
+	apart = container_of(dev, struct aie_partition, dev);
+
+	ret = mutex_lock_interruptible(&apart->mlock);
+	if (ret) {
+		dev_err(&apart->dev,
+			"Failed to acquire lock. Process was interrupted by fatal signals\n");
+		return ret;
+	}
+
+	apart->error_cb.cb = NULL;
+	apart->error_cb.priv = NULL;
+
+	mutex_unlock(&apart->mlock);
+	return 0;
+}
+EXPORT_SYMBOL_GPL(aie_unregister_error_notification);
+
+/**
+ * aie_get_errors() - get errors that has happened.
+ * @dev: AIE partition device.
+ * @return: struct pointer of type aie_errors.
+ *
+ * This API allocates and initializes data structures by parsing local
+ * bitmaps. Allocated data structure must be deallocated using
+ * aie_free_errors() function.
+ */
+struct aie_errors *aie_get_errors(struct device *dev)
+{
+	struct aie_partition *apart;
+	struct aie_errors *aie_errs;
+	struct aie_error *error;
+	u32 num_errs, count = 0;
+	int ret;
+
+	if (!dev)
+		return ERR_PTR(-EINVAL);
+
+	apart = container_of(dev, struct aie_partition, dev);
+
+	ret = mutex_lock_interruptible(&apart->mlock);
+	if (ret) {
+		dev_err(&apart->dev,
+			"Failed to acquire lock. Process was interrupted by fatal signals\n");
+		return ERR_PTR(ret);
+	}
+
+	aie_errs = kzalloc(sizeof(*aie_errs), GFP_KERNEL);
+	if (!aie_errs) {
+		mutex_unlock(&apart->mlock);
+		return ERR_PTR(-ENOMEM);
+	}
+
+	num_errs = aie_get_error_count(apart);
+	error = kcalloc(num_errs, sizeof(*error), GFP_KERNEL);
+	if (!error) {
+		kfree(aie_errs);
+		mutex_unlock(&apart->mlock);
+		return ERR_PTR(-ENOMEM);
+	}
+
+	count += aie_get_module_errors(apart, AIE_MEM_MOD, &error[count]);
+	count += aie_get_module_errors(apart, AIE_CORE_MOD, &error[count]);
+	count += aie_get_module_errors(apart, AIE_PL_MOD, &error[count]);
+
+	aie_errs->dev = dev;
+	aie_errs->errors = error;
+	aie_errs->num_err = count;
+
+	mutex_unlock(&apart->mlock);
+	return aie_errs;
+}
+EXPORT_SYMBOL_GPL(aie_get_errors);
+
+/**
+ * aie_get_error_categories() - Get the error categories. Error information
+ *				returned by aie_get_errors() could be
+ *				abstracted by classifying errors into various
+ *				categories. All DMA channel error are
+ *				classified as AIE_ERROR_CATEGORY_DMA, program
+ *				and data memory ECC errors are classified as
+ *				AIE_ERROR_CATEGORY_ECC, and so on.
+ * @aie_errs: AIE errors structure.
+ * @return: Bitmap of category of error events.
+ */
+u32 aie_get_error_categories(struct aie_errors *aie_errs)
+{
+	struct aie_partition *apart;
+	unsigned long status = 0;
+	u8 e, i, j, event;
+	int ret;
+
+	if (!aie_errs || !aie_errs->dev || !aie_errs->errors)
+		return 0;
+
+	apart = container_of(aie_errs->dev, struct aie_partition, dev);
+
+	ret = mutex_lock_interruptible(&apart->mlock);
+	if (ret) {
+		dev_err(&apart->dev,
+			"Failed to acquire lock. Process was interrupted by fatal signals\n");
+		return 0;
+	}
+
+	for (e = 0; e < aie_errs->num_err; e++) {
+		struct aie_error *error = &aie_errs->errors[e];
+		const struct aie_error_attr *err_attr;
+		const struct aie_err_category *ecat;
+
+		if (error->module == AIE_CORE_MOD)
+			err_attr = apart->adev->core_errors;
+		else if (error->module == AIE_MEM_MOD)
+			err_attr = apart->adev->mem_errors;
+		else
+			err_attr = apart->adev->shim_errors;
+
+		ecat = err_attr->err_category;
+		for (i = 0; i < err_attr->num_err_categories; i++) {
+			for (j = 0;
+			     j < ecat[i].num_events; j++) {
+				event = ecat[i].prop[j].event;
+				if (event != error->error_id)
+					continue;
+				status |= BIT(ecat[i].err_category);
+			}
+		}
+	}
+
+	mutex_unlock(&apart->mlock);
+	return status;
+}
+EXPORT_SYMBOL_GPL(aie_get_error_categories);
+
+/**
+ * aie_get_error_string() - get error string corresponding an error.
+ * @aie_errs: pointer to an array of error structure.
+ * @aie_err: AIE error.
+ * @return: string corresponding to @aie_err.
+ */
+const char *aie_get_error_string(struct aie_errors *aie_errs,
+				 struct aie_error *aie_err)
+{
+	struct aie_partition *apart;
+	const struct aie_error_attr *err_attr;
+	u8 i, j;
+	int ret;
+
+	if (!aie_errs || !aie_errs->dev || !aie_err)
+		return ERR_PTR(-EINVAL);
+
+	apart = container_of(aie_errs->dev, struct aie_partition, dev);
+
+	ret = mutex_lock_interruptible(&apart->mlock);
+	if (ret) {
+		dev_err(&apart->dev,
+			"Failed to acquire lock. Process was interrupted by fatal signals\n");
+		return ERR_PTR(ret);
+	}
+
+	if (aie_err->module == AIE_CORE_MOD)
+		err_attr = apart->adev->core_errors;
+	else if (aie_err->module == AIE_MEM_MOD)
+		err_attr = apart->adev->mem_errors;
+	else
+		err_attr = apart->adev->shim_errors;
+
+	for (i = 0; i < err_attr->num_err_categories; i++) {
+		for (j = 0; j < err_attr->err_category[i].num_events; j++) {
+			u8 event = err_attr->err_category[i].prop[j].event;
+
+			if (event != aie_err->error_id)
+				continue;
+
+			mutex_unlock(&apart->mlock);
+			return err_attr->err_category[i].prop[j].event_str;
+		}
+	}
+
+	mutex_unlock(&apart->mlock);
+	return NULL;
+}
+EXPORT_SYMBOL_GPL(aie_get_error_string);
+
+/**
+ * aie_flush_errors() - Flush all pending errors.
+ * @dev: AIE partition device.
+ * @return: 0 for success, and negative value for failure.
+ *
+ * This function backtracks a given partition, updates local event status
+ * bitmaps and, invokes the registered callback function for any error event.
+ */
+int aie_flush_errors(struct device *dev)
+{
+	struct aie_partition *apart;
+
+	if (!dev)
+		return -EINVAL;
+
+	apart = container_of(dev, struct aie_partition, dev);
+	aie_part_backtrack(apart);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(aie_flush_errors);
+
+/**
+ * aie_free_errors() - Free allocated AIE error structure.
+ * @aie_errs: AIE error structure.
+ */
+void aie_free_errors(struct aie_errors *aie_errs)
+{
+	if (!aie_errs || !aie_errs->errors)
+		return;
+
+	kfree(aie_errs->errors);
+	kfree(aie_errs);
+}
+EXPORT_SYMBOL_GPL(aie_free_errors);
