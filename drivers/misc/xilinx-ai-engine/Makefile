@@ -10,6 +10,7 @@ xilinx-aie-$(CONFIG_XILINX_AIE) := ai-engine-aie.o \
 				   ai-engine-dev.o \
 				   ai-engine-dma.o \
 				   ai-engine-fpga.o \
+				   ai-engine-interrupt.o \
 				   ai-engine-mem.o \
 				   ai-engine-part.o \
 				   ai-engine-res.o \

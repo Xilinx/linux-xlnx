@@ -13,6 +13,42 @@
 #endif
 #include <uapi/linux/xlnx-ai-engine.h>
 
+/**
+ * enum aie_module_type - identifies different hardware modules within a
+ *			  tile type. AIE tile may have memory and core
+ *			  module. While a PL or shim tile may have PL module.
+ * @AIE_MEM_MOD: comprises of the following sub-modules,
+ *			* data memory.
+ *			* tile DMA.
+ *			* lock module.
+ *			* events, event broadcast and event actions.
+ *			* tracing and profiling.
+ * @AIE_CORE_MOD: comprises of the following sub-modules,
+ *			* AIE core.
+ *			* program Memory.
+ *			* events, event broadcast and event actions.
+ *			* tracing and profiling.
+ *			* AXI-MM and AXI-S tile interconnects.
+ * @AIE_PL_MOD: comprises of the following sub-modules,
+ *			* PL interface.
+ *			* AXI-MM and AXI-S tile interconnects.
+ *			* Level 1 interrupt controllers.
+ *			* events, event broadcast and event actions.
+ *			* tracing and profiling.
+ * @AIE_NOC_MOD: comprises of the following sub-modules,
+ *			* interface from NoC Slave Unit (NSU)
+ *			  (bridge to AXI-MM switch)
+ *			* interfaces to NoC NoC Master Unit (NMU)
+ *				* shim DMA & locks
+ *				* NoC stream interface
+ */
+enum aie_module_type {
+	AIE_MEM_MOD,
+	AIE_CORE_MOD,
+	AIE_PL_MOD,
+	AIE_NOC_MOD,
+};
+
 struct device;
 
 #if IS_ENABLED(CONFIG_XILINX_AIE)
