@@ -26,6 +26,16 @@ struct axienet_stat {
 	const char *name;
 };
 
+#ifdef CONFIG_XILINX_TSN
+/* TODO
+ * The channel numbers for managemnet frames in 5 channel mcdma on EP+Switch
+ * system. These are not exposed via hdf/dtsi, so need to hardcode here
+ */
+#define TSN_MAX_RX_Q_EPSWITCH 5
+#define TSN_MGMT_CHAN0 2
+#define TSN_MGMT_CHAN1 3
+#endif
+
 static struct axienet_stat axienet_get_tx_strings_stats[] = {
 	{ "txq0_packets" },
 	{ "txq0_bytes"   },
@@ -288,6 +298,16 @@ int __maybe_unused axienet_mcdma_rx_q_init(struct net_device *ndev,
 		q->rxq_bd_v[i].phys = mapping;
 		q->rxq_bd_v[i].cntrl = lp->max_frm_size;
 	}
+
+#ifdef CONFIG_XILINX_TSN
+	/* check if this is a mgmt channel */
+	if (lp->num_rx_queues == TSN_MAX_RX_Q_EPSWITCH) {
+		if (q->chan_id == TSN_MGMT_CHAN0)
+			q->flags |= (MCDMA_MGMT_CHAN | MCDMA_MGMT_CHAN_PORT0);
+		else if (q->chan_id == TSN_MGMT_CHAN1)
+			q->flags |= (MCDMA_MGMT_CHAN | MCDMA_MGMT_CHAN_PORT1);
+	}
+#endif
 
 	/* Start updating the Rx channel control register */
 	cr = axienet_dma_in32(q, XMCDMA_CHAN_CR_OFFSET(q->chan_id) +
