@@ -76,6 +76,38 @@ static int tsn_ip_remove(struct platform_device *pdev)
 }
 
 /**
+ * axienet_tsn_xmit - Starts the TSN transmission.
+ * @skb:	sk_buff pointer that contains data to be Txed.
+ * @ndev:	Pointer to net_device structure.
+ *
+ * Return: NETDEV_TX_OK, on success
+ *	    Non-zero error value on failure.
+ *
+ * This function is invoked from upper layers to initiate transmission. The
+ * function uses the next available free BDs and populates their fields to
+ * start the transmission. Use axienet_ptp_xmit() for PTP 1588 packets and
+ * use master EP xmit for other packets transmission.
+ */
+int axienet_tsn_xmit(struct sk_buff *skb, struct net_device *ndev)
+{
+	struct axienet_local *lp = netdev_priv(ndev);
+	struct ethhdr *hdr = (struct ethhdr *)skb->data;
+	u16 ether_type = ntohs(hdr->h_proto);
+	struct net_device *master = lp->master;
+
+#ifdef CONFIG_XILINX_TSN_PTP
+	/* check if skb is a PTP frame ? */
+	if (unlikely(ether_type == ETH_P_1588))
+		return axienet_ptp_xmit(skb, ndev);
+#endif
+	/* use EP to xmit non-PTP frames */
+	skb->dev = master;
+	dev_queue_xmit(skb);
+
+	return NETDEV_TX_OK;
+}
+
+/**
  * axienet_tsn_probe - TSN mac probe function.
  * @pdev:	Pointer to platform device structure.
  * @lp:		Pointer to axienet local structure
