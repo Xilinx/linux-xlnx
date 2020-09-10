@@ -66,11 +66,33 @@ enum aie_module_type {
 
 struct device;
 
+struct aie_error {
+	struct aie_location loc;
+	enum aie_module_type module;
+	u32 error_id;
+};
+
+struct aie_errors {
+	struct device *dev;
+	struct aie_error *errors;
+	u32 num_err;
+};
+
 #if IS_ENABLED(CONFIG_XILINX_AIE)
 bool aie_partition_is_available(struct aie_partition_req *req);
 struct device *aie_partition_request(struct aie_partition_req *req);
 int aie_partition_get_fd(struct device *dev);
 void aie_partition_release(struct device *dev);
+
+int aie_register_error_notification(struct device *dev,
+				    void (*cb)(void *priv), void *priv);
+int aie_unregister_error_notification(struct device *dev);
+struct aie_errors *aie_get_errors(struct device *dev);
+u32 aie_get_error_categories(struct aie_errors *aie_errs);
+const char *aie_get_error_string(struct aie_errors *aie_errs,
+				 struct aie_error *aie_err);
+int aie_flush_errors(struct device *dev);
+void aie_free_errors(struct aie_errors *aie_errs);
 #else
 static inline bool aie_partition_is_available(struct aie_partition_req *req)
 {
@@ -89,5 +111,41 @@ static inline int aie_partition_get_fd(struct device *dev)
 }
 
 static inline void aie_partition_release(struct device *dev) {}
+
+static inline int
+aie_register_error_notification(struct device *dev, void (*cb)(void *priv),
+				void *priv)
+{
+	return -EINVAL;
+}
+
+static inline int aie_unregister_error_notification(struct device *dev)
+{
+	return -EINVAL;
+}
+
+static inline struct aie_errors *aie_get_errors(struct device *dev)
+{
+	return NULL;
+}
+
+static inline u32 aie_get_error_categories(struct aie_errors *aie_errs)
+{
+	return 0;
+}
+
+static inline const char *aie_get_error_string(struct aie_errors *aie_errs,
+					       struct aie_error *aie_err)
+{
+	return NULL;
+}
+
+static inline int aie_flush_errors(struct device *dev)
+{
+	return -EINVAL;
+}
+
+static inline void aie_free_errors(struct aie_errors *aie_errs) {}
+
 #endif /* CONFIG_XILINX_AIE */
 #endif
