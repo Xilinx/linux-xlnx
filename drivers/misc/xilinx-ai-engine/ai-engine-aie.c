@@ -128,8 +128,6 @@ static const struct aie_dma_attr aie_shimdma = {
 	.bd_len = 0x14U,
 };
 
-static const struct zynqmp_eemi_ops *eemi_ops;
-
 static u32 aie_get_tile_type(struct aie_location *loc)
 {
 	if (loc->row)
@@ -205,16 +203,16 @@ static int aie_reset_shim(struct aie_device *adev, struct aie_range *range)
 	aie_set_shim_reset(adev, range, true);
 
 	/* Assert shim reset of AI engine array */
-	ret = eemi_ops->reset_assert(VERSAL_PM_RST_AIE_SHIM_ID,
-				     PM_RESET_ACTION_ASSERT);
+	ret = adev->eemi_ops->reset_assert(VERSAL_PM_RST_AIE_SHIM_ID,
+					   PM_RESET_ACTION_ASSERT);
 	if (ret < 0) {
 		dev_err(&adev->dev, "failed to assert SHIM reset.\n");
 		return ret;
 	}
 
 	/* Release shim reset of AI engine array */
-	ret = eemi_ops->reset_assert(VERSAL_PM_RST_AIE_SHIM_ID,
-				     PM_RESET_ACTION_RELEASE);
+	ret = adev->eemi_ops->reset_assert(VERSAL_PM_RST_AIE_SHIM_ID,
+					   PM_RESET_ACTION_RELEASE);
 	if (ret < 0) {
 		dev_err(&adev->dev, "failed to release SHIM reset.\n");
 		return ret;
@@ -426,12 +424,6 @@ int aie_device_init(struct aie_device *adev)
 	adev->col_rst = &aie_col_rst;
 	adev->col_clkbuf = &aie_col_clkbuf;
 	adev->shim_dma = &aie_shimdma;
-
-	eemi_ops = zynqmp_pm_get_eemi_ops();
-	if (IS_ERR(eemi_ops) || !eemi_ops->reset_assert) {
-		dev_err(&adev->dev, "failed to get eemi ops.\n");
-		return PTR_ERR(eemi_ops);
-	}
 
 	/* Get the columns resource */
 	/* Get number of columns from AI engine memory resource */

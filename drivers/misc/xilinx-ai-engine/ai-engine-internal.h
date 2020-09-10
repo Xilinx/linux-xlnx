@@ -43,6 +43,10 @@
 
 #define AIE_PART_STATUS_BRIDGE_DISABLED	0x1U
 
+/* Silicon Engineering Sample(ES) revision ID */
+#define VERSAL_ES1_REV_ID		0x0
+#define VERSAL_ES2_REV_ID		0x1
+
 /**
  * struct aie_tile_regs - contiguous range of AI engine register
  *			  within an AI engine tile
@@ -160,6 +164,7 @@ struct aie_resource {
  * @mlock: protection for AI engine device operations
  * @base: AI engine device base virtual address
  * @res: memory resource of AI engine device
+ * @eemi_ops: pointer to eemi ops structure
  * @kernel_regs: array of kernel only registers
  * @ops: tile operations
  * @col_rst: column reset attribute
@@ -173,6 +178,7 @@ struct aie_resource {
  *	      while columns are occupied by partitions.
  * @num_kernel_regs: number of kernel only registers range
  * @version: AI engine device version
+ * @pm_node_id: AI Engine platform management node ID
  */
 struct aie_device {
 	struct list_head partitions;
@@ -181,6 +187,7 @@ struct aie_device {
 	struct mutex mlock; /* protection for AI engine partitions */
 	void __iomem *base;
 	struct resource *res;
+	const struct zynqmp_eemi_ops *eemi_ops;
 	const struct aie_tile_regs *kernel_regs;
 	const struct aie_tile_operations *ops;
 	const struct aie_single_reg_field *col_rst;
@@ -193,6 +200,7 @@ struct aie_device {
 	u32 row_shift;
 	u32 num_kernel_regs;
 	int version;
+	u32 pm_node_id;
 };
 
 /**

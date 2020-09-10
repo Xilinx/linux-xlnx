@@ -11,6 +11,7 @@
 #include <linux/device.h>
 #include <linux/dma-mapping.h>
 #include <linux/file.h>
+#include <linux/firmware/xlnx-zynqmp.h>
 #include <linux/fs.h>
 #include <linux/idr.h>
 #include <linux/list.h>
@@ -26,7 +27,8 @@
 
 #include "ai-engine-internal.h"
 
-#define AIE_DEV_MAX	(MINORMASK + 1)
+#define AIE_DEV_MAX			(MINORMASK + 1)
+#define VERSAL_SILICON_REV_MASK		GENMASK(31, 28)
 
 static dev_t aie_major;
 struct class *aie_class;
@@ -351,6 +353,7 @@ static int xilinx_ai_engine_probe(struct platform_device *pdev)
 {
 	struct aie_device *adev;
 	struct device *dev;
+	u32 idcode, version, pm_reg[2];
 	int ret;
 
 	adev = devm_kzalloc(&pdev->dev, sizeof(*adev), GFP_KERNEL);
@@ -377,6 +380,33 @@ static int xilinx_ai_engine_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "failed to initialize device instance.\n");
 		return ret;
 	}
+
+	/*
+	 * AI Engine platform management node ID is required for requesting
+	 * services from firmware driver.
+	 */
+	ret = of_property_read_u32_array(pdev->dev.of_node, "power-domains",
+					 pm_reg, ARRAY_SIZE(pm_reg));
+	if (ret < 0) {
+		dev_err(&pdev->dev,
+			"Failed to read power manangement information\n");
+		return ret;
+	}
+	adev->pm_node_id = pm_reg[1];
+
+	adev->eemi_ops = zynqmp_pm_get_eemi_ops();
+	if (IS_ERR(adev->eemi_ops) || !adev->eemi_ops->reset_assert ||
+	    !adev->eemi_ops->get_chipid || !adev->eemi_ops->ioctl) {
+		dev_err(&adev->dev, "failed to get eemi ops.\n");
+		return PTR_ERR(adev->eemi_ops);
+	}
+
+	ret = adev->eemi_ops->get_chipid(&idcode, &version);
+	if (ret < 0) {
+		dev_err(&pdev->dev, "Failed to get chip ID\n");
+		return ret;
+	}
+	adev->version = FIELD_GET(VERSAL_SILICON_REV_MASK, idcode);
 
 	dev = &adev->dev;
 	device_initialize(dev);
