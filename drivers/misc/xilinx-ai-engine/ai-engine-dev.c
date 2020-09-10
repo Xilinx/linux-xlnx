@@ -14,6 +14,7 @@
 #include <linux/firmware/xlnx-zynqmp.h>
 #include <linux/fs.h>
 #include <linux/idr.h>
+#include <linux/interrupt.h>
 #include <linux/list.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
@@ -442,6 +443,21 @@ static int xilinx_ai_engine_probe(struct platform_device *pdev)
 	of_xilinx_ai_engine_part_probe(adev);
 	dev_info(&pdev->dev, "Xilinx AI Engine device(cols=%u) probed\n",
 		 adev->cols_res.total);
+
+	INIT_WORK(&adev->backtrack, aie_array_backtrack);
+
+	adev->irq = platform_get_irq_byname(pdev, "interrupt1");
+	if (adev->irq < 0) {
+		dev_err(&pdev->dev, "Failed to find AIE interrupt1\n");
+		goto free_ida;
+	}
+
+	ret = devm_request_irq(dev, adev->irq, aie_interrupt, 0, dev_name(dev),
+			       adev);
+	if (ret) {
+		dev_err(&pdev->dev, "Failed to request AIE IRQ.\n");
+		goto free_ida;
+	}
 	return 0;
 
 free_ida:

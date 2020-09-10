@@ -15,6 +15,7 @@
 #include <linux/file.h>
 #include <linux/fpga/fpga-bridge.h>
 #include <linux/io.h>
+#include <linux/interrupt.h>
 #include <linux/list.h>
 #include <linux/mutex.h>
 #include <linux/of.h>
@@ -46,6 +47,8 @@
 /* Silicon Engineering Sample(ES) revision ID */
 #define VERSAL_ES1_REV_ID		0x0
 #define VERSAL_ES2_REV_ID		0x1
+
+#define AIE_NPI_ERROR_ID		BIT(1)
 
 /*
  * enum aie_shim_switch_type - identifies different switches in shim tile.
@@ -259,6 +262,8 @@ struct aie_l2_intr_ctrl_attr {
  * @cols_res: AI engine columns resources to indicate
  *	      while columns are occupied by partitions.
  * @num_kernel_regs: number of kernel only registers range
+ * @irq: Linux IRQ number
+ * @backtrack: workqueue to backtrack interrupt
  * @version: AI engine device version
  * @pm_node_id: AI Engine platform management node ID
  */
@@ -286,6 +291,8 @@ struct aie_device {
 	u32 col_shift;
 	u32 row_shift;
 	u32 num_kernel_regs;
+	int irq;
+	struct work_struct backtrack;
 	int version;
 	u32 pm_node_id;
 };
@@ -473,4 +480,8 @@ int aie_part_request_tiles_from_user(struct aie_partition *apart,
 int aie_part_release_tiles_from_user(struct aie_partition *apart,
 				     void __user *user_args);
 int aie_device_init(struct aie_device *adev);
+
+void aie_array_backtrack(struct work_struct *work);
+irqreturn_t aie_interrupt(int irq, void *data);
+
 #endif /* AIE_INTERNAL_H */
