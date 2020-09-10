@@ -332,6 +332,8 @@ static int aie_part_release(struct inode *inode, struct file *filp)
 	aie_part_release_dmabufs(apart);
 	aie_part_clean(apart);
 
+	apart->error_cb.cb = NULL;
+	apart->error_cb.priv = NULL;
 	apart->status = 0;
 	mutex_unlock(&apart->mlock);
 
@@ -731,6 +733,8 @@ of_aie_part_probe(struct aie_device *adev, struct device_node *nc)
 	apart->dev.of_node = nc;
 	apart->dev.driver = adev->dev.parent->driver;
 	apart->partition_id = partition_id;
+	apart->error_cb.cb = NULL;
+	apart->error_cb.priv = NULL;
 
 	ret = of_dma_configure(&apart->dev, nc, true);
 	if (ret)
