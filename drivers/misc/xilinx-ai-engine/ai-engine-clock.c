@@ -70,8 +70,8 @@ static int aie_part_request_tiles(struct aie_partition *apart, int num_tiles,
 				  struct aie_location *locs)
 {
 	if (num_tiles == 0) {
-		aie_resource_set(&apart->cores_clk_state, 0,
-				 apart->cores_clk_state.total);
+		aie_resource_set(&apart->tiles_inuse, 0,
+				 apart->tiles_inuse.total);
 	} else {
 		u32 n;
 
@@ -82,8 +82,7 @@ static int aie_part_request_tiles(struct aie_partition *apart, int num_tiles,
 			int bit = aie_part_get_clk_state_bit(apart, &locs[n]);
 
 			if (bit >= 0)
-				aie_resource_set(&apart->cores_clk_state,
-						 bit, 1);
+				aie_resource_set(&apart->tiles_inuse, bit, 1);
 		}
 	}
 
@@ -103,8 +102,8 @@ static int aie_part_release_tiles(struct aie_partition *apart, int num_tiles,
 				  struct aie_location *locs)
 {
 	if (num_tiles == 0) {
-		aie_resource_clear(&apart->cores_clk_state, 0,
-				   apart->cores_clk_state.total);
+		aie_resource_clear(&apart->tiles_inuse, 0,
+				   apart->tiles_inuse.total);
 	} else {
 		u32 n;
 
@@ -115,8 +114,7 @@ static int aie_part_release_tiles(struct aie_partition *apart, int num_tiles,
 			int bit = aie_part_get_clk_state_bit(apart, &locs[n]);
 
 			if (bit >= 0)
-				aie_resource_clear(&apart->cores_clk_state,
-						   bit, 1);
+				aie_resource_clear(&apart->tiles_inuse, bit, 1);
 		}
 	}
 
