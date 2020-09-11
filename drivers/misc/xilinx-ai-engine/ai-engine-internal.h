@@ -368,6 +368,7 @@ struct aie_part_bridge {
  * @mlock: protection for AI engine partition operations
  * @dev: device for the AI engine partition
  * @cores_clk_state: bitmap to indicate the power state of core modules
+ * @tiles_inuse: bitmap to indicate if a tile is in use
  * @error_cb: error callback
  * @core_event_status: core module event bitmap
  * @mem_event_status: memory module event bitmap
@@ -389,6 +390,7 @@ struct aie_partition {
 	struct mutex mlock; /* protection for AI engine partition operations */
 	struct device dev;
 	struct aie_resource cores_clk_state;
+	struct aie_resource tiles_inuse;
 	struct aie_error_cb error_cb;
 	struct aie_resource core_event_status;
 	struct aie_resource mem_event_status;
