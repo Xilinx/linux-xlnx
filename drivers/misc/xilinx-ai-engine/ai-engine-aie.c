@@ -626,6 +626,13 @@ static int aie_init_part_clk_state(struct aie_partition *apart)
 		return ret;
 	}
 
+	ret = aie_resource_initialize(&apart->tiles_inuse, num_tiles);
+	if (ret) {
+		dev_err(&apart->dev,
+			"failed to initialize tiles in use resource.\n");
+		return ret;
+	}
+
 	return 0;
 }
 
@@ -693,15 +700,96 @@ static int aie_scan_part_clocks(struct aie_partition *apart)
 		}
 	}
 
+	/*
+	 * Set the tiles in use bitmap.
+	 * In case of scanning, tiles which are powered on are considered as
+	 * tiles in use.
+	 */
+	bitmap_copy(apart->tiles_inuse.bitmap, apart->cores_clk_state.bitmap,
+		    apart->tiles_inuse.total);
+
+	return 0;
+}
+
+/* aie_set_col_clocks() - set clocks of a range of tiles of a column
+ * @apart: AI engine partition
+ * @range: range of tiles of a column
+ * @enable: true to enable the clock, false to disable
+ * @return: 0 for success, negative value of errors.
+ */
+static int aie_set_col_clocks(struct aie_partition *apart,
+			      struct aie_range *range, bool enable)
+{
+	struct aie_location ploc;
+	u32 startbit;
+
+	/*
+	 * check if the range is of single colum. only single column is allowed.
+	 * check if the start row is tile row, only tile rows are allowed.
+	 */
+	if (range->size.col != 1 || range->start.row < 1)
+		return -EINVAL;
+
+	ploc.col = range->start.col;
+	for (ploc.row = range->start.row - 1;
+	     ploc.row < range->start.row + range->size.row - 1;
+	     ploc.row++) {
+		struct aie_device *adev = apart->adev;
+
+		if (!ploc.row) {
+			void __iomem *va;
+			u32 val = 0;
+
+			/*
+			 * Configure SHIM clock registers to gate or
+			 * ungate next tile.
+			 */
+			if (enable)
+				val = AIE_SHIMPL_CLKCNTR_COLBUF_MASK |
+				      AIE_SHIMPL_CLKCNTR_NEXTCLK_MASK;
+			va = adev->base +
+			     aie_cal_regoff(adev, ploc,
+					    AIE_SHIMPL_CLKCNTR_REGOFF);
+			iowrite32(val, va);
+		} else {
+			void __iomem *va;
+			u32 val = 0;
+
+			/*
+			 * Configure core tile clock registers to gate
+			 * or ungate next tile.
+			 */
+			if (enable)
+				val = AIE_TILE_CLKCNTR_COLBUF_MASK |
+				      AIE_TILE_CLKCNTR_NEXTCLK_MASK;
+			va = adev->base +
+			     aie_cal_regoff(adev, ploc,
+					    AIE_TILE_CORE_CLKCNTR_REGOFF);
+			iowrite32(val, va);
+		}
+
+		/* If the tile clock is not on, jump to next column */
+		if (!enable)
+			break;
+	}
+
+	/* Update clock state bitmap */
+	startbit = range->start.col * (apart->range.size.row - 1) +
+		   range->start.row - 1;
+	if (enable)
+		aie_resource_set(&apart->cores_clk_state, startbit,
+				 range->size.row);
+	else
+		aie_resource_clear(&apart->cores_clk_state, startbit,
+				   range->size.row);
+
 	return 0;
 }
 
 static int aie_set_part_clocks(struct aie_partition *apart)
 {
-	struct aie_device *adev = apart->adev;
-	struct aie_range *range = &apart->range;
+	struct aie_range *range = &apart->range, lrange;
 	struct aie_location loc;
-	u32 n;
 
 	/*
 	 * The tiles below the highest tile whose clock is on, need to have the
@@ -712,70 +800,33 @@ static int aie_set_part_clocks(struct aie_partition *apart)
 	for (loc.col = range->start.col;
 	     loc.col < range->start.col + range->size.col;
 	     loc.col++) {
-		u32 startbit = loc.col * (range->size.row - 1), topbitn = 0;
+		u32 startbit, inuse_toprow = 0, clk_toprow = 0;
+
+		startbit = loc.col * (range->size.row - 1);
 
 		for (loc.row = range->start.row + 1;
 		     loc.row < range->start.row + range->size.row;
 		     loc.row++) {
 			u32 bit = startbit + loc.row - 1;
 
+			if (aie_resource_testbit(&apart->tiles_inuse, bit))
+				inuse_toprow = loc.row;
 			if (aie_resource_testbit(&apart->cores_clk_state, bit))
-				topbitn = bit + 1;
-		}
-		if (topbitn) {
-			aie_resource_set(&apart->cores_clk_state, startbit,
-					 topbitn - startbit);
-		}
-	}
-
-	/*
-	 * This second for loop is to scan the clock states bitmap and set
-	 * AI engine registers to ungate the clock of the tiles which are
-	 * required to be clocked on.
-	 */
-	for (n = 0; n < apart->cores_clk_state.total;) {
-		bool clk_on = aie_resource_testbit(&apart->cores_clk_state, n);
-
-		/* Calculate location of the tile below */
-		loc.col = n / (range->size.row - 1);
-		loc.row = n % (range->size.row - 1);
-		if (loc.row == 0) {
-			void __iomem *va;
-			u32 val = 0;
-
-			/*
-			 * Configure SHIM clock registers to gate or ungate
-			 * next tile.
-			 */
-			if (clk_on)
-				val = AIE_SHIMPL_CLKCNTR_COLBUF_MASK |
-				      AIE_SHIMPL_CLKCNTR_NEXTCLK_MASK;
-			va = adev->base +
-			     aie_cal_regoff(adev, loc,
-					    AIE_SHIMPL_CLKCNTR_REGOFF);
-			iowrite32(val, va);
-		} else {
-			void __iomem *va;
-			u32 val = 0;
-
-			/*
-			 * Configure core tile clock registers to gate or
-			 * ungate next tile.
-			 */
-			if (clk_on)
-				val = AIE_TILE_CLKCNTR_COLBUF_MASK |
-				      AIE_TILE_CLKCNTR_NEXTCLK_MASK;
-			va = adev->base +
-			     aie_cal_regoff(adev, loc,
-					    AIE_TILE_CORE_CLKCNTR_REGOFF);
-			iowrite32(val, va);
+				clk_toprow = loc.row;
 		}
 
-		/* If the tile clock is not on, jump to next column */
-		if (!clk_on)
-			n = (loc.col + 1) * (range->size.row - 1);
-		else
-			n++;
+		/* Update clock states of a column */
+		lrange.start.col = loc.col;
+		lrange.size.col = 1;
+		if (inuse_toprow < clk_toprow) {
+			lrange.start.row = inuse_toprow + 1;
+			lrange.size.row = clk_toprow - inuse_toprow;
+			aie_set_col_clocks(apart, &lrange, false);
+		} else  if (inuse_toprow > clk_toprow) {
+			lrange.start.row = clk_toprow + 1;
+			lrange.size.row = inuse_toprow - clk_toprow;
+			aie_set_col_clocks(apart, &lrange, true);
+		}
 	}
 
 	return 0;
