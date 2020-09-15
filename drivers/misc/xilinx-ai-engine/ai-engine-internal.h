@@ -12,6 +12,7 @@
 #include <linux/bits.h>
 #include <linux/cdev.h>
 #include <linux/device.h>
+#include <linux/dma-buf.h>
 #include <linux/file.h>
 #include <linux/fpga/fpga-bridge.h>
 #include <linux/io.h>
@@ -88,6 +89,7 @@ struct aie_partition;
 /**
  * struct aie_part_mem - AI engine partition memory information structure
  * @apart: AI engine partition
+ * @dbuf: dmabuf pointer associated with the memory
  * @mem: memory information of a type of memory
  * @size: size of the total memories in the partition
  *
@@ -100,6 +102,7 @@ struct aie_partition;
  */
 struct aie_part_mem {
 	struct aie_partition *apart;
+	struct dma_buf *dbuf;
 	struct aie_mem mem;
 	size_t size;
 };
