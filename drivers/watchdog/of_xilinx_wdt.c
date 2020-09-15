@@ -2,10 +2,11 @@
 /*
  * Watchdog Device Driver for Xilinx axi/xps_timebase_wdt
  *
- * (C) Copyright 2013 - 2019 Xilinx, Inc.
+ * (C) Copyright 2013 - 2020 Xilinx, Inc.
  * (C) Copyright 2011 (Alejandro Cabrera <aldaya@gmail.com>)
  */
 
+#include <linux/bits.h>
 #include <linux/clk.h>
 #include <linux/err.h>
 #include <linux/module.h>
@@ -17,21 +18,16 @@
 #include <linux/of.h>
 #include <linux/of_device.h>
 #include <linux/of_address.h>
+#include <linux/interrupt.h>
 
 #define XWT_WWDT_DEFAULT_TIMEOUT	10
 #define XWT_WWDT_MIN_TIMEOUT		1
-#define XWT_WWDT_MAX_TIMEOUT		80
+#define XWT_WWDT_MAX_TIMEOUT		42
 
 /* Register offsets for the Wdt device */
 #define XWT_TWCSR0_OFFSET   0x0 /* Control/Status Register0 */
 #define XWT_TWCSR1_OFFSET   0x4 /* Control/Status Register1 */
 #define XWT_TBR_OFFSET      0x8 /* Timebase Register Offset */
-#define XWT_WWREF_OFFSET	0x1000 /* Refresh Register */
-#define XWT_WWCSR_OFFSET	0x2000 /* Control/Status Register */
-#define XWT_WWOFF_OFFSET	0x2008 /* Offset Register */
-#define XWT_WWCMP0_OFFSET	0x2010 /* Compare Value Register0 */
-#define XWT_WWCMP1_OFFSET	0x2014 /* Compare Value Register1 */
-#define XWT_WWWRST_OFFSET	0x2FD0 /* Warm Reset Register */
 
 /* Control/Status Register Masks  */
 #define XWT_CSR0_WRS_MASK	BIT(3) /* Reset status */
@@ -41,18 +37,29 @@
 /* Control/Status Register 0/1 bits  */
 #define XWT_CSRX_EWDT2_MASK	BIT(0) /* Enable bit 2 */
 
-/* Refresh Register Masks */
-#define XWT_WWREF_GWRR_MASK	BIT(0) /* Refresh and start new period */
-
-/* Generic Control/Status Register Masks  */
-#define XWT_WWCSR_GWEN_MASK	BIT(0) /* Enable Bit */
-
-/* Warm Reset Register Masks */
-#define XWT_WWRST_GWWRR_MASK	BIT(0) /* Warm Reset Register */
-
 /* SelfTest constants */
 #define XWT_MAX_SELFTEST_LOOP_COUNT 0x00010000
 #define XWT_TIMER_FAILED            0xFFFFFFFF
+
+/* Register offsets for the WWdt device */
+#define XWT_WWDT_MWR_OFFSET	0x00
+#define XWT_WWDT_ESR_OFFSET	0x04
+#define XWT_WWDT_FCR_OFFSET	0x08
+#define XWT_WWDT_FWR_OFFSET	0x0c
+#define XWT_WWDT_SWR_OFFSET	0x10
+
+/* Master Write Control Register Masks */
+#define XWT_WWDT_MWR_MASK	BIT(0)
+
+/* Enable and Status Register Masks */
+#define XWT_WWDT_ESR_WINT_MASK	BIT(16)
+#define XWT_WWDT_ESR_WSW_MASK	BIT(8)
+#define XWT_WWDT_ESR_WEN_MASK	BIT(0)
+
+/* Function control Register Masks */
+#define XWT_WWDT_SBC_MASK	0xFF00
+#define XWT_WWDT_SBC_SHIFT	16
+#define XWT_WWDT_BSS_MASK	0xC0
 
 #define WATCHDOG_NAME     "Xilinx Watchdog"
 
@@ -71,7 +78,7 @@ MODULE_PARM_DESC(wdt_timeout,
  */
 enum xwdt_ip_type {
 	XWDT_WDT = 0,
-	XWDT_WWDT,
+	XWDT_WWDT = 1,
 };
 
 struct xwdt_devtype_data {
@@ -86,6 +93,7 @@ struct xwdt_device {
 	spinlock_t spinlock; /* spinlock for register handling */
 	struct watchdog_device xilinx_wdt_wdd;
 	struct clk		*clk;
+	int irq;
 };
 
 static int xilinx_wdt_start(struct watchdog_device *wdd)
@@ -173,11 +181,24 @@ static const struct watchdog_ops xilinx_wdt_ops = {
 	.ping = xilinx_wdt_keepalive,
 };
 
+static int is_wwdt_in_closed_window(struct watchdog_device *wdd)
+{
+	u32 control_status_reg;
+	struct xwdt_device *xdev = watchdog_get_drvdata(wdd);
+
+	control_status_reg = ioread32(xdev->base + XWT_WWDT_ESR_OFFSET);
+	if (control_status_reg & XWT_WWDT_ESR_WEN_MASK)
+		if (!(control_status_reg & XWT_WWDT_ESR_WSW_MASK))
+			return 0;
+
+	return 1;
+}
+
 static int xilinx_wwdt_start(struct watchdog_device *wdd)
 {
 	int ret;
-	u32 control_status_reg;
-	u64 count;
+	u32 control_status_reg, fcr;
+	u64 time_out, pre_timeout, count;
 	struct xwdt_device *xdev = watchdog_get_drvdata(wdd);
 	struct watchdog_device *xilinx_wdt_wdd = &xdev->xilinx_wdt_wdd;
 
@@ -186,36 +207,40 @@ static int xilinx_wwdt_start(struct watchdog_device *wdd)
 		return -EINVAL;
 
 	/* Calculate timeout count */
-	count *= wdd->timeout;
-	ret  = clk_enable(xdev->clk);
-	if (ret) {
-		dev_err(wdd->parent, "Failed to enable clock\n");
-		return ret;
+	pre_timeout = count * wdd->pretimeout;
+	time_out = count * wdd->timeout;
+	if (!watchdog_active(xilinx_wdt_wdd)) {
+		ret  = clk_enable(xdev->clk);
+		if (ret) {
+			dev_err(wdd->parent, "Failed to enable clock\n");
+			return ret;
+		}
 	}
 
 	spin_lock(&xdev->spinlock);
+	iowrite32(XWT_WWDT_MWR_MASK, xdev->base + XWT_WWDT_MWR_OFFSET);
+	iowrite32(~(u32)XWT_WWDT_ESR_WEN_MASK,
+		  xdev->base + XWT_WWDT_ESR_OFFSET);
 
-	/*
-	 * Timeout count is half as there are two windows
-	 * first window overflow is ignored (interrupt),
-	 * reset is only generated at second window overflow
-	 */
-	count = count >> 1;
+	if (pre_timeout) {
+		iowrite32((u32)(time_out - pre_timeout),
+			  xdev->base + XWT_WWDT_FWR_OFFSET);
+		iowrite32((u32)pre_timeout, xdev->base + XWT_WWDT_SWR_OFFSET);
+		fcr = ioread32(xdev->base + XWT_WWDT_SWR_OFFSET);
+		fcr = (fcr >> XWT_WWDT_SBC_SHIFT) & XWT_WWDT_SBC_MASK;
+		fcr = fcr | XWT_WWDT_BSS_MASK;
+		iowrite32(fcr, xdev->base + XWT_WWDT_FCR_OFFSET);
+	} else {
+		iowrite32((u32)pre_timeout,
+			  xdev->base + XWT_WWDT_FWR_OFFSET);
+		iowrite32((u32)time_out, xdev->base + XWT_WWDT_SWR_OFFSET);
+		iowrite32(0x0, xdev->base + XWT_WWDT_FCR_OFFSET);
+	}
 
-	/* Disable the generic watchdog timer */
-	control_status_reg = ioread32(xdev->base + XWT_WWCSR_OFFSET);
-	control_status_reg &= ~(XWT_WWCSR_GWEN_MASK);
-	iowrite32(control_status_reg, xdev->base + XWT_WWCSR_OFFSET);
-
-	/* Set compare and offset registers for generic watchdog timeout */
-	iowrite32((u32)count, xdev->base + XWT_WWCMP0_OFFSET);
-	iowrite32((u32)0, xdev->base + XWT_WWCMP1_OFFSET);
-	iowrite32((u32)count, xdev->base + XWT_WWOFF_OFFSET);
-
-	/* Enable the generic watchdog timer */
-	control_status_reg = ioread32(xdev->base + XWT_WWCSR_OFFSET);
-	control_status_reg |= (XWT_WWCSR_GWEN_MASK);
-	iowrite32(control_status_reg, xdev->base + XWT_WWCSR_OFFSET);
+	/* Enable the window watchdog timer */
+	control_status_reg = ioread32(xdev->base + XWT_WWDT_ESR_OFFSET);
+	control_status_reg |= XWT_WWDT_ESR_WEN_MASK;
+	iowrite32(control_status_reg, xdev->base + XWT_WWDT_ESR_OFFSET);
 
 	spin_unlock(&xdev->spinlock);
 
@@ -226,20 +251,25 @@ static int xilinx_wwdt_start(struct watchdog_device *wdd)
 
 static int xilinx_wwdt_stop(struct watchdog_device *wdd)
 {
-	u32 control_status_reg;
 	struct xwdt_device *xdev = watchdog_get_drvdata(wdd);
 	struct watchdog_device *xilinx_wdt_wdd = &xdev->xilinx_wdt_wdd;
 
+	if (!is_wwdt_in_closed_window(wdd)) {
+		dev_warn(xilinx_wdt_wdd->parent, "timer in closed window");
+		return -EINVAL;
+	}
+
 	spin_lock(&xdev->spinlock);
 
-	/* Disable the generic watchdog timer */
-	control_status_reg = ioread32(xdev->base + XWT_WWCSR_OFFSET);
-	control_status_reg &= ~(XWT_WWCSR_GWEN_MASK);
-	iowrite32(control_status_reg, xdev->base + XWT_WWCSR_OFFSET);
+	iowrite32(XWT_WWDT_MWR_MASK, xdev->base + XWT_WWDT_MWR_OFFSET);
+	/* Disable the Window watchdog timer */
+	iowrite32(~(u32)XWT_WWDT_ESR_WEN_MASK,
+		  xdev->base + XWT_WWDT_ESR_OFFSET);
 
 	spin_unlock(&xdev->spinlock);
 
-	clk_disable(xdev->clk);
+	if (watchdog_active(xilinx_wdt_wdd))
+		clk_disable(xdev->clk);
 
 	dev_dbg(xilinx_wdt_wdd->parent, "Watchdog Stopped!\n");
 
@@ -248,11 +278,23 @@ static int xilinx_wwdt_stop(struct watchdog_device *wdd)
 
 static int xilinx_wwdt_keepalive(struct watchdog_device *wdd)
 {
+	u32 control_status_reg;
 	struct xwdt_device *xdev = watchdog_get_drvdata(wdd);
+
+	/* Refresh in open window is ignored */
+	if (!is_wwdt_in_closed_window(wdd))
+		return 0;
 
 	spin_lock(&xdev->spinlock);
 
-	iowrite32(XWT_WWREF_GWRR_MASK, xdev->base + XWT_WWREF_OFFSET);
+	iowrite32(XWT_WWDT_MWR_MASK, xdev->base + XWT_WWDT_MWR_OFFSET);
+	control_status_reg = ioread32(xdev->base + XWT_WWDT_ESR_OFFSET);
+	control_status_reg |= XWT_WWDT_ESR_WINT_MASK;
+	control_status_reg &= ~XWT_WWDT_ESR_WSW_MASK;
+	iowrite32(control_status_reg, xdev->base + XWT_WWDT_ESR_OFFSET);
+	control_status_reg = ioread32(xdev->base + XWT_WWDT_ESR_OFFSET);
+	control_status_reg |= XWT_WWDT_ESR_WSW_MASK;
+	iowrite32(control_status_reg, xdev->base + XWT_WWDT_ESR_OFFSET);
 
 	spin_unlock(&xdev->spinlock);
 
@@ -262,8 +304,14 @@ static int xilinx_wwdt_keepalive(struct watchdog_device *wdd)
 static int xilinx_wwdt_set_timeout(struct watchdog_device *wdd,
 				   unsigned int new_time)
 {
+	u32 ret = 0;
 	struct xwdt_device *xdev = watchdog_get_drvdata(wdd);
 	struct watchdog_device *xilinx_wdt_wdd = &xdev->xilinx_wdt_wdd;
+
+	if (!is_wwdt_in_closed_window(wdd)) {
+		dev_warn(xilinx_wdt_wdd->parent, "timer in closed window");
+		return -EINVAL;
+	}
 
 	if (new_time < XWT_WWDT_MIN_TIMEOUT ||
 	    new_time > XWT_WWDT_MAX_TIMEOUT) {
@@ -275,15 +323,66 @@ static int xilinx_wwdt_set_timeout(struct watchdog_device *wdd,
 	}
 
 	wdd->timeout = new_time;
+	wdd->pretimeout = 0;
 
-	return xilinx_wwdt_start(wdd);
+	if (watchdog_active(xilinx_wdt_wdd)) {
+		ret = xilinx_wwdt_start(wdd);
+		if (ret)
+			dev_dbg(xilinx_wdt_wdd->parent, "timer start failed");
+	}
+
+	return 0;
+}
+
+static int xilinx_wwdt_set_pretimeout(struct watchdog_device *wdd,
+				      u32 new_pretimeout)
+{
+	u32 ret = 0;
+	struct xwdt_device *xdev = watchdog_get_drvdata(wdd);
+	struct watchdog_device *xilinx_wdt_wdd = &xdev->xilinx_wdt_wdd;
+
+	if (!is_wwdt_in_closed_window(wdd)) {
+		dev_warn(xilinx_wdt_wdd->parent, "timer in closed window");
+		return -EINVAL;
+	}
+
+	if (new_pretimeout < wdd->min_timeout ||
+	    new_pretimeout >= wdd->timeout)
+		return -EINVAL;
+
+	wdd->pretimeout = new_pretimeout;
+
+	if (watchdog_active(xilinx_wdt_wdd)) {
+		ret = xilinx_wwdt_start(wdd);
+		if (ret)
+			dev_dbg(xilinx_wdt_wdd->parent, "timer start failed");
+	}
+
+	return 0;
+}
+
+static irqreturn_t xilinx_wwdt_isr(int irq, void *wdog_arg)
+{
+	struct xwdt_device *xdev = wdog_arg;
+
+	watchdog_notify_pretimeout(&xdev->xilinx_wdt_wdd);
+	return IRQ_HANDLED;
 }
 
 static const struct watchdog_info xilinx_wwdt_ident = {
 	.options =  WDIOF_MAGICCLOSE |
 		WDIOF_KEEPALIVEPING |
 		WDIOF_SETTIMEOUT,
-	.firmware_version =	1,
+	.firmware_version = 1,
+	.identity = "xlnx_wwdt watchdog",
+};
+
+static const struct watchdog_info xilinx_wwdt_pretimeout_ident = {
+	.options = WDIOF_MAGICCLOSE |
+		   WDIOF_KEEPALIVEPING |
+		   WDIOF_PRETIMEOUT |
+		   WDIOF_SETTIMEOUT,
+	.firmware_version = 1,
 	.identity = "xlnx_wwdt watchdog",
 };
 
@@ -293,6 +392,7 @@ static const struct watchdog_ops xilinx_wwdt_ops = {
 	.stop = xilinx_wwdt_stop,
 	.ping = xilinx_wwdt_keepalive,
 	.set_timeout = xilinx_wwdt_set_timeout,
+	.set_pretimeout = xilinx_wwdt_set_pretimeout,
 };
 
 static u32 xwdt_selftest(struct xwdt_device *xdev)
@@ -352,7 +452,7 @@ static int xwdt_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 	int rc;
-	u32 pfreq = 0, enable_once = 0;
+	u32 pfreq = 0, enable_once = 0, pre_timeout = 0;
 	struct xwdt_device *xdev;
 	struct watchdog_device *xilinx_wdt_wdd;
 	const struct of_device_id *of_id;
@@ -394,6 +494,12 @@ static int xwdt_probe(struct platform_device *pdev)
 				 "Parameter \"xlnx,wdt-enable-once\" not found\n");
 
 		watchdog_set_nowayout(xilinx_wdt_wdd, enable_once);
+	} else {
+		rc = of_property_read_u32(dev->of_node, "pretimeout-sec",
+					  &pre_timeout);
+		if (rc)
+			dev_dbg(dev,
+				"Parameter \"pretimeout-sec\" not found\n");
 	}
 
 	xdev->clk = devm_clk_get(dev, NULL);
@@ -437,10 +543,18 @@ static int xwdt_probe(struct platform_device *pdev)
 				2 * ((1 << xdev->wdt_interval) /
 					pfreq);
 	} else {
+		xilinx_wdt_wdd->pretimeout = pre_timeout;
 		xilinx_wdt_wdd->timeout = XWT_WWDT_DEFAULT_TIMEOUT;
 		xilinx_wdt_wdd->min_timeout = XWT_WWDT_MIN_TIMEOUT;
 		xilinx_wdt_wdd->max_timeout = XWT_WWDT_MAX_TIMEOUT;
-
+		xdev->irq = platform_get_irq_byname(pdev, "wdt");
+		if (xdev->irq > 0) {
+			if (!devm_request_irq(dev, xdev->irq, xilinx_wwdt_isr,
+					      0, dev_name(dev), xdev)) {
+				xilinx_wdt_wdd->info =
+				&xilinx_wwdt_pretimeout_ident;
+			}
+		}
 		rc = watchdog_init_timeout(xilinx_wdt_wdd,
 					   wdt_timeout, &pdev->dev);
 		if (rc)
