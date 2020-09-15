@@ -120,7 +120,9 @@ static int aie_mem_mmap(struct dma_buf *dmabuf, struct vm_area_struct *vma)
 
 static void aie_mem_dmabuf_release(struct dma_buf *dmabuf)
 {
-	(void)dmabuf;
+	struct aie_part_mem *pmem = dmabuf->priv;
+
+	pmem->dbuf = NULL;
 }
 
 static const struct dma_buf_ops aie_mem_dma_buf_ops = {
@@ -147,7 +149,6 @@ static int aie_mem_create_dmabuf(struct aie_partition *apart,
 				 struct aie_part_mem *pmem,
 				 struct aie_mem *mem)
 {
-	DEFINE_DMA_BUF_EXPORT_INFO(exp_info);
 	struct dma_buf *dmabuf;
 	int ret;
 
@@ -157,20 +158,27 @@ static int aie_mem_create_dmabuf(struct aie_partition *apart,
 			 pmem->mem.offset, pmem->mem.size);
 		return -EINVAL;
 	}
-	exp_info.ops = &aie_mem_dma_buf_ops;
-	exp_info.size = pmem->size;
-	exp_info.flags = O_RDWR;
-	exp_info.priv = pmem;
 
-	dmabuf = dma_buf_export(&exp_info);
-	if (IS_ERR(dmabuf))
-		return PTR_ERR(dmabuf);
+	dmabuf = pmem->dbuf;
+	if (!dmabuf) {
+		DEFINE_DMA_BUF_EXPORT_INFO(exp_info);
+
+		exp_info.ops = &aie_mem_dma_buf_ops;
+		exp_info.size = pmem->size;
+		exp_info.flags = O_RDWR;
+		exp_info.priv = pmem;
+
+		dmabuf = dma_buf_export(&exp_info);
+		if (IS_ERR(dmabuf))
+			return PTR_ERR(dmabuf);
+
+		pmem->dbuf = dmabuf;
+	}
 
 	ret = dma_buf_fd(dmabuf, O_CLOEXEC);
 	if (ret < 0) {
 		dev_err(&apart->dev,
 			"dmabuf creation failed, failed to get fd.\n");
-		dma_buf_put(dmabuf);
 		return ret;
 	}
 	memcpy(mem, &pmem->mem, sizeof(*mem));
