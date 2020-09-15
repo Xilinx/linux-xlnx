@@ -764,3 +764,19 @@ void aie_part_remove(struct aie_partition *apart)
 	device_del(&apart->dev);
 	put_device(&apart->dev);
 }
+
+/**
+ * aie_part_has_regs_mmapped() - check if registers in the partition are mapped.
+ * @apart: AI engine partition
+ * @return: return true if there are registers mmaped, false otherwise.
+ *
+ * This function checks if there are registerss in the partition mmapped in the
+ * partition.
+ */
+bool aie_part_has_regs_mmapped(struct aie_partition *apart)
+{
+	struct address_space *mapping;
+
+	mapping = apart->filep->f_inode->i_mapping;
+	return mapping_mapped(mapping);
+}

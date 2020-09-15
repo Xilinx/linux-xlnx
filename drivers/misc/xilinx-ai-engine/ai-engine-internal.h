@@ -546,4 +546,9 @@ int aie_device_init(struct aie_device *adev);
 void aie_array_backtrack(struct work_struct *work);
 irqreturn_t aie_interrupt(int irq, void *data);
 
+bool aie_part_has_mem_mmapped(struct aie_partition *apart);
+bool aie_part_has_regs_mmapped(struct aie_partition *apart);
+
+int aie_part_reset(struct aie_partition *apart);
+int aie_part_post_reinit(struct aie_partition *apart);
 #endif /* AIE_INTERNAL_H */
