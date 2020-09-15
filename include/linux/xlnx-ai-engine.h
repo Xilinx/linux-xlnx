@@ -83,6 +83,8 @@ bool aie_partition_is_available(struct aie_partition_req *req);
 struct device *aie_partition_request(struct aie_partition_req *req);
 int aie_partition_get_fd(struct device *dev);
 void aie_partition_release(struct device *dev);
+int aie_partition_reset(struct device *dev);
+int aie_partition_post_reinit(struct device *dev);
 
 int aie_register_error_notification(struct device *dev,
 				    void (*cb)(void *priv), void *priv);
@@ -111,6 +113,16 @@ static inline int aie_partition_get_fd(struct device *dev)
 }
 
 static inline void aie_partition_release(struct device *dev) {}
+
+static inline int aie_partition_reset(struct device *dev)
+{
+	return -EINVAL;
+}
+
+static inline int aie_partition_post_reinit(struct device *dev)
+{
+	return -EINVAL;
+}
 
 static inline int
 aie_register_error_notification(struct device *dev, void (*cb)(void *priv),
