@@ -669,6 +669,44 @@ void aie_partition_release(struct device *dev)
 }
 EXPORT_SYMBOL_GPL(aie_partition_release);
 
+/**
+ * aie_partition_reset() - Reset AI engine partition
+ * @dev: AI engine partition device
+ * @return: 0 for success, negative value for failure
+ */
+int aie_partition_reset(struct device *dev)
+{
+	struct aie_partition *apart;
+
+	if (WARN_ON(!dev))
+		return -EINVAL;
+
+	apart = dev_to_aiepart(dev);
+	return aie_part_reset(apart);
+}
+EXPORT_SYMBOL_GPL(aie_partition_reset);
+
+/**
+ * aie_partition_post_reinit() - Indicate AI engine partition driver the
+ *				 partition has been re-initialized.
+ * @dev: AI engine partition device
+ * @return: 0 for success, negative value for failure
+ *
+ * This function is called after the AI engine partition is reconfigured with
+ * PDI outside the AI engine driver.
+ */
+int aie_partition_post_reinit(struct device *dev)
+{
+	struct aie_partition *apart;
+
+	if (WARN_ON(!dev))
+		return -EINVAL;
+
+	apart = dev_to_aiepart(dev);
+	return aie_part_post_reinit(apart);
+}
+EXPORT_SYMBOL_GPL(aie_partition_post_reinit);
+
 static int __init xilinx_ai_engine_init(void)
 {
 	int ret;
