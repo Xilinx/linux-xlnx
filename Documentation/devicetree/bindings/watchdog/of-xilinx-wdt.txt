@@ -20,6 +20,15 @@ Optional properties for AXI/PLB soft-core watchdog:
 
 Optional properties for window watchdog:
 - timeout-sec          : Watchdog timeout value (in seconds).
+			 if unset, the default timeout is 10 seconds.
+- pretimeout-sec	: Watchdog pretimeout value in seconds.
+- interrupts		: IRQ line for the WWDT.
+- interrupt-names	: Interrupt line names "wdt" or "wwdt_reset_pending".
+			  wdt - will assert high after first (closed) window
+			  timer expires. wwdt_reset_pending - will assert high
+			  after second (open) window timer expires if WRP
+			  (Watchdog Reset pending) is configured with third
+			  (SST) timer.
 
 Example:
 Xilinx AXI/PLB soft-core watchdog:
@@ -38,4 +47,7 @@ watchdog@fd4d0000 {
 	reg = <0x0 0xfd4d0000 0x0 0x10000>;
 	clocks = <&clk25>;
 	timeout-sec = <10>;
+	interrupt-names = "wdt", "wwdt_reset_pending";
+	interrupts = <0x0 0x64 0x1>, <0x0 0x6D 0x1>;
+	pretimeout-sec = <5>;
 } ;
