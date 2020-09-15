@@ -157,3 +157,90 @@ int aie_part_clean(struct aie_partition *apart)
 
 	return 0;
 }
+
+/**
+ * aie_part_reset() - reset AI engine partition
+ * @apart: AI engine partition
+ * @return: 0 for success and negative value for failure
+ *
+ * This function will:
+ * - gate all the columns
+ * - reset AI engine partition columns
+ * - reset AI engine shims
+ * - gate all the tiles in a partition.
+ *
+ * This function will not validate the partition, the caller will need to
+ * provide a valid AI engine partition.
+ */
+int aie_part_reset(struct aie_partition *apart)
+{
+	struct aie_device *adev = apart->adev;
+	int ret;
+
+	ret = mutex_lock_interruptible(&apart->mlock);
+	if (ret)
+		return ret;
+
+	/*
+	 * Check if any AI engine memories or registers in the
+	 * partition have been mapped. If yes, don't reset.
+	 */
+	if (aie_part_has_mem_mmapped(apart) ||
+	    aie_part_has_regs_mmapped(apart)) {
+		dev_err(&apart->dev,
+			"failed to reset, there are mmapped memories or registers.\n");
+		mutex_unlock(&apart->mlock);
+		return -EBUSY;
+	}
+
+	/* Clear tiles in use bitmap and clock state bitmap */
+	aie_resource_clear(&apart->tiles_inuse, 0, apart->tiles_inuse.total);
+	aie_resource_clear(&apart->cores_clk_state, 0,
+			   apart->cores_clk_state.total);
+
+	aie_part_set_cols_clkbuf(apart, false);
+	aie_part_set_cols_reset(apart, true);
+
+	ret = apart->adev->ops->reset_shim(adev, &apart->range);
+	if (ret < 0) {
+		return ret;
+		mutex_unlock(&apart->mlock);
+	}
+
+	aie_part_set_cols_clkbuf(apart, false);
+
+	mutex_unlock(&apart->mlock);
+	return 0;
+}
+
+/**
+ * aie_part_post_reinit() - AI engine partition has been re-initialized
+ * @apart: AI engine partition
+ * @return: 0 for success and negative value for failure
+ *
+ * This function will:
+ * - scan which tiles are gated
+ * - update memories and registers mapping
+ *
+ * This function will scan which tiles are gated, and update the memories and
+ * registers setting. This function is called after the AI engine partition is
+ * reconfigured with PDI outside the AI engine driver.
+ */
+int aie_part_post_reinit(struct aie_partition *apart)
+{
+	int ret;
+
+	ret = mutex_lock_interruptible(&apart->mlock);
+	if (ret)
+		return ret;
+
+	ret = aie_part_scan_clk_state(apart);
+	mutex_unlock(&apart->mlock);
+	if (ret) {
+		dev_err(&apart->dev,
+			"failed to scan clock states after reset is done.\n");
+		return ret;
+	}
+
+	return 0;
+}

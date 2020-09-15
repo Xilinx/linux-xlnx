@@ -272,3 +272,26 @@ int aie_mem_get_info(struct aie_partition *apart, unsigned long arg)
 	kfree(mems);
 	return ret;
 }
+
+/**
+ * aie_part_has_mem_mmapped() - check if memories in the partition are mapped
+ * @apart: AI engine partition
+ * @return: return true if there are memories mmaped, false otherwise.
+ *
+ * This function checks if there are memories in the partition mmapped in the
+ * partition.
+ */
+bool aie_part_has_mem_mmapped(struct aie_partition *apart)
+{
+	unsigned int num_mems, i;
+
+	num_mems = apart->adev->ops->get_mem_info(&apart->range, NULL);
+	if (!num_mems)
+		return false;
+
+	for (i = 0; i < num_mems; i++) {
+		if (apart->pmems[i].dbuf)
+			return true;
+	}
+	return false;
+}
