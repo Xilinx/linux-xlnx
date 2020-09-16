@@ -194,9 +194,8 @@ int aie_part_reset(struct aie_partition *apart)
 	}
 
 	/* Clear tiles in use bitmap and clock state bitmap */
-	aie_resource_clear(&apart->tiles_inuse, 0, apart->tiles_inuse.total);
-	aie_resource_clear(&apart->cores_clk_state, 0,
-			   apart->cores_clk_state.total);
+	aie_resource_clear_all(&apart->tiles_inuse);
+	aie_resource_clear_all(&apart->cores_clk_state);
 
 	aie_part_set_cols_clkbuf(apart, false);
 	aie_part_set_cols_reset(apart, true);
