@@ -447,10 +447,8 @@ static int xilinx_ai_engine_probe(struct platform_device *pdev)
 	INIT_WORK(&adev->backtrack, aie_array_backtrack);
 
 	adev->irq = platform_get_irq_byname(pdev, "interrupt1");
-	if (adev->irq < 0) {
-		dev_err(&pdev->dev, "Failed to find AIE interrupt1\n");
+	if (adev->irq < 0)
 		goto free_ida;
-	}
 
 	ret = devm_request_irq(dev, adev->irq, aie_interrupt, 0, dev_name(dev),
 			       adev);
