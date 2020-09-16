@@ -509,6 +509,7 @@ int aie_resource_get_region(struct aie_resource *res, u32 start,
 void aie_resource_put_region(struct aie_resource *res, int start, u32 count);
 int aie_resource_set(struct aie_resource *res, u32 start, u32 count);
 int aie_resource_clear(struct aie_resource *res, u32 start, u32 count);
+int aie_resource_clear_all(struct aie_resource *res);
 bool aie_resource_testbit(struct aie_resource *res, u32 bit);
 
 const struct file_operations *aie_part_get_fops(void);
