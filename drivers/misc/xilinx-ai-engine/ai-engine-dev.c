@@ -396,10 +396,14 @@ static int xilinx_ai_engine_probe(struct platform_device *pdev)
 	adev->pm_node_id = pm_reg[1];
 
 	adev->eemi_ops = zynqmp_pm_get_eemi_ops();
-	if (IS_ERR(adev->eemi_ops) || !adev->eemi_ops->reset_assert ||
-	    !adev->eemi_ops->get_chipid || !adev->eemi_ops->ioctl) {
+	if (IS_ERR(adev->eemi_ops)) {
 		dev_err(&adev->dev, "failed to get eemi ops.\n");
 		return PTR_ERR(adev->eemi_ops);
+	}
+	if (!adev->eemi_ops->reset_assert || !adev->eemi_ops->get_chipid ||
+	    !adev->eemi_ops->ioctl) {
+		dev_err(&adev->dev, "required eemi ops not found.\n");
+		return -EINVAL;
 	}
 
 	ret = adev->eemi_ops->get_chipid(&idcode, &version);
