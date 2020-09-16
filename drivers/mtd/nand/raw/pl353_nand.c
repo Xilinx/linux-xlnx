@@ -1125,7 +1125,7 @@ static int pl353_nand_probe(struct platform_device *pdev)
 	struct resource *res;
 	struct device_node *np, *dn;
 	struct clk *mclk;
-	u32 ret, val;
+	u32 ret, val = 0;
 
 	xnfc = devm_kzalloc(&pdev->dev, sizeof(*xnfc), GFP_KERNEL);
 	if (!xnfc)
