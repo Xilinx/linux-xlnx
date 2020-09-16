@@ -826,6 +826,19 @@ static u32 aie_get_module_errors(struct aie_partition *apart,
 }
 
 /**
+ * aie_part_clear_cached_events() - clear cached events in a partition.
+ * @apart: AIE partition pointer
+ *
+ * This function will clear the cached events in a partition.
+ */
+void aie_part_clear_cached_events(struct aie_partition *apart)
+{
+	aie_resource_clear_all(&apart->core_event_status);
+	aie_resource_clear_all(&apart->mem_event_status);
+	aie_resource_clear_all(&apart->pl_event_status);
+}
+
+/**
  * aie_register_error_notification() - register a callback for error
  *				       notification.
  * @dev: AIE partition device.

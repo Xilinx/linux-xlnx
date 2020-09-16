@@ -335,6 +335,9 @@ static int aie_part_release(struct inode *inode, struct file *filp)
 	apart->error_cb.cb = NULL;
 	apart->error_cb.priv = NULL;
 	apart->status = 0;
+
+	aie_part_clear_cached_events(apart);
+
 	mutex_unlock(&apart->mlock);
 
 	return 0;
