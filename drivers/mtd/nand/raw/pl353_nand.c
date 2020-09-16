@@ -788,7 +788,6 @@ static int pl353_nand_exec_op_cmd(struct nand_chip *chip,
 	int i;
 	u32 col = 0, row = 0;
 	u32 naddrs = 0;
-	u8 val;
 
 	memset(&nfc_op, 0, sizeof(struct pl353_nfc_op));
 	for (op_id = 0; op_id < subop->ninstrs; op_id++) {
@@ -816,7 +815,6 @@ static int pl353_nand_exec_op_cmd(struct nand_chip *chip,
 			i = nand_subop_get_addr_start_off(subop, op_id);
 			naddrs = nand_subop_get_num_addr_cyc(subop,
 							     op_id);
-			val = instr->ctx.addr.addrs[i];
 			for (i = 0; i < min_t(unsigned int, 4, naddrs); i++)
 				col |= instr->ctx.addr.addrs[i] << (8 * i);
 
