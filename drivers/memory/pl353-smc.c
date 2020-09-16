@@ -411,7 +411,8 @@ static int pl353_smc_probe(struct amba_device *adev, const struct amba_id *id)
 		goto out_clk_disable;
 	}
 
-	init = match->data;
+	init = (void (*)(struct amba_device *,
+			 struct device_node *))match->data;
 	if (init)
 		init(adev, child);
 	of_platform_device_create(child, NULL, &adev->dev);
