@@ -150,6 +150,22 @@ int aie_resource_clear(struct aie_resource *res, u32 start, u32 count)
 }
 
 /**
+ * aie_resource_clear_all() - clear all the AI engine resource bits
+ * @res: pointer to AI engine resource
+ * @return: 0 for success and negative value for failure
+ *
+ * This function clears all the bits in the resource.
+ */
+int aie_resource_clear_all(struct aie_resource *res)
+{
+	if (!res || !res->bitmap)
+		return -EINVAL;
+
+	bitmap_clear(res->bitmap, 0, res->total);
+	return 0;
+}
+
+/**
  * aie_resource_testbit() - test if a bit is set in a AI engine resource
  * @res: pointer to AI engine resource
  * @bit: bit to check
