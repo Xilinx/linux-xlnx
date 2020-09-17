@@ -410,19 +410,15 @@ static ssize_t xlnx_dsi_host_transfer(struct mipi_dsi_host *host,
 				      const struct mipi_dsi_msg *msg)
 {
 	struct xlnx_dsi *dsi = host_to_dsi(host);
-	u32 data0, data1, cmd0, status, val;
+	u32 data0, data1, cmd0, val, offset;
+	int status;
 	const char *tx_buf = msg->tx_buf;
 
-	if (!(xlnx_dsi_readl(dsi->iomem, XDSI_CCR) & (XDSI_CCR_COREENB |
-						      XDSI_CCR_CMDMODE))) {
-		dev_err(dsi->dev, "dsi command mode not enabled\n");
-		return -EINVAL;
-	}
-
-	if (msg->type == MIPI_DSI_DCS_LONG_WRITE) {
+	switch (msg->type) {
+	case MIPI_DSI_DCS_LONG_WRITE:
 		status = readl_poll_timeout(dsi->iomem + XDSI_STR, val,
-					    ((val & XDSI_STR_LPKT_MASK) ==
-					     XDSI_STR_LPKT_MASK), 1,
+					    (val & XDSI_STR_LPKT_MASK) ==
+					     XDSI_STR_LPKT_MASK, 1,
 					    XDSI_CMD_TIMEOUT_VAL);
 		if (status) {
 			dev_err(dsi->dev, "long cmd fifo not empty!\n");
@@ -436,31 +432,62 @@ static ssize_t xlnx_dsi_host_transfer(struct mipi_dsi_host *host,
 		xlnx_dsi_writel(dsi->iomem, XDSI_DFR, data0);
 		xlnx_dsi_writel(dsi->iomem, XDSI_DFR, data1);
 		xlnx_dsi_writel(dsi->iomem, XDSI_CMD, cmd0);
-	} else {
-		data0 = tx_buf[0];
-		if (msg->type == MIPI_DSI_DCS_SHORT_WRITE_PARAM)
-			data0 = MIPI_DSI_DCS_SHORT_WRITE_PARAM |
-				(tx_buf[0] << 8) | (tx_buf[1] << 16);
-		else
-			data0 = MIPI_DSI_DCS_SHORT_WRITE | (tx_buf[0] << 8);
-
+		break;
+	case MIPI_DSI_GENERIC_LONG_WRITE:
 		status = readl_poll_timeout(dsi->iomem + XDSI_STR, val,
-					    ((val & XDSI_STR_RDY_SHPKT) ==
-					     XDSI_STR_RDY_SHPKT), 1,
+					    (val & XDSI_STR_LPKT_MASK) ==
+					    XDSI_STR_LPKT_MASK, 1,
+					    XDSI_CMD_TIMEOUT_VAL);
+		if (status) {
+			dev_err(dsi->dev, "long cmd fifo not empty!\n");
+			return -EBUSY;
+		}
+		cmd0 = msg->type | (msg->tx_len << 8);
+		xlnx_dsi_writel(dsi->iomem, XDSI_CMD, cmd0);
+
+		for (offset = 0; offset <= msg->tx_len; offset += 4) {
+			data0 = tx_buf[0 + offset] | tx_buf[1 + offset] << 8 |
+				tx_buf[2 + offset] << 16 |
+				tx_buf[3 + offset] << 24;
+			xlnx_dsi_writel(dsi->iomem, XDSI_DFR, data0);
+		}
+		break;
+	case MIPI_DSI_DCS_SHORT_WRITE_PARAM:
+		status = readl_poll_timeout(dsi->iomem + XDSI_STR, val,
+					    (val & XDSI_STR_RDY_SHPKT) ==
+					    XDSI_STR_RDY_SHPKT, 1,
 					    XDSI_CMD_TIMEOUT_VAL);
 		if (status) {
 			dev_err(dsi->dev, "short cmd fifo not empty\n");
-			return -ETIMEDOUT;
+			return -EBUSY;
 		}
+		data0 = MIPI_DSI_DCS_SHORT_WRITE_PARAM |
+			(tx_buf[0] << 8) | (tx_buf[1] << 16);
 		xlnx_dsi_writel(dsi->iomem, XDSI_CMD, data0);
+		break;
+	case MIPI_DSI_DCS_SHORT_WRITE:
+		status = readl_poll_timeout(dsi->iomem + XDSI_STR, val,
+					    (val & XDSI_STR_RDY_SHPKT) ==
+					    XDSI_STR_RDY_SHPKT, 1,
+					    XDSI_CMD_TIMEOUT_VAL);
+		if (status) {
+			dev_err(dsi->dev, "short cmd fifo not empty\n");
+			return -EBUSY;
+		}
+		data0 = MIPI_DSI_DCS_SHORT_WRITE | (tx_buf[0] << 8);
+		xlnx_dsi_writel(dsi->iomem, XDSI_CMD, data0);
+		break;
+	default:
+		dev_err(dsi->dev, "Unsupported command type\n");
+		return -EINVAL;
 	}
 
 	status = readl_poll_timeout(dsi->iomem + XDSI_STR, val,
-				    (!(val & XDSI_STR_CMD_EXE_PGS)), 1,
+				    !(val & XDSI_STR_CMD_EXE_PGS), 1,
 				    XDSI_CMD_TIMEOUT_VAL);
 	if (status) {
-		dev_err(dsi->dev, "cmd time out\n");
-		return -ETIMEDOUT;
+		dev_err(dsi->dev, "cmd timeout\n");
+		return status;
 	}
 
 	return msg->tx_len;
