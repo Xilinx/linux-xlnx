@@ -592,9 +592,9 @@ struct zynqmp_eemi_ops {
 	int (*clock_setparent)(u32 clock_id, u32 parent_id);
 	int (*clock_getparent)(u32 clock_id, u32 *parent_id);
 	int (*ioctl)(u32 node_id, u32 ioctl_id, u32 arg1, u32 arg2, u32 *out);
-	int (*reset_assert)(const enum zynqmp_pm_reset reset,
+	int (*reset_assert)(const u32 reset,
 			    const enum zynqmp_pm_reset_action assert_flag);
-	int (*reset_get_status)(const enum zynqmp_pm_reset reset, u32 *status);
+	int (*reset_get_status)(const u32 reset, u32 *status);
 	int (*init_finalize)(void);
 	int (*set_suspend_mode)(u32 mode);
 	int (*request_node)(const u32 node,
