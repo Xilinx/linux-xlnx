@@ -392,15 +392,23 @@ __xtpg_get_pad_format(struct xtpg_device *xtpg,
 		      struct v4l2_subdev_state *sd_state,
 		      unsigned int pad, u32 which)
 {
+	struct v4l2_mbus_framefmt *format;
+
 	switch (which) {
 	case V4L2_SUBDEV_FORMAT_TRY:
-		return v4l2_subdev_get_try_format(&xtpg->xvip.subdev,
-						  sd_state, pad);
+		format = v4l2_subdev_get_try_format(&xtpg->xvip.subdev,
+						    sd_state,
+						    pad);
+		break;
 	case V4L2_SUBDEV_FORMAT_ACTIVE:
-		return &xtpg->formats[pad];
+		format = &xtpg->formats[pad];
+		break;
 	default:
-		return NULL;
+		format = NULL;
+		break;
 	}
+
+	return format;
 }
 
 static int xtpg_get_format(struct v4l2_subdev *subdev,
@@ -408,9 +416,13 @@ static int xtpg_get_format(struct v4l2_subdev *subdev,
 			   struct v4l2_subdev_format *fmt)
 {
 	struct xtpg_device *xtpg = to_tpg(subdev);
+	struct v4l2_mbus_framefmt *format;
 
-	fmt->format = *__xtpg_get_pad_format(xtpg, sd_state, fmt->pad,
-					     fmt->which);
+	format = __xtpg_get_pad_format(xtpg, sd_state, fmt->pad, fmt->which);
+	if (!format)
+		return -EINVAL;
+
+	fmt->format = *format;
 
 	return 0;
 }
@@ -424,6 +436,8 @@ static int xtpg_set_format(struct v4l2_subdev *subdev,
 	u32 bayer_phase;
 
 	__format = __xtpg_get_pad_format(xtpg, sd_state, fmt->pad, fmt->which);
+	if (!__format)
+		return -EINVAL;
 
 	/* In two pads mode the source pad format is always identical to the
 	 * sink pad format.
@@ -468,6 +482,8 @@ static int xtpg_set_format(struct v4l2_subdev *subdev,
 	if (xtpg->npads == 2) {
 		__format = __xtpg_get_pad_format(xtpg, sd_state, 1,
 						 fmt->which);
+		if (!__format)
+			return -EINVAL;
 		*__format = fmt->format;
 	}
 
