@@ -1047,8 +1047,10 @@ static int xcsc_parse_of(struct xcsc_dev *xcsc)
 	}
 	switch (video_width[0]) {
 	case XVIDC_BPC_8:
+		xcsc->color_depth = XVIDC_BPC_8;
+		break;
 	case XVIDC_BPC_10:
-		xcsc->color_depth = video_width[0];
+		xcsc->color_depth = XVIDC_BPC_10;
 		break;
 	default:
 		dev_err(dev, "Unsupported color depth %d", video_width[0]);
