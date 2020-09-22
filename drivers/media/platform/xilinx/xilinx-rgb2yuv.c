@@ -98,15 +98,22 @@ __xrgb2yuv_get_pad_format(struct xrgb2yuv_device *xrgb2yuv,
 			  struct v4l2_subdev_pad_config *cfg,
 			  unsigned int pad, u32 which)
 {
+	struct v4l2_mbus_framefmt *format;
+
 	switch (which) {
 	case V4L2_SUBDEV_FORMAT_TRY:
-		return v4l2_subdev_get_try_format(&xrgb2yuv->xvip.subdev, cfg,
-						  pad);
+		format = v4l2_subdev_get_try_format(&xrgb2yuv->xvip.subdev,
+						    cfg, pad);
+		break;
 	case V4L2_SUBDEV_FORMAT_ACTIVE:
-		return &xrgb2yuv->formats[pad];
+		format = &xrgb2yuv->formats[pad];
+		break;
 	default:
-		return NULL;
+		format = NULL;
+		break;
 	}
+
+	return format;
 }
 
 static int xrgb2yuv_get_format(struct v4l2_subdev *subdev,
@@ -114,9 +121,14 @@ static int xrgb2yuv_get_format(struct v4l2_subdev *subdev,
 			       struct v4l2_subdev_format *fmt)
 {
 	struct xrgb2yuv_device *xrgb2yuv = to_rgb2yuv(subdev);
+	struct v4l2_mbus_framefmt *format;
 
-	fmt->format = *__xrgb2yuv_get_pad_format(xrgb2yuv, cfg, fmt->pad,
-						 fmt->which);
+	format = __xrgb2yuv_get_pad_format(xrgb2yuv, cfg, fmt->pad,
+					   fmt->which);
+	if (!format)
+		return -EINVAL;
+
+	fmt->format = *format;
 
 	return 0;
 }
@@ -129,6 +141,8 @@ static int xrgb2yuv_set_format(struct v4l2_subdev *subdev,
 	struct v4l2_mbus_framefmt *format;
 
 	format = __xrgb2yuv_get_pad_format(xrgb2yuv, cfg, fmt->pad, fmt->which);
+	if (!format)
+		return -EINVAL;
 
 	if (fmt->pad == XVIP_PAD_SOURCE) {
 		fmt->format = *format;
