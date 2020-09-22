@@ -854,7 +854,7 @@ static void xsdirx_framer(struct xsdirxss_core *core, bool flag)
 
 static void xsdirx_setedherrcnttrigger(struct xsdirxss_core *core, u32 enable)
 {
-	u32 val = xsdirxss_read(core, XSDIRX_EDH_ERRCNT_EN_REG);
+	u32 val;
 
 	val = enable & XSDIRX_EDH_ALLERR_MASK;
 
@@ -1034,7 +1034,6 @@ static void xsdirxss_set_gtclk(struct xsdirxss_state *state)
 
 	/* get sdi_rx_clk */
 	gtclk = core->clks[1].clk;
-	clkrate = clk_get_rate(gtclk);
 	is_frac = state->frame_interval.numerator == 1001 ? 1 : 0;
 
 	/* calcualte clkrate */
