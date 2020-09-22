@@ -185,7 +185,7 @@ int xvtc_generator_start(struct xvtc_device *xvtc,
 	if (!xvtc->has_generator)
 		return -ENXIO;
 
-	s_rate = config->fps * config->hsize * config->vsize;
+	s_rate = (unsigned long)config->fps * config->hsize * config->vsize;
 	ret = clk_set_rate(xvtc->xvip.clk, s_rate);
 	if (ret < 0)
 		return ret;
