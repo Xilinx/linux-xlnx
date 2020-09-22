@@ -1887,14 +1887,22 @@ __xsdirxss_get_pad_format(struct xsdirxss_state *xsdirxss,
 			  struct v4l2_subdev_pad_config *cfg,
 			  unsigned int pad, u32 which)
 {
+	struct v4l2_mbus_framefmt *format;
+
 	switch (which) {
 	case V4L2_SUBDEV_FORMAT_TRY:
-		return v4l2_subdev_get_try_format(&xsdirxss->subdev, cfg, pad);
+		format = v4l2_subdev_get_try_format(&xsdirxss->subdev, cfg,
+						    pad);
+		break;
 	case V4L2_SUBDEV_FORMAT_ACTIVE:
-		return &xsdirxss->format;
+		format = &xsdirxss->format;
+		break;
 	default:
-		return NULL;
+		format = NULL;
+		break;
 	}
+
+	return format;
 }
 
 /**
@@ -1913,14 +1921,19 @@ static int xsdirxss_get_format(struct v4l2_subdev *sd,
 {
 	struct xsdirxss_state *xsdirxss = to_xsdirxssstate(sd);
 	struct xsdirxss_core *core = &xsdirxss->core;
+	struct v4l2_mbus_framefmt *format;
 
 	if (!xsdirxss->vidlocked) {
 		dev_err(core->dev, "Video not locked!\n");
 		return -EINVAL;
 	}
 
-	fmt->format = *__xsdirxss_get_pad_format(xsdirxss, cfg,
-						 fmt->pad, fmt->which);
+	format = __xsdirxss_get_pad_format(xsdirxss, cfg,
+					   fmt->pad, fmt->which);
+	if (!format)
+		return -EINVAL;
+
+	fmt->format = *format;
 
 	dev_dbg(core->dev, "Stream width = %d height = %d Field = %d\n",
 		fmt->format.width, fmt->format.height, fmt->format.field);
@@ -1955,6 +1968,8 @@ static int xsdirxss_set_format(struct v4l2_subdev *sd,
 
 	__format = __xsdirxss_get_pad_format(xsdirxss, cfg,
 					     fmt->pad, fmt->which);
+	if (!__format)
+		return -EINVAL;
 
 	/* Currently reset the code to one fixed in hardware */
 	/* TODO : Add checks for width height */
