@@ -245,7 +245,7 @@ static int xremap_set_format(struct v4l2_subdev *subdev,
 			     struct v4l2_subdev_format *fmt)
 {
 	struct xremap_device *xremap = to_remap(subdev);
-	const struct xremap_mapping_output *output;
+	const struct xremap_mapping_output *output = NULL;
 	const struct xremap_mapping *mapping;
 	struct v4l2_mbus_framefmt *format;
 	unsigned int i;
