@@ -1313,14 +1313,22 @@ __xcsi2rxss_get_pad_format(struct xcsi2rxss_state *xcsi2rxss,
 				struct v4l2_subdev_pad_config *cfg,
 				unsigned int pad, u32 which)
 {
+	struct v4l2_mbus_framefmt *get_fmt;
+
 	switch (which) {
 	case V4L2_SUBDEV_FORMAT_TRY:
-		return v4l2_subdev_get_try_format(&xcsi2rxss->subdev, cfg, pad);
+		get_fmt = v4l2_subdev_get_try_format(&xcsi2rxss->subdev, cfg,
+						     pad);
+		break;
 	case V4L2_SUBDEV_FORMAT_ACTIVE:
-		return &xcsi2rxss->formats;
+		get_fmt = &xcsi2rxss->formats;
+		break;
 	default:
-		return NULL;
+		get_fmt = NULL;
+		break;
 	}
+
+	return get_fmt;
 }
 
 /**
@@ -1339,13 +1347,24 @@ static int xcsi2rxss_get_format(struct v4l2_subdev *sd,
 {
 
 	struct xcsi2rxss_state *xcsi2rxss = to_xcsi2rxssstate(sd);
+	struct v4l2_mbus_framefmt *get_fmt;
+	int ret = 0;
 
 	mutex_lock(&xcsi2rxss->lock);
-	fmt->format = *__xcsi2rxss_get_pad_format(xcsi2rxss, cfg,
-							fmt->pad, fmt->which);
+
+	get_fmt = __xcsi2rxss_get_pad_format(xcsi2rxss, cfg,
+					     fmt->pad, fmt->which);
+	if (!get_fmt) {
+		ret = -EINVAL;
+		goto unlock_get_format;
+	}
+
+	fmt->format = *get_fmt;
+
+unlock_get_format:
 	mutex_unlock(&xcsi2rxss->lock);
 
-	return 0;
+	return ret;
 }
 
 /**
@@ -1371,6 +1390,7 @@ static int xcsi2rxss_set_format(struct v4l2_subdev *sd,
 	struct xcsi2rxss_state *xcsi2rxss = to_xcsi2rxssstate(sd);
 	struct xcsi2rxss_core *core = &xcsi2rxss->core;
 	u32 code;
+	int ret = 0;
 
 	mutex_lock(&xcsi2rxss->lock);
 
@@ -1380,7 +1400,11 @@ static int xcsi2rxss_set_format(struct v4l2_subdev *sd,
 	 * Ensure that format to set is copied to over to CSI pad format
 	 */
 	__format = __xcsi2rxss_get_pad_format(xcsi2rxss, cfg,
-						fmt->pad, fmt->which);
+					      fmt->pad, fmt->which);
+	if (!__format) {
+		ret = -EINVAL;
+		goto unlock_set_fmt;
+	}
 
 	/*
 	 * If trying to set format on source pad, then
@@ -1436,7 +1460,7 @@ static int xcsi2rxss_set_format(struct v4l2_subdev *sd,
 unlock_set_fmt:
 	mutex_unlock(&xcsi2rxss->lock);
 
-	return 0;
+	return ret;
 }
 
 /**
