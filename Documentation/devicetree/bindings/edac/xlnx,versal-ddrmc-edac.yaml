@@ -1,0 +1,60 @@
+# SPDX-License-Identifier: GPL-2.0
+%YAML 1.2
+---
+$id: http://devicetree.org/schemas/edac/xlnx,versal-ddrmc-edac.yaml#
+$schema: http://devicetree.org/meta-schemas/core.yaml#
+
+title: Xilinx Versal DDRMC EDAC driver
+
+maintainers:
+  - Sai Krishna Potthuri <lakshmi.sai.krishna.potthuri@xilinx.com>
+
+description: |
+  Versal DDR controller has an optional ECC support which correct
+  single bit ECC errors and detect double bit ECC errors.
+
+properties:
+  compatible:
+    items:
+      - enum:
+          - xlnx,versal-ddrmc-edac
+
+  reg:
+    maxItems: 2
+    items:
+      - description: DDR Memory Controller registers
+      - description: NOC registers corresponding to DDR Memory Controller
+
+  reg-names:
+    items:
+      - const: ddrmc_base
+      - const: ddrmc_noc_base
+
+  interrupts:
+    maxItems: 1
+
+  xlnx,mc-id:
+    $ref: /schemas/types.yaml#/definitions/uint32
+    description: Instance number of the DDR Memory Controller
+
+required:
+  - compatible
+  - reg
+  - reg-names
+  - interrupts
+  - xlnx,mc-id
+
+examples:
+  - |
+    bus {
+      #address-cells = <2>;
+      #size-cells = <2>;
+      memory-controller@f6150000 {
+        compatible = "xlnx,versal-ddrmc-edac";
+        reg = <0x0 0xf6150000 0x0 0x2000>, <0x0 0xf6070000 0x0 0x20000>;
+        reg-names = "ddrmc_base", "ddrmc_noc_base";
+        interrupt-parent = <&gic>;
+        interrupts = <0 147 4>;
+        xlnx,mc-id = <0>;
+      };
+    };
