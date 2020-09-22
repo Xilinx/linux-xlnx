@@ -90,15 +90,22 @@ static struct v4l2_mbus_framefmt
 			struct v4l2_subdev_pad_config *cfg,
 			unsigned int pad, u32 which)
 {
+	struct v4l2_mbus_framefmt *get_fmt;
+
 	switch (which) {
 	case V4L2_SUBDEV_FORMAT_TRY:
-		return v4l2_subdev_get_try_format(&xdmsc->xvip.subdev,
-								cfg, pad);
+		get_fmt = v4l2_subdev_get_try_format(&xdmsc->xvip.subdev,
+						     cfg, pad);
+		break;
 	case V4L2_SUBDEV_FORMAT_ACTIVE:
-		return &xdmsc->formats[pad];
+		get_fmt = &xdmsc->formats[pad];
+		break;
 	default:
-		return NULL;
+		get_fmt = NULL;
+		break;
 	}
+
+	return get_fmt;
 }
 
 static int xdmsc_s_stream(struct v4l2_subdev *subdev, int enable)
@@ -134,8 +141,14 @@ static int xdmsc_get_format(struct v4l2_subdev *subdev,
 			    struct v4l2_subdev_format *fmt)
 {
 	struct xdmsc_dev *xdmsc = to_xdmsc(subdev);
+	struct v4l2_mbus_framefmt *get_fmt;
 
-	fmt->format = *__xdmsc_get_pad_format(xdmsc, cfg, fmt->pad, fmt->which);
+	get_fmt = __xdmsc_get_pad_format(xdmsc, cfg, fmt->pad, fmt->which);
+	if (!get_fmt)
+		return -EINVAL;
+
+	fmt->format = *get_fmt;
+
 	return 0;
 }
 
@@ -182,6 +195,9 @@ static int xdmsc_set_format(struct v4l2_subdev *subdev,
 	struct v4l2_mbus_framefmt *__format;
 
 	__format = __xdmsc_get_pad_format(xdmsc, cfg, fmt->pad, fmt->which);
+	if (!__format)
+		return -EINVAL;
+
 	*__format = fmt->format;
 
 	__format->width = clamp_t(unsigned int, fmt->format.width,
