@@ -1701,15 +1701,22 @@ __xscaler_get_pad_format(struct xscaler_device *xscaler,
 			 struct v4l2_subdev_pad_config *cfg,
 			 unsigned int pad, u32 which)
 {
+	struct v4l2_mbus_framefmt *format;
+
 	switch (which) {
 	case V4L2_SUBDEV_FORMAT_TRY:
-		return v4l2_subdev_get_try_format(&xscaler->xvip.subdev, cfg,
-						  pad);
+		format = v4l2_subdev_get_try_format(&xscaler->xvip.subdev, cfg,
+						    pad);
+		break;
 	case V4L2_SUBDEV_FORMAT_ACTIVE:
-		return &xscaler->formats[pad];
+		format = &xscaler->formats[pad];
+		break;
 	default:
-		return NULL;
+		format = NULL;
+		break;
 	}
+
+	return format;
 }
 
 static int xscaler_get_format(struct v4l2_subdev *subdev,
@@ -1717,9 +1724,14 @@ static int xscaler_get_format(struct v4l2_subdev *subdev,
 			      struct v4l2_subdev_format *fmt)
 {
 	struct xscaler_device *xscaler = to_scaler(subdev);
+	struct v4l2_mbus_framefmt *format;
 
-	fmt->format = *__xscaler_get_pad_format(xscaler, cfg, fmt->pad,
-						fmt->which);
+	format = __xscaler_get_pad_format(xscaler, cfg, fmt->pad,
+					  fmt->which);
+	if (!format)
+		return -EINVAL;
+
+	fmt->format = *format;
 
 	return 0;
 }
@@ -1732,6 +1744,9 @@ static int xscaler_set_format(struct v4l2_subdev *subdev,
 	struct v4l2_mbus_framefmt *format;
 
 	format = __xscaler_get_pad_format(xscaler, cfg, fmt->pad, fmt->which);
+	if (!format)
+		return -EINVAL;
+
 	*format = fmt->format;
 
 	format->width = clamp_t(unsigned int, fmt->format.width,
