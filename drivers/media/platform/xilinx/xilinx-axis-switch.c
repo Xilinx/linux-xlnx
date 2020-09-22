@@ -129,14 +129,21 @@ xvsw_get_pad_format(struct xvswitch_device *xvsw,
 		    struct v4l2_subdev_pad_config *cfg,
 		    unsigned int pad, u32 which)
 {
+	struct v4l2_mbus_framefmt *get_fmt;
+
 	switch (which) {
 	case V4L2_SUBDEV_FORMAT_TRY:
-		return v4l2_subdev_get_try_format(&xvsw->subdev, cfg, pad);
+		get_fmt = v4l2_subdev_get_try_format(&xvsw->subdev, cfg, pad);
+		break;
 	case V4L2_SUBDEV_FORMAT_ACTIVE:
-		return &xvsw->formats[pad];
+		get_fmt = &xvsw->formats[pad];
+		break;
 	default:
-		return NULL;
+		get_fmt = NULL;
+		break;
 	}
+
+	return get_fmt;
 }
 
 static int xvsw_get_format(struct v4l2_subdev *subdev,
@@ -145,6 +152,7 @@ static int xvsw_get_format(struct v4l2_subdev *subdev,
 {
 	struct xvswitch_device *xvsw = to_xvsw(subdev);
 	int pad = fmt->pad;
+	struct v4l2_mbus_framefmt *get_fmt;
 
 	/*
 	 * If control reg routing and pad is source pad then
@@ -160,7 +168,11 @@ static int xvsw_get_format(struct v4l2_subdev *subdev,
 		}
 	}
 
-	fmt->format = *xvsw_get_pad_format(xvsw, cfg, pad, fmt->which);
+	get_fmt = xvsw_get_pad_format(xvsw, cfg, pad, fmt->which);
+	if (!get_fmt)
+		return -EINVAL;
+
+	fmt->format = *get_fmt;
 
 	return 0;
 }
@@ -199,11 +211,16 @@ static int xvsw_set_format(struct v4l2_subdev *subdev,
 
 		/* get sink pad format */
 		sinkformat = xvsw_get_pad_format(xvsw, cfg, 0, fmt->which);
+		if (!sinkformat)
+			return -EINVAL;
 
 		fmt->format = *sinkformat;
 
 		/* set sink pad format on source pad */
 		format = xvsw_get_pad_format(xvsw, cfg, fmt->pad, fmt->which);
+		if (!format)
+			return -EINVAL;
+
 		*format = *sinkformat;
 
 		return 0;
@@ -220,6 +237,8 @@ static int xvsw_set_format(struct v4l2_subdev *subdev,
 	 * In Control reg routing mode, set format only for sink pads.
 	 */
 	format = xvsw_get_pad_format(xvsw, cfg, fmt->pad, fmt->which);
+	if (!format)
+		return -EINVAL;
 
 	format->code = fmt->format.code;
 	format->width = clamp_t(unsigned int, fmt->format.width,
