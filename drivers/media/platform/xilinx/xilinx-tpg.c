@@ -284,6 +284,7 @@ static int xtpg_s_stream(struct v4l2_subdev *subdev, int enable)
 		if (!xtpg->is_hls) {
 			xvip_stop(&xtpg->xvip);
 		} else {
+			int ret;
 			/*
 			 * There is an known issue in TPG v7.0 that on
 			 * resolution change it doesn't generates pattern
@@ -292,7 +293,13 @@ static int xtpg_s_stream(struct v4l2_subdev *subdev, int enable)
 			 */
 			gpiod_set_value_cansleep(xtpg->rst_gpio, 0x1);
 			gpiod_set_value_cansleep(xtpg->rst_gpio, 0x0);
-			v4l2_ctrl_handler_setup(&xtpg->ctrl_handler);
+			ret = v4l2_ctrl_handler_setup(&xtpg->ctrl_handler);
+			if (ret) {
+				struct device *dev = xtpg->xvip.dev;
+
+				dev_err(dev, "failed to set controls\n");
+				return ret;
+			}
 		}
 
 		if (xtpg->vtc)
