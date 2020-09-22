@@ -342,6 +342,8 @@ static int xdmsc_probe(struct platform_device *pdev)
 	if (rval < 0)
 		return rval;
 	rval = xvip_init_resources(&xdmsc->xvip);
+	if (rval)
+		return -EIO;
 
 	/* Reset Demosaic IP */
 	gpiod_set_value_cansleep(xdmsc->rst_gpio,
