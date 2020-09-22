@@ -115,15 +115,22 @@ __xg_get_pad_format(struct xgamma_dev *xg,
 		    struct v4l2_subdev_pad_config *cfg,
 		    unsigned int pad, u32 which)
 {
+	struct v4l2_mbus_framefmt *format;
+
 	switch (which) {
 	case V4L2_SUBDEV_FORMAT_TRY:
-		return v4l2_subdev_get_try_format(
-					&xg->xvip.subdev, cfg, pad);
+		format = v4l2_subdev_get_try_format(&xg->xvip.subdev, cfg,
+						    pad);
+		break;
 	case V4L2_SUBDEV_FORMAT_ACTIVE:
-		return &xg->formats[pad];
+		format = &xg->formats[pad];
+		break;
 	default:
-		return NULL;
+		format = NULL;
+		break;
 	}
+
+	return format;
 }
 
 static void xg_set_lut_entries(struct xgamma_dev *xg,
@@ -177,8 +184,14 @@ static int xg_get_format(struct v4l2_subdev *subdev,
 			 struct v4l2_subdev_format *fmt)
 {
 	struct xgamma_dev *xg = to_xg(subdev);
+	struct v4l2_mbus_framefmt *format;
 
-	fmt->format = *__xg_get_pad_format(xg, cfg, fmt->pad, fmt->which);
+	format = __xg_get_pad_format(xg, cfg, fmt->pad, fmt->which);
+	if (!format)
+		return -EINVAL;
+
+	fmt->format = *format;
+
 	return 0;
 }
 
@@ -190,6 +203,9 @@ static int xg_set_format(struct v4l2_subdev *subdev,
 	struct v4l2_mbus_framefmt *__format;
 
 	__format = __xg_get_pad_format(xg, cfg, fmt->pad, fmt->which);
+	if (!__format)
+		return -EINVAL;
+
 	*__format = fmt->format;
 
 	if (fmt->pad == XVIP_PAD_SINK) {
@@ -207,6 +223,9 @@ static int xg_set_format(struct v4l2_subdev *subdev,
 	fmt->format = *__format;
 	/* Propagate to Source Pad */
 	__format = __xg_get_pad_format(xg, cfg, XVIP_PAD_SOURCE, fmt->which);
+	if (!__format)
+		return -EINVAL;
+
 	*__format = fmt->format;
 	return 0;
 }
