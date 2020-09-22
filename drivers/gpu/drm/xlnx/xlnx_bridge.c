@@ -351,6 +351,7 @@ static ssize_t xlnx_bridge_debugfs_write(struct file *f, const char __user *buf,
 		if (ret < 0) {
 			pr_err("%s %d failed to copy the command  %s\n",
 			       __func__, __LINE__, buf);
+			kfree(cmd);
 			return ret;
 		}
 
