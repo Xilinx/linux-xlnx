@@ -458,6 +458,8 @@ static int xg_probe(struct platform_device *pdev)
 	if (rval < 0)
 		return rval;
 	rval = xvip_init_resources(&xg->xvip);
+	if (rval)
+		return -EIO;
 
 	dev_dbg(xg->xvip.dev, "Reset Xilinx Video Gamma Corrrection");
 	gpiod_set_value_cansleep(xg->rst_gpio, XGAMMA_RESET_DEASSERT);
