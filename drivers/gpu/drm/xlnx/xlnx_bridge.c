@@ -343,7 +343,7 @@ static ssize_t xlnx_bridge_debugfs_write(struct file *f, const char __user *buf,
 	} else if (!strncmp(buf, "set_input", 3)) {
 		char *cmd, **tmp;
 		char *w, *h, *f;
-		u32 width, height, fmt;
+		u32 width = 0, height = 0, fmt = 0;
 		int ret;
 
 		cmd = kzalloc(size, GFP_KERNEL);
