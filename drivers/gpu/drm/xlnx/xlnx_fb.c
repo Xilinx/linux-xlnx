@@ -158,7 +158,7 @@ xlnx_fb_gem_fbdev_fb_create(struct drm_device *drm,
 	mode_cmd.pixel_format = drm_driver_legacy_fb_format(drm,
 							    size->surface_bpp,
 							    size->surface_depth);
-	if (obj->size < mode_cmd.pitches[0] * mode_cmd.height)
+	if (obj->size < (size_t)mode_cmd.pitches[0] * mode_cmd.height)
 		return ERR_PTR(-EINVAL);
 
 	return xlnx_fb_gem_fb_alloc(drm, &mode_cmd, &obj, 1, funcs);
@@ -193,7 +193,8 @@ static int xlnx_fbdev_create(struct drm_fb_helper *fb_helper,
 
 	size->surface_height *= fbdev->vres_mult;
 	bytes_per_pixel = DIV_ROUND_UP(size->surface_bpp, 8);
-	bytes = ALIGN(size->surface_width * bytes_per_pixel, fbdev->align);
+	bytes = ALIGN((size_t)size->surface_width * bytes_per_pixel,
+		      fbdev->align);
 	bytes *= size->surface_height;
 
 	obj = drm_gem_cma_create(drm, bytes);
@@ -236,7 +237,7 @@ static int xlnx_fbdev_create(struct drm_fb_helper *fb_helper,
 	drm_fb_helper_fill_info(fbi, fb_helper, size);
 	fbi->var.yres = fb->height / fbdev->vres_mult;
 
-	offset = fbi->var.xoffset * bytes_per_pixel;
+	offset = (unsigned long)fbi->var.xoffset * bytes_per_pixel;
 	offset += fbi->var.yoffset * fb->pitches[0];
 
 	drm->mode_config.fb_base = (resource_size_t)obj->paddr;
