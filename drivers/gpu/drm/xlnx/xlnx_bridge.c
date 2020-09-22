@@ -347,6 +347,9 @@ static ssize_t xlnx_bridge_debugfs_write(struct file *f, const char __user *buf,
 		int ret;
 
 		cmd = kzalloc(size, GFP_KERNEL);
+		if (!cmd)
+			return -ENOMEM;
+
 		ret = strncpy_from_user(cmd, buf, size);
 		if (ret < 0) {
 			pr_err("%s %d failed to copy the command  %s\n",
