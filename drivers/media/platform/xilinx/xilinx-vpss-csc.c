@@ -984,7 +984,7 @@ static int xcsc_parse_of(struct xcsc_dev *xcsc)
 	struct device_node *ports, *port;
 	int rval;
 	u32 port_id = 0;
-	u32 video_width[2];
+	u32 video_width[2] = {0};
 
 	rval = of_property_read_u32(node, "xlnx,max-height", &xcsc->max_height);
 	if (rval < 0) {
