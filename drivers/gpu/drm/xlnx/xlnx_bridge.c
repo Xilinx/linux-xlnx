@@ -344,7 +344,7 @@ static ssize_t xlnx_bridge_debugfs_write(struct file *f, const char __user *buf,
 		char *cmd, **tmp;
 		char *w, *h, *f;
 		u32 width, height, fmt;
-		int ret = -EINVAL;
+		int ret;
 
 		cmd = kzalloc(size, GFP_KERNEL);
 		ret = strncpy_from_user(cmd, buf, size);
