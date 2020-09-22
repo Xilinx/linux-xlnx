@@ -386,7 +386,7 @@ static int xvsw_parse_of(struct xvswitch_device *xvsw)
 	struct device_node *ports;
 	struct device_node *port;
 	unsigned int nports = 0;
-	u32 routing_mode;
+	u32 routing_mode = 0;
 	int ret;
 
 	ret = of_property_read_u32(node, "xlnx,num-si-slots", &xvsw->nsinks);
