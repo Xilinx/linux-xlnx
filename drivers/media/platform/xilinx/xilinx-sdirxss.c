@@ -2323,8 +2323,8 @@ static int xsdirxss_parse_of(struct xsdirxss_state *xsdirxss)
 		    format->vf_code != XVIP_VF_YUV_420 &&
 		    format->vf_code != XVIP_VF_YUV_444 &&
 		    format->vf_code != XVIP_VF_RBG &&
-		    (core->bpc == 10 && format->width != 10) &&
-		    (core->bpc == 12 && format->width != 12)) {
+		    ((core->bpc == 10 && format->width != 10) ||
+		     (core->bpc == 12 && format->width != 12))) {
 			dev_err(core->dev,
 				"Incorrect UG934 video format set.\n");
 			return -EINVAL;
