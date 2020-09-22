@@ -342,7 +342,7 @@ static ssize_t xlnx_bridge_debugfs_write(struct file *f, const char __user *buf,
 		xlnx_bridge_disable(bridge);
 	} else if (!strncmp(buf, "set_input", 3)) {
 		char *cmd, **tmp;
-		char *w, *h, *f;
+		char *w, *h, *bus_fmt;
 		u32 width = 0, height = 0, fmt = 0;
 		int ret;
 
@@ -359,11 +359,11 @@ static ssize_t xlnx_bridge_debugfs_write(struct file *f, const char __user *buf,
 		strsep(tmp, " ");
 		w = strsep(tmp, " ");
 		h = strsep(tmp, " ");
-		f = strsep(tmp, " ");
-		if (w && h && f) {
+		bus_fmt = strsep(tmp, " ");
+		if (w && h && bus_fmt) {
 			ret = kstrtouint(w, 0, &width);
 			ret |= kstrtouint(h, 0, &height);
-			ret |= kstrtouint(f, 0, &fmt);
+			ret |= kstrtouint(bus_fmt, 0, &fmt);
 		}
 
 		kfree(cmd);
