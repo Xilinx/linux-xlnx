@@ -1019,7 +1019,7 @@ xv_hscaler_calculate_phases(struct xscaler_device *xscaler,
 	bool get_new_pix;
 	u64 phaseH;
 	u64 array_idx = 0;
-	int nr_rds;
+	int nr_rds = 0;
 	int nr_rds_clck;
 	unsigned int nphases = xscaler->max_num_phases;
 	unsigned int nppc = xscaler->pix_per_clk;
@@ -1825,7 +1825,7 @@ static int xscaler_parse_of(struct xscaler_device *xscaler)
 	struct device_node *ports;
 	struct device_node *port;
 	int ret;
-	u32 port_id, dt_ppc;
+	u32 port_id, dt_ppc = 0;
 
 	if (xscaler->cfg->flags & XSCALER_CLK_PROP) {
 		xscaler->aclk_axis = devm_clk_get(dev, "aclk_axis");
