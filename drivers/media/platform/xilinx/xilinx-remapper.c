@@ -489,7 +489,11 @@ static int xremap_probe(struct platform_device *pdev)
 	if (IS_ERR(xremap->xvip.clk))
 		return PTR_ERR(xremap->xvip.clk);
 
-	clk_prepare_enable(xremap->xvip.clk);
+	ret = clk_prepare_enable(xremap->xvip.clk);
+	if (ret) {
+		dev_err(&pdev->dev, "failed to enable clk (%d)\n", ret);
+		return ret;
+	}
 
 	/* Initialize V4L2 subdevice and media entity */
 	subdev = &xremap->xvip.subdev;
