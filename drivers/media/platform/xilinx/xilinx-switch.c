@@ -391,7 +391,7 @@ static int xsw_probe(struct platform_device *pdev)
 	xsw->pads = devm_kzalloc(&pdev->dev, npads * sizeof(*xsw->pads),
 				 GFP_KERNEL);
 	if (!xsw->pads)
-		goto error;
+		goto error_resources;
 
 	for (i = 0; i < xsw->nsinks; ++i)
 		xsw->pads[i].flags = MEDIA_PAD_FL_SINK;
@@ -402,7 +402,7 @@ static int xsw_probe(struct platform_device *pdev)
 				    xsw->nsinks * sizeof(*xsw->formats),
 				    GFP_KERNEL);
 	if (!xsw->formats)
-		goto error;
+		goto error_resources;
 
 	for (i = 0; i < xsw->nsources; ++i)
 		xsw->routing[i] = i < xsw->nsinks ? i : -1;
@@ -436,6 +436,7 @@ static int xsw_probe(struct platform_device *pdev)
 
 error:
 	media_entity_cleanup(&subdev->entity);
+error_resources:
 	xvip_cleanup_resources(&xsw->xvip);
 	return ret;
 }
