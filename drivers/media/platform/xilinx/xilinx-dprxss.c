@@ -811,14 +811,21 @@ __xdprxss_get_pad_format(struct xdprxss_state *xdprxss,
 			 struct v4l2_subdev_pad_config *cfg,
 			 unsigned int pad, u32 which)
 {
+	struct v4l2_mbus_framefmt *format;
+
 	switch (which) {
 	case V4L2_SUBDEV_FORMAT_TRY:
-		return v4l2_subdev_get_try_format(&xdprxss->subdev, cfg, pad);
+		format = v4l2_subdev_get_try_format(&xdprxss->subdev, cfg, pad);
+		break;
 	case V4L2_SUBDEV_FORMAT_ACTIVE:
-		return &xdprxss->format;
+		format = &xdprxss->format;
+		break;
 	default:
-		return NULL;
+		format = NULL;
+		break;
 	}
+
+	return format;
 }
 
 /**
@@ -862,6 +869,7 @@ static int xdprxss_getset_format(struct v4l2_subdev *sd,
 				 struct v4l2_subdev_format *fmt)
 {
 	struct xdprxss_state *xdprxss = to_xdprxssstate(sd);
+	struct v4l2_mbus_framefmt *format;
 
 	if (!xdprxss->valid_stream) {
 		dev_err(xdprxss->dev, "Video not locked!\n");
@@ -873,8 +881,13 @@ static int xdprxss_getset_format(struct v4l2_subdev *sd,
 		fmt->format.width, fmt->format.height,
 		fmt->format.code, fmt->format.field,
 		fmt->format.colorspace);
-	fmt->format = *__xdprxss_get_pad_format(xdprxss, cfg,
-						fmt->pad, fmt->which);
+	format = __xdprxss_get_pad_format(xdprxss, cfg,
+					  fmt->pad, fmt->which);
+	if (!format)
+		return -EINVAL;
+
+	fmt->format = *format;
+
 	return 0;
 }
 
