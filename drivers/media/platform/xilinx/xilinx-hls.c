@@ -77,16 +77,23 @@ static int xhls_create_controls(struct xhls_device *xhls)
 {
 	struct v4l2_ctrl_config model = xhls_model_ctrl;
 	struct v4l2_ctrl *ctrl;
+	int ret;
 
 	model.max = strlen(xhls->compatible);
 	model.min = model.max;
 
-	v4l2_ctrl_handler_init(&xhls->ctrl_handler, 1);
+	ret = v4l2_ctrl_handler_init(&xhls->ctrl_handler, 1);
+	if (ret) {
+		dev_err(xhls->xvip.dev,
+			"failed to initializing controls (%d)\n", ret);
+		return ret;
+	}
 
 	ctrl = v4l2_ctrl_new_custom(&xhls->ctrl_handler, &model, NULL);
 
-	if (xhls->ctrl_handler.error) {
+	if (xhls->ctrl_handler.error || !ctrl) {
 		dev_err(xhls->xvip.dev, "failed to add controls\n");
+		v4l2_ctrl_handler_free(&xhls->ctrl_handler);
 		return xhls->ctrl_handler.error;
 	}
 
@@ -196,14 +203,22 @@ __xhls_get_pad_format(struct xhls_device *xhls,
 		      struct v4l2_subdev_pad_config *cfg,
 		      unsigned int pad, u32 which)
 {
+	struct v4l2_mbus_framefmt *format;
+
 	switch (which) {
 	case V4L2_SUBDEV_FORMAT_TRY:
-		return v4l2_subdev_get_try_format(&xhls->xvip.subdev, cfg, pad);
+		format = v4l2_subdev_get_try_format(&xhls->xvip.subdev,
+						    cfg, pad);
+		break;
 	case V4L2_SUBDEV_FORMAT_ACTIVE:
-		return &xhls->formats[pad];
+		format = &xhls->formats[pad];
+		break;
 	default:
-		return NULL;
+		format = NULL;
+		break;
 	}
+
+	return format;
 }
 
 static int xhls_get_format(struct v4l2_subdev *subdev,
@@ -211,8 +226,13 @@ static int xhls_get_format(struct v4l2_subdev *subdev,
 			   struct v4l2_subdev_format *fmt)
 {
 	struct xhls_device *xhls = to_hls(subdev);
+	struct v4l2_mbus_framefmt *format;
 
-	fmt->format = *__xhls_get_pad_format(xhls, cfg, fmt->pad, fmt->which);
+	format = __xhls_get_pad_format(xhls, cfg, fmt->pad, fmt->which);
+	if (!format)
+		return -EINVAL;
+
+	fmt->format = *format;
 
 	return 0;
 }
@@ -225,6 +245,8 @@ static int xhls_set_format(struct v4l2_subdev *subdev,
 	struct v4l2_mbus_framefmt *format;
 
 	format = __xhls_get_pad_format(xhls, cfg, fmt->pad, fmt->which);
+	if (!format)
+		return -EINVAL;
 
 	if (fmt->pad == XVIP_PAD_SOURCE) {
 		fmt->format = *format;
@@ -238,6 +260,8 @@ static int xhls_set_format(struct v4l2_subdev *subdev,
 	/* Propagate the format to the source pad. */
 	format = __xhls_get_pad_format(xhls, cfg, XVIP_PAD_SOURCE,
 					 fmt->which);
+	if (!format)
+		return -EINVAL;
 
 	xvip_set_format_size(format, fmt);
 
