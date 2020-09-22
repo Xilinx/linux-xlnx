@@ -905,7 +905,7 @@ static int xdprxss_enum_mbus_code(struct v4l2_subdev *sd,
 {
 	struct xdprxss_state *xdprxss = to_xdprxssstate(sd);
 	u32 index = code->index;
-	u32 base;
+	u32 base = 0;
 
 	if (xdprxss->bpc == 8)
 		base = 0;
@@ -1039,7 +1039,7 @@ static const struct v4l2_subdev_ops xdprxss_ops = {
 static int xdprxss_parse_of(struct xdprxss_state *xdprxss)
 {
 	struct device_node *node = xdprxss->dev->of_node;
-	u32 val;
+	u32 val = 0;
 	int ret;
 
 	ret = of_property_read_u32(node, "xlnx,bpc", &xdprxss->bpc);
