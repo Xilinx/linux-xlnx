@@ -763,8 +763,11 @@ static u32 aie_get_errors_from_bitmap(struct aie_partition *apart,
 	u32 num_err = 0;
 
 	for (i = 0; i < err_attr->num_err_categories; i++) {
-		for (j = 0; j < err_attr->err_category[i].num_events; j++) {
-			u8 event = err_attr->err_category[i].prop[j].event;
+		const struct aie_err_category *category;
+
+		category = &err_attr->err_category[i];
+		for (j = 0; j < category->num_events; j++) {
+			u8 event = category->prop[j].event;
 
 			if (!aie_check_error_bitmap(apart, loc, module, event))
 				continue;
@@ -773,6 +776,7 @@ static u32 aie_get_errors_from_bitmap(struct aie_partition *apart,
 			aie_err[num_err].loc.row = loc.row;
 			aie_err[num_err].module = module;
 			aie_err[num_err].error_id = event;
+			aie_err[num_err].category = category->err_category;
 			num_err++;
 		}
 	}
