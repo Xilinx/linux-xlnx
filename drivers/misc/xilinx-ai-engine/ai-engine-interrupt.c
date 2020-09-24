@@ -993,49 +993,18 @@ EXPORT_SYMBOL_GPL(aie_get_errors);
  */
 u32 aie_get_error_categories(struct aie_errors *aie_errs)
 {
-	struct aie_partition *apart;
-	unsigned long status = 0;
-	u8 e, i, j, event;
-	int ret;
+	u32 e, ret = 0;
 
-	if (!aie_errs || !aie_errs->dev || !aie_errs->errors)
+	if (!aie_errs || !aie_errs->errors)
 		return 0;
-
-	apart = container_of(aie_errs->dev, struct aie_partition, dev);
-
-	ret = mutex_lock_interruptible(&apart->mlock);
-	if (ret) {
-		dev_err(&apart->dev,
-			"Failed to acquire lock. Process was interrupted by fatal signals\n");
-		return 0;
-	}
 
 	for (e = 0; e < aie_errs->num_err; e++) {
 		struct aie_error *error = &aie_errs->errors[e];
-		const struct aie_error_attr *err_attr;
-		const struct aie_err_category *ecat;
 
-		if (error->module == AIE_CORE_MOD)
-			err_attr = apart->adev->core_errors;
-		else if (error->module == AIE_MEM_MOD)
-			err_attr = apart->adev->mem_errors;
-		else
-			err_attr = apart->adev->shim_errors;
-
-		ecat = err_attr->err_category;
-		for (i = 0; i < err_attr->num_err_categories; i++) {
-			for (j = 0;
-			     j < ecat[i].num_events; j++) {
-				event = ecat[i].prop[j].event;
-				if (event != error->error_id)
-					continue;
-				status |= BIT(ecat[i].err_category);
-			}
-		}
+		ret |= BIT(error->category);
 	}
 
-	mutex_unlock(&apart->mlock);
-	return status;
+	return ret;
 }
 EXPORT_SYMBOL_GPL(aie_get_error_categories);
 
