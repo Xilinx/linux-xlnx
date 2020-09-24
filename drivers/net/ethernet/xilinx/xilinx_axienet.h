@@ -684,6 +684,7 @@ enum axienet_tsn_ioctl {
  * @ndev:	Pointer for net_device to which it will be attached.
  * @dev:	Pointer to device structure
  * @phy_node:	Pointer to device node structure
+ * @clk:	AXI bus clock
  * @mii_bus:	Pointer to MII bus structure
  * @regs_start: Resource start for axienet device addresses
  * @regs:	Base address for the axienet_local device address space
@@ -712,6 +713,8 @@ enum axienet_tsn_ioctl {
  * @options:	AxiEthernet option word
  * @last_link:	Phy link state in which the PHY was negotiated earlier
  * @features:	Stores the extended features supported by the axienet hw
+ * @tx_bd_num:	Number of TX buffer descriptors.
+ * @rx_bd_num:	Number of RX buffer descriptors.
  * @max_frm_size: Stores the maximum size of the frame that can be that
  *		  Txed/Rxed in the existing hardware. If jumbo option is
  *		  supported, the maximum frame size would be 9k. Else it is
