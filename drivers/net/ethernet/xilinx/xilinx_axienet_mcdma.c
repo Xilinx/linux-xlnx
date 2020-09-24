@@ -590,7 +590,8 @@ void __maybe_unused axienet_mcdma_err_handler(unsigned long data)
 	lp->axienet_config->setoptions(ndev, lp->options &
 				       ~(XAE_OPTION_TXEN | XAE_OPTION_RXEN));
 
-	if (lp->axienet_config->mactype != XAXIENET_10G_25G) {
+	if (lp->axienet_config->mactype != XAXIENET_10G_25G &&
+	    lp->axienet_config->mactype != XAXIENET_MRMAC) {
 		mutex_lock(&lp->mii_bus->mdio_lock);
 		/* Disable the MDIO interface till Axi Ethernet Reset is
 		 * Completed. When we do an Axi Ethernet reset, it resets the
@@ -604,7 +605,8 @@ void __maybe_unused axienet_mcdma_err_handler(unsigned long data)
 
 	__axienet_device_reset(q);
 
-	if (lp->axienet_config->mactype != XAXIENET_10G_25G) {
+	if (lp->axienet_config->mactype != XAXIENET_10G_25G &&
+	    lp->axienet_config->mactype != XAXIENET_MRMAC) {
 		axienet_mdio_enable(lp);
 		axienet_mdio_wait_until_ready(lp);
 		mutex_unlock(&lp->mii_bus->mdio_lock);
@@ -708,7 +710,8 @@ void __maybe_unused axienet_mcdma_err_handler(unsigned long data)
 	chan_en |= (1 << (q->chan_id - 1));
 	axienet_dma_out32(q, XMCDMA_CHEN_OFFSET, chan_en);
 
-	if (lp->axienet_config->mactype != XAXIENET_10G_25G) {
+	if (lp->axienet_config->mactype != XAXIENET_10G_25G &&
+	    lp->axienet_config->mactype != XAXIENET_MRMAC) {
 		axienet_status = axienet_ior(lp, XAE_RCW1_OFFSET);
 		axienet_status &= ~XAE_RCW1_RX_MASK;
 		axienet_iow(lp, XAE_RCW1_OFFSET, axienet_status);
@@ -720,7 +723,8 @@ void __maybe_unused axienet_mcdma_err_handler(unsigned long data)
 			axienet_iow(lp, XAE_IS_OFFSET, XAE_INT_RXRJECT_MASK);
 	}
 
-	if (lp->axienet_config->mactype != XAXIENET_10G_25G)
+	if (lp->axienet_config->mactype != XAXIENET_10G_25G &&
+	    lp->axienet_config->mactype != XAXIENET_MRMAC)
 		axienet_iow(lp, XAE_FCC_OFFSET, XAE_FCC_FCRX_MASK);
 
 #ifdef CONFIG_XILINX_AXI_EMAC_HWTSTAMP
