@@ -1577,7 +1577,7 @@ static int xilinx_frmbuf_probe(struct platform_device *pdev)
 		align = 16;
 	}
 
-	xdev->common.copy_align = fls(align) - 1;
+	xdev->common.copy_align = (enum dmaengine_alignment)(fls(align) - 1);
 	xdev->common.dev = &pdev->dev;
 
 	if (xdev->cfg->flags & XILINX_CLK_PROP) {
