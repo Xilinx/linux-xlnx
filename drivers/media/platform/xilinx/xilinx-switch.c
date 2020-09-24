@@ -104,7 +104,7 @@ static int xsw_s_stream(struct v4l2_subdev *subdev, int enable)
 	xvip_write(&xsw->xvip, XSW_CORE_CH_CTRL, routing);
 
 	xvip_write(&xsw->xvip, XVIP_CTRL_CONTROL,
-		   (((1 << xsw->nsources) - 1) << 4) |
+		   ((((unsigned long)1 << xsw->nsources) - 1) << 4) |
 		   XVIP_CTRL_CONTROL_SW_ENABLE);
 
 	return 0;
