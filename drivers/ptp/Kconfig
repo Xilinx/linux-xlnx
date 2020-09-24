@@ -119,4 +119,14 @@ config PTP_1588_CLOCK_KVM
 	  To compile this driver as a module, choose M here: the module
 	  will be called ptp_kvm.
 
+config PTP_1588_CLOCK_XILINX
+	tristate "XILINX PTP clock"
+	depends on PTP_1588_CLOCK
+	help
+	  This driver adds support for Xilinx PTP clock. It provides
+	  timer-syncer support with time and fine adjustment capabilities.
+
+	  It is usually used with Xilinx AXI Ethernet driver with HW
+	  timestamping support.
+
 endmenu
