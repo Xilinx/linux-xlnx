@@ -1018,8 +1018,7 @@ static int axienet_skb_tstsmp(struct sk_buff **__skb, struct axienet_dma_q *q,
 		}
 	} else if ((skb_shinfo(skb)->tx_flags & SKBTX_HW_TSTAMP) &&
 			  (lp->axienet_config->mactype == XAXIENET_10G_25G)) {
-			cur_p->ptp_tx_ts_tag = (prandom_u32() &
-							~XAXIFIFO_TXTS_TAG_MASK) + 1;
+			cur_p->ptp_tx_ts_tag = prandom_u32_max(XAXIFIFO_TXTS_TAG_MAX) + 1;
 			dev_dbg(lp->dev, "tx_tag:[%04x]\n",
 				cur_p->ptp_tx_ts_tag);
 			if (lp->tstamp_config.tx_type == HWTSTAMP_TX_ONESTEP_SYNC) {
