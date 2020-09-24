@@ -167,6 +167,16 @@ config PTP_1588_CLOCK_VMW
 	  To compile this driver as a module, choose M here: the module
 	  will be called ptp_vmw.
 
+config PTP_1588_CLOCK_XILINX
+	tristate "XILINX PTP clock"
+	depends on PTP_1588_CLOCK
+	help
+	  This driver adds support for Xilinx PTP clock. It provides
+	  timer-syncer support with time and fine adjustment capabilities.
+
+	  It is usually used with Xilinx AXI Ethernet driver with HW
+	  timestamping support.
+
 config PTP_1588_CLOCK_OCP
 	tristate "OpenCompute TimeCard as PTP clock"
 	depends on PTP_1588_CLOCK
