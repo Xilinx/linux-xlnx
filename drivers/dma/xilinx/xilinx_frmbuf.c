@@ -1416,7 +1416,7 @@ static int xilinx_frmbuf_chan_probe(struct xilinx_frmbuf_device *xdev,
 {
 	struct xilinx_frmbuf_chan *chan;
 	int err;
-	u32 dma_addr_size;
+	u32 dma_addr_size = 0;
 
 	chan = &xdev->chan;
 
