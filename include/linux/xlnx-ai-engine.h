@@ -66,10 +66,18 @@ enum aie_module_type {
 
 struct device;
 
+/**
+ * struct aie_error - AI engine error
+ * @loc: AI engine tile location of which the error is from
+ * @module: AI engine module type of which the error is from
+ * @error_id: AI engine hardware event ID
+ * @category: AI engine error category of the error
+ */
 struct aie_error {
 	struct aie_location loc;
 	enum aie_module_type module;
 	u32 error_id;
+	u32 category;
 };
 
 struct aie_errors {
@@ -95,6 +103,17 @@ const char *aie_get_error_string(struct aie_errors *aie_errs,
 				 struct aie_error *aie_err);
 int aie_flush_errors(struct device *dev);
 void aie_free_errors(struct aie_errors *aie_errs);
+
+/**
+ * aie_get_error_category() - Get the category of an AIE error
+ * @err: AI engine hardware error
+ * @return: category of the error
+ */
+static inline u32 aie_get_error_category(struct aie_error *err)
+{
+	return err->category;
+}
+
 #else
 static inline bool aie_partition_is_available(struct aie_partition_req *req)
 {
@@ -159,5 +178,9 @@ static inline int aie_flush_errors(struct device *dev)
 
 static inline void aie_free_errors(struct aie_errors *aie_errs) {}
 
+static inline u32 aie_get_error_category(struct aie_error *err)
+{
+	return 0;
+}
 #endif /* CONFIG_XILINX_AIE */
 #endif
