@@ -1897,7 +1897,7 @@ static int zynqmp_disp_layer_enable(struct zynqmp_disp *disp,
 {
 	struct device *dev = disp->dev;
 	struct dma_async_tx_descriptor *desc;
-	enum dma_ctrl_flags flags;
+	unsigned long flags;
 	unsigned int i;
 
 	if (layer->enabled && layer->mode != mode) {
@@ -2097,7 +2097,7 @@ static int zynqmp_disp_layer_create(struct zynqmp_disp *disp)
 		char temp[16];
 
 		layer = &disp->layers[i];
-		layer->id = i;
+		layer->id = (enum zynqmp_disp_layer_type)i;
 		layer->offset = i * 4;
 		layer->other = &disp->layers[!i];
 		layer->num_chan = num_chans[i];
