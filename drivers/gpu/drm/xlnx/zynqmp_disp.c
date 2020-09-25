@@ -2893,15 +2893,16 @@ static int zynqmp_disp_crtc_mode_set(struct drm_crtc *crtc,
 	int ret;
 
 	zynqmp_disp_clk_disable(disp->pclk, &disp->pclk_en);
-	ret = clk_set_rate(disp->pclk, adjusted_mode->clock * 1000);
+	ret = clk_set_rate(disp->pclk,
+			   (unsigned long)adjusted_mode->clock * 1000);
 	if (ret) {
 		dev_err(disp->dev, "failed to set a pixel clock\n");
 		return ret;
 	}
 
 	rate = clk_get_rate(disp->pclk);
-	diff = rate - adjusted_mode->clock * 1000;
-	if (abs(diff) > (adjusted_mode->clock * 1000) / 20) {
+	diff = rate - (unsigned long)adjusted_mode->clock * 1000;
+	if (abs(diff) > ((long)adjusted_mode->clock * 1000) / 20) {
 		dev_info(disp->dev, "request pixel rate: %d actual rate: %lu\n",
 			 adjusted_mode->clock, rate);
 	} else {
