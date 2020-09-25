@@ -189,7 +189,7 @@ static int xlnx_sdi_rx_pcm_startup(struct snd_pcm_substream *substream,
 
 	val = ioread32(base + XSDIAUD_EXT_SRATE_STS_REG_OFFSET);
 	/* As both channels contain same sample rate, read either of them */
-	switch (val & CHAN_ID_0) {
+	switch (val & CHAN_ID_1) {
 	case 0:
 		sample_rate = 48000;
 		break;
