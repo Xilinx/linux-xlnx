@@ -333,7 +333,12 @@ static int xlnx_formatter_pcm_open(struct snd_pcm_substream *substream)
 	struct snd_soc_pcm_runtime *prtd = substream->private_data;
 	struct snd_soc_component *component = snd_soc_rtdcom_lookup(prtd,
 								    DRV_NAME);
-	struct xlnx_pcm_drv_data *adata = dev_get_drvdata(component->dev);
+	struct xlnx_pcm_drv_data *adata;
+
+	if (!component)
+		return -ENODEV;
+
+	adata = dev_get_drvdata(component->dev);
 
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK &&
 	    !adata->mm2s_presence)
@@ -406,6 +411,9 @@ static int xlnx_formatter_pcm_close(struct snd_pcm_substream *substream)
 	struct snd_soc_component *component = snd_soc_rtdcom_lookup(prtd,
 								    DRV_NAME);
 
+	if (!component)
+		return -ENODEV;
+
 	ret = xlnx_formatter_pcm_reset(stream_data->mmio);
 	if (ret) {
 		dev_err(component->dev, "audio formatter reset failed\n");
@@ -446,8 +454,13 @@ static int xlnx_formatter_pcm_hw_params(struct snd_pcm_substream *substream,
 	struct snd_soc_pcm_runtime *prtd = substream->private_data;
 	struct snd_soc_component *component = snd_soc_rtdcom_lookup(prtd,
 								    DRV_NAME);
-	struct xlnx_pcm_drv_data *adata = dev_get_drvdata(component->dev);
+	struct xlnx_pcm_drv_data *adata;
 	struct snd_soc_pcm_runtime *rtd = substream->private_data;
+
+	if (!component)
+		return -ENODEV;
+
+	adata = dev_get_drvdata(component->dev);
 
 	bits_per_sample = params_width(params);
 	sample_rate = params_rate(params);
@@ -563,6 +576,10 @@ static int xlnx_formatter_pcm_new(struct snd_soc_pcm_runtime *rtd)
 {
 	struct snd_soc_component *component = snd_soc_rtdcom_lookup(rtd,
 								    DRV_NAME);
+
+	if (!component)
+		return -ENODEV;
+
 	snd_pcm_lib_preallocate_pages_for_all(rtd->pcm,
 			SNDRV_DMA_TYPE_DEV, component->dev,
 			xlnx_pcm_hardware.buffer_bytes_max,
