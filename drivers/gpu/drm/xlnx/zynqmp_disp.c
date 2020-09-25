@@ -2091,7 +2091,7 @@ static int zynqmp_disp_layer_create(struct zynqmp_disp *disp)
 	unsigned int i;
 	int num_chans[ZYNQMP_DISP_NUM_LAYERS] = { 3, 1 };
 	const char * const dma_name[] = { "vid", "gfx" };
-	int ret;
+	int ret = -EINVAL;
 
 	for (i = 0; i < ZYNQMP_DISP_NUM_LAYERS; i++) {
 		char temp[16];
