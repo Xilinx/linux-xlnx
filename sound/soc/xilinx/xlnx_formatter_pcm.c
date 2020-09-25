@@ -464,7 +464,6 @@ static int xlnx_formatter_pcm_hw_params(struct snd_pcm_substream *substream,
 
 	adata = dev_get_drvdata(component->dev);
 
-	bits_per_sample = params_width(params);
 	sample_rate = params_rate(params);
 	active_ch = params_channels(params);
 	if (active_ch > stream_data->ch_limit)
