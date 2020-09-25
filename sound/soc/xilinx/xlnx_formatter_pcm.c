@@ -445,7 +445,7 @@ static int xlnx_formatter_pcm_hw_params(struct snd_soc_component *component,
 					struct snd_pcm_hw_params *params)
 {
 	u32 low, high, active_ch, val, bits_per_sample, bytes_per_ch;
-	u32 aes_reg1_val, aes_reg2_val, sample_rate;
+	u32 aes_reg1_val, aes_reg2_val;
 	int status;
 	u64 size;
 	struct pl_card_data *prv;
@@ -459,7 +459,6 @@ static int xlnx_formatter_pcm_hw_params(struct snd_soc_component *component,
 
 	adata = dev_get_drvdata(component->dev);
 
-	sample_rate = params_rate(params);
 	active_ch = params_channels(params);
 	if (active_ch > stream_data->ch_limit)
 		return -EINVAL;
