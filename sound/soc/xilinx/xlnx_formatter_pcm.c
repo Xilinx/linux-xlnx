@@ -256,16 +256,16 @@ static int xlnx_formatter_pcm_reset(void __iomem *mmio_base)
 {
 	u32 val, retries = 0;
 
-	val = readl(mmio_base + XLNX_AUD_CTRL);
+	val = ioread32(mmio_base + XLNX_AUD_CTRL);
 	val |= AUD_CTRL_RESET_MASK;
-	writel(val, mmio_base + XLNX_AUD_CTRL);
+	iowrite32(val, mmio_base + XLNX_AUD_CTRL);
 
-	val = readl(mmio_base + XLNX_AUD_CTRL);
+	val = ioread32(mmio_base + XLNX_AUD_CTRL);
 	/* Poll for maximum timeout of approximately 100ms (1 * 100)*/
 	while ((val & AUD_CTRL_RESET_MASK) && (retries < 100)) {
 		mdelay(1);
 		retries++;
-		val = readl(mmio_base + XLNX_AUD_CTRL);
+		val = ioread32(mmio_base + XLNX_AUD_CTRL);
 	}
 	if (val & AUD_CTRL_RESET_MASK)
 		return -ENODEV;
@@ -277,12 +277,12 @@ static void xlnx_formatter_disable_irqs(void __iomem *mmio_base, int stream)
 {
 	u32 val;
 
-	val = readl(mmio_base + XLNX_AUD_CTRL);
+	val = ioread32(mmio_base + XLNX_AUD_CTRL);
 	val &= ~AUD_CTRL_IOC_IRQ_MASK;
 	if (stream == SNDRV_PCM_STREAM_CAPTURE)
 		val &= ~AUD_CTRL_TOUT_IRQ_MASK;
 
-	writel(val, mmio_base + XLNX_AUD_CTRL);
+	iowrite32(val, mmio_base + XLNX_AUD_CTRL);
 }
 
 static irqreturn_t xlnx_mm2s_irq_handler(int irq, void *arg)
@@ -293,9 +293,9 @@ static irqreturn_t xlnx_mm2s_irq_handler(int irq, void *arg)
 	struct xlnx_pcm_drv_data *adata = dev_get_drvdata(dev);
 
 	reg = adata->mmio + XLNX_MM2S_OFFSET + XLNX_AUD_STS;
-	val = readl(reg);
+	val = ioread32(reg);
 	if (val & AUD_STS_IOC_IRQ_MASK) {
-		writel(val & AUD_STS_IOC_IRQ_MASK, reg);
+		iowrite32(val & AUD_STS_IOC_IRQ_MASK, reg);
 		if (adata->play_stream)
 			snd_pcm_period_elapsed(adata->play_stream);
 		return IRQ_HANDLED;
@@ -312,9 +312,9 @@ static irqreturn_t xlnx_s2mm_irq_handler(int irq, void *arg)
 	struct xlnx_pcm_drv_data *adata = dev_get_drvdata(dev);
 
 	reg = adata->mmio + XLNX_S2MM_OFFSET + XLNX_AUD_STS;
-	val = readl(reg);
+	val = ioread32(reg);
 	if (val & AUD_STS_IOC_IRQ_MASK) {
-		writel(val & AUD_STS_IOC_IRQ_MASK, reg);
+		iowrite32(val & AUD_STS_IOC_IRQ_MASK, reg);
 		if (adata->capture_stream)
 			snd_pcm_period_elapsed(adata->capture_stream);
 		return IRQ_HANDLED;
@@ -365,7 +365,7 @@ static int xlnx_formatter_pcm_open(struct snd_pcm_substream *substream)
 		adata->capture_stream = substream;
 	}
 
-	val = readl(adata->mmio + XLNX_AUD_CORE_CONFIG);
+	val = ioread32(adata->mmio + XLNX_AUD_CORE_CONFIG);
 
 	if (!(val & data_format_mode))
 		stream_data->interleaved = true;
@@ -390,9 +390,9 @@ static int xlnx_formatter_pcm_open(struct snd_pcm_substream *substream)
 	}
 
 	/* enable DMA IOC irq */
-	val = readl(stream_data->mmio + XLNX_AUD_CTRL);
+	val = ioread32(stream_data->mmio + XLNX_AUD_CTRL);
 	val |= AUD_CTRL_IOC_IRQ_MASK;
-	writel(val, stream_data->mmio + XLNX_AUD_CTRL);
+	iowrite32(val, stream_data->mmio + XLNX_AUD_CTRL);
 
 	return 0;
 }
@@ -425,7 +425,7 @@ xlnx_formatter_pcm_pointer(struct snd_pcm_substream *substream)
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct xlnx_pcm_stream_param *stream_data = runtime->private_data;
 
-	pos = readl(stream_data->mmio + XLNX_AUD_XFER_COUNT);
+	pos = ioread32(stream_data->mmio + XLNX_AUD_XFER_COUNT);
 
 	if (pos >= stream_data->buffer_size)
 		pos = 0;
@@ -463,11 +463,11 @@ static int xlnx_formatter_pcm_hw_params(struct snd_pcm_substream *substream,
 		 * If formatter is in AES_PCM mode for HDMI/SDI capture path,
 		 * parse AES header
 		 */
-		val = readl(stream_data->mmio + XLNX_AUD_STS);
+		val = ioread32(stream_data->mmio + XLNX_AUD_STS);
 		if (val & AUD_STS_CH_STS_MASK) {
-			aes_reg1_val = readl(stream_data->mmio +
+			aes_reg1_val = ioread32(stream_data->mmio +
 					 XLNX_AUD_CH_STS_START);
-			aes_reg2_val = readl(stream_data->mmio +
+			aes_reg2_val = ioread32(stream_data->mmio +
 					 XLNX_AUD_CH_STS_START + 0x4);
 
 			xlnx_parse_aes_params(aes_reg1_val, aes_reg2_val,
@@ -484,10 +484,10 @@ static int xlnx_formatter_pcm_hw_params(struct snd_pcm_substream *substream,
 
 	low = lower_32_bits(substream->dma_buffer.addr);
 	high = upper_32_bits(substream->dma_buffer.addr);
-	writel(low, stream_data->mmio + XLNX_AUD_BUFF_ADDR_LSB);
-	writel(high, stream_data->mmio + XLNX_AUD_BUFF_ADDR_MSB);
+	iowrite32(low, stream_data->mmio + XLNX_AUD_BUFF_ADDR_LSB);
+	iowrite32(high, stream_data->mmio + XLNX_AUD_BUFF_ADDR_MSB);
 
-	val = readl(stream_data->mmio + XLNX_AUD_CTRL);
+	val = ioread32(stream_data->mmio + XLNX_AUD_CTRL);
 	val &= ~AUD_CTRL_DATA_WIDTH_MASK;
 	bits_per_sample = params_width(params);
 	switch (bits_per_sample) {
@@ -510,18 +510,18 @@ static int xlnx_formatter_pcm_hw_params(struct snd_pcm_substream *substream,
 
 	val &= ~AUD_CTRL_ACTIVE_CH_MASK;
 	val |= active_ch << AUD_CTRL_ACTIVE_CH_SHIFT;
-	writel(val, stream_data->mmio + XLNX_AUD_CTRL);
+	iowrite32(val, stream_data->mmio + XLNX_AUD_CTRL);
 
 	val = (params_periods(params) << PERIOD_CFG_PERIODS_SHIFT)
 		| params_period_bytes(params);
-	writel(val, stream_data->mmio + XLNX_AUD_PERIOD_CONFIG);
+	iowrite32(val, stream_data->mmio + XLNX_AUD_PERIOD_CONFIG);
 	bytes_per_ch = DIV_ROUND_UP(params_period_bytes(params), active_ch);
-	writel(bytes_per_ch, stream_data->mmio + XLNX_BYTES_PER_CH);
+	iowrite32(bytes_per_ch, stream_data->mmio + XLNX_BYTES_PER_CH);
 
 	if (substream->stream == SNDRV_PCM_STREAM_PLAYBACK) {
 		prv = snd_soc_card_get_drvdata(rtd->card);
-		writel(prv->mclk_ratio,
-		       stream_data->mmio + XLNX_AUD_FS_MULTIPLIER);
+		iowrite32(prv->mclk_ratio,
+			  stream_data->mmio + XLNX_AUD_FS_MULTIPLIER);
 	}
 
 	return 0;
@@ -543,16 +543,16 @@ static int xlnx_formatter_pcm_trigger(struct snd_pcm_substream *substream,
 	case SNDRV_PCM_TRIGGER_START:
 	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
 	case SNDRV_PCM_TRIGGER_RESUME:
-		val = readl(stream_data->mmio + XLNX_AUD_CTRL);
+		val = ioread32(stream_data->mmio + XLNX_AUD_CTRL);
 		val |= AUD_CTRL_DMA_EN_MASK;
-		writel(val, stream_data->mmio + XLNX_AUD_CTRL);
+		iowrite32(val, stream_data->mmio + XLNX_AUD_CTRL);
 		break;
 	case SNDRV_PCM_TRIGGER_STOP:
 	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
 	case SNDRV_PCM_TRIGGER_SUSPEND:
-		val = readl(stream_data->mmio + XLNX_AUD_CTRL);
+		val = ioread32(stream_data->mmio + XLNX_AUD_CTRL);
 		val &= ~AUD_CTRL_DMA_EN_MASK;
-		writel(val, stream_data->mmio + XLNX_AUD_CTRL);
+		iowrite32(val, stream_data->mmio + XLNX_AUD_CTRL);
 		break;
 	}
 
@@ -757,7 +757,7 @@ static int xlnx_formatter_pcm_probe(struct platform_device *pdev)
 		goto clk_err;
 	}
 
-	val = readl(aud_drv_data->mmio + XLNX_AUD_CORE_CONFIG);
+	val = ioread32(aud_drv_data->mmio + XLNX_AUD_CORE_CONFIG);
 	if (val & AUD_CFG_MM2S_MASK) {
 		ret = configure_mm2s(aud_drv_data, pdev);
 		if (ret)
