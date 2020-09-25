@@ -374,6 +374,8 @@ static int xlnx_formatter_pcm_open(struct snd_pcm_substream *substream)
 
 	if (!(val & data_format_mode))
 		stream_data->interleaved = true;
+	else
+		stream_data->interleaved = false;
 
 	stream_data->xfer_mode = (val & data_xfer_mode) >> data_xfer_shift;
 	stream_data->ch_limit = (val & ch_count_mask) >> ch_count_shift;
