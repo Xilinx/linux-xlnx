@@ -68,12 +68,12 @@ static irqreturn_t xlnx_spdifrx_irq_handler(int irq, void *arg)
 	u32 val;
 	struct spdif_dev_data *ctx = arg;
 
-	val = readl(ctx->base + XSPDIF_IRQ_STS_REG);
+	val = ioread32(ctx->base + XSPDIF_IRQ_STS_REG);
 	if (val & XSPDIF_IRQ_STS_CH_STS_MASK) {
 		writel(val & XSPDIF_IRQ_STS_CH_STS_MASK,
 		       ctx->base + XSPDIF_IRQ_STS_REG);
-		val = readl(ctx->base +
-			    XSPDIF_IRQ_ENABLE_REG);
+		val = ioread32(ctx->base +
+			       XSPDIF_IRQ_ENABLE_REG);
 		writel(val & ~XSPDIF_IRQ_STS_CH_STS_MASK,
 		       ctx->base + XSPDIF_IRQ_ENABLE_REG);
 
@@ -91,7 +91,7 @@ static int xlnx_spdif_startup(struct snd_pcm_substream *substream,
 	u32 val;
 	struct spdif_dev_data *ctx = dev_get_drvdata(dai->dev);
 
-	val = readl(ctx->base + XSPDIF_CONTROL_REG);
+	val = ioread32(ctx->base + XSPDIF_CONTROL_REG);
 	val |= XSPDIF_CONTROL_FIFO_FLUSH_MASK;
 	writel(val, ctx->base + XSPDIF_CONTROL_REG);
 
@@ -151,7 +151,7 @@ static int xlnx_spdif_hw_params(struct snd_pcm_substream *substream,
 		return -EINVAL;
 	}
 
-	val = readl(ctx->base + XSPDIF_CONTROL_REG);
+	val = ioread32(ctx->base + XSPDIF_CONTROL_REG);
 	val &= ~XSPDIF_CONTROL_CLK_CFG_MASK;
 	val |= clk_cfg << XSPDIF_CONTROL_CLK_CFG_SHIFT;
 	writel(val, ctx->base + XSPDIF_CONTROL_REG);
@@ -185,7 +185,7 @@ static int xlnx_spdif_trigger(struct snd_pcm_substream *substream, int cmd,
 	int ret = 0;
 	struct spdif_dev_data *ctx = dev_get_drvdata(dai->dev);
 
-	val = readl(ctx->base + XSPDIF_CONTROL_REG);
+	val = ioread32(ctx->base + XSPDIF_CONTROL_REG);
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_START:
 	case SNDRV_PCM_TRIGGER_RESUME:
