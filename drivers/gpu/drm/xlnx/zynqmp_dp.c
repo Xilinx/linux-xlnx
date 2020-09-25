@@ -1576,16 +1576,18 @@ static irqreturn_t zynqmp_dp_irq_handler(int irq, void *data)
 
 	if (status & ZYNQMP_DP_INT_HPD_IRQ) {
 		int ret;
-		u8 status[DP_LINK_STATUS_SIZE + 2];
+		u8 buf[DP_LINK_STATUS_SIZE + 2];
 
-		ret = drm_dp_dpcd_read(&dp->aux, DP_SINK_COUNT, status,
+		memset(buf, 0, ARRAY_SIZE(buf));
+
+		ret = drm_dp_dpcd_read(&dp->aux, DP_SINK_COUNT, buf,
 				       DP_LINK_STATUS_SIZE + 2);
 		if (ret < 0)
 			goto handled;
 
-		if (status[4] & DP_LINK_STATUS_UPDATED ||
-		    !drm_dp_clock_recovery_ok(&status[2], dp->mode.lane_cnt) ||
-		    !drm_dp_channel_eq_ok(&status[2], dp->mode.lane_cnt)) {
+		if (buf[4] & DP_LINK_STATUS_UPDATED ||
+		    !drm_dp_clock_recovery_ok(&buf[2], dp->mode.lane_cnt) ||
+		    !drm_dp_channel_eq_ok(&buf[2], dp->mode.lane_cnt)) {
 			zynqmp_dp_train_loop(dp);
 		}
 	}
